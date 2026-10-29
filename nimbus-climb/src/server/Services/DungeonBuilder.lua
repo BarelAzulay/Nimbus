@@ -78,6 +78,7 @@ local TEMPLATE_FOLDER = "DungeonTemplates"
 local DUNGEONS_FOLDER = "Dungeons"
 local WALL_H = 15 -- wall height; the ceiling slab sits on the cap, 16 studs up
 local CEIL_Y = 15.8
+local ASTRO_HUB_Y = 12.9 -- the B boss room's astrolabe hub (the outer ring's mesh top 15.4: 0.4 under the ceiling)
 local TILE = 6
 local MAX_INDEX = 12
 local JOG = 15 -- the lateral shift of a Left / Right corridor
@@ -109,7 +110,7 @@ DungeonBuilder.Templates = {
 -- Colours (Phase 6 A1: a cute, colourful voxel dungeon in the P4 spirit: lilac storybook stone, warm sandstone
 -- flagstones, gold trim, juicy moss and turquoise water; bright enough for the dungeon's darker lighting preset)
 ----------------------------------------------------------------------
-local C = {
+local BASE = {
 	Stone = rgb(170, 160, 212), -- lilac castle stone
 	StoneDark = rgb(130, 120, 182),
 	StoneLight = rgb(198, 190, 236),
@@ -136,7 +137,158 @@ local C = {
 	Bone = rgb(246, 240, 226),
 	Marble = rgb(240, 238, 248),
 	Accent = rgb(176, 120, 240), -- the default accent (recoloured to the floor's element)
+	Core = rgb(255, 184, 96), -- a brazier's glowing heart (the flame)
+	CoreLight = rgb(255, 190, 120),
 }
+
+----------------------------------------------------------------------
+-- bug #5 (art wave, player-approved B "The Weatherworks" + the note "every dungeon level needs a different design ...
+-- the higher level of the dungeon the more serious it looks"): three looks, one per depth tier, chosen by the run's
+-- floor. The colliders and the room layouts are the same in every look; the Part colours (the fallback), the Blender
+-- keys (dungeon_<style>_wall_48 ...: blender/kit/props/dungeon_style.py) and a few style props differ.
+--   c  The Root Conservatory  floors 1-3   the softest: a seed vault taken over by roots (terracotta, glasshouse ribs)
+--   b  The Weatherworks       floors 4-8   the approved look: the Cloud-Smiths' machine halls (riveted panels, pipes)
+--   a  The Cloudkeep Undercroft floors 9-12 the most serious: the old castle under everything (dark granite, pointed
+--                             arches, a sky window behind the throne)
+-- Inside a tier each floor's colours get a little darker (Deepen) and its contrast a little harder (the client mood,
+-- Mood*). The mood is never darker than the P4 dungeon preset (MoodFloor: ambient 70,62,86, brightness -0.12): the
+-- fights must stay readable on a phone; the palette, the colours and the contrast carry "serious". Every floor also gets its
+-- element's weathering set (dungeon_wx_<element>_high / _low: moss, crystals, drips, icicles, soot, scorch, star-moss,
+-- shadow crystals) and its element colour on one accent per look (ML_Secondary). Ranges are data: StyleTiers.
+----------------------------------------------------------------------
+DungeonBuilder.DefaultStyle = "b"
+DungeonBuilder.StyleTiers = {
+	{ First = 1, Last = 3, Style = "c" },
+	{ First = 4, Last = 8, Style = "b" },
+	{ First = 9, Last = 12, Style = "a" },
+}
+DungeonBuilder.StyleOrder = { "c", "b", "a" } -- by seriousness (Rank)
+DungeonBuilder.Styles = {
+	c = {
+		Id = "c",
+		Name = "The Root Conservatory",
+		Rank = 1,
+		Deepen = 0.9, -- the tier's last floor: wall / floor colours x 0.9
+		Bricks = true, -- the protruding stones of a wall run (a terracotta brick out of line)
+		Palette = {
+			Stone = rgb(198, 118, 84), -- terracotta brick
+			StoneDark = rgb(104, 82, 66), -- the soil-stone base
+			StoneLight = rgb(226, 170, 132),
+			Brick = rgb(186, 106, 78),
+			Flag = rgb(148, 154, 126), -- mossy grey flagstones
+			FlagDark = rgb(128, 136, 110),
+			Ceiling = rgb(84, 70, 58), -- old timber
+			Carpet = rgb(204, 126, 88), -- the terracotta path
+			Rock = rgb(150, 136, 112),
+			RockDark = rgb(120, 106, 88),
+			Abyss = rgb(46, 62, 56),
+			Marble = rgb(234, 236, 224),
+			Light = rgb(255, 208, 140),
+			Flame = rgb(255, 200, 112),
+			Core = rgb(236, 255, 150), -- the pitcher plants' glow
+			CoreLight = rgb(220, 255, 170),
+		},
+		Mood = { Ambient = rgb(94, 88, 96), Outdoor = rgb(110, 104, 112), Brightness = -0.05, Contrast = 0.06, Tint = rgb(246, 238, 222) },
+	},
+	b = {
+		Id = "b",
+		Name = "The Weatherworks",
+		Rank = 2,
+		Deepen = 0.84,
+		Bricks = false, -- riveted panels: nothing sticks out of line
+		Palette = {
+			Stone = rgb(226, 230, 240), -- white dressed panels
+			StoneDark = rgb(62, 76, 108), -- the storm-blue plinth / girders
+			StoneLight = rgb(238, 240, 248),
+			Brick = rgb(208, 214, 228),
+			Flag = rgb(122, 136, 168), -- slate-blue tiles
+			FlagDark = rgb(104, 118, 150),
+			Ceiling = rgb(44, 54, 82),
+			Carpet = rgb(58, 74, 132), -- the navy runner
+			Gold = rgb(222, 172, 72), -- brass
+			Iron = rgb(70, 80, 106),
+			Rock = rgb(124, 132, 160),
+			RockDark = rgb(96, 104, 134),
+			Abyss = rgb(30, 40, 66),
+			Light = rgb(255, 222, 170), -- lantern light
+			Flame = rgb(255, 214, 140),
+			Core = rgb(150, 232, 255), -- the condenser coils' cyan heart
+			CoreLight = rgb(160, 226, 255),
+		},
+		Mood = { Ambient = rgb(70, 66, 90), Outdoor = rgb(86, 82, 108), Brightness = -0.1, Contrast = 0.12, Tint = rgb(230, 234, 242) },
+	},
+	a = {
+		Id = "a",
+		Name = "The Cloudkeep Undercroft",
+		Rank = 3,
+		Deepen = 0.78,
+		Bricks = true,
+		Palette = {
+			Stone = rgb(154, 160, 178), -- grey-blue granite blocks
+			StoneDark = rgb(70, 82, 110), -- the slate plinth / cornice
+			StoneLight = rgb(182, 186, 202),
+			Brick = rgb(140, 146, 166),
+			Flag = rgb(150, 146, 144), -- big worn flagstones
+			FlagDark = rgb(124, 120, 120),
+			Ceiling = rgb(44, 44, 58),
+			Carpet = rgb(150, 34, 48), -- the red carpet
+			Gold = rgb(214, 170, 80),
+			Iron = rgb(58, 62, 78),
+			Rock = rgb(118, 120, 136),
+			RockDark = rgb(92, 94, 110),
+			Abyss = rgb(24, 22, 38),
+			Marble = rgb(222, 220, 214),
+			Light = rgb(255, 176, 104), -- old warm torchlight
+			Flame = rgb(255, 176, 92),
+			Core = rgb(255, 150, 70),
+			CoreLight = rgb(255, 160, 90),
+		},
+		-- (the review: a 4-way darkening stack (ambient 52,50,66 x0.85, brightness -0.20, lights -15%, colours x0.78) had no
+		-- in-engine evidence of readability; A now sits AT the P4 preset and gets its weight from the granite palette,
+		-- Deepen, a harder contrast and the warm old-torch tint)
+		Mood = { Ambient = rgb(70, 62, 86), Outdoor = rgb(86, 78, 104), Brightness = -0.12, Contrast = 0.16, Tint = rgb(226, 216, 204) },
+	},
+}
+
+-- the darkest a run's mood may get (the P4 dungeon preset, DungeonController PRESET / contract 5.6): BuildRun clamps every
+-- tier's MoodAmbient / MoodOutdoor per channel and MoodBrightness to it
+DungeonBuilder.MoodFloor = { Ambient = rgb(70, 62, 86), Outdoor = rgb(86, 78, 104), Brightness = -0.12 }
+
+-- the look of a floor (StyleTiers; DefaultStyle outside every range)
+function DungeonBuilder.StyleFor(floorIndex)
+	local f = tonumber(floorIndex) or 1
+	for _, tier in ipairs(DungeonBuilder.StyleTiers) do
+		if f >= tier.First and f <= tier.Last and DungeonBuilder.Styles[tier.Style] then
+			return tier.Style
+		end
+	end
+	return DungeonBuilder.DefaultStyle
+end
+
+-- 0 on a tier's first floor .. 1 on its last (how far down the tier the floor is: darker, dimmer)
+function DungeonBuilder.StyleDepth(floorIndex)
+	local f = tonumber(floorIndex) or 1
+	for _, tier in ipairs(DungeonBuilder.StyleTiers) do
+		if f >= tier.First and f <= tier.Last then
+			return (tier.Last > tier.First) and (f - tier.First) / (tier.Last - tier.First) or 0
+		end
+	end
+	return 0
+end
+
+-- the style the Kit builds with right now (Template / PlaceRoom set it; nil = the lobby portal: the base look)
+local Style = { Cur = nil }
+local C = setmetatable({}, {
+	__index = function(_, k)
+		local s = Style.Cur
+		local v = s and s.Palette[k]
+		if v ~= nil then
+			return v
+		end
+		return BASE[k]
+	end,
+})
+DungeonBuilder._Style = Style
 
 ----------------------------------------------------------------------
 -- Small deterministic RNG per template (never math.random: templates are the same on every server)
@@ -271,6 +423,35 @@ function Mesh.num(v)
 	return (t:gsub("%-", "m"):gsub("%.", "p"))
 end
 
+-- bug #5: the key of a styled piece. The baked shell pieces (walls, floors, pillars, torches, door frames) take the
+-- current style: dungeon_wall_48 -> dungeon_b_wall_48. Outside a style (a Geo build called on its own) the shell takes
+-- DefaultStyle; only a torch outside a style (the lobby portal's) keeps the base key dungeon_torch.
+Mesh.Styled = { wall = true, floor = true, pillar = true, torch = true, door = true }
+-- the base shell keys of the lilac look (uploaded and live before bug #5): nothing tags them any more. Their manifests
+-- and ids stay until the styled keys are uploaded and live (then they can be deleted: blender/catalog no longer
+-- builds them); the mesh smoke skips them in its orphan check
+DungeonBuilder.RetiredKeys = {}
+for _, k in ipairs({ "wall_10_lite", "wall_15_lite", "wall_22_lite", "wall_24", "wall_30", "wall_30_door", "wall_30_door_lite", "wall_30_lite", "wall_48", "wall_50_door", "wall_5_lite", "wall_62_door", "wall_62_door20", "wall_72", "floor_28x22", "floor_28x24", "floor_44x48", "floor_48x48", "floor_60x72", "pillar_7", "pillar_10p5", "pillar_15", "pillar_15p5", "door_8" }) do
+	DungeonBuilder.RetiredKeys["dungeon_" .. k] = true
+end
+function Mesh.key(base)
+	local kind = string.match(base, "^dungeon_(%a+)")
+	if not (kind and Mesh.Styled[kind]) then
+		return base
+	end
+	local id = Style.Cur and Style.Cur.Id or (kind ~= "torch" and DungeonBuilder.DefaultStyle) or nil
+	if id then
+		return "dungeon_" .. id .. "_" .. string.sub(base, 9)
+	end
+	return base
+end
+
+-- a style's own designed prop: Mesh.skey("throne") -> dungeon_b_throne (DefaultStyle outside a style)
+function Mesh.skey(name)
+	local s = Style.Cur
+	return "dungeon_" .. (s and s.Id or DungeonBuilder.DefaultStyle) .. "_" .. name
+end
+
 -- a wrapper Model for one piece (PrimaryPart set by the caller once its first part exists)
 function Mesh.group(parent, name)
 	local g = Instance.new("Model")
@@ -326,7 +507,8 @@ function Kit.floorTiles(parent, w, d, color, mat, seed, y)
 			n = n + 1
 		end
 	end
-	Mesh.tag(tiles, "dungeon_floor_" .. Mesh.num(w) .. "x" .. Mesh.num(d), CFrame.new(0, base, 0), { Primary = color })
+	Mesh.tag(tiles, Mesh.key("dungeon_floor_" .. Mesh.num(w) .. "x" .. Mesh.num(d)), CFrame.new(0, base, 0), { Primary = color, Secondary = C.Accent })
+	tiles:SetAttribute("DG_Element", true) -- bug #5: the grates / joints glow in the floor's element colour
 	-- cracks between the flagstones
 	local r = rng(seed * 13 + 5)
 	for k = 1, max(2, floor((nx * nz) / 12)) do
@@ -376,8 +558,12 @@ function Kit.wall(outer, cf, len, color, mat, seed, door, lite)
 	else
 		Kit.part(parent, cf * CFrame.new(0, 11.4, -0.55), Vector3.new(len, 0.4, 0.12), C.StoneDark, M.Brick, { Name = "Course" })
 	end
-	-- protruding stones
-	local n = lite and 2 or max(4, min(8, floor(len / 5)))
+	-- protruding stones (bug #5: not on the Weatherworks' riveted panels)
+	-- (bug #5: one stone fewer per run: the bannered walls' new brackets and chain rods kept Treasure inside its 90)
+	local n = lite and 1 or max(3, min(7, floor(len / 6)))
+	if not (Style.Cur or DungeonBuilder.Styles[DungeonBuilder.DefaultStyle]).Bricks then
+		n = 0
+	end
 	for i = 1, n do
 		local x = -len / 2 + 2 + r() * (len - 4)
 		local y = 1.6 + r() * (h - 4)
@@ -394,7 +580,8 @@ function Kit.wall(outer, cf, len, color, mat, seed, door, lite)
 	if lite then
 		key = key .. "_lite"
 	end
-	Mesh.tag(parent, key, cf, { Primary = color })
+	Mesh.tag(parent, Mesh.key(key), cf, { Primary = color, Secondary = C.Accent })
+	parent:SetAttribute("DG_Element", true)
 	return parent
 end
 
@@ -403,7 +590,8 @@ function Kit.pillar(outer, cf, h, color)
 	parent.PrimaryPart = Kit.part(parent, cf * CFrame.new(0, 0.5, 0), Vector3.new(2.6, 1, 2.6), C.StoneDark, M.Slate, { Name = "PillarBase", Collide = true })
 	Kit.part(parent, cf * CFrame.new(0, h / 2, 0), Vector3.new(2, h, 2), color or C.Stone, M.Slate, { Name = "Pillar", Collide = true })
 	Kit.part(parent, cf * CFrame.new(0, h - 0.4, 0), Vector3.new(2.6, 0.8, 2.6), C.StoneDark, M.Slate, { Name = "PillarCap" })
-	Mesh.tag(parent, "dungeon_pillar_" .. Mesh.num(h), cf, { Primary = color or C.Stone })
+	Mesh.tag(parent, Mesh.key("dungeon_pillar_" .. Mesh.num(h)), cf, { Primary = color or C.Stone, Secondary = C.Accent })
+	parent:SetAttribute("DG_Element", true)
 	return parent
 end
 
@@ -430,7 +618,8 @@ function Kit.torch(outer, cf, bright)
 		fire.SecondaryColor = C.Ember
 		fire.Parent = flame
 	end)
-	Mesh.tag(parent, "dungeon_torch", cf, nil, { "Flame" })
+	Mesh.tag(parent, Mesh.key("dungeon_torch"), cf, nil, { "Flame" })
+	Kit.sound(parent, "torch")
 	return flame
 end
 
@@ -453,7 +642,7 @@ function Kit.door(parent, cf, name, width)
 	door.PrimaryPart = door:FindFirstChild("Lintel")
 	door.Parent = parent
 	-- the frame (jambs + lintel) is the mesh; the Bars stay Parts (SetDoor flips them on the server)
-	Mesh.tag(door, "dungeon_door_" .. Mesh.num(w), cf, nil, { "Bar" })
+	Mesh.tag(door, Mesh.key("dungeon_door_" .. Mesh.num(w)), cf, nil, { "Bar" })
 	return door, bars
 end
 
@@ -520,12 +709,56 @@ function Kit.ceiling(parent, w, d, y)
 	Kit.part(parent, CFrame.new(0, (y or CEIL_Y) + 0.5, 0), Vector3.new(w + 2, 1, d + 2), C.Ceiling, M.Slate, { Name = "Ceiling", Collide = true })
 end
 
+-- bug #5 (art rule: every visible piece is a Blender mesh): a prop's Part build sits in its own wrapper Model and is
+-- dressed by `key` (pivot = the Tag origin `cf`); the Parts stay as the collider and the fallback. element = true: the
+-- key's Secondary tint takes the floor's element colour (PlaceRoom). Shared keys (one look for every style: barrel,
+-- table, hay, bench, cauldron, shield, candles, chandelier, hearth, rug, wine rack, weapon rack) are dungeon_<name>;
+-- style keys (throne, dais, carpet, arch, statue, brazier, banner, curio ...) dungeon_<style>_<name> (Mesh.skey).
+function Kit.dress(group, key, cf, look, keep, scale, element)
+	if not group.PrimaryPart then
+		for _, d in ipairs(group:GetChildren()) do
+			if d:IsA("BasePart") then
+				group.PrimaryPart = d
+				break
+			end
+		end
+	end
+	Mesh.tag(group, key, cf, look, keep, scale)
+	if element then
+		group:SetAttribute("DG_Element", true)
+	end
+	return group
+end
+
+-- bug #5: the dungeon's sound sources, tagged for the audio branch (no playback here): CollectionService tag
+-- DungeonBuilder.SoundTag on the instance + attribute DungeonSound = the kind ("torch", "brazier_<style>",
+-- "astrolabe", "curio_<style>", "weather_<element>")
+DungeonBuilder.SoundTag = "NC_DungeonSound"
+function Kit.sound(inst, kind)
+	CollectionService:AddTag(inst, DungeonBuilder.SoundTag)
+	inst:SetAttribute("DungeonSound", kind)
+	return inst
+end
+
 -- props (pure decor sits in one NC_Detail model per room)
-function Kit.barrel(parent, cf)
+-- bug #5 review: the Weatherworks (b) is a guild workshop, not the castle cellar; its rooms swap the cellar leftovers
+-- for its own honest pieces (placement only, no new keys): barrel / hay -> a supply crate, the wine rack -> a stand-pipe
+-- with its red valve wheel against the wall (the b curio), the cauldron -> a condenser coil (the b brazier)
+local function machineHall()
+	return Style.Cur ~= nil and Style.Cur.Id == "b"
+end
+DungeonBuilder.B_SWAPS = { BarrelSet = "CrateBox", HayBale = "CrateBox", WineRackSet = "CurioSet", CauldronSet = "BrazierSet" }
+
+function Kit.barrel(outer, cf)
+	if machineHall() then
+		return Kit.crate(outer, cf, 2.6)
+	end
+	local parent = Mesh.group(outer, "BarrelSet")
 	local up = CFrame.Angles(0, 0, PI / 2)
 	Kit.part(parent, cf * CFrame.new(0, 1.6, 0) * up, Vector3.new(3.2, 2.8, 2.8), C.Wood, M.Wood, { Name = "Barrel", Shape = Enum.PartType.Cylinder, Collide = true })
 	Kit.part(parent, cf * CFrame.new(0, 0.7, 0) * up, Vector3.new(0.25, 2.95, 2.95), C.Iron, M.Metal, { Name = "Band", Shape = Enum.PartType.Cylinder })
 	Kit.part(parent, cf * CFrame.new(0, 2.5, 0) * up, Vector3.new(0.25, 2.95, 2.95), C.Iron, M.Metal, { Name = "Band", Shape = Enum.PartType.Cylinder })
+	return Kit.dress(parent, "dungeon_barrel", cf)
 end
 
 function Kit.crate(outer, cf, s)
@@ -538,10 +771,18 @@ function Kit.crate(outer, cf, s)
 	return parent
 end
 
-function Kit.chain(parent, cf)
+-- a chain hanging from the ceiling (bug #5: the three links used to hang in mid-air; a rod now reaches the ceiling
+-- slab). Shared key dungeon_chain (pivot = the top link; the rod's length is the room's, so no LayoutSig on the rod:
+-- the key covers the links and a ceiling staple, the rod stays a Part)
+function Kit.chain(outer, cf)
+	local parent = Mesh.group(outer, "ChainHang")
 	for i = 0, 2 do
 		Kit.part(parent, cf * CFrame.new((i % 2) * 0.2 - 0.1, -i * 0.9, 0), Vector3.new(0.35, 1, 0.2), C.Iron, M.Metal, { Name = "Chain" })
 	end
+	local top = cf.Position.Y + 0.5
+	local len = max(0.2, CEIL_Y - top)
+	Kit.part(outer, CFrame.new(cf.Position.X, top + len / 2, cf.Position.Z), Vector3.new(0.2, len, 0.2), C.Iron, M.Metal, { Name = "ChainRod" })
+	return Kit.dress(parent, "dungeon_chain", cf)
 end
 
 function Kit.puddle(parent, cf, w, d)
@@ -552,35 +793,58 @@ function Kit.moss(parent, cf, w, d)
 	Kit.part(parent, cf * CFrame.new(0, 0.1, 0), Vector3.new(w or 3, 0.2, d or 2), C.Moss, M.Grass, { Name = "Moss" })
 end
 
-function Kit.hay(parent, cf)
+function Kit.hay(outer, cf)
+	if machineHall() then
+		-- (a long low crate pair over the bale's footprint: the 1.1 step rule is kept by the crates' own colliders)
+		Kit.crate(outer, cf * CFrame.new(-0.9, 0, 0), 2.4)
+		return Kit.crate(outer, cf * CFrame.new(1.3, 0, 0.3) * CFrame.Angles(0, 0.3, 0), 1.6)
+	end
+	local parent = Mesh.group(outer, "HayBale")
 	-- bug batch 2 (#3): the bale collides (a 1.1 step, like the wall plinth): no wading through it
 	Kit.part(parent, cf * CFrame.new(0, 0.55, 0), Vector3.new(4.4, 1.1, 3.6), C.Hay, M.Sand, { Name = "Hay", Collide = true })
 	Kit.part(parent, cf * CFrame.new(0.5, 1.35, -0.3) * CFrame.Angles(0, 0.4, 0), Vector3.new(2.6, 0.6, 2), C.Hay, M.Sand, { Name = "Hay" })
+	return Kit.dress(parent, "dungeon_hay", cf)
 end
 
-function Kit.table(parent, cf)
+function Kit.table(outer, cf)
+	local parent = Mesh.group(outer, "TableSet")
 	Kit.part(parent, cf * CFrame.new(0, 2.5, 0), Vector3.new(7, 0.45, 3), C.Plank, M.WoodPlanks, { Name = "TableTop", Collide = true })
 	Kit.part(parent, cf * CFrame.new(-2.8, 1.15, 0), Vector3.new(0.6, 2.3, 2.4), C.Wood, M.Wood, { Name = "TableLeg" })
 	Kit.part(parent, cf * CFrame.new(2.8, 1.15, 0), Vector3.new(0.6, 2.3, 2.4), C.Wood, M.Wood, { Name = "TableLeg" })
 	Kit.part(parent, cf * CFrame.new(-1.6, 3.0, 0.4), Vector3.new(0.9, 0.6, 0.9), C.Gold, M.Metal, { Name = "Cup" })
 	Kit.part(parent, cf * CFrame.new(1.4, 2.9, -0.5), Vector3.new(1.6, 0.3, 1.2), C.Bone, M.Marble, { Name = "Plate" })
+	return Kit.dress(parent, "dungeon_table", cf)
 end
 
-function Kit.bench(parent, cf)
+function Kit.bench(outer, cf)
+	local parent = Mesh.group(outer, "BenchSet")
 	Kit.part(parent, cf * CFrame.new(0, 1.3, 0), Vector3.new(6, 0.4, 1.4), C.Plank, M.WoodPlanks, { Name = "Bench", Collide = true })
 	Kit.part(parent, cf * CFrame.new(-2.4, 0.55, 0), Vector3.new(0.5, 1.1, 1.2), C.Wood, M.Wood, { Name = "BenchLeg" })
 	Kit.part(parent, cf * CFrame.new(2.4, 0.55, 0), Vector3.new(0.5, 1.1, 1.2), C.Wood, M.Wood, { Name = "BenchLeg" })
+	return Kit.dress(parent, "dungeon_bench", cf)
 end
 
 function Kit.bones(parent, cf)
+	if machineHall() then
+		-- (fix round, Gemini: bones read as crypt leftovers in a workshop) a dropped copper pipe offcut and a brass nut
+		Kit.part(parent, cf * CFrame.new(0, 0.2, 0) * CFrame.Angles(0, 0.5, 0), Vector3.new(2.2, 0.35, 0.35), rgb(70, 168, 140), M.Metal, { Name = "PipeOffcut" })
+		Kit.part(parent, cf * CFrame.new(0.8, 0.12, 0.6) * CFrame.Angles(0, -0.9, 0), Vector3.new(0.5, 0.24, 0.5), C.Gold, M.Metal, { Name = "Nut" })
+		return
+	end
 	Kit.part(parent, cf * CFrame.new(0, 0.2, 0) * CFrame.Angles(0, 0.5, 0), Vector3.new(2.2, 0.35, 0.35), C.Bone, M.Marble, { Name = "Bone" })
 	Kit.part(parent, cf * CFrame.new(0.8, 0.2, 0.6) * CFrame.Angles(0, -0.9, 0), Vector3.new(1.6, 0.3, 0.3), C.Bone, M.Marble, { Name = "Bone" })
 end
 
--- a hanging banner (Accent: recoloured to the floor's element) on a wall mount point
-function Kit.banner(parent, cf)
-	Kit.part(parent, cf * CFrame.new(0, 0, -0.5), Vector3.new(4.4, 0.3, 0.3), C.Wood, M.Wood, { Name = "BannerPole" })
-	Kit.part(parent, cf * CFrame.new(0, -2.8, -0.45), Vector3.new(3.6, 5.4, 0.25), C.Accent, M.Fabric, { Name = "Banner", Accent = true })
+-- a hanging banner (Accent: recoloured to the floor's element) ON the wall face (bug #5: cf = the face itself; the pole
+-- and the cloth hang 0.3 out, clear of the 0.11-stud mortar courses, held by two iron brackets; they used to float ~0.9
+-- stud off the wall with nothing holding them). Style key dungeon_<s>_banner (its stripe = the element: Secondary)
+function Kit.banner(outer, cf)
+	local parent = Mesh.group(outer, "BannerHang")
+	Kit.part(parent, cf * CFrame.new(0, 0, -0.3), Vector3.new(4.4, 0.3, 0.3), C.Wood, M.Wood, { Name = "BannerPole" })
+	Kit.part(parent, cf * CFrame.new(-1.8, 0, -0.15), Vector3.new(0.3, 0.3, 0.3), C.Iron, M.Metal, { Name = "BannerBracket" })
+	Kit.part(parent, cf * CFrame.new(1.8, 0, -0.15), Vector3.new(0.3, 0.3, 0.3), C.Iron, M.Metal, { Name = "BannerBracket" })
+	Kit.part(parent, cf * CFrame.new(0, -2.8, -0.3), Vector3.new(3.6, 5.4, 0.25), C.Accent, M.Fabric, { Name = "Banner", Accent = true })
+	return Kit.dress(parent, Mesh.skey("banner"), cf, { Secondary = C.Accent }, nil, nil, true)
 end
 
 -- a thin Neon rune inlay in the floor (Accent)
@@ -588,14 +852,19 @@ function Kit.rune(parent, cf, w, d)
 	Kit.part(parent, cf * CFrame.new(0, 0.08, 0), Vector3.new(w or 3, 0.16, d or 0.6), C.Accent, M.Neon, { Name = "Rune", Accent = true })
 end
 
+-- an arch over the aisle: two pillar stacks (their own pillar keys) + the top. bug #5: the lintel, the two diagonal
+-- ArchStones and the keystone are one style key dungeon_<s>_arch_<width> (a pointed granite arch (a), a riveted
+-- storm-blue girder with a weathervane (b), two woven roots (c))
 function Kit.arch(parent, cf, width, height)
 	local w, h = width or 10, height or 11
 	Kit.pillar(parent, cf * CFrame.new(-w / 2 - 1, 0, 0), h - 2, C.StoneLight)
 	Kit.pillar(parent, cf * CFrame.new(w / 2 + 1, 0, 0), h - 2, C.StoneLight)
-	Kit.part(parent, cf * CFrame.new(0, h - 0.6, 0), Vector3.new(w + 4.6, 1.2, 2.2), C.StoneLight, M.Slate, { Name = "ArchLintel" })
-	Kit.part(parent, cf * CFrame.new(-w / 2 + 0.6, h - 2.2, 0) * CFrame.Angles(0, 0, 0.75), Vector3.new(2, 1, 2), C.StoneLight, M.Slate, { Name = "ArchStone" })
-	Kit.part(parent, cf * CFrame.new(w / 2 - 0.6, h - 2.2, 0) * CFrame.Angles(0, 0, -0.75), Vector3.new(2, 1, 2), C.StoneLight, M.Slate, { Name = "ArchStone" })
-	Kit.part(parent, cf * CFrame.new(0, h + 0.6, 0), Vector3.new(4, 1.2, 2.4), C.Stone, M.Slate, { Name = "Keystone" })
+	local top = Mesh.group(parent, "ArchTop")
+	Kit.part(top, cf * CFrame.new(0, h - 0.6, 0), Vector3.new(w + 4.6, 1.2, 2.2), C.StoneLight, M.Slate, { Name = "ArchLintel" })
+	Kit.part(top, cf * CFrame.new(-w / 2 + 0.6, h - 2.2, 0) * CFrame.Angles(0, 0, 0.75), Vector3.new(2, 1, 2), C.StoneLight, M.Slate, { Name = "ArchStone" })
+	Kit.part(top, cf * CFrame.new(w / 2 - 0.6, h - 2.2, 0) * CFrame.Angles(0, 0, -0.75), Vector3.new(2, 1, 2), C.StoneLight, M.Slate, { Name = "ArchStone" })
+	Kit.part(top, cf * CFrame.new(0, h + 0.6, 0), Vector3.new(4, 1.2, 2.4), C.Stone, M.Slate, { Name = "Keystone" })
+	Kit.dress(top, Mesh.skey("arch_" .. Mesh.num(w)), cf, { Secondary = C.Accent }, nil, nil, true)
 end
 
 function Kit.stairs(parent, cf, width, steps, rise)
@@ -605,20 +874,25 @@ function Kit.stairs(parent, cf, width, steps, rise)
 	end
 end
 
--- bug batch 2 (#3): an invisible collider around the foot, stem and bowl (the flame stays above it)
-function Kit.brazier(parent, cf)
+-- bug batch 2 (#3): an invisible collider around the foot, stem and bowl (the flame stays above it). bug #5: the style
+-- key dungeon_<s>_brazier (an iron brazier on a tripod (a), a copper condenser coil round a cyan core (b), a glowing
+-- pitcher plant (c)); the flame stays a Neon Part in the style's Core colour
+function Kit.brazier(outer, cf)
+	local parent = Mesh.group(outer, "BrazierSet")
 	Kit.part(parent, cf * CFrame.new(0, 1.8, 0), Vector3.new(3.2, 3.6, 3.2), C.Iron, M.Metal, { Name = "BrazierCollider", Collide = true, Transparency = 1 })
 	Kit.part(parent, cf * CFrame.new(0, 0.3, 0), Vector3.new(2, 0.6, 2), C.Iron, M.Metal, { Name = "BrazierFoot" })
 	Kit.part(parent, cf * CFrame.new(0, 1.6, 0), Vector3.new(0.5, 2, 0.5), C.Iron, M.Metal, { Name = "BrazierStem" })
 	Kit.part(parent, cf * CFrame.new(0, 3.0, 0) * CFrame.Angles(0, 0, PI / 2), Vector3.new(1.1, 3.2, 3.2), C.Iron, M.Metal, { Name = "BrazierBowl", Shape = Enum.PartType.Cylinder })
-	local flame = Kit.part(parent, cf * CFrame.new(0, 4.3, 0), Vector3.new(1.8, 1.8, 1.8), C.Flame, M.Neon, { Name = "BrazierFlame" })
+	local flame = Kit.part(parent, cf * CFrame.new(0, 4.3, 0), Vector3.new(1.8, 1.8, 1.8), C.Core, M.Neon, { Name = "BrazierFlame" })
 	local light = Instance.new("PointLight")
 	light.Name = "BrazierLight"
-	light.Color = C.Light
+	light.Color = C.CoreLight
 	light.Brightness = 1.4
 	light.Range = 18
 	light.Shadows = false
 	light.Parent = flame
+	Kit.sound(parent, "brazier_" .. (Style.Cur and Style.Cur.Id or DungeonBuilder.DefaultStyle))
+	return Kit.dress(parent, Mesh.skey("brazier"), cf, nil, { "BrazierFlame" })
 end
 
 function Kit.rock(parent, cf, size, seed)
@@ -651,6 +925,13 @@ function Kit.cobweb(parent, cf)
 end
 
 function Kit.skulls(parent, cf)
+	if machineHall() then
+		-- (fix round, Gemini: a skull pile is a crypt leftover in a workshop) a riveted toolbox and a dropped spanner
+		Kit.part(parent, cf * CFrame.new(0, 0.4, 0) * CFrame.Angles(0, 0.3, 0), Vector3.new(1.6, 0.8, 0.8), C.StoneDark, M.Metal, { Name = "Toolbox" })
+		Kit.part(parent, cf * CFrame.new(0, 0.85, 0) * CFrame.Angles(0, 0.3, 0), Vector3.new(1.0, 0.1, 0.2), C.Gold, M.Metal, { Name = "ToolboxHandle" })
+		Kit.part(parent, cf * CFrame.new(-0.9, 0.08, 0.6) * CFrame.Angles(0, 1.1, 0), Vector3.new(1.4, 0.16, 0.3), C.Iron, M.Metal, { Name = "Spanner" })
+		return
+	end
 	Kit.part(parent, cf * CFrame.new(0, 0.45, 0), Vector3.new(0.9, 0.9, 0.9), C.Bone, M.Marble, { Name = "Skull" })
 	Kit.part(parent, cf * CFrame.new(1.0, 0.4, 0.5) * CFrame.Angles(0, 0.6, 0.2), Vector3.new(0.8, 0.8, 0.8), C.Bone, M.Marble, { Name = "Skull" })
 	Kit.part(parent, cf * CFrame.new(-0.9, 0.2, 0.6) * CFrame.Angles(0, 1.1, 0), Vector3.new(1.8, 0.3, 0.3), C.Bone, M.Marble, { Name = "Bone" })
@@ -663,35 +944,48 @@ function Kit.rubble(parent, cf, seed)
 	end
 end
 
--- a weapon rack against a wall (cf on the wall face, LookVector into the room); bug batch 2 (#3): one invisible
--- collider over the whole rack (wall face to the front of the foot, up past the spear heads), so nobody stands in the spears
-function Kit.rack(parent, cf)
+-- a weapon rack ON a wall face (cf on the face, LookVector into the room); bug batch 2 (#3): one invisible collider over
+-- the whole rack (wall face to the front of the foot, up past the spear heads), so nobody stands in the spears
+function Kit.rack(outer, cf)
+	local parent = Mesh.group(outer, "RackSet")
 	Kit.part(parent, cf * CFrame.new(0, 2.15, -0.55), Vector3.new(4.2, 4.3, 1.1), C.Wood, M.Wood, { Name = "RackCollider", Collide = true, Transparency = 1 })
-	Kit.part(parent, cf * CFrame.new(0, 1.6, -0.5), Vector3.new(4, 3.2, 0.3), C.Wood, M.Wood, { Name = "RackBack" })
-	Kit.part(parent, cf * CFrame.new(0, 0.3, -0.7), Vector3.new(4.2, 0.6, 0.8), C.Wood, M.Wood, { Name = "RackFoot" })
+	Kit.part(parent, cf * CFrame.new(0, 1.6, -0.15), Vector3.new(4, 3.2, 0.3), C.Wood, M.Wood, { Name = "RackBack" })
+	Kit.part(parent, cf * CFrame.new(0, 0.3, -0.4), Vector3.new(4.2, 0.6, 0.8), C.Wood, M.Wood, { Name = "RackFoot" })
 	for i = -1, 1 do
-		Kit.part(parent, cf * CFrame.new(i * 1.2, 2.0, -0.75), Vector3.new(0.25, 3.4, 0.25), C.Iron, M.Metal, { Name = "Spear" })
-		Kit.part(parent, cf * CFrame.new(i * 1.2, 3.8, -0.75), Vector3.new(0.5, 0.9, 0.15), C.Marble, M.Metal, { Name = "SpearHead" })
+		Kit.part(parent, cf * CFrame.new(i * 1.2, 2.0, -0.45), Vector3.new(0.25, 3.4, 0.25), C.Iron, M.Metal, { Name = "Spear" })
+		Kit.part(parent, cf * CFrame.new(i * 1.2, 3.8, -0.45), Vector3.new(0.5, 0.9, 0.15), C.Marble, M.Metal, { Name = "SpearHead" })
 	end
+	return Kit.dress(parent, "dungeon_rack", cf)
 end
 
-function Kit.cauldron(parent, cf)
+function Kit.cauldron(outer, cf)
+	if machineHall() then
+		return Kit.brazier(outer, cf)
+	end
+	local parent = Mesh.group(outer, "CauldronSet")
 	Kit.part(parent, cf * CFrame.new(0, 0.3, 0) * CFrame.Angles(0, 0, PI / 2), Vector3.new(0.6, 2.4, 2.4), C.Iron, M.Metal, { Name = "CauldronFoot", Shape = Enum.PartType.Cylinder })
 	Kit.part(parent, cf * CFrame.new(0, 1.8, 0), Vector3.new(3.2, 3.2, 3.2), C.Iron, M.Metal, { Name = "Cauldron", Shape = Enum.PartType.Ball, Collide = true })
 	Kit.part(parent, cf * CFrame.new(0, 3.2, 0) * CFrame.Angles(0, 0, PI / 2), Vector3.new(0.3, 2.6, 2.6), C.Moss, M.Neon, { Name = "Brew", Shape = Enum.PartType.Cylinder, Accent = true })
+	return Kit.dress(parent, "dungeon_cauldron", cf, nil, { "Brew" })
 end
 
--- a wall emblem: a shield with crossed bars (cf on the wall face, LookVector into the room)
-function Kit.shield(parent, cf)
-	Kit.part(parent, cf * CFrame.new(0, 0, -0.3), Vector3.new(2.6, 3.2, 0.3), C.Iron, M.Metal, { Name = "Shield" })
-	Kit.part(parent, cf * CFrame.new(0, 0, -0.5), Vector3.new(1.6, 2, 0.15), C.Accent, M.Fabric, { Name = "ShieldCrest", Accent = true })
-	Kit.part(parent, cf * CFrame.new(0, 0, -0.65) * CFrame.Angles(0, 0, 0.75), Vector3.new(4, 0.25, 0.2), C.Gold, M.Metal, { Name = "Sword" })
-	Kit.part(parent, cf * CFrame.new(0, 0, -0.65) * CFrame.Angles(0, 0, -0.75), Vector3.new(4, 0.25, 0.2), C.Gold, M.Metal, { Name = "Sword" })
+-- a wall emblem ON the wall face: a shield with crossed swords (bug #5: a bracket holds it, the plate sits 0.12 out,
+-- clear of the courses; it used to float 0.75 stud off the wall). Shared key dungeon_shield (crest = the element)
+function Kit.shield(outer, cf)
+	local parent = Mesh.group(outer, "ShieldMount")
+	Kit.part(parent, cf * CFrame.new(0, 0, -0.27), Vector3.new(2.6, 3.2, 0.3), C.Iron, M.Metal, { Name = "Shield" })
+	Kit.part(parent, cf * CFrame.new(0, 0.4, -0.06), Vector3.new(0.8, 0.8, 0.12), C.Iron, M.Metal, { Name = "ShieldBracket" })
+	Kit.part(parent, cf * CFrame.new(0, 0, -0.47), Vector3.new(1.6, 2, 0.15), C.Accent, M.Fabric, { Name = "ShieldCrest", Accent = true })
+	Kit.part(parent, cf * CFrame.new(0, 0, -0.62) * CFrame.Angles(0, 0, 0.75), Vector3.new(4, 0.25, 0.2), C.Gold, M.Metal, { Name = "Sword" })
+	Kit.part(parent, cf * CFrame.new(0, 0, -0.62) * CFrame.Angles(0, 0, -0.75), Vector3.new(4, 0.25, 0.2), C.Gold, M.Metal, { Name = "Sword" })
+	return Kit.dress(parent, "dungeon_shield", cf, { Secondary = C.Accent }, nil, nil, true)
 end
 
--- a stone guardian statue on a plinth; bug batch 2 (#3): an invisible collider from the plinth top past the spear tip
--- (arms, head and spear stick out of the body: standing on the plinth put the player inside them)
-function Kit.statue(parent, cf)
+-- a guardian statue on a plinth; bug batch 2 (#3): an invisible collider from the plinth top past the spear tip (arms,
+-- head and spear stick out of the body: standing on the plinth put the player inside them). bug #5: the style key
+-- dungeon_<s>_statue (a hooded stone warden (a), a retired weather robot (b), a hedge knight in a planter (c))
+function Kit.statue(outer, cf)
+	local parent = Mesh.group(outer, "StatueSet")
 	Kit.part(parent, cf * CFrame.new(0, 4.2, 0), Vector3.new(3.2, 6, 3.2), C.StoneLight, M.Marble, { Name = "StatueCollider", Collide = true, Transparency = 1 })
 	Kit.part(parent, cf * CFrame.new(0, 0.6, 0), Vector3.new(3, 1.2, 3), C.StoneDark, M.Slate, { Name = "StatueBase", Collide = true })
 	Kit.part(parent, cf * CFrame.new(0, 3.2, 0), Vector3.new(1.8, 4, 1.4), C.StoneLight, M.Marble, { Name = "StatueBody", Collide = true })
@@ -699,17 +993,21 @@ function Kit.statue(parent, cf)
 	Kit.part(parent, cf * CFrame.new(-1.3, 3.6, 0), Vector3.new(0.6, 2.6, 0.6), C.StoneLight, M.Marble, { Name = "StatueArm" })
 	Kit.part(parent, cf * CFrame.new(1.3, 4.0, -0.4) * CFrame.Angles(0.5, 0, 0), Vector3.new(0.6, 2.6, 0.6), C.StoneLight, M.Marble, { Name = "StatueArm" })
 	Kit.part(parent, cf * CFrame.new(1.3, 5.4, -1.2), Vector3.new(0.3, 3.4, 0.3), C.Iron, M.Metal, { Name = "StatueSpear" })
+	return Kit.dress(parent, Mesh.skey("statue"), cf, { Secondary = C.Accent }, nil, nil, true)
 end
 
-function Kit.candles(parent, cf)
+function Kit.candles(outer, cf)
+	local parent = Mesh.group(outer, "CandleSet")
 	for i = -1, 1 do
 		Kit.part(parent, cf * CFrame.new(i * 0.7, 0.35, 0), Vector3.new(0.3, 0.7, 0.3), C.Marble, M.Marble, { Name = "Candle" })
 		Kit.part(parent, cf * CFrame.new(i * 0.7, 0.85, 0), Vector3.new(0.25, 0.3, 0.25), C.Flame, M.Neon, { Name = "CandleFlame" })
 	end
+	return Kit.dress(parent, "dungeon_candles", cf, nil, { "CandleFlame" })
 end
 
 -- a chandelier hanging from the ceiling (cf = the ceiling point)
-function Kit.chandelier(parent, cf)
+function Kit.chandelier(outer, cf)
+	local parent = Mesh.group(outer, "ChandelierSet")
 	Kit.part(parent, cf * CFrame.new(0, -2.5, 0), Vector3.new(0.3, 5, 0.3), C.Iron, M.Metal, { Name = "ChandelierChain" })
 	Kit.part(parent, cf * CFrame.new(0, -5.2, 0) * CFrame.Angles(0, 0, PI / 2), Vector3.new(0.4, 5, 5), C.Iron, M.Metal, { Name = "ChandelierRing", Shape = Enum.PartType.Cylinder })
 	Kit.part(parent, cf * CFrame.new(0, -5.2, 0) * CFrame.Angles(0, 0, PI / 2), Vector3.new(0.5, 3.6, 3.6), C.StoneDark, M.Metal, { Name = "ChandelierHub", Shape = Enum.PartType.Cylinder })
@@ -726,16 +1024,18 @@ function Kit.chandelier(parent, cf)
 	light.Range = 18
 	light.Shadows = false
 	light.Parent = parent:FindFirstChild("ChandelierHub")
+	return Kit.dress(parent, "dungeon_chandelier", cf, nil, { "CandleFlame" })
 end
 
--- a hearth in a wall (cf on the wall face at floor level, LookVector into the room); bug batch 2 (#3): an invisible
+-- a hearth ON a wall face (cf on the face at floor level, LookVector into the room); bug batch 2 (#3): an invisible
 -- collider fills the fire opening between the sides (the back, the log and the flame), so nobody walks into the fire
-function Kit.hearth(parent, cf)
+function Kit.hearth(outer, cf)
+	local parent = Mesh.group(outer, "HearthSet")
 	Kit.part(parent, cf * CFrame.new(0, 2.6, -0.9), Vector3.new(5, 5.2, 1.8), C.Ceiling, M.Slate, { Name = "HearthCollider", Collide = true, Transparency = 1 })
 	Kit.part(parent, cf * CFrame.new(-3.2, 2.6, -0.9), Vector3.new(1.4, 5.2, 1.8), C.StoneDark, M.Slate, { Name = "HearthSide", Collide = true })
 	Kit.part(parent, cf * CFrame.new(3.2, 2.6, -0.9), Vector3.new(1.4, 5.2, 1.8), C.StoneDark, M.Slate, { Name = "HearthSide", Collide = true })
 	Kit.part(parent, cf * CFrame.new(0, 5.6, -0.9), Vector3.new(7.8, 0.8, 2), C.StoneDark, M.Slate, { Name = "Mantle" })
-	Kit.part(parent, cf * CFrame.new(0, 2.6, -0.35), Vector3.new(5, 5.2, 0.5), C.Ceiling, M.Slate, { Name = "HearthBack" })
+	Kit.part(parent, cf * CFrame.new(0, 2.6, -0.25), Vector3.new(5, 5.2, 0.5), C.Ceiling, M.Slate, { Name = "HearthBack" })
 	Kit.part(parent, cf * CFrame.new(0, 0.2, -1.2), Vector3.new(7.8, 0.4, 2.4), C.StoneDark, M.Slate, { Name = "HearthStone" })
 	Kit.part(parent, cf * CFrame.new(0, 0.7, -0.9), Vector3.new(2.6, 0.6, 1.2), C.Wood, M.Wood, { Name = "Log" })
 	local flame = Kit.part(parent, cf * CFrame.new(0, 1.6, -0.9), Vector3.new(2.2, 1.6, 1), C.Ember, M.Neon, { Name = "HearthFlame" })
@@ -746,21 +1046,54 @@ function Kit.hearth(parent, cf)
 	light.Range = 18
 	light.Shadows = false
 	light.Parent = flame
+	return Kit.dress(parent, "dungeon_hearth", cf, nil, { "HearthFlame" })
 end
 
-function Kit.rug(parent, cf, w, d)
+function Kit.rug(outer, cf, w, d)
+	local parent = Mesh.group(outer, "RugSet")
 	Kit.part(parent, cf * CFrame.new(0, 0.07, 0), Vector3.new(w or 8, 0.14, d or 6), C.Carpet, M.Fabric, { Name = "Rug" })
 	Kit.part(parent, cf * CFrame.new(0, 0.15, 0), Vector3.new((w or 8) - 1.6, 0.06, (d or 6) - 1.6), C.Accent, M.Fabric, { Name = "RugInlay", Accent = true })
+	return Kit.dress(parent, "dungeon_rug_" .. Mesh.num(w or 8) .. "x" .. Mesh.num(d or 6), cf, { Primary = C.Carpet, Secondary = C.Accent }, nil, nil, true)
 end
 
--- a wine rack against a wall (cf on the wall face, LookVector into the room)
-function Kit.wineRack(parent, cf)
-	Kit.part(parent, cf * CFrame.new(0, 2, -1), Vector3.new(5, 4, 1.8), C.Wood, M.Wood, { Name = "WineRack", Collide = true })
+-- a wine rack ON a wall face (cf on the face, LookVector into the room; bug #5: it stood 0.7 stud off the wall)
+function Kit.wineRack(outer, cf)
+	if machineHall() then
+		-- the curio's pipe stands 1 stud off the face (its box reaches back to the wall)
+		return Kit.curio(outer, cf * CFrame.new(0, 0, -1.0))
+	end
+	local parent = Mesh.group(outer, "WineRackSet")
+	Kit.part(parent, cf * CFrame.new(0, 2, -0.9), Vector3.new(5, 4, 1.8), C.Wood, M.Wood, { Name = "WineRack", Collide = true })
 	for i = -1, 1 do
 		for j = 0, 1 do
-			Kit.part(parent, cf * CFrame.new(i * 1.5, 1.1 + j * 1.8, -2.05) * CFrame.Angles(PI / 2, 0, 0), Vector3.new(0.6, 0.6, 0.6), C.Moss, M.Glass, { Name = "Bottle", Shape = Enum.PartType.Cylinder })
+			Kit.part(parent, cf * CFrame.new(i * 1.5, 1.1 + j * 1.8, -1.95) * CFrame.Angles(PI / 2, 0, 0), Vector3.new(0.6, 0.6, 0.6), C.Moss, M.Glass, { Name = "Bottle", Shape = Enum.PartType.Cylinder })
 		end
 	end
+	return Kit.dress(parent, "dungeon_winerack", cf)
+end
+
+-- bug #5 fix 4: the throne room's own clutter instead of the cellar's hay, barrel, crate and table: a style "curio"
+-- (the people who use the place): a journal + a half-melted candle on a lectern (a), a stand-pipe with a red valve
+-- wheel, a wrench and a mug (b), a cracked pot, a watering can and a spilled seed packet (c). Parts: a block + two
+-- small pieces (the collider is the block)
+function Kit.curio(outer, cf)
+	local parent = Mesh.group(outer, "CurioSet")
+	local s = Style.Cur and Style.Cur.Id or DungeonBuilder.DefaultStyle
+	if s == "b" then
+		Kit.part(parent, cf * CFrame.new(0, 0.8, 0.6), Vector3.new(2.4, 1.6, 1.6), C.StoneDark, M.Metal, { Name = "CurioBox", Collide = true })
+		Kit.part(parent, cf * CFrame.new(-0.6, 2.4, -0.6), Vector3.new(0.6, 4.8, 0.6), C.Gold, M.Metal, { Name = "CurioPipe", Collide = true })
+		Kit.part(parent, cf * CFrame.new(-0.6, 3.4, -1.0), Vector3.new(1.8, 1.8, 0.2), rgb(196, 44, 44), M.Metal, { Name = "CurioWheel" })
+	elseif s == "a" then
+		Kit.part(parent, cf * CFrame.new(0, 1.6, 0), Vector3.new(2.2, 3.2, 1.6), C.Wood, M.Wood, { Name = "CurioBox", Collide = true })
+		Kit.part(parent, cf * CFrame.new(0, 3.3, -0.1), Vector3.new(1.8, 0.2, 1.3), C.Marble, M.Fabric, { Name = "CurioBook" })
+		Kit.part(parent, cf * CFrame.new(0.7, 3.6, 0.4), Vector3.new(0.35, 0.5, 0.35), C.Marble, M.Marble, { Name = "CurioCandle" })
+	else
+		Kit.part(parent, cf * CFrame.new(0, 0.8, 0), Vector3.new(1.8, 1.6, 1.8), C.Stone, M.Slate, { Name = "CurioBox", Collide = true })
+		Kit.part(parent, cf * CFrame.new(1.7, 0.6, -0.4), Vector3.new(1.4, 1.2, 0.9), rgb(120, 150, 176), M.Metal, { Name = "CurioCan" })
+		Kit.part(parent, cf * CFrame.new(-1.0, 0.05, -1.3), Vector3.new(1.6, 0.1, 1.2), C.Moss, M.Fabric, { Name = "CurioSeeds" })
+	end
+	Kit.sound(parent, "curio_" .. s)
+	return Kit.dress(parent, Mesh.skey("curio"), cf)
 end
 
 function Kit.chest(outer, cf, slot)
@@ -847,11 +1180,11 @@ local function roomShell(model, w, d, color, mat, seed, exitX, torches, doorW)
 	local n = torches or max(2, floor(d / 12))
 	for i = 1, n do
 		local z = -hd + (i - 0.5) * (d / n)
-		Kit.torch(model, CFrame.new(-hw + 0.5, 6.5, z) * CFrame.Angles(0, -PI / 2, 0))
-		Kit.torch(model, CFrame.new(hw - 0.5, 6.5, z) * CFrame.Angles(0, PI / 2, 0))
+		Kit.torch(model, CFrame.new(-hw, 6.5, z) * CFrame.Angles(0, -PI / 2, 0))
+		Kit.torch(model, CFrame.new(hw, 6.5, z) * CFrame.Angles(0, PI / 2, 0))
 	end
-	Kit.torch(model, CFrame.new(-doorW / 2 - 3, 7, -hd + 0.5) * CFrame.Angles(0, PI, 0))
-	Kit.torch(model, CFrame.new(doorW / 2 + 3, 7, -hd + 0.5) * CFrame.Angles(0, PI, 0))
+	Kit.torch(model, CFrame.new(-doorW / 2 - 3, 7, -hd) * CFrame.Angles(0, PI, 0))
+	Kit.torch(model, CFrame.new(doorW / 2 + 3, 7, -hd) * CFrame.Angles(0, PI, 0))
 end
 
 local function roomPoints(base, w, d, exitX)
@@ -882,13 +1215,13 @@ function Rooms.Hall(variant)
 	Kit.rune(detail, CFrame.new(0, 0, 0), 10, 0.6)
 	Kit.rune(detail, CFrame.new(0, 0, 0), 0.6, 10)
 	for _, x in ipairs({ -20, 20 }) do
-		Kit.banner(detail, CFrame.new(x, 11, -23.4) * CFrame.Angles(0, PI, 0))
-		Kit.banner(detail, CFrame.new(x, 11, 23.4))
+		Kit.banner(detail, CFrame.new(x, 11, -24) * CFrame.Angles(0, PI, 0))
+		Kit.banner(detail, CFrame.new(x, 11, 24))
 	end
-	Kit.shield(detail, CFrame.new(0, 9, 23.4))
-	Kit.rack(detail, CFrame.new(23.4, 0, -6) * CFrame.Angles(0, PI / 2, 0))
+	Kit.shield(detail, CFrame.new(0, 9, 24))
+	Kit.rack(detail, CFrame.new(24, 0, -6) * CFrame.Angles(0, PI / 2, 0))
 	Kit.chandelier(model, CFrame.new(0, CEIL_Y, 0))
-	Kit.hearth(model, CFrame.new(23.4, 0, 10) * CFrame.Angles(0, PI / 2, 0))
+	Kit.hearth(model, CFrame.new(24, 0, 10) * CFrame.Angles(0, PI / 2, 0))
 	Kit.rug(detail, CFrame.new(0, 0, -14), 10, 7)
 	Kit.skulls(detail, CFrame.new(-21, 0, -8))
 	Kit.rubble(detail, CFrame.new(12, 0, 20), seed + 7)
@@ -903,7 +1236,7 @@ function Rooms.Hall(variant)
 		Kit.barrel(detail, CFrame.new(17.5, 0, -17.5))
 		Kit.hay(detail, CFrame.new(20, 0, 16))
 		Kit.puddle(detail, CFrame.new(6, 0, -14), 5, 3.5)
-		Kit.rack(detail, CFrame.new(-23.4, 0, 6) * CFrame.Angles(0, -PI / 2, 0))
+		Kit.rack(detail, CFrame.new(-24, 0, 6) * CFrame.Angles(0, -PI / 2, 0))
 	elseif variant == 2 then
 		Kit.table(detail, CFrame.new(18, 0, -12))
 		Kit.table(detail, CFrame.new(18, 0, 16))
@@ -943,7 +1276,7 @@ function Rooms.Cellar(variant)
 	-- beams across the ceiling, a wine rack
 	Kit.part(model, CFrame.new(0, CEIL_Y - 0.6, -8), Vector3.new(w, 1.2, 1.6), C.Wood, M.Wood, { Name = "Beam" })
 	Kit.part(model, CFrame.new(0, CEIL_Y - 0.6, 8), Vector3.new(w, 1.2, 1.6), C.Wood, M.Wood, { Name = "Beam" })
-	Kit.wineRack(detail, CFrame.new(23.4, 0, 12) * CFrame.Angles(0, PI / 2, 0))
+	Kit.wineRack(detail, CFrame.new(24, 0, 12) * CFrame.Angles(0, PI / 2, 0))
 	-- a cell in one corner: bars on two sides (bug batch 2, #3: the bars collide, 0.9-stud gaps: nobody walks into the cell)
 	local cx, cz = 16, -14
 	for i = 0, 5 do
@@ -966,7 +1299,7 @@ function Rooms.Cellar(variant)
 	Kit.cauldron(detail, CFrame.new(-19, 0, 8))
 	Kit.skulls(detail, CFrame.new(-16, 0, 11))
 	Kit.rubble(detail, CFrame.new(8, 0, -20), seed + 3)
-	Kit.rack(detail, CFrame.new(-23.4, 0, -6) * CFrame.Angles(0, -PI / 2, 0))
+	Kit.rack(detail, CFrame.new(-24, 0, -6) * CFrame.Angles(0, -PI / 2, 0))
 	Kit.candles(detail, CFrame.new(-19, 0, 0))
 	if variant == 2 then
 		-- bug batch 2 (#25): the table + bench moved off the exit door's axis (they stood at x 0, z 20 / 17.4, 4 studs
@@ -1099,8 +1432,8 @@ function Rooms.Bridge(variant)
 			light.Parent = lamp
 		end
 	end
-	Kit.torch(model, CFrame.new(-7, 7, -23.5) * CFrame.Angles(0, PI, 0))
-	Kit.torch(model, CFrame.new(7, 7, -23.5) * CFrame.Angles(0, PI, 0))
+	Kit.torch(model, CFrame.new(-7, 7, -24) * CFrame.Angles(0, PI, 0))
+	Kit.torch(model, CFrame.new(7, 7, -24) * CFrame.Angles(0, PI, 0))
 	Kit.skulls(detail, CFrame.new(-16, 0, -10))
 	Kit.rubble(detail, CFrame.new(10, 0, 16), seed + 5)
 	-- a few plank patches and a broken crate
@@ -1135,23 +1468,70 @@ function Rooms.Throne(variant)
 		Kit.pillar(model, CFrame.new(-19, 0, z), WALL_H, C.StoneLight)
 		Kit.pillar(model, CFrame.new(19, 0, z), WALL_H, C.StoneLight)
 	end
-	-- the carpet (plum Fabric, big face under 0.45 saturation) and the Neon edge runes
-	Kit.part(model, CFrame.new(0, 0.1, -4), Vector3.new(8, 0.2, 56), C.Carpet, M.Fabric, { Name = "Carpet" })
-	Kit.rune(detail, CFrame.new(-4.3, 0, -4), 0.5, 56)
-	Kit.rune(detail, CFrame.new(4.3, 0, -4), 0.5, 56)
-	-- the dais with stairs, the throne and two braziers
+	-- the carpet runner (bug #5: the style key dungeon_<s>_carpet: a navy runner with brass edges and chevrons (b), a red
+	-- carpet with a gold border (a), a terracotta herringbone path (c); its edge stripe = the floor's element colour. The
+	-- two long lime Neon edge runes are gone: the screenshot's harsh green lines)
+	local carpet = Mesh.group(model, "CarpetRun")
+	Kit.part(carpet, CFrame.new(0, 0.1, -4), Vector3.new(8, 0.2, 56), C.Carpet, M.Fabric, { Name = "Carpet" })
+	Kit.dress(carpet, Mesh.skey("carpet"), CFrame.new(0, 0, -4), { Primary = C.Carpet, Secondary = C.Accent }, nil, nil, true)
+	-- the dais with stairs (one style key dungeon_<s>_dais, baked from these Parts), the throne and two braziers
 	local daisZ = 28
-	Kit.part(model, CFrame.new(0, 1.2, daisZ), Vector3.new(24, 2.4, 14), C.StoneLight, M.Slate, { Name = "Dais", Collide = true })
-	Kit.part(model, CFrame.new(0, 2.5, daisZ), Vector3.new(6, 0.2, 10), C.Carpet, M.Fabric, { Name = "DaisCarpet" })
-	Kit.part(model, CFrame.new(0, 2.6, daisZ - 7.2), Vector3.new(24, 0.4, 0.6), C.StoneDark, M.Slate, { Name = "DaisKerb" })
-	Kit.stairs(model, CFrame.new(0, 0, daisZ - 7 - 4.8), 10, 3, 0.8)
+	local dais = Mesh.group(model, "DaisSet")
+	Kit.part(dais, CFrame.new(0, 1.2, daisZ), Vector3.new(24, 2.4, 14), C.StoneLight, M.Slate, { Name = "Dais", Collide = true })
+	Kit.part(dais, CFrame.new(0, 2.5, daisZ), Vector3.new(6, 0.2, 10), C.Carpet, M.Fabric, { Name = "DaisCarpet" })
+	Kit.part(dais, CFrame.new(0, 2.6, daisZ - 7.2), Vector3.new(24, 0.4, 0.6), C.StoneDark, M.Slate, { Name = "DaisKerb" })
+	Kit.stairs(dais, CFrame.new(0, 0, daisZ - 7 - 4.8), 10, 3, 0.8)
+	Kit.dress(dais, Mesh.skey("dais"), CFrame.new(0, 0, daisZ), { Secondary = C.Accent }, nil, nil, true)
+	-- the throne (bug #5: the style key dungeon_<s>_throne: a carved granite throne with a red cushion and a cloud crest
+	-- (a), the guild master's iron and brass chair with a copper lightning rod (b), a hollow stump with a moss cushion and
+	-- a crown of leaves (c)); the Parts are its collider and fallback
 	local tz = daisZ + 3
-	Kit.part(model, CFrame.new(0, 3.4, tz), Vector3.new(3.4, 2, 2.4), C.StoneDark, M.Slate, { Name = "ThroneSeat", Collide = true })
-	Kit.part(model, CFrame.new(0, 6.2, tz + 1), Vector3.new(3.4, 7.6, 0.6), C.StoneDark, M.Slate, { Name = "ThroneBack", Collide = true })
-	Kit.part(model, CFrame.new(-1.7, 4.6, tz), Vector3.new(0.4, 2.4, 2.4), C.StoneDark, M.Slate, { Name = "ThroneArm", Collide = true })
-	Kit.part(model, CFrame.new(1.7, 4.6, tz), Vector3.new(0.4, 2.4, 2.4), C.StoneDark, M.Slate, { Name = "ThroneArm", Collide = true })
-	Kit.part(model, CFrame.new(0, 10.4, tz + 1), Vector3.new(1.6, 1, 0.5), C.Gold, M.Metal, { Name = "ThroneCrown" })
-	Kit.part(model, CFrame.new(0, 4.6, tz - 0.2), Vector3.new(2.6, 0.5, 2), C.Carpet, M.Fabric, { Name = "ThroneCushion" })
+	local style = Style.Cur and Style.Cur.Id or DungeonBuilder.DefaultStyle
+	local throne = Mesh.group(model, "ThroneSet")
+	Kit.part(throne, CFrame.new(0, 3.4, tz), Vector3.new(3.4, 2, 2.4), C.StoneDark, M.Slate, { Name = "ThroneSeat", Collide = true })
+	Kit.part(throne, CFrame.new(0, 6.2, tz + 1), Vector3.new(3.4, 7.6, 0.6), C.StoneDark, M.Slate, { Name = "ThroneBack", Collide = true })
+	Kit.part(throne, CFrame.new(-1.7, 4.6, tz), Vector3.new(0.4, 2.4, 2.4), C.StoneDark, M.Slate, { Name = "ThroneArm", Collide = true })
+	Kit.part(throne, CFrame.new(1.7, 4.6, tz), Vector3.new(0.4, 2.4, 2.4), C.StoneDark, M.Slate, { Name = "ThroneArm", Collide = true })
+	if style == "b" then
+		Kit.part(throne, CFrame.new(0, 10.35, tz + 1), Vector3.new(0.25, 0.7, 0.25), C.Gold, M.Metal, { Name = "LightningRod" })
+	else
+		Kit.part(throne, CFrame.new(0, 10.4, tz + 1), Vector3.new(1.6, 1, 0.5), C.Gold, M.Metal, { Name = "ThroneCrown" })
+	end
+	Kit.part(throne, CFrame.new(0, 4.6, tz - 0.2), Vector3.new(2.6, 0.5, 2), C.Carpet, M.Fabric, { Name = "ThroneCushion" })
+	Kit.dress(throne, Mesh.skey("throne"), CFrame.new(0, 2.4, tz), { Secondary = C.Accent }, nil, nil, true)
+	if style == "b" then
+		-- the weather astrolabe over the chair: a captured storm cloud (a Neon cyan heart inside a puff mesh) in three
+		-- brass gimbal rings that turn slowly (DungeonFx spins the NC_DungeonSpin parts about their local Y; each ring's
+		-- plane holds its spin axis, so they sweep nested spheres: 2.4 / 2.0 / 1.6 studs, the rod tip at 2.2 sits between)
+		-- (the review: at 13.2 the outer ring's mesh reached 15.7 under the 15.8 ceiling; at 12.9 it clears it by 0.4, and
+		-- the rod tip (10.7, the throne key) stays 2.2 below the hub, between the outer and middle rings' spheres)
+		local hub = CFrame.new(0, ASTRO_HUB_Y, tz + 1)
+		local heart = Kit.part(model, hub, Vector3.new(0.9, 0.9, 0.9), C.Core, M.Neon, { Name = "CloudHeart" })
+		local glow = Instance.new("PointLight")
+		glow.Name = "CloudLight"
+		glow.Color = C.CoreLight
+		glow.Brightness = 1.2
+		glow.Range = 16
+		glow.Shadows = false
+		glow.Parent = heart
+		Kit.sound(heart, "astrolabe")
+		local cloud = Kit.part(model, hub, Vector3.new(2.2, 1.6, 2.2), C.Marble, M.Slate, { Name = "StormCloud" })
+		Mesh.tag(cloud, "dungeon_b_cloud", hub, nil, nil)
+		local rings = {
+			{ R = 2.4, Rot = CFrame.new(), Speed = 0.35 },
+			{ R = 2.0, Rot = CFrame.Angles(0, 0, -PI / 2), Speed = -0.5 },
+			{ R = 1.6, Rot = CFrame.Angles(PI / 2, 0, 0), Speed = 0.65 },
+		}
+		for i, rg in ipairs(rings) do
+			local cf = hub * rg.Rot
+			local ring = Kit.part(model, cf, Vector3.new(rg.R * 2, 0.3, 0.3), C.Gold, M.Metal, { Name = "AstroRing" })
+			ring:SetAttribute("SpinSpeed", rg.Speed)
+			ring:SetAttribute("SpinIndex", i)
+			ring:SetAttribute("ML_Weld", true) -- the uploaded ring mesh rides the Part DungeonFx turns (client-side)
+			CollectionService:AddTag(ring, "NC_DungeonSpin")
+			Mesh.tag(ring, "dungeon_b_ring", cf, nil, nil, rg.R / 2.4)
+		end
+	end
 	Kit.brazier(model, CFrame.new(-8, 2.4, daisZ - 2))
 	Kit.brazier(model, CFrame.new(8, 2.4, daisZ - 2))
 	-- two arches spanning the aisle, guardian statues by the stairs, skull piles, candles
@@ -1162,24 +1542,34 @@ function Rooms.Throne(variant)
 	Kit.skulls(detail, CFrame.new(-26, 0, -12))
 	Kit.candles(detail, CFrame.new(-6, 2.4, daisZ + 5))
 	Kit.candles(detail, CFrame.new(6, 2.4, daisZ + 5))
-	Kit.shield(detail, CFrame.new(0, 10, 35.4))
+	if style == "a" then
+		-- the Undercroft's round sky window behind the throne (it lights the far end: the far arch used to read navy-black)
+		local win = Kit.part(model, CFrame.new(0, 10.6, 35.9), Vector3.new(7, 7, 0.2), rgb(176, 214, 255), M.Slate, { Name = "SkyWindow" })
+		local sky = Instance.new("PointLight")
+		sky.Name = "SkyLight"
+		sky.Color = rgb(186, 214, 255)
+		sky.Brightness = 0.9
+		sky.Range = 26
+		sky.Shadows = false
+		sky.Parent = win
+		Mesh.tag(win, "dungeon_a_window", CFrame.new(0, 10.6, 36), nil, nil)
+	else
+		Kit.shield(detail, CFrame.new(0, 10, 36))
+	end
 	Kit.rubble(detail, CFrame.new(-20, 0, 4), seed + 9)
-	-- banners between the arches, chains, a bookshelf nook, puddles
-	for _, x in ipairs({ -29.4, 29.4 }) do
-		Kit.banner(detail, CFrame.new(x, 12, -10) * CFrame.Angles(0, x < 0 and -PI / 2 or PI / 2, 0))
-		Kit.banner(detail, CFrame.new(x, 12, 6) * CFrame.Angles(0, x < 0 and -PI / 2 or PI / 2, 0))
+	-- banners on the side walls BETWEEN the torches (bug #5 fix 1: they hung at z -10 / 6, and the torch at z -9 burned
+	-- through the cloth; roomShell's 4 torches stand at z -27, -9, 9, 27), chains from the ceiling, the bones
+	for _, x in ipairs({ -30, 30 }) do
+		Kit.banner(detail, CFrame.new(x, 12, 0) * CFrame.Angles(0, x < 0 and -PI / 2 or PI / 2, 0))
+		Kit.banner(detail, CFrame.new(x, 12, 18) * CFrame.Angles(0, x < 0 and -PI / 2 or PI / 2, 0))
 	end
 	Kit.chain(detail, CFrame.new(-29.3, 12, -26))
 	Kit.chain(detail, CFrame.new(29.3, 12, 24))
-	Kit.crate(detail, CFrame.new(-26, 0, 32), 2.6)
-	Kit.crate(detail, CFrame.new(-23, 0, 33), 1.8)
-	Kit.barrel(detail, CFrame.new(-26, 0, 28))
-	Kit.table(detail, CFrame.new(26, 0, -30))
 	Kit.bones(detail, CFrame.new(-24, 0, -30))
-	Kit.puddle(detail, CFrame.new(-14, 0, -24), 5, 4)
-	Kit.puddle(detail, CFrame.new(16, 0, 10), 4, 3)
-	Kit.moss(detail, CFrame.new(24, 0, -14), 4, 3)
-	Kit.hay(detail, CFrame.new(27, 0, 0))
+	-- bug #5 fix 4: the hay, barrel, crates, table, puddles and moss square of the cellar are gone; the throne room has
+	-- its own two curios (the people who keep it) in the far-left and near-right corners, off both door lanes
+	Kit.curio(detail, CFrame.new(-25, 0, 31) * CFrame.Angles(0, -PI / 2, 0))
+	Kit.curio(detail, CFrame.new(25, 0, -30) * CFrame.Angles(0, PI / 2, 0))
 	-- points: the zone covers the WHOLE room (56 x 72 on the 60 x 72 floor: the dais, the throne and the back strip are
 	-- inside it, so a member who climbs the stairs is never dropped out of the fight); the enemies spawn at the foot of
 	-- the dais stairs (SpawnAnchor), not on the throne
@@ -1207,18 +1597,18 @@ function Rooms.Entrance()
 	for _, sx in ipairs({ -1, 1 }) do
 		Kit.pillar(model, CFrame.new(sx * 12.6, 0, -10.6), WALL_H + 0.5, C.Stone)
 		Kit.pillar(model, CFrame.new(sx * 12.6, 0, 10.6), WALL_H + 0.5, C.Stone)
-		Kit.torch(model, CFrame.new(sx * 13.5, 6.5, 1) * CFrame.Angles(0, sx * PI / 2, 0))
+		Kit.torch(model, CFrame.new(sx * 14, 6.5, 1) * CFrame.Angles(0, sx * PI / 2, 0))
 	end
-	Kit.torch(model, CFrame.new(-7, 7, 11.5))
-	Kit.torch(model, CFrame.new(7, 7, 11.5))
+	Kit.torch(model, CFrame.new(-7, 7, 12))
+	Kit.torch(model, CFrame.new(7, 7, 12))
 	-- four spawn pads (Marble inlays) and the banner wall
 	for i = 1, 4 do
 		local x = -7.5 + (i - 1) * 5
 		Kit.part(model, CFrame.new(x, 0.1, -4), Vector3.new(3.6, 0.2, 3.6), C.Marble, M.Marble, { Name = "Pad" })
 		attach(base, "Spawn" .. i, Vector3.new(x, 1.5, -4))
 	end
-	Kit.banner(detail, CFrame.new(-6, 11, -11.4) * CFrame.Angles(0, PI, 0))
-	Kit.banner(detail, CFrame.new(6, 11, -11.4) * CFrame.Angles(0, PI, 0))
+	Kit.banner(detail, CFrame.new(-6, 11, -12) * CFrame.Angles(0, PI, 0))
+	Kit.banner(detail, CFrame.new(6, 11, -12) * CFrame.Angles(0, PI, 0))
 	Kit.barrel(detail, CFrame.new(-11, 0, 9))
 	Kit.crate(detail, CFrame.new(11, 0, 9), 2.2)
 	Kit.moss(detail, CFrame.new(10, 0, -9), 3, 2.4)
@@ -1247,8 +1637,8 @@ function Rooms.Corridor(kind)
 			Kit.wall(model, CFrame.new(sx * 5.5, 0, 0) * CFrame.Angles(0, sx * PI / 2, 0), 15, C.Stone, M.Slate, seed + sx, nil, true)
 		end
 		Kit.ceiling(model, 10, 15)
-		Kit.torch(model, CFrame.new(-4.5, 6.5, 0) * CFrame.Angles(0, -PI / 2, 0))
-		Kit.torch(model, CFrame.new(4.5, 6.5, 0) * CFrame.Angles(0, PI / 2, 0))
+		Kit.torch(model, CFrame.new(-5, 6.5, 0) * CFrame.Angles(0, -PI / 2, 0))
+		Kit.torch(model, CFrame.new(5, 6.5, 0) * CFrame.Angles(0, PI / 2, 0))
 	else
 		local s = jog > 0 and 1 or -1
 		-- entry column (z -7.5..-2.5), cross row (z -2.5..2.5), exit column (z 2.5..7.5)
@@ -1267,8 +1657,8 @@ function Rooms.Corridor(kind)
 		Kit.wall(model, CFrame.new(jog + s * 5.5, 0, 2.5) * CFrame.Angles(0, s * PI / 2, 0), 10, C.Stone, M.Slate, seed + 5, nil, true)
 		Kit.wall(model, CFrame.new(jog - s * 5.5, 0, 5) * CFrame.Angles(0, -s * PI / 2, 0), 5, C.Stone, M.Slate, seed + 6, nil, true)
 		Kit.ceiling(model, 10 + abs(jog), 15)
-		Kit.torch(model, CFrame.new(s * 4.5, 6.5, -5) * CFrame.Angles(0, s * PI / 2, 0))
-		Kit.torch(model, CFrame.new(jog - s * 4.5, 6.5, 5) * CFrame.Angles(0, -s * PI / 2, 0))
+		Kit.torch(model, CFrame.new(s * 5, 6.5, -5) * CFrame.Angles(0, s * PI / 2, 0))
+		Kit.torch(model, CFrame.new(jog - s * 5, 6.5, 5) * CFrame.Angles(0, -s * PI / 2, 0))
 	end
 	Kit.puddle(detail, CFrame.new(jog / 2, 0, 0), 3, 2.4)
 	if jog == 0 then
@@ -1289,8 +1679,8 @@ function Rooms.Treasure()
 	Kit.wall(model, CFrame.new(-14.5, 0, 0) * CFrame.Angles(0, -PI / 2, 0), d, C.Stone, M.Slate, seed + 3, nil, true)
 	Kit.wall(model, CFrame.new(14.5, 0, 0) * CFrame.Angles(0, PI / 2, 0), d, C.Stone, M.Slate, seed + 4, nil, true)
 	Kit.ceiling(model, w, d)
-	Kit.torch(model, CFrame.new(-13.5, 6.5, 0) * CFrame.Angles(0, -PI / 2, 0))
-	Kit.torch(model, CFrame.new(13.5, 6.5, 0) * CFrame.Angles(0, PI / 2, 0))
+	Kit.torch(model, CFrame.new(-14, 6.5, 0) * CFrame.Angles(0, -PI / 2, 0))
+	Kit.torch(model, CFrame.new(14, 6.5, 0) * CFrame.Angles(0, PI / 2, 0))
 	local chests = DungeonBuilder.CHEST_COUNT
 	for i = 1, chests do
 		local x = (i - (chests + 1) / 2) * 6
@@ -1313,8 +1703,8 @@ function Rooms.Treasure()
 	exitPrompt.RequiresLineOfSight = false
 	exitPrompt:SetAttribute("DungeonAction", "Exit")
 	exitPrompt.Parent = exitPart
-	Kit.banner(detail, CFrame.new(-10, 11, 10.4))
-	Kit.banner(detail, CFrame.new(10, 11, 10.4))
+	Kit.banner(detail, CFrame.new(-10, 11, 11))
+	Kit.banner(detail, CFrame.new(10, 11, 11))
 	Kit.skulls(detail, CFrame.new(-12, 0, -8))
 	for i = 1, 4 do
 		attach(base, "Spawn" .. i, Vector3.new(-6 + (i - 1) * 4, 1.5, -7))
@@ -1371,27 +1761,44 @@ function DungeonBuilder.CountParts(inst)
 	return n
 end
 
--- the template (built now when missing, ~0.1 s)
-function DungeonBuilder.Template(name)
+-- the template of a style (built now when missing, ~0.1 s). bug #5: one set per style (the same layout and colliders,
+-- the style's colours, keys and style props); style = DefaultStyle when nil. The models keep the plain names
+-- (Hall_1 ...) with a Style attribute, so the set of every style lives side by side in DungeonTemplates.
+local TplCache = {}
+function DungeonBuilder.Template(name, style)
 	local g = Geo[name]
 	if not g then
 		return nil
 	end
+	style = DungeonBuilder.Styles[style or ""] and style or DungeonBuilder.DefaultStyle
 	local f = templateFolder()
-	local existing = f:FindFirstChild(name)
-	if existing then
+	TplCache[style] = TplCache[style] or {}
+	local existing = TplCache[style][name]
+	if existing and existing.Parent == f then
 		return existing
 	end
-	local model = g.build()
+	local prev = Style.Cur
+	Style.Cur = DungeonBuilder.Styles[style]
+	local ok, model = pcall(g.build)
+	Style.Cur = prev
+	if not ok then
+		error(model, 0)
+	end
 	model:SetAttribute("Kind", g.Kind)
 	model:SetAttribute("Budget", g.Budget)
+	model:SetAttribute("Style", style)
 	model.Parent = f
+	TplCache[style][name] = model
 	return model
 end
 
-function DungeonBuilder.EnsureTemplates()
-	for _, name in ipairs(DungeonBuilder.Templates) do
-		DungeonBuilder.Template(name)
+-- every template of `style` (DefaultStyle when nil; "all" = every style)
+function DungeonBuilder.EnsureTemplates(style)
+	local styles = (style == "all") and DungeonBuilder.StyleOrder or { style or DungeonBuilder.DefaultStyle }
+	for _, s in ipairs(styles) do
+		for _, name in ipairs(DungeonBuilder.Templates) do
+			DungeonBuilder.Template(name, s)
+		end
 	end
 	return templateFolder()
 end
@@ -1469,12 +1876,15 @@ function DungeonBuilder.Build(lobbyInfo)
 	if not State.Built then
 		State.Built = true
 		task.spawn(function()
-			for _, name in ipairs(DungeonBuilder.Templates) do
-				local ok, err = pcall(DungeonBuilder.Template, name)
-				if not ok then
-					warn("[DungeonBuilder] template " .. name .. " failed: " .. tostring(err))
+			-- bug #5: every style's set (floors 1-3, 4-8 and 9-12 each use their own), one template per task.wait()
+			for _, style in ipairs(DungeonBuilder.StyleOrder) do
+				for _, name in ipairs(DungeonBuilder.Templates) do
+					local ok, err = pcall(DungeonBuilder.Template, name, style)
+					if not ok then
+						warn("[DungeonBuilder] template " .. name .. " (" .. style .. ") failed: " .. tostring(err))
+					end
+					task.wait()
 				end
-				task.wait()
 			end
 		end)
 	end
@@ -1571,7 +1981,7 @@ function Layout.plan(floorIndex, seed)
 		roomIndex = roomIndex + 1
 		rooms[roomIndex] = { Piece = i + 1, Corridor = i }
 	end
-	return { Floor = floorIndex, Seed = seed, Def = def, Kind = kind, Pieces = pieces, Rooms = rooms }
+	return { Floor = floorIndex, Seed = seed, Def = def, Kind = kind, Pieces = pieces, Rooms = rooms, Style = DungeonBuilder.StyleFor(floorIndex) }
 end
 
 function DungeonBuilder.Plan(floorIndex, seed)
@@ -1600,6 +2010,151 @@ local function recolourAccents(model, color)
 	return n
 end
 
+-- bug #5: the floor's own look on a placed piece (before it is parented): the style's per-floor depth (colours x
+-- Deepen; the lights are NOT dimmed, the review's readability cap), the element colour on every dressed key's Secondary
+-- tint (DG_Element: banners, stripes, grates, crests), the Accent parts recoloured
+local NO_DEEPEN = { [Enum.Material.Neon] = true, [Enum.Material.Glass] = true, [Enum.Material.ForceField] = true }
+local function lerpColor(a, f)
+	return Color3.new(a.R * f, a.G * f, a.B * f)
+end
+local function dressFloor(model, pocket)
+	local color = elementColor(pocket.Layout.Def.Element)
+	local style = DungeonBuilder.Styles[pocket.Style or ""]
+	local depth = DungeonBuilder.StyleDepth(pocket.Floor)
+	local f = 1 - (1 - (style and style.Deepen or 1)) * depth
+	recolourAccents(model, color)
+	local list = model:GetDescendants()
+	list[#list + 1] = model
+	for _, d in ipairs(list) do
+		if d:IsA("BasePart") then
+			if f < 1 and not NO_DEEPEN[d.Material] and d:GetAttribute("Accent") ~= true then
+				d.Color = lerpColor(d.Color, f)
+			end
+		end
+		if d:GetAttribute("DG_Element") == true then
+			d:SetAttribute("ML_Secondary", color)
+		end
+		local primary = d:GetAttribute("ML_Primary")
+		if f < 1 and typeof(primary) == "Color3" then
+			d:SetAttribute("ML_Primary", lerpColor(primary, f))
+		end
+	end
+	return color
+end
+
+-- bug #5: the element weathering of a floor (blender keys dungeon_wx_<element>_high / _low: Nature moss and ferns, Earth
+-- crystals and rubble, Water drip stains and puddles, Frost icicles and rime, Flame soot and ember cracks, Storm scorch
+-- marks and a spark coil, Celestial star-moss, Shadow dark crystals). Two hang under the cornice of the entrance / exit
+-- walls beside the doors, two sit at the foot of the side walls; a spot is skipped when a prop already stands there.
+-- The anchors are invisible (a flat stand-in would bring back the pasted squares the pitch removed): the clusters show
+-- once their keys are uploaded.
+DungeonBuilder.WeatherKeys = {
+	Nature = "nature", Earth = "earth", Water = "water", Frost = "frost", Flame = "flame", Storm = "storm", Celestial = "celestial", Shadow = "shadow",
+}
+-- the review (bug batch 2 #3 rule "no visible prop a player can stand inside"): the _low sets that stand taller than
+-- the 1.1-stud step out on the floor get a collider over their footprint (spot space: x along the wall, z into the room
+-- is negative, y up from the floor; from blender/kit/props/dungeon_props.py wx()). Shadow: crystals up to 1.9 studs;
+-- Nature: fern fronds up to 1.3. The others stay under 1.1 on the floor (Earth crystals 1.05, Frost ice blocks 0.6,
+-- Celestial star 0.95, Flame coals, Storm coil, Water drips: their taller bits sit on the plinth or the wall face).
+DungeonBuilder.WeatherLowSolid = {
+	Shadow = { X0 = -1.75, X1 = 1.85, Y1 = 2.0, Z0 = -2.0, Z1 = -0.5 },
+	Nature = { X0 = -2.25, X1 = 1.95, Y1 = 1.35, Z0 = -2.05, Z1 = -0.5 },
+}
+local WEATHER_SKIP = { Floor = true, Wall = true, Plinth = true, Cap = true, Course = true, Dado = true, Brick = true, Ceiling = true, Crack = true, Base = true, Weather = true }
+local function weatherSpots(g)
+	local hw, hd = g.W / 2, g.D / 2
+	local x = min(11, hw - 4)
+	local spots = {}
+	spots[#spots + 1] = { High = true, CF = CFrame.new(-x, WALL_H - 0.2, -hd) * CFrame.Angles(0, PI, 0) }
+	spots[#spots + 1] = { High = true, CF = CFrame.new(x, WALL_H - 0.2, hd) }
+	spots[#spots + 1] = { High = true, CF = CFrame.new(x, WALL_H - 0.2, -hd) * CFrame.Angles(0, PI, 0) }
+	spots[#spots + 1] = { High = true, CF = CFrame.new(-x, WALL_H - 0.2, hd) }
+	if g.Name and string.sub(g.Name, 1, 6) == "Bridge" then
+		spots[#spots + 1] = { CF = CFrame.new(x, 0, -hd) * CFrame.Angles(0, PI, 0) }
+		spots[#spots + 1] = { CF = CFrame.new(-x, 0, hd) }
+	else
+		for _, z in ipairs({ -0.4, 0.15, -0.1, 0.4 }) do
+			spots[#spots + 1] = { CF = CFrame.new(-hw, 0, z * g.D) * CFrame.Angles(0, -PI / 2, 0) }
+			spots[#spots + 1] = { CF = CFrame.new(hw, 0, -z * g.D) * CFrame.Angles(0, PI / 2, 0) }
+		end
+	end
+	return spots
+end
+
+local function placeWeather(holder, model, element, g)
+	local name = DungeonBuilder.WeatherKeys[element]
+	local base = model.PrimaryPart
+	if not name or not base or not g then
+		return 0
+	end
+	local room = base.CFrame * CFrame.new(0, 1.5, 0)
+	local inv = room:Inverse()
+	-- the room-space boxes of what already stands in the room (walls, floor, ceiling and big slabs left out)
+	local boxes = {}
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("BasePart") and not WEATHER_SKIP[d.Name] then
+			local s = d.Size
+			if max(s.X, s.Y, s.Z) < 20 then
+				local cf = inv * d.CFrame
+				local r = { cf:GetComponents() }
+				local ex = abs(r[4]) * s.X / 2 + abs(r[5]) * s.Y / 2 + abs(r[6]) * s.Z / 2
+				local ey = abs(r[7]) * s.X / 2 + abs(r[8]) * s.Y / 2 + abs(r[9]) * s.Z / 2
+				local ez = abs(r[10]) * s.X / 2 + abs(r[11]) * s.Y / 2 + abs(r[12]) * s.Z / 2
+				boxes[#boxes + 1] = { cf.X - ex, cf.Y - ey, cf.Z - ez, cf.X + ex, cf.Y + ey, cf.Z + ez }
+			end
+		end
+	end
+	local placed, high, low = 0, 0, 0
+	for _, spot in ipairs(weatherSpots(g)) do
+		if (spot.High and high < 2) or (not spot.High and low < 2) then
+			-- the cluster's room-space box: 4.6 wide, under the cornice 3 tall x 1.2 deep, at the wall foot 2.6 x 2.6
+			local c = spot.CF * CFrame.new(0, spot.High and -1.5 or 1.3, spot.High and -0.6 or -1.3)
+			local hx, hy, hz = 2.3, spot.High and 1.5 or 1.3, spot.High and 0.6 or 1.3
+			local r = { c:GetComponents() }
+			local ex = abs(r[4]) * hx + abs(r[5]) * hy + abs(r[6]) * hz
+			local ez = abs(r[10]) * hx + abs(r[11]) * hy + abs(r[12]) * hz
+			local a = { c.X - ex, c.Y - hy, c.Z - ez, c.X + ex, c.Y + hy, c.Z + ez }
+			local free = true
+			for _, b in ipairs(boxes) do
+				if a[1] < b[4] and b[1] < a[4] and a[2] < b[5] and b[2] < a[5] and a[3] < b[6] and b[3] < a[6] then
+					free = false
+					break
+				end
+			end
+			if free then
+				local at = room * spot.CF
+				local solid = (not spot.High) and DungeonBuilder.WeatherLowSolid[element] or nil
+				local anchor
+				if solid then
+					-- the anchor IS the collider (invisible, colliding, queryable) over the cluster's footprint
+					anchor = Kit.part(holder, at * CFrame.new((solid.X0 + solid.X1) / 2, solid.Y1 / 2, (solid.Z0 + solid.Z1) / 2),
+						Vector3.new(solid.X1 - solid.X0, solid.Y1, solid.Z1 - solid.Z0), elementColor(element), M.Slate, { Name = "Weather", Transparency = 1, Collide = true })
+				else
+					anchor = Kit.part(holder, at * CFrame.new(0, spot.High and -1.5 or 0.5, spot.High and -0.3 or -1), Vector3.new(4.4, 1, 0.6), elementColor(element), M.Slate, { Name = "Weather", Transparency = 1 })
+				end
+				anchor:SetAttribute("Element", element)
+				Kit.sound(anchor, "weather_" .. element)
+				local key = "dungeon_wx_" .. name .. (spot.High and "_high" or "_low")
+				Mesh.tag(anchor, key, at, nil, nil)
+				placed = placed + 1
+				if spot.High then
+					high = high + 1
+				else
+					low = low + 1
+				end
+				boxes[#boxes + 1] = a
+			end
+		end
+	end
+	return placed
+end
+DungeonBuilder._PlaceWeather = placeWeather
+DungeonBuilder.AstroHubY = ASTRO_HUB_Y
+DungeonBuilder._KitFns = Kit -- TESTS / RENDERS ONLY (tools, blender renders: doors + weathering on a bare template)
+DungeonBuilder._ElementColor = function(e)
+	return elementColor(e)
+end
+
 local function worldPoint(model, name)
 	local base = model.PrimaryPart
 	local a = base and base:FindFirstChild(name)
@@ -1612,7 +2167,7 @@ end
 -- clones the template of a piece and places it in pocket space (not parented yet)
 local function clonePiece(pocket, pieceIndex, holder)
 	local piece = pocket.Layout.Pieces[pieceIndex]
-	local template = DungeonBuilder.Template(piece.Name)
+	local template = DungeonBuilder.Template(piece.Name, pocket.Style or pocket.Layout.Style)
 	if not template then
 		return nil
 	end
@@ -1680,8 +2235,13 @@ function DungeonBuilder.PlaceRoom(pocket, room)
 		return nil, "NoTemplate"
 	end
 	local piece = pocket.Layout.Pieces[entry.Piece]
-	local color = elementColor(pocket.Layout.Def.Element)
-	recolourAccents(staging, color)
+	-- bug #5: the doors and the weathering are built in the run's style (its colours and keys). The styled section runs
+	-- in a pcall so Style.Cur is restored on an error too (else every later Kit call outside Template() would build in
+	-- this run's style)
+	local prevStyle = Style.Cur
+	Style.Cur = DungeonBuilder.Styles[pocket.Style or ""] or Style.Cur
+	local info
+	local okStyled, styledErr = pcall(function()
 	-- floor 1 is the brightest (no abyss): every torch a little stronger
 	if pocket.Floor == 1 then
 		for _, d in ipairs(staging:GetDescendants()) do
@@ -1692,7 +2252,7 @@ function DungeonBuilder.PlaceRoom(pocket, room)
 			end
 		end
 	end
-	local info = {
+	info = {
 		Index = room,
 		Kind = piece.Kind,
 		Template = piece.Name,
@@ -1779,9 +2339,21 @@ function DungeonBuilder.PlaceRoom(pocket, room)
 			end
 		end
 	end
+	-- bug #5: the floor's element weathering in the room (not the treasure alcove), then the floor's look on everything
+	if piece.Kind == "Room" or piece.Kind == "Boss" then
+		placeWeather(staging, model, pocket.Layout.Def.Element, Geo[piece.Name])
+	end
+	dressFloor(staging, pocket)
+	end)
+	Style.Cur = prevStyle
+	if not okStyled then
+		staging:Destroy()
+		error(styledErr, 0)
+	end
 	staging:SetAttribute("Room", room)
 	staging:SetAttribute("Floor", pocket.Floor)
 	staging:SetAttribute("Element", pocket.Layout.Def.Element)
+	staging:SetAttribute("Style", pocket.Style)
 	-- one replication burst
 	staging.Parent = pocket.Model
 	pocket.Rooms[room] = info
@@ -1850,12 +2422,33 @@ function DungeonBuilder.BuildRun(index, floorIndex, seed)
 	}
 	pocket.Name = pocket.Layout.Def.Name
 	pocket.Element = pocket.Layout.Def.Element
+	-- bug #5: the run's look (StyleTiers by floor) and its mood for the client (DungeonController's lighting preset):
+	-- the style's ambient / colour correction (never darker than MoodFloor), the contrast a little harder deeper in the tier
+	pocket.Style = pocket.Layout.Style or DungeonBuilder.StyleFor(floorIndex)
+	do
+		local st = DungeonBuilder.Styles[pocket.Style]
+		local depth = DungeonBuilder.StyleDepth(floorIndex)
+		local fl = DungeonBuilder.MoodFloor
+		local function atLeast(c, lo)
+			return Color3.new(max(c.R, lo.R), max(c.G, lo.G), max(c.B, lo.B))
+		end
+		holder:SetAttribute("DungeonStyle", pocket.Style)
+		holder:SetAttribute("StyleName", st and st.Name or "")
+		if st and st.Mood then
+			holder:SetAttribute("MoodAmbient", atLeast(st.Mood.Ambient, fl.Ambient))
+			holder:SetAttribute("MoodOutdoor", atLeast(st.Mood.Outdoor, fl.Outdoor))
+			holder:SetAttribute("MoodBrightness", max(st.Mood.Brightness, fl.Brightness))
+			holder:SetAttribute("MoodContrast", st.Mood.Contrast + 0.03 * depth)
+			holder:SetAttribute("MoodTint", st.Mood.Tint)
+		end
+	end
 	holder.Parent = folder
 	-- the hall
 	local hall = clonePiece(pocket, 1, holder)
 	if hall then
-		local color = elementColor(pocket.Element)
-		recolourAccents(hall, color)
+		local prevStyle = Style.Cur
+		Style.Cur = DungeonBuilder.Styles[pocket.Style] or Style.Cur
+		local okStyled, styledErr = pcall(function()
 		local spawns = {}
 		for i = 1, 4 do
 			local sp = worldPoint(hall, "Spawn" .. i)
@@ -1870,8 +2463,16 @@ function DungeonBuilder.BuildRun(index, floorIndex, seed)
 		if exitCf then
 			nextPrompt, nextPoint = Kit.enterPrompt(hall, exitCf * CFrame.new(0, 3, -2.5), enterLabel(1), 1)
 		end
+		dressFloor(hall, pocket)
 		pocket.Hall = { Index = 0, Kind = "Hall", Model = hall, Room = hall, Spawns = spawns, Center = hall.PrimaryPart.Position + Vector3.new(0, 1.5, 0), ExitDoor = { Model = door, Bars = bars }, Entrance = spawns[1], NextPrompt = nextPrompt, NextPoint = nextPoint }
 		pocket.Rooms[0] = pocket.Hall
+		end)
+		-- (Style.Cur restored on both paths: an error in the styled hall must not leave the Kit building in this style)
+		Style.Cur = prevStyle
+		if not okStyled then
+			holder:Destroy()
+			error(styledErr, 0)
+		end
 	end
 	State.Pockets[index] = pocket
 	DungeonBuilder.PlaceRoom(pocket, 1)

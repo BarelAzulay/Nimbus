@@ -46,6 +46,8 @@ local CONTROLLER_NAMES = {
 	"MeadowFx", -- the lobby's grass and wildflowers (grown here from the server's scatter) and their wind sway
 	-- bug #11
 	"RingCrowdFx", -- the Champion Ring's sky-sailor crowd: the drum beat, cheers, caps, bell, flags (animation only; sounds: audio branch)
+	-- bug #5
+	"DungeonFx", -- the dungeon's turning parts (the Weatherworks' astrolabe rings over the boss chair)
 }
 
 local TAG = "[NimbusClimb] "
@@ -57,7 +59,7 @@ local OPTIONAL = { SkyDragonController = true, IndexController = true, NpcContro
 	BattleController = true, ArenaController = true,
 	CareController = true, HomePortalFx = true,
 	MainMenuController = true, DungeonController = true, ObbyController = true, FountainFx = true,
-	MeadowFx = true, RingCrowdFx = true }
+	MeadowFx = true, RingCrowdFx = true, DungeonFx = true }
 
 local client = script.Parent
 task.spawn(function() local okMesh, MeshLibrary = pcall(function() return require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("MeshLibrary", 30)) end) if okMesh and type(MeshLibrary) == "table" then MeshLibrary.Start() end end) -- Phase 6: Blender meshes

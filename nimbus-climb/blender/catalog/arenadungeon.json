@@ -46,6 +46,46 @@
   "crowd": {
    "tris": 2400,
    "parts": 8
+  },
+  "dwall": {
+   "tris": 9000,
+   "parts": 6
+  },
+  "dfloor": {
+   "tris": 9000,
+   "parts": 6
+  },
+  "dpillar": {
+   "tris": 2600,
+   "parts": 6
+  },
+  "ddoor": {
+   "tris": 4500,
+   "parts": 8
+  },
+  "ddais": {
+   "tris": 9000,
+   "parts": 8
+  },
+  "dcarpet": {
+   "tris": 3000,
+   "parts": 4
+  },
+  "dthrone": {
+   "tris": 7000,
+   "parts": 8
+  },
+  "dprop": {
+   "tris": 3500,
+   "parts": 6
+  },
+  "dsmall": {
+   "tris": 1500,
+   "parts": 4
+  },
+  "dwx": {
+   "tris": 1800,
+   "parts": 4
   }
  },
  "keys": [
@@ -460,310 +500,6 @@
    "description": "Champion Ring crowd: Drizzle's side drum (navy shell, red hoops, rope tension, the ship's star; rides his body)"
   },
   {
-   "key": "dungeon_wall_10_lite",
-   "type": "prop",
-   "prop": "ad_baked",
-   "args": {
-    "vs": 0.5,
-    "tints": {
-     "Wall": "Primary"
-    }
-   },
-   "budget": "wall",
-   "description": "Dungeon wall run 10_lite (lilac stone blocks, tinted per room)"
-  },
-  {
-   "key": "dungeon_wall_15_lite",
-   "type": "prop",
-   "prop": "ad_baked",
-   "args": {
-    "vs": 0.5,
-    "tints": {
-     "Wall": "Primary"
-    }
-   },
-   "budget": "wall",
-   "description": "Dungeon wall run 15_lite (lilac stone blocks, tinted per room)"
-  },
-  {
-   "key": "dungeon_wall_22_lite",
-   "type": "prop",
-   "prop": "ad_baked",
-   "args": {
-    "vs": 0.5,
-    "tints": {
-     "Wall": "Primary"
-    }
-   },
-   "budget": "wall",
-   "description": "Dungeon wall run 22_lite (lilac stone blocks, tinted per room)"
-  },
-  {
-   "key": "dungeon_wall_24",
-   "type": "prop",
-   "prop": "ad_baked",
-   "args": {
-    "vs": 0.5,
-    "tints": {
-     "Wall": "Primary"
-    }
-   },
-   "budget": "wall",
-   "description": "Dungeon wall run 24 (lilac stone blocks, tinted per room)"
-  },
-  {
-   "key": "dungeon_wall_30",
-   "type": "prop",
-   "prop": "ad_baked",
-   "args": {
-    "vs": 0.5,
-    "tints": {
-     "Wall": "Primary"
-    }
-   },
-   "budget": "wall",
-   "description": "Dungeon wall run 30 (lilac stone blocks, tinted per room)"
-  },
-  {
-   "key": "dungeon_wall_30_door",
-   "type": "prop",
-   "prop": "ad_baked",
-   "args": {
-    "vs": 0.5,
-    "tints": {
-     "Wall": "Primary"
-    }
-   },
-   "budget": "wall",
-   "description": "Dungeon wall run 30_door (lilac stone blocks, tinted per room)"
-  },
-  {
-   "key": "dungeon_wall_30_door_lite",
-   "type": "prop",
-   "prop": "ad_baked",
-   "args": {
-    "vs": 0.5,
-    "tints": {
-     "Wall": "Primary"
-    }
-   },
-   "budget": "wall",
-   "description": "Dungeon wall run 30_door_lite (lilac stone blocks, tinted per room)"
-  },
-  {
-   "key": "dungeon_wall_30_lite",
-   "type": "prop",
-   "prop": "ad_baked",
-   "args": {
-    "vs": 0.5,
-    "tints": {
-     "Wall": "Primary"
-    }
-   },
-   "budget": "wall",
-   "description": "Dungeon wall run 30_lite (lilac stone blocks, tinted per room)"
-  },
-  {
-   "key": "dungeon_wall_48",
-   "type": "prop",
-   "prop": "ad_baked",
-   "args": {
-    "vs": 0.5,
-    "tints": {
-     "Wall": "Primary"
-    }
-   },
-   "budget": "wall",
-   "description": "Dungeon wall run 48 (lilac stone blocks, tinted per room)"
-  },
-  {
-   "key": "dungeon_wall_50_door",
-   "type": "prop",
-   "prop": "ad_baked",
-   "args": {
-    "vs": 0.5,
-    "tints": {
-     "Wall": "Primary"
-    }
-   },
-   "budget": "wall",
-   "description": "Dungeon wall run 50_door (lilac stone blocks, tinted per room)"
-  },
-  {
-   "key": "dungeon_wall_5_lite",
-   "type": "prop",
-   "prop": "ad_baked",
-   "args": {
-    "vs": 0.5,
-    "tints": {
-     "Wall": "Primary"
-    }
-   },
-   "budget": "wall",
-   "description": "Dungeon wall run 5_lite (lilac stone blocks, tinted per room)"
-  },
-  {
-   "key": "dungeon_wall_62_door",
-   "type": "prop",
-   "prop": "ad_baked",
-   "args": {
-    "vs": 0.5,
-    "tints": {
-     "Wall": "Primary"
-    }
-   },
-   "budget": "wall",
-   "description": "Dungeon wall run 62_door (lilac stone blocks, tinted per room)"
-  },
-  {
-   "key": "dungeon_wall_62_door20",
-   "type": "prop",
-   "prop": "ad_baked",
-   "args": {
-    "vs": 0.5,
-    "tints": {
-     "Wall": "Primary"
-    }
-   },
-   "budget": "wall",
-   "description": "Dungeon wall run 62_door20 (lilac stone blocks, tinted per room)"
-  },
-  {
-   "key": "dungeon_wall_72",
-   "type": "prop",
-   "prop": "ad_baked",
-   "args": {
-    "vs": 0.5,
-    "tints": {
-     "Wall": "Primary"
-    }
-   },
-   "budget": "wall",
-   "description": "Dungeon wall run 72 (lilac stone blocks, tinted per room)"
-  },
-  {
-   "key": "dungeon_floor_28x22",
-   "type": "prop",
-   "prop": "ad_baked",
-   "args": {
-    "vs": 0.5,
-    "aligny": true,
-    "tints": {
-     "Floor": "Primary"
-    }
-   },
-   "budget": "wall",
-   "description": "Dungeon sandstone flagstone floor 28x22 (tinted per room)"
-  },
-  {
-   "key": "dungeon_floor_28x24",
-   "type": "prop",
-   "prop": "ad_baked",
-   "args": {
-    "vs": 0.5,
-    "aligny": true,
-    "tints": {
-     "Floor": "Primary"
-    }
-   },
-   "budget": "wall",
-   "description": "Dungeon sandstone flagstone floor 28x24 (tinted per room)"
-  },
-  {
-   "key": "dungeon_floor_44x48",
-   "type": "prop",
-   "prop": "ad_baked",
-   "args": {
-    "vs": 0.5,
-    "aligny": true,
-    "tints": {
-     "Floor": "Primary"
-    }
-   },
-   "budget": "wall",
-   "description": "Dungeon sandstone flagstone floor 44x48 (tinted per room)"
-  },
-  {
-   "key": "dungeon_floor_48x48",
-   "type": "prop",
-   "prop": "ad_baked",
-   "args": {
-    "vs": 0.5,
-    "aligny": true,
-    "tints": {
-     "Floor": "Primary"
-    }
-   },
-   "budget": "wall",
-   "description": "Dungeon sandstone flagstone floor 48x48 (tinted per room)"
-  },
-  {
-   "key": "dungeon_floor_60x72",
-   "type": "prop",
-   "prop": "ad_baked",
-   "args": {
-    "vs": 0.5,
-    "aligny": true,
-    "tints": {
-     "Floor": "Primary"
-    }
-   },
-   "budget": "wall",
-   "description": "Dungeon sandstone flagstone floor 60x72 (tinted per room)"
-  },
-  {
-   "key": "dungeon_pillar_7",
-   "type": "prop",
-   "prop": "ad_baked",
-   "args": {
-    "vs": 0.25,
-    "tints": {
-     "Pillar": "Primary"
-    }
-   },
-   "budget": "small",
-   "description": "Dungeon pillar 7 (tinted per room)"
-  },
-  {
-   "key": "dungeon_pillar_10p5",
-   "type": "prop",
-   "prop": "ad_baked",
-   "args": {
-    "vs": 0.25,
-    "tints": {
-     "Pillar": "Primary"
-    }
-   },
-   "budget": "small",
-   "description": "Dungeon pillar 10p5 (tinted per room)"
-  },
-  {
-   "key": "dungeon_pillar_15",
-   "type": "prop",
-   "prop": "ad_baked",
-   "args": {
-    "vs": 0.25,
-    "tints": {
-     "Pillar": "Primary"
-    }
-   },
-   "budget": "small",
-   "description": "Dungeon pillar 15 (tinted per room)"
-  },
-  {
-   "key": "dungeon_pillar_15p5",
-   "type": "prop",
-   "prop": "ad_baked",
-   "args": {
-    "vs": 0.25,
-    "tints": {
-     "Pillar": "Primary"
-    }
-   },
-   "budget": "small",
-   "description": "Dungeon pillar 15p5 (tinted per room)"
-  },
-  {
    "key": "dungeon_torch",
    "type": "prop",
    "prop": "ad_baked",
@@ -794,16 +530,6 @@
    },
    "budget": "small",
    "description": "Dungeon crate (scaled per placement)"
-  },
-  {
-   "key": "dungeon_door_8",
-   "type": "prop",
-   "prop": "ad_baked",
-   "args": {
-    "vs": 0.25
-   },
-   "budget": "small",
-   "description": "Dungeon portcullis frame (the bars stay parts)"
   },
   {
    "key": "dungeon_stalagmite",
@@ -857,6 +583,1809 @@
    },
    "budget": "tiny",
    "description": "Dungeon floor crack (scaled per placement)"
+  },
+  {
+   "key": "dungeon_c_wall_10_lite",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "c",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Root Conservatory: wall run 10_lite"
+  },
+  {
+   "key": "dungeon_c_wall_15_lite",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "c",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Root Conservatory: wall run 15_lite"
+  },
+  {
+   "key": "dungeon_c_wall_22_lite",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "c",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Root Conservatory: wall run 22_lite"
+  },
+  {
+   "key": "dungeon_c_wall_24",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "c",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Root Conservatory: wall run 24"
+  },
+  {
+   "key": "dungeon_c_wall_30",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "c",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Root Conservatory: wall run 30"
+  },
+  {
+   "key": "dungeon_c_wall_30_door",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "c",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Root Conservatory: wall run 30_door"
+  },
+  {
+   "key": "dungeon_c_wall_30_door_lite",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "c",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Root Conservatory: wall run 30_door_lite"
+  },
+  {
+   "key": "dungeon_c_wall_30_lite",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "c",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Root Conservatory: wall run 30_lite"
+  },
+  {
+   "key": "dungeon_c_wall_48",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "c",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Root Conservatory: wall run 48"
+  },
+  {
+   "key": "dungeon_c_wall_50_door",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "c",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Root Conservatory: wall run 50_door"
+  },
+  {
+   "key": "dungeon_c_wall_5_lite",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "c",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Root Conservatory: wall run 5_lite"
+  },
+  {
+   "key": "dungeon_c_wall_62_door",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "c",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Root Conservatory: wall run 62_door"
+  },
+  {
+   "key": "dungeon_c_wall_62_door20",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "c",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Root Conservatory: wall run 62_door20"
+  },
+  {
+   "key": "dungeon_c_wall_72",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "c",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Root Conservatory: wall run 72"
+  },
+  {
+   "key": "dungeon_c_floor_28x22",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dfloor",
+   "args": {
+    "style": "c",
+    "piece": "floor",
+    "vs": 0.5,
+    "aligny": true,
+    "tints": {
+     "Floor": "Primary"
+    }
+   },
+   "description": "bug #5 The Root Conservatory: floor 28x22"
+  },
+  {
+   "key": "dungeon_c_floor_28x24",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dfloor",
+   "args": {
+    "style": "c",
+    "piece": "floor",
+    "vs": 0.5,
+    "aligny": true,
+    "tints": {
+     "Floor": "Primary"
+    }
+   },
+   "description": "bug #5 The Root Conservatory: floor 28x24"
+  },
+  {
+   "key": "dungeon_c_floor_44x48",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dfloor",
+   "args": {
+    "style": "c",
+    "piece": "floor",
+    "vs": 0.5,
+    "aligny": true,
+    "tints": {
+     "Floor": "Primary"
+    }
+   },
+   "description": "bug #5 The Root Conservatory: floor 44x48"
+  },
+  {
+   "key": "dungeon_c_floor_48x48",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dfloor",
+   "args": {
+    "style": "c",
+    "piece": "floor",
+    "vs": 0.5,
+    "aligny": true,
+    "tints": {
+     "Floor": "Primary"
+    }
+   },
+   "description": "bug #5 The Root Conservatory: floor 48x48"
+  },
+  {
+   "key": "dungeon_c_floor_60x72",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dfloor",
+   "args": {
+    "style": "c",
+    "piece": "floor",
+    "vs": 0.5,
+    "aligny": true,
+    "tints": {
+     "Floor": "Primary"
+    }
+   },
+   "description": "bug #5 The Root Conservatory: floor 60x72"
+  },
+  {
+   "key": "dungeon_c_pillar_7",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dpillar",
+   "args": {
+    "style": "c",
+    "piece": "pillar",
+    "vs": 0.25,
+    "tints": {
+     "Pillar": "Primary"
+    }
+   },
+   "description": "bug #5 The Root Conservatory: pillar 7"
+  },
+  {
+   "key": "dungeon_c_pillar_10p5",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dpillar",
+   "args": {
+    "style": "c",
+    "piece": "pillar",
+    "vs": 0.25,
+    "tints": {
+     "Pillar": "Primary"
+    }
+   },
+   "description": "bug #5 The Root Conservatory: pillar 10p5"
+  },
+  {
+   "key": "dungeon_c_pillar_15",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dpillar",
+   "args": {
+    "style": "c",
+    "piece": "pillar",
+    "vs": 0.25,
+    "tints": {
+     "Pillar": "Primary"
+    }
+   },
+   "description": "bug #5 The Root Conservatory: pillar 15"
+  },
+  {
+   "key": "dungeon_c_pillar_15p5",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dpillar",
+   "args": {
+    "style": "c",
+    "piece": "pillar",
+    "vs": 0.25,
+    "tints": {
+     "Pillar": "Primary"
+    }
+   },
+   "description": "bug #5 The Root Conservatory: pillar 15p5"
+  },
+  {
+   "key": "dungeon_c_door_8",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "ddoor",
+   "args": {
+    "style": "c",
+    "piece": "door",
+    "vs": 0.25,
+    "pad": 7.0
+   },
+   "description": "bug #5 The Root Conservatory: door frame"
+  },
+  {
+   "key": "dungeon_c_dais",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "ddais",
+   "args": {
+    "style": "c",
+    "piece": "dais",
+    "vs": 0.2,
+    "aligny": true
+   },
+   "description": "bug #5 The Root Conservatory: the boss dais + stairs"
+  },
+  {
+   "key": "dungeon_c_carpet",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dcarpet",
+   "args": {
+    "style": "c",
+    "piece": "carpet",
+    "vs": 0.25
+   },
+   "description": "bug #5 The Root Conservatory: the boss room's runner"
+  },
+  {
+   "key": "dungeon_c_throne",
+   "type": "prop",
+   "prop": "dp_design",
+   "budget": "dthrone",
+   "args": {
+    "style": "c",
+    "what": "throne"
+   },
+   "description": "bug #5 The Root Conservatory: throne"
+  },
+  {
+   "key": "dungeon_c_statue",
+   "type": "prop",
+   "prop": "dp_design",
+   "budget": "dprop",
+   "args": {
+    "style": "c",
+    "what": "statue"
+   },
+   "description": "bug #5 The Root Conservatory: statue"
+  },
+  {
+   "key": "dungeon_c_brazier",
+   "type": "prop",
+   "prop": "dp_design",
+   "budget": "dthrone",
+   "args": {
+    "style": "c",
+    "what": "brazier"
+   },
+   "description": "bug #5 The Root Conservatory: brazier"
+  },
+  {
+   "key": "dungeon_c_banner",
+   "type": "prop",
+   "prop": "dp_design",
+   "budget": "dsmall",
+   "args": {
+    "style": "c",
+    "what": "banner"
+   },
+   "description": "bug #5 The Root Conservatory: banner"
+  },
+  {
+   "key": "dungeon_c_curio",
+   "type": "prop",
+   "prop": "dp_design",
+   "budget": "dprop",
+   "args": {
+    "style": "c",
+    "what": "curio"
+   },
+   "description": "bug #5 The Root Conservatory: curio"
+  },
+  {
+   "key": "dungeon_c_torch",
+   "type": "prop",
+   "prop": "dp_design",
+   "budget": "dsmall",
+   "args": {
+    "style": "c",
+    "what": "torch"
+   },
+   "description": "bug #5 The Root Conservatory: torch"
+  },
+  {
+   "key": "dungeon_c_arch_10",
+   "type": "prop",
+   "prop": "dp_design",
+   "budget": "dthrone",
+   "args": {
+    "style": "c",
+    "what": "arch_10"
+   },
+   "description": "bug #5 The Root Conservatory: arch_10"
+  },
+  {
+   "key": "dungeon_c_arch_6",
+   "type": "prop",
+   "prop": "dp_design",
+   "budget": "dprop",
+   "args": {
+    "style": "c",
+    "what": "arch_6"
+   },
+   "description": "bug #5 The Root Conservatory: arch_6"
+  },
+  {
+   "key": "dungeon_b_wall_10_lite",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "b",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Weatherworks: wall run 10_lite"
+  },
+  {
+   "key": "dungeon_b_wall_15_lite",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "b",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Weatherworks: wall run 15_lite"
+  },
+  {
+   "key": "dungeon_b_wall_22_lite",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "b",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Weatherworks: wall run 22_lite"
+  },
+  {
+   "key": "dungeon_b_wall_24",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "b",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Weatherworks: wall run 24"
+  },
+  {
+   "key": "dungeon_b_wall_30",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "b",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Weatherworks: wall run 30"
+  },
+  {
+   "key": "dungeon_b_wall_30_door",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "b",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Weatherworks: wall run 30_door"
+  },
+  {
+   "key": "dungeon_b_wall_30_door_lite",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "b",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Weatherworks: wall run 30_door_lite"
+  },
+  {
+   "key": "dungeon_b_wall_30_lite",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "b",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Weatherworks: wall run 30_lite"
+  },
+  {
+   "key": "dungeon_b_wall_48",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "b",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Weatherworks: wall run 48"
+  },
+  {
+   "key": "dungeon_b_wall_50_door",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "b",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Weatherworks: wall run 50_door"
+  },
+  {
+   "key": "dungeon_b_wall_5_lite",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "b",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Weatherworks: wall run 5_lite"
+  },
+  {
+   "key": "dungeon_b_wall_62_door",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "b",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Weatherworks: wall run 62_door"
+  },
+  {
+   "key": "dungeon_b_wall_62_door20",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "b",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Weatherworks: wall run 62_door20"
+  },
+  {
+   "key": "dungeon_b_wall_72",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "b",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Weatherworks: wall run 72"
+  },
+  {
+   "key": "dungeon_b_floor_28x22",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dfloor",
+   "args": {
+    "style": "b",
+    "piece": "floor",
+    "vs": 0.5,
+    "aligny": true,
+    "tints": {
+     "Floor": "Primary"
+    }
+   },
+   "description": "bug #5 The Weatherworks: floor 28x22"
+  },
+  {
+   "key": "dungeon_b_floor_28x24",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dfloor",
+   "args": {
+    "style": "b",
+    "piece": "floor",
+    "vs": 0.5,
+    "aligny": true,
+    "tints": {
+     "Floor": "Primary"
+    }
+   },
+   "description": "bug #5 The Weatherworks: floor 28x24"
+  },
+  {
+   "key": "dungeon_b_floor_44x48",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dfloor",
+   "args": {
+    "style": "b",
+    "piece": "floor",
+    "vs": 0.5,
+    "aligny": true,
+    "tints": {
+     "Floor": "Primary"
+    }
+   },
+   "description": "bug #5 The Weatherworks: floor 44x48"
+  },
+  {
+   "key": "dungeon_b_floor_48x48",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dfloor",
+   "args": {
+    "style": "b",
+    "piece": "floor",
+    "vs": 0.5,
+    "aligny": true,
+    "tints": {
+     "Floor": "Primary"
+    }
+   },
+   "description": "bug #5 The Weatherworks: floor 48x48"
+  },
+  {
+   "key": "dungeon_b_floor_60x72",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dfloor",
+   "args": {
+    "style": "b",
+    "piece": "floor",
+    "vs": 0.5,
+    "aligny": true,
+    "tints": {
+     "Floor": "Primary"
+    }
+   },
+   "description": "bug #5 The Weatherworks: floor 60x72"
+  },
+  {
+   "key": "dungeon_b_pillar_7",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dpillar",
+   "args": {
+    "style": "b",
+    "piece": "pillar",
+    "vs": 0.25,
+    "tints": {
+     "Pillar": "Primary"
+    }
+   },
+   "description": "bug #5 The Weatherworks: pillar 7"
+  },
+  {
+   "key": "dungeon_b_pillar_10p5",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dpillar",
+   "args": {
+    "style": "b",
+    "piece": "pillar",
+    "vs": 0.25,
+    "tints": {
+     "Pillar": "Primary"
+    }
+   },
+   "description": "bug #5 The Weatherworks: pillar 10p5"
+  },
+  {
+   "key": "dungeon_b_pillar_15",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dpillar",
+   "args": {
+    "style": "b",
+    "piece": "pillar",
+    "vs": 0.25,
+    "tints": {
+     "Pillar": "Primary"
+    }
+   },
+   "description": "bug #5 The Weatherworks: pillar 15"
+  },
+  {
+   "key": "dungeon_b_pillar_15p5",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dpillar",
+   "args": {
+    "style": "b",
+    "piece": "pillar",
+    "vs": 0.25,
+    "tints": {
+     "Pillar": "Primary"
+    }
+   },
+   "description": "bug #5 The Weatherworks: pillar 15p5"
+  },
+  {
+   "key": "dungeon_b_door_8",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "ddoor",
+   "args": {
+    "style": "b",
+    "piece": "door",
+    "vs": 0.25,
+    "pad": 7.0
+   },
+   "description": "bug #5 The Weatherworks: door frame"
+  },
+  {
+   "key": "dungeon_b_dais",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "ddais",
+   "args": {
+    "style": "b",
+    "piece": "dais",
+    "vs": 0.2,
+    "aligny": true
+   },
+   "description": "bug #5 The Weatherworks: the boss dais + stairs"
+  },
+  {
+   "key": "dungeon_b_carpet",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dcarpet",
+   "args": {
+    "style": "b",
+    "piece": "carpet",
+    "vs": 0.25
+   },
+   "description": "bug #5 The Weatherworks: the boss room's runner"
+  },
+  {
+   "key": "dungeon_b_throne",
+   "type": "prop",
+   "prop": "dp_design",
+   "budget": "dthrone",
+   "args": {
+    "style": "b",
+    "what": "throne"
+   },
+   "description": "bug #5 The Weatherworks: throne"
+  },
+  {
+   "key": "dungeon_b_statue",
+   "type": "prop",
+   "prop": "dp_design",
+   "budget": "dprop",
+   "args": {
+    "style": "b",
+    "what": "statue"
+   },
+   "description": "bug #5 The Weatherworks: statue"
+  },
+  {
+   "key": "dungeon_b_brazier",
+   "type": "prop",
+   "prop": "dp_design",
+   "budget": "dthrone",
+   "args": {
+    "style": "b",
+    "what": "brazier"
+   },
+   "description": "bug #5 The Weatherworks: brazier"
+  },
+  {
+   "key": "dungeon_b_banner",
+   "type": "prop",
+   "prop": "dp_design",
+   "budget": "dsmall",
+   "args": {
+    "style": "b",
+    "what": "banner"
+   },
+   "description": "bug #5 The Weatherworks: banner"
+  },
+  {
+   "key": "dungeon_b_curio",
+   "type": "prop",
+   "prop": "dp_design",
+   "budget": "dprop",
+   "args": {
+    "style": "b",
+    "what": "curio"
+   },
+   "description": "bug #5 The Weatherworks: curio"
+  },
+  {
+   "key": "dungeon_b_torch",
+   "type": "prop",
+   "prop": "dp_design",
+   "budget": "dsmall",
+   "args": {
+    "style": "b",
+    "what": "torch"
+   },
+   "description": "bug #5 The Weatherworks: torch"
+  },
+  {
+   "key": "dungeon_b_arch_10",
+   "type": "prop",
+   "prop": "dp_design",
+   "budget": "dthrone",
+   "args": {
+    "style": "b",
+    "what": "arch_10"
+   },
+   "description": "bug #5 The Weatherworks: arch_10"
+  },
+  {
+   "key": "dungeon_b_arch_6",
+   "type": "prop",
+   "prop": "dp_design",
+   "budget": "dprop",
+   "args": {
+    "style": "b",
+    "what": "arch_6"
+   },
+   "description": "bug #5 The Weatherworks: arch_6"
+  },
+  {
+   "key": "dungeon_a_wall_10_lite",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "a",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: wall run 10_lite"
+  },
+  {
+   "key": "dungeon_a_wall_15_lite",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "a",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: wall run 15_lite"
+  },
+  {
+   "key": "dungeon_a_wall_22_lite",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "a",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: wall run 22_lite"
+  },
+  {
+   "key": "dungeon_a_wall_24",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "a",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: wall run 24"
+  },
+  {
+   "key": "dungeon_a_wall_30",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "a",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: wall run 30"
+  },
+  {
+   "key": "dungeon_a_wall_30_door",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "a",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: wall run 30_door"
+  },
+  {
+   "key": "dungeon_a_wall_30_door_lite",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "a",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: wall run 30_door_lite"
+  },
+  {
+   "key": "dungeon_a_wall_30_lite",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "a",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: wall run 30_lite"
+  },
+  {
+   "key": "dungeon_a_wall_48",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "a",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: wall run 48"
+  },
+  {
+   "key": "dungeon_a_wall_50_door",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "a",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: wall run 50_door"
+  },
+  {
+   "key": "dungeon_a_wall_5_lite",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "a",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: wall run 5_lite"
+  },
+  {
+   "key": "dungeon_a_wall_62_door",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "a",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: wall run 62_door"
+  },
+  {
+   "key": "dungeon_a_wall_62_door20",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "a",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: wall run 62_door20"
+  },
+  {
+   "key": "dungeon_a_wall_72",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dwall",
+   "args": {
+    "style": "a",
+    "piece": "wall",
+    "vs": 0.25,
+    "tints": {
+     "Wall": "Primary"
+    }
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: wall run 72"
+  },
+  {
+   "key": "dungeon_a_floor_28x22",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dfloor",
+   "args": {
+    "style": "a",
+    "piece": "floor",
+    "vs": 0.5,
+    "aligny": true,
+    "tints": {
+     "Floor": "Primary"
+    }
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: floor 28x22"
+  },
+  {
+   "key": "dungeon_a_floor_28x24",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dfloor",
+   "args": {
+    "style": "a",
+    "piece": "floor",
+    "vs": 0.5,
+    "aligny": true,
+    "tints": {
+     "Floor": "Primary"
+    }
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: floor 28x24"
+  },
+  {
+   "key": "dungeon_a_floor_44x48",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dfloor",
+   "args": {
+    "style": "a",
+    "piece": "floor",
+    "vs": 0.5,
+    "aligny": true,
+    "tints": {
+     "Floor": "Primary"
+    }
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: floor 44x48"
+  },
+  {
+   "key": "dungeon_a_floor_48x48",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dfloor",
+   "args": {
+    "style": "a",
+    "piece": "floor",
+    "vs": 0.5,
+    "aligny": true,
+    "tints": {
+     "Floor": "Primary"
+    }
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: floor 48x48"
+  },
+  {
+   "key": "dungeon_a_floor_60x72",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dfloor",
+   "args": {
+    "style": "a",
+    "piece": "floor",
+    "vs": 0.5,
+    "aligny": true,
+    "tints": {
+     "Floor": "Primary"
+    }
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: floor 60x72"
+  },
+  {
+   "key": "dungeon_a_pillar_7",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dpillar",
+   "args": {
+    "style": "a",
+    "piece": "pillar",
+    "vs": 0.25,
+    "tints": {
+     "Pillar": "Primary"
+    }
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: pillar 7"
+  },
+  {
+   "key": "dungeon_a_pillar_10p5",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dpillar",
+   "args": {
+    "style": "a",
+    "piece": "pillar",
+    "vs": 0.25,
+    "tints": {
+     "Pillar": "Primary"
+    }
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: pillar 10p5"
+  },
+  {
+   "key": "dungeon_a_pillar_15",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dpillar",
+   "args": {
+    "style": "a",
+    "piece": "pillar",
+    "vs": 0.25,
+    "tints": {
+     "Pillar": "Primary"
+    }
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: pillar 15"
+  },
+  {
+   "key": "dungeon_a_pillar_15p5",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dpillar",
+   "args": {
+    "style": "a",
+    "piece": "pillar",
+    "vs": 0.25,
+    "tints": {
+     "Pillar": "Primary"
+    }
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: pillar 15p5"
+  },
+  {
+   "key": "dungeon_a_door_8",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "ddoor",
+   "args": {
+    "style": "a",
+    "piece": "door",
+    "vs": 0.25,
+    "pad": 7.0
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: door frame"
+  },
+  {
+   "key": "dungeon_a_dais",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "ddais",
+   "args": {
+    "style": "a",
+    "piece": "dais",
+    "vs": 0.2,
+    "aligny": true
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: the boss dais + stairs"
+  },
+  {
+   "key": "dungeon_a_carpet",
+   "type": "prop",
+   "prop": "ds_baked",
+   "budget": "dcarpet",
+   "args": {
+    "style": "a",
+    "piece": "carpet",
+    "vs": 0.25
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: the boss room's runner"
+  },
+  {
+   "key": "dungeon_a_throne",
+   "type": "prop",
+   "prop": "dp_design",
+   "budget": "dthrone",
+   "args": {
+    "style": "a",
+    "what": "throne"
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: throne"
+  },
+  {
+   "key": "dungeon_a_statue",
+   "type": "prop",
+   "prop": "dp_design",
+   "budget": "dprop",
+   "args": {
+    "style": "a",
+    "what": "statue"
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: statue"
+  },
+  {
+   "key": "dungeon_a_brazier",
+   "type": "prop",
+   "prop": "dp_design",
+   "budget": "dthrone",
+   "args": {
+    "style": "a",
+    "what": "brazier"
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: brazier"
+  },
+  {
+   "key": "dungeon_a_banner",
+   "type": "prop",
+   "prop": "dp_design",
+   "budget": "dsmall",
+   "args": {
+    "style": "a",
+    "what": "banner"
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: banner"
+  },
+  {
+   "key": "dungeon_a_curio",
+   "type": "prop",
+   "prop": "dp_design",
+   "budget": "dprop",
+   "args": {
+    "style": "a",
+    "what": "curio"
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: curio"
+  },
+  {
+   "key": "dungeon_a_torch",
+   "type": "prop",
+   "prop": "dp_design",
+   "budget": "dsmall",
+   "args": {
+    "style": "a",
+    "what": "torch"
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: torch"
+  },
+  {
+   "key": "dungeon_a_arch_10",
+   "type": "prop",
+   "prop": "dp_design",
+   "budget": "dthrone",
+   "args": {
+    "style": "a",
+    "what": "arch_10"
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: arch_10"
+  },
+  {
+   "key": "dungeon_a_arch_6",
+   "type": "prop",
+   "prop": "dp_design",
+   "budget": "dprop",
+   "args": {
+    "style": "a",
+    "what": "arch_6"
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: arch_6"
+  },
+  {
+   "key": "dungeon_b_cloud",
+   "type": "prop",
+   "prop": "dp_design",
+   "budget": "dsmall",
+   "args": {
+    "style": "b",
+    "what": "cloud",
+    "sig": false
+   },
+   "description": "bug #5 The Weatherworks: the captured storm cloud"
+  },
+  {
+   "key": "dungeon_b_ring",
+   "type": "prop",
+   "prop": "dp_design",
+   "budget": "dsmall",
+   "args": {
+    "style": "b",
+    "what": "ring",
+    "sig": false
+   },
+   "description": "bug #5 The Weatherworks: an astrolabe ring (scaled per ring, spun by DungeonFx)"
+  },
+  {
+   "key": "dungeon_a_window",
+   "type": "prop",
+   "prop": "dp_design",
+   "budget": "dprop",
+   "args": {
+    "style": "a",
+    "what": "window"
+   },
+   "description": "bug #5 The Cloudkeep Undercroft: the round sky window"
+  },
+  {
+   "key": "dungeon_barrel",
+   "type": "prop",
+   "prop": "dp_design",
+   "budget": "dprop",
+   "args": {
+    "style": "",
+    "what": "barrel"
+   },
+   "description": "bug #5 shared: barrel"
+  },
+  {
+   "key": "dungeon_cauldron",
+   "type": "prop",
+   "prop": "dp_design",
+   "budget": "dprop",
+   "args": {
+    "style": "",
+    "what": "cauldron"
+   },
+   "description": "bug #5 shared: cauldron"
+  },
+  {
+   "key": "dungeon_table",
+   "type": "prop",
+   "prop": "ad_baked",
+   "budget": "small",
+   "args": {
+    "vs": 0.25,
+    "tints": {}
+   },
+   "description": "bug #5 shared: the table's Part build baked (art rule)"
+  },
+  {
+   "key": "dungeon_hay",
+   "type": "prop",
+   "prop": "ad_baked",
+   "budget": "small",
+   "args": {
+    "vs": 0.25,
+    "tints": {}
+   },
+   "description": "bug #5 shared: the hay's Part build baked (art rule)"
+  },
+  {
+   "key": "dungeon_bench",
+   "type": "prop",
+   "prop": "ad_baked",
+   "budget": "small",
+   "args": {
+    "vs": 0.25,
+    "tints": {}
+   },
+   "description": "bug #5 shared: the bench's Part build baked (art rule)"
+  },
+  {
+   "key": "dungeon_chain",
+   "type": "prop",
+   "prop": "ad_baked",
+   "budget": "small",
+   "args": {
+    "vs": 0.125,
+    "tints": {}
+   },
+   "description": "bug #5 shared: the chain's Part build baked (art rule)"
+  },
+  {
+   "key": "dungeon_candles",
+   "type": "prop",
+   "prop": "ad_baked",
+   "budget": "small",
+   "args": {
+    "vs": 0.125,
+    "tints": {}
+   },
+   "description": "bug #5 shared: the candles's Part build baked (art rule)"
+  },
+  {
+   "key": "dungeon_chandelier",
+   "type": "prop",
+   "prop": "ad_baked",
+   "budget": "small",
+   "args": {
+    "vs": 0.25,
+    "tints": {}
+   },
+   "description": "bug #5 shared: the chandelier's Part build baked (art rule)"
+  },
+  {
+   "key": "dungeon_hearth",
+   "type": "prop",
+   "prop": "ad_baked",
+   "budget": "small",
+   "args": {
+    "vs": 0.25,
+    "tints": {}
+   },
+   "description": "bug #5 shared: the hearth's Part build baked (art rule)"
+  },
+  {
+   "key": "dungeon_rug_10x7",
+   "type": "prop",
+   "prop": "ad_baked",
+   "budget": "small",
+   "args": {
+    "vs": 0.25,
+    "tints": {
+     "Rug": "Primary",
+     "RugInlay": "Secondary"
+    }
+   },
+   "description": "bug #5 shared: the rug_10x7's Part build baked (art rule)"
+  },
+  {
+   "key": "dungeon_winerack",
+   "type": "prop",
+   "prop": "ad_baked",
+   "budget": "small",
+   "args": {
+    "vs": 0.25,
+    "tints": {}
+   },
+   "description": "bug #5 shared: the winerack's Part build baked (art rule)"
+  },
+  {
+   "key": "dungeon_rack",
+   "type": "prop",
+   "prop": "ad_baked",
+   "budget": "small",
+   "args": {
+    "vs": 0.25,
+    "tints": {}
+   },
+   "description": "bug #5 shared: the rack's Part build baked (art rule)"
+  },
+  {
+   "key": "dungeon_shield",
+   "type": "prop",
+   "prop": "ad_baked",
+   "budget": "small",
+   "args": {
+    "vs": 0.125,
+    "tints": {
+     "ShieldCrest": "Secondary"
+    }
+   },
+   "description": "bug #5 shared: the shield's Part build baked (art rule)"
+  },
+  {
+   "key": "dungeon_wx_nature_high",
+   "type": "prop",
+   "prop": "dp_wx",
+   "budget": "dwx",
+   "args": {
+    "element": "nature",
+    "spot": "high",
+    "sig": false
+   },
+   "description": "bug #5 element weathering: nature (under the cornice)"
+  },
+  {
+   "key": "dungeon_wx_nature_low",
+   "type": "prop",
+   "prop": "dp_wx",
+   "budget": "dwx",
+   "args": {
+    "element": "nature",
+    "spot": "low",
+    "sig": false
+   },
+   "description": "bug #5 element weathering: nature (at the wall foot)"
+  },
+  {
+   "key": "dungeon_wx_earth_high",
+   "type": "prop",
+   "prop": "dp_wx",
+   "budget": "dwx",
+   "args": {
+    "element": "earth",
+    "spot": "high",
+    "sig": false
+   },
+   "description": "bug #5 element weathering: earth (under the cornice)"
+  },
+  {
+   "key": "dungeon_wx_earth_low",
+   "type": "prop",
+   "prop": "dp_wx",
+   "budget": "dwx",
+   "args": {
+    "element": "earth",
+    "spot": "low",
+    "sig": false
+   },
+   "description": "bug #5 element weathering: earth (at the wall foot)"
+  },
+  {
+   "key": "dungeon_wx_water_high",
+   "type": "prop",
+   "prop": "dp_wx",
+   "budget": "dwx",
+   "args": {
+    "element": "water",
+    "spot": "high",
+    "sig": false
+   },
+   "description": "bug #5 element weathering: water (under the cornice)"
+  },
+  {
+   "key": "dungeon_wx_water_low",
+   "type": "prop",
+   "prop": "dp_wx",
+   "budget": "dwx",
+   "args": {
+    "element": "water",
+    "spot": "low",
+    "sig": false
+   },
+   "description": "bug #5 element weathering: water (at the wall foot)"
+  },
+  {
+   "key": "dungeon_wx_frost_high",
+   "type": "prop",
+   "prop": "dp_wx",
+   "budget": "dwx",
+   "args": {
+    "element": "frost",
+    "spot": "high",
+    "sig": false
+   },
+   "description": "bug #5 element weathering: frost (under the cornice)"
+  },
+  {
+   "key": "dungeon_wx_frost_low",
+   "type": "prop",
+   "prop": "dp_wx",
+   "budget": "dwx",
+   "args": {
+    "element": "frost",
+    "spot": "low",
+    "sig": false
+   },
+   "description": "bug #5 element weathering: frost (at the wall foot)"
+  },
+  {
+   "key": "dungeon_wx_flame_high",
+   "type": "prop",
+   "prop": "dp_wx",
+   "budget": "dwx",
+   "args": {
+    "element": "flame",
+    "spot": "high",
+    "sig": false
+   },
+   "description": "bug #5 element weathering: flame (under the cornice)"
+  },
+  {
+   "key": "dungeon_wx_flame_low",
+   "type": "prop",
+   "prop": "dp_wx",
+   "budget": "dwx",
+   "args": {
+    "element": "flame",
+    "spot": "low",
+    "sig": false
+   },
+   "description": "bug #5 element weathering: flame (at the wall foot)"
+  },
+  {
+   "key": "dungeon_wx_storm_high",
+   "type": "prop",
+   "prop": "dp_wx",
+   "budget": "dwx",
+   "args": {
+    "element": "storm",
+    "spot": "high",
+    "sig": false
+   },
+   "description": "bug #5 element weathering: storm (under the cornice)"
+  },
+  {
+   "key": "dungeon_wx_storm_low",
+   "type": "prop",
+   "prop": "dp_wx",
+   "budget": "dwx",
+   "args": {
+    "element": "storm",
+    "spot": "low",
+    "sig": false
+   },
+   "description": "bug #5 element weathering: storm (at the wall foot)"
+  },
+  {
+   "key": "dungeon_wx_celestial_high",
+   "type": "prop",
+   "prop": "dp_wx",
+   "budget": "dwx",
+   "args": {
+    "element": "celestial",
+    "spot": "high",
+    "sig": false
+   },
+   "description": "bug #5 element weathering: celestial (under the cornice)"
+  },
+  {
+   "key": "dungeon_wx_celestial_low",
+   "type": "prop",
+   "prop": "dp_wx",
+   "budget": "dwx",
+   "args": {
+    "element": "celestial",
+    "spot": "low",
+    "sig": false
+   },
+   "description": "bug #5 element weathering: celestial (at the wall foot)"
+  },
+  {
+   "key": "dungeon_wx_shadow_high",
+   "type": "prop",
+   "prop": "dp_wx",
+   "budget": "dwx",
+   "args": {
+    "element": "shadow",
+    "spot": "high",
+    "sig": false
+   },
+   "description": "bug #5 element weathering: shadow (under the cornice)"
+  },
+  {
+   "key": "dungeon_wx_shadow_low",
+   "type": "prop",
+   "prop": "dp_wx",
+   "budget": "dwx",
+   "args": {
+    "element": "shadow",
+    "spot": "low",
+    "sig": false
+   },
+   "description": "bug #5 element weathering: shadow (at the wall foot)"
   }
  ],
  "sets": [],

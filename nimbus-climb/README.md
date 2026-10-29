@@ -1456,7 +1456,8 @@ src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientS
              wildflower clumps near the camera from the server's Meadow scatter and sways them), RingCrowdFx (the Champion
              Ring's sky-sailor crowd: the drummer's beat, bob and sway, cheers on big hits / round won / lost, the boss
              round's storm, flags and bell; no sound here: the audio branch's RingAmbience finds the stand by its
-             NC_RingCrowd tag and the drummer by NC_RingDrummer), MeshFallback (shows the
+             NC_RingCrowd tag and the drummer by NC_RingDrummer), DungeonFx (the Weatherworks boss room's astrolabe:
+             turns the NC_DungeonSpin rings near the camera; no sound here), MeshFallback (shows the
              block pet on a device where a Blender model failed to load)
 ```
 

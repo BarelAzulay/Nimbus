@@ -2352,7 +2352,9 @@ stalagmites, a turquoise pool + waterfall wall; bridges over a dark chasm (an in
 * `DungeonBuilder.Build(lobbyInfo) -> DungeonInfo` (W3; the portal + the template folder); templates built ONCE by Voxel into
   `ServerStorage.DungeonTemplates` (`Hall_1..3`, `Cellar_1..3`, `Cave_1..3`, `Bridge_1..2`, `Throne_1`, `Entrance_1`, `Corridor_Straight / Left /
   Right`, `Treasure_1`) in a `task.spawn` after boot with `task.wait()` between sets (a run needing a missing set builds it synchronously,
-  ~0.1 s). Budgets per template: wave room <= **320**, boss room <= **420**, hall <= 140, corridor <= 70, treasure <= 90 (~4,000 total).
+  ~0.1 s). Budgets per template: wave room <= **320**, boss room <= **420**, hall <= 140, corridor <= 70, treasure <= 90 (~4,000 per
+  style set). Bug #5: THREE style sets (c floors 1-3, b 4-8, a 9-12, `DungeonBuilder.StyleTiers`) live side by side, each <= 4,000
+  (up to ~12,000 Parts of server memory in ServerStorage, which never replicates), all built at startup over ~51 frames.
   Each template carries `Accent` attributes on <= 40 recolourable parts and attachments `Entrance`, `Exit`, `Threshold`, `Spawn1..4`, `Dais`.
 * `BuildRun(index, floor, seed) -> Pocket` (origin `Vector3.new(9000 + col x 600, 160, 9000 + row x 600)`, holder `workspace.Dungeons.
   Dungeon_<index>`; rooms chained along a seeded corridor path, never overlapping), `PlaceRoom(pocket, room)` (clone, recolour Accent parts
@@ -2723,7 +2725,7 @@ Fixture tests: the lead freezes `tools/fixtures/DataService_phase4.lua` and `too
 | Lobby parts | <= 8000 incl. the six gates (<= 120 each), `PartCount` written | LobbyBuilder (`p5world_lobby`, `p5world_style`) |
 | Arena island | <= 2800 (its portals moved to the court) | ArenaBuilder (`smoke_p3_arenaworld`) |
 | Home plot | <= 950 fully built; Farm 150, Garden 95, Fence 90, Fountain 80 (3.6) | HomeBuilder (`smoke_p2_homeworld`) |
-| Dungeon | templates <= 4,000 in ServerStorage; <= 950 live parts per run; `MAX_DUNGEONS 8` (12 only after the owner's MicroProfiler check; wave rooms 320 -> 260 via `Voxel` `MaxParts` is the next knob); a room parented in ONE step | DungeonBuilder (`p5dgn_world`) |
+| Dungeon | templates <= 4,000 per style set in ServerStorage (bug #5: three sets c / b / a, <= ~12,000 in all, built at startup over ~51 frames); <= 950 live parts per run; `MAX_DUNGEONS 8` (12 only after the owner's MicroProfiler check; wave rooms 320 -> 260 via `Voxel` `MaxParts` is the next knob); a room parented in ONE step | DungeonBuilder (`p5dgn_world`) |
 | Client total (streaming is OFF: every client holds everything) | <= **45,000** BaseParts in Workspace worst case: lobby 8,000 + NPCs 2,600 + arena 2,800 + 16 plots x 950 + 8 runs x 950 + 2 ring pockets x 600 + the live obby course + tokens / coins; `p5world_client_total` boots the server world, builds 16 Sky Castle plots, 2 ring pockets and 8 dungeon runs (8 x 950 stand-in parts until W3, real runs after) and asserts the count, printing the breakdown | lead (`smoke_p5_world.lua`, worldlobby adds it in W2) |
 | Client home | <= 12 roaming pets (own home evolved Low <= 380 / 520), <= 36 coins x 6 parts, puffs / berries <= 16 | HomeFx (`client_p5home_roam`) |
 | Battle units | own fighter High, helpers Low, enemies Low; raids ~25 units | BattleController |

@@ -103,6 +103,8 @@ local K = {
 	BACK_ACTION = "NimbusDungeonBack",
 	LIGHT_ID = "Dungeon",
 	LIGHT_SECONDS = 1,
+	MOOD_RETRY = 1, -- bug #5 review: re-read the tier mood every 1 s ...
+	MOOD_TRIES = 10, -- ... up to 10 s while the run is lit (streaming / a slow join)
 	ZOOM_RUN = 14, -- bug batch 2 (#19): the camera zoom cap inside a run (rooms are 16 studs high)
 }
 
@@ -1944,8 +1946,37 @@ function R.lightingStack()
 	return R.LS or nil
 end
 
+-- bug #5: each style tier has its own mood (DungeonBuilder.Styles[s].Mood, a little darker deeper in the tier); the
+-- server writes it on the pocket's holder (MoodAmbient / MoodOutdoor / MoodBrightness / MoodContrast / MoodTint).
+-- No holder attributes (an older server, the lobby) = the contract 5.6 preset. The mood is never darker than that
+-- preset (ambient per channel, brightness): the review's phone-readability cap (DungeonBuilder.MoodFloor, server side).
+local function atLeast(c, lo)
+	return Color3.new(math.max(c.R, lo.R), math.max(c.G, lo.G), math.max(c.B, lo.B))
+end
+function R.mood(holder)
+	local amb = holder and holder:GetAttribute("MoodAmbient")
+	if typeof(amb) ~= "Color3" then
+		return nil
+	end
+	local out = holder:GetAttribute("MoodOutdoor")
+	local tint = holder:GetAttribute("MoodTint")
+	return {
+		Lighting = {
+			Ambient = atLeast(amb, PRESET.Lighting.Ambient),
+			OutdoorAmbient = atLeast(typeof(out) == "Color3" and out or PRESET.Lighting.OutdoorAmbient, PRESET.Lighting.OutdoorAmbient),
+		},
+		ColorCorrection = {
+			Brightness = math.max(tonumber(holder:GetAttribute("MoodBrightness")) or PRESET.ColorCorrection.Brightness, PRESET.ColorCorrection.Brightness),
+			Contrast = tonumber(holder:GetAttribute("MoodContrast")) or PRESET.ColorCorrection.Contrast,
+			TintColor = typeof(tint) == "Color3" and tint or PRESET.ColorCorrection.TintColor,
+		},
+	}
+end
+
 function R.preset()
-	local preset = { Lighting = PRESET.Lighting, ColorCorrection = PRESET.ColorCorrection }
+	local mood = R.mood(R.findPocket and R.findPocket() or nil)
+	S.MoodSet = mood ~= nil
+	local preset = { Lighting = mood and mood.Lighting or PRESET.Lighting, ColorCorrection = mood and mood.ColorCorrection or PRESET.ColorCorrection }
 	local atmosphere = game:GetService("Lighting"):FindFirstChildOfClass("Atmosphere")
 	if atmosphere then
 		if not R.BaseDensity then
@@ -1967,6 +1998,25 @@ function R.light(on)
 	end
 	if on then
 		H.safe("light push", LS.Push, K.LIGHT_ID, R.preset(), K.LIGHT_SECONDS)
+		if not S.MoodSet then
+			-- the run started before the player stood in the pocket (streaming, a slow join): re-read the style's mood
+			-- every K.MOOD_RETRY s up to K.MOOD_TRIES times while the run's lighting is on, push it once it can be read
+			S.MoodGen = (S.MoodGen or 0) + 1
+			local gen = S.MoodGen
+			task.spawn(function()
+				for _ = 1, K.MOOD_TRIES or 10 do
+					task.wait(K.MOOD_RETRY or 1)
+					if not S.Lit or S.MoodSet or S.MoodGen ~= gen then
+						return
+					end
+					local preset = R.preset()
+					if S.MoodSet then
+						H.safe("light push", LS.Push, K.LIGHT_ID, preset, K.LIGHT_SECONDS)
+						return
+					end
+				end
+			end)
+		end
 	else
 		H.safe("light pop", LS.Pop, K.LIGHT_ID, K.LIGHT_SECONDS)
 	end
@@ -2299,5 +2349,8 @@ function DungeonController.Init()
 		end
 	end)
 end
+
+-- TESTS ONLY (smoke_bug5_dungeon client_bug5dgn_mood): the tier mood reader, the preset it never goes below, the retry
+DungeonController._Mood = { Read = R.mood, Preset = PRESET, Tries = K.MOOD_TRIES, Retry = K.MOOD_RETRY }
 
 return DungeonController

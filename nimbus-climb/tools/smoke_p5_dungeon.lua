@@ -1890,21 +1890,26 @@ local function serverScenarios()
 		local CollectionService = game:GetService("CollectionService")
 		local ServerStorage = game:GetService("ServerStorage")
 		-- templates: every name, within its budget, with the attachments
-		local folder = db.EnsureTemplates()
+		-- bug #5: three looks (StyleTiers: c floors 1-3, b 4-8, a 9-12), one template set per style
+		local styles = db.StyleOrder or { "b" }
+		local folder = db.EnsureTemplates("all")
 		T.check(folder ~= nil and folder.Parent == ServerStorage and folder.Name == "DungeonTemplates", "p5 world: the templates live in ServerStorage.DungeonTemplates")
-		local total = 0
+		local total, totals = 0, {}
 		local over = {}
 		local missingAtt = {}
+		for _, st in ipairs(styles) do
+		totals[st] = 0
 		for _, name in ipairs(db.Templates) do
-			local model = db.Template(name)
+			local model = db.Template(name, st)
 			local g = db.Geo[name]
 			if not model or not g then
-				over[#over + 1] = name .. " missing"
+				over[#over + 1] = st .. "/" .. name .. " missing"
 			else
 				local n = db.CountParts(model)
-				total = total + n
+				totals[st] = totals[st] + n
+				total = math.max(total, totals[st])
 				if n > g.Budget then
-					over[#over + 1] = name .. " " .. n .. " > " .. g.Budget
+					over[#over + 1] = st .. "/" .. name .. " " .. n .. " > " .. g.Budget
 				end
 				local base = model.PrimaryPart
 				local want = { "Entrance", "Exit" }
@@ -1927,21 +1932,24 @@ local function serverScenarios()
 					end
 				end
 				if accents > 40 then
-					over[#over + 1] = name .. " accents " .. accents
+					over[#over + 1] = st .. "/" .. name .. " accents " .. accents
 				end
 			end
 		end
-		T.check(#over == 0, "p5 world: 17 templates within their budgets (wave room <= 320, boss <= 420, hall <= 140, corridor <= 70, treasure <= 90; <= 40 Accent parts)", table.concat(over, ", "))
+		end
+		T.check(#over == 0, "p5 world: 17 templates of every style within their budgets (wave room <= 320, boss <= 420, hall <= 140, corridor <= 70, treasure <= 90; <= 40 Accent parts)", table.concat(over, ", "))
 		T.check(#missingAtt == 0, "p5 world: every template carries Entrance / Exit (+ Threshold, Spawn1..4, Dais on rooms)", table.concat(missingAtt, ", "))
-		T.check(total <= 4000, "p5 world: the whole template set is <= 4,000 parts (" .. total .. ")")
+		T.check(total <= 4000, "p5 world: each style's whole template set is <= 4,000 parts (worst " .. total .. ")")
 		-- the look (Phase 6 A1: the P4 look) on the templates: SmoothPlastic (Neon / Glass / ForceField for glow, water
 		-- and shimmer), blocks only (no Ball / Cylinder), a bright colourful palette (no muted P5 greys: the
 		-- area-weighted saturation of the big opaque faces >= 0.2)
 		local P4MAT = { [Enum.Material.SmoothPlastic] = true, [Enum.Material.Neon] = true, [Enum.Material.Glass] = true, [Enum.Material.ForceField] = true }
 		local badMat, badShape = {}, {}
+		local satBy = {}
+		for _, st in ipairs(styles) do
 		local satArea, area = 0, 0
 		for _, name in ipairs(db.Templates) do
-			local model = db.Template(name)
+			local model = db.Template(name, st)
 			for _, part in ipairs(model:GetDescendants()) do
 				if part:IsA("BasePart") and part.Transparency < 0.99 then
 					local s = part.Size
@@ -1963,10 +1971,23 @@ local function serverScenarios()
 				end
 			end
 		end
+		satBy[st] = area > 0 and satArea / area or 0
+		end
 		T.check(#badMat == 0, "p5 world: template materials are the P4 look (SmoothPlastic / Neon / Glass / ForceField; P6 A1)", table.concat(badMat, ", "):sub(1, 300))
 		T.check(#badShape == 0, "p5 world: templates are blocky voxels (no Ball / Cylinder parts; P6 A1)", table.concat(badShape, ", "):sub(1, 300))
-		local wsat = area > 0 and satArea / area or 0
-		T.check(wsat >= 0.2, string.format("p5 world: a cute, colourful dungeon (area-weighted saturation of the big faces %.2f >= 0.2; P6 A1)", wsat))
+		-- bug #5 (the player's note: "the higher level of the dungeon the more serious it looks"): the entry floors keep
+		-- the P6 A1 colourful look (c >= 0.2); each deeper style is no more saturated than the one before it, and never
+		-- dead grey (>= 0.05)
+		local wsat = satBy[styles[1]] or 0
+		T.check(wsat >= 0.2, string.format("p5 world: a cute, colourful entry dungeon (%s: area-weighted saturation of the big faces %.2f >= 0.2; P6 A1)", tostring(styles[1]), wsat))
+		local order, line = true, {}
+		for i, st in ipairs(styles) do
+			line[#line + 1] = string.format("%s %.2f", st, satBy[st] or 0)
+			if (satBy[st] or 0) < 0.05 or (i > 1 and (satBy[st] or 0) > (satBy[styles[i - 1]] or 0) + 1e-6) then
+				order = false
+			end
+		end
+		T.check(#styles == 3 and order, "p5 world: deeper styles look more serious (saturation never rises with depth, never below 0.05)", table.concat(line, ", "))
 		-- the layout never overlaps over 20 seeds (every floor kind)
 		local overlaps = {}
 		for seed = 1, 20 do
@@ -2218,11 +2239,37 @@ local function serverScenarios()
 		end
 		local abs, max = math.abs, math.max
 		local CollectionService = game:GetService("CollectionService")
-		local folder = db.EnsureTemplates()
+		-- bug #5: every style's templates + a run in each style tier (floor 1 = c, 5 = b, 10 = a); the lobby portal's two
+		-- torches are the only base dungeon_torch tags
+		local folder = db.EnsureTemplates("all")
 		local pocket = db.BuildRun(11, 1, 4242)
+		local pocketB = db.BuildRun(12, 5, 4243)
+		local pocketA = db.BuildRun(10, 10, 4244)
+		-- a placed room per run (its doors in the run's style + the element weathering), and one weathering probe per
+		-- element on a Room template so every dungeon_wx_* key is placed once
+		for _, pk in ipairs({ pocket, pocketB, pocketA }) do
+			if pk then
+				pcall(db.PlaceRoom, pk, 2)
+			end
+		end
+		local probe = Instance.new("Model")
+		probe.Name = "WeatherProbe"
+		probe.Parent = folder
+		local probeRoom = db.Template("Cellar_1", "b")
+		local placedWx = 0
+		for element in pairs(db.WeatherKeys or {}) do
+			local okW, n = pcall(db._PlaceWeather, probe, probeRoom, element, db.Geo.Cellar_1)
+			placedWx = placedWx + ((okW and tonumber(n)) or 0)
+		end
+		T.check(placedWx >= 16, "dungeon mesh: every element's weathering finds its spots on a room (2 high + 2 low each)", tostring(placedWx))
+		local okInfo, info = pcall(db.GetInfo)
+		local portal = okInfo and type(info) == "table" and info.Portal or nil
+		local function inPocket(t, pk)
+			return pk and pk.Model and t:IsDescendantOf(pk.Model)
+		end
 		local recs = {}
 		for target, r in pairs(Mesh.Placed) do
-			local live = target.Parent and (target:IsDescendantOf(folder) or (pocket and pocket.Model and target:IsDescendantOf(pocket.Model)))
+			local live = target.Parent and (target:IsDescendantOf(folder) or inPocket(target, pocket) or inPocket(target, pocketB) or inPocket(target, pocketA) or (portal and target:IsDescendantOf(portal)))
 			if live then
 				recs[#recs + 1] = { Target = target, Key = r.Key, Origin = r.Origin, Look = r.Look, Keep = r.Keep, Scale = r.Scale, Name = target:GetFullName() }
 			end
@@ -2245,8 +2292,9 @@ local function serverScenarios()
 		local inst = K.moduleInstance("shared/MeshLibrary")
 		local dir = inst and inst.Parent and inst.Parent:FindFirstChild("MeshManifests")
 		local allKeys = {}
+		local retired = db.RetiredKeys or {}
 		for _, m in ipairs(dir and dir:GetChildren() or {}) do
-			if m:IsA("ModuleScript") and string.sub(m.Name, 1, 8) == "dungeon_" then
+			if m:IsA("ModuleScript") and string.sub(m.Name, 1, 8) == "dungeon_" and not retired[m.Name] then
 				allKeys[#allKeys + 1] = m.Name
 				if not used[m.Name] then
 					orphan[#orphan + 1] = m.Name
@@ -2257,9 +2305,27 @@ local function serverScenarios()
 		table.sort(allKeys)
 		T.check(#recs >= 200 and #missing == 0, "dungeon mesh: every tagged piece has its manifest (src/shared/MeshManifests/dungeon_*)", #recs .. " targets; missing " .. table.concat(missing, ", "))
 		T.check(#orphan == 0, "dungeon mesh: every dungeon_* key is tagged by the templates / a run", table.concat(orphan, ", "))
-		for _, key in ipairs({ "dungeon_wall_48", "dungeon_wall_50_door", "dungeon_floor_48x48", "dungeon_pillar_15p5", "dungeon_torch", "dungeon_chest", "dungeon_crate", "dungeon_rock_1", "dungeon_stalagmite", "dungeon_crack", "dungeon_door_8" }) do
+		local named = { "dungeon_chest", "dungeon_crate", "dungeon_rock_1", "dungeon_stalagmite", "dungeon_crack", "dungeon_torch" }
+		for _, s in ipairs({ "a", "b", "c" }) do
+			for _, k in ipairs({ "wall_48", "wall_50_door", "floor_48x48", "floor_60x72", "pillar_15p5", "torch", "door_8", "throne", "dais", "carpet", "statue", "brazier", "banner", "curio", "arch_10", "arch_6" }) do
+				named[#named + 1] = "dungeon_" .. s .. "_" .. k
+			end
+		end
+		for _, key in ipairs({ "dungeon_b_cloud", "dungeon_b_ring", "dungeon_a_window", "dungeon_barrel", "dungeon_shield", "dungeon_rug_10x7" }) do
+			named[#named + 1] = key
+		end
+		for _, key in ipairs(named) do
 			T.check(used[key] ~= nil, "dungeon mesh: " .. key .. " is tagged", tostring(used[key]))
 		end
+		-- bug #5: the retired base shell keys (today's uploaded lilac look) are tagged by nothing any more
+		local stillBase = {}
+		for key in pairs(retired) do
+			if used[key] then
+				stillBase[#stillBase + 1] = key
+			end
+		end
+		table.sort(stillBase)
+		T.check(next(retired) ~= nil and #stillBase == 0, "dungeon mesh: no piece is tagged with a retired base shell key (dungeon_wall_* / floor_* / pillar_* / door_8)", table.concat(stillBase, ", "))
 		local sig = T.tally("dungeon mesh: each piece matches its key's LayoutSig (else rebuild: blender/build_all.py --class arenadungeon)")
 		local nest = T.tally("dungeon mesh: targets never nest")
 		local glow = T.tally("dungeon mesh: every visible Neon part of a piece is in its keep list (torch flames stay)")
@@ -2317,7 +2383,8 @@ local function serverScenarios()
 			end
 			if top.Parent == folder then
 				local man = ML.Manifest(r.Key)
-				per[top.Name] = (per[top.Name] or 0) + (tonumber(man and man.Raw and man.Raw.Tris) or 0)
+				local id = top.Name .. "/" .. tostring(top:GetAttribute("Style"))
+				per[id] = (per[id] or 0) + (tonumber(man and man.Raw and man.Raw.Tris) or 0)
 				for _, part in ipairs(man and man.Raw and man.Raw.Parts or {}) do
 					worst = max(worst, tonumber(part.Tris) or 0)
 				end
@@ -2364,7 +2431,8 @@ local function serverScenarios()
 			end
 			local kinds = {}
 			for _, d in ipairs(tagged) do
-				kinds[string.match(d:GetAttribute("ML_DressKey"), "^dungeon_(%a+)")] = true
+				local dk = d:GetAttribute("ML_DressKey")
+				kinds[string.match(dk, "^dungeon_%a_(%a+)") or string.match(dk, "^dungeon_(%a+)")] = true
 			end
 			T.check(#tagged >= 40 and kinds.wall and kinds.floor and kinds.rock and kinds.torch and kinds.pillar and kinds.stalagmite and kinds.crack, "dungeon mesh: with ids the Cave's walls, floor, pillars, torches, rocks, stalagmites and cracks are tagged", #tagged .. " tagged")
 			local where = T.tally("dungeon mesh: each tag lands its mesh on the Tag origin (pivot * ML_Offset)")
@@ -2408,6 +2476,7 @@ local function serverScenarios()
 			end
 			cave:Destroy()
 		end
+		probe:Destroy()
 		ML._Reset()
 		local mlFolder = game:GetService("ReplicatedStorage"):FindFirstChild("MeshLibrary")
 		if mlFolder and not hadMLFolder then
@@ -2415,6 +2484,12 @@ local function serverScenarios()
 		end
 		if pocket then
 			db.FreeRun(11)
+		end
+		if pocketB then
+			db.FreeRun(12)
+		end
+		if pocketA then
+			db.FreeRun(10)
 		end
 		K.flushErrors("p5dgn_mesh")
 		K.flushWarnings("p5dgn_mesh")

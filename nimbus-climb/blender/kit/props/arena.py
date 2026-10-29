@@ -69,10 +69,15 @@ function D.run()
 	AB.Build(info)
 	AB.BuildPocket(1)
 	DB.Build(info)
-	DB.EnsureTemplates()
-	local okRun, pocket = pcall(DB.BuildRun, 1, 1, 7)
-	if okRun and type(pocket) == 'table' then
-		pcall(DB.PlaceRoom, pocket, 2)
+	-- bug #5: every style's templates (floors 1-3 c, 4-8 b, 9-12 a) and one run per style (the door frames are made at
+	-- PlaceRoom, in the run's style)
+	DB.EnsureTemplates(DB.StyleOrder and 'all' or nil)
+	local runs = DB.StyleTiers and { { 1, 1 }, { 2, 4 }, { 3, 9 } } or { { 1, 1 } }
+	for _, rf in ipairs(runs) do
+		local okRun, pocket = pcall(DB.BuildRun, rf[1], rf[2], 7)
+		if okRun and type(pocket) == 'table' then
+			pcall(DB.PlaceRoom, pocket, 2)
+		end
 	end
 	local recs = {}
 	for _, r in ipairs(AB._Kit.Targets) do r.Mesh = AB._Mesh; recs[#recs + 1] = r end
