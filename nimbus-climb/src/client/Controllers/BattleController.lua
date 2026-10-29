@@ -13,9 +13,11 @@
 --                                           with a local throttle and local checks (a refused press shakes its
 --                                           button); false when refused here
 --   BattleController.Focus(unitId)          lock an enemy (= Command("Target", unitId)); nil clears the lock
+--   BattleController.Cheer() -> bool        wave 6: Cheer up! (= Command("Cheer")): Raid / Dungeon fighters only; the
+--                                           button right above the vitals card (CheerUp) does the same
 --   BattleController.GetBattle() -> { Id, Mode, Side, Spectator, Fighter, Ended, Units, Models, Lock, Focus (= Lock),
 --                                     FighterId, Lives, Hud, Layout = "Wide" | "Compact", Cooldowns = { Element, Dash,
---                                     Swap, Buff = { [slot] = s } } (seconds left), Pending = { [action] = true },
+--                                     Swap, Cheer, Buff = { [slot] = s } } (seconds left), Cheering (the Cheer up! glow), Pending = { [action] = true },
 --                                     Speed = { Walk, Run }, Dungeon, Threat, Cue ("Dash" | nil), InterpDelay, TeamPlace,
 --                                     Round, Best, Next, ... } | nil
 --   BattleController.GetUnit(id) -> { Id, Side, Kind, Name, Hp, MaxHp, State, Meter, Model, X, Z, World, Card, Level,
@@ -197,6 +199,7 @@ local Mods = {
 	Gfx = nil, -- client/GraphicsQuality (lazy: Atk.SyncQuality)
 	Sound = nil, -- client/SoundFx (lazy: Me.Sound: the charge's inhale / shatter, the Battle music layer, Reward); false = unavailable
 	Cheer = nil, -- wave 6: client/Controllers/TrainerCheer (lazy: Cheer.Mod); false = unavailable
+	HudCtl = nil, -- wave 6: client/Controllers/HudController (lazy: CheerUp.Layout, the vitals card's rect); false = unavailable
 }
 
 local BattleController = {}
@@ -361,6 +364,13 @@ local K = {
 	LEAVE_W_TOP = 100, -- a landscape phone: right of the mode card
 	LEAVE_H_COMPACT = 46,
 	LEAVE_CARD_W = 230,
+	-- wave 6: Cheer up! (Raid / Dungeon), right above the vitals card
+	CHEER_W = 150,
+	CHEER_H = 44,
+	CHEER_GAP_PX = 8, -- screen px between the button's bottom and the vitals card's top
+	CHEER_TOUCH_PX = 46, -- a touch screen: the button is at least this tall (screen px; the 44 px tap rule)
+	CHEER_TOUCH_W_PX = 112,
+	CHEER_CENTRE_TOL = 0.15, -- the screen middle it never enters (HudController's CENTRE_TOL 0.145 + a margin)
 }
 
 local STATES = (BattleSim and BattleSim.States) or { Idle = 0, Moving = 1, Attacking = 2, Benched = 3, Casting = 4, Down = 5, Stunned = 6, Dashing = 7 }
@@ -465,6 +475,7 @@ local Net = {} -- messages
 local Cards = {} -- Phase 4: the PetCard above every battle unit
 local Ring = {} -- Phase 4: the Champion Ring HUD (round / record / next-round side card / run card)
 local Leave = {} -- LEAVE (two presses -> BattleCommand "Forfeit"): Champion Ring runs only
+local CheerUp = {} -- wave 6: the Cheer up! button (BattleCommand "Cheer"): Raid / Dungeon fighters only
 local Me = {} -- Phase 5: my fighter at the character's shoulder, my helpers behind me, the camera shake
 local Atk = {} -- pet attack VFX: client/Controllers/AttackFx first (the cube Fx.* as the fallback) + the battle poses
 
@@ -1175,8 +1186,9 @@ local function newBattle(payload, battleId)
 		lives = nil,
 		speed = nil, -- { Walk, Run }
 		lock = nil,
-		cd = { Element = 0, Dash = 0, Swap = 0, Buff = {} },
-		cdLen = { Element = 7, Dash = 2.5, Swap = 10, Buff = {} },
+		cd = { Element = 0, Dash = 0, Swap = 0, Cheer = 0, Buff = {} },
+		cdLen = { Element = 7, Dash = 2.5, Swap = 10, Cheer = 20, Buff = {} },
+		cheerUntil = 0, -- wave 6: os.clock time the Cheer up! glow ends
 		pending = {},
 		ended = false,
 		simEnded = false,
@@ -3954,14 +3966,11 @@ function Cheer.SyncPodium()
 	end
 end
 
--- my own Cheer up! landed on the server: one cheer (BattleController.Cheer's HUD part is Hud.CheerFired)
-function Cheer.Mine(B, ev)
+-- my own Cheer up! landed on the server: one cheer (the button's glow and sweep start on arrival: Net.Pre)
+function Cheer.Mine()
 	local m = Cheer.Mod()
 	if m and LocalPlayer then
 		m.Play(LocalPlayer.Character)
-	end
-	if Cheer.OnFired then
-		Cheer.OnFired(B, ev)
 	end
 end
 
@@ -4999,6 +5008,7 @@ function Hud.BuildActions()
 	end
 	Hud.attack = Hud.buttons.Attack.Button
 	Hud.leave = Leave.Make(Hud.root, 20)
+	CheerUp.Make(Hud.root)
 end
 
 ----------------------------------------------------------------------
@@ -5291,6 +5301,7 @@ function Hud.Rebuild()
 		Hud.enemies.Visible = false
 		Hud.SetMenuHidden(false)
 		Leave.Place(m, nil, false)
+		CheerUp.Place(m, nil, false)
 		return
 	end
 	local isFighting = B.Fighter and not B.ended
@@ -5361,6 +5372,7 @@ function Hud.Rebuild()
 	end
 	Hud.SetMenuHidden((isFighting or between) and m.Compact) -- a phone: the menu column steps aside (wide screens keep it)
 	Leave.Place(m, B, isFighting)
+	CheerUp.Place(m, B, isFighting)
 	Ring.PlaceNext(B)
 	Hud.FixText(Hud.root, m.F)
 	Hud.last = {}
@@ -5866,6 +5878,7 @@ function Hud.Update(B, now, force)
 	end
 	Hud.ringAt = now
 	Input.CheckPending(B, now)
+	CheerUp.Update(B, now)
 	for kind, A in pairs(Hud.buttons) do
 		local frac, color, countText = 1, COLORS.Action[kind], ""
 		if kind == "Element" or kind == "Dash" then
@@ -6003,6 +6016,9 @@ end
 
 -- the button of an action (shakes on a refusal)
 function Hud.ButtonOf(action, slot)
+	if action == "Cheer" then
+		return Hud.cheer and Hud.cheer.Button or nil
+	end
 	if action == "Buff" or action == "Swap" then
 		for _, H in ipairs(Hud.helpers or {}) do
 			if H.unit and H.unit.slot == slot then
@@ -6183,6 +6199,7 @@ function Hud.ShowResult(B, payload)
 	Hud.teamPlace = nil
 	Hud.SetMenuHidden(false)
 	Leave.Place(m, nil, false)
+	CheerUp.Place(m, nil, false)
 	local keep = St.result and St.result.payload == payload and St.result.t0 -- a relayout (rotation) keeps the timer
 	St.result = { t0 = keep or os.clock(), dur = K.RESULT_SECONDS, battle = B, payload = payload }
 	Me.MouseHold("BattleResult", true) -- the cursor is free for the card's OK
@@ -6284,6 +6301,7 @@ function Hud.SetVisible(on)
 		if Hud.leave then
 			Hud.leave.Visible = false
 		end
+		CheerUp.Place(Hud.m or {}, nil, false)
 	end
 end
 
@@ -6456,6 +6474,126 @@ function Leave.PlaceOnCard(m, B, w, y, inline)
 	b.AnchorPoint = Vector2.new(1, 0)
 	b.Position = UDim2.new(1, -K.PAD - 4, 0, y)
 	return y + K.LEAVE_H_COMPACT + K.PAD
+end
+
+----------------------------------------------------------------------
+-- wave 6: CHEER UP! (Raid / Dungeon fighters): BattleCommand "Cheer"; the server gives my fighter x (1 + CheerBoost) for
+-- CheerSeconds, cooldown CheerCooldown (BattleCatalog.Fighter; the server decides). The button sits right above the
+-- vitals card (HudController.GetLayout().Vitals: CHEER_GAP_PX above it, centred on it), so it never shares a row with
+-- the hotbar, the touch buttons or the action cluster. The gold glow behind it shows the boost, a dark veil that shrinks
+-- to the right the cooldown. The trainer's cheer emote is Cheer.Mine (TrainerCheer) on the server's Cheer event.
+----------------------------------------------------------------------
+function CheerUp.Allowed(B)
+	return B ~= nil and B.Fighter == true and not B.ended and (B.Mode == "Raid" or B.Mode == "Dungeon")
+end
+
+-- HudController (the vitals card's rect); nil when missing
+function CheerUp.Layout()
+	if Mods.HudCtl == nil then
+		Mods.HudCtl = optional(script.Parent, "HudController") or false
+	end
+	local hc = Mods.HudCtl
+	if not hc or type(hc.GetLayout) ~= "function" then
+		return nil
+	end
+	local ok, layout = pcall(hc.GetLayout)
+	local v = ok and type(layout) == "table" and layout.Vitals or nil
+	if type(v) == "table" and tonumber(v.X) and tonumber(v.Y) and tonumber(v.W) and tonumber(v.H) then
+		return v
+	end
+	return nil
+end
+
+function CheerUp.Make(parent)
+	local glow = make("Frame", { Name = "CheerGlow", BackgroundColor3 = COLORS.Gold, BackgroundTransparency = 1, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Visible = false, ZIndex = 3 }, parent)
+	Theme.Corner(glow, UDim.new(0, 18))
+	local b = make("TextButton", { Name = "Cheer", Text = "Cheer up!", AutoButtonColor = true, BackgroundColor3 = Theme.Buttons.Gold, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 1), Size = UDim2.fromOffset(K.CHEER_W, K.CHEER_H), Visible = false, ZIndex = 4 }, parent)
+	Theme.Style(b, "Button", { Size = 20, Stroke = 0.2, Outline = 2 })
+	Theme.Corner(b, UDim.new(0, 12))
+	Theme.Stroke(b, Theme.Colors.PanelInk or COLORS.Navy, 3, 0)
+	b:SetAttribute("BaseText", 20)
+	local sweep = make("Frame", { Name = "Sweep", BackgroundColor3 = COLORS.Navy, BackgroundTransparency = 0.35, BorderSizePixel = 0, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromScale(0, 1), Visible = false, ZIndex = 5 }, b)
+	Theme.Corner(sweep, UDim.new(0, 12))
+	b.Activated:Connect(function()
+		BattleController.Cheer()
+	end)
+	Hud.cheer = { Button = b, Glow = glow, Sweep = sweep }
+	return b
+end
+
+function CheerUp.Place(m, B, isFighting)
+	local C = Hud.cheer
+	if not C then
+		return
+	end
+	local on = B ~= nil and isFighting == true and CheerUp.Allowed(B)
+	C.Button.Visible = on
+	C.Glow.Visible = on
+	if not on then
+		CheerUp.placed = nil
+		return
+	end
+	local f = max(0.05, m.F)
+	local w, h = K.CHEER_W, K.CHEER_H
+	if m.Touch then
+		w = max(w, K.CHEER_TOUCH_W_PX / f)
+		h = max(h, K.CHEER_TOUCH_PX / f)
+	end
+	local v = CheerUp.Layout()
+	local cx, bottom
+	if v then
+		cx = (v.X + v.W / 2) / f
+		bottom = (v.Y - K.CHEER_GAP_PX) / f
+	else
+		cx, bottom = m.W / 2, m.H - 150 -- (no vitals card: low in the middle)
+	end
+	-- the middle of the screen stays free (HudController's CENTRE_TOL band): a landscape phone's card sits so high that the
+	-- spot above it is in that band; the button then goes beside the card in its row, on the left (between Roblox's stick
+	-- and the card: the right is the action cluster's), its top level with the card's top
+	local tol = K.CHEER_CENTRE_TOL
+	local bandL, bandR = m.W * (0.5 - tol), m.W * (0.5 + tol)
+	local midY = (m.VY / 2 - m.Inset) / f
+	local bandT, bandB = midY - m.VY * tol / f, midY + m.VY * tol / f
+	if cx + w / 2 > bandL and cx - w / 2 < bandR and bottom > bandT and bottom - h < bandB then
+		if v then
+			cx = (v.X - K.CHEER_GAP_PX) / f - w / 2
+			bottom = v.Y / f + h
+		else
+			cx = bandL - 4 - w / 2
+		end
+	end
+	cx = clamp(cx, w / 2 + K.EDGE, m.W - w / 2 - K.EDGE)
+	C.Button.Size = UDim2.fromOffset(w, h)
+	C.Button.Position = UDim2.fromOffset(cx, bottom)
+	C.Glow.Size = UDim2.fromOffset(w + 16, h + 16)
+	C.Glow.Position = UDim2.fromOffset(cx, bottom - h / 2)
+	CheerUp.placed = v and string.format("%d,%d,%d,%d", v.X, v.Y, v.W, v.H) or "-"
+end
+
+-- 10 Hz: the sweep, the glow; a vitals card that moved takes the button with it
+function CheerUp.Update(B, now)
+	local C = Hud.cheer
+	if not C or not C.Button.Visible then
+		return
+	end
+	local v = CheerUp.Layout()
+	local key = v and string.format("%d,%d,%d,%d", v.X, v.Y, v.W, v.H) or "-"
+	if key ~= CheerUp.placed and Hud.m then
+		CheerUp.Place(Hud.m, B, B.Fighter and not B.ended)
+	end
+	local left = cdLeft(B, "Cheer", nil, now)
+	setVisible(C.Sweep, left > 0.05)
+	if left > 0.05 then
+		C.Sweep.Size = UDim2.fromScale(clamp(left / cdLen(B, "Cheer"), 0, 1), 1)
+	end
+	local cheering = now < (B.cheerUntil or 0)
+	local glow = cheering and (0.35 + 0.3 * (0.5 + 0.5 * sin(now * 6))) or 1
+	if abs(C.Glow.BackgroundTransparency - glow) > 0.02 then
+		C.Glow.BackgroundTransparency = glow
+	end
+	if C.Button:GetAttribute("Cheering") ~= cheering then
+		C.Button:SetAttribute("Cheering", cheering)
+	end
 end
 
 ----------------------------------------------------------------------
@@ -7553,7 +7691,7 @@ end
 ----------------------------------------------------------------------
 -- Commands (BattleCommand(action, arg)); the server decides everything, the client predicts only the button's ring
 ----------------------------------------------------------------------
-local VALID_ACTIONS = { Attack = true, Element = true, Special = true, Dash = true, Target = true, Buff = true, Swap = true, Forfeit = true }
+local VALID_ACTIONS = { Attack = true, Element = true, Special = true, Dash = true, Target = true, Buff = true, Swap = true, Forfeit = true, Cheer = true }
 
 local function commandRemote()
 	if St.remoteCmd and St.remoteCmd.Parent then
@@ -7572,6 +7710,7 @@ function Input.CooldownLengths(B)
 		Element = num(F.ElementCooldown, 7),
 		Dash = num(F.DashCooldown, 2.5),
 		Swap = num(F.SwapCooldown, 10),
+		Cheer = num(F.CheerCooldown, 20),
 		Buff = {},
 	}
 	for slot = 1, 4 do
@@ -7630,6 +7769,14 @@ function BattleController.Command(action, arg)
 		if not f or not f.special or f.meter < METER_MAX then
 			return refuse(action)
 		end
+	elseif action == "Cheer" then
+		-- (wave 6) Raid / Dungeon only; the Ring / PvP podium cheer is the server's
+		if not CheerUp.Allowed(B) then
+			return false
+		end
+		if arg ~= nil or cdLeft(B, "Cheer", nil, now) > K.CD_SLACK then
+			return refuse(action)
+		end
 	elseif (action == "Attack" or action == "Target") and arg ~= nil then
 		local u = B.units[arg]
 		if not u or u.ally or u.hp <= 0 then
@@ -7659,6 +7806,11 @@ function BattleController.Command(action, arg)
 	return true
 end
 
+-- wave 6: Cheer up! (the button does the same)
+function BattleController.Cheer()
+	return BattleController.Command("Cheer")
+end
+
 -- lock-on: Target(id) (nil clears); the server echoes the lock (Order "Target")
 function BattleController.Focus(unitId)
 	local B = St.battle
@@ -7676,7 +7828,7 @@ end
 function Input.Predict(B, action, arg, now)
 	local pend = B.pending
 	local cd = B.cd
-	if action == "Element" or action == "Dash" or action == "Swap" then
+	if action == "Element" or action == "Dash" or action == "Swap" or action == "Cheer" then
 		pend[action] = { t = now, prev = cd[action] or 0 }
 		cd[action] = now + (B.cdLen[action] or 1)
 	elseif action == "Buff" then
@@ -7731,7 +7883,7 @@ function Input.Revert(B, action, shake)
 		return
 	end
 	B.pending[action] = nil
-	if action == "Element" or action == "Dash" or action == "Swap" then
+	if action == "Element" or action == "Dash" or action == "Swap" or action == "Cheer" then
 		B.cd[action] = p.prev or 0
 	elseif action == "Buff" then
 		B.cd.Buff[p.slot] = p.prev or 0
@@ -7955,7 +8107,7 @@ function Net.Team(B, payload)
 			B.speed = { Walk = tonumber(team.Speed.Walk), Run = tonumber(team.Speed.Run) }
 		end
 		local cds = type(team.Cooldowns) == "table" and team.Cooldowns or {}
-		for _, kind in ipairs({ "Element", "Dash", "Swap" }) do
+		for _, kind in ipairs({ "Element", "Dash", "Swap", "Cheer" }) do
 			local left = num(cds[kind], 0)
 			B.cd[kind] = left > 0 and (now + left) or 0
 		end
@@ -8032,6 +8184,15 @@ function Net.Pre(B, ev)
 			if not Input.Confirm(B, kind) then
 				B.cd[kind] = now + (B.cdLen[kind] or 1)
 			end
+			Hud.ringAt = 0
+		end
+	elseif t == (EV.Cheer or "Cheer") then
+		if tonumber(ev.owner) == me then
+			if not Input.Confirm(B, "Cheer") then
+				B.cd.Cheer = now + (B.cdLen.Cheer or 20)
+			end
+			local F = BattleCatalog and BattleCatalog.Fighter or {}
+			B.cheerUntil = now + num(F.CheerSeconds, 5)
 			Hud.ringAt = 0
 		end
 	elseif t == EV.Buff then
@@ -8703,7 +8864,7 @@ function BattleController.GetBattle()
 		Cooldowns = (function()
 			local now = os.clock()
 			local out = { Buff = {} }
-			for _, kind in ipairs({ "Element", "Dash", "Swap" }) do
+			for _, kind in ipairs({ "Element", "Dash", "Swap", "Cheer" }) do
 				out[kind] = max(0, (B.cd[kind] or 0) - now)
 			end
 			for slot, t in pairs(B.cd.Buff) do
@@ -8711,6 +8872,7 @@ function BattleController.GetBattle()
 			end
 			return out
 		end)(),
+		Cheering = os.clock() < (B.cheerUntil or 0),
 		Pending = (function()
 			local out = {}
 			for k in pairs(B.pending) do
@@ -8922,6 +9084,8 @@ function BattleController.Stop()
 	Hud.next = nil
 	Hud.info = nil
 	Hud.leave = nil
+	Hud.cheer = nil
+	CheerUp.placed = nil
 	Leave.buttons = {}
 	St.result = nil
 	St.next = nil

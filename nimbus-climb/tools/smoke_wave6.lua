@@ -27,6 +27,14 @@
 --   client_w6_podium_cheer (client world) OnPodium = true loops Animate.PlayEmote("cheer") (now, again within 4.5 s),
 --                         nil stops it; my own Cheer event plays once, another owner's none; not standing = retries;
 --                         no PlayEmote = false, no error; no Sound instance
+--   client_w6_cheer_button (client world) HudController.GetLayout().Vitals; a dungeon / raid fight shows "Cheer up!" 8 px
+--                         above the vitals card, centred on it, on screen and covering nothing (1920x1080, 1366x768); a
+--                         click = ONE BattleCommand("Cheer"), the Cheer event = the glow 5 s + the sweep 20 s + one emote;
+--                         a click in the cooldown sends nothing and shakes; ready again after 20 s; Ring / Duel: none;
+--                         End takes it away
+--   client_w6_cheer_mobile (phone world) the same placement at 844x390 / 390x844 / 749x388 on a touch phone (a landscape
+--                         phone: the spot above is the screen middle, so beside the card on the left, top level), >= 44x44 px,
+--                         clear of the action cluster, RUN / DASH and Roblox's jump button
 -- White-box: the server half reaches into battle.units / battle.teams / battle.telegraphs (same Lua state). Plain Lua 5.1
 -- syntax only.
 
@@ -1524,6 +1532,265 @@ local function clientScenarios()
 		model:Destroy()
 		T.check(#Mock.Errors == err0 and H.sounds() == sounds0, "podium cheer: no script error and no Sound instance created")
 		KC.flushErrors("client_w6_podium_cheer")
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- client_w6_cheer_button / client_w6_cheer_mobile
+	------------------------------------------------------------------------------------------------
+	-- a GUI object's rect in gui-area px (an IgnoreGuiInset = true gui is shifted up by the top inset)
+	local function rectOf(inst)
+		local g = inst:FindFirstAncestorOfClass("ScreenGui")
+		local dy = (g and g.IgnoreGuiInset) and -(Mock.TopInset or 0) or 0
+		local p, s = inst.AbsolutePosition, inst.AbsoluteSize
+		return { x0 = p.X, y0 = p.Y + dy, x1 = p.X + s.X, y1 = p.Y + s.Y + dy }
+	end
+
+	local function overlaps(a, b)
+		return a.x0 < b.x1 - 1 and b.x0 < a.x1 - 1 and a.y0 < b.y1 - 1 and b.y0 < a.y1 - 1
+	end
+
+	local function shownIn(obj)
+		local cur = obj
+		while cur and cur ~= game do
+			if cur:IsA("LayerCollector") then
+				if cur.Enabled == false then
+					return false
+				end
+			elseif cur:IsA("GuiObject") and cur.Visible == false then
+				return false
+			end
+			cur = cur.Parent
+		end
+		return cur ~= nil
+	end
+
+	local function rstr(r)
+		return fmt("%.0f,%.0f-%.0f,%.0f", r.x0, r.y0, r.x1, r.y1)
+	end
+
+	-- what Cheer up! must keep clear of (gui-area px): the vitals card, the hotbar, every other gui's buttons, the battle
+	-- HUD's other blocks + action buttons, and on touch screens Roblox's stick / jump button (Hud.TouchRects' numbers)
+	local function cheerObstacles(touch)
+		local out = {}
+		local pg = LocalPlayer:FindFirstChild("PlayerGui")
+		for _, g in ipairs(pg and pg:GetChildren() or {}) do
+			if g:IsA("ScreenGui") and g.Enabled and g.Name ~= "NimbusBattle" and g.Name ~= "NimbusBattleFx" then
+				for _, o in ipairs(g:GetDescendants()) do
+					if o:IsA("GuiButton") and shownIn(o) and o.AbsoluteSize.X > 4 and o.AbsoluteSize.X < 400 then
+						out[#out + 1] = { g.Name .. "." .. o.Name, rectOf(o) }
+					end
+				end
+				for _, name in ipairs({ "Vitals", "Hotbar" }) do
+					local o = g:FindFirstChild(name, true)
+					if o and o:IsA("GuiObject") and shownIn(o) and o.AbsoluteSize.X > 0 then
+						out[#out + 1] = { g.Name .. "." .. name, rectOf(o) }
+					end
+				end
+			end
+		end
+		local root = H.find("Root")
+		for _, block in ipairs(root and root:GetChildren() or {}) do
+			if block:IsA("GuiObject") and block.Name ~= "Cheer" and block.Name ~= "CheerGlow" and block.Name ~= "Commands"
+				and shownIn(block) and block.AbsoluteSize.X > 0 then
+				out[#out + 1] = { "Battle." .. block.Name, rectOf(block) }
+			end
+		end
+		local cmd = H.find("Root.Commands")
+		for _, b in ipairs(cmd and cmd:GetChildren() or {}) do
+			if b:IsA("GuiObject") and shownIn(b) and b.AbsoluteSize.X > 0 then
+				out[#out + 1] = { "Battle.Commands." .. b.Name, rectOf(b) }
+			end
+		end
+		if touch then
+			local vp = Mock.Viewport
+			local areaY = vp.Y - (Mock.TopInset or 0)
+			local small = min(vp.X, vp.Y) <= 500
+			local j = small and 70 or 120
+			local jb = small and 20 or j * 0.75
+			out[#out + 1] = { "Roblox jump", { x0 = vp.X - j * 1.5 - 10, y0 = areaY - jb - j, x1 = vp.X - j * 0.5 - 10, y1 = areaY - jb } }
+			local stickW = small and 110 or 190
+			local stickH = small and ((vp.Y > vp.X) and 150 or 96) or 210
+			out[#out + 1] = { "Roblox stick", { x0 = 0, y0 = areaY - stickH, x1 = stickW, y1 = areaY } }
+		end
+		return out
+	end
+
+	-- the placement rules at the current viewport -> problem | nil
+	local function cheerProblem(touch)
+		local HC = H.moduleAt("client", "Controllers/HudController")
+		local b = H.find("Root.Cheer")
+		if not b or not shownIn(b) then
+			return "Cheer not shown"
+		end
+		local v = HC and HC.GetLayout().Vitals
+		if not v then
+			return "HudController.GetLayout().Vitals is nil"
+		end
+		local r = rectOf(b)
+		local why = {}
+		local vp = Mock.Viewport
+		-- 8 px above the card, centred on it; where that spot is the middle of the screen (a landscape phone: the card sits
+		-- high) it goes beside the card instead: its right edge 8 px left of the card, its top level with the card's top
+		local cxV = v.X + v.W / 2
+		local bw, bh = r.x1 - r.x0, r.y1 - r.y0
+		local cyM = vp.Y / 2 - (Mock.TopInset or 0)
+		local aboveInMiddle = cxV - bw / 2 < vp.X * 0.645 and cxV + bw / 2 > vp.X * 0.355 and v.Y - 8 - bh < cyM + vp.Y * 0.145 and v.Y - 8 > cyM - vp.Y * 0.145
+		local above = abs((v.Y - r.y1) - 8) <= 2 and abs((r.x0 + r.x1) / 2 - cxV) <= 2
+		local beside = abs((v.X - r.x1) - 8) <= 2 and abs(r.y0 - v.Y) <= 2
+		if not (above or (aboveInMiddle and beside)) then
+			why[#why + 1] = fmt("not 8 px above the vitals card %.0f,%.0f %.0fx%.0f, centred%s", v.X, v.Y, v.W, v.H,
+				aboveInMiddle and " (that spot is the middle: then 8 px left of it, top level)" or "")
+		end
+		local areaY = vp.Y - (Mock.TopInset or 0)
+		if r.x0 < 0 or r.y0 < 0 or r.x1 > vp.X or r.y1 > areaY then
+			why[#why + 1] = "off the screen " .. rstr(r)
+		end
+		if touch and (r.x1 - r.x0 < 44 or r.y1 - r.y0 < 44) then
+			why[#why + 1] = fmt("tap target %.0fx%.0f < 44x44", r.x1 - r.x0, r.y1 - r.y0)
+		end
+		-- the GetLayout rect is the real card
+		local vr = { x0 = v.X, y0 = v.Y, x1 = v.X + v.W, y1 = v.Y + v.H }
+		local hud = LocalPlayer.PlayerGui:FindFirstChild("NimbusHud")
+		local card = hud and hud:FindFirstChild("Vitals", true)
+		if card and abs(rectOf(card).y0 - vr.y0) > 2 then
+			why[#why + 1] = fmt("GetLayout().Vitals.Y %.0f but the card's top is %.0f", vr.y0, rectOf(card).y0)
+		end
+		for _, o in ipairs(cheerObstacles(touch)) do
+			if overlaps(r, o[2]) then
+				why[#why + 1] = fmt("covers %s %s (Cheer %s)", o[1], rstr(o[2]), rstr(r))
+			end
+		end
+		if overlaps(r, vr) then
+			why[#why + 1] = "covers the vitals rect"
+		end
+		-- the middle of the screen stays free (HudController's CENTRE_TOL)
+		local cx, cy = vp.X / 2, vp.Y / 2 - (Mock.TopInset or 0)
+		if r.x0 < cx + vp.X * 0.145 and r.x1 > cx - vp.X * 0.145 and r.y0 < cy + vp.Y * 0.145 and r.y1 > cy - vp.Y * 0.145 then
+			why[#why + 1] = "in the middle of the screen " .. rstr(r)
+		end
+		return #why > 0 and table.concat(why, "; ") or nil, r
+	end
+
+	local function cheerLayouts(label, sizes, touch)
+		local BC = H.moduleAt("client", "Controllers/BattleController")
+		for _, size in ipairs(sizes) do
+			Mock.SetViewport(size[1], size[2])
+			H.step(15, 1 / 30)
+			local d = H.fighting("Dungeon")
+			local tag = label .. " " .. size[1] .. "x" .. size[2]
+			if T.check(d ~= nil and BC.GetBattle() ~= nil, tag .. ": (setup) a fighting dungeon HUD") then
+				d:run(0.6, 30)
+				local why, r = cheerProblem(touch)
+				T.check(why == nil, tag .. ": Cheer up! sits 8 px above the vitals card, centred on it, on screen, covering nothing",
+					tostring(why) .. (r and (" " .. rstr(r)) or ""))
+				H.cleanup(BC, d)
+			end
+		end
+	end
+
+	S.client_w6_cheer_button = guarded("client_w6_cheer_button", function()
+		local BC = H.moduleAt("client", "Controllers/BattleController")
+		local HC = H.moduleAt("client", "Controllers/HudController")
+		if not T.check(BC ~= nil and HC ~= nil and type(BC.Cheer) == "function", "cheer button: BattleController (Cheer) + HudController load") then
+			return
+		end
+		local err0 = #Mock.Errors
+		local calls, restore = H.fakeEmote()
+		Mock.SetViewport(1920, 1080)
+		H.step(15, 1 / 30)
+		local v = HC.GetLayout().Vitals
+		T.check(type(v) == "table" and v.W > 0 and v.H > 0 and v.Y > 0, "cheer button: HudController.GetLayout().Vitals = the vitals card's rect",
+			v and fmt("%s,%s %sx%s", tostring(v.X), tostring(v.Y), tostring(v.W), tostring(v.H)) or "nil")
+		local d = H.fighting("Dungeon")
+		if T.check(d ~= nil and BC.GetBattle() ~= nil, "cheer button: (setup) a fighting dungeon HUD") then
+			local b = H.find("Root.Cheer")
+			T.check(b ~= nil and shownIn(b) and b.Text == "Cheer up!" and b:IsA("TextButton"), "cheer button: a dungeon fight shows the TextButton \"Cheer up!\"",
+				b and tostring(b.Text) or "missing")
+			local why, r = cheerProblem(false)
+			T.check(why == nil, "cheer button 1920x1080: 8 px above the vitals card, centred on it, on screen, covering nothing", tostring(why) .. (r and (" " .. rstr(r)) or ""))
+			-- a click -> exactly one BattleCommand("Cheer"); the server's Cheer event -> the glow + the sweep
+			local mark = #Mock.RemoteLog
+			local n0 = #calls
+			local soundsAt = H.sounds()
+			Mock.Click(b)
+			d:run(0.5, 30)
+			local soundsAfter = H.sounds()
+			local B1 = BC.GetBattle()
+			T.check(H.count(mark, "Cheer") == 1, "cheer button: a click sends exactly ONE BattleCommand(\"Cheer\")", H.count(mark, "Cheer") .. " sent")
+			local sweep = b and b:FindFirstChild("Sweep")
+			local glowF = H.find("Root.CheerGlow")
+			T.check(B1.Cheering == true and b:GetAttribute("Cheering") == true and glowF ~= nil and shownIn(glowF) and glowF.BackgroundTransparency < 0.9,
+				"cheer button: the server's Cheer event starts the gold glow", fmt("Cheering %s, glow %.2f", tostring(B1.Cheering), glowF and glowF.BackgroundTransparency or -1))
+			T.check(sweep ~= nil and shownIn(sweep) and abs(sweep.Size.X.Scale - B1.Cooldowns.Cheer / 20) < 0.06 and B1.Cooldowns.Cheer > 18.5,
+				"cheer button: ...and the cooldown sweep over 20 s", fmt("sweep %.2f, cooldown %.1f s", sweep and sweep.Size.X.Scale or -1, B1.Cooldowns.Cheer or -1))
+			T.check(#calls - n0 == 1, "cheer button: ...and my avatar cheers once (TrainerCheer)", (#calls - n0) .. " plays")
+			T.check(soundsAfter == soundsAt, "cheer button: the press and the Cheer event create no Sound instance (the sound wave owns that)", soundsAt .. " -> " .. soundsAfter)
+			-- a second click during the cooldown: nothing sent, the button shakes
+			local shakes = b:GetAttribute("Shakes") or 0
+			local mark2 = #Mock.RemoteLog
+			Mock.Click(b)
+			d:run(0.3, 30)
+			T.check(H.count(mark2, "Cheer") == 0 and (b:GetAttribute("Shakes") or 0) == shakes + 1, "cheer button: a click during the cooldown sends nothing and shakes the button",
+				fmt("%d sent, shakes %d -> %d", H.count(mark2, "Cheer"), shakes, b:GetAttribute("Shakes") or 0))
+			-- the glow ends after 5 s, the sweep after 20 s
+			d:run(4.6, 10)
+			local B2 = BC.GetBattle()
+			T.check(B2.Cheering == false and b:GetAttribute("Cheering") == false and glowF.BackgroundTransparency > 0.98 and shownIn(sweep),
+				"cheer button: the glow is gone after 5 s, the sweep still runs", fmt("Cheering %s, glow %.2f", tostring(B2.Cheering), glowF.BackgroundTransparency))
+			d:run(14.4, 10)
+			T.check(shownIn(sweep) and BC.GetBattle().Cheering == false, "cheer button: 19.8 s after the press the sweep still shows")
+			d:run(0.8, 10)
+			T.check(not shownIn(sweep) and (BC.GetBattle().Cooldowns.Cheer or 1) == 0, "cheer button: after 20 s the sweep is gone (ready again)",
+				fmt("cooldown %.2f", BC.GetBattle().Cooldowns.Cheer or -1))
+			local mark3 = #Mock.RemoteLog
+			Mock.Click(b)
+			d:run(0.3, 30)
+			T.check(H.count(mark3, "Cheer") == 1 and BC.GetBattle().Cheering == true, "cheer button: ready again -> the next click is sent and cheers")
+			-- BattleController.Cheer() is the same command (refused locally during the cooldown)
+			local mark4 = #Mock.RemoteLog
+			T.check(BC.Cheer() == false and H.count(mark4, "Cheer") == 0, "cheer button: BattleController.Cheer() during the cooldown -> false, nothing sent")
+			-- End -> gone
+			H.cleanup(BC, d)
+			T.check(not shownIn(b) and (H.find("Root.Cheer") == nil or not shownIn(H.find("Root.Cheer"))), "cheer button: the battle's End takes the button away",
+				fmt("visible %s, parent %s, battle %s, gui %s", tostring(b.Visible), tostring(b.Parent and b.Parent.Name), tostring(BC.GetBattle() ~= nil),
+					tostring(b:FindFirstAncestorOfClass("ScreenGui") and b:FindFirstAncestorOfClass("ScreenGui").Enabled)))
+		end
+		-- a raid shows it too; the Ring and a duel never
+		local dr = H.fighting("Raid")
+		if T.check(dr ~= nil and BC.GetBattle() ~= nil, "cheer button: (setup) a raid fight") then
+			local b = H.find("Root.Cheer")
+			T.check(b ~= nil and shownIn(b), "cheer button: a raid fight shows it")
+			H.cleanup(BC, dr)
+		end
+		for _, mode in ipairs({ "Ring", "Duel" }) do
+			local dm = H.fighting(mode)
+			if T.check(dm ~= nil and BC.GetBattle() ~= nil, "cheer button: (setup) a " .. mode .. " fight") then
+				local b = H.find("Root.Cheer")
+				local mark = #Mock.RemoteLog
+				T.check(not (b and shownIn(b)) and BC.Cheer() == false and H.count(mark, "Cheer") == 0,
+					"cheer button: a " .. mode .. " fight has no Cheer up! (the podium cheers there) and BattleController.Cheer() sends nothing")
+				H.cleanup(BC, dm)
+			end
+		end
+		restore()
+		cheerLayouts("cheer button", { { 1366, 768 } }, false)
+		Mock.SetViewport(1920, 1080)
+		H.step(15, 1 / 30)
+		T.check(#Mock.Errors == err0, "cheer button: no script error", fmt("%d errors (%s)", #Mock.Errors - err0, tostring(Mock.Errors[#Mock.Errors])))
+		KC.flushErrors("client_w6_cheer_button")
+	end)
+
+	S.client_w6_cheer_mobile = guarded("client_w6_cheer_mobile", function()
+		local BC = H.moduleAt("client", "Controllers/BattleController")
+		if not T.check(BC ~= nil, "cheer phone: BattleController loads") then
+			return
+		end
+		local err0 = #Mock.Errors
+		cheerLayouts("cheer phone", { { 844, 390 }, { 390, 844 }, { 749, 388 } }, true)
+		Mock.SetViewport(390, 844)
+		H.step(15, 1 / 30)
+		T.check(#Mock.Errors == err0, "cheer phone: no script error")
+		KC.flushErrors("client_w6_cheer_mobile")
 	end)
 
 	return S

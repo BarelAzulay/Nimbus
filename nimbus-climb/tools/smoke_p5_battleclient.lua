@@ -1077,8 +1077,12 @@ function H.phoneChecks(BC, label)
 	local box = { x0 = W * 0.3, x1 = W * 0.7, y0 = Hh * (W > Hh and 0.35 or 0.3), y1 = Hh * (W > Hh and 0.75 or 0.7) }
 	local bad = nil
 	local root = H.find("Root")
+	-- (wave 6: Cheer up! is part of the vitals card's bottom stack, right above the HP bar as the approved design puts it,
+	-- like the card itself; client_w6_cheer_mobile keeps it out of the screen middle and clear of every control)
+	local cheer, cheerGlow = H.find("Root.Cheer"), H.find("Root.CheerGlow")
 	for _, o in ipairs(root and root:GetDescendants() or {}) do
-		if o:IsA("GuiObject") and H.shown(o) and o.BackgroundTransparency < 1 or (o:IsA("TextLabel") and H.shown(o) and o.Text ~= "") then
+		local stack = (cheer and (o == cheer or o:IsDescendantOf(cheer))) or o == cheerGlow
+		if not stack and ((o:IsA("GuiObject") and H.shown(o) and o.BackgroundTransparency < 1) or (o:IsA("TextLabel") and H.shown(o) and o.Text ~= "")) then
 			local r = H.rect(o)
 			if r.x1 - r.x0 > 2 and H.overlap(r, box) then
 				bad = o:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "") .. " " .. H.rectText(r)
