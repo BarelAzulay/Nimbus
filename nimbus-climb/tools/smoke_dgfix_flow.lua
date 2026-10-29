@@ -691,12 +691,13 @@ local function clientScenarios()
 		KC.advance(0.6)
 		T.check(frame and frame.Visible == false and fg.Enabled == false and DC.GetState().Fade == nil, "dgfix client: the overlay clears after In")
 		T.check(status and status.Text == "Walk into the room to start the fight", "dgfix client: room 1's status after the fade", status and status.Text)
-		-- the safety clear: a Fade with no room change still clears within 3 s
+		-- the safety clear: a Fade with no room change still clears within FADE_SAFETY (wave 6: 3 -> 6 s, the black waits
+		-- for a room payload that queued behind a big replication)
 		KC.toClient("DungeonState", "Fade", { Out = 0.45, Hold = 0.35, In = 0.45 })
 		KC.advance(0.6)
 		T.check(frame and frame.Visible == true, "dgfix client: (setup) a second fade with no room change")
-		KC.advance(2.6)
-		T.check(frame and frame.Visible == false and fg.Enabled == false, "dgfix client: the 3 s safety clear never leaves the screen black")
+		KC.advance(5.6)
+		T.check(frame and frame.Visible == false and fg.Enabled == false, "dgfix client: the 6 s safety clear never leaves the screen black")
 		-- junk Fade values are clamped; End clears at once
 		KC.toClient("DungeonState", "Fade", { Out = 1e9, Hold = -5, In = 0 / 0 })
 		KC.advance(0.2)

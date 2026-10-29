@@ -956,7 +956,9 @@ function Dg.lateJoin(run, player)
 	return true, run.Id
 end
 
--- Dg.enterRoom(run, room): room + 1 (and its corridor) built now, room - 1 destroyed, members placed at the Entrance
+-- Dg.enterRoom(run, room): members placed at the Entrance and the room's Run payload sent, THEN room + 1 (and its
+-- corridor) built and room - 1 destroyed. (wave 6: Roblox replicates in one ordered stream, so the ~400-540 instances of
+-- room + 1 built before sendRun went out AHEAD of the payload and could hold it past the client's fade: no walk-in)
 function Dg.enterRoom(run, room)
 	if run.State == "Ending" then
 		return
@@ -969,10 +971,6 @@ function Dg.enterRoom(run, room)
 	local info = DB.PlaceRoom(pocket, room)
 	if not info then
 		return Dg.endRun(run, false, "Error")
-	end
-	pcall(DB.PlaceRoom, pocket, room + 1)
-	if room - 1 >= 1 then
-		pcall(DB.RemoveRoom, pocket, room - 1)
 	end
 	run.Room = room
 	run.Wave = 0
@@ -989,6 +987,10 @@ function Dg.enterRoom(run, room)
 		teleport(m.Player, cf)
 	end
 	sendRun(run)
+	pcall(DB.PlaceRoom, pocket, room + 1)
+	if room - 1 >= 1 then
+		pcall(DB.RemoveRoom, pocket, room - 1)
+	end
 	markLobbyDirty()
 end
 

@@ -1210,6 +1210,299 @@ local function serverScenarios()
 		K.flushWarnings("w6_podium_lock", ALLOWED_WARNINGS)
 	end)
 
+
+	------------------------------------------------------------------------------------------------
+	-- w6_dgn_walkin_floors (Task 10: the walk-in on every floor; the server half of the evidence)
+	------------------------------------------------------------------------------------------------
+	local function dgService()
+		return req("server/Services/DungeonService")
+	end
+
+	local function dgRequest(p, action, a)
+		Mock.FromClient(K.remoteFolder():FindFirstChild("DungeonRequest"), p, action, a)
+		advance(0.05)
+	end
+
+	local function dgToPad(p)
+		local db = req("server/Services/DungeonBuilder")
+		local i = db and db.GetInfo and db.GetInfo()
+		local pad = i and (i.Pad or i.PromptPart)
+		if pad then
+			Mock.Teleport(p, CFrame.new(pad.Position + Vector3.new(0, 3.5, 0)))
+		end
+		advance(0.05)
+	end
+
+	-- the DungeonState messages to p since the log index `from`: { kind, payload, time, index }
+	local function dgMsgs(p, from)
+		local out = {}
+		local log = Mock.RemoteLog
+		for i = (from or 0) + 1, #log do
+			local e = log[i]
+			if e.remote == "DungeonState" and e.kind == "client" and e.userId == p.UserId then
+				out[#out + 1] = { kind = e.args[1], payload = e.args[2], time = e.time, index = i }
+			end
+		end
+		return out
+	end
+
+	-- every member presses E at the open door (the run's next-room prompt)
+	local function dgPressDoor(run)
+		local dg = dgService().Dg
+		local t0 = Mock.Clock.now
+		local prompt = dg.nextDoor(run)
+		while not prompt and run.State ~= "Ending" and Mock.Clock.now - t0 < 8 do
+			advance(0.25)
+			prompt = dg.nextDoor(run)
+		end
+		if not prompt then
+			return false
+		end
+		for _, uid in ipairs(run.Order) do
+			local m = run.Members[uid]
+			if m and not m.Left then
+				Mock.Teleport(m.Player, CFrame.new(prompt.Parent.Position + Vector3.new(1, 0, 0)))
+				Mock.Trigger(prompt, m.Player)
+			end
+		end
+		return true
+	end
+
+	local function dgClearRoom(run, p)
+		local bs = req("server/Services/BattleService")
+		local t0 = Mock.Clock.now
+		while run.State == "Fight" and Mock.Clock.now - t0 < 90 do
+			local b = battleRecord(bs, run.Battle)
+			local sim = b and b.Sim
+			local team = sim and sim.teamByOwner and sim.teamByOwner[p.UserId]
+			local f = team and team.fighter
+			local target = nil
+			for _, u in ipairs(sim and sim.units or {}) do
+				if u.side == 2 and u.alive then
+					u.hp = math.min(u.hp, 0.01)
+					target = target or u
+				end
+			end
+			if f and target and b.Zone then
+				f.x, f.z = target.x - 1, target.z
+				f.nextAttack = 0
+				Mock.Teleport(p, CFrame.new(b.Zone.CFrame:PointToWorldSpace(Vector3.new(target.x - 1, 3, target.z))))
+				pcall(bs.Command, p, "Attack", target.id)
+			end
+			advance(0.1)
+		end
+		advance(0.3)
+		return run.State == "Corridor" or run.State == "Treasure"
+	end
+
+	local function flatOf(v)
+		return Vector3.new(v.X, 0, v.Z)
+	end
+
+	local function pivotOf(inst)
+		if not inst then
+			return nil
+		end
+		if inst:IsA("BasePart") then
+			return inst.Position
+		end
+		local ok, cf = pcall(function()
+			return inst:GetBoundingBox()
+		end)
+		return ok and cf and cf.Position or nil
+	end
+
+	-- what DungeonController.findPocket answers from `pos`: the nearest Dungeons child within 400 studs
+	local function clientPocket(pos)
+		local folder = workspace:FindFirstChild("Dungeons")
+		local best, bestD = nil, 400
+		for _, holder in ipairs(folder and folder:GetChildren() or {}) do
+			local at = pivotOf(holder:FindFirstChild("Entrance_1") or holder:FindFirstChildWhichIsA("Model") or holder)
+			if at and (at - pos).Magnitude < bestD then
+				best, bestD = holder, (at - pos).Magnitude
+			end
+		end
+		return best, bestD
+	end
+
+	local walkStats = { lag = 0, cpu = 0 }
+
+	-- one room change under the fade, measured: -> problems (list); the worst lag / CPU go to walkStats
+	local function dgWalkRoom(p, run, room, tag)
+		local why = {}
+		local mark = #Mock.RemoteLog
+		local t0 = Mock.Clock.now
+
+		local dg = dgService().Dg
+		local real = dg.finishTransit
+		local cpu = nil
+		-- what the server created in the pocket between the room change and the room's payload: Roblox replicates it to
+		-- the client AHEAD of the payload (one ordered stream), so a big build there makes the payload late
+		local queued = nil
+		local before = nil
+		local savedHook = Mock._onRemote
+		Mock._onRemote = function(entry)
+			if before and queued == nil and entry.remote == "DungeonState" and entry.kind == "client" and entry.userId == p.UserId
+				and entry.args[1] == "Run" and type(entry.args[2]) == "table" and entry.args[2].Phase == "Threshold" and tonumber(entry.args[2].Room) == room then
+				local n = 0
+				for _, d in ipairs(run.Pocket.Model:GetDescendants()) do
+					if not before[d] then
+						n = n + 1
+					end
+				end
+				queued = n
+			end
+			if savedHook then
+				savedHook(entry)
+			end
+		end
+		dg.finishTransit = function(...)
+			local c0 = Mock.RealClock()
+			before = {}
+			for _, d in ipairs(run.Pocket.Model:GetDescendants()) do
+				before[d] = true
+			end
+			local r = real(...)
+			cpu = Mock.RealClock() - c0
+			return r
+		end
+		local pressed = dgPressDoor(run)
+		local payload = nil
+		while pressed and not payload and Mock.Clock.now - t0 < 12 do
+			advance(0.05)
+			for _, m in ipairs(dgMsgs(p, mark)) do
+				if m.kind == "Run" and m.payload.State == "Corridor" and m.payload.Phase == "Threshold" and tonumber(m.payload.Room) == room then
+					payload = m
+					break
+				end
+			end
+		end
+		dg.finishTransit = real
+		Mock._onRemote = savedHook
+		if not payload then
+			why[#why + 1] = fmt("room %d: no Corridor / Threshold Run payload (door %s, state %s:%s)", room, tostring(pressed), tostring(run.State), tostring(run.Room))
+			return why
+		end
+		local fade = nil
+		for _, m in ipairs(dgMsgs(p, mark)) do
+			if m.kind == "Fade" then
+				fade = m
+				break
+			end
+		end
+		if not fade or fade.index > payload.index then
+			why[#why + 1] = fmt("room %d: the Fade did not come before the room's payload", room)
+		else
+			local lag = payload.time - fade.time
+			walkStats.lag = max(walkStats.lag, lag)
+			local budget = (tonumber(fade.payload.Out) or 0.45) + (tonumber(fade.payload.Hold) or 0.35) + 0.5
+			if lag > budget then
+				why[#why + 1] = fmt("room %d: the payload came %.2f s after the Fade (budget %.2f)", room, lag, budget)
+			end
+		end
+		walkStats.cpu = max(walkStats.cpu, cpu or 0)
+		walkStats.rooms = walkStats.rooms or {}
+		walkStats.rooms[#walkStats.rooms + 1] = tostring(queued)
+		if queued and queued > 0 then
+			why[#why + 1] = fmt("room %d: %d new pocket instances (the next room's build) go out before the room's payload", room, queued)
+		end
+		if cpu and cpu > 0.5 then
+			why[#why + 1] = fmt("room %d: the room change took %.2f s of server CPU (the client fade holds 3 s at most)", room, cpu)
+		end
+		-- the pocket the client looks in, its Room_<n>, the Threshold, the door, the inward direction
+		local root = K.root(p)
+		local holder = workspace:FindFirstChild("Dungeons") and workspace.Dungeons:FindFirstChild("Dungeon_" .. tostring(run.Pocket.Index))
+		if not holder or holder ~= run.Pocket.Model then
+			why[#why + 1] = fmt("room %d: workspace.Dungeons.Dungeon_%s is not the run's holder", room, tostring(run.Pocket.Index))
+			return why
+		end
+		local seen, dist = clientPocket(root and root.Position or Vector3.new())
+		if seen ~= holder then
+			why[#why + 1] = fmt("room %d: from the member's root the client's findPocket picks %s (%.0f studs), not %s", room, seen and seen.Name or "nothing", dist or -1, holder.Name)
+		end
+		local model = holder:FindFirstChild("Room_" .. room)
+		local th = model and model:FindFirstChild("Threshold")
+		local door = model and model:FindFirstChild("Door_Entrance")
+		if not (th and th:IsA("BasePart")) then
+			why[#why + 1] = fmt("room %d: no Room_%d.Threshold BasePart (%s)", room, room, model and "room found" or "no room")
+		elseif not door then
+			why[#why + 1] = fmt("room %d: no Room_%d.Door_Entrance", room, room)
+		else
+			local inward = flatOf(th.Position - (pivotOf(door) or th.Position))
+			if inward.Magnitude < 0.5 then
+				why[#why + 1] = fmt("room %d: Threshold - Door_Entrance flattened %.2f stud (< 0.5)", room, inward.Magnitude)
+			end
+			if root then
+				local rel = th.CFrame:PointToObjectSpace(root.Position)
+				if math.abs(rel.X) <= th.Size.X / 2 and math.abs(rel.Z) <= th.Size.Z / 2 and math.abs(rel.Y) <= th.Size.Y / 2 + 3 then
+					why[#why + 1] = fmt("room %d: the member already stands in the Threshold box at the payload", room)
+				end
+			end
+		end
+		return why
+	end
+
+	S.w6_dgn_walkin_floors = guarded("w6_dgn_walkin_floors", function()
+		if not K.needBoot() then
+			return
+		end
+		local dgs = dgService()
+		local data = req("server/Services/DataService")
+		if not T.check(dgs ~= nil and dgs.Dg and dgs.Dg.nextDoor and data and data.MutateDungeon, "dgn walk-in floors: DungeonService + DataService load") then
+			return
+		end
+		local p = newPlayer("W6Walk", STRONG, 60)
+		data.MutateDungeon(p, function(rec)
+			rec.Best = math.max(tonumber(rec.Best) or 0, 11)
+		end)
+		-- one member through rooms 1-4 of floors 1 (the control), 2, 5, 9 and 12, one run after the other in this server
+		-- (the owner always plays floor 1 first: every later floor is a second run)
+		for runNo, floorIndex in ipairs({ 1, 2, 5, 9, 12 }) do
+			dgToPad(p)
+			dgRequest(p, "Solo", floorIndex)
+			local run = dgs.St.runOf[p]
+			local tag = fmt("dgn walk-in floors: run %d (floor %d)", runNo, floorIndex)
+			if T.check(run ~= nil and run.Floor == floorIndex, tag .. ": (setup) a solo run", run and tostring(run.Floor) or "refused") then
+				advance(1.0)
+				local problems = {}
+				local walked = 0
+				walkStats.lag, walkStats.cpu, walkStats.rooms = 0, 0, {}
+				for room = 1, 4 do
+					local w = dgWalkRoom(p, run, room, tag)
+					for _, line in ipairs(w) do
+						problems[#problems + 1] = line
+					end
+					if run.Room ~= room then
+						break
+					end
+					walked = walked + 1
+					if room < 4 then
+						-- cross, fight, clear (the next door opens)
+						local ri = run.Pocket.Rooms[room]
+						if ri and ri.Threshold then
+							Mock.Teleport(p, CFrame.new(ri.Threshold.Position))
+						end
+						advance(0.6)
+						if not dgClearRoom(run, p) then
+							problems[#problems + 1] = fmt("room %d: (setup) not cleared (%s)", room, tostring(run.State))
+							break
+						end
+					end
+				end
+				T.check(walked == 4, tag .. ": (setup) rooms 1-4 entered through their doors", walked .. " rooms")
+				T.info(fmt("%s: the worst Fade -> payload %.2f s (mock), the worst room change %.3f s of CPU (real clock); instances created before each payload: %s", tag, walkStats.lag, walkStats.cpu, table.concat(walkStats.rooms, ", ")))
+				T.check(#problems == 0, tag .. ": every room: Fade first, the payload within Out + Hold + 0.5 s, the client finds the pocket, Room_n has a Threshold + Door_Entrance >= 0.5 stud apart",
+					table.concat(problems, " | "))
+				dgRequest(p, "Quit")
+				advance(6)
+			end
+		end
+		K.removePlayers({ p })
+		advance(2)
+		K.flushErrors("w6_dgn_walkin_floors")
+		K.flushWarnings("w6_dgn_walkin_floors", ALLOWED_WARNINGS)
+	end)
+
 	return S
 end
 
@@ -1924,6 +2217,222 @@ local function clientScenarios()
 		H.cleanup(BC, d)
 		T.check(#Mock.Errors == err0, "parry fx: no script error", tostring(Mock.Errors[#Mock.Errors]))
 		KC.flushErrors("client_w6_parry_fx")
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- client_w6_walkin_floors (Task 10: the walk-in on every floor; the client half of the evidence)
+	------------------------------------------------------------------------------------------------
+	-- a pocket like DungeonBuilder's: Dungeon_1 = the hall (Entrance_1) + Room_1..4 holders (each: the room piece, the
+	-- Threshold part 10 studs past its Door_Entrance; the boss room 60 x 72), laid along -Z with 15-stud corridors
+	local W6P0 = Vector3.new(640, 80, 640)
+	local function w6Pocket(name)
+		local folder = workspace:FindFirstChild("Dungeons")
+		if not folder then
+			folder = Instance.new("Folder")
+			folder.Name = "Dungeons"
+			folder.Parent = workspace
+		end
+		local holder = Instance.new("Model")
+		holder.Name = name or "Dungeon_1"
+		local hall = Instance.new("Model")
+		hall.Name = "Entrance_1"
+		local hp = Instance.new("Part")
+		hp.Name = "Base"
+		hp.Anchored = true
+		hp.Size = Vector3.new(40, 1, 30)
+		hp.Position = W6P0 + Vector3.new(0, -3, 0)
+		hp.Parent = hall
+		hall.Parent = holder
+		local doors = {}
+		local z = W6P0.Z - 15
+		for room = 1, 4 do
+			local depth = (room == 4) and 72 or 48
+			local width = (room == 4) and 60 or 48
+			z = z - 15 -- the corridor
+			local doorZ = z
+			local staging = Instance.new("Model")
+			staging.Name = "Room_" .. room
+			local piece = Instance.new("Model")
+			piece.Name = (room == 4) and "Throne_1" or "Hall_1"
+			local base = Instance.new("Part")
+			base.Name = "Base"
+			base.Anchored = true
+			base.Size = Vector3.new(width, 1, depth)
+			base.Position = Vector3.new(W6P0.X, W6P0.Y - 3, doorZ - depth / 2)
+			base.Parent = piece
+			piece.Parent = staging
+			local th = Instance.new("Part")
+			th.Name = "Threshold"
+			th.Anchored = true
+			th.CanCollide = false
+			th.Transparency = 1
+			th.Size = Vector3.new(12, 8, 4)
+			th.Position = Vector3.new(W6P0.X, W6P0.Y + 1, doorZ - 10)
+			th.Parent = staging
+			local door = Instance.new("Model")
+			door.Name = "Door_Entrance"
+			local lintel = Instance.new("Part")
+			lintel.Name = "Lintel"
+			lintel.Anchored = true
+			lintel.Size = Vector3.new(10, 1, 1.6)
+			lintel.Position = Vector3.new(W6P0.X, W6P0.Y + 6, doorZ)
+			lintel.Parent = door
+			door.PrimaryPart = lintel
+			door.Parent = staging
+			staging.Parent = holder
+			doors[room] = { door = Vector3.new(W6P0.X, W6P0.Y, doorZ), th = th }
+			z = doorZ - depth
+		end
+		holder.Parent = folder
+		return holder, doors
+	end
+
+	local w6RunSeq = 0
+	local function w6Run(state, phase, room, id, floorIndex)
+		return { RunId = id, Floor = floorIndex or 1, Name = "Floor " .. tostring(floorIndex or 1), Element = "Nature", Room = room or 0, RoomCount = 4,
+			Wave = 0, Waves = 0, State = state, Phase = phase, Members = { { UserId = LocalPlayer.UserId, Name = LocalPlayer.Name } }, Confirmed = {},
+			NeedConfirm = 0, EnterOpen = false, Joinable = false }
+	end
+
+	local function w6StepUntil(pred, seconds)
+		local t0 = Mock.Clock.now
+		while not pred() and Mock.Clock.now - t0 < seconds do
+			Mock.Step(1 / 30)
+		end
+		return pred()
+	end
+
+	-- the entrance (Enter, the cover, the teleport to the hall, the first Run payload): -> the run id
+	local function w6StartRun(floorIndex)
+		w6RunSeq = w6RunSeq + 1
+		local id = "D6" .. tostring(w6RunSeq)
+		KC.toClient("DungeonState", "Enter", { Cover = 0.55, Reveal = 0.9, Element = "Nature", Floor = floorIndex, Name = "Floor " .. floorIndex })
+		KC.advance(0.55)
+		LocalPlayer:SetAttribute("InBattle", id)
+		Mock.Teleport(LocalPlayer, CFrame.new(W6P0 + Vector3.new(0, 0, 4), W6P0 + Vector3.new(0, 0, -10)))
+		KC.advance(0.05)
+		KC.toClient("DungeonState", "Run", w6Run("Hall", nil, 0, id, floorIndex))
+		KC.advance(1.2)
+		return id
+	end
+
+	-- one room change as DungeonService does it: Fade (+ the unchanged Run), `lag` s later the teleport to the room's
+	-- Entrance (3 studs in front of the door) and the Corridor / Threshold Run payload (`early`: the payload first, the
+	-- teleport `early` s after it) -> what the walk-in did: "Walk" reached, then back to Custom
+	local function w6Room(id, floorIndex, room, doors, prev, lag, early)
+		local cam = workspace.CurrentCamera
+		KC.toClient("DungeonState", "Fade", { Out = 0.45, Hold = 0.35, In = 0.45, Room = room })
+		KC.toClient("DungeonState", "Run", w6Run(prev.state, prev.phase, prev.room, id, floorIndex))
+		KC.advance(lag or 0.47)
+		local d = doors[room]
+		local entrance = CFrame.new(d.door + Vector3.new(0, 0, 3), d.door + Vector3.new(0, 0, -10))
+		if early then
+			Mock.Teleport(LocalPlayer, CFrame.new(d.door + Vector3.new(500, 0, 0)))
+			KC.advance(0.02)
+			KC.toClient("DungeonState", "Run", w6Run("Corridor", "Threshold", room, id, floorIndex))
+			Mock.Step(1 / 30)
+			KC.advance(early)
+			Mock.Teleport(LocalPlayer, entrance)
+		else
+			Mock.Teleport(LocalPlayer, entrance)
+			KC.advance(0.02)
+			KC.toClient("DungeonState", "Run", w6Run("Corridor", "Threshold", room, id, floorIndex))
+		end
+		Mock.Step(1 / 30)
+		local DC = H.moduleAt("client", "Controllers/DungeonController")
+		local hold = DC.GetState().Walk
+		local walked = w6StepUntil(function()
+			return DC.GetState().Walk == "Walk"
+		end, 1.0)
+		local back = w6StepUntil(function()
+			return DC.GetState().Walk == nil and cam.CameraType == Enum.CameraType.Custom
+		end, 4.0)
+		return walked and back, fmt("prepared %s, walk %s, back %s, fade %s", tostring(hold), tostring(walked), tostring(back), tostring(DC.GetState().Fade))
+	end
+
+	-- the fight and its clear (the door opens: Corridor / Walk)
+	local function w6Fight(id, floorIndex, room)
+		KC.toClient("DungeonState", "Run", w6Run("Fight", nil, room, id, floorIndex))
+		KC.advance(1.0)
+		KC.toClient("DungeonState", "Run", w6Run("Corridor", "Walk", room, id, floorIndex))
+		KC.advance(0.6)
+		return { state = "Corridor", phase = "Walk", room = room }
+	end
+
+	local function w6EndRun(floorIndex)
+		KC.toClient("DungeonState", "End", { Floor = floorIndex, Name = "Floor " .. floorIndex, Cleared = true, Reason = "Cleared", Room = 4,
+			Totals = { Cash = 0, Tokens = 0, Xp = 0, Gems = 0 } })
+		KC.advance(0.3)
+	end
+
+	S.client_w6_walkin_floors = guarded("client_w6_walkin_floors", function()
+		local DC = H.moduleAt("client", "Controllers/DungeonController")
+		if not T.check(DC ~= nil and type(DC.GetState) == "function", "walk-in floors: DungeonController loads") then
+			return
+		end
+		pcall(DC.Init)
+		local err0 = #Mock.Errors
+		LocalPlayer:SetAttribute("InMatch", false)
+		pcall(DC.Close)
+		local cam = workspace.CurrentCamera
+		cam.CameraType = Enum.CameraType.Custom
+		-- run A = floor 1 (the owner's first run), then B..E = floors 2, 5, 9, 12 in the same session; the server frees
+		-- the pocket ~5 s after the End and the next run builds Dungeon_1 again at the same spot
+		for runNo, floorIndex in ipairs({ 1, 2, 5, 9, 12 }) do
+			local holder, doors = w6Pocket("Dungeon_1")
+			local id = w6StartRun(floorIndex)
+			local bad = {}
+			local prev = { state = "Hall", phase = nil, room = 0 }
+			for room = 1, 4 do
+				local ok, note = w6Room(id, floorIndex, room, doors, prev)
+				if not ok then
+					bad[#bad + 1] = fmt("room %d: %s", room, note)
+				end
+				prev = w6Fight(id, floorIndex, room)
+			end
+			T.check(#bad == 0, fmt("walk-in floors: run %s (floor %d): rooms 1-4 each reach Walk and end Custom", string.char(64 + runNo), floorIndex), table.concat(bad, " | "))
+			w6EndRun(floorIndex)
+			LocalPlayer:SetAttribute("InBattle", nil)
+			KC.advance(5)
+			holder:Destroy()
+			KC.advance(0.5)
+		end
+		-- the races: the payload 2.6 s after the Fade; a payload that beat the teleport (the root 500 studs away, there
+		-- 0.1 s later)
+		local holder, doors = w6Pocket("Dungeon_1")
+		local id = w6StartRun(3)
+		local ok1, note1 = w6Room(id, 3, 1, doors, { state = "Hall", room = 0 }, 2.6)
+		T.check(ok1, "walk-in floors: the room's payload 2.6 s after the Fade still plays the walk-in", note1)
+		local prev = w6Fight(id, 3, 1)
+		local ok2, note2 = w6Room(id, 3, 2, doors, prev, 0.47, 0.1)
+		T.check(ok2, "walk-in floors: a payload that beat the teleport (root 500 studs away, there 0.1 s later) still plays the walk-in", note2)
+		-- the payload queued behind the next room's build (w6_dgn_walkin_floors): 3.4 s after the Fade, past the old 3 s
+		-- FADE_SAFETY. The fade holds black for the room (never past the new 6 s) and the walk-in still plays
+		prev = w6Fight(id, 3, 2)
+		local ok3, note3 = w6Room(id, 3, 3, doors, prev, 3.4)
+		T.check(ok3 and DC.GetState().WalkSkip == nil, "walk-in floors: a room payload 3.4 s after the Fade (behind a big replication) still plays the walk-in", note3)
+		prev = w6Fight(id, 3, 3)
+		local t0
+		-- no payload at all: the black never outlasts FADE_SAFETY 6 s; GetState().WalkSkip says why a walk-in did not play
+		t0 = Mock.Clock.now
+		KC.toClient("DungeonState", "Fade", { Out = 0.45, Hold = 0.35, In = 0.45, Room = 4 })
+		local cleared = w6StepUntil(function()
+			return DC.GetState().Fade == nil
+		end, 8)
+		local waited = Mock.Clock.now - t0
+		T.check(cleared and waited >= 5.5 and waited <= 6.3, "walk-in floors: a Fade whose room never comes clears by FADE_SAFETY 6 s (never stuck)", fmt("%.2f s", waited))
+		KC.toClient("DungeonState", "Run", w6Run("Corridor", "Threshold", 4, id, 3))
+		KC.advance(0.5)
+		T.check(DC.GetState().Walk == nil and DC.GetState().WalkSkip == "NoFade", "walk-in floors: a room payload after the fade is gone: no walk-in, WalkSkip = NoFade",
+			tostring(DC.GetState().WalkSkip))
+		w6EndRun(3)
+		LocalPlayer:SetAttribute("InBattle", nil)
+		KC.advance(5)
+		holder:Destroy()
+		KC.advance(0.5)
+		T.check(cam.CameraType == Enum.CameraType.Custom and DC.GetState().Walk == nil, "walk-in floors: the camera is Custom at the end, no walk left")
+		T.check(#Mock.Errors == err0, "walk-in floors: no script error", tostring(Mock.Errors[#Mock.Errors]))
+		KC.flushErrors("client_w6_walkin_floors")
 	end)
 
 	return S

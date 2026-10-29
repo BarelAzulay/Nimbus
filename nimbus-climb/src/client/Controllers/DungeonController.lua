@@ -46,7 +46,9 @@
 --   * The room change fade (DungeonState "Fade" { Out, Hold, In }): ONE black full-screen Frame in its own ScreenGui
 --     NimbusDungeonFade (IgnoreGuiInset, DisplayOrder K.FADE_ORDER 25: above the HUD 10, the battle HUD / run card 12
 --     and the windows 20-23, below Notify 30); tweens to black over Out, holds (until the next room's Run payload,
---     at least Hold), back over In; never stuck: a FADE_SAFETY 3 s clear, End and leaving the run clear it at once.
+--     at least Hold), back over In; never stuck: a FADE_SAFETY 6 s clear, End and leaving the run clear it at once.
+--     (wave 6: the black waits up to FADE_SAFETY for the room: the server's payload can queue behind a big
+--     replication; the old 3 s clear dropped the walk-in when it came late.)
 --   * Wave 5 (bugs #15 / #26):
 --     - The entrance (DungeonState "Enter" { Cover, Reveal, Element }, before the server teleports the party into the
 --       hall after Cover): the camera rushes into the Dungeon gate's vortex (0.5 s, FOV 70 -> 55, the gate flares,
@@ -120,7 +122,7 @@ local K = {
 	END_SECONDS = 14, -- the End card hides by itself after this
 	TREASURE = 45,
 	FADE_ORDER = 25, -- the room change fade: above the HUD (10), the run card (12) and the windows (20-23), below Notify (30)
-	FADE_SAFETY = 3, -- a fade never stays on longer than this (seconds)
+	FADE_SAFETY = 6, -- a fade never stays on longer than this (seconds; wave 6: 3 -> 6, it waits for a late room payload)
 	FADE_MAX_STEP = 2, -- Out / Hold / In are clamped to 0..this
 	TICK = 0.25, -- the light loop
 	BACK_ACTION = "NimbusDungeonBack",
@@ -244,6 +246,7 @@ local S = {
 	Pocket = nil,
 	Zoomed = false, -- the camera zoom is capped at K.ZOOM_RUN (a run)
 	Walk = nil, -- wave 5: the room walk-in (R.walkPrepare)
+	WalkSkip = nil, -- wave 6: why the last room payload played no walk-in (GetState().WalkSkip, the run gui's attribute)
 	Enter = nil, -- wave 5: the voxel-shatter entrance (R.enter)
 	Gate = nil, -- the Dungeon gate model (GateId "Dungeon"), cached
 	ShoulderHum = nil, -- the Humanoid whose CameraOffset is the dungeon shoulder
@@ -1334,6 +1337,8 @@ function DungeonController.GetState()
 		Door = (S.Run and R.doorWait()) or nil, -- "press" | "wait" | "go" at an open door
 		Enter = S.Enter and S.Enter.Phase or nil, -- "Rush" | "Cover" | "Hold" | "Reveal" while the entrance plays
 		Walk = S.Walk and S.Walk.Phase or nil, -- "Hold" | "Walk" | "Blend" while the room walk-in plays
+		WalkSkip = S.WalkSkip, -- wave 6: why the last room payload played no walk-in: "NoFade" | "FadeIn" | "InMatch" |
+		-- "NoCharacter" | "NoRoom" | "Inward" | "Error" (nil = it played)
 		Shoulder = S.ShoulderHum ~= nil,
 	}
 end
@@ -2425,24 +2430,34 @@ function R.walkCam(w, e)
 	return CFrame.lookAt(at, w.Root.Position + Vector3.new(0, 1.2, 0))
 end
 
+-- wave 6: why a room payload played no walk-in (nil = it played): GetState().WalkSkip and the run gui's WalkSkip
+-- attribute (readable in Studio's Explorer during a play test)
+function R.walkSkipped(why)
+	S.WalkSkip = why
+	if U.RunGui then
+		U.RunGui:SetAttribute("WalkSkip", why)
+	end
+end
+
 -- the next room's Run payload arrived under the fade: set the shot up while the screen is still black
+-- -> true, or false + why ("InMatch" | "NoCharacter" | "NoRoom" | "Inward")
 function R.walkPrepare(room, key)
 	if S.Walk then
 		R.walkClear()
 	end
 	if H.inMatch() or not LocalPlayer then
-		return false
+		return false, "InMatch"
 	end
 	local char, hum, root = H.character()
 	local camera = Workspace.CurrentCamera
 	if not char or hum.Health <= 0 or not camera then
-		return false
+		return false, "NoCharacter"
 	end
 	local pocket = (S.Pocket and S.Pocket.Parent and S.Pocket) or R.findPocket()
 	local model = pocket and pocket:FindFirstChild("Room_" .. tostring(room))
 	local th = model and model:FindFirstChild("Threshold")
 	if not th or not th:IsA("BasePart") then
-		return false
+		return false, "NoRoom"
 	end
 	local doorPos = H.positionOf(model:FindFirstChild("Door_Entrance")) or root.Position
 	local d = th.Position - doorPos
@@ -2452,7 +2467,7 @@ function R.walkPrepare(room, key)
 		inward = Vector3.new(d.X, 0, d.Z)
 	end
 	if inward.Magnitude < 0.5 then
-		return false
+		return false, "Inward"
 	end
 	inward = inward.Unit
 	local right = inward:Cross(Vector3.new(0, 1, 0))
@@ -3013,6 +3028,7 @@ function R.onState(kind, payload)
 	elseif kind == "Run" then
 		local fresh = S.Run == nil or S.Run.RunId ~= payload.RunId
 		local key = tostring(payload.State) .. ":" .. tostring(payload.Phase) .. ":" .. tostring(payload.Room)
+		local newKey = key ~= S.PhaseKey
 		if fresh then
 			S.Totals = { Cash = 0, Tokens = 0, Xp = 0, Gems = 0 }
 			S.ChestOpened = false
@@ -3040,9 +3056,15 @@ function R.onState(kind, payload)
 				R.walkClear()
 			end
 		end
-		if not S.Walk and S.Fade and (S.Fade.Phase == "Out" or S.Fade.Phase == "Hold") and key ~= S.Fade.Key and payload.State == "Corridor"
-			and payload.Phase == "Threshold" and room >= 1 and room <= 4 then
-			H.safe("walk prepare", R.walkPrepare, room, key)
+		local threshold = payload.State == "Corridor" and payload.Phase == "Threshold" and room >= 1 and room <= 4
+		if not S.Walk and S.Fade and (S.Fade.Phase == "Out" or S.Fade.Phase == "Hold") and key ~= S.Fade.Key and threshold then
+			local okP, prepared, why = pcall(R.walkPrepare, room, key)
+			if not okP then
+				H.warnOnce("walk prepare", prepared)
+			end
+			R.walkSkipped(okP and not prepared and (why or "NoRoom") or (not okP and "Error") or nil)
+		elseif threshold and newKey and not S.Walk then
+			R.walkSkipped(S.Fade and "FadeIn" or "NoFade")
 		end
 		-- the next room arrived while the screen holds black: fade back in
 		if S.Fade and S.Fade.Phase == "Hold" and key ~= S.Fade.Key then
