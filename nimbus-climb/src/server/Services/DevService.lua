@@ -2,7 +2,8 @@
 -- add tokens, restart / skip the tutorial and wipe their own data back to a brand-new player.
 --
 --   DevService.Init(deps)                          deps = { DataService, PetService, TutorialService, IndexService,
---                                                  BattleService, EventService } (Phase 3: the raid command)
+--                                                  BattleService, EventService, SkyService } (Phase 3: the raid
+--                                                  command; the living sky: /sky)
 --                                                  (pets are written into the profile the way PetService does it, and
 --                                                  ProfileRebased refreshes its attributes; PetService.Refresh after
 --                                                  /petlevel republishes EquippedInfo)
@@ -61,6 +62,11 @@
 --                   DataService.SetPetLevel, to try "Ready to evolve!" / EVOLVE at 20 and 50 quickly. Refused with
 --                   no pet equipped, a level out of range, a provisional profile. Levels only: evolution stages and
 --                   training ranks are untouched.
+--   sky [what]      the living sky (server/Services/SkyService; plan 2026-10-30-living-sky Task 4), for everyone in the
+--                   server (the clock is Workspace attributes): /sky alone names the phase, /sky dawn|day|sunset|night
+--                   starts that phase now, /sky speed <x> runs the loop x times faster (clamped 0.1..120, the loop keeps
+--                   its position; not a number = refused), /sky raid <boss> previews a raid sky (a boss id or a unique
+--                   start of one: "/sky raid frost"), /sky clear takes it down. Touches no profile data.
 --   devhelp         two toasts listing the chat commands (the pet showcase ones, then the others)
 -- The pet showcase (nothing is saved; the pets are built on the developer's OWN client only, by
 -- client/Controllers/DevPetShow.lua, through the server -> client remote DevPetShow(action, payload)):
@@ -87,7 +93,7 @@
 -- "good"); refusals get a "bad" toast. Rate limit: 4 commands per 2 seconds per player. Every command is logged with
 -- print("[NimbusClimb][Dev] ...") including the UserId. Nothing yields between reading and writing the profile.
 --
--- Chat: "/allpets", "/tokens 50000", "/reset", "/tutorial", "/skiptutorial", "/raid", "/petlevel 20", "/pet cloudy dragon 2",
+-- Chat: "/allpets", "/tokens 50000", "/reset", "/tutorial", "/skiptutorial", "/raid", "/sky sunset", "/petlevel 20", "/pet cloudy dragon 2",
 -- "/pets 1", "/evolve all", "/fx flame ranged epic", "/clearpets", "/devhelp", typed in the GAME's chat (not Studio's command bar). Two ways in, one
 -- parser (onChatted): Player.Chatted of allowed players (the legacy chat), and one TextChatCommand per command
 -- (PrimaryAlias "/<command>", children of TextChatService, made at Init when the place uses TextChatService):
@@ -127,8 +133,8 @@ local Remotes = require(Shared.Remotes)
 local DevService = {}
 
 DevService.Commands = {
-	"allpets", "tokens", "cash", "gems", "berries", "petlevel", "reset", "tutorial", "skiptutorial", "raid", "pet", "pets", "evolve",
-	"fx", "clearpets", "devhelp",
+	"allpets", "tokens", "cash", "gems", "berries", "petlevel", "reset", "tutorial", "skiptutorial", "raid", "sky", "pet", "pets",
+	"evolve", "fx", "clearpets", "devhelp",
 }
 
 local TAG = "[NimbusClimb][Dev] "
@@ -151,17 +157,18 @@ end
 -- the commands that still run while the profile is provisional (see the persistence note)
 local PROVISIONAL_OK = {
 	tokens = true, cash = true, gems = true, berries = true, raid = true, devhelp = true, pet = true, pets = true, evolve = true,
-	fx = true, clearpets = true,
+	fx = true, clearpets = true, sky = true,
 }
--- the pet showcase never touches the profile, so it does not wait for it
-local NO_PROFILE = { pet = true, pets = true, evolve = true, fx = true, clearpets = true }
+-- the pet showcase (and the sky) never touches the profile, so it does not wait for it
+local NO_PROFILE = { pet = true, pets = true, evolve = true, fx = true, clearpets = true, sky = true }
 -- the commands that take a whole-number amount
 local NUMERIC = { tokens = true, cash = true, gems = true, berries = true, petlevel = true }
 -- the commands that take a value, and its type (tokens / cash / gems / berries / petlevel: a number; the showcase: the
 -- rest of the chat line)
-local ARG_KIND = { tokens = "number", cash = "number", gems = "number", berries = "number", petlevel = "number", pet = "string", pets = "string", evolve = "string", fx = "string" }
--- the example value a refusal toast shows for a numeric command (50000 for the currencies)
+local ARG_KIND = { tokens = "number", cash = "number", gems = "number", berries = "number", petlevel = "number", pet = "string", pets = "string", evolve = "string", fx = "string", sky = "string" }
+-- the example value a refusal toast shows for a numeric command (50000 for the currencies), and for a text one
 local ARG_EXAMPLE = { petlevel = "20" }
+local TEXT_EXAMPLE = { sky = "/sky sunset" }
 local MAX_ARG_LENGTH = 48
 local DEFAULT_MAX_PET_LEVEL = 100 -- /petlevel's cap when neither PetCatalog nor TycoonCatalog names one
 local STAGE_NAMES = { [0] = "Normal", [1] = "Evolved", [2] = "Evolved II" }
@@ -197,6 +204,7 @@ local IndexService = nil
 local EventService = nil -- Phase 3: /raid
 local BattleService = nil
 local PetService = nil -- Phase 4: /petlevel republishes EquippedInfo
+local SkyService = nil -- the living sky: /sky
 
 local function hasFunction(module, name)
 	return type(module) == "table" and type(module[name]) == "function"
@@ -792,6 +800,66 @@ local function cmdRaid()
 	return false, "boss raids are not in this build", false
 end
 
+-- The living sky (SkyService): the clock and the raid sky are Workspace attributes, so this changes the sky of everyone
+-- in the server. Nothing in the profile changes. "speed" takes one finite number (clamped by SkyService), "raid" one boss.
+local SKY_USAGE = "try /sky dawn|day|sunset|night|speed <x>|raid <boss>|clear"
+
+local function minutes(seconds)
+	local s = math.max(0, math.floor(tonumber(seconds) or 0))
+	return string.format("%d:%02d", math.floor(s / 60), s % 60)
+end
+
+local function cmdSky(_, _, arg)
+	if not hasFunction(SkyService, "Status") then
+		return false, "the living sky is not in this build", false
+	end
+	local words = {}
+	for word in string.gmatch(string.lower(arg or ""), "%S+") do
+		words[#words + 1] = word
+	end
+	local verb = words[1]
+	if verb == nil then
+		local s = SkyService.Status()
+		local event = (s.Event ~= nil and s.Event ~= "") and (", raid sky " .. s.Event) or ""
+		return true, "sky: " .. s.Phase .. " " .. minutes(s.Seconds) .. " of " .. minutes(s.Length) .. ", speed x" .. tostring(s.Speed) .. event, false
+	end
+	if verb == "speed" then
+		local n = #words == 2 and tonumber(words[2]) or nil
+		if type(n) ~= "number" or n ~= n or n == math.huge or n == -math.huge then
+			return false, "sky speed needs a number, like /sky speed 20", false
+		end
+		local ok, speed = SkyService.SetSpeed(n)
+		if not ok then
+			return false, "sky " .. tostring(speed), false
+		end
+		return true, "sky speed x" .. tostring(speed) .. (speed ~= n and " (clamped)" or ""), false
+	end
+	if verb == "raid" then
+		local boss = #words == 2 and hasFunction(SkyService, "Find") and SkyService.Find(words[2]) or nil
+		if not boss then
+			local ids = {}
+			for id in pairs((type(Config.Sky) == "table" and Config.Sky.RaidThemes) or {}) do
+				ids[#ids + 1] = id
+			end
+			table.sort(ids)
+			return false, "sky raid needs a boss: " .. table.concat(ids, ", "), false
+		end
+		SkyService.SetEvent(boss, "dev")
+		return true, "raid sky " .. boss .. " (a preview; /sky clear ends it)", false
+	end
+	if verb == "clear" and #words == 1 then
+		SkyService.ClearEvent()
+		return true, "raid sky cleared, back to the cycle", false
+	end
+	if #words == 1 then
+		local ok, phase = SkyService.SetPhase(verb)
+		if ok then
+			return true, "sky: " .. tostring(phase) .. " starts now", false
+		end
+	end
+	return false, "sky: unknown '" .. printable(verb) .. "' (" .. SKY_USAGE .. ")", false
+end
+
 ----------------------------------------------------------------------
 -- The pet showcase (pet / pets / evolve / clearpets): validated here, built on the developer's own client
 ----------------------------------------------------------------------
@@ -1066,10 +1134,11 @@ local function cmdClearPets(player)
 end
 
 -- Two toasts (each fits a side toast, <= 90 characters with the "DEV: " prefix): the pet showcase commands first
--- (/fx among them since the pet attack VFX), then the others (/petlevel among them since Phase 4; the numeric
--- commands take a number, which their refusal toasts spell out: "like /tokens 50000").
+-- (/fx among them since the pet attack VFX, /sky since the living sky: it took the room of /berries' "[n]"), then the
+-- others (/petlevel among them since Phase 4; the numeric commands take a number, which their refusal toasts spell
+-- out: "like /tokens 50000").
 local function cmdHelp(player)
-	notify(player, "DEV: /pet <name> [0-2] /pets [0-2] /evolve <name|all> [1-2] /fx /clearpets /berries [n]", "info", HELP_SECONDS)
+	notify(player, "DEV: /pet <name> [0-2] /pets [0-2] /evolve <name|all> [1-2] /fx /clearpets /berries /sky", "info", HELP_SECONDS)
 	if tutorialReloader() then
 		return true, "/allpets /tokens /cash /gems /petlevel /reset /tutorial /skiptutorial /raid /devhelp", false
 	end
@@ -1087,6 +1156,7 @@ local HANDLERS = {
 	tutorial = cmdTutorial,
 	skiptutorial = cmdSkipTutorial,
 	raid = cmdRaid,
+	sky = cmdSky,
 	pet = cmdPet,
 	pets = cmdPets,
 	evolve = cmdEvolve,
@@ -1116,7 +1186,7 @@ local function execute(player, command, arg, source)
 		if NUMERIC[name] then
 			notify(player, "DEV: " .. name .. " needs a whole number, like /" .. name .. " " .. (ARG_EXAMPLE[name] or "50000"), "bad")
 		elseif kind == "string" then
-			notify(player, "DEV: " .. name .. " needs a short text, like /pet cloudy dragon 2", "bad")
+			notify(player, "DEV: " .. name .. " needs a short text, like " .. (TEXT_EXAMPLE[name] or "/pet cloudy dragon 2"), "bad")
 		else
 			notify(player, "DEV: " .. name .. " takes no value", "bad")
 		end
@@ -1399,6 +1469,7 @@ function DevService.Init(deps)
 	EventService = deps.EventService or loadModule(services, "EventService")
 	BattleService = deps.BattleService or loadModule(services, "BattleService")
 	PetService = deps.PetService
+	SkyService = deps.SkyService or loadModule(services, "SkyService")
 	if not PetCatalog then
 		PetCatalog = loadModule(Shared, "PetCatalog")
 	end

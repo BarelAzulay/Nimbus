@@ -264,6 +264,11 @@ local K = {
 	INHALE_OUT = 0.12, -- ... and out at the release (or when hushed)
 	INHALE_OTHERS = 0.4, -- volume x for others' pets' inhales
 	INHALE_MAX = 2, -- inhales at once (a crowded raid: the rest charge silently)
+	-- (audio wave 2) the fight's one-shots: Hit<Element> / Crit on a landed hit, KO (4-file rotation), Dash (my pets),
+	-- Parry. My own fight hears all of them; a spectator hears them at SFX_SPECTATOR volume within SFX_HEAR studs
+	SFX_HEAR = 80,
+	SFX_SPECTATOR = 0.5,
+	SFX_BOSS_KO = 1.2, -- a boss's KO plays louder
 	FX_COVER = 1.6, -- seconds after a played Special / Element during which its targets' hits are AttackFx's (Hurt pose)
 	WINDUP_HOLD = 0.6, -- PetPoses Windup is held at this p while Winding (its crouch is full from p 0.5 to 0.82) ...
 	WINDUP_IN = 0.25, -- ... reached in this many seconds
@@ -2535,6 +2540,9 @@ function Me.StartDash(B, u, ev)
 	Fx.Trail(a, b, COLORS.Dodge, 6, K.DASH_TIME + 0.1)
 	Fx.Burst(a, COLORS.Dodge, 8, 9, 0.4, 0.35, { up = 0.2, alpha = 0.2 })
 	St.dashes = (St.dashes or 0) + 1
+	if u.mine then
+		Me.Sfx("Dash", 1) -- (audio wave 2) my own pets' dash only
+	end
 end
 
 -- 0..1..0 of a running dash (quick out, a softer way back); clears it at the end
@@ -2795,6 +2803,40 @@ function Me.Sound()
 		Mods.Sound = optional(Client, "SoundFx") or false
 	end
 	return Mods.Sound or nil
+end
+
+-- (audio wave 2) the volume x a fight's one-shot plays at: 1 in my own fight, SFX_SPECTATOR for a spectator within
+-- SFX_HEAR studs of the camera, nil (silent) further away
+function Me.HearScale(B, u)
+	if not B then
+		return nil
+	end
+	if B.Fighter then
+		return 1
+	end
+	local cam = workspace.CurrentCamera
+	local ok, at = pcall(unitCenter, B, u)
+	if not cam or not ok or typeof(at) ~= "Vector3" then
+		return nil
+	end
+	if (cam.CFrame.Position - at).Magnitude > K.SFX_HEAR then
+		return nil
+	end
+	return K.SFX_SPECTATOR
+end
+
+-- (audio wave 2) a fight's one-shot through SoundFx (a variant rotation with `variant`); a missing id is silent
+function Me.Sfx(name, scale, variant)
+	if not scale or scale <= 0 then
+		return nil
+	end
+	local SF = Me.Sound()
+	local fn = SF and (variant and SF.PlayVariant or SF.Play) or nil
+	if type(fn) ~= "function" then
+		return nil
+	end
+	local ok, s = pcall(fn, name, { Scale = scale })
+	return ok and s or nil
 end
 
 -- AttackFx Hooks.Inhale: a token's first call starts the sound, a later one (the real Special taking over a press's
@@ -4089,6 +4131,15 @@ Handlers[EV.Hit] = function(B, ev)
 	end
 	if dmg > 0 then
 		Fx.Number(adornee, numberHeight(victim), text, color, px)
+		-- (audio wave 2) the attacker's element hit (+ Crit's sparkle on top); a burn / zone tick is silent (they come
+		-- in bursts), so is a hit with no attacker or element
+		if not ev.burn and not ev.zone and attacker and type(attacker.element) == "string" then
+			local scale = Me.HearScale(B, victim)
+			Me.Sfx("Hit" .. attacker.element, scale)
+			if ev.crit then
+				Me.Sfx("Crit", scale)
+			end
+		end
 	end
 	if num(ev.absorbed, 0) > 0 then
 		Fx.Number(adornee, numberHeight(victim) + 0.8, "BLOCK " .. tostring(floor(ev.absorbed + 0.5)), COLORS.Shield, K.NUMBER_PX - 2, 0.8)
@@ -4239,6 +4290,9 @@ Handlers[EV.KO] = function(B, ev)
 	Atk.Result(B, ev) -- AttackFx's Ko (played on arrival) marks the pet poofed: no cube poof below, it tumbles and lies
 	if u.root and not u.parked then
 		Fx.Number(u.root, numberHeight(u) + 0.4, "KO!", Color3.fromRGB(220, 226, 240), K.CALLOUT_PX, 1.1)
+		-- (audio wave 2) KO: one of 4 files, never the same twice in a row; a boss's louder
+		local scale = Me.HearScale(B, u)
+		Me.Sfx("KO", scale and scale * (u.isBoss and K.SFX_BOSS_KO or 1), true)
 		if not u.isBoss and not u.poofed then
 			u.poofed = true
 			Fx.Burst(unitCenter(B, u), Color3.fromRGB(236, 240, 250), 12, 9, 0.5, 0.6, { color2 = elementColor(u.element), alpha = 0.05 })
@@ -4366,7 +4420,8 @@ Handlers[EV.Dash or "Dash"] = function(B, ev)
 end
 
 -- wave 6: a timed Dash parried the threat (BattleSim's Parry): "PARRY!" in gold over the pet, a short gold ring + flash
--- (Low graphics: the callout only). The parried telegraph's Hit (miss + parry) shows no DODGED!. No sound here.
+-- (Low graphics: the callout only). The parried telegraph's Hit (miss + parry) shows no DODGED! and plays no hit: the
+-- Parry sound plays from here only (audio wave 2; my own pets' parries)
 Handlers[EV.Parry or "Parry"] = function(B, ev)
 	local u = B.units[tonumber(ev.unit) or -1]
 	if not u then
@@ -4374,6 +4429,9 @@ Handlers[EV.Parry or "Parry"] = function(B, ev)
 	end
 	St.parries = (St.parries or 0) + 1
 	calloutAbove(u, "PARRY!", COLORS.Gold, K.CALLOUT_PX, 1.1)
+	if u.mine then
+		Me.Sfx("Parry", 1)
+	end
 	if not St.fxLow and u.root and not u.parked then
 		Fx.Ring(unitCenter(B, u), 2.2, COLORS.Gold, 10, 0.35, 0.35, 0.05)
 		Fx.Flash(u, COLORS.Gold, 0.25)
@@ -8582,6 +8640,7 @@ function Net.End(payload, battleId)
 		B.linger = Ring.LINGER
 		Ring.ShowNext(B, payload)
 		Net.Cheer(B)
+		Net.RewardSound() -- (audio wave 2 fix) a won round is a payout too
 	elseif participant then
 		B.linger = K.END_LINGER
 		Hud.ShowResult(B, payload)

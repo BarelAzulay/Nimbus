@@ -4,8 +4,13 @@
 -- Inhale, Shatter }`, `Ambient = { CrowdCheer, DrumLoop }`: AudioIds numbers). A missing id is silent and nothing breaks:
 -- no Sound is made, nothing is warned.
 --
---   SoundFx.Play(name)        one-shot (any NAMES entry) at its slot volume x the Sfx setting (pooled Sounds, a slight
---                             random pitch so repeats do not tire the ear); returns the Sound or nil
+--   SoundFx.Play(name, opts)  one-shot (any NAMES entry) at its slot volume x the Sfx setting (pooled Sounds, a random
+--                             pitch in Config.Audio.Pitch[key] (default 0.95-1.05) so repeats do not tire the ear);
+--                             Config.Audio.MinGap[key] and Caps keep frequent keys from piling up (a skipped play = nil);
+--                             opts.Scale = volume x (a spectator's half volume, a boss KO's x1.2), opts.Gap = the MinGap
+--                             key to use (a rotation shares its name's); returns the Sound or nil
+--   SoundFx.PlayVariant(name, opts) one of Config.Audio.Variants[name] (the KO rotation): a random one that has an id,
+--                             never the one played last; falls back to Play(name) when the name has no variants
 --   SoundFx.Music(context)    "Lobby" | "Battle" | "Dungeon" | nil: loops Config.Audio.Music[context] at its slot volume x
 --                             the Music setting, Config.Audio.Fade crossfade from the track before (Lobby / Dungeon resume
 --                             where they stopped); nil fades the music out
@@ -35,7 +40,26 @@ local ClientSettings = require(script.Parent:WaitForChild("ClientSettings"))
 local SoundFx = {}
 
 local POOL = 3 -- Sounds per sfx name
-local NAMES = { "Click", "Confirm", "Error", "Reward", "Whoosh", "Inhale", "Shatter", "CrowdCheer", "DrumLoop" }
+local NAMES = { "Click", "Confirm", "Error", "Reward", "Whoosh", "Inhale", "Shatter", "CrowdCheer", "DrumLoop", "Fountain",
+	-- audio wave 2
+	"HitWater", "HitFlame", "HitFrost", "HitNature", "HitEarth", "HitStorm", "HitCelestial", "HitShadow", "Crit",
+	"KO", "KO2", "KO3", "KO4", "Dash", "Parry", "PortalEnter", "PortalArrive", "StationBuild", "HouseTier",
+	"DialogOpen", "DialogBlip", "DialogNext", "TutorialStep", "SpinStart", "SpinTick", "SpinLand",
+	"RevealCommon", "RevealRare", "RevealLegendary" }
+do
+	-- the NPC voices (Config.Audio.Keys.Sfx Npc<Name><Kind>), sorted
+	local keys = type(Config.Audio) == "table" and type(Config.Audio.Keys) == "table" and Config.Audio.Keys.Sfx or {}
+	local voices = {}
+	for name in pairs(keys) do
+		if string.sub(name, 1, 3) == "Npc" then
+			voices[#voices + 1] = name
+		end
+	end
+	table.sort(voices)
+	for _, name in ipairs(voices) do
+		NAMES[#NAMES + 1] = name
+	end
+end
 local LAYERS = { "Battle", "Dungeon" } -- SetLayer priority (first on wins); none on = BASE
 local BASE = "Lobby"
 
@@ -51,6 +75,9 @@ local St = {
 	Loops = {}, -- [Sound] = { name, group } (positional loops: the settings follow them)
 	Hooked = false,
 	Rng = Random.new(5),
+	Last = {}, -- [MinGap key] = os.clock() of its last play
+	Recent = {}, -- [Caps prefix] = { os.clock(), ... } of the plays inside its window
+	LastVariant = {}, -- [variant name] = the file it played last
 }
 SoundFx._St = St
 
@@ -156,15 +183,79 @@ local function hook()
 	ClientSettings.Changed:Connect(onChanged)
 end
 
-function SoundFx.Play(name)
+-- the PlaybackSpeed range of a key (Config.Audio.Pitch), 0.95-1.05 when unlisted
+local function pitchOf(key)
+	local map = type(audio().Pitch) == "table" and audio().Pitch or {}
+	local r = map[key]
+	local lo = type(r) == "table" and tonumber(r[1]) or nil
+	local hi = type(r) == "table" and tonumber(r[2]) or nil
+	if not lo or not hi or lo <= 0 or hi < lo then
+		return 0.95, 1.05
+	end
+	return lo, hi
+end
+
+-- the Caps entry a key falls under (its Prefix), or nil
+local function capOf(key)
+	local caps = type(audio().Caps) == "table" and audio().Caps or {}
+	for _, cap in ipairs(caps) do
+		if type(cap) == "table" and type(cap.Prefix) == "string" and string.sub(key, 1, #cap.Prefix) == cap.Prefix then
+			return cap
+		end
+	end
+	return nil
+end
+
+-- MinGap + Caps: -> true when the key may play now (and records the play)
+local function admit(key, gapKey)
+	local now = os.clock()
+	local gaps = type(audio().MinGap) == "table" and audio().MinGap or {}
+	local gap = tonumber(gaps[gapKey]) or 0
+	local last = St.Last[gapKey]
+	if gap > 0 and last and now - last < gap and now >= last then
+		return false
+	end
+	local cap = capOf(key)
+	local recent = nil
+	if cap then
+		recent = St.Recent[cap.Prefix] or {}
+		St.Recent[cap.Prefix] = recent
+		local window = tonumber(cap.Window) or 0.25
+		local i = 1
+		while i <= #recent do
+			if now - recent[i] >= window or now < recent[i] then
+				table.remove(recent, i)
+			else
+				i = i + 1
+			end
+		end
+		if #recent >= (tonumber(cap.Max) or 8) then
+			return false
+		end
+	end
+	St.Last[gapKey] = now
+	if recent then
+		recent[#recent + 1] = now
+	end
+	return true
+end
+
+function SoundFx.Play(name, opts)
 	hook()
+	opts = type(opts) == "table" and opts or nil
 	local group = groupOf(name)
 	local id = SoundFx.Id(group, name)
 	if not id then
 		return nil
 	end
-	local volume = SoundFx.SlotVolume(name, group)
+	local scale = opts and tonumber(opts.Scale) or 1
+	local volume = math.min(1, SoundFx.SlotVolume(name, group) * math.max(0, scale))
 	if volume <= 0 then
+		return nil
+	end
+	local key = keyOf(group, name)
+	local gapKey = opts and type(opts.Gap) == "string" and opts.Gap or key
+	if not admit(key, gapKey) then
 		return nil
 	end
 	local pool = St.Pools[name]
@@ -185,10 +276,48 @@ function SoundFx.Play(name)
 	local sound = pool[index]
 	sound.SoundId = id
 	sound.Volume = volume
-	sound.PlaybackSpeed = 0.95 + St.Rng:NextNumber() * 0.1
+	local lo, hi = pitchOf(key)
+	sound.PlaybackSpeed = lo + St.Rng:NextNumber() * (hi - lo)
 	pcall(function()
 		sound:Play()
 	end)
+	return sound
+end
+
+function SoundFx.PlayVariant(name, opts)
+	local variants = type(audio().Variants) == "table" and audio().Variants[name] or nil
+	if type(variants) ~= "table" or #variants == 0 then
+		return SoundFx.Play(name, opts)
+	end
+	local have = {}
+	for _, v in ipairs(variants) do
+		if SoundFx.Id(groupOf(v), v) then
+			have[#have + 1] = v
+		end
+	end
+	if #have == 0 then
+		return nil
+	end
+	local last = St.LastVariant[name]
+	local choices = {}
+	for _, v in ipairs(have) do
+		if v ~= last then
+			choices[#choices + 1] = v
+		end
+	end
+	if #choices == 0 then
+		choices = have -- (one id left: that one)
+	end
+	local pick = choices[St.Rng:NextInteger(1, #choices)]
+	local o = {}
+	for k, v in pairs(opts or {}) do
+		o[k] = v
+	end
+	o.Gap = o.Gap or keyOf(groupOf(name), name)
+	local sound = SoundFx.Play(pick, o)
+	if sound then
+		St.LastVariant[name] = pick
+	end
 	return sound
 end
 

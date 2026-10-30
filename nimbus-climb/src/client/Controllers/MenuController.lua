@@ -356,6 +356,32 @@ local syncBackBinding, closeIndex, relayoutMenu, refreshHomeLive
 ----------------------------------------------------------------------
 -- Small helpers
 ----------------------------------------------------------------------
+-- (audio wave 2) client/SoundFx, lazy (the roulette strip's SpinStart / SpinTick / SpinLand and the reveal card's
+-- RevealCommon / RevealRare / RevealLegendary); false = unavailable. A missing id is silent
+-- (one local table: this file sits near Luau's 200-locals limit)
+local Sfx = {
+	Mod = nil,
+	-- the reveal card's sound by the pet's rarity: Common / Uncommon -> RevealCommon, Rare / Epic -> RevealRare,
+	-- Legendary / Mythic / Secret -> RevealLegendary
+	Reveal = {
+		Common = "RevealCommon", Uncommon = "RevealCommon", Rare = "RevealRare", Epic = "RevealRare",
+		Legendary = "RevealLegendary", Mythic = "RevealLegendary", Secret = "RevealLegendary",
+	},
+}
+function Sfx.Play(name)
+	if Sfx.Mod == nil then
+		local module = Client:FindFirstChild("SoundFx")
+		local ok, mod = false, nil
+		if module then
+			ok, mod = pcall(require, module)
+		end
+		Sfx.Mod = (ok and type(mod) == "table" and type(mod.Play) == "function") and mod or false
+	end
+	if Sfx.Mod then
+		pcall(Sfx.Mod.Play, name)
+	end
+end
+
 local function warnOnce(key, err)
 	if not Net.Warned[key] then
 		Net.Warned[key] = true
@@ -8346,6 +8372,7 @@ function beginStage(result)
 
 	local function showReveal()
 		stage.Phase = "reveal"
+		Sfx.Play(Sfx.Reveal[tostring(def.Rarity)] or "RevealCommon")
 		for index in pairs(cells) do
 			destroyCell(index)
 		end
@@ -8582,6 +8609,7 @@ function beginStage(result)
 	local function land()
 		stage.Phase = "land"
 		stage.LandedAt = os.clock()
+		Sfx.Play("SpinLand")
 		local winner = cells[target]
 		if winner then
 			attachViewport(winner) -- (normally attached long before it lands)
@@ -8613,6 +8641,9 @@ function beginStage(result)
 			layoutCells(stage.X)
 			local tick = math.floor((stage.X + K.STRIP.W / 2) / cellW)
 			if tick ~= stage.Tick then
+				if stage.Tick ~= nil and not stage.Skip then
+					Sfx.Play("SpinTick") -- a cell passes the pointer (a skip's jump stays silent: SpinLand follows)
+				end
 				stage.Tick = tick
 				pointer.Rotation = 16
 			end
@@ -8631,6 +8662,7 @@ function beginStage(result)
 		end
 	end
 
+	Sfx.Play("SpinStart")
 	stage.Conn = RunService.RenderStepped:Connect(function(dt)
 		if Spin.Stage ~= stage then
 			return

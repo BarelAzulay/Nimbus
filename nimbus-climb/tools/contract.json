@@ -797,7 +797,11 @@
       "functions": [
         "Push",
         "Pop",
-        "Top"
+        "Top",
+        "SetBase",
+        "Busy",
+        "Update",
+        "Value"
       ]
     },
     "client/UiGate": {
@@ -910,7 +914,19 @@
         "Init",
         "Apply",
         "Effective",
-        "Resolve"
+        "Resolve",
+        "Recap"
+      ]
+    },
+    "client/Controllers/SkyController": {
+      "optional": true,
+      "_comment": "docs/superpowers/plans/2026-10-30-living-sky.md Task 5: the living sky cycle + raid skies as the LightingStack base",
+      "functions": [
+        "Init",
+        "Start",
+        "Stop",
+        "Refresh",
+        "State"
       ]
     },
     "shared/MeshLibrary": {

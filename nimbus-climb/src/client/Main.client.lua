@@ -50,6 +50,8 @@ local CONTROLLER_NAMES = {
 	"DungeonFx", -- the dungeon's turning parts (the Weatherworks' astrolabe rings over the boss chair)
 	-- the original audio (Config.Audio): the Champion Ring's crowd + drums as positional loops
 	"RingAmbience",
+	-- the living sky: the 20 min cycle + raid skies as the LightingStack base, the battle lift, night lamps, fireflies
+	"SkyController",
 }
 
 local TAG = "[NimbusClimb] "
