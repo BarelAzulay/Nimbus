@@ -88,47 +88,53 @@ THEMES = [
     # 2 DAWN / SUNSET ----------------------------------------------------------------------------------------------------
     # copper: the owner's earlier pick; softened from the raw #9A3412/#D97706 into a warm copper-peach
     dict(id="dusk_copper", name="Copper Glow", group="Dawn / Sunset", pal=("#7C3A2E", "#C77B4E", "#F5C08C", "#FDEBD3"),
-         clouds=dict(threshold=0.46, softness=7.0, detail=5, rough=0.5, rim=0.9, rim_focus=3.0, rim_base=0.4,
-                     contrast=5.0, rim_width=0.04, calm=0.2, haze=0.2),
-         cc=((140, 78, 96), (200, 122, 122), (250, 186, 150), (255, 214, 110)),
-         sun=dict(el=6, r=2.6, edge=1.6, disc=(255, 240, 205), disc_op=0.85, halo=(255, 196, 130), halo_size=26,
+         clouds=dict(threshold=0.43, softness=8.0, detail=6, rough=0.55, rim=0.75, rim_focus=3.0, rim_base=0.25,
+                     contrast=5.5, rim_width=0.025, calm=0.05, haze=0.05, big_weight=0.7, sun_clear=14.0,
+                     layers=[(-28.0, 30.0, 8.0, 8.0)]),
+         cc=((122, 60, 84), (180, 102, 112), (240, 170, 140), (255, 210, 140)),
+         sun=dict(el=3, r=2.6, edge=1.6, disc=(255, 240, 205), disc_op=0.85, halo=(255, 196, 130), halo_size=26,
                   halo_op=0.26, halo_pow=2.2, bleed=0.2, bleed_col=(255, 186, 120))),
     dict(id="dusk_candy", name="Cotton Candy Dusk", group="Dawn / Sunset", G=True,
          pal=("#6B21A8", "#C026D3", "#F472B6", "#FFE4E6"),
-         clouds=dict(threshold=0.45, softness=5.0, big_weight=0.75, contrast=3.5, calm=0.2, haze=0.2),
-         cc=((176, 100, 196), (246, 166, 212), (255, 230, 240)),
+         clouds=dict(threshold=0.43, softness=7.0, big_weight=0.75, contrast=4.0, calm=0.05, haze=0.1,
+                     layers=[(-26.0, 30.0, 8.0, 8.0)]),
+         cc=((150, 90, 190), (250, 186, 224), (255, 242, 250)),
          sun=dict(el=8, r=0.0, halo=(255, 214, 230), halo_size=40, halo_op=0.3, halo_pow=2.0),
          stars=[dict(scale=1.0, frac=0.08, size=0.10, bright=0.6, min_el=40)],
-         fx=[dict(kind="ribbon", tilt=18.0, width=0.07, col=(240, 140, 250), core=(255, 220, 255), op=0.55,
-                  min_el=12)]),
+         fx=[dict(kind="ribbon", tilt=18.0, width=0.07, col=(240, 140, 250), core=(255, 220, 255), op=0.75,
+                  min_el=2)]),
     dict(id="dusk_amber", name="Amber Burn", group="Dawn / Sunset", pal=("#7F1D1D", "#EA580C", "#F97316", "#FFEDD5"),
          clouds=dict(threshold=0.44, softness=9.0, rim=1.0, rim_focus=4.0, rim_base=0.15, contrast=2.0),
          cc=((96, 32, 30), (138, 50, 36), (178, 74, 40), (255, 214, 140)),
          sun=dict(el=4.5, r=3.2, edge=0.6, disc=(255, 238, 200), disc_op=1.0, halo=(255, 170, 80), halo_size=30,
                   halo_op=0.55, halo_pow=2.4, rays=0.35, rays_size=26, rays_col=(255, 190, 110))),
-    # 3 NIGHT (all zeniths lifted to a readable deep blue / indigo) -------------------------------------------------------
-    dict(id="night_violet", name="Midnight Violet", group="Night", pal=("#172554", "#1E3A8A", "#3B82F6", "#1E1B4B"),
-         clouds=dict(threshold=0.5, softness=2.5, opacity=0.75, detail=8, rough=0.62, squash=2.4),
-         cc=((44, 52, 116), (74, 92, 172), (126, 144, 218)),
-         stars=[dict(scale=1.25, frac=0.30, size=0.10, bright=0.85, min_el=6),
-                dict(scale=0.45, frac=0.07, size=0.15, bright=1.0, min_el=6, col=(225, 230, 255)),
-                dict(scale=0.18, frac=0.03, size=0.12, bright=1.0, min_el=10, col=(255, 245, 230))]),
-    dict(id="night_aurora", name="Aurora Slumber", group="Night", G=True, pal=("#0E1A3F", "#12305C", "#0EA5E9", "#0B3B3A"),
+    # 3 NIGHT (properly dark: game readability comes from the world Lighting, not the sky picture) --------------------
+    dict(id="night_violet", name="Midnight Violet", group="Night", pal=("#0A1236", "#141C52", "#2E3A82", "#0E1230"),
+         clouds=dict(threshold=0.47, softness=4.0, opacity=1.0, detail=8, rough=0.62, squash=2.6, calm=0.1, haze=0.15,
+                     layers=[(-30.0, 32.0, 10.0, 10.0)]),
+         cc=((22, 22, 62), (52, 50, 112), (110, 104, 180)),
+         stars=[dict(scale=1.2, frac=0.22, size=0.10, bright=0.8, min_el=4),
+                dict(scale=0.45, frac=0.07, size=0.15, bright=1.0, min_el=8, col=(225, 230, 255)),
+                dict(scale=0.18, frac=0.04, size=0.13, bright=1.0, min_el=12, col=(255, 245, 230))]),
+    dict(id="night_aurora", name="Aurora Slumber", group="Night", G=True, pal=("#070C24", "#0E1A44", "#164C5E", "#0E1230"),
          clouds=dict(threshold=0.55, softness=3.0, opacity=0.4, calm=0.6),
-         cc=((16, 40, 72), (28, 66, 100), (56, 108, 140)),
-         ramp=[(-90, "below"), (-30, 0.3), (-10, 0.85), (0, "horizon"), (10, 0.15), (24, 0.55), (45, "upper"),
+         cc=((12, 24, 48), (22, 42, 70), (40, 72, 100)),
+         ramp=[(-90, "below"), (-30, 0.15), (-8, 0.45), (0, "horizon"), (8, 0.35), (24, 0.8), (45, "upper"),
                (90, "zenith")],
-         stars=[dict(scale=1.0, frac=0.18, size=0.10, bright=0.8, min_el=12),
-                dict(scale=0.4, frac=0.05, size=0.14, bright=0.9, min_el=12)],
-         fx=[dict(kind="fog", col=(110, 200, 220), op=0.22, center=1.0, width=9.0),
-             dict(kind="aurora", base=21.0, height=24.0, op=0.85)]),
-    dict(id="night_lunar", name="Lunar Cobalt", group="Night", pal=("#0B3A5A", "#0C4A6E", "#38BDF8", "#042F2E"),
-         clouds=dict(threshold=0.47, softness=9.0, big_weight=0.8, big_scale=0.75, rim=0.85, rim_focus=3.0,
-                     rim_base=0.3, contrast=3.0, rim_width=0.025),
-         cc=((52, 96, 136), (84, 130, 170), (150, 186, 214), (230, 238, 248)),
-         sun=dict(el=27, r=4.2, edge=0.25, disc=(236, 242, 250), disc_op=1.0, moon=True, halo=(170, 210, 245),
-                  halo_size=22, halo_op=0.35, halo_pow=2.0),
-         stars=[dict(scale=1.0, frac=0.12, size=0.10, bright=0.7, min_el=12)]),
+         stars=[dict(scale=1.2, frac=0.22, size=0.10, bright=0.8, min_el=4),
+                dict(scale=0.45, frac=0.07, size=0.15, bright=1.0, min_el=8, col=(225, 230, 255)),
+                dict(scale=0.18, frac=0.04, size=0.13, bright=1.0, min_el=12, col=(255, 245, 230))],
+         fx=[dict(kind="fog", col=(60, 170, 170), op=0.14, center=1.0, width=7.0),
+             dict(kind="aurora", base=17.0, height=24.0, op=0.85)]),
+    dict(id="night_lunar", name="Lunar Cobalt", group="Night", pal=("#0B1640", "#12224E", "#2A4A8A", "#0E1230"),
+         clouds=dict(threshold=0.47, softness=9.0, big_weight=0.8, big_scale=0.75, rim=0.9, rim_focus=3.0,
+                     rim_base=0.35, contrast=3.0, rim_width=0.025, calm=0.15, haze=0.2),
+         cc=((18, 28, 60), (34, 52, 92), (70, 96, 140), (220, 232, 250)),
+         sun=dict(el=21, r=4.2, edge=0.25, disc=(250, 252, 255), disc_op=1.0, moon=True, halo=(150, 190, 245),
+                  halo_size=22, halo_op=0.45, halo_pow=2.0),
+         stars=[dict(scale=1.2, frac=0.22, size=0.10, bright=0.8, min_el=4),
+                dict(scale=0.45, frac=0.07, size=0.15, bright=1.0, min_el=8, col=(225, 230, 255)),
+                dict(scale=0.18, frac=0.04, size=0.13, bright=1.0, min_el=12, col=(255, 245, 230))]),
     # 4 STORM TITAN raid ---------------------------------------------------------------------------------------------------
     dict(id="storm_teal", name="Thunderhead Teal", group="Storm Titan", pal=("#064E3B", "#0F766E", "#14B8A6", "#06342A"),
          clouds=dict(threshold=0.38, softness=5.0, big_weight=0.75, big_scale=0.7, contrast=3.5, opacity=0.95,
@@ -141,9 +147,10 @@ THEMES = [
                      layers=[(-40.0, 38.0, 12.0, 12.0)]),
          cc=((26, 23, 62), (56, 52, 122), (112, 108, 192), (224, 220, 255))),
     dict(id="storm_slate", name="Tempest Slate", group="Storm Titan", pal=("#334155", "#475569", "#94A3B8", "#0F172A"),
-         clouds=dict(threshold=0.43, softness=6.0, squash=3.2, layers=[(-36.0, 20.0, 10.0, 6.0)]),
-         cc=((46, 56, 72), (86, 99, 116), (152, 164, 180)),
-         fx=[dict(kind="vortex", twist=4.2, eye=0.13, reach=1.3, op=0.95)]),
+         clouds=dict(threshold=0.41, softness=9.0, squash=3.4, contrast=6.0, big_weight=0.7, calm=0.05, haze=0.1,
+                     layers=[(-36.0, 26.0, 10.0, 6.0)]),
+         cc=((24, 30, 42), (62, 72, 88), (150, 162, 178)),
+         fx=[dict(kind="vortex", twist=4.2, eye=0.13, reach=1.55, op=0.95)]),
     # 5 LAVA GOLEM raid ----------------------------------------------------------------------------------------------------
     dict(id="lava_core", name="Magma Core", group="Lava Golem", pal=("#450A0A", "#7F1D1D", "#DC2626", "#27272A"),
          clouds=dict(threshold=0.43, softness=5.0, detail=9, rough=0.68, distortion=0.35, light=-1.0, contrast=4.5,
@@ -156,10 +163,11 @@ THEMES = [
          clouds=dict(threshold=0.46, softness=10.0, light=-1.0, contrast=5.0, rim=0.6, rim_focus=0.0, rim_base=1.0),
          cc=((18, 16, 18), (40, 36, 40), (120, 66, 44), (255, 120, 40)),
          fx=[dict(kind="lava_veins", col=(255, 120, 30), core=(255, 220, 120), op=1.0)]),
-    dict(id="lava_cinder", name="Cinder Haze", group="Lava Golem", pal=("#3F1010", "#991B1B", "#F87171", "#1C1917"),
-         clouds=dict(threshold=0.44, softness=3.5, squash=4.2, detail=7, rough=0.6, opacity=0.85),
-         cc=((64, 26, 26), (124, 58, 52), (204, 124, 112)),
-         fx=[dict(kind="heat_haze", col=(255, 190, 170), op=0.32)]),
+    dict(id="lava_cinder", name="Cinder Haze", group="Lava Golem", pal=("#3F1010", "#991B1B", "#F0603C", "#1C1917"),
+         clouds=dict(threshold=0.42, softness=5.0, squash=4.2, detail=7, rough=0.6, opacity=0.95, light=-1.0,
+                     calm=0.1),
+         cc=((30, 14, 14), (62, 28, 26), (150, 64, 46)),
+         fx=[dict(kind="heat_haze", col=(255, 190, 170), op=0.32), dict(kind="embers", col=(255, 170, 70), op=1.6, boost=1.8)]),
     # 6 FROST WYRM raid ----------------------------------------------------------------------------------------------------
     dict(id="frost_glacial", name="Glacial Void", group="Frost Wyrm", pal=("#083344", "#155E75", "#67E8F9", "#F8FAFC"),
          clouds=dict(threshold=0.45, softness=14.0, facet=0.45),
@@ -509,6 +517,7 @@ def build_world(t, star_res):
             else:
                 COL = mixc(disc, COL, su["disc"])
         sunprox = op("POWER", clamp01(cosang), max(cl["rim_focus"], 0.001)) if cl["rim_focus"] > 0 else 1.0
+        sun_ang = ang
     else:
         sunprox = op("POWER", face_side, max(cl["rim_focus"], 0.001)) if cl["rim_focus"] > 0 else 1.0
 
@@ -535,6 +544,9 @@ def build_world(t, star_res):
         mask = m if mask is None else op("MAXIMUM", mask, m)
     # the band edges raise the threshold (clouds end with their own outlines, never a straight cut) ...
     thr = add(sub(cl["threshold"], mul(near_h, 0.04)), mul(sub(1.0, mask), 0.24))
+    if cl.get("sun_clear") and su:
+        ragged = add(sun_ang, mul(sub(noise(D, 4.0, 4.0, 0.6, offset=(2.0, 7.0, 1.0)), 0.5), cl["sun_clear"] * 1.2))
+        thr = add(thr, mul(smooth(ragged, cl["sun_clear"] * 1.3, cl["sun_clear"] * 0.2), 0.18))
     dens = clamp01(mul(sub(base, thr), cl["softness"] * SOFT_GAIN))
     dens = mul(dens, smooth(mask, 0.0, 0.3))  # ... and nothing survives outside the band
     if cl["erode"]:
@@ -595,7 +607,7 @@ def feature(f, COL, D, X, Y, Z, E, Hd, calm, face_side, az, SKY, t=None):
         return addc(COL, s, f["col"], f["op"])
     if k == "ribbon":  # a nebula ribbon across the zenith, over the feature side
         # the great circle through a point low on the feature side and one high on the far side: diagonal in view
-        p1, p2 = sun_dir(az - f["tilt"], 12.0), sun_dir(az + 125.0, 62.0)
+        p1, p2 = sun_dir(az - f["tilt"], 6.0), sun_dir(az + 125.0, 62.0)
         nrm = (p1[1] * p2[2] - p1[2] * p2[1], p1[2] * p2[0] - p1[0] * p2[2], p1[0] * p2[1] - p1[1] * p2[0])
         ln = math.sqrt(sum(c * c for c in nrm))
         nrm = tuple(c / ln for c in nrm)
@@ -644,12 +656,13 @@ def feature(f, COL, D, X, Y, Z, E, Hd, calm, face_side, az, SKY, t=None):
         rs = node("ShaderNodeSeparateXYZ")
         L.new(Rv, rs.inputs[0])
         ang = op("ARCTAN2", rs.outputs[1], rs.outputs[0])
-        arms = add(mul(op("SINE", add(mul(ang, 3.0), mul(r, 2.0))), 0.5), 0.5)
+        warp = mul(sub(noise(D, 2.6, 3.0, 0.55, offset=(6.0, 1.0, 2.0)), 0.5), 3.0)  # no straight arm edges
+        arms = add(mul(op("SINE", add(add(mul(ang, 3.0), mul(r, 2.0)), warp)), 0.5), 0.5)
         n = noise(mapping(Rv, scale=(1.0, 1.0, 0.4)), 2.2, 5.0, 0.55)
         n2 = noise(Rv, 7.0, 6.0, 0.6, offset=(1.0, 3.0, 0.0))  # cloud texture inside the arms
         n2u = noise(Rv, 7.0, 6.0, 0.6, offset=(1.0, 3.0, 0.03))
-        v = add(add(mul(n, 0.45), mul(arms, 0.4)), mul(n2, 0.25))
-        dens = clamp01(mul(sub(v, 0.52), 9.0))
+        v = add(add(mul(n, 0.45), mul(arms, 0.35)), mul(n2, 0.3))
+        dens = clamp01(mul(sub(v, 0.52), 6.0))
         dens = mul(dens, mul(smooth(r, f["eye"], f["eye"] + 0.08), smooth(r, f["reach"], f["reach"] - 0.35)))
         cc = t["cc"]
         lit = clamp01(add(add(mul(sub(n2, n2u), 6.0), 0.45), mul(smooth(r, f["eye"] + 0.3, f["eye"]), 0.35)))
@@ -661,12 +674,13 @@ def feature(f, COL, D, X, Y, Z, E, Hd, calm, face_side, az, SKY, t=None):
     if k == "embers":
         V = mapping(D, scale=(1.0, 1.0, 0.3))
         out = COL
-        for j, (sc, frac, br) in enumerate(((46.0, 0.10, 1.0), (24.0, 0.05, 0.8))):
+        boost = f.get("boost", 1.0)  # more and bigger flecks
+        for j, (sc, frac, br) in enumerate(((46.0, 0.10 * boost, 1.0), (24.0, 0.05 * boost, 0.8))):
             vo = voronoi(mapping(V, loc=(j * 4.0, j * 2.0, 0.0)), sc)
             cell = node("ShaderNodeSeparateColor")
             L.new(vo.outputs["Color"], cell.inputs[0])
             pick = op("GREATER_THAN", cell.outputs[0], 1.0 - frac)
-            fl = mul(smooth(vo.outputs["Distance"], 0.2, 0.04), pick)
+            fl = mul(smooth(vo.outputs["Distance"], 0.2 * boost ** 0.5, 0.04), pick)
             fl = mul(fl, add(mul(cell.outputs[1], 0.8), 0.25))
             fl = mul(fl, smooth(E, 30.0, -8.0))
             fl = mul(fl, sub(1.0, mul(calm, 0.45)))
