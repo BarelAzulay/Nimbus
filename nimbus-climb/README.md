@@ -1459,7 +1459,8 @@ src/shared   Config (every number)  TycoonCatalog (every tycoon number)  Theme  
              the gate vortex image ids)  AudioIds (generated: the original music and sound ids)  MeshManifests (generated:
              one module per Blender model)  PetFx (the auras and effects of evolved pets)  AttackFxCatalog (the look
              of every pet attack effect: recipes by element, attack, rarity band, signature)  PetPoses (the
-             battle poses pets strike, cast, flinch and celebrate with, on PetBuilder's rig)
+             battle poses pets strike, cast, flinch and celebrate with, on PetBuilder's rig)  SkyCycle (the living
+             sky: the 20 minute phase clock, the looks per phase and raid, the readability floor)
 src/server   Main.server.lua; Services: Lighting, LobbyBuilder, StormAltar, Player (the spawn after PLAY), Data,
              Damage, Token, Hazard, Course (layout + builder), Match, Portal, Gate (the Altar gate's prompt), Spot, Pet,
              Item, Index, Tutorial, Npc, Dev, Tycoon, HomeBuilder, PetCare, Fusion, Gem, ArenaBuilder, Battle, Event,
