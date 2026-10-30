@@ -507,16 +507,43 @@ Config.Sky = {
 --   Music[context]  "Lobby" | "Battle" | "Dungeon", looped, crossfaded (SoundFx.Music / SetLayer), at the Music setting
 --   Sfx[name]       one-shots (SoundFx.Play): Click Confirm Error Reward Whoosh, Inhale (a Special's charge, its pitch
 --                   rising 0.75 -> 1.35 in BattleController) and Shatter (a broken charge), at the Sfx setting
+--                   + audio wave 2 (audio/README.md, .superpowers/audio-pitch/wave2/wiring-plan.md): the element
+--                   hits Hit<Element>, Crit, KO (4 files in rotation: Variants.KO), Dash, Parry, PortalEnter /
+--                   PortalArrive, StationBuild, HouseTier, DialogOpen / DialogBlip / DialogNext, TutorialStep, the
+--                   roulette's SpinStart / SpinTick / SpinLand, RevealCommon / RevealRare / RevealLegendary and the NPC
+--                   voices Npc<Name>Greet / Hmm / Pleased (NpcController)
 --   Ambient[name]   positional loops (SoundFx.Positional): the Champion Ring's CrowdCheer (Sfx setting) and DrumLoop
---                   (Music setting) at the ring pocket's crowd stand (client/Controllers/RingAmbience)
+--                   (Music setting) at the ring pocket's crowd stand (client/Controllers/RingAmbience); the lobby
+--                   fountain's water (Fountain = key FountainLoop: no approved take yet, so silent until one is)
 -- Volume[key] is THE one place for slot volumes (0..1, times the player's Music / Sfx setting / 10): music lower than
--- the effects; the ring's crowd and drums under the music (and they fade out with distance).
+-- the effects (UnderMusic: the frequent quiet ticks / hits allowed at or under it); the ring's crowd and drums under
+-- the music (and they fade out with distance). Pitch[key] = { lo, hi } PlaybackSpeed range of a one-shot (default
+-- 0.95-1.05); MinGap[key] = seconds a key waits before it plays again; Caps = at most Max plays of a key prefix per
+-- Window seconds (the hits of a raid); Variants[name] = the files a name rotates through (never one twice in a row).
 local AudioIds = require(script.Parent.AudioIds)
 local AUDIO_KEYS = {
 	Music = { Lobby = "MusicLobby", Battle = "MusicBattle", Dungeon = "MusicDungeon" },
 	Sfx = { Click = "Click", Confirm = "Confirm", Error = "Error", Reward = "Reward", Whoosh = "Whoosh", Inhale = "Inhale", Shatter = "Shatter" },
-	Ambient = { CrowdCheer = "CrowdCheer", DrumLoop = "DrumLoop" },
+	Ambient = { CrowdCheer = "CrowdCheer", DrumLoop = "DrumLoop", Fountain = "FountainLoop" },
 }
+-- audio wave 2: one-shots under their own key names
+local AUDIO_WAVE2 = {
+	"HitWater", "HitFlame", "HitFrost", "HitNature", "HitEarth", "HitStorm", "HitCelestial", "HitShadow", "Crit",
+	"KO", "KO2", "KO3", "KO4", "Dash", "Parry", "PortalEnter", "PortalArrive", "StationBuild", "HouseTier",
+	"DialogOpen", "DialogBlip", "DialogNext", "TutorialStep", "SpinStart", "SpinTick", "SpinLand",
+	"RevealCommon", "RevealRare", "RevealLegendary",
+}
+-- the NPC voices (wordless, one voice per NPC): Npc<Name><Kind>, <Name> = the NpcDialog Id in CamelCase
+local AUDIO_NPCS = { "SparkyFox", "CaptainPenguin", "GrannyOwl", "CoachCorgi", "MayorPanda", "ProfessorAxolotl" }
+local AUDIO_NPC_KINDS = { "Greet", "Hmm", "Pleased" }
+for _, key in ipairs(AUDIO_WAVE2) do
+	AUDIO_KEYS.Sfx[key] = key
+end
+for _, npc in ipairs(AUDIO_NPCS) do
+	for _, kind in ipairs(AUDIO_NPC_KINDS) do
+		AUDIO_KEYS.Sfx["Npc" .. npc .. kind] = "Npc" .. npc .. kind
+	end
+end
 Config.Audio = {
 	Keys = AUDIO_KEYS,
 	Music = {},
@@ -535,7 +562,98 @@ Config.Audio = {
 		Shatter = 0.85,
 		CrowdCheer = 0.3,
 		DrumLoop = 0.35,
+		FountainLoop = 0.45,
+		-- wave 2 (starting values from the wiring plan: tune by ear in Studio). The hits are frequent: under the music
+		HitFlame = 0.45,
+		HitFrost = 0.42,
+		HitShadow = 0.38,
+		HitWater = 0.38,
+		HitEarth = 0.38,
+		HitStorm = 0.36,
+		HitNature = 0.34,
+		HitCelestial = 0.28,
+		Crit = 0.55,
+		KO = 0.7,
+		KO2 = 0.7,
+		KO3 = 0.7,
+		KO4 = 0.7,
+		Dash = 0.6,
+		Parry = 0.8,
+		PortalEnter = 0.65,
+		PortalArrive = 0.6,
+		StationBuild = 0.6,
+		HouseTier = 0.85,
+		DialogOpen = 0.55,
+		DialogBlip = 0.3,
+		DialogNext = 0.5,
+		TutorialStep = 0.7,
+		SpinStart = 0.65,
+		SpinTick = 0.4,
+		SpinLand = 0.75,
+		RevealCommon = 0.7,
+		RevealRare = 0.75,
+		RevealLegendary = 0.8,
+		-- (the NPC voices: 0.6 each, set below)
 	},
+	-- the frequent / quiet keys that may sit at or under the music (every other effect sits above it)
+	UnderMusic = {
+		HitFlame = true, HitFrost = true, HitShadow = true, HitWater = true, HitEarth = true, HitStorm = true,
+		HitNature = true, HitCelestial = true, SpinTick = true, DialogBlip = true, DialogNext = true,
+	},
+	-- PlaybackSpeed range of a one-shot (not listed: 0.95-1.05). Tuned motifs (the reveals) never shift
+	Pitch = {
+		HitFlame = { 0.93, 1.07 },
+		HitFrost = { 0.93, 1.07 },
+		HitShadow = { 0.93, 1.07 },
+		HitWater = { 0.93, 1.07 },
+		HitEarth = { 0.92, 1.06 },
+		HitStorm = { 0.93, 1.07 },
+		HitNature = { 0.93, 1.07 },
+		HitCelestial = { 0.96, 1.04 },
+		Crit = { 0.97, 1.03 },
+		KO = { 0.97, 1.03 },
+		KO2 = { 0.97, 1.03 },
+		KO3 = { 0.97, 1.03 },
+		KO4 = { 0.97, 1.03 },
+		Dash = { 0.95, 1.05 },
+		Parry = { 1, 1 },
+		PortalEnter = { 1, 1 },
+		PortalArrive = { 1, 1 },
+		StationBuild = { 0.95, 1.05 },
+		HouseTier = { 1, 1 },
+		DialogOpen = { 1, 1 },
+		DialogBlip = { 0.96, 1.04 },
+		DialogNext = { 1, 1 },
+		TutorialStep = { 1, 1 },
+		SpinStart = { 1, 1 },
+		SpinTick = { 0.98, 1.02 },
+		SpinLand = { 1, 1 },
+		RevealCommon = { 1, 1 },
+		RevealRare = { 1, 1 },
+		RevealLegendary = { 1, 1 },
+	},
+	-- seconds a key waits before it plays again (a raid lands 20+ hits a second; the typewriter 50 letters a second)
+	MinGap = {
+		HitWater = 0.06, HitFlame = 0.06, HitFrost = 0.06, HitNature = 0.06, HitEarth = 0.06, HitStorm = 0.06,
+		HitCelestial = 0.06, HitShadow = 0.06,
+		Crit = 0.15,
+		KO = 0.25, -- (the whole rotation: Variants share their name's gap)
+		SpinTick = 0.025,
+		DialogBlip = 0.045,
+		Error = 1.0,
+		StationBuild = 0.15, -- (a bought station and the next pad pop together: one pop)
+		PortalEnter = 1.0,
+	},
+	-- at most Max plays of the keys starting with Prefix per Window seconds (the hits of a crowded raid)
+	Caps = {
+		{ Prefix = "Hit", Max = 8, Window = 0.25 },
+	},
+	-- a name that rotates through several files: never the same one twice in a row (SoundFx.PlayVariant)
+	Variants = {
+		KO = { "KO", "KO2", "KO3", "KO4" },
+	},
+	-- the NPC voices (NpcController): at most one per Voice.Gap seconds per NPC, a new one stops the old
+	Voice = { Volume = 0.6, Pitch = { 0.98, 1.02 }, Gap = 1.5, GreetDelay = 0.12 },
 	-- which player setting scales a key (ClientSettings "Music" / "Sfx"); a key not listed follows its group (Music ->
 	-- "Music", Sfx / Ambient -> "Sfx")
 	Setting = { DrumLoop = "Music" },
@@ -545,8 +663,16 @@ Config.Audio = {
 	Positional = {
 		CrowdCheer = { Min = 30, Max = 140 },
 		DrumLoop = { Min = 24, Max = 120 },
+		FountainLoop = { Min = 10, Max = 70 }, -- (FountainFx K.SOUND_RANGE)
 	},
 }
+for _, npc in ipairs(AUDIO_NPCS) do
+	for _, kind in ipairs(AUDIO_NPC_KINDS) do
+		local key = "Npc" .. npc .. kind
+		Config.Audio.Volume[key] = Config.Audio.Voice.Volume
+		Config.Audio.Pitch[key] = { Config.Audio.Voice.Pitch[1], Config.Audio.Voice.Pitch[2] }
+	end
+end
 for group, keys in pairs(AUDIO_KEYS) do
 	for name, key in pairs(keys) do
 		local id = AudioIds[key]
