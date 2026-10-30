@@ -503,7 +503,8 @@ Config.Items = {
 --   Themes / RaidThemes  the painted skybox (blender/sky/sky_themes.py theme id) per phase / per raid boss id; the faces
 --                        are TextureIds "sky_<theme>_<Face>" (shared/SkyFaces); a theme without all six = the boot sky
 --   Looks[phase | boss]  the world light per LightingStack group + Clock = { from, to } (the ClockTime walked through
---                        the phase, on toward the next phase's from across a forward blend; a raid look's is fixed). The copper / indigo comes from the world light (ColorShift,
+--                        the phase, unwrapped: to may pass 24, the Night's 31 = 7 h next morning; on toward the next
+--                        phase's from across the blend; a raid look's is fixed). The copper / indigo comes from the world light (ColorShift,
 --                        Ambient, Atmosphere, clouds); TintColor stays within Floor.TintMax of white (Amber Burn shows
 --                        11 of 20 minutes, the HUD and rarity colours keep their true colours)
 --   Floor                the readability floor in every phase and raid (night is indigo, never black)
@@ -532,9 +533,10 @@ Config.Sky = {
 		TintMax = 8, -- ColorCorrection TintColor channels stay within this of 255
 	},
 	-- client/Controllers/SkyController (the client half; Refresh / Tween above):
-	ClockJump = 0.5, -- hours: a ClockTime step bigger than this at a phase / raid change (the Night 23.6 -> Dawn 7 wrap,
-	-- a raid sky's fixed clock at mid-blend) is set at once, never tweened through the hours between; the forward
-	-- Sunset 17 -> Night 18.4 gap is walked across the Sunset blend (SkyCycle.Preset), so no jump and no horizon pop
+	ClockJump = 0.5, -- hours: a ClockTime step bigger than this at a phase / raid change (a raid sky's fixed clock at
+	-- mid-blend) is set at once, never tweened through the hours between. The cycle itself never needs it: the
+	-- Sunset 17 -> Night 18.4 gap is walked across the Sunset blend and the Night runs on through midnight to Dawn's
+	-- 7 h (SkyCycle.Preset); passing midnight (23.9 -> 0.1) is the one other instant set (24 h = 0 h: invisible)
 	-- the battle lift: while I am in an outdoor pet battle (Config.Attr.InBattle starts with Prefix: a duel, raid,
 	-- Champion Ring run or PvP; a dungeon run "D.." stays under the dungeon preset) and the look is one of Looks, the
 	-- LightingStack preset Id lifts my night toward twilight over Seconds and settles back after the fight (me only)
@@ -636,7 +638,7 @@ Config.Sky = {
 		-- the short starry night (preview C) under Aurora Slumber: moonlit indigo ambient (never black), 3000 stars,
 		-- sparse thin violet clouds
 		Night = {
-			Clock = { 18.4, 23.6 },
+			Clock = { 18.4, 31.0 }, -- through midnight to Dawn's 7 h (= 31 unwrapped): no backward wrap at Dawn
 			Lighting = {
 				Brightness = 1.1,
 				ExposureCompensation = 0.1,

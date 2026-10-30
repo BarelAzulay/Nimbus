@@ -17,11 +17,14 @@
 --       look Config.Sky.Looks[eventId] by eventBlend (0..1; an unknown / empty id or a junk blend = no event; fromId =
 --       eventId is ignored). So eventBlend 0 with fromId = the old raid at fromBlend 1 is exactly the old raid sky and
 --       a new raid never flashes back toward the cycle. Numbers lerp, Color3 :Lerp; integers (StarCount), strings and
---       booleans switch at blend >= 0.5. ClockTime walks the phase's Clock range { from, to } with T (monotonic inside
---       a phase, never across 24 -> 0); in the phase's blend window it walks on toward the next phase's start when
---       that is FORWARD (Sunset 17 -> Night 18.4: the sun sets across the 75 s blend, never in one frame; Dawn -> Day
---       and Day -> Sunset meet already); a backward start (Night 23.6 -> Dawn 7) is left to the phase start. A raid
---       switches it to its look's fixed Clock at its blend >= 0.5 (fromId's first, then eventId's). themeId =
+--       booleans switch at blend >= 0.5. ClockTime walks the phase's Clock range { from, to } with T on an UNWRAPPED
+--       clock (to may pass 24: Night { 18.4, 31 } runs through midnight to 7 h next morning), always forward; in the
+--       phase's blend window it walks on across the gap to the next phase's start (the first from + 24k at or after
+--       to: Sunset 17 -> Night 18.4, so the sun sets across the 75 s blend, never in one frame; Dawn -> Day,
+--       Day -> Sunset and Night 31 -> Dawn 7 meet already). The returned ClockTime is that clock mod 24 ([0, 24)), so
+--       over a whole loop it only ever moves forward round the dial (SkyCycle.ClockDelta), wrapping 24 -> 0 once, in
+--       the Night. A raid switches it to its look's fixed Clock at its blend >= 0.5 (fromId's first, then eventId's).
+--       themeId =
 --       Config.Sky.Themes[phase] (Themes[Next] from Blend 0.5, the skybox swap while the haze is thickest),
 --       RaidThemes[fromId] from fromBlend 0.5, RaidThemes[eventId] from eventBlend 0.5. facesFor(themeId) (SkyFaces.For)
 --       -> { SkyboxBk = id, ... } adds the Skybox* strings to the Sky group; nil / no facesFor = no Skybox keys, so the
@@ -31,12 +34,13 @@
 --       within Floor.TintMax (8) / 255 of white (the colour comes from the world light, never a screen tint).
 --   SkyCycle.Integer = { StarCount = true }   the whole-number properties: switched here, never lerped, and set at
 --       once by client/LightingStack (never tweened through fractions)
+--   SkyCycle.ClockDelta(from, to) -> hours in [-12, 12)   the step from one ClockTime to another round the 24 h dial
+--       (23.9 -> 0.1 = +0.2: 24 h and 0 h are the same sun position)
 -- at.Phase / at.Next are checked against Config.Sky.Cycle.Order (a raid boss id is a Looks key, never a phase).
--- The clock jumps only where it would have to run backwards (the Night 23.6 -> Dawn 7 wrap) and at a raid sky's
--- mid-blend: client SkyController sets ClockTime at once on a phase / raid change whose step is more than
--- Config.Sky.ClockJump h (LightingStack.SetBase's instant set), never tweening through the hours. The forward gap
--- Sunset 17 -> Night 18.4 is walked across the blend window above (2 s steps of well under 0.2 h), so the sun crossing
--- the horizon (~18 h: sunlight and shadows off) is gradual.
+-- The cycle's clock never jumps: every 2 s refresh step is a small forward step round the dial (Night, the fastest:
+-- 12.6 h in 180 s = 0.14 h per 2 s). Client SkyController sets ClockTime at once only (a) when it passes midnight
+-- (23.9 -> 0.1: a tween would run backwards through the day; the set is invisible, 24 h = 0 h, and only one refresh
+-- step long) and (b) at a raid sky's mid-blend (its fixed clock, a step of more than Config.Sky.ClockJump h).
 
 local Shared = script.Parent
 local Config = require(Shared.Config)
@@ -168,7 +172,26 @@ local function mix(a, b, t)
 	return out
 end
 
--- the phase's ClockTime at T: Clock = { from, to }, walked linearly (a fixed clock when from == to)
+local DAY = 24
+
+-- a clock on the 24 h dial: [0, 24)
+local function dial(c)
+	local d = c - floor(c / DAY) * DAY
+	if d < 0 or d >= DAY then
+		d = 0
+	end
+	return d
+end
+
+function SkyCycle.ClockDelta(from, to)
+	if not (finite(from) and finite(to)) then
+		return 0
+	end
+	local d = dial(to - from + DAY / 2) - DAY / 2
+	return d
+end
+
+-- the phase's (unwrapped) clock at T: Clock = { from, to }, walked linearly (a fixed clock when from == to)
 local function clockAt(look, t)
 	local c = look.Clock
 	if type(c) ~= "table" then
@@ -214,14 +237,17 @@ function SkyCycle.Preset(at, eventId, eventBlend, facesFor, fromId, fromBlend)
 
 	local preset = mix(copyLook(looks[phase]), copyLook(looks[nextPhase]), blend)
 	local clock = clockAt(looks[phase], t)
-	if blend > 0 and nextPhase ~= phase then
-		-- a forward step to the next phase's clock is walked across the blend (monotonic: the clock only gains)
-		local nextFrom = clockAt(looks[nextPhase], 0)
-		if nextFrom and clock and nextFrom >= clock then
-			clock = clock + (nextFrom - clock) * blend
+	local range = looks[phase].Clock
+	if clock and blend > 0 and nextPhase ~= phase and type(range) == "table" then
+		-- the gap to the next phase's start (unwrapped: the first from + 24k at or after this phase's end) is walked
+		-- across the blend; monotonic, the clock only gains
+		local to, nextFrom = range[2], clockAt(looks[nextPhase], 0)
+		if finite(to) and finite(nextFrom) then
+			nextFrom = nextFrom + math.ceil((to - nextFrom - 1e-9) / DAY) * DAY
+			clock = clock + (nextFrom - to) * blend
 		end
 	end
-	preset.Lighting.ClockTime = clock
+	preset.Lighting.ClockTime = clock and dial(clock) or nil
 	local theme = sky.Themes[blend >= 0.5 and nextPhase or phase]
 
 	-- the raid sky that showed when this one began (back-to-back raids), then this raid sky on top
@@ -231,7 +257,8 @@ function SkyCycle.Preset(at, eventId, eventBlend, facesFor, fromId, fromBlend)
 		if look and b > 0 then
 			preset = mix(preset, copyLook(look), b)
 			if b >= 0.5 then
-				preset.Lighting.ClockTime = clockAt(look, 0)
+				local fixed = clockAt(look, 0)
+				preset.Lighting.ClockTime = fixed and dial(fixed) or nil
 				theme = sky.RaidThemes[id]
 			end
 		end

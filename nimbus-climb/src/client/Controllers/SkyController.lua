@@ -9,10 +9,10 @@
 --   * the first apply after Start is instant (seconds 0): a late joiner never sees the boot afternoon fade away
 --   * a refresh is skipped while LightingStack.Busy() (a Dungeon / AttackFxDim fade runs: never restarted); the next
 --     refresh after it applies
---   * the clock: ClockTime is set at once (LightingStack.SetBase's instant set) when it changes segment (a phase start,
---     a raid sky's mid-blend) by more than Config.Sky.ClockJump h: in practice the Night -> Dawn wrap and a raid's
---     fixed clock; inside a phase, and across the Sunset -> Night change (SkyCycle walks 17 -> 18.4 over the blend), it
---     tweens
+--   * the clock: it tweens forward in the 2 s steps (SkyCycle's cycle clock only moves forward round the dial, the
+--     Sunset -> Night and Night -> Dawn changes included). Set at once (LightingStack.SetBase's instant set) only
+--     (a) when it passes midnight (23.9 -> 0.1: a tween would run back through the day; 24 h = 0 h, so invisible) and
+--     (b) on a segment change (a raid sky's mid-blend, in or out) by more than Config.Sky.ClockJump h
 --   * the raid sky: SkyEvent (a boss id with a RaidThemes sky) blends in over Cycle.EventBlend (3) s from SkyEventAt
 --     (a late joiner mid-raid is on the raid sky at once) and back out over 3 s once SkyEvent is "" again. Each new
 --     SkyEventAt starts a transition FROM what showed at that moment (St.From = { Id, Blend }): back-to-back raids
@@ -388,8 +388,12 @@ function SkyController.Refresh(now)
 		local clock = preset.Lighting.ClockTime
 		local seg = raid or at.Phase
 		local instant = nil
-		if not St.First and seg ~= St.Seg and finite(clock) and finite(St.Clock) and math.abs(clock - St.Clock) > sky.ClockJump then
-			instant = { Lighting = { ClockTime = true } }
+		if not St.First and finite(clock) and finite(St.Clock) then
+			local jump = seg ~= St.Seg and math.abs(SkyCycle.ClockDelta(St.Clock, clock)) > sky.ClockJump
+			local midnight = clock < St.Clock and SkyCycle.ClockDelta(St.Clock, clock) > 0 -- forward past 24 -> 0
+			if jump or midnight then
+				instant = { Lighting = { ClockTime = true } }
+			end
 		end
 		LightingStack.SetBase(preset, seconds, instant)
 		St.First = false

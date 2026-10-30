@@ -5,10 +5,11 @@
 --                      its end, no error; LoopT in [0, 1)
 --   sky_blend_window   (server world, pure) Blend is 0 until Config.Sky.Cycle.Blend (75) s before a phase ends, then rises
 --                      monotonically to 1; Next is the following phase in Order (Night -> Dawn)
---   sky_clock_no_wrap  (server world, pure) one loop sampled every 1 s: within a phase ClockTime is monotonic, in [0, 24)
---                      and never crosses 24 -> 0; Sunset stays in [16, 17] outside its blend; across the Sunset -> Night
---                      blend the clock walks on to Night's start: monotonic, no 2 s step over 0.2 h, continuous into Night
---                      (no one-frame horizon crossing); only the Night -> Dawn wrap steps backwards
+--   sky_clock_no_wrap  (server world, pure) one loop sampled every 1 s: ClockTime in [0, 24), only ever forward round the
+--                      dial (SkyCycle.ClockDelta), every 2 s step 0..0.2 h over the WHOLE loop incl. Sunset -> Night,
+--                      Night -> Dawn and the loop wrap; midnight (24 -> 0) passed once, in the Night, which runs on to
+--                      Dawn's 7 h (no 23.6 -> 7 jump); Sunset in [16, 17] outside its blend; Sunset -> Night walked
+--                      across the blend (no one-frame horizon crossing)
 --   sky_floor          (server world, pure) every phase sample and every raid look after Preset: Brightness >= 1.0, each
 --                      OutdoorAmbient channel >= 70/255, ColorCorrection TintColor within 8/255 of white; Floor lifts a
 --                      dark preset onto the floor
@@ -36,8 +37,12 @@
 --                      published applies at once (seconds 0): Lighting = the SkyCycle preset of that moment
 --   client_sky_refresh (client) the loop calls SetBase every Refresh (2) s with Tween (2) s; skips while Busy(); one loop
 --                      (Start twice = one; Stop ends it); no RenderStepped / Heartbeat connection; a clock jump of more
---                      than Config.Sky.ClockJump at a phase change (the Night 23.6 -> Dawn 7 wrap) is set at once; the
---                      Sunset -> Night change is NOT (the clock tweens through it, monotonic, every 2 s step <= 0.2 h)
+--                      than Config.Sky.ClockJump at a raid change is set at once; Sunset -> Night and Night -> Dawn are
+--                      NOT (the clock tweens forward through them, every 2 s step <= 0.2 h); passing midnight
+--                      (23.9 -> 0.1) is set at once (a tween would run back through the day; 24 h = 0 h)
+--   client_sky_whole_loop (client) SkyController over a whole loop + a raid in 2 s refreshes: every step moves the sun
+--                      0..0.2 h round the dial, and the only instant ClockTime sets are the one midnight re-base (a
+--                      step of <= 0.2 h from just before 24 to just after 0) and a raid sky's fixed clock (in and out)
 --   client_sky_event   (client) SkyEvent + SkyEventAt: the raid blend rises over EventBlend (3) s to 1 (a late joiner
 --                      mid-raid lands on the raid sky at once); cleared -> back to the cycle over 3 s
 --   client_sky_event_back_to_back (client) SkyEvent storm_titan -> lava_golem with no clear: the base blends from the
@@ -253,34 +258,47 @@ local function serverScenarios()
 		if not SC then
 			return
 		end
-		local mono = T.tally("ClockTime is monotonic within each phase (one loop, every 1 s)")
-		local range = T.tally("ClockTime stays in [0, 24) and never crosses 24 -> 0 inside a phase")
+		local D = SC.ClockDelta
+		T.check(type(D) == "function" and abs(D(23.9, 0.1) - 0.2) < 1e-9 and abs(D(0.1, 23.9) + 0.2) < 1e-9 and abs(D(7, 13) - 6) < 1e-9 and D(0 / 0, 1) == 0, "SkyCycle.ClockDelta: the step round the 24 h dial (23.9 -> 0.1 = +0.2)")
+		local range = T.tally("ClockTime stays in [0, 24) (one loop, every 1 s)")
+		local fwd = T.tally("one loop, every 1 s incl. Night -> Dawn and the loop wrap: the clock only moves forward round the dial (the sun never runs back)")
+		local step2 = T.tally("every 2 s refresh step of the whole loop moves the sun 0..0.2 h (no visible jump anywhere)")
 		local sunset = T.tally("Sunset ClockTime stays in [16, 17] outside its blend (a modest sun, short shadows)")
-		local walk = T.tally("Sunset -> Night blend: ClockTime walks on to Night's start (monotonic, every 2 s step <= 0.2 h, continuous into Night)")
-		local back = T.tally("the clock steps backwards only at the Night -> Dawn wrap")
-		local lastPhase, lastClock
-		local clocks = {}
+		local walk = T.tally("Sunset -> Night blend: ClockTime walks on to Night's start (every 2 s step <= 0.2 h, continuous into Night)")
+		local clocks, phases = {}, {}
 		for t = 0, 1199 do
 			local at = SC.At(t, 0, 1, 0)
 			local p = SC.Preset(at, nil, 0, nil)
 			local clock = p.Lighting and p.Lighting.ClockTime
-			clocks[t] = clock
+			clocks[t], phases[t] = clock, at.Phase
 			range:case(type(clock) == "number" and clock >= 0 and clock < 24, fmt("t %d clock %s", t, tostring(clock)))
-			if type(clock) == "number" then
-				if at.Phase == lastPhase then
-					mono:case(clock >= lastClock - 1e-9, fmt("t %d %s %.3f after %.3f", t, at.Phase, clock, lastClock))
-					range:case(lastClock - clock < 12, fmt("t %d %s wrapped %.3f -> %.3f", t, at.Phase, lastClock, clock))
-				elseif lastClock then
-					back:case(clock >= lastClock - 1e-9 or (lastPhase == "Night" and at.Phase == "Dawn"), fmt("t %d %s -> %s %.3f -> %.3f", t, tostring(lastPhase), at.Phase, lastClock, clock))
-				end
-				if at.Phase == "Sunset" and at.Blend == 0 then
-					sunset:case(clock >= 16 - 1e-9 and clock <= 17 + 1e-9, fmt("t %d clock %.3f", t, clock))
-				end
-				lastPhase, lastClock = at.Phase, clock
+			if at.Phase == "Sunset" and at.Blend == 0 and type(clock) == "number" then
+				sunset:case(clock >= 16 - 1e-9 and clock <= 17 + 1e-9, fmt("t %d clock %.3f", t, clock))
 			end
 		end
-		-- the Sunset -> Night window: from 75 s before Night to its start, in the client's 2 s refresh steps
+		local wraps = {}
+		for t = 0, 1199 do
+			local a, b = clocks[t], clocks[(t + 1) % 1200]
+			if type(a) == "number" and type(b) == "number" then
+				local d = D(a, b)
+				fwd:case(d >= -1e-9 and d <= 0.1, fmt("t %d %s %.3f -> %.3f (%.3f h)", t, phases[t], a, b, d))
+				if b < a - 12 then
+					wraps[#wraps + 1] = phases[t] .. "@" .. t
+				end
+			end
+		end
+		for t = 0, 1198, 2 do
+			local a, b = clocks[t], clocks[(t + 2) % 1200]
+			if type(a) == "number" and type(b) == "number" then
+				local d = D(a, b)
+				step2:case(d >= -1e-9 and d <= 0.2 + 1e-9, fmt("t %d %s %.3f -> %.3f (%.3f h)", t, phases[t], a, b, d))
+			end
+		end
+		T.check(#wraps == 1 and wraps[1]:sub(1, 5) == "Night", "the clock passes midnight (24 -> 0) exactly once a loop, in the Night", table.concat(wraps, ","))
 		local c = cfg.Cycle
+		local dawnFrom = cfg.Looks.Dawn.Clock[1]
+		T.check(abs(clocks[0] - dawnFrom) < 1e-9 and D(clocks[1199], clocks[0]) > 0 and D(clocks[1199], clocks[0]) < 0.1, fmt("Night -> Dawn: the night runs on to Dawn's %.1f h (%.3f h in the last second, no 23.6 -> 7 jump)", dawnFrom, D(clocks[1199], clocks[0])))
+		-- the Sunset -> Night window: from 75 s before Night to its start, in the client's 2 s refresh steps
 		local nightAt = c.Seconds.Dawn + c.Seconds.Day + c.Seconds.Sunset
 		local nightFrom = cfg.Looks.Night.Clock[1]
 		local prev
@@ -293,16 +311,16 @@ local function serverScenarios()
 		end
 		walk:case(clocks[nightAt - 1] > 17 + 1, fmt("1 s before Night the clock is already near Night's start (%.3f)", clocks[nightAt - 1]))
 		walk:case(abs(clocks[nightAt] - nightFrom) < 1e-9 and nightFrom - clocks[nightAt - 1] < 0.05, fmt("Night starts at %.2f, %.3f h after the last Sunset second", nightFrom, nightFrom - clocks[nightAt - 1]))
-		mono:report()
 		range:report()
+		fwd:report()
+		step2:report()
 		sunset:report()
 		walk:report()
-		back:report()
-		-- every look's Clock range: from <= to, both inside one day
-		local ranges = T.tally("every Config.Sky.Looks[*].Clock = { from, to } with 0 <= from <= to < 24")
+		-- every look's Clock range: forward, starting inside the day, under one day long (to may pass 24: unwrapped)
+		local ranges = T.tally("every Config.Sky.Looks[*].Clock = { from, to } with 0 <= from < 24, from <= to < from + 24")
 		for id, look in pairs(cfg.Looks) do
 			local c = look.Clock
-			ranges:case(type(c) == "table" and type(c[1]) == "number" and type(c[2]) == "number" and c[1] >= 0 and c[1] <= c[2] and c[2] < 24, id)
+			ranges:case(type(c) == "table" and type(c[1]) == "number" and type(c[2]) == "number" and c[1] >= 0 and c[1] < 24 and c[1] <= c[2] and c[2] < c[1] + 24, id)
 		end
 		ranges:report()
 	end)
@@ -944,19 +962,20 @@ local function clientScenarios()
 			T.check(#calls >= 35 and SC.State().Phase == "Night" and first ~= nil and first <= 17 + 1e-6 and prevClock >= Cfg.Sky.Looks.Night.Clock[1] - 1e-6, fmt("Sunset -> Night through the loop: %d refreshes from %.2f h to %.2f h", #calls, first or -1, prevClock or -1), tostring(SC.State().Phase))
 			T.check(walkBad == nil and maxStep <= 0.2, "Sunset -> Night: ClockTime monotonic across the blend, no 2 s refresh step over 0.2 h", fmt("%s, max step %.3f h", tostring(walkBad), maxStep))
 			T.check(instants == 0, "Sunset -> Night: no instant clock set (the sun goes down over the blend, not in one frame)", fmt("%d instant sets", instants))
-			-- the Night -> Dawn wrap (23.6 -> 7) is the one backward step: set at once, never tweened back through the day
-			publish(nightAt + C.Seconds.Night - 1)
+			-- Night -> Dawn: the night has run on through midnight to Dawn's 7 h, so no jump at the change either
+			publish(nightAt + C.Seconds.Night - 3)
 			KC.advance(0.05)
 			calls = {}
 			KC.advance(2.1)
-			SC.Refresh()
-			local jumped
+			KC.advance(2.1)
+			local dawnInstant = false
 			for _, c in ipairs(calls) do
-				if c.instant and c.instant.Lighting and c.instant.Lighting.ClockTime then
-					jumped = c
+				if c.instant then
+					dawnInstant = true
 				end
 			end
-			T.check(jumped ~= nil and SC.State().Phase == "Dawn" and near(Lighting.ClockTime, Cfg.Sky.Looks.Dawn.Clock[1], 0.05), "Night -> Dawn: the backward wrap (23.6 -> 7) is set at once", tostring(Lighting.ClockTime))
+			KC.advance(2.1)
+			T.check(#calls >= 2 and not dawnInstant and SC.State().Phase == "Dawn" and near(Lighting.ClockTime, Cfg.Sky.Looks.Dawn.Clock[1], 0.1), "Night -> Dawn: no instant set, the clock tweens on into Dawn's 7 h (no 23.6 -> 7 jump)", tostring(Lighting.ClockTime))
 			local inPhase = #calls
 			KC.advance(2.1)
 			local again = false
@@ -972,6 +991,82 @@ local function clientScenarios()
 		SC.Stop()
 		KC.advance(2.2)
 		T.eq(SC.State().Loops, 0, "Stop ends the loop")
+		SC.Start()
+	end)
+
+	S.client_sky_whole_loop = withSky("client_sky_whole_loop", function(SC, LS, SCy)
+		SC.Stop() -- the refreshes by hand at given server times (no tween timing needed: the SetBase calls are read)
+		local C = Cfg.Sky.Cycle
+		local loop = C.Seconds.Dawn + C.Seconds.Day + C.Seconds.Sunset + C.Seconds.Night
+		local calls = {}
+		local real = LS.SetBase
+		LS.SetBase = function(preset, seconds, instant)
+			calls[#calls + 1] = { clock = preset.Lighting and preset.Lighting.ClockTime, instant = instant and instant.Lighting and instant.Lighting.ClockTime == true, phase = SC.State().Phase }
+			return real(preset, seconds, instant)
+		end
+		local ok, err = pcall(function()
+			local epoch = Workspace:GetServerTimeNow()
+			Workspace:SetAttribute(A.Epoch, epoch)
+			Workspace:SetAttribute(A.Speed, 1)
+			Workspace:SetAttribute(A.Offset, 0)
+			Workspace:SetAttribute(A.Event, "")
+			Workspace:SetAttribute(A.EventAt, epoch - 100)
+			SC.Refresh(epoch - C.Refresh) -- the step before the loop starts (its last Night second)
+			calls = {}
+			for k = 0, loop / C.Refresh do
+				SC.Refresh(epoch + k * C.Refresh)
+			end
+			local step = T.tally("a whole loop in 2 s refreshes (incl. Night -> Dawn and the loop wrap): every step moves the sun 0..0.2 h round the dial")
+			local only = T.tally("the only instant ClockTime set of the cycle is the midnight re-base (just before 24 -> just after 0, one step)")
+			local prev, rebases = nil, 0
+			for i, c in ipairs(calls) do
+				if prev then
+					local d = SCy.ClockDelta(prev, c.clock)
+					step:case(d >= -1e-9 and d <= 0.2 + 1e-9, fmt("#%d %s %.3f -> %.3f (%.3f h)", i, tostring(c.phase), prev, c.clock, d))
+					if c.instant then
+						rebases = rebases + 1
+						only:case(prev > 23.7 and c.clock < 0.3 and d <= 0.2 + 1e-9, fmt("#%d %s instant %.3f -> %.3f", i, tostring(c.phase), prev, c.clock))
+					elseif c.clock < prev then
+						only:case(false, fmt("#%d %s tweened backwards %.3f -> %.3f", i, tostring(c.phase), prev, c.clock))
+					end
+				end
+				prev = c.clock
+			end
+			step:report()
+			only:report()
+			T.check(#calls == loop / C.Refresh + 1 and rebases == 1, fmt("%d refreshes over the loop, the midnight re-base once", #calls), fmt("%d calls, %d re-bases", #calls, rebases))
+			-- a raid in the Day (lava: 15.5 h, 3 h from the Day clock): its fixed clock is set at once at the mid-blend, in and out; nothing else is
+			local t0 = epoch + 300
+			SC.Refresh(t0 - C.Refresh) -- (the test jumps its own clock back to the Day first: not recorded)
+			calls = {}
+			SC.Refresh(t0)
+			Workspace:SetAttribute(A.Event, "lava_golem")
+			Workspace:SetAttribute(A.EventAt, t0 + 2)
+			for k = 1, 8 do
+				SC.Refresh(t0 + k * 0.5)
+			end
+			Workspace:SetAttribute(A.Event, "")
+			Workspace:SetAttribute(A.EventAt, t0 + 10)
+			for k = 0, 10 do
+				SC.Refresh(t0 + 10 + k * 0.5)
+			end
+			local raidClock = Cfg.Sky.Looks.lava_golem.Clock[1]
+			local sets, bad = 0, nil
+			for i, c in ipairs(calls) do
+				if c.instant then
+					sets = sets + 1
+					local prevC = calls[i - 1] and calls[i - 1].clock
+					local into = near(c.clock, raidClock, 1e-6)
+					local outOf = prevC and near(prevC, raidClock, 1e-6)
+					if not (into or outOf) then
+						bad = bad or fmt("#%d instant %.3f", i, c.clock)
+					end
+				end
+			end
+			T.check(sets == 2 and bad == nil, "a raid in the Day: exactly two instant clock sets, onto and off the raid's fixed clock", fmt("%d sets %s", sets, tostring(bad)))
+		end)
+		LS.SetBase = real
+		T.check(ok, "client_sky_whole_loop body", tostring(err))
 		SC.Start()
 	end)
 
