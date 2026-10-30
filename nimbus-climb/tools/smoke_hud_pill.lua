@@ -15,9 +15,9 @@
 --                      panel; Travel's drop-down (TravelPortals / TravelLobby) under the button fires QuickTravel
 --                      ("Court" / "Plaza") with a short fade; Travel hides in a battle, a match and on the Arena island;
 --                      the menu column keeps Pets, Index, Home, Stats (no gear, Team or Items tile)
---   client_hudpill_mobile (phone world, 844x390 in a battle) the HUD's TopBand currency row starts right of the pill (not
---                      at BAND_LEFT 150), they do not overlap, the pill ends left of Roblox's right-side buttons and
---                      stays tappable (>= 32 px)
+--   client_hudpill_mobile (phone world, 844x390 / 740x360 / 667x375 in a battle) the HUD's TopBand currency row
+--                      starts right of the pill (not at BAND_LEFT 150), they do not overlap, the pill ends left of
+--                      Roblox's right-side buttons and stays tappable (>= 32 px)
 -- Deterministic: mock clock only. The viewport, the attributes and the players are restored at the end.
 -- Plain Lua 5.1 syntax only.
 
@@ -431,7 +431,7 @@ local function clientScenarios()
 		end
 		local old = { Mock.Viewport.X, Mock.Viewport.Y }
 		local oldCash, oldGems = LocalPlayer:GetAttribute(Config.Attr.Cash), LocalPlayer:GetAttribute(Config.Attr.Gems)
-		for _, case in ipairs({ { 844, 390, 1 }, { 844, 390, 3 }, { 740, 360, 3 } }) do
+		for _, case in ipairs({ { 844, 390, 1 }, { 844, 390, 3 }, { 740, 360, 3 }, { 667, 375, 3 } }) do -- (667x375: three strips still fit right of the pill, BAND_MIN_W)
 			local w, h, n = case[1], case[2], case[3]
 			local label = fmt("hudpill phone %dx%d, %d strip%s", w, h, n, n == 1 and "" or "s")
 			LocalPlayer:SetAttribute(Config.Attr.Cash, n > 1 and 1200 or nil)

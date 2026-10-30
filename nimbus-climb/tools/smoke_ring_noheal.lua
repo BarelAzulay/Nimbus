@@ -372,7 +372,7 @@ S.ringnh_service = guarded("ringnh_service", function()
 		return false, "A raid is already running"
 	end
 	seq = seq + 1
-	local a = Mock.AddPlayer("RingNoHeal" .. seq, 968000 + seq)
+	local a = Mock.AddPlayer("RingNoHeal" .. seq, 971000 + seq) -- (971000+: smoke_p3_ui.lua's tutorial players use 968000 + seq)
 	K.advance(1.0)
 	local prof = data.GetProfile(a)
 	for _, id in ipairs(KEYS) do
@@ -451,7 +451,7 @@ S.ringnh_service = guarded("ringnh_service", function()
 	-- this test climber leaves the server's RingBoard to the p4ring scenarios that follow (it keeps the best 3)
 	local St = svcState()
 	if St and type(St.ringBoard) == "table" then
-		St.ringBoard[968000 + seq] = nil
+		St.ringBoard[971000 + seq] = nil
 	end
 end)
 

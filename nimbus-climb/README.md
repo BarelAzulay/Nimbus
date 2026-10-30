@@ -1464,7 +1464,8 @@ src/server   Main.server.lua; Services: Lighting, LobbyBuilder, StormAltar, Play
              stands locked on the Ring / PvP podium)
 src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientSettings; SoundFx; GraphicsQuality;
              PortalVortex (the swirling vortex inside every gate hoop); MouseLock (the Mouse lock option);
-             LightingStack (lighting looks, e.g. the Dungeon); UI/CloudUI; UI/NeonKit (the neon cards, tiles and side
+             LightingStack (lighting looks, e.g. the Dungeon); TeamPick (the battle team strip, Auto-fill best and the
+             empty-team popup at the battle portals); UI/CloudUI; UI/NeonKit (the neon cards, tiles and side
              panels); UI/PetCard (the cards above pets); Controllers: Movement, MainMenu (main menu + settings), Hud,
              DamageFx, Notify, Menu, Pet, TokenFx, Index, Tutorial, Npc, SkyDragon, Showcase, Dev, DevPetShow
              (pet showcase, /fx attack preview), EvolutionFx (evolution animation, the dungeon enemies' arrival),
@@ -1481,7 +1482,7 @@ src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientS
              turns the NC_DungeonSpin rings near the camera; no sound here), MeshFallback (shows the
              block pet on a device where a Blender model failed to load), RingAmbience (the Champion Ring's crowd
              and drums, heard only near the ring), TrainerCheer (wave 6: my avatar's cheer emote on the podium and on
-             Cheer up!)
+             Cheer up!), TopBar (the top-left Shop / Travel / Settings pill and the Quick Travel drop-down)
 ```
 
 The **server is authoritative** (health, tokens, Cash, Gems, berries, pets, items, checkpoints, matches, home

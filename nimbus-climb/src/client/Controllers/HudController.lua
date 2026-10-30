@@ -115,7 +115,8 @@ local K = {
 	-- TopBarController's pill, its NimbusTopBar PillRight + STRIP_GAP, this at least) ...
 	BAND_RIGHT = 72, -- ... and ends left of its "..." button
 	BAND_INSET = 58, -- the top bar's height when the gui inset cannot be measured
-	BAND_MIN_W = 120, -- a strip in the band is squeezed to this at most
+	BAND_MIN_W = 100, -- a strip in the band is squeezed to this at most (HUD cleanup: was 120; right of the pill three
+	-- strips still fit one row down to a 640x360 phone, else they fell back to the stack under the battle HUD's LEAVE)
 	-- ... and on a portrait screen the strips sit side by side in ONE row at the top right (a stack would eat the
 	-- room the toasts below it need there), each this wide at most / at least
 	ROW_MAX_W = 140,
