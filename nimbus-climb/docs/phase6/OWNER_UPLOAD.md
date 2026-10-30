@@ -298,6 +298,9 @@ ring; SETTINGS Music / Sound sliders change them at once.
 
 ## 6c. The sky faces (the living sky)
 
+**Done 2026-10-30** on branch `sky-skies`: 42 Decals uploaded, all Approved (c1efa83), the Image ids recorded in
+`src/shared/TextureIds.lua` (3dfe124, the Decal ids kept as `decalAssetId`). Left: the OWNER Play-test below.
+
 42 PNGs in `blender/textures/sky/<theme>/Skybox<Face>.png`: 7 painted skies x 6 faces (Bk Dn Ft Lf Rt Up), keys
 `sky_<theme>_<Face>` in `blender/textures/textures.json` (built by `py -3.12 blender/sky/build_sky_manifest.py`;
 themes in `blender/sky/README.md`). Until they are uploaded the game runs the day / night cycle and the raid skies with
