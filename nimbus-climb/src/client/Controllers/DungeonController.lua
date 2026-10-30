@@ -38,6 +38,11 @@
 --     true / false) (the Dungeon track while the run lasts; BattleController's Battle layer wins in the boss room).
 --   * Sounds: SoundFx "Reward" when the chest pays out (DungeonState "Chest") and when a room's loot comes in (not
 --     the third-of-the-XP consolation of a lost run).
+--   * Camera (wave 6): while a run lasts, R.camClamp (RenderStep NimbusDungeonCamBox at Camera + 1) keeps the camera
+--     inside the pieces' camera boxes (DungeonBuilder's CamMin / CamMax): the boom from the Focus is cut on its own ray
+--     where it leaves the box the Focus is in (CAM_MARGIN 0.6 inside; through a doorway it carries on in the next box,
+--     at most 2 hops), so no zoom or turn shows the outside of a room, over a ceiling or across the chasm. First person
+--     (a boom < 1 stud), a Scriptable camera (the walk-in, the entrance) and a Focus in no box are left alone.
 --   * Camera (bug batch 2, #19): MovementController.SetZoomMax(K.ZOOM_RUN 14) with the first Run payload, so the camera
 --     stays inside the 16-stud rooms; SetZoomMax(nil) (the normal 40) on End, when the run vanished without an End
 --     (R.check) and, as a safety net, on any light-loop tick that finds the zoom capped with no run (every exit path).
@@ -46,7 +51,9 @@
 --   * The room change fade (DungeonState "Fade" { Out, Hold, In }): ONE black full-screen Frame in its own ScreenGui
 --     NimbusDungeonFade (IgnoreGuiInset, DisplayOrder K.FADE_ORDER 25: above the HUD 10, the battle HUD / run card 12
 --     and the windows 20-23, below Notify 30); tweens to black over Out, holds (until the next room's Run payload,
---     at least Hold), back over In; never stuck: a FADE_SAFETY 3 s clear, End and leaving the run clear it at once.
+--     at least Hold), back over In; never stuck: a FADE_SAFETY 6 s clear, End and leaving the run clear it at once.
+--     (wave 6: the black waits up to FADE_SAFETY for the room: the server's payload can queue behind a big
+--     replication; the old 3 s clear dropped the walk-in when it came late.)
 --   * Wave 5 (bugs #15 / #26):
 --     - The entrance (DungeonState "Enter" { Cover, Reveal, Element }, before the server teleports the party into the
 --       hall after Cover): the camera rushes into the Dungeon gate's vortex (0.5 s, FOV 70 -> 55, the gate flares,
@@ -120,7 +127,7 @@ local K = {
 	END_SECONDS = 14, -- the End card hides by itself after this
 	TREASURE = 45,
 	FADE_ORDER = 25, -- the room change fade: above the HUD (10), the run card (12) and the windows (20-23), below Notify (30)
-	FADE_SAFETY = 3, -- a fade never stays on longer than this (seconds)
+	FADE_SAFETY = 6, -- a fade never stays on longer than this (seconds; wave 6: 3 -> 6, it waits for a late room payload)
 	FADE_MAX_STEP = 2, -- Out / Hold / In are clamped to 0..this
 	TICK = 0.25, -- the light loop
 	BACK_ACTION = "NimbusDungeonBack",
@@ -143,6 +150,8 @@ local K = {
 	WALK_IN = 1.5, -- studs past the Threshold's centre (inside its box)
 	WALK_REACH = 1.2, -- this close to the end point = arrived
 	WALK_BIND = "NimbusDungeonWalk",
+	CAM_BIND = "NimbusDungeonCamBox", -- wave 6: the camera box clamp (RenderPriority.Camera + 1, while a run lasts)
+	CAM_MARGIN = 0.6, -- the camera stays this far inside a piece's box
 	WALK_ACTION = "NimbusDungeonWalkSink",
 	-- wave 5 (bug #15): the voxel-shatter entrance
 	ENTER_ORDER = 26, -- above the fade (25) and every window, below Notify (30)
@@ -244,6 +253,9 @@ local S = {
 	Pocket = nil,
 	Zoomed = false, -- the camera zoom is capped at K.ZOOM_RUN (a run)
 	Walk = nil, -- wave 5: the room walk-in (R.walkPrepare)
+	WalkSkip = nil, -- wave 6: why the last room payload played no walk-in (GetState().WalkSkip, the run gui's attribute)
+	CamBoxes = nil, -- wave 6: the pocket's piece camera boxes (R.camBoxes), nil = rebuild
+	CamBound = false, -- wave 6: NimbusDungeonCamBox is bound
 	Enter = nil, -- wave 5: the voxel-shatter entrance (R.enter)
 	Gate = nil, -- the Dungeon gate model (GateId "Dungeon"), cached
 	ShoulderHum = nil, -- the Humanoid whose CameraOffset is the dungeon shoulder
@@ -1334,6 +1346,8 @@ function DungeonController.GetState()
 		Door = (S.Run and R.doorWait()) or nil, -- "press" | "wait" | "go" at an open door
 		Enter = S.Enter and S.Enter.Phase or nil, -- "Rush" | "Cover" | "Hold" | "Reveal" while the entrance plays
 		Walk = S.Walk and S.Walk.Phase or nil, -- "Hold" | "Walk" | "Blend" while the room walk-in plays
+		WalkSkip = S.WalkSkip, -- wave 6: why the last room payload played no walk-in: "NoFade" | "FadeIn" | "InMatch" |
+		-- "NoCharacter" | "NoRoom" | "Inward" | "Error" (nil = it played)
 		Shoulder = S.ShoulderHum ~= nil,
 	}
 end
@@ -2150,6 +2164,7 @@ function R.zoom(on)
 		return
 	end
 	S.Zoomed = on
+	R.camBind(on)
 	local MC = H.controller("MovementController")
 	if MC and type(MC.SetZoomMax) == "function" then
 		if not on then
@@ -2166,6 +2181,148 @@ function R.zoom(on)
 	end
 end
 
+-- wave 6: the camera boxes of the pieces in my pocket (the hall, each Room_<n>'s corridor + room, the treasure: the
+-- CamMin / CamMax attributes on the piece models), cached until a Run payload or a room added / removed
+function R.camBoxes()
+	if S.CamBoxes then
+		return S.CamBoxes
+	end
+	local pocket = S.Pocket and S.Pocket.Parent and S.Pocket or nil
+	if not pocket then
+		return nil
+	end
+	local out = {}
+	local function add(m)
+		local a, b = m:GetAttribute("CamMin"), m:GetAttribute("CamMax")
+		if typeof(a) == "Vector3" and typeof(b) == "Vector3" then
+			out[#out + 1] = { Min = a, Max = b }
+		end
+	end
+	for _, child in ipairs(pocket:GetChildren()) do
+		if child:IsA("Model") then
+			add(child)
+			for _, piece in ipairs(child:GetChildren()) do
+				if piece:IsA("Model") then
+					add(piece)
+				end
+			end
+		end
+	end
+	S.CamBoxes = out
+	return out
+end
+
+local function camInBox(b, p)
+	return p.X >= b.Min.X and p.X <= b.Max.X and p.Y >= b.Min.Y and p.Y <= b.Max.Y and p.Z >= b.Min.Z and p.Z <= b.Max.Z
+end
+
+-- one slab of camExit: the ray's t where it leaves [lo + m, hi - m] along one axis (v = the boom's component)
+local function camSlab(t, v, f, lo, hi, m)
+	if v > 1e-6 then
+		return math.min(t, (hi - m - f) / v)
+	elseif v < -1e-6 then
+		return math.min(t, (lo + m - f) / v)
+	end
+	return t
+end
+
+-- where the ray F + boom * t (t >= 0) leaves box b shrunk by m (slab method; >= 0). Runs several times a frame, so
+-- the three axes are unrolled (no per-frame table)
+local function camExit(b, F, boom, m)
+	local t = camSlab(math.huge, boom.X, F.X, b.Min.X, b.Max.X, m)
+	t = camSlab(t, boom.Y, F.Y, b.Min.Y, b.Max.Y, m)
+	t = camSlab(t, boom.Z, F.Z, b.Min.Z, b.Max.Z, m)
+	return math.max(0, t)
+end
+
+-- every frame after the camera scripts: the boom cut where it leaves the boxes (same ray, so the view keeps its look)
+function R.camClamp()
+	local cam = Workspace.CurrentCamera
+	if not cam or not S.Run or S.Walk or cam.CameraType ~= Enum.CameraType.Custom then
+		return
+	end
+	local boxes = R.camBoxes()
+	if not boxes or #boxes == 0 then
+		return
+	end
+	local cf = cam.CFrame
+	local F = cam.Focus.Position
+	local boom = cf.Position - F
+	if boom.Magnitude < 1 then
+		return -- first person
+	end
+	local box = nil
+	for _, b in ipairs(boxes) do
+		if camInBox(b, F) then
+			box = b
+			break
+		end
+	end
+	if not box then
+		return -- a teleport frame
+	end
+	local t = 1
+	for hop = 1, 3 do
+		local inner = camExit(box, F, boom, K.CAM_MARGIN)
+		if inner >= 1 then
+			t = 1
+			break
+		end
+		-- through a doorway: the ray goes on in the box it enters
+		local p = F + boom * math.min(1, camExit(box, F, boom, 0) + 0.02)
+		local nextBox = nil
+		if hop < 3 then
+			for _, b in ipairs(boxes) do
+				if b ~= box and camInBox(b, p) then
+					nextBox = b
+					break
+				end
+			end
+		end
+		if not nextBox then
+			t = inner
+			break
+		end
+		box = nextBox
+	end
+	if t < 1 then
+		cam.CFrame = CFrame.new(F + boom * t) * (cf - cf.Position)
+	end
+end
+
+function R.camBind(on)
+	if on == S.CamBound then
+		return
+	end
+	S.CamBound = on
+	S.CamBoxes = nil
+	pcall(function()
+		if on then
+			RunService:BindToRenderStep(K.CAM_BIND, H.renderPriority(1), function()
+				H.safe("camera box", R.camClamp)
+			end)
+		else
+			RunService:UnbindFromRenderStep(K.CAM_BIND)
+		end
+	end)
+end
+
+-- where a pocket holder stands for R.findPocket: its hall's floor (PrimaryPart / Base), never the hall's bounding box.
+-- (wave 6 Studio check: a client-dressed mesh placed before its door model's PrimaryPart replicated sat at the world
+-- origin inside Entrance_1 and moved the box centre ~6400 studs away: no pocket found -> WalkSkip NoRoom on every room,
+-- and no camera box clamp for the whole run)
+function H.pocketAnchor(holder)
+	local hall = holder:FindFirstChild("Entrance_1") or holder:FindFirstChildWhichIsA("Model")
+	if not hall then
+		return H.positionOf(holder)
+	end
+	local floorPart = (hall:IsA("Model") and hall.PrimaryPart) or hall:FindFirstChild("Base")
+	if floorPart and floorPart:IsA("BasePart") then
+		return floorPart.Position
+	end
+	return H.positionOf(hall)
+end
+
 -- the pocket (workspace.Dungeons.Dungeon_<i>) the player stands in: the nearest holder within 400 studs
 function R.findPocket()
 	local folder = Workspace:FindFirstChild("Dungeons")
@@ -2175,7 +2332,7 @@ function R.findPocket()
 	end
 	local best, bestD = nil, 400
 	for _, holder in ipairs(folder:GetChildren()) do
-		local at = H.positionOf(holder:FindFirstChild("Entrance_1") or holder:FindFirstChildWhichIsA("Model") or holder)
+		local at = H.pocketAnchor(holder)
 		if at then
 			local d = (at - pos).Magnitude
 			if d < bestD then
@@ -2194,6 +2351,7 @@ function R.unwatchDoors()
 	end
 	S.Doors = {}
 	S.Pocket = nil
+	S.CamBoxes = nil
 end
 
 -- local copies of a door's bars sink into the floor (the server already switched the real bars off)
@@ -2256,7 +2414,12 @@ function R.watchDoors()
 	end
 	table.insert(S.Doors, pocket.ChildAdded:Connect(function(child)
 		R.watchRoom(child)
+		S.CamBoxes = nil
 	end))
+	table.insert(S.Doors, pocket.ChildRemoved:Connect(function()
+		S.CamBoxes = nil
+	end))
+	S.CamBoxes = nil
 end
 
 ----------------------------------------------------------------------
@@ -2425,24 +2588,34 @@ function R.walkCam(w, e)
 	return CFrame.lookAt(at, w.Root.Position + Vector3.new(0, 1.2, 0))
 end
 
+-- wave 6: why a room payload played no walk-in (nil = it played): GetState().WalkSkip and the run gui's WalkSkip
+-- attribute (readable in Studio's Explorer during a play test)
+function R.walkSkipped(why)
+	S.WalkSkip = why
+	if U.RunGui then
+		U.RunGui:SetAttribute("WalkSkip", why)
+	end
+end
+
 -- the next room's Run payload arrived under the fade: set the shot up while the screen is still black
+-- -> true, or false + why ("InMatch" | "NoCharacter" | "NoRoom" | "Inward")
 function R.walkPrepare(room, key)
 	if S.Walk then
 		R.walkClear()
 	end
 	if H.inMatch() or not LocalPlayer then
-		return false
+		return false, "InMatch"
 	end
 	local char, hum, root = H.character()
 	local camera = Workspace.CurrentCamera
 	if not char or hum.Health <= 0 or not camera then
-		return false
+		return false, "NoCharacter"
 	end
 	local pocket = (S.Pocket and S.Pocket.Parent and S.Pocket) or R.findPocket()
 	local model = pocket and pocket:FindFirstChild("Room_" .. tostring(room))
 	local th = model and model:FindFirstChild("Threshold")
 	if not th or not th:IsA("BasePart") then
-		return false
+		return false, "NoRoom"
 	end
 	local doorPos = H.positionOf(model:FindFirstChild("Door_Entrance")) or root.Position
 	local d = th.Position - doorPos
@@ -2452,7 +2625,7 @@ function R.walkPrepare(room, key)
 		inward = Vector3.new(d.X, 0, d.Z)
 	end
 	if inward.Magnitude < 0.5 then
-		return false
+		return false, "Inward"
 	end
 	inward = inward.Unit
 	local right = inward:Cross(Vector3.new(0, 1, 0))
@@ -3013,6 +3186,7 @@ function R.onState(kind, payload)
 	elseif kind == "Run" then
 		local fresh = S.Run == nil or S.Run.RunId ~= payload.RunId
 		local key = tostring(payload.State) .. ":" .. tostring(payload.Phase) .. ":" .. tostring(payload.Room)
+		local newKey = key ~= S.PhaseKey
 		if fresh then
 			S.Totals = { Cash = 0, Tokens = 0, Xp = 0, Gems = 0 }
 			S.ChestOpened = false
@@ -3027,6 +3201,7 @@ function R.onState(kind, payload)
 		end
 		S.Run = payload
 		S.RunAt = os.clock()
+		S.CamBoxes = nil
 		-- wave 5 (bug #15): the run's first payload lifts the entrance blocks
 		if fresh and S.Enter then
 			R.enterReveal()
@@ -3040,9 +3215,15 @@ function R.onState(kind, payload)
 				R.walkClear()
 			end
 		end
-		if not S.Walk and S.Fade and (S.Fade.Phase == "Out" or S.Fade.Phase == "Hold") and key ~= S.Fade.Key and payload.State == "Corridor"
-			and payload.Phase == "Threshold" and room >= 1 and room <= 4 then
-			H.safe("walk prepare", R.walkPrepare, room, key)
+		local threshold = payload.State == "Corridor" and payload.Phase == "Threshold" and room >= 1 and room <= 4
+		if not S.Walk and S.Fade and (S.Fade.Phase == "Out" or S.Fade.Phase == "Hold") and key ~= S.Fade.Key and threshold then
+			local okP, prepared, why = pcall(R.walkPrepare, room, key)
+			if not okP then
+				H.warnOnce("walk prepare", prepared)
+			end
+			R.walkSkipped(okP and not prepared and (why or "NoRoom") or (not okP and "Error") or nil)
+		elseif threshold and newKey and not S.Walk then
+			R.walkSkipped(S.Fade and "FadeIn" or "NoFade")
 		end
 		-- the next room arrived while the screen holds black: fade back in
 		if S.Fade and S.Fade.Phase == "Hold" and key ~= S.Fade.Key then

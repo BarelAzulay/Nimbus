@@ -32,9 +32,11 @@
 --                                                                  BenchRegenPerSecond 0 (no passive heal in combat), DownAutoSwap, HelperCooldown 15,
 --                                                                  SupportCooldown 12, Windup 0.45, ArriveSeconds 1.2 (a spawned enemy's entrance),
 --                                                                  KitFactor 1.5, HelperWeight 0.35, Lives 3, WalkMult 1.15, WalkMin 12, WalkMax 20, RunMult 1.3,
---                                                                  MoveSlack 1.25, Leash 10, LeashSeconds 3, EngageRange 14, EngageLeash 18,
---                                                                  EngagePull 7, EngageStillSeconds 0.5, EngageCooldown 0.5 (bug #22: the
---                                                                  fighter leaves a STANDING character to fight; BattleSim "ENGAGE")
+--                                                                  MoveSlack 1.25, Leash 10, LeashSeconds 3, ParryWindow 0.25, ParryStagger
+--                                                                  0.4, ParryMeter 8, ParryBossGap 3, CheerBoost 0.05, CheerSeconds 5, CheerCooldown 20
+--                                                                  (wave 6: a timed Dash parries; Cheer up!; no Engage*
+--                                                                  numbers: the pet fights any enemy in the fight area whatever the character
+--                                                                  does; BattleSim "ENGAGE")
 --   BattleCatalog.Fighter.WalkOf(moveSpeed) -> walk (12..20); Fighter.RunOf(walk) -> walk x RunMult; Fighter.SpeedsOf(moveSpeed) -> walk, run
 --   BattleCatalog.ElementAttacks[element]                          { Name, Shape = "Cone"|"Circle"|"Line", Angle, Length, Radius, Width, Push, Burn, Slow, Leech,
 --                                                                  Stun, MeterGain, Weaken } one per Config.Elements.Order
@@ -322,12 +324,19 @@ BattleCatalog.Fighter = {
 	MoveSlack = 1.25, -- the server fighter's cap OVER THE LEGAL RUN SPEED (latency + a cheat margin)
 	Leash = 10, -- a gap > Leash for LeashSeconds between the character and the server fighter = out (BattleService)
 	LeashSeconds = 3,
-	-- bug #22 (the engage rule, BattleSim fighterStep): "the character leads when it moves, the pet fights when it stands"
-	EngageRange = 14, -- an enemy within this of the standing character's point (+ its radius): the fighter leaves to fight it
-	EngageLeash = 18, -- an engaged fighter never strays further than this from the stand point (>= EngageRange)
-	EngagePull = 7, -- the character walks more than this from where it stood = come back (ruling 2026-10-28: a small reposition keeps the fight)
-	EngageStillSeconds = 0.5, -- the Move point must have been still this long before the fighter engages
-	EngageCooldown = 0.5, -- after a disengage, no re-engage for this long (no flapping at the range edge)
+	-- wave 6: Dash = a sidestep out of the threat; a Dash pressed within ParryWindow of a timed hit (an NPC wind-up on the pet,
+	-- a boss telegraph over it) PARRIES it (BattleSim "Dash")
+	ParryWindow = 0.25, -- seconds before the hit lands (<= DashIFrames: the i-frames always cover a parried hit)
+	ParryStagger = 0.4, -- the parried attacker: an NPC stunned this long, a boss starts nothing new this long
+	ParryMeter = 8, -- special meter per parried threat
+	ParryBossGap = 3, -- a boss is staggered at most once per this many seconds (a 16-raid of parries must not perma-lock it)
+	-- wave 6: "Cheer up!" (raids and dungeons): the cheering trainer's fighter deals +5% for 5 s, a 20 s cooldown, no stacking
+	CheerBoost = 0.05,
+	CheerSeconds = 5,
+	CheerCooldown = 20,
+	-- wave 6 (the engage rule, BattleSim fighterStep): the pet fights any targetable enemy on the floor (the fight area) and
+	-- the character's movement never pulls it off: EngageRange / EngageLeash / EngagePull / EngageStillSeconds /
+	-- EngageCooldown are gone (the floor is the bound)
 }
 
 function BattleCatalog.Fighter.WalkOf(moveSpeed)
@@ -1351,8 +1360,10 @@ BattleCatalog.Bosses = {
 		Name = "Lava Golem",
 		Element = "Flame",
 		Blurb = "A walking volcano. Water pets cool it down.",
-		HpPerPlayer = 85, -- its Eruption sends every melee fighter running, so its HP is a little lower (balance-5: 90 -> 85,
-		-- the bug #22 engaged pets (EngagePull 7) cost the Frost-heavy mid group time: 8 x M5 won 44% of 32 seeds, now 84%)
+		HpPerPlayer = 90, -- its Eruption sends every melee fighter running, so its HP is a little lower (balance-5: 90 -> 85,
+		-- the bug #22 engaged pets (EngagePull 7) cost the Frost-heavy mid group time: 8 x M5 won 44% of 32 seeds, then 84%).
+		-- Wave 6: 85 -> 90 again: pets that never retreat + the parrying trainer made it fast (M8 4p 88 s, the M8 stage
+		-- average 97 s); at 90: M8 93-115 s a cell, 8 x M5 84% of 32 seeds (225 s), a solo M5 / Lv 5 still loses
 		Radius = 8,
 		Scale = 1,
 		Basic = { Name = "Magma Fist", Interval = 2.8, Damage = 0.05, Range = 20 },
@@ -1902,7 +1913,7 @@ function BattleCatalog.Validate()
 		bad("Roles: Combat 1 / 1, Support above 1")
 	end
 	local F = BattleCatalog.Fighter
-	for _, key in ipairs({ "AttackSlack", "AttackTolerance", "ElementCooldown", "ElementMult", "ElementRange", "SpecialMeterMax", "MeterPerSecond", "MeterOnHit", "MeterOnHurt", "DashSeconds", "DashCooldown", "DashIFrames", "SwapCooldown", "SwapCastSeconds", "HelperCooldown", "SupportCooldown", "Windup", "KitFactor", "HelperWeight", "Lives", "WalkMult", "WalkMin", "WalkMax", "RunMult", "MoveSlack", "Leash", "LeashSeconds", "EngageRange", "EngageLeash", "EngagePull", "EngageStillSeconds", "EngageCooldown" }) do
+	for _, key in ipairs({ "AttackSlack", "AttackTolerance", "ElementCooldown", "ElementMult", "ElementRange", "SpecialMeterMax", "MeterPerSecond", "MeterOnHit", "MeterOnHurt", "DashSeconds", "DashCooldown", "DashIFrames", "SwapCooldown", "SwapCastSeconds", "HelperCooldown", "SupportCooldown", "Windup", "KitFactor", "HelperWeight", "Lives", "WalkMult", "WalkMin", "WalkMax", "RunMult", "MoveSlack", "Leash", "LeashSeconds" }) do
 		if not finite(F[key]) or F[key] <= 0 then
 			bad("Fighter." .. key .. " must be a positive number")
 		end
@@ -1916,15 +1927,30 @@ function BattleCatalog.Validate()
 	if F.Windup <= F.DashIFrames * 0.8 then
 		bad("Fighter.Windup must leave the dash i-frames room to dodge")
 	end
-	if finite(F.EngageRange) and finite(F.EngageLeash) and finite(F.EngagePull) and finite(F.EngageStillSeconds) then
-		if F.EngageLeash < F.EngageRange then
-			bad("Fighter.EngageLeash must be >= EngageRange")
-		end
-		if F.EngagePull >= F.EngageRange then
-			bad("Fighter.EngagePull must be below EngageRange")
-		end
-		if F.EngageStillSeconds > 2 then
-			bad("Fighter.EngageStillSeconds must be <= 2 s")
+	-- wave 6: the parry (a timed Dash)
+	if not finite(F.ParryWindow) or F.ParryWindow <= 0 or F.ParryWindow > F.DashIFrames then
+		bad("Fighter.ParryWindow must be above 0 and <= DashIFrames")
+	end
+	if not finite(F.ParryStagger) or F.ParryStagger < 0 or F.ParryStagger > 1 then
+		bad("Fighter.ParryStagger must be 0..1 s")
+	end
+	if not finite(F.ParryMeter) or F.ParryMeter < 0 or F.ParryMeter > 30 then
+		bad("Fighter.ParryMeter must be 0..30")
+	end
+	if not finite(F.ParryBossGap) or not finite(F.ParryStagger) or F.ParryBossGap < F.ParryStagger then
+		bad("Fighter.ParryBossGap must be >= ParryStagger")
+	end
+	-- wave 6: Cheer up! is a really small boost with a cooldown (never a must-spam meta)
+	if not finite(F.CheerBoost) or F.CheerBoost <= 0 or F.CheerBoost > 0.1 then
+		bad("Fighter.CheerBoost must be above 0 and <= 0.1")
+	end
+	if not finite(F.CheerSeconds) or not finite(F.CheerCooldown) or F.CheerSeconds <= 0 or F.CheerSeconds >= F.CheerCooldown then
+		bad("Fighter.CheerSeconds must be above 0 and below CheerCooldown")
+	end
+	-- wave 6: the stand-still engage rule is gone; a stray Engage* number means a half-reverted catalog
+	for _, key in ipairs({ "EngageRange", "EngageLeash", "EngagePull", "EngageStillSeconds", "EngageCooldown" }) do
+		if F[key] ~= nil then
+			bad("Fighter." .. key .. " was removed in wave 6 (the pet fights anything in the fight area)")
 		end
 	end
 	if F.WalkMin > F.WalkMax or F.RunMult < 1 or F.MoveSlack < 1 or F.Lives ~= 3 then

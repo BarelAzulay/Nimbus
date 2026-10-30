@@ -1,7 +1,9 @@
 -- HudController: the Nimbus Climb heads-up display (v3).
 --
 --   HudController.Init()
---   HudController.GetLayout() -> { TopLeftRight, TopLeftBottom, TopRightBottom, BottomLeftTop, Scale, CurrencyMode }
+--   HudController.GetLayout() -> { TopLeftRight, TopLeftBottom, TopRightBottom, BottomLeftTop, Scale, CurrencyMode,
+--                                  Vitals = { X, Y, W, H } | nil }   (wave 6: the vitals card's gui-area rect; the battle
+--                                  HUD's Cheer up! button sits right above it)
 --
 -- One ScreenGui "NimbusHud" (display order 10, IgnoreGuiInset = false, built by CloudUI.NewScreenGui).
 -- Nothing the game announces is ever drawn in the middle of the screen. The layout map:
@@ -229,6 +231,7 @@ local movementNextTry = 0
 local layoutKey = nil
 local layoutPoll = 0
 local published = {} -- the geometry attributes on the gui
+local vitalsRect = nil -- wave 6: the vitals card's last laid-out rect (gui-area px: X, Y = top-left, W, H); GetLayout().Vitals
 
 local UI = {} -- instance references
 local Items = {} -- sliding panels, see present()
@@ -881,6 +884,7 @@ local function applyMargins(animate, force)
 		UI.Vitals.Size = UDim2.fromOffset(vitalsW, vitalsH)
 		UI.Vitals.Position = UDim2.new(0, math.floor(vitalsLeft + 0.5), 0, math.floor(vitalsBottom + 0.5))
 	end
+	vitalsRect = { X = math.floor(vitalsLeft + 0.5), Y = math.floor(vitalsBottom + 0.5) - vitalsH * k, W = vitalsW * k, H = vitalsH * k }
 
 	-- currencies: thin strips stacked top-right, right-aligned (the token strip carries the "+n" chip in a match)
 	local n = math.max(1, #currencies)
@@ -2937,6 +2941,8 @@ function HudController.GetLayout()
 		BottomLeftTop = published.BottomLeftTop or 0,
 		Scale = currentScale(),
 		CurrencyMode = S.currencyMode,
+		Vitals = (vitalsRect and UI.Vitals and UI.Vitals.Visible and UI.Gui and UI.Gui.Enabled)
+			and { X = vitalsRect.X, Y = vitalsRect.Y, W = vitalsRect.W, H = vitalsRect.H } or nil,
 	}
 end
 

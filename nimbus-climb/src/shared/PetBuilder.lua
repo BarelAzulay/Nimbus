@@ -6610,7 +6610,16 @@ local function groupMotion(gr, st)
 	if kind == "wing" then
 		local a = FLAP_AMP * (1 + 0.15 * st.Excite) * sin(st.Flap)
 		local sweep = 0.12 * sin(st.Flap - 1.2)
-		return CFrame.Angles(0, sweep * gr.Side, a * gr.Side)
+		-- the beat turns about the PET's forward axis through the hinge (bug "evolved wings cross the face"): a wing
+		-- lies flat in its hinge's XY plane, so a roll about the hinge's own Z spins it in its plane; once the hinge
+		-- sweeps the wing back (the evolved fans 0.95 rad, the bat wings 1.32) that spin swung the raised feathers
+		-- forward over the head, in front of the face while flying (Excited). Written in the hinge frame here.
+		local rot = gr.HingeRot
+		if not rot then
+			rot = gr.Hinge and gr.Hinge.Rotation or CFrame.new()
+			gr.HingeRot, gr.HingeRotInv = rot, rot:Inverse()
+		end
+		return gr.HingeRotInv * CFrame.Angles(0, sweep * gr.Side, a * gr.Side) * rot
 	elseif kind == "cloud" then
 		-- a storm cloud half: a slow, gentle roll (~0.4 Hz, +-7 degrees) and a small drift that keeps the rider
 		-- sitting in it (it rides the flap clock, so Flap / Excited speed it up)

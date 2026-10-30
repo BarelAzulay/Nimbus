@@ -13,7 +13,9 @@
 --                         (the ExpectedDps of BossRules.Baseline, a Lv 25 evolved ember_phoenix), DamageGroup.Min 0.7,
 --                         MinHp 2500, GroupExponent 0.2; a strong solo / a group keep their own DPS-based HP; idle alts
 --                         never lower it; the sim: a Lv 5 solo loses, a Lv 40 solo and eight Lv 5 teams win; balance-5:
---                         lava_golem HpPerPlayer 85, a solo M5 loses to it and eight M5 teams win >= 10 of 16 seeds
+--                         lava_golem HpPerPlayer 85, a solo M5 loses to it and eight M5 teams win >= 10 of 16 seeds;
+--                         wave 6 (the parrying trainer, pets never retreat): lava_golem back to 90, a solo M5 loses
+--                         every boss while it parries, a Lv 5 solo loses the Lava Golem and the Shadow Hydra too
 -- White-box: a few checks read battle.units (same Lua state). Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -402,14 +404,28 @@ S.bug2bat_raid_balance = guarded("bug2bat_raid_balance", function()
 	T.check(strongRuns == 4 and strongWins == 4, "#2 a Lv 40 solo still beats the raid boss", table.concat(detail, "; "))
 	T.check(groupRuns == 2 and groupWins == 2, "#2 eight Lv 5 teams together still beat the raid boss", table.concat(detail, "; "))
 	-- balance-5: the Lava Golem counters the Frost-heavy mid team (M5) and the bug #22 engaged pets (EngagePull 7) cost
-	-- that group time: 8 x M5 won 44% of 32 seeds at HpPerPlayer 90. At 85: 84% of 32 (14 of seeds 1-16, 90 gave 9), a solo M5 still
-	-- loses with ~65% of the boss left, and the other bosses keep HpPerPlayer 100
-	T.check(BC.Bosses.lava_golem.HpPerPlayer == 85 and BC.Bosses.storm_titan.HpPerPlayer == 100 and BC.Bosses.frost_wyrm.HpPerPlayer == 100 and BC.Bosses.shadow_hydra.HpPerPlayer == 100,
-		"balance-5: lava_golem HpPerPlayer 90 -> 85, the other bosses 100", tostring(BC.Bosses.lava_golem.HpPerPlayer))
+	-- that group time: 8 x M5 won 44% of 32 seeds at HpPerPlayer 90, 84% at 85. Wave 6 (pets never retreat, the trainer
+	-- stands and times the Dash): at 85 the M8 cells finished in 88-93 s (under the 90 s cell band), so it is back at 90:
+	-- 8 x M5 84% of 32 seeds (15 of seeds 1-16), M8 93-115 s; the other bosses keep HpPerPlayer 100
+	T.check(BC.Bosses.lava_golem.HpPerPlayer == 90 and BC.Bosses.storm_titan.HpPerPlayer == 100 and BC.Bosses.frost_wyrm.HpPerPlayer == 100 and BC.Bosses.shadow_hydra.HpPerPlayer == 100,
+		"wave 6: lava_golem HpPerPlayer 85 -> 90 (balance-5 had 90 -> 85), the other bosses 100", tostring(BC.Bosses.lava_golem.HpPerPlayer))
 	local lavaSolo = SIM.midGroup("lava_golem", 1, 2)
 	local lavaGroup = SIM.midGroup("lava_golem", 8, 16)
 	T.check(lavaSolo.n == 2 and lavaSolo.wins[1] == 0, "balance-5 (#2): a solo mid (M5) team still loses to the Lava Golem", fmt("%d of %d", lavaSolo.wins[1], lavaSolo.n))
 	T.check(lavaGroup.n == 16 and lavaGroup.wins[1] >= 10 and lavaGroup.avgDur <= 240, "balance-5 (#2): eight mid (M5) teams win a fair share against the Lava Golem (>= 10 of 16 seeds, before the enrage on average)", fmt("%d of %d, %.0f s", lavaGroup.wins[1], lavaGroup.n, lavaGroup.avgDur))
+	-- wave 6 (#2 with the parrying trainer): a weak solo still loses EVERY boss although it parries (M5 2 seeds a boss;
+	-- the Lv 5 solo above only meets the Storm Titan and the Frost Wyrm, so it meets the other two here)
+	local soloLost, soloN, soloParries = 0, 0, 0
+	local soloDetail = {}
+	for _, id in ipairs(BC.BossOrder) do
+		local m5 = SIM.midGroup(id, 1, 2)
+		soloLost, soloN, soloParries = soloLost + (m5.n - m5.wins[1]), soloN + m5.n, soloParries + (m5.parries or 0)
+		soloDetail[#soloDetail + 1] = fmt("%s %d/%d", id, m5.wins[1], m5.n)
+	end
+	T.check(soloN == 2 * #BC.BossOrder and soloLost == soloN and soloParries > 0, "wave 6 (#2): a solo mid (M5) team loses every raid boss although its trainer parries", fmt("%s; %d parries", table.concat(soloDetail, ", "), soloParries))
+	local lv5Lava, lv5Hydra = raid("lava_golem", lv5, 1, 2), raid("shadow_hydra", lv5, 1, 2)
+	T.check(lv5Lava.n == 2 and lv5Lava.wins[1] == 0 and lv5Hydra.n == 2 and lv5Hydra.wins[1] == 0, "wave 6 (#2): a Lv 5 solo loses to the Lava Golem and the Shadow Hydra too",
+		fmt("lava %d/%d, hydra %d/%d", lv5Lava.wins[1], lv5Lava.n, lv5Hydra.wins[1], lv5Hydra.n))
 end)
 
 return S

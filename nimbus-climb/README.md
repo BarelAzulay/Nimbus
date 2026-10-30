@@ -1463,7 +1463,8 @@ src/shared   Config (every number)  TycoonCatalog (every tycoon number)  Theme  
 src/server   Main.server.lua; Services: Lighting, LobbyBuilder, StormAltar, Player (the spawn after PLAY), Data,
              Damage, Token, Hazard, Course (layout + builder), Match, Portal, Gate (the Altar gate's prompt), Spot, Pet,
              Item, Index, Tutorial, Npc, Dev, Tycoon, HomeBuilder, PetCare, Fusion, Gem, ArenaBuilder, Battle, Event,
-             Dungeon (parties, runs, loot), DungeonBuilder (the Dungeon gate and rooms)
+             Dungeon (parties, runs, loot), DungeonBuilder (the Dungeon gate and rooms), Podium (wave 6: the trainer
+             stands locked on the Ring / PvP podium)
 src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientSettings; SoundFx; GraphicsQuality;
              PortalVortex (the swirling vortex inside every gate hoop); MouseLock (the Mouse lock option);
              LightingStack (lighting looks, e.g. the Dungeon); UI/CloudUI; UI/NeonKit (the neon cards, tiles and side
@@ -1482,7 +1483,8 @@ src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientS
              NC_RingCrowd tag and the drummer by NC_RingDrummer), DungeonFx (the Weatherworks boss room's astrolabe:
              turns the NC_DungeonSpin rings near the camera; no sound here), MeshFallback (shows the
              block pet on a device where a Blender model failed to load), RingAmbience (the Champion Ring's crowd
-             and drums, heard only near the ring)
+             and drums, heard only near the ring), TrainerCheer (wave 6: my avatar's cheer emote on the podium and on
+             Cheer up!)
 ```
 
 The **server is authoritative** (health, tokens, Cash, Gems, berries, pets, items, checkpoints, matches, home

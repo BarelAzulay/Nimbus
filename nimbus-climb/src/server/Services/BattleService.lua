@@ -114,26 +114,34 @@
 --   * Dungeon: the encounter API above (one encounter per ROOM, a fresh BattleSim with full HP, C1). Forfeit is refused in a
 --     dungeon ("Use LEAVE": DungeonService's Quit calls RemoveEncounterTeam); `present` = inside the encounter's zone part
 --     (+ ZONE_MARGIN); a leaver / leash / disconnect = RemoveEncounterTeam (the others fight on).
+--   * Wave 6, the PODIUM (Services/Podium.lua): in a Champion Ring round and a PvP duel the trainer is locked on the stand
+--     this service teleports them to (the Ring pocket's SpawnPad = run.Zone.Spawn, re-teleported every round; the duel
+--     side's ChallengePad = duelStand): the root anchored, Config.Attr.OnPodium = true (the client loops the cheer emote),
+--     one toast a run / duel. Released at the round's end (the intermission is free), releaseParticipant (the end, Leave /
+--     Forfeit, a leaver), Shutdown, a death / respawn / disconnect, and a game teleport > Podium.LET_GO studs away (the
+--     presence check / leash then judge it as before). Never in raids or dungeons.
 --
 -- The loop: on Heartbeat every running battle runs the fixed 0.1 s steps that are due against the wall clock (a stalled
 -- server catches up at most MAX_CATCHUP steps per frame, merging their events into one message). Before the steps of a
 -- tick every live participant's character root (zone-local) is fed as Command(owner, "Move", x, z); after them the LEASH
 -- measures the gap between the character and the server fighter: a gap > Fighter.Leash (10) for Fighter.LeashSeconds (3)
 -- = a leaver in Duel / Ring, a RemoveTeam in Raid / Dungeon (a run-off or a teleport; an in-zone speed hack is not leashed
--- and gains nothing). Bug #22: while the sim team is ENGAGED (BattleSim's engage rule: the character stands, the pet left
--- it to fight) the leash is skipped (Cmd.engaged, white-box like Cmd.stunned): the sim bounds the gap itself
--- (Fighter.EngageLeash 18) and drops back to FOLLOW when the character walks > EngagePull (7) away; the FOLLOW leash then
--- runs as before (a teleport is leashed at most ~1 s later). After each step: "Events" (the Step() events) to the receivers that already have the battle,
+-- and gains nothing). Bug #22 / wave 6: while the sim team is ENGAGED (BattleSim's engage rule: the pet fights any enemy in
+-- the fight area, whatever the character does) the leash is skipped (Cmd.engaged, white-box like Cmd.stunned): the sim's
+-- floor bounds the pet, and a run-off out of the zone is still caught by the presence check (OUT_STRIKES); the FOLLOW
+-- leash runs again once no enemy is left (a teleport is leashed at most ~1 s later). After each step: "Events" (the Step() events) to the receivers that already have the battle,
 -- "Start" to new receivers, then "Snapshot". Messages (BattleState(kind, payload, battleId)):
 --   "Start"    battle:Describe() + Zone = { CFrame (floor centre), Size (Vector3: X, height, Z), X, Z } + Names =
 --              { [tostring(userId)] = name } + Side (the receiver's side, 0 for a spectator) + Spectator + T + Ring (ring
---              info) / Dungeon (= spec.Extra) + Team = { Fighter, Bench, Lives, Speed = { Walk, Run }, Cooldowns } (the
+--              info) / Dungeon (= spec.Extra) + Team = { Fighter, Bench, Lives, Speed = { Walk, Run }, Cooldowns = { Element,
+--              Dash, Swap, Cheer (wave 6), Buff } } (the
 --              receiver's own team: BattleController calls MovementController.SetBattleSpeed(walk, run) from Speed).
 --   "Snapshot" battle:SnapshotDelta(last) = { BattleId, T, U = { number... } }: the units whose picture changed since the
 --              receiver's previous snapshot, as flat numbers (BattleSim.DecodeSnapshot decodes; code = id x 1024 + lives x 256
 --              + windup x 128 + mask x 8 + state). Fighters get a snapshot every step (10 Hz), spectators every other step.
 --   "Events"   the list of Step() events (Hit / Special / KO / Telegraph / Spawn / Enrage / Order / Zone / Leave / End /
---              Element / Dash / Buff / Swap / Windup / Wave / EnemiesDown / Speed / Engage), only when the step produced any; a
+--              Element / Dash / Buff / Swap / Windup / Wave / EnemiesDown / Speed / Engage / Parry / Cheer), only when the step
+--              produced any; a
 --              refusal of a command BEFORE the sim (NotInZone, junk) also echoes Order { owner, order, rejected }.
 --   "End"      { BattleId, Mode, Result (the public result: owner maps keyed by tostring(userId)), Rewards (the
 --              receiver's own, nil for spectators), Outcome = "Win" | "Loss" | "Draw" | "Left" | nil, Won, Spectator,
@@ -146,7 +154,9 @@
 -- BattleCommand (action, a) (4.5): "Attack" (unit id | nil: dungeon fixes 4, it DIRECTS the auto-attacking fighter: id = lock
 --   that enemy, nil = lock the nearest / cycle to the next; a lock out of reach is accepted with the throttled "Too far!"
 --   toast), "Element" (unit id | { x, z } | nil), "Special", "Dash",
---   "Target" (unit id | nil), "Buff" (2 | 3), "Swap" (2 | 3), "Forfeit". The validation ladder, in order: isPlayer -> type
+--   "Target" (unit id | nil), "Buff" (2 | 3), "Swap" (2 | 3), "Cheer" (wave 6: Cheer up!, no argument at all; raids and
+--   dungeons, the sim refuses NoCheer elsewhere; its own bucket CHEER_BURST 2 / CHEER_REFILL 0.5 on top of the cmd bucket),
+--   "Forfeit". The validation ladder, in order: isPlayer -> type
 --   (action string <= 16 chars; arg number / nil / { x, z } of two finite numbers) -> the rate bucket (cmd: burst 12, refill
 --   8/s) -> a running battle, a live participant, inside the zone (present) -> Sim:Command (reach, cooldowns, meter, lives)
 --   -> replicate. Refusals are silent except NotInZone / Charging / Cooldown / OutOfReach ("Too far!"): one throttled toast
@@ -241,6 +251,19 @@ local BattleCatalog = loadShared("BattleCatalog")
 local PetKeys = loadShared("PetKeys")
 local PetCatalog = loadShared("PetCatalog")
 local TycoonCatalog = loadShared("TycoonCatalog") -- Phase 4: XpToNext for the pet cards' xp / xpNext in "Start"
+-- wave 6: the podium lock of the Champion Ring / PvP trainer (a sibling module: Services/Podium.lua)
+local Podium = nil
+do
+	local inst = script.Parent and script.Parent:FindFirstChild("Podium")
+	if inst then
+		local ok, result = pcall(require, inst)
+		if ok and type(result) == "table" then
+			Podium = result
+		else
+			warn("[BattleService] Podium failed to load: " .. tostring(result))
+		end
+	end
+end
 
 ----------------------------------------------------------------------
 -- Tunables (Config.Battle does not exist: local constants, listed as a deviation)
@@ -281,6 +304,8 @@ local C = {
 	REFUSAL_TOAST_GAP = 3, -- one command-refusal toast (NotInZone / Charging / Cooldown / OutOfReach) per this many seconds per player
 	COMMAND_BURST = 12, -- BattleCommand token bucket (4.4: burst 12, refill 8/s; a frantic player sends ~3/s)
 	COMMAND_REFILL = 8, -- per second
+	CHEER_BURST = 2, -- wave 6: Cheer up! has its own small bucket (the sim's 20 s cooldown is the real limit; spam dies here)
+	CHEER_REFILL = 0.5,
 	REQUEST_BURST = 4, -- BattleRequest token bucket (burst 4, refill 1/s)
 	REQUEST_REFILL = 1,
 	MAX_ACTION_LENGTH = 16,
@@ -963,7 +988,7 @@ local function startPayload(b, player, spectator)
 				Bench = team.Bench,
 				Lives = team.Lives,
 				Speed = team.Speed,
-				Cooldowns = { Element = cds.Element, Dash = cds.Dash, Swap = cds.Swap, Buff = buff },
+				Cooldowns = { Element = cds.Element, Dash = cds.Dash, Swap = cds.Swap, Cheer = cds.Cheer, Buff = buff },
 			}
 		end
 	end
@@ -1683,6 +1708,10 @@ end
 
 local function releaseParticipant(b, part)
 	local player = part.Player
+	-- wave 6: off the podium (only this battle's / ring run's lock: a ring's next round keeps its own)
+	if Podium and typeof(player) == "Instance" then
+		Podium.Release(player, b.Ring and b.Ring.Id or b.Id)
+	end
 	if St.battleOf[player] == b then
 		St.battleOf[player] = nil
 		if not part.KeepInBattle then
@@ -2398,6 +2427,11 @@ local function startDuel(pa, pb)
 	addParticipant(b, pb, 2, specB)
 	teleport(pa, duelStand(zone, ring, 1))
 	teleport(pb, duelStand(zone, ring, 2))
+	-- wave 6: the duellists are the trainers: locked on their ChallengePads for the fight (Podium)
+	if Podium then
+		Podium.Lock(pa, duelStand(zone, ring, 1), id)
+		Podium.Lock(pb, duelStand(zone, ring, 2), id)
+	end
 	beginBattle(b)
 	sendLobby(pa)
 	sendLobby(pb)
@@ -3126,6 +3160,13 @@ function RingRun.startRound(run)
 	run.State = "Fighting"
 	addParticipant(b, player, 1, spec) -- St.battleOf + InBattle move to the new round at once
 	St.pocketBusy[run.PocketIndex] = id
+	-- wave 6: every round starts with the trainer on the pocket's SpawnPad, locked there for the round (Podium)
+	if typeof(run.Zone.Spawn) == "CFrame" then
+		teleport(player, run.Zone.Spawn)
+		if Podium then
+			Podium.Lock(player, run.Zone.Spawn, run.Id)
+		end
+	end
 	beginBattle(b)
 	return true, id
 end
@@ -3155,6 +3196,10 @@ end
 -- round; anything else ends the run the trial way
 function RingRun.afterBattle(b, result)
 	local run = b.Ring
+	-- wave 6: the round is over: off the podium (the intermission is free; the next round re-locks)
+	if Podium and run and typeof(run.Player) == "Instance" then
+		Podium.Release(run.Player, run.Id)
+	end
 	if not run then
 		task.delay(C.RETURN_DELAY, function()
 			pcall(finishPocket, b)
@@ -3733,8 +3778,9 @@ end
 ----------------------------------------------------------------------
 -- The command / position layer (4.4-4.5): argument hygiene, the Move feed, the leash, the refusal echoes
 ----------------------------------------------------------------------
--- action -> the argument shape: "unit" (id | nil), "aim" (id | { x, z } | nil), "none", "slot" (2 | 3)
-Cmd.ACTIONS = { Attack = "unit", Element = "aim", Special = "none", Dash = "none", Target = "unit", Buff = "slot", Swap = "slot" }
+-- action -> the argument shape: "unit" (id | nil), "aim" (id | { x, z } | nil), "none" (ignored), "noarg" (wave 6: anything
+-- but nil is refused BadArg), "slot" (2 | 3)
+Cmd.ACTIONS = { Attack = "unit", Element = "aim", Special = "none", Dash = "none", Target = "unit", Buff = "slot", Swap = "slot", Cheer = "noarg" }
 -- the refusals that get a (throttled) toast; everything else is silent (the Order { rejected } echo shakes the button)
 Cmd.TOASTS = {
 	NotInZone = "Step into the battle zone to fight.",
@@ -3774,6 +3820,12 @@ end
 -- the sim argument for an action, or nil + the refusal reason
 function Cmd.cleanArg(shape, arg)
 	if shape == "none" then
+		return nil
+	end
+	if shape == "noarg" then
+		if arg ~= nil then
+			return nil, "BadArg"
+		end
 		return nil
 	end
 	if shape == "slot" then
@@ -3888,7 +3940,7 @@ function Cmd.stunned(b, part, gap, F)
 	return (part.LeashGraceUntil or 0) > t
 end
 
--- bug #22: the sim team is ENGAGED (white-box: BattleSim's team.engage): its pet left the standing character to fight
+-- bug #22 / wave 6: the sim team is ENGAGED (white-box: BattleSim's team.engage): its pet fights in the fight area
 function Cmd.engaged(b, part)
 	local team = Cmd.simTeam(b, part.UserId)
 	return team ~= nil and type(team.engage) == "table"
@@ -3918,8 +3970,8 @@ function Cmd.leash(b, part, dt)
 		part.LeashT = 0
 		return false
 	end
-	-- bug #22: an ENGAGED pet fights away from its standing character on purpose; the sim bounds it (EngageLeash) and the
-	-- character's step (> EngagePull) brings it back to FOLLOW, where this leash runs again
+	-- bug #22 / wave 6: an ENGAGED pet fights away from its character on purpose (the trainer never pulls it off); the sim's
+	-- floor bounds it, a run-off out of the zone is the presence check's job, and this leash runs again in FOLLOW
 	if Cmd.engaged(b, part) then
 		part.LeashT = 0
 		return false
@@ -4697,6 +4749,10 @@ local function onCommand(player, action, a)
 	if not takeToken(player, "cmd", C.COMMAND_BURST, C.COMMAND_REFILL) then
 		return
 	end
+	-- wave 6: Cheer up! spam dies at its own bucket (silent, like the cmd bucket)
+	if action == "Cheer" and not takeToken(player, "cheer", C.CHEER_BURST, C.CHEER_REFILL) then
+		return
+	end
 	local ok, reason, extra = BattleService.Command(player, action, a)
 	if ok and extra == "OutOfReach" then
 		-- a direct order (Attack) to an enemy beyond the pet's reach: accepted (the pet hits it once in reach), one toast
@@ -4859,6 +4915,12 @@ end
 -- Heartbeat: every running battle steps whenever its fixed 0.1 s steps are due (one snapshot per step at 60 fps, a
 -- stalled frame runs at most MAX_CATCHUP steps in one message)
 local function onHeartbeat()
+	if Podium then
+		local okP, errP = pcall(Podium.Tick) -- wave 6: a locked trainer stays on the podium; dead / gone locks let go
+		if not okP then
+			warn("[BattleService] Podium.Tick failed: " .. tostring(errP))
+		end
+	end
 	if not St.running or #St.order == 0 then
 		return
 	end
@@ -4915,6 +4977,9 @@ function BattleService.Shutdown()
 	if raid and not raid.Battle then
 		raidEndedWithoutPlayers(raid, "Shutdown")
 	end
+	if Podium then
+		Podium.ReleaseAll() -- wave 6: nobody stays anchored
+	end
 	return true
 end
 
@@ -4942,6 +5007,9 @@ function BattleService.Init(deps)
 	St.initialized = true
 	deps = type(deps) == "table" and deps or {}
 	St.deps = deps
+	if Podium then
+		Podium.Init({ Notify = notify })
+	end
 	if type(deps.ArenaBuilder) == "table" then
 		St.arenaBuilder = deps.ArenaBuilder
 	end

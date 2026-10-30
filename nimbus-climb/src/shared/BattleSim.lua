@@ -23,9 +23,10 @@
 --               Mode Dungeon: side 2 may start empty (SpawnEnemies fills it).
 --   battle:Command(owner, action, arg) -> ok, reason, extra
 --     "Attack" (targetId | nil)       DIRECTS the fighter (dungeon fixes 4; it never swings by itself): Attack(id) locks that enemy,
---                                     Attack() KEEPS a live lock within EngageRange + its radius of the fighter (bug #16: F never
---                                     pulls the pet off its enemy; no echo), else locks the nearest targetable enemy (by distance
---                                     then id; the old cycle is gone: the client's hold-F / Tab / RT send Target(next) for that);
+--                                     Attack() KEEPS a live lock anywhere on the floor (bug #16: F never pulls the pet off its
+--                                     enemy; no echo; wave 6: no EngageRange), else the engaged target, else locks the nearest
+--                                     targetable enemy (by distance then id; the old cycle is gone: the client's hold-F / Tab / RT
+--                                     send Target(next) for that);
 --                                     -> true, lockId, "OutOfReach" | nil (the lock is beyond
 --                                     range + radius + AttackSlack: BattleService toasts "Too far!"); refused: Down / BadTarget /
 --                                     NoTarget. Echo: Order { owner, order = "Attack", target } when the lock changes.
@@ -36,25 +37,40 @@
 --     "Element" (id | { x, z } | nil) cooldown Fighter.ElementCooldown; the shape of ElementAttacks[fighter.elems[1]] from the SERVER
 --                                     fighter position toward the target / aim / lock / facing
 --     "Special" ()                    meter >= SpecialMeterMax; offensive kinds as before; Heal / Shield / Rally / Haste act on the fighter
---     "Dash" ()                       cooldown DashCooldown -> Dashing for DashSeconds, i-frames until t + DashIFrames; the Dash event
---                                     carries the direction the client draws the PET's dash (lock / nearest enemy, else facing)
+--     "Dash" ()                       cooldown DashCooldown -> Dashing for DashSeconds, i-frames until t + DashIFrames. Wave 6: the
+--                                     pet SIDESTEPS out of the threat (never into the boss): the soonest timed threat aimed at /
+--                                     covering it (an NPC wind-up on it, a boss telegraph over it): circle -> straight away from
+--                                     its centre, line -> perpendicular to the line on the pet's side, wind-up -> away from the
+--                                     attacker; no threat -> perpendicular to the aim (lock / engaged / nearest) toward the floor
+--                                     centre; a candidate that ends closer / still inside is swapped for the next (the other
+--                                     perpendicular, straight away). It moves at legal run x the dash factor, just far enough to
+--                                     clear the shape + 1 stud (4 studs at least, clamped to the floor), and does nothing else
+--                                     for DashSeconds. PARRY: a timed threat landing within ParryWindow (0.25 s) of the press is
+--                                     parried: no damage (the i-frames), the attacker staggered ParryStagger (0.4 s: an NPC is
+--                                     stunned, its wind-up cancelled; a boss starts no basic attack / telegraph, at most once per
+--                                     ParryBossGap 3 s), the pet gains ParryMeter (+8) per parried threat, a Parry event each. A
+--                                     boss basic attack has no tell: the i-frames dodge it, it is never a parry.
 --     "Target" (unitId | nil)         lock-on; Attack / Element default to it
 --     "Buff" (2 | 3)                  that helper's buff on the fighter; cooldown per helper (SupportCooldown / HelperCooldown)
 --     "Swap" (2 | 3)                  fighter <-> helper; SwapCooldown; the incoming pet arrives Casting for SwapCastSeconds; refused
 --                                     while Casting / Stunned
 --     "Move" (x, z)                   the fighter's wanted floor point (the CHARACTER position; never from a remote): the fighter walks
 --                                     toward it at <= legal run x MoveSlack (x DashSpeed / RunSpeed while Dashing), clamped to the floor
---                                     THE ENGAGE RULE (bug #22: "the character leads when it moves, the pet fights when it stands"):
---                                     FOLLOW (above) -> ENGAGED when the Move point has been still EngageStillSeconds (no Move at all
---                                     = still, stand = the fighter's own point), EngageCooldown passed since the last disengage, the
---                                     fighter is not arriving / Casting, and an engage target exists: the lock, else the fresh threat
---                                     (who hit it within ThreatSeconds), else the nearest targetable enemy, each within EngageRange +
---                                     its radius of the STAND point (the Move point when it engaged). Engaged, the fighter ignores
---                                     the Move point and walks at the honest legal run (no MoveSlack; x the dash factor, 0 Stunned)
---                                     to reach - 0.5 (melee) / reach - 1 (ranged: it holds at the edge of its range) of the target.
---                                     Back to FOLLOW when the Move point leaves the stand point by > EngagePull, no target is in
---                                     range, or the fighter is > EngageLeash from the stand point; a Swap / the fighter's KO /
---                                     RemoveTeam drop it too. Harness Auto teams (autoFighter) never engage: today's exact behaviour.
+--                                     THE ENGAGE RULE (wave 6, replaces bug #22's stand-still rule): the pet fights any targetable
+--                                     enemy on the floor (the fight area: ring pocket, duel ring, raid zone, dungeon room); the
+--                                     character's movement never pulls it off. FOLLOW (above) -> ENGAGED at once when the fighter
+--                                     is not arriving / Casting and an engage target exists: the lock (if targetable), else the
+--                                     current engaged target (sticky until it dies or is untargetable), else the fresh threat (who
+--                                     hit it within ThreatSeconds), else the targetable enemy nearest to the FIGHTER (ties: lower
+--                                     id). Engaged, the fighter ignores the Move point and walks at the honest legal run (no
+--                                     MoveSlack; 0 Stunned) to reach - 0.5 (melee) / reach - 1 (ranged: it holds at the edge of its
+--                                     range) of the target. Back to FOLLOW only when no target is left (a wave still arriving, the
+--                                     fight's end); a Swap / the fighter's KO / RemoveTeam drop it too. Harness Auto teams
+--                                     (autoFighter) never engage: today's exact behaviour.
+--     "Cheer" ()                      wave 6, Raid / Dungeon only ("Cheer up!"): the fighter deals x (1 + CheerBoost 0.05) for
+--                                     CheerSeconds 5; cooldown CheerCooldown 20; never stacks (a cheer SETS the window). Refused:
+--                                     NoCheer (Ring / Duel: the podium cheer there is visual only), Down, Cooldown (extra =
+--                                     seconds left). Event Cheer { owner, unit (the fighter), untilT }
 --     "Forfeit" ()                    Duel / Ring: the team is knocked out; Raid / Dungeon: RemoveTeam
 --   battle:Step(dt) -> events;  battle:Snapshot();  battle:SnapshotDelta(last);  BattleSim.DecodeSnapshot(payload, prev)
 --   battle:AddTeam(team) -> infos | nil, reason;  battle:RemoveTeam(owner) -> ok
@@ -63,7 +79,8 @@
 --   battle:LivingEnemies() -> n;  battle:BossHp() -> 0..1 | nil;  battle:Finish(reason) -> ok, events  ("Cleared" = side 1 wins,
 --                                     "Abandoned" / "Shutdown" / ... = no winner);  battle:Abort(reason) = Finish
 --   battle:TeamOf(owner) -> { Owner, Side, Fighter = id, Bench = { id, id }, Lives, Speed = { Walk, Run }, Cooldowns = { Element, Dash,
---                                     Swap, Buff = { [slot] = seconds } }, Lock, Engaged (the engaged target id | nil), Damage, Kills,
+--                                     Swap, Cheer, Buff = { [slot] = seconds } }, Lock, Engaged (the engaged target id | nil),
+--                                     Cheering (the Cheer up! boost is on), Damage, Kills,
 --                                     Left, Forfeited, Units = { {id, slot, hp,
 --                                     maxHp, meter, state, alive, bench}... } }
 --   battle:SpeedOf(owner) -> { Walk, Run }   the fighter's current legal speeds (speed buffs / slows included)
@@ -78,7 +95,7 @@
 --   battle:Time(), IsFinished(), Owners(), BossStatus(), SetAnchor(owner, x, z)
 --   BattleSim.States = { Idle 0, Moving 1, Attacking 2, Benched 3, Casting 4, Down 5, Stunned 6, Dashing 7 }  (Winding = Attacking + windup bit)
 --   BattleSim.Events = { Hit, Special, KO, Telegraph, Spawn, Enrage, Order, Zone, Leave, End, Element, Dash, Buff, Swap, Windup, Wave,
---                        EnemiesDown, Speed, Engage }
+--                        EnemiesDown, Speed, Engage, Parry, Cheer }
 -- Event shapes:
 --   Engage     { owner, unit (the fighter), on = true, target }  /  { owner, unit, on = false }   (only the FOLLOW / ENGAGED flips)
 --   Hit        { from, to, dmg, elem, crit, absorbed, miss = true (dodged), burn = true, leech = n, element = name, special = kind,
@@ -88,7 +105,10 @@
 --   Spawn      { units, wave, boss, owner }   Enrage { unit }      Zone { unit, kind, x, z, r, seconds, side }     Leave { owner, units }
 --   Order      { owner, order, target, rejected }   (every refused command echoes `rejected`; Attack / Target / Forfeit echo when accepted)
 --   Element    { unit, element, name, x, z, angle | tx, tz, targets }
---   Dash       { unit, dir = { dx, dz } (unit vector in floor space, 0.01 steps), target (the enemy it points at | nil) }
+--   Dash       { unit, dir = { dx, dz } (the SIDESTEP: unit vector in floor space, 0.01 steps), target (the threat's source | nil) }
+--   Cheer      { owner, unit (the fighter), untilT (the boost's end, battle time) }
+--   Parry      { unit (the fighter), from (the attacker), tele (the telegraph id | nil) }; the parried telegraph's Hit on the
+--              fighter is { miss = true, parry = true }
 --   Buff       { owner, unit (the helper), kind, name, until, target (the fighter), amount, heals = { { id, hp }... } (Heal:
 --                the fighter + the other benched pet) }     Swap { owner, out, in, auto }
 --   Speed      { owner, walk, run }   (whenever the fighter's legal speeds change: Swap, Haste / Slow start and end)
@@ -145,8 +165,10 @@ BattleSim.Events = {
 	EnemiesDown = "EnemiesDown",
 	Speed = "Speed",
 	Engage = "Engage",
+	Parry = "Parry",
+	Cheer = "Cheer",
 }
-BattleSim.Actions = { "Attack", "Element", "Special", "Dash", "Target", "Buff", "Swap", "Move", "Forfeit" }
+BattleSim.Actions = { "Attack", "Element", "Special", "Dash", "Target", "Buff", "Swap", "Move", "Cheer", "Forfeit" }
 BattleSim.Modes = { "Duel", "Raid", "Ring", "Dungeon" }
 local MODE_OK = {}
 for _, m in ipairs(BattleSim.Modes) do
@@ -257,7 +279,8 @@ local FALLBACK_FIGHTER = {
 	MeterPerSecond = 6, MeterOnHit = 4, MeterOnHurt = 2, DashSeconds = 0.35, DashCooldown = 2.5, DashIFrames = 0.35, SwapCooldown = 10,
 	SwapCastSeconds = 0.6, BenchRegenPerSecond = 0, ArriveSeconds = 1.2, DownAutoSwap = true, HelperCooldown = 15, SupportCooldown = 12, Windup = 0.45,
 	KitFactor = 1.5, HelperWeight = 0.35, Lives = 3, WalkMult = 1.15, WalkMin = 12, WalkMax = 20, RunMult = 1.3, MoveSlack = 1.25,
-	Leash = 10, LeashSeconds = 3, EngageRange = 14, EngageLeash = 18, EngagePull = 7, EngageStillSeconds = 0.5, EngageCooldown = 0.5,
+	Leash = 10, LeashSeconds = 3, ParryWindow = 0.25, ParryStagger = 0.4, ParryMeter = 8, ParryBossGap = 3,
+	CheerBoost = 0.05, CheerSeconds = 5, CheerCooldown = 20,
 }
 
 local function damageRules()
@@ -441,12 +464,8 @@ local function newTeamRecord(self, spec, side)
 		lock = nil,
 		wantX = nil,
 		wantZ = nil,
-		-- the engage rule (bug #22): nil | { target, unit, standX, standZ, since }; the still detector; the re-engage cooldown
+		-- the engage rule (wave 6): nil | { target, unit, since }; noEngage = true holds it off (white-box, smoke tests only)
 		engage = nil,
-		lastWantX = nil,
-		lastWantZ = nil,
-		movedAt = self.t or 0, -- a new team (late join / rejoin) engages after EngageStillSeconds like any other
-		disengagedAt = -huge,
 		faceX = 0,
 		faceZ = 1,
 		anchorX = 0,
@@ -461,6 +480,8 @@ local function newTeamRecord(self, spec, side)
 		elementReadyAt = 0,
 		dashReadyAt = 0,
 		swapReadyAt = 0,
+		cheerUntil = 0, -- wave 6: the Cheer up! boost window and its cooldown
+		cheerReadyAt = 0,
 		lastWalk = nil,
 		lastRun = nil,
 		wave = finite(spec.Wave) and floor(spec.Wave) or nil,
@@ -1284,8 +1305,10 @@ function BattleSim:TeamOf(owner)
 			Element = max(0, team.elementReadyAt - t),
 			Dash = max(0, team.dashReadyAt - t),
 			Swap = max(0, team.swapReadyAt - t),
+			Cheer = max(0, team.cheerReadyAt - t),
 			Buff = buffs,
 		},
+		Cheering = t < team.cheerUntil,
 		Lock = team.lock and team.lock.id or nil,
 		Engaged = team.engage and team.engage.target.id or nil,
 		Damage = team.damage,
@@ -1554,14 +1577,13 @@ end
 
 local swapIn -- forward (the auto-swap on a fighter's KO)
 
--- the engage rule (bug #22): back to FOLLOW; `events` nil = no event (RemoveTeam: the Leave event says it all)
+-- the engage rule (bug #22, wave 6): back to FOLLOW; `events` nil = no event (RemoveTeam: the Leave event says it all)
 local function dropEngage(self, team, events)
 	local e = team.engage
 	if not e then
 		return
 	end
 	team.engage = nil
-	team.disengagedAt = self.t
 	if events then
 		events[#events + 1] = { type = EV.Engage, owner = team.owner, unit = e.unit, on = false }
 	end
@@ -1615,9 +1637,13 @@ local function knockOut(self, u, by, events, forfeit)
 	end
 end
 
--- the attacker's damage multiplier from its buffs / statuses (Rally / Blaze, Weaken)
+-- the attacker's damage multiplier from its buffs / statuses (Rally / Blaze, Weaken; wave 6: the trainer's Cheer up!)
 local function attackMult(self, attacker)
 	local m = 1
+	local team = attacker.team
+	if team and team.player and attacker == team.fighter and self.t < (team.cheerUntil or 0) then
+		m = m * (1 + num(fighterRules().CheerBoost, 0.05))
+	end
 	if attacker.dmgBuffUntil and self.t < attacker.dmgBuffUntil then
 		m = m * attacker.dmgBuffMult
 	end
@@ -2425,7 +2451,9 @@ local function resolveTelegraph(self, tele, events)
 			inside = inCircle(e, tele.x, tele.z, tele.r)
 		end
 		if inside then
-			if inIFrames(self, e) then
+			if tele.parried and tele.parried[e.id] then
+				missEvent(self, boss, e, events, { tele = tele.id, attack = a.Id, parry = true })
+			elseif inIFrames(self, e) then
 				missEvent(self, boss, e, events, extra)
 			else
 				if finite(a.Freeze) then
@@ -2527,6 +2555,10 @@ local function bossStep(self, boss, events)
 				spawnMinions(self, boss, wave, i, events)
 			end
 		end
+	end
+	-- wave 6: a parried boss is staggered: no new basic attack, no new telegraph (those already cast still resolve)
+	if t < (boss.staggerUntil or 0) then
+		return
 	end
 	-- the basic attack on the nearest fighter in range (a dash dodges it)
 	if t >= boss.nextAttack then
@@ -2847,46 +2879,47 @@ function fighterSwing(self, team, f, events)
 end
 
 ----------------------------------------------------------------------
--- The engage rule (bug #22): "the character leads when it moves, the pet fights when it stands"
+-- The engage rule (wave 6): "the pet fights any enemy in the fight area; the trainer's movement never pulls it off"
 ----------------------------------------------------------------------
--- the enemy an engaged fighter fights, judged from the stand point (sx, sz): the lock, else the fresh threat, else the
--- nearest targetable enemy, each within EngageRange + its radius (ties: the lower id; self.units is in id order)
-local function engageTarget(self, team, f, sx, sz)
-	local range = num(fighterRules().EngageRange, 14)
+-- the enemy an engaged fighter fights: the lock (if targetable), else the current engaged target (sticky until it dies or
+-- is untargetable), else the fresh threat, else the targetable enemy nearest to the FIGHTER (ties: the lower id;
+-- self.units is in id order). No range: the floor (the fight area) is the bound, the sim clamps every unit to it.
+local function engageTarget(self, team, f)
 	local lock = lockOf(team)
-	if lock and targetable(self, lock) and dist(sx, sz, lock.x, lock.z) <= range + lock.radius then
+	if lock and targetable(self, lock) then
 		return lock
+	end
+	local e = team.engage
+	if e and e.target and e.target.side ~= team.side and targetable(self, e.target) then
+		return e.target
 	end
 	local threat = f.threat
 	if threat and threat.side ~= team.side and targetable(self, threat)
-		and self.t - (f.threatAt or -huge) <= num(damageRules().ThreatSeconds, 3)
-		and dist(sx, sz, threat.x, threat.z) <= range + threat.radius then
+		and self.t - (f.threatAt or -huge) <= num(damageRules().ThreatSeconds, 3) then
 		return threat
 	end
 	local best, bestD = nil, huge
 	local list = self.units
 	local side = team.side
 	for i = 1, #list do
-		local e = list[i]
-		if e.side ~= side and targetable(self, e) then
-			local d = dist(sx, sz, e.x, e.z)
-			if d <= range + e.radius and d < bestD then
-				best, bestD = e, d
+		local u = list[i]
+		if u.side ~= side and targetable(self, u) then
+			local d = dist(f.x, f.z, u.x, u.z)
+			if d < bestD then
+				best, bestD = u, d
 			end
 		end
 	end
 	return best
 end
 
--- the engaged approach: the honest legal run (no MoveSlack), x the dash factor while Dashing, 0 while Stunned; melee to
--- reach - 0.5 (NPC parity, well inside AttackSlack), ranged to reach - 1 (it holds at the edge of its range, no kiting)
+-- the engaged approach: the honest legal run (no MoveSlack), 0 while Stunned (wave 6: a Dash is the sidestep, never a
+-- lunge); melee to reach - 0.5 (NPC parity, well inside AttackSlack), ranged to reach - 1 (it holds at the edge of its
+-- range, no kiting)
 local function engageStep(self, team, f, target, dt)
 	local t = self.t
 	local _, run = legalSpeeds(self, team)
 	local step = run * dt
-	if t < f.dashUntil then
-		step = step * dashSpeedFactor()
-	end
 	if t < f.stunUntil then
 		step = 0
 	end
@@ -2905,16 +2938,12 @@ local function engageStep(self, team, f, target, dt)
 	end
 end
 
--- FOLLOW <-> ENGAGED for a player's fighter this step (before it moves) -> the engaged target | nil
+-- FOLLOW <-> ENGAGED for a player's fighter this step (before it moves) -> the engaged target | nil. Wave 6: no still
+-- detector, no pull, no leash, no re-engage cooldown: the Move point plays no part while an enemy is targetable.
 local function engageUpdate(self, team, f, events)
-	local F = fighterRules()
-	local t = self.t
-	-- the still detector: the Move point moved > 0.3 stud since the last step = the character walks
-	if team.wantX ~= nil then
-		if team.lastWantX ~= nil and dist(team.wantX, team.wantZ, team.lastWantX, team.lastWantZ) > 0.3 then
-			team.movedAt = t
-		end
-		team.lastWantX, team.lastWantZ = team.wantX, team.wantZ
+	if team.noEngage then
+		dropEngage(self, team, events)
+		return nil
 	end
 	local e = team.engage
 	if e then
@@ -2922,9 +2951,7 @@ local function engageUpdate(self, team, f, events)
 			dropEngage(self, team, events)
 			return nil
 		end
-		local pulled = team.wantX ~= nil and dist(team.wantX, team.wantZ, e.standX, e.standZ) > num(F.EngagePull, 7)
-		local strayed = dist(f.x, f.z, e.standX, e.standZ) > num(F.EngageLeash, 18)
-		local target = (not pulled and not strayed) and engageTarget(self, team, f, e.standX, e.standZ) or nil
+		local target = engageTarget(self, team, f)
 		if not target then
 			dropEngage(self, team, events)
 			return nil
@@ -2932,21 +2959,14 @@ local function engageUpdate(self, team, f, events)
 		e.target = target
 		return target
 	end
-	if t - team.movedAt < num(F.EngageStillSeconds, 0.5) or t - team.disengagedAt < num(F.EngageCooldown, 0.5) then
+	if arriving(self, f) or self.t < f.castUntil then
 		return nil
 	end
-	if arriving(self, f) or t < f.castUntil then
-		return nil
-	end
-	local sx, sz = team.wantX, team.wantZ
-	if sx == nil then
-		sx, sz = f.x, f.z -- no Move at all (a dead character, the harness): the stand point is the fighter's own
-	end
-	local target = engageTarget(self, team, f, sx, sz)
+	local target = engageTarget(self, team, f)
 	if not target then
 		return nil
 	end
-	team.engage = { target = target, unit = f.id, standX = sx, standZ = sz, since = t }
+	team.engage = { target = target, unit = f.id, since = self.t }
 	events[#events + 1] = { type = EV.Engage, owner = team.owner, unit = f.id, on = true, target = target.id }
 	return target
 end
@@ -2963,20 +2983,30 @@ local function fighterStep(self, team, dt, events)
 	if team.auto and not team.npc then
 		autoFighter(self, team, f, dt, events)
 	end
-	-- the engage rule (bug #22); harness Auto teams keep today's exact behaviour (autoFighter drives wantX itself)
+	-- the engage rule (wave 6); harness Auto teams keep today's exact behaviour (autoFighter drives wantX itself)
 	local engaged = nil
 	if not team.auto then
 		engaged = engageUpdate(self, team, f, events)
 	end
-	if engaged then
+	if t < f.dashUntil then
+		-- wave 6: the Dash sidestep (set at the press) at legal run x the dash factor, then it holds until DashSeconds end
+		local left = f.dashLeft or 0
+		local ox, oz = f.x, f.z
+		if left > 0 and t >= f.stunUntil then
+			local _, run = legalSpeeds(self, team)
+			local travel = min(left, run * dashSpeedFactor() * dt)
+			f.x = f.x + (f.dashDX or 0) * travel
+			f.z = f.z + (f.dashDZ or 0) * travel
+			f.dashLeft = left - travel
+		end
+		clampToFloor(self, f)
+		f.moving = dist(ox, oz, f.x, f.z) > 0.05
+	elseif engaged then
 		engageStep(self, team, f, engaged, dt)
 	-- movement toward the wanted point at <= legal run x MoveSlack (x the dash factor while Dashing)
 	elseif team.wantX ~= nil then
 		local _, run = legalSpeeds(self, team)
 		local cap = run * num(F.MoveSlack, 1.25)
-		if t < f.dashUntil then
-			cap = cap * dashSpeedFactor()
-		end
 		if t < f.stunUntil then
 			cap = 0
 		end
@@ -3382,7 +3412,7 @@ local function unitArg(self, team, arg)
 	return unit
 end
 
--- Attack() with no id and no live lock in EngageRange: the nearest targetable enemy (ties by id so it is deterministic).
+-- Attack() with no id, no live lock and no engaged target: the nearest targetable enemy (ties by id so it is deterministic).
 -- Bug #16: the old "a press on the lock cycles to the next" is gone (it walked the pet off its enemy); the deliberate
 -- re-target is the client's hold-F / Tab / RT -> Target(next id)
 local function nearestTarget(self, team, f)
@@ -3405,26 +3435,191 @@ local function nearestTarget(self, team, f)
 	return list[1].e
 end
 
--- the direction the client draws the PET's dash: toward the lock / the nearest enemy, else the fighter's facing
-local function dashDirection(self, team, f)
-	local aim = lockOf(team)
-	if aim and not targetable(self, aim) then
-		aim = nil
-	end
-	aim = aim or nearestEnemy(self, f)
-	local dx, dz = team.faceX or 0, team.faceZ or 1
-	if aim then
-		local ax, az = aim.x - f.x, aim.z - f.z
-		local d = sqrt(ax * ax + az * az)
-		if d > 0.01 then
-			dx, dz = ax / d, az / d
+-- wave 6: the timed threats on fighter `f`, soonest first: { at, kind = "Windup" | "Tele", src (the attacker), tele | nil }.
+-- An NPC wind-up aimed at it, a pending boss telegraph whose shape covers it (a boss basic attack has no tell: none).
+local function findThreats(self, f)
+	local out = {}
+	local list = self.units
+	for i = 1, #list do
+		local u = list[i]
+		if u.windAt and u.windTarget == f and u.alive and not u.gone and u.side ~= f.side then
+			out[#out + 1] = { at = u.windAt, kind = "Windup", src = u, order = #out }
 		end
 	end
-	local len = sqrt(dx * dx + dz * dz)
-	if len < 0.01 then
-		dx, dz, len = 0, 1, 1
+	for _, tele in ipairs(self.telegraphs) do
+		local boss = tele.boss
+		if boss and boss.alive and boss.side ~= f.side then
+			local inside
+			if tele.shape == "Line" then
+				inside = inLine(f, tele.x, tele.z, tele.angle, tele.length, tele.width)
+			else
+				inside = inCircle(f, tele.x, tele.z, tele.r)
+			end
+			if inside then
+				out[#out + 1] = { at = tele.at, kind = "Tele", src = boss, tele = tele, order = #out }
+			end
+		end
 	end
-	return floor(dx / len * 100 + 0.5) / 100, floor(dz / len * 100 + 0.5) / 100, aim
+	table.sort(out, function(a, b)
+		if a.at ~= b.at then
+			return a.at < b.at
+		end
+		return a.order < b.order
+	end)
+	return out
+end
+
+-- a unit vector, or nil when (dx, dz) is (near) zero
+local function unitVec(dx, dz)
+	local d = sqrt(dx * dx + dz * dz)
+	if d < 0.01 then
+		return nil
+	end
+	return dx / d, dz / d
+end
+
+-- wave 6: the Dash sidestep (Builder decision 4) -> dx, dz (unit), length (studs), the threat's source | nil.
+-- Candidates in order; the first whose clamped end point clears the threat (or, with no threat, is not closer to the
+-- aim) wins, else the best scoring one. A zero vector falls back to the facing turned 90 degrees.
+local function sidestep(self, team, f, threat)
+	local F = fighterRules()
+	local _, run = legalSpeeds(self, team)
+	local maxLen = run * dashSpeedFactor() * num(F.DashSeconds, 0.35)
+	local fx, fz = team.faceX or 0, team.faceZ or 1
+	local turnX, turnZ = unitVec(fz, -fx)
+	if not turnX then
+		turnX, turnZ = 1, 0
+	end
+	-- toward the floor centre (0, 0) first among a perpendicular pair
+	local function perpPair(ax, az)
+		local p1x, p1z = az, -ax
+		if p1x * -f.x + p1z * -f.z < 0 then
+			p1x, p1z = -p1x, -p1z
+		end
+		return p1x, p1z, -p1x, -p1z
+	end
+	local candidates = {}
+	local need, hop = 4, nil
+	local escapes, score
+	local src = threat and threat.src or nil
+	if threat and threat.kind == "Tele" and threat.tele.shape == "Line" then
+		local tele = threat.tele
+		local dirX, dirZ = cos(tele.angle), sin(tele.angle)
+		local cross = (f.x - tele.x) * dirZ - (f.z - tele.z) * dirX
+		local nx, nz = dirZ, -dirX
+		if cross < 0 or (abs(cross) < 0.01 and nx * -f.x + nz * -f.z < 0) then
+			nx, nz = -nx, -nz
+		end
+		candidates = { { nx, nz }, { -nx, -nz } }
+		need = tele.width / 2 + f.radius - abs(cross) + 1
+		escapes = function(x, z)
+			return not pointInLine(x, z, f.radius, tele.x, tele.z, tele.angle, tele.length, tele.width)
+		end
+		score = function(x, z)
+			return abs((x - tele.x) * dirZ - (z - tele.z) * dirX)
+		end
+	elseif threat then
+		local cx, cz, reach
+		if threat.kind == "Tele" then
+			cx, cz, reach = threat.tele.x, threat.tele.z, threat.tele.r + f.radius
+		else
+			cx, cz = src.x, src.z
+			reach = src.range + f.radius + num(damageRules().EngageSlack, 0.6) + 1.0
+		end
+		local ax, az = unitVec(f.x - cx, f.z - cz)
+		if not ax then
+			ax, az = turnX, turnZ
+		end
+		local p1x, p1z, p2x, p2z = perpPair(ax, az)
+		candidates = { { ax, az }, { p1x, p1z }, { p2x, p2z } }
+		local d0 = dist(f.x, f.z, cx, cz)
+		need = reach - d0 + 1
+		escapes = function(x, z)
+			return dist(x, z, cx, cz) > reach
+		end
+		if threat.kind == "Windup" then
+			-- a wind-up: a short hop that stays inside the attacker's reach (the i-frames / the parry are the defence, not the
+			-- distance: an early Dash must not dodge it for free)
+			hop = max(1, min(4, reach - d0 - 0.5))
+			escapes = function(x, z)
+				return dist(x, z, cx, cz) >= d0 - 1e-6
+			end
+		end
+		score = function(x, z)
+			return dist(x, z, cx, cz)
+		end
+	else
+		local aim = lockOf(team)
+		if aim and not targetable(self, aim) then
+			aim = nil
+		end
+		if not aim and team.engage and targetable(self, team.engage.target) then
+			aim = team.engage.target
+		end
+		aim = aim or nearestEnemy(self, f)
+		local ax, az = nil, nil
+		if aim then
+			ax, az = unitVec(aim.x - f.x, aim.z - f.z)
+		end
+		if not ax then
+			ax, az = unitVec(fx, fz)
+		end
+		if not ax then
+			ax, az = 0, 1
+		end
+		local p1x, p1z, p2x, p2z = perpPair(ax, az)
+		candidates = { { p1x, p1z }, { p2x, p2z }, { -ax, -az } }
+		local d0 = aim and dist(f.x, f.z, aim.x, aim.z) or 0
+		escapes = function(x, z)
+			return not aim or dist(x, z, aim.x, aim.z) >= d0 - 1e-6
+		end
+		score = function(x, z)
+			return aim and dist(x, z, aim.x, aim.z) or 0
+		end
+	end
+	local len = hop or max(4, min(maxLen, need))
+	local function tries(x, z, l)
+		local ex, ez = clampPoint(self, f.x + x * l, f.z + z * l, f.radius)
+		return escapes(ex, ez) and dist(f.x, f.z, ex, ez) > min(0.5, l * 0.5), score(ex, ez)
+	end
+	local best, bestScore, bestLen = nil, -huge, len
+	for _, c in ipairs(candidates) do
+		local ok, s = tries(c[1], c[2], len)
+		if ok then
+			return c[1], c[2], len, src
+		end
+		if s > bestScore + 1e-9 then
+			best, bestScore = c, s
+		end
+	end
+	-- a wall / corner blocks every candidate (Review Focus 3): for a telegraph, the 8 compass directions, nearest to the
+	-- first candidate first, each lengthened up to the full dash; still nothing (or no threat: a run along the wall would
+	-- pass closer to the aim) = the best scoring candidate (never closer, on the floor)
+	if not hop and threat then
+		local first = candidates[1]
+		local dirs = {}
+		for k = 0, 7 do
+			local a = k * pi / 4
+			local x, z = cos(a), sin(a)
+			dirs[#dirs + 1] = { x, z, -(x * first[1] + z * first[2]), k }
+		end
+		table.sort(dirs, function(a, b)
+			if abs(a[3] - b[3]) > 1e-9 then
+				return a[3] < b[3]
+			end
+			return a[4] < b[4]
+		end)
+		for _, c in ipairs(dirs) do
+			local l = len
+			while l <= maxLen + 1e-9 do
+				if tries(c[1], c[2], l) then
+					return c[1], c[2], l, src
+				end
+				l = l + 2
+			end
+		end
+	end
+	return best[1], best[2], bestLen, src
 end
 
 -- the body of Command; `events` collects what the command causes (the caller queues them)
@@ -3482,10 +3677,14 @@ function doCommand(self, team, action, arg, events)
 				return false, "BadTarget"
 			end
 		else
-			-- bug #16: a live lock within EngageRange is KEPT (F never pulls the pet off its enemy; no echo below)
+			-- bug #16: a live lock is KEPT (F never pulls the pet off its enemy; no echo below); wave 6: anywhere on the
+			-- floor (no EngageRange), else the enemy the engaged pet already fights, else the nearest
 			local lock = lockOf(team)
-			if lock and targetable(self, lock) and dist(f.x, f.z, lock.x, lock.z) <= num(F.EngageRange, 14) + lock.radius then
+			local fighting = team.engage and team.engage.target or nil
+			if lock and targetable(self, lock) then
 				target = lock
+			elseif fighting and targetable(self, fighting) then
+				target = fighting
 			else
 				target = nearestTarget(self, team, f)
 			end
@@ -3536,9 +3735,50 @@ function doCommand(self, team, action, arg, events)
 		f.iframesUntil = t + num(F.DashIFrames, 0.35)
 		team.dashReadyAt = t + num(F.DashCooldown, 2.5)
 		f.state = S_DASHING
-		local dx, dz, aim = dashDirection(self, team, f)
+		-- wave 6: the timed threats; those landing inside ParryWindow are PARRIED (the i-frames already make them miss)
+		local threats = findThreats(self, f)
+		local window = num(F.ParryWindow, 0.25)
+		local parries = {}
+		for _, th in ipairs(threats) do
+			if th.at > t - 1e-9 and th.at - t <= window + 1e-6 then
+				local src = th.src
+				f.meter = min(num(F.SpecialMeterMax, 100), f.meter + num(F.ParryMeter, 8))
+				if src.kind == "Boss" then
+					-- applyStun refuses bosses: a short stagger instead (no new basic attack / telegraph), once per ParryBossGap
+					if t - (src.staggerAt or -huge) >= num(F.ParryBossGap, 3) then
+						src.staggerUntil = t + num(F.ParryStagger, 0.4)
+						src.staggerAt = t
+					end
+				else
+					applyStun(self, src, num(F.ParryStagger, 0.4)) -- also cancels its wind-up
+				end
+				if th.tele then
+					th.tele.parried = th.tele.parried or {}
+					th.tele.parried[f.id] = true
+				end
+				parries[#parries + 1] = { type = EV.Parry, unit = f.id, from = src.id, tele = th.tele and th.tele.id or nil }
+			end
+		end
+		local dx, dz, len, src = sidestep(self, team, f, threats[1])
+		f.dashDX, f.dashDZ, f.dashLeft = dx, dz, len
 		-- small on the wire (16-raid budget): the position comes from the snapshot, the timings from BattleCatalog.Fighter
-		events[#events + 1] = { type = EV.Dash, unit = f.id, dir = { dx, dz }, target = aim and aim.id or nil }
+		events[#events + 1] = { type = EV.Dash, unit = f.id, dir = { floor(dx * 100 + 0.5) / 100, floor(dz * 100 + 0.5) / 100 }, target = src and src.id or nil }
+		for _, ev in ipairs(parries) do
+			events[#events + 1] = ev
+		end
+		return true
+	elseif action == "Cheer" then
+		-- wave 6: the trainer's "Cheer up!" (dungeon + raid only; the Ring / PvP podium cheer is visual only)
+		if self.mode ~= "Raid" and self.mode ~= "Dungeon" then
+			return false, "NoCheer"
+		end
+		if t < team.cheerReadyAt then
+			return false, "Cooldown", r1(team.cheerReadyAt - t)
+		end
+		-- SET, never add: a cheer never stacks
+		team.cheerUntil = t + num(F.CheerSeconds, 5)
+		team.cheerReadyAt = t + num(F.CheerCooldown, 20)
+		events[#events + 1] = { type = EV.Cheer, owner = team.owner, unit = f.id, untilT = r1(team.cheerUntil) }
 		return true
 	elseif action == "Buff" then
 		local slot = tonumber(arg)

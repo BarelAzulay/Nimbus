@@ -3824,6 +3824,19 @@ function G.lateVane(rec, d)
 	return farm.Vane ~= nil
 end
 
+-- (bug "doesnt show my pet in the training while hes training") a Training Place mat attachment (Spot<i>) that
+-- replicates after its Station_Gym model (a join while a pet trains: the station's ChildAdded ran syncPets before the
+-- Deck's attachments were there, found no seat and never looked again): the training pets are synced once more;
+-- true when it marked them
+function G.lateMat(rec, d)
+	local st = rec.Pet.Training.Station
+	if not st or not d:IsA("Attachment") or not string.match(d.Name, "^Spot%d+$") or not d:IsDescendantOf(st.Model) then
+		return false
+	end
+	rec.Pet.Training.Dirty = true
+	return true
+end
+
 function G.stepVane(st, dt)
 	local v = st.Vane
 	if st.Popping then
@@ -3949,6 +3962,7 @@ local function onDescendant(rec, d)
 		rec.LodDirty = true -- a newly tagged station / bed piece: the plot LOD list is rebuilt at the next check
 	end
 	G.lateVane(rec, d)
+	G.lateMat(rec, d)
 	if d:IsA("ProximityPrompt") then
 		if d.Name ~= "ClaimPrompt" then
 			trackPrompt(d, rec)

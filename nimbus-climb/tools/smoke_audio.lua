@@ -639,12 +639,19 @@ S.client_audio_charge = guarded("client_audio_charge", function()
 	local folder = function()
 		return SoundService:FindFirstChild("NimbusSounds")
 	end
-	local played = hk.Inhale and hk.Inhale(0.8, "audio_charge", true)
-	local inhale = nil
+	-- (wave 6 fix round) SoundFx pools 3 Sounds per name, and an earlier battle scenario's inhale / shatter (faded to
+	-- Volume 0, its own id) may still be playing in the folder: those are stopped first, and the inhale checked is the
+	-- one this token's hook started (BattleController's inhale record), not the first match
 	for _, s in ipairs(folder() and folder():GetChildren() or {}) do
-		if string.find(s.Name, "Sfx_Inhale", 1, true) and s.IsPlaying then
-			inhale = s
+		if s:IsA("Sound") and string.find(s.Name, "Sfx_", 1, true) == 1 then
+			s:Stop()
 		end
+	end
+	local played = hk.Inhale and hk.Inhale(0.8, "audio_charge", true)
+	local recs = type(BC._Inhales) == "function" and BC._Inhales() or {}
+	local inhale = recs.audio_charge and recs.audio_charge.sound or nil
+	if inhale and not (string.find(inhale.Name, "Sfx_Inhale", 1, true) and inhale.IsPlaying and inhale:IsDescendantOf(SoundService)) then
+		inhale = nil
 	end
 	T.check(played == true and inhale ~= nil and math.abs(inhale.PlaybackSpeed - 0.75) < 1e-6 and inhale.SoundId == "rbxassetid://" .. tostring(Config.Audio.Sfx.Inhale),
 		"audio charge: the charge's inhale is SoundFx Inhale, starting at PlaybackSpeed 0.75", inhale and fmt("%s %.2f", inhale.SoundId, inhale.PlaybackSpeed) or "none")
@@ -664,7 +671,8 @@ S.client_audio_charge = guarded("client_audio_charge", function()
 			shatter = s
 		end
 	end
-	T.check(shatter ~= nil and shatter.SoundId == "rbxassetid://" .. tostring(Config.Audio.Sfx.Shatter), "audio charge: a broken charge plays SoundFx Shatter")
+	T.check(shatter ~= nil and shatter.SoundId == "rbxassetid://" .. tostring(Config.Audio.Sfx.Shatter), "audio charge: a broken charge plays SoundFx Shatter",
+		shatter and shatter.SoundId or fmt("none (hook %s)", tostring(hk.Shatter ~= nil)))
 	restore()
 end)
 
