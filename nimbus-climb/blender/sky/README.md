@@ -55,3 +55,5 @@ py -3.12 blender/sky/build_sky_manifest.py             # copy + index
 The faces reach the game through the keyed upload (`docs/phase6/OWNER_UPLOAD.md` section 6c) into
 `src/shared/TextureIds.lua`; `src/shared/SkyFaces.lua` reads them. A theme shows only once all six of its faces have
 Image ids; until then that sky keeps LightingService's boot faces and the cycle changes only the light.
+
+**Roblox face slots (checked in Studio 2026-10-30):** Roblox draws `SkyboxRt` on the -X side and `SkyboxLf` on the +X side, the opposite of this script's Lf (-X) / Rt (+X). The game swaps them in `src/shared/SkyFaces.lua` (SLOT), so the files and texture keys keep the render names. Painted skies also hide the engine sun and moon (`CelestialBodiesShown = false`).

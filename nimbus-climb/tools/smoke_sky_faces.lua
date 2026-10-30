@@ -125,8 +125,10 @@ S.skyfaces_full = guarded("skyfaces_full", function()
 			count = count + 1
 			ok = ok and type(key) == "string" and type(v) == "string"
 		end
+		-- the rendered Lf / Rt faces trade slots (Roblox draws SkyboxRt on -X): SkyFaces' SLOT
+		local slot = { Bk = "Bk", Dn = "Dn", Ft = "Ft", Lf = "Rt", Rt = "Lf", Up = "Up" }
 		for j, face in ipairs(FACES) do
-			ok = ok and f["Skybox" .. face] == fmt("rbxassetid://%d", 140427438072000 + i * 10 + j)
+			ok = ok and f["Skybox" .. slot[face]] == fmt("rbxassetid://%d", 140427438072000 + i * 10 + j)
 		end
 		full:case(ok and count == 6, theme .. (f and (" " .. tostring(f.SkyboxBk)) or " nil"))
 	end
@@ -205,9 +207,12 @@ S.skyfaces_preset_fallback = guarded("skyfaces_preset_fallback", function()
 			none:case(stray == nil, fmt("t %d %s: %s", t, tostring(event), tostring(stray)))
 			local p2, theme = SC.Preset(at, event, event and 1 or 0, allFaces)
 			local ok = type(theme) == "string" and base[theme] ~= nil
+			local slot = { Bk = "Bk", Dn = "Dn", Ft = "Ft", Lf = "Rt", Rt = "Lf", Up = "Up" } -- SkyFaces' SLOT
 			for j, face in ipairs(FACES) do
-				ok = ok and p2.Sky["Skybox" .. face] == fmt("rbxassetid://%d", (base[theme] or 0) + j)
+				ok = ok and p2.Sky["Skybox" .. slot[face]] == fmt("rbxassetid://%d", (base[theme] or 0) + j)
 			end
+			-- a painted sky hides the engine sun / moon (no second sun on top of the painted one)
+			ok = ok and p2.Sky.CelestialBodiesShown == false
 			some:case(ok, fmt("t %d %s: %s", t, tostring(event), tostring(theme)))
 		end
 	end

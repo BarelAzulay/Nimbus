@@ -6,7 +6,8 @@
 -- so a half-uploaded theme never shows a grey face. Pure Lua 5.1-compatible syntax; no Instances, no state.
 --
 -- API (the contract):
---   SkyFaces.For(themeId [, ids]) -> { SkyboxBk = "rbxassetid://<id>", ... the six } | nil
+--   SkyFaces.For(themeId [, ids]) -> { SkyboxBk = "rbxassetid://<id>", ... the six } | nil (face Lf -> SkyboxRt and
+--       Rt -> SkyboxLf: see SLOT)
 --       nil unless all six ids[Keys(themeId)] are positive whole numbers (Image ids). ids = shared/TextureIds (tests
 --       pass their own table). A fresh table every call.
 --   SkyFaces.Keys(themeId) -> { "sky_<theme>_Bk", "_Dn", "_Ft", "_Lf", "_Rt", "_Up" } ({} for a junk theme id)
@@ -19,6 +20,11 @@ local SkyFaces = {}
 
 local FACES = { "Bk", "Dn", "Ft", "Lf", "Rt", "Up" }
 SkyFaces.Faces = FACES
+-- the Sky property each rendered face goes to. sky_themes.py renders Lf looking -X and Rt looking +X, but Roblox
+-- draws SkyboxRt on the -X side and SkyboxLf on the +X side (checked in Studio 2026-10-30: with the faces as rendered
+-- every side corner showed a hard edge, swapped they join seamlessly), so the two side faces trade slots here.
+local SLOT = { Bk = "SkyboxBk", Dn = "SkyboxDn", Ft = "SkyboxFt", Lf = "SkyboxRt", Rt = "SkyboxLf", Up = "SkyboxUp" }
+SkyFaces.Slot = SLOT
 
 local function validTheme(themeId)
 	return type(themeId) == "string" and themeId ~= ""
@@ -51,7 +57,7 @@ function SkyFaces.For(themeId, ids)
 			return nil
 		end
 		local digits = string.format("%.0f", id) -- a 15-digit id printed whole (tostring may give 1.4e+14 off Roblox)
-		out["Skybox" .. FACES[i]] = "rbxassetid://" .. digits
+		out[SLOT[FACES[i]]] = "rbxassetid://" .. digits
 	end
 	return out
 end

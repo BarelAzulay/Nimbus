@@ -275,6 +275,8 @@ function SkyCycle.Preset(at, eventId, eventBlend, facesFor, fromId, fromBlend)
 				preset.Sky[key] = id
 			end
 		end
+		-- the painted skies carry their own sun / moon / black sun: the engine's would be a second one on top
+		preset.Sky.CelestialBodiesShown = false
 	end
 	return SkyCycle.Floor(preset), theme
 end
