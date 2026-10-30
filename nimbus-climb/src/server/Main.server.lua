@@ -8,7 +8,8 @@
 --   -> Pet / Item / Spot services (they subscribe to profile events)
 --   -> Player service (this is what starts loading profiles, so it comes after the subscribers)
 --   -> Match -> Portals -> Gates -> Index / Npc -> Tutorial -> Tycoon / PetCare / Fusion / Gem
---   -> Battle -> Dungeon -> Events -> Dev -> Dash relay
+--   -> Battle -> Dungeon -> Events -> Sky (the living sky clock + raid skies, after Events: it hooks its signals) -> Dev
+--   -> Dash relay
 -- Every Phase 3+ service is optional (loadOptionalService): a module that is not in the build is skipped quietly, so the
 -- game boots at every wave of the build.
 
@@ -254,6 +255,7 @@ local StormAltar = loadOptionalService("StormAltar") -- the player's Stormfang l
 local DungeonBuilder = loadOptionalService("DungeonBuilder") -- the dungeon gate, templates and runs (dungeon, W3)
 local DungeonService = loadOptionalService("DungeonService") -- parties, runs, loot (dungeon, W3)
 local GateService = loadOptionalService("GateService") -- the Gate Court prompts (worldlobby, W2)
+local SkyService = loadOptionalService("SkyService") -- the living sky: the clock attributes + the raid skies (sky, Task 4)
 
 playerServiceSpawns = type(PlayerService) == "table" and type(PlayerService.SpawnPlayer) == "function"
 
@@ -446,6 +448,10 @@ if EventService then call("EventService.Init", EventService, "Init", {
 	PetCareService = PetCareService,
 	ArenaInfo = arenaInfo,
 }) end
+if SkyService then call("SkyService.Init", SkyService, "Init", {
+	EventService = EventService, -- EventStarted BossRaid puts the boss's sky up
+	BattleService = BattleService, -- BattleEnded Mode "Raid" takes it down; GetRaidStatus for the watchdog
+}) end
 if DevService then call("DevService.Init", DevService, "Init", {
 	DataService = DataService,
 	PetService = PetService,
@@ -454,6 +460,7 @@ if DevService then call("DevService.Init", DevService, "Init", {
 	BattleService = BattleService, -- Phase 3: /raid and the DEV panel's raid button
 	EventService = EventService,
 	DungeonService = DungeonService, -- Phase 5: /reset is refused during a dungeon run
+	SkyService = SkyService, -- the living sky: /sky
 }) end
 
 ----------------------------------------------------------------------
