@@ -13,5 +13,5 @@ Read with [`ABSOLUTE_RULES.md`](ABSOLUTE_RULES.md) before working.
 - 2026-10-22: `claude-setup/CLAUDE_SYSTEM_SETUP.md` adopted as the standing rules for this project ("the bible").
   Its step-4 rules live in `ABSOLUTE_RULES.md`; its skill pack is unpacked into `.claude/skills/`.
 - 2026-10-30: Gemini fallback (owner's rule). If the Gemini API key fails (e.g. 402 "prepayment credits are depleted"),
-  use Gemini through the owner's Google account (AI Pro plan): gemini-cli "Login with Google" (the owner signs in once,
-  interactively). Model stays "gemini-pro-latest", prompts on one line. Never open the Gemini desktop app from an agent.
+  use Gemini on the web (gemini.google.com) through Claude in Chrome, where the owner's Google account (AI Pro plan)
+  is already signed in. Paste the prompt there and read the reply. Never open the Gemini desktop app from an agent.
