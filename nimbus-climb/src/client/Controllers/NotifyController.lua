@@ -667,6 +667,22 @@ local function buildToast(text, kind)
 	}
 end
 
+-- (audio wave 2 fix) client/SoundFx, lazy; false = unavailable
+local soundFxMod = nil
+local function playSfx(name)
+	if soundFxMod == nil then
+		local module = Client:FindFirstChild("SoundFx")
+		local ok, mod = false, nil
+		if module then
+			ok, mod = pcall(require, module)
+		end
+		soundFxMod = (ok and type(mod) == "table" and type(mod.Play) == "function") and mod or false
+	end
+	if soundFxMod then
+		pcall(soundFxMod.Play, name)
+	end
+end
+
 local function addToast(text, kind, duration)
 	if not UI.Stack then
 		return
@@ -692,6 +708,9 @@ local function addToast(text, kind, duration)
 
 	local toast = buildToast(text, kind)
 	toast.Born = os.clock()
+	if kindName == "bad" then
+		playSfx("Error") -- a refused action (a NEW "bad" toast; its merged repeats stay silent; Config MinGap 1 s)
+	end
 	table.insert(toasts, toast)
 	-- never more than MAX_TOASTS (and never further down than the screen allows): the oldest leave first
 	while #toasts > MAX_TOASTS do

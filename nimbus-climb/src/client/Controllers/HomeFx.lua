@@ -3979,12 +3979,36 @@ local function onDescendant(rec, d)
 	end
 end
 
+-- (audio wave 2) a new station / buy pad of MY home pops in: SoundFx "StationBuild"; my house reaching a new tier
+-- (Station_House at Level 2+, the server's "<tier> built!") plays "HouseTier" instead. Others' homes are silent
+local soundFxMod = nil
+local function buildSound(rec, child)
+	if not localPlayer or homeOwner(rec) ~= localPlayer.UserId then
+		return
+	end
+	if soundFxMod == nil then
+		local module = script.Parent.Parent:FindFirstChild("SoundFx")
+		local ok, mod = false, nil
+		if module then
+			ok, mod = pcall(require, module)
+		end
+		soundFxMod = (ok and type(mod) == "table" and type(mod.Play) == "function") and mod or false
+	end
+	if not soundFxMod then
+		return
+	end
+	local house = child.Name == "Station_House" and (tonumber(child:GetAttribute("Level")) or 1) >= 2
+	pcall(soundFxMod.Play, house and "HouseTier" or "StationBuild")
+end
+G.buildSound = buildSound
+
 local function onHomeChild(rec, child, live)
 	local name = child.Name
 	if string.sub(name, 1, 8) == "Station_" and child:IsA("Model") then
 		local st = registerStation(rec, child)
 		if live and isNew(rec, child) then
 			st.Popping = startPop(child, rec)
+			buildSound(rec, child)
 		end
 	elseif name == "Pads" then
 		rec.PadFolder = child
@@ -3998,6 +4022,7 @@ local function onHomeChild(rec, child, live)
 				registerPad(rec, pad)
 				if isNew(rec, pad) and rec.Pads[pad] then
 					rec.Pads[pad].Popping = startPop(pad, rec)
+					buildSound(rec, pad)
 				end
 			end
 		end)

@@ -21,6 +21,8 @@
 -- * Config.Attr.PortalArrived = server time of the last arrival: the arrival ring (<= 20 parts: a flat ring that
 --   widens and fades around the player's feet + rising sparks) plays for 1.5 s where that player stands now.
 -- * The followers' dive into the portal is PetController's (it reads HomePortal itself).
+-- * (audio wave 2) SoundFx "PortalEnter" when MY portal swirls open and when I use a lobby Travel gate
+--   (GateService's AltarGatePrompt / PlazaGatePrompt), "PortalArrive" on MY arrival ring. Others' portals are silent.
 -- Cheap: one RenderStepped connection, per-frame writes only for portals near the camera (the swirl, grow / shrink)
 -- and live arrival rings; parts are pooled per portal and never collide, query or touch. Plain Lua 5.1 syntax only.
 
@@ -224,6 +226,17 @@ function P.clientModule(name)
 	end
 	return P.Mods[name] or nil
 end
+
+-- (audio wave 2) a SoundFx one-shot (missing id = silent)
+function P.sfx(name)
+	local SF = P.clientModule("SoundFx")
+	if SF and type(SF.Play) == "function" then
+		pcall(SF.Play, name)
+	end
+end
+
+-- the lobby Travel gates' prompts (server/Services/GateService PROMPTS): using one starts the portal swirl sound
+P.GATE_PROMPTS = { AltarGatePrompt = true, PlazaGatePrompt = true }
 
 -- the vortex texture ids (shared/TextureIds, filled by the upload session; empty = PortalVortex's effects-only fallback)
 function P.textureIds()
@@ -485,6 +498,9 @@ function P.refresh(player)
 		rec = { Player = player, Scale = 0, Time = 0, Opening = true }
 		portals[player] = rec
 		stats.Opened = stats.Opened + 1
+		if player == localPlayer then
+			P.sfx("PortalEnter")
+		end
 	elseif rec.Model then
 		P.destroy(rec) -- moved: rebuilt where it now stands (P.step), at its current scale
 	end
@@ -507,6 +523,9 @@ function P.arrive(player)
 	-- (the local player's own arrival always plays: the camera catches up with the teleport a frame later)
 	if player ~= localPlayer and eye and (root.Position - eye).Magnitude > K.DRAW_RANGE then
 		return
+	end
+	if player == localPlayer then
+		P.sfx("PortalArrive")
 	end
 	while #arrivals >= K.MAX_ARRIVALS do
 		P.endArrival(table.remove(arrivals, 1))
@@ -712,6 +731,15 @@ function HomePortalFx.Init()
 	end
 	conns[#conns + 1] = Players.PlayerAdded:Connect(P.watch)
 	conns[#conns + 1] = Players.PlayerRemoving:Connect(P.unwatch)
+	local okPps, pps = pcall(game.GetService, game, "ProximityPromptService")
+	local signal = okPps and pps and pps.PromptTriggered or nil
+	if signal then
+		conns[#conns + 1] = signal:Connect(function(prompt, player)
+			if (player == nil or player == localPlayer) and typeof(prompt) == "Instance" and P.GATE_PROMPTS[prompt.Name] then
+				P.sfx("PortalEnter")
+			end
+		end)
+	end
 	loopConn = RunService.RenderStepped:Connect(P.safeStep)
 	-- a waiter ranks gate_homeportal ahead of the ~800 keys preloading in arrival order (MeshLibrary: rank 1)
 	local ml = P.meshLib()
