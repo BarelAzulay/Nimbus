@@ -271,9 +271,11 @@
       "uploadedOutside": true
     },
     "sky_day_vivid_Bk": {
-      "assetId": 110624791263522,
+      "assetId": 105357670769779,
       "contentHash": "cb66006ecbda806b01060c6d5a03f02f4c0e7e77e1a9cebb89b2b584c7063f02",
+      "decalAssetId": 110624791263522,
       "fileSha256": "cb66006ecbda806b01060c6d5a03f02f4c0e7e77e1a9cebb89b2b584c7063f02",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T15:58:50.270Z",
       "revisionId": "1",
@@ -281,9 +283,11 @@
       "uploadedAt": "2026-10-30T15:58:53Z"
     },
     "sky_day_vivid_Dn": {
-      "assetId": 78956868910632,
+      "assetId": 106213730878998,
       "contentHash": "1284835aad181095f671c73b0e7b34cc17b7ea45ba5964915074f36ce4d6d3e3",
+      "decalAssetId": 78956868910632,
       "fileSha256": "1284835aad181095f671c73b0e7b34cc17b7ea45ba5964915074f36ce4d6d3e3",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T15:59:03.429Z",
       "revisionId": "1",
@@ -291,9 +295,11 @@
       "uploadedAt": "2026-10-30T15:59:04Z"
     },
     "sky_day_vivid_Ft": {
-      "assetId": 124461176394139,
+      "assetId": 102097491863533,
       "contentHash": "f4f81543fbc1da77db721dd6b1edc4ca287ade1e50cf5ec4ce0679667c5b7c43",
+      "decalAssetId": 124461176394139,
       "fileSha256": "f4f81543fbc1da77db721dd6b1edc4ca287ade1e50cf5ec4ce0679667c5b7c43",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T15:59:12.746Z",
       "revisionId": "1",
@@ -301,9 +307,11 @@
       "uploadedAt": "2026-10-30T15:59:15Z"
     },
     "sky_day_vivid_Lf": {
-      "assetId": 128732064451219,
+      "assetId": 122481920861636,
       "contentHash": "e4cf74f85fc693239b0113d7bb54adabba3e74b27dde10ca562ef8591e4dbf46",
+      "decalAssetId": 128732064451219,
       "fileSha256": "e4cf74f85fc693239b0113d7bb54adabba3e74b27dde10ca562ef8591e4dbf46",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T15:59:24.563Z",
       "revisionId": "1",
@@ -311,9 +319,11 @@
       "uploadedAt": "2026-10-30T15:59:28Z"
     },
     "sky_day_vivid_Rt": {
-      "assetId": 109835437447501,
+      "assetId": 84030460619557,
       "contentHash": "9a931cb66984f1a984d1c3cff898f4a1ecd09d2872a5cb84c676e77858579d7a",
+      "decalAssetId": 109835437447501,
       "fileSha256": "9a931cb66984f1a984d1c3cff898f4a1ecd09d2872a5cb84c676e77858579d7a",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T15:59:37.224Z",
       "revisionId": "1",
@@ -321,9 +331,11 @@
       "uploadedAt": "2026-10-30T15:59:39Z"
     },
     "sky_day_vivid_Up": {
-      "assetId": 140556798559918,
+      "assetId": 136659818208345,
       "contentHash": "73f6c69750b295024496defcdf8e8f3a8e25e84ef66689684fed6a2111380fb7",
+      "decalAssetId": 140556798559918,
       "fileSha256": "73f6c69750b295024496defcdf8e8f3a8e25e84ef66689684fed6a2111380fb7",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T15:59:49.521Z",
       "revisionId": "1",
@@ -331,9 +343,11 @@
       "uploadedAt": "2026-10-30T15:59:51Z"
     },
     "sky_dusk_amber_Bk": {
-      "assetId": 96994952278815,
+      "assetId": 98077302053227,
       "contentHash": "0982ce32dadc2b797028c25d282d5755c697f9dca478664a65a2ed7ed9a6f2eb",
+      "decalAssetId": 96994952278815,
       "fileSha256": "0982ce32dadc2b797028c25d282d5755c697f9dca478664a65a2ed7ed9a6f2eb",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:00:00.183Z",
       "revisionId": "1",
@@ -341,9 +355,11 @@
       "uploadedAt": "2026-10-30T16:00:04Z"
     },
     "sky_dusk_amber_Dn": {
-      "assetId": 136445679475841,
+      "assetId": 131530807435891,
       "contentHash": "1490d90e725bce0edfc5b2c6f51ee287f65044fa8c6e9c4c83062301917b6f1d",
+      "decalAssetId": 136445679475841,
       "fileSha256": "1490d90e725bce0edfc5b2c6f51ee287f65044fa8c6e9c4c83062301917b6f1d",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:00:14.349Z",
       "revisionId": "1",
@@ -351,9 +367,11 @@
       "uploadedAt": "2026-10-30T16:00:15Z"
     },
     "sky_dusk_amber_Ft": {
-      "assetId": 98407038526208,
+      "assetId": 76122762954387,
       "contentHash": "2182f1ec19ab88b7a5d3caa6456011dc2c33b1514ce38bf1ad3d9de5a8d6a02f",
+      "decalAssetId": 98407038526208,
       "fileSha256": "2182f1ec19ab88b7a5d3caa6456011dc2c33b1514ce38bf1ad3d9de5a8d6a02f",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:00:23.839Z",
       "revisionId": "1",
@@ -361,9 +379,11 @@
       "uploadedAt": "2026-10-30T16:00:27Z"
     },
     "sky_dusk_amber_Lf": {
-      "assetId": 140179170545659,
+      "assetId": 119575931747573,
       "contentHash": "25572af50cefa2446617ceadff628af2abfa3022a224d10bc46931613027b0ea",
+      "decalAssetId": 140179170545659,
       "fileSha256": "25572af50cefa2446617ceadff628af2abfa3022a224d10bc46931613027b0ea",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:00:38.714Z",
       "revisionId": "1",
@@ -371,9 +391,11 @@
       "uploadedAt": "2026-10-30T16:00:41Z"
     },
     "sky_dusk_amber_Rt": {
-      "assetId": 138024914099344,
+      "assetId": 96078601111780,
       "contentHash": "feab76f1942677486c7416117bf86b918b6eb9c933d27633146964d907538bae",
+      "decalAssetId": 138024914099344,
       "fileSha256": "feab76f1942677486c7416117bf86b918b6eb9c933d27633146964d907538bae",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:00:51.213Z",
       "revisionId": "1",
@@ -381,9 +403,11 @@
       "uploadedAt": "2026-10-30T16:00:55Z"
     },
     "sky_dusk_amber_Up": {
-      "assetId": 132327160001442,
+      "assetId": 105954830584569,
       "contentHash": "75fbe1848e771be11d1f9418bcf1d3010e2405aaeccf15e1357551e7df431978",
+      "decalAssetId": 132327160001442,
       "fileSha256": "75fbe1848e771be11d1f9418bcf1d3010e2405aaeccf15e1357551e7df431978",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:01:05.161Z",
       "revisionId": "1",
@@ -391,9 +415,11 @@
       "uploadedAt": "2026-10-30T16:01:07Z"
     },
     "sky_frost_glacial_Bk": {
-      "assetId": 116219454267699,
+      "assetId": 118513123727785,
       "contentHash": "092b7607e4c35e3a7c40e2bc46a0701e82c02f6096d9b3165a1eca84777919df",
+      "decalAssetId": 116219454267699,
       "fileSha256": "092b7607e4c35e3a7c40e2bc46a0701e82c02f6096d9b3165a1eca84777919df",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:01:18.586Z",
       "revisionId": "1",
@@ -401,9 +427,11 @@
       "uploadedAt": "2026-10-30T16:01:21Z"
     },
     "sky_frost_glacial_Dn": {
-      "assetId": 89346960844703,
+      "assetId": 119690799722802,
       "contentHash": "898013355d2463e80714c63134652c926fa8f3108fbd29b8f4bcc2979ac35c88",
+      "decalAssetId": 89346960844703,
       "fileSha256": "898013355d2463e80714c63134652c926fa8f3108fbd29b8f4bcc2979ac35c88",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:01:31.736Z",
       "revisionId": "1",
@@ -411,9 +439,11 @@
       "uploadedAt": "2026-10-30T16:01:33Z"
     },
     "sky_frost_glacial_Ft": {
-      "assetId": 137019084010958,
+      "assetId": 130861086339878,
       "contentHash": "c5f723f5203229e6084b1fd2d531ad1ab322955e3c44bfe1e731ba565f487045",
+      "decalAssetId": 137019084010958,
       "fileSha256": "c5f723f5203229e6084b1fd2d531ad1ab322955e3c44bfe1e731ba565f487045",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:01:43.089Z",
       "revisionId": "1",
@@ -421,9 +451,11 @@
       "uploadedAt": "2026-10-30T16:01:46Z"
     },
     "sky_frost_glacial_Lf": {
-      "assetId": 84251440704208,
+      "assetId": 125907268284293,
       "contentHash": "d73ccaafe82d2bc4321d4c152724b6a7ed7903c717acec08902253b4593ea316",
+      "decalAssetId": 84251440704208,
       "fileSha256": "d73ccaafe82d2bc4321d4c152724b6a7ed7903c717acec08902253b4593ea316",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:01:55.417Z",
       "revisionId": "1",
@@ -431,9 +463,11 @@
       "uploadedAt": "2026-10-30T16:01:59Z"
     },
     "sky_frost_glacial_Rt": {
-      "assetId": 114186415255706,
+      "assetId": 91704679392594,
       "contentHash": "1063f84f80c8f85cd8adfe9b127a1f79159b8cc2554995fb8b3cb319cbf85897",
+      "decalAssetId": 114186415255706,
       "fileSha256": "1063f84f80c8f85cd8adfe9b127a1f79159b8cc2554995fb8b3cb319cbf85897",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:02:08.054Z",
       "revisionId": "1",
@@ -441,9 +475,11 @@
       "uploadedAt": "2026-10-30T16:02:11Z"
     },
     "sky_frost_glacial_Up": {
-      "assetId": 112388885733234,
+      "assetId": 70741654124610,
       "contentHash": "a86c34d15ca532bb6e51e8e9a564080ecfbbd35681930d5a496a42f77f642f1c",
+      "decalAssetId": 112388885733234,
       "fileSha256": "a86c34d15ca532bb6e51e8e9a564080ecfbbd35681930d5a496a42f77f642f1c",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:02:22.344Z",
       "revisionId": "1",
@@ -451,9 +487,11 @@
       "uploadedAt": "2026-10-30T16:02:23Z"
     },
     "sky_lava_obsidian_Bk": {
-      "assetId": 90536265398687,
+      "assetId": 85187311208673,
       "contentHash": "36a42283367f08dcf806772c870de9e2a16ab4b01d7e5fe6d36ea3fe1b6d4a30",
+      "decalAssetId": 90536265398687,
       "fileSha256": "36a42283367f08dcf806772c870de9e2a16ab4b01d7e5fe6d36ea3fe1b6d4a30",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:02:31.016Z",
       "revisionId": "1",
@@ -461,9 +499,11 @@
       "uploadedAt": "2026-10-30T16:02:35Z"
     },
     "sky_lava_obsidian_Dn": {
-      "assetId": 110062384727991,
+      "assetId": 126237142575311,
       "contentHash": "1e6f5dd9ee5d3db6145e4f57b333419dcf1413ad6dfadcf56aab335a69f2c74e",
+      "decalAssetId": 110062384727991,
       "fileSha256": "1e6f5dd9ee5d3db6145e4f57b333419dcf1413ad6dfadcf56aab335a69f2c74e",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:02:41.872Z",
       "revisionId": "1",
@@ -471,9 +511,11 @@
       "uploadedAt": "2026-10-30T16:02:47Z"
     },
     "sky_lava_obsidian_Ft": {
-      "assetId": 118224716725508,
+      "assetId": 129572180711097,
       "contentHash": "4c51facf3a3bed2d59477a83345e24f5eaa9d7a0a64182abb9e5ad9f8562e36f",
+      "decalAssetId": 118224716725508,
       "fileSha256": "4c51facf3a3bed2d59477a83345e24f5eaa9d7a0a64182abb9e5ad9f8562e36f",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:02:55.147Z",
       "revisionId": "1",
@@ -481,9 +523,11 @@
       "uploadedAt": "2026-10-30T16:02:59Z"
     },
     "sky_lava_obsidian_Lf": {
-      "assetId": 136180050491798,
+      "assetId": 125635939829728,
       "contentHash": "9cc4199de225317d9ab2a48efdac0a5546392386848830d3ef3dec179e408ac5",
+      "decalAssetId": 136180050491798,
       "fileSha256": "9cc4199de225317d9ab2a48efdac0a5546392386848830d3ef3dec179e408ac5",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:03:10.253Z",
       "revisionId": "1",
@@ -491,9 +535,11 @@
       "uploadedAt": "2026-10-30T16:03:12Z"
     },
     "sky_lava_obsidian_Rt": {
-      "assetId": 88577369058953,
+      "assetId": 110778145945546,
       "contentHash": "e01faea020a1bf170564be9870fa3e57a2166b9142373e07fc31a514008177b6",
+      "decalAssetId": 88577369058953,
       "fileSha256": "e01faea020a1bf170564be9870fa3e57a2166b9142373e07fc31a514008177b6",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:03:20.064Z",
       "revisionId": "1",
@@ -501,9 +547,11 @@
       "uploadedAt": "2026-10-30T16:03:23Z"
     },
     "sky_lava_obsidian_Up": {
-      "assetId": 73141790560508,
+      "assetId": 131752164605464,
       "contentHash": "e91f4d9870e2d6f007074a4b017b6d7a64cbb4641ed17a8acc90b53726635d86",
+      "decalAssetId": 73141790560508,
       "fileSha256": "e91f4d9870e2d6f007074a4b017b6d7a64cbb4641ed17a8acc90b53726635d86",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:03:32.760Z",
       "revisionId": "1",
@@ -511,9 +559,11 @@
       "uploadedAt": "2026-10-30T16:03:35Z"
     },
     "sky_night_aurora_Bk": {
-      "assetId": 77473989267588,
+      "assetId": 127026087094475,
       "contentHash": "a124703bd25080555e6810710d0eb5e0c6f81bdc56322025559ea0b57308f326",
+      "decalAssetId": 77473989267588,
       "fileSha256": "a124703bd25080555e6810710d0eb5e0c6f81bdc56322025559ea0b57308f326",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:03:46.522Z",
       "revisionId": "1",
@@ -521,9 +571,11 @@
       "uploadedAt": "2026-10-30T16:03:48Z"
     },
     "sky_night_aurora_Dn": {
-      "assetId": 93114685865877,
+      "assetId": 82675385227677,
       "contentHash": "5e22606bc88cb6e5df5889cd22ce1a1fdd3a6652a5c1949aafcae4b8ee2eaa21",
+      "decalAssetId": 93114685865877,
       "fileSha256": "5e22606bc88cb6e5df5889cd22ce1a1fdd3a6652a5c1949aafcae4b8ee2eaa21",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:03:51.085Z",
       "revisionId": "1",
@@ -531,9 +583,11 @@
       "uploadedAt": "2026-10-30T16:03:52Z"
     },
     "sky_night_aurora_Ft": {
-      "assetId": 140389544247226,
+      "assetId": 95532306204198,
       "contentHash": "da271bdb16619d763c6a0f1f5dffbe1f3baf3799d4baa995ca0c972e1691f8d1",
+      "decalAssetId": 140389544247226,
       "fileSha256": "da271bdb16619d763c6a0f1f5dffbe1f3baf3799d4baa995ca0c972e1691f8d1",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:04:03.621Z",
       "revisionId": "1",
@@ -541,9 +595,11 @@
       "uploadedAt": "2026-10-30T16:04:07Z"
     },
     "sky_night_aurora_Lf": {
-      "assetId": 128955168018789,
+      "assetId": 115475516358496,
       "contentHash": "b5e015ff68dca67ef2a5f3b17387ae379f92716efea22b4376bb405b13126870",
+      "decalAssetId": 128955168018789,
       "fileSha256": "b5e015ff68dca67ef2a5f3b17387ae379f92716efea22b4376bb405b13126870",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:04:18.784Z",
       "revisionId": "1",
@@ -551,9 +607,11 @@
       "uploadedAt": "2026-10-30T16:04:21Z"
     },
     "sky_night_aurora_Rt": {
-      "assetId": 121845071834367,
+      "assetId": 116372519858525,
       "contentHash": "907a0e6d4d3707b3e5e5fdbceb8b65a25eab352f3a9d38c459a519011db90800",
+      "decalAssetId": 121845071834367,
       "fileSha256": "907a0e6d4d3707b3e5e5fdbceb8b65a25eab352f3a9d38c459a519011db90800",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:04:30.941Z",
       "revisionId": "1",
@@ -561,9 +619,11 @@
       "uploadedAt": "2026-10-30T16:04:33Z"
     },
     "sky_night_aurora_Up": {
-      "assetId": 118730713989037,
+      "assetId": 123916260897220,
       "contentHash": "6742df9fd2685191982eaf3c4bcb723a3990aca5e2779109cc5facc4a2a33d3c",
+      "decalAssetId": 118730713989037,
       "fileSha256": "6742df9fd2685191982eaf3c4bcb723a3990aca5e2779109cc5facc4a2a33d3c",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:04:43.758Z",
       "revisionId": "1",
@@ -571,9 +631,11 @@
       "uploadedAt": "2026-10-30T16:04:45Z"
     },
     "sky_shadow_eclipse_Bk": {
-      "assetId": 77074826256194,
+      "assetId": 94745485993335,
       "contentHash": "bee0ee2e5b419756c014ff21f8883ba399664d919dcfbb0be34a3623215e5cf0",
+      "decalAssetId": 77074826256194,
       "fileSha256": "bee0ee2e5b419756c014ff21f8883ba399664d919dcfbb0be34a3623215e5cf0",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:04:53.411Z",
       "revisionId": "1",
@@ -581,9 +643,11 @@
       "uploadedAt": "2026-10-30T16:04:58Z"
     },
     "sky_shadow_eclipse_Dn": {
-      "assetId": 136776310493774,
+      "assetId": 114863464192105,
       "contentHash": "9396975a61001ae64ad153d0caf0b312ab08b10f23583d20ea5e56c8e01bc288",
+      "decalAssetId": 136776310493774,
       "fileSha256": "9396975a61001ae64ad153d0caf0b312ab08b10f23583d20ea5e56c8e01bc288",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:05:07.215Z",
       "revisionId": "1",
@@ -591,9 +655,11 @@
       "uploadedAt": "2026-10-30T16:05:13Z"
     },
     "sky_shadow_eclipse_Ft": {
-      "assetId": 121787243223231,
+      "assetId": 86827485833751,
       "contentHash": "8b0173598274f53d3c99c0b6ff663a18a28a69364bcbcaabc24929a7d081b115",
+      "decalAssetId": 121787243223231,
       "fileSha256": "8b0173598274f53d3c99c0b6ff663a18a28a69364bcbcaabc24929a7d081b115",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:05:19.559Z",
       "revisionId": "1",
@@ -601,9 +667,11 @@
       "uploadedAt": "2026-10-30T16:05:20Z"
     },
     "sky_shadow_eclipse_Lf": {
-      "assetId": 110893507086413,
+      "assetId": 124626004538889,
       "contentHash": "5a05b5da93a5eab1453203e2dcf07d9d8a56b7e4c4d4a1a7b5415f8b1438a5c1",
+      "decalAssetId": 110893507086413,
       "fileSha256": "5a05b5da93a5eab1453203e2dcf07d9d8a56b7e4c4d4a1a7b5415f8b1438a5c1",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:05:27.448Z",
       "revisionId": "1",
@@ -611,9 +679,11 @@
       "uploadedAt": "2026-10-30T16:05:31Z"
     },
     "sky_shadow_eclipse_Rt": {
-      "assetId": 116874852682939,
+      "assetId": 128941639652174,
       "contentHash": "931138bce89dccf716e48216eedfcf43770ecfdd2a3f786968bd29df3272222b",
+      "decalAssetId": 116874852682939,
       "fileSha256": "931138bce89dccf716e48216eedfcf43770ecfdd2a3f786968bd29df3272222b",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:05:42.110Z",
       "revisionId": "1",
@@ -621,9 +691,11 @@
       "uploadedAt": "2026-10-30T16:05:46Z"
     },
     "sky_shadow_eclipse_Up": {
-      "assetId": 130631249915672,
+      "assetId": 104474632854584,
       "contentHash": "092ec78a4905b5ed26df585b05eb38c18a5178ac6a20ef2c44fb835da744caae",
+      "decalAssetId": 130631249915672,
       "fileSha256": "092ec78a4905b5ed26df585b05eb38c18a5178ac6a20ef2c44fb835da744caae",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:05:49.289Z",
       "revisionId": "1",
@@ -631,9 +703,11 @@
       "uploadedAt": "2026-10-30T16:05:50Z"
     },
     "sky_storm_teal_Bk": {
-      "assetId": 80886841185450,
+      "assetId": 84404156910618,
       "contentHash": "be748a05635bb80d655243073a9b3e707dd9e0a19b8090a52a200eec352727d1",
+      "decalAssetId": 80886841185450,
       "fileSha256": "be748a05635bb80d655243073a9b3e707dd9e0a19b8090a52a200eec352727d1",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:05:59.612Z",
       "revisionId": "1",
@@ -641,9 +715,11 @@
       "uploadedAt": "2026-10-30T16:06:03Z"
     },
     "sky_storm_teal_Dn": {
-      "assetId": 114010929402273,
+      "assetId": 109728328414088,
       "contentHash": "a0a8ebab3f55ad933978dad992efbeb337c7cf369573161bcc790b7fdb024281",
+      "decalAssetId": 114010929402273,
       "fileSha256": "a0a8ebab3f55ad933978dad992efbeb337c7cf369573161bcc790b7fdb024281",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:06:13.664Z",
       "revisionId": "1",
@@ -651,9 +727,11 @@
       "uploadedAt": "2026-10-30T16:06:16Z"
     },
     "sky_storm_teal_Ft": {
-      "assetId": 84756690951417,
+      "assetId": 102933912683940,
       "contentHash": "d00c11cd205d7e3a62c96289eff244945192efea078b409425d48303b6ded569",
+      "decalAssetId": 84756690951417,
       "fileSha256": "d00c11cd205d7e3a62c96289eff244945192efea078b409425d48303b6ded569",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:06:28.322Z",
       "revisionId": "1",
@@ -661,9 +739,11 @@
       "uploadedAt": "2026-10-30T16:06:31Z"
     },
     "sky_storm_teal_Lf": {
-      "assetId": 82508907146261,
+      "assetId": 108678462237521,
       "contentHash": "a68a5b88479c942977107b17a357ba81408834b1473218df1b7bfb3ecd9568f4",
+      "decalAssetId": 82508907146261,
       "fileSha256": "a68a5b88479c942977107b17a357ba81408834b1473218df1b7bfb3ecd9568f4",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:06:47.468Z",
       "revisionId": "1",
@@ -671,9 +751,11 @@
       "uploadedAt": "2026-10-30T16:06:50Z"
     },
     "sky_storm_teal_Rt": {
-      "assetId": 119990492991617,
+      "assetId": 111751954619476,
       "contentHash": "dac5cec4e60d6455a48348192c7f6b9804943db6d2122900fd34b3560c7f651a",
+      "decalAssetId": 119990492991617,
       "fileSha256": "dac5cec4e60d6455a48348192c7f6b9804943db6d2122900fd34b3560c7f651a",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:07:01.005Z",
       "revisionId": "1",
@@ -681,9 +763,11 @@
       "uploadedAt": "2026-10-30T16:07:04Z"
     },
     "sky_storm_teal_Up": {
-      "assetId": 94697554070535,
+      "assetId": 127927905858345,
       "contentHash": "ac8bfd1b19a48dc783c4ac0f8f8d6431927a149d07db605a899ae856808065ed",
+      "decalAssetId": 94697554070535,
       "fileSha256": "ac8bfd1b19a48dc783c4ac0f8f8d6431927a149d07db605a899ae856808065ed",
+      "idSetByHand": "2026-10-30T16:15:32Z",
       "moderationState": "Approved",
       "revisionCreateTime": "2026-10-30T16:07:13.934Z",
       "revisionId": "1",
