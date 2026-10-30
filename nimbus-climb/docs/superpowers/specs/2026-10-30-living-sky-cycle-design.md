@@ -32,6 +32,25 @@ islands feel alive and gives returning players a reason to notice the world, wit
   ends; the readability floor and the battle lift apply to event skies too. The Day phase is the long bright part: the
   loop becomes Dawn -> Day -> Copper Sunset -> Night (lengths re-proposed with the picks).
 
+## The player's sky picks 2026-10-30 (pitch page, all approved, no notes)
+
+Rendered by `blender/sky/sky_themes.py` (theme ids below), final faces at 1024 px.
+
+| Slot | Pick | Gemini / Claude had picked |
+|---|---|---|
+| Day | `day_vivid` Vivid Skylands | same / same |
+| Dawn + Sunset | `dusk_amber` Amber Burn | Cotton Candy / Copper Glow (the player chose a third) |
+| Night | `night_aurora` Aurora Slumber | same / same |
+| Lengths | B: Dawn 2, Day 6, Sunset 9, Night 3 min (20 min) | B / B (replaces the 5 / 11 / 4 below) |
+| Storm Titan raid | `storm_teal` Thunderhead Teal | Indigo / Teal |
+| Lava Golem raid | `lava_obsidian` Obsidian Furnace | same / same |
+| Frost Wyrm raid | `frost_glacial` Glacial Void | Blizzard / Glacial |
+| Shadow Hydra raid | `shadow_eclipse` Eclipse Shadow | Rift / Eclipse |
+
+Amber Burn is the strongest orange of the three and shows for 11 of 20 minutes (Dawn + Sunset). The colour rule
+below matters more because of it: the orange stays in the skybox and the world light, ColorCorrection tint stays near
+neutral, and the builder checks the HUD, rarity colours and a battle against the amber sky in Studio.
+
 ## Non-goals
 
 - No weather (no rain, no storms; the Tempest direction was rejected).
