@@ -19,6 +19,17 @@
 -- well with a typewriter reveal (numbers and key phrases highlighted), page dots, and Next / Close buttons.
 -- Lines cycle (Next on the last line starts over). Triggering the prompt again (E) also advances; clicking the
 -- text finishes the current line. The card closes when you walk away, die or enter a match.
+-- Sounds (audio wave 2, client/SoundFx; a missing id is silent): "DialogOpen" when the card opens (not when switching
+-- from another NPC mid-dialog), "DialogBlip" every 3rd letter the typewriter shows (never a space / punctuation;
+-- Config MinGap), "DialogNext" when Next shows the next line (finishing a line early is silent). The NPC voices
+-- (wordless, Config.Audio.Keys.Sfx Npc<Name><Kind>, <Name> = the NpcDialog Id in CamelCase: sparky_fox -> SparkyFox):
+--   Greet    Config.Audio.Voice.GreetDelay (0.12 s) after the DialogOpen click, when this NPC's card opens (not when
+--            switching mid-dialog), if the card is still open on it
+--   Every Next that shows a new line (not a Next that only finishes the typewriter) gets one wordless reaction:
+--   Pleased  the new line is the dialog's LAST line, or its text holds a "!"
+--   Hmm      any other line (also line 1 again after "Again" on the last line, unless it holds a "!")
+-- At most one voice per Voice.Gap (1.5 s) per NPC (a voice inside the gap is dropped), a new voice stops the NPC's
+-- previous one, volume / pitch from Config.Audio.Volume / Pitch (0.6, 0.98-1.02). An NPC without voice keys is silent.
 -- Designed in 1080p pixels under a UIScale of Theme.ScreenFactor() (body 20, captions 16, buttons 20, name 28),
 -- shrunk to fit short screens but never below 14 px text. Plain Lua 5.1-compatible syntax only.
 
@@ -155,6 +166,72 @@ local targetTimer = 0
 local checkTimer = 0
 local layoutTimer = 0
 local initialized = false
+
+-- (audio wave 2) the sounds
+local BLIP_EVERY = 3 -- a DialogBlip on every 3rd visible letter
+local VOICE = (type(Config.Audio) == "table" and type(Config.Audio.Voice) == "table") and Config.Audio.Voice or {}
+local VOICE_GAP = tonumber(VOICE.Gap) or 1.5
+local GREET_DELAY = tonumber(VOICE.GreetDelay) or 0.12
+local voices = {} -- [npcId] = { At = os.clock() of its last voice, Sound = the Sound it played }
+local soundFxMod = nil
+local function soundFx()
+	if soundFxMod == nil then
+		local module = Client:FindFirstChild("SoundFx")
+		local ok, mod = false, nil
+		if module then
+			ok, mod = pcall(require, module)
+		end
+		soundFxMod = (ok and type(mod) == "table" and type(mod.Play) == "function") and mod or false
+	end
+	return soundFxMod or nil
+end
+local function playSfx(name)
+	local SF = soundFx()
+	if not SF then
+		return nil
+	end
+	local ok, s = pcall(SF.Play, name)
+	return ok and s or nil
+end
+
+-- "sparky_fox" -> "SparkyFox"
+local function camelId(id)
+	local out = string.gsub(tostring(id or ""), "(%w)(%w*)", function(a, b)
+		return string.upper(a) .. b
+	end)
+	return (string.gsub(out, "[^%w]", ""))
+end
+
+-- the NPC's voice of `kind` ("Greet" | "Hmm" | "Pleased"); -> the Sound or nil (no key / id, inside the gap)
+local function playVoice(rec, kind)
+	if not rec or type(rec.Id) ~= "string" then
+		return nil
+	end
+	local SF = soundFx()
+	if not SF then
+		return nil
+	end
+	local name = "Npc" .. camelId(rec.Id) .. kind
+	if type(SF.Id) == "function" and SF.Id("Sfx", name) == nil then
+		return nil -- (no voice for this NPC: silent, the gap untouched)
+	end
+	local now = os.clock()
+	local v = voices[rec.Id]
+	if v and v.At and now - v.At < VOICE_GAP and now >= v.At then
+		return nil
+	end
+	if v and v.Sound then
+		pcall(function()
+			v.Sound:Stop() -- (never two voices of one NPC at once)
+		end)
+	end
+	local ok, s = pcall(SF.Play, name)
+	if not ok or typeof(s) ~= "Instance" then
+		return nil
+	end
+	voices[rec.Id] = { At = now, Sound = s }
+	return s
+end
 
 local UI = {}
 local dialog = {
@@ -1276,8 +1353,10 @@ local function showLine(index)
 	local rec = dialog.Rec
 	local rich, plain = richLine(lines[dialog.Index], rec and rec.Def, (rec and rec.Accent) or C.Gold)
 	UI.Line.Text = rich
+	dialog.Plain = plain
 	dialog.Total = splitChars(plain, dialog.Chars)
 	dialog.Shown = 0
+	dialog.Letters = 0
 	dialog.Timer = 0
 	dialog.Typing = dialog.Total > 0
 	UI.Line.MaxVisibleGraphemes = 0
@@ -1313,6 +1392,12 @@ local function stepTypewriter(dt)
 		dialog.Timer = dialog.Timer - need
 		dialog.Shown = dialog.Shown + 1
 		changed = true
+		if isWordChar(nextChar) then
+			dialog.Letters = (dialog.Letters or 0) + 1
+			if dialog.Letters % BLIP_EVERY == 1 then
+				playSfx("DialogBlip")
+			end
+		end
 		if dialog.Shown >= dialog.Total then
 			finishTyping()
 		end
@@ -1435,6 +1520,14 @@ local function openRec(rec)
 	showLine(1)
 	if not switching then
 		slideTo(true)
+		playSfx("DialogOpen")
+		dialog.Greet = (dialog.Greet or 0) + 1
+		local greet = dialog.Greet
+		task.delay(GREET_DELAY, function()
+			if dialog.Open and dialog.Rec == rec and dialog.Greet == greet then
+				playVoice(rec, "Greet")
+			end
+		end)
 	end
 	ensureLoop()
 end
@@ -1475,6 +1568,14 @@ function NpcController.Advance()
 		finishTyping()
 	else
 		showLine(dialog.Index + 1)
+		playSfx("DialogNext")
+		-- (the NPC's wordless reaction: Pleased on the last line or a "!" line, Hmm on any other line)
+		local lines = dialog.Lines or {}
+		if #lines > 0 then
+			local last = dialog.Index == #lines
+			local excited = string.find(tostring(dialog.Plain or lines[dialog.Index] or ""), "!", 1, true) ~= nil
+			playVoice(dialog.Rec, (last or excited) and "Pleased" or "Hmm")
+		end
 	end
 end
 
