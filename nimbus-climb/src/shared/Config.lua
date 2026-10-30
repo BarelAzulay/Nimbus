@@ -536,12 +536,14 @@ local AUDIO_WAVE2 = {
 -- the NPC voices (wordless, one voice per NPC): Npc<Name><Kind>, <Name> = the NpcDialog Id in CamelCase
 local AUDIO_NPCS = { "SparkyFox", "CaptainPenguin", "GrannyOwl", "CoachCorgi", "MayorPanda", "ProfessorAxolotl" }
 local AUDIO_NPC_KINDS = { "Greet", "Hmm", "Pleased" }
+-- whose recorded voice an NPC uses (default: its own). The owner swapped Coach Corgi's and Granny Owl's voices (2026-10-30)
+local AUDIO_NPC_VOICE = { CoachCorgi = "GrannyOwl", GrannyOwl = "CoachCorgi" }
 for _, key in ipairs(AUDIO_WAVE2) do
 	AUDIO_KEYS.Sfx[key] = key
 end
 for _, npc in ipairs(AUDIO_NPCS) do
 	for _, kind in ipairs(AUDIO_NPC_KINDS) do
-		AUDIO_KEYS.Sfx["Npc" .. npc .. kind] = "Npc" .. npc .. kind
+		AUDIO_KEYS.Sfx["Npc" .. npc .. kind] = "Npc" .. (AUDIO_NPC_VOICE[npc] or npc) .. kind
 	end
 end
 Config.Audio = {
