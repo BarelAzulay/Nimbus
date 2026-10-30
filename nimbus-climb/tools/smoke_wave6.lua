@@ -2272,7 +2272,19 @@ local function clientScenarios()
 			H.cleanup(BC, d)
 			return
 		end
-		local sounds0 = H.sounds()
+		-- (audio wave 2: the fight's one-shots, the Parry among them, play through client/SoundFx, whose pooled Sounds
+		-- are named Sfx_<name>_<i>; the parry fx itself still makes no Sound of its own)
+		local function otherSounds()
+			local n, names = 0, {}
+			for _, inst in ipairs(game:GetDescendants()) do
+				if inst:IsA("Sound") and not string.match(inst.Name, "^Sfx_%w+_%d+$") then
+					n = n + 1
+					names[#names + 1] = inst.Name
+				end
+			end
+			return n, table.concat(names, " ")
+		end
+		local sounds0 = (otherSounds())
 		local parries0 = BC.GetStats().Parries or 0
 		-- a Parry event on my fighter: PARRY! (gold, the callout size) once, a gold ring + flash on the pet
 		d:events({ { type = "Parry", unit = fid, from = enemyId } })
@@ -2325,7 +2337,7 @@ local function clientScenarios()
 			CS.Set("Gfx", before or "Auto")
 			d:run(0.2, 30)
 		end
-		T.check(H.sounds() == sounds0, "parry fx: no Sound instance created", sounds0 .. " -> " .. H.sounds())
+		T.check((otherSounds()) == sounds0, "parry fx: no Sound instance created (but SoundFx's pooled one-shots)", sounds0 .. " -> " .. table.concat({ otherSounds() }, ": "))
 		H.cleanup(BC, d)
 		T.check(#Mock.Errors == err0, "parry fx: no script error", tostring(Mock.Errors[#Mock.Errors]))
 		KC.flushErrors("client_w6_parry_fx")

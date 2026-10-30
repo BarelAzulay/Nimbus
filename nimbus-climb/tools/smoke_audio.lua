@@ -3,14 +3,15 @@
 --   audio_ring_pocket   (server, booted) the real Champion Ring pocket (ArenaBuilder.BuildPocket(i, "Ring")) has the
 --                       child model "Crowd" RingAmbience hangs the crowd + drums on; the fighter's pad is inside the
 --                       crowd's hearing range (CrowdCheer Max), the next pocket's crowd far outside it
---   client_audio_keys   Config.Audio.Keys = exactly the 12 wired keys (one each); audio/audio.json = those 12 + the 47
---                       wave-2 keys (WAVE2_KEYS: uploaded first, wired later); with the shipped AudioIds
---                       stub every group is empty (silent); a Config copy beside a FAKE AudioIds maps every key to its
---                       number, leaves out a missing / junk one; one place for slot volumes (every key; music under every
---                       SFX; the ring's crowd + drums under the music) + the positional ranges; SoundFx.NAMES has the new
---                       Inhale / Shatter / CrowdCheer / DrumLoop and every Sfx / Ambient name
---   client_audio_silent (no ids, the shipped state) every Play / Music / SetLayer / Positional, the charge hooks, a battle
---                       Start / End, a dungeon run and a ring pocket make no Sound, no error, no warning
+--   client_audio_keys   Config.Audio.Keys = exactly the 59 keys of audio/audio.json (12 originals + 47 of wave 2) + the
+--                       pending FountainLoop (one each); Config.Audio holds exactly the AudioIds that exist; a Config
+--                       copy beside a FAKE AudioIds maps every key to its number, leaves out a missing / junk one; one
+--                       place for slot volumes (every key; music under every SFX but the UnderMusic hits / ticks, which
+--                       sit at or under it; the ring's crowd + drums under the music) + the positional ranges;
+--                       SoundFx.NAMES has the new Inhale / Shatter / CrowdCheer / DrumLoop and every Sfx / Ambient name
+--   client_audio_silent (no ids, the shipped state) every Play / PlayVariant / Music / SetLayer / Positional, the charge
+--                       hooks, a battle Start / Hit / KO / End, a dungeon run, a ring pocket, a "bad" toast, the fountain
+--                       and an NPC dialog make no Sound, no error, no warning
 --   client_audio_music  (ids given for the test) Music loops; Battle on my fight's Start, back to Lobby at its End (+ the
 --                       win's Reward), a won ring round keeps Battle until the next round, a spectator hears no battle
 --                       music; a dungeon run plays Dungeon (rooms too), its boss room Battle, back to Dungeon after it,
@@ -35,16 +36,20 @@ local fmt = string.format
 local S = {}
 local IS_SERVER = game:GetService("RunService"):IsServer()
 
-local AUDIO_KEYS = { "Click", "Confirm", "CrowdCheer", "DrumLoop", "Error", "Inhale", "MusicBattle", "MusicDungeon", "MusicLobby", "Reward", "Shatter", "Whoosh" }
--- audio wave 2 (the owner's 2026-10-29 SFX picks + 2026-10-30 NPC voices, audio/README.md): in audio/audio.json for the upload, NOT wired into
--- Config.Audio.Keys yet (the wiring lands after the wave-6 branch merges). Move a key up into AUDIO_KEYS when it is wired.
-local WAVE2_KEYS = { "Crit", "Dash", "DialogBlip", "DialogNext", "DialogOpen", "HitCelestial", "HitEarth", "HitFlame", "HitFrost", "HitNature",
+-- every sound of audio/audio.json, wired into Config.Audio.Keys (the 12 originals + audio wave 2: the owner's
+-- 2026-10-29 SFX picks and 2026-10-30 NPC voices, audio/README.md; wiring: .superpowers/audio-pitch/wave2/wiring-plan.md)
+local AUDIO_KEYS = { "Click", "Confirm", "CrowdCheer", "DrumLoop", "Error", "Inhale", "MusicBattle", "MusicDungeon", "MusicLobby", "Reward", "Shatter", "Whoosh",
+	"Crit", "Dash", "DialogBlip", "DialogNext", "DialogOpen", "HitCelestial", "HitEarth", "HitFlame", "HitFrost", "HitNature",
 	"HitShadow", "HitStorm", "HitWater", "HouseTier", "KO", "KO2", "KO3", "KO4", "Parry", "PortalArrive", "PortalEnter", "RevealCommon",
 	"RevealLegendary", "RevealRare", "SpinLand", "SpinStart", "SpinTick", "StationBuild", "TutorialStep",
-	-- round 3: the NPC voices (wordless greet / hmm / pleased, one voice per NPC)
 	"NpcCaptainPenguinGreet", "NpcCaptainPenguinHmm", "NpcCaptainPenguinPleased", "NpcCoachCorgiGreet", "NpcCoachCorgiHmm", "NpcCoachCorgiPleased",
 	"NpcGrannyOwlGreet", "NpcGrannyOwlHmm", "NpcGrannyOwlPleased", "NpcMayorPandaGreet", "NpcMayorPandaHmm", "NpcMayorPandaPleased",
 	"NpcProfessorAxolotlGreet", "NpcProfessorAxolotlHmm", "NpcProfessorAxolotlPleased", "NpcSparkyFoxGreet", "NpcSparkyFoxHmm", "NpcSparkyFoxPleased" }
+table.sort(AUDIO_KEYS)
+-- uploaded to audio/audio.json, NOT wired yet (move a key up into AUDIO_KEYS when it is wired): none today
+local WAVE2_KEYS = {}
+-- wired in Config.Audio.Keys before any take exists (no file in audio.json, no AudioIds id: silent until one is approved)
+local PENDING_KEYS = { "FountainLoop" }
 local MANIFEST_KEYS = {}
 for _, list in ipairs({ AUDIO_KEYS, WAVE2_KEYS }) do
 	for _, key in ipairs(list) do
@@ -52,6 +57,13 @@ for _, list in ipairs({ AUDIO_KEYS, WAVE2_KEYS }) do
 	end
 end
 table.sort(MANIFEST_KEYS)
+local CONFIG_KEYS = {}
+for _, list in ipairs({ AUDIO_KEYS, PENDING_KEYS }) do
+	for _, key in ipairs(list) do
+		CONFIG_KEYS[#CONFIG_KEYS + 1] = key
+	end
+end
+table.sort(CONFIG_KEYS)
 
 local function readFile(rel)
 	for _, prefix in ipairs({ "", "../", "nimbus-climb/" }) do
@@ -275,8 +287,8 @@ S.client_audio_keys = guarded("client_audio_keys", function()
 		end
 	end
 	table.sort(ckeys)
-	T.eq(table.concat(mkeys, " "), table.concat(MANIFEST_KEYS, " "), "audio keys: audio/audio.json lists the 12 wired sounds + the 47 wave-2 sounds (not wired yet)")
-	T.check(table.concat(ckeys, " ") == table.concat(AUDIO_KEYS, " ") and #dup == 0, "audio keys: Config.Audio.Keys maps exactly the 12 AudioIds keys, each once",
+	T.eq(table.concat(mkeys, " "), table.concat(MANIFEST_KEYS, " "), "audio keys: audio/audio.json lists the 59 sounds (12 originals + the 47 of wave 2)")
+	T.check(table.concat(ckeys, " ") == table.concat(CONFIG_KEYS, " ") and #dup == 0, "audio keys: Config.Audio.Keys maps exactly the 59 AudioIds keys (+ FountainLoop, no take yet), each once",
 		table.concat(ckeys, " ") .. " dup: " .. table.concat(dup, " "))
 	T.eq(A.Keys.Sfx.Inhale, "Inhale", "audio keys: Sfx.Inhale = AudioIds.Inhale")
 	T.eq(A.Keys.Sfx.Shatter, "Shatter", "audio keys: Sfx.Shatter = AudioIds.Shatter")
@@ -356,7 +368,7 @@ S.client_audio_keys = guarded("client_audio_keys", function()
 	-- one place for slot volumes
 	local V = A.Volume or {}
 	local missing, musicMax, sfxMin = {}, 0, 1
-	for _, key in ipairs(AUDIO_KEYS) do
+	for _, key in ipairs(CONFIG_KEYS) do
 		if type(V[key]) ~= "number" or V[key] <= 0 or V[key] > 1 then
 			missing[#missing + 1] = key
 		end
@@ -364,15 +376,33 @@ S.client_audio_keys = guarded("client_audio_keys", function()
 	for _, key in pairs(A.Keys.Music) do
 		musicMax = math.max(musicMax, V[key] or 0)
 	end
+	-- (audio wave 2) the frequent quiet keys (UnderMusic: the element hits, SpinTick, DialogBlip, DialogNext) may sit at or
+	-- under the music; every other effect sits above it
+	local under = A.UnderMusic or {}
+	local underLoud = {}
 	for _, key in pairs(A.Keys.Sfx) do
-		sfxMin = math.min(sfxMin, V[key] or 0)
+		if under[key] then
+			if (V[key] or 1) > musicMax then
+				underLoud[#underLoud + 1] = key
+			end
+		else
+			sfxMin = math.min(sfxMin, V[key] or 0)
+		end
 	end
+	local underList = {}
+	for key in pairs(under) do
+		underList[#underList + 1] = key
+	end
+	table.sort(underList)
+	T.eq(table.concat(underList, " "), "DialogBlip DialogNext HitCelestial HitEarth HitFlame HitFrost HitNature HitShadow HitStorm HitWater SpinTick",
+		"audio volumes: UnderMusic = the frequent quiet keys only (the 8 element hits, SpinTick, DialogBlip, DialogNext)")
 	local musicMin = 1
 	for _, key in pairs(A.Keys.Music) do
 		musicMin = math.min(musicMin, V[key] or 1)
 	end
 	T.check(#missing == 0, "audio volumes: Config.Audio.Volume gives every key a slot volume in (0, 1]", table.concat(missing, " "))
-	T.check(musicMax < sfxMin, "audio volumes: the music sits under every sound effect", fmt("music max %.2f, sfx min %.2f", musicMax, sfxMin))
+	T.check(musicMax < sfxMin, "audio volumes: the music sits under every sound effect (but the UnderMusic ones)", fmt("music max %.2f, sfx min %.2f", musicMax, sfxMin))
+	T.check(#underLoud == 0, "audio volumes: ... and every UnderMusic key really sits at or under the music", table.concat(underLoud, " "))
 	T.check((V.CrowdCheer or 1) < musicMin and (V.DrumLoop or 1) < musicMin, "audio volumes: the ring's crowd and drums sit under the music",
 		fmt("crowd %s drums %s music min %.2f", tostring(V.CrowdCheer), tostring(V.DrumLoop), musicMin))
 	local P = A.Positional or {}
@@ -432,7 +462,10 @@ S.client_audio_silent = guarded("client_audio_silent", function()
 	local part = Instance.new("Part")
 	part.Parent = Workspace
 	local pos = SF.Positional("CrowdCheer", part)
-	T.check(allNil and m1 == nil and m2 == nil and m3 == nil and pos == nil, "audio silent: Play / Music / SetLayer / Positional return nil while no id exists")
+	local fountain = SF.Positional("Fountain", part)
+	local ko = SF.PlayVariant("KO")
+	T.check(allNil and m1 == nil and m2 == nil and m3 == nil and pos == nil and fountain == nil and ko == nil,
+		"audio silent: Play / PlayVariant / Music / SetLayer / Positional (the fountain too) return nil while no id exists")
 	-- the battle's charge sounds, a battle Start / End, a dungeon run, a ring pocket
 	BC.FxHooks()
 	local hk = AF.Hooks
@@ -442,8 +475,17 @@ S.client_audio_silent = guarded("client_audio_silent", function()
 	end
 	BC.HandleState("Start", startPayload("audio_silent", "Duel", 1), "audio_silent")
 	KC.advance(0.2)
+	BC.HandleState("Events", { { type = "Hit", from = 1, to = 2, dmg = 10, crit = true }, { type = "KO", unit = 2 }, { type = "Parry", unit = 1 } }, "audio_silent")
+	KC.advance(0.2)
 	BC.HandleState("End", { BattleId = "audio_silent", Mode = "Duel", Outcome = "Win", Won = true, Rewards = { Cash = 10 } }, "audio_silent")
 	KC.advance(0.2)
+	-- (wave 2) a refused action's toast, the fountain's falls: still silent
+	KC.toClient("Notify", "Audio silent: refused", "bad", 2)
+	local falls = Instance.new("Part")
+	falls.Parent = Workspace
+	CollectionService:AddTag(falls, "OasisFalls")
+	KC.advance(0.2)
+	falls:Destroy()
 	LocalPlayer:SetAttribute("InBattle", "Daudio")
 	fireDungeon("Run", { RunId = "audio_silent_run", Floor = 1, Name = "Mossy Cellar", State = "Hall", Room = 1, RoomCount = 4, Members = {} })
 	fireDungeon("Chest", { Kind = "Cash", Amount = 5 })
@@ -880,6 +922,706 @@ S.client_audio_ring = guarded("client_audio_ring", function()
 		T.check(after.Sites == stats.Sites - 1, "audio ring: a destroyed pocket takes its loops with it", fmt("%d -> %d sites", stats.Sites, after.Sites))
 	end)
 	T.check(okRun, "client_audio_ring ran to the end", tostring(err))
+	restore()
+end)
+
+----------------------------------------------------------------------------------------------------
+-- audio wave 2: the mechanics (pitch per key, MinGap, the Hit cap, the KO rotation, Scale) and the call sites
+----------------------------------------------------------------------------------------------------
+-- records every SoundFx.Play (PlayVariant goes through it too): { name, opts, sound, vol, speed }
+local function spy(SF)
+	local log = {}
+	local play0 = SF.Play
+	SF.Play = function(name, opts)
+		local s = play0(name, opts)
+		log[#log + 1] = { name = name, opts = opts, sound = s, vol = s and s.Volume or nil, speed = s and s.PlaybackSpeed or nil }
+		return s
+	end
+	return log, function()
+		SF.Play = play0
+	end
+end
+
+-- the plays of `name` (a Lua pattern when `pattern`) that made a sound, since index `from`
+local function playsOf(log, name, from, pattern)
+	local out = {}
+	for i = (from or 0) + 1, #log do
+		local e = log[i]
+		if e.sound and ((pattern and string.find(e.name, name)) or e.name == name) then
+			out[#out + 1] = e
+		end
+	end
+	return out
+end
+
+local function freshGaps(SF)
+	local St = SF._St
+	St.Last = {}
+	St.Recent = {}
+	St.LastVariant = {}
+end
+
+local function pressKey(keyName)
+	Mock.FireSignal(game:GetService("UserInputService"), "InputBegan", Mock.NewInput(keyName, "Keyboard", "Begin"), false)
+end
+
+-- "sparky_fox" -> "SparkyFox" (NpcController's voice key name)
+local function camelId(id)
+	local out = string.gsub(id, "(%w)(%w*)", function(a, b)
+		return string.upper(a) .. b
+	end)
+	return (string.gsub(out, "[^%w]", ""))
+end
+
+S.client_audio_mechanics = guarded("client_audio_mechanics", function()
+	local M = mods()
+	local Config, SF, CS = M.Config, M.SF, M.CS
+	if not T.check(Config and SF and CS and type(SF.PlayVariant) == "function", "audio mechanics: SoundFx.PlayVariant exists") then
+		return
+	end
+	local A = Config.Audio
+	local restore = giveIds(Config)
+	local s0 = CS.Get("Sfx")
+	local okRun, err = pcall(function()
+		CS.Set("Sfx", 10)
+		-- every one-shot key plays at its slot volume, its own id, a pitch inside its range
+		local bad, n = {}, 0
+		for name, key in pairs(A.Keys.Sfx) do
+			freshGaps(SF)
+			local s = SF.Play(name)
+			local r = A.Pitch[key] or { 0.95, 1.05 }
+			n = n + 1
+			if not s or math.abs(s.Volume - A.Volume[key]) > 1e-6 or s.PlaybackSpeed < r[1] - 1e-9 or s.PlaybackSpeed > r[2] + 1e-9
+				or s.SoundId ~= "rbxassetid://" .. string.format("%d", A.Sfx[name]) then
+				bad[#bad + 1] = name .. (s and fmt("(vol %.2f speed %.3f)", s.Volume, s.PlaybackSpeed) or "(nil)")
+			end
+		end
+		T.check(#bad == 0 and n >= 54, "audio mechanics: every one-shot key plays its own id at its slot volume, pitch inside Config.Audio.Pitch (" .. n .. " keys)", table.concat(bad, " "))
+		-- the pitch ranges: hits wide, celestial narrow, the tuned reveals fixed
+		local function speeds(name, count)
+			local lo, hi = 9, 0
+			for _ = 1, count do
+				freshGaps(SF)
+				local s = SF.Play(name)
+				if s then
+					lo, hi = math.min(lo, s.PlaybackSpeed), math.max(hi, s.PlaybackSpeed)
+				end
+			end
+			return lo, hi
+		end
+		local eLo, eHi = speeds("HitEarth", 40)
+		local cLo, cHi = speeds("HitCelestial", 40)
+		local rLo, rHi = speeds("RevealLegendary", 10)
+		local vLo, vHi = speeds("NpcGrannyOwlGreet", 30)
+		T.check(eLo >= 0.92 - 1e-9 and eHi <= 1.06 + 1e-9 and eHi - eLo > 0.06, "audio mechanics: HitEarth's pitch spreads over 0.92-1.06", fmt("%.3f-%.3f", eLo, eHi))
+		T.check(cLo >= 0.96 - 1e-9 and cHi <= 1.04 + 1e-9 and cHi - cLo > 0.03, "audio mechanics: HitCelestial stays narrow (0.96-1.04: shimmer must not detune)", fmt("%.3f-%.3f", cLo, cHi))
+		T.check(rLo == 1 and rHi == 1, "audio mechanics: the reveal motif never pitch-shifts", fmt("%.3f-%.3f", rLo, rHi))
+		T.check(vLo >= 0.98 - 1e-9 and vHi <= 1.02 + 1e-9, "audio mechanics: an NPC voice stays within 0.98-1.02", fmt("%.3f-%.3f", vLo, vHi))
+		-- MinGap: a second play inside the gap is dropped, after it plays again
+		local function gapHolds(name, wait)
+			freshGaps(SF)
+			local a = SF.Play(name)
+			local b = SF.Play(name)
+			KC.advance(wait)
+			local c = SF.Play(name)
+			return a ~= nil and b == nil and c ~= nil
+		end
+		T.check(gapHolds("DialogBlip", 0.05), "audio mechanics: DialogBlip MinGap 0.045 s (a second blip at once is dropped, one 0.05 s later plays)")
+		T.check(gapHolds("SpinTick", 0.034), "audio mechanics: SpinTick MinGap 0.025 s")
+		T.check(gapHolds("HitWater", 0.07), "audio mechanics: a hit's MinGap 0.06 s")
+		T.check(gapHolds("Crit", 0.16), "audio mechanics: Crit MinGap 0.15 s")
+		T.check(gapHolds("Error", 1.05), "audio mechanics: Error MinGap 1 s")
+		-- the Hit group cap: at most 8 hits per 0.25 s (whatever their element)
+		freshGaps(SF)
+		local okHits = 0
+		for _, el in ipairs({ "Water", "Flame", "Frost", "Nature", "Earth", "Storm", "Celestial", "Shadow" }) do
+			if SF.Play("Hit" .. el) then
+				okHits = okHits + 1
+			end
+		end
+		KC.advance(0.1)
+		local ninth = SF.Play("HitWater")
+		KC.advance(0.2)
+		local later = SF.Play("HitWater")
+		T.check(okHits == 8 and ninth == nil and later ~= nil, "audio mechanics: the hits cap at 8 per 0.25 s (a 9th in the window is dropped, one after it plays)",
+			fmt("%d at once, 9th %s, later %s", okHits, tostring(ninth ~= nil), tostring(later ~= nil)))
+		-- the KO rotation: 40 KOs never repeat back to back and use all four files
+		local log, unspy = spy(SF)
+		freshGaps(SF)
+		local seq, used, repeats = {}, {}, 0
+		for i = 1, 40 do
+			SF._St.Last = {}
+			local s = SF.PlayVariant("KO")
+			local e = log[#log]
+			seq[i] = s and e and e.name or "nil"
+			used[seq[i]] = true
+			if i > 1 and seq[i] == seq[i - 1] then
+				repeats = repeats + 1
+			end
+		end
+		T.check(repeats == 0 and used.KO and used.KO2 and used.KO3 and used.KO4 and not used["nil"], "audio mechanics: 40 KOs rotate through KO / KO2 / KO3 / KO4, never the same file twice in a row",
+			table.concat(seq, " "))
+		local volOk = true
+		for _, e in ipairs(playsOf(log, "^KO", 0, true)) do
+			volOk = volOk and math.abs(e.vol - 0.7) < 1e-6 and e.speed >= 0.97 - 1e-9 and e.speed <= 1.03 + 1e-9
+		end
+		T.check(volOk, "audio mechanics: every KO file plays at 0.7, pitch 0.97-1.03")
+		-- the rotation shares KO's MinGap (0.25 s), whichever file it picks
+		freshGaps(SF)
+		local k1 = SF.PlayVariant("KO")
+		local k2 = SF.PlayVariant("KO")
+		KC.advance(0.27)
+		local k3 = SF.PlayVariant("KO")
+		T.check(k1 ~= nil and k2 == nil and k3 ~= nil, "audio mechanics: the KO rotation shares one MinGap (0.25 s)")
+		-- a missing id drops out of the rotation; one id left = that one each time
+		local sv = { A.Sfx.KO2, A.Sfx.KO3, A.Sfx.KO4 }
+		A.Sfx.KO2, A.Sfx.KO3, A.Sfx.KO4 = nil, nil, nil
+		local only = true
+		for _ = 1, 5 do
+			SF._St.Last = {}
+			local s = SF.PlayVariant("KO")
+			only = only and s ~= nil and log[#log].name == "KO"
+		end
+		A.Sfx.KO2, A.Sfx.KO3, A.Sfx.KO4 = sv[1], sv[2], sv[3]
+		T.check(only, "audio mechanics: with only KO's id the rotation plays KO each time (a missing id drops out)")
+		unspy()
+		-- opts.Scale and the Sfx setting
+		freshGaps(SF)
+		local half = SF.Play("Parry", { Scale = 0.5 })
+		CS.Set("Sfx", 5)
+		freshGaps(SF)
+		local set5 = SF.Play("Parry")
+		CS.Set("Sfx", 10)
+		T.check(half and math.abs(half.Volume - 0.4) < 1e-6 and set5 and math.abs(set5.Volume - 0.4) < 1e-6,
+			"audio mechanics: opts.Scale 0.5 and the Sfx setting 5 each halve Parry's 0.8", fmt("%s / %s", half and fmt("%.3f", half.Volume) or "nil", set5 and fmt("%.3f", set5.Volume) or "nil"))
+	end)
+	T.check(okRun, "client_audio_mechanics ran to the end", tostring(err))
+	CS.Set("Sfx", s0)
+	freshGaps(SF)
+	restore()
+end)
+
+-- a real BattleSim duel's Start payload (my team vs Rival 78; side 0 = I only watch: 77 vs 78)
+local function duelStart(id, side)
+	local Sim = moduleAt(ROOTS.shared .. "/BattleSim")
+	local PC = moduleAt(ROOTS.shared .. "/PetCatalog")
+	if not Sim or not PC then
+		return nil
+	end
+	local function team(skip)
+		local out = {}
+		for _, def in ipairs(PC.Pets or {}) do
+			if def.Role == "Combat" and def.Rarity ~= "Secret" and not def.EventOnly and type(def.Special) == "table" then
+				if skip > 0 then
+					skip = skip - 1
+				else
+					out[#out + 1] = { Key = def.Id, PetId = def.Id, Level = 10, Tier = "Normal", Slot = #out + 1 }
+					if #out >= 2 then
+						break
+					end
+				end
+			end
+		end
+		return out
+	end
+	local me = side == 0 and 77 or LocalPlayer.UserId
+	local sim = Sim.new({ Mode = "Duel", Seed = 5, Id = id, Teams = { { Owner = me, Side = 1, Pets = team(0), Auto = true }, { Owner = 78, Side = 2, Pets = team(3), Auto = true } } })
+	if not sim then
+		return nil
+	end
+	local p = sim:Describe()
+	p.BattleId = id
+	p.Zone = { CFrame = CFrame.new(0, 400, 0), Size = Vector3.new(p.Zone.X, 30, p.Zone.Z), X = p.Zone.X, Z = p.Zone.Z }
+	p.Names = { [tostring(LocalPlayer.UserId)] = LocalPlayer.Name, ["77"] = "Buddy", ["78"] = "Rival" }
+	p.Side = side
+	p.Spectator = side == 0
+	p.T = sim:Time()
+	local mine, theirs = nil, nil
+	p.Sim = sim
+	for _, info in ipairs(p.Units or {}) do
+		if info.side == 1 and not mine then
+			mine = info
+		elseif info.side == 2 and not theirs then
+			theirs = info
+		end
+	end
+	return p, mine, theirs
+end
+
+-- the render clock runs on snapshots: the sim's still picture, its T moving on (no Step: no events of its own)
+local function feed(p, seconds)
+	for _ = 1, math.max(1, math.floor(seconds / 0.1 + 0.5)) do
+		p.T = p.T + 0.1
+		local snap = p.Sim:Snapshot()
+		snap.T = p.T
+		snap.BattleId = p.BattleId
+		mods().BC.HandleState("Snapshot", snap, p.BattleId)
+		KC.advance(0.1)
+	end
+end
+
+S.client_audio_battle = guarded("client_audio_battle", function()
+	local M = mods()
+	local Config, SF, BC = M.Config, M.SF, M.BC
+	if not T.check(Config and SF and BC and type(BC._Unit) == "function", "audio battle: SoundFx and BattleController load") then
+		return
+	end
+	local restore = giveIds(Config)
+	local log, unspy = spy(SF)
+	local cam = Workspace.CurrentCamera
+	local cam0 = cam and cam.CFrame
+	local okRun, err = pcall(function()
+		freshGaps(SF)
+		local p, mine, theirs = duelStart("audio_w2_duel", 1)
+		if not T.check(p ~= nil and mine and theirs and type(mine.element) == "string", "audio battle: a BattleSim duel to fight (my pet, the rival's)") then
+			return
+		end
+		if cam then
+			cam.CFrame = CFrame.lookAt(Vector3.new(0, 430, 40), Vector3.new(0, 400, 0)) -- (my fight's camera looks at the ring)
+		end
+		BC.HandleState("Start", p, p.BattleId)
+		feed(p, 0.4)
+		local my, foe = BC._Unit(mine.id), BC._Unit(theirs.id)
+		T.check(my and my.mine and foe and not foe.mine, "audio battle: my unit is mine, the rival's is not")
+		local function fire(list)
+			local from = #log
+			BC.HandleState("Events", list, p.BattleId)
+			feed(p, 0.8)
+			return from
+		end
+		local hitKey = "Hit" .. mine.element
+		-- a landed hit: the attacker's element, once, full volume in my own fight
+		local f = fire({ { type = "Hit", from = mine.id, to = theirs.id, dmg = 12 } })
+		local hits = playsOf(log, "^Hit", f, true)
+		T.check(#hits == 1 and hits[1].name == hitKey and math.abs(hits[1].vol - SF.SlotVolume(hitKey)) < 1e-6,
+			"audio battle: a landed hit plays the attacker's element hit (" .. hitKey .. ") once at its slot volume", fmt("%d hits %s", #hits, hits[1] and hits[1].name or "-"))
+		-- the rival hits me: its own element
+		f = fire({ { type = "Hit", from = theirs.id, to = mine.id, dmg = 9 } })
+		hits = playsOf(log, "^Hit", f, true)
+		T.check(#hits == 1 and hits[1].name == "Hit" .. theirs.element, "audio battle: the rival's hit on my pet plays the rival's element", hits[1] and hits[1].name or "none")
+		-- a crit: the hit + Crit's sparkle on top
+		f = fire({ { type = "Hit", from = mine.id, to = theirs.id, dmg = 30, crit = true } })
+		T.check(#playsOf(log, "^Hit", f, true) == 1 and #playsOf(log, "Crit", f) == 1, "audio battle: a critical hit plays the element hit and Crit together")
+		-- burn / zone ticks, a dodged hit, a 0-damage hit: no hit sound
+		f = fire({ { type = "Hit", from = mine.id, to = theirs.id, dmg = 4, burn = true }, { type = "Hit", from = mine.id, to = theirs.id, dmg = 4, zone = true } })
+		local f2 = fire({ { type = "Hit", from = mine.id, to = theirs.id, dmg = 0, miss = true }, { type = "Hit", from = mine.id, to = theirs.id, dmg = 0 } })
+		local burnHits = #playsOf(log, "^Hit", f, true) - #playsOf(log, "^Hit", f2, true)
+		T.check(burnHits == 0, "audio battle: burn and zone ticks are silent (they come in bursts)", burnHits .. " hits")
+		T.check(#playsOf(log, "^Hit", f2, true) == 0, "audio battle: a dodged / 0-damage hit plays no hit sound")
+		-- a parry: the parried hit plays no hit, the Parry event plays Parry once (fixed pitch)
+		f = fire({ { type = "Hit", from = theirs.id, to = mine.id, dmg = 0, miss = true, parry = true }, { type = "Parry", unit = mine.id } })
+		local par = playsOf(log, "Parry", f)
+		T.check(#playsOf(log, "^Hit", f, true) == 0 and #par == 1 and par[1].speed == 1 and math.abs(par[1].vol - SF.SlotVolume("Parry")) < 1e-6,
+			"audio battle: a parry plays Parry once (0.8, fixed pitch) and no hit sound", fmt("%d parry", #par))
+		f = fire({ { type = "Parry", unit = theirs.id } })
+		T.eq(#playsOf(log, "Parry", f), 0, "audio battle: the rival's parry is silent here (my pets' skill reward only)")
+		-- a dash: my pet's plays Dash once (Net.Pre's early start + the handler: still one), the rival's is silent
+		f = fire({ { type = "Dash", unit = mine.id, dx = 1, dz = 0 } })
+		T.eq(#playsOf(log, "Dash", f), 1, "audio battle: my pet's dash plays Dash once")
+		KC.advance(0.6)
+		f = fire({ { type = "Dash", unit = theirs.id, dx = -1, dz = 0 } })
+		T.eq(#playsOf(log, "Dash", f), 0, "audio battle: the rival's dash is silent")
+		-- a KO: one of the four KO files
+		f = fire({ { type = "KO", unit = theirs.id } })
+		local kos = playsOf(log, "^KO%d?$", f, true)
+		T.check(#kos == 1 and math.abs(kos[1].vol - SF.SlotVolume(kos[1].name)) < 1e-6, "audio battle: a KO plays one KO file of the rotation at 0.7", fmt("%d (%s)", #kos, kos[1] and kos[1].name or "-"))
+		BC.HandleState("End", { BattleId = p.BattleId, Mode = "Duel", Outcome = "Loss", Won = false, Rewards = {} }, p.BattleId)
+		KC.advance(8)
+		-- a spectator: half volume near the camera, nothing far away
+		freshGaps(SF)
+		local q, a, b = duelStart("audio_w2_watch", 0)
+		BC.HandleState("Start", q, q.BattleId)
+		feed(q, 0.4)
+		local au = BC._Unit(a.id)
+		local at = au and au.root and au.root.Position or Vector3.new(0, 400, 0)
+		if cam then
+			cam.CFrame = CFrame.lookAt(at + Vector3.new(0, 20, 30), at)
+		end
+		local fireQ = function(list)
+			local from = #log
+			BC.HandleState("Events", list, q.BattleId)
+			feed(q, 0.8)
+			return from
+		end
+		f = fireQ({ { type = "Hit", from = a.id, to = b.id, dmg = 10 } })
+		local near = playsOf(log, "^Hit", f, true)
+		T.check(#near == 1 and math.abs(near[1].vol - SF.SlotVolume("Hit" .. a.element) * 0.5) < 1e-6,
+			"audio battle: a spectator hears a hit near the camera at half volume", near[1] and fmt("%.3f", near[1].vol) or "none")
+		if cam then
+			cam.CFrame = CFrame.new(at + Vector3.new(0, 400, 900))
+		end
+		f = fireQ({ { type = "Hit", from = a.id, to = b.id, dmg = 10 }, { type = "KO", unit = b.id } })
+		T.check(#playsOf(log, "^Hit", f, true) == 0 and #playsOf(log, "^KO", f, true) == 0, "audio battle: ... and nothing from a fight more than 80 studs from the camera")
+		BC.HandleState("End", { BattleId = q.BattleId, Mode = "Duel", Spectator = true, Reason = "OutOfRange" }, q.BattleId)
+		KC.advance(0.5)
+		-- a won Champion Ring round plays Reward (and keeps the Battle track)
+		freshGaps(SF)
+		BC.HandleState("Start", startPayload("audio_w2_ring", "Ring", 1, { Ring = { Round = 1, Best = 0 } }), "audio_w2_ring")
+		KC.advance(0.3)
+		f = #log
+		BC.HandleState("End", { BattleId = "audio_w2_ring", Mode = "Ring", Outcome = "Win", Won = true, Rewards = { Round = 1, Next = 2, Cash = 5, Xp = 5 } }, "audio_w2_ring")
+		KC.advance(0.3)
+		T.check(#playsOf(log, "Reward", f) == 1 and SF.Current() == "Battle", "audio battle: a won Champion Ring round plays one Reward and keeps the Battle track",
+			fmt("%d rewards, %s", #playsOf(log, "Reward", f), tostring(SF.Current())))
+		BC.HandleState("End", { BattleId = "audio_w2_ring", Mode = "Ring", Outcome = "Loss", Won = false, Rewards = { Round = 1, Final = true } }, "audio_w2_ring")
+		KC.advance(8)
+	end)
+	T.check(okRun, "client_audio_battle ran to the end", tostring(err))
+	if cam and cam0 then
+		cam.CFrame = cam0
+	end
+	unspy()
+	SF.SetLayer("Battle", false)
+	freshGaps(SF)
+	restore()
+	SF.Music("Lobby")
+end)
+
+S.client_audio_sites = guarded("client_audio_sites", function()
+	local M = mods()
+	local Config, SF = M.Config, M.SF
+	if not T.check(Config and SF, "audio sites: Config and SoundFx load") then
+		return
+	end
+	local restore = giveIds(Config)
+	local log, unspy = spy(SF)
+	local e0 = #Mock.Errors
+	local okRun, err = pcall(function()
+		freshGaps(SF)
+		-- a refused action: a NEW "bad" toast plays Error once; its merged repeat and a good toast are silent
+		local f = #log
+		KC.toClient("Notify", "You cannot claim this home", "bad", 3)
+		KC.advance(0.2)
+		KC.toClient("Notify", "You cannot claim this home", "bad", 3)
+		KC.toClient("Notify", "Welcome back!", "good", 3)
+		KC.advance(0.2)
+		T.eq(#playsOf(log, "Error", f), 1, "audio sites: a new \"bad\" toast plays Error once (its merged repeat and a good toast do not)")
+		KC.toClient("Notify", "Every home is taken right now", "bad", 3)
+		KC.advance(0.2)
+		T.eq(#playsOf(log, "Error", f), 1, "audio sites: ... another bad toast inside 1 s stays silent (Error MinGap)")
+		KC.advance(6)
+		-- the tutorial: a finished step plays TutorialStep, the finale Reward
+		local Steps = moduleAt(ROOTS.shared .. "/TutorialSteps")
+		if T.check(Steps and type(Steps.Steps) == "table" and #Steps.Steps >= 3, "audio sites: TutorialSteps loads") then
+			local function payload(index, over)
+				local step = Steps.Steps[index]
+				local st = { Step = index, Total = #Steps.Steps, Id = step.Id, Title = step.Title, Text = tostring(step.Text), CompleteOn = step.CompleteOn,
+					Hint = step.Hint, Button = step.Button, AlsoNext = step.AlsoNext == true, Gift = step.Gift == true, Chapter = step.Chapter,
+					Done = false, Completed = false, Skipped = false, Reward = 0 }
+				for k, v in pairs(over or {}) do
+					st[k] = v
+				end
+				return st
+			end
+			KC.toClient("TutorialState", payload(1))
+			KC.advance(0.5)
+			f = #log
+			KC.toClient("TutorialState", payload(2))
+			KC.advance(0.5)
+			T.eq(#playsOf(log, "TutorialStep", f), 1, "audio sites: a finished tutorial step plays TutorialStep")
+			f = #log
+			KC.toClient("TutorialState", payload(#Steps.Steps, { Done = true, Completed = true, Reward = 100 }))
+			KC.advance(0.5)
+			T.check(#playsOf(log, "Reward", f) == 1 and #playsOf(log, "TutorialStep", f) == 0, "audio sites: the tutorial's finale plays Reward")
+			KC.advance(8)
+		end
+		-- the roulette: SpinStart, a SpinTick per cell, SpinLand, the reveal by rarity
+		local PC = moduleAt(ROOTS.shared .. "/PetCatalog")
+		local possible = PC and type(PC.PossiblePets) == "function" and PC.PossiblePets("Cloud") or {}
+		if T.check(#possible > 0, "audio sites: the Cloud roulette's pets") then
+			local strip = {}
+			for i = 1, 40 do
+				strip[i] = possible[(i % #possible) + 1].Id
+			end
+			local winner = possible[1]
+			strip[34] = winner.Id
+			freshGaps(SF)
+			f = #log
+			KC.toClient("RouletteResult", { Ok = true, RouletteId = "Cloud", PetId = winner.Id, IsNew = true, Count = 1, Tokens = 550, Strip = strip })
+			KC.advance(0.2)
+			local started = #playsOf(log, "SpinStart", f)
+			KC.advance(10)
+			local want = ({ Common = "RevealCommon", Uncommon = "RevealCommon", Rare = "RevealRare", Epic = "RevealRare", Legendary = "RevealLegendary",
+				Mythic = "RevealLegendary", Secret = "RevealLegendary" })[winner.Rarity]
+			local ticks = #playsOf(log, "SpinTick", f)
+			T.check(started == 1, "audio sites: a roulette spin plays SpinStart once", tostring(started))
+			T.check(ticks >= 8, "audio sites: the strip ticks as cells pass the pointer (SpinTick)", ticks .. " ticks")
+			T.eq(#playsOf(log, "SpinLand", f), 1, "audio sites: the strip's landing plays SpinLand once")
+			T.check(#playsOf(log, want or "?", f) == 1 and #playsOf(log, "^Reveal", f, true) == 1,
+				"audio sites: the reveal card plays " .. tostring(want) .. " for a " .. tostring(winner.Rarity) .. " pet")
+			pressKey("Escape")
+			KC.advance(0.6)
+			pressKey("Escape")
+			KC.advance(0.6)
+		end
+		-- my home portal: PortalEnter when it opens, PortalArrive on my arrival; another player's: silent
+		local At = Config.Attr or {}
+		local portalAttr, arrivedAttr = At.HomePortal or "HomePortal", At.PortalArrived or "PortalArrived"
+		local now = Workspace:GetServerTimeNow()
+		freshGaps(SF)
+		f = #log
+		LocalPlayer:SetAttribute(portalAttr, "120,20,120,0," .. string.format("%.2f", now + 10))
+		KC.advance(0.3)
+		T.eq(#playsOf(log, "PortalEnter", f), 1, "audio sites: my home portal opening plays PortalEnter")
+		local other = Mock.AddPlayer("PortalNeighbour", 6202)
+		KC.advance(0.2)
+		f = #log
+		other:SetAttribute(portalAttr, "160,20,120,0," .. string.format("%.2f", now + 10))
+		other:SetAttribute(arrivedAttr, now)
+		KC.advance(0.3)
+		T.check(#playsOf(log, "PortalEnter", f) == 0 and #playsOf(log, "PortalArrive", f) == 0, "audio sites: another player's portal and arrival are silent")
+		f = #log
+		LocalPlayer:SetAttribute(arrivedAttr, now + 0.5)
+		KC.advance(0.3)
+		local hasRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") ~= nil
+		T.check(hasRoot and #playsOf(log, "PortalArrive", f) == 1, "audio sites: my arrival through the portal plays PortalArrive", "root " .. tostring(hasRoot))
+		LocalPlayer:SetAttribute(portalAttr, nil)
+		other:SetAttribute(portalAttr, nil)
+		KC.advance(0.6)
+		Mock.RemovePlayer(other)
+		-- a lobby Travel gate (GateService's AltarGatePrompt): PortalEnter
+		KC.advance(1.1)
+		local gate = Instance.new("Part")
+		gate.Name = "AudioGate"
+		gate.Parent = Workspace
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.Name = "AltarGatePrompt"
+		prompt.Parent = gate
+		local talk = Instance.new("ProximityPrompt")
+		talk.Name = "SomeOtherPrompt"
+		talk.Parent = gate
+		f = #log
+		Mock.Trigger(talk, LocalPlayer)
+		KC.advance(0.2)
+		local none = #playsOf(log, "PortalEnter", f)
+		Mock.Trigger(prompt, LocalPlayer)
+		KC.advance(0.2)
+		T.check(none == 0 and #playsOf(log, "PortalEnter", f) == 1, "audio sites: using a Travel gate's prompt plays PortalEnter (another prompt does not)")
+		gate:Destroy()
+		-- my home: a new station pops in (StationBuild), my house's new tier (HouseTier); a neighbour's home is silent
+		local function home(owner, at)
+			local folder = Instance.new("Folder")
+			folder.Name = "AudioHome_" .. owner
+			folder:SetAttribute("OwnerUserId", owner)
+			folder:SetAttribute("PlotCenter", at)
+			folder.Parent = Workspace
+			CollectionService:AddTag(folder, "NC_Home")
+			return folder
+		end
+		local function station(folder, id, level, at)
+			local m = Instance.new("Model")
+			m.Name = "Station_" .. id
+			m:SetAttribute("StationId", id)
+			m:SetAttribute("Level", level)
+			m:SetAttribute("Kind", "Decor")
+			m:SetAttribute("BuiltAt", Workspace:GetServerTimeNow())
+			local part = Instance.new("Part")
+			part.Size = Vector3.new(4, 2, 4)
+			part.CFrame = CFrame.new(at)
+			part.Parent = m
+			m.Parent = folder
+			return m
+		end
+		local mineHome = home(LocalPlayer.UserId, Vector3.new(5000, 300, 5000))
+		local theirHome = home(6203, Vector3.new(5200, 300, 5000))
+		KC.advance(0.5)
+		freshGaps(SF)
+		f = #log
+		station(mineHome, "DecorFence", 1, Vector3.new(5000, 301, 5000))
+		KC.advance(0.3)
+		local built = #playsOf(log, "StationBuild", f)
+		station(mineHome, "House", 2, Vector3.new(5010, 301, 5000))
+		KC.advance(0.3)
+		local tier = #playsOf(log, "HouseTier", f)
+		station(theirHome, "DecorFence", 1, Vector3.new(5200, 301, 5000))
+		station(theirHome, "House", 3, Vector3.new(5210, 301, 5000))
+		KC.advance(0.3)
+		T.eq(built, 1, "audio sites: a new station of my home plays StationBuild")
+		T.check(tier == 1 and #playsOf(log, "StationBuild", f) == 1, "audio sites: my house's new tier plays HouseTier instead of StationBuild")
+		T.check(#playsOf(log, "HouseTier", f) == 1, "audio sites: a neighbour's new station / house tier is silent")
+		mineHome:Destroy()
+		theirHome:Destroy()
+		KC.advance(0.3)
+		-- the lobby fountain: SoundFx.Positional("Fountain") on the falls (InverseTapered, Min 10 / Max 70, the Sfx setting)
+		local FF = moduleAt(ROOTS.client .. "/Controllers/FountainFx")
+		if T.check(FF and FF._St and FF.K, "audio sites: FountainFx loads") then
+			local old = FF._St.Sound
+			FF._St.Sound = nil
+			local falls = Instance.new("Part")
+			falls.Name = "AudioFalls"
+			falls.Parent = Workspace
+			CollectionService:AddTag(falls, FF.K.FALLS_TAG)
+			KC.advance(0.2)
+			local s = FF._St.Sound
+			T.check(s ~= nil and s.Parent == falls and s.Looped and s.IsPlaying and s.RollOffMode == Enum.RollOffMode.InverseTapered and s.RollOffMinDistance == 10
+				and s.RollOffMaxDistance == FF.K.SOUND_RANGE and math.abs(s.Volume - SF.SlotVolume("Fountain")) < 1e-6
+				and s.SoundId == "rbxassetid://" .. string.format("%d", Config.Audio.Ambient.Fountain),
+				"audio sites: the fountain's water loops through SoundFx.Positional(\"Fountain\") once FountainLoop has an id (InverseTapered 10-70 studs, slot volume x Sfx)",
+				s and fmt("%s %s %.3f", s.Name, s.SoundId, s.Volume) or "no sound")
+			CollectionService:RemoveTag(falls, FF.K.FALLS_TAG)
+			falls:Destroy()
+			FF._St.Sound = old
+		end
+	end)
+	T.check(okRun, "client_audio_sites ran to the end", tostring(err))
+	T.check(#Mock.Errors == e0, "audio sites: no script error")
+	unspy()
+	freshGaps(SF)
+	restore()
+end)
+
+S.client_audio_npc = guarded("client_audio_npc", function()
+	local M = mods()
+	local Config, SF = M.Config, M.SF
+	local NC = moduleAt(ROOTS.client .. "/Controllers/NpcController")
+	local ND = moduleAt(ROOTS.shared .. "/NpcDialog")
+	local services = Mock.GetPath(ROOTS.server)
+	services = services and services:FindFirstChild("Services")
+	local npcModule = services and services:FindFirstChild("NpcService")
+	if not T.check(Config and SF and NC and ND and npcModule, "audio npc: NpcController, NpcDialog and NpcService load") then
+		return
+	end
+	local A = Config.Audio
+	-- every NPC of NpcDialog has its three voice keys (Npc<CamelCase Id><Kind>)
+	local lack = {}
+	for _, def in ipairs(ND.Npcs) do
+		for _, kind in ipairs({ "Greet", "Hmm", "Pleased" }) do
+			if A.Keys.Sfx["Npc" .. camelId(def.Id) .. kind] == nil then
+				lack[#lack + 1] = "Npc" .. camelId(def.Id) .. kind
+			end
+		end
+	end
+	T.check(#lack == 0 and #ND.Npcs == 6, "audio npc: the six NPCs (" .. #ND.Npcs .. ") each have Greet / Hmm / Pleased voice keys", table.concat(lack, " "))
+	local restore = giveIds(Config)
+	local log, unspy = spy(SF)
+	local e0 = #Mock.Errors
+	local NS = require(npcModule)
+	local origin = (Config.Lobby and Config.Lobby.Origin) or Vector3.new(0, 10, 0)
+	local spots = {}
+	for i = 1, #ND.Npcs do
+		local a = (i - 1) * math.pi * 2 / #ND.Npcs
+		local pos = origin + Vector3.new(math.cos(a) * 30, 0, math.sin(a) * 30)
+		spots[i] = CFrame.lookAt(pos, Vector3.new(origin.X, pos.Y, origin.Z))
+	end
+	local first = ND.Npcs[1]
+	local saved = first.Lines
+	local okRun, err = pcall(function()
+		NS.Init({ NpcSpots = spots })
+		KC.advance(2)
+		Mock.Teleport(LocalPlayer, spots[1].Position + spots[1].LookVector * 7 + Vector3.new(0, 3, 0))
+		KC.advance(0.5)
+		NC.Close()
+		KC.advance(2)
+		first.Lines = { "Hello there, climber.", "Ready for a climb?", "Watch the sky up there!", "Well... the sky is wide.", "Off you go then." }
+		freshGaps(SF)
+		local voiceKey = "Npc" .. camelId(first.Id)
+		T.eq(voiceKey, "NpcSparkyFox", "audio npc: sparky_fox's voice keys are NpcSparkyFox*")
+		local function voicesSince(at)
+			return #playsOf(log, "^" .. voiceKey, at, true)
+		end
+		local f = #log
+		NC.Open(first.Id)
+		KC.advance(0.06)
+		local opened = #playsOf(log, "DialogOpen", f)
+		local early = #playsOf(log, voiceKey .. "Greet", f)
+		KC.advance(0.12)
+		local greet = playsOf(log, voiceKey .. "Greet", f)
+		T.check(opened == 1, "audio npc: opening the dialog plays DialogOpen")
+		T.check(early == 0 and #greet == 1 and math.abs(greet[1].vol - 0.6 * SF.Volume("Sfx")) < 1e-6 and greet[1].speed >= 0.98 - 1e-9 and greet[1].speed <= 1.02 + 1e-9,
+			"audio npc: the NPC's Greet follows ~0.12 s after DialogOpen (volume 0.6 x Sfx, pitch 0.98-1.02)", fmt("early %d, then %d", early, #greet))
+		KC.advance(3)
+		-- the typewriter: a blip every 3rd letter ("Hello there, climber." = 17 letters -> 6 blips), never all letters
+		local blips = #playsOf(log, "DialogBlip", f)
+		T.check(blips >= 5 and blips <= 6, "audio npc: the typewriter blips every 3rd letter (17 letters -> 6 blips; MinGap 0.045 s)", blips .. " blips")
+		-- Next to a middle line with no "!": DialogNext + Hmm
+		f = #log
+		NC.Advance()
+		KC.advance(0.1)
+		local hmm = playsOf(log, voiceKey .. "Hmm", f)
+		T.check(#playsOf(log, "DialogNext", f) == 1 and #hmm == 1 and voicesSince(f) == 1, "audio npc: Next to a middle line (no \"!\") plays DialogNext and the NPC's Hmm", fmt("%d hmm", #hmm))
+		KC.advance(2)
+		-- Next to a middle line holding "!": Pleased, and the NPC's previous voice is stopped first
+		local hmmSound = hmm[1] and hmm[1].sound
+		f = #log
+		NC.Advance()
+		KC.advance(0.1)
+		local bang = playsOf(log, voiceKey .. "Pleased", f)
+		T.check(#bang == 1 and voicesSince(f) == 1 and bang[1].sound.IsPlaying, "audio npc: Next to a line holding \"!\" plays the NPC's Pleased (not Hmm)")
+		T.check(hmmSound ~= nil and not hmmSound.IsPlaying, "audio npc: ... after stopping the NPC's previous voice (never two at once)")
+		-- finishing a line early is silent; a new line inside the 1.5 s voice gap: DialogNext, no voice
+		f = #log
+		NC.Advance() -- (still typing: finishes the line)
+		KC.advance(0.1)
+		local early2 = #playsOf(log, "DialogNext", f)
+		local earlyVoice = voicesSince(f)
+		NC.Advance()
+		KC.advance(0.1)
+		T.check(early2 == 0 and earlyVoice == 0, "audio npc: finishing a line early (Next while it types) plays no DialogNext and no voice")
+		T.check(#playsOf(log, "DialogNext", f) == 1 and voicesSince(f) == 0, "audio npc: a fast Next within 1.5 s of the last voice gets no voice (one per 1.5 s per NPC)")
+		KC.advance(2)
+		-- the last line (no "!"): Pleased
+		f = #log
+		NC.Advance()
+		KC.advance(0.1)
+		local pleased = playsOf(log, voiceKey .. "Pleased", f)
+		T.check(#pleased == 1 and voicesSince(f) == 1 and pleased[1].sound.IsPlaying, "audio npc: Next to the dialog's last line plays the NPC's Pleased")
+		-- "Again" (back to line 1, not the last, no "!"): DialogNext + Hmm
+		KC.advance(2)
+		f = #log
+		NC.Advance()
+		KC.advance(0.3)
+		T.check(#playsOf(log, "DialogNext", f) == 1 and #playsOf(log, voiceKey .. "Hmm", f) == 1 and voicesSince(f) == 1, "audio npc: Again (back to line 1, no \"!\") plays DialogNext and the NPC's Hmm")
+		KC.advance(2)
+		-- switching to another NPC mid-dialog: no DialogOpen, no Greet
+		local second = ND.Npcs[2]
+		f = #log
+		NC.Open(second.Id)
+		KC.advance(0.3)
+		T.check(#playsOf(log, "DialogOpen", f) == 0 and #playsOf(log, "Npc" .. camelId(second.Id) .. "Greet", f) == 0,
+			"audio npc: switching to another NPC mid-dialog plays no DialogOpen and no Greet")
+		NC.Close()
+		KC.advance(2)
+		-- closing before the greet: no Greet
+		f = #log
+		NC.Open(first.Id)
+		KC.advance(0.03)
+		NC.Close()
+		KC.advance(0.5)
+		T.check(#playsOf(log, "DialogOpen", f) == 1 and #playsOf(log, voiceKey .. "Greet", f) == 0, "audio npc: a dialog closed before its greet is due plays no Greet")
+		-- an NPC with no voice ids: DialogOpen still plays, no voice, no error
+		local svIds = {}
+		for _, kind in ipairs({ "Greet", "Hmm", "Pleased" }) do
+			svIds[kind] = A.Sfx[voiceKey .. kind]
+			A.Sfx[voiceKey .. kind] = nil
+		end
+		KC.advance(2)
+		f = #log
+		NC.Open(first.Id)
+		KC.advance(0.4)
+		for _ = 1, #first.Lines do
+			NC.Advance()
+			KC.advance(0.1)
+			NC.Advance()
+			KC.advance(0.1)
+		end
+		T.check(#playsOf(log, "DialogOpen", f) == 1 and #playsOf(log, "^" .. voiceKey, f, true) == 0, "audio npc: an NPC without voice ids talks silently (no voice, no error)")
+		for kind, v in pairs(svIds) do
+			A.Sfx[voiceKey .. kind] = v
+		end
+		NC.Close()
+		KC.advance(0.5)
+	end)
+	first.Lines = saved
+	T.check(okRun, "client_audio_npc ran to the end", tostring(err))
+	T.check(#Mock.Errors == e0, "audio npc: no script error")
+	local holder = Workspace:FindFirstChild("NimbusNpcs")
+	if holder then
+		holder:Destroy()
+	end
+	KC.advance(0.5)
+	Mock.Teleport(LocalPlayer, Vector3.new(0, 20, 0))
+	unspy()
+	freshGaps(SF)
 	restore()
 end)
 
