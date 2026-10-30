@@ -3,7 +3,7 @@
 --   audio_ring_pocket   (server, booted) the real Champion Ring pocket (ArenaBuilder.BuildPocket(i, "Ring")) has the
 --                       child model "Crowd" RingAmbience hangs the crowd + drums on; the fighter's pad is inside the
 --                       crowd's hearing range (CrowdCheer Max), the next pocket's crowd far outside it
---   client_audio_keys   Config.Audio.Keys = exactly the 12 wired keys (one each); audio/audio.json = those 12 + the 29
+--   client_audio_keys   Config.Audio.Keys = exactly the 12 wired keys (one each); audio/audio.json = those 12 + the 47
 --                       wave-2 keys (WAVE2_KEYS: uploaded first, wired later); with the shipped AudioIds
 --                       stub every group is empty (silent); a Config copy beside a FAKE AudioIds maps every key to its
 --                       number, leaves out a missing / junk one; one place for slot volumes (every key; music under every
@@ -36,11 +36,15 @@ local S = {}
 local IS_SERVER = game:GetService("RunService"):IsServer()
 
 local AUDIO_KEYS = { "Click", "Confirm", "CrowdCheer", "DrumLoop", "Error", "Inhale", "MusicBattle", "MusicDungeon", "MusicLobby", "Reward", "Shatter", "Whoosh" }
--- audio wave 2 (the owner's 2026-10-29 SFX picks, audio/README.md): in audio/audio.json for the upload, NOT wired into
+-- audio wave 2 (the owner's 2026-10-29 SFX picks + 2026-10-30 NPC voices, audio/README.md): in audio/audio.json for the upload, NOT wired into
 -- Config.Audio.Keys yet (the wiring lands after the wave-6 branch merges). Move a key up into AUDIO_KEYS when it is wired.
 local WAVE2_KEYS = { "Crit", "Dash", "DialogBlip", "DialogNext", "DialogOpen", "HitCelestial", "HitEarth", "HitFlame", "HitFrost", "HitNature",
 	"HitShadow", "HitStorm", "HitWater", "HouseTier", "KO", "KO2", "KO3", "KO4", "Parry", "PortalArrive", "PortalEnter", "RevealCommon",
-	"RevealLegendary", "RevealRare", "SpinLand", "SpinStart", "SpinTick", "StationBuild", "TutorialStep" }
+	"RevealLegendary", "RevealRare", "SpinLand", "SpinStart", "SpinTick", "StationBuild", "TutorialStep",
+	-- round 3: the NPC voices (wordless greet / hmm / pleased, one voice per NPC)
+	"NpcCaptainPenguinGreet", "NpcCaptainPenguinHmm", "NpcCaptainPenguinPleased", "NpcCoachCorgiGreet", "NpcCoachCorgiHmm", "NpcCoachCorgiPleased",
+	"NpcGrannyOwlGreet", "NpcGrannyOwlHmm", "NpcGrannyOwlPleased", "NpcMayorPandaGreet", "NpcMayorPandaHmm", "NpcMayorPandaPleased",
+	"NpcProfessorAxolotlGreet", "NpcProfessorAxolotlHmm", "NpcProfessorAxolotlPleased", "NpcSparkyFoxGreet", "NpcSparkyFoxHmm", "NpcSparkyFoxPleased" }
 local MANIFEST_KEYS = {}
 for _, list in ipairs({ AUDIO_KEYS, WAVE2_KEYS }) do
 	for _, key in ipairs(list) do
@@ -271,7 +275,7 @@ S.client_audio_keys = guarded("client_audio_keys", function()
 		end
 	end
 	table.sort(ckeys)
-	T.eq(table.concat(mkeys, " "), table.concat(MANIFEST_KEYS, " "), "audio keys: audio/audio.json lists the 12 wired sounds + the 29 wave-2 sounds (not wired yet)")
+	T.eq(table.concat(mkeys, " "), table.concat(MANIFEST_KEYS, " "), "audio keys: audio/audio.json lists the 12 wired sounds + the 47 wave-2 sounds (not wired yet)")
 	T.check(table.concat(ckeys, " ") == table.concat(AUDIO_KEYS, " ") and #dup == 0, "audio keys: Config.Audio.Keys maps exactly the 12 AudioIds keys, each once",
 		table.concat(ckeys, " ") .. " dup: " .. table.concat(dup, " "))
 	T.eq(A.Keys.Sfx.Inhale, "Inhale", "audio keys: Sfx.Inhale = AudioIds.Inhale")

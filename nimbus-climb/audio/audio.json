@@ -246,6 +246,114 @@
       "sha256": "638e5d831322a5d49c4e3ee6fd02431905110e251c8515e617fd9b2214835b53",
       "slot": "Sfx",
       "looped": false
+    },
+    "NpcCaptainPenguinGreet": {
+      "file": "audio/NpcCaptainPenguinGreet.ogg",
+      "sha256": "ed5ddb2c62934825842c37e997d6ba3a562e06ea8a864e199bc912aeb57ee22c",
+      "slot": "Sfx",
+      "looped": false
+    },
+    "NpcCaptainPenguinHmm": {
+      "file": "audio/NpcCaptainPenguinHmm.ogg",
+      "sha256": "c2261ff14211eb374eaf3bcb2e929ff4985291d48f8a79a9a09594d4552dbc37",
+      "slot": "Sfx",
+      "looped": false
+    },
+    "NpcCaptainPenguinPleased": {
+      "file": "audio/NpcCaptainPenguinPleased.ogg",
+      "sha256": "3dd857226dfc0813820d65021accc198b28a7c7d2b6968c02df116873c8a23f7",
+      "slot": "Sfx",
+      "looped": false
+    },
+    "NpcCoachCorgiGreet": {
+      "file": "audio/NpcCoachCorgiGreet.ogg",
+      "sha256": "0ed2e6a8627f2e271c62b4aa56c4498ced34f06d4707a3966dfa93d3333277b2",
+      "slot": "Sfx",
+      "looped": false
+    },
+    "NpcCoachCorgiHmm": {
+      "file": "audio/NpcCoachCorgiHmm.ogg",
+      "sha256": "ba5798083e5bcfb4dea03885230e09469854c0dcd98b474f8821eb73cb696d38",
+      "slot": "Sfx",
+      "looped": false
+    },
+    "NpcCoachCorgiPleased": {
+      "file": "audio/NpcCoachCorgiPleased.ogg",
+      "sha256": "80fbe5f9064d24737e85a46e758372851e1021070dd1de1a988a745570d58c22",
+      "slot": "Sfx",
+      "looped": false
+    },
+    "NpcGrannyOwlGreet": {
+      "file": "audio/NpcGrannyOwlGreet.ogg",
+      "sha256": "2ef8ebe89bb1cc3833c11bdbdd8117ce015279fa7d2e7233687be5604e3806d7",
+      "slot": "Sfx",
+      "looped": false
+    },
+    "NpcGrannyOwlHmm": {
+      "file": "audio/NpcGrannyOwlHmm.ogg",
+      "sha256": "1710e292bbfb7f05117f9c7bbd5bd6484075f52604a044fb57a3eae51edc407e",
+      "slot": "Sfx",
+      "looped": false
+    },
+    "NpcGrannyOwlPleased": {
+      "file": "audio/NpcGrannyOwlPleased.ogg",
+      "sha256": "44a8bbca918147e0aa7accb4afca2f8c1b4c2352ec6a2a9b2b5681acfb2cc187",
+      "slot": "Sfx",
+      "looped": false
+    },
+    "NpcMayorPandaGreet": {
+      "file": "audio/NpcMayorPandaGreet.ogg",
+      "sha256": "87d1de66de244ed911c75f242e7f96512577471882663299933d070e5c409c81",
+      "slot": "Sfx",
+      "looped": false
+    },
+    "NpcMayorPandaHmm": {
+      "file": "audio/NpcMayorPandaHmm.ogg",
+      "sha256": "f0501210f38b5de8ccbde512a439e0760da7abf7548fce43edb6478f21f49ee6",
+      "slot": "Sfx",
+      "looped": false
+    },
+    "NpcMayorPandaPleased": {
+      "file": "audio/NpcMayorPandaPleased.ogg",
+      "sha256": "7f6921cf83d0eff6ebf82b143d428e823a5c0ed95f14a48ecbcb7a98db1956d4",
+      "slot": "Sfx",
+      "looped": false
+    },
+    "NpcProfessorAxolotlGreet": {
+      "file": "audio/NpcProfessorAxolotlGreet.ogg",
+      "sha256": "22787572cd06929cc1ba95de7f7c42d9fa53b393568e45ef7903a2df32fa3aad",
+      "slot": "Sfx",
+      "looped": false
+    },
+    "NpcProfessorAxolotlHmm": {
+      "file": "audio/NpcProfessorAxolotlHmm.ogg",
+      "sha256": "e659536885d7d2fd58d5881a968e2ccb579195cacb8a7aa00c679a2495c5c580",
+      "slot": "Sfx",
+      "looped": false
+    },
+    "NpcProfessorAxolotlPleased": {
+      "file": "audio/NpcProfessorAxolotlPleased.ogg",
+      "sha256": "c1e89860e22d7d9849b42a3349f613beeee26f8c26f3e62bab302e818e0474cb",
+      "slot": "Sfx",
+      "looped": false
+    },
+    "NpcSparkyFoxGreet": {
+      "file": "audio/NpcSparkyFoxGreet.ogg",
+      "sha256": "77537a1d48b1f47b9fcdb5e8ff638456ffacff159d7cfce5abac84a5c282a84e",
+      "slot": "Sfx",
+      "looped": false
+    },
+    "NpcSparkyFoxHmm": {
+      "file": "audio/NpcSparkyFoxHmm.ogg",
+      "sha256": "bb5247408b856d167ee8e4369ca85169f197eba1e2bebf33dff38e8f21aaa4bb",
+      "slot": "Sfx",
+      "looped": false
+    },
+    "NpcSparkyFoxPleased": {
+      "file": "audio/NpcSparkyFoxPleased.ogg",
+      "sha256": "927ea93da323329ea43df57d66b05d031b3c8888d062c13d76d027787e3ac5e1",
+      "slot": "Sfx",
+      "looped": false
     }
   }
 }

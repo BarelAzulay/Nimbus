@@ -44,7 +44,7 @@ room's End too).
 Picked by the player on the wave-2 pages: round 1 https://claude.ai/artifact/2CbUHV6TNPpiHbdrK4ruNM and round 2
 https://claude.ai/artifact/QDH2QZcP7duUofuUjaB8Mx (round 2 overrides round 1 for a slot in both). All original,
 ElevenLabs sound effects (Creator plan). 29 one-shots, slot `Sfx`, not looped. Skipped by the player (no file):
-FountainLoop, TutorialChapter. The NPC voices are not in this batch (being redone without words).
+FountainLoop, TutorialChapter. The NPC voices are their own section below (round 3, wordless).
 
 Each file is rebuilt from the RAW ElevenLabs take with the exact chain of its preview
 (`.superpowers/audio-pitch/wave2/final/w2_final.py`: 35 Hz high-pass, trim, -18 dBFS active RMS with peaks <= -1 dBFS,
@@ -88,5 +88,36 @@ come after the wave-6 branch merges (plan: `.superpowers/audio-pitch/wave2/wirin
 | RevealRare | RevealRare.ogg | RevealRare_M: RevealLegendary_1 notes 1-2 + light room tail | 1.22 s | st | reveal card, Rare / Epic |
 | RevealLegendary | RevealLegendary.ogg | RevealLegendary_1 | 1.89 s | st | reveal card, Legendary / Mythic / Secret |
 
-Upload: one `--audio` run creates these 29 (the 12 above are unchanged and skipped). Roblox counts audio uploads per
-account per month (100 with ID verification, which the owner has): 12 used this month, this batch adds 29.
+## NPC voices (wave 2 round 3, final files, 2026-10-30)
+
+Picked by the player on https://claude.ai/artifact/Wc5ZP5u4RbLLEAwfwJnZXs: one voice per NPC (the player asked for no
+words, only vocal sounds like "mhm", "AhA!", "Woo!"). ElevenLabs voices designed for Nimbus (saved as "Nimbus <NPC> A/B"),
+multilingual v2 speech. 18 one-shots (greet / hmm / pleased per NPC), slot `Sfx`, not looped. The optional animal takes
+(Corgi "Woof!") were not picked. Built from the RAW take with the preview's chain (`.superpowers/audio-pitch/wave2/round3/
+scripts/r3_final.py`: 35 Hz high-pass, trim, -18 dBFS active RMS, peaks <= -1 dBFS); correlation with the preview >= 0.9999,
+same length and peak level. **Not wired yet** (with the rest of wave 2).
+
+| Key | File | Source take (page id = take) | Length | Ch | Where it will play |
+|---|---|---|---|---|---|
+| NpcCaptainPenguinGreet | NpcCaptainPenguinGreet.ogg | NpcVoice_CaptainPenguin_B_greet = CaptainPenguin_B_greet_3 | 0.69 s | mono | Captain Penguin (voice B): their dialog opens |
+| NpcCaptainPenguinHmm | NpcCaptainPenguinHmm.ogg | NpcVoice_CaptainPenguin_B_hmm = CaptainPenguin_B_hmm_1 | 0.81 s | mono | Captain Penguin (voice B): a thinking line |
+| NpcCaptainPenguinPleased | NpcCaptainPenguinPleased.ogg | NpcVoice_CaptainPenguin_B_pleased = CaptainPenguin_B_pleased_3 | 0.55 s | mono | Captain Penguin (voice B): a happy line / a done task |
+| NpcCoachCorgiGreet | NpcCoachCorgiGreet.ogg | NpcVoice_CoachCorgi_B_greet = CoachCorgi_B_greet_3 | 0.48 s | mono | Coach Corgi (voice B): their dialog opens |
+| NpcCoachCorgiHmm | NpcCoachCorgiHmm.ogg | NpcVoice_CoachCorgi_B_hmm = CoachCorgi_B_hmm_1 | 0.82 s | mono | Coach Corgi (voice B): a thinking line |
+| NpcCoachCorgiPleased | NpcCoachCorgiPleased.ogg | NpcVoice_CoachCorgi_B_pleased = CoachCorgi_B_pleased_1 | 1.13 s | mono | Coach Corgi (voice B): a happy line / a done task |
+| NpcGrannyOwlGreet | NpcGrannyOwlGreet.ogg | NpcVoice_GrannyOwl_B_greet = GrannyOwl_B_greet_3 | 0.83 s | mono | Granny Owl (voice B): their dialog opens |
+| NpcGrannyOwlHmm | NpcGrannyOwlHmm.ogg | NpcVoice_GrannyOwl_B_hmm = GrannyOwl_B_hmm_3 | 0.63 s | mono | Granny Owl (voice B): a thinking line |
+| NpcGrannyOwlPleased | NpcGrannyOwlPleased.ogg | NpcVoice_GrannyOwl_B_pleased = GrannyOwl_B_pleased_2 | 0.96 s | mono | Granny Owl (voice B): a happy line / a done task |
+| NpcMayorPandaGreet | NpcMayorPandaGreet.ogg | NpcVoice_MayorPanda_A_greet = MayorPanda_A_greet_10 | 1.01 s | mono | Mayor Panda (voice A): their dialog opens |
+| NpcMayorPandaHmm | NpcMayorPandaHmm.ogg | NpcVoice_MayorPanda_A_hmm = MayorPanda_A_hmm_7 | 0.55 s | mono | Mayor Panda (voice A): a thinking line |
+| NpcMayorPandaPleased | NpcMayorPandaPleased.ogg | NpcVoice_MayorPanda_A_pleased = MayorPanda_A_pleased_11 | 0.44 s | mono | Mayor Panda (voice A): a happy line / a done task |
+| NpcProfessorAxolotlGreet | NpcProfessorAxolotlGreet.ogg | NpcVoice_ProfessorAxolotl_B_greet = ProfessorAxolotl_B_greet_1 | 0.51 s | mono | Professor Axolotl (voice B): their dialog opens |
+| NpcProfessorAxolotlHmm | NpcProfessorAxolotlHmm.ogg | NpcVoice_ProfessorAxolotl_B_hmm = ProfessorAxolotl_B_hmm_1 | 0.50 s | mono | Professor Axolotl (voice B): a thinking line |
+| NpcProfessorAxolotlPleased | NpcProfessorAxolotlPleased.ogg | NpcVoice_ProfessorAxolotl_B_pleased = ProfessorAxolotl_B_pleased_4 | 0.92 s | mono | Professor Axolotl (voice B): a happy line / a done task |
+| NpcSparkyFoxGreet | NpcSparkyFoxGreet.ogg | NpcVoice_SparkyFox_A_greet = SparkyFox_A_greet_3 | 0.54 s | mono | Sparky Fox (voice A): their dialog opens |
+| NpcSparkyFoxHmm | NpcSparkyFoxHmm.ogg | NpcVoice_SparkyFox_A_hmm = SparkyFox_A_hmm_2 | 0.62 s | mono | Sparky Fox (voice A): a thinking line |
+| NpcSparkyFoxPleased | NpcSparkyFoxPleased.ogg | NpcVoice_SparkyFox_A_pleased = SparkyFox_A_pleased_1 | 1.04 s | mono | Sparky Fox (voice A): a happy line / a done task |
+
+Upload: one `--audio` run creates the 29 wave-2 effects + these 18 voices = 47 (the 12 above are unchanged and skipped).
+Roblox counts audio uploads per account per month (100 with ID verification, which the owner has): 12 used this month,
+this batch adds 47 (59 of 100). If the 29 were already uploaded, the run creates only the 18 voices.
