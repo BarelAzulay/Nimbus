@@ -988,7 +988,8 @@ section("raids", function(opts)
 	target("no boss hit takes more than 80% of a fighter before the enrage", anyBossHit <= 0.8, fmt("max %.2f", anyBossHit))
 
 	-- balance-5: the 8p cells above run 1 (quick) / 4 (full) seeds, too few to see a group that only wins a coin flip
-	-- (lava_golem M5 8p was 44% of 32 seeds after the bug #22 EngagePull 7 ruling, before HpPerPlayer 90 -> 85)
+	-- (lava_golem M5 8p was 44% of 32 seeds after the bug #22 EngagePull 7 ruling, before HpPerPlayer 90 -> 85; wave 6's
+	-- parrying trainer put it back at 90: 84% of 32 seeds, while 85 made the M8 cells finish under 90 s)
 	local groupSeeds = opts.quick and 8 or 16
 	header(fmt("Raids (bug #2: groups win): eight mid (M5) teams against every boss, %d seeds", groupSeeds))
 	local worstGroup, worstBoss = 100, "-"
