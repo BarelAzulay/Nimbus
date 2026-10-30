@@ -6,7 +6,8 @@
 --     Anchored, so nothing can fall or be pushed). Each tick writes the root and every anchored BasePart under it at
 --     its stored rest offset (two CFrame writes for the Part boat); once prop_oasis_boat is uploaded the Blender mesh
 --     is welded to the root (ML_Weld, unanchored, client-side) and simply rides it. Here on this client only;
---   * plays the fountain's water loop when Config.Audio.Ambient.Fountain holds a sound id (empty = silent, today).
+--   * plays the fountain's water loop (SoundFx.Positional "Fountain") when Config.Audio.Ambient.Fountain holds an id
+--     (key FountainLoop: none approved yet = silent, today).
 -- Cheap: ONE Heartbeat connection, updates at UPDATE_HZ, only boats within RANGE studs of the camera move, and a boat
 -- returns to its rest CFrame when it goes out of range, on Low graphics or on Stop(). Streaming-safe: boats are found by
 -- tag as they arrive and forgotten when they leave.
@@ -37,7 +38,7 @@ local K = {
 	BOB_PERIOD = 2.4,
 	YAW = 0.14, -- radians of slow swing
 	ROLL = 0.05, -- radians of rocking
-	SOUND_VOLUME = 0.45, -- x the player's Sfx setting
+	-- (the loop's volume is Config.Audio.Volume.FountainLoop x the Sfx setting)
 	SOUND_RANGE = 70,
 }
 FountainFx.K = K
@@ -137,17 +138,14 @@ local function forget(part)
 	end
 end
 
-local function soundId()
-	local ok, Config = pcall(function()
-		return require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Config"))
+-- (audio wave 2 fix) the water loop = SoundFx.Positional("Fountain"): Config.Audio.Ambient.Fountain (key FountainLoop,
+-- an AudioIds number; none approved yet = silent, no warning), InverseTapered, follows the Sfx setting like every loop
+local function soundFx()
+	local ok, SF = pcall(function()
+		local module = script.Parent.Parent:FindFirstChild("SoundFx")
+		return module and require(module) or nil
 	end)
-	local audio = ok and type(Config) == "table" and Config.Audio
-	local ambient = type(audio) == "table" and audio.Ambient
-	local id = type(ambient) == "table" and ambient.Fountain
-	if type(id) == "string" and id ~= "" then
-		return id
-	end
-	return nil
+	return (ok and type(SF) == "table" and type(SF.Positional) == "function") and SF or nil
 end
 
 -- the water loop on the falls' anchor (only when an id is configured)
@@ -155,32 +153,14 @@ local function attachSound(anchor)
 	if St.Sound or not anchor:IsA("BasePart") then
 		return
 	end
-	local id = soundId()
-	if not id then
+	local SF = soundFx()
+	if not SF then
 		return
 	end
-	local volume = K.SOUND_VOLUME
-	local okSettings, ClientSettings = pcall(function()
-		return require(script.Parent.Parent:WaitForChild("ClientSettings", 5))
-	end)
-	if okSettings and type(ClientSettings) == "table" and type(ClientSettings.Get) == "function" then
-		local v = tonumber(ClientSettings.Get("Sfx"))
-		if v then
-			volume = volume * math.max(0, math.min(1, v / 10))
-		end
+	local ok, s = pcall(SF.Positional, "Fountain", anchor, { Min = 10, Max = K.SOUND_RANGE, Name = "FountainWater" })
+	if ok and typeof(s) == "Instance" then
+		St.Sound = s
 	end
-	local s = Instance.new("Sound")
-	s.Name = "FountainWater"
-	s.SoundId = id
-	s.Looped = true
-	s.Volume = volume
-	s.RollOffMaxDistance = K.SOUND_RANGE
-	s.RollOffMinDistance = 10
-	s.Parent = anchor
-	pcall(function()
-		s:Play()
-	end)
-	St.Sound = s
 end
 
 local function refresh()

@@ -1338,12 +1338,21 @@ Things only you can do, by hand, once. Steps 3 and 4 are optional; everything wo
    Until all six are set the game shows the built-in fallback sky (a pink-lavender haze, a Roblox cloud layer tinted
    pink and 3000 stars: no seams, a little flatter than the painted sky), and Output shows a yellow
    `[LightingService]` line naming the missing face. Left and right look swapped? Swap the `Lf` and `Rt` ids.
-3. **Music and sounds:** the game has its own original audio in `audio/` (12 files, see `audio/README.md`). The
+3. **Music and sounds:** the game has its own original audio in `audio/` (59 files, see `audio/README.md`). The
    upload session puts them on Roblox with `python3 tools/upload_assets.py --audio` (a dry run) and then
    `python3 tools/upload_assets.py --upload --audio`, which writes `src/shared/AudioIds.lua`; `Config.Audio` reads
    it (`Config.Audio.Music.Lobby` / `Battle` / `Dungeon`, `Config.Audio.Sfx` (`Click`, `Confirm`, `Error`, `Reward`,
-   `Whoosh`, `Inhale`, `Shatter`) and `Config.Audio.Ambient` (`CrowdCheer`, `DrumLoop`: the Champion Ring's crowd
-   and drums), slot volumes in `Config.Audio.Volume`). Roblox moderates audio and counts audio uploads per month
+   `Whoosh`, `Inhale`, `Shatter`; audio wave 2: the element hits `HitWater`, `HitFlame`, `HitFrost`, `HitNature`,
+   `HitEarth`, `HitStorm`, `HitCelestial`, `HitShadow`, `Crit`, the KO rotation `KO`, `KO2`, `KO3`, `KO4`, `Dash`,
+   `Parry`, `PortalEnter`, `PortalArrive`, `StationBuild`, `HouseTier`, `DialogOpen`, `DialogBlip`, `DialogNext`,
+   `TutorialStep`, the roulette's `SpinStart`, `SpinTick`, `SpinLand`, `RevealCommon`, `RevealRare`,
+   `RevealLegendary`, and the wordless NPC voices `NpcSparkyFoxGreet`, `NpcSparkyFoxHmm`, `NpcSparkyFoxPleased`,
+   `NpcCaptainPenguinGreet`, `NpcCaptainPenguinHmm`, `NpcCaptainPenguinPleased`, `NpcGrannyOwlGreet`,
+   `NpcGrannyOwlHmm`, `NpcGrannyOwlPleased`, `NpcCoachCorgiGreet`, `NpcCoachCorgiHmm`, `NpcCoachCorgiPleased`,
+   `NpcMayorPandaGreet`, `NpcMayorPandaHmm`, `NpcMayorPandaPleased`, `NpcProfessorAxolotlGreet`,
+   `NpcProfessorAxolotlHmm`, `NpcProfessorAxolotlPleased`) and `Config.Audio.Ambient` (`CrowdCheer`, `DrumLoop`: the
+   Champion Ring's crowd and drums; `Fountain`: the lobby fountain's water, key FountainLoop, no take yet), slot
+   volumes in `Config.Audio.Volume`). Roblox moderates audio and counts audio uploads per month
    (docs/phase6/OWNER_UPLOAD.md section 6b). A sound with no id yet is silent, nothing breaks.
 4. **Icons (optional):** the menu tiles use emoji; a PNG you Bulk Import (step 2) and paste into `Config.Icons` (for
    example `Config.Icons.Shop = "rbxassetid://..."`) replaces one.

@@ -1710,8 +1710,26 @@ local function updateConfetti(dt)
 	Fx.live = live
 end
 
+-- (audio wave 2) client/SoundFx, lazy; false = unavailable
+local soundFxMod = nil
+local function playSfx(name)
+	if soundFxMod == nil then
+		local module = Client:FindFirstChild("SoundFx")
+		local ok, mod = false, nil
+		if module then
+			ok, mod = pcall(require, module)
+		end
+		soundFxMod = (ok and type(mod) == "table" and type(mod.Play) == "function") and mod or false
+	end
+	if soundFxMod then
+		pcall(soundFxMod.Play, name)
+	end
+end
+
 local function celebrate(big)
 	P.excitedUntil = S.clock + (big and 2.6 or 1.4)
+	-- a finished step: TutorialStep; the finale: Reward (its own TutorialChapter take was skipped this wave)
+	playSfx(big and "Reward" or "TutorialStep")
 	if S.shown then
 		safe("burst", burst, big)
 	end
