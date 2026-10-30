@@ -1461,7 +1461,8 @@ src/shared   Config (every number)  TycoonCatalog (every tycoon number)  Theme  
              one module per Blender model)  PetFx (the auras and effects of evolved pets)  AttackFxCatalog (the look
              of every pet attack effect: recipes by element, attack, rarity band, signature)  PetPoses (the
              battle poses pets strike, cast, flinch and celebrate with, on PetBuilder's rig)  SkyCycle (the living
-             sky: the 20 minute phase clock, the looks per phase and raid, the readability floor)
+             sky: the 20 minute phase clock, the looks per phase and raid, the readability floor)  SkyFaces (the
+             painted skybox faces of each sky theme from TextureIds; a theme without all six = the boot sky)
 src/server   Main.server.lua; Services: Lighting, LobbyBuilder, StormAltar, Player (the spawn after PLAY), Data,
              Damage, Token, Hazard, Course (layout + builder), Match, Portal, Gate (the Altar gate's prompt), Spot, Pet,
              Item, Index, Tutorial, Npc, Dev, Tycoon, HomeBuilder, PetCare, Fusion, Gem, ArenaBuilder, Battle, Event,
@@ -1487,7 +1488,8 @@ src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientS
              turns the NC_DungeonSpin rings near the camera; no sound here), MeshFallback (shows the
              block pet on a device where a Blender model failed to load), RingAmbience (the Champion Ring's crowd
              and drums, heard only near the ring), TrainerCheer (wave 6: my avatar's cheer emote on the podium and on
-             Cheer up!)
+             Cheer up!), Sky (the living sky on this client: the cycle and the raid skies as the LightingStack base,
+             the night battle lift, the night lamps, fireflies)
 ```
 
 The **server is authoritative** (health, tokens, Cash, Gems, berries, pets, items, checkpoints, matches, home

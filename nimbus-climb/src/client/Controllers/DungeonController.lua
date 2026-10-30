@@ -2090,10 +2090,15 @@ function R.preset()
 	local preset = { Lighting = mood and mood.Lighting or PRESET.Lighting, ColorCorrection = mood and mood.ColorCorrection or PRESET.ColorCorrection }
 	local atmosphere = game:GetService("Lighting"):FindFirstChildOfClass("Atmosphere")
 	if atmosphere then
-		if not R.BaseDensity then
-			R.BaseDensity = atmosphere.Density
+		-- the living sky moves the base (SkyController): the haze adds to the CURRENT sky's density without this
+		-- preset (a re-push never adds twice), not to a value cached at the first run
+		local LS = R.lightingStack()
+		local base = nil
+		if LS and type(LS.Value) == "function" then
+			local ok, value = pcall(LS.Value, "Atmosphere", "Density", K.LIGHT_ID)
+			base = ok and type(value) == "number" and value or nil
 		end
-		preset.Atmosphere = { Density = math.min(1, (R.BaseDensity or 0.3) + PRESET.AtmosphereAdd) }
+		preset.Atmosphere = { Density = math.min(1, (base or atmosphere.Density or 0.3) + PRESET.AtmosphereAdd) }
 	end
 	return preset
 end
@@ -3439,7 +3444,8 @@ function DungeonController.Init()
 	end)
 end
 
--- TESTS ONLY (smoke_bug5_dungeon client_bug5dgn_mood): the tier mood reader, the preset it never goes below, the retry
-DungeonController._Mood = { Read = R.mood, Preset = PRESET, Tries = K.MOOD_TRIES, Retry = K.MOOD_RETRY }
+-- TESTS ONLY (smoke_bug5_dungeon client_bug5dgn_mood): the tier mood reader, the preset it never goes below, the retry;
+-- Build = the run's LightingStack preset (smoke_sky client_dungeon_density_follows)
+DungeonController._Mood = { Read = R.mood, Preset = PRESET, Tries = K.MOOD_TRIES, Retry = K.MOOD_RETRY, Build = R.preset }
 
 return DungeonController

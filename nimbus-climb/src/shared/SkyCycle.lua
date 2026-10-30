@@ -23,8 +23,12 @@
 --   SkyCycle.Floor(preset) -> preset   the readability floor, in place: Lighting.Brightness >= Floor.Brightness (1.0),
 --       every OutdoorAmbient channel >= Floor.OutdoorAmbientMin (70) / 255, every ColorCorrection TintColor channel
 --       within Floor.TintMax (8) / 255 of white (the colour comes from the world light, never a screen tint).
--- The clock jumps twice a loop at a phase start (Sunset 17 -> Night 18.4 forward, Night 23.6 -> Dawn 7 backward):
--- the applier sets ClockTime at once when it goes backward instead of tweening through the day.
+--   SkyCycle.Integer = { StarCount = true }   the whole-number properties: switched here, never lerped, and set at
+--       once by client/LightingStack (never tweened through fractions)
+-- at.Phase / at.Next are checked against Config.Sky.Cycle.Order (a raid boss id is a Looks key, never a phase).
+-- The clock jumps at a phase start where the ranges do not meet (Sunset 17 -> Night 18.4 forward, Night 23.6 -> Dawn 7
+-- backward) and at a raid sky's mid-blend: client SkyController sets ClockTime at once on a phase / raid change whose
+-- step is more than Config.Sky.ClockJump h (LightingStack.SetBase's instant set), never tweening through the hours.
 
 local Shared = script.Parent
 local Config = require(Shared.Config)
@@ -37,6 +41,7 @@ local floor, max, min = math.floor, math.max, math.min
 local GROUPS = { "Lighting", "Atmosphere", "Clouds", "ColorCorrection", "Sky" }
 -- whole-number properties: set at once, never tweened or lerped
 local INTEGER = { StarCount = true }
+SkyCycle.Integer = INTEGER
 
 local function cfg()
 	return Config.Sky
@@ -190,8 +195,12 @@ function SkyCycle.Preset(at, eventId, eventBlend, facesFor)
 	local sky = cfg()
 	local order, looks = sky.Cycle.Order, sky.Looks
 	at = type(at) == "table" and at or {}
-	local phase = looks[at.Phase] and at.Phase or order[1]
-	local nextPhase = looks[at.Next] and at.Next or phase
+	local isPhase = {}
+	for _, name in ipairs(order) do
+		isPhase[name] = looks[name] ~= nil
+	end
+	local phase = isPhase[at.Phase] and at.Phase or order[1]
+	local nextPhase = isPhase[at.Next] and at.Next or phase
 	local blend = clamp(num(at.Blend, 0), 0, 1)
 	local t = clamp(num(at.T, 0), 0, 1)
 

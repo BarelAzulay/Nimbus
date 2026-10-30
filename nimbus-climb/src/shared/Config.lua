@@ -531,6 +531,51 @@ Config.Sky = {
 		OutdoorAmbientMin = 70, -- every OutdoorAmbient channel (0-255) never below: voxel sides still read
 		TintMax = 8, -- ColorCorrection TintColor channels stay within this of 255
 	},
+	-- client/Controllers/SkyController (the client half; Refresh / Tween above):
+	ClockJump = 0.5, -- hours: a ClockTime step bigger than this at a phase / raid change (Sunset 17 -> Night 18.4, the
+	-- Night -> Dawn wrap, a raid sky's fixed clock at mid-blend) is set at once, never tweened through the hours between
+	-- the battle lift: while I am in an outdoor pet battle (Config.Attr.InBattle starts with Prefix: a duel, raid,
+	-- Champion Ring run or PvP; a dungeon run "D.." stays under the dungeon preset) and the look is one of Looks, the
+	-- LightingStack preset Id lifts my night toward twilight over Seconds and settles back after the fight (me only)
+	Lift = {
+		Id = "SkyLift",
+		Prefix = "B",
+		Seconds = 1.5,
+		Looks = { Night = true, shadow_hydra = true },
+		Preset = {
+			Lighting = {
+				Brightness = 1.6,
+				ExposureCompensation = 0.15,
+				Ambient = skyRgb(116, 108, 148),
+				OutdoorAmbient = skyRgb(150, 142, 192),
+			},
+		},
+	},
+	-- the lobby's lamps (LobbyBuilder pointLight() on these part names, under workspace.<Root>): their PointLight
+	-- Brightness x Night under the Looks, their own value otherwise; written on a look change only
+	Lamps = {
+		Root = "NimbusLobby",
+		Names = { LampGlass = true, LanternLight = true, StallLight = true, DomeGlow = true },
+		Night = 1.6,
+		Looks = { Night = true, shadow_hydra = true },
+	},
+	-- a few soft fireflies round the lobby trees (models named "...Tree" under workspace.<Root>) under the Looks, on
+	-- High graphics only: one local folder, at most Max emitters (one per tree), the default sparkle, pale
+	-- yellow-green, slow; Size / Height / Spread in studs, Lifetime / Speed = NumberRange { min, max }
+	Fireflies = {
+		Root = "NimbusLobby",
+		Folder = "NimbusFireflies",
+		Looks = { Night = true },
+		Max = 6,
+		Rate = 1.2,
+		Color = skyRgb(212, 255, 150),
+		Lifetime = { 4, 7 },
+		Speed = { 0.2, 0.6 },
+		Size = 0.22,
+		Height = 5,
+		Spread = 10,
+	},
+	LowCloudStep = 0.02, -- GraphicsQuality re-pushes its GfxLow cloud cap once the capped density moves this much
 	Looks = {
 		-- the bright pastel morning (preview A) under the Amber Burn sky: a low warm sun, pink air, peach clouds
 		Dawn = {

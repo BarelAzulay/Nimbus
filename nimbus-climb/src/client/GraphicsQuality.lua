@@ -1,7 +1,9 @@
 -- GraphicsQuality: the Graphics setting (ARCHITECTURE_V3.md "Phase 5 build contract" 7.2 / 7.3, 6.4).
 --   "Auto"  Low when Roblox's own graphics slider (UserSettings().GameSettings.SavedQualityLevel) is at 1..3,
 --           High otherwise (its "Automatic" position counts as High: most players never touch the slider)
---   "Low"   LightingStack.Push("GfxLow"): Bloom / SunRays / DepthOfField off, Terrain clouds Density 0.4; every model
+--   "Low"   LightingStack.Push("GfxLow"): Bloom / SunRays / DepthOfField off, Terrain clouds Density capped at 0.4 (the
+--           lower of 0.4 and the living sky's own density, LightingStack.Value without GfxLow, so the clouds still thin
+--           at night on Low; client SkyController calls Recap after each sky refresh); every model
 --           tagged NC_Detail (pure decor: LobbyBuilder / HomeBuilder / DungeonBuilder) is moved to a local holder
 --           folder outside the workspace (client-side only) with its particle emitters / beams / trails disabled, also
 --           decor that streams in later; the Sage Dragon is paused with SkyDragonController.SetHeld(true) (model out
@@ -12,6 +14,7 @@
 --   GraphicsQuality.Init()          reads ClientSettings.Gfx and follows ClientSettings.Changed
 --   GraphicsQuality.Apply(setting)  "Auto" | "Low" | "High" (tests); -> the effective "Low" | "High"
 --   GraphicsQuality.Effective()     -> "Low" | "High"
+--   GraphicsQuality.Recap(seconds)  while Low: re-pushes GfxLow when the cloud cap moved Config.Sky.LowCloudStep or more
 --   GraphicsQuality.Resolve(setting, savedLevel) -> "Low" | "High"  (pure; savedLevel = 0 Automatic, 1..10)
 --
 -- No per-frame work, no polling: CollectionService signals only. Plain Lua 5.1-compatible syntax only.
@@ -22,22 +25,19 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Client = script.Parent
 local ClientSettings = require(Client:WaitForChild("ClientSettings"))
 local LightingStack = require(Client:WaitForChild("LightingStack"))
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 
 local GraphicsQuality = {}
 
 local DETAIL_TAG = "NC_Detail"
 local PRESET_ID = "GfxLow"
-local PRESET = {
-	Bloom = { Enabled = false },
-	SunRays = { Enabled = false },
-	DepthOfField = { Enabled = false },
-	Clouds = { Density = 0.4 },
-}
+local CLOUD_CAP = 0.4 -- Terrain clouds Density on Low never above this (nor above the sky's own)
 local FADE = 0.5 -- seconds of the lighting change
 local EMITTERS = { ParticleEmitter = true, Beam = true, Trail = true }
 
 local St = {
 	Mode = "High", -- the effective mode applied
+	CloudDensity = nil, -- the cloud cap in the GfxLow preset pushed last
 	Holder = nil, -- the local folder the hidden decor waits in
 	Hidden = {}, -- [model] = original parent
 	HiddenList = {}, -- models in the order they were hidden (restored in that order)
@@ -200,11 +200,27 @@ end
 -- Apply
 ----------------------------------------------------------------------
 
+-- a fresh GfxLow preset: the cloud cap is the lower of CLOUD_CAP and what the sky shows under GfxLow right now
+local function lowPreset()
+	local density = CLOUD_CAP
+	local ok, sky = pcall(LightingStack.Value, "Clouds", "Density", PRESET_ID)
+	if ok and type(sky) == "number" and sky == sky then
+		density = math.min(CLOUD_CAP, sky)
+	end
+	St.CloudDensity = density
+	return {
+		Bloom = { Enabled = false },
+		SunRays = { Enabled = false },
+		DepthOfField = { Enabled = false },
+		Clouds = { Density = density },
+	}
+end
+
 function GraphicsQuality.Apply(setting)
 	local mode = GraphicsQuality.Resolve(setting, savedQualityLevel())
 	if mode == "Low" then
 		if St.Mode ~= "Low" then
-			pcall(LightingStack.Push, PRESET_ID, PRESET, FADE)
+			pcall(LightingStack.Push, PRESET_ID, lowPreset(), FADE)
 		end
 		St.Mode = "Low"
 		for _, inst in ipairs(CollectionService:GetTagged(DETAIL_TAG)) do
@@ -245,6 +261,24 @@ end
 
 function GraphicsQuality.Effective()
 	return St.Mode
+end
+
+-- the living sky moved (SkyController, after an applied refresh): while Low, re-push GfxLow when its cloud cap moved
+-- at least Config.Sky.LowCloudStep (a few times a loop: the night thins below 0.4 and back), over `seconds`
+function GraphicsQuality.Recap(seconds)
+	if St.Mode ~= "Low" then
+		return false
+	end
+	local ok, sky = pcall(LightingStack.Value, "Clouds", "Density", PRESET_ID)
+	if not ok or type(sky) ~= "number" or sky ~= sky then
+		return false
+	end
+	local step = (Config.Sky and Config.Sky.LowCloudStep) or 0.02
+	if St.CloudDensity and math.abs(math.min(CLOUD_CAP, sky) - St.CloudDensity) < step then
+		return false
+	end
+	pcall(LightingStack.Push, PRESET_ID, lowPreset(), tonumber(seconds) or FADE)
+	return true
 end
 
 function GraphicsQuality.Init()

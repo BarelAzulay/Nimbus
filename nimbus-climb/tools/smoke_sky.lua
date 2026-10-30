@@ -25,6 +25,25 @@
 --   stack_busy_skips   (client) Busy() is true while a Push / Pop fade runs (the mock tween's own completion), false after;
 --                      a SetBase during the fade stores the base without cancelling or restarting that fade and applies
 --                      nothing; the next SetBase after it applies
+--   stack_setbase_instant (client) SkyCycle.Integer (StarCount) is set at once under a tweened SetBase / Push, never
+--                      tweened; SetBase(preset, seconds, instant) sets the named props (the clock jump) at once while the
+--                      rest tweens; an instant asked while Busy waits and is set at once by the next apply
+--   client_sky_first_instant (client) SkyController: no SkyEpoch = inert (nothing applied); Start() with the clock
+--                      published applies at once (seconds 0): Lighting = the SkyCycle preset of that moment
+--   client_sky_refresh (client) the loop calls SetBase every Refresh (2) s with Tween (2) s; skips while Busy(); one loop
+--                      (Start twice = one; Stop ends it); no RenderStepped / Heartbeat connection; a clock jump of more
+--                      than Config.Sky.ClockJump at a phase change (Sunset 17 -> Night 18.4) is set at once
+--   client_sky_event   (client) SkyEvent + SkyEventAt: the raid blend rises over EventBlend (3) s to 1 (a late joiner
+--                      mid-raid lands on the raid sky at once); cleared -> back to the cycle over 3 s
+--   client_sky_battle_lift (client) InBattle "B12" at Night -> Push("SkyLift", Config.Sky.Lift.Preset, 1.5); "D3" (a
+--                      dungeon run) -> no lift; cleared -> Pop over 1.5 s; Day -> no lift
+--   client_sky_lamps   (client) LampGlass / LanternLight / StallLight / DomeGlow PointLights x Config.Sky.Lamps.Night at
+--                      Night, their own value otherwise; other lights untouched; written on a look change only
+--   client_sky_fireflies (client) Night + High graphics -> one capped emitter group near the lobby trees; Low -> none;
+--                      Day -> none
+--   client_gfx_cloud_cap (client) GfxLow Clouds Density = min(0.4, the cycle's), Recap follows the moving base
+--   client_dungeon_density_follows (client) the dungeon's Atmosphere Density adds to the CURRENT cycle density (no
+--                      boot-time cache, no double add on a re-push)
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -409,6 +428,17 @@ local function serverScenarios()
 		T.check(okA and allFinite(pA), "Preset(nil at) = a finite Dawn preset, no error", tostring(pA))
 		local okB, pB = pcall(SC.Preset, { Phase = "Noon", Next = 7, T = nan, Blend = "x" }, nil, 0, nil)
 		T.check(okB and allFinite(pB), "Preset with a junk at table: no error, finite", tostring(pB))
+		-- a raid boss id is a Looks key but never a phase: at.Phase / at.Next are checked against Cycle.Order
+		local dawn, dawnTheme = SC.Preset({ Phase = "Dawn", Next = "Dawn", T = 0.5, Blend = 0.7 }, nil, 0, nil)
+		local okR, pR, thR = pcall(SC.Preset, { Phase = "storm_titan", Next = "frost_wyrm", T = 0.5, Blend = 0.7 }, nil, 0, nil)
+		local sameR, whyR = false, tostring(pR)
+		if okR then
+			sameR, whyR = same(dawn, pR)
+		end
+		T.check(okR and sameR and thR == dawnTheme and thR == cfg.Themes.Dawn, "a raid id as at.Phase / at.Next = Dawn (validated against Cycle.Order, not Looks)", tostring(whyR) .. " theme " .. tostring(thR))
+		local day = SC.Preset({ Phase = "Day", Next = "Day", T = 0.5, Blend = 0.7 }, nil, 0, nil)
+		local _, pN = pcall(SC.Preset, { Phase = "Day", Next = "lava_golem", T = 0.5, Blend = 0.7 }, nil, 0, nil)
+		T.check(same(day, pN), "a raid id as at.Next = no blend (the phase itself)")
 		local at = SC.At(300, 0, 1, 0)
 		local plain, plainTheme = SC.Preset(at, nil, 0, nil)
 		for _, junk in ipairs({ { "no_such_boss", 1 }, { "", 1 }, { 42, 1 }, { "storm_titan", nan }, { "storm_titan", "half" }, { "storm_titan", -4 } }) do
@@ -616,6 +646,551 @@ local function clientScenarios()
 		T.check(LS.Busy(), "a 1.5 s Pop: Busy() is true")
 		KC.advance(1.7)
 		T.check(Lighting.Brightness == 1.4 and not LS.Busy(), "Pop fade done: Brightness = the moved base 1.4, Busy() false", tostring(Lighting.Brightness))
+	end)
+
+	-- a Lighting child of `class` for the scenario (made when the client has none; `made` = remove it afterwards)
+	local function ensureChild(parent, class)
+		local inst = parent:FindFirstChildOfClass(class)
+		if inst then
+			return inst, false
+		end
+		inst = Instance.new(class)
+		inst.Parent = parent
+		return inst, true
+	end
+
+	S.stack_setbase_instant = withBase("stack_setbase_instant", function(LS)
+		local SCy = require(Mock.GetPath(ROOTS["shared"] .. "/SkyCycle"))
+		T.check(type(SCy.Integer) == "table" and SCy.Integer.StarCount == true, "SkyCycle.Integer names StarCount (whole numbers: set at once)")
+		local sky, made = ensureChild(Lighting, "Sky")
+		local savedStars = LS.Value("Sky", "StarCount", "Dungeon")
+		LS.SetBase({ Sky = { StarCount = 0 } }, 0)
+		T.eq(sky.StarCount, 0, "SetBase 0 s: StarCount 0")
+		-- a tweened SetBase: StarCount jumps at once, Brightness tweens
+		LS.SetBase({ Lighting = { Brightness = 1 }, Sky = { StarCount = 3000 } }, 2)
+		T.check(sky.StarCount == 3000 and Lighting.Brightness == 2, "SetBase 2 s: StarCount 3000 at once (never tweened), Brightness still tweening", tostring(sky.StarCount) .. " / " .. tostring(Lighting.Brightness))
+		KC.advance(0.5)
+		T.check(sky.StarCount == 3000 and sky.StarCount == math.floor(sky.StarCount), "StarCount stays a whole number mid-tween", tostring(sky.StarCount))
+		KC.advance(1.7)
+		-- a Push that names StarCount: at once too
+		LS.Push("Dungeon", { Sky = { StarCount = 1500 } }, 1.5)
+		T.eq(sky.StarCount, 1500, "Push 1.5 s with StarCount: set at once")
+		LS.Pop("Dungeon", 0)
+		KC.advance(0.1)
+		-- the instant set: ClockTime jumps (14.5 -> 18.4) while Brightness tweens
+		LS.SetBase({ Lighting = { Brightness = 1.5, ClockTime = 18.4 } }, 2, { Lighting = { ClockTime = true } })
+		T.check(math.abs(Lighting.ClockTime - 18.4) < 1e-9 and math.abs(Lighting.Brightness - 1) < 1e-9, "SetBase with instant ClockTime: the clock jumps at once, Brightness tweens", tostring(Lighting.ClockTime) .. " / " .. tostring(Lighting.Brightness))
+		KC.advance(2.2)
+		-- without the instant set the clock tweens as before
+		LS.SetBase({ Lighting = { ClockTime = 19 } }, 2)
+		T.check(Lighting.ClockTime < 19 - 1e-6, "SetBase without instant: ClockTime tweens", tostring(Lighting.ClockTime))
+		KC.advance(2.2)
+		-- asked while Busy: stored, then set at once by the next apply (here the Pop fade)
+		LS.Push("Dungeon", { Lighting = { Brightness = 0.5 } }, 1.5)
+		LS.SetBase({ Lighting = { ClockTime = 7 } }, 2, { Lighting = { ClockTime = true } })
+		T.check(math.abs(Lighting.ClockTime - 19) < 1e-9, "an instant SetBase while Busy waits (ClockTime still 19)", tostring(Lighting.ClockTime))
+		KC.advance(1.7)
+		LS.Pop("Dungeon", 1.5)
+		T.check(math.abs(Lighting.ClockTime - 7) < 1e-9, "the next apply (a 1.5 s Pop) sets the waiting clock jump at once", tostring(Lighting.ClockTime))
+		KC.advance(1.7)
+		LS.SetBase({ Lighting = { ClockTime = 14.5 }, Sky = { StarCount = savedStars } }, 0)
+		if made then
+			sky:Destroy()
+		end
+	end)
+
+	----------------------------------------------------------------------------------------------------
+	-- Task 5: SkyController (the cycle and the raid skies on the client, the battle lift, lamps, fireflies)
+	----------------------------------------------------------------------------------------------------
+	local Workspace = game:GetService("Workspace")
+	local Players = game:GetService("Players")
+	local LocalPlayer = Players.LocalPlayer
+	local Cfg = require(Mock.GetPath(ROOTS["shared"] .. "/Config"))
+	local A = Cfg.Sky.Attr
+
+	local function skyModules()
+		local LS = stackModule()
+		local inst = Mock.GetPath(ROOTS["client"] .. "/Controllers/SkyController")
+		local ok, SC = false, nil
+		if inst then
+			ok, SC = pcall(require, inst)
+		end
+		if not T.check(LS ~= nil and ok and type(SC) == "table", "client/Controllers/SkyController loads", tostring(SC)) then
+			return nil
+		end
+		for _, f in ipairs({ "Init", "Start", "Stop", "Refresh", "State" }) do
+			if not T.check(type(SC[f]) == "function", "SkyController." .. f .. " is a function") then
+				return nil
+			end
+		end
+		local SCy = require(Mock.GetPath(ROOTS["shared"] .. "/SkyCycle"))
+		return SC, LS, SCy
+	end
+
+	-- publish the clock as SkyService does: the loop at `pos` s now (speed 1), optionally a raid event
+	local function publish(pos, event, eventAt)
+		local now = Workspace:GetServerTimeNow()
+		Workspace:SetAttribute(A.Epoch, now)
+		Workspace:SetAttribute(A.Speed, 1)
+		Workspace:SetAttribute(A.Offset, pos)
+		Workspace:SetAttribute(A.Event, event or "")
+		Workspace:SetAttribute(A.EventAt, eventAt or (now - 100))
+		return now
+	end
+
+	local function unpublish()
+		for _, key in pairs(A) do
+			Workspace:SetAttribute(key, nil)
+		end
+	end
+
+	-- the cycle preset SkyController should show now
+	local function expected(SCy, event, eventBlend)
+		local now = Workspace:GetServerTimeNow()
+		local at = SCy.At(now, Workspace:GetAttribute(A.Epoch), Workspace:GetAttribute(A.Speed), Workspace:GetAttribute(A.Offset))
+		return SCy.Preset(at, event, eventBlend or 0, nil), at
+	end
+
+	local function near(a, b, eps)
+		eps = eps or 1e-6
+		if typeof(a) == "Color3" and typeof(b) == "Color3" then
+			return math.abs(a.R - b.R) < eps and math.abs(a.G - b.G) < eps and math.abs(a.B - b.B) < eps
+		end
+		return type(a) == "number" and type(b) == "number" and math.abs(a - b) < eps
+	end
+
+	-- each SkyController scenario: no Dungeon / SkyLift left, the controller stopped and the clock unpublished after
+	local function withSky(name, fn)
+		return guarded(name, function()
+			local SC, LS, SCy = skyModules()
+			if not SC then
+				return
+			end
+			local before = LS.Ids()
+			local savedBattle = LocalPlayer:GetAttribute(Cfg.Attr.InBattle)
+			local savedBase = { Brightness = LS.Value("Lighting", "Brightness", "Dungeon"), ClockTime = LS.Value("Lighting", "ClockTime", "Dungeon") }
+			local ok, err = pcall(fn, SC, LS, SCy)
+			T.check(ok, name .. " ran without errors", tostring(err))
+			LocalPlayer:SetAttribute(Cfg.Attr.InBattle, savedBattle)
+			unpublish()
+			pcall(SC.Refresh)
+			KC.advance(2.2)
+			LS.Pop("Dungeon", 0)
+			LS.Pop(Cfg.Sky.Lift.Id, 0)
+			LS.SetBase({ Lighting = savedBase }, 0)
+			T.eq(#LS.Ids(), #before, name .. ": the stack is as it was")
+			T.check(SC.State().Lift ~= true and (SC.State().Fireflies or 0) == 0, name .. ": inert again once the clock is gone (no lift, no fireflies)")
+		end)
+	end
+
+	S.client_sky_first_instant = withSky("client_sky_first_instant", function(SC, LS, SCy)
+		SC.Stop()
+		unpublish()
+		LS.SetBase({ Lighting = { Brightness = 2.5, ClockTime = 14.5 } }, 0)
+		SC.Start()
+		T.check(Lighting.Brightness == 2.5 and SC.State().Phase == nil, "no SkyEpoch: SkyController is inert (the boot sky stays)", tostring(Lighting.Brightness))
+		SC.Stop()
+		publish(1100) -- mid Night
+		SC.Start()
+		local want = expected(SCy)
+		local st = SC.State()
+		T.check(st.Phase == "Night" and st.Look == "Night", "Start with the clock at 1100 s: Night", tostring(st.Phase))
+		local bad
+		for _, prop in ipairs({ "Brightness", "OutdoorAmbient", "Ambient", "ColorShift_Top", "ExposureCompensation" }) do
+			if not near(Lighting[prop], want.Lighting[prop], 1e-3) then
+				bad = bad or (prop .. " " .. tostring(Lighting[prop]) .. " vs " .. tostring(want.Lighting[prop]))
+			end
+		end
+		T.check(bad == nil and near(Lighting.ClockTime, want.Lighting.ClockTime, 1e-3), "the first apply is instant (seconds 0): Lighting = the Night preset at once", bad or tostring(Lighting.ClockTime))
+		local atm = Lighting:FindFirstChildOfClass("Atmosphere")
+		if atm then
+			T.check(near(atm.Density, want.Atmosphere.Density, 1e-3), "Atmosphere at once too", tostring(atm.Density))
+		end
+	end)
+
+	S.client_sky_refresh = withSky("client_sky_refresh", function(SC, LS, SCy)
+		SC.Stop()
+		publish(300)
+		local function rsConns()
+			local n = 0
+			for sigName, count in pairs(Mock.ConnectionReport()) do
+				if sigName:find("RenderStepped", 1, true) or sigName:find("Heartbeat", 1, true) or sigName:find("Stepped", 1, true) then
+					n = n + count
+				end
+			end
+			return n
+		end
+		local conns0 = rsConns()
+		SC.Start()
+		SC.Start()
+		T.eq(SC.State().Loops, 1, "Start twice: one SkyController loop")
+		T.eq(rsConns(), conns0, "no RenderStepped / Heartbeat / Stepped connection (a 2 s loop only)")
+		local calls = {}
+		local real = LS.SetBase
+		LS.SetBase = function(preset, seconds, instant)
+			calls[#calls + 1] = { seconds = seconds, instant = instant, preset = preset }
+			return real(preset, seconds, instant)
+		end
+		local ok, err = pcall(function()
+			KC.advance(4.1)
+			local tweened = 0
+			for _, c in ipairs(calls) do
+				if c.seconds == Cfg.Sky.Cycle.Tween then
+					tweened = tweened + 1
+				end
+			end
+			T.check(#calls >= 2 and tweened == #calls, fmt("4 s of the loop: SetBase every %d s with a %d s tween", Cfg.Sky.Cycle.Refresh, Cfg.Sky.Cycle.Tween), fmt("%d calls, %d tweened", #calls, tweened))
+			-- a Dungeon fade running: the refresh skips (no SetBase, the fade never restarts)
+			LS.Push("Dungeon", { Lighting = { Brightness = 0.6 } }, 5)
+			local n0, skipped0 = #calls, SC.State().Skipped
+			KC.advance(4.1)
+			T.check(#calls == n0 and SC.State().Skipped > skipped0 and LS.Busy(), "while Busy() the refresh skips (no SetBase)", fmt("%d new calls", #calls - n0))
+			KC.advance(1.2)
+			LS.Pop("Dungeon", 0)
+			KC.advance(2.1)
+			T.check(#calls > n0, "after the fade the refresh applies again")
+			-- the Sunset -> Night clock jump (17 -> 18.4) is set at once, at the phase change
+			publish(1019)
+			calls = {}
+			SC.Refresh()
+			KC.advance(1.1)
+			SC.Refresh()
+			local jumped
+			for _, c in ipairs(calls) do
+				if c.instant and c.instant.Lighting and c.instant.Lighting.ClockTime then
+					jumped = c
+				end
+			end
+			T.check(jumped ~= nil and SC.State().Phase == "Night" and near(Lighting.ClockTime, Cfg.Sky.Looks.Night.Clock[1], 0.02), "Sunset -> Night: the clock jump (17 -> 18.4) is set at once, not tweened through the dusk", tostring(Lighting.ClockTime))
+			local inPhase = #calls
+			KC.advance(2.1)
+			local again = false
+			for i = inPhase + 1, #calls do
+				if calls[i].instant then
+					again = true
+				end
+			end
+			T.check(not again, "inside a phase the clock tweens (no instant set)")
+		end)
+		LS.SetBase = real
+		T.check(ok, "client_sky_refresh body", tostring(err))
+		SC.Stop()
+		KC.advance(2.2)
+		T.eq(SC.State().Loops, 0, "Stop ends the loop")
+		SC.Start()
+	end)
+
+	S.client_sky_event = withSky("client_sky_event", function(SC, LS, SCy)
+		local now = publish(300)
+		SC.Refresh()
+		T.check(SC.State().Event == nil and SC.State().EventBlend == 0, "no SkyEvent: the plain cycle")
+		Workspace:SetAttribute(A.Event, "storm_titan")
+		Workspace:SetAttribute(A.EventAt, Workspace:GetServerTimeNow())
+		SC.Refresh()
+		local st = SC.State()
+		T.check(st.Event == "storm_titan" and st.EventBlend < 0.1, "raid start: the blend begins at 0", tostring(st.EventBlend))
+		KC.advance(1.5)
+		SC.Refresh()
+		T.check(near(SC.State().EventBlend, 0.5, 0.05), "1.5 s in: blend ~0.5", tostring(SC.State().EventBlend))
+		KC.advance(1.6)
+		SC.Refresh()
+		st = SC.State()
+		T.check(st.EventBlend == 1 and st.Look == "storm_titan" and st.Theme == Cfg.Sky.RaidThemes.storm_titan, "after EventBlend (3) s: the full raid sky (theme storm_teal)", tostring(st.EventBlend) .. " " .. tostring(st.Theme))
+		T.check(near(LS.Value("Lighting", "Brightness"), Cfg.Sky.Looks.storm_titan.Lighting.Brightness, 1e-3), "the base is the raid look", tostring(LS.Value("Lighting", "Brightness")))
+		-- (the mock's tweens land only when they complete: stop the loop so the last 2 s step is not restarted)
+		SC.Stop()
+		KC.advance(2.2)
+		T.check(near(Lighting.Brightness, Cfg.Sky.Looks.storm_titan.Lighting.Brightness, 1e-3), "Lighting lands on the raid look", tostring(Lighting.Brightness))
+		-- a late joiner mid-raid: a fresh Start lands on the raid sky at once
+		LS.SetBase({ Lighting = { Brightness = 2.5 } }, 0)
+		SC.Start()
+		T.check(SC.State().EventBlend == 1 and near(Lighting.Brightness, Cfg.Sky.Looks.storm_titan.Lighting.Brightness, 1e-3), "a late joiner mid-raid: the raid sky at once", tostring(Lighting.Brightness))
+		-- the raid ends: back to the cycle over 3 s
+		Workspace:SetAttribute(A.Event, "")
+		Workspace:SetAttribute(A.EventAt, Workspace:GetServerTimeNow())
+		SC.Refresh()
+		T.check(SC.State().Event == "storm_titan" and SC.State().EventBlend > 0.9, "raid end: the blend starts back from 1")
+		KC.advance(1.5)
+		SC.Refresh()
+		T.check(near(SC.State().EventBlend, 0.5, 0.05), "1.5 s after the end: ~0.5", tostring(SC.State().EventBlend))
+		KC.advance(1.6)
+		SC.Refresh()
+		st = SC.State()
+		T.check(st.Event == nil and st.EventBlend == 0 and st.Look == "Day", "3 s after the end: the cycle again (Day)", tostring(st.Event) .. " " .. tostring(st.Look))
+		-- junk event ids never show a raid sky
+		Workspace:SetAttribute(A.Event, "no_such_boss")
+		Workspace:SetAttribute(A.EventAt, Workspace:GetServerTimeNow() - 10)
+		SC.Refresh()
+		T.check(SC.State().Event == nil, "an unknown SkyEvent id = no raid sky")
+		local _ = now
+	end)
+
+	S.client_sky_battle_lift = withSky("client_sky_battle_lift", function(SC, LS, SCy)
+		local L = Cfg.Sky.Lift
+		local function hasLift()
+			for _, id in ipairs(LS.Ids()) do
+				if id == L.Id then
+					return true
+				end
+			end
+			return false
+		end
+		publish(1100) -- Night
+		SC.Refresh()
+		KC.advance(2.1)
+		T.check(not hasLift() and SC.State().Lift ~= true, "Night, no battle: no lift")
+		LocalPlayer:SetAttribute(Cfg.Attr.InBattle, "B12")
+		KC.advance(0.05)
+		T.check(hasLift() and SC.State().Lift == true and LS.Busy(), "InBattle B12 at Night: Push SkyLift (fading in)")
+		KC.advance(L.Seconds + 0.1)
+		T.check(near(Lighting.Brightness, L.Preset.Lighting.Brightness, 1e-6) and near(Lighting.OutdoorAmbient, L.Preset.Lighting.OutdoorAmbient, 1e-6), fmt("after %.1f s: the twilight lift (Brightness %.2f)", L.Seconds, L.Preset.Lighting.Brightness), tostring(Lighting.Brightness))
+		LocalPlayer:SetAttribute(Cfg.Attr.InBattle, nil)
+		KC.advance(0.05)
+		T.check(not hasLift() and SC.State().Lift ~= true and LS.Busy(), "battle over: Pop SkyLift (fading out)")
+		KC.advance(L.Seconds + 0.1)
+		local want = expected(SCy)
+		T.check(near(Lighting.Brightness, want.Lighting.Brightness, 0.05), "after the fade: the night again", tostring(Lighting.Brightness))
+		-- a dungeon run ("D...") stays under the dungeon preset: no lift
+		LocalPlayer:SetAttribute(Cfg.Attr.InBattle, "D3")
+		KC.advance(0.05)
+		SC.Refresh()
+		T.check(not hasLift(), "InBattle D3 (a dungeon run): no lift")
+		LocalPlayer:SetAttribute(Cfg.Attr.InBattle, nil)
+		KC.advance(0.05)
+		-- the day needs no lift
+		publish(300)
+		LocalPlayer:SetAttribute(Cfg.Attr.InBattle, "B13")
+		KC.advance(0.05)
+		SC.Refresh()
+		T.check(not hasLift(), "InBattle at Day: no lift")
+		-- night falls during a battle: the lift comes; day breaks: it goes
+		publish(1100)
+		SC.Refresh()
+		T.check(hasLift(), "Night falls mid-battle: the lift comes")
+		KC.advance(L.Seconds + 0.1)
+		publish(100)
+		SC.Refresh()
+		T.check(not hasLift(), "Dawn mid-battle: the lift goes")
+		LocalPlayer:SetAttribute(Cfg.Attr.InBattle, nil)
+		KC.advance(L.Seconds + 0.1)
+	end)
+
+	-- a test lobby (NimbusLobby: made when the client has none, and removed again)
+	local function testLobby()
+		local lobby = Workspace:FindFirstChild("NimbusLobby")
+		local made = false
+		if not lobby then
+			lobby = Instance.new("Folder")
+			lobby.Name = "NimbusLobby"
+			lobby.Parent = Workspace
+			made = true
+		end
+		local box = Instance.new("Model")
+		box.Name = "SkyTestProps"
+		box.Parent = lobby
+		return box, function()
+			box:Destroy()
+			if made then
+				lobby:Destroy()
+			end
+		end
+	end
+
+	local function lampPart(parent, name, brightness, pos)
+		local p = Instance.new("Part")
+		p.Name = name
+		p.Anchored = true
+		p.Position = pos or Vector3.new(0, 10, 0)
+		p.Parent = parent
+		local l = Instance.new("PointLight")
+		l.Brightness = brightness
+		l.Parent = p
+		return l
+	end
+
+	S.client_sky_lamps = withSky("client_sky_lamps", function(SC, LS, SCy)
+		local box, cleanup = testLobby()
+		local k = Cfg.Sky.Lamps.Night
+		local glass = lampPart(box, "LampGlass", 1.0)
+		local lantern = lampPart(box, "LanternLight", 0.8)
+		local stall = lampPart(box, "StallLight", 0.8)
+		local dome = lampPart(box, "DomeGlow", 0.9)
+		local other = lampPart(box, "Window", 1.0)
+		local ok, err = pcall(function()
+			publish(300)
+			SC.Refresh()
+			T.check(glass.Brightness == 1.0 and dome.Brightness == 0.9, "Day: lamps at their own value")
+			publish(1100)
+			SC.Refresh()
+			T.check(near(glass.Brightness, 1.0 * k) and near(lantern.Brightness, 0.8 * k) and near(stall.Brightness, 0.8 * k) and near(dome.Brightness, 0.9 * k), fmt("Night: LampGlass / LanternLight / StallLight / DomeGlow x%.1f", k), fmt("%.3f %.3f %.3f %.3f", glass.Brightness, lantern.Brightness, stall.Brightness, dome.Brightness))
+			T.eq(other.Brightness, 1.0, "Night: another light is untouched")
+			T.check((SC.State().Lamps or 0) >= 4, "State().Lamps counts the raised lamps", tostring(SC.State().Lamps))
+			-- written on a look change only: a second Night refresh writes nothing
+			glass.Brightness = 3
+			SC.Refresh()
+			KC.advance(2.1)
+			T.eq(glass.Brightness, 3, "the same look again: no lamp write (phase changes only)")
+			glass.Brightness = 1.0 * k
+			publish(100) -- Dawn
+			SC.Refresh()
+			T.check(near(glass.Brightness, 1.0) and near(lantern.Brightness, 0.8) and near(dome.Brightness, 0.9), "Dawn: every lamp back to its own value", fmt("%.3f %.3f", glass.Brightness, dome.Brightness))
+			T.eq(SC.State().Lamps or 0, 0, "Dawn: no lamp raised")
+		end)
+		cleanup()
+		T.check(ok, "client_sky_lamps body", tostring(err))
+	end)
+
+	S.client_sky_fireflies = withSky("client_sky_fireflies", function(SC, LS, SCy)
+		local GQ = require(Mock.GetPath(ROOTS["client"] .. "/GraphicsQuality"))
+		local mode0 = GQ.Effective()
+		local box, cleanup = testLobby()
+		local F = Cfg.Sky.Fireflies
+		for i = 1, F.Max + 3 do
+			local tree = Instance.new("Model")
+			tree.Name = (i % 2 == 0) and "RoundTree" or "BlossomTree"
+			local trunk = Instance.new("Part")
+			trunk.Anchored = true
+			trunk.Position = Vector3.new(i * 30, 5, 0)
+			trunk.Parent = tree
+			tree.PrimaryPart = trunk
+			tree.Parent = box
+		end
+		local function emitters()
+			local folder = Workspace:FindFirstChild(F.Folder)
+			local on, total = 0, 0
+			if folder then
+				for _, d in ipairs(folder:GetDescendants()) do
+					if d:IsA("ParticleEmitter") then
+						total = total + 1
+						if d.Enabled then
+							on = on + 1
+						end
+					end
+				end
+			end
+			return on, total, folder
+		end
+		local ok, err = pcall(function()
+			GQ.Apply("High")
+			KC.advance(0.6)
+			publish(300)
+			SC.Refresh()
+			T.eq((emitters()), 0, "Day: no fireflies")
+			publish(1100)
+			SC.Refresh()
+			local on, total, folder = emitters()
+			T.check(on > 0 and on <= F.Max and total == on, fmt("Night + High: a capped firefly group (%d emitters, max %d)", on, F.Max), fmt("%d on / %d", on, total))
+			T.eq(SC.State().Fireflies, on, "State().Fireflies = the emitters on")
+			local capped = true
+			if folder then
+				for _, d in ipairs(folder:GetDescendants()) do
+					if d:IsA("ParticleEmitter") and (d.Rate > F.Rate + 1e-9 or d.LightEmission < 0.5) then
+						capped = false
+					end
+					if d:IsA("BasePart") and (d.CanCollide or d.CanTouch or d.CanQuery or d.Transparency < 1) then
+						capped = false
+					end
+				end
+			end
+			T.check(capped, "fireflies: low rate, glowing, on invisible non-colliding hosts")
+			SC.Refresh()
+			T.eq(select(2, emitters()), on, "a second Night refresh makes no more")
+			GQ.Apply("Low")
+			KC.advance(0.6)
+			SC.Refresh()
+			T.check(emitters() == 0 and (SC.State().Fireflies or 0) == 0, "Low graphics: no fireflies")
+			GQ.Apply("High")
+			KC.advance(0.6)
+			SC.Refresh()
+			T.check(emitters() > 0, "High again at Night: the fireflies come back")
+			publish(300)
+			SC.Refresh()
+			T.check(emitters() == 0 and Workspace:FindFirstChild(F.Folder) == nil, "Day: the fireflies are gone")
+		end)
+		GQ.Apply(mode0)
+		KC.advance(0.6)
+		cleanup()
+		T.check(ok, "client_sky_fireflies body", tostring(err))
+	end)
+
+	S.client_gfx_cloud_cap = withSky("client_gfx_cloud_cap", function(SC, LS, SCy)
+		local GQ = require(Mock.GetPath(ROOTS["client"] .. "/GraphicsQuality"))
+		T.check(type(GQ.Recap) == "function", "GraphicsQuality.Recap is a function")
+		local mode0 = GQ.Effective()
+		local terrain = Workspace:FindFirstChildOfClass("Terrain")
+		if not T.check(terrain ~= nil, "the client has a Terrain") then
+			return
+		end
+		local clouds, made = ensureChild(terrain, "Clouds")
+		local saved = LS.Value("Clouds", "Density", "GfxLow")
+		local ok, err = pcall(function()
+			GQ.Apply("High")
+			KC.advance(0.6)
+			LS.SetBase({ Clouds = { Density = 0.3 } }, 0)
+			GQ.Apply("Low")
+			KC.advance(0.6)
+			T.check(near(clouds.Density, 0.3), "Low under a thin night sky (0.3): the cap keeps the cycle's 0.3", tostring(clouds.Density))
+			GQ.Apply("High")
+			KC.advance(0.6)
+			LS.SetBase({ Clouds = { Density = 0.65 } }, 0)
+			GQ.Apply("Low")
+			KC.advance(0.6)
+			T.check(near(clouds.Density, 0.4), "Low under a full sunset sky (0.65): capped at 0.4", tostring(clouds.Density))
+			-- the cycle thins while Low is on: Recap re-pushes with the new cap
+			LS.SetBase({ Clouds = { Density = 0.35 } }, 0)
+			T.check(near(clouds.Density, 0.4), "the base moved, GfxLow still holds its old 0.4", tostring(clouds.Density))
+			GQ.Recap(0)
+			T.check(near(clouds.Density, 0.35), "Recap: GfxLow follows the cycle down to 0.35", tostring(clouds.Density))
+			LS.SetBase({ Clouds = { Density = 0.6 } }, 0)
+			GQ.Recap(0)
+			T.check(near(clouds.Density, 0.4), "Recap: back up to the 0.4 cap", tostring(clouds.Density))
+			GQ.Apply("High")
+			KC.advance(0.6)
+			T.check(near(clouds.Density, 0.6), "High: the cycle's own 0.6", tostring(clouds.Density))
+			-- SkyController calls Recap after each applied refresh while Low
+			GQ.Apply("Low")
+			KC.advance(0.6)
+			publish(1100)
+			SC.Refresh()
+			KC.advance(2.1)
+			local want = expected(SCy)
+			T.check(near(clouds.Density, math.min(0.4, want.Clouds.Density), 1e-3), "Low at Night through SkyController: min(0.4, the night's density)", tostring(clouds.Density) .. " vs " .. tostring(want.Clouds.Density))
+		end)
+		GQ.Apply(mode0)
+		KC.advance(0.6)
+		LS.SetBase({ Clouds = { Density = saved } }, 0)
+		if made then
+			clouds:Destroy()
+		end
+		T.check(ok, "client_gfx_cloud_cap body", tostring(err))
+	end)
+
+	S.client_dungeon_density_follows = withSky("client_dungeon_density_follows", function(SC, LS, SCy)
+		local DC = require(Mock.GetPath(ROOTS["client"] .. "/Controllers/DungeonController"))
+		local M = DC._Mood
+		if not T.check(type(M) == "table" and type(M.Build) == "function", "DungeonController._Mood.Build (the run's preset)") then
+			return
+		end
+		local atm, made = ensureChild(Lighting, "Atmosphere")
+		local saved = LS.Value("Atmosphere", "Density", "Dungeon")
+		local add = M.Preset.AtmosphereAdd
+		local ok, err = pcall(function()
+			LS.SetBase({ Atmosphere = { Density = 0.3 } }, 0)
+			local p1 = M.Build()
+			T.check(p1.Atmosphere and near(p1.Atmosphere.Density, 0.3 + add), fmt("the dungeon adds %.2f to the cycle's 0.3", add), tostring(p1.Atmosphere and p1.Atmosphere.Density))
+			LS.SetBase({ Atmosphere = { Density = 0.2 } }, 0)
+			local p2 = M.Build()
+			T.check(near(p2.Atmosphere.Density, 0.2 + add), "the cycle moved to 0.2: the dungeon follows it (no boot-time cache)", tostring(p2.Atmosphere.Density))
+			LS.Push("Dungeon", p2, 0)
+			local p3 = M.Build()
+			T.check(near(p3.Atmosphere.Density, 0.2 + add), "a re-push while the dungeon is on never adds twice", tostring(p3.Atmosphere.Density))
+			LS.Pop("Dungeon", 0)
+		end)
+		LS.SetBase({ Atmosphere = { Density = saved } }, 0)
+		if made then
+			atm:Destroy()
+		end
+		T.check(ok, "client_dungeon_density_follows body", tostring(err))
 	end)
 
 	return S
