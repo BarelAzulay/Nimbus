@@ -546,7 +546,7 @@ local function landscapeChecks(BC, label, pets)
 	T.check(column ~= nil and shown(column) and column.AbsoluteSize.X > 0, label .. ": ...while the column frame keeps its place (the HUD measures it)")
 	-- no card on the top card, the commands, the vitals, the hotbar or any other button
 	local others = {}
-	for _, p in ipairs({ { "NimbusBattle", "Root.TopCard" }, { "NimbusBattle", "Root.Commands.AttackButton" }, { "NimbusBattle", "Root.Commands.SpecialButton" }, { "NimbusBattle", "Root.Commands.ElementButton" }, { "NimbusBattle", "Root.Commands.DashButton" }, { "NimbusHud", "BottomLeft.Vitals" }, { "NimbusHotbar", "Hotbar" }, { "NimbusHud", "TopRight.Currency" } }) do
+	for _, p in ipairs({ { "NimbusBattle", "Root.TopCard" }, { "NimbusBattle", "Root.Commands.AttackButton" }, { "NimbusBattle", "Root.Commands.SpecialButton" }, { "NimbusBattle", "Root.Commands.ElementButton" }, { "NimbusBattle", "Root.Commands.DashButton" }, { "NimbusHud", "BottomLeft.Vitals" }, { "NimbusHud", "TopRight.Currency" } }) do
 		local r = namedRect(p[1], p[2])
 		if r then
 			others[#others + 1] = { p[1] .. "." .. p[2], r }
@@ -662,7 +662,7 @@ local function ringLandscape(BC, label)
 		local cx, cy = 844 / 2, 390 / 2
 		T.check(not (nr.x0 <= cx and cx <= nr.x1 and nr.y0 <= cy and cy <= nr.y1) and nr.x1 <= 845 and nr.y0 >= 0, label .. ": the side card stays off the screen centre and on the screen", rectText(nr))
 		local others = {}
-		for _, p in ipairs({ { "NimbusBattle", "Root.TopCard" }, { "NimbusBattle", "Root.Team.Fighter" }, { "NimbusBattle", "Root.Team.Helpers" }, { "NimbusHud", "BottomLeft.Vitals" }, { "NimbusHotbar", "Hotbar" }, { "NimbusHud", "TopRight.Currency" } }) do
+		for _, p in ipairs({ { "NimbusBattle", "Root.TopCard" }, { "NimbusBattle", "Root.Team.Fighter" }, { "NimbusBattle", "Root.Team.Helpers" }, { "NimbusHud", "BottomLeft.Vitals" }, { "NimbusHud", "TopRight.Currency" } }) do
 			local r = namedRect(p[1], p[2])
 			if r then
 				others[#others + 1] = { p[1] .. "." .. p[2], r }
@@ -872,7 +872,7 @@ S.client_p3fixcli_tutorial = guarded("client_p3fixcli_tutorial", function()
 			elseif r then
 				checked = checked + 1
 				local hits = {}
-				for _, p in ipairs({ { "NimbusHud", "BottomLeft.Vitals" }, { "NimbusHotbar", "Hotbar" } }) do
+				for _, p in ipairs({ { "NimbusHud", "BottomLeft.Vitals" } }) do
 					local o = namedRect(p[1], p[2])
 					if o and overlap(r, o) then
 						hits[#hits + 1] = p[2] .. " " .. rectText(o)

@@ -2288,7 +2288,9 @@ local function otherServer(name, source)
 	local mod2
 	if source then
 		mod2 = Instance.new("ModuleScript")
-		mod2.Source = source
+		-- HUD cleanup: a frozen release read Config.Items.MaxCarry (5), which this build's Config no longer has (that
+		-- server shipped its own Config): the copy loaded here reads the old value instead (the file stays untouched)
+		mod2.Source = (string.gsub(source, "Config%.Items%.MaxCarry", "5"))
 	else
 		mod2 = inst:Clone()
 	end

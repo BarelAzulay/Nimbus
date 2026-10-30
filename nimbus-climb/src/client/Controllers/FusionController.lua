@@ -693,7 +693,7 @@ local function viewportHeight()
 end
 
 -- Phase 5 (6.6): NeonKit.Dock keeps the window docked right / a bottom sheet; returns its design size and "tall"
--- (one column); the hotbar re-centres left of the docked window
+-- (one column)
 local function fitWindow()
 	if not U.Dock then
 		U.Kit = U.Kit or require(script.Parent.Parent:WaitForChild("UI"):WaitForChild("NeonKit"))
@@ -705,27 +705,13 @@ local function fitWindow()
 	return w, h, w < K.TALL_W, r
 end
 
--- HotbarController.SetAvoidRight(x | nil) (6.6)
-local function avoidRight(x)
-	local hb = script.Parent:FindFirstChild("HotbarController")
-	local ok, mod = pcall(function()
-		return hb and require(hb)
-	end)
-	if ok and type(mod) == "table" and type(mod.SetAvoidRight) == "function" then
-		pcall(mod.SetAvoidRight, x)
-	end
-end
-
 local layoutPreview -- defined below
 
 local function relayout()
 	if not S.Built then
 		return
 	end
-	local w, h, tall, rect = fitWindow()
-	if S.Open then
-		avoidRight(rect.mode == "Side" and rect.x or nil)
-	end
+	local w, h, tall = fitWindow()
 	S.Tall = tall
 	local short = h < K.SHORT
 	S.Short = short
@@ -2187,12 +2173,6 @@ local function buildWindow()
 	return true
 end
 
--- (Phase 5: no backdrop; the hotbar stops avoiding the window when it closes)
-local function setBackdrop(on)
-	if not on then
-		avoidRight(nil)
-	end
-end
 -- the menu windows and the Pet Index share the screen: one window at a time
 local function closeOthers()
 	local controllers = script.Parent
@@ -2271,7 +2251,6 @@ function FusionController.Open(tab, args)
 	if not wasOpen then
 		U.Pop.Scale = 0.86
 		tween(U.Pop, 0.22, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-		setBackdrop(true)
 	end
 	safe("refresh", refresh)
 	if not wasOpen then
@@ -2295,7 +2274,6 @@ function FusionController.Close()
 			U.Holder.Visible = false
 		end
 	end)
-	setBackdrop(false)
 	FusionController.Closed:Fire()
 end
 

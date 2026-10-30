@@ -5,7 +5,7 @@
 --                         Settings are TopBarController's pill; no Items / Team tile), 56 px
 --                         tiles at 1080p; the arrow tab (MenuColumn.Toggle) sits beside the last tile; the currencies are
 --                         thin strips stacked top-right under Roblox's top bar, right-aligned; the vitals card sits
---                         bottom-centre right above the hotbar, compact; the HUD publishes BottomLeftTop /
+--                         bottom-centre in the old hotbar's spot, compact; the HUD publishes BottomLeftTop /
 --                         BottomCentreTop at the card and TopRightBottom under the strips; none of them overlap. The
 --                         tab folds the column against the left edge (tiles hidden, only the tab at x 0, MenuCollapsed),
 --                         the fold survives a relayout, the tab repeats a tile's red dot while folded, a second click
@@ -96,7 +96,6 @@ function H.parts()
 		Tab = column and column:FindFirstChild("Toggle"),
 		Currency = H.path(pg, "NimbusHud.TopRight.Currency"),
 		Vitals = H.path(pg, "NimbusHud.BottomLeft.Vitals"),
-		Hotbar = H.path(pg, "NimbusHotbar.Hotbar"),
 	}
 end
 H.ORDER = { "Pets", "Index", "Spot", "Stats" }
@@ -153,7 +152,7 @@ S.client_bug2gui_layout = guarded("client_bug2gui_layout", function()
 		local W, Hh = size[1], size[2]
 		local label = string.format("bug2gui %dx%d", W, Hh)
 		local p = H.parts()
-		if not T.check(p.Column and p.Tab and p.Currency and p.Vitals and p.Hotbar, label .. ": the column, its tab, the strips, the vitals and the hotbar exist") then
+		if not T.check(p.Column and p.Tab and p.Currency and p.Vitals, label .. ": the column, its tab, the strips and the vitals exist") then
 			break
 		end
 		-- 1. one slim column at the left edge, vertically centred
@@ -196,12 +195,12 @@ S.client_bug2gui_layout = guarded("client_bug2gui_layout", function()
 		end
 		T.check(strips == 3 and stripOk and cur.y0 >= inset - 0.5 and cur.x1 >= W - 16 and cur.y1 <= inset + 140,
 			label .. ": three thin strips (<= 180 x 36 px) stacked top-right, right-aligned, under the top bar", H.fmt(cur))
-		-- 4. the vitals bottom-centre above the hotbar, compact
-		local v, hb = H.rect(p.Vitals), H.rect(p.Hotbar)
-		-- (centred on the hotbar: the bar itself is centred unless a side panel pushes it left, and the card follows it)
-		T.check(v.y1 <= hb.y0 + 1 and hb.y0 - v.y1 <= 24 and math.abs((v.x0 + v.x1) / 2 - (hb.x0 + hb.x1) / 2) < 4 and math.abs((v.x0 + v.x1) / 2 - W / 2) < W * 0.2,
-			label .. ": the vitals sit bottom-centre right above the hotbar, centred on it", H.fmt(v) .. " / bar " .. H.fmt(hb))
+		-- 4. the vitals bottom-centre, compact (HUD cleanup: in the old item hotbar's spot, HOTBAR_FALLBACK 78 + 8 px up)
+		local v = H.rect(p.Vitals)
 		local k = W == 1920 and 1 or 0.8
+		local spot = Hh - 78 * k - 8
+		T.check(v.y1 <= spot + 1 and spot - v.y1 <= 24 and math.abs((v.x0 + v.x1) / 2 - W / 2) < 4,
+			label .. ": the vitals sit bottom-centre in the old hotbar's spot, centred", H.fmt(v) .. " / spot " .. string.format("%.0f", spot))
 		T.check(v.x1 - v.x0 <= 320 * k, label .. ": ...compact (<= 320 design px wide)", string.format("%.0f px", v.x1 - v.x0))
 		-- 5. what the HUD tells its neighbours (gui-area px)
 		local hud = p.Hud
@@ -210,7 +209,7 @@ S.client_bug2gui_layout = guarded("client_bug2gui_layout", function()
 			tostring(blt) .. " vs " .. tostring(v.y0 - inset))
 		T.check(type(trb) == "number" and trb >= cur.y1 - inset - 1 and hud:GetAttribute("CurrencyMode") == "TopRight", label .. ": TopRightBottom under the strips (toasts start there)", tostring(trb))
 		-- 6. nothing overlaps
-		local named = { { "column", col }, { "strips", cur }, { "vitals", v }, { "hotbar", hb } }
+		local named = { { "column", col }, { "strips", cur }, { "vitals", v } }
 		local clash = {}
 		for i = 1, #named do
 			for j = i + 1, #named do
@@ -219,7 +218,7 @@ S.client_bug2gui_layout = guarded("client_bug2gui_layout", function()
 				end
 			end
 		end
-		T.check(#clash == 0, label .. ": the column, the strips, the vitals and the hotbar never overlap", table.concat(clash, ", "))
+		T.check(#clash == 0, label .. ": the column, the strips and the vitals never overlap", table.concat(clash, ", "))
 	end
 
 	-- 7. the fold: the tab slides the column against the edge, remembered across a relayout
@@ -241,8 +240,7 @@ S.client_bug2gui_layout = guarded("client_bug2gui_layout", function()
 	T.check(MC.IsColumnCollapsed() == true and not H.shown(pets) and tab.x0 <= 1, "bug2gui fold: the fold is remembered through a relayout (screen resize)", H.fmt(tab))
 	local hud = p.Hud
 	local v = H.rect(p.Vitals)
-	local hb = H.rect(p.Hotbar)
-	T.check(math.abs((v.x0 + v.x1) / 2 - (hb.x0 + hb.x1) / 2) < 4 and v.y1 <= hb.y0 + 1, "bug2gui fold: the vitals stay above the hotbar while folded", H.fmt(v))
+	T.check(math.abs((v.x0 + v.x1) / 2 - 960) < 4 and v.y1 <= 1080 - 78 - 8 + 1, "bug2gui fold: the vitals stay bottom-centre while folded", H.fmt(v))
 	-- the tab repeats a tile's red dot while folded
 	local dot = pets and pets:FindFirstChild("Badge", true)
 	local tabDot = p.Tab:FindFirstChild("Badge")
@@ -345,7 +343,7 @@ S.client_bug2gui_mobile = guarded("client_bug2gui_mobile", function()
 		KC.advance(1.5)
 		local label = string.format("bug2gui phone %dx%d", W, Hh)
 		local p = H.parts()
-		if not T.check(p.Column and p.Tab and p.Currency and p.Vitals and p.Hotbar, label .. ": the column, its tab, the strips, the vitals and the hotbar exist") then
+		if not T.check(p.Column and p.Tab and p.Currency and p.Vitals, label .. ": the column, its tab, the strips and the vitals exist") then
 			break
 		end
 		local touch = H.robloxTouch(W, Hh)
@@ -387,7 +385,7 @@ S.client_bug2gui_mobile = guarded("client_bug2gui_mobile", function()
 		T.check(col.x1 <= W * 0.355, label .. ": the column stays out of the middle of the screen", H.fmt(col))
 		-- the vitals: clear of Roblox's stick / jump button, the touch buttons and every other block
 		local v = H.rect(p.Vitals)
-		local others = { { "the thumbstick zone", touch.Stick }, { "the jump button", touch.Jump }, { "the hotbar", H.rect(p.Hotbar) },
+		local others = { { "the thumbstick zone", touch.Stick }, { "the jump button", touch.Jump },
 			{ "the menu column", H.rect(p.Column) }, { "the currency strips", H.rect(p.Currency) } }
 		local mobile = H.pg():FindFirstChild("MobileControls")
 		for _, d in ipairs(mobile and mobile:GetDescendants() or {}) do
@@ -401,7 +399,7 @@ S.client_bug2gui_mobile = guarded("client_bug2gui_mobile", function()
 				hit[#hit + 1] = o[1] .. " " .. H.fmt(o[2])
 			end
 		end
-		T.check(#hit == 0 and v.x0 >= 0 and v.x1 <= W and v.y1 <= Hh, label .. ": the vitals card touches nothing (stick, jump, RUN / DASH, hotbar, column, strips)",
+		T.check(#hit == 0 and v.x0 >= 0 and v.x1 <= W and v.y1 <= Hh, label .. ": the vitals card touches nothing (stick, jump, RUN / DASH, column, strips)",
 			H.fmt(v) .. (#hit > 0 and (" vs " .. table.concat(hit, "; ")) or ""))
 		-- the strips: top-right, readable, clear of the column and the jump / touch buttons
 		local cur = H.rect(p.Currency)

@@ -110,8 +110,6 @@ Config.Remotes = {
 	"BuyRoulette", -- (rouletteId:string)
 	"EquipPet", -- (petId:string)
 	"UnequipPet", -- (petId:string)
-	"BuyItem", -- (itemId:string, qty:number|nil)
-	"UseItem", -- (itemId:string)
 	"GoToSpot", -- ()
 	"TutorialEvent", -- (eventName:string)  v3: client-observed tutorial events (window opened, skip)
 	"IndexClaim", -- (groupId:string)  v3: claim a completed Pet Index group reward
@@ -483,11 +481,6 @@ Config.Dev = {
 -- the Decal's Texture (InsertService:LoadAsset(decalId) in Studio).
 Config.Art = {
 	StormfangImage = "rbxassetid://101827417487186",
-}
-
-Config.Items = {
-	MaxCarry = 5, -- per item type
-	HotbarSlots = 4, -- keys 1-4
 }
 
 ----------------------------------------------------------------------

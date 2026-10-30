@@ -158,16 +158,8 @@ COVER[#COVER + 1] = {
 		end
 		NK.Dock.Gui, NK.Dock.Panel = g, panel
 		NK.Dock.Handle = NeonKit.Dock(panel.Root, nil, 820, 900, 520, 420)
-		local HB = NK.KC().M and NK.KC().M.HotbarController
-		if HB and HB.SetAvoidRight and NK.Dock.Handle.Rect.mode == "Side" then
-			HB.SetAvoidRight(NK.Dock.Handle.Rect.x)
-		end
 	end,
 	Close = function()
-		local HB = NK.KC().M and NK.KC().M.HotbarController
-		if HB and HB.SetAvoidRight then
-			HB.SetAvoidRight(nil)
-		end
 		if NK.Dock.Gui then
 			NK.Dock.Gui:Destroy()
 		end

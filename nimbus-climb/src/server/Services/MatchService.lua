@@ -1421,7 +1421,7 @@ end
 -- Public API
 ----------------------------------------------------------------------
 -- deps = { PlayerService, DamageService, DataService, HazardService, TokenService, CourseBuilder,
---          PetService }  (ItemService is separate: it asks MatchService.GetMatchOf)
+--          PetService }
 function MatchService.Init(d)
 	deps = d or deps or {}
 	if initialized then

@@ -269,7 +269,9 @@ local function phase4Server()
 	local inst = K.moduleInstance("server/Services/DataService")
 	local fixture = Instance.new("ModuleScript")
 	fixture.Name = "DataServicePhase4Fixture"
-	fixture.Source = src
+	-- HUD cleanup: the frozen release read Config.Items.MaxCarry (5), which this build's Config no longer has (that
+	-- server shipped its own Config): the copy loaded here reads the old value instead (the file stays untouched)
+	fixture.Source = (string.gsub(src, "Config%.Items%.MaxCarry", "5"))
 	fixture.Parent = inst.Parent
 	local marks = connectionMarks()
 	local okReq, P4DS = pcall(require, fixture)

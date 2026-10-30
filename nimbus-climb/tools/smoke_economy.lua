@@ -9,8 +9,8 @@
 --                      EquippedPets attribute / rate limiting / argument checks / prompts / stats
 --                      + v3 Pet Index flow (MarkDiscovered, PetService.Rolled, IndexService.Completed / CanClaim /
 --                      Claim, the IndexClaim remote: once per group, the Config.Index reward, persistence)
---   items              ItemService: buy rules and the three item effects (heal, shield, phoenix revive)
---   match_locks        items are refused during the match countdown (nothing consumed); pets are locked during matches
+--   match_locks        pets are locked during matches (HUD cleanup: the obby items and ItemService are gone; their
+--                      buy / use rules went with them, smoke_hud_items.lua checks the removal and the refund)
 --   profile_sync       the ProfileSync snapshot shape, when it is sent, and that it is a copy
 --   migration          v1 -> v2 save migration and untrusted stored data
 --   match_difficulties the full match lifecycle for all five difficulties (victory + defeat, stars, bonus, stats)
@@ -790,7 +790,7 @@ S.economy = guarded("economy", function()
 	T.eq(DataS.GetProfile(p), prof, "GetProfile always returns the same live table")
 	T.eq(DataS.Load(p), prof, "calling Load again returns the same live profile (idempotent)")
 	T.eq(prof.Version, 2, "Profile.Version = 2")
-	T.check(prof.Tokens == 0 and next(prof.Pets) == nil and #prof.Equipped == 0 and next(prof.Items) == nil, "a new profile starts with 0 tokens and no pets / items")
+	T.check(prof.Tokens == 0 and next(prof.Pets) == nil and #prof.Equipped == 0, "a new profile starts with 0 tokens and no pets")
 	T.check(prof.Stats.Matches == 0 and prof.Stats.Wins == 0 and prof.Stats.TokensEarned == 0 and prof.Stats.Spins == 0 and next(prof.Stats.BestTimes) == nil, "...and zeroed stats")
 	T.eq(DataS.GetProfile(nil), nil, "GetProfile(nil) is nil")
 
@@ -1096,15 +1096,7 @@ S.economy = guarded("economy", function()
 			T.check(e ~= nil and e.args[1] == "Shop" and type(e.args[2]) == "table" and e.args[2].Tab == "Roulette" and e.args[2].RouletteId == r.Id, "triggering the " .. r.Id .. " machine opens the Shop on its roulette tab", e and (tostring(e.args[1]) .. " " .. tostring(e.args[2] and e.args[2].Tab) .. " " .. tostring(e.args[2] and e.args[2].RouletteId)))
 		end
 	end
-	local itemPrompt = info.Shop.ItemShop.PromptPart:FindFirstChildOfClass("ProximityPrompt")
-	if itemPrompt then
-		mark = logSize()
-		advance(0.7)
-		Mock.Trigger(itemPrompt, p)
-		advance(0.1)
-		local e = lastRemote("OpenPanel", p.UserId, mark)
-		T.check(e ~= nil and e.args[1] == "Shop" and type(e.args[2]) == "table" and e.args[2].Tab == "Items", "triggering the item counter opens the Shop on its Items tab")
-	end
+	T.eq(info.Shop.ItemShop.PromptPart:FindFirstChildOfClass("ProximityPrompt"), nil, "HUD cleanup: the boarded-up item stall has no prompt")
 
 	-- stats
 	prof.Stats = { Matches = 0, Wins = 0, TokensEarned = 0, Spins = 0, BestTimes = {} }
@@ -1131,176 +1123,8 @@ S.economy = guarded("economy", function()
 end)
 
 ----------------------------------------------------------------------------------------------------
--- scenario: items
-----------------------------------------------------------------------------------------------------
-S.items = guarded("items", function()
-	if not needBoot() then
-		return
-	end
-	local Config = config()
-	local IS, DataS = mod("ItemService"), mod("DataService")
-	local IC = M["shared/ItemCatalog"]
-	local players = freshPlayers(3, "Item")
-	local a, b, c = players[1], players[2], players[3]
-	local prof = profileOf(a)
-	local heal, shield, phoenix = IC.Get("heal_cloud"), IC.Get("shield_bubble"), IC.Get("phoenix_feather")
-
-	-- buying
-	setTokens(a, 1000)
-	local mark = logSize()
-	T.eq(select(1, IS.Buy(a, "heal_cloud", 1)), true, "Buy(heal_cloud, 1) works")
-	T.eq(prof.Items.heal_cloud, 1, "...and adds one to Profile.Items")
-	T.eq(DataS.GetTokens(a), 1000 - heal.Price, "...for exactly its price (" .. heal.Price .. ")")
-	T.check(#snapshots(a, mark) >= 1, "...and sends a ProfileSync")
-	T.eq(select(1, IS.Buy(a, "heal_cloud", 4)), true, "buying up to MaxCarry (" .. Config.Items.MaxCarry .. ") works")
-	T.eq(prof.Items.heal_cloud, Config.Items.MaxCarry, "...the stack is now full")
-	local tokens = DataS.GetTokens(a)
-	local ok, why = IS.Buy(a, "heal_cloud", 1)
-	T.check(ok == false and type(why) == "string", "buying beyond MaxCarry fails with a reason", tostring(why))
-	T.eq(DataS.GetTokens(a), tokens, "...and costs nothing")
-	T.eq(select(1, IS.Buy(a, "shield_bubble", Config.Items.MaxCarry + 1)), false, "a quantity above MaxCarry fails")
-	T.eq(select(1, IS.Buy(a, "shield_bubble", 0)), false, "quantity 0 fails")
-	T.eq(select(1, IS.Buy(a, "shield_bubble", -2)), false, "a negative quantity fails")
-	T.eq(select(1, IS.Buy(a, "shield_bubble", 1.5)), false, "a fractional quantity fails")
-	T.eq(select(1, IS.Buy(a, "shield_bubble", "3")), false, "a string quantity fails")
-	T.eq(select(1, IS.Buy(a, "no_such_item", 1)), false, "an unknown item fails")
-	T.eq(select(1, IS.Buy(a, nil, 1)), false, "Buy(nil) fails")
-	T.eq(DataS.GetTokens(a), tokens, "all refused purchases are free")
-	T.eq(select(1, IS.Buy(a, "shield_bubble")), true, "qty defaults to 1")
-	T.eq(prof.Items.shield_bubble, 1, "...one shield")
-	setTokens(a, 10)
-	T.eq(select(1, IS.Buy(a, "phoenix_feather", 1)), false, "Buy with too few tokens fails")
-	T.eq(DataS.GetTokens(a), 10, "...and keeps the tokens")
-	setTokens(a, 1000)
-	a:SetAttribute("InMatch", true)
-	T.eq(select(1, IS.Buy(a, "phoenix_feather", 1)), false, "Buy is refused during a match")
-	a:SetAttribute("InMatch", false)
-	T.eq(select(1, IS.Buy(a, "phoenix_feather", 2)), true, "buy 2 phoenix feathers")
-	T.eq(DataS.GetTokens(a), 1000 - 2 * phoenix.Price, "...at 2 x " .. phoenix.Price)
-	-- the BuyItem remote
-	local R = remoteFolder()
-	setTokens(b, 500)
-	advance(0.4)
-	mark = logSize()
-	Mock.FromClient(R.BuyItem, b, "heal_cloud", 2)
-	advance(0.1)
-	T.eq(profileOf(b).Items.heal_cloud, 2, "the BuyItem remote buys")
-	T.check(notified(b, "Heal Cloud", "good", mark), "...and confirms with a toast")
-	Mock.FromClient(R.BuyItem, b, "heal_cloud", 1)
-	advance(0.05)
-	T.eq(profileOf(b).Items.heal_cloud, 2, "BuyItem is rate limited")
-	advance(0.4)
-	local errs = #Mock.Errors
-	for _, junk in ipairs({ 5, true, { "x" }, string.rep("a", 400) }) do
-		Mock.FromClient(R.BuyItem, b, junk, 1)
-		advance(0.3)
-		Mock.FromClient(R.UseItem, b, junk)
-		advance(0.3)
-	end
-	Mock.FromClient(R.BuyItem, b, "heal_cloud", "many")
-	advance(0.3)
-	Mock.FromClient(R.BuyItem, b, "heal_cloud", {})
-	advance(0.3)
-	T.eq(#Mock.Errors, errs, "BuyItem / UseItem with garbage arguments raise no errors")
-	T.eq(profileOf(b).Items.heal_cloud, 2, "...and change nothing")
-
-	-- using: not in a match
-	local okUse, whyUse = IS.Use(a, "heal_cloud")
-	T.check(okUse == false and type(whyUse) == "string", "Use outside a match fails with a reason", tostring(whyUse))
-	T.eq(prof.Items.heal_cloud, Config.Items.MaxCarry, "...and consumes nothing")
-	T.eq(select(1, IS.Use(a, "no_such_item")), false, "Use of an unknown item fails")
-
-	-- in a match
-	local m = startMatch("Easy", players)
-	if not T.check(m ~= nil, "items: an Easy match starts") then
-		removePlayers(players)
-		return
-	end
-	toPlaying(m)
-	K.waitNotInvulnerable(a)
-	K.waitNotInvulnerable(b)
-	K.waitNotInvulnerable(c)
-	-- heal
-	T.eq(select(1, IS.Use(a, "heal_cloud")), false, "heal_cloud at full health is refused")
-	T.eq(prof.Items.heal_cloud, Config.Items.MaxCarry, "...and not consumed")
-	DS().SetHealthFraction(a, 0.3)
-	mark = logSize()
-	T.eq(select(1, IS.Use(a, "heal_cloud")), true, "heal_cloud works when hurt")
-	T.near(hum(a).Health, 30 + 0.4 * hum(a).MaxHealth, 1.5, "...and heals 40% of max health")
-	T.eq(prof.Items.heal_cloud, Config.Items.MaxCarry - 1, "...consuming exactly one")
-	T.check(#snapshots(a, mark) >= 1, "...with a ProfileSync")
-	T.check(notified(a, ".", "good", mark), "...and a toast")
-	T.eq(select(1, IS.Use(a, "heal_cloud")), false, "a second use inside the cooldown is refused (no double click burns)")
-	advance(0.8)
-	DS().SetHealthFraction(a, 0.1)
-	advance(0.8)
-	T.eq(select(1, IS.Use(a, "heal_cloud")), true, "...but works again after the short cooldown")
-	-- shield
-	advance(0.8)
-	T.eq(DS().IsInvulnerable(a), false, "before the shield nothing protects the player")
-	T.eq(select(1, IS.Use(a, "shield_bubble")), true, "shield_bubble works")
-	T.eq(DS().IsInvulnerable(a), true, "...making the player invulnerable")
-	T.eq(DS().Damage(a, 20, "Other"), false, "...so hits do nothing")
-	advance(7.0)
-	T.eq(DS().IsInvulnerable(a), true, "...for about 8 seconds")
-	advance(1.4)
-	T.eq(DS().IsInvulnerable(a), false, "...and no longer after 8.4 s")
-	T.eq(prof.Items.shield_bubble, nil, "the used-up item disappears from the profile (count 0 -> nil)")
-	T.eq(select(1, IS.Use(a, "shield_bubble")), false, "using an item the player does not have fails")
-	-- phoenix: nobody downed
-	local nobody = IS.Use(a, "phoenix_feather")
-	T.eq(nobody, false, "phoenix_feather without a downed teammate is refused")
-	T.eq(prof.Items.phoenix_feather, 2, "...and not consumed")
-	-- two downed teammates: the nearest is revived
-	K.waitNotInvulnerable(b)
-	K.waitNotInvulnerable(c)
-	Mock.Teleport(a, m.Course.StartCFrame.Position + Vector3.new(0, 4, 0))
-	Mock.Teleport(b, m.Course.StartCFrame.Position + Vector3.new(6, 4, 0))
-	Mock.Teleport(c, m.Course.StartCFrame.Position + Vector3.new(0, 4, 18))
-	advance(0.3)
-	DS().Damage(b, 999, "Other", { IgnoreIFrames = true })
-	DS().Damage(c, 999, "Other", { IgnoreIFrames = true })
-	advance(0.5)
-	T.check(DS().IsDowned(b) and DS().IsDowned(c), "two teammates are downed")
-	mark = logSize()
-	profileOf(b).Items.phoenix_feather = 1
-	T.eq(select(1, IS.Use(b, "phoenix_feather")), false, "a downed player cannot use items")
-	T.eq(profileOf(b).Items.phoenix_feather, 1, "...and nothing is consumed")
-	profileOf(b).Items.phoenix_feather = nil
-	advance(0.8)
-	T.eq(select(1, IS.Use(a, "phoenix_feather")), true, "phoenix_feather revives a downed teammate")
-	T.check(not DS().IsDowned(b) and DS().IsDowned(c), "...the NEAREST one (b, 6 studs) and not the farther one (c, 18 studs)")
-	T.near(hum(b).Health, hum(b).MaxHealth * Config.Damage.ReviveHealthFraction, 3, "...with 50% health")
-	T.eq(b:GetAttribute("Downed"), false, "...Downed attribute cleared")
-	T.eq(prof.Items.phoenix_feather, 1, "the feather is consumed")
-	T.check(notified(b, "revived", "good", mark), "the revived player is told who helped")
-	advance(0.8)
-	T.eq(select(1, IS.Use(a, "phoenix_feather")), true, "the second feather revives the other teammate")
-	T.check(not DS().IsDowned(c), "...c is up")
-	T.eq(prof.Items.phoenix_feather, nil, "all feathers are used up")
-	-- the UseItem remote
-	profileOf(b).Items.heal_cloud = 2
-	DS().SetHealthFraction(b, 0.2)
-	K.waitNotInvulnerable(b)
-	advance(0.4)
-	Mock.FromClient(R.UseItem, b, "heal_cloud")
-	advance(0.1)
-	T.eq(profileOf(b).Items.heal_cloud, 1, "the UseItem remote uses an item")
-	-- leave: items no longer work
-	endAllMatches(players)
-	advance(1)
-	T.eq(select(1, IS.Use(a, "heal_cloud")), false, "items stop working after the match")
-	removePlayers(players)
-	flushErrors("items")
-	flushWarnings("items")
-end)
-
-----------------------------------------------------------------------------------------------------
--- scenario: match locks (items during the countdown, pets during a match)
+-- scenario: match locks (pets during a match; HUD cleanup: the item half went with the items)
 --
---   * ItemService.Use is refused while the match is still in State "Countdown" (or Setup): the intro freeze already
---     grants invulnerability, so a shield or heal used then would be burned for nothing. Nothing is consumed and no
---     cooldown starts, so the same item works the moment the match reaches "Playing".
 --   * PetService.Equip / Unequip return false, "Pets are locked during a match" while InMatch is true (countdown and
 --     play alike; the pets in a match must be the ones the player entered with) and work again after the match.
 ----------------------------------------------------------------------------------------------------
@@ -1309,7 +1133,7 @@ S.match_locks = guarded("match_locks", function()
 		return
 	end
 	local Config = config()
-	local IS, PS, DataS = mod("ItemService"), mod("PetService"), mod("DataService")
+	local PS, DataS = mod("PetService"), mod("DataService")
 	local R = remoteFolder()
 	local players = freshPlayers(2, "Lock")
 	local a, b = players[1], players[2]
@@ -1317,8 +1141,6 @@ S.match_locks = guarded("match_locks", function()
 	local petA, petB = petOfRarity("Common", 1), petOfRarity("Common", 2)
 	grant(a, petA, 1)
 	grant(a, petB, 1)
-	prof.Items.heal_cloud = 2
-	prof.Items.shield_bubble = 2
 	DataS.MarkDirty(a)
 	DataS.Sync(a)
 	local perksChanged = 0
@@ -1338,22 +1160,8 @@ S.match_locks = guarded("match_locks", function()
 	end
 	T.eq(m.State, "Countdown", "locks: the match is in its intro countdown")
 	T.eq(a:GetAttribute("InMatch"), true, "locks: InMatch is true")
-	DS().SetHealthFraction(a, 0.5)
-	local healthBefore = hum(a).Health
-	local mark = logSize()
-	local ok, why = IS.Use(a, "heal_cloud")
-	T.check(ok == false and type(why) == "string" and why:lower():find("countdown", 1, true) ~= nil, "locks: heal_cloud is refused during the countdown (with the reason)", tostring(ok) .. " " .. tostring(why))
-	T.eq(prof.Items.heal_cloud, 2, "...the heal_cloud count is unchanged")
-	T.near(hum(a).Health, healthBefore, 0.01, "...and so is the health")
-	ok, why = IS.Use(a, "shield_bubble")
-	T.check(ok == false and type(why) == "string" and why:lower():find("countdown", 1, true) ~= nil, "locks: shield_bubble is refused during the countdown", tostring(ok) .. " " .. tostring(why))
-	T.eq(prof.Items.shield_bubble, 2, "...the shield_bubble count is unchanged")
-	Mock.FromClient(R.UseItem, a, "heal_cloud")
-	advance(0.1)
-	T.eq(prof.Items.heal_cloud, 2, "...also through the UseItem remote")
-	T.eq(#snapshots(a, mark), 0, "...and nothing is synced (no profile change)")
 	-- pets
-	ok, why = PS.Equip(a, petB)
+	local ok, why = PS.Equip(a, petB)
 	T.check(ok == false and why == "Pets are locked during a match", "locks: Equip is refused during the countdown with 'Pets are locked during a match'", tostring(ok) .. " " .. tostring(why))
 	ok, why = PS.Unequip(a, petA)
 	T.check(ok == false and why == "Pets are locked during a match", "locks: Unequip is refused during the countdown", tostring(ok) .. " " .. tostring(why))
@@ -1367,12 +1175,9 @@ S.match_locks = guarded("match_locks", function()
 	T.eq(table.concat(prof.Equipped, ","), petA, "...also through the EquipPet / UnequipPet remotes")
 	T.eq(perksChanged, baseline, "...and PerksChanged never fired")
 
-	-- play: items work right away (the refusal did not start a cooldown), pets stay locked
+	-- play: pets stay locked
 	T.check(toPlaying(m), "locks: the match reaches Playing")
 	K.waitNotInvulnerable(a)
-	ok, why = IS.Use(a, "heal_cloud")
-	T.check(ok == true, "locks: the same heal_cloud works once the match is Playing", tostring(why))
-	T.eq(prof.Items.heal_cloud, 1, "...consuming exactly one")
 	ok, why = PS.Equip(a, petB)
 	T.check(ok == false and why == "Pets are locked during a match", "locks: Equip is still refused while playing", tostring(why))
 	T.eq(table.concat(prof.Equipped, ","), petA, "...nothing changed")
@@ -1386,7 +1191,6 @@ S.match_locks = guarded("match_locks", function()
 	T.eq(select(1, PS.Unequip(a, petA)), true, "locks: Unequip works again after the match")
 	T.eq(table.concat(prof.Equipped, ","), petB, "...only the second pet is left")
 	T.check(perksChanged > baseline, "...and PerksChanged fires for the real changes")
-	T.eq(select(1, IS.Use(a, "heal_cloud")), false, "locks: items stay unusable outside a match")
 
 	-- the attribute alone locks too (it is what the rule reads), and clearing it unlocks
 	b:SetAttribute("InMatch", true)
@@ -1409,7 +1213,7 @@ S.profile_sync = guarded("profile_sync", function()
 		return
 	end
 	local Config = config()
-	local DataS, PS, IS = mod("DataService"), mod("PetService"), mod("ItemService")
+	local DataS, PS = mod("DataService"), mod("PetService")
 	local mark = logSize()
 	local p = Mock.AddPlayer("Syncer", 920001)
 	advance(1.0)
@@ -1419,7 +1223,7 @@ S.profile_sync = guarded("profile_sync", function()
 	if T.check(first ~= nil, "the first snapshot exists") then
 		local problems = V.profileSync(first)
 		T.check(#problems == 0, "the join snapshot has the documented shape", table.concat(problems, "; "))
-		T.check(first.Tokens == 0 and next(first.Pets) == nil and #first.Equipped == 0 and next(first.Items) == nil, "a new player's snapshot is empty")
+		T.check(first.Tokens == 0 and next(first.Pets) == nil and #first.Equipped == 0 and first.Items == nil, "a new player's snapshot is empty (HUD cleanup: no Items key)")
 		local perks = first.Perks
 		T.check(perks and perks.MaxHealth == 0 and perks.TokenBonus == 0 and perks.StaminaRegen == 0 and perks.CheckpointHeal == 0, "...with all four perks at 0")
 		T.check(first.SpotIndex == nil or type(first.SpotIndex) == "number", "SpotIndex is a number or absent")
@@ -1455,33 +1259,27 @@ S.profile_sync = guarded("profile_sync", function()
 	local last = afterEquip[#afterEquip]
 	T.check(last and last.Equipped[1] == CONTRACT.v2.mascotPetId and last.Perks.TokenBonus > 0, "...that already contains the new equip and its perks")
 	mark = logSize()
-	IS.Buy(p, "heal_cloud", 2)
-	local afterBuy = snapshots(p, mark)
-	T.check(#afterBuy >= 1 and afterBuy[#afterBuy].Items.heal_cloud == 2, "buying an item sends a ProfileSync with the new count")
-	mark = logSize()
 	PS.BuyRoulette(p, Config.Roulettes[1].Id)
 	local afterSpin = snapshots(p, mark)
 	T.check(#afterSpin >= 1 and afterSpin[#afterSpin].Stats.Spins == 1, "buying a roulette sends a ProfileSync with Stats.Spins = 1")
 	-- snapshots are copies: no table is shared with the live profile, and an old snapshot does not change later
 	local snap = afterSpin[#afterSpin]
 	if snap then
-		T.check(snap.Pets ~= prof.Pets and snap.Equipped ~= prof.Equipped and snap.Items ~= prof.Items and snap.Stats ~= prof.Stats and snap.Stats.BestTimes ~= prof.Stats.BestTimes
+		T.check(snap.Pets ~= prof.Pets and snap.Equipped ~= prof.Equipped and snap.Stats ~= prof.Stats and snap.Stats.BestTimes ~= prof.Stats.BestTimes
 			and snap.Discovered ~= prof.Discovered and snap.IndexClaimed ~= prof.IndexClaimed and snap.Tutorial ~= prof.Tutorial,
 			"a snapshot shares no table with the live profile")
 		T.check(snap.Discovered[CONTRACT.v2.mascotPetId] == true, "v3: owned pets appear in the snapshot's Discovered set")
-		local petsInSnap, itemsInSnap = 0, snap.Items.heal_cloud
+		local petsInSnap = 0
 		for _, n in pairs(snap.Pets) do
 			petsInSnap = petsInSnap + n
 		end
 		grant(p, petOfRarity("Epic", 1), 4)
-		profileOf(p).Items.heal_cloud = 5
 		profileOf(p).Stats.Wins = profileOf(p).Stats.Wins + 1
 		local petsNow = 0
 		for _, n in pairs(snap.Pets) do
 			petsNow = petsNow + n
 		end
-		T.check(petsNow == petsInSnap and snap.Items.heal_cloud == itemsInSnap and snap.Pets[petOfRarity("Epic", 1)] == nil, "...so an old snapshot does not follow later profile changes")
-		profileOf(p).Items.heal_cloud = itemsInSnap
+		T.check(petsNow == petsInSnap and snap.Pets[petOfRarity("Epic", 1)] == nil, "...so an old snapshot does not follow later profile changes")
 		profileOf(p).Stats.Wins = profileOf(p).Stats.Wins - 1
 		profileOf(p).Pets[petOfRarity("Epic", 1)] = nil
 	end
@@ -1567,11 +1365,10 @@ S.migration = guarded("migration", function()
 	local hp = profileOf(h)
 	T.check(hp ~= nil, "a profile with hostile stored data loads")
 	if hp then
-		T.eq(hp.Tokens, 5, "fractional tokens are floored")
+		T.eq(hp.Tokens, 5 + 5 * 30, "fractional tokens are floored (+ the one-time item refund: 40 heal clouds clamp to 5, 30 each)")
 		T.eq(hp.Pets[a], Config.Pets.MaxPerStack, "pet counts are clamped to MaxPerStack")
 		T.check(hp.Pets.negative == nil and hp.Pets.zero == nil, "non-positive pet counts are dropped")
-		T.eq(hp.Items.heal_cloud, Config.Items.MaxCarry, "item counts are clamped to MaxCarry")
-		T.eq(hp.Items.shield_bubble, nil, "negative item counts are dropped")
+		T.check(next(hp.Items) == nil and hp.Migrations.B3ItemsRefund == true, "the stored items were refunded and cleared (B3ItemsRefund)")
 		T.check(#hp.Equipped <= Config.Pets.MaxEquipped, "Equipped is trimmed to Config.Pets.MaxEquipped", #hp.Equipped .. " entries")
 		local used = {}
 		local legal = true
@@ -1583,7 +1380,7 @@ S.migration = guarded("migration", function()
 		end
 		T.check(legal, "...every entry is owned (at most `count` times) and a known pet", table.concat(hp.Equipped, ","))
 		T.check(hp.SpotIndex == nil or (hp.SpotIndex >= 1 and hp.SpotIndex <= Config.Lobby.SpotCount), "an out-of-range SpotIndex is not trusted", tostring(hp.SpotIndex))
-		T.check(hp.Stats.Matches == 0 and hp.Stats.Wins == 0 and hp.Stats.TokensEarned == 12 and hp.Stats.Spins == 2, "stats are sanitised to non-negative integers")
+		T.check(hp.Stats.Matches == 0 and hp.Stats.Wins == 0 and hp.Stats.TokensEarned == 12 + 5 * 30 and hp.Stats.Spins == 2, "stats are sanitised to non-negative integers (TokensEarned + the item refund)")
 		T.check(hp.Stats.BestTimes.Easy == 88.8 and hp.Stats.BestTimes.Hard == nil, "best times keep valid entries only")
 		T.eq(h:GetAttribute("EquippedPets"), table.concat(hp.Equipped, ","), "the EquippedPets attribute is set from the validated Equipped list on load")
 	end

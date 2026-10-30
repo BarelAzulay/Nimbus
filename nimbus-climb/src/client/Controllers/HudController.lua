@@ -22,7 +22,8 @@
 --                 when they fit there in one row (the battle HUD owns the top corners); a phone's dungeon End
 --                 card starts below them (DungeonController reads TopRightBottom); one that still covers the
 --                 corner (no room above the jump button) hides them meanwhile.
---   bottom-centre The vitals card, right above the pet hotbar (centred on the measured bar): heart badge +
+--   bottom-centre The vitals card, where it sat above the old item hotbar (HUD cleanup: the hotbar is gone, the card
+--                 keeps its spot, K.HOTBAR_FALLBACK above the bottom edge, centred): heart badge +
 --                 thick HP tube (white damage trail, hit flash + shake, low-health pulse, DOWNED state),
 --                 lightning badge + stamina tube (dims when run dry) and the dash ring (cooldown sweep). Short touch
 --                 screens get the flatter compact card (VG.Compact); it never shares rows with Roblox's
@@ -34,8 +35,8 @@
 -- the smallest text is 14.4 px on a phone. The UIScale sits on the panel, the margins on full-screen holder
 -- frames, so scaling never moves a panel away from its corner.
 --
--- Neighbours are MEASURED, not guessed: the menu column (NimbusMenu.MenuColumn, left-centre, drawn above us),
--- the pet hotbar (NimbusHotbar.Hotbar) and the touch RUN / DASH buttons (MobileControls). Whatever of ours would
+-- Neighbours are MEASURED, not guessed: the menu column (NimbusMenu.MenuColumn, left-centre, drawn above us) and
+-- the touch RUN / DASH buttons (MobileControls; HUD cleanup: the item hotbar is gone). Whatever of ours would
 -- run into the column steps aside to its right; the vitals never reach under the touch buttons. The geometry is
 -- re-checked twice a second and on every viewport change, and published as attributes on the NimbusHud
 -- gui (TopLeftRight, TopLeftBottom, TopRightLeft, TopRightBottom, BottomLeftTop = the top of the bottom block (the
@@ -81,11 +82,11 @@ local K = {
 	TOUCH_EDGE = 20, -- larger side margin on touch devices (notches, rounded corners)
 	SMALL_PHONE = 500, -- Roblox's own touch controls shrink when the smaller screen side is at most this
 
-	VITALS_W = 300, -- bug batch 2 #1: a compact card, about the hotbar's width (it sits right above it)
+	VITALS_W = 300, -- bug batch 2 #1: a compact card, about the old hotbar's width
 	VITALS_H = 93, -- the vitals card (see VG below for its inside)
 	VITALS_MIN_W = 236, -- narrowest the vitals get squeezed on a small phone
-	HOTBAR_GAP = 8, -- screen px between the hotbar's top and the vitals card
-	HOTBAR_FALLBACK = 78, -- gui px the hotbar reaches above the bottom edge while it cannot be measured (14 + 64)
+	HOTBAR_GAP = 8, -- screen px between the old hotbar's top and the vitals card
+	HOTBAR_FALLBACK = 78, -- gui px the old item hotbar reached above the bottom edge (14 + 64): the card keeps that spot
 	OBSTACLE_GAP = 8, -- kept between the vitals and the column / the touch buttons / Roblox's stick and jump button
 	-- Roblox's own touch controls (gui px; small = the smaller screen side <= SMALL_PHONE): the thumbstick's zone at
 	-- the bottom-left (width, height above the bottom edge: the dynamic stick's idle ring reaches ~93 px on phones)
@@ -687,20 +688,6 @@ local layoutCurrencyRows -- (style, width) -> places the rows; defined with the 
 local setPanelWidth -- (designWidth) -> resizes the match / party panels; defined with the panels below
 local setVitalsGeometry -- (VG.Regular | VG.Compact) -> places the vitals card's parts; defined with the card
 
--- The pet hotbar (HotbarController: NimbusHotbar.Hotbar, bottom centre) in our coordinates, nil while unmeasurable.
-local function hotbarRect()
-	local pg = playerGui()
-	local bar = pg and pg:FindFirstChild("NimbusHotbar")
-	if not (bar and bar:IsA("ScreenGui") and bar.Enabled) then
-		return nil
-	end
-	local holder = bar:FindFirstChild("Hotbar")
-	if holder and holder:IsA("GuiObject") and holder.AbsoluteSize.X > 0 and shownIn(holder, bar) then
-		return rectOf(holder, insetShift(bar))
-	end
-	return nil
-end
-
 -- Cards that own the top-right corner for a moment (in our coordinates, nil when none is up): the currency strips
 -- step out of their way. Today: DungeonController's End card (NimbusDungeonRun.EndCard), which phones draw under the
 -- strips while a run's result shows (and in the corner itself only when that leaves no room above the jump button).
@@ -733,8 +720,8 @@ local function robloxTouchRects(area, vp)
 	}
 end
 
--- Where the vitals card goes (bug batch 2 #1): bottom centre, its bottom at `bottom` (gui px, right above the hotbar)
--- and centred on `cx` (the hotbar's centre), as wide as `w` design px (>= minW). Whatever shares its rows - the menu
+-- Where the vitals card goes (bug batch 2 #1): bottom centre, its bottom at `bottom` (gui px, where the old hotbar's
+-- top was) and centred on `cx`, as wide as `w` design px (>= minW). Whatever shares its rows - the menu
 -- column, the touch RUN / DASH buttons, Roblox's stick and jump button - limits it from the side it is on; when the
 -- room left is narrower than minW the card steps up just above the lowest of those and tries again, but never with
 -- its top above `ceiling` (the middle of the screen): there it keeps the last rows, squeezed to minW.
@@ -770,8 +757,8 @@ end
 -- since the last call the work is skipped (it runs twice a second). `animate` eases the top-left shift; `force`
 -- skips the check.
 --   * currencies: thin strips stacked in the top-right corner (right-aligned, below Roblox's top bar), every device;
---   * vitals: bottom centre, right above the pet hotbar (centred on it, so it follows the bar when a side panel
---     pushes the bar left), compact width; on touch screens it never shares rows with Roblox's stick / jump button
+--   * vitals: bottom centre, in the old item hotbar's spot (HUD cleanup: the hotbar is gone; K.HOTBAR_FALLBACK),
+--     compact width; on touch screens it never shares rows with Roblox's stick / jump button
 --     or the RUN / DASH buttons (it steps up above them on a portrait phone);
 --   * the match / party panels and the title card keep the top-left corner (right of the menu column when they would
 --     reach it).
@@ -819,7 +806,6 @@ local function applyMargins(animate, force)
 	local inset = math.max(0, vp.Y - area.Y)
 	local column = menuRect(area)
 	local buttons = touch and mobileRects() or {}
-	local bar = hotbarRect()
 	local cornerCard = cornerCardRect()
 	local hasPanel, hasTitle, topH = topLeftState()
 	local currencies = visibleCurrencies()
@@ -833,7 +819,7 @@ local function applyMargins(animate, force)
 		and nCur * K.BAND_MIN_W * k + (nCur - 1) * K.STRIP_GAP * k <= vp.X - bandX - K.BAND_RIGHT
 
 	local parts = { area.X, area.Y, vp.X, vp.Y, k, touch and 1 or 0, hasPanel and 1 or 0, hasTitle and 1 or 0, topH,
-		rectKey(column), rectKey(bar), rectKey(cornerCard), inMatch and 1 or 0, topBand and 1 or 0, inBattle and 1 or 0, bandX }
+		rectKey(column), rectKey(cornerCard), inMatch and 1 or 0, topBand and 1 or 0, inBattle and 1 or 0, bandX }
 	for _, c in ipairs(currencies) do
 		table.insert(parts, c.Id)
 	end
@@ -884,14 +870,9 @@ local function applyMargins(animate, force)
 		setVitalsGeometry(geometry)
 	end
 	local vitalsH = geometry.H
-	local vitalsBottom, cx
-	if bar then
-		vitalsBottom = bar.y0 - K.HOTBAR_GAP
-		cx = (bar.x0 + bar.x1) / 2
-	else
-		vitalsBottom = area.Y - K.HOTBAR_FALLBACK * k - K.HOTBAR_GAP
-		cx = area.X / 2
-	end
+	-- (HUD cleanup: no hotbar to measure any more; the card keeps the bottom-centre spot it had above it)
+	local vitalsBottom = area.Y - K.HOTBAR_FALLBACK * k - K.HOTBAR_GAP
+	local cx = area.X / 2
 	local obstacles = {}
 	if column then
 		table.insert(obstacles, column)

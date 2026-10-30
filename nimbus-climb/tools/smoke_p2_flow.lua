@@ -761,11 +761,12 @@ S.p2flow_arrive = guarded("p2flow_arrive", function()
 		T.check(type(h) == "table" and type(h.Stations) == "table" and h.Rooms == h.Stations and next(h.Stations) == nil
 			and h.Prestige == 0 and h.Level == 0 and type(h.Garden) == "table" and type(h.Gym) == "table" and h.CollectorCash == 0,
 			"flow migrate: Home.Rooms became the Phase 2 Home (Stations = Rooms, Garden, Gym, CollectorCash)")
-		T.check(cp.Tokens == 340 and cp.Pets[F.eco] == 2 and cp.Pets[F.combat] == 1 and cp.Equipped[1] == F.eco and cp.Items.heal_cloud == 1
-			and cp.Stats.Wins == 4 and cp.Stats.BestTimes.Easy == 95.5, "flow migrate: tokens, pets, equipped, items and stats are kept")
+		-- (HUD cleanup: the stored heal cloud is refunded once, +30 Tokens, and Items emptied: B3ItemsRefund)
+		T.check(cp.Tokens == 370 and cp.Pets[F.eco] == 2 and cp.Pets[F.combat] == 1 and cp.Equipped[1] == F.eco and next(cp.Items) == nil
+			and cp.Stats.Wins == 4 and cp.Stats.BestTimes.Easy == 95.5, "flow migrate: tokens (+ the item refund), pets, equipped and stats are kept")
 		T.check(type(cp.Food) == "table" and type(cp.Tiers) == "table" and type(cp.Hybrids) == "table" and type(cp.GemReceipts) == "table"
 			and type(cp.PetLevels) == "table", "flow migrate: the new Phase 2 maps exist (Food, Tiers, Hybrids, GemReceipts, PetLevels)")
-		T.check(cid:GetAttribute(Config.Attr.Cash) == 0 and cid:GetAttribute(Config.Attr.Gems) == 0 and cid:GetAttribute(Config.Attr.Tokens) == 340,
+		T.check(cid:GetAttribute(Config.Attr.Cash) == 0 and cid:GetAttribute(Config.Attr.Gems) == 0 and cid:GetAttribute(Config.Attr.Tokens) == 370,
 			"flow migrate: Cash / Gems / CloudTokens attributes")
 		local snap = lastSnapshot(cid, mark)
 		T.check(snap ~= nil and type(snap.Home) == "table" and snap.Home.Level == 0 and snap.Home.Prestige == 0 and type(snap.Home.Stations) == "table"
@@ -1245,7 +1246,7 @@ S.p2flow_build = guarded("p2flow_build", function()
 			T.check(rec.Version == 2 and type(rh.Stations) == "table" and rh.Stations.Garden == 1 and type(rh.Garden) == "table" and rh.Garden[1] == F.eco
 				and rh.Rooms == nil and rh.Prestige == 0 and rh.Level == 1, "flow migrate: Cid's save is a Phase 4 home now (Home.Stations with the Garden, its pet, no Rooms)", mapText(rh.Stations))
 			T.check(type(rec.Migrations) == "table" and rec.Migrations.P4 == true, "flow migrate: ...marked migrated (Migrations.P4)")
-			T.check(rec.SpotIndex == F.plot.Cid and type(rec.Tutorial) == "table" and rec.Tutorial.Step == X.Steps.IndexOf.coins and rec.Tokens == 340,
+			T.check(rec.SpotIndex == F.plot.Cid and type(rec.Tutorial) == "table" and rec.Tutorial.Step == X.Steps.IndexOf.coins and rec.Tokens == 370,
 				"flow migrate: ...with his plot, tutorial progress and tokens")
 			T.eq(spots()[F.plot.Cid].NameLabel.Text, "Free home", "flow migrate: his plot is free again")
 		end

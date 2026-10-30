@@ -38,8 +38,9 @@
 --     the session; the tab repeats a tile's red dot while folded; a tutorial step pointing at a tile unfolds it). On
 --     short screens (landscape / portrait phones) the tiles wrap into two slim columns so they stay >= 44 px.
 --   * Windows (CloudUI.Panel, centred because the player asked for them, nudged right only when the menu
---     column would cover them): Inventory (tabs Pets + Team + Items, pet detail card; HUD cleanup: the Team tab is the
---     P3 team editor, titled "Battle Team"), Shop (tabs Roulettes + Items + Gems, odds popup), Stats and Home. The
+--     column would cover them): Inventory (tabs Pets + Team, pet detail card; HUD cleanup: the Team tab is the P3 team
+--     editor, titled "Battle Team"; the Items tab went with the obby items), Shop (tabs Roulettes + Gems, odds popup),
+--     Stats and Home. An old Tab = "Items" lands on Pets / Roulettes. The
 --     Pet Index is IndexController's window: the Index tile and
 --     OpenPanel("Index") open it. One window at a time; Esc / gamepad B / the red X / the tile again / a click
 --     outside closes it. Gamepad B is bound (ContextActionService, High priority, sunk) only while something is open,
@@ -87,7 +88,7 @@
 --     Once the stick has been seen the touch layout stays for the session (respawn, the Esc menu and a hybrid's
 --     mouse / touch switches hide the stick for a moment; the column must not snap back and forth).
 --
--- Remotes used: OpenPanel, RouletteResult (in); BuyRoulette, EquipPet, UnequipPet, BuyItem, GoToSpot, HomeAction,
+-- Remotes used: OpenPanel, RouletteResult (in); BuyRoulette, EquipPet, UnequipPet, GoToSpot, HomeAction,
 -- PetCare (out). Each remote action is sent at most every K.FIRE_GAP seconds (the server rate-limits as well).
 -- Plain Lua 5.1-compatible syntax only. All text goes through Theme roles.
 
@@ -134,13 +135,6 @@ local PetCatalog = safeRequire("PetCatalog", {
 	end,
 	PerkLabel = function(key, value)
 		return tostring(key) .. " " .. tostring(value)
-	end,
-})
-local ItemCatalog = safeRequire("ItemCatalog", {
-	List = {},
-	ById = {},
-	Get = function()
-		return nil
 	end,
 })
 
@@ -218,8 +212,6 @@ local K = {
 	BACK_ACTION = "NimbusMenuBack", -- ContextActionService action that owns gamepad B while something is closable
 	CARD_H = 474, -- roulette card
 	CARD_H_SHORT = 216,
-	ITEM_CARD_H = 440,
-	ITEM_CARD_H_SHORT = 214,
 	SHOP_COMPACT = 650, -- Shop windows lower than this (design px) use the compact cards
 }
 
@@ -742,10 +734,6 @@ local function gemRoulettesState()
 		return "Restricted"
 	end
 	return "Unavailable"
-end
-
-local function itemList()
-	return ItemCatalog.List or {}
 end
 
 -- "+12% Max Health" lines of a pet, in catalog order.
@@ -1712,23 +1700,6 @@ function P5.inset()
 	return inset
 end
 
--- HotbarController re-centres the hotbar left of a docked window (6.6); nil when nothing is docked right
-function P5.avoidRight(x)
-	if P5.Hotbar == nil then
-		P5.Hotbar = false
-		local module = script.Parent:FindFirstChild("HotbarController")
-		local ok, mod = pcall(function()
-			return module and require(module)
-		end)
-		if ok and type(mod) == "table" and type(mod.SetAvoidRight) == "function" then
-			P5.Hotbar = mod
-		end
-	end
-	if P5.Hotbar then
-		pcall(P5.Hotbar.SetAvoidRight, x)
-	end
-end
-
 -- The window rule (6.6): NeonKit.Dock puts the holder on its SideRect (docked RIGHT on landscape screens, a bottom
 -- sheet on portrait ones) and keeps it there when the screen changes; the window re-lays its content when its
 -- design size changes.
@@ -1745,9 +1716,6 @@ local function layoutWindow(win)
 	local w, h = math.floor(rect.designW + 0.5), math.floor(rect.designH + 0.5)
 	local changed = win.W ~= w or win.H ~= h
 	win.W, win.H = w, h
-	if win.Shown then
-		P5.avoidRight(rect.mode == "Side" and rect.x or nil)
-	end
 	if changed and win.Built and win.OnLayout then
 		safe("layout " .. win.Id, win.OnLayout, w, h, w < K.NARROW, h < K.SHORT, w < K.TALL)
 	end
@@ -1820,7 +1788,12 @@ local function normalizeTab(windowId, tab)
 	if t:find("roul", 1, true) then
 		return "Roulettes"
 	elseif t:find("item", 1, true) then
-		return "Items"
+		-- HUD cleanup: the Items tabs are gone; an old link lands on the window's first tab
+		if windowId == "Shop" then
+			return "Roulettes"
+		elseif windowId == "Inventory" then
+			return "Pets"
+		end
 	elseif t:find("gem", 1, true) then
 		if windowId == "Shop" then
 			return "Gems"
@@ -1912,9 +1885,6 @@ function closeWindow(id, instant)
 				win.Holder.Visible = false
 			end
 		end)
-	end
-	if not openId then
-		P5.avoidRight(nil)
 	end
 	updateMenuActive()
 end
@@ -2037,11 +2007,6 @@ end
 ----------------------------------------------------------------------
 -- Menu tiles (left-centre column; a 2 x 3 grid on short screens)
 ----------------------------------------------------------------------
--- (no tile any more since the HUD cleanup; the Items page goes with the items themselves)
-local function menuActionInventory()
-	toggleWindow("Inventory", { Tab = "Items" })
-end
-
 local function menuActionPets()
 	toggleWindow("Inventory", { Tab = "Pets" })
 end
@@ -2243,7 +2208,7 @@ function P5.columnSize(cols)
 	return tilesW + P5.TAB_GAP + tabW, rows * P5.TILE + (rows - 1) * P5.GAP, tilesW
 end
 
--- Places the tiles in `cols` columns (row by row: Pets Items / Team Index / ... in two columns) and the tab beside
+-- Places the tiles in `cols` columns (row by row: Pets Index / Home Stats in two columns) and the tab beside
 -- the last row, right after its last tile (the gear: with 3 columns that row holds only 2 tiles, and the tab must not
 -- leave an empty slot before it). Sets U.ColumnW / U.ColumnH / U.TilesW / U.TabX (design px).
 function P5.placeTiles(cols)
@@ -2610,7 +2575,6 @@ end
 function updateMenuActive()
 	local invWin = windows.Inventory
 	local invTab = invWin and invWin.Shown and invWin.Tab or nil
-	setActive("Inventory", invTab == "Items")
 	setActive("Pets", invTab == "Pets" or invTab == "Team")
 	setActive("Index", indexOpen())
 	setActive("Shop", windows.Shop ~= nil and windows.Shop.Shown)
@@ -2636,17 +2600,10 @@ local function refreshIndexBadge()
 	entry.SetBadge(ok and type(count) == "number" and count > 0)
 end
 
-local function gotoShopItems()
-	if inMatch() then
-		showHint("The shop is closed during a match.", "info")
-		return
-	end
-	openWindow("Shop", { Tab = "Items" })
-end
-
 ----------------------------------------------------------------------
--- Inventory window: tabs Pets + Items. Phase 2: one slot per pet COPY key (tier / hybrid badges, levels), the detail
--- card with level + XP, scaled stats and the Feed / Place in Garden / Train in Gym actions, and the Feed picker.
+-- Inventory window: tabs Pets + Team (HUD cleanup: the Items tab is gone). Phase 2: one slot per pet COPY key (tier /
+-- hybrid badges, levels), the detail card with level + XP, scaled stats and the Feed / Place in Garden / Train in Gym
+-- actions, and the Feed picker.
 ----------------------------------------------------------------------
 -- An empty-state block ("No pets yet!" + a line + a gold button) that fits whatever column it is in (bug batch 2 #1
 -- Studio check: on a landscape phone the Pets grid is ~180 design px wide and the old fixed 220 px button stuck out of
@@ -2888,7 +2845,6 @@ do
 			Ready = {}, -- key -> true once the grid slot got its pet viewport
 			Filling = false, -- true while the staggered viewport builder is running
 		}
-		local itemRows = {} -- itemId -> { Slot, Owned, Parts }
 		local W = {} -- widgets of the pets page
 		local teamHooks = {} -- HUD cleanup: the Team tab's OnOpen / OnLayout / Refresh (P3.BuildTeam)
 		local refreshInventory
@@ -2902,13 +2858,13 @@ do
 			TextSize = 22,
 			OnSelect = function(name)
 				win.Tab = name
-				-- Phase 5: one window, several faces (the Pets tile / the Items tile; HUD cleanup: the Team tab)
+				-- Phase 5: one window, several faces (HUD cleanup: the Pets tile's Pets and Team tabs)
 				if name == "Team" then
 					win.Panel.SetTitle("Battle Team")
 					win.Panel.SetAccent("Red")
 				else
-					win.Panel.SetTitle(name == "Items" and "Items" or "Pets")
-					win.Panel.SetAccent(name == "Items" and "Blue" or "Orange")
+					win.Panel.SetTitle("Pets")
+					win.Panel.SetAccent("Orange")
 				end
 				updateMenuActive()
 				if name == "Team" and win.Shown then
@@ -3831,107 +3787,9 @@ do
 			fillPetSlots() -- last: the first batch of grid viewports is built right here, the rest follow per frame
 		end
 
-		------------------------------------------------------------------
-		-- Items page
-		------------------------------------------------------------------
-		local function buildItemsPage(page)
-			local list = scroller(page, "ItemList", { Size = UDim2.new(1, 0, 1, 0) })
-			pad(list, 2, 2, 14, 8)
-			listLayout(list, Enum.FillDirection.Vertical, 10)
-			for index, def in ipairs(itemList()) do
-				local row = makeInset(list, "Row_" .. def.Id, {
-					Size = UDim2.new(1, 0, 0, 124),
-					LayoutOrder = index,
-				})
-				local slot = readableSlot(CloudUI.Slot({
-					Name = "Item_" .. def.Id,
-					Size = UDim2.fromOffset(96, 96),
-					Position = UDim2.fromOffset(14, 14),
-					Hotkey = tostring(index),
-					Parent = row,
-				}))
-				slot.SetContent({
-					Glyph = def.Glyph,
-					Color = def.Color,
-					RarityColor = CloudUI.RarityColor(def.Rarity),
-					Name = def.Name,
-					Blurb = def.Blurb,
-				})
-				local nameLabel = makeText(row, "Name", def.Name, "Title", 26, Theme.Lighten(def.Color, 0.35), {
-					Position = UDim2.fromOffset(126, 10),
-					Size = UDim2.new(1, -350, 0, 32),
-					TextXAlignment = Enum.TextXAlignment.Left,
-				})
-				local price = makeText(row, "Price", cloudAmount(def.Price) .. " each", "Heading", 20, Colors.Token, {
-					AnchorPoint = Vector2.new(1, 0),
-					Position = UDim2.new(1, -206, 0, 12),
-					Size = UDim2.fromOffset(150, 28),
-					TextXAlignment = Enum.TextXAlignment.Right,
-				})
-				local owned = makeText(row, "Owned", "", "Heading", 19, WHITE, {
-					Position = UDim2.fromOffset(126, 44),
-					Size = UDim2.new(1, -330, 0, 24),
-					TextXAlignment = Enum.TextXAlignment.Left,
-				})
-				local blurb = makeText(row, "Blurb", def.Blurb or "", "Body", 18, MUTED, {
-					Position = UDim2.fromOffset(126, 70),
-					Size = UDim2.new(1, -330, 0, 48),
-					TextWrapped = true,
-					TextXAlignment = Enum.TextXAlignment.Left,
-					TextYAlignment = Enum.TextYAlignment.Top,
-				})
-				local more = CloudUI.Button({
-					Name = "GetMore",
-					Text = "Get more",
-					Style = "Blue",
-					Size = UDim2.fromOffset(176, 56),
-					AnchorPoint = Vector2.new(1, 0.5),
-					Position = UDim2.new(1, -14, 0.5, 0),
-					TextSize = 22,
-					Callback = gotoShopItems,
-					Parent = row,
-				})
-				itemRows[def.Id] = {
-					Slot = slot,
-					Owned = owned,
-					Def = def,
-					Parts = { Row = row, Name = nameLabel, Price = price, Owned = owned, Blurb = blurb, More = more },
-				}
-			end
-
-			-- the fourth hotbar key is reserved for later
-			local locked = makeInset(list, "LockedRow", {
-				Size = UDim2.new(1, 0, 0, 58),
-				LayoutOrder = 50,
-			})
-			makeText(locked, "Text", G.Lock .. "  Slot " .. (#itemList() + 1) .. "   More items are coming soon.", "Heading", 19, MUTED, {
-				Position = UDim2.fromOffset(16, 0),
-				Size = UDim2.new(1, -32, 1, 0),
-				TextXAlignment = Enum.TextXAlignment.Left,
-				TextWrapped = true,
-			})
-			makeText(list, "Tip", "Items only work during a match: press 1-" .. #itemList() .. " or tap the hotbar.", "Body", 18, MUTED, {
-				Size = UDim2.new(1, 0, 0, 0),
-				AutomaticSize = Enum.AutomaticSize.Y,
-				TextWrapped = true,
-				LayoutOrder = 60,
-			})
-		end
-
-		local function refreshItemsPage()
-			local maxCarry = Config.Items.MaxCarry
-			for id, row in pairs(itemRows) do
-				local count = State.ItemCount(id)
-				row.Slot.SetCount(count)
-				row.Slot.SetDimmed(count <= 0)
-				row.Owned.Text = string.format("In bag: %d / %d", count, maxCarry)
-			end
-		end
-
 		function refreshInventory()
 			refreshPetsPage()
 			renderDetail()
-			refreshItemsPage()
 			if win.Tab == "Team" and teamHooks.Refresh then
 				safe("team refresh", teamHooks.Refresh)
 			end
@@ -3941,7 +3799,6 @@ do
 		tabs.Add("Team", function(page)
 			P3.BuildTeam(win, page, teamHooks)
 		end)
-		tabs.Add("Items", buildItemsPage)
 
 		win.Refresh = refreshInventory
 		win.OnClose = function()
@@ -3979,27 +3836,6 @@ do
 			if teamHooks.OnLayout then
 				-- the Team page sits inside the tab content (24 px narrower, the tab bar above it)
 				safe("team layout", teamHooks.OnLayout, w - 24, h - 78, narrow, short, tall)
-			end
-			-- item rows: narrow (portrait) rows stack the text and put the button under it
-			for _, row in pairs(itemRows) do
-				local P = row.Parts
-				if tall then
-					P.Row.Size = UDim2.new(1, 0, 0, 188)
-					P.Name.Size = UDim2.new(1, -140, 0, 32)
-					P.Price.Visible = false
-					P.Owned.Size = UDim2.new(1, -140, 0, 24)
-					P.Blurb.Size = UDim2.new(1, -140, 0, 64)
-					P.More.AnchorPoint = Vector2.new(1, 1)
-					P.More.Position = UDim2.new(1, -14, 1, -12)
-				else
-					P.Row.Size = UDim2.new(1, 0, 0, 124)
-					P.Name.Size = UDim2.new(1, -350, 0, 32)
-					P.Price.Visible = true
-					P.Owned.Size = UDim2.new(1, -330, 0, 24)
-					P.Blurb.Size = UDim2.new(1, -330, 0, 48)
-					P.More.AnchorPoint = Vector2.new(1, 0.5)
-					P.More.Position = UDim2.new(1, -14, 0.5, 0)
-				end
 			end
 		end
 	end
@@ -4186,7 +4022,7 @@ function openOdds(rouletteId)
 end
 
 ----------------------------------------------------------------------
--- Shop window: tabs Roulettes + Items
+-- Shop window: tabs Roulettes + Gems (HUD cleanup: the Items tab is gone)
 ----------------------------------------------------------------------
 local function bestRarityOf(roulette)
 	local bestId, bestOrder = nil, 0
@@ -4418,111 +4254,9 @@ local function layoutRouletteCard(card, compact)
 	P.Dots.Visible = not compact
 end
 
-local function buildItemCard(parent, def, index, count)
-	local card = makeFrame(parent, "Item_" .. def.Id, {
-		Size = UDim2.new(1 / count, -8, 1, 0),
-		BackgroundColor3 = WHITE,
-		BackgroundTransparency = 0,
-		LayoutOrder = index,
-	})
-	corner(card, 16)
-	stroke(card, NAVY, 4, 0)
-	Theme.Gradient(card, Theme.Darken(def.Color, 0.28), Theme.Darken(def.Color, 0.7), 90)
-
-	local slot = readableSlot(CloudUI.Slot({
-		Name = "ItemSlot",
-		Size = UDim2.fromOffset(104, 104),
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 16),
-		Hotkey = tostring(index),
-		Parent = card,
-	}))
-	slot.SetContent({
-		Glyph = def.Glyph,
-		Color = def.Color,
-		RarityColor = CloudUI.RarityColor(def.Rarity),
-		Name = def.Name,
-		Blurb = def.Blurb,
-	})
-	local nameLabel = makeText(card, "Name", def.Name, "Title", 26, Theme.Lighten(def.Color, 0.4), {
-		Position = UDim2.fromOffset(0, 128),
-		Size = UDim2.new(1, 0, 0, 32),
-	})
-	local blurb = makeText(card, "Blurb", def.Blurb or "", "Body", 18, WHITE, {
-		Position = UDim2.fromOffset(16, 164),
-		Size = UDim2.new(1, -32, 0, 70),
-		TextWrapped = true,
-		TextYAlignment = Enum.TextYAlignment.Top,
-	})
-	local owned = makeText(card, "Owned", "", "Heading", 19, MUTED, {
-		Position = UDim2.fromOffset(0, 238),
-		Size = UDim2.new(1, 0, 0, 24),
-	})
-	local price = makeText(card, "Price", cloudAmount(def.Price), "Display", 32, Colors.Token, {
-		Position = UDim2.fromOffset(0, 264),
-		Size = UDim2.new(1, 0, 0, 38),
-	})
-	local buy = CloudUI.Button({
-		Name = "Buy",
-		Text = "Buy +1",
-		Style = "Green",
-		Size = UDim2.new(1, -40, 0, 58),
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 310),
-		TextSize = 26,
-		Callback = function()
-			if inMatch() then
-				showHint("The shop is closed during a match.", "info")
-				return
-			end
-			fire("BuyItem", def.Id, 1)
-		end,
-		Parent = card,
-	})
-	Util.Create("UISizeConstraint", { MaxSize = Vector2.new(210, 58), Parent = buy })
-	local hint = makeText(card, "Hint", "", "Heading", 18, MUTED, {
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 376),
-		Size = UDim2.new(1, -20, 0, 48),
-		TextWrapped = true,
-		TextYAlignment = Enum.TextYAlignment.Top,
-	})
-	return {
-		Def = def,
-		Root = card,
-		Slot = slot,
-		Owned = owned,
-		Buy = buy,
-		Hint = hint,
-		Parts = { Slot = slot.Root, Name = nameLabel, Blurb = blurb, Owned = owned, Price = price, Buy = buy, Hint = hint },
-	}
-end
-
--- Item card: tall, or compact for short windows (the Buy button stays in view).
-local function layoutItemCard(card, compact)
-	local P = card.Parts
-	local left, centre = Enum.TextXAlignment.Left, Enum.TextXAlignment.Center
-	if compact then
-		place(P.Slot, 0, 0, UDim2.fromOffset(12, 12), UDim2.fromOffset(78, 78))
-		place(P.Name, 0, 0, UDim2.fromOffset(100, 10), UDim2.new(1, -108, 0, 30), left)
-		place(P.Owned, 0, 0, UDim2.fromOffset(100, 42), UDim2.new(1, -108, 0, 22), left)
-		place(P.Price, 0, 0, UDim2.fromOffset(100, 64), UDim2.new(1, -108, 0, 30), left)
-		place(P.Buy, 0.5, 0, UDim2.new(0.5, 0, 0, 102), UDim2.new(1, -24, 0, 50))
-		place(P.Hint, 0.5, 0, UDim2.new(0.5, 0, 0, 158), UDim2.new(1, -16, 0, 48))
-	else
-		place(P.Slot, 0.5, 0, UDim2.new(0.5, 0, 0, 16), UDim2.fromOffset(104, 104))
-		place(P.Name, 0, 0, UDim2.fromOffset(0, 128), UDim2.new(1, 0, 0, 32), centre)
-		place(P.Owned, 0, 0, UDim2.fromOffset(0, 238), UDim2.new(1, 0, 0, 24), centre)
-		place(P.Price, 0, 0, UDim2.fromOffset(0, 264), UDim2.new(1, 0, 0, 38), centre)
-		place(P.Buy, 0.5, 0, UDim2.new(0.5, 0, 0, 310), UDim2.new(1, -40, 0, 58))
-		place(P.Hint, 0.5, 0, UDim2.new(0.5, 0, 0, 376), UDim2.new(1, -20, 0, 48))
-	end
-	P.Blurb.Visible = not compact
-end
-
 local function buildShop(win)
 	local content = win.Panel.Content
-	local shop = { Cards = {}, ItemCards = {}, Bobs = {} }
+	local shop = { Cards = {}, Bobs = {} }
 	local W = {}
 
 	local tabs = CloudUI.Tabs({
@@ -4596,55 +4330,6 @@ local function buildShop(win)
 			end
 			card.Spin.Text = label
 			CloudUI.SetDisabled(card.Spin, disabled)
-			card.Hint.Text = hint
-			card.Hint.TextColor3 = hintColor
-		end
-	end
-
-	local function buildItemsPage(page)
-		local scroll = scroller(page, "Cards", { Size = UDim2.new(1, 0, 1, 0) })
-		pad(scroll, 2, 2, 12, 6)
-		listLayout(scroll, Enum.FillDirection.Vertical, 10)
-		local list = itemList()
-		local row = makeFrame(scroll, "Row", { Size = UDim2.new(1, 0, 0, K.ITEM_CARD_H), LayoutOrder = 1 })
-		W.ItemRow = row
-		W.ItemLayout = listLayout(row, Enum.FillDirection.Horizontal, 12, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Top)
-		for index, def in ipairs(list) do
-			shop.ItemCards[def.Id] = buildItemCard(row, def, index, math.max(3, #list))
-		end
-		makeText(scroll, "Tip", "Items only work during a match. Use them from the hotbar with keys 1-" .. #list .. " or by tapping.", "Body", 18, MUTED, {
-			Size = UDim2.new(1, 0, 0, 0),
-			AutomaticSize = Enum.AutomaticSize.Y,
-			TextWrapped = true,
-			LayoutOrder = 2,
-		})
-	end
-
-	local function refreshItemCards()
-		local tokens = State.Tokens()
-		local match = inMatch()
-		local maxCarry = Config.Items.MaxCarry
-		for id, card in pairs(shop.ItemCards) do
-			local count = State.ItemCount(id)
-			card.Owned.Text = string.format("In bag: %d / %d", count, maxCarry)
-			card.Slot.SetCount(count)
-			card.Slot.SetDimmed(count <= 0)
-			local label, hint, disabled = "Buy +1", "", false
-			local hintColor = MUTED
-			if match then
-				disabled = true
-				hint = "The shop is closed during matches."
-			elseif count >= maxCarry then
-				disabled = true
-				label = "Full"
-				hint = "You carry the maximum already."
-			elseif tokens < card.Def.Price then
-				disabled = true
-				hint = "Need " .. commas(card.Def.Price - tokens) .. " " .. G.Cloud .. " more"
-				hintColor = Theme.Lighten(BAD, 0.35)
-			end
-			card.Buy.Text = label
-			CloudUI.SetDisabled(card.Buy, disabled)
 			card.Hint.Text = hint
 			card.Hint.TextColor3 = hintColor
 		end
@@ -5104,7 +4789,6 @@ local function buildShop(win)
 	end
 
 	tabs.Add("Roulettes", buildRoulettePage)
-	tabs.Add("Items", buildItemsPage)
 	tabs.Add("Gems", buildGemsPage)
 
 	-- gold outline on the roulette the player walked up to (OpenPanel passes RouletteId)
@@ -5132,7 +4816,6 @@ local function buildShop(win)
 			W.Balance.TextColor3 = Colors.Token
 		end
 		refreshRouletteCards()
-		refreshItemCards()
 		refreshGemsPage()
 	end
 	-- compact cards when the tall ones would not fit the page (landscape phones); one card per row on portrait
@@ -5141,9 +4824,6 @@ local function buildShop(win)
 		local compact = h < K.SHOP_COMPACT or tall == true
 		for _, card in pairs(shop.Cards) do
 			layoutRouletteCard(card, compact)
-		end
-		for _, card in pairs(shop.ItemCards) do
-			layoutItemCard(card, compact)
 		end
 		local function stack(row, layout, cards, cardH, count, wideSize)
 			if not row or not layout then
@@ -5163,15 +4843,11 @@ local function buildShop(win)
 				row.Size = UDim2.new(1, 0, 0, cardH)
 			end
 		end
-		local roulettes, items = 0, 0
+		local roulettes = 0
 		for _ in pairs(shop.Cards) do
 			roulettes = roulettes + 1
 		end
-		for _ in pairs(shop.ItemCards) do
-			items = items + 1
-		end
 		stack(W.RouletteRow, W.RouletteLayout, shop.Cards, compact and K.CARD_H_SHORT or K.CARD_H, roulettes, UDim2.new(0.25, -9, 1, 0))
-		stack(W.ItemRow, W.ItemLayout, shop.ItemCards, compact and K.ITEM_CARD_H_SHORT or K.ITEM_CARD_H, items, UDim2.new(1 / math.max(3, items), -8, 1, 0))
 		tabs.Root.Position = UDim2.fromOffset(12, tall and 62 or 10)
 		tabs.Root.Size = UDim2.new(1, -24, 1, tall and -72 or -20)
 		layoutGemsPage(w, tall == true)
@@ -9039,8 +8715,10 @@ local function onOpenPanel(panelId, args, fromRemote)
 			return
 		end
 		openWindow("Shop", args)
-	elseif key == "inventory" or key == "items" then
+	elseif key == "inventory" then
 		openWindow("Inventory", args)
+	elseif key == "items" then
+		openWindow("Inventory", { Tab = "Pets" }) -- HUD cleanup: the Items tab is gone
 	elseif key == "pets" then
 		openWindow("Inventory", { Tab = "Pets", Action = args.Action, Key = args.Key })
 	elseif key == "home" or key == "spot" then

@@ -11,9 +11,8 @@
 --                      never ahead while walking, culling, snapping, clean-up;
 --                      v3 NPC pets (NpcController idle + dialog through ProximityPromptService), the sky dragon and,
 --                      once the Storm Altar is built, the client-side hover / pulse of the Stormfang showcase
---   client_hotbar      HotbarController: 4 slots, keys 1-4, dimmed in the lobby, UseItem remote, cooldown
 --   client_tokens      TokenFx: the client-side coin spin + bob (rates, amplitude, culling, release of collected coins)
---   client_layout_rule NO text from the HUD / toasts / countdown / party / results / menu / hotbar in the middle of
+--   client_layout_rule NO text from the HUD / toasts / countdown / party / results / menu in the middle of
 --                      the screen at 1920x1080 (and, from client_mobile, at 390x844), and the v3 readability rule
 --                      (every text on screen >= 15 px at 1920x1080, >= 14 px on phones)
 -- Plain Lua 5.1 syntax only.
@@ -536,10 +535,10 @@ S.client_state = guarded("client_state", function()
 	end
 	T.eq(State.IsLoaded and State.IsLoaded(), false, "before the first ProfileSync State is not loaded")
 	local snap0 = State.Get()
-	T.check(type(snap0) == "table" and type(snap0.Pets) == "table" and type(snap0.Equipped) == "table" and type(snap0.Items) == "table" and type(snap0.Stats) == "table" and type(snap0.Perks) == "table",
-		"State.Get() never returns nil: defaults { Tokens, Pets, Equipped, Items, Stats, Perks }")
+	T.check(type(snap0) == "table" and type(snap0.Pets) == "table" and type(snap0.Equipped) == "table" and snap0.Items == nil and type(snap0.Stats) == "table" and type(snap0.Perks) == "table",
+		"State.Get() never returns nil: defaults { Tokens, Pets, Equipped, Stats, Perks } (HUD cleanup: no Items)")
 	T.check(snap0.Stats.Matches == 0 and snap0.Stats.Wins == 0 and type(snap0.Stats.BestTimes) == "table" and snap0.Perks.MaxHealth == 0 and snap0.Perks.TokenBonus == 0, "...with zeroed stats and perks")
-	T.check(State.OwnedCount("cloudy_dragon") == 0 and State.EquippedCount("cloudy_dragon") == 0 and State.IsEquipped("cloudy_dragon") == false and State.ItemCount("heal_cloud") == 0, "...and nothing owned")
+	T.check(State.OwnedCount("cloudy_dragon") == 0 and State.EquippedCount("cloudy_dragon") == 0 and State.IsEquipped("cloudy_dragon") == false and State.ItemCount == nil, "...and nothing owned (no ItemCount)")
 	T.check(#serverCalls("RequestProfile") >= 2, "State asks for the profile (RequestProfile) and retries while no snapshot arrived", #serverCalls("RequestProfile") .. " requests")
 	local requestsBefore = #serverCalls("RequestProfile")
 	State.Init()
@@ -576,8 +575,7 @@ S.client_state = guarded("client_state", function()
 	T.eq(State.OwnedCount("nobody"), 0, "...0 for pets that are not owned")
 	T.check(State.IsEquipped("cloudy_dragon") and State.IsEquipped("biscuit_bear") and not State.IsEquipped("pebble_pup"), "IsEquipped lists the equipped pets")
 	T.eq(State.EquippedCount("cloudy_dragon"), 1, "EquippedCount counts copies")
-	T.eq(State.ItemCount("heal_cloud"), 2, "ItemCount")
-	T.eq(State.ItemCount("shield_bubble"), 0, "...0 for items not carried")
+	T.eq(State.Get().Items, nil, "HUD cleanup: the snapshot's Items key is dropped")
 	T.eq(State.Get().Stats.Wins, 7, "Stats are mirrored")
 	T.eq(State.Get().Stats.BestTimes.Easy, 123.4, "...also the best times")
 	T.near(State.Get().Perks.TokenBonus, 0.25, 1e-9, "...and the perks")
@@ -594,7 +592,7 @@ S.client_state = guarded("client_state", function()
 	local messy = State.Get()
 	T.check(type(messy.Pets) == "table" and messy.Pets.a == nil and messy.Pets.c == nil and messy.Pets.b == 2, "messy ProfileSync data is sanitised (pet counts)")
 	T.check(#messy.Equipped == 1 and messy.Equipped[1] == "dragon", "...(equipped ids)")
-	T.check(type(messy.Items) == "table" and type(messy.Stats.Matches) == "number" and messy.Stats.BestTimes.Easy == nil and messy.Perks.MaxHealth == 0, "...(items, stats, perks)")
+	T.check(messy.Items == nil and type(messy.Stats.Matches) == "number" and messy.Stats.BestTimes.Easy == nil and messy.Perks.MaxHealth == 0, "...(no items, stats, perks)")
 	toClient("ProfileSync", "garbage")
 	toClient("ProfileSync", nil)
 	advance(0.1)
@@ -989,7 +987,6 @@ end
 S.client_menu = guarded("client_menu", function()
 	local Config, Util, Theme = env()
 	local PetCatalog = require(Mock.GetPath(ROOTS["shared"] .. "/PetCatalog"))
-	local ItemCatalog = require(Mock.GetPath(ROOTS["shared"] .. "/ItemCatalog"))
 	local Menu = M.MenuController
 	local menu = gui():FindFirstChild("NimbusMenu")
 	if not T.check(menu ~= nil and menu:IsA("ScreenGui"), "MenuController builds the ScreenGui 'NimbusMenu'") then
@@ -1073,8 +1070,8 @@ S.client_menu = guarded("client_menu", function()
 			"windows open docked right (DockMode Side, the right edge within the margin)", string.format("DockMode %s, right edge %.0f of %d", tostring(inv:GetAttribute("DockMode")), rightEdge, vp.X))
 		T.check(findText("equipped 2/3", inv) ~= nil, "the Pets tab shows 'Equipped 2/3'", allShownText())
 		T.check(findText("pets", inv) ~= nil, "...in a window titled Pets (the title follows the tab)")
-		local tabsFound = findText("^pets$", inv, true) ~= nil and findText("^items$", inv, true) ~= nil
-		T.check(tabsFound, "...with the tabs Pets and Items")
+		local tabsFound = findText("^pets$", inv, true) ~= nil and findText("^team$", inv, true) ~= nil and findText("^items$", inv, true) == nil
+		T.check(tabsFound, "...with the tabs Pets and Team (HUD cleanup: no Items tab)")
 		local grid = descendantNamed(inv, "CloudGrid")
 		local slots = {}
 		for _, c in ipairs(grid and grid:GetChildren() or {}) do
@@ -1149,21 +1146,9 @@ S.client_menu = guarded("client_menu", function()
 				end
 			end
 		end
-		-- items tab
-		local itemsTab = descendantNamed(inv, "Tab_Items")
-		if itemsTab then
-			Mock.Click(itemsTab)
-			advance(0.4)
-			local rows = {}
-			for _, def in ipairs(ItemCatalog.List) do
-				rows[def.Id] = descendantNamed(inv, "Row_" .. def.Id)
-			end
-			T.check(rows.heal_cloud and rows.shield_bubble and rows.phoenix_feather, "the Items tab has a row for each item")
-			T.check(rows.heal_cloud and findText("heal cloud", rows.heal_cloud) ~= nil and findText("x2", rows.heal_cloud) ~= nil, "...with its name and the carried count", rows.heal_cloud and allShownText() or "")
-			T.check(rows.heal_cloud and findText("30", rows.heal_cloud) ~= nil, "...and the price")
-		else
-			T.fail("the Inventory window has an Items tab (Tab_Items)")
-		end
+		-- HUD cleanup: the tabs are Pets and Team (the Items tab went with the obby items)
+		T.check(descendantNamed(inv, "Tab_Items") == nil and descendantNamed(inv, "Tab_Pets") ~= nil and descendantNamed(inv, "Tab_Team") ~= nil,
+			"the Inventory window has the tabs Pets and Team (no Items tab)")
 	end
 
 	-- one window at a time + Esc + toggle
@@ -1312,31 +1297,8 @@ S.client_menu = guarded("client_menu", function()
 			press("Escape")
 			advance(0.5)
 		end
-		-- items
-		local tab = descendantNamed(shop, "Tab_Items")
-		if tab then
-			Mock.Click(tab)
-			advance(0.4)
-			for _, def in ipairs(ItemCatalog.List) do
-				local card = descendantNamed(shop, "Item_" .. def.Id)
-				if T.check(card ~= nil, "an item card for " .. def.Name) then
-					T.check(findText(def.Name:lower(), card) ~= nil and hasNumber(card, def.Price), def.Id .. ": name and price (" .. def.Price .. ")")
-					local buyBtn = descendantNamed(card, "Buy")
-					local b0 = #serverCalls("BuyItem")
-					if buyBtn then
-						advance(0.4) -- the menu spaces two sends of one remote by 0.3 s
-						Mock.Click(buyBtn)
-						advance(0.4)
-					end
-					local calls = callsAfter("BuyItem", b0)
-					local hintLabel = descendantNamed(card, "Hint")
-					T.check(#calls == 1 and calls[1].args[1] == def.Id and (calls[1].args[2] == nil or calls[1].args[2] == 1), "Buy fires Remotes.BuyItem(" .. def.Id .. ", 1)",
-						#calls .. " calls; Buy disabled=" .. tostring(buyBtn and buyBtn:GetAttribute("Disabled")) .. ", hint '" .. tostring(hintLabel and hintLabel.Text) .. "', in bag " .. KC.M.State.ItemCount(def.Id) .. ", tokens " .. KC.M.State.Tokens())
-				end
-			end
-		else
-			T.fail("the Shop has an Items tab (Tab_Items)")
-		end
+		-- HUD cleanup: no Items tab (the obby items are gone)
+		T.check(descendantNamed(shop, "Tab_Items") == nil and descendantNamed(shop, "Tab_Gems") ~= nil, "the Shop tabs are Roulettes and Gems (no Items tab)")
 	end
 	press("Escape")
 	advance(0.5)
@@ -1347,10 +1309,10 @@ S.client_menu = guarded("client_menu", function()
 	T.eq(table.concat(visibleWindows(), ","), "Window_Shop", "OpenPanel('Shop', { Tab = 'Roulette' }) opens the Shop")
 	local page = windowOf("Window_Shop") and descendantNamed(windowOf("Window_Shop"), "Page_Roulettes")
 	T.check(page ~= nil and page.Visible, "...on the Roulettes tab")
-	toClient("OpenPanel", "Shop", { Tab = "Items" })
+	toClient("OpenPanel", "Shop", { Tab = "Gems" })
 	advance(0.6)
-	local itemsPage = windowOf("Window_Shop") and descendantNamed(windowOf("Window_Shop"), "Page_Items")
-	T.check(itemsPage ~= nil and itemsPage.Visible, "OpenPanel('Shop', { Tab = 'Items' }) shows the Items tab")
+	local gemsPage = windowOf("Window_Shop") and descendantNamed(windowOf("Window_Shop"), "Page_Gems")
+	T.check(gemsPage ~= nil and gemsPage.Visible, "OpenPanel('Shop', { Tab = 'Gems' }) shows the Gems tab")
 	press("Escape")
 	advance(0.5)
 	toClient("OpenPanel", "NoSuchPanel", nil)
@@ -1360,7 +1322,7 @@ S.client_menu = guarded("client_menu", function()
 	-- during a match no shop window
 	LocalPlayer:SetAttribute("InMatch", true)
 	advance(0.3)
-	toClient("OpenPanel", "Shop", { Tab = "Items" })
+	toClient("OpenPanel", "Shop", { Tab = "Roulettes" })
 	advance(0.6)
 	T.eq(#visibleWindows(), 0, "OpenPanel('Shop') is ignored during a match")
 	LocalPlayer:SetAttribute("InMatch", false)
@@ -1458,135 +1420,6 @@ S.client_menu = guarded("client_menu", function()
 	T.check(Menu and type(Menu.Open) == "function" and type(Menu.Close) == "function", "MenuController.Open / Close are public")
 	flushErrors("client_menu")
 	flushWarnings("client_menu")
-end)
-
-----------------------------------------------------------------------------------------------------
--- scenario: the hotbar
-----------------------------------------------------------------------------------------------------
-S.client_hotbar = guarded("client_hotbar", function()
-	local Config = env()
-	local ItemCatalog = require(Mock.GetPath(ROOTS["shared"] .. "/ItemCatalog"))
-	local HB = M.HotbarController
-	local g = gui():FindFirstChild("NimbusHotbar")
-	if not T.check(g ~= nil and g:IsA("ScreenGui"), "HotbarController builds the ScreenGui 'NimbusHotbar'") then
-		return
-	end
-	resetMatchState()
-	feed({ Items = { heal_cloud = 2, phoenix_feather = 1 } })
-	local vp = Mock.Viewport
-	T.eq(g.DisplayOrder, 11, "its DisplayOrder is 11")
-	local bar = g:FindFirstChild("Hotbar")
-	local slots = {}
-	for i = 1, Config.Items.HotbarSlots do
-		slots[i] = bar and bar:FindFirstChild("Hotbar" .. i)
-	end
-	T.check(slots[1] and slots[2] and slots[3] and slots[4], "four slots Hotbar1 .. Hotbar4")
-	if bar then
-		local cx = bar.AbsolutePosition.X + bar.AbsoluteSize.X / 2
-		T.check(abs(cx - vp.X / 2) < vp.X * 0.03, "the bar is centred horizontally", string.format("%.2f", cx / vp.X))
-		T.check(bar.AbsolutePosition.Y + bar.AbsoluteSize.Y > vp.Y * 0.88, "...at the bottom of the screen", string.format("bottom at %.2f", (bar.AbsolutePosition.Y + bar.AbsoluteSize.Y) / vp.Y))
-	end
-	local function glyph(slot)
-		local d = slot and descendantNamed(slot, "Glyph")
-		return d and d.Text
-	end
-	local function count(slot)
-		local d = slot and descendantNamed(slot, "Count")
-		return d and d.Text, d and isShown(d)
-	end
-	for i, def in ipairs(ItemCatalog.List) do
-		T.eq(glyph(slots[i]), def.Glyph, "slot " .. i .. " shows the glyph of " .. def.Id .. " (ItemCatalog.List order)")
-	end
-	T.check(glyph(slots[4]) ~= nil and glyph(slots[4]) ~= glyph(slots[1]), "slot 4 is a locked placeholder", tostring(glyph(slots[4])))
-	T.check(count(slots[1]) == "x2" and count(slots[2]) == "x0" and count(slots[3]) == "x1", "counts come from State (x2, x0, x1)", tostring(count(slots[1])) .. "," .. tostring(count(slots[2])) .. "," .. tostring(count(slots[3])))
-	for i = 1, 4 do
-		local key = slots[i] and descendantNamed(slots[i], "Key")
-		T.eq(key and key.Text, tostring(i), "slot " .. i .. " is labelled with the key " .. i)
-	end
-	local function dimmed(slot)
-		local d = slot and descendantNamed(slot, "Dim")
-		return d and isShown(d)
-	end
-	T.check(dimmed(slots[1]) == true, "in the lobby the item slots are dimmed (items only work in matches)")
-	local mark = #serverCalls("UseItem")
-	press("One")
-	advance(0.2)
-	T.eq(#serverCalls("UseItem"), mark, "pressing 1 in the lobby sends nothing")
-	local hint = bar and descendantNamed(bar, "Hint")
-	T.check(hint ~= nil and isShown(hint) and findText("match", bar, false) ~= nil, "...it explains why instead ('Items only work during a match')", allShownText())
-
-	-- in a match
-	LocalPlayer:SetAttribute("InMatch", true)
-	advance(0.5)
-	T.check(dimmed(slots[1]) == false, "in a match a slot with items is lit")
-	T.check(dimmed(slots[2]) == true, "...an empty one stays dimmed")
-	mark = #serverCalls("UseItem")
-	press("One")
-	advance(0.2)
-	local calls = callsAfter("UseItem", mark)
-	T.check(#calls == 1 and calls[1].args[1] == "heal_cloud", "key 1 fires Remotes.UseItem('heal_cloud')", #calls .. " calls")
-	local cool = slots[1] and descendantNamed(slots[1], "Cooldown")
-	T.check(cool ~= nil and isShown(cool), "...and a cooldown bar runs on the slot")
-	press("One")
-	advance(0.1)
-	T.eq(#callsAfter("UseItem", mark), 1, "pressing again during the cooldown does nothing")
-	advance(1.2)
-	press("One")
-	advance(0.1)
-	T.eq(#callsAfter("UseItem", mark), 2, "...and works again after it")
-	advance(1.2)
-	mark = #serverCalls("UseItem")
-	press("Two")
-	advance(0.2)
-	T.eq(#callsAfter("UseItem", mark), 0, "an item the player does not have is not sent (x0)")
-	press("Four")
-	advance(0.2)
-	T.eq(#callsAfter("UseItem", mark), 0, "the locked slot 4 sends nothing")
-	press("Three", true)
-	advance(0.2)
-	T.eq(#callsAfter("UseItem", mark), 0, "keys already used by the game (processed) are ignored")
-	press("KeypadThree")
-	advance(0.2)
-	local c3 = callsAfter("UseItem", mark)
-	T.check(#c3 == 1 and c3[1].args[1] == "phoenix_feather", "the keypad works too (KeypadThree -> phoenix_feather)", #c3 .. " calls")
-	advance(1.2)
-	-- tap / click
-	mark = #serverCalls("UseItem")
-	local button = slots[1] and slots[1]:FindFirstChild("Button")
-	if button then
-		Mock.Click(button)
-		advance(0.2)
-	end
-	T.eq(#callsAfter("UseItem", mark), 1, "tapping a slot uses the item as well")
-	-- downed
-	advance(1.2)
-	LocalPlayer:SetAttribute("Downed", true)
-	advance(0.4)
-	mark = #serverCalls("UseItem")
-	press("One")
-	advance(0.2)
-	T.eq(#callsAfter("UseItem", mark), 0, "a downed player cannot use items (nothing is sent)")
-	T.check(dimmed(slots[1]) == true, "...and the slots are dimmed")
-	LocalPlayer:SetAttribute("Downed", false)
-	LocalPlayer:SetAttribute("InMatch", false)
-	advance(0.4)
-	-- the API
-	T.check(HB and type(HB.UseSlot) == "function", "HotbarController.UseSlot(index) is public")
-	mark = #serverCalls("UseItem")
-	LocalPlayer:SetAttribute("InMatch", true)
-	advance(0.4)
-	HB.UseSlot(1)
-	advance(0.2)
-	T.eq(#callsAfter("UseItem", mark), 1, "UseSlot(1) fires UseItem like the key does")
-	HB.UseSlot(9)
-	T.check(true, "UseSlot of a missing slot is harmless")
-	LocalPlayer:SetAttribute("InMatch", false)
-	-- counts follow the profile
-	feed({ Items = { heal_cloud = 5 } })
-	T.eq((count(slots[1])), "x5", "counts follow ProfileSync (x5)")
-	feed()
-	flushErrors("client_hotbar")
-	flushWarnings("client_hotbar")
 end)
 
 ----------------------------------------------------------------------------------------------------
@@ -2351,9 +2184,9 @@ local function layoutRule(label)
 	advance(1.0)
 	check("at rest in the lobby")
 
-	-- HP / token pill / menu column / hotbar sit at their corners
+	-- HP / token pill / menu column sit at their corners
 	local vitals = gui().NimbusHud.BottomLeft:FindFirstChild("Vitals")
-	-- bug batch 2 #1 (option A): the vitals sit bottom-centre above the hotbar, the currency strips top-right
+	-- bug batch 2 #1 (option A): the vitals sit bottom-centre (HUD cleanup: in the old hotbar's spot), the strips top-right
 	local pill = gui().NimbusHud.TopRight:FindFirstChild("TokenPill") or gui().NimbusHud.TopRight:FindFirstChild("Currency")
 	if vitals then
 		local x, y = zoneOf(vitals)

@@ -21,7 +21,7 @@
 -- "NEW" update ribbon, PLAY (Primary Green, 76 tall), SETTINGS (Blue outline) + UPDATES (Purple outline with a NEW
 -- badge while UpdateNotes.Latest > Settings.SeenNotes), a dark gradient over the world so the text reads, and a
 -- version + CREDITS chip bottom-right.
--- Windows (docked by NeonKit.Dock: right side panel / bottom sheet; the hotbar steps aside):
+-- Windows (docked by NeonKit.Dock: right side panel / bottom sheet):
 --   SETTINGS  Music and Sound (11 steps 0..10, - / + and the step segments), Graphics (Auto / Low / High chips),
 --             Camera shake (ON / OFF), Mouse lock (ON / OFF, keyboard + mouse devices only; the L key toggles it too);
 --             applied at once through ClientSettings.Set (sent after a 0.4 s debounce)
@@ -728,13 +728,6 @@ end
 ----------------------------------------------------------------------
 local Win = {}
 
-function Win.hotbar(x)
-	local hb = H.mod("HotbarController")
-	if hb and type(hb.SetAvoidRight) == "function" then
-		pcall(hb.SetAvoidRight, x)
-	end
-end
-
 function Win.close()
 	local W = M.Win
 	if W.Dock then
@@ -743,12 +736,8 @@ function Win.close()
 	if W.Holder then
 		W.Holder:Destroy()
 	end
-	local was = W.Name
 	W.Name, W.Holder, W.Dock, W.Panel = nil, nil, nil, nil
 	M.Settings.Rows = {}
-	if was then
-		Win.hotbar(nil)
-	end
 end
 
 function Win.open(name, title, category, prefH)
@@ -774,10 +763,6 @@ function Win.open(name, title, category, prefH)
 		Parent = holder,
 	})
 	W.Name, W.Holder = name, holder
-	local rect = W.Dock and W.Dock.Rect
-	if rect and rect.mode == "Side" and UiGate.HasPlayed() then
-		Win.hotbar(rect.x)
-	end
 	return W.Panel
 end
 

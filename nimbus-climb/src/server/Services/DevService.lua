@@ -109,7 +109,7 @@
 -- PetGrowth / Ring, whose stages, ranks and Best only rise in the merge; tutorial: Tutorial):
 -- the next successful save writes the session's values over the stored ones, so the reset lasts with DataStores
 -- on (the live game, Studio with API access) and a replay is not ended by the next autosave. Everything else
--- (tokens, pets, items, stats, ...) follows through the normal delta save.
+-- (tokens, pets, the old Items field, stats, ...) follows through the normal delta save.
 -- While DataService.IsProvisional(player) (the profile's load failed during a DataStore outage and the real save
 -- is still being read) only tokens and devhelp run: allpets, reset, tutorial and skiptutorial would work on stand-in
 -- defaults, so they are refused with "your data is still loading".
@@ -585,7 +585,7 @@ local function cmdReset(player, profile)
 	profile.Tokens = 0
 	wipe(tableField(profile, "Pets"))
 	wipe(tableField(profile, "Equipped"))
-	wipe(tableField(profile, "Items"))
+	wipe(tableField(profile, "Items")) -- HUD cleanup: the obby items are gone; the stored field stays empty (harmless)
 	local stats = tableField(profile, "Stats")
 	stats.Matches, stats.Wins, stats.TokensEarned, stats.Spins = 0, 0, 0, 0
 	wipe(tableField(stats, "BestTimes"))

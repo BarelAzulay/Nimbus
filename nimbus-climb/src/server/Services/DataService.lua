@@ -5,7 +5,8 @@
 --
 -- Profile shape (ARCHITECTURE_V2.md section 1, ARCHITECTURE_V3.md section 1 + section 11 + "Phase 2 build contract" +
 -- "Phase 3 build contract" + "Phase 4 build contract" section 4):
---   { Version = 2, Tokens, Pets = {[petId]=count}, Equipped = {key...}, Items = {[itemId]=count},
+--   { Version = 2, Tokens, Pets = {[petId]=count}, Equipped = {key...}, Items = {[itemId]=count} (HUD cleanup: the
+--     obby items are gone; the field stays in the store and the merge, emptied by the one-time B3ItemsRefund),
 --     Stats = { Matches, Wins, TokensEarned, Spins, BestTimes = {[difficultyId]=seconds} }, SpotIndex,
 --     -- v3
 --     Discovered = {[petId]=true}, IndexClaimed = {[groupId]=true}, Tutorial = { Step, Done, Gifted },
@@ -26,7 +27,8 @@
 --     PetGrowth = { [key] = { Evo = 0..2, Speed, Physique, Ability, Defense = 0..10,
 --                            Job = { Stat, Ends, Rank, Slot, From, Paid } | nil } },
 --     Ring = { Best = 0..100000, Runs },
---     Migrations = { P4 = true, P5Dungeon = true, P5Home = true, P5MouseLock = true, B2GardenSolo = true },
+--     Migrations = { P4 = true, P5Dungeon = true, P5Home = true, P5MouseLock = true, B2GardenSolo = true,
+--                    B3ItemsRefund = true },
 --     -- Phase 5 (ARCHITECTURE_V3.md "Phase 5 build contract" section 9; new TOP-LEVEL fields + new Home keys again, so
 --     -- a Phase 4 server still running during the rollout writes them back untouched through keepForeign)
 --     Dungeon = { Best = 0..100, Cleared = {[floor]=true} (a dense boolean array in the store), Runs, Clears },
@@ -85,6 +87,11 @@
 --   prune drops the preset; a closed place does not lock, see the team rule above).
 --   Ring: Best = the highest Champion Ring round won (0 = never), Runs = finished runs.
 --   Migrations: one-time data migrations this profile went through (P4 = the Phase 4 migration, section 4.3).
+--   HUD cleanup (2026-10-30): B3ItemsRefund = the obby items were removed and the save's old Items were refunded ONCE
+--   as Tokens (30 / 45 / 150 per heal_cloud / shield_bubble / phoenix_feather, at most 5 of each, unknown ids pay 0),
+--   then Items emptied (P6.itemsRefund, on a loaded, real profile only: a provisional one is refunded after its
+--   recovery). The twin rule: when the STORE already holds the marker as this session saves (another server refunded
+--   the same save), the session's own refund is left out of the Tokens delta, so a save is never paid twice.
 --   Home.LegacySlots (a veteran's old garden size when it was above 3 + Prestige) and Home.LegacyPrices (true for a
 --   veteran who had prestiged on Phase 3: base prices until the next prestige) are written ONLY by the Phase 4
 --   migration and cleared by the next prestige (MutateHome clears both whenever the Home's Prestige rises).
@@ -272,10 +279,13 @@
 --     Migrated                          Util.Signal (exists at module load) Fire(player, name, info) right after the
 --                                       ProfileLoaded / ProfileRebased that ran a migration; bug batch 2 #18:
 --                                       "B2GardenSolo" { Keys = {key...} } when the read took pets out of the Garden
---                                       (they stayed equipped / in a team; MigratedNow(player, "B2GardenSolo") too)
+--                                       (they stayed equipped / in a team; MigratedNow(player, "B2GardenSolo") too);
+--                                       HUD cleanup: "B3ItemsRefund" { Tokens = n, Items = {[id]=count} } when the
+--                                       refund paid Tokens (Main.server shows the toast; MigratedNow answers it too)
 --     SetPetLevel(player, key, level) -> ok   developer tools: writes { Level, Xp = 0 } for an OWNED key (1..the curve's
 --                                       max level); refused until loaded / while provisional; synced
---   ProfileSync snapshot: Tokens, Pets, Equipped, Items, Stats, SpotIndex, Perks, Discovered, IndexClaimed,
+--   ProfileSync snapshot: Tokens, Pets, Equipped, Stats, SpotIndex, Perks, Discovered, IndexClaimed (no Items since
+--     the HUD cleanup),
 --     Tutorial + Phase 2: Cash, Gems, Home { Level, Prestige, Stations, Garden, Gym, CollectorCash, LegacySlots?,
 --     LegacyPrices? } (slot maps encoded like the store), Food, Tiers, Hybrids, PetLevels + Phase 3: Teams { Presets,
 --     Active, Slots } (pruned), Battle { Trophies, TrialBest, TrialCleared = {bool...} (index = level), Raids,
@@ -693,6 +703,14 @@ local P5 = {
 	MAX_MAGNET = 5, -- Home.LegacyMagnet 1..5 (the old Coin Magnet level)
 	buckets = {}, -- [userId] = { tokens, last } SettingsSet rate limit (cleared when the player leaves)
 	pushes = {}, -- [userId] = { last = os.clock(), queued = bool } Berries attribute throttle
+}
+
+-- HUD cleanup (2026-10-30): the obby items are gone. ONE table again (the one new top-level local): the one-time
+-- refund of the Items a save still holds (see the header, Migrations). Save-format constants only.
+local P6 = {
+	MARK = "B3ItemsRefund", -- Migrations[name] of the one-time item refund
+	REFUND = { heal_cloud = 30, shield_bubble = 45, phoenix_feather = 150 }, -- Tokens per item (the old catalog prices)
+	REFUND_MAX = 5, -- the old Config.Items.MaxCarry: stored counts clamp to it (on read, in the merge and in the refund)
 }
 
 -- The Dungeon record: Best = the highest floor cleared (0 = none), Cleared = { [floor] = true } in the live profile
@@ -2030,7 +2048,7 @@ local function normalizeProfile(raw, info)
 	if type(raw.Items) == "table" then
 		for id, n in pairs(raw.Items) do
 			if validKey(id) then
-				local count = clampCount(n, Config.Items.MaxCarry)
+				local count = clampCount(n, P6.REFUND_MAX)
 				if count > 0 then
 					p.Items[id] = count
 				end
@@ -2477,6 +2495,8 @@ local function diffProfiles(live, base, overwrite, opts)
 		-- the part of that delta the session's own P5Home step converted from Food (the m15 twin: a store another
 		-- server already marked P5Home holds its own conversion, so applyDelta leaves these out there)
 		BerriesMigrated = (isFinite(opts.BerriesMigrated) and opts.BerriesMigrated > 0) and math.floor(opts.BerriesMigrated) or nil,
+		-- HUD cleanup: the Tokens the session's own item refund paid (left out against a store already refunded)
+		ItemsRefunded = (isFinite(opts.ItemsRefunded) and opts.ItemsRefunded > 0) and math.floor(opts.ItemsRefunded) or nil,
 		Settings = nil,
 		Overwrite = overwriteValues(live, overwrite),
 		-- the prestige rule for Cash and the star rewards (applyDelta); receipt gems (no double grant)
@@ -2700,10 +2720,19 @@ local function applyDelta(stored, d)
 			out.Dungeon = P5.cleanDungeon(o.Dungeon)
 		end
 	end
-	out.Tokens = sanitize(out.Tokens + d.Tokens)
+	-- HUD cleanup: the session's own item refund is left out when the store already holds another server's (the
+	-- marker, read from the stored record before the union below): one save is refunded once
+	local refunded = 0
+	if tableOr(stored.Migrations)[P6.MARK] == true and isFinite(d.ItemsRefunded) and d.ItemsRefunded > 0 then
+		refunded = d.ItemsRefunded
+	end
+	out.Tokens = sanitize(out.Tokens + d.Tokens - refunded)
 	applyCounts(out.Pets, d.Pets, Config.Pets.MaxPerStack)
-	applyCounts(out.Items, d.Items, Config.Items.MaxCarry)
+	applyCounts(out.Items, d.Items, P6.REFUND_MAX)
 	for key, delta in pairs(d.Stats) do
+		if key == "TokensEarned" then
+			delta = delta - refunded
+		end
 		out.Stats[key] = sanitize(out.Stats[key] + delta)
 	end
 	for id, seconds in pairs(d.BestTimes) do
@@ -3051,6 +3080,8 @@ local function deltaOpts(entry)
 		-- Phase 5: the berries the session's own P5Home step converted from Food (left out of the merge when the store
 		-- already holds another server's conversion)
 		BerriesMigrated = entry.BerriesMigrated,
+		-- HUD cleanup: the Tokens the session's own item refund paid (left out when the store is already refunded)
+		ItemsRefunded = entry.ItemsRefunded,
 	}
 end
 
@@ -3302,7 +3333,6 @@ local function buildSnapshot(profile)
 		Tokens = profile.Tokens,
 		Pets = copyMap(profile.Pets),
 		Equipped = copyList(profile.Equipped),
-		Items = copyMap(profile.Items),
 		Stats = {
 			Matches = stats.Matches,
 			Wins = stats.Wins,
@@ -3564,6 +3594,7 @@ local function announceRebase(userId, entry)
 	local migrated = P4.migrateEntry(entry, player)
 	local migrated5 = P5.migrateEntry(entry, player) -- Phase 5: after a recovered load too (idempotent)
 	local garden = P3.gardenMigrate(entry) -- bug batch 2 #18: the marker + what this read took out of the Garden
+	local refund = P6.itemsRefund(entry, player) -- HUD cleanup: the old Items refunded once (after a recovery too)
 	entry.TeamsTrimmed = nil
 	DataService.Sync(player)
 	DataService.ProfileRebased:Fire(player, entry.Profile)
@@ -3571,6 +3602,7 @@ local function announceRebase(userId, entry)
 	P4.announceMigration(player, migrated)
 	P5.announceMigration(player, migrated5)
 	P3.gardenAnnounce(player, garden)
+	P6.announce(player, refund)
 end
 
 -- Re-reads the store for an entry whose load failed and merges the session on top of it.
@@ -3664,6 +3696,7 @@ local function writeEntry(entry, userId)
 			end
 			entry.DungeonMigrated = nil -- Phase 5: the store holds the migration's Clears now (the Base adopts them below)
 			entry.BerriesMigrated = nil -- Phase 5: ...and the P5Home step's berries (counted there exactly once)
+			entry.ItemsRefunded = nil -- HUD cleanup: ...and the item refund (the store holds the marker now)
 			if type(result) == "table" then
 				local confirmed = normalizeProfile(result)
 				if profilesEqual(confirmed, snapshot) then
@@ -3939,6 +3972,8 @@ function DataService.Load(player)
 		local migrated5 = P5.migrateEntry(entry, player)
 		-- bug batch 2 #18: the garden-exclusive marker + the pets the read took out of the Garden (old saves)
 		local garden = P3.gardenMigrate(entry)
+		-- HUD cleanup: the obby items are gone; the save's old Items are refunded once as Tokens
+		local refund = P6.itemsRefund(entry, player)
 		DataService.Sync(player)
 		DataService.ProfileLoaded:Fire(player, entry.Profile)
 		if entry.TeamsTrimmed then
@@ -3948,6 +3983,7 @@ function DataService.Load(player)
 		P4.announceMigration(player, migrated)
 		P5.announceMigration(player, migrated5)
 		P3.gardenAnnounce(player, garden)
+		P6.announce(player, refund)
 	end
 	P5.markProfileLoaded(player)
 	return entry.Profile
@@ -5389,6 +5425,54 @@ end
 function P3.gardenAnnounce(player, info)
 	if type(info) == "table" and player then
 		DataService.Migrated:Fire(player, P5.GARDEN_MARK, deepCopy(info))
+	end
+end
+
+-- HUD cleanup (B3ItemsRefund) on a loaded, real profile without the marker: pays the old Items as Tokens (P6.REFUND
+-- per item, at most P6.REFUND_MAX of each, unknown ids pay 0; booked like AddTokens: TokensEarned too), empties Items,
+-- sets the marker and remembers the paid amount for the twin rule of the merge (entry.ItemsRefunded). Returns
+-- info { Tokens = n, Items = {[id]=count} } (also MigratedNow(player, "B3ItemsRefund")), or nil when the marker was
+-- already set or the profile is not decidable (not loaded, provisional: refunded after the recovery).
+function P6.itemsRefund(entry, player)
+	if not entry or not entry.Loaded or isProvisional(entry) then
+		return nil
+	end
+	local profile = entry.Profile
+	local migrations = ensureTable(profile, "Migrations")
+	if migrations[P6.MARK] == true then
+		return nil
+	end
+	local items = {}
+	local paid = 0
+	for id, n in pairs(tableOr(profile.Items)) do
+		local count = validKey(id) and clampCount(n, P6.REFUND_MAX) or 0
+		if count > 0 then
+			items[id] = count
+			paid = paid + count * (P6.REFUND[id] or 0)
+		end
+	end
+	if paid > 0 then
+		profile.Tokens = sanitize(profile.Tokens + paid)
+		profile.Stats.TokensEarned = sanitize(profile.Stats.TokensEarned + paid)
+		entry.ItemsRefunded = paid
+		pushToPlayer(player or entry.Owner, profile.Tokens)
+	end
+	profile.Items = {}
+	migrations[P6.MARK] = true
+	entry.Dirty = true
+	local info = { Tokens = paid, Items = items }
+	if type(entry.MigratedNow) ~= "table" then
+		entry.MigratedNow = {}
+	end
+	entry.MigratedNow[P6.MARK] = info
+	return info
+end
+
+-- Fires Migrated(player, "B3ItemsRefund", info) right after the ProfileLoaded / ProfileRebased whose refund paid
+-- Tokens (Main.server shows the one explaining toast); nothing for an empty Items table.
+function P6.announce(player, info)
+	if type(info) == "table" and player and isFinite(info.Tokens) and info.Tokens > 0 then
+		DataService.Migrated:Fire(player, P6.MARK, deepCopy(info))
 	end
 end
 

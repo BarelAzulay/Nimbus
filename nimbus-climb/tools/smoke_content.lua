@@ -1,5 +1,5 @@
 -- smoke_content.lua: scenarios for the game's CONTENT (no player needed, only the loaded modules):
---   catalog      PetCatalog / ItemCatalog data, roulette odds, RollPet frequencies, perks; v3 roles / stats /
+--   catalog      PetCatalog data (HUD cleanup: no ItemCatalog), roulette odds, RollPet frequencies, perks; v3 roles / stats /
 --                specials, Secret pets (never rollable), GetStats, IndexGroups, TotalCount, elements and Stormfang
 --   config_shape Config.* tables the v2 systems read (difficulties, archetypes, themes, rarities, roulettes ...) and
 --                the v3 additions (remotes, Index rewards, tutorial gift, pet stats, the element wheel, Config.Art)
@@ -86,7 +86,7 @@ local function allowedSet(weights)
 end
 
 ----------------------------------------------------------------------------------------------------
--- scenario: PetCatalog + ItemCatalog
+-- scenario: PetCatalog (HUD cleanup: the obby items and their ItemCatalog are gone)
 ----------------------------------------------------------------------------------------------------
 local function rarityRank(Config)
 	local rank = {}
@@ -415,10 +415,10 @@ end
 
 S.catalog = guarded("catalog", function()
 	local Config = config()
-	local PC, IC = M["shared/PetCatalog"], M["shared/ItemCatalog"]
+	local PC = M["shared/PetCatalog"]
 	local Util = M["shared/Util"]
-	if not (PC and IC and Util) then
-		T.fail("catalog scenario needs PetCatalog, ItemCatalog and Util")
+	if not (PC and Util) then
+		T.fail("catalog scenario needs PetCatalog and Util")
 		return
 	end
 	local rank = rarityRank(Config)
@@ -775,26 +775,7 @@ S.catalog = guarded("catalog", function()
 		T.check(same, r.Id .. ": RollPet is deterministic for a seed")
 	end
 
-	-- items
-	local IL = IC.List
-	T.eq(#IL, #CONTRACT.v2.items, "ItemCatalog.List has " .. #CONTRACT.v2.items .. " items")
-	for i, id in ipairs(CONTRACT.v2.items) do
-		local def = IL[i]
-		if T.check(def ~= nil and def.Id == id, "ItemCatalog.List[" .. i .. "] is " .. id .. " (hotbar order)", def and def.Id) then
-			T.check(IC.Get(id) == def and IC.ById[id] == def, id .. ": Get / ById")
-			T.check(type(def.Name) == "string" and #def.Name > 2 and type(def.Blurb) == "string" and #def.Blurb > 10, id .. ": Name and Blurb")
-			T.check(type(def.Price) == "number" and def.Price > 0 and def.Price == floor(def.Price), id .. ": Price is a positive integer")
-			T.check(type(def.Glyph) == "string" and #def.Glyph >= 1 and #def.Glyph <= 8, id .. ": Glyph is one short symbol")
-			T.check(typeof(def.Color) == "Color3", id .. ": Color is a Color3")
-			T.check(rank[def.Rarity] ~= nil, id .. ": Rarity is a Config.Rarities id")
-		end
-	end
-	T.eq(IC.Get("heal_cloud").Price, 30, "heal_cloud costs 30")
-	T.eq(IC.Get("shield_bubble").Price, 45, "shield_bubble costs 45")
-	T.eq(IC.Get("phoenix_feather").Price, 150, "phoenix_feather costs 150")
-	T.eq(IC.Get("heal_cloud").Name, "Heal Cloud", "heal_cloud name")
-	T.check(IC.Get("nothing") == nil and IC.Get(nil) == nil, "ItemCatalog.Get of an unknown id is nil")
-	T.check(#IL <= Config.Items.HotbarSlots, "all items fit on the hotbar (Config.Items.HotbarSlots = " .. Config.Items.HotbarSlots .. ")")
+	T.check(M["shared/ItemCatalog"] == nil and Config.Items == nil, "HUD cleanup: no ItemCatalog, no Config.Items (the obby items are gone)")
 	T.check(cheapest <= 50, "the cheapest roulette is affordable after a first easy run (<= 50 tokens)", tostring(cheapest))
 	flushErrors("catalog")
 end)
@@ -885,11 +866,11 @@ S.config_shape = guarded("config_shape", function()
 		end
 		T.check(oddsOk, r.Id .. ": Odds use known rarities and positive weights")
 	end
-	T.check(Config.Items.MaxCarry >= 1 and Config.Items.HotbarSlots == 4, "Config.Items: MaxCarry and 4 hotbar slots")
 	-- remotes, tags, attributes added in v2
-	for _, name in ipairs({ "ProfileSync", "RouletteResult", "OpenPanel", "RequestProfile", "BuyRoulette", "EquipPet", "UnequipPet", "BuyItem", "UseItem", "GoToSpot" }) do
+	for _, name in ipairs({ "ProfileSync", "RouletteResult", "OpenPanel", "RequestProfile", "BuyRoulette", "EquipPet", "UnequipPet", "GoToSpot" }) do
 		T.check(T.contains(Config.Remotes, name), "Config.Remotes lists " .. name)
 	end
+	T.check(not T.contains(Config.Remotes, "BuyItem") and not T.contains(Config.Remotes, "UseItem"), "HUD cleanup: no BuyItem / UseItem remotes")
 	for _, name in ipairs({ "Pendulum", "WindGust", "CloudCannon", "GoldenToken" }) do
 		T.check(type(Config.Tags[name]) == "string", "Config.Tags." .. name .. " exists")
 	end

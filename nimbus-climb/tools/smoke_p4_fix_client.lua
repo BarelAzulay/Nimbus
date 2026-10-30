@@ -516,7 +516,7 @@ local function obstacles(card)
 					out[#out + 1] = { o:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", ""), rect(o) }
 				end
 			end
-			for _, path in ipairs({ "Vitals", "Currency", "Hotbar" }) do
+			for _, path in ipairs({ "Vitals", "Currency" }) do
 				local o = g:FindFirstChild(path, true)
 				if o and o:IsA("GuiObject") and shown(o) then
 					out[#out + 1] = { g.Name .. "." .. path, rect(o) }

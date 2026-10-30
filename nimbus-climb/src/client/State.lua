@@ -6,7 +6,8 @@
 --                                so a table you hold stays internally consistent. Do not write to it.
 --   State.Changed                Util.Signal; Fire(snapshot) after every ProfileSync
 --   State.OwnedCount(key)        State.IsEquipped(key)     State.EquippedCount(key)
---   State.ItemCount(itemId)      State.Tokens()  (reads the CloudTokens attribute, falls back to the snapshot)
+--   State.Tokens()               reads the CloudTokens attribute, falls back to the snapshot (HUD cleanup: no
+--                                ItemCount and no Items: the obby items are gone)
 --   v3 (ARCHITECTURE_V3.md sections 1 + 3):
 --   State.IsDiscovered(petId)    true once the pet was ever owned / rolled (an owned pet always counts; a tier key
 --                                counts for its base pet, a hybrid key while it is owned)
@@ -55,7 +56,7 @@
 -- State.PetGrowthMap() -> the whole { [key] = entry } map (read-only).
 --
 -- The snapshot shape (ARCHITECTURE_V2.md section 1 + ARCHITECTURE_V3.md section 1 + Phase 2):
---   { Tokens, Pets = {[petId]=count}, Equipped = {key,...}, Items = {[itemId]=count},
+--   { Tokens, Pets = {[petId]=count}, Equipped = {key,...},
 --     Stats = { Matches, Wins, TokensEarned, Spins, BestTimes = {[diffId]=sec} }, SpotIndex, Perks = {...},
 --     Discovered = {[petId]=true}, IndexClaimed = {[groupId]=true}, Tutorial = { Step, Done, Gifted },
 --     Cash, Gems, Home = {...}, Food = {[foodId]=count}, Tiers = {[petId]={Golden, Rainbow}},
@@ -550,7 +551,6 @@ local function newSnapshot()
 		Tokens = 0,
 		Pets = {},
 		Equipped = {},
-		Items = {},
 		Stats = stats,
 		SpotIndex = nil,
 		Perks = perks,
@@ -586,7 +586,6 @@ local function normalise(raw)
 	end
 	snap.Tokens = math.max(0, math.floor(num(raw.Tokens, 0)))
 	snap.Pets = countMap(raw.Pets)
-	snap.Items = countMap(raw.Items)
 	if type(raw.Equipped) == "table" then
 		for _, id in ipairs(raw.Equipped) do
 			if type(id) == "string" then
@@ -704,10 +703,6 @@ end
 
 function State.IsEquipped(petId)
 	return State.EquippedCount(petId) > 0
-end
-
-function State.ItemCount(itemId)
-	return current.Items[itemId] or 0
 end
 
 function State.Tokens()

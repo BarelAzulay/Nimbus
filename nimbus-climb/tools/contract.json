@@ -23,7 +23,6 @@
         "Rarities",
         "Pets",
         "Roulettes",
-        "Items",
         "Index",
         "Tutorial",
         "PetStats",
@@ -113,15 +112,6 @@
         "EvolutionBonus",
         "SpecialKinds",
         "LevelBonus"
-      ]
-    },
-    "shared/ItemCatalog": {
-      "functions": [
-        "Get"
-      ],
-      "fields": [
-        "List",
-        "ById"
       ]
     },
     "shared/PetBuilder": {
@@ -317,14 +307,6 @@
         "Rolled"
       ]
     },
-    "server/Services/ItemService": {
-      "functions": [
-        "Init",
-        "Buy",
-        "Use",
-        "SetMatchService"
-      ]
-    },
     "server/Services/SpotService": {
       "functions": [
         "Init",
@@ -374,7 +356,6 @@
         "OwnedCount",
         "IsEquipped",
         "EquippedCount",
-        "ItemCount",
         "Tokens",
         "IsDiscovered",
         "IsClaimed",
@@ -456,13 +437,6 @@
         "GetRect",
         "TravelAllowed",
         "Refresh"
-      ]
-    },
-    "client/Controllers/HotbarController": {
-      "functions": [
-        "Init",
-        "UseSlot",
-        "SetAvoidRight"
       ]
     },
     "client/Controllers/PetController": {
@@ -991,11 +965,6 @@
       "Mythic": 2
     },
     "mascotPetId": "cloudy_dragon",
-    "items": [
-      "heal_cloud",
-      "shield_bubble",
-      "phoenix_feather"
-    ],
     "partBudget": {
       "course": 2500
     },

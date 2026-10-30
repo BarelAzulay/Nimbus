@@ -16,8 +16,8 @@
 --
 -- Phase 5: the Trial window is gone (the Dungeon replaced it). Portal_Dungeon's DungeonPrompt (OpenPanel = "Dungeon") is
 -- handed over to DungeonController.Open here, next to "Ring". Both windows are NeonKit side panels (640 x 860 design px,
--- NeonKit.Dock: docked right on landscape screens, a bottom sheet on portrait phones, no full-screen dimming; the hotbar
--- re-centres with HotbarController.SetAvoidRight). A challenge more than Duel.PracticeInvite apart carries
+-- NeonKit.Dock: docked right on landscape screens, a bottom sheet on portrait phones, no full-screen dimming). A
+-- challenge more than Duel.PracticeInvite apart carries
 -- Practice = true: the invite says "Practice duel - no trophies or rewards". The Ring's fighter cards draw each pet's
 -- stored evolution stage (State.PetStage -> CloudUI.PetViewport { Evolved }, a STAGE badge).
 --
@@ -715,14 +715,6 @@ local function newWindow(id, title)
 	return win
 end
 
--- the hotbar re-centres left of a docked window (HotbarController.SetAvoidRight; nil = no window)
-local function avoidRight(x)
-	local hb = otherController("HotbarController")
-	if hb and type(hb.SetAvoidRight) == "function" then
-		pcall(hb.SetAvoidRight, x)
-	end
-end
-
 -- the docked size (design px) -> the window's own layout: every docked window is narrow ("tall" = one column);
 -- "short" = a landscape phone (the window is lower than K.SHORT)
 local function layoutWindow(win)
@@ -736,9 +728,6 @@ local function layoutWindow(win)
 	S.Tall = tall
 	S.Narrow = w < K.NARROW
 	S.Short = h < K.SHORT
-	if S.Open == win.Id then
-		avoidRight(rect and rect.mode == "Side" and rect.x or nil)
-	end
 	if win.OnLayout and (win.W ~= w or win.H ~= h) then
 		win.W, win.H = w, h
 		safe("layout " .. win.Id, win.OnLayout, w, h, S.Narrow, S.Short, tall)
@@ -2848,7 +2837,6 @@ function ArenaController.Close()
 			end
 		end)
 	end
-	avoidRight(nil)
 	refreshSide()
 	ArenaController.Closed:Fire(id)
 end

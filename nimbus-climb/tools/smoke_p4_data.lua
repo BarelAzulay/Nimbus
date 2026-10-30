@@ -697,8 +697,9 @@ S.p4data_save = guarded("p4data_save", function()
 	T.check(DataS.GetRing(j).Best == 100000 and DataS.GetRing(j).Runs == 0, "p4 save: Ring.Best is capped at 100000 and Runs never below 0")
 	local nonP5 = 0
 	for name in pairs(DataS.GetProfile(j).Migrations or {}) do
-		-- (Phase 5 adds its own P5Dungeon / P5Home markers on the load, bug batch 2 #18 its B2GardenSolo marker)
-		if string.sub(tostring(name), 1, 2) ~= "P5" and name ~= "B2GardenSolo" then
+		-- (Phase 5 adds its own P5Dungeon / P5Home markers on the load, bug batch 2 #18 its B2GardenSolo marker, the HUD
+		-- cleanup its B3ItemsRefund marker)
+		if string.sub(tostring(name), 1, 2) ~= "P5" and name ~= "B2GardenSolo" and name ~= "B3ItemsRefund" then
 			nonP5 = nonP5 + 1
 		end
 	end
@@ -1483,7 +1484,9 @@ S.p4data_rollout = guarded("p4data_rollout", function()
 	local inst = K.moduleInstance("server/Services/DataService")
 	local fixture = Instance.new("ModuleScript")
 	fixture.Name = "DataServicePhase3Fixture"
-	fixture.Source = src
+	-- HUD cleanup: the frozen release read Config.Items.MaxCarry (5), which this build's Config no longer has (that
+	-- server shipped its own Config): the copy loaded here reads the old value instead (the file stays untouched)
+	fixture.Source = (string.gsub(src, "Config%.Items%.MaxCarry", "5"))
 	fixture.Parent = inst.Parent
 	local marks = connectionMarks() -- the fixture hooks PlayerRemoving / RequestProfile on its first Load: dropped below
 	local okReq, P3DS = pcall(require, fixture)

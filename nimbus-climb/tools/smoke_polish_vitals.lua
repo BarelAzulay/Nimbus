@@ -6,11 +6,11 @@
 --                                lightning badge + a matching stamina tube (smooth drain / refill, dims when empty) and
 --                                the dash ring (the cooldown sweep follows MovementController, the face lights up when
 --                                a dash is ready); the DOWNED state; every part inside the card, readable, bottom-left,
---                                clear of the hotbar, the menu column and the currency stack
+--                                in the old hotbar's spot, clear of the menu column and the currency stack
 --   client_polish_vitals_mobile  (phone world, touch: 390x844, 844x390, 1024x768) the card stays on screen, readable
---                                (>= 14 px), clear of the hotbar, the touch buttons, the menu column, the currency stack
+--                                (>= 14 px), clear of the touch buttons, the menu column, the currency stack
 --                                and the top-left panel (4-player party); short landscape screens get the compact card
---                                (the dash ring spans both rows, a visible gap above the hotbar)
+--                                (the dash ring spans both rows)
 --   client_polish_matchpanel_mobile  (phone world, touch: 844x390, 667x375, 390x844, 1024x768) the match panel: the
 --                                token line sits under the tall Leave button, so its text never overlaps the timer or
 --                                the countdown numeral (pop included; widths measured with 20 % slack for real fonts),
@@ -306,20 +306,17 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	local box = rect(c.Vitals)
 	T.check(box.x0 >= 0 and box.y1 <= vp.Y and math.abs((box.x0 + box.x1) / 2 - vp.X / 2) < vp.X * 0.05 and (box.y0 + box.y1) / 2 > vp.Y * 0.75, "vitals: the card sits bottom-centre",
 		fmt("%.0f,%.0f - %.0f,%.0f", box.x0, box.y0, box.x1, box.y1))
-	local bar = path(playerGui(), "NimbusHotbar.Hotbar")
-	if bar and shown(bar) then
-		local b = rect(bar)
-		T.check(box.y1 <= b.y0 + 1 and b.y0 - box.y1 <= 24 and math.abs((box.x0 + box.x1) / 2 - (b.x0 + b.x1) / 2) < 4,
-			"vitals: ...right above the pet hotbar, centred on it", fmt("card %.0f-%.0f, bar top %.0f", box.y0, box.y1, b.y0))
-		T.check(box.x1 - box.x0 <= 320 * k, "vitals: the card is compact (<= 320 design px wide)", fmt("%.0f px", box.x1 - box.x0))
-	else
-		T.fail("vitals: the hotbar is on screen to check the card against")
-	end
+	-- (HUD cleanup: the item hotbar is gone; the card keeps its old spot, HudController's HOTBAR_FALLBACK 78 + 8 px up)
+	T.check(path(playerGui(), "NimbusHotbar") == nil, "vitals: there is no item hotbar any more")
+	local spot = vp.Y - (Mock.TopInset or 0) - 78 * k - 8 -- (gui-area px: the card's rect does not count the top bar)
+	T.check(box.y1 <= spot + 1 and spot - box.y1 <= 24 and math.abs((box.x0 + box.x1) / 2 - vp.X / 2) < 4,
+		"vitals: ...in the old hotbar's spot, centred", fmt("card %.0f-%.0f, spot %.0f", box.y0, box.y1, spot))
+	T.check(box.x1 - box.x0 <= 320 * k, "vitals: the card is compact (<= 320 design px wide)", fmt("%.0f px", box.x1 - box.x0))
 	local outside = partsInside(c, 4 * k)
 	T.check(#outside == 0, "vitals: every part of the card stays inside its layout slot", table.concat(outside, ", "))
 	local cardBox = rect(c.Card)
 	T.check(cardBox.x0 > box.x0 + 8 * k and rect(c.Heart).x0 < cardBox.x0, "vitals: the heart badge overlaps the card's left edge (like the coins above)")
-	for _, other in ipairs({ { "NimbusHotbar.Hotbar", "the hotbar" }, { "NimbusMenu.MenuColumn", "the menu column" }, { "NimbusHud.TopRight.Currency", "the currency stack" } }) do
+	for _, other in ipairs({ { "NimbusMenu.MenuColumn", "the menu column" }, { "NimbusHud.TopRight.Currency", "the currency stack" } }) do
 		local o = path(playerGui(), other[1])
 		if o and shown(o) then
 			T.check(not overlap(box, rect(o)), "vitals: the card never covers " .. other[2])
@@ -484,7 +481,7 @@ S.client_polish_vitals_mobile = guarded("client_polish_vitals_mobile", function(
 				T.check(#small == 0 and c.HpText.TextSize * scaleOf(c.HpText) >= 18, label .. ": readable (>= 14 px, the HP number >= 18 px)", table.concat(small, ", "))
 				local outside = partsInside(c, 4 * k)
 				T.check(#outside == 0, label .. ": every part stays inside the card's slot", table.concat(outside, ", "))
-				local others = { { "NimbusHotbar.Hotbar", "the hotbar" }, { "NimbusMenu.MenuColumn", "the menu column" }, -- (bug batch 2 #1: the currency strips live top-right on every screen)
+				local others = { { "NimbusMenu.MenuColumn", "the menu column" }, -- (bug batch 2 #1: the currency strips live top-right on every screen)
 					{ "NimbusHud.TopRight.Currency", "the currency stack" }, { "NimbusHud.TopLeft.PartyPanel", "the party panel" } }
 				for _, other in ipairs(others) do
 					local o = path(playerGui(), other[1])
@@ -499,15 +496,6 @@ S.client_polish_vitals_mobile = guarded("client_polish_vitals_mobile", function(
 					end
 				end
 				T.check(#hit == 0, label .. ": clear of the touch buttons", table.concat(hit, ", "))
-				-- the visible card (outline included) leaves a gap above the hotbar when it sits right over it
-				local hotbar = path(playerGui(), "NimbusHotbar.Hotbar")
-				if hotbar and shown(hotbar) then
-					local hb, cb = rect(hotbar), rect(c.Card)
-					local stroke = c.CardStroke and c.CardStroke.Thickness * k or 0
-					if cb.x0 < hb.x1 and cb.x1 > hb.x0 then
-						T.check(cb.y1 + stroke <= hb.y0 - 2, label .. ": a visible gap between the card and the hotbar", fmt("card bottom %.1f, hotbar top %.1f", cb.y1 + stroke, hb.y0))
-					end
-				end
 				local compact = c.Card.AbsoluteSize.Y < c.Vitals.AbsoluteSize.Y - 2
 				if size[2] < 500 then
 					T.check(compact and c.Ring.AbsoluteSize.Y > 0.55 * c.Card.AbsoluteSize.Y, label .. ": a short screen gets the compact card (the dash ring spans both rows)")

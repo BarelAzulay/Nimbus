@@ -9,7 +9,7 @@
 --   NpcDialog.Tag             "NC_Npc", the CollectionService tag of every NPC model (attribute NpcId = entry.Id)
 --   NpcDialog.Settings        shared numbers (scale, prompt / close distances, hover gap)
 --
--- The tips quote the game's real numbers: prices, bonuses, odds and rewards are read from Config / ItemCatalog /
+-- The tips quote the game's real numbers: prices, bonuses, odds and rewards are read from Config /
 -- TycoonCatalog / PetCatalog / BattleCatalog when this module loads, so they stay correct when those change. Phase 4
 -- tips (pets make the money): claiming a home, the Pet Garden's rainbow coins, the food plants, Prestige and the home
 -- portal (Mayor Panda), the Food Machine, Feed and EVOLVE (Granny Owl), the Training Place and the Champion Ring
@@ -28,16 +28,6 @@
 -- Plain Lua 5.1-compatible syntax only.
 
 local Config = require(script.Parent:WaitForChild("Config"))
-
-local ItemCatalog = nil
-do
-	local ok, mod = pcall(function()
-		return require(script.Parent:WaitForChild("ItemCatalog", 5))
-	end)
-	if ok and type(mod) == "table" then
-		ItemCatalog = mod
-	end
-end
 
 local TycoonCatalog = nil
 do
@@ -116,21 +106,6 @@ local function number(n)
 		return tostring(math.floor(n + 0.5))
 	end
 	return (string.format("%.2f", n):gsub("0+$", ""):gsub("%.$", ""))
-end
-
-local function itemPrice(id, fallback)
-	if ItemCatalog then
-		local def = nil
-		if type(ItemCatalog.Get) == "function" then
-			def = ItemCatalog.Get(id)
-		elseif type(ItemCatalog.ById) == "table" then
-			def = ItemCatalog.ById[id]
-		end
-		if type(def) == "table" and tonumber(def.Price) then
-			return tonumber(def.Price)
-		end
-	end
-	return fallback
 end
 
 local function shortName(roulette)
@@ -396,14 +371,15 @@ NpcDialog.Npcs = {
 		PetId = "aurora_fox",
 		Species = "Fox",
 		Accent = Color3.fromRGB(64, 188, 192),
-		Keywords = { "Shift", "RUN", "DASH!", "DASH", "Q", "1 to 4", "Heal Cloud", "ATTACK", "ELEMENT", "SPECIAL", "helper", "SWAP" },
+		Keywords = { "Shift", "RUN", "DASH!", "DASH", "Q", "checkpoint", "ATTACK", "ELEMENT", "SPECIAL", "helper", "SWAP" },
 		Lines = {
 			"Zap! Hold Shift to run (the RUN button on phones; Ctrl in a battle). Running drains stamina, walking refills it.",
 			"Press Q to dash (DASH on phones). It costs " .. number(P.DashStaminaCost or 35) .. " stamina, recharges in "
 				.. number(P.DashCooldown or 1.6) .. " seconds and works in mid-air!",
 			"See a DASH! sign? That gap is too wide for a jump alone: jump first, then dash while you are in the air.",
-			"Keys 1 to 4 use your hotbar items during a climb. A Heal Cloud (" .. tokens(itemPrice("heal_cloud", 30))
-				.. ") restores 40% of your health.",
+			-- HUD cleanup: the obby items are gone; the checkpoint heal is the way back up
+			"Low on health in a climb? Reach the next checkpoint: everyone still up heals "
+				.. percent(Config.Damage.CheckpointHealFraction) .. " there.",
 			"Pets attack by themselves! F = ATTACK picks who, E = ELEMENT, Q = SPECIAL, Shift = DASH, 1 or 2 = a helper, hold it to SWAP!",
 		},
 	},
@@ -414,12 +390,11 @@ NpcDialog.Npcs = {
 		PetId = "frostling_penguin",
 		Species = "Penguin",
 		Accent = Color3.fromRGB(88, 148, 226),
-		Keywords = { "Obby portal", "level", "next checkpoint", "Phoenix Feather", "Boss Raid", "DASH", "safe zone", "Battle Arena", "Dungeon" },
+		Keywords = { "Obby portal", "level", "next checkpoint", "Boss Raid", "DASH", "safe zone", "Battle Arena", "Dungeon" },
 		Lines = {
 			"Ahoy! Hop on the Obby portal pad together: up to " .. number(M.MaxPlayers or 4) .. " climbers sail one course. Beat a level to unlock the next!",
 			"Teammate down? Keep climbing! Reaching the next checkpoint revives everyone who is down.",
-			"A Phoenix Feather (" .. tokens(itemPrice("phoenix_feather", 150))
-				.. ") revives the nearest downed teammate right away, with 50% health.",
+			"A fallen teammate comes back at the next checkpoint with half health, so keep climbing and ring it for them!",
 			"A Boss Raid starts every " .. raidMinutes .. " minutes in the arena: everyone fights one giant boss together!",
 			"Outside the Battle Arena, the rings and the Dungeon it's a safe zone: no battles. In a fight, DASH out of glowing circles!",
 		},

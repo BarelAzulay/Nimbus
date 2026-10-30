@@ -6,7 +6,7 @@ A cosy, co-op **sky village** game for Roblox. You live in a floating stone-and-
 sky full of clouds. Five gates stand side by side in the **Gate Court** on the plaza: walk through the Obby gate with up to
 three friends and you get flown to a freshly generated **sky course** that you climb as a team (dash over gaps, dodge
 spinning bars, lightning and swinging beams, share checkpoints and pick each other back up). Along the way you collect
-**Cloud Tokens**, and back home you spend them on **pets** (from roulettes) and **usable items**, fill your **Pet
+**Cloud Tokens**, and back home you spend them on **pets** (from roulettes), fill your **Pet
 Index**, and build your own **tycoon home**: claim a plot at its gate, put your pets in your **Pet Garden**, where they
 roam the yard, eat at the Food Bowl and poop **Cloud Cash** (that is your **Cash**), grow berries on your **Berry
 Farm**, feed your pets at the Food Machine, **EVOLVE** them, train their battle skills, fuse them and prestige. Then
@@ -290,7 +290,6 @@ or the VS Code "Rojo" extension are the easy ways to get it).
 | Jump | `Space` | jump button | `A` |
 | Run (drains stamina; in a battle hold `Ctrl`) | hold `Shift` | **RUN** button (tap to toggle) | `L3` (toggle) |
 | Dash (35 stamina, 1.6 s cooldown, works in the air; in a battle `Shift` makes your PET dash instead) | `Q` | **DASH** button | `B` |
-| Use an item | `1` `2` `3` `4` (or click / tap a slot) | tap a slot | - |
 | Talk to an NPC pet, use a gate of the Gate Court (the Obby level picker, the Dungeon, the Champion Ring, the Arena, the Storm Altar), claim a home, put a pet on a pet bed, use the Food Machine (*Feed pets*), the Training Place (*Train pets*), the Fusion Machine, the Arena Gate, a duel pad, the arena boards, a dungeon chest, a bench (*Sit*) or the Storm Altar's return portal | `E` | tap the prompt | `X` |
 | Buy at a home pad (hold a moment) | hold `E` | hold the prompt | hold `X` |
 | Scoop your Cloud Cash | walk over it | walk over it | walk over it |
@@ -305,7 +304,7 @@ or the VS Code "Rojo" extension are the easy ways to get it).
 | Open the Pets window on a pet that is ready to evolve | click its gold **EVOLVE!** pill | tap the pill | - |
 | Close a window | `Esc` or the red X | red X | `B` |
 
-In a battle the keys `1` and `2` belong to your helpers; the item hotbar gets them back as soon as the fight is over.
+In a battle the keys `1` and `2` belong to your helpers.
 
 ## First steps: the tutorial
 
@@ -352,14 +351,14 @@ ends it (it asks first). Your step is saved, so the tutorial continues where you
   | **Arena** | takes you to the Battle Arena island (see [Pet battles](#pet-battles)) |
   | **Storm Altar** | takes you to the Storm Altar island |
 
-- **The shop island** (follow the boardwalk): four roulette machines and the item counter.
+- **The shop island** (follow the boardwalk): four roulette machines and the old item stall (boarded up, closed).
 - **Six NPC pets** stand on the lawns around the plaza. Each one has a name tag; walk up and press **E** to
   talk. They cycle through a few tips each (Next / Close):
 
   | NPC | Talks about |
   |---|---|
-  | **Sparky Fox**, Movement Trainer | running (Shift / RUN), dashing (Q / DASH), dash-only gaps, items (1 to 4, the Heal Cloud), the battle buttons (ATTACK, ELEMENT, SPECIAL, DASH), a helper's buff and SWAP |
-  | **Captain Penguin**, Co-op Captain | the Obby portal and its level picker, parties, reviving teammates at the next checkpoint, Phoenix Feather, Boss Raids and dodging with DASH, the safe zone outside the Battle Arena, the Dungeon with friends |
+  | **Sparky Fox**, Movement Trainer | running (Shift / RUN), dashing (Q / DASH), dash-only gaps, healing at the next checkpoint, the battle buttons (ATTACK, ELEMENT, SPECIAL, DASH), a helper's buff and SWAP |
+  | **Captain Penguin**, Co-op Captain | the Obby portal and its level picker, parties, reviving teammates at the next checkpoint, Boss Raids and dodging with DASH, the safe zone outside the Battle Arena, the Dungeon with friends |
   | **Granny Owl**, Pet Expert | roulettes on the shop island and their chances (also with Gems), Mythic pets, the Pet Index, the Berry Basket, the Food Machine (Feed), the EVOLVE button and how evolved pets grow |
   | **Coach Corgi**, Token Coach | tokens that are yours to keep, the Dungeon, the Training Place, the Champion Ring and beating your record, your battle Team (a fighter and two helpers), duels and trophies |
   | **Mayor Panda**, Village Mayor | claiming a home at a free gate (press E), the Pet Garden, the Food Bowl and Cloud Cash, the Berry Farm and the Food Machine, Home Level, Prestige, the Home window and the home portal |
@@ -1168,14 +1167,8 @@ elements). Fusions are not part of the group rewards.
 
 ## Items
 
-Bought in the shop for cloud tokens, carried up to 5 of each, used on keys `1`-`4` during a climb (they do nothing
-in the lobby or during the intro countdown). Slot 4 is a locked placeholder for a future item.
-
-| Slot | Item | Price | What it does |
-|---|---|---|---|
-| 1 | **Heal Cloud** | 30 | Heals 40 % of your max health. |
-| 2 | **Shield Bubble** | 45 | Nothing can hurt you for 8 seconds. |
-| 3 | **Phoenix Feather** | 150 | Revives the nearest downed teammate at 50 % health (only used up if someone was revived). |
+2026-10-30: the obby items, the item shop stall's prompt and the hotbar were removed; old items were refunded as Tokens
+once (30 / 45 / 150 per Heal Cloud / Shield Bubble / Phoenix Feather, with a message).
 
 ## The screen
 
@@ -1193,7 +1186,7 @@ never drops below 14 px on a phone.
   zoom are not shakes and always play) and **Mouse lock** (on / off, or
   press `L`: the cursor stays in the middle of the screen and the mouse turns the camera; windows free it). They
   apply at once and are saved with your profile.
-- **Left, vertically centred: the menu**, one slim column of glossy square tiles: Pets, Items, Team, Index, Shop,
+- **Left, vertically centred: the menu**, one slim column of glossy square tiles: Pets, Team, Index, Shop,
   Home, Stats and the Settings gear. The small **arrow tab** beside the gear folds the column against the left edge
   (only the tab stays; a red dot on it means a tile has news) and brings it back; the game remembers it until you
   leave. A tutorial step that points at a tile unfolds it. On phones the tiles wrap into two slim columns (three on
@@ -1204,7 +1197,7 @@ never drops below 14 px on a phone.
 - **Top-right:** your **Cloud Tokens**, **Cash** and **Gems** as thin strips (coin + number with K / M), right under
   Roblox's top bar; in a climb only the token strip shows, with the "+n" you picked up. On a portrait phone they
   sit side by side in one row; in a battle on a phone they move into Roblox's top bar.
-- **Bottom-centre:** the item hotbar (1-4) and, right above it, the **health and stamina card**: a heart badge with
+- **Bottom-centre:** the **health and stamina card**: a heart badge with
   a thick health bar (it flashes and shakes when you are hit and pulses when you are low), a lightning badge with
   the stamina bar (thin marks show how many dashes you have left), and the dash ring that sweeps while dash
   recharges. NPC dialogs open at the bottom-left.
@@ -1451,7 +1444,7 @@ ARCHITECTURE.md, ARCHITECTURE_V2.md, ARCHITECTURE_V3.md   module contracts (the 
 
 src/first    LoadingScreen.client.lua (the loading screen, in ReplicatedFirst)
 src/shared   Config (every number)  TycoonCatalog (every tycoon number)  Theme  Util  Remotes  PetCatalog  PetKeys
-             ItemCatalog  PetBuilder  Voxel (voxel sculpting kit)  TutorialSteps  NpcDialog  ObbyLevels (obby level
+             PetBuilder  Voxel (voxel sculpting kit)  TutorialSteps  NpcDialog  ObbyLevels (obby level
              unlocks)  UpdateNotes (menu notes + tips)  BattleCatalog (every battle and Dungeon number)  BattleSim (the
              battle simulation)  BossBuilder  WorldStyle (gates, plinths, the art rules)  HomeRoam (the roaming plan
              of garden pets, shared by server and clients)  TokenLook (the coin look of tokens and Cloud Cash)
@@ -1462,14 +1455,14 @@ src/shared   Config (every number)  TycoonCatalog (every tycoon number)  Theme  
              battle poses pets strike, cast, flinch and celebrate with, on PetBuilder's rig)
 src/server   Main.server.lua; Services: Lighting, LobbyBuilder, StormAltar, Player (the spawn after PLAY), Data,
              Damage, Token, Hazard, Course (layout + builder), Match, Portal, Gate (the Altar gate's prompt), Spot, Pet,
-             Item, Index, Tutorial, Npc, Dev, Tycoon, HomeBuilder, PetCare, Fusion, Gem, ArenaBuilder, Battle, Event,
+             Index, Tutorial, Npc, Dev, Tycoon, HomeBuilder, PetCare, Fusion, Gem, ArenaBuilder, Battle, Event,
              Dungeon (parties, runs, loot), DungeonBuilder (the Dungeon gate and rooms), Podium (wave 6: the trainer
              stands locked on the Ring / PvP podium)
 src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientSettings; SoundFx; GraphicsQuality;
              PortalVortex (the swirling vortex inside every gate hoop); MouseLock (the Mouse lock option);
              LightingStack (lighting looks, e.g. the Dungeon); UI/CloudUI; UI/NeonKit (the neon cards, tiles and side
              panels); UI/PetCard (the cards above pets); Controllers: Movement, MainMenu (main menu + settings), Hud,
-             DamageFx, Notify, Menu, Hotbar, Pet, TokenFx, Index, Tutorial, Npc, SkyDragon, Showcase, Dev, DevPetShow
+             DamageFx, Notify, Menu, Pet, TokenFx, Index, Tutorial, Npc, SkyDragon, Showcase, Dev, DevPetShow
              (pet showcase, /fx attack preview), EvolutionFx (evolution animation, the dungeon enemies' arrival),
              AttackFx (plays the pet attack effects: Blender cores, flipbook particles, beams, trails and lights,
              pooled, within a budget, plus the battle poses; BattleController plays it first, cubes as the fallback), Care (Food Machine, Garden, training and EVOLVE

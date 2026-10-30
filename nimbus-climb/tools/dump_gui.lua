@@ -25,7 +25,7 @@
 --   party                 the portal party panel with its countdown
 --   results               the victory results card
 --   menu:<Window>[:<Tab>[:<Action>[:<Key>]]] Inventory / Pets / Index / Shop / Stats through the OpenPanel remote
---                         (Tab = window tab, or the Index group, e.g. menu:Index:Mythic, menu:Shop:Items; Action / Key
+--                         (Tab = window tab, or the Index group, e.g. menu:Index:Mythic, menu:Shop:Gems; Action / Key
 --                         are passed along, e.g. menu:Pets:Pets::<petKey>, menu:Pets:Pets:Evolve:<petKey>; with an
 --                         Action or Key the Phase 4 care profile below is synced first)
 --   home[:coins]          Phase 4: the Home window with the care profile (Prestige 1, the Garden with 4 places, plants,
@@ -777,7 +777,6 @@ local function snapshot()
 		Tokens = 1250,
 		Pets = pets,
 		Equipped = eq,
-		Items = { heal_cloud = 2, phoenix_feather = 1 },
 		Stats = { Matches = 12, Wins = 7, TokensEarned = 900, Spins = 5, BestTimes = { Easy = 123.4 } },
 		SpotIndex = 3,
 		Perks = { MaxHealth = 0.12, TokenBonus = 0.25, StaminaRegen = 0, CheckpointHeal = 0.02 },
@@ -2403,12 +2402,8 @@ function NK.window()
 			end
 		end
 	end)
-	tabs.Add("Items", function() end)
+	tabs.Add("Team", function() end)
 	tabs.Add("Index", function() end)
-	local hotbar = req("client/Controllers/HotbarController", true)
-	if hotbar and type(hotbar.SetAvoidRight) == "function" and dock.Rect and dock.Rect.mode == "Side" then
-		hotbar.SetAvoidRight(dock.Rect.x)
-	end
 	advance(0.8)
 end
 function NK.hud()

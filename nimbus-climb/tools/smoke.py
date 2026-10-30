@@ -10,11 +10,11 @@ Two Lua worlds are booted (each its own state, so server and client cannot cheat
                                     players, portals, damage rules, the fall rule (landing on a lower lap), the match lifecycle
                                     (victory / defeat / timeout / abandon / leave / death / concurrent slots), persistence, DataStore
                                     orphans (leaving during an outage), shutdown, whole-run invariants
-                 smoke_content.lua  PetCatalog / ItemCatalog / roulette odds, Config shape, PetBuilder for every pet
+                 smoke_content.lua  PetCatalog / roulette odds, Config shape, PetBuilder for every pet
                  smoke_course.lua   5 difficulties x N seeds of GenerateLayout + ValidateLayout + an independent audit with
                                     per-difficulty statistics, cannon ballistics, CourseBuilder.Build (budget, tags, attributes)
-                 smoke_economy.lua  spots, DataService / PetService economy, items, match locks (items in the countdown, pets in
-                                    matches), ProfileSync shape, v1 -> v2 migration,
+                 smoke_economy.lua  spots, DataService / PetService economy, match locks (pets in matches), ProfileSync
+                                    shape, v1 -> v2 migration,
                                     the match lifecycle on all five difficulties, pet perks inside matches
                  smoke_hazards.lua  HazardService on real generated courses (incl. pendulum, wind, cannon, golden tokens) and the
                                     TokenService no-animation rule (Config.Tokens.ClientAnimated)
@@ -25,7 +25,7 @@ Two Lua worlds are booted (each its own state, so server and client cannot cheat
                                     and ShowcaseController
   client world   smoke_client.lua   Main.client.lua boot, movement, HUD, toasts / results, damage fx, replay of the exact
                                     server traffic, final invariants, touch layout (390x844 phone)
-                 smoke_client_v2.lua CloudUI kit, State, menu + windows + roulette reveal, hotbar, pet followers, TokenFx
+                 smoke_client_v2.lua CloudUI kit, State, menu + windows + roulette reveal, pet followers, TokenFx
                                     (client coin spin/bob), and the "no text in the middle of the screen" rule at 1920x1080 and 390x844
 
 `--list` prints the scenario names. Every tools/smoke_*.lua must be listed in `server_files` / `client_files` below and every
@@ -472,6 +472,8 @@ def main():
     if p5("smoke_bug11_ring.lua"): server_files.append("smoke_bug11_ring.lua"); client_files.append("smoke_bug11_ring.lua"); ins(server_scenarios, "shutdown", ["bug11ring_server"]); ins(client_scenarios, "client_final", ["client_bug11ring_crowd"])  # [owner: art wave, bug #11 ring logo + crowd] the Sky-Sailors' Ring: no EmblemCrown / EmblemGem, the compass star is its own RingEmblem (arena_emblem) above the canvas, even on all four sides; one RingCrowd Model per cast cloud with ML_Weld / CrowdKey / CrowdOff roots, the drummer (Drum + two sticks), the Lua cast = the Blender attachments, seats on the steps facing the ring, the rigging, no nested targets, untagged without ids, the NC_RingCrowd / NC_RingDrummer sound hooks and no Config.Audio.Crowd (server); RingCrowdFx Pose / StickAngle in time, cues, a fake stand moves and returns exactly to rest (Low / range / Stop / untag), boss colours restored, HandleState with fake payloads, no Sound made (client)
     if p5("smoke_hud_pill.lua"): server_files.append("smoke_hud_pill.lua"); client_files.append("smoke_hud_pill.lua"); ins(server_scenarios, "shutdown", ["hudpill_travel"]); ins(client_scenarios, "client_final", ["client_hudpill"]); mobile_scenarios.append("client_hudpill_mobile")  # [owner: HUD cleanup, Task 1] the top-left pill (Shop / Travel / Settings) in Roblox's top-bar band, the Quick Travel drop-down + QuickTravel remote, the four-tile column; GateService.Travel's checks (smoke_hud_pill.lua: both worlds)
     if p5("smoke_hud_team.lua"): server_files.append("smoke_hud_team.lua"); client_files.append("smoke_hud_team.lua"); ins(server_scenarios, "shutdown", ["hudteam_refusal"]); ins(client_scenarios, "client_final", ["client_hudteam_tab", "client_hudteam_portal"]); mobile_scenarios.append("client_hudteam_mobile")  # [owner: HUD cleanup, Task 2] the battle team at the portal: TeamPick (strip + popup + Auto-fill best) on the Dungeon / Arena panels, the Team tab of the Pets window, the refusal text, tutorial step 16 (smoke_hud_team.lua: both worlds)
+    server_scenarios.remove("items"); client_scenarios.remove("client_hotbar")  # HUD cleanup, Task 3: items and the hotbar are gone
+    if p5("smoke_hud_items.lua"): server_files.append("smoke_hud_items.lua"); client_files.append("smoke_hud_items.lua"); ins(server_scenarios, "shutdown", ["huditems_gone", "huditems_refund"]); ins(client_scenarios, "client_final", ["client_huditems_gone"])  # [owner: HUD cleanup, Task 3] items removed: no catalog / service / remotes / hotbar / Items tabs, the boarded-up stall, the one-time B3ItemsRefund (30 / 45 / 150, clamp 5, marker, toast, provisional recovery, the twin merge) (smoke_hud_items.lua: both worlds)
     if getattr(args, "mesh", False) or os.environ.get("NC_MESH_FIXTURES") == "1": os.environ["NC_MESH_FIXTURES"] = "1"; only = only if only is not None else {"p6pets_mesh_on", "petbuilder", "evolved", "p3evo_pets", "p6evofx_build", "p2fusion_looks", "storm_pet", "p5looks_podium", "p6pets_default", "p6pets_server", "client_p6pets_mesh_on", "client_pets", "client_p4pets_follow", "client_p4pets_evolved", "client_p5follow_formation", "client_p5follow_motion", "client_p5wild", "client_p5looks", "client_p5models", "client_p6evofx", "client_p6pets", "client_p4pets_evolution", "client_p4careui_evolve", "client_p5home_roam", "client_p2home", "w6bug_wings", "client_w6bug_train", "client_p5hud_fighter", "client_p5team3", "client_p3evo_lineup", "client_p2fusion"}; only |= {"p6pets_mesh_on", "client_p6pets_mesh_on"}  # [owner: runtime-pets, Phase 6 W2] --mesh: the pet scenarios in fixture mesh mode (voxel-internal asserts of other owners may differ there, recipe 4.9)
     if args.list:
         print("server:", ", ".join(server_scenarios))

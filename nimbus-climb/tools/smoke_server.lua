@@ -1355,7 +1355,7 @@ S.lobby = guarded("lobby", function()
 	T.check(Mock.CountDescendants(folder, "ParticleEmitter") >= 3, "lobby has particle emitters (portal swirls, fireflies)")
 	T.check(Mock.CountDescendants(folder, "PointLight") >= 3, "lobby has point lights (portals, lanterns)")
 	local prompts = Mock.CountDescendants(folder, "ProximityPrompt")
-	T.check(prompts >= #Config.Roulettes + 1, "PetService / ItemService created the shop ProximityPrompts", prompts .. " prompts")
+	T.check(prompts >= #Config.Roulettes, "PetService created the shop ProximityPrompts (HUD cleanup: none on the item stall)", prompts .. " prompts")
 
 	-- portals: Phase 5 (6.3) keeps ONE portal, the Sky Obby (its level is picked at the gate)
 	local nPortals = 0
@@ -1483,7 +1483,7 @@ S.lobby = guarded("lobby", function()
 			T.check(typeof(stall.PromptPart) == "Instance" and stall.PromptPart:IsA("BasePart"), "ItemShop.PromptPart is a BasePart")
 			T.check(typeof(stall.Center) == "Vector3" and typeof(stall.Model) == "Instance", "ItemShop Center and Model are set")
 			local prompt = stall.PromptPart and stall.PromptPart:FindFirstChildOfClass("ProximityPrompt")
-			T.check(prompt ~= nil and prompt.HoldDuration == 0, "ItemService put a ProximityPrompt on the item counter")
+			T.check(prompt == nil, "HUD cleanup: no ProximityPrompt under ItemShop (the stall is boarded up)")
 		end
 	end
 
@@ -1667,11 +1667,13 @@ function V.profileSync(s)
 			p[#p + 1] = "Equipped is not an array"
 		end
 	end
-	if type(s.Items) ~= "table" then
+	-- HUD cleanup: this build sends no Items key (smoke_hud_items checks it); an older release still running during a
+	-- rollout (the frozen fixtures) still sends its item counts (0..5, the old Config.Items.MaxCarry)
+	if s.Items ~= nil and type(s.Items) ~= "table" then
 		p[#p + 1] = "Items is not a table"
 	else
-		for id, n in pairs(s.Items) do
-			if type(id) ~= "string" or not int(n, 0, Config.Items.MaxCarry) then
+		for id, n in pairs(s.Items or {}) do
+			if type(id) ~= "string" or not int(n, 0, 5) then
 				p[#p + 1] = "Items[" .. tostring(id) .. "] = " .. tostring(n)
 			end
 		end

@@ -312,6 +312,13 @@ S.p2tycoon_claim = guarded("p2tycoon_claim", function()
 	T.check(K.notified(a, "press E at its gate", nil, mark), "tycoon: a new player gets the side toast 'Pick a free home: press E at its gate'")
 
 	-- GoToSpot without a plot: the home portal opens toward the nearest free gate; walking in lands just outside it
+	-- (from the plain spawn point: the portal opens 6 studs ahead, so a random spawn nudge facing a wall or a bench
+	-- would open it at the player's feet and take him through at once; the nudge depends on the run before)
+	local spawnCF = K.W.lobbyInfo and K.W.lobbyInfo.SpawnCFrame
+	if typeof(spawnCF) == "CFrame" then
+		Mock.Teleport(a, spawnCF + Vector3.new(0, 3, 0))
+		advance(0.3)
+	end
 	local root = K.root(a)
 	local suggested = SS.SuggestSpot(a)
 	local standing = root and root.Position

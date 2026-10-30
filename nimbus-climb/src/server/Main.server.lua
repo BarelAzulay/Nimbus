@@ -5,7 +5,7 @@
 -- Boot order (Phase 5, ARCHITECTURE_V3.md "Phase 5 build contract" 10.1):
 --   Remotes -> Lighting -> Lobby -> Storm Altar -> Arena -> Dungeon world (DungeonBuilder.Build -> NimbusLobby.PartCount)
 --   -> Damage -> Token -> Data (autosave / BindToClose)
---   -> Pet / Item / Spot services (they subscribe to profile events)
+--   -> Pet / Spot services (they subscribe to profile events; HUD cleanup: the obby items and ItemService are gone)
 --   -> Player service (this is what starts loading profiles, so it comes after the subscribers)
 --   -> Match -> Portals -> Gates -> Index / Npc -> Tutorial -> Tycoon / PetCare / Fusion / Gem
 --   -> Battle -> Dungeon -> Events -> Dev -> Dash relay
@@ -229,7 +229,6 @@ local TokenService = loadService("TokenService")
 local DataService = loadService("DataService")
 local PlayerService = loadService("PlayerService")
 local PetService = loadService("PetService")
-local ItemService = loadService("ItemService")
 local SpotService = loadService("SpotService")
 local HazardService = loadService("HazardService")
 local CourseBuilder = loadService("CourseBuilder")
@@ -298,11 +297,18 @@ call("PetService.Init", PetService, "Init", lobbyInfo, {
 	DataService = DataService,
 })
 
-call("ItemService.Init", ItemService, "Init", lobbyInfo, {
-	DataService = DataService,
-	DamageService = DamageService,
-	MatchService = MatchService, -- module table; ItemService only asks it for matches at use time
-})
+-- HUD cleanup (Task 3): the obby items are gone; a save that still held some was refunded once as Tokens
+-- (DataService's B3ItemsRefund migration). The one toast that explains it:
+step("Items refund toast", function()
+	DataService.Migrated:Connect(function(player, name, info)
+		if name ~= "B3ItemsRefund" or type(info) ~= "table" or (tonumber(info.Tokens) or 0) <= 0 then
+			return
+		end
+		pcall(function()
+			Remotes.Get("Notify"):FireClient(player, "Items are gone from Nimbus: your old ones were refunded, +" .. tostring(info.Tokens) .. " Tokens!", "token", 6)
+		end)
+	end)
+end)
 
 call("SpotService.Init", SpotService, "Init", lobbyInfo, {
 	DataService = DataService,
@@ -365,10 +371,6 @@ call("MatchService.Init", MatchService, "Init", {
 	CourseBuilder = CourseBuilder,
 	PetService = PetService,
 })
-
-if type(ItemService) == "table" and type(ItemService.SetMatchService) == "function" then
-	call("ItemService.SetMatchService", ItemService, "SetMatchService", MatchService)
-end
 
 call("PortalService.Init", PortalService, "Init", lobbyInfo, MatchService)
 

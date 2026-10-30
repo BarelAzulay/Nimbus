@@ -1892,9 +1892,6 @@ function H.relayout()
 		return
 	end
 	local w, h = math.floor(rect.designW + 0.5), math.floor(rect.designH + 0.5)
-	if S.Open then
-		H.avoidRight(rect.mode == "Side" and rect.x or nil)
-	end
 	-- "short" (landscape phones): compact rows; "tall" (a narrow window with height): the one-column layouts
 	local short = h < K.SHORT
 	local tall = (not short) and w < K.TALL_W
@@ -2292,14 +2289,6 @@ end
 ----------------------------------------------------------------------
 -- open / close
 ----------------------------------------------------------------------
--- HotbarController re-centres the hotbar left of the docked window (6.6); nil when nothing is docked
-function H.avoidRight(x)
-	local hb = H.controller("HotbarController")
-	if hb and type(hb.SetAvoidRight) == "function" then
-		pcall(hb.SetAvoidRight, x)
-	end
-end
-
 -- gamepad B closes the confirm / the window while one is up (bound only then, so it never eats the dash)
 function H.syncBack()
 	local want = S.Open or S.Confirm ~= nil
@@ -2469,9 +2458,6 @@ function CareController.Open(panelId, args)
 		U.Pop.Scale = 0.86
 		H.tween(U.Pop, 0.22, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 	end
-	if U.Dock and U.Dock.Rect then
-		H.avoidRight(U.Dock.Rect.mode == "Side" and U.Dock.Rect.x or nil)
-	end
 	safe("refresh", H.refresh)
 	H.syncBack()
 	-- timers tick while the window is open
@@ -2507,7 +2493,6 @@ function CareController.Close()
 			U.Holder.Visible = false
 		end
 	end)
-	H.avoidRight(nil)
 	CareController.Closed:Fire()
 end
 

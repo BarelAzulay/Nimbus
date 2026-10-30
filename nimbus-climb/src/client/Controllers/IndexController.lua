@@ -827,22 +827,13 @@ local function renderFooter()
 end
 
 -- Phase 5 (6.6): the window rule. NeonKit.Dock keeps the holder docked right (landscape) / a bottom sheet (portrait)
--- and returns its design size; the hotbar re-centres left of a docked window.
+-- and returns its design size.
 local function fitWindow()
 	if not U.Dock then
 		U.Dock = U.Kit.Dock(U.Holder, U.Fit, K.PREF_W, K.PREF_H)
 	end
 	U.Dock.Refresh()
 	local r = U.Dock.Rect
-	if S.Open then
-		local hb = script.Parent:FindFirstChild("HotbarController")
-		local ok, mod = pcall(function()
-			return hb and require(hb)
-		end)
-		if ok and type(mod) == "table" and type(mod.SetAvoidRight) == "function" then
-			pcall(mod.SetAvoidRight, (r and r.mode == "Side") and r.x or nil)
-		end
-	end
 	return math.floor(r.designW + 0.5), math.floor(r.designH + 0.5)
 end
 
@@ -2560,19 +2551,6 @@ end
 ----------------------------------------------------------------------
 -- Open / close
 ----------------------------------------------------------------------
--- (Phase 5: no backdrop; the hotbar stops avoiding the window when it closes)
-local function setBackdrop(on)
-	if on then
-		return
-	end
-	local hb = script.Parent:FindFirstChild("HotbarController")
-	local ok, mod = pcall(function()
-		return hb and require(hb)
-	end)
-	if ok and type(mod) == "table" and type(mod.SetAvoidRight) == "function" then
-		pcall(mod.SetAvoidRight, nil)
-	end
-end
 function IndexController.IsOpen()
 	return S.Open
 end
@@ -2635,7 +2613,6 @@ function IndexController.Open(groupId)
 	if not wasOpen then
 		U.Pop.Scale = 0.86
 		tween(U.Pop, 0.22, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-		setBackdrop(true)
 	end
 	safe("select", selectGroup, target)
 	safe("refresh", refreshAll)
@@ -2662,7 +2639,6 @@ function IndexController.Close()
 			U.Holder.Visible = false
 		end
 	end)
-	setBackdrop(false)
 	IndexController.Closed:Fire()
 end
 

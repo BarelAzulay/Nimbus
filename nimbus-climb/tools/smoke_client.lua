@@ -347,7 +347,7 @@ S.client_load = guarded("client_load", function()
 	end
 	-- every ScreenGui the game builds: the documented display orders, never reset on spawn, and every one
 	-- that carries text respects the top bar inset
-	local wantedOrder = { NimbusHud = 10, NimbusHotbar = 11, NimbusMenu = 20, NimbusTopBar = 21, NimbusNotify = 30 }
+	local wantedOrder = { NimbusHud = 10, NimbusMenu = 20, NimbusTopBar = 21, NimbusNotify = 30 } -- (HUD cleanup: no NimbusHotbar)
 	for _, g in ipairs(gui():GetChildren()) do
 		if g:IsA("ScreenGui") then
 			T.eq(g.ResetOnSpawn, false, g.Name .. ".ResetOnSpawn = false")
@@ -1342,7 +1342,7 @@ S.client_mobile = guarded("client_mobile", function()
 			for name, rect in pairs({ DASH = d, RUN = r }) do
 				T.check(rect.x0 >= 0 and rect.y0 >= 0 and rect.x1 <= w and rect.y1 <= h, label .. ": " .. name .. " is fully on screen", show(rect))
 			end
-			for _, other in ipairs({ { "NimbusHotbar.Hotbar", "the hotbar" }, { "NimbusHud.BottomLeft.Vitals", "the HP bar" }, { "NimbusHud.TopRight.TokenPill", "the token pill" }, { "NimbusMenu.MenuColumn", "the menu column" } }) do
+			for _, other in ipairs({ { "NimbusHud.BottomLeft.Vitals", "the HP bar" }, { "NimbusHud.TopRight.TokenPill", "the token pill" }, { "NimbusMenu.MenuColumn", "the menu column" } }) do
 				local inst = guiPart(other[1])
 				if inst then
 					local o = rectOf(inst)
@@ -1356,7 +1356,7 @@ S.client_mobile = guarded("client_mobile", function()
 			if menuColumn then
 				local col = rectOf(menuColumn)
 				T.check(col.x0 >= 0 and col.y0 >= 0 and col.x1 <= w and col.y1 <= h, label .. ": the menu column is fully on screen", show(col))
-				for _, other in ipairs({ { "NimbusHud.BottomLeft.Vitals", "the HP bar" }, { "NimbusHotbar.Hotbar", "the hotbar" }, { "NimbusHud.TopRight.TokenPill", "the token pill" } }) do
+				for _, other in ipairs({ { "NimbusHud.BottomLeft.Vitals", "the HP bar" }, { "NimbusHud.TopRight.TokenPill", "the token pill" } }) do
 					local inst = guiPart(other[1])
 					if inst and inst.Visible ~= false then
 						local o = rectOf(inst)
@@ -1434,11 +1434,6 @@ S.client_mobile = guarded("client_mobile", function()
 					T.check(math.abs(centre - area.Y / 2) <= 1.5, label .. ": the menu column is vertically centred in the screen area", fmt(centre, 1) .. " vs " .. fmt(area.Y / 2, 1))
 				end
 			end
-			local hotbar, vitals = guiPart("NimbusHotbar.Hotbar"), guiPart("NimbusHud.BottomLeft.Vitals")
-			if hotbar and vitals then
-				T.check(not overlaps(rectOf(hotbar), rectOf(vitals)), label .. ": the hotbar and the HP bar do not overlap", show(rectOf(hotbar)) .. " vs " .. show(rectOf(vitals)))
-				T.check(not overlaps(rectOf(hotbar), jump), label .. ": the hotbar does not cover the jump button", show(rectOf(hotbar)) .. " vs jump " .. show(jump))
-			end
 		end
 		checkLayout("390x844 phone", 390, 844)
 		checkLayout("844x390 phone landscape", 844, 390)
@@ -1456,22 +1451,12 @@ S.client_mobile = guarded("client_mobile", function()
 		advance(0.2)
 	end
 
-	-- touch-friendly hotbar (slots >= 48 px) and a menu column that fits on a phone
-	local hotbar = gui():FindFirstChild("NimbusHotbar")
-	if hotbar then
-		local smallest = math.huge
-		for _, d in ipairs(hotbar:GetDescendants()) do
-			if d.Name:find("^Hotbar%d$") and d:IsA("GuiObject") then
-				smallest = math.min(smallest, d.AbsoluteSize.X, d.AbsoluteSize.Y)
-			end
-		end
-		T.check(smallest >= 48, "390x844: hotbar slots are at least 48 px (touch friendly)", "smallest slot " .. fmt(smallest, 0) .. " px")
-	end
+	-- a menu column that fits on a phone (HUD cleanup: no item hotbar any more)
 	local column = gui():FindFirstChild("NimbusMenu") and gui().NimbusMenu:FindFirstChild("MenuColumn")
 	if column then
 		local p, sz = column.AbsolutePosition, column.AbsoluteSize
 		T.check(p.X >= 0 and p.Y >= 0 and p.X + sz.X <= 390 and p.Y + sz.Y <= 844, "390x844: the menu column fits on screen", tostring(p) .. " " .. tostring(sz))
-		for _, other in ipairs({ { "NimbusHud.BottomLeft.Vitals", "the HP bar" }, { "NimbusHotbar.Hotbar", "the hotbar" }, { "NimbusHud.TopRight.TokenPill", "the token pill" } }) do
+		for _, other in ipairs({ { "NimbusHud.BottomLeft.Vitals", "the HP bar" }, { "NimbusHud.TopRight.TokenPill", "the token pill" } }) do
 			local cur = gui()
 			for part in other[1]:gmatch("[^.]+") do
 				cur = cur and cur:FindFirstChild(part)

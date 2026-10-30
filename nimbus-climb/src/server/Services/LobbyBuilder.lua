@@ -20,7 +20,8 @@
 --                    player asked; the Home window's Go home portal is the way home). This module builds Obby and Altar
 --                    into the Gates folder; ArenaBuilder adds Ring + Arena, DungeonBuilder the Dungeon gate.
 --   * SHOP ISLAND    at Config.Lobby.ShopOffset: four voxel gacha machines (Model Roulette_<Id>, built in
---                    the roulette colour), the striped item stall (Model ItemShop), a rarity board, a token
+--                    the roulette colour), the striped item stall (Model ItemShop; HUD cleanup: decoration only,
+--                    boarded up with a Closed sign, no prompt), a rarity board, a token
 --                    statue and an entrance arch, joined to the plaza by a short stone neck.
 --   * HOME PLOTS     Config.Lobby.SpotCount cloud islands on Config.Lobby.SpotRingRadius: a puffy cloud body
 --                    (billows along the sides and back, a hanging cumulus underneath, a soft rim of puffs on the
@@ -64,7 +65,8 @@
 -- Part budget: the lobby with all six gates <= 8000 parts after the greedy voxel merge (10.3). Repeated decor (trees, lamps, benches, flower beds,
 -- the whole plot with its island, fence and gate, cloud puffs, sky clouds) is sculpted once and :Clone()d.
 -- No external assets: Parts, built-in particle textures and Theme-styled GUI text. Deterministic (seeded).
--- ProximityPrompts are NOT created here: PetService / ItemService attach them to the PromptParts. The one exception
+-- ProximityPrompts are NOT created here: PetService attaches them to the PromptParts (the item stall's PromptPart
+-- stays for the LobbyInfo shape and gets none since the HUD cleanup). The one exception
 -- (bug batch 2 #7): every bench's "Sit" prompts, handled here (Benches).
 --
 -- Robustness: gates, spots, the shop machines and the item stall are what other services depend on. Each
@@ -3432,6 +3434,12 @@ local function buildItemStall(parent, cf)
 	if stallModel then
 		Mesh.tag(stallModel, "prop_item_stall", cf) -- Phase 6
 	end
+	-- Phase 6 / HUD cleanup: the stall is decoration, boarded up (no prompt). Two dark planks cross the counter front;
+	-- each end is nailed to a front post (x +-6, front face z -3.5; the mesh dress has the same posts), and they sit in
+	-- their own Model Boards beside the mesh-tagged Stall, so the Phase 6 mesh dress leaves them in place.
+	local boards = newModel(model, "Boards")
+	box(boards, "Plank1", cf * CFrame.new(0, 5, -3.68) * CFrame.Angles(0, 0, math.rad(28)), Vector3.new(13.4, 0.9, 0.35), P.PlankDark.Color, { Collide = false })
+	box(boards, "Plank2", cf * CFrame.new(0, 5, -3.68) * CFrame.Angles(0, 0, -math.rad(28)), Vector3.new(13.4, 0.9, 0.35), P.PlankDark.Color, { Collide = false })
 	local lamp = anchorPart(model, "StallLight", (cf * CFrame.new(0, 7.5, 0)).Position)
 	pointLight(lamp, C.Lamp, 0.8, 16)
 
@@ -3440,7 +3448,7 @@ local function buildItemStall(parent, cf)
 	local bb = newTag(anchor, "ItemShopBillboard", 320, 110, -2.2, 80)
 	local plate = tagPlate(bb, C.Rose, 160)
 	tagText(plate, "NameLabel", "Item Shop", "Title", TAG_NAME, C.Text, 1)
-	tagText(plate, "SubLabel", "Heal " .. GLYPH.Bullet .. " Shield " .. GLYPH.Bullet .. " Revive", "Body", TAG_INFO, C.TextGold, 2, 2)
+	tagText(plate, "SubLabel", "Closed", "Body", TAG_INFO, C.Text, 2, 2)
 
 	local prompt = box(model, "PromptPart", cf * CFrame.new(0, 2, -4.6), Vector3.new(5, 4, 3), C.Cloud, { Transparency = 1, Shadow = false })
 	local counter = model:FindFirstChild("Stall")

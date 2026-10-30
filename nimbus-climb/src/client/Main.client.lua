@@ -18,7 +18,6 @@ local CONTROLLER_NAMES = {
 	"NotifyController",
 	"MenuController",
 	"TopBarController", -- HUD cleanup: the top-left pill (Shop / Travel / Settings)
-	"HotbarController",
 	"PetController",
 	"TokenFx",
 	-- v3 (ARCHITECTURE_V3.md)

@@ -266,13 +266,6 @@ function H.locked()
 	return v ~= nil and v ~= false and v ~= ""
 end
 
-function H.avoidRight(x)
-	local hb = H.controller("HotbarController")
-	if hb and type(hb.SetAvoidRight) == "function" then
-		pcall(hb.SetAvoidRight, x)
-	end
-end
-
 function H.isLeader()
 	return S.Party ~= nil and LocalPlayer ~= nil and S.Party.LeaderUserId == LocalPlayer.UserId
 end
@@ -388,7 +381,6 @@ function H.refresh()
 	U.Dock.Refresh()
 	local rect = U.Dock.Rect
 	if rect then
-		H.avoidRight(rect.mode == "Side" and rect.x or nil)
 		S.Short = rect.designH < K.SHORT
 	end
 	local short = S.Short
@@ -562,7 +554,6 @@ function ObbyController.Close()
 	S.Token = S.Token + 1
 	local mine = S.Token
 	H.syncBack()
-	H.avoidRight(nil)
 	if U.Pop then
 		H.tween(U.Pop, 0.12, { Scale = 0.92 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 	end

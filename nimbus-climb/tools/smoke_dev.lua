@@ -437,11 +437,7 @@ local function serverScenarios()
 				"DEV reset: (precondition) the battle record holds trophies, trial clears, raid / PvP counters and an event pet")
 			advance(0.5) -- the throttled (trailing) ProfileSync of these calls goes out now
 		end
-		local IC = K.M["shared/ItemCatalog"]
-		local itemId = IC and IC.List and IC.List[1] and IC.List[1].Id
-		if itemId then
-			prof.Items[itemId] = 2
-		end
+		-- (HUD cleanup: no obby items to seed any more; the reset still empties the old Items field)
 		-- Phase 5 progress the reset must take too (the Dungeon record, the berries) and the Settings it must keep: through
 		-- the API, BEFORE the raw stats edit below (MutateDungeon syncs; a snapshot with Wins > Matches fails final_checks)
 		if type(DataS.MutateDungeon) == "function" and type(DataS.AddBerries) == "function" and type(DataS.SetSetting) == "function" then
@@ -1086,8 +1082,6 @@ local function clientScenarios()
 				end
 			end
 		end
-		local hotbar = pg:FindFirstChild("NimbusHotbar")
-		add("hotbar", hotbar and hotbar:FindFirstChild("Hotbar"))
 		local tutorial = pg:FindFirstChild("NimbusTutorial")
 		add("tutorial panel", tutorial and tutorial:FindFirstChild("TutorialPanel"))
 		local mobile = pg:FindFirstChild("MobileControls")
