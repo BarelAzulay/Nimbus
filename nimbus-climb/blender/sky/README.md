@@ -26,3 +26,32 @@ columns inside a face, so a seam score close to it means no visible seam). `--co
 Faces follow the same convention as `render_sky.py` (Ft -Z, Bk +Z, Rt +X, Lf -X, Up +Y, Dn -Y). Themes with a zenith
 or nadir feature (vortex, rift, ribbon, lava veins) put detail on Up / Dn, so check those two faces' rotation in Studio
 once before shipping one of them.
+
+## The shipped themes (the living sky)
+
+The player's picks (2026-10-30, `docs/superpowers/specs/2026-10-30-living-sky-cycle-design.md`): 7 themes at 1024 px,
+one per sky the game shows (`Config.Sky.Themes` / `Config.Sky.RaidThemes`):
+
+| Sky | Theme id | Name |
+|---|---|---|
+| Day (6 min) | `day_vivid` | Vivid Skylands |
+| Dawn (2 min) + Sunset (9 min) | `dusk_amber` | Amber Burn |
+| Night (3 min) | `night_aurora` | Aurora Slumber |
+| Storm Titan raid | `storm_teal` | Thunderhead Teal |
+| Lava Golem raid | `lava_obsidian` | Obsidian Furnace |
+| Frost Wyrm raid | `frost_glacial` | Glacial Void |
+| Shadow Hydra raid | `shadow_eclipse` | Eclipse Shadow |
+
+`build_sky_manifest.py` copies the final renders (main Nimbus folder `.superpowers/sky-final/<theme>/Skybox<Face>.png`)
+to `blender/textures/sky/<theme>/` (committed) and adds the 42 keys `sky_<theme>_<Face>` to
+`blender/textures/textures.json`, keeping the vortex keys and the file's format. Run it again after
+`build_vortex.py` (that script rewrites textures.json with the vortex keys only).
+
+```
+py -3.12 blender/sky/build_sky_manifest.py --dry-run   # check the 42 renders, write nothing
+py -3.12 blender/sky/build_sky_manifest.py             # copy + index
+```
+
+The faces reach the game through the keyed upload (`docs/phase6/OWNER_UPLOAD.md` section 6c) into
+`src/shared/TextureIds.lua`; `src/shared/SkyFaces.lua` reads them. A theme shows only once all six of its faces have
+Image ids; until then that sky keeps LightingService's boot faces and the cycle changes only the light.
