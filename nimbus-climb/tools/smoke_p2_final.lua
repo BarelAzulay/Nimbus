@@ -1285,7 +1285,7 @@ local TOPICS4 = {
 	{ "XP from every fight", { "Every fight gives XP", "a loss a third" } },
 	{ "evolution", { "EVOLVE", "Ready to evolve!", "level 50", "**level 100**" } },
 	{ "the Training Place", { "Training Place", "Attack Speed", "Physique", "Ability", "Defense", "Rank 3 takes 3 minutes", "**Stop**" } },
-	{ "the Champion Ring", { "Champion Ring", "giant boss", "new record pays triple Cash", "100 Tokens" } },
+	{ "the Champion Ring", { "Champion Ring", "boss round", "keep their HP", "new record pays triple Cash", "100 Tokens" } },
 	{ "pet cards and following", { "Pet cards", "**behind**" } },
 	{ "the home portal", { "Portal home", "**Go home**" } },
 	{ "safe zones", { "Safe zones" } },
@@ -1592,7 +1592,8 @@ local function checkRing(BC, PC, lines, ringText)
 	local t = T.tally("docs: the Champion Ring (rounds, bosses, Cash per win, record, XP, tokens) matches BattleCatalog.Ring", 6)
 	local f = flat(ringText)
 	local R = BC.Ring or {}
-	t:case(has(f, "**every " .. tostring(R.BossEvery) .. "th round is a giant boss**"), "a giant boss every " .. tostring(R.BossEvery) .. "th round")
+	t:case(has(f, "**every " .. tostring(R.BossEvery) .. "th round is a boss round**"), "a boss round every " .. tostring(R.BossEvery) .. "th round")
+	t:case(has(f, "**No heal between rounds:**") and has(f, "a fainted pet sits out the rest of"), "the no-heal rule (HP carried, a fainted pet sits out)")
 	t:case(has(f, "**" .. num(R.TimeLimit) .. " seconds**") and (BC.TimeLimits or {}).Ring == R.TimeLimit, "a round lasts " .. tostring(R.TimeLimit) .. " seconds")
 	t:case(has(f, "you get " .. num(R.Intermission) .. " seconds"), tostring(R.Intermission) .. " seconds between rounds")
 	local cash = "the bigger of $" .. R.CashFloorBase .. " + $" .. R.CashFloorPerRound .. " x the round and what your garden makes in "
@@ -1616,7 +1617,7 @@ local function checkRing(BC, PC, lines, ringText)
 				local easy = (R.EasyRounds or {})[r]
 				if r % R.BossEvery == 0 then
 					sawBoss = true
-					t:case(has(row[2], "**Boss:**") and has(row[2], "giant"), "round " .. r .. " is a giant boss round")
+					t:case(has(row[2], "**Boss:**"), "round " .. r .. " is a boss round")
 				elseif easy then
 					local def = PC.Get(easy.PetId)
 					t:case(def ~= nil and has(row[2], def.Name), "round " .. r .. ": the champion is " .. tostring(def and def.Name))

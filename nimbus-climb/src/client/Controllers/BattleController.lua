@@ -6095,6 +6095,7 @@ function Hud.ShowResult(B, payload)
 		Void = "Both players left: this duel does not count.",
 		Shutdown = raid and "The server is restarting: your damage so far still counts." or "The server is restarting: this battle does not count.",
 		Cleared = "Room cleared!",
+		Fainted = "Your whole team fainted.",
 	}
 	local sub = reasons[tostring(payload.Reason)] or ""
 	if B.Mode == "Ring" then
@@ -7222,6 +7223,9 @@ function Ring.ResultTitle(B, payload, sub)
 	local why
 	if rw.Void == true then
 		why = "server restart: round " .. round .. " does not count"
+	elseif payload.Reason == "Fainted" then
+		-- HUD cleanup Task 4 (no heal): the last win left nobody standing; the server sends it as Outcome "Left"
+		why = "your whole team fainted after round " .. round
 	elseif payload.Outcome == "Left" or payload.Reason == "Forfeit" or payload.Reason == "Left" then
 		why = "you left after round " .. round
 	elseif payload.Reason == "Timeout" then
@@ -9242,6 +9246,7 @@ end
 BattleController._Units = Units -- TESTS ONLY (tools/smoke_p6_creatures.lua: the fx mesh slots)
 BattleController._Me = Me -- TESTS ONLY (tools/smoke_p7vfx_client.lua: the Eclipse dim, Task 11)
 BattleController._Fx = Fx -- TESTS ONLY (tools/smoke_p7vfx_client.lua: the Special pre-charge, Task 11b: numbers / flashes)
+BattleController._Ring = Ring -- TESTS ONLY (tools/smoke_ring_noheal_client.lua: the run card's line, HUD cleanup Task 4)
 
 -- TESTS ONLY (Task 11b): the raw battle unit record (its drawn HP, hold, hurt time) and my predicted charge
 function BattleController._Unit(id)

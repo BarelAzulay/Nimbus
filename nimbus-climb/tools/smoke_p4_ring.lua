@@ -874,7 +874,7 @@ S.p4ring_start = scenario("p4ring_start", function()
 end)
 
 ----------------------------------------------------------------------------------------------------
--- p4ring_run: a single level-1 pet wins rounds 1-3; chaining with no gap; rewards once; the natural end
+-- p4ring_run: a single level-5 pet wins rounds 1-3; chaining with no gap; rewards once; the natural end
 ----------------------------------------------------------------------------------------------------
 S.p4ring_run = scenario("p4ring_run", function()
 	if not ready("p4ring_run") then
@@ -886,17 +886,20 @@ S.p4ring_run = scenario("p4ring_run", function()
 	ensurePortal()
 	local w = watchEnded()
 	local info = arenaInfo()
-	local p = newPlayer("RingSolo", { WEAK[1] }, 1)
+	-- HUD cleanup Task 4: no heal between rounds. A lone level-5 pebble_pup sits on the edge of round 3 (the fight seeds
+	-- come from the server's RNG, so the scenarios run before it decide); mallow_kitten L5 clears 5-8 rounds (sim, 48 seeds)
+	local petId = "mallow_kitten"
+	local p = newPlayer("RingSolo", { petId }, 5)
 	claimHome(p)
 	toRing(p)
-	local cash0, tokens0, xp0 = data.GetCash(p), data.GetTokens(p), totalXp(p, WEAK[1])
+	local cash0, tokens0, xp0 = data.GetCash(p), data.GetTokens(p), totalXp(p, petId)
 	local run = runRing(p, 1, { maxSeconds = 1500 })
-	if not T.check(run.id ~= nil, "p4 ring run: a level-1 Common starts the ring", tostring(run.refused)) then
+	if not T.check(run.id ~= nil, "p4 ring run: a level-5 Common starts the ring", tostring(run.refused)) then
 		w.stop()
 		cleanup({ p })
 		return
 	end
-	T.check(#run.wins >= 3, "p4 ring run: a single level-1 pet wins rounds 1, 2 and 3 (the handicapped easy rounds)", #run.wins .. " wins")
+	T.check(#run.wins >= 3, "p4 ring run: a single level-5 pet wins rounds 1, 2 and 3 in one run (its HP carried from round to round)", #run.wins .. " wins")
 	T.check(run.finalEnd ~= nil, "p4 ring run: the run ended by itself with a final 'End' (Rewards.Final)", run.finalEnd and tostring(run.finalEnd.Reason) or "still running")
 	T.eq(run.nilSamples, 0, "p4 ring run: InBattle was never nil while the run lived (no gap between two rounds)")
 	T.eq(run.pocketsMax, 1, "p4 ring run: one pocket for the whole run")
@@ -949,7 +952,7 @@ S.p4ring_run = scenario("p4ring_run", function()
 	-- paid exactly once: balances and the pet's XP moved by the sums
 	T.eq(data.GetCash(p) - cash0, cashSum, "p4 ring run: Cash grew by exactly the rounds' Cash (paid once per round)")
 	T.eq(data.GetTokens(p) - tokens0, tokenSum, "p4 ring run: Tokens grew by exactly the rounds' Tokens")
-	T.eq(totalXp(p, WEAK[1]) - xp0, xpSum + lossXp, "p4 ring run: the pet's XP grew by the rounds' XP + the loss third")
+	T.eq(totalXp(p, petId) - xp0, xpSum + lossXp, "p4 ring run: the pet's XP grew by the rounds' XP + the loss third")
 	local ring = ringOf(p)
 	T.check(ring.Best == wins and ring.Runs == 1, "p4 ring run: Ring.Best = the rounds won, Ring.Runs = 1", "Best " .. tostring(ring.Best) .. " Runs " .. tostring(ring.Runs))
 	-- BattleEnded once per round

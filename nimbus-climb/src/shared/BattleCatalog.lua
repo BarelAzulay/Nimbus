@@ -6,7 +6,7 @@
 -- no Instances, no services, no yields; safe on the server and the client. Plain Lua 5.1-compatible syntax only.
 --
 -- BALANCE: tuned with tools/sim_battle.lua (lupa, see tools/README.md): Support DPS ratio ~0.7, mirror duels 40-60%
--- with no timeouts, raids 100-240 s for 1 / 4 / 8 / 16 fighters, the Ring stage medians of Phase 4 (S1 16 .. S10 51),
+-- with no timeouts, raids 100-240 s for 1 / 4 / 8 / 16 fighters, the no-heal Ring stage medians (S1 13 .. S10 51),
 -- the dungeon ladder (floor 1 for any single level-1 pet, S10 >= floor 10). Change a number -> re-run the sim; the
 -- smoke scenarios (tools/smoke_p5_battlecore.lua) check the basics.
 --
@@ -56,7 +56,13 @@
 --                                                                  fighter; the bench adds nothing)
 --   BattleCatalog.AverageMaxHp(team) -> n                         the fighter's MaxHp (Balanced bonus included)
 --   BattleCatalog.LossRules = { LossShare 1/3, LossMinSeconds 20, LossMinDamage 0.2 }; RealLoss(seconds, dealtShare); LossXp(winXp, seconds, dealtShare)
---   BattleCatalog.Ring / ChampionTeam(round, seed) / RingPower / RingTarget / RingSeconds / RingRewards(round, incomePerSecond, isRecord)   (Phase 4, re-tuned)
+--   BattleCatalog.Ring / ChampionTeam(round, seed) / RingPower / RingSeconds / RingRewards(round, incomePerSecond, isRecord)   (Phase 4;
+--       HUD cleanup 2026-10-30: the no-heal climb, champions on the player formula; RingTarget is gone)
+--   BattleCatalog.ChampionLevel(round) -> 1..MaxPetLevel   Ring.LevelAnchors (+ BossLevelBump on boss rounds)
+--   BattleCatalog.ChampionTier(round) -> "Normal" | "Golden" | "Rainbow"   Ring.TierFrom
+--   BattleCatalog.ChampionCount(round) -> 1..3   Ring.Helpers
+--   ChampionTeam -> { Owner "npc", Side 2, Npc, Name, Round, Seed, Power = TeamPower(Pets), Champion = { PetId, Level, Tier, Evo,
+--       Count, Boss (flag), Name, Power }, Pets = { { PetId, Key, Level, Tier, Evo, Slot, Crowned, MeterStart }... } }
 --   BattleCatalog.Bosses / BossOrder / NextBoss / BossHp(bossId, teams) / WeightedTeams / GroupFactor / BossRules (GroupExponent 0.2)
 --   BattleCatalog.BaselineDps(bossId) -> n                        the boss HP floor's DPS (HpPerPlayer x it): BossRules.Baseline's ExpectedDps
 --   BattleCatalog.Events / Raid / RaidTier(share, won) / EventPets() / Trophies / Duel (PowerGap 2, the quick queue band)
@@ -873,29 +879,44 @@ function BattleCatalog.LossXp(winXp, seconds, dealtShare)
 end
 
 ----------------------------------------------------------------------
--- The Champion Ring (Phase 4 3.8, kept; Phase 5: the solver compares the champion's UnitPower with the player's
--- TeamPower (B5), FirstPower / Growth re-tuned by sim_battle so the Phase 4 stage medians hold). One crowned champion
--- per round; rounds 1-3 are one handicapped level-1 Common (a sure win for any single level-1 pet). From round 4 the
--- champion aims at FirstPower x Growth ^ (round - 4) (x BossBump every BossEvery-th round), species drawn with the run
--- seed from the round's rarity band (never EventOnly), solved: a plain level-1 pet above the target is handicapped
--- down (>= MinHandicap); else the lowest level 1..ChampionMaxLevel of the plain pet; else the mini-boss form Normal ->
--- Golden -> Rainbow; else the level-50 Rainbow mini-boss with Boost = target / power. The target never drops below the
--- round before.
+-- The Champion Ring (Phase 4 3.8, kept; HUD cleanup 2026-10-30, spec decision 5: the no-heal climb). The climber's pets
+-- keep their HP from round to round and a fainted pet sits out the run (BattleService RingRun). Champions are built
+-- with the PLAYER pet formula (PetCatalog.GetStats through UnitStats: level, rarity, tier, the evolution stage the level
+-- allows, training ranks) with no Boss / Handicap / Boost, so a level means the same strength on both sides. The round
+-- sets the level (LevelAnchors: linear between the anchors, floored, + BossLevelBump on every BossEvery-th round,
+-- capped at PetCatalog.MaxPetLevel()), the tier (TierFrom), the number of champions (Helpers: 1 -> 2 -> 3, all on the
+-- floor, one species: a pack, so the synergy rule gives it the Pair / Trio bonus like a player's team) and, past the
+-- level cap, training (Training: all four skills, rank 0 -> 10). The species comes from the run seed and the round's
+-- rarity band (never EventOnly; a band's lower rarity in the first half of its rounds, the higher one in the second
+-- half; the open band its last rarity from From + 6): a seeded pick among the species that match the round before
+-- within MaxLevelRaise levels of the curve (none there: the strongest one). The team's TeamPower never drops
+-- below the round before: the level is raised, then the tier, then a champion joins, then a training rank; at the very
+-- top the stronger team of the round before stays. Rounds 1-3 (OpeningRounds) are the three weakest level-1 Commons that do not heal.
+-- Tuned 2026-10-30 with tools/sim_battle.lua (section ring, no heal, 12 seeds; re-measured with MaxLevelRaise 5): stage
+-- record medians S1 13, S2 15, S3 19, S4 25, S5 25, S6 30, S7 33, S8 35, S9 42, S10 51 (the fresh-HP ladder before was
+-- 14 .. 49), three L100 Rainbow evo-2 fully trained pets 67; rounds 1-3 100% for every single level-1 starter; a team
+-- beats champions 10+ levels below it 24 of 24; round 100's champions beat the maxed team 24 of 24 fresh fights; a
+-- champion's level is never more than 5 above the curve (64 seeds x 400 rounds).
 ----------------------------------------------------------------------
 BattleCatalog.Ring = {
-	EasyRounds = {
-		{ PetId = "pebble_pup", Handicap = 0.45 },
-		{ PetId = "pip_penguin", Handicap = 0.55 },
-		{ PetId = "honey_bunny", Handicap = 0.65 },
-	},
-	FirstPower = 4.0, -- round 4's target: the champion's UnitPower (one weak Common; a level-1 Common fighter is ~10)
-	Growth = 1.172, -- x per round (re-tuned by sim_battle for the fighter engine: S1 16 .. S10 51 median records)
-	BossEvery = 10, -- every 10th round: a giant boss champion, x BossBump, first win pays BossTokens
-	BossBump = 1.12,
-	MinHandicap = 0.3,
-	ChampionMaxLevel = 50, -- champions never level past 50 (the Boost covers the rest)
-	Bands = { -- the champion's rarity by round (rounds 1-3 are the EasyRounds); the last band is open-ended
-		{ From = 4, To = 9, Rarities = { "Common" } },
+	-- { round, level } anchors of the champion level curve (the last anchor holds)
+	LevelAnchors = { { 1, 1 }, { 3, 1 }, { 10, 3 }, { 14, 4 }, { 20, 11 }, { 27, 23 }, { 33, 33 }, { 42, 46 }, { 49, 58 }, { 60, 80 }, { 70, 100 } },
+	BossEvery = 10, -- every 10th round: the boss round (BossLevelBump levels more), the first win pays BossTokens
+	BossLevelBump = 3,
+	TierFrom = { Golden = 36, Rainbow = 51 }, -- the champions' tier from these rounds on
+	Evolve = true, -- champions hold the evolution stage their level allows (PetCatalog.EvolutionLevels), like a player's pet
+	Helpers = { { From = 56, Count = 2 }, { From = 66, Count = 3 } }, -- more champions on the floor from these rounds on
+	MaxChampions = 3,
+	-- the top: past the level cap the champions train like a player's pets (all four skills, rank 0 -> MaxRank over From..To)
+	Training = { From = 70, To = 100 },
+	-- rounds 1..OpeningRounds: the weakest level-1 Commons that do not heal, weakest first (every single level-1 starter
+	-- wins each of them; the opening never needs a level raise)
+	OpeningRounds = 3,
+	-- the species of a round: a seeded pick among the band's species that match the round before within MaxLevelRaise
+	-- levels of the curve (so the shown level follows the curve instead of jumping L42 -> L26 -> ...)
+	MaxLevelRaise = 5,
+	Bands = { -- the champions' rarity by round; the last band is open-ended
+		{ From = 1, To = 9, Rarities = { "Common" } },
 		{ From = 10, To = 15, Rarities = { "Common", "Uncommon" } },
 		{ From = 16, To = 21, Rarities = { "Uncommon", "Rare" } },
 		{ From = 22, To = 27, Rarities = { "Rare", "Epic" } },
@@ -916,10 +937,11 @@ BattleCatalog.Ring = {
 	Intermission = 3,
 	MaxRound = 100000,
 }
-
 P4.RING_M = 2147483647
 P4.MAX_POWER = 1e15
 P4.RING_MEMO_SEEDS = 64
+P4.RING_FLAT = 400 -- past this round every champion team is the round-400 one (a run's history stays short)
+P4.TIERS = { "Normal", "Golden", "Rainbow" }
 P4.baseCache = {} -- "petId|level|tier" -> UnitPower of that single plain pet
 P4.ringMemo = {}
 P4.ringOrder = {}
@@ -964,14 +986,27 @@ function P4.pools()
 	return pools
 end
 
-function P4.band(r)
+-- the champions' rarity of round r: the band's lower rarity in the first half of its rounds, the higher one in the
+-- second half (the open-ended band: its last rarity from From + 6 on)
+function P4.bandRarity(r)
 	local bands = BattleCatalog.Ring.Bands
+	local band = bands[#bands]
 	for _, b in ipairs(bands) do
 		if r >= num(b.From, 1) and (b.To == nil or r <= b.To) then
-			return b.Rarities
+			band = b
+			break
 		end
 	end
-	return bands[#bands].Rarities
+	local list = band.Rarities
+	if #list < 2 then
+		return list[1]
+	end
+	local from = num(band.From, 1)
+	local split = from + 6
+	if band.To then
+		split = from + floor((band.To - from + 1) / 2)
+	end
+	return (r >= split) and list[#list] or list[1]
 end
 
 -- a small deterministic integer stream (Lehmer steps, exact in doubles)
@@ -987,24 +1022,51 @@ function P4.stream(x)
 	end
 end
 
-function P4.pickSpecies(r, s)
+-- the species of round r in the run with seed s: one draw of the seeded stream from the rarity's pool (Common when empty)
+function P4.pickSpecies(r, s, rarity)
 	local nextInt = P4.stream(((s % P4.RING_M) * 1000 + r) % P4.RING_M)
 	local pools = P4.pools()
-	local rarities = P4.band(r)
-	local list = pools[rarities[nextInt(#rarities)]]
+	local list = pools[rarity]
 	if not list or #list == 0 then
-		for _, rarity in ipairs(rarities) do
-			if pools[rarity] and #pools[rarity] > 0 then
-				list = pools[rarity]
-				break
-			end
-		end
-		list = list or pools.Common
+		list = pools.Common
 	end
 	if not list or #list == 0 then
 		return nil
 	end
 	return list[nextInt(#list)]
+end
+
+-- the species of round r (seed s) when the round before had power `goal`: one seeded draw (P4.pickSpecies' stream)
+-- among the rarity's species whose `count` x (level + MaxLevelRaise, tier, rank) team reaches goal, so the level
+-- raise in P4.champion stays within MaxLevelRaise of the curve; none there: the strongest one. goal 0: P4.pickSpecies.
+function P4.pickChampion(r, s, rarity, count, level, tier, rank, goal)
+	if not (goal and goal > 0) then
+		return P4.pickSpecies(r, s, rarity)
+	end
+	local pools = P4.pools()
+	local list = pools[rarity]
+	if not list or #list == 0 then
+		list = pools.Common
+	end
+	if not list or #list == 0 then
+		return nil
+	end
+	local reach = min(P4.maxLevel(), level + max(0, floor(num(BattleCatalog.Ring.MaxLevelRaise, 5))))
+	local fits, best, bestPower = {}, nil, -1
+	for _, id in ipairs(list) do
+		local p = BattleCatalog.TeamPower(P4.entries(id, count, reach, tier, rank))
+		if p >= goal then
+			fits[#fits + 1] = id
+		end
+		if p > bestPower then
+			best, bestPower = id, p
+		end
+	end
+	if #fits == 0 then
+		return best
+	end
+	local nextInt = P4.stream(((s % P4.RING_M) * 1000 + r) % P4.RING_M)
+	return fits[nextInt(#fits)]
 end
 
 function P4.basePower(petId, level, tier)
@@ -1033,24 +1095,7 @@ function P4.power(e)
 	return p
 end
 
-function BattleCatalog.RingTarget(round)
-	local R = BattleCatalog.Ring
-	local r = P4.round(round)
-	local easy = #R.EasyRounds
-	if r <= easy then
-		return 0
-	end
-	local p = R.FirstPower * R.Growth ^ (r - easy - 1)
-	if r % R.BossEvery == 0 then
-		p = p * R.BossBump
-	end
-	if not finite(p) or p > P4.MAX_POWER then
-		return P4.MAX_POWER
-	end
-	return p
-end
-
--- the generic NPC solver (champions and dungeon enemies): the entry of species petId closest above `goal`.
+-- the generic NPC solver (dungeon enemies): the entry of species petId closest above `goal`.
 -- Order: a level-1 plain pet above the goal is handicapped down (>= minHandicap; forceBoss: the level-1 mini-boss
 -- form); else the lowest level 1..topLevel of the plain pet; else the mini-boss form Normal -> Golden -> Rainbow; else
 -- the top Rainbow mini-boss with Boost = goal / power. Returns entry, power.
@@ -1108,35 +1153,211 @@ function BattleCatalog.SolveEnemy(petId, goal, opts)
 	return e, p
 end
 
--- one round's champion entry for a goal: entry, goal, power
-function P4.solve(r, s, prevPower)
-	local R = BattleCatalog.Ring
-	local easy = R.EasyRounds[r]
-	if easy then
-		local e = { PetId = easy.PetId, Level = 1, Tier = "Normal", Handicap = easy.Handicap }
-		return e, 0, P4.power(e)
+-- the curve level of round r (LevelAnchors: linear between the anchors, floored; the last anchor holds)
+function P4.curveLevel(r)
+	local A = BattleCatalog.Ring.LevelAnchors
+	if r <= A[1][1] then
+		return A[1][2]
 	end
-	local goal = BattleCatalog.RingTarget(r)
-	if prevPower and prevPower > goal then
-		goal = prevPower
+	for i = 2, #A do
+		local a, b = A[i - 1], A[i]
+		if r <= b[1] then
+			return floor(a[2] + (b[2] - a[2]) * (r - a[1]) / (b[1] - a[1]))
+		end
 	end
-	local petId = P4.pickSpecies(r, s)
-	if not petId then
-		return nil, goal, goal
-	end
-	local e, power = P4.solveEntry(petId, goal, max(1, floor(num(R.ChampionMaxLevel, 50))), num(R.MinHandicap, 0.3), r % R.BossEvery == 0)
-	return e, goal, power
+	return A[#A][2]
 end
 
--- the per-seed history; reset whenever a Ring knob changes (the sim tunes them)
+function P4.maxLevel()
+	local pc = petCatalog()
+	local top = pc and pc.MaxPetLevel and pc.MaxPetLevel()
+	if finite(top) and top >= 1 then
+		return floor(top)
+	end
+	return 100
+end
+
+-- the champions' level of a round: the curve, + BossLevelBump on a boss round, 1..MaxPetLevel()
+function BattleCatalog.ChampionLevel(round)
+	local R = BattleCatalog.Ring
+	local r = P4.round(round)
+	local level = P4.curveLevel(r)
+	if r % R.BossEvery == 0 then
+		level = level + num(R.BossLevelBump, 0)
+	end
+	return max(1, min(P4.maxLevel(), floor(level)))
+end
+
+-- "Normal" | "Golden" | "Rainbow" by Ring.TierFrom
+function BattleCatalog.ChampionTier(round)
+	local r = P4.round(round)
+	local from = BattleCatalog.Ring.TierFrom or {}
+	if finite(from.Rainbow) and r >= from.Rainbow then
+		return "Rainbow"
+	end
+	if finite(from.Golden) and r >= from.Golden then
+		return "Golden"
+	end
+	return "Normal"
+end
+
+function P4.maxChampions()
+	return max(1, min(floor(num(BattleCatalog.Ring.MaxChampions, 3)), num(BattleCatalog.TeamSize, 3)))
+end
+
+-- how many champions take the floor (1..MaxChampions) by Ring.Helpers
+function BattleCatalog.ChampionCount(round)
+	local r = P4.round(round)
+	local n = 1
+	for _, h in ipairs(BattleCatalog.Ring.Helpers or {}) do
+		if finite(h.From) and finite(h.Count) and r >= h.From then
+			n = max(n, floor(h.Count))
+		end
+	end
+	return min(n, P4.maxChampions())
+end
+
+-- the evolution stage a player's pet of `level` can hold (EvolutionLevels), clamped to the species' top
+function P4.evoFor(def, level)
+	local pc = petCatalog()
+	if BattleCatalog.Ring.Evolve ~= true or not pc or not pc.EvolutionStage then
+		return 0
+	end
+	local stage = 0
+	for s, need in ipairs(pc.EvolutionLevels or {}) do
+		if finite(need) and level >= need then
+			stage = s
+		end
+	end
+	local ok, v = pcall(pc.EvolutionStage, def, level, stage)
+	return (ok and finite(v)) and v or 0
+end
+
+-- the champions' training rank of round r (Ring.Training: 0 before From, MaxRank from To, linear between)
+function P4.trainRank(r)
+	local tr = BattleCatalog.Ring.Training
+	local top = floor(num(BattleCatalog.Training.MaxRank, 10))
+	if type(tr) ~= "table" or not finite(tr.From) or not finite(tr.To) or r < tr.From then
+		return 0
+	end
+	if r >= tr.To or tr.To <= tr.From then
+		return top
+	end
+	return min(top, floor(top * (r - tr.From + 1) / (tr.To - tr.From + 1)))
+end
+
+-- `count` champions of one species (a pack: one element, so the player's synergy rule gives it the Pair / Trio bonus)
+function P4.entries(petId, count, level, tier, rank)
+	local pc = petCatalog()
+	local def = pc and pc.Get and pc.Get(petId)
+	local evo = def and P4.evoFor(def, level) or 0
+	local list = {}
+	for i = 1, count do
+		local e = { PetId = petId, Level = level, Tier = tier, Evo = evo }
+		if rank and rank > 0 then
+			e.Train = { Speed = rank, Physique = rank, Ability = rank, Defense = rank }
+		end
+		list[i] = e
+	end
+	return list
+end
+
+-- the opening's species: the OpeningRounds weakest level-1 Commons (UnitPower, then id) that do not heal themselves
+-- (a Heal special drags a level-1 fight out), weakest first; the same for every run
+function P4.opening()
+	if P4.openingList and P4.openingSig == P4.ringSig then
+		return P4.openingList
+	end
+	local pc = petCatalog()
+	local pool = {}
+	for _, id in ipairs(P4.pools().Common or {}) do
+		local def = pc and pc.Get and pc.Get(id)
+		local special = def and type(def.Special) == "table" and def.Special.Kind or nil
+		if special ~= "Heal" then
+			pool[#pool + 1] = { Id = id, Power = P4.basePower(id, 1, "Normal") }
+		end
+	end
+	table.sort(pool, function(a, b)
+		if a.Power ~= b.Power then
+			return a.Power < b.Power
+		end
+		return a.Id < b.Id
+	end)
+	local out = {}
+	for i = 1, min(#pool, max(0, floor(num(BattleCatalog.Ring.OpeningRounds, 3)))) do
+		out[i] = pool[i].Id
+	end
+	P4.openingList, P4.openingSig = out, P4.ringSig
+	return out
+end
+
+-- one round's champion team: entries, power (TeamPower). prev = the round before ({ Power, Pets }, nil on round 1):
+-- below it the level is raised (up to MaxPetLevel), then the tier, then a champion joins, then a training rank; still
+-- below it at the very top, the round before's team stays
+function P4.champion(r, s, prev)
+	local maxCount = P4.maxChampions()
+	local top = P4.maxLevel()
+	local level = BattleCatalog.ChampionLevel(r)
+	local count = BattleCatalog.ChampionCount(r)
+	local tierName = BattleCatalog.ChampionTier(r)
+	local tier = 1
+	for i, name in ipairs(P4.TIERS) do
+		if name == tierName then
+			tier = i
+		end
+	end
+	local rank = P4.trainRank(r)
+	local maxRank = floor(num(BattleCatalog.Training.MaxRank, 10))
+	local goal = prev and prev.Power or 0
+	local petId = (r <= num(BattleCatalog.Ring.OpeningRounds, 0)) and P4.opening()[r] or P4.pickChampion(r, s, P4.bandRarity(r), count, level, P4.TIERS[tier], rank, goal)
+	if not petId then
+		return nil, 0
+	end
+	local entries = P4.entries(petId, count, level, P4.TIERS[tier], rank)
+	local power = BattleCatalog.TeamPower(entries)
+	while power < goal do
+		if level < top then
+			level = level + 1
+		elseif tier < #P4.TIERS then
+			tier = tier + 1
+		elseif count < maxCount then
+			count = count + 1
+		elseif rank < maxRank then
+			rank = rank + 1
+		else
+			break
+		end
+		entries = P4.entries(petId, count, level, P4.TIERS[tier], rank)
+		power = BattleCatalog.TeamPower(entries)
+	end
+	if power < goal then
+		return prev.Pets, prev.Power
+	end
+	return entries, power
+end
+
+-- the per-seed history ({ Power, Pets } per round); reset whenever a Ring knob changes (the sim tunes them)
 function P4.memoFor(s)
 	local R = BattleCatalog.Ring
-	local sig = table.concat({ tostring(R.FirstPower), tostring(R.Growth), tostring(R.BossEvery), tostring(R.BossBump), tostring(R.MinHandicap), tostring(R.ChampionMaxLevel), tostring(#R.EasyRounds), tostring(#R.Bands), tostring(BattleCatalog.Fighter.KitFactor), tostring(BattleCatalog.Roles.Support.Power) }, "|")
+	local parts = { tostring(R.BossEvery), tostring(R.BossLevelBump), tostring(R.Evolve), tostring(R.MaxChampions), tostring(BattleCatalog.Fighter.KitFactor), tostring(BattleCatalog.Fighter.HelperWeight), tostring(BattleCatalog.Roles.Support.Power) }
+	for _, a in ipairs(R.LevelAnchors) do
+		parts[#parts + 1] = tostring(a[1]) .. ":" .. tostring(a[2])
+	end
+	local from = R.TierFrom or {}
+	parts[#parts + 1] = tostring(from.Golden) .. "/" .. tostring(from.Rainbow)
+	local tr = R.Training or {}
+	parts[#parts + 1] = "T" .. tostring(tr.From) .. "-" .. tostring(tr.To) .. "/" .. tostring(R.OpeningRounds) .. "/" .. tostring(R.MaxLevelRaise)
+	for _, h in ipairs(R.Helpers or {}) do
+		parts[#parts + 1] = tostring(h.From) .. "x" .. tostring(h.Count)
+	end
+	for _, b in ipairs(R.Bands) do
+		parts[#parts + 1] = tostring(b.From) .. "-" .. tostring(b.To) .. "=" .. table.concat(b.Rarities or {}, ",")
+	end
+	local sig = table.concat(parts, "|")
 	if sig ~= P4.ringSig then
 		P4.ringSig = sig
 		P4.ringMemo = {}
 		P4.ringOrder = {}
-		P4.ringSat = nil
 		P4.baseCache = {}
 	end
 	local m = P4.ringMemo[s]
@@ -1149,30 +1370,6 @@ function P4.memoFor(s)
 		end
 	end
 	return m
-end
-
--- the saturation round: from here on the target is above every species' level-50 Rainbow mini-boss, so every champion
--- takes a Boost and its power is exactly max(target, the power before the saturation round)
-function P4.saturation()
-	if P4.ringSat then
-		return P4.ringSat
-	end
-	local R = BattleCatalog.Ring
-	local topLevel = max(1, floor(num(R.ChampionMaxLevel, 50)))
-	local mb = BattleCatalog.MiniBoss
-	local maxTop = 0
-	for _, list in pairs(P4.pools()) do
-		for _, id in ipairs(list) do
-			maxTop = max(maxTop, P4.basePower(id, topLevel, "Rainbow") * sqrt(mb.Hp * mb.Power))
-		end
-	end
-	local r = #R.EasyRounds + 1
-	local top = num(R.MaxRound, 100000)
-	while r < top and BattleCatalog.RingTarget(r) < maxTop do
-		r = r + 1
-	end
-	P4.ringSat = r
-	return r
 end
 
 function P4.history(k, s, memo)
@@ -1188,45 +1385,45 @@ function P4.history(k, s, memo)
 	end
 	local prev = (start > 1) and memo[start - 1] or nil
 	for j = start, k do
-		local _, _, p = P4.solve(j, s, prev)
-		memo[j] = p
-		prev = p
+		local entries, power = P4.champion(j, s, prev)
+		if entries then
+			prev = { Power = power, Pets = entries }
+		end
+		memo[j] = prev
 	end
 	return memo[k]
 end
 
 function P4.ring(r, s)
-	local memo = P4.memoFor(s)
-	local sat = P4.saturation()
-	if r >= sat then
-		return P4.solve(r, s, P4.history(sat - 1, s, memo))
-	end
-	return P4.solve(r, s, P4.history(r - 1, s, memo))
+	return P4.history(min(r, P4.RING_FLAT), s, P4.memoFor(s))
 end
 
--- A BattleSim team spec for the champion of `round` in the run with `seed` (fresh tables; pure and deterministic)
+-- A BattleSim team spec for the champions of `round` in the run with `seed` (fresh tables; pure and deterministic)
 function BattleCatalog.ChampionTeam(round, seed)
 	local r = P4.round(round)
 	local s = P4.seed(seed)
-	local entry, goal, power = P4.ring(r, s)
-	if not entry then
+	local h = P4.ring(r, s)
+	if not h or not h.Pets[1] then
 		return nil
 	end
+	local pets = {}
+	for i, e in ipairs(h.Pets) do
+		pets[i] = {
+			PetId = e.PetId,
+			Key = e.PetId,
+			Level = e.Level,
+			Tier = e.Tier,
+			Evo = e.Evo,
+			Train = e.Train and { Speed = e.Train.Speed, Physique = e.Train.Physique, Ability = e.Train.Ability, Defense = e.Train.Defense } or nil,
+			Slot = i,
+			Crowned = (i == 1) or nil,
+			MeterStart = BattleCatalog.Damage.LateMeterStart, -- #27: the champions open with a special almost ready
+		}
+	end
+	local first = pets[1]
 	local pc = petCatalog()
-	local def = pc and pc.Get and pc.Get(entry.PetId)
-	local name = (def and (def.DisplayName or def.Name)) or entry.PetId
-	local pet = {
-		PetId = entry.PetId,
-		Key = entry.PetId,
-		Level = entry.Level,
-		Tier = entry.Tier,
-		Slot = 1,
-		Boss = entry.Boss,
-		Handicap = entry.Handicap,
-		Boost = entry.Boost,
-		Crowned = true,
-		MeterStart = BattleCatalog.Damage.LateMeterStart, -- #27: the champion opens with a special almost ready
-	}
+	local def = pc and pc.Get and pc.Get(first.PetId)
+	local name = (def and (def.DisplayName or def.Name)) or first.PetId
 	return {
 		Owner = "npc",
 		Side = 2,
@@ -1234,25 +1431,24 @@ function BattleCatalog.ChampionTeam(round, seed)
 		Name = "Champion " .. name,
 		Round = r,
 		Seed = s,
-		TargetPower = goal,
-		Power = power,
+		Power = h.Power,
 		Champion = {
-			PetId = entry.PetId,
-			Level = entry.Level,
-			Tier = entry.Tier,
-			Boss = entry.Boss == true,
-			Boost = entry.Boost,
-			Handicap = entry.Handicap,
+			PetId = first.PetId,
+			Level = first.Level,
+			Tier = first.Tier,
+			Evo = first.Evo,
+			Count = #pets,
+			Boss = (r % BattleCatalog.Ring.BossEvery == 0) or nil, -- the boss round's flag (rewards, the crowd), no stat change
 			Name = name,
-			Power = power,
+			Power = h.Power,
 		},
-		Pets = { pet },
+		Pets = pets,
 	}
 end
 
 function BattleCatalog.RingPower(round, seed)
-	local _, _, power = P4.ring(P4.round(round), P4.seed(seed))
-	return power
+	local h = P4.ring(P4.round(round), P4.seed(seed))
+	return h and h.Power or 0
 end
 
 function BattleCatalog.RingSeconds(round)
@@ -2089,19 +2285,45 @@ function BattleCatalog.Validate()
 	if BattleCatalog.Zones.Ring == nil or BattleCatalog.TimeLimits.Ring ~= RG.TimeLimit then
 		bad("Ring: Zones.Ring and TimeLimits.Ring = Ring.TimeLimit")
 	end
-	if not (RG.Growth > 1 and RG.Growth > RG.BossBump and RG.BossBump >= 1 and RG.FirstPower > 0 and RG.MinHandicap > 0 and RG.MinHandicap < 1) then
-		bad("Ring: Growth > BossBump >= 1 (the target never drops), FirstPower > 0, MinHandicap in (0, 1)")
-	end
-	for i, easy in ipairs(RG.EasyRounds) do
-		local def = pc and pc.Get and pc.Get(easy.PetId)
-		if pc and (not def or def.Rarity ~= "Common") then
-			bad("Ring.EasyRounds[" .. i .. "] must be a Common catalog pet")
-		end
-		if not finite(easy.Handicap) or easy.Handicap <= 0 or easy.Handicap >= 1 then
-			bad("Ring.EasyRounds[" .. i .. "] needs a Handicap in (0, 1)")
+	local topLevel = P4.maxLevel()
+	local A = RG.LevelAnchors
+	local anchorsOk = type(A) == "table" and #A >= 2 and type(A[1]) == "table" and A[1][1] == 1 and A[1][2] >= 1
+	for i = 2, anchorsOk and #A or 0 do
+		if not (type(A[i]) == "table" and finite(A[i][1]) and finite(A[i][2]) and A[i][1] > A[i - 1][1] and A[i][2] >= A[i - 1][2]) then
+			anchorsOk = false
 		end
 	end
-	local nextFrom = #RG.EasyRounds + 1
+	if not anchorsOk or A[#A][2] ~= topLevel then
+		bad("Ring.LevelAnchors: { round, level } pairs from { 1, >= 1 }, rounds strictly increasing, levels never falling, ending at MaxPetLevel()")
+	end
+	if not (finite(RG.BossLevelBump) and RG.BossLevelBump >= 0 and finite(RG.BossEvery) and RG.BossEvery >= 2) then
+		bad("Ring: BossEvery >= 2 and BossLevelBump >= 0")
+	end
+	local from = type(RG.TierFrom) == "table" and RG.TierFrom or {}
+	if not (finite(from.Golden) and finite(from.Rainbow) and from.Golden >= 1 and from.Rainbow > from.Golden and from.Rainbow <= RG.MaxRound) then
+		bad("Ring.TierFrom: 1 <= Golden < Rainbow <= MaxRound")
+	end
+	local lastHelp = 0
+	for i, h in ipairs(type(RG.Helpers) == "table" and RG.Helpers or {}) do
+		if not (finite(h.From) and finite(h.Count) and h.From >= 1 and h.From <= RG.MaxRound and h.From > lastHelp and h.Count >= 2 and h.Count <= P4.maxChampions()) then
+			bad("Ring.Helpers[" .. i .. "]: From in 1..MaxRound (increasing), Count 2..MaxChampions")
+		end
+		lastHelp = num(h.From, lastHelp)
+	end
+	if RG.MaxChampions ~= BattleCatalog.TeamSize then
+		bad("Ring.MaxChampions = TeamSize (3)")
+	end
+	local tr = type(RG.Training) == "table" and RG.Training or {}
+	if not (finite(tr.From) and finite(tr.To) and tr.From >= 1 and tr.To > tr.From and tr.To <= RG.MaxRound) then
+		bad("Ring.Training: 1 <= From < To <= MaxRound")
+	end
+	if not (finite(RG.OpeningRounds) and RG.OpeningRounds >= 0 and RG.OpeningRounds <= (RG.Bands[1] and RG.Bands[1].To or 0) and RG.Bands[1].Rarities[1] == "Common") then
+		bad("Ring.OpeningRounds: inside the first band (Common)")
+	end
+	if not (finite(RG.MaxLevelRaise) and RG.MaxLevelRaise >= 0) then
+		bad("Ring.MaxLevelRaise: >= 0 (how far above the curve a picked species may be raised)")
+	end
+	local nextFrom = 1
 	for i, b in ipairs(RG.Bands) do
 		if b.From ~= nextFrom or type(b.Rarities) ~= "table" or #b.Rarities == 0 then
 			bad("Ring.Bands[" .. i .. "] must start at round " .. nextFrom .. " and name rarities")
@@ -2118,30 +2340,35 @@ function BattleCatalog.Validate()
 		bad("Ring.Bands: the last band must be open-ended (no To)")
 	end
 	if pc then
-		local last = 0
-		local boosted = nil
-		for round = 1, 80 do
-			local spec = BattleCatalog.ChampionTeam(round, 1)
-			if type(spec) ~= "table" or #spec.Pets ~= 1 then
-				bad("ChampionTeam(" .. round .. ", 1) must be a one-pet team spec")
-				break
+		-- the climb (rounds 1..120, seeds 1..4): 1..3 plain pets (no Boss / Handicap / Boost), levels 1..MaxPetLevel, never
+		-- EventOnly, the power never drops, three champions by round 100
+		for seed = 1, 4 do
+			local last = 0
+			for round = 1, 120 do
+				local spec = BattleCatalog.ChampionTeam(round, seed)
+				if type(spec) ~= "table" or type(spec.Pets) ~= "table" or #spec.Pets < 1 or #spec.Pets > P4.maxChampions() then
+					bad("ChampionTeam(" .. round .. ", " .. seed .. ") must be a team spec of 1.." .. P4.maxChampions() .. " pets")
+					break
+				end
+				if spec.Power < last then
+					bad("ChampionTeam: round " .. round .. " is weaker than round " .. (round - 1) .. " (seed " .. seed .. ")")
+				end
+				last = spec.Power
+				for _, e in ipairs(spec.Pets) do
+					if e.Boss or e.Handicap or e.Boost then
+						bad("ChampionTeam: round " .. round .. " carries Boss / Handicap / Boost (champions use the player formula)")
+					end
+					if not (finite(e.Level) and e.Level >= 1 and e.Level <= topLevel) then
+						bad("ChampionTeam: round " .. round .. " has a level outside 1..MaxPetLevel")
+					end
+					if pc.IsEventOnly and pc.IsEventOnly(e.PetId) then
+						bad("ChampionTeam: round " .. round .. " fields an EventOnly pet")
+					end
+				end
+				if round == 100 and #spec.Pets ~= P4.maxChampions() then
+					bad("ChampionTeam: round 100 must field " .. P4.maxChampions() .. " champions")
+				end
 			end
-			if round > #RG.EasyRounds and spec.Power < last then
-				bad("ChampionTeam: round " .. round .. " is weaker than round " .. (round - 1))
-			end
-			last = spec.Power
-			if spec.Pets[1].Boost and not boosted then
-				boosted = round
-			end
-			if pc.IsEventOnly and pc.IsEventOnly(spec.Pets[1].PetId) then
-				bad("ChampionTeam: round " .. round .. " fields an EventOnly pet")
-			end
-			if spec.Pets[1].Level > RG.ChampionMaxLevel then
-				bad("ChampionTeam: round " .. round .. " is above ChampionMaxLevel")
-			end
-		end
-		if not boosted then
-			bad("ChampionTeam: no Boost by round 80 (the ladder must never end)")
 		end
 	end
 	local rw = BattleCatalog.RingRewards(1, 0, false)

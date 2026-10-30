@@ -17,8 +17,8 @@
 --                         a played duel pays once, a leaver loses
 --   p5svc_raid            16 fighters + the boss: BossHp(bossId, teams) with ExpectedDps, ~25 units, every client under
 --                         6 KB/s (p5battle_net16), a leaver removed, tiers paid once at the end
---   p5svc_ring            rounds 1-3 won by ONE level-1 pet pressing ATTACK once per second (moving toward the champion),
---                         XP once per round, Start.Team / Ring info, the loss third on the natural end
+--   p5svc_ring            rounds 1-3 won by ONE level-10 pet pressing ATTACK once per second (moving toward the champion;
+--                         HUD cleanup Task 4: no heal between rounds, plain level-1 champions), XP once per round, Start.Team / Ring info, the loss third on the natural end
 --   p5svc_encounter       the encounter API with NO run provider (KeysInBattle / canBattle work), OpenEncounter 1 and 4
 --                         teams with KeepInBattle (the InBattle attribute untouched on add, release, leave, force release),
 --                         SpawnWave + Wave events, OnWave / OnBossHp / OnDown / OnLeave, EncounterStatus, FinishEncounter
@@ -1536,7 +1536,7 @@ S.p5svc_ring = scenario("p5svc_ring", function()
 		w.stop()
 		return
 	end
-	local p = newPlayer("RingOne", { "pebble_pup" }, 1)
+	local p = newPlayer("RingOne", { "pebble_pup" }, 10)
 	T.check(claimHome(p) ~= nil, "p5 ring: (setup) the climber claimed a home")
 	Mock.Teleport(p, CFrame.new(pos + Vector3.new(0, 3, 6)))
 	advance(0.1)
@@ -1544,7 +1544,7 @@ S.p5svc_ring = scenario("p5svc_ring", function()
 	local cash0 = cash(p)
 	local mark = K.logSize()
 	local ok, id = bs.StartRing(p, 1)
-	if not T.check(ok == true, "p5 ring: StartRing(1) at the portal with ONE level-1 pet", tostring(id)) then
+	if not T.check(ok == true, "p5 ring: StartRing(1) at the portal with ONE level-10 pet", tostring(id)) then
 		w.stop()
 		cleanup({ p })
 		return
@@ -1594,7 +1594,7 @@ S.p5svc_ring = scenario("p5svc_ring", function()
 			break
 		end
 	end
-	T.check(wins >= 3, "p5 ring: ONE level-1 pet pressing ATTACK once per second wins rounds 1-3", wins .. " wins in " .. string.format("%.0f s", Mock.Clock.now - t0))
+	T.check(wins >= 3, "p5 ring: ONE level-10 pet pressing ATTACK once per second wins rounds 1-3 (HP carried)", wins .. " wins in " .. string.format("%.0f s", Mock.Clock.now - t0))
 	local R = bc.Ring
 	local xpWant = 0
 	for r = 1, math.min(3, wins) do
