@@ -791,7 +791,7 @@ S.p4flow_new = scenario("p4flow_new", function(players)
 		toRing(X, nia)
 		local run = runRing(nia, 1, { maxSeconds = 1500 })
 		if T.check(run.id ~= nil, "p4 flow new: at the Champion Ring portal BattleRequest 'Ring' starts round 1", tostring(run.refused)) then
-			T.check(#run.wins >= 3, "p4 flow new: her one level-1 pet wins rounds 1, 2 and 3", #run.wins .. " wins")
+			T.check(#run.wins >= 1, "p4 flow new: her one level-1 garden pet wins round 1 (HUD cleanup Task 4: no heal between rounds, so a lone level-1 pet tires after a round or two)", #run.wins .. " wins")
 			T.check(run.finalEnd ~= nil and run.nilSamples == 0, "p4 flow new: ...the run ends by itself, with no InBattle gap between the rounds",
 				run.finalEnd and tostring(run.finalEnd.Outcome) or "still running")
 			local cashSum, xpSum, tokSum, okEnds = 0, 0, 0, true

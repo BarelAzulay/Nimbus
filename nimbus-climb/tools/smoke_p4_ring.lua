@@ -886,17 +886,17 @@ S.p4ring_run = scenario("p4ring_run", function()
 	ensurePortal()
 	local w = watchEnded()
 	local info = arenaInfo()
-	local p = newPlayer("RingSolo", { WEAK[1] }, 1)
+	local p = newPlayer("RingSolo", { WEAK[1] }, 5) -- HUD cleanup Task 4: no heal between rounds, plain level-1 champions (a lone level-1 garden pet tires by round 2-3)
 	claimHome(p)
 	toRing(p)
 	local cash0, tokens0, xp0 = data.GetCash(p), data.GetTokens(p), totalXp(p, WEAK[1])
 	local run = runRing(p, 1, { maxSeconds = 1500 })
-	if not T.check(run.id ~= nil, "p4 ring run: a level-1 Common starts the ring", tostring(run.refused)) then
+	if not T.check(run.id ~= nil, "p4 ring run: a level-5 Common starts the ring", tostring(run.refused)) then
 		w.stop()
 		cleanup({ p })
 		return
 	end
-	T.check(#run.wins >= 3, "p4 ring run: a single level-1 pet wins rounds 1, 2 and 3 (the handicapped easy rounds)", #run.wins .. " wins")
+	T.check(#run.wins >= 3, "p4 ring run: a single level-5 pet wins rounds 1, 2 and 3 in one run (its HP carried from round to round)", #run.wins .. " wins")
 	T.check(run.finalEnd ~= nil, "p4 ring run: the run ended by itself with a final 'End' (Rewards.Final)", run.finalEnd and tostring(run.finalEnd.Reason) or "still running")
 	T.eq(run.nilSamples, 0, "p4 ring run: InBattle was never nil while the run lived (no gap between two rounds)")
 	T.eq(run.pocketsMax, 1, "p4 ring run: one pocket for the whole run")

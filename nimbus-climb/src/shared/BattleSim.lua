@@ -18,7 +18,9 @@
 --               Specials = false (harness: nobody casts) }
 --     team  = { Owner, Side = 1 | 2, Name, Npc = bool, Auto = bool, Anchor = { x, z }, Specials = false, Wave = n,
 --               Pets = { entry x 1..3 } }   entry: Key, PetId, Def, Level, Tier, Slot, Evo, Train, Boost, Handicap, Boss,
---               Wild, Xp, XpNext, Crowned, NoSpecial.  A PLAYER team (not Npc): Pets[1] = the fighter, 2-3 the bench
+--               Wild, Xp, XpNext, Crowned, NoSpecial, HpFraction (player teams: the pet starts at maxHp x f, 0 < f < 1,
+--               >= 1 HP; junk / missing = full; the Champion Ring's no-heal rule).
+--               A PLAYER team (not Npc): Pets[1] = the fighter, 2-3 the bench
 --               (3 lives). Npc teams: every pet is on the floor. Auto (harness): the AI plays the fighter's kit.
 --               Mode Dungeon: side 2 may start empty (SpawnEnemies fills it).
 --   battle:Command(owner, action, arg) -> ok, reason, extra
@@ -86,7 +88,9 @@
 --   battle:SpeedOf(owner) -> { Walk, Run }   the fighter's current legal speeds (speed buffs / slows included)
 --   battle:Result() -> nil while running, else { Mode, Reason, WinnerSide, Winners, Losers, Draw, Forfeit, BossId, Round, Damage =
 --                                     { [owner] = n }, Shares, Duration, Survivors = { [owner] = lives }, Hp = { [side] = share }, Kills =
---                                     { [owner] = n }, Waves, BossHp, BossMaxHp }
+--                                     { [owner] = n }, Waves, BossHp, BossMaxHp, Units = { [owner] = { { Key, Hp, MaxHp, Alive }... } }
+--                                     (every player team's pets in slot order, bench included; Hp rounded, Alive = alive and
+--                                     Hp > 0: a pet at 0 HP when the fight ends is fainted) }
 --   battle:Describe() -> { BattleId, Mode, Seed, Zone = { X, Z }, TimeLimit, BossId, Round, Sides, Units = { unitInfo... } }
 --   battle:StaticUnits() -> { unitInfo... }   unitInfo = { id, side, owner, slot, kind, key, petId, boss, name, species, look,
 --                                     element, elements, maxHp, level, tier, scale, ranged, range, radius, special, evo, xp, xpNext,
@@ -572,6 +576,12 @@ local function unitFromDef(self, team, def, entry, slot, kind)
 		hit = hit * entry.Handicap
 		specialPower = specialPower * entry.Handicap
 	end
+	-- the Champion Ring's no-heal rule: a player pet may start hurt (its HP share from the round before, >= 1 HP)
+	local startHp = maxHp
+	local frac = entry.HpFraction
+	if team.player and finite(frac) and frac > 0 and frac < 1 then
+		startHp = max(1, maxHp * frac)
+	end
 	local special = type(def.Special) == "table" and def.Special or nil
 	local buffKind, buffDef = nil, nil
 	if bc and bc.BuffOf then
@@ -592,7 +602,7 @@ local function unitFromDef(self, team, def, entry, slot, kind)
 		elems = us.Elements,
 		role = us.Role or "Combat",
 		maxHp = maxHp,
-		hp = maxHp,
+		hp = startHp,
 		hit = hit,
 		interval = us.Interval,
 		moveSpeed = us.MoveSpeed,
@@ -3209,6 +3219,18 @@ local function finish(self, winnerSide, reason, events)
 	if self.boss then
 		result.BossHp = max(0, floor(self.boss.hp + 0.5))
 		result.BossMaxHp = floor(self.boss.maxHp + 0.5)
+	end
+	-- every player team's pets as they ended (bench included): the Champion Ring carries the HP to the next round
+	result.Units = {}
+	for _, team in ipairs(self.teams) do
+		if team.player then
+			local rows = {}
+			for _, u in ipairs(team.units) do
+				local hp = max(0, floor(u.hp + 0.5))
+				rows[#rows + 1] = { Key = u.key, Hp = hp, MaxHp = floor(u.maxHp + 0.5), Alive = u.alive and hp > 0 }
+			end
+			result.Units[team.owner] = rows
+		end
 	end
 	self.result = result
 	events[#events + 1] = { type = EV.End, reason = reason, winnerSide = winnerSide }

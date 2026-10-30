@@ -1649,7 +1649,7 @@ S.p5battle_balance = guarded("p5battle_balance", function()
 		recs[#recs + 1] = SIM.ringRun(SIM.Stages[10].Pets, 2000 + seed)
 	end
 	local med10 = SIM.median(recs)
-	T.check(abs(med1 - SIM.RingMedians.S1) <= 3 and abs(med10 - SIM.RingMedians.S10) <= 3, "ring medians within +-3 of the Phase 4 stages (S1 16, S10 51; the full report asks +-2)", fmt("S1 %d, S10 %d", med1, med10))
+	T.check(abs(med1 - SIM.RingMedians.S1) <= 3 and abs(med10 - SIM.RingMedians.S10) <= 3, "ring medians (the no-heal climb) within +-3 of SIM.RingMedians (S1 " .. SIM.RingMedians.S1 .. ", S10 " .. SIM.RingMedians.S10 .. ")", fmt("S1 %d, S10 %d", med1, med10))
 	-- dungeon: floor 1 by one level-1 pet; S10 clears floor 10
 	local okFloor1 = true
 	for _, id in ipairs({ "honey_bunny", "mochi_slime", "biscuit_bear" }) do

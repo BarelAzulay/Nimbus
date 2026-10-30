@@ -1170,8 +1170,9 @@ function Ring.build()
 	listLayout(how, Enum.FillDirection.Vertical, 4)
 	local every = Ring.bossEvery()
 	local tokens = math.floor(tonumber(Ring.cfg().BossTokens) or 100)
-	wrapText(how, "Text", "Beat the champion, meet a stronger one! Every " .. every .. "th round is a giant BOSS (first win: +"
-		.. tokens .. " Tokens). A loss ends the run, but every win pays at once.", "Body", 19, WHITE, 1)
+	wrapText(how, "Text", "Beat the champion, meet a stronger one! Every " .. every .. "th round is a BOSS round (first win: +"
+		.. tokens .. " Tokens). A loss ends the run, but every win pays at once."
+		.. " Your pets keep their HP from round to round, and a fainted pet sits out the rest of the run.", "Body", 19, WHITE, 1)
 	ui.CashNote = wrapText(how, "CashNote", "", "Body", 18, MUTED, 2)
 
 	-- detail: the start picker, the champion, the rewards, the fighters

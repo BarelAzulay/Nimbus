@@ -147,10 +147,10 @@ Pet Garden, food is berries now, and the Trials made way for the Dungeon (see
 - **Training Place** (the old Gym): press **E**, pick a pet and a skill (Attack Speed, Physique, Ability, Defense).
   Rank 3 takes 3 minutes. A training pet rests at home: it cannot follow you or fight until it is done, then it
   comes back by itself. **Stop** gives the Cash back.
-- **Champion Ring:** the new portal on the plaza. You need a home and a pet. One champion at a time, each stronger
-  than the last; every 10th is a giant boss. Every win pays Cash and XP, a new record pays triple Cash, beating a
-  boss round for the first time pays 100 Tokens. Lose once and the run ends. Start from round 1 or from any boss
-  round you beat.
+- **Champion Ring:** the new portal on the plaza. You need a home and a pet. Every round's champions are stronger
+  than the last; every 10th is a boss round. Your pets keep their HP from round to round. Every win pays Cash and XP,
+  a new record pays triple Cash, beating a boss round for the first time pays 100 Tokens. Lose once and the run ends.
+  Start from round 1 or from any boss round you beat.
 - **Pet cards:** a small card above each of your pets shows its level and XP; in battles also health and SPECIAL.
   Your pets now follow right **behind** you.
 - **Portal home:** **Go home** opens a small magic portal only you and your pets can use.
@@ -1047,11 +1047,14 @@ The golden **Champion Ring** gate stands in the Gate Court. All you need is a ho
 the ring window shows your record, the best in this server, the pets that will fight and what the next win pays. Pick
 where to start (round 1, or any boss round you have beaten) and press **START**.
 
-- **One champion at a time**, each a little stronger than the last. Rounds 1-3 are sleepy little pets that any
-  single level-1 pet beats; then the champions get rarer and stronger, and **every 10th round is a giant boss**. You
-  have **90 seconds** for a round; lose once (or run out of time) and the run ends. Between two rounds you get 3
-  seconds and a side card ("Round 8 won! ... Round 9 in 3"). Your health comes back full every round.
-  Tap LEAVE (twice) to stop a run; you come back at the Champion Ring gate.
+- **Every round a little stronger.** Rounds 1-3 are level-1 Commons that any single level-1 pet beats; then the
+  champions level up and get rarer, from round 56 they come as a pack of two and from round 66 as a pack of three,
+  and **every 10th round is a boss round** (3 levels more). A champion is built exactly like your pets: the same
+  level, rarity, tier and evolution mean the same strength. You have **90 seconds** for a round; lose once (or run
+  out of time) and the run ends. Between two rounds you get 3 seconds and a side card ("Round 8 won! ... Round 9 in
+  3"). Tap LEAVE (twice) to stop a run; you come back at the Champion Ring gate.
+- **No heal between rounds:** your pets keep the HP they ended a round with, and a fainted pet sits out the rest of
+  the run. When a win leaves nobody standing the run is over (the wins stay paid). A new run starts at full HP.
 - **Every win pays Cash and XP:** the bigger of $20 + $2 x the round and what your garden makes in 1.5 + 0.1 x the
   round seconds (at most 9 seconds), and 20 + 6 x the round XP for every pet of your team. A **new record** round
   pays **x3 Cash**, and beating a boss round for the first time pays **100 Cloud Tokens**. The round that ends your
@@ -1062,17 +1065,18 @@ where to start (round 1, or any boss round you have beaten) and press **START**.
 
 | Round | Champion | Cash per win (at least) | XP for every team pet |
 |---|---|---|---|
-| 1 | a sleepy Pebble Pup | $22 | 26 |
-| 2 | a sleepy Pip Penguin | $24 | 32 |
-| 3 | a sleepy Honey Bunny | $26 | 38 |
+| 1 | a level-1 Pebble Pup (Common) | $22 | 26 |
+| 2 | a level-1 Pip Penguin (Common) | $24 | 32 |
+| 3 | a level-1 Biscuit Bear (Common) | $26 | 38 |
 | 5 | a Common pet | $30 | 50 |
-| 10 | **Boss:** a giant Common or Uncommon pet | $40 | 80 |
-| 20 | **Boss:** a giant Uncommon or Rare pet | $60 | 140 |
-| 30 | **Boss:** a giant Epic or Legendary pet | $80 | 200 |
-| 40 | **Boss:** a giant Legendary or Mythic pet | $100 | 260 |
-| 50 | **Boss:** a giant Mythic or Secret pet | $120 | 320 |
+| 10 | **Boss:** a Common or Uncommon pet | $40 | 80 |
+| 20 | **Boss:** an Uncommon or Rare pet | $60 | 140 |
+| 30 | **Boss:** an Epic or Legendary pet | $80 | 200 |
+| 40 | **Boss:** a Golden Legendary or Mythic pet | $100 | 260 |
+| 50 | **Boss:** a Golden Mythic or Secret pet | $120 | 320 |
 
-The ring never ends: after round 50 the bosses just keep getting stronger. When a run is over the result card
+The ring never ends: from round 51 the champions are Rainbow, by round 70 they are level 100, and from round 70 to
+100 they train every skill like your pets do, so the top stays hard. When a run is over the result card
 shows **RUN OVER** (or **NEW RECORD!**), the rounds you won and the Cash and XP of the whole run, and a few seconds
 later you are back at the gate.
 

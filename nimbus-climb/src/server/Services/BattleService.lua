@@ -30,7 +30,8 @@
 --                                 Rewards = {[userId] = rewards}, RewardsPaid = true, BossHp, BossMaxHp, Survivors, Hp,
 --                                 Waves, Extra (Dungeon).
 --   The encounter API (4.6; the ONLY way DungeonService touches combat; this module NEVER requires DungeonService, C16):
---   BattleService.TeamSpec(player, keys | nil) -> spec | nil, reason     (teamOf: keys = the ring fallback; training keys skipped)
+--   BattleService.TeamSpec(player, keys | nil, hpByKey | nil) -> spec | nil, reason     (teamOf: keys = the ring fallback;
+--                                 training keys skipped; hpByKey = key -> HP share: 0 skips it, a share < 1 rides as HpFraction)
 --   BattleService.OpenEncounter(spec) -> battleId | nil, reason
 --     spec = { Mode = "Dungeon", Zone = <NC_BattleZone part> | { CFrame, Size }, Seed, TimeLimit, Label, Teams = { { Player,
 --              Spec }... } (1..4), Extra = { Floor, Room, Wave, Waves, Name, Boss }, KeepInBattle = true, OnEnd = fn(battleId,
@@ -96,8 +97,12 @@
 --     canBattle, within RING_RANGE of the portal ("Walk to the Champion Ring portal"), the profile loaded and not
 --     provisional, the start round (1, or a boss round 10k with Ring.Best >= 10k). One RingRun per player: { Id, Player,
 --     UserId, Name, Pocket, PocketIndex, Zone, Round, Start, Seed, Keys (fixed at the start), Wins, Cash, Xp, Tokens,
---     Record, Best0, State = "Fighting" | "Intermission" | "Ending" | "Ended" }. The run's pocket comes from the shared pool
---     (St.pocketBusy) via ArenaBuilder.BuildPocket(index, "Ring"). Every round is a fresh BattleSim (Mode "Ring", Zone
+--     Record, Best0, Hp, Fainted, State = "Fighting" | "Intermission" | "Ending" | "Ended" }. NO HEAL (HUD cleanup
+--     2026-10-30): after every won round run.Hp[key] = the HP share the pet ended with (BattleSim Result().Units) and a pet
+--     at 0 HP goes into run.Fainted; the next round fields only RingRun.liveKeys(run), each with HpFraction = its share
+--     (KeysInBattle still locks every run key). A won round that leaves no pet standing ends the run (reason "Fainted",
+--     the wins stay paid, the toast "Your whole team fainted: the run is over"); a new run starts at full HP. The run's
+--     pocket comes from the shared pool (St.pocketBusy) via ArenaBuilder.BuildPocket(index, "Ring"). Every round is a fresh BattleSim (Mode "Ring", Zone
 --     44 x 44, Teams = { the player's spec, BattleCatalog.ChampionTeam(round, seed) }, TimeLimit 90: a timeout is a loss).
 --     A WIN pays once (payOnce / RingRun.pay: Cash = BattleCatalog.RingRewards(round, TycoonService.IncomePerSecond(player),
 --     isRecord) with the record x3 and the first boss clear's Tokens decided inside ONE DataService.MutateRing; XP 20 + 6r
@@ -734,8 +739,10 @@ end
 -- Level, Tier, Slot, Evo, Train, Xp, XpNext }... } }, or nil + a reason for a toast. `fallback` (Phase 4, the Champion
 -- Ring): a fixed key list used INSTEAD of the active preset (the run's fighters); the empty-team refusal stays for
 -- trials, duels and raids. Training keys (DataService.TrainingKeys) are skipped either way; the stored evolution stage
--- and training ranks (DataService.GetGrowth) ride on each entry as the UnitStats extras.
-local function teamOf(player, side, fallback)
+-- and training ranks (DataService.GetGrowth) ride on each entry as the UnitStats extras. `hpByKey` (the Champion Ring's
+-- no-heal rule: key -> the HP share the pet ended its last round with): a key at 0 is skipped (fainted), the others
+-- carry HpFraction (BattleSim starts them hurt).
+local function teamOf(player, side, fallback, hpByKey)
 	local DS = dataService()
 	if not hasFn(DS, "ActiveTeamKeys") or not PetKeys then
 		return nil, "Battles are not ready yet"
@@ -762,7 +769,8 @@ local function teamOf(player, side, fallback)
 		if i > slots then
 			break
 		end
-		if type(key) == "string" and not training[key] then
+		local share = type(hpByKey) == "table" and hpByKey[key] or nil
+		if type(key) == "string" and not training[key] and not (finite(share) and share <= 0) then
 			local okP, parsed = pcall(PetKeys.Parse, key)
 			local okD, def = pcall(PetKeys.DefOf, key, profile)
 			if okP and type(parsed) == "table" and okD and type(def) == "table" and type(def.Stats) == "table" then
@@ -794,6 +802,7 @@ local function teamOf(player, side, fallback)
 					Train = train,
 					Xp = finite(xp) and xp or 0,
 					XpNext = xpNext,
+					HpFraction = (finite(share) and share > 0 and share < 1) and share or nil,
 				}
 			end
 		end
@@ -3127,7 +3136,12 @@ function RingRun.startRound(run)
 	if not isPlayer(player) or not aliveRoot(player) then
 		return false, "Wait until you respawn"
 	end
-	local spec, reason = teamOf(player, 1, run.Keys)
+	-- the no-heal rule: only the pets still standing fight, each with the HP share it ended the last round with
+	local keys = RingRun.liveKeys(run)
+	if #keys == 0 then
+		return false, "Fainted"
+	end
+	local spec, reason = teamOf(player, 1, keys, run.Hp)
 	if not spec then
 		return false, reason
 	end
@@ -3186,9 +3200,41 @@ function RingRun.nextRound(run, round)
 		return
 	end
 	local ok, why = RingRun.startRound(run)
-	if not ok then
+	if not ok and why == "Fainted" then
+		RingRun.endRun(run, nil, "Fainted")
+		notify(player, RingRun.FAINTED_TEXT, "bad", 5)
+	elseif not ok then
 		notify(player, why or "The Champion Ring could not continue", "bad", 4)
 		RingRun.endRun(run, nil, "Error")
+	end
+end
+
+RingRun.FAINTED_TEXT = "Your whole team fainted: the run is over"
+
+-- the run's keys still standing (run.Keys minus run.Fainted), in team order
+function RingRun.liveKeys(run)
+	local out = {}
+	for _, key in ipairs(run.Keys or {}) do
+		if not (run.Fainted and run.Fainted[key]) then
+			out[#out + 1] = key
+		end
+	end
+	return out
+end
+
+-- after a won round: every pet's HP share from the sim's Result().Units (0 and Fainted for a pet that ended at 0 HP)
+function RingRun.carryHp(run, b)
+	local okR, res = pcall(b.Sim.Result, b.Sim)
+	local rows = okR and type(res) == "table" and type(res.Units) == "table" and res.Units[run.UserId] or nil
+	for _, r in ipairs(type(rows) == "table" and rows or {}) do
+		if type(r.Key) == "string" then
+			local maxHp = tonumber(r.MaxHp) or 0
+			local share = (r.Alive == true and maxHp > 0) and min(1, max(0, (tonumber(r.Hp) or 0) / maxHp)) or 0
+			run.Hp[r.Key] = share
+			if share <= 0 then
+				run.Fainted[r.Key] = true
+			end
+		end
 	end
 end
 
@@ -3208,6 +3254,16 @@ function RingRun.afterBattle(b, result)
 	end
 	local player = run.Player
 	if result.Won == true and run.State == "Fighting" and St.ringRuns[player] == run and isPlayer(player) and not St.closing then
+		RingRun.carryHp(run, b)
+		if #RingRun.liveKeys(run) == 0 then
+			-- won, but nobody is left standing: the win stays paid (RingRun.pay), the run ends here with the result card
+			run.Round = run.Round + 1
+			run.Battle = nil
+			unregister(b)
+			RingRun.endRun(run, nil, "Fainted")
+			notify(player, RingRun.FAINTED_TEXT, "bad", 5)
+			return
+		end
 		run.State = "Intermission"
 		run.Round = run.Round + 1
 		run.Battle = nil
@@ -3479,6 +3535,8 @@ function BattleService.StartRing(player, startRound)
 		Recorded = false,
 		Strikes = 0,
 		Origin = root.CFrame,
+		Hp = {}, -- key -> the HP share the pet ended its last won round with (the no-heal rule; a new run starts full)
+		Fainted = {}, -- key -> true: the pet fainted and sits out the rest of the run (still locked in KeysInBattle)
 	}
 	St.ringRuns[player] = run
 	St.pocketBusy[index] = run.Id
@@ -4196,12 +4254,13 @@ function Enc.battle(battleId)
 	return nil
 end
 
--- BattleService.TeamSpec(player, keys | nil) -> spec | nil, reason  (teamOf exported: keys = the ring fallback)
-function BattleService.TeamSpec(player, keys)
+-- BattleService.TeamSpec(player, keys | nil, hpByKey | nil) -> spec | nil, reason  (teamOf exported: keys = the ring
+-- fallback; hpByKey = key -> HP share: 0 skips the key, a share below 1 rides as HpFraction)
+function BattleService.TeamSpec(player, keys, hpByKey)
 	if not isPlayer(player) then
 		return nil, "That player is not here"
 	end
-	return teamOf(player, 1, type(keys) == "table" and keys or nil)
+	return teamOf(player, 1, type(keys) == "table" and keys or nil, type(hpByKey) == "table" and hpByKey or nil)
 end
 
 -- SetRunProvider({ KeysInRun = fn(player) -> {[key] = true}, GetRun = fn(player) -> run | nil }): DungeonService's hooks
