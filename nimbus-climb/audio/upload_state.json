@@ -271,34 +271,43 @@
       "uploadedAt": "2026-10-28T04:33:51Z"
     },
     "NpcCaptainPenguinGreet": {
-      "assetId": 132942072899240,
-      "contentHash": "ed5ddb2c62934825842c37e997d6ba3a562e06ea8a864e199bc912aeb57ee22c",
-      "fileSha256": "ed5ddb2c62934825842c37e997d6ba3a562e06ea8a864e199bc912aeb57ee22c",
+      "assetId": 132360661747055,
+      "contentHash": "0e6ad1de544aa8526619717fd4833c9eb294a1b18c019f2166c594b612385b39",
+      "fileSha256": "0e6ad1de544aa8526619717fd4833c9eb294a1b18c019f2166c594b612385b39",
       "moderationState": "Approved",
-      "revisionCreateTime": "2026-10-30T08:49:48.600Z",
+      "previousAssetIds": [
+        132942072899240
+      ],
+      "revisionCreateTime": "2026-10-30T16:43:21.186Z",
       "revisionId": "1",
       "structureHash": null,
-      "uploadedAt": "2026-10-30T08:49:49Z"
+      "uploadedAt": "2026-10-30T16:43:22Z"
     },
     "NpcCaptainPenguinHmm": {
-      "assetId": 85260966371994,
-      "contentHash": "c2261ff14211eb374eaf3bcb2e929ff4985291d48f8a79a9a09594d4552dbc37",
-      "fileSha256": "c2261ff14211eb374eaf3bcb2e929ff4985291d48f8a79a9a09594d4552dbc37",
+      "assetId": 135666130055449,
+      "contentHash": "c38a0e2c00362f72a202619f0187accb2a7794f2112e8c6f64a534d0023b4b00",
+      "fileSha256": "c38a0e2c00362f72a202619f0187accb2a7794f2112e8c6f64a534d0023b4b00",
       "moderationState": "Approved",
-      "revisionCreateTime": "2026-10-30T08:49:51.618Z",
+      "previousAssetIds": [
+        85260966371994
+      ],
+      "revisionCreateTime": "2026-10-30T16:43:24.315Z",
       "revisionId": "1",
       "structureHash": null,
-      "uploadedAt": "2026-10-30T08:49:53Z"
+      "uploadedAt": "2026-10-30T16:43:26Z"
     },
     "NpcCaptainPenguinPleased": {
-      "assetId": 110727455243663,
-      "contentHash": "3dd857226dfc0813820d65021accc198b28a7c7d2b6968c02df116873c8a23f7",
-      "fileSha256": "3dd857226dfc0813820d65021accc198b28a7c7d2b6968c02df116873c8a23f7",
+      "assetId": 136831406415722,
+      "contentHash": "543cabf472f6b1f9f62e8164170379890b23c8c576b02ace58f6828517e7141f",
+      "fileSha256": "543cabf472f6b1f9f62e8164170379890b23c8c576b02ace58f6828517e7141f",
       "moderationState": "Approved",
-      "revisionCreateTime": "2026-10-30T08:49:54.805Z",
+      "previousAssetIds": [
+        110727455243663
+      ],
+      "revisionCreateTime": "2026-10-30T16:43:28.055Z",
       "revisionId": "1",
       "structureHash": null,
-      "uploadedAt": "2026-10-30T08:49:55Z"
+      "uploadedAt": "2026-10-30T16:43:29Z"
     },
     "NpcCoachCorgiGreet": {
       "assetId": 129522349653327,
