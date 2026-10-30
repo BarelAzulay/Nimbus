@@ -17,6 +17,10 @@
 --       = { group = { prop = true } }: those are set at once in this apply (the sky's clock jump at a phase change);
 --       asked while Busy they wait for the next apply, whichever it is
 --   LightingStack.Busy() -> boolean           a tween started by Push / Pop (a preset fading in or out) still runs
+--   LightingStack.Update(id, preset) -> boolean   replaces the values of a preset already on the stack IN PLACE (its
+--       position kept) and applies NOTHING: no running tween is cancelled or re-eased, Busy() is untouched; the next
+--       apply (the sky's next SetBase, or any Push / Pop) carries them. false (and no change) when id is not on the stack
+--       (GraphicsQuality.Recap: the GfxLow cloud cap follows the sky without restarting the sky's linear tweens)
 --
 -- Rules: the first time any preset names a property, its current (replicated) value is snapshotted as the BASE;
 -- the effective value of every property = the topmost preset that sets it, else the base. The base is no longer
@@ -240,6 +244,16 @@ function LightingStack.Pop(id, seconds)
 	end
 	table.remove(stack, i)
 	apply(seconds, true)
+end
+
+function LightingStack.Update(id, preset)
+	local i = indexOf(id)
+	if not i or type(preset) ~= "table" then
+		return false
+	end
+	snapshot(preset)
+	stack[i].Preset = preset
+	return true
 end
 
 -- a Push / Pop fade still plays (a finished or cancelled tween is dropped here)

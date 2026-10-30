@@ -10,24 +10,31 @@
 --   * a refresh is skipped while LightingStack.Busy() (a Dungeon / AttackFxDim fade runs: never restarted); the next
 --     refresh after it applies
 --   * the clock: ClockTime is set at once (LightingStack.SetBase's instant set) when it changes segment (a phase start,
---     a raid sky's mid-blend, the Night -> Dawn wrap) by more than Config.Sky.ClockJump h; inside a phase it tweens
+--     a raid sky's mid-blend) by more than Config.Sky.ClockJump h: in practice the Night -> Dawn wrap and a raid's
+--     fixed clock; inside a phase, and across the Sunset -> Night change (SkyCycle walks 17 -> 18.4 over the blend), it
+--     tweens
 --   * the raid sky: SkyEvent (a boss id with a RaidThemes sky) blends in over Cycle.EventBlend (3) s from SkyEventAt
---     (a late joiner mid-raid is on the raid sky at once) and back out over 3 s once SkyEvent is "" again
+--     (a late joiner mid-raid is on the raid sky at once) and back out over 3 s once SkyEvent is "" again. Each new
+--     SkyEventAt starts a transition FROM what showed at that moment (St.From = { Id, Blend }): back-to-back raids
+--     (SkyEvent storm_titan -> lava_golem, no clear) blend raid sky to raid sky (the skybox swap at the midpoint),
+--     never back through the cycle look; a raid that ends half blended in leaves from where it was
 --   * the battle lift (Config.Sky.Lift): in an outdoor pet battle (Config.Attr.InBattle "B...") under a dark look
 --     (Night, the eclipse raid) LightingStack.Push("SkyLift") over 1.5 s, popped over 1.5 s after the fight / at dawn
 --   * the lamps (Config.Sky.Lamps): the lobby's LampGlass / LanternLight / StallLight / DomeGlow PointLights glow
 --     x1.6 under a dark look; written on a look change only (a lamp streamed in later waits for the next change)
 --   * the fireflies (Config.Sky.Fireflies): at Night on High graphics a few emitters round the lobby trees (one local
 --     folder, capped); none on Low (GraphicsQuality.Effective()) or by day
---   * Low graphics: GraphicsQuality.Recap after each applied refresh (the GfxLow cloud cap follows the sky)
+--   * Low graphics: GraphicsQuality.Recap after each applied refresh (the GfxLow cloud cap follows the sky, updated in
+--     place and carried by the next refresh: it never cancels or re-eases these linear base tweens)
 -- The "look" = the raid boss id from its eventBlend 0.5, else the next phase from the phase's Blend 0.5, else the phase
 -- (the same moments the skybox swaps).
 --
 --   SkyController.Init() / Start()   idempotent: the loop, the attribute signals, a first (instant) refresh
 --   SkyController.Stop()             tests: the loop ends, signals dropped, lift popped, lamps back, fireflies gone
 --   SkyController.Refresh(now)       one step (tests drive it); now = server time (default Workspace:GetServerTimeNow())
---   SkyController.State() -> { Phase, Next, Look, Theme, Event, EventBlend, Lift, Lamps, Fireflies, Applies, Skipped,
---                              Loops, Running }   (Lamps / Fireflies = how many lights raised / emitters on)
+--   SkyController.State() -> { Phase, Next, Look, Theme, Event, EventBlend, EventFrom, Lift, Lamps, Fireflies, Applies,
+--                              Skipped, Loops, Running }   (Lamps / Fireflies = how many lights raised / emitters on;
+--                              EventFrom = the raid sky Event blends from on a back-to-back change, else nil)
 -- Plain Lua 5.1-compatible syntax only.
 
 local Players = game:GetService("Players")
@@ -56,7 +63,11 @@ local St = {
 	Theme = nil,
 	Event = nil,
 	EventBlend = 0,
-	LastEvent = nil, -- the raid sky blending out after SkyEvent went ""
+	EvSeen = false, -- the raid transition below has been read from the attributes once
+	EvAt = nil, -- the SkyEventAt the current raid transition started at
+	EvId = nil, -- the raid sky it goes to (nil = back to the cycle)
+	From = nil, -- { Id, Blend }: the raid sky showing when it started (nil = the plain cycle)
+	EventFrom = nil, -- the raid sky blending out under the new one (State)
 	Seg = nil, -- the clock segment applied last (a phase name or a raid boss id)
 	Clock = nil, -- the ClockTime applied last
 	Lift = false,
@@ -100,27 +111,68 @@ local function lowGraphics()
 	return false
 end
 
--- the raid sky now: boss id (or nil) and its blend 0..1 (SkyEventAt-based, the same on every client)
+local function raidId(id)
+	local sky = cfg()
+	if type(id) == "string" and sky.RaidThemes[id] and sky.Looks[id] then
+		return id
+	end
+	return nil
+end
+
+-- what the current raid transition shows at server time t: id, blend, fromId, fromBlend (SkyCycle.Preset's event args)
+local function shownAt(t)
+	local x = 1
+	if finite(St.EvAt) then
+		x = math.max(0, math.min(1, (t - St.EvAt) / math.max(0.01, cfg().Cycle.EventBlend)))
+	end
+	local from = St.From
+	if St.EvId then
+		if from and from.Id ~= St.EvId and x < 1 then
+			return St.EvId, x, from.Id, from.Blend -- raid to raid
+		end
+		local b0 = from and from.Blend or 0 -- the same raid sky again: on from where it was
+		return St.EvId, b0 + (1 - b0) * x, nil, 0
+	end
+	if from then
+		local back = from.Blend * (1 - x)
+		if back > 0 then
+			return from.Id, back, nil, 0
+		end
+	end
+	return nil, 0, nil, 0
+end
+
+-- the raid sky now (SkyEventAt-based, the same on every client that saw the change; a late joiner starts plain):
+-- id (or nil), its blend 0..1, and the raid sky it blends from (fromId, fromBlend) on a back-to-back change
 local function eventNow(now)
 	local sky = cfg()
-	local id = Workspace:GetAttribute(sky.Attr.Event)
+	local id = raidId(Workspace:GetAttribute(sky.Attr.Event))
 	local at = Workspace:GetAttribute(sky.Attr.EventAt)
-	local x = 1
-	if finite(at) then
-		x = math.max(0, math.min(1, (now - at) / math.max(0.01, sky.Cycle.EventBlend)))
+	if not finite(at) then
+		at = nil
 	end
-	if type(id) == "string" and sky.RaidThemes[id] and sky.Looks[id] then
-		St.LastEvent = id
-		return id, x
-	end
-	if St.LastEvent then
-		local back = 1 - x
-		if back > 0 then
-			return St.LastEvent, back
+	if St.EvSeen and at ~= St.EvAt then
+		-- a new transition starts from what the old one shows at its moment (one { Id, Blend }: a raid-to-raid blend
+		-- still running hands over its dominant sky)
+		local oldId, oldBlend, oldFrom, oldFromBlend = shownAt(at or now)
+		if oldFrom and oldBlend < 0.5 then
+			St.From = { Id = oldFrom, Blend = oldFromBlend }
+		elseif oldId and oldBlend > 0 then
+			St.From = { Id = oldId, Blend = oldBlend }
+		else
+			St.From = nil
 		end
-		St.LastEvent = nil
 	end
-	return nil, 0
+	St.EvSeen, St.EvAt, St.EvId = true, at, id
+	local shownId, blend, fromId, fromBlend = shownAt(now)
+	if not shownId or (St.EvId and blend >= 1) then
+		St.From = nil -- the transition is over: nothing left to blend from
+	end
+	return shownId, blend, fromId, fromBlend
+end
+
+local function resetEvent()
+	St.EvSeen, St.EvAt, St.EvId, St.From, St.EventFrom = false, nil, nil, nil, nil
 end
 
 ----------------------------------------------------------------------
@@ -300,6 +352,7 @@ end
 -- everything this controller adds goes away (no clock, Stop); the base stays where the sky left it
 local function settle()
 	St.Phase, St.Next, St.Look, St.Theme, St.Event, St.EventBlend = nil, nil, nil, nil, nil, 0
+	resetEvent()
 	setLift()
 	setLamps()
 	setFireflies()
@@ -315,18 +368,25 @@ function SkyController.Refresh(now)
 	end
 	now = finite(now) and now or Workspace:GetServerTimeNow()
 	local at = SkyCycle.At(now, epoch, Workspace:GetAttribute(A.Speed), Workspace:GetAttribute(A.Offset))
-	local event, eventBlend = eventNow(now)
-	local preset, theme = SkyCycle.Preset(at, event, eventBlend, SkyFaces.For)
-	local raid = event ~= nil and eventBlend >= 0.5
-	St.Phase, St.Next, St.Theme, St.Event, St.EventBlend = at.Phase, at.Next, theme, event, eventBlend
-	St.Look = raid and event or (at.Blend >= 0.5 and at.Next or at.Phase)
+	local event, eventBlend, fromId, fromBlend = eventNow(now)
+	local preset, theme = SkyCycle.Preset(at, event, eventBlend, SkyFaces.For, fromId, fromBlend)
+	-- the raid sky in charge (the same moments SkyCycle switches the clock and the skybox): the new raid from its
+	-- blend 0.5, else the one it blends from while that is at 0.5 or more
+	local raid = nil
+	if event ~= nil and eventBlend >= 0.5 then
+		raid = event
+	elseif fromId ~= nil and fromBlend >= 0.5 then
+		raid = fromId
+	end
+	St.Phase, St.Next, St.Theme, St.Event, St.EventBlend, St.EventFrom = at.Phase, at.Next, theme, event, eventBlend, fromId
+	St.Look = raid or (at.Blend >= 0.5 and at.Next or at.Phase)
 
 	if LightingStack.Busy() then
 		St.Skipped = St.Skipped + 1
 	else
 		local seconds = St.First and 0 or sky.Cycle.Tween
 		local clock = preset.Lighting.ClockTime
-		local seg = raid and event or at.Phase
+		local seg = raid or at.Phase
 		local instant = nil
 		if not St.First and seg ~= St.Seg and finite(clock) and finite(St.Clock) and math.abs(clock - St.Clock) > sky.ClockJump then
 			instant = { Lighting = { ClockTime = true } }
@@ -337,7 +397,7 @@ function SkyController.Refresh(now)
 		St.Applies = St.Applies + 1
 		local GQ = graphics()
 		if GQ and type(GQ.Recap) == "function" then
-			pcall(GQ.Recap, seconds)
+			pcall(GQ.Recap) -- in place: the cap rides the next SetBase, never a re-push over these tweens
 		end
 	end
 	setLift()
@@ -354,6 +414,7 @@ function SkyController.State()
 		Theme = St.Theme,
 		Event = St.Event,
 		EventBlend = St.EventBlend,
+		EventFrom = St.EventFrom,
 		Lift = St.Lift,
 		Lamps = St.Lamps,
 		Fireflies = St.Fireflies,
@@ -435,7 +496,8 @@ function SkyController.Stop()
 	end
 	St.Conns = {}
 	settle()
-	St.Seg, St.Clock, St.LastEvent = nil, nil, nil
+	St.Seg, St.Clock = nil, nil
+	resetEvent()
 end
 
 return SkyController

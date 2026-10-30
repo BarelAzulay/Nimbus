@@ -6,7 +6,9 @@
 --   sky_blend_window   (server world, pure) Blend is 0 until Config.Sky.Cycle.Blend (75) s before a phase ends, then rises
 --                      monotonically to 1; Next is the following phase in Order (Night -> Dawn)
 --   sky_clock_no_wrap  (server world, pure) one loop sampled every 1 s: within a phase ClockTime is monotonic, in [0, 24)
---                      and never crosses 24 -> 0; Sunset stays in [16, 17]
+--                      and never crosses 24 -> 0; Sunset stays in [16, 17] outside its blend; across the Sunset -> Night
+--                      blend the clock walks on to Night's start: monotonic, no 2 s step over 0.2 h, continuous into Night
+--                      (no one-frame horizon crossing); only the Night -> Dawn wrap steps backwards
 --   sky_floor          (server world, pure) every phase sample and every raid look after Preset: Brightness >= 1.0, each
 --                      OutdoorAmbient channel >= 70/255, ColorCorrection TintColor within 8/255 of white; Floor lifts a
 --                      dark preset onto the floor
@@ -17,7 +19,9 @@
 --                      and blends are ignored
 --   sky_event_blend    (server world, pure) the four raid themes match BattleCatalog.Bosses; eventBlend 1 = the raid look,
 --                      0.5 = the midpoint for numbers and Color3; the returned themeId (and the faces asked of facesFor)
---                      switch to the raid theme exactly at eventBlend >= 0.5; phase theme swaps at Blend 0.5
+--                      switch to the raid theme exactly at eventBlend >= 0.5; phase theme swaps at Blend 0.5; raid to
+--                      raid (fromId / fromBlend): blend 0 = exactly the old raid sky, 1 = the new one, the midpoint lies
+--                      between the two raid looks (never toward the cycle), theme + clock swap at 0.5
 --   stack_setbase_under_preset (client) LightingStack.SetBase under Push("Dungeon"): the preset's Brightness keeps winning,
 --                      a property only the base names (ClockTime) moves; Pop("Dungeon") lands on the moved base, not the
 --                      boot value; a tweened SetBase reaches its goal and is not Busy; junk SetBase calls change nothing
@@ -32,9 +36,14 @@
 --                      published applies at once (seconds 0): Lighting = the SkyCycle preset of that moment
 --   client_sky_refresh (client) the loop calls SetBase every Refresh (2) s with Tween (2) s; skips while Busy(); one loop
 --                      (Start twice = one; Stop ends it); no RenderStepped / Heartbeat connection; a clock jump of more
---                      than Config.Sky.ClockJump at a phase change (Sunset 17 -> Night 18.4) is set at once
+--                      than Config.Sky.ClockJump at a phase change (the Night 23.6 -> Dawn 7 wrap) is set at once; the
+--                      Sunset -> Night change is NOT (the clock tweens through it, monotonic, every 2 s step <= 0.2 h)
 --   client_sky_event   (client) SkyEvent + SkyEventAt: the raid blend rises over EventBlend (3) s to 1 (a late joiner
 --                      mid-raid lands on the raid sky at once); cleared -> back to the cycle over 3 s
+--   client_sky_event_back_to_back (client) SkyEvent storm_titan -> lava_golem with no clear: the base blends from the
+--                      storm look to the lava look (every step on the line between the two, never toward the cycle),
+--                      look / theme / clock swap at the midpoint, the full lava sky after 3 s; a raid that ends half
+--                      blended in leaves from where it was (no jump up to 1)
 --   client_sky_battle_lift (client) InBattle "B12" at Night -> Push("SkyLift", Config.Sky.Lift.Preset, 1.5); "D3" (a
 --                      dungeon run) -> no lift; cleared -> Pop over 1.5 s; Day -> no lift
 --   client_sky_lamps   (client) LampGlass / LanternLight / StallLight / DomeGlow PointLights x Config.Sky.Lamps.Night at
@@ -42,6 +51,9 @@
 --   client_sky_fireflies (client) Night + High graphics -> one capped emitter group near the lobby trees; Low -> none;
 --                      Day -> none
 --   client_gfx_cloud_cap (client) GfxLow Clouds Density = min(0.4, the cycle's), Recap follows the moving base
+--   client_gfx_recap_keeps_tweens (client) a Recap after a sky refresh on Low updates GfxLow in place (LightingStack.Update):
+--                      no Push, nothing Busy, the sky's running linear tweens are not cancelled; the next refresh carries
+--                      the new cap
 --   client_dungeon_density_follows (client) the dungeon's Atmosphere Density adds to the CURRENT cycle density (no
 --                      boot-time cache, no double add on a re-push)
 -- Plain Lua 5.1 syntax only.
@@ -243,27 +255,49 @@ local function serverScenarios()
 		end
 		local mono = T.tally("ClockTime is monotonic within each phase (one loop, every 1 s)")
 		local range = T.tally("ClockTime stays in [0, 24) and never crosses 24 -> 0 inside a phase")
-		local sunset = T.tally("Sunset ClockTime stays in [16, 17] (a modest sun, short shadows)")
+		local sunset = T.tally("Sunset ClockTime stays in [16, 17] outside its blend (a modest sun, short shadows)")
+		local walk = T.tally("Sunset -> Night blend: ClockTime walks on to Night's start (monotonic, every 2 s step <= 0.2 h, continuous into Night)")
+		local back = T.tally("the clock steps backwards only at the Night -> Dawn wrap")
 		local lastPhase, lastClock
+		local clocks = {}
 		for t = 0, 1199 do
 			local at = SC.At(t, 0, 1, 0)
 			local p = SC.Preset(at, nil, 0, nil)
 			local clock = p.Lighting and p.Lighting.ClockTime
+			clocks[t] = clock
 			range:case(type(clock) == "number" and clock >= 0 and clock < 24, fmt("t %d clock %s", t, tostring(clock)))
 			if type(clock) == "number" then
 				if at.Phase == lastPhase then
 					mono:case(clock >= lastClock - 1e-9, fmt("t %d %s %.3f after %.3f", t, at.Phase, clock, lastClock))
 					range:case(lastClock - clock < 12, fmt("t %d %s wrapped %.3f -> %.3f", t, at.Phase, lastClock, clock))
+				elseif lastClock then
+					back:case(clock >= lastClock - 1e-9 or (lastPhase == "Night" and at.Phase == "Dawn"), fmt("t %d %s -> %s %.3f -> %.3f", t, tostring(lastPhase), at.Phase, lastClock, clock))
 				end
-				if at.Phase == "Sunset" then
+				if at.Phase == "Sunset" and at.Blend == 0 then
 					sunset:case(clock >= 16 - 1e-9 and clock <= 17 + 1e-9, fmt("t %d clock %.3f", t, clock))
 				end
 				lastPhase, lastClock = at.Phase, clock
 			end
 		end
+		-- the Sunset -> Night window: from 75 s before Night to its start, in the client's 2 s refresh steps
+		local c = cfg.Cycle
+		local nightAt = c.Seconds.Dawn + c.Seconds.Day + c.Seconds.Sunset
+		local nightFrom = cfg.Looks.Night.Clock[1]
+		local prev
+		for t = nightAt - c.Blend - 2, nightAt + 4, 2 do
+			local clock = clocks[t]
+			if prev and type(clock) == "number" then
+				walk:case(clock >= prev - 1e-9 and clock - prev <= 0.2, fmt("t %d %.3f after %.3f (step %.3f h)", t, clock, prev, clock - prev))
+			end
+			prev = clock
+		end
+		walk:case(clocks[nightAt - 1] > 17 + 1, fmt("1 s before Night the clock is already near Night's start (%.3f)", clocks[nightAt - 1]))
+		walk:case(abs(clocks[nightAt] - nightFrom) < 1e-9 and nightFrom - clocks[nightAt - 1] < 0.05, fmt("Night starts at %.2f, %.3f h after the last Sunset second", nightFrom, nightFrom - clocks[nightAt - 1]))
 		mono:report()
 		range:report()
 		sunset:report()
+		walk:report()
+		back:report()
 		-- every look's Clock range: from <= to, both inside one day
 		local ranges = T.tally("every Config.Sky.Looks[*].Clock = { from, to } with 0 <= from <= to < 24")
 		for id, look in pairs(cfg.Looks) do
@@ -545,6 +579,39 @@ local function serverScenarios()
 		end)
 		T.check(pn.Sky.SkyboxBk == nil and pn2.Sky.SkyboxBk == nil and type(pn.Sky.StarCount) == "number", "no faces: the Sky group carries StarCount only (no Skybox keys)")
 		T.check(#asked > 0, "facesFor is asked with the theme id")
+		-- raid to raid (back-to-back raids, no clear between): fromId at fromBlend is the start, never the cycle
+		for _, t in ipairs({ 300, 1100 }) do
+			local at = SC.At(t, 0, 1, 0)
+			local storm = SC.Preset(at, "storm_titan", 1, faces)
+			local lava, thLava = SC.Preset(at, "lava_golem", 1, faces)
+			local p0, th0 = SC.Preset(at, "lava_golem", 0, faces, "storm_titan", 1)
+			local p1, th1 = SC.Preset(at, "lava_golem", 1, faces, "storm_titan", 1)
+			local okA, whyA = same(storm, p0, "from 0")
+			local okB, whyB = same(lava, p1, "from 1")
+			T.check(okA and th0 == "storm_teal", fmt("t %d storm -> lava at 0 = exactly the storm sky (theme storm_teal)", t), whyA or tostring(th0))
+			T.check(okB and th1 == thLava, fmt("t %d storm -> lava at 1 = exactly the lava sky", t), whyB or tostring(th1))
+			local cyc = SC.Preset(at, nil, 0, nil)
+			local line = T.tally(fmt("t %d storm -> lava: every step lies between the two raid looks (not the cycle)", t))
+			for _, x in ipairs({ 0.1, 0.25, 0.49, 0.5, 0.75, 0.9 }) do
+				local px, thx = SC.Preset(at, "lava_golem", x, faces, "storm_titan", 1)
+				for _, prop in ipairs({ "Brightness", "ExposureCompensation" }) do
+					local a, b, v = storm.Lighting[prop], lava.Lighting[prop], px.Lighting[prop]
+					line:case(abs(v - (a + (b - a) * x)) < 1e-9, fmt("x %.2f %s %.4f vs %.4f..%.4f (cycle %.4f)", x, prop, v, a, b, cyc.Lighting[prop]))
+				end
+				local ca, cb, cv = storm.Atmosphere.Color, lava.Atmosphere.Color, px.Atmosphere.Color
+				local ce = ca:Lerp(cb, x)
+				line:case(abs(cv.R - ce.R) < 1e-9 and abs(cv.G - ce.G) < 1e-9 and abs(cv.B - ce.B) < 1e-9, fmt("x %.2f Atmosphere.Color", x))
+				local wantTheme = x >= 0.5 and "lava_obsidian" or "storm_teal"
+				local wantClock = x >= 0.5 and cfg.Looks.lava_golem.Clock[1] or cfg.Looks.storm_titan.Clock[1]
+				line:case(thx == wantTheme and px.Sky.SkyboxBk == "bk:" .. wantTheme and abs(px.Lighting.ClockTime - wantClock) < 1e-9, fmt("x %.2f theme %s clock %.2f (want %s %.2f)", x, tostring(thx), px.Lighting.ClockTime, wantTheme, wantClock))
+			end
+			line:report()
+			-- the same id as from (a re-start of the same raid) = the plain raid blend; a junk fromId = no from
+			local pSame = SC.Preset(at, "storm_titan", 0.3, nil, "storm_titan", 1)
+			local pPlain = SC.Preset(at, "storm_titan", 0.3, nil)
+			local pJunk = SC.Preset(at, "storm_titan", 0.3, nil, "no_such_boss", 1)
+			T.check(same(pPlain, pSame) and same(pPlain, pJunk), fmt("t %d fromId = eventId or junk: ignored", t))
+		end
 		-- integers switch, never lerp
 		local night = SC.Preset(SC.At(1100, 0, 1, 0), nil, 0, nil)
 		T.eq(night.Sky.StarCount, cfg.Looks.Night.Sky.StarCount, "Night: StarCount = the Night look's")
@@ -849,11 +916,39 @@ local function clientScenarios()
 			LS.Pop("Dungeon", 0)
 			KC.advance(2.1)
 			T.check(#calls > n0, "after the fade the refresh applies again")
-			-- the Sunset -> Night clock jump (17 -> 18.4) is set at once, at the phase change
-			publish(1019)
+			-- Sunset -> Night (17 -> 18.4, across the ~18 h horizon where sunlight and shadows go off): never a jump;
+			-- the loop's 2 s steps walk the clock across the 75 s blend
+			local C = Cfg.Sky.Cycle
+			local nightAt = C.Seconds.Dawn + C.Seconds.Day + C.Seconds.Sunset
+			publish(nightAt - C.Blend - 2)
+			KC.advance(0.05)
 			calls = {}
-			SC.Refresh()
-			KC.advance(1.1)
+			for _ = 1, math.ceil((C.Blend + 8) / C.Refresh) do
+				KC.advance(C.Refresh)
+			end
+			local walkBad, maxStep, prevClock, instants = nil, 0, nil, 0
+			for _, c in ipairs(calls) do
+				local clock = c.preset.Lighting.ClockTime
+				if c.instant then
+					instants = instants + 1
+				end
+				if prevClock then
+					if clock < prevClock - 1e-9 then
+						walkBad = walkBad or fmt("%.3f after %.3f", clock, prevClock)
+					end
+					maxStep = math.max(maxStep, clock - prevClock)
+				end
+				prevClock = clock
+			end
+			local first = calls[1] and calls[1].preset.Lighting.ClockTime
+			T.check(#calls >= 35 and SC.State().Phase == "Night" and first ~= nil and first <= 17 + 1e-6 and prevClock >= Cfg.Sky.Looks.Night.Clock[1] - 1e-6, fmt("Sunset -> Night through the loop: %d refreshes from %.2f h to %.2f h", #calls, first or -1, prevClock or -1), tostring(SC.State().Phase))
+			T.check(walkBad == nil and maxStep <= 0.2, "Sunset -> Night: ClockTime monotonic across the blend, no 2 s refresh step over 0.2 h", fmt("%s, max step %.3f h", tostring(walkBad), maxStep))
+			T.check(instants == 0, "Sunset -> Night: no instant clock set (the sun goes down over the blend, not in one frame)", fmt("%d instant sets", instants))
+			-- the Night -> Dawn wrap (23.6 -> 7) is the one backward step: set at once, never tweened back through the day
+			publish(nightAt + C.Seconds.Night - 1)
+			KC.advance(0.05)
+			calls = {}
+			KC.advance(2.1)
 			SC.Refresh()
 			local jumped
 			for _, c in ipairs(calls) do
@@ -861,7 +956,7 @@ local function clientScenarios()
 					jumped = c
 				end
 			end
-			T.check(jumped ~= nil and SC.State().Phase == "Night" and near(Lighting.ClockTime, Cfg.Sky.Looks.Night.Clock[1], 0.02), "Sunset -> Night: the clock jump (17 -> 18.4) is set at once, not tweened through the dusk", tostring(Lighting.ClockTime))
+			T.check(jumped ~= nil and SC.State().Phase == "Dawn" and near(Lighting.ClockTime, Cfg.Sky.Looks.Dawn.Clock[1], 0.05), "Night -> Dawn: the backward wrap (23.6 -> 7) is set at once", tostring(Lighting.ClockTime))
 			local inPhase = #calls
 			KC.advance(2.1)
 			local again = false
@@ -923,6 +1018,81 @@ local function clientScenarios()
 		SC.Refresh()
 		T.check(SC.State().Event == nil, "an unknown SkyEvent id = no raid sky")
 		local _ = now
+	end)
+
+	S.client_sky_event_back_to_back = withSky("client_sky_event_back_to_back", function(SC, LS, SCy)
+		SC.Stop() -- the refreshes by hand (the base is read back: no tween timing involved)
+		publish(300) -- Day
+		Workspace:SetAttribute(A.Event, "storm_titan")
+		Workspace:SetAttribute(A.EventAt, Workspace:GetServerTimeNow() - 10)
+		SC.Refresh()
+		local st = SC.State()
+		T.check(st.Event == "storm_titan" and st.EventBlend == 1 and st.Look == "storm_titan", "the storm raid is up: the full storm sky", tostring(st.Event) .. " " .. tostring(st.EventBlend))
+		local function presets()
+			local at = SCy.At(Workspace:GetServerTimeNow(), Workspace:GetAttribute(A.Epoch), Workspace:GetAttribute(A.Speed), Workspace:GetAttribute(A.Offset))
+			return SCy.Preset(at, "storm_titan", 1, nil), SCy.Preset(at, "lava_golem", 1, nil), SCy.Preset(at, nil, 0, nil)
+		end
+		local function base(prop)
+			return LS.Value("Lighting", prop, "Dungeon")
+		end
+		-- the lava golem spawns with no clear between (SkyService.SetEvent: Event + EventAt, no "")
+		Workspace:SetAttribute(A.Event, "lava_golem")
+		Workspace:SetAttribute(A.EventAt, Workspace:GetServerTimeNow())
+		local line = T.tally("storm -> lava: the base stays on the line between the two raid looks (never toward the cycle)")
+		local swap = T.tally("storm -> lava: look, theme and clock stay storm's below blend 0.5 and are lava's from 0.5")
+		local firstBlend
+		for _ = 0, 6 do
+			SC.Refresh()
+			st = SC.State()
+			local pS, pL = presets()
+			local x = st.EventBlend
+			firstBlend = firstBlend or x
+			for _, prop in ipairs({ "Brightness", "ExposureCompensation", "Ambient", "OutdoorAmbient" }) do
+				local a, b, v = pS.Lighting[prop], pL.Lighting[prop], base(prop)
+				local want = (typeof(a) == "Color3") and a:Lerp(b, x) or (a + (b - a) * x)
+				line:case(st.Event == "lava_golem" and near(v, want, 1e-6), fmt("blend %.2f %s %s vs %s", x, prop, tostring(v), tostring(want)))
+			end
+			local wantLook = x >= 0.5 and "lava_golem" or "storm_titan"
+			local wantTheme = Cfg.Sky.RaidThemes[wantLook]
+			local wantClock = Cfg.Sky.Looks[wantLook].Clock[1]
+			swap:case(st.Look == wantLook and st.Theme == wantTheme and near(base("ClockTime"), wantClock, 1e-6), fmt("blend %.2f look %s theme %s clock %s", x, tostring(st.Look), tostring(st.Theme), tostring(base("ClockTime"))))
+			KC.advance(0.5)
+		end
+		line:report()
+		swap:report()
+		local pS0, _, pC = presets()
+		T.check(firstBlend ~= nil and firstBlend < 0.1, "the new raid's blend starts at 0", tostring(firstBlend))
+		T.check(math.abs(pS0.Lighting.Brightness - pC.Lighting.Brightness) > 0.2, "(the storm and the cycle looks differ, so a flash back would show)")
+		SC.Refresh()
+		st = SC.State()
+		local _, pL = presets()
+		T.check(st.Event == "lava_golem" and st.EventBlend == 1 and st.EventFrom == nil and near(base("Brightness"), pL.Lighting.Brightness, 1e-6), "3 s on: the full lava sky, nothing left to blend from", tostring(st.EventBlend) .. " " .. tostring(st.EventFrom))
+		-- the raid ends: back to the cycle from the lava sky over 3 s
+		Workspace:SetAttribute(A.Event, "")
+		Workspace:SetAttribute(A.EventAt, Workspace:GetServerTimeNow())
+		SC.Refresh()
+		T.check(SC.State().Event == "lava_golem" and SC.State().EventBlend > 0.95, "the lava raid ends: the blend back starts from 1")
+		KC.advance(3.2)
+		SC.Refresh()
+		T.check(SC.State().Event == nil and SC.State().EventBlend == 0, "3 s after: the plain cycle")
+		-- a raid that ends while still blending in leaves from where it was (no jump up to the full raid sky)
+		Workspace:SetAttribute(A.Event, "frost_wyrm")
+		Workspace:SetAttribute(A.EventAt, Workspace:GetServerTimeNow())
+		KC.advance(0.9)
+		SC.Refresh()
+		local mid = SC.State().EventBlend
+		Workspace:SetAttribute(A.Event, "")
+		Workspace:SetAttribute(A.EventAt, Workspace:GetServerTimeNow())
+		SC.Refresh()
+		st = SC.State()
+		T.check(mid > 0.2 and mid < 0.4 and st.Event == "frost_wyrm" and st.EventBlend <= mid + 1e-6, fmt("the frost raid ends at blend %.2f: it leaves from %.2f (not 1)", mid, st.EventBlend))
+		KC.advance(1.5)
+		SC.Refresh()
+		T.check(SC.State().EventBlend < mid * 0.6, "and keeps fading out", tostring(SC.State().EventBlend))
+		KC.advance(1.7)
+		SC.Refresh()
+		T.check(SC.State().Event == nil, "gone after 3 s")
+		SC.Start()
 	end)
 
 	S.client_sky_battle_lift = withSky("client_sky_battle_lift", function(SC, LS, SCy)
@@ -1136,21 +1306,28 @@ local function clientScenarios()
 			GQ.Apply("Low")
 			KC.advance(0.6)
 			T.check(near(clouds.Density, 0.4), "Low under a full sunset sky (0.65): capped at 0.4", tostring(clouds.Density))
-			-- the cycle thins while Low is on: Recap re-pushes with the new cap
+			-- the cycle thins while Low is on: Recap updates GfxLow in place, the next SetBase carries the new cap
 			LS.SetBase({ Clouds = { Density = 0.35 } }, 0)
 			T.check(near(clouds.Density, 0.4), "the base moved, GfxLow still holds its old 0.4", tostring(clouds.Density))
-			GQ.Recap(0)
-			T.check(near(clouds.Density, 0.35), "Recap: GfxLow follows the cycle down to 0.35", tostring(clouds.Density))
+			T.check(GQ.Recap() == true, "Recap: the cap moved")
+			T.check(near(LS.Value("Clouds", "Density"), 0.35) and near(clouds.Density, 0.4) and not LS.Busy(), "Recap: GfxLow holds 0.35 at once, nothing applied (no fade)", tostring(LS.Value("Clouds", "Density")) .. " / " .. tostring(clouds.Density))
+			LS.SetBase({ Clouds = { Density = 0.35 } }, 0)
+			T.check(near(clouds.Density, 0.35), "the next SetBase carries it: GfxLow follows the cycle down to 0.35", tostring(clouds.Density))
 			LS.SetBase({ Clouds = { Density = 0.6 } }, 0)
-			GQ.Recap(0)
-			T.check(near(clouds.Density, 0.4), "Recap: back up to the 0.4 cap", tostring(clouds.Density))
+			GQ.Recap()
+			LS.SetBase({ Clouds = { Density = 0.6 } }, 0)
+			T.check(near(clouds.Density, 0.4), "Recap + the next SetBase: back up to the 0.4 cap", tostring(clouds.Density))
+			T.check(GQ.Recap() == false, "Recap with the cap unchanged: nothing to do")
 			GQ.Apply("High")
 			KC.advance(0.6)
 			T.check(near(clouds.Density, 0.6), "High: the cycle's own 0.6", tostring(clouds.Density))
-			-- SkyController calls Recap after each applied refresh while Low
+			-- SkyController calls Recap after each applied refresh while Low (the refresh after carries the cap)
+			SC.Stop()
 			GQ.Apply("Low")
 			KC.advance(0.6)
 			publish(1100)
+			SC.Refresh()
+			KC.advance(2.1)
 			SC.Refresh()
 			KC.advance(2.1)
 			local want = expected(SCy)
@@ -1162,7 +1339,79 @@ local function clientScenarios()
 		if made then
 			clouds:Destroy()
 		end
+		SC.Start()
 		T.check(ok, "client_gfx_cloud_cap body", tostring(err))
+	end)
+
+	S.client_gfx_recap_keeps_tweens = withSky("client_gfx_recap_keeps_tweens", function(SC, LS, SCy)
+		local GQ = require(Mock.GetPath(ROOTS["client"] .. "/GraphicsQuality"))
+		local mode0 = GQ.Effective()
+		local terrain = Workspace:FindFirstChildOfClass("Terrain")
+		if not T.check(terrain ~= nil, "the client has a Terrain") then
+			return
+		end
+		local clouds, made = ensureChild(terrain, "Clouds")
+		local saved = LS.Value("Clouds", "Density", "GfxLow")
+		local realSet, realPush = LS.SetBase, LS.Push
+		local ok, err = pcall(function()
+			SC.Stop()
+			GQ.Apply("High")
+			KC.advance(0.6)
+			publish(300) -- Day: clouds 0.6, so Low caps them at 0.4
+			SC.Refresh()
+			KC.advance(2.1)
+			GQ.Apply("Low")
+			KC.advance(0.6)
+			T.check(near(GQ._St.CloudDensity, 0.4) and not LS.Busy(), "Low under the day sky: GfxLow caps the clouds at 0.4", tostring(GQ._St.CloudDensity))
+			-- night falls (clouds 0.35): this refresh moves the base AND the cap
+			publish(1100)
+			LS.SetBase({ Lighting = { Brightness = 2.5 } }, 0)
+			local started, pushes = {}, {}
+			LS.SetBase = function(preset, seconds, instant)
+				local r = realSet(preset, seconds, instant)
+				for tw in pairs(Mock.ActiveTweens) do
+					local target = tw.Instance
+					if target == Lighting or target == clouds then
+						started[#started + 1] = tw
+					end
+				end
+				return r
+			end
+			LS.Push = function(id, preset, seconds)
+				pushes[#pushes + 1] = tostring(id)
+				return realPush(id, preset, seconds)
+			end
+			SC.Refresh()
+			LS.SetBase, LS.Push = realSet, realPush
+			local want = expected(SCy)
+			T.check(near(GQ._St.CloudDensity, math.min(0.4, want.Clouds.Density)), "the refresh ran Recap: the cap moved to the night's density", tostring(GQ._St.CloudDensity))
+			T.check(#pushes == 0, "no Push during the refresh (Recap updates GfxLow in place)", table.concat(pushes, ","))
+			T.check(not LS.Busy(), "nothing Busy after it (the next refresh is not skipped)")
+			local playing, linear = 0, 0
+			for _, tw in ipairs(started) do
+				if tw.PlaybackState.Name == "Playing" then
+					playing = playing + 1
+				end
+				if tw.TweenInfo.EasingStyle.Name == "Linear" then
+					linear = linear + 1
+				end
+			end
+			T.check(#started > 0 and playing == #started and linear == #started, "the sky's base tweens still run, linear, after Recap (none cancelled or re-eased)", fmt("%d started, %d playing, %d linear", #started, playing, linear))
+			KC.advance(2.1)
+			T.check(near(Lighting.Brightness, want.Lighting.Brightness, 1e-3), "the Lighting tween lands on the night", tostring(Lighting.Brightness))
+			SC.Refresh()
+			KC.advance(2.1)
+			T.check(near(clouds.Density, math.min(0.4, want.Clouds.Density), 1e-3), "the next refresh carries the new cap", tostring(clouds.Density))
+		end)
+		LS.SetBase, LS.Push = realSet, realPush
+		GQ.Apply(mode0)
+		KC.advance(0.6)
+		LS.SetBase({ Clouds = { Density = saved } }, 0)
+		if made then
+			clouds:Destroy()
+		end
+		SC.Start()
+		T.check(ok, "client_gfx_recap_keeps_tweens body", tostring(err))
 	end)
 
 	S.client_dungeon_density_follows = withSky("client_dungeon_density_follows", function(SC, LS, SCy)

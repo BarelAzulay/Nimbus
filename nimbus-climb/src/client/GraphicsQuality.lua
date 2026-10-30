@@ -14,7 +14,9 @@
 --   GraphicsQuality.Init()          reads ClientSettings.Gfx and follows ClientSettings.Changed
 --   GraphicsQuality.Apply(setting)  "Auto" | "Low" | "High" (tests); -> the effective "Low" | "High"
 --   GraphicsQuality.Effective()     -> "Low" | "High"
---   GraphicsQuality.Recap(seconds)  while Low: re-pushes GfxLow when the cloud cap moved Config.Sky.LowCloudStep or more
+--   GraphicsQuality.Recap()         while Low: when the cloud cap moved Config.Sky.LowCloudStep or more, updates GfxLow's
+--                                   cap in place (LightingStack.Update: no apply, so the sky's linear base tweens are never
+--                                   cancelled or re-eased and no fade starts); the sky's next SetBase carries it
 --   GraphicsQuality.Resolve(setting, savedLevel) -> "Low" | "High"  (pure; savedLevel = 0 Automatic, 1..10)
 --
 -- No per-frame work, no polling: CollectionService signals only. Plain Lua 5.1-compatible syntax only.
@@ -263,9 +265,11 @@ function GraphicsQuality.Effective()
 	return St.Mode
 end
 
--- the living sky moved (SkyController, after an applied refresh): while Low, re-push GfxLow when its cloud cap moved
--- at least Config.Sky.LowCloudStep (a few times a loop: the night thins below 0.4 and back), over `seconds`
-function GraphicsQuality.Recap(seconds)
+-- the living sky moved (SkyController, after an applied refresh): while Low, update GfxLow's cloud cap when it moved at
+-- least Config.Sky.LowCloudStep (a few times a loop: the night thins below 0.4 and back). In place, never a re-push: a
+-- Push would cancel the SetBase tweens SkyController just started and restart them as an eased fade (Busy, so the
+-- next refresh would skip); the cap rides the next refresh's linear SetBase instead (2 s later: the clouds move slowly)
+function GraphicsQuality.Recap()
 	if St.Mode ~= "Low" then
 		return false
 	end
@@ -277,7 +281,11 @@ function GraphicsQuality.Recap(seconds)
 	if St.CloudDensity and math.abs(math.min(CLOUD_CAP, sky) - St.CloudDensity) < step then
 		return false
 	end
-	pcall(LightingStack.Push, PRESET_ID, lowPreset(), tonumber(seconds) or FADE)
+	local preset = lowPreset()
+	local ok2, updated = pcall(LightingStack.Update, PRESET_ID, preset)
+	if not (ok2 and updated) then
+		pcall(LightingStack.Push, PRESET_ID, preset, FADE) -- GfxLow is not on the stack (never pushed): put it back
+	end
 	return true
 end
 
