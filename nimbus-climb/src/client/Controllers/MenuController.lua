@@ -3,7 +3,8 @@
 --   MenuController.Init()
 --   MenuController.Open(panelId, args)   -- "Inventory" | "Pets" | "Index" | "Shop" | "Stats" | "Home" | "Team" |
 --                                           "Settings" (what OpenPanel does; args: Tab, RouletteId, Currency = "Gems",
---                                           Action, Key).
+--                                           Action, Key, Preset). HUD cleanup: "Team" opens the Pets window on its Team
+--                                           tab (args.Preset: the preset shown).
 --                                           Phase 4: "Pets" with Action = "Feed" | "Garden", "Feed", "Train" and "Evolve"
 --                                           go to CareController (the Food Machine list, the garden picker, the Training
 --                                           Place window, the EVOLVE moment); Action = "Evolve" with a Key (the floating
@@ -11,8 +12,11 @@
 --   MenuController.Close()               -- closes whatever window / overlay is open
 --   MenuController.OpenSettings()        -- HUD cleanup: MainMenuController's settings panel (the top-left pill's gear,
 --                                           TopBarController; a hint until that panel exists)
+--   MenuController.OpenTeam(preset)      -- HUD cleanup: the Pets window on its Team tab (TeamPick's strip Edit button)
 --   MenuController.WindowOpened          -- Util.Signal, Fire(windowId) whenever a window opens:
---                                           "Inventory", "Shop", "Stats", "Home", "Team" or "Index" (the tutorial listens)
+--                                           "Inventory", "Shop", "Stats", "Home" or "Index" (the tutorial listens), and
+--                                           "Team" once per opening of the Pets window when its Team tab shows
+--                                           (ArenaController adds the Champion Ring line then)
 --   Extra: MenuController.GetButton(id) -> the MenuButton_<id> tile (or nil; "Home" is the Spot tile)
 --          MenuController.IsOpen() -> true while a window, the odds popup or the roulette stage is up
 --          MenuController.IsPrewarmed(petId) -> true once that pet was pre-sculpted for the roulette strip
@@ -26,16 +30,17 @@
 -- Screen: ScreenGui "NimbusMenu" (display order 20, IgnoreGuiInset = false).
 --   * Menu column, left-centre (bug batch 2 #1, option A; HUD cleanup): ONE slim column of four square neon tiles
 --     with a glyph and a bold label - Pets, Index, Home, Stats - 56 px on a 1080p desktop (Shop / Travel / Settings
---     live in TopBarController's pill in Roblox's top bar; the Items and Team tiles are gone, the Team window still
---     opens through Open("Team")). Each tile is a TextButton named MenuButton_<Id> (Ids Pets, Index, Spot, Stats: the
+--     live in TopBarController's pill in Roblox's top bar; the Items and Team tiles are gone, the battle team is the
+--     Pets window's Team tab, Open("Team")). Each tile is a TextButton named MenuButton_<Id> (Ids Pets, Index, Spot, Stats: the
 --     Home tile keeps the v3 id "Spot" so saved tutorial targets keep working) inside a frame Entry_<Id> of the frame
 --     "MenuColumn". The open window's tile glows gold; a red "!" marks new pets and Pet Index rewards waiting to be
 --     claimed. A small arrow tab (MenuColumn.Toggle) folds the column against the left edge and back (remembered for
 --     the session; the tab repeats a tile's red dot while folded; a tutorial step pointing at a tile unfolds it). On
 --     short screens (landscape / portrait phones) the tiles wrap into two slim columns so they stay >= 44 px.
 --   * Windows (CloudUI.Panel, centred because the player asked for them, nudged right only when the menu
---     column would cover them): Inventory (tabs Pets + Items, pet detail card), Shop (tabs Roulettes + Items + Gems,
---     odds popup), Stats, Home and Team. The Pet Index is IndexController's window: the Index tile and
+--     column would cover them): Inventory (tabs Pets + Team + Items, pet detail card; HUD cleanup: the Team tab is the
+--     P3 team editor, titled "Battle Team"), Shop (tabs Roulettes + Items + Gems, odds popup), Stats and Home. The
+--     Pet Index is IndexController's window: the Index tile and
 --     OpenPanel("Index") open it. One window at a time; Esc / gamepad B / the red X / the tile again / a click
 --     outside closes it. Gamepad B is bound (ContextActionService, High priority, sunk) only while something is open,
 --     so it does not also fire MovementController's dash.
@@ -226,7 +231,6 @@ K.WIN = {
 	Shop = { 820, 900 },
 	Stats = { 640, 760 },
 	Home = { 820, 900 },
-	Team = { 820, 900 }, -- Phase 3: the battle team presets (Phase 5: 3 slots, FIGHTER + 2 helpers)
 	Odds = { 700, 640, 520, 380 },
 }
 -- Portrait screens (a phone held upright): a window may get as narrow as TALL_MIN_W design px (and as tall as
@@ -347,7 +351,8 @@ local Hint = { Frame = nil, Label = nil, Token = 0 }
 local Home = { Folder = nil, Conns = {}, LiveAt = 0, LivePending = false }
 local Gems = { Prices = {}, PriceAsked = {} }
 
--- Phase 3: the Team window's entry points (P3.BuildTeam(win), P3.Settle(), P3.Battle(), P3.Refresh(); set below)
+-- Phase 3: the team editor's entry points (HUD cleanup: P3.BuildTeam(win, page, hooks) builds the Pets window's Team
+-- tab, P3.TeamShown(win, hooks); P3.Settle(), P3.Battle(), P3.Refresh(); set below)
 local P3 = {}
 -- Phase 5 helpers (one table: the main chunk stays under Lua's 200-local limit). Kit = NeonKit (Card, Tile, SideRect, Dock).
 local P5 = { Kit = require(Client:WaitForChild("UI"):WaitForChild("NeonKit")) }
@@ -1824,6 +1829,10 @@ local function normalizeTab(windowId, tab)
 		if windowId == "Inventory" then
 			return "Pets"
 		end
+	elseif t:find("team", 1, true) then
+		if windowId == "Inventory" then
+			return "Team" -- HUD cleanup: the battle team is the Pets window's Team tab
+		end
 	end
 	return nil
 end
@@ -2602,13 +2611,12 @@ function updateMenuActive()
 	local invWin = windows.Inventory
 	local invTab = invWin and invWin.Shown and invWin.Tab or nil
 	setActive("Inventory", invTab == "Items")
-	setActive("Pets", invTab == "Pets")
+	setActive("Pets", invTab == "Pets" or invTab == "Team")
 	setActive("Index", indexOpen())
 	setActive("Shop", windows.Shop ~= nil and windows.Shop.Shown)
 	setActive("Stats", windows.Stats ~= nil and windows.Stats.Shown)
 
 	setActive("Spot", windows.Home ~= nil and windows.Home.Shown)
-	setActive("Team", windows.Team ~= nil and windows.Team.Shown)
 	if invWin and invWin.Shown and Entries.Pets then
 		Entries.Pets.SetBadge(false)
 	end
@@ -2882,6 +2890,7 @@ do
 		}
 		local itemRows = {} -- itemId -> { Slot, Owned, Parts }
 		local W = {} -- widgets of the pets page
+		local teamHooks = {} -- HUD cleanup: the Team tab's OnOpen / OnLayout / Refresh (P3.BuildTeam)
 		local refreshInventory
 
 		local tabs = CloudUI.Tabs({
@@ -2893,10 +2902,18 @@ do
 			TextSize = 22,
 			OnSelect = function(name)
 				win.Tab = name
-				-- Phase 5: one window, two faces (the Pets tile / the Items tile)
-				win.Panel.SetTitle(name == "Items" and "Items" or "Pets")
-				win.Panel.SetAccent(name == "Items" and "Blue" or "Orange")
+				-- Phase 5: one window, several faces (the Pets tile / the Items tile; HUD cleanup: the Team tab)
+				if name == "Team" then
+					win.Panel.SetTitle("Battle Team")
+					win.Panel.SetAccent("Red")
+				else
+					win.Panel.SetTitle(name == "Items" and "Items" or "Pets")
+					win.Panel.SetAccent(name == "Items" and "Blue" or "Orange")
+				end
 				updateMenuActive()
+				if name == "Team" and win.Shown then
+					P3.TeamShown(win, teamHooks)
+				end
 			end,
 		})
 		win.Tabs = tabs
@@ -3915,16 +3932,31 @@ do
 			refreshPetsPage()
 			renderDetail()
 			refreshItemsPage()
+			if win.Tab == "Team" and teamHooks.Refresh then
+				safe("team refresh", teamHooks.Refresh)
+			end
 		end
 
 		tabs.Add("Pets", buildPetsPage)
+		tabs.Add("Team", function(page)
+			P3.BuildTeam(win, page, teamHooks)
+		end)
 		tabs.Add("Items", buildItemsPage)
 
 		win.Refresh = refreshInventory
+		win.OnClose = function()
+			win.TeamSeen = false -- the next opening fires WindowOpened("Team") again
+		end
 		win.OnOpen = function(args)
 			local tab = normalizeTab("Inventory", args.Tab)
+			if tab == "Team" and teamHooks.OnOpen then
+				safe("team open", teamHooks.OnOpen, args)
+			end
 			if tab then
 				tabs.Select(tab)
+			end
+			if win.Tab == "Team" then
+				P3.TeamShown(win, teamHooks, true) -- (openWindow refreshes the window right after this)
 			end
 			if type(args.Key) == "string" and State.OwnedCount(args.Key) > 0 then
 				pets.Selected = args.Key
@@ -3944,6 +3976,10 @@ do
 
 		win.OnLayout = function(w, h, narrow, short, tall)
 			safe("pets layout", P5.petsLayout, W, w, h, narrow, short, tall)
+			if teamHooks.OnLayout then
+				-- the Team page sits inside the tab content (24 px narrower, the tab bar above it)
+				safe("team layout", teamHooks.OnLayout, w - 24, h - 78, narrow, short, tall)
+			end
 			-- item rows: narrow (portrait) rows stack the text and put the button under it
 			for _, row in pairs(itemRows) do
 				local P = row.Parts
@@ -6759,7 +6795,8 @@ do
 end
 
 ----------------------------------------------------------------------
--- Team window (Phase 3; Phase 5: 3 slots = FIGHTER + 2 HELPERs, "Set as fighter"): three battle-team presets, the pet picker with element
+-- Team editor (Phase 3; Phase 5: 3 slots = FIGHTER + 2 HELPERs, "Set as fighter"; HUD cleanup: no Team window any more,
+-- the editor is the Pets window's Team tab, P3.BuildTeam(win, page, hooks)): three battle-team presets, the pet picker with element
 -- badges, levels and battle stats, live synergy (BattleCatalog.SynergyBonus), the element wheel and the team power.
 -- Edits show at once (a local draft) and are sent as BattleRequest("TeamSet", preset, keys) after a short pause; the
 -- server validates everything (owned, unique, not in training, slot 4 rule) and ProfileSync brings the
@@ -7613,7 +7650,7 @@ P3.Define = function()
 		return row
 	end
 
-	-- the Team window's layout for a window size (design px); split out of P3.BuildTeam: Lua's 60-upvalue limit
+	-- the Team tab's layout for a window size (design px); split out of P3.BuildTeam: Lua's 60-upvalue limit
 	local function layoutTeam(ui, w, h, narrow, short, tall)
 		ui.Tall = tall
 		local cw = w - INSET_X -- Panel.Content
@@ -7714,7 +7751,7 @@ P3.Define = function()
 		end
 	end
 
-	-- the Team window's contents from State (split out of P3.BuildTeam: Lua's 60-upvalue limit)
+	-- the Team tab's contents from State (split out of P3.BuildTeam: Lua's 60-upvalue limit)
 	local function refreshTeamUi(ui, fillTiles)
 		local preset = T.Edit or activePreset()
 		T.Edit = preset
@@ -7726,6 +7763,7 @@ P3.Define = function()
 			local tab = ui.Tabs[i]
 			tab.Text = (i == active and (G.Star .. " ") or "") .. "Team " .. i
 			CloudUI.SetStyle(tab, i == preset and "Blue" or "Gray")
+			tab:SetAttribute("Selected", i == preset)
 		end
 		-- slot cards
 		local entries = {}
@@ -7920,10 +7958,14 @@ P3.Define = function()
 	----------------------------------------------------------------------
 	-- The window
 	----------------------------------------------------------------------
-	function P3.BuildTeam(win)
-		local content = win.Panel.Content
+	-- HUD cleanup: `content` is the Pets window's Team tab page; the window hooks go on `hooks` (OnOpen, OnLayout,
+	-- Refresh), which buildInventory calls for the Team tab
+	function P3.BuildTeam(win, content, hooks)
+		content = content or win.Panel.Content
+		hooks = hooks or win
 		local ui = { Cards = {}, Tiles = {}, Ready = {}, Order = {} }
 		win.TeamUi = ui
+		P3.Win, P3.Hooks = win, hooks
 
 		-- top bar: the three presets (left), team power + trophies (right)
 		ui.Top = makeFrame(content, "TopBar", { Position = UDim2.fromOffset(14, 10), Size = UDim2.new(1, -28, 0, 50) })
@@ -8113,7 +8155,7 @@ P3.Define = function()
 			end)
 		end
 
-		win.OnOpen = function(args)
+		hooks.OnOpen = function(args)
 			settleDrafts()
 			local preset = args and tonumber(args.Preset)
 			if preset and preset >= 1 and preset <= PRESETS then
@@ -8124,19 +8166,31 @@ P3.Define = function()
 			T.Selected = nil
 		end
 
-		win.OnLayout = function(w, h, narrow, short, tall)
+		hooks.OnLayout = function(w, h, narrow, short, tall)
 			layoutTeam(ui, w, h, narrow, short, tall)
 		end
 
-		win.Refresh = function()
+		hooks.Refresh = function()
 			refreshTeamUi(ui, fillTiles)
 		end
 	end
 
+	-- the Team tab of the (shown) Pets window: refreshed only while it shows (the Pets page has its own refresh)
 	function refreshTeam()
-		local win = windows.Team
-		if win then
-			refreshWindow(win)
+		local win, hooks = P3.Win, P3.Hooks
+		if win and hooks and hooks.Refresh and win.Shown and win.Tab == "Team" then
+			safe("refresh team", hooks.Refresh)
+		end
+	end
+
+	-- the Team tab came up: refresh it and, once per opening of the window, WindowOpened("Team")
+	function P3.TeamShown(win, hooks, noRefresh)
+		if hooks.Refresh and not noRefresh then
+			safe("refresh team", hooks.Refresh)
+		end
+		if not win.TeamSeen then
+			win.TeamSeen = true
+			MenuController.WindowOpened:Fire("Team")
 		end
 	end
 
@@ -9000,7 +9054,8 @@ local function onOpenPanel(panelId, args, fromRemote)
 	elseif key == "stats" then
 		openWindow("Stats", args)
 	elseif key == "team" or key == "teams" then
-		openWindow("Team", args)
+		-- HUD cleanup: the battle team is the Pets window's Team tab
+		openWindow("Inventory", { Tab = "Team", Preset = args.Preset })
 	elseif key == "settings" then
 		MenuController.OpenSettings() -- HUD cleanup: the pill's gear
 	elseif key == "close" then
@@ -9140,6 +9195,13 @@ function MenuController.OpenFeed(key)
 	end
 end
 
+-- HUD cleanup: the Pets window on its Team tab, showing `preset` (1-3; nil = the active one). TeamPick's strip Edit.
+function MenuController.OpenTeam(preset)
+	if initialized then
+		onOpenPanel("Team", { Preset = preset })
+	end
+end
+
 -- The menu's side hint (CareController's local refusals use it too; never in the screen centre).
 function MenuController.Hint(text, kind)
 	if initialized and type(text) == "string" then
@@ -9206,7 +9268,6 @@ function MenuController.Init()
 	createWindow({ Id = "Shop", Title = "Cloud Shop", Category = "Shop", Build = buildShop, Tall = true })
 	createWindow({ Id = "Stats", Title = "Stats", Category = "Stats", Build = buildStats, Tall = true })
 	createWindow({ Id = "Home", Title = "My Home", Category = "Home", Build = buildHome, Tall = true })
-	createWindow({ Id = "Team", Title = "Battle Team", Category = "Team", Build = P3.BuildTeam, Tall = true })
 	relayoutMenu()
 	updateMenuActive()
 

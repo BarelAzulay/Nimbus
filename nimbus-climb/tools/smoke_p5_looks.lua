@@ -302,7 +302,8 @@ local function clientScenarios()
 		-- the Team card + picker tiles
 		MC.Open("Team", {})
 		advance(2.5)
-		local tw = menu:FindFirstChild("Window_Team")
+		local tw = menu:FindFirstChild("Window_Inventory") -- (HUD cleanup: the team editor is its Team tab)
+		tw = tw and find(tw, "Page_Team")
 		local card3 = tw and find(tw, "Slot3")
 		T.check(lowAt(evolvedModel(card3, 2), 2), "p5looks team: the slot card draws the evolved pet at Low")
 		local tile = tw and find(tw, "Pick_" .. P.E1)
@@ -379,7 +380,8 @@ local function clientScenarios()
 		sync()
 		MC.Open("Team", {})
 		advance(2)
-		local tw = pg():FindFirstChild("NimbusMenu"):FindFirstChild("Window_Team")
+		local tw = pg():FindFirstChild("NimbusMenu"):FindFirstChild("Window_Inventory") -- (HUD cleanup: its Team tab)
+		tw = tw and find(tw, "Page_Team")
 		local cards = {}
 		for i = 1, 4 do
 			cards[i] = tw and find(tw, "Slot" .. i)
@@ -448,7 +450,7 @@ local function clientScenarios()
 		-- every window docked by the window rule, no backdrop
 		local function holders()
 			local out = {
-				menu:FindFirstChild("Window_Inventory"), menu:FindFirstChild("Window_Home"), menu:FindFirstChild("Window_Team"),
+				menu:FindFirstChild("Window_Inventory"), menu:FindFirstChild("Window_Home"),
 			}
 			return out
 		end

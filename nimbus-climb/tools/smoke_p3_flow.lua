@@ -1431,8 +1431,8 @@ S.p3flow_arrive = scenario("p3flow_arrive", function()
 	end, 4)
 	T.check(inArena(cy) and (toasted(cy, "Welcome to the Battle Arena", mGate)), "flow home: E at his Arena Gate takes Cy to the Battle Arena (ArenaBuilder teleport)")
 	ts = tutorial(cy)
-	T.check(ts and ts.Id == "team" and ts.Target and ts.Target.Kind == "Menu" and ts.Target.Id == "Team",
-		"flow tutorial: arriving in the Battle Arena -> 'team' (the Team tile rings)", ts and tostring(ts.Id) or "nil")
+	T.check(ts and ts.Id == "team" and ts.Target and ts.Target.Kind == "Menu" and ts.Target.Id == "Pets",
+		"flow tutorial: arriving in the Battle Arena -> 'team' (the Pets tile rings: Pets > Team)", ts and tostring(ts.Id) or "nil")
 	-- bug batch 2 #18: his Garden pet is busy gardening (Phase 4 had let it fight): the team is refused with a reason
 	local m4 = K.logSize()
 	request(cy, "TeamSet", 1, { TEAMS.Cy[1], TEAMS.CyGarden })

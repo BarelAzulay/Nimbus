@@ -767,9 +767,10 @@ function H.emptyRun(world, sizes)
 				KC.advance(0.2)
 			end
 			H.closeAll()
-			H.mod("MenuController").Open("Team", {}) -- (HUD cleanup: no Team tile; the window still opens)
+			H.mod("MenuController").Open("Team", {}) -- (HUD cleanup: no Team tile; the Pets window's Team tab)
 			KC.advance(1)
-			local team = H.parts().Menu:FindFirstChild("Window_Team")
+			local inv = H.parts().Menu:FindFirstChild("Window_Inventory")
+			local team = inv and inv:FindFirstChild("Page_Team", true)
 			local empty = nil
 			for _, d in ipairs(team and team:GetDescendants() or {}) do
 				if d.Name == "Empty" and d:FindFirstChild("GoShop") then

@@ -574,7 +574,8 @@ local function clientScenarios()
 		pcall(MC.Open, "Team")
 		advance(0.8)
 		local menu = pg() and pg():FindFirstChild("NimbusMenu")
-		local win = menu and menu:FindFirstChild("Window_Team")
+		local inv = menu and menu:FindFirstChild("Window_Inventory")
+		local win = inv and find(inv, "Page_Team") -- (HUD cleanup: the Pets window's Team tab)
 		local grid = win and find(win, "PickerGrid")
 		local tiles, white = 0, 0
 		for _, c in ipairs(grid and grid:GetChildren() or {}) do

@@ -45,7 +45,7 @@
 --                 { Kind = "Roulette", Id = "Cloud" }   model Roulette_<Id> under workspace.NimbusLobby
 --                 { Kind = "Portal", Id = "Obby" }      model Portal_<Id> under workspace.NimbusLobby (Phase 5: the ONE
 --                                                       Obby portal in the Gate Court; lobby.Portals.Obby on the server)
---                 { Kind = "Menu", Id = "Pets" }        the menu button MenuButton_<Id> ("Team": the battle team tile)
+--                 { Kind = "Menu", Id = "Pets" }        the menu button MenuButton_<Id> (HUD cleanup: no Team tile; the team step rings Pets)
 --                 { Kind = "Arena", Place = "Gate" }    Phase 3, resolved by TutorialService from ArenaInfo and sent as
 --                                                       { Kind = "Spot", Position, Label }: "Gate" = the Arena gate of the
 --                                                       Gate Court (ArenaInfo.ArenaPortal; else the forum, ArenaInfo.Spawn),
@@ -288,12 +288,13 @@ TutorialSteps.Steps = {
 		Id = "team",
 		Chapter = 3,
 		Title = "Pick Your Team",
-		-- (bug batch 2 #18: a pet in the Garden is busy, and step 11 put a new player's only pet there: its Team tile
-		-- asks "Take it out of the garden and put it in your team?", so the text says to tap it and say Yes)
-		Text = "Battles need 3 pets (a fighter + 2 helpers)! Tap Team to add them. Same elements power up. A gardening pet? Tap it, say Yes!",
-		Target = { Kind = "Menu", Id = "Team" },
+		-- (HUD cleanup: the Team tile is gone; the team lives in Pets > Team and every battle portal's strip has Auto-fill
+		-- best. Bug batch 2 #18 still holds there: a gardening pet's tile in the Team tab asks to take it out first.
+		-- No ">" in the text: step texts are plain text, no rich-text characters)
+		Text = "Battles need 3 pets (a fighter + 2 helpers)! Open Pets, then the Team tab, or tap Auto-fill best at any portal!",
+		Target = { Kind = "Menu", Id = "Pets", Label = "Pets" },
 		CompleteOn = "TeamSet",
-		Hint = "Tap Team and put in 3 pets",
+		Hint = "Open Pets, then Team: put in 3 pets",
 	},
 	{
 		-- (Phase 5: was "trial", Trial 1 at the Trial Portal; the index stays 17)

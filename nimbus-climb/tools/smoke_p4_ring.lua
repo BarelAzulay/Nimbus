@@ -816,7 +816,7 @@ S.p4ring_start = scenario("p4ring_start", function()
 	advance(4.8)
 	-- teamOf's empty-team refusal stays for the other modes (TeamSpec without the ring fallback)
 	local specTr, whyTr = bs.TeamSpec(q)
-	T.check(specTr == nil and whyTr == "Pick your battle team first (Menu > Team)", "p4 ring: teamOf's empty-team refusal stays for duels / raids / encounters (TeamSpec)", tostring(whyTr))
+	T.check(specTr == nil and whyTr == "Pick your battle team first (at a battle portal, or Pets > Team)", "p4 ring: teamOf's empty-team refusal stays for duels / raids / encounters (TeamSpec)", tostring(whyTr))
 
 	-- a provisional save: refused with its text, after the other checks (a stand-in profile from a DataStore outage)
 	local DSt = Mock.DataStore

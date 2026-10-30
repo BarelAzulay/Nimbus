@@ -27,7 +27,10 @@
 --     Challenge(userId); incoming invites with Accept / Decline (the practice flag); the player's trophies and duel
 --     record), BOSS RAID (the running raid: boss, element, HP, fighters, time left, JOIN / LEAVE; the next event with its
 --     countdown; Double Rewards; which elements beat the boss; the reward tiers) and LEADERS (ArenaState.Leaderboard,
---     top 10, the player's own row highlighted).
+--     top 10, the player's own row highlighted). HUD cleanup (the battle team at the portal): the Duels page's quick
+--     match box and the Raid page's boss card start with TeamPick's strip (the active team, Edit, Auto-fill best);
+--     Find a match, JOIN RAID, Challenge and a duel's Accept (the side card's too) with an empty team open TeamPick's
+--     "Pick your battle team" popup and go on after the save (JOIN RAID is no longer disabled for an empty team).
 --   * Champion Ring window (Portal_Ring's prompt, OpenPanel = "Ring"): the record "Best: Round N" and the runs, the best
 --     of this server (Portal_Ring's RingBoard attribute, top 3), the start picker (round 1 or a boss round 10, 20 ...
 --     already beaten), the start round's champion, "Next win: +$X +Y XP", the fighters the server will field (the battle
@@ -453,36 +456,6 @@ local function teamsData()
 	return { Presets = { {}, {}, {} }, Active = 1, Slots = 3 }
 end
 
--- the active preset as BattleCatalog entries { Def, Level, Key }
-local function activeTeam()
-	local teams = teamsData()
-	local list = teams.Presets[teams.Active] or {}
-	local out = {}
-	for _, key in ipairs(list) do
-		local def = nil
-		if type(State.DefOf) == "function" then
-			local ok, result = pcall(State.DefOf, key)
-			if ok and type(result) == "table" then
-				def = result
-			end
-		end
-		if not def and PetCatalog and type(PetCatalog.Get) == "function" then
-			def = PetCatalog.Get(key)
-		end
-		if def then
-			local level = 1
-			if type(State.PetLevel) == "function" then
-				local ok, lv = pcall(State.PetLevel, key)
-				if ok and type(lv) == "number" then
-					level = lv
-				end
-			end
-			out[#out + 1] = { Def = def, Level = level, Key = key }
-		end
-	end
-	return out
-end
-
 local function teamPower(entries)
 	local BC = catalog()
 	if not BC or type(BC.TeamPower) ~= "function" then
@@ -636,6 +609,54 @@ local function otherController(name)
 		return mod
 	end
 	return nil
+end
+
+-- HUD cleanup (the battle team at the portal): client/TeamPick, loaded once; nil when it is missing (then the old
+-- direct requests run)
+local teamPickModule = nil
+local function teamPick()
+	if teamPickModule == nil then
+		teamPickModule = false
+		local ok, mod = pcall(function()
+			return require(Client:WaitForChild("TeamPick", 5))
+		end)
+		if ok and type(mod) == "table" then
+			teamPickModule = mod
+		else
+			warnOnce("TeamPick", mod)
+		end
+	end
+	return teamPickModule or nil
+end
+
+-- runs fn once the player has a battle team: at once with a team, after TeamPick's popup saved one without
+local function withTeam(fn)
+	local ran = false
+	local function go()
+		if not ran then
+			ran = true
+			safe("team portal", fn)
+		end
+	end
+	local TP = teamPick()
+	if TP and type(TP.Ensure) == "function" then
+		if not safe("TeamPick.Ensure", TP.Ensure, go) then
+			go()
+		end
+		return
+	end
+	go()
+end
+
+-- TeamPick's strip (the active team, Edit, Auto-fill best) as the first row of a page section
+local function teamStrip(parent)
+	local TP = teamPick()
+	if TP and type(TP.Strip) == "function" then
+		local ok, strip = pcall(TP.Strip, parent, { LayoutOrder = 0 })
+		if not ok then
+			warnOnce("TeamPick.Strip", strip)
+		end
+	end
 end
 
 local function openTeamWindow()
@@ -1545,12 +1566,13 @@ function Ring.zoneTick()
 	end
 end
 
--- the Champion Ring line on the Team screen (MenuController's window "Team"; added from here, it stays below the
--- team sections): "Champion Ring best: Round 12 (9 runs)"
+-- the Champion Ring line on the Team screen (HUD cleanup: the Pets window's Team tab, Window_Inventory > Page_Team;
+-- added from here, it stays below the team sections): "Champion Ring best: Round 12 (9 runs)"
 function Ring.teamLine()
 	local pg = LocalPlayer and LocalPlayer:FindFirstChildOfClass("PlayerGui")
 	local menu = pg and pg:FindFirstChild("NimbusMenu")
-	local holder = menu and menu:FindFirstChild("Window_Team", true)
+	local window = menu and menu:FindFirstChild("Window_Inventory", true)
+	local holder = window and window:FindFirstChild("Page_Team", true)
 	local top = holder and holder:FindFirstChild("TopBar", true)
 	local left = top and top.Parent and top.Parent:FindFirstChild("Left")
 	if not left then
@@ -1738,6 +1760,7 @@ local function buildArena()
 	local quick = inset(ui.DuelLeft, "Quick", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1 })
 	pad(quick, 14, 10, 14, 14)
 	listLayout(quick, Enum.FillDirection.Vertical, 8)
+	teamStrip(quick) -- HUD cleanup: the battle team at the portal
 	makeText(quick, "Title", "Quick match", "Title", 26, WHITE, {
 		Size = UDim2.new(1, 0, 0, 32),
 		TextXAlignment = Enum.TextXAlignment.Left,
@@ -1763,7 +1786,9 @@ local function buildArena()
 					toast("Walk into the Battle Arena to duel!", "info")
 					return
 				end
-				request("Queue")
+				withTeam(function()
+					request("Queue")
+				end)
 			end
 		end,
 	})
@@ -1795,6 +1820,7 @@ local function buildArena()
 	ui.BossCard = inset(ui.RaidScroll, "Boss", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1 })
 	pad(ui.BossCard, 16, 10, 16, 14)
 	listLayout(ui.BossCard, Enum.FillDirection.Vertical, 8)
+	teamStrip(ui.BossCard)
 	local bossHead = makeFrame(ui.BossCard, "Head", { Size = UDim2.new(1, 0, 0, 40), LayoutOrder = 1 })
 	listLayout(bossHead, Enum.FillDirection.Horizontal, 10, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
 	ui.BossState = colorPill(bossHead, "State", "LIVE", C.Boss, 18, 1)
@@ -1835,7 +1861,9 @@ local function buildArena()
 					toast("Walk into the Battle Arena to join the raid!", "info")
 					return
 				end
-				request("JoinRaid")
+				withTeam(function()
+					request("JoinRaid")
+				end)
 			end
 		end,
 	})
@@ -1957,7 +1985,9 @@ local function buildArena()
 			TextSize = 20,
 			Parent = row,
 			Callback = function()
-				request("ChallengeReply", invite.FromUserId, true)
+				withTeam(function()
+					request("ChallengeReply", invite.FromUserId, true)
+				end)
 			end,
 		})
 		CloudUI.Button({
@@ -2015,7 +2045,9 @@ local function buildArena()
 						toast("Walk into the Battle Arena to duel!", "info")
 						return
 					end
-					request("Challenge", player.UserId)
+					withTeam(function()
+						request("Challenge", player.UserId)
+					end)
 				end,
 			})
 			CloudUI.SetDisabled(button, S.Lobby ~= nil and S.Lobby.Sent ~= nil)
@@ -2169,8 +2201,6 @@ local function buildArena()
 				why = "The join window has closed. Watch from the stands!"
 			elseif battleId() then
 				why = "Finish your current battle first."
-			elseif #activeTeam() == 0 then
-				why = "Pick your battle team first."
 			elseif inArena() == false then
 				why = "Walk into the Battle Arena to join."
 			end
@@ -2497,7 +2527,9 @@ function refreshSide()
 					TextSize = 21,
 					Parent = buttons,
 					Callback = function()
-						request("ChallengeReply", invite.FromUserId, true)
+						withTeam(function()
+							request("ChallengeReply", invite.FromUserId, true)
+						end)
 					end,
 				})
 				CloudUI.Button({
@@ -2608,7 +2640,9 @@ function refreshSide()
 					TextSize = 21,
 					Parent = buttons,
 					Callback = function()
-						request("JoinRaid")
+						withTeam(function()
+							request("JoinRaid")
+						end)
 					end,
 				})
 				CloudUI.Button({

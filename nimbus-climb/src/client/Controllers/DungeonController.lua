@@ -21,6 +21,9 @@
 --     - 2/4 - JOIN", "in room 2 - JOIN"), or the own party (members with READY ticks, team power, the leader's crown
 --     and KICK (x), READY / START / LEAVE, the countdown "Dungeon in 5..." / "Starting in 30 - press READY").
 --     READY flips at once (optimistic) and the next Lobby payload says what the server decided.
+--     HUD cleanup (the battle team at the portal): the party box starts with TeamPick's strip (the active team, Edit,
+--     Auto-fill best); SOLO / PARTY / JOIN / READY / START with an empty team open TeamPick's "Pick your battle team"
+--     popup first and go on after the save (TeamPick.Ensure; without client/TeamPick the old direct requests run).
 --   * The run card (ScreenGui NimbusDungeonRun): on desktops a side card at the right edge between the enemy list and
 --     the battle buttons ("Floor 3 - Frozen Crypt", "Room 2 / 4" pips with the boss room crowned, "Wave 1 / 3",
 --     the status: "Walk into the room", "Go to the door and press E" / "Waiting for 1 more (Ava)" (dungeon-fixes
@@ -281,6 +284,41 @@ function H.safe(key, fn, ...)
 		H.warnOnce(key, err)
 	end
 	return ok
+end
+
+-- HUD cleanup: client/TeamPick (the strip + the empty-team popup), loaded once; nil when it is missing
+function H.teamPick()
+	if H.TP == nil then
+		H.TP = false
+		local ok, mod = pcall(function()
+			return require(Client:WaitForChild("TeamPick", 5))
+		end)
+		if ok and type(mod) == "table" then
+			H.TP = mod
+		else
+			H.warnOnce("TeamPick", mod)
+		end
+	end
+	return H.TP or nil
+end
+
+-- runs fn once the player has a battle team: at once with a team, after the popup's save without one
+function H.withTeam(fn)
+	local ran = false
+	local function go()
+		if not ran then
+			ran = true
+			H.safe("team portal", fn)
+		end
+	end
+	local TP = H.teamPick()
+	if TP and type(TP.Ensure) == "function" then
+		if not H.safe("TeamPick.Ensure", TP.Ensure, go) then
+			go()
+		end
+		return
+	end
+	go()
 end
 
 function H.optionalShared(name)
@@ -945,18 +983,23 @@ function W.partyNone(box, short, sel)
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		LayoutOrder = 1,
 	})
-	local row = H.frame(box, "Buttons", { Size = UDim2.new(1, 0, 0, short and 46 or 52), LayoutOrder = 2 })
+	W.strip(box, short)
+	local row = H.frame(box, "Buttons", { Size = UDim2.new(1, 0, 0, short and 46 or 52), LayoutOrder = 3 })
 	H.list(row, Enum.FillDirection.Horizontal, 10)
 	local bw = UDim2.new(0.5, -5, 1, 0)
 	U.Solo = W.button(row, "SoloButton", "SOLO", C.Green, bw, 1, function()
-		if H.request("Solo", W.selected()) then
-			H.hint("Starting floor " .. W.selected() .. "...", 3)
-		end
+		H.withTeam(function()
+			if H.request("Solo", W.selected()) then
+				H.hint("Starting floor " .. W.selected() .. "...", 3)
+			end
+		end)
 	end)
 	U.Create = W.button(row, "PartyButton", "PARTY", C.Accent, bw, 2, function()
-		if H.request("Create", W.selected()) then
-			H.hint("Party made! Friends can JOIN it here", 4)
-		end
+		H.withTeam(function()
+			if H.request("Create", W.selected()) then
+				H.hint("Party made! Friends can JOIN it here", 4)
+			end
+		end)
 	end)
 	local parties = {}
 	for _, p in ipairs(S.Lobby and type(S.Lobby.Parties) == "table" and S.Lobby.Parties or {}) do
@@ -967,7 +1010,7 @@ function W.partyNone(box, short, sel)
 	local maxRows = W.maxParties(short)
 	H.text(box, "OpenTitle", (#parties > 0) and "Open parties" or "No open parties yet - make one!", "Heading", 18, C.Muted, {
 		Size = UDim2.new(1, 0, 0, 24),
-		LayoutOrder = 3,
+		LayoutOrder = 4,
 	})
 	for i, p in ipairs(parties) do
 		if i > maxRows then
@@ -978,7 +1021,7 @@ function W.partyNone(box, short, sel)
 end
 
 function W.partyRow(box, p, i, short)
-	local row = H.frame(box, "Open" .. i, { BackgroundTransparency = 0, BackgroundColor3 = C.Row, Size = UDim2.new(1, 0, 0, short and 40 or 44), LayoutOrder = 3 + i })
+	local row = H.frame(box, "Open" .. i, { BackgroundTransparency = 0, BackgroundColor3 = C.Row, Size = UDim2.new(1, 0, 0, short and 40 or 44), LayoutOrder = 4 + i })
 	H.corner(row, 10)
 	local count = tostring(p.Count or 1) .. "/" .. tostring(p.Max or 4)
 	local where = p.InRun and ("in room " .. tostring(p.Room or 1)) or ("Floor " .. tostring(p.Floor or 1))
@@ -988,9 +1031,14 @@ function W.partyRow(box, p, i, short)
 		TextTruncate = Enum.TextTruncate.AtEnd,
 	})
 	local join = W.button(row, "JoinButton", p.Open and "JOIN" or (p.InRun and "BUSY" or "FULL"), C.Blue, UDim2.fromOffset(96, short and 34 or 38), 1, function()
-		if p.Open and H.request("Join", p.Leader) then
-			H.hint("Joining " .. tostring(p.LeaderName or "the") .. "'s party...", 3)
+		if not p.Open then
+			return
 		end
+		H.withTeam(function()
+			if H.request("Join", p.Leader) then
+				H.hint("Joining " .. tostring(p.LeaderName or "the") .. "'s party...", 3)
+			end
+		end)
 	end)
 	join.AnchorPoint = Vector2.new(1, 0.5)
 	join.Position = UDim2.new(1, -6, 0.5, 0)
@@ -1009,11 +1057,12 @@ function W.partyMine(box, short, mine)
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		LayoutOrder = 1,
 	})
+	W.strip(box, short)
 	local cd = W.countdownText(mine)
 	U.Countdown = H.text(box, "Countdown", cd or (leader and "Press START when everyone is READY" or "Press READY, the leader starts"), "Body", 18, cd and C.Gold or C.Muted, {
 		Size = UDim2.new(1, 0, 0, 24),
 		TextTruncate = Enum.TextTruncate.AtEnd,
-		LayoutOrder = 2,
+		LayoutOrder = 3,
 	})
 	local h = short and K.MEMBER_H_SHORT or K.MEMBER_H
 	for i, m in ipairs(type(mine.Members) == "table" and mine.Members or {}) do
@@ -1054,23 +1103,33 @@ function W.partyMine(box, short, mine)
 		end
 	end
 	-- the buttons come before the member list (a phone's sheet bottom sits under the thumbstick / jump buttons)
-	local row = H.frame(box, "Buttons", { Size = UDim2.new(1, 0, 0, short and 46 or 52), LayoutOrder = 3 })
+	local row = H.frame(box, "Buttons", { Size = UDim2.new(1, 0, 0, short and 46 or 52), LayoutOrder = 4 })
 	H.list(row, Enum.FillDirection.Horizontal, 10)
 	local bw = UDim2.new(0.5, -5, 1, 0)
 	if leader then
+		-- (START needs only the leader's own team: the server checks every member's)
 		U.Start = W.button(row, "StartButton", "START", C.Green, bw, 1, function()
-			if H.request("Start") then
-				H.hint(W.allReady(mine) and "Starting..." or "Waiting 30 s for READY...", 3)
-			end
+			H.withTeam(function()
+				if H.request("Start") then
+					H.hint(W.allReady(mine) and "Starting..." or "Waiting 30 s for READY...", 3)
+				end
+			end)
 		end)
 		W.setDisabled(U.Start, W.countdown(mine) ~= nil and W.allReady(mine))
 	else
 		local want = W.myReady(mine)
 		U.Ready = W.button(row, "ReadyButton", want and "NOT READY" or "READY", want and C.Grey or C.Green, bw, 1, function()
 			local now = not W.myReady(mine)
-			if H.request("Ready", now) then
-				S.ReadyWant = now -- optimistic: the next Lobby payload is the truth
-				W.refresh()
+			local function send()
+				if H.request("Ready", now) then
+					S.ReadyWant = now -- optimistic: the next Lobby payload is the truth
+					W.refresh()
+				end
+			end
+			if now then
+				H.withTeam(send) -- READY needs a team; NOT READY never asks
+			else
+				send()
 			end
 		end)
 	end
@@ -1082,6 +1141,29 @@ function W.partyMine(box, short, mine)
 	end, "Outline")
 end
 
+-- HUD cleanup: TeamPick's strip at the top of the party box (LayoutOrder 2; compact on short screens)
+function W.strip(box, short)
+	U.Strip = nil
+	local TP = H.teamPick()
+	if TP and type(TP.Strip) == "function" then
+		local ok, strip = pcall(TP.Strip, box, { LayoutOrder = 2, Compact = short == true })
+		if ok and type(strip) == "table" then
+			U.Strip = strip
+		else
+			H.warnOnce("TeamPick.Strip", strip)
+		end
+	end
+end
+
+-- the strip's height in the party box (+ the list padding), 0 without one
+function W.stripHeight()
+	local root = U.Strip and U.Strip.Root
+	if root and root.Parent then
+		return root.Size.Y.Offset + 6
+	end
+	return 0
+end
+
 -- open parties shown at once: 3 on desktops, 2 on a portrait phone, 1 on a landscape phone (the jump button corner)
 function W.maxParties(short)
 	if short then
@@ -1091,7 +1173,7 @@ function W.maxParties(short)
 end
 
 function W.partyHeight(short, mine)
-	local h = 16
+	local h = 16 + W.stripHeight()
 	if mine then
 		local n = #(type(mine.Members) == "table" and mine.Members or {})
 		h = h + 26 + 24 + n * ((short and K.MEMBER_H_SHORT or K.MEMBER_H) + 6) + (short and 46 or 52) + 18

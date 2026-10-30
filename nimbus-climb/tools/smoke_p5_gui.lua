@@ -242,7 +242,7 @@ function CUI.closeAll()
 		end
 	end
 end
-for _, spec in ipairs({ { "menu:Pets", "Pets", "Inventory" }, { "menu:Home", "Home", "Home" }, { "menu:Team", "Team", "Team" },
+for _, spec in ipairs({ { "menu:Pets", "Pets", "Inventory" }, { "menu:Home", "Home", "Home" }, { "menu:Team", "Team", "Inventory" },
 	{ "menu:Shop", "Shop", "Shop" }, { "menu:Stats", "Stats", "Stats" } }) do
 	COVER[#COVER + 1] = {
 		Scene = spec[1],

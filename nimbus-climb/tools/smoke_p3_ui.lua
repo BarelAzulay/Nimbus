@@ -12,11 +12,11 @@
 --                       battle teams and trophies (Coach Corgi), elements and synergy in battle (Professor Axolotl) are
 --                       explained with the numbers of BattleCatalog
 --   p3ui_tutorial       (server, booted) a player who finished the home chapter resumes at "arena": the arrow points at
---                       the arena's forum (ArenaInfo.Spawn); walking in -> "team" (the Team menu tile); a battle team ->
+--                       the arena's forum (ArenaInfo.Spawn); walking in -> "team" (the Pets menu tile: Pets > Team); a battle team ->
 --                       "trial" (the arrow at the Trial Portal, none while fighting); Trial 1 cleared -> "raid" (a hint
 --                       with the raid countdown); standing in the arena while a raid runs ends the chapter: on to
 --                       chapter 4 (Phase 4), the token reward paid once; a BattleEnded trial win completes "trial" by itself
---   client_p3ui         (client) the Team window (Open("Team"); HUD cleanup: the Team tile is gone): slot cards (pet, level, element, power),
+--   client_p3ui         (client) the team editor (Open("Team"); HUD cleanup: the Pets window's Team tab): slot cards (pet, level, element, power),
 --                       slot 4 locked before Prestige 1 and open after, live synergy + matchups, the element wheel, the
 --                       team power and trophies, the picker (every owned copy, busy ones dimmed); remove / add / swap
 --                       send BattleRequest TeamSet (preset, keys) after a short pause, Use Team N sends TeamSelect, a full
@@ -27,7 +27,7 @@
 --                       window at a time with the menu; side cards: a duel invite (Accept -> ChallengeReply), the queue
 --                       (Leave -> Unqueue), the raid card (JOIN -> JoinRaid), the event countdown; hidden while
 --                       fighting; every text >= 18 design px; no script errors
---   client_p3ui_mobile  (phone 390x844) the Team window, the Trial window and the Arena tabs keep every text >= 14 px;
+--   client_p3ui_mobile  (phone 390x844) the Pets window's Team tab, the Trial window and the Arena tabs keep every text >= 14 px;
 --                       (844x390) the seven-tile menu stays two labelled columns above the thumbstick
 -- Plain Lua 5.1 syntax only.
 
@@ -121,8 +121,8 @@ local function serverScenarios()
 		T.check(#bad == 0, "p3ui: every chapter 3 step has chapter 3, a title, a hint and a short plain text", table.concat(bad, "; "))
 		T.check(byId.arena and byId.arena.CompleteOn == "ArenaReached" and byId.arena.Target and byId.arena.Target.Kind == "Arena"
 			and byId.arena.Target.Place == "Gate", "p3ui: 'arena' points at the arena (Place Gate) and completes on ArenaReached")
-		T.check(byId.team and byId.team.CompleteOn == "TeamSet" and byId.team.Target and byId.team.Target.Kind == "Menu" and byId.team.Target.Id == "Team",
-			"p3ui: 'team' rings the Team menu tile and completes on TeamSet")
+		T.check(byId.team and byId.team.CompleteOn == "TeamSet" and byId.team.Target and byId.team.Target.Kind == "Menu" and byId.team.Target.Id == "Pets",
+			"p3ui: 'team' rings the Pets menu tile (HUD cleanup: Pets > Team) and completes on TeamSet")
 		T.check(byId.trial == nil and byId.dungeon and byId.dungeon.CompleteOn == "DungeonWon" and byId.dungeon.Target
 			and byId.dungeon.Target.Place == "Dungeon" and Steps.IndexOf.dungeon == 17,
 			"p3ui: step 17 'trial' became 'dungeon': the Dungeon portal, completes on DungeonWon")
@@ -257,7 +257,7 @@ local function serverScenarios()
 		end, 3)
 		T.eq(stepId(p), "team", "p3ui tutorial: walking into the Battle Arena completes 'arena'")
 		st = state(p)
-		T.check(st and st.Target and st.Target.Kind == "Menu" and st.Target.Id == "Team", "p3ui tutorial: 'team' rings the Team tile (Menu Team)")
+		T.check(st and st.Target and st.Target.Kind == "Menu" and st.Target.Id == "Pets", "p3ui tutorial: 'team' rings the Pets tile (Menu Pets; HUD cleanup: Pets > Team)")
 		advance(1)
 		T.eq(stepId(p), "team", "p3ui tutorial: an empty team keeps 'team' waiting")
 
@@ -579,12 +579,13 @@ local function clientScenarios()
 		toClient("ProfileSync", snapshot(0))
 		advance(0.5)
 
-		------------------------------------------------------------ the Team window (HUD cleanup: no Team tile any more)
+		------------------------------------------------------------ the team editor (HUD cleanup: the Pets window's Team tab)
 		MC.Open("Team", {})
 		advance(0.8)
 		local menu = pg():FindFirstChild("NimbusMenu")
-		local win = menu and menu:FindFirstChild("Window_Team")
-		if not T.check(win ~= nil and shown(win), "p3ui team: Open('Team') opens the Team window") then
+		local inv = menu and menu:FindFirstChild("Window_Inventory")
+		local win = inv and find(inv, "Page_Team")
+		if not T.check(win ~= nil and shown(win), "p3ui team: Open('Team') opens the Pets window on its Team tab") then
 			return
 		end
 		local slots = {}
@@ -980,7 +981,7 @@ local function clientScenarios()
 		end
 		MC.Open("Team")
 		advance(0.8)
-		check("the Team window", pg():FindFirstChild("NimbusMenu"):FindFirstChild("Window_Team"))
+		check("the Pets window's Team tab", pg():FindFirstChild("NimbusMenu"):FindFirstChild("Window_Inventory"))
 		MC.Close()
 		advance(0.3)
 		AC.OpenRing()

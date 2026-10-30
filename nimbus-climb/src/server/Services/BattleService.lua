@@ -30,7 +30,8 @@
 --                                 Rewards = {[userId] = rewards}, RewardsPaid = true, BossHp, BossMaxHp, Survivors, Hp,
 --                                 Waves, Extra (Dungeon).
 --   The encounter API (4.6; the ONLY way DungeonService touches combat; this module NEVER requires DungeonService, C16):
---   BattleService.TeamSpec(player, keys | nil) -> spec | nil, reason     (teamOf: keys = the ring fallback; training keys skipped)
+--   BattleService.TeamSpec(player, keys | nil) -> spec | nil, reason     (teamOf: keys = the ring fallback; training keys skipped;
+--                                 an empty team: "Pick your battle team first (at a battle portal, or Pets > Team)", HUD cleanup)
 --   BattleService.OpenEncounter(spec) -> battleId | nil, reason
 --     spec = { Mode = "Dungeon", Zone = <NC_BattleZone part> | { CFrame, Size }, Seed, TimeLimit, Label, Teams = { { Player,
 --              Spec }... } (1..4), Extra = { Floor, Room, Wave, Waves, Name, Boss }, KeepInBattle = true, OnEnd = fn(battleId,
@@ -748,7 +749,7 @@ local function teamOf(player, side, fallback)
 	if type(keys) ~= "table" then
 		keys = try(DS, "ActiveTeamKeys", player)
 		if type(keys) ~= "table" or #keys == 0 then
-			return nil, "Pick your battle team first (Menu > Team)"
+			return nil, "Pick your battle team first (at a battle portal, or Pets > Team)"
 		end
 	end
 	local training = try(DS, "TrainingKeys", player)

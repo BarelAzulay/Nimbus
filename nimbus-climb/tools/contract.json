@@ -430,10 +430,24 @@
         "Init",
         "Open",
         "Close",
-        "OpenSettings"
+        "OpenSettings",
+        "OpenTeam"
       ],
       "signals": [
         "WindowOpened"
+      ]
+    },
+    "client/TeamPick": {
+      "functions": [
+        "ActiveKeys",
+        "Fieldable",
+        "Best",
+        "Save",
+        "Ensure",
+        "Strip",
+        "Popup",
+        "IsOpen",
+        "Close"
       ]
     },
     "client/Controllers/TopBarController": {
