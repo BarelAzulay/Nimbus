@@ -296,6 +296,36 @@ ring; SETTINGS Music / Sound sliders change them at once.
 
 ---
 
+## 6c. The sky faces (the living sky)
+
+**Done 2026-10-30** on branch `sky-skies`: 42 Decals uploaded, all Approved (c1efa83), the Image ids recorded in
+`src/shared/TextureIds.lua` (3dfe124, the Decal ids kept as `decalAssetId`). Left: the OWNER Play-test below.
+
+42 PNGs in `blender/textures/sky/<theme>/Skybox<Face>.png`: 7 painted skies x 6 faces (Bk Dn Ft Lf Rt Up), keys
+`sky_<theme>_<Face>` in `blender/textures/textures.json` (built by `py -3.12 blender/sky/build_sky_manifest.py`;
+themes in `blender/sky/README.md`). Until they are uploaded the game runs the day / night cycle and the raid skies with
+the light only, under the boot sky (nothing breaks). A theme switches to its painted faces once **all six** of its
+keys have ids in `src/shared/TextureIds.lua` (a half-uploaded theme keeps the boot faces, never a grey face).
+
+**CLAUDE** (ask first; one run = 42 image uploads, from the keyed cloud session only):
+```bash
+python3 tools/upload_assets.py --textures --only sky_day_vivid_Bk     # dry run of one face
+python3 tools/upload_assets.py --textures                               # dry run of all textures
+python3 tools/upload_assets.py --textures --upload                      # real
+```
+
+**The Decal id -> Image id step applies** (section 6): the tool uploads each face as a Decal, a Sky face needs the
+**Image** id. Check one face first with the ImageLabel test of section 6 (step 1-4, any background colour); if the
+Image box changes number by itself, every face needs its Image id recorded with
+`--textures --upload --set-id sky_<theme>_<Face>=<image id>,...` (dry run first, as in section 6). Then commit
+`src/shared/TextureIds.lua` + `blender/textures/upload_state.json`.
+
+**OWNER** Play-test: `/sky dawn`, `/sky day`, `/sky sunset`, `/sky night` each show their painted sky (no grey or
+mirrored face; left and right swapped = swap the Lf and Rt ids); `/sky raid storm` (`lava`, `frost`, `shadow`) blends
+to that boss's sky in about 3 s and `/sky clear` back; `/sky speed 20` runs a whole loop in a minute with no pops.
+
+---
+
 ## 7. OWNER: ship it
 
 When a batch looks good in Play: File -> **Publish to Roblox**, then **Migrate to Latest Update** on the Creator Hub
@@ -382,6 +412,7 @@ Everything goes back to the Part models when `MeshIds.lua` is empty:
 | "the create of KEY may have reached Roblox" | found in Creator Hub: `--upload --only KEY --adopt KEY=<id>`; not there: `--upload --only KEY --not-created KEY` (8g) |
 | texture Decal id -> Image id | `python3 tools/upload_assets.py --textures --upload --set-id KEY=<image id>` (section 6) |
 | the music and sounds | `python3 tools/upload_assets.py --audio` (dry) then `--upload --audio` (section 6b) |
+| the 42 sky faces | `python3 tools/upload_assets.py --textures` (dry) then `--textures --upload`, Image ids (section 6c) |
 | "was not exported from this contentHash" | `/tmp/claude-0/bpyenv/bin/python blender/build_all.py --key <key>` (8h) |
 | re-send unchanged | `--force` (meshes only, rarely needed; refused for images and audio) |
 | wait longer per upload | `--poll-timeout 600` (seconds, default 300) |

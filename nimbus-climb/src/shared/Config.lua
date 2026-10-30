@@ -496,8 +496,234 @@ Config.Items = {
 -- Manager -> Bulk Import, then pasted here as "rbxassetid://<id>" (Bk Dn Ft Lf Rt Up by file name; left and right swapped =
 -- swap the Lf and Rt ids). While any of the six is empty LightingService shows its built-in fallback sky (a pink-lavender
 -- haze, a tinted cloud layer and 3000 stars). README "Phase 5: owner checklist", step 2.
+-- The living sky (docs/superpowers/specs/2026-10-30-living-sky-cycle-design.md): one server-synced 20 minute loop
+-- Dawn 2 -> Day 6 -> Sunset 9 -> Night 3 min, each phase blending into the next over its last Blend seconds, plus a
+-- server-wide raid sky while a raid boss is up. shared/SkyCycle turns the server time into a phase and a preset; the
+-- client re-applies it every Refresh s with a Tween s tween (LightingStack base). Faces stays LightingService's boot sky.
+--   Themes / RaidThemes  the painted skybox (blender/sky/sky_themes.py theme id) per phase / per raid boss id; the faces
+--                        are TextureIds "sky_<theme>_<Face>" (shared/SkyFaces); a theme without all six = the boot sky
+--   Looks[phase | boss]  the world light per LightingStack group + Clock = { from, to } (the ClockTime walked through
+--                        the phase, unwrapped: to may pass 24, the Night's 31 = 7 h next morning; on toward the next
+--                        phase's from across the blend; a raid look's is fixed). The copper / indigo comes from the world light (ColorShift,
+--                        Ambient, Atmosphere, clouds); TintColor stays within Floor.TintMax of white (Amber Burn shows
+--                        11 of 20 minutes, the HUD and rarity colours keep their true colours)
+--   Floor                the readability floor in every phase and raid (night is indigo, never black)
+local skyRgb = Color3.fromRGB
 Config.Sky = {
 	Faces = { Bk = "", Dn = "", Ft = "", Lf = "", Rt = "", Up = "" },
+	Cycle = {
+		Order = { "Dawn", "Day", "Sunset", "Night" },
+		Seconds = { Dawn = 120, Day = 360, Sunset = 540, Night = 180 }, -- a 1200 s (20 min) loop
+		Blend = 75, -- seconds at the end of each phase that blend into the next
+		Refresh = 2, -- the client re-applies the sky every Refresh s ...
+		Tween = 2, -- ... with a tween this long (no per-frame work)
+		EventBlend = 3, -- seconds a raid sky takes to blend in on the raid start and back out on its end
+	},
+	Speed = { Default = 1, Min = 0.1, Max = 120 }, -- the dev /sky speed clamp (SkySpeed attribute)
+	-- the Workspace attributes server/Services/SkyService publishes (the clock: no remote traffic): Epoch = the server
+	-- time at boot, Speed / Offset = the dev /sky speed and phase jump (loop seconds), Event = the raid boss id whose sky
+	-- is up ("" = none), EventAt = the server time Event last changed (the clients' EventBlend s blend in / out)
+	Attr = { Epoch = "SkyEpoch", Speed = "SkySpeed", Offset = "SkyOffset", Event = "SkyEvent", EventAt = "SkyEventAt" },
+	EventWatch = 5, -- seconds between the server's checks that a raid sky still has its raid (a missed end never sticks)
+	Themes = { Dawn = "dusk_amber", Day = "day_vivid", Sunset = "dusk_amber", Night = "night_aurora" },
+	RaidThemes = { storm_titan = "storm_teal", lava_golem = "lava_obsidian", frost_wyrm = "frost_glacial", shadow_hydra = "shadow_eclipse" },
+	Floor = {
+		Brightness = 1.0, -- Lighting.Brightness never below
+		OutdoorAmbientMin = 70, -- every OutdoorAmbient channel (0-255) never below: voxel sides still read
+		TintMax = 8, -- ColorCorrection TintColor channels stay within this of 255
+	},
+	-- client/Controllers/SkyController (the client half; Refresh / Tween above):
+	ClockJump = 0.5, -- hours: a ClockTime step bigger than this at a phase / raid change (a raid sky's fixed clock at
+	-- mid-blend) is set at once, never tweened through the hours between. The cycle itself never needs it: the
+	-- Sunset 17 -> Night 18.4 gap is walked across the Sunset blend and the Night runs on through midnight to Dawn's
+	-- 7 h (SkyCycle.Preset); passing midnight (23.9 -> 0.1) is the one other instant set (24 h = 0 h: invisible)
+	-- the battle lift: while I am in an outdoor pet battle (Config.Attr.InBattle starts with Prefix: a duel, raid,
+	-- Champion Ring run or PvP; a dungeon run "D.." stays under the dungeon preset) and the look is one of Looks, the
+	-- LightingStack preset Id lifts my night toward twilight over Seconds and settles back after the fight (me only)
+	Lift = {
+		Id = "SkyLift",
+		Prefix = "B",
+		Seconds = 1.5,
+		Looks = { Night = true, shadow_hydra = true },
+		Preset = {
+			Lighting = {
+				Brightness = 1.6,
+				ExposureCompensation = 0.15,
+				Ambient = skyRgb(116, 108, 148),
+				OutdoorAmbient = skyRgb(150, 142, 192),
+			},
+		},
+	},
+	-- the lobby's lamps (LobbyBuilder pointLight() on these part names, under workspace.<Root>): their PointLight
+	-- Brightness x Night under the Looks, their own value otherwise; written on a look change only
+	Lamps = {
+		Root = "NimbusLobby",
+		Names = { LampGlass = true, LanternLight = true, StallLight = true, DomeGlow = true },
+		Night = 1.6,
+		Looks = { Night = true, shadow_hydra = true },
+	},
+	-- a few soft fireflies round the lobby trees (models named "...Tree" under workspace.<Root>) under the Looks, on
+	-- High graphics only: one local folder, at most Max emitters (one per tree), the default sparkle, pale
+	-- yellow-green, slow; Size / Height / Spread in studs, Lifetime / Speed = NumberRange { min, max }
+	Fireflies = {
+		Root = "NimbusLobby",
+		Folder = "NimbusFireflies",
+		Looks = { Night = true },
+		Max = 6,
+		Rate = 1.2,
+		Color = skyRgb(212, 255, 150),
+		Lifetime = { 4, 7 },
+		Speed = { 0.2, 0.6 },
+		Size = 0.22,
+		Height = 5,
+		Spread = 10,
+	},
+	LowCloudStep = 0.02, -- GraphicsQuality re-pushes its GfxLow cloud cap once the capped density moves this much
+	Looks = {
+		-- the bright pastel morning (preview A) under the Amber Burn sky: a low warm sun, pink air, peach clouds
+		Dawn = {
+			Clock = { 7.0, 9.0 },
+			Lighting = {
+				Brightness = 1.7,
+				ExposureCompensation = -0.05,
+				Ambient = skyRgb(112, 104, 132),
+				OutdoorAmbient = skyRgb(150, 136, 162),
+				ColorShift_Top = skyRgb(78, 52, 40),
+				ColorShift_Bottom = skyRgb(30, 24, 48),
+				EnvironmentDiffuseScale = 0.6,
+				EnvironmentSpecularScale = 0.3,
+			},
+			Atmosphere = { Density = 0.32, Offset = 0.2, Color = skyRgb(236, 206, 214), Decay = skyRgb(246, 190, 150), Glare = 0.35, Haze = 1.4 },
+			Clouds = { Cover = 0.55, Density = 0.6, Color = skyRgb(255, 228, 220) },
+			ColorCorrection = { Brightness = 0.02, Contrast = 0.06, Saturation = 0.1, TintColor = skyRgb(255, 250, 248) },
+			Sky = { StarCount = 0 },
+		},
+		-- the long bright day = today's Phase 4 light (LightingService p4Light, sky-blue air, white clouds) under Vivid Skylands
+		Day = {
+			Clock = { 9.0, 16.0 },
+			Lighting = {
+				Brightness = 2.0,
+				ExposureCompensation = -0.15,
+				Ambient = skyRgb(98, 106, 132),
+				OutdoorAmbient = skyRgb(132, 138, 160),
+				ColorShift_Top = skyRgb(66, 50, 26),
+				ColorShift_Bottom = skyRgb(14, 20, 40),
+				EnvironmentDiffuseScale = 0.6,
+				EnvironmentSpecularScale = 0.35,
+			},
+			Atmosphere = { Density = 0.28, Offset = 0.25, Color = skyRgb(178, 198, 228), Decay = skyRgb(238, 200, 170), Glare = 0.25, Haze = 1.0 },
+			Clouds = { Cover = 0.5, Density = 0.6, Color = skyRgb(240, 244, 252) },
+			ColorCorrection = { Brightness = 0, Contrast = 0.1, Saturation = 0.14, TintColor = skyRgb(255, 251, 247) },
+			Sky = { StarCount = 0 },
+		},
+		-- the Copper Sunset (preview B) under Amber Burn: the copper from the sun colour, the air and its orange decay and
+		-- warm peach clouds a little fuller; the sun stays at 16-17 h (short shadows), the tint stays near white
+		Sunset = {
+			Clock = { 16.0, 17.0 },
+			Lighting = {
+				Brightness = 1.6,
+				ExposureCompensation = -0.1,
+				Ambient = skyRgb(118, 94, 96),
+				OutdoorAmbient = skyRgb(162, 128, 118),
+				ColorShift_Top = skyRgb(110, 62, 24),
+				ColorShift_Bottom = skyRgb(40, 24, 44),
+				EnvironmentDiffuseScale = 0.55,
+				EnvironmentSpecularScale = 0.4,
+			},
+			Atmosphere = { Density = 0.34, Offset = 0.18, Color = skyRgb(230, 170, 128), Decay = skyRgb(226, 120, 64), Glare = 0.5, Haze = 1.8 },
+			Clouds = { Cover = 0.6, Density = 0.65, Color = skyRgb(255, 206, 170) },
+			ColorCorrection = { Brightness = 0, Contrast = 0.12, Saturation = 0.12, TintColor = skyRgb(255, 250, 247) },
+			Sky = { StarCount = 0 },
+		},
+		-- the short starry night (preview C) under Aurora Slumber: moonlit indigo ambient (never black), 3000 stars,
+		-- sparse thin violet clouds
+		Night = {
+			Clock = { 18.4, 31.0 }, -- through midnight to Dawn's 7 h (= 31 unwrapped): no backward wrap at Dawn
+			Lighting = {
+				Brightness = 1.1,
+				ExposureCompensation = 0.1,
+				Ambient = skyRgb(78, 76, 124),
+				OutdoorAmbient = skyRgb(104, 100, 170),
+				ColorShift_Top = skyRgb(40, 46, 92),
+				ColorShift_Bottom = skyRgb(24, 20, 56),
+				EnvironmentDiffuseScale = 0.45,
+				EnvironmentSpecularScale = 0.3,
+			},
+			Atmosphere = { Density = 0.3, Offset = 0.15, Color = skyRgb(96, 92, 160), Decay = skyRgb(130, 92, 170), Glare = 0, Haze = 1.2 },
+			Clouds = { Cover = 0.3, Density = 0.35, Color = skyRgb(150, 128, 200) },
+			ColorCorrection = { Brightness = 0.03, Contrast = 0.08, Saturation = 0.06, TintColor = skyRgb(249, 250, 255) },
+			Sky = { StarCount = 3000 },
+		},
+		-- raid skies (BattleCatalog.Bosses ids), fixed clocks near midday so the boss and the telegraphs keep short shadows
+		storm_titan = { -- Thunderhead Teal: a heavy teal storm deck
+			Clock = { 13.0, 13.0 },
+			Lighting = {
+				Brightness = 1.4,
+				ExposureCompensation = -0.05,
+				Ambient = skyRgb(82, 108, 116),
+				OutdoorAmbient = skyRgb(110, 142, 148),
+				ColorShift_Top = skyRgb(40, 70, 72),
+				ColorShift_Bottom = skyRgb(16, 36, 44),
+				EnvironmentDiffuseScale = 0.5,
+				EnvironmentSpecularScale = 0.4,
+			},
+			Atmosphere = { Density = 0.38, Offset = 0.2, Color = skyRgb(110, 156, 160), Decay = skyRgb(60, 110, 118), Glare = 0.1, Haze = 2.0 },
+			Clouds = { Cover = 0.85, Density = 0.8, Color = skyRgb(130, 160, 165) },
+			ColorCorrection = { Brightness = 0, Contrast = 0.14, Saturation = 0.04, TintColor = skyRgb(249, 255, 254) },
+			Sky = { StarCount = 0 },
+		},
+		lava_golem = { -- Obsidian Furnace: dark soot air with an orange glowing decay
+			Clock = { 15.5, 15.5 },
+			Lighting = {
+				Brightness = 1.3,
+				ExposureCompensation = 0,
+				Ambient = skyRgb(110, 78, 66),
+				OutdoorAmbient = skyRgb(140, 96, 80),
+				ColorShift_Top = skyRgb(120, 54, 16),
+				ColorShift_Bottom = skyRgb(50, 18, 10),
+				EnvironmentDiffuseScale = 0.5,
+				EnvironmentSpecularScale = 0.45,
+			},
+			Atmosphere = { Density = 0.42, Offset = 0.15, Color = skyRgb(90, 64, 58), Decay = skyRgb(230, 96, 36), Glare = 0.3, Haze = 2.4 },
+			Clouds = { Cover = 0.7, Density = 0.7, Color = skyRgb(96, 72, 66) },
+			ColorCorrection = { Brightness = 0, Contrast = 0.14, Saturation = 0.1, TintColor = skyRgb(255, 250, 247) },
+			Sky = { StarCount = 0 },
+		},
+		frost_wyrm = { -- Glacial Void: a bright icy cyan
+			Clock = { 12.0, 12.0 },
+			Lighting = {
+				Brightness = 1.8,
+				ExposureCompensation = -0.1,
+				Ambient = skyRgb(100, 120, 148),
+				OutdoorAmbient = skyRgb(140, 166, 196),
+				ColorShift_Top = skyRgb(40, 60, 80),
+				ColorShift_Bottom = skyRgb(20, 34, 56),
+				EnvironmentDiffuseScale = 0.6,
+				EnvironmentSpecularScale = 0.45,
+			},
+			Atmosphere = { Density = 0.36, Offset = 0.22, Color = skyRgb(186, 222, 240), Decay = skyRgb(120, 190, 230), Glare = 0.2, Haze = 1.6 },
+			Clouds = { Cover = 0.65, Density = 0.7, Color = skyRgb(220, 240, 255) },
+			ColorCorrection = { Brightness = 0, Contrast = 0.1, Saturation = 0.04, TintColor = skyRgb(248, 252, 255) },
+			Sky = { StarCount = 0 },
+		},
+		shadow_hydra = { -- Eclipse Shadow: a violet-grey eclipse, a few stars through the dim
+			Clock = { 12.0, 12.0 },
+			Lighting = {
+				Brightness = 1.1,
+				ExposureCompensation = 0.05,
+				Ambient = skyRgb(90, 82, 110),
+				OutdoorAmbient = skyRgb(118, 108, 146),
+				ColorShift_Top = skyRgb(60, 44, 84),
+				ColorShift_Bottom = skyRgb(24, 18, 40),
+				EnvironmentDiffuseScale = 0.5,
+				EnvironmentSpecularScale = 0.35,
+			},
+			Atmosphere = { Density = 0.4, Offset = 0.18, Color = skyRgb(112, 100, 136), Decay = skyRgb(90, 64, 130), Glare = 0.15, Haze = 1.8 },
+			Clouds = { Cover = 0.6, Density = 0.6, Color = skyRgb(120, 108, 140) },
+			ColorCorrection = { Brightness = 0, Contrast = 0.12, Saturation = 0, TintColor = skyRgb(251, 249, 255) },
+			Sky = { StarCount = 1500 },
+		},
+	},
 }
 
 -- Music and sounds: the player's ORIGINAL audio (nimbus-climb/audio/, audio/README.md), uploaded by the owner's keyed

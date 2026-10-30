@@ -1264,6 +1264,7 @@ runs Lua code and the game never sees what you type there.
 | `/tutorial` | Same as Restart tutorial. |
 | `/skiptutorial` | Same as Skip tutorial. |
 | `/raid` | Same as Start Boss Raid. |
+| `/sky [what]` | The living sky, for everyone in the server: `/sky` alone tells you the phase, `/sky dawn`, `/sky day`, `/sky sunset` or `/sky night` starts that phase now, `/sky speed 20` runs the 20 minute loop 20 times faster (0.1 to 120), `/sky raid frost` shows a raid boss's sky (a boss id or the start of one) and `/sky clear` takes it down. |
 | `/pet <name> [stage]` | Builds that pet in front of you: stage `0` normal (the default), `1` evolved, `2` second evolution (Epic pets and up). The name or a unique part of it is enough, any case: `/pet cloudy 2`, `/pet Pebble Pup`. Each new pet stands beside the last one. |
 | `/pets [stage]` | Every pet lined up in rows in front of you: `/pets` (normal), `/pets 1` (all 33 evolved), `/pets 2` (the 16 second evolutions). |
 | `/evolve <name> [stage]` | Plays that pet's evolution animation in front of you: with no stage its whole line (normal -> evolved, then -> second evolution for Epic pets and up), `1` only normal -> evolved, `2` only evolved -> second evolution. |
@@ -1468,12 +1469,15 @@ src/shared   Config (every number)  TycoonCatalog (every tycoon number)  Theme  
              the gate vortex image ids)  AudioIds (generated: the original music and sound ids)  MeshManifests (generated:
              one module per Blender model)  PetFx (the auras and effects of evolved pets)  AttackFxCatalog (the look
              of every pet attack effect: recipes by element, attack, rarity band, signature)  PetPoses (the
-             battle poses pets strike, cast, flinch and celebrate with, on PetBuilder's rig)
+             battle poses pets strike, cast, flinch and celebrate with, on PetBuilder's rig)  SkyCycle (the living
+             sky: the 20 minute phase clock, the looks per phase and raid, the readability floor)  SkyFaces (the
+             painted skybox faces of each sky theme from TextureIds; a theme without all six = the boot sky)
 src/server   Main.server.lua; Services: Lighting, LobbyBuilder, StormAltar, Player (the spawn after PLAY), Data,
              Damage, Token, Hazard, Course (layout + builder), Match, Portal, Gate (the Altar gate's prompt), Spot, Pet,
              Item, Index, Tutorial, Npc, Dev, Tycoon, HomeBuilder, PetCare, Fusion, Gem, ArenaBuilder, Battle, Event,
              Dungeon (parties, runs, loot), DungeonBuilder (the Dungeon gate and rooms), Podium (wave 6: the trainer
-             stands locked on the Ring / PvP podium)
+             stands locked on the Ring / PvP podium), Sky (the living sky: the clock attributes, the raid skies,
+             /sky)
 src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientSettings; SoundFx; GraphicsQuality;
              PortalVortex (the swirling vortex inside every gate hoop); MouseLock (the Mouse lock option);
              LightingStack (lighting looks, e.g. the Dungeon); UI/CloudUI; UI/NeonKit (the neon cards, tiles and side
@@ -1493,7 +1497,8 @@ src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientS
              turns the NC_DungeonSpin rings near the camera; no sound here), MeshFallback (shows the
              block pet on a device where a Blender model failed to load), RingAmbience (the Champion Ring's crowd
              and drums, heard only near the ring), TrainerCheer (wave 6: my avatar's cheer emote on the podium and on
-             Cheer up!)
+             Cheer up!), Sky (the living sky on this client: the cycle and the raid skies as the LightingStack base,
+             the night battle lift, the night lamps, fireflies)
 ```
 
 The **server is authoritative** (health, tokens, Cash, Gems, berries, pets, items, checkpoints, matches, home
