@@ -453,7 +453,7 @@ function TeamPick.Strip(parent, props)
 	local compact = props.Compact == true
 	local slotH = compact and K.STRIP_SLOT_H_COMPACT or K.STRIP_SLOT_H
 	local pad = K.STRIP_PAD
-	local height = compact and (pad * 2 + math.max(slotH, K.STRIP_BUTTON_H)) or (pad * 2 + slotH + 6 + K.STRIP_BUTTON_H)
+	local height = pad * 2 + slotH + 6 + K.STRIP_BUTTON_H
 	local root = frame(parent, "TeamStrip", {
 		BackgroundTransparency = 0.15,
 		BackgroundColor3 = ROW_DARK,
@@ -462,11 +462,12 @@ function TeamPick.Strip(parent, props)
 	})
 	corner(root, 12)
 	stroke(root, Theme.Darken(Theme.Neon.Red, 0.3), 2, 0.1)
-	-- buttons: right-aligned (beside the slots on a compact strip, a row under them otherwise)
+	-- buttons: a right-aligned row under the slots (a compact strip too: beside them, a landscape phone's ~414 px
+	-- Dungeon party box left the slots ~30 px each)
 	local buttonsW = 96 + 8 + 176
 	local buttons = frame(root, "Buttons", {
-		AnchorPoint = Vector2.new(1, compact and 0.5 or 1),
-		Position = compact and UDim2.new(1, -pad, 0.5, 0) or UDim2.new(1, -pad, 1, -pad),
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, -pad, 1, -pad),
 		Size = UDim2.fromOffset(buttonsW, K.STRIP_BUTTON_H),
 	})
 	Util.Create("UIListLayout", {
@@ -513,7 +514,7 @@ function TeamPick.Strip(parent, props)
 	end
 	local row = frame(root, "Slots", {
 		Position = UDim2.fromOffset(pad, pad),
-		Size = compact and UDim2.new(1, -(buttonsW + 3 * pad), 0, slotH) or UDim2.new(1, -2 * pad, 0, slotH),
+		Size = UDim2.new(1, -2 * pad, 0, slotH),
 	})
 	Util.Create("UIListLayout", {
 		FillDirection = Enum.FillDirection.Horizontal,

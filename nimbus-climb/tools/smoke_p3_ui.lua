@@ -1001,9 +1001,9 @@ local function clientScenarios()
 		toClient("BattleState", "Lobby", { Queue = { Queued = false, Waiting = 0 }, Invites = {} })
 		advance(0.3)
 
-		-- the seven-tile menu (Team added) on a landscape phone: still two labelled columns above Roblox's thumbstick
-		-- (the "SmallGrid": smaller tiles, labels >= 14 px) instead of icon-only tiles, and about as wide as the
-		-- six-tile grid it replaced (the HUD's party panel, the tutorial card and the home pad signs lay out around it)
+		-- the four-tile menu (HUD cleanup: Pets, Index, Home, Stats; Team / Shop / Settings / Items left the column) on a
+		-- landscape phone: one labelled column above Roblox's thumbstick (labels >= 14 px), one tile + its fold tab wide
+		-- at touch scale (the HUD's party panel, the tutorial card and the home pad signs lay out around it)
 		Mock.SetViewport(844, 390)
 		advance(0.8)
 		local column = pg():FindFirstChild("NimbusMenu") and pg().NimbusMenu:FindFirstChild("MenuColumn")
@@ -1033,10 +1033,10 @@ local function clientScenarios()
 				cols = cols + 1
 			end
 			local cb = Mock.GuiBox(column)
-			T.check(entries == 7 and cols == 2, "p3ui phone 844x390: seven tiles (Team included) in two columns", entries .. " tiles, " .. cols .. " columns")
-			T.check(labels == 7 and #small == 0, "p3ui phone 844x390: every tile keeps its label, >= 14 px", labels .. " labels; " .. table.concat(small, ", "))
-			-- (bug batch 2 #1: the column frame also holds the fold tab beside its last row)
-			T.check(cb ~= nil and cb.w >= 120 and cb.w <= 135, "p3ui phone 844x390: the column is the 2-tile grid + its fold tab at touch scale (120-135 px)", cb and string.format("%.0f px", cb.w) or "no box")
+			T.check(entries == 4 and cols == 1, "p3ui phone 844x390: four tiles in one column", entries .. " tiles, " .. cols .. " columns")
+			T.check(labels == 4 and #small == 0, "p3ui phone 844x390: every tile keeps its label, >= 14 px", labels .. " labels; " .. table.concat(small, ", "))
+			-- (bug batch 2 #1: the column frame also holds the fold tab beside its last row; a 44-50 px tile + tab)
+			T.check(cb ~= nil and cb.w >= 65 and cb.w <= 85, "p3ui phone 844x390: the column is one tile + its fold tab at touch scale (65-85 px)", cb and string.format("%.0f px", cb.w) or "no box")
 			-- gui-area pixels, like MenuController's own band (the classic stick's top is 96 px above the area's bottom)
 			local area = Mock.GuiLayerSize(column)
 			local bottom = column.AbsolutePosition.Y + column.AbsoluteSize.Y

@@ -592,6 +592,7 @@ local function clientScenarios()
 		KC.advance(0.3)
 		if DC then
 			pcall(DC.Init)
+			H.feed(FOUR, H.teamOf({ "ember_phoenix", "biscuit_bear", "sunbeam_bear" }))
 			DC.Open(1)
 			KC.advance(1)
 			local win = H.dungeonPanel()
@@ -599,6 +600,29 @@ local function clientScenarios()
 			if T.check(strip and H.shown(strip), "hudteam phone: the Dungeon panel shows the strip on a landscape phone") then
 				local wr, sr = win.AbsolutePosition.X + win.AbsoluteSize.X, strip.AbsolutePosition.X + strip.AbsoluteSize.X
 				T.check(strip.AbsolutePosition.X >= win.AbsolutePosition.X - 0.5 and sr <= wr + 0.5, "hudteam phone: ...inside the window", fmt("%.0f <= %.0f", sr, wr))
+				-- each slot keeps room for its pet (the buttons do not squeeze the row), the texts stay inside their cell
+				local function inside(o, cell)
+					local p, s, cp, cs = o.AbsolutePosition, o.AbsoluteSize, cell.AbsolutePosition, cell.AbsoluteSize
+					return p.X >= cp.X - 0.5 and p.X + s.X <= cp.X + cs.X + 0.5 and p.Y >= cp.Y - 0.5 and p.Y + s.Y <= cp.Y + cs.Y + 0.5
+				end
+				for i = 1, 3 do
+					local cell = H.find(strip, "StripSlot" .. i)
+					local name = cell and cell:FindFirstChild("PetName")
+					local level = cell and cell:FindFirstChild("Level")
+					local empty = cell and cell:FindFirstChild("Empty")
+					T.check(cell and cell.AbsoluteSize.X >= 70, "hudteam phone: ...StripSlot" .. i .. " is >= 70 px wide", cell and fmt("%.1f", cell.AbsoluteSize.X))
+					T.check(name and level and empty and name.AbsoluteSize.X >= 40 and inside(name, cell) and inside(level, cell) and inside(empty, cell),
+						"hudteam phone: ...StripSlot" .. i .. " PetName (>= 40 px) / Level / Empty stay inside the cell", name and fmt("name %.1f", name.AbsoluteSize.X))
+				end
+				-- the buttons keep their 44 design px (35 px under the panel's 0.8 touch scale, like its SOLO / PARTY row),
+				-- under the slots, never over them
+				local slotsRow = H.find(strip, "Slots")
+				for _, bn in ipairs({ "StripEdit", "StripAuto" }) do
+					local b = H.find(strip, bn)
+					local below = b and slotsRow and b.AbsolutePosition.Y >= slotsRow.AbsolutePosition.Y + slotsRow.AbsoluteSize.Y - 0.5
+					T.check(b and b.AbsoluteSize.Y >= 44 * 0.8 - 0.5 and b.AbsoluteSize.X >= 44 and inside(b, strip) and below,
+						"hudteam phone: ..." .. bn .. " keeps its size, inside the strip, under the slots", b and fmt("%.1f x %.1f", b.AbsoluteSize.X, b.AbsoluteSize.Y))
+				end
 			end
 		end
 		H.closeAll()
