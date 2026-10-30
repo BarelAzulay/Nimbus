@@ -888,13 +888,15 @@ end
 -- floor, one species: a pack, so the synergy rule gives it the Pair / Trio bonus like a player's team) and, past the
 -- level cap, training (Training: all four skills, rank 0 -> 10). The species comes from the run seed and the round's
 -- rarity band (never EventOnly; a band's lower rarity in the first half of its rounds, the higher one in the second
--- half; the open band its last rarity from From + 6). The team's TeamPower never drops below the round before: the
--- level is raised, then the tier, then a champion joins, then a training rank; at the very top the stronger team of
--- the round before stays. Rounds 1-3 (OpeningRounds) are the three weakest level-1 Commons that do not heal.
--- Tuned 2026-10-30 with tools/sim_battle.lua (section ring, no heal, 12 seeds): stage record medians S1 13, S2 16, S3 20,
--- S4 24, S5 25, S6 30, S7 33, S8 35, S9 41, S10 51 (the fresh-HP ladder before was 14 .. 49), three L100 Rainbow evo-2
--- fully trained pets 65; rounds 1-3 100% for every single level-1 starter; a team beats champions 10+ levels below it
--- 24 of 24; round 100's champions beat the maxed team 24 of 24 fresh fights.
+-- half; the open band its last rarity from From + 6): a seeded pick among the species that match the round before
+-- within MaxLevelRaise levels of the curve (none there: the strongest one). The team's TeamPower never drops
+-- below the round before: the level is raised, then the tier, then a champion joins, then a training rank; at the very
+-- top the stronger team of the round before stays. Rounds 1-3 (OpeningRounds) are the three weakest level-1 Commons that do not heal.
+-- Tuned 2026-10-30 with tools/sim_battle.lua (section ring, no heal, 12 seeds; re-measured with MaxLevelRaise 5): stage
+-- record medians S1 13, S2 15, S3 19, S4 25, S5 25, S6 30, S7 33, S8 35, S9 42, S10 51 (the fresh-HP ladder before was
+-- 14 .. 49), three L100 Rainbow evo-2 fully trained pets 67; rounds 1-3 100% for every single level-1 starter; a team
+-- beats champions 10+ levels below it 24 of 24; round 100's champions beat the maxed team 24 of 24 fresh fights; a
+-- champion's level is never more than 5 above the curve (64 seeds x 400 rounds).
 ----------------------------------------------------------------------
 BattleCatalog.Ring = {
 	-- { round, level } anchors of the champion level curve (the last anchor holds)
@@ -910,6 +912,9 @@ BattleCatalog.Ring = {
 	-- rounds 1..OpeningRounds: the weakest level-1 Commons that do not heal, weakest first (every single level-1 starter
 	-- wins each of them; the opening never needs a level raise)
 	OpeningRounds = 3,
+	-- the species of a round: a seeded pick among the band's species that match the round before within MaxLevelRaise
+	-- levels of the curve (so the shown level follows the curve instead of jumping L42 -> L26 -> ...)
+	MaxLevelRaise = 5,
 	Bands = { -- the champions' rarity by round; the last band is open-ended
 		{ From = 1, To = 9, Rarities = { "Common" } },
 		{ From = 10, To = 15, Rarities = { "Common", "Uncommon" } },
@@ -1029,6 +1034,39 @@ function P4.pickSpecies(r, s, rarity)
 		return nil
 	end
 	return list[nextInt(#list)]
+end
+
+-- the species of round r (seed s) when the round before had power `goal`: one seeded draw (P4.pickSpecies' stream)
+-- among the rarity's species whose `count` x (level + MaxLevelRaise, tier, rank) team reaches goal, so the level
+-- raise in P4.champion stays within MaxLevelRaise of the curve; none there: the strongest one. goal 0: P4.pickSpecies.
+function P4.pickChampion(r, s, rarity, count, level, tier, rank, goal)
+	if not (goal and goal > 0) then
+		return P4.pickSpecies(r, s, rarity)
+	end
+	local pools = P4.pools()
+	local list = pools[rarity]
+	if not list or #list == 0 then
+		list = pools.Common
+	end
+	if not list or #list == 0 then
+		return nil
+	end
+	local reach = min(P4.maxLevel(), level + max(0, floor(num(BattleCatalog.Ring.MaxLevelRaise, 5))))
+	local fits, best, bestPower = {}, nil, -1
+	for _, id in ipairs(list) do
+		local p = BattleCatalog.TeamPower(P4.entries(id, count, reach, tier, rank))
+		if p >= goal then
+			fits[#fits + 1] = id
+		end
+		if p > bestPower then
+			best, bestPower = id, p
+		end
+	end
+	if #fits == 0 then
+		return best
+	end
+	local nextInt = P4.stream(((s % P4.RING_M) * 1000 + r) % P4.RING_M)
+	return fits[nextInt(#fits)]
 end
 
 function P4.basePower(petId, level, tier)
@@ -1257,10 +1295,6 @@ end
 -- below it the level is raised (up to MaxPetLevel), then the tier, then a champion joins, then a training rank; still
 -- below it at the very top, the round before's team stays
 function P4.champion(r, s, prev)
-	local petId = (r <= num(BattleCatalog.Ring.OpeningRounds, 0)) and P4.opening()[r] or P4.pickSpecies(r, s, P4.bandRarity(r))
-	if not petId then
-		return nil, 0
-	end
 	local maxCount = P4.maxChampions()
 	local top = P4.maxLevel()
 	local level = BattleCatalog.ChampionLevel(r)
@@ -1274,9 +1308,13 @@ function P4.champion(r, s, prev)
 	end
 	local rank = P4.trainRank(r)
 	local maxRank = floor(num(BattleCatalog.Training.MaxRank, 10))
+	local goal = prev and prev.Power or 0
+	local petId = (r <= num(BattleCatalog.Ring.OpeningRounds, 0)) and P4.opening()[r] or P4.pickChampion(r, s, P4.bandRarity(r), count, level, P4.TIERS[tier], rank, goal)
+	if not petId then
+		return nil, 0
+	end
 	local entries = P4.entries(petId, count, level, P4.TIERS[tier], rank)
 	local power = BattleCatalog.TeamPower(entries)
-	local goal = prev and prev.Power or 0
 	while power < goal do
 		if level < top then
 			level = level + 1
@@ -1308,7 +1346,7 @@ function P4.memoFor(s)
 	local from = R.TierFrom or {}
 	parts[#parts + 1] = tostring(from.Golden) .. "/" .. tostring(from.Rainbow)
 	local tr = R.Training or {}
-	parts[#parts + 1] = "T" .. tostring(tr.From) .. "-" .. tostring(tr.To) .. "/" .. tostring(R.OpeningRounds)
+	parts[#parts + 1] = "T" .. tostring(tr.From) .. "-" .. tostring(tr.To) .. "/" .. tostring(R.OpeningRounds) .. "/" .. tostring(R.MaxLevelRaise)
 	for _, h in ipairs(R.Helpers or {}) do
 		parts[#parts + 1] = tostring(h.From) .. "x" .. tostring(h.Count)
 	end
@@ -2281,6 +2319,9 @@ function BattleCatalog.Validate()
 	end
 	if not (finite(RG.OpeningRounds) and RG.OpeningRounds >= 0 and RG.OpeningRounds <= (RG.Bands[1] and RG.Bands[1].To or 0) and RG.Bands[1].Rarities[1] == "Common") then
 		bad("Ring.OpeningRounds: inside the first band (Common)")
+	end
+	if not (finite(RG.MaxLevelRaise) and RG.MaxLevelRaise >= 0) then
+		bad("Ring.MaxLevelRaise: >= 0 (how far above the curve a picked species may be raised)")
 	end
 	local nextFrom = 1
 	for i, b in ipairs(RG.Bands) do

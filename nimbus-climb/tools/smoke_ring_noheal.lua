@@ -104,6 +104,10 @@ S.ringnh_catalog = guarded("ringnh_catalog", function()
 	local t3 = T.tally("ring no-heal: RingPower(r) >= RingPower(r - 1) (rounds 2..120, seeds 1..8)")
 	local t4 = T.tally("ring no-heal: the crowned champion is never an EventOnly pet")
 	local t6 = T.tally("ring no-heal: every champion pet's Evo is the stage its level allows, Power = TeamPower(Pets)")
+	-- review fix: the shown level follows the curve (a species is picked only when it matches the round before within
+	-- MaxLevelRaise levels), never L42 one round and L26 the next
+	local t7 = T.tally("ring no-heal: every champion's level is within Ring.MaxLevelRaise of ChampionLevel(r) (the curve the HUD shows)")
+	local raise = R.MaxLevelRaise
 	for r = 1, 120 do
 		for s = 1, 8 do
 			local spec = BC.ChampionTeam(r, s)
@@ -113,6 +117,7 @@ S.ringnh_catalog = guarded("ringnh_catalog", function()
 					t2:case(p.Boss == nil and p.Handicap == nil and p.Boost == nil and p.Level <= top and p.Level >= 1, r .. ":" .. tostring(p.PetId) .. " L" .. tostring(p.Level))
 					local def = PC.Get(p.PetId)
 					t6:case(def ~= nil and p.Evo == stageFor(PC, def, p.Level), r .. ":" .. tostring(p.PetId) .. " L" .. tostring(p.Level) .. " evo " .. tostring(p.Evo))
+					t7:case(type(raise) == "number" and raise >= 0 and raise <= 6 and p.Level >= BC.ChampionLevel(r) and p.Level <= BC.ChampionLevel(r) + raise, fmt("%d/%d: %s L%d (curve L%d)", r, s, tostring(p.PetId), p.Level, BC.ChampionLevel(r)))
 				end
 				t6:case(spec.Power == BC.TeamPower(spec.Pets), r .. "/" .. s .. " power")
 				if r > 1 then
@@ -127,6 +132,7 @@ S.ringnh_catalog = guarded("ringnh_catalog", function()
 	t3:report()
 	t4:report()
 	t6:report()
+	t7:report()
 	-- the curve
 	local A = R.LevelAnchors
 	T.check(type(A) == "table" and A[1][1] == 1 and A[1][2] == 1 and A[#A][2] == top, "ring no-heal: Ring.LevelAnchors starts at round 1 / level 1 and ends at MaxPetLevel " .. top)
