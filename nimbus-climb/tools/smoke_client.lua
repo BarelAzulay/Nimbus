@@ -347,7 +347,7 @@ S.client_load = guarded("client_load", function()
 	end
 	-- every ScreenGui the game builds: the documented display orders, never reset on spawn, and every one
 	-- that carries text respects the top bar inset
-	local wantedOrder = { NimbusHud = 10, NimbusHotbar = 11, NimbusMenu = 20, NimbusNotify = 30 }
+	local wantedOrder = { NimbusHud = 10, NimbusHotbar = 11, NimbusMenu = 20, NimbusTopBar = 21, NimbusNotify = 30 }
 	for _, g in ipairs(gui():GetChildren()) do
 		if g:IsA("ScreenGui") then
 			T.eq(g.ResetOnSpawn, false, g.Name .. ".ResetOnSpawn = false")
@@ -361,7 +361,8 @@ S.client_load = guarded("client_load", function()
 					break
 				end
 			end
-			if hasText and g.Name ~= "MobileControls" then
+			-- (NimbusTopBar is the exception by design: its pill sits INSIDE Roblox's top bar, smoke_hud_pill.lua checks it)
+			if hasText and g.Name ~= "MobileControls" and g.Name ~= "NimbusTopBar" then
 				T.eq(g.IgnoreGuiInset, false, g.Name .. ".IgnoreGuiInset = false (it carries text)")
 			end
 		end
@@ -1362,7 +1363,8 @@ S.client_mobile = guarded("client_mobile", function()
 						T.check(not overlaps(col, o), label .. ": the menu column does not cover " .. other[2], show(col) .. " vs " .. show(o))
 					end
 				end
-				-- MenuController (bug batch 2 #1, option A): eight 66 px tiles (gap 6: seven Entry_ tiles + Gear_Settings) in
+				-- MenuController (bug batch 2 #1, option A; HUD cleanup): four 66 px tiles (gap 6: Pets, Index, Home, Stats; no
+				-- gear: Shop / Travel / Settings are TopBarController's pill) in
 				-- ONE column, wrapped into two (or three) columns where one column would push the tiles under 44 px, under ONE
 				-- UIScale (ColumnScale). Its height must be the laid-out rows, scaled once (the mock used to apply the UIScale
 				-- twice), vertically centred in the screen area on desktops, above Roblox's thumbstick on touch landscape
@@ -1400,10 +1402,10 @@ S.client_mobile = guarded("client_mobile", function()
 					rows = rows + 1
 				end
 				T.info("*" .. label .. ": menu tiles " .. columns .. "x" .. rows .. ", scale " .. fmt(factor, 2))
-				if T.check(count == #CONTRACT.v3.menuEntries and gearEntry ~= nil, label .. ": the menu column has its entries (six tiles + Stats) and the gear", tostring(count)) then
+				if T.check(count == #CONTRACT.v3.menuEntries and gearEntry == nil, label .. ": the menu column has its four tiles and no gear", tostring(count)) then
 					local landscapeDesk = w >= h and not (game:GetService("UserInputService").TouchEnabled and not game:GetService("UserInputService").KeyboardEnabled)
-					T.check(#grid == 8 and columns * rows >= 8 and columns <= 3 and (columns == 1 or not landscapeDesk) and (columns - 1) * rows < 8,
-						label .. ": the eight tiles form one column (wrapped only where a column does not fit)", #grid .. " tiles, " .. columns .. " column(s), " .. rows .. " row(s)")
+					T.check(#grid == 4 and columns * rows >= 4 and columns <= 3 and (columns == 1 or not landscapeDesk) and (columns - 1) * rows < 4,
+						label .. ": the four tiles form one column (wrapped only where a column does not fit)", #grid .. " tiles, " .. columns .. " column(s), " .. rows .. " row(s)")
 					local expected = (rows * 66 + (rows - 1) * 6) * factor
 					T.check(math.abs(menuColumn.AbsoluteSize.Y - expected) <= 1.5, label .. ": the menu column height is its rows, scaled once", fmt(menuColumn.AbsoluteSize.Y, 1) .. " px vs " .. fmt(expected, 1))
 					T.check(biggest >= 44 - 0.5, label .. ": the tiles stay >= 44 px", fmt(biggest, 1) .. " px")

@@ -131,6 +131,7 @@ Config.Remotes = {
 	"ObbyPick", -- (levelId:string)  pick an obby level at the Obby gate (PortalService.PickLevel; unlocked levels only)
 	"SettingsSet", -- (key:string, value:any)  Music / Sfx 0..10, Gfx "Auto"|"Low"|"High", Shake / MouseLock bool, SeenNotes int (DataService)
 	"MenuPlay", -- ()  the main menu's PLAY: the server spawns the character (PlayerService.SpawnPlayer; first per session, 1/s)
+	"QuickTravel", -- (dest:string) "Court" | "Plaza"  HUD cleanup: the pill's Travel drop-down (GateService.Travel)
 }
 
 ----------------------------------------------------------------------

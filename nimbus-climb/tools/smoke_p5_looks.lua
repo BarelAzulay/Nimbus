@@ -421,28 +421,28 @@ local function clientScenarios()
 			local e = column and (column:FindFirstChild("Entry_" .. id) or column:FindFirstChild("Gear_" .. id))
 			return e and e:FindFirstChild("MenuButton_" .. id, true)
 		end
-		local grid = { "Pets", "Inventory", "Team", "Index", "Shop", "Spot" }
+		local grid = { "Pets", "Index", "Spot" }
 		local okNames = true
 		for _, id in ipairs(grid) do
 			local b = btn(id)
 			okNames = okNames and b ~= nil and b:IsA("TextButton")
 		end
-		T.check(okNames and btn("Stats") and btn("Settings"), "p5tiles: MenuButton_<Id> tiles kept (Pets, Items, Team, Index, Shop, Home) + Stats + the Settings gear")
+		T.check(okNames and btn("Stats") and btn("Settings") == nil and btn("Shop") == nil, "p5tiles: MenuButton_<Id> tiles kept (Pets, Index, Home) + Stats; no gear / Shop tile (HUD cleanup: the top-left pill)")
 		local function at(id)
 			local b = btn(id)
 			return b and b.AbsolutePosition or Vector2.new(-1, -1)
 		end
-		-- bug batch 2 #1 (option A): ONE slim column, top to bottom Pets, Items, Team, Index, Shop, Home, Stats, gear
-		local order = { "Pets", "Inventory", "Team", "Index", "Shop", "Spot", "Stats", "Settings" }
+		-- bug batch 2 #1 (option A; HUD cleanup): ONE slim column, top to bottom Pets, Index, Home, Stats
+		local order = { "Pets", "Index", "Spot", "Stats" }
 		local oneColumn = true
 		for i = 2, #order do
 			local p, q = at(order[i - 1]), at(order[i])
 			oneColumn = oneColumn and math.abs(q.X - p.X) < 1 and q.Y > p.Y + 40
 		end
-		T.check(oneColumn, "p5tiles: one column (Pets, Items, Team, Index, Shop, Home, Stats, Settings) top to bottom")
+		T.check(oneColumn, "p5tiles: one column (Pets, Index, Home, Stats) top to bottom")
 		local pets = btn("Pets")
-		T.check(pets and math.abs(pets.AbsoluteSize.X - 56) <= 2 and math.abs(btn("Settings").AbsoluteSize.X - 56) <= 2,
-			"p5tiles: tiles are 56 px on a 1080p screen (the gear too)", pets and tostring(pets.AbsoluteSize) or "")
+		T.check(pets and math.abs(pets.AbsoluteSize.X - 56) <= 2 and btn("Stats") and math.abs(btn("Stats").AbsoluteSize.X - 56) <= 2,
+			"p5tiles: tiles are 56 px on a 1080p screen (Stats too)", pets and tostring(pets.AbsoluteSize) or "")
 		local label = pets and pets:FindFirstChild("Label", true)
 		T.check(label and label.Text == "Pets", "p5tiles: ...with their labels")
 		-- every window docked by the window rule, no backdrop
@@ -485,11 +485,16 @@ local function clientScenarios()
 		if #others > 0 then
 			T.info("p5tiles: other owners' guis still carry a Backdrop (their wave): " .. table.concat(others, ", "))
 		end
-		-- the gear: never an error (MainMenuController's settings, or a hint until it exists)
+		-- the gear (HUD cleanup: the top-left pill's PillButton_Settings): never an error (MainMenuController's settings,
+		-- or a hint until it exists)
 		local errors0 = #Mock.Errors
-		Mock.Click(btn("Settings"))
+		local bar = pg():FindFirstChild("NimbusTopBar")
+		local gear = bar and bar:FindFirstChild("PillButton_Settings", true)
+		if gear then
+			Mock.Click(gear)
+		end
 		advance(0.5)
-		T.check(#Mock.Errors == errors0, "p5tiles: the Settings gear opens the settings (or says they are getting ready) without errors")
+		T.check(gear ~= nil and #Mock.Errors == errors0, "p5tiles: the Settings gear opens the settings (or says they are getting ready) without errors")
 		closeAll()
 		local _ = holders
 		KC.flushErrors("client_p5menu_tiles")

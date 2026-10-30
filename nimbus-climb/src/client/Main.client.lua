@@ -17,6 +17,7 @@ local CONTROLLER_NAMES = {
 	"DamageFx",
 	"NotifyController",
 	"MenuController",
+	"TopBarController", -- HUD cleanup: the top-left pill (Shop / Travel / Settings)
 	"HotbarController",
 	"PetController",
 	"TokenFx",

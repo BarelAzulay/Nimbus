@@ -110,7 +110,8 @@ local K = {
 	STRIP_CHIP_H = 24,
 	-- ... except in a battle / dungeon run on a landscape phone, where the battle HUD needs the right edge: there the
 	-- strips sit in ONE row inside Roblox's top band (the v5 place the battle HUD is laid out around)
-	BAND_LEFT = 150, -- the row starts right of Roblox's top-bar buttons (screen px) ...
+	BAND_LEFT = 150, -- the row starts right of Roblox's top-bar buttons (screen px; HUD cleanup: right of
+	-- TopBarController's pill, its NimbusTopBar PillRight + STRIP_GAP, this at least) ...
 	BAND_RIGHT = 72, -- ... and ends left of its "..." button
 	BAND_INSET = 58, -- the top bar's height when the gui inset cannot be measured
 	BAND_MIN_W = 120, -- a strip in the band is squeezed to this at most
@@ -774,10 +775,42 @@ end
 --     or the RUN / DASH buttons (it steps up above them on a portrait phone);
 --   * the match / party panels and the title card keep the top-left corner (right of the menu column when they would
 --     reach it).
+-- HUD cleanup: TopBarController's pill (ScreenGui NimbusTopBar) sits in Roblox's top band right of its buttons; a
+-- phone battle's TopBand currency row starts right of it (the PillRight attribute, screen px), K.BAND_LEFT at least.
+local function topBarGui()
+	local pg = playerGui()
+	local bar = pg and pg:FindFirstChild("NimbusTopBar")
+	return (bar and bar:IsA("ScreenGui")) and bar or nil
+end
+
+local function bandLeft()
+	local right = 0
+	pcall(function()
+		local bar = topBarGui()
+		right = (bar and bar.Enabled and tonumber(bar:GetAttribute("PillRight"))) or 0
+	end)
+	if right > 0 then
+		return math.max(K.BAND_LEFT, right + K.STRIP_GAP)
+	end
+	return K.BAND_LEFT
+end
+
 local function applyMargins(animate, force)
 	if not UI.Gui or not M then
 		return
 	end
+	-- the pill moves (Travel hides in a battle, a resize): the band row follows it
+	local topBar = topBarGui()
+	if topBar and S.topBar ~= topBar then
+		S.topBar = topBar
+		track(topBar:GetAttributeChangedSignal("PillRight"):Connect(function()
+			guard("top bar", applyMargins, false, true)
+		end))
+		track(topBar:GetPropertyChangedSignal("Enabled"):Connect(function()
+			guard("top bar", applyMargins, false, true)
+		end))
+	end
+	local bandX = bandLeft()
 	local touch = isTouchDevice()
 	local side = touch and K.TOUCH_EDGE or K.EDGE
 	local vp = viewportSize()
@@ -797,10 +830,10 @@ local function applyMargins(animate, force)
 	-- else (a portrait phone with Cash / Gems) they keep the narrow stack and the battle HUD's fighter card narrows
 	local nCur = math.max(1, #currencies)
 	local topBand = touch and inBattle and math.min(vp.X, vp.Y) <= K.SMALL_PHONE
-		and nCur * K.BAND_MIN_W * k + (nCur - 1) * K.STRIP_GAP * k <= vp.X - K.BAND_LEFT - K.BAND_RIGHT
+		and nCur * K.BAND_MIN_W * k + (nCur - 1) * K.STRIP_GAP * k <= vp.X - bandX - K.BAND_RIGHT
 
 	local parts = { area.X, area.Y, vp.X, vp.Y, k, touch and 1 or 0, hasPanel and 1 or 0, hasTitle and 1 or 0, topH,
-		rectKey(column), rectKey(bar), rectKey(cornerCard), inMatch and 1 or 0, topBand and 1 or 0, inBattle and 1 or 0 }
+		rectKey(column), rectKey(bar), rectKey(cornerCard), inMatch and 1 or 0, topBand and 1 or 0, inBattle and 1 or 0, bandX }
 	for _, c in ipairs(currencies) do
 		table.insert(parts, c.Id)
 	end
@@ -900,14 +933,14 @@ local function applyMargins(animate, force)
 	if UI.Currency and topBand then
 		-- one row in the top band (above the gui area: the gui starts below Roblox's top bar)
 		mode = "TopBand"
-		local bandW = math.floor(Util.Clamp((vp.X - K.BAND_LEFT - K.BAND_RIGHT - (n - 1) * K.STRIP_GAP * k) / n / k, K.BAND_MIN_W, stripW))
+		local bandW = math.floor(Util.Clamp((vp.X - bandX - K.BAND_RIGHT - (n - 1) * K.STRIP_GAP * k) / n / k, K.BAND_MIN_W, stripW))
 		if layoutCurrencyRows then
 			layoutCurrencyRows(currencies, "Band", bandW)
 		end
 		UI.Currency.Parent = UI.TopRight
 		UI.Currency.AnchorPoint = Vector2.new(0, 0.5)
 		UI.Currency.Size = UDim2.fromOffset(n * bandW + (n - 1) * K.STRIP_GAP, K.STRIP_H)
-		UI.Currency.Position = UDim2.new(0, K.BAND_LEFT, 0, -math.max(inset, K.BAND_INSET) / 2)
+		UI.Currency.Position = UDim2.new(0, bandX, 0, -math.max(inset, K.BAND_INSET) / 2)
 		if not UI.Currency.Visible then
 			UI.Currency.Visible = true
 		end

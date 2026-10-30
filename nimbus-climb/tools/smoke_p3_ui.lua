@@ -16,7 +16,7 @@
 --                       "trial" (the arrow at the Trial Portal, none while fighting); Trial 1 cleared -> "raid" (a hint
 --                       with the raid countdown); standing in the arena while a raid runs ends the chapter: on to
 --                       chapter 4 (Phase 4), the token reward paid once; a BattleEnded trial win completes "trial" by itself
---   client_p3ui         (client) the Team tile (MenuButton_Team) and window: slot cards (pet, level, element, power),
+--   client_p3ui         (client) the Team window (Open("Team"); HUD cleanup: the Team tile is gone): slot cards (pet, level, element, power),
 --                       slot 4 locked before Prestige 1 and open after, live synergy + matchups, the element wheel, the
 --                       team power and trophies, the picker (every owned copy, busy ones dimmed); remove / add / swap
 --                       send BattleRequest TeamSet (preset, keys) after a short pause, Use Team N sends TeamSelect, a full
@@ -579,15 +579,12 @@ local function clientScenarios()
 		toClient("ProfileSync", snapshot(0))
 		advance(0.5)
 
-		------------------------------------------------------------ the Team tile + window
-		local tile = MC.GetButton("Team")
-		local label = tile and tile:FindFirstChild("Label", true) -- (NeonKit puts the label under the tile's Body)
-		T.check(tile ~= nil and tile.Name == "MenuButton_Team" and label and label.Text == "Team", "p3ui team: the menu has a Team tile (MenuButton_Team)")
-		Mock.Click(tile)
+		------------------------------------------------------------ the Team window (HUD cleanup: no Team tile any more)
+		MC.Open("Team", {})
 		advance(0.8)
 		local menu = pg():FindFirstChild("NimbusMenu")
 		local win = menu and menu:FindFirstChild("Window_Team")
-		if not T.check(win ~= nil and shown(win), "p3ui team: the Team tile opens the Team window") then
+		if not T.check(win ~= nil and shown(win), "p3ui team: Open('Team') opens the Team window") then
 			return
 		end
 		local slots = {}

@@ -76,6 +76,7 @@ NeonKit.Glyphs = {
 	Spot = "\240\159\143\160",
 	Stats = "\240\159\143\134", -- trophy
 	Settings = "\226\154\153\239\184\143", -- gear
+	Travel = "\240\159\167\173", -- compass (HUD cleanup: the top-left pill's Quick Travel)
 	Obby = "\226\155\176\239\184\143", -- mountain
 	Dungeon = "\240\159\151\157\239\184\143", -- key
 	Ring = "\240\159\145\145", -- crown

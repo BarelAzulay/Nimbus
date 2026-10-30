@@ -645,6 +645,11 @@ end
 local function clickEntry(name)
 	local entry = windowOf("MenuColumn") and windowOf("MenuColumn"):FindFirstChild("Entry_" .. name)
 	local button = entry and entry:FindFirstChildWhichIsA("TextButton", true)
+	if not button then
+		-- HUD cleanup: Shop / Settings are buttons of TopBarController's pill (NimbusTopBar.Pill.PillButton_<name>)
+		local bar = gui():FindFirstChild("NimbusTopBar")
+		button = bar and bar:FindFirstChild("PillButton_" .. name, true)
+	end
 	if button then
 		Mock.Click(button)
 		advance(0.5)
@@ -997,7 +1002,7 @@ S.client_menu = guarded("client_menu", function()
 	-- the column
 	local column = menu:FindFirstChild("MenuColumn")
 	if T.check(column ~= nil, "the menu column exists") then
-		-- v3 (ARCHITECTURE_V3.md section 9): six icon tiles, MenuButton_<Id> inside Entry_<Id>
+		-- v3 (ARCHITECTURE_V3.md section 9; HUD cleanup): four icon tiles, MenuButton_<Id> inside Entry_<Id>
 		local names = CONTRACT.v3.menuEntries
 		local entries = {}
 		local present, buttonsOk = 0, true
@@ -1015,10 +1020,10 @@ S.client_menu = guarded("client_menu", function()
 				extra = extra + 1
 			end
 		end
-		T.check(present == #names and extra == #names, "...with six entries: " .. table.concat(names, ", "), present .. " of " .. #names .. " found, " .. extra .. " entries in total")
+		T.check(present == #names and extra == #names, "...with four entries: " .. table.concat(names, ", "), present .. " of " .. #names .. " found, " .. extra .. " entries in total")
 		T.check(buttonsOk, "...each tile is a TextButton named MenuButton_<Id> (the tutorial rings it)")
 		-- bug batch 2 #1 (option A): ONE column of same-size tiles in menu order (Y rises with LayoutOrder, X stays),
-		-- the Settings gear (Gear_Settings) last
+		-- no Settings gear any more (HUD cleanup: the gear is TopBarController's pill)
 		local grid = {}
 		for _, n in ipairs(names) do
 			if entries[n] then
@@ -1032,7 +1037,7 @@ S.client_menu = guarded("client_menu", function()
 		table.sort(grid, function(a, b)
 			return a.LayoutOrder < b.LayoutOrder
 		end)
-		local ordered, why = #grid == #names + 1 and gear ~= nil, (#grid .. " tiles")
+		local ordered, why = #grid == #names and gear == nil, (#grid .. " tiles")
 		for i = 2, #grid do
 			local a, b = grid[i - 1], grid[i]
 			if not (abs(a.AbsolutePosition.X - b.AbsolutePosition.X) <= 1 and a.AbsolutePosition.Y + a.AbsoluteSize.Y <= b.AbsolutePosition.Y + 1) then
@@ -1041,7 +1046,7 @@ S.client_menu = guarded("client_menu", function()
 				ordered, why = false, a.Name .. " / " .. b.Name .. " differ in size"
 			end
 		end
-		T.check(ordered, "...laid out as ONE column in menu order (the Settings gear last, all tiles one size)", why)
+		T.check(ordered, "...laid out as ONE column in menu order (no gear, all tiles one size)", why)
 		local cx = column.AbsolutePosition.X + column.AbsoluteSize.X / 2
 		local cy = column.AbsolutePosition.Y + column.AbsoluteSize.Y / 2
 		T.check(cx < vp.X * 0.12, "the column is on the left edge", string.format("centre x %.2f of the screen", cx / vp.X))

@@ -2278,7 +2278,7 @@ function NK.gallery()
 	local s = Instance.new("UIScale")
 	s.Scale = f
 	s.Parent = grid
-	local tiles = { { "Pets", "Pets" }, { "Items", "Items" }, { "Team", "Team" }, { "Index", "Index" }, { "Shop", "Shop" }, { "Home", "Home" } }
+	local tiles = { { "Pets", "Pets" }, { "Index", "Index" }, { "Home", "Home" } }
 	for i, t in ipairs(tiles) do
 		NeonKit.Tile({
 			Name = "Tile_" .. t[1], Size = T, Color = t[2], Icon = t[1], Label = t[1], Badge = (t[1] == "Index"),

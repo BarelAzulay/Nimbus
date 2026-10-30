@@ -1,7 +1,8 @@
 -- smoke_bug2_gui.lua: bug batch 2, lane-gui (player report #1 "Game gui needs a compact+improve", option A "Split &
 -- shift"). Loaded by tools/smoke.py in the client world and the phone world:
 --   client_bug2gui_layout (client, 1920x1080 + 1280x720 desktop) the menu is ONE slim column at the left edge,
---                         vertically centred, top to bottom Pets, Items, Team, Index, Shop, Home, Stats, the gear, 56 px
+--                         vertically centred, top to bottom Pets, Index, Home, Stats (HUD cleanup: Shop / Travel /
+--                         Settings are TopBarController's pill; no Items / Team tile), 56 px
 --                         tiles at 1080p; the arrow tab (MenuColumn.Toggle) sits beside the last tile; the currencies are
 --                         thin strips stacked top-right under Roblox's top bar, right-aligned; the vitals card sits
 --                         bottom-centre right above the hotbar, compact; the HUD publishes BottomLeftTop /
@@ -98,7 +99,7 @@ function H.parts()
 		Hotbar = H.path(pg, "NimbusHotbar.Hotbar"),
 	}
 end
-H.ORDER = { "Pets", "Inventory", "Team", "Index", "Shop", "Spot", "Stats", "Settings" }
+H.ORDER = { "Pets", "Index", "Spot", "Stats" }
 function H.tile(id)
 	local column = H.parts().Column
 	local e = column and (column:FindFirstChild("Entry_" .. id) or column:FindFirstChild("Gear_" .. id))
@@ -165,7 +166,7 @@ S.client_bug2gui_layout = guarded("client_bug2gui_layout", function()
 				oneColumn = math.abs(rects[i].x0 - rects[i - 1].x0) < 1 and rects[i].y0 >= rects[i - 1].y1
 			end
 		end
-		T.check(oneColumn, label .. ": ONE column of eight tiles, Pets .. Settings top to bottom")
+		T.check(oneColumn, label .. ": ONE column of four tiles, Pets .. Stats top to bottom")
 		local want = (W == 1920) and 56 or 44.8
 		local sizeOk = oneColumn
 		for _, r in ipairs(rects) do
@@ -176,11 +177,11 @@ S.client_bug2gui_layout = guarded("client_bug2gui_layout", function()
 		local mid = inset + (Hh - inset) / 2
 		T.check(col.x0 >= 0 and col.x0 <= 16 and math.abs((col.y0 + col.y1) / 2 - mid) < 6, label .. ": the column hugs the left edge, vertically centred", H.fmt(col))
 		T.check(col.x1 - col.x0 <= 100, label .. ": ...and is slim (<= 100 px wide with its tab)", H.fmt(col))
-		-- 2. the arrow tab beside the last tile (the gear)
+		-- 2. the arrow tab beside the last tile (Stats)
 		local tab = H.rect(p.Tab)
-		local gear = rects[8]
+		local gear = rects[#H.ORDER]
 		T.check(H.shown(p.Tab) and gear ~= nil and tab.x0 >= gear.x1 and tab.y0 >= gear.y0 - 1 and tab.y1 <= gear.y1 + 1 and (tab.x1 - tab.x0) >= 16,
-			label .. ": the hide arrow tab sits right of the gear tile", H.fmt(tab))
+			label .. ": the hide arrow tab sits right of the last tile", H.fmt(tab))
 		local arrow = p.Tab:FindFirstChild("Arrow")
 		T.check(arrow ~= nil and arrow.Text == "<", label .. ": ...pointing left ('<') while the column is out", arrow and arrow.Text or "none")
 		-- 3. the currencies: thin strips top-right under the top bar
@@ -365,12 +366,12 @@ S.client_bug2gui_mobile = guarded("client_bug2gui_mobile", function()
 		T.check(lowest <= touch.Stick.y0, label .. ": the tiles end above the thumbstick zone", string.format("bottom %.0f, stick top %.0f", lowest, touch.Stick.y0))
 		local tab = H.rect(p.Tab)
 		T.check(H.shown(p.Tab) and tab.x1 - tab.x0 >= 20 and tab.y1 - tab.y0 >= 44 and tab.y1 <= touch.Stick.y0, label .. ": the arrow tab is a thumb target (>= 20 x 44 px) above the stick", H.fmt(tab))
-		-- the tab right after the gear (the last row's last tile), no empty tile slot between them (3 columns on
+		-- the tab right after the last tile (the last row's last tile, Stats), no empty tile slot between them (3 columns on
 		-- 740x360-class phones leave the last row with 2 tiles)
-		local gearB = H.tile("Settings")
+		local gearB = H.tile("Stats")
 		local gear = gearB and H.shown(gearB) and H.rect(gearB)
 		T.check(gear and tab.x0 >= gear.x1 - 0.5 and tab.x0 - gear.x1 <= 8 and tab.y0 >= gear.y0 - 1 and tab.y1 <= gear.y1 + 1,
-			label .. ": the arrow tab sits right after the gear tile (no empty slot)", H.fmt(tab) .. " vs gear " .. (gear and H.fmt(gear) or "none"))
+			label .. ": the arrow tab sits right after the last tile (no empty slot)", H.fmt(tab) .. " vs the last tile " .. (gear and H.fmt(gear) or "none"))
 		if W == 740 then
 			-- folded, the tab still ends flush with the left edge (the fold offset follows the tab, not the tiles' width)
 			local MC = H.mod("MenuController")
@@ -766,7 +767,7 @@ function H.emptyRun(world, sizes)
 				KC.advance(0.2)
 			end
 			H.closeAll()
-			Mock.Click(H.tile("Team"))
+			H.mod("MenuController").Open("Team", {}) -- (HUD cleanup: no Team tile; the window still opens)
 			KC.advance(1)
 			local team = H.parts().Menu:FindFirstChild("Window_Team")
 			local empty = nil

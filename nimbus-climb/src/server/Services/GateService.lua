@@ -4,9 +4,23 @@
 -- Home tile's Claim a home sends GoToSpot, the same portal). "Home" is no gate id here: Use(player, "Home") is junk.
 --
 --   GateService.Init(lobbyInfo, deps)  deps = { SpotService, PortalService, StormAltar, ArenaInfo, MatchService,
---                                      DataService } (Main.server, after SpotService.Init and PortalService.Init)
---   GateService.Teleported             Util.Signal; Fire(player, "Altar") once per accepted teleport
+--                                      DataService, PlayerService, ArenaBuilder } (Main.server, after SpotService.Init
+--                                      and PortalService.Init)
+--   GateService.Teleported             Util.Signal; Fire(player, "Altar" | "Plaza" | "Court") once per accepted teleport
 --   GateService.Use(player, gateId)    the handler behind the prompt (tests call it); -> ok, reason
+--   GateService.Travel(player, dest)   HUD cleanup (Quick Travel): the top-left pill's Travel drop-down (Remotes.QuickTravel
+--                                      (dest), client -> server) -> ok, reason. dest "Court" = the Gate Court
+--                                      (CourtCFrame), "Plaza" = the lobby spawn (PlayerService.GetLobbySpawnCFrame()).
+--                                      Checks in order: a real player and a known dest ("junk"), alive ("dead"), not
+--                                      InMatch ("match"), not InBattle ("battle", with the gates' toast; also set for a
+--                                      whole dungeon run), not locked on a portal pad in its party countdown ("locked"),
+--                                      inside the lobby world ("zone": within SpotRingRadius + 120 studs of
+--                                      Config.Lobby.Origin horizontally and 80 studs vertically, and in no battle zone,
+--                                      ArenaBuilder.ZoneAt), 2 s after the last accepted travel ("cooldown"); then the
+--                                      teleport ("failed" when the character cannot be moved). The remote is that rate
+--                                      limit too: a refused call is silent (except the battle toast).
+--   GateService.CourtCFrame()          the Gate Court landing: 16 studs in front of the Ring gate (LobbyInfo.GateSites.Ring,
+--                                      fallback the Dungeon gate), 3 up, facing the gates; nil without either site
 --
 -- Prompts (created here on LobbyInfo.Gates.<Id>.PromptPart, MaxActivationDistance 12, HoldDuration 0):
 --   AltarGatePrompt  "Travel" / "Storm Altar"   -> StormAltar.GetLanding(): the island deck at the bridge end
@@ -37,6 +51,12 @@ local RANGE_SLACK = 4
 local COOLDOWN = 1.5
 local ATTR_IN_BATTLE = (Config.Attr and Config.Attr.InBattle) or "InBattle"
 local ATTR_IN_MATCH = (Config.Attr and Config.Attr.InMatch) or "InMatch"
+-- HUD cleanup (Quick Travel)
+local TRAVEL_COOLDOWN = 2
+local LOBBY_Y_BAND = 80 -- studs above / below Config.Lobby.Origin that still count as the lobby world
+local LOBBY_R = Config.Lobby.SpotRingRadius + 120 -- horizontal reach of the lobby world (plaza, islands, home ring)
+local COURT_STANDOFF = 16 -- the Gate Court landing stands this far in front of the Ring gate
+local TRAVEL_DESTS = { Court = true, Plaza = true }
 
 local PROMPTS = {
 	Altar = { Name = "AltarGatePrompt", Action = "Travel", Object = "Storm Altar" },
@@ -50,6 +70,8 @@ local S = {
 	parts = {}, -- gate id -> prompt part
 	plazaCF = nil, -- bug batch 2 #4: the "Plaza" gate's arrival (LobbyInfo.Gates.Altar.ReturnCFrame)
 	lastUse = {}, -- Player -> os.clock() of the last accepted use
+	lastTravel = {}, -- Player -> os.clock() of the last accepted Quick Travel
+	lobbyInfo = nil,
 	conn = nil,
 	initialized = false,
 }
@@ -185,6 +207,88 @@ function GateService.Use(player, gateId)
 	return true
 end
 
+-- The Gate Court landing (Quick Travel "Court"): in front of the Ring gate, facing the gates.
+function GateService.CourtCFrame()
+	local sites = type(S.lobbyInfo) == "table" and type(S.lobbyInfo.GateSites) == "table" and S.lobbyInfo.GateSites or {}
+	local site = sites.Ring
+	if typeof(site) ~= "CFrame" then
+		site = sites.Dungeon
+	end
+	if typeof(site) ~= "CFrame" then
+		return nil
+	end
+	local up = Vector3.new(0, 3, 0)
+	return CFrame.lookAt(site.Position + site.LookVector * COURT_STANDOFF + up, site.Position + up)
+end
+
+-- inside the lobby world (the cylinder around the plaza) and in no battle zone (arena floor, duel rings, Ring pockets)
+local function inLobbyWorld(pos)
+	local origin = Config.Lobby.Origin
+	local flat = Vector3.new(pos.X - origin.X, 0, pos.Z - origin.Z)
+	if flat.Magnitude > LOBBY_R or math.abs(pos.Y - origin.Y) > LOBBY_Y_BAND then
+		return false
+	end
+	local ab = S.deps.ArenaBuilder
+	if hasFn(ab, "ZoneAt") then
+		local ok, zone = pcall(ab.ZoneAt, pos)
+		if ok and zone ~= nil then
+			return false
+		end
+	end
+	return true
+end
+
+-- Quick Travel: the checks in order, then the teleport. -> ok, reason
+function GateService.Travel(player, dest)
+	if typeof(player) ~= "Instance" or not player:IsA("Player") or player.Parent == nil then
+		return false, "junk"
+	end
+	if type(dest) ~= "string" or not TRAVEL_DESTS[dest] then
+		return false, "junk"
+	end
+	local root = aliveRoot(player)
+	if not root then
+		return false, "dead"
+	end
+	if inMatch(player) then
+		return false, "match"
+	end
+	if inBattle(player) then
+		notify(player, "Finish your battle first!", "bad")
+		return false, "battle"
+	end
+	if isLocked(player) then
+		return false, "locked"
+	end
+	if not inLobbyWorld(root.Position) then
+		return false, "zone"
+	end
+	local now = os.clock()
+	local last = S.lastTravel[player]
+	if last and now - last < TRAVEL_COOLDOWN then
+		return false, "cooldown"
+	end
+	local cf = nil
+	if dest == "Court" then
+		cf = GateService.CourtCFrame()
+	else
+		local ps = S.deps.PlayerService
+		if hasFn(ps, "GetLobbySpawnCFrame") then
+			local ok, result = pcall(ps.GetLobbySpawnCFrame)
+			cf = ok and result or nil
+		end
+		if typeof(cf) ~= "CFrame" and type(S.lobbyInfo) == "table" then
+			cf = S.lobbyInfo.SpawnCFrame
+		end
+	end
+	if typeof(cf) ~= "CFrame" or not placeCharacter(player, cf) then
+		return false, "failed"
+	end
+	S.lastTravel[player] = now
+	GateService.Teleported:Fire(player, dest)
+	return true
+end
+
 local function makePrompt(part, spec)
 	local old = part:FindFirstChild(spec.Name)
 	if old then
@@ -208,6 +312,7 @@ function GateService.Init(lobbyInfo, deps)
 		return
 	end
 	S.initialized = true
+	S.lobbyInfo = type(lobbyInfo) == "table" and lobbyInfo or nil
 	local gates = type(lobbyInfo) == "table" and type(lobbyInfo.Gates) == "table" and lobbyInfo.Gates or {}
 	for _, id in ipairs(ORDER) do
 		local gate = gates[id]
@@ -248,8 +353,21 @@ function GateService.Init(lobbyInfo, deps)
 			warn("[GateService] " .. id .. ": " .. tostring(err))
 		end
 	end)
+	-- HUD cleanup: the pill's Travel drop-down (a refused call is silent, except the battle toast)
+	local okRemote, travelRemote = pcall(Remotes.Get, "QuickTravel")
+	if okRemote and travelRemote then
+		travelRemote.OnServerEvent:Connect(function(player, dest)
+			local ok, err = pcall(GateService.Travel, player, dest)
+			if not ok then
+				warn("[GateService] QuickTravel: " .. tostring(err))
+			end
+		end)
+	else
+		warn("[GateService] no QuickTravel remote")
+	end
 	Players.PlayerRemoving:Connect(function(player)
 		S.lastUse[player] = nil
+		S.lastTravel[player] = nil
 	end)
 end
 

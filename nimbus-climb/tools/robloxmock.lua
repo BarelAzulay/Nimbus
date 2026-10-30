@@ -6317,6 +6317,13 @@ end
 
 service("GuiService", {
 	props = { MenuIsOpen = T.bool(false), SelectedObject = T.inst(), AutoSelectGuiEnabled = T.bool(true), TouchControlsEnabled = T.bool(true) },
+	-- TopbarInset: the free part of Roblox's top bar (a Rect in screen px). A test sets Mock.TopbarInset; nil (the
+	-- default) reads like a client where the property is not ready yet, so the game's fallbacks run.
+	getters = {
+		TopbarInset = function()
+			return Mock.TopbarInset
+		end,
+	},
 	methods = {
 		GetGuiInset = function()
 			return v2(0, Mock.TopInset or 36), v2(0, 0)

@@ -1,13 +1,16 @@
 -- MenuController (client, v3 + Phase 2): the left menu of icon tiles and every window the player opens.
 --
 --   MenuController.Init()
---   MenuController.Open(panelId, args)   -- "Inventory" | "Pets" | "Index" | "Shop" | "Stats" | "Home" | "Team" (what
---                                           OpenPanel does; args: Tab, RouletteId, Currency = "Gems", Action, Key).
+--   MenuController.Open(panelId, args)   -- "Inventory" | "Pets" | "Index" | "Shop" | "Stats" | "Home" | "Team" |
+--                                           "Settings" (what OpenPanel does; args: Tab, RouletteId, Currency = "Gems",
+--                                           Action, Key).
 --                                           Phase 4: "Pets" with Action = "Feed" | "Garden", "Feed", "Train" and "Evolve"
 --                                           go to CareController (the Food Machine list, the garden picker, the Training
 --                                           Place window, the EVOLVE moment); Action = "Evolve" with a Key (the floating
 --                                           card's EVOLVE! pill) opens the Pets panel on that pet with the EVOLVE confirm
 --   MenuController.Close()               -- closes whatever window / overlay is open
+--   MenuController.OpenSettings()        -- HUD cleanup: MainMenuController's settings panel (the top-left pill's gear,
+--                                           TopBarController; a hint until that panel exists)
 --   MenuController.WindowOpened          -- Util.Signal, Fire(windowId) whenever a window opens:
 --                                           "Inventory", "Shop", "Stats", "Home", "Team" or "Index" (the tutorial listens)
 --   Extra: MenuController.GetButton(id) -> the MenuButton_<id> tile (or nil; "Home" is the Spot tile)
@@ -21,9 +24,10 @@
 --          left edge like its arrow tab does (bug batch 2 #1; remembered for the session)
 --
 -- Screen: ScreenGui "NimbusMenu" (display order 20, IgnoreGuiInset = false).
---   * Menu column, left-centre (bug batch 2 #1, option A): ONE slim column of square neon tiles with a glyph and a
---     bold label - Pets, Items, Team, Index, Shop, Home, Stats and the Settings gear - 56 px on a 1080p desktop. Each
---     tile is a TextButton named MenuButton_<Id> (Ids Inventory, Pets, Index, Shop, Spot, Stats, Team, Settings: the
+--   * Menu column, left-centre (bug batch 2 #1, option A; HUD cleanup): ONE slim column of four square neon tiles
+--     with a glyph and a bold label - Pets, Index, Home, Stats - 56 px on a 1080p desktop (Shop / Travel / Settings
+--     live in TopBarController's pill in Roblox's top bar; the Items and Team tiles are gone, the Team window still
+--     opens through Open("Team")). Each tile is a TextButton named MenuButton_<Id> (Ids Pets, Index, Spot, Stats: the
 --     Home tile keeps the v3 id "Spot" so saved tutorial targets keep working) inside a frame Entry_<Id> of the frame
 --     "MenuColumn". The open window's tile glows gold; a red "!" marks new pets and Pet Index rewards waiting to be
 --     claimed. A small arrow tab (MenuColumn.Toggle) folds the column against the left edge and back (remembered for
@@ -2024,6 +2028,7 @@ end
 ----------------------------------------------------------------------
 -- Menu tiles (left-centre column; a 2 x 3 grid on short screens)
 ----------------------------------------------------------------------
+-- (no tile any more since the HUD cleanup; the Items page goes with the items themselves)
 local function menuActionInventory()
 	toggleWindow("Inventory", { Tab = "Items" })
 end
@@ -2079,8 +2084,9 @@ local function menuActionStats()
 	toggleWindow("Stats")
 end
 
--- Phase 5 (6.6): the Settings gear opens MainMenuController's settings panel (menu W3); a hint until it exists
-function P5.openSettings()
+-- Phase 5 (6.6): the Settings gear opens MainMenuController's settings panel (menu W3); a hint until it exists.
+-- HUD cleanup: public (the top-left pill's gear, TopBarController; Open("Settings"))
+function MenuController.OpenSettings()
 	local module = script.Parent:FindFirstChild("MainMenuController")
 	local ok, mod = pcall(function()
 		return module and require(module)
@@ -2101,30 +2107,23 @@ function P5.openSettings()
 	end
 	showHint("Settings are getting ready. Try again soon!", "info")
 end
+P5.openSettings = MenuController.OpenSettings
 
--- The menu (bug batch 2 #1, option A "Split & shift"): ONE slim column of eight neon tiles against the left edge,
--- vertically centred (Pets, Items, Team, Index, Shop, Home, Stats, the Settings gear), with a small arrow tab beside
--- its last tile that slides the column off the edge and back (remembered for the session). Each tile is a
--- NeonKit.Tile whose root is the TextButton MenuButton_<Id> inside a frame Entry_<Id> of the frame "MenuColumn" (names
--- kept: the tutorial rings them; the gear's frame is Gear_Settings; the tab is MenuColumn.Toggle, so everything that
--- measures the column also keeps clear of the tab). Tiles are designed at 66 px under one UIScale: 56 px on a 1080p
+-- The menu (bug batch 2 #1, option A "Split & shift"; HUD cleanup): ONE slim column of four neon tiles against the
+-- left edge, vertically centred (Pets, Index, Home, Stats; Shop / Travel / Settings live in TopBarController's pill in
+-- Roblox's top bar), with a small arrow tab beside its last tile that slides the column off the edge and back
+-- (remembered for the session). Each tile is a NeonKit.Tile whose root is the TextButton MenuButton_<Id> inside a
+-- frame Entry_<Id> of the frame "MenuColumn" (names kept: the tutorial rings them; a Gear = true entry would get a
+-- Gear_<Id> frame; the tab is MenuColumn.Toggle, so everything that measures the column also keeps clear of the tab). Tiles are designed at 66 px under one UIScale: 56 px on a 1080p
 -- desktop (x the screen factor), 50 px on touch screens, never below 44 px (a thumb). Where one column does not fit
 -- that minimum (the band above a landscape phone's thumbstick, the strip above a portrait phone's sheet) the tiles
 -- wrap into two slim columns of four (three columns on the shortest phones), still clear of the stick and never
 -- reaching into the middle of the screen.
 local MENU = {
 	{ Id = "Pets", Label = "Pets", Icon = "Pets", Color = "Orange", Action = menuActionPets },
-	{ Id = "Inventory", Label = "Items", Icon = "Items", Color = "Blue", Action = menuActionInventory },
-	{ Id = "Team", Label = "Team", Icon = "Team", Color = "Red", Action = function()
-		toggleWindow("Team") -- Phase 3: the battle team presets
-	end },
 	{ Id = "Index", Label = "Index", Icon = "Index", Color = "Purple", Action = menuActionIndex },
-	{ Id = "Shop", Label = "Shop", Icon = "Shop", Color = "Green", Action = menuActionShop },
 	{ Id = "Spot", Label = "Home", Icon = "Home", Color = "Yellow", Action = menuActionSpot },
 	{ Id = "Stats", Label = "Stats", Icon = "Stats", Color = "Cyan", Action = menuActionStats },
-	{ Id = "Settings", Label = "Settings", Icon = "Settings", Color = "Grey", Gear = true, Action = function()
-		P5.openSettings()
-	end },
 }
 P5.TILE = 66 -- design px of a tile
 P5.GAP = 6 -- between two tiles (design px)
@@ -9002,6 +9001,8 @@ local function onOpenPanel(panelId, args, fromRemote)
 		openWindow("Stats", args)
 	elseif key == "team" or key == "teams" then
 		openWindow("Team", args)
+	elseif key == "settings" then
+		MenuController.OpenSettings() -- HUD cleanup: the pill's gear
 	elseif key == "close" then
 		closeEverything()
 	end

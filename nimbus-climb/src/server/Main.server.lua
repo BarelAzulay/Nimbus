@@ -380,6 +380,8 @@ if GateService then call("GateService.Init", GateService, "Init", lobbyInfo, {
 	ArenaInfo = arenaInfo, -- the Arena gate teleports to ArenaInfo.Spawn
 	MatchService = MatchService,
 	DataService = DataService,
+	PlayerService = PlayerService, -- HUD cleanup: Quick Travel's Plaza landing (GetLobbySpawnCFrame)
+	ArenaBuilder = ArenaBuilder, -- ... and its battle-zone refusal (ZoneAt)
 }) end
 
 -- v3: Pet Index rewards, lobby NPC pets, new-player tutorial (each handles players who joined before Init).

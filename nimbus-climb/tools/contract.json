@@ -429,10 +429,19 @@
       "functions": [
         "Init",
         "Open",
-        "Close"
+        "Close",
+        "OpenSettings"
       ],
       "signals": [
         "WindowOpened"
+      ]
+    },
+    "client/Controllers/TopBarController": {
+      "functions": [
+        "Init",
+        "GetRect",
+        "TravelAllowed",
+        "Refresh"
       ]
     },
     "client/Controllers/HotbarController": {
@@ -766,7 +775,9 @@
     "server/Services/GateService": {
       "optional": true,
       "functions": [
-        "Init"
+        "Init",
+        "Travel",
+        "CourtCFrame"
       ],
       "signals": [
         "Teleported"
@@ -1071,11 +1082,8 @@
       "Brightness": 2.0
     },
     "menuEntries": [
-      "Inventory",
       "Pets",
-      "Team",
       "Index",
-      "Shop",
       "Spot",
       "Stats"
     ],
