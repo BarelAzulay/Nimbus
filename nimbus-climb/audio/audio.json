@@ -249,19 +249,19 @@
     },
     "NpcCaptainPenguinGreet": {
       "file": "audio/NpcCaptainPenguinGreet.ogg",
-      "sha256": "ed5ddb2c62934825842c37e997d6ba3a562e06ea8a864e199bc912aeb57ee22c",
+      "sha256": "0e6ad1de544aa8526619717fd4833c9eb294a1b18c019f2166c594b612385b39",
       "slot": "Sfx",
       "looped": false
     },
     "NpcCaptainPenguinHmm": {
       "file": "audio/NpcCaptainPenguinHmm.ogg",
-      "sha256": "c2261ff14211eb374eaf3bcb2e929ff4985291d48f8a79a9a09594d4552dbc37",
+      "sha256": "c38a0e2c00362f72a202619f0187accb2a7794f2112e8c6f64a534d0023b4b00",
       "slot": "Sfx",
       "looped": false
     },
     "NpcCaptainPenguinPleased": {
       "file": "audio/NpcCaptainPenguinPleased.ogg",
-      "sha256": "3dd857226dfc0813820d65021accc198b28a7c7d2b6968c02df116873c8a23f7",
+      "sha256": "543cabf472f6b1f9f62e8164170379890b23c8c576b02ace58f6828517e7141f",
       "slot": "Sfx",
       "looped": false
     },
