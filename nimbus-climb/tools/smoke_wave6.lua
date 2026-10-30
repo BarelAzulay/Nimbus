@@ -1324,12 +1324,15 @@ local function serverScenarios()
 		return ok and cf and cf.Position or nil
 	end
 
-	-- what DungeonController.findPocket answers from `pos`: the nearest Dungeons child within 400 studs
+	-- what DungeonController.findPocket answers from `pos`: the nearest Dungeons child within 400 studs (H.pocketAnchor:
+	-- the hall's floor part, not its bounding box)
 	local function clientPocket(pos)
 		local folder = workspace:FindFirstChild("Dungeons")
 		local best, bestD = nil, 400
 		for _, holder in ipairs(folder and folder:GetChildren() or {}) do
-			local at = pivotOf(holder:FindFirstChild("Entrance_1") or holder:FindFirstChildWhichIsA("Model") or holder)
+			local hall = holder:FindFirstChild("Entrance_1") or holder:FindFirstChildWhichIsA("Model")
+			local floorPart = hall and ((hall:IsA("Model") and hall.PrimaryPart) or hall:FindFirstChild("Base"))
+			local at = (floorPart and floorPart:IsA("BasePart") and floorPart.Position) or pivotOf(hall or holder)
 			if at and (at - pos).Magnitude < bestD then
 				best, bestD = holder, (at - pos).Magnitude
 			end
@@ -2351,6 +2354,17 @@ local function clientScenarios()
 		hp.Size = Vector3.new(40, 1, 30)
 		hp.Position = W6P0 + Vector3.new(0, -3, 0)
 		hp.Parent = hall
+		-- the live game's client: the hall's exit door mesh dressed at the world origin (a stray part far from the hall
+		-- moves Entrance_1's bounding box ~half the pocket's distance away; the pocket must still be found)
+		local stray = Instance.new("Model")
+		stray.Name = "ML_Mesh"
+		local sp = Instance.new("Part")
+		sp.Name = "Fixed"
+		sp.Anchored = true
+		sp.Size = Vector3.new(11, 9.25, 2)
+		sp.Position = Vector3.new(0, -3.875, -0.25)
+		sp.Parent = stray
+		stray.Parent = hall
 		hall.Parent = holder
 		local doors = {}
 		local z = W6P0.Z - 15

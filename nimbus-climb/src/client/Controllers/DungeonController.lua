@@ -2307,6 +2307,22 @@ function R.camBind(on)
 	end)
 end
 
+-- where a pocket holder stands for R.findPocket: its hall's floor (PrimaryPart / Base), never the hall's bounding box.
+-- (wave 6 Studio check: a client-dressed mesh placed before its door model's PrimaryPart replicated sat at the world
+-- origin inside Entrance_1 and moved the box centre ~6400 studs away: no pocket found -> WalkSkip NoRoom on every room,
+-- and no camera box clamp for the whole run)
+function H.pocketAnchor(holder)
+	local hall = holder:FindFirstChild("Entrance_1") or holder:FindFirstChildWhichIsA("Model")
+	if not hall then
+		return H.positionOf(holder)
+	end
+	local floorPart = (hall:IsA("Model") and hall.PrimaryPart) or hall:FindFirstChild("Base")
+	if floorPart and floorPart:IsA("BasePart") then
+		return floorPart.Position
+	end
+	return H.positionOf(hall)
+end
+
 -- the pocket (workspace.Dungeons.Dungeon_<i>) the player stands in: the nearest holder within 400 studs
 function R.findPocket()
 	local folder = Workspace:FindFirstChild("Dungeons")
@@ -2316,7 +2332,7 @@ function R.findPocket()
 	end
 	local best, bestD = nil, 400
 	for _, holder in ipairs(folder:GetChildren()) do
-		local at = H.positionOf(holder:FindFirstChild("Entrance_1") or holder:FindFirstChildWhichIsA("Model") or holder)
+		local at = H.pocketAnchor(holder)
 		if at then
 			local d = (at - pos).Magnitude
 			if d < bestD then

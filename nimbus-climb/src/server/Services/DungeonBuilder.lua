@@ -2475,8 +2475,9 @@ function DungeonBuilder.BuildRun(index, floorIndex, seed)
 			holder:SetAttribute("MoodTint", st.Mood.Tint)
 		end
 	end
-	holder.Parent = folder
-	-- the hall
+	-- the hall: built while the holder is still out of the workspace (like a room's staging), so it replicates whole.
+	-- (wave 6 Studio check: the exit door built in a live hall reached a client before its PrimaryPart did and the client
+	-- dressed its mesh at the world origin)
 	local hall = clonePiece(pocket, 1, holder)
 	if hall then
 		local prevStyle = Style.Cur
@@ -2507,6 +2508,7 @@ function DungeonBuilder.BuildRun(index, floorIndex, seed)
 			error(styledErr, 0)
 		end
 	end
+	holder.Parent = folder
 	State.Pockets[index] = pocket
 	DungeonBuilder.PlaceRoom(pocket, 1)
 	return pocket

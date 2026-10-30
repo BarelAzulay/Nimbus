@@ -1257,6 +1257,9 @@ local function serverScenarios()
 			local tr4 = tracker(q[1])
 			crossThreshold(run4, q[1])
 			T.check(run4.State == "Fight" and count(run4.Members) == 4, "p5 run: 4-party: the first member across the Threshold starts the fight for all")
+			-- the enemy is made unbeatable at once (wave 6 fight focus: pets engage from anywhere in the room, so the
+			-- level-20 team clears floor 1's one enemy inside the first second and the leash below would find no Fight)
+			tuneEnemies(run4, unbeatable)
 			advance(1)
 			pump(tr4)
 			local n1 = 0
@@ -1270,9 +1273,8 @@ local function serverScenarios()
 			local w3 = bc.DungeonWave(3, 1, 1, 4, 5)
 			local w1 = bc.DungeonWave(3, 1, 1, 1, 5)
 			T.check(#w1.Pets == 2 and #w3.Pets == 5, "p5 run: on floor 3 a solo wave has 2 enemies, a 4-party wave 2 + 3 = 5", tostring(#w1.Pets) .. "/" .. tostring(#w3.Pets))
-			-- the leash: a member 100 studs from the room centre is removed after 2 strikes (the enemy is made
-			-- unbeatable first: the auto-attacking level-20 team would clear floor 1 before the second strike)
-			tuneEnemies(run4, unbeatable)
+			-- the leash: a member 100 studs from the room centre is removed after 2 strikes (the enemy was made
+			-- unbeatable above: the auto-attacking level-20 team would clear floor 1 before the second strike)
 			local ri = roomInfo(run4, 1)
 			local leashMark = K.logSize()
 			Mock.Teleport(q[4], CFrame.new(ri.Center + Vector3.new(100, 3, 0)))
