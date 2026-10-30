@@ -18,6 +18,13 @@
 --   sky_event_blend    (server world, pure) the four raid themes match BattleCatalog.Bosses; eventBlend 1 = the raid look,
 --                      0.5 = the midpoint for numbers and Color3; the returned themeId (and the faces asked of facesFor)
 --                      switch to the raid theme exactly at eventBlend >= 0.5; phase theme swaps at Blend 0.5
+--   stack_setbase_under_preset (client) LightingStack.SetBase under Push("Dungeon"): the preset's Brightness keeps winning,
+--                      a property only the base names (ClockTime) moves; Pop("Dungeon") lands on the moved base, not the
+--                      boot value; a tweened SetBase reaches its goal and is not Busy; junk SetBase calls change nothing
+--   stack_setbase_value (client) LightingStack.Value(group, prop, "Dungeon") = the new base after SetBase
+--   stack_busy_skips   (client) Busy() is true while a Push / Pop fade runs (the mock tween's own completion), false after;
+--                      a SetBase during the fade stores the base without cancelling or restarting that fade and applies
+--                      nothing; the next SetBase after it applies
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -519,10 +526,99 @@ local function serverScenarios()
 end
 
 ----------------------------------------------------------------------------------------------------
--- the client world (Task 2+ adds the LightingStack and SkyController scenarios here)
+-- the client world: LightingStack's moving base (Task 2); Task 5 adds the SkyController scenarios here
 ----------------------------------------------------------------------------------------------------
 local function clientScenarios()
-	return {}
+	local KC = _G.KC
+	local S = {}
+	local Lighting = game:GetService("Lighting")
+
+	local function stackModule()
+		local inst = Mock.GetPath(ROOTS["client"] .. "/LightingStack")
+		local ok, LS = pcall(require, inst)
+		if not T.check(inst ~= nil and ok and type(LS) == "table", "client/LightingStack loads") then
+			return nil
+		end
+		for _, f in ipairs({ "SetBase", "Busy", "Push", "Pop", "Value", "Ids" }) do
+			if not T.check(type(LS[f]) == "function", "LightingStack." .. f .. " is a function") then
+				return nil
+			end
+		end
+		return LS
+	end
+
+	-- each scenario starts from a known base (and gives it back at the end), whatever ran before it in this world:
+	-- the booted client may already hold GfxLow, so these use the base of the two Lighting properties they name
+	local function withBase(name, fn)
+		return guarded(name, function()
+			local LS = stackModule()
+			if not LS then
+				return
+			end
+			local before = LS.Ids()
+			local saved = { Brightness = LS.Value("Lighting", "Brightness", "Dungeon"), ClockTime = LS.Value("Lighting", "ClockTime", "Dungeon") }
+			LS.SetBase({ Lighting = { Brightness = 2, ClockTime = 14.5 } }, 0)
+			local ok, err = pcall(fn, LS)
+			T.check(ok, name .. " ran without errors", tostring(err))
+			LS.Pop("Dungeon", 0)
+			KC.advance(0.1)
+			LS.SetBase({ Lighting = saved }, 0)
+			T.eq(#LS.Ids(), #before, name .. ": the stack is as it was")
+		end)
+	end
+
+	S.stack_setbase_under_preset = withBase("stack_setbase_under_preset", function(LS)
+		LS.Push("Dungeon", { Lighting = { Brightness = 0.5 } }, 0)
+		T.eq(Lighting.Brightness, 0.5, "Push Dungeon (0 s): Brightness 0.5")
+		LS.SetBase({ Lighting = { Brightness = 1.4, ClockTime = 21 } }, 0)
+		T.check(Lighting.Brightness == 0.5 and Lighting.ClockTime == 21, "SetBase under Dungeon: Brightness stays 0.5 (the preset wins), ClockTime becomes 21", tostring(Lighting.Brightness) .. " " .. tostring(Lighting.ClockTime))
+		LS.Pop("Dungeon", 0)
+		T.check(Lighting.Brightness == 1.4 and Lighting.ClockTime == 21, "Pop Dungeon -> the moved base (1.4 / 21), not the boot value", tostring(Lighting.Brightness) .. " " .. tostring(Lighting.ClockTime))
+		-- a tweened SetBase reaches its goal and is not a Push / Pop fade (Busy stays false)
+		LS.SetBase({ Lighting = { Brightness = 1.1, ClockTime = 22 } }, 2)
+		T.check(Lighting.Brightness == 1.4 and not LS.Busy(), "a 2 s SetBase tweens (no jump) and does not count as Busy", tostring(Lighting.Brightness))
+		KC.advance(2.2)
+		T.check(math.abs(Lighting.Brightness - 1.1) < 1e-9 and math.abs(Lighting.ClockTime - 22) < 1e-9, "the SetBase tween reaches 1.1 / 22", tostring(Lighting.Brightness))
+		-- junk: no error, nothing changes
+		LS.SetBase(nil, 1)
+		LS.SetBase("nope", 1)
+		LS.SetBase({ Nonsense = { Foo = 1 } }, 0)
+		T.check(math.abs(Lighting.Brightness - 1.1) < 1e-9, "junk SetBase calls change nothing")
+	end)
+
+	S.stack_setbase_value = withBase("stack_setbase_value", function(LS)
+		LS.Push("Dungeon", { Lighting = { Brightness = 0.5 } }, 0)
+		T.eq(LS.Value("Lighting", "Brightness", "Dungeon"), 2, "Value without Dungeon = the base (2)")
+		LS.SetBase({ Lighting = { Brightness = 1.4, ClockTime = 21 } }, 0)
+		T.eq(LS.Value("Lighting", "Brightness", "Dungeon"), 1.4, "Value without Dungeon = the new base after SetBase")
+		T.eq(LS.Value("Lighting", "Brightness"), 0.5, "Value with Dungeon = the preset's 0.5")
+		T.eq(LS.Value("Lighting", "ClockTime", "Dungeon"), 21, "Value of ClockTime = the new base 21")
+	end)
+
+	S.stack_busy_skips = withBase("stack_busy_skips", function(LS)
+		T.check(not LS.Busy(), "an idle stack is not Busy")
+		LS.Push("Dungeon", { Lighting = { Brightness = 0.5 } }, 1.5)
+		T.check(LS.Busy(), "a 1.5 s Push: Busy() is true while its fade runs")
+		KC.advance(0.5)
+		T.check(LS.Busy(), "still Busy 0.5 s in")
+		-- SetBase during the fade: stores the base, does not cancel or restart the Dungeon fade, applies nothing yet
+		LS.SetBase({ Lighting = { Brightness = 1.4, ClockTime = 21 } }, 2)
+		T.check(LS.Busy() and Lighting.ClockTime == 14.5, "SetBase while Busy: deferred (ClockTime still 14.5, the fade still runs)", tostring(Lighting.ClockTime))
+		T.eq(LS.Value("Lighting", "Brightness", "Dungeon"), 1.4, "SetBase while Busy: the base is stored")
+		KC.advance(1.1) -- the Dungeon fade ends 1.5 s after the Push (a restarted 2 s tween would still run)
+		T.check(Lighting.Brightness == 0.5 and not LS.Busy(), "the Dungeon fade completes on its own time; Busy() false after", tostring(Lighting.Brightness))
+		T.eq(Lighting.ClockTime, 14.5, "nothing applied the deferred base by itself")
+		-- the next refresh after the fade applies the stored base
+		LS.SetBase({ Lighting = { Brightness = 1.4, ClockTime = 21 } }, 0)
+		T.check(Lighting.Brightness == 0.5 and Lighting.ClockTime == 21, "the next SetBase applies (ClockTime 21, Dungeon's Brightness wins)", tostring(Lighting.ClockTime))
+		-- a Pop fade is Busy too, and lands on the moved base
+		LS.Pop("Dungeon", 1.5)
+		T.check(LS.Busy(), "a 1.5 s Pop: Busy() is true")
+		KC.advance(1.7)
+		T.check(Lighting.Brightness == 1.4 and not LS.Busy(), "Pop fade done: Brightness = the moved base 1.4, Busy() false", tostring(Lighting.Brightness))
+	end)
+
+	return S
 end
 
 if CONTEXT == "server" then

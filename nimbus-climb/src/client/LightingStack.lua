@@ -11,14 +11,22 @@
 --       other preset that sets it, else the base, else the instance's current value)
 --   LightingStack.Top() -> id | nil           the topmost preset's id
 --   LightingStack.Ids() -> { id, ... }        bottom to top (tests / debugging)
+--   LightingStack.SetBase(preset, seconds)    MOVES the base (the living sky): every group.prop `preset` names becomes
+--       the new base value (an unseen property is snapshotted first), then the stack re-applies over `seconds`, so
+--       the presets above keep winning and a Pop lands on the moved base, not on the boot value
+--   LightingStack.Busy() -> boolean           a tween started by Push / Pop (a preset fading in or out) still runs
 --
 -- Rules: the first time any preset names a property, its current (replicated) value is snapshotted as the BASE;
--- the effective value of every property = the topmost preset that sets it, else the base. Numbers, Color3 and
+-- the effective value of every property = the topmost preset that sets it, else the base. The base is no longer
+-- fixed: SkyController (the day / night cycle and the raid skies, every Config.Sky.Cycle.Refresh s) is its only
+-- writer, through SetBase. A SetBase while Busy only stores the values and applies nothing, so the Dungeon fade is
+-- never cancelled or restarted; the next refresh after the fade applies them. Numbers, Color3 and
 -- other tweenable values are tweened (TweenService, client side); booleans / strings / enums switch at once.
 -- A new Push / Pop cancels the running tween of each object first, so values never jump back. Missing instances
 -- (no Atmosphere / Clouds on this client) are skipped quietly. No per-frame code, no connections.
 -- Users: DungeonController ("Dungeon"), GraphicsQuality ("GfxLow"), BattleController ("AttackFxDim": a signature's
--- brief battle dim, Task 11 of the pet attack VFX). Nothing else on the client writes Lighting.
+-- brief battle dim, Task 11 of the pet attack VFX), SkyController (SetBase). Nothing else on the client writes
+-- Lighting.
 -- Plain Lua 5.1-compatible syntax only.
 
 local Lighting = game:GetService("Lighting")
@@ -63,6 +71,7 @@ local TWEENABLE = { number = true, Color3 = true, Vector3 = true, Vector2 = true
 local stack = {} -- { { Id = id, Preset = preset }, ... } bottom -> top
 local base = {} -- group -> { prop -> value } (the snapshot of the untouched values)
 local tweens = {} -- group -> Tween (the running tween of that group's instance)
+local fades = {} -- group -> Tween started by Push / Pop (Busy() while one still plays; SetBase tweens are not here)
 local warned = {}
 
 local function warnOnce(key, text)
@@ -139,13 +148,15 @@ local function setProp(inst, prop, value)
 	end)
 end
 
-local function apply(seconds)
+-- `fade` = this apply comes from Push / Pop (its tweens make Busy() true)
+local function apply(seconds, fade)
 	seconds = tonumber(seconds) or 0
 	for _, group in ipairs(GROUP_ORDER) do
 		local b = base[group]
 		local inst = b and GROUPS[group]()
 		if inst then
 			local running = tweens[group]
+			fades[group] = nil
 			if running then
 				tweens[group] = nil
 				pcall(function()
@@ -175,6 +186,9 @@ local function apply(seconds)
 				end)
 				if ok and tween then
 					tweens[group] = tween
+					if fade then
+						fades[group] = tween
+					end
 					tween:Play()
 				else
 					for prop, value in pairs(goals) do
@@ -202,7 +216,7 @@ function LightingStack.Push(id, preset, seconds)
 		table.remove(stack, i)
 	end
 	stack[#stack + 1] = { Id = id, Preset = preset }
-	apply(seconds)
+	apply(seconds, true)
 end
 
 function LightingStack.Pop(id, seconds)
@@ -211,7 +225,48 @@ function LightingStack.Pop(id, seconds)
 		return
 	end
 	table.remove(stack, i)
-	apply(seconds)
+	apply(seconds, true)
+end
+
+-- a Push / Pop fade still plays (a finished or cancelled tween is dropped here)
+function LightingStack.Busy()
+	local busy = false
+	for _, group in ipairs(GROUP_ORDER) do
+		local tween = fades[group]
+		if tween then
+			local ok, state = pcall(function()
+				return tween.PlaybackState
+			end)
+			if ok and (state == Enum.PlaybackState.Playing or state == Enum.PlaybackState.Delayed) then
+				busy = true
+			else
+				fades[group] = nil
+			end
+		end
+	end
+	return busy
+end
+
+-- the base moves (SkyController): only properties whose instance exists and that read back (snapshot) take a value;
+-- unknown groups are ignored here (SkyController only names the known ones), junk is a no-op
+function LightingStack.SetBase(preset, seconds)
+	if type(preset) ~= "table" then
+		return
+	end
+	snapshot(preset)
+	for _, group in ipairs(GROUP_ORDER) do
+		local props, b = preset[group], base[group]
+		if type(props) == "table" and b then
+			for _, prop in ipairs(sortedKeys(props)) do
+				if b[prop] ~= nil and props[prop] ~= nil then
+					b[prop] = props[prop]
+				end
+			end
+		end
+	end
+	if not LightingStack.Busy() then
+		apply(seconds, false)
+	end
 end
 
 -- the value group.prop has (or comes back to) without preset `skipId`: the topmost OTHER preset that sets it, else
