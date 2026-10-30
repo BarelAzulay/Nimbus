@@ -519,6 +519,11 @@ Config.Sky = {
 		EventBlend = 3, -- seconds a raid sky takes to blend in on the raid start and back out on its end
 	},
 	Speed = { Default = 1, Min = 0.1, Max = 120 }, -- the dev /sky speed clamp (SkySpeed attribute)
+	-- the Workspace attributes server/Services/SkyService publishes (the clock: no remote traffic): Epoch = the server
+	-- time at boot, Speed / Offset = the dev /sky speed and phase jump (loop seconds), Event = the raid boss id whose sky
+	-- is up ("" = none), EventAt = the server time Event last changed (the clients' EventBlend s blend in / out)
+	Attr = { Epoch = "SkyEpoch", Speed = "SkySpeed", Offset = "SkyOffset", Event = "SkyEvent", EventAt = "SkyEventAt" },
+	EventWatch = 5, -- seconds between the server's checks that a raid sky still has its raid (a missed end never sticks)
 	Themes = { Dawn = "dusk_amber", Day = "day_vivid", Sunset = "dusk_amber", Night = "night_aurora" },
 	RaidThemes = { storm_titan = "storm_teal", lava_golem = "lava_obsidian", frost_wyrm = "frost_glacial", shadow_hydra = "shadow_eclipse" },
 	Floor = {
