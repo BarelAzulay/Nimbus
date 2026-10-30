@@ -541,7 +541,13 @@ local function serverScenarios()
 				local okL, why = true, nil
 				for _, group in ipairs(GROUPS) do
 					for prop, v in pairs(look[group] or {}) do
+						-- painted faces turn the engine sun's glare off (smoke_sky_faces checks Glare = 0)
+						local painted = group == "Atmosphere" and prop == "Glare"
 						local ok2, w2 = same(v, p1[group] and p1[group][prop], group .. "." .. prop)
+						if painted then
+							ok2 = p1.Atmosphere.Glare == 0
+							w2 = "Atmosphere.Glare under painted faces: " .. tostring(p1.Atmosphere.Glare) .. " vs 0"
+						end
 						if not ok2 and okL then
 							okL, why = false, w2
 						end

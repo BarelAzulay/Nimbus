@@ -275,8 +275,13 @@ function SkyCycle.Preset(at, eventId, eventBlend, facesFor, fromId, fromBlend)
 				preset.Sky[key] = id
 			end
 		end
-		-- the painted skies carry their own sun / moon / black sun: the engine's would be a second one on top
+		-- the painted skies carry their own sun / moon / black sun: the engine's would be a second one on top. Its disc
+		-- goes, and so do the Atmosphere glare and the sun rays, which glow at the engine sun even with the disc hidden
+		-- (checked in Studio 2026-10-30: a bright second "sun" next to the painted one until both were 0)
 		preset.Sky.CelestialBodiesShown = false
+		preset.Atmosphere = preset.Atmosphere or {}
+		preset.Atmosphere.Glare = 0
+		preset.SunRays = { Intensity = 0 }
 	end
 	return SkyCycle.Floor(preset), theme
 end

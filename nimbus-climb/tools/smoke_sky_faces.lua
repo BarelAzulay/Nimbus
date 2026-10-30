@@ -213,6 +213,8 @@ S.skyfaces_preset_fallback = guarded("skyfaces_preset_fallback", function()
 			end
 			-- a painted sky hides the engine sun / moon (no second sun on top of the painted one)
 			ok = ok and p2.Sky.CelestialBodiesShown == false
+			-- ... and its glow: no Atmosphere glare, no sun rays at the engine sun
+			ok = ok and p2.Atmosphere and p2.Atmosphere.Glare == 0 and p2.SunRays and p2.SunRays.Intensity == 0
 			some:case(ok, fmt("t %d %s: %s", t, tostring(event), tostring(theme)))
 		end
 	end
