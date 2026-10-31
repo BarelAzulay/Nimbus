@@ -15,7 +15,7 @@
 --   skysvc_dev_refuses    /sky speed 0 / -5 -> 0.1, 1e9 -> 120, abc / nan / inf refused (SkySpeed stays finite), a speed
 --                         change keeps the loop position, /sky noon and /sky raid nope refused, /sky dawn|day|sunset|night
 --                         start that phase now, /sky raid <boss> / clear, /sky alone names the phase, the chat path, a
---                         non-developer is refused and changes nothing, /devhelp lists /sky (two toasts <= 90), no NaN in
+--                         non-developer is refused and changes nothing, /devhelp lists /sky (three toasts <= 90), no NaN in
 --                         the preset the attributes give
 -- Plain Lua 5.1 syntax only.
 
@@ -395,7 +395,7 @@ local function serverScenarios()
 			local after = attrs(cfg)
 			T.check(before.Speed == after.Speed and before.Offset == after.Offset and before.Event == after.Event, "...and changes no sky attribute")
 
-			-- /devhelp lists /sky in two toasts that fit
+			-- /devhelp lists /sky in three toasts that fit
 			advance(2.1)
 			local mark = K.logSize()
 			Dev.Run(owner, "devhelp", nil, "smoke")
@@ -409,7 +409,7 @@ local function serverScenarios()
 				end
 			end
 			local all = table.concat(help, " | ")
-			T.check(#help == 2 and fits and all:find("/sky", 1, true) ~= nil, "/devhelp lists /sky (two toasts, <= 90 characters each)", all)
+			T.check(#help == 3 and fits and all:find("/sky", 1, true) ~= nil, "/devhelp lists /sky (three toasts, <= 90 characters each)", all)
 
 			-- whatever the dev did, the preset from the attributes has no NaN
 			local p = at()

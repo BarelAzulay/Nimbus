@@ -1376,7 +1376,7 @@ S.p4data_dev = guarded("p4data_dev", function()
 		mark = chat("/petlevel lots")
 		toast = lastToast(mark)
 		T.check((DataS.GetPetLevel(owner, a)) == 1 and toast.kind == "bad" and toast.text:find("petlevel", 1, true) ~= nil, "p4 dev: '/petlevel lots' is refused with a bad toast naming the command", toast.text)
-		-- the help lists it (two toasts that fit)
+		-- the help lists it (three toasts that fit)
 		mark = chat("/devhelp")
 		local help, fits = {}, true
 		for _, e in ipairs(K.remotesFor("Notify", OWNER, mark)) do
@@ -1389,8 +1389,8 @@ S.p4data_dev = guarded("p4data_dev", function()
 			end
 		end
 		local all = table.concat(help, " ")
-		T.check(#help == 2 and fits and all:find("/petlevel", 1, true) ~= nil and all:find("/devhelp", 1, true) ~= nil and all:find("/reset", 1, true) ~= nil,
-			"p4 dev: /devhelp's two toasts (<= 90 characters each) list /petlevel", all)
+		T.check(#help == 3 and fits and all:find("/petlevel", 1, true) ~= nil and all:find("/devhelp", 1, true) ~= nil and all:find("/reset", 1, true) ~= nil,
+			"p4 dev: /devhelp's three toasts (<= 90 characters each) list /petlevel", all)
 	end)
 	K.removePlayers(joined)
 	if Care and stubs.sessionsOld == nil then
