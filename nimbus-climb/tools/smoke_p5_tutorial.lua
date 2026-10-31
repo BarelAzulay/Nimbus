@@ -5,7 +5,7 @@
 --                       "dungeon"), every step text 97-125 bytes once its placeholders are filled, plain text, no
 --                       Trial / RETREAT / rainbow coins; the contract texts of chapter 2 and the dungeon step; the targets
 --                       (portal -> Obby, coins, machine = Berry Farm pad then the Food Machine pad, feed, dungeon ->
---                       Place Dungeon / DungeonWon); TutorialService knows DungeonWon (not TrialWon), FloorCleared,
+--                       Place Dungeon / DungeonRoom); TutorialService knows DungeonRoom (not TrialWon), FloorCleared,
 --                       StartSolo, the berries top-up; TutorialController waits for UiGate.WaitForPlay and finds
 --                       Portal_Obby; NPC lines <= 125 bytes, 3-5 per NPC, the Phase 5 needles with the catalogs' numbers
 --                       (Berry Farm, Food Bowl, Cloud Cash, Berry Basket, Dungeon floors, a fighter + 2 helpers, the
@@ -19,7 +19,7 @@
 --                       from every index 1-21 lands on that step (8 'finish' passes at once outside a match)
 --   p5dgn_tutorial      (server, booted) chapter 3: team -> dungeon with the arrow at the Dungeon gate's pad (none
 --                       while fighting), standing on the pad opens OpenPanel("Dungeon", { Floor = 1 }) once, floor 1
---                       cleared (DungeonService.FloorCleared) -> raid; the saved Dungeon record and a legacy
+--                       room 1 cleared (DungeonService.RoomCleared, team balance) -> raid; the saved Dungeon record and a legacy
 --                       TrialCleared[1] skip the step; an old Mode "Trial" BattleEnded completes nothing
 -- Plain Lua 5.1 syntax only.
 
@@ -115,9 +115,9 @@ local function serverScenarios()
 		T.eq(s[13].Text, "Build the Berry Farm, then the Food Machine: the farm grows berries and the machine turns them into XP!", "p5ui: 13 'machine' text")
 		T.eq(s[14].Text, "Press E at the Food Machine and press Feed: your berries become XP. At level " .. evo .. " your pet can EVOLVE!", "p5ui: 14 'feed' text (level " .. evo .. ")")
 		T.check(s[16].Text:find("(a fighter + 2 helpers)", 1, true) ~= nil, "p5ui: 16 'team' says (a fighter + 2 helpers)")
-		T.check(s[17].Title == "Into the Dungeon!" and s[17].Hint == "Clear Dungeon floor 1" and s[17].Text:find("Floor 1: the " .. floorOne, 1, true) ~= nil
-			and s[17].Text:find("helpers buff", 1, true) ~= nil and s[17].Text:find("attack by themselves", 1, true) ~= nil,
-			"p5ui: 17 'dungeon' = Into the Dungeon!, Floor 1: the " .. floorOne .. ", pets attack by themselves, helpers buff")
+		T.check(s[17].Title == "Into the Dungeon!" and s[17].Hint == "Clear the first room of Dungeon floor 1" and s[17].Text:find("Floor 1, the " .. floorOne, 1, true) ~= nil
+			and s[17].Text:find("the first room", 1, true) ~= nil and s[17].Text:find("attack by themselves", 1, true) ~= nil,
+			"p5ui: 17 'dungeon' = Into the Dungeon!, Floor 1, the " .. floorOne .. ", the first room, pets attack by themselves")
 
 		-- targets
 		local function t(i)
@@ -130,16 +130,16 @@ local function serverScenarios()
 		T.check(t(13).Pad == "Kitchen" and t(13).Path == true and s[13].CompleteOn == "Built" and s[13].Station == "Kitchen"
 			and tostring(s[13].Hint):find("Berry Farm", 1, true) ~= nil, "p5ui: 13 'machine' -> the Farm pad, then the Kitchen pad -> Built Kitchen")
 		T.check(t(14).Food == true and s[14].CompleteOn == "Fed" and s[14].ChapterEnd == true, "p5ui: 14 'feed' -> the machine -> Fed (ChapterEnd)")
-		T.check(t(17).Kind == "Arena" and t(17).Place == "Dungeon" and t(17).Label == "Dungeon portal" and s[17].CompleteOn == "DungeonWon",
-			"p5ui: 17 'dungeon' -> { Arena, Place Dungeon } -> DungeonWon")
+		T.check(t(17).Kind == "Arena" and t(17).Place == "Dungeon" and t(17).Label == "Dungeon portal" and s[17].CompleteOn == "DungeonRoom",
+			"p5ui: 17 'dungeon' -> { Arena, Place Dungeon } -> DungeonRoom")
 		T.check(t(20).Place == "Ring" and s[18].ChapterEnd == true and s[21].ChapterEnd == true, "p5ui: 20 'ring' keeps Place Ring; 18 / 21 end their chapters")
 
 		-- the server and the client
 		local src = sourceOf("server/Services/TutorialService") or ""
-		T.check(src:find("DungeonWon = true", 1, true) ~= nil and not src:find("TrialWon = true", 1, true) and not src:find("trialOneCleared", 1, true)
+		T.check(src:find("DungeonRoom = true", 1, true) ~= nil and not src:find("TrialWon = true", 1, true) and not src:find("trialOneCleared", 1, true)
 			and src:find("dungeonOneCleared", 1, true) ~= nil and src:find("FloorCleared", 1, true) ~= nil and src:find("StartSolo", 1, true) ~= nil
 			and not src:find("TrialPortal", 1, true) and not src:find('Mode == "Trial"', 1, true),
-			"p5ui: TutorialService: KNOWN_COMPLETE_ON - TrialWon + DungeonWon, dungeonOneCleared, FloorCleared, impossible() reads StartSolo, no Trial branch")
+			"p5ui: TutorialService: KNOWN_COMPLETE_ON - TrialWon + DungeonRoom, dungeonOneCleared, FloorCleared, impossible() reads StartSolo, no Trial branch")
 		T.check(src:find("AddBerries", 1, true) ~= nil and src:match("local FEED_BERRIES = (%d+)") == "500" and src:find("TycoonService.Drops", 1, true) ~= nil,
 			"p5ui: TutorialService tops the berries up (FEED_BERRIES 500, DataService.AddBerries) and reads TycoonService.Drops")
 		local csrc = sourceOf("client/Controllers/TutorialController") or ""
@@ -546,9 +546,9 @@ local function serverScenarios()
 		BS.BattleEnded:Fire("p5-old-trial", { Mode = "Trial", Winners = { p.UserId }, Losers = {}, Level = 1 })
 		advance(0.6)
 		T.eq(stepId(p), "dungeon", "p5dgn tutorial: an old Mode 'Trial' BattleEnded completes nothing")
-		DGS.FloorCleared:Fire(p, 1)
+		DGS.RoomCleared:Fire(p, 1, 1)
 		advance(0.6)
-		T.eq(stepId(p), "raid", "p5dgn tutorial: floor 1 cleared (DungeonService.FloorCleared) marks DungeonWon -> 'raid'")
+		T.eq(stepId(p), "raid", "p5dgn tutorial: room 1 of floor 1 cleared (DungeonService.RoomCleared) marks DungeonRoom -> 'raid'")
 		leave(p)
 
 		-- the saved Dungeon record and a legacy Trial 1 skip the step

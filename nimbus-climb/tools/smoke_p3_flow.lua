@@ -1470,7 +1470,7 @@ S.p3flow_arrive = scenario("p3flow_arrive", function()
 			return stepId(cy) ~= "dungeon"
 		end, 3)
 		ts = tutorial(cy)
-		T.check(ts and ts.Id == "raid", "flow tutorial: the floor-1 clear (DungeonWon) moves Cy on to 'raid'", ts and tostring(ts.Id) or "nil")
+		T.check(ts and ts.Id == "raid", "flow tutorial: a cleared first room (DungeonRoom) has moved Cy on to 'raid'", ts and tostring(ts.Id) or "nil")
 	end
 	toLobby(cy, 6)
 	toLobby(ava)
