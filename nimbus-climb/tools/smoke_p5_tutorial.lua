@@ -8,7 +8,7 @@
 --                       Place Dungeon / DungeonRoom); TutorialService knows DungeonRoom (not TrialWon), FloorCleared,
 --                       StartSolo, the berries top-up; TutorialController waits for UiGate.WaitForPlay and finds
 --                       Portal_Obby; NPC lines <= 125 bytes, 3-5 per NPC, the Phase 5 needles with the catalogs' numbers
---                       (Berry Farm, Food Bowl, Cloud Cash, Berry Basket, Dungeon floors, a fighter + 2 helpers, the
+--                       (Berry Farm, Food Bowl, Cloud Cash, Berry Basket, Dungeon floors, a fighter and 2 helpers, the
 --                       battle keys, the Obby portal, EvolutionBonusOf), no stale words
 --   p5ui_portal_obby    (server, booted) the chapter-1 portal step points at lobby.Portals.Obby; stepping on the Obby
 --                       pad starts a match and completes it
@@ -114,7 +114,7 @@ local function serverScenarios()
 		T.eq(s[12].Text, "Garden pets roam your yard, eat at the Food Bowl and poop Cloud Cash. Only you can scoop it: walk over it!", "p5ui: 12 'coins' text")
 		T.eq(s[13].Text, "Build the Berry Farm, then the Food Machine: the farm grows berries and the machine turns them into XP!", "p5ui: 13 'machine' text")
 		T.eq(s[14].Text, "Press E at the Food Machine and press Feed: your berries become XP. At level " .. evo .. " your pet can EVOLVE!", "p5ui: 14 'feed' text (level " .. evo .. ")")
-		T.check(s[16].Text:find("(a fighter + 2 helpers)", 1, true) ~= nil, "p5ui: 16 'team' says (a fighter + 2 helpers)")
+		T.check(s[16].Text:find("a fighter and 2 helpers", 1, true) ~= nil and s[16].Text:find("Auto-fill best", 1, true) ~= nil and s[16].Text:find("tap a slot", 1, true) ~= nil, "p5ui: 16 'team' says a fighter and 2 helpers, tap a slot, Auto-fill best")
 		T.check(s[17].Title == "Into the Dungeon!" and s[17].Hint == "Clear the first room of Dungeon floor 1" and s[17].Text:find("Floor 1, the " .. floorOne, 1, true) ~= nil
 			and s[17].Text:find("the first room", 1, true) ~= nil and s[17].Text:find("attack by themselves", 1, true) ~= nil,
 			"p5ui: 17 'dungeon' = Into the Dungeon!, Floor 1, the " .. floorOne .. ", the first room, pets attack by themselves")
@@ -187,8 +187,8 @@ local function serverScenarios()
 		local floors = BC and BC.Dungeon and tonumber(BC.Dungeon.Floors) or 12
 		local okA, whyA = says("granny_owl", "Berry Basket", "EVOLVE", "new look", "grow " .. faster .. " faster per level")
 		T.check(okA, "p5ui: Granny Owl: the Berry Basket, EVOLVE's new look, evolved pets grow " .. faster .. " faster (EvolutionBonusOf)", whyA)
-		local okB, whyB = says("coach_corgi", "Dungeon portal", tostring(floors) .. " floors", "Gems", "Team", "+" .. tostring(BC and BC.Trophies and BC.Trophies.Win or 20) .. " trophies")
-		T.check(okB, "p5ui: Coach Corgi: the Dungeon (" .. floors .. " floors from BattleCatalog.Dungeon), Team and trophies", whyB)
+		local okB, whyB = says("coach_corgi", "Dungeon portal", tostring(floors) .. " floors", "Gems", "Open Pets", "+" .. tostring(BC and BC.Trophies and BC.Trophies.Win or 20) .. " trophies")
+		T.check(okB, "p5ui: Coach Corgi: the Dungeon (" .. floors .. " floors from BattleCatalog.Dungeon), Open Pets and trophies", whyB)
 		local okC, whyC = says("sparky_fox", "attack by themselves", "F = ATTACK picks who", "E = ELEMENT", "Q = SPECIAL", "Shift = DASH", "helper", "SWAP", "Ctrl in a battle")
 		T.check(okC, "p5ui: Sparky Fox: the battle keys (pets attack by themselves, F picks who / E / Q / Shift = the pet's DASH, helpers 1 / 2, SWAP, RUN on Ctrl)", whyC)
 		local okD, whyD = says("captain_penguin", "Obby portal", "level", "DASH", "safe zone", "Dungeon")
@@ -210,8 +210,8 @@ local function serverScenarios()
 			and not kw["rainbow coins"] and not kw["Berry Bush"] and not kw["RETREAT"],
 			"p5ui: NPC keywords: Berry Farm, Food Bowl, Cloud Cash, Berry Basket, Dungeon replace Trial Portal, rainbow coins, Berry Bush, RETREAT")
 		-- the p3ui needles stay
-		local okE = says("coach_corgi", "Team", "+20 trophies") and says("granny_owl", "Gems") and says("professor_axolotl", "Fusion Machine", "Storm Altar")
-		T.check(okE, "p5ui: the kept p3ui needles (Coach Corgi Team / +20 trophies, Granny Owl Gems, Professor Axolotl Fusion Machine / Storm Altar)")
+		local okE = says("coach_corgi", "Open Pets", "+20 trophies") and says("granny_owl", "Gems") and says("professor_axolotl", "Fusion Machine", "Storm Altar")
+		T.check(okE, "p5ui: the kept p3ui needles (Coach Corgi Open Pets / +20 trophies, Granny Owl Gems, Professor Axolotl Fusion Machine / Storm Altar)")
 	end)
 
 	------------------------------------------------------------------------------------------------

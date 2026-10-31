@@ -204,8 +204,8 @@ local function serverScenarios()
 		T.check(ok2, "p4ui: Mayor Panda explains the Food Bowl, Cloud Cash, the Berry Farm, Prestige and the home portal", why2)
 		local mult = BC and BC.Ring and BC.Ring.RecordMult or 3
 		local ok3, why3 = says("coach_corgi", "Training Place", "Attack Speed", "Physique", "Ability", "Defense", "Champion Ring",
-			(mult == 3 and "triple" or "x" .. tostring(mult)) .. " Cash", "Dungeon", tostring(BC and BC.Dungeon and BC.Dungeon.Floors or 12) .. " floors", "Team", "trophies")
-		T.check(ok3, "p4ui: Coach Corgi explains the Training Place (4 skills), the Champion Ring (record x" .. tostring(mult) .. "), the Dungeon and the Team tips", why3)
+			(mult == 3 and "triple" or "x" .. tostring(mult)) .. " Cash", "Dungeon", tostring(BC and BC.Dungeon and BC.Dungeon.Floors or 12) .. " floors", "Open Pets", "trophies")
+		T.check(ok3, "p4ui: Coach Corgi explains the Training Place (4 skills), the Champion Ring (record x" .. tostring(mult) .. "), the Dungeon and the Open Pets tips", why3)
 		local ok4, why4 = says("captain_penguin", "safe zone", "DASH", "Boss Raid", "Obby portal", "level")
 		T.check(ok4, "p4ui: Captain Penguin explains the safe zones", why4)
 		local npcAll = ""
@@ -639,7 +639,7 @@ local function clientScenarios()
 		return {
 			Tokens = 900,
 			Pets = pets,
-			Equipped = {},
+			Equipped = { "biscuit_bear", "ember_phoenix" }, -- (the team minus the pet in training: the server's invariant)
 			Items = {},
 			Stats = { Matches = 0, Wins = 0, TokensEarned = 0, Spins = 0, BestTimes = {} },
 			Perks = { MaxHealth = 0, TokenBonus = 0, StaminaRegen = 0, CheckpointHeal = 0 },
@@ -718,8 +718,8 @@ local function clientScenarios()
 			fighters[#fighters + 1] = e.Key
 		end
 		T.eq(table.concat(fighters, ","), "biscuit_bear,ember_phoenix", "p4ui ring: the fighters are the battle team without the pet in training")
-		T.eq(info.Source, "team", "p4ui ring: ...taken from the battle team")
-		T.check(find(win, "Fighter1") and find(win, "Fighter2") and not find(win, "Fighter3"), "p4ui ring: one fighter card per fighter")
+		local faces = find(win, "TeamFaces")
+		T.check(faces and shown(faces.Face1.Level) and shown(faces.Face2.Level) and not shown(faces.Face3.Level) and shown(faces.Face3.Empty), "p4ui ring: a face per fighter, the pet in training keeps an open face")
 		-- round 1 picked; a new record pays x3
 		Mock.Click(find(picker, "Start1"))
 		advance(0.4)

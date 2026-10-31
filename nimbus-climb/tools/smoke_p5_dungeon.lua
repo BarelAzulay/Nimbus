@@ -2689,9 +2689,9 @@ local function clientScenarios()
 		LP:SetAttribute("InMatch", false)
 		KC.toClient("MatchState", nil)
 		KC.toClient("PartyState", nil)
-		-- (HUD cleanup: SOLO / PARTY / JOIN / READY / START with an empty team open TeamPick's popup first: a profile
-		-- with a battle team, so these checks see the direct requests; smoke_hud_team.lua covers the popup)
-		KC.toClient("ProfileSync", { Tokens = 900, Pets = { pebble_pup = 1, biscuit_bear = 1 }, Equipped = {},
+		-- (team balance: SOLO / PARTY / JOIN / READY / START with an empty team open the Pets window first: a profile
+		-- with a battle team, so these checks see the direct requests; smoke_tb_panels.lua covers the empty team)
+		KC.toClient("ProfileSync", { Tokens = 900, Pets = { pebble_pup = 1, biscuit_bear = 1 }, Equipped = { "biscuit_bear", "pebble_pup" },
 			PetLevels = { pebble_pup = { Level = 5, Xp = 0 }, biscuit_bear = { Level = 5, Xp = 0 } },
 			Tutorial = { Step = 1000, Done = true, Gifted = true },
 			Teams = { Presets = { { "biscuit_bear", "pebble_pup" }, {}, {} }, Active = 1, Slots = 3 } })

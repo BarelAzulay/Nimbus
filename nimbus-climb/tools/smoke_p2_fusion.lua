@@ -806,7 +806,7 @@ local function serverScenarios()
 		Pets.Equip(p, "biscuit_bear")
 		local before = DataS.GetTokens(p)
 		ok, key = F.Upgrade(p, "biscuit_bear")
-		T.check(not ok and tostring(key):find("equipped", 1, true) ~= nil and count(p, "biscuit_bear") == 3 and #prof.Equipped == 1 and DataS.GetTokens(p) == before,
+		T.check(not ok and tostring(key):find("only team pets", 1, true) ~= nil and count(p, "biscuit_bear") == 3 and #prof.Equipped == 1 and DataS.GetTokens(p) == before,
 			"fusion: refused when the inputs are the player's only equipped pets (nothing changed)", tostring(key))
 		Pets.Unequip(p, "biscuit_bear")
 		ok, key = F.Upgrade(p, "biscuit_bear")
@@ -1159,7 +1159,7 @@ local function clientScenarios()
 		FC.Open("Upgrade", { Key = "pebble_pup" })
 		advance(0.2)
 		plan = FC.Plan()
-		T.check(plan and not plan.Ok and tostring(plan.Reason):find("equipped", 1, true) ~= nil, "fusion window: fusing the only equipped pets is refused with the reason (like the server)", plan and tostring(plan.Reason) or "")
+		T.check(plan and not plan.Ok and tostring(plan.Reason):find("only team pets", 1, true) ~= nil, "fusion window: fusing the only team pets is refused with the reason (like the server)", plan and tostring(plan.Reason) or "")
 
 		-- readability: every text is >= 18 design px, every visible text has a stroke or a solid backing
 		local small = {}

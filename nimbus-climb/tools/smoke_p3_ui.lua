@@ -178,7 +178,7 @@ local function serverScenarios()
 			"p3ui: Sparky Fox explains the Phase 5 battle keys (F ATTACK, E ELEMENT, Q SPECIAL, DASH; no RETREAT)")
 		T.check(says("captain_penguin", "Boss Raid", "every " .. tostring(raidMinutes) .. " minutes", "DASH") and not says("captain_penguin", "RETREAT"),
 			"p3ui: Captain Penguin explains Boss Raids (every " .. tostring(raidMinutes) .. " minutes) and dashing out of telegraphs")
-		T.check(says("coach_corgi", "Dungeon", tostring(floors) .. " floors", "Team", "+" .. tostring(win) .. " trophies", "fighter", "two helpers"),
+		T.check(says("coach_corgi", "Dungeon", tostring(floors) .. " floors", "Open Pets", "+" .. tostring(win) .. " trophies", "fighter", "two helpers"),
 			"p3ui: Coach Corgi explains the Dungeon (" .. tostring(floors) .. " floors), the team of a fighter + 2 helpers and trophies (+" .. tostring(win) .. ")")
 		local strong = Config.Elements and Config.Elements.StrongMultiplier or 1.5
 		T.check(says("professor_axolotl", "battles", "x" .. tostring(strong), "Power"), "p3ui: Professor Axolotl explains elements and synergy in battle")
@@ -525,7 +525,7 @@ local function clientScenarios()
 		return {
 			Tokens = 900,
 			Pets = pets,
-			Equipped = {},
+			Equipped = presets and presets[1] or TEAM, -- (the active preset: the server's invariant, no pet of it is busy)
 			Items = {},
 			Stats = { Matches = 0, Wins = 0, TokensEarned = 0, Spins = 0, BestTimes = {} },
 			Perks = { MaxHealth = 0, TokenBonus = 0, StaminaRegen = 0, CheckpointHeal = 0 },
@@ -1057,7 +1057,7 @@ local function clientScenarios()
 		T.check(ring and ring:GetAttribute("DockMode") == "Side" and (ring:GetAttribute("DockLeft") or 0) >= 0.5 * 1920,
 			"p5arena dock: the Ring window docks right on 1920x1080 (DockMode Side, left edge >= 0.5 W)", ring and tostring(ring:GetAttribute("DockLeft")))
 		T.check(arena and arena:FindFirstChild("Backdrop") == nil, "p5arena dock: no Backdrop behind the window")
-		-- the Ring fighter cards draw the stored stage (3.7): an Evolved II team fighter
+		-- the Ring's faces draw the stored stage (3.7): an Evolved II team fighter
 		local snap = snapshot(0)
 		snap.PetLevels.biscuit_bear = { Level = 60, Xp = 0 }
 		snap.PetGrowth.biscuit_bear = { Evo = 2 }
@@ -1067,7 +1067,7 @@ local function clientScenarios()
 		advance(0.6)
 		local staged, badge = nil, nil
 		for _, d in ipairs(ring and ring:GetDescendants() or {}) do
-			if d.Name:match("^Fighter%d") and d:GetAttribute("Stage") ~= nil then
+			if d.Name:match("^Face%d") and d:GetAttribute("Stage") ~= nil then
 				if (d:GetAttribute("Stage") or 0) >= 1 then
 					staged = d
 					badge = d:FindFirstChild("StageBadge")
@@ -1077,7 +1077,7 @@ local function clientScenarios()
 		local St = moduleAt("client", "State")
 		local want = St and St.PetStage and St.PetStage("biscuit_bear") or 0
 		T.check(want >= 1 and staged ~= nil and staged:GetAttribute("Stage") == want and badge ~= nil and badge.Text == ((want >= 2) and "EVO II" or "EVO I"),
-			"p5arena ring: the evolved fighter's card carries its stored stage (State.PetStage) and an EVO badge", staged and tostring(staged:GetAttribute("Stage")) .. " vs " .. tostring(want))
+			"p5arena ring: the evolved fighter's face carries its stored stage (State.PetStage) and an EVO badge", staged and tostring(staged:GetAttribute("Stage")) .. " vs " .. tostring(want))
 		-- the Arena panel docks too
 		AC.OpenArena("Duels")
 		advance(0.6)
