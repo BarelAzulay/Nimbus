@@ -999,6 +999,9 @@ def load_catalog(with_pets=False):
     g.PETS_SRC = open(os.path.join(shared, "PetCatalog.lua"), encoding="utf-8").read() if with_pets else ""
     rt.execute(r"""
       local load_ = loadstring or load
+      -- Config.Audio reads shared/AudioIds; the economy reads no sound: an empty table keeps every sound silent here
+      script = { Parent = { AudioIds = "AudioIds" } }
+      require = function() return {} end
       local Config = assert(load_(CONFIG_SRC, "=Config"))()
       local loaded = { Config = Config }
       local Shared = { Config = "Config" }
