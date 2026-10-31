@@ -445,6 +445,17 @@ name over it. Walk into it within 10 seconds and you pop out at your home, your 
 and your pets can use your portal; other players just see it. It does not open during a climb, a battle or a
 Champion Ring run, or while you wait in a portal party.
 
+**Travel** (the top-left pill) opens the very same portal, but this one leads to the **lobby spawn plaza**: use it from
+your home, the Arena island, the Storm Altar island or anywhere else Go home works. The button hides during a climb, a
+battle, a Dungeon run and the Champion Ring. Pressing Travel or Go home again a few seconds later replaces the open
+portal, with the destination of the last press; both share one 3-second cooldown.
+
+### Unlimited stamina in the lobby
+
+In the lobby (the plaza and Gate Court, the shop and garden islands and the spoke bridges, up to the ring street) running
+costs no stamina and a dash costs none either, though the dash cooldown still runs; the stamina bar simply stays full.
+Home plots, the ring street, the Arena island, the Storm Altar island, a climb and a battle use stamina as usual.
+
 ### Buy pads and Home Level
 
 Everything on the yard is built from a **buy pad**: a glowing pad with a floating sign (icon, name, *Build* or
@@ -1241,6 +1252,11 @@ server checks the permission again on every single command, so other players can
 | **Evolve every pet** | Plays every pet's evolution animation one after another in front of you (`/evolve all`). |
 | **Show all pets** / **Show evolved pets** / **Show Evolved II pets** | Lines up every pet at that stage in front of you (`/pets`, `/pets 1`, `/pets 2`). |
 | **Clear pet show** | Removes the showcase pets and stops an evolution (`/clearpets`). |
+| **Evolve my pets** | Every pet you own goes up one stage, for free and at any level, and it is saved (`/evolvepets`). |
+| **Level all pets** + number box | Every pet you own (not only the equipped ones) goes to the level in the box, 1-100 (`/levelall 50`). |
+| **Max stats pets** | Every pet you own: level 100, its highest evolution, rank 10 in all four training skills (`/maxpets`). |
+| **2x speed: off / on** | Doubles your walking and running for this session (`/speed`). |
+| **Players in this server** | One row per player, with **Kick** and **Ban** (Ban asks *Are you sure?* first). |
 | **Reset my data** | Back to a brand-new player: tokens, Cash, Gems, pets (also Golden, Rainbow and fused ones), pet levels, evolutions and training, berries, items, stats, your home build (stations, Garden, the coins on your lawn) and Prestige stars, your battle teams and battle record (trophies, raid and duel counters, Boss Raid pets, the Champion Ring record, your Dungeon floors), Pet Index progress and rewards are wiped (your settings stay), and the tutorial starts again as for a new player. Tap once ("Are you sure?"), then tap again to confirm. Not during a climb or a battle. |
 
 Close it with the red X, `Esc` or gamepad B. Every change answers with a "DEV: ..." toast.
@@ -1268,7 +1284,14 @@ runs Lua code and the game never sees what you type there.
 | `/evolve all [stage]` | Every pet's evolutions one after another (all 49 take about 4½ minutes; `/evolve all 2` plays just the 16 second evolutions). |
 | `/fx <element> <attack> [kind or shape] [rarity] [stage]` | Previews a pet attack effect: a pet of that element (and rarity) and a dummy target stand 10 studs apart in front of you and the attack plays. `<attack>` is `melee`, `ranged`, `special`, `element`, `hurt`, `ko` or `victory`; then, in any order, a special's kind (`blast`, `beam`, `pounce`, `storm`, `freeze`, `heal`, `shield`, `rally`, `haste`; none = the pet's own), an element attack's shape (`cone`, `circle`, `line`), a rarity (default `common`) and a stage (`0`-`2`). Any case: `/fx flame ranged epic`, `/fx storm special beam mythic 2`. |
 | `/clearpets` | Stops an evolution and removes the showcase pets (and the `/fx` pair). |
-| `/devhelp` | Two toasts listing the commands. |
+| `/kick <player> [reason]` | Removes that player from this server. A unique part of the name is enough. Not yourself. |
+| `/ban <player> [reason]` | Bans for good (`Players:BanAsync`, the whole game). Someone in the server by a unique part of the name, anyone else by exact name or userId. Not yourself, not another developer. A failure shows Roblox's own reason; in Studio it says nobody was banned, since Roblox only runs bans on live servers. |
+| `/unban <name or userId>` | Lifts that ban. |
+| `/evolvepets` | Same as Evolve my pets: a real, saved evolution of every pet you own (the 2nd evolution stays Epic and up). Not in a battle. `/evolve` is the animation preview. |
+| `/levelall 50` | Same as Level all pets (1-100; XP starts at 0). Not in a battle. `/petlevel` is the equipped pets only. |
+| `/maxpets` | Same as Max stats pets. A pet in training finishes that job first and comes back. Golden and Rainbow stay what they are. Not in a battle. |
+| `/speed` | Same as the 2x speed toggle: off by default, survives a respawn, never saved. Not in a battle, where the server holds your character to your pet. |
+| `/devhelp` | Three toasts listing the commands. |
 | `/menu` | Opens the main menu again (PLAY, SETTINGS, UPDATES) on your own screen only: your character stays where it is. Press PLAY to close it. |
 
 The pet showcase (`/pet`, `/pets`, `/evolve`, `/fx`, `/clearpets`) is built on your own screen only: other players do not
@@ -1495,7 +1518,7 @@ src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientS
              turns the NC_DungeonSpin rings near the camera; no sound here), MeshFallback (shows the
              block pet on a device where a Blender model failed to load), RingAmbience (the Champion Ring's crowd
              and drums, heard only near the ring), TrainerCheer (wave 6: my avatar's cheer emote on the podium and on
-             Cheer up!), TopBar (the top-left Shop / Travel / Settings pill and the Quick Travel drop-down), Sky (the
+             Cheer up!), TopBar (the top-left Shop / Travel / Settings pill; Travel opens the portal to the lobby), Sky (the
              living sky on this client: the cycle and the raid skies as the LightingStack base, the night battle lift,
              the night lamps, fireflies)
 ```

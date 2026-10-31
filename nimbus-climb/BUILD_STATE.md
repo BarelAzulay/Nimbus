@@ -109,3 +109,7 @@ W5 review script ready: scratchpad/p5review.js (launch after the W4 gate fixer; 
 - Windows tooling (pies1): bpy 5.2.2 venv %LOCALAPPDATA%/NimbusClimb/bpyenv (py 3.13), test venv %LOCALAPPDATA%/NimbusClimb/venv (py 3.12 + lupa), python3 shim %LOCALAPPDATA%/NimbusClimb/shim (put first on PATH for run_checks.sh). Uploads: only the cloud session with the key (no key on either PC).
 - DONE: all 7 requirements (commits up to 1ad81ed, fast-forwarded to main). Gate: default smoke 12633/3 -> p6pets fixed (431/0), mesh 1023/0. Known: sim_battle element-counter target 53% (55-90) after no-passive-heal (35/36 targets); duel idle-loser guard weaker with auto-attack. NEXT: player Studio check of cal_axes, then Pebble Pup upload.
 
+# HUD tools batch (branch hud-tools, 2026-10-31)
+- Owner's decisions: Travel has one destination (no Portals / Court, no drop-down, no fade) and opens the home portal to the lobby spawn, one portal path with a server-held destination (`TycoonService.Portal`, `Dest`), the 3 s cooldown shared, a later press replaces the open portal.
+- Unlimited stamina inside `Config.InLobbyZone` (r <= 286 around the plaza, minus a hole around the Altar island's Workspace attribute `AltarIslandAt`), out of a match or battle.
+- Dev tools: `/kick`, `/ban`, `/unban`, `/evolvepets`, `/levelall`, `/maxpets`, `/speed` (DevService + the Developer tools panel). The ban API is only mocked from the docs: check it on a live server.
