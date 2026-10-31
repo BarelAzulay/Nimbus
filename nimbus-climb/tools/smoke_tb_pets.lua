@@ -13,7 +13,8 @@
 --                           HomeAction, Closed hands ReturnTo back, an Evolve pill opens the confirm, the Esc order
 --   client_tb_pets_phone    (844x390 touch) 820x330 under the top bar, the slots in a column on the left, 104 x 130 cards, every
 --                           target >= 44 px, the sheet over the grid (not the slots) with its actions at the bottom edge; the
---                           menu tiles step aside
+--                           menu tiles step aside; 667x375 and 640x360: the top row ends before the close button, labels fit;
+--                           a 1024x768 touch tablet: PC layout, touch controls off while open, targets >= 44 px
 -- Deterministic: mock clock only. The viewport, the attributes and the profile are restored at the end.
 -- Plain Lua 5.1 syntax only.
 
@@ -577,6 +578,43 @@ local function clientScenarios()
 			T.check(#H.teamSets(mark) == 2 and set and H.list(set.args) == table.concat({ K1, K5, K4 }, ","), "tb pets: ...and then goes out with both", set and H.list(set.args))
 			H.feed({ K1, K5, K4 })
 			KC.advance(0.5)
+			-- the server's shared BattleRequest bucket (burst 4, refill 1/s; a miss gets no answer at all): a quick string of
+			-- edits waits for it instead of reading as a failed save. The server's bucket is modelled here on the mock clock
+			H.feed()
+			KC.advance(6)
+			mark = #Mock.RemoteLog
+			local tokens, tokensAt, counted, dropped = 4, os.clock(), 0, 0
+			local function pump(seconds)
+				local stop = os.clock() + seconds
+				while os.clock() < stop do
+					KC.advance(0.05)
+					local sets = H.teamSets(mark)
+					while counted < #sets do
+						counted = counted + 1
+						tokens = math.min(4, tokens + (os.clock() - tokensAt))
+						tokensAt = os.clock()
+						if tokens < 1 then
+							dropped = dropped + 1
+						else
+							tokens = tokens - 1
+							local args = sets[counted].args
+							H.feed({ args[3][1], args[3][2], args[3][3] })
+						end
+					end
+				end
+			end
+			for i = 1, 8 do
+				Mock.Click(H.slot(3))
+				Mock.Click(H.card(i % 2 == 1 and K5 or K4))
+				pump(0.46)
+			end
+			pump(4)
+			set = H.lastSet(mark)
+			T.check(dropped == 0, "tb pets: eight quick edits stay inside the server's request bucket", fmt("%d of %d dropped", dropped, counted))
+			T.check(set and H.list(set.args) == table.concat({ K1, K2, K4 }, ","), "tb pets: ...the last edit arrives", set and H.list(set.args))
+			T.check(H.hintText():find("could not save", 1, true) == nil, "tb pets: ...and nothing reads as a failed save", H.hintText())
+			H.feed({ K1, K5, K4 })
+			KC.advance(0.5)
 			-- Auto-fill best
 			local rows = {}
 			for key in pairs(LEVELS) do
@@ -776,6 +814,60 @@ local function clientScenarios()
 			T.check(Care.IsOpen() and Care.Mode() == nil and PC.IsOpen(), "tb pets: Evolve opens its confirm over the window")
 			Care.Close()
 			KC.advance(0.3)
+			-- an Evolve from a window with a ReturnTo: the cinematic plays, then the window is back, and its Close follows the chain
+			local fromRing = { Window = "Ring", Start = 10 }
+			PC.Open({ Key = READY, ReturnTo = fromRing })
+			KC.advance(0.2)
+			local closedAfter = {}
+			local evoConn = PC.Closed:Connect(function(back)
+				closedAfter[#closedAfter + 1] = back or false
+			end)
+			KC.toClient("OpenPanel", "Evolve", { Key = READY, Stage = 1 })
+			KC.advance(0.2)
+			T.check(not PC.IsOpen(), "tb pets: the Evolve cinematic takes the screen")
+			KC.advance(15)
+			T.check(PC.IsOpen(), "tb pets: ...the window comes back after it (it came from a panel)")
+			T.check(PC.IsOpen() and H.find(H.find(win, "Detail"), "Name").Text == State.DefOf(READY).Name, "tb pets: ...on the same pet")
+			closedAfter = {}
+			local arenaBack = {}
+			local Arena = H.mod("ArenaController")
+			local realOpenRing = Arena.OpenRing
+			Arena.OpenRing = function(start, portal)
+				arenaBack[#arenaBack + 1] = start
+			end
+			PC.Close()
+			KC.advance(0.3)
+			Arena.OpenRing = realOpenRing
+			T.check(closedAfter[#closedAfter] == fromRing and arenaBack[1] == 10, "tb pets: ...and its Close still goes back to the Ring panel, same start round", tostring(arenaBack[1]))
+			-- another window opened during the cinematic takes over
+			PC.Open({ Key = READY, ReturnTo = fromRing })
+			KC.advance(0.2)
+			KC.toClient("OpenPanel", "Evolve", { Key = READY, Stage = 1 })
+			KC.advance(0.2)
+			H.mod("MenuController").WindowOpened:Fire("Shop")
+			KC.advance(15)
+			T.check(not PC.IsOpen(), "tb pets: another window opened during the cinematic: no window comes back")
+			H.closeAll()
+			-- a match started during the cinematic: nothing comes back either
+			PC.Open({ Key = READY, ReturnTo = fromRing })
+			KC.advance(0.2)
+			KC.toClient("OpenPanel", "Evolve", { Key = READY, Stage = 1 })
+			KC.advance(0.2)
+			local EvoConfig = KC.env()
+			LocalPlayer:SetAttribute(EvoConfig.Attr.InBattle, true)
+			KC.advance(15)
+			T.check(not PC.IsOpen(), "tb pets: a battle started during the cinematic: no window comes back")
+			LocalPlayer:SetAttribute(EvoConfig.Attr.InBattle, nil)
+			KC.advance(0.2)
+			H.closeAll()
+			-- a plain Evolve (no panel behind the window) keeps today's end: the player stands with the evolved pet
+			PC.Open({ Key = READY })
+			KC.advance(0.2)
+			KC.toClient("OpenPanel", "Evolve", { Key = READY, Stage = 1 })
+			KC.advance(15)
+			T.check(not PC.IsOpen(), "tb pets: an Evolve with no panel behind it does not reopen the window")
+			evoConn:Disconnect()
+			H.closeAll()
 			-- the floating card's EVOLVE! pill
 			PC.Close(true)
 			KC.advance(0.2)
@@ -900,6 +992,81 @@ local function clientScenarios()
 			sheet = H.find(win, "Sheet")
 			T.check(sheet and H.shown(sheet) and sheet.AbsolutePosition.Y >= H.slot(1).AbsolutePosition.Y + H.slot(1).AbsoluteSize.Y - 0.5, "tb pets phone: portrait: the sheet leaves the slots alone")
 			allTargets("the portrait sheet")
+		end)
+		-- 16:9 phones under 660 design px: the top row fits between the slots and the close button, every chip keeps its label
+		for _, size in ipairs({ { 667, 375 }, { 640, 360 } }) do
+			local w, h = size[1], size[2]
+			local tag = fmt("tb pets phone %dx%d", w, h)
+			H.at(w, h, true, "client_tb_pets_phone", function(PC)
+				PC.Open({})
+				KC.advance(0.5)
+				local win = H.win()
+				if not T.check(H.shown(win) and PC.Layout() == "Phone", tag .. ": the phone layout", PC.Layout()) then
+					return
+				end
+				local close = H.find(win, "Close")
+				local closeX = close.AbsolutePosition.X
+				local function clearRow(label)
+					for _, name in ipairs({ "PresetA", "PresetB", "PresetC", "SortButton", "AutoFill", "ClearTeam", "Undo", "PickCancel", "PickBanner" }) do
+						local b = H.find(win, name)
+						if b and H.shown(b) then
+							T.check(b.AbsolutePosition.X + b.AbsoluteSize.X <= closeX - 0.5, tag .. ": " .. label .. ": " .. name .. " ends before the close button", fmt("%.0f against %.0f", b.AbsolutePosition.X + b.AbsoluteSize.X, closeX))
+							T.check(b.AbsoluteSize.Y >= 44, tag .. ": " .. label .. ": " .. name .. " >= 44 px", fmt("%.1f", b.AbsoluteSize.Y))
+							if b.Text ~= "" and name ~= "PickBanner" then
+								T.check(b.TextBounds.X <= b.AbsoluteSize.X - 2, tag .. ": " .. label .. ": " .. name .. " '" .. b.Text .. "' fits", fmt("%.0f in %.0f", b.TextBounds.X, b.AbsoluteSize.X))
+							end
+						end
+					end
+				end
+				clearRow("the row")
+				H.clickName("AutoFill")
+				KC.advance(0.1)
+				T.check(H.shown(H.find(win, "Undo")), tag .. ": Undo shows after Auto-fill best")
+				clearRow("Undo")
+				H.feed()
+				KC.advance(6.5)
+				Mock.Click(H.find(win, "ClearTeam"))
+				KC.advance(0.05)
+				clearRow("Clear armed")
+				KC.advance(3.1)
+				Mock.Click(H.slot(2))
+				KC.advance(0.1)
+				clearRow("pick mode")
+			end)
+		end
+		-- a touch tablet gets the PC layout at the 0.8 factor: Roblox's stick and jump button still go, the small targets stay >= 44 px
+		H.at(1024, 768, true, "client_tb_pets_phone", function(PC)
+			local GuiService = game:GetService("GuiService")
+			PC.Open({ Key = K2 })
+			KC.advance(0.5)
+			local win = H.win()
+			T.check(PC.Layout() == "PC", "tb pets tablet: the PC layout", PC.Layout())
+			T.check(GuiService.TouchControlsEnabled == false, "tb pets tablet: Roblox's stick and jump button go while the window is up (they would sit over the Detail's buttons)")
+			local function allTargets(label)
+				for _, b in ipairs(H.targets(win)) do
+					T.check(b.AbsoluteSize.Y >= 44, "tb pets tablet: " .. label .. ": " .. b.Name .. " >= 44 px", fmt("%.1f", b.AbsoluteSize.Y))
+				end
+			end
+			allTargets("the window")
+			Mock.Click(H.slot(2))
+			KC.advance(0.1)
+			allTargets("pick mode")
+			local cancel = H.find(win, "PickCancel")
+			T.check(cancel.AbsoluteSize.X >= 44, "tb pets tablet: PickCancel >= 44 px wide", fmt("%.1f", cancel.AbsoluteSize.X))
+			local grid, sort = H.find(win, "Grid"), H.find(win, "SortButton")
+			T.check(sort.AbsolutePosition.Y + sort.AbsoluteSize.Y <= grid.AbsolutePosition.Y + 0.5, "tb pets tablet: the grid stays under the taller Sort", fmt("%.0f against %.0f", sort.AbsolutePosition.Y + sort.AbsoluteSize.Y, grid.AbsolutePosition.Y))
+			PC.Close(true)
+			KC.advance(0.3)
+			T.check(GuiService.TouchControlsEnabled == true, "tb pets tablet: ...and they come back")
+		end)
+		-- the same screen with a mouse and a keyboard keeps them
+		H.at(1024, 768, false, "client_tb_pets_phone", function(PC)
+			local GuiService = game:GetService("GuiService")
+			PC.Open({})
+			KC.advance(0.5)
+			T.check(GuiService.TouchControlsEnabled == true, "tb pets tablet: a mouse and keyboard screen of that size leaves the touch controls alone")
+			PC.Close(true)
+			KC.advance(0.3)
 		end)
 	end)
 

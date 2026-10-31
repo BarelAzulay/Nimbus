@@ -2193,6 +2193,34 @@ end
 function H.dropReturn()
 	S.ReturnTo = nil
 	S.BackTo = nil
+	S.EvoBack = nil
+end
+
+-- what an Evolve's cinematic closes and brings back after it: the Pets window when a panel waits behind it (Ring, Dungeon,
+-- Arena, the loss screen: its own Close then follows that chain). A window with nothing behind it stays closed.
+function H.evolveBack()
+	if S.EvoBack then
+		return S.EvoBack
+	end
+	if type(S.ReturnTo) == "table" and S.ReturnTo.ReturnTo then
+		return S.ReturnTo
+	end
+	local pets = H.controller("PetsController")
+	if pets and type(pets.ReturnArgs) == "function" then
+		return pets.ReturnArgs()
+	end
+	return nil
+end
+
+-- the last cinematic is over: back, unless another window (H.dropReturn), a match or a battle took over meanwhile
+function H.evolutionOver()
+	local back = S.EvoBack
+	S.EvoBack = nil
+	local pets = back and H.controller("PetsController")
+	local battle = LocalPlayer and LocalPlayer:GetAttribute(Config.Attr.InBattle)
+	if pets and not H.inMatch() and (battle == nil or battle == false or battle == "") then
+		safe("back to pets", pets.Open, back)
+	end
 end
 
 function H.closeAll()
@@ -2212,7 +2240,9 @@ function H.playEvolution(key, stage)
 	local Fx = H.controller("EvolutionFx")
 	local PC = H.controller("PetController")
 	stage = math.max(1, math.min(2, math.floor(tonumber(stage) or 1)))
+	local back = H.evolveBack()
 	H.closeAll()
+	S.EvoBack = back
 	local fxSeconds = (Fx and H.call(Fx, "Duration", stage)) or 4.6
 	local release = function() end
 	if PC and type(PC.PlayEvolution) == "function" then
@@ -2223,12 +2253,14 @@ function H.playEvolution(key, stage)
 	end
 	if not (def and PetBuilder and Fx and type(Fx.Play) == "function") then
 		release()
+		H.evolutionOver()
 		return false
 	end
 	local okA, fromModel = pcall(PetBuilder.Build, def, { Detail = K.EVO_DETAIL, Evolved = (stage - 1 > 0) and (stage - 1) or nil })
 	local okB, toModel = pcall(PetBuilder.Build, def, { Detail = K.EVO_DETAIL, Evolved = stage })
 	if not (okA and okB and typeof(fromModel) == "Instance" and typeof(toModel) == "Instance" and fromModel.PrimaryPart and toModel.PrimaryPart) then
 		release()
+		H.evolutionOver()
 		return false
 	end
 	fromModel.Name = "Evolving_" .. tostring(def.Id)
@@ -2279,6 +2311,7 @@ function H.playEvolution(key, stage)
 		finished = true
 		S.Evolving = math.max(0, S.Evolving - 1)
 		release()
+		H.evolutionOver()
 		return false
 	end
 	U.EvoHandle = handle
@@ -2292,6 +2325,8 @@ function H.nextEvolution()
 	local nextOne = table.remove(S.EvoQueue, 1)
 	if nextOne then
 		safe("evolve", H.playEvolution, nextOne.Key, nextOne.Stage)
+	else
+		H.evolutionOver()
 	end
 end
 

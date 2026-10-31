@@ -9,6 +9,8 @@
 --   PetsController.IsOpen() -> bool
 --   PetsController.SetSort("Strongest" | "Rarest" | "Level"), PetsController.Sort() -> mode
 --   PetsController.Layout() -> "PC" | "Phone"
+--   PetsController.ReturnArgs()   Open args that bring this window back as it is when a panel waits behind it, else nil (an
+--                                 Evolve's cinematic closes the window silently: CareController opens it again after it)
 --   PetsController.Opened         Util.Signal, Fire() per opening
 --   PetsController.Closed         Util.Signal, Fire(returnTo | nil). ReturnTo (where a close that is not silent goes back to):
 --                                 { Window = "Ring", Start, Portal } -> ArenaController.OpenRing(Start, Portal), { Window = "Dungeon", Floor,
@@ -74,6 +76,8 @@ local K = {
 	SLOTS = 3,
 	PRESETS = 3,
 	SEND_GAP = 0.45, -- seconds between two TeamSet / TeamSelect (the server's cooldowns are 0.4 / 0.3: a closer one is dropped)
+	SEND_BURST = 4, -- the server's shared BattleRequest bucket (BattleService REQUEST_BURST / REFILL, 4 and 1/s; a miss gets no answer)
+	SEND_REFILL = 0.9, -- per second, a little under the server's: a late send followed by a quick one still arrives inside it
 	ANSWER = 2.5, -- seconds a write waits for the sync or a refusal
 	UNDO_SECONDS = 6,
 	CLEAR_SECONDS = 3,
@@ -83,6 +87,8 @@ local K = {
 	BUILD_MAX = 3,
 	BACK_ACTION = "NimbusPetsBack", -- owns gamepad B while the window is open (it would also dash)
 	SORTS = { "Strongest", "Rarest", "Level" },
+	TOUCH = 44, -- screen px: the smallest tap target
+	PHONE_CHIPS = { 96, 116, 88 }, -- Sort, Auto-fill, Clear on a landscape phone's top row; they share what the close button leaves
 	PC_CARD = { 116, 170, 8 }, -- w, h, gap
 	PHONE_CARD = { 104, 130, 6 },
 }
@@ -134,6 +140,9 @@ local S = {
 	Active = nil, -- { Preset, Sent } the team change waiting for its sync
 	LastSend = 0,
 	LastSelect = 0,
+	SendTokens = K.SEND_BURST,
+	SendAt = 0,
+	Scale = 1,
 	Waiting = false,
 	TouchOff = false,
 	Ready = {}, -- key -> true once the card has its viewport
@@ -354,6 +363,14 @@ function H.newDraft(preset, list, pickSlot)
 	return { Preset = preset, Keys = dense, Send = send, Before = { unpack(before) }, Pick = pickSlot, Sent = false }
 end
 
+-- seconds until the server's request bucket lets one more through (the mirror of BattleService's takeToken)
+function H.bucketWait()
+	local now = os.clock()
+	S.SendTokens = math.min(K.SEND_BURST, S.SendTokens + (now - S.SendAt) * K.SEND_REFILL)
+	S.SendAt = now
+	return S.SendTokens >= 1 and 0 or (1 - S.SendTokens) / K.SEND_REFILL
+end
+
 function H.armAnswer(draft)
 	task.delay(K.ANSWER, function()
 		if S.Draft == draft then
@@ -367,7 +384,7 @@ function H.flushDraft()
 	if not draft or draft.Sent then
 		return
 	end
-	local wait = K.SEND_GAP - (os.clock() - S.LastSend)
+	local wait = math.max(K.SEND_GAP - (os.clock() - S.LastSend), H.bucketWait())
 	if wait > 0 then
 		if not S.Waiting then
 			S.Waiting = true
@@ -379,6 +396,7 @@ function H.flushDraft()
 		return
 	end
 	S.LastSend = os.clock()
+	S.SendTokens = S.SendTokens - 1
 	draft.Sent = true
 	local remote = H.remote("BattleRequest")
 	if remote then
@@ -426,12 +444,13 @@ function H.flushSelect()
 	if not want or want.Sent then
 		return
 	end
-	local wait = K.SEND_GAP - (os.clock() - S.LastSelect)
+	local wait = math.max(K.SEND_GAP - (os.clock() - S.LastSelect), H.bucketWait())
 	if wait > 0 then
 		task.delay(wait, H.flushSelect)
 		return
 	end
 	S.LastSelect = os.clock()
+	S.SendTokens = S.SendTokens - 1
 	want.Sent = true
 	local remote = H.remote("BattleRequest")
 	if remote then
@@ -1136,6 +1155,11 @@ function H.layoutSlot(item, w, h)
 	end
 end
 
+-- design px of a tap target: the PC layout runs under a UIScale, 0.8 on a small screen or a tablet
+function H.touchSize()
+	return math.max(K.TOUCH, math.ceil(K.TOUCH / S.Scale))
+end
+
 function H.layoutDetail(w, h)
 	local d = U.D
 	local phone = S.Mode == "Phone"
@@ -1151,7 +1175,7 @@ function H.layoutDetail(w, h)
 		row.Value.TextSize = phone and 15 or 19
 	end
 	d.Xp.Root.Parent = d.Frame
-	local buttonH = phone and 48 or (h < 560 and 52 or 58)
+	local buttonH = phone and 48 or math.max(h < 560 and 52 or 58, H.touchSize())
 	local gap = phone and 6 or 8
 	local bottomY = h - pad - buttonH
 	d.ButtonH, d.Gap, d.BottomY, d.CareY = buttonH, gap, bottomY, bottomY - gap - buttonH
@@ -1315,13 +1339,15 @@ function H.layoutPC(W, H0)
 	local wellW = W - 2 * x0 - detailW - 15
 	place(U.Well, x0, bodyY, wellW, bodyH)
 	U.Well.Visible = true
-	place(U.Sort, x0 + 14, bodyY + 10, 150, 44)
+	local tap = H.touchSize()
+	local cancelW = math.max(46, tap)
+	place(U.Sort, x0 + 14, bodyY + 10, 150, tap)
 	U.Sort.TextSize = 20
-	place(U.Banner, x0 + 172, bodyY + 10, wellW - 172 - 66, 44)
+	place(U.Banner, x0 + 172, bodyY + 10, wellW - 172 - cancelW - 20, tap)
 	U.Banner.TextSize = 20
-	place(U.PickCancel, x0 + wellW - 60, bodyY + 10, 46, 44)
+	place(U.PickCancel, x0 + wellW - 14 - cancelW, bodyY + 10, cancelW, tap)
 	U.PickCancel.TextSize = 24
-	place(U.Grid, 8, 60, wellW - 16, bodyH - 68)
+	place(U.Grid, 8, 16 + tap, wellW - 16, bodyH - 24 - tap)
 	place(U.D.Frame, W - x0 - detailW, bodyY, detailW, bodyH)
 	U.D.Frame.Name = "Detail"
 	H.layoutDetail(detailW, bodyH)
@@ -1373,13 +1399,17 @@ function H.layoutPhone(W, H0)
 			place(button, x + (i - 1) * 50, top, 46, chipH)
 		end
 		x = x + 3 * 50
-		place(U.Sort, x, top, 96, chipH)
-		x = x + 100
-		place(U.AutoFill, x, top, 116, chipH)
-		x = x + 120
-		place(U.Clear, x, top, 88, chipH)
-		place(U.Undo, x, top, 88, chipH)
-		x = x + 92
+		-- the chips share what is left before the close button (a 16:9 phone is under 660 design px wide)
+		local chips = K.PHONE_CHIPS
+		local fit = math.min(1, (W - closeW - 12 - x - 2 * 4) / (chips[1] + chips[2] + chips[3]))
+		local sortW, fillW, clearW = math.floor(chips[1] * fit), math.floor(chips[2] * fit), math.floor(chips[3] * fit)
+		place(U.Sort, x, top, sortW, chipH)
+		x = x + sortW + 4
+		place(U.AutoFill, x, top, fillW, chipH)
+		x = x + fillW + 4
+		place(U.Clear, x, top, clearW, chipH)
+		place(U.Undo, x, top, clearW, chipH)
+		x = x + clearW + 4
 		local powerW = W - closeW - 8 - x
 		U.PhonePowerRoom = powerW >= 100
 		place(U.TeamPower, x, top, math.max(0, powerW), chipH)
@@ -1418,13 +1448,13 @@ function H.layout()
 	end
 	local r = H.rect()
 	local modeChanged = S.Mode ~= r.mode or S.Portrait ~= r.portrait or S.Laid == nil
-	S.Mode, S.Portrait = r.mode, r.portrait
+	S.Mode, S.Portrait, S.Scale = r.mode, r.portrait, r.scale
 	local W, H0 = r.w / r.scale, r.h / r.scale
 	U.Holder.AnchorPoint = Vector2.new(0, 0)
 	U.Holder.Position = UDim2.fromOffset(r.x, r.y)
 	U.Holder.Size = UDim2.fromOffset(math.floor(W + 0.5), math.floor(H0 + 0.5))
 	U.Fit.Scale = r.scale
-	local key = table.concat({ math.floor(W + 0.5), math.floor(H0 + 0.5), r.mode, tostring(r.portrait) }, "|")
+	local key = table.concat({ math.floor(W + 0.5), math.floor(H0 + 0.5), r.mode, tostring(r.portrait), math.floor(r.scale * 100) }, "|")
 	if S.Laid == key then
 		H.coverColumn(r)
 		return
@@ -1444,7 +1474,7 @@ function H.layout()
 		panel.TitleLabel.Size = phone and UDim2.new(1, -8, 1, 0) or U.TitleSize
 	end
 	if panel.CloseButton then
-		local size = phone and 44 or 44
+		local size = phone and K.TOUCH or H.touchSize()
 		panel.CloseButton.Size = UDim2.fromOffset(size, size)
 		panel.CloseButton.AnchorPoint = Vector2.new(0, 0)
 		panel.CloseButton.Position = phone and UDim2.new(1, -(size + 6), 0, 4) or UDim2.new(1, -(size + 16), 0, 8)
@@ -1464,10 +1494,11 @@ function H.layout()
 	H.coverColumn(r)
 end
 
--- The phone window fills the screen: Roblox's thumbstick and jump button would sit over slot 3 and the cards. They go
--- while it is up and come back as they were.
+-- The phone window fills the screen and a tablet's reaches them: Roblox's thumbstick and jump button would sit over slot 3
+-- and the cards, or the Detail's buttons. They go while it is up and come back as they were.
 function H.syncTouch()
-	local want = S.Open and S.Mode == "Phone"
+	local touchOnly = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+	local want = S.Open and (S.Mode == "Phone" or touchOnly)
 	if want == S.TouchOff then
 		return
 	end
@@ -2006,6 +2037,13 @@ function PetsController.Layout()
 		return S.Mode
 	end
 	return H.rect().mode
+end
+
+function PetsController.ReturnArgs()
+	if S.Open and S.ReturnTo then
+		return { Key = S.Selected, Preset = S.View, ReturnTo = S.ReturnTo }
+	end
+	return nil
 end
 
 function PetsController.Open(args)
