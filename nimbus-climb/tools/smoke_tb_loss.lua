@@ -14,7 +14,8 @@
 --                           cleared floor and a quit keep today's cards; Edit team hands ReturnTo { Window = "Loss" } and comes back
 --   client_tb_loss_fight_again  (client) Fight again waits while InBattle is set (Review Focus 5), fires once, a refusal re-arms it,
 --                           the next battle closes the screen; Dungeon: DungeonRequest("Solo", floor), a party gets no Fight again
---   client_tb_loss_phone    (phone world) inside 16 px gutters, under the top bar, every button >= 44 px, on 844x390 and 390x844
+--   client_tb_loss_phone    (phone world) inside 16 px gutters, under the top bar, every button >= 44 px, on 844x390, 667x375, 640x360,
+--                           390x844 and 360x640; clear of the jump button; "L99 -> L100" fits its row
 -- Deterministic: mock clock only. Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -964,14 +965,19 @@ local function clientScenarios()
 		local GuiService = game:GetService("GuiService")
 		H.feed()
 		H.reset()
-		for _, size in ipairs({ { 844, 390 }, { 390, 844 } }) do
+		local LONG = {
+			{ Key = K1, PetId = K1, Before = 99, After = 100, XpFrac = 0.1, XpBefore = 0 },
+			{ Key = K2, PetId = K2, Before = 99, After = 100, XpFrac = 0.6, XpBefore = 0.2 },
+			{ Key = K3, PetId = K3, Before = 99, After = 100, XpFrac = 0.5, XpBefore = 0.5 },
+		}
+		for _, size in ipairs({ { 844, 390 }, { 667, 375 }, { 640, 360 }, { 390, 844 }, { 360, 640 } }) do
 			local w, h = size[1], size[2]
 			local tag = fmt("tb loss phone %dx%d", w, h)
 			Mock.SetViewport(w, h)
 			KC.advance(0.1)
-			LS.Show({ Mode = "Ring", Title = "RUN OVER", Sub = "Champion Ring: the champion won round 2", Pets = ROWS,
+			LS.Show({ Mode = "Ring", Title = "RUN OVER", Sub = "Champion Ring: the champion won round 2", Pets = LONG,
 				Lines = { { "Rounds won: 1" }, { "+$40 Cash" }, { "+35 Pet XP" }, { "Best: round 1" } }, Start = 1, OnFightAgain = function() end })
-			KC.advance(0.6)
+			KC.advance(1.2) -- (past the level-up pop)
 			local card = H.card()
 			local x, y = card.AbsolutePosition.X, card.AbsolutePosition.Y
 			local cw, ch = card.AbsoluteSize.X, card.AbsoluteSize.Y
@@ -995,6 +1001,9 @@ local function clientScenarios()
 			for i = 1, 3 do
 				local row = H.widget("PetRow" .. i)
 				T.check(row and row.AbsolutePosition.Y + row.AbsoluteSize.Y <= y + ch + 0.5 and row.AbsolutePosition.X + row.AbsoluteSize.X <= x + cw + 0.5, tag .. ": PetRow" .. i .. " is inside the card")
+				local levels = row and row:FindFirstChild("Levels")
+				local scale = card.AbsoluteSize.X / math.max(1, card.Size.X.Offset)
+				T.check(levels and levels.Text == "L99 -> L100" and levels.TextBounds.X * scale <= levels.AbsoluteSize.X + 0.5, tag .. ": PetRow" .. i .. "'s level text fits", levels and fmt("%.0f in %.0f", levels.TextBounds.X * scale, levels.AbsoluteSize.X) or "missing")
 			end
 			local small = {}
 			for _, d in ipairs(card:GetDescendants()) do

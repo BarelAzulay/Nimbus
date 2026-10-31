@@ -44,6 +44,10 @@ local K = {
 	GUTTER_Y = 8,
 	W_WIDE = 848, -- design px of a 1080p screen (at the phone scale the buttons end left of the jump button)
 	W_TALL = 440, -- a portrait phone: the rows stack
+	TOUCH_SCALE = 0.8, -- a narrow phone's card is narrower rather than under this fit: K.CLOSE and K.BUTTON_H stay >= 44 px
+	JUMP_RIGHT = 95, -- a low screen: the buttons end this far from its right edge (Roblox's jump button, 70 px, 25 px in)
+	ROW_W_SHORT = 260, -- design px: a narrower pet row takes "L99 -> L100" at LEVELS_SHORT
+	LEVELS_SHORT = 22,
 	PAD = 16,
 	TITLE_H = 44,
 	SUB_H = 28,
@@ -144,7 +148,7 @@ end
 local function layout()
 	local vp = viewportSize()
 	local tall = vp.X < vp.Y
-	local w = tall and K.W_TALL or K.W_WIDE
+	local w = math.min(tall and K.W_TALL or K.W_WIDE, math.floor((vp.X - 2 * K.GUTTER_X) / K.TOUCH_SCALE))
 	local inner = w - 2 * K.PAD
 	local y = 12
 	U.Title.Position = UDim2.fromOffset(K.PAD + 4, y)
@@ -169,6 +173,9 @@ local function layout()
 			row.Root.Position = UDim2.fromOffset(K.PAD + (i - 1) * (rowW + K.ROW_GAP), y)
 		end
 		row.Root.Size = UDim2.fromOffset(rowW, rowH)
+		if row.Gained then
+			row.Levels.TextSize = rowW < K.ROW_W_SHORT and K.LEVELS_SHORT or 26
+		end
 	end
 	y = y + (tall and (n * (rowH + K.ROW_GAP)) or (rowH + K.ROW_GAP))
 
@@ -193,13 +200,7 @@ local function layout()
 	U.Lines.Size = UDim2.fromOffset(inner, lineRows * K.LINE_H)
 	y = y + lineRows * K.LINE_H + K.ROW_GAP
 
-	-- the buttons
-	local again = U.FightAgain.Visible
-	local half = math.floor((inner - K.ROW_GAP) / 2)
-	U.FightAgain.Position = UDim2.fromOffset(K.PAD, y)
-	U.FightAgain.Size = UDim2.fromOffset(half, K.BUTTON_H)
-	U.EditTeam.Position = again and UDim2.fromOffset(K.PAD + half + K.ROW_GAP, y) or UDim2.fromOffset(K.PAD, y)
-	U.EditTeam.Size = again and UDim2.fromOffset(half, K.BUTTON_H) or UDim2.fromOffset(inner, K.BUTTON_H)
+	local buttonsY = y
 	y = y + K.BUTTON_H + K.PAD
 
 	U.Card.Root.Size = UDim2.fromOffset(w, y)
@@ -217,6 +218,20 @@ local function layout()
 	end
 	local fit = math.min((vp.X - 2 * K.GUTTER_X) / w, (vp.Y - inset - 2 * K.GUTTER_Y) / y)
 	U.Fit.Scale = math.max(0.3, math.min(factor, fit))
+
+	-- the buttons: on a low screen they end left of the jump button
+	local buttonsW = inner
+	if not tall and vp.Y < K.SHORT then
+		local cardLeft = (vp.X - w * U.Fit.Scale) / 2
+		buttonsW = math.min(inner, math.floor((vp.X - K.JUMP_RIGHT - cardLeft) / U.Fit.Scale) - K.PAD)
+	end
+	local again = U.FightAgain.Visible
+	local half = math.floor((buttonsW - K.ROW_GAP) / 2)
+	U.FightAgain.Position = UDim2.fromOffset(K.PAD, buttonsY)
+	U.FightAgain.Size = UDim2.fromOffset(half, K.BUTTON_H)
+	U.EditTeam.Position = again and UDim2.fromOffset(K.PAD + half + K.ROW_GAP, buttonsY) or UDim2.fromOffset(K.PAD, buttonsY)
+	U.EditTeam.Size = again and UDim2.fromOffset(half, K.BUTTON_H) or UDim2.fromOffset(buttonsW, K.BUTTON_H)
+
 	U.Card.Root.AnchorPoint = Vector2.new(0.5, 0.5)
 	local h = y * U.Fit.Scale
 	local free = vp.Y - inset - h
@@ -288,7 +303,7 @@ local function petRow(i, entry)
 	fill.Size = UDim2.fromScale(math.max(0, math.min(1, tonumber(entry.XpBefore) or 0)), 1)
 	fill.Parent = bar
 	Util.Create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = fill })
-	return { Root = root, Handle = handle, Gained = gained, Pop = pop, Fill = fill, To = math.max(0, math.min(1, tonumber(entry.XpFrac) or 0)) }
+	return { Root = root, Handle = handle, Gained = gained, Levels = levels, Pop = pop, Fill = fill, To = math.max(0, math.min(1, tonumber(entry.XpFrac) or 0)) }
 end
 
 local function moment(token)
