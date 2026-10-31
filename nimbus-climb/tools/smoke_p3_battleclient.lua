@@ -1287,7 +1287,7 @@ S.client_p3battle_ring = guarded("client_p3battle_ring", function()
 	T.check(b and b.Mode == "Ring" and b.Round == 1 and b.Best == 12 and b.Fighter, "ring: Start draws the round as a fighter (Round / Best from Start.Ring)", b and (tostring(b.Round) .. " / " .. tostring(b.Best)) or "nil")
 	local top = find("Root.TopCard")
 	T.check(shown(top) and hasText(top, "CHAMPION RING") and hasText(top, "Round 1 %- Best 12"), "ring HUD: the top card reads CHAMPION RING - Round 1 - Best 12")
-	T.check(hasText(find("Root.TopCard.RingInfo"), "Win: %+%$[%d,%.KMB]+  %+26 XP"), "ring HUD: the Cash and XP of a win (RingRewards: round 1 pays 26 XP)", tostring((find("Root.TopCard.RingInfo.WinPay") or {}).Text))
+	T.check(hasText(find("Root.TopCard.RingInfo"), "Win: %+%$[%d,%.KMB]+  %+33 XP"), "ring HUD: the Cash and XP of a win (RingRewards: round 1 pays 33 XP)", tostring((find("Root.TopCard.RingInfo.WinPay") or {}).Text))
 	T.check(not shown(find("Root.TopCard.RingInfo.Record")) and not shown(find("Root.TopCard.RingInfo.Boss")), "ring HUD: no record / boss pill on round 1 (best 12)")
 	T.check(shown(find("Root.Commands.AttackButton")) and shown(find("Root.Commands.ElementButton")) and shown(find("Root.Commands.SpecialButton")) and shown(find("Root.Commands.DashButton")) and shown(find("Root.Team.Fighter")),
 		"ring HUD: the Phase 5 controls (ATTACK / ELEMENT / SPECIAL / DASH + the fighter card) in the ring")
