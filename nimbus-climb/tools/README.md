@@ -271,8 +271,17 @@ python3 tools/render_gui.py portal:Hard:2 -o portal.png              # a portal'
 
 `smoke.py` loads every `tools/smoke_*.lua` file it lists (it fails when a `smoke_*.lua` file is not wired in) and runs
 their scenarios in the server, client or phone world; `python3 tools/smoke.py --list` prints every scenario and
-`--only a,b` runs a few (handy while you work; a full `--quick` run takes about 20-30 minutes). The Phase 5 files
-(ARCHITECTURE_V3.md "Phase 5 build contract" 12.1; each owner registers its own line in `smoke.py`):
+`--only a,b` runs a few (handy while you work; a full `--quick` run takes about 15-30 minutes).
+
+`py -3.12 tools/smoke_parallel.py --quick` runs the same scenarios in six processes while you build: measured at b0ee78e,
+369 s against 1,019 s for one `smoke.py --quick` on the same PC (16 threads), peak about 1.7 GB, all 17,082 checks passing
+in both. It moves some scenarios to other worlds, so **the last gate before a merge stays the single `smoke.py --quick`**.
+`--compare BASE.json` fails on any check that differs from a single run's `--json` file (run it after changing the split in
+`plan()`, or when a part fails here but not in a single run), `--jobs N` limits the parts running at once when memory is
+short, and `python3 tools/test_smoke_parallel.py` tests the split, the merge and the comparison offline. `--mesh` takes
+under a minute, so it stays on `smoke.py`.
+
+The Phase 5 files (ARCHITECTURE_V3.md "Phase 5 build contract" 12.1; each owner registers its own line in `smoke.py`):
 
 | File | What it checks |
 |---|---|

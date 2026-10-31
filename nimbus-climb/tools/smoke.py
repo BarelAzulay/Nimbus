@@ -37,6 +37,7 @@ Exit status is 1 when any check fails or a script raised an error.
 import argparse
 import json
 import os
+import pickle
 import sys
 import time
 import traceback
@@ -316,6 +317,9 @@ def main():
     ap.add_argument("--json", metavar="FILE", help="write all results as JSON")
     ap.add_argument("--root", metavar="DIR", help="project root to test (default: the repo this script lives in)")
     ap.add_argument("--mesh", action="store_true", help="fixture mesh mode: pet scenarios on Blender-mesh pets (fake MeshIds + templates from src/shared/MeshManifests; env NC_MESH_FIXTURES=1)")  # [owner: runtime-pets, Phase 6 W2]
+    ap.add_argument("--list-json", action="store_true", help="print the scenario lists as JSON and exit (tools/smoke_parallel.py reads them)")
+    ap.add_argument("--replication-out", metavar="FILE", help="write the server world's replication log to FILE (tools/smoke_parallel.py)")
+    ap.add_argument("--replication-in", metavar="FILE", help="give the client world this replication log instead of running the server world (tools/smoke_parallel.py)")
     args = ap.parse_args()
     if args.root:
         global ROOT
@@ -493,6 +497,9 @@ def main():
 
     # every tools/smoke_*.lua must be loaded by one of the worlds, otherwise its scenarios silently never run
     client_files.append("smoke_p3_battleclient.lua"); client_scenarios[client_scenarios.index("client_final"):client_scenarios.index("client_final")] = ["client_p3battle_trial", "client_p3battle_raid", "client_p3battle_spectate", "client_p3battle_cards", "client_p3battle_ring"]; mobile_scenarios += ["client_p3battle_mobile", "client_p3battle_ring_mobile"]  # [owner: battleclient] BattleController brought to Phase 5 (a real BattleSim fed through BattleState like BattleService sends it, Start.Team + SnapshotDelta): dungeon rooms in place of the Trials (followers parked, the fighter card + 2 helper portraits, ATTACK / ELEMENT / SPECIAL / DASH via ContextActionService only in battle, intact welded models, smooth 60 fps interpolation, world damage numbers, ELEMENT cooldown refusals, full-meter SPECIAL, lock by TARGET row / world tap, KNOCKED OUT card), raid boss + telegraphs + boss bar + minions + leavers + effect caps, spectators (fighters only, no controls), junk messages; Phase 4 PetCards above every unit (fills only on change, evolved helpers within budgets), the Champion Ring HUD + next-round card + run result cards; the compact touch HUD on a phone (smoke_p3_battleclient.lua: client + phone worlds)
+    if args.list_json:
+        print(json.dumps({"server": server_scenarios, "pure": pure_scenarios, "client": client_scenarios, "mobile": mobile_scenarios}))
+        return 0
     wired = set(server_files + client_files + ["smoke_common.lua"])
     for name in sorted(os.listdir(HERE)):
         if name.startswith("smoke_") and name.endswith(".lua") and name not in wired:
@@ -519,7 +526,7 @@ def main():
     run_server = any(wanted(n) for n in server_scenarios)
     run_client = any(wanted(n) for n in client_scenarios + mobile_scenarios)
     # the client replay feeds on the traffic of the whole server run
-    if only is not None and wanted("client_replay") and not any(n in only for n in server_scenarios):
+    if only is not None and wanted("client_replay") and not any(n in only for n in server_scenarios) and not args.replication_in:
         run_server = True
         only = only | set(server_scenarios)
 
@@ -566,6 +573,9 @@ def main():
             check_listed(S, server_scenarios, "server")
             run_scenarios(server, S, server_scenarios, "server")
             replication = S["export_replication"]() if S["export_replication"] else None
+            if args.replication_out and replication is not None:
+                with open(args.replication_out, "wb") as fh:
+                    pickle.dump(lua_to_py(replication), fh, protocol=pickle.HIGHEST_PROTOCOL)
         except Exception:
             reporter.emit("fail", "server", "server world crashed", traceback.format_exc())
 
@@ -575,7 +585,10 @@ def main():
             client = World(engine, engine_name, "client", args, api, contract, viewport=(1920, 1080))
             C = client.load_scenarios(client_files)
             check_listed(C, client_scenarios + mobile_scenarios, "client")
-            if replication is not None:
+            if args.replication_in:
+                with open(args.replication_in, "rb") as fh:
+                    client.rt.globals().REPLICATION = to_lua(client.rt, pickle.load(fh))
+            elif replication is not None:
                 client.rt.globals().REPLICATION = replication_to_client(client.rt, server, replication)
             run_scenarios(client, C, client_scenarios, "client")
         except Exception:
