@@ -2,7 +2,7 @@
 
 Date: 2026-10-31. Branch `team-balance`, from `hud-tools` (6ad77f0). Source: the owner's playtest of the HUD cleanup and the
 pitch https://claude.ai/artifact/VHivxkWH6BTwecySb4GNCq (to-scale mock-ups, measured sim charts, Gemini's and Claude's picks).
-All seven rows approved with no notes. The page's mock-ups are the look to follow; `.superpowers/team-balance-pitch/page.html`
+All seven rows approved with no notes. The page's mock-ups are the look to follow; `Projects Main/Nimbus/.superpowers/team-balance-pitch/page.html` (outside this repo folder)
 is a local copy.
 
 ## The owner's words
@@ -30,15 +30,20 @@ pets and teams are all so uncompfortable for the player, it built really bad."
 
 - A player's battle team IS the 3 pets following them. Slot 1 fights; 2 and 3 help, and all three give their follow perks.
 - Three teams A / B / C (the existing `Teams.Presets[1..3]`). Exactly one is active, and the invariant is:
-  `Equipped` == the active preset's keys, in order, at all times.
+  `Equipped` == the active preset's keys minus busy pets (training, or every copy in the Garden), in order, at all times.
+- Claude's call: a busy pet KEEPS its team slot. The slot shows it greyed with a busy mark; it does not follow, give perks or
+  fight until the job ends, then it is back by itself (this replaces `Job.From = "Follow"`'s "when a slot is free"). A battle
+  with a busy slot fields the others; if the slot 1 pet is busy the next free pet fights. A team whose pets are all busy counts as
+  empty for entering a battle, and the refusal says why. `normalizeEquipped`, `SetTeam` / `CheckTeam` and the merge rule
+  follow this.
 - A small A / B / C button group sits beside the slots. Pressing one makes that team active: all three followers change at
   once. A press on an empty team leaves no followers, and the slots show as empty.
-- Migration, once per save (a marker, safe under provisional / merged saves like `B3ItemsRefund`): if `Equipped` is non-empty
-  the active preset becomes `Equipped`; otherwise `Equipped` becomes the active preset. The other two presets are kept as they
-  are. Nothing else is deleted.
+- Migration, once per save (a marker, safe under provisional / merged saves like `B3ItemsRefund`). Claude's call, so no team is
+  lost when it can be helped: with `Equipped` empty, `Equipped` becomes the active preset. Otherwise `Equipped` becomes a team in
+  this order: a preset already holding the same keys becomes active; else the first empty preset takes it and becomes active;
+  else (all three full and different) the highest-numbered non-active preset takes it and becomes active. No pet is ever touched.
 - Every path that changes `Equipped` or a preset keeps the invariant (equip, unequip, garden, training, fusion, sell-like
-  removal, recalls, Admin / dev commands, `/maxpets`). A swap to a team holding a pet now gardening or training skips that pet
-  and says so in a toast; the existing garden recall prompt stays for a direct pick.
+  removal, recalls, Admin / dev commands, `/maxpets`). The existing garden recall prompt stays for a direct pick.
 - Equipped slots stay `Config.Pets.MaxEquipped` = 3. The first pet ever still auto-equips.
 
 ### 2. Edit before a battle: faces and Edit on the panel
@@ -102,7 +107,7 @@ Also required:
 - A first win always exists: round 1 is an easy Common.
 - The tutorial's two battle steps must always be winnable (section 7).
 
-Starting numbers: `.superpowers/team-balance-pitch/balance/options_config.lua`, option A. They are a starting point for tuning,
+Starting numbers: `Projects Main/Nimbus/.superpowers/team-balance-pitch/balance/options_config.lua`, option A. They are a starting point for tuning,
 not a contract. The harness and results are in the same folder.
 
 ### 5. Level beats rarity (battles only)
@@ -115,7 +120,8 @@ not a contract. The harness and results are in the same folder.
 - Garden income, coins, speed and everything non-battle keep `Config.PetStats.RarityScale` and today's `LevelFactor` unchanged.
   `PetCatalog.GetStats` stays as it is for its other readers: do it in the battle path, with no runtime patching (the prototype's
   patch is not to be copied). `tools/sim_tycoon.py --check` still passes.
-- Every shown battle power (cards, slots, panels, HUD) uses the new numbers.
+- Every shown battle number (cards, slots, panels, HUD, and Claude's call: the Battle power / Health rows of the pet detail and
+  the Index too, so one window never shows two answers) uses the new numbers. Coins, Speed and other non-battle rows keep theirs.
 
 ### 6. Boss raids: the owner's L10-11 Secrets cannot solo
 
@@ -133,6 +139,9 @@ not a contract. The harness and results are in the same folder.
 - Tutorial: "Into the Dungeon!" completes on clearing the first room rather than floor 1, and "The Champion Ring" still on one
   won round. While that dungeon step is open, room 1 of floor 1 is easy enough for any L1 team, even one pet (at least 95%). Text
   and hints follow. Old saves past these steps are unaffected.
+- Claude's call: the eased room is a run flag set only on a SOLO run by a player on that step; a party always gets the normal
+  room, so nobody farms it. It pays the normal room reward, and the floor's first clear and `Dungeon.Best` are unaffected until
+  the floor is really cleared.
 
 ## Non-goals
 
