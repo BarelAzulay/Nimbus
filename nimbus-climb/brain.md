@@ -7,6 +7,7 @@ Read with [`ABSOLUTE_RULES.md`](ABSOLUTE_RULES.md) before working.
 - Design and build contracts: [`ARCHITECTURE_V3.md`](ARCHITECTURE_V3.md) (V1/V2 are history).
 - Player and editor guide: [`README.md`](README.md). Checks: [`tools/README.md`](tools/README.md) (`tools/run_checks.sh`).
 - Claude setup and skill pack: [`claude-setup/`](claude-setup/); skills are unpacked in `.claude/skills/`.
+- Saved for a later build (Robux shop, passes, packs, skins, equipment, mounts): [`docs/superpowers/specs/2026-10-31-shop-roadmap.md`](docs/superpowers/specs/2026-10-31-shop-roadmap.md).
 
 ## Decisions (dated)
 - 2026-10-20: ART RULE, Blender models only (see ARCHITECTURE_V3 "ART RULE").
