@@ -15,7 +15,6 @@
 --   client_tb_loss_fight_again  (client) Fight again waits while InBattle is set (Review Focus 5), fires once, a refusal re-arms it,
 --                           the next battle closes the screen; Dungeon: DungeonRequest("Solo", floor), a party gets no Fight again
 --   client_tb_loss_phone    (phone world) inside 16 px gutters, under the top bar, every button >= 44 px, on 844x390 and 390x844
--- PetsController (Task 4) is stubbed when the tree does not have it yet: the stub's Close does what the plan's router does.
 -- Deterministic: mock clock only. Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -678,31 +677,6 @@ local function clientScenarios()
 	function H.resultCard()
 		return H.find(H.pg(), "ResultCard")
 	end
-	-- the stub of Task 4's window: Close does what the plan's router does with ReturnTo { Window = "Loss" }
-	function H.pets()
-		local folder = Mock.GetPath(ROOTS.client .. "/Controllers")
-		if not folder:FindFirstChild("PetsController") then
-			Mock.Mount(folder, { name = "PetsController", class = "ModuleScript", source = [[
-				local P = { Opens = {}, Stub = true }
-				local open, back = false, nil
-				function P.Open(args)
-					P.Opens[#P.Opens + 1] = args
-					open, back = true, type(args) == "table" and args.ReturnTo or nil
-				end
-				function P.IsOpen()
-					return open
-				end
-				function P.Close()
-					open = false
-					if type(back) == "table" and back.Window == "Loss" then
-						require(script.Parent.LossScreen).Reopen()
-					end
-				end
-				return P
-			]], children = {} })
-		end
-		return H.req("client/Controllers/PetsController")
-	end
 	function H.reset()
 		local LS = H.req("client/Controllers/LossScreen")
 		if LS then
@@ -804,18 +778,21 @@ local function clientScenarios()
 		T.check(sawCash, "tb loss: the run's lines are on the card")
 
 		-- Edit team goes to the Pets window and comes back
-		local PC = H.pets()
+		local PC = H.req("client/Controllers/PetsController")
 		LocalPlayer:SetAttribute(KC.env().Attr.InBattle, nil) -- (the return teleport is over)
 		Mock.Click(H.widget("EditTeam"))
 		KC.advance(0.2)
 		T.check(PC.IsOpen() and not LS.IsOpen(), "tb loss: Edit team opens the Pets window")
-		if PC.Stub then
-			T.check(PC.Opens[#PC.Opens].ReturnTo and PC.Opens[#PC.Opens].ReturnTo.Window == "Loss", "tb loss: ...with ReturnTo { Window = 'Loss' }")
-		end
 		local rewardsBefore = rewards
+		PC.Close(true)
+		KC.advance(0.6)
+		T.check(not LS.IsOpen(), "tb loss: a silent close (another window takes over) does not bring the card back")
+		LS.Reopen()
+		Mock.Click(H.widget("EditTeam"))
+		KC.advance(0.2)
 		PC.Close()
 		KC.advance(0.6)
-		T.check(LS.IsOpen() and H.find(H.widget("PetRow1"), "Levels").Text == "L1 -> L3", "tb loss: ...and returns here")
+		T.check(not PC.IsOpen() and LS.IsOpen() and H.find(H.widget("PetRow1"), "Levels").Text == "L1 -> L3", "tb loss: ...and returns here")
 		rewards = 0
 		for _, name in ipairs(played) do
 			rewards = rewards + (name == "Reward" and 1 or 0)

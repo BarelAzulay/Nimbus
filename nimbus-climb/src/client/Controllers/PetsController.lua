@@ -10,7 +10,7 @@
 --   PetsController.SetSort("Strongest" | "Rarest" | "Level"), PetsController.Sort() -> mode
 --   PetsController.Layout() -> "PC" | "Phone"
 --   PetsController.Opened         Util.Signal, Fire() per opening
---   PetsController.Closed         Util.Signal, Fire(returnTo | nil)
+--   PetsController.Closed         Util.Signal, Fire(returnTo | nil); ReturnTo { Window = "Loss" } -> LossScreen.Reopen()
 -- MenuController.Open("Pets" | "Team" | "Inventory", args), OpenTeam(preset) and the Pets tile come here; an opening fires
 -- MenuController.WindowOpened("Pets") (the tutorial's Equipped hook; the other windows close on it), MenuController.Close()
 -- closes this one silently.
@@ -2080,6 +2080,16 @@ function PetsController.Open(args)
 	return true
 end
 
+-- ReturnTo: where the player goes when the window closes (not a silent close)
+function H.returnTo(back)
+	if back.Window == "Loss" then
+		local loss = H.controller("LossScreen")
+		if loss then
+			safe("back to loss", loss.Reopen)
+		end
+	end
+end
+
 function PetsController.Close(silent)
 	if not S.Open then
 		return
@@ -2103,6 +2113,9 @@ function PetsController.Close(silent)
 		end
 	end)
 	PetsController.Closed:Fire(silent ~= true and back or nil)
+	if silent ~= true and back then
+		H.returnTo(back)
+	end
 end
 
 function PetsController.Init()

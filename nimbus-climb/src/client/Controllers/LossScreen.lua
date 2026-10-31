@@ -17,7 +17,7 @@
 -- Fight again and Edit team wait for the return teleport: while Config.Attr.InBattle is still set (RETURN_DELAY after the end) the
 -- button says "Returning..." and ignores taps, then acts once. A refused start leaves the screen (the server's toast says why) and
 -- the button works again after START_WAIT; the next battle's InBattle closes the screen.
--- PetsController is optional (Task 4's window): loaded when pressed, as Main.client.lua treats its OPTIONAL modules.
+-- Edit team opens PetsController's window with ReturnTo { Window = "Loss" }; its Close comes back through Reopen.
 -- Plain Lua 5.1-compatible syntax only. All fonts come from Theme roles; no asset ids.
 
 local Players = game:GetService("Players")
