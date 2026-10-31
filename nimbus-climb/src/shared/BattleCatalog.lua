@@ -69,10 +69,10 @@
 --   ChampionTeam -> { Owner "npc", Side 2, Npc, Name, Round, Seed, Power = TeamPower(Pets), Champion = { PetId, Level, Tier, Evo,
 --       Count, Boss (flag), Name, Power }, Pets = { { PetId, Key, Level, Tier, Evo, Slot, Crowned, MeterStart }... } }
 --   BattleCatalog.Bosses / BossOrder / NextBoss / BossHp(bossId, teams) / WeightedTeams / GroupFactor / BossRules (GroupExponent 0.2)
---   BattleCatalog.BaselineDps(bossId) -> n                        the boss HP floor's DPS (HpPerPlayer x it): BossRules.Baseline's ExpectedDps
+--   BattleCatalog.BaselineDps(bossId) -> n                        the boss HP floor's DPS (BossRules.FloorSeconds x it): BossRules.Baseline's ExpectedDps
 --   BattleCatalog.Events / Raid / RaidTier(share, won) / EventPets() / Trophies / Duel (PowerGap 2, the quick queue band)
 --   BattleCatalog.Zones { Duel, Raid, Ring, Dungeon 44, DungeonBoss 56 x 72 }, TimeLimits { Duel 120, Raid 330, Ring 90, Dungeon 120 (fallback) }, Modes
---   BattleCatalog.Dungeon / DungeonFloors (5.1); DungeonPower(floor, partySize); DungeonWave(floor, room, wave, partySize, seed) ->
+--   BattleCatalog.Dungeon / DungeonFloors (5.1); DungeonPower(floor, partySize); DungeonWave(floor, room, wave, partySize, seed, opts) ->
 --       { Pets = { { PetId, Key, Level, Tier, Slot, Boss, Boost, Handicap, Wild = true }... }, Boss = bool, Power, Target, Floor, Room, Wave };
 --       DungeonRewards(floor, room, waves, incomePerSecond, double) -> { Cash, Tokens, Xp }; DungeonFirstClear(floor) -> { Tokens, Gems };
 --       DungeonChest(floor, seed) -> { Kind, Amount }
@@ -948,7 +948,7 @@ end
 ----------------------------------------------------------------------
 BattleCatalog.Ring = {
 	-- { round, level } anchors of the champion level curve (the last anchor holds)
-	LevelAnchors = { { 1, 1 }, { 3, 1 }, { 10, 3 }, { 14, 4 }, { 20, 11 }, { 27, 23 }, { 33, 33 }, { 42, 46 }, { 49, 58 }, { 60, 80 }, { 70, 100 } },
+	LevelAnchors = { { 1, 1 }, { 2, 4 }, { 3, 8 }, { 4, 15 }, { 9, 15 }, { 10, 19 }, { 15, 26 }, { 20, 29 }, { 30, 39 }, { 40, 42 }, { 49, 58 }, { 60, 80 }, { 70, 100 } },
 	BossEvery = 10, -- every 10th round: the boss round (BossLevelBump levels more), the first win pays BossTokens
 	BossLevelBump = 3,
 	TierFrom = { Golden = 36, Rainbow = 51 }, -- the champions' tier from these rounds on
@@ -959,18 +959,18 @@ BattleCatalog.Ring = {
 	Training = { From = 70, To = 100 },
 	-- rounds 1..OpeningRounds: the weakest level-1 Commons that do not heal, weakest first (every single level-1 starter
 	-- wins each of them; the opening never needs a level raise)
-	OpeningRounds = 3,
+	OpeningRounds = 1,
 	-- the species of a round: a seeded pick among the band's species that match the round before within MaxLevelRaise
 	-- levels of the curve (so the shown level follows the curve instead of jumping L42 -> L26 -> ...)
 	MaxLevelRaise = 5,
 	Bands = { -- the champions' rarity by round; the last band is open-ended
-		{ From = 1, To = 9, Rarities = { "Common" } },
-		{ From = 10, To = 15, Rarities = { "Common", "Uncommon" } },
-		{ From = 16, To = 21, Rarities = { "Uncommon", "Rare" } },
-		{ From = 22, To = 27, Rarities = { "Rare", "Epic" } },
-		{ From = 28, To = 33, Rarities = { "Epic", "Legendary" } },
-		{ From = 34, To = 41, Rarities = { "Legendary", "Mythic" } },
-		{ From = 42, Rarities = { "Mythic", "Secret" } },
+		{ From = 1, To = 7, Rarities = { "Common" } },
+		{ From = 8, To = 11, Rarities = { "Uncommon" } },
+		{ From = 12, To = 14, Rarities = { "Rare" } },
+		{ From = 15, To = 19, Rarities = { "Epic" } },
+		{ From = 20, To = 29, Rarities = { "Legendary" } },
+		{ From = 30, To = 38, Rarities = { "Mythic" } },
+		{ From = 39, Rarities = { "Secret" } },
 	},
 	CashFloorBase = 20,
 	CashFloorPerRound = 2,
@@ -980,7 +980,7 @@ BattleCatalog.Ring = {
 	RecordMult = 3,
 	BossTokens = 100,
 	XpBase = 20,
-	XpPerRound = 6,
+	XpPerRound = 21,
 	TimeLimit = 90, -- = TimeLimits.Ring; a timeout is a loss
 	Intermission = 3,
 	MaxRound = 100000,
@@ -1345,7 +1345,11 @@ end
 function P4.champion(r, s, prev)
 	local maxCount = P4.maxChampions()
 	local top = P4.maxLevel()
-	local level = BattleCatalog.ChampionLevel(r)
+	local curve = BattleCatalog.ChampionLevel(r)
+	local level = curve
+	if prev and prev.Pets[1] then
+		level = max(level, prev.Pets[1].Level) -- the shown level never drops (a boss round's bump, a raised species)
+	end
 	local count = BattleCatalog.ChampionCount(r)
 	local tierName = BattleCatalog.ChampionTier(r)
 	local tier = 1
@@ -1357,7 +1361,7 @@ function P4.champion(r, s, prev)
 	local rank = P4.trainRank(r)
 	local maxRank = floor(num(BattleCatalog.Training.MaxRank, 10))
 	local goal = prev and prev.Power or 0
-	local petId = (r <= num(BattleCatalog.Ring.OpeningRounds, 0)) and P4.opening()[r] or P4.pickChampion(r, s, P4.bandRarity(r), count, level, P4.TIERS[tier], rank, goal)
+	local petId = (r <= num(BattleCatalog.Ring.OpeningRounds, 0)) and P4.opening()[r] or P4.pickChampion(r, s, P4.bandRarity(r), count, curve, P4.TIERS[tier], rank, goal)
 	if not petId then
 		return nil, 0
 	end
@@ -1547,19 +1551,21 @@ BattleCatalog.Duel = {
 ----------------------------------------------------------------------
 -- The boss roster (Phase 3, kept). Boss damage is a fraction of the fighters' HP (DamageBasis blends each victim's own
 -- max HP with the raid's average); boss HP lasts HpPerPlayer seconds of every team's expected DPS (BossHp), but never
--- less than HpPerPlayer seconds of BaselineDps (#2: a weak solo cannot finish inside the 330 s raid window). Telegraph
+-- less than FloorSeconds of BaselineDps (#2: a weak solo cannot finish inside the 330 s raid window). Telegraph
 -- shapes: Circle { Radius } at a target point, Line { Width, Length } from the boss through a target point. The dash's
 -- i-frames and a step out of the shape both dodge a telegraph.
 ----------------------------------------------------------------------
 BattleCatalog.BossRules = {
 	DamageBasis = { Own = 0.6, Average = 0.4 },
 	MinHp = 2500, -- #2: 600 -> 2500
-	-- #2: the boss HP floor = HpPerPlayer x BaselineDps(bossId): the ExpectedDps of this fighter (a level-25 evolved
-	-- (stage 1) Legendary, the Prestige-1 fighter of tools/sim_battle.lua), unless the boss sets its own BaselineDps
-	Baseline = { PetId = "ember_phoenix", Level = 25, Evo = 1 },
+	FloorSeconds = 100, -- the boss HP floor = this x BaselineDps(bossId), whatever the boss's HpPerPlayer
+	-- #2: the boss HP floor = FloorSeconds x BaselineDps(bossId): the ExpectedDps of this fighter (a level-35 evolved
+	-- (stage 1) Legendary, spec 2026-10-31 s.6: the owner's L10-11 Secrets cannot solo), unless the boss sets its own BaselineDps
+	Baseline = { PetId = "ember_phoenix", Level = 35, Evo = 1 },
 	MinionHp = 0.7,
 	MinionDamage = 0.035,
 	GroupExponent = 0.2, -- boss HP x teams ^ GroupExponent (Phase 5: 0.25 -> 0.2, so 8 fighters finish in ~220 s)
+	GroupBonus = 0.55, -- ... x (1 + GroupBonus x (1 - 1 / teams)): a group lasts 100-240 s, a solo keeps its short fight (it would not survive a longer one)
 	DamageGroup = { Min = 0.7, FullAt = 8 }, -- dungeon fixes (7): 0.55 -> 0.35 (no bench regen); #2: 0.35 -> 0.7 (a solo raid is meant to be hard)
 	MinionInterval = 1.4,
 	MinionLevelOf = "average",
@@ -1586,7 +1592,7 @@ BattleCatalog.Bosses = {
 		Name = "Storm Titan",
 		Element = "Storm",
 		Blurb = "A thunderhead given arms. Earth pets ground its lightning.",
-		HpPerPlayer = 100, -- seconds of each team's expected DPS (dodging and dashing cost about a third of the uptime)
+		HpPerPlayer = 105, -- seconds of each team's expected DPS (dodging and dashing cost about a third of the uptime)
 		Radius = 7,
 		Scale = 1,
 		Basic = { Name = "Zap", Interval = 2.4, Damage = 0.05, Range = 20 },
@@ -1604,10 +1610,10 @@ BattleCatalog.Bosses = {
 		Name = "Lava Golem",
 		Element = "Flame",
 		Blurb = "A walking volcano. Water pets cool it down.",
-		HpPerPlayer = 90, -- its Eruption sends every melee fighter running, so its HP is a little lower (balance-5: 90 -> 85,
-		-- the bug #22 engaged pets (EngagePull 7) cost the Frost-heavy mid group time: 8 x M5 won 44% of 32 seeds, then 84%).
-		-- Wave 6: 85 -> 90 again: pets that never retreat + the parrying trainer made it fast (M8 4p 88 s, the M8 stage
-		-- average 97 s); at 90: M8 93-115 s a cell, 8 x M5 84% of 32 seeds (225 s), a solo M5 / Lv 5 still loses
+		HpPerPlayer = 65, -- its Eruption sends every melee fighter running, so its HP is lower (balance-5: 90 -> 85, the bug #22
+		-- engaged pets (EngagePull 7) cost the Frost-heavy mid group time: 8 x M5 won 44% of 32 seeds, then 84%). Wave 6: 85 ->
+		-- 90 again: pets that never retreat + the parrying trainer made it fast. Team balance: 90 -> 65 under GroupBonus 0.55,
+		-- which leaves the group's HP where it was (M8 4p ~94 s, 8 x M5 ~236 s); the floor keeps a solo M5 / Lv 5 from winning
 		Radius = 8,
 		Scale = 1,
 		Basic = { Name = "Magma Fist", Interval = 2.8, Damage = 0.05, Range = 20 },
@@ -1704,7 +1710,7 @@ function BattleCatalog.BaselineDps(bossId)
 end
 
 -- Boss HP for a list of team specs (each { Pets = {...} }): HpPerPlayer seconds of every team's expected DPS, each
--- team's share weighted like the head count, x GroupFactor; never below HpPerPlayer seconds of BaselineDps (#2: the
+-- team's share weighted like the head count, x GroupFactor; never below FloorSeconds of BaselineDps (#2: the
 -- floor is for the whole raid, so a weak group still adds up past it while a weak solo cannot), nor MinHp.
 -- Returns the total and the shares (scaled up with the floor, so they still add up to the total before GroupFactor).
 function BattleCatalog.BossHp(bossId, teams)
@@ -1724,7 +1730,7 @@ function BattleCatalog.BossHp(bossId, teams)
 		total = total + shares[i]
 	end
 	total = total * BattleCatalog.GroupFactor(BattleCatalog.WeightedTeams(dpsList))
-	local floorHp = seconds * BattleCatalog.BaselineDps(bossId)
+	local floorHp = num(BattleCatalog.BossRules.FloorSeconds, seconds) * BattleCatalog.BaselineDps(bossId)
 	if total > 0 and total < floorHp then
 		local scale = floorHp / total
 		for i = 1, #shares do
@@ -1743,7 +1749,8 @@ end
 
 function BattleCatalog.GroupFactor(teams)
 	local n = max(1, num(teams, 1))
-	return n ^ (BattleCatalog.BossRules.GroupExponent or 0)
+	local R = BattleCatalog.BossRules
+	return n ^ (R.GroupExponent or 0) * (1 + num(R.GroupBonus, 0) * (1 - 1 / n))
 end
 
 ----------------------------------------------------------------------
@@ -1817,16 +1824,17 @@ BattleCatalog.Trophies = {
 ----------------------------------------------------------------------
 BattleCatalog.Dungeon = {
 	Floors = 12,
-	Floor1Power = 1.5, -- floor 1's target per player (one handicapped Common: any single level-1 pet wins)
-	FirstPower = 4, -- floor f >= 2 targets FirstPower x Growth ^ (f - 1) TeamPower per player (floor 2 = 8, floor 10 = 2048, floor 12 = 8192)
+	Floor1Power = 17, -- floor 1's target per player (3 L1 Commons win room 1 and about half of room 2; 3 L6-7 Commons clear it)
+	FirstPower = 29, -- floor f >= 2 targets FirstPower x Growth ^ (f - 1) TeamPower per player (floor 2 = 58, floor 10 = 14848, floor 12 = 59392)
 	Growth = 2.0,
 	RoomMult = { 1.0, 1.1, 1.25 }, -- wave rooms 1-3 (re-tuned by sim_battle for the fighter engine: S1 clears floor 2, S10 floor 11)
 	BossMult = 1.3, -- the boss (room 4, wave 1)
 	EscortMult = 0.5, -- the boss's escort (room 4, wave 2, at EscortAt of its HP)
 	Waves = { 2, 2, 3 },
-	Floor1Waves = { 1, 1, 1 },
+	Floor1Waves = { 1, 2, 3 },
 	EnemiesPerWave = 2, -- + 1 per extra player
 	Floor1EnemiesPerWave = 1,
+	EasedRoomMult = 0.35, -- DungeonWave's opts.Eased: the tutorial's first room (spec 2026-10-31 s.7), any single level-1 pet wins it
 	PartyExp = 0.5, -- the party's target = per player x partySize ^ PartyExp (0.85 in the design assumed 3-4 pets per player on the floor; with ONE fighter per player sim_battle measures +1 floor for a party of 4 at 0.5)
 	MinHandicap = 0.3,
 	EnemyMaxLevel = 50,
@@ -1990,8 +1998,9 @@ end
 
 -- One wave's enemies: { Pets = { entry... }, Boss, Power, Target, Floor, Room, Wave, Count }; deterministic for its
 -- arguments. Room 4 wave 1 = the boss alone (forced mini-boss form, handicapped on floors 1-2), wave 2 = the escort at
--- EscortMult; floor 1 = ONE handicapped enemy per wave. Rooms 1-3: EnemiesPerWave (+1 per extra player) at RoomMult.
-function BattleCatalog.DungeonWave(floorIndex, room, wave, partySize, seed)
+-- EscortMult; floor 1 = ONE enemy per wave. Rooms 1-3: EnemiesPerWave (+1 per extra player) at RoomMult.
+-- opts = { Eased = true } aims the wave at EasedRoomMult x its goal (same species and count); nil = the plain wave.
+function BattleCatalog.DungeonWave(floorIndex, room, wave, partySize, seed, opts)
 	local D = BattleCatalog.Dungeon
 	local f = D5.floor(floorIndex)
 	local n = D5.party(partySize)
@@ -2017,6 +2026,9 @@ function BattleCatalog.DungeonWave(floorIndex, room, wave, partySize, seed)
 		goalEach = total * mult / count
 	end
 	count = max(1, min(12, floor(count)))
+	if type(opts) == "table" and opts.Eased == true then
+		goalEach = goalEach * num(D.EasedRoomMult, 1)
+	end
 	local candidates = D5.candidates(f)
 	local nextInt = P4.stream((s * 131 + f * 10007 + r * 1009 + w * 101) % P4.RING_M)
 	local pets = {}
@@ -2461,13 +2473,10 @@ function BattleCatalog.Validate()
 	if #DG.Bands ~= 6 or DG.Bands[1][1] ~= 1 or DG.Bands[#DG.Bands][2] ~= DG.Floors then
 		bad("Dungeon.Bands must cover floors 1-12")
 	end
-	if abs(BattleCatalog.DungeonPower(10, 1) - 2048) > 2048 * 0.01 then
-		bad("DungeonPower(10, 1) must be 2048 +-1% (the old Trial 30)")
-	end
 	if pc then
 		local w = BattleCatalog.DungeonWave(1, 1, 1, 1, 1)
-		if #w.Pets ~= 1 or not (w.Pets[1].Handicap and w.Pets[1].Handicap < 1) then
-			bad("DungeonWave floor 1 = one handicapped enemy")
+		if #w.Pets ~= 1 then
+			bad("DungeonWave floor 1 = one enemy per wave")
 		end
 		local b = BattleCatalog.DungeonWave(3, 4, 1, 1, 1)
 		if not b.Boss or #b.Pets ~= 1 or not b.Pets[1].Boss then

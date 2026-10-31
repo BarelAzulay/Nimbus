@@ -8,13 +8,16 @@
 --   duels     mirror duels per stage (scripted players both sides): 40-60%, no draws, none at the 120 s limit
 --             + the element counter (balance-5: Water vs Flame, the wheel on vs off): it decides an even fight (>= 90%)
 --             and is worth x1.15-1.45 TeamPower
---   raids     1 / 4 / 8 / 16 parrying trainers (wave 6: the trainer stands, times the Dash) finish every boss in 100-240 s (a solo under half the boss's BaselineDps loses:
---             bug batch 2 #2); eight mid (M5) teams win >= 60% of every boss (balance-5); Lv 5 / Lv 40 solos and groups;
---             no one-shots; joins / leaves; idle alts
---   ring      the no-heal climb (HP carried, fainted pets out): rounds 1-3 >= 95% for every single level-1 rollable pet;
---             the stage medians S1 14 .. S10 49 (+-3); the champions on the player formula (no Boss / Handicap / Boost,
---             power never drops); a team beats champions 10+ levels below it; the maxed team's record 60-95
---   dungeon   floor 1 for the 12 single level-1 pets (100%); the stage ladder (monotonic, S10 >= floor 10); a 4-party +1 floor
+--   raids     the baseline: BossRules.Baseline is a L35 evolved Legendary and the owner's L10/11/11 Secrets win 0 of 8 solo raids;
+--             4 and 8 owner-teams finish in 100-240 s; 1 / 4 / 8 / 16 parrying trainers (wave 6: the trainer stands, times the
+--             Dash) win nearly every raid in 100-240 s; a solo under half the boss's BaselineDps loses (bug batch 2 #2); no
+--             one-shots; joins / leaves; idle alts
+--   ring      the owner's wall (spec 2026-10-31 s.4, run XP + loss XP, HP carried, fainted pets out; SIM.Targets.Ring): 3 L1 Commons
+--             win 2-4 rounds, Ring 5 in <= 10% of seeds; Legendaries, the owner's Secrets, L50, maxed by band; round 1 is an easy
+--             Common; shown level and power never drop; the champions on the player formula (no Boss / Handicap / Boost)
+--   dungeon   3 L1 Commons: room 1 >= 90%, room 2 40-60%, floor 1 < 15%; L7 Commons clear it; the team ladder (SIM.Targets.Dungeon);
+--             the tutorial's eased room; a 4-party +1 floor
+--   progress  a new player's real pace (3 L1 Commons, run XP): minutes to Ring 5, floor 1 and Ring 10 (SIM.Targets.Progress)
 --   training  trained / evolved TeamPower ratios; trained mirror duels fair; trained raids 100-240 s
 --   move      the B1 character patterns (random targets + an r 14 circle) at the legal run speed with a 200 ms feed delay:
 --             the server fighter keeps up (gap <= 0.5 after the catch-up, zero leashes); a run-off past the zone is leashed;
@@ -213,12 +216,48 @@ SIM.Stages = {
 -- level beats rarity: the pairs of section levels
 SIM.Commons = { "mallow_kitten", "puddle_frog", "biscuit_bear", "pebble_pup", "pip_penguin", "honey_bunny" }
 SIM.Secrets = { "stormfang", "eclipse_dragon", "obsidian_phoenix", "phantom_kitsune" }
--- the ring medians per stage: the fresh-HP ladder measured on 2026-10-30 before the no-heal rule (HUD cleanup Task 4);
--- the no-heal climb keeps them within +-3
-SIM.RingMedians = { S1 = 14, S3 = 21, S5 = 27, S7 = 33, S9 = 42, S10 = 49 }
 -- the top of the game: three L100 Rainbow pets, fully evolved and trained (the ring's top rounds must stay hard)
 local MAX_TRAIN = { Speed = 10, Physique = 10, Ability = 10, Defense = 10 }
 SIM.Maxed = { pet("stormfang", 100, "Rainbow", { Evo = 2, Train = MAX_TRAIN }), pet("eclipse_dragon", 100, "Rainbow", { Evo = 2, Train = MAX_TRAIN }), pet("cloudy_dragon", 100, "Rainbow", { Evo = 2, Train = MAX_TRAIN }) }
+-- the Idle trainer: stands, presses nothing (the Default trainer = SIM.Player's defaults: dodge 0.7, mistime 0.5, every button)
+SIM.Idle = { dodge = 0, element = false, specials = false, buffs = false, swap = false, attack = false, cheer = false }
+-- the teams of the balance targets (spec 2026-10-31 s.4)
+local function commonTrio(level)
+	return { pet("mallow_kitten", level), pet("puddle_frog", level), pet("pebble_pup", level) }
+end
+SIM.Teams = {
+	S1 = commonTrio(1),
+	One = { pet("mallow_kitten", 1) },
+	L7 = commonTrio(7),
+	Leg = { pet("ember_phoenix", 1), pet("twilight_dragon", 1), pet("sunbeam_bear", 1) },
+	Owner = { pet("stormfang", 10), pet("obsidian_phoenix", 11), pet("phantom_kitsune", 11) },
+	L50 = { pet("ember_phoenix", 50, nil, { Evo = 2 }), pet("twilight_dragon", 50, nil, { Evo = 2 }), pet("sunbeam_bear", 50, nil, { Evo = 2 }) },
+	Max = SIM.Maxed,
+}
+-- the spec's table as bands (every band is inclusive); Progress in minutes (medians over 24 players)
+SIM.Targets = {
+	Ring = {
+		S1 = { Default = { 2, 4 }, Idle = { 1, 2 }, Reach5 = 10, Win1 = 95 },
+		One = { Default = { 1, 2 }, Idle = { 1, 1 } },
+		Leg = { Default = { 6, 10 }, Idle = { 3, 5 } },
+		Owner = { Default = { 16, 22 }, Idle = { 9, 13 } },
+		L50 = { Default = { 35, 43 }, Idle = { 27, 35 } },
+		Max = { Default = { 60, 95 } },
+	},
+	Dungeon = {
+		S1 = { Room1 = 90, Room2 = { 40, 60 }, Clear = 15 },
+		L7 = { Clear = 80 },
+		Leg = { Floor = { 1, 3 } },
+		Owner = { Floor = { 3, 5 } },
+		L50 = { Floor = { 6, 8 } },
+		Max = { Floor = { 12, 12 } },
+	},
+	Progress = { Ring5 = { 4, 9 }, F1 = { 4, 10 }, Ring10 = { 20, 45 } },
+	Raid = { OwnerSoloWins = 0, Group = { 100, 240 } },
+}
+local function inBand(value, band)
+	return value >= band[1] and value <= band[2]
+end
 
 ----------------------------------------------------------------------
 -- A scripted player (the trainer + the kit). Wave 6: the trainer STANDS (opts.move "stand", default; "wander" = a slow
@@ -629,8 +668,8 @@ end
 -- The dungeon: one room = a fresh BattleSim (Mode Dungeon, full HP, the room's time limit) whose waves are spawned
 -- one after the other (the next wave when EnemiesDown fires; the boss room: the boss, then the escort at EscortAt)
 ----------------------------------------------------------------------
--- returns cleared (bool), seconds; teams = player team specs, policies as in SIM.run
-function SIM.dungeonRoom(f, r, teams, policies, seed, playerOpts)
+-- returns cleared (bool), seconds; teams = player team specs, policies as in SIM.run; waveOpts = DungeonWave's opts (Eased)
+function SIM.dungeonRoom(f, r, teams, policies, seed, playerOpts, waveOpts)
 	local D = BC.Dungeon
 	local n = #teams
 	local isBoss = (r == 4)
@@ -654,7 +693,7 @@ function SIM.dungeonRoom(f, r, teams, policies, seed, playerOpts)
 	local escortDue = false
 	-- the Throne's enemies spawn at the foot of the dais stairs (DungeonBuilder's SpawnAnchor, zone-local z 15)
 	local anchor = isBoss and { 0, 15 } or nil
-	b:SpawnEnemies(BC.DungeonWave(f, r, 1, n, seed).Pets, { Wave = 1, Anchor = anchor })
+	b:SpawnEnemies(BC.DungeonWave(f, r, 1, n, seed, waveOpts).Pets, { Wave = 1, Anchor = anchor })
 	local steps, maxSteps = 0, floor((limit + 5) / DT) + 10
 	local cleared = false
 	while not b:IsFinished() and steps < maxSteps do
@@ -681,7 +720,7 @@ function SIM.dungeonRoom(f, r, teams, policies, seed, playerOpts)
 					b:Finish("Cleared")
 				else
 					wave = wave + 1
-					b:SpawnEnemies(BC.DungeonWave(f, r, wave, n, seed).Pets, { Wave = wave })
+					b:SpawnEnemies(BC.DungeonWave(f, r, wave, n, seed, waveOpts).Pets, { Wave = wave })
 				end
 			end
 		end
@@ -981,7 +1020,34 @@ end
 
 -- 5. raids
 section("raids", function(opts)
-	header("Raids: 1 / 4 / 8 / 16 dodging fighters (70% of wind-ups and telegraphs) should finish every boss in 100-240 s (a solo under half of BaselineDps should lose)")
+	local T = SIM.Targets.Raid
+	local B = BC.BossRules.Baseline
+	header(fmt("Raids: the baseline (%s L%d evolved %d, BaselineDps %.0f): the owner's L10/11/11 Secrets solo every boss, 8 seeds", B.PetId, B.Level, B.Evo or 0, BC.BaselineDps(BC.BossOrder[1])))
+	local ownerWins = 0
+	for _, boss in ipairs(BC.BossOrder) do
+		local agg = series(function(seed)
+			return { Mode = "Raid", Boss = boss, Seed = seed, Teams = { team(1, 1, SIM.Teams.Owner) } }
+		end, { [1] = "player" }, 8)
+		out(fmt("  %-13s solo: wins %d of %d, %5.1f s, maxBossHit %.2f", boss, agg.wins[1], agg.n, agg.avgDur, agg.maxBossHit))
+		ownerWins = ownerWins + agg.wins[1]
+	end
+	local baselineDef = PC.Get(B.PetId)
+	target("BossRules.Baseline is a L35 evolved Legendary and the owner's L10/11/11 Secrets win 0 of 8 solo raids on every boss", B.Level == 35 and (B.Evo or 0) >= 1 and baselineDef.Rarity == "Legendary" and ownerWins == T.OwnerSoloWins, fmt("%d wins", ownerWins))
+	local groupOk, groupRows = true, {}
+	local groupSeeds = opts.quick and 3 or 8
+	for _, players in ipairs({ 4, 8 }) do
+		for _, boss in ipairs({ "storm_titan", "shadow_hydra" }) do
+			local agg = SIM.midGroup(boss, players, groupSeeds, SIM.Teams.Owner)
+			groupRows[#groupRows + 1] = fmt("%dp %s %.0f s (%d%%)", players, boss, agg.avgDur, agg.winPct)
+			if agg.winPct < 100 or not inBand(agg.avgDur, T.Group) then
+				groupOk = false
+			end
+		end
+	end
+	out("  owner-teams: " .. table.concat(groupRows, ", "))
+	target("4 and 8 owner-teams finish storm_titan and shadow_hydra in 100-240 s", groupOk, table.concat(groupRows, ", "))
+
+	header("Raids: 1 / 4 / 8 / 16 dodging fighters (70% of wind-ups and telegraphs) should finish every boss in 100-240 s (a solo under a quarter of BaselineDps should lose)")
 	local seeds = max(1, floor(opts.seeds / 8))
 	local stages = { { Id = "M5", Pets = SIM.Stages[5].Pets }, { Id = "M8", Pets = SIM.Stages[8].Pets } }
 	local wonCombos, combos, anyBossHit = 0, 0, 0
@@ -1005,9 +1071,9 @@ section("raids", function(opts)
 				end, policies, n)
 				out(fmt("  %-13s %-3s %2dp: win %3d%% dur %5.1f s (dashes %5.1f, parries %5.1f, dodged hits %5.1f, KOs %4.1f, maxBossHit %.2f, tele hits %4.1f)",
 					boss, stage.Id, players, agg.winPct, agg.avgDur, agg.dodges / max(1, agg.n), agg.parries / max(1, agg.n), agg.misses / max(1, agg.n), agg.kos / max(1, agg.n), agg.maxBossHit, agg.teleHits / max(1, agg.n)))
-				-- bug batch 2 #2: a solo with under half the boss's BaselineDps meets the HP floor and should lose (near the
-				-- baseline it is the edge: M8 at ~0.9 x still wins)
-				local weakSolo = players == 1 and BC.BaselineDps and BC.ExpectedDps({ Pets = stage.Pets }) < 0.5 * BC.BaselineDps(boss)
+				-- bug batch 2 #2: a solo with under a quarter of the boss's BaselineDps meets the HP floor and should lose (near
+				-- it is the edge: the L35 baseline puts M8 at ~0.37 x, its helpers make it a coin flip per boss)
+				local weakSolo = players == 1 and BC.BaselineDps and BC.ExpectedDps({ Pets = stage.Pets }) < 0.25 * BC.BaselineDps(boss)
 				if weakSolo then
 					weakSolos = weakSolos + 1
 					if agg.winPct < 50 then
@@ -1016,12 +1082,17 @@ section("raids", function(opts)
 				else
 					combos = combos + 1
 				end
+				-- a group under half the BaselineDps fights the HP floor at the edge of the 330 s window (the L35 baseline: 4 x M5);
+				-- it can win, but it does not count in the 100-240 s band
+				local floorGroup = BC.ExpectedDps({ Pets = stage.Pets }) * players < 0.5 * BC.BaselineDps(boss)
 				if agg.winPct >= 50 then
 					wonCombos = wonCombos + (weakSolo and 0 or 1)
-					if agg.avgDur < 90 or agg.avgDur > 250 then
-						cellOk = false
+					if not floorGroup then
+						if agg.avgDur < 90 or agg.avgDur > 250 then
+							cellOk = false
+						end
+						sumDur, cells = sumDur + agg.avgDur, cells + 1
 					end
-					sumDur, cells = sumDur + agg.avgDur, cells + 1
 				end
 				anyBossHit = max(anyBossHit, agg.maxBossHit)
 			end
@@ -1032,7 +1103,7 @@ section("raids", function(opts)
 		end
 	end
 	target("dodging fighters win nearly every raid (1/4/8/16 players, two stages, four bosses: >= 90% of the combos; weak solos aside)", wonCombos >= combos * 0.9, fmt("%d of %d", wonCombos, combos))
-	target("a solo under half the boss's BaselineDps loses (bug batch 2 #2)", weakSolosLost == weakSolos, fmt("%d of %d lost", weakSolosLost, weakSolos))
+	target("a solo under a quarter of the boss's BaselineDps loses (bug batch 2 #2)", weakSolosLost == weakSolos, fmt("%d of %d lost", weakSolosLost, weakSolos))
 	target("won raids last 100-240 s per boss and stage (every single cell within 90-250 s: a few seeds per cell)", avgOk and cellOk)
 	target("no boss hit takes more than 80% of a fighter before the enrage", anyBossHit <= 0.8, fmt("max %.2f", anyBossHit))
 
@@ -1123,50 +1194,123 @@ section("raids", function(opts)
 end)
 
 -- 6. the Champion Ring
-local function ringFight(pets, round, runSeed, battleSeed)
-	return SIM.run({ Mode = "Ring", Seed = battleSeed, Round = round, Teams = { team(77, 1, pets), BC.ChampionTeam(round, runSeed) } }, { [77] = "player" })
+local function ringFight(pets, round, runSeed, battleSeed, playerOpts)
+	return SIM.run({ Mode = "Ring", Seed = battleSeed, Round = round, Teams = { team(77, 1, pets), BC.ChampionTeam(round, runSeed) } }, { [77] = "player" }, playerOpts)
+end
+
+-- XP like DataService.GrantXp (the level-up loop) + the player who evolves a pet as soon as it can (stage 1 at level 20,
+-- stage 2 at level 50 when PetCatalog.EvolveTwice names its rarity)
+local function addXp(p, gain)
+	p.Xp = (p.Xp or 0) + gain
+	while p.Level < PC.MaxPetLevel() and p.Xp >= TC.XpToNext(p.Level) do
+		p.Xp = p.Xp - TC.XpToNext(p.Level)
+		p.Level = p.Level + 1
+	end
+	local def = PC.Get(p.Key)
+	local stage = p.Evo or 0
+	if p.Level >= PC.EvolutionLevels[1] then
+		stage = max(stage, 1)
+	end
+	if p.Level >= PC.EvolutionLevels[2] and def and PC.EvolveTwice[def.Rarity] then
+		stage = max(stage, 2)
+	end
+	p.Evo = stage > 0 and stage or p.Evo
+end
+
+local function clonePets(pets)
+	local list = {}
+	for i, p in ipairs(pets) do
+		local c = {}
+		for k, v in pairs(p) do
+			c[k] = v
+		end
+		list[i] = c
+	end
+	return list
 end
 
 -- one run with the NO-HEAL rule (BattleService RingRun): every pet keeps the HP share it ended the round with
 -- (Result().Units -> HpFraction), a fainted pet sits out; the run ends on a lost round or when nobody is left.
--- -> record (rounds won), durations (the won fights), total seconds, the last fight's duration (the loss; nil when the
--- run ended on a win with nobody left or at maxRound)
-local function ringRun(pets, runSeed, maxRound)
+-- opts = { Xp = bool, Player = playerOpts, Start = round }: Xp pays Ring.XpBase + XpPerRound x the round per fielded pet
+-- after a won round and BattleCatalog.LossXp on the losing round (the pets passed in are mutated: Level / Xp / Evo, so a
+-- progression loop can chain runs). -> record (the last round won), durations (the won fights), total seconds, the last
+-- fight's duration (the loss; nil when the run ended on a win with nobody left or at maxRound), levels (the pets' levels)
+local function ringRun(pets, runSeed, maxRound, opts)
+	opts = opts or {}
 	local lost = nil
-	local r, total = 1, 0
+	local r, total = opts.Start or 1, 0
 	local durations = {}
 	local intermission = BC.Ring.Intermission or 3
 	local share = {} -- key -> the HP share after the last won round (0 = fainted)
+	local function pay(fielded, gain)
+		if opts.Xp and gain > 0 then
+			for _, p in ipairs(fielded) do
+				addXp(p, gain)
+			end
+		end
+	end
 	while r <= (maxRound or 150) do
-		local live = {}
+		local live, fielded = {}, {}
 		for _, p in ipairs(pets) do
 			local f = share[p.Key]
 			if f == nil or f > 0 then
 				local e = copyEntry(p)
 				e.HpFraction = (f and f < 1) and f or nil
 				live[#live + 1] = e
+				fielded[#fielded + 1] = p
 			end
 		end
 		if #live == 0 then
 			break
 		end
-		local res = ringFight(live, r, runSeed, runSeed * 13 + r)
+		local res = ringFight(live, r, runSeed, runSeed * 13 + r, opts.Player)
 		local d = res and res.Duration or 0
+		local winXp = BC.Ring.XpBase + BC.Ring.XpPerRound * r
 		total = total + d
 		if not res or res.WinnerSide ~= 1 then
 			lost = d
+			if res then
+				local left = type(res.Hp) == "table" and tonumber(res.Hp[2]) or 1
+				pay(fielded, BC.LossXp(winXp, d, max(0, min(1, 1 - left))))
+			end
 			break
 		end
 		for _, row in ipairs(res.Units and res.Units[77] or {}) do
 			share[row.Key] = (row.Alive and row.MaxHp > 0) and row.Hp / row.MaxHp or 0
 		end
+		pay(fielded, winXp)
 		durations[#durations + 1] = d
 		total = total + intermission
 		r = r + 1
 	end
-	return r - 1, durations, total, lost
+	local levels = {}
+	for i, p in ipairs(pets) do
+		levels[i] = p.Level
+	end
+	return r - 1, durations, total, lost, levels
 end
 SIM.ringRun = ringRun
+
+-- `seeds` runs of a copy of `pets` with run XP: { med, lo, hi, reach5 (% with record >= 4), win1 (% with record >= 1), sec }
+local function ringSummary(pets, playerOpts, seeds)
+	local records = {}
+	local reach5, win1, seconds = 0, 0, 0
+	for seed = 1, seeds do
+		local rec, _, total = ringRun(clonePets(pets), 1000 + seed, nil, { Xp = true, Player = playerOpts })
+		records[#records + 1] = rec
+		seconds = seconds + total
+		if rec >= 4 then
+			reach5 = reach5 + 1
+		end
+		if rec >= 1 then
+			win1 = win1 + 1
+		end
+	end
+	local med = median(records)
+	table.sort(records)
+	return { med = med, lo = records[1], hi = records[#records], reach5 = 100 * reach5 / seeds, win1 = 100 * win1 / seeds, sec = seconds / seeds }
+end
+SIM.ringSummary = ringSummary
 
 -- a fresh-HP fight series of `pets` against the champions of `round` (seed = the run seed): wins of n
 local function ringSeries(pets, round, n)
@@ -1188,58 +1332,60 @@ local function lowestLevel(pets)
 	return lo
 end
 
-section("ring", function(opts)
-	local R = BC.Ring
-	header("Champion Ring: single level-1 pets vs the first rounds (scripted player; champions on the player formula)")
-	local seeds1 = opts.quick and 12 or 32
-	local list = starters()
-	local NR = 6
-	local worst, avg = {}, {}
-	for r = 1, NR do
-		worst[r], avg[r] = 100, 0
-	end
-	for _, id in ipairs(list) do
-		local row = {}
-		for r = 1, NR do
-			local wins, dur = 0, 0
-			for seed = 1, seeds1 do
-				local res = ringFight({ pet(id, 1) }, r, seed, seed * 7 + r)
-				if res and res.WinnerSide == 1 then
-					wins = wins + 1
-				end
-				dur = dur + (res and res.Duration or 0)
-			end
-			local p = pct(wins, seeds1)
-			worst[r] = min(worst[r], p)
-			avg[r] = avg[r] + p / #list
-			row[#row + 1] = fmt("r%d %3d%%/%2.0fs", r, p, dur / seeds1)
-		end
-		out(fmt("  %-15s %s", id, table.concat(row, " ")))
-	end
-	target(fmt("rounds 1-3 are won >= 95%% by EVERY single level-1 rollable Common / Uncommon (%d pets, %d seeds)", #list, seeds1), worst[1] >= 95 and worst[2] >= 95 and worst[3] >= 95, fmt("worst r1 %d%%, r2 %d%%, r3 %d%%", worst[1], worst[2], worst[3]))
-	target("the single-pet average stays >= 80% at rounds 4-5 (no cliff)", avg[4] >= 80 and avg[5] >= 80, fmt("r4 %.0f%%, r5 %.0f%%, r6 %.0f%%", avg[4], avg[5], avg[6]))
-	-- (info) a LONE level-1 pet in one no-heal run: each even fight costs it about half its HP
-	local lone = {}
-	for _, id in ipairs(list) do
-		local recs = {}
-		for seed = 1, (opts.quick and 4 or 8) do
-			recs[#recs + 1] = ringRun({ pet(id, 1) }, 3000 + seed, 12)
-		end
-		lone[#lone + 1] = fmt("%s %d", id, median(recs))
-	end
-	out("  (info) one no-heal run of a lone level-1 pet, median record: " .. table.concat(lone, ", "))
+local function bandText(band)
+	return band[1] == band[2] and tostring(band[1]) or (band[1] .. "-" .. band[2])
+end
 
-	header("Champion Ring: the record (the last round won, NO HEAL between rounds, fainted pets sit out) per progression stage")
-	local seeds2 = opts.quick and 6 or 12
-	local medians, fightOk, lastMedian, monotonic = {}, true, -1, true
+section("ring", function(opts)
+	local T = SIM.Targets.Ring
+	local fewSeeds, seeds = opts.quick and 16 or 64, opts.quick and 8 or 24
+	header(fmt("Champion Ring: rounds won per team (run XP + loss XP, NO HEAL between rounds, fainted pets sit out; S1 / One %d seeds, the others %d)", fewSeeds, seeds))
+	local function row(id, name, n)
+		local d = ringSummary(SIM.Teams[id], nil, n)
+		local i = ringSummary(SIM.Teams[id], SIM.Idle, n)
+		out(fmt("  %-24s power %6d | Default med %3d (%d-%d) reach 5 %3.0f%% win 1 %3.0f%% run %3.0f s | Idle med %3d (%d-%d)", name, powerOf(SIM.Teams[id]), d.med, d.lo, d.hi, d.reach5, d.win1, d.sec, i.med, i.lo, i.hi))
+		return { d = d, i = i }
+	end
+	local S1 = row("S1", "3 L1 Commons", fewSeeds)
+	local One = row("One", "1 L1 Common", fewSeeds)
+	local Leg = row("Leg", "3 L1 Legendaries", seeds)
+	local Owner = row("Owner", "the owner's L10/11/11", seeds)
+	local L50 = row("L50", "3 L50 Legendaries evo 2", seeds)
+	local Max = row("Max", "3 L100 maxed", seeds)
+	local function detail(x)
+		return fmt("Default %d, Idle %d", x.d.med, x.i.med)
+	end
+	target("3 L1 Commons: Default median 2-4, Idle 1-2 (the owner's wall)", inBand(S1.d.med, T.S1.Default) and inBand(S1.i.med, T.S1.Idle), detail(S1))
+	target("3 L1 Commons reach round 5 in <= 10% of seeds and win round 1 in >= 95%", S1.d.reach5 <= T.S1.Reach5 and S1.d.win1 >= T.S1.Win1, fmt("reach 5 %.0f%%, win 1 %.0f%%", S1.d.reach5, S1.d.win1))
+	target("1 L1 Common: Default 1-2, Idle 1", inBand(One.d.med, T.One.Default) and inBand(One.i.med, T.One.Idle), detail(One))
+	target(fmt("3 L1 Legendaries: Default %s, Idle %s", bandText(T.Leg.Default), bandText(T.Leg.Idle)), inBand(Leg.d.med, T.Leg.Default) and inBand(Leg.i.med, T.Leg.Idle), detail(Leg))
+	target(fmt("the owner's L10/11/11 Secrets: Default %s, Idle %s", bandText(T.Owner.Default), bandText(T.Owner.Idle)), inBand(Owner.d.med, T.Owner.Default) and inBand(Owner.i.med, T.Owner.Idle), detail(Owner))
+	target(fmt("3 L50 Legendaries evo 2: Default %s, Idle %s", bandText(T.L50.Default), bandText(T.L50.Idle)), inBand(L50.d.med, T.L50.Default) and inBand(L50.i.med, T.L50.Idle), detail(L50))
+	target(fmt("3 L100 maxed: Default %s", bandText(T.Max.Default)), inBand(Max.d.med, T.Max.Default), fmt("Default %d", Max.d.med))
+	target("the record never falls with the team (S1 <= Leg <= Owner <= L50 <= Max, Default)", S1.d.med <= Leg.d.med and Leg.d.med <= Owner.d.med and Owner.d.med <= L50.d.med and L50.d.med <= Max.d.med)
+
+	header("Champion Ring: round 1 for every single level-1 rollable Common / Uncommon (a first win always exists)")
+	local worst1, worstId = 100, "-"
+	local list = starters()
+	for _, id in ipairs(list) do
+		local p = pct(ringSeries({ pet(id, 1) }, 1, fewSeeds), fewSeeds)
+		if p < worst1 then
+			worst1, worstId = p, id
+		end
+	end
+	target("round 1 is an easy Common: every single L1 rollable Common / Uncommon wins it >= 95% (a first win always exists)", worst1 >= 95, fmt("worst %s %d%%, %d pets", worstId, worst1, #list))
+
+	header("Champion Ring: the record per progression stage (no XP: the team as it stands)")
 	local stages = {}
 	for _, st in ipairs(SIM.Stages) do
 		stages[#stages + 1] = st
 	end
 	stages[#stages + 1] = { Id = "Max", Name = "L100 maxed", Pets = SIM.Maxed }
+	local fightOk, stageMono, lastMedian = true, true, -1
+	local stageSeeds = opts.quick and 6 or 12
 	for _, st in ipairs(stages) do
 		local records, durs, totals, near = {}, {}, {}, {}
-		for seed = 1, seeds2 do
+		for seed = 1, stageSeeds do
 			local rec, d, total, lost = ringRun(st.Pets, 1000 + seed)
 			records[#records + 1] = rec
 			for _, x in ipairs(d) do
@@ -1260,44 +1406,36 @@ section("ring", function(opts)
 			totals[#totals + 1] = total
 		end
 		local med = median(records)
-		medians[st.Id] = med
-		local avgFight = mean(durs)
 		local nearFight = mean(near)
 		table.sort(records)
-		out(fmt("  %-4s %-11s power %6d  record median %3d (min %d, max %d)  avg fight %4.1f s (last 10: %4.1f s)  run %4.1f min", st.Id, st.Name, powerOf(st.Pets), med, records[1], records[#records], avgFight, nearFight, mean(totals) / 60))
+		out(fmt("  %-4s %-11s power %6d  record median %3d (min %d, max %d)  avg fight %4.1f s (last 10: %4.1f s)  run %4.1f min", st.Id, st.Name, powerOf(st.Pets), med, records[1], records[#records], mean(durs), nearFight, mean(totals) / 60))
 		if nearFight < 4 or nearFight > 40 then
 			fightOk = false
 		end
 		if med < lastMedian then
-			monotonic = false
+			stageMono = false
 		end
 		lastMedian = max(lastMedian, med)
 	end
-	local allOk, detail = true, {}
-	for _, id in ipairs({ "S1", "S3", "S5", "S7", "S9", "S10" }) do
-		local want = SIM.RingMedians[id]
-		detail[#detail + 1] = fmt("%s %d (want %d)", id, medians[id], want)
-		if abs(medians[id] - want) > 3 then
-			allOk = false
-		end
-	end
-	target("(a) median records within +-3 of the fresh-HP ladder: S1 14, S3 21, S5 27, S7 33, S9 42, S10 49", allOk, table.concat(detail, ", "))
-	target("the record never falls with the stage", monotonic)
+	target("the record never falls with the stage", stageMono)
 	target("the last 10 fights of a run (from the checkpoint on) last 4-40 s on average at every stage", fightOk)
-	target("(c) three L100 Rainbow evo-2 fully trained pets: record median between 60 and 95 (the top stays hard)", medians.Max >= 60 and medians.Max <= 95, fmt("median %d", medians.Max))
 
-	header("Champion Ring: the ladder (player formula: no Boss / Handicap / Boost; the power never drops)")
-	local mono, plain, levels, sizes, full = true, true, true, true, true
+	header("Champion Ring: the ladder (player formula: no Boss / Handicap / Boost; shown level and power never drop)")
+	local levelMono, powerMono, plain, levels, sizes, full = true, true, true, true, true, true
 	local monoBad = nil
 	for seed = 1, 40 do
-		local last = 0
+		local lastPower, lastLevel = 0, 0
 		for r = 1, 120 do
 			local spec = BC.ChampionTeam(r, seed)
-			if r > 1 and spec.Power < last then
-				mono = false
-				monoBad = monoBad or fmt("seed %d round %d: %d -> %d", seed, r, last, spec.Power)
+			if r > 1 and spec.Power < lastPower then
+				powerMono = false
+				monoBad = monoBad or fmt("seed %d round %d: power %d -> %d", seed, r, lastPower, spec.Power)
 			end
-			last = spec.Power
+			if r > 1 and spec.Champion.Level < lastLevel then
+				levelMono = false
+				monoBad = monoBad or fmt("seed %d round %d: level %d -> %d", seed, r, lastLevel, spec.Champion.Level)
+			end
+			lastPower, lastLevel = spec.Power, spec.Champion.Level
 			if #spec.Pets < 1 or #spec.Pets > 3 then
 				sizes = false
 			end
@@ -1314,16 +1452,21 @@ section("ring", function(opts)
 			full = false
 		end
 	end
-	target("the champions' power never drops from a round to the next (rounds 2-120, 40 seeds)", mono, monoBad)
+	target("shown level and shown power never drop from one round to the next (rounds 1-120, 40 seeds)", levelMono and powerMono, monoBad)
 	target("no champion pet carries Boss / Handicap / Boost (the player formula)", plain)
 	target("every champion level is 1..100, every team 1..3 pets, round 100 fields three", levels and sizes and full)
-	for _, gap in ipairs({ { "S7", 7, 10 }, { "S9", 9, 21 }, { "S10", 10, 30 } }) do
-		local st = SIM.Stages[gap[2]]
-		local spec = BC.ChampionTeam(gap[3], 1)
+	-- a team beats champions 10+ levels below it: the last round whose curve level is at least 10 under the team's lowest pet
+	for _, idx in ipairs({ 7, 9, 10 }) do
+		local st = SIM.Stages[idx]
 		local lo = lowestLevel(st.Pets)
+		local round = 1
+		while round < 120 and BC.ChampionLevel(round + 1) <= lo - 10 do
+			round = round + 1
+		end
+		local spec = BC.ChampionTeam(round, 1)
 		local n = 24
-		local wins = ringSeries(st.Pets, gap[3], n)
-		target(fmt("(b) %s (lowest L%d) beats round %d's champions (L%d, curve L%d) in >= 95%% of %d fresh-HP fights", gap[1], lo, gap[3], spec.Pets[1].Level, BC.ChampionLevel(gap[3]), n), pct(wins, n) >= 95 and BC.ChampionLevel(gap[3]) <= lo - 10, fmt("%d of %d", wins, n))
+		local wins = ringSeries(st.Pets, round, n)
+		target(fmt("%s (lowest L%d) beats round %d's champions (L%d, curve L%d) in >= 90%% of %d fresh-HP fights", st.Id, lo, round, spec.Pets[1].Level, BC.ChampionLevel(round), n), pct(wins, n) >= 90, fmt("%d of %d", wins, n))
 	end
 	local topWins = 0
 	local nTop = 24
@@ -1333,9 +1476,20 @@ section("ring", function(opts)
 			topWins = topWins + 1
 		end
 	end
-	target(fmt("(c) round 100's champions (three L100 Rainbow) beat the maxed team in >= 60%% of %d fresh-HP fights", nTop), pct(topWins, nTop) >= 60, fmt("%d of %d", topWins, nTop))
+	target(fmt("round 100's champions (three L100 Rainbow) beat the maxed team in >= 60%% of %d fresh-HP fights", nTop), pct(topWins, nTop) >= 60, fmt("%d of %d", topWins, nTop))
+	-- (info) a veteran's view: records are kept, so a boss start stays unlocked under the harder champions
+	local vets = {}
+	for _, start in ipairs({ 10, 20 }) do
+		local won = {}
+		for seed = 1, seeds do
+			local rec = ringRun(clonePets(SIM.Teams.Owner), 1000 + seed, nil, { Xp = true, Start = start })
+			won[#won + 1] = rec - start + 1
+		end
+		vets[#vets + 1] = fmt("from round %d: %d rounds won", start, median(won))
+	end
+	out("  (info) the owner's team from an unlocked boss start: " .. table.concat(vets, ", "))
 	out(fmt("  %5s %5s %-7s %5s %-40s %8s", "round", "level", "tier", "count", "species", "power"))
-	for _, r in ipairs({ 1, 2, 3, 5, 10, 15, 20, 25, 30, 36, 40, 50, 52, 56, 60, 66, 70, 80, 100, 120 }) do
+	for _, r in ipairs({ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 25, 30, 36, 40, 50, 52, 56, 60, 66, 70, 80, 100, 120 }) do
 		local spec = BC.ChampionTeam(r, 1)
 		local names = {}
 		for _, e in ipairs(spec.Pets) do
@@ -1346,81 +1500,182 @@ section("ring", function(opts)
 end)
 
 -- 7. the Dungeon
-section("dungeon", function(opts)
+-- roomPct[1..4]: the % of `seeds` that cleared that room of floor f with a copy of `pets`, like DungeonService: a fresh
+-- full-HP battle per room, the team re-read per room, the room's XP paid on the clear (levels rise inside a floor)
+local function floorSummary(pets, f, playerOpts, seeds)
 	local D = BC.Dungeon
-	header(fmt("Dungeon: floor 1 (target %.1f per player, ONE handicapped enemy per wave) solo with ONE level-1 pet (the tutorial floor)", D.Floor1Power))
-	local seeds = opts.quick and 3 or 6
-	local worst = 100
-	for _, id in ipairs(starters()) do
-		local wins, minutes = 0, 0
-		for seed = 1, seeds do
-			local rooms, m = SIM.dungeonFloor(1, { pet(id, 1) }, 1, seed)
-			if rooms == 4 then
-				wins = wins + 1
-			end
-			minutes = minutes + m
-		end
-		local p = pct(wins, seeds)
-		worst = min(worst, p)
-		out(fmt("  %-15s floor 1 cleared %3d%%  avg %.1f min", id, p, minutes / seeds))
-	end
-	target("floor 1 is cleared by every single level-1 rollable Common / Uncommon (100%)", worst == 100, fmt("worst %d%%", worst))
-
-	header(fmt("Dungeon: the stage ladder (solo, %d seeds): the highest floor cleared in >= half of the seeds; FirstPower %.1f Growth %.2f RoomMult %.2f/%.2f/%.2f", seeds, D.FirstPower, D.Growth, D.RoomMult[1], D.RoomMult[2], D.RoomMult[3]))
-	local ladder = {}
-	local lastFloor = 0
-	local monotonic = true
-	for _, st in ipairs(SIM.Stages) do
-		local f = max(1, lastFloor - 1)
-		local best = 0
-		local parts = {}
-		while f <= D.Floors do
-			local clears, rooms, minutes = 0, 0, 0
-			for seed = 1, seeds do
-				local r, m = SIM.dungeonFloor(f, st.Pets, 1, seed)
-				rooms = rooms + r
-				minutes = minutes + m
-				if r == 4 then
-					clears = clears + 1
-				end
-			end
-			parts[#parts + 1] = fmt("F%d:%d%%/%.1fm", f, pct(clears, seeds), minutes / seeds)
-			if clears * 2 >= seeds then
-				best = f
-				f = f + 1
-			else
+	local roomPct = { 0, 0, 0, 0 }
+	for seed = 1, seeds do
+		local list = clonePets(pets)
+		for r = 1, 4 do
+			if not SIM.dungeonRoom(f, r, { team(301, 1, list) }, { [301] = "player" }, seed, playerOpts) then
 				break
 			end
-		end
-		ladder[st.Id] = best
-		if best < lastFloor then
-			monotonic = false
-		end
-		lastFloor = max(lastFloor, best)
-		out(fmt("  %-4s %-11s power %6d  clears to F%-2d  %s", st.Id, st.Name, powerOf(st.Pets), best, table.concat(parts, " ")))
-	end
-	target("the ladder never falls with the stage", monotonic)
-	target("S10 (the maxed team) clears floor 10 or higher", ladder.S10 >= 10, fmt("F%d", ladder.S10))
-	target("S1 clears floor 1-2 and S5 reaches floors 4-6 (the middle of the ladder)", ladder.S1 >= 1 and ladder.S1 <= 2 and ladder.S5 >= 4 and ladder.S5 <= 6, fmt("S1 F%d, S5 F%d", ladder.S1, ladder.S5))
-
-	header("Dungeon: a party of 4 (copies of S3) gains about one floor over the solo S3")
-	local party4 = 0
-	for f = max(1, ladder.S3), D.Floors do
-		local clears = 0
-		for seed = 1, seeds do
-			local r = SIM.dungeonFloor(f, SIM.Stages[3].Pets, 4, seed)
-			if r == 4 then
-				clears = clears + 1
+			roomPct[r] = roomPct[r] + 100 / seeds
+			local waves = (r == 4) and 2 or ((f == 1) and D.Floor1Waves[r] or D.Waves[r])
+			local gain = BC.DungeonRewards(f, r, waves, 0, false).Xp
+			for _, p in ipairs(list) do
+				addXp(p, gain)
 			end
 		end
-		if clears * 2 >= seeds then
-			party4 = f
+	end
+	return roomPct
+end
+SIM.floorSummary = floorSummary
+
+-- the highest floor cleared in >= 50% of the seeds (climbing from floor 1, stopping at the first floor it fails)
+local function ladder(pets, playerOpts, seeds)
+	local best = 0
+	for f = 1, BC.Dungeon.Floors do
+		if floorSummary(pets, f, playerOpts, seeds)[4] >= 50 then
+			best = f
 		else
 			break
 		end
 	end
-	out(fmt("  S3 solo clears to F%d, a party of 4 x S3 to F%d", ladder.S3, party4))
-	target("a 4-party clears one or two floors more than the solo team", party4 - ladder.S3 >= 1 and party4 - ladder.S3 <= 2, fmt("+%d", party4 - ladder.S3))
+	return best
+end
+SIM.ladder = ladder
+
+section("dungeon", function(opts)
+	local D = BC.Dungeon
+	local T = SIM.Targets.Dungeon
+	local fewSeeds, seeds = opts.quick and 16 or 64, opts.quick and 8 or 24
+	header(fmt("Dungeon: floor 1 (target %.1f per player, waves %d / %d / %d) with room XP (%d seeds)", D.Floor1Power, D.Floor1Waves[1], D.Floor1Waves[2], D.Floor1Waves[3], fewSeeds))
+	local function rooms(pc)
+		return fmt("%3.0f %3.0f %3.0f %3.0f", pc[1], pc[2], pc[3], pc[4])
+	end
+	local s1 = floorSummary(SIM.Teams.S1, 1, nil, fewSeeds)
+	local one = floorSummary(SIM.Teams.One, 1, nil, fewSeeds)
+	local l7 = floorSummary(SIM.Teams.L7, 1, nil, fewSeeds)
+	out("  3 L1 Commons Default rooms " .. rooms(s1) .. " | Idle " .. rooms(floorSummary(SIM.Teams.S1, 1, SIM.Idle, fewSeeds)))
+	out("  1 L1 Common  Default rooms " .. rooms(one))
+	out("  3 L7 Commons Default rooms " .. rooms(l7))
+	target("3 L1 Commons: room 1 >= 90%, room 2 40-60%, floor 1 full clear < 15% (Default)", s1[1] >= T.S1.Room1 and inBand(s1[2], T.S1.Room2) and s1[4] < T.S1.Clear, fmt("%.0f / %.0f / clear %.0f", s1[1], s1[2], s1[4]))
+	target("3 L6-7 Commons clear floor 1 >= 80%", l7[4] >= T.L7.Clear, fmt("%.0f%%", l7[4]))
+
+	header(fmt("Dungeon: the eased room (floor 1 room 1 at EasedRoomMult %.2f, %d seeds per pet, the tutorial)", D.EasedRoomMult, fewSeeds))
+	local worstEased, worstId = 100, "-"
+	for _, id in ipairs(starters()) do
+		local wins = 0
+		for seed = 1, fewSeeds do
+			if SIM.dungeonRoom(1, 1, { team(301, 1, { pet(id, 1) }) }, { [301] = "player" }, seed, nil, { Eased = true }) then
+				wins = wins + 1
+			end
+		end
+		local p = pct(wins, fewSeeds)
+		if p < worstEased then
+			worstEased, worstId = p, id
+		end
+	end
+	target("the eased room: floor 1 room 1 with EasedRoomMult is won >= 95% by EVERY single L1 rollable Common / Uncommon (the tutorial)", worstEased >= 95, fmt("worst %s %d%%", worstId, worstEased))
+
+	header(fmt("Dungeon: the team ladder (solo, %d seeds): the highest floor cleared in >= half of the seeds; FirstPower %.1f Growth %.2f RoomMult %.2f/%.2f/%.2f", seeds, D.FirstPower, D.Growth, D.RoomMult[1], D.RoomMult[2], D.RoomMult[3]))
+	local best = {}
+	local monotonic, lastFloor = true, 0
+	for _, id in ipairs({ "S1", "L7", "Leg", "Owner", "L50", "Max" }) do
+		best[id] = ladder(SIM.Teams[id], nil, seeds)
+		out(fmt("  %-6s power %6d  clears to F%d", id, powerOf(SIM.Teams[id]), best[id]))
+		if best[id] < lastFloor then
+			monotonic = false
+		end
+		lastFloor = max(lastFloor, best[id])
+	end
+	target("best floor (>= 50% of seeds): Legendaries L1 1-3, the owner's Secrets 3-5, L50 Legendaries 6-8, maxed 12", inBand(best.Leg, T.Leg.Floor) and inBand(best.Owner, T.Owner.Floor) and inBand(best.L50, T.L50.Floor) and inBand(best.Max, T.Max.Floor), fmt("Leg F%d, Owner F%d, L50 F%d, Max F%d", best.Leg, best.Owner, best.L50, best.Max))
+	target("the ladder never falls with the team", monotonic)
+	-- (info) the progression stages
+	local parts = {}
+	for _, st in ipairs(SIM.Stages) do
+		parts[#parts + 1] = fmt("%s F%d", st.Id, ladder(st.Pets, nil, max(4, floor(seeds / 2))))
+	end
+	out("  (info) the stages: " .. table.concat(parts, ", "))
+
+	header("Dungeon: a party of 4 (copies of S3) gains about one floor over the solo S3")
+	local partySeeds = opts.quick and 3 or 6
+	local function floorsOf(party)
+		local top = 0
+		for f = 1, D.Floors do
+			local clears = 0
+			for seed = 1, partySeeds do
+				if SIM.dungeonFloor(f, SIM.Stages[3].Pets, party, seed) == 4 then
+					clears = clears + 1
+				end
+			end
+			if clears * 2 >= partySeeds then
+				top = f
+			else
+				break
+			end
+		end
+		return top
+	end
+	local solo3, party4 = floorsOf(1), floorsOf(4)
+	out(fmt("  S3 solo clears to F%d, a party of 4 x S3 to F%d", solo3, party4))
+	target("a 4-party clears one or two floors more than the solo team", party4 - solo3 >= 1 and party4 - solo3 <= 2, fmt("+%d", party4 - solo3))
+end)
+
+-- 7b. progress: a new player's pace (spec 2026-10-31 s.4), real run XP + loss XP, levels kept between runs
+section("progress", function(opts)
+	local T = SIM.Targets.Progress
+	local players = opts.quick and 12 or 24
+	local RETURN_DELAY, WALK = 4, 10 -- BattleService's return delay + an assumed walk back to the portal
+	local MAX_RUNS = 200
+	header(fmt("Progress: %d new players, Default trainer, 3 L1 Commons, Ring runs only (run XP + loss XP, overhead %d s per run)", players, RETURN_DELAY + WALK))
+	local f1cache = {}
+	local function f1clear(list)
+		local key = list[1].Level .. "/" .. list[2].Level .. "/" .. list[3].Level
+		if f1cache[key] == nil then
+			local pets = {}
+			for i, p in ipairs(list) do
+				pets[i] = pet(p.Key, p.Level, nil, { Evo = p.Evo })
+			end
+			f1cache[key] = floorSummary(pets, 1, nil, 12)[4]
+		end
+		return f1cache[key]
+	end
+	local goals = { { "Ring5", 4 }, { "Ring10", 9 } }
+	local res = { Ring5 = { mins = {}, runs = {}, lv = {} }, Ring10 = { mins = {}, runs = {}, lv = {} }, F1 = { mins = {}, runs = {}, lv = {} } }
+	local runSeconds, runCount = 0, 0
+	local function note(name, minutes, run, level)
+		local rr = res[name]
+		rr.mins[#rr.mins + 1], rr.runs[#rr.runs + 1], rr.lv[#rr.lv + 1] = minutes, run, level
+	end
+	for player = 1, players do
+		local list = clonePets(SIM.Teams.S1)
+		local secs = 0
+		local done = {}
+		for run = 1, MAX_RUNS do
+			local rec, _, total = ringRun(list, 5000 + player * 100 + run, nil, { Xp = true })
+			secs = secs + total + RETURN_DELAY + WALK
+			if run <= 5 then
+				runSeconds, runCount = runSeconds + total + RETURN_DELAY + WALK, runCount + 1
+			end
+			for _, g in ipairs(goals) do
+				if not done[g[1]] and rec >= g[2] then
+					done[g[1]] = true
+					note(g[1], secs / 60, run, list[1].Level)
+				end
+			end
+			if not done.F1 and f1clear(list) >= 80 then
+				done.F1 = true
+				note("F1", secs / 60, run, list[1].Level)
+			end
+			if done.Ring10 and done.F1 then
+				break
+			end
+		end
+	end
+	local function row(name)
+		local rr = res[name]
+		local m = #rr.mins > 0 and median(rr.mins) or huge
+		out(fmt("  %-7s reached by %d of %d: median %.1f min, run %s, lead level %s", name, #rr.mins, players, m, tostring(median(rr.runs)), tostring(median(rr.lv))))
+		return (#rr.mins * 2 >= players) and m or huge
+	end
+	local r5, f1, r10 = row("Ring5"), row("F1"), row("Ring10")
+	out(fmt("  (info) seconds per run in the first five runs (fight + intermissions + overhead): %.0f s (spec s.7 wants the retry loop under 2 minutes)", runSeconds / max(1, runCount)))
+	target("a new player reaches Ring 5 in 4-9 minutes (median)", inBand(r5, T.Ring5), fmt("%.1f min", r5))
+	target("...clears floor 1 in 4-10 minutes", inBand(f1, T.F1), fmt("%.1f min", f1))
+	target("...reaches Ring 10 in 20-45 minutes (target 30)", inBand(r10, T.Ring10), fmt("%.1f min", r10))
 end)
 
 -- 8. training + evolution

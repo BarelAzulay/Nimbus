@@ -1289,6 +1289,20 @@ local function serverScenarios()
 	end)
 
 	------------------------------------------------------------------------------------------------
+	-- p5dgn_balance (pure: the team-balance targets of floor 1, spec 2026-10-31 s.4 / s.7; the full table is tools/sim_battle.lua)
+	------------------------------------------------------------------------------------------------
+	S.p5dgn_balance = guarded("p5dgn_balance", function()
+		local BC = req("shared/BattleCatalog")
+		if not T.check(BC and type(BC.DungeonWave) == "function", "tb balance: BattleCatalog.DungeonWave loads") then
+			return
+		end
+		local plain, eased = BC.DungeonWave(1, 1, 1, 1, 7), BC.DungeonWave(1, 1, 1, 1, 7, { Eased = true })
+		T.check(type(BC.Dungeon.EasedRoomMult) == "number" and BC.Dungeon.EasedRoomMult > 0 and BC.Dungeon.EasedRoomMult < 1, "tb balance: Dungeon.EasedRoomMult is a number in (0, 1)", tostring(BC.Dungeon.EasedRoomMult))
+		T.check(eased.Power < plain.Power and eased.Count == plain.Count and eased.Pets[1].PetId == plain.Pets[1].PetId, "tb balance: an eased wave aims at EasedRoomMult x the goal with the same species and count", tostring(eased.Power) .. " vs " .. tostring(plain.Power))
+		T.check(BC.DungeonWave(1, 1, 1, 1, 7, nil).Power == plain.Power, "tb balance: opts nil = the plain wave")
+	end)
+
+	------------------------------------------------------------------------------------------------
 	-- p5dgn_loot (white-box: Dg.payRoom / payLoss / clearFloor / openChest on a live run in its Hall)
 	------------------------------------------------------------------------------------------------
 	S.p5dgn_loot = scenario("p5dgn_loot", function()
