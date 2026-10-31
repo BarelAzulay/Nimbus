@@ -4789,6 +4789,15 @@ function P3.realEntry(player)
 	return entry
 end
 
+-- Why a team edit cannot run now: a stand-in profile waits for its recovery (P3.realEntry), else the save is not in yet.
+function P3.notReady(player)
+	local entry = player and cache[player.UserId]
+	if entry and entry.Loaded and isProvisional(entry) then
+		return "Your save is still being recovered, try again in a moment"
+	end
+	return "Your data is still loading"
+end
+
 function P3.validPreset(preset)
 	return isFinite(preset) and preset >= 1 and preset <= P3.PRESETS and preset == math.floor(preset)
 end
@@ -4915,7 +4924,7 @@ function DataService.SetTeam(player, preset, keys)
 	end
 	local entry = P3.realEntry(player)
 	if not entry then
-		return false, "Your data is still loading"
+		return false, P3.notReady(player)
 	end
 	local profile = entry.Profile
 	if P3.matchLocked(player, profile, preset) then
@@ -4942,7 +4951,7 @@ function DataService.CheckTeam(player, preset, keys, freeKey)
 	end
 	local entry = P3.realEntry(player)
 	if not entry then
-		return false, "Your data is still loading"
+		return false, P3.notReady(player)
 	end
 	if P3.matchLocked(player, entry.Profile, preset) then
 		return false, P3.MATCH_LOCKED
@@ -4961,7 +4970,7 @@ function DataService.SelectTeam(player, preset)
 	end
 	local entry = P3.realEntry(player)
 	if not entry then
-		return false, "Your data is still loading"
+		return false, P3.notReady(player)
 	end
 	if player:GetAttribute(Config.Attr.InMatch) == true then
 		return false, P3.MATCH_LOCKED
@@ -5606,11 +5615,32 @@ function P3.gardenAnnounce(player, info)
 	end
 end
 
+-- A pet the old build sent to training out of Equipped (Job.From = "Follow") is in no list here (normalizeEquipped), and that
+-- build's return to its slot is gone (PetCareService.sendBack): it takes a free slot of the migrated team, sorted so two
+-- servers agree. Busy, it does not follow until the job ends. A full team has no slot for it; the pet stays owned.
+function P3.keepFollowJobs(profile, preset)
+	local have, keys = {}, {}
+	for _, key in ipairs(preset) do
+		have[key] = true
+	end
+	for key, entry in pairs(tableOr(profile.PetGrowth)) do
+		if type(entry) == "table" and type(entry.Job) == "table" and entry.Job.From == "Follow" and not have[key] and P3.teamKey(key) and P3.knownPet(profile, key) then
+			keys[#keys + 1] = key
+		end
+	end
+	table.sort(keys)
+	for _, key in ipairs(keys) do
+		if #preset < P3.MAX_SLOTS then
+			preset[#preset + 1] = key
+		end
+	end
+end
+
 -- Team balance (B4TeamFollow) on a loaded, real profile without the marker: the old Equipped list becomes a team, so no
 -- team is lost when it can be helped. With Equipped empty it follows the active preset; else a preset holding the same
 -- keys (not counting its busy ones; the active preset first) becomes active, and Equipped takes ITS order; else the first
--- empty preset takes the list and becomes active; else the highest-numbered non-active preset does. No pet is touched, a
--- key listed twice stays once. Returns info { Preset = n, Case = "Empty" | "Same" | "Free" | "Replaced" } (also
+-- empty preset takes the list and becomes active; else the highest-numbered non-active preset does. A pet training from
+-- Follow keeps a free slot of that team (P3.keepFollowJobs). No pet is touched, a key listed twice stays once. Returns info { Preset = n, Case = "Empty" | "Same" | "Free" | "Replaced" } (also
 -- MigratedNow(player, "B4TeamFollow")), or nil when the marker was already set or the profile is not decidable (not
 -- loaded, provisional: migrated after the recovery).
 function P3.teamMigrate(entry)
@@ -5669,6 +5699,7 @@ function P3.teamMigrate(entry)
 			teams.Presets[target] = list
 		end
 	end
+	P3.keepFollowJobs(profile, teams.Presets[target])
 	teams.Active = target
 	refill(ensureTable(profile, "Teams"), teams)
 	migrations[P3.MARK_TEAM] = true

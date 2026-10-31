@@ -499,6 +499,8 @@ local function onProfileReady(player)
 	refreshPlayer(player, false)
 end
 
+local RECOVERING = "Your save is still being recovered, try again in a moment" -- a stand-in profile has no teams (activeTeam)
+
 -- { key... } of the active team's slots and the preset number, or nil until loaded / while provisional
 local function activeTeam(player)
 	local teams = DataService.GetTeams(player)
@@ -584,7 +586,7 @@ function PetService.CanEquip(player, key, freed)
 	end
 	local team = activeTeam(player)
 	if not team then
-		return false, "Your data is still loading"
+		return false, RECOVERING
 	end
 	-- bug batch 2 #18: a pet with every copy in the Garden is busy gardening (the recall frees `freed` copies first)
 	local rawPlaced = placedCopies(player)[key] or 0
@@ -639,7 +641,7 @@ function PetService.Unequip(player, key)
 	end
 	local team, preset = activeTeam(player)
 	if not team then
-		return false, "Your data is still loading"
+		return false, RECOVERING
 	end
 	local slot = teamHas(team, key)
 	local parsed = parseKey(key)

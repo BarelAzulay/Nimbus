@@ -8,7 +8,8 @@
 --                      a direct pick of a busy pet is refused, a team edit around a busy pet is not; a slot survives a rejoin
 --   tb_team_refusal    an empty team is refused everywhere with the Empty text; no "else strongest" fallback in the Ring
 --   tb_team_migrate    Migrations.B4TeamFollow: the Empty / Same / Free / Replaced cases (Review Focus 1), nothing lost, once
---                      only, after a provisional load's recovery
+--                      only, after a provisional load's recovery; a pet training from Follow keeps a free slot; a stand-in
+--                      profile's team edits say the save is being recovered
 --   tb_team_rollout    a profile the frozen Phase 4 server wrote loads with the invariant and no lost key
 --   client_tb_team_state  (client world) State.Busy / State.ActiveTeam / State.Teams().Busy from a ProfileSync; junk is dropped
 -- Deterministic: mock clock only. Plain Lua 5.1 syntax only.
@@ -495,6 +496,21 @@ S.tb_team_migrate = guarded("tb_team_migrate", function()
 		-- the same key twice (the old list allowed it with two copies): a preset holds each key once
 		{ Name = "Free", Label = "Free (a key twice)", Uid = 966307, Equipped = { K1, K1 }, Presets = { { K3 }, {}, {} }, Active = 1, WantActive = 2, WantEquipped = { K1 }, WantPresets = { { K3 }, { K1 }, {} },
 			Extra = { Pets = { [K1] = 2, [K3] = 1 } } },
+		-- a pet that left Equipped for a training job on the old build (Job.From = "Follow") keeps a team slot: nothing else puts it back
+		{ Name = "Free", Label = "Free (a pet training from Follow)", Uid = 966308, Equipped = { K2, K3 }, Presets = { { K4 }, {}, {} }, Active = 1, WantActive = 2, WantEquipped = { K2, K3 }, WantPresets = { { K4 }, { K2, K3, K1 }, {} },
+			Extra = { PetGrowth = { [K1] = { Job = { Stat = "Speed", Ends = os.time() + 3000, Rank = 1, Slot = 1, From = "Follow", Paid = 0 } } } } },
+		{ Name = "Same", Label = "Same (a pet training from Follow, the preset lost it)", Uid = 966312, Equipped = { K2, K3 }, Presets = { { K2, K3 }, {}, {} }, Active = 1, WantActive = 1, WantEquipped = { K2, K3 }, WantPresets = { { K2, K3, K1 }, {}, {} },
+			Extra = { PetGrowth = { [K1] = { Job = { Stat = "Speed", Ends = os.time() + 3000, Rank = 1, Slot = 1, From = "Follow", Paid = 0 } } } } },
+		{ Name = "Same", Label = "Same (a pet training from Follow, still in the preset)", Uid = 966313, Equipped = { K2, K3 }, Presets = { { K1, K2, K3 }, {}, {} }, Active = 1, WantActive = 1, WantEquipped = { K2, K3 }, WantPresets = { { K1, K2, K3 }, {}, {} },
+			Extra = { PetGrowth = { [K1] = { Job = { Stat = "Speed", Ends = os.time() + 3000, Rank = 1, Slot = 1, From = "Follow", Paid = 0 } } } } },
+		{ Name = "Empty", Label = "Empty (a pet training from Follow)", Uid = 966314, Equipped = {}, Presets = { { K2 }, {}, {} }, Active = 1, WantActive = 1, WantEquipped = { K2 }, WantPresets = { { K2, K1 }, {}, {} },
+			Extra = { PetGrowth = { [K1] = { Job = { Stat = "Speed", Ends = os.time() + 3000, Rank = 1, Slot = 1, From = "Follow", Paid = 0 } } } } },
+		-- a full team: no fourth slot; the pet stays owned, outside the team
+		{ Name = "Free", Label = "Free (a pet training from Follow, no room)", Uid = 966315, Equipped = { K2, K3, K4 }, Presets = { {}, {}, {} }, Active = 1, WantActive = 1, WantEquipped = { K2, K3, K4 }, WantPresets = { { K2, K3, K4 }, {}, {} },
+			Extra = { PetGrowth = { [K1] = { Job = { Stat = "Speed", Ends = os.time() + 3000, Rank = 1, Slot = 1, From = "Follow", Paid = 0 } } } } },
+		-- trained from the Garden or free: no slot to give back
+		{ Name = "Free", Label = "Free (a pet training from Free)", Uid = 966316, Equipped = { K2, K3 }, Presets = { { K4 }, {}, {} }, Active = 1, WantActive = 2, WantEquipped = { K2, K3 }, WantPresets = { { K4 }, { K2, K3 }, {} },
+			Extra = { PetGrowth = { [K1] = { Job = { Stat = "Speed", Ends = os.time() + 3000, Rank = 1, Slot = 1, From = "Free", Paid = 0 } } } } },
 	}
 	for _, c in ipairs(cases) do
 		local label = c.Label or c.Name
@@ -534,6 +550,22 @@ S.tb_team_migrate = guarded("tb_team_migrate", function()
 	local d = join("TbMigProv", UP)
 	advance(1)
 	T.check(Data.IsProvisional(d) == true and Data.GetProfile(d).Migrations.B4TeamFollow == nil and Data.MigratedNow(d, "B4TeamFollow") == nil, "tb team migrate: a provisional profile waits")
+	-- every team edit on that stand-in names the save, so it is not read as a bug with the pet
+	local recovering = "Your save is still being recovered, try again in a moment"
+	local standIn = Data.GetProfile(d)
+	standIn.Pets[K1] = 1 -- (the stand-in owns what it was given: the refusal is about the save, not the pet)
+	local standIn = Data.GetProfile(d)
+	standIn.Pets[K1] = 1 -- (the stand-in owns what it was given: the refusal is about the save, not the pet)
+	local okE, whyE = PS().Equip(d, K1)
+	local okU, whyU = PS().Unequip(d, K1)
+	local okC, whyC = PS().CanEquip(d, K1, 0)
+	local okS, whyS = Data.SetTeam(d, 1, { K1 })
+	local okA, whyA = Data.SelectTeam(d, 2)
+	local okK, whyK = Data.CheckTeam(d, 1, { K1 })
+	T.check(not okE and whyE == recovering and not okU and whyU == recovering and not okC and whyC == recovering, "tb team migrate: a provisional Equip / Unequip / CanEquip says the save is being recovered", tostring(whyE) .. " / " .. tostring(whyU) .. " / " .. tostring(whyC))
+	T.check(not okS and whyS == recovering and not okA and whyA == recovering and not okK and whyK == recovering, "tb team migrate: ...SetTeam / SelectTeam / CheckTeam too", tostring(whyS) .. " / " .. tostring(whyA) .. " / " .. tostring(whyK))
+	standIn.Pets[K1] = nil
+	standIn.Pets[K1] = nil
 	DSt.Fail = false
 	local recovered = K.waitFor(function()
 		return not Data.IsProvisional(d)
