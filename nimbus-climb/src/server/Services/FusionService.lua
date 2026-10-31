@@ -601,7 +601,7 @@ local function checkEquippedRule(profile, freed)
 	local total = #equipped
 	local dropped = countKeys(freed.Equipped)
 	if total > 0 and dropped >= total then
-		return false, "Those are your only equipped pets: unequip them or equip another pet first"
+		return false, "Those are your only team pets: put another pet in your team first"
 	end
 	return true
 end

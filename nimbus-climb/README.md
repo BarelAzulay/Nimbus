@@ -323,8 +323,8 @@ for XP!* (follow the arrow to the Berry Farm pad, then to the Food Machine pad) 
 Food Machine and press **Feed**; Nimbus tops your Berry Basket up for this first feed). Nimbus pays **1,000 Cash** at
 the end. Players who finished the phase 1 tutorial start right at this chapter.
 
-A third chapter teaches pet battles in four steps: follow the arrow to the Arena gate and visit the Battle Arena, tap
-**Team** and put 3 pets in your team (a fighter and two helpers), press **E** at the Dungeon gate and clear the first
+A third chapter teaches pet battles in four steps: follow the arrow to the Arena gate and visit the Battle Arena, open
+**Pets** and put 3 pets in your team (a fighter and two helpers: tap a slot and pick a pet, or tap **Auto-fill best**), press **E** at the Dungeon gate and clear the first
 room of floor 1, the Mossy Cellar (while this step is open that room is easy enough for any level 1 pet on a solo run; players
 who already cleared the floor, or Trial 1 before phase 5, skip this step), then join or watch a Boss Raid. Nimbus pays **500 Cloud Tokens** at the end. Players who finished the first two chapters start right at this
 one.
@@ -855,8 +855,11 @@ and **C**); pressing one makes it the team you fight with. Tap a slot, then a pe
 level and battle power. The window shows your **team power** (compare it with a Dungeon floor's recommended power)
 and what it is made of. Garden pets are busy gardening (their card says
 *Gardening*; tap one to take it out of the garden and into the team); a pet in training sits out until it is done
-(its card says *Training*). Your team is the pets following you: an empty team cannot enter a battle, the game asks
-you to set one and never picks for you. Pet levels count a lot: feed your pets at the Food Machine, evolve
+(its card says *Training*). Your team is the pets following you. Every battle panel (the Champion Ring, the Dungeon, Duels and
+the Boss Raid) shows the three faces with their level and power and an **Edit team** button: it opens the Pets window and,
+when you close it, you are back on the same panel, on the same tab, floor or start round. START, CONTINUE, SOLO and the other
+entry buttons go straight in with that team. An empty team cannot enter a battle: the button opens the Pets window on
+slot 1 and you press it again after picking; the game never picks for you. Pet levels count a lot: feed your pets at the Food Machine, evolve
 them and train their skills at the Training Place.
 
 ### In a battle: one fighter, two helpers
@@ -1105,13 +1108,13 @@ later you are back at the gate.
 
 - **The Dungeon and the Champion Ring** work in a normal **Play** test: press **PLAY** in the main menu, then **E** at
   the Dungeon or the Champion Ring gate in the Gate Court (the ring needs a claimed home and a pet). `/petlevel 20`
-  makes your equipped pets strong enough for the first floors.
+  makes your team strong enough for the first floors.
 - **Boss Raids:** press **Play**, then the DEV panel's **Start Boss Raid** button or type `/raid` in the chat (see
   [Developer tools](#developer-tools-owner-only)). Go to the arena and press **JOIN RAID** within 60 seconds. One
   player is enough.
 - **Duels and Dungeon parties need two players:** on Studio's **Test** tab choose **Clients and Servers**, set **2
   players** and press **Start**. Studio opens a server window and one window per player. In each player window press
-  **PLAY**, give yourself pets (**Give all pets** in the DEV panel or `/allpets`), put pets in your team (**Team**
+  **PLAY**, give yourself pets (**Give all pets** in the DEV panel or `/allpets`), put pets in your team (**Pets**
   tile) and go to the arena. Then challenge the other player from a duel pad and accept in the other window, or press
   **Find a match** in both. Give both players similar teams: a team more than 2 times stronger makes it a practice
   duel without rewards. For a Dungeon party, one player opens a PARTY at the Dungeon gate and the other JOINs it.
@@ -1227,7 +1230,7 @@ never drops below 14 px on a phone.
   zoom are not shakes and always play) and **Mouse lock** (on / off, or
   press `L`: the cursor stays in the middle of the screen and the mouse turns the camera; windows free it). They
   apply at once and are saved with your profile.
-- **Left, vertically centred: the menu**, one slim column of glossy square tiles: Pets, Team, Index, Shop,
+- **Left, vertically centred: the menu**, one slim column of glossy square tiles: Pets, Index, Shop,
   Home, Stats and the Settings gear. The small **arrow tab** beside the gear folds the column against the left edge
   (only the tab stays; a red dot on it means a tile has news) and brings it back; the game remembers it until you
   leave. A tutorial step that points at a tile unfolds it. On phones the tiles wrap into two slim columns (three on
@@ -1314,7 +1317,7 @@ runs Lua code and the game never sees what you type there.
 | `/ban <player> [reason]` | Bans for good (`Players:BanAsync`, the whole game). Anyone by exact name or userId, or someone in the server by their exact display name; a part of a name only gets a hint. Not yourself, not another developer. A failure shows Roblox's own reason; in Studio it says nobody was banned, since Roblox only runs bans on live servers. |
 | `/unban <name or userId>` | Lifts that ban. |
 | `/evolvepets` | Same as Evolve my pets: a real, saved evolution of every pet you own (the 2nd evolution stays Epic and up). Not in a battle. `/evolve` is the animation preview. |
-| `/levelall 50` | Same as Level all pets (1-100; XP starts at 0). Not in a battle. `/petlevel` is the equipped pets only. |
+| `/levelall 50` | Same as Level all pets (1-100; XP starts at 0). Not in a battle. `/petlevel` is your team only. |
 | `/maxpets` | Same as Max stats pets. A pet in training finishes that job first and comes back. Golden and Rainbow stay what they are. Not in a battle. |
 | `/speed` | Same as the 2x speed toggle: off by default, survives a respawn, never saved. Not in a battle, where the server holds your character to your pet. |
 | `/devhelp` | Three toasts listing the commands. |
@@ -1526,9 +1529,9 @@ src/server   Main.server.lua; Services: Lighting, LobbyBuilder, StormAltar, Play
              /sky)
 src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientSettings; SoundFx; GraphicsQuality;
              PortalVortex (the swirling vortex inside every gate hoop); MouseLock (the Mouse lock option);
-             LightingStack (lighting looks, e.g. the Dungeon); TeamPick (the battle team strip, Auto-fill best and the
-             empty-team popup at the battle portals); UI/CloudUI; UI/NeonKit (the neon cards, tiles and side
-             panels); UI/PetCard (the cards above pets); UI/PetBits (what the windows showing a pet share); Controllers:
+             LightingStack (lighting looks, e.g. the Dungeon); UI/CloudUI; UI/NeonKit (the neon cards, tiles and side
+             panels); UI/PetCard (the cards above pets); UI/PetBits (what the windows showing a pet share); UI/TeamFaces
+             (the three faces + Edit team on every battle panel); Controllers:
              Movement, MainMenu (main menu + settings), Hud, DamageFx, Notify, Menu, Pets (the Pets window), Pet, TokenFx, Index, Tutorial, Npc, SkyDragon, Showcase, Dev, DevPetShow
              (pet showcase, /fx attack preview), EvolutionFx (evolution animation, the dungeon enemies' arrival),
              AttackFx (plays the pet attack effects: Blender cores, flipbook particles, beams, trails and lights,

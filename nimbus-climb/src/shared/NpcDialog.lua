@@ -424,9 +424,9 @@ NpcDialog.Npcs = {
 		PetId = "waffle_corgi",
 		Species = "Dog",
 		Accent = Color3.fromRGB(240, 174, 70),
-		Keywords = { "yours to keep", "Dungeon", "Training Place", "Champion Ring", "record", "Team", "trophies", "fighter", "helpers" },
+		Keywords = { "yours to keep", "Dungeon", "Training Place", "Champion Ring", "record", "Open Pets", "trophies", "fighter", "helpers" },
 		Lines = {
-			"Woof! Coins you grab on a climb are yours to keep. Tap Team, then duel friends in the arena: +" .. trophyWin .. " trophies a win!",
+			"Woof! Coins you grab on a climb are yours to keep. Open Pets, then duel friends in the arena: +" .. trophyWin .. " trophies a win!",
 			"The Dungeon portal on the plaza has " .. floorCount .. " floors of rooms, waves and bosses. Every first clear pays big token bonuses and Gems!",
 			trainLine(skillList),
 			"Try the Champion Ring on the plaza: one champion after another, each stronger. Beat your record for "

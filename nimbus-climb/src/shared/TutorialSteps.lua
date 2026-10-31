@@ -177,7 +177,7 @@ TutorialSteps.Steps = {
 		Id = "equip",
 		Chapter = 1,
 		Title = "Pick a Buddy",
-		Text = "Aww, a new friend! Open Pets and equip your buddy so it follows right behind you. Pets give handy perks!",
+		Text = "Aww, a new friend! Open Pets and put your buddy in your team so it follows right behind you. Pets give handy perks!",
 		Target = { Kind = "Menu", Id = "Pets" },
 		CompleteOn = "Equipped",
 		Hint = "Tap the glowing Pets button",
@@ -288,13 +288,13 @@ TutorialSteps.Steps = {
 		Id = "team",
 		Chapter = 3,
 		Title = "Pick Your Team",
-		-- (HUD cleanup: the Team tile is gone; the team lives in Pets > Team and every battle portal's strip has Auto-fill
-		-- best. Bug batch 2 #18 still holds there: a gardening pet's tile in the Team tab asks to take it out first.
+		-- (Team balance: the team lives in the Pets window, slots on top, and every battle panel's Edit team leads there. Bug
+		-- batch 2 #18 still holds there: a gardening pet dropped on a slot asks to take it out first.
 		-- No ">" in the text: step texts are plain text, no rich-text characters)
-		Text = "Battles need 3 pets (a fighter + 2 helpers)! Open Pets, then the Team tab, or tap Auto-fill best at any portal!",
+		Text = "Battles need 3 pets: a fighter and 2 helpers! Open Pets, tap a slot and pick a pet, or tap Auto-fill best!",
 		Target = { Kind = "Menu", Id = "Pets", Label = "Pets" },
 		CompleteOn = "TeamSet",
-		Hint = "Open Pets, then Team: put in 3 pets",
+		Hint = "Open Pets: put 3 pets in your team",
 	},
 	{
 		-- (Phase 5: was "trial", Trial 1 at the Trial Portal; the index stays 17)

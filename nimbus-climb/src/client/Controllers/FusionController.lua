@@ -464,12 +464,12 @@ local function usageNotes(inputs)
 	-- every note has a Short form for the one-line layouts (landscape phones)
 	local notes = {}
 	if equippedTotal > 0 and dropped >= equippedTotal then
-		return notes, "Those are your only equipped pets: unequip them or equip another pet first", "Equip another pet first"
+		return notes, "Those are your only team pets: put another pet in your team first", "Put another pet in your team first"
 	end
 	if dropped > 0 then
 		notes[#notes + 1] = {
-			Text = dropped .. " equipped cop" .. (dropped == 1 and "y is" or "ies are") .. " taken off first; the new pet takes the slot",
-			Short = "Unequips " .. dropped .. " cop" .. (dropped == 1 and "y" or "ies") .. " first",
+			Text = dropped .. " team cop" .. (dropped == 1 and "y is" or "ies are") .. " taken off first; the new pet takes the slot",
+			Short = "Takes " .. dropped .. " cop" .. (dropped == 1 and "y" or "ies") .. " off your team",
 			Color = WARN,
 		}
 	end
