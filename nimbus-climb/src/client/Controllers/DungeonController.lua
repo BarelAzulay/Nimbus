@@ -21,9 +21,8 @@
 --     - 2/4 - JOIN", "in room 2 - JOIN"), or the own party (members with READY ticks, team power, the leader's crown
 --     and KICK (x), READY / START / LEAVE, the countdown "Dungeon in 5..." / "Starting in 30 - press READY").
 --     READY flips at once (optimistic) and the next Lobby payload says what the server decided.
---     HUD cleanup (the battle team at the portal): the party box starts with TeamPick's strip (the active team, Edit,
---     Auto-fill best); SOLO / PARTY / JOIN / READY / START with an empty team open TeamPick's "Pick your battle team"
---     popup first and go on after the save (TeamPick.Ensure; without client/TeamPick the old direct requests run).
+--     Team balance: the party box starts with UI/TeamFaces (the three faces, Edit team; back here on the same floor); SOLO /
+--     PARTY / JOIN / READY / START with an empty team open the Pets window in pick mode and send nothing (TeamFaces.Ensure).
 --   * The run card (ScreenGui NimbusDungeonRun): on desktops a side card at the right edge between the enemy list and
 --     the battle buttons ("Floor 3 - Frozen Crypt", "Room 2 / 4" pips with the boss room crowned, "Wave 1 / 3",
 --     the status: "Walk into the room", "Go to the door and press E" / "Waiting for 1 more (Ava)" (dungeon-fixes
@@ -101,6 +100,7 @@ local Client = script.Parent.Parent
 local UI = Client:WaitForChild("UI")
 local CloudUI = require(UI:WaitForChild("CloudUI"))
 local NeonKit = require(UI:WaitForChild("NeonKit"))
+local TeamFaces = require(UI:WaitForChild("TeamFaces"))
 local State = require(Client:WaitForChild("State"))
 
 local DungeonController = {}
@@ -116,6 +116,10 @@ local K = {
 	PREF_W = 640,
 	PREF_H = 860,
 	SHORT = 560, -- a docked window lower than this uses the compact rows (landscape phones)
+	FACES_NARROW = 560, -- a docked window narrower than this (phones) shows the team's faces in the Compact row
+	TOUCH_H = 56, -- design px of the party box's buttons on a phone: >= 44 px under the 0.8 touch scale
+	JUMP_INSET = 110, -- design px a landscape phone's button row keeps free on its right
+	LIST_MIN_SHORT = 70, -- design px of the floor list on a landscape phone: the team and SOLO / PARTY fit under it
 	FIRE_GAP = 0.3, -- seconds between two sends of the same request
 	WALK_AWAY = 40, -- studs from the gate that close a window opened there
 	FLOORS = 12,
@@ -287,22 +291,6 @@ function H.safe(key, fn, ...)
 	return ok
 end
 
--- HUD cleanup: client/TeamPick (the strip + the empty-team popup), loaded once; nil when it is missing
-function H.teamPick()
-	if H.TP == nil then
-		H.TP = false
-		local ok, mod = pcall(function()
-			return require(Client:WaitForChild("TeamPick", 5))
-		end)
-		if ok and type(mod) == "table" then
-			H.TP = mod
-		else
-			H.warnOnce("TeamPick", mod)
-		end
-	end
-	return H.TP or nil
-end
-
 -- team balance: client/Controllers/LossScreen, loaded once; nil when it is missing (today's End card then)
 function H.lossScreen()
 	if H.LS == nil then
@@ -318,23 +306,16 @@ function H.lossScreen()
 	return H.LS or nil
 end
 
--- runs fn once the player has a battle team: at once with a team, after the popup's save without one
+-- where the Pets window comes back to when the team is edited from this panel: the same floor, the same portal
+function H.panelReturn()
+	return { Window = "Dungeon", Floor = W.selected(), Portal = S.AtPortal }
+end
+
+-- runs fn when the player has a battle team; without one the Pets window opens in pick mode and nothing is sent
 function H.withTeam(fn)
-	local ran = false
-	local function go()
-		if not ran then
-			ran = true
-			H.safe("team portal", fn)
-		end
-	end
-	local TP = H.teamPick()
-	if TP and type(TP.Ensure) == "function" then
-		if not H.safe("TeamPick.Ensure", TP.Ensure, go) then
-			go()
-		end
-		return
-	end
-	go()
+	TeamFaces.Ensure(function()
+		H.safe("team portal", fn)
+	end, H.panelReturn())
 end
 
 function H.optionalShared(name)
@@ -590,47 +571,6 @@ end
 ----------------------------------------------------------------------
 -- The player's team power (team -> equipped -> best owned; training skipped), like the server's TeamSpec
 ----------------------------------------------------------------------
-function H.entryOf(key)
-	local def = nil
-	if type(State.DefOf) == "function" then
-		local ok, result = pcall(State.DefOf, key)
-		def = ok and type(result) == "table" and result or nil
-	end
-	if not def then
-		return nil
-	end
-	local level = 1
-	if type(State.PetLevel) == "function" then
-		local ok, lv = pcall(State.PetLevel, key)
-		level = ok and tonumber(lv) or 1
-	end
-	local g = {}
-	if type(State.PetGrowth) == "function" then
-		local ok, result = pcall(State.PetGrowth, key)
-		g = ok and type(result) == "table" and result or {}
-	end
-	return { Def = def, Level = level, Key = key, Evo = tonumber(g.Evo) or 0,
-		Train = { Speed = g.Speed or 0, Physique = g.Physique or 0, Ability = g.Ability or 0, Defense = g.Defense or 0 } }
-end
-
-function H.collect(keys)
-	local out = {}
-	for _, key in ipairs(type(keys) == "table" and keys or {}) do
-		local busy = false
-		if type(State.IsTraining) == "function" then
-			local ok, b = pcall(State.IsTraining, key)
-			busy = ok and b == true
-		end
-		if type(key) == "string" and not busy then
-			local e = H.entryOf(key)
-			if e then
-				out[#out + 1] = e
-			end
-		end
-	end
-	return out
-end
-
 function H.teamPower()
 	local now = os.clock()
 	if H.PowerAt and now - H.PowerAt < 1 and H.PowerSnap == State.Get() then
@@ -642,42 +582,7 @@ function H.teamPower()
 end
 
 function H.teamPowerNow()
-	local BC = H.catalog()
-	if not BC or type(BC.TeamPower) ~= "function" then
-		return 0
-	end
-	local list = {}
-	if type(State.Teams) == "function" then
-		local ok, t = pcall(State.Teams)
-		if ok and type(t) == "table" and type(t.Presets) == "table" then
-			list = H.collect(t.Presets[t.Active or 1])
-		end
-	end
-	if #list == 0 and type(State.EquippedList) == "function" then
-		local ok, eq = pcall(State.EquippedList)
-		list = H.collect(ok and eq or nil)
-	end
-	if #list == 0 and type(State.Keys) == "function" then
-		local ok, keys = pcall(State.Keys)
-		list = H.collect(ok and keys or nil)
-		if type(BC.UnitPower) == "function" then
-			for _, e in ipairs(list) do
-				local okP, p = pcall(BC.UnitPower, e)
-				e.P = okP and tonumber(p) or 0
-			end
-			table.sort(list, function(a, b)
-				if a.P ~= b.P then
-					return a.P > b.P
-				end
-				return tostring(a.Key) < tostring(b.Key)
-			end)
-		end
-		while #list > 3 do
-			table.remove(list)
-		end
-	end
-	local ok, p = pcall(BC.TeamPower, list)
-	return ok and math.floor((tonumber(p) or 0) + 0.5) or 0
+	return TeamFaces.Power()
 end
 
 ----------------------------------------------------------------------
@@ -992,8 +897,8 @@ function W.partyNone(box, short, sel)
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		LayoutOrder = 1,
 	})
-	W.strip(box, short)
-	local row = H.frame(box, "Buttons", { Size = UDim2.new(1, 0, 0, short and 46 or 52), LayoutOrder = 3 })
+	W.faces(box)
+	local row = H.frame(box, "Buttons", { Size = W.buttonRow(short), LayoutOrder = 3 })
 	H.list(row, Enum.FillDirection.Horizontal, 10)
 	local bw = UDim2.new(0.5, -5, 1, 0)
 	U.Solo = W.button(row, "SoloButton", "SOLO", C.Green, bw, 1, function()
@@ -1030,7 +935,7 @@ function W.partyNone(box, short, sel)
 end
 
 function W.partyRow(box, p, i, short)
-	local row = H.frame(box, "Open" .. i, { BackgroundTransparency = 0, BackgroundColor3 = C.Row, Size = UDim2.new(1, 0, 0, short and 40 or 44), LayoutOrder = 4 + i })
+	local row = H.frame(box, "Open" .. i, { BackgroundTransparency = 0, BackgroundColor3 = C.Row, Size = UDim2.new(1, 0, 0, W.openRowH(short)), LayoutOrder = 4 + i })
 	H.corner(row, 10)
 	local count = tostring(p.Count or 1) .. "/" .. tostring(p.Max or 4)
 	local where = p.InRun and ("in room " .. tostring(p.Room or 1)) or ("Floor " .. tostring(p.Floor or 1))
@@ -1039,7 +944,7 @@ function W.partyRow(box, p, i, short)
 		Size = UDim2.new(1, -120, 1, 0),
 		TextTruncate = Enum.TextTruncate.AtEnd,
 	})
-	local join = W.button(row, "JoinButton", p.Open and "JOIN" or (p.InRun and "BUSY" or "FULL"), C.Blue, UDim2.fromOffset(96, short and 34 or 38), 1, function()
+	local join = W.button(row, "JoinButton", p.Open and "JOIN" or (p.InRun and "BUSY" or "FULL"), C.Blue, UDim2.fromOffset(96, W.openRowH(short) - 6), 1, function()
 		if not p.Open then
 			return
 		end
@@ -1066,7 +971,7 @@ function W.partyMine(box, short, mine)
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		LayoutOrder = 1,
 	})
-	W.strip(box, short)
+	W.faces(box)
 	local cd = W.countdownText(mine)
 	U.Countdown = H.text(box, "Countdown", cd or (leader and "Press START when everyone is READY" or "Press READY, the leader starts"), "Body", 18, cd and C.Gold or C.Muted, {
 		Size = UDim2.new(1, 0, 0, 24),
@@ -1112,7 +1017,7 @@ function W.partyMine(box, short, mine)
 		end
 	end
 	-- the buttons come before the member list (a phone's sheet bottom sits under the thumbstick / jump buttons)
-	local row = H.frame(box, "Buttons", { Size = UDim2.new(1, 0, 0, short and 46 or 52), LayoutOrder = 4 })
+	local row = H.frame(box, "Buttons", { Size = W.buttonRow(short), LayoutOrder = 4 })
 	H.list(row, Enum.FillDirection.Horizontal, 10)
 	local bw = UDim2.new(0.5, -5, 1, 0)
 	if leader then
@@ -1150,27 +1055,43 @@ function W.partyMine(box, short, mine)
 	end, "Outline")
 end
 
--- HUD cleanup: TeamPick's strip at the top of the party box (LayoutOrder 2; compact on short screens)
-function W.strip(box, short)
-	U.Strip = nil
-	local TP = H.teamPick()
-	if TP and type(TP.Strip) == "function" then
-		local ok, strip = pcall(TP.Strip, box, { LayoutOrder = 2, Compact = short == true })
-		if ok and type(strip) == "table" then
-			U.Strip = strip
-		else
-			H.warnOnce("TeamPick.Strip", strip)
-		end
-	end
+-- the team's faces at the top of the party box (LayoutOrder 2; the Compact row on a phone: its window is narrow and low)
+function W.faces(box)
+	U.Faces = TeamFaces.New(box, { LayoutOrder = 2, Compact = S.Short or W.narrow(), ReturnTo = H.panelReturn })
 end
 
--- the strip's height in the party box (+ the list padding), 0 without one
-function W.stripHeight()
-	local root = U.Strip and U.Strip.Root
-	if root and root.Parent then
-		return root.Size.Y.Offset + 6
+function W.narrow()
+	local rect = U.Dock and U.Dock.Rect
+	return rect ~= nil and rect.designW < K.FACES_NARROW
+end
+
+-- the row's height in the party box (+ the list padding), 0 without one
+function W.facesHeight()
+	local row = U.Faces
+	if row and row.Root.Parent then
+		return row.Height() + 6
 	end
 	return 0
+end
+
+-- the party box's buttons: >= 44 px on a phone (the panel's 0.8 touch scale)
+function W.buttonH(short)
+	if H.isPhone() then
+		return K.TOUCH_H
+	end
+	return short and 46 or 52
+end
+
+-- the row of SOLO / PARTY or READY / LEAVE: on a landscape phone it stops short of Roblox's jump button
+function W.buttonRow(short)
+	return UDim2.new(1, (short and H.isPhone()) and -K.JUMP_INSET or 0, 0, W.buttonH(short))
+end
+
+function W.openRowH(short)
+	if H.isPhone() then
+		return K.TOUCH_H + 6
+	end
+	return short and 40 or 44
 end
 
 -- open parties shown at once: 3 on desktops, 2 on a portrait phone, 1 on a landscape phone (the jump button corner)
@@ -1182,14 +1103,14 @@ function W.maxParties(short)
 end
 
 function W.partyHeight(short, mine)
-	local h = 16 + W.stripHeight()
+	local h = 16 + W.facesHeight()
 	if mine then
 		local n = #(type(mine.Members) == "table" and mine.Members or {})
-		h = h + 26 + 24 + n * ((short and K.MEMBER_H_SHORT or K.MEMBER_H) + 6) + (short and 46 or 52) + 18
+		h = h + 26 + 24 + n * ((short and K.MEMBER_H_SHORT or K.MEMBER_H) + 6) + W.buttonH(short) + 18
 	else
 		local parties = S.Lobby and type(S.Lobby.Parties) == "table" and #S.Lobby.Parties or 0
 		local rows = math.min(parties, W.maxParties(short))
-		h = h + 26 + (short and 46 or 52) + 24 + rows * ((short and 40 or 44) + 6) + 18
+		h = h + 26 + W.buttonH(short) + 24 + rows * (W.openRowH(short) + 6) + 18
 	end
 	return h
 end
@@ -1245,6 +1166,10 @@ function W.refresh()
 	local sig = W.partySig(mine, short)
 	if sig ~= S.PartySig then
 		S.PartySig = sig
+		if U.Faces then
+			U.Faces.Destroy()
+			U.Faces = nil
+		end
 		H.clear(U.Party)
 		U.Countdown, U.Start, U.Ready, U.Solo, U.Create = nil, nil, nil, nil, nil
 		if mine then
@@ -1264,7 +1189,7 @@ function W.refresh()
 	-- phones: no footer line (the bottom edge of the sheet sits under Roblox's thumbstick / jump buttons)
 	local footerH = H.isPhone() and 0 or 26
 	U.Footer.Visible = footerH > 0
-	local listH = math.max(short and 96 or 150, contentH - 36 - partyH - footerH - 12)
+	local listH = math.max(short and K.LIST_MIN_SHORT or 150, contentH - 36 - partyH - footerH - 12)
 	U.Floors.Size = UDim2.new(1, 0, 0, listH)
 	U.Party.Position = UDim2.fromOffset(0, 36 + listH + 6)
 	U.Party.Size = UDim2.new(1, 0, 0, math.max(60, contentH - 36 - listH - 6 - footerH - 6))

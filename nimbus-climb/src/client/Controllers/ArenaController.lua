@@ -12,14 +12,14 @@
 --           BattleState "Lobby", Window = "Arena" | "Ring" | nil, Tab, RingStart }, ArenaController.Opened / Closed
 --           (Util.Signal), ArenaController.Request(action, a, b) (sends BattleRequest like the buttons do: client-side
 --           spacing, the server validates everything), ArenaController.StartRing() (the ring window's START),
---           ArenaController.RingInfo() -> { Best, Runs, Start, Starts, Board, Fighters, Source, Preview, Why }
+--           ArenaController.RingInfo() -> { Best, Runs, Start, Starts, Board, Fighters, Preview, Why }
 --
 -- Phase 5: the Trial window is gone (the Dungeon replaced it). Portal_Dungeon's DungeonPrompt (OpenPanel = "Dungeon") is
 -- handed over to DungeonController.Open here, next to "Ring". Both windows are NeonKit side panels (640 x 860 design px,
 -- NeonKit.Dock: docked right on landscape screens, a bottom sheet on portrait phones, no full-screen dimming). A
 -- challenge more than Duel.PracticeInvite apart carries
--- Practice = true: the invite says "Practice duel - no trophies or rewards". The Ring's fighter cards draw each pet's
--- stored evolution stage (State.PetStage -> CloudUI.PetViewport { Evolved }, a STAGE badge).
+-- Practice = true: the invite says "Practice duel - no trophies or rewards". The Ring's faces draw each pet's
+-- stored evolution stage (TeamFaces: CloudUI.PetViewport { Evolved }, an EVO badge).
 --
 -- What the player sees
 --   * Arena panel (OpenPanel = "Arena", OpenPanelTab = "Events" | "Leaderboard" | "Raid"; the duel pads carry
@@ -27,16 +27,16 @@
 --     Challenge(userId); incoming invites with Accept / Decline (the practice flag); the player's trophies and duel
 --     record), BOSS RAID (the running raid: boss, element, HP, fighters, time left, JOIN / LEAVE; the next event with its
 --     countdown; Double Rewards; which elements beat the boss; the reward tiers) and LEADERS (ArenaState.Leaderboard,
---     top 10, the player's own row highlighted). HUD cleanup (the battle team at the portal): the Duels page's quick
---     match box and the Raid page's boss card start with TeamPick's strip (the active team, Edit, Auto-fill best);
---     Find a match, JOIN RAID, Challenge and a duel's Accept (the side card's too) with an empty team open TeamPick's
---     "Pick your battle team" popup and go on after the save (JOIN RAID is no longer disabled for an empty team).
+--     top 10, the player's own row highlighted). Team balance: the Duels page's quick match box and the Raid page's boss
+--     card start with UI/TeamFaces (the three faces, Edit team); Find a match, JOIN RAID, Challenge and a duel's Accept (the
+--     side card's too) with an empty team open the Pets window in pick mode and send nothing (TeamFaces.Ensure, no silent
+--     auto-fill; JOIN RAID is not disabled for an empty team).
 --   * Champion Ring window (Portal_Ring's prompt, OpenPanel = "Ring"): the record "Best: Round N" and the runs, the best
 --     of this server (Portal_Ring's RingBoard attribute, top 3), the start picker (round 1 or a boss round 10, 20 ...
---     already beaten), the start round's champion, "Next win: +$X +Y XP", the fighters the server will field (the battle
---     team, else the equipped pets, else the strongest pets; training pets skipped; evolved looks) and START / CONTINUE
---     -> BattleRequest("Ring", start). The server's refusal toasts also show in the footer. The Team screen gets a
---     "Champion Ring best: Round N" line from here. A side toast when the player crosses the arena's edge: "Battle
+--     already beaten), the start round's champion, "Next win: +$X +Y XP", the TeamFaces row (the team the server will field;
+--     pinned above the buttons, on a landscape phone in the right column) with Edit team (back here at the same start)
+--     and START / CONTINUE -> BattleRequest("Ring", start), straight in; an empty team opens the Pets window instead. The
+--     server's refusal toasts also show in the footer. A side toast when the player crosses the arena's edge: "Battle
 --     Arena: pets can battle here" / "Safe zone: no pet battles here".
 --   * Side cards (right edge, above the hotbar, never in the screen centre; ScreenGui "NimbusArenaSide"): a duel
 --     invite (BattleState "Lobby".Invites) with Accept / Decline and a draining timer, the invite the player sent,
@@ -68,6 +68,7 @@ local Remotes = require(Shared:WaitForChild("Remotes"))
 local Client = script.Parent.Parent
 local CloudUI = require(Client:WaitForChild("UI"):WaitForChild("CloudUI"))
 local NeonKit = require(Client:WaitForChild("UI"):WaitForChild("NeonKit"))
+local TeamFaces = require(Client:WaitForChild("UI"):WaitForChild("TeamFaces"))
 local State = require(Client:WaitForChild("State"))
 
 -- other engineers' shared modules: optional, every use is guarded
@@ -103,6 +104,8 @@ local K = {
 	TALL = 760, -- windows narrower than this use the single-column layout (every docked window)
 	NARROW = 1000,
 	SHORT = 560, -- docked lower than this (landscape phones): the compact rows
+	FACES_NARROW = 560, -- a window narrower than this (phones) shows the team's faces in the Compact row
+	LOW = 640, -- a Ring window lower than this (a portrait phone) keeps only a thin record under the detail
 	INSET_X = 24, -- the panel frame around Panel.Content (CloudUI.ContentInset)
 	INSET_Y = 82,
 	FIRE_GAP = 0.5, -- seconds between two sends of the same request
@@ -446,16 +449,6 @@ local function battleData()
 	return { Trophies = 0, PvPWins = 0, PvPLosses = 0, Raids = 0 }
 end
 
-local function teamsData()
-	if type(State.Teams) == "function" then
-		local ok, t = pcall(State.Teams)
-		if ok and type(t) == "table" and type(t.Presets) == "table" then
-			return t
-		end
-	end
-	return { Presets = { {}, {}, {} }, Active = 1, Slots = 3 }
-end
-
 local function teamPower(entries)
 	local BC = catalog()
 	if not BC or type(BC.TeamPower) ~= "function" then
@@ -611,62 +604,6 @@ local function otherController(name)
 	return nil
 end
 
--- HUD cleanup (the battle team at the portal): client/TeamPick, loaded once; nil when it is missing (then the old
--- direct requests run)
-local teamPickModule = nil
-local function teamPick()
-	if teamPickModule == nil then
-		teamPickModule = false
-		local ok, mod = pcall(function()
-			return require(Client:WaitForChild("TeamPick", 5))
-		end)
-		if ok and type(mod) == "table" then
-			teamPickModule = mod
-		else
-			warnOnce("TeamPick", mod)
-		end
-	end
-	return teamPickModule or nil
-end
-
--- runs fn once the player has a battle team: at once with a team, after TeamPick's popup saved one without
-local function withTeam(fn)
-	local ran = false
-	local function go()
-		if not ran then
-			ran = true
-			safe("team portal", fn)
-		end
-	end
-	local TP = teamPick()
-	if TP and type(TP.Ensure) == "function" then
-		if not safe("TeamPick.Ensure", TP.Ensure, go) then
-			go()
-		end
-		return
-	end
-	go()
-end
-
--- TeamPick's strip (the active team, Edit, Auto-fill best) as the first row of a page section
-local function teamStrip(parent)
-	local TP = teamPick()
-	if TP and type(TP.Strip) == "function" then
-		local ok, strip = pcall(TP.Strip, parent, { LayoutOrder = 0 })
-		if not ok then
-			warnOnce("TeamPick.Strip", strip)
-		end
-	end
-end
-
-local function openTeamWindow()
-	local menu = otherController("MenuController")
-	ArenaController.Close()
-	if menu and type(menu.Open) == "function" then
-		pcall(menu.Open, "Team", {})
-	end
-end
-
 ----------------------------------------------------------------------
 -- Window frame (one CloudUI panel per window, both in the ScreenGui NimbusArena)
 ----------------------------------------------------------------------
@@ -749,13 +686,30 @@ local Ring = {
 	RefusalAt = 0,
 	LastZone = nil, -- safe-zone toast: true in the Battle Arena, false outside, nil unknown
 	BattleAt = -100, -- os.clock() when the player last fought (no zone toast right after a battle's return teleport)
-	CARD_H = 112, -- design px of a fighter card
 	TILE_H = 66, -- design px of a start picker tile
+	BUTTON_H = 56, -- design px of START: >= 44 px under the 0.8 touch scale
 }
+
+-- where the Pets window comes back to when the team is edited from an open panel (spec s.2: the same tab and start round)
+local function panelReturn()
+	if S.Open == "Ring" then
+		return { Window = "Ring", Start = Ring.Start, Portal = S.RingAt }
+	elseif S.Open == "Arena" then
+		return { Window = "Arena", Tab = S.Tab }
+	end
+	return nil
+end
+
+-- runs fn when the player has a battle team; without one the Pets window opens in pick mode and nothing is sent
+local function withTeam(fn)
+	TeamFaces.Ensure(function()
+		safe("team portal", fn)
+	end, panelReturn())
+end
 
 -- the server's entry refusals (BattleService.StartRing; prefixes of its Notify texts)
 Ring.REFUSALS = {
-	"Claim your home first", "You need a pet", "Your pets are all training", "Walk to the Champion Ring portal",
+	"Claim your home first", "You need a pet", "Your team is empty", "Your whole team is busy", "Walk to the Champion Ring portal",
 	"Your save is still loading", "Start from round 1 or a boss round", "Every ring is busy", "Finish your obby match",
 	"Leave the portal party", "You are already in a battle", "Wait until you respawn", "The server is restarting",
 }
@@ -847,101 +801,14 @@ function Ring.starts(best)
 	return out
 end
 
-function Ring.training(key)
-	if type(State.IsTraining) ~= "function" then
-		return false
-	end
-	local ok, busy = pcall(State.IsTraining, key)
-	return ok and busy == true
-end
-
--- a pet key as a BattleCatalog entry { Def, Level, Key, Evo, Train, Power }, or nil
-function Ring.entryOf(key)
-	local def = nil
-	if type(State.DefOf) == "function" then
-		local ok, result = pcall(State.DefOf, key)
-		if ok and type(result) == "table" then
-			def = result
-		end
-	end
-	if not def and PetCatalog and type(PetCatalog.Get) == "function" then
-		def = PetCatalog.Get(key)
-	end
-	if not def then
-		return nil
-	end
-	local level = 1
-	if type(State.PetLevel) == "function" then
-		local ok, lv = pcall(State.PetLevel, key)
-		if ok and type(lv) == "number" then
-			level = lv
-		end
-	end
-	local okG, g = pcall(function()
-		return State.PetGrowth(key)
-	end)
-	g = (okG and type(g) == "table") and g or {}
-	local entry = {
-		Def = def,
-		Level = level,
-		Key = key,
-		Evo = tonumber(g.Evo) or 0,
-		Train = { Speed = g.Speed or 0, Physique = g.Physique or 0, Ability = g.Ability or 0, Defense = g.Defense or 0 },
-		Power = 0,
-	}
-	local BC = catalog()
-	if BC and type(BC.UnitPower) == "function" then
-		local ok, p = pcall(BC.UnitPower, entry)
-		entry.Power = ok and tonumber(p) or 0
-	end
-	return entry
-end
-
-function Ring.collect(keys)
-	local out = {}
-	for _, key in ipairs(type(keys) == "table" and keys or {}) do
-		if type(key) == "string" and not Ring.training(key) then
-			local entry = Ring.entryOf(key)
-			if entry then
-				out[#out + 1] = entry
-			end
-		end
-	end
-	return out
-end
-
 function Ring.ownedKeys()
 	local ok, keys = pcall(State.Keys)
 	return (ok and type(keys) == "table") and keys or {}
 end
 
--- the fighters the server will pick (contract 3.8): the active team (training pets skipped), else the equipped pets,
--- else the best owned pets by power (up to the team slots); and where they came from ("team" | "equipped" | "best")
+-- the fighters the server will field: the team, minus busy pets (no equipped / strongest sources: an empty team is refused)
 function Ring.fighters()
-	local teams = teamsData()
-	local list = Ring.collect(teams.Presets[teams.Active])
-	if #list > 0 then
-		return list, "team"
-	end
-	local okEq, equipped = pcall(function()
-		return State.EquippedList()
-	end)
-	list = Ring.collect(okEq and equipped or nil)
-	if #list > 0 then
-		return list, "equipped"
-	end
-	list = Ring.collect(Ring.ownedKeys())
-	table.sort(list, function(a, b)
-		if a.Power ~= b.Power then
-			return a.Power > b.Power
-		end
-		return tostring(a.Key) < tostring(b.Key)
-	end)
-	local slots = math.max(1, math.floor(tonumber(teams.Slots) or 3))
-	while #list > slots do
-		table.remove(list)
-	end
-	return list, "best"
+	return TeamFaces.Entries()
 end
 
 -- the garden's coins per second (the plot attribute IncomePerSecond): ring Cash is a few seconds of it
@@ -996,16 +863,14 @@ function Ring.preview(round, best)
 	return out
 end
 
--- why START cannot work right now (the server's checks, in its order), or nil
-function Ring.why(fighters)
+-- why START cannot work right now (the server's checks, in its order), or nil. An empty team is not a reason: START then
+-- leads to the Pets window (ArenaController.StartRing).
+function Ring.why()
 	if type(attr(Config.Attr.SpotIndex)) ~= "number" then
 		return "Claim your home first: press E at a free gate."
 	end
 	if #Ring.ownedKeys() == 0 then
 		return "You need a pet: spin a roulette in the Cloud Shop."
-	end
-	if #(fighters or {}) == 0 then
-		return "Your pets are all training right now."
 	end
 	if inMatch() then
 		return "Finish your obby match first."
@@ -1025,54 +890,6 @@ end
 
 function Ring.money(n)
 	return "$" .. commas(n)
-end
-
--- one fighter card (viewport, name, level, power)
-function Ring.fighterCard(parent, entry, order, handles)
-	local def = entry.Def
-	local card = makeFrame(parent, "Fighter" .. order, { BackgroundTransparency = 0, BackgroundColor3 = WHITE, LayoutOrder = order })
-	corner(card, 12)
-	stroke(card, NAVY, 3, 0)
-	local tint = rarityColor(def)
-	Theme.Gradient(card, Theme.Lighten(INSET, 0.3):Lerp(tint, 0.4), Theme.Darken(INSET, 0.05):Lerp(tint, 0.2), 90)
-	local view = makeFrame(card, "ViewHolder", {
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 4),
-		Size = UDim2.new(1, -10, 0, 54),
-		ZIndex = 2,
-	})
-	-- Phase 5 (3.7): the stored evolution stage (an evolved model is always built Low)
-	local stage = 0
-	if type(State.PetStage) == "function" and entry.Key then
-		local okStage, n = pcall(State.PetStage, entry.Key)
-		stage = okStage and tonumber(n) or 0
-	end
-	card:SetAttribute("Stage", stage)
-	pcall(function()
-		local handle = CloudUI.PetViewport(view, def, UDim2.new(1, 0, 1, 0), { Spin = "sway", Detail = "Low", ZIndex = 2, Evolved = stage > 0 and stage or nil })
-		table.insert(handles, handle)
-	end)
-	if stage > 0 then
-		local badge = makeText(card, "StageBadge", (stage >= 2) and "EVO II" or "EVO I", "Button", 18, WHITE, {
-			BackgroundTransparency = 0,
-			BackgroundColor3 = Theme.Darken(GOLD, 0.35),
-			Position = UDim2.fromOffset(4, 4),
-			Size = UDim2.fromOffset(62, 22),
-			ZIndex = 4,
-		})
-		corner(badge, 8)
-	end
-	makeText(card, "PetName", tostring(def.DisplayName or def.Name or entry.Key), "Body", 18, WHITE, {
-		Position = UDim2.fromOffset(4, 58),
-		Size = UDim2.new(1, -8, 0, 24),
-		TextTruncate = Enum.TextTruncate.AtEnd,
-		ZIndex = 3,
-	})
-	local row = makeFrame(card, "Row", { Position = UDim2.fromOffset(4, 82), Size = UDim2.new(1, -8, 0, 26), ZIndex = 3 })
-	listLayout(row, Enum.FillDirection.Horizontal, 6, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
-	autoText(row, "Level", "Lv " .. tostring(entry.Level or 1), "Heading", 18, WHITE, 1)
-	autoText(row, "Power", G.Swords .. " " .. commas(entry.Power), "Heading", 18, C.Power, 2)
-	return card
 end
 
 -- the start picker tile of `round`
@@ -1225,7 +1042,7 @@ function Ring.build()
 		Size = UDim2.new(0.5, 0, 0, 36),
 		TextXAlignment = Enum.TextXAlignment.Left,
 	})
-	makeText(powers, "TeamCaption", "Your fighters", "Heading", 19, MUTED, {
+	makeText(powers, "TeamCaption", "Your team", "Heading", 19, MUTED, {
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, 0, 0, 0),
 		Size = UDim2.new(0.5, 0, 0, 24),
@@ -1246,48 +1063,34 @@ function Ring.build()
 	ui.NextWin = wrapText(rewards, "NextWin", "", "Heading", 22, WHITE, 1)
 	ui.RecordLine = wrapText(rewards, "Record", "", "Body", 19, C.Power, 2)
 
-	ui.FightersTitle = makeText(d, "FightersTitle", "Your fighters", "Heading", 20, MUTED, {
+	-- a window too low for the side column keeps the record in the detail
+	ui.BestInline = makeText(d, "BestInline", "", "Heading", 20, C.Power, {
 		Size = UDim2.new(1, 0, 0, 26),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextTruncate = Enum.TextTruncate.AtEnd,
+		Visible = false,
 		LayoutOrder = 5,
 	})
-	ui.Fighters = makeFrame(d, "Fighters", { Size = UDim2.new(1, 0, 0, Ring.CARD_H), LayoutOrder = 6 })
-	ui.FighterLayout = Util.Create("UIGridLayout", {
-		CellSize = UDim2.fromOffset(150, Ring.CARD_H),
-		CellPadding = UDim2.fromOffset(8, 8),
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Parent = ui.Fighters,
-	})
 
-	-- footer (always in view): why START is off, Edit team, START
+	-- the team, pinned outside the scroller so it is never cut off: above the footer, in the right column on a landscape phone
+	ui.FacesBox = makeFrame(ui.Detail, "FacesBox", {})
+	ui.Faces = TeamFaces.New(ui.FacesBox, { ReturnTo = panelReturn })
+
+	-- footer (always in view): why START is off, START
 	ui.Footer = makeFrame(ui.Detail, "Footer", {
 		AnchorPoint = Vector2.new(0, 1),
 		Position = UDim2.new(0, 14, 1, -10),
-		Size = UDim2.new(1, -28, 0, 56),
+		Size = UDim2.new(1, -28, 0, Ring.BUTTON_H),
 	})
 	local actions = makeFrame(ui.Footer, "Actions", {
 		AnchorPoint = Vector2.new(0, 1),
 		Position = UDim2.new(0, 0, 1, 0),
-		Size = UDim2.new(1, 0, 0, 56),
-	})
-	ui.EditButton = CloudUI.Button({
-		Name = "EditTeam",
-		Text = "Edit team",
-		Size = UDim2.fromOffset(170, 54),
-		Style = "Blue",
-		TextSize = 22,
-		Parent = actions,
-		Callback = function()
-			openTeamWindow()
-		end,
+		Size = UDim2.new(1, 0, 0, Ring.BUTTON_H),
 	})
 	ui.StartButton = CloudUI.Button({
 		Name = "Start",
 		Text = "START",
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, 0, 0, 0),
-		Size = UDim2.fromOffset(240, 54),
+		Size = UDim2.new(1, 0, 0, Ring.BUTTON_H),
 		Style = "Green",
 		TextSize = 24,
 		Parent = actions,
@@ -1306,12 +1109,15 @@ function Ring.build()
 		local cw = w - K.INSET_X
 		local sideW = narrow and 300 or 340
 		local detailW
+		ui.Short = short
 		if tall then
-			-- one column (every docked window): the detail first, the record and the board below it; a landscape
-			-- phone's short window shows the detail only (the record is on the Team screen too)
-			local sideH = short and 0 or math.min(230, math.floor((h - K.INSET_Y) * 0.3))
+			-- one column (every docked window): the detail first, the record and the board below it (on a portrait phone the
+			-- thumbstick and jump button sit over them, not over START); a landscape phone's short window shows the
+			-- detail only, the record inside it
+			local sideH = short and 0 or (h < K.LOW and 72 or math.min(150, math.floor((h - K.INSET_Y) * 0.3)))
 			local detailH = h - K.INSET_Y - 20 - (short and 0 or (sideH + 10))
 			ui.Side.Visible = not short
+			ui.BestInline.Visible = short
 			ui.Detail.Position = UDim2.fromOffset(12, 10)
 			ui.Detail.Size = UDim2.new(1, -24, 0, detailH)
 			ui.Side.Position = UDim2.fromOffset(12, 10 + detailH + 10)
@@ -1319,31 +1125,28 @@ function Ring.build()
 			detailW = cw - 24
 		else
 			ui.Side.Visible = true
+			ui.BestInline.Visible = false
 			ui.Side.Position = UDim2.fromOffset(12, 10)
 			ui.Side.Size = UDim2.new(0, sideW, 1, -20)
 			ui.Detail.Position = UDim2.fromOffset(12 + sideW + 12, 10)
 			ui.Detail.Size = UDim2.new(1, -(sideW + 36), 1, -20)
 			detailW = cw - sideW - 36
 		end
-		local inner = detailW - 8 - 30
-		local cols = math.max(1, math.min(4, math.floor((inner + 8) / (138 + 8))))
-		local cardW = math.min(170, math.floor((inner - (cols - 1) * 8) / cols))
-		ui.FighterLayout.CellSize = UDim2.fromOffset(cardW, Ring.CARD_H)
+		-- a landscape phone: two columns, the split on the window's middle (the panel's frame + the detail's margin = 24 px of its
+		-- left side): the scroller and START on the left, the team on the right, above Roblox's jump button
+		ui.ColumnX = short and (math.ceil(w / 2) - 22) or nil
+		ui.Faces.SetMode(short and "Column" or (w < K.FACES_NARROW and "Compact" or "Card"))
+		local inner = (ui.ColumnX and (ui.ColumnX - 8) or detailW) - 8 - 30
 		ui.TagsInline = inner >= 640
-		ui.FighterCols = cols
-		local tileCols = math.max(3, math.min(8, math.floor((inner + 8) / (96 + 8))))
+		local tileCols = math.max(short and 2 or 3, math.min(8, math.floor((inner + 8) / (96 + 8))))
 		local tileW = math.min(112, math.floor((inner - (tileCols - 1) * 8) / tileCols))
 		ui.PickerLayout.CellSize = UDim2.fromOffset(tileW, Ring.TILE_H)
-		-- a landscape phone's footer keeps 120 px clear of Roblox's jump button: smaller buttons there
-		ui.StartButton.Size = UDim2.fromOffset(short and 160 or (inner < 420 and 190 or 240), 54)
-		ui.EditButton.Size = UDim2.fromOffset(short and 124 or (inner < 420 and 150 or 170), 54)
-		ui.Why.Size = UDim2.new(1, 0, 0, short and 26 or 44)
-		ui.WhyH = short and 26 or 44
-		-- landscape phones: "Next win" comes right under the picker, and the footer keeps clear of Roblox's jump
-		-- button (bottom right corner of the screen)
+		ui.WhyH = short and 72 or 44
+		ui.Why.Size = UDim2.new(1, 0, 0, ui.WhyH)
+		-- landscape phones: "Next win" comes right under the picker
 		ui.Rewards.LayoutOrder = short and 3 or 4
 		ui.Champ.LayoutOrder = short and 4 or 3
-		ui.FooterInset = short and 120 or 28
+		ui.FooterInset = ui.ColumnX and (detailW - ui.ColumnX + 20) or 28
 	end
 
 	win.Refresh = function()
@@ -1384,6 +1187,7 @@ function Ring.refresh(win, ui)
 	local start = Ring.Start
 	-- record + the server's best
 	ui.BestLabel.Text = best > 0 and ("Best: Round " .. best) or "Best: none yet"
+	ui.BestInline.Text = ui.BestLabel.Text
 	ui.RunsLabel.Text = best > 0 and (commas(runs) .. (runs == 1 and " run so far" or " runs so far")) or "Win round 1 to set your first record!"
 	local board = Ring.board()
 	for i, row in ipairs(ui.Board) do
@@ -1429,28 +1233,9 @@ function Ring.refresh(win, ui)
 	if p.Band ~= "" then
 		colorPill(tagParent, "Band", p.Band, Color3.fromRGB(90, 120, 190), 18, 2)
 	end
-	-- the fighters (cards rebuilt only when they change)
-	local fighters, source = Ring.fighters()
-	local fsig = source
-	for _, e in ipairs(fighters) do
-		fsig = fsig .. "|" .. tostring(e.Key) .. ":" .. tostring(e.Level) .. ":" .. tostring(e.Power)
-	end
-	if ui.FighterSig ~= fsig then
-		ui.FighterSig = fsig
-		for _, handle in ipairs(ui.Handles) do
-			pcall(handle.Destroy)
-		end
-		ui.Handles = {}
-		clearChildren(ui.Fighters)
-		for i, e in ipairs(fighters) do
-			Ring.fighterCard(ui.Fighters, e, i, ui.Handles)
-		end
-	end
-	local rows = math.max(1, math.ceil(#fighters / math.max(1, ui.FighterCols or 4)))
-	ui.Fighters.Size = UDim2.new(1, 0, 0, #fighters > 0 and (rows * Ring.CARD_H + (rows - 1) * 8) or 0)
-	local titles = { team = "Your fighters (your battle team)", equipped = "Your fighters (your equipped pets)", best = "Your fighters (your strongest pets)" }
-	ui.FightersTitle.Text = #fighters > 0 and titles[source] or "Your fighters: none ready"
-	local mine = teamPower(fighters)
+	-- the fighters
+	ui.Faces.Refresh()
+	local mine = teamPower(Ring.fighters())
 	ui.ChampPower.Text = G.Swords .. " " .. commas(p.Power)
 	ui.TeamPower.Text = G.Swords .. " " .. commas(mine)
 	local ratio = p.Power > 0 and mine / p.Power or 1
@@ -1480,8 +1265,7 @@ function Ring.live(_win, ui)
 	if Ring.Pending and os.clock() - Ring.PendingAt > 4 then
 		Ring.Pending = false
 	end
-	local fighters = Ring.fighters()
-	local why = Ring.why(fighters)
+	local why = Ring.why()
 	local start = Ring.Start
 	CloudUI.SetDisabled(ui.StartButton, why ~= nil or Ring.Pending)
 	if Ring.Pending then
@@ -1491,16 +1275,30 @@ function Ring.live(_win, ui)
 	end
 	ui.Why.Text = why or ""
 	ui.Why.Visible = why ~= nil
-	local footerH = why and (60 + (ui.WhyH or 44)) or 56
+	local footerH = why and (Ring.BUTTON_H + 4 + (ui.WhyH or 44)) or Ring.BUTTON_H
 	ui.Footer.Size = UDim2.new(1, -(ui.FooterInset or 28), 0, footerH)
-	ui.DetailScroll.Size = UDim2.new(1, -8, 1, -(footerH + 22))
+	local rowH = ui.Faces.Height()
+	if ui.ColumnX then
+		ui.FacesBox.AnchorPoint = Vector2.new(0, 0)
+		ui.FacesBox.Position = UDim2.fromOffset(ui.ColumnX, 4)
+		ui.FacesBox.Size = UDim2.new(1, -(ui.ColumnX + 6), 0, rowH)
+		ui.DetailScroll.Size = UDim2.new(0, ui.ColumnX - 8, 1, -(footerH + 22))
+	else
+		ui.FacesBox.AnchorPoint = Vector2.new(0, 1)
+		ui.FacesBox.Position = UDim2.new(0, 10, 1, -(footerH + 16))
+		ui.FacesBox.Size = UDim2.new(1, -20, 0, rowH)
+		ui.DetailScroll.Size = UDim2.new(1, -8, 1, -(footerH + rowH + 26))
+	end
 end
 
 function ArenaController.StartRing()
-	local fighters = Ring.fighters()
-	local why = Ring.why(fighters)
+	local why = Ring.why()
 	if why then
 		toast(why, "info")
+		return false
+	end
+	-- never a silent auto-fill: an empty team opens the Pets window and the player presses START again
+	if not TeamFaces.Ensure(nil, panelReturn()) then
 		return false
 	end
 	if request("Ring", Ring.Start) then
@@ -1556,34 +1354,6 @@ function Ring.zoneTick()
 	end
 end
 
--- the Champion Ring line on the Team screen (HUD cleanup: the Pets window's Team tab, Window_Inventory > Page_Team;
--- added from here, it stays below the team sections): "Champion Ring best: Round 12 (9 runs)"
-function Ring.teamLine()
-	local pg = LocalPlayer and LocalPlayer:FindFirstChildOfClass("PlayerGui")
-	local menu = pg and pg:FindFirstChild("NimbusMenu")
-	local window = menu and menu:FindFirstChild("Window_Inventory", true)
-	local holder = window and window:FindFirstChild("Page_Team", true)
-	local top = holder and holder:FindFirstChild("TopBar", true)
-	local left = top and top.Parent and top.Parent:FindFirstChild("Left")
-	if not left then
-		return nil
-	end
-	local label = left:FindFirstChild("RingRecord")
-	if not label then
-		label = makeText(left, "RingRecord", "", "Heading", 19, C.Power, {
-			Size = UDim2.new(1, 0, 0, 0),
-			AutomaticSize = Enum.AutomaticSize.Y,
-			TextWrapped = true,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			LayoutOrder = 999,
-		})
-	end
-	local best, runs = Ring.record()
-	label.Text = best > 0 and (G.Crown .. " Champion Ring best: Round " .. best .. " (" .. commas(runs) .. (runs == 1 and " run)" or " runs)"))
-		or (G.Crown .. " Champion Ring: no record yet (the portal is on the plaza)")
-	return label
-end
-
 -- the Champion Ring board in the Arena panel's Leaders tab: the best of this server (Portal_Ring's RingBoard) + the
 -- player's own record
 function Ring.leaderSection(parent, order)
@@ -1609,17 +1379,15 @@ end
 -- the Champion Ring numbers the window shows (tests / other controllers)
 function ArenaController.RingInfo()
 	local best, runs = Ring.record()
-	local fighters, source = Ring.fighters()
 	return {
 		Best = best,
 		Runs = runs,
 		Start = Ring.Start,
 		Starts = Ring.starts(best),
 		Board = Ring.board(),
-		Fighters = fighters,
-		Source = source,
+		Fighters = Ring.fighters(),
 		Preview = Ring.preview(Ring.Start, best),
-		Why = Ring.why(fighters),
+		Why = Ring.why(),
 	}
 end
 
@@ -1750,7 +1518,7 @@ local function buildArena()
 	local quick = inset(ui.DuelLeft, "Quick", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1 })
 	pad(quick, 14, 10, 14, 14)
 	listLayout(quick, Enum.FillDirection.Vertical, 8)
-	teamStrip(quick) -- HUD cleanup: the battle team at the portal
+	ui.DuelFaces = TeamFaces.New(quick, { LayoutOrder = 0, ReturnTo = panelReturn })
 	makeText(quick, "Title", "Quick match", "Title", 26, WHITE, {
 		Size = UDim2.new(1, 0, 0, 32),
 		TextXAlignment = Enum.TextXAlignment.Left,
@@ -1758,11 +1526,11 @@ local function buildArena()
 	})
 	wrapText(quick, "Text", "Get paired with a player near your trophies. Both of you stay in the arena: the duel runs on a free ring.", "Body", 19, MUTED, 2)
 	ui.QueueStatus = wrapText(quick, "Status", "", "Heading", 20, C.Power, 3)
-	local queueRow = makeFrame(quick, "Buttons", { Size = UDim2.new(1, 0, 0, 54), LayoutOrder = 4 })
+	local queueRow = makeFrame(quick, "Buttons", { Size = UDim2.new(1, 0, 0, 56), LayoutOrder = 4 })
 	ui.QueueButton = CloudUI.Button({
 		Name = "Queue",
 		Text = "Find a match",
-		Size = UDim2.fromOffset(240, 54),
+		Size = UDim2.fromOffset(240, 56),
 		Style = "Green",
 		TextSize = 24,
 		Parent = queueRow,
@@ -1810,7 +1578,7 @@ local function buildArena()
 	ui.BossCard = inset(ui.RaidScroll, "Boss", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1 })
 	pad(ui.BossCard, 16, 10, 16, 14)
 	listLayout(ui.BossCard, Enum.FillDirection.Vertical, 8)
-	teamStrip(ui.BossCard)
+	ui.RaidFaces = TeamFaces.New(ui.BossCard, { LayoutOrder = 0, ReturnTo = panelReturn })
 	local bossHead = makeFrame(ui.BossCard, "Head", { Size = UDim2.new(1, 0, 0, 40), LayoutOrder = 1 })
 	listLayout(bossHead, Enum.FillDirection.Horizontal, 10, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
 	ui.BossState = colorPill(bossHead, "State", "LIVE", C.Boss, 18, 1)
@@ -1892,19 +1660,21 @@ local function buildArena()
 
 	win.OnLayout = function(w, h, narrow, short, tall)
 		local cw = w - K.INSET_X
-		local barH = tall and 108 or 50
+		-- (a landscape phone drops the trophy chip: the Record box has them, and the team's row stays whole on the page)
+		local barH = (tall and not short) and 118 or 60
 		ui.Bar.Size = UDim2.new(1, -28, 0, barH)
 		local tabW = tall and math.floor((cw - 28 - 16) / 3) or (narrow and 180 or 200)
 		for _, tab in ipairs(TABS) do
 			local button = ui.TabButtons[tab.Id]
-			button.Size = UDim2.fromOffset(tabW, 46)
+			button.Size = UDim2.fromOffset(tabW, 56) -- (>= 44 px under the 0.8 touch scale)
 			button.TextSize = tall and 20 or 22
 			button.Text = tall and (tab.Short or tab.Label) or tab.Label
 		end
 		if tall then
-			ui.TabRow.Size = UDim2.new(1, 0, 0, 48)
+			ui.TabRow.Size = UDim2.new(1, 0, 0, 58)
 			ui.Chip.AnchorPoint = Vector2.new(0, 0)
-			ui.Chip.Position = UDim2.fromOffset(0, 58)
+			ui.Chip.Position = UDim2.fromOffset(0, 68)
+			ui.Chip.Visible = not short
 		else
 			ui.TabRow.Size = UDim2.new(1, -180, 1, 0)
 			ui.Chip.AnchorPoint = Vector2.new(1, 0.5)
@@ -1919,9 +1689,10 @@ local function buildArena()
 		ui.LeaderScroll.Size = UDim2.new(1, 0, 1, 0)
 		if tall then
 			ui.DuelLeft.Position = UDim2.fromOffset(0, 0)
-			ui.DuelLeft.Size = UDim2.new(1, 0, 0.58, -6)
-			ui.Challenge.Position = UDim2.new(0, 0, 0.58, 6)
-			ui.Challenge.Size = UDim2.new(1, 0, 0.42, -6)
+			local share = short and 0.68 or 0.58
+			ui.DuelLeft.Size = UDim2.new(1, 0, share, -6)
+			ui.Challenge.Position = UDim2.new(0, 0, share, 6)
+			ui.Challenge.Size = UDim2.new(1, 0, 1 - share, -6)
 		else
 			local leftW = math.floor((cw - 28) * 0.48)
 			ui.DuelLeft.Position = UDim2.fromOffset(0, 0)
@@ -1931,13 +1702,16 @@ local function buildArena()
 		end
 		ui.JoinWhy.Visible = not tall
 		ui.BossName.TextSize = tall and 24 or 30
+		local mode = w < K.FACES_NARROW and "Compact" or "Card"
+		ui.DuelFaces.SetMode(mode)
+		ui.RaidFaces.SetMode(mode)
 	end
 
 	local function inviteRow(parent, invite, order)
 		local row = makeFrame(parent, "Invite" .. order, {
 			BackgroundTransparency = 0,
 			BackgroundColor3 = Color3.fromRGB(60, 40, 90),
-			Size = UDim2.new(1, 0, 0, 104),
+			Size = UDim2.new(1, 0, 0, 120),
 			LayoutOrder = order,
 		})
 		corner(row, 12)
@@ -1952,9 +1726,9 @@ local function buildArena()
 		})
 		if practice then
 			-- Phase 5 (4.2): the two teams are far apart in power: the duel is practice (no trophies, no rewards)
-			row.Size = UDim2.new(1, 0, 0, 130)
+			row.Size = UDim2.new(1, 0, 0, 146)
 			makeText(row, "PracticeFlag", "Practice duel - no trophies or rewards", "Heading", 18, C.Practice, {
-				Position = UDim2.fromOffset(12, 100),
+				Position = UDim2.fromOffset(12, 116),
 				Size = UDim2.new(1, -24, 0, 24),
 				TextXAlignment = Enum.TextXAlignment.Left,
 				TextTruncate = Enum.TextTruncate.AtEnd,
@@ -1970,7 +1744,7 @@ local function buildArena()
 			Name = "Accept",
 			Text = "Accept",
 			Position = UDim2.fromOffset(12, 60),
-			Size = UDim2.fromOffset(140, 40),
+			Size = UDim2.fromOffset(140, 56),
 			Style = "Green",
 			TextSize = 20,
 			Parent = row,
@@ -1984,7 +1758,7 @@ local function buildArena()
 			Name = "Decline",
 			Text = "Decline",
 			Position = UDim2.fromOffset(160, 60),
-			Size = UDim2.fromOffset(140, 40),
+			Size = UDim2.fromOffset(140, 56),
 			Style = "Gray",
 			TextSize = 20,
 			Parent = row,
@@ -2026,7 +1800,7 @@ local function buildArena()
 				Text = "Challenge",
 				AnchorPoint = Vector2.new(1, 0.5),
 				Position = UDim2.new(1, -10, 0.5, 0),
-				Size = UDim2.fromOffset(160, 46),
+				Size = UDim2.fromOffset(160, 56),
 				Style = "Red",
 				TextSize = 21,
 				Parent = row,
@@ -2327,6 +2101,11 @@ local function buildArena()
 		end
 		for id, button in pairs(ui.TabButtons) do
 			CloudUI.SetStyle(button, id == tab and "Red" or "Gray")
+		end
+		if tab == "Duels" then
+			ui.DuelFaces.Refresh()
+		elseif tab == "Raid" then
+			ui.RaidFaces.Refresh()
 		end
 		ui.Trophies.Text = G.Trophy .. " " .. commas(battleData().Trophies or 0)
 		if tab == "Duels" then
@@ -2922,12 +2701,6 @@ local function connectOthers()
 					return
 				end
 				ArenaController.Close()
-				if name == "MenuController" and windowId == "Team" then
-					-- the Champion Ring record line on the Team screen (after its first layout)
-					task.defer(function()
-						safe("team line", Ring.teamLine)
-					end)
-				end
 			end)
 		end
 	end
@@ -2990,7 +2763,6 @@ function ArenaController.Init()
 	end)
 	State.Changed:Connect(function()
 		safe("State.Changed", refreshOpen)
-		safe("team line", Ring.teamLine)
 	end)
 	if LocalPlayer then
 		LocalPlayer:GetAttributeChangedSignal(Config.Attr.InMatch):Connect(function()

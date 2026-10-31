@@ -12,7 +12,7 @@
 --   MenuController.Close()               -- closes whatever window / overlay is open
 --   MenuController.OpenSettings()        -- HUD cleanup: MainMenuController's settings panel (the top-left pill's gear,
 --                                           TopBarController; a hint until that panel exists)
---   MenuController.OpenTeam(preset)      -- the Pets window showing that team (TeamPick's strip Edit button)
+--   MenuController.OpenTeam(preset)      -- the Pets window showing that team
 --   MenuController.WindowOpened          -- Util.Signal, Fire(windowId) whenever a window opens:
 --                                           "Pets" (fired by PetsController), "Shop", "Stats", "Home" or "Index" (the
 --                                           tutorial listens); this controller closes its own windows on "Pets"
@@ -5727,7 +5727,7 @@ function MenuController.OpenFeed(key)
 	end
 end
 
--- The Pets window showing `preset` (1-3; nil = the active one). TeamPick's strip Edit.
+-- The Pets window showing `preset` (1-3; nil = the active one).
 function MenuController.OpenTeam(preset)
 	if initialized then
 		onOpenPanel("Team", { Preset = preset })

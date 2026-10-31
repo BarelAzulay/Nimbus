@@ -435,17 +435,12 @@
         "Closed"
       ]
     },
-    "client/TeamPick": {
+    "client/UI/TeamFaces": {
       "functions": [
-        "ActiveKeys",
-        "Fieldable",
-        "Best",
-        "Save",
-        "Ensure",
-        "Strip",
-        "Popup",
-        "IsOpen",
-        "Close"
+        "New",
+        "Entries",
+        "Power",
+        "Ensure"
       ]
     },
     "client/Controllers/TopBarController": {

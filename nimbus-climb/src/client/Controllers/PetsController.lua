@@ -10,7 +10,10 @@
 --   PetsController.SetSort("Strongest" | "Rarest" | "Level"), PetsController.Sort() -> mode
 --   PetsController.Layout() -> "PC" | "Phone"
 --   PetsController.Opened         Util.Signal, Fire() per opening
---   PetsController.Closed         Util.Signal, Fire(returnTo | nil); ReturnTo { Window = "Loss" } -> LossScreen.Reopen()
+--   PetsController.Closed         Util.Signal, Fire(returnTo | nil). ReturnTo (where a close that is not silent goes back to):
+--                                 { Window = "Ring", Start, Portal } -> ArenaController.OpenRing(Start, Portal), { Window = "Dungeon", Floor,
+--                                 Portal } -> DungeonController.Open(Floor, Portal), { Window = "Arena", Tab } -> ArenaController.OpenArena(Tab),
+--                                 { Window = "Loss" } -> LossScreen.Reopen()
 -- MenuController.Open("Pets" | "Team" | "Inventory", args), OpenTeam(preset) and the Pets tile come here; an opening fires
 -- MenuController.WindowOpened("Pets") (the tutorial's Equipped hook; the other windows close on it), MenuController.Close()
 -- closes this one silently.
@@ -2082,10 +2085,20 @@ end
 
 -- ReturnTo: where the player goes when the window closes (not a silent close)
 function H.returnTo(back)
+	local arena = (back.Window == "Ring" or back.Window == "Arena") and H.controller("ArenaController") or nil
 	if back.Window == "Loss" then
 		local loss = H.controller("LossScreen")
 		if loss then
 			safe("back to loss", loss.Reopen)
+		end
+	elseif back.Window == "Ring" and arena then
+		safe("back to ring", arena.OpenRing, back.Start, back.Portal)
+	elseif back.Window == "Arena" and arena then
+		safe("back to arena", arena.OpenArena, back.Tab)
+	elseif back.Window == "Dungeon" then
+		local dungeon = H.controller("DungeonController")
+		if dungeon then
+			safe("back to dungeon", dungeon.Open, back.Floor, back.Portal)
 		end
 	end
 end
