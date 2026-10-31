@@ -5,7 +5,7 @@
 -- through the home portal). Phase 5 ("Phase 5 build contract" 8; indices never move): the portal step points at the ONE
 -- Obby portal (lobby.Portals.Obby), chapter 2 runs on the Phase 5 home (roaming pets poop Cloud Cash: the arrow finds the
 -- biggest drop, TycoonService.Drops; the Berry Farm pad before the Food Machine pad; entering the feed step tops the
--- berries up to FEED_BERRIES once so the first feed works), chapter 3's step 17 is the Dungeon (DungeonWon: floor 1
+-- berries up to FEED_BERRIES once so the first feed works), chapter 3's step 17 is the Dungeon (DungeonRoom: floor 1
 -- cleared; the arrow at DungeonInfo.Pad; standing on that pad opens the Dungeon window on floor 1 once).
 --
 --   TutorialService.Init(lobbyInfo, deps)     deps = { DataService, PetService, MatchService, SpotService, IndexService,
@@ -56,9 +56,10 @@
 --   TeamSet       the active battle team holds the player's pets: DataService.ActiveTeamKeys has at least
 --                 min(3, the pets that can join a team: DataService.FieldableKeys) entries, so a player with one pet
 --                 passes with that one pet and a player with many must field three (DataService.TeamsChanged + the poll)
---   DungeonWon    (Phase 5, replaces TrialWon) Dungeon floor 1 is cleared: DungeonService.FloorCleared(player, floor),
---                 or the saved Dungeon.Best >= 1 / Cleared[1] (DataService.GetDungeon), or a legacy Battle.TrialCleared[1] /
---                 TrialBest >= 1 (DataService.GetBattle): a Phase 4 veteran does not redo the step
+--   DungeonRoom   (team balance, was DungeonWon) a room of Dungeon floor 1 is cleared: DungeonService.RoomCleared(player, 1, room)
+--                 or FloorCleared(player, floor), or the saved Dungeon.Best >= 1 / Cleared[1] (DataService.GetDungeon), or a legacy
+--                 Battle.TrialCleared[1] / TrialBest >= 1 (DataService.GetBattle): a veteran does not redo the step. While the
+--                 step is open DungeonService eases room 1 for a solo run (IsOnStep)
 --   RaidSeen      the player joined a Boss Raid (BattleService.RaidJoined / a Raid BattleEnded naming them), has a raid
 --                 in the record (Battle.Raids), or stands in the arena while BattleService.GetRaidStatus() is not nil
 --   RaidFloor     (bug batch 2 #24, the raid step) the character stands on the Boss Raid floor (ArenaInfo.Floor footprint,
@@ -166,8 +167,8 @@ local KNOWN_COMPLETE_ON = {
 	TrainingStarted = true,
 	RingWon = true,
 	PortalUsed = true,
-	-- Phase 5 (chapter 3's step 17)
-	DungeonWon = true,
+	-- Phase 5 (chapter 3's step 17); team balance: the first room, not the floor
+	DungeonRoom = true,
 }
 
 ----------------------------------------------------------------------
@@ -1470,7 +1471,7 @@ local function enterStep(player, track)
 	track.NoSpotTime = 0
 	track.NoFreeTime = 0
 	track.TargetSig = nil
-	track.DungeonWon = false
+	track.DungeonRoom = false
 	track.DungeonPanel = false
 	track.RaidSeen = false
 	track.CoinsScooped = false
@@ -1584,7 +1585,7 @@ local function impossible(player, track, step)
 		return not arenaKnown()
 	elseif kind == "TeamSet" then
 		return not hasFunction(DataService, "ActiveTeamKeys")
-	elseif kind == "DungeonWon" then
+	elseif kind == "DungeonRoom" then
 		return not hasFunction(DungeonService, "StartSolo")
 	elseif kind == "RaidSeen" then
 		return BattleService == nil or not (hasFunction(BattleService, "GetRaidStatus") or hasSignal(BattleService, "BattleEnded"))
@@ -1647,8 +1648,8 @@ local function satisfied(player, track, step)
 		return not inMatch(player) and inArena(player)
 	elseif kind == "TeamSet" then
 		return teamFilled(player)
-	elseif kind == "DungeonWon" then
-		return track.DungeonWon == true or dungeonOneCleared(player)
+	elseif kind == "DungeonRoom" then
+		return track.DungeonRoom == true or dungeonOneCleared(player)
 	elseif kind == "RaidSeen" then
 		return raidSeen(player, track)
 	elseif kind == "RaidFloor" then
@@ -1947,6 +1948,12 @@ function TutorialService.GetState(player)
 	return buildPayload(player, track)
 end
 
+-- true when the player is on that step now (false when the tutorial is finished, skipped, or the player unknown)
+function TutorialService.IsOnStep(player, stepId)
+	local step = currentStep(player and tracks[player])
+	return step ~= nil and step.Id == stepId
+end
+
 -- Stops the poll loop (tests / shutdown). Tracks stay readable.
 function TutorialService.Stop()
 	running = false
@@ -1960,7 +1967,7 @@ end
 -- (OpenPanel("Dungeon", { Floor = 1 })), once per step entry; never in a fight or a run.
 local function dungeonDoorstep(player, track)
 	local step = currentStep(track)
-	if not step or step.CompleteOn ~= "DungeonWon" or track.DungeonPanel then
+	if not step or step.CompleteOn ~= "DungeonRoom" or track.DungeonPanel then
 		return false
 	end
 	local pad = dungeonPadPosition()
@@ -2193,14 +2200,27 @@ function TutorialService.Init(lobbyInfo, deps)
 			end
 		end)
 	end
-	-- Phase 5: a cleared Dungeon floor (DungeonService fires it for every qualifying member, after the payments)
+	-- Phase 5: a cleared Dungeon floor (DungeonService fires it for every qualifying member, after the payments);
+	-- team balance: a cleared room of floor 1 is enough
+	local function dungeonRoomDone(player)
+		local track = typeof(player) == "Instance" and tracks[player] or nil
+		local step = currentStep(track)
+		if step and step.CompleteOn == "DungeonRoom" then
+			track.DungeonRoom = true
+			nudge(player)
+		end
+	end
+	if hasSignal(DungeonService, "RoomCleared") then
+		DungeonService.RoomCleared:Connect(function(player, floor)
+			if floor == 1 then
+				dungeonRoomDone(player)
+			end
+		end)
+	end
 	if hasSignal(DungeonService, "FloorCleared") then
 		DungeonService.FloorCleared:Connect(function(player, floor)
-			local track = typeof(player) == "Instance" and tracks[player] or nil
-			local step = currentStep(track)
-			if step and step.CompleteOn == "DungeonWon" and type(floor) == "number" and floor >= 1 then
-				track.DungeonWon = true
-				nudge(player)
+			if type(floor) == "number" and floor >= 1 then
+				dungeonRoomDone(player)
 			end
 		end)
 	end

@@ -3,7 +3,7 @@
 -- Trial window / Arena panel / side cards of client/Controllers/ArenaController.lua, tutorial chapter 3
 -- (shared/TutorialSteps.lua, server/Services/TutorialService.lua) and the battle tips of shared/NpcDialog.lua. Loaded by
 -- tools/smoke.py in BOTH worlds; ARGS.context picks the half:
---   (Phase 5, owner tutorial W4: step 17 "trial" became "dungeon", DungeonWon, the Dungeon gate's pad; the Arena step
+--   (Phase 5, owner tutorial W4: step 17 "trial" became "dungeon", DungeonRoom (team balance), the Dungeon gate's pad; the Arena step
 --   points at the Gate Court's Arena gate; the NPC needles follow the Phase 5 lines: DASH instead of RETREAT, the Dungeon)
 --   p3ui_content        (server, content) chapter 3 is appended after the home chapter (arena, team, dungeon, raid; chapter
 --                       3 up to ChapterStart[4] - 1, the raid step ends it, known CompleteOn, Arena targets with a Place, short texts, the raid
@@ -123,9 +123,9 @@ local function serverScenarios()
 			and byId.arena.Target.Place == "Gate", "p3ui: 'arena' points at the arena (Place Gate) and completes on ArenaReached")
 		T.check(byId.team and byId.team.CompleteOn == "TeamSet" and byId.team.Target and byId.team.Target.Kind == "Menu" and byId.team.Target.Id == "Pets",
 			"p3ui: 'team' rings the Pets menu tile (HUD cleanup: Pets > Team) and completes on TeamSet")
-		T.check(byId.trial == nil and byId.dungeon and byId.dungeon.CompleteOn == "DungeonWon" and byId.dungeon.Target
+		T.check(byId.trial == nil and byId.dungeon and byId.dungeon.CompleteOn == "DungeonRoom" and byId.dungeon.Target
 			and byId.dungeon.Target.Place == "Dungeon" and Steps.IndexOf.dungeon == 17,
-			"p3ui: step 17 'trial' became 'dungeon': the Dungeon portal, completes on DungeonWon")
+			"p3ui: step 17 'trial' became 'dungeon': the Dungeon portal, completes on DungeonRoom")
 		local minutes = BC and BC.Events and BC.Events.Schedule and BC.Events.Schedule[1] and BC.Events.Schedule[1].EveryMinutes or 20
 		-- (bug batch 2 #24: informational: the raid floor or Next completes it, the text gives the schedule + the board tip)
 		T.check(byId.raid and byId.raid.CompleteOn == "RaidFloor" and byId.raid.AlsoNext == true and byId.raid.ChapterEnd == true and byId.raid.Target and byId.raid.Target.Place == "Floor"
@@ -140,7 +140,7 @@ local function serverScenarios()
 		T.eq(ends, 1, "p3ui: chapter 3 has exactly one ChapterEnd step")
 		local src = sourceOf("server/Services/TutorialService")
 		if type(src) == "string" then
-			for _, kind in ipairs({ "ArenaReached", "TeamSet", "DungeonWon", "RaidSeen", "RaidFloor" }) do
+			for _, kind in ipairs({ "ArenaReached", "TeamSet", "DungeonRoom", "RaidSeen", "RaidFloor" }) do
 				T.check(src:find(kind .. " = true", 1, true) ~= nil, "p3ui: TutorialService knows CompleteOn " .. kind)
 			end
 		end

@@ -324,9 +324,9 @@ Food Machine and press **Feed**; Nimbus tops your Berry Basket up for this first
 the end. Players who finished the phase 1 tutorial start right at this chapter.
 
 A third chapter teaches pet battles in four steps: follow the arrow to the Arena gate and visit the Battle Arena, tap
-**Team** and put 3 pets in your team (a fighter and two helpers), press **E** at the Dungeon gate and clear floor 1, the
-Mossy Cellar (players who already cleared it, or Trial 1 before phase 5, skip this step), then join or watch a Boss
-Raid. Nimbus pays **500 Cloud Tokens** at the end. Players who finished the first two chapters start right at this
+**Team** and put 3 pets in your team (a fighter and two helpers), press **E** at the Dungeon gate and clear the first
+room of floor 1, the Mossy Cellar (while this step is open that room is easy enough for any level 1 pet on a solo run; players
+who already cleared the floor, or Trial 1 before phase 5, skip this step), then join or watch a Boss Raid. Nimbus pays **500 Cloud Tokens** at the end. Players who finished the first two chapters start right at this
 one.
 
 A fourth chapter teaches the phase 4 pet care in three steps: *Training Time* (start a training at your Training
@@ -984,6 +984,11 @@ You need a pet; you do not need a home.
 - **LEAVE** (press it twice) takes you out of a run at any time; the others go on.
 
 Your old Trial record counts: every 3 Trial levels you cleared before phase 5 unlocked one floor (up to floor 10).
+
+**A loss is progress.** A lost Champion Ring run or a lost Dungeon floor ends on a result screen: each team pet that gained a
+level shows `L1 -> L3`, a pet that gained none shows its XP bar moving. **Fight again** starts the same round or floor again
+without walking back (once the return teleport is over; solo Dungeon runs and the Ring only), **Edit team** opens the Pets window
+and comes back here. Wins, forfeits and leaving keep their usual cards.
 
 ### Duels and trophies
 

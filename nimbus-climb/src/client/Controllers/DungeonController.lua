@@ -35,6 +35,7 @@
 --     chip in Roblox's top band. The party countdown uses the same card while the window is closed. Loot and chest
 --     toasts flash inside it ("Room 2 cleared! +$340 +24 tokens +70 XP"). The End card (totals, first clear, unlock,
 --     new best) sits at the right (desktop / landscape) or under the top bar (portrait), never in the centre.
+--     A lost floor (Wipe / Timeout) shows client/Controllers/LossScreen instead (R.showLoss; team balance).
 --   * Lighting: LightingStack.Push("Dungeon", preset, 1) when a run starts (darker ambient, ColorCorrection Brightness
 --     -0.12 / Contrast 0.1 / a warm grey tint, Atmosphere density +0.15); Pop("Dungeon", 1) on End or when the player
 --     is no longer in the pocket (InBattle released). The music follows the same switch: SoundFx.SetLayer("Dungeon",
@@ -300,6 +301,21 @@ function H.teamPick()
 		end
 	end
 	return H.TP or nil
+end
+
+-- team balance: client/Controllers/LossScreen, loaded once; nil when it is missing (today's End card then)
+function H.lossScreen()
+	if H.LS == nil then
+		H.LS = false
+		local inst = script.Parent:FindFirstChild("LossScreen")
+		local ok, mod = pcall(function()
+			return inst and require(inst)
+		end)
+		if ok and type(mod) == "table" then
+			H.LS = mod
+		end
+	end
+	return H.LS or nil
 end
 
 -- runs fn once the player has a battle team: at once with a team, after the popup's save without one
@@ -1917,6 +1933,52 @@ function R.refresh()
 	U.ChipButton:SetAttribute("Color", "Red")
 end
 
+-- team balance (spec 2026-10-31 s.7): a lost floor (Wipe / Timeout, End.Pets from the server): the loss screen in place of the
+-- End card and of the battle HUD's KNOCKED OUT card. Fight again only for a solo run. -> true when it took over
+function R.showLoss(e)
+	local LS = H.lossScreen()
+	if not LS or (e.Reason ~= "Wipe" and e.Reason ~= "Timeout") or type(e.Pets) ~= "table" or #e.Pets == 0 then
+		return false
+	end
+	local f = math.floor(tonumber(e.Floor) or 1)
+	local name = tostring(e.Name or H.floorInfo(f).Name)
+	local room = tostring(e.Room or 1)
+	local timeout = e.Reason == "Timeout"
+	local t = type(e.Totals) == "table" and e.Totals or S.Totals
+	local lines = {
+		{ "+$" .. H.commas(t.Cash) .. " Cash", C.Cash },
+		{ "+" .. H.commas(t.Tokens) .. " Tokens", C.Token },
+		{ "+" .. H.commas(t.Xp) .. " Pet XP", C.Blue },
+	}
+	if (tonumber(t.Gems) or 0) > 0 then
+		lines[#lines + 1] = { "+" .. H.commas(t.Gems) .. " Gems", C.Gem }
+	end
+	local okS, shown = pcall(LS.Show, {
+		Mode = "Dungeon",
+		Title = timeout and "TIME IS UP" or "KNOCKED OUT",
+		Color = C.Accent,
+		Sub = timeout and ("Floor " .. f .. ", the " .. name .. ": time ran out in room " .. room) or ("Floor " .. f .. ": the " .. name .. " got you in room " .. room),
+		Pets = e.Pets,
+		Lines = lines,
+		Start = f,
+		OnFightAgain = e.Solo == true and function()
+			H.request("Solo", f)
+		end or nil,
+	})
+	if not okS or shown ~= true then
+		H.warnOnce("loss screen", shown)
+		return false
+	end
+	local inst = script.Parent:FindFirstChild("BattleController")
+	local okB, battle = pcall(function()
+		return inst and require(inst)
+	end)
+	if okB and type(battle) == "table" and type(battle.HideResult) == "function" then
+		H.safe("result card", battle.HideResult)
+	end
+	return true
+end
+
 function R.fillEnd()
 	local e = S.End
 	local cleared = e.Cleared == true
@@ -3357,7 +3419,7 @@ function R.onState(kind, payload)
 			R.fade(payload)
 		end
 	elseif kind == "End" then
-		S.End = payload
+		S.End = (not R.showLoss(payload)) and payload or nil
 		S.EndAt = os.clock()
 		S.Run = nil
 		S.PhaseKey = nil

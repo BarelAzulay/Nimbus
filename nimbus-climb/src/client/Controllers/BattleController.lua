@@ -7226,7 +7226,7 @@ function Ring.FinalAfterWin(B, payload)
 	Ring.HideNext()
 	B.linger = K.END_LINGER
 	B.endAt = os.clock()
-	Hud.ShowResult(B, payload)
+	Hud.ShowEnd(B, payload)
 end
 
 -- my pets' models + cards out of a won round (to be handed to the next round's units of the same key)
@@ -7316,6 +7316,71 @@ function Ring.ResultLines(B, rw)
 		lines[#lines + 1] = { "Best: round " .. tostring(num(run.Best, 0)), COLORS.Weak }
 	end
 	return lines
+end
+
+-- team balance (spec 2026-10-31 s.7): a lost run. The server sends Rewards.Pets for a Wipe, a Timeout or a Fainted run only
+-- (never a forfeit, a leave, a void round): the loss screen takes the place of the run card.
+function Ring.IsLoss(payload)
+	if not Ring.IsFinal(payload) or payload.Won == true then
+		return false
+	end
+	return type(payload.Rewards.Pets) == "table" and #payload.Rewards.Pets > 0
+end
+
+-- client/Controllers/LossScreen, loaded once; nil when the build has none (today's card then)
+function Ring.LossModule()
+	if Mods.Loss == nil then
+		Mods.Loss = optional(script.Parent, "LossScreen") or false
+	end
+	return Mods.Loss or nil
+end
+
+-- -> true when the loss screen took over
+function Ring.ShowLoss(B, payload)
+	local LS = Ring.LossModule()
+	if not LS then
+		return false
+	end
+	local rw = payload.Rewards
+	local title, color, sub = Ring.ResultTitle(B, payload, "")
+	local start = rw.Start
+	local okS, shown = pcall(LS.Show, {
+		Mode = "Ring",
+		Title = title,
+		Color = color,
+		Sub = sub,
+		Pets = rw.Pets,
+		Lines = Ring.ResultLines(B, rw),
+		Start = start,
+		OnFightAgain = function()
+			local arena = optional(script.Parent, "ArenaController")
+			if arena and type(arena.Request) == "function" then
+				arena.Request("Ring", start)
+			end
+		end,
+	})
+	if not okS or shown ~= true then
+		warnOnce("loss screen", shown)
+		return false
+	end
+	Ring.HideNext()
+	Hud.HideResult()
+	Hud.SetVisible(false)
+	return true
+end
+
+-- the end of a participant's battle: the loss screen, or the result card
+function Hud.ShowEnd(B, payload)
+	if B.Mode == "Ring" and Ring.IsLoss(payload) and Ring.ShowLoss(B, payload) then
+		return
+	end
+	-- (a lost Dungeon floor: DungeonController's run End shows the screen; the card never stays under it)
+	local LS = B.Mode == "Dungeon" and Ring.LossModule() or nil
+	if LS and LS.IsOpen() then
+		Hud.SetVisible(false)
+		return
+	end
+	Hud.ShowResult(B, payload)
 end
 
 ----------------------------------------------------------------------
@@ -8592,7 +8657,7 @@ function Net.End(payload, battleId)
 	end
 	local id = payload.BattleId or battleId
 	if not B and St.ringLast and St.ringLast.Id == id and Ring.IsFinal(payload) then
-		Hud.ShowResult(St.ringLast, payload) -- the run's card after the last round's floor was already freed
+		Hud.ShowEnd(St.ringLast, payload) -- the run's card after the last round's floor was already freed
 		St.ringLast = nil
 		return
 	end
@@ -8643,7 +8708,7 @@ function Net.End(payload, battleId)
 		Net.RewardSound() -- (audio wave 2 fix) a won round is a payout too
 	elseif participant then
 		B.linger = K.END_LINGER
-		Hud.ShowResult(B, payload)
+		Hud.ShowEnd(B, payload)
 		-- winners cheer (and hear their payout)
 		if payload.Outcome == "Win" or payload.Won then
 			Net.Cheer(B)
@@ -9122,6 +9187,11 @@ end
 
 function BattleController.ResetStats()
 	St.perf = { frames = 0, total = 0, peak = 0, last = 0, builds = 0, split = {} }
+end
+
+-- the result card off (team balance: DungeonController's loss screen takes its place)
+function BattleController.HideResult()
+	Hud.HideResult()
 end
 
 function BattleController.IsHudVisible()

@@ -8,14 +8,15 @@
 -- run.Paid[room][userId] BEFORE the payment; first clears are decided inside DataService.MutateDungeon (`first`).
 --
 --   DungeonService.Init(deps)   deps { DataService, PetCareService, TycoonService, BattleService, DungeonBuilder,
---                               DungeonInfo, LobbyInfo, PetService }: wires DungeonRequest, the 0.5 s loop, then LAST
+--                               DungeonInfo, LobbyInfo, PetService, TutorialService }: wires DungeonRequest, the 0.5 s loop, then LAST
 --                               BattleService.SetRunProvider({ KeysInRun, GetRun }) (C16)
 --   API: CreateParty(player, floor), JoinParty(player, leaderUserId), LeaveParty(player), SetReady(player, bool),
 --        SetFloor(player, floor), KickMember(leader, userId), StartRun(party) -> ok, runId | reason,
 --        StartSolo(player, floor), Quit(player), OpenChest(player, slot), GetRun(player) -> { RunId, Floor, Room, State, Wave }
 --        | nil, KeysInRun(player) -> {[key] = true}, ListParties(), Shutdown()
 --   Signals: RunEnded(runId, result = { Floor, Cleared, Members, Winners, Loot, Reason }) after the payments;
---            FloorCleared(player, floor)
+--            FloorCleared(player, floor);
+--            RoomCleared(player, floor, room) for every live member of a cleared room, before FloorCleared on room 4 (team balance)
 --   Remotes: DungeonRequest(action, a, b) c->s (Open / Create / Join / Leave / Ready / SetFloor / Start / Solo / Quit /
 --            Chest / Kick), DungeonState(kind, payload) s->c (Lobby <= 1/s, Run, Loot, Chest, End, Fade { Out, Hold,
 --            In, Room }, Enter { Cover, Reveal, Element, Floor, Name }), the gate's attribute DungeonBoard, the room
@@ -67,6 +68,7 @@ local Remotes = require(Shared.Remotes)
 local DungeonService = {}
 DungeonService.RunEnded = Util.Signal() -- Fire(runId, result) once per run, after the payments
 DungeonService.FloorCleared = Util.Signal() -- Fire(player, floor)
+DungeonService.RoomCleared = Util.Signal() -- Fire(player, floor, room): the tutorial's "Into the Dungeon!" (team balance)
 DungeonService.MAX_DUNGEONS = 8 -- 12 only after the owner's MicroProfiler check (judge M6)
 
 local floor, max, min, abs = math.floor, math.max, math.min, math.abs
@@ -640,7 +642,7 @@ end
 local function endPayload(run, member, reason)
 	local uid = member.Player.UserId
 	local loot = lootOf(run, uid)
-	return {
+	local payload = {
 		Floor = run.Floor,
 		Name = run.Name,
 		Cleared = run.Cleared == true and member.ClearedFloor == true,
@@ -651,6 +653,12 @@ local function endPayload(run, member, reason)
 		Unlocked = member.Unlocked,
 		NewBest = member.NewBest == true,
 	}
+	-- team balance (spec 2026-10-31 s.7): a lost floor's numbers for the loss screen (the client never computes levels)
+	if payload.Reason == "Wipe" or payload.Reason == "Timeout" then
+		payload.Pets = try(St.deps.BattleService, "LevelReport", member.Player, member.Keys, member.StartLevels)
+		payload.Solo = (#run.Order == 1) and true or nil
+	end
+	return payload
 end
 
 ----------------------------------------------------------------------
@@ -753,6 +761,7 @@ local function newMember(run, player, spec, joinedRoom)
 	local member = {
 		Player = player,
 		Keys = keysOf(spec),
+		StartLevels = try(St.deps.BattleService, "LevelSnapshot", player, keysOf(spec)), -- the loss screen's "before"
 		Spec = spec,
 		Power = powerOf(spec),
 		JoinedRoom = joinedRoom,
@@ -855,6 +864,9 @@ function Dg.begin(party, readyOnly)
 		markLobbyDirty()
 		return false, "The leader could not enter"
 	end
+	-- team balance (spec 2026-10-31 s.7): room 1 of floor 1 is eased for a SOLO player on the tutorial's dungeon step; a party
+	-- always gets the normal room (a late joiner drops the flag, Dg.lateJoin), so nobody farms it
+	run.Eased = (#run.Order == 1 and try(St.deps.TutorialService, "IsOnStep", leader, "dungeon") == true) or nil
 	local okB, pocket, whyB = pcall(St.deps.DungeonBuilder.BuildRun, index, floorIndex, run.Seed)
 	if not okB or type(pocket) ~= "table" then
 		St.pocketBusy[index] = nil
@@ -936,6 +948,7 @@ function Dg.lateJoin(run, player)
 	end
 	local joinedRoom = (run.State == "Hall") and 1 or (run.Room + ((run.Phase == "Threshold") and 0 or 1))
 	local member = newMember(run, player, spec, max(1, joinedRoom))
+	run.Eased = nil -- no longer solo: the normal room
 	bindMember(run, player)
 	local target
 	if run.State == "Hall" then
@@ -1192,7 +1205,8 @@ local function spawnWave(run, wave)
 		return false
 	end
 	local n = countLive(run)
-	local okW, plan = pcall(BC.DungeonWave, run.Floor, run.Room, wave, n, run.Seed)
+	local opts = (run.Eased == true and run.Floor == 1 and run.Room == 1) and { Eased = true } or nil
+	local okW, plan = pcall(BC.DungeonWave, run.Floor, run.Room, wave, n, run.Seed, opts)
 	if not okW or type(plan) ~= "table" or type(plan.Pets) ~= "table" or #plan.Pets == 0 then
 		warn("[DungeonService] DungeonWave failed: " .. tostring(plan))
 		return false
@@ -1548,6 +1562,9 @@ function Dg.onRoomEnd(run, result, battleId)
 	local reason = tostring(result.Reason or "Error")
 	if reason == "Cleared" then
 		Dg.payRoom(run, room, result)
+		for _, m in ipairs(liveMembers(run)) do
+			pcall(DungeonService.RoomCleared.Fire, DungeonService.RoomCleared, m.Player, run.Floor, room)
+		end
 		if room == 4 then
 			Dg.clearFloor(run)
 		end

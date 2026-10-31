@@ -13,7 +13,7 @@
 --                   garden's poops grow berries) -> the Food Machine -> Feed spends berries, never Cash (+$1,000 chapter
 --                   reward once) -> /petlevel 20 + EVOLVE (stage 1, LevelFactor x1.5 bonus, PetGrowth.Evo in ProfileSync)
 --                   -> chapter 3: the Arena gate, a team of 3 (a 4th key refused), Dungeon floor 1 solo (loot once per
---                   room, the first clear once, DungeonWon) -> Champion Ring rounds 1-3 with ATTACK / ELEMENT / SPECIAL /
+--                   room, the first clear once, DungeonRoom) -> Champion Ring rounds 1-3 with ATTACK / ELEMENT / SPECIAL /
 --                   DASH / BUFF / SWAP (paid once per round) -> Prestige keeps the berries, the Garden and its pet.
 --   p5flow_migrate  Vic, a Phase 4 save (4 plants + Collector + 6 decor + a 4-key team + TrialBest 15 + 2 Feasts + BestTimes
 --                   Easy / Medium) and Wes, a Phase 3 save (P4 + P5 in ONE load): Home Level unchanged or up, the Farm
@@ -1518,7 +1518,7 @@ local function newBattle(X, nia)
 		T.check(d and d.Best == 1 and floorsExactly(d, 1) and d.Clears == 1 and d.Runs == 1, "p5 flow new: Dungeon { Best 1, Cleared {1}, Clears 1, Runs 1 }", dungeonText(d))
 		T.check(nia:GetAttribute("InBattle") == nil and Kit.runOf(nia) == nil, "p5 flow new: ...she is back at the portal, out of the run")
 		waitStep(nia, "raid", 3)
-		T.eq(stepOf(nia), "raid", "p5 flow new: the floor-1 clear completes 'dungeon' (DungeonWon) -> 'raid'")
+		T.eq(stepOf(nia), "raid", "p5 flow new: the first room completed 'dungeon' (DungeonRoom) -> 'raid'")
 	end
 	-- the Champion Ring: rounds 1-3 with the six controls
 	local ring0 = DataS.GetRing(nia)

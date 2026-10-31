@@ -329,7 +329,8 @@
       "functions": [
         "Init",
         "HandleEvent",
-        "GetState"
+        "GetState",
+        "IsOnStep"
       ],
       "signals": [
         "Finished"
@@ -682,7 +683,9 @@
         "RemoveEncounterTeam",
         "EncounterStatus",
         "TeamSpec",
-        "SetRunProvider"
+        "SetRunProvider",
+        "LevelSnapshot",
+        "LevelReport"
       ],
       "signals": [
         "BattleEnded"
@@ -809,7 +812,8 @@
         "KickMember"
       ],
       "signals": [
-        "RunEnded"
+        "RunEnded",
+        "RoomCleared"
       ]
     },
     "client/LightingStack": {
@@ -855,6 +859,15 @@
       "optional": true,
       "functions": [
         "Init"
+      ]
+    },
+    "client/Controllers/LossScreen": {
+      "_comment": "team balance Task 6: the result screen of a lost Ring run or Dungeon floor",
+      "functions": [
+        "Show",
+        "Reopen",
+        "Hide",
+        "IsOpen"
       ]
     },
     "client/Controllers/DungeonController": {

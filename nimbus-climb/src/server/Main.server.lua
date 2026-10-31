@@ -438,6 +438,7 @@ if BattleService then call("BattleService.Init", BattleService, "Init", {
 -- Phase 5 (5.4, C16): the dungeon lands AFTER BattleService and registers itself with BattleService.SetRunProvider
 -- inside its own Init; BattleService never requires DungeonService.
 if DungeonService then call("DungeonService.Init", DungeonService, "Init", {
+	TutorialService = TutorialService, -- team balance: the eased first room (IsOnStep)
 	DataService = DataService,
 	PetCareService = PetCareService,
 	TycoonService = TycoonService,
