@@ -12,13 +12,13 @@
 --                       battle teams and trophies (Coach Corgi), elements and synergy in battle (Professor Axolotl) are
 --                       explained with the numbers of BattleCatalog
 --   p3ui_tutorial       (server, booted) a player who finished the home chapter resumes at "arena": the arrow points at
---                       the arena's forum (ArenaInfo.Spawn); walking in -> "team" (the Pets menu tile: Pets > Team); a battle team ->
+--                       the arena's forum (ArenaInfo.Spawn); walking in -> "team" (the Pets menu tile); a battle team ->
 --                       "trial" (the arrow at the Trial Portal, none while fighting); Trial 1 cleared -> "raid" (a hint
 --                       with the raid countdown); standing in the arena while a raid runs ends the chapter: on to
 --                       chapter 4 (Phase 4), the token reward paid once; a BattleEnded trial win completes "trial" by itself
---   client_p3ui         (client) the team editor (Open("Team"); HUD cleanup: the Pets window's Team tab): slot cards (pet, level, element, power),
---                       slot 4 locked before Prestige 1 and open after, live synergy + matchups, the element wheel, the
---                       team power and trophies, the picker (every owned copy, busy ones dimmed); remove / add / swap
+--   client_p3ui         (client) the team in the Pets window (Open("Team"), team balance): slots (name, level, power), three of
+--                       them before and after Prestige 1, the team power and what it is made of, the cards (every owned copy,
+--                       busy ones labelled); remove / add / swap
 --                       send BattleRequest TeamSet (preset, keys) after a short pause, Use Team N sends TeamSelect, a full
 --                       team or a busy pet sends nothing; the Stats window's battle record; ArenaController: OpenPanel /
 --                       prompts (OpenPanel + OpenPanelTab / RingIndex) open the Trial window (30 levels: cleared checks,
@@ -27,7 +27,7 @@
 --                       window at a time with the menu; side cards: a duel invite (Accept -> ChallengeReply), the queue
 --                       (Leave -> Unqueue), the raid card (JOIN -> JoinRaid), the event countdown; hidden while
 --                       fighting; every text >= 18 design px; no script errors
---   client_p3ui_mobile  (phone 390x844) the Pets window's Team tab, the Trial window and the Arena tabs keep every text >= 14 px;
+--   client_p3ui_mobile  (phone 390x844) the Pets window, the Trial window and the Arena tabs keep every text >= 14 px;
 --                       (844x390) the seven-tile menu stays two labelled columns above the thumbstick
 -- Plain Lua 5.1 syntax only.
 

@@ -1036,7 +1036,7 @@ scenario("toasts", function()
 	advance(0.9)
 end)
 
--- Phase 3 UI (MenuController Team window, ArenaController): a profile with a battle team, trophies and trial
+-- Phase 3 UI (the Pets window, ArenaController): a profile with a battle team, trophies and trial
 -- progress, then one view. arena:team | team4 (Prestige 1: four slots) | newteam (empty presets) | trials[:<level>] |
 -- duels | raid | leaders | side (no window: a duel invite, the queue, an open raid and the event countdown)
 scenario("arena", function(view, arg)

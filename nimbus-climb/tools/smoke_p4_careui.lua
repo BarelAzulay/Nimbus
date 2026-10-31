@@ -1,5 +1,5 @@
 -- smoke_p4_careui.lua: the Phase 4 pet-care UI (ARCHITECTURE_V3.md "Phase 4 build contract" 3.4-3.7, 3.9 and 8.1, careui
--- engineer): client/Controllers/CareController.lua, MenuController's Home window and Pets panel, EvolutionFx's confetti.
+-- engineer): client/Controllers/CareController.lua, MenuController's Home window, the Pets window, EvolutionFx's confetti.
 -- Loaded by tools/smoke.py in the client worlds (desktop and the 390x844 touch phone):
 --   client_p4careui_feed     the Food Machine list (OpenPanel("Pets", {Action = "Feed"})): garden pets first (by place),
 --                            then the followers, then the rest; "Lv 12 / 100" and the XP bar; "Feed $340 (+90 XP)" and
@@ -22,8 +22,8 @@
 --                            parked (PetController.PlayEvolution), EvolutionFx plays on two clones 5-6.5 studs in front of
 --                            the player with voxel confetti, nothing in the screen centre, then the clones go and the
 --                            follower comes back; a second Evolve waits for the first
---   client_p4careui_panels   the Pets panel (Lv n / 100, evolution pill, Coins pill, Garden for any role, Equip disabled while
---                            training, Train / EVOLVE open CareController) and the Home window (the Pet Garden card: coins
+--   client_p4careui_panels   the Pets window (Lv n / 100, evolution stars, the Coins row, Garden for any role, the training pet
+--                            says so, Evolve shows when it can) and the Home window (the Pet Garden card: coins
 --                            waiting, coins / min, places N/12, the legacy lines, no Collect; the new station names and
 --                            effects; the prestige texts; Go home sends HomeAction "GoHome" and closes)
 --   client_p4careui_sizes    every care window, the confirm, the Pets panel and the Home window at 1920x1080 and 1280x720:

@@ -27,7 +27,7 @@
 --                       BattleCatalog.RingRewards (x3 on a new record), the fighters (the battle team, a training pet
 --                       skipped), the server's best from Portal_Ring's RingBoard (top 3), the refusal reasons (no home,
 --                       far from the portal) and START -> BattleRequest("Ring", start), a refusal toast shown in the footer;
---                       the Team screen's "Champion Ring best" line; the safe-zone side toast when crossing the arena's
+--                       no Champion Ring line in the Pets window (team balance); the safe-zone side toast when crossing the arena's
 --                       edge (never in the screen centre); every text >= 18 design px; no script errors
 --   client_p4ui_mobile  (phone 390x844 and 844x390) the ring window keeps every text >= 14 px and stays on screen
 -- Plain Lua 5.1 syntax only.

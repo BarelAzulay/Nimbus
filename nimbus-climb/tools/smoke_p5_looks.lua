@@ -9,8 +9,8 @@
 --                          and battle units belong to homefx / pets / dungeonclient / battleclient and their own tests.)
 --   client_p5support_power the Pets panel detail of an Economy (Support) pet shows "Battle power N" = BattleCatalog.UnitPower
 --                          (its Support role), never the raw Power 2-4 (m17)
---   client_p5team3         the Team window: 3 slot cards (no 4th), FIGHTER / HELPER / HELPER, "Set as fighter" rotates
---                          the preset so that pet leads (BattleRequest TeamSet), only on the helpers
+--   client_p5team3         the Pets window: 3 slots (no 4th), FIGHTER / HELPER / HELPER, "Make fighter" swaps that pet with
+--                          slot 1 (BattleRequest TeamSet), only on the helpers
 --   client_p5menu_tiles    the menu: a 2 x 3 grid of neon tiles (Pets, Items, Team / Index, Shop, Home) + a small row (Stats,
 --                          Settings), names MenuButton_<Id> kept, every window docked by NeonKit.Dock (DockMode, right of
 --                          the middle / a bottom sheet), no Backdrop anywhere
