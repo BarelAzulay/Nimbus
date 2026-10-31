@@ -9,6 +9,7 @@ Source: [`claude-setup/CLAUDE_SYSTEM_SETUP.md`](claude-setup/CLAUDE_SYSTEM_SETUP
 - Work autonomously: take the recommended option, say it in one line, keep going. Collect questions and ask them at the END, never mid-build. Only stop for destructive actions.
 - Never claim something works without evidence (tests, checks, screenshots). Report failures honestly.
 - Commit and push after every milestone.
+- Speed scout: before every multi-agent build, and at every check-in on work still running, look for ways to finish sooner: run tasks that share no files side by side, reuse cached results and existing tools, run targeted tests while building and one full run at the end. It may change order and parallelism only. It never drops or shortens a test, review, design pitch or evidence step, and never lowers the build's quality or scope. Apply what holds up, say in one line what changed.
 - Each project is isolated: never touch another project's folder.
 
 ## Game projects (Roblox + Blender)

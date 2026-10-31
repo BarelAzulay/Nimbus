@@ -15,3 +15,5 @@ Read with [`ABSOLUTE_RULES.md`](ABSOLUTE_RULES.md) before working.
 - 2026-10-30: Gemini fallback (owner's rule). If the Gemini API key fails (e.g. 402 "prepayment credits are depleted"),
   use Gemini on the web (gemini.google.com) through Claude in Chrome, where the owner's Google account (AI Pro plan)
   is already signed in. Paste the prompt there and read the reply. Never open the Gemini desktop app from an agent.
+- 2026-10-31: the speed scout (owner's rule, `ABSOLUTE_RULES.md`): always search for a way to make progress quicker without affecting the build or its quality.
+  First use: the team-balance build ran its Pets window and loss screen side by side, since the two share almost no files.
