@@ -3432,10 +3432,11 @@ S.shutdown = guarded("shutdown", function()
 	local d = Mock.AddPlayer("OrphanD", 880004)
 	advance(1.5)
 	DataService.AddTokens(d, 8)
+	local storedBefore = storedTokens(880004) -- (nil, or the fresh profile when an autosave tick fell inside the 1.5 s above)
 	Mock.DataStore.Fail = true
 	Mock.RemovePlayer(d)
 	advance(6)
-	T.eq(storedTokens(880004), nil, "shutdown: an orphan has nothing stored while the DataStore is down")
+	T.eq(storedTokens(880004), storedBefore, "shutdown: an orphan stores nothing new while the DataStore is down")
 	Mock.DataStore.Fail = false
 	local p = Mock.AddPlayer("LastOut", 777003)
 	advance(1.0)
