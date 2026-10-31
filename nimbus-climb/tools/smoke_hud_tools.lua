@@ -49,7 +49,7 @@ local function serverScenarios()
 	local K = _G.K
 	local advance = K.advance
 
-	local OWNER_ID = 31337
+	local OWNER_ID = 31338 -- (not smoke_dev's owner: the mock's DataStore keeps a profile per UserId)
 
 	local function shared(name)
 		local inst = Mock.GetPath(ROOTS["shared"] .. "/" .. name)
@@ -569,7 +569,19 @@ local function serverScenarios()
 				T.check(toast.kind == "bad" and has(toast.text, case[2]), "hudtools ban: refuses " .. case[3], toast.text)
 			end
 			T.check(admin.Parent ~= nil, "hudtools ban: ...the developer stays")
-			-- the owner of a place is never banned by id either, even when they are offline and this is an admin running it
+			-- a group-owned game: the group's owner cannot be told apart offline here, so nothing happens (no ban on a guess)
+			game.CreatorType = Enum.CreatorType.Group
+			game.CreatorId = 4040
+			local savedRank = Mock.Classes.Player.methods.GetRankInGroup
+			Mock.Classes.Player.methods.GetRankInGroup = function(self)
+				return self.UserId == OWNER_ID and 255 or 0
+			end
+			mark = chat(owner, "/ban 43009")
+			toast = lastToast(owner, mark)
+			T.check(toast.kind == "bad" and has(toast.text, "nothing was done"), "hudtools ban: a group game whose owner cannot be read refuses an offline ban", toast.text)
+			Mock.Classes.Player.methods.GetRankInGroup = savedRank
+			game.CreatorType = Enum.CreatorType.User
+			game.CreatorId = OWNER_ID
 			for _, junk in ipairs({ 5, {}, true, "", "0", "-7", "1.5", "99999999999999999999999", string.rep("x", 400) }) do
 				mark = send(owner, "ban", junk)
 				T.eq(lastToast(owner, mark).kind, "bad", "hudtools ban: junk argument " .. fmt("%q", tostring(junk):sub(1, 12)) .. " is refused")
@@ -868,7 +880,7 @@ local function serverScenarios()
 			T.check(fits, "hudtools speed: ...and every toast fits (<= 90 characters)", text)
 			for _, word in ipairs({ "kick", "ban", "unban", "evolvepets", "levelall", "speed", "maxpets" }) do
 				local listed = false
-				for _, name in ipairs(K.mod("DevService").Commands) do
+				for _, name in ipairs(require(Mock.GetPath(ROOTS["server"] .. "/Services/DevService")).Commands) do
 					listed = listed or name == word
 				end
 				T.check(listed, "hudtools speed: DevService.Commands has " .. word)

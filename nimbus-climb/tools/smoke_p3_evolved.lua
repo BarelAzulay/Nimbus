@@ -460,7 +460,7 @@ local function serverScenarios()
 			T.check(BS == nil or BS.GetRaidStatus() ~= nil, "evolved dev tools: ...and the running raid goes on")
 			mark = chat("/clearpets")
 			T.check((shows(mark)[1] or {}).action == "Clear", "evolved dev tools: '/clearpets' clears the showcase while the raid runs")
-			-- /devhelp: two readable side toasts that list every command
+			-- /devhelp: three readable side toasts that list every command
 			mark = chat("/devhelp")
 			local help = toasts(mark)
 			local joined, fits = {}, true
@@ -477,7 +477,7 @@ local function serverScenarios()
 					missing[#missing + 1] = name
 				end
 			end
-			T.check(#help == 2 and fits, "evolved dev tools: '/devhelp' answers with two info side toasts that fit a toast (<= 90 characters, >= 6 s)", #help .. " toasts: " .. all)
+			T.check(#help == 3 and fits, "evolved dev tools: '/devhelp' answers with three info side toasts that fit a toast (<= 90 characters, >= 6 s)", #help .. " toasts: " .. all)
 			T.check(#missing == 0, "evolved dev tools: ...listing every command (the showcase, /raid and the rest)", table.concat(missing, ", "))
 			T.eq(snapshot(), before, "evolved dev tools: the showcase, /raid and /devhelp change no saved data")
 		end)

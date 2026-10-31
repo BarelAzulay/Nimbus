@@ -67,7 +67,29 @@
 --                   starts that phase now, /sky speed <x> runs the loop x times faster (clamped 0.1..120, the loop keeps
 --                   its position; not a number = refused), /sky raid <boss> previews a raid sky (a boss id or a unique
 --                   start of one: "/sky raid frost"), /sky clear takes it down. Touches no profile data.
---   devhelp         two toasts listing the chat commands (the pet showcase ones, then the others)
+--   kick <player> [reason]   removes a player from this server (Player:Kick; the reason goes through the text filter, and a
+--                   filter that fails drops it). <player> is a name or display name, a unique part is enough (exact names win);
+--                   refuses yourself, an unknown or ambiguous name. Needs no profile.
+--   ban <player> [reason]    a permanent ban (Players:BanAsync, Duration -1, the whole universe; the engine removes a player in
+--                   the server). <player>: someone in the server by a unique part of their name, or anyone by exact name or
+--                   userId. Refuses yourself and any other developer (Config.Dev.Admins, the owner, IsAllowed for those in the
+--                   server), online or offline. The API's own error is the toast; so is Players.BanningEnabled off. In Studio
+--                   Roblox validates a ban but only runs it on live servers: the toast says nobody was banned.
+--   unban <name|userId>      Players:UnbanAsync in the same scope, the same honest toasts.
+--   evolvepets      every pet the player owns goes up one stage, free and with no level requirement (2nd evolution Epic+ only,
+--                   PetCatalog.MaxEvolution): DataService.SetEvolution + PetCareService.Evolved through PetCareService.DevEvolve.
+--                   The stage lives on the key, so keys, copies, teams, Equipped, Garden and running training jobs stay as they
+--                   are; a stack shares its one stage. Refused in a battle like the real EVOLVE. Saved. (/evolve is the preview.)
+--   levelall <n>    every pet the player owns (not only the equipped ones, unlike /petlevel) to level n (1..100, XP 0) through
+--                   DataService.SetPetLevel. Refused in a battle.
+--   maxpets         every pet the player owns: level 100 (the curve's top), its highest allowed evolution stage and rank 10 in all
+--                   four training skills (Speed, Physique, Ability, Defense): all BattleCatalog.UnitStats reads from a pet's
+--                   progress. A running training job finishes first through its real completion (the pet comes back, no refund).
+--                   The tier (Golden / Rainbow) stays: it is another copy with another key. Refused in a battle. Saved.
+--   speed           toggles 2x walking and running: the hint NC_DevSpeed on the developer's PlayerGui, which MovementController
+--                   reads (off by default, not saved, survives a respawn, ends with the session; nothing on the server checks
+--                   a character's speed outside a battle, where the client leaves it alone).
+--   devhelp         three toasts listing the chat commands (the pet showcase ones, the new tools, then the others)
 -- The pet showcase (nothing is saved; the pets are built on the developer's OWN client only, by
 -- client/Controllers/DevPetShow.lua, through the server -> client remote DevPetShow(action, payload)):
 --   pet <pet> [stage]       one pet in front of you, at stage 0 (normal, the default), 1 (evolved) or 2 (second
@@ -94,7 +116,8 @@
 -- print("[NimbusClimb][Dev] ...") including the UserId. Nothing yields between reading and writing the profile.
 --
 -- Chat: "/allpets", "/tokens 50000", "/reset", "/tutorial", "/skiptutorial", "/raid", "/sky sunset", "/petlevel 20", "/pet cloudy dragon 2",
--- "/pets 1", "/evolve all", "/fx flame ranged epic", "/clearpets", "/devhelp", typed in the GAME's chat (not Studio's command bar). Two ways in, one
+-- "/pets 1", "/evolve all", "/fx flame ranged epic", "/clearpets", "/kick name reason", "/ban name reason", "/unban name", "/evolvepets",
+-- "/levelall 50", "/maxpets", "/speed", "/devhelp", typed in the GAME's chat (not Studio's command bar). Two ways in, one
 -- parser (onChatted): Player.Chatted of allowed players (the legacy chat), and one TextChatCommand per command
 -- (PrimaryAlias "/<command>", children of TextChatService, made at Init when the place uses TextChatService):
 -- the new chat only hands a "/" message to the game when a TextChatCommand claims it, and claimed commands stay
@@ -124,6 +147,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local TextService = game:GetService("TextService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
@@ -134,12 +158,13 @@ local DevService = {}
 
 DevService.Commands = {
 	"allpets", "tokens", "cash", "gems", "berries", "petlevel", "reset", "tutorial", "skiptutorial", "raid", "sky", "pet", "pets",
-	"evolve", "fx", "clearpets", "devhelp",
+	"evolve", "fx", "clearpets", "kick", "ban", "unban", "evolvepets", "levelall", "maxpets", "speed", "devhelp",
 }
 
 local TAG = "[NimbusClimb][Dev] "
 local ATTR = "NC_Dev" -- PlayerGui attribute: true for developers (a hint for the client's DEV button)
 local ATTR_TUTORIAL = "NC_DevTutorial" -- PlayerGui attribute: true when "Restart tutorial" works in this build
+local ATTR_SPEED = "NC_DevSpeed" -- PlayerGui attribute: true while /speed is on (MovementController reads it)
 local PLAYER_GUI_WAIT = 10 -- seconds to wait for a joining player's PlayerGui
 local RATE_COUNT = 4 -- commands ...
 local RATE_WINDOW = 2 -- ... per this many seconds, per player
@@ -157,20 +182,29 @@ end
 -- the commands that still run while the profile is provisional (see the persistence note)
 local PROVISIONAL_OK = {
 	tokens = true, cash = true, gems = true, berries = true, raid = true, devhelp = true, pet = true, pets = true, evolve = true,
-	fx = true, clearpets = true, sky = true,
+	fx = true, clearpets = true, sky = true, kick = true, ban = true, unban = true, speed = true,
 }
 -- the pet showcase (and the sky) never touches the profile, so it does not wait for it
-local NO_PROFILE = { pet = true, pets = true, evolve = true, fx = true, clearpets = true, sky = true }
+local NO_PROFILE = { pet = true, pets = true, evolve = true, fx = true, clearpets = true, sky = true, kick = true, ban = true, unban = true, speed = true }
 -- the commands that take a whole-number amount
-local NUMERIC = { tokens = true, cash = true, gems = true, berries = true, petlevel = true }
+local NUMERIC = { tokens = true, cash = true, gems = true, berries = true, petlevel = true, levelall = true }
 -- the commands that take a value, and its type (tokens / cash / gems / berries / petlevel: a number; the showcase: the
 -- rest of the chat line)
-local ARG_KIND = { tokens = "number", cash = "number", gems = "number", berries = "number", petlevel = "number", pet = "string", pets = "string", evolve = "string", fx = "string", sky = "string" }
+local ARG_KIND = { tokens = "number", cash = "number", gems = "number", berries = "number", petlevel = "number", levelall = "number", pet = "string", pets = "string", evolve = "string", fx = "string", sky = "string", kick = "string", ban = "string", unban = "string" }
 -- the example value a refusal toast shows for a numeric command (50000 for the currencies), and for a text one
-local ARG_EXAMPLE = { petlevel = "20" }
-local TEXT_EXAMPLE = { sky = "/sky sunset" }
+local ARG_EXAMPLE = { petlevel = "20", levelall = "50" }
+local TEXT_EXAMPLE = { sky = "/sky sunset", kick = "/kick name reason", ban = "/ban name reason", unban = "/unban name" }
 local MAX_ARG_LENGTH = 48
+local MAX_REASON_ARG_LENGTH = 180 -- /kick and /ban: a name and a reason
 local DEFAULT_MAX_PET_LEVEL = 100 -- /petlevel's cap when neither PetCatalog nor TycoonCatalog names one
+local TRAINING_SKILLS = { "Speed", "Physique", "Ability", "Defense" } -- PetGrowth[key][skill] = rank (BattleCatalog.UnitStats reads them)
+local DEFAULT_MAX_RANK = 10
+local KICK_TEXT = "You were removed from this server by the game's developer."
+local BAN_TEXT = "You are banned from this game."
+local MAX_ERROR_TEXT = 70 -- an API error in a toast (they fit a side toast; the whole error goes to the output)
+local MAX_USER_ID = 2 ^ 53
+-- the commands that act on other players: their success is a "good" toast, though no data changed
+local GOOD_TOAST = { kick = true, ban = true, unban = true }
 local STAGE_NAMES = { [0] = "Normal", [1] = "Evolved", [2] = "Evolved II" }
 local STAGE_WORDS = {
 	["0"] = 0, normal = 0, base = 0,
@@ -395,17 +429,21 @@ local function isOwner(player)
 	return false
 end
 
-local function isAdmin(player, admins)
+local function isAdminId(userId, admins)
 	if type(admins) ~= "table" then
 		return false
 	end
 	for key, value in pairs(admins) do
 		-- a list of UserIds (numbers or digit strings), or a map { [UserId] = true }
-		if tonumber(value) == player.UserId or (value == true and tonumber(key) == player.UserId) then
+		if tonumber(value) == userId or (value == true and tonumber(key) == userId) then
 			return true
 		end
 	end
 	return false
+end
+
+local function isAdmin(player, admins)
+	return isAdminId(player.UserId, admins)
 end
 
 function DevService.IsAllowed(player)
@@ -1133,12 +1171,388 @@ local function cmdClearPets(player)
 	return true, "showcase pets removed", false
 end
 
--- Two toasts (each fits a side toast, <= 90 characters with the "DEV: " prefix): the pet showcase commands first
+-- "name the rest of the line" -> the first word, the rest (nil when there is none)
+local function splitTarget(text)
+	local word, rest = string.match(tostring(text or ""), "^%s*(%S+)%s*(.-)%s*$")
+	if rest == "" then
+		rest = nil
+	end
+	return word, rest
+end
+
+-- The one player in this server a word means: an exact Name, an exact DisplayName, else the one whose Name or DisplayName
+-- contains it. -> player | nil, problem (a toast's text)
+local function findOnline(word)
+	local key = string.lower(word)
+	local exact, partial = nil, {}
+	for _, p in ipairs(Players:GetPlayers()) do
+		local name, display = string.lower(p.Name), string.lower(tostring(p.DisplayName or ""))
+		if name == key then
+			return p
+		end
+		if display == key then
+			exact = exact or p
+		elseif string.find(name, key, 1, true) or string.find(display, key, 1, true) then
+			partial[#partial + 1] = p
+		end
+	end
+	if exact then
+		return exact
+	end
+	if #partial == 1 then
+		return partial[1]
+	end
+	local shown = string.sub(word, 1, 24)
+	if #partial == 0 then
+		return nil, "nobody here is called '" .. shown .. "'"
+	end
+	local names = {}
+	for i = 1, math.min(4, #partial) do
+		names[i] = partial[i].Name
+	end
+	return nil, "'" .. shown .. "' could be " .. table.concat(names, ", ") .. ((#partial > 4) and ", ..." or "")
+end
+
+-- A developer's typed reason, as this player may read it. nil when the filter fails: the raw text is never shown.
+local function filteredReason(reason, fromUserId, toUserId)
+	local ok, text = pcall(function()
+		return TextService:FilterStringAsync(reason, fromUserId):GetNonChatStringForUserAsync(toUserId)
+	end)
+	if ok and type(text) == "string" and text ~= "" then
+		return text
+	end
+	warn("[DevService] the kick reason could not be filtered: " .. tostring(text))
+	return nil
+end
+
+-- This one yields (the text filter).
+local function cmdKick(player, _, arg)
+	local word, reason = splitTarget(arg)
+	if not word then
+		return false, "kick who? like /kick name reason"
+	end
+	local target, problem = findOnline(word)
+	if not target then
+		return false, problem
+	end
+	if target == player then
+		return false, "you cannot kick yourself"
+	end
+	local name = target.Name
+	local message = KICK_TEXT
+	if reason then
+		local clean = filteredReason(reason, player.UserId, target.UserId)
+		if clean then
+			message = message .. " " .. clean
+		end
+	end
+	if not isLivePlayer(target) then
+		return false, name .. " already left"
+	end
+	target:Kick(message)
+	return true, "kicked " .. name, false
+end
+
+-- An API failure as a toast's text: the engine's own words.
+local function apiError(what, err)
+	warn("[DevService] " .. what .. " failed: " .. tostring(err))
+	local text = string.gsub(tostring(err), "^.-:%d+: ", "") -- without the "script:line: " in front
+	return what .. " failed: " .. string.sub(text, 1, MAX_ERROR_TEXT)
+end
+
+local function banningOff()
+	local ok, on = pcall(function()
+		return Players.BanningEnabled
+	end)
+	return ok and on == false
+end
+
+-- A userId or an exact account name -> userId, label | nil, problem. The name lookup yields.
+local function accountOf(word)
+	if string.match(word, "^%d+$") then
+		local id = tonumber(word)
+		if not isWhole(id) or id < 1 or id > MAX_USER_ID then
+			return nil, "'" .. string.sub(word, 1, 24) .. "' is no userId"
+		end
+		return id, "userId " .. word
+	end
+	if not string.match(word, "^[%w_]+$") or #word > 20 then
+		return nil, "'" .. string.sub(word, 1, 24) .. "' is no player name or userId"
+	end
+	local ok, id = pcall(function()
+		return Players:GetUserIdFromNameAsync(word)
+	end)
+	if not ok or not isWhole(id) or id < 1 then
+		return nil, "no player called '" .. word .. "'"
+	end
+	return id, word
+end
+
+-- Is this account a developer, in the server or not? -> yes | nil when it cannot be told. Studio's "everyone is allowed"
+-- counts for those in the server (IsAllowed); the rest is the owner and Config.Dev.Admins.
+local function isDeveloperId(userId, online)
+	if online and DevService.IsAllowed(online) then
+		return true
+	end
+	if isAdminId(userId, devConfig().Admins) then
+		return true
+	end
+	if game.CreatorType == Enum.CreatorType.User then
+		return userId == game.CreatorId
+	end
+	if game.CreatorType == Enum.CreatorType.Group then
+		local ok, info = pcall(function()
+			return game:GetService("GroupService"):GetGroupInfoAsync(game.CreatorId)
+		end)
+		local owner = ok and type(info) == "table" and type(info.Owner) == "table" and info.Owner.Id or nil
+		if type(owner) ~= "number" then
+			return nil
+		end
+		return userId == owner
+	end
+	return false
+end
+
+-- These yield (the name lookup, the ban API).
+local function cmdBan(player, _, arg)
+	local word, reason = splitTarget(arg)
+	if not word then
+		return false, "ban who? like /ban name reason"
+	end
+	if banningOff() then
+		return false, "bans are off here: turn on Players.BanningEnabled in Studio, then publish"
+	end
+	-- someone here by a part of their name; otherwise an exact account name or a userId
+	local online = nil
+	if not string.match(word, "^%d+$") then
+		local found, problem = findOnline(word)
+		if found then
+			online = found
+		elseif problem and not string.find(problem, "nobody here", 1, true) then
+			return false, problem
+		end
+	end
+	local userId, label = nil, nil
+	if online then
+		userId, label = online.UserId, online.Name
+	else
+		userId, label = accountOf(word)
+		if not userId then
+			return false, label
+		end
+		online = Players:GetPlayerByUserId(userId)
+	end
+	if userId == player.UserId then
+		return false, "you cannot ban yourself"
+	end
+	local developer = isDeveloperId(userId, online)
+	if developer == nil then
+		return false, "could not check whether " .. label .. " is a developer, nothing was done"
+	end
+	if developer then
+		return false, label .. " is a developer and cannot be banned"
+	end
+	local ok, err = pcall(function()
+		Players:BanAsync({
+			UserIds = { userId },
+			ApplyToUniverse = true,
+			Duration = -1,
+			DisplayReason = reason or BAN_TEXT,
+			PrivateReason = "Banned with the dev tools by " .. who(player),
+		})
+	end)
+	if not ok then
+		return false, apiError("ban", err)
+	end
+	if RunService:IsStudio() then
+		return false, "Studio only checks a ban: Roblox runs bans on live servers, nobody was banned"
+	end
+	return true, "banned " .. label .. " for good", false
+end
+
+local function cmdUnban(player, _, arg)
+	local word = splitTarget(arg)
+	if not word then
+		return false, "unban who? like /unban name"
+	end
+	if banningOff() then
+		return false, "bans are off here: turn on Players.BanningEnabled in Studio, then publish"
+	end
+	local userId, label = accountOf(word)
+	if not userId then
+		return false, label
+	end
+	local ok, err = pcall(function()
+		Players:UnbanAsync({ UserIds = { userId }, ApplyToUniverse = true })
+	end)
+	if not ok then
+		return false, apiError("unban", err)
+	end
+	if RunService:IsStudio() then
+		return false, "Studio only checks an unban: Roblox runs them on live servers, nothing changed"
+	end
+	return true, "unbanned " .. label, false
+end
+
+-- Every key the player owns with its def, for the commands that change all pets. -> { { Key, Def } } | nil, problem
+local function ownedPets(player, profile)
+	if player:GetAttribute(Config.Attr.InBattle or "InBattle") ~= nil then
+		return nil, "finish your battle first"
+	end
+	local keys = loadModule(Shared, "PetKeys")
+	if not (keys and hasFunction(keys, "List") and hasFunction(keys, "DefOf")) then
+		return nil, "the pet keys are missing"
+	end
+	local out = {}
+	for _, key in ipairs(keys.List(profile)) do
+		local def = keys.DefOf(key, profile)
+		if type(def) == "table" then
+			out[#out + 1] = { Key = key, Def = def }
+		end
+	end
+	if #out == 0 then
+		return nil, "you own no pets yet"
+	end
+	return out
+end
+
+local function refreshPets(player)
+	if hasFunction(PetService, "Refresh") then
+		pcall(PetService.Refresh, player) -- the pet cards and the followers (EquippedInfo) show the new level and stage
+	end
+end
+
+local function petCare()
+	local care = loadModule(script.Parent, "PetCareService")
+	return hasFunction(care, "DevEvolve") and care or nil
+end
+
+local function cmdEvolvePets(player, profile)
+	local care = petCare()
+	if not care then
+		return false, "pet care is not in this build"
+	end
+	local pets, problem = ownedPets(player, profile)
+	if not pets then
+		return false, problem
+	end
+	local done = 0
+	for _, pet in ipairs(pets) do
+		local stage = DataService.GetEvolution(player, pet.Key)
+		if stage < maxEvolution(pet.Def) and care.DevEvolve(player, pet.Key, stage + 1) then
+			done = done + 1
+		end
+	end
+	if done == 0 then
+		return true, "all your pets are already fully evolved", false
+	end
+	refreshPets(player)
+	return true, done .. (done == 1 and " pet" or " pets") .. " evolved one stage, free", true
+end
+
+local function cmdLevelAll(player, profile, arg)
+	local top = maxPetLevel()
+	if not isWhole(arg) then
+		return false, "levelall needs a whole number from 1 to " .. top .. ", like /levelall 50"
+	end
+	if arg < 1 or arg > top then
+		return false, "levelall takes a level from 1 to " .. top
+	end
+	local pets, problem = ownedPets(player, profile)
+	if not pets then
+		return false, problem
+	end
+	local set = 0
+	for _, pet in ipairs(pets) do
+		local ok, done = pcall(DataService.SetPetLevel, player, pet.Key, arg)
+		if ok and done == true then
+			set = set + 1
+		end
+	end
+	if set == 0 then
+		return false, "no pet could be set to level " .. arg
+	end
+	refreshPets(player)
+	return true, set .. (set == 1 and " pet is" or " pets are") .. " level " .. arg .. " now", true
+end
+
+local function cmdMaxPets(player, profile)
+	local care = petCare()
+	if not care then
+		return false, "pet care is not in this build"
+	end
+	local pets, problem = ownedPets(player, profile)
+	if not pets then
+		return false, problem
+	end
+	local tycoon = loadModule(Shared, "TycoonCatalog")
+	local training = tycoon and type(tycoon.Training) == "table" and tycoon.Training or nil
+	local rank = (training and isWhole(training.MaxRank) and training.MaxRank) or DEFAULT_MAX_RANK
+	local top = maxPetLevel()
+	local changed = 0
+	local keys = {}
+	for _, pet in ipairs(pets) do
+		local key = pet.Key
+		keys[#keys + 1] = key
+		local growth = DataService.GetGrowth(player, key)
+		local different = DataService.GetPetLevel(player, key) ~= top or growth.Evo ~= maxEvolution(pet.Def)
+		for _, skill in ipairs(TRAINING_SKILLS) do
+			different = different or growth[skill] ~= rank
+		end
+		if different then
+			changed = changed + 1
+		end
+		if growth.Job then
+			care.DevFinishJob(player, key) -- the real completion: its rank, the pet comes back; maxing it now would leave it behind
+		end
+		if growth.Evo < maxEvolution(pet.Def) then
+			care.DevEvolve(player, key, maxEvolution(pet.Def))
+		end
+		DataService.SetPetLevel(player, key, top)
+	end
+	if changed == 0 then
+		return true, "all your pets are already at their maximum", false
+	end
+	local wrote = DataService.MutateGrowth(player, function(growth)
+		for _, key in ipairs(keys) do
+			local e = growth[key]
+			if type(e) ~= "table" then
+				e = {}
+				growth[key] = e
+			end
+			for _, skill in ipairs(TRAINING_SKILLS) do
+				e[skill] = rank
+			end
+		end
+	end)
+	if not wrote then
+		return false, "the training ranks could not be written"
+	end
+	refreshPets(player)
+	return true, changed .. (changed == 1 and " pet" or " pets") .. " maxed: level " .. top .. ", top evolution, every training rank " .. rank, true
+end
+
+-- The hint lives on the developer's PlayerGui like NC_Dev: it survives a respawn, is not saved and tells nobody else.
+local function cmdSpeed(player)
+	local pg = player:FindFirstChildOfClass("PlayerGui")
+	if not pg then
+		return false, "your screen is still loading, try again"
+	end
+	if pg:GetAttribute(ATTR_SPEED) == true then
+		pg:SetAttribute(ATTR_SPEED, nil)
+		return true, "2x speed off", false
+	end
+	pg:SetAttribute(ATTR_SPEED, true)
+	return true, "2x speed on", false
+end
+
+-- Three toasts (each fits a side toast, <= 90 characters with the "DEV: " prefix): the pet showcase commands first
 -- (/fx among them since the pet attack VFX, /sky since the living sky: it took the room of /berries' "[n]"), then the
 -- others (/petlevel among them since Phase 4; the numeric commands take a number, which their refusal toasts spell
--- out: "like /tokens 50000").
+-- out: "like /tokens 50000"); the second one is the tools that act on other players and on all your pets.
 local function cmdHelp(player)
 	notify(player, "DEV: /pet <name> [0-2] /pets [0-2] /evolve <name|all> [1-2] /fx /clearpets /berries /sky", "info", HELP_SECONDS)
+	notify(player, "DEV: /kick /ban /unban /evolvepets /levelall <n> /maxpets /speed", "info", HELP_SECONDS)
 	if tutorialReloader() then
 		return true, "/allpets /tokens /cash /gems /petlevel /reset /tutorial /skiptutorial /raid /devhelp", false
 	end
@@ -1162,6 +1576,13 @@ local HANDLERS = {
 	evolve = cmdEvolve,
 	fx = cmdFx,
 	clearpets = cmdClearPets,
+	kick = cmdKick,
+	ban = cmdBan,
+	unban = cmdUnban,
+	evolvepets = cmdEvolvePets,
+	levelall = cmdLevelAll,
+	maxpets = cmdMaxPets,
+	speed = cmdSpeed,
 	devhelp = cmdHelp,
 }
 
@@ -1181,7 +1602,8 @@ local function execute(player, command, arg, source)
 	end
 	-- tokens / cash / gems take a whole number, the showcase commands a short text, the rest no value
 	local kind = ARG_KIND[name]
-	if arg ~= nil and (type(arg) ~= kind or (kind == "string" and #arg > MAX_ARG_LENGTH)) then
+	local maxLength = (name == "kick" or name == "ban") and MAX_REASON_ARG_LENGTH or MAX_ARG_LENGTH
+	if arg ~= nil and (type(arg) ~= kind or (kind == "string" and #arg > maxLength)) then
 		log(player, source, name, arg, "refused: bad value")
 		if NUMERIC[name] then
 			notify(player, "DEV: " .. name .. " needs a whole number, like /" .. name .. " " .. (ARG_EXAMPLE[name] or "50000"), "bad")
@@ -1224,7 +1646,7 @@ local function execute(player, command, arg, source)
 	if name == "devhelp" then
 		notify(player, "DEV: " .. message, "info", HELP_SECONDS)
 	else
-		notify(player, "DEV: " .. message, changed and "good" or "info")
+		notify(player, "DEV: " .. message, (changed or GOOD_TOAST[name]) and "good" or "info")
 	end
 	return true, message
 end
@@ -1391,6 +1813,7 @@ end
 
 -- The hints for the developer's own client go on their PlayerGui, which replicates to that player only.
 local function publishHints(player)
+	-- (ATTR_SPEED is /speed's own: off until asked for)
 	local playerGui = player:FindFirstChildOfClass("PlayerGui") or player:WaitForChild("PlayerGui", PLAYER_GUI_WAIT)
 	if not isLivePlayer(player) then
 		return

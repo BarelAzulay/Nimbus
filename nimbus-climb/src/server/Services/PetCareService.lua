@@ -1108,6 +1108,17 @@ function PetCareService.Evolve(player, key)
 	return true, nextStage
 end
 
+-- Developer tools (/evolvepets, /maxpets): the EVOLVE write and its signal without the level check, the toast and the
+-- reveal panel (a whole collection evolves at once). DevService refuses a battle and refreshes EquippedInfo once.
+function PetCareService.DevEvolve(player, key, stage)
+	local ok, wrote = dsCall("SetEvolution", player, key, stage)
+	if not ok or wrote ~= true then
+		return false
+	end
+	PetCareService.Evolved:Fire(player, key, stage)
+	return true
+end
+
 ----------------------------------------------------------------------
 -- Training (the Training Place): start, stop, completion, auto-remove / auto-return
 ----------------------------------------------------------------------
@@ -1390,6 +1401,15 @@ function PetCareService.Train(player, key, stat)
 	notify(player, name .. " started " .. label .. " training (" .. Care.clock(seconds) .. ")", "good", 4)
 	PetCareService.TrainingStarted:Fire(player, key, stat)
 	return true, { Rank = rank + 1, Ends = ends, Cost = cost, Slot = mat, From = from }
+end
+
+-- Developer tools (/maxpets): a running job finishes now through the real completion (the rank, the pet comes back).
+function PetCareService.DevFinishJob(player, key)
+	local job = Care.growth(player, key).Job
+	if type(job) ~= "table" then
+		return false
+	end
+	return Care.completeJob(player, key, job, false)
 end
 
 function PetCareService.TrainStop(player, key)

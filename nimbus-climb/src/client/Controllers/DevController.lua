@@ -26,7 +26,12 @@
 --     "Skip tutorial", "Start Boss Raid" (Phase 3: DevCommand "raid"), the pet showcase ("Evolve every pet" =
 --     DevCommand("evolve", "all"), "Show all pets" / "Show evolved pets" / "Show Evolved II pets" =
 --     DevCommand("pets", "0" | "1" | "2"), "Clear pet show" = DevCommand("clearpets"); client/Controllers/DevPetShow.lua
---     builds them), "Reset my data" (the first tap turns it into "Are you sure?"; only a second, separate tap
+--     builds them), the tools on all my pets ("Evolve my pets" = DevCommand("evolvepets"); a number box and "Level all pets" =
+--     DevCommand("levelall", n), junk in the box goes to the server, whose toast answers; "Max stats pets" =
+--     DevCommand("maxpets"); "2x speed: off / on" = DevCommand("speed"), following the hint NC_DevSpeed), the list of everyone
+--     in the server (a row "DevPlayer_<UserId>" per player, kept up to date; other players' rows have "Dev_kick_<UserId>" =
+--     DevCommand("kick", name) and "Dev_ban_<UserId>" = DevCommand("ban", name), which asks "Are you sure?" like Reset), "Reset
+--     my data" (the first tap turns it into "Are you sure?"; only a second, separate tap
 --     0.6 to 4 s later sends it, so a double click never resets) and the note "Only you can see this". For the
 --     first 0.4 s after it opens its buttons ignore taps (the rest of a double click on the tile lands there).
 --     It takes a free stretch of the right edge below the toasts' room, so the toasts that answer its buttons
@@ -64,6 +69,7 @@ local DevController = {}
 local K = {
 	ATTR = "NC_Dev", -- PlayerGui attributes set by DevService
 	ATTR_TUTORIAL = "NC_DevTutorial",
+	ATTR_SPEED = "NC_DevSpeed",
 	GUI_NAME = "NimbusDev",
 	ORDER = 15, -- above the HUD (10), hotbar (11) and tutorial (12); below the menu windows (20) and toasts (30)
 	EDGE = 12, -- KEEP IN SYNC with HudController.lua: EDGE and TOUCH_EDGE (screen px)
@@ -80,6 +86,12 @@ local K = {
 	BUTTON_TEXT = 22,
 	NOTE_TEXT = 18,
 	NOTE_H = 26,
+	ROW_TEXT = 18, -- the player rows and the box (x 0.8 on a phone: 14.4 px)
+	ROW_NAME_H = 26, -- a player row's name line, above its two buttons
+	ROW_GAP = 8, -- between Kick and Ban, and between the box and its button
+	BOX_W = 84,
+	DEFAULT_LEVEL = "100",
+	BOX_MAX_TEXT = 16, -- characters of a junk box sent to the server
 	LIST_PAD = 10,
 	LIST_GAP = 8,
 	BUMPS = 30, -- room the panel's cloud bumps (and their outline) need above its top edge
@@ -113,9 +125,9 @@ local lastSend = -math.huge
 local openedAt = -math.huge -- os.clock() of the last Open()
 local warned = {}
 
-local UI = {} -- Gui, Tile, TileScale, TileButton, TileFx, Panel, PanelRoot, PanelScale, List, Buttons = {}, ResetButton
+local UI = {} -- Gui, Tile, TileScale, TileButton, TileFx, Panel, PanelRoot, PanelScale, List, Buttons = {}, PlayerList, Rows = {}
 local Hint = { Gui = nil } -- the LocalPlayer's PlayerGui: DevService's NC_Dev / NC_DevTutorial live there
-local Reset = { Until = 0, Serial = 0, ChangedAt = -math.huge } -- ChangedAt: when it was last armed or sent
+local Reset = { Until = 0, Serial = 0, ChangedAt = -math.huge, Text = "Reset my data" } -- ChangedAt: when it was last armed or sent
 local Back = { Bound = false }
 local applied = {} -- last values written by relayout (only changes are written)
 
@@ -274,39 +286,56 @@ local function amountLabel(amount, word)
 	return "+" .. (text or Util.Commas(amount)) .. " " .. word
 end
 
-local function disarmReset()
-	Reset.Until = 0
-	Reset.Serial = Reset.Serial + 1
-	if UI.ResetButton then
-		UI.ResetButton.Text = "Reset my data"
+local function disarm(confirm)
+	confirm.Until = 0
+	confirm.Serial = confirm.Serial + 1
+	if confirm.Button then
+		confirm.Button.Text = confirm.Text
 	end
 end
 
--- First tap arms the button ("Are you sure?"); a second tap sends the reset when it comes CONFIRM_DELAY to
+-- First tap arms the button ("Are you sure?"); a second tap sends the command when it comes CONFIRM_DELAY to
 -- CONFIRM_SECONDS later. A tap sooner than CONFIRM_DELAY after arming (or after sending) is ignored and the button
--- stays as it is: a double click, however fast, can never wipe the data.
-local function onResetPressed()
+-- stays as it is: a double click, however fast, can never wipe the data or ban anyone. fire() -> true when it was sent.
+local function confirmPress(confirm, fire)
 	local now = os.clock()
-	if now - Reset.ChangedAt < K.CONFIRM_DELAY then
+	if now - confirm.ChangedAt < K.CONFIRM_DELAY then
 		return
 	end
-	if Reset.Until > now then
-		if send("reset") then
-			disarmReset()
-			Reset.ChangedAt = now
+	if confirm.Until > now then
+		if fire() then
+			disarm(confirm)
+			confirm.ChangedAt = now
 		end
 		return
 	end
-	Reset.Until = now + K.CONFIRM_SECONDS
-	Reset.ChangedAt = now
-	Reset.Serial = Reset.Serial + 1
-	local serial = Reset.Serial
-	UI.ResetButton.Text = "Are you sure?"
+	confirm.Until = now + K.CONFIRM_SECONDS
+	confirm.ChangedAt = now
+	confirm.Serial = confirm.Serial + 1
+	local serial = confirm.Serial
+	confirm.Button.Text = "Are you sure?"
 	task.delay(K.CONFIRM_SECONDS, function()
-		if Reset.Serial == serial then
-			disarmReset()
+		if confirm.Serial == serial then
+			disarm(confirm)
 		end
 	end)
+end
+
+local function speedLabel()
+	return (Hint.Gui ~= nil and Hint.Gui:GetAttribute(K.ATTR_SPEED) == true) and "2x speed: on" or "2x speed: off"
+end
+
+local function refreshSpeedButton()
+	local button = UI.Buttons and UI.Buttons.speed
+	if button then
+		button.Text = speedLabel()
+	end
+end
+
+-- The level box: a whole number, or its text as it is (the server refuses that with a toast).
+local function levelFromBox()
+	local text = string.match(UI.LevelBox.Text, "^%s*(.-)%s*$") or ""
+	return tonumber(text) or string.sub(text, 1, K.BOX_MAX_TEXT)
 end
 
 -- A panel button's press, ignored for OPEN_GUARD seconds after the panel opened: the panel opens where the DEV
@@ -442,10 +471,13 @@ local function buildTile(gui)
 	end)
 end
 
--- Design height of the whole panel when nothing is cut off.
+-- Design height of the whole panel when nothing is cut off (count buttons + the player list).
 local function fullPanelHeight(count)
 	local top, _, bottom = CloudUI.ContentInset(true)
 	local list = 2 * K.LIST_PAD + count * (K.BUTTON_H + K.LIST_GAP) + K.NOTE_H
+	if UI.PlayerList then
+		list = list + UI.PlayerList.Size.Y.Offset + K.LIST_GAP
+	end
 	return top + list + bottom
 end
 
@@ -471,6 +503,173 @@ function refreshTutorialButton()
 	DevController.Relayout()
 end
 
+-- One row of the player list: the name, and for other players Kick and Ban (Ban asks "Are you sure?" first).
+local function buildPlayerRow(player)
+	local id = player.UserId
+	local mine = player == LocalPlayer
+	local row = plainFrame(UI.PlayerList, "DevPlayer_" .. id, {
+		Size = UDim2.new(1, 0, 0, mine and K.ROW_NAME_H or (K.ROW_NAME_H + K.BUTTON_H)),
+	})
+	local label = Theme.Label(mine and (player.DisplayName .. " (you)") or (player.DisplayName .. " (@" .. player.Name .. ")"), "Label", {
+		Size = K.ROW_TEXT,
+		Stroke = 0.3,
+		Outline = 1.5,
+		Props = {
+			Name = "PlayerName",
+			Size = UDim2.new(1, 0, 0, K.ROW_NAME_H),
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			ZIndex = 6,
+		},
+	})
+	label.Parent = row
+	local entry = { Row = row, Confirm = nil }
+	if not mine then
+		local name = player.Name
+		local half = UDim2.new(0.5, -K.ROW_GAP / 2, 0, K.BUTTON_H)
+		local kick = CloudUI.Button({
+			Name = "Dev_kick_" .. id,
+			Text = "Kick",
+			Style = "Gold",
+			Size = half,
+			Position = UDim2.fromOffset(0, K.ROW_NAME_H),
+			TextSize = K.ROW_TEXT,
+			ZIndex = 6,
+			Callback = panelPress(function()
+				send("kick", name)
+			end),
+			Parent = row,
+		})
+		kick.Selectable = true
+		local confirm = { Until = 0, Serial = 0, ChangedAt = -math.huge, Text = "Ban" }
+		local ban = CloudUI.Button({
+			Name = "Dev_ban_" .. id,
+			Text = confirm.Text,
+			Style = "Red",
+			Size = half,
+			Position = UDim2.new(0.5, K.ROW_GAP / 2, 0, K.ROW_NAME_H),
+			TextSize = K.ROW_TEXT,
+			ZIndex = 6,
+			Callback = panelPress(function()
+				guard("ban", confirmPress, confirm, function()
+					return send("ban", name)
+				end)
+			end),
+			Parent = row,
+		})
+		ban.Selectable = true
+		confirm.Button = ban
+		entry.Confirm = confirm
+	end
+	return entry
+end
+
+-- The list follows the server: a row per player, sorted by name; the panel's height follows the list.
+local function refreshPlayerList(leaving)
+	local holder = UI.PlayerList
+	if not holder then
+		return
+	end
+	local present = {}
+	local list = {}
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player ~= leaving then
+			present[player.UserId] = true
+			list[#list + 1] = player
+		end
+	end
+	for id, entry in pairs(UI.Rows) do
+		if not present[id] then
+			entry.Row:Destroy()
+			UI.Rows[id] = nil
+		end
+	end
+	table.sort(list, function(a, b)
+		return string.lower(a.Name) < string.lower(b.Name)
+	end)
+	local height = K.NOTE_H
+	for index, player in ipairs(list) do
+		local entry = UI.Rows[player.UserId]
+		if not entry then
+			entry = buildPlayerRow(player)
+			UI.Rows[player.UserId] = entry
+		end
+		entry.Row.LayoutOrder = index + 1
+		height = height + K.LIST_GAP + entry.Row.Size.Y.Offset
+	end
+	holder.Size = UDim2.new(1, 0, 0, height)
+	refreshTutorialButton()
+end
+
+local function buildPlayerSection(parent, order)
+	local holder = plainFrame(parent, "DevPlayers", { Size = UDim2.new(1, 0, 0, K.NOTE_H), LayoutOrder = order })
+	UI.PlayerList = holder
+	UI.Rows = {}
+	Util.Create("UIListLayout", {
+		FillDirection = Enum.FillDirection.Vertical,
+		HorizontalAlignment = Enum.HorizontalAlignment.Center,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, K.LIST_GAP),
+		Parent = holder,
+	})
+	local title = Theme.Label("Players in this server", "Label", {
+		Size = K.ROW_TEXT,
+		Stroke = 0.3,
+		Outline = 1.5,
+		Props = {
+			Name = "PlayersTitle",
+			Size = UDim2.new(1, 0, 0, K.NOTE_H),
+			LayoutOrder = 1,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			ZIndex = 6,
+		},
+	})
+	title.Parent = holder
+	if not UI.PlayersHooked then
+		UI.PlayersHooked = true
+		Players.PlayerAdded:Connect(function()
+			guard("players", refreshPlayerList)
+		end)
+		Players.PlayerRemoving:Connect(function(player)
+			guard("players", refreshPlayerList, player)
+		end)
+	end
+end
+
+-- The number box and "Level all pets" side by side, one button's height.
+local function buildLevelRow(parent, order, callback)
+	local row = plainFrame(parent, "Dev_levelrow", { Size = UDim2.new(1, 0, 0, K.BUTTON_H), LayoutOrder = order })
+	local box = Util.Create("TextBox", {
+		Name = "Dev_levelbox",
+		Text = K.DEFAULT_LEVEL,
+		PlaceholderText = "1-100",
+		ClearTextOnFocus = false,
+		BackgroundColor3 = WHITE,
+		BorderSizePixel = 0,
+		TextColor3 = NAVY,
+		Size = UDim2.new(0, K.BOX_W, 1, 0),
+		Selectable = true,
+		ZIndex = 6,
+		Parent = row,
+	})
+	Theme.Style(box, "Button", { Size = K.BUTTON_TEXT })
+	box.TextColor3 = NAVY
+	corner(box, 10)
+	stroke(box, NAVY, 2)
+	UI.LevelBox = box
+	return CloudUI.Button({
+		Name = "Dev_levelall",
+		Text = "Level all pets",
+		Style = "Green",
+		Size = UDim2.new(1, -(K.BOX_W + K.ROW_GAP), 1, 0),
+		Position = UDim2.fromOffset(K.BOX_W + K.ROW_GAP, 0),
+		TextSize = K.ROW_TEXT,
+		ZIndex = 6,
+		Callback = callback,
+		Parent = row,
+	})
+end
+
 local function buildPanel(gui)
 	local specs = {
 		{ Id = "allpets", Text = "Give all pets", Style = "Green" },
@@ -486,6 +685,12 @@ local function buildPanel(gui)
 		{ Id = "pets1", Text = "Show evolved pets", Style = "Blue", Command = "pets", Arg = "1" },
 		{ Id = "pets2", Text = "Show Evolved II pets", Style = "Blue", Command = "pets", Arg = "2" },
 		{ Id = "clearpets", Text = "Clear pet show", Style = "Gray", Command = "clearpets" },
+		-- the tools on all my pets, saved (DevService: evolvepets / levelall / maxpets), and 2x speed
+		{ Id = "evolvepets", Text = "Evolve my pets", Style = "Green" },
+		{ Id = "levelall", Text = "Level all pets", Style = "Green" },
+		{ Id = "maxpets", Text = "Max stats pets", Style = "Gold" },
+		{ Id = "speed", Text = speedLabel(), Style = "Blue" },
+		{ Id = "players" },
 		{ Id = "reset", Text = "Reset my data", Style = "Red" },
 	}
 	UI.FullHeight = fullPanelHeight(#specs)
@@ -538,12 +743,45 @@ local function buildPanel(gui)
 	})
 
 	UI.Buttons = {}
+	local buttonCount = 0
+	local function makeButton(index, spec, callback)
+		local id = spec.Id
+		local button
+		if id == "levelall" then
+			button = buildLevelRow(list, index, callback)
+		else
+			button = CloudUI.Button({
+				Name = "Dev_" .. id,
+				Text = spec.Text,
+				Style = spec.Style,
+				Size = UDim2.new(1, 0, 0, K.BUTTON_H),
+				TextSize = K.BUTTON_TEXT,
+				LayoutOrder = index,
+				ZIndex = 6,
+				Callback = callback,
+				Parent = list,
+			})
+		end
+		button.Selectable = true
+		buttonCount = buttonCount + 1
+		UI.Buttons[id] = button
+		UI.Buttons[buttonCount] = button
+		if id == "reset" then
+			Reset.Button = button
+		end
+	end
 	for index, spec in ipairs(specs) do
 		local id = spec.Id
 		local callback
 		if id == "reset" then
 			callback = panelPress(function()
-				guard("reset", onResetPressed)
+				guard("reset", confirmPress, Reset, function()
+					return send("reset")
+				end)
+			end)
+		elseif id == "levelall" then
+			callback = panelPress(function()
+				send("levelall", levelFromBox())
 			end)
 		elseif id == "tokens" then
 			callback = panelPress(function()
@@ -566,22 +804,10 @@ local function buildPanel(gui)
 				send(id)
 			end)
 		end
-		local button = CloudUI.Button({
-			Name = "Dev_" .. id,
-			Text = spec.Text,
-			Style = spec.Style,
-			Size = UDim2.new(1, 0, 0, K.BUTTON_H),
-			TextSize = K.BUTTON_TEXT,
-			LayoutOrder = index,
-			ZIndex = 6,
-			Callback = callback,
-			Parent = list,
-		})
-		button.Selectable = true
-		UI.Buttons[id] = button
-		UI.Buttons[index] = button
-		if id == "reset" then
-			UI.ResetButton = button
+		if id == "players" then
+			buildPlayerSection(list, index)
+		else
+			makeButton(index, spec, callback)
 		end
 	end
 	local note = Theme.Label("Only you can see this", "Label", {
@@ -598,7 +824,7 @@ local function buildPanel(gui)
 		},
 	})
 	note.Parent = list
-	refreshTutorialButton()
+	refreshPlayerList()
 end
 
 local function build()
@@ -1023,7 +1249,7 @@ function DevController.Open()
 	end
 	panelOpen = true
 	openedAt = os.clock()
-	disarmReset()
+	disarm(Reset)
 	UI.PanelRoot.Visible = true
 	UI.Tile.Visible = false
 	DevController.Relayout()
@@ -1041,7 +1267,12 @@ function DevController.Close()
 		return
 	end
 	panelOpen = false
-	disarmReset()
+	disarm(Reset)
+	for _, entry in pairs(UI.Rows or {}) do
+		if entry.Confirm then
+			disarm(entry.Confirm)
+		end
+	end
 	local hadSelection = selectionInside(UI.PanelRoot)
 	if UI.PanelRoot then
 		UI.PanelRoot.Visible = false
@@ -1111,6 +1342,9 @@ local function watchHints()
 	end)
 	pg:GetAttributeChangedSignal(K.ATTR_TUTORIAL):Connect(function()
 		guard("NC_DevTutorial", refreshTutorialButton)
+	end)
+	pg:GetAttributeChangedSignal(K.ATTR_SPEED):Connect(function()
+		guard("NC_DevSpeed", refreshSpeedButton)
 	end)
 	guard("NC_Dev", refreshFlag)
 end
