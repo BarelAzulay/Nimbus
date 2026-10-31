@@ -6,7 +6,7 @@
 --                   training pets skipped, at most GetTeams().Slots), junk start rounds, the "Start" payload (Ring =
 --                   { Round, Best, Start, Champion }, unit evo / xp / xpNext), GetBattle (Mode Ring, Round), KeysInBattle,
 --                   one battle at a time, the pocket from the shared pool, a BattleRequest("Ring") through the remote
---   p4ring_run      a single level-1 pet wins rounds 1-3 (chaining: InBattle never nil, one pocket, a fresh Start per
+--   p4ring_run      a single level-10 pet wins rounds 1-3 (chaining: InBattle never nil, one pocket, a fresh Start per
 --                   round with Round + 1 after Ring.Intermission, every won round's End carries Rewards.Next / Cash /
 --                   Record / Tokens), rewards exactly once per round (Cash + XP + Best), the run's natural loss pays the
 --                   loss third under the gate (never more), the run ends the trial way (return teleport, InBattle cleared,
@@ -874,7 +874,7 @@ S.p4ring_start = scenario("p4ring_start", function()
 end)
 
 ----------------------------------------------------------------------------------------------------
--- p4ring_run: a single level-5 pet wins rounds 1-3; chaining with no gap; rewards once; the natural end
+-- p4ring_run: a single level-10 pet wins rounds 1-3; chaining with no gap; rewards once; the natural end
 ----------------------------------------------------------------------------------------------------
 S.p4ring_run = scenario("p4ring_run", function()
 	if not ready("p4ring_run") then
@@ -886,20 +886,20 @@ S.p4ring_run = scenario("p4ring_run", function()
 	ensurePortal()
 	local w = watchEnded()
 	local info = arenaInfo()
-	-- HUD cleanup Task 4: no heal between rounds. A lone level-5 pebble_pup sits on the edge of round 3 (the fight seeds
-	-- come from the server's RNG, so the scenarios run before it decide); mallow_kitten L5 clears 5-8 rounds (sim, 48 seeds)
+	-- HUD cleanup Task 4: no heal between rounds. Team balance: round 3 is a L8 Common and round 4 a L15 one, so a lone
+	-- mallow_kitten L10 clears round 3 on every seed and falls soon after (the fight seeds come from the server's RNG)
 	local petId = "mallow_kitten"
-	local p = newPlayer("RingSolo", { petId }, 5)
+	local p = newPlayer("RingSolo", { petId }, 10)
 	claimHome(p)
 	toRing(p)
 	local cash0, tokens0, xp0 = data.GetCash(p), data.GetTokens(p), totalXp(p, petId)
 	local run = runRing(p, 1, { maxSeconds = 1500 })
-	if not T.check(run.id ~= nil, "p4 ring run: a level-5 Common starts the ring", tostring(run.refused)) then
+	if not T.check(run.id ~= nil, "p4 ring run: a level-10 Common starts the ring", tostring(run.refused)) then
 		w.stop()
 		cleanup({ p })
 		return
 	end
-	T.check(#run.wins >= 3, "p4 ring run: a single level-5 pet wins rounds 1, 2 and 3 in one run (its HP carried from round to round)", #run.wins .. " wins")
+	T.check(#run.wins >= 3, "p4 ring run: a single level-10 pet wins rounds 1, 2 and 3 in one run (its HP carried from round to round)", #run.wins .. " wins")
 	T.check(run.finalEnd ~= nil, "p4 ring run: the run ended by itself with a final 'End' (Rewards.Final)", run.finalEnd and tostring(run.finalEnd.Reason) or "still running")
 	T.eq(run.nilSamples, 0, "p4 ring run: InBattle was never nil while the run lived (no gap between two rounds)")
 	T.eq(run.pocketsMax, 1, "p4 ring run: one pocket for the whole run")
@@ -1004,7 +1004,7 @@ S.p4ring_rewards = scenario("p4ring_rewards", function()
 	holdRaidSchedule(bs)
 	ensurePortal()
 	local w = watchEnded()
-	local p = newPlayer("RingRich", STRONG, 12)
+	local p = newPlayer("RingRich", STRONG, 25)
 	local index = claimHome(p)
 	-- a garden pet at home: the ring pays seconds of this income
 	local prof = data.GetProfile(p)

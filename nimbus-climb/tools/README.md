@@ -94,9 +94,10 @@ SIM_BATTLE="quick only=duels,raids" python3 -c "import lupa.luajit21 as L; L.Lua
   | `support` | Support (Economy) pets: DPS ratio 0.65-0.75 of Combat pets; a Support fighter beats 2 x puddle_frog L8 in 10-60 % of seeds |
   | `levels` | level beats rarity (battles only): a L30 Common beats a L1 Secret (mean >= 90 %), a L100 evolved Common an unevolved L50 Secret (mean >= 75 %), a Secret stays the stronger pet at equal level and stage |
   | `duels` | mirror duels per stage with scripted players on both sides: fair (40-60 % overall, 30-70 % per stage), no draws; the element counter (Water bubble_axolotl vs Flame maple_fox L10, neutral helpers, the wheel on vs off): it decides an even fight (>= 90 %) and is worth x1.15-1.45 TeamPower |
-  | `raids` | 1 / 4 / 8 / 16 dodging fighters finish every boss in 100-240 s (a solo under half of BaselineDps loses); eight mid (M5) teams win >= 60 % of every boss; Lv 5 / Lv 40 solos and groups; no one-shots; joins / leaves; idle alts |
-  | `ring` | rounds 1-3 >= 95 % for every single level-1 rollable pet; the stage medians S1 16 .. S10 51 (+-2) |
-  | `dungeon` | floor 1 for the 12 single level-1 pets (100 %); the stage ladder (monotonic, S10 >= floor 10); a 4-party gains a floor |
+  | `raids` | 1 / 4 / 8 / 16 dodging fighters finish every boss in 100-240 s (a solo under a quarter of BaselineDps loses); the L35 baseline: the owner's L10/11/11 Secrets win 0 of 8 solo raids, 4 and 8 owner-teams finish in 100-240 s; eight mid (M5) teams win >= 60 % of every boss; Lv 5 / Lv 40 solos and groups; no one-shots; joins / leaves; idle alts |
+  | `ring` | the owner's wall with run XP (`SIM.Targets.Ring`): 3 L1 Commons 2-4 rounds and round 5 in <= 10 % of seeds, the Legendary, Secret, L50 and maxed bands; round 1 for every single level-1 rollable pet; shown level and power never drop |
+  | `dungeon` | floor 1 for 3 L1 Commons (room 1 >= 90 %, room 2 40-60 %, clear < 15 %) and 3 L7 Commons; the eased room (`DungeonWave` opts) for every single level-1 rollable pet; the team ladder (`SIM.Targets.Dungeon`); a 4-party gains a floor |
+  | `progress` | a new player's pace with real run XP: minutes to Ring 5, floor 1 and Ring 10 (`SIM.Targets.Progress`) |
   | `training` | trained / evolved TeamPower ratios; trained mirror duels fair; trained raids 100-240 s |
   | `move` | the character patterns (random targets + an r 14 circle) at the legal run speed with a 200 ms feed delay for mochi_slime L1 / sunbeam_bear L20 / stormfang L50: the server fighter keeps up (gap <= 0.5 stud, zero leashes); a straight run-off is leashed after 3 s |
   | `perf` | a 16-fighter raid with minion waves steps in well under 1 ms |
@@ -104,8 +105,8 @@ SIM_BATTLE="quick only=duels,raids" python3 -c "import lupa.luajit21 as L; L.Lua
 
 * Change a number in `BattleCatalog` -> re-run the sim. The smoke scenario `p5battle_balance`
   (`tools/smoke_p5_battlecore.lua`) loads this file as a library (`SIM_BATTLE_LIBRARY = true`) and runs a short
-  subset; `p5dgn_balance` (`tools/smoke_p5_dungeon.lua`) uses `SIM.Stages`, `SIM.team`, `SIM.Player` and
-  `SIM.dungeonFloor`.
+  subset; `p5dgn_balance` (`tools/smoke_p5_dungeon.lua`) uses `SIM.Teams`, `SIM.Targets`, `SIM.floorSummary` and
+  `SIM.ladder`.
 * The scripted player (`SIM.Player`) moves a simulated character at the fighter's legal run speed (`SpeedOf`), feeds
   `Move`, presses ATTACK / ELEMENT / SPECIAL / the buffs, swaps and dashes out of wind-ups and telegraphs after a
   human-ish delay (options: dodge share, delay steps, buffs, swap, element). `Auto = true` teams are driven by the

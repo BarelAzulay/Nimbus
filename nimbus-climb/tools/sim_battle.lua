@@ -29,7 +29,7 @@
 --   python3 -c "import lupa.luajit21 as L; L.LuaRuntime().execute(open('tools/sim_battle.lua').read())"
 --   SIM_BATTLE="quick only=duels,raids" python3 -c "..."     options: quick | full | seeds=N | only=a,b | verbose
 -- The smoke scenario p5battle_balance loads this file as a library (global SIM_BATTLE_LIBRARY = true before the load)
--- and runs a short subset; p5dgn_balance (dungeon W3) uses SIM.Stages / SIM.team / SIM.Player / SIM.dungeonFloor.
+-- and runs a short subset; p5dgn_balance (team balance) uses SIM.Teams / SIM.Targets / SIM.floorSummary / SIM.ladder.
 -- Plain Lua 5.1 syntax only.
 
 local SIM = {}

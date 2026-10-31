@@ -617,7 +617,7 @@ level: x1.5 of the bonus after the first EVOLVE, x1.875 after the second (a leve
 | A lost Dungeon room | a third of its XP, when your pets really fought (20 seconds or more, or 20 % of the enemies' health) |
 | A duel | 60 for a win, 25 for a draw or a loss |
 | A Boss Raid | 50 up to 400 by your tier (20 when the boss wins) |
-| A Champion Ring round | 20 + 6 x the round (the round that ends your run pays a third) |
+| A Champion Ring round | 20 + 21 x the round (the round that ends your run pays a third) |
 
 ### Evolution: the EVOLVE button
 
@@ -955,8 +955,8 @@ You need a pet; you do not need a home.
   room together (the camera in front of you, any key skips) and the fight starts when the first of you crosses the line
   inside the door; nobody waits more than 3 seconds. Your pets follow you the whole time, and the camera sits a little
   over your shoulder (big attacks punch the view, hits shake it; the Camera shake setting turns off only the hit shakes: the rush, the
-  walk-in and the punch are short, skippable and always play). Every room has 2-3 waves (floor 1: three single sleepy enemies, made so that any single level-1 pet
-  wins); every wave arrives in a flash of light (for a moment it cannot be hit and does not attack). When a room is
+  walk-in and the punch are short, skippable and always play). Every room has 2-3 waves (floor 1: one, two and then three single enemies, so three level-1 Commons win the first room and
+  about half of the second, and three level-7 Commons clear the floor); every wave arrives in a flash of light (for a moment it cannot be hit and does not attack). When a room is
   clear its exit opens: go to the next door and press `E` (the whole party presses it, then the screen fades into the
   next room). Your pets heal fully between rooms. You have **2 minutes** per room (**3 minutes** on floor 1); a member whose
   three pets are down watches from the edge until the next room. If everybody is down, the run ends ("Floor 3: the
@@ -1015,7 +1015,9 @@ Duel other players on the two **duel rings** in front of the colosseum. Both of 
 
 ### Boss Raids
 
-About **every 20 minutes** (the first one 5 minutes after a server starts) a giant boss stomps into the colosseum.
+About **every 20 minutes** (the first one 5 minutes after a server starts) a giant boss stomps into the colosseum. It is
+meant for a group: a boss always has at least the HP to last a level-35 evolved Legendary 100 seconds, so a solo win comes
+only far along, and 4 to 8 teams finish it in about 2 to 4 minutes.
 Everyone gets a side toast **2 minutes** before, and the event board counts down. When the raid opens, go into the
 arena and press **JOIN RAID** on the raid card at the right edge (or on the **Boss Raid** tab of the Arena panel): you
 can join during the **first 60 seconds**. You run onto the boss floor with your fighter and fight together with
@@ -1061,8 +1063,8 @@ The golden **Champion Ring** gate stands in the Gate Court. All you need is a ho
 the ring window shows your record, the best in this server, the pets that will fight and what the next win pays. Pick
 where to start (round 1, or any boss round you have beaten) and press **START**.
 
-- **Every round a little stronger.** Rounds 1-3 are level-1 Commons that any single level-1 pet beats; then the
-  champions level up and get rarer, from round 56 they come as a pack of two and from round 66 as a pack of three,
+- **Every round a little stronger.** Round 1 is a level-1 Common that any single level-1 pet beats; rounds 2-4 climb
+  to level 15, so three level-1 Commons win about 3 rounds; then the champions level up and get rarer, from round 56 they come as a pack of two and from round 66 as a pack of three,
   and **every 10th round is a boss round** (3 levels more). A champion is built exactly like your pets: the same
   level, rarity, tier and evolution mean the same strength. You have **90 seconds** for a round; lose once (or run
   out of time) and the run ends. Between two rounds you get 3 seconds and a side card ("Round 8 won! ... Round 9 in
@@ -1070,7 +1072,7 @@ where to start (round 1, or any boss round you have beaten) and press **START**.
 - **No heal between rounds:** your pets keep the HP they ended a round with, and a fainted pet sits out the rest of
   the run. When a win leaves nobody standing the run is over (the wins stay paid). A new run starts at full HP.
 - **Every win pays Cash and XP:** the bigger of $20 + $2 x the round and what your garden makes in 1.5 + 0.1 x the
-  round seconds (at most 9 seconds), and 20 + 6 x the round XP for every pet of your team. A **new record** round
+  round seconds (at most 9 seconds), and 20 + 21 x the round XP for every pet of your team. A **new record** round
   pays **x3 Cash**, and beating a boss round for the first time pays **100 Cloud Tokens**. The round that ends your
   run pays a third of its XP when your pets really fought.
 - **Who fights:** your battle team; without one, the pets following you; without those, your strongest pets. Pets in
@@ -1079,15 +1081,15 @@ where to start (round 1, or any boss round you have beaten) and press **START**.
 
 | Round | Champion | Cash per win (at least) | XP for every team pet |
 |---|---|---|---|
-| 1 | a level-1 Pebble Pup (Common) | $22 | 26 |
-| 2 | a level-1 Pip Penguin (Common) | $24 | 32 |
-| 3 | a level-1 Biscuit Bear (Common) | $26 | 38 |
-| 5 | a Common pet | $30 | 50 |
-| 10 | **Boss:** a Common or Uncommon pet | $40 | 80 |
-| 20 | **Boss:** an Uncommon or Rare pet | $60 | 140 |
-| 30 | **Boss:** an Epic or Legendary pet | $80 | 200 |
-| 40 | **Boss:** a Golden Legendary or Mythic pet | $100 | 260 |
-| 50 | **Boss:** a Golden Mythic or Secret pet | $120 | 320 |
+| 1 | a level-1 Pebble Pup (Common) | $22 | 41 |
+| 2 | a level-4 Common pet | $24 | 62 |
+| 3 | a level-8 Common pet | $26 | 83 |
+| 5 | a level-15 Common pet | $30 | 125 |
+| 10 | **Boss:** an Uncommon pet | $40 | 230 |
+| 20 | **Boss:** a Legendary pet | $60 | 440 |
+| 30 | **Boss:** a Mythic pet | $80 | 650 |
+| 40 | **Boss:** a Golden Secret pet | $100 | 860 |
+| 50 | **Boss:** a Golden Secret pet | $120 | 1,070 |
 
 The ring never ends: from round 51 the champions are Rainbow, by round 70 they are level 100, and from round 70 to
 100 they train every skill like your pets do, so the top stays hard. When a run is over the result card

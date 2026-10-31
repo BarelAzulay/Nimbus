@@ -7,7 +7,7 @@
 --                    ReadyTimeout 30 and starts; a join once room 3 started is refused; locked floors refused
 --   p5dgn_exclusive  in the Hall, a Corridor and the Treasure: raid join / duel / Ring start, GoHome, the Home / Altar
 --                    gates, the obby pad and the dev /reset are refused and InBattle stays the run id
---   p5dgn_run        SetRunProvider called by Init; solo floor 1 with ONE level-1 pet end to end through the remotes:
+--   p5dgn_run        SetRunProvider called by Init; solo floor 1 with a level-15 Common trio end to end through the remotes:
 --                    hall (no HallSeconds timer: E at the hall's EnterPrompt) -> room 1 Start (Mode Dungeon,
 --                    Start.Dungeon) -> waves -> loot once -> bars (the next entrance stays closed, its EnterPrompt
 --                    enabled, no DoorTime: E moves the run; the boss exit stays barred -> E -> treasure) -> room 2 built
@@ -1085,7 +1085,7 @@ local function serverScenarios()
 		local keys = dgs.KeysInRun(probe)
 		T.check(type(keys) == "table" and next(keys) == nil, "p5 run: KeysInRun is empty outside a run")
 
-		local p = newPlayer("DgnSolo", { WEAK[1] }, 1)
+		local p = newPlayer("DgnSolo", WEAK, 15)
 		local all = { probe, p }
 		quietReplication()
 		local mark = K.logSize()
@@ -1158,7 +1158,7 @@ local function serverScenarios()
 			end
 			tr.eventCursor = #tr.events
 			enemiesSeen[room] = enemies
-			if not T.check(res ~= nil and res.Outcome == "Win" and run.State == "Corridor", "p5 run: room " .. room .. " cleared by ONE level-1 pet (End Outcome Win, State Corridor)", tostring(res and res.Outcome) .. " / " .. tostring(run.State)) then
+			if not T.check(res ~= nil and res.Outcome == "Win" and run.State == "Corridor", "p5 run: room " .. room .. " cleared by a level-15 Common trio (End Outcome Win, State Corridor)", tostring(res and res.Outcome) .. " / " .. tostring(run.State)) then
 				break
 			end
 			roomsPlayed = roomsPlayed + 1
@@ -1194,7 +1194,7 @@ local function serverScenarios()
 			end
 		end
 		T.check(roomsPlayed == 4, "p5 run: all four rooms were played (" .. roomsPlayed .. ")")
-		T.check(enemiesSeen[1] == 1 and enemiesSeen[2] == 1 and enemiesSeen[3] == 1, "p5 run: floor 1 wave rooms spawn ONE enemy each", table.concat({ tostring(enemiesSeen[1]), tostring(enemiesSeen[2]), tostring(enemiesSeen[3]) }, ","))
+		T.check(enemiesSeen[1] == 1 and enemiesSeen[2] == 2 and enemiesSeen[3] == 3, "p5 run: floor 1 wave rooms spawn ONE enemy per wave (Floor1Waves 1 / 2 / 3)", table.concat({ tostring(enemiesSeen[1]), tostring(enemiesSeen[2]), tostring(enemiesSeen[3]) }, ","))
 		T.check(enemiesSeen[4] ~= nil and enemiesSeen[4] >= 2 and run.EscortSpawned == true, "p5 run: the boss room spawned the boss and its escort (" .. tostring(enemiesSeen[4]) .. " units)")
 		T.check(startsSeen == 4, "p5 run: one Start per room (a fresh encounter each)")
 		-- the treasure: chest once, the 45 s exit
@@ -1300,6 +1300,31 @@ local function serverScenarios()
 		T.check(type(BC.Dungeon.EasedRoomMult) == "number" and BC.Dungeon.EasedRoomMult > 0 and BC.Dungeon.EasedRoomMult < 1, "tb balance: Dungeon.EasedRoomMult is a number in (0, 1)", tostring(BC.Dungeon.EasedRoomMult))
 		T.check(eased.Power < plain.Power and eased.Count == plain.Count and eased.Pets[1].PetId == plain.Pets[1].PetId, "tb balance: an eased wave aims at EasedRoomMult x the goal with the same species and count", tostring(eased.Power) .. " vs " .. tostring(plain.Power))
 		T.check(BC.DungeonWave(1, 1, 1, 1, 7, nil).Power == plain.Power, "tb balance: opts nil = the plain wave")
+		-- tools/sim_battle.lua as a library: the 3-Common team's first room and the ladder
+		local fh = io.open("tools/sim_battle.lua", "r") or io.open("sim_battle.lua", "r") or io.open("../tools/sim_battle.lua", "r")
+		if not T.check(fh ~= nil, "tb balance: tools/sim_battle.lua found from the working directory") then
+			return
+		end
+		local src = fh:read("*a")
+		fh:close()
+		_G.SIM_BATTLE_LIBRARY = true
+		local okLoad, SIM = pcall(assert((loadstring or load)(src, "=tools/sim_battle.lua")))
+		_G.SIM_BATTLE_LIBRARY = nil
+		if not T.check(okLoad and type(SIM) == "table" and type(SIM.floorSummary) == "function" and type(SIM.ladder) == "function", "tb balance: sim_battle.lua returns floorSummary and ladder", tostring(SIM)) then
+			return
+		end
+		SIM.print = function() end
+		local TD = SIM.Targets.Dungeon
+		local s1 = SIM.floorSummary(SIM.Teams.S1, 1, nil, 8)
+		T.check(s1[1] >= TD.S1.Room1 and s1[4] < TD.S1.Clear, "tb balance: 3 L1 Commons win room 1 of floor 1 and do not clear it (SIM.Targets.Dungeon.S1)", string.format("room 1 %.0f%%, clear %.0f%%", s1[1], s1[4]))
+		T.check(SIM.floorSummary(SIM.Teams.L7, 1, nil, 4)[4] >= TD.L7.Clear, "tb balance: 3 L7 Commons clear floor 1 (SIM.Targets.Dungeon.L7)")
+		local lastFloor, falls = 0, false
+		for _, id in ipairs({ "S1", "L7", "Leg", "Owner" }) do
+			local top = SIM.ladder(SIM.Teams[id], nil, 2)
+			falls = falls or top < lastFloor
+			lastFloor = math.max(lastFloor, top)
+		end
+		T.check(not falls and lastFloor >= 3, "tb balance: the ladder never falls with the team", tostring(lastFloor))
 	end)
 
 	------------------------------------------------------------------------------------------------

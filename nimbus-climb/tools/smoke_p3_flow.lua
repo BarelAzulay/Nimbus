@@ -1756,9 +1756,14 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 		return
 	end
 	local bs, es, data, bc = BS(), ES(), DS(), BC()
+	-- this flow watches the boss HP move with the teams; the L35 baseline's floor would hold these mid teams flat (team
+	-- balance; the floor has its own checks in bug2bat_raid_balance)
+	local floorSeconds0 = bc.BossRules.FloorSeconds
+	bc.BossRules.FloorSeconds = 15
 	local info = arenaInfo()
 	local ava, bo, cy, dee, hal = F.p.Ava, F.p.Bo, F.p.Cy, F.p.Dee, F.p.Hal
 	if not (ava and bo and cy and dee and hal and ava.Parent and dee.Parent) then
+		bc.BossRules.FloorSeconds = floorSeconds0
 		T.fail("flow raid: skipped, the players of the earlier chapters are missing")
 		return
 	end
@@ -2113,6 +2118,7 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 	es.EndNow("DoubleRewards")
 	T.check(not es.IsDoubleRewards() and not bs.IsDoubleRewards() and workspace:GetAttribute("DoubleRewards") == false and (toasted(ava, "Double Rewards are over", mX)),
 		"flow double: Double Rewards end everywhere (toast)")
+	bc.BossRules.FloorSeconds = floorSeconds0
 	F.facts.raidPet = petOfAva
 	F.facts.raidDone = true
 	for _, p in ipairs({ ava, bo, cy, dee, fay, gus, hal }) do

@@ -2100,10 +2100,11 @@ S.p5flow_dungeon = scenario("p5flow_dungeon", function(players)
 	end
 	local restoreOwner = becomeOwner(IDS.Ada)
 	local okRun, errRun = pcall(function()
-		-- (level-6 Commons: every member must deal >= 5% of the party's damage in a room to be paid for it, 5.2)
-		local ada = fighterJoin("Ada", WEAK, 6)
-		local bea = fighterJoin("Bea", WEAK, 6)
-		local cal = fighterJoin("Cal", WEAK, 6)
+		-- (level-25 Commons, floors 1-2 are real fights since the team balance: every member must deal >= 5% of the party's
+		-- damage in a room to be paid for it, 5.2)
+		local ada = fighterJoin("Ada", WEAK, 25)
+		local bea = fighterJoin("Bea", WEAK, 25)
+		local cal = fighterJoin("Cal", WEAK, 25)
 		players[#players + 1] = ada
 		players[#players + 1] = bea
 		players[#players + 1] = cal
@@ -2231,8 +2232,8 @@ S.p5flow_rejoin = scenario("p5flow_rejoin", function(players)
 	if not X then
 		return
 	end
-	local eve = fighterJoin("Eve", WEAK, 6)
-	local fin = fighterJoin("Fin", WEAK, 6)
+	local eve = fighterJoin("Eve", WEAK, 25)
+	local fin = fighterJoin("Fin", WEAK, 25)
 	players[#players + 1] = eve
 	players[#players + 1] = fin
 	rejoinDungeon(X, eve, fin, players)

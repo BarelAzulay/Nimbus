@@ -1371,7 +1371,7 @@ S.p5dgn_catalog = guarded("p5dgn_catalog", function()
 		return
 	end
 	local D = BC.Dungeon
-	T.check(type(D) == "table" and D.Floors == 12 and D.Floor1Power == 1.5 and D.FirstPower == 4 and D.Growth == 2 and D.BossMult == 1.3 and D.EscortMult == 0.5 and #D.Waves == 3 and D.Waves[3] == 3 and D.EnemiesPerWave == 2 and D.Floor1EnemiesPerWave == 1 and D.PartyExp == 0.5 and D.MinHandicap == 0.3 and D.EnemyMaxLevel == 50 and D.RoomTime == 120 and D.Floor1RoomTime == 180 and D.Zones.Room.X == 44 and D.Zones.Boss.X == 56 and D.EscortAt == 0.5 and D.Intermission == 2 and D.DoorTime == 12 and D.HallSeconds == 10 and D.TreasureSeconds == 45 and D.MinShare == 0.05 and D.LateJoinLastRoom == 2 and D.ReadyTimeout == 30 and D.RunMaxSeconds == 4 * 120 + 4 * 12 + 10 + 45 + 120 and #D.Bands == 6, "BattleCatalog.Dungeon numbers of 5.1 (RoomMult and PartyExp re-tuned by the sim)")
+	T.check(type(D) == "table" and D.Floors == 12 and D.Floor1Power == 17 and D.FirstPower == 29 and D.Growth == 2 and D.Floor1Waves[1] == 1 and D.Floor1Waves[2] == 2 and D.Floor1Waves[3] == 3 and D.BossMult == 1.3 and D.EscortMult == 0.5 and #D.Waves == 3 and D.Waves[3] == 3 and D.EnemiesPerWave == 2 and D.Floor1EnemiesPerWave == 1 and D.PartyExp == 0.5 and D.MinHandicap == 0.3 and D.EnemyMaxLevel == 50 and D.RoomTime == 120 and D.Floor1RoomTime == 180 and D.Zones.Room.X == 44 and D.Zones.Boss.X == 56 and D.EscortAt == 0.5 and D.Intermission == 2 and D.DoorTime == 12 and D.HallSeconds == 10 and D.TreasureSeconds == 45 and D.MinShare == 0.05 and D.LateJoinLastRoom == 2 and D.ReadyTimeout == 30 and D.RunMaxSeconds == 4 * 120 + 4 * 12 + 10 + 45 + 120 and #D.Bands == 6, "BattleCatalog.Dungeon numbers of 5.1 (RoomMult and PartyExp re-tuned by the sim)")
 	T.check(#D.RoomMult == 3 and D.RoomMult[1] <= D.RoomMult[2] and D.RoomMult[2] <= D.RoomMult[3] and D.RoomMult[1] >= 0.7 and D.RoomMult[3] <= 1.3, "RoomMult grows room by room", fmt("%.2f %.2f %.2f", D.RoomMult[1], D.RoomMult[2], D.RoomMult[3]))
 	local floors = BC.DungeonFloors
 	local Config = loadModule("Config")
@@ -1397,7 +1397,7 @@ S.p5dgn_catalog = guarded("p5dgn_catalog", function()
 		end
 		last = p
 	end
-	T.check(mono and near(BC.DungeonPower(10, 1), 2048, 2048 * 0.01) and near(BC.DungeonPower(2, 1), 8, 1e-9) and near(BC.DungeonPower(12, 1), 8192, 1e-6) and near(BC.DungeonPower(1, 1), 1.5, 1e-9), "DungeonPower never drops; floor 1 = 1.5, 2 = 8, 10 = 2048 (+-1%), 12 = 8192")
+	T.check(mono and near(BC.DungeonPower(10, 1), 14848, 1e-6) and near(BC.DungeonPower(2, 1), 58, 1e-9) and near(BC.DungeonPower(12, 1), 59392, 1e-6) and near(BC.DungeonPower(1, 1), 17, 1e-9), "DungeonPower never drops; floor 1 = 17, 2 = 58, 10 = 14848, 12 = 59392")
 	T.check(near(BC.DungeonPower(5, 4), BC.DungeonPower(5, 1) * 4 ^ D.PartyExp, 1e-6) and BC.DungeonPower(99, 1) == BC.DungeonPower(12, 1) and BC.DungeonPower(0 / 0, "x") == BC.DungeonPower(1, 1), "a party's target = per player x n ^ PartyExp (0.5, re-tuned); junk clamps")
 	-- waves
 	local w1 = BC.DungeonWave(3, 1, 1, 1, 77)
@@ -1453,10 +1453,10 @@ S.p5dgn_catalog = guarded("p5dgn_catalog", function()
 	T.check(okBand, "every enemy comes from the floor's rarity band")
 	T.check(okLevel, "enemy levels 1..50, handicaps >= MinHandicap")
 	local f1 = BC.DungeonWave(1, 2, 1, 1, 3)
-	T.check(#f1.Pets == 1 and f1.Pets[1].Handicap and f1.Pets[1].Handicap < 1 and f1.Pets[1].Level == 1 and not f1.Pets[1].Boss, "floor 1 = ONE handicapped level-1 enemy per wave")
+	T.check(#f1.Pets == 1 and f1.Pets[1].Level >= 1 and not f1.Pets[1].Boss, "floor 1 = ONE enemy per wave")
 	T.check(#BC.DungeonWave(1, 1, 1, 4, 3).Pets == 1, "floor 1 keeps one enemy per wave with a party of 4")
 	local boss1 = BC.DungeonWave(1, 4, 1, 1, 3)
-	T.check(boss1.Boss == true and #boss1.Pets == 1 and boss1.Pets[1].Boss == true and boss1.Pets[1].Handicap and boss1.Pets[1].Handicap < 1, "floor 1 boss: the forced mini-boss form, handicapped")
+	T.check(boss1.Boss == true and #boss1.Pets == 1 and boss1.Pets[1].Boss == true, "floor 1 boss: the forced mini-boss form")
 	local boss7 = BC.DungeonWave(7, 4, 1, 1, 3)
 	local escort7 = BC.DungeonWave(7, 4, 2, 1, 3)
 	T.check(boss7.Boss and boss7.Pets[1].Boss == true and not boss7.Pets[1].Handicap and boss7.Power > escort7.Power and #escort7.Pets == 2 and not escort7.Boss, "room 4: wave 1 = the boss alone (x1.3), wave 2 = the escort at x0.5")
@@ -1615,55 +1615,46 @@ S.p5battle_balance = guarded("p5battle_balance", function()
 	T.check(waveWins >= 12, "the 2.4 wave rule: a maple_fox L10 with two helpers beats three foxes of 0.8 x its power (>= 60% of 20 seeds; wave 6 measured 65%)", fmt("%d of 20", waveWins))
 	-- raids: a solo M8 fighter and four M5 fighters, dodging
 	local raid1 = SIM.series(function(seed)
-		return { Mode = "Raid", Boss = "storm_titan", Seed = seed, Teams = { team2(1, 1, SIM.Stages[8].Pets) } }
+		return { Mode = "Raid", Boss = "storm_titan", Seed = seed, Teams = { team2(1, 1, SIM.Stages[9].Pets) } }
 	end, { [1] = "player" }, 3)
 	local policies = {}
 	local function raid4(seed)
 		local teams = {}
 		for i = 1, 4 do
-			teams[i] = team2(100 + i, 1, SIM.Stages[5].Pets)
+			teams[i] = team2(100 + i, 1, SIM.Stages[8].Pets)
 			policies[100 + i] = "player"
 		end
 		return { Mode = "Raid", Boss = "frost_wyrm", Seed = seed, Teams = teams }
 	end
 	local raidB = SIM.series(raid4, policies, 3)
-	T.check(raid1.wins[1] == 3 and raid1.avgDur >= 100 and raid1.avgDur <= 240, "a solo prestige-2 fighter beats the Storm Titan in 100-240 s", fmt("%d of 3, %.0f s", raid1.wins[1], raid1.avgDur))
+	T.check(raid1.wins[1] == 3 and raid1.avgDur >= 70 and raid1.avgDur <= 240, "a solo endgame (S9) team beats the Storm Titan in 70-240 s (the L35 baseline: solo stays possible only far along)", fmt("%d of 3, %.0f s", raid1.wins[1], raid1.avgDur))
 	-- (bug #22 wave 5: the engage rule lets a standing raider's pet walk back to the boss after a dodge, so a 3-seed cell
 	-- runs a little faster, ~98 s; the lower bound is the harness's own per-cell band (sim_battle: 90-250 s per cell))
-	T.check(raidB.wins[1] == 3 and raidB.avgDur >= 90 and raidB.avgDur <= 240 and raidB.maxBossHit <= 0.8, "four mid fighters beat the Frost Wyrm in 90-240 s (one cell) with no hit over 80%", fmt("%d of 3, %.0f s, max hit %.2f", raidB.wins[1], raidB.avgDur, raidB.maxBossHit))
-	-- ring: rounds 1-3 for the weakest starter; the S1 / S10 medians
+	T.check(raidB.wins[1] == 3 and raidB.avgDur >= 90 and raidB.avgDur <= 240 and raidB.maxBossHit <= 0.8, "four prestige-2 (S8) fighters beat the Frost Wyrm in 90-240 s (one cell) with no hit over 80%", fmt("%d of 3, %.0f s, max hit %.2f", raidB.wins[1], raidB.avgDur, raidB.maxBossHit))
+	-- ring: round 1 for the weakest starter; the owner's wall and the owner's team (spec 2026-10-31 s.4, SIM.Targets.Ring)
 	local wins = 0
 	for seed = 1, 6 do
-		local res = SIM.run({ Mode = "Ring", Seed = seed, Round = 3, Teams = { team2(1, 1, { pet2("pip_penguin", 1) }), BC.ChampionTeam(3, seed) } }, { [1] = "player" })
+		local res = SIM.run({ Mode = "Ring", Seed = seed, Round = 1, Teams = { team2(1, 1, { pet2("pip_penguin", 1) }), BC.ChampionTeam(1, seed) } }, { [1] = "player" })
 		if res and res.WinnerSide == 1 then
 			wins = wins + 1
 		end
 	end
-	T.check(wins == 6, "one level-1 pip_penguin wins ring round 3 (6 of 6 seeds)", wins)
-	local recs = {}
-	for seed = 1, 4 do
-		recs[#recs + 1] = SIM.ringRun(SIM.Stages[1].Pets, 1000 + seed)
-	end
-	local med1 = SIM.median(recs)
-	recs = {}
-	for seed = 1, 3 do
-		recs[#recs + 1] = SIM.ringRun(SIM.Stages[10].Pets, 2000 + seed)
-	end
-	local med10 = SIM.median(recs)
-	T.check(abs(med1 - SIM.RingMedians.S1) <= 3 and abs(med10 - SIM.RingMedians.S10) <= 3, "ring medians (the no-heal climb) within +-3 of SIM.RingMedians (S1 " .. SIM.RingMedians.S1 .. ", S10 " .. SIM.RingMedians.S10 .. ")", fmt("S1 %d, S10 %d", med1, med10))
-	-- dungeon: floor 1 by one level-1 pet; S10 clears floor 10
+	T.check(wins == 6, "one level-1 pip_penguin wins ring round 1 (6 of 6 seeds)", wins)
+	local TR = SIM.Targets.Ring
+	local S1 = SIM.ringSummary(SIM.Teams.S1, nil, 8)
+	local Owner = SIM.ringSummary(SIM.Teams.Owner, nil, 3)
+	T.check(S1.med >= TR.S1.Default[1] and S1.med <= TR.S1.Default[2] and S1.reach5 <= TR.S1.Reach5 + 15, "3 L1 Commons: the ring record stays in SIM.Targets.Ring.S1 (the owner's wall)", fmt("median %d, reach 5 %.0f%%", S1.med, S1.reach5))
+	T.check(Owner.med >= TR.Owner.Default[1] and Owner.med <= TR.Owner.Default[2], "the owner's L10/11/11 Secrets: the ring record stays in SIM.Targets.Ring.Owner", fmt("median %d", Owner.med))
+	-- dungeon: a L7 Common trio clears floor 1; S10 clears floor 8
 	local okFloor1 = true
-	for _, id in ipairs({ "honey_bunny", "mochi_slime", "biscuit_bear" }) do
-		for seed = 1, 2 do
-			local rooms = SIM.dungeonFloor(1, { pet2(id, 1) }, 1, seed)
-			if rooms < 4 then
-				okFloor1 = false
-			end
+	for seed = 1, 3 do
+		if SIM.dungeonFloor(1, SIM.Teams.L7, 1, seed) < 4 then
+			okFloor1 = false
 		end
 	end
-	T.check(okFloor1, "floor 1 is cleared by a single level-1 honey_bunny / mochi_slime / biscuit_bear (2 seeds each)")
-	local rooms10 = SIM.dungeonFloor(10, SIM.Stages[10].Pets, 1, 1)
-	T.check(rooms10 == 4, "the maxed team (S10) clears floor 10", rooms10)
+	T.check(okFloor1, "floor 1 is cleared by three level-7 Commons (3 seeds)")
+	local rooms8 = SIM.dungeonFloor(8, SIM.Stages[10].Pets, 1, 1)
+	T.check(rooms8 == 4, "the S10 team clears floor 8", rooms8)
 	local rooms1 = SIM.dungeonFloor(5, SIM.Stages[1].Pets, 1, 1)
 	T.check(rooms1 < 4, "a Day-1 team cannot clear floor 5", rooms1)
 	T.info("*balance subset ok; the full report: see tools/README.md (sim_battle.lua)")

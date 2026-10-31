@@ -850,6 +850,9 @@ S.p3bs_raid = scenario("p3bs_raid", function()
 	local events = bc.Events
 	local savedWindow = events.JoinWindowSeconds
 	events.JoinWindowSeconds = 25
+	-- team balance: this scenario watches the boss HP move with its level-10 teams; the L35 baseline's floor would hold it flat
+	local savedFloor = bc.BossRules.FloorSeconds
+	bc.BossRules.FloorSeconds = 5
 	local window = 25
 	local ok, raidId = startRaid("storm_titan")
 	T.check(ok == true and type(raidId) == "string" and startRaid("lava_golem") == false, "p3 raid: StartRaid opens one raid at a time", tostring(raidId))
@@ -878,8 +881,8 @@ S.p3bs_raid = scenario("p3bs_raid", function()
 	local m2 = K.logSize()
 	bs.JoinRaid(r2)
 	local s2 = bs.GetRaidStatus()
-	-- bug batch 2 #2: two level-10 teams can sit on the boss's BaselineDps floor (HpPerPlayer x BaselineDps): then the HP holds
-	local floorHp = bc.BaselineDps and (bc.Bosses.storm_titan.HpPerPlayer * bc.BaselineDps("storm_titan")) or 0
+	-- bug batch 2 #2: two level-10 teams can sit on the boss's BaselineDps floor (FloorSeconds x BaselineDps): then the HP holds
+	local floorHp = bc.BaselineDps and (bc.BossRules.FloorSeconds * bc.BaselineDps("storm_titan")) or 0
 	T.check(s2.Players == 2 and (s2.MaxHp > s1.MaxHp or (s1.MaxHp <= floorHp + 1 and s2.MaxHp == s1.MaxHp)), "p3 raid: a second team raises the boss HP (or both sit on the BaselineDps floor)",
 		s1.MaxHp .. " -> " .. s2.MaxHp .. string.format(" (floor %.0f)", floorHp))
 	advance(0.3)
@@ -962,6 +965,7 @@ S.p3bs_raid = scenario("p3bs_raid", function()
 	T.check(okN and resN and resN.Reason == "NoPlayers" and #resN.Winners == 0 and #resN.Losers == 0 and bs.GetRaidStatus() == nil,
 		"p3 raid: a raid nobody joined closes after the join window (BattleEnded, Reason NoPlayers)")
 	events.JoinWindowSeconds = savedWindow
+	bc.BossRules.FloorSeconds = savedFloor
 	cleanup({ r1, r2, r3, outsider, late })
 
 	-- a whole raid with three active teams (specials, retreat from telegraphs): rewards follow the damage tiers

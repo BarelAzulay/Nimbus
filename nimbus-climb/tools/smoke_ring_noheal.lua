@@ -106,9 +106,12 @@ S.ringnh_catalog = guarded("ringnh_catalog", function()
 	local t6 = T.tally("ring no-heal: every champion pet's Evo is the stage its level allows, Power = TeamPower(Pets)")
 	-- review fix: the shown level follows the curve (a species is picked only when it matches the round before within
 	-- MaxLevelRaise levels), never L42 one round and L26 the next
-	local t7 = T.tally("ring no-heal: every champion's level is within Ring.MaxLevelRaise of ChampionLevel(r) (the curve the HUD shows)")
+	local t7 = T.tally("ring no-heal: every champion's level is at least ChampionLevel(r) and within Ring.MaxLevelRaise of the highest curve level so far")
+	local t8 = T.tally("ring no-heal: the shown level never drops from one round to the next (rounds 2..120, seeds 1..8; spec 2026-10-31 s.4)")
 	local raise = R.MaxLevelRaise
+	local highest = 0
 	for r = 1, 120 do
+		highest = math.max(highest, BC.ChampionLevel(r))
 		for s = 1, 8 do
 			local spec = BC.ChampionTeam(r, s)
 			t1:case(type(spec) == "table" and type(spec.Pets) == "table" and #spec.Pets >= 1 and #spec.Pets <= 3, r .. "/" .. s)
@@ -117,11 +120,12 @@ S.ringnh_catalog = guarded("ringnh_catalog", function()
 					t2:case(p.Boss == nil and p.Handicap == nil and p.Boost == nil and p.Level <= top and p.Level >= 1, r .. ":" .. tostring(p.PetId) .. " L" .. tostring(p.Level))
 					local def = PC.Get(p.PetId)
 					t6:case(def ~= nil and p.Evo == stageFor(PC, def, p.Level), r .. ":" .. tostring(p.PetId) .. " L" .. tostring(p.Level) .. " evo " .. tostring(p.Evo))
-					t7:case(type(raise) == "number" and raise >= 0 and raise <= 6 and p.Level >= BC.ChampionLevel(r) and p.Level <= BC.ChampionLevel(r) + raise, fmt("%d/%d: %s L%d (curve L%d)", r, s, tostring(p.PetId), p.Level, BC.ChampionLevel(r)))
+					t7:case(type(raise) == "number" and raise >= 0 and raise <= 6 and p.Level >= BC.ChampionLevel(r) and p.Level <= highest + raise, fmt("%d/%d: %s L%d (curve L%d, highest L%d)", r, s, tostring(p.PetId), p.Level, BC.ChampionLevel(r), highest))
 				end
 				t6:case(spec.Power == BC.TeamPower(spec.Pets), r .. "/" .. s .. " power")
 				if r > 1 then
 					t3:case(BC.RingPower(r, s) >= BC.RingPower(r - 1, s), r .. "/" .. s .. ": " .. tostring(BC.RingPower(r - 1, s)) .. " -> " .. tostring(BC.RingPower(r, s)))
+					t8:case(spec.Champion.Level >= BC.ChampionTeam(r - 1, s).Champion.Level, r .. "/" .. s)
 				end
 				t4:case(not PC.IsEventOnly(spec.Pets[1].PetId), spec.Pets[1].PetId)
 			end
@@ -133,6 +137,7 @@ S.ringnh_catalog = guarded("ringnh_catalog", function()
 	t4:report()
 	t6:report()
 	t7:report()
+	t8:report()
 	-- the curve
 	local A = R.LevelAnchors
 	T.check(type(A) == "table" and A[1][1] == 1 and A[1][2] == 1 and A[#A][2] == top, "ring no-heal: Ring.LevelAnchors starts at round 1 / level 1 and ends at MaxPetLevel " .. top)
@@ -151,7 +156,7 @@ S.ringnh_catalog = guarded("ringnh_catalog", function()
 		end
 	end
 	T.check(curveOk, "ring no-heal: ChampionLevel follows LevelAnchors (linear between anchors, floored, + BossLevelBump on BossEvery rounds, held at 100)", table.concat(curveBad, ", "))
-	T.check(BC.ChampionLevel(1) == 1 and BC.ChampionLevel(3) == 1 and BC.ChampionLevel(A[#A][1] + 1) == top and BC.ChampionLevel(120) == top and BC.ChampionLevel(100000) == top, "ring no-heal: rounds 1-3 are level 1; past the last anchor the champion stays at 100")
+	T.check(BC.ChampionLevel(1) == 1 and BC.ChampionLevel(A[#A][1] + 1) == top and BC.ChampionLevel(120) == top and BC.ChampionLevel(100000) == top, "ring no-heal: round 1 is level 1; past the last anchor the champion stays at 100")
 	T.check(BC.ChampionLevel(10) == curve(A, 10) + R.BossLevelBump and BC.ChampionLevel(11) == curve(A, 11), "ring no-heal: a boss round (BossEvery) adds BossLevelBump levels, the next round does not")
 	T.check(BC.ChampionTier(1) == "Normal" and BC.ChampionTier(R.TierFrom.Golden - 1) == "Normal" and BC.ChampionTier(R.TierFrom.Golden) == "Golden" and BC.ChampionTier(R.TierFrom.Rainbow - 1) == "Golden" and BC.ChampionTier(R.TierFrom.Rainbow) == "Rainbow" and BC.ChampionTier(500) == "Rainbow", "ring no-heal: ChampionTier by TierFrom (Normal -> Golden -> Rainbow)")
 	local h = R.Helpers
