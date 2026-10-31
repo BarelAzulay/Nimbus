@@ -29,6 +29,7 @@
 --                         are passed along; with an Action or Key the Phase 4 care profile below is synced first)
 --   pets[:phone|:pick|:sheet|:<key>]  team balance: the Pets window (PetsController) with the care profile; phone = at
 --                         844x390, pick = pick mode on slot 2, sheet = at 844x390 with a pet's sheet open, <key> = on that pet
+--   loss[:ring|:dungeon|:phone]  team balance: LossScreen after a lost run; phone = at 844x390
 --   home[:coins]          Phase 4: the Home window with the care profile (Prestige 1, the Garden with 4 places, plants,
 --                         the Food Machine, the Training Place) and the plot attributes CollectorCash / IncomePerSecond /
 --                         GardenSlots / CoinPiles; ":coins" = a migrated home (LegacySlots 6, LegacyPrices) with a big
@@ -2725,6 +2726,30 @@ scenario("pets", function(view)
 	end
 	toClient("OpenPanel", "Pets", args)
 	advance(3)
+end)
+
+-- loss[:ring|:dungeon|:phone]: team balance Task 6: LossScreen with a level-up, two XP bars and the run's lines
+scenario("loss", function(view)
+	local ids = CAREUI.profile()
+	if view == "phone" then
+		Mock.SetViewport(844, 390)
+		advance(0.2)
+	end
+	local dungeon = view == "dungeon"
+	req("client/Controllers/LossScreen").Show({
+		Mode = dungeon and "Dungeon" or "Ring",
+		Title = dungeon and "KNOCKED OUT" or "RUN OVER",
+		Sub = dungeon and "Floor 1: your team fell in room 2" or "Champion Ring: the champion won round 3",
+		Pets = {
+			{ Key = ids.Ready, PetId = ids.Ready, Before = 18, After = 20, XpFrac = 0.1, XpBefore = 0.7 },
+			{ Key = ids.Epic, PetId = ids.Epic, Before = 57, After = 57, XpFrac = 0.6, XpBefore = 0.2 },
+			{ Key = ids.Garden1, PetId = ids.Garden1, Before = 12, After = 12, XpFrac = 0.4, XpBefore = 0.3 },
+		},
+		Lines = { { "+$1,240 Cash" }, { "+96 Pet XP" }, { "+8 Tokens" } },
+		Start = 1,
+		OnFightAgain = function() end,
+	})
+	advance(2)
 end)
 
 scenario("looks", function(which)

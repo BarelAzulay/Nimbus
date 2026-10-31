@@ -250,6 +250,27 @@ COVER[#COVER + 1] = {
 		return g and g:FindFirstChild("Window_Pets")
 	end,
 }
+COVER[#COVER + 1] = {
+	Scene = "loss",
+	Centered = true,
+	Open = function()
+		CUI.profile()
+		local pets = NK.req("shared/PetCatalog").Pets
+		local rows = {}
+		for i = 1, 3 do
+			rows[i] = { Key = pets[i].Id, PetId = pets[i].Id, Before = 1, After = (i == 1) and 3 or 1, XpFrac = 0.6, XpBefore = 0.2 }
+		end
+		NK.req("client/Controllers/LossScreen").Show({ Mode = "Ring", Title = "RUN OVER", Sub = "Champion Ring: the champion won round 3",
+			Pets = rows, Lines = { { "+$1,240 Cash" }, { "+96 Pet XP" }, { "+8 Tokens" } }, Start = 1, OnFightAgain = function() end })
+	end,
+	Close = function()
+		NK.req("client/Controllers/LossScreen").Hide()
+	end,
+	Window = function()
+		local g = NK.pg():FindFirstChild("NimbusLoss")
+		return g and g:FindFirstChild("LossCard", true)
+	end,
+}
 for _, spec in ipairs({ { "menu:Home", "Home", "Home" }, { "menu:Shop", "Shop", "Shop" }, { "menu:Stats", "Stats", "Stats" } }) do
 	COVER[#COVER + 1] = {
 		Scene = spec[1],
