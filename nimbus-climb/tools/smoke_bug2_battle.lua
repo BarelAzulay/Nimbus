@@ -406,8 +406,8 @@ S.bug2bat_raid_balance = guarded("bug2bat_raid_balance", function()
 	-- balance-5: the Lava Golem counters the Frost-heavy mid team (M5) and the bug #22 engaged pets (EngagePull 7) cost
 	-- that group time. Team balance: the L35 baseline's FloorSeconds and GroupBonus set the raid HP, so the Golem's own
 	-- seconds are 65 (its group HP stays where wave 6 left it), the Storm Titan's 105 (4 owner-teams last 100+ s)
-	T.check(BC.Bosses.lava_golem.HpPerPlayer == 65 and BC.Bosses.storm_titan.HpPerPlayer == 105 and BC.Bosses.frost_wyrm.HpPerPlayer == 100 and BC.Bosses.shadow_hydra.HpPerPlayer == 100,
-		"team balance: HpPerPlayer lava_golem 65, storm_titan 105, the other bosses 100", tostring(BC.Bosses.lava_golem.HpPerPlayer))
+	T.check(BC.Bosses.lava_golem.HpPerPlayer == 65 and BC.Bosses.storm_titan.HpPerPlayer == 105 and BC.Bosses.frost_wyrm.HpPerPlayer == 100 and BC.Bosses.shadow_hydra.HpPerPlayer == 97,
+		"team balance: HpPerPlayer lava_golem 65, storm_titan 105, frost_wyrm 100, shadow_hydra 97", tostring(BC.Bosses.lava_golem.HpPerPlayer))
 	local lavaSolo = SIM.midGroup("lava_golem", 1, 2)
 	local lavaGroup = SIM.midGroup("lava_golem", 8, 16)
 	T.check(lavaSolo.n == 2 and lavaSolo.wins[1] == 0, "balance-5 (#2): a solo mid (M5) team still loses to the Lava Golem", fmt("%d of %d", lavaSolo.wins[1], lavaSolo.n))

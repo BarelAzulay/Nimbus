@@ -938,13 +938,18 @@ end
 -- rarity band (never EventOnly; a band's lower rarity in the first half of its rounds, the higher one in the second
 -- half; the open band its last rarity from From + 6): a seeded pick among the species that match the round before
 -- within MaxLevelRaise levels of the curve (none there: the strongest one). The team's TeamPower never drops
--- below the round before: the level is raised, then the tier, then a champion joins, then a training rank; at the very
--- top the stronger team of the round before stays. Rounds 1-3 (OpeningRounds) are the three weakest level-1 Commons that do not heal.
--- Tuned 2026-10-30 with tools/sim_battle.lua (section ring, no heal, 12 seeds; re-measured with MaxLevelRaise 5): stage
--- record medians S1 13, S2 15, S3 19, S4 25, S5 25, S6 30, S7 33, S8 35, S9 42, S10 51 (the fresh-HP ladder before was
--- 14 .. 49), three L100 Rainbow evo-2 fully trained pets 67; rounds 1-3 100% for every single level-1 starter; a team
--- beats champions 10+ levels below it 24 of 24; round 100's champions beat the maxed team 24 of 24 fresh fights; a
--- champion's level is never more than 5 above the curve (64 seeds x 400 rounds).
+-- below the round before and its shown level never falls: the level is raised, then the tier, then a champion joins, then
+-- a training rank; at the very top the stronger team of the round before stays. Round 1 (OpeningRounds) is the weakest
+-- level-1 Common that does not heal.
+-- Tuned 2026-10-31 with tools/sim_battle.lua (spec 2026-10-31 s.4-6, SIM_BATTLE=full, run XP + loss XP, 63 of 63 targets):
+--   Ring rounds won, Default (Idle): 3 L1 Commons 3 (2), reach round 5 in 3% of seeds, round 1 won 100%; 1 L1 Common 2 (1);
+--   3 L1 Legendaries 9 (5); the owner's L10/11/11 Secrets 19 (11); 3 L50 Legendaries evo 2 39 (29); 3 L100 maxed 71 (58).
+--   Dungeon floor 1, 3 L1 Commons: room 1 97%, room 2 55%, clear 0%; 3 L7 Commons clear 100%; the eased room 100% for every
+--   single L1 starter. Best floor: L7 Commons 1, Legendaries 2, the owner's Secrets 4, L50 Legendaries 7, maxed 12.
+--   Raids: the owner's Secrets win 0 of 8 solo on every boss; 4 owner-teams 102-107 s, 8 owner-teams 128-129 s.
+--   A new player (3 L1 Commons, 24 players, medians): Ring 5 in 4.3 min, floor 1 in 5.4 min, Ring 10 in 33.3 min (lead pet L15);
+--   a run takes about 107 s with the walk back. A veteran keeps a record and its boss starts: the owner's team starting at
+--   round 10 wins 10 rounds, at round 20 none (L32+ Legendaries).
 ----------------------------------------------------------------------
 BattleCatalog.Ring = {
 	-- { round, level } anchors of the champion level curve (the last anchor holds)
@@ -964,8 +969,8 @@ BattleCatalog.Ring = {
 	-- levels of the curve (so the shown level follows the curve instead of jumping L42 -> L26 -> ...)
 	MaxLevelRaise = 5,
 	Bands = { -- the champions' rarity by round; the last band is open-ended
-		{ From = 1, To = 7, Rarities = { "Common" } },
-		{ From = 8, To = 11, Rarities = { "Uncommon" } },
+		{ From = 1, To = 8, Rarities = { "Common" } },
+		{ From = 9, To = 11, Rarities = { "Uncommon" } },
 		{ From = 12, To = 14, Rarities = { "Rare" } },
 		{ From = 15, To = 19, Rarities = { "Epic" } },
 		{ From = 20, To = 29, Rarities = { "Legendary" } },
@@ -979,8 +984,8 @@ BattleCatalog.Ring = {
 	SecondsMax = 9,
 	RecordMult = 3,
 	BossTokens = 100,
-	XpBase = 20,
-	XpPerRound = 21,
+	XpBase = 10,
+	XpPerRound = 23,
 	TimeLimit = 90, -- = TimeLimits.Ring; a timeout is a loss
 	Intermission = 3,
 	MaxRound = 100000,
@@ -1649,7 +1654,7 @@ BattleCatalog.Bosses = {
 		Name = "Shadow Hydra",
 		Element = "Shadow",
 		Blurb = "Three heads, one grudge. Celestial pets shine through its dark.",
-		HpPerPlayer = 100,
+		HpPerPlayer = 97,
 		Radius = 7,
 		Scale = 1,
 		Basic = { Name = "Shadow Bite", Interval = 1.8, Damage = 0.04, Range = 20 },

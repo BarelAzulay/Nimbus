@@ -617,7 +617,7 @@ level: x1.5 of the bonus after the first EVOLVE, x1.875 after the second (a leve
 | A lost Dungeon room | a third of its XP, when your pets really fought (20 seconds or more, or 20 % of the enemies' health) |
 | A duel | 60 for a win, 25 for a draw or a loss |
 | A Boss Raid | 50 up to 400 by your tier (20 when the boss wins) |
-| A Champion Ring round | 20 + 21 x the round (the round that ends your run pays a third) |
+| A Champion Ring round | 10 + 23 x the round (the round that ends your run pays a third) |
 
 ### Evolution: the EVOLVE button
 
@@ -1072,7 +1072,7 @@ where to start (round 1, or any boss round you have beaten) and press **START**.
 - **No heal between rounds:** your pets keep the HP they ended a round with, and a fainted pet sits out the rest of
   the run. When a win leaves nobody standing the run is over (the wins stay paid). A new run starts at full HP.
 - **Every win pays Cash and XP:** the bigger of $20 + $2 x the round and what your garden makes in 1.5 + 0.1 x the
-  round seconds (at most 9 seconds), and 20 + 21 x the round XP for every pet of your team. A **new record** round
+  round seconds (at most 9 seconds), and 10 + 23 x the round XP for every pet of your team. A **new record** round
   pays **x3 Cash**, and beating a boss round for the first time pays **100 Cloud Tokens**. The round that ends your
   run pays a third of its XP when your pets really fought.
 - **Who fights:** your battle team; without one, the pets following you; without those, your strongest pets. Pets in
@@ -1081,15 +1081,15 @@ where to start (round 1, or any boss round you have beaten) and press **START**.
 
 | Round | Champion | Cash per win (at least) | XP for every team pet |
 |---|---|---|---|
-| 1 | a level-1 Pebble Pup (Common) | $22 | 41 |
-| 2 | a level-4 Common pet | $24 | 62 |
-| 3 | a level-8 Common pet | $26 | 83 |
+| 1 | a level-1 Pebble Pup (Common) | $22 | 33 |
+| 2 | a level-4 Common pet | $24 | 56 |
+| 3 | a level-8 Common pet | $26 | 79 |
 | 5 | a level-15 Common pet | $30 | 125 |
-| 10 | **Boss:** an Uncommon pet | $40 | 230 |
-| 20 | **Boss:** a Legendary pet | $60 | 440 |
-| 30 | **Boss:** a Mythic pet | $80 | 650 |
-| 40 | **Boss:** a Golden Secret pet | $100 | 860 |
-| 50 | **Boss:** a Golden Secret pet | $120 | 1,070 |
+| 10 | **Boss:** an Uncommon pet | $40 | 240 |
+| 20 | **Boss:** a Legendary pet | $60 | 470 |
+| 30 | **Boss:** a Mythic pet | $80 | 700 |
+| 40 | **Boss:** a Golden Secret pet | $100 | 930 |
+| 50 | **Boss:** a Golden Secret pet | $120 | 1,160 |
 
 The ring never ends: from round 51 the champions are Rainbow, by round 70 they are level 100, and from round 70 to
 100 they train every skill like your pets do, so the top stays hard. When a run is over the result card
