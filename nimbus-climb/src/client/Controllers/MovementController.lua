@@ -51,6 +51,11 @@
 --                                                    ignored, the mobile buttons dim like Downed, WalkSpeed = walkSpeed
 --                                                    (the "server owns WalkSpeed" watch suspended, a server 0 still
 --                                                    wins); nil = the normal speed rules at once. GetSpeedState().Cinematic
+--   * Unlimited stamina in the lobby: inside Config.InLobbyZone, out of a match and a battle, running drains nothing, a
+--     dash costs no stamina (its cooldown stays) and the bar is full, so the HUD simply shows it full. GetSpeedState().StaminaFree
+--   * Dev 2x speed (DevService "speed"): while the server's hint NC_DevSpeed is on our PlayerGui, walking and running are
+--     written at twice their speed on top of the server's base (never on top of our own write, so it cannot stack). Not in
+--     a battle or a scripted walk: BattleService leashes the character to the server fighter there. GetSpeedState().DevSpeed
 -- Plain Lua 5.1-compatible syntax only.
 
 local Players = game:GetService("Players")
@@ -98,6 +103,8 @@ local DASH_BUFFER = 0.18 -- a dash pressed this close to "ready" is queued
 local FROZEN_SPEED = 0.5 -- WalkSpeed below this means "frozen by the server"
 local SPEED_EPS = 0.05 -- tolerance when comparing WalkSpeed with what we wrote
 local MOVE_EPS = 0.1 -- MoveDirection magnitude that counts as "moving"
+local DEV_SPEED_HINT = "NC_DevSpeed" -- PlayerGui attribute set by DevService (only for developers)
+local DEV_SPEED_MULT = 2
 
 local LINE_COUNT = 18 -- screen speed lines
 local BUTTON_ALPHA = 0.2
@@ -160,6 +167,34 @@ local function isLocked()
 		return true
 	end
 	return baseSpeed < FROZEN_SPEED
+end
+
+-- In the lobby (not in a match or a battle) stamina is unlimited.
+local function staminaFree(root)
+	if LocalPlayer:GetAttribute(ATTR.InMatch) == true then
+		return false
+	end
+	local inBattle = LocalPlayer:GetAttribute(ATTR.InBattle or "InBattle")
+	if inBattle ~= nil and inBattle ~= false and inBattle ~= "" then
+		return false
+	end
+	return Config.InLobbyZone(root.Position)
+end
+
+-- 2 while the dev speed is on and nothing else owns the speed (a battle's legal speeds, a scripted walk); else 1.
+local function devSpeedMult()
+	if battleSpeed or cinematic then
+		return 1
+	end
+	local inBattle = LocalPlayer:GetAttribute(ATTR.InBattle or "InBattle")
+	if inBattle ~= nil and inBattle ~= false and inBattle ~= "" then
+		return 1
+	end
+	local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+	if pg and pg:GetAttribute(DEV_SPEED_HINT) == true then
+		return DEV_SPEED_MULT
+	end
+	return 1
 end
 
 -- Phase 5 (7.2): run / dash input waits for PLAY on the main menu (no UiGate module = always open)
@@ -924,7 +959,7 @@ function tryDash()
 	local now = os.clock()
 	local dir, steering = computeDashDirection(humanoid, root)
 
-	if not freeDash then
+	if not freeDash and not staminaFree(root) then
 		stamina = stamina - P.DashStaminaCost
 		if stamina <= 0 then
 			stamina = 0
@@ -1043,14 +1078,21 @@ local function step(dt)
 		dashBufferUntil = 0
 	end
 
-	-- 3. Run + stamina.
+	-- 3. Run + stamina (none spent in the lobby: the bar is full there).
+	local free = staminaFree(root)
+	if free then
+		stamina = P.MaxStamina
+		exhausted = false
+	end
 	local moving = humanoid.MoveDirection.Magnitude > MOVE_EPS
 	local wantsRun = (shiftHeld or runToggled) and not locked
 	local running = wantsRun and moving and not exhausted and stamina > 0 and not humanoid.Sit
 	if dash then
 		running = false
 	end
-	if running then
+	if free then
+		regenBlockedUntil = 0
+	elseif running then
 		stamina = stamina - P.RunStaminaDrain * dt
 		regenBlockedUntil = math.max(regenBlockedUntil, now + RUN_REGEN_DELAY)
 		if stamina <= 0 then
@@ -1083,11 +1125,12 @@ local function step(dt)
 		end
 	end
 
-	-- 5. Write WalkSpeed: base speed + run boost (the battle run instead of RunSpeed in a battle). Outside a battle
-	--    it stops touching it when not running; in a battle the walk itself is ours to write.
-	if baseSpeed >= FROZEN_SPEED and (runBlend > 0.001 or battleSpeed ~= nil or cinematic ~= nil) then
+	-- 5. Write WalkSpeed: base speed + run boost (the battle run instead of RunSpeed in a battle), times the dev speed.
+	--    Outside a battle it stops touching it when not running; in a battle the walk itself is ours to write.
+	local speedMult = devSpeedMult()
+	if baseSpeed >= FROZEN_SPEED and (runBlend > 0.001 or battleSpeed ~= nil or cinematic ~= nil or speedMult ~= 1) then
 		local runTarget = (cinematic and baseSpeed) or (battleSpeed and battleSpeed.run) or math.max(baseSpeed, P.RunSpeed)
-		local speed = baseSpeed + (runTarget - baseSpeed) * runBlend
+		local speed = (baseSpeed + (runTarget - baseSpeed) * runBlend) * speedMult
 		if lastWritten == nil or math.abs(speed - lastWritten) > 0.001 or math.abs(current - speed) > SPEED_EPS then
 			humanoid.WalkSpeed = speed
 			lastWritten = speed
@@ -1523,6 +1566,8 @@ function MovementController.GetSpeedState()
 		Written = lastWritten,
 		Cinematic = cinematic ~= nil,
 		FovOverride = fovOverride,
+		StaminaFree = ctx ~= nil and staminaFree(ctx.root),
+		DevSpeed = devSpeedMult() ~= 1,
 	}
 end
 
