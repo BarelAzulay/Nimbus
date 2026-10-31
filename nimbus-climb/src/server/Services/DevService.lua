@@ -68,11 +68,11 @@
 --                   its position; not a number = refused), /sky raid <boss> previews a raid sky (a boss id or a unique
 --                   start of one: "/sky raid frost"), /sky clear takes it down. Touches no profile data.
 --   kick <player> [reason]   removes a player from this server (Player:Kick; the reason goes through the text filter, and a
---                   filter that fails drops it). <player> is a name or display name, a unique part is enough (exact names win);
---                   refuses yourself, an unknown or ambiguous name. Needs no profile.
+--                   filter that fails drops it). <player> is a userId, a name or display name, a unique part is enough (exact names
+--                   win); refuses yourself, an unknown or ambiguous name. Needs no profile.
 --   ban <player> [reason]    a permanent ban (Players:BanAsync, Duration -1, the whole universe; the engine removes a player in
---                   the server). <player>: someone in the server by a unique part of their name, or anyone by exact name or
---                   userId. Refuses yourself and any other developer (Config.Dev.Admins, the owner, IsAllowed for those in the
+--                   the server). <player>: anyone by exact name or userId, or someone in the server by their exact display name; a
+--                   part of a name only earns a hint, and a display name two players share is refused. Refuses yourself and any other developer (Config.Dev.Admins, the owner, IsAllowed for those in the
 --                   server), online or offline. The API's own error is the toast; so is Players.BanningEnabled off. In Studio
 --                   Roblox validates a ban but only runs it on live servers: the toast says nobody was banned.
 --   unban <name|userId>      Players:UnbanAsync in the same scope, the same honest toasts.
@@ -1180,37 +1180,55 @@ local function splitTarget(text)
 	return word, rest
 end
 
--- The one player in this server a word means: an exact Name, an exact DisplayName, else the one whose Name or DisplayName
--- contains it. -> player | nil, problem (a toast's text)
-local function findOnline(word)
+-- A word that could mean several players, as a toast's text.
+local function ambiguous(word, list)
+	local names = {}
+	for i = 1, math.min(4, #list) do
+		names[i] = list[i].Name
+	end
+	return "'" .. string.sub(word, 1, 24) .. "' could be " .. table.concat(names, ", ") .. ((#list > 4) and ", ..." or "")
+end
+
+-- The one player in this server a word means: their userId (the panel sends it, so a player who just left is never
+-- swapped for a similar name), an exact Name, the only exact DisplayName, else (unless exactOnly; never for digits) the
+-- one whose Name or DisplayName contains it. -> player | nil, problem (a toast's text)
+local function findOnline(word, exactOnly)
+	local digits = string.match(word, "^%d+$") ~= nil
+	if digits then
+		local id = tonumber(word)
+		if isWhole(id) and id >= 1 and id <= MAX_USER_ID then
+			local byId = Players:GetPlayerByUserId(id)
+			if byId then
+				return byId
+			end
+		end
+	end
 	local key = string.lower(word)
-	local exact, partial = nil, {}
+	local exact, partial = {}, {}
 	for _, p in ipairs(Players:GetPlayers()) do
 		local name, display = string.lower(p.Name), string.lower(tostring(p.DisplayName or ""))
 		if name == key then
 			return p
 		end
 		if display == key then
-			exact = exact or p
+			exact[#exact + 1] = p
 		elseif string.find(name, key, 1, true) or string.find(display, key, 1, true) then
 			partial[#partial + 1] = p
 		end
 	end
-	if exact then
-		return exact
+	if #exact > 1 then
+		return nil, ambiguous(word, exact)
+	end
+	if #exact == 1 then
+		return exact[1]
+	end
+	if #partial == 0 or exactOnly or digits then
+		return nil, "nobody here is called '" .. string.sub(word, 1, 24) .. "'"
 	end
 	if #partial == 1 then
 		return partial[1]
 	end
-	local shown = string.sub(word, 1, 24)
-	if #partial == 0 then
-		return nil, "nobody here is called '" .. shown .. "'"
-	end
-	local names = {}
-	for i = 1, math.min(4, #partial) do
-		names[i] = partial[i].Name
-	end
-	return nil, "'" .. shown .. "' could be " .. table.concat(names, ", ") .. ((#partial > 4) and ", ..." or "")
+	return nil, ambiguous(word, partial)
 end
 
 -- A developer's typed reason, as this player may read it. nil when the filter fails: the raw text is never shown.
@@ -1322,10 +1340,11 @@ local function cmdBan(player, _, arg)
 	if banningOff() then
 		return false, "bans are off here: turn on Players.BanningEnabled in Studio, then publish"
 	end
-	-- someone here by a part of their name; otherwise an exact account name or a userId
+	-- someone here by their exact name, otherwise any account by exact name or userId: a ban is forever, a part of a
+	-- name only earns a hint
 	local online = nil
 	if not string.match(word, "^%d+$") then
-		local found, problem = findOnline(word)
+		local found, problem = findOnline(word, true)
 		if found then
 			online = found
 		elseif problem and not string.find(problem, "nobody here", 1, true) then
@@ -1338,7 +1357,8 @@ local function cmdBan(player, _, arg)
 	else
 		userId, label = accountOf(word)
 		if not userId then
-			return false, label
+			local near = findOnline(word)
+			return false, near and (label .. ": did you mean " .. near.Name .. "?") or label
 		end
 		online = Players:GetPlayerByUserId(userId)
 	end

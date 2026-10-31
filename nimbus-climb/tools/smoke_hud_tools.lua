@@ -13,7 +13,7 @@
 --                      the Altar island, the arena floor and a match course are not
 --   hudtools_security  (server, booted) a non-developer in the live game runs none of the new commands, by remote or chat,
 --                      with any argument: nobody is kicked or banned, no data changes, no speed hint
---   hudtools_kick      (server, booted) /kick by partial unique name with a filtered reason; refuses yourself, an ambiguous
+--   hudtools_kick      (server, booted) /kick by userId or partial unique name with a filtered reason; refuses yourself, an ambiguous
 --                      or unknown name and junk; a failed filter drops the reason, never shows it raw
 --   hudtools_ban       (server, booted) /ban and /unban against the docs' BanAsync / UnbanAsync config (Duration -1); online
 --                      by partial name, offline by exact name or userId; refuses yourself and other developers, online or
@@ -488,6 +488,21 @@ local function serverScenarios()
 			mark = send(owner, "kick", "Dana")
 			T.check(exactA.Parent == nil and exactB.Parent ~= nil, "hudtools kick: an exact name wins over a longer partial match")
 
+			-- display names are not unique: two exact hits are refused, never the first one listed
+			local bobA, bobB = join(joined, "DupOne", 42006), join(joined, "DupTwo", 42007)
+			bobA.DisplayName, bobB.DisplayName = "Bob", "Bob"
+			mark = chat(owner, "/kick Bob")
+			toast = lastToast(owner, mark)
+			T.check(bobA.Parent ~= nil and bobB.Parent ~= nil and toast.kind == "bad" and has(toast.text, "DupOne") and has(toast.text, "DupTwo"), "hudtools kick: two players with the same display name kick nobody", toast.text)
+
+			-- the panel names a player by userId, so one who just left is never swapped for a similar name
+			local fan = join(joined, "Fan42006", 42008)
+			mark = send(owner, "kick", "42006")
+			T.check(bobA.Parent == nil and fan.Parent ~= nil, "hudtools kick: a userId kicks exactly that player")
+			mark = send(owner, "kick", "42006")
+			toast = lastToast(owner, mark)
+			T.check(fan.Parent ~= nil and toast.kind == "bad", "hudtools kick: the userId of a player who left kicks nobody, not a name containing it", toast.text)
+
 			mark = chat(owner, "/kick KickOwner")
 			toast = lastToast(owner, mark)
 			T.check(owner.Parent ~= nil and toast.kind == "bad" and has(toast.text, "yourself"), "hudtools kick: you cannot kick yourself", toast.text)
@@ -530,10 +545,20 @@ local function serverScenarios()
 			Config.Dev.Admins = { 43002, 43003 } -- 43003: an admin who is not in the server
 			Mock.KnownUsers = { OfflineOlga = 43004, OfflineAdmin = 43003, BanOwner = OWNER_ID }
 
+			-- a ban is forever: a part of a name never bans
 			local bans = #Mock.BanLog
-			local mark = chat(owner, "/ban rude spamming everyone")
+			local mark = chat(owner, "/ban rude")
+			local hint = lastToast(owner, mark)
+			T.check(#Mock.BanLog == bans and rude.Parent ~= nil and hint.kind == "bad" and has(hint.text, "RudeRalph"), "hudtools ban: a part of a name bans nobody, the toast suggests the name", hint.text)
+			local bobA, bobB = join(joined, "DupThree", 43010), join(joined, "DupFour", 43011)
+			bobA.DisplayName, bobB.DisplayName = "Bob", "Bob"
+			mark = chat(owner, "/ban Bob")
+			hint = lastToast(owner, mark)
+			T.check(#Mock.BanLog == bans and hint.kind == "bad" and has(hint.text, "DupThree") and has(hint.text, "DupFour"), "hudtools ban: two players with the same display name ban nobody", hint.text)
+
+			mark = chat(owner, "/ban RudeRalph spamming everyone")
 			local entry = Mock.BanLog[#Mock.BanLog]
-			if T.check(#Mock.BanLog == bans + 1 and entry ~= nil, "hudtools ban: /ban by partial name calls Players:BanAsync") then
+			if T.check(#Mock.BanLog == bans + 1 and entry ~= nil, "hudtools ban: /ban by exact name calls Players:BanAsync") then
 				T.check(type(entry.UserIds) == "table" and #entry.UserIds == 1 and entry.UserIds[1] == 43001, "hudtools ban: ...for that one userId")
 				T.eq(entry.Duration, -1, "hudtools ban: ...permanent (Duration -1)")
 				T.eq(entry.ApplyToUniverse, true, "hudtools ban: ...for the whole universe")
@@ -546,8 +571,10 @@ local function serverScenarios()
 
 			-- offline, by exact name or userId
 			bans = #Mock.BanLog
+			local olgaFan = join(joined, "OfflineOlgaFan", 43012)
 			mark = chat(owner, "/ban OfflineOlga")
 			T.check(#Mock.BanLog == bans + 1 and Mock.BanLog[#Mock.BanLog].UserIds[1] == 43004, "hudtools ban: an offline player by exact name", lastToast(owner, mark).text)
+			T.check(olgaFan.Parent ~= nil, "hudtools ban: ...not the player online whose name contains it")
 			T.check(type(Mock.BanLog[#Mock.BanLog].DisplayReason) == "string" and #Mock.BanLog[#Mock.BanLog].DisplayReason > 0, "hudtools ban: ...no reason still sends a DisplayReason (it is required)")
 			bans = #Mock.BanLog
 			chat(owner, "/ban 43005 botting")
@@ -1202,7 +1229,7 @@ local function clientScenarios()
 			Mock.Click(kick)
 			advance(0.5)
 			local call, n = lastCall(mark)
-			T.check(n == 1 and call.args[1] == "kick" and call.args[2] == "PanelVictim", "hudtools panel: Kick sends DevCommand('kick', name)", call and tostring(call.args[2]) or "none")
+			T.check(n == 1 and call.args[1] == "kick" and call.args[2] == "77001", "hudtools panel: Kick sends DevCommand('kick', userId)", call and tostring(call.args[2]) or "none")
 
 			local banText = ban.Text
 			mark = #Mock.RemoteLog
@@ -1217,7 +1244,7 @@ local function clientScenarios()
 			Mock.Click(ban)
 			advance(0.2)
 			call, n = lastCall(mark)
-			T.check(n == 1 and call.args[1] == "ban" and call.args[2] == "PanelVictim", "hudtools panel: the second, separate tap sends DevCommand('ban', name)", call and tostring(call.args[2]) or "none")
+			T.check(n == 1 and call.args[1] == "ban" and call.args[2] == "77001", "hudtools panel: the second, separate tap sends DevCommand('ban', userId)", call and tostring(call.args[2]) or "none")
 			T.eq(ban.Text, banText, "hudtools panel: ...and the button goes back to its label")
 			advance(0.7)
 			mark = #Mock.RemoteLog

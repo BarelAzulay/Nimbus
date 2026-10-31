@@ -525,7 +525,7 @@ local function buildPlayerRow(player)
 	label.Parent = row
 	local entry = { Row = row, Confirm = nil }
 	if not mine then
-		local name = player.Name
+		local target = tostring(player.UserId) -- the server finds exactly this player, or nobody once they left
 		local half = UDim2.new(0.5, -K.ROW_GAP / 2, 0, K.BUTTON_H)
 		local kick = CloudUI.Button({
 			Name = "Dev_kick_" .. id,
@@ -536,7 +536,7 @@ local function buildPlayerRow(player)
 			TextSize = K.ROW_TEXT,
 			ZIndex = 6,
 			Callback = panelPress(function()
-				send("kick", name)
+				send("kick", target)
 			end),
 			Parent = row,
 		})
@@ -552,7 +552,7 @@ local function buildPlayerRow(player)
 			ZIndex = 6,
 			Callback = panelPress(function()
 				guard("ban", confirmPress, confirm, function()
-					return send("ban", name)
+					return send("ban", target)
 				end)
 			end),
 			Parent = row,
