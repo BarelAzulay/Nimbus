@@ -129,7 +129,7 @@ Config.Remotes = {
 	"ObbyPick", -- (levelId:string)  pick an obby level at the Obby gate (PortalService.PickLevel; unlocked levels only)
 	"SettingsSet", -- (key:string, value:any)  Music / Sfx 0..10, Gfx "Auto"|"Low"|"High", Shake / MouseLock bool, SeenNotes int (DataService)
 	"MenuPlay", -- ()  the main menu's PLAY: the server spawns the character (PlayerService.SpawnPlayer; first per session, 1/s)
-	"QuickTravel", -- (dest:string) "Court" | "Plaza"  HUD cleanup: the pill's Travel drop-down (GateService.Travel)
+	"QuickTravel", -- (dest:string) "Plaza"  the pill's Travel button: opens the home portal to the lobby (GateService.Travel)
 }
 
 ----------------------------------------------------------------------
@@ -161,7 +161,41 @@ Config.Lobby = {
 	PlotSize = 72, -- flat square buildable area (studs) of each home plot (read by TycoonCatalog)
 	ShopOffset = Vector3.new(0, 0, -196), -- shop island centre relative to Origin (was -150)
 	KillY = 100, -- fall below this -> teleport back to the plaza
+	ZoneRadius = 286, -- the lobby zone (Config.InLobbyZone): the plaza, the shop and garden islands and the spoke bridges, up to the ring street's inner edge
+	ZoneBand = 80, -- studs above / below Origin that still count as the lobby zone
+	ZoneAltarAttr = "AltarIslandAt", -- Workspace attribute (Vector3, StormAltar.Build): the Altar island sits inside ZoneRadius ...
+	ZoneAltarReach = 32, -- ... so this many studs around it, and around its bridge out to the street, are not the lobby
 }
+
+-- True when a position is in the lobby proper: never a home plot, the ring street, the Arena island or a match course (they
+-- lie outside ZoneRadius), nor the Altar island and its bridge (the hole around ZoneAltarAttr, read live: it replicates).
+-- Safe on the server and the client; junk is false.
+function Config.InLobbyZone(pos)
+	if typeof(pos) ~= "Vector3" or pos.X ~= pos.X or pos.Y ~= pos.Y or pos.Z ~= pos.Z then
+		return false
+	end
+	local L = Config.Lobby
+	local dx, dz = pos.X - L.Origin.X, pos.Z - L.Origin.Z
+	if dx * dx + dz * dz > L.ZoneRadius * L.ZoneRadius or math.abs(pos.Y - L.Origin.Y) > L.ZoneBand then
+		return false
+	end
+	local altar = workspace:GetAttribute(L.ZoneAltarAttr)
+	if typeof(altar) == "Vector3" then
+		-- the distance to the ray from the island's centre straight out from the plaza
+		local ax, az = altar.X - L.Origin.X, altar.Z - L.Origin.Z
+		local len = math.sqrt(ax * ax + az * az)
+		if len > 0 then
+			ax, az = ax / len, az / len
+			local rx, rz = pos.X - altar.X, pos.Z - altar.Z
+			local along = math.max(0, rx * ax + rz * az)
+			local ox, oz = rx - ax * along, rz - az * along
+			if ox * ox + oz * oz <= L.ZoneAltarReach * L.ZoneAltarReach then
+				return false
+			end
+		end
+	end
+	return true
+end
 
 ----------------------------------------------------------------------
 -- Match settings + difficulties

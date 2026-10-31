@@ -5272,6 +5272,8 @@ defclass("Player", "Instance", {
 	end,
 })
 Mock.KickedPlayers = {}
+Mock.BanLog = {} -- the config of every Players:BanAsync that ran
+Mock.UnbanLog = {}
 
 function Mock.GetPlayerFromCharacter(model)
 	if not Players_ then
@@ -5735,7 +5737,7 @@ defclass("Terrain", "BasePart", {
 })
 
 service("Players", {
-	props = { CharacterAutoLoads = T.bool(true), RespawnTime = T.num(5), MaxPlayers = T.num(12), PreferredPlayers = T.num(12), BubbleChat = T.bool(false), ClassicChat = T.bool(false) },
+	props = { BanningEnabled = T.bool(true), CharacterAutoLoads = T.bool(true), RespawnTime = T.num(5), MaxPlayers = T.num(12), PreferredPlayers = T.num(12), BubbleChat = T.bool(false), ClassicChat = T.bool(false) },
 	events = { "PlayerAdded", "PlayerRemoving", "PlayerMembershipChanged" },
 	getters = {
 		LocalPlayer = function()
@@ -5775,7 +5777,73 @@ service("Players", {
 					return c[STATE].props.UserId
 				end
 			end
+			-- Mock.KnownUsers = { name = userId }: offline accounts; without the table every name resolves to 1 as before
+			if type(Mock.KnownUsers) == "table" then
+				if Mock.KnownUsers[name] then
+					return Mock.KnownUsers[name]
+				end
+				error("Players:GetUserIdFromNameAsync() failed: Unknown user", 2)
+			end
 			return 1
+		end,
+		-- the ban API as create.roblox.com/docs documents it (reference Players:BanAsync / UnbanAsync, read 2026-10-31):
+		-- server only; BanningEnabled off is an error; UserIds 1..50; Duration -1 (permanent) or > 0; DisplayReason <= 400
+		-- and PrivateReason <= 1000 are required; a banned player in the server is evicted; in Studio the input is
+		-- validated but no request runs (nobody is evicted and Mock.BanLog stays as it is). Mock.BanError makes a call
+		-- fail like a throttled backend. What the real engine answers beyond this cannot be checked here.
+		BanAsync = function(self, config)
+			if Mock.Context ~= "server" then
+				error("BanAsync can only be called from the server", 2)
+			end
+			if self.BanningEnabled == false then
+				error("Players.BanningEnabled is false", 2)
+			end
+			local ids = type(config) == "table" and config.UserIds
+			if type(ids) ~= "table" or #ids < 1 or #ids > 50 then
+				error("BanAsync: UserIds must be an array of 1 to 50 ids", 2)
+			end
+			local d = config.Duration
+			if type(d) ~= "number" or d ~= math.floor(d) or (d ~= -1 and d <= 0) then
+				error("BanAsync: Duration must be -1 or a positive whole number", 2)
+			end
+			if type(config.DisplayReason) ~= "string" or #config.DisplayReason > 400 then
+				error("BanAsync: DisplayReason must be a string of at most 400 characters", 2)
+			end
+			if type(config.PrivateReason) ~= "string" or #config.PrivateReason > 1000 then
+				error("BanAsync: PrivateReason must be a string of at most 1000 characters", 2)
+			end
+			if Mock.Options.Studio then
+				return
+			end
+			if Mock.BanError then
+				error(Mock.BanError .. " failure for UserId " .. tostring(ids[1]), 2)
+			end
+			Mock.BanLog[#Mock.BanLog + 1] = config
+			for _, id in ipairs(ids) do
+				local p = self:GetPlayerByUserId(id)
+				if p then
+					Mock.RemovePlayer(p)
+				end
+			end
+		end,
+		UnbanAsync = function(self, config)
+			if Mock.Context ~= "server" then
+				error("UnbanAsync can only be called from the server", 2)
+			end
+			if self.BanningEnabled == false then
+				error("Players.BanningEnabled is false", 2)
+			end
+			local ids = type(config) == "table" and config.UserIds
+			if type(ids) ~= "table" or #ids < 1 or #ids > 50 or type(config.ApplyToUniverse) ~= "boolean" then
+				error("UnbanAsync: UserIds (1 to 50) and ApplyToUniverse are required", 2)
+			end
+			if Mock.Options.Studio then
+				return
+			end
+			if Mock.BanError then
+				error(Mock.BanError .. " failure for UserId " .. tostring(ids[1]), 2)
+			end
+			Mock.UnbanLog[#Mock.UnbanLog + 1] = config
 		end,
 		GetNameFromUserIdAsync = function(self, id)
 			local p = self:GetPlayerByUserId(id)
@@ -6384,6 +6452,18 @@ service("TextService", {
 	methods = {
 		GetTextSize = function(self, text, size)
 			return v2(#tostring(text) * (size or 14) * 0.5, size or 14)
+		end,
+		-- the filter passes the text through and remembers who it was for (Mock.FilterError makes it fail)
+		FilterStringAsync = function(self, text, fromUserId)
+			if Mock.FilterError then
+				error(Mock.FilterError, 2)
+			end
+			return {
+				GetNonChatStringForUserAsync = function(_, toUserId)
+					Mock.LastFiltered = { Text = text, From = fromUserId, To = toUserId }
+					return text
+				end,
+			}
 		end,
 	},
 })

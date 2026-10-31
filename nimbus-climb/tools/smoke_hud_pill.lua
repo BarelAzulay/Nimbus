@@ -1,20 +1,16 @@
 -- smoke_hud_pill.lua: HUD cleanup, Task 1 (the owner's picks on the HUD cleanup pitch: slot 1 "B" the top-left pill,
 -- slot 3 "A" Quick Travel). Loaded by tools/smoke.py in the server world and the client worlds:
---   hudpill_travel     (server, booted) GateService.Travel(player, dest) and GateService.CourtCFrame(): the Gate Court
---                      landing is 16 studs in front of the Ring gate, 3 up, facing the gates, on no portal pad; Court /
---                      Plaza teleports from the plaza, one per 2 s (cooldown), junk destinations, refusals in a match, a
---                      battle / dungeon run (InBattle), while locked on a portal pad in its party countdown (the
---                      countdown is untouched), outside the lobby world (the Y band) and inside a battle zone
---                      (ArenaBuilder.ZoneAt: a zone on the plaza and the arena floor); both landings sit outside the
---                      Arena and Altar islands' boxes (the client shows Travel there); the QuickTravel remote: garbage
---                      never errors, once per 2 s, Teleported fires (player, "Court")
+--   hudpill_travel     (server, booted) the pill's Travel behind GateService.Travel(player, dest): "Plaza" is the one
+--                      destination; it opens the home portal and moves nobody (the whole portal: hudtools_portal in
+--                      smoke_hud_tools.lua); the Court is gone; the spawn sits outside the Arena / Altar islands' boxes;
+--                      the QuickTravel remote: garbage never errors, a press opens the portal
 --   client_hudpill     (client, 1920x1080) the NimbusTopBar ScreenGui (IgnoreGuiInset, order 21) and its Pill in Roblox's
 --                      top-bar band right of Roblox's buttons (GuiService.TopbarInset.Min.X + 8, fallback 212) and left
 --                      of its right-side buttons; PillButton_Shop / Travel / Settings; PillRight / PillBottom; Shop opens
 --                      the Cloud Shop and is refused in a match with the hint; Settings opens MainMenuController's
---                      panel; Travel's drop-down (TravelPortals / TravelLobby) under the button fires QuickTravel
---                      ("Court" / "Plaza") with a short fade; Travel hides in a battle, a match and on the Arena island;
---                      the menu column keeps Pets, Index, Home, Stats (no gear, Team or Items tile)
+--                      panel; a tap on Travel fires QuickTravel("Plaza") once with no drop-down and no fade; Travel
+--                      hides in a battle and a match, and shows on the Arena island and at home; the menu column keeps
+--                      Pets, Index, Home, Stats (no gear, Team or Items tile)
 --   client_hudpill_mobile (phone world, 844x390 / 740x360 / 667x375 in a battle) the HUD's TopBand currency row
 --                      starts right of the pill (not at BAND_LEFT 150), they do not overlap, the pill ends left of
 --                      Roblox's right-side buttons and stays tappable (>= 32 px)
@@ -27,7 +23,7 @@ local CONTEXT = (ARGS and ARGS.context) or "server"
 
 local fmt = string.format
 
--- the island boxes the client hides Travel in (TopBarController.TravelAllowed: GetBoundingBox + 40 studs Y slack)
+-- an island's bounding box (+ 40 studs Y slack)
 local function insideBox(model, pos)
 	if not (model and model:IsA("Model")) then
 		return false
@@ -57,125 +53,45 @@ local function serverScenarios()
 		local Config = K.config()
 		local GS = K.mod("GateService")
 		local PlayerService = K.mod("PlayerService")
-		local PortalService = K.mod("PortalService")
-		local AB = K.mod("ArenaBuilder")
-		if not T.check(type(GS) == "table" and type(GS.Travel) == "function" and type(GS.CourtCFrame) == "function",
-			"hudpill: GateService.Travel / CourtCFrame exist") then
+		if not T.check(type(GS) == "table" and type(GS.Travel) == "function", "hudpill: GateService.Travel exists") then
 			return
 		end
+		T.eq(GS.CourtCFrame, nil, "hudpill: the Gate Court destination is gone")
 		local info = K.W.lobbyInfo
-		local site = info.GateSites and info.GateSites.Ring
-		local court = GS.CourtCFrame()
-		if not T.check(typeof(site) == "CFrame" and typeof(court) == "CFrame", "hudpill: CourtCFrame() is a CFrame (the Ring gate site exists)") then
-			return
-		end
-		local want = site.Position + site.LookVector * 16 + Vector3.new(0, 3, 0)
-		T.check((court.Position - want).Magnitude < 0.5, "hudpill: CourtCFrame = 16 studs in front of the Ring gate, 3 up",
-			fmt("%.2f studs off", (court.Position - want).Magnitude))
-		T.check(court.LookVector:Dot((site.Position + Vector3.new(0, 3, 0) - court.Position).Unit) > 0.9, "hudpill: ...facing the gates")
-
 		local players = K.freshPlayers(2, "Trav")
 		local a, b = players[1], players[2]
-		local function root(p)
-			return K.root(p)
-		end
-		K.advance(0.5)
+		K.advance(3.5)
 
-		T.eq(select(1, GS.Travel(a, "Court")), true, "hudpill: Travel(Court) from the plaza works")
-		T.check(root(a) and (root(a).Position - court.Position).Magnitude < 2, "hudpill: ...the character stands at the court",
-			root(a) and fmt("%.2f", (root(a).Position - court.Position).Magnitude) or "no root")
-		T.eq(select(2, GS.Travel(a, "Plaza")), "cooldown", "hudpill: a second travel inside 2 s is refused (cooldown)")
-		K.advance(1)
-		T.check(not PortalService.IsLocked(a) and root(a) and (root(a).Position - court.Position).Magnitude < 2,
-			"hudpill: the court landing is on no portal pad (nothing locks or moves the player there)")
-		K.advance(1.1)
-		T.eq(select(1, GS.Travel(a, "Plaza")), true, "hudpill: Travel(Plaza) works after the cooldown")
-		local spawn = PlayerService.GetLobbySpawnCFrame()
-		T.check(root(a) and (root(a).Position - spawn.Position).Magnitude < 2, "hudpill: ...at the lobby spawn",
-			root(a) and fmt("%.2f", (root(a).Position - spawn.Position).Magnitude) or "no root")
+		local where = K.root(a).Position
+		T.eq(select(1, GS.Travel(a, "Plaza")), true, "hudpill: Travel(Plaza) works")
+		T.check(type(a:GetAttribute(Config.Attr.HomePortal)) == "string", "hudpill: ...it opens the home portal (the HomePortal attribute)")
+		T.check(K.planar(K.root(a).Position, where) < 1, "hudpill: ...and moves nobody until they walk in")
+		T.eq(select(2, GS.Travel(a, "Court")), "junk", "hudpill: the Court is no destination any more")
 		T.eq(select(2, GS.Travel(a, "Home")), "junk", "hudpill: unknown destinations are junk")
 		T.eq(select(2, GS.Travel(a, 5)), "junk", "hudpill: non-string destinations are junk")
-		T.eq(select(2, GS.Travel(nil, "Court")), "junk", "hudpill: a nil player is junk")
+		T.eq(select(2, GS.Travel(nil, "Plaza")), "junk", "hudpill: a nil player is junk")
 
-		-- both landings are outside the island boxes (the client's Travel button shows there)
+		-- the landing is outside the island boxes
+		local spawn = PlayerService.GetLobbySpawnCFrame()
 		local arena = workspace:FindFirstChild("BattleArena")
 		local altar = info.Folder and info.Folder:FindFirstChild("StormAltar")
-		T.check(not insideBox(arena, court.Position) and not insideBox(arena, spawn.Position) and not insideBox(altar, court.Position)
-			and not insideBox(altar, spawn.Position), "hudpill: the court and the spawn are outside the Arena / Altar island boxes",
+		T.check(not insideBox(arena, spawn.Position) and not insideBox(altar, spawn.Position), "hudpill: the spawn is outside the Arena / Altar island boxes",
 			tostring(arena ~= nil) .. " / " .. tostring(altar ~= nil))
 
-		a:SetAttribute(Config.Attr.InMatch, true)
-		K.advance(2.1)
-		T.eq(select(2, GS.Travel(a, "Court")), "match", "hudpill: refused in an obby match")
-		a:SetAttribute(Config.Attr.InMatch, false)
-		a:SetAttribute(Config.Attr.InBattle, "D7")
-		T.eq(select(2, GS.Travel(a, "Court")), "battle", "hudpill: refused in a battle / dungeon run (InBattle)")
-		a:SetAttribute(Config.Attr.InBattle, nil)
-
-		-- locked on the Obby pad in its party countdown
-		K.enterPortal(a)
-		K.advance(0.6)
-		if T.check(PortalService.IsLocked(a), "hudpill: (setup) standing on the Obby pad locks the player in its countdown") then
-			local party = PortalService.GetParty("Obby")
-			local countdown = party and party.Countdown
-			T.eq(select(2, GS.Travel(a, "Court")), "locked", "hudpill: refused while locked on a portal pad (party countdown)")
-			party = PortalService.GetParty("Obby")
-			T.check(PortalService.IsLocked(a) and party and #party.Players == 1 and party.Countdown == countdown,
-				"hudpill: ...and the countdown is untouched")
-		end
-		PortalService.CancelParty("Obby")
-		K.leavePortalArea(a)
-		K.advance(1)
-
-		-- outside the lobby world / inside a battle zone (no accepted travel since the Plaza one: no cooldown in the way)
-		K.advance(2.1)
-		Mock.Teleport(a, CFrame.new(Config.Lobby.Origin + Vector3.new(0, -120, 0)))
-		T.eq(select(2, GS.Travel(a, "Court")), "zone", "hudpill: refused outside the lobby world (below the Y band)")
-		Mock.Teleport(a, CFrame.new(Config.Lobby.Origin + Vector3.new(Config.Lobby.SpotRingRadius + 200, 0, 0)))
-		T.eq(select(2, GS.Travel(a, "Court")), "zone", "hudpill: refused outside the lobby world (beyond the home ring)")
-		local zone = Instance.new("Part")
-		zone.Name = "HudPillFakeZone"
-		zone.Anchored = true
-		zone.CanCollide = false
-		zone.Transparency = 1
-		zone.Size = Vector3.new(16, 16, 16)
-		zone.CFrame = spawn * CFrame.new(0, 0, -20)
-		zone.Parent = workspace
-		game:GetService("CollectionService"):AddTag(zone, "NC_BattleZone")
-		Mock.Teleport(a, zone.CFrame)
-		T.check(AB == nil or AB.ZoneAt(zone.Position) == zone, "hudpill: (setup) ArenaBuilder.ZoneAt finds the zone")
-		T.eq(select(2, GS.Travel(a, "Court")), "zone", "hudpill: refused inside a battle zone on the plaza (ArenaBuilder.ZoneAt)")
-		zone:Destroy()
-		local ainfo = AB and AB.GetInfo and AB.GetInfo()
-		if ainfo and ainfo.Floor and typeof(ainfo.Floor.CFrame) == "CFrame" then
-			Mock.Teleport(a, ainfo.Floor.CFrame * CFrame.new(0, 3, 0))
-			T.eq(select(2, GS.Travel(a, "Court")), "zone", "hudpill: refused on the arena's raid floor")
-		end
-		K.leavePortalArea(a)
-		K.advance(0.5)
-
-		-- the remote: garbage never errors, one travel per 2 s, Teleported fires (player, dest)
+		-- the remote: garbage never errors, a press opens the portal
 		local remote = K.remoteFolder() and K.remoteFolder():FindFirstChild("QuickTravel")
 		if T.check(remote ~= nil, "hudpill: the QuickTravel remote exists") then
 			local errs = #Mock.Errors
 			Mock.FromClient(remote, b, nil)
-			for _, junk in ipairs({ 1, {}, "Court\0", string.rep("x", 100), true }) do
+			for _, junk in ipairs({ 1, {}, "Court", "Court\0", string.rep("x", 100), true }) do
 				Mock.FromClient(remote, b, junk)
 			end
 			K.advance(0.1)
 			T.eq(#Mock.Errors, errs, "hudpill: QuickTravel with garbage raises no errors")
-			local fired = {}
-			local conn = GS.Teleported:Connect(function(p, id)
-				if p == b then
-					fired[#fired + 1] = id
-				end
-			end)
-			Mock.FromClient(remote, b, "Court")
+			T.eq(b:GetAttribute(Config.Attr.HomePortal), nil, "hudpill: ...and opens nothing")
 			Mock.FromClient(remote, b, "Plaza")
 			K.advance(0.1)
-			T.check(#fired == 1 and fired[1] == "Court", "hudpill: the remote travels once per 2 s and Teleported fires (player, 'Court')", table.concat(fired, ","))
-			T.check(root(b) and (root(b).Position - court.Position).Magnitude < 2, "hudpill: ...the remote's traveller stands at the court")
-			conn:Disconnect()
+			T.check(type(b:GetAttribute(Config.Attr.HomePortal)) == "string", "hudpill: QuickTravel('Plaza') opens the portal")
 		end
 		K.removePlayers(players)
 		K.flushErrors("hudpill_travel")
@@ -324,57 +240,43 @@ local function clientScenarios()
 		end
 		KC.advance(0.5)
 
-		-- Travel
+		-- Travel: one tap, one press of the server's portal; no menu, no fade
 		local travel = H.button(pill, "Travel")
 		T.check(travel and travel.Visible and TB.TravelAllowed() == true, "hudpill: Travel shows in the lobby")
+		local mark = #Mock.RemoteLog
 		Mock.Click(travel)
-		KC.advance(0.2)
-		local tm = gui:FindFirstChild("TravelMenu", true)
-		local portals = tm and tm:FindFirstChild("TravelPortals", true)
-		local lobby = tm and tm:FindFirstChild("TravelLobby", true)
-		if T.check(tm and tm.Visible and portals and lobby, "hudpill: Travel opens a drop-down with Portals and Lobby") then
-			local mr = H.rect(tm)
-			T.check(mr.y0 >= inset - 1 and mr.x0 >= r.x0 - 1 and mr.x1 <= 1920, "hudpill: ...under the button, never over Roblox's buttons", H.fmt(mr))
-			local mark = #Mock.RemoteLog
-			Mock.Click(portals)
-			KC.advance(0.1)
-			local calls = H.calls("QuickTravel", mark)
-			T.check(#calls == 1 and calls[1].args[1] == "Court", "hudpill: Portals fires QuickTravel('Court')", tostring(#calls))
-			local fade = gui:FindFirstChild("TravelFade")
-			T.check(fade and fade.Visible and fade.BackgroundTransparency < 0.5 and not tm.Visible, "hudpill: ...the menu closes and a short fade shows",
-				fade and tostring(fade.BackgroundTransparency) or "no fade")
-			KC.advance(1.0)
-			T.check(fade and not fade.Visible, "hudpill: ...gone within a second")
-			mark = #Mock.RemoteLog
-			Mock.Click(travel)
-			KC.advance(0.1)
-			Mock.Click(lobby)
-			KC.advance(0.1)
-			calls = H.calls("QuickTravel", mark)
-			T.check(#calls == 1 and calls[1].args[1] == "Plaza", "hudpill: Lobby fires QuickTravel('Plaza')", tostring(#calls))
-			KC.advance(1.0)
-			-- a second click on Travel closes the open drop-down
-			Mock.Click(travel)
-			KC.advance(0.1)
-			Mock.Click(travel)
-			KC.advance(0.1)
-			T.check(not tm.Visible, "hudpill: a second tap on Travel closes the drop-down")
-			Mock.Click(travel)
-			KC.advance(0.1)
-		end
+		KC.advance(0.1)
+		local calls = H.calls("QuickTravel", mark)
+		T.check(#calls == 1 and calls[1].args[1] == "Plaza", "hudpill: a tap on Travel fires QuickTravel('Plaza')", tostring(#calls))
+		T.check(gui:FindFirstChild("TravelMenu", true) == nil and gui:FindFirstChild("TravelPortals", true) == nil and gui:FindFirstChild("TravelLobby", true) == nil,
+			"hudpill: there is no Travel drop-down")
+		T.eq(gui:FindFirstChild("TravelFade", true), nil, "hudpill: ...and no black fade")
+		Mock.Click(travel)
+		KC.advance(0.1)
+		T.eq(#H.calls("QuickTravel", mark), 1, "hudpill: a double tap sends one press")
+		KC.advance(1)
+		Mock.Click(travel)
+		KC.advance(0.1)
+		T.eq(#H.calls("QuickTravel", mark), 2, "hudpill: a later tap sends another (the server's cooldown decides)")
 
 		LocalPlayer:SetAttribute(Config.Attr.InBattle, "B1")
-		KC.advance(0.6)
-		T.check(not travel.Visible and not (tm and tm.Visible) and TB.TravelAllowed() == false, "hudpill: Travel hides in a battle (InBattle), its drop-down closes")
+		KC.advance(0.1)
+		T.check(not travel.Visible and TB.TravelAllowed() == false, "hudpill: Travel hides in a battle (InBattle)")
+		mark = #Mock.RemoteLog
+		Mock.Click(travel)
+		KC.advance(0.1)
+		T.eq(#H.calls("QuickTravel", mark), 0, "hudpill: ...and sends nothing")
 		T.check(H.button(pill, "Shop").Visible and H.button(pill, "Settings").Visible, "hudpill: ...Shop and Settings stay")
 		T.check(math.abs((tonumber(gui:GetAttribute("PillRight")) or -1) - H.rect(pill).x1) < 0.5 and H.rect(pill).x1 < r.x1,
 			"hudpill: ...the pill narrows and PillRight follows it")
 		LocalPlayer:SetAttribute(Config.Attr.InBattle, nil)
 		LocalPlayer:SetAttribute(Config.Attr.InMatch, true)
-		KC.advance(0.6)
+		KC.advance(0.1)
 		T.check(not travel.Visible, "hudpill: ...and in a match")
 		LocalPlayer:SetAttribute(Config.Attr.InMatch, false)
-		KC.advance(0.6)
+		KC.advance(0.1)
+		T.check(travel.Visible, "hudpill: back outside a match it shows again")
+		-- getting back to the lobby is the point: it shows on the islands and at home
 		local hrp = KC.root()
 		if workspace:FindFirstChild("BattleArena") == nil and hrp then
 			local fake = Instance.new("Model")
@@ -387,13 +289,12 @@ local function clientScenarios()
 			p.Parent = fake
 			fake.Parent = workspace
 			KC.advance(0.6)
-			T.check(not travel.Visible, "hudpill: ...and on the Arena island (inside workspace.BattleArena's box)")
+			T.check(travel.Visible and TB.TravelAllowed() == true, "hudpill: ...it shows on the Arena island too (inside workspace.BattleArena's box)")
 			fake:Destroy()
-			KC.advance(0.6)
+			KC.advance(0.1)
 		else
 			T.info("*hudpill: arena island check skipped (a BattleArena already exists or no character)")
 		end
-		T.check(travel.Visible, "hudpill: ...back in the lobby it shows again")
 
 		-- the column
 		local column = H.menu() and H.menu():FindFirstChild("MenuColumn")

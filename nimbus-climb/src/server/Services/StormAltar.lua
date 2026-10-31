@@ -1460,6 +1460,7 @@ function StormAltar.Build(lobbyInfo)
 	site = flatLook(site.Position, site.Position + site.LookVector) -- yaw only
 	local top = site.Position.Y -- the lobby's walking height
 	local A = site * CFrame.new(0, DECK, 0)
+	workspace:SetAttribute(Config.Lobby.ZoneAltarAttr, site.Position) -- the island is no lobby (Config.InLobbyZone: stamina)
 
 	local model = Instance.new("Model")
 	model.Name = MODEL_NAME

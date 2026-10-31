@@ -3,7 +3,7 @@
 --   SERVER (wave 2, tycoon), on the booted game (Main.server.lua):
 --   p4portal_home      HomeAction "GoHome" writes the player attribute HomePortal = "x,y,z,yaw,closesAt" (the point
 --                      ~6 studs ahead on the ground, closesAt = server time + 10); the server builds no part for it;
---                      pressing again keeps the open one; when the OWNER's root reaches the point the 0.2 s loop
+--                      pressing again inside the 3 s cooldown keeps the open one, after it replaces it; when the OWNER's root reaches the point the 0.2 s loop
 --                      teleports them within 6 studs of their home SpawnCFrame, clears HomePortal, writes PortalArrived
 --                      and fires PortalUsed(player); another player at the portal point does not move; a portal
 --                      nobody enters expires after 10 s; the 3 s cooldown; GoToSpot (the Home tile) and GoHome without
@@ -649,12 +649,12 @@ S.p4portal_home = guarded("p4portal_home", function()
 			string.format("yaw %.1f closes in %.1f", yaw, closesAt - serverNow))
 	end
 	T.eq(countParts(workspace), partsBefore, "p4 portal: the server builds no part for the portal (HomePortalFx draws it)")
-	-- pressing again keeps the open portal
+	-- pressing again inside the cooldown keeps the open portal
 	advance(0.5)
 	homeAction(a, "GoHome")
 	Ty.GoHome(a)
 	advance(0.1)
-	T.eq(attrPortal(a), text, "p4 portal: pressing again keeps the open portal (same attribute)")
+	T.eq(attrPortal(a), text, "p4 portal: pressing again inside the 3 s cooldown keeps the open portal (same attribute)")
 	-- standing next to it (not in it): nothing happens
 	if pos then
 		Mock.Teleport(a, CFrame.new(pos + Vector3.new(5, 3, 0)))
@@ -689,7 +689,7 @@ S.p4portal_home = guarded("p4portal_home", function()
 	local text2 = attrPortal(a)
 	T.check(okOpen == true and parsePortal(text2) ~= nil, "p4 portal: TycoonService.OpenHomePortal(player) opens a portal too")
 	local okAgain, whyAgain = Ty.OpenHomePortal(a)
-	T.check(okAgain == true and attrPortal(a) == text2, "p4 portal: a second request while it is open keeps it (ok, nothing new)", tostring(whyAgain))
+	T.check(okAgain ~= true and attrPortal(a) == text2, "p4 portal: a second request inside the cooldown changes nothing (a later one replaces the portal: hudtools_portal)", tostring(whyAgain))
 	advance(9.5)
 	T.eq(attrPortal(a), text2, "p4 portal: still open at 9.6 s")
 	advance(0.9)

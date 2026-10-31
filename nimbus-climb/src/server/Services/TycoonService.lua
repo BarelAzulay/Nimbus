@@ -69,11 +69,14 @@
 --   Machine pad unlocks. DataService.MutateHome clears LegacySlots / LegacyPrices itself when Prestige rises.
 -- * The home portal (3.10): HomeAction "GoHome" / OpenHomePortal(player): refused in an obby match, in a battle or ring
 --   run (InBattle), while locked in a portal party (PortalLocked), while dead; cooldown 3 s; one portal per player
---   (pressing again keeps the open one). It opens 6 studs ahead on the ground (server raycasts: forward stops 1.5
+--   (pressing again after the cooldown replaces the open one). The pill's Travel button opens the same portal with the
+--   lobby as its destination (OpenLobbyPortal(player), through GateService.Travel; the destination is held here on the
+--   server, the cooldown is shared). It opens 6 studs ahead on the ground (server raycasts: forward stops 1.5
 --   studs before a wall, down finds the floor, no floor -> the character's own spot) for 10 s as the player attribute
 --   HomePortal = "x,y,z,yaw,closesAt". A 0.2 s loop checks ONLY the owner's root against open portals and teleports
 --   them with SpotService.Teleport (home SpawnCFrame; without a home the suggested free gate + "Press E at the gate to
---   claim this home!"), writes PortalArrived = server time and fires PortalUsed. Zero server parts (HomePortalFx draws).
+--   claim this home!"), writes PortalArrived = server time and fires PortalUsed; a Lobby portal puts them on the lobby spawn
+--   (GateService.ToLobby) and writes PortalArrived, without PortalUsed. Zero server parts (HomePortalFx draws).
 -- * Safe zones (3.11): nothing here starts damage or a fight; every teleport refuses InBattle.
 -- * Remote HomeAction(action, arg): "Upgrade" stationId, "GardenSet" {slot, key|nil} (also {Slot =, Key =}),
 --   "GardenRecall" {Key =, To =, Preset =, Keys =}, "Collect", "Prestige", "GoHome". Types, ranges and NaN are checked; every action is rate limited (a per-action
@@ -101,6 +104,7 @@
 --   PileSeconds(player) -> seconds (+ CollectorCap alias), CoinsWaiting(player) -> whole Cash on the lawn
 --   Drops(player) -> { { Slot, Cycle, Position, Value, Lucky, Poops, Stage } } (slot then cycle order; nil without a plot)
 --   GardenSet(player, slot, key) -> ok, reason      OpenHomePortal(player) -> ok, reason   GoHome = OpenHomePortal
+--   OpenLobbyPortal(player) -> ok, reason           the same portal, leading to the lobby spawn
 --   GardenRecall(player, key, target) -> ok, reason   target = { To = "Equip" } | { To = "Team", Preset, Keys } (#18)
 --   ClearCoins(player) (the developer reset: bank + piles to 0)
 --   Signals HomeChanged(player), Claimed(player, spotInfo), Prestiged(player, stars), Released(player, spotInfo),
@@ -156,6 +160,7 @@ local dataService = nil
 local petService = nil
 local spotService = nil
 local battleService = nil -- BattleService module table (its Init runs after ours: every call is guarded)
+local gateService = nil -- GateService module table (a Lobby portal's landing)
 local homeBuilder = nil
 local catalog = nil -- TycoonCatalog
 local petKeys = nil -- PetKeys (optional)
@@ -205,7 +210,7 @@ local Portal = {
 	ENTER_RADIUS = 3.5, -- horizontal studs from the portal point that count as "walked in"
 	ENTER_HEIGHT = 5, -- vertical studs (the root stands ~3 studs over the floor)
 	DROP = 24, -- studs the floor is searched for below a point
-	open = {}, -- [Player] = { Pos = Vector3, Yaw, ClosesAt = os.clock() }
+	open = {}, -- [Player] = { Pos = Vector3, Yaw, ClosesAt = os.clock(), Dest = "Home" | "Lobby" }
 }
 
 ----------------------------------------------------------------------
@@ -2556,9 +2561,12 @@ function Portal.close(player)
 	end
 end
 
--- Opens the player's home portal (one per player; pressing again keeps the open one). ok | false, reason.
-function Portal.openFor(player)
-	if not initialized or not spotService or type(spotService.Teleport) ~= "function" then
+-- Opens the player's portal (one per player, one cooldown; a press after the cooldown replaces the open one and its
+-- destination). dest: "Home" (default) | "Lobby". ok | false, reason.
+function Portal.openFor(player, dest)
+	dest = dest or "Home"
+	if not initialized or not spotService or type(spotService.Teleport) ~= "function"
+		or (dest == "Lobby" and not (gateService and type(gateService.ToLobby) == "function")) then
 		return false, "Homes are not ready yet"
 	end
 	if not isPlayer(player) then
@@ -2569,11 +2577,7 @@ function Portal.openFor(player)
 		toastOnce(player, reason, "bad")
 		return false, reason
 	end
-	local rec = Portal.open[player]
-	if rec and os.clock() < rec.ClosesAt then
-		return true, nil -- the open portal stays
-	end
-	if not plots[player] then
+	if dest == "Home" and not plots[player] then
 		local target = nil
 		if type(spotService.SuggestSpot) == "function" then
 			local okS, suggested = pcall(spotService.SuggestSpot, player)
@@ -2592,11 +2596,25 @@ function Portal.openFor(player)
 		return false, "You cannot open a portal right now"
 	end
 	local closesAt = workspace:GetServerTimeNow() + Portal.OPEN_SECONDS
-	Portal.open[player] = { Pos = pos, Yaw = yaw, ClosesAt = os.clock() + Portal.OPEN_SECONDS }
+	Portal.open[player] = { Pos = pos, Yaw = yaw, ClosesAt = os.clock() + Portal.OPEN_SECONDS, Dest = dest }
 	pcall(function()
 		player:SetAttribute(Config.Attr.HomePortal, string.format("%.2f,%.2f,%.2f,%.1f,%.3f", pos.X, pos.Y, pos.Z, yaw, closesAt))
 	end)
 	return true, nil
+end
+
+-- The owner walked in, a Lobby portal: the lobby spawn and PortalArrived (no PortalUsed: the tutorial's Portal Home step
+-- is about the way home).
+function Portal.enterLobby(player)
+	local ok, moved = pcall(gateService.ToLobby, player)
+	Portal.close(player)
+	if not ok or moved ~= true then
+		return false
+	end
+	pcall(function()
+		player:SetAttribute(Config.Attr.PortalArrived, workspace:GetServerTimeNow())
+	end)
+	return true
 end
 
 -- The owner walked in: SpotService.Teleport (home, or the suggested free gate), PortalArrived, PortalUsed.
@@ -2604,6 +2622,10 @@ function Portal.enter(player)
 	if Portal.refuse(player) then
 		Portal.close(player)
 		return false
+	end
+	local rec = Portal.open[player]
+	if rec and rec.Dest == "Lobby" then
+		return Portal.enterLobby(player)
 	end
 	local hadHome = plots[player] ~= nil
 	local ok, moved = pcall(spotService.Teleport, player)
@@ -2665,6 +2687,10 @@ end
 
 function TycoonService.GoHome(player)
 	return Portal.openFor(player)
+end
+
+function TycoonService.OpenLobbyPortal(player)
+	return Portal.openFor(player, "Lobby")
 end
 
 ----------------------------------------------------------------------
@@ -3053,6 +3079,7 @@ function TycoonService.Init(lobbyInfo, deps)
 	petService = deps.PetService
 	spotService = deps.SpotService or requireModule(script.Parent, "SpotService")
 	battleService = deps.BattleService
+	gateService = deps.GateService
 	catalog = requireModule(Shared, "TycoonCatalog")
 	homeRoam = requireModule(Shared, "HomeRoam")
 	petKeys = requireModule(Shared, "PetKeys")

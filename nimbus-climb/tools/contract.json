@@ -767,7 +767,7 @@
       "functions": [
         "Init",
         "Travel",
-        "CourtCFrame"
+        "ToLobby"
       ],
       "signals": [
         "Teleported"

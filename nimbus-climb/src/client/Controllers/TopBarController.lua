@@ -1,9 +1,9 @@
 -- TopBarController (client, HUD cleanup): the top-left pill in Roblox's top bar (the owner's pick "B" on the HUD
--- cleanup pitch) with Shop, Travel and Settings, and the Quick Travel drop-down (pick "A").
+-- cleanup pitch) with Shop, Travel and Settings.
 --
 --   TopBarController.Init()
 --   TopBarController.GetRect() -> { X0, X1, Y0, Y1 } | nil   the pill (screen px; nil while hidden)
---   TopBarController.TravelAllowed() -> boolean             the Travel button shows (lobby only)
+--   TopBarController.TravelAllowed() -> boolean             the Travel button shows (not in a match or a battle)
 --   TopBarController.Refresh()                              relayout now (tests; a changed top-bar inset)
 --
 -- Screen: ScreenGui "NimbusTopBar" (display order 21, IgnoreGuiInset = true, so its px are screen px).
@@ -11,24 +11,21 @@
 --     Roblox's own buttons: GuiService.TopbarInset.Min.X + 8 (read under pcall; K.FALLBACK_LEFT 212 while it is not
 --     available) and left of TopbarInset.Max.X (else K.RIGHT_RESERVE px off the right edge: the "..." button).
 --     TextButtons PillButton_Shop (MenuController.Open("Shop"); in a match the side hint "The shop is closed during a
---     match."; a second tap closes the open shop), PillButton_Travel (lobby only) and PillButton_Settings
+--     match."; a second tap closes the open shop), PillButton_Travel and PillButton_Settings
 --     (MenuController.OpenSettings: MainMenuController's settings panel). Icon + label; icons only on phones (the
 --     smaller screen side <= K.SMALL_PHONE) or when the labels do not fit; squeezed to K.MIN_BTN_W when even that
 --     does not fit (a tooltip names an icon-only button).
 --   * The ScreenGui carries the attributes PillRight / PillBottom (screen px of the pill's right / bottom edge, 0
 --     while the gui is disabled): HudController starts a phone battle's TopBand currency row right of PillRight.
---   * Frame "TravelMenu": the Travel drop-down under the button (top at the band's bottom), TextButtons
---     TravelPortals ("Portals": the Gate Court) and TravelLobby ("Lobby": the spawn plaza). A row fires
---     Remotes.QuickTravel("Court" | "Plaza") (the server checks everything: GateService.Travel), closes the menu and
---     shows Frame "TravelFade" (a short black dip: 0.45 at once -> 0.15, back to clear and hidden by 0.6 s).
---   * Travel is lobby only (TravelAllowed, polled every K.POLL s and on the InMatch / InBattle attributes): hidden in
---     a match (InMatch), a battle / dungeon run / the Ring (InBattle), and while the character stands in the bounding
---     box (+ 40 studs Y) of workspace.BattleArena (the Arena island) or of the Storm Altar island's model.
+--   * A tap on Travel fires Remotes.QuickTravel("Plaza"): the server opens the same portal as Go home, leading to the lobby
+--     spawn (GateService.Travel; every refusal, its toast and the cooldown are the server's). No menu: one destination.
+--   * Travel shows everywhere Go home works, also at home and on the Arena and Altar islands (getting back to the lobby
+--     from there is the point): hidden only in a match (InMatch) and in a battle / dungeon run / the Ring (InBattle),
+--     followed through those attributes.
 -- Plain Lua 5.1-compatible syntax only. All text goes through Theme roles.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UserInputService = game:GetService("UserInputService")
 local GuiService = game:GetService("GuiService")
 local TextService = game:GetService("TextService")
 
@@ -52,7 +49,6 @@ local K = {
 	LABEL_W = 70, -- a label's width when it cannot be measured
 	LABEL_TEXT = 17,
 	ICON = 22,
-	GAP = 6, -- between the pill's bottom and the drop-down
 	PAD = 4, -- inside the pill, around the buttons
 	BTN_GAP = 2,
 	MIN_BTN_W = 30, -- icon-only buttons are squeezed this far at most
@@ -61,19 +57,7 @@ local K = {
 	BAND_INSET = 58, -- the top bar's height when the gui inset reads 0
 	RIGHT_RESERVE = 72, -- Roblox's right-side buttons when TopbarInset is not available
 	SMALL_PHONE = 500, -- icons only when the smaller screen side is at most this
-	FADE = 0.25, -- the fade back to clear (the dip itself takes FADE_IN)
-	FADE_IN = 0.12,
-	FADE_START = 0.45, -- the dip starts here at once (the teleport is instant: the cue must be too) ...
-	FADE_DARK = 0.15, -- ... and darkens to this
-	FADE_DONE = 0.6, -- seconds after the tap the fade is gone
-	POLL = 0.5,
-	MENU_W = 180,
-	ROW_H = 44,
-	MENU_PAD = 8,
-	ISLAND_Y_SLACK = 40, -- like ArenaController.inArena
-	BOX_TTL = 10, -- seconds an island's bounding box is reused (streaming may change it)
-	ALTAR_SEARCH = 5, -- seconds between two deep searches for the altar model
-	TRAVEL_GAP = 0.4, -- seconds between two QuickTravel sends (the server's cooldown is 2 s)
+	TRAVEL_GAP = 0.4, -- seconds between two QuickTravel sends (the portal's cooldown is 3 s)
 }
 TopBarController.K = K
 
@@ -90,16 +74,11 @@ local NAVY = Colors.PanelBottom or Color3.fromRGB(12, 15, 38)
 local LocalPlayer = nil
 local initialized = false
 local gui = nil
-local U = { Buttons = {}, Pill = nil, Menu = nil, Fade = nil }
+local U = { Buttons = {}, Pill = nil }
 local S = {
 	TravelShown = true,
-	MenuOpen = false,
-	FadeSerial = 0,
 	LastSend = 0,
-	Boxes = setmetatable({}, { __mode = "k" }), -- island model -> { CFrame, Size, At }
-	Altar = nil,
-	AltarSearch = -math.huge,
-	Layout = nil, -- { X, Y, W, H, Travel = { X, W } }
+	Layout = nil, -- { X, Y, W, H, Labels }
 }
 local warned = {}
 
@@ -186,51 +165,8 @@ local function labelWidth(text)
 end
 
 ----------------------------------------------------------------------
--- Travel: lobby only
+-- Travel: everywhere but a match or a battle
 ----------------------------------------------------------------------
-local function rootPosition()
-	local char = LocalPlayer and LocalPlayer.Character
-	local root = char and char:FindFirstChild("HumanoidRootPart")
-	return root and root.Position or nil
-end
-
-local function altarModel()
-	if S.Altar and S.Altar.Parent then
-		return S.Altar
-	end
-	S.Altar = nil
-	local lobby = workspace:FindFirstChild("NimbusLobby")
-	local altar = lobby and lobby:FindFirstChild("StormAltar")
-	if not altar and os.clock() - S.AltarSearch >= K.ALTAR_SEARCH then
-		S.AltarSearch = os.clock()
-		altar = workspace:FindFirstChild("StormAltar", true)
-	end
-	if altar and altar:IsA("Model") then
-		S.Altar = altar
-	end
-	return S.Altar
-end
-
-local function insideIsland(model, pos)
-	if not (model and model:IsA("Model") and model.Parent) then
-		return false
-	end
-	local box = S.Boxes[model]
-	if not box or os.clock() - box.At > K.BOX_TTL then
-		local ok, cf, size = pcall(function()
-			return model:GetBoundingBox()
-		end)
-		if not ok or typeof(cf) ~= "CFrame" then
-			return false
-		end
-		box = { CFrame = cf, Size = size, At = os.clock() }
-		S.Boxes[model] = box
-	end
-	local rel = box.CFrame:PointToObjectSpace(pos)
-	local half = box.Size / 2
-	return math.abs(rel.X) <= half.X and math.abs(rel.Z) <= half.Z and math.abs(rel.Y) <= half.Y + K.ISLAND_Y_SLACK
-end
-
 function TopBarController.TravelAllowed()
 	if not LocalPlayer then
 		return false
@@ -241,41 +177,12 @@ function TopBarController.TravelAllowed()
 	if LocalPlayer:GetAttribute(Config.Attr.InBattle or "InBattle") ~= nil then
 		return false
 	end
-	local pos = rootPosition()
-	if pos then
-		if insideIsland(workspace:FindFirstChild("BattleArena"), pos) or insideIsland(altarModel(), pos) then
-			return false
-		end
-	end
 	return true
 end
 
 ----------------------------------------------------------------------
 -- Layout
 ----------------------------------------------------------------------
-local function setMenuOpen(on)
-	S.MenuOpen = on == true
-	if U.Menu then
-		U.Menu.Visible = S.MenuOpen
-	end
-	local travel = U.Buttons.Travel
-	if travel then
-		travel.Root.BackgroundTransparency = S.MenuOpen and 0.72 or 1
-	end
-end
-
-local function placeMenu()
-	local lay = S.Layout
-	if not (U.Menu and lay and lay.Travel) then
-		return
-	end
-	local vp = viewport()
-	local h = 2 * K.ROW_H + 3 * K.MENU_PAD
-	local x = math.max(lay.X, math.min(lay.X + lay.Travel.X, vp.X - K.MENU_W - K.MENU_PAD))
-	U.Menu.Size = UDim2.fromOffset(K.MENU_W, h)
-	U.Menu.Position = UDim2.fromOffset(x, math.max(lay.Y + lay.H + K.GAP, inset()))
-end
-
 local function writeAttributes()
 	if not gui then
 		return
@@ -336,7 +243,6 @@ local function relayout()
 		end
 	end
 	local x = K.PAD
-	local travelAt = nil
 	for _, spec in ipairs(BUTTONS) do
 		local b = U.Buttons[spec.Id]
 		if b then
@@ -356,27 +262,20 @@ local function relayout()
 		else
 			b.Icon.Position = UDim2.fromOffset(w / 2, (h - 4) / 2)
 		end
-		if spec.Id == "Travel" then
-			travelAt = { X = x, W = w }
-		end
 		x = x + w + K.BTN_GAP
 	end
 	local width = total(widths)
 	U.Pill.Position = UDim2.fromOffset(left, y)
 	U.Pill.Size = UDim2.fromOffset(width, h)
-	S.Layout = { X = left, Y = y, W = width, H = h, Labels = labels, Travel = travelAt }
-	placeMenu()
+	S.Layout = { X = left, Y = y, W = width, H = h, Labels = labels }
 	writeAttributes()
 end
 
--- the Travel button follows TravelAllowed (its drop-down closes when it hides)
+-- the Travel button follows TravelAllowed
 local function applyTravel()
 	local allowed = TopBarController.TravelAllowed()
 	if allowed ~= S.TravelShown then
 		S.TravelShown = allowed
-		if not allowed then
-			setMenuOpen(false)
-		end
 		relayout()
 	end
 end
@@ -392,7 +291,6 @@ local function shopShown()
 end
 
 local function onShop()
-	setMenuOpen(false)
 	local mc = menu()
 	if not mc then
 		return
@@ -411,54 +309,21 @@ local function onShop()
 end
 
 local function onSettings()
-	setMenuOpen(false)
 	local mc = menu()
 	if mc and type(mc.OpenSettings) == "function" then
 		mc.OpenSettings()
 	end
 end
 
+-- one destination: the tap asks the server for the portal
 local function onTravel()
-	if not S.TravelShown then
-		return
-	end
-	setMenuOpen(not S.MenuOpen)
-	placeMenu()
-end
-
-local function showFade()
-	local fade = U.Fade
-	if not fade then
-		return
-	end
-	S.FadeSerial = S.FadeSerial + 1
-	local serial = S.FadeSerial
-	fade.BackgroundTransparency = K.FADE_START
-	fade.Visible = true
-	Util.Tween(fade, K.FADE_IN, { BackgroundTransparency = K.FADE_DARK }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-	task.delay(K.FADE_DONE - K.FADE, function()
-		if S.FadeSerial == serial and fade.Parent then
-			Util.Tween(fade, K.FADE, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-		end
-	end)
-	task.delay(K.FADE_DONE, function()
-		if S.FadeSerial == serial and fade.Parent then
-			fade.BackgroundTransparency = 1
-			fade.Visible = false
-		end
-	end)
-end
-
-local function travelTo(dest)
-	setMenuOpen(false)
 	if not S.TravelShown or os.clock() - S.LastSend < K.TRAVEL_GAP then
 		return
 	end
 	S.LastSend = os.clock()
 	local ok, remote = pcall(Remotes.Get, "QuickTravel")
 	if ok and remote then
-		remote:FireServer(dest)
-		showFade()
+		remote:FireServer("Plaza")
 	end
 end
 
@@ -493,9 +358,7 @@ local function buildButton(parent, spec, order, callback)
 	label.Parent = root
 	local fx = nil
 	fx = NeonKit.AttachFx(root, function(hover, press)
-		if spec.Id ~= "Travel" or not S.MenuOpen then
-			root.BackgroundTransparency = (hover or press) and 0.85 or 1
-		end
+		root.BackgroundTransparency = (hover or press) and 0.85 or 1
 	end)
 	root.Activated:Connect(function()
 		safe("pill " .. spec.Id, callback)
@@ -504,39 +367,6 @@ local function buildButton(parent, spec, order, callback)
 		return (S.Layout and S.Layout.Labels) and nil or spec.Label
 	end)
 	return { Root = root, Icon = icon, Label = label, Fx = fx }
-end
-
-local function buildMenu()
-	local card = NeonKit.Card({
-		Name = "TravelMenu",
-		Size = UDim2.fromOffset(K.MENU_W, 2 * K.ROW_H + 3 * K.MENU_PAD),
-		Color = "Blue",
-		Glow = false,
-		Floor = false,
-		ZIndex = 5,
-		Parent = gui,
-	})
-	U.Menu = card.Root
-	U.Menu.Visible = false
-	local rows = {
-		{ Name = "TravelPortals", Text = "Portals", Dest = "Court", Color = "Blue" },
-		{ Name = "TravelLobby", Text = "Lobby", Dest = "Plaza", Color = "Green" },
-	}
-	for i, row in ipairs(rows) do
-		NeonKit.Button({
-			Name = row.Name,
-			Text = row.Text,
-			TextSize = 20,
-			Color = row.Color,
-			Size = UDim2.fromOffset(K.MENU_W - 2 * K.MENU_PAD, K.ROW_H),
-			Position = UDim2.fromOffset(K.MENU_PAD, K.MENU_PAD + (i - 1) * (K.ROW_H + K.MENU_PAD)),
-			ZIndex = 6,
-			Parent = card.Body,
-			Callback = function()
-				safe("travel " .. row.Dest, travelTo, row.Dest)
-			end,
-		})
-	end
 end
 
 local function build()
@@ -561,18 +391,6 @@ local function build()
 	for i, spec in ipairs(BUTTONS) do
 		U.Buttons[spec.Id] = buildButton(pill, spec, i, actions[spec.Id])
 	end
-	buildMenu()
-	U.Fade = Util.Create("Frame", {
-		Name = "TravelFade",
-		BackgroundColor3 = Color3.new(0, 0, 0),
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Size = UDim2.fromScale(1, 1),
-		Visible = false,
-		Active = false,
-		ZIndex = 20,
-		Parent = gui,
-	})
 end
 
 ----------------------------------------------------------------------
@@ -591,9 +409,6 @@ function TopBarController.Refresh()
 		return
 	end
 	S.TravelShown = TopBarController.TravelAllowed()
-	if not S.TravelShown then
-		setMenuOpen(false)
-	end
 	relayout()
 end
 
@@ -625,22 +440,6 @@ function TopBarController.Init()
 			safe("travel", applyTravel)
 		end)
 	end
-	-- a click into the world closes the drop-down
-	UserInputService.InputBegan:Connect(function(input, processed)
-		if processed or not S.MenuOpen then
-			return
-		end
-		local t = input.UserInputType
-		if t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
-			setMenuOpen(false)
-		end
-	end)
-	task.spawn(function()
-		while gui and gui.Parent do
-			safe("poll", applyTravel)
-			task.wait(K.POLL)
-		end
-	end)
 end
 
 return TopBarController
