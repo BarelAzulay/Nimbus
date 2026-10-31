@@ -3,15 +3,15 @@
 -- inside the Roblox mock under lupa, like tools/smoke.py, and prints a balance report with TARGET ok / MISS lines:
 --   fighter   the played kit vs a passive NPC of k x its power (kit factor 1.3-1.7); mirror fights 8-45 s, none at 90 s
 --   support   Support (Economy) pets: DPS ratio 0.65-0.75 of Combat pets; a Support fighter can fight, best as a helper
---   levels    level beats rarity (battles only): a L30 Common beats a L1 Secret, a L100 evolved Common an unevolved L50 Secret,
+--   levels    level beats rarity (battles only): a L30 Common beats a L1 Secret (>= 93%), a L100 evolved Common an unevolved L50 Secret (>= 80%),
 --             a Secret stays the stronger pet at equal level and stage
 --   duels     mirror duels per stage (scripted players both sides): 40-60%, no draws, none at the 120 s limit
 --             + the element counter (balance-5: Water vs Flame, the wheel on vs off): it decides an even fight (>= 90%)
 --             and is worth x1.15-1.45 TeamPower
 --   raids     the baseline: BossRules.Baseline is a L35 evolved Legendary and the owner's L10/11/11 Secrets win 0 of 8 solo raids;
 --             4 and 8 owner-teams finish in 100-240 s; 1 / 4 / 8 / 16 parrying trainers (wave 6: the trainer stands, times the
---             Dash) win nearly every raid in 100-240 s; a solo under half the boss's BaselineDps loses (bug batch 2 #2); no
---             one-shots; joins / leaves; idle alts
+--             Dash) win nearly every raid in 100-240 s; a solo under a quarter of the boss's BaselineDps loses (bug batch 2 #2);
+--             8 x M5 win >= 90% in 240 s; 8 x Lv 5 win >= 70%; no one-shots; joins / leaves; idle alts
 --   ring      the owner's wall (spec 2026-10-31 s.4, run XP + loss XP, HP carried, fainted pets out; SIM.Targets.Ring): 3 L1 Commons
 --             win 2-4 rounds, Ring 5 in <= 10% of seeds; Legendaries, the owner's Secrets, L50, maxed by band; round 1 is an easy
 --             Common; shown level and power never drop; the champions on the player formula (no Boss / Handicap / Boost)

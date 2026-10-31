@@ -1165,8 +1165,12 @@ the team (press it twice). Below, every pet you own as a card, sorted **Stronges
   back at once with the reason and the pick stays armed.
 - **Tap a pet** to see it: name, level, XP, coins, battle power, health and speed, with **Put in team** (or **Make
   fighter** and **Remove**), **Feed**, **Train**, **Garden** and **Evolve** when it is ready. Feed and Train come back to
-  this window on the same pet when you close them.
-- **On a phone** the slots sit in a column on the left and a pet's details slide over the cards, never over the slots.
+  this window on the same pet when you close them. If you came here from a battle panel or the loss screen, Evolve comes
+  back too: after the evolution this window is up again, and closing it takes you on to that panel.
+- **On a phone** the slots sit in a column on the left and a pet's details slide over the cards, never over the slots. On
+  a phone or a touch tablet Roblox's stick and jump button step aside while the window is up.
+- **During a data outage** (a stand-in save) a team edit says *Your save is still being recovered*: nothing is wrong with
+  the pet, try again in a moment.
 
 ### Pet cards and following
 
