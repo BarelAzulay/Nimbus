@@ -1245,8 +1245,8 @@ local function checkBattleDrift(Config, PC, Steps, text, tutorialText, tutorialS
 	local tf = flat(tutorialText)
 	t:case(counts > 0 and has(tf, "third chapter teaches pet battles in " .. string.lower(NUMBER_WORDS[counts] or "?") .. " steps"),
 		"tutorial chapter 3 has " .. counts .. " steps")
-	t:case(ids.dungeon == true and ids.trial == nil and has(tf, "press **E** at the Dungeon gate and clear floor 1"),
-		"tutorial chapter 3 clears Dungeon floor 1 (TutorialSteps id 'dungeon', no 'trial')")
+	t:case(ids.dungeon == true and ids.trial == nil and has(tf, "press **E** at the Dungeon gate and clear the first room of floor 1"),
+		"tutorial chapter 3 clears the first room of Dungeon floor 1 (TutorialSteps id 'dungeon', no 'trial')")
 	local tokens = tutorialSource and tonumber(tutorialSource:match("local ARENA_FINISH_TOKENS = (%d+)"))
 	if t:case(tokens ~= nil, "TutorialService.lua has ARENA_FINISH_TOKENS") then
 		t:case(has(tf, "**" .. commas(tokens) .. " Cloud Tokens** at the end. Players who finished the first two chapters"),
