@@ -3,6 +3,8 @@
 -- inside the Roblox mock under lupa, like tools/smoke.py, and prints a balance report with TARGET ok / MISS lines:
 --   fighter   the played kit vs a passive NPC of k x its power (kit factor 1.3-1.7); mirror fights 8-45 s, none at 90 s
 --   support   Support (Economy) pets: DPS ratio 0.65-0.75 of Combat pets; a Support fighter can fight, best as a helper
+--   levels    level beats rarity (battles only): a L30 Common beats a L1 Secret, a L100 evolved Common an unevolved L50 Secret,
+--             a Secret stays the stronger pet at equal level and stage
 --   duels     mirror duels per stage (scripted players both sides): 40-60%, no draws, none at the 120 s limit
 --             + the element counter (balance-5: Water vs Flame, the wheel on vs off): it decides an even fight (>= 90%)
 --             and is worth x1.15-1.45 TeamPower
@@ -208,6 +210,9 @@ SIM.Stages = {
 	{ Id = "S9", Name = "Endgame", Pets = { pet("cloudy_dragon", 40, "Golden"), pet("stormfang", 35), pet("eclipse_dragon", 35) } },
 	{ Id = "S10", Name = "Maxed", Pets = { pet("stormfang", 50, "Rainbow"), pet("cloudy_dragon", 45, "Rainbow"), pet("eclipse_dragon", 50, "Rainbow") } },
 }
+-- level beats rarity: the pairs of section levels
+SIM.Commons = { "mallow_kitten", "puddle_frog", "biscuit_bear", "pebble_pup", "pip_penguin", "honey_bunny" }
+SIM.Secrets = { "stormfang", "eclipse_dragon", "obsidian_phoenix", "phantom_kitsune" }
 -- the ring medians per stage: the fresh-HP ladder measured on 2026-10-30 before the no-heal rule (HUD cleanup Task 4);
 -- the no-heal climb keeps them within +-3
 SIM.RingMedians = { S1 = 14, S3 = 21, S5 = 27, S7 = 33, S9 = 42, S10 = 49 }
@@ -816,6 +821,44 @@ section("support", function(opts)
 	end, { [1] = "player" }, seeds, { dodge = 0.25 })
 	out(fmt("  %-15s wins %3d%%  dur %4.1f s (the Combat reference)", "mallow_kitten", kitten.winPct, kitten.avgDur))
 	target("a Support fighter beats two puddle_frog L8 in 10-60% of the seeds (average of the four)", total / n >= 10 and total / n <= 60, fmt("%.0f%%", total / n))
+end)
+
+-- 3b. levels: the battle-only stat path (spec 2026-10-31 s.5)
+section("levels", function(opts)
+	header("Levels: level beats rarity, single pets, scripted players both sides (Common win % against each Secret)")
+	local seeds = opts.quick and 8 or 24
+	local function meanOver(cLevel, cExtra, sLevel)
+		local total, n = 0, 0
+		for _, c in ipairs(SIM.Commons) do
+			local row = {}
+			for _, s in ipairs(SIM.Secrets) do
+				local agg = series(function(seed)
+					return { Mode = "Duel", Seed = seed, Teams = { team(1, 1, { pet(c, cLevel, nil, cExtra) }), team(2, 2, { pet(s, sLevel) }) } }
+				end, { [1] = "player", [2] = "player" }, seeds)
+				row[#row + 1] = fmt("%3d%%", agg.winPct)
+				total, n = total + agg.winPct, n + 1
+			end
+			out(fmt("  %-14s L%-3d vs Secrets L%-3d %s", c, cLevel, sLevel, table.concat(row, " ")))
+		end
+		return total / max(1, n)
+	end
+	local mean30 = meanOver(30, nil, 1)
+	local mean100 = meanOver(100, { Evo = 1 }, 50)
+	local allPairs = true
+	local cases = { { 1, 0 }, { 20, 1 }, { 50, 2 }, { 100, 2 } }
+	for _, case in ipairs(cases) do
+		for _, c in ipairs(SIM.Commons) do
+			for _, s in ipairs(SIM.Secrets) do
+				if BC.UnitPower(pet(s, case[1], nil, { Evo = case[2] })) <= BC.UnitPower(pet(c, case[1], nil, { Evo = case[2] })) then
+					allPairs = false
+					out(fmt("  %s does not out-power %s at L%d stage %d", s, c, case[1], case[2]))
+				end
+			end
+		end
+	end
+	target("level beats rarity: a L30 Common beats a L1 Secret (mean win rate >= 90% over the 24 pairs)", mean30 >= 90, fmt("%.0f%%", mean30))
+	target("a L100 evolved (stage 1) Common beats an unevolved L50 Secret (mean >= 75%)", mean100 >= 75, fmt("%.0f%%", mean100))
+	target("a Secret stays the stronger pet at equal level and stage (UnitPower, L1 / L20 e1 / L50 e2 / L100 e2, every pair)", allPairs)
 end)
 
 -- 4. duels
