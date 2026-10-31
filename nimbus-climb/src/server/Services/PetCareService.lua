@@ -117,6 +117,7 @@ local battleService = nil
 local catalog = nil -- TycoonCatalog
 local petKeys = nil -- PetKeys (optional)
 local petCatalog = nil -- PetCatalog (optional)
+local battleCatalog = nil -- BattleCatalog (optional)
 local homeBuilder = nil -- HomeBuilder (optional: GetStation, SetTraining)
 local notifyRemote = nil
 local openPanelRemote = nil
@@ -743,6 +744,13 @@ function Care.statsText(def, level, stage)
 	local stats = statsOf(def, level)
 	if not stats then
 		return ""
+	end
+	-- Power and Health are the battle numbers (the same as the Pets detail and the Index)
+	if battleCatalog and type(battleCatalog.BattleStatsOf) == "function" then
+		local ok, battle = pcall(battleCatalog.BattleStatsOf, def, level, nil, stage)
+		if ok and type(battle) == "table" then
+			stats.Power, stats.Health = battle.Power, battle.Health
+		end
 	end
 	return "Power " .. compact(stats.Power) .. ", Health " .. compact(stats.Health) .. ", Speed " .. compact(stats.Speed)
 end
@@ -1892,6 +1900,7 @@ function PetCareService.Init(deps)
 	catalog = requireModule(Shared, "TycoonCatalog")
 	petKeys = requireModule(Shared, "PetKeys")
 	petCatalog = requireModule(Shared, "PetCatalog")
+	battleCatalog = requireModule(Shared, "BattleCatalog")
 	if not catalog then
 		warn("[PetCareService] TycoonCatalog is missing: the Food Machine, EVOLVE and the Training Place are disabled")
 		return

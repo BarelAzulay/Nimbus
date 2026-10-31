@@ -615,8 +615,9 @@ S.p4care_feed = guarded("p4care_feed", function()
 		Care.Feed(p, combat.Id)
 	end
 	local cs = PCat.GetStats(combat.Id, 2)
-	T.check(toasted(p, combat.Name .. " reached Lv 2! Power " .. compactText(cs.Power) .. ", Health " .. compactText(cs.Health) .. ", Speed " .. compactText(cs.Speed), "good", mark),
-		"care feed: a Combat pet's level-up toast shows Power, Health and Speed", toastsSince(p, mark))
+	local cb = K.mod("BattleCatalog").BattleStatsOf(combat.Id, 2)
+	T.check(toasted(p, combat.Name .. " reached Lv 2! Power " .. compactText(cb.Power) .. ", Health " .. compactText(cb.Health) .. ", Speed " .. compactText(cs.Speed), "good", mark),
+		"care feed: a Combat pet's level-up toast shows the battle Power and Health, and Speed", toastsSince(p, mark))
 
 	-- ONE toast per XP grant, whatever the number of levels crossed (the client_replay GUI-size pin)
 	setLevel(p, combat.Id, 1)
