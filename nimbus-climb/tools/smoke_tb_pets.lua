@@ -840,6 +840,7 @@ local function clientScenarios()
 				end
 			end
 			allTargets("the window")
+			T.check(game:GetService("GuiService").TouchControlsEnabled == false, "tb pets phone: Roblox's stick and jump button go while the window is up (they would sit over slot 3 and the cards)")
 			T.check(H.shown(H.find(win, "PresetA")) and H.shown(H.find(win, "SortButton")), "tb pets phone: A / B / C and sort on the top row")
 			T.check(MC.GetButton("Pets").Parent.Visible == false or MC.GetButton("Pets").Visible == false, "tb pets phone: the menu tiles step aside (the window covers them)")
 			-- pick mode
@@ -884,6 +885,7 @@ local function clientScenarios()
 			PC.Close(true)
 			KC.advance(0.3)
 			T.check(MC.GetButton("Pets").Parent.Visible ~= false and MC.GetButton("Pets").Visible ~= false, "tb pets phone: the tiles come back")
+			T.check(GuiService.TouchControlsEnabled == true, "tb pets phone: ...and Roblox's touch controls")
 			-- a portrait phone: the slots keep the top, the sheet the rest
 			Mock.SetViewport(390, 844)
 			KC.advance(0.5)

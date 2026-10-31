@@ -573,13 +573,12 @@ local function clientScenarios()
 		advance(0.5)
 		pcall(MC.Open, "Team")
 		advance(0.8)
-		local menu = pg() and pg():FindFirstChild("NimbusMenu")
-		local inv = menu and menu:FindFirstChild("Window_Inventory")
-		local win = inv and find(inv, "Page_Team") -- (HUD cleanup: the Pets window's Team tab)
-		local grid = win and find(win, "PickerGrid")
+		local petsGui = pg() and pg():FindFirstChild("NimbusPets")
+		local win = petsGui and petsGui:FindFirstChild("Window_Pets")
+		local grid = win and find(win, "Grid")
 		local tiles, white = 0, 0
 		for _, c in ipairs(grid and grid:GetChildren() or {}) do
-			local name = c:IsA("TextButton") and c:FindFirstChild("PetName")
+			local name = c:IsA("TextButton") and c:FindFirstChild("Name")
 			if name and name.Text ~= "" then
 				tiles = tiles + 1
 				if isWhite(name.TextColor3) then

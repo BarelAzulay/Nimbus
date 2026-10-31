@@ -579,13 +579,13 @@ local function clientScenarios()
 		toClient("ProfileSync", snapshot(0))
 		advance(0.5)
 
-		------------------------------------------------------------ the team editor (HUD cleanup: the Pets window's Team tab)
+		------------------------------------------------------------ the team in the Pets window (team balance: no Team tab)
 		MC.Open("Team", {})
 		advance(0.8)
 		local menu = pg():FindFirstChild("NimbusMenu")
-		local inv = menu and menu:FindFirstChild("Window_Inventory")
-		local win = inv and find(inv, "Page_Team")
-		if not T.check(win ~= nil and shown(win), "p3ui team: Open('Team') opens the Pets window on its Team tab") then
+		local petsGui = pg():FindFirstChild("NimbusPets")
+		local win = petsGui and petsGui:FindFirstChild("Window_Pets")
+		if not T.check(win ~= nil and shown(win), "p3ui team: Open('Team') opens the Pets window") then
 			return
 		end
 		local slots = {}
@@ -593,39 +593,19 @@ local function clientScenarios()
 			slots[i] = find(win, "Slot" .. i)
 		end
 		local first = PC and PC.Get(TEAM[1])
-		local name1 = slots[1] and find(slots[1], "PetName")
+		local name1 = slots[1] and slots[1]:FindFirstChild("PetName")
 		T.check(name1 and first and name1.Text == first.Name and shown(name1), "p3ui team: slot 1 shows the first team pet's name", name1 and name1.Text)
-		local info1 = slots[1] and find(slots[1], "Info")
-		T.check(info1 and info1.Text:find("Lv 3", 1, true) ~= nil, "p3ui team: ...its level", info1 and info1.Text)
-		T.check(slots[1] and find(slots[1], "Element_Earth") ~= nil, "p3ui team: ...its element badge")
-		local stats1 = slots[1] and find(slots[1], "Stats")
-		T.check(stats1 and stats1.Text:find("%d") ~= nil, "p3ui team: ...and its battle stats (power, health)", stats1 and stats1.Text)
+		local info1 = slots[1] and slots[1]:FindFirstChild("Level")
+		T.check(info1 and info1.Text == "L3", "p3ui team: ...its level", info1 and info1.Text)
+		local stats1 = slots[1] and slots[1]:FindFirstChild("Power")
+		T.check(stats1 and stats1.Text:find("%d") ~= nil, "p3ui team: ...and its battle power", stats1 and stats1.Text)
 		-- Phase 5 (4.8): the Team has 3 slots and no Prestige unlock
 		T.check(slots[1] ~= nil and slots[2] ~= nil and slots[3] ~= nil and slots[4] == nil, "p3ui team: the Team has three slots (no 4th, no Prestige unlock)")
-		local power = find(win, "PowerChip")
-		local powerValue = power and find(power, "Value")
-		T.check(powerValue and tonumber((powerValue.Text:gsub("[^%d]", ""))) and tonumber((powerValue.Text:gsub("[^%d]", ""))) > 0,
-			"p3ui team: the team power is shown", powerValue and powerValue.Text)
-		local trophy = find(win, "TrophyChip")
-		T.check(trophy and find(trophy, "Value") and find(trophy, "Value").Text:find("340", 1, true) ~= nil, "p3ui team: the trophies are shown (340)")
-		local synergy = find(win, "Synergy")
-		local hasPair = false
-		for _, d in ipairs(synergy and synergy:GetDescendants() or {}) do
-			if d:IsA("TextLabel") and d.Text:find("Power for 2", 1, true) then
-				hasPair = true
-			end
-		end
-		T.check(hasPair, "p3ui team: the synergy panel shows the live Earth pair bonus (+10% Power for 2 Earth pets)")
-		T.check(synergy and find(synergy, "StrongTitle") ~= nil and find(synergy, "WeakTitle") ~= nil, "p3ui team: ...and the team's matchups (hits hard / watch out)")
-		local wheel = find(win, "ElementWheel")
-		local nodes = 0
-		for _, e in ipairs(Config.Elements.Order) do
-			if wheel and find(wheel, "Element_" .. e) then
-				nodes = nodes + 1
-			end
-		end
-		T.eq(nodes, #Config.Elements.Order, "p3ui team: the element wheel shows all " .. #Config.Elements.Order .. " elements")
-		local grid = find(win, "PickerGrid")
+		local power = find(win, "TeamPower")
+		T.check(power and power.Text:find("^Team power %d"), "p3ui team: the team power is shown", power and power.Text)
+		local breakdown = find(win, "TeamBreakdown")
+		T.check(breakdown and breakdown.Text:find("team bonus", 1, true), "p3ui team: ...with what it is made of (the live Earth pair is the team bonus)", breakdown and breakdown.Text)
+		local grid = find(win, "Grid")
 		local picks = {}
 		for _, c in ipairs(grid and grid:GetChildren() or {}) do
 			if c:IsA("TextButton") then
@@ -636,69 +616,67 @@ local function clientScenarios()
 		for _ in pairs(picks) do
 			n = n + 1
 		end
-		T.eq(n, #OWNED, "p3ui team: the picker lists every owned pet copy")
-		-- bug batch 2 #18 ("Remote recall"): a pet working in the Garden is busy gardening (it cannot fight): its tile is
-		-- dimmed with a "Gardening" badge; a tap asks to take it out (checked below)
-		local garden = picks.Pick_bubble_axolotl
-		local gardenBusy = garden and find(garden, "Busy")
-		T.check(garden and find(garden, "Dim") and shown(find(garden, "Dim")) and gardenBusy and gardenBusy.Text:find("Gardening", 1, true) ~= nil,
-			"p3ui team: a pet working in the Garden is dimmed with a 'Gardening' badge (bug batch 2 #18)", gardenBusy and gardenBusy.Text)
-		local busy = picks.Pick_honey_bunny
-		T.check(busy and find(busy, "Dim") and shown(find(busy, "Dim")), "p3ui team: a pet in training is dimmed in the picker")
-		local inTeam = picks["Pick_" .. TEAM[2]]
-		T.check(inTeam and find(inTeam, "InTeam") and shown(find(inTeam, "InTeam")), "p3ui team: team pets carry their slot number in the picker")
+		T.eq(n, #OWNED, "p3ui team: the grid lists every owned pet copy")
+		-- bug batch 2 #18 ("Remote recall"): a pet working in the Garden is busy gardening (it cannot fight): its card says
+		-- "Gardening"; a tap in pick mode asks to take it out (checked below)
+		local garden = picks.Card_bubble_axolotl
+		local gardenBusy = garden and garden:FindFirstChild("Busy")
+		T.check(gardenBusy and shown(gardenBusy) and gardenBusy.Text:find("Gardening", 1, true) ~= nil,
+			"p3ui team: a pet working in the Garden says 'Gardening' (bug batch 2 #18)", gardenBusy and gardenBusy.Text)
+		local busy = picks.Card_honey_bunny
+		T.check(busy and shown(busy:FindFirstChild("Busy")) and busy:FindFirstChild("Busy").Text:find("Training", 1, true), "p3ui team: a pet in training says 'Training'")
+		local inTeam = picks["Card_" .. TEAM[2]]
+		T.check(inTeam and shown(inTeam:FindFirstChild("Number")) and inTeam:FindFirstChild("Number").Text == "2", "p3ui team: team pets carry their slot number on their cards")
 		local small = smallTexts(win, 18)
-		T.check(#small == 0, "p3ui team: every text of the Team window is >= 18 design px", table.concat(small, ", "))
+		T.check(#small == 0, "p3ui team: every text of the window is >= 18 design px", table.concat(small, ", "))
 
-		-- editing: a full team refuses, remove -> TeamSet, add -> TeamSet, busy refuses
+		-- editing: a tap on a card only selects; a slot then a pet = TeamSet; remove keeps the others; busy refuses
 		local mark = #Mock.RemoteLog
-		Mock.Click(picks.Pick_pebble_pup)
+		Mock.Click(picks.Card_pebble_pup)
 		advance(0.8)
-		T.check(lastRequest(mark, "TeamSet") == nil, "p3ui team: adding a 4th pet to a full 3-slot team sends nothing")
+		T.check(lastRequest(mark, "TeamSet") == nil, "p3ui team: tapping a pet outside pick mode sends nothing")
+		Mock.Click(picks["Card_" .. TEAM[3]])
+		advance(0.1)
 		mark = #Mock.RemoteLog
-		Mock.Click(find(slots[3], "Remove"))
+		Mock.Click(find(win, "ActRemove"))
 		advance(0.8)
 		local r = lastRequest(mark, "TeamSet")
 		T.check(r and r[2] == 1 and type(r[3]) == "table" and #r[3] == 2 and r[3][1] == TEAM[1] and r[3][2] == TEAM[2],
-			"p3ui team: removing slot 3 sends BattleRequest('TeamSet', 1, {the other two})", r and tostring(r[3] and #r[3]))
-		T.check(slots[3] and find(slots[3], "EmptyFace") and shown(find(slots[3], "EmptyFace")), "p3ui team: ...and slot 3 shows empty at once")
+			"p3ui team: Remove on slot 3 sends BattleRequest('TeamSet', 1, {the other two})", r and tostring(r[3] and #r[3]))
+		T.check(slots[3]:FindFirstChild("Empty") and shown(slots[3]:FindFirstChild("Empty")), "p3ui team: ...and slot 3 shows empty at once")
 		mark = #Mock.RemoteLog
-		Mock.Click(picks.Pick_pebble_pup)
+		Mock.Click(slots[3])
+		advance(0.1)
+		Mock.Click(picks.Card_pebble_pup)
 		advance(0.8)
 		r = lastRequest(mark, "TeamSet")
-		T.check(r and r[2] == 1 and #r[3] == 3 and r[3][3] == "pebble_pup", "p3ui team: tapping a pet adds it to the free slot (TeamSet with 3 keys)")
-		mark = #Mock.RemoteLog
-		Mock.Click(busy)
-		advance(0.8)
-		T.check(lastRequest(mark, "TeamSet") == nil, "p3ui team: a pet in training is not added")
-		-- swap: tap slot 1, then a pet
+		T.check(r and r[2] == 1 and #r[3] == 3 and r[3][3] == "pebble_pup", "p3ui team: a slot, then a pet, adds it (TeamSet with 3 keys)")
 		mark = #Mock.RemoteLog
 		Mock.Click(slots[1])
 		advance(0.1)
-		Mock.Click(picks.Pick_cloudy_dragon)
+		Mock.Click(busy)
+		advance(0.8)
+		T.check(lastRequest(mark, "TeamSet") == nil, "p3ui team: a pet in training is not added")
+		-- swap: slot 1 (still armed), then a pet
+		mark = #Mock.RemoteLog
+		Mock.Click(picks.Card_cloudy_dragon)
 		advance(0.8)
 		r = lastRequest(mark, "TeamSet")
 		T.check(r and r[3][1] == "cloudy_dragon" and #r[3] == 3, "p3ui team: tapping a slot, then a pet, swaps it in")
 		-- the server's answer arrives
 		toClient("ProfileSync", snapshot(0))
 		advance(5)
-		-- presets: Team 2 + Use Team 2
+		-- presets: B is the team you fight with
 		mark = #Mock.RemoteLog
-		Mock.Click(find(win, "Preset2"))
+		Mock.Click(find(win, "PresetB"))
 		advance(0.3)
-		local name2 = find(slots[1], "PetName")
-		T.check(name2 and name2.Text == ((PC.Get("pebble_pup") or {}).Name or "?"), "p3ui team: the Team 2 tab shows preset 2", name2 and name2.Text)
-		local use = find(win, "UseTeam")
-		T.check(use and shown(use) and not disabled(use), "p3ui team: a preset that is not the battle team offers 'Use Team 2'")
-		Mock.Click(use)
-		advance(0.4)
+		local name2 = slots[1]:FindFirstChild("PetName")
+		T.check(name2 and name2.Text == ((PC.Get("pebble_pup") or {}).Name or "?"), "p3ui team: B shows preset 2", name2 and name2.Text)
 		r = lastRequest(mark, "TeamSelect")
-		T.check(r and r[2] == 2, "p3ui team: 'Use Team 2' sends BattleRequest('TeamSelect', 2)")
+		T.check(r and r[2] == 2, "p3ui team: ...and sends BattleRequest('TeamSelect', 2)")
 		-- Prestige 1: still three slots (Phase 5: no slot-4 unlock)
 		toClient("ProfileSync", snapshot(1))
 		advance(4.5)
-		Mock.Click(find(win, "Preset1"))
-		advance(0.3)
 		T.check(find(win, "Slot4") == nil, "p3ui team: at Prestige 1 the Team still has three slots")
 		MC.Close()
 		advance(0.4)
@@ -726,29 +704,22 @@ local function clientScenarios()
 			return out
 		end
 		local function recallBox()
-			local box = menu:FindFirstChild("GardenRecall")
+			local box = petsGui:FindFirstChild("GardenRecall")
 			return box ~= nil and shown(box) and box or nil
 		end
 		toClient("ProfileSync", snapshot(0))
 		advance(4.5)
-		MC.Open("Team")
+		MC.Open("Team", { Preset = 3, Pick = 1 })
 		advance(0.6)
-		Mock.Click(find(win, "Preset3"))
-		advance(0.3)
-		local axo
-		for _, c in ipairs(find(win, "PickerGrid") and find(win, "PickerGrid"):GetChildren() or {}) do
-			if c.Name == "Pick_bubble_axolotl" then
-				axo = c
-			end
-		end
+		local axo = find(win, "Card_bubble_axolotl")
 		mark = #Mock.RemoteLog
 		Mock.Click(axo)
 		advance(0.4)
 		local box = recallBox()
 		local title = box and find(box, "Title")
 		local body = box and find(box, "Body")
-		T.check(box and title and title.Text:find("This pet is gardening!", 1, true) and body and body.Text:find("Take it out of the garden", 1, true),
-			"p3ui recall: tapping a gardening pet's tile opens NimbusMenu.GardenRecall ('This pet is gardening! Take it out of the garden and ...?')", body and body.Text)
+		T.check(box and title and title.Text:find("This pet is gardening!", 1, true) and body and body.Text:find("Take it out of the garden", 1, true) and body.Text:find("put it in your team?", 1, true),
+			"p3ui recall: picking a gardening pet opens NimbusPets.GardenRecall ('This pet is gardening! Take it out of the garden and put it in your team?')", body and body.Text)
 		T.check(box and find(box, "RecallYes") and find(box, "RecallNo"), "p3ui recall: ...with Yes and No")
 		T.check(lastRequest(mark, "TeamSet") == nil and #homeActions(mark) == 0, "p3ui recall: ...and sends nothing yet")
 		local small6 = box and smallTexts(box, 18) or {}
@@ -770,57 +741,25 @@ local function clientScenarios()
 		T.check(recallBox() == nil and lastRequest(mark, "TeamSet") == nil, "p3ui recall: ...closes the question and sends no TeamSet (the server stores the team)")
 		MC.Close()
 		advance(0.4)
-		-- the Pets window: Equip on a gardening pet asks the same question (To = "Equip")
+		-- Put in team on a gardening pet asks the same question
 		toClient("ProfileSync", snapshot(0))
-		advance(0.5)
-		MC.Open("Pets", { Key = "bubble_axolotl" })
+		advance(3)
+		MC.Open("Pets", { Key = "bubble_axolotl", Preset = 3 })
 		advance(0.6)
-		local petsWin = menu:FindFirstChild("Window_Inventory")
-		-- its card in the Pets grid carries the same seedling "Gardening" badge as its Team tile (and is dimmed);
-		-- a pet that is not gardening has neither
-		local axoCard = petsWin and find(petsWin, "Pet_bubble_axolotl")
-		local axoTag = axoCard and find(axoCard, "GardenTag")
-		local axoText = axoTag and find(axoTag, "Busy")
-		T.check(axoTag and shown(axoTag) and axoText and axoText.Text:find("Gardening", 1, true) and axoText.Text:find("\240\159\140\177", 1, true)
-			and axoText.TextSize >= 18 and find(axoCard, "Dim") and shown(find(axoCard, "Dim")),
-			"p3ui recall: Pets > a gardening pet's card is dimmed with the seedling 'Gardening' badge (bug batch 2 #18)", axoText and axoText.Text)
-		local pupCard = petsWin and find(petsWin, "Pet_pebble_pup")
-		local pupTag = pupCard and find(pupCard, "GardenTag")
-		T.check(pupCard ~= nil and not (pupTag and shown(pupTag)) and not (find(pupCard, "Dim") and shown(find(pupCard, "Dim"))),
-			"p3ui recall: ...a pet that is not gardening has no badge and is not dimmed")
-		local equipBtn = petsWin and find(petsWin, "Equip")
-		T.check(equipBtn and shown(equipBtn) and not disabled(equipBtn), "p3ui recall: Pets > a gardening pet keeps Equip pressable (the press asks)")
+		-- its card carries the seedling "Gardening" label; a pet that is not gardening has none
+		local axoText = axo:FindFirstChild("Busy")
+		T.check(axoText and shown(axoText) and axoText.Text:find("Gardening", 1, true) and axoText.Text:find("\240\159\140\177", 1, true) and axoText.TextSize >= 18,
+			"p3ui recall: a gardening pet's card has the seedling 'Gardening' label (bug batch 2 #18)", axoText and axoText.Text)
+		local pupCard = find(win, "Card_pebble_pup")
+		T.check(pupCard ~= nil and not shown(pupCard:FindFirstChild("Busy")), "p3ui recall: ...a pet that is not gardening has no label")
+		local putBtn = find(win, "ActPut")
+		T.check(putBtn and shown(putBtn) and not disabled(putBtn), "p3ui recall: a gardening pet keeps Put in team pressable (the press asks)")
 		mark = #Mock.RemoteLog
-		Mock.Click(equipBtn)
-		advance(0.4)
-		local equipCalls = 0
-		for i = mark + 1, #Mock.RemoteLog do
-			local e = Mock.RemoteLog[i]
-			if e.kind == "server" and e.remote == "EquipPet" then
-				equipCalls = equipCalls + 1
-			end
-		end
-		box = recallBox()
-		body = box and find(box, "Body")
-		T.check(box and body and body.Text:find("equip it?", 1, true) and equipCalls == 0 and #homeActions(mark) == 0,
-			"p3ui recall: Pets > a gardening pet > Equip asks first ('... and equip it?'), no EquipPet", body and body.Text or (petsWin and "no question" or "no Pets window"))
-		Mock.Click(box and find(box, "RecallNo"))
-		advance(0.4)
-		T.check(recallBox() == nil and #homeActions(mark) == 0, "p3ui recall: No sends nothing")
-		Mock.Click(equipBtn)
+		Mock.Click(putBtn)
 		advance(0.4)
 		box = recallBox()
-		mark = #Mock.RemoteLog
-		Mock.Click(box and find(box, "RecallYes"))
-		advance(0.4)
-		sent = homeActions(mark)
-		arg = sent[1] and sent[1][2]
-		T.check(#sent == 1 and sent[1][1] == "GardenRecall" and type(arg) == "table" and arg.Key == "bubble_axolotl" and arg.To == "Equip",
-			"p3ui recall: Yes sends ONE HomeAction('GardenRecall', { Key, To = 'Equip' })", tostring(#sent))
-		-- Esc / B closes the question like No
-		Mock.Click(equipBtn)
-		advance(0.4)
-		T.check(recallBox() ~= nil, "p3ui recall: (asked again)")
+		T.check(box and #homeActions(mark) == 0, "p3ui recall: Put in team on a gardening pet asks first")
+		-- closing the window closes the question
 		MC.Close()
 		advance(0.4)
 		T.check(recallBox() == nil, "p3ui recall: closing the window closes the question")
@@ -981,7 +920,7 @@ local function clientScenarios()
 		end
 		MC.Open("Team")
 		advance(0.8)
-		check("the Pets window's Team tab", pg():FindFirstChild("NimbusMenu"):FindFirstChild("Window_Inventory"))
+		check("the Pets window", pg():FindFirstChild("NimbusPets"):FindFirstChild("Window_Pets"))
 		MC.Close()
 		advance(0.3)
 		AC.OpenRing()

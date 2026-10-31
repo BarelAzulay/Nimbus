@@ -798,15 +798,11 @@ local function clientScenarios()
 		local small = smallTexts(win, 18)
 		T.check(#small == 0, "p4ui ring: every text of the ring window is >= 18 design px", table.concat(small, ", "))
 
-		------------------------------------------------------------ the Team screen's ring line
+		------------------------------------------------------------ the record lives on the Ring window, not in the Pets window
 		MC.Open("Team")
 		advance(0.8)
-		local menu = pg():FindFirstChild("NimbusMenu")
-		local inv = menu and menu:FindFirstChild("Window_Inventory")
-		local team = inv and find(inv, "Page_Team") -- (HUD cleanup: the Pets window's Team tab)
-		local line = team and find(team, "RingRecord")
-		T.check(line and line.Text:find("Champion Ring best: Round 24", 1, true) ~= nil, "p4ui team: the Team screen shows 'Champion Ring best: Round 24'",
-			line and line.Text)
+		local petsGui = pg():FindFirstChild("NimbusPets")
+		T.check(petsGui and petsGui:FindFirstChild("Window_Pets").Visible and find(petsGui, "RingRecord") == nil, "p4ui team: the Pets window carries no Champion Ring line")
 		MC.Close()
 		advance(0.4)
 

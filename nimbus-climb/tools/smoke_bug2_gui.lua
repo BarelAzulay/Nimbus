@@ -273,7 +273,7 @@ S.client_bug2gui_layout = guarded("client_bug2gui_layout", function()
 	T.check(MC.IsColumnCollapsed() == false and H.shown(pets) and H.rect(pets).x0 >= 10, "bug2gui fold: a second click brings the column back", pets and H.fmt(H.rect(pets)))
 	Mock.Click(pets)
 	KC.advance(0.8)
-	local inv = p.Menu:FindFirstChild("Window_Inventory")
+	local inv = H.pg():FindFirstChild("NimbusPets"):FindFirstChild("Window_Pets")
 	T.check(inv ~= nil and inv.Visible, "bug2gui fold: the Pets tile still opens the Pets window")
 	H.closeAll()
 
@@ -751,31 +751,13 @@ function H.emptyRun(world, sizes)
 			H.closeAll()
 			Mock.Click(H.tile("Pets"))
 			KC.advance(1)
-			local inv = H.parts().Menu:FindFirstChild("Window_Inventory")
+			local inv = H.pg():FindFirstChild("NimbusPets"):FindFirstChild("Window_Pets")
 			local well = inv and inv:FindFirstChild("GridWell", true)
 			H.checkEmpty(label .. " Pets", well and well:FindFirstChild("Empty"), true)
-			-- the helper itself: squeezed into a 150 design px column the button still takes only the column's width
-			local left = well and well.Parent
-			if left and left:IsA("GuiObject") then
-				local was = left.Size
-				left.Size = UDim2.new(0, 150, 1, 0)
-				KC.advance(0.2)
-				H.checkEmpty(label .. " Pets squeezed to a 150 px column", well:FindFirstChild("Empty"), false)
-				left.Size = was
-				KC.advance(0.2)
-			end
 			H.closeAll()
-			H.mod("MenuController").Open("Team", {}) -- (HUD cleanup: no Team tile; the Pets window's Team tab)
+			H.mod("MenuController").Open("Team", {}) -- (team balance: the same window)
 			KC.advance(1)
-			local inv = H.parts().Menu:FindFirstChild("Window_Inventory")
-			local team = inv and inv:FindFirstChild("Page_Team", true)
-			local empty = nil
-			for _, d in ipairs(team and team:GetDescendants() or {}) do
-				if d.Name == "Empty" and d:FindFirstChild("GoShop") then
-					empty = d
-				end
-			end
-			H.checkEmpty(label .. " Team", empty, false)
+			T.check(inv.Visible, label .. " Team: Open('Team') is the same window")
 			H.closeAll()
 		end
 	end)

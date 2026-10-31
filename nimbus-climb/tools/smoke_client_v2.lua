@@ -2,7 +2,7 @@
 -- tools/smoke.py after smoke_client.lua (which exports its helpers as the global KC):
 --   client_ui_kit      CloudUI: every constructor of the kit, chunky style, shared update loop
 --   client_state       State: ProfileSync mirror, defaults, sanitising, Changed / Tokens
---   client_menu        MenuController: 6 icon tiles (v3), Inventory / Pets / Shop (roulettes + items) / Stats windows,
+--   client_menu        MenuController: 6 icon tiles (v3), the Pets window (PetsController) / Shop (roulettes + items) / Stats windows,
 --                      the roulette spin + reveal, OpenPanel, Esc, one window at a time; v3 Pet Index window
 --                      (IndexController: group tiles, ??? silhouettes, CLAIM -> IndexClaim, Unlocked: x/N, Stormfang art)
 --                      and, once the catalog has elements, the element badges (Index cards + detail with Strong vs /
@@ -1057,53 +1057,45 @@ S.client_menu = guarded("client_menu", function()
 
 	-- Pets window
 	clickEntry("Pets")
-	T.eq(table.concat(visibleWindows(), ","), "Window_Inventory", "the Pets button opens the Inventory window")
-	local inv = windowOf("Window_Inventory")
+	local petsGui = gui():FindFirstChild("NimbusPets")
+	local inv = petsGui and petsGui:FindFirstChild("Window_Pets")
+	T.check(inv ~= nil and inv.Visible and #visibleWindows() == 0, "the Pets button opens the Pets window (PetsController's, no menu window)")
 	if inv and inv.Visible then
 		do
 			local small, measured = KC.smallTexts(15)
-			T.check(#small == 0 and measured > 0, "Inventory window: every text on screen is readable (>= 15 px at 1920x1080)", #small .. " of " .. measured .. " too small: " .. table.concat(small, "; ", 1, math.min(#small, 6)))
+			T.check(#small == 0 and measured > 0, "Pets window: every text on screen is readable (>= 15 px at 1920x1080)", #small .. " of " .. measured .. " too small: " .. table.concat(small, ", "))
 		end
-		-- Phase 5 (6.6, the window rule): windows dock RIGHT on landscape screens (NeonKit.Dock's DockMode 'Side')
-		local rightEdge = inv.AbsolutePosition.X + inv.AbsoluteSize.X
-		T.check(inv:GetAttribute("DockMode") == "Side" and rightEdge <= vp.X + 1 and vp.X - rightEdge <= vp.X * 0.05,
-			"windows open docked right (DockMode Side, the right edge within the margin)", string.format("DockMode %s, right edge %.0f of %d", tostring(inv:GetAttribute("DockMode")), rightEdge, vp.X))
-		T.check(findText("equipped 2/3", inv) ~= nil, "the Pets tab shows 'Equipped 2/3'", allShownText())
-		T.check(findText("pets", inv) ~= nil, "...in a window titled Pets (the title follows the tab)")
-		local tabsFound = findText("^pets$", inv, true) ~= nil and findText("^team$", inv, true) ~= nil and findText("^items$", inv, true) == nil
-		T.check(tabsFound, "...with the tabs Pets and Team (HUD cleanup: no Items tab)")
-		local grid = descendantNamed(inv, "CloudGrid")
+		T.check(findText("team power", inv) ~= nil, "the window shows the team power", allShownText())
+		T.check(findText("pets", inv) ~= nil, "...in a window titled Pets")
+		T.check(descendantNamed(inv, "Tab_Pets") == nil and descendantNamed(inv, "Tab_Team") == nil and descendantNamed(inv, "Tab_Items") == nil, "...with no tabs")
+		local grid = descendantNamed(inv, "Grid")
 		local slots = {}
 		for _, c in ipairs(grid and grid:GetChildren() or {}) do
-			if c.Name:find("^Pet_") then
+			if c.Name:find("^Card_") then
 				slots[c.Name] = c
 			end
 		end
-		T.check(slots.Pet_cloudy_dragon and slots.Pet_pebble_pup and slots.Pet_biscuit_bear, "the grid shows a slot for every owned pet (and only those)", (function()
+		T.check(slots.Card_cloudy_dragon and slots.Card_pebble_pup and slots.Card_biscuit_bear, "the grid shows a card for every owned pet (and only those)", (function()
 			local n = 0
 			for _ in pairs(slots) do
 				n = n + 1
 			end
-			return n .. " slots"
+			return n .. " cards"
 		end)())
-		local function slotText(slot)
+		local function cardText(card)
 			local out = {}
-			for _, d in ipairs(slot:GetDescendants()) do
+			for _, d in ipairs(card:GetDescendants()) do
 				if (d:IsA("TextLabel") or d:IsA("TextButton")) and isShown(d) then
 					out[#out + 1] = d.Text
 				end
 			end
 			return table.concat(out, "|")
 		end
-		T.check(slots.Pet_cloudy_dragon and slotText(slots.Pet_cloudy_dragon):find("x2", 1, true) ~= nil, "...with the stack count (x2)", slots.Pet_cloudy_dragon and slotText(slots.Pet_cloudy_dragon) or "")
-		local starOf = slots.Pet_cloudy_dragon and slotText(slots.Pet_cloudy_dragon):find("\226\152\133", 1, true)
-		local noStar = slots.Pet_pebble_pup and not slotText(slots.Pet_pebble_pup):find("\226\152\133", 1, true)
-		T.check(starOf ~= nil and noStar, "...a star on equipped pets only", (slots.Pet_cloudy_dragon and slotText(slots.Pet_cloudy_dragon) or "") .. " / " .. (slots.Pet_pebble_pup and slotText(slots.Pet_pebble_pup) or ""))
-		T.check(slots.Pet_cloudy_dragon and slots.Pet_cloudy_dragon:FindFirstChildWhichIsA("ViewportFrame", true) ~= nil, "...and the pet in a ViewportFrame")
+		T.check(slots.Card_cloudy_dragon and cardText(slots.Card_cloudy_dragon):find("x2", 1, true) ~= nil, "...with the stack count (x2)", slots.Card_cloudy_dragon and cardText(slots.Card_cloudy_dragon) or "")
+		T.check(slots.Card_cloudy_dragon and slots.Card_cloudy_dragon:FindFirstChildWhichIsA("ViewportFrame", true) ~= nil, "...and the pet in a ViewportFrame")
 		-- select a pet
-		local pick = slots.Pet_pebble_pup and slots.Pet_pebble_pup:FindFirstChildWhichIsA("TextButton", true)
-		if T.check(pick ~= nil, "slots are clickable") then
-			Mock.Click(pick)
+		if T.check(slots.Card_pebble_pup ~= nil and slots.Card_pebble_pup:IsA("TextButton"), "cards are clickable") then
+			Mock.Click(slots.Card_pebble_pup)
 			advance(0.5)
 			local def = PetCatalog.Get("pebble_pup")
 			T.check(findText(def.Name:lower(), inv) ~= nil and findText(def.Rarity:lower(), inv) ~= nil, "selecting a pet shows its name and rarity in the detail card", allShownText())
@@ -1118,42 +1110,31 @@ S.client_menu = guarded("client_menu", function()
 				shown = shown and findText(line:lower(), inv) ~= nil
 			end
 			T.check(shown, "...and its perks (PetCatalog.PerkLabel)", table.concat(perkLines, " / "))
-			-- v3 (ARCHITECTURE_V3.md section 11): the Pets panel shows the selected pet's element badge
+			-- v3 (ARCHITECTURE_V3.md section 11): the selected pet's element, in its line and on its card
 			local element = petElements(PetCatalog, def)[1]
 			if element then
-				T.check(detail ~= nil and elementBadge(detail, element) ~= nil, "...and its element badge (" .. element .. ", coloured from Config.Elements.Info)", describeBadge(detail, element))
+				local meta = detail and descendantNamed(detail, "Meta")
+				T.check(meta ~= nil and meta.Text:find(element, 1, true) ~= nil, "...and its element (" .. element .. ")", meta and meta.Text or "")
+				local chip = descendantNamed(slots.Card_pebble_pup, "Element")
+				T.check(chip ~= nil and chip.BackgroundColor3 == Config.Elements.Info[element].Color, "...its card's chip coloured from Config.Elements.Info")
 			end
-			local mark = #serverCalls("EquipPet")
-			local equip = descendantNamed(inv, "Equip")
-			if T.check(equip ~= nil and equip:IsA("TextButton") and isShown(equip), "an Equip button is shown for an unequipped pet") then
-				Mock.Click(equip)
+			-- team balance: no Equip: the team is the only list
+			local mark = #serverCalls("BattleRequest")
+			local put = descendantNamed(inv, "ActPut")
+			if T.check(put ~= nil and put:IsA("TextButton") and isShown(put) and put.Text == "Put in team", "a Put in team button is shown for a pet outside the team") then
+				Mock.Click(put)
 				advance(0.2)
-				local calls = callsAfter("EquipPet", mark)
-				T.check(#calls == 1 and calls[1].args[1] == "pebble_pup", "Equip fires Remotes.EquipPet(petId)", #calls .. " calls")
+				local calls = callsAfter("BattleRequest", mark)
+				T.check(#calls == 1 and calls[1].args[1] == "TeamSet", "Put in team sends BattleRequest TeamSet", #calls .. " calls")
 			end
-			-- an equipped pet offers Unequip
-			local pick2 = slots.Pet_biscuit_bear and slots.Pet_biscuit_bear:FindFirstChildWhichIsA("TextButton", true)
-			if pick2 then
-				Mock.Click(pick2)
-				advance(0.5)
-				local un = descendantNamed(inv, "Unequip")
-				local mark2 = #serverCalls("UnequipPet")
-				if T.check(un ~= nil and isShown(un), "an equipped pet offers an Unequip button") then
-					Mock.Click(un)
-					advance(0.2)
-					local calls = callsAfter("UnequipPet", mark2)
-					T.check(#calls == 1 and calls[1].args[1] == "biscuit_bear", "Unequip fires Remotes.UnequipPet(petId)", #calls .. " calls")
-				end
-			end
+			T.check(descendantNamed(inv, "Equip") == nil and descendantNamed(inv, "Unequip") == nil, "...and there is no Equip / Unequip any more")
 		end
-		-- HUD cleanup: the tabs are Pets and Team (the Items tab went with the obby items)
-		T.check(descendantNamed(inv, "Tab_Items") == nil and descendantNamed(inv, "Tab_Pets") ~= nil and descendantNamed(inv, "Tab_Team") ~= nil,
-			"the Inventory window has the tabs Pets and Team (no Items tab)")
 	end
 
 	-- one window at a time + Esc + toggle
 	clickEntry("Shop")
-	T.eq(table.concat(visibleWindows(), ","), "Window_Shop", "opening the Shop closes the Inventory (one window at a time)")
+	T.eq(table.concat(visibleWindows(), ","), "Window_Shop", "opening the Shop closes the Pets window (one window at a time)")
+	T.check(inv ~= nil and not inv.Visible, "...which is really gone")
 	press("Escape")
 	advance(0.5)
 	T.eq(#visibleWindows(), 0, "Esc closes the open window")
@@ -1326,7 +1307,7 @@ S.client_menu = guarded("client_menu", function()
 	advance(0.6)
 	T.eq(#visibleWindows(), 0, "OpenPanel('Shop') is ignored during a match")
 	LocalPlayer:SetAttribute("InMatch", false)
-	clickEntry("Pets")
+	clickEntry("Stats")
 	T.eq(#visibleWindows(), 1, "a window is open...")
 	LocalPlayer:SetAttribute("InMatch", true)
 	advance(0.6)
@@ -1363,11 +1344,11 @@ S.client_menu = guarded("client_menu", function()
 	T.check(peakViewports <= 40, "the spin strip never builds all 40 viewports at once", "peak " .. peakViewports .. " viewports")
 	local revealEquip
 	for _, d in ipairs(gui():GetDescendants()) do
-		if d:IsA("TextButton") and d.Text:lower():find("equip") and isShown(d) and not d.Name:find("Unequip") and d.Text:lower() ~= "unequip" then
+		if d:IsA("TextButton") and d.Text == "Put in team" and d.Name == "Equip" and isShown(d) then
 			revealEquip = d
 		end
 	end
-	if T.check(revealEquip ~= nil, "the reveal card offers an Equip button") then
+	if T.check(revealEquip ~= nil, "the reveal card offers a Put in team button") then
 		local e0 = #serverCalls("EquipPet")
 		Mock.Click(revealEquip)
 		advance(0.3)
@@ -1406,14 +1387,14 @@ S.client_menu = guarded("client_menu", function()
 	clickEntry("Pets")
 	toClient("ProfileSync", snapshot({ Pets = { cloudy_dragon = 1 }, Equipped = { "cloudy_dragon" } }))
 	advance(0.6)
-	local inv2 = windowOf("Window_Inventory")
+	local inv2 = gui():FindFirstChild("NimbusPets")
 	local staleCount = 0
-	for _, c in ipairs(inv2 and descendantNamed(inv2, "CloudGrid") and descendantNamed(inv2, "CloudGrid"):GetChildren() or {}) do
-		if c.Name:find("^Pet_") then
+	for _, c in ipairs(inv2 and descendantNamed(inv2, "Grid") and descendantNamed(inv2, "Grid"):GetChildren() or {}) do
+		if c.Name:find("^Card_") then
 			staleCount = staleCount + 1
 		end
 	end
-	T.eq(staleCount, 1, "no stale slots: after the profile shrinks the grid shows only the owned pet")
+	T.eq(staleCount, 1, "no stale cards: after the profile shrinks the grid shows only the owned pet")
 	press("Escape")
 	advance(0.6)
 	feed()

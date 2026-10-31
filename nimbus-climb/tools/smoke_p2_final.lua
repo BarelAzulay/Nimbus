@@ -15,7 +15,7 @@
 --                 * every script of src/ is named in the project layout, the place-file instructions name the Rojo
 --                   build and tools/verify_place.py, and every "#anchor" link points at a heading.
 --                 * Phase 3 (pet battles): the "## Pet battles" section covers what the player asked for (the arena
---                   by the plaza bridge and the home Arena Gate, the Team screen and slot 4 at Prestige 1, ATTACK /
+--                   by the plaza bridge and the home Arena Gate, the Pets window and slot 4 at Prestige 1, ATTACK /
 --                   RETREAT / SPECIAL with F / R / 1-4 and touch, RETREAT's auto resume, Trials 1-30, duels by
 --                   challenge and queue, practice duels, trophies and the leaderboard, Boss Raids and dodging, Double
 --                   Rewards, the Boss Raid pets, elements and synergy, /raid + Start Boss Raid, Studio's Clients and
@@ -839,7 +839,7 @@ end
 ----------------------------------------------------------------------------------------------------
 local TOPICS3 = {
 	{ "getting to the arena: the Arena gate, the bridge and the home Arena Gate", { "Battle Arena", "Arena gate", "bridge", "BATTLE ARENA", "**Arena Gate**", "press **E**" } },
-	{ "the Team screen (a fighter and two helpers)", { "**Team**", "Use this team", "team power", "**FIGHTER**", "**HELPERS**", "Set as fighter" } },
+	{ "the Pets window (a fighter and two helpers)", { "**Pets**", "**A**", "team power", "**FIGHTER**", "**HELPERS**", "Make fighter" } },
 	{ "the battle buttons and keys", { "**ATTACK**", "**ELEMENT**", "**SPECIAL**", "**DASH**", "**SWAP**", "`F`", "`E`", "`Q`", "`Shift`", "`Tab`", "`1` / `2`", "Phone", "ENERGY" } },
 	{ "lives and the bench", { "3 lives", "steps in by itself" } },
 	{ "helpers and Supporters", { "Helper buff", "**Support**", "Who gives it" } },

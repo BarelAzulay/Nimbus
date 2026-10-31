@@ -66,6 +66,8 @@ local K = {
 	RECT = { H0 = 390, W0 = 820, Y0 = 330, H1 = 1080, W1 = 1260, Y1 = 900 }, -- window px at the two screen heights
 	PHONE_W = 900, -- design px: narrower, or lower than SHORT, is the phone layout (the PC top row needs this much)
 	SHORT = 560,
+	PC_MIN_H = 600, -- a landscape screen this tall keeps the window under PC_MAX_W of its width
+	PC_MAX_W = 0.76,
 	SLOTS = 3,
 	PRESETS = 3,
 	SEND_GAP = 0.45, -- seconds between two TeamSet / TeamSelect (the server's cooldowns are 0.4 / 0.3: a closer one is dropped)
@@ -106,7 +108,6 @@ local G = {
 	Muscle = "\240\159\146\170",
 	Sparkle = "\226\156\166",
 	Bullet = "\194\183",
-	Plus = "+",
 	Close = "\195\151",
 }
 
@@ -131,6 +132,7 @@ local S = {
 	LastSend = 0,
 	LastSelect = 0,
 	Waiting = false,
+	TouchOff = false,
 	Ready = {}, -- key -> true once the card has its viewport
 	Filling = false,
 	Order = {},
@@ -454,7 +456,6 @@ function H.onNotify(message, kind)
 		handled = true
 	end
 	if S.Draft and S.Draft.Sent then
-		S.Draft.Message = message
 		H.dropDraft(nil)
 		handled = true
 	end
@@ -809,7 +810,7 @@ function H.buildCard(key)
 	item.Name = text(button, "Name", "", "Body", 18, WHITE, { TextWrapped = true, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 3 })
 	item.Level = text(button, "Level", "", "Heading", 18, WHITE, { TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3 })
 	item.Power = text(button, "Power", "", "Heading", 18, POWER_GOLD, { TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 3 })
-	item.Element = text(button, "Element", "", "Button", 15, WHITE, { BackgroundTransparency = 0, ZIndex = 4 })
+	item.Element = text(button, "Element", "", "Button", 18, WHITE, { BackgroundTransparency = 0, ZIndex = 4 })
 	round(item.Element)
 	stroke(item.Element, NAVY, 2, 0)
 	item.Number = text(button, "Number", "", "Button", 18, WHITE, { BackgroundTransparency = 0, BackgroundColor3 = GOOD, Visible = false, ZIndex = 6 })
@@ -818,7 +819,7 @@ function H.buildCard(key)
 	item.Tier = frame(button, "Tier", { BackgroundTransparency = 0, BackgroundColor3 = WHITE, Visible = false, ZIndex = 5 })
 	round(item.Tier)
 	stroke(item.Tier, NAVY, 2, 0)
-	item.TierMark = text(item.Tier, "Mark", "", "Button", 15, WHITE, { Size = UDim2.new(1, 0, 1, 0), ZIndex = 6 })
+	item.TierMark = text(item.Tier, "Mark", "", "Button", 18, WHITE, { Size = UDim2.new(1, 0, 1, 0), ZIndex = 6 })
 	item.Stars = text(button, "Stars", "", "Title", 18, GOLD, { Visible = false, ZIndex = 5 })
 	item.Count = text(button, "Count", "", "Heading", 18, WHITE, { TextXAlignment = Enum.TextXAlignment.Right, Visible = false, ZIndex = 4 })
 	item.Busy = text(button, "Busy", "", "Heading", 18, WHITE, {
@@ -859,8 +860,8 @@ function H.buildDetail()
 	d.Xp.Root.ZIndex = 21
 	for _, row in ipairs(ROWS) do
 		local holder = frame(d.Frame, "Row_" .. row[1], { ZIndex = 21 })
-		local label = text(holder, "Label", row[2], "Body", 18, Color3.fromRGB(201, 212, 234), { TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 22 })
-		local value = text(holder, "Value", "", "Heading", 19, ROW_COLORS[row[1]], { TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 22 })
+		local label = text(holder, "Label", row[2], "Body", 18, Color3.fromRGB(201, 212, 234), { Size = UDim2.new(1, 0, 1, 0), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 22 })
+		local value = text(holder, "Value", "", "Heading", 19, ROW_COLORS[row[1]], { Size = UDim2.new(1, 0, 1, 0), TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 22 })
 		U.Rows[row[1]] = { Frame = holder, Label = label, Value = value }
 	end
 	d.Work = text(d.Frame, "Work", "", "Heading", 18, Theme.Lighten(GOOD, 0.35), {
@@ -1033,7 +1034,7 @@ function H.build()
 	if mouseLock then
 		local ok, mod = pcall(require, mouseLock)
 		if ok and type(mod) == "table" and type(mod.WatchVisible) == "function" then
-			safe("mouse lock", mod.WatchVisible, "Window:Pets", U.Holder)
+			safe("mouse lock", mod.WatchVisible, "Dock:" .. U.Holder.Name, U.Holder)
 		end
 	end
 end
@@ -1061,6 +1062,9 @@ function H.rect()
 	local factor = Theme.ScreenFactor(h)
 	local big = math.max(1, factor)
 	local pxW = math.min((R.W0 + (R.W1 - R.W0) * t) * big, w - 2 * K.MARGIN)
+	if w > h and h >= K.PC_MIN_H then
+		pxW = math.min(pxW, w * K.PC_MAX_W) -- the menu tiles and the currency pills stay free
+	end
 	local pxH = math.min((R.Y0 + (R.Y1 - R.Y0) * t) * big, h - inset - 2)
 	local phone = pxW / factor < K.PHONE_W or pxH / factor < K.SHORT
 	local scale = phone and 1 or factor
@@ -1089,14 +1093,16 @@ function H.layoutCard(item)
 		item.Name.Visible = false
 	else
 		place(item.Picture, 2, 2, w - 4, 94)
+		place(item.Level, 6, 72, 52, 24)
 		place(item.Name, 4, 96, w - 8, 42)
-		place(item.Level, 6, 142, 40, 24)
-		place(item.Power, 40, 142, w - 46, 24)
+		place(item.Power, 4, 142, w - 10, 24)
 		item.Name.Visible = true
 	end
-	place(item.Element, w - 28, 4, 24, 24)
+	item.Element.TextSize = fs
+	item.TierMark.TextSize = fs
+	place(item.Element, w - 30, 4, 26, 26)
 	place(item.Number, 4, 4, 26, 26)
-	place(item.Tier, 4, 34, 24, 24)
+	place(item.Tier, 4, 34, 26, 26)
 	place(item.Stars, w / 2 - 18, 2, 36, 22)
 	place(item.Count, w - 44, phone and 84 or 74, 40, 22)
 	place(item.Busy, 0, 0, w, phone and 82 or 96)
@@ -1259,7 +1265,17 @@ function H.placeActions()
 	local perksY = d.TextY + workH + 2
 	local perksH = bottomText - perksY
 	place(d.Perks, pad, perksY, d.TextW, math.max(0, perksH))
-	d.PerksRoom = perksH >= (phone and 20 or 24)
+	d.PerksH = perksH
+	d.PerkLineH = phone and 18 or 22
+end
+
+function H.gridPad(px)
+	if U.GridPad then
+		U.GridPad.PaddingLeft = UDim.new(0, px)
+		U.GridPad.PaddingRight = UDim.new(0, px)
+		U.GridPad.PaddingTop = UDim.new(0, px)
+		U.GridPad.PaddingBottom = UDim.new(0, px)
+	end
 end
 
 function H.layoutPC(W, H0)
@@ -1308,6 +1324,8 @@ function H.layoutPC(W, H0)
 	H.layoutDetail(detailW, bodyH)
 	U.GridLayout.CellSize = UDim2.fromOffset(K.PC_CARD[1], K.PC_CARD[2])
 	U.GridLayout.CellPadding = UDim2.fromOffset(K.PC_CARD[3], K.PC_CARD[3])
+	H.gridPad(6)
+	U.Grid.ScrollBarThickness = 10
 end
 
 function H.layoutPhone(W, H0)
@@ -1319,9 +1337,9 @@ function H.layoutPhone(W, H0)
 	local sheetX, sheetY, sheetW, sheetH
 	if S.Portrait then
 		-- the slots in a row under the controls, the grid below them
-		place(U.Presets[1], 92, top, 46, chipH)
-		place(U.Presets[2], 142, top, 46, chipH)
-		place(U.Presets[3], 192, top, 46, chipH)
+		place(U.Presets[1], 110, top, 46, chipH)
+		place(U.Presets[2], 160, top, 46, chipH)
+		place(U.Presets[3], 210, top, 46, chipH)
 		local rowY = top + chipH + 4
 		local cell = math.floor((W - 2 * x0 - 2 * 6) / 3)
 		place(U.Sort, x0, rowY, cell, chipH)
@@ -1384,6 +1402,8 @@ function H.layoutPhone(W, H0)
 	place(U.Grid, 0, 0, gridW, gridH)
 	U.GridLayout.CellSize = UDim2.fromOffset(K.PHONE_CARD[1], K.PHONE_CARD[2])
 	U.GridLayout.CellPadding = UDim2.fromOffset(K.PHONE_CARD[3], K.PHONE_CARD[3])
+	H.gridPad(2)
+	U.Grid.ScrollBarThickness = 6
 	place(U.D.Frame, sheetX, sheetY, sheetW, sheetH)
 	U.D.Frame.Name = "Sheet"
 	H.layoutDetail(sheetW, sheetH)
@@ -1415,8 +1435,10 @@ function H.layout()
 	U.Content.Size = UDim2.new(1, 0, 1, phone and 0 or -62)
 	if panel.TitleBar then
 		panel.TitleBar.Position = UDim2.fromOffset(phone and 2 or 12, phone and 2 or 6)
-		panel.TitleBar.Size = phone and UDim2.fromOffset(S.Portrait and 88 or 134, 38) or UDim2.new(1, -24, 0, 50)
+		panel.TitleBar.Size = phone and UDim2.fromOffset(S.Portrait and 104 or 134, 38) or UDim2.new(1, -24, 0, 50)
 		panel.TitleLabel.TextSize = phone and 24 or 34
+		U.TitleSize = U.TitleSize or panel.TitleLabel.Size
+		panel.TitleLabel.Size = phone and UDim2.new(1, -8, 1, 0) or U.TitleSize
 	end
 	if panel.CloseButton then
 		local size = phone and 44 or 44
@@ -1439,12 +1461,31 @@ function H.layout()
 	H.coverColumn(r)
 end
 
+-- The phone window fills the screen: Roblox's thumbstick and jump button would sit over slot 3 and the cards. They go
+-- while it is up and come back as they were.
+function H.syncTouch()
+	local want = S.Open and S.Mode == "Phone"
+	if want == S.TouchOff then
+		return
+	end
+	S.TouchOff = want
+	pcall(function()
+		if want then
+			S.TouchWas = GuiService.TouchControlsEnabled
+			GuiService.TouchControlsEnabled = false
+		else
+			GuiService.TouchControlsEnabled = S.TouchWas ~= false
+		end
+	end)
+end
+
 -- a window that reaches over the menu tiles (phones, tablets) hides them while it is open
 function H.coverColumn(r)
 	local menu = H.controller("MenuController")
 	if menu and type(menu.SetColumnCovered) == "function" then
 		safe("cover", menu.SetColumnCovered, S.Open and r and r.x or nil)
 	end
+	H.syncTouch()
 end
 
 ----------------------------------------------------------------------
@@ -1480,7 +1521,7 @@ function H.refreshSlots(keys)
 		item.Stroke.Color = def and Theme.Lighten(tint, 0.15) or NAVY
 		item.Empty.Visible = def == nil
 		item.Empty.Text = S.Pick == i and "Tap a pet" or "Empty"
-		item.Level.Visible = def ~= nil
+		item.Level.Visible = def ~= nil and not (busy and S.Mode == "Phone")
 		item.Power.Visible = def ~= nil
 		item.Face.Visible = def ~= nil
 		item.Name.Visible = def ~= nil and S.Mode == "PC"
@@ -1556,20 +1597,12 @@ function H.refreshTop()
 		button:SetAttribute("Selected", i == active)
 		button:SetAttribute("Shown", i == shown)
 		CloudUI.SetStyle(button, i == active and "Blue" or (i == shown and "Gold" or "Gray"))
-		button.Visible = not (phone and picking and S.Portrait and false)
+		button.Visible = not (phone and picking and not S.Portrait)
 	end
 	-- pick mode takes the controls' row on a phone, the sort's side on PC
 	local rowHidden = phone and picking
 	for _, button in ipairs({ U.Sort, U.AutoFill, U.Clear }) do
 		button.Visible = not rowHidden
-	end
-	if not phone then
-		U.Sort.Visible = true
-	end
-	if phone and not S.Portrait then
-		for _, button in ipairs(U.Presets) do
-			button.Visible = not picking
-		end
 	end
 	U.Banner.Visible = picking
 	U.PickCancel.Visible = picking
@@ -1749,9 +1782,13 @@ function H.refreshDetail(keys, order)
 	local has = def ~= nil and State.OwnedCount(key) > 0
 	if S.Mode == "Phone" then
 		d.Frame.Visible = has and S.SheetOpen
+		d.Frame.BackgroundTransparency = 0
 	else
 		d.Frame.Visible = #order > 0
+		d.Frame.BackgroundTransparency = 0.1
 	end
+	-- (a landscape sheet's own X sits where the window's is: one X at a time, the top one closes the top thing)
+	U.Panel.CloseButton.Visible = not (d.Frame.Visible and S.Mode == "Phone" and not S.Portrait)
 	d.Hint.Visible = not has
 	for _, part in ipairs({ d.Glow, d.Picture, d.Name, d.Meta, d.Xp.Root, d.Work, d.Perks, d.ActPut, d.ActFighter, d.ActRemove, d.ActFeed, d.ActTrain, d.ActGarden, d.ActEvolve }) do
 		part.Visible = has
@@ -1787,10 +1824,10 @@ function H.refreshDetail(keys, order)
 	d.Glow.BackgroundColor3 = TIER_COLORS[tier] or tint
 	d.Name.Text = Bits.displayName(key, def)
 	d.Name.TextColor3 = def.Rarity == "Secret" and Color3.fromRGB(196, 168, 255) or Theme.Lighten(tint, 0.3)
-	-- "Epic · Celestial · Lv 1 / 100", the copy's tier / evolution in the same line
+	-- "Lv 1 / 100, Epic, Celestial", the copy's tier / evolution in the same line
 	local level, xp = Bits.petLevel(key)
 	local cap = Bits.levelCap(key, def)
-	local meta = { tostring(def.Rarity) }
+	local meta = { "Lv " .. level .. " / " .. cap, tostring(def.Rarity) }
 	if tier ~= "Normal" then
 		meta[#meta + 1] = tier
 	end
@@ -1803,7 +1840,6 @@ function H.refreshDetail(keys, order)
 	if stage > 0 then
 		meta[#meta + 1] = string.rep(G.Star, math.min(2, stage))
 	end
-	meta[#meta + 1] = "Lv " .. level .. " / " .. cap
 	d.Meta.Text = table.concat(meta, " " .. G.Bullet .. " ")
 	local need = Bits.xpToNext(level)
 	if level >= cap then
@@ -1857,7 +1893,7 @@ function H.refreshDetail(keys, order)
 			end
 		end
 	end
-	d.Perks.Text = #perkLines > 0 and table.concat(perkLines, "\n") or "No perks"
+	d.PerkLines = #perkLines > 0 and perkLines or { "No perks" }
 	-- the actions
 	local at = H.indexOf(key)
 	d.InTeam = at ~= nil
@@ -1867,7 +1903,12 @@ function H.refreshDetail(keys, order)
 	d.ActGarden.Text = placed and "Leave Garden" or "Garden"
 	CloudUI.SetStyle(d.ActGarden, placed and "Pink" or "Blue")
 	H.placeActions()
-	d.Perks.Visible = d.PerksRoom == true
+	d.Perks.Visible = d.PerksH >= d.PerkLineH
+	local shown = {}
+	for i = 1, math.min(#d.PerkLines, math.floor(d.PerksH / d.PerkLineH)) do
+		shown[i] = d.PerkLines[i]
+	end
+	d.Perks.Text = table.concat(shown, "\n")
 end
 
 function H.refresh()

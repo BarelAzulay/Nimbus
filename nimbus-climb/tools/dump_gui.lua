@@ -24,10 +24,11 @@
 --   countdown             the pre-match countdown inside the match panel
 --   party                 the portal party panel with its countdown
 --   results               the victory results card
---   menu:<Window>[:<Tab>[:<Action>[:<Key>]]] Inventory / Pets / Index / Shop / Stats through the OpenPanel remote
+--   menu:<Window>[:<Tab>[:<Action>[:<Key>]]] Index / Shop / Stats through the OpenPanel remote
 --                         (Tab = window tab, or the Index group, e.g. menu:Index:Mythic, menu:Shop:Gems; Action / Key
---                         are passed along, e.g. menu:Pets:Pets::<petKey>, menu:Pets:Pets:Evolve:<petKey>; with an
---                         Action or Key the Phase 4 care profile below is synced first)
+--                         are passed along; with an Action or Key the Phase 4 care profile below is synced first)
+--   pets[:phone|:pick|:sheet|:<key>]  team balance: the Pets window (PetsController) with the care profile; phone = at
+--                         844x390, pick = pick mode on slot 2, sheet = at 844x390 with a pet's sheet open, <key> = on that pet
 --   home[:coins]          Phase 4: the Home window with the care profile (Prestige 1, the Garden with 4 places, plants,
 --                         the Food Machine, the Training Place) and the plot attributes CollectorCash / IncomePerSecond /
 --                         GardenSlots / CoinPiles; ":coins" = a migrated home (LegacySlots 6, LegacyPrices) with a big
@@ -36,7 +37,7 @@
 --                         EVOLVE, a level-100 pet, the machine footer)
 --   garden[:<slot>]       the garden picker for place <slot> (default 3: an empty place)
 --   train[:<key>]         the Training Place window (default: the pet that is training, with its timer and Stop)
---   evolve                the EVOLVE confirm over the Pets panel
+--   evolve                the EVOLVE confirm over the Pets window
 --   ring[:<view>]         Phase 4 (ArenaController's Champion Ring window): OpenPanel("Ring") with a ring record
 --                         (Best 24); view new (no record yet) | record (default)
 --   petcards              the floating pet cards (PetController's own followers + one sample of every PetCard mode)
@@ -938,7 +939,7 @@ end)
 local careProfile -- (Phase 4, defined below)
 scenario("menu", function(window, tab, action, key)
 	if not window or window == "" then
-		fail("usage: menu:<Inventory|Pets|Index|Shop|Stats>[:<Tab>[:<Action>[:<Key>]]]")
+		fail("usage: menu:<Index|Shop|Stats>[:<Tab>[:<Action>[:<Key>]]]")
 	end
 	local args = nil
 	if (tab and tab ~= "") or (action and action ~= "") or (key and key ~= "") then
@@ -2708,9 +2709,21 @@ scenario("train", function(key)
 	advance(3)
 end)
 
-scenario("team", function()
-	CAREUI.profile()
-	toClient("OpenPanel", "Team", {})
+scenario("pets", function(view)
+	local ids = CAREUI.profile()
+	local args = {}
+	if view == "phone" or view == "sheet" then
+		Mock.SetViewport(844, 390)
+		advance(0.2)
+	end
+	if view == "pick" then
+		args.Pick = 2
+	elseif view == "sheet" then
+		args.Key = ids.Epic
+	elseif view and view ~= "" and view ~= "phone" then
+		args.Key = view
+	end
+	toClient("OpenPanel", "Pets", args)
 	advance(3)
 end)
 

@@ -26,7 +26,9 @@ local COVER = {}
 -- COVER entry (every window owner): { Scene = "<name>", Open = function(size) ... end, Close = function() ... end,
 --   Window = function() return <the window's root GuiObject> end, Sizes = { {W, H}, ... } (optional; default the 4) }
 --   Open runs after the screen size is set (size = { W, H, touch }); Close must leave nothing open. Window (optional)
---   is checked against the window rule (landscape: left edge >= 0.5 W; portrait: top >= 0.44 H).
+--   is checked against the window rule (landscape: left edge >= 0.5 W; portrait: top >= 0.44 H). MaxCover (optional,
+--   default 60): the % of the screen it may cover. Centered = true: the one big window (team balance, the Pets window),
+--   checked to sit in the middle of the width instead of the window rule.
 -- NK: the kit's helpers (shared by the scenarios below; other owners may call them read-only)
 local NK = {}
 NK.SIZES = { { 1920, 1080, false }, { 1280, 720, false }, { 390, 844, true }, { 844, 390, true } }
@@ -234,8 +236,21 @@ function CUI.closeAll()
 		end
 	end
 end
-for _, spec in ipairs({ { "menu:Pets", "Pets", "Inventory" }, { "menu:Home", "Home", "Home" }, { "menu:Team", "Team", "Inventory" },
-	{ "menu:Shop", "Shop", "Shop" }, { "menu:Stats", "Stats", "Stats" } }) do
+COVER[#COVER + 1] = {
+	Scene = "pets",
+	MaxCover = 85,
+	Centered = true,
+	Open = function()
+		CUI.profile()
+		pcall(CUI.menu().Open, "Pets", {})
+	end,
+	Close = CUI.closeAll,
+	Window = function()
+		local g = NK.pg():FindFirstChild("NimbusPets")
+		return g and g:FindFirstChild("Window_Pets")
+	end,
+}
+for _, spec in ipairs({ { "menu:Home", "Home", "Home" }, { "menu:Shop", "Shop", "Shop" }, { "menu:Stats", "Stats", "Stats" } }) do
 	COVER[#COVER + 1] = {
 		Scene = spec[1],
 		Open = function()
@@ -679,14 +694,17 @@ S.client_p5gui_cover = guarded("client_p5gui_cover", function()
 				local pct, smallest, smallName, backdrop = NK.coverage()
 				measured = measured + 1
 				T.info(string.format("%s: %.1f%% covered, smallest text %.1f px (%s)", label, pct, smallest, smallName))
-				T.check(pct <= 60, label .. ": the GUI covers <= 60% of the screen", string.format("%.1f%%", pct))
+				local maxCover = scene.MaxCover or 60
+				T.check(pct <= maxCover, label .. ": the GUI covers <= " .. maxCover .. "% of the screen", string.format("%.1f%%", pct))
 				T.check(backdrop == nil, label .. ": no full-screen Backdrop", tostring(backdrop))
 				local floorPx = (H >= 1000) and 15 or 14
 				T.check(smallest >= floorPx - 0.01, label .. ": the smallest text is >= " .. floorPx .. " px", string.format("%.1f px %s", smallest, smallName))
 				local win = scene.Window and scene.Window()
 				if win and NK.shown(win) then
 					local r = NK.rect(win)
-					if W >= H then
+					if scene.Centered then
+						T.check(math.abs((r.x0 + r.x1) / 2 - W / 2) <= 1, label .. ": the window sits in the middle", string.format("x %.0f..%.0f", r.x0, r.x1))
+					elseif W >= H then
 						T.check(r.x0 >= 0.5 * W - 0.5, label .. ": the window stays right of the middle (left edge >= 0.5 W)", string.format("x %.0f", r.x0))
 					else
 						T.check(r.y0 >= 0.44 * H - 0.5, label .. ": the window is a bottom sheet (top >= 0.44 H)", string.format("y %.0f", r.y0))

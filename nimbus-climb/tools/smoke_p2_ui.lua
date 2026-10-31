@@ -814,29 +814,30 @@ local function clientScenarios()
 		local small = smallTexts(win, 18)
 		T.check(#small == 0, "p2ui menu: every text of the Home window is >= 18 design px", table.concat(small, ", "))
 
-		-- Pets panel
+		-- Pets window
 		MC.Open("Pets", { Key = "pebble_pup@Golden" })
 		advance(0.8)
-		local inv = menu:FindFirstChild("Window_Inventory")
-		local goldSlot = find(inv, "Pet_pebble_pup@Golden")
-		local hybSlot = find(inv, "Pet_hyb:hc1")
-		local rainbow = find(inv, "Pet_maple_fox@Rainbow")
+		local inv = pg():FindFirstChild("NimbusPets"):FindFirstChild("Window_Pets")
+		local Pets = moduleAt("client", "Controllers/PetsController")
+		local goldSlot = find(inv, "Card_pebble_pup@Golden")
+		local hybSlot = find(inv, "Card_hyb:hc1")
+		local rainbow = find(inv, "Card_maple_fox@Rainbow")
 		local function chipText(slot)
-			local chip = slot and find(slot, "TierBadge")
+			local chip = slot and find(slot, "Tier")
 			return chip and chip.Visible and find(chip, "Mark") and find(chip, "Mark").Text or ""
 		end
 		T.check(chipText(goldSlot) == "G" and chipText(hybSlot) == "H" and chipText(rainbow) == "R",
-			"p2ui pets: one slot per copy key with tier / hybrid chips (G, R, H)")
-		local levelTag = goldSlot and find(goldSlot, "LevelTag")
-		T.check(levelTag and levelTag.Visible and levelTag.Text == "Lv 12", "p2ui pets: the slot shows the copy's level")
-		local nameLabel = find(inv, "Detail") and find(find(inv, "Detail"), "Name")
+			"p2ui pets: one card per copy key with tier / hybrid chips (G, R, H)")
+		local levelTag = goldSlot and find(goldSlot, "Level")
+		T.check(levelTag and levelTag.Visible and levelTag.Text == "L12", "p2ui pets: the card shows the copy's level")
+		local detail = find(inv, "Detail")
+		local nameLabel = find(detail, "Name")
 		T.check(nameLabel and nameLabel.Text == "Golden Pebble Pup", "p2ui pets: the detail card shows the selected copy", nameLabel and nameLabel.Text or "")
-		local tierPill = find(inv, "Tier_Golden")
-		local xpBar = find(find(inv, "Detail"), "XpBar")
-		T.check(tierPill ~= nil and xpBar ~= nil and find(xpBar, "Text") and find(xpBar, "Text").Text:find("300", 1, true),
-			"p2ui pets: the tier pill and the XP bar (300 / next) show")
-		local levelText = find(find(inv, "Detail"), "Level")
-		T.check(levelText and levelText.Text == "Lv 12 / 100", "p2ui pets: the detail card shows 'Lv 12 / 100' (the cap read from PetCatalog)", levelText and levelText.Text or "")
+		local meta = find(detail, "Meta")
+		local xpBar = find(detail, "XpBar")
+		T.check(meta and meta.Text:find("Golden", 1, true) and xpBar ~= nil and find(xpBar, "Text") and find(xpBar, "Text").Text:find("300", 1, true),
+			"p2ui pets: the tier in its line and the XP bar (300 / next) show")
+		T.check(meta and meta.Text:find("Lv 12 / 100", 1, true), "p2ui pets: the detail card shows 'Lv 12 / 100' (the cap read from PetCatalog)", meta and meta.Text or "")
 		-- Phase 4: the coins it makes in the Garden (PetPower x food x stars / meal x the Lucky EV)
 		local home = snapshot("mid").Home
 		local food = TC.FoodOf(home)
@@ -845,17 +846,18 @@ local function clientScenarios()
 		end
 		local rate = TC.PetPower("pebble_pup@Golden", 12, nil, 0) * food * TC.PrestigeMultiplier(1) * TC.LuckyEV(home) / TC.Coins.MealSeconds
 		local want = rate < 100 and ((string.format("%.1f", floor(rate * 10 + 0.5) / 10)):gsub("%.0$", "")) or nil
-		local coinsPill = find(inv, "Stat_Income")
-		T.check(coinsPill and coinsPill.Text:find("Coins", 1, true) and (want == nil or coinsPill.Text:find("$" .. want, 1, true)),
-			"p2ui pets: the Coins $/s pill shows what the pet makes in the Garden", (coinsPill and coinsPill.Text or "") .. " want $" .. tostring(want))
+		local coinsRow = find(inv, "Row_Income")
+		local coinsValue = coinsRow and find(coinsRow, "Value")
+		T.check(coinsRow and find(coinsRow, "Label").Text == "Coins" and (want == nil or coinsValue.Text:find("$" .. want, 1, true)),
+			"p2ui pets: the Coins row shows what the pet makes in the Garden", (coinsValue and coinsValue.Text or "") .. " want $" .. tostring(want))
 		-- Feed -> the Food Machine list (CareController), this pet first
 		local Care = moduleAt("client", "Controllers/CareController")
 		mark = #Mock.RemoteLog
-		Mock.Click(find(inv, "FeedPet"))
+		Mock.Click(find(inv, "ActFeed"))
 		advance(0.6)
 		local careGui = pg():FindFirstChild("NimbusCare")
 		local careWin = careGui and careGui:FindFirstChild("Window_Care")
-		T.check(Care and Care.Mode and Care.Mode() == "Feed" and careWin and careWin.Visible and not (inv and inv.Visible and MC.IsOpen()),
+		T.check(Care and Care.Mode and Care.Mode() == "Feed" and careWin and careWin.Visible and not Pets.IsOpen(),
 			"p2ui pets: Feed opens the Food Machine list (CareController) instead of the old picker")
 		local row = careWin and find(careWin, "Feed_pebble_pup@Golden")
 		T.check(row and row.LayoutOrder == 1, "p2ui pets: ...with that pet first")
@@ -870,10 +872,11 @@ local function clientScenarios()
 			Care.Close()
 		end
 		advance(0.3)
+		T.check(Pets.IsOpen(), "p2ui pets: closing the list comes back to the window")
 		-- Garden (any role) / Train / EVOLVE
 		MC.Open("Pets", { Key = "honey_bunny" })
 		advance(0.4)
-		local work = find(inv, "WorkPet")
+		local work = find(inv, "ActGarden")
 		mark = #Mock.RemoteLog
 		T.check(work and work.Text == "Leave Garden", "p2ui pets: a pet working in the Garden offers 'Leave Garden'", work and work.Text or "")
 		Mock.Click(work)
@@ -890,13 +893,23 @@ local function clientScenarios()
 		hc = calls("HomeAction", mark)
 		T.check(#hc == 1 and hc[1].args[1] == "GardenSet" and hc[1].args[2].Slot == 2 and hc[1].args[2].Key == "mallow_kitten",
 			"p2ui pets: ...into the first free place (GardenSet {Slot = 2, Key})")
-		-- a pet in training: no Equip, its timer
+		-- a pet in training: its timer; putting it in the team says why not
 		MC.Open("Pets", { Key = "sleepy_owl" })
 		advance(0.3)
-		local status = find(find(inv, "Detail"), "Work")
-		T.check(disabled(find(inv, "Equip")) and status and status.Text:find("Training Physique", 1, true),
-			"p2ui pets: a pet in training cannot be equipped and shows its training", status and status.Text or "")
-		Mock.Click(find(inv, "TrainPet"))
+		local status = find(detail, "Work")
+		T.check(status and status.Text:find("Training Physique", 1, true), "p2ui pets: a pet in training shows its training", status and status.Text or "")
+		mark = #Mock.RemoteLog
+		Mock.Click(find(inv, "ActPut"))
+		advance(0.3)
+		local sets = 0
+		for _, c in ipairs(calls("BattleRequest", mark)) do
+			if c.args[1] == "TeamSet" then
+				sets = sets + 1
+			end
+		end
+		local hint = menu:FindFirstChild("MenuHint")
+		T.check(sets == 0 and hint and hint:FindFirstChild("Text") and hint:FindFirstChild("Text").Text:find("is training", 1, true), "p2ui pets: ...and Put in team says why, sends nothing", tostring(sets))
+		Mock.Click(find(inv, "ActTrain"))
 		advance(0.5)
 		T.check(Care and Care.Mode() == "Train", "p2ui pets: Train opens the Training Place window")
 		if Care then
@@ -906,18 +919,17 @@ local function clientScenarios()
 		-- EVOLVE (the Rainbow maple fox copy is level 20)
 		MC.Open("Pets", { Key = "cloudy_dragon" })
 		advance(0.3)
-		local evoPill = find(inv, "Evolution")
-		T.check(evoPill and evoPill.Visible and evoPill.Text:find("Evolved", 1, true), "p2ui pets: an evolved pet shows its evolution pill")
-		T.check(not find(inv, "EvolvePet").Visible, "p2ui pets: no EVOLVE button below the next evolution level")
+		T.check(meta.Text:find("\226\152\133", 1, true), "p2ui pets: an evolved pet shows its stars", meta.Text)
+		T.check(not find(inv, "ActEvolve").Visible, "p2ui pets: no Evolve button below the next evolution level")
 		MC.Open("Pets", { Key = "maple_fox@Rainbow" })
 		advance(0.3)
-		local evolve = find(inv, "EvolvePet")
-		T.check(evolve and evolve.Visible and not disabled(evolve), "p2ui pets: a level-20 pet shows EVOLVE!")
+		local evolve = find(inv, "ActEvolve")
+		T.check(evolve and evolve.Visible and not disabled(evolve), "p2ui pets: a level-20 pet shows Evolve")
 		mark = #Mock.RemoteLog
 		Mock.Click(evolve)
 		advance(0.4)
 		local yes = careGui and find(careGui, "ConfirmYes")
-		T.check(yes and find(careGui, "CareConfirm").Visible, "p2ui pets: EVOLVE asks first")
+		T.check(yes and find(careGui, "CareConfirm").Visible, "p2ui pets: Evolve asks first")
 		Mock.Click(yes)
 		advance(0.3)
 		pc = calls("PetCare", mark)
@@ -925,7 +937,7 @@ local function clientScenarios()
 		MC.Open("Pets", { Key = "pebble_pup@Golden" })
 		advance(0.3)
 		local small = smallTexts(inv, 18)
-		T.check(#small == 0, "p2ui pets: every text of the Pets page is >= 18 design px", table.concat(small, ", "))
+		T.check(#small == 0, "p2ui pets: every text of the Pets window is >= 18 design px", table.concat(small, ", "))
 
 		-- Shop Gems tab
 		LocalPlayer:SetAttribute("PaidRandomItemsRestricted", false)
@@ -1038,7 +1050,7 @@ local function clientScenarios()
 		check("the Home window", menu:FindFirstChild("Window_Home"))
 		MC.Open("Pets", { Key = "pebble_pup@Golden" })
 		advance(0.8)
-		check("the Pets page", menu:FindFirstChild("Window_Inventory"))
+		check("the Pets window", pg():FindFirstChild("NimbusPets"):FindFirstChild("Window_Pets"))
 		MC.Open("Feed", { Key = "pebble_pup@Golden" })
 		advance(0.8)
 		check("the Food Machine list", pg():FindFirstChild("NimbusCare"))

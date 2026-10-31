@@ -1338,23 +1338,25 @@ local function clientScenarios()
 		end
 		Mock.Click(button)
 		advance(0.8)
-		local inv = menuGui():FindFirstChild("Window_Inventory")
-		if not T.check(shown(inv), "storm Pets panel: the Pets tile opens the Inventory window") then
+		local petsGui = menuGui().Parent:FindFirstChild("NimbusPets")
+		local inv = petsGui and petsGui:FindFirstChild("Window_Pets")
+		if not T.check(shown(inv), "storm Pets panel: the Pets tile opens the Pets window") then
 			return
 		end
-		local panel = T.tally("storm Pets panel: selecting a pet shows its element pill in the detail card (Config.Elements.Info colour, >= 15 px)")
+		local panel = T.tally("storm Pets panel: a pet's card has its element chip (Config.Elements.Info colour, >= 15 px), selecting it names the element in the detail card")
 		for _, id in ipairs(picks) do
-			local slot = named(inv, "Pet_" .. id)
-			local pick = pickButton(slot)
-			if not pick then
-				panel:case(false, id .. ": no Pet_" .. id .. " slot")
+			local card = named(inv, "Card_" .. id)
+			if not card then
+				panel:case(false, id .. ": no Card_" .. id)
 			else
-				Mock.Click(pick)
+				Mock.Click(card)
 				advance(0.6)
 				local detail = named(inv, "Detail")
 				local element = PC.GetElements(id)[1]
-				local p, problem = pillOf(detail, element or "?", Config)
-				panel:case(p ~= nil and findText(PC.Get(id).Name:lower(), detail) ~= nil, id .. " (" .. tostring(element) .. "): " .. tostring(problem))
+				local chip = named(card, "Element")
+				local meta = named(detail, "Meta")
+				panel:case(chip ~= nil and chip.TextSize >= 15 and chip.BackgroundColor3 == Config.Elements.Info[element].Color and meta.Text:find(element, 1, true) ~= nil and findText(PC.Get(id).Name:lower(), detail) ~= nil,
+					id .. " (" .. tostring(element) .. "): " .. tostring(meta and meta.Text))
 			end
 		end
 		panel:report(table.concat(picks, ", "))

@@ -280,14 +280,14 @@ local function clientScenarios()
 		-- the Pets grid + detail
 		MC.Open("Pets", { Key = P.L2 })
 		advance(2.5)
-		local inv = menu:FindFirstChild("Window_Inventory")
-		local s1, s2, s0 = find(inv, "Pet_" .. P.E1), find(inv, "Pet_" .. P.L2), find(inv, "Pet_" .. P.C)
+		local inv = pg():FindFirstChild("NimbusPets"):FindFirstChild("Window_Pets")
+		local s1, s2, s0 = find(inv, "Card_" .. P.E1), find(inv, "Card_" .. P.L2), find(inv, "Card_" .. P.C)
 		T.check(lowAt(evolvedModel(s1 and find(s1, "EvolvedView"), 1), 1) and lowAt(evolvedModel(s2 and find(s2, "EvolvedView"), 2), 2),
-			"p5looks pets: the grid slots of evolved keys draw the evolved form at Low (stage 1, stage 2)")
+			"p5looks pets: the cards of evolved keys draw the evolved form at Low (stage 1, stage 2)")
 		T.check(s0 and find(s0, "EvolvedView") == nil and evolvedModel(s0, 1) == nil and evolvedModel(s0, 2) == nil, "p5looks pets: ...a plain key keeps its normal model")
 		local cnt = s1 and find(s1, "Count")
 		T.check(not (cnt and shown(cnt) and cnt.Text == "x1"), "p5looks pets: an evolved single copy shows no 'x1' (like a plain one)", cnt and cnt.Text or "")
-		local holder = find(inv, "ViewportHolder")
+		local holder = find(find(inv, "Detail"), "Picture")
 		T.check(lowAt(evolvedModel(holder, 2), 2), "p5looks pets: the detail card draws the selected pet's stage (2, Low)")
 		closeAll()
 		-- the Index (BestStage)
@@ -302,12 +302,11 @@ local function clientScenarios()
 		-- the Team card + picker tiles
 		MC.Open("Team", {})
 		advance(2.5)
-		local tw = menu:FindFirstChild("Window_Inventory") -- (HUD cleanup: the team editor is its Team tab)
-		tw = tw and find(tw, "Page_Team")
+		local tw = pg():FindFirstChild("NimbusPets"):FindFirstChild("Window_Pets")
 		local card3 = tw and find(tw, "Slot3")
 		T.check(lowAt(evolvedModel(card3, 2), 2), "p5looks team: the slot card draws the evolved pet at Low")
-		local tile = tw and find(tw, "Pick_" .. P.E1)
-		T.check(lowAt(evolvedModel(tile, 1), 1), "p5looks team: ...and its picker tile")
+		local tile = tw and find(tw, "Card_" .. P.E1)
+		T.check(lowAt(evolvedModel(tile, 1), 1), "p5looks team: ...and its card")
 		closeAll()
 		-- the Fusion tiles
 		if FC and FC.Open then
@@ -354,20 +353,13 @@ local function clientScenarios()
 		sync()
 		MC.Open("Pets", { Key = P.ECO })
 		advance(2)
-		local inv = pg():FindFirstChild("NimbusMenu"):FindFirstChild("Window_Inventory")
-		local pill = find(inv, "Stat_Power")
-		local text = pill and (find(pill, "Text") or pill)
-		text = text and (text:IsA("TextLabel") or text:IsA("TextButton")) and text.Text or ""
-		if text == "" and pill then
-			for _, d in ipairs(pill:GetDescendants()) do
-				if d:IsA("TextLabel") and d.Text ~= "" then
-					text = d.Text
-				end
-			end
-		end
+		local inv = pg():FindFirstChild("NimbusPets"):FindFirstChild("Window_Pets")
+		local row = find(inv, "Row_Power")
+		local label = row and find(row, "Label").Text or ""
+		local text = row and find(row, "Value").Text or ""
 		local want = BC.UnitPower({ Def = def, Key = P.ECO, Level = 30, Tier = "Normal", Evo = 0 })
-		T.check(text:find("^Battle power ") ~= nil, "p5support: the detail shows 'Battle power' (not the raw Power)", text)
-		local n = tonumber((text:gsub("^Battle power ", ""):gsub(",", "")))
+		T.check(label == "Battle power", "p5support: the detail shows 'Battle power' (not the raw Power)", label)
+		local n = tonumber((text:gsub(",", "")))
 		T.check(n == math.floor(want + 0.5) and n ~= def.Stats.Power, "p5support: ...= BattleCatalog.UnitPower with the Support role (" .. tostring(want) .. "), never the raw Power " .. tostring(def.Stats.Power), text)
 		closeAll()
 		KC.flushErrors("client_p5support_power")
@@ -380,32 +372,35 @@ local function clientScenarios()
 		sync()
 		MC.Open("Team", {})
 		advance(2)
-		local tw = pg():FindFirstChild("NimbusMenu"):FindFirstChild("Window_Inventory") -- (HUD cleanup: its Team tab)
-		tw = tw and find(tw, "Page_Team")
+		local tw = pg():FindFirstChild("NimbusPets"):FindFirstChild("Window_Pets")
 		local cards = {}
 		for i = 1, 4 do
 			cards[i] = tw and find(tw, "Slot" .. i)
 		end
 		T.check(cards[1] and cards[2] and cards[3] and cards[4] == nil, "p5team3: three slot cards, no 4th slot")
 		local function roleOf(card)
-			local r = card and find(card, "Role")
-			return r and find(r, "Text") and find(r, "Text").Text or "?"
+			local r = card and find(card, "Tag")
+			return r and r.Text or "?"
 		end
 		T.eq(roleOf(cards[1]) .. "," .. roleOf(cards[2]) .. "," .. roleOf(cards[3]), "FIGHTER,HELPER,HELPER", "p5team3: slot 1 is the FIGHTER, slots 2-3 HELPERs")
-		T.check(find(cards[1], "SetFighter") == nil and find(cards[2], "SetFighter") and find(cards[3], "SetFighter"),
-			"p5team3: 'Set as fighter' sits on the helpers only")
-		local btn = find(cards[3], "SetFighter")
-		T.check(btn and shown(btn) and btn.Text == "Set as fighter", "p5team3: ...labelled 'Set as fighter'")
+		Mock.Click(find(tw, "Card_" .. P.C))
+		advance(0.1)
+		T.check(not find(tw, "ActFighter").Visible, "p5team3: 'Make fighter' is not offered on the fighter")
+		Mock.Click(find(tw, "Card_" .. P.L2))
+		advance(0.1)
+		local btn = find(tw, "ActFighter")
+		T.check(btn and shown(btn) and btn.Text == "Make fighter", "p5team3: ...it is on the helpers, labelled 'Make fighter'")
 		local mark = #Mock.RemoteLog
 		Mock.Click(btn)
 		advance(1.2)
 		local sent = calls("BattleRequest", mark)
 		local last = sent[#sent]
 		local keys = last and last.args[3] or {}
-		T.check(last and last.args[1] == "TeamSet" and last.args[2] == 1 and keys[1] == P.L2 and keys[2] == P.C and keys[3] == P.E1,
-			"p5team3: 'Set as fighter' on slot 3 rotates the preset {C, E1, L2} -> {L2, C, E1} (BattleRequest TeamSet)",
+		T.check(last and last.args[1] == "TeamSet" and last.args[2] == 1 and keys[1] == P.L2 and keys[2] == P.E1 and keys[3] == P.C,
+			"p5team3: 'Make fighter' on slot 3 swaps it with slot 1: {C, E1, L2} -> {L2, E1, C} (BattleRequest TeamSet)",
 			table.concat(keys, ","))
-		T.eq(roleOf(cards[1]), "FIGHTER", "p5team3: the labels stay with the slots")
+		-- (L2 is gardening here: a busy pet keeps its slot and the next free pet fights)
+		T.eq(roleOf(cards[1]) .. "," .. roleOf(cards[3]), "HELPER,FIGHTER", "p5team3: the first free pet wears FIGHTER")
 		closeAll()
 		KC.flushErrors("client_p5team3")
 	end)
@@ -448,24 +443,19 @@ local function clientScenarios()
 		local label = pets and pets:FindFirstChild("Label", true)
 		T.check(label and label.Text == "Pets", "p5tiles: ...with their labels")
 		-- every window docked by the window rule, no backdrop
-		local function holders()
-			local out = {
-				menu:FindFirstChild("Window_Inventory"), menu:FindFirstChild("Window_Home"),
-			}
-			return out
-		end
+		local Pets = moduleAt("client", "Controllers/PetsController")
 		for _, size in ipairs({ { 1920, 1080 }, { 390, 844 } }) do
 			Mock.SetViewport(size[1], size[2])
 			advance(0.6)
 			MC.Open("Pets", {})
 			advance(0.8)
-			local inv = menu:FindFirstChild("Window_Inventory")
-			local mode = inv and inv:GetAttribute("DockMode")
-			local rect = inv and inv.AbsolutePosition
+			local inv = pg():FindFirstChild("NimbusPets"):FindFirstChild("Window_Pets")
+			local rect, area = inv.AbsolutePosition, inv.AbsoluteSize
+			T.check(math.abs(rect.X + area.X / 2 - size[1] / 2) <= 1, "p5tiles: the Pets window sits in the middle at " .. size[1] .. "x" .. size[2], tostring(rect.X))
 			if size[1] > size[2] then
-				T.check(mode == "Side" and rect.X >= 0.5 * size[1] - 1, "p5tiles: the Pets window docks right of the middle at " .. size[1] .. "x" .. size[2], tostring(mode) .. " x " .. tostring(rect and rect.X))
+				T.eq(Pets.Layout(), "PC", "p5tiles: ...the PC layout at " .. size[1] .. "x" .. size[2])
 			else
-				T.check(mode == "Sheet", "p5tiles: ...and is a bottom sheet at " .. size[1] .. "x" .. size[2], tostring(mode))
+				T.eq(Pets.Layout(), "Phone", "p5tiles: ...the phone layout at " .. size[1] .. "x" .. size[2])
 			end
 			closeAll()
 		end

@@ -5,10 +5,9 @@
 --                         DungeonService.StartSolo refuses with the same text; tutorial step 16 ("team") rings the Pets
 --                         tile, completes on TeamSet and says "Open Pets, then the Team tab" + "Auto-fill best" in 97-125
 --                         bytes of plain text
---   client_hudteam_tab    (client, 1920x1080) Open("Team") opens the Pets window (Window_Inventory, no Window_Team) on its
---                         Team tab with the P3 editor (slot cards, presets, Use this team), titled "Battle Team", and fires
---                         WindowOpened("Team"); Open("Pets") goes back to the Pets tab; OpenPanel("Team", { Preset = 2 })
---                         selects preset 2
+--   client_hudteam_tab    (client, 1920x1080) Open("Team") opens the Pets window (NimbusPets, no Window_Team, no tabs) and fires
+--                         WindowOpened("Pets"); a slot then a pet sends TeamSet; OpenPanel("Team", { Preset = 2 }) shows
+--                         preset 2; OpenTeam(1) fires WindowOpened("Pets") again for the new opening
 --   client_hudteam_portal (client) TeamPick: ActiveKeys / Fieldable (sorted by UnitPower, no training pet) / Best; the
 --                         Dungeon panel's team strip (StripSlot1..3, Edit, Auto-fill best -> BattleRequest("TeamSet",
 --                         active, the 3 best)); SOLO with an empty team opens the "Pick your battle team" popup (PopSlot1..3
@@ -237,30 +236,29 @@ local function clientScenarios()
 		end)
 		MC.Open("Team", {})
 		KC.advance(0.6)
-		local inv = H.menu():FindFirstChild("Window_Inventory")
+		local inv = H.pg():FindFirstChild("NimbusPets"):FindFirstChild("Window_Pets")
 		T.check(H.shown(inv) and H.menu():FindFirstChild("Window_Team") == nil, "hudteam tab: Open('Team') opens the Pets window; there is no Window_Team any more")
-		local page = H.find(inv, "Page_Team")
-		T.check(H.find(inv, "Tab_Team") and H.find(inv, "Tab_Pets") and page and page.Visible and not H.find(inv, "Page_Pets").Visible,
-			"hudteam tab: ...on its Team tab (next to Pets)")
-		T.check(H.find(page, "Slot1") and H.find(page, "Slot3") and H.find(page, "UseTeam") and H.find(page, "Preset1") and H.find(page, "PickerGrid"),
-			"hudteam tab: ...holding the P3 editor (slot cards, presets, Use this team, the picker)")
-		T.check(H.titleOf(inv) == "Battle Team", "hudteam tab: ...titled Battle Team", H.titleOf(inv))
+		T.check(H.find(inv, "Tab_Team") == nil and H.find(inv, "Tab_Pets") == nil, "hudteam tab: ...with no tabs")
+		T.check(H.find(inv, "Slot1") and H.find(inv, "Slot3") and H.find(inv, "PresetA") and H.find(inv, "Grid"),
+			"hudteam tab: ...holding the slots, A / B / C and the cards")
 		local fired = false
 		for _, id in ipairs(opened) do
-			fired = fired or id == "Team"
+			fired = fired or id == "Pets"
 		end
-		T.check(fired, "hudteam tab: ...and WindowOpened('Team') fired (the tutorial and the Ring line listen)", table.concat(opened, ","))
-		local grid = H.find(page, "PickerGrid")
+		T.check(fired, "hudteam tab: ...and WindowOpened('Pets') fired (the tutorial listens)", table.concat(opened, ","))
+		local grid = H.find(inv, "Grid")
 		local tiles = 0
 		for _, c in ipairs(grid and grid:GetChildren() or {}) do
 			if c:IsA("TextButton") then
 				tiles = tiles + 1
 			end
 		end
-		T.eq(tiles, 4, "hudteam tab: the picker lists the 4 pets")
-		-- the editor still edits: a tap adds the pet (TeamSet on the shown preset)
+		T.eq(tiles, 4, "hudteam tab: the grid lists the 4 pets")
+		-- a slot, then a pet: TeamSet on the shown preset
 		local mark = #Mock.RemoteLog
-		Mock.Click(H.find(page, "Pick_biscuit_bear"))
+		Mock.Click(H.find(inv, "Slot1"))
+		KC.advance(0.1)
+		Mock.Click(H.find(inv, "Card_biscuit_bear"))
 		KC.advance(0.8)
 		local sets = {}
 		for _, c in ipairs(H.calls("BattleRequest", mark)) do
@@ -268,18 +266,15 @@ local function clientScenarios()
 				sets[#sets + 1] = c
 			end
 		end
-		T.check(#sets == 1 and sets[1].args[2] == 1 and sets[1].args[3][1] == "biscuit_bear", "hudteam tab: tapping a pet in the Team tab sends TeamSet (1, { biscuit_bear })", tostring(#sets))
+		T.check(#sets == 1 and sets[1].args[2] == 1 and sets[1].args[3][1] == "biscuit_bear", "hudteam tab: a slot, then a pet, sends TeamSet (1, { biscuit_bear })", tostring(#sets))
 		H.feed(FOUR, H.teamOf({ "biscuit_bear" }))
 		KC.advance(4.5)
-		MC.Open("Pets", {})
-		KC.advance(0.3)
-		T.check(H.find(inv, "Page_Pets").Visible and not page.Visible and H.titleOf(inv) == "Pets", "hudteam tab: Open('Pets') switches back to the Pets tab", H.titleOf(inv))
 		KC.toClient("OpenPanel", "Team", { Preset = 2 })
 		KC.advance(0.3)
-		local p2 = H.find(page, "Preset2")
-		T.check(page.Visible and p2 and p2:GetAttribute("Selected") == true and H.find(page, "Preset1"):GetAttribute("Selected") ~= true,
-			"hudteam tab: OpenPanel('Team', { Preset = 2 }) selects preset 2")
-		-- the Team tab keeps the Pets tile lit (it lives in the Pets window)
+		local p2 = H.find(inv, "PresetB")
+		T.check(H.shown(inv) and p2 and p2:GetAttribute("Shown") == true and H.find(inv, "PresetA"):GetAttribute("Shown") ~= true and H.find(inv, "PresetA"):GetAttribute("Selected") == true,
+			"hudteam tab: OpenPanel('Team', { Preset = 2 }) shows preset 2, A stays the team you fight with")
+		-- the window keeps the Pets tile lit
 		local tile = MC.GetButton and MC.GetButton("Pets")
 		T.check(tile ~= nil, "hudteam tab: the Pets tile exists")
 		MC.Close()
@@ -289,10 +284,10 @@ local function clientScenarios()
 		KC.advance(0.4)
 		local again = false
 		for _, id in ipairs(opened) do
-			again = again or id == "Team"
+			again = again or id == "Pets"
 		end
-		T.check(page.Visible and H.find(page, "Preset1"):GetAttribute("Selected") == true and again,
-			"hudteam tab: OpenTeam(1) opens Pets > Team on preset 1 and fires WindowOpened('Team') again for the new opening")
+		T.check(H.shown(inv) and H.find(inv, "PresetA"):GetAttribute("Shown") == true and again,
+			"hudteam tab: OpenTeam(1) opens the window on preset 1 and fires WindowOpened('Pets') again for the new opening")
 		conn:Disconnect()
 		H.closeAll()
 		Mock.SetViewport(old[1], old[2])
@@ -374,8 +369,8 @@ local function clientScenarios()
 		T.check(el and el:FindFirstChild("Text") and el.Text.Text ~= "", "hudteam portal: ...and the element pill", el and el:FindFirstChild("Text") and el.Text.Text)
 		Mock.Click(H.find(strip, "StripEdit"))
 		KC.advance(0.5)
-		local inv = H.menu():FindFirstChild("Window_Inventory")
-		T.check(H.shown(inv) and H.find(inv, "Page_Team") and H.find(inv, "Page_Team").Visible, "hudteam portal: Edit opens Pets > Team")
+		local inv = H.pg():FindFirstChild("NimbusPets"):FindFirstChild("Window_Pets")
+		T.check(H.shown(inv), "hudteam portal: Edit opens the Pets window")
 
 		------------------------------------------------------------ the empty-team popup continues into the portal
 		H.feed(FOUR, EMPTY_TEAMS)

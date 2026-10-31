@@ -101,7 +101,7 @@ ids were found. A yellow `[MeshLibrary] <name> ... stays on the Part build` line
   Cash** (shiny cash coins in the obby token style). Walk over it to scoop it: only you can.
 - **Berries: one food, one button.** Every poop also drops berries into your **Berry Basket**. At the Food Machine
   ONE button, **Feed**, turns berries into XP. Food never costs Cash any more.
-- **Evolved pets look evolved everywhere:** followers, the garden, the Pets window, the Pet Index, the Team screen,
+- **Evolved pets look evolved everywhere:** followers, the garden, the Pets window, the Pet Index,
   the Fusion window, the Food Machine and Training lists, the roulette reveal, the Pet Podium and every battle.
 - **Pets follow better.** Each pet keeps its distance from you and from the others (big pets further back), and they
   stay out of the camera's way.
@@ -127,7 +127,7 @@ Pet Garden, food is berries now, and the Trials made way for the Dungeon (see
 - **Your pets make the money.** Build your free **Pet Garden** and put pets in it (**3 places**, +1 every Prestige).
   They eat from their bowls and pop out **rainbow coins**. Walk over the coins to scoop them: only YOU can scoop
   yours. Economy pets make 60 % more than Combat pets; rarer, higher-level, Golden / Rainbow and evolved pets make
-  more. A garden pet is busy gardening: it does not follow you or fight until you take it out (Equip or Team asks
+  more. A garden pet is busy gardening: it does not follow you or fight until you take it out (putting it in your team asks
   first and takes it out for you).
 - **Your presses grew into food plants.** Berry Bush, Carrot Patch, Cloud Melons, Starfruit Tree: tastier food makes
   every coin bigger. The Collector is now a **Coin Magnet**: coins fly to you from farther away and piles hold more.
@@ -170,7 +170,7 @@ Pet Garden, food is berries now, and the Trials made way for the Dungeon (see
 
 - **The Battle Arena.** A big colosseum on its own cloud island. Walk over the stone bridge from the village street,
   or build the **Arena Gate** at home and press **E** at it to be there at once.
-- **Your battle team.** The new **Team** tile in the menu: pick 3 pets, save up to 3 teams and see their power and element bonuses.
+- **Your battle team.** In the **Pets** window: pick 3 pets, save up to 3 teams and see their power and element bonuses.
 - **Real-time battles.** Your pets fight on their own; you lead them with **ATTACK** (`F`), **RETREAT** (`R`) and
   one **SPECIAL** per pet (`1`-`4`), or with big touch buttons on a phone.
 - **Trials 1-30.** The **Trial Portal** next to the five climb portals opens 30 levels of NPC pet teams, a
@@ -311,7 +311,7 @@ In a battle the keys `1` and `2` belong to your helpers.
 New players meet **Nimbus**, the Cloudy Dragon, in a small card on the left of the screen (never in the middle) as
 soon as they press **PLAY** in the main menu. Nine short steps teach the basics: say hello, claim your home plot
 (follow the arrow to a free gate and press **E**), find the Cloud Shop, spin your first roulette (Nimbus gives you
-**50 Cloud Tokens** for it), equip your new pet (it follows right behind you), peek into the Pet Index, step on the
+**50 Cloud Tokens** for it), put your new pet in your team (it follows right behind you), peek into the Pet Index, step on the
 Obby portal pad (Easy is picked for you), play your first climb to the end, and collect **100 Cloud Tokens** at the
 end. A golden arrow, a sparkle trail and a distance sign point at places in the world; a pulsing ring points at menu
 tiles.
@@ -531,10 +531,9 @@ Your pets make the money here. Build the free **Pet Garden** (the first pad of e
 empty pet bed (*Put a pet here*) and pick a pet, or open **Pets**, pick a pet and press **Garden**. The Garden
 has **3 places** at first and gets **+1 every Prestige** (up to 12 places). Any pet can work there, Economy or
 Combat. A pet does one job at a time: a garden pet leaves your side and keeps its team slot (it is back by itself when
-it leaves the garden), and pressing **Equip** or picking
-it for a team asks *This pet is gardening! Take it out of the garden and equip it?* (**Yes** takes it out and equips
-it in one go). In **Pets** its card is dimmed with a green *Gardening* badge. A pet asleep on a bed that a Prestige
-closed (its sign says *Prestige to open*; it earns nothing there) is not busy: equip it or put it in a team and it
+it leaves the garden), and picking it for a team asks *This pet is gardening! Take it out of the garden and put it in
+your team?* (**Yes** takes it out and puts it in the team in one go). In **Pets** its card is dimmed with a green *Gardening* badge. A pet asleep on a bed that a Prestige
+closed (its sign says *Prestige to open*; it earns nothing there) is not busy: put it in a team and it
 simply leaves that bed, no question asked. A pet in training cannot garden either (see
 [the Training Place](#the-training-place)).
 
@@ -633,7 +632,7 @@ EVOLVE (never from the level alone), so every pet gets its own big moment. Evolu
 fusion, and a star on the pet's card shows them (★ / ★★). Not during a battle.
 
 **Evolved pets look evolved everywhere:** following you, roaming your garden, on the Pet Podium, in the Pets window,
-the Pet Index (your best stage), the Team screen, the Fusion window, the Food Machine and Training lists, the roulette
+the Pet Index (your best stage), the Pets window, the Fusion window, the Food Machine and Training lists, the roulette
 reveal, the Champion Ring window and in every battle (your fighter and your helpers' pictures).
 
 ### The Training Place
@@ -731,8 +730,8 @@ climb). It has two tabs:
   rarities, stats = their average x1.2, and a blended name (Penguin + Phoenix -> "Pengnix"). Hybrids cannot be
   mixed again or upgraded.
 
-Copies that are equipped or in the Garden are taken off first and the result takes over their place (the machine
-refuses only when the inputs are your only equipped pets); a pet in training cannot be fused. Fusing keeps your
+Copies that are in your team or in the Garden are taken off first and the result takes over their place (the machine
+refuses only when the inputs are your only team pets); a pet in training cannot be fused. Fusing keeps your
 pet's evolution and training (a hybrid starts unevolved but keeps the better training of its parents). The
 machine's level 2 and 3 take 10 % and 20 % off the token costs:
 
@@ -848,15 +847,15 @@ Arena ("Battle Arena: pets can battle here") and out again ("Safe zone").
 
 The battle buttons only work inside a battle; everywhere else your pets just follow you as usual.
 
-### Your battle team: the Team screen
+### Your battle team: the Pets window
 
-Tap the **Team** tile in the menu. A team is **3 pets**: slot 1 is your **FIGHTER**, slots 2 and 3 are your
-**HELPERS**. **Set as fighter** on a team pet moves it into slot 1. You can save up to **3 teams** (the tabs *Team 1*
-to *Team 3*); **Use this team** picks the one you fight with. Tap a slot, then a pet: every pet shows its element,
-level and battle power. The screen shows your **team power** (compare it with a Dungeon floor's recommended power),
-the element bonuses your team gets right now and the element wheel. Garden pets are busy gardening (their tile says
+Tap the **Pets** tile in the menu. A team is **3 pets**: slot 1 is your **FIGHTER**, slots 2 and 3 are your
+**HELPERS**. **Make fighter** on a team pet swaps it into slot 1. You can save up to **3 teams** (the buttons **A**, **B**
+and **C**); pressing one makes it the team you fight with. Tap a slot, then a pet: every pet shows its element,
+level and battle power. The window shows your **team power** (compare it with a Dungeon floor's recommended power)
+and what it is made of. Garden pets are busy gardening (their card says
 *Gardening*; tap one to take it out of the garden and into the team); a pet in training sits out until it is done
-(its tile says *Training*). Your team is the pets following you: an empty team cannot enter a battle, the game asks
+(its card says *Training*). Your team is the pets following you: an empty team cannot enter a battle, the game asks
 you to set one and never picks for you. Pet levels count a lot: feed your pets at the Food Machine, evolve
 them and train their skills at the Training Place.
 
@@ -919,7 +918,7 @@ them and train their skills at the Training Place.
 
 Elements work in battle exactly like the [element wheel](#elements): a pet hitting an element it is strong against
 deals **x1.5** damage, a pet hitting an element that is strong against it only **x0.75**. A team also gets bonuses
-for its mix of elements (the Team screen shows them live):
+for its mix of elements (the team power in the Pets window counts them):
 
 - **2 pets of the same element:** **+10 % Power** for those pets; **3 of one element +20 %**.
 - **3 or more different elements:** **Balanced**, **+10 % Health** for the whole team.
@@ -1131,7 +1130,7 @@ Secret pets are in none of the token roulettes: Stormfang and the other three ro
 gems-only Secret Roulette at the Storm Altar (see [Gems](#gems-and-the-secret-roulette)), and the three Boss Raid
 pets only drop in Boss Raids.
 
-Equip up to **3** pets from the Pets window (a pet in training cannot be equipped). Each pet has one or two perks:
+Put up to **3** pets in your team from the Pets window (a pet in training cannot join). Each pet has one or two perks:
 **Max Health**, **Cloud Tokens** (more tokens per pickup), **Stamina Regen** and **Checkpoint Heal**. Perks add up,
 with caps (+50 % health, +100 % tokens, +60 % stamina regen, +100 % checkpoint heal). Pets never change run speed or
 jump height, and your loadout is locked while a climb is running. The mascot is the Mythic **Cloudy Dragon**.
@@ -1144,7 +1143,22 @@ shows them all; in battle your fighter uses its special when you press SPECIAL. 
 **Golden** or **Rainbow** copy or a fused **hybrid** (see [the Fusion Machine](#the-fusion-machine-after-prestige-1)),
 and since phase 4 it can [evolve](#evolution-the-evolve-button) and learn [battle skills](#the-training-place). The
 Pets window shows each copy with its tier badge, level (*Lv 12 / 100*), XP bar, evolution stars and battle power,
-and the Equip, Food Machine, Garden, Train and EVOLVE buttons.
+and the Put in team, Feed, Garden, Train and Evolve buttons.
+
+### The Pets window
+
+One big window, no tabs. Your 3 team slots are always on top, the **team power** beside them with what it is made of
+(*Fighter 358 + helpers 281, 279 + team bonus*). **A**, **B** and **C** are your saved teams: pressing one makes it your
+team. **Auto-fill best** puts your strongest free pets in (**Undo** takes it back for a few seconds), **Clear** empties
+the team (press it twice). Below, every pet you own as a card, sorted **Strongest**, **Rarest** or by **Level**.
+
+- **Tap a slot, then a pet.** The banner says what you are picking; the pet drops in with a thud, no Save button. A
+  pet already in another slot swaps places. Tap the slot again or the X to cancel. If the server says no, the slot goes
+  back at once with the reason and the pick stays armed.
+- **Tap a pet** to see it: name, level, XP, coins, battle power, health and speed, with **Put in team** (or **Make
+  fighter** and **Remove**), **Feed**, **Train**, **Garden** and **Evolve** when it is ready. Feed and Train come back to
+  this window on the same pet when you close them.
+- **On a phone** the slots sit in a column on the left and a pet's details slide over the cards, never over the slots.
 
 ### Pet cards and following
 
@@ -1509,8 +1523,8 @@ src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientS
              PortalVortex (the swirling vortex inside every gate hoop); MouseLock (the Mouse lock option);
              LightingStack (lighting looks, e.g. the Dungeon); TeamPick (the battle team strip, Auto-fill best and the
              empty-team popup at the battle portals); UI/CloudUI; UI/NeonKit (the neon cards, tiles and side
-             panels); UI/PetCard (the cards above pets); Controllers: Movement, MainMenu (main menu + settings), Hud,
-             DamageFx, Notify, Menu, Pet, TokenFx, Index, Tutorial, Npc, SkyDragon, Showcase, Dev, DevPetShow
+             panels); UI/PetCard (the cards above pets); UI/PetBits (what the windows showing a pet share); Controllers:
+             Movement, MainMenu (main menu + settings), Hud, DamageFx, Notify, Menu, Pets (the Pets window), Pet, TokenFx, Index, Tutorial, Npc, SkyDragon, Showcase, Dev, DevPetShow
              (pet showcase, /fx attack preview), EvolutionFx (evolution animation, the dungeon enemies' arrival),
              AttackFx (plays the pet attack effects: Blender cores, flipbook particles, beams, trails and lights,
              pooled, within a budget, plus the battle poses; BattleController plays it first, cubes as the fallback), Care (Food Machine, Garden, training and EVOLVE

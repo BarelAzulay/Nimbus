@@ -271,7 +271,7 @@ local function clientScenarios()
 				cleared[f] = f <= 4
 			end
 			local WINDOWS = {
-				{ "menu:Pets", function() H.mod("MenuController").Open("Pets", {}) end, function() return menuWin("Inventory") end },
+				{ "menu:Pets", function() H.mod("MenuController").Open("Pets", {}) end, inGui("NimbusPets", "Window_Pets") },
 				{ "menu:Index", function() H.mod("MenuController").Open("Index", {}) end, inGui("NimbusIndex", "Window_Index") },
 				{ "care:Feed", function() H.mod("CareController").Open("Feed", { Slot = 4 }) end, inGui("NimbusCare", "Window_Care") },
 				{ "fusion", function() H.mod("FusionController").Open("Upgrade", {}) end, inGui("NimbusFusion", "Window_Fusion") },

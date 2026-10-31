@@ -419,6 +419,21 @@
         "WindowOpened"
       ]
     },
+    "client/Controllers/PetsController": {
+      "functions": [
+        "Init",
+        "Open",
+        "Close",
+        "IsOpen",
+        "SetSort",
+        "Sort",
+        "Layout"
+      ],
+      "signals": [
+        "Opened",
+        "Closed"
+      ]
+    },
     "client/TeamPick": {
       "functions": [
         "ActiveKeys",

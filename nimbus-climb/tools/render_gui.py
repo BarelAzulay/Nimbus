@@ -7,11 +7,11 @@
     python3 tools/render_gui.py --list
 
 Scenarios (see tools/dump_gui.lua): lobby, title, match[:hit], countdown, party, results,
-menu:<Inventory|Pets|Index|Shop|Stats>[:<Tab>], tutorial[:<step>], npc[:<n>], dev, toasts,
+pets[:phone|:pick|:sheet|:<key>], menu:<Index|Shop|Stats>[:<Tab>], tutorial[:<step>], npc[:<n>], dev, toasts,
 portal[:<Id>[:<players>[:<studs>]]] (a portal's world GUIs mirrored flat: the pixel billboard and the eye-level
 countdown face as big as it looks from <studs> away; Phase 5: portal:Obby), battle[:<mode>[:<phase>]]
 (battle:<fighter|raid|duel|spectate|dungeon|ring>), arena[:<view>] (arena:practice, arena:dungeon[:<view>]),
-dungeon:<lobby|party|leader|countdown|run|loot|treasure|end|wipe>, obby[:party|toast], team, mainmenu, loading,
+dungeon:<lobby|party|leader|countdown|run|loot|treasure|end|wipe>, obby[:party|toast], mainmenu, loading,
 settings, or a .json dump written earlier with --json.
 
 How it works: tools/dump_gui.lua runs inside a lupa Lua world booted like tools/smoke.py boots its client world
@@ -62,13 +62,13 @@ except Exception:  # pragma: no cover
     TTFont = None
 
 GRID_SIZES = [(1920, 1080), (1280, 720), (390, 844), (844, 390)]
-SCENARIOS = ["gallery", "lobby", "title", "match", "match:hit", "countdown", "party", "results", "menu:Inventory", "menu:Pets",
+SCENARIOS = ["gallery", "lobby", "title", "match", "match:hit", "countdown", "party", "results", "pets", "pets:phone", "pets:pick", "pets:sheet",
              "menu:Index", "menu:Shop", "menu:Stats", "tutorial", "npc", "dev", "toasts", "portal", "portal:Saint:4",
              # Phase 4 (careui): the Home window, the Food Machine list, the garden picker, the Training Place, the EVOLVE
              # confirm, the Champion Ring window and the floating pet cards
              "home", "home:coins", "feed", "garden", "train", "evolve", "ring", "ring:new", "petcards",
              # Phase 5: the fighter HUD (battleclient), the careui windows, the Neon kit (neonkit), the menu (menu)
-             "battle:fighter", "battle:raid", "battle:duel", "battle:spectate", "battle:dungeon", "team", "looks", "looks:epic",
+             "battle:fighter", "battle:raid", "battle:duel", "battle:spectate", "battle:dungeon", "looks", "looks:epic",
              "stats", "fusion", "fusion:mix", "neon", "neon:window", "neon:hud", "neon:party", "mainmenu", "loading", "settings",
              # Phase 5 (dungeonclient): the Battle Arena window and its tabs, the Dungeon window / run card views, the
              # Sky Obby picker, the one obby portal
@@ -270,7 +270,9 @@ SERIF = [("Caladea", "Bold Italic"), ("DejaVu Serif", "Bold"), ("Liberation Seri
 MONO = [("DejaVu Sans Mono", "Book"), ("Liberation Mono", "Regular"), ("FreeMono", None)]
 MONO_BOLD = [("DejaVu Sans Mono", "Bold"), ("Liberation Mono", "Bold"), ("FreeMono", "Bold")]
 SYMBOL_FALLBACKS = [("DejaVu Sans", "Bold"), ("DejaVu Sans", "Book"), ("FreeSans", "Bold"), ("FreeSerif", None),
-                    ("Unifont", None)]
+                    ("Unifont", None), ("Segoe UI Symbol", None)]
+# a Windows machine has none of the above: its own fonts, so the sheets still show their text
+WINDOWS_FALLBACKS = [("Arial Rounded MT Bold", None), ("Segoe UI", "Bold"), ("Arial", "Bold"), ("Arial", None)]
 
 ROBLOX_FONTS = {
     "fredokaone": HEAVY_ROUNDED, "bangers": HEAVY_ROUNDED, "cartoon": HEAVY_ROUNDED, "permanentmarker": HEAVY_ROUNDED,
@@ -381,7 +383,7 @@ class FontBook:
         if candidates is None:
             candidates = BOLD_ROUNDED
         primary = None
-        for fam, style in candidates:
+        for fam, style in list(candidates) + WINDOWS_FALLBACKS:
             primary = self.find(fam, style)
             if primary:
                 break
@@ -1374,7 +1376,7 @@ def main():
                     "home[:coins], feed, garden[:<slot>], train[:<key>], evolve, ring[:<new|record>], petcards, "
                     "battle[:<mode>[:<phase>]] (battle:ring:<fight|next|result|record><round>, battle:duel:overtime, "
                     "battle:<fighter|raid|duel|spectate|dungeon>), arena[:<view>] (arena:practice, arena:dungeon[:<view>]), "
-                    "dungeon:<lobby|party|leader|countdown|run|loot|treasure|end|wipe>, obby[:party|toast], portal:Obby, team, "
+                    "dungeon:<lobby|party|leader|countdown|run|loot|treasure|end|wipe>, obby[:party|toast], portal:Obby, "
                     "or a dump .json")
     ap.add_argument("-o", "--out", help="output PNG (default: gui_<scenario>_<W>x<H>.png in the current directory)")
     ap.add_argument("--size", type=parse_size, default=(1920, 1080), help="screen size WxH (default 1920x1080)")

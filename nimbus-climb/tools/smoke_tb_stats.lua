@@ -181,9 +181,10 @@ local function clientScenarios()
 		-- the Pets detail: the pet's own level
 		MC.Open("Pets", { Key = "stormfang" })
 		KC.advance(2)
-		local inv = LocalPlayer.PlayerGui:FindFirstChild("NimbusMenu"):FindFirstChild("Window_Inventory")
+		local inv = LocalPlayer.PlayerGui:FindFirstChild("NimbusPets"):FindFirstChild("Window_Pets")
 		local function detailRow(name)
-			return pillText(find(inv, "Stat_" .. name))
+			local row = find(inv, "Row_" .. name)
+			return row and (find(row, "Label").Text .. " " .. find(row, "Value").Text) or ""
 		end
 		local battle10 = BC.BattleStatsOf("stormfang", 10)
 		-- the Power pill is "Battle power N" = UnitPower (m17, client_p5support_power), which reads the battle path
