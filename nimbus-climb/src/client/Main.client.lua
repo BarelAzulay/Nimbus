@@ -17,6 +17,7 @@ local CONTROLLER_NAMES = {
 	"DamageFx",
 	"NotifyController",
 	"MenuController",
+	"PetsController", -- team balance: the Pets window (MenuController delegates to it)
 	"TopBarController", -- HUD cleanup: the top-left pill (Shop / Travel / Settings)
 	"PetController",
 	"TokenFx",
@@ -57,7 +58,7 @@ local CONTROLLER_NAMES = {
 local TAG = "[NimbusClimb] "
 
 -- Newer controllers that a build may not contain yet: skip them quietly when absent.
-local OPTIONAL = { SkyDragonController = true, IndexController = true, NpcController = true, TutorialController = true,
+local OPTIONAL = { PetsController = true, SkyDragonController = true, IndexController = true, NpcController = true, TutorialController = true,
 	ShowcaseController = true, DevController = true, DevPetShow = true,
 	HomeFx = true, FusionController = true,
 	BattleController = true, ArenaController = true,

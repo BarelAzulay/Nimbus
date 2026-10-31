@@ -1,46 +1,46 @@
 -- MenuController (client, v3 + Phase 2): the left menu of icon tiles and every window the player opens.
 --
 --   MenuController.Init()
---   MenuController.Open(panelId, args)   -- "Inventory" | "Pets" | "Index" | "Shop" | "Stats" | "Home" | "Team" |
---                                           "Settings" (what OpenPanel does; args: Tab, RouletteId, Currency = "Gems",
---                                           Action, Key, Preset). HUD cleanup: "Team" opens the Pets window on its Team
---                                           tab (args.Preset: the preset shown).
+--   MenuController.Open(panelId, args)   -- "Pets" | "Index" | "Shop" | "Stats" | "Home" | "Settings" (what OpenPanel does;
+--                                           args: Tab, RouletteId, Currency = "Gems", Action, Key, Preset, Pick, ReturnTo).
+--                                           Team balance: "Pets", "Team" and "Inventory" open PetsController's window
+--                                           (args go to PetsController.Open).
 --                                           Phase 4: "Pets" with Action = "Feed" | "Garden", "Feed", "Train" and "Evolve"
 --                                           go to CareController (the Food Machine list, the garden picker, the Training
 --                                           Place window, the EVOLVE moment); Action = "Evolve" with a Key (the floating
---                                           card's EVOLVE! pill) opens the Pets panel on that pet with the EVOLVE confirm
+--                                           card's EVOLVE! pill) opens the Pets window on that pet with the EVOLVE confirm
 --   MenuController.Close()               -- closes whatever window / overlay is open
 --   MenuController.OpenSettings()        -- HUD cleanup: MainMenuController's settings panel (the top-left pill's gear,
 --                                           TopBarController; a hint until that panel exists)
---   MenuController.OpenTeam(preset)      -- HUD cleanup: the Pets window on its Team tab (TeamPick's strip Edit button)
+--   MenuController.OpenTeam(preset)      -- the Pets window showing that team (TeamPick's strip Edit button)
 --   MenuController.WindowOpened          -- Util.Signal, Fire(windowId) whenever a window opens:
---                                           "Inventory", "Shop", "Stats", "Home" or "Index" (the tutorial listens), and
---                                           "Team" once per opening of the Pets window when its Team tab shows
---                                           (ArenaController adds the Champion Ring line then)
+--                                           "Pets" (fired by PetsController), "Shop", "Stats", "Home" or "Index" (the
+--                                           tutorial listens); this controller closes its own windows on "Pets"
 --   Extra: MenuController.GetButton(id) -> the MenuButton_<id> tile (or nil; "Home" is the Spot tile)
---          MenuController.IsOpen() -> true while a window, the odds popup or the roulette stage is up
+--          MenuController.IsOpen() -> true while a window (the Pets window too), the odds popup or the roulette stage is up
 --          MenuController.IsPrewarmed(petId) -> true once that pet was pre-sculpted for the roulette strip
 --          MenuController.OpenFeed(key) -> the Food Machine list (CareController) with that pet copy first
 --          MenuController.Hint(text, kind) -> the side hint (CareController's local refusals use it)
 --          MenuController.SetColumnHidden(hidden) -> hides / shows the menu tiles (BattleController: the team cards
 --          take the left edge of a landscape phone during a battle; the column frame keeps its place)
+--          MenuController.SetColumnCovered(windowLeft) -> PetsController: its window reaches over the tiles from that
+--          screen x (nil = closed): the tiles step aside while it is up
 --          MenuController.SetColumnCollapsed(collapsed, animate) / IsColumnCollapsed() -> folds the column against the
 --          left edge like its arrow tab does (bug batch 2 #1; remembered for the session)
 --
 -- Screen: ScreenGui "NimbusMenu" (display order 20, IgnoreGuiInset = false).
 --   * Menu column, left-centre (bug batch 2 #1, option A; HUD cleanup): ONE slim column of four square neon tiles
 --     with a glyph and a bold label - Pets, Index, Home, Stats - 56 px on a 1080p desktop (Shop / Travel / Settings
---     live in TopBarController's pill in Roblox's top bar; the Items and Team tiles are gone, the battle team is the
---     Pets window's Team tab, Open("Team")). Each tile is a TextButton named MenuButton_<Id> (Ids Pets, Index, Spot, Stats: the
+--     live in TopBarController's pill in Roblox's top bar; the Items and Team tiles are gone, the battle team is in the
+--     Pets window, Open("Team")). Each tile is a TextButton named MenuButton_<Id> (Ids Pets, Index, Spot, Stats: the
 --     Home tile keeps the v3 id "Spot" so saved tutorial targets keep working) inside a frame Entry_<Id> of the frame
 --     "MenuColumn". The open window's tile glows gold; a red "!" marks new pets and Pet Index rewards waiting to be
 --     claimed. A small arrow tab (MenuColumn.Toggle) folds the column against the left edge and back (remembered for
 --     the session; the tab repeats a tile's red dot while folded; a tutorial step pointing at a tile unfolds it). On
 --     short screens (landscape / portrait phones) the tiles wrap into two slim columns so they stay >= 44 px.
 --   * Windows (CloudUI.Panel, centred because the player asked for them, nudged right only when the menu
---     column would cover them): Inventory (tabs Pets + Team, pet detail card; HUD cleanup: the Team tab is the P3 team
---     editor, titled "Battle Team"; the Items tab went with the obby items), Shop (tabs Roulettes + Gems, odds popup),
---     Stats and Home. An old Tab = "Items" lands on Pets / Roulettes. The
+--     column would cover them): Shop (tabs Roulettes + Gems, odds popup), Stats and Home (team balance: the Pets window
+--     is PetsController's, shared bits in UI/PetBits). An old Tab = "Items" lands on Roulettes. The
 --     Pet Index is IndexController's window: the Index tile and
 --     OpenPanel("Index") open it. One window at a time; Esc / gamepad B / the red X / the tile again / a click
 --     outside closes it. Gamepad B is bound (ContextActionService, High priority, sunk) only while something is open,
@@ -57,26 +57,19 @@
 --     does now -> next ("+7 -> +9 food", "Feeds fill 30% -> 35% of a bar", "2 pets train at once"), the next price
 --     and Build / Upgrade (or why it is locked: "Reach Home Level 10", "Needs the Villa", "Unlocks at Prestige 1").
 --     Everything is re-checked by the server (HomeAction "Upgrade" / "Prestige" / "GoHome").
---   * Pets panel: one slot per pet COPY key (shared/PetKeys: Normal, Golden, Rainbow, fused hybrids) with tier /
---     hybrid chips, "Lv n" + evolution stars and a Garden (seedling) / training (muscle) chip; the detail card shows
---     "Lv 57 / 100" and the XP bar, the stats at its level with "Coins $x/s" (what it earns in the Garden), the
---     evolution pill, where it works or trains ("Training Physique (2:10 left)"), "Ready to evolve!", and the buttons
---     Equip / Unequip (Equip disabled while training), Feed (CareController's Food Machine list), Garden / Leave
---     Garden (HomeAction "GardenSet", ANY role), Train (CareController's Training Place window) and EVOLVE! (when
---     PetCatalog.CanEvolve: CareController's confirm -> PetCare "Evolve").
 --   * Shop Gems tab: the Gem packs (developer products with an id: MarketplaceService:PromptProductPurchase; the
 --     server grants them in ProcessReceipt), the gems-only Secret Roulette and every roulette with a gem price,
 --     each with its odds popup (always shown); hidden with a note while the PaidRandomItemsRestricted attribute
 --     is true. A gem spin sends BuyRoulette(id, "Gems").
 --   * Roulette stage: a scrolling strip of pet viewports that eases to the server result (RouletteResult),
---     then a reveal card with a rarity glow, a NEW! flag and an Equip button (a landscape card on short screens).
+--     then a reveal card with a rarity glow, a NEW! flag and a Put in team button (a landscape card on short screens).
 --   * v3 readability rule: everything is designed in 1080p pixels (body 18-19, captions >= 18, buttons 20+,
 --     titles 28-34) under ONE UIScale per window = min(screen factor clamp(viewportY / 1080, 0.8, 1.25), fit).
 --     Window sizes adapt between a minimum and a preferred design size and their columns scroll, so phones
 --     keep the 0.8 scale instead of shrinking the text.
 --   * Every window re-renders from State.Changed (and when the token count or the InMatch attribute
 --     changes). Pet slots are kept per pet id and updated in place, so nothing is rebuilt or leaked; the
---     pet viewports of the Inventory grid, the odds popup and the roulette strip are attached under a per-frame
+--     pet viewports of the odds popup and the roulette strip are attached under a per-frame
 --     TIME budget (K.BUILD_BUDGET, at least one per frame), so neither a big collection nor a fresh client's
 --     first-time pet sculpts hitch. The strip cells and odds tiles use PetBuilder's Low detail (the reveal card
 --     stays High), and the roulette pools are sculpted ahead of time (one pet per frame) when the Shop opens and
@@ -178,12 +171,10 @@ local K = {
 	MARGIN = 12, -- screen px kept free around a window
 	NARROW = 1100, -- windows narrower than this (design px) use narrower side cards
 	SHORT = 560, -- windows lower than this (design px) use their compact layout
-	DETAIL_W = 340,
-	DETAIL_W_NARROW = 296,
 	FIRE_GAP = 0.3, -- client-side spacing between two sends of the same remote
 	HINT_SECONDS = 2.8,
 	WAIT_TIMEOUT = 7, -- seconds to wait for a RouletteResult
-	-- pet viewports (Inventory grid, odds popup, roulette strip) are built under a TIME budget per frame: the first
+	-- pet viewports (odds popup, roulette strip) are built under a TIME budget per frame: the first
 	-- build of a frame always runs, more only while the frame has spent < BUILD_BUDGET s building, at most BUILD_MAX
 	-- (a first-time High sculpt costs tens of ms, a cached clone a few: a count budget hitches on fresh clients)
 	BUILD_BUDGET = 0.004,
@@ -219,7 +210,6 @@ local K = {
 -- Phase 5 (6.6, the window rule): windows dock RIGHT on landscape screens (NeonKit.SideRect, <= 0.44 W) and are a
 -- bottom sheet on portrait ones (the top 44% stays clear); no backdrop dims the game. Odds is a small centred confirm.
 K.WIN = {
-	Inventory = { 820, 900 },
 	Shop = { 820, 900 },
 	Stats = { 640, 760 },
 	Home = { 820, 900 },
@@ -231,7 +221,7 @@ K.WIN = {
 K.TALL_MIN_W = 420
 K.TALL_MAX_H = 1100
 K.TALL = 760
--- Phase 2 (Home window, Pets actions, Gems tab)
+-- Phase 2 (Home window, Gems tab)
 K.HOME_LEFT_W = 350 -- the Home window's summary column
 K.HOME_LEFT_W_NARROW = 300
 K.STATION_ROW_H = 96
@@ -259,9 +249,7 @@ local WELL_EDGE = Colors.WellEdge or NAVY
 local BUTTONS = Theme.Buttons or {}
 local KINDS = Theme.Kinds or {}
 local PURPLE = Color3.fromRGB(150, 122, 226)
-local TEAL = Color3.fromRGB(70, 182, 196)
 local INSET_COLOR = Color3.fromRGB(20, 30, 70)
-local ROLE_COLORS = { Economy = Color3.fromRGB(96, 196, 108), Combat = Color3.fromRGB(228, 104, 96) }
 local CURRENCY = Theme.Currency or {}
 -- Phase 2 colours (one table: the main chunk stays under Lua's 200-local limit)
 local C2 = {
@@ -343,11 +331,9 @@ local Hint = { Frame = nil, Label = nil, Token = 0 }
 local Home = { Folder = nil, Conns = {}, LiveAt = 0, LivePending = false }
 local Gems = { Prices = {}, PriceAsked = {} }
 
--- Phase 3: the team editor's entry points (HUD cleanup: P3.BuildTeam(win, page, hooks) builds the Pets window's Team
--- tab, P3.TeamShown(win, hooks); P3.Settle(), P3.Battle(), P3.Refresh(); set below)
-local P3 = {}
 -- Phase 5 helpers (one table: the main chunk stays under Lua's 200-local limit). Kit = NeonKit (Card, Tile, SideRect, Dock).
 local P5 = { Kit = require(Client:WaitForChild("UI"):WaitForChild("NeonKit")) }
+local PetBits = require(Client:WaitForChild("UI"):WaitForChild("PetBits"))
 -- forward declarations
 local openWindow, closeWindow, toggleWindow, refreshOpenWindow, updateMenuActive
 local requestSpin, closeStage, skipSpin, closeOdds, openOdds, showHint, handleBack, beginStage
@@ -800,19 +786,6 @@ local function starText(count)
 	return string.rep(G.Star, count) .. string.rep(G.StarOutline, 5 - count)
 end
 
--- Owned pet ids, rarest first (the catalog is sorted common -> secret).
-local function ownedPetIds()
-	local out = {}
-	local pets = PetCatalog.Pets or {}
-	for index = #pets, 1, -1 do
-		local def = pets[index]
-		if State.OwnedCount(def.Id) > 0 then
-			table.insert(out, def.Id)
-		end
-	end
-	return out
-end
-
 local function petTotals()
 	local distinct, total = 0, 0
 	for id, count in pairs(State.Get().Pets) do
@@ -851,42 +824,7 @@ local function catalogTotal()
 	return #(PetCatalog.Pets or {})
 end
 
--- Element ids of a pet (v3 section 11), filtered by Config.Elements; empty while the catalog has none.
-local function elementsOf(def)
-	local info = Config.Elements and Config.Elements.Info
-	if type(def) ~= "table" or type(info) ~= "table" then
-		return {}
-	end
-	local raw = nil
-	if type(PetCatalog.ElementsOf) == "function" then
-		local ok, result = pcall(PetCatalog.ElementsOf, def)
-		if ok then
-			raw = result
-		end
-	end
-	if raw == nil and type(PetCatalog.GetElements) == "function" then
-		local ok, result = pcall(PetCatalog.GetElements, def.Id)
-		if ok then
-			raw = result
-		end
-	end
-	if raw == nil then
-		raw = def.Elements or def.Element
-	end
-	if type(raw) == "string" then
-		raw = { raw }
-	end
-	local out, seen = {}, {}
-	if type(raw) == "table" then
-		for _, e in ipairs(raw) do
-			if type(e) == "string" and info[e] and not seen[e] then
-				seen[e] = true
-				table.insert(out, e)
-			end
-		end
-	end
-	return out
-end
+local elementsOf = PetBits.elementsOf
 
 -- CloudUI slots carry small count / key / marker texts (16-17 design px); at the phone scale (0.8) they
 -- would render under 14 px, so the slots this menu makes get a size that stays readable.
@@ -985,181 +923,9 @@ end
 ----------------------------------------------------------------------
 local P2 = {}
 
-P2.TIER_RANK = { Normal = 1, Golden = 2, Rainbow = 3 }
-
-function P2.parseKey(key)
-	if type(key) ~= "string" then
-		return nil
-	end
-	if PetKeys and type(PetKeys.Parse) == "function" then
-		local ok, parsed = pcall(PetKeys.Parse, key)
-		if ok and type(parsed) == "table" then
-			return parsed
-		end
-	end
-	local base, tier = key:match("^(.-)@(%a+)$")
-	base = base or key
-	tier = tier or "Normal"
-	if base:sub(1, 4) == "hyb:" then
-		return { Key = key, HybridId = base:sub(5), Tier = tier }
-	end
-	return { Key = key, PetId = base, Tier = tier }
-end
-
--- The definition of a pet copy: the catalog def (Normal), a tier def (Look.Finish), a merged hybrid def, or nil.
-function P2.defOfKey(key)
-	if type(key) ~= "string" then
-		return nil
-	end
-	if type(State.DefOf) == "function" then
-		local ok, def = pcall(State.DefOf, key)
-		if ok and type(def) == "table" then
-			return def
-		end
-	end
-	return PetCatalog.Get(key)
-end
-
-function P2.tierOf(key, def)
-	local t = type(def) == "table" and def.Tier or nil
-	if t == "Golden" or t == "Rainbow" then
-		return t
-	end
-	local parsed = P2.parseKey(key)
-	if parsed and (parsed.Tier == "Golden" or parsed.Tier == "Rainbow") then
-		return parsed.Tier
-	end
-	return "Normal"
-end
-
-function P2.isHybrid(key, def)
-	if type(def) == "table" and def.IsHybrid == true then
-		return true
-	end
-	return type(key) == "string" and key:sub(1, 4) == "hyb:"
-end
-
--- x1 / x1.5 / x2.5 (perks and stats of tier copies; hybrids carry their own)
-function P2.tierMultiplier(key, def)
-	if type(def) == "table" and type(def.StatMultiplier) == "number" and def.StatMultiplier > 0 then
-		return def.StatMultiplier
-	end
-	local tier = P2.tierOf(key, def)
-	if tier == "Rainbow" then
-		return 2.5
-	elseif tier == "Golden" then
-		return 1.5
-	end
-	return 1
-end
-
-function P2.displayName(key, def)
-	def = def or P2.defOfKey(key)
-	if type(def) ~= "table" then
-		return tostring(key)
-	end
-	return tostring(def.DisplayName or def.Name or key)
-end
-
--- Owned pet copies in grid order: rarest first; inside a rarity the hybrids, then the catalog pets (reverse catalog
--- order, a pet's Rainbow / Golden copies right before its Normal ones).
-function P2.ownedKeys()
-	local keys = nil
-	if type(State.Keys) == "function" then
-		local ok, list = pcall(State.Keys)
-		if ok and type(list) == "table" then
-			keys = list
-		end
-	end
-	if not keys then
-		keys = {}
-		for _, def in ipairs(PetCatalog.Pets or {}) do
-			keys[#keys + 1] = def.Id
-		end
-	end
-	local info, out = {}, {}
-	for i, key in ipairs(keys) do
-		if type(key) == "string" and not info[key] and State.OwnedCount(key) > 0 then
-			local def = P2.defOfKey(key)
-			if def then
-				info[key] = { Order = rarityOrder(def.Rarity), Hybrid = P2.isHybrid(key, def) and 1 or 0, Index = i }
-				out[#out + 1] = key
-			end
-		end
-	end
-	table.sort(out, function(a, b)
-		local x, y = info[a], info[b]
-		if x.Order ~= y.Order then
-			return x.Order > y.Order
-		end
-		if x.Hybrid ~= y.Hybrid then
-			return x.Hybrid > y.Hybrid
-		end
-		return x.Index > y.Index
-	end)
-	return out
-end
-
--- level, xp of a pet copy
-function P2.petLevel(key)
-	if type(State.PetLevel) == "function" then
-		local ok, level, xp = pcall(State.PetLevel, key)
-		if ok and type(level) == "number" then
-			return math.max(1, math.floor(level)), tonumber(xp) or 0
-		end
-	end
-	return 1, 0
-end
-
--- XP from `level` to the next one (math.huge at the top of the curve)
-function P2.xpToNext(level)
-	if TycoonCatalog and type(TycoonCatalog.XpToNext) == "function" then
-		local ok, n = pcall(TycoonCatalog.XpToNext, level)
-		if ok and type(n) == "number" and n > 0 then
-			return n
-		end
-	end
-	return math.huge
-end
-
-function P2.levelCap(key, def)
-	if type(PetCatalog.LevelCap) == "function" then
-		local ok, cap = pcall(PetCatalog.LevelCap, def or key)
-		if ok and type(cap) == "number" and cap >= 1 then
-			return math.floor(cap)
-		end
-	end
-	return (TycoonCatalog and tonumber(TycoonCatalog.MaxPetLevel)) or 50
-end
-
--- the pet's stats at its level (rarity scale x level factor x tier), or nil without a catalog that knows stats
-function P2.statsAt(def, level)
-	if type(def) ~= "table" then
-		return nil
-	end
-	if type(PetCatalog.StatsOf) == "function" then
-		local ok, stats = pcall(PetCatalog.StatsOf, def, level)
-		if ok and type(stats) == "table" then
-			return stats
-		end
-	end
-	if type(PetCatalog.GetStats) == "function" and type(def.Id) == "string" then
-		local ok, stats = pcall(PetCatalog.GetStats, def.Id, level)
-		if ok and type(stats) == "table" then
-			return stats
-		end
-	end
-	return nil
-end
-
-function P2.homeData()
-	if type(State.Home) == "function" then
-		local ok, home = pcall(State.Home)
-		if ok and type(home) == "table" then
-			return home
-		end
-	end
-	return { Level = 0, Prestige = 0, Stations = {}, Garden = {}, Gym = {}, CollectorCash = 0 }
+-- what the pet windows share (team balance: UI/PetBits)
+for _, name in ipairs({ "defOfKey", "petLevel", "homeData", "catalogCall", "stage", "job", "formatCash", "formatRate" }) do
+	P2[name] = PetBits[name]
 end
 
 function P2.stationLevelOf(home, id)
@@ -1196,108 +962,8 @@ function P2.gemBalance()
 	return 0
 end
 
--- "$950", "$12.5K" (TycoonCatalog.FormatCash, the same text as the pad signs)
-function P2.formatCash(n)
-	if TycoonCatalog and type(TycoonCatalog.FormatCash) == "function" then
-		local ok, text = pcall(TycoonCatalog.FormatCash, n)
-		if ok and type(text) == "string" then
-			return text
-		end
-	end
-	return G.Cash .. Theme.ShortNumber(tonumber(n) or 0)
-end
-
--- cash per second: one decimal below 100 ("$7.5"), FormatCash above
-function P2.formatRate(n)
-	n = tonumber(n) or 0
-	if n ~= n or n < 0 then
-		n = 0
-	end
-	if n < 100 then
-		local text = string.format("%.1f", math.floor(n * 10 + 0.5) / 10)
-		text = text:gsub("%.0$", "")
-		return G.Cash .. text
-	end
-	return P2.formatCash(n)
-end
-
 function P2.gemAmount(n)
 	return G.Gem .. " " .. commas(n)
-end
-
-function P2.foodList()
-	local foods = TycoonCatalog and TycoonCatalog.Foods
-	if type(foods) == "table" then
-		return foods
-	end
-	return {}
-end
-
-function P2.foodCount(foodId)
-	if type(State.FoodCount) == "function" then
-		local ok, n = pcall(State.FoodCount, foodId)
-		if ok and type(n) == "number" then
-			return n
-		end
-	end
-	return 0
-end
-
-function P2.foodGlyph(foodId)
-	return G[foodId] or G.Food
-end
-
--- slots of `map` ({[slot] = key}) that hold `key`, ascending
-function P2.slotsHolding(map, key)
-	local out = {}
-	if type(map) == "table" then
-		for slot, k in pairs(map) do
-			if k == key and type(slot) == "number" then
-				out[#out + 1] = slot
-			end
-		end
-	end
-	table.sort(out)
-	return out
-end
-
--- bug batch 2 #18: copies of a key working in the Garden, and whether it has NO copy free of it (busy gardening).
--- Only OPEN places count (DataService P3.placedCopies): a copy resting on a place a Prestige closed earns nothing and
--- is free to follow / fight (the server takes it off that bed silently).
-function P2.gardenCopies(key)
-	local home = P2.homeData()
-	local open = P2.catalogCall("GardenSlots", home) or 0
-	local n = 0
-	for _, slot in ipairs(P2.slotsHolding(home.Garden, key)) do
-		if open < 1 or slot <= open then
-			n = n + 1
-		end
-	end
-	return n
-end
-function P2.isGardening(key)
-	local garden = P2.gardenCopies(key)
-	return garden > 0 and State.OwnedCount(key) - garden < 1
-end
-
-function P2.firstFreeSlot(map, count)
-	for slot = 1, count do
-		if type(map) ~= "table" or map[slot] == nil then
-			return slot
-		end
-	end
-	return nil
-end
-
-function P2.catalogCall(fnName, ...)
-	if not TycoonCatalog or type(TycoonCatalog[fnName]) ~= "function" then
-		return nil
-	end
-	local ok, a, b = pcall(TycoonCatalog[fnName], ...)
-	if ok then
-		return a, b
-	end
-	return nil
 end
 
 function P2.stationDef(id)
@@ -1323,160 +989,6 @@ function P2.care()
 		end
 	end
 	return P2.Care
-end
-
--- one pet's growth { Evo, Speed, Physique, Ability, Defense, Job | nil } (State.PetGrowth; zeros when absent)
-function P2.growth(key)
-	if type(State.PetGrowth) == "function" then
-		local ok, g = pcall(State.PetGrowth, key)
-		if ok and type(g) == "table" then
-			return g
-		end
-	end
-	return { Evo = 0 }
-end
-
--- Phase 5 (3.7): the stored stage the way every site draws it (State.PetStage: EvolutionStage of the stored Evo)
-function P2.stage(key)
-	if type(State.PetStage) == "function" then
-		local ok, stage = pcall(State.PetStage, key)
-		if ok and type(stage) == "number" then
-			return math.max(0, math.floor(stage))
-		end
-	end
-	return math.max(0, math.floor(tonumber(P2.growth(key).Evo) or 0))
-end
-
-function P5.battleCatalog()
-	if P5.Battle == nil then
-		P5.Battle = false
-		local module = Shared:FindFirstChild("BattleCatalog")
-		local ok, mod = pcall(function()
-			return module and require(module)
-		end)
-		if ok and type(mod) == "table" and type(mod.UnitPower) == "function" then
-			P5.Battle = mod
-		end
-	end
-	return P5.Battle or nil
-end
-
--- the detail's numbers: the garden's (P2.statsAt) with Power and Health from the battle path (BattleCatalog.BattleStatsOf, the
--- copy's tier and stored stage), so one window never shows two answers; nil like P2.statsAt
-function P2.battleStatsAt(def, key, level)
-	local stats = P2.statsAt(def, level)
-	local battle = P5.battleCatalog()
-	if type(stats) == "table" and battle and type(battle.BattleStatsOf) == "function" then
-		local ok, numbers = pcall(battle.BattleStatsOf, def, level, P2.tierOf(key, def), P2.stage(key))
-		if ok and type(numbers) == "table" then
-			stats.Power, stats.Health = numbers.Power, numbers.Health
-		end
-	end
-	return stats
-end
-
--- Phase 5 (m17): BattleCatalog.UnitPower of a pet copy (a Support pet with its Support role multipliers), or nil
-function P5.battlePower(key, def, level)
-	if not P5.battleCatalog() then
-		return nil
-	end
-	local growth = P2.growth(key)
-	local train = { Speed = growth.Speed, Physique = growth.Physique, Ability = growth.Ability, Defense = growth.Defense }
-	local entry = { Def = def, Key = key, Level = level, Tier = P2.tierOf(key, def), Evo = P2.stage(key), Train = train }
-	local ok, power = pcall(P5.Battle.UnitPower, entry)
-	if ok and type(power) == "number" then
-		return math.floor(power + 0.5)
-	end
-	return nil
-end
-
--- Phase 5 (3.7): an owned pet copy's evolved look on a CloudUI.Slot (the slot draws the plain form only): a Low-detail
--- evolved viewport over the slot ("EvolvedView", kept while the same pet + stage is shown); stage 0 removes it.
-function P5.evoSlot(slot, def, stage)
-	local cur = slot.P5Evo
-	stage = math.floor(tonumber(stage) or 0)
-	if stage < 1 or type(def) ~= "table" then
-		if cur then
-			pcall(cur.Handle.Destroy)
-			slot.P5Evo = nil
-		end
-		return false
-	end
-	if cur and cur.Id == def.Id and cur.Stage == stage and cur.Handle.Frame.Parent then
-		return true
-	end
-	if cur then
-		pcall(cur.Handle.Destroy)
-	end
-	local handle = CloudUI.PetViewport(slot.Button, def, UDim2.new(1, -8, 1, -8), {
-		Position = UDim2.new(0.5, 0, 0.5, 0),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Spin = "sway",
-		Animate = false,
-		Evolved = stage,
-		Detail = "Low",
-		ZIndex = 2,
-	})
-	handle.Frame.Name = "EvolvedView"
-	slot.P5Evo = { Id = def.Id, Stage = stage, Handle = handle }
-	return true
-end
-
--- the running training job of a key or nil
-function P2.job(key)
-	local job = P2.growth(key).Job
-	return type(job) == "table" and job or nil
-end
-
--- seconds left on a job ("2:10")
-function P2.jobLeft(job)
-	local now = os.time()
-	local ok, t = pcall(function()
-		return workspace:GetServerTimeNow()
-	end)
-	if ok and type(t) == "number" then
-		now = t
-	end
-	local left = math.max(0, math.ceil((tonumber(job and job.Ends) or 0) - now))
-	return string.format("%d:%02d", math.floor(left / 60), left % 60)
-end
-
--- "Attack Speed" for "Speed"
-function P2.skillName(stat)
-	if stat == "Speed" then
-		return "Attack Speed"
-	end
-	return tostring(stat or "")
-end
-
--- the next evolution stage when the pet can EVOLVE now (PetCatalog.CanEvolve), else nil
-function P2.canEvolve(key, def, level)
-	if type(PetCatalog.CanEvolve) ~= "function" then
-		return nil
-	end
-	local ok, nextStage = pcall(PetCatalog.CanEvolve, def or key, level, P2.stage(key))
-	if ok and type(nextStage) == "number" and nextStage >= 1 then
-		return nextStage
-	end
-	return nil
-end
-
--- coins per second of a pet in this home's Garden (PetPower x food x stars / meal x the Lucky EV; the grass food
--- before the Garden is built): the "Coins $/s" pill
-function P2.coinsPerSecond(key, def, home)
-	if not TycoonCatalog then
-		return 0
-	end
-	local level = P2.petLevel(key)
-	local power = P2.catalogCall("PetPower", { Def = def, Level = level, Stage = P2.stage(key), Key = key }) or 0
-	local coins = TycoonCatalog.Coins or {}
-	local food = P2.catalogCall("FoodOf", home) or 0
-	if food <= 0 then
-		food = tonumber(coins.GrassFood) or 12
-	end
-	local mult = P2.catalogCall("PrestigeMultiplier", math.floor(tonumber(home.Prestige) or 0)) or 1
-	local lucky = P2.catalogCall("LuckyEV", home) or 1
-	return power * food * mult * lucky / (tonumber(coins.MealSeconds) or 8)
 end
 
 ----------------------------------------------------------------------
@@ -1515,68 +1027,6 @@ end
 
 local function fire(name, ...)
 	return fireKeyed(name, name, ...)
-end
-
--- "This pet is gardening! Take it out of the garden and equip it?" [Yes] [No]. Yes = ONE request (HomeAction
--- "GardenRecall"; the server checks everything and takes it out + equips / stores the team); No = nothing.
--- target = { To = "Equip" } | { To = "Team", Preset = n, Keys = {...} }; onYes (optional) runs after the request.
-function P2.askRecall(key, target, onYes)
-	if P2.RecallDialog then
-		P2.RecallDialog:Destroy()
-	end
-	local overlay = makeFrame(gui, "GardenRecall", {
-		Size = UDim2.fromScale(1, 1),
-		BackgroundTransparency = 0.35,
-		BackgroundColor3 = Color3.fromRGB(8, 12, 32),
-		Active = true,
-		ZIndex = 60,
-	})
-	P2.RecallDialog = overlay
-	local box = makeFrame(overlay, "Box", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.new(0.92, 0, 0, 210), -- phone: 92 % of the width, capped at 420 px
-		BackgroundTransparency = 0,
-		BackgroundColor3 = WHITE,
-		ZIndex = 61,
-	})
-	Util.Create("UISizeConstraint", { MaxSize = Vector2.new(420, 210), Parent = box })
-	corner(box, 16)
-	stroke(box, C2.Kind.Garden, 4, 0)
-	Theme.Gradient(box, Colors.PanelLight, Colors.Panel, 90)
-	makeText(box, "Title", G.Seedling .. " This pet is gardening!", "Title", 28, C2.Kind.Garden, {
-		Position = UDim2.fromOffset(16, 12), Size = UDim2.new(1, -32, 0, 36), ZIndex = 62,
-	})
-	local verb = target.To == "Team" and "put it in your team?" or "equip it?"
-	makeText(box, "Body", "Take it out of the garden and " .. verb, "Body", 20, WHITE, {
-		Position = UDim2.fromOffset(16, 54), Size = UDim2.new(1, -32, 0, 60), TextWrapped = true, ZIndex = 62,
-	})
-	local buttons = makeFrame(box, "Buttons", {
-		AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -14), Size = UDim2.new(1, -32, 0, 56), ZIndex = 62,
-	})
-	listLayout(buttons, Enum.FillDirection.Horizontal, 14, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
-	local function close()
-		if P2.RecallDialog == overlay then
-			P2.RecallDialog = nil
-		end
-		overlay:Destroy()
-	end
-	CloudUI.Button({
-		Name = "RecallYes", Text = "Yes", Style = "Green", Size = UDim2.fromOffset(150, 56), TextSize = 24, LayoutOrder = 1, ZIndex = 63,
-		Callback = function()
-			close()
-			local arg = { Key = key, To = target.To, Preset = target.Preset, Keys = target.Keys }
-			if fireKeyed("HomeAction:Recall", "HomeAction", "GardenRecall", arg) and onYes then
-				onYes()
-			end
-		end,
-		Parent = buttons,
-	})
-	CloudUI.Button({
-		Name = "RecallNo", Text = "No", Style = "Pink", Size = UDim2.fromOffset(150, 56), TextSize = 24, LayoutOrder = 2, ZIndex = 63,
-		Callback = close,
-		Parent = buttons,
-	})
 end
 
 ----------------------------------------------------------------------
@@ -1648,12 +1098,6 @@ local function columnRight()
 		return column.AbsolutePosition.X + column.AbsoluteSize.X
 	end
 	return 0
-end
-
--- true on a portrait screen (a phone held upright): windows that support it use their single-column layout
-local function portraitScreen()
-	local area = guiSize()
-	return area.X < area.Y
 end
 
 -- Phase 5 (6.6): a small centred confirm (the odds popup): { w, h, scale, x, y } (x, y = centre in gui px). It covers
@@ -1824,6 +1268,40 @@ function refreshOpenWindow()
 	end
 end
 
+-- Team balance: the Pets window is PetsController's (required on use, it boots after this controller)
+function P5.pets()
+	if P5.Pets == nil then
+		P5.Pets = false
+		local module = script.Parent:FindFirstChild("PetsController")
+		local ok, mod = pcall(function()
+			return module and require(module)
+		end)
+		if ok and type(mod) == "table" then
+			P5.Pets = mod
+		end
+	end
+	return P5.Pets or nil
+end
+
+function P5.petsOpen()
+	local pets = P5.pets()
+	return pets ~= nil and pets.IsOpen() == true
+end
+
+-- something else takes over: the window goes silently (nothing it was given to go back to)
+function P5.closePets()
+	if P5.petsOpen() then
+		safe("pets close", P5.Pets.Close, true)
+	end
+end
+
+function P5.openPets(args)
+	local pets = P5.pets()
+	if pets and not Spin.Stage then
+		safe("pets open", pets.Open, args)
+	end
+end
+
 local function normalizeTab(windowId, tab)
 	if type(tab) ~= "string" then
 		return nil
@@ -1831,24 +1309,14 @@ local function normalizeTab(windowId, tab)
 	local t = tab:lower()
 	if t:find("roul", 1, true) then
 		return "Roulettes"
-	elseif t:find("item", 1, true) then
+		elseif t:find("item", 1, true) then
 		-- HUD cleanup: the Items tabs are gone; an old link lands on the window's first tab
 		if windowId == "Shop" then
 			return "Roulettes"
-		elseif windowId == "Inventory" then
-			return "Pets"
 		end
 	elseif t:find("gem", 1, true) then
 		if windowId == "Shop" then
 			return "Gems"
-		end
-	elseif t:find("pet", 1, true) then
-		if windowId == "Inventory" then
-			return "Pets"
-		end
-	elseif t:find("team", 1, true) then
-		if windowId == "Inventory" then
-			return "Team" -- HUD cleanup: the battle team is the Pets window's Team tab
 		end
 	end
 	return nil
@@ -1861,6 +1329,7 @@ function openWindow(id, args)
 	end
 	args = type(args) == "table" and args or {}
 	closeIndex()
+	P5.closePets()
 	if openId and openId ~= id then
 		closeWindow(openId, true)
 	end
@@ -1904,11 +1373,6 @@ function closeWindow(id, instant)
 	win.Shown = false
 	win.Token = win.Token + 1
 	local mine = win.Token
-	if P2.RecallDialog then
-		-- bug batch 2 #18: the garden recall question goes with its window
-		P2.RecallDialog:Destroy()
-		P2.RecallDialog = nil
-	end
 	if openId == id then
 		openId = nil
 	end
@@ -1956,6 +1420,7 @@ local function closeEverything()
 	if openId then
 		closeWindow(openId)
 	end
+	P5.closePets()
 	closeIndex()
 end
 
@@ -1972,12 +1437,6 @@ function handleBack()
 	end
 	if Odds.Gui then
 		closeOdds()
-		return true
-	end
-	if P2.RecallDialog then
-		-- bug batch 2 #18: Esc / B answers the garden recall question "No"
-		P2.RecallDialog:Destroy()
-		P2.RecallDialog = nil
 		return true
 	end
 	if openId then
@@ -2052,7 +1511,11 @@ end
 -- Menu tiles (left-centre column; a 2 x 3 grid on short screens)
 ----------------------------------------------------------------------
 local function menuActionPets()
-	toggleWindow("Inventory", { Tab = "Pets" })
+	if P5.petsOpen() then
+		safe("pets close", P5.Pets.Close)
+	else
+		P5.openPets({})
+	end
 end
 
 local function openIndex(groupId)
@@ -2068,6 +1531,7 @@ local function openIndex(groupId)
 	if openId then
 		closeWindow(openId, true)
 	end
+	P5.closePets()
 	safe("Index.Open", index.Open, groupId)
 end
 
@@ -2213,7 +1677,7 @@ end
 -- A tile shows unless a battle holds the left edge (SetColumnHidden) or the column is folded away (after its slide).
 function P5.tileVisibility(entry)
 	if entry and entry.Root then
-		entry.Root.Visible = not U.ColumnHidden and not U.TilesFolded
+		entry.Root.Visible = not U.ColumnHidden and not U.TilesFolded and not U.Covered
 	end
 end
 
@@ -2617,15 +2081,14 @@ local function setDisabled(id, on)
 end
 
 function updateMenuActive()
-	local invWin = windows.Inventory
-	local invTab = invWin and invWin.Shown and invWin.Tab or nil
-	setActive("Pets", invTab == "Pets" or invTab == "Team")
+	local petsUp = P5.petsOpen()
+	setActive("Pets", petsUp)
 	setActive("Index", indexOpen())
 	setActive("Shop", windows.Shop ~= nil and windows.Shop.Shown)
 	setActive("Stats", windows.Stats ~= nil and windows.Stats.Shown)
 
 	setActive("Spot", windows.Home ~= nil and windows.Home.Shown)
-	if invWin and invWin.Shown and Entries.Pets then
+	if petsUp and Entries.Pets then
 		Entries.Pets.SetBadge(false)
 	end
 	-- the Spot and Shop tiles are greyed out in matches
@@ -2642,1247 +2105,6 @@ local function refreshIndexBadge()
 	end
 	local ok, count = pcall(index.ClaimableCount)
 	entry.SetBadge(ok and type(count) == "number" and count > 0)
-end
-
-----------------------------------------------------------------------
--- Inventory window: tabs Pets + Team (HUD cleanup: the Items tab is gone). Phase 2: one slot per pet COPY key (tier /
--- hybrid badges, levels), the detail card with level + XP, scaled stats and the Feed / Place in Garden / Train in Gym
--- actions, and the Feed picker.
-----------------------------------------------------------------------
--- An empty-state block ("No pets yet!" + a line + a gold button) that fits whatever column it is in (bug batch 2 #1
--- Studio check: on a landscape phone the Pets grid is ~180 design px wide and the old fixed 220 px button stuck out of
--- it while the 56 px body box cut its text after two lines). The title and the body wrap and grow (AutomaticSize Y),
--- the button takes the column's width (minus room for its 4 px glow ring) capped at opts.ButtonW, and the block grows
--- with its content (opts.Fill: fill the parent and centre in it, else AutomaticSize Y in a list). Returns
--- { Frame, Title, Body, Button }; opts: Parent, Title, Body, ButtonText, ButtonName, ButtonW, ButtonH, Callback,
--- TitleSize, BodySize, BodyMaxW, Fill, LayoutOrder, ZIndex.
-function P5.emptyState(opts)
-	local out = {}
-	local frame = makeFrame(opts.Parent, "Empty", {
-		Size = opts.Fill and UDim2.new(1, 0, 1, 0) or UDim2.new(1, 0, 0, 0),
-		AutomaticSize = (not opts.Fill) and Enum.AutomaticSize.Y or nil,
-		LayoutOrder = opts.LayoutOrder or 0,
-		Visible = false,
-		ZIndex = opts.ZIndex or 1,
-	})
-	out.Frame = frame
-	pad(frame, 8, 0, 8, 0)
-	listLayout(frame, Enum.FillDirection.Vertical, 10, Enum.HorizontalAlignment.Center, opts.Fill and Enum.VerticalAlignment.Center or Enum.VerticalAlignment.Top)
-	if opts.Title then
-		out.Title = makeText(frame, "Title", opts.Title, "Title", opts.TitleSize or 32, WHITE, {
-			Size = UDim2.new(1, 0, 0, 0),
-			AutomaticSize = Enum.AutomaticSize.Y,
-			TextWrapped = true,
-			LayoutOrder = 1,
-		})
-	end
-	out.Body = makeText(frame, opts.Title and "Body" or "Text", opts.Body or "", "Body", opts.BodySize or 20, MUTED, {
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		TextWrapped = true,
-		LayoutOrder = 2,
-	})
-	-- (a short line on wide pages: as wide as before, 404 design px on the 1080p Pets page)
-	Util.Create("UISizeConstraint", { MaxSize = Vector2.new(opts.BodyMaxW or 404, math.huge), Parent = out.Body })
-	out.Button = CloudUI.Button({
-		Name = opts.ButtonName or "OpenShop",
-		Text = opts.ButtonText or "Open Shop",
-		Style = "Gold",
-		Size = UDim2.new(1, -8, 0, opts.ButtonH or 56), -- (1, -8): its glow ring reaches 4 px past each side
-		TextSize = 24,
-		LayoutOrder = 3,
-		Callback = opts.Callback,
-		Parent = frame,
-	})
-	Util.Create("UISizeConstraint", { MaxSize = Vector2.new(opts.ButtonW or 220, opts.ButtonH or 56), Parent = out.Button })
-	return out
-end
-
--- Phase 5 (6.6): the Pets page in its three window shapes. "Wide" (a docked 820 px window): the grid left, a 300 px card
--- right; "Tall" (720p / portrait sheets): the grid on top, the card below with the pet, its name, pills and level side
--- by side and the six buttons in 2 rows of 3; "Short" (landscape phones, ~460 x 390): a 2-column grid left and a slim
--- card right. The equipped header only shows in the wide shape (the grid's stars mark the equipped pets).
-function P5.petsLayout(W, w, h, narrow, short, tall)
-	if not (W.Detail and W.View) then
-		return
-	end
-	local mode = short and "Short" or (tall and "Tall" or "Wide")
-	W.Mode = mode
-	local pageH = h - 150
-	if W.Page and W.Page.AbsoluteSize.Y > 10 and W.Page.Parent then
-		local holder = W.Page:FindFirstAncestorWhichIsA("ScreenGui")
-		local sc = 1
-		local node = W.Page
-		while node and node ~= holder do
-			local u = node:FindFirstChildWhichIsA("UIScale")
-			if u then
-				sc = sc * u.Scale
-			end
-			node = node.Parent
-		end
-		pageH = W.Page.AbsoluteSize.Y / math.max(sc, 0.1)
-	end
-	local layout = W.Grid and W.Grid:FindFirstChild("Layout")
-	if layout then
-		local cell = (mode == "Short") and 80 or (mode == "Tall" and 96 or 104)
-		layout.CellSize = UDim2.fromOffset(cell, cell)
-	end
-	W.Header.Visible = mode == "Wide"
-	W.GridWell.Position = UDim2.fromOffset(0, mode == "Wide" and 84 or 0)
-	W.GridWell.Size = UDim2.new(1, 0, 1, mode == "Wide" and -84 or 0)
-	local scroll = W.InfoScroll
-	local compact = mode ~= "Wide"
-	if compact then
-		W.View.Parent = W.Top
-		W.Name.Parent = W.Top
-		W.MetaRow.Parent = W.Top
-		W.LevelRow.Parent = W.Top
-		W.Top.Visible = true
-		W.MetaRow.AutomaticSize = Enum.AutomaticSize.None
-		W.MetaRow.ClipsDescendants = true
-		W.LevelText.Size = UDim2.fromOffset(100, 32)
-		W.XpBar.Size = UDim2.new(1, -104, 0, 28)
-	else
-		W.View.Parent = scroll
-		W.Name.Parent = scroll
-		W.MetaRow.Parent = scroll
-		W.LevelRow.Parent = scroll
-		W.Top.Visible = false
-		W.MetaRow.AutomaticSize = Enum.AutomaticSize.Y
-		W.MetaRow.ClipsDescendants = false
-		W.MetaRow.Position = UDim2.new()
-		W.LevelText.Size = UDim2.fromOffset(122, 32)
-		W.XpBar.Size = UDim2.new(1, -126, 0, 28)
-	end
-	if mode == "Wide" then
-		local detailW = narrow and K.DETAIL_W_NARROW or K.DETAIL_W
-		W.Detail.AnchorPoint = Vector2.new(1, 0)
-		W.Detail.Position = UDim2.new(1, 0, 0, 0)
-		W.Detail.Size = UDim2.new(0, detailW, 1, 0)
-		W.Left.Size = UDim2.new(1, -(detailW + 12), 1, 0)
-		W.View.Size = UDim2.new(1, 0, 0, 150)
-		W.Glow.Size = UDim2.fromOffset(136, 136)
-		W.Name.Size = UDim2.new(1, 0, 0, 36)
-		W.LevelRow.Size = UDim2.new(1, 0, 0, 32)
-		W.Buttons.Size = UDim2.new(1, -20, 0, 180)
-		W.Buttons.Position = UDim2.new(0, 10, 1, -52)
-		W.Status.Visible = true
-		scroll.Visible = true
-		scroll.Position = UDim2.fromOffset(4, 4)
-		scroll.Size = UDim2.new(1, -8, 1, -240)
-	elseif mode == "Tall" then
-		local detailH = math.max(244, math.floor(pageH * 0.5))
-		W.Detail.AnchorPoint = Vector2.new(0, 1)
-		W.Detail.Position = UDim2.new(0, 0, 1, 0)
-		W.Detail.Size = UDim2.new(1, 0, 0, detailH)
-		W.Left.Size = UDim2.new(1, 0, 1, -(detailH + 8))
-		W.Top.Size = UDim2.new(1, -16, 0, 104)
-		W.View.Position = UDim2.fromOffset(0, 0)
-		W.View.Size = UDim2.fromOffset(100, 100)
-		W.Glow.Size = UDim2.fromOffset(88, 88)
-		W.Name.Position = UDim2.fromOffset(110, 0)
-		W.Name.Size = UDim2.new(1, -110, 0, 32)
-		W.MetaRow.Position = UDim2.fromOffset(110, 34)
-		W.MetaRow.Size = UDim2.new(1, -110, 0, 30)
-		W.LevelRow.Position = UDim2.fromOffset(110, 68)
-		W.LevelRow.Size = UDim2.new(1, -110, 0, 32)
-		W.Buttons.Size = UDim2.new(1, -20, 0, 104)
-		W.Buttons.Position = UDim2.new(0, 10, 1, -8)
-		W.Status.Visible = false
-		local room = detailH - 104 - 104 - 26
-		scroll.Visible = room >= 40
-		scroll.Position = UDim2.fromOffset(4, 114)
-		scroll.Size = UDim2.new(1, -8, 0, math.max(0, room))
-	else
-		local detailW = math.max(196, math.floor(w - 2 * 80 - 10 - 48 - 52))
-		W.Detail.AnchorPoint = Vector2.new(1, 0)
-		W.Detail.Position = UDim2.new(1, 0, 0, 0)
-		W.Detail.Size = UDim2.new(0, detailW, 1, 0)
-		W.Left.Size = UDim2.new(1, -(detailW + 8), 1, 0)
-		W.Top.Size = UDim2.new(1, -16, 0, 88)
-		W.View.Position = UDim2.fromOffset(0, 0)
-		W.View.Size = UDim2.fromOffset(54, 54)
-		W.Glow.Size = UDim2.fromOffset(50, 50)
-		W.Name.Position = UDim2.fromOffset(60, 0)
-		W.Name.Size = UDim2.new(1, -60, 0, 28)
-		W.MetaRow.Position = UDim2.fromOffset(60, 30)
-		W.MetaRow.Size = UDim2.new(1, -60, 0, 26)
-		W.LevelRow.Position = UDim2.fromOffset(0, 58)
-		W.LevelRow.Size = UDim2.new(1, 0, 0, 30)
-		W.LevelText.Size = UDim2.fromOffset(66, 32)
-		W.XpBar.Size = UDim2.new(1, -70, 0, 28)
-		W.Buttons.Size = UDim2.new(1, -12, 0, 114)
-		W.Buttons.Position = UDim2.new(0, 6, 1, -4)
-		W.Status.Visible = false
-		local room = pageH - 94 - 114 - 12
-		scroll.Visible = room >= 40
-		scroll.Position = UDim2.fromOffset(4, 94)
-		scroll.Size = UDim2.new(1, -8, 0, math.max(0, room))
-	end
-	-- no pets yet on a landscape phone ("Short"): the detail card has nothing to show ("Pick a pet ..."), so the empty
-	-- state takes the whole page; in the grid's ~120 design px column its text and Open Shop button could not fit
-	W.LastLayout = { w, h, narrow, short, tall }
-	local wideEmpty = mode == "Short" and W.IsEmpty == true
-	W.Detail.Visible = not wideEmpty
-	if wideEmpty then
-		W.Left.Size = UDim2.new(1, 0, 1, 0)
-	end
-	W.NameFit.MaxTextSize = compact and 24 or 30
-	W.PlaceButtons()
-end
-
-local buildInventory -- (the window's helpers live in this do-block: Lua's 200-local limit of the main chunk)
-do
-	local RAINBOW = Colors.Rainbow or { Color3.fromRGB(232, 104, 120), Color3.fromRGB(98, 168, 232) }
-
-	local function rainbowSequence()
-		local keys = {}
-		for i, c in ipairs(RAINBOW) do
-			keys[#keys + 1] = ColorSequenceKeypoint.new((i - 1) / math.max(1, #RAINBOW - 1), c)
-		end
-		return ColorSequence.new(keys)
-	end
-
-	-- the Garden places of a pet copy (Phase 4: ANY role works there): { Place = "Garden", Slots, Placed = {slot...}, Map }
-	local function workOf(key, def)
-		if type(def) ~= "table" then
-			return nil
-		end
-		local home = P2.homeData()
-		local map = type(home.Garden) == "table" and home.Garden or {}
-		return {
-			Place = "Garden",
-			Station = "Garden",
-			Slots = P2.catalogCall("GardenSlots", home) or 0,
-			Placed = P2.slotsHolding(map, key),
-			Map = map,
-		}
-	end
-
-	local function usedSlots(map, slots)
-		local n = 0
-		for slot = 1, slots do
-			if type(map) == "table" and map[slot] ~= nil then
-				n = n + 1
-			end
-		end
-		return n
-	end
-
-	------------------------------------------------------------------
-	-- the window
-	------------------------------------------------------------------
-	function buildInventory(win)
-		local content = win.Panel.Content
-		local maxEquipped = Config.Pets.MaxEquipped
-		local pets = {
-			Slots = {}, -- key -> CloudUI slot in the grid
-			EquipSlots = {}, -- 1..MaxEquipped -> small slots in the header
-			EquipIds = {}, -- key shown by each header slot
-			Selected = nil, -- the selected pet copy key
-			DetailPet = nil,
-			DetailViewport = nil,
-			Pills = {},
-			PillKey = nil,
-			StatKey = nil,
-			Order = {}, -- owned keys in grid order (rarest first)
-			Ready = {}, -- key -> true once the grid slot got its pet viewport
-			Filling = false, -- true while the staggered viewport builder is running
-		}
-		local W = {} -- widgets of the pets page
-		local teamHooks = {} -- HUD cleanup: the Team tab's OnOpen / OnLayout / Refresh (P3.BuildTeam)
-		local refreshInventory
-
-		local tabs = CloudUI.Tabs({
-			Name = "InventoryTabs",
-			Parent = content,
-			Position = UDim2.fromOffset(12, 10),
-			Size = UDim2.new(1, -24, 1, -20),
-			BarHeight = 50,
-			TextSize = 22,
-			OnSelect = function(name)
-				win.Tab = name
-				-- Phase 5: one window, several faces (HUD cleanup: the Pets tile's Pets and Team tabs)
-				if name == "Team" then
-					win.Panel.SetTitle("Battle Team")
-					win.Panel.SetAccent("Red")
-				else
-					win.Panel.SetTitle("Pets")
-					win.Panel.SetAccent("Orange")
-				end
-				updateMenuActive()
-				if name == "Team" and win.Shown then
-					P3.TeamShown(win, teamHooks)
-				end
-			end,
-		})
-		win.Tabs = tabs
-
-		------------------------------------------------------------------
-		-- Pets page
-		------------------------------------------------------------------
-		local function selectedWork()
-			local key = pets.Selected
-			local def = key and P2.defOfKey(key)
-			return key, def, workOf(key, def)
-		end
-
-		local function doWork()
-			local key, def, work = selectedWork()
-			if not key or not def then
-				return
-			end
-			if inMatch() then
-				showHint("Pets are busy climbing during a match.", "info")
-				return
-			end
-			if not work then
-				return
-			end
-			if #work.Placed > 0 then
-				fireKeyed("HomeAction:Garden", "HomeAction", "GardenSet", { Slot = work.Placed[#work.Placed] })
-				return
-			end
-			if P2.job(key) then
-				showHint(P2.displayName(key, def) .. " is training (" .. P2.jobLeft(P2.job(key)) .. " left).", "info")
-				return
-			end
-			if work.Slots <= 0 then
-				showHint("Build the Pet Garden at your home first.", "info")
-				return
-			end
-			local free = P2.firstFreeSlot(work.Map, work.Slots)
-			if not free then
-				showHint("Your Garden is full (" .. work.Slots .. "/" .. work.Slots .. "). Prestige for one more place!", "info")
-				return
-			end
-			fireKeyed("HomeAction:Garden", "HomeAction", "GardenSet", { Slot = free, Key = key })
-		end
-
-		-- Feed / Train / EVOLVE open CareController's windows (the Food Machine list, the Training Place, the confirm)
-		local function careOpen(panelId, key)
-			local care = P2.care()
-			if not care then
-				showHint("Pet care is getting ready. Try again in a moment!", "info")
-				return
-			end
-			if inMatch() then
-				showHint("Pets are busy climbing during a match.", "info")
-				return
-			end
-			if panelId == "Evolve" then
-				safe("evolve confirm", care.ConfirmEvolve, key)
-			else
-				safe("care open", care.Open, panelId, { Key = key })
-			end
-		end
-
-		local function buildDetailCard(page)
-			local card = makeInset(page, "Detail", {
-				AnchorPoint = Vector2.new(1, 0),
-				Position = UDim2.new(1, 0, 0, 0),
-				Size = UDim2.new(0, K.DETAIL_W, 1, 0),
-			})
-			W.Detail = card
-			W.DetailEmpty = makeText(card, "Hint", "Pick a pet to see its details.", "Body", 19, MUTED, {
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.new(0.5, 0, 0.5, 0),
-				Size = UDim2.new(1, -40, 0, 60),
-				TextWrapped = true,
-			})
-			local body = makeFrame(card, "Body", { Size = UDim2.new(1, 0, 1, 0), Visible = false })
-			W.DetailBody = body
-			local scroll = scroller(body, "Info", {
-				Position = UDim2.fromOffset(4, 4),
-				Size = UDim2.new(1, -8, 1, -176),
-			})
-			W.InfoScroll = scroll
-			-- Phase 5: compact cards (tall / short windows) move the pet, its name, pills and level into this fixed
-			-- header beside each other; the wide card keeps them on top of the scrolling info (see P5.petsLayout)
-			W.Top = makeFrame(body, "Top", { Position = UDim2.fromOffset(8, 6), Size = UDim2.new(1, -16, 0, 104), Visible = false })
-			pad(scroll, 10, 6, 14, 8)
-			listLayout(scroll, Enum.FillDirection.Vertical, 6, Enum.HorizontalAlignment.Center)
-			local view = makeFrame(scroll, "View", { Size = UDim2.new(1, 0, 0, 150), LayoutOrder = 1 })
-			W.View = view
-			W.Glow = makeFrame(view, "Glow", {
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.new(0.5, 0, 0.5, 0),
-				Size = UDim2.fromOffset(136, 136),
-				BackgroundColor3 = GOLD,
-				BackgroundTransparency = 0.78,
-			})
-			round(W.Glow)
-			W.ViewportHolder = makeFrame(view, "ViewportHolder", { Size = UDim2.new(1, 0, 1, 0), ZIndex = 2 })
-			W.Name = makeText(scroll, "Name", "", "Title", 30, WHITE, {
-				Size = UDim2.new(1, 0, 0, 36),
-				TextScaled = true,
-				LayoutOrder = 2,
-			})
-			W.NameFit = Util.Create("UITextSizeConstraint", { MaxTextSize = 30, MinTextSize = 18, Parent = W.Name })
-			W.MetaRow = makeFrame(scroll, "Meta", {
-				Size = UDim2.new(1, 0, 0, 30),
-				AutomaticSize = Enum.AutomaticSize.Y,
-				LayoutOrder = 3,
-			})
-			local metaLayout = listLayout(W.MetaRow, Enum.FillDirection.Horizontal, 6, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
-			metaLayout.Wraps = true
-			W.OwnedLabel = makeText(scroll, "Owned", "", "Heading", 19, MUTED, {
-				Size = UDim2.new(1, 0, 0, 24),
-				LayoutOrder = 4,
-			})
-			-- level + XP bar
-			local levelRow = makeFrame(scroll, "LevelRow", { Size = UDim2.new(1, 0, 0, 32), LayoutOrder = 5 })
-			W.LevelRow = levelRow
-			W.LevelText = makeText(levelRow, "Level", "Lv 1", "Heading", 20, WHITE, {
-				Size = UDim2.fromOffset(122, 32),
-				TextXAlignment = Enum.TextXAlignment.Left,
-			})
-			W.XpBar = CloudUI.Bar({
-				Name = "XpBar",
-				AnchorPoint = Vector2.new(1, 0.5),
-				Position = UDim2.new(1, 0, 0.5, 0),
-				Size = UDim2.new(1, -126, 0, 28),
-				Height = 28,
-				TextSize = 18,
-				Color = C2.Xp,
-				Parent = levelRow,
-			})
-			-- stats at this level
-			W.StatsRow = makeFrame(scroll, "Stats", {
-				Size = UDim2.new(1, 0, 0, 28),
-				AutomaticSize = Enum.AutomaticSize.Y,
-				LayoutOrder = 6,
-			})
-			local statsLayout = listLayout(W.StatsRow, Enum.FillDirection.Horizontal, 6, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
-			statsLayout.Wraps = true
-			W.RoleRow = makeFrame(scroll, "Role", { Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 7 })
-			listLayout(W.RoleRow, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
-			W.Special = makeText(W.RoleRow, "Special", "", "Heading", 18, GOLD, {
-				AutomaticSize = Enum.AutomaticSize.X,
-				Size = UDim2.fromOffset(0, 26),
-				LayoutOrder = 2,
-			})
-			W.Work = makeText(scroll, "Work", "", "Heading", 19, Theme.Lighten(GOOD, 0.35), {
-				Size = UDim2.new(1, 0, 0, 0),
-				AutomaticSize = Enum.AutomaticSize.Y,
-				TextWrapped = true,
-				LayoutOrder = 8,
-			})
-			W.Blurb = makeText(scroll, "Blurb", "", "Body", 18, WHITE, {
-				Size = UDim2.new(1, 0, 0, 0),
-				AutomaticSize = Enum.AutomaticSize.Y,
-				TextWrapped = true,
-				LayoutOrder = 9,
-			})
-			W.Perks = makeText(scroll, "Perks", "", "Heading", 19, Theme.Lighten(GOOD, 0.3), {
-				Size = UDim2.new(1, 0, 0, 0),
-				AutomaticSize = Enum.AutomaticSize.Y,
-				TextWrapped = true,
-				LayoutOrder = 10,
-			})
-			-- buttons pinned to the bottom of the card: Equip | Unequip, Feed | Garden, Train | EVOLVE
-			local buttons = makeFrame(body, "Buttons", {
-				AnchorPoint = Vector2.new(0, 1),
-				Position = UDim2.new(0, 10, 1, -52),
-				Size = UDim2.new(1, -20, 0, 172),
-			})
-			W.Buttons = buttons
-			W.EquipBtn = CloudUI.Button({
-				Name = "Equip",
-				Text = "Equip",
-				Style = "Green",
-				Size = UDim2.new(0.5, -6, 1 / 3, -6),
-				TextSize = 22,
-				Callback = function()
-					local key = pets.Selected
-					if not key then
-						return
-					end
-					if W.EquipGardening then
-						-- bug batch 2 #18: every free copy is gardening: ask, then take one out and equip it (one request)
-						P2.askRecall(key, { To = "Equip" })
-					else
-						fire("EquipPet", key)
-					end
-				end,
-				Parent = buttons,
-			})
-			W.UnequipBtn = CloudUI.Button({
-				Name = "Unequip",
-				Text = "Unequip",
-				Style = "Pink",
-				Size = UDim2.new(0.5, -6, 1 / 3, -6),
-				AnchorPoint = Vector2.new(1, 0),
-				Position = UDim2.new(1, 0, 0, 0),
-				TextSize = 22,
-				Callback = function()
-					if pets.Selected then
-						fire("UnequipPet", pets.Selected)
-					end
-				end,
-				Parent = buttons,
-			})
-			W.FeedBtn = CloudUI.Button({
-				Name = "FeedPet",
-				Text = "Food Machine", -- Phase 5 (3.4): opens the Food Machine window on this pet (not a second feed)
-				Style = "Gold",
-				Size = UDim2.new(0.5, -6, 1 / 3, -6),
-				AnchorPoint = Vector2.new(0, 0.5),
-				Position = UDim2.new(0, 0, 0.5, 0),
-				TextSize = 22,
-				Callback = function()
-					if inMatch() then
-						showHint("Pets eat at home, after the match.", "info")
-						return
-					end
-					if pets.Selected then
-						careOpen("Feed", pets.Selected)
-					end
-				end,
-				Parent = buttons,
-			})
-			W.WorkBtn = CloudUI.Button({
-				Name = "WorkPet",
-				Text = "Garden",
-				Style = "Blue",
-				Size = UDim2.new(0.5, -6, 1 / 3, -6),
-				AnchorPoint = Vector2.new(1, 0.5),
-				Position = UDim2.new(1, 0, 0.5, 0),
-				TextSize = 20,
-				Callback = function()
-					doWork()
-				end,
-				Parent = buttons,
-			})
-			W.TrainBtn = CloudUI.Button({
-				Name = "TrainPet",
-				Text = "Train",
-				Style = "Red",
-				Size = UDim2.new(0.5, -6, 1 / 3, -6),
-				AnchorPoint = Vector2.new(0, 1),
-				Position = UDim2.new(0, 0, 1, 0),
-				TextSize = 22,
-				Callback = function()
-					if pets.Selected then
-						careOpen("Train", pets.Selected)
-					end
-				end,
-				Parent = buttons,
-			})
-			W.EvolveBtn = CloudUI.Button({
-				Name = "EvolvePet",
-				Text = "EVOLVE!",
-				Style = "Gold",
-				Size = UDim2.new(0.5, -6, 1 / 3, -6),
-				AnchorPoint = Vector2.new(1, 1),
-				Position = UDim2.new(1, 0, 1, 0),
-				TextSize = 22,
-				Callback = function()
-					if pets.Selected then
-						careOpen("Evolve", pets.Selected)
-					end
-				end,
-				Parent = buttons,
-			})
-			-- "Food Machine" / "Leave Garden" take two lines in narrow cells (never under 18 design px)
-			for _, b in ipairs({ W.WorkBtn, W.FeedBtn }) do
-				b.TextWrapped = true
-				b.TextTruncate = Enum.TextTruncate.None
-				b.LineHeight = 0.92
-			end
-			-- the six buttons: 3 rows x 2 (Train takes the whole last row while there is no EVOLVE), or on short cards
-			-- (landscape phones) 2 rows x 3
-			function W.PlaceButtons()
-				local list = { W.EquipBtn, W.UnequipBtn, W.FeedBtn, W.WorkBtn, W.TrainBtn, W.EvolveBtn }
-				local cols = W.Mode == "Tall" and 3 or 2
-				local rows = W.Mode == "Tall" and 2 or 3
-				local size = W.Mode == "Wide" and 20 or 18 -- (18 x 0.8 >= 14 px on phones)
-				for i, b in ipairs(list) do
-					local col = (i - 1) % cols
-					local row = math.floor((i - 1) / cols)
-					b.AnchorPoint = Vector2.new(0, 0)
-					b.Position = UDim2.new(col / cols, col > 0 and 3 or 0, row / rows, row > 0 and 3 or 0)
-					b.Size = UDim2.new(1 / cols, -6, 1 / rows, -6)
-					b.TextSize = size
-				end
-				if not W.Ready then
-					-- no EVOLVE: Train takes the rest of its row
-					local col = 4 % cols
-					W.TrainBtn.Size = UDim2.new((cols - col) / cols, -6, 1 / rows, -6)
-				end
-			end
-			W.Status = makeText(body, "Status", "", "Label", 18, MUTED, {
-				AnchorPoint = Vector2.new(0, 1),
-				Position = UDim2.new(0, 10, 1, -4),
-				Size = UDim2.new(1, -20, 0, 44),
-				TextWrapped = true,
-				TextYAlignment = Enum.TextYAlignment.Center,
-			})
-		end
-
-		local function buildPetsPage(page)
-			W.Page = page
-			local left = makeFrame(page, "Left", { Size = UDim2.new(1, -(K.DETAIL_W + 12), 1, 0) })
-			W.Left = left
-
-			local slotSize = 64
-			local equipWidth = maxEquipped * slotSize + (maxEquipped - 1) * 8
-			local header = makeFrame(left, "Header", { Size = UDim2.new(1, 0, 0, 76) })
-			W.Header = header
-			W.EquippedLabel = makeText(header, "EquippedLabel", "Equipped", "Heading", 24, WHITE, {
-				Position = UDim2.fromOffset(4, 0),
-				Size = UDim2.new(1, -(equipWidth + 12), 0, 30),
-				TextXAlignment = Enum.TextXAlignment.Left,
-			})
-			W.PerksLabel = makeText(header, "TeamPerks", "", "Body", 18, MUTED, {
-				Position = UDim2.fromOffset(4, 32),
-				Size = UDim2.new(1, -(equipWidth + 12), 0, 44),
-				TextWrapped = true,
-				TextScaled = true,
-				TextXAlignment = Enum.TextXAlignment.Left,
-				TextYAlignment = Enum.TextYAlignment.Top,
-			})
-			Util.Create("UITextSizeConstraint", { MaxTextSize = 18, MinTextSize = 18, Parent = W.PerksLabel })
-			local equipRow = makeFrame(header, "EquippedSlots", {
-				AnchorPoint = Vector2.new(1, 0),
-				Position = UDim2.new(1, 0, 0, 2),
-				Size = UDim2.fromOffset(equipWidth, slotSize + 4),
-			})
-			listLayout(equipRow, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Right, Enum.VerticalAlignment.Center)
-			for i = 1, maxEquipped do
-				pets.EquipSlots[i] = readableSlot(CloudUI.Slot({
-					Name = "Equipped" .. i,
-					Size = UDim2.fromOffset(slotSize, slotSize),
-					LayoutOrder = i,
-					Parent = equipRow,
-					Callback = function()
-						local id = pets.EquipIds[i]
-						if id then
-							pets.Selected = id
-							refreshInventory()
-						end
-					end,
-				}))
-			end
-
-			local well = makeInset(left, "GridWell", {
-				Position = UDim2.fromOffset(0, 84),
-				Size = UDim2.new(1, 0, 1, -84),
-			})
-			W.GridWell = well
-			W.Grid = CloudUI.Grid(well, UDim2.fromOffset(104, 104), 10)
-
-			-- the empty state fits the grid's column in every shape (P5.emptyState: wrapped text, a capped button)
-			local empty = P5.emptyState({
-				Parent = well,
-				Fill = true,
-				ZIndex = 5,
-				Title = "No pets yet!",
-				Body = "Spin a roulette in the Shop to hatch your first winged friend.",
-				ButtonName = "OpenShop",
-				Callback = function()
-					menuActionShop()
-				end,
-			})
-			W.Empty, W.EmptyTitle, W.EmptyBody, W.EmptyButton = empty.Frame, empty.Title, empty.Body, empty.Button
-
-			buildDetailCard(page)
-		end
-
-		-- the tier / hybrid chip (top-left) and the level tag (bottom-left) of a grid slot
-		local function paintSlotBadges(slot, key, def)
-			if not slot.TierChip then
-				local chip = makeFrame(slot.Button, "TierBadge", {
-					Position = UDim2.fromOffset(4, 4),
-					Size = UDim2.fromOffset(30, 30),
-					BackgroundTransparency = 0,
-					BackgroundColor3 = WHITE,
-					Visible = false,
-					ZIndex = 8,
-				})
-				round(chip)
-				stroke(chip, NAVY, 2.5, 0)
-				slot.TierGradient = Util.Create("UIGradient", { Rotation = 45, Parent = chip })
-				slot.TierText = makeText(chip, "Mark", "", "Button", 18, WHITE, { Size = UDim2.new(1, 0, 1, 0), ZIndex = 9 })
-				slot.TierChip = chip
-				slot.LevelTag = makeText(slot.Button, "LevelTag", "", "Heading", 18, WHITE, {
-					AnchorPoint = Vector2.new(0, 1),
-					Position = UDim2.new(0, 6, 1, -2),
-					Size = UDim2.fromOffset(60, 22),
-					TextXAlignment = Enum.TextXAlignment.Left,
-					Visible = false,
-					ZIndex = 8,
-				})
-			end
-			local tier = P2.tierOf(key, def)
-			local hybrid = P2.isHybrid(key, def)
-			if hybrid then
-				slot.TierChip.Visible = true
-				slot.TierGradient.Color = ColorSequence.new(Theme.Lighten(C2.Hybrid, 0.3), Theme.Darken(C2.Hybrid, 0.2))
-				slot.TierText.Text = "H"
-			elseif tier == "Rainbow" then
-				slot.TierChip.Visible = true
-				slot.TierGradient.Color = rainbowSequence()
-				slot.TierText.Text = "R"
-			elseif tier == "Golden" then
-				slot.TierChip.Visible = true
-				slot.TierGradient.Color = ColorSequence.new(Theme.Lighten(C2.Tier.Golden, 0.3), Theme.Darken(C2.Tier.Golden, 0.15))
-				slot.TierText.Text = "G"
-			else
-				slot.TierChip.Visible = false
-			end
-			local level = P2.petLevel(key)
-			local stage = P2.stage(key)
-			slot.LevelTag.Visible = level > 1
-			slot.LevelTag.Text = "Lv " .. level
-			slot.LevelTag.Size = UDim2.fromOffset(60, 22)
-			-- Phase 5: the evolution stars sit on the slot's top edge (the bottom row keeps "Lv n" and the count apart)
-			if stage > 0 and not slot.EvoTag then
-				slot.EvoTag = makeText(slot.Button, "EvoTag", "", "Title", 18, GOLD, {
-					AnchorPoint = Vector2.new(0.5, 0),
-					Position = UDim2.new(0.5, 0, 0, 2),
-					Size = UDim2.fromOffset(40, 22),
-					ZIndex = 8,
-				})
-			end
-			if slot.EvoTag then
-				slot.EvoTag.Visible = stage > 0
-				slot.EvoTag.Text = string.rep(G.Star, math.min(2, stage))
-			end
-			-- a pet working at home: a seedling (Garden) or muscle (training) chip beside the tier chip
-			local home = P2.homeData()
-			local where = nil
-			if P2.job(key) then
-				where = "Gym"
-			elseif #P2.slotsHolding(home.Garden, key) > 0 then
-				where = "Garden"
-			end
-			if where and not slot.WorkChip then
-				local chip = makeFrame(slot.Button, "WorkBadge", {
-					Size = UDim2.fromOffset(30, 30),
-					BackgroundTransparency = 0,
-					BackgroundColor3 = WHITE,
-					ZIndex = 8,
-				})
-				round(chip)
-				stroke(chip, NAVY, 2.5, 0)
-				slot.WorkGradient = Util.Create("UIGradient", { Rotation = 90, Parent = chip })
-				slot.WorkText = makeText(chip, "Mark", "", "Title", 18, WHITE, { Size = UDim2.new(1, 0, 1, 0), ZIndex = 9 })
-				slot.WorkChip = chip
-			end
-			if slot.WorkChip then
-				slot.WorkChip.Visible = where ~= nil
-				if where then
-					local color = where == "Garden" and C2.Kind.Garden or PURPLE
-					slot.WorkGradient.Color = ColorSequence.new(Theme.Lighten(color, 0.3), Theme.Darken(color, 0.15))
-					slot.WorkText.Text = where == "Garden" and G.Seedling or G.Muscle
-					slot.WorkChip.Position = UDim2.fromOffset(slot.TierChip.Visible and 36 or 4, 4)
-				end
-			end
-			-- bug batch 2 #18: a pet with no copy free of the Garden is busy gardening: its card is dimmed under the same
-			-- seedling "Gardening" badge as its Team tile (Equip then asks to take it out). Two lines: the 104 px card is
-			-- too narrow for "seedling Gardening" on one line at 18 px.
-			local gardening = P2.isGardening(key)
-			if gardening and not slot.GardenTag then
-				local tag = makeFrame(slot.Button, "GardenTag", {
-					AnchorPoint = Vector2.new(0.5, 0.5),
-					Position = UDim2.fromScale(0.5, 0.52),
-					Size = UDim2.new(1, -10, 0, 50),
-					BackgroundTransparency = 0,
-					BackgroundColor3 = Theme.Darken(C2.Kind.Garden, 0.25),
-					ZIndex = 9,
-				})
-				corner(tag, 12)
-				stroke(tag, NAVY, 2.5, 0)
-				slot.GardenText = makeText(tag, "Busy", G.Seedling .. "\nGardening", "Body", 18, WHITE, {
-					Size = UDim2.new(1, 0, 1, 0),
-					ZIndex = 10,
-				})
-				slot.GardenTag = tag
-			end
-			if slot.GardenTag then
-				slot.GardenTag.Visible = gardening
-			end
-			slot.SetDimmed(gardening)
-		end
-
-		local function setPills(def, key, color, elements)
-			for _, pill in ipairs(pets.Pills) do
-				pill:Destroy()
-			end
-			pets.Pills = {}
-			local rarityPill = readablePill(def.Rarity, color, W.MetaRow)
-			rarityPill.LayoutOrder = 1
-			table.insert(pets.Pills, rarityPill)
-			local tier = P2.tierOf(key, def)
-			if tier ~= "Normal" then
-				table.insert(pets.Pills, colorPill(W.MetaRow, "Tier_" .. tier, tier, C2.Tier[tier] or GOLD, 18, 2))
-			end
-			if P2.isHybrid(key, def) then
-				table.insert(pets.Pills, colorPill(W.MetaRow, "Hybrid", "Hybrid", C2.Hybrid, 18, 3))
-			end
-			for i, element in ipairs(elements) do
-				table.insert(pets.Pills, elementPill(W.MetaRow, element, 18, 3 + i))
-			end
-			if type(def.Role) == "string" then
-				local rolePill = readablePill(def.Role, ROLE_COLORS[def.Role] or BUTTONS.Blue, W.RoleRow)
-				rolePill.LayoutOrder = 1
-				table.insert(pets.Pills, rolePill)
-			end
-		end
-
-		-- stat chips at the pet's level: the role's own stats bright, the others dimmer
-		local function setStats(def, level, petKey)
-			local stats = P2.battleStatsAt(def, petKey, level)
-			local coins = P2.coinsPerSecond(petKey, def, P2.homeData())
-			local key = tostring(petKey) .. "|" .. level .. "|" .. P2.formatRate(coins)
-			if pets.StatKey == key then
-				return
-			end
-			pets.StatKey = key
-			for _, child in ipairs(W.StatsRow:GetChildren()) do
-				if child:IsA("GuiObject") then
-					child:Destroy()
-				end
-			end
-			W.StatsRow.Visible = stats ~= nil
-			if not stats then
-				return
-			end
-			local economy = def.Role == "Economy"
-			local order = { "Income", "Power", "Health", "Speed" }
-			local colors = {
-				Income = C2.Cash,
-				Power = Color3.fromRGB(236, 112, 96),
-				Health = Color3.fromRGB(240, 120, 150),
-				Speed = Color3.fromRGB(98, 172, 232),
-			}
-			for i, statKey in ipairs(order) do
-				local value = tonumber(stats[statKey]) or 0
-				local text
-				if statKey == "Income" then
-					text = "Coins " .. P2.formatRate(coins) .. "/s"
-				elseif statKey == "Power" then
-					-- Phase 5 (m17): what the pet really brings to a battle (BattleCatalog.UnitPower: its role, level,
-					-- tier, evolution and training), never the raw Power 2-4 of an Economy pet
-					text = "Battle power " .. commas(P5.battlePower(petKey, def, level) or math.floor(value + 0.5))
-				else
-					text = statKey .. " " .. commas(math.floor(value + 0.5))
-				end
-				local main = (statKey == "Income") == economy
-				local color = main and colors[statKey] or Color3.fromRGB(88, 104, 150)
-				colorPill(W.StatsRow, "Stat_" .. statKey, text, color, 18, i)
-			end
-		end
-
-		local function renderDetail()
-			local key = pets.Selected
-			local def = key and P2.defOfKey(key) or nil
-			local owned = def and State.OwnedCount(key) or 0
-			if not def or owned <= 0 then
-				W.DetailBody.Visible = false
-				W.DetailEmpty.Visible = true
-				if pets.DetailViewport then
-					pets.DetailViewport.Destroy()
-					pets.DetailViewport = nil
-					pets.DetailPet = nil
-				end
-				return
-			end
-			W.DetailBody.Visible = true
-			W.DetailEmpty.Visible = false
-
-			local color = rarityOf(def)
-			local shownStage = P2.stage(key)
-			if pets.DetailPet ~= key or pets.DetailStage ~= shownStage then
-				if pets.DetailViewport then
-					pets.DetailViewport.Destroy()
-				end
-				-- (an evolved pet shows its evolved form: Low detail keeps the big Evolved II models cheap)
-				pets.DetailViewport = CloudUI.PetViewport(W.ViewportHolder, def, UDim2.new(1, 0, 1, 0), {
-					Spin = "spin",
-					ZIndex = 2,
-					Evolved = shownStage > 0 and shownStage or nil,
-					Detail = shownStage > 0 and "Low" or nil,
-				})
-				pets.DetailPet = key
-				pets.DetailStage = shownStage
-				pets.StatKey = nil
-			end
-			local tier = P2.tierOf(key, def)
-			W.Glow.BackgroundColor3 = (tier ~= "Normal" and C2.Tier[tier]) or color
-			W.Name.Text = P2.displayName(key, def)
-			W.Name.TextColor3 = rarityText(def)
-
-			-- rarity, tier, hybrid, element and role pills (rebuilt only when they change)
-			local elements = elementsOf(def)
-			local pillKey = tostring(key) .. "|" .. tostring(def.Rarity) .. "|" .. table.concat(elements, ",") .. "|" .. tostring(def.Role)
-			if pets.PillKey ~= pillKey then
-				setPills(def, key, color, elements)
-				pets.PillKey = pillKey
-			end
-			local special = type(def.Special) == "table" and def.Special or nil
-			W.Special.Text = special and (G.Sparkle .. " " .. tostring(special.Name or "Special")) or ""
-			W.Special.Visible = special ~= nil
-			W.RoleRow.Visible = special ~= nil or type(def.Role) == "string"
-
-			local equipped = State.EquippedCount(key)
-			local text = "Owned x" .. owned
-			if equipped > 0 then
-				text = text .. "   " .. G.Star .. " " .. equipped .. " equipped"
-			end
-			W.OwnedLabel.Text = text
-
-			-- level + XP
-			local level, xp = P2.petLevel(key)
-			local cap = P2.levelCap(key, def)
-			local need = P2.xpToNext(level)
-			W.LevelText.Text = (W.Mode == "Short") and ("Lv " .. level) or ("Lv " .. level .. " / " .. cap)
-			if level >= cap then
-				W.XpBar.SetFraction(1)
-				W.XpBar.SetText("MAX LEVEL")
-				W.XpBar.SetColor(GOLD)
-			else
-				W.XpBar.SetFraction(need > 0 and need < math.huge and math.min(1, xp / need) or 0)
-				W.XpBar.SetText(commas(math.floor(xp)) .. " / " .. commas(need) .. " XP")
-				W.XpBar.SetColor(C2.Xp)
-			end
-			setStats(def, level, key)
-
-			-- where it works / trains, and its evolution
-			local work = workOf(key, def)
-			local job = P2.job(key)
-			local stage = P2.stage(key)
-			local ready = P2.canEvolve(key, def, level)
-			local workText, workColor = "", Theme.Lighten(GOOD, 0.35)
-			if job then
-				workText = G.Muscle .. " Training " .. P2.skillName(job.Stat) .. " (" .. P2.jobLeft(job) .. " left)"
-				workColor = Theme.Lighten(PURPLE, 0.35)
-			elseif work and #work.Placed > 0 then
-				workText = G.Seedling .. " Working in your Garden"
-			end
-			if ready then
-				workText = (workText ~= "" and (workText .. "\n") or "") .. G.Sparkle .. " Ready to evolve!"
-			end
-			W.Work.Text = workText
-			W.Work.TextColor3 = workColor
-			W.Work.Visible = workText ~= ""
-
-			W.Blurb.Text = def.Blurb or ""
-			local mult = P2.tierMultiplier(key, def)
-			local lines = {}
-			if type(def.Perks) == "table" then
-				local perkOrder = PetCatalog.PerkOrder or { "MaxHealth", "TokenBonus", "StaminaRegen", "CheckpointHeal" }
-				for _, perkKey in ipairs(perkOrder) do
-					local value = def.Perks[perkKey]
-					if type(value) == "number" and value ~= 0 then
-						table.insert(lines, PetCatalog.PerkLabel(perkKey, value * mult))
-					end
-				end
-			end
-			if #lines > 0 then
-				W.Perks.Text = table.concat(lines, "\n")
-			else
-				W.Perks.Text = "No perks"
-			end
-
-			-- the evolution pill (star badge) beside the rarity
-			if W.EvoPill then
-				W.EvoPill:Destroy()
-				W.EvoPill = nil
-			end
-			if stage > 0 then
-				W.EvoPill = colorPill(W.MetaRow, "Evolution", string.rep(G.Star, math.min(2, stage)) .. (stage >= 2 and " Evolved II" or " Evolved"), GOLD, 18, 50)
-			end
-
-			-- buttons
-			local totalEquipped = #State.Get().Equipped
-			local canEquip = equipped < owned and totalEquipped < maxEquipped and job == nil
-			CloudUI.SetDisabled(W.EquipBtn, not canEquip)
-			-- bug batch 2 #18: every free copy is gardening -> the press asks to take one out of the garden
-			W.EquipGardening = canEquip and equipped >= owned - P2.gardenCopies(key)
-			CloudUI.SetDisabled(W.UnequipBtn, equipped <= 0)
-			CloudUI.SetDisabled(W.FeedBtn, inMatch())
-			CloudUI.SetDisabled(W.TrainBtn, inMatch())
-			W.TrainBtn.Text = job and "Training" or "Train"
-			W.EvolveBtn.Visible = ready ~= nil
-			CloudUI.SetDisabled(W.EvolveBtn, inMatch())
-			-- no EVOLVE: Train takes the whole bottom row
-			W.Ready = ready ~= nil
-			W.PlaceButtons()
-			if work then
-				local placed = #work.Placed > 0
-				W.WorkBtn.Text = placed and "Leave Garden" or "Garden"
-				CloudUI.SetStyle(W.WorkBtn, placed and "Pink" or "Blue")
-				local full = not placed and work.Slots > 0 and P2.firstFreeSlot(work.Map, work.Slots) == nil
-				CloudUI.SetDisabled(W.WorkBtn, inMatch() or (not placed and (work.Slots <= 0 or full or job ~= nil)))
-				W.WorkBtn.Visible = true
-			else
-				W.WorkBtn.Visible = false
-			end
-			local status = ""
-			if inMatch() then
-				status = "Pets are locked during a match."
-			elseif job then
-				status = P2.displayName(key, def) .. " is training: it can't follow you until it's done."
-			elseif work and #work.Placed == 0 and work.Slots <= 0 then
-				status = "Build the Pet Garden at home to put it to work."
-			elseif work and #work.Placed == 0 and P2.firstFreeSlot(work.Map, work.Slots) == nil then
-				status = "Your Garden is full (" .. usedSlots(work.Map, work.Slots) .. "/" .. work.Slots .. ")."
-			elseif equipped >= owned then
-				status = "All your copies are equipped."
-			elseif totalEquipped >= maxEquipped then
-				status = "Your team is full. Unequip a pet first."
-			end
-			W.Status.Text = status
-		end
-
-		-- Content of a grid slot. The pet viewport (a PetBuilder model, a ViewportFrame and a Camera) is
-		-- attached by fillPetSlots, a few per frame, so a big collection never builds ~30 models in the frame
-		-- the Inventory opens (same idea as the odds popup). Until then a slot is its rarity tile.
-		local function gridInfo(key, def, withPet)
-			local info = {
-				RarityColor = rarityOf(def),
-				Name = P2.displayName(key, def) .. " (" .. tostring(def.Rarity) .. ")",
-				Blurb = def.Blurb,
-			}
-			-- (an evolved copy draws its evolved form through P5.evoSlot instead of the slot's plain model)
-			if withPet and P2.stage(key) < 1 then
-				info.Pet = def
-			end
-			return info
-		end
-
-		local function fillPetSlots()
-			if pets.Filling then
-				return
-			end
-			-- one frame's share (time budget); returns true when slots are still waiting for their pet
-			local function buildBatch()
-				local budget = Warm.Budget()
-				for _, key in ipairs(pets.Order) do
-					local slot = pets.Slots[key]
-					local def = P2.defOfKey(key)
-					if slot and def and not pets.Ready[key] then
-						if not Warm.Allows(budget) then
-							return true
-						end
-						pets.Ready[key] = true
-						slot.SetContent(gridInfo(key, def, true))
-						local evolved = P5.evoSlot(slot, def, P2.stage(key))
-						local n = State.OwnedCount(key)
-						-- pet slots hide "x1" (needs the Pet content; an evolved slot draws its own model: hide it here)
-						if evolved and n <= 1 then
-							slot.SetCount(nil)
-						else
-							slot.SetCount(n)
-						end
-						budget.Count = budget.Count + 1
-					end
-				end
-				return false
-			end
-			pets.Filling = true
-			task.spawn(function()
-				-- the frame that opens the window already builds it (and the detail card's pet): start on the next one.
-				-- Stops when the window closes; the next open refreshes it and resumes with what is still missing.
-				task.wait()
-				while win.Shown do
-					local ok, more = pcall(buildBatch)
-					if not ok then
-						warnOnce("fill pets", more)
-						break
-					end
-					if not more then
-						break
-					end
-					task.wait()
-				end
-				pets.Filling = false
-			end)
-		end
-
-		local function refreshPetsPage()
-			local keys = P2.ownedKeys()
-			local ownedSet = {}
-			for _, key in ipairs(keys) do
-				ownedSet[key] = true
-			end
-			local snapshot = State.Get()
-
-			-- keep the selection valid: prefer an equipped pet, else the rarest one
-			if not (pets.Selected and ownedSet[pets.Selected]) then
-				pets.Selected = nil
-				for _, key in ipairs(snapshot.Equipped) do
-					if ownedSet[key] then
-						pets.Selected = key
-						break
-					end
-				end
-				if not pets.Selected then
-					pets.Selected = keys[1]
-				end
-			end
-
-			-- drop slots of pets that are gone, add slots for new ones, update the rest in place
-			for key, slot in pairs(pets.Slots) do
-				if not ownedSet[key] then
-					slot.Destroy()
-					pets.Slots[key] = nil
-					pets.Ready[key] = nil
-				end
-			end
-			pets.Order = keys
-			for index, key in ipairs(keys) do
-				local def = P2.defOfKey(key)
-				local slot = pets.Slots[key]
-				if not slot then
-					slot = readableSlot(CloudUI.Slot({
-						Name = "Pet_" .. key,
-						Size = UDim2.fromOffset(104, 104),
-						Parent = W.Grid,
-						Callback = function()
-							pets.Selected = key
-							refreshInventory()
-						end,
-					}))
-					pets.Slots[key] = slot
-				end
-				slot.Root.LayoutOrder = index
-				local ready = pets.Ready[key] == true
-				local owned = State.OwnedCount(key)
-				slot.SetContent(gridInfo(key, def, ready))
-				local evolved = P5.evoSlot(slot, def, ready and P2.stage(key) or 0)
-				if owned > 1 or (ready and not evolved) then
-					slot.SetCount(owned)
-				else
-					slot.SetCount(nil) -- a tile without its pet yet would show "x1"
-				end
-				if State.IsEquipped(key) then
-					slot.SetMarker(G.Star, GOLD)
-				else
-					slot.SetMarker(nil)
-				end
-				slot.SetSelected(key == pets.Selected)
-				paintSlotBadges(slot, key, def)
-			end
-			W.Grid.Visible = #keys > 0
-			W.Empty.Visible = #keys == 0
-			if W.IsEmpty ~= (#keys == 0) then
-				-- the empty state came / went: on a landscape phone it takes / gives back the detail card's room
-				W.IsEmpty = #keys == 0
-				local L = W.LastLayout
-				if L then
-					safe("pets layout", P5.petsLayout, W, L[1], L[2], L[3], L[4], L[5])
-				end
-			end
-			if #keys == 0 then
-				local loaded = (State.IsLoaded == nil) or State.IsLoaded()
-				if loaded then
-					W.EmptyTitle.Text = "No pets yet!"
-					W.EmptyBody.Text = "Spin a roulette in the Shop to hatch your first winged friend."
-				else
-					W.EmptyTitle.Text = "Loading..."
-					W.EmptyBody.Text = "Fetching your pets from the clouds."
-				end
-				W.EmptyButton.Visible = loaded
-			end
-
-			-- header: equipped count, team perks, equipped mini slots
-			local equipped = snapshot.Equipped
-			W.EquippedLabel.Text = string.format("Equipped %d/%d", #equipped, maxEquipped)
-			for i = 1, maxEquipped do
-				local slot = pets.EquipSlots[i]
-				local key = equipped[i]
-				local def = key and P2.defOfKey(key) or nil
-				if slot then
-					if def then
-						pets.EquipIds[i] = key
-						slot.SetContent({ Pet = def, RarityColor = rarityOf(def), Name = P2.displayName(key, def), Blurb = def.Blurb })
-						slot.SetSelected(key == pets.Selected)
-					else
-						pets.EquipIds[i] = nil
-						slot.SetContent(nil)
-						slot.SetSelected(false)
-					end
-				end
-			end
-			-- short perk names keep the line readable (18 design px) beside the equipped slots
-			local perkParts = {}
-			local order = PetCatalog.PerkOrder or { "MaxHealth", "TokenBonus", "StaminaRegen", "CheckpointHeal" }
-			local short = { MaxHealth = "Health", TokenBonus = "Tokens", StaminaRegen = "Stamina", CheckpointHeal = "Heal" }
-			for _, perkKey in ipairs(order) do
-				local value = snapshot.Perks[perkKey]
-				if type(value) == "number" and value > 0 then
-					local label = PetCatalog.PerkLabel(perkKey, value)
-					local name = PetCatalog.PerkNames and PetCatalog.PerkNames[perkKey]
-					if name and short[perkKey] then
-						label = label:gsub(name:gsub("%p", "%%%0"), short[perkKey])
-					end
-					table.insert(perkParts, label)
-				end
-			end
-			if #perkParts > 0 then
-				W.PerksLabel.Text = "Team: " .. table.concat(perkParts, "  " .. G.Bullet .. "  ")
-			else
-				W.PerksLabel.Text = "Equip pets to gain perks."
-			end
-
-			fillPetSlots() -- last: the first batch of grid viewports is built right here, the rest follow per frame
-		end
-
-		function refreshInventory()
-			refreshPetsPage()
-			renderDetail()
-			if win.Tab == "Team" and teamHooks.Refresh then
-				safe("team refresh", teamHooks.Refresh)
-			end
-		end
-
-		tabs.Add("Pets", buildPetsPage)
-		tabs.Add("Team", function(page)
-			P3.BuildTeam(win, page, teamHooks)
-		end)
-
-		win.Refresh = refreshInventory
-		win.OnClose = function()
-			win.TeamSeen = false -- the next opening fires WindowOpened("Team") again
-		end
-		win.OnOpen = function(args)
-			local tab = normalizeTab("Inventory", args.Tab)
-			if tab == "Team" and teamHooks.OnOpen then
-				safe("team open", teamHooks.OnOpen, args)
-			end
-			if tab then
-				tabs.Select(tab)
-			end
-			if win.Tab == "Team" then
-				P3.TeamShown(win, teamHooks, true) -- (openWindow refreshes the window right after this)
-			end
-			if type(args.Key) == "string" and State.OwnedCount(args.Key) > 0 then
-				pets.Selected = args.Key
-			end
-			if args.Action == "Evolve" and type(args.Key) == "string" then
-				-- the floating card's EVOLVE! pill: the Pets panel on that pet, with the EVOLVE confirm on top
-				tabs.Select("Pets")
-				local key = args.Key
-				task.defer(function()
-					if win.Shown and State.OwnedCount(key) > 0 then
-						refreshInventory()
-						careOpen("Evolve", key)
-					end
-				end)
-			end
-		end
-
-		win.OnLayout = function(w, h, narrow, short, tall)
-			safe("pets layout", P5.petsLayout, W, w, h, narrow, short, tall)
-			if teamHooks.OnLayout then
-				-- the Team page sits inside the tab content (24 px narrower, the tab bar above it)
-				safe("team layout", teamHooks.OnLayout, w - 24, h - 78, narrow, short, tall)
-			end
-		end
-	end
 end
 
 ----------------------------------------------------------------------
@@ -5111,7 +3333,8 @@ local function buildStats(win)
 			end
 		end
 
-		local b = P3.Battle and P3.Battle() or {}
+		local okBattle, b = pcall(State.Battle)
+		b = okBattle and type(b) == "table" and b or {}
 		-- Phase 5 (10.5): the Trial ladder is gone; the dungeon line takes its place
 		local dungeon = type(State.Dungeon) == "function" and State.Dungeon() or nil
 		dungeon = type(dungeon) == "table" and dungeon or {}
@@ -5131,7 +3354,7 @@ local function buildStats(win)
 			perksLabel.Text = table.concat(lines, "     ")
 			perksLabel.TextColor3 = Theme.Lighten(GOOD, 0.25)
 		else
-			perksLabel.Text = "No perks yet. Equip a pet in your inventory!"
+			perksLabel.Text = "No perks yet. Put a pet in your team!"
 			perksLabel.TextColor3 = MUTED
 		end
 	end
@@ -6515,1415 +4738,6 @@ do
 end
 
 ----------------------------------------------------------------------
--- Team editor (Phase 3; Phase 5: 3 slots = FIGHTER + 2 HELPERs, "Set as fighter"; HUD cleanup: no Team window any more,
--- the editor is the Pets window's Team tab, P3.BuildTeam(win, page, hooks)): three battle-team presets, the pet picker with element
--- badges, levels and battle stats, live synergy (BattleCatalog.SynergyBonus), the element wheel and the team power.
--- Edits show at once (a local draft) and are sent as BattleRequest("TeamSet", preset, keys) after a short pause; the
--- server validates everything (owned, unique, not in training, slot 4 rule) and ProfileSync brings the
--- saved presets back. "Use this team" sends BattleRequest("TeamSelect", preset).
-----------------------------------------------------------------------
--- (defined inside a function, not a do-block: the main chunk is at Lua's 200-local limit)
-P3.Define = function()
-	local PRESETS = 3
-	local MAX_SLOTS = 3 -- Phase 5 (4.8): teams of 3, a FIGHTER and two HELPERs (no 4th slot)
-	local SEND_DELAY = 0.45 -- seconds of quiet before an edited preset is sent
-	local DRAFT_HOLD = 4 -- seconds a local edit wins over the synced presets (then the server's answer does)
-	local CARD_GAP = 10
-	local CARD_H, CARD_H_SHORT = 146, 112 -- a team slot card (viewport on the left, the pet's details on the right)
-	local TILE_W, TILE_H = 140, 184
-	local TILE_W_SHORT, TILE_H_SHORT = 134, 166
-	local WHEEL_W, WHEEL_H = 300, 252
-	local INSET_X, INSET_Y = 24, 82 -- the panel's frame around Panel.Content (CloudUI.ContentInset)
-	local TEAM_ACCENT = Color3.fromRGB(214, 92, 96)
-	local POWER_GOLD = Color3.fromRGB(255, 214, 110)
-	local GOOD_TEXT = Color3.fromRGB(150, 236, 170)
-	local WARN_TEXT = Color3.fromRGB(255, 186, 150)
-	local GL = {
-		Trophy = "\240\159\143\134",
-		Swords = "\226\154\148",
-		Heart = "\226\157\164",
-		Bolt = "\226\154\161",
-		Plus = "+",
-		Arrow = "\226\158\156", -- heavy round-tipped rightwards arrow
-		Both = "\226\135\132", -- rightwards arrow over leftwards arrow
-		Close = "\195\151", -- multiplication sign
-	}
-
-	local T = {
-		Edit = nil, -- the preset shown (1..3)
-		Draft = {}, -- [preset] = { key... } edited locally, not confirmed yet
-		DraftAt = {},
-		SendToken = {},
-		Selected = nil, -- a team slot picked for a swap
-		ActivePending = nil,
-		ActiveAt = 0,
-		Catalog = nil,
-		PowerCache = {},
-	}
-
-	local function battleCatalog()
-		if T.Catalog then
-			return T.Catalog
-		end
-		local module = Shared:FindFirstChild("BattleCatalog")
-		if module then
-			local ok, result = pcall(require, module)
-			if ok and type(result) == "table" then
-				T.Catalog = result
-			end
-		end
-		return T.Catalog
-	end
-
-	local function copyList(list)
-		local out = {}
-		if type(list) == "table" then
-			for i, v in ipairs(list) do
-				out[i] = v
-			end
-		end
-		return out
-	end
-
-	local function sameList(a, b)
-		if #a ~= #b then
-			return false
-		end
-		for i = 1, #a do
-			if a[i] ~= b[i] then
-				return false
-			end
-		end
-		return true
-	end
-
-	local function teamsData()
-		if type(State.Teams) == "function" then
-			local ok, teams = pcall(State.Teams)
-			if ok and type(teams) == "table" and type(teams.Presets) == "table" then
-				return teams
-			end
-		end
-		return { Presets = { {}, {}, {} }, Active = 1, Slots = 3 }
-	end
-
-	local function battleData()
-		if type(State.Battle) == "function" then
-			local ok, battle = pcall(State.Battle)
-			if ok and type(battle) == "table" then
-				return battle
-			end
-		end
-		return { Trophies = 0, TrialBest = 0, TrialCleared = {}, PvPWins = 0, PvPLosses = 0, Raids = 0 }
-	end
-
-	local function slotCount()
-		return MAX_SLOTS
-	end
-
-	local function serverKeys(preset)
-		return copyList(teamsData().Presets[preset])
-	end
-
-	-- the keys shown for a preset: the local draft while it is fresh, else the synced preset
-	local function keysOf(preset)
-		local draft = T.Draft[preset]
-		if draft then
-			if os.clock() - (T.DraftAt[preset] or 0) < DRAFT_HOLD then
-				return draft
-			end
-			T.Draft[preset] = nil
-		end
-		return serverKeys(preset)
-	end
-
-	local function activePreset()
-		if T.ActivePending then
-			if os.clock() - T.ActiveAt < DRAFT_HOLD and T.ActivePending ~= teamsData().Active then
-				return T.ActivePending
-			end
-			T.ActivePending = nil
-		end
-		local a = math.floor(tonumber(teamsData().Active) or 1)
-		if a < 1 or a > PRESETS then
-			a = 1
-		end
-		return a
-	end
-
-	-- bug batch 2 #18: a copy working in the Garden is busy gardening (it cannot fight; its tile says "Gardening" and a
-	-- tap asks to take it out); a pet in training stays in its preset but sits out the fights until it is done (the
-	-- server skips it at read time), so its tile says "Training"
-	local function freeCopies(key)
-		return State.OwnedCount(key) - P2.gardenCopies(key)
-	end
-
-	local function entryOf(key)
-		local def = P2.defOfKey(key)
-		if not def then
-			return nil
-		end
-		local level = P2.petLevel(key)
-		return { Def = def, Level = level, Key = key }
-	end
-
-	local function catalogCall(fnName, ...)
-		local BC = battleCatalog()
-		if not BC or type(BC[fnName]) ~= "function" then
-			return nil
-		end
-		local ok, result = pcall(BC[fnName], ...)
-		if ok then
-			return result
-		end
-		warnOnce("BattleCatalog." .. fnName, result)
-		return nil
-	end
-
-	local function unitPower(entry)
-		if not entry then
-			return 0
-		end
-		local cacheKey = tostring(entry.Key) .. "#" .. tostring(entry.Level)
-		local cached = T.PowerCache[cacheKey]
-		if cached then
-			return cached
-		end
-		local p = tonumber(catalogCall("UnitPower", entry)) or 0
-		T.PowerCache[cacheKey] = p
-		return p
-	end
-
-	local function specialLine(def)
-		local special = type(def) == "table" and def.Special
-		if type(special) ~= "table" then
-			return nil
-		end
-		local name = tostring(special.Name or special.Kind or "Special")
-		local BC = battleCatalog()
-		local info = BC and type(BC.Specials) == "table" and BC.Specials[special.Kind]
-		if type(info) == "table" and info.Role then
-			return name .. " (" .. tostring(info.Role) .. ")", info.Text
-		end
-		return name, nil
-	end
-
-	-- the element wheel from Config.Elements.Strong: { "Water", "Flame", ... } + rival pairs { {"Celestial", "Shadow"} }
-	local function wheelOrder()
-		local E = Config.Elements or {}
-		local strong = E.Strong or {}
-		local order = E.Order or {}
-		local wheel, seen = {}, {}
-		local start = order[1]
-		local cur = start
-		for _ = 1, #order do
-			local beats = type(strong[cur]) == "table" and strong[cur][1]
-			if not cur or seen[cur] or not beats then
-				break
-			end
-			seen[cur] = true
-			wheel[#wheel + 1] = cur
-			cur = beats
-			if cur == start then
-				break
-			end
-		end
-		local rivals = {}
-		for _, id in ipairs(order) do
-			local beats = type(strong[id]) == "table" and strong[id][1]
-			if beats and not seen[id] and not seen[beats] then
-				seen[id] = true
-				seen[beats] = true
-				rivals[#rivals + 1] = { id, beats }
-			end
-		end
-		return wheel, rivals
-	end
-
-	local function elementColor(element)
-		local info = Config.Elements and Config.Elements.Info and Config.Elements.Info[element]
-		return info and info.Color or Colors.PanelLight
-	end
-
-	----------------------------------------------------------------------
-	-- Editing (optimistic draft + debounced TeamSet)
-	----------------------------------------------------------------------
-	local refreshTeam
-
-	local function sendPreset(preset)
-		T.SendToken[preset] = (T.SendToken[preset] or 0) + 1
-		local mine = T.SendToken[preset]
-		task.delay(SEND_DELAY, function()
-			if T.SendToken[preset] ~= mine then
-				return
-			end
-			local list = T.Draft[preset]
-			if not list then
-				return
-			end
-			T.DraftAt[preset] = os.clock() -- the server's answer (ProfileSync) is due from now
-			local remote = getRemote("BattleRequest")
-			if remote then
-				local ok, err = pcall(function()
-					remote:FireServer("TeamSet", preset, copyList(list))
-				end)
-				if not ok then
-					warnOnce("TeamSet", err)
-				end
-			end
-			-- a refused edit (busy pet, slot 4 ...) brings no ProfileSync: show the saved preset again once the draft expires
-			task.delay(DRAFT_HOLD + 0.1, function()
-				refreshTeam()
-			end)
-		end)
-	end
-
-	local function setDraft(preset, list)
-		T.Draft[preset] = list
-		T.DraftAt[preset] = os.clock()
-		sendPreset(preset)
-		refreshTeam()
-	end
-
-	local function addKey(key)
-		local preset = T.Edit or activePreset()
-		local list = copyList(keysOf(preset))
-		for i, k in ipairs(list) do
-			if k == key then
-				-- tapping a pet that is already in the team takes it out again
-				table.remove(list, i)
-				T.Selected = nil
-				setDraft(preset, list)
-				return
-			end
-		end
-		local slots = slotCount()
-		local function placed()
-			if T.Selected and T.Selected <= slots then
-				if T.Selected <= #list then
-					list[T.Selected] = key
-				else
-					list[#list + 1] = key
-				end
-				return true
-			elseif #list < slots then
-				list[#list + 1] = key
-				return true
-			end
-			return false
-		end
-		if freeCopies(key) < 1 then
-			if P2.gardenCopies(key) > 0 and State.OwnedCount(key) > 0 then
-				-- bug batch 2 #18: it is gardening: ask, then ONE request takes it out and stores this team
-				if not placed() then
-					showHint("Your team is full. Tap a team slot, then a pet to swap it.", "info")
-					return
-				end
-				T.Selected = nil
-				P2.askRecall(key, { To = "Team", Preset = preset, Keys = copyList(list) }, function()
-					-- the server stores the team itself (no TeamSet): show it at once, the next sync confirms it
-					T.Draft[preset] = list
-					T.DraftAt[preset] = os.clock()
-					refreshTeam()
-				end)
-				return
-			end
-			showHint("You have no free copy of that pet.", "info")
-			return
-		end
-		if not placed() then
-			showHint("Your team is full. Tap a team slot, then a pet to swap it.", "info")
-			return
-		end
-		T.Selected = nil
-		setDraft(preset, list)
-	end
-
-	-- Phase 5 (4.8): "Set as fighter" rotates the preset so this slot's pet leads ({a, b, c}, slot 3 -> {c, a, b})
-	local function setFighter(index)
-		local preset = T.Edit or activePreset()
-		local list = copyList(keysOf(preset))
-		if index <= 1 or not list[index] then
-			return
-		end
-		local rotated = {}
-		for i = 0, #list - 1 do
-			rotated[#rotated + 1] = list[((index - 1 + i) % #list) + 1]
-		end
-		T.Selected = nil
-		setDraft(preset, rotated)
-		showHint(P2.displayName(rotated[1], P2.defOfKey(rotated[1])) .. " is your fighter now!", "good")
-	end
-	P3.SetFighter = setFighter
-
-	local function removeSlot(index)
-		local preset = T.Edit or activePreset()
-		local list = copyList(keysOf(preset))
-		if list[index] then
-			table.remove(list, index)
-			T.Selected = nil
-			setDraft(preset, list)
-		end
-	end
-
-	local function clearPreset()
-		local preset = T.Edit or activePreset()
-		if #keysOf(preset) > 0 then
-			T.Selected = nil
-			setDraft(preset, {})
-		end
-	end
-
-	local function selectPreset()
-		local preset = T.Edit or activePreset()
-		if preset == activePreset() then
-			return
-		end
-		T.ActivePending = preset
-		T.ActiveAt = os.clock()
-		fireKeyed("TeamSelect", "BattleRequest", "TeamSelect", preset)
-		refreshTeam()
-	end
-
-	-- the synced presets arrived: drop drafts the server now agrees with
-	local function settleDrafts()
-		for preset, draft in pairs(T.Draft) do
-			if sameList(draft, serverKeys(preset)) and os.clock() - (T.DraftAt[preset] or 0) > SEND_DELAY then
-				T.Draft[preset] = nil
-			end
-		end
-		T.PowerCache = {} -- levels may have changed
-	end
-
-	----------------------------------------------------------------------
-	-- Widgets
-	----------------------------------------------------------------------
-	local function chip(parent, name, order)
-		local frame = makeFrame(parent, name, {
-			BackgroundTransparency = 0,
-			BackgroundColor3 = INSET_COLOR,
-			Size = UDim2.fromOffset(0, 48),
-			AutomaticSize = Enum.AutomaticSize.X,
-			LayoutOrder = order or 0,
-		})
-		corner(frame, 12)
-		stroke(frame, NAVY, 3, 0)
-		pad(frame, 12, 0, 14, 0)
-		listLayout(frame, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
-		return frame
-	end
-
-	local function autoText(parent, name, text, role, size, color, order)
-		return makeText(parent, name, text, role, size, color, {
-			Size = UDim2.fromOffset(0, size + 8),
-			AutomaticSize = Enum.AutomaticSize.X,
-			LayoutOrder = order or 0,
-		})
-	end
-
-	-- a team slot card
-	local function buildCard(ui, parent, index)
-		local card = { Index = index }
-		card.Button = Util.Create("TextButton", {
-			Name = "Slot" .. index,
-			AutoButtonColor = false,
-			BorderSizePixel = 0,
-			Text = "",
-			BackgroundColor3 = WHITE,
-			LayoutOrder = index,
-			Parent = parent,
-		})
-		corner(card.Button, 14)
-		card.Stroke = stroke(card.Button, NAVY, 3, 0)
-		card.Gradient = Util.Create("UIGradient", { Rotation = 90, Parent = card.Button })
-		-- Phase 5 (4.8): the slot's job: FIGHTER (slot 1, you control it) or HELPER (slots 2-3, their buff buttons)
-		local fighter = index == 1
-		card.Number = makeFrame(card.Button, "Role", {
-			BackgroundTransparency = 0,
-			BackgroundColor3 = fighter and Theme.Neon.Red or Theme.Neon.Blue,
-			Position = UDim2.fromOffset(8, 8),
-			Size = UDim2.fromOffset(fighter and 92 or 82, 26),
-			ZIndex = 4,
-		})
-		corner(card.Number, 8)
-		stroke(card.Number, NAVY, 2, 0)
-		card.RoleText = makeText(card.Number, "Text", fighter and "FIGHTER" or "HELPER", "Button", 18, WHITE, { Size = UDim2.new(1, 0, 1, 0), ZIndex = 5 })
-		if not fighter then
-			card.SetFighter = CloudUI.Button({
-				Name = "SetFighter",
-				Text = "Set as fighter",
-				Style = "Red",
-				Size = UDim2.fromOffset(150, 34),
-				TextSize = 18,
-				ZIndex = 6,
-				Callback = function()
-					safe("team fighter", setFighter, index)
-				end,
-				Parent = card.Button,
-			})
-		end
-		card.Remove = Util.Create("TextButton", {
-			Name = "Remove",
-			AutoButtonColor = false,
-			BorderSizePixel = 0,
-			Text = "",
-			BackgroundColor3 = BUTTONS.Red or BAD,
-			AnchorPoint = Vector2.new(1, 0),
-			Position = UDim2.new(1, -8, 0, 8),
-			Size = UDim2.fromOffset(34, 34),
-			ZIndex = 6,
-			Parent = card.Button,
-		})
-		round(card.Remove)
-		stroke(card.Remove, NAVY, 2.5, 0)
-		makeText(card.Remove, "X", GL.Close, "Button", 24, WHITE, { Size = UDim2.new(1, 0, 1, 0), ZIndex = 7 })
-		card.Remove.Activated:Connect(function()
-			safe("team remove", removeSlot, index)
-		end)
-		card.View = makeFrame(card.Button, "ViewHolder", {
-			Position = UDim2.fromOffset(8, 8),
-			Size = UDim2.fromOffset(120, 120),
-			ZIndex = 2,
-		})
-		local function line(name, text, role, size, color)
-			return makeText(card.Button, name, text, role, size, color, {
-				Size = UDim2.new(1, -150, 0, size + 6),
-				TextTruncate = Enum.TextTruncate.AtEnd,
-				TextXAlignment = Enum.TextXAlignment.Left,
-				ZIndex = 3,
-			})
-		end
-		card.Name = line("PetName", "", "Title", 23, WHITE)
-		card.Info = line("Info", "", "Body", 19, MUTED)
-		card.Elements = makeFrame(card.Button, "Elements", { Size = UDim2.new(1, -150, 0, 28), ZIndex = 3 })
-		listLayout(card.Elements, Enum.FillDirection.Horizontal, 6, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
-		card.Stats = line("Stats", "", "Heading", 20, POWER_GOLD)
-		card.Special = line("Special", "", "Body", 18, Theme.Lighten(PURPLE, 0.5))
-		-- empty / locked face
-		card.Empty = makeFrame(card.Button, "EmptyFace", { Size = UDim2.new(1, 0, 1, 0), ZIndex = 3 })
-		card.EmptyGlyph = makeText(card.Empty, "Glyph", GL.Plus, "Title", 52, Theme.Lighten(MUTED, 0.2), {
-			AnchorPoint = Vector2.new(0.5, 1),
-			Position = UDim2.new(0.5, 0, 0.5, 6),
-			Size = UDim2.fromOffset(90, 60),
-			ZIndex = 4,
-		})
-		card.EmptyText = makeText(card.Empty, "Caption", "Pick a pet", "Heading", 20, MUTED, {
-			AnchorPoint = Vector2.new(0.5, 0),
-			Position = UDim2.new(0.5, 0, 0.5, 8),
-			Size = UDim2.new(1, -24, 0, 50),
-			TextWrapped = true,
-			TextYAlignment = Enum.TextYAlignment.Top,
-			ZIndex = 4,
-		})
-		card.Button.Activated:Connect(function()
-			safe("team slot", function()
-				if T.Selected == index then
-					T.Selected = nil
-				else
-					T.Selected = index
-				end
-				refreshTeam()
-			end)
-		end)
-		CloudUI.Tooltip(card.Button, function()
-			return card.Tip
-		end)
-		ui.Cards[index] = card
-		return card
-	end
-
-	-- places a card's parts for its size: the viewport square on the left, the details beside it
-	local function layoutCard(card, h)
-		local view = math.min(h - 16, 104)
-		card.View.Position = UDim2.fromOffset(8, math.floor((h - view) / 2))
-		card.View.Size = UDim2.fromOffset(view, view)
-		local x = view + 16
-		local y = h >= CARD_H and 6 or 3
-		local function put(inst, height)
-			inst.Position = UDim2.fromOffset(x, y)
-			inst.Size = UDim2.new(1, -(x + 8), 0, height)
-			y = y + height + 1
-		end
-		put(card.Name, 28)
-		put(card.Info, 23)
-		put(card.Elements, 28)
-		y = y + 1
-		put(card.Stats, 25)
-		card.ShowSpecial = y + 23 <= h - 3
-		if card.ShowSpecial then
-			put(card.Special, 23)
-		end
-		-- the role sits on the viewport's top-left corner, the remove button on its bottom-right one, "Set as fighter"
-		-- on the card's bottom-right corner (helpers only)
-		card.Number.Position = UDim2.fromOffset(4, 4)
-		card.Remove.AnchorPoint = Vector2.new(1, 1)
-		card.Remove.Position = UDim2.new(0, 8 + view + 4, 1, -4)
-		if card.SetFighter then
-			-- beside the "Lv 57 - Epic" line (that line gives it room), never over the stats
-			local bw = 146
-			card.SetFighter.AnchorPoint = Vector2.new(1, 0)
-			card.SetFighter.Position = UDim2.new(1, -6, 0, card.Info.Position.Y.Offset - 2)
-			card.SetFighter.Size = UDim2.fromOffset(bw, 30)
-			card.Info.Size = UDim2.new(1, -(x + 14 + bw), 0, 23)
-		end
-	end
-
-	local function paintCard(card, key, entry, locked, selected)
-		local def = entry and entry.Def or nil
-		card.Locked = locked
-		card.Key = key
-		local filled = def ~= nil and not locked
-		local tint = filled and rarityOf(def) or Color3.fromRGB(70, 92, 150)
-		if locked then
-			tint = Color3.fromRGB(70, 78, 104)
-		end
-		card.Gradient.Color = ColorSequence.new(Theme.Lighten(INSET_COLOR, 0.28):Lerp(tint, 0.35), Theme.Darken(INSET_COLOR, 0.1):Lerp(tint, 0.18))
-		card.Button.BackgroundColor3 = WHITE
-		card.Stroke.Color = selected and GOLD or (filled and Theme.Lighten(tint, 0.15) or NAVY)
-		card.Stroke.Thickness = selected and 4 or 3
-		card.Remove.Visible = filled
-		card.Empty.Visible = not filled
-		for _, name in ipairs({ "Name", "Info", "Elements", "Stats", "Special" }) do
-			card[name].Visible = filled
-		end
-		card.View.Visible = filled
-		if card.SetFighter then
-			card.SetFighter.Visible = filled
-		end
-		if not filled then
-			card.EmptyGlyph.Text = GL.Plus
-			card.EmptyText.Text = selected and "Now tap a pet" or "Pick a pet"
-			card.EmptyText.TextColor3 = selected and GOLD or MUTED
-			card.Tip = nil
-		end
-		if not filled then
-			if card.Viewport then
-				card.Viewport.Destroy()
-				card.Viewport = nil
-				card.ViewKey = nil
-			end
-			return
-		end
-		-- Phase 5 (3.7): the copy's stored stage; an evolved model is built at Low
-		local stage = P2.stage(key)
-		if card.ViewKey ~= key .. "|" .. stage then
-			if card.Viewport then
-				card.Viewport.Destroy()
-				card.Viewport = nil
-			end
-			card.ViewKey = key .. "|" .. stage
-			local ok, handle = pcall(CloudUI.PetViewport, card.View, def, UDim2.new(1, 0, 1, 0), {
-				Spin = "sway",
-				Animate = true,
-				Detail = stage >= 1 and "Low" or "High",
-				Evolved = stage >= 1 and stage or nil,
-				ZIndex = 2,
-			})
-			if ok then
-				card.Viewport = handle
-			end
-		end
-		card.Name.Text = P2.displayName(key, def)
-		card.Name.TextColor3 = rarityText(def)
-		local tier = P2.tierOf(key, def)
-		local tierText = tier ~= "Normal" and (" " .. G.Bullet .. " " .. tier) or ""
-		card.Info.Text = "Lv " .. tostring(entry.Level) .. " " .. G.Bullet .. " " .. tostring(def.Rarity) .. tierText
-		for _, child in ipairs(card.Elements:GetChildren()) do
-			if child:IsA("GuiObject") then
-				child:Destroy()
-			end
-		end
-		for i, element in ipairs(elementsOf(def)) do
-			elementPill(card.Elements, element, 18, i)
-		end
-		local stats = catalogCall("UnitStats", entry)
-		local power = unitPower(entry)
-		if type(stats) == "table" then
-			card.Stats.Text = GL.Swords .. " " .. commas(power) .. "  " .. GL.Heart .. " " .. commas(math.floor((stats.MaxHp or 0) + 0.5))
-		else
-			card.Stats.Text = GL.Swords .. " " .. commas(power)
-		end
-		local special, specialText = specialLine(def)
-		local specialName = type(def.Special) == "table" and def.Special.Name or nil
-		card.Special.Text = specialName and (G.Sparkle .. " " .. tostring(specialName)) or ""
-		local tip = P2.displayName(key, def) .. " (Lv " .. tostring(entry.Level) .. ")"
-		if type(stats) == "table" then
-			tip = tip .. "\nPower " .. commas(power) .. ", Health " .. commas(math.floor((stats.MaxHp or 0) + 0.5))
-				.. ", " .. string.format("%.1f", stats.Dps or 0) .. " damage per second, " .. ((stats.Ranged and "ranged") or "melee")
-		end
-		if special then
-			tip = tip .. "\nSpecial: " .. special .. (specialText and (". " .. specialText) or "")
-		end
-		card.Tip = tip
-	end
-
-	-- a picker tile (one per owned pet copy)
-	local function buildTile(ui, key)
-		local tile = { Key = key }
-		tile.Button = Util.Create("TextButton", {
-			Name = "Pick_" .. key,
-			AutoButtonColor = false,
-			BorderSizePixel = 0,
-			Text = "",
-			BackgroundColor3 = WHITE,
-			Parent = ui.Grid,
-		})
-		corner(tile.Button, 12)
-		tile.Stroke = stroke(tile.Button, NAVY, 3, 0)
-		tile.Gradient = Util.Create("UIGradient", { Rotation = 90, Parent = tile.Button })
-		tile.View = makeFrame(tile.Button, "ViewHolder", {
-			AnchorPoint = Vector2.new(0.5, 0),
-			Position = UDim2.new(0.5, 0, 0, 4),
-			Size = UDim2.new(1, -12, 0, 78),
-			ZIndex = 2,
-		})
-		-- names wrap onto a second line instead of being cut ("Ember Phoenix", "Starlight Unicorn")
-		tile.Name = makeText(tile.Button, "PetName", "", "Body", 18, WHITE, {
-			Position = UDim2.fromOffset(4, 82),
-			Size = UDim2.new(1, -8, 0, 42),
-			TextWrapped = true,
-			TextTruncate = Enum.TextTruncate.AtEnd,
-			ZIndex = 3,
-		})
-		tile.Row = makeFrame(tile.Button, "Row", {
-			Position = UDim2.fromOffset(6, 126),
-			Size = UDim2.new(1, -12, 0, 28),
-			ZIndex = 3,
-		})
-		listLayout(tile.Row, Enum.FillDirection.Horizontal, 5, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
-		tile.Power = makeText(tile.Button, "Power", "", "Heading", 19, POWER_GOLD, {
-			Position = UDim2.fromOffset(6, 155),
-			Size = UDim2.new(1, -12, 0, 26),
-			ZIndex = 3,
-		})
-		tile.Mark = makeFrame(tile.Button, "InTeam", {
-			BackgroundTransparency = 0,
-			BackgroundColor3 = GOOD,
-			Position = UDim2.fromOffset(6, 6),
-			Size = UDim2.fromOffset(32, 32),
-			Visible = false,
-			ZIndex = 6,
-		})
-		round(tile.Mark)
-		stroke(tile.Mark, NAVY, 2.5, 0)
-		tile.MarkText = makeText(tile.Mark, "Text", "1", "Button", 20, WHITE, { Size = UDim2.new(1, 0, 1, 0), ZIndex = 7 })
-		tile.Dim = makeFrame(tile.Button, "Dim", {
-			BackgroundTransparency = 0.45,
-			BackgroundColor3 = Color3.fromRGB(12, 16, 36),
-			Size = UDim2.new(1, 0, 1, 0),
-			Visible = false,
-			ZIndex = 8,
-		})
-		corner(tile.Dim, 12)
-		tile.Busy = makeText(tile.Dim, "Busy", "Busy", "Heading", 19, C2.Lock, {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.new(0.5, 0, 0.36, 0),
-			Size = UDim2.new(1, -8, 0, 48),
-			TextWrapped = true,
-			ZIndex = 9,
-		})
-		tile.Button.Activated:Connect(function()
-			safe("team pick", addKey, key)
-		end)
-		CloudUI.Tooltip(tile.Button, function()
-			return tile.Tip
-		end)
-		ui.Tiles[key] = tile
-		return tile
-	end
-
-	local function paintTile(tile, entry, inTeamSlot, busyText)
-		local def = entry.Def
-		local tint = rarityOf(def)
-		tile.Gradient.Color = ColorSequence.new(Theme.Lighten(INSET_COLOR, 0.3):Lerp(tint, 0.38), Theme.Darken(INSET_COLOR, 0.05):Lerp(tint, 0.2))
-		tile.Stroke.Color = inTeamSlot and GOOD or Theme.Lighten(tint, 0.1)
-		tile.Stroke.Thickness = inTeamSlot and 4 or 3
-		tile.Name.Text = P2.displayName(entry.Key, def)
-		-- white on the rarity-tinted card (a rarity-coloured name on a card of the same hue lost its contrast);
-		-- the card's tint and border already say the rarity, like the Pets panel
-		tile.Name.TextColor3 = WHITE
-		local sig = table.concat(elementsOf(def), ",") .. "|" .. tostring(entry.Level)
-		if tile.RowSig ~= sig then
-			tile.RowSig = sig
-			for _, child in ipairs(tile.Row:GetChildren()) do
-				if child:IsA("GuiObject") then
-					child:Destroy()
-				end
-			end
-			autoText(tile.Row, "Level", "Lv " .. tostring(entry.Level), "Heading", 18, WHITE, 0)
-			for i, element in ipairs(elementsOf(def)) do
-				elementPill(tile.Row, element, 18, i)
-			end
-		end
-		local power = unitPower(entry)
-		tile.Power.Text = GL.Swords .. " " .. commas(power)
-		tile.Mark.Visible = inTeamSlot ~= nil
-		if inTeamSlot then
-			tile.MarkText.Text = tostring(inTeamSlot)
-		end
-		tile.Dim.Visible = busyText ~= nil and not inTeamSlot
-		tile.Busy.Text = busyText or ""
-		local special = specialLine(def)
-		tile.Tip = P2.displayName(entry.Key, def) .. " (Lv " .. tostring(entry.Level) .. ", Power " .. commas(power) .. ")"
-			.. (special and ("\nSpecial: " .. special) or "")
-			.. (inTeamSlot and "\nIn this team: tap to take it out" or "\nTap to add it to the team")
-	end
-
-	local function borderStroke(inst)
-		for _, child in ipairs(inst:GetChildren()) do
-			if child:IsA("UIStroke") and child.ApplyStrokeMode == Enum.ApplyStrokeMode.Border then
-				return child
-			end
-		end
-		return nil
-	end
-
-	-- the element wheel (Config.Elements): six elements on a ring, arrows to the one each beats, the rivals below
-	local function buildWheel(parent)
-		local wheel = makeInset(parent, "ElementWheel", { Size = UDim2.fromOffset(WHEEL_W, WHEEL_H) })
-		makeText(wheel, "Title", "Element wheel", "Heading", 20, WHITE, {
-			Position = UDim2.fromOffset(0, 4),
-			Size = UDim2.new(1, 0, 0, 26),
-		})
-		local nodes = {}
-		local order, rivals = wheelOrder()
-		local n = #order
-		local cx, cy, r = WHEEL_W / 2, 32 + 74 + 16, 74
-		local rx = 96 -- an ellipse: the pills need the width more than the height
-		local atan2 = math.atan2 or function(y, x)
-			return math.atan(y, x)
-		end
-		makeText(wheel, "Centre", "Each beats\nthe next", "Body", 18, MUTED, {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromOffset(cx, cy),
-			Size = UDim2.fromOffset(110, 48),
-		})
-		for i, element in ipairs(order) do
-			local a = math.rad(-90 + (i - 1) * 360 / math.max(n, 1))
-			local holder = makeFrame(wheel, "Node_" .. element, {
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromOffset(math.floor(cx + rx * math.cos(a) + 0.5), math.floor(cy + r * math.sin(a) + 0.5)),
-				Size = UDim2.fromOffset(96, 30),
-				ZIndex = 3,
-			})
-			listLayout(holder, Enum.FillDirection.Horizontal, 0, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
-			local pill = elementPill(holder, element, 18, 1)
-			pill.ZIndex = 3
-			nodes[element] = { Pill = pill, Stroke = borderStroke(pill) }
-			local mid = math.rad(-90 + (i - 0.5) * 360 / math.max(n, 1))
-			makeText(wheel, "Arrow" .. i, GL.Arrow, "Heading", 20, Theme.Lighten(GOLD, 0.2), {
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromOffset(math.floor(cx + (rx - 4) * math.cos(mid) + 0.5), math.floor(cy + (r - 4) * math.sin(mid) + 0.5)),
-				Size = UDim2.fromOffset(26, 26),
-				Rotation = math.deg(atan2(r * math.cos(mid), -rx * math.sin(mid))),
-				ZIndex = 2,
-			})
-		end
-		local row = makeFrame(wheel, "Rivals", {
-			AnchorPoint = Vector2.new(0.5, 1),
-			Position = UDim2.new(0.5, 0, 1, -8),
-			Size = UDim2.new(1, -16, 0, 32),
-		})
-		listLayout(row, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
-		for i, pair in ipairs(rivals) do
-			local a = elementPill(row, pair[1], 18, i * 3)
-			autoText(row, "Both" .. i, GL.Both, "Heading", 22, Theme.Lighten(GOLD, 0.2), i * 3 + 1)
-			local b = elementPill(row, pair[2], 18, i * 3 + 2)
-			nodes[pair[1]] = { Pill = a, Stroke = borderStroke(a) }
-			nodes[pair[2]] = { Pill = b, Stroke = borderStroke(b) }
-		end
-		return wheel, nodes
-	end
-
-	local function clearChildren(frame)
-		for _, child in ipairs(frame:GetChildren()) do
-			if child:IsA("GuiObject") then
-				child:Destroy()
-			end
-		end
-	end
-
-	-- one synergy / matchup row: pills + a text
-	local function synergyRow(parent, order, pills, text, color)
-		local row = makeFrame(parent, "Row" .. order, {
-			Size = UDim2.new(1, 0, 0, 0),
-			AutomaticSize = Enum.AutomaticSize.Y,
-			LayoutOrder = order,
-		})
-		listLayout(row, Enum.FillDirection.Horizontal, 6, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
-		for i, p in ipairs(pills) do
-			if p.Element then
-				elementPill(row, p.Element, 18, i)
-			else
-				colorPill(row, "Tag" .. i, p.Text, p.Color, 18, i)
-			end
-		end
-		if text and text ~= "" then
-			makeText(row, "Text", text, "Body", 19, color or WHITE, {
-				Size = UDim2.new(1, -(#pills * 110), 0, 0),
-				AutomaticSize = Enum.AutomaticSize.Y,
-				TextWrapped = true,
-				TextXAlignment = Enum.TextXAlignment.Left,
-				LayoutOrder = 50,
-			})
-		end
-		return row
-	end
-
-	-- the Team tab's layout for a window size (design px); split out of P3.BuildTeam: Lua's 60-upvalue limit
-	local function layoutTeam(ui, w, h, narrow, short, tall)
-		ui.Tall = tall
-		local cw = w - INSET_X -- Panel.Content
-		local cardH = short and CARD_H_SHORT or CARD_H
-		local topH = tall and 108 or 50
-		ui.Top.Size = UDim2.new(1, -28, 0, topH)
-		if tall then
-			ui.TabRow.Size = UDim2.new(1, 0, 0, 48)
-			ui.Chips.AnchorPoint = Vector2.new(0, 0)
-			ui.Chips.Position = UDim2.fromOffset(0, 58)
-			local tabW = math.floor((cw - 28 - 2 * 8) / 3)
-			for i = 1, PRESETS do
-				ui.Tabs[i].Size = UDim2.fromOffset(math.min(152, tabW), 46)
-			end
-		else
-			ui.TabRow.Size = UDim2.new(0, 3 * 160, 1, 0)
-			ui.Chips.AnchorPoint = Vector2.new(1, 0.5)
-			ui.Chips.Position = UDim2.new(1, 0, 0.5, 0)
-			for i = 1, PRESETS do
-				ui.Tabs[i].Size = UDim2.fromOffset(narrow and 128 or 152, 46)
-			end
-		end
-		ui.PowerCaption.Text = (tall or narrow) and "Power" or "Team Power"
-		local bodyTop = 10 + topH + 10
-		local colW
-		if tall then
-			-- one scrolling column: slots, actions, synergy, wheel, then the picker
-			ui.Left.Position = UDim2.fromOffset(14, bodyTop)
-			ui.Left.Size = UDim2.new(1, -28, 1, -(bodyTop + 8))
-			ui.Right.Visible = false
-			ui.PickerHead.Parent = ui.Left
-			ui.PickerHead.LayoutOrder = 4
-			ui.Grid.Parent = ui.Left
-			ui.Grid.LayoutOrder = 5
-			ui.Empty.Parent = ui.Left
-			ui.Empty.LayoutOrder = 6
-			colW = cw - 28 - 14
-			ui.SlotGrid.CellSize = UDim2.fromOffset(colW, cardH)
-			ui.Slots.Size = UDim2.new(1, 0, 0, 4 * cardH + 3 * CARD_GAP)
-			ui.Actions.Size = UDim2.new(1, 0, 0, 108)
-			ui.HelpText.Position = UDim2.fromOffset(0, 58)
-			ui.HelpText.Size = UDim2.new(1, 0, 0, 48)
-			ui.HelpText.Visible = true
-			local synH = 200
-			ui.Row.Size = UDim2.new(1, 0, 0, synH + 12 + WHEEL_H)
-			ui.Synergy.Size = UDim2.new(1, 0, 0, synH)
-			ui.Wheel.AnchorPoint = Vector2.new(0.5, 0)
-			ui.Wheel.Position = UDim2.new(0.5, 0, 0, synH + 12)
-			local cols = math.max(2, math.floor((colW + 10) / (TILE_W + 10)))
-			local tileW = math.min(TILE_W + 20, math.floor((colW - (cols - 1) * 10) / cols))
-			ui.GridLayout.CellSize = UDim2.fromOffset(tileW, TILE_H)
-		else
-			ui.Right.Visible = true
-			ui.PickerHead.Parent = ui.RightScroll
-			ui.PickerHead.LayoutOrder = 1
-			ui.Grid.Parent = ui.RightScroll
-			ui.Grid.LayoutOrder = 2
-			ui.Empty.Parent = ui.RightScroll
-			ui.Empty.LayoutOrder = 3
-			local tileW = short and TILE_W_SHORT or TILE_W
-			-- the picker holds 3 tiles a row (2 on narrow windows); the team column gets the rest
-			local cols = narrow and 2 or 3
-			local pickerW = cols * tileW + (cols - 1) * 10 + 12 + 22 + 12
-			ui.Right.AnchorPoint = Vector2.new(1, 0)
-			ui.Right.Position = UDim2.new(1, -14, 0, bodyTop)
-			ui.Right.Size = UDim2.new(0, pickerW, 1, -(bodyTop + 12))
-			ui.Left.Position = UDim2.fromOffset(14, bodyTop)
-			ui.Left.Size = UDim2.new(1, -(pickerW + 40), 1, -(bodyTop + 12))
-			colW = cw - pickerW - 40 - 14
-			local twoCols = colW >= 2 * 300 + CARD_GAP
-			local cardW = twoCols and math.floor((colW - CARD_GAP) / 2) or colW
-			ui.SlotGrid.CellSize = UDim2.fromOffset(cardW, cardH)
-			local rows = twoCols and 2 or 4
-			ui.Slots.Size = UDim2.new(1, 0, 0, rows * cardH + (rows - 1) * CARD_GAP)
-			ui.Actions.Size = UDim2.new(1, 0, 0, 52)
-			ui.HelpText.Position = UDim2.fromOffset(250, 0)
-			ui.HelpText.Size = UDim2.new(1, -384, 1, 0)
-			ui.HelpText.Visible = colW >= 560
-			local sideBySide = colW >= WHEEL_W + 12 + 280
-			if sideBySide then
-				ui.Row.Size = UDim2.new(1, 0, 0, WHEEL_H)
-				ui.Synergy.Size = UDim2.new(1, -(WHEEL_W + 12), 1, 0)
-				ui.Wheel.AnchorPoint = Vector2.new(1, 0)
-				ui.Wheel.Position = UDim2.new(1, 0, 0, 0)
-			else
-				ui.Row.Size = UDim2.new(1, 0, 0, 200 + 12 + WHEEL_H)
-				ui.Synergy.Size = UDim2.new(1, 0, 0, 200)
-				ui.Wheel.AnchorPoint = Vector2.new(0.5, 0)
-				ui.Wheel.Position = UDim2.new(0.5, 0, 0, 212)
-			end
-			ui.GridLayout.CellSize = UDim2.fromOffset(tileW, short and TILE_H_SHORT or TILE_H)
-		end
-		ui.UseButton.Position = UDim2.fromOffset(0, 0)
-		ui.ActiveLabel.Position = UDim2.fromOffset(4, 0)
-		ui.ClearButton.Position = UDim2.new(1, 0, 0, 0)
-		for _, card in ipairs(ui.Cards) do
-			layoutCard(card, cardH)
-		end
-	end
-
-	-- the Team tab's contents from State (split out of P3.BuildTeam: Lua's 60-upvalue limit)
-	local function refreshTeamUi(ui, fillTiles)
-		local preset = T.Edit or activePreset()
-		T.Edit = preset
-		local active = activePreset()
-		local keys = keysOf(preset)
-		local slots = slotCount()
-		-- preset tabs
-		for i = 1, PRESETS do
-			local tab = ui.Tabs[i]
-			tab.Text = (i == active and (G.Star .. " ") or "") .. "Team " .. i
-			CloudUI.SetStyle(tab, i == preset and "Blue" or "Gray")
-			tab:SetAttribute("Selected", i == preset)
-		end
-		-- slot cards
-		local entries = {}
-		local slotOf = {}
-		for i, key in ipairs(keys) do
-			slotOf[key] = i
-			local entry = entryOf(key)
-			if entry then
-				entries[#entries + 1] = entry
-			end
-		end
-		for i = 1, MAX_SLOTS do
-			local card = ui.Cards[i]
-			local key = keys[i]
-			local entry = key and entryOf(key) or nil
-			paintCard(card, key, entry, i > slots, T.Selected == i)
-			card.Special.Visible = card.Special.Visible and card.ShowSpecial == true
-		end
-		-- power, trophies
-		local power = tonumber(catalogCall("TeamPower", entries)) or 0
-		ui.PowerText.Text = GL.Swords .. " " .. commas(power)
-		ui.TrophyText.Text = GL.Trophy .. " " .. commas(battleData().Trophies or 0)
-		-- actions
-		local isActive = preset == active
-		ui.UseButton.Visible = not isActive
-		ui.UseButton.Text = "Use Team " .. preset
-		CloudUI.SetDisabled(ui.UseButton, #keys == 0)
-		ui.ActiveLabel.Visible = isActive
-		CloudUI.SetDisabled(ui.ClearButton, #keys == 0)
-		if #keys == 0 then
-			ui.HelpText.Text = "Tap pets to build this team: the FIGHTER battles, two HELPERS back it up."
-		elseif T.Selected then
-			ui.HelpText.Text = "Now tap a pet to put it in slot " .. T.Selected .. "."
-		else
-			ui.HelpText.Text = "Tap a pet to add it. Tap a slot, then a pet, to swap."
-		end
-
-		-- synergy (live) + matchups
-		clearChildren(ui.SynergyList)
-		makeText(ui.SynergyList, "Title", "Synergy", "Heading", 22, WHITE, {
-			Size = UDim2.new(1, 0, 0, 28),
-			TextXAlignment = Enum.TextXAlignment.Left,
-			LayoutOrder = 0,
-		})
-		local bonus = catalogCall("SynergyBonus", entries)
-		local list = type(bonus) == "table" and bonus.Entries or {}
-		local order = 1
-		for _, s in ipairs(list) do
-			local pills = {}
-			if s.Element then
-				pills[1] = { Element = s.Element }
-			else
-				pills[1] = { Text = tostring(s.Name or "Bonus"), Color = TEAL }
-			end
-			synergyRow(ui.SynergyList, order, pills, tostring(s.Text or ""), GOOD_TEXT)
-			order = order + 1
-		end
-		if #list == 0 then
-			local text = #entries == 0 and "Add pets to see their bonuses." or "No bonus yet: mix in a pet of the same element!"
-			local label = makeText(ui.SynergyList, "None", text, "Body", 19, MUTED, {
-				Size = UDim2.new(1, 0, 0, 0),
-				AutomaticSize = Enum.AutomaticSize.Y,
-				TextWrapped = true,
-				TextXAlignment = Enum.TextXAlignment.Left,
-				LayoutOrder = order,
-			})
-			label.Name = "None"
-			order = order + 1
-		end
-		-- the team's matchups: which elements it hits hard, which hit it hard
-		local teamElements, seen = {}, {}
-		for _, entry in ipairs(entries) do
-			for _, e in ipairs(elementsOf(entry.Def)) do
-				if not seen[e] then
-					seen[e] = true
-					teamElements[#teamElements + 1] = e
-				end
-			end
-		end
-		if #teamElements > 0 then
-			local strong, weak, sSeen, wSeen = {}, {}, {}, {}
-			local S = (Config.Elements and Config.Elements.Strong) or {}
-			for _, e in ipairs(teamElements) do
-				for _, target in ipairs(S[e] or {}) do
-					if not sSeen[target] then
-						sSeen[target] = true
-						strong[#strong + 1] = { Element = target }
-					end
-				end
-			end
-			for _, attacker in ipairs((Config.Elements and Config.Elements.Order) or {}) do
-				for _, target in ipairs(S[attacker] or {}) do
-					if seen[target] and not wSeen[attacker] then
-						wSeen[attacker] = true
-						weak[#weak + 1] = { Element = attacker }
-					end
-				end
-			end
-			if #strong > 0 then
-				makeText(ui.SynergyList, "StrongTitle", "Hits hard against", "Heading", 19, GOOD_TEXT, {
-					Size = UDim2.new(1, 0, 0, 26),
-					TextXAlignment = Enum.TextXAlignment.Left,
-					LayoutOrder = 20,
-				})
-				synergyRow(ui.SynergyList, 21, strong, nil)
-			end
-			if #weak > 0 then
-				makeText(ui.SynergyList, "WeakTitle", "Watch out for", "Heading", 19, WARN_TEXT, {
-					Size = UDim2.new(1, 0, 0, 26),
-					TextXAlignment = Enum.TextXAlignment.Left,
-					LayoutOrder = 22,
-				})
-				synergyRow(ui.SynergyList, 23, weak, nil)
-			end
-		end
-		-- the rules, always at the bottom (BattleCatalog.SynergyRules)
-		local BC = battleCatalog()
-		local rules = BC and type(BC.SynergyRules) == "table" and BC.SynergyRules or nil
-		if rules and type(rules.SameElement) == "table" then
-			local function pct(v)
-				return tostring(math.floor((tonumber(v) or 0) * 100 + 0.5)) .. "%"
-			end
-			local same = rules.SameElement
-			makeText(ui.SynergyList, "Rules", "Same element: 2 pets +" .. pct(same[2]) .. ", 3 +" .. pct(same[3])
-				.. " Power. " .. tostring(rules.BalancedElements or 3) .. "+ elements: +" .. pct(rules.BalancedHealth) .. " Health.", "Body", 18, MUTED, {
-				Size = UDim2.new(1, 0, 0, 0),
-				AutomaticSize = Enum.AutomaticSize.Y,
-				TextWrapped = true,
-				TextXAlignment = Enum.TextXAlignment.Left,
-				LayoutOrder = 40,
-			})
-		end
-		-- wheel: the team's elements glow gold
-		for element, node in pairs(ui.WheelNodes) do
-			if node.Stroke then
-				node.Stroke.Color = seen[element] and GOLD or NAVY
-				node.Stroke.Thickness = seen[element] and 3.5 or 2
-			end
-			node.Pill.BackgroundTransparency = seen[element] and 0 or 0.25
-		end
-
-		-- picker: every owned copy, strongest first
-		local owned = P2.ownedKeys()
-		local rows = {}
-		local ownedSet = {}
-		for _, key in ipairs(owned) do
-			local entry = entryOf(key)
-			if entry then
-				ownedSet[key] = true
-				rows[#rows + 1] = { Key = key, Entry = entry, Power = unitPower(entry), Name = P2.displayName(key, entry.Def) }
-			end
-		end
-		table.sort(rows, function(a, b)
-			if a.Power ~= b.Power then
-				return a.Power > b.Power
-			end
-			return a.Name < b.Name
-		end)
-		for key, tile in pairs(ui.Tiles) do
-			if not ownedSet[key] then
-				if tile.Viewport then
-					tile.Viewport.Destroy()
-				end
-				tile.Button:Destroy()
-				ui.Tiles[key] = nil
-				ui.Ready[key] = nil
-			end
-		end
-		ui.Order = {}
-		for index, row in ipairs(rows) do
-			local tile = ui.Tiles[row.Key] or buildTile(ui, row.Key)
-			if tile.Viewport and tile.ViewStage ~= P2.stage(row.Key) then
-				tile.Viewport.Destroy()
-				tile.Viewport = nil
-				ui.Ready[row.Key] = nil
-			end
-			tile.Button.LayoutOrder = index
-			ui.Order[index] = row.Key
-			local busy = nil
-			if P2.job(row.Key) then
-				busy = "Training"
-			elseif P2.isGardening(row.Key) then
-				busy = G.Seedling .. " Gardening" -- bug batch 2 #18: a tap asks to take it out of the garden
-			end
-			paintTile(tile, row.Entry, slotOf[row.Key], busy)
-		end
-		ui.Grid.Visible = #rows > 0
-		ui.Empty.Visible = #rows == 0
-		fillTiles()
-	end
-
-	----------------------------------------------------------------------
-	-- The window
-	----------------------------------------------------------------------
-	-- HUD cleanup: `content` is the Pets window's Team tab page; the window hooks go on `hooks` (OnOpen, OnLayout,
-	-- Refresh), which buildInventory calls for the Team tab
-	function P3.BuildTeam(win, content, hooks)
-		content = content or win.Panel.Content
-		hooks = hooks or win
-		local ui = { Cards = {}, Tiles = {}, Ready = {}, Order = {} }
-		win.TeamUi = ui
-		P3.Win, P3.Hooks = win, hooks
-
-		-- top bar: the three presets (left), team power + trophies (right)
-		ui.Top = makeFrame(content, "TopBar", { Position = UDim2.fromOffset(14, 10), Size = UDim2.new(1, -28, 0, 50) })
-		ui.TabRow = makeFrame(ui.Top, "Presets", { Size = UDim2.new(0, 3 * 160, 1, 0) })
-		listLayout(ui.TabRow, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
-		ui.Tabs = {}
-		for i = 1, PRESETS do
-			ui.Tabs[i] = CloudUI.Button({
-				Name = "Preset" .. i,
-				Text = "Team " .. i,
-				Size = UDim2.fromOffset(152, 46),
-				Style = "Gray",
-				TextSize = 22,
-				LayoutOrder = i,
-				Parent = ui.TabRow,
-				Callback = function()
-					T.Edit = i
-					T.Selected = nil
-					refreshTeam()
-				end,
-			})
-		end
-		ui.Chips = makeFrame(ui.Top, "Chips", {
-			AnchorPoint = Vector2.new(1, 0.5),
-			Position = UDim2.new(1, 0, 0.5, 0),
-			Size = UDim2.fromOffset(0, 48),
-			AutomaticSize = Enum.AutomaticSize.X,
-		})
-		listLayout(ui.Chips, Enum.FillDirection.Horizontal, 10, Enum.HorizontalAlignment.Right, Enum.VerticalAlignment.Center)
-		local powerChip = chip(ui.Chips, "PowerChip", 1)
-		ui.PowerCaption = autoText(powerChip, "Caption", "Team Power", "Heading", 19, MUTED, 1)
-		ui.PowerText = autoText(powerChip, "Value", GL.Swords .. " 0", "Display", 28, POWER_GOLD, 2)
-		local trophyChip = chip(ui.Chips, "TrophyChip", 2)
-		ui.TrophyText = autoText(trophyChip, "Value", GL.Trophy .. " 0", "Display", 28, WHITE, 1)
-		CloudUI.Tooltip(trophyChip, function()
-			local b = battleData()
-			return "Trophies: win duels in the Battle Arena (" .. commas(b.PvPWins or 0) .. " won, " .. commas(b.PvPLosses or 0) .. " lost)"
-		end)
-
-		-- sections (placed by OnLayout: two columns, or one scrolling column on portrait phones)
-		ui.Left = scroller(content, "Left", {})
-		pad(ui.Left, 2, 4, 12, 8)
-		listLayout(ui.Left, Enum.FillDirection.Vertical, 12)
-		ui.Right = makeInset(content, "Right", {})
-		ui.RightScroll = scroller(ui.Right, "PickerScroll", { Position = UDim2.fromOffset(6, 6), Size = UDim2.new(1, -12, 1, -12) })
-		pad(ui.RightScroll, 8, 6, 14, 10)
-		listLayout(ui.RightScroll, Enum.FillDirection.Vertical, 8)
-
-		ui.Slots = makeFrame(ui.Left, "Slots", { Size = UDim2.new(1, 0, 0, 262), LayoutOrder = 1 })
-		ui.SlotGrid = Util.Create("UIGridLayout", {
-			CellSize = UDim2.fromOffset(160, 262),
-			CellPadding = UDim2.fromOffset(CARD_GAP, CARD_GAP),
-			SortOrder = Enum.SortOrder.LayoutOrder,
-			HorizontalAlignment = Enum.HorizontalAlignment.Left,
-			Parent = ui.Slots,
-		})
-		for i = 1, MAX_SLOTS do
-			buildCard(ui, ui.Slots, i)
-		end
-
-		ui.Actions = makeFrame(ui.Left, "Actions", { Size = UDim2.new(1, 0, 0, 52), LayoutOrder = 2 })
-		ui.UseButton = CloudUI.Button({
-			Name = "UseTeam",
-			Text = "Use this team",
-			Size = UDim2.fromOffset(236, 50),
-			Style = "Green",
-			TextSize = 22,
-			Parent = ui.Actions,
-			Callback = function()
-				safe("team select", selectPreset)
-			end,
-		})
-		ui.ActiveLabel = makeText(ui.Actions, "ActiveLabel", G.Star .. " Your battle team", "Title", 24, GOLD, {
-			Size = UDim2.fromOffset(260, 50),
-			TextXAlignment = Enum.TextXAlignment.Left,
-		})
-		ui.ClearButton = CloudUI.Button({
-			Name = "ClearTeam",
-			Text = "Clear",
-			AnchorPoint = Vector2.new(1, 0),
-			Position = UDim2.new(1, 0, 0, 0),
-			Size = UDim2.fromOffset(120, 50),
-			Style = "Red",
-			TextSize = 22,
-			Parent = ui.Actions,
-			Callback = function()
-				safe("team clear", clearPreset)
-			end,
-		})
-		ui.HelpText = makeText(ui.Actions, "Help", "Tap a pet to add it. Tap a slot, then a pet, to swap.", "Body", 18, MUTED, {
-			Position = UDim2.fromOffset(250, 0),
-			Size = UDim2.new(1, -380, 1, 0),
-			TextWrapped = true,
-			TextXAlignment = Enum.TextXAlignment.Left,
-		})
-
-		ui.Row = makeFrame(ui.Left, "SynergyRow", { Size = UDim2.new(1, 0, 0, WHEEL_H), LayoutOrder = 3 })
-		ui.Synergy = makeInset(ui.Row, "Synergy", { Size = UDim2.new(1, -(WHEEL_W + 12), 1, 0) })
-		ui.SynergyList = scroller(ui.Synergy, "List", { Position = UDim2.fromOffset(4, 4), Size = UDim2.new(1, -8, 1, -8) })
-		pad(ui.SynergyList, 10, 6, 12, 8)
-		listLayout(ui.SynergyList, Enum.FillDirection.Vertical, 8)
-		ui.Wheel, ui.WheelNodes = buildWheel(ui.Row)
-		ui.Wheel.AnchorPoint = Vector2.new(1, 0)
-		ui.Wheel.Position = UDim2.new(1, 0, 0, 0)
-
-		-- picker
-		ui.PickerHead = makeFrame(ui.RightScroll, "PickerHead", { Size = UDim2.new(1, 0, 0, 34), LayoutOrder = 1 })
-		makeText(ui.PickerHead, "Title", "Your pets", "Title", 26, WHITE, {
-			Size = UDim2.new(0.5, 0, 1, 0),
-			TextXAlignment = Enum.TextXAlignment.Left,
-		})
-		makeText(ui.PickerHead, "Sort", "Strongest first", "Heading", 18, MUTED, {
-			AnchorPoint = Vector2.new(1, 0),
-			Position = UDim2.new(1, 0, 0, 0),
-			Size = UDim2.new(0.5, 0, 1, 0),
-			TextXAlignment = Enum.TextXAlignment.Right,
-		})
-		ui.Grid = makeFrame(ui.RightScroll, "PickerGrid", {
-			Size = UDim2.new(1, 0, 0, 0),
-			AutomaticSize = Enum.AutomaticSize.Y,
-			LayoutOrder = 2,
-		})
-		ui.GridLayout = Util.Create("UIGridLayout", {
-			CellSize = UDim2.fromOffset(TILE_W, TILE_H),
-			CellPadding = UDim2.fromOffset(10, 10),
-			SortOrder = Enum.SortOrder.LayoutOrder,
-			HorizontalAlignment = Enum.HorizontalAlignment.Center,
-			Parent = ui.Grid,
-		})
-		-- (P5.emptyState, like the Pets page: wrapped text that grows, a button capped at the column's width)
-		ui.Empty = P5.emptyState({
-			Parent = ui.RightScroll,
-			LayoutOrder = 3,
-			Body = "No pets yet! Spin a roulette in the Shop to hatch a battle buddy.",
-			BodySize = 19,
-			ButtonName = "GoShop",
-			ButtonW = 200,
-			ButtonH = 50,
-			Callback = function()
-				safe("team shop", openWindow, "Shop", {})
-			end,
-		}).Frame
-
-		-- viewports of the picker tiles: a few per frame (time budget), Low detail
-		local function fillTiles()
-			if ui.Filling then
-				return
-			end
-			ui.Filling = true
-			task.spawn(function()
-				task.wait()
-				while win.Shown do
-					local more = false
-					local budget = Warm.Budget()
-					for _, key in ipairs(ui.Order) do
-						local tile = ui.Tiles[key]
-						if tile and not ui.Ready[key] then
-							if not Warm.Allows(budget) then
-								more = true
-								break
-							end
-							ui.Ready[key] = true
-							local def = P2.defOfKey(key)
-							if def then
-								local stage = P2.stage(key)
-								local ok, handle = pcall(CloudUI.PetViewport, tile.View, def, UDim2.new(1, 0, 1, 0), {
-									Spin = "sway",
-									Animate = false,
-									Detail = "Low",
-									Evolved = stage >= 1 and stage or nil, -- Phase 5 (3.7)
-									ZIndex = 2,
-								})
-								if ok then
-									tile.Viewport = handle
-									tile.ViewStage = stage
-								end
-							end
-							budget.Count = budget.Count + 1
-						end
-					end
-					if not more then
-						break
-					end
-					task.wait()
-				end
-				ui.Filling = false
-			end)
-		end
-
-		hooks.OnOpen = function(args)
-			settleDrafts()
-			local preset = args and tonumber(args.Preset)
-			if preset and preset >= 1 and preset <= PRESETS then
-				T.Edit = math.floor(preset)
-			else
-				T.Edit = activePreset()
-			end
-			T.Selected = nil
-		end
-
-		hooks.OnLayout = function(w, h, narrow, short, tall)
-			layoutTeam(ui, w, h, narrow, short, tall)
-		end
-
-		hooks.Refresh = function()
-			refreshTeamUi(ui, fillTiles)
-		end
-	end
-
-	-- the Team tab of the (shown) Pets window: refreshed only while it shows (the Pets page has its own refresh)
-	function refreshTeam()
-		local win, hooks = P3.Win, P3.Hooks
-		if win and hooks and hooks.Refresh and win.Shown and win.Tab == "Team" then
-			safe("refresh team", hooks.Refresh)
-		end
-	end
-
-	-- the Team tab came up: refresh it and, once per opening of the window, WindowOpened("Team")
-	function P3.TeamShown(win, hooks, noRefresh)
-		if hooks.Refresh and not noRefresh then
-			safe("refresh team", hooks.Refresh)
-		end
-		if not win.TeamSeen then
-			win.TeamSeen = true
-			MenuController.WindowOpened:Fire("Team")
-		end
-	end
-
-	-- State.Changed: drafts the server confirmed are dropped before the windows refresh
-	P3.Settle = settleDrafts
-	P3.Battle = battleData
-	P3.Refresh = function()
-		refreshTeam()
-	end
-end
-P3.Define()
-
-----------------------------------------------------------------------
 -- Roulette flow: BuyRoulette -> RouletteResult -> scrolling strip -> reveal card
 ----------------------------------------------------------------------
 local function refreshShopWindow()
@@ -8366,13 +5180,13 @@ function beginStage(result)
 		local owned = State.OwnedCount(def.Id)
 		local total = #State.Get().Equipped
 		if equipped > 0 and equipped >= owned then
-			stage.EquipBtn.Text = "Equipped"
+			stage.EquipBtn.Text = "In your team"
 			CloudUI.SetDisabled(stage.EquipBtn, true)
 		elseif total >= Config.Pets.MaxEquipped then
 			stage.EquipBtn.Text = "Team full"
 			CloudUI.SetDisabled(stage.EquipBtn, true)
 		else
-			stage.EquipBtn.Text = "Equip"
+			stage.EquipBtn.Text = "Put in team"
 			CloudUI.SetDisabled(stage.EquipBtn, false)
 		end
 		if stage.AgainBtn and roulette then
@@ -8575,7 +5389,7 @@ function beginStage(result)
 		listLayout(buttons, Enum.FillDirection.Horizontal, 12, L.Buttons[3], Enum.VerticalAlignment.Center)
 		stage.EquipBtn = CloudUI.Button({
 			Name = "Equip",
-			Text = "Equip",
+			Text = "Put in team",
 			Style = "Green",
 			Size = UDim2.fromOffset(172, 58),
 			TextSize = 26,
@@ -8756,8 +5570,8 @@ local function onOpenPanel(panelId, args, fromRemote)
 		if careId ~= "Feed" and careId ~= "Garden" then
 			return
 		end
-		-- (no CareController in this build: the Pets panel on that pet)
-		args = { Tab = "Pets", Key = args.Key }
+		-- (no CareController in this build: the Pets window on that pet)
+		args = { Key = args.Key }
 		key = "pets"
 	end
 	if key == "shop" then
@@ -8765,12 +5579,8 @@ local function onOpenPanel(panelId, args, fromRemote)
 			return
 		end
 		openWindow("Shop", args)
-	elseif key == "inventory" then
-		openWindow("Inventory", args)
-	elseif key == "items" then
-		openWindow("Inventory", { Tab = "Pets" }) -- HUD cleanup: the Items tab is gone
-	elseif key == "pets" then
-		openWindow("Inventory", { Tab = "Pets", Action = args.Action, Key = args.Key })
+	elseif key == "pets" or key == "inventory" or key == "items" or key == "team" or key == "teams" then
+		P5.openPets(args) -- team balance: the one Pets window (the Team and Items tabs are gone)
 	elseif key == "home" or key == "spot" then
 		if inMatch() then
 			return
@@ -8781,9 +5591,6 @@ local function onOpenPanel(panelId, args, fromRemote)
 		openIndex(type(groupId) == "string" and groupId or nil)
 	elseif key == "stats" then
 		openWindow("Stats", args)
-	elseif key == "team" or key == "teams" then
-		-- HUD cleanup: the battle team is the Pets window's Team tab
-		openWindow("Inventory", { Tab = "Team", Preset = args.Preset })
 	elseif key == "settings" then
 		MenuController.OpenSettings() -- HUD cleanup: the pill's gear
 	elseif key == "close" then
@@ -8792,19 +5599,15 @@ local function onOpenPanel(panelId, args, fromRemote)
 end
 
 local function onStateChanged()
-	-- red dot on the Pets tile when the collection grew while the inventory was closed
+	-- red dot on the Pets tile when the collection grew while the Pets window was closed
 	local _, total = petTotals()
-	local inventory = windows.Inventory
-	if Badge.LastPetTotal ~= nil and total > Badge.LastPetTotal and not (inventory and inventory.Shown) then
+	if Badge.LastPetTotal ~= nil and total > Badge.LastPetTotal and not P5.petsOpen() then
 		if Entries.Pets then
 			Entries.Pets.SetBadge(true)
 		end
 	end
 	Badge.LastPetTotal = total
 	refreshIndexBadge()
-	if P3.Settle then
-		safe("team settle", P3.Settle)
-	end
 
 	for _, win in pairs(windows) do
 		refreshWindow(win)
@@ -8880,7 +5683,8 @@ local function connectIndex()
 			if openId then
 				closeWindow(openId, true)
 			end
-					closeOdds()
+			P5.closePets()
+			closeOdds()
 			updateMenuActive()
 			MenuController.WindowOpened:Fire("Index")
 		end)
@@ -8923,7 +5727,7 @@ function MenuController.OpenFeed(key)
 	end
 end
 
--- HUD cleanup: the Pets window on its Team tab, showing `preset` (1-3; nil = the active one). TeamPick's strip Edit.
+-- The Pets window showing `preset` (1-3; nil = the active one). TeamPick's strip Edit.
 function MenuController.OpenTeam(preset)
 	if initialized then
 		onOpenPanel("Team", { Preset = preset })
@@ -8940,7 +5744,7 @@ end
 -- true while a window, the odds popup or the roulette stage covers the screen (the tutorial folds its card and
 -- hides its menu pointer meanwhile)
 function MenuController.IsOpen()
-	return openId ~= nil or Odds.Gui ~= nil or Spin.Stage ~= nil
+	return openId ~= nil or Odds.Gui ~= nil or Spin.Stage ~= nil or P5.petsOpen()
 end
 
 -- Phase 3 (BattleController): hides the menu tiles while the battle team cards use the left edge of a landscape
@@ -8952,7 +5756,23 @@ function MenuController.SetColumnHidden(hidden)
 		P5.tileVisibility(entry)
 	end
 	if U.Tab then
-		U.Tab.Visible = not U.ColumnHidden
+		U.Tab.Visible = not U.ColumnHidden and not U.Covered
+	end
+end
+
+-- Team balance: PetsController's window reaches over the tiles from screen x `windowLeft` (a phone, a tablet); nil = it
+-- closed. The tiles step aside like SetColumnHidden's (the column frame keeps its place).
+function MenuController.SetColumnCovered(windowLeft)
+	local covered = type(windowLeft) == "number" and windowLeft < columnRight()
+	if covered == (U.Covered == true) then
+		return
+	end
+	U.Covered = covered
+	for _, entry in pairs(Entries) do
+		P5.tileVisibility(entry)
+	end
+	if U.Tab then
+		U.Tab.Visible = not U.ColumnHidden and not U.Covered
 	end
 end
 
@@ -8992,7 +5812,6 @@ function MenuController.Init()
 
 	buildHint()
 	buildColumn()
-	createWindow({ Id = "Inventory", Title = "Pets", Category = "Pets", Build = buildInventory, Tall = true })
 	createWindow({ Id = "Shop", Title = "Cloud Shop", Category = "Shop", Build = buildShop, Tall = true })
 	createWindow({ Id = "Stats", Title = "Stats", Category = "Stats", Build = buildStats, Tall = true })
 	createWindow({ Id = "Home", Title = "My Home", Category = "Home", Build = buildHome, Tall = true })
@@ -9042,6 +5861,21 @@ function MenuController.Init()
 	end
 
 	safe("connect index", connectIndex)
+	-- the Pets window (PetsController) opened: one window at a time; its tile glows while it is up
+	MenuController.WindowOpened:Connect(function(id)
+		if id == "Pets" then
+			closeOdds()
+			if openId then
+				closeWindow(openId, true)
+			end
+			closeIndex()
+			updateMenuActive()
+		end
+	end)
+	local pets = P5.pets()
+	if pets then
+		pets.Closed:Connect(updateMenuActive)
+	end
 	task.spawn(connectRemotes)
 	P5.watchSheets()
 end

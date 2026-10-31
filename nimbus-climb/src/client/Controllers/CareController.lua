@@ -19,10 +19,12 @@
 --               window closes, PetController.PlayEvolution parks the follower of that key, EvolutionFx plays on two
 --               fresh PetBuilder clones 5.5 studs in front of the player (with confetti), then the evolved clone
 --               flies home as the follower (release(position)) and goes away
+--       args.ReturnTo (team balance, Feed / Garden / Train): the Pets window's own Open args; closing this window goes back
+--               to it (same pet), unless another window or a match took over
 --   CareController.Close()               closes the window and any confirm
 --   CareController.IsOpen() -> true while a care window or a confirm is up
 --   Extras: CareController.Mode() -> "Feed" | "Garden" | "Train" | nil, CareController.ConfirmEvolve(key) (the EVOLVE
---           confirm, used by the Pets panel too), CareController.FeedPlan(key, count) -> { Count, Price, Xp, Free,
+--           confirm, used by the Pets window too), CareController.FeedPlan(key, count) -> { Count, Price, Xp, Free,
 --           Food, Levels } (what a request would do; the server decides), CareController.Evolving() -> plays running,
 --           CareController.Opened / Closed (Util.Signal; Opened fires the mode)
 --
@@ -2187,7 +2189,14 @@ function H.evoFolder()
 	return f
 end
 
+-- another window, a match or the evolution takes over: closing the care window does not go back to the Pets window
+function H.dropReturn()
+	S.ReturnTo = nil
+	S.BackTo = nil
+end
+
 function H.closeAll()
+	H.dropReturn()
 	CareController.Close()
 	for _, name in ipairs({ "MenuController", "IndexController", "FusionController" }) do
 		local mod = H.controller(name)
@@ -2438,6 +2447,8 @@ function CareController.Open(panelId, args)
 	local wasOpen = S.Open
 	if not wasOpen then
 		H.closeOthers()
+		S.BackTo = nil
+		S.ReturnTo = type(args.ReturnTo) == "table" and args.ReturnTo or nil
 	end
 	if mode ~= S.Mode then
 		-- a fresh list order for the new window (the viewports are kept per row)
@@ -2484,6 +2495,8 @@ function CareController.Close()
 	S.Open = false
 	S.Token = S.Token + 1
 	local mine = S.Token
+	local back = S.ReturnTo
+	S.ReturnTo = nil
 	H.syncBack()
 	if U.Pop then
 		H.tween(U.Pop, 0.12, { Scale = 0.9 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
@@ -2494,6 +2507,19 @@ function CareController.Close()
 		end
 	end)
 	CareController.Closed:Fire()
+	if back then
+		-- came from the Pets window: back to it next, unless what closed this one takes over (H.dropReturn)
+		S.BackTo = back
+		task.defer(function()
+			if S.BackTo == back then
+				S.BackTo = nil
+				local pets = H.controller("PetsController")
+				if pets and not H.inMatch() then
+					safe("back to pets", pets.Open, back)
+				end
+			end
+		end)
+	end
 end
 
 ----------------------------------------------------------------------
@@ -2531,6 +2557,7 @@ function H.connectOthers()
 		local signal = mod and mod[signalName]
 		if type(signal) == "table" and type(signal.Connect) == "function" then
 			signal:Connect(function()
+				H.dropReturn()
 				CareController.Close()
 			end)
 		end
@@ -2538,6 +2565,9 @@ function H.connectOthers()
 	hook("MenuController", "WindowOpened")
 	hook("IndexController", "Opened")
 	hook("FusionController", "Opened")
+	hook("ArenaController", "Opened")
+	hook("DungeonController", "Opened")
+	hook("ObbyController", "Opened")
 end
 
 function CareController.Init()
@@ -2575,6 +2605,7 @@ function CareController.Init()
 	if LocalPlayer then
 		LocalPlayer:GetAttributeChangedSignal(Config.Attr.InMatch):Connect(function()
 			if H.inMatch() then
+				H.dropReturn()
 				CareController.Close()
 			end
 		end)
