@@ -1347,8 +1347,7 @@ function P2.stage(key)
 	return math.max(0, math.floor(tonumber(P2.growth(key).Evo) or 0))
 end
 
--- Phase 5 (m17): BattleCatalog.UnitPower of a pet copy (a Support pet with its Support role multipliers), or nil
-function P5.battlePower(key, def, level)
+function P5.battleCatalog()
 	if P5.Battle == nil then
 		P5.Battle = false
 		local module = Shared:FindFirstChild("BattleCatalog")
@@ -1359,7 +1358,26 @@ function P5.battlePower(key, def, level)
 			P5.Battle = mod
 		end
 	end
-	if not P5.Battle then
+	return P5.Battle or nil
+end
+
+-- the detail's numbers: the garden's (P2.statsAt) with Power and Health from the battle path (BattleCatalog.BattleStatsOf, the
+-- copy's tier and stored stage), so one window never shows two answers; nil like P2.statsAt
+function P2.battleStatsAt(def, key, level)
+	local stats = P2.statsAt(def, level)
+	local battle = P5.battleCatalog()
+	if type(stats) == "table" and battle and type(battle.BattleStatsOf) == "function" then
+		local ok, numbers = pcall(battle.BattleStatsOf, def, level, P2.tierOf(key, def), P2.stage(key))
+		if ok and type(numbers) == "table" then
+			stats.Power, stats.Health = numbers.Power, numbers.Health
+		end
+	end
+	return stats
+end
+
+-- Phase 5 (m17): BattleCatalog.UnitPower of a pet copy (a Support pet with its Support role multipliers), or nil
+function P5.battlePower(key, def, level)
+	if not P5.battleCatalog() then
 		return nil
 	end
 	local growth = P2.growth(key)
@@ -3415,7 +3433,7 @@ do
 
 		-- stat chips at the pet's level: the role's own stats bright, the others dimmer
 		local function setStats(def, level, petKey)
-			local stats = P2.statsAt(def, level)
+			local stats = P2.battleStatsAt(def, petKey, level)
 			local coins = P2.coinsPerSecond(petKey, def, P2.homeData())
 			local key = tostring(petKey) .. "|" .. level .. "|" .. P2.formatRate(coins)
 			if pets.StatKey == key then

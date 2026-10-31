@@ -1,8 +1,9 @@
 -- smoke_p5_battlecore.lua: Phase 5 battle core (ARCHITECTURE_V3.md "Phase 5 build contract" 4.2 / 4.3 / 5.1, battlecore:
 -- shared/BattleCatalog.lua + shared/BattleSim.lua + tools/sim_battle.lua), loaded by tools/smoke.py in the SERVER world
 -- as pure content scenarios (no boot needed). Replaces smoke_p3_battlecore.lua (the Trial / RETREAT engine is gone).
---   p5stats_formula    PetCatalog.LevelFactor (to 1e-9) is the ONE level source: UnitStats with Evo = LevelFactor(level,
---                      stage) / LevelFactor(level), a stage above MaxEvolution clamped, hybrids (dual-element defs), no evoMult
+--   p5stats_formula    PetCatalog.LevelFactor (to 1e-9) is the garden's level source; UnitStats reads the battle path: Evo =
+--                      BattleLevelFactor(level, stage) / BattleLevelFactor(level, 0), a stage above MaxEvolution clamped, hybrids
+--                      (dual-element defs), no evoMult
 --   p5roles            Roles Support x2.6 / x1.5 in UnitStats only, RoleOf, the 15 Support kinds (BuffOf), Rally / Haste
 --                      specials, SpecialKinds (9), Combat pets bit-identical with and without a stage-0 extras table, Validate
 --   p5sim_fighter      the fighter kit: the AUTO-ATTACK (reach = range + radius + AttackSlack, Interval cadence, never moves
@@ -137,7 +138,7 @@ end
 
 -- a tanky NPC that survives a long test (a level-30 bear, never casts)
 local function tankNpc(owner)
-	return team(owner or "npc", 2, { pet("biscuit_bear", 30, nil, { NoSpecial = true }) }, { Npc = true, Specials = false })
+	return team(owner or "npc", 2, { pet("biscuit_bear", 18, nil, { NoSpecial = true }) }, { Npc = true, Specials = false })
 end
 
 -- a player team of a fighter + two helpers near the floor centre; returns battle, team record, fighter unit
@@ -202,11 +203,11 @@ S.p5stats_formula = guarded("p5stats_formula", function()
 	end
 	T.check(okTable, "PetCatalog.LevelFactor(level, stage) = 1 + 0.1 x (level - 1) x EvolutionBonus[stage] to 1e-9 (stage nil = 0)")
 	T.check(near(PC.LevelFactor(20, 1), 3.85, 1e-9) and near(PC.LevelFactor(50, 2), 10.1875, 1e-9) and near(PC.LevelFactor(100, 2), 19.5625, 1e-9), "L20 evo1 3.85, L50 evo2 10.1875, L100 evo2 19.5625")
-	-- UnitStats with a stage scales exactly by the level formula ratio (no evoMult anywhere)
+	-- UnitStats with a stage scales exactly by the battle level curve's ratio (no evoMult anywhere)
 	local base = BC.UnitStats("aurora_fox", 50)
 	local evo2 = BC.UnitStats("aurora_fox", 50, nil, { Evo = 2 })
-	local ratio = PC.LevelFactor(50, 2) / PC.LevelFactor(50, 0)
-	T.check(base and evo2 and near(evo2.MaxHp / base.MaxHp, ratio, 1e-9) and near(evo2.Hit / base.Hit, ratio, 1e-9) and near(evo2.SpecialPower / base.SpecialPower, ratio, 1e-9), "UnitStats Evo 2 at L50 = the stage-0 numbers x LevelFactor(50, 2) / LevelFactor(50) for HP, hit and the special", evo2 and fmt("hp x%.4f hit x%.4f", evo2.MaxHp / base.MaxHp, evo2.Hit / base.Hit))
+	local ratio = BC.BattleLevelFactor(50, 2) / BC.BattleLevelFactor(50, 0)
+	T.check(base and evo2 and near(evo2.MaxHp / base.MaxHp, ratio, 1e-9) and near(evo2.Hit / base.Hit, ratio, 1e-9) and near(evo2.SpecialPower / base.SpecialPower, ratio, 1e-9), "UnitStats Evo 2 at L50 = the stage-0 numbers x BattleLevelFactor(50, 2) / BattleLevelFactor(50, 0) for HP, hit and the special", evo2 and fmt("hp x%.4f hit x%.4f", evo2.MaxHp / base.MaxHp, evo2.Hit / base.Hit))
 	T.check(evo2.Evo == 2 and base.Evo == 0 and near(evo2.Interval, base.Interval, 1e-9), "the stage never changes the interval; Evo is echoed")
 	-- a stage above MaxEvolution is clamped (a Common evolves once)
 	local common2 = BC.UnitStats("mallow_kitten", 50, nil, { Evo = 2 })
@@ -214,7 +215,7 @@ S.p5stats_formula = guarded("p5stats_formula", function()
 	T.check(common2.Evo == 1 and near(common2.MaxHp, common1.MaxHp, 1e-9), "a Common at stored stage 2 counts as stage 1 (PetCatalog.EvolutionStage)")
 	-- the level alone never evolves a pet
 	local l50 = BC.UnitStats("mallow_kitten", 50)
-	T.check(l50.Evo == 0 and near(l50.MaxHp, BC.UnitStats("mallow_kitten", 1).MaxHp * PC.LevelFactor(50, 0), 1e-9), "level 50 without a stored stage = the plain level formula")
+	T.check(l50.Evo == 0 and near(l50.MaxHp, BC.UnitStats("mallow_kitten", 1).MaxHp * BC.BattleLevelFactor(50, 0), 1e-9), "level 50 without a stored stage = the plain battle level curve")
 	-- entries carry the stage themselves
 	local viaEntry = BC.UnitStats({ Key = "aurora_fox", Level = 50, Evo = 2 })
 	T.check(near(viaEntry.MaxHp, evo2.MaxHp, 1e-9), "an entry table's Evo field is read like extras.Evo")
@@ -293,7 +294,7 @@ S.p5roles = guarded("p5roles", function()
 			if a.MaxHp ~= b2.MaxHp or a.Hit ~= b2.Hit or a.Interval ~= b2.Interval or a.SpecialPower ~= b2.SpecialPower then
 				okSame = false
 			end
-			local stats = PC.GetStats(def, 7)
+			local stats = BC.BattleStatsOf(def, 7)
 			if not near(a.Hit, stats.Power * BC.Damage.DamageScale * a.Profile.DamageMult, 1e-9) or not near(a.MaxHp, stats.Health * BC.Damage.HpScale, 1e-9) then
 				okSame = false
 			end

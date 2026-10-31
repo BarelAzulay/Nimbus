@@ -4,7 +4,7 @@
 --                   follow Ring.LevelAnchors (linear between anchors, floored, + BossLevelBump on BossEvery rounds, held
 --                   at MaxPetLevel) / TierFrom / Helpers; ChampionTeam(round, seed) is 1..3 pets with no Boss / Handicap
 --                   / Boost, levels 1..100, never EventOnly; RingPower never drops; a champion's MaxHp is PetCatalog.
---                   GetStats x role x HpScale at the stage its level allows; Champion.Boss is a flag only; the old
+--                   BattleStatsOf x role x HpScale at the stage its level allows; Champion.Boss is a flag only; the old
 --                   target solver knobs are gone; Validate passes
 --   ringnh_sim_hp   BattleSim: a player entry's HpFraction sets its starting HP (>= 1 HP, junk / > 1 = full);
 --                   Result().Units lists every player team's pets { Key, Hp, MaxHp, Alive } (no NPC teams); 0 HP after
@@ -167,15 +167,15 @@ S.ringnh_catalog = guarded("ringnh_catalog", function()
 	local c1 = BC.ChampionTeam(1, 5).Pets[1]
 	local d1 = PC.Get(c1.PetId)
 	T.check(c1.Level == 1 and c1.Tier == "Normal" and d1 and d1.Rarity == "Common" and c1.Crowned == true and c1.MeterStart == BC.Damage.LateMeterStart, "ring no-heal: round 1 is a plain level-1 Common (crowned, MeterStart = LateMeterStart)", fmt("%s L%s %s", tostring(c1.PetId), tostring(c1.Level), tostring(d1 and d1.Rarity)))
-	-- the player formula: a champion's stats are PetCatalog.GetStats x role x HpScale at its level / tier / stage
+	-- the player formula: a champion's stats are BattleCatalog.BattleStatsOf x role x HpScale at its level / tier / stage
 	local spec40 = BC.ChampionTeam(40, 2)
 	local e40 = spec40.Pets[1]
 	local def40 = PC.Get(e40.PetId)
 	local us = BC.UnitStats(e40)
 	local stage = stageFor(PC, def40, e40.Level)
-	local want = PC.GetStats(def40, e40.Level, e40.Tier, stage)
+	local want = BC.BattleStatsOf(def40, e40.Level, e40.Tier, stage)
 	T.check(e40.Level >= BC.ChampionLevel(40) and e40.Tier == BC.ChampionTier(40), "ring no-heal: round 40's champion is at least at the curve level, at the round's tier", fmt("L%d (curve %d) %s", e40.Level, BC.ChampionLevel(40), tostring(e40.Tier)))
-	T.check(us and abs(us.MaxHp - want.Health * BC.Roles[BC.RoleOf(def40)].Health * BC.Damage.HpScale) < 1e-6, "ring no-heal: a champion's MaxHp is the PLAYER formula (PetCatalog.GetStats x role x HpScale, evolved as its level allows)", us and fmt("%.3f vs %.3f", us.MaxHp, want.Health * BC.Roles[BC.RoleOf(def40)].Health * BC.Damage.HpScale) or "no stats")
+	T.check(us and abs(us.MaxHp - want.Health * BC.Roles[BC.RoleOf(def40)].Health * BC.Damage.HpScale) < 1e-6, "ring no-heal: a champion's MaxHp is the PLAYER formula (BattleStatsOf x role x HpScale, evolved as its level allows)", us and fmt("%.3f vs %.3f", us.MaxHp, want.Health * BC.Roles[BC.RoleOf(def40)].Health * BC.Damage.HpScale) or "no stats")
 	T.check(e40.Evo == stage, "ring no-heal: ...and its Evo is the stage its level allows", fmt("evo %s, stage %d", tostring(e40.Evo), stage))
 	-- same level = same strength: the champion unit and a player unit of the same pet / level / tier / stage
 	local BS = req("shared/BattleSim")

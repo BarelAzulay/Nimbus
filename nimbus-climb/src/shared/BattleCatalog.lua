@@ -10,8 +10,9 @@
 -- the dungeon ladder (floor 1 for any single level-1 pet, S10 >= floor 10). Change a number -> re-run the sim; the
 -- smoke scenarios (tools/smoke_p5_battlecore.lua) check the basics.
 --
--- Stat sources (never duplicated here): PetCatalog.GetStats(def, level, tier, stage) scales Power / Health by rarity,
--- LevelFactor(level, stage) (the ONE level formula: +10% per level x the evolution bonus 1 / 1.5 / 1.875) and tier.
+-- Stat sources: BattleStatsOf(subject, level, tier, stage), the battle-only path (2026-10-31: level beats rarity), scales
+-- Power / Health by BattleStats.RarityScale, BattleLevelFactor(level, stage) and tier. PetCatalog.GetStats stays the garden's
+-- (coins, Speed and the other non-battle numbers) and is never patched.
 -- The Speed stat is the BASE value (species tempo rating): it sets the attack tempo and the NPC move speed. Damage =
 -- Power x Roles.Power x Damage.DamageScale x profile DamageMult x element x (1 +- Variance) x synergy; HP = Health x
 -- Roles.Health x Damage.HpScale.
@@ -43,10 +44,14 @@
 --   BattleCatalog.Buffs[kind]                                      { Name, Seconds, Value, Text, Cooldown, Kind, Effect } for Heal / Shield / Rally / Haste (Support,
 --                                                                  cooldown 12) and Water / Flame / Frost / Nature / Earth / Storm / Celestial / Shadow (element, 15)
 --   BattleCatalog.BuffOf(def|petId|key) -> kind, buff             a helper's button: its Support kind, else its FIRST element's buff
+--   BattleCatalog.BattleStats                                     the ONLY tunables of the battle path: RarityScale { Common 1 .. Secret 5 }, Level { Linear, Quadratic, Cubic }
+--   BattleCatalog.BattleLevelFactor(level, stage) -> n            1 + (Linear x + Quadratic x^2 + Cubic x^3) x EvolutionBonus[stage], x = level - 1 (level clamped 1..MaxPetLevel, junk stage 0)
+--   BattleCatalog.BattleStatsOf(subject, level, tier, stage)      { Power, Health, Speed } | nil: base x RarityScale x BattleLevelFactor x tier (Speed unscaled, no Income);
+--                                                                  subject = def | pet id | key, tier nil = its own, stage = the STORED stage
 --   BattleCatalog.UnitStats(subject, level, tier, extras)         { MaxHp, Hit, Interval, Dps, MoveSpeed, Walk, Run, Range, Ranged, Radius, SpecialPower,
 --                                                                  SpecialFactor, Profile, Species, Elements, Scale, Defense, MeterRate, SpecialBoost, Evo, Boost,
 --                                                                  Train, Role, Level, Tier } | nil; extras = { Evo, Train, Boost } (or the entry itself);
---                                                                  stats = PetCatalog.GetStats(def, level, tier, Evo) x Roles (no evoMult: the level formula carries it)
+--                                                                  stats = BattleStatsOf(def, level, tier, Evo) x Roles (no evoMult: the level formula carries it)
 --   BattleCatalog.UnitPower(subject, level, tier, extras) -> n   sqrt(DPS x HP / (1 - Defense)) x PowerScale (a Common level-1 fighter ~ 10)
 --   BattleCatalog.TeamPower(list) -> n                            B5: KitFactor x UnitPower(fighter = list[1]) + HelperWeight x (UnitPower(h2) + UnitPower(h3)),
 --                                                                  synergy included (a list of 1 is the fighter alone)
@@ -188,7 +193,7 @@ end
 -- The damage formula constants
 ----------------------------------------------------------------------
 BattleCatalog.Damage = {
-	HpScale = 2.6, -- MaxHp = Health (PetCatalog.GetStats x Roles.Health) x HpScale
+	HpScale = 2.6, -- MaxHp = Health (BattleStatsOf x Roles.Health) x HpScale
 	DamageScale = 0.6, -- hit = Power x Roles.Power x DamageScale x DamageMult x element x variance x synergy
 	Variance = 0.2, -- every hit rolls x(1 - V .. 1 + V)
 	Crit = { Chance = 0.1, Mult = 1.5 }, -- plain pet attacks (never specials, bosses or zones) crit; Hit events carry crit = true
@@ -447,6 +452,49 @@ function BattleCatalog.StatsOf(entry)
 	return def, level, tier
 end
 
+----------------------------------------------------------------------
+-- The battle-only stat path (spec 2026-10-31 s.5): a level means more than a rarity, on both sides of every battle. Player pets,
+-- champions, dungeon enemies, bosses and duels all read it through UnitStats. Garden income, coins, speed, feeding and
+-- training prices keep PetCatalog.GetStats (Config.PetStats.RarityScale x LevelFactor).
+----------------------------------------------------------------------
+BattleCatalog.BattleStats = {
+	RarityScale = { Common = 1, Uncommon = 1.25, Rare = 1.6, Epic = 2.1, Legendary = 2.8, Mythic = 3.7, Secret = 5 },
+	Level = { Linear = 0.12, Quadratic = 0.0035, Cubic = 0.0002 },
+}
+
+-- 1 + (Linear x + Quadratic x^2 + Cubic x^3) x the evolution bonus, x = level - 1. Level: a whole number in 1..MaxPetLevel()
+-- (junk counts as 1); stage: junk / nil counts as 0.
+function BattleCatalog.BattleLevelFactor(level, stage)
+	local pc = petCatalog()
+	local lv = tonumber(level)
+	if not finite(lv) or lv < 1 then
+		lv = 1
+	end
+	lv = floor(lv)
+	local bonus = 1
+	if pc and pc.MaxPetLevel then
+		lv = min(lv, pc.MaxPetLevel())
+		bonus = pc.EvolutionBonusOf(stage)
+	end
+	local x = lv - 1
+	local curve = BattleCatalog.BattleStats.Level
+	return 1 + (curve.Linear * x + curve.Quadratic * x ^ 2 + curve.Cubic * x ^ 3) * bonus
+end
+
+-- a pet's battle numbers: { Power, Health, Speed } (no Income) at a level, tier and STORED evolution stage, or nil for an
+-- unknown pet. tier nil = the key's / def's own tier.
+function BattleCatalog.BattleStatsOf(subject, level, tier, stage)
+	local def = BattleCatalog.StatsOf(subject)
+	local pc = petCatalog()
+	if not def or type(def.Stats) ~= "table" or not pc then
+		return nil
+	end
+	local mult = pc.TierMultiplier(tier == nil and def or tier)
+	local cleanStage = stage ~= nil and pc.EvolutionStage(def, level, stage) or 0
+	local factor = num(BattleCatalog.BattleStats.RarityScale[def.Rarity], 1) * BattleCatalog.BattleLevelFactor(level, cleanStage) * mult
+	return { Power = num(def.Stats.Power, 0) * factor, Health = num(def.Stats.Health, 0) * factor, Speed = def.Stats.Speed }
+end
+
 -- "Combat" | "Support" of a def / id / key / entry (Support = PetCatalog Role "Economy"); unknown -> "Combat"
 function BattleCatalog.RoleOf(subject)
 	local def = BattleCatalog.StatsOf(subject)
@@ -572,7 +620,7 @@ function P4.extras(def, level, subject, extras)
 end
 
 -- MaxHp, average hit, interval, DPS ... of one pet copy at a level, tier and evolution stage (+ training, the ring
--- Boost, the Role multipliers). The level formula (PetCatalog.LevelFactor x the evolution bonus) is the only level /
+-- Boost, the Role multipliers). The battle level curve (BattleLevelFactor x the evolution bonus) is the only level /
 -- evolution source: no evoMult here.
 function BattleCatalog.UnitStats(subject, level, tier, extras)
 	local def, entryLevel, entryTier = BattleCatalog.StatsOf(subject)
@@ -597,8 +645,8 @@ function BattleCatalog.UnitStats(subject, level, tier, extras)
 	end
 	local pc = petCatalog()
 	local stats = nil
-	if pc and pc.GetStats then
-		local ok, result = pcall(pc.GetStats, def, level, tier, evo > 0 and evo or nil)
+	do
+		local ok, result = pcall(BattleCatalog.BattleStatsOf, def, level, tier, evo > 0 and evo or nil)
 		if ok then
 			stats = result
 		end
@@ -881,7 +929,7 @@ end
 ----------------------------------------------------------------------
 -- The Champion Ring (Phase 4 3.8, kept; HUD cleanup 2026-10-30, spec decision 5: the no-heal climb). The climber's pets
 -- keep their HP from round to round and a fainted pet sits out the run (BattleService RingRun). Champions are built
--- with the PLAYER pet formula (PetCatalog.GetStats through UnitStats: level, rarity, tier, the evolution stage the level
+-- with the PLAYER pet formula (BattleStatsOf through UnitStats: level, rarity, tier, the evolution stage the level
 -- allows, training ranks) with no Boss / Handicap / Boost, so a level means the same strength on both sides. The round
 -- sets the level (LevelAnchors: linear between the anchors, floored, + BossLevelBump on every BossEvery-th round,
 -- capped at PetCatalog.MaxPetLevel()), the tier (TierFrom), the number of champions (Helpers: 1 -> 2 -> 3, all on the

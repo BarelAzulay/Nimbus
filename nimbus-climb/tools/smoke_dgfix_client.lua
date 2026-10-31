@@ -784,7 +784,7 @@ S.client_dgfix_prompt = guarded("client_dgfix_prompt", function()
 		local BCat = H.moduleAt("shared", "BattleCatalog")
 		local spec = BCat.ChampionTeam(1, 7)
 		local ch = spec.Champion or {}
-		local rd = H.driver({ Mode = "Ring", Round = 1, Seed = 1, TimeLimit = 90, Teams = { { Owner = LocalPlayer.UserId, Side = 1, Pets = H.team(3, 0, 30) }, spec },
+		local rd = H.driver({ Mode = "Ring", Round = 1, Seed = 1, TimeLimit = 90, Teams = { { Owner = LocalPlayer.UserId, Side = 1, Pets = H.team(3, 0, 15) }, spec },
 			Ring = { Round = 1, Best = 0, Start = 1, Champion = { PetId = ch.PetId, Level = ch.Level, Tier = ch.Tier, Name = ch.Name } } })
 		rd:start()
 		rd:run(0.5, 30)

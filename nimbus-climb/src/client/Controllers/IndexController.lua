@@ -67,6 +67,7 @@ local function safeRequire(name)
 end
 
 local PetCatalog = safeRequire("PetCatalog") or { Pets = {}, Get = function() return nil end }
+local BattleCatalog = safeRequire("BattleCatalog")
 
 local IndexController = {}
 IndexController.Opened = Util.Signal()
@@ -486,7 +487,19 @@ local function matchupText(element)
 	return table.concat(parts, "   " .. "/" .. "   ")
 end
 
--- The highest base stat of the catalog per key at level 1 (bar lengths are relative to it).
+-- Power and Health are battle numbers (BattleCatalog.BattleStatsOf, so one window never shows two answers); Coins and Speed
+-- stay the garden's. Writes into `stats`, a fresh table from PetCatalog.GetStats / StatsOf.
+local function withBattleStats(stats, subject, level)
+	if type(stats) == "table" and BattleCatalog and type(BattleCatalog.BattleStatsOf) == "function" then
+		local ok, battle = pcall(BattleCatalog.BattleStatsOf, subject, level)
+		if ok and type(battle) == "table" then
+			stats.Power, stats.Health = battle.Power, battle.Health
+		end
+	end
+	return stats
+end
+
+-- The highest shown stat of the catalog per key at level 1 (bar lengths are relative to it).
 local function statMax()
 	if S.StatMax then
 		return S.StatMax
@@ -500,6 +513,7 @@ local function statMax()
 		for _, def in ipairs(PetCatalog.Pets or {}) do
 			local ok, stats = pcall(PetCatalog.GetStats, def.Id, 1)
 			if ok and type(stats) == "table" then
+				withBattleStats(stats, def.Id, 1)
 				for _, key in ipairs(keys) do
 					local v = stats[key]
 					if type(v) == "number" and v > out[key] then
@@ -1710,14 +1724,15 @@ function renderDetail()
 	local stats = nil
 	if discovered and fused and type(PetCatalog.StatsOf) == "function" then
 		-- a fused copy: its stats at its own level x its tier (a hybrid's merged stats)
-		local ok, result = pcall(PetCatalog.StatsOf, def, petLevelOf(def.Id))
+		local level = petLevelOf(def.Id)
+		local ok, result = pcall(PetCatalog.StatsOf, def, level)
 		if ok and type(result) == "table" then
-			stats = result
+			stats = withBattleStats(result, def, level)
 		end
 	elseif discovered and type(PetCatalog.GetStats) == "function" then
 		local ok, result = pcall(PetCatalog.GetStats, def.Id, 1)
 		if ok and type(result) == "table" then
-			stats = result
+			stats = withBattleStats(result, def.Id, 1)
 		end
 	end
 	local maxes = statMax()

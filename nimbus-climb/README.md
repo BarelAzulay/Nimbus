@@ -824,6 +824,10 @@ character moves at your fighter's battle speed, so what looks in reach IS in rea
 battle: a knocked-out pet just sits out until the fight is over. All the numbers below live in
 `src/shared/BattleCatalog.lua`, balanced with the battle simulation `tools/sim_battle.lua` (see `tools/README.md`).
 
+In battle a pet's Power and Health use the battle scale: rarity x1 / 1.25 / 1.6 / 2.1 / 2.8 / 3.7 / 5 (Common to Secret)
+and a level curve that grows faster than the garden's, so a L30 Common beats a L1 Secret, while a Secret stays the stronger
+pet at the same level. Coins and everything else outside battles keep their own numbers.
+
 **Safe zones:** pets fight only inside battle zones: the arena floor, the duel rings, the Dungeon rooms and the
 Champion Ring. Everywhere else (the plaza, homes, the shop, the paths, the arena's forum and stands) is a safe zone:
 no fights, no damage, and nobody can pull you into a battle. A side toast tells you when you walk into the Battle

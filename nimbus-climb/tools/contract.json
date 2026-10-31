@@ -541,6 +541,8 @@
     "shared/BattleCatalog": {
       "functions": [
         "UnitStats",
+        "BattleLevelFactor",
+        "BattleStatsOf",
         "UnitPower",
         "TeamPower",
         "ExpectedDps",
@@ -571,6 +573,7 @@
         "ElementAttacks",
         "Buffs",
         "Roles",
+        "BattleStats",
         "LossRules",
         "Dungeon",
         "DungeonFloors"

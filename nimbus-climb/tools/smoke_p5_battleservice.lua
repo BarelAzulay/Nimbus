@@ -2006,7 +2006,7 @@ S.p5svc_shutdown = scenario("p5svc_shutdown", function()
 		playTick(tr1, {})
 	end
 	local pos = ringPortalPos()
-	local climber = newPlayer("ShutC", { "pebble_pup" }, 30)
+	local climber = newPlayer("ShutC", { "pebble_pup" }, 15)
 	claimHome(climber)
 	Mock.Teleport(climber, CFrame.new(pos + Vector3.new(0, 3, 6)))
 	advance(0.1)
