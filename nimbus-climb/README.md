@@ -530,7 +530,8 @@ until then the House pad says *Reach Home Level N*. Every new house raises how f
 Your pets make the money here. Build the free **Pet Garden** (the first pad of every home), then press **E** on an
 empty pet bed (*Put a pet here*) and pick a pet, or open **Pets**, pick a pet and press **Garden**. The Garden
 has **3 places** at first and gets **+1 every Prestige** (up to 12 places). Any pet can work there, Economy or
-Combat. A pet does one job at a time: a garden pet leaves your side and your teams, and pressing **Equip** or picking
+Combat. A pet does one job at a time: a garden pet leaves your side and keeps its team slot (it is back by itself when
+it leaves the garden), and pressing **Equip** or picking
 it for a team asks *This pet is gardening! Take it out of the garden and equip it?* (**Yes** takes it out and equips
 it in one go). In **Pets** its card is dimmed with a green *Gardening* badge. A pet asleep on a bed that a Prestige
 closed (its sign says *Prestige to open*; it earns nothing there) is not busy: equip it or put it in a team and it
@@ -855,8 +856,8 @@ to *Team 3*); **Use this team** picks the one you fight with. Tap a slot, then a
 level and battle power. The screen shows your **team power** (compare it with a Dungeon floor's recommended power),
 the element bonuses your team gets right now and the element wheel. Garden pets are busy gardening (their tile says
 *Gardening*; tap one to take it out of the garden and into the team); a pet in training sits out until it is done
-(its tile says *Training*). Without a team, the game picks the
-pets following you, or else your strongest pets. Pet levels count a lot: feed your pets at the Food Machine, evolve
+(its tile says *Training*). Your team is the pets following you: an empty team cannot enter a battle, the game asks
+you to set one and never picks for you. Pet levels count a lot: feed your pets at the Food Machine, evolve
 them and train their skills at the Training Place.
 
 ### In a battle: one fighter, two helpers
@@ -1075,8 +1076,8 @@ where to start (round 1, or any boss round you have beaten) and press **START**.
   round seconds (at most 9 seconds), and 10 + 23 x the round XP for every pet of your team. A **new record** round
   pays **x3 Cash**, and beating a boss round for the first time pays **100 Cloud Tokens**. The round that ends your
   run pays a third of its XP when your pets really fought.
-- **Who fights:** your battle team; without one, the pets following you; without those, your strongest pets. Pets in
-  training stay home.
+- **Who fights:** your battle team, the pets following you. A pet training or gardening keeps its slot and stays home; if
+  slot 1 is away the next pet fights. An empty or all-busy team is refused and says why.
 - Your record is saved, and the gate's sign shows the best players in the server ("Best in this server").
 
 | Round | Champion | Cash per win (at least) | XP for every team pet |

@@ -567,6 +567,35 @@ end)
 ----------------------------------------------------------------------------------------------------
 -- tb_team_rollout
 ----------------------------------------------------------------------------------------------------
+-- the connections a second DataService module adds to the shared signals (dropped when it goes, see smoke_p5_data.lua)
+local function connectionMarks()
+	local folder = K.remoteFolder and K.remoteFolder()
+	local signals = { game:GetService("Players").PlayerRemoving }
+	for _, name in ipairs({ "RequestProfile", "SettingsSet" }) do
+		local remote = folder and folder:FindFirstChild(name)
+		if remote then
+			signals[#signals + 1] = remote.OnServerEvent
+		end
+	end
+	local marks = {}
+	for _, sig in ipairs(signals) do
+		local conns = type(sig) == "table" and rawget(sig, "_conns") or nil
+		marks[#marks + 1] = { conns = conns, n = conns and #conns or 0 }
+	end
+	return marks
+end
+
+local function dropHooks(marks)
+	for _, m in ipairs(marks) do
+		for i = #(m.conns or {}), m.n + 1, -1 do
+			local conn = m.conns[i]
+			if type(conn) == "table" and conn.Disconnect then
+				conn:Disconnect()
+			end
+		end
+	end
+end
+
 -- the frozen Phase 4 DataService as a second module ("a Phase 4 server"), or nil + reason (the smoke_p5_data.lua shape)
 local function phase4Server()
 	local src = nil
@@ -586,13 +615,16 @@ local function phase4Server()
 	fixture.Name = "DataServicePhase4FixtureTb"
 	fixture.Source = (string.gsub(src, "Config%.Items%.MaxCarry", "5"))
 	fixture.Parent = inst.Parent
+	local marks = connectionMarks()
 	local okReq, P4DS = pcall(require, fixture)
 	if not okReq or type(P4DS) ~= "table" or type(P4DS.Load) ~= "function" then
 		fixture:Destroy()
+		dropHooks(marks)
 		return nil, tostring(P4DS)
 	end
 	return P4DS, function()
 		fixture:Destroy()
+		dropHooks(marks)
 	end
 end
 

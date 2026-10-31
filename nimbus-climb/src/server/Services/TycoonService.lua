@@ -45,11 +45,11 @@
 --   writes LastSeen (X6; the "Welcome back! Your pets made $X ..." toast).
 -- * GardenSet (any role): slot 1..GardenSlots(home), an owned free copy, not a training key (DataService.TrainingKeys),
 --   not a key in the caller's running battle (BattleService.KeysInBattle when it exists); nil / "" clears any slot.
---   Bug batch 2 #18 ("Remote recall"): a Garden pet is BUSY gardening (one job at a time). Placing a pet takes that copy
---   off the player (PetService.Refresh: the copy no longer counts; team balance: a team pet keeps its slot) (DataService
---   prunes a key without a free copy) in the same step; the toast names what it left ("your side", "your team" or
---   both). During an obby match (InMatch) placing the copy that follows the player is refused ("Finish your match
---   first", like Equip / Unequip); a spare copy may still go. Garden earnings are unchanged.
+--   Bug batch 2 #18 ("Remote recall"): a Garden pet is BUSY gardening (one job at a time). Placing a team pet's last free
+--   copy takes it off the followers in the same step (PetService.Refresh; team balance: it keeps its slot and is back by
+--   itself when the place is emptied); the toast says "your side" when it left. During an obby match (InMatch) placing the
+--   copy that follows the player or emptying a team pet's place is refused ("Finish your match first", like Equip /
+--   Unequip); a spare copy may still go. Garden earnings are unchanged.
 -- * GardenRecall (bug batch 2 #18): HomeAction "GardenRecall" { Key, To = "Equip" } or { Key, To = "Team", Preset = 1..3,
 --   Keys = {key | false ...} (the team in slot order, like BattleRequest "TeamSet") }: ONE request that takes one copy of
 --   the pet out of the Garden (its highest place) AND equips it / stores that team. Everything is checked BEFORE the
