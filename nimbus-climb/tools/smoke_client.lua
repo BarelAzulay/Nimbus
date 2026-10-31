@@ -1121,6 +1121,8 @@ S.client_replay = guarded("client_replay", function()
 	local baselineBreakdown = guiBreakdown()
 	local hadBattleHud = gui():FindFirstChild("NimbusBattle") ~= nil
 	local hadEnterGui = gui():FindFirstChild("NimbusDungeonEnter") ~= nil
+	local hadLossGui = gui():FindFirstChild("NimbusLoss") ~= nil
+	local hadPetCard = gui():FindFirstChild("PetCard") ~= nil
 	local maxGui = 0
 	local total = 0
 	local shownResult, shownPanel, shownParty = false, false, false
@@ -1212,6 +1214,22 @@ S.client_replay = guarded("client_replay", function()
 	local enterGui = gui():FindFirstChild("NimbusDungeonEnter")
 	if enterGui and not hadEnterGui and enterGui:IsA("ScreenGui") and enterGui.Enabled == false then
 		idleBattleHud = idleBattleHud + 1 + #enterGui:GetDescendants()
+	end
+	-- (team balance) the loss screen is built by the first lost run and kept, off, for the next one: the same
+	local lossGui = gui():FindFirstChild("NimbusLoss")
+	if lossGui and not hadLossGui and lossGui:IsA("ScreenGui") and lossGui.Enabled == false then
+		idleBattleHud = idleBattleHud + 1 + #lossGui:GetDescendants()
+	end
+	-- (team balance) the floating cards of the 3 team pets the replay ends with: bounded by the team, more than 3 is a leak
+	local petCards, petCardObjects = 0, 0
+	for _, g in ipairs(gui():GetChildren()) do
+		if g.Name == "PetCard" then
+			petCards = petCards + 1
+			petCardObjects = petCardObjects + 1 + #g:GetDescendants()
+		end
+	end
+	if not hadPetCard and petCards <= 3 then
+		idleBattleHud = idleBattleHud + petCardObjects
 	end
 	T.check(#gui():GetDescendants() - idleBattleHud <= baselineGui + 120, "the GUI is tidy after the replay (no growth from toasts, result cards, roulette reveals)", #gui():GetDescendants() .. " objects after (" .. idleBattleHud .. " of them the idle battle HUD), " .. baselineGui .. " before; now: " .. guiBreakdown() .. "; before: " .. baselineBreakdown)
 end)
