@@ -723,6 +723,11 @@ local function clientScenarios()
 		})
 		KC.advance(0.1)
 	end
+	-- (the scenarios that follow must not inherit these pets: their perks change the battle HUD's numbers)
+	function H.unfeed()
+		KC.toClient("ProfileSync", { Tokens = 0, Pets = {}, Equipped = {}, Items = {} })
+		KC.advance(0.1)
+	end
 	function H.start(id, mode)
 		local p = { BattleId = id, Mode = mode, Side = 1, Spectator = false, T = 0, Units = {}, Zone = { CFrame = CFrame.new(0, 400, 0), X = 40, Z = 40 } }
 		if mode == "Ring" then
@@ -883,6 +888,7 @@ local function clientScenarios()
 		H.reset()
 		Mock.SetViewport(old[1], old[2])
 		KC.advance(0.3)
+		H.unfeed()
 		KC.flushErrors("client_tb_loss_screen")
 	end)
 
@@ -968,6 +974,7 @@ local function clientScenarios()
 		H.reset()
 		Mock.SetViewport(old[1], old[2])
 		KC.advance(0.3)
+		H.unfeed()
 		KC.flushErrors("client_tb_loss_fight_again")
 	end)
 
@@ -1018,6 +1025,7 @@ local function clientScenarios()
 		end
 		Mock.SetViewport(old[1], old[2])
 		KC.advance(0.3)
+		H.unfeed()
 		KC.flushErrors("client_tb_loss_phone")
 	end)
 
