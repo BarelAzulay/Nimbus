@@ -836,6 +836,29 @@ local function writeLevel(profile, key, level)
 	end
 end
 
+-- Team balance: the followers are the active team, so a used-up follower's slot passes to the result (or empties when
+-- the result is already in that team). The next Refresh / Sync drops the key from the other presets.
+local function passTeamSlot(profile, usedKey, resultKey)
+	local teams = type(profile.Teams) == "table" and profile.Teams or nil
+	local team = teams and type(teams.Presets) == "table" and teams.Presets[teams.Active] or nil
+	if type(team) ~= "table" then
+		return
+	end
+	local slot, hasResult = nil, false
+	for i, k in ipairs(team) do
+		if k == usedKey then
+			slot = i
+		elseif k == resultKey then
+			hasResult = true
+		end
+	end
+	if slot and resultKey and not hasResult then
+		team[slot] = resultKey
+	elseif slot then
+		table.remove(team, slot)
+	end
+end
+
 -- The new equipped list: freed entries out, the result in the first freed place.
 local function rebuildEquipped(profile, freed, resultKey)
 	local eq = type(profile.Equipped) == "table" and profile.Equipped or {}
@@ -843,6 +866,7 @@ local function rebuildEquipped(profile, freed, resultKey)
 	local placed = false
 	for i, k in ipairs(eq) do
 		if freed.Equipped[i] then
+			passTeamSlot(profile, k, resultKey)
 			if not placed and resultKey then
 				out[#out + 1] = resultKey
 				placed = true

@@ -1187,20 +1187,9 @@ function Care.clearGarden(player, slot)
 	end)
 end
 
--- a training pet leaves the player (every equipped copy) and the Garden by itself
+-- a training pet leaves the followers (it keeps its team slot) and the Garden by itself
 function Care.removePet(player, key)
-	if petService then
-		if type(petService.UnequipKey) == "function" then
-			pcall(petService.UnequipKey, player, key)
-		elseif type(petService.Unequip) == "function" then
-			for _ = 1, 8 do
-				local ok, done = pcall(petService.Unequip, player, key)
-				if not (ok and done == true) then
-					break
-				end
-			end
-		end
-	end
+	Care.refreshInfo(player)
 	local home = getHome(player)
 	if home and type(home.Garden) == "table" then
 		local slots = {}
@@ -1215,19 +1204,19 @@ function Care.removePet(player, key)
 	end
 end
 
--- the pet comes back to where it was (Job.From): "Follow" -> re-equipped when a slot is free; "Garden:n" -> that
--- place when open and empty, else the first free open place; else it stays in the list
+-- the pet comes back to where it was (Job.From): "Follow" -> nothing to do, its team slot was never freed; "Garden:n" ->
+-- that place when open and empty, else the first free open place; else it stays in the list. A pet in the active team
+-- follows again by itself (the Refresh).
 function Care.returnPet(player, key, from)
-	if type(from) ~= "string" or not isPlayer(player) then
+	if not isPlayer(player) then
 		return
 	end
-	if from == "Follow" then
-		if petService and type(petService.Equip) == "function" then
-			pcall(petService.Equip, player, key)
-		end
-		return
-	end
-	local slot = tonumber(string.match(from, "^Garden:(%d+)$"))
+	Care.sendBack(player, key, from)
+	Care.refreshInfo(player)
+end
+
+function Care.sendBack(player, key, from)
+	local slot = type(from) == "string" and tonumber(string.match(from, "^Garden:(%d+)$")) or nil
 	if not slot then
 		return
 	end

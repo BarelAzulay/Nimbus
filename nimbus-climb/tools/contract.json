@@ -218,6 +218,8 @@
         "SetSetting",
         "PlacedCopies",
         "GardenBusyKeys",
+        "BusyKeys",
+        "SyncEquipped",
         "CheckTeam",
         "ClosedBedOverlap"
       ],
@@ -299,7 +301,6 @@
         "GetPerks",
         "GetTokenMultiplier",
         "Refresh",
-        "UnequipKey",
         "CanEquip"
       ],
       "signals": [
@@ -655,6 +656,7 @@
     },
     "server/Services/BattleService": {
       "optional": true,
+      "fields": ["TEAM_REFUSALS"],
       "functions": [
         "Init",
         "StartRing",

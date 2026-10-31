@@ -30,9 +30,9 @@
 --                                 Rewards = {[userId] = rewards}, RewardsPaid = true, BossHp, BossMaxHp, Survivors, Hp,
 --                                 Waves, Extra (Dungeon).
 --   The encounter API (4.6; the ONLY way DungeonService touches combat; this module NEVER requires DungeonService, C16):
---   BattleService.TeamSpec(player, keys | nil, hpByKey | nil) -> spec | nil, reason     (teamOf: keys = the ring fallback;
+--   BattleService.TeamSpec(player, keys | nil, hpByKey | nil) -> spec | nil, reason     (teamOf: keys = a run's fixed fighters;
 --                                 training keys skipped; hpByKey = key -> HP share: 0 skips it, a share < 1 rides as HpFraction;
---                                 an empty team: "Pick your battle team first (at a battle portal, or Pets > Team)", HUD cleanup)
+--                                 no fighter: BattleService.TEAM_REFUSALS[why], the reason DataService.ActiveTeamKeys gives)
 --   BattleService.OpenEncounter(spec) -> battleId | nil, reason
 --     spec = { Mode = "Dungeon", Zone = <NC_BattleZone part> | { CFrame, Size }, Seed, TimeLimit, Label, Teams = { { Player,
 --              Spec }... } (1..4), Extra = { Floor, Room, Wave, Waves, Name, Boss }, KeepInBattle = true, OnEnd = fn(battleId,
@@ -92,9 +92,9 @@
 --   * Ring (Phase 4 contract 3.8 / 3.11 / 5.1-5.4; every helper lives in the RingRun table): BattleRequest("Ring",
 --     startRound) near Portal_Ring (ArenaInfo.RingPortal, else the Portal_Ring model; RING_RANGE studs) -> StartRing. The
 --     entry checks, in this order with their toasts: a home claimed this session (TycoonService.GetPlot, "Claim your home
---     first"), at least one owned pet ("You need a pet"), the fighters (the active team with training pets skipped, else
---     the equipped keys, else the best owned pets by UnitPower, up to GetTeams().Slots = 3; Pets[1] is the fighter; bug
---     batch 2 #18: a pet busy gardening, DataService.GardenBusyKeys, is skipped everywhere like a training pet),
+--     first"), at least one owned pet ("You need a pet"), the fighters (the active team minus busy pets, nothing else, up to
+--     GetTeams().Slots = 3; Pets[1] is the fighter; team balance: never a silent fill, an empty or all-busy team is refused
+--     with BattleService.TEAM_REFUSALS),
 --     canBattle, within RING_RANGE of the portal ("Walk to the Champion Ring portal"), the profile loaded and not
 --     provisional, the start round (1, or a boss round 10k with Ring.Best >= 10k). One RingRun per player: { Id, Player,
 --     UserId, Name, Pocket, PocketIndex, Zone, Round, Start, Seed, Keys (fixed at the start), Wins, Cash, Xp, Tokens,
@@ -234,6 +234,11 @@ BattleService.BattleEnded = Util.Signal() -- Fire(battleId, result) once per bat
 BattleService.BattleStarted = Util.Signal() -- extra: Fire(battleId, { Mode, Players = {userId...}, Level, BossId })
 BattleService.RaidJoined = Util.Signal() -- extra: Fire(player, battleId)
 BattleService.PayRaidRewards = true -- extra: EventService may set false to pay the raid tiers itself
+-- team balance: why a battle is refused (keyed by the `why` of DataService.ActiveTeamKeys); never a silent fill
+BattleService.TEAM_REFUSALS = {
+	Empty = "Your team is empty: open Pets and put a pet in it",
+	Busy = "Your whole team is busy: training or gardening",
+}
 BattleService.Debug = nil -- extra (tests): { FailEnd = n } makes the next n battle ends fail (the fail-safe path)
 
 ----------------------------------------------------------------------
@@ -738,8 +743,8 @@ end
 
 -- The BattleSim team spec of the player's active preset: { Owner = userId, Side, Name, Pets = { { Key, PetId, Def,
 -- Level, Tier, Slot, Evo, Train, Xp, XpNext }... } }, or nil + a reason for a toast. `fallback` (Phase 4, the Champion
--- Ring): a fixed key list used INSTEAD of the active preset (the run's fighters); the empty-team refusal stays for
--- trials, duels and raids. Training keys (DataService.TrainingKeys) are skipped either way; the stored evolution stage
+-- Ring): a fixed key list used INSTEAD of the active preset (the run's fighters); an empty or all-busy team is refused
+-- with TEAM_REFUSALS. Training keys (DataService.TrainingKeys) are skipped either way; the stored evolution stage
 -- and training ranks (DataService.GetGrowth) ride on each entry as the UnitStats extras. `hpByKey` (the Champion Ring's
 -- no-heal rule: key -> the HP share the pet ended its last round with): a key at 0 is skipped (fainted), the others
 -- carry HpFraction (BattleSim starts them hurt).
@@ -754,9 +759,10 @@ local function teamOf(player, side, fallback, hpByKey)
 	end
 	local keys = fallback
 	if type(keys) ~= "table" then
-		keys = try(DS, "ActiveTeamKeys", player)
+		local why
+		keys, why = try(DS, "ActiveTeamKeys", player)
 		if type(keys) ~= "table" or #keys == 0 then
-			return nil, "Pick your battle team first (at a battle portal, or Pets > Team)"
+			return nil, BattleService.TEAM_REFUSALS[why] or BattleService.TEAM_REFUSALS.Empty
 		end
 	end
 	local training = try(DS, "TrainingKeys", player)
@@ -2801,76 +2807,14 @@ function RingRun.ownedKeys(player)
 	return {}
 end
 
--- The ring's fighters, in the contract's order: the active team (training pets skipped), else the equipped keys, else
--- the best owned pets by UnitPower; training pets skipped everywhere; at most GetTeams().Slots. -> keys, source
--- Bug batch 2 #18: a pet busy gardening (every copy in the Garden: DataService.GardenBusyKeys) never fights either.
-function RingRun.fighters(player, owned)
-	local DS = dataService()
-	local training = try(DS, "TrainingKeys", player)
-	if type(training) ~= "table" then
-		training = {}
+-- The ring's fighters: the active team minus busy pets, nothing else (team balance: never a silent fill). -> keys, why
+-- (why = DataService.ActiveTeamKeys's: nil, "Empty", "Busy" or "Loading")
+function RingRun.fighters(player)
+	local keys, why = try(dataService(), "ActiveTeamKeys", player)
+	if type(keys) ~= "table" then
+		return {}, "Loading"
 	end
-	local gardening = try(DS, "GardenBusyKeys", player)
-	if type(gardening) ~= "table" then
-		gardening = {}
-	end
-	local teams = try(DS, "GetTeams", player)
-	local slots = (type(teams) == "table" and tonumber(teams.Slots)) or 3
-	local function pick(list)
-		local out, seen = {}, {}
-		for _, key in ipairs(type(list) == "table" and list or {}) do
-			if #out >= slots then
-				break
-			end
-			if type(key) == "string" and not training[key] and not gardening[key] and not seen[key] then
-				seen[key] = true
-				out[#out + 1] = key
-			end
-		end
-		return out
-	end
-	local keys = pick(try(DS, "ActiveTeamKeys", player))
-	if #keys > 0 then
-		return keys, "Team"
-	end
-	local equipped = try(St.deps.PetService, "GetEquipped", player)
-	local profile = try(DS, "GetProfile", player)
-	if type(equipped) ~= "table" and type(profile) == "table" then
-		equipped = profile.Equipped
-	end
-	keys = pick(equipped)
-	if #keys > 0 then
-		return keys, "Equipped"
-	end
-	local scored = {}
-	for _, key in ipairs(type(owned) == "table" and owned or {}) do
-		if type(key) == "string" and not training[key] and not gardening[key] and PetKeys then
-			local okD, def = pcall(PetKeys.DefOf, key, profile)
-			if okD and type(def) == "table" and type(def.Stats) == "table" then
-				local okP, parsed = pcall(PetKeys.Parse, key)
-				local level = try(DS, "GetPetLevel", player, key)
-				local power = 0
-				if BattleCatalog and type(BattleCatalog.UnitPower) == "function" then
-					local okU, p = pcall(BattleCatalog.UnitPower, def, isInteger(level) and level or 1, (okP and type(parsed) == "table" and parsed.Tier) or "Normal", try(DS, "GetGrowth", player, key))
-					if okU and finite(p) then
-						power = p
-					end
-				end
-				scored[#scored + 1] = { Key = key, Power = power, Order = #scored }
-			end
-		end
-	end
-	table.sort(scored, function(x, y)
-		if x.Power ~= y.Power then
-			return x.Power > y.Power
-		end
-		return x.Order < y.Order
-	end)
-	local list = {}
-	for _, s in ipairs(scored) do
-		list[#list + 1] = s.Key
-	end
-	return pick(list), "Best"
+	return keys, why
 end
 
 -- the climber's garden income per second (0 without a home / garden pets: the floor only)
@@ -3450,10 +3394,10 @@ function BattleService.StartRing(player, startRound)
 	if #owned == 0 then
 		return false, "You need a pet"
 	end
-	-- 3) the fighters: the team, else the equipped pets, else the best owned pets (training pets skipped)
-	local keys, source = RingRun.fighters(player, owned)
+	-- 3) the fighters: the active team minus busy pets; nothing filled in silently
+	local keys, whyTeam = RingRun.fighters(player)
 	if #keys == 0 then
-		return false, "Your pets are all training or gardening right now"
+		return false, BattleService.TEAM_REFUSALS[whyTeam] or "Your save is still loading, try again in a moment"
 	end
 	-- 4) free to battle
 	local ok, why = canBattle(player)
@@ -3523,7 +3467,7 @@ function BattleService.StartRing(player, startRound)
 		Start = first,
 		Seed = newSeed(),
 		Keys = keys,
-		Source = source,
+		Source = "Team",
 		Wins = 0,
 		Cash = 0,
 		Xp = 0,
@@ -4255,8 +4199,8 @@ function Enc.battle(battleId)
 	return nil
 end
 
--- BattleService.TeamSpec(player, keys | nil, hpByKey | nil) -> spec | nil, reason  (teamOf exported: keys = the ring
--- fallback; hpByKey = key -> HP share: 0 skips the key, a share below 1 rides as HpFraction)
+-- BattleService.TeamSpec(player, keys | nil, hpByKey | nil) -> spec | nil, reason  (teamOf exported: keys = a run's fixed
+-- fighters; hpByKey = key -> HP share: 0 skips the key, a share below 1 rides as HpFraction)
 function BattleService.TeamSpec(player, keys, hpByKey)
 	if not isPlayer(player) then
 		return nil, "That player is not here"

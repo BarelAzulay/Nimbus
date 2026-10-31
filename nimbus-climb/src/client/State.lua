@@ -50,7 +50,7 @@
 --
 -- Extras (not part of the cross-module contract): State.IsLoaded(), State.Perks(), State.Stats(),
 -- State.BerriesChanged (Signal, Fire(berries) when the Berries attribute changes),
--- State.EquippedList(), State.TokensChanged (Signal, Fire(tokens) when the CloudTokens attribute changes),
+-- State.EquippedList() (= State.ActiveTeam()), State.Busy(key) -> nil | "Training" | "Garden", State.TokensChanged (Signal, Fire(tokens) when the CloudTokens attribute changes),
 -- State.DiscoveredCount(petIdList|nil), State.Tutorial() -> { Step, Done, Gifted }, State.Tiers(), State.Hybrids(),
 -- State.IsTraining(key) (true while the key has a training Job), State.TrainingKeys() -> {[key] = true},
 -- State.PetGrowthMap() -> the whole { [key] = entry } map (read-only).
@@ -458,6 +458,7 @@ local function cleanPetLevels(raw)
 end
 
 -- Phase 3: battle teams. Presets are dense key lists (the server compacts them); Slots is 3, or 4 after Prestige 1.
+-- Team balance: Busy = { [key] = "Training" | "Garden" } (such a key keeps its slot, it neither follows nor fights).
 local TEAM_PRESETS = 3
 
 local function newTeams()
@@ -465,7 +466,7 @@ local function newTeams()
 	for i = 1, TEAM_PRESETS do
 		presets[i] = {}
 	end
-	return { Presets = presets, Active = 1, Slots = 3 }
+	return { Presets = presets, Active = 1, Slots = 3, Busy = {} }
 end
 
 local function cleanTeams(raw)
@@ -491,6 +492,13 @@ local function cleanTeams(raw)
 	local active = num(raw.Active, 1)
 	if active >= 1 and active <= TEAM_PRESETS then
 		t.Active = math.floor(active)
+	end
+	if type(raw.Busy) == "table" then
+		for key, why in pairs(raw.Busy) do
+			if validId(key) and (why == "Training" or why == "Garden") then
+				t.Busy[key] = why
+			end
+		end
 	end
 	return t
 end
@@ -850,6 +858,16 @@ end
 -- Phase 3
 function State.Teams()
 	return current.Teams
+end
+
+-- Team balance: nil | "Training" | "Garden": a busy pet keeps its team slot, it neither follows nor fights.
+function State.Busy(key)
+	return current.Teams.Busy[key]
+end
+
+-- Team balance: the pets that follow and fight, in slot order (the snapshot's Equipped = the active preset minus busy pets).
+function State.ActiveTeam()
+	return State.EquippedList()
 end
 
 function State.Battle()

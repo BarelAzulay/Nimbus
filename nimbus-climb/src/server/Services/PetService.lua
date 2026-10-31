@@ -4,25 +4,24 @@
 --   PetService.BuyRoulette(player, rouletteId, currency|nil) -> ok, result|reason
 --                                            currency: nil = the roulette's own ("Tokens"; the gems-only Secret
 --                                            roulette: "Gems"), "Tokens" or "Gems" (also { Currency = ... })
---   PetService.Equip / Unequip(player, key)    -> ok, reason
+--   PetService.Equip / Unequip(player, key)    -> ok, reason   (team balance: put a key in / take it out of the active
+--                                            team, through DataService.SetTeam: Equip fills the first empty slot)
 --   PetService.GetEquipped(player) -> {key...}
 --   PetService.GetPerks(player) -> {MaxHealth, TokenBonus, StaminaRegen, CheckpointHeal}
 --   PetService.GetTokenMultiplier(player) -> number >= 1
 --   PetService.PerksChanged                  Util.Signal, Fire(player)
 --   PetService.Rolled                        Util.Signal, Fire(player, petId) after every successful roll (v3)
---   Extra (Phase 2): PetService.Refresh(player) -> changed   re-validates the equipped list against what the player
---                    owns (after FusionService / DevService removed copies: excess or vanished keys are unequipped),
---                    republishes the attributes and perks, MarkDirty + Sync when something changed.
+--   Extra (Phase 2): PetService.Refresh(player) -> changed   DataService.SyncEquipped (the followers = the active team minus
+--                    busy pets, after FusionService / DevService removed copies, a training job, a Garden change) and
+--                    republishes the attributes and perks. DataService.TeamsChanged republishes them too.
 -- Phase 4 (ARCHITECTURE_V3.md "Phase 4 build contract" 3.7, 5.3, 5.4):
 --   * the training lock: Equip refuses a key with a running training job ("Rocky is training (2:10 left)"; the ONE
---     source is DataService.TrainingKeys), and the list re-validation drops training keys (a Phase 3 server may have
---     equipped one during the rollout).
---   * PetService.UnequipKey(player, key) -> removed   takes every equipped copy of the key off (PetCareService calls it
---     when a pet starts training).
--- Bug batch 2 #18 ("Remote recall"): a pet working in the Garden is busy gardening. A copy placed in the Garden / Gym
---   (DataService.PlacedCopies) cannot follow: Equip refuses it ("Rocky is gardening! Take it out of the garden first";
---   the client asks first and recalls it with ONE request, TycoonService.GardenRecall) and the list re-validation drops
---   such copies (TycoonService.GardenSet calls Refresh after placing a pet).
+--     source is DataService.TrainingKeys). A team pet that starts training keeps its slot and leaves the followers
+--     (PetCareService calls Refresh).
+-- Bug batch 2 #18 ("Remote recall"): a pet working in the Garden is busy gardening. A pet whose every copy is placed in
+--   the Garden / Gym (DataService.PlacedCopies) cannot follow: Equip refuses it ("Rocky is gardening! Take it out of the
+--   garden first"; the client asks first and recalls it with ONE request, TycoonService.GardenRecall). A team pet sent to
+--   the Garden keeps its slot.
 --   PetService.CanEquip(player, key, freed?) -> ok, reason   Equip's checks without equipping; `freed` = copies about to
 --     leave the Garden (the recall checks before it takes the pet out).
 --   * attribute EquippedInfo (Config.Attr) = "23:1,5:0": level:evolution stage per EquippedPets entry, written by
@@ -199,16 +198,6 @@ end
 
 local function notify(player, text, kind, duration)
 	fireClient("Notify", player, text, kind or "info", duration or 3)
-end
-
-local function countOf(list, id)
-	local n = 0
-	for _, value in ipairs(list) do
-		if value == id then
-			n = n + 1
-		end
-	end
-	return n
 end
 
 -- every owned copy (Normal, tiers, hybrids): the very first pet ever is equipped automatically
@@ -468,39 +457,6 @@ local function refreshPlayer(player, silent)
 	end
 end
 
--- Drops equipped keys that are unknown (pets that left the catalog, hybrids whose record is gone), owned fewer
--- times than they are equipped (copies fused away), training (Phase 4: a training pet cannot be on the player; a
--- Phase 3 server may have equipped one during the rollout) or working in the Garden (bug batch 2 #18: the copies
--- placed there do not count), and trims to the slot limit. Returns true if anything changed.
-local function validateEquipped(profile, player)
-	if type(profile.Equipped) ~= "table" then
-		profile.Equipped = {}
-	end
-	local training = player and trainingKeys(player) or {}
-	local placed = player and placedCopies(player) or {}
-	local kept = {}
-	local used = {}
-	for _, key in ipairs(profile.Equipped) do
-		if type(key) == "string" and #kept < Config.Pets.MaxEquipped and defOf(key, profile) and not training[key] then
-			local n = (used[key] or 0) + 1
-			if n <= ownedCount(profile, key) - (placed[key] or 0) then
-				used[key] = n
-				table.insert(kept, key)
-			end
-		end
-	end
-	if #kept == #profile.Equipped then
-		return false
-	end
-	for i = #profile.Equipped, 1, -1 do
-		profile.Equipped[i] = nil
-	end
-	for i, id in ipairs(kept) do
-		profile.Equipped[i] = id
-	end
-	return true
-end
-
 -- Pet Index: marks a pet as discovered. Returns true the first time. Safe when DataService predates v3.
 local function markDiscovered(player, petId)
 	if type(DataService.MarkDiscovered) ~= "function" then
@@ -538,19 +494,27 @@ local function onProfileReady(player)
 	if not profile then
 		return
 	end
-	local changed = validateEquipped(profile, player)
+	DataService.SyncEquipped(player)
 	discoverOwned(player, profile) -- the ProfileSync snapshot already lists owned pets, so no extra Sync
 	refreshPlayer(player, false)
-	if changed then
-		DataService.MarkDirty(player)
-		DataService.Sync(player)
-	end
 end
 
-local function finishEquipChange(player)
-	DataService.MarkDirty(player)
-	refreshPlayer(player, false)
-	DataService.Sync(player)
+-- { key... } of the active team's slots and the preset number, or nil until loaded / while provisional
+local function activeTeam(player)
+	local teams = DataService.GetTeams(player)
+	if type(teams) ~= "table" then
+		return nil
+	end
+	return teams.Presets[teams.Active], teams.Active
+end
+
+local function teamHas(list, key)
+	for i, k in ipairs(list) do
+		if k == key then
+			return i
+		end
+	end
+	return nil
 end
 
 ----------------------------------------------------------------------
@@ -618,36 +582,47 @@ function PetService.CanEquip(player, key, freed)
 		local left = trainingLeft(player, key)
 		return false, tostring(name) .. " is training" .. (left and (" (" .. left .. " left)") or "")
 	end
-	local equipped = profile.Equipped
-	local count = countOf(equipped, key)
-	-- bug batch 2 #18: a copy working in the Garden is busy gardening (the recall frees `freed` copies first)
-	local placed = math.max(0, (placedCopies(player)[key] or 0) - (type(freed) == "number" and math.max(0, math.floor(freed)) or 0))
-	if count < owned and count >= owned - placed then
+	local team = activeTeam(player)
+	if not team then
+		return false, "Your data is still loading"
+	end
+	-- bug batch 2 #18: a pet with every copy in the Garden is busy gardening (the recall frees `freed` copies first)
+	local rawPlaced = placedCopies(player)[key] or 0
+	local placed = math.max(0, rawPlaced - (type(freed) == "number" and math.max(0, math.floor(freed)) or 0))
+	if owned - placed < 1 then
 		local def = defOf(key, profile)
 		local name = type(def) == "table" and (def.DisplayName or def.Name) or key
 		return false, tostring(name) .. " is gardening! Take it out of the garden first"
 	end
-	if #equipped >= Config.Pets.MaxEquipped then
-		return false, "All " .. Config.Pets.MaxEquipped .. " pet slots are full"
+	if teamHas(team, key) then
+		if owned - rawPlaced < 1 then
+			return true -- the recall: it keeps its slot and is back with the player once the Garden lets it go
+		end
+		return false, "That pet is already in your team"
 	end
-	if count >= owned then
-		return false, "All your copies are already equipped"
+	if #team >= Config.Pets.MaxEquipped then
+		return false, "Your team is full (" .. Config.Pets.MaxEquipped .. " pets)"
 	end
 	return true
 end
 
+-- Puts the key in the active team's first empty slot.
 function PetService.Equip(player, key)
 	local ok, reason = PetService.CanEquip(player, key, 0)
 	if not ok then
 		return false, reason
 	end
-	table.insert(DataService.GetProfile(player).Equipped, key)
-	finishEquipChange(player)
-	return true
+	local team, preset = activeTeam(player)
+	local list = {}
+	for i, k in ipairs(team) do
+		list[i] = k
+	end
+	list[#list + 1] = key
+	return DataService.SetTeam(player, preset, list)
 end
 
--- Takes one copy of `key` off (the last one equipped). A plain petId also matches a tier copy of that pet when no
--- Normal copy is equipped (old callers only know pet ids).
+-- Takes `key` out of the active team (its slot empties, the pets behind it move up). A plain petId also matches a tier
+-- copy of that pet when the Normal key is not in the team (old callers only know pet ids).
 function PetService.Unequip(player, key)
 	if not isLivePlayer(player) then
 		return false, "Player unavailable"
@@ -662,55 +637,34 @@ function PetService.Unequip(player, key)
 	if not profile then
 		return false, "Your data is still loading"
 	end
-	local equipped = profile.Equipped
-	for i = #equipped, 1, -1 do
-		if equipped[i] == key then
-			table.remove(equipped, i)
-			finishEquipChange(player)
-			return true
-		end
+	local team, preset = activeTeam(player)
+	if not team then
+		return false, "Your data is still loading"
 	end
+	local slot = teamHas(team, key)
 	local parsed = parseKey(key)
-	if parsed and parsed.PetId and parsed.Tier == "Normal" then
-		for i = #equipped, 1, -1 do
-			local other = parseKey(equipped[i])
+	if not slot and parsed and parsed.PetId and parsed.Tier == "Normal" then
+		for i = #team, 1, -1 do
+			local other = parseKey(team[i])
 			if other and other.PetId == parsed.PetId then
-				table.remove(equipped, i)
-				finishEquipChange(player)
-				return true
+				slot = i
+				break
 			end
 		end
 	end
-	return false, "That pet is not equipped"
+	if not slot then
+		return false, "That pet is not in your team"
+	end
+	local list = {}
+	for i, k in ipairs(team) do
+		list[i] = (i ~= slot) and k or false -- a hole: the pets behind it keep their index (a busy pet stays no new pick)
+	end
+	return DataService.SetTeam(player, preset, list)
 end
 
--- Phase 4 (contract 3.7 / 5.4): takes EVERY equipped copy of `key` off (PetCareService calls it when a pet starts
--- training; the server decides, so a running match does not lock it). Returns the number of copies removed.
-function PetService.UnequipKey(player, key)
-	if not isLivePlayer(player) or not validId(key) then
-		return 0
-	end
-	local profile = DataService.GetProfile(player)
-	if not profile or type(profile.Equipped) ~= "table" then
-		return 0
-	end
-	local equipped = profile.Equipped
-	local removed = 0
-	for i = #equipped, 1, -1 do
-		if equipped[i] == key then
-			table.remove(equipped, i)
-			removed = removed + 1
-		end
-	end
-	if removed > 0 then
-		finishEquipChange(player)
-	end
-	return removed
-end
-
--- Extra: re-validates the equipped list against what the player owns now (FusionService / DevService call it after
--- removing copies; PetCareService after a level-up / evolution / training start), republishes the attributes
--- (EquippedPets, EquippedHybrids, EquippedInfo) and perks. Returns true when the list changed.
+-- Extra: brings the followers back to the active team minus busy pets (FusionService / DevService call it after removing
+-- copies; PetCareService after a level-up / evolution / training start or end), republishes the attributes (EquippedPets,
+-- EquippedHybrids, EquippedInfo) and perks. Returns true when the list changed.
 function PetService.Refresh(player)
 	if not isLivePlayer(player) then
 		return false
@@ -719,12 +673,8 @@ function PetService.Refresh(player)
 	if not profile then
 		return false
 	end
-	local changed = validateEquipped(profile, player)
+	local changed = DataService.SyncEquipped(player)
 	refreshPlayer(player, false)
-	if changed then
-		DataService.MarkDirty(player)
-		DataService.Sync(player)
-	end
 	return changed
 end
 
@@ -819,8 +769,15 @@ local function rollAndGrant(player, profile, rouletteId, charge, roll, opts)
 	local firstPetEver = totalPets(profile) == 0
 	profile.Pets[petId] = owned + 1
 	profile.Stats.Spins = profile.Stats.Spins + 1
-	if firstPetEver and #profile.Equipped < Config.Pets.MaxEquipped then
-		table.insert(profile.Equipped, petId)
+	if firstPetEver then
+		-- the first pet ever joins the active team's slot 1 (a provisional profile has no teams yet: its list becomes a
+		-- team once the recovery migrates it)
+		local team, preset = activeTeam(player)
+		if not team then
+			table.insert(profile.Equipped, petId)
+		elseif #team == 0 then
+			DataService.SetTeam(player, preset, { petId })
+		end
 	end
 	local newDiscovery = markDiscovered(player, petId) -- before the Sync, so the snapshot shows it in the Index
 	DataService.MarkDirty(player)
@@ -1113,6 +1070,9 @@ local function connectPlayers()
 	end)
 	DataService.ProfileRebased:Connect(function(player)
 		onProfileReady(player)
+	end)
+	DataService.TeamsChanged:Connect(function(player)
+		refreshPlayer(player, false) -- the followers are the active team: every team change republishes them
 	end)
 
 	Players.PlayerAdded:Connect(onPlayerAdded)

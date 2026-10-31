@@ -683,6 +683,9 @@ local function cmdReset(player, profile)
 	wipe(teams)
 	teams.Presets = { {}, {}, {} }
 	teams.Active = 1
+	if hasFunction(DataService, "SyncEquipped") then
+		DataService.SyncEquipped(player)
+	end
 	local battle = tableField(profile, "Battle")
 	wipe(battle)
 	for _, field in ipairs({ "Trophies", "TrialBest", "Raids", "RaidBestDamage", "PvPWins", "PvPLosses" }) do

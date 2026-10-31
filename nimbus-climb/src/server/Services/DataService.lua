@@ -51,14 +51,25 @@
 --   its "Prestige to open" sign and earns nothing) is not busy (P3.placedCopies skips it, P3.closedSlot); once it
 --   follows or joins a preset it leaves that place silently (live: TycoonService after PetService.PerksChanged /
 --   TeamsChanged, through ClosedBedOverlap; on load: P3.gardenSolo, closed places first, no toast; in the merge nothing
---   to do: the record keeps the pet with the player and the next load empties the bed). A key that loses its free copy (fused away,
---   released, a developer reset, its last copy placed in the Garden / Gym) is dropped from every preset ("pruned", the
---   pets behind it move up a slot): in every copy taken for a save or a snapshot, in the merge, and in the live profile
---   on every Sync and after a MutateHome that moved pets (TeamsChanged fires then). Equipped follows the same copy rule
---   (normalizeEquipped in the merge, PetService.Equip / its re-validation; TycoonService.GardenSet unequips the copy).
---   Bug batch 2 #18 old saves: a stored profile whose pet is BOTH in the Garden and equipped / in a preset (the Phase 4
---   rule allowed it) is repaired when it is read (P3.gardenSolo in normalizeProfile, before the presets are pruned): the
---   pet STAYS equipped / in its team and LEAVES the Garden (no player loses a fighter, no team is emptied). The repair
+--   to do: the record keeps the pet with the player and the next load empties the bed). A key no longer owned at all
+--   (fused away, released, a developer reset) is dropped from every preset ("pruned", the pets behind it move up a slot):
+--   in every copy taken for a save or a snapshot, in the merge, and in the live profile on every Sync and after a
+--   MutateHome that moved pets (TeamsChanged fires then).
+--   ONE TEAM (team balance, spec 2026-10-31 s.1): a player's battle team IS the pets following them. The invariant, after
+--   every write: Equipped == the active preset's keys minus busy keys (training, or every copy in the Garden / Gym), in
+--   order (P3.syncEquipped: normalizeProfile, applyDelta, pruneLive, SetTeam, SelectTeam, MutateGrowth, MutateHome's prune,
+--   SyncEquipped). Nothing else writes Equipped on a migrated profile. A busy pet KEEPS its slot (P3.prune keeps a key whose
+--   copies all work, P3.busyOf marks it) and is back by itself when the job ends. The team is locked during an obby match
+--   (P3.matchLocked: SetTeam / CheckTeam on the active preset, SelectTeam): the perks must not change between checkpoints.
+--   B4TeamFollow (once per save, P3.teamMigrate, on a loaded, real profile: a provisional one waits for its recovery): until
+--   the marker is set Equipped is the save's own list (normalizeEquipped), the migration's input: with Equipped empty ->
+--   the active preset; else a preset holding the same keys (not counting its busy ones; the active one first) becomes
+--   active; else the first empty preset takes the list and becomes active; else the highest-numbered non-active preset
+--   does. { Preset = n, Case = "Empty" | "Same" | "Free" | "Replaced" } in MigratedNow; no toast. No pet is ever touched.
+--   Bug batch 2 #18 old saves: a stored profile without B4TeamFollow whose pet is BOTH in the Garden and equipped / in a
+--   preset (the Phase 4 rule allowed it) is repaired when it is read (P3.gardenSolo in normalizeProfile, before the presets
+--   are pruned): the pet STAYS equipped / in its team and LEAVES the Garden (no player loses a fighter, no team is
+--   emptied; a migrated save may hold that overlap: the pet is busy and keeps its slot, only closed places are freed). The repair
 --   is deterministic and only acts on such an overlap, so it never loops; the load that moved pets records them
 --   (MigratedNow(player, "B2GardenSolo") = { Keys }) and fires Migrated(player, "B2GardenSolo", info) once (TycoonService
 --   shows the one explaining toast); the marker Migrations.B2GardenSolo is set on the first loaded, real profile.
@@ -67,8 +78,8 @@
 --   the next load, with the event and the toast again. Two outcomes, both deterministic and neither looping:
 --     * on LOAD (normalizeProfile -> P3.gardenSolo, before the prune): the PLAYER wins: the pet stays equipped / in
 --       its team and leaves the Garden;
---     * in the MERGE (applyDelta -> normalizeEquipped with Home, then P3.prune): the GARDEN wins: the placement the
---       other server wrote stands and the pet leaves Equipped / its presets (p5flow_merge pins it).
+--     * in the MERGE (applyDelta -> P3.prune, P3.syncEquipped): the GARDEN wins: the placement the other server wrote
+--       stands and the pet leaves Equipped; its preset keeps it as a busy slot (p5flow_merge pins it).
 --   A Phase 2 profile (no Teams / Battle,
 --   or the empty Teams reserve) gets the defaults: 3 empty presets, preset 1 active, a zeroed battle record.
 --   Phase 4 pet growth, per KEY like levels: Evo is the evolution stage the player unlocked by pressing EVOLVE
@@ -79,12 +90,10 @@
 --   Slot (the Training Place mat 1..5), From ("Follow" | "Garden:<slot>" | "Free": where the pet goes back to), Paid
 --   (the Cash to refund on Stop). An all-zero entry without a Job is not kept.
 --   THE TRAINING LOCK is a READ-TIME filter, one source of truth: TrainingKeys(player) = every key with a Job.
---   normalizeEquipped drops such keys from Equipped (a Phase 3 server may have equipped one during the rollout),
---   FieldableKeys and ActiveTeamKeys skip them; P3.checkTeam keeps accepting them in presets and P3.prune is NEVER
---   taught about training (it runs in normalizeProfile, copyProfile, applyDelta and MutateHome's pruneLive and would
---   delete the pet from its preset for good). Garden pets ARE busy (bug batch 2 #18: P3.placedCopies counts the OPEN
---   places of Home.Garden and Home.Gym; unlike training this is a write-time lock: GardenSet unequips the copy and the
---   prune drops the preset; a closed place does not lock, see the team rule above).
+--   P3.syncEquipped drops such keys from Equipped, FieldableKeys and ActiveTeamKeys skip them; P3.checkTeam refuses a
+--   DIRECT pick of one and P3.prune never drops one from a preset. Garden pets ARE busy the same way (bug batch 2 #18:
+--   P3.placedCopies counts the OPEN places of Home.Garden and Home.Gym; a closed place does not lock, see the team rule
+--   above).
 --   Ring: Best = the highest Champion Ring round won (0 = never), Runs = finished runs.
 --   Migrations: one-time data migrations this profile went through (P4 = the Phase 4 migration, section 4.3).
 --   HUD cleanup (2026-10-30): B3ItemsRefund = the obby items were removed and the save's old Items were refunded ONCE
@@ -202,30 +211,40 @@
 --     The player attributes Config.Attr.Cash / Config.Attr.Gems mirror the (whole) balances for the HUD.
 --   Phase 3 (battle teams + the battle record; nothing here yields; reasons are short texts for a side toast):
 --     TeamsChanged                      Util.Signal (exists at module load) Fire(player) after every successful SetTeam /
---                                       SelectTeam, when pruning dropped keys from the live presets, and after a rebase
---     GetTeams(player) -> { Presets = { {key...}, {key...}, {key...} }, Active = 1..3, Slots = 3 | 4 }   a pruned copy
---                                       (the ProfileSync shape) | nil until loaded and while provisional
+--                                       SelectTeam, when pruning dropped keys from the live presets or moved Equipped, after
+--                                       a rebase, and on the load whose B4TeamFollow moved a team
+--     GetTeams(player) -> { Presets = { {key...}, {key...}, {key...} }, Active = 1..3, Slots = 3 | 4, Busy = {[key] =
+--                                       "Training" | "Garden"} }   a pruned copy (the ProfileSync shape) | nil until loaded
+--                                       and while provisional
 --     SetTeam(player, preset, keys) -> ok, reason   preset 1..3; keys = the pets in slot order ("" / false = an empty
 --                                       slot; the list is compacted). Refused: junk, a pet in a slot past Slots (slot 4
---                                       before the prestige unlock), the same key twice, a key not owned, a key whose
---                                       copies all work in the Garden / Gym ("<pet> is gardening! ..." for a Garden
---                                       pet: the client offers the recall, TycoonService.GardenRecall), a profile not
---                                       loaded or provisional. An empty list clears the preset. MarkDirty + SyncSoon +
+--                                       before the prestige unlock), the same key twice, a key not owned, a DIRECT pick
+--                                       of a busy key ("That pet is gardening! ..." for a Garden pet: the client offers
+--                                       the recall, TycoonService.GardenRecall; "<Pet> is training (2:10 left)"), the
+--                                       active preset during an obby match, a profile not loaded or provisional. A busy
+--                                       key already in this preset is no pick when it stays in its slot or the list holds
+--                                       the same keys (a swap): send "" / false for an emptied slot, so the pets behind
+--                                       it keep their index. An empty list clears the preset. MarkDirty + SyncSoon +
 --                                       TeamsChanged.
 --     CheckTeam(player, preset, keys, freeKey?) -> ok, reason   SetTeam's checks without writing; freeKey counts one
 --                                       copy of that key as out of the Garden (bug batch 2 #18: the recall check)
---     SelectTeam(player, preset) -> ok, reason      makes that preset the active one (MarkDirty + SyncSoon + TeamsChanged)
+--     SelectTeam(player, preset) -> ok, reason      makes that preset the active one: the followers change at once
+--                                       (MarkDirty + SyncSoon + TeamsChanged); refused during an obby match
+--     SyncEquipped(player) -> changed   rewrites Equipped from the invariant (MarkDirty + SyncSoon when changed; never
+--                                       fires TeamsChanged; PetService.Refresh republishes the attributes)
+--     BusyKeys(player) -> {[key] = "Training" | "Garden"}   training keys + every owned key with NO copy free of the
+--                                       Garden / Gym ({} until loaded / provisional)
 --     FieldableKeys(player) -> {key...}             every owned key with a copy free for a team (not in the Garden or the
 --                                       Gym, not in training; bug batch 2 #18: a garden pet is busy)
 --     PlacedCopies(player) -> {[key] = n}           copies working in the Garden / Gym (bug batch 2 #18; {} until loaded /
 --                                       while provisional): PetService.Equip and its re-validation read it
 --     GardenBusyKeys(player) -> {[key] = true}      every owned key with NO copy free of the Garden / Gym (the "gardening"
---                                       badge; BattleService's ring fallback skips them; {} until loaded / provisional)
+--                                       badge; BusyKeys without the training keys; {} until loaded / provisional)
 --     ClosedBedOverlap(player) -> {slot...}         CLOSED garden places (above the open count) whose copy now also
 --                                       follows / sits in a preset; TycoonService empties them silently ({} when none)
---     ActiveTeamKeys(player) -> {key...}            the active preset's usable keys in slot order, compacted (Phase 4: a
---                                       training pet is skipped at read time, the preset keeps it); {} when the team
---                                       is empty, the profile is not loaded or is provisional
+--     ActiveTeamKeys(player) -> keys, why           the active preset minus busy keys, in slot order: equals Equipped at all
+--                                       times; why = nil with at least one key, "Empty" for an empty preset, "Busy" when
+--                                       all its pets are busy, "Loading" until loaded and while provisional
 --     GetBattle(player) -> { Trophies, TrialBest, TrialCleared = {[level]=true}, Raids, RaidBestDamage, PvPWins,
 --                                       PvPLosses, EventPets = {[petId]=true} }   a copy | nil until loaded and while
 --                                       provisional (stand-in data must never decide a first clear or an event pet)
@@ -281,14 +300,15 @@
 --                                       "B2GardenSolo" { Keys = {key...} } when the read took pets out of the Garden
 --                                       (they stayed equipped / in a team; MigratedNow(player, "B2GardenSolo") too);
 --                                       HUD cleanup: "B3ItemsRefund" { Tokens = n, Items = {[id]=count} } when the
---                                       refund paid Tokens (Main.server shows the toast; MigratedNow answers it too)
+--                                       refund paid Tokens (Main.server shows the toast; MigratedNow answers it too).
+--                                       B4TeamFollow does not fire this: MigratedNow(player, "B4TeamFollow") alone.
 --     SetPetLevel(player, key, level) -> ok   developer tools: writes { Level, Xp = 0 } for an OWNED key (1..the curve's
 --                                       max level); refused until loaded / while provisional; synced
 --   ProfileSync snapshot: Tokens, Pets, Equipped, Stats, SpotIndex, Perks, Discovered, IndexClaimed (no Items since
 --     the HUD cleanup),
 --     Tutorial + Phase 2: Cash, Gems, Home { Level, Prestige, Stations, Garden, Gym, CollectorCash, LegacySlots?,
 --     LegacyPrices? } (slot maps encoded like the store), Food, Tiers, Hybrids, PetLevels + Phase 3: Teams { Presets,
---     Active, Slots } (pruned), Battle { Trophies, TrialBest, TrialCleared = {bool...} (index = level), Raids,
+--     Active, Slots, Busy } (pruned), Battle { Trophies, TrialBest, TrialCleared = {bool...} (index = level), Raids,
 --     RaidBestDamage, PvPWins, PvPLosses, EventPets = {[petId]=true} } + Phase 4: PetGrowth { [key] = { Evo?, Speed?,
 --     Physique?, Ability?, Defense?, Job? } } (zero numbers left out: the client fills them), Ring { Best, Runs }.
 --     Plain tables, never shared with the live profile.
@@ -652,6 +672,8 @@ local P3 = {
 	BESTS = { "TrialBest", "RaidBestDamage" }, -- merge as the higher value
 	-- what MutateBattle may change while the profile is provisional (these merge safely into the real save)
 	PROVISIONAL_OK = { Trophies = true, Raids = true, PvPWins = true, PvPLosses = true, RaidBestDamage = true },
+	MARK_TEAM = "B4TeamFollow", -- Migrations[name]: the save went through the one-team rule (team balance, P3.teamMigrate)
+	MATCH_LOCKED = "Pets are locked during a match", -- the active team during an obby match (PetService's words)
 }
 
 -- Phase 4 (pet growth: evolution stages + training; the Champion Ring record; migration markers; the veteran Home
@@ -1329,11 +1351,11 @@ local function ownedCount(profile, key)
 	return 0
 end
 
--- Drops equipped keys that are not owned, are over their owned count, exceed the slot limit, or (Phase 4) are in
--- training (a Phase 3 server may have equipped one during the rollout; the pet comes back by itself when the job
--- ends: PetCareService's auto-return). Runs after Pets, Tiers, Hybrids AND PetGrowth are final: tier and hybrid
--- copies count too, and the training lock reads the clean growth map. Bug batch 2 #18: copies working in the Garden /
--- Gym of profile.Home cannot follow (open places only: a copy resting on a closed one may, P3.placedCopies;
+-- A save without B4TeamFollow: its own Equipped list is the migration's input (P3.teamMigrate), cleaned here. Drops
+-- equipped keys that are not owned, are over their owned count, exceed the slot limit, or (Phase 4) are in training (a
+-- Phase 3 server may have equipped one during the rollout). Runs after Pets, Tiers, Hybrids AND PetGrowth are final: tier
+-- and hybrid copies count too, and the training lock reads the clean growth map. Bug batch 2 #18: copies working in the
+-- Garden / Gym of profile.Home cannot follow (open places only: a copy resting on a closed one may, P3.placedCopies;
 -- normalizeProfile calls this before its Home is read, so a stored overlap is left to P3.gardenSolo there, which keeps
 -- the pet equipped and takes it out of the Garden).
 local function normalizeEquipped(profile)
@@ -1482,7 +1504,8 @@ end
 -- profile in place (Home.Garden keyed by slot, Equipped, Teams clean); deterministic, and a no-op without an overlap
 -- (so it never loops). Returns the keys that left an OPEN place (sorted; they get the toast), or nil when none did.
 -- Closed places (P3.closedSlot) go first and silently: a copy resting there is not busy (P3.placedCopies skips it),
--- so the pet just leaves that bed, the same as TycoonService's live release after an equip / team change.
+-- so the pet just leaves that bed, the same as TycoonService's live release after an equip / team change. A save with
+-- B4TeamFollow keeps its OPEN overlaps: the pet is busy gardening and keeps its team slot (P3.soloPlan).
 function P3.gardenSolo(profile)
 	local plan = P3.soloPlan(profile)
 	if not plan then
@@ -1511,6 +1534,7 @@ function P3.soloPlan(profile)
 	if type(garden) ~= "table" or next(garden) == nil then
 		return nil
 	end
+	local teamModel = tableOr(profile.Migrations)[P3.MARK_TEAM] == true
 	local need = {}
 	for _, key in ipairs(tableOr(profile.Equipped)) do
 		if type(key) == "string" then
@@ -1570,7 +1594,7 @@ function P3.soloPlan(profile)
 				i = i + 1
 			end
 			i = 1
-			while free < want and slots[i] ~= nil do
+			while not teamModel and free < want and slots[i] ~= nil do
 				plan.Open[#plan.Open + 1] = slots[i]
 				free = free + 1
 				i = i + 1
@@ -1588,22 +1612,17 @@ function P3.soloPlan(profile)
 	return plan
 end
 
--- Drops (in place) every key without a free copy (owned more often than placed in the Garden / Gym) and every key past
--- the profile's team slots. `teams` is a clean Teams table; `profile` any profile-like table whose copies decide (the
--- live profile, a clean copy or a merged record). Returns true when something was dropped.
+-- Drops (in place) every key not owned at all and every key past the profile's team slots. A busy key (every copy in
+-- the Garden / Gym, or training) KEEPS its slot. `teams` is a clean Teams table; `profile` any profile-like table whose
+-- copies decide (the live profile, a clean copy or a merged record). Returns true when something was dropped.
 function P3.prune(profile, teams)
-	local placed = P3.placedCopies(profile)
 	local slots = P3.slotsOf(profile)
-	local free = {}
 	local changed = false
 	for i = 1, P3.PRESETS do
 		local list = teams.Presets[i]
 		local kept = {}
 		for _, key in ipairs(list) do
-			if free[key] == nil then
-				free[key] = ownedCount(profile, key) - (placed[key] or 0)
-			end
-			if free[key] >= 1 and #kept < slots then
+			if ownedCount(profile, key) >= 1 and #kept < slots then
 				kept[#kept + 1] = key
 			end
 		end
@@ -1620,6 +1639,65 @@ function P3.teamsOf(profile)
 	local teams = P3.cleanTeams(type(profile) == "table" and profile.Teams or nil)
 	P3.prune(profile, teams)
 	return teams
+end
+
+-- { [key] = "Training" | "Garden" } of a profile: every key with a running Job, every owned key with no copy free of
+-- the Garden / Gym (open places only, P3.placedCopies). Such a key keeps its team slot, but neither follows nor fights.
+function P3.busyOf(profile)
+	local out = {}
+	for key, n in pairs(P3.placedCopies(profile)) do
+		local owned = ownedCount(profile, key)
+		if owned >= 1 and owned - n < 1 then
+			out[key] = "Garden"
+		end
+	end
+	for key in pairs(P4.trainingSet(profile.PetGrowth)) do
+		out[key] = "Training"
+	end
+	return out
+end
+
+-- true unless PetKeys knows no such pet (one that left the catalog, a hybrid whose record is gone): it never follows.
+function P3.knownPet(profile, key)
+	local keys = getPetKeys()
+	if keys and type(keys.DefOf) == "function" then
+		local ok, def = pcall(keys.DefOf, key, profile)
+		return ok and def ~= nil
+	end
+	return true
+end
+
+-- The invariant's right side: the active preset minus its busy keys, in slot order -> keys, the whole preset.
+function P3.activeKeys(profile)
+	local teams = P3.teamsOf(profile)
+	local busy = P3.busyOf(profile)
+	local preset = teams.Presets[teams.Active]
+	local out = {}
+	for _, key in ipairs(preset) do
+		if not busy[key] and P3.knownPet(profile, key) then
+			out[#out + 1] = key
+		end
+	end
+	return out, preset
+end
+
+-- Rewrites profile.Equipped (the same table) from the invariant; a save without B4TeamFollow keeps its own cleaned list
+-- (the migration's input). Pure: it also runs inside UpdateAsync. Returns true when Equipped changed.
+function P3.syncEquipped(profile)
+	local before = copyList(tableOr(profile.Equipped))
+	local want = nil
+	if tableOr(profile.Migrations)[P3.MARK_TEAM] == true then
+		want = P3.activeKeys(profile)
+	else
+		profile.Equipped = copyList(before)
+		normalizeEquipped(profile)
+		want = profile.Equipped
+	end
+	if listsEqual(before, want) then
+		return false
+	end
+	profile.Equipped = copyList(want)
+	return true
 end
 
 function P3.isDefaultTeams(teams)
@@ -2112,6 +2190,7 @@ local function normalizeProfile(raw, info)
 	end
 	P3.prune(p, p.Teams)
 	p.Battle = P3.cleanBattle(raw.Battle)
+	P3.syncEquipped(p) -- last: the copies, the Home, the growth map and the presets are final now
 	return p
 end
 
@@ -2859,9 +2938,9 @@ local function applyDelta(stored, d)
 		out.Settings = P5.cleanSettings(d.Settings)
 	end
 	-- last: the owned copies (Pets, Tiers, Hybrids), the Home and the growth map (the training lock) are final now
-	normalizeEquipped(out)
 	discoverOwned(out)
 	P3.prune(out, out.Teams)
+	P3.syncEquipped(out)
 	return out
 end
 
@@ -3055,18 +3134,24 @@ local function replaceContents(target, src)
 	refill(ensureTable(target, "Settings"), src.Settings)
 end
 
--- Prunes the LIVE presets in place (keys that lost their free copy: fused away, released, placed in the Garden / Gym;
--- a junk structure is repaired too). Returns true when the live Teams changed; the caller fires TeamsChanged once it
--- is done (handlers run at once).
+-- Prunes the LIVE presets in place (keys no longer owned: fused away, released; a junk structure is repaired too) and
+-- brings Equipped back to the invariant. Returns true when the live Teams or Equipped changed; the caller fires
+-- TeamsChanged once it is done (handlers run at once: PetService republishes the followers).
 function P3.pruneLive(entry)
 	local profile = entry.Profile
 	local teams = P3.teamsOf(profile)
-	if deepEqual(profile.Teams, teams) then
-		return false
+	local changed = false
+	if not deepEqual(profile.Teams, teams) then
+		refill(ensureTable(profile, "Teams"), teams)
+		changed = true
 	end
-	refill(ensureTable(profile, "Teams"), teams)
-	entry.Dirty = true
-	return true
+	if P3.syncEquipped(profile) then
+		changed = true
+	end
+	if changed then
+		entry.Dirty = true
+	end
+	return changed
 end
 
 -- diffProfiles options of an entry: the gems of the receipts it marked, and whether its Base is a stand-in (the
@@ -3319,10 +3404,12 @@ local function homeSnapshot(rawHome)
 	}
 end
 
--- What the client (and GetTeams) sees of the battle teams: the pruned presets, the active one and the slot count.
+-- What the client (and GetTeams) sees of the battle teams: the pruned presets, the active one, the slot count and the
+-- busy keys.
 function P3.teamsSnapshot(profile)
 	local out = P3.encodeTeams(P3.teamsOf(profile))
 	out.Slots = P3.slotsOf(profile)
+	out.Busy = P3.busyOf(profile)
 	return out
 end
 
@@ -3595,6 +3682,7 @@ local function announceRebase(userId, entry)
 	local migrated5 = P5.migrateEntry(entry, player) -- Phase 5: after a recovered load too (idempotent)
 	local garden = P3.gardenMigrate(entry) -- bug batch 2 #18: the marker + what this read took out of the Garden
 	local refund = P6.itemsRefund(entry, player) -- HUD cleanup: the old Items refunded once (after a recovery too)
+	P3.teamMigrate(entry) -- team balance: B4TeamFollow once (after a recovery too; TeamsChanged fires below)
 	entry.TeamsTrimmed = nil
 	DataService.Sync(player)
 	DataService.ProfileRebased:Fire(player, entry.Profile)
@@ -3974,11 +4062,13 @@ function DataService.Load(player)
 		local garden = P3.gardenMigrate(entry)
 		-- HUD cleanup: the obby items are gone; the save's old Items are refunded once as Tokens
 		local refund = P6.itemsRefund(entry, player)
+		-- team balance: the followers become a team, once (a provisional profile after its recovery)
+		local teamMoved = P3.teamMigrate(entry)
 		DataService.Sync(player)
 		DataService.ProfileLoaded:Fire(player, entry.Profile)
-		if entry.TeamsTrimmed then
+		if entry.TeamsTrimmed or (teamMoved and teamMoved.Case ~= "Empty") then
 			entry.TeamsTrimmed = nil
-			DataService.TeamsChanged:Fire(player) -- a stored 4-key preset loaded with 3 (4.8): once
+			DataService.TeamsChanged:Fire(player) -- a stored 4-key preset loaded with 3 (4.8), a team moved: once
 		end
 		P4.announceMigration(player, migrated)
 		P5.announceMigration(player, migrated5)
@@ -4630,8 +4720,8 @@ function DataService.MutateHome(player, fn)
 		return false
 	end
 	entry.Dirty = true
-	-- Phase 3: a pet whose last free copy went to the Garden / Gym leaves the battle teams (bug batch 2 #18: the Garden
-	-- counts again; the caller unequips the copy, see TycoonService.GardenSet)
+	-- team balance: a pet whose last free copy went to the Garden / Gym leaves the followers and keeps its slot; one that
+	-- came out of it is back by itself (TeamsChanged: PetService republishes)
 	local pruned = visible and P3.pruneLive(entry)
 	if visible then
 		DataService.SyncSoon(player)
@@ -4703,9 +4793,54 @@ function P3.validPreset(preset)
 	return isFinite(preset) and preset >= 1 and preset <= P3.PRESETS and preset == math.floor(preset)
 end
 
+-- "Rocky is training (2:10 left)": the refusal of a direct pick (PetService.CanEquip words it the same).
+function P3.trainingText(profile, key)
+	local name = key
+	local petKeys = getPetKeys()
+	if petKeys and type(petKeys.DefOf) == "function" then
+		local ok, def = pcall(petKeys.DefOf, key, profile)
+		if ok and type(def) == "table" then
+			name = def.DisplayName or def.Name or key
+		end
+	end
+	local entry = tableOr(profile.PetGrowth)[key]
+	local ends = type(entry) == "table" and type(entry.Job) == "table" and entry.Job.Ends or nil
+	if not isFinite(ends) then
+		return tostring(name) .. " is training"
+	end
+	local left = math.max(0, math.ceil(ends - os.time()))
+	return tostring(name) .. " is training (" .. string.format("%d:%02d", math.floor(left / 60), left % 60) .. " left)"
+end
+
+-- A busy key already in this preset is no pick when it stays in its slot, or when the list holds the same keys as the
+-- preset (a swap): a team can be edited around a pet that is away. -> { [key] = true } of the keys that may stay.
+function P3.keptKeys(keys, stored)
+	local out = {}
+	stored = type(stored) == "table" and stored or {}
+	local had, inList, same = {}, {}, true
+	for _, key in ipairs(stored) do
+		had[key] = true
+	end
+	for i = 1, P3.MAX_SLOTS do
+		local key = keys[i]
+		if key ~= nil and key ~= "" and key ~= false then
+			inList[key] = true
+			same = same and had[key] == true
+			if stored[i] == key then
+				out[key] = true
+			end
+		end
+	end
+	for _, key in ipairs(stored) do
+		same = same and inList[key] == true
+	end
+	return same and had or out
+end
+
 -- Checks a requested team against a profile. ok, keys (slot order, compacted) | reason. `freeKey` (optional, bug
 -- batch 2 #18): count one copy of that key as free of the Garden (the recall check, before the Garden lets it go).
-function P3.checkTeam(profile, keys, freeKey)
+-- `stored` (optional): the preset's list now (a busy key that stays is no direct pick, P3.keptKeys).
+function P3.checkTeam(profile, keys, freeKey, stored)
 	if type(keys) ~= "table" then
 		return false, "That team is not valid"
 	end
@@ -4721,6 +4856,8 @@ function P3.checkTeam(profile, keys, freeKey)
 	if type(freeKey) == "string" and (placed[freeKey] or 0) > 0 then
 		placed[freeKey] = placed[freeKey] - 1
 	end
+	local training = P4.trainingSet(profile.PetGrowth)
+	local kept = P3.keptKeys(keys, stored)
 	local list, seen = {}, {}
 	for i = 1, P3.MAX_SLOTS do
 		local key = keys[i]
@@ -4736,7 +4873,10 @@ function P3.checkTeam(profile, keys, freeKey)
 			if owned < 1 then
 				return false, "You do not own that pet"
 			end
-			if owned - (placed[key] or 0) < 1 then
+			if training[key] and not kept[key] then
+				return false, P3.trainingText(profile, key)
+			end
+			if owned - (placed[key] or 0) < 1 and not kept[key] then
 				-- bug batch 2 #18: a Garden pet is busy gardening (the client asks first and recalls it with ONE request,
 				-- TycoonService.GardenRecall); a Gym copy stays the old reason
 				local home = type(profile.Home) == "table" and profile.Home or {}
@@ -4754,7 +4894,12 @@ function P3.checkTeam(profile, keys, freeKey)
 	return true, list
 end
 
--- { Presets = { {key...} x3 }, Active, Slots = 3 | 4 } (a pruned copy), or nil until loaded / while provisional.
+-- The active team cannot change during an obby match (its perks are read between checkpoints). Other presets can.
+function P3.matchLocked(player, profile, preset)
+	return player:GetAttribute(Config.Attr.InMatch) == true and P3.teamsOf(profile).Active == preset
+end
+
+-- { Presets = { {key...} x3 }, Active, Slots = 3 | 4, Busy } (a pruned copy), or nil until loaded / while provisional.
 function DataService.GetTeams(player)
 	local entry = P3.realEntry(player)
 	if not entry then
@@ -4773,12 +4918,16 @@ function DataService.SetTeam(player, preset, keys)
 		return false, "Your data is still loading"
 	end
 	local profile = entry.Profile
-	local ok, result = P3.checkTeam(profile, keys)
+	if P3.matchLocked(player, profile, preset) then
+		return false, P3.MATCH_LOCKED
+	end
+	local ok, result = P3.checkTeam(profile, keys, nil, P3.teamsOf(profile).Presets[preset])
 	if not ok then
 		return false, result
 	end
 	P3.pruneLive(entry) -- a clean live Teams table (the other presets drop their stale keys too)
 	profile.Teams.Presets[preset] = result
+	P3.syncEquipped(profile)
 	entry.Dirty = true
 	DataService.SyncSoon(player)
 	DataService.TeamsChanged:Fire(player)
@@ -4795,14 +4944,17 @@ function DataService.CheckTeam(player, preset, keys, freeKey)
 	if not entry then
 		return false, "Your data is still loading"
 	end
-	local ok, result = P3.checkTeam(entry.Profile, keys, freeKey)
+	if P3.matchLocked(player, entry.Profile, preset) then
+		return false, P3.MATCH_LOCKED
+	end
+	local ok, result = P3.checkTeam(entry.Profile, keys, freeKey, P3.teamsOf(entry.Profile).Presets[preset])
 	if not ok then
 		return false, result
 	end
 	return true
 end
 
--- Makes a preset the active one. ok, reason
+-- Makes a preset the active one: the followers change at once (an empty preset leaves none). ok, reason
 function DataService.SelectTeam(player, preset)
 	if not player or not P3.validPreset(preset) then
 		return false, "Pick a team from 1 to " .. P3.PRESETS
@@ -4811,8 +4963,12 @@ function DataService.SelectTeam(player, preset)
 	if not entry then
 		return false, "Your data is still loading"
 	end
+	if player:GetAttribute(Config.Attr.InMatch) == true then
+		return false, P3.MATCH_LOCKED
+	end
 	P3.pruneLive(entry)
 	entry.Profile.Teams.Active = preset
+	P3.syncEquipped(entry.Profile)
 	entry.Dirty = true
 	DataService.SyncSoon(player)
 	DataService.TeamsChanged:Fire(player)
@@ -4862,8 +5018,30 @@ function DataService.PlacedCopies(player)
 	return P3.placedCopies(entry.Profile)
 end
 
+-- { [key] = "Training" | "Garden" } of the live profile (team balance: such a key keeps its slot, it neither follows nor
+-- fights). {} until loaded / while provisional.
+function DataService.BusyKeys(player)
+	local entry = P3.realEntry(player)
+	if not entry then
+		return {}
+	end
+	return P3.busyOf(entry.Profile)
+end
+
+-- Rewrites Equipped from the invariant (a profile still provisional: its own cleaned list). MarkDirty + SyncSoon when it
+-- changed; never fires TeamsChanged. -> changed
+function DataService.SyncEquipped(player)
+	local entry = player and cache[player.UserId]
+	if not entry or not entry.Loaded or not P3.syncEquipped(entry.Profile) then
+		return false
+	end
+	entry.Dirty = true
+	DataService.SyncSoon(player)
+	return true
+end
+
 -- Bug batch 2 #18: { [key] = true } of every owned key with NO copy free of the Garden / Gym (busy gardening: no
--- follow, no team, no fight; the ring fallback skips them). {} until loaded / while provisional.
+-- follow, no fight; BusyKeys without the training keys). {} until loaded / while provisional.
 function DataService.GardenBusyKeys(player)
 	local entry = P3.realEntry(player)
 	if not entry then
@@ -4897,22 +5075,18 @@ function DataService.ClosedBedOverlap(player)
 	return out
 end
 
--- The usable keys of the active preset in slot order (compacted: a training pet is skipped at read time, the preset
--- keeps it); {} when empty or unknown.
+-- The active preset minus busy keys, in slot order (equals Equipped). -> keys, why: nil with at least one key, "Empty"
+-- (an empty preset), "Busy" (all its pets are busy), "Loading" (not loaded / provisional).
 function DataService.ActiveTeamKeys(player)
 	local entry = P3.realEntry(player)
 	if not entry then
-		return {}
+		return {}, "Loading"
 	end
-	local teams = P3.teamsOf(entry.Profile)
-	local training = P4.trainingSet(entry.Profile.PetGrowth)
-	local out = {}
-	for _, key in ipairs(teams.Presets[teams.Active]) do
-		if not training[key] then
-			out[#out + 1] = key
-		end
+	local keys, preset = P3.activeKeys(entry.Profile)
+	if #keys > 0 then
+		return keys, nil
 	end
-	return out
+	return keys, #preset == 0 and "Empty" or "Busy"
 end
 
 -- A copy of the battle record (TrialCleared / EventPets as sets), or nil until loaded / while provisional.
@@ -5136,7 +5310,11 @@ function DataService.MutateGrowth(player, fn)
 	refill(live, after)
 	if changed then
 		entry.Dirty = true
+		local moved = P3.syncEquipped(profile) -- a job began or ended: the pet leaves or rejoins the followers
 		DataService.SyncSoon(player)
+		if moved then
+			DataService.TeamsChanged:Fire(player)
+		end
 	end
 	return true
 end
@@ -5426,6 +5604,82 @@ function P3.gardenAnnounce(player, info)
 	if type(info) == "table" and player then
 		DataService.Migrated:Fire(player, P5.GARDEN_MARK, deepCopy(info))
 	end
+end
+
+-- Team balance (B4TeamFollow) on a loaded, real profile without the marker: the old Equipped list becomes a team, so no
+-- team is lost when it can be helped. With Equipped empty it follows the active preset; else a preset holding the same
+-- keys (not counting its busy ones; the active preset first) becomes active, and Equipped takes ITS order; else the first
+-- empty preset takes the list and becomes active; else the highest-numbered non-active preset does. No pet is touched, a
+-- key listed twice stays once. Returns info { Preset = n, Case = "Empty" | "Same" | "Free" | "Replaced" } (also
+-- MigratedNow(player, "B4TeamFollow")), or nil when the marker was already set or the profile is not decidable (not
+-- loaded, provisional: migrated after the recovery).
+function P3.teamMigrate(entry)
+	if not entry or not entry.Loaded or isProvisional(entry) then
+		return nil
+	end
+	local profile = entry.Profile
+	local migrations = ensureTable(profile, "Migrations")
+	if migrations[P3.MARK_TEAM] == true then
+		return nil
+	end
+	local teams = P3.teamsOf(profile)
+	local busy = P3.busyOf(profile)
+	-- the old list, each key once: only pets a preset could hold, and that exist
+	local list, wanted = {}, {}
+	for _, key in ipairs(tableOr(profile.Equipped)) do
+		if #list < P3.MAX_SLOTS and P3.teamKey(key) and not wanted[key] and P3.knownPet(profile, key) then
+			wanted[key] = true
+			list[#list + 1] = key
+		end
+	end
+	local function holdsList(preset)
+		local n = 0
+		for _, key in ipairs(preset) do
+			if not busy[key] then
+				if not wanted[key] then
+					return false
+				end
+				n = n + 1
+			end
+		end
+		return n == #list
+	end
+	local case, target = nil, nil
+	if #list == 0 then
+		case, target = "Empty", teams.Active
+	elseif holdsList(teams.Presets[teams.Active]) then
+		case, target = "Same", teams.Active
+	else
+		for i = 1, P3.PRESETS do
+			if not case and holdsList(teams.Presets[i]) then
+				case, target = "Same", i
+			end
+		end
+		for i = 1, P3.PRESETS do
+			if not case and #teams.Presets[i] == 0 then
+				case, target = "Free", i
+			end
+		end
+		for i = P3.PRESETS, 1, -1 do
+			if not case and i ~= teams.Active then
+				case, target = "Replaced", i
+			end
+		end
+		if case ~= "Same" then
+			teams.Presets[target] = list
+		end
+	end
+	teams.Active = target
+	refill(ensureTable(profile, "Teams"), teams)
+	migrations[P3.MARK_TEAM] = true
+	P3.syncEquipped(profile)
+	entry.Dirty = true
+	local info = { Preset = target, Case = case }
+	if type(entry.MigratedNow) ~= "table" then
+		entry.MigratedNow = {}
+	end
+	entry.MigratedNow[P3.MARK_TEAM] = info
+	return info
 end
 
 -- HUD cleanup (B3ItemsRefund) on a loaded, real profile without the marker: pays the old Items as Tokens (P6.REFUND

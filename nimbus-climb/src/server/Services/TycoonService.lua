@@ -46,7 +46,7 @@
 -- * GardenSet (any role): slot 1..GardenSlots(home), an owned free copy, not a training key (DataService.TrainingKeys),
 --   not a key in the caller's running battle (BattleService.KeysInBattle when it exists); nil / "" clears any slot.
 --   Bug batch 2 #18 ("Remote recall"): a Garden pet is BUSY gardening (one job at a time). Placing a pet takes that copy
---   off the player (PetService.Refresh: the equipped copy no longer counts) and out of every battle preset (DataService
+--   off the player (PetService.Refresh: the copy no longer counts; team balance: a team pet keeps its slot) (DataService
 --   prunes a key without a free copy) in the same step; the toast names what it left ("your side", "your team" or
 --   both). During an obby match (InMatch) placing the copy that follows the player is refused ("Finish your match
 --   first", like Equip / Unequip); a spare copy may still go. Garden earnings are unchanged.
@@ -2175,6 +2175,11 @@ function TycoonService.GardenSet(player, slot, key)
 			if live.Garden[slot] == nil then
 				return false
 			end
+			-- team balance: a team pet leaving the Garden follows again at once: not during a match (its perks)
+			if player:GetAttribute(Config.Attr.InMatch) == true and Garden.inActiveTeam(player, live.Garden[slot]) then
+				why = "Finish your match first"
+				return false
+			end
 			live.Garden[slot] = nil
 			return true
 		end
@@ -2224,6 +2229,18 @@ function TycoonService.GardenSet(player, slot, key)
 	end
 	TycoonService.HomeChanged:Fire(player)
 	return true, nil
+end
+
+-- team balance: is the key in a slot of the active team?
+function Garden.inActiveTeam(player, key)
+	local teams = dataService and type(dataService.GetTeams) == "function" and dataService.GetTeams(player) or nil
+	local list = type(teams) == "table" and type(teams.Presets) == "table" and teams.Presets[teams.Active] or nil
+	for _, k in ipairs(type(list) == "table" and list or {}) do
+		if k == key then
+			return true
+		end
+	end
+	return false
 end
 
 -- Bug batch 2 #18: the untrusted recall target -> { To = "Equip" } | { To = "Team", Preset, Keys = {[1..4] = key | false} }
@@ -2320,7 +2337,12 @@ function TycoonService.GardenRecall(player, key, target)
 		return false, "That pet is not in your garden"
 	end
 	if target.To == "Equip" then
-		ok, reason = petService.Equip(player, key)
+		if Garden.inActiveTeam(player, key) then
+			-- team balance: it kept its slot while it gardened: the Garden let it go, it follows again by itself
+			ok = petService.Refresh(player) ~= nil
+		else
+			ok, reason = petService.Equip(player, key)
+		end
 	else
 		ok, reason = dataService.SetTeam(player, target.Preset, target.Keys)
 	end
