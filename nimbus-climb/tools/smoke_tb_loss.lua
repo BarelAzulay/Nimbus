@@ -1007,6 +1007,14 @@ local function clientScenarios()
 				local inside = b and b.AbsolutePosition.X >= x - 0.5 and b.AbsolutePosition.X + b.AbsoluteSize.X <= x + cw + 0.5 and b.AbsolutePosition.Y >= y - 0.5 and b.AbsolutePosition.Y + b.AbsoluteSize.Y <= y + ch + 0.5
 				T.check(inside, tag .. ": " .. name .. " is inside the card")
 			end
+			if h < w then
+				-- (Roblox's jump button on a small screen: 70 px, 25 px from the right edge, 20 px from the bottom)
+				for _, name in ipairs({ "FightAgain", "EditTeam" }) do
+					local b = H.widget(name)
+					local clear = b.AbsolutePosition.Y + b.AbsoluteSize.Y <= h - 90 or b.AbsolutePosition.X + b.AbsoluteSize.X <= w - 95
+					T.check(clear, tag .. ": " .. name .. " is clear of the jump button", fmt("bottom %d, right %d", b.AbsolutePosition.Y + b.AbsoluteSize.Y, b.AbsolutePosition.X + b.AbsoluteSize.X))
+				end
+			end
 			for i = 1, 3 do
 				local row = H.widget("PetRow" .. i)
 				T.check(row and row.AbsolutePosition.Y + row.AbsoluteSize.Y <= y + ch + 0.5 and row.AbsolutePosition.X + row.AbsoluteSize.X <= x + cw + 0.5, tag .. ": PetRow" .. i .. " is inside the card")

@@ -42,18 +42,19 @@ local K = {
 	DISPLAY_ORDER = 24,
 	GUTTER_X = 16, -- screen px kept free around the card
 	GUTTER_Y = 8,
-	W_WIDE = 860, -- design px of a 1080p screen
+	W_WIDE = 848, -- design px of a 1080p screen (at the phone scale the buttons end left of the jump button)
 	W_TALL = 440, -- a portrait phone: the rows stack
 	PAD = 16,
 	TITLE_H = 44,
 	SUB_H = 28,
 	SUB_H_TALL = 52,
-	ROW_H = 120,
+	ROW_H = 104,
 	ROW_H_TALL = 96,
 	ROW_GAP = 8,
 	LINE_H = 36,
 	BUTTON_H = 60,
 	CLOSE = 56,
+	SHORT = 500, -- a screen lower than this keeps the card up at the top, clear of the jump button
 	POLL = 0.2, -- seconds between two looks at InBattle
 	RETURN_WAIT = 7, -- BattleService / DungeonService RETURN_DELAY (4) + 3: longest wait for the return teleport
 	START_WAIT = 2.5, -- a Fight again the server did not start: the button works again after this
@@ -217,7 +218,9 @@ local function layout()
 	local fit = math.min((vp.X - 2 * K.GUTTER_X) / w, (vp.Y - inset - 2 * K.GUTTER_Y) / y)
 	U.Fit.Scale = math.max(0.3, math.min(factor, fit))
 	U.Card.Root.AnchorPoint = Vector2.new(0.5, 0.5)
-	U.Card.Root.Position = UDim2.fromOffset(math.floor(vp.X / 2), math.floor(inset + (vp.Y - inset) / 2))
+	local h = y * U.Fit.Scale
+	local free = vp.Y - inset - h
+	U.Card.Root.Position = UDim2.fromOffset(math.floor(vp.X / 2), math.floor(inset + (vp.Y < K.SHORT and math.min(free / 2, K.GUTTER_Y / 2) or free / 2) + h / 2))
 end
 
 ----------------------------------------------------------------------
@@ -244,12 +247,12 @@ local function petRow(i, entry)
 	root.Parent = U.Card.Body
 	Util.Create("UICorner", { CornerRadius = UDim.new(0, 10), Parent = root })
 	local rowH = viewportSize().X < viewportSize().Y and K.ROW_H_TALL or K.ROW_H
-	local faceSize = rowH - 16
+	local faceSize = rowH - 32 -- (the rest of the column holds "L99 -> L100" at this size)
 	local face = Instance.new("Frame")
 	face.Name = "Face"
 	face.BackgroundTransparency = 1
 	face.BorderSizePixel = 0
-	face.Position = UDim2.fromOffset(8, 8)
+	face.Position = UDim2.fromOffset(8, 16)
 	face.Size = UDim2.fromOffset(faceSize, faceSize)
 	face.Parent = root
 	local def = State.DefOf(key)
@@ -264,7 +267,7 @@ local function petRow(i, entry)
 		Position = UDim2.fromOffset(x, 8),
 		Size = UDim2.new(1, -x - 6, 0, 26),
 	})
-	local levels = text(root, "Levels", gained and ("L" .. before .. " -> L" .. after) or ("L" .. after), "Heading", gained and 30 or 24, gained and GOLD or WHITE, {
+	local levels = text(root, "Levels", gained and ("L" .. before .. " -> L" .. after) or ("L" .. after), "Heading", gained and 26 or 24, gained and GOLD or WHITE, {
 		Position = UDim2.fromOffset(x, 36),
 		Size = UDim2.new(1, -x - 6, 0, 36),
 	})
