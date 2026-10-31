@@ -895,8 +895,9 @@ section("levels", function(opts)
 			end
 		end
 	end
-	target("level beats rarity: a L30 Common beats a L1 Secret (mean win rate >= 90% over the 24 pairs)", mean30 >= 90, fmt("%.0f%%", mean30))
-	target("a L100 evolved (stage 1) Common beats an unevolved L50 Secret (mean >= 75%)", mean100 >= 75, fmt("%.0f%%", mean100))
+	-- the spec's about 95% and about 84%, a small margin under the measured numbers
+	target("level beats rarity: a L30 Common beats a L1 Secret (mean win rate >= 93% over the 24 pairs)", mean30 >= 93, fmt("%.0f%%", mean30))
+	target("a L100 evolved (stage 1) Common beats an unevolved L50 Secret (mean >= 80%)", mean100 >= 80, fmt("%.0f%%", mean100))
 	target("a Secret stays the stronger pet at equal level and stage (UnitPower, L1 / L20 e1 / L50 e2 / L100 e2, every pair)", allPairs)
 end)
 
@@ -1115,15 +1116,17 @@ section("raids", function(opts)
 	-- parrying trainer put it back at 90: 84% of 32 seeds, while 85 made the M8 cells finish under 90 s)
 	local groupSeeds = opts.quick and 8 or 16
 	header(fmt("Raids (bug #2: groups win): eight mid (M5) teams against every boss, %d seeds", groupSeeds))
-	local worstGroup, worstBoss = 100, "-"
+	-- the group-raid guard for the mid stage: the floorGroup cells above (4 x M5) count neither as wins nor in the band
+	local worstGroup, worstBoss, longestGroup = 100, "-", 0
 	for _, boss in ipairs(BC.BossOrder) do
 		local r = SIM.midGroup(boss, 8, groupSeeds)
 		out(fmt("  %-13s M5 8p: win %3d%%  dur %5.1f s (max %5.1f)  KOs %4.1f", boss, r.winPct, r.avgDur, r.maxDur, r.kos / max(1, r.n)))
 		if r.winPct < worstGroup then
 			worstGroup, worstBoss = r.winPct, boss
 		end
+		longestGroup = max(longestGroup, r.avgDur)
 	end
-	target("eight mid (M5) teams win a fair share of every boss (>= 60% of the seeds each)", worstGroup >= 60, fmt("worst %s %d%%", worstBoss, worstGroup))
+	target("eight mid (M5) teams beat every boss (>= 90% of the seeds each) in at most 240 s on average", worstGroup >= 90 and longestGroup <= 240, fmt("worst %s %d%%, longest %.0f s", worstBoss, worstGroup, longestGroup))
 
 	header("Raids (bug batch 2 #2): 1 / 4 / 8 dodging teams at Lv 5 and Lv 40 vs the 330 s window (a Lv 5 solo cannot win)")
 	local raidSeeds = max(1, floor(seeds / 2))
@@ -1156,7 +1159,7 @@ section("raids", function(opts)
 				out(fmt("  %-13s %-4s %dp: boss HP %8d  win %3d%%  dur %5.1f s  KOs %4.1f", boss, case[1], players, hp, agg.winPct, agg.avgDur, agg.kos / max(1, agg.n)))
 				if case[1] == "Lv5" and players == 1 then
 					lv5SoloWins = lv5SoloWins + agg.wins[1]
-				elseif case[1] == "Lv5" and players == 8 and agg.winPct < 50 then
+				elseif case[1] == "Lv5" and players == 8 and agg.winPct < 70 then
 					lv5GroupOk = false
 				elseif case[1] == "Lv40" and agg.winPct < ((players == 1) and 75 or 100) then
 					-- balance-5: a Lv 40 solo can still lose all 3 lives to the Shadow Hydra's triple fangs: 30 of 32
@@ -1167,7 +1170,7 @@ section("raids", function(opts)
 		end
 	end
 	target("a Lv 5 solo never beats a raid boss (the BaselineDps HP floor)", lv5SoloWins == 0, fmt("%d wins", lv5SoloWins))
-	target("eight Lv 5 teams win >= 50% of every boss (the L35 baseline's floor); Lv 40 groups beat every boss and a Lv 40 solo wins >= 75% of each", lv5GroupOk and lv40Ok)
+	target("eight Lv 5 teams win >= 70% of every boss (the L35 baseline's floor); Lv 40 groups beat every boss and a Lv 40 solo wins >= 75% of each", lv5GroupOk and lv40Ok)
 
 	header("Raids: joining late and leaving (boss HP shares)")
 	-- S9 (Lv 40): above the BaselineDps floor, so its own DPS sets the boss HP (bug batch 2 #2)
