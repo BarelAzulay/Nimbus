@@ -68,6 +68,7 @@
 --   flag BattleService.PayRaidRewards (default true: this service pays the raid tiers; see "Rewards"),
 --   Shutdown() (what game:BindToClose runs; tests call it: every running battle ends void with Reason "Shutdown", new
 --   battles are refused), SetClosing(bool) (tests: reopen after a Shutdown),
+--   LevelSnapshot(player, keys) / LevelReport(player, keys, snapshot) (team balance: the loss screen's server-side levels),
 --   BattleService.Debug = nil | { FailEnd = n, HoldEnd = bool } (tests: the next n battle ends fail, to exercise the fail-safe
 --   that frees the players, ring / pocket / raid, sends "End" and fires BattleEnded with Reason "Error" exactly once;
 --   HoldEnd leaves a finished dungeon sim un-finalized so the 10 s fail-safe shows).
@@ -2858,6 +2859,49 @@ function RingRun.money(n)
 	return out
 end
 
+-- team balance (spec 2026-10-31 s.7): the loss screen's numbers come from the server. LevelSnapshot(player, keys) ->
+-- { [key] = { Level, XpFrac } } at the start of a run (XpFrac 0..1, 1 at the level cap); LevelReport(player, keys, snapshot) ->
+-- { { Key, PetId, Before, After, XpFrac, XpBefore }... } in team order, from the snapshot to now. DungeonService reads both.
+function BattleService.LevelSnapshot(player, keys)
+	local out = {}
+	for _, key in ipairs(type(keys) == "table" and keys or {}) do
+		local level, xp = try(dataService(), "GetPetLevel", player, key)
+		level = isInteger(level) and level or 1
+		local need = TycoonCatalog and TycoonCatalog.XpToNext(level)
+		local frac = (finite(need) and need > 0) and max(0, min(1, (tonumber(xp) or 0) / need)) or 1
+		out[key] = { Level = level, XpFrac = frac }
+	end
+	return out
+end
+
+function BattleService.LevelReport(player, keys, snapshot)
+	local current = BattleService.LevelSnapshot(player, keys)
+	local rows = {}
+	for _, key in ipairs(type(keys) == "table" and keys or {}) do
+		local start = type(snapshot) == "table" and snapshot[key] or current[key]
+		local okP, parsed = pcall(PetKeys.Parse, key)
+		rows[#rows + 1] = {
+			Key = key,
+			PetId = okP and type(parsed) == "table" and parsed.PetId or key,
+			Before = start.Level,
+			After = current[key].Level,
+			XpFrac = current[key].XpFrac,
+			XpBefore = start.XpFrac,
+		}
+	end
+	return rows
+end
+
+-- the reasons that are a LOST run (the loss screen: Rewards.Pets + Start); never a forfeit, a leave, a shutdown or an error
+RingRun.LOST = { Wipe = true, Timeout = true, Fainted = true }
+
+function RingRun.addLossReport(rw, run)
+	if run then
+		rw.Pets = BattleService.LevelReport(run.Player, run.Keys, run.StartLevels)
+		rw.Start = run.Start
+	end
+end
+
 -- the result card data of a run (final "End" Rewards.Run; `round` = the round the run ended on)
 function RingRun.summary(run, round)
 	if type(run) ~= "table" then
@@ -2903,13 +2947,16 @@ function RingRun.startInfo(b)
 end
 
 -- the final "End" rewards of a run that ended between two rounds (nothing is paid: the last round was already paid)
-function RingRun.finalRewards(run, round)
+function RingRun.finalRewards(run, round, reason)
 	local rw = emptyRewards()
 	rw.Cash = 0
 	rw.Round = round
 	rw.Won = false
 	rw.Final = true
 	rw.Run = RingRun.summary(run, round)
+	if RingRun.LOST[reason] then
+		RingRun.addLossReport(rw, run)
+	end
 	return rw
 end
 
@@ -3039,6 +3086,10 @@ function RingRun.pay(b, part, res)
 	end
 	rw.Final = true
 	rw.Run = RingRun.summary(run, round)
+	-- (after the loss XP: the report's After is the level the player has now)
+	if RingRun.LOST[res.Reason] and not part.Forfeited and not part.Left then
+		RingRun.addLossReport(rw, run)
+	end
 	notify(player, RingRun.cardText(run, round), "info", 6)
 	return rw
 end
@@ -3245,7 +3296,7 @@ function RingRun.endRun(run, b, reason)
 			BattleId = run.LastId,
 			Mode = "Ring",
 			Round = round,
-			Rewards = RingRun.finalRewards(run, round),
+			Rewards = RingRun.finalRewards(run, round, reason),
 			Outcome = "Left",
 			Won = false,
 			Spectator = false,
@@ -3467,6 +3518,7 @@ function BattleService.StartRing(player, startRound)
 		Start = first,
 		Seed = newSeed(),
 		Keys = keys,
+		StartLevels = BattleService.LevelSnapshot(player, keys), -- the loss screen's "before" (RingRun.addLossReport)
 		Source = "Team",
 		Wins = 0,
 		Cash = 0,

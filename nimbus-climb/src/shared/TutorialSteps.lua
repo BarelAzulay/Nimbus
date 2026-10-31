@@ -69,7 +69,7 @@
 --               "ArenaReached" the player stands in the Battle Arena (ArenaBuilder.InArena, server poll)
 --               "TeamSet"      the active battle team holds the player's pets: min(3, pets that can join a team)
 --                              (DataService.TeamsChanged / ActiveTeamKeys / FieldableKeys)
---               "DungeonWon"   (Phase 5, replaces TrialWon) Dungeon floor 1 is cleared (DungeonService.FloorCleared, or the
+--               "DungeonRoom"  (Phase 5, replaces TrialWon; team balance: the first room) a room of Dungeon floor 1 is cleared (DungeonService.FloorCleared, or the
 --                              saved Dungeon.Best >= 1, or a legacy Battle.TrialCleared[1]: veterans skip it)
 --               "RaidSeen"     the player joined a Boss Raid, or stood in the arena while one was running (no step
 --                              uses it since bug batch 2 #24; kept for old data)
@@ -301,11 +301,12 @@ TutorialSteps.Steps = {
 		Id = "dungeon",
 		Chapter = 3,
 		Title = "Into the Dungeon!",
-		Text = "Press E at the Dungeon portal, start Floor 1: the " .. FLOOR_ONE
-			.. ". Beat every room: pets attack by themselves, helpers buff!",
+		-- (team balance: the first room is enough, and a solo player on this step gets it eased, DungeonService's run.Eased)
+		Text = "Press E at the Dungeon portal and start Floor 1, the " .. FLOOR_ONE
+			.. ": beat the first room! Your pets attack by themselves.",
 		Target = { Kind = "Arena", Place = "Dungeon", Label = "Dungeon portal" },
-		CompleteOn = "DungeonWon",
-		Hint = "Clear Dungeon floor 1",
+		CompleteOn = "DungeonRoom",
+		Hint = "Clear the first room of Dungeon floor 1",
 	},
 	{
 		-- (bug batch 2 #24: was CompleteOn "RaidSeen", which kept a new player waiting up to RAID_MINUTES for a raid.
