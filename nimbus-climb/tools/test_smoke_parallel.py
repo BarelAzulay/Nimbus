@@ -86,6 +86,25 @@ def main():
         check("swings" in names, "the moved scenario's own checks count")
         check(sum(n.startswith("mock: x") for n in names) == 1 and "mock: y (x1, first at c)" in names, "a warning counts once, whatever its repeat count; a new one is kept")
 
+        check(len(P.replication_skips([rec("warn", "client_new", "no server replication log: run the server scenarios first"), rec("warn", "a", "other")])) == 1, "a scenario that skipped for lack of the replication log is a problem")
+
+        part = P.Part("phone", ["client_mobile"], workdir, [])
+        part.exit = 1
+        with open(part.log, "w", encoding="utf-8") as fh:
+            fh.write("== client_mobile ==\nsmoke test: 1 passed, 1 failed, 0 warnings  (1.0s)\n")
+        check(any("no results file" in p for p in P.part_problems(part)), "a part that wrote no results file is a problem")
+        with open(part.json, "w", encoding="utf-8") as fh:
+            json.dump([], fh)
+        check(P.part_problems(part) == [], "a part with a summary, its results and every scenario has no problem")
+        part.exit = 3
+        check(any("exit 3" in p for p in P.part_problems(part)), "a part that ended with an unexpected exit code is a problem")
+        part.exit = 1
+        part.names = ["client_mobile", "client_other"]
+        check(any("client_other did not run" in p for p in P.part_problems(part)), "a scenario with no line in the log is a problem")
+        with open(part.log, "w", encoding="utf-8") as fh:
+            fh.write("== client_mobile ==\n")
+        check(any("without a summary" in p for p in P.part_problems(part)), "a part that died without a summary is a problem")
+
         single = os.path.join(workdir, "single.json")
         with open(single, "w", encoding="utf-8") as fh:
             json.dump([rec("ok", "a", "plot of his own (#3) 0x01a"), rec("ok", "a", "Easy: set (Serpent)"), rec("ok", "b", "gone"), rec("warn", "b", "w"), rec("info", "b", "i")], fh)

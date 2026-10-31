@@ -40,6 +40,7 @@ REPEATED = {"mock_selftest", "load_modules", "boot", "client_load", "client_mobi
 # final_checks asks that the whole run used these remotes: only the full server part can answer that
 WHOLE_RUN_ONLY = "the run exercised the "
 REPLICATION_READERS = ["client_replay", "client_p3flow", "client_p4flow", "client_p5flow"]
+NO_REPLICATION = "no server replication log"
 SLOW_ALONE = ["hazards"]
 
 
@@ -102,6 +103,7 @@ class Part:
 
     def start(self):
         env = dict(os.environ, PYTHONIOENCODING="utf-8")
+        env.pop("NC_MESH_FIXTURES", None)  # mesh mode has its own scenario set; it stays on smoke.py --mesh
         self.handle = open(self.log, "w", encoding="utf-8")
         self.started = time.time()
         self.proc = subprocess.Popen(self.cmd, stdout=self.handle, stderr=subprocess.STDOUT, env=env, cwd=os.path.dirname(HERE))
@@ -132,6 +134,27 @@ class Part:
                 if line.startswith("smoke test:"):
                     return line.strip()
         return None
+
+
+def part_problems(part):
+    """What says a part's results cannot be trusted, whatever they hold."""
+    problems = []
+    if part.summary() is None:
+        problems.append("%s died without a summary (exit %s), see %s" % (part.name, part.exit, part.log))
+    elif part.exit not in (0, 1):
+        problems.append("%s ended with exit %s, see %s" % (part.name, part.exit, part.log))
+    if not os.path.exists(part.json):
+        problems.append("%s wrote no results file, see %s" % (part.name, part.log))
+    ran = part.ran()
+    for name in part.names:
+        if ran[name] == 0:
+            problems.append("%s: scenario %s did not run" % (part.name, name))
+    return problems
+
+
+def replication_skips(merged):
+    """A scenario that read the replication log in a part without it warned and returned: its checks never ran."""
+    return ["[%s] skipped its checks: %s (add it to REPLICATION_READERS)" % (r["section"], r["name"]) for r in merged if r["status"] == "warn" and NO_REPLICATION in r["name"]]
 
 
 def merge(parts, repeated):
@@ -220,48 +243,49 @@ def main():
     problems = []
     waiting = list(parts)
     running = []
-    while waiting or running:
-        for part in list(waiting):
-            if len(running) >= max(1, args.jobs):
-                break
-            if part.name == "replay":
-                server = by_name["server"]
-                if server.exit is None:
-                    continue
-                if not os.path.exists(replication):
-                    problems.append("replay did not run: the server part wrote no replication log (exit %s)" % server.exit)
-                    waiting.remove(part)
-                    continue
-            part.start()
-            waiting.remove(part)
-            running.append(part)
-        now = sum(working_set(p.proc.pid) for p in running)
-        peak = max(peak, now)
-        for part in list(running):
-            if part.poll():
-                running.remove(part)
-                print("  %-8s %6.1f s  %s" % (part.name, part.seconds, part.summary() or "NO SUMMARY, exit %s" % part.exit))
-                sys.stdout.flush()
-        if running:
-            time.sleep(1)
+    try:
+        while waiting or running:
+            for part in list(waiting):
+                if len(running) >= max(1, args.jobs):
+                    break
+                if part.name == "replay":
+                    server = by_name["server"]
+                    if server.exit is None:
+                        continue
+                    if not os.path.exists(replication):
+                        problems.append("replay did not run: the server part wrote no replication log (exit %s)" % server.exit)
+                        waiting.remove(part)
+                        continue
+                part.start()
+                waiting.remove(part)
+                running.append(part)
+            now = sum(working_set(p.proc.pid) for p in running)
+            peak = max(peak, now)
+            for part in list(running):
+                if part.poll():
+                    running.remove(part)
+                    print("  %-8s %6.1f s  %s" % (part.name, part.seconds, part.summary() or "NO SUMMARY, exit %s" % part.exit))
+                    sys.stdout.flush()
+            if running:
+                time.sleep(1)
+    except KeyboardInterrupt:
+        for part in running:
+            part.proc.kill()
+        print("stopped; part logs: " + workdir)
+        return 1
     elapsed = time.time() - started
 
     # nothing may go missing without saying so
     for part in parts:
-        if part.proc is None:
-            continue
-        if part.summary() is None:
-            problems.append("%s died without a summary (exit %s), see %s" % (part.name, part.exit, part.log))
-        ran = part.ran()
-        for name in part.names:
-            if ran[name] == 0:
-                problems.append("%s: scenario %s did not run" % (part.name, name))
+        if part.proc is not None:
+            problems += part_problems(part)
     assigned = set(n for p in parts for n in p.names)
     for name in lists["server"] + lists["client"] + lists["mobile"]:
         if name not in assigned:
             problems.append("scenario %s is in no part" % name)
 
     merged = merge(parts, REPEATED | before_replay)
+    problems += replication_skips(merged)
     counts = collections.Counter(r["status"] for r in merged)
     failed = [r for r in merged if r["status"] == "fail"]
     for r in failed:
