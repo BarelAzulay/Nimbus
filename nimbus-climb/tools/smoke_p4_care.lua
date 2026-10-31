@@ -473,7 +473,7 @@ S.p4care_feed = guarded("p4care_feed", function()
 	for _, gone in ipairs({ "Cook", "GymSet", "GetQueue", "ClearKitchen", "Cooked", "GymChanged" }) do
 		T.check(Care[gone] == nil, "care api: the Phase 2 " .. gone .. " is gone (the Kitchen is the Food Machine, the Gym the Training Place)")
 	end
-	T.check(type(PS().UnequipKey) == "function" and type(PS().Refresh) == "function", "care api: PetService.UnequipKey / Refresh exist")
+	T.check(PS().UnequipKey == nil and type(PS().Refresh) == "function", "care api: PetService.Refresh exists; UnequipKey is gone (a team pet keeps its slot while it trains)")
 
 	local p, index = readyPlayer("CareFeed", { Garden = 1, Press1 = 1 }, 0)
 	if not T.check(index ~= nil, "care feed: (precondition) the player claims a plot") then
@@ -963,12 +963,11 @@ S.p4care_train = guarded("p4care_train", function()
 	T.check(okNo == false and whyNo == "Build the Training Place at home first" and cashOf(p) == cash0, "care train: without a Training Place a job is refused before any Cash moves", tostring(whyNo))
 	setStations(p, { Garden = 1, Press1 = 1, Kitchen = 1, Gym = 1 })
 
-	-- the pet is equipped twice and works in the Garden: Train takes it off the player and out of the Garden
-	Pets.Equip(p, eco.Id)
+	-- the pet is in the team and works in the Garden (a spare copy): Train takes it off the player and out of the Garden
 	Pets.Equip(p, eco.Id)
 	local okG, whyG = Ty.GardenSet(p, 1, eco.Id)
 	advance(0.3)
-	T.check(okG == true and equippedCount(p, eco.Id) == 2 and homeOf(p).Garden[1] == eco.Id, "care train: (precondition) 2 copies equipped and one in Garden place 1", tostring(whyG) .. " eq " .. equippedCount(p, eco.Id))
+	T.check(okG == true and equippedCount(p, eco.Id) == 1 and homeOf(p).Garden[1] == eco.Id, "care train: (precondition) one copy follows and one is in Garden place 1", tostring(whyG) .. " eq " .. equippedCount(p, eco.Id))
 	local cost1 = Cat.TrainCost(eco, 1)
 	local secs1 = Cat.TrainSeconds(1)
 	T.check(cost1 == 300 * (Config.PetStats.RarityScale.Common or 1) and secs1 == 60, "care train: (catalog) rank 1 of a Common costs $300 and takes 60 s")
@@ -983,7 +982,7 @@ S.p4care_train = guarded("p4care_train", function()
 	local g = growthOf(p, eco.Id)
 	T.check(type(g.Job) == "table" and g.Job.Stat == "Physique" and g.Job.Ends == t0 + secs1 and g.Job.Rank == 1 and g.Job.Slot == 1 and g.Job.From == "Garden:1" and g.Job.Paid == cost1,
 		"care train: the stored Job = { Stat, Ends, Rank, Slot, From, Paid } (DataService.GetGrowth)", jobText(g))
-	T.check(equippedCount(p, eco.Id) == 0 and homeOf(p).Garden[1] == nil, "care train: starting unequips EVERY copy and clears the Garden place by itself")
+	T.check(equippedCount(p, eco.Id) == 0 and homeOf(p).Garden[1] == nil and listHas(DataS.GetTeams(p).Presets[1], eco.Id), "care train: starting takes it off the followers (its team slot stays) and clears the Garden place by itself")
 	T.check(DataS.TrainingKeys(p)[eco.Id] == true, "care train: DataService.TrainingKeys holds the key (the lock)")
 	T.check(#started == 1 and started[1][1] == eco.Id and started[1][2] == "Physique", "care train: TrainingStarted(player, key, 'Physique') fired")
 	T.check(toasted(p, eco.Name .. " started Physique training (1:00)", "good", mark), "care train: toast 'Rocky started Physique training (1:00)'", toastsSince(p, mark))
@@ -1068,7 +1067,7 @@ S.p4care_train = guarded("p4care_train", function()
 	T.check(g.Physique == 1 and g.Job == nil and DataS.TrainingKeys(p)[eco.Id] == nil, "care train: after 60 s the tick finishes the job: Physique rank 1, the job gone, the lock lifted", jobText(g) .. " P" .. tostring(g.Physique))
 	T.check(#done == nDone + 1 and done[#done][1] == eco.Id and done[#done][2] == "Physique" and done[#done][3] == 1, "care train: TrainingDone(player, key, 'Physique', 1) fired once")
 	T.check(toasted(p, eco.Name .. " finished Physique training: Rank 1!", "good", mark) and toasts(p, "finished Physique training", nil, mark) == 1, "care train: toast 'Rocky finished Physique training: Rank 3!' once", toastsSince(p, mark))
-	T.check(homeOf(p).Garden[1] == eco.Id and equippedCount(p, eco.Id) == 0, "care train: the pet goes back to Garden place 1 by itself (From 'Garden:1'), not onto the player")
+	T.check(homeOf(p).Garden[1] == eco.Id and equippedCount(p, eco.Id) == 1, "care train: the pet goes back to Garden place 1 by itself (From 'Garden:1'); a spare copy fills its team slot again")
 	T.eq(info.Folder:GetAttribute("TrainingPets"), "", "care train: TrainingPets is empty again")
 	-- rank 2 costs TrainCost(def, 2) and takes 120 s; a taken Garden place -> the first free open place
 	Ty.GardenSet(p, 1, nil)
@@ -1084,9 +1083,10 @@ S.p4care_train = guarded("p4care_train", function()
 	advance(Cat.TrainSeconds(2) + 2)
 	local h = homeOf(p)
 	T.check(growthOf(p, eco.Id).Physique == 2 and h.Garden[2] == rare.Id and h.Garden[1] == eco.Id, "care train: its place taken, the finished pet goes to the first free open place (1)", tostring(h.Garden[1]) .. "," .. tostring(h.Garden[2]) .. "," .. tostring(h.Garden[3]))
-	-- no free place: it stays in the list; From Follow -> re-equipped
+	-- no free place: it stays in the list; From Follow -> its team slot was never freed
 	Ty.GardenSet(p, 1, nil)
 	advance(0.2)
+	Pets.Unequip(p, eco.Id)
 	local okR3 = Care.Train(p, eco.Id, "Speed") -- From "Garden:..."? no: it is free now
 	local fromFree = growthOf(p, eco.Id).Job and growthOf(p, eco.Id).Job.From
 	T.check(okR3 and fromFree == "Free", "care train: a pet neither equipped nor in the Garden trains with From 'Free'", tostring(fromFree))
@@ -1103,20 +1103,17 @@ S.p4care_train = guarded("p4care_train", function()
 			Ty.GardenSet(p, slot, nil)
 		end
 	end
-	Pets.Equip(p, combat.Id)
-	Pets.Equip(p, rare.Id)
+	DataS.SetTeam(p, 1, { combat.Id, eco.Id, rare.Id })
 	local third = pickPet("Combat", "Uncommon") or pickPet("Economy", "Uncommon")
 	givePet(p, third.Id)
-	Pets.Equip(p, third.Id)
-	T.eq(#equipped(p), 3, "care train: (setup) every follow slot is taken while it trains")
+	local okThird, whyThird = Pets.Equip(p, third.Id)
+	T.check(okThird == false and whyThird == "Your team is full (3 pets)" and #equipped(p) == 2, "care train: a training pet keeps its slot: the team stays full while it trains", tostring(whyThird))
 	advance(Cat.TrainSeconds(1) + 2)
-	T.check(growthOf(p, eco.Id).Ability == 1 and equippedCount(p, eco.Id) == 0, "care train: a follower whose slots are all taken when it finishes stays in the list")
-	Pets.Unequip(p, third.Id)
-	Pets.Equip(p, eco.Id)
+	T.check(growthOf(p, eco.Id).Ability == 1 and equippedCount(p, eco.Id) == 1 and #equipped(p) == 3, "care train: a team pet is back by itself when it finishes")
 	local okR5, job5 = Care.Train(p, eco.Id, "Defense")
 	T.check(okR5 == true and job5.From == "Follow" and equippedCount(p, eco.Id) == 0, "care train: (setup) Defense rank 1 started from the player (From 'Follow')", okR5 and job5.From or tostring(job5))
 	advance(Cat.TrainSeconds(1) + 2)
-	T.check(growthOf(p, eco.Id).Defense == 1 and equippedCount(p, eco.Id) == 1, "care train: a follower is re-equipped when a slot is free at the end")
+	T.check(growthOf(p, eco.Id).Defense == 1 and equippedCount(p, eco.Id) == 1, "care train: ...every time (From 'Follow')")
 
 	-- the EquippedInfo attribute: level:stage per entry, no entry for the training pet
 	setLevel(p, eco.Id, 12)
@@ -1131,13 +1128,9 @@ S.p4care_train = guarded("p4care_train", function()
 	advance(0.6)
 	infoAttr = p:GetAttribute(Config.Attr.EquippedInfo) or ""
 	T.eq(infoAttr, table.concat(parts, ","), "care train: EquippedInfo = 'level:stage' per EquippedPets entry (" .. table.concat(eq, ",") .. ")")
-	-- UnequipKey takes every copy
-	Pets.Unequip(p, combat.Id)
-	Pets.Unequip(p, rare.Id)
-	Pets.Equip(p, eco.Id)
-	Pets.Equip(p, eco.Id)
-	T.eq(equippedCount(p, eco.Id), 3, "care train: (setup) three copies equipped")
-	T.check(Pets.UnequipKey(p, eco.Id) == 3 and equippedCount(p, eco.Id) == 0 and Pets.UnequipKey(p, eco.Id) == 0, "care train: PetService.UnequipKey takes every copy off (3) and answers 0 when none is equipped")
+	-- a key is in a team once, whatever its copies
+	local okTwice, whyTwice = Pets.Equip(p, eco.Id)
+	T.check(okTwice == false and whyTwice == "That pet is already in your team" and equippedCount(p, eco.Id) == 1, "care train: three copies follow as one team pet", tostring(whyTwice))
 
 	-- the remote: Train (key, stat), TrainStop (key), 0.25 s cooldown
 	mark = K.logSize()

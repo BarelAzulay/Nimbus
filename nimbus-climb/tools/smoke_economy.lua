@@ -929,9 +929,13 @@ S.economy = guarded("economy", function()
 	T.check(not notified(witness, "pulled", nil, mark), "a Common pull is not announced")
 	removePlayers({ witness })
 
-	-- equip / unequip rules
+	-- equip / unequip rules (team balance: Equip fills the active team, a key once)
+	local function clearTeam(who)
+		local teams = DataS.GetTeams(who)
+		return teams and DataS.SetTeam(who, teams.Active, {})
+	end
 	prof.Pets = {}
-	prof.Equipped = {}
+	clearTeam(p)
 	local a, b, c, d = petOfRarity("Common", 1), petOfRarity("Common", 2), petOfRarity("Uncommon", 1), petOfRarity("Rare", 1)
 	grant(p, a, 1)
 	grant(p, b, 2)
@@ -942,11 +946,12 @@ S.economy = guarded("economy", function()
 	T.eq(select(1, PS.Equip(p, PC.ListByRarity("Epic")[1].Id)), false, "Equip of a pet the player does not own fails")
 	T.eq(select(1, PS.Equip(p, nil)), false, "Equip(nil) fails")
 	T.eq(select(1, PS.Equip(p, a)), true, "Equip of an owned pet works")
-	T.eq(select(1, PS.Equip(p, a)), false, "...but the same pet cannot be equipped more often than owned (x1)")
-	T.eq(select(1, PS.Equip(p, b)), true, "an x2 stack can be equipped once...")
-	T.eq(select(1, PS.Equip(p, b)), true, "...and twice (a petId may appear at most `count` times)")
+	T.eq(select(1, PS.Equip(p, a)), false, "...but the same pet cannot be in the team twice")
+	T.eq(select(1, PS.Equip(p, b)), true, "an x2 stack can join once...")
+	T.eq(select(1, PS.Equip(p, b)), false, "...and only once (a team holds a key once)")
+	T.eq(select(1, PS.Equip(p, c)), true, "a third pet fills the team")
 	T.eq(#prof.Equipped, Config.Pets.MaxEquipped, "now " .. Config.Pets.MaxEquipped .. " pets are equipped")
-	local okFull, whyFull = PS.Equip(p, c)
+	local okFull, whyFull = PS.Equip(p, d)
 	T.check(okFull == false and type(whyFull) == "string", "equipping beyond Config.Pets.MaxEquipped fails with a reason", tostring(whyFull))
 	T.check(perksChanged >= 3, "PerksChanged fires for every change", perksChanged .. " events")
 	T.eq(equippedAttr(p), table.concat(prof.Equipped, ","), "EquippedPets attribute always equals Profile.Equipped")
@@ -954,56 +959,42 @@ S.economy = guarded("economy", function()
 	T.check(#listed == 3 and listed[1] == a, "GetEquipped lists the equipped ids in order")
 	listed[1] = "tampered"
 	T.eq(PS.GetEquipped(p)[1], a, "GetEquipped returns a copy")
-	T.eq(select(1, PS.Unequip(p, c)), false, "Unequip of a pet that is not equipped fails")
+	T.eq(select(1, PS.Unequip(p, d)), false, "Unequip of a pet that is not equipped fails")
 	T.eq(select(1, PS.Unequip(p, "ghost")), false, "Unequip of an unknown pet fails")
 	T.eq(select(1, PS.Unequip(p, a)), true, "Unequip works")
 	T.eq(#prof.Equipped, 2, "...and frees the slot")
 	T.eq(equippedAttr(p), table.concat(prof.Equipped, ","), "...the attribute follows")
-	T.eq(select(1, PS.Equip(p, c)), true, "a freed slot can be used by another pet")
+	T.eq(select(1, PS.Equip(p, d)), true, "a freed slot can be used by another pet")
 
 	-- perks: sums, caps, health
-	prof.Equipped = {}
+	clearTeam(p)
 	grant(p, CONTRACT.v2.mascotPetId, 3)
-	for _ = 1, 3 do
-		PS.Equip(p, CONTRACT.v2.mascotPetId)
-	end
+	PS.Equip(p, CONTRACT.v2.mascotPetId)
 	advance(0.5)
 	local perks = PS.GetPerks(p)
 	local want = PC.SumPerks(prof.Equipped)
 	T.check(samePerks(perks, want), "GetPerks equals PetCatalog.SumPerks of the equipped pets")
-	T.near(perks.TokenBonus, 0.75, 1e-6, "three Cloudy Dragons give +75% cloud tokens")
-	T.near(PS.GetTokenMultiplier(p), 1.75, 1e-6, "GetTokenMultiplier = 1 + TokenBonus")
+	T.near(perks.TokenBonus, 0.25, 1e-6, "a Cloudy Dragon gives +25% cloud tokens")
+	T.near(PS.GetTokenMultiplier(p), 1.25, 1e-6, "GetTokenMultiplier = 1 + TokenBonus")
 	T.near(hum(p).MaxHealth, Config.Physics.MaxHealth * (1 + perks.MaxHealth), 0.6, "the MaxHealth perk raises Humanoid.MaxHealth")
 	local np = freshPlayers(1, "NoPets")[1]
 	T.check(PS.GetTokenMultiplier(np) == 1, "a player without pets has multiplier 1 (>= 1 always)")
 	removePlayers({ np })
 	perks.TokenBonus = 99
-	T.near(PS.GetPerks(p).TokenBonus, 0.75, 1e-6, "GetPerks returns a copy")
-	-- caps (raise the slot limit for this test only; the snapshots it produces break the slot rule on purpose, so
-	-- they are dropped from the remote log afterwards instead of failing the whole-run payload audit)
-	local capMark = logSize()
-	local slots = Config.Pets.MaxEquipped
-	Config.Pets.MaxEquipped = 10
-	grant(p, CONTRACT.v2.mascotPetId, 10)
-	prof.Equipped = {}
-	for _ = 1, 10 do
-		PS.Equip(p, CONTRACT.v2.mascotPetId)
+	T.near(PS.GetPerks(p).TokenBonus, 0.25, 1e-6, "GetPerks returns a copy")
+	-- caps (a team holds 3 different keys, so a list longer than any team goes straight to the sum)
+	local tenDragons = {}
+	for i = 1, 10 do
+		tenDragons[i] = CONTRACT.v2.mascotPetId
 	end
-	advance(0.5)
-	perks = PS.GetPerks(p)
-	Config.Pets.MaxEquipped = slots
+	grant(p, CONTRACT.v2.mascotPetId, 10)
+	perks = DataS.ComputePerks(tenDragons, prof)
 	T.near(perks.MaxHealth, Config.Pets.PerkCaps.MaxHealth, 1e-6, "perks are capped: MaxHealth stops at " .. Config.Pets.PerkCaps.MaxHealth)
 	T.near(perks.TokenBonus, Config.Pets.PerkCaps.TokenBonus, 1e-6, "perks are capped: TokenBonus stops at " .. Config.Pets.PerkCaps.TokenBonus)
-	T.near(PS.GetTokenMultiplier(p), 1 + Config.Pets.PerkCaps.TokenBonus, 1e-6, "...so the multiplier is capped too")
 	while #prof.Equipped > 0 do
 		PS.Unequip(p, prof.Equipped[1])
 	end
 	advance(0.3)
-	for i = #Mock.RemoteLog, capMark + 1, -1 do
-		if Mock.RemoteLog[i].remote == "ProfileSync" and Mock.RemoteLog[i].userId == p.UserId then
-			table.remove(Mock.RemoteLog, i)
-		end
-	end
 	T.near(PS.GetPerks(p).TokenBonus, 0, 1e-6, "unequipping everything removes the perks again")
 	-- a stamina-regen pet publishes the attribute
 	local regenPet
@@ -1015,7 +1006,7 @@ S.economy = guarded("economy", function()
 	end
 	if regenPet then
 		grant(p, regenPet.Id, 1)
-		prof.Equipped = {}
+		clearTeam(p)
 		T.eq(select(1, PS.Equip(p, regenPet.Id)), true, "equip the stamina pet " .. regenPet.Id)
 		T.near(p:GetAttribute("PerkStaminaRegen") or -1, regenPet.Perks.StaminaRegen, 1e-6, "attribute PerkStaminaRegen = the StaminaRegen perk")
 		PS.Unequip(p, regenPet.Id)
@@ -1025,7 +1016,7 @@ S.economy = guarded("economy", function()
 
 	-- remotes: rate limits, type checks, ids
 	prof.Pets = {}
-	prof.Equipped = {}
+	clearTeam(p)
 	grant(p, a, 1)
 	grant(p, c, 1)
 	setTokens(p, 500)

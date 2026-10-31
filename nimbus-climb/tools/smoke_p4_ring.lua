@@ -2,7 +2,7 @@
 -- 3.11 / 5.1-5.4 / X13-X17 / 8.1) on the booted server with simulated players. Server world only (server_files of
 -- tools/smoke.py); the scenarios run before the care block (they advance the clock by minutes).
 --   p4ring_start    the entry checks IN ORDER with their exact toasts (no home / no pet / far from the portal / in an
---                   obby match / a provisional save), the fighters fallback (team -> equipped -> best owned by UnitPower,
+--                   obby match / a provisional save), the fighters (the active team minus busy pets, NO fallback: an empty team is refused,
 --                   training pets skipped, at most GetTeams().Slots), junk start rounds, the "Start" payload (Ring =
 --                   { Round, Best, Start, Champion }, unit evo / xp / xpNext), GetBattle (Mode Ring, Round), KeysInBattle,
 --                   one battle at a time, the pocket from the shared pool, a BattleRequest("Ring") through the remote
@@ -679,10 +679,14 @@ S.p4ring_start = scenario("p4ring_start", function()
 	toRing(p)
 	ok, why = bs.StartRing(p, 1)
 	T.check(ok == false and why == "You need a pet", "p4 ring: with a home but no pet: 'You need a pet'", tostring(why))
-	-- 3) far from the portal (home + pet, no team: the equipped fallback)
+	-- no team: refused with the reason, the pet is NOT fielded silently (team balance: no fallback)
 	local prof = data.GetProfile(p)
 	prof.Pets[WEAK[1]] = 1
 	data.MarkDirty(p)
+	ok, why = bs.StartRing(p, 1)
+	T.check(ok == false and why == bs.TEAM_REFUSALS.Empty and p:GetAttribute("InBattle") == nil, "p4 ring: a home and a pet but no team: refused with TEAM_REFUSALS.Empty", tostring(why))
+	-- 3) far from the portal (home + pet in the team)
+	T.check(data.SetTeam(p, 1, { WEAK[1] }) == true, "p4 ring: (setup) the pet joins the team")
 	toLobby(p)
 	ok, why = bs.StartRing(p, 1)
 	T.check(ok == false and why == "Walk to the Champion Ring portal", "p4 ring: away from Portal_Ring: 'Walk to the Champion Ring portal'", tostring(why))
@@ -702,10 +706,10 @@ S.p4ring_start = scenario("p4ring_start", function()
 	end
 	T.check(#bad == 0, "p4 ring: junk start rounds and rounds not beaten are refused (0, -1, 1.5, nan, inf, '1', 2, 7, 10, 20)", table.concat(bad, ", "))
 
-	-- the fighters fallback: no team -> the equipped keys -> the best owned pets by UnitPower
+	-- the fighters: the active team
 	local mark = K.logSize()
 	ok, why = bs.StartRing(p, 1)
-	T.check(ok == true and type(why) == "string", "p4 ring: StartRing(1) with a home, one pet and no team starts a run (the equipped / best-pet fallback)", tostring(why))
+	T.check(ok == true and type(why) == "string", "p4 ring: StartRing(1) with a home and a one-pet team starts a run", tostring(why))
 	local id1 = why
 	local start = lastMsg(p, "Start", mark)
 	local mine = {}
@@ -753,12 +757,9 @@ S.p4ring_start = scenario("p4ring_start", function()
 	advance(4.6)
 	T.check(p:GetAttribute("InBattle") == nil and count(bs.KeysInBattle(p)) == 0 and pocketCount() == 0, "p4 ring: after the end: InBattle cleared, KeysInBattle empty, the pocket freed")
 
-	-- the team comes first when there is one (training pets skipped, the preset kept); the equipped list second
+	-- the team (training pets skipped, the preset kept)
 	local q = newPlayer("RingTeam", { STRONG[1], STRONG[2], WEAK[2] }, 5)
 	claimHome(q)
-	local qprof = data.GetProfile(q)
-	qprof.Equipped = { WEAK[2] }
-	data.MarkDirty(q)
 	-- STRONG[2] trains: the fixed list skips it (the preset keeps it)
 	local trained = data.MutateGrowth(q, function(growth)
 		growth[STRONG[2]] = { Job = { Stat = "Speed", Ends = os.time() + 600, Rank = 1, Slot = 1, From = "Free", Paid = 0 } }
@@ -781,42 +782,38 @@ S.p4ring_start = scenario("p4ring_start", function()
 	T.check(inB[STRONG[1]] == true and inB[WEAK[2]] == true and inB[STRONG[2]] == nil, "p4 ring: KeysInBattle lists the two fighters only")
 	bs.Forfeit(q)
 	advance(4.8)
-	-- an empty team -> the equipped keys
+	-- an empty team: refused, nothing filled in silently
 	data.SetTeam(q, 1, {})
 	toRing(q)
-	mark = K.logSize()
 	okQ, idQ = bs.StartRing(q, 1)
-	sq = lastMsg(q, "Start", mark)
-	qKeys = {}
-	for _, u in ipairs(sq and sq.Units or {}) do
-		if u.owner == q.UserId then
-			qKeys[#qKeys + 1] = u.key
+	T.check(okQ == false and idQ == bs.TEAM_REFUSALS.Empty and q:GetAttribute("InBattle") == nil, "p4 ring: an empty team is refused (TEAM_REFUSALS.Empty), no equipped / strongest fallback", tostring(idQ))
+	-- the equipped-only legacy save: B4TeamFollow made its followers a team, and they fight
+	local legacyId = 965990
+	Mock.DataStore.Data[K.config().Tokens.DataStoreName .. "/u_" .. legacyId] = {
+		Version = 2, Tokens = 0, Pets = { [WEAK[2]] = 1, [STRONG[1]] = 1 }, Equipped = { WEAK[2] }, Items = {},
+		Stats = { Matches = 0, Wins = 0, TokensEarned = 0, Spins = 0, BestTimes = {} },
+	}
+	local lg = Mock.AddPlayer("RingLegacy", legacyId)
+	advance(1.0)
+	claimHome(lg)
+	toRing(lg)
+	mark = K.logSize()
+	local okL, idL = bs.StartRing(lg, 1)
+	local sl = lastMsg(lg, "Start", mark)
+	local lKeys = {}
+	for _, u in ipairs(sl and sl.Units or {}) do
+		if u.owner == lg.UserId then
+			lKeys[#lKeys + 1] = u.key
 		end
 	end
-	T.check(okQ == true and #qKeys == 1 and qKeys[1] == WEAK[2], "p4 ring: with an empty team the EQUIPPED pets fight", table.concat(qKeys, ","))
-	bs.Forfeit(q)
+	T.check(okL == true and #lKeys == 1 and lKeys[1] == WEAK[2] and data.GetTeams(lg).Presets[1][1] == WEAK[2], "p4 ring: an equipped-only legacy save migrated into preset 1 fields its pets", table.concat(lKeys, ",") .. " / " .. tostring(idL))
+	bs.Forfeit(lg)
 	advance(4.8)
-	-- nothing equipped -> the best owned pets by UnitPower (the training one skipped)
-	qprof = data.GetProfile(q)
-	qprof.Equipped = {}
-	data.MarkDirty(q)
-	toRing(q)
-	mark = K.logSize()
-	okQ, idQ = bs.StartRing(q, 1)
-	sq = lastMsg(q, "Start", mark)
-	qKeys = {}
-	for _, u in ipairs(sq and sq.Units or {}) do
-		if u.owner == q.UserId then
-			qKeys[u.slot] = u.key
-		end
-	end
-	T.check(okQ == true and #qKeys == 2 and qKeys[1] == STRONG[1] and qKeys[2] == WEAK[2],
-		"p4 ring: with nothing equipped the BEST owned pets fight (by UnitPower, the training one skipped)", table.concat(qKeys, ","))
-	bs.Forfeit(q)
-	advance(4.8)
-	-- teamOf's empty-team refusal stays for the other modes (TeamSpec without the ring fallback)
+	K.removePlayers({ lg })
+	advance(1)
+	-- the same refusal for the other modes (TeamSpec)
 	local specTr, whyTr = bs.TeamSpec(q)
-	T.check(specTr == nil and whyTr == "Pick your battle team first (at a battle portal, or Pets > Team)", "p4 ring: teamOf's empty-team refusal stays for duels / raids / encounters (TeamSpec)", tostring(whyTr))
+	T.check(specTr == nil and whyTr == bs.TEAM_REFUSALS.Empty, "p4 ring: teamOf's empty-team refusal is the same for duels / raids / encounters (TeamSpec)", tostring(whyTr))
 
 	-- a provisional save: refused with its text, after the other checks (a stand-in profile from a DataStore outage)
 	local DSt = Mock.DataStore

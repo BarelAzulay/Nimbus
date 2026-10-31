@@ -456,7 +456,13 @@ S.p4data_growth = guarded("p4data_growth", function()
 	end
 	T.check(not hasB and hasA, "p4 growth: FieldableKeys skips the training pet (the Team picker does not offer it)", listText(fieldable))
 	local okTeam, whyTeam = DataS.SetTeam(p, 2, { b, d })
-	T.check(okTeam == true and sameList(DataS.GetTeams(p).Presets[2], { b, d }), "p4 growth: SetTeam still ACCEPTS a training pet in a preset (P3.checkTeam is not taught about training)", tostring(whyTeam))
+	T.check(okTeam == false and tostring(whyTeam):find(" is training (", 1, true) ~= nil and tostring(whyTeam):find("left)", 1, true) ~= nil, "p4 growth: SetTeam refuses a DIRECT pick of a training pet, with the time left", tostring(whyTeam))
+	okTeam, whyTeam = DataS.SetTeam(p, 1, { a, b, d })
+	T.check(okTeam == true and sameList(DataS.GetTeams(p).Presets[1], { a, b, d }) and sameList(DataS.ActiveTeamKeys(p), { a, d }), "p4 growth: ...one that stays in its slot is no pick (a team edit around it)", tostring(whyTeam))
+	okTeam, whyTeam = DataS.SetTeam(p, 1, { a, b, c })
+	T.check(okTeam == true, "p4 growth: (setup) the team back", tostring(whyTeam))
+	okTeam, whyTeam = DataS.SetTeam(p, 2, { d })
+	T.check(okTeam == true and sameList(DataS.GetTeams(p).Presets[2], { d }), "p4 growth: (setup) team 2 holds d", tostring(whyTeam))
 	DataS.MutateGrowth(p, function(g)
 		g[b].Job = nil
 	end)
@@ -465,8 +471,8 @@ S.p4data_growth = guarded("p4data_growth", function()
 	-- bug batch 2 #18: garden pets are busy again (P3.placedCopies counts Home.Garden + Home.Gym); a Gym copy still is
 	T.check(DataS.MutateHome(p, function(home)
 		home.Garden[1] = c
-	end) == true and sameList(DataS.GetTeams(p).Presets[1], { a, b }) and sameList(DataS.ActiveTeamKeys(p), { a, b }),
-		"p4 growth: a pet whose only copy goes to the Garden leaves its team (bug batch 2 #18: busy gardening)", listText(DataS.GetTeams(p).Presets[1]))
+	end) == true and sameList(DataS.GetTeams(p).Presets[1], { a, b, c }) and sameList(DataS.ActiveTeamKeys(p), { a, b }),
+		"p4 growth: a pet whose only copy goes to the Garden keeps its slot and stops fighting (team balance: busy)", listText(DataS.GetTeams(p).Presets[1]))
 	okTeam, whyTeam = DataS.SetTeam(p, 3, { c })
 	T.check(okTeam == false and tostring(whyTeam):find("gardening", 1, true) ~= nil, "p4 growth: ...and SetTeam refuses a garden pet ('gardening')", tostring(whyTeam))
 	DataS.MutateHome(p, function(home)
@@ -474,7 +480,7 @@ S.p4data_growth = guarded("p4data_growth", function()
 	end)
 	T.check(DataS.MutateHome(p, function(home)
 		home.Gym[1] = d
-	end) == true and sameList(DataS.GetTeams(p).Presets[2], { b }), "p4 growth: a pet whose only copy sits in the (retired) Gym still leaves its team (Phase 3 data written during the rollout stays understood)", listText(DataS.GetTeams(p).Presets[2]))
+	end) == true and sameList(DataS.GetTeams(p).Presets[2], { d }) and DataS.GetTeams(p).Busy[d] == "Garden", "p4 growth: a pet whose only copy sits in the (retired) Gym is busy too, slot kept (Phase 3 data written during the rollout stays understood)", listText(DataS.GetTeams(p).Presets[2]))
 	DataS.MutateHome(p, function(home)
 		home.Gym[1] = nil
 	end)
@@ -699,7 +705,7 @@ S.p4data_save = guarded("p4data_save", function()
 	for name in pairs(DataS.GetProfile(j).Migrations or {}) do
 		-- (Phase 5 adds its own P5Dungeon / P5Home markers on the load, bug batch 2 #18 its B2GardenSolo marker, the HUD
 		-- cleanup its B3ItemsRefund marker)
-		if string.sub(tostring(name), 1, 2) ~= "P5" and name ~= "B2GardenSolo" and name ~= "B3ItemsRefund" then
+		if string.sub(tostring(name), 1, 2) ~= "P5" and name ~= "B2GardenSolo" and name ~= "B3ItemsRefund" and name ~= "B4TeamFollow" then
 			nonP5 = nonP5 + 1
 		end
 	end

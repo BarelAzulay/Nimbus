@@ -2221,10 +2221,9 @@ function TycoonService.GardenSet(player, slot, key)
 	Garden.refreshPlot(player)
 	if key ~= nil then
 		local name = (def and (def.DisplayName or def.Name)) or key
-		-- the toast names the job(s) the pet really left
-		local followingNow, inTeamNow = Garden.jobsOf(player, getProfile(player), key)
-		local side, team = followingNow < following, inTeam and not inTeamNow
-		local left = (side and team and "your side and your team") or (side and "your side") or (team and "your team") or nil
+		-- the toast names the job the pet really left (team balance: it keeps its team slot, busy)
+		local followingNow = Garden.jobsOf(player, getProfile(player), key)
+		local left = followingNow < following and "your side" or nil
 		notify(player, tostring(name) .. " is working in your Garden!" .. (left and (" It left " .. left .. ": one job at a time.") or ""), "good", left and 5 or 3)
 	end
 	TycoonService.HomeChanged:Fire(player)

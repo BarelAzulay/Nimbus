@@ -782,30 +782,19 @@ local function serverScenarios()
 		end
 		local Config = config()
 
-		-- equipped copies are taken off first; the result takes their slot
+		-- a team pet used up: the result takes its slot (team balance: in the active preset, Equipped follows)
 		local p = readyPlayer("Equipper", 1)
 		local prof = DataS.GetProfile(p)
-		give(p, "mallow_kitten", 4)
+		give(p, "mallow_kitten", 3)
 		give(p, "honey_bunny", 1)
-		for _ = 1, 2 do
-			Pets.Equip(p, "mallow_kitten")
-		end
+		Pets.Equip(p, "mallow_kitten")
 		Pets.Equip(p, "honey_bunny")
-		T.check(#prof.Equipped == 3, "fusion: (precondition) 2 kittens + 1 bunny equipped", table.concat(prof.Equipped, ","))
+		T.check(#prof.Equipped == 2, "fusion: (precondition) a kitten + a bunny follow", table.concat(prof.Equipped, ","))
 		local ok, key = F.Upgrade(p, "mallow_kitten")
 		advance(0.2)
-		local kittens, golden, bunny = 0, 0, 0
-		for _, k in ipairs(prof.Equipped) do
-			if k == "mallow_kitten" then
-				kittens = kittens + 1
-			elseif k == "mallow_kitten@Golden" then
-				golden = golden + 1
-			elseif k == "honey_bunny" then
-				bunny = bunny + 1
-			end
-		end
-		T.check(ok and count(p, "mallow_kitten") == 1 and kittens == 1 and golden == 1 and bunny == 1,
-			"fusion: equipped copies are unequipped before they are used, the result takes the freed slot (4 kittens, 2 equipped -> 1 kitten + 1 Golden equipped)", table.concat(prof.Equipped, ","))
+		T.check(ok and count(p, "mallow_kitten") == 0 and prof.Equipped[1] == "mallow_kitten@Golden" and prof.Equipped[2] == "honey_bunny" and #prof.Equipped == 2
+			and prof.Teams.Presets[1][1] == "mallow_kitten@Golden" and prof.Teams.Presets[1][2] == "honey_bunny",
+			"fusion: a used-up team pet's slot passes to the result (3 kittens, 1 in the team -> the Golden copy in that slot)", table.concat(prof.Equipped, ","))
 		local attr = p:GetAttribute(Config.Attr.EquippedPets) or ""
 		T.check(string.find(attr, "mallow_kitten@Golden", 1, true) ~= nil, "fusion: ...the EquippedPets attribute follows (PetService.Refresh)", attr)
 		leave(p)
@@ -814,16 +803,12 @@ local function serverScenarios()
 		p = readyPlayer("OnlyEquipped", 1)
 		prof = DataS.GetProfile(p)
 		give(p, "biscuit_bear", 3)
-		for _ = 1, 3 do
-			Pets.Equip(p, "biscuit_bear")
-		end
+		Pets.Equip(p, "biscuit_bear")
 		local before = DataS.GetTokens(p)
 		ok, key = F.Upgrade(p, "biscuit_bear")
-		T.check(not ok and tostring(key):find("equipped", 1, true) ~= nil and count(p, "biscuit_bear") == 3 and #prof.Equipped == 3 and DataS.GetTokens(p) == before,
+		T.check(not ok and tostring(key):find("equipped", 1, true) ~= nil and count(p, "biscuit_bear") == 3 and #prof.Equipped == 1 and DataS.GetTokens(p) == before,
 			"fusion: refused when the inputs are the player's only equipped pets (nothing changed)", tostring(key))
-		for _ = 1, 3 do
-			Pets.Unequip(p, "biscuit_bear")
-		end
+		Pets.Unequip(p, "biscuit_bear")
 		ok, key = F.Upgrade(p, "biscuit_bear")
 		T.check(ok and count(p, "biscuit_bear@Golden") == 1 and #prof.Equipped == 0, "fusion: ...after unequipping them it works", tostring(key))
 		leave(p)

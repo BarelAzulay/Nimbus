@@ -1476,7 +1476,7 @@ local function newBattle(X, nia)
 	mark = K.logSize()
 	Mock.FromClient(Kit.remote("BattleRequest"), nia, "TeamSet", 1, { STRONG[1], petId, WEAK[2] })
 	advance(0.6)
-	T.check(#DataS.GetTeams(nia).Presets[1] == 0 and toasted(nia, "gardening", mark), "p5 flow new: her garden pet cannot join the team ('gardening', bug batch 2 #18)",
+	T.check(DataS.GetTeams(nia).Presets[1][1] ~= STRONG[1] and toasted(nia, "gardening", mark), "p5 flow new: her garden pet cannot move in the team ('gardening', bug batch 2 #18): the team stays as it was",
 		table.concat(toasts(nia, nil, mark), " | "))
 	advance(1.2)
 	Mock.FromClient(Kit.remote("BattleRequest"), nia, "TeamSet", 1, { STRONG[1], WEAK[2], WEAK[3] })

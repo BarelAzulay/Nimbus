@@ -1,7 +1,7 @@
 -- smoke_hud_team.lua: HUD cleanup, Task 2 (the owner's pick on the HUD cleanup pitch: slot 2 "C" the battle team at the
 -- portal, plus the pitch note "add an autofill best pets button"). Loaded by tools/smoke.py in the server world and the
 -- client worlds:
---   hudteam_refusal       (server, booted) BattleService.TeamSpec's empty-team refusal names the portal and Pets > Team,
+--   hudteam_refusal       (server, booted) BattleService.TeamSpec's empty-team refusal (TEAM_REFUSALS.Empty, team balance),
 --                         DungeonService.StartSolo refuses with the same text; tutorial step 16 ("team") rings the Pets
 --                         tile, completes on TeamSet and says "Open Pets, then the Team tab" + "Auto-fill best" in 97-125
 --                         bytes of plain text
@@ -26,7 +26,7 @@ local guarded = SmokeCommon.guarded
 local CONTEXT = (ARGS and ARGS.context) or "server"
 
 local fmt = string.format
-local REFUSAL = "Pick your battle team first (at a battle portal, or Pets > Team)"
+local REFUSAL = "Your team is empty: open Pets and put a pet in it" -- BattleService.TEAM_REFUSALS.Empty
 
 ----------------------------------------------------------------------------------------------------
 -- server half
@@ -67,7 +67,7 @@ local function serverScenarios()
 			DS.SetTeam(a, i, {})
 		end
 		local spec, why = BS.TeamSpec(a)
-		T.check(spec == nil and why == REFUSAL, "hudteam: TeamSpec's empty-team refusal names the portal and Pets > Team", tostring(why))
+		T.check(spec == nil and why == REFUSAL and why == BS.TEAM_REFUSALS.Empty, "hudteam: TeamSpec's empty-team refusal says what to do (open Pets)", tostring(why))
 		local ok, why2 = DGS.StartSolo(a, 1)
 		T.check(ok == false and why2 == why, "hudteam: the Dungeon refuses with the same text", tostring(why2))
 

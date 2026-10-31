@@ -187,9 +187,9 @@ S.bug2garden_lock = guarded("bug2garden_lock", function()
 	advance(0.3)
 	T.check(ok == true and (Ty.GetHome(p).Garden or {})[1] == a, "bug2 garden lock: GardenSet puts the equipped pet in the Garden", tostring(why))
 	T.check(not has(prof.Equipped, a) and not equippedAttr(p):find(a, 1, true), "bug2 garden lock: ...it stops following (Equipped and the EquippedPets attribute lose it)", listText(prof.Equipped) .. " / " .. equippedAttr(p))
-	T.check(sameList(DataS.GetTeams(p).Presets[1], { b, c }) and #DataS.GetTeams(p).Presets[2] == 0 and changed > changed0,
-		"bug2 garden lock: ...it leaves BOTH teams (the pets behind move up) and TeamsChanged fires", listText(DataS.GetTeams(p).Presets[1]) .. " / " .. listText(DataS.GetTeams(p).Presets[2]))
-	T.check(K.notified(p, "working in your Garden! It left your side and your team", "good", mark), "bug2 garden lock: ...the toast says it left your side and your team")
+	T.check(sameList(DataS.GetTeams(p).Presets[1], { a, b, c }) and sameList(DataS.GetTeams(p).Presets[2], { a }) and DataS.GetTeams(p).Busy[a] == "Garden" and changed > changed0,
+		"bug2 garden lock: ...it keeps its slot in BOTH teams, busy (team balance), and TeamsChanged fires", listText(DataS.GetTeams(p).Presets[1]) .. " / " .. listText(DataS.GetTeams(p).Presets[2]))
+	T.check(K.notified(p, "working in your Garden! It left your side: one job at a time.", "good", mark), "bug2 garden lock: ...the toast says it left your side")
 	T.check(Ty.IncomePerSecond(p) > income0, "bug2 garden lock: ...and it earns in the Garden (IncomePerSecond rose)", tostring(income0) .. " -> " .. tostring(Ty.IncomePerSecond(p)))
 
 	-- the locks
@@ -219,14 +219,14 @@ S.bug2garden_lock = guarded("bug2garden_lock", function()
 		DataS.SelectTeam(p, 1)
 	end
 
-	-- copies count: e has 2 copies, one goes to the Garden: one may follow and fight, the second is refused
+	-- copies count: e has 2 copies, one goes to the Garden: one may follow and fight, a key is in a team once
 	ok = Ty.GardenSet(p, 2, e)
 	advance(0.3)
-	T.check(ok == true and Pets.Equip(p, e) == true and DataS.SetTeam(p, 2, { e }) == true and DataS.GardenBusyKeys(p)[e] == nil,
+	T.check(ok == true and DataS.SetTeam(p, 1, { a, b, e }) == true and has(prof.Equipped, e) and DataS.SetTeam(p, 2, { e }) == true and DataS.GardenBusyKeys(p)[e] == nil,
 		"bug2 garden lock: a pet with a spare copy: one copy gardens, the other may follow and fight (not busy)")
 	ok, why = Pets.Equip(p, e)
-	T.check(ok == false and tostring(why):find("is gardening", 1, true) ~= nil and count(prof.Equipped, e) == 1,
-		"bug2 garden lock: ...the copy in the Garden cannot follow too", tostring(why))
+	T.check(ok == false and why == "That pet is already in your team" and count(prof.Equipped, e) == 1,
+		"bug2 garden lock: ...it follows once", tostring(why))
 	-- placing a copy that is not needed elsewhere leaves the player alone (plain toast)
 	mark = K.logSize()
 	ok = Ty.GardenSet(p, 3, d)
@@ -249,7 +249,7 @@ S.bug2garden_lock = guarded("bug2garden_lock", function()
 	-- taking it out frees it again
 	Ty.GardenSet(p, 1, nil)
 	advance(0.3)
-	T.check(Pets.Equip(p, a) == true and DataS.SetTeam(p, 3, { a }) == true, "bug2 garden lock: out of the Garden it may follow and fight again")
+	T.check(has(prof.Equipped, a) and DataS.SetTeam(p, 3, { a }) == true, "bug2 garden lock: out of the Garden it follows and fights again by itself", listText(prof.Equipped))
 
 	-- fix round: during an obby match the copy that follows cannot go to work (its perks would drop mid-run, like
 	-- Unequip); a pet that does not follow still can
@@ -266,17 +266,17 @@ S.bug2garden_lock = guarded("bug2garden_lock", function()
 	advance(0.3)
 
 	-- fix round: the toast names only the job the pet left
-	T.check(Pets.Equip(p, d) == true, "bug2 garden lock: (setup) d follows, in no team")
+	T.check(DataS.SetTeam(p, 1, { a, d, e }) == true and has(prof.Equipped, d), "bug2 garden lock: (setup) d follows")
 	mark = K.logSize()
 	ok = Ty.GardenSet(p, 3, d)
 	advance(0.3)
 	T.check(ok == true and K.notified(p, "working in your Garden! It left your side: one job at a time.", "good", mark) and not K.notified(p, "your team", nil, mark),
-		"bug2 garden lock: a pet that only followed: the toast says it left your side (not your team)")
+		"bug2 garden lock: a pet that followed: the toast says it left your side (never your team: it keeps its slot)")
 	mark = K.logSize()
 	ok = Ty.GardenSet(p, 1, c)
 	advance(0.3)
-	T.check(ok == true and K.notified(p, "working in your Garden! It left your team: one job at a time.", "good", mark) and not K.notified(p, "your side", nil, mark),
-		"bug2 garden lock: a pet that was only in a team: the toast says it left your team (not your side)")
+	T.check(ok == true and K.notified(p, "working in your Garden!", "good", mark) and not K.notified(p, "It left", nil, mark),
+		"bug2 garden lock: a pet that does not follow gets the plain toast")
 	conn:Disconnect()
 	leave(p)
 end)
@@ -333,7 +333,7 @@ S.bug2garden_recall = guarded("bug2garden_recall", function()
 			and (reasonText == nil or K.notified(p, reasonText, "bad", m)),
 			"bug2 garden recall: " .. label .. ": refused, the pet stays in the Garden and nothing changes", listText(prof.Equipped) .. " / " .. tostring(garden()[1]))
 	end
-	unchanged("all follow slots full", { Key = d, To = "Equip" }, "slots are full")
+	unchanged("all team slots full", { Key = d, To = "Equip" }, "team is full")
 	Pets.Unequip(p, f)
 	p:SetAttribute(config().Attr.InMatch, true)
 	unchanged("a match running (pets locked)", { Key = d, To = "Equip" }, "locked during a match")
@@ -396,21 +396,20 @@ S.bug2garden_fusion = guarded("bug2garden_fusion", function()
 		return Ty.GetHome(p).Garden or {}
 	end
 
-	-- 1. Upgrade: the ONLY followers are two copies of a; two more copies garden, one is spare. The fusion must use the
+	-- 1. Upgrade: the ONLY follower is one copy of a; two more copies garden, one is spare. The fusion must use the
 	-- gardening copies (one job each), never leave the player with no follower
-	local p, prof = fuser("GardenFuseA", { a }, { [a] = 5 })
+	local p, prof = fuser("GardenFuseA", { a }, { [a] = 4 })
 	Ty.GardenSet(p, 1, a)
 	Ty.GardenSet(p, 2, a)
 	Pets.Equip(p, a)
-	Pets.Equip(p, a)
 	advance(0.3)
-	T.check(count(prof.Equipped, a) == 2 and garden(p)[1] == a and garden(p)[2] == a and PK.Count(prof, a) == 5,
-		"bug2 garden fusion: (setup) 5 copies: 2 follow (the only followers), 2 garden, 1 spare", listText(prof.Equipped))
+	T.check(count(prof.Equipped, a) == 1 and garden(p)[1] == a and garden(p)[2] == a and PK.Count(prof, a) == 4,
+		"bug2 garden fusion: (setup) 4 copies: 1 follows (the only follower), 2 garden, 1 spare", listText(prof.Equipped))
 	local ok, res = Fu.Upgrade(p, a)
 	advance(0.5)
 	local golden = PK.Make(a, "Golden")
-	T.check(ok == true and count(prof.Equipped, a) == 2 and #prof.Equipped == 2 and equippedAttr(p) == a .. "," .. a,
-		"bug2 garden fusion: Upgrade keeps BOTH followers (the gardening copies were used, never a following one)", tostring(res) .. " / " .. listText(prof.Equipped))
+	T.check(ok == true and count(prof.Equipped, a) == 1 and #prof.Equipped == 1 and equippedAttr(p) == a,
+		"bug2 garden fusion: Upgrade keeps the follower (the gardening copies were used, never a following one)", tostring(res) .. " / " .. listText(prof.Equipped))
 	T.check(garden(p)[1] == golden and garden(p)[2] == nil and PK.Count(prof, golden) == 1,
 		"bug2 garden fusion: ...the Golden result takes the first freed garden place (it does not follow)", tostring(garden(p)[1]) .. "," .. tostring(garden(p)[2]))
 	leave(p)

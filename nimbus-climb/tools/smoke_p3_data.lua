@@ -387,16 +387,16 @@ S.p3data_teams = guarded("p3data_teams", function()
 	T.check(watch.since(p, m2) >= 1, "p3 teams: ...TeamsChanged fires")
 	snap = lastSnapshot(p, mark)
 	T.check(type(snap) == "table" and sameList(snap.Teams.Presets[1], { a, f }), "p3 teams: ...and that very snapshot is pruned")
-	-- bug batch 2 #18: the last free copy going to the Garden leaves every team (the Phase 4 "garden pets fight" rule is
-	-- gone); the Gym does the same
+	-- team balance: the last free copy going to the Garden keeps its slot and is busy (it neither follows nor fights); the
+	-- Gym does the same
 	local m3 = watch.mark()
 	DataS.MutateHome(p, function(home)
 		home.Garden[2] = f
 	end)
-	T.check(sameList(DataS.GetTeams(p).Presets[1], { a }) and sameList(prof.Teams.Presets[1], { a }) and sameList(DataS.GetTeams(p).Presets[3], { a .. "@Golden", "hyb:p3h", a }),
-		"p3 teams: a pet whose last free copy goes to the Garden LEAVES its team (bug batch 2 #18: busy gardening); the other teams stay",
+	T.check(sameList(DataS.GetTeams(p).Presets[1], { a, f }) and sameList(prof.Teams.Presets[1], { a, f }) and sameList(DataS.GetTeams(p).Presets[3], { a .. "@Golden", "hyb:p3h", a }) and DataS.GetTeams(p).Busy[f] == "Garden",
+		"p3 teams: a pet whose last free copy goes to the Garden KEEPS its slot, busy; the other teams stay",
 		listText(DataS.GetTeams(p).Presets[1]) .. " / " .. listText(DataS.GetTeams(p).Presets[3]))
-	T.check(watch.since(p, m3) >= 1, "p3 teams: ...TeamsChanged fires")
+	T.check(not sameList(prof.Equipped, { a, f }) or DataS.GetTeams(p).Active ~= 1, "p3 teams: ...it leaves the followers", listText(prof.Equipped))
 	DataS.MutateHome(p, function(home)
 		home.Garden[2] = nil
 	end)
@@ -407,7 +407,7 @@ S.p3data_teams = guarded("p3data_teams", function()
 	DataS.MutateHome(p, function(home)
 		home.Gym[3] = e
 	end)
-	T.check(sameList(DataS.GetTeams(p).Presets[2], { f }), "p3 teams: ...the same for the Gym (the second e copy now trains too)", listText(DataS.GetTeams(p).Presets[2]))
+	T.check(sameList(DataS.GetTeams(p).Presets[2], { e, f }) and DataS.GetTeams(p).Busy[e] == "Garden", "p3 teams: ...the same for the Gym (the second e copy now trains too): busy, slot kept", listText(DataS.GetTeams(p).Presets[2]))
 
 	-- pruning after a real fusion: 3 copies of g -> 1 Golden g; g leaves the team
 	local fusionModule = K.moduleInstance("server/Services/FusionService")
@@ -746,8 +746,8 @@ S.p3data_save = guarded("p3data_save", function()
 	data[storeKey(P4)].Home = homeOf(0, { "", b })
 	s4 = join("P3Slots", P4)
 	local home4 = DataS.GetHome(s4) or {}
-	T.check(sameList(DataS.GetTeams(s4).Presets[1], { a, b, c }) and DataS.GetTeams(s4).Slots == 3 and type(home4.Garden) == "table" and home4.Garden[2] == nil,
-		"p3 save: ...without the prestige the same 3 pets stay; a team pet working in the stored Garden ('' = empty slot) STAYS in the team and leaves the Garden (bug batch 2 #18)", listText(DataS.GetTeams(s4).Presets[1]))
+	T.check(sameList(DataS.GetTeams(s4).Presets[1], { a, b, c }) and DataS.GetTeams(s4).Slots == 3 and type(home4.Garden) == "table" and home4.Garden[2] == b and DataS.GetTeams(s4).Busy[b] == "Garden",
+		"p3 save: ...without the prestige the same 3 pets stay; a team pet working in the stored Garden ('' = empty slot) of a migrated save keeps BOTH: its place and its slot, busy (team balance)", listText(DataS.GetTeams(s4).Presets[1]))
 	K.removePlayers({ s4 })
 	advance(2)
 

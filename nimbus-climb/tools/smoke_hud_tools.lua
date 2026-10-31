@@ -713,8 +713,7 @@ local function serverScenarios()
 			local copiesBefore, walletBefore = copies(), wallet()
 
 			-- equipped, on a team, in the garden, in training
-			T.check(K.mod("PetService").Equip(owner, common) ~= false, "hudtools pets: (setup) the Common stack is equipped")
-			prof.Teams.Presets[1] = { epic }
+			T.check(DS.SetTeam(owner, 1, { common, epic }) == true, "hudtools pets: (setup) the Common stack and the Epic are the team")
 			advance(0.5)
 			prof.Home.Garden = prof.Home.Garden or {}
 			prof.Home.Garden[1] = golden
@@ -746,7 +745,7 @@ local function serverScenarios()
 			T.check(#K.remotesFor("ProfileSync", owner.UserId, 0) > syncs, "hudtools pets: ...and the client gets a Sync")
 			local job = DS.GetGrowth(owner, hybrid).Job
 			T.check(type(job) == "table" and job.Ends == jobEnds, "hudtools pets: ...a training pet keeps its running job", tostring(job))
-			T.check(prof.Teams.Presets[1][1] == epic and prof.Home.Garden[1] == golden, "hudtools pets: ...the team and the garden keep their pets")
+			T.check(prof.Teams.Presets[1][2] == epic and prof.Home.Garden[1] == golden, "hudtools pets: ...the team and the garden keep their pets")
 			T.check(#prof.Equipped >= 1 and prof.Equipped[1] == common, "hudtools pets: ...the equipped pet stays equipped")
 			mark = send(owner, "evolvepets")
 			T.eq(DS.GetEvolution(owner, epic), 2, "hudtools pets: a second press takes the Epic to stage 2")
@@ -846,7 +845,7 @@ local function serverScenarios()
 			T.check(next(DS.TrainingKeys(owner)) == nil, "hudtools pets: ...and no pet is left locked in training")
 			T.eq(copies():gsub(fresh .. "=1,?", ""), (copiesBefore:gsub(fresh .. "=1,?", "")), "hudtools pets: ...keys and copies do not change (tiers are other copies, not a level)")
 			T.eq(wallet(), walletBefore, "hudtools pets: ...no currency moved (no refund for the finished job either)")
-			T.check(prof.Teams.Presets[1][1] == epic and prof.Home.Garden[1] == golden and prof.Equipped[1] == common, "hudtools pets: ...team, garden and equipped keep their pets")
+			T.check(prof.Teams.Presets[1][2] == epic and prof.Home.Garden[1] == golden and prof.Equipped[1] == common, "hudtools pets: ...team, garden and equipped keep their pets")
 			local powerAfter = BC.UnitPower({ PetId = common, Key = common, Level = 100, Evo = 1, Train = DS.GetGrowth(owner, common) })
 			T.check(powerAfter > powerBefore * 2, "hudtools pets: ...the battle power really rises", fmt("%d -> %d", powerBefore, powerAfter))
 

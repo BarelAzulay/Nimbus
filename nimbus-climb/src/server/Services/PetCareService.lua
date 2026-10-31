@@ -24,12 +24,12 @@
 --   10, no running battle, TycoonCatalog.TrainCost(def, rank) Cash; rank r takes TycoonCatalog.TrainSeconds(r)
 --   (r minutes). The Cash and the job (PetGrowth[key].Job = { Stat, Ends = os.time() + seconds, Rank = rank + 1, Slot =
 --   mat, From, Paid }, DataService.MutateGrowth) are one step; a failed job write gives the Cash back. Starting takes
---   the pet off the player (PetService.UnequipKey, every copy) and out of the Garden (TycoonService.GardenSet) by
+--   the pet off the followers (PetService.Refresh; it keeps its team slot, busy) and out of the Garden (TycoonService.GardenSet) by
 --   itself and remembers where it was in Job.From ("Garden:<slot>" wins over "Follow", else "Free"). The lock is
 --   DataService.TrainingKeys (PetService.Equip, GardenSet, Fusion, teams and the ring read it). Completion is decided
 --   from os.time() >= Job.Ends by the 1 s tick and on profile load / rebase (provisional saves wait): the rank is a
---   TARGET value (two servers completing one job give one rank), the pet goes back by itself ("Follow" -> re-equipped
---   when a slot is free; "Garden:n" -> that place when open and empty, else the first free open place, else it stays
+--   TARGET value (two servers completing one job give one rank), the pet goes back by itself ("Follow" -> its team slot
+--   was never freed; "Garden:n" -> that place when open and empty, else the first free open place, else it stays
 --   in the list), TrainingDone fires. TrainStop(key) removes the job and refunds Job.Paid in the same step (a job
 --   that is already due finishes instead). Running jobs survive a Prestige. Toasts: "Rocky started Physique training
 --   (4:00)", "Rocky finished Physique training: Rank 3!", "Training done while you were away! ..." on load.

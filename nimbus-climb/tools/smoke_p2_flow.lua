@@ -1518,7 +1518,11 @@ S.p2flow_fusion_gems = guarded("p2flow_fusion_gems", function()
 	local markEq = K.logSize()
 	Mock.FromClient(remote("EquipPet"), ann, F.combat)
 	advance(0.4)
-	T.check(toasted(ann, "gardening", markEq, "bad") and #prof.Equipped == 0, "flow fusion: the Combat pet working in the Garden cannot be equipped ('gardening', bug batch 2 #18)",
+	local combatFollows = false
+	for _, k in ipairs(prof.Equipped) do
+		combatFollows = combatFollows or k == F.combat
+	end
+	T.check(toasted(ann, "gardening", markEq, "bad") and not combatFollows, "flow fusion: the Combat pet working in the Garden cannot be equipped ('gardening', bug batch 2 #18)",
 		"{" .. table.concat(prof.Equipped, ",") .. "}")
 	Mock.FromClient(remote("EquipPet"), ann, F.eco)
 	advance(0.4)

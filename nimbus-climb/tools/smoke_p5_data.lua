@@ -417,6 +417,7 @@ S.p5data_team3 = guarded("p5data_team3", function()
 	local UID = 955001
 	local rec = phase4Record(ids, {
 		Pets = { [a] = 1, [b] = 1, [c] = 1, [d] = 1, [e] = 1, [f] = 1 },
+		Equipped = {},
 		Teams = { Presets = { { a, b, c, d }, { e, f } }, Active = 1 },
 	})
 	data[storeKey(UID)] = rec
@@ -427,6 +428,7 @@ S.p5data_team3 = guarded("p5data_team3", function()
 	local teams = DataS.GetTeams(p)
 	T.check(type(teams) == "table" and teams.Slots == 3 and sameList(teams.Presets[1], { a, b, c }) and sameList(teams.Presets[2], { e, f }) and teams.Active == 1,
 		"p5 team3: a stored 4-key preset loads with its first 3 keys (slot 1 = the fighter); Slots is 3", listText((teams or {}).Presets and teams.Presets[1]))
+	T.check(sameList(DataS.GetProfile(p).Equipped, { a, b, c }), "p5 team3: ...Equipped = those 3 (the invariant)", listText(DataS.GetProfile(p).Equipped))
 	T.eq(watch.since(p, m0), 1, "p5 team3: TeamsChanged fired exactly once on that load")
 	local prof = DataS.GetProfile(p)
 	T.check(prof.Pets[d] == 1 and prof.Cash == before.Cash and prof.Gems == before.Gems and deepEqual(prof.PetLevels, before.PetLevels),
@@ -757,8 +759,8 @@ S.p5dgn_migrate = guarded("p5dgn_migrate", function()
 	T.check(#homeDiffers == 0 and type(farm) == "number" and farm >= before.Home.Stations.Press1 and (st.Migrations or {}).P5Home == (folds and true or nil),
 		"p5 migrate: ...the P5Home fold changed only the Berry Farm level (never lower), every other Home key and station is byte-identical; P5Home marked with the fold",
 		table.concat(homeDiffers, ", ") .. " Press1 " .. tostring(farm))
-	T.check(type(st.Teams) == "table" and sameList(st.Teams.Presets[1], before.Teams.Presets[1]) and st.Teams.Active == 1 and type(st.Tutorial) == "table" and st.Tutorial.Gifted == true,
-		"p5 migrate: ...the preset and the tutorial gift are kept too")
+	T.check(type(st.Teams) == "table" and sameList(st.Teams.Presets[1], before.Teams.Presets[1]) and st.Teams.Active == 2 and sameList(st.Teams.Presets[2], before.Equipped) and type(st.Tutorial) == "table" and st.Tutorial.Gifted == true,
+		"p5 migrate: ...the preset and the tutorial gift are kept too (B4TeamFollow: the followers became team B, active)")
 	T.check(type(st.Migrations) == "table" and st.Migrations.P4 == true and st.Migrations.P5Dungeon == true and type(st.Dungeon) == "table" and st.Dungeon.Clears == 5 and #st.Dungeon.Cleared == 5,
 		"p5 migrate: the store holds both markers and the dense record")
 	-- idempotent: a second load

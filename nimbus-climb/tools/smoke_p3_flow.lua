@@ -1308,8 +1308,8 @@ S.p3flow_arrive = scenario("p3flow_arrive", function()
 	-- Cy: the Phase 2 save migrated
 	local ct = data.GetTeams(cy)
 	local crec = data.GetBattle(cy)
-	T.check(type(ct) == "table" and #ct.Presets == 3 and #ct.Presets[1] == 0 and ct.Active == 1 and ct.Slots == 3,
-		"flow arrive: Cy's Phase 2 save loads with 3 empty presets and 3 slots (Phase 5: teams of 3 for everyone)", plain(ct))
+	T.check(type(ct) == "table" and #ct.Presets == 3 and #ct.Presets[1] == 1 and ct.Presets[1][1] == TEAMS.Cy[1] and #ct.Presets[2] == 0 and #ct.Presets[3] == 0 and ct.Active == 1 and ct.Slots == 3,
+		"flow arrive: Cy's Phase 2 save loads with 3 slots and his follower as team A (team balance: B4TeamFollow; teams of 3 for everyone)", plain(ct))
 	T.check(type(crec) == "table" and crec.Trophies == 0 and count(crec.TrialCleared) == 0 and count(crec.EventPets) == 0 and (crec.Raids or 0) == 0,
 		"flow arrive: ...and a zeroed battle record", plain(crec))
 	local cprof = data.GetProfile(cy)
@@ -1437,7 +1437,7 @@ S.p3flow_arrive = scenario("p3flow_arrive", function()
 	local m4 = K.logSize()
 	request(cy, "TeamSet", 1, { TEAMS.Cy[1], TEAMS.CyGarden })
 	advance(0.6)
-	T.check(#data.GetTeams(cy).Presets[1] == 0 and table.concat(toasts(cy, m4), " | "):find("gardening", 1, true) ~= nil,
+	T.check(#data.GetTeams(cy).Presets[1] == 1 and table.concat(toasts(cy, m4), " | "):find("gardening", 1, true) ~= nil,
 		"flow teams: Cy's pet that works in his Garden cannot join a team ('That pet is gardening!', bug batch 2 #18)", table.concat(toasts(cy, m4), " | "))
 	request(cy, "TeamSet", 1, { TEAMS.Cy[1], TEAMS.Cy[2], TEAMS.Cy[3] })
 	waitFor(function()
@@ -1720,7 +1720,7 @@ S.p3flow_reset = scenario("p3flow_reset", function()
 	advance(1.6)
 	local m3 = K.logSize()
 	request(bo, "Queue")
-	T.check((toasted(bo, "Pick your battle team", m3)) and bo:GetAttribute("InBattle") == nil, "flow reset: a battle without a team is refused (toast)")
+	T.check((toasted(bo, "Your team is empty", m3)) and bo:GetAttribute("InBattle") == nil, "flow reset: a battle without a team is refused (toast)")
 	-- the leaderboard follows
 	local m5 = K.logSize()
 	advance(6)

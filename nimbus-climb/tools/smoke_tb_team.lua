@@ -10,7 +10,37 @@
 --   tb_team_migrate    Migrations.B4TeamFollow: the Empty / Same / Free / Replaced cases (Review Focus 1), nothing lost, once
 --                      only, after a provisional load's recovery
 --   tb_team_rollout    a profile the frozen Phase 4 server wrote loads with the invariant and no lost key
+--   client_tb_team_state  (client world) State.Busy / State.ActiveTeam / State.Teams().Busy from a ProfileSync; junk is dropped
 -- Deterministic: mock clock only. Plain Lua 5.1 syntax only.
+
+local CONTEXT = (ARGS and ARGS.context) or "server"
+if CONTEXT ~= "server" then
+	local T = SmokeCommon.T
+	local KC = _G.KC
+	local S = {}
+	S.client_tb_team_state = SmokeCommon.guarded("client_tb_team_state", function()
+		local inst = Mock.GetPath(ROOTS["client"] .. "/State")
+		local State = inst and require(inst)
+		local function teams(busy)
+			return { Presets = { { "mallow_kitten", "pebble_pup", "puddle_frog" }, {}, {} }, Active = 1, Slots = 3, Busy = busy }
+		end
+		KC.toClient("ProfileSync", {
+			Tokens = 0, Pets = { mallow_kitten = 1, pebble_pup = 1, puddle_frog = 1 }, Equipped = { "pebble_pup" }, Items = {},
+			Teams = teams({ mallow_kitten = "Training", puddle_frog = "Garden", junk_pet = "Lunch", [5] = "Garden" }),
+		})
+		KC.advance(0.1)
+		T.check(type(State.Busy) == "function" and type(State.ActiveTeam) == "function", "tb team state: State.Busy / State.ActiveTeam exist")
+		T.check(State.Busy("mallow_kitten") == "Training" and State.Busy("puddle_frog") == "Garden" and State.Busy("pebble_pup") == nil and State.Busy("junk_pet") == nil,
+			"tb team state: State.Busy answers from Teams.Busy (junk values dropped)")
+		T.check(State.Teams().Busy.mallow_kitten == "Training" and State.Teams().Busy[5] == nil, "tb team state: State.Teams().Busy is cleaned like Presets")
+		local active = State.ActiveTeam()
+		T.check(#active == 1 and active[1] == "pebble_pup" and State.EquippedList()[1] == "pebble_pup", "tb team state: State.ActiveTeam = the snapshot's Equipped (EquippedList stays an alias)")
+		KC.toClient("ProfileSync", { Tokens = 0, Pets = {}, Equipped = {}, Items = {} })
+		KC.advance(0.1)
+		T.check(State.Busy("mallow_kitten") == nil and next(State.Teams().Busy) == nil and #State.ActiveTeam() == 0, "tb team state: a snapshot without Busy clears it")
+	end)
+	return S
+end
 
 local K = _G.K
 local T = K.T
@@ -334,6 +364,13 @@ S.tb_team_busy = guarded("tb_team_busy", function()
 	gardenAll(a, K3)
 	T.check(Data.BusyKeys(a)[K3] == "Garden" and eq(prof.Equipped, { K1, K4 }) and eq(prof.Teams.Presets[1], { K1, K3, K4 }) and inv(a), "tb team: every copy in the Garden = busy, slot kept", listText(prof.Equipped) .. " / " .. listText(prof.Teams.Presets[1]))
 	T.check(a:GetAttribute("EquippedPets") == K1 .. "," .. K4, "tb team: ...it left the followers at once", tostring(a:GetAttribute("EquippedPets")))
+	-- mid-match the followers cannot change: a team pet cannot leave the Garden (it would follow at once), nor be recalled
+	a:SetAttribute(config().Attr.InMatch, true)
+	local okMa, whyMa = Ty.GardenSet(a, 1, nil)
+	T.check(okMa == false and whyMa == "Finish your match first" and (Data.GetHome(a).Garden or {})[1] == K3 and eq(prof.Equipped, { K1, K4 }), "tb team: mid-match a team pet stays in the Garden", tostring(whyMa))
+	local okCh, whyCh = Data.CheckTeam(a, 1, { K1, K3, K4 }, K3)
+	T.check(okCh == false and whyCh == "Pets are locked during a match", "tb team: ...CheckTeam (the recall's check) says so too", tostring(whyCh))
+	a:SetAttribute(config().Attr.InMatch, false)
 	-- a pet in a team that works in the Garden survives a save + rejoin in both places (the old-save repair is for unmigrated saves)
 	K.removePlayers({ a })
 	advance(3)

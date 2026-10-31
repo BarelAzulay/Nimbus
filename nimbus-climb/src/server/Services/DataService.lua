@@ -1681,7 +1681,7 @@ function P3.activeKeys(profile)
 	return out, preset
 end
 
--- Rewrites profile.Equipped (the same table) from the invariant; a save without B4TeamFollow keeps its own cleaned list
+-- Rewrites profile.Equipped from the invariant; a save without B4TeamFollow keeps its own cleaned list
 -- (the migration's input). Pure: it also runs inside UpdateAsync. Returns true when Equipped changed.
 function P3.syncEquipped(profile)
 	local before = copyList(tableOr(profile.Equipped))
