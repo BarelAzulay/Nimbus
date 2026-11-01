@@ -1025,9 +1025,10 @@ Duel other players on the two **duel rings** in front of the colosseum. Both of 
 ### Boss Raids
 
 A boss **always waits** on the colosseum floor. Walk through the **back gate** of the colosseum and you are in the fight for
-your **tier**, together with anyone else on your tier in this server: no Join button, no window, no countdown. The first fight
-runs on the real floor, in view of the stands; the other tiers' fights run at the same moment in a side pocket. A fight holds
-up to **8 raiders**, and the boss has more health the more players really fight it.
+your **tier**, together with anyone else on your tier in this server: no Join button, no window, no countdown. Only walking in
+counts: standing in the gate does nothing, so step out and back in to try again. The first fight runs on the real floor, in view
+of the stands; the other tiers' fights run at the same moment in a side pocket. A fight holds up to **8 raiders**, and the boss
+has more health the more players really fight it.
 
 | Fight tier | Highest pet on your team | Boss built for | Boss hits (share of your health) | Rewards |
 |---|---|---|---|---|
@@ -1040,7 +1041,7 @@ The server reads your tier when you walk in, from your active team (pets that ar
 gate's pillar lets you **dare** a higher tier; you can never drop lower. Winning a dare pays the higher tier's rewards.
 
 It is brutal on purpose. With a team near the top of a tier a solo win is rare (about 1 in 20), three teams win about 40 % of
-their fights, eight teams about 85 %, and group fights take 2 to 4 minutes. Everyone leaving or getting knocked out ends the
+their fights, eight teams about 85 %, and group fights, won or lost, take 2 to 4 minutes. Everyone leaving or getting knocked out ends the
 fight and resets the boss. After a kill that tier's boss is **back in 60 seconds** (the gate says so; the other tiers are not
 affected). You may fight as often as you like, but a win pays **once per 20 minutes** per player, also after moving to another
 server, and the loss reward at most **once per 5 minutes**. A loss never starts the 20 minutes, and the gate shows the time left.
@@ -1056,8 +1057,8 @@ The four bosses take turns in this order: the boss changes **every 20 minutes** 
 any; a running fight keeps its own boss). **Dodging:** before a big attack a glowing **circle or line** appears on
 the floor and fills up. Walk out of it, or **DASH** out of it before it is full (when it is full its edge flashes red:
 too late). Each boss also calls **minion waves**. Below **30 %** of its health it gets **enraged**: the screen edges turn red, it
-hits twice as hard and it starts casting a huge attack with at least 2.5 seconds of warning. **DASH** out of that one: it knocks a
-pet out. A fight ends when the boss is down, when every raider is knocked out or gone, or after **5 min 30 s**.
+hits twice as hard and it starts casting a huge attack with at least 2.5 seconds of warning, even if you were just frozen (it waits
+for you to thaw). **DASH** out of that one: it knocks a pet out. A fight ends when the boss is down, when every raider is knocked out or gone, or after **5 min 30 s**.
 
 **Rewards** go to everyone who is still in the fight at the end, by the share of the boss's health they took off. The table shows
 High's numbers; Tokens, XP and Gems scale with the fight's tier (x0.4, x0.7, x1, x1.3), and Gem and pet chances are half at Starter
