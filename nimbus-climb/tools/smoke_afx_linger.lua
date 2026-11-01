@@ -3,7 +3,8 @@
 --   client_afx_linger     Afterglow by band (none on support casts, reactions and misses); past TailAt only the Linger layers are left,
 --                         dim, still and fading; others' pets get it x Density, Graphics Low none; a signature's dim and the inhale still
 --                         end with the beats
---   client_afx_tails      a tail never blocks a new effect (it is in neither count of the budget); MAX_TAILS, the oldest makes room
+--   client_afx_tails      a tail never blocks a new effect (it is in neither count of the budget); MAX_TAILS, the oldest makes room; a
+--                         sustained fight reuses its ground discs (the pool does not churn) and keeps them for the next
 --   client_afx_kick       every own attack kicks by kind and band, basic hits at most once per BasicGap, a Special is never swallowed;
 --                         others' pets, reactions, support casts and misses do not kick; through BattleController: Shake off leaves
 --                         Humanoid.CameraOffset alone, Shake on moves it for about 0.15 s; a small kick never cuts a stronger shake
@@ -149,6 +150,17 @@ S.client_afx_linger = guarded("client_afx_linger", function()
 		local r = Cat.Resolve(req)
 		return r and r.Afterglow
 	end
+	-- the look that says "over": one number for the marks and the zone tail, dimmer than a live zone's 0.62 disc
+	T.check(near(Cat.TailTransparency, 0.85), "afx linger: AttackFxCatalog.TailTransparency = 0.85", tostring(Cat.TailTransparency))
+	-- the zone-sized mark does not linger: a live zone's size on the floor must be a live zone
+	local field = Cat.Resolve({ Element = "Frost", Attack = "Melee", Rarity = "Secret", Mine = true })
+	local fieldLayer = nil
+	for _, l in ipairs(field and field.Layers or {}) do
+		if l.Id == "Field" then
+			fieldLayer = l
+		end
+	end
+	T.check(fieldLayer ~= nil and fieldLayer.Linger ~= true, "afx linger: the Field (14 studs at Secret Evo 2, a Storm zone is 12) has no afterglow")
 	-- the catalog
 	local want = { Common = 0.8, Uncommon = 0.8, Rare = 1.2, Epic = 1.2, Legendary = 1.6, Mythic = 1.6, Secret = 2.0 }
 	local byBand = T.tally("afx linger: Afterglow by band: 0.8, 1.2, 1.6, 2.0")
@@ -195,7 +207,7 @@ S.client_afx_linger = guarded("client_afx_linger", function()
 	-- (Seconds + Afterglow, but never past the effect's end: the kit is reused right after it, a particle cut there would pop)
 	T.check(em ~= nil and near(em.Lifetime.Max, math.min(0.9 + 2.0, eff.EndRel - embers.T1), 1e-6) and em.Lifetime.Max > 0.9 + 1.0, "afx linger: the embers live on by the Afterglow and the last one ends with the effect", em and tostring(em.Lifetime.Max))
 	local tKeys = em and em.Transparency.Keypoints or {}
-	T.check(#tKeys >= 2 and tKeys[#tKeys].Value == 1 and tKeys[#tKeys - 1].Value >= 0.65, "afx linger: the embers' curve ends dim (>= 0.65, then gone)", #tKeys >= 2 and tostring(tKeys[#tKeys - 1].Value) or "")
+	T.check(#tKeys >= 2 and tKeys[#tKeys].Value == 1 and tKeys[#tKeys - 1].Value >= 0.85, "afx linger: the embers' curve ends dim (>= 0.85, then gone)", #tKeys >= 2 and tostring(tKeys[#tKeys - 1].Value) or "")
 
 	-- bright before the tail: the mark at its first second reads as the hit
 	local seenBright = 1
@@ -218,7 +230,7 @@ S.client_afx_linger = guarded("client_afx_linger", function()
 	end
 	T.check(#leftovers == 0, "afx linger: past TailAt only the Linger items hold a kit", table.concat(leftovers, ", "))
 	T.check(s1.Cores == 0 and s1.Beams == 0 and s1.Trails == 0 and s1.Lights == 0, "afx linger: a tail holds no core, beam, trail or light", fmt("%d %d %d %d", s1.Cores, s1.Beams, s1.Trails, s1.Lights))
-	T.check(scorch.Kit ~= nil and discTrans(scorch) >= 0.65 and embers.Kit ~= nil, "afx linger: the Scorch is dim at TailAt (>= 0.65) and the embers still live", scorch.Kit and tostring(discTrans(scorch)))
+	T.check(scorch.Kit ~= nil and discTrans(scorch) >= 0.85 and embers.Kit ~= nil, "afx linger: the Scorch is dim at TailAt (>= 0.85, dimmer than a live zone's 0.62) and the embers still live", scorch.Kit and tostring(discTrans(scorch)))
 	-- the mark stays where it fell and only fades: never brighter, no pulse, not growing, the target's walk does not carry it
 	local spot = scorch.Kit.Root.Position
 	local size = scorch.Kit.Root.Size
@@ -256,7 +268,7 @@ S.client_afx_linger = guarded("client_afx_linger", function()
 		T.check(near(life, math.min(1.0 + 2.0, earth.EndRel - crack.T1), 1e-6) and life > 1.0 + 1.0, "afx linger: a flat mark's particle lives on by the Afterglow, ending with the effect", tostring(life))
 		local keys = e.Transparency.Keypoints
 		local knee = keys[#keys - 1]
-		T.check(near(knee.Time, 1.0 / life, 1e-6) and knee.Value >= 0.65 and keys[#keys].Value == 1, "afx linger: its curve keeps the old second bright, then only fades", fmt("%s at %s", tostring(knee.Value), tostring(knee.Time)))
+		T.check(near(knee.Time, 1.0 / life, 1e-6) and knee.Value >= 0.85 and keys[#keys].Value == 1, "afx linger: its curve keeps the old second bright, then only fades", fmt("%s at %s", tostring(knee.Value), tostring(knee.Time)))
 		local sizeKeys = e.Size.Keypoints
 		T.check(near(sizeKeys[2].Time, 0.2 / life, 1e-6), "afx linger: it grows in as fast as before", tostring(sizeKeys[2].Time))
 	end
@@ -381,6 +393,42 @@ S.client_afx_tails = guarded("client_afx_tails", function()
 	s = Fx.Stats()
 	T.check(s.Live == 0 and s.Tails == 0 and #Fx._Live() == 0 and s.Emitters == 0, "afx tails: all gone after their afterglow", fmt("Live %d Tails %d left %d", s.Live, s.Tails, #Fx._Live()))
 	T.eq(s.Errors, R.errs0, "afx tails: no effect ended by an error")
+
+	-- a sustained 3v3 at Mythic: ~6 hits a second, in batches of three, for 12 s: after the first seconds the fight lives off its pool
+	Fx.ClearAll()
+	Fx.Folder():Destroy()
+	local folder = Fx.Folder()
+	local seen, created = {}, 0
+	local function countNew()
+		for _, c in ipairs(folder:GetChildren()) do
+			if c.Name == "FxDisc" and not seen[c] then
+				seen[c] = true
+				created = created + 1
+			end
+		end
+	end
+	local warm, lastCreated = 0, 0
+	for batch = 1, 24 do
+		for u = 1, 3 do
+			R.play({ Element = "Flame", Rarity = "Mythic", From = { Unit = 200 + u, Model = R.A } })
+		end
+		R.run(0.5, countNew)
+		if batch == 8 then
+			warm = created
+		end
+		lastCreated = created
+	end
+	T.check(lastCreated - warm == 0, "afx tails: after 4 s of a sustained fight no new ground disc is made: the pool does not churn", fmt("%d at 4 s, %d at 12 s", warm, lastCreated))
+	R.run(5)
+	local after = Fx.Stats()
+	local kept = 0
+	for _, c in ipairs(folder:GetChildren()) do
+		kept = kept + ((c.Name == "FxDisc") and 1 or 0)
+	end
+	print(fmt("  [afx pool] sustained fight: %d discs made in 4 s, %d in 12 s, %d kept after it, %d pooled instances", warm, lastCreated, kept, after.PoolInstances))
+	T.check(kept >= math.min(lastCreated, 24), "afx tails: the discs are kept for the next fight, not destroyed and made again", fmt("%d of %d kept", kept, lastCreated))
+	T.check(after.Pooled <= Fx.POOL_KEEP_TOTAL, "afx tails: the pool stays under its keep size", fmt("%d <= %d", after.Pooled, Fx.POOL_KEEP_TOTAL))
+	T.eq(after.Errors, R.errs0, "afx tails: the sustained fight ended no effect by an error")
 	R.finish()
 end)
 
@@ -739,6 +787,15 @@ S.client_afx_zone_tail = guarded("client_afx_zone_tail", function()
 	T.check(disc ~= nil and disc.Transparency >= 0.85, "afx zone tail: at 4.2 s a Field's disc is still there, dim", disc and tostring(disc.Transparency))
 	frames(1.4)
 	T.check(discOf() == nil, "afx zone tail: ...and gone at 5.6 s", tostring(discOf() ~= nil))
+	local Cat = moduleAt(ROOTS.shared .. "/AttackFxCatalog")
+	local oldTail = Cat.TailTransparency
+	Cat.TailTransparency = 0.95
+	zone("Storm")
+	frames(4.2)
+	local disc95 = discOf()
+	Cat.TailTransparency = oldTail
+	T.check(oldTail ~= nil and disc95 ~= nil and disc95.Transparency >= 0.95, "afx zone tail: the zone's tail reads AttackFxCatalog.TailTransparency: one number with the marks", disc95 and tostring(disc95.Transparency))
+	frames(1.4)
 	-- a boss zone ends on time, as before
 	zone("Linger", "Slam")
 	frames(2)

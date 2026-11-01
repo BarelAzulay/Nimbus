@@ -310,7 +310,7 @@ local K = {
 	PUNCH_BIG = 0.2,
 	-- (attack effects, 2026-11-01) a pet Storm's zone holds a dim disc this long after its damage ended, at this transparency: it reads as over
 	ZONE_TAIL = 1.5,
-	ZONE_TAIL_TRANS = 0.85,
+	ZONE_TAIL_TRANS = 0.85, -- (no catalog only: AttackFxCatalog.TailTransparency is the number)
 	LAST_DRAWN_AGE = 5, -- seconds a dungeon fighter's last drawn spot is kept for the followers' hand-over
 	SPECTATOR_LINGER = 1.5,
 	RESULT_SECONDS = 12,
@@ -863,7 +863,7 @@ local function zoneUpdate(e, p, now)
 		-- (attack effects, 2026-11-01) the damage ends: the disc goes straight to its dim look (never out and back), the cloud and
 		-- bolts are gone, nothing moves; the last 0.3 s it fades out
 		if disc then
-			local a = e.discAlpha + (K.ZONE_TAIL_TRANS - e.discAlpha) * (1 - fadeOut)
+			local a = e.discAlpha + (e.tailAlpha - e.discAlpha) * (1 - fadeOut)
 			a = a + (1 - a) * clamp((t - (e.dur - 0.3)) / 0.3, 0, 1)
 			disc.Transparency = 1 - (1 - a) * fadeIn
 		end
@@ -931,7 +931,10 @@ function Fx.Zone(floorCF, r, seconds, color, kind)
 	disc.CFrame = floorCF * CFrame.new(0, 0.1, 0) * CFrame.Angles(0, 0, pi / 2)
 	parts[1] = disc
 	local pos = floorCF.Position
-	local e = { ox = pos.X, oy = pos.Y, oz = pos.Z, floorY = pos.Y, r = r, offsets = {}, discAlpha = 0.62 }
+	if Mods.FxCat == nil then
+		Mods.FxCat = optional(Shared, "AttackFxCatalog") or false
+	end
+	local e = { ox = pos.X, oy = pos.Y, oz = pos.Z, floorY = pos.Y, r = r, offsets = {}, discAlpha = 0.62, tailAlpha = Mods.FxCat and Mods.FxCat.TailTransparency or K.ZONE_TAIL_TRANS }
 	local rnd = math.random
 	if kind == "Storm" then
 		e.cloud = true

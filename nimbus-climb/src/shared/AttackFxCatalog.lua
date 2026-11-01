@@ -177,6 +177,9 @@ AttackFxCatalog.ImpactScale = { 0.8, 0.95, 1.1, 1.25 } -- the impact package by 
 AttackFxCatalog.OthersDensity = 0.6 -- other players' and wild pets' effects (own team: 1)
 -- (attack effects, 2026-11-01, "A. Visuals only") seconds a Linger layer outlives the beats, by band: dimmer, no pulse, so it clearly reads as over
 AttackFxCatalog.Afterglow = { 0.8, 1.2, 1.6, 2.0 }
+-- (review) how see-through a thing that is over starts: AttackFx's lingering marks and BattleController's zone tail read this one number;
+-- a live Storm zone's disc is 0.62, so nothing over ever looks as solid as something that still hurts
+AttackFxCatalog.TailTransparency = 0.85
 -- (attack effects, 2026-11-01) the camera kick: base by kind + BandStep per band above 1, + Crit on a crit, <= Max (BattleController's SHAKE_MAX).
 -- Basic hits land often: at most one per BasicGap, so a fight never becomes constant shaking; Seconds = how long a kick lasts
 AttackFxCatalog.Kick = { Basic = 0.05, Element = 0.10, Special = 0.14, BandStep = 0.03, Crit = 0.04, Seconds = 0.15, BasicGap = 0.6, Max = 0.35 }
@@ -241,7 +244,7 @@ AttackFxCatalog.LayerSlots = {
 	-- (Task 9 round 2: in the pale Hot tint and additive the two arcs were a white half-moon over the target at Secret;
 	-- the element's colour, half-lit)
 	DoubleArc = { Kind = "Beam", Texture = "$Arc", Beat = "Release", At = "Source", Tint = "Mid", Curve = 3, Width = 1.0, Transparency = 0.4, LightEmission = 0.35 },
-	Field = { Kind = "Decal", Texture = "$Ground", Beat = "Linger", At = "Ground", Tint = "Mid", Size = 7, Seconds = 1.0, GroundOnly = true, Linger = true },
+	Field = { Kind = "Decal", Texture = "$Ground", Beat = "Linger", At = "Ground", Tint = "Mid", Size = 7, Seconds = 1.0, GroundOnly = true }, -- (review: as wide as a Storm zone, so it leaves no afterglow: only a live zone may look like one)
 	PlasmaRim = { Kind = "Light", Beat = "Travel", At = "Core", Tint = "Edge", Brightness = 1.2, Range = 6, ColorShift = true },
 	-- the ranged swaps (Basic.Ranged.Swap, player note 1: a shot is no swing): the Rare crescent becomes a muzzle shock
 	-- ring standing at the mouth, facing the shot; the Mythic double arcs become two spiral arcs wrapped round the shot
@@ -1687,6 +1690,7 @@ function AttackFxCatalog.Resolve(req)
 		CloudSize = AttackFxCatalog.CloudSizeOf(rarity, stage),
 		Density = mine and 1 or AttackFxCatalog.OthersDensity,
 		Afterglow = isStrike(req.Attack, def.Kind) and AttackFxCatalog.Afterglow[band] or 0,
+		TailTrans = AttackFxCatalog.TailTransparency,
 		CameraPunch = kickOf(req.Attack, def.Kind, band, mine),
 		ScreenGlow = mine and band == 4 and not def.Quiet,
 		Signature = sig and petId or nil,

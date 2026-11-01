@@ -155,7 +155,7 @@ local SPECIAL_RADIUS = { Blast = 7, Freeze = 6, Storm = 6 }
 local K = {
 	PARENT = "ClientBattle",
 	FOLDER = "AttackFx",
-	KEEP = { Emitter = 24, Beam = 8, Trail = 6, Light = 8, Disc = 8, Rim = 3 },
+	KEEP = { Emitter = 24, Beam = 8, Trail = 6, Light = 8, Disc = 24, Rim = 3 }, -- (Disc, review: the tails hold ground marks up to 2 s longer; at 8 a busy fight made and destroyed them)
 	CORE_KEEP = 6, -- per vfx_* key
 	CORE_KEYS = 22,
 	LOW_COUNT = 0.5,
@@ -211,7 +211,6 @@ local K = {
 	-- round, its brightness stops at 2 after the crit (a signature's own light over that keeps its number)
 	LIGHT_SIZE = 1.4,
 	LIGHT_BRIGHT = 2,
-	TAIL_TRANS = 0.65, -- (attack effects, 2026-11-01) a lingering mark past its own time is at least this see-through, then only fades: it reads as over
 }
 AttackFx.POOL_KEEP_TOTAL = K.KEEP.Emitter + K.KEEP.Beam + K.KEEP.Trail + K.KEEP.Light + K.KEEP.Disc + K.KEEP.Rim + K.CORE_KEEP * K.CORE_KEYS
 
@@ -1667,11 +1666,11 @@ function DRAW.Disc(eff, it, t)
 	d.CFrame = CFrame.new(p) * CFrame.Angles(0, 0, pi / 2)
 	local tr
 	if it.MainEnd then
-		-- (attack effects, 2026-11-01) a lingering mark: down to TAIL_TRANS by the end of its own time, then only fading: no pulse, no growth
+		-- (attack effects, 2026-11-01) a lingering mark: down to eff.TailTrans by the end of its own time, then only fading: no pulse, no growth
 		if t < main then
-			tr = it.Trans + (K.TAIL_TRANS - it.Trans) * smooth(seg(t, it.T0 + (main - it.T0) * 0.4, main))
+			tr = it.Trans + (eff.TailTrans - it.Trans) * smooth(seg(t, it.T0 + (main - it.T0) * 0.4, main))
 		else
-			tr = K.TAIL_TRANS + (1 - K.TAIL_TRANS) * seg(t, main, it.T1)
+			tr = eff.TailTrans + (1 - eff.TailTrans) * seg(t, main, it.T1)
 		end
 	else
 		tr = fadeTo(it, smooth(seg(t, it.T0 + (it.T1 - it.T0) * 0.4, it.T1)))
@@ -2284,7 +2283,7 @@ local function tuneEmitter(eff, it, layer)
 	-- (a layer's Transparency lifts the whole curve: Task 9, the band 4 ladder layers washed out the leap and the target)
 	local a = finite(layer.Transparency) and clamp01(layer.Transparency) or 0
 	if knee < 1 then
-		em.Transparency = NumberSequence.new({ kp(0, a + (1 - a) * start), kp(0.12 * knee, a), kp(hold * knee, a + (1 - a) * 0.1), kp(knee, max(a, K.TAIL_TRANS)), kp(1, 1) })
+		em.Transparency = NumberSequence.new({ kp(0, a + (1 - a) * start), kp(0.12 * knee, a), kp(hold * knee, a + (1 - a) * 0.1), kp(knee, max(a, eff.TailTrans)), kp(1, 1) })
 	else
 		em.Transparency = NumberSequence.new({ kp(0, a + (1 - a) * start), kp(0.12, a), kp(hold, a + (1 - a) * 0.1), kp(1, 1) })
 	end
@@ -3547,7 +3546,7 @@ function AttackFx.Play(ctx)
 		eff = {
 			Recipe = r, Unit = src.Unit, Src = src, Targets = targets, T = {}, S = src.Last, Dir = dir, Right = dir:Cross(UP),
 			Path = r.Core.Path, Area = area, Reach = reach, Width = width, WidthScale = width / 4, Drop = drop, Size = r.Size or 1, CloudSize = r.CloudSize or r.Size or 1,
-			Start = start, Times = T, TailAt = endRel, Afterglow = afterglow, EndRel = endRel + afterglow, End = start + endRel + afterglow,
+			Start = start, Times = T, TailAt = endRel, Afterglow = afterglow, TailTrans = r.TailTrans, EndRel = endRel + afterglow, End = start + endRel + afterglow,
 			Mine = ctx.Mine == true, Crit = ctx.Crit == true, Strong = ctx.Strong == true, Miss = ctx.Miss == true,
 			Stepped = step, Low = quality == "Low", Items = {}, Emitters = 0, Beams = 0, Trails = 0, Lights = 0, Cores = 0, Rims = 0,
 			Kind = ctx.Kind, Pre = isPre or nil, CueSeconds = isPre and (finite(ctx.Seconds) and max(0.1, ctx.Seconds) or K.PRE_HOLD) or nil,
