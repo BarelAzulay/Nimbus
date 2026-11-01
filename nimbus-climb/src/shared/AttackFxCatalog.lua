@@ -10,6 +10,9 @@
 --   CloudCap                                    particle clouds stop growing at 1.6 (the target stays visible): evolved
 --                                               size goes into rings, ground marks and shapes
 --   ImpactScale[band]                           how strong the impact package plays: ring / ground mark / sparks / flash
+--   Afterglow[band]                             seconds a Linger layer outlives the beats, dim and still (up to 2 s): visuals only,
+--                                               ability timers never move (attack effects spec 2026-11-01 "Lasting longer")
+--   Kick                                        the camera kick on your own attacks, by kind and band (spec "Camera kick")
 --   CoreLook[band]                              the core's intensity and shape per band (plain -> hot inner core ->
 --                                               blazing + upgraded shape -> white plasma with a colour-shifting rim)
 --   Ladder                                      the layers each rarity ADDS (every rarity keeps all the layers below it)
@@ -41,8 +44,9 @@
 --                                                                  travel, default 14). nil for an unknown element / attack / kind /
 --                                                                  shape (the caller falls back to the cube Fx).
 --     recipe = { Element, Attack, Kind, Shape, Rarity, Stage, Band, Size, CloudSize, Density (1 mine / 0.6 others), Dropped?
---                ({ "Sparks" }: the 6-emitter cap left no room for them), CameraPunch
---                (mine and band >= 3; never a Quiet reaction: ShieldHit), ScreenGlow (mine and band 4; not Quiet),
+--                ({ "Sparks" }: the 6-emitter cap left no room for them), Afterglow (seconds, Afterglow[band]; 0 on support casts
+--                and reactions), CameraPunch (false, or { Amount, Crit, Seconds, Basic, Gap }: an own attack; never a reaction or a
+--                support cast; the engine adds Crit on a crit, a Basic kick waits Gap since the last one), ScreenGlow (mine and band 4; not Quiet),
 --                Signature (petId | nil), Sig = { Name, Twist, Actor, DimWorld } | nil, Palette = { Core, Mid, Edge, Hot, Smoke }, Text,
 --                Beats = { Charge, Release, Travel, Impact, Linger, MinTravel? } (seconds), ImpactAt (= Charge + Release +
 --                Travel: the engine starts the effect so that impact lands on the server event, never later, except
@@ -63,7 +67,8 @@
 --                (an emitter streaming off the caster through its leap: the Pounce's storm-cloud ride), Strike? (a Beam
 --                layer whose bolts strike down round the hit: the Pounce slam), Level? (a vfx_ring at the hit's height,
 --                not flat on the floor), OrbRadius? (a Ring's peak radius = this x the Blast orb's peak radius), Reach? (a
---                Ring peaking at the attack's real radius, eff.Reach: the ground ring that shows an area as it hits) ... } } (a template's
+--                Ring peaking at the attack's real radius, eff.Reach: the ground ring that shows an area as it hits), Linger? (a
+--                ground mark / ember layer that outlives the beats by the Afterglow, dim and still: only Decal and Alive layers) ... } } (a template's
 --                Except = { [Attack or special Kind] = true } leaves
 --                it out of those attacks), Alive = { Kind ("Emitter"|"Beam"|"Decal"|"Mesh"), Texture?,
 --                Key?, Motion, Color, Count, Seconds, Text } ({} = none) }
@@ -167,6 +172,11 @@ AttackFxCatalog.SizeCap = 2.08 -- (= Secret 1.6 x 1.3)
 AttackFxCatalog.CloudCap = 1.6
 AttackFxCatalog.ImpactScale = { 0.8, 0.95, 1.1, 1.25 } -- the impact package by band: Secret's is stronger than Common's
 AttackFxCatalog.OthersDensity = 0.6 -- other players' and wild pets' effects (own team: 1)
+-- (attack effects, 2026-11-01, "A. Visuals only") seconds a Linger layer outlives the beats, by band: dimmer, no pulse, so it clearly reads as over
+AttackFxCatalog.Afterglow = { 0.8, 1.2, 1.6, 2.0 }
+-- (attack effects, 2026-11-01) the camera kick: base by kind + BandStep per band above 1, + Crit on a crit, <= Max (BattleController's SHAKE_MAX).
+-- Basic hits land often: at most one per BasicGap, so a fight never becomes constant shaking; Seconds = how long a kick lasts
+AttackFxCatalog.Kick = { Basic = 0.05, Element = 0.10, Special = 0.14, BandStep = 0.03, Crit = 0.04, Seconds = 0.15, BasicGap = 0.6, Max = 0.35 }
 AttackFxCatalog.CountScale = { 1, 1.2, 1.4, 1.6 } -- particle counts per band: ladder / kind layers (full density)
 AttackFxCatalog.DetailScale = { 0.5, 0.75, 1, 1.25 } -- the element's own impact + alive detail: every rarity, reduced at band 1
 
@@ -208,7 +218,7 @@ AttackFxCatalog.LayerSlots = {
 	-- (Task 9 round 2: still additive (the sheet's LightEmission 1) the arc summed to white on the pale arena; half-lit it
 	-- keeps the element's colour)
 	Slash = { Kind = "Emitter", Texture = "fx_slash", Beat = "Release", At = "Source", Tint = "Mid", Count = 1, Size = 2.6, Transparency = 0.4, LightEmission = 0.35 },
-	GroundGlow = { Kind = "Decal", Beat = "Impact", At = "Ground", Tint = "Edge", Size = 5, Seconds = 0.6 }, -- an untextured glow disc
+	GroundGlow = { Kind = "Decal", Beat = "Impact", At = "Ground", Tint = "Edge", Size = 5, Seconds = 0.6, Linger = true }, -- an untextured glow disc
 	-- (Task 8, Studio + Gemini: at 3 / 4 the flash + bloom washed the pets white and a 14-stud ring buried the target:
 	-- lights <= 2 brightness / 8 studs range, the shockwave ~7 studs across and see-through)
 	-- (attack effects, 2026-11-01: these now play from Common, x ImpactScale, with Size up to 2.08: rings grow with the owner's
@@ -226,7 +236,7 @@ AttackFxCatalog.LayerSlots = {
 	-- (Task 9 round 2: in the pale Hot tint and additive the two arcs were a white half-moon over the target at Secret;
 	-- the element's colour, half-lit)
 	DoubleArc = { Kind = "Beam", Texture = "$Arc", Beat = "Release", At = "Source", Tint = "Mid", Curve = 3, Width = 1.0, Transparency = 0.4, LightEmission = 0.35 },
-	Field = { Kind = "Decal", Texture = "$Ground", Beat = "Linger", At = "Ground", Tint = "Mid", Size = 7, Seconds = 1.0, GroundOnly = true },
+	Field = { Kind = "Decal", Texture = "$Ground", Beat = "Linger", At = "Ground", Tint = "Mid", Size = 7, Seconds = 1.0, GroundOnly = true, Linger = true },
 	PlasmaRim = { Kind = "Light", Beat = "Travel", At = "Core", Tint = "Edge", Brightness = 1.2, Range = 6, ColorShift = true },
 	-- the ranged swaps (Basic.Ranged.Swap, player note 1: a shot is no swing): the Rare crescent becomes a muzzle shock
 	-- ring standing at the mouth, facing the shot; the Mythic double arcs become two spiral arcs wrapped round the shot
@@ -319,7 +329,7 @@ AttackFxCatalog.Elements = {
 		Impact = "geyser burst + ripple ring",
 		Detail = {
 			-- the geyser is the Burst itself (BurstMotion "Geyser": an upward fx_splash column)
-			{ Id = "Ripple", Kind = "Decal", Texture = "fx_ripple", Beat = "Impact", At = "Ground", Size = 5, Seconds = 0.8 },
+			{ Id = "Ripple", Kind = "Decal", Texture = "fx_ripple", Beat = "Impact", At = "Ground", Size = 5, Seconds = 0.8, Linger = true },
 		},
 		Alive = { Kind = "Emitter", Texture = "fx_droplets", Motion = "Bounce", Count = 6, Seconds = 0.7, Text = "droplets bounce on the ground, then pop" },
 		Rain = { Key = "vfx_orb", Texture = "fx_droplets", Kind = "Emitter", Scale = 0.3, Text = "a downpour" },
@@ -347,7 +357,7 @@ AttackFxCatalog.Elements = {
 		Detail = {
 			-- the scorch glow: an untextured Decal = the engine's glow Disc (a soft fx_glow image since Task 8; a Texture would
 			-- make it a particle sheet and take one of the effect's 6 emitter slots: Task 8 fix round 3, review Important 1)
-			{ Id = "Scorch", Kind = "Decal", Beat = "Impact", At = "Ground", Tint = "Edge", Size = 5, Seconds = 0.9 },
+			{ Id = "Scorch", Kind = "Decal", Beat = "Impact", At = "Ground", Tint = "Edge", Size = 5, Seconds = 0.9, Linger = true },
 			-- (not on the ranged shot: its flame mantle + muzzle puff take the emitter budget, <= 6 per effect; not on the
 			-- Storm: its cloud + fire rain do, and a smoke puff under a cloud of fire reads as mud; not on the Blast: its charge
 			-- telegraph keeps its slot)
@@ -355,7 +365,7 @@ AttackFxCatalog.Elements = {
 			-- a lighter soot, rising as the burst fades)
 			{ Id = "Smoke", Kind = "Emitter", Texture = "fx_smoke", Beat = "Impact", At = "$Hit", Tint = "Smoke", Motion = "Rise", Delay = 0.12, Count = 6, Size = 1.6, Except = { Ranged = true, Storm = true, Blast = true } },
 		},
-		Alive = { Kind = "Emitter", Texture = "fx_embers", Motion = "SwirlUp", Count = 8, Seconds = 0.9, Text = "embers swirl upward on heat" },
+		Alive = { Kind = "Emitter", Texture = "fx_embers", Motion = "SwirlUp", Count = 8, Seconds = 0.9, Linger = true, Text = "embers swirl upward on heat" },
 		Rain = { Key = "vfx_spear", Texture = "fx_flame", Kind = "Emitter", Scale = 0.4, Text = "fire rain" },
 		-- (Task 8 Studio + Gemini: tinted the deep fire red the Storm cloud read as a blood-red blob; a smoky maroon ash
 		-- cloud, the fire rain and its flashes carry the heat)
@@ -385,7 +395,7 @@ AttackFxCatalog.Elements = {
 		Ranged = { Key = "vfx_shard", Path = "Projectile", Text = "sharp ice shard, snow trail", Scale = 1.35, Girth = 1.3 },
 		Impact = "crystal shatter + frost ring on the ground",
 		Detail = {
-			{ Id = "FrostRing", Kind = "Decal", Texture = "fx_frostmist", Beat = "Impact", At = "Ground", Size = 5, Seconds = 1.0 },
+			{ Id = "FrostRing", Kind = "Decal", Texture = "fx_frostmist", Beat = "Impact", At = "Ground", Size = 5, Seconds = 1.0, Linger = true },
 			-- (Task 9: a cold mist rising after the shatter, not a white fog ball on the hit frame)
 			{ Id = "FrostMist", Kind = "Emitter", Texture = "fx_frostmist", Beat = "Impact", At = "$Hit", Motion = "Rise", Delay = 0.08, Count = 5, Size = 1.2 },
 		},
@@ -464,7 +474,7 @@ AttackFxCatalog.Elements = {
 		Detail = {
 			-- (Task 9: rising after the break, not a brown smudge over the target on the hit frame)
 			{ Id = "Dust", Kind = "Emitter", Texture = "fx_dust", Beat = "Impact", At = "$Hit", Motion = "Rise", Delay = 0.06, Count = 8, Size = 1.6 },
-			{ Id = "GroundCrack", Kind = "Decal", Texture = "fx_crack", Beat = "Impact", At = "Ground", Size = 5, Seconds = 1.0 },
+			{ Id = "GroundCrack", Kind = "Decal", Texture = "fx_crack", Beat = "Impact", At = "Ground", Size = 5, Seconds = 1.0, Linger = true },
 		},
 		-- (Task 9 Studio: full-size chunks piled into a boulder on the target at Secret; half size)
 		Alive = { Kind = "Mesh", Key = "vfx_chunk", Motion = "Bounce", Tint = "Mid", Scale = 0.5, Count = 5, Seconds = 0.8, Text = "chunks scatter and bounce" },
@@ -592,7 +602,7 @@ AttackFxCatalog.Elements = {
 			{ Id = "Glass", Kind = "Emitter", Texture = "fx_darkglass", Beat = "Impact", At = "$Hit", Delay = 0.12, Count = 8, Size = 1.55 },
 			{ Id = "GlitchSparks", Kind = "Emitter", Texture = "fx_sparks", Beat = "Impact", At = "$Hit", Tint = "Hot", Delay = 0.12, Count = 8, Size = 1 },
 		},
-		Alive = { Kind = "Decal", Motion = "Darken", Tint = "Edge", Count = 2, Seconds = 0.9, Text = "the floor darkens under the wisps" },
+		Alive = { Kind = "Decal", Motion = "Darken", Tint = "Edge", Count = 2, Seconds = 0.9, Linger = true, Text = "the floor darkens under the wisps" },
 		Rain = { Key = "vfx_shard", Texture = "fx_wisps", Kind = "Emitter", Scale = 0.5, Text = "falling shadow shards" },
 		-- (round 3, c0 + Gemini: the line / cone / ring cores were solid glowing magenta slabs (arcane, not void): see-through)
 		Area = { Transparency = 0.4 },
@@ -729,7 +739,7 @@ AttackFxCatalog.Specials = {
 		Layers = {
 			-- (Task 10: the trail rides the leaping pet (AttackFx), one at Common; the Legendary afterimages add two more)
 			{ Id = "Leap", Kind = "Trail", Texture = "fx_speedlines", Beat = "Travel", At = "Self", Tint = "Edge", Afterimages = 1 },
-			{ Id = "SlamCrack", Kind = "Decal", Texture = "fx_crack", Beat = "Impact", At = "Ground", Size = 6, Seconds = 0.8 },
+			{ Id = "SlamCrack", Kind = "Decal", Texture = "fx_crack", Beat = "Impact", At = "Ground", Size = 6, Seconds = 0.8, Linger = true },
 		},
 		Swap = { Afterimage = "LeapEcho" },
 		Skip = { Trail = true },
@@ -957,7 +967,7 @@ AttackFxCatalog.Signatures = {
 		Palette = { Core = rgb(236, 190, 255), Mid = rgb(150, 96, 220), Edge = rgb(64, 34, 110), Hot = rgb(255, 150, 240) },
 		Slots = { RainKey = "vfx_star", RainTexture = "fx_sparkle", RainKind = "Emitter" },
 		Core = { Tint = "Mid", Scale = 1.1 },
-		Layers = { { Id = "SigDusk", Kind = "Decal", Beat = "Travel", At = "Ground", Tint = "Mid", Size = 7, Seconds = 1.0 } },
+		Layers = { { Id = "SigDusk", Kind = "Decal", Beat = "Travel", At = "Ground", Tint = "Mid", Size = 7, Seconds = 1.0, Linger = true } },
 		-- (Task 11c, Studio round 2, R3: at ~9 studs over the target, 6 studs wide and near-opaque neon, the moon read as a
 		-- separate magenta arch far away) ~30 % smaller, dimmer (more see-through, a softer lilac, a fainter corona); the
 		-- engine raises it to the storm cloud's height, just behind the target (MOVE.Actor "MoonRise")
@@ -1102,7 +1112,7 @@ AttackFxCatalog.Signatures = {
 		Layers = {
 			-- (Task 11d, review M2: at Size 6 the crack's rim ran through the spikes on their wider ring (Radius 3.1): 7, so
 			-- they stand inside the glow they erupt from)
-			{ Id = "SigLavaCrack", Kind = "Decal", Texture = "fx_crack", Beat = "Travel", At = "Ground", Color = rgb(255, 120, 40), Size = 7, Seconds = 1.2 },
+			{ Id = "SigLavaCrack", Kind = "Decal", Texture = "fx_crack", Beat = "Travel", At = "Ground", Color = rgb(255, 120, 40), Size = 7, Seconds = 1.2, Linger = true },
 			{ Id = "SigEruption", Kind = "Emitter", Texture = "fx_flame", Beat = "Release", At = "Self", Motion = "Burst", Count = 8, Size = 1.3 },
 		},
 		-- (Studio findings round: the spikes + dome buried the target's flinch) the spike ring leaves the slot facing the
@@ -1388,6 +1398,25 @@ local function aliveOf(element, palette, countScale, sigTints)
 	return a
 end
 
+-- the kinds that heal, shield or buff: no impact, so nothing left on the ground and no camera kick (attack effects, 2026-11-01)
+local SUPPORT_KINDS = { Heal = true, Shield = true, Rally = true, Haste = true }
+
+-- an attack that lands on something: Melee / Ranged / Element and the damaging Specials (not a reaction, not a support cast)
+local function isStrike(attack, kind)
+	return attack == "Melee" or attack == "Ranged" or attack == "Element" or (attack == "Special" and not SUPPORT_KINDS[kind])
+end
+
+-- recipe.CameraPunch: false, or the kick of an own attack by kind and band (AttackFxCatalog.Kick)
+local function kickOf(attack, kind, band, mine)
+	if not mine or not isStrike(attack, kind) then
+		return false
+	end
+	local K = AttackFxCatalog.Kick
+	local basic = attack == "Melee" or attack == "Ranged"
+	local base = (basic and K.Basic) or (attack == "Element" and K.Element) or K.Special
+	return { Amount = min(K.Max, base + K.BandStep * (band - 1)), Crit = K.Crit, Seconds = K.Seconds, Basic = basic, Gap = K.BasicGap }
+end
+
 -- the impact package (spec 2026-11-01 "More effects"), x ImpactScale[band]: a Ring's Grow, a Decal's Size, an Emitter's
 -- Count, a Light's Brightness (capped at 2; the Range never moves: the light caps stay, Task 8)
 local PACKAGE = { Shockwave = true, Shockwave2 = true, Flash = true, Sparks = true, GroundGlow = true }
@@ -1639,7 +1668,8 @@ function AttackFxCatalog.Resolve(req)
 		Size = AttackFxCatalog.SizeOf(rarity, stage),
 		CloudSize = AttackFxCatalog.CloudSizeOf(rarity, stage),
 		Density = mine and 1 or AttackFxCatalog.OthersDensity,
-		CameraPunch = mine and band >= 3 and not def.Quiet,
+		Afterglow = isStrike(req.Attack, def.Kind) and AttackFxCatalog.Afterglow[band] or 0,
+		CameraPunch = kickOf(req.Attack, def.Kind, band, mine),
 		ScreenGlow = mine and band == 4 and not def.Quiet,
 		Signature = sig and petId or nil,
 		Palette = palette,

@@ -660,7 +660,7 @@ local function studioRound2(env)
 	local frames, mouthBad, worstGap, sl = 0, 0, 0, 0
 	if elC then
 		run(elC.Times.Impact + 0.1)
-		local stop = elC.EndRel - 0.1 -- (the breath holds through the impact and thins over the linger: ~a whole cycle)
+		local stop = elC.TailAt - 0.1 -- (the breath holds through the impact and thins over the linger: ~a whole cycle)
 		while env.clock() - elC.Start < stop do
 			run(1 / 30)
 			-- (attack effects, 2026-11-01: the Beam runs to its real length, through the target; it ended at elC.Hit before)
@@ -1227,7 +1227,7 @@ local function studioRound3(env)
 		end)[1]
 		local frames, wrong = 0, 0
 		if el and body and rim then
-			run(el.EndRel - 0.05, function()
+			run(el.TailAt - 0.05, function()
 				local bp, rp = body.Kit.Root, rim.Kit.Root
 				if bp.Transparency < 0.98 and rp.Transparency < 0.98 then
 					frames = frames + 1
@@ -1776,7 +1776,8 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 			return nil
 		end
 		local alive = (type(r.Alive) == "table" and type(r.Alive.Seconds) == "number") and r.Alive.Seconds or 0
-		return r.ImpactAt + r.Beats.Impact + math.max(r.Beats.Linger, alive)
+		-- (attack effects, 2026-11-01: + the Afterglow, x Density; was: the beats alone)
+		return r.ImpactAt + r.Beats.Impact + math.max(r.Beats.Linger, alive) + r.Afterglow * r.Density
 	end
 	local folder = Fx.Folder()
 	T.check(folder ~= nil and folder.Parent and folder.Parent.Name == "ClientBattle" and folder.Parent.Parent == workspace,
@@ -1838,7 +1839,7 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 		end
 	end
 	T.check(#badPlay == 0, fmt("High: every element x Melee / Ranged / Special Blast / Element Cone x 3 rarities plays (%d plays)", plays), table.concat(badPlay, ", "))
-	T.check(#badLength == 0, "each effect lasts its beats: Charge + Release + Travel + Impact + max(Linger, alive detail)", table.concat(badLength, "; "))
+	T.check(#badLength == 0, "each effect lasts its beats + its Afterglow: Charge + Release + Travel + Impact + max(Linger, alive detail) + Afterglow x Density", table.concat(badLength, "; "))
 	T.check(#badGone == 0, "each effect is gone after its beats (nothing live, every pooled kit hidden)", table.concat(badGone, ", "))
 	T.check(#flipBad == 0 and flipSeen > 0, fmt("textured emitters are 4x4 flipbooks with the manifest mode + fps, rbxassetid:// + the TextureIds number (%d seen)", flipSeen), table.concat(flipBad, ", "))
 	T.check(coreSeen == plays and cores.n > 0, fmt("solid cores from MeshLibrary.Assemble play when ready (%d / %d plays, %d assembled)", coreSeen, plays, cores.n))
@@ -2050,7 +2051,7 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 	punches = {}
 	Fx.Play(ctx({ Element = "Storm", Attack = "Special", Kind = "Blast", Rarity = "Common", Mine = true, Now = clock }))
 	run(3)
-	T.check(#punches == 0, "Mine = true below band 3: no camera punch")
+	T.check(#punches == 1 and math.abs(punches[1][1] - 0.14) < 1e-6, "Mine = true, a Common Special: kicks 0.14 (attack effects, 2026-11-01; was: no punch below band 3)", punches[1] and tostring(punches[1][1]))
 	-- the screen-edge glow (own pet, band 4) and a signature's dimming (own pet) go through hooks too
 	local glows, dims = 0, 0
 	Fx.Hooks.ScreenGlow = function()
@@ -2083,7 +2084,8 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 		c.To = nil
 		local hurt = Fx.Play(c)
 		run(1)
-		T.check(hurt and #punches == 1 and glows == 1, "Mine = true Hurt at Secret: still one punch and one glow through the same hooks",
+		-- (attack effects, 2026-11-01: a reaction does not kick; was: one punch at band 3+)
+		T.check(hurt and #punches == 0 and glows == 1, "Mine = true Hurt at Secret: no camera kick, still one glow through the same hook",
 			fmt("played %s, %d punches, %d glows", tostring(hurt), #punches, glows))
 		punches = {}
 	end

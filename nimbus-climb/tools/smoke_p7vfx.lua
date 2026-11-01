@@ -156,6 +156,9 @@ local SIGNATURE_PETS = {
 	"eclipse_dragon", "obsidian_phoenix", "phantom_kitsune", "magma_cub", "rime_wyrmling", "hydralotl",
 }
 
+-- (attack effects, 2026-11-01) the kinds with no impact: no camera kick
+local SUPPORT_KIND = { Heal = true, Shield = true, Rally = true, Haste = true }
+
 -- every attack variant a recipe can be asked for: { Attack, Kind?, Shape?, label }
 local function variants()
 	local out = {}
@@ -623,8 +626,19 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 								mineRecipe = r
 								-- (Task 10 re-review I4: the shield ripple is Quiet: no punch / glow at any band)
 								local loud = v.Attack ~= "ShieldHit"
-								mineRules:case(r.Density == 1 and r.CameraPunch == (loud and band >= 3) and r.ScreenGlow == (loud and band == 4),
-									fmt("%s mine: Density %s punch %s glow %s", label, tostring(r.Density), tostring(r.CameraPunch), tostring(r.ScreenGlow)))
+								-- (attack effects, 2026-11-01: every own attack kicks by kind and band, not reactions or support casts; was: a plain true at band 3+)
+								local basic = v.Attack == "Melee" or v.Attack == "Ranged"
+								local strike = basic or v.Attack == "Element" or (v.Attack == "Special" and not SUPPORT_KIND[v.Kind])
+								local p = r.CameraPunch
+								local kickOk
+								if strike then
+									local base = (basic and C.Kick.Basic) or (v.Attack == "Element" and C.Kick.Element) or C.Kick.Special
+									kickOk = type(p) == "table" and math.abs(p.Amount - (base + C.Kick.BandStep * (band - 1))) < 1e-9 and p.Amount <= 0.35 and p.Seconds == C.Kick.Seconds and p.Basic == basic
+								else
+									kickOk = p == false
+								end
+								mineRules:case(r.Density == 1 and kickOk and r.ScreenGlow == (loud and band == 4),
+									fmt("%s mine: Density %s punch %s glow %s", label, tostring(r.Density), tostring(type(p) == "table" and p.Amount or p), tostring(r.ScreenGlow)))
 							else
 								mineRules:case(r.Density == 0.6 and r.CameraPunch == false and r.ScreenGlow == false,
 									fmt("%s others: Density %s punch %s glow %s", label, tostring(r.Density), tostring(r.CameraPunch), tostring(r.ScreenGlow)))

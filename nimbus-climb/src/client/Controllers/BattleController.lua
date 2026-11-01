@@ -308,6 +308,9 @@ local K = {
 	FOV_PUNCH = 6, -- wave 5 (bug #15): degrees of FOV punch on a big attack in a dungeon (AttackFx punch >= PUNCH_BIG)
 	FOV_PUNCH_TIME = 0.25,
 	PUNCH_BIG = 0.2,
+	-- (attack effects, 2026-11-01) a pet Storm's zone holds a dim disc this long after its damage ended, at this transparency: it reads as over
+	ZONE_TAIL = 1.5,
+	ZONE_TAIL_TRANS = 0.85,
 	LAST_DRAWN_AGE = 5, -- seconds a dungeon fighter's last drawn spot is kept for the followers' hand-over
 	SPECTATOR_LINGER = 1.5,
 	RESULT_SECONDS = 12,
@@ -853,10 +856,25 @@ end
 local function zoneUpdate(e, p, now)
 	local t = now - e.t0
 	local fadeIn = clamp(t / 0.3, 0, 1)
-	local fadeOut = clamp((e.dur - t) / 0.4, 0, 1)
+	local fadeOut = clamp(((e.live or e.dur) - t) / 0.4, 0, 1)
 	local vis = fadeIn * fadeOut
 	local disc = e.parts[1]
-	if disc then
+	if e.live then
+		-- (attack effects, 2026-11-01) the damage ends: the disc goes straight to its dim look (never out and back), the cloud and
+		-- bolts are gone, nothing moves; the last 0.3 s it fades out
+		if disc then
+			local a = e.discAlpha + (K.ZONE_TAIL_TRANS - e.discAlpha) * (1 - fadeOut)
+			a = a + (1 - a) * clamp((t - (e.dur - 0.3)) / 0.3, 0, 1)
+			disc.Transparency = 1 - (1 - a) * fadeIn
+		end
+		if t >= e.live then
+			for i = #e.parts, 2, -1 do
+				Fx.Free(e.parts[i])
+				e.parts[i] = nil
+			end
+			return
+		end
+	elseif disc then
 		disc.Transparency = 1 - (1 - e.discAlpha) * vis
 	end
 	if e.cloud then
@@ -900,7 +918,8 @@ local function zoneUpdate(e, p, now)
 end
 
 -- a damaging area on the floor for `seconds`: Storm (a voxel storm cloud with lightning), Field (the disc only: the
--- cloud is AttackFx's) or a lingering pool
+-- cloud is AttackFx's) or a lingering pool (a boss's: it ends on its seconds). Storm / Field hold a dim disc K.ZONE_TAIL longer
+-- (attack effects, 2026-11-01), not on Graphics Low
 function Fx.Zone(floorCF, r, seconds, color, kind)
 	local parts = {}
 	local disc = Fx.Part(color, Enum.Material.Neon, 0.7)
@@ -955,6 +974,10 @@ function Fx.Zone(floorCF, r, seconds, color, kind)
 			parts[#parts + 1] = part
 			e.offsets[#parts] = { X = cos(a) * rr, Z = sin(a) * rr, speed = 0.6 + rnd() * 0.8, phase = rnd() }
 		end
+	end
+	if (kind == "Storm" or kind == "Field") and not St.fxLow then
+		e.live = seconds
+		seconds = seconds + K.ZONE_TAIL
 	end
 	return Fx.Add(seconds, zoneUpdate, parts, e)
 end
@@ -2610,7 +2633,13 @@ function Me.Shake(amount, dur)
 		return
 	end
 	local old = St.shake
-	St.shake = { t0 = os.clock(), dur = dur or 0.18, amp = min(K.SHAKE_MAX, (amount or 0.2) * scale), base = old and old.base, last = old and old.last, hum = old and old.hum }
+	local now = os.clock()
+	local amp = min(K.SHAKE_MAX, (amount or 0.2) * scale)
+	-- (attack effects, 2026-11-01: every own attack kicks now) a small kick never cuts a stronger shake still playing
+	if old and old.amp * (1 - (now - old.t0) / old.dur) > amp then
+		return
+	end
+	St.shake = { t0 = now, dur = dur or 0.18, amp = amp, base = old and old.base, last = old and old.last, hum = old and old.hum }
 	BattleController._wake()
 end
 
@@ -2951,7 +2980,7 @@ local BUFF_LOOK = { Heal = "Heal", Regen = "Heal", Shield = "Shield", Taken = "S
 Atk.EVENTS = { [EV.Hit] = true, [EV.Special] = true, [EV.Element or "Element"] = true, [EV.KO] = true, [EV.Buff or "Buff"] = true, [EV.Swap or "Swap"] = true }
 Atk.bodyOpts = { Pose = nil } -- (one table for every PetBuilder.PoseBody call)
 
--- AttackFx's hooks go to Me: camera punch = Me.Shake (the Shake setting and SHAKE_MAX apply), the edge glow, and a
+-- AttackFx's hooks go to Me: camera kick = Me.Shake (the Shake setting and SHAKE_MAX apply), the edge glow, and a
 -- signature's battle dim (Me.Dim / Me.Undim, Task 11)
 function Atk.Hook(m)
 	if type(m) ~= "table" or type(m.Hooks) ~= "table" then
@@ -3144,9 +3173,13 @@ function Atk.Busy()
 	return s ~= nil and ((s.Live or 0) + (s.Stepped or 0)) > 0
 end
 
--- something of the pet attack VFX still needs frames (live effects, the End grace, cheers waiting)
+-- something of the pet attack VFX still needs frames (live effects, a lingering tail, the End grace, cheers waiting)
 function Atk.Pending()
-	return St.fxEndAt ~= nil or (St.cheers ~= nil and #St.cheers > 0) or Atk.Busy()
+	if St.fxEndAt ~= nil or (St.cheers ~= nil and #St.cheers > 0) then
+		return true
+	end
+	local s = Atk.Stats()
+	return s ~= nil and ((s.Live or 0) + (s.Stepped or 0) + (s.Tails or 0)) > 0
 end
 
 function Atk.Stats()
