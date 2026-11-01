@@ -927,6 +927,13 @@ section("duels", function(opts)
 	local overall = pct(wins1, n)
 	target("mirror duels are fair: 40-60% over every stage together and 30-70% at each stage", overall >= 40 and overall <= 60 and stageOk, fmt("overall %d%%, worst stage %d%%", overall, worst))
 	target("no draws: a double knock-out or a timeout goes to the side that dealt more damage", draws == 0, fmt("draws %d, timeouts %d of %d (tanky mirrors reach the 120 s limit)", draws, timeouts, n))
+	-- (attack effects, 2026-11-01) reach on both sides: an evolved pet's abilities reach x1.3, a mirror stays fair. 128 seeds: most of
+	-- these tanky mirrors end on a coin-flip timeout, and at 16 seeds one sigma is 12 points, past the 40-60 band by itself
+	local evolved = series(function(seed)
+		return { Mode = "Duel", Seed = seed, Teams = { team(1, 1, SIM.Teams.L50), team(2, 2, SIM.Teams.L50) } }
+	end, { [1] = "player", [2] = "player" }, max(128, opts.seeds))
+	out(fmt("  %-4s %-11s power %6d  side1 %3d%%  draws %d  timeouts %2d  dur %5.1f s (max %5.1f)  maxHit %.2f", "L50", "Evolved II", powerOf(SIM.Teams.L50), evolved.winPct, evolved.draws, evolved.timeouts, evolved.avgDur, evolved.maxDur, evolved.maxPetHit))
+	target("an evolved mirror duel (3 L50 Legendaries, Evo 2, both sides scripted) is fair: 40-60%, no draws", evolved.winPct >= 40 and evolved.winPct <= 60 and evolved.draws == 0, fmt("side1 %d%%, draws %d", evolved.winPct, evolved.draws))
 	SIM.elementCounter(opts.seeds)
 end)
 

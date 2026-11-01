@@ -44,6 +44,8 @@
 --   BattleCatalog.Buffs[kind]                                      { Name, Seconds, Value, Text, Cooldown, Kind, Effect } for Heal / Shield / Rally / Haste (Support,
 --                                                                  cooldown 12) and Water / Flame / Frost / Nature / Earth / Storm / Celestial / Shadow (element, 15)
 --   BattleCatalog.BuffOf(def|petId|key) -> kind, buff             a helper's button: its Support kind, else its FIRST element's buff
+--   BattleCatalog.Reach = { [0] 1, [1] 1.15, [2] 1.3 }            an evolved pet's abilities reach this much farther (the ONLY reach tunable)
+--   BattleCatalog.ReachOf(stage) -> n                             Reach[stage]: floored, clamped 0..2, junk = stage 0 (x1); BattleSim's areas and the drawing read it
 --   BattleCatalog.BattleStats                                     the ONLY tunables of the battle path: RarityScale { Common 1 .. Secret 5 }, Level { Linear, Quadratic, Cubic }
 --   BattleCatalog.BattleLevelFactor(level, stage) -> n            1 + (Linear x + Quadratic x^2 + Cubic x^3) x EvolutionBonus[stage], x = level - 1 (level clamped 1..MaxPetLevel, junk stage 0)
 --   BattleCatalog.BattleStatsOf(subject, level, tier, stage)      { Power, Health, Speed } | nil: base x RarityScale x BattleLevelFactor x tier (Speed unscaled, no Income);
@@ -407,6 +409,21 @@ BattleCatalog.Buffs = {
 	Celestial = { Kind = "Celestial", Name = "Halo", Effect = "Shield", Seconds = 6, Value = 0.25, Cooldown = 15, Text = "A shield of 25% health for 6 seconds." },
 	Shadow = { Kind = "Shadow", Name = "Leech", Effect = "Lifesteal", Seconds = 8, Value = 0.30, Cooldown = 15, Text = "Your hits heal you for 30% of the damage for 8 seconds." },
 }
+
+----------------------------------------------------------------------
+-- Reach (attack effects, 2026-11-01): an evolved pet's abilities really reach farther, on the server: Specials' Radius, Length,
+-- Width and Range, ElementAttacks' Length, Radius and Width x this. Cone Angle, every timer and all damage stay. By the
+-- unit's own stage, NPCs too. Evolved forms (a later spec) plug in behind ReachOf.
+----------------------------------------------------------------------
+BattleCatalog.Reach = { [0] = 1, [1] = 1.15, [2] = 1.3 }
+
+function BattleCatalog.ReachOf(stage)
+	local s = tonumber(stage)
+	if not finite(s) or s < 0 then
+		s = 0
+	end
+	return BattleCatalog.Reach[min(2, floor(s))] or 1
+end
 
 ----------------------------------------------------------------------
 -- Resolving what a list entry means: a pet id, a pet key ("cat@Golden", "hyb:..."), a def table (PetKeys.DefOf),
@@ -2167,6 +2184,15 @@ function BattleCatalog.Validate()
 			if not finite(profile[key]) or profile[key] <= 0 then
 				bad(species .. ": " .. key .. " must be a positive number")
 			end
+		end
+	end
+	-- reach: x1 unevolved, never falling with the stage
+	if BattleCatalog.Reach[0] ~= 1 then
+		bad("Reach[0] must be 1")
+	end
+	for stage = 1, 2 do
+		if not finite(BattleCatalog.Reach[stage]) or BattleCatalog.Reach[stage] < BattleCatalog.Reach[stage - 1] then
+			bad("Reach must not fall with the stage (stage " .. stage .. ")")
 		end
 	end
 	-- specials for every kind (the catalog's list and ours)
