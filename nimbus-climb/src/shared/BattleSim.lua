@@ -1099,6 +1099,7 @@ local function makeBoss(self, bossId)
 		tierId = tier.Id,
 		tierHit = tier.Hit,
 		groupMin = tier.GroupMin, -- nil = BossRules.DamageGroup.Min
+		soloHit = tier.SoloHit, -- nil = the group line all the way down to one team
 		damageMult = tier.Hit,
 		cooldownMult = 1,
 		attackUntil = 0,
@@ -2324,6 +2325,10 @@ function bossBasis(self, victim)
 		local fullAt = max(2, num(group.FullAt, 8))
 		local lo = num(self.boss and self.boss.groupMin, num(group.Min, 0.6))
 		factor = lo + (1 - lo) * min(1, (teams - 1) / (fullAt - 1))
+		local solo = self.boss and self.boss.soloHit
+		if solo and teams < 2 then -- a lone team: its own number, back on the line at two teams (an idle alt moves it a little, never a jump)
+			factor = solo + (lo + (1 - lo) / (fullAt - 1) - solo) * max(0, teams - 1)
+		end
 	end
 	return (num(basis.Own, 0.6) * victim.maxHp + num(basis.Average, 0.4) * self.avgPetHp) * factor
 end

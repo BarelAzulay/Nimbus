@@ -144,6 +144,16 @@ S.raid_tiers = guarded("raid_tiers", function()
 	local okBand = BC.Validate()
 	BC.RaidTiers[2].Level[1] = band
 	T.check(okBand == false, "raid catalog: Validate refuses a gap in the tier levels")
+	local midTier = BC.RaidTierById("Mid")
+	local savedSolo = midTier.SoloHit
+	midTier.SoloHit = -1
+	local okSolo = BC.Validate()
+	midTier.SoloHit = savedSolo
+	local savedHpTier = BC.Bosses.storm_titan.HpTier.Mid
+	BC.Bosses.storm_titan.HpTier.Mid = 0
+	local okHpTier = BC.Validate()
+	BC.Bosses.storm_titan.HpTier.Mid = savedHpTier
+	T.check(okSolo == false and okHpTier == false, "raid catalog: Validate refuses a junk SoloHit or HpTier")
 end)
 
 -- a Mid raid stepped by hand; drive(b, events) runs after every step, stop(b, events) ends it
@@ -207,19 +217,48 @@ S.raid_lethal = guarded("raid_lethal", function()
 		local u = spawn and b.units[spawn.units[1].id]
 		minionHit[id] = u and u.hit or 0
 	end
-	-- (the solo group factor comes on top: a tier's GroupMin, else DamageGroup.Min)
-	local function groupLoOf(id)
-		return BC.RaidTierById(id).GroupMin or BC.BossRules.DamageGroup.Min
+	-- (the group factor comes on top: a lone team's SoloHit; from two teams the line from a tier's GroupMin, else DamageGroup.Min, to 1)
+	local function lineAt(id, teams)
+		local lo = BC.RaidTierById(id).GroupMin or BC.BossRules.DamageGroup.Min
+		return lo + (1 - lo) * (teams - 1) / (BC.BossRules.DamageGroup.FullAt - 1)
 	end
-	T.check(minionHit.High > 0 and abs(minionHit.Max / minionHit.High - 1.3 * groupLoOf("Max") / groupLoOf("High")) < 1e-6, "raid tier: minion hits x the tier's Hit", fmt("%.2f / %.2f", minionHit.Max, minionHit.High))
+	T.check(minionHit.High > 0 and abs(minionHit.Max / minionHit.High - 1.3 * BC.RaidTierById("Max").SoloHit / BC.RaidTierById("High").SoloHit) < 1e-6, "raid tier: minion hits x the tier's Hit", fmt("%.2f / %.2f", minionHit.Max, minionHit.High))
 	-- ... and a join's rescale keeps it
 	local bJoin = raidOf("Max")
 	bJoin.boss.hp = 0.69 * bJoin.boss.maxHp
 	local spawnJoin = firstEvent(bJoin:Step(DT), "Spawn")
 	bJoin:AddTeam(team(2, SIM_MID))
 	local joined = spawnJoin and bJoin.units[spawnJoin.units[1].id]
-	local groupLo = groupLoOf("Max")
-	T.check(joined and abs(joined.hit / minionHit.Max - (groupLo + (1 - groupLo) / 7) / groupLo) < 1e-6, "raid tier: a join's rescale of the minions keeps the tier's Hit", joined and fmt("%.2f vs %.2f", joined.hit, minionHit.Max) or "no minion")
+	T.check(joined and abs(joined.hit / minionHit.Max - lineAt("Max", 2) / BC.RaidTierById("Max").SoloHit) < 1e-6, "raid tier: a join's rescale of the minions keeps the tier's Hit", joined and fmt("%.2f vs %.2f", joined.hit, minionHit.Max) or "no minion")
+	-- a lone team's own number: only one team, back on the group line at two, no jump for an idle alt, the 3 and 8 team fights untouched
+	for _, id in ipairs(BC.RaidTierOrder) do
+		local t = BC.RaidTierById(id)
+		T.check(type(t.SoloHit) == "number" and t.SoloHit > 0, "raid tier " .. id .. ": a lone team has its own hit number")
+		-- the group factor, read off a living minion: its hit = MinionDamage x avgPetHp x Hit x the factor
+		local bTeams = raidOf(id)
+		bTeams.boss.hp = 0.69 * bTeams.boss.maxHp
+		local spawned = firstEvent(bTeams:Step(DT), "Spawn")
+		local minion = spawned and bTeams.units[spawned.units[1].id]
+		local function factor()
+			return minion.hit / (BC.BossRules.MinionDamage * bTeams.avgPetHp * t.Hit)
+		end
+		T.check(minion ~= nil and abs(factor() - t.SoloHit) < 1e-6, "raid tier " .. id .. ": one team takes SoloHit", minion and fmt("%.3f", factor()) or "no minion")
+		bTeams:AddTeam(team(2, SIM_MID))
+		local atTwo = factor()
+		bTeams:AddTeam(team(3, SIM_MID))
+		local atThree = factor()
+		for owner = 4, 8 do
+			bTeams:AddTeam(team(owner, SIM_MID))
+		end
+		T.check(abs(atTwo - lineAt(id, 2)) < 1e-6 and abs(atThree - lineAt(id, 3)) < 1e-6 and abs(factor() - 1) < 1e-6, "raid tier " .. id .. ": from two teams on the group line holds", fmt("%.3f %.3f %.3f", atTwo, atThree, factor()))
+		local bAlt = raidOf(id)
+		bAlt.boss.hp = 0.69 * bAlt.boss.maxHp
+		local spawnedAlt = firstEvent(bAlt:Step(DT), "Spawn")
+		local minionAlt = spawnedAlt and bAlt.units[spawnedAlt.units[1].id]
+		local soloMinionHit = minionAlt and minionAlt.hit / bAlt.avgPetHp or 0
+		bAlt:AddTeam(team(2, { { Key = "biscuit_bear", PetId = "biscuit_bear", Level = 1 } }))
+		T.check(minionAlt ~= nil and abs(minionAlt.hit / bAlt.avgPetHp / soloMinionHit - 1) < 0.1, "raid tier " .. id .. ": an idle alt moves the factor a little, no jump", minionAlt and fmt("x%.3f, %.2f teams", minionAlt.hit / bAlt.avgPetHp / soloMinionHit, bAlt.playerTeamCount) or "no minion")
+	end
 
 	-- no enrage on a clock: 260 s (past the old EnrageAt 240) above 30% health
 	local enragedEarly = false

@@ -1625,7 +1625,7 @@ BattleCatalog.Bosses = {
 		Element = "Storm",
 		Blurb = "A thunderhead given arms. Earth pets ground its lightning.",
 		HpFactor = 1,
-		HpTier = { Starter = 1.24, Mid = 1.03, High = 0.89, Max = 1.22 }, -- per fight tier, each fitted so 3 teams win about 40% (48 seeds)
+		HpTier = { Starter = 1.24, Mid = 0.98, High = 0.89, Max = 1.22 }, -- per fight tier, each fitted so 3 teams win about 40% (48 seeds); Mid 1.03 -> 0.98: eight trained S7 teams took 246 s against the 240 s band
 		Radius = 7,
 		Scale = 1,
 		Basic = { Name = "Zap", Interval = 2.4, Damage = 0.05, Range = 20 },
@@ -1702,12 +1702,14 @@ BattleCatalog.BossOrder = { "storm_titan", "lava_golem", "frost_wyrm", "shadow_h
 -- higher one). Hit (share of the boss's damage), Reward, EventScale (the chances of Gems and event pets), Level and
 -- BossLevel are the owner's numbers; HpSeconds (seconds of every team's expected DPS, x the boss's HpFactor and HpTier), Scale and
 -- Baseline (the HP floor's fighter) are tuned with tools/sim_battle.lua's raids section. GroupMin: Max only, DamageGroup.Min 1.6 left
--- no fight to tune there (3 teams fell in 95-100 s, 8 teams in 82-88 s against the 100 s band).
+-- no fight to tune there (3 teams fell in 95-100 s, 8 teams in 82-88 s against the 100 s band). SoloHit: a lone team's share of the
+-- boss's hits, apart from the group line (the line's 1.6 left solos 0 of 48 even with a 97% dodge trainer; "solo barely possible" is the
+-- owner's). Measured on 96 seeds a cell: 1.25-1.45 at Starter 16% - 2%, 1.1-1.25 at Mid 5% - 1% (frost_wyrm 17% at 1.14, over the 15% ceiling), at High 8.5% - 1%, at Max 3% - 0.5%.
 BattleCatalog.RaidTiers = {
-	{ Id = "Starter", Level = { 1, 19 }, BossLevel = 15, Hit = 0.6, Reward = 0.4, EventScale = 0.5, Scale = 0.85, HpSeconds = 120, Baseline = { PetId = "ember_phoenix", Level = 15, Evo = 0, Tier = "Normal" } },
-	{ Id = "Mid", Level = { 20, 49 }, BossLevel = 40, Hit = 0.8, Reward = 0.7, EventScale = 0.5, Scale = 1, HpSeconds = 98, Baseline = { PetId = "ember_phoenix", Level = 40, Evo = 1, Tier = "Normal" } },
-	{ Id = "High", Level = { 50, 79 }, BossLevel = 70, Hit = 1, Reward = 1, EventScale = 1, Scale = 1.15, HpSeconds = 112, Baseline = { PetId = "ember_phoenix", Level = 70, Evo = 2, Tier = "Normal" } },
-	{ Id = "Max", Level = { 80, 100 }, BossLevel = 95, Hit = 1.3, Reward = 1.3, EventScale = 1, Scale = 1.3, HpSeconds = 127, GroupMin = 1.35, Crown = true, Baseline = { PetId = "ember_phoenix", Level = 95, Evo = 2, Tier = "Rainbow" } },
+	{ Id = "Starter", Level = { 1, 19 }, BossLevel = 15, Hit = 0.6, Reward = 0.4, EventScale = 0.5, Scale = 0.85, HpSeconds = 120, SoloHit = 1.45, Baseline = { PetId = "ember_phoenix", Level = 15, Evo = 0, Tier = "Normal" } },
+	{ Id = "Mid", Level = { 20, 49 }, BossLevel = 40, Hit = 0.8, Reward = 0.7, EventScale = 0.5, Scale = 1, HpSeconds = 98, SoloHit = 1.17, Baseline = { PetId = "ember_phoenix", Level = 40, Evo = 1, Tier = "Normal" } },
+	{ Id = "High", Level = { 50, 79 }, BossLevel = 70, Hit = 1, Reward = 1, EventScale = 1, Scale = 1.15, HpSeconds = 112, SoloHit = 1.14, Baseline = { PetId = "ember_phoenix", Level = 70, Evo = 2, Tier = "Normal" } },
+	{ Id = "Max", Level = { 80, 100 }, BossLevel = 95, Hit = 1.3, Reward = 1.3, EventScale = 1, Scale = 1.3, HpSeconds = 127, GroupMin = 1.35, SoloHit = 1.08, Crown = true, Baseline = { PetId = "ember_phoenix", Level = 95, Evo = 2, Tier = "Rainbow" } },
 }
 BattleCatalog.RaidTierOrder = { "Starter", "Mid", "High", "Max" }
 
@@ -2389,6 +2391,11 @@ function BattleCatalog.Validate()
 			if not finite(b.HpFactor) or b.HpFactor <= 0 then
 				bad("boss " .. id .. ": HpFactor must be positive")
 			end
+			for tierId, share in pairs(type(b.HpTier) == "table" and b.HpTier or {}) do
+				if not BattleCatalog.RaidTierById(tierId) or not finite(share) or share <= 0 then
+					bad("boss " .. id .. ": HpTier." .. tostring(tierId) .. " must be a known tier with a positive share")
+				end
+			end
 			for _, tier in ipairs(BattleCatalog.RaidTiers) do
 				if BattleCatalog.BaselineDps(id, tier.Id) <= 0 then
 					bad("boss " .. id .. ": BaselineDps must be positive (tier " .. tostring(tier.Id) .. "'s Baseline names a real pet)")
@@ -2466,6 +2473,11 @@ function BattleCatalog.Validate()
 		for _, field in ipairs({ "Hit", "Reward", "EventScale", "Scale", "HpSeconds" }) do
 			if not finite(tier[field]) or tier[field] <= 0 then
 				bad("raid tier " .. tostring(tier.Id) .. ": " .. field .. " must be positive")
+			end
+		end
+		for _, field in ipairs({ "SoloHit", "GroupMin" }) do
+			if tier[field] ~= nil and (not finite(tier[field]) or tier[field] <= 0) then
+				bad("raid tier " .. tostring(tier.Id) .. ": " .. field .. " must be positive when set")
 			end
 		end
 		if pc and pc.Get and not (type(tier.Baseline) == "table" and pc.Get(tier.Baseline.PetId)) then

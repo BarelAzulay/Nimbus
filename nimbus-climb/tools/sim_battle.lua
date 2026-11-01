@@ -1116,17 +1116,20 @@ section("raids", function(opts)
 	local T = SIM.Targets.Raid
 	local seeds = opts.quick and 4 or 12
 	local seeds8 = opts.quick and 2 or 6
-	header(fmt("Raids per boss and tier (default trainer, a team near the top of the tier): %d seeds a cell, %d for 8 teams", seeds, seeds8))
+	local soloSeeds = 12 -- also in quick: at 4 seeds one win reads 25%, a cell could not be about 5% and under the 15% ceiling
+	header(fmt("Raids per boss and tier (default trainer, a team near the top of the tier): %d seeds a cell, %d solo, %d for 8 teams", seeds, soloSeeds, seeds8))
 	local soloOk, threeOk, eightOk, groupDurOk = true, true, true, true
 	local worstSolo, worstThreeLo, worstThreeHi, worstEight, longest, shortest = 0, 100, 0, 100, 0, huge
+	local soloSum, soloCells = 0, 0
 	for _, boss in ipairs(BC.BossOrder) do
 		for _, tierId in ipairs(BC.RaidTierOrder) do
-			local solo = SIM.raidCell(boss, tierId, 1, seeds)
+			local solo = SIM.raidCell(boss, tierId, 1, soloSeeds)
 			local three = SIM.raidCell(boss, tierId, 3, seeds)
 			local eight = SIM.raidCell(boss, tierId, 8, seeds8)
 			local bottom = SIM.raidCell(boss, tierId, 1, max(2, floor(seeds / 2)), SIM.RaidBottom[tierId])
 			out(fmt("  %-13s %-7s solo %3d%% %3.0f s | 3p %3d%% %3.0f s | 8p %3d%% %3.0f s | bottom solo %3d%%", boss, tierId, solo.winPct, solo.avgDur, three.winPct, three.avgWonDur, eight.winPct, eight.avgWonDur, bottom.winPct))
 			soloOk = soloOk and solo.winPct <= T.Solo
+			soloSum, soloCells = soloSum + solo.winPct, soloCells + 1
 			threeOk = threeOk and inBand(three.winPct, T.Three)
 			eightOk = eightOk and eight.winPct >= T.Eight
 			worstSolo = max(worstSolo, solo.winPct)
@@ -1140,7 +1143,7 @@ section("raids", function(opts)
 			end
 		end
 	end
-	target("solo: a team near the top of its tier wins at most 15% in every boss x tier cell (about 5%)", soloOk, fmt("worst %d%%", worstSolo))
+	target("solo: a team near the top of its tier wins at most 15% in every boss x tier cell (about 5%)", soloOk, fmt("worst %d%%, average %.1f%%", worstSolo, soloSum / max(1, soloCells)))
 	target("3 teams: 25-55% in every cell", threeOk, fmt("%d%%-%d%%", worstThreeLo, worstThreeHi))
 	target("8 teams: at least 70% in every cell", eightOk, fmt("worst %d%%", worstEight))
 	target("won group fights (3 and 8 teams) average 100-240 s in every cell, Lava Golem included", groupDurOk, fmt("%.0f-%.0f s", shortest, longest))

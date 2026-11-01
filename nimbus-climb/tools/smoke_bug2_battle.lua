@@ -377,20 +377,20 @@ S.bug2bat_raid_balance = guarded("bug2bat_raid_balance", function()
 	local hp, shares = BC.BossHp("storm_titan", { { Pets = lv5 }, { Pets = lv5 } }, "High")
 	T.check(type(shares) == "table" and #shares == 2 and near((shares[1] + shares[2]) * BC.GroupFactor(2), hp, hp * 0.01), "#2 the shares scale up with the floor (shares x GroupFactor = the HP)")
 	-- the sim: dodging scripted players
-	local bottomLost, bottomN, parries = 0, 0, 0
+	local bottomLost, bottomN = 0, 0
 	local detail = {}
 	for _, id in ipairs(BC.BossOrder) do
 		local a = SIM.raidCell(id, "Starter", 1, 2, SIM.RaidBottom.Starter)
-		bottomLost, bottomN, parries = bottomLost + (a.n - a.wins[1]), bottomN + a.n, parries + (a.parries or 0)
+		bottomLost, bottomN = bottomLost + (a.n - a.wins[1]), bottomN + a.n
 		detail[#detail + 1] = fmt("%s %d/%d", id, a.wins[1], a.n)
 	end
-	T.check(bottomN == 2 * #BC.BossOrder and bottomLost == bottomN and parries >= 0, "#2 a Starter bottom solo (three L1 Commons) loses every raid boss", table.concat(detail, ", "))
+	T.check(bottomN == 2 * #BC.BossOrder and bottomLost == bottomN, "#2 a Starter bottom solo (three L1 Commons) loses every raid boss", table.concat(detail, ", "))
 	local groupWins, groupN, groupDur = 0, 0, 0
 	for _, id in ipairs(BC.BossOrder) do
 		local g = SIM.raidCell(id, "Starter", 8, 4)
 		groupWins, groupN, groupDur = groupWins + g.wins[1], groupN + g.n, max(groupDur, g.avgWonDur)
 	end
-	T.check(groupN == 16 and groupWins >= 12 and groupDur <= 240 + 20, "#2 eight top Starter teams win >= 70% of every boss together", fmt("%d of %d, longest %.0f s", groupWins, groupN, groupDur))
+	T.check(groupN == 16 and groupWins >= 12 and groupDur <= 240, "#2 eight top Starter teams win >= 70% of the raids, within the 240 s band", fmt("%d of %d, longest %.0f s", groupWins, groupN, groupDur))
 end)
 
 return S

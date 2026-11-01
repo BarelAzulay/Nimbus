@@ -1133,8 +1133,16 @@ S.p5sim_modes = guarded("p5sim_modes", function()
 	end)(), "Starter"), "boss HP = BattleCatalog.BossHp over the teams (their expected DPS x the tier's seconds x GroupFactor)", fmt("%d vs %d", b:BossStatus().MaxHp, solo:BossStatus().MaxHp))
 	all = run(b, 3400)
 	r = b:Result()
-	T.check(r and r.Reason == "BossDown" and r.WinnerSide == 1 and r.Shares[101] > 0 and countType(all, "Telegraph") > 0 and countType(all, "Spawn") >= 1, "16 Auto fighters bring the Storm Titan down (telegraphs, minion waves)", r and fmt("%s %.0f s", r.Reason, r.Duration))
-	T.check(r.BossHp == 0 and r.BossMaxHp > 0 and r.Duration > 30, "the raid result carries BossHp / BossMaxHp")
+	-- spec 2026-11-01: Auto fighters never dash, so the enraged boss's lethal attack wipes them near the end (the raids section's
+	-- dodging trainers are the ones who win); telegraphs, minion waves and the shares still run
+	T.check(r and r.Reason == "Wipe" and r.WinnerSide == 2 and r.Shares[101] > 0 and countType(all, "Telegraph") > 0 and countType(all, "Spawn") >= 1 and countType(all, "Enrage") == 1, "16 Auto fighters who never dash fall to the enraged Storm Titan (telegraphs, minion waves, the enrage)", r and fmt("%s %.0f s", r.Reason, r.Duration))
+	T.check(r.BossHp > 0 and r.BossHp < r.BossMaxHp * BC.BossRules.EnrageAt and r.BossMaxHp > 0 and r.Duration > 30, "the raid result carries BossHp / BossMaxHp (the boss was under its enrage share)", fmt("%d of %d", r.BossHp, r.BossMaxHp))
+	b = BS.new({ Mode = "Raid", Boss = "storm_titan", RaidTier = "Starter", Seed = 2, Teams = teams })
+	run(b, 300)
+	b.boss.hp = 1
+	run(b, 100)
+	r = b:Result()
+	T.check(r and r.Reason == "BossDown" and r.WinnerSide == 1 and r.BossHp == 0 and r.BossMaxHp > 0 and r.Duration > 30 and r.Shares[101] > 0, "a raid won: BossDown for side 1, BossHp 0, the shares paid", r and fmt("%s %.0f s", r.Reason, r.Duration))
 	-- Dungeon: an empty side 2 runs; waves; EnemiesDown; BossHp; Finish
 	b, why = BS.new({ Mode = "Dungeon", Seed = 5, Zone = BC.Dungeon.Zones.Room, TimeLimit = 60, Teams = { team(1, 1, { pet("stormfang", 50, "Rainbow"), pet("cloudy_dragon", 45, "Rainbow") }, { Auto = true }) } })
 	T.check(b ~= nil and b:LivingEnemies() == 0 and b:BossHp() == nil and b.zone.X == 44, "a Dungeon battle starts with an empty side 2 (LivingEnemies 0, BossHp nil)", tostring(why))
