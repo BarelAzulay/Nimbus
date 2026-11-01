@@ -299,6 +299,13 @@ class CommandLine(unittest.TestCase):
             for kind in P.JOBS:
                 self.assertIn(kind, out.stderr)
 
+    def test_an_empty_kind_is_named_as_asked(self):
+        for mode in ("--job", "--build"):
+            out = run(mode, "")
+            self.assertEqual(out.returncode, 2, mode)
+            self.assertEqual(out.stdout, "", mode)
+            self.assertNotIn("None", out.stderr, mode)
+
     def test_a_build_of_a_stage_only_kind_fails(self):
         self.assertNotEqual(run("--build", "review").returncode, 0)
 

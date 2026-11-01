@@ -258,7 +258,7 @@ def main():
     if args.list:
         print_list()
         return 0
-    kind = args.job or args.build
+    kind = args.job if args.job is not None else args.build
     if kind not in JOBS:
         return _fail_unknown(kind)
     if args.build and not JOBS[kind]["level"]:
