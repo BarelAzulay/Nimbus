@@ -56,7 +56,8 @@
 --                Streak? (a falling rain layer drawn as thin velocity-aligned streaks when its sheet is fx_streak), Ride?
 --                (an emitter streaming off the caster through its leap: the Pounce's storm-cloud ride), Strike? (a Beam
 --                layer whose bolts strike down round the hit: the Pounce slam), Level? (a vfx_ring at the hit's height,
---                not flat on the floor), OrbRadius? (a Ring's peak radius = this x the Blast orb's peak radius) ... } } (a template's
+--                not flat on the floor), OrbRadius? (a Ring's peak radius = this x the Blast orb's peak radius), Reach? (a
+--                Ring peaking at the attack's real radius, eff.Reach: the ground ring that shows an area as it hits) ... } } (a template's
 --                Except = { [Attack or special Kind] = true } leaves
 --                it out of those attacks), Alive = { Kind ("Emitter"|"Beam"|"Decal"|"Mesh"), Texture?,
 --                Key?, Motion, Color, Count, Seconds, Text } ({} = none) }
@@ -676,7 +677,7 @@ AttackFxCatalog.Specials = {
 		Layers = {
 			-- (Task 8: a see-through dome ~1.5x a pet, the target stays visible inside it; the blastwave ~9 studs)
 			{ Id = "Dome", Kind = "Ring", Key = "vfx_shell", Beat = "Impact", At = "$Hit", Tint = "Mid", Grow = 1.5, Transparency = 0.72 },
-			{ Id = "Blastwave", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Core", Grow = 2.2, Transparency = 0.3 },
+			{ Id = "Blastwave", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Core", Grow = 2.2, Transparency = 0.3, Reach = true },
 		},
 		Skip = {},
 	},
@@ -746,7 +747,11 @@ AttackFxCatalog.Specials = {
 		Text = "a crystal cage in the element's colour locks the target",
 		Core = { Key = "vfx_cage", Path = "Ground", Material = "Glass", KeepMaterial = true, Rise = true }, -- Glass at every band
 		Beats = { Charge = 0.4, Travel = 0.2, Linger = 0.7 },
-		Layers = { { Id = "Lock", Kind = "Light", Beat = "Impact", At = "$Hit", Tint = "Core", Brightness = 2, Range = 8 } },
+		Layers = {
+			{ Id = "Lock", Kind = "Light", Beat = "Impact", At = "$Hit", Tint = "Core", Brightness = 2, Range = 8 },
+			-- (attack effects, 2026-11-01: the cage stands on the target; this ground ring shows the real radius, evolved too)
+			{ Id = "FrostReach", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Mid", Reach = true, Transparency = 0.45 },
+		},
 		-- (Task 10: the Lock is the flash (3 lights at Secret); no double crescent on a cage)
 		Skip = { Trail = true, Slash = true, Afterimage = true, DoubleArc = true, Flash = true },
 	},

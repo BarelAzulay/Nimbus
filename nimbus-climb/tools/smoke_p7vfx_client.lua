@@ -520,7 +520,8 @@ local function studioFindings(env)
 		run(elC.Times.Impact + 0.02)
 		for _ = 1, 18 do -- (the gaps drift down the beam: ~a whole cycle)
 			run(1 / 30)
-			local len, vis, beam = 0, 0, (elC.Hit - elC.Mouth).Magnitude
+			-- (attack effects, 2026-11-01: the Beam runs to its real length, through the target; it ended at elC.Hit before)
+			local len, vis, beam = 0, 0, (elC.S + elC.Dir * elC.Reach + Vector3.new(0, 0.25, 0) - elC.Mouth).Magnitude
 			for _, it in ipairs(segs) do
 				local part = it.Kit.Root
 				if part.Transparency < 1 then
@@ -662,7 +663,8 @@ local function studioRound2(env)
 		local stop = elC.EndRel - 0.1 -- (the breath holds through the impact and thins over the linger: ~a whole cycle)
 		while env.clock() - elC.Start < stop do
 			run(1 / 30)
-			local d = elC.Hit - elC.Mouth
+			-- (attack effects, 2026-11-01: the Beam runs to its real length, through the target; it ended at elC.Hit before)
+			local d = elC.S + elC.Dir * elC.Reach + Vector3.new(0, 0.25, 0) - elC.Mouth
 			local L = d.Magnitude
 			sl = L / cd.Core.Segments
 			local spans = {}

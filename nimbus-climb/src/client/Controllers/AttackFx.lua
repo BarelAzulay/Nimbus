@@ -14,7 +14,9 @@
 --               DueAt (clock time the impact must land: the charge is shortened to fit, impact never later, except
 --               that a basic Ranged shot keeps its recipe's Beats.MinTravel of flight: player note 1),
 --               Angle (Element attacks without a To: the WORLD yaw of the attack, direction (cos a, 0, sin a)),
---               Radius (Cone reach / Circle radius, default 9 / 8), Length (Line, default 24),
+--               Radius (Cone reach / Circle radius, default 9 / 8; Special Blast / Freeze / Storm, default 7 / 6 / 6),
+--               Length (Line, default 24; Special Beam, default 26), Width (Line / Beam, default 4: eff.WidthScale = Width / 4)
+--               (the numbers the server used: an evolved pet's areas are drawn as they hit),
 --               Ground (world Y of the floor under From; default From.Y - 1.6), Now (the clock; default os.clock()) }
 --       Play writes ctx.ImpactLate = seconds the impact lands after DueAt (0 unless a Ranged shot's MinTravel needed
 --       more time than DueAt left; BattleController then plays the Hit that much later).
@@ -138,6 +140,9 @@ AttackFx.MAX_RIMS = 3
 AttackFx.CUE_MIN = 0.15
 AttackFx.SHATTER = 0.45
 AttackFx.Hooks = { Punch = nil, ScreenGlow = nil, DimWorld = nil, Undim = nil, Inhale = nil, Hush = nil, Shatter = nil }
+
+-- (attack effects, 2026-11-01) the Specials with a drawn radius: eff.Reach when ctx.Radius did not come (BattleCatalog's numbers)
+local SPECIAL_RADIUS = { Blast = 7, Freeze = 6, Storm = 6 }
 
 local K = {
 	PARENT = "ClientBattle",
@@ -1758,7 +1763,8 @@ local function buildCore(eff)
 		if core.Stretch then
 			local segs = (finite(core.Segments) and core.Segments >= 2) and min(4, floor(core.Segments)) or nil
 			for i = 1, segs and (segs + 1) or 1 do -- (Task 11c I1: Segs + 1 pieces, MOVE.Stretch)
-				addSolid(eff, key, look({ Move = MOVE.Stretch, T0 = T.Travel - 0.02, Thick = core.Thick or 1, Seg = segs and i or nil, Segs = segs, Gap = finite(core.Gap) and clamp01(core.Gap) or K.SEG_GAP }))
+				-- (attack effects, 2026-11-01: the Beam runs to its real length, through the target, as wide as it hits)
+				addSolid(eff, key, look({ Move = MOVE.Stretch, T0 = T.Travel - 0.02, Line = (eff.Kind == "Beam") or nil, Thick = (core.Thick or 1) * eff.WidthScale, Seg = segs and i or nil, Segs = segs, Gap = finite(core.Gap) and clamp01(core.Gap) or K.SEG_GAP }))
 			end
 			return
 		end
@@ -1823,7 +1829,8 @@ local function buildCore(eff)
 				n = min(8, max(n, nT))
 			end
 			for i = 1, n do
-				local a, rad = hash(i, 31) * TAU, (0.4 + 2.6 * hash(i, 32)) * eff.Size
+				-- (attack effects, 2026-11-01: the rain covers the real zone, evolved too)
+				local a, rad = hash(i, 31) * TAU, (0.1 + 0.9 * hash(i, 32)) * eff.Reach
 				local tgt = nil
 				if spread then
 					tgt, rad = (i - 1) % nT + 1, (0.2 + 1.1 * hash(i, 32)) * eff.Size
@@ -1838,7 +1845,7 @@ local function buildCore(eff)
 			end
 		elseif core.Stretch then
 			-- (the recipe's Core.Thick wins: Task 8, the Line core was always 1.2 thick whatever the catalog said)
-			addSolid(eff, key, look({ Move = MOVE.Stretch, T0 = T.Travel - 0.02, Line = true, Thick = finite(core.Thick) and core.Thick or 1.2 }))
+			addSolid(eff, key, look({ Move = MOVE.Stretch, T0 = T.Travel - 0.02, Line = true, Thick = (finite(core.Thick) and core.Thick or 1.2) * eff.WidthScale }))
 		elseif key == "vfx_ring" then -- the Circle nova
 			local to = (eff.Reach * 2) / 4 / max(0.1, S)
 			addSolid(eff, key, look({ Move = MOVE.Ring, Flat = true, Anchor = "Self", T0 = T.Travel, TG = T.Impact + 0.1, TF = T.Impact, T1 = T.Linger + 0.35, From = 0.3, To = to }))
@@ -2531,6 +2538,11 @@ local function addRingLayer(eff, layer)
 				break
 			end
 		end
+	end
+	-- (attack effects, 2026-11-01) Reach: the ring's peak radius = the attack's real radius
+	if ring and layer.Reach == true then
+		ring.To = eff.Reach / max(0.01, ring.Base.X * ring.S / 2)
+		ring.From = min(ring.From, ring.To * 0.3)
 	end
 end
 
@@ -3375,14 +3387,20 @@ function AttackFx.Play(ctx)
 			endRel = K.PRE_HOLD + 0.5
 		end
 		local area = (r.Attack == "Element") and (r.Shape or "Cone") or nil
+		local specialArea = (r.Attack == "Special") and ctx.Kind or nil
 		local reach
 		if area == "Line" then
 			reach = finite(ctx.Length) and ctx.Length or 24
 		elseif area == "Circle" then
 			reach = finite(ctx.Radius) and ctx.Radius or 8
+		elseif specialArea == "Beam" then
+			reach = finite(ctx.Length) and ctx.Length or 26
+		elseif SPECIAL_RADIUS[specialArea] then
+			reach = finite(ctx.Radius) and ctx.Radius or SPECIAL_RADIUS[specialArea]
 		else
 			reach = finite(ctx.Radius) and ctx.Radius or 9
 		end
+		local width = finite(ctx.Width) and ctx.Width or 4
 		local dir = V3(0, 0, -1)
 		if finite(ctx.Angle) then
 			dir = V3(cos(ctx.Angle), 0, sin(ctx.Angle))
@@ -3402,7 +3420,7 @@ function AttackFx.Play(ctx)
 		end
 		eff = {
 			Recipe = r, Unit = src.Unit, Src = src, Targets = targets, T = {}, S = src.Last, Dir = dir, Right = dir:Cross(UP),
-			Path = r.Core.Path, Area = area, Reach = reach, Drop = drop, Size = r.Size or 1,
+			Path = r.Core.Path, Area = area, Reach = reach, Width = width, WidthScale = width / 4, Drop = drop, Size = r.Size or 1,
 			Start = start, Times = T, EndRel = endRel, End = start + endRel,
 			Mine = ctx.Mine == true, Crit = ctx.Crit == true, Strong = ctx.Strong == true, Miss = ctx.Miss == true,
 			Stepped = step, Low = quality == "Low", Items = {}, Emitters = 0, Beams = 0, Trails = 0, Lights = 0, Cores = 0, Rims = 0,

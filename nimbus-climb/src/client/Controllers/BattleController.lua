@@ -1335,6 +1335,7 @@ function Units.Add(B, info)
 		tier = info.tier,
 		scale = num(info.scale, 1),
 		ranged = info.ranged == true,
+		range = num(info.range, 0),
 		radius = num(info.radius, 1.8),
 		special = type(info.special) == "table" and info.special or nil,
 		isBoss = info.kind == "Boss",
@@ -3168,13 +3169,36 @@ function Atk.Drives(u)
 	return (Mods.AttackFx and Atk.Posable() and u.fxDriven ~= false) and true or false
 end
 
+-- (attack effects, 2026-11-01) an area to draw: the number the server used (the event's r / length / width), else (an
+-- unevolved pet's stay off the wire; an old recording) the catalog's x the caster's reach; nil when neither exists
+local function areaOf(given, catalogNumber, u)
+	local n = tonumber(given)
+	if n and n == n and n > 0 then
+		return n
+	end
+	n = tonumber(catalogNumber)
+	if not n then
+		return nil
+	end
+	return n * ((BattleCatalog and type(BattleCatalog.ReachOf) == "function") and BattleCatalog.ReachOf(u and u.evo) or 1)
+end
+
+-- an element attack's reach: a ranged fighter reaches out to its own range at least (BattleSim castElement's reachOut)
+local function elementAreaOf(given, catalogNumber, u)
+	local n = areaOf(given, catalogNumber, u)
+	if n and u and u.ranged then
+		return max(n, u.range)
+	end
+	return n
+end
+
 -- (Task 11 fix round 2, I1) the living enemies of `u` inside a Storm's zone: BattleSim's castSpecial puts the zone at the
--- aimed target (ev.tx, ev.tz) with radius Specials.Storm.Radius (BattleCatalog, the same table the sim reads) and its
+-- aimed target (ev.tx, ev.tz) with radius ev.r (the catalog's x the caster's reach) and its
 -- tickZones hits a body on the floor whose edge reaches the circle (inCircle: d <= r + its radius). The sim's Special
 -- event names only the aimed target, so the effect's targets are gathered here, in the units' list order
 local function stormZone(B, u, ev)
 	local S = SPECIALS.Storm
-	local r = type(S) == "table" and tonumber(S.Radius) or nil
+	local r = areaOf(ev.r, type(S) == "table" and S.Radius or nil, u)
 	local x, z = tonumber(ev.tx), tonumber(ev.tz)
 	local out = {}
 	if not (r and x and z) then
@@ -3405,9 +3429,11 @@ function Atk.Special(B, ev, dueAt)
 	if precharged then
 		St.pre = nil
 	end
+	local S = SPECIALS[kind] or {}
 	local ctx = lookCtx(u, {
 		Attack = "Special", Kind = kind, From = Atk.Side(B, u), To = to, Mine = u.mine == true, DueAt = dueAt,
 		Angle = tonumber(ev.angle) and worldAngle(B, tonumber(ev.angle)) or nil, Ground = groundOf(B, u),
+		Radius = areaOf(ev.r, S.Radius, u), Length = areaOf(ev.length, S.Length, u), Width = areaOf(ev.width, S.Width, u),
 		Precharged = precharged or nil, LateMax = (not precharged and kind ~= "Pounce") and K.LATE_MAX or nil,
 	})
 	local played = Atk.Play(ctx)
@@ -3446,14 +3472,14 @@ function Atk.Element(B, ev, dueAt)
 	end
 	local shape = ev.shape
 	local def = BattleCatalog and type(BattleCatalog.ElementAttacks) == "table" and BattleCatalog.ElementAttacks[ev.element] or nil
-	local radius, length = nil, nil
+	local radius, length, width = nil, nil, nil
 	if type(def) == "table" then
 		if shape == "Line" then
-			length = tonumber(def.Length)
+			length, width = elementAreaOf(ev.length, def.Length, u), areaOf(ev.width, def.Width, u)
 		elseif shape == "Circle" then
-			radius = tonumber(def.Radius)
+			radius = elementAreaOf(ev.r, def.Radius, u)
 		else
-			radius = tonumber(def.Length)
+			radius = elementAreaOf(ev.length, def.Length, u)
 		end
 	end
 	-- the targets, the one nearest the aimed point first (AttackFx aims at To[1])
@@ -3479,7 +3505,7 @@ function Atk.Element(B, ev, dueAt)
 	end
 	local played = Atk.Play(lookCtx(u, {
 		Attack = "Element", Shape = shape, Element = element, From = Atk.Side(B, u), To = (#to > 0) and to or nil,
-		Angle = worldAngle(B, num(ev.angle, 0)), Radius = radius, Length = length, Mine = u.mine == true, DueAt = dueAt,
+		Angle = worldAngle(B, num(ev.angle, 0)), Radius = radius, Length = length, Width = width, Mine = u.mine == true, DueAt = dueAt,
 		Ground = groundOf(B, u),
 	}))
 	u.fxDriven = played
@@ -4190,7 +4216,7 @@ Handlers[EV.Special] = function(B, ev)
 		end
 	elseif kind == "Blast" then
 		local c = worldPoint(B, tx, 0.6, tz)
-		local r = num(S.Radius, 7)
+		local r = areaOf(ev.r, num(S.Radius, 7), u)
 		Fx.Ring(c, r, color, 20, 0.8, 0.5, 0.05)
 		Fx.Burst(c + Vector3.new(0, 0.8, 0), color, 16, 13, 0.6, 0.6, { color2 = COLORS.White:Lerp(color, 0.4), up = 0.8 })
 	elseif kind == "Heal" then
@@ -4225,7 +4251,7 @@ Handlers[EV.Special] = function(B, ev)
 		Fx.Burst(worldPoint(B, tx, 1.2, tz), color, 12, 11, 0.5, 0.55, { up = 0.7, color2 = COLORS.White })
 	elseif kind == "Freeze" then
 		local c = worldPoint(B, tx, 0.5, tz)
-		local r = num(S.Radius, 6)
+		local r = areaOf(ev.r, num(S.Radius, 6), u)
 		Fx.Ring(c, r, COLORS.Ice, 16, 0.7, 0.55, 0.1)
 		Fx.Burst(c + Vector3.new(0, 0.6, 0), COLORS.Ice, 14, 10, 0.55, 0.7, { material = Enum.Material.Glass, alpha = 0.15, up = 0.8, color2 = COLORS.White })
 		local stun = num(S.Stun, 1) + 0.4
@@ -4236,8 +4262,8 @@ Handlers[EV.Special] = function(B, ev)
 			end
 		end
 	elseif kind == "Beam" then
-		local length = num(S.Length, 26)
-		local width = num(S.Width, 4)
+		local length = areaOf(ev.length, num(S.Length, 26), u)
+		local width = areaOf(ev.width, num(S.Width, 4), u)
 		local angle = num(ev.angle, 0)
 		local dx, dz = cos(angle), sin(angle)
 		local sx, sz = num(ev.x, u and u.x or 0), num(ev.z, u and u.z or 0)
@@ -4393,20 +4419,21 @@ Handlers[EV.Element or "Element"] = function(B, ev)
 	local dx, dz = cos(angle), sin(angle)
 	if shape == "Circle" then
 		local c = worldPoint(B, sx, 0.6, sz)
-		Fx.Ring(c, 8, color, 22, 0.8, 0.5, 0.05)
+		Fx.Ring(c, elementAreaOf(ev.r, 8, u), color, 22, 0.8, 0.5, 0.05)
 		Fx.Burst(c + Vector3.new(0, 0.8, 0), color, 14, 11, 0.55, 0.55, { color2 = COLORS.White, up = 0.8 })
 	elseif shape == "Line" then
-		local length = 24
+		local length = elementAreaOf(ev.length, 24, u)
 		local cf = worldFrame(B, sx + dx * length / 2, 1.6, sz + dz * length / 2, yawToward(dx, dz))
-		Fx.Beam(cf, length, 3, color, 0.45)
+		Fx.Beam(cf, length, 3 * areaOf(ev.width, 4, u) / 4, color, 0.45)
 	else
-		-- a cone: bursts fanned out in front of the caster
+		-- a cone: bursts fanned out in front of the caster, as far as it reaches
+		local far = elementAreaOf(ev.length, 14, u) / 14
 		for i = -2, 2 do
 			local a = angle + i * 0.22
-			local r = 9 + abs(i) * 0.8
+			local r = (9 + abs(i) * 0.8) * far
 			Fx.Burst(worldPoint(B, sx + cos(a) * r, 1.2, sz + sin(a) * r), color, 5, 7, 0.45, 0.45, { up = 0.6, color2 = COLORS.White })
 		end
-		Fx.Trail(worldPoint(B, sx, 1.3, sz), worldPoint(B, sx + dx * 11, 1.3, sz + dz * 11), color, 8, 0.4)
+		Fx.Trail(worldPoint(B, sx, 1.3, sz), worldPoint(B, sx + dx * 11 * far, 1.3, sz + dz * 11 * far), color, 8, 0.4)
 	end
 end
 
