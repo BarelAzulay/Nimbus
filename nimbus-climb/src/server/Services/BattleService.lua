@@ -1020,7 +1020,9 @@ local function startPayload(b, player, spectator)
 		d.Dungeon = b.Extra or {}
 	end
 	if b.Mode == "Raid" then
-		d.Raid = { Tier = b.RaidTier, Pocket = not b.RaidFloor, BossId = b.BossId } -- the client's tier line, the local pocket sky
+		-- the client's tier line, the local pocket sky, a late joiner's red edges (the Enrage event played before they came)
+		local okB, boss = pcall(b.Sim.BossStatus, b.Sim)
+		d.Raid = { Tier = b.RaidTier, Pocket = not b.RaidFloor, BossId = b.BossId, Enraged = okB and type(boss) == "table" and boss.Enraged == true }
 	end
 	if part and not part.Left then
 		-- the receiver's own team: fighter / bench ids, lives, the legal speeds (SetBattleSpeed) and the cooldowns

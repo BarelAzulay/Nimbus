@@ -357,10 +357,20 @@ S.raid_svc_enter = scenario("raid_svc_enter", function(add)
 	T.check(ok3 == true and id3 == id1 and bs.GetRaidStatus().Fights.Starter.Players == 2, "raid service: a second Starter joins the running Starter fight (late joiner)", tostring(id3))
 	advance(0.3)
 	T.check(lastMsg(starter5, "Start", mark2) ~= nil and lastMsg(starter19, "Start", mark2) == nil, "raid service: the late joiner gets a fresh Start, the others do not")
+	T.check(lastMsg(starter5, "Start", mark2).Raid.Enraged == false, "raid service: ...it says the boss is not enraged yet")
 	local again, whyAgain = bs.EnterRaid(starter5)
 	T.check(again == false and tostring(whyAgain):find("already") ~= nil, "raid service: already fighting: refused", tostring(whyAgain))
 
-	for i = 1, 6 do
+	-- a late joiner into an enraged fight is told: the Enrage event played before they came (their red edges, the pill)
+	local markE = #Mock.RemoteLog
+	battleOf(id1).Sim.boss.enraged = true
+	bs.EnterRaid(starters[1])
+	advance(0.3)
+	local startE = lastMsg(starters[1], "Start", markE)
+	T.check(startE ~= nil and startE.Raid.Enraged == true, "raid service: a late joiner in an enraged fight gets Raid.Enraged = true")
+	battleOf(id1).Sim.boss.enraged = false
+
+	for i = 2, 6 do
 		bs.EnterRaid(starters[i])
 	end
 	local okF, whyF = bs.EnterRaid(starters[7])

@@ -27,8 +27,8 @@
 --
 --   Phase 3 (ARCHITECTURE_V3.md "Phase 3 build contract"):
 --   State.Teams() -> { Presets = { {key...}, {key...}, {key...} }, Active = 1..3, Slots = 3 | 4 }
---   State.Battle() -> { Trophies, TrialBest, TrialCleared = {[level]=true}, Raids, RaidBestDamage, PvPWins,
---                       PvPLosses, EventPets = {[petId]=true} }
+--   State.Battle() -> { Trophies, TrialBest, TrialCleared = {[level]=true}, Raids, RaidBestDamage, RaidRewardAt, RaidLossAt, PvPWins,
+--                       PvPLosses, EventPets = {[petId]=true} }   (RaidRewardAt / RaidLossAt: Unix seconds of the last paid raid win / loss)
 --
 --   Phase 4 (ARCHITECTURE_V3.md "Phase 4 build contract" section 4):
 --   State.PetGrowth(key) -> { Evo = 0..2, Speed, Physique, Ability, Defense = 0..10, Job = { Stat, Ends, Rank, Slot,
@@ -511,6 +511,8 @@ local function newBattle()
 		TrialCleared = {},
 		Raids = 0,
 		RaidBestDamage = 0,
+		RaidRewardAt = 0,
+		RaidLossAt = 0,
 		PvPWins = 0,
 		PvPLosses = 0,
 		EventPets = {},
@@ -526,6 +528,8 @@ local function cleanBattle(raw)
 	b.TrialBest = wholeNumber(raw.TrialBest)
 	b.Raids = wholeNumber(raw.Raids)
 	b.RaidBestDamage = wholeNumber(raw.RaidBestDamage)
+	b.RaidRewardAt = wholeNumber(raw.RaidRewardAt)
+	b.RaidLossAt = wholeNumber(raw.RaidLossAt)
 	b.PvPWins = wholeNumber(raw.PvPWins)
 	b.PvPLosses = wholeNumber(raw.PvPLosses)
 	if type(raw.TrialCleared) == "table" then
