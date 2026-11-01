@@ -51,6 +51,7 @@ preload order: those files get Fable review even for small edits); the mock cann
 Up means: the builder one effort step higher, the reviewer one model or effort step higher, never fewer steps.
 Each item between semicolons counts once: a job that touches money and saves and live data is one Up item, not three. A save
 or Cash that players keep does not make a job "hard to undo" as well; that item is for an upload, a merge or a schema change.
+Studio-only raises the route, not the level: the owner's Studio check is the gate there, and a bigger run only delays it.
 
 **Down** (all three must hold): the work is mechanical (wiring, renames, tables, notes); it is easy to check by eye or by
 re-reading; a test or tool catches a mistake (`p2final_docs`, `check.mjs`, `verify_place.py`, the sims). Down means a
