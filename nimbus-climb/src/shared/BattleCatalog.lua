@@ -1672,7 +1672,7 @@ BattleCatalog.Bosses = {
 		Name = "Frost Wyrm",
 		Element = "Frost",
 		Blurb = "A serpent of living ice. Flame pets melt its armour.",
-		HpPerPlayer = 108, -- attack effects 2026-11-01: 100 -> 108, an evolved team's real reach took the trained solo from 101.6 s to 97.7 s, under the 100 s band (105-107 still missed in one of quick / full)
+		HpPerPlayer = 108, -- attack effects 2026-11-01: 100 -> 108, an evolved team's real reach took the trained solo from 100.5 s to 97.7 s (full sim), under the 100 s band (105-107 still missed in one of quick / full)
 		Radius = 7,
 		Scale = 1,
 		Basic = { Name = "Ice Spit", Interval = 2.2, Damage = 0.045, Range = 20 },
