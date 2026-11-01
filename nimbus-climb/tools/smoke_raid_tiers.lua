@@ -5,7 +5,8 @@
 --                BossHp + BaselineDps per tier; Validate (and a broken lethal fails it)
 --   raid_lethal  BattleSim RaidTier (size, hits, minions, BossStatus Tier / Lethal), the enrage at 30% health instead of on a
 --                clock, the lethal telegraph: >= 3 s of warning, kills a fighter that stands in it whatever its HP / shield /
---                Defense, never one that dashes, never lands within the dash cooldown of the previous telegraph
+--                Defense, never one that dashes, never lands within the dash cooldown of the previous telegraph, and a fighter
+--                frozen just before keeps LethalWarning s of it (the cast waits, nothing else starts meanwhile)
 -- White-box: a few checks read battle.units / battle.boss (same Lua state). Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -388,6 +389,60 @@ S.raid_lethal = guarded("raid_lethal", function()
 		end
 		local alive = bLong.teamByOwner[1].fighter.alive
 		T.check(casts >= 4 and noneWithin and not overlap and alive, "raid lethal " .. bossId .. ": no lethal lands within DashCooldown + 0.1 s of the previous telegraph's hit, nothing overlaps it, a fighter that dashes each one lives", fmt("%d casts, alive %s", casts, tostring(alive)))
+	end
+
+	-- a lethal that falls due on the step after a Freeze landed: the warning must be one a frozen fighter can act on
+	local warning = BC.BossRules.Enrage.LethalWarning
+	T.check(type(warning) == "number" and warning >= 2.5, "raid lethal: the warning a fighter can act on is at least 2.5 s", tostring(warning))
+	for _, attackId in ipairs({ "breath", "blizzard" }) do
+		local frozenAt, frozenUntil, tele, castAt, dashed, ko = nil, nil, nil, nil, false, false
+		local between = false
+		runRaid(BS, { Mode = "Raid", Boss = "frost_wyrm", RaidTier = "Mid", Seed = 5, Specials = false, TimeLimit = 400, Teams = { team(1, SIM_MID) } }, 1500, function(b, evs)
+			local boss, f = b.boss, b.teamByOwner[1].fighter
+			hold(b, 1, 0.29)
+			if not frozenUntil then
+				boss.lethal.nextAt = math.huge -- no lethal before this Freeze ...
+				for _, row in ipairs(boss.attacks) do
+					if row.def.Id ~= attackId then
+						row.nextAt = math.huge -- ... and no other attack: this one freezes
+					end
+				end
+				if f.stunUntil > b:Time() then
+					frozenAt, frozenUntil = b:Time(), f.stunUntil
+					boss.lethal.nextAt = b:Time() -- the lethal is due from the next step on
+					for _, row in ipairs(boss.attacks) do
+						row.nextAt = 0 -- every other attack too: the boss must not start one while it waits
+					end
+				end
+			elseif not tele then
+				between = between or firstEvent(evs, "Telegraph", function(ev)
+					return not ev.lethal
+				end) ~= nil
+				tele = firstEvent(evs, "Telegraph", isLethal)
+				castAt = tele and b:Time() or nil
+			else
+				if not dashed and b:Time() >= tele.at - 0.16 then
+					dashed = b:Command(1, "Dash")
+				end
+				if firstEvent(evs, "KO", function(e)
+					return e.unit == f.id
+				end) then
+					ko = true
+				end
+				if b:Time() >= tele.at + 0.3 then
+					return true
+				end
+			end
+		end)
+		local label = "raid lethal, right after " .. attackId .. ": "
+		T.check(frozenUntil ~= nil and tele ~= nil, label .. "the Freeze lands and the lethal comes", fmt("frozen %s, lethal %s", tostring(frozenUntil), tostring(tele ~= nil)))
+		if tele then
+			local actOn = tele.at - math.max(frozenUntil, castAt)
+			T.check(actOn >= warning - 0.06, label .. "the frozen fighter has LethalWarning s between its thaw and the hit", fmt("%.2f s", actOn))
+			T.check(castAt - frozenAt <= frozenUntil - frozenAt + 0.11, label .. "the cast waits no longer than the freeze lasts", fmt("%.2f s after the Freeze", castAt - frozenAt))
+			T.check(not between, label .. "nothing else starts while the lethal waits (no second Freeze can follow the first)")
+			T.check(dashed == true and not ko, label .. "a Dash timed at the end escapes it", fmt("dashed %s, ko %s", tostring(dashed), tostring(ko)))
+		end
 	end
 
 	-- the same seed + commands replay the same lethal

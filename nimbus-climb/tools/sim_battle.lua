@@ -252,7 +252,7 @@ SIM.Targets = {
 		Max = { Floor = { 12, 12 } },
 	},
 	Progress = { Ring5 = { 4, 9 }, F1 = { 4, 10 }, Ring10 = { 20, 45 } },
-	Raid = { Solo = 15, Three = { 25, 55 }, Eight = 70, Group = { 100, 240 } },
+	Raid = { Solo = 15, Three = { 25, 55 }, Eight = 70, Group = { 100, 240 }, Warning = 2.5 },
 }
 local function inBand(value, band)
 	return value >= band[1] and value <= band[2]
@@ -1112,6 +1112,31 @@ local function lethalRun(boss, tierId, seed, casts, playerOpts)
 	return seen, landed, kos
 end
 
+-- the lethal falling due on the step after a Freeze landed on a fighter who stands still: the seconds between its thaw and the hit
+local function frozenWarning(boss, tierId, seed)
+	local b = BS.new({ Mode = "Raid", Boss = boss, RaidTier = tierId, Seed = seed, TimeLimit = 900, Specials = false, Teams = { team(1, 1, SIM.RaidTeams[tierId]) } })
+	local frozen = false
+	for _ = 1, 4000 do
+		b.boss.hp = 0.29 * b.boss.maxHp
+		local f = b.teamByOwner[1].fighter
+		f.maxHp, f.hp = 1e7, 1e7
+		local events = b:Step(DT)
+		if not frozen then
+			b.boss.lethal.nextAt = huge
+			if f.stunUntil > b:Time() then
+				frozen = true
+				b.boss.lethal.nextAt = b:Time()
+			end
+		end
+		for _, ev in ipairs(events) do
+			if ev.type == "Telegraph" and ev.lethal then
+				return ev.at - max(f.stunUntil, b:Time())
+			end
+		end
+	end
+	return nil
+end
+
 section("raids", function(opts)
 	local T = SIM.Targets.Raid
 	local seeds = opts.quick and 4 or 12
@@ -1205,6 +1230,29 @@ section("raids", function(opts)
 		standOk = standOk and standKos > 0
 	end
 	target("the lethal: a dodging fighter (dodge 1) is never knocked out by it; a standing one (dodge 0, mistime 0) always is", dodgedOk and standOk, fmt("%d casts dodged", castsSeen))
+
+	header("Raids: the lethal right after a Freeze (the warning a frozen fighter can act on)")
+	local worstWarning, frozenCasts = huge, 0
+	for _, boss in ipairs(BC.BossOrder) do
+		local freezes = false
+		for _, a in ipairs(BC.Bosses[boss].Attacks) do
+			freezes = freezes or a.Freeze ~= nil
+		end
+		if freezes then
+			for _, tierId in ipairs(BC.RaidTierOrder) do
+				local least = huge
+				for seed = 1, opts.quick and 1 or 3 do
+					local warning = frozenWarning(boss, tierId, seed)
+					if warning then
+						least, frozenCasts = min(least, warning), frozenCasts + 1
+					end
+				end
+				out(fmt("  %-13s %-7s at least %.1f s between the thaw and the hit", boss, tierId, least))
+				worstWarning = min(worstWarning, least)
+			end
+		end
+	end
+	target("a fighter frozen by the attack before still has at least 2.5 s of the lethal's warning to act on", frozenCasts > 0 and worstWarning >= T.Warning - 0.06, fmt("%d casts, the least %.1f s", frozenCasts, worstWarning))
 end)
 
 -- 6. the Champion Ring

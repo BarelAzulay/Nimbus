@@ -1601,7 +1601,8 @@ BattleCatalog.BossRules = {
 	MinionInterval = 1.4,
 	MinionLevelOf = "average",
 	EnrageAt = 0.3, -- share of the boss's health (spec 2026-11-01: moved from a clock); the 330 s TimeLimit stays
-	Enrage = { Damage = 2, Cooldown = 0.7, LethalFirst = 4 }, -- the lethal's first cast LethalFirst s after the enrage
+	-- the lethal's first cast LethalFirst s after the enrage; LethalWarning s of its warning are always one a fighter can act on (a cast waits while one stays frozen longer)
+	Enrage = { Damage = 2, Cooldown = 0.7, LethalFirst = 4, LethalWarning = 2.5 },
 	WaveMin = 2,
 	WaveMax = 8,
 	CirclesPerTeams = 2,

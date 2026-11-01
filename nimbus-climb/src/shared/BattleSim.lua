@@ -2582,6 +2582,18 @@ local function spawnMinions(self, boss, wave, waveIndex, events)
 	end
 end
 
+-- when the last fighter facing this side's boss thaws (the Dash answers "Stunned" until then)
+local function lastThaw(self, side)
+	local latest = 0
+	for _, team in ipairs(self.teams) do
+		local f = team.fighter
+		if team.side ~= side and not team.left and f and onFloor(f) then
+			latest = max(latest, f.stunUntil)
+		end
+	end
+	return latest
+end
+
 local function bossStep(self, boss, events)
 	if not boss.alive then
 		return
@@ -2640,9 +2652,14 @@ local function bossStep(self, boss, events)
 		end
 	end
 	-- the lethal goes first: nothing else is pending when it starts and nothing else starts while it is (its warning is
-	-- longer than the dash cooldown and any freeze, so the Dash is always ready for it)
+	-- longer than the dash cooldown, so the Dash is always ready for it). A freeze refuses the Dash: while a fighter stays frozen
+	-- past the warning's start the cast waits and the boss starts nothing else, so a second freeze can't follow the first
 	local lethal = boss.lethal
 	if not pendingForBoss and lethal and t >= lethal.nextAt then
+		local en = type(rules.Enrage) == "table" and rules.Enrage or {}
+		if lastThaw(self, boss.side) > t + num(lethal.def.Telegraph, 3.2) - num(en.LethalWarning, 2.5) then
+			return
+		end
 		if startTelegraph(self, boss, lethal, events) then
 			boss.state = S_CASTING
 			pendingForBoss = true
