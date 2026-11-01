@@ -228,6 +228,18 @@ class Levels(unittest.TestCase):
         self.assertEqual(P.level("game-feature", {"studio-only"}), "high")
         self.assertEqual(P.route("effects-gui", {"studio-only"}), P.route("effects-gui", ()))
 
+    def test_a_wave_gets_the_wave_review(self):
+        # spec table "Reviews of a wave": --build game-feature and --job review give one answer
+        self.assertEqual(P.stages("game-feature", ())["review"], P.route("review", ())["builder"])
+        self.assertEqual(P.route("game-feature", ())["reviewer"], (FABLE, "high"))  # one task's review stays as the table says
+
+    def test_a_kind_that_names_its_own_review_keeps_it(self):
+        self.assertEqual(P.stages("effects-gui", ())["review"], (FABLE, "medium"))
+        self.assertEqual(P.stages("balance", ())["review"], (FABLE, "medium"))
+        self.assertEqual(P.stages("website-orders", ())["review"], (FABLE, "high"))
+        self.assertEqual(P.stages("other", ())["review"], (FABLE, "high"))
+        self.assertIsNone(P.stages("blender", ())["review"])
+
     def test_ultracode_stages_have_the_spec_floors(self):
         got = P.stages("saves", {"many-systems"})
         self.assertEqual(got["review"], (FABLE, "max"))

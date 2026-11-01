@@ -105,6 +105,7 @@ JOBS = {
 
 _UP_BUILDER, _UP_REVIEWER = (OPUS, "medium"), (FABLE, "high")  # any Up item ends the cheap route (spec section 2)
 _REVIEW_XHIGH = (FABLE, "xhigh")
+_WAVE_KINDS = ("game-feature",)  # spec table "Reviews of a wave"; every other kind's row names its own review
 
 
 def _flag(help_text, builder=_UP_BUILDER, reviewer=_UP_REVIEWER, item=None, forces_ultracode=False):
@@ -187,6 +188,8 @@ def stages(kind, flags=()):
     if lvl == "ultracode":
         build = _join(build, (OPUS, "high"))
     review = _join(got["reviewer"], {"xhigh": _REVIEW_XHIGH, "ultracode": (FABLE, "max")}.get(lvl))
+    if kind in _WAVE_KINDS:
+        review = _join(review, JOBS["review"]["builder"])
     gate = up((FABLE, "high")) if lvl != "easy" else got["builder"]
     return {"plan": plan, "build": build, "review": review, "fix": build, "gate": gate}
 
