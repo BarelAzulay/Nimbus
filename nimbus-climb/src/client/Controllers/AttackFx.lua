@@ -207,6 +207,10 @@ local K = {
 	MOON_GAP = 0.1, -- S4: studs between the storm cloud's top and the dusk moon's lowest point (it sits just above the puffs)
 	SERPENT_CLEAR = 0.3, -- S5: the Void Fangs heads' tops stay this far at most over the caster's head (under its name tag)
 	SERPENT_GAP = 0.6, -- S5: ... rooted this far (x size) past the caster's body, away from the viewer
+	-- (attack effects, 2026-11-01, review) the caps Task 8 judged in Studio: a light's range grows with the Size up to the 1.4 of that
+	-- round, its brightness stops at 2 after the crit (a signature's own light over that keeps its number)
+	LIGHT_SIZE = 1.4,
+	LIGHT_BRIGHT = 2,
 	TAIL_TRANS = 0.65, -- (attack effects, 2026-11-01) a lingering mark past its own time is at least this see-through, then only fades: it reads as over
 }
 AttackFx.POOL_KEEP_TOTAL = K.KEEP.Emitter + K.KEEP.Beam + K.KEEP.Trail + K.KEEP.Light + K.KEEP.Disc + K.KEEP.Rim + K.CORE_KEEP * K.CORE_KEYS
@@ -2498,9 +2502,10 @@ local function addLightLayer(eff, layer)
 	eff.Lights = eff.Lights + 1
 	local c = typeof(layer.Color) == "Color3" and layer.Color or WHITE
 	kit.Light.Color = c
-	kit.Light.Range = (finite(layer.Range) and layer.Range or 8) * eff.Size
+	kit.Light.Range = (finite(layer.Range) and layer.Range or 8) * min(eff.Size, K.LIGHT_SIZE)
 	kit.Light.Brightness = 0
-	local b = (finite(layer.Brightness) and layer.Brightness or 2) * (eff.Crit and 1.3 or 1)
+	local base = finite(layer.Brightness) and layer.Brightness or 2
+	local b = min(max(K.LIGHT_BRIGHT, base), base * (eff.Crit and 1.3 or 1))
 	addItem(eff, { Kind = "Light", Kit = kit, Layer = layer, At = layer.At, T0 = t0, T1 = max(t0 + 0.1, t1), B = b, Pulse = layer.Pulse == true, Shift = layer.ColorShift == true, Color = c, Pts = {}, Fn = DRAW.Light })
 end
 

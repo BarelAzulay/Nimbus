@@ -375,7 +375,7 @@ local function clientScenarios()
 			for _, it in ipairs(eff.Items) do
 				if it.Layer and it.Layer.Id then
 					local em = it.Kit and it.Kit.Em
-					items[it.Layer.Id] = { S = it.S, D = it.D, Particle = em and maxKey(em.Size) or nil }
+					items[it.Layer.Id] = { S = it.S, D = it.D, Particle = em and maxKey(em.Size) or nil, B = it.B, Range = it.Kit and it.Kit.Light and it.Kit.Light.Range or nil }
 				end
 			end
 			return eff, items
@@ -394,6 +394,31 @@ local function clientScenarios()
 		T.check(i0.GroundGlow ~= nil and i2.GroundGlow ~= nil and near(i2.GroundGlow.D, i0.GroundGlow.D * 1.3, 1e-6), "afx engine: the GroundGlow disc takes the full Size")
 		local _, l2 = play({ Element = "Celestial", Stage = 2 })
 		T.check(l2.Sparks ~= nil and l2.Sparks.Particle ~= nil and l2.Flash ~= nil, "afx engine: the Sparks and the Flash play")
+
+		-- the lights keep the effective caps Task 8 judged in Studio: Range x the Size stops at 1.4 (the biggest Size of that round),
+		-- Brightness <= 2 after the crit, unless a signature's own light was already over it
+		local LS = 1.4
+		local _, ls0 = play({ Rarity = "Common", Stage = 0 })
+		local _, ls2 = play({ Rarity = "Secret", Stage = 2 })
+		T.check(ls0.Flash ~= nil and near(ls0.Flash.Range, 8 * 1.3, 1e-6), "afx lights: a Common Flash reaches 8 x 1.3 = 10.4 studs", ls0.Flash and tostring(ls0.Flash.Range))
+		T.check(ls2.Flash ~= nil and near(ls2.Flash.Range, 8 * LS, 1e-6), "afx lights: a Secret Evo 2 Flash reaches 11.2 studs, not 16.6", ls2.Flash and tostring(ls2.Flash.Range))
+		T.check(ls2.Bloom ~= nil and near(ls2.Bloom.Range, 8 * LS, 1e-6), "afx lights: ...its Bloom 11.2", ls2.Bloom and tostring(ls2.Bloom.Range))
+		T.check(ls2.PlasmaRim ~= nil and near(ls2.PlasmaRim.Range, 6 * LS, 1e-6), "afx lights: ...its PlasmaRim 8.4", ls2.PlasmaRim and tostring(ls2.PlasmaRim.Range))
+		local _, crit = play({ Rarity = "Secret", Crit = true })
+		T.check(crit.Flash ~= nil and near(crit.Flash.B, 2, 1e-6), "afx lights: a Secret crit's Flash stays at Brightness 2 (2 x 1.3 was over the cap)", crit.Flash and tostring(crit.Flash.B))
+		local _, critC = play({ Rarity = "Common", Crit = true })
+		T.check(critC.Flash ~= nil and near(critC.Flash.B, 1.28 * 1.3, 1e-6), "afx lights: a Common crit still flashes brighter than its plain hit", critC.Flash and tostring(critC.Flash.B))
+		local slamPet = nil
+		for petId, sig in pairs(Cat.Signatures) do
+			for _, l in ipairs(sig.Layers or {}) do
+				if l.Id == "SigSlamFlash" then
+					slamPet = petId
+				end
+			end
+		end
+		local slamSig = slamPet and Cat.Signatures[slamPet]
+		local _, slam = play(slamSig and { Attack = "Special", PetId = slamPet, Element = slamSig.Element, Kind = slamSig.Kind, Rarity = "Secret", Stage = 2 } or {})
+		T.check(slam.SigSlamFlash ~= nil and near(slam.SigSlamFlash.Range, 14 * LS, 1e-6) and near(slam.SigSlamFlash.B, 4, 1e-6), "afx lights: the Storm Pounce's slam flash reaches 19.6 studs, not 29 (its own Brightness 4 stays)", slam.SigSlamFlash and fmt("%s @ %s", tostring(slam.SigSlamFlash.B), tostring(slam.SigSlamFlash.Range)))
 
 		-- Common: the package plays at the bottom of the ladder too
 		local _, c = play({ Rarity = "Common" })

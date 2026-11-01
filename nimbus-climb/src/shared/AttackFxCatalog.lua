@@ -169,7 +169,7 @@ AttackFxCatalog.Sizes = { Common = 1.3, Uncommon = 1.35, Rare = 1.4, Epic = 1.45
 AttackFxCatalog.StageBonus = { [0] = 0, [1] = 0.15, [2] = 0.30 } -- Evolved +15%, Evolved II +30%
 AttackFxCatalog.SizeCap = 2.08 -- (= Secret 1.6 x 1.3)
 -- (Gemini, spec 2026-11-01: clouds past x1.6 hide the target) an emitter's particles stop at this; evolved size goes
--- into the cores, rings, ground marks and light ranges, which take the full Size
+-- into the cores, rings and ground marks, which take the full Size (a light's range stops at 1.4: AttackFx K.LIGHT_SIZE)
 AttackFxCatalog.CloudCap = 1.6
 AttackFxCatalog.ImpactScale = { 0.8, 0.95, 1.1, 1.25 } -- the impact package by band: Secret's is stronger than Common's
 AttackFxCatalog.OthersDensity = 0.6 -- other players' and wild pets' effects (own team: 1)
@@ -223,8 +223,9 @@ AttackFxCatalog.LayerSlots = {
 	-- (Task 8, Studio + Gemini: at 3 / 4 the flash + bloom washed the pets white and a 14-stud ring buried the target:
 	-- lights <= 2 brightness / 8 studs range, the shockwave ~7 studs across and see-through)
 	-- (attack effects, 2026-11-01: these now play from Common, x ImpactScale, with Size up to 2.08: rings grow with the owner's
-	-- numbers, stay flat on the ground and see-through, so they leave the target in view; the light caps above are kept,
-	-- only a Studio check may move them)
+	-- numbers, stay flat on the ground and see-through, so they leave the target in view; the light caps above are kept on
+	-- screen too: AttackFx stops a light's Size at 1.4 (Flash 11.2 studs at most) and its Brightness at 2 after a crit; only a
+	-- Studio check may move them)
 	Shockwave = { Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Mid", Grow = 1.7, Transparency = 0.35 },
 	Shockwave2 = { Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Core", Grow = 2.4, Delay = 0.08, Transparency = 0.5 },
 	Flash = { Kind = "Light", Beat = "Impact", At = "$Hit", Tint = "Core", Brightness = 1.6, Range = 8 },
@@ -1419,7 +1420,7 @@ local function kickOf(attack, kind, band, mine)
 end
 
 -- the impact package (spec 2026-11-01 "More effects"), x ImpactScale[band]: a Ring's Grow, a Decal's Size, an Emitter's
--- Count, a Light's Brightness (capped at 2; the Range never moves: the light caps stay, Task 8)
+-- Count, a Light's Brightness (capped at 2; the Range never moves: the light caps stay, Task 8, and AttackFx keeps them on screen)
 local PACKAGE = { Shockwave = true, Shockwave2 = true, Flash = true, Sparks = true, GroundGlow = true }
 
 local function scaleImpact(layers, scale)
