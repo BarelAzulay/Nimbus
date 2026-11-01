@@ -520,7 +520,8 @@ local function studioFindings(env)
 		run(elC.Times.Impact + 0.02)
 		for _ = 1, 18 do -- (the gaps drift down the beam: ~a whole cycle)
 			run(1 / 30)
-			local len, vis, beam = 0, 0, (elC.Hit - elC.Mouth).Magnitude
+			-- (attack effects, 2026-11-01: the Beam runs to its real length, through the target; it ended at elC.Hit before)
+			local len, vis, beam = 0, 0, (elC.S + elC.Dir * elC.Reach + Vector3.new(0, 0.25, 0) - elC.Mouth).Magnitude
 			for _, it in ipairs(segs) do
 				local part = it.Kit.Root
 				if part.Transparency < 1 then
@@ -659,10 +660,11 @@ local function studioRound2(env)
 	local frames, mouthBad, worstGap, sl = 0, 0, 0, 0
 	if elC then
 		run(elC.Times.Impact + 0.1)
-		local stop = elC.EndRel - 0.1 -- (the breath holds through the impact and thins over the linger: ~a whole cycle)
+		local stop = elC.TailAt - 0.1 -- (the breath holds through the impact and thins over the linger: ~a whole cycle)
 		while env.clock() - elC.Start < stop do
 			run(1 / 30)
-			local d = elC.Hit - elC.Mouth
+			-- (attack effects, 2026-11-01: the Beam runs to its real length, through the target; it ended at elC.Hit before)
+			local d = elC.S + elC.Dir * elC.Reach + Vector3.new(0, 0.25, 0) - elC.Mouth
 			local L = d.Magnitude
 			sl = L / cd.Core.Segments
 			local spans = {}
@@ -936,8 +938,8 @@ local function studioRound2(env)
 	T.check(ringOk, "Task 11c R7: the Wishing Star's heal rings ~40 % thinner (<= 0.65 x), see-through, gold (not near-white)",
 		fmt("%d rings, %.2f studs across vs the plain heal's %.2f, transparency %s", #hr, wishW, plainW, hr[1] and fmt("%.2f", hr[1].Trans) or "-"))
 
-	-- R8) the Void Fangs ground rings (the roar pulses, the ring under each ally, the shockwave) <= 0.55 x the plain
-	--     Shadow Rally's across
+	-- R8) the Void Fangs ground rings (the roar pulses, the ring under each ally) <= 0.55 x the plain Shadow Rally's across
+	--     (attack effects, 2026-11-01: a support cast has no Shockwave at any rarity now)
 	local function rallyRings(el)
 		local pulse, ally, shock = {}, {}, {}
 		for _, it in ipairs(el and el.Items or {}) do
@@ -974,7 +976,7 @@ local function studioRound2(env)
 	local plainR = rallyPeaks(play({ Element = "Shadow", Attack = "Special", Kind = "Rally", Rarity = "Secret" }, allies(2)))
 	local hydR = rallyPeaks(sig("hydralotl", allies(2)))
 	local ringBad = {}
-	for g, name in ipairs({ "roar pulses", "ally rings", "shockwave" }) do
+	for g, name in ipairs({ "roar pulses", "ally rings" }) do
 		if not (plainR[g] > 0 and hydR[g] > 0 and hydR[g] <= 0.55 * plainR[g]) then
 			ringBad[#ringBad + 1] = fmt("%s %.2f vs plain %.2f", name, hydR[g], plainR[g])
 		end
@@ -1225,7 +1227,7 @@ local function studioRound3(env)
 		end)[1]
 		local frames, wrong = 0, 0
 		if el and body and rim then
-			run(el.EndRel - 0.05, function()
+			run(el.TailAt - 0.05, function()
 				local bp, rp = body.Kit.Root, rim.Kit.Root
 				if bp.Transparency < 0.98 and rp.Transparency < 0.98 then
 					frames = frames + 1
@@ -1774,7 +1776,8 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 			return nil
 		end
 		local alive = (type(r.Alive) == "table" and type(r.Alive.Seconds) == "number") and r.Alive.Seconds or 0
-		return r.ImpactAt + r.Beats.Impact + math.max(r.Beats.Linger, alive)
+		-- (attack effects, 2026-11-01: + the Afterglow, x Density; was: the beats alone)
+		return r.ImpactAt + r.Beats.Impact + math.max(r.Beats.Linger, alive) + r.Afterglow * r.Density
 	end
 	local folder = Fx.Folder()
 	T.check(folder ~= nil and folder.Parent and folder.Parent.Name == "ClientBattle" and folder.Parent.Parent == workspace,
@@ -1836,7 +1839,7 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 		end
 	end
 	T.check(#badPlay == 0, fmt("High: every element x Melee / Ranged / Special Blast / Element Cone x 3 rarities plays (%d plays)", plays), table.concat(badPlay, ", "))
-	T.check(#badLength == 0, "each effect lasts its beats: Charge + Release + Travel + Impact + max(Linger, alive detail)", table.concat(badLength, "; "))
+	T.check(#badLength == 0, "each effect lasts its beats + its Afterglow: Charge + Release + Travel + Impact + max(Linger, alive detail) + Afterglow x Density", table.concat(badLength, "; "))
 	T.check(#badGone == 0, "each effect is gone after its beats (nothing live, every pooled kit hidden)", table.concat(badGone, ", "))
 	T.check(#flipBad == 0 and flipSeen > 0, fmt("textured emitters are 4x4 flipbooks with the manifest mode + fps, rbxassetid:// + the TextureIds number (%d seen)", flipSeen), table.concat(flipBad, ", "))
 	T.check(coreSeen == plays and cores.n > 0, fmt("solid cores from MeshLibrary.Assemble play when ready (%d / %d plays, %d assembled)", coreSeen, plays, cores.n))
@@ -2048,7 +2051,7 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 	punches = {}
 	Fx.Play(ctx({ Element = "Storm", Attack = "Special", Kind = "Blast", Rarity = "Common", Mine = true, Now = clock }))
 	run(3)
-	T.check(#punches == 0, "Mine = true below band 3: no camera punch")
+	T.check(#punches == 1 and math.abs(punches[1][1] - 0.14) < 1e-6, "Mine = true, a Common Special: kicks 0.14 (attack effects, 2026-11-01; was: no punch below band 3)", punches[1] and tostring(punches[1][1]))
 	-- the screen-edge glow (own pet, band 4) and a signature's dimming (own pet) go through hooks too
 	local glows, dims = 0, 0
 	Fx.Hooks.ScreenGlow = function()
@@ -2081,7 +2084,8 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 		c.To = nil
 		local hurt = Fx.Play(c)
 		run(1)
-		T.check(hurt and #punches == 1 and glows == 1, "Mine = true Hurt at Secret: still one punch and one glow through the same hooks",
+		-- (attack effects, 2026-11-01: a reaction does not kick; was: one punch at band 3+)
+		T.check(hurt and #punches == 0 and glows == 1, "Mine = true Hurt at Secret: no camera kick, still one glow through the same hook",
 			fmt("played %s, %d punches, %d glows", tostring(hurt), #punches, glows))
 		punches = {}
 	end
@@ -2239,15 +2243,16 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 	T.check(hidden2, "mid-build error: the returned kits are hidden", tostring(what2))
 
 	-- 13) a charge glow dropped for lack of time takes no emitter slot (an over-cap recipe: >= 7 emitter layers, cap 6) --
-	-- (Task 9: every catalog recipe fits the cap now, so the over-cap recipe is SYNTHETIC: the real Flame Secret Melee
-	-- (a mouth charge glow + 5 more emitters) plus 3 extra impact emitters, through a catalog stand-in)
+	-- (Task 9: every catalog recipe fits the cap now, so the over-cap recipe is SYNTHETIC: the real Celestial Secret Melee
+	-- (a mouth charge glow + more emitters; attack effects, review: a Flame melee at Rare+ gave its Charge up to the Sparks)
+	-- plus 3 extra impact emitters, through a catalog stand-in)
 	local function engineEmitter(l)
 		return type(l) == "table" and (l.Kind == "Emitter" or (l.Kind == "Decal" and type(l.Texture) == "string"))
 	end
 	local synthCat = setmetatable({
 		Resolve = function(req)
 			local r = Cat.Resolve(req)
-			if r and req.Element == "Flame" and req.Attack == "Melee" then
+			if r and req.Element == "Celestial" and req.Attack == "Melee" then
 				for i = 1, 3 do
 					r.Layers[#r.Layers + 1] = { Id = "Synth" .. i, Kind = "Emitter", Texture = "fx_glow", Beat = "Impact", At = "Target", Color = Color3.new(1, 1, 1), Count = 4, Size = 1 }
 				end
@@ -2257,7 +2262,7 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 	}, { __index = Cat })
 	local over = nil
 	do
-		local r = synthCat.Resolve({ Element = "Flame", Attack = "Melee", Rarity = "Secret", Stage = 0, Mine = true, Distance = 12 })
+		local r = synthCat.Resolve({ Element = "Celestial", Attack = "Melee", Rarity = "Secret", Stage = 0, Mine = true, Distance = 12 })
 		local n, hasCharge = 0, false
 		for _, l in ipairs(r and r.Layers or {}) do
 			if engineEmitter(l) then
@@ -2269,7 +2274,7 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 			n = n + 1
 		end
 		if n >= Fx.MAX_EMITTERS.High + 1 and hasCharge then
-			over = { Element = "Flame", Attack = "Melee", N = n }
+			over = { Element = "Celestial", Attack = "Melee", N = n }
 		end
 	end
 	Fx._Deps({ AttackFxCatalog = synthCat })

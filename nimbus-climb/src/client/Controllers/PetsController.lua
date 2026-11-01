@@ -60,6 +60,7 @@ local State = require(Client:WaitForChild("State"))
 local SoundFx = require(Client:WaitForChild("SoundFx"))
 
 local PetCatalog = require(Shared:WaitForChild("PetCatalog"))
+local BattleCatalog = require(Shared:WaitForChild("BattleCatalog"))
 
 local PetsController = {}
 PetsController.Opened = Util.Signal()
@@ -1955,6 +1956,9 @@ function H.refreshDetail(keys, order)
 	local perkLines = {}
 	if type(def.Special) == "table" then
 		perkLines[1] = "Special: " .. tostring(def.Special.Name or "Special")
+	end
+	if stage >= 1 then
+		perkLines[#perkLines + 1] = string.format("Reach +%d%%", math.floor((BattleCatalog.ReachOf(stage) - 1) * 100 + 0.5))
 	end
 	if type(def.Perks) == "table" then
 		local mult = Bits.tierMultiplier(key, def)

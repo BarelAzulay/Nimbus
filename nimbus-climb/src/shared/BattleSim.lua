@@ -10,6 +10,7 @@
 -- enemy waves, the Ring champion, raid minions) have every pet on the floor, driven by the AI: threat target, melee
 -- orbit, a WIND-UP (Winding, 0.45 s) before every hit so the 0.35 s dash i-frames can dodge it. Bosses keep their
 -- telegraphed patterns, minion waves, the enrage at 30% health and its lethal attack. Every number lives in BattleCatalog / PetCatalog.
+-- 2026-11-01: docs/superpowers/specs/2026-11-01-attack-fx-design.md (a unit's areas are catalog x reachOf(u), its stage through stageOf(u)).
 --
 -- API (the contract):
 --   BattleSim.new(setup) -> battle | nil, reason
@@ -95,6 +96,7 @@
 --   battle:Describe() -> { BattleId, Mode, Seed, Zone = { X, Z }, TimeLimit, BossId, Round, Sides, Units = { unitInfo... } }
 --   battle:StaticUnits() -> { unitInfo... }   unitInfo = { id, side, owner, slot, kind, key, petId, boss, name, species, look,
 --                                     element, elements, maxHp, level, tier, scale, ranged, range, radius, special, evo, xp, xpNext,
+--                                     reach (x its catalog areas: BattleCatalog.ReachOf of its stage; nil = x1),
 --                                     crowned, role ("Fighter" | "Support"), buff = { Kind, Name, Seconds, Value, Cooldown },
 --                                     elementAttack = { Name, Shape, Element }, bench = 2 | 3 | nil, wild, walk, run }
 --   battle:Time(), IsFinished(), Owners(), BossStatus() (+ Tier, Lethal = a lethal telegraph is pending), SetAnchor(owner, x, z)
@@ -105,11 +107,13 @@
 --   Engage     { owner, unit (the fighter), on = true, target }  /  { owner, unit, on = false }   (only the FOLLOW / ENGAGED flips)
 --   Hit        { from, to, dmg, elem, crit, absorbed, miss = true (dodged), burn = true, leech = n, element = name, special = kind,
 --                tele, zone, attack, buffDmg = true, lethal = true (the enraged boss's lethal attack: dmg = the whole HP + shield, a KO follows) }
---   Special    { unit, kind, name, x, z, tx, tz, target, targets, heals, shields, stunned, angle }
+--   Special    { unit, kind, name, x, z, tx, tz, target, targets, heals, shields, stunned, angle, r (Blast / Freeze / Storm),
+--                length + width (Beam), range (Pounce) }   (an evolved pet's areas as the server used them, 0.1 steps; an unevolved
+--                pet's stay off the wire, the client knows them: a full raid's traffic budget is tight)
 --   KO         { unit, by, forfeit }          Telegraph { id, boss, name, attack, shape, x, z, r | angle + length + width, at, hits, freeze, linger, lethal = true }
 --   Spawn      { units, wave, boss, owner }   Enrage { unit }      Zone { unit, kind, x, z, r, seconds, side }     Leave { owner, units }
 --   Order      { owner, order, target, rejected }   (every refused command echoes `rejected`; Attack / Target / Forfeit echo when accepted)
---   Element    { unit, element, name, x, z, angle | tx, tz, targets }
+--   Element    { unit, element, name, x, z, angle | tx, tz, targets, length (Cone / Line), width (Line), r (Circle) }
 --   Dash       { unit, dir = { dx, dz } (the SIDESTEP: unit vector in floor space, 0.01 steps), target (the threat's source | nil) }
 --   Cheer      { owner, unit (the fighter), untilT (the boost's end, battle time) }
 --   Parry      { unit (the fighter), from (the attacker), tele (the telegraph id | nil) }; the parried telegraph's Hit on the
@@ -707,6 +711,29 @@ local function placeTeamUnits(self, team)
 	team.faceX, team.faceZ = cx, cz
 end
 
+-- a unit's evolution stage (0 | 1 | 2) and how far its abilities reach: the one place the sim reads either (evolved forms, a
+-- later spec, plug in here); u.evo is UnitStats' cleaned stage, a unit with none (a wild pet, a hybrid) is stage 0
+local function stageOf(u)
+	return max(0, min(2, floor(num(u.evo, 0))))
+end
+
+local function reachOf(u)
+	local bc = catalog()
+	if bc and type(bc.ReachOf) == "function" then
+		return bc.ReachOf(stageOf(u))
+	end
+	return 1
+end
+
+-- an area on an event: the number the sim used. An unevolved pet's stays off the wire: the client knows it (the catalog's
+-- number, a ranged fighter's own range), and a full raid's traffic budget is tight
+local function areaField(reach, used)
+	if reach ~= 1 then
+		return r1(used)
+	end
+	return nil
+end
+
 local function unitInfo(u, t)
 	local info = {
 		id = u.id,
@@ -738,6 +765,10 @@ local function unitInfo(u, t)
 		info.boss = true
 	end
 	info.evo = u.evo or 0
+	local reach = reachOf(u)
+	if reach ~= 1 then
+		info.reach = reach
+	end
 	if u.xp then
 		info.xp = u.xp
 		info.xpNext = u.xpNext
@@ -1993,6 +2024,7 @@ local function castSpecial(self, u, events)
 	local team = u.team
 	local isFighter = team.player and u == team.fighter
 	local base = u.specialPower * D.DamageScale * num(S.Scale, 1) * num(D.SpecialScale, 1)
+	local reach = reachOf(u)
 	local offensive = kind ~= "Heal" and kind ~= "Shield" and kind ~= "Rally" and kind ~= "Haste"
 	local target = nil
 	if offensive then
@@ -2003,8 +2035,8 @@ local function castSpecial(self, u, events)
 		if not target then
 			return false, "NoTarget"
 		end
-		if kind == "Pounce" and dist(u.x, u.z, target.x, target.z) > num(S.Range, 30) + target.radius then
-			target = nearestEnemy(self, u, num(S.Range, 30) + 3)
+		if kind == "Pounce" and dist(u.x, u.z, target.x, target.z) > num(S.Range, 30) * reach + target.radius then
+			target = nearestEnemy(self, u, num(S.Range, 30) * reach + 3)
 			if not target then
 				return false, "TooFar"
 			end
@@ -2027,7 +2059,8 @@ local function castSpecial(self, u, events)
 	local position = #events + 1
 	local extra = { special = kind }
 	if kind == "Blast" then
-		local r = num(S.Radius, 7)
+		local r = num(S.Radius, 7) * reach
+		ev.r = areaField(reach, r)
 		ev.targets = {}
 		for _, e in ipairs(livingEnemies(self, u.side)) do
 			if inCircle(e, target.x, target.z, r) then
@@ -2075,7 +2108,7 @@ local function castSpecial(self, u, events)
 		local zone = {
 			x = target.x,
 			z = target.z,
-			r = num(S.Radius, 6),
+			r = num(S.Radius, 6) * reach,
 			dps = base / seconds,
 			untilT = self.t + seconds,
 			nextTick = self.t + ZONE_TICK,
@@ -2084,6 +2117,7 @@ local function castSpecial(self, u, events)
 			kind = kind,
 		}
 		self.zones[#self.zones + 1] = zone
+		ev.r = areaField(reach, zone.r)
 		events[#events + 1] = { type = EV.Zone, unit = u.id, kind = kind, x = r1(zone.x), z = r1(zone.z), r = zone.r, seconds = seconds, side = u.side }
 	elseif kind == "Pounce" then
 		local dx, dz = target.x - u.x, target.z - u.z
@@ -2094,6 +2128,7 @@ local function castSpecial(self, u, events)
 			u.z = target.z - dz / d * stop
 			clampToFloor(self, u)
 		end
+		ev.range = areaField(reach, num(S.Range, 30) * reach)
 		ev.targets = { target.id }
 		if inIFrames(self, target) then
 			missEvent(self, u, target, events, extra)
@@ -2101,8 +2136,9 @@ local function castSpecial(self, u, events)
 			applyDamage(self, u, target, base, events, extra)
 		end
 	elseif kind == "Freeze" then
-		local r = num(S.Radius, 7)
+		local r = num(S.Radius, 7) * reach
 		local stun = num(S.Stun, 2) * (u.specialFactor or 1)
+		ev.r = areaField(reach, r)
 		ev.targets, ev.stunned = {}, {}
 		for _, e in ipairs(livingEnemies(self, u.side)) do
 			if inCircle(e, target.x, target.z, r) then
@@ -2124,9 +2160,11 @@ local function castSpecial(self, u, events)
 			angle = 0
 		end
 		ev.angle = r1(angle)
+		local length, width = num(S.Length, 26) * reach, num(S.Width, 4) * reach
+		ev.length, ev.width = areaField(reach, length), areaField(reach, width)
 		ev.targets = {}
 		for _, e in ipairs(livingEnemies(self, u.side)) do
-			if inLine(e, u.x, u.z, angle, num(S.Length, 26), num(S.Width, 4)) then
+			if inLine(e, u.x, u.z, angle, length, width) then
 				ev.targets[#ev.targets + 1] = e.id
 				if inIFrames(self, e) then
 					missEvent(self, u, e, events, extra)
@@ -2215,22 +2253,27 @@ local function castElement(self, team, u, arg, events)
 	local enemies = livingEnemies(self, u.side)
 	-- a ranged fighter reaches out to its own range at least (the design's "ranged pets use max(Range, 14)")
 	local reachOut = u.ranged and num(u.range, 0) or 0
+	local reach = reachOf(u)
 	if a.Shape == "Cone" then
 		local half = num(a.Angle, 60) * pi / 360
-		local length = max(num(a.Length, num(F.ElementRange, 14)), reachOut)
+		local length = max(num(a.Length, num(F.ElementRange, 14)) * reach, reachOut)
+		ev.length = areaField(reach, length)
 		for _, e in ipairs(enemies) do
 			if inCone(e, u.x, u.z, angle, half, length) then
 				hits[#hits + 1] = e
 			end
 		end
 	elseif a.Shape == "Line" then
+		local length, width = max(num(a.Length, 24) * reach, reachOut), num(a.Width, 4) * reach
+		ev.length, ev.width = areaField(reach, length), areaField(reach, width)
 		for _, e in ipairs(enemies) do
-			if inLine(e, u.x, u.z, angle, max(num(a.Length, 24), reachOut), num(a.Width, 4)) then
+			if inLine(e, u.x, u.z, angle, length, width) then
 				hits[#hits + 1] = e
 			end
 		end
 	else
-		local r = max(num(a.Radius, 8), reachOut)
+		local r = max(num(a.Radius, 8) * reach, reachOut)
+		ev.r = areaField(reach, r)
 		for _, e in ipairs(enemies) do
 			if inCircle(e, u.x, u.z, r) then
 				hits[#hits + 1] = e

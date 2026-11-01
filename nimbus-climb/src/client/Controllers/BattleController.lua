@@ -310,6 +310,9 @@ local K = {
 	FOV_PUNCH = 6, -- wave 5 (bug #15): degrees of FOV punch on a big attack in a dungeon (AttackFx punch >= PUNCH_BIG)
 	FOV_PUNCH_TIME = 0.25,
 	PUNCH_BIG = 0.2,
+	-- (attack effects, 2026-11-01) a pet Storm's zone holds a dim disc this long after its damage ended, at this transparency: it reads as over
+	ZONE_TAIL = 1.5,
+	ZONE_TAIL_TRANS = 0.85, -- (no catalog only: AttackFxCatalog.TailTransparency is the number)
 	LAST_DRAWN_AGE = 5, -- seconds a dungeon fighter's last drawn spot is kept for the followers' hand-over
 	SPECTATOR_LINGER = 1.5,
 	RESULT_SECONDS = 12,
@@ -855,10 +858,25 @@ end
 local function zoneUpdate(e, p, now)
 	local t = now - e.t0
 	local fadeIn = clamp(t / 0.3, 0, 1)
-	local fadeOut = clamp((e.dur - t) / 0.4, 0, 1)
+	local fadeOut = clamp(((e.live or e.dur) - t) / 0.4, 0, 1)
 	local vis = fadeIn * fadeOut
 	local disc = e.parts[1]
-	if disc then
+	if e.live then
+		-- (attack effects, 2026-11-01) the damage ends: the disc goes straight to its dim look (never out and back), the cloud and
+		-- bolts are gone, nothing moves; the last 0.3 s it fades out
+		if disc then
+			local a = e.discAlpha + (e.tailAlpha - e.discAlpha) * (1 - fadeOut)
+			a = a + (1 - a) * clamp((t - (e.dur - 0.3)) / 0.3, 0, 1)
+			disc.Transparency = 1 - (1 - a) * fadeIn
+		end
+		if t >= e.live then
+			for i = #e.parts, 2, -1 do
+				Fx.Free(e.parts[i])
+				e.parts[i] = nil
+			end
+			return
+		end
+	elseif disc then
 		disc.Transparency = 1 - (1 - e.discAlpha) * vis
 	end
 	if e.cloud then
@@ -902,7 +920,8 @@ local function zoneUpdate(e, p, now)
 end
 
 -- a damaging area on the floor for `seconds`: Storm (a voxel storm cloud with lightning), Field (the disc only: the
--- cloud is AttackFx's) or a lingering pool
+-- cloud is AttackFx's) or a lingering pool (a boss's: it ends on its seconds). Storm / Field hold a dim disc K.ZONE_TAIL longer
+-- (attack effects, 2026-11-01), not on Graphics Low
 function Fx.Zone(floorCF, r, seconds, color, kind)
 	local parts = {}
 	local disc = Fx.Part(color, Enum.Material.Neon, 0.7)
@@ -914,7 +933,10 @@ function Fx.Zone(floorCF, r, seconds, color, kind)
 	disc.CFrame = floorCF * CFrame.new(0, 0.1, 0) * CFrame.Angles(0, 0, pi / 2)
 	parts[1] = disc
 	local pos = floorCF.Position
-	local e = { ox = pos.X, oy = pos.Y, oz = pos.Z, floorY = pos.Y, r = r, offsets = {}, discAlpha = 0.62 }
+	if Mods.FxCat == nil then
+		Mods.FxCat = optional(Shared, "AttackFxCatalog") or false
+	end
+	local e = { ox = pos.X, oy = pos.Y, oz = pos.Z, floorY = pos.Y, r = r, offsets = {}, discAlpha = 0.62, tailAlpha = Mods.FxCat and Mods.FxCat.TailTransparency or K.ZONE_TAIL_TRANS }
 	local rnd = math.random
 	if kind == "Storm" then
 		e.cloud = true
@@ -957,6 +979,10 @@ function Fx.Zone(floorCF, r, seconds, color, kind)
 			parts[#parts + 1] = part
 			e.offsets[#parts] = { X = cos(a) * rr, Z = sin(a) * rr, speed = 0.6 + rnd() * 0.8, phase = rnd() }
 		end
+	end
+	if (kind == "Storm" or kind == "Field") and not St.fxLow then
+		e.live = seconds
+		seconds = seconds + K.ZONE_TAIL
 	end
 	return Fx.Add(seconds, zoneUpdate, parts, e)
 end
@@ -1340,6 +1366,7 @@ function Units.Add(B, info)
 		tier = info.tier,
 		scale = num(info.scale, 1),
 		ranged = info.ranged == true,
+		range = num(info.range, 0),
 		radius = num(info.radius, 1.8),
 		special = type(info.special) == "table" and info.special or nil,
 		isBoss = info.kind == "Boss",
@@ -2616,7 +2643,13 @@ function Me.Shake(amount, dur)
 		return
 	end
 	local old = St.shake
-	St.shake = { t0 = os.clock(), dur = dur or 0.18, amp = min(K.SHAKE_MAX, (amount or 0.2) * scale), base = old and old.base, last = old and old.last, hum = old and old.hum }
+	local now = os.clock()
+	local amp = min(K.SHAKE_MAX, (amount or 0.2) * scale)
+	-- (attack effects, 2026-11-01: every own attack kicks now) a small kick never cuts a stronger shake still playing
+	if old and old.amp * (1 - (now - old.t0) / old.dur) > amp then
+		return
+	end
+	St.shake = { t0 = now, dur = dur or 0.18, amp = amp, base = old and old.base, last = old and old.last, hum = old and old.hum }
 	BattleController._wake()
 end
 
@@ -2650,7 +2683,8 @@ function Me.UpdateShake(now)
 	sh.last = v
 end
 
--- wave 5 (bug #15): a big attack (AttackFx's punch >= PUNCH_BIG: a rare+ special, a crit) punches the FOV, in a
+-- wave 5 (bug #15): a big attack (AttackFx's punch >= PUNCH_BIG: AttackFxCatalog.Kick decides, today a Legendary+ Special, a Rare / Epic
+-- Special's crit, a Legendary+ element attack's crit, no basic hit) punches the FOV, in a
 -- dungeon only; the Camera shake setting does NOT gate it (player ruling 2026-10-28: Shake OFF = only the hit shakes
 -- go; the punch is a short zoom, not a shake). MovementController owns the FOV
 function Me.FovPunch(amount)
@@ -3005,7 +3039,7 @@ local BUFF_LOOK = { Heal = "Heal", Regen = "Heal", Shield = "Shield", Taken = "S
 Atk.EVENTS = { [EV.Hit] = true, [EV.Special] = true, [EV.Element or "Element"] = true, [EV.KO] = true, [EV.Buff or "Buff"] = true, [EV.Swap or "Swap"] = true }
 Atk.bodyOpts = { Pose = nil } -- (one table for every PetBuilder.PoseBody call)
 
--- AttackFx's hooks go to Me: camera punch = Me.Shake (the Shake setting and SHAKE_MAX apply), the edge glow, and a
+-- AttackFx's hooks go to Me: camera kick = Me.Shake (the Shake setting and SHAKE_MAX apply), the edge glow, and a
 -- signature's battle dim (Me.Dim / Me.Undim, Task 11)
 function Atk.Hook(m)
 	if type(m) ~= "table" or type(m.Hooks) ~= "table" then
@@ -3198,9 +3232,13 @@ function Atk.Busy()
 	return s ~= nil and ((s.Live or 0) + (s.Stepped or 0)) > 0
 end
 
--- something of the pet attack VFX still needs frames (live effects, the End grace, cheers waiting)
+-- something of the pet attack VFX still needs frames (live effects, a lingering tail, the End grace, cheers waiting)
 function Atk.Pending()
-	return St.fxEndAt ~= nil or (St.cheers ~= nil and #St.cheers > 0) or Atk.Busy()
+	if St.fxEndAt ~= nil or (St.cheers ~= nil and #St.cheers > 0) then
+		return true
+	end
+	local s = Atk.Stats()
+	return s ~= nil and ((s.Live or 0) + (s.Stepped or 0) + (s.Tails or 0)) > 0
 end
 
 function Atk.Stats()
@@ -3223,13 +3261,36 @@ function Atk.Drives(u)
 	return (Mods.AttackFx and Atk.Posable() and u.fxDriven ~= false) and true or false
 end
 
+-- (attack effects, 2026-11-01) an area to draw: the number the server used (the event's r / length / width), else (an
+-- unevolved pet's stay off the wire; an old recording) the catalog's x the caster's reach; nil when neither exists
+local function areaOf(given, catalogNumber, u)
+	local n = tonumber(given)
+	if n and n == n and n > 0 then
+		return n
+	end
+	n = tonumber(catalogNumber)
+	if not n then
+		return nil
+	end
+	return n * ((BattleCatalog and type(BattleCatalog.ReachOf) == "function") and BattleCatalog.ReachOf(u and u.evo) or 1)
+end
+
+-- an element attack's reach: a ranged fighter reaches out to its own range at least (BattleSim castElement's reachOut)
+local function elementAreaOf(given, catalogNumber, u)
+	local n = areaOf(given, catalogNumber, u)
+	if n and u and u.ranged then
+		return max(n, u.range)
+	end
+	return n
+end
+
 -- (Task 11 fix round 2, I1) the living enemies of `u` inside a Storm's zone: BattleSim's castSpecial puts the zone at the
--- aimed target (ev.tx, ev.tz) with radius Specials.Storm.Radius (BattleCatalog, the same table the sim reads) and its
+-- aimed target (ev.tx, ev.tz) with radius ev.r (the catalog's x the caster's reach) and its
 -- tickZones hits a body on the floor whose edge reaches the circle (inCircle: d <= r + its radius). The sim's Special
 -- event names only the aimed target, so the effect's targets are gathered here, in the units' list order
 local function stormZone(B, u, ev)
 	local S = SPECIALS.Storm
-	local r = type(S) == "table" and tonumber(S.Radius) or nil
+	local r = areaOf(ev.r, type(S) == "table" and S.Radius or nil, u)
 	local x, z = tonumber(ev.tx), tonumber(ev.tz)
 	local out = {}
 	if not (r and x and z) then
@@ -3460,9 +3521,11 @@ function Atk.Special(B, ev, dueAt)
 	if precharged then
 		St.pre = nil
 	end
+	local S = SPECIALS[kind] or {}
 	local ctx = lookCtx(u, {
 		Attack = "Special", Kind = kind, From = Atk.Side(B, u), To = to, Mine = u.mine == true, DueAt = dueAt,
 		Angle = tonumber(ev.angle) and worldAngle(B, tonumber(ev.angle)) or nil, Ground = groundOf(B, u),
+		Radius = areaOf(ev.r, S.Radius, u), Length = areaOf(ev.length, S.Length, u), Width = areaOf(ev.width, S.Width, u),
 		Precharged = precharged or nil, LateMax = (not precharged and kind ~= "Pounce") and K.LATE_MAX or nil,
 	})
 	local played = Atk.Play(ctx)
@@ -3501,14 +3564,14 @@ function Atk.Element(B, ev, dueAt)
 	end
 	local shape = ev.shape
 	local def = BattleCatalog and type(BattleCatalog.ElementAttacks) == "table" and BattleCatalog.ElementAttacks[ev.element] or nil
-	local radius, length = nil, nil
+	local radius, length, width = nil, nil, nil
 	if type(def) == "table" then
 		if shape == "Line" then
-			length = tonumber(def.Length)
+			length, width = elementAreaOf(ev.length, def.Length, u), areaOf(ev.width, def.Width, u)
 		elseif shape == "Circle" then
-			radius = tonumber(def.Radius)
+			radius = elementAreaOf(ev.r, def.Radius, u)
 		else
-			radius = tonumber(def.Length)
+			radius = elementAreaOf(ev.length, def.Length, u)
 		end
 	end
 	-- the targets, the one nearest the aimed point first (AttackFx aims at To[1])
@@ -3534,7 +3597,7 @@ function Atk.Element(B, ev, dueAt)
 	end
 	local played = Atk.Play(lookCtx(u, {
 		Attack = "Element", Shape = shape, Element = element, From = Atk.Side(B, u), To = (#to > 0) and to or nil,
-		Angle = worldAngle(B, num(ev.angle, 0)), Radius = radius, Length = length, Mine = u.mine == true, DueAt = dueAt,
+		Angle = worldAngle(B, num(ev.angle, 0)), Radius = radius, Length = length, Width = width, Mine = u.mine == true, DueAt = dueAt,
 		Ground = groundOf(B, u),
 	}))
 	u.fxDriven = played
@@ -4264,7 +4327,7 @@ Handlers[EV.Special] = function(B, ev)
 		end
 	elseif kind == "Blast" then
 		local c = worldPoint(B, tx, 0.6, tz)
-		local r = num(S.Radius, 7)
+		local r = areaOf(ev.r, num(S.Radius, 7), u)
 		Fx.Ring(c, r, color, 20, 0.8, 0.5, 0.05)
 		Fx.Burst(c + Vector3.new(0, 0.8, 0), color, 16, 13, 0.6, 0.6, { color2 = COLORS.White:Lerp(color, 0.4), up = 0.8 })
 	elseif kind == "Heal" then
@@ -4299,7 +4362,7 @@ Handlers[EV.Special] = function(B, ev)
 		Fx.Burst(worldPoint(B, tx, 1.2, tz), color, 12, 11, 0.5, 0.55, { up = 0.7, color2 = COLORS.White })
 	elseif kind == "Freeze" then
 		local c = worldPoint(B, tx, 0.5, tz)
-		local r = num(S.Radius, 6)
+		local r = areaOf(ev.r, num(S.Radius, 6), u)
 		Fx.Ring(c, r, COLORS.Ice, 16, 0.7, 0.55, 0.1)
 		Fx.Burst(c + Vector3.new(0, 0.6, 0), COLORS.Ice, 14, 10, 0.55, 0.7, { material = Enum.Material.Glass, alpha = 0.15, up = 0.8, color2 = COLORS.White })
 		local stun = num(S.Stun, 1) + 0.4
@@ -4310,8 +4373,8 @@ Handlers[EV.Special] = function(B, ev)
 			end
 		end
 	elseif kind == "Beam" then
-		local length = num(S.Length, 26)
-		local width = num(S.Width, 4)
+		local length = areaOf(ev.length, num(S.Length, 26), u)
+		local width = areaOf(ev.width, num(S.Width, 4), u)
 		local angle = num(ev.angle, 0)
 		local dx, dz = cos(angle), sin(angle)
 		local sx, sz = num(ev.x, u and u.x or 0), num(ev.z, u and u.z or 0)
@@ -4470,20 +4533,21 @@ Handlers[EV.Element or "Element"] = function(B, ev)
 	local dx, dz = cos(angle), sin(angle)
 	if shape == "Circle" then
 		local c = worldPoint(B, sx, 0.6, sz)
-		Fx.Ring(c, 8, color, 22, 0.8, 0.5, 0.05)
+		Fx.Ring(c, elementAreaOf(ev.r, 8, u), color, 22, 0.8, 0.5, 0.05)
 		Fx.Burst(c + Vector3.new(0, 0.8, 0), color, 14, 11, 0.55, 0.55, { color2 = COLORS.White, up = 0.8 })
 	elseif shape == "Line" then
-		local length = 24
+		local length = elementAreaOf(ev.length, 24, u)
 		local cf = worldFrame(B, sx + dx * length / 2, 1.6, sz + dz * length / 2, yawToward(dx, dz))
-		Fx.Beam(cf, length, 3, color, 0.45)
+		Fx.Beam(cf, length, 3 * areaOf(ev.width, 4, u) / 4, color, 0.45)
 	else
-		-- a cone: bursts fanned out in front of the caster
+		-- a cone: bursts fanned out in front of the caster, as far as it reaches
+		local far = elementAreaOf(ev.length, 14, u) / 14
 		for i = -2, 2 do
 			local a = angle + i * 0.22
-			local r = 9 + abs(i) * 0.8
+			local r = (9 + abs(i) * 0.8) * far
 			Fx.Burst(worldPoint(B, sx + cos(a) * r, 1.2, sz + sin(a) * r), color, 5, 7, 0.45, 0.45, { up = 0.6, color2 = COLORS.White })
 		end
-		Fx.Trail(worldPoint(B, sx, 1.3, sz), worldPoint(B, sx + dx * 11, 1.3, sz + dz * 11), color, 8, 0.4)
+		Fx.Trail(worldPoint(B, sx, 1.3, sz), worldPoint(B, sx + dx * 11 * far, 1.3, sz + dz * 11 * far), color, 8, 0.4)
 	end
 end
 

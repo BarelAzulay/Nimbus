@@ -3,6 +3,7 @@
 -- quality, readability"; plan docs/superpowers/plans/2026-10-23-pet-attack-vfx.md Task 6). Client only: every
 -- instance is local, nothing replicates. BattleController (Task 7) calls Play from its attack handlers and keeps its
 -- cube Fx.* call as the fallback whenever Play returns false. Plain Lua 5.1-compatible syntax only.
+-- 2026-11-01: docs/superpowers/specs/2026-11-01-attack-fx-design.md (areas drawn as they hit, clouds capped, tails, the kick).
 --
 -- API:
 --   AttackFx.Play(ctx) -> bool     false = not played (the caller draws its cube Fx.* instead): unknown attack /
@@ -14,7 +15,9 @@
 --               DueAt (clock time the impact must land: the charge is shortened to fit, impact never later, except
 --               that a basic Ranged shot keeps its recipe's Beats.MinTravel of flight: player note 1),
 --               Angle (Element attacks without a To: the WORLD yaw of the attack, direction (cos a, 0, sin a)),
---               Radius (Cone reach / Circle radius, default 9 / 8), Length (Line, default 24),
+--               Radius (Cone reach / Circle radius, default 9 / 8; Special Blast / Freeze / Storm, default 7 / 6 / 6),
+--               Length (Line, default 24; Special Beam, default 26), Width (Line / Beam, default 4: eff.WidthScale = Width / 4)
+--               (the numbers the server used: an evolved pet's areas are drawn as they hit),
 --               Ground (world Y of the floor under From; default From.Y - 1.6), Now (the clock; default os.clock()) }
 --       Play writes ctx.ImpactLate = seconds the impact lands after DueAt (0 unless a Ranged shot's MinTravel needed
 --       more time than DueAt left; BattleController then plays the Hit that much later).
@@ -45,12 +48,14 @@
 --       effect <= 2 (the Burst, then the first of the recipe's LowKeep it has: the element's most characteristic one),
 --       particle counts halved, no Beams / Trails / bloom light; switching to Low strips the Beams /
 --       Trails of the live effects at once
---   AttackFx.Stats() -> { Live, Stepped, Emitters, Beams, Trails, Lights, Cores, Rims, Pooled, PoolInstances, Errors }
---       Live = full effects, Stepped = stepped-down ones, the rest = kits held by live effects / pooled kits
+--   AttackFx.Stats() -> { Live, Stepped, Tails, Emitters, Beams, Trails, Lights, Cores, Rims, Pooled, PoolInstances, Errors }
+--       Live = full effects, Stepped = stepped-down ones, Tails = effects past their beats with only their lingering marks left,
+--       the rest = kits held by live effects / pooled kits
 --   AttackFx.Hooks = { Punch = fn(amount, seconds), ScreenGlow = fn(color, seconds), DimWorld = fn(seconds, token, unit),
 --                      Undim = fn(token), Inhale = fn(seconds, token, mine), Hush = fn(token), Shatter = fn(mine, unit) }
---       set by the caller: the camera punch (own pet, band 3+, amount <= PUNCH_MAX 0.35: route it through
---       BattleController's Me.Shake / ShakeScale path), the edge glow (own pet, band 4) and a signature's dimming
+--       set by the caller: the camera kick (own attacks, recipe.CameraPunch: by kind and band, about 0.15 s, amount <= PUNCH_MAX
+--       0.35, basic hits at most once per its Gap: route it through BattleController's Me.Shake / ShakeScale path), the edge glow
+--       (own pet, band 4) and a signature's dimming
 --       (own pet: Eclipse Nova; seconds = from now to the recipe's Sig.DimWorld after the impact, token = a number of
 --       its own per effect, unit = the caster's unit id or nil); Undim(token) comes when that effect ends for any reason: end, Cancel, ClearAll,
 --       error). AttackFx never touches the camera or Lighting itself; other players' effects call no hook.
@@ -70,10 +75,14 @@
 --   Tests: AttackFx._Deps({ MeshLibrary =, TextureIds =, GraphicsQuality = }) (false = the real one again),
 --          AttackFx._Live() (the live effects)
 --
+-- Lingering (attack effects, 2026-11-01): eff.TailAt = the end of the beats (every item ends by it); eff.EndRel = TailAt +
+-- recipe.Afterglow x Density (0 at Low, on a miss and on a predicted charge). Past TailAt an effect is a tail (eff.Tail): its
+-- Linger layers alone (the ground marks, the embers) stay on, dim, still and only fading, so nobody dodges a ghost; everything else went
+-- back to the pool and its dim / inhale ended, as they did before there were tails.
 -- Budget: MAX_LIVE (10) full effects; over it a play steps down one rarity band (MAX_STEPPED more at most), then
--- Play returns false. Per effect: MAX_EMITTERS (6 High / 2 Low) ParticleEmitters, MAX_BEAMS, MAX_TRAILS,
+-- Play returns false. A tail counts in neither; MAX_TAILS (12) of them at once, a newer one finishes the oldest. Per effect: MAX_EMITTERS (6 High / 2 Low) ParticleEmitters, MAX_BEAMS, MAX_TRAILS,
 -- MAX_LIGHTS, MAX_CORES solid pieces. Over a cap the layers are RANKED, never cut in catalog order: emitters by
--- emitterRank (the Burst, LowKeep, impact detail ...), beams by beamRank (the alive detail, the recipe's own beams, the
+-- emitterRank (the Burst, LowKeep, impact detail, Sparks ...), beams by beamRank (the alive detail, the recipe's own beams, the
 -- ladder's DoubleArc / ShotArcs; one beam each first, then each layer's KeepCount (a kind's identity: the Beam's two
 -- spiral arcs, Task 10 review I2), then each layer's own count, best first: beamBudget).
 -- Counts are the catalog's FULL density x recipe.Density (0.6 for others' pets)
@@ -123,6 +132,7 @@ local AttackFx = {}
 
 AttackFx.MAX_LIVE = 10
 AttackFx.MAX_STEPPED = 4
+AttackFx.MAX_TAILS = 12
 AttackFx.MAX_EMITTERS = { High = 6, Low = 2 }
 AttackFx.MAX_BEAMS = 4
 AttackFx.MAX_TRAILS = 4
@@ -139,10 +149,13 @@ AttackFx.CUE_MIN = 0.15
 AttackFx.SHATTER = 0.45
 AttackFx.Hooks = { Punch = nil, ScreenGlow = nil, DimWorld = nil, Undim = nil, Inhale = nil, Hush = nil, Shatter = nil }
 
+-- (attack effects, 2026-11-01) the Specials with a drawn radius: eff.Reach when ctx.Radius did not come (BattleCatalog's numbers)
+local SPECIAL_RADIUS = { Blast = 7, Freeze = 6, Storm = 6 }
+
 local K = {
 	PARENT = "ClientBattle",
 	FOLDER = "AttackFx",
-	KEEP = { Emitter = 24, Beam = 8, Trail = 6, Light = 8, Disc = 8, Rim = 3 },
+	KEEP = { Emitter = 24, Beam = 8, Trail = 6, Light = 8, Disc = 24, Rim = 3 }, -- (Disc, review: the tails hold ground marks up to 2 s longer; at 8 a busy fight made and destroyed them)
 	CORE_KEEP = 6, -- per vfx_* key
 	CORE_KEYS = 22,
 	LOW_COUNT = 0.5,
@@ -194,6 +207,10 @@ local K = {
 	MOON_GAP = 0.1, -- S4: studs between the storm cloud's top and the dusk moon's lowest point (it sits just above the puffs)
 	SERPENT_CLEAR = 0.3, -- S5: the Void Fangs heads' tops stay this far at most over the caster's head (under its name tag)
 	SERPENT_GAP = 0.6, -- S5: ... rooted this far (x size) past the caster's body, away from the viewer
+	-- (attack effects, 2026-11-01, review) the caps Task 8 judged in Studio: a light's range grows with the Size up to the 1.4 of that
+	-- round, its brightness stops at 2 after the crit (a signature's own light over that keeps its number)
+	LIGHT_SIZE = 1.4,
+	LIGHT_BRIGHT = 2,
 }
 AttackFx.POOL_KEEP_TOTAL = K.KEEP.Emitter + K.KEEP.Beam + K.KEEP.Trail + K.KEEP.Light + K.KEEP.Disc + K.KEEP.Rim + K.CORE_KEEP * K.CORE_KEYS
 
@@ -354,6 +371,7 @@ local St = {
 	warned = {},
 	dimSeq = 0, -- (Task 11) the last battle-dim token handed to Hooks.DimWorld
 	cueSeq = 0, -- (Task 11b) the last inhale token handed to Hooks.Inhale
+	lastBasicKick = nil, -- (attack effects, 2026-11-01) when a basic hit last kicked the camera (Kick.BasicGap)
 }
 
 local function warnOnce(key, msg)
@@ -885,7 +903,7 @@ MOVE.Stretch = function(eff, it, t)
 	if L < 0.1 or grow <= 0 then
 		return nil
 	end
-	local out = seg(t, T.Linger, eff.EndRel)
+	local out = seg(t, T.Linger, eff.TailAt)
 	local len = L * grow
 	local th = (it.Thick or 1) * (1 + 0.1 * sin(t * 45)) * max(0.05, 1 - smooth(out))
 	if it.Segs then
@@ -949,6 +967,9 @@ MOVE.Ring = function(eff, it, t)
 	end
 	local g = it.From + (it.To - it.From) * outCubic(seg(t, it.T0, it.TG))
 	local fade = smooth(seg(t, it.TF, it.T1))
+	if it.Thin then -- (attack effects, review) wider, not taller: a thin line on the floor, however far it runs
+		return CFrame.new(p), V3(g, min(g, 1), g), fadeTo(it, fade)
+	end
 	if it.Face then -- stood up across the attack's direction (the flat XZ ring turned to face eff.Dir)
 		return face(p, eff.Dir) * CFrame.Angles(pi / 2, 0, 0), ONE * g, fadeTo(it, fade)
 	end
@@ -1638,11 +1659,22 @@ function DRAW.Disc(eff, it, t)
 		p = groundOf(eff, p)
 	end
 	p = p + UP * (0.03 + 0.008 * it.Index)
-	local g = (0.55 + 0.45 * outCubic(seg(t, it.T0, it.T0 + 0.15))) * (1 + 0.1 * seg(t, it.T0, it.T1))
+	local main = it.MainEnd or it.T1
+	local g = (0.55 + 0.45 * outCubic(seg(t, it.T0, it.T0 + 0.15))) * (1 + 0.1 * seg(t, it.T0, main))
 	local size = it.D * g
 	d.Size = V3(0.06, size, size)
 	d.CFrame = CFrame.new(p) * CFrame.Angles(0, 0, pi / 2)
-	local tr = fadeTo(it, smooth(seg(t, it.T0 + (it.T1 - it.T0) * 0.4, it.T1)))
+	local tr
+	if it.MainEnd then
+		-- (attack effects, 2026-11-01) a lingering mark: down to eff.TailTrans by the end of its own time, then only fading: no pulse, no growth
+		if t < main then
+			tr = it.Trans + (eff.TailTrans - it.Trans) * smooth(seg(t, it.T0 + (main - it.T0) * 0.4, main))
+		else
+			tr = eff.TailTrans + (1 - eff.TailTrans) * seg(t, main, it.T1)
+		end
+	else
+		tr = fadeTo(it, smooth(seg(t, it.T0 + (it.T1 - it.T0) * 0.4, it.T1)))
+	end
 	if it.Soft then
 		it.Kit.Img.ImageTransparency = tr
 	else
@@ -1684,6 +1716,11 @@ end
 ----------------------------------------------------------------------
 -- Building an effect's items
 ----------------------------------------------------------------------
+-- (attack effects, 2026-11-01) does this layer outlive the beats in this effect? (a Linger layer of an effect with an Afterglow)
+local function lingers(eff, layer)
+	return layer.Linger == true and eff.Afterglow > 0
+end
+
 local function beatStart(eff, beat)
 	local T = eff.Times
 	if beat == "Charge" then
@@ -1703,7 +1740,7 @@ local function beatEnd(eff, beat)
 	elseif beat == "Impact" then
 		return T.Linger
 	end
-	return eff.EndRel
+	return eff.TailAt
 end
 
 local function addItem(eff, it)
@@ -1731,7 +1768,7 @@ local function addSolid(eff, key, it)
 	it.S = it.S or eff.Size
 	it.Trans = it.Trans or 0
 	it.T0 = it.T0 or 0
-	it.T1 = min(it.T1 or eff.EndRel, eff.EndRel)
+	it.T1 = min(it.T1 or eff.TailAt, eff.TailAt)
 	return addItem(eff, it)
 end
 
@@ -1758,7 +1795,8 @@ local function buildCore(eff)
 		if core.Stretch then
 			local segs = (finite(core.Segments) and core.Segments >= 2) and min(4, floor(core.Segments)) or nil
 			for i = 1, segs and (segs + 1) or 1 do -- (Task 11c I1: Segs + 1 pieces, MOVE.Stretch)
-				addSolid(eff, key, look({ Move = MOVE.Stretch, T0 = T.Travel - 0.02, Thick = core.Thick or 1, Seg = segs and i or nil, Segs = segs, Gap = finite(core.Gap) and clamp01(core.Gap) or K.SEG_GAP }))
+				-- (attack effects, 2026-11-01: the Beam runs to its real length, through the target, as wide as it hits)
+				addSolid(eff, key, look({ Move = MOVE.Stretch, T0 = T.Travel - 0.02, Line = (eff.Kind == "Beam") or nil, Thick = (core.Thick or 1) * eff.WidthScale, Seg = segs and i or nil, Segs = segs, Gap = finite(core.Gap) and clamp01(core.Gap) or K.SEG_GAP }))
 			end
 			return
 		end
@@ -1793,7 +1831,7 @@ local function buildCore(eff)
 		local around = (key == "vfx_root") or n == 1
 		local travel = max(0.05, T.Impact - T.Travel)
 		for i = 1, n do
-			local it = look({ Move = MOVE.Rise, T0 = 0, TS = T.Linger + (eff.EndRel - T.Linger) * 0.3, T1 = eff.EndRel })
+			local it = look({ Move = MOVE.Rise, T0 = 0, TS = T.Linger + (eff.TailAt - T.Linger) * 0.3, T1 = eff.TailAt })
 			if around then
 				local a = (i - 1) / n * TAU + hash(i, 21)
 				local rad = (n == 1) and 0 or 0.9 * eff.Size
@@ -1823,7 +1861,8 @@ local function buildCore(eff)
 				n = min(8, max(n, nT))
 			end
 			for i = 1, n do
-				local a, rad = hash(i, 31) * TAU, (0.4 + 2.6 * hash(i, 32)) * eff.Size
+				-- (attack effects, 2026-11-01: the rain covers the real zone, evolved too)
+				local a, rad = hash(i, 31) * TAU, (0.1 + 0.9 * hash(i, 32)) * eff.Reach
 				local tgt = nil
 				if spread then
 					tgt, rad = (i - 1) % nT + 1, (0.2 + 1.1 * hash(i, 32)) * eff.Size
@@ -1838,14 +1877,14 @@ local function buildCore(eff)
 			end
 		elseif core.Stretch then
 			-- (the recipe's Core.Thick wins: Task 8, the Line core was always 1.2 thick whatever the catalog said)
-			addSolid(eff, key, look({ Move = MOVE.Stretch, T0 = T.Travel - 0.02, Line = true, Thick = finite(core.Thick) and core.Thick or 1.2 }))
+			addSolid(eff, key, look({ Move = MOVE.Stretch, T0 = T.Travel - 0.02, Line = true, Thick = (finite(core.Thick) and core.Thick or 1.2) * eff.WidthScale }))
 		elseif key == "vfx_ring" then -- the Circle nova
 			local to = (eff.Reach * 2) / 4 / max(0.1, S)
 			addSolid(eff, key, look({ Move = MOVE.Ring, Flat = true, Anchor = "Self", T0 = T.Travel, TG = T.Impact + 0.1, TF = T.Impact, T1 = T.Linger + 0.35, From = 0.3, To = to }))
 		else -- the ground elements' spikes / roots over the attack's shape
 			local n = min(6, finite(core.Count) and core.Count or 4)
 			for i = 1, n do
-				local it = look({ Move = MOVE.Rise, T0 = 0, TS = T.Linger + (eff.EndRel - T.Linger) * 0.3, T1 = eff.EndRel, Anchor = "Self" })
+				local it = look({ Move = MOVE.Rise, T0 = 0, TS = T.Linger + (eff.TailAt - T.Linger) * 0.3, T1 = eff.TailAt, Anchor = "Self" })
 				local f = (i - 0.5) / n
 				if eff.Area == "Circle" then
 					local a = f * TAU
@@ -1872,7 +1911,7 @@ local function buildCore(eff)
 			-- poof keep their defaults)
 			local from = finite(core.From) and core.From or (core.Poof and 0.8 or 0.6)
 			local to = finite(core.To) and core.To or (core.Poof and 2 or 1.6)
-			local pop = addSolid(eff, key, look({ Move = MOVE.Pop, Anchor = "Self", T0 = 0, T1 = core.Poof and min(eff.EndRel, 0.7) or min(eff.EndRel, 0.3), From = from, To = to, Trans = max(trans, core.Poof and 0.3 or 0.15) }))
+			local pop = addSolid(eff, key, look({ Move = MOVE.Pop, Anchor = "Self", T0 = 0, T1 = core.Poof and min(eff.TailAt, 0.7) or min(eff.TailAt, 0.3), From = from, To = to, Trans = max(trans, core.Poof and 0.3 or 0.15) }))
 			-- (Task 11c, review I4) the ShieldHit ripple (core.Fit) is the victim's own dome: it starts at the size the Shield
 			-- fitted round that pet (fitFor; the victim alone: no other ally to keep apart from) and swells by To / From;
 			-- no victim model: the catalog's From / To
@@ -1883,16 +1922,16 @@ local function buildCore(eff)
 				end
 			end
 		else
-			addSolid(eff, key, look({ Move = MOVE.Star, T0 = T.Travel, T1 = eff.EndRel }))
+			addSolid(eff, key, look({ Move = MOVE.Star, T0 = T.Travel, T1 = eff.TailAt }))
 		end
 	elseif path == "Allies" then
 		local n = min(K.MAX_ALLIES, max(1, #eff.T))
 		for i = 1, n do
 			if key == "vfx_ring" then
-				addSolid(eff, key, look({ Move = MOVE.Ring, Flat = true, Anchor = i, T0 = T.Travel, TG = T.Impact + 0.1, TF = T.Linger, T1 = eff.EndRel, From = 0.4, To = finite(core.Grow) and core.Grow or 1.5, Spin = 1.5 }))
+				addSolid(eff, key, look({ Move = MOVE.Ring, Flat = true, Anchor = i, T0 = T.Travel, TG = T.Impact + 0.1, TF = T.Linger, T1 = eff.TailAt, From = 0.4, To = finite(core.Grow) and core.Grow or 1.5, Spin = 1.5 }))
 			else
 				local disc = string.find(key, "disc", 1, true) ~= nil
-				local sh = addSolid(eff, key, look({ Move = MOVE.Shell, Anchor = i, OffD = disc and 1.2 * eff.Size or 0, Disc = disc, T0 = T.Travel, TF = T.Linger + (eff.EndRel - T.Linger) * 0.5, T1 = eff.EndRel }))
+				local sh = addSolid(eff, key, look({ Move = MOVE.Shell, Anchor = i, OffD = disc and 1.2 * eff.Size or 0, Disc = disc, T0 = T.Travel, TF = T.Linger + (eff.TailAt - T.Linger) * 0.5, T1 = eff.TailAt }))
 				if sh and not disc and finite(core.Fit) then
 					sh.Fit, sh.Sink = shellFit(eff, i, sh.Base, sh.S, core)
 				end
@@ -1908,6 +1947,8 @@ local function emitterRank(layer, keep)
 		return 0
 	elseif keep and keep[layer.Id] then
 		return 0.5 + keep[layer.Id] * 0.01
+	elseif layer.Id == "Sparks" then -- (attack effects, 2026-11-01) the impact package's sparks: after the impact detail, before Slash / Travel
+		return 1.2
 	elseif layer.Beat == "Impact" then
 		return 1
 	elseif layer.Id == "Slash" then
@@ -2043,7 +2084,9 @@ local function tuneEmitter(eff, it, layer)
 	else
 		em.Color = ColorSequence.new(c, c:Lerp(BLACK, 0.2))
 	end
-	local S = eff.Size
+	-- (attack effects, 2026-11-01, Gemini: clouds past x1.6 hide the target) particles and their spread stop at CloudSize; a
+	-- flat ground mark lies under the target and takes the full Size
+	local S = (layer.Kind == "Decal") and eff.Size or eff.CloudSize
 	local sz = (finite(layer.Size) and layer.Size or 1) * S * (eff.Strong and 1.12 or 1)
 	local m = it.Preset
 	local life = { 0.35, 0.6 }
@@ -2221,14 +2264,29 @@ local function tuneEmitter(eff, it, layer)
 		em.Speed = NumberRange.new(em.Speed.Min * layer.SpeedScale, em.Speed.Max * layer.SpeedScale)
 	end
 	-- particles end with the effect: the kit is reused right after it
-	local latest = eff.EndRel - it.T1
+	local latest = eff.TailAt - it.T1
 	local hi = max(0.12, min(life[2], latest))
 	local lo = min(life[1], hi)
+	-- (attack effects, 2026-11-01) a lingering mark / ember: its particle lives on by the Afterglow, past `knee` (its share of the old life) only fading
+	local knee = 1
+	if lingers(eff, layer) then
+		hi = max(0.12, min((finite(layer.Seconds) and layer.Seconds or life[2]) + eff.Afterglow, eff.EndRel - it.T1))
+		lo = (m == "Flat") and hi or hi * 0.75 -- (no quick particle dimming out while the hit still plays)
+		knee = min(1, life[2] / hi)
+		if m == "SwirlUp" then -- (the embers hang on instead of flying off: "still")
+			em.Drag = 1.5
+			em.Acceleration = V3(0, 1, 0)
+		end
+	end
 	em.Lifetime = NumberRange.new(lo, hi)
-	em.Size = NumberSequence.new({ kp(0, sz * sizeSeq[1]), kp(0.2, sz * sizeSeq[2]), kp(1, sz * sizeSeq[3]) })
+	em.Size = NumberSequence.new({ kp(0, sz * sizeSeq[1]), kp(0.2 * knee, sz * sizeSeq[2]), kp(1, sz * sizeSeq[3]) })
 	-- (a layer's Transparency lifts the whole curve: Task 9, the band 4 ladder layers washed out the leap and the target)
 	local a = finite(layer.Transparency) and clamp01(layer.Transparency) or 0
-	em.Transparency = NumberSequence.new({ kp(0, a + (1 - a) * start), kp(0.12, a), kp(hold, a + (1 - a) * 0.1), kp(1, 1) })
+	if knee < 1 then
+		em.Transparency = NumberSequence.new({ kp(0, a + (1 - a) * start), kp(0.12 * knee, a), kp(hold * knee, a + (1 - a) * 0.1), kp(knee, max(a, eff.TailTrans)), kp(1, 1) })
+	else
+		em.Transparency = NumberSequence.new({ kp(0, a + (1 - a) * start), kp(0.12, a), kp(hold, a + (1 - a) * 0.1), kp(1, 1) })
+	end
 end
 
 local EMITTER_MOTIONS = { Geyser = true, Implode = true, Fling = true, Rise = true, Shatter = true, Erupt = true, Burst = true, Bounce = true, SwirlUp = true }
@@ -2245,7 +2303,7 @@ local function addEmitterLayer(eff, layer)
 	elseif layer.Alive then
 		mode, stream = "Stream", "Alive"
 		preset = (layer.Motion == "Bounce" or layer.Motion == "SwirlUp") and layer.Motion or "Rise"
-		t1 = min(eff.EndRel - 0.1, t0 + (finite(layer.Seconds) and layer.Seconds or 0.6) * 0.6)
+		t1 = min(eff.TailAt - 0.1, t0 + (finite(layer.Seconds) and layer.Seconds or 0.6) * 0.6)
 	elseif beat == "Charge" and at == "Source" then
 		if chargeDropped(eff, layer) then
 			return -- no charge shown (shortened to fit the event)
@@ -2280,7 +2338,7 @@ local function addEmitterLayer(eff, layer)
 	if mode == "Burst" then
 		t1 = t0
 	end
-	t1 = max(t0, min(t1, eff.EndRel - 0.05))
+	t1 = max(t0, min(t1, eff.TailAt - 0.05))
 	local kit = take("Emitter")
 	eff.Emitters = eff.Emitters + 1
 	local count = (finite(layer.Count) and layer.Count or 1) * eff.Recipe.Density * (eff.Low and K.LOW_COUNT or 1)
@@ -2301,7 +2359,7 @@ local function addEmitterLayer(eff, layer)
 	end
 	local it = addItem(eff, {
 		Kind = "Emitter", Kit = kit, Layer = layer, At = at, T0 = t0, T1 = t1, Mode = mode, Preset = preset, Stream = stream,
-		Count = count, Rate = count / max(0.05, t1 - t0), Acc = 1, Pts = {}, Flat = preset == "Flat", Fn = DRAW.Emitter, Lift = lift,
+		Count = count, Rate = count / max(0.05, t1 - t0), Acc = 1, Pts = {}, Flat = preset == "Flat", Fn = DRAW.Emitter, Lift = lift, Lingers = lingers(eff, layer),
 	})
 	tuneEmitter(eff, it, layer)
 end
@@ -2315,7 +2373,7 @@ local function addBeamLayer(eff, layer, allow)
 	local at = layer.At
 	if layer.Alive then
 		mode = (layer.Motion == "Connect") and "Connect" or "Strike"
-		t1 = min(eff.EndRel, t0 + (finite(layer.Seconds) and layer.Seconds or 0.6))
+		t1 = min(eff.TailAt, t0 + (finite(layer.Seconds) and layer.Seconds or 0.6))
 	elseif layer.Id == "DoubleArc" then
 		mode, t1 = "Crescent", T.Impact + 0.2
 	elseif layer.Id == "Rain" then -- the Storm special's lightning rain: bolts strike down around the target
@@ -2438,7 +2496,7 @@ local function addLightLayer(eff, layer)
 	local T = eff.Times
 	local beat = layer.Beat or "Impact"
 	local t0 = beatStart(eff, beat) + (finite(layer.Delay) and layer.Delay or 0)
-	local t1 = min(eff.EndRel, (layer.Pulse and T.Impact + 0.2) or (beatEnd(eff, beat) + 0.25))
+	local t1 = min(eff.TailAt, (layer.Pulse and T.Impact + 0.2) or (beatEnd(eff, beat) + 0.25))
 	if beat == "Travel" and layer.At == "Core" then
 		t1 = T.Impact + 0.1
 	end
@@ -2446,18 +2504,24 @@ local function addLightLayer(eff, layer)
 	eff.Lights = eff.Lights + 1
 	local c = typeof(layer.Color) == "Color3" and layer.Color or WHITE
 	kit.Light.Color = c
-	kit.Light.Range = (finite(layer.Range) and layer.Range or 8) * eff.Size
+	kit.Light.Range = (finite(layer.Range) and layer.Range or 8) * min(eff.Size, K.LIGHT_SIZE)
 	kit.Light.Brightness = 0
-	local b = (finite(layer.Brightness) and layer.Brightness or 2) * (eff.Crit and 1.3 or 1)
+	local base = finite(layer.Brightness) and layer.Brightness or 2
+	local b = min(max(K.LIGHT_BRIGHT, base), base * (eff.Crit and 1.3 or 1))
 	addItem(eff, { Kind = "Light", Kit = kit, Layer = layer, At = layer.At, T0 = t0, T1 = max(t0 + 0.1, t1), B = b, Pulse = layer.Pulse == true, Shift = layer.ColorShift == true, Color = c, Pts = {}, Fn = DRAW.Light })
 end
 
 local function addDiscLayer(eff, layer)
 	local beat = layer.Beat or "Impact"
 	local t0 = beatStart(eff, beat) + (finite(layer.Delay) and layer.Delay or 0)
-	local t1 = min(eff.EndRel, t0 + (finite(layer.Seconds) and layer.Seconds or 0.6))
+	local t1 = min(eff.TailAt, t0 + (finite(layer.Seconds) and layer.Seconds or 0.6))
 	if layer.Alive then
-		t1 = min(eff.EndRel, t0 + (finite(layer.Seconds) and layer.Seconds or 0.8))
+		t1 = min(eff.TailAt, t0 + (finite(layer.Seconds) and layer.Seconds or 0.8))
+	end
+	local mainEnd = nil
+	if lingers(eff, layer) then
+		mainEnd = t1
+		t1 = min(eff.EndRel, t0 + (finite(layer.Seconds) and layer.Seconds or (layer.Alive and 0.8 or 0.6)) + eff.Afterglow)
 	end
 	local kit = take("Disc")
 	local d = kit.Root
@@ -2480,7 +2544,7 @@ local function addDiscLayer(eff, layer)
 	if at ~= "Allies" and at ~= "Self" and at ~= "Source" then
 		at = "Ground"
 	end
-	addItem(eff, { Kind = "Disc", Kit = kit, Layer = layer, At = at, T0 = t0, T1 = max(t0 + 0.1, t1), D = (finite(layer.Size) and layer.Size or 4) * eff.Size, Trans = soft and 0.2 or 0.5, Soft = soft, Pts = {}, Fn = DRAW.Disc }) -- (Task 8: the soft sheet fades out to its rim by itself; a plain plate stays half see-through)
+	addItem(eff, { Kind = "Disc", Kit = kit, Layer = layer, At = at, T0 = t0, T1 = max(t0 + 0.1, t1), D = (finite(layer.Size) and layer.Size or 4) * eff.Size, Trans = soft and 0.2 or 0.5, Soft = soft, Pts = {}, Fn = DRAW.Disc, MainEnd = mainEnd, Lingers = mainEnd ~= nil }) -- (Task 8: the soft sheet fades out to its rim by itself; a plain plate stays half see-through)
 end
 
 local function addRingLayer(eff, layer)
@@ -2493,7 +2557,7 @@ local function addRingLayer(eff, layer)
 		addSolid(eff, key, {
 			Layer = layer, Move = MOVE.Ring, Anchor = anchor, Color = layer.Color, Material = Enum.Material.Neon,
 			Trans = finite(layer.Transparency) and layer.Transparency or 0.2, T0 = t0, TG = t0 + 0.14, TF = t0 + 0.06,
-			T1 = min(eff.EndRel, t0 + 0.36), From = 0.35, To = finite(layer.Grow) and layer.Grow or 1,
+			T1 = min(eff.TailAt, t0 + 0.36), From = 0.35, To = finite(layer.Grow) and layer.Grow or 1,
 		})
 		return
 	end
@@ -2501,7 +2565,7 @@ local function addRingLayer(eff, layer)
 		addSolid(eff, key, {
 			Layer = layer, Move = MOVE.Ring, Face = true, Anchor = anchor, Color = layer.Color, Material = Enum.Material.Neon,
 			Trans = finite(layer.Transparency) and layer.Transparency or 0.1, T0 = t0, TG = t0 + 0.2, TF = t0 + 0.05,
-			T1 = min(eff.EndRel, t0 + 0.32), From = 0.3, To = finite(layer.Grow) and layer.Grow or 1,
+			T1 = min(eff.TailAt, t0 + 0.32), From = 0.3, To = finite(layer.Grow) and layer.Grow or 1,
 		})
 		return
 	end
@@ -2510,7 +2574,7 @@ local function addRingLayer(eff, layer)
 			addSolid(eff, key, {
 				Layer = layer, Move = MOVE.Ring, Flat = true, Anchor = eff.T[i] and i or "Self", Color = layer.Color, Material = Enum.Material.Neon,
 				Trans = finite(layer.Transparency) and layer.Transparency or 0.1, T0 = t0, TG = t0 + 0.35, TF = t0 + 0.12,
-				T1 = min(eff.EndRel, t0 + 0.6), From = 0.4, To = finite(layer.Grow) and layer.Grow or 1.3, Spin = 1.5,
+				T1 = min(eff.TailAt, t0 + 0.6), From = 0.4, To = finite(layer.Grow) and layer.Grow or 1.3, Spin = 1.5,
 			})
 		end
 		return
@@ -2518,7 +2582,7 @@ local function addRingLayer(eff, layer)
 	local ring = addSolid(eff, key, {
 		Layer = layer, Move = MOVE.Ring, Flat = (flatRing and layer.Level ~= true) or layer.At == "Ground", Anchor = anchor, Color = layer.Color, Material = Enum.Material.Neon,
 		Trans = finite(layer.Transparency) and layer.Transparency or 0.1, T0 = t0, TG = t0 + max(0.25, T.Linger - T.Impact + 0.2), TF = t0 + 0.08,
-		T1 = min(eff.EndRel, t0 + max(0.4, T.Linger - T.Impact + 0.35)), From = 0.35, To = finite(layer.Grow) and layer.Grow or 2.5,
+		T1 = min(eff.TailAt, t0 + max(0.4, T.Linger - T.Impact + 0.35)), From = 0.35, To = finite(layer.Grow) and layer.Grow or 2.5, Thin = layer.Thin == true,
 	})
 	-- (Studio findings round: the Eclipse Nova) OrbRadius: the ring's peak radius = this x the Blast orb's peak radius (its
 	-- main core piece at the impact: MOVE.Projectile's pop, x1.5)
@@ -2531,6 +2595,16 @@ local function addRingLayer(eff, layer)
 				break
 			end
 		end
+	end
+	-- (attack effects, 2026-11-01) Reach: the ring's peak radius = the attack's real radius
+	if ring and layer.Reach == true then
+		ring.To = eff.Reach / max(0.01, ring.Base.X * ring.S / 2)
+		ring.From = min(ring.From, ring.To * 0.3)
+	end
+	-- (attack effects, review) PeakStuds: at most this wide, and never past the attack's real radius (a Storm's zone)
+	if ring and finite(layer.PeakStuds) then
+		ring.To = min(ring.To, min(layer.PeakStuds / 2, eff.Reach) / max(0.01, ring.Base.X * ring.S / 2))
+		ring.From = min(ring.From, ring.To * 0.3)
 	end
 end
 
@@ -2562,18 +2636,18 @@ local function addMeshLayer(eff, layer)
 			local rad = (n == 1) and 0 or 1.1 * eff.Size
 			local it = { Layer = layer, Color = c, S = S, Anchor = anchor, OffR = cos(a) * rad, OffD = sin(a) * rad, T0 = t0, Trans = trans }
 			if layer.Alive and m == "Melt" then
-				it.Move, it.Material, it.Trans, it.T1 = MOVE.Melt, Enum.Material.Glass, 0.15, min(eff.EndRel, t0 + (finite(layer.Seconds) and layer.Seconds or 1))
+				it.Move, it.Material, it.Trans, it.T1 = MOVE.Melt, Enum.Material.Glass, 0.15, min(eff.TailAt, t0 + (finite(layer.Seconds) and layer.Seconds or 1))
 				it.Rot = CFrame.Angles(pi / 2 - 0.2, hash(i, 42) * TAU, 0)
 			elseif layer.Alive and m == "Bounce" then
-				it.Move, it.Material, it.T1 = MOVE.Bounce, Enum.Material.SmoothPlastic, min(eff.EndRel, t0 + (finite(layer.Seconds) and layer.Seconds or 0.8))
+				it.Move, it.Material, it.T1 = MOVE.Bounce, Enum.Material.SmoothPlastic, min(eff.TailAt, t0 + (finite(layer.Seconds) and layer.Seconds or 0.8))
 				it.T0 = T.Impact
 				it.VY, it.VH, it.Ang = (5 + 3 * hash(i, 43)) * eff.Size, (3 + 3 * hash(i, 44)) * eff.Size, a
 				it.SX, it.SY = 6 + 6 * hash(i, 45), 4 + 6 * hash(i, 46)
 			else -- Erupt / Wrap / anything else: up out of the ground around the target
 				it.Move, it.Material = MOVE.Rise, Enum.Material.Neon
 				it.TR = t0 + 0.04 * (i - 1)
-				it.TS = (layer.Alive and t0 + (finite(layer.Seconds) and layer.Seconds or 0.6) * 0.6) or (T.Linger + (eff.EndRel - T.Linger) * 0.3)
-				it.T1 = min(eff.EndRel, layer.Alive and t0 + (finite(layer.Seconds) and layer.Seconds or 0.6) or eff.EndRel)
+				it.TS = (layer.Alive and t0 + (finite(layer.Seconds) and layer.Seconds or 0.6) * 0.6) or (T.Linger + (eff.TailAt - T.Linger) * 0.3)
+				it.T1 = min(eff.TailAt, layer.Alive and t0 + (finite(layer.Seconds) and layer.Seconds or 0.6) or eff.TailAt)
 				it.Rot = CFrame.fromAxisAngle(V3(-sin(a), 0, cos(a)), (m == "Wrap") and -0.5 or -0.2) * CFrame.Angles(0, hash(i, 47) * TAU, 0)
 			end
 			addSolid(eff, key, it)
@@ -2698,10 +2772,10 @@ local function buildActor(eff)
 		n = min(n, floor(room / per))
 		anchors[1] = actor.At == "Target" and "Hit" or (actor.At or "Hit")
 	end
-	local tf = T.Linger + (eff.EndRel - T.Linger) * 0.4
+	local tf = T.Linger + (eff.TailAt - T.Linger) * 0.4
 	for _, anchor in ipairs(anchors) do
 		for i = 1, n do
-			local it = { Move = MOVE.Actor, Motion = motion, Anchor = anchor, I = i, N = n, Color = c, S = S, Material = mat, Trans = trans, T0 = t0, T1 = eff.EndRel, TF = tf, Actor = true }
+			local it = { Move = MOVE.Actor, Motion = motion, Anchor = anchor, I = i, N = n, Color = c, S = S, Material = mat, Trans = trans, T0 = t0, T1 = eff.TailAt, TF = tf, Actor = true }
 			if motion == "WishRise" then -- (Studio findings round) its keep-out radius: Clear x size + the body + its own half-width
 				it.Forward = finite(actor.Forward) and actor.Forward or nil
 				if finite(actor.Clear) then
@@ -2710,19 +2784,19 @@ local function buildActor(eff)
 			end
 			if motion == "SpiralUp" then
 				it.Dive = max(0.1, T.Release - 0.15)
-				it.T1 = min(eff.EndRel, T.Impact + 0.75)
+				it.T1 = min(eff.TailAt, T.Impact + 0.75)
 				it.TF = T.Impact + (it.T1 - T.Impact) * 0.5
 			elseif motion == "ChargeThrough" then
 				it.T0, it.T1, it.TF = T.Travel, T.Linger + 0.2, T.Impact + 0.05
 			elseif motion == "Eclipse" then
-				it.T1 = min(eff.EndRel, T.Impact + 0.7)
+				it.T1 = min(eff.TailAt, T.Impact + 0.7)
 			elseif motion == "Sweep" then -- (the pass, 0.64 s, centred on the impact; with a cut charge from the first frame)
 				it.TP0 = max(it.T0, T.Impact - 0.32)
 				it.TP1 = it.TP0 + 0.64
-				it.T1 = min(eff.EndRel, it.TP1 + 0.25) -- (Task 11c R1: a quicker fade over the far end)
+				it.T1 = min(eff.TailAt, it.TP1 + 0.25) -- (Task 11c R1: a quicker fade over the far end)
 				it.TF = it.TP1
 			elseif motion == "Seal" or motion == "FoxFire" then
-				it.TF = T.Linger + (eff.EndRel - T.Linger) * 0.5
+				it.TF = T.Linger + (eff.TailAt - T.Linger) * 0.5
 				if motion == "FoxFire" then -- (round robin: orb i circles ally Ally, as the J-th of its M orbs)
 					it.Ally = (i - 1) % allies + 1
 					it.J = floor((i - 1) / allies)
@@ -2741,7 +2815,7 @@ local function buildActor(eff)
 				local rad = (finite(actor.Radius) and actor.Radius or 2.5) * eff.Size
 				it.OffR, it.OffD = cos(a) * rad, sin(a) * rad
 				it.TR = t0 + 0.03 * (i - 1)
-				it.TS = T.Linger + (eff.EndRel - T.Linger) * 0.3
+				it.TS = T.Linger + (eff.TailAt - T.Linger) * 0.3
 				it.Rot = CFrame.fromAxisAngle(V3(-sin(a), 0, cos(a)), 0.25)
 			elseif motion == "RiseRoar" then -- a fan: the outer heads turn out a little, the middle one stands tallest
 				local k = i - (n + 1) / 2
@@ -2962,20 +3036,8 @@ local function release(eff)
 	eff.Emitters, eff.Beams, eff.Trails, eff.Lights, eff.Cores, eff.Rims = 0, 0, 0, 0, 0, 0
 end
 
-local function finish(eff)
-	for i = #St.live, 1, -1 do
-		if St.live[i] == eff then
-			table.remove(St.live, i)
-		end
-	end
-	if eff.Pre and St.pre[eff.Unit] == eff then
-		St.pre[eff.Unit] = nil
-	end
-	local pose = St.poses[eff.Unit]
-	if pose and pose.PreOf == eff then
-		St.poses[eff.Unit] = nil -- (a predicted charge's held pose never outlives it)
-	end
-	release(eff)
+-- the sound and the battle dim an effect started end with its beats
+local function endCues(eff)
 	-- (Task 11b) an inhale still rising ends with its effect (a real effect that took a press's charge over took its
 	-- token: the prediction gives none back)
 	if eff.InhaleToken ~= nil then
@@ -2992,9 +3054,29 @@ local function finish(eff)
 	end
 end
 
+local function finish(eff)
+	for i = #St.live, 1, -1 do
+		if St.live[i] == eff then
+			table.remove(St.live, i)
+		end
+	end
+	if eff.Pre and St.pre[eff.Unit] == eff then
+		St.pre[eff.Unit] = nil
+	end
+	local pose = St.poses[eff.Unit]
+	if pose and pose.PreOf == eff then
+		St.poses[eff.Unit] = nil -- (a predicted charge's held pose never outlives it)
+	end
+	release(eff)
+	endCues(eff)
+end
+
 -- Low quality: drop the Beams / Trails / bloom of a live effect at once
 local function strip(eff)
 	eff.Low = true
+	-- (attack effects, 2026-11-01) and no afterglow: a tail ends at the next Update
+	eff.EndRel = min(eff.EndRel, eff.TailAt)
+	eff.End = eff.Start + eff.EndRel
 	local keep = {}
 	for _, it in ipairs(eff.Items) do
 		local layer = it.Layer
@@ -3053,6 +3135,14 @@ local function stepEffect(eff, now)
 	if t < 0 then
 		return
 	end
+	if eff.Tail then -- (attack effects, 2026-11-01) what is left lies where it fell: the units' moves no longer carry it
+		for _, it in ipairs(eff.Items) do
+			if it.Kit then
+				it.Fn(eff, it, t)
+			end
+		end
+		return
+	end
 	refresh(eff)
 	eff.CorePos = corePosOf(eff, t)
 	local r = eff.Recipe
@@ -3090,8 +3180,13 @@ local function stepEffect(eff, now)
 	if not eff.Punched and t >= eff.Times.Impact then
 		eff.Punched = true
 		if eff.Mine and not eff.Miss and not eff.Pre then
-			if r.CameraPunch then
-				callHook("Punch", min(AttackFx.PUNCH_MAX, 0.14 + 0.06 * (r.Band - 3) + (eff.Crit and 0.05 or 0)), 0.2)
+			-- (attack effects, 2026-11-01) every own attack kicks; a basic hit waits its Gap since the last basic kick (a Special is never swallowed)
+			local kick = r.CameraPunch
+			if kick and (not kick.Basic or not St.lastBasicKick or now - St.lastBasicKick >= kick.Gap) then
+				if kick.Basic then
+					St.lastBasicKick = now
+				end
+				callHook("Punch", min(AttackFx.PUNCH_MAX, kick.Amount + (eff.Crit and kick.Crit or 0)), kick.Seconds)
 			end
 			if r.ScreenGlow then
 				callHook("ScreenGlow", (r.Core and r.Core.RimColor) or (r.Palette and r.Palette.Edge) or WHITE, 0.35)
@@ -3230,6 +3325,43 @@ local function recount(eff)
 	eff.Emitters, eff.Beams, eff.Trails, eff.Lights, eff.Rims, eff.Cores = n.Emitter, n.Beam, n.Trail, n.Light, n.Rim, cores
 end
 
+-- (attack effects, 2026-11-01) the beats are over: only the Linger items stay on; every other kit goes back and the cues end
+local function startTail(eff, now)
+	eff.Tail = true
+	eff.TailSince = now
+	local keep = {}
+	for _, it in ipairs(eff.Items) do
+		if it.Lingers and it.Kit then
+			keep[#keep + 1] = it
+		elseif it.Kit then
+			give(it.Kit)
+			it.Kit = nil
+		end
+	end
+	eff.Items = keep
+	recount(eff)
+	endCues(eff)
+end
+
+-- at most MAX_TAILS at once: the oldest makes room
+local function trimTails()
+	while true do
+		local n, oldest = 0, nil
+		for _, e in ipairs(St.live) do
+			if e.Tail then
+				n = n + 1
+				if not oldest or e.TailSince < oldest.TailSince then
+					oldest = e
+				end
+			end
+		end
+		if n <= AttackFx.MAX_TAILS then
+			return
+		end
+		pcall(finish, oldest)
+	end
+end
+
 -- (Task 11b) a charge given up (shattered, or what the real effect did not take over): out of St.pre, its streams stop
 -- now, its rim / light fade, the particles already out live on; gone RETIRE seconds from now
 local function retire(eff, now)
@@ -3252,7 +3384,8 @@ local function retire(eff, now)
 			it.T1 = min(it.T1, tRel + 0.15)
 		end
 	end
-	eff.EndRel = min(eff.EndRel, tRel + K.RETIRE)
+	eff.TailAt = min(eff.TailAt, tRel + K.RETIRE)
+	eff.EndRel = eff.TailAt
 	eff.End = eff.Start + eff.EndRel
 end
 
@@ -3333,7 +3466,9 @@ function AttackFx.Play(ctx)
 		-- budget: MAX_LIVE full effects, then MAX_STEPPED a band lower, then no
 		local full, stepped = 0, 0
 		for _, e in ipairs(St.live) do
-			if e.Stepped then
+			if e.Tail then
+				-- (attack effects, 2026-11-01) a lingering tail never blocks a new effect
+			elseif e.Stepped then
 				stepped = stepped + 1
 			else
 				full = full + 1
@@ -3366,6 +3501,8 @@ function AttackFx.Play(ctx)
 		local T = { Charge = 0, Release = C, Travel = C + R, Impact = C + R + Tr }
 		T.Linger = T.Impact + Imp
 		local endRel = T.Linger + max(L, aliveSecs)
+		-- (attack effects, 2026-11-01) what outlives the beats: nothing on Low, on a miss (no mark was left) or on a predicted charge
+		local afterglow = (quality ~= "Low" and not isPre and ctx.Miss ~= true and finite(r.Afterglow)) and r.Afterglow * r.Density or 0
 		if isPre then
 			-- open-ended: only the charge, until the real effect takes it over or it shatters (<= PRE_HOLD); its particles
 			-- may live their full life (the tuned Lifetime stops at EndRel)
@@ -3375,14 +3512,20 @@ function AttackFx.Play(ctx)
 			endRel = K.PRE_HOLD + 0.5
 		end
 		local area = (r.Attack == "Element") and (r.Shape or "Cone") or nil
+		local specialArea = (r.Attack == "Special") and ctx.Kind or nil
 		local reach
 		if area == "Line" then
 			reach = finite(ctx.Length) and ctx.Length or 24
 		elseif area == "Circle" then
 			reach = finite(ctx.Radius) and ctx.Radius or 8
+		elseif specialArea == "Beam" then
+			reach = finite(ctx.Length) and ctx.Length or 26
+		elseif SPECIAL_RADIUS[specialArea] then
+			reach = finite(ctx.Radius) and ctx.Radius or SPECIAL_RADIUS[specialArea]
 		else
 			reach = finite(ctx.Radius) and ctx.Radius or 9
 		end
+		local width = finite(ctx.Width) and ctx.Width or 4
 		local dir = V3(0, 0, -1)
 		if finite(ctx.Angle) then
 			dir = V3(cos(ctx.Angle), 0, sin(ctx.Angle))
@@ -3402,8 +3545,8 @@ function AttackFx.Play(ctx)
 		end
 		eff = {
 			Recipe = r, Unit = src.Unit, Src = src, Targets = targets, T = {}, S = src.Last, Dir = dir, Right = dir:Cross(UP),
-			Path = r.Core.Path, Area = area, Reach = reach, Drop = drop, Size = r.Size or 1,
-			Start = start, Times = T, EndRel = endRel, End = start + endRel,
+			Path = r.Core.Path, Area = area, Reach = reach, Width = width, WidthScale = width / 4, Drop = drop, Size = r.Size or 1, CloudSize = r.CloudSize or r.Size or 1,
+			Start = start, Times = T, TailAt = endRel, Afterglow = afterglow, TailTrans = r.TailTrans, EndRel = endRel + afterglow, End = start + endRel + afterglow,
 			Mine = ctx.Mine == true, Crit = ctx.Crit == true, Strong = ctx.Strong == true, Miss = ctx.Miss == true,
 			Stepped = step, Low = quality == "Low", Items = {}, Emitters = 0, Beams = 0, Trails = 0, Lights = 0, Cores = 0, Rims = 0,
 			Kind = ctx.Kind, Pre = isPre or nil, CueSeconds = isPre and (finite(ctx.Seconds) and max(0.1, ctx.Seconds) or K.PRE_HOLD) or nil,
@@ -3422,7 +3565,7 @@ function AttackFx.Play(ctx)
 		for _, layer in ipairs(r.Layers or {}) do
 			if layer.At == "Above" and finite(layer.Height) then
 				eff.CloudLift = layer.Height
-				eff.CloudTop = layer.Height + 0.5 * (finite(layer.Size) and layer.Size or 1) * eff.Size
+				eff.CloudTop = layer.Height + 0.5 * (finite(layer.Size) and layer.Size or 1) * eff.CloudSize
 				break
 			end
 		end
@@ -3468,7 +3611,8 @@ function AttackFx.Play(ctx)
 		local glowFirst = finite(ctx.DueAt) and r.Attack == "Special" and T.Release >= AttackFx.CUE_MIN
 		local ranked = {}
 		for i, layer in ipairs(layers) do
-			if isEmitter(layer) and not chargeDropped(eff, layer) then
+			-- (attack effects, 2026-11-01) Graphics Low gets rings, lights and ground marks of the impact package, not its emitter
+			if isEmitter(layer) and not chargeDropped(eff, layer) and not (quality == "Low" and layer.Id == "Sparks") then
 				local rank = emitterRank(layer, keep)
 				if glowFirst and layer.Beat == "Charge" and layer.At == "Source" and rank > 0.9 then
 					rank = 0.9
@@ -3493,6 +3637,14 @@ function AttackFx.Play(ctx)
 			end
 		end
 		addChargeCues(eff, pre) -- (Task 11b) the rim light + the inhale under a seen charge
+		-- (attack effects, 2026-11-01) no Linger item was built (a signature traded them away, the cap cut them): nothing to stay on for
+		local anyLinger = false
+		for _, it in ipairs(eff.Items) do
+			anyLinger = anyLinger or it.Lingers == true
+		end
+		if not anyLinger then
+			eff.Afterglow, eff.EndRel, eff.End = 0, eff.TailAt, eff.Start + eff.TailAt
+		end
 		St.live[#St.live + 1] = eff
 		if isPre then
 			local old = St.pre[eff.Unit]
@@ -3618,9 +3770,12 @@ function AttackFx.Update(now)
 				pcall(finish, eff)
 			elseif now >= eff.End then
 				finish(eff)
+			elseif not eff.Tail and now >= eff.Start + eff.TailAt then
+				startTail(eff, now)
 			end
 		end
 	end
+	trimTails()
 	for unit, entry in pairs(St.poses) do
 		local pending = entry.Prev and entry.SwitchAt and now < entry.SwitchAt + AttackFx.CROSSFADE
 		if not pending then
@@ -3694,6 +3849,7 @@ function AttackFx.ClearAll()
 	St.live = {}
 	St.poses = {}
 	St.pre = {}
+	St.lastBasicKick = nil
 end
 
 function AttackFx.SetQuality(q)
@@ -3705,9 +3861,11 @@ function AttackFx.SetQuality(q)
 end
 
 function AttackFx.Stats()
-	local s = { Live = 0, Stepped = 0, Emitters = 0, Beams = 0, Trails = 0, Lights = 0, Cores = 0, Rims = 0, Pooled = 0, PoolInstances = 0, Errors = St.errors }
+	local s = { Live = 0, Stepped = 0, Tails = 0, Emitters = 0, Beams = 0, Trails = 0, Lights = 0, Cores = 0, Rims = 0, Pooled = 0, PoolInstances = 0, Errors = St.errors }
 	for _, eff in ipairs(St.live) do
-		if eff.Stepped then
+		if eff.Tail then
+			s.Tails = s.Tails + 1
+		elseif eff.Stepped then
 			s.Stepped = s.Stepped + 1
 		else
 			s.Live = s.Live + 1

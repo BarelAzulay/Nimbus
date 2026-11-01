@@ -18,6 +18,23 @@ Check it with `py -3.12 -c "import lupa, numpy, PIL; print('ok')"`, and run the 
 --quick` wherever this file says `python3`. If `py` is not found right after the install, open a new terminal (or
 call `%LOCALAPPDATA%\Programs\Python\Launcher\py.exe` directly).
 
+## Model picker: which model and effort for this job?
+
+`pick_model.py` (Python 3 only, no other packages) holds the table of
+[the router spec](../docs/superpowers/specs/2026-11-01-model-effort-router.md) as data. Ask it before each stage of a build:
+
+```sh
+py -3.12 tools/pick_model.py --list                               # every job kind
+py -3.12 tools/pick_model.py --job saves                          # model, effort, reviewer, gate, reason
+py -3.12 tools/pick_model.py --build game-feature --many-systems  # plan, build, review, fix, gate + is it ultracode?
+```
+
+Flags only raise a route: `--saves --money --security --live --hard-to-undo --many-systems --failed-before --studio-only
+--release --failed-twice`. Any one of them goes one effort step up and ends a Sonnet or Haiku route. Two Up items (`--saves
+--money --security --live` are one item together), or `--release`, or `--failed-twice`, make the build ultracode;
+`--studio-only` raises the route but not the level, since the owner's look is the test there. An unknown kind exits 2 and lists the kinds (`other` is the table's default, Opus high with
+a Fable high review). Change a route in the spec and here together; `test_pick_model.py` pins the table and the floors.
+
 ## Place verifier: is the place file up to date?
 
 `verify_place.py` checks a Rojo-built place against `src/` (Python 3 only, no other packages): every
@@ -93,12 +110,12 @@ SIM_BATTLE="quick only=duels,raids" python3 -c "import lupa.luajit21 as L; L.Lua
   | `fighter` | the played kit against a passive NPC of k x its power (kit factor 1.25-1.7); mirror fights 6-45 s, none at the Ring's 90 s |
   | `support` | Support (Economy) pets: DPS ratio 0.65-0.75 of Combat pets; a Support fighter beats 2 x puddle_frog L8 in 10-60 % of seeds |
   | `levels` | level beats rarity (battles only): a L30 Common beats a L1 Secret (mean >= 93 %), a L100 evolved Common an unevolved L50 Secret (mean >= 80 %), a Secret stays the stronger pet at equal level and stage |
-  | `duels` | mirror duels per stage with scripted players on both sides: fair (40-60 % overall, 30-70 % per stage), no draws; the element counter (Water bubble_axolotl vs Flame maple_fox L10, neutral helpers, the wheel on vs off): it decides an even fight (>= 90 %) and is worth x1.15-1.45 TeamPower |
+  | `duels` | mirror duels per stage with scripted players on both sides: fair (40-60 % overall, 30-70 % per stage), no draws; the element counter (Water bubble_axolotl vs Flame maple_fox L10, neutral helpers, the wheel on vs off): it decides an even fight (>= 90 %) and is worth x1.15-1.45 TeamPower; an evolved mirror (3 L50 Legendaries, Evo 2, so reach x1.3 on both sides, 128 seeds) stays 40-60 % with no draws |
   | `raids` | per boss and fight tier (`SIM.RaidTeams`, `SIM.Targets.Raid`), a team near the top of the tier with the default trainer: solo <= 15 %, 3 teams 25-55 %, 8 teams >= 70 % (the 12-seed `full` run is the judge: `quick`'s 4 seeds are noisy); group fights, won and lost, last 100-240 s and none times out; a dare is harder; the lethal attack spares a dodging fighter and kills a standing one, and a fighter frozen just before keeps 2.5 s of its warning; joins / leaves; idle alts |
   | `ring` | the owner's wall with run XP (`SIM.Targets.Ring`): 3 L1 Commons 2-4 rounds and round 5 in <= 10 % of seeds, the Legendary, Secret, L50 and maxed bands; round 1 for every single level-1 rollable pet; shown level and power never drop |
   | `dungeon` | floor 1 for 3 L1 Commons (room 1 >= 90 %, room 2 40-60 %, clear < 15 %) and 3 L7 Commons; the eased room (`DungeonWave` opts) for every single level-1 rollable pet; the team ladder (`SIM.Targets.Dungeon`); a 4-party gains a floor |
   | `progress` | a new player's pace with real run XP: minutes to Ring 5, floor 1 and Ring 10 (`SIM.Targets.Progress`) |
-  | `training` | trained / evolved TeamPower ratios; trained mirror duels fair; trained raids 100-240 s |
+  | `training` | trained / evolved TeamPower ratios; trained mirror duels fair, evolved reach on both sides; trained raids 100-240 s with the evolved team's real reach |
   | `move` | the character patterns (random targets + an r 14 circle) at the legal run speed with a 200 ms feed delay for mochi_slime L1 / sunbeam_bear L20 / stormfang L50: the server fighter keeps up (gap <= 0.5 stud, zero leashes); a straight run-off is leashed after 3 s |
   | `perf` | a 16-fighter raid with minion waves steps in well under 1 ms |
   | `progression` | the XP and Cash behind each stage, `Validate()` |
@@ -319,6 +336,7 @@ The Phase 4 files (still run, updated for Phase 5 where 12.2 says so):
 | `smoke_p4_pets_client.lua` | the pet cards (PetCard) and the followers |
 | `smoke_p4_ui.lua` | the tutorial chapters 2 and 4, the NPC tips and the ring window (ArenaController) |
 | `smoke_p4_flow.lua` | end-to-end runs of several players through the home: garden, coins, Food Machine, EVOLVE, training, the ring, the portal, prestige, rejoin |
+| `smoke_afx_reach.lua`, `smoke_afx_impact.lua`, `smoke_afx_linger.lua` | attack effects (spec 2026-11-01): real reach x1.15 / x1.3 on the server and drawn as it hits, the frozen ability timers, the docs (`afx_docs`); sizes, the impact package and its caps (who yields to the 6-emitter cap, the rings' 14 / 16 studs inside the real radius, the lights' effective caps); the lingering tails, their budget, the disc pool in a sustained fight, the camera kick, the FOV punch's list and the zone tail |
 
 ### Mesh mode: `--mesh` (Phase 6)
 

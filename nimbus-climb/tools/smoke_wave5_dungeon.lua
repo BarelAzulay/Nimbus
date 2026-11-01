@@ -1200,9 +1200,16 @@ local function clientScenarios()
 			local fu = fid and BC.GetUnit(fid)
 			local maxHp = (fu and fu.MaxHp) or 100
 			local before = BC.GetStats().CameraShakes
+			-- (attack effects, 2026-11-01: every own attack kicks now: my fighter's kicks landing in this window are not this hit's shake)
+			local kicks, oldPunch = 0, AF.Hooks.Punch
+			AF.Hooks.Punch = function(amount, seconds)
+				kicks = kicks + 1
+				oldPunch(amount, seconds)
+			end
 			KC.toClient("BattleState", "Events", { { type = "Hit", from = enemy, to = fid, dmg = math.max(1, maxHp * 0.05) } }, d.id)
 			KC.advance(0.4)
-			return BC.GetStats().CameraShakes - before
+			AF.Hooks.Punch = oldPunch
+			return BC.GetStats().CameraShakes - before - kicks
 		end
 		T.check(gb and gb.Mode == "Dungeon" and fid and enemy, "w5 camera: (setup) my fighter and an enemy on the floor")
 		if gb and fid and enemy then
