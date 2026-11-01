@@ -403,30 +403,12 @@ local function loudReplication()
 	end
 end
 
--- EventService's scheduler must not open a raid in the middle of a scenario
-local realStartRaid = nil
-local function holdRaidSchedule(bs)
-	if realStartRaid == nil then
-		realStartRaid = bs.StartRaid
-		bs.StartRaid = function()
-			return false, "A raid is already running"
-		end
-	end
-end
-local function releaseRaidSchedule(bs)
-	if realStartRaid then
-		bs.StartRaid = realStartRaid
-		realStartRaid = nil
-	end
-end
-
 local function scenario(name, fn)
 	local run = guarded(name, fn)
 	return function(...)
 		local ok = run(...)
 		local bs = BS()
 		if bs then
-			releaseRaidSchedule(bs)
 			bs.Debug = nil
 			if bs.SetDoubleRewards then
 				bs.SetDoubleRewards(nil)
@@ -658,7 +640,6 @@ S.p4ring_start = scenario("p4ring_start", function()
 	end
 	quietReplication()
 	local bs, data, bc, Ty = BS(), DS(), BC(), TS()
-	holdRaidSchedule(bs)
 	ensurePortal()
 	local w = watchEnded()
 	T.check(type(bs.KeysInBattle) == "function" and type(bs.StartRing) == "function", "p4 ring: BattleService.StartRing and KeysInBattle exist (contract 5.4)")
@@ -879,7 +860,6 @@ S.p4ring_run = scenario("p4ring_run", function()
 	end
 	quietReplication()
 	local bs, data, bc = BS(), DS(), BC()
-	holdRaidSchedule(bs)
 	ensurePortal()
 	local w = watchEnded()
 	local info = arenaInfo()
@@ -998,7 +978,6 @@ S.p4ring_rewards = scenario("p4ring_rewards", function()
 	end
 	quietReplication()
 	local bs, data, bc, Ty = BS(), DS(), BC(), TS()
-	holdRaidSchedule(bs)
 	ensurePortal()
 	local w = watchEnded()
 	local p = newPlayer("RingRich", STRONG, 25)
@@ -1185,7 +1164,6 @@ S.p4ring_ends = scenario("p4ring_ends", function()
 	end
 	quietReplication()
 	local bs, data, bc = BS(), DS(), BC()
-	holdRaidSchedule(bs)
 	ensurePortal()
 	local w = watchEnded()
 	local info = arenaInfo()
@@ -1404,7 +1382,6 @@ S.p4ring_lossxp = scenario("p4ring_lossxp", function()
 	end
 	quietReplication()
 	local bs, data, bc = BS(), DS(), BC()
-	holdRaidSchedule(bs)
 	ensurePortal()
 	local w = watchEnded()
 	local L = bc.LossRules or {}

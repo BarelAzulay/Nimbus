@@ -94,7 +94,7 @@ SIM_BATTLE="quick only=duels,raids" python3 -c "import lupa.luajit21 as L; L.Lua
   | `support` | Support (Economy) pets: DPS ratio 0.65-0.75 of Combat pets; a Support fighter beats 2 x puddle_frog L8 in 10-60 % of seeds |
   | `levels` | level beats rarity (battles only): a L30 Common beats a L1 Secret (mean >= 93 %), a L100 evolved Common an unevolved L50 Secret (mean >= 80 %), a Secret stays the stronger pet at equal level and stage |
   | `duels` | mirror duels per stage with scripted players on both sides: fair (40-60 % overall, 30-70 % per stage), no draws; the element counter (Water bubble_axolotl vs Flame maple_fox L10, neutral helpers, the wheel on vs off): it decides an even fight (>= 90 %) and is worth x1.15-1.45 TeamPower |
-  | `raids` | 1 / 4 / 8 / 16 dodging fighters finish every boss in 100-240 s (a solo under a quarter of BaselineDps loses); the L35 baseline: the owner's L10/11/11 Secrets win 0 of 8 solo raids, 4 and 8 owner-teams finish in 100-240 s; eight mid (M5) teams win >= 90 % of every boss in at most 240 s on average (4 x M5 sits on the HP floor, it counts neither as a win nor in the band); a Lv 5 solo never wins, eight Lv 5 teams >= 70 %, Lv 40 groups always, a Lv 40 solo >= 75 %; no one-shots; joins / leaves; idle alts |
+  | `raids` | per boss and fight tier (`SIM.RaidTeams`, `SIM.Targets.Raid`), a team near the top of the tier with the default trainer: solo <= 15 %, 3 teams 25-55 %, 8 teams >= 70 %; won group fights last 100-240 s; a dare is harder; the lethal attack spares a dodging fighter and kills a standing one; joins / leaves; idle alts |
   | `ring` | the owner's wall with run XP (`SIM.Targets.Ring`): 3 L1 Commons 2-4 rounds and round 5 in <= 10 % of seeds, the Legendary, Secret, L50 and maxed bands; round 1 for every single level-1 rollable pet; shown level and power never drop |
   | `dungeon` | floor 1 for 3 L1 Commons (room 1 >= 90 %, room 2 40-60 %, clear < 15 %) and 3 L7 Commons; the eased room (`DungeonWave` opts) for every single level-1 rollable pet; the team ladder (`SIM.Targets.Dungeon`); a 4-party gains a floor |
   | `progress` | a new player's pace with real run XP: minutes to Ring 5, floor 1 and Ring 10 (`SIM.Targets.Progress`) |
@@ -217,8 +217,8 @@ python3 tools/render_gui.py portal:Hard:2 -o portal.png              # a portal'
 * `arena[:<view>[:<arg>]]` (Phase 3 UI: MenuController's Team window, ArenaController): a profile with a battle team,
   trophies and a few Dungeon floors cleared, then `team` (default), `newteam` (empty presets),
   `duels` / `raid` / `leaders` (the Arena panel's tabs, with two
-  more players to challenge, a running raid, Double Rewards) or `side` (no window: the duel invite, the queue, the raid
-  join card and the event countdown at the right edge); e.g. `python3 tools/render_gui.py arena:duels --grid`.
+  more players to challenge, a running raid, Double Rewards) or `side` (no window: the duel invite, the queue and the
+  Double Rewards countdown at the right edge); e.g. `python3 tools/render_gui.py arena:duels --grid`.
 * Phase 4 scenarios (a shared care profile: Prestige 1, a Garden with 4 places, plants, the Food Machine and the
   Training Place): `home[:coins]` (the Home window with its Pet Garden card; `:coins` = a home from before Phase 4
   with kept places, old prices and a big pile of coins), `feed` (CareController's Food Machine list: garden pets first,
@@ -242,8 +242,8 @@ python3 tools/render_gui.py portal:Hard:2 -o portal.png              # a portal'
   by name.
 * `arenaboards[:<countdown|raid|idle>]` (Phase 3, ArenaBuilder) draws the Battle Arena's world GUIs instead of the HUD,
   like `portal`: the real LobbyBuilder + ArenaBuilder build the arena (as the server), a sample ArenaState goes through
-  `ApplyArenaState` (`countdown`: the next Boss Raid in 1:35 + Double Rewards, `raid`: a live raid with its HP bar,
-  `idle`: the next raid 20 minutes away), then every SurfaceGui (event board, trophy leaderboard, gate and arch signs,
+  `ApplyArenaState` (`countdown`: Double Rewards in 1:35 and the boss waiting, `raid`: a floor fight with its HP bar and a
+  pocket fight's line, `idle`: the boss waiting, the next boss 20 minutes away), then every SurfaceGui (event board, trophy leaderboard, gate and arch signs,
   both faces) is drawn at its on-screen size from 30 studs and every BillboardGui (duel pad tags) at
   its pixel size, one copy of each; e.g. `python3 tools/render_gui.py arenaboards:raid -o boards.png`.
 * `portal` draws world GUIs instead of the HUD: the real LobbyBuilder + PortalService run (as the server) with
@@ -290,6 +290,11 @@ The Phase 5 files (ARCHITECTURE_V3.md "Phase 5 build contract" 12.1; each owner 
 | `smoke_p5_home.lua` | the 11 stations, the fold of Phase 4 homes (Home Level and food never drop), pad signs, HomeRoam (the same plan on server and client), berries and the Berry Basket, the Cloud Cash ledger; client half: roaming pets, the coins and the home window strip |
 | `smoke_p5_world.lua` | LightingService (painted sky vs the fallback), LightingStack, the art rules (`p5world_style`), the lobby and the Gate Court, GateService, the one obby portal and its level picker |
 | `smoke_p5_gui.lua` | the Neon kit, stamina 150 with its dash ticks, the HUD pills and `client_p5gui_cover`: every window at four screen sizes covers at most 60 % (one named block per window owner) |
+| `smoke_raid_tiers.lua` | boss raids: the fight tiers, per-tier rewards and boss numbers, the enrage at 30 % health and the lethal telegraph |
+| `smoke_raid_service.lua` | boss raids: one fight per tier at the gate (floor or pocket), dares, the walk-through poll, the 60 s return per tier, the reward clocks, the boss rotation, the cost of 4 fights x 8 raiders |
+| `smoke_raid_world.lua` | boss raids: `ArenaInfo.Gate`, the dare prompt, Raid pockets, the event board's raid lines, tier dressing and head tracking, only the floor fight drives the sky |
+| `smoke_raid_client.lua` | boss raids: the idle boss, the gate tag, the dare panel, the Raid page, the enrage edges, the lethal telegraph, the local pocket sky, 844x390 |
+| `smoke_raid_flow.lua` | boss raids end to end: a new player through the gate with the tutorial, a won dare and its limit, two tiers at once, the limit across servers, an old save, the result card |
 | `smoke_p5_battleservice.lua` | BattleService's command ladder, the server fighter that follows the character (the leash), fair duels, raids, the ring, the encounter API the Dungeon uses, shutdown |
 | `smoke_p5_dungeon.lua` | parties (create, join, ready, kick), runs (rooms, waves, doors, the treasure), loot paid once per room and member, first clears once, every way a run ends, the world, the net; client half: the Dungeon window, run card and end card |
 | `smoke_p5_battleclient.lua` | the battle HUD (fighter card, helpers, enemy rows), input (keys bound only in battle, hold to attack, swap hold, Tab), the models, the result card, phone and landscape layouts |

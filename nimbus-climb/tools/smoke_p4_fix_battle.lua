@@ -312,13 +312,8 @@ local function cleanup(list)
 	advance(5)
 end
 
--- EventService's scheduler must not open a raid in the middle of a scenario; the BattleState traffic stays out of
--- the client replay log
-local function hold(bs)
-	local real = bs.StartRaid
-	bs.StartRaid = function()
-		return false, "A raid is already running"
-	end
+-- the BattleState traffic stays out of the client replay log
+local function hold()
 	local hook = Mock._onRemote
 	if hook then
 		Mock._onRemote = function(entry)
@@ -328,7 +323,6 @@ local function hold(bs)
 		end
 	end
 	return function()
-		bs.StartRaid = real
 		Mock._onRemote = hook
 	end
 end
@@ -341,7 +335,7 @@ S.p4fixbat_forfeit = guarded("p4fixbat_forfeit", function()
 		return
 	end
 	local bs, data = BS(), DS()
-	local release = hold(bs)
+	local release = hold()
 	local cmd = K.remoteFolder():FindFirstChild("BattleCommand")
 	T.check(cmd ~= nil, "p4 fix battle: the BattleCommand remote exists")
 
@@ -400,7 +394,7 @@ S.p4fixbat_return = guarded("p4fixbat_return", function()
 		return
 	end
 	local bs = BS()
-	local release = hold(bs)
+	local release = hold()
 	local info = arenaInfo()
 	local portal = ringPos()
 	local trialRet = typeof(info.ReturnCFrame) == "CFrame" and info.ReturnCFrame.Position or portal

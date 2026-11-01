@@ -754,24 +754,6 @@ local function serverScenarios()
 		return st and st.battles and battleId and st.battles[battleId] or nil
 	end
 
-	-- EventService's scheduler must not open a raid in the middle of these scenarios
-	local realStartRaid = nil
-	local function holdRaidSchedule(bs)
-		if realStartRaid == nil then
-			realStartRaid = bs.StartRaid
-			bs.StartRaid = function()
-				return false, "A raid is already running"
-			end
-		end
-		return realStartRaid
-	end
-	local function releaseRaidSchedule(bs)
-		if realStartRaid then
-			bs.StartRaid = realStartRaid
-			realStartRaid = nil
-		end
-	end
-
 	local function cleanup(list)
 		local bs = req("server/Services/BattleService")
 		for _, p in ipairs(list) do
@@ -902,21 +884,17 @@ local function serverScenarios()
 		cleanup({ a, c, z })
 
 		-- a raid: Cheer works there too
-		local startRaid = holdRaidSchedule(bs)
-		if bs.GetRaidStatus() ~= nil then
-			bs.EndRaid()
-			advance(0.2)
-		end
+		bs.EndRaids("Ended")
+		advance(0.2)
 		local r = newPlayer("CheerRaid", STRONG, 20)
 		toArena(r, 0, 6)
-		local okR = startRaid("lava_golem")
-		local okJR = okR and bs.JoinRaid(r)
+		local okR = bs.SetRaidBoss("lava_golem")
+		local okJR = okR and bs.EnterRaid(r)
 		advance(0.5)
 		local okC, whyC = bs.Command(r, "Cheer")
 		T.check(okR and okJR and okC == true, "cheer svc: a raid: Cheer is accepted", tostring(whyC))
-		bs.EndRaid()
+		bs.EndRaids("Ended")
 		advance(0.3)
-		releaseRaidSchedule(bs)
 		cleanup({ r })
 
 		-- a duel: refused NoCheer (the podium cheer there is visual only)
@@ -1191,20 +1169,16 @@ local function serverScenarios()
 		cleanup({ q })
 
 		-- a raid joiner and a dungeon member are never locked
-		local startRaid = holdRaidSchedule(bs)
-		if bs.GetRaidStatus() ~= nil then
-			bs.EndRaid()
-			advance(0.2)
-		end
+		bs.EndRaids("Ended")
+		advance(0.2)
 		local r = newPlayer("PodRaid", STRONG, 20)
 		toArena(r, 0, 6)
-		local okR = startRaid("lava_golem")
-		local okJ = okR and bs.JoinRaid(r)
+		local okR = bs.SetRaidBoss("lava_golem")
+		local okJ = okR and bs.EnterRaid(r)
 		advance(1)
 		local raidFree = free(r)
-		bs.EndRaid()
+		bs.EndRaids("Ended")
 		advance(0.3)
-		releaseRaidSchedule(bs)
 		local dm = newPlayer("PodDgn", STRONG, 20)
 		local idE, partE = encounter(bs, { dm }, 6203)
 		advance(1)

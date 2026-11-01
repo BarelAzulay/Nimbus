@@ -174,10 +174,6 @@ local function serverScenarios()
 			return
 		end
 		local bs, data, tc = BS(), DS(), TC()
-		local realRaid = bs.StartRaid
-		bs.StartRaid = function()
-			return false, "A raid is already running"
-		end
 		local a = newPlayer("TbLossRing", 1)
 		T.check(claimHome(a) ~= nil, "tb loss: (setup) the climber claims a home")
 		local need1 = tc.XpToNext(1)
@@ -188,7 +184,6 @@ local function serverScenarios()
 		toRing(a)
 		local ok, id = bs.StartRing(a)
 		if not T.check(ok == true, "tb loss: (setup) the run starts", tostring(id)) then
-			bs.StartRaid = realRaid
 			K.removePlayers({ a })
 			return
 		end
@@ -257,7 +252,6 @@ local function serverScenarios()
 			bs.Forfeit(a)
 		end
 		advance(5.5)
-		bs.StartRaid = realRaid
 		K.flushErrors("tb_loss_levels_ring")
 		K.flushWarnings("tb_loss_levels_ring", { "[BattleService]", "[DataService]", "[TycoonService]", "[PetCareService]", "[MeshLibrary]" })
 		local St = svcState()

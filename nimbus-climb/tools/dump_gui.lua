@@ -49,7 +49,7 @@
 --   toasts                four side toasts (info / good / bad / token)
 --   arena[:<view>[:<arg>]]  Phase 3 UI with a battle profile (team, trophies, trials 1-6 cleared): view team (default)
 --                         | team4 (Prestige 1) | newteam | trials[:<level>] | duels | raid | leaders | side (the duel
---                         invite card, the queue, the open raid card and the event countdown, no window)
+--                         invite card, the queue and the Double Rewards countdown, no window)
 --   battle[:<mode>[:<phase>]]  the Phase 3 battle HUD (BattleController) fed by a real BattleSim stepped at 10 Hz:
 --                         mode trial (default) | duel | raid | spectate | ring, phase fight (default) | ready (two SPECIAL
 --                         buttons lit) | retreat | result (victory card) | lost (defeat card) | overtime (the duel
@@ -1039,7 +1039,7 @@ end)
 
 -- Phase 3 UI (the Pets window, ArenaController): a profile with a battle team, trophies and trial
 -- progress, then one view. arena:team | team4 (Prestige 1: four slots) | newteam (empty presets) | trials[:<level>] |
--- duels | raid | leaders | side (no window: a duel invite, the queue, an open raid and the event countdown)
+-- duels | raid | leaders | side (no window: a duel invite, the queue and the Double Rewards countdown)
 scenario("arena", function(view, arg)
 	local snap = snapshot()
 	local owned = {}
@@ -1914,13 +1914,17 @@ local function arenaBoardsScene(view, width, height)
 	end
 	local state = { Leaderboard = board }
 	if view == "raid" then
-		state.Raid = { Active = true, BossId = "lava_golem", Hp = 61000, MaxHp = 90000, Players = 3, EndsIn = 211 }
+		state.Raid = { Active = true, BossId = "lava_golem", Name = "Lava Golem", BattleId = "R1", FloorTier = "High", FloorHiddenIn = 0, Closed = {}, NextBossIn = 600, NextBoss = "frost_wyrm",
+			Fights = {
+				High = { Tier = "High", Floor = true, Hp = 61000, MaxHp = 90000, Players = 3, EndsIn = 211 },
+				Mid = { Tier = "Mid", Floor = false, Hp = 20000, MaxHp = 30000, Players = 1, EndsIn = 120 },
+			} }
 		state.Next = { Kind = "DoubleRewards", StartsIn = 1500 }
 	elseif view == "idle" then
-		state.Next = { Kind = "BossRaid", BossId = "frost_wyrm", StartsIn = 1177 }
+		state.Raid = { Active = false, BossId = "frost_wyrm", Name = "Frost Wyrm", FloorHiddenIn = 0, Closed = {}, Fights = {}, NextBossIn = 1177, NextBoss = "shadow_hydra" }
 	else
-		state.Next = { Kind = "BossRaid", BossId = "storm_titan", StartsIn = 95 }
-		state.Double = { Active = true, EndsIn = 2400 }
+		state.Raid = { Active = false, BossId = "storm_titan", Name = "Storm Titan", FloorHiddenIn = 0, Closed = {}, Fights = {}, NextBossIn = 600, NextBoss = "lava_golem" }
+		state.Next = { Kind = "DoubleRewards", StartsIn = 95 }
 	end
 	if type(AB.ApplyArenaState) == "function" then
 		local ok, err = pcall(AB.ApplyArenaState, state)

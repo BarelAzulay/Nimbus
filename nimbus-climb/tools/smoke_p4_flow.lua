@@ -478,13 +478,6 @@ end
 -- and every player of the scenario leaves at the end (whatever happened)
 local function scenario(name, fn)
 	local run = guarded(name, function()
-		local bs = requireAt("server/Services/BattleService")
-		local realStartRaid = bs and bs.StartRaid
-		if bs then
-			bs.StartRaid = function()
-				return false, "A raid is already running"
-			end
-		end
 		local savedHook = Mock._onRemote
 		if savedHook then
 			Mock._onRemote = function(entry)
@@ -512,9 +505,6 @@ local function scenario(name, fn)
 			end
 		end
 		advance(5)
-		if bs then
-			bs.StartRaid = realStartRaid
-		end
 		if not ok then
 			error(err, 0)
 		end

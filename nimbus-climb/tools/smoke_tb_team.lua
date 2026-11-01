@@ -209,18 +209,6 @@ local function toRing(p)
 	advance(0.05)
 end
 
--- EventService's scheduler must not open a raid in the middle of a scenario
-local function holdRaids()
-	local bs = BS()
-	local real = bs.StartRaid
-	bs.StartRaid = function()
-		return false, "A raid is already running"
-	end
-	return function()
-		bs.StartRaid = real
-	end
-end
-
 ----------------------------------------------------------------------------------------------------
 -- tb_team_invariant
 ----------------------------------------------------------------------------------------------------
@@ -309,12 +297,10 @@ S.tb_team_busy = guarded("tb_team_busy", function()
 		return
 	end
 	local Data, Pets, Battle, Ty = DS(), PS(), BS(), TS()
-	local release = holdRaids()
 	local UID = 966201
 	local a = join("TbBusy", UID)
 	local prof = give(a, { K1, K2, K3, K4, K5 })
 	if not T.check(readyHome(a) ~= nil, "tb team: (setup) a home with a Training Place") then
-		release()
 		return
 	end
 	T.check(Data.SetTeam(a, 1, { K1, K3, K4 }) == true and eq(prof.Equipped, { K1, K3, K4 }), "tb team: (setup) a full team", listText(prof.Equipped))
@@ -381,7 +367,6 @@ S.tb_team_busy = guarded("tb_team_busy", function()
 	T.check((Data.GetHome(a).Garden or {})[1] == K3 and eq(prof.Teams.Presets[1], { K1, K3, K4 }) and eq(prof.Equipped, { K1, K4 }) and Data.BusyKeys(a)[K3] == "Garden",
 		"tb team: a rejoin keeps the pet in its Garden place AND in its slot", listText(prof.Teams.Presets[1]) .. " / " .. listText(prof.Equipped) .. " / " .. tostring(home))
 	if not T.check(readyHome(a) ~= nil, "tb team: (setup) the home claimed again") then
-		release()
 		return
 	end
 	-- the garden place given up: the pet is back in the followers by itself
@@ -408,7 +393,6 @@ S.tb_team_busy = guarded("tb_team_busy", function()
 	T.check(Data.BusyKeys(nil) ~= nil and next(Data.BusyKeys(nil)) == nil, "tb team: BusyKeys(nil) = {}")
 	K.removePlayers({ a })
 	advance(1)
-	release()
 	K.flushErrors("tb_team_busy")
 	K.flushWarnings("tb_team_busy", { "[DataService]" })
 end)
@@ -422,13 +406,11 @@ S.tb_team_refusal = guarded("tb_team_refusal", function()
 	end
 	local Data, Battle = DS(), BS()
 	local DGS = req("server/Services/DungeonService")
-	local release = holdRaids()
 	local b = K.freshPlayers(1, "TbRefuse")[1]
 	advance(0.5)
 	local prof = give(b, { K1, K2, K3 })
 	Data.SetTeam(b, 1, {})
 	if not T.check(readyHome(b) ~= nil, "tb team: (setup) a home") then
-		release()
 		return
 	end
 	T.check(type(Battle.TEAM_REFUSALS) == "table" and Battle.TEAM_REFUSALS.Empty == "Your team is empty: open Pets and put a pet in it" and Battle.TEAM_REFUSALS.Busy == "Your whole team is busy: training or gardening", "tb team: BattleService.TEAM_REFUSALS holds the two texts")
@@ -443,7 +425,6 @@ S.tb_team_refusal = guarded("tb_team_refusal", function()
 	T.check(#prof.Equipped == 0, "tb team: ...and nothing was filled in silently")
 	K.removePlayers({ b })
 	advance(1)
-	release()
 	K.flushErrors("tb_team_refusal")
 	K.flushWarnings("tb_team_refusal", { "[DataService]" })
 end)
@@ -710,7 +691,6 @@ S.tb_team_rollout = guarded("tb_team_rollout", function()
 		T.check(prof.Pets[K4] == 1 and Data.MigratedNow(p, "B4TeamFollow") ~= nil, "tb team rollout: no lost key")
 		leave(p)
 	end)
-	release()
 	if not okRun then
 		error(errRun, 0)
 	end

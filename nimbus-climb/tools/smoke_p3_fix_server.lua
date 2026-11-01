@@ -11,7 +11,7 @@
 --   p3fixsrv_leave     both duellists leaving in one frame: the duel is void (no penalty, no PvP loss for either);
 --                      BattleService.Shutdown() (game:BindToClose) ends a duel void and a raid with the tier of the
 --                      share so far, refuses new battles until SetClosing(false)
---   p3fixsrv_net16     a full 16-raider Shadow Hydra raid: under ~20 KB/s per fighter on average, fighters at ~10 Hz,
+--   p3fixsrv_net16     two full fights of 8 on two tiers (Shadow Hydra): under 6 KB/s per fighter on average in each fight, fighters at ~10 Hz,
 --                      a spectator at ~5 Hz, U a flat number array, and the spectator's decoded picture equals the
 --                      fighter's at the same T (BattleSim.DecodeSnapshot round trip)
 --   client_p3fixsrv_wire (client world) BattleController.HandleState("Snapshot") decodes the wire form: units follow
@@ -306,26 +306,8 @@ local function serverScenarios()
 		end, seconds or 130)
 	end
 
-	-- EventService's scheduler must not open a raid in the middle of a scenario: StartRaid refuses while held
-	local realStartRaid = nil
-	local function holdRaidSchedule(bs)
-		if realStartRaid == nil then
-			realStartRaid = bs.StartRaid
-			bs.StartRaid = function()
-				return false, "A raid is already running"
-			end
-		end
-		return realStartRaid
-	end
-	local function releaseRaidSchedule(bs)
-		if realStartRaid then
-			bs.StartRaid = realStartRaid
-			realStartRaid = nil
-		end
-	end
 	local function endAnyRaid(bs)
-		if bs.GetRaidStatus() ~= nil then
-			bs.EndRaid()
+		if bs.EndRaids("Ended") > 0 then
 			advance(0.2)
 		end
 	end
@@ -514,7 +496,6 @@ local function serverScenarios()
 			local ok = run(...)
 			local bs = BS()
 			if bs then
-				releaseRaidSchedule(bs)
 				bs.Debug = nil
 				if bs.SetClosing then
 					bs.SetClosing(false)
@@ -601,16 +582,15 @@ local function serverScenarios()
 		local bs, cat, es = BS(), BC(), ES()
 		local w = watchEnded()
 		endAnyRaid(bs)
-		local startRaid = holdRaidSchedule(bs)
 		local hero = newPlayer("ShareHero", STRONG, 20)
 		local alt = newPlayer("ShareAlt", WEAK, 1)
 		toArena(hero, -4, 0)
 		toArena(alt, 4, 0)
-		local okR, raidId = startRaid("storm_titan")
-		local okJ = bs.JoinRaid(hero)
-		local hpSolo = bs.GetRaidStatus().MaxHp
-		local okA = bs.JoinRaid(alt)
-		local hpBoth = bs.GetRaidStatus().MaxHp
+		local okR = bs.SetRaidBoss("storm_titan")
+		local okJ, raidId = bs.EnterRaid(hero)
+		local hpSolo = bs.GetRaidStatus().Fights.Mid.MaxHp
+		local okA = bs.EnterRaid(alt, "Mid") -- (a Starter's dare: the only way these two share a fight)
+		local hpBoth = bs.GetRaidStatus().Fights.Mid.MaxHp
 		-- (wave 6: every pet fights any enemy in the fight area by itself; the zero-share rule below needs an alt whose
 		-- pets never hit, so its engage rule is held off, white-box: the sim team's noEngage)
 		do
@@ -621,8 +601,7 @@ local function serverScenarios()
 					break
 				end
 				if name == "St" and type(v) == "table" and type(v.battles) == "table" then
-					local st = bs.GetRaidStatus()
-					local b = st and v.battles[st.BattleId]
+					local b = v.battles[raidId]
 					local team = b and b.Sim and b.Sim.teamByOwner and b.Sim.teamByOwner[alt.UserId]
 					if team then
 						team.noEngage = true
@@ -636,11 +615,11 @@ local function serverScenarios()
 		local altTokens0, altRaids0 = tokens(alt), record(alt).Raids or 0
 		local heroTokens0 = tokens(hero)
 		local mark = K.logSize()
-		-- the alt stands still the whole time (no damage), the hero fights; the raid is cut short as a loss (EndRaid)
+		-- the alt stands still the whole time (no damage), the hero fights; the raid is cut short as a loss (EndRaids)
 		drvPlay({ drvTracker(hero, 0) }, 20, function()
 			return w.find(raidId) ~= nil
 		end)
-		bs.EndRaid()
+		bs.EndRaids("Ended")
 		local r = w.find(raidId)
 		T.check(r ~= nil and r.Mode == "Raid", "raid share: (setup) the raid ends", r and r.Reason or "no end")
 		local rwAlt, rwHero = r and r.Rewards[alt.UserId], r and r.Rewards[hero.UserId]
@@ -651,7 +630,7 @@ local function serverScenarios()
 		T.check(toasted(alt, "never hit the boss", mark), "raid share: ...and a side toast says so")
 		T.check(cat.RaidTier(0.001, true) ~= nil and cat.RaidTier(0.001, true).Id == "Helper" and cat.RaidTier(0.001, false).Id == "Loss",
 			"raid share: a weak raider who hit the boss even a little earns the Helper tier (Loss when the raid fails)")
-		local loss = cat.RaidTier(1, false)
+		local loss = cat.RaidTier(1, false, "Mid")
 		T.check(rwHero and rwHero.Tier == "Loss" and tokens(hero) - heroTokens0 == rwHero.Tokens and rwHero.Tokens == loss.Tokens * (rwHero.Double and 2 or 1),
 			"raid share: the hero who fought gets the Loss tier of the cut-short raid", rwHero and tostring(rwHero.Tier) or "none")
 		T.check(r and type(r.Fighters) == "table" and #r.Fighters == 2 and contains(r.Fighters, hero.UserId), "raid share: the result lists Fighters (the raiders still in at the end)")
@@ -722,7 +701,7 @@ local function serverScenarios()
 		T.check((sa.PvPLosses or 0) == lossesA and (sb.PvPLosses or 0) == lossesB, "leave: ...and neither got a PvP loss")
 		T.check(r and r.Rewards[uidA] and r.Rewards[uidA].Void == true and r.Rewards[uidB] and r.Rewards[uidB].Void == true, "leave: ...both rewards records are Void")
 
-		-- a shutdown: a running duel is void, a running raid pays the share so far, new battles are refused
+		-- a shutdown: a running duel is void, a running raid pays like a loss, new battles are refused
 		local c = newPlayer("ShutC", STRONG, 10)
 		local d = newPlayer("ShutD", MID, 10)
 		local e = newPlayer("ShutE", STRONG, 20)
@@ -733,10 +712,10 @@ local function serverScenarios()
 		toArena(e, 0, 6)
 		local okD, duelId = bs.StartDuel(c, d)
 		endAnyRaid(bs)
-		local startRaid = holdRaidSchedule(bs)
-		local okR, raidId = startRaid("lava_golem")
-		local okJ = bs.JoinRaid(e)
+		local okR = bs.SetRaidBoss("lava_golem")
+		local okJ, raidId = bs.EnterRaid(e)
 		T.check(okD and okR and okJ, "leave: (setup) a duel and a raid run", tostring(duelId) .. " " .. tostring(raidId))
+		local tierE = select(1, bs.RaidTierFor(e))
 		drvPlay({ drvTracker(e, 0) }, 12)
 		local tc0, td0, te0 = tokens(c), tokens(d), tokens(e)
 		local trC, trD = record(c).Trophies, record(d).Trophies
@@ -749,10 +728,10 @@ local function serverScenarios()
 		T.check(endC and endC.Reason == "Shutdown" and toasted(c, "restarting", m3), "leave: ...the duellists get 'End' (Reason Shutdown) and a side toast")
 		local rwE = rr and rr.Rewards[e.UserId]
 		local share = rr and rr.Shares[e.UserId] or 0
-		local tier = cat.RaidTier(share, true)
-		T.check(rr ~= nil and rr.Reason == "Shutdown" and rwE and tier and rwE.Tier == tier.Id and rwE.Tokens > 0 and tokens(e) - te0 == rwE.Tokens and rwE.EventPet == nil,
-			"leave: the raid ends with Reason Shutdown and pays the tier of the share so far (no event-pet roll)", rwE and tostring(rwE.Tier) or "none")
-		T.check(bs.GetRaidStatus() == nil and not bs.IsInBattle(c) and not bs.IsInBattle(e), "leave: ...nothing is left running, everyone is free")
+		local tier = cat.RaidTier(share, false, tierE)
+		T.check(rr ~= nil and rr.Reason == "Shutdown" and rwE and tier and rwE.Tier == "Loss" and rwE.Tokens == tier.Tokens and tokens(e) - te0 == rwE.Tokens and rwE.EventPet == nil,
+			"leave: the raid ends with Reason Shutdown and pays like a loss (no medal, no event-pet roll)", rwE and tostring(rwE.Tier) or "none")
+		T.check(next(bs.GetRaidStatus().Fights) == nil and not bs.IsInBattle(c) and not bs.IsInBattle(e), "leave: ...nothing is left running, everyone is free")
 		local okT, whyT = bs.StartDuel(c, d)
 		T.check(okT == false and type(whyT) == "string" and whyT:find("restarting", 1, true) ~= nil, "leave: while closing, new battles are refused", tostring(whyT))
 		if type(bs.StartRing) == "function" then
@@ -783,19 +762,21 @@ local function serverScenarios()
 		local bs, Sm = BS(), Sim()
 		local info = arenaInfo()
 		endAnyRaid(bs)
-		local okR = holdRaidSchedule(bs)("shadow_hydra")
+		local okR = bs.SetRaidBoss("shadow_hydra")
 		local raiders = {}
 		local rosters = { STRONG, MID, ALT, WEAK }
 		for i = 1, 16 do
-			raiders[i] = newPlayer("Net16", rosters[(i - 1) % 4 + 1], 12)
+			-- two fights of 8 (at most 8 raiders per fight): Starter on the floor, Mid in a pocket
+			raiders[i] = newPlayer("Net16", rosters[(i - 1) % 4 + 1], i <= 8 and 12 or 30)
 			toArena(raiders[i], (i - 8) * 2, 8)
-			bs.JoinRaid(raiders[i])
+			bs.EnterRaid(raiders[i])
 		end
 		local watcher = newPlayer("Net16Watch", WEAK)
-		Mock.Teleport(watcher, info.Floor.CFrame * CFrame.new(0, 3, 62)) -- in the stands: a spectator
+		Mock.Teleport(watcher, info.Floor.CFrame * CFrame.new(0, 3, 62)) -- in the stands: a spectator of the floor fight
 		advance(2)
-		local status = bs.GetRaidStatus()
-		T.check(okR and status and status.Players == 16, "net16: (setup) a 16-raider Shadow Hydra raid runs", status and tostring(status.Players) or "nil")
+		local fights = bs.GetRaidStatus().Fights
+		T.check(okR and fights.Starter and fights.Starter.Players == 8 and fights.Starter.Floor == true and fights.Mid and fights.Mid.Players == 8 and fights.Mid.Floor == false,
+			"net16: (setup) two Shadow Hydra fights of 8 run, Starter on the floor and Mid in a pocket", fights.Starter and tostring(fights.Starter.Players) or "nil")
 		local trs = {}
 		for i, p in ipairs(raiders) do
 			trs[i] = drvTracker(p, 0)
@@ -827,13 +808,14 @@ local function serverScenarios()
 			return bytes / seconds, peak, hz
 		end
 		local rate, peak, hz = stats(raiders[1])
+		local rate2, peak2, hz2 = stats(raiders[9])
 		local wRate, wPeak, wHz = stats(watcher)
-		T.info(fmt("*net16: fighter %.1f KB/s (peak second %.1f KB), %.1f snapshots/s; spectator %.1f KB/s, %.1f snapshots/s", rate / 1000, peak / 1000, hz, wRate / 1000, wHz))
-		T.check(rate > 0 and rate < 6000, "net16: a fighter in a full 16-raider raid gets under 6 KB/s on average (Phase 5 budget 10.3)", fmt("%.0f B/s", rate))
-		-- (wave 6: every raider's pet now fights by itself, so all 16 hit the boss the whole time; Hit events are ~25% of the
-		-- bytes; the peak second measured 11.6-12.4 KB. The 6 KB/s average budget above is unchanged)
-		T.check(peak < 13000, "net16: ...and no second above 13 KB", fmt("%.0f B", peak))
-		T.check(hz >= 9 and hz <= 11, "net16: fighters still get ~10 snapshots per second", fmt("%.1f", hz))
+		T.info(fmt("*net16: floor fighter %.1f KB/s (peak second %.1f KB), %.1f snapshots/s; pocket fighter %.1f KB/s (peak second %.1f KB); spectator %.1f KB/s, %.1f snapshots/s", rate / 1000, peak / 1000, hz, rate2 / 1000, peak2 / 1000, wRate / 1000, wHz))
+		T.check(rate > 0 and rate < 6000, "net16: a fighter in the full floor fight gets under 6 KB/s on average (Phase 5 budget 10.3)", fmt("%.0f B/s", rate))
+		T.check(rate2 > 0 and rate2 < 6000, "net16: ...and in the full pocket fight", fmt("%.0f B/s", rate2))
+		-- (wave 6: every raider's pet now fights by itself, so all 8 hit the boss the whole time; Hit events are ~25% of the bytes)
+		T.check(peak < 13000 and peak2 < 13000, "net16: ...and no second above 13 KB", fmt("%.0f B / %.0f B", peak, peak2))
+		T.check(hz >= 9 and hz <= 11 and hz2 >= 9 and hz2 <= 11, "net16: fighters still get ~10 snapshots per second", fmt("%.1f / %.1f", hz, hz2))
 		T.check(wHz >= 4 and wHz <= 6 and wRate < rate, "net16: a spectator gets ~5 snapshots per second and less traffic", fmt("%.1f Hz, %.0f B/s", wHz, wRate))
 		-- the wire form and the round trip: the spectator's decoded picture equals the fighter's at the same T
 		local function decodeStream(p)
@@ -887,8 +869,8 @@ local function serverScenarios()
 				end
 			end
 		end
-		T.check(same and compared >= 17, "net16: the 5 Hz spectator stream decodes to exactly the fighter's 10 Hz picture at the same T (BattleSim.DecodeSnapshot round trip)", fmt("%d units at T %s", compared, tostring(lastT)))
-		bs.EndRaid()
+		T.check(same and compared >= 9, "net16: the 5 Hz spectator stream decodes to exactly the fighter's 10 Hz picture at the same T (BattleSim.DecodeSnapshot round trip)", fmt("%d units at T %s", compared, tostring(lastT)))
+		bs.EndRaids("Ended")
 		K.flushErrors("p3fixsrv_net16")
 		local all = { watcher }
 		for _, p in ipairs(raiders) do

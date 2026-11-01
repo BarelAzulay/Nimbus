@@ -18,7 +18,7 @@
 --                   by the plaza bridge and the home Arena Gate, the Pets window and slot 4 at Prestige 1, ATTACK /
 --                   RETREAT / SPECIAL with F / R / 1-4 and touch, RETREAT's auto resume, Trials 1-30, duels by
 --                   challenge and queue, practice duels, trophies and the leaderboard, Boss Raids and dodging, Double
---                   Rewards, the Boss Raid pets, elements and synergy, /raid + Start Boss Raid, Studio's Clients and
+--                   Rewards, the Boss Raid pets, elements and synergy, /raid + Next raid boss, Studio's Clients and
 --                   Servers) and its numbers are BattleCatalog's (team size, RETREAT, specials, synergy, the Trial
 --                   chapters / rewards / first-clear Gems, the trophy table, BattleService's fair-play constants, the
 --                   raid schedule, the boss table, enrage and time limit, the reward tiers, Double Rewards) and
@@ -846,10 +846,10 @@ local TOPICS3 = {
 	{ "the Dungeon", { "Dungeon", "**SOLO**", "**PARTY**", "**READY**", "**START**", "boss room", "first clear", "chest", "LEAVE" } },
 	{ "duels: challenge, the quick queue, practice duels", { "duel rings", "Challenge", "Accept", "Find a match", "practice duel" } },
 	{ "trophies and the leaderboard", { "Trophies", "leaderboard", "top 10" } },
-	{ "Boss Raids: joining and dodging", { "Boss Raid", "JOIN RAID", "circle or line", "**DASH** out of it", "minion waves", "enraged" } },
+	{ "Boss Raids: walking in and dodging", { "Boss Raid", "back gate", "dare", "circle or line", "**DASH** out of it", "minion waves", "enraged" } },
 	{ "Double Rewards", { "Double Rewards" } },
 	{ "elements and team synergy in battle", { "synergy", "Balanced" } },
-	{ "the developer raid tools", { "/raid", "Start Boss Raid" } },
+	{ "the developer raid tools", { "/raid", "Next raid boss" } },
 	{ "testing duels in Studio", { "Test", "Clients and Servers", "2 players" } },
 }
 
@@ -1159,12 +1159,25 @@ local function checkRaids(BC, PC, Config, lines, raidText, doubleText)
 	local f = flat(raidText)
 	local ev = BC.Events or {}
 	local raid = scheduleOf(BC, "BossRaid")
-	t:case(has(f, "**every " .. num(raid.EveryMinutes) .. " minutes**"), "a raid every " .. tostring(raid.EveryMinutes) .. " minutes")
-	t:case(has(f, "the first one " .. minutesText(ev.FirstAfterSeconds) .. " after a server starts"), "the first raid " .. minutesText(ev.FirstAfterSeconds) .. " after the start")
-	-- (bridge: the catalog dropped these three for the always-there boss, the README's raid chapter is rewritten with the service; until then the code's own fallbacks)
-	local announceSeconds, joinSeconds, enrageSeconds = raid.AnnounceSeconds or 120, ev.JoinWindowSeconds or 60, 240
-	t:case(has(f, "**" .. minutesText(announceSeconds) .. "** before"), "the raid is announced " .. minutesText(announceSeconds) .. " before")
-	t:case(has(f, "**first " .. num(joinSeconds) .. " seconds**"), "joining is open the first " .. tostring(joinSeconds) .. " seconds")
+	local R = BC.Raid or {}
+	t:case(has(f, "the boss changes **every " .. num(raid.EveryMinutes) .. " minutes**"), "the boss changes every " .. tostring(raid.EveryMinutes) .. " minutes")
+	t:case(has(f, "**back in " .. num(R.ReturnSeconds) .. " seconds**"), "a tier's boss is back " .. tostring(R.ReturnSeconds) .. " seconds after a kill")
+	t:case(has(f, "a win pays **once per " .. num(R.RewardMinutes) .. " minutes**"), "a win pays once per " .. tostring(R.RewardMinutes) .. " minutes")
+	t:case(has(f, "**once per " .. num(R.LossMinutes) .. " minutes**"), "the loss reward at most once per " .. tostring(R.LossMinutes) .. " minutes")
+	t:case(has(f, "up to **" .. num(R.MaxRaiders) .. " raiders**"), "a fight holds " .. tostring(R.MaxRaiders) .. " raiders")
+	t:case(not has(f, "JOIN RAID") and not has(f, "side toast"), "no Join button and no announcement any more")
+	local fightTiers = tableRows(lines, "| Fight tier | Highest pet on your team |")
+	if t:case(fightTiers ~= nil, "no fight tier table (| Fight tier | Highest pet on your team | ...)") then
+		t:case(#fightTiers == #(BC.RaidTiers or {}), "the fight tier table has " .. #fightTiers .. " rows, BattleCatalog " .. #(BC.RaidTiers or {}))
+		for i, tier in ipairs(BC.RaidTiers or {}) do
+			local row = fightTiers[i] or {}
+			local want = { tier.Id, "L" .. tier.Level[1] .. "-" .. tier.Level[2], "L" .. tier.BossLevel, "x" .. num(tier.Hit), "x" .. num(tier.Reward) }
+			for c = 1, 5 do
+				local got = c == 1 and plain(row[1]) or row[c]
+				t:case(got == want[c], tier.Id .. " column " .. c .. ": the README says " .. show(got) .. ", BattleCatalog " .. show(want[c]))
+			end
+		end
+	end
 	local rows = tableRows(lines, "| Boss | Element |")
 	if t:case(rows ~= nil, "no boss table (| Boss | Element | Strong pets against it | Its big attacks |)") then
 		t:case(#rows == #(BC.BossOrder or {}), "the boss table has " .. #rows .. " rows, BattleCatalog " .. #(BC.BossOrder or {}) .. " bosses")
@@ -1178,17 +1191,16 @@ local function checkRaids(BC, PC, Config, lines, raidText, doubleText)
 			for _, a in ipairs(boss.Attacks or {}) do
 				t:case(has(row[4], a.Name), tostring(boss.Name) .. ": the attack " .. show(a.Name) .. " is not named")
 			end
-			t:case(boss.EnrageAt == BC.Bosses[BC.BossOrder[1]].EnrageAt and boss.TimeLimit == BC.Bosses[BC.BossOrder[1]].TimeLimit,
-				tostring(boss.Name) .. ": every boss shares the documented enrage time and time limit")
+			t:case(boss.TimeLimit == BC.Bosses[BC.BossOrder[1]].TimeLimit, tostring(boss.Name) .. ": every boss shares the documented time limit")
 		end
 		local first = BC.Bosses[(BC.BossOrder or {})[1]] or {}
-		t:case(has(f, "**enraged** after **" .. minutesText(enrageSeconds) .. "**"), "the enrage comes after " .. minutesText(enrageSeconds))
+		t:case(has(f, "Below **" .. num(((BC.BossRules or {}).EnrageAt or 0) * 100) .. " %** of its health it gets **enraged**"), "the enrage comes below " .. num(((BC.BossRules or {}).EnrageAt or 0) * 100) .. " % health")
+		t:case(has(f, "**DASH** out of that one: it knocks a"), "the lethal attack: dash out of it")
 		t:case(((BC.BossRules or {}).Enrage or {}).Damage == 2 and has(f, "hits twice as hard"), "enraged bosses hit x" .. tostring(((BC.BossRules or {}).Enrage or {}).Damage))
 		t:case(has(f, "after **" .. minutesText(first.TimeLimit) .. "**"), "a raid ends after " .. minutesText(first.TimeLimit))
 	end
-	local R = BC.Raid or {}
-	local tiers = tableRows(lines, "| Tier | Your share of the damage |")
-	if t:case(tiers ~= nil, "no raid tier table (| Tier | Your share of the damage | ...)") then
+	local tiers = tableRows(lines, "| Medal | Your share of the damage |")
+	if t:case(tiers ~= nil, "no raid medal table (| Medal | Your share of the damage | ...)") then
 		t:case(#tiers == #(R.Tiers or {}), "the tier table has " .. #tiers .. " rows, BattleCatalog " .. #(R.Tiers or {}))
 		for i, tier in ipairs(R.Tiers or {}) do
 			local row = tiers[i] or {}
@@ -1485,7 +1497,7 @@ local function checkFoodMachine(TC, PC, BC, Config, lines, fmText, careSource)
 	for _, tier in ipairs(Raid.Tiers or {}) do
 		lo, hi = math.min(lo, tier.Xp), math.max(hi, tier.Xp)
 	end
-	t:case(cell("A Boss Raid") == num(lo) .. " up to " .. num(hi) .. " by your tier (" .. num(Raid.LossXp) .. " when the boss wins)", "raid XP " .. show(cell("A Boss Raid")))
+	t:case(cell("A Boss Raid") == num(lo) .. " up to " .. num(hi) .. " by your medal, x" .. num(BC.RaidTiers[1].Reward) .. " up to x" .. num(BC.RaidTiers[#BC.RaidTiers].Reward) .. " by the fight's tier (" .. num(Raid.LossXp) .. " when the boss wins, scaled the same)", "raid XP " .. show(cell("A Boss Raid")))
 	t:case(has(cell("A Champion Ring round"), Ring.XpBase .. " + " .. Ring.XpPerRound .. " x the round") and has(cell("A Champion Ring round"), "pays a third"),
 		"ring XP " .. show(cell("A Champion Ring round")))
 	t:case(src["A Trial win"] == nil and src["A lost Trial"] == nil, "the XP table has no Trial rows any more")

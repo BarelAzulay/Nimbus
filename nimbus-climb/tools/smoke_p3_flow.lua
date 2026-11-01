@@ -2228,11 +2228,10 @@ S.p3flow_solo = scenario("p3flow_solo", function()
 	bs.Debug = { RaidNow = function()
 		return fakeLater
 	end }
-	local boss0 = bs.GetRaidStatus().BossId
 	local mark = K.logSize()
 	devCommand(ava, "raid")
 	local status = bs.GetRaidStatus()
-	T.check(status.BossId ~= boss0 and next(status.Fights) == nil, "flow solo: alone in the server, Ava calls the next boss with the DEV button (DevCommand raid)",
+	T.check((toasted(ava, "next boss: " .. tostring(status.Name), mark)) and next(status.Fights) == nil, "flow solo: alone in the server, Ava calls the next boss with the DEV button (DevCommand raid)",
 		table.concat(toasts(ava, mark), " | "))
 	advance(1.1)
 	Mock.Teleport(ava, arenaInfo().Gate.CFrame)

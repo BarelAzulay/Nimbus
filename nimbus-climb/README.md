@@ -11,7 +11,7 @@ Index**, and build your own **tycoon home**: claim a plot at its gate, put your 
 roam the yard, eat at the Food Bowl and poop **Cloud Cash** (that is your **Cash**), grow berries on your **Berry
 Farm**, feed your pets at the Food Machine, **EVOLVE** them, train their battle skills, fuse them and prestige. Then
 fight with a team of three (one **fighter** you steer and two **helpers**) in the **Dungeon**, in duels against other
-players, in Boss Raids that the whole server fights together and in the endless **Champion Ring**.
+players, in Boss Raids behind the colosseum's back gate and in the endless **Champion Ring**.
 
 Version 3 turns Nimbus Climb into a multi-concept game: the **tycoon homes** are the main mode, **pet battles**
 are the second one, and the climb (obby) stays as a side mode. This build is **v3 phase 6**: phase 1 brought the
@@ -177,11 +177,12 @@ Pet Garden, food is berries now, and the Trials made way for the Dungeon (see
   mini-boss every 5 levels, tokens, pet XP and Gems for first clears.
 - **Duels and trophies.** Challenge another player on the arena's duel rings or join the quick queue, win
   **trophies** and climb the trophy **leaderboard**. Nobody ever loses a pet.
-- **Boss Raids.** About every 20 minutes a giant boss (Storm Titan, Lava Golem, Frost Wyrm or Shadow Hydra) stomps
-  into the colosseum and everyone fights it together: dodge its glowing attacks, win tokens, XP, Gems and maybe one
-  of the three **Boss Raid pets**. Every few hours a **Double Rewards** hour doubles the battle tokens.
-- **And around it:** a third tutorial chapter, new NPC tips about battles, and for the owner the **Start Boss
-  Raid** button (`/raid`) plus the evolved pet forms in the developer pet showcase (see
+- **Boss Raids.** A giant boss (Storm Titan, Lava Golem, Frost Wyrm or Shadow Hydra) always waits in the colosseum: walk
+  through the back gate to fight it at your level, alone or with anyone else on your tier. Dodge its glowing attacks, win
+  tokens, XP, Gems and maybe one of the three **Boss Raid pets**. Every few hours a **Double Rewards** hour doubles the
+  battle tokens.
+- **And around it:** a third tutorial chapter, new NPC tips about battles, and for the owner the **Next raid
+  boss** button (`/raid`) plus the evolved pet forms in the developer pet showcase (see
   [Developer tools](#developer-tools-owner-only)).
 
 ## What's new in phase 2: tycoon homes
@@ -326,7 +327,7 @@ the end. Players who finished the phase 1 tutorial start right at this chapter.
 A third chapter teaches pet battles in four steps: follow the arrow to the Arena gate and visit the Battle Arena, open
 **Pets** and put 3 pets in your team (a fighter and two helpers: tap a slot and pick a pet, or tap **Auto-fill best**), press **E** at the Dungeon gate and clear the first
 room of floor 1, the Mossy Cellar (while this step is open that room is easy enough for any level 1 pet on a solo run; players
-who already cleared the floor, or Trial 1 before phase 5, skip this step), then join or watch a Boss Raid. Nimbus pays **500 Cloud Tokens** at the end. Players who finished the first two chapters start right at this
+who already cleared the floor, or Trial 1 before phase 5, skip this step), then walk through the boss gate at the back of the colosseum (or press Next). Nimbus pays **500 Cloud Tokens** at the end. Players who finished the first two chapters start right at this
 one.
 
 A fourth chapter teaches the phase 4 pet care in three steps: *Training Time* (start a training at your Training
@@ -358,7 +359,7 @@ ends it (it asks first). Your step is saved, so the tutorial continues where you
   | NPC | Talks about |
   |---|---|
   | **Sparky Fox**, Movement Trainer | running (Shift / RUN), dashing (Q / DASH), dash-only gaps, healing at the next checkpoint, the battle buttons (ATTACK, ELEMENT, SPECIAL, DASH), a helper's buff and SWAP |
-  | **Captain Penguin**, Co-op Captain | the Obby portal and its level picker, parties, reviving teammates at the next checkpoint, Boss Raids and dodging with DASH, the safe zone outside the Battle Arena, the Dungeon with friends |
+  | **Captain Penguin**, Co-op Captain | the Obby portal and its level picker, parties, reviving teammates at the next checkpoint, the boss behind the back gate and dodging with DASH, the safe zone outside the Battle Arena, the Dungeon with friends |
   | **Granny Owl**, Pet Expert | roulettes on the shop island and their chances (also with Gems), Mythic pets, the Pet Index, the Berry Basket, the Food Machine (Feed), the EVOLVE button and how evolved pets grow |
   | **Coach Corgi**, Token Coach | tokens that are yours to keep, the Dungeon, the Training Place, the Champion Ring and beating your record, your battle Team (a fighter and two helpers), duels and trophies |
   | **Mayor Panda**, Village Mayor | claiming a home at a free gate (press E), the Pet Garden, the Food Bowl and Cloud Cash, the Berry Farm and the Food Machine, Home Level, Prestige, the Home window and the home portal |
@@ -616,7 +617,7 @@ level: x1.5 of the bonus after the first EVOLVE, x1.875 after the second (a leve
 | A Dungeon room | 25 + 10 x the floor for every wave (the boss room counts 4) |
 | A lost Dungeon room | a third of its XP, when your pets really fought (20 seconds or more, or 20 % of the enemies' health) |
 | A duel | 60 for a win, 25 for a draw or a loss |
-| A Boss Raid | 50 up to 400 by your tier (20 when the boss wins) |
+| A Boss Raid | 50 up to 400 by your medal, x0.4 up to x1.3 by the fight's tier (20 when the boss wins, scaled the same) |
 | A Champion Ring round | 10 + 23 x the round (the round that ends your run pays a third) |
 
 ### Evolution: the EVOLVE button
@@ -1023,13 +1024,26 @@ Duel other players on the two **duel rings** in front of the colosseum. Both of 
 
 ### Boss Raids
 
-About **every 20 minutes** (the first one 5 minutes after a server starts) a giant boss stomps into the colosseum. It is
-meant for a group: a boss always has at least the HP to last a level-35 evolved Legendary 100 seconds, so a solo win comes
-only far along, and 4 to 8 teams finish it in about 2 to 4 minutes.
-Everyone gets a side toast **2 minutes** before, and the event board counts down. When the raid opens, go into the
-arena and press **JOIN RAID** on the raid card at the right edge (or on the **Boss Raid** tab of the Arena panel): you
-can join during the **first 60 seconds**. You run onto the boss floor with your fighter and fight together with
-everyone else. The boss has more health the more players really fight it.
+A boss **always waits** on the colosseum floor. Walk through the **back gate** of the colosseum and you are in the fight for
+your **tier**, together with anyone else on your tier in this server: no Join button, no window, no countdown. The first fight
+runs on the real floor, in view of the stands; the other tiers' fights run at the same moment in a side pocket. A fight holds
+up to **8 raiders**, and the boss has more health the more players really fight it.
+
+| Fight tier | Highest pet on your team | Boss built for | Boss hits (share of your health) | Rewards |
+|---|---|---|---|---|
+| **Starter** | L1-19 | L15 | x0.6 | x0.4 |
+| **Mid** | L20-49 | L40 | x0.8 | x0.7 |
+| **High** | L50-79 | L70 | x1 | x1 |
+| **Max** | L80-100 | L95 | x1.3 | x1.3 |
+
+The server reads your tier when you walk in, from your active team (pets that are training don't count). The prompt on the
+gate's pillar lets you **dare** a higher tier; you can never drop lower. Winning a dare pays the higher tier's rewards.
+
+It is brutal on purpose. With a team near the top of a tier a solo win is rare (about 1 in 20), three teams win about 40 % of
+their fights, eight teams about 85 %, and group fights take 2 to 4 minutes. Everyone leaving or getting knocked out ends the
+fight and resets the boss. After a kill that tier's boss is **back in 60 seconds** (the gate says so; the other tiers are not
+affected). You may fight as often as you like, but a win pays **once per 20 minutes** per player, also after moving to another
+server, and the loss reward at most **once per 5 minutes**. A loss never starts the 20 minutes, and the gate shows the time left.
 
 | Boss | Element | Strong pets against it | Its big attacks |
 |---|---|---|---|
@@ -1038,21 +1052,25 @@ everyone else. The boss has more health the more players really fight it.
 | **Frost Wyrm** | Frost | Flame | Frost Breath (line, freezes), Blizzard (circle, freezes) |
 | **Shadow Hydra** | Shadow | Celestial | Void Fangs (three lines), Shadow Pulse (circle) |
 
-The four bosses take turns in this order. **Dodging:** before a big attack a glowing **circle or line** appears on
+The four bosses take turns in this order: the boss changes **every 20 minutes** (right after the running fights end if there are
+any; a running fight keeps its own boss). **Dodging:** before a big attack a glowing **circle or line** appears on
 the floor and fills up. Walk out of it, or **DASH** out of it before it is full (when it is full its edge flashes red:
-too late). Each boss also calls **minion waves** and gets **enraged** after **4 minutes** (it hits twice as hard); a
-raid ends when the boss is down, when every raider is knocked out, or after **5 min 30 s**.
+too late). Each boss also calls **minion waves**. Below **30 %** of its health it gets **enraged**: the screen edges turn red, it
+hits twice as hard and it starts casting a huge attack with at least 2.5 seconds of warning. **DASH** out of that one: it knocks a
+pet out. A fight ends when the boss is down, when every raider is knocked out or gone, or after **5 min 30 s**.
 
-**Rewards** go to everyone who is still in the raid at the end, by the share of the boss's health they took off:
+**Rewards** go to everyone who is still in the fight at the end, by the share of the boss's health they took off. The table shows
+High's numbers; Tokens, XP and Gems scale with the fight's tier (x0.4, x0.7, x1, x1.3), and Gem and pet chances are half at Starter
+and Mid:
 
-| Tier | Your share of the damage | Cloud Tokens | XP for every team pet | Gems | Boss Raid pet chance |
+| Medal | Your share of the damage | Cloud Tokens | XP for every team pet | Gems | Boss Raid pet chance |
 |---|---|---|---|---|---|
 | **Gold** | 25 % or more | 500 | 400 | 10 (25 % chance) | 5 % |
 | **Silver** | 10 % or more | 300 | 250 | 5 (15 % chance) | 3 % |
 | **Bronze** | 2 % or more | 150 | 120 | 3 (8 % chance) | 1.5 % |
 | **Helper** | any hit on the boss | 60 | 50 | - | 0.5 % |
 
-If the boss wins, everyone whose pets hit it still gets **25 tokens** and **20 XP**. Only a raider whose pets never
+If the boss wins, everyone whose pets hit it still gets **25 tokens** and **20 XP** (scaled the same way). Only a raider whose pets never
 hit the boss gets no reward.
 
 **The three Boss Raid pets** are Secret pets that are in no roulette at all: **Magma Cub** (Flame, a little echo of
@@ -1109,9 +1127,9 @@ later you are back at the gate.
 - **The Dungeon and the Champion Ring** work in a normal **Play** test: press **PLAY** in the main menu, then **E** at
   the Dungeon or the Champion Ring gate in the Gate Court (the ring needs a claimed home and a pet). `/petlevel 20`
   makes your team strong enough for the first floors.
-- **Boss Raids:** press **Play**, then the DEV panel's **Start Boss Raid** button or type `/raid` in the chat (see
-  [Developer tools](#developer-tools-owner-only)). Go to the arena and press **JOIN RAID** within 60 seconds. One
-  player is enough.
+- **Boss Raids:** press **Play**, go to the arena and walk through the boss gate at the back of the colosseum floor. One
+  player is enough. The DEV panel's **Next raid boss** button or `/raid` in the chat changes the boss, `/raid end` ends the
+  running fights (see [Developer tools](#developer-tools-owner-only)).
 - **Duels and Dungeon parties need two players:** on Studio's **Test** tab choose **Clients and Servers**, set **2
   players** and press **Start**. Studio opens a server window and one window per player. In each player window press
   **PLAY**, give yourself pets (**Give all pets** in the DEV panel or `/allpets`), put pets in your team (**Pets**
@@ -1253,7 +1271,7 @@ never drops below 14 px on a phone.
   pets made ..." and the rest), and the compact result card shows up at the right edge after a climb.
 - On phones nothing sits under the thumbstick or the jump button: the health card steps aside or up, and the
   Dungeon's result card opens under the currency strips.
-- **In the Battle Arena:** duel invites, the raid card and the event countdown are small cards at the right edge.
+- **In the Battle Arena:** duel invites and the Double Rewards countdown are small cards at the right edge.
   **In a battle:** your fighter's card and your helpers top-left, the enemies on the right, the action buttons at the
   bottom right (see [In a battle](#in-a-battle-one-fighter-two-helpers)); in the ring "CHAMPION RING - Round 8 - Best
   12", in the Dungeon "DUNGEON - Floor 3 - Room 2" and a run card with your party.
@@ -1281,7 +1299,7 @@ server checks the permission again on every single command, so other players can
 | **+1,000 Gems** | Adds `Config.Dev.GrantGems` Gems (1,000), to try the gem roulettes and Fusion Mixes. |
 | **Restart tutorial** | Plays the tutorial again from step 1. Its rewards are not paid a second time. |
 | **Skip tutorial** | Ends the tutorial (without its finish reward). |
-| **Start Boss Raid** | Starts a Boss Raid in the arena right now (`/raid`), so you can test raids without waiting for the schedule (the next boss of the rotation; join it in the arena within 60 seconds). Not while a raid is already running. |
+| **Next raid boss** | Brings the next boss of the rotation (`/raid`), so you can test every boss without waiting 20 minutes: at once, or when the running fights end. |
 | **Evolve every pet** | Plays every pet's evolution animation one after another in front of you (`/evolve all`). |
 | **Show all pets** / **Show evolved pets** / **Show Evolved II pets** | Lines up every pet at that stage in front of you (`/pets`, `/pets 1`, `/pets 2`). |
 | **Clear pet show** | Removes the showcase pets and stops an evolution (`/clearpets`). |
@@ -1309,7 +1327,7 @@ runs Lua code and the game never sees what you type there.
 | `/reset` | Same as Reset my data (no confirmation, so type it carefully). |
 | `/tutorial` | Same as Restart tutorial. |
 | `/skiptutorial` | Same as Skip tutorial. |
-| `/raid` | Same as Start Boss Raid. |
+| `/raid [boss\|end]` | Same as Next raid boss; `/raid lava` brings that boss, `/raid end` ends the running fights. |
 | `/sky [what]` | The living sky, for everyone in the server: `/sky` alone tells you the phase, `/sky dawn`, `/sky day`, `/sky sunset` or `/sky night` starts that phase now, `/sky speed 20` runs the 20 minute loop 20 times faster (0.1 to 120), `/sky raid frost` shows a raid boss's sky (a boss id or the start of one) and `/sky clear` takes it down. |
 | `/pet <name> [stage]` | Builds that pet in front of you: stage `0` normal (the default), `1` evolved, `2` second evolution (Epic pets and up). The name or a unique part of it is enough, any case: `/pet cloudy 2`, `/pet Pebble Pup`. Each new pet stands beside the last one. |
 | `/pets [stage]` | Every pet lined up in rows in front of you: `/pets` (normal), `/pets 1` (all 33 evolved), `/pets 2` (the 16 second evolutions). |
@@ -1490,8 +1508,8 @@ The script exits non-zero if anything fails and runs three steps:
 `python3 tools/sim_tycoon.py` replays the tycoon economy for many simulated players and checks the pacing targets
 (first purchase, purchase gaps, Villa, first EVOLVE, first and later prestiges, offline coins, also for players who run
 the Champion Ring and the Dungeon); the smoke test fails when its numbers and `TycoonCatalog.lua` disagree.
-`tools/sim_battle.lua` does the same for battles (Support pets at about 70 %, fair duels, Boss Raids with 1 / 4 / 8 /
-16 fighters, the Champion Ring and Dungeon ladders, moving with the character, training; see `tools/README.md` for
+`tools/sim_battle.lua` does the same for battles (Support pets at about 70 %, fair duels, Boss Raids per boss and tier with 1 / 3 /
+8 teams, the Champion Ring and Dungeon ladders, moving with the character, training; see `tools/README.md` for
 how to run it).
 
 The mock is not a physics engine (characters do not walk, moving platforms are not simulated), so test the feel

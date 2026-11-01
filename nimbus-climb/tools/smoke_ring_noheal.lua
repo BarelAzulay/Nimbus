@@ -372,10 +372,6 @@ S.ringnh_service = guarded("ringnh_service", function()
 	if not T.check(bs and data and BC and type(bs.StartRing) == "function" and svcState() ~= nil, "ring no-heal service: BattleService (StartRing, St) loaded") then
 		return
 	end
-	local realRaid = bs.StartRaid
-	bs.StartRaid = function()
-		return false, "A raid is already running"
-	end
 	seq = seq + 1
 	local a = Mock.AddPlayer("RingNoHeal" .. seq, 971000 + seq) -- (971000+: smoke_p3_ui.lua's tutorial players use 968000 + seq)
 	K.advance(1.0)
@@ -391,7 +387,6 @@ S.ringnh_service = guarded("ringnh_service", function()
 	local mark = K.logSize()
 	local okR, id = bs.StartRing(a)
 	if not T.check(okR == true and type(id) == "string", "ring no-heal service: the run starts", tostring(id)) then
-		bs.StartRaid = realRaid
 		K.removePlayers({ a })
 		return
 	end
@@ -448,7 +443,6 @@ S.ringnh_service = guarded("ringnh_service", function()
 	T.check(spec and #spec.Pets == 2 and spec.Pets[1].Key == KEYS[2] and spec.Pets[1].HpFraction == 0.5 and spec.Pets[2].Key == KEYS[3] and spec.Pets[2].HpFraction == nil, "ring no-heal service: TeamSpec(player, keys, hpByKey) skips 0-HP keys and carries the others' HpFraction")
 	local plain = bs.TeamSpec(a, KEYS)
 	T.check(plain and #plain.Pets == 3 and plain.Pets[1].HpFraction == nil, "ring no-heal service: without hpByKey every pet starts full")
-	bs.StartRaid = realRaid
 	K.flushErrors("ringnh_service")
 	K.flushWarnings("ringnh_service", { "[BattleService]", "[DataService]", "[TycoonService]", "[PetCareService]", "[MeshLibrary]" })
 	K.removePlayers({ a })

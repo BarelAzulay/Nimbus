@@ -358,15 +358,9 @@ local function serverScenarios()
 		local p = Mock.AddPlayer("EvoSolo", 986001)
 		advance(1.2)
 		local function clearRaid()
-			if BS and type(BS.GetRaidStatus) == "function" and BS.GetRaidStatus() then
-				if ES and type(ES.EndNow) == "function" then
-					pcall(ES.EndNow, "BossRaid")
-				elseif type(BS.EndRaid) == "function" then
-					pcall(BS.EndRaid, "smoke")
-				end
-				K.waitFor(function()
-					return BS.GetRaidStatus() == nil
-				end, 10)
+			if BS and type(BS.EndRaids) == "function" then
+				BS.EndRaids("Ended")
+				advance(0.3)
 			end
 		end
 		local ok, err = pcall(function()
@@ -442,12 +436,11 @@ local function serverScenarios()
 			-- /raid next to the showcase
 			local mark = chat("/raid")
 			local raidToast = last(mark)
-			local running = BS and type(BS.GetRaidStatus) == "function" and BS.GetRaidStatus() ~= nil
-			T.check(running and raidToast.text:find("raid", 1, true) ~= nil and raidToast.kind ~= "bad" and #raidToast.text <= 90,
-				"evolved dev tools: '/raid' in chat starts a Boss Raid, answered with a side toast", raidToast.text)
+			T.check(raidToast.text:find("next boss: " .. tostring(BS.GetRaidStatus().Name), 1, true) ~= nil and raidToast.kind ~= "bad" and #raidToast.text <= 90,
+				"evolved dev tools: '/raid' in chat calls the next boss, answered with a side toast", raidToast.text)
 			mark = chat("/pet magma 2")
 			local e = shows(mark)[1] or { payload = {} }
-			T.check(e.action == "Spawn" and e.payload.PetId == "magma_cub" and e.payload.Stage == 2, "evolved dev tools: while the raid runs '/pet magma 2' still spawns Magma Cub (Evolved II)", tostring(e.payload.PetId) .. " " .. tostring(e.payload.Stage))
+			T.check(e.action == "Spawn" and e.payload.PetId == "magma_cub" and e.payload.Stage == 2, "evolved dev tools: '/pet magma 2' spawns Magma Cub (Evolved II)", tostring(e.payload.PetId) .. " " .. tostring(e.payload.Stage))
 			mark = chat("/pet hydra 1")
 			e = shows(mark)[1] or { payload = {} }
 			T.check(e.action == "Spawn" and e.payload.PetId == "hydralotl" and e.payload.Stage == 1, "evolved dev tools: '/pet hydra 1' finds the Hydralotl by a part of its name", tostring(e.payload.PetId))
@@ -456,10 +449,9 @@ local function serverScenarios()
 			T.check(#st == 2 and st[1].PetId == "rime_wyrmling" and st[1].From == 0 and st[2].To == 2, "evolved dev tools: '/evolve rime' plays the Rime Wyrmling's whole line (normal -> evolved -> evolved II)", #st .. " steps")
 			mark = chat("/raid")
 			local again = last(mark)
-			T.check(again.kind == "bad" and #again.text > 6, "evolved dev tools: a second '/raid' while one runs is refused with a reason", again.text)
-			T.check(BS == nil or BS.GetRaidStatus() ~= nil, "evolved dev tools: ...and the running raid goes on")
+			T.check(again.kind ~= "bad" and again.text:find("next boss: " .. tostring(BS.GetRaidStatus().Name), 1, true) ~= nil, "evolved dev tools: a second '/raid' calls the boss after that one", again.text)
 			mark = chat("/clearpets")
-			T.check((shows(mark)[1] or {}).action == "Clear", "evolved dev tools: '/clearpets' clears the showcase while the raid runs")
+			T.check((shows(mark)[1] or {}).action == "Clear", "evolved dev tools: '/clearpets' clears the showcase")
 			-- /devhelp: three readable side toasts that list every command
 			mark = chat("/devhelp")
 			local help = toasts(mark)

@@ -294,22 +294,6 @@ local function serverScenarios()
 			end,
 		}
 	end
-	local realStartRaid = nil
-	local function holdRaidSchedule(bs)
-		if realStartRaid == nil then
-			realStartRaid = bs.StartRaid
-			bs.StartRaid = function()
-				return false, "A raid is already running"
-			end
-		end
-		return realStartRaid
-	end
-	local function releaseRaidSchedule(bs)
-		if realStartRaid then
-			bs.StartRaid = realStartRaid
-			realStartRaid = nil
-		end
-	end
 	local savedHook = nil
 	local function quietReplication()
 		if savedHook == nil and Mock._onRemote then
@@ -354,7 +338,6 @@ local function serverScenarios()
 			local ok = run(...)
 			local bs = BS()
 			if bs then
-				releaseRaidSchedule(bs)
 				if bs.SetClosing then
 					bs.SetClosing(false)
 				end
@@ -440,10 +423,8 @@ local function serverScenarios()
 		local bs = BS()
 		local Sm = req("shared/BattleSim")
 		local info = arenaInfo()
-		if bs.GetRaidStatus() ~= nil then
-			bs.EndRaid()
-			advance(0.2)
-		end
+		bs.EndRaids("Ended")
+		advance(0.2)
 		-- the sim's own picture at every T a snapshot was built (ground truth), recorded beside the wire form
 		local truth = {}
 		local raidSim = nil
@@ -458,20 +439,29 @@ local function serverScenarios()
 		end
 		local okSetup, err = pcall(function()
 			local mark0 = K.logSize()
-			local okR, raidId = holdRaidSchedule(bs)("frost_wyrm")
+			local okR = bs.SetRaidBoss("frost_wyrm")
+			local raidId = nil
 			local rosters = { STRONG, MID, ALT, WEAK }
 			local raiders = {}
-			for i = 1, 15 do
+			for i = 1, 7 do
 				raiders[i] = newPlayer("Wire", rosters[(i - 1) % 4 + 1], 12)
-				toArena(raiders[i], (i - 8) * 2, 8)
-				bs.JoinRaid(raiders[i])
+				toArena(raiders[i], (i - 4) * 2, 8)
+				local _, id = bs.EnterRaid(raiders[i])
+				raidId = raidId or id
 			end
 			local late = newPlayer("WireLate", MID, 12) -- watches from the stands first, joins later
 			Mock.Teleport(late, info.Floor.CFrame * CFrame.new(-6, 3, 62))
+			-- six more watch from the stands from the start
+			local crowd = {}
+			for i = 1, 6 do
+				crowd[i] = newPlayer("WireCrowd", WEAK)
+				Mock.Teleport(crowd[i], info.Floor.CFrame * CFrame.new(-18 + i * 4, 3, 62))
+			end
 			local watcher = newPlayer("WireWatch", WEAK) -- walks into the stands later
 			local mark = K.logSize()
 			advance(2)
-			T.check(okR and bs.GetRaidStatus() and bs.GetRaidStatus().Players == 15, "wire: (setup) a 15-raider Frost Wyrm raid runs", tostring(raidId))
+			local fightW = bs.GetRaidStatus().Fights.Starter
+			T.check(okR and fightW and fightW.Players == 7 and fightW.BattleId == raidId, "wire: (setup) a 7-raider Frost Wyrm fight runs on the floor, the crowd in the stands", tostring(raidId))
 			-- Phase 5: the character is the fighter's body: the raiders stand on the rim and press ATTACK / ELEMENT / SPECIAL
 			-- (OutOfReach refusals are fine: the wire-form check only needs a running raid with units that move and change)
 			local function fight(seconds)
@@ -489,7 +479,7 @@ local function serverScenarios()
 			fight(3)
 			Mock.Teleport(watcher, info.Floor.CFrame * CFrame.new(6, 3, 62))
 			fight(3)
-			local okJ = bs.JoinRaid(late) -- the 16th raider, after spectating
+			local okJ = bs.EnterRaid(late) -- the 8th raider, after spectating
 			raiders[#raiders + 1] = late
 			fight(2)
 			bs.LeaveRaid(raiders[2]) -- one leaves (its units stop being sent)
@@ -504,7 +494,7 @@ local function serverScenarios()
 				raidSim.boss.hp = min(raidSim.boss.hp, raidSim.boss.maxHp * 0.33)
 			end
 			fight(8)
-			T.check(okJ == true, "wire: (setup) the spectator joins as the 16th raider", tostring(okJ))
+			T.check(okJ == true, "wire: (setup) the spectator joins as the 8th raider", tostring(okJ))
 			local units = 0
 			for _ in pairs(raidSim and raidSim:Snapshot().Units or {}) do
 				units = units + 1
@@ -550,10 +540,11 @@ local function serverScenarios()
 			end
 			check(raiders[1], "a raider from the start")
 			check(late, "a late joiner who spectated first")
+			check(crowd[1], "a spectator from the start")
 			local ws, wf, wl = check(watcher, "a spectator who walked in late")
 			local hz = (ws > 1 and wl > wf) and (ws - 1) / (wl - wf) or 0
 			T.check(hz >= 4 and hz <= 6, "wire: the late spectator gets ~5 snapshots per second", fmt("%.1f", hz))
-			-- bandwidth through the waves (16 raiders, 50+ units): a fighter stays under 20 KB/s
+			-- bandwidth through the waves (8 raiders and their minions): a fighter stays under 10 KB/s
 			local bytes, t0, t1 = 0, nil, nil
 			for _, e in ipairs(battleMsgs(raiders[1], waveMark)) do
 				bytes = bytes + bs.EstimateBytes(e.args[2]) + 4 + #tostring(e.args[1]) + #tostring(e.args[3] or "")
@@ -561,11 +552,14 @@ local function serverScenarios()
 				t1 = e.time
 			end
 			local rate = (t0 and t1 and t1 > t0) and bytes / (t1 - t0) or 0
-			T.info(fmt("*wire: fighter during the minion waves of a 16-raider raid: %.1f KB/s", rate / 1000))
-			T.check(rate > 0 and rate < 10000, "wire: a fighter stays under 10 KB/s through the minion waves of a 16-raider raid (the 6 KB/s budget of 10.3 is the plain 16-raid: p5svc_raid)", fmt("%.0f B/s", rate))
-			bs.EndRaid()
+			T.info(fmt("*wire: fighter during the minion waves of an 8-raider fight: %.1f KB/s", rate / 1000))
+			T.check(rate > 0 and rate < 10000, "wire: a fighter stays under 10 KB/s through the minion waves of an 8-raider fight (the 6 KB/s budget of 10.3 is the plain fight: p5svc_raid)", fmt("%.0f B/s", rate))
+			bs.EndRaids("Ended")
 			advance(0.5)
 			local all = { watcher }
+			for _, p in ipairs(crowd) do
+				all[#all + 1] = p
+			end
 			for _, p in ipairs(raiders) do
 				all[#all + 1] = p
 			end
