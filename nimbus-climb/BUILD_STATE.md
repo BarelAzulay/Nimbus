@@ -22,6 +22,29 @@ Updated: 2026-10-18 (after wave 2). Branch `v3-phase4`. Plan: `ARCHITECTURE_V3.m
   | 3 L100 maxed | 71 (58) | 60 to 95 | best floor 12 | 12 |
 
   New player, three L1 Commons, real run XP: Ring 5 in 4.3 min (target about 6), floor 1 in 5.4 (about 7), Ring 10 in 33.3 (30, band 20-45); a retry loop 107 s. Boss raids (seconds, win %, against 6ad77f0): owner solo 0 of 8 on every boss (was 100 %, 76-98 s); 4 owner-teams 66-107 s (was 66-74), 8 owner-teams 78-129 s (was 74-88), all 100 %; the Lava Golem's 66 / 78 s stays under the 100-240 s band (the sim's target reads Storm Titan and Shadow Hydra); 8 x M5 100 % in 197-220 s (was 94-100 %, 118-217); 4 x M5 now sit on the HP floor: 0-67 % in 264-279 s (was 100 %, 103-169 s). A veteran keeps Best and the boss starts; the Ring panel preselects the highest unlocked start the team should beat (BattleCatalog.RingPickStart: TeamPower >= 1.15 x the champion's power, the panel's own "look ready" line), every unlocked start stays pickable and a tile picked in a visit stays, through Edit team and Fight again.
+- 2026-11-02 (boss raids, branch `raid-boss`, not merged; spec docs/superpowers/specs/2026-11-01-raid-boss-design.md, plan docs/superpowers/plans/2026-11-01-raid-boss.md; all six pitch rows approved): one boss always waits at the colosseum's back gate: no Join, no window, no announcement. Walking through puts you in your tier's fight (Starter L1-19, Mid L20-49, High L50-79, Max L80-100: the highest pet on the active team; a prompt on the pillar dares a higher tier, never a lower one), up to 8 raiders; the first fight takes the real floor, the others a Raid pocket. A kill closes that tier for 60 s; a win pays once per 20 min per player (saved, across servers), a loss at most once per 5 min and never starts the 20. The boss rotates silently every 20 min. Below 30 % health it enrages (red edges, hits x2) and casts a lethal attack with a 3.2 s telegraph; the Dash escapes it. The same boss model is dressed per tier. Final-stage calls: only walking into the gate counts (standing there does nothing, one refusal toast per walk-in, a fighter standing there when the fight ends opens no new one); the lethal waits for a frozen fighter (BossRules.Enrage.LethalWarning 2.5 s of the warning stay theirs, the boss starts nothing else meanwhile; only Frost Wyrm freezes); a paid win saves at once, because DataService has no session lock (what is left: a hop landing while that save and its retries keep failing, one extra payout per such hop; a failed load is provisional, no team, no fight); the idle boss waits for a lost floor fight's linger (BattleController.DrawsRaidFloor); ArenaState.Next skips the silent rotation, so the Raid page's Next event card and the board's x2 pill now always show the next Double Rewards; a shutdown pays like a loss and its card says so; a reward clock never started stays out of the stored record, so an old save is byte-identical until its first paid fight.
+  Measured, `SIM_BATTLE=full` (a team near the top of the tier, Default trainer, 12 seeds a cell, 12 solo, 6 for 8 teams; 63 of 63 targets). "all" = won and lost fights together; no group fight timed out, the longest single one lasted 280 s:
+
+  | Boss | Tier | Solo win (<= 15, about 5) | 3 teams win (25-55, about 40) | 3 teams s, won / all | 8 teams win (>= 70, about 85) | 8 teams s, won / all |
+  |---|---|---|---|---|---|---|
+  | Storm Titan | Starter | 8 % | 33 % | 239 / 239 | 100 % | 220 / 220 |
+  | Storm Titan | Mid | 0 % | 25 % | 186 / 193 | 100 % | 189 / 189 |
+  | Storm Titan | High | 8 % | 33 % | 143 / 147 | 100 % | 146 / 146 |
+  | Storm Titan | Max | 8 % | 50 % | 178 / 183 | 83 % | 186 / 193 |
+  | Lava Golem | Starter | 8 % | 25 % | 237 / 223 | 100 % | 224 / 224 |
+  | Lava Golem | Mid | 0 % | 42 % | 161 / 164 | 100 % | 153 / 153 |
+  | Lava Golem | High | 0 % | 25 % | 151 / 146 | 100 % | 134 / 134 |
+  | Lava Golem | Max | 8 % | 42 % | 163 / 175 | 100 % | 163 / 163 |
+  | Frost Wyrm | Starter | 8 % | 42 % | 201 / 210 | 100 % | 225 / 225 |
+  | Frost Wyrm | Mid | 8 % | 33 % | 167 / 174 | 100 % | 170 / 170 |
+  | Frost Wyrm | High | 0 % | 50 % | 120 / 117 | 100 % | 115 / 115 |
+  | Frost Wyrm | Max | 0 % | 25 % | 116 / 113 | 100 % | 103 / 103 |
+  | Shadow Hydra | Starter | 0 % | 42 % | 236 / 233 | 100 % | 210 / 210 |
+  | Shadow Hydra | Mid | 0 % | 50 % | 181 / 186 | 100 % | 179 / 179 |
+  | Shadow Hydra | High | 0 % | 33 % | 148 / 147 | 100 % | 143 / 143 |
+  | Shadow Hydra | Max | 0 % | 42 % | 176 / 180 | 100 % | 161 / 161 |
+
+  Within every band; away from the spec's "about" numbers: 8 teams win almost always (98 % on average against about 85), Shadow Hydra is never beaten solo in these seeds (solo average 3.5 % against about 5), four 3-team cells sit on the band's floor of 25 %, and Storm Titan Starter (239 s) and Frost Wyrm Max (103 s) sit on the duration band's edges. A bottom-of-tier team solo: 0 % everywhere, as the spec expects. Four fights x 8 raiders: 0.05 ms per sim step under LuaJIT, 3 pockets of 144 parts; a floor or pocket fighter 3.4 KB/s (peak second 6.8 KB), a spectator 2.7 KB/s, 5.3 KB/s during an 8-raider minion wave. Not looked at in Studio yet: the gate pillar and dare prompt, the Raid pocket, the crown and auras on the four bosses, the board with fight lines and the always-on x2 pill, the red edges and lethal rim on a phone, the tutorial arrow to the gate.
 - 2026-10-28 (player ruling, wave 5 dungeon camera): the Camera shake setting OFF turns off ONLY the hit shakes; the dungeon entrance rush, the room walk-in shot and the FOV punch on big attacks always play (short, skippable). The rush is skipped when the camera is > 60 studs from the gate.
 - Evolve button; 2nd evolution only Epic+; level cap 100 for all pets (XP curve keeps rising).
 - Presses become food plants, Collector = Coin Magnet, Kitchen = Food Machine, Gym = Training Place.
