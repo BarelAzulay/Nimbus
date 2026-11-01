@@ -224,6 +224,9 @@
 --     and an EventPetChance of an event pet; Raids + 1, RaidBestDamage. The reward clocks live on the Battle record (saved, merged
 --     across servers by maximum): a paid win stamps RaidRewardAt and the next win pays after Raid.RewardMinutes (until then Tier
 --     "Cooldown" + AgainIn, nothing paid); a paid loss stamps RaidLossAt, pays again after Raid.LossMinutes and never touches the win clock.
+--     A paid win saves at once: DataService has no session lock, so a server that loads before the stamp is stored could pay again. What is
+--     left is a hop that lands while that save and its retries are failing (one extra payout at most for each such hop, no worse than a store
+--     outage's other effects); a load that fails outright is provisional: no team, so no fight.
 --   * Double Rewards (EventService's hour) doubles the Tokens (BattleCatalog.Events.DoubleRewardsMultiplier).
 --   * Pet XP goes through PetCareService.GrantXp (level caps, level-up toasts); DataService.AddPetXp without it.
 -- EventService integration: SetRaidBoss(bossId) is the rotation; GetRaidStatus() is non-nil from Init on; a FLOOR fight's start calls
@@ -1575,6 +1578,9 @@ local function payRaid(b, part, res)
 		text = text .. ", +" .. gems .. " gems"
 	end
 	notify(player, text, won and "good" or "info", 5)
+	if won then
+		task.defer(try, dataService(), "Save", player)
+	end
 	return rw
 end
 

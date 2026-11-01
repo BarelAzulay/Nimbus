@@ -427,6 +427,9 @@ local function serverScenarios()
 		local msg = lastMsg(p, "End", mark)
 		T.check(msg and msg.Rewards and msg.Rewards.Tier == "Gold", "raid flow hop: server A pays the win", msg and msg.Rewards and tostring(msg.Rewards.Tier))
 		T.eq(data.GetBattle(p).RaidRewardAt, 5000, "raid flow hop: ...and stamps it")
+		local atOnce = stored(userId) or {}
+		T.eq((atOnce.Battle or {}).RaidRewardAt, 5000, "raid flow hop: a paid win is in the store at once, before any leave save (a hop can't beat it)")
+		T.eq(atOnce.Tokens, data.GetTokens(p), "raid flow hop: ...with what it paid")
 		T.eq(data.Save(p), true, "raid flow hop: (server A saves)")
 		T.eq((stored(userId).Battle or {}).RaidRewardAt, 5000, "raid flow hop: the store holds the stamp")
 
