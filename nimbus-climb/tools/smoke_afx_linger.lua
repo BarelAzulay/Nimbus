@@ -466,6 +466,19 @@ S.client_afx_kick = guarded("client_afx_kick", function()
 	T.check(near(a, 0.20, 1e-6), "afx kick: a Legendary Special kicks 0.20 (PUNCH_BIG: the dungeon's FOV punch keeps its threshold)", tostring(a))
 	a = kickOf({ Attack = "Special", Kind = "Blast", Rarity = "Secret", Crit = true })
 	T.check(near(a, 0.27, 1e-6) and a <= Fx.PUNCH_MAX, "afx kick: a Secret Special crit kicks 0.27, under PUNCH_MAX", tostring(a))
+	-- the dungeon's FOV punch fires at BattleController's PUNCH_BIG 0.2, whatever the Shake setting says (player ruling 2026-10-28): which own
+	-- attacks reach it is decided by this table, and the README lists them. No basic hit; Legendary+ Specials; Rare / Epic Special crits; Legendary+ element crits
+	local fov = T.tally("afx kick: the own attacks that reach the dungeon's FOV punch (>= 0.2) are the ones the README lists")
+	for i, rarity in ipairs({ "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Secret" }) do
+		for _, crit in ipairs({ false, true }) do
+			for _, v in ipairs({ { Attack = "Melee" }, { Attack = "Element", Shape = "Cone" }, { Attack = "Special", Kind = "Blast" } }) do
+				local amount = kickOf({ Attack = v.Attack, Shape = v.Shape, Kind = v.Kind, Rarity = rarity, Crit = crit })
+				local want = (v.Attack == "Special" and (i >= 5 or (crit and i >= 3))) or (v.Attack == "Element" and crit and i >= 5)
+				fov:case(amount ~= nil and (amount >= 0.2) == (want == true), fmt("%s %s crit %s: %s", v.Attack, rarity, tostring(crit), tostring(amount)))
+			end
+		end
+	end
+	fov:report()
 	-- the recipe's own table, every attack under the cap
 	local capped = T.tally("afx kick: recipe.CameraPunch = { Amount <= 0.35, Seconds 0.15, Basic } for an own attack at every band")
 	for _, rarity in ipairs(Cat.Rarities) do

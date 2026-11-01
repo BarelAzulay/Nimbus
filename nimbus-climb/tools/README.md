@@ -314,7 +314,7 @@ The Phase 4 files (still run, updated for Phase 5 where 12.2 says so):
 | `smoke_p4_pets_client.lua` | the pet cards (PetCard) and the followers |
 | `smoke_p4_ui.lua` | the tutorial chapters 2 and 4, the NPC tips and the ring window (ArenaController) |
 | `smoke_p4_flow.lua` | end-to-end runs of several players through the home: garden, coins, Food Machine, EVOLVE, training, the ring, the portal, prestige, rejoin |
-| `smoke_afx_reach.lua`, `smoke_afx_impact.lua`, `smoke_afx_linger.lua` | attack effects (spec 2026-11-01): real reach x1.15 / x1.3 on the server and drawn as it hits, the frozen ability timers, the docs (`afx_docs`); sizes, the impact package and its caps; the lingering tails, their budget, the camera kick and the zone tail |
+| `smoke_afx_reach.lua`, `smoke_afx_impact.lua`, `smoke_afx_linger.lua` | attack effects (spec 2026-11-01): real reach x1.15 / x1.3 on the server and drawn as it hits, the frozen ability timers, the docs (`afx_docs`); sizes, the impact package and its caps (who yields to the 6-emitter cap, the rings' 14 / 16 studs inside the real radius, the lights' effective caps); the lingering tails, their budget, the disc pool in a sustained fight, the camera kick, the FOV punch's list and the zone tail |
 
 ### Mesh mode: `--mesh` (Phase 6)
 

@@ -2676,7 +2676,8 @@ function Me.UpdateShake(now)
 	sh.last = v
 end
 
--- wave 5 (bug #15): a big attack (AttackFx's punch >= PUNCH_BIG: a rare+ special, a crit) punches the FOV, in a
+-- wave 5 (bug #15): a big attack (AttackFx's punch >= PUNCH_BIG: AttackFxCatalog.Kick decides, today a Legendary+ Special, a Rare / Epic
+-- Special's crit, a Legendary+ element attack's crit, no basic hit) punches the FOV, in a
 -- dungeon only; the Camera shake setting does NOT gate it (player ruling 2026-10-28: Shake OFF = only the hit shakes
 -- go; the punch is a short zoom, not a shake). MovementController owns the FOV
 function Me.FovPunch(amount)

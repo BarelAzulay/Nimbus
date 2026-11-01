@@ -919,8 +919,11 @@ them and train their skills at the Training Place.
   damage) and **Haste** (35 % faster). Evolved pets reach farther (+15 %, then +30 %: see
   [Evolution](#evolution-the-evolve-button)).
 - **The look of a hit:** every hit from every pet lands with a shockwave ring, a flash, sparks and a ground mark, stronger at
-  higher rarities. Scorch marks, embers and storm zones stay on the ground a moment after they end (up to 2 seconds), dim and
+  higher rarities. Rings are thin lines on the floor and never run past what the attack really reaches: a Blast's or a Freeze's ring
+  shows exactly where it hits (a Beam or a Storm whose own effects already fill the budget has no sparks). Scorch marks, embers and storm zones stay on the ground a moment after they end (up to 2 seconds), dim and
   still: a dim mark is over and cannot hurt you. Graphics **Low** keeps it simple: no sparks and no lingering marks.
+  In a dungeon the biggest own attacks also zoom the view for a moment, whatever the Camera shake setting says: Specials from
+  Legendary up, critical Specials from Rare up, critical element attacks from Legendary up, never a basic hit.
 - **The screen:** top-left your fighter's card (name, level, health bar, ENERGY bar and three hearts for the lives)
   with the two helper pictures under it (cooldown rings, the buff's name, SWAP); on the right one row per enemy (the
   picked one first); a boss bar at the top; the action buttons at the bottom right. Nothing covers the middle of the
