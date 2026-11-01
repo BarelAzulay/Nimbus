@@ -1127,7 +1127,7 @@ section("raids", function(opts)
 			local three = SIM.raidCell(boss, tierId, 3, seeds)
 			local eight = SIM.raidCell(boss, tierId, 8, seeds8)
 			local bottom = SIM.raidCell(boss, tierId, 1, max(2, floor(seeds / 2)), SIM.RaidBottom[tierId])
-			out(fmt("  %-13s %-7s solo %3d%% %3.0f s | 3p %3d%% %3.0f s | 8p %3d%% %3.0f s | bottom solo %3d%%", boss, tierId, solo.winPct, solo.avgDur, three.winPct, three.avgWonDur, eight.winPct, eight.avgWonDur, bottom.winPct))
+			out(fmt("  %-13s %-7s solo %3d%% %3.0f s | 3p %3d%% won %3.0f s all %3.0f s %d/%d out | 8p %3d%% won %3.0f s all %3.0f s %d/%d out | bottom solo %3d%%", boss, tierId, solo.winPct, solo.avgDur, three.winPct, three.avgWonDur, three.avgDur, three.timeouts, three.n, eight.winPct, eight.avgWonDur, eight.avgDur, eight.timeouts, eight.n, bottom.winPct))
 			soloOk = soloOk and solo.winPct <= T.Solo
 			soloSum, soloCells = soloSum + solo.winPct, soloCells + 1
 			threeOk = threeOk and inBand(three.winPct, T.Three)
