@@ -574,6 +574,24 @@ S.p3data_battle = guarded("p3data_battle", function()
 		"p3 battle: ProfileSync sends TrialCleared as a dense array of booleans ({true, true, false, false, true}: reads like the set)", listText(tc))
 	T.check(sb.Trophies == 7 and sb.TrialBest == 5 and sb.PvPWins == 3 and sb.RaidBestDamage == 1234 and type(sb.EventPets) == "table" and sb.EventPets.storm_titan_pup == true,
 		"p3 battle: ...with the trophies (synced after AddTrophies), counters, best values and event pets")
+	-- boss raids: the reward clocks (Unix seconds: far above MAX_COUNT, and they never go back)
+	local rc0 = DataS.GetBattle(p)
+	T.check(rc0.RaidRewardAt == 0 and rc0.RaidLossAt == 0, "p3 battle: no raid paid yet: both reward clocks read 0")
+	local stamp = os.time() + 2000000000
+	DataS.MutateBattle(p, function(battle)
+		battle.RaidRewardAt = stamp
+		battle.RaidLossAt = "junk"
+	end)
+	local rc1 = DataS.GetBattle(p)
+	T.check(rc1.RaidRewardAt == stamp and rc1.RaidLossAt == 0, "p3 battle: a stamp is kept whole; junk reads 0", tostring(rc1.RaidRewardAt))
+	DataS.MutateBattle(p, function(battle)
+		battle.RaidRewardAt = 5
+	end)
+	T.check(DataS.GetBattle(p).RaidRewardAt == stamp, "p3 battle: a reward clock never goes back")
+	local markRc = K.logSize()
+	DataS.Sync(p)
+	local snapRc = lastSnapshot(p, markRc)
+	T.check(type(snapRc) == "table" and type(snapRc.Battle) == "table" and snapRc.Battle.RaidRewardAt == stamp and snapRc.Battle.RaidLossAt == 0, "p3 battle: ProfileSync carries the reward clocks (the gate tag's countdown)")
 	K.removePlayers({ p })
 	advance(2)
 	K.flushErrors("p3data_battle")
@@ -680,6 +698,8 @@ S.p3data_save = guarded("p3data_save", function()
 		battle.TrialCleared[2] = true
 		battle.TrialBest = 2
 		battle.RaidBestDamage = 900
+		battle.RaidRewardAt = 50
+		battle.RaidLossAt = 70
 	end)
 	-- another server meanwhile: presets 1 and 3, +5 trophies, a PvP loss, trial 3, another raid, an event pet
 	local other = data[storeKey(MG)]
@@ -690,6 +710,8 @@ S.p3data_save = guarded("p3data_save", function()
 	other.Battle.TrialCleared = { true, false, true }
 	other.Battle.TrialBest = 3
 	other.Battle.RaidBestDamage = 700
+	other.Battle.RaidRewardAt = 90
+	other.Battle.RaidLossAt = 60
 	other.Battle.EventPets[e] = true
 	local m1 = watch.mark()
 	DataS.Save(q)
@@ -706,6 +728,8 @@ S.p3data_save = guarded("p3data_save", function()
 		listText(clearedLevels(sqb.TrialCleared)))
 	T.check(sqb.RaidBestDamage == 900 and type(sqb.EventPets) == "table" and sqb.EventPets[a] == true and sqb.EventPets[e] == true,
 		"p3 save: RaidBestDamage keeps the higher (900 here vs 700 there); EventPets only grow (union)")
+	T.check(sqb.RaidRewardAt == 90 and sqb.RaidLossAt == 70, "p3 save: the raid reward clocks merge as the latest (win 90 there vs 50 here, loss 70 here vs 60 there)",
+		tostring(sqb.RaidRewardAt) .. "/" .. tostring(sqb.RaidLossAt))
 	advance(0.5)
 	local qt, qb = DataS.GetTeams(q), DataS.GetBattle(q)
 	T.check(qt and sameList(qt.Presets[1], { a, c }) and sameList(qt.Presets[3], { d }) and qt.Active == 2 and qb and qb.Trophies == 18 and qb.TrialCleared[3] == true,

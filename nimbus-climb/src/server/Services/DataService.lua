@@ -20,7 +20,8 @@
 --     -- Phase 3
 --     Teams = { Presets = { [1..3] = {key, key, key, key?} }, Active = 1..3 },
 --     Battle = { Trophies, TrialBest, TrialCleared = {[level]=true}, Raids, RaidBestDamage, PvPWins, PvPLosses,
---                EventPets = {[petId]=true} },
+--                EventPets = {[petId]=true}, RaidRewardAt, RaidLossAt },   -- the raid reward clocks: Unix seconds of the last
+--                                                                          -- paid win / loss (0 = never; boss raids 2026-11-01)
 --     -- Phase 4 (new TOP-LEVEL fields only: a Phase 3 server still running during the rollout rebuilds Battle,
 --     -- Teams, PetLevels entries and slot values from the keys it knows and would erase anything new inside them;
 --     -- keepForeign writes unknown top-level and Home keys back untouched)
@@ -127,7 +128,8 @@
 --     are replaced PER KEY when the session changed that key; GemReceipts only grow (bounded to the newest 100);
 --     Teams merge PER PRESET (a preset the session changed replaces the stored one, Active is replaced when the
 --     session changed it; afterwards the presets are pruned against the merged copies); Battle: Trophies / Raids /
---     PvPWins / PvPLosses travel as +/- deltas (never below 0), TrialBest / RaidBestDamage keep the higher value,
+--     PvPWins / PvPLosses travel as +/- deltas (never below 0), TrialBest / RaidBestDamage / RaidRewardAt / RaidLossAt keep the
+--     higher value (the reward clocks: the latest paid raid, so the limit survives a server hop),
 --     TrialCleared / EventPets only grow (union). Home: a HIGHER Home.Prestige wins the whole Home (prestige resets the stations, so
 --     the other side's per-station changes are void); at equal prestige the Home merges per key (Level replaced,
 --     LastSeen the later one). When both sides prestiged to that star (two runs from the same reset home), each
@@ -669,9 +671,9 @@ local P3 = {
 	MAX_SLOTS = 3, -- keeps its first 3 keys, the 4th pet stays owned with its level and growth)
 	MAX_TRIAL_LEVEL = 200, -- sanity cap for TrialBest / TrialCleared levels (the trials go up to 30)
 	COUNTERS = { "Trophies", "Raids", "PvPWins", "PvPLosses" }, -- merge as +/- deltas (never below 0)
-	BESTS = { "TrialBest", "RaidBestDamage" }, -- merge as the higher value
+	BESTS = { "TrialBest", "RaidBestDamage", "RaidRewardAt", "RaidLossAt" }, -- merge as the higher value
 	-- what MutateBattle may change while the profile is provisional (these merge safely into the real save)
-	PROVISIONAL_OK = { Trophies = true, Raids = true, PvPWins = true, PvPLosses = true, RaidBestDamage = true },
+	PROVISIONAL_OK = { Trophies = true, Raids = true, PvPWins = true, PvPLosses = true, RaidBestDamage = true, RaidRewardAt = true, RaidLossAt = true },
 	MARK_TEAM = "B4TeamFollow", -- Migrations[name]: the save went through the one-team rule (team balance, P3.teamMigrate)
 	MATCH_LOCKED = "Pets are locked during a match", -- the active team during an obby match (PetService's words)
 }
@@ -947,6 +949,8 @@ function P3.newBattle()
 		PvPWins = 0,
 		PvPLosses = 0,
 		EventPets = {},
+		RaidRewardAt = 0,
+		RaidLossAt = 0,
 	}
 end
 
@@ -1759,6 +1763,8 @@ function P3.cleanBattle(raw)
 		battle[field] = sanitize(r[field])
 	end
 	battle.RaidBestDamage = sanitize(r.RaidBestDamage)
+	battle.RaidRewardAt = sanitizeTime(r.RaidRewardAt)
+	battle.RaidLossAt = sanitizeTime(r.RaidLossAt)
 	battle.TrialBest = clampCount(r.TrialBest, P3.MAX_TRIAL_LEVEL)
 	battle.TrialCleared = P3.cleanCleared(r.TrialCleared)
 	for level in pairs(battle.TrialCleared) do
@@ -1816,6 +1822,8 @@ function P3.encodeBattle(battle)
 		PvPWins = battle.PvPWins,
 		PvPLosses = battle.PvPLosses,
 		EventPets = copyMap(battle.EventPets),
+		RaidRewardAt = battle.RaidRewardAt,
+		RaidLossAt = battle.RaidLossAt,
 	}
 end
 
