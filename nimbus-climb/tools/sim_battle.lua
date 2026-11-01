@@ -9,8 +9,8 @@
 --             + the element counter (balance-5: Water vs Flame, the wheel on vs off): it decides an even fight (>= 90%)
 --             and is worth x1.15-1.45 TeamPower
 --   raids     per boss and fight tier (spec 2026-11-01, SIM.RaidTeams, SIM.Targets.Raid), a team near the top of the tier with
---             the default trainer: solo <= 15%, 3 teams 25-55%, 8 teams >= 70%; won group fights last 100-240 s; a dare
---             is harder; the lethal attack spares a dodging fighter and kills a standing one; joins / leaves; idle alts
+--             the default trainer: solo <= 15%, 3 teams 25-55%, 8 teams >= 70%; group fights, won and lost, last 100-240 s and none
+--             times out; a dare is harder; the lethal attack spares a dodging fighter and kills a standing one; joins / leaves; idle alts
 --   ring      the owner's wall (spec 2026-10-31 s.4, run XP + loss XP, HP carried, fainted pets out; SIM.Targets.Ring): 3 L1 Commons
 --             win 2-4 rounds, Ring 5 in <= 10% of seeds; Legendaries, the owner's Secrets, L50, maxed by band; round 1 is an easy
 --             Common; shown level and power never drop; the champions on the player formula (no Boss / Handicap / Boost)
@@ -1118,8 +1118,9 @@ section("raids", function(opts)
 	local seeds8 = opts.quick and 2 or 6
 	local soloSeeds = 12 -- also in quick: at 4 seeds one win reads 25%, a cell could not be about 5% and under the 15% ceiling
 	header(fmt("Raids per boss and tier (default trainer, a team near the top of the tier): %d seeds a cell, %d solo, %d for 8 teams", seeds, soloSeeds, seeds8))
-	local soloOk, threeOk, eightOk, groupDurOk = true, true, true, true
+	local soloOk, threeOk, eightOk, groupDurOk, wonDurOk = true, true, true, true, true
 	local worstSolo, worstThreeLo, worstThreeHi, worstEight, longest, shortest = 0, 100, 0, 100, 0, huge
+	local longestWon, shortestWon, longestFight, timeouts = 0, huge, 0, 0
 	local soloSum, soloCells = 0, 0
 	for _, boss in ipairs(BC.BossOrder) do
 		for _, tierId in ipairs(BC.RaidTierOrder) do
@@ -1136,9 +1137,12 @@ section("raids", function(opts)
 			worstThreeLo, worstThreeHi = min(worstThreeLo, three.winPct), max(worstThreeHi, three.winPct)
 			worstEight = min(worstEight, eight.winPct)
 			for _, cell in ipairs({ three, eight }) do
+				groupDurOk = groupDurOk and inBand(cell.avgDur, T.Group)
+				longest, shortest = max(longest, cell.avgDur), min(shortest, cell.avgDur)
+				longestFight, timeouts = max(longestFight, cell.maxDur), timeouts + cell.timeouts
 				if cell.wins[1] > 0 then
-					groupDurOk = groupDurOk and inBand(cell.avgWonDur, T.Group)
-					longest, shortest = max(longest, cell.avgWonDur), min(shortest, cell.avgWonDur)
+					wonDurOk = wonDurOk and inBand(cell.avgWonDur, T.Group)
+					longestWon, shortestWon = max(longestWon, cell.avgWonDur), min(shortestWon, cell.avgWonDur)
 				end
 			end
 		end
@@ -1146,7 +1150,9 @@ section("raids", function(opts)
 	target("solo: a team near the top of its tier wins at most 15% in every boss x tier cell (about 5%)", soloOk, fmt("worst %d%%, average %.1f%%", worstSolo, soloSum / max(1, soloCells)))
 	target("3 teams: 25-55% in every cell", threeOk, fmt("%d%%-%d%%", worstThreeLo, worstThreeHi))
 	target("8 teams: at least 70% in every cell", eightOk, fmt("worst %d%%", worstEight))
-	target("won group fights (3 and 8 teams) average 100-240 s in every cell, Lava Golem included", groupDurOk, fmt("%.0f-%.0f s", shortest, longest))
+	target("group fights (3 and 8 teams, won and lost) average 100-240 s in every cell, Lava Golem included", groupDurOk, fmt("%.0f-%.0f s", shortest, longest))
+	target("the won group fights alone average 100-240 s in every cell", wonDurOk, fmt("%.0f-%.0f s", shortestWon, longestWon))
+	target("no group fight runs out the time limit (a loss is a wipe, not a wait)", timeouts == 0, fmt("%d timeouts, the longest fight %.0f s", timeouts, longestFight))
 
 	header("Raids: a dare is harder (SIM.RaidTeams.Mid solo against a High boss)")
 	local dareWins, dareN = 0, 0
