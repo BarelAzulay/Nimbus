@@ -93,6 +93,7 @@ if [ $do_static -eq 1 ]; then
 	if need python3 "install Python 3"; then
 		step "Upload tool tests (tools/test_upload_assets.py, offline)" python3 tools/test_upload_assets.py
 		step "Sky manifest tests (tools/test_sky_manifest.py, offline)" python3 tools/test_sky_manifest.py
+		step "Model router tests (tools/test_pick_model.py, offline)" python3 tools/test_pick_model.py
 	fi
 fi
 
