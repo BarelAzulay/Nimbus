@@ -236,6 +236,8 @@ local function collidingParts(model)
 	return n
 end
 
+local newFight -- a real BattleSim's fight on this client (below, with the battle scenarios)
+
 ----------------------------------------------------------------------------------------------------
 -- client_raid_gate
 ----------------------------------------------------------------------------------------------------
@@ -308,6 +310,35 @@ S.client_raid_gate = guarded("client_raid_gate", function()
 		KC.toClient("BattleState", "End", { BattleId = "R10", Mode = "Raid", Spectator = true, Reason = "OutOfRange" }, "R10")
 		pushArena(waiting())
 		KC.advance(0.3)
+
+		-- a floor fight lost: its boss stays drawn for the linger, the idle boss waits (a kill has FloorHiddenIn, a loss has nothing)
+		KC.toClient("BattleState", "Start", { Mode = "Raid", BattleId = "R11", Side = 0, Spectator = true, Raid = { Tier = "Mid", Pocket = false, BossId = "frost_wyrm" }, Units = {}, Zone = { CFrame = BASE, Size = Vector3.new(96, 30, 96), X = 96, Z = 96 }, Names = {} }, "R11")
+		KC.advance(0.3)
+		KC.toClient("BattleState", "End", { BattleId = "R11", Mode = "Raid", Spectator = true, Reason = "Wipe" }, "R11")
+		pushArena(waiting())
+		KC.advance(0.5)
+		T.check(idleBoss() == nil, "raid gate client: a spectator: the idle boss waits while the lost fight's boss is still drawn on the floor")
+		KC.advance(1.5)
+		T.check(idleBoss() ~= nil, "raid gate client: ...and stands there once the linger is over")
+		-- the raider's own lost floor fight (the longer linger), a pocket fight's linger holds nothing back
+		local floorFight = newFight({ Tier = "Mid", Pocket = false, BossId = "frost_wyrm" }, "frost_wyrm")
+		floorFight.step()
+		KC.advance(0.3)
+		T.check(idleBoss() == nil, "raid gate client: (my floor fight's Start took the idle boss away)")
+		floorFight.finish()
+		pushArena(waiting())
+		KC.advance(0.5)
+		T.check(idleBoss() == nil, "raid gate client: a raider: the idle boss waits behind the result card's linger, no second boss on top of the first")
+		KC.advance(2)
+		T.check(idleBoss() == nil, "raid gate client: ...for all of it")
+		KC.advance(1.5)
+		T.check(idleBoss() ~= nil, "raid gate client: ...and stands there once the linger is over")
+		local pocketFight = newFight({ Tier = "Mid", Pocket = true, BossId = "frost_wyrm" }, "frost_wyrm")
+		pocketFight.step()
+		pocketFight.finish()
+		KC.advance(0.5)
+		T.check(idleBoss() ~= nil, "raid gate client: a pocket fight's linger leaves the idle boss alone")
+		KC.advance(4)
 
 		-- range
 		Mock.Teleport(LocalPlayer, BASE * CFrame.new(0, 3, -900))
@@ -544,7 +575,7 @@ end)
 ----------------------------------------------------------------------------------------------------
 local fightSeq = 0
 
-local function newFight(raid, bossId)
+function newFight(raid, bossId)
 	local Sim = req("shared/BattleSim")
 	fightSeq = fightSeq + 1
 	local id = "smoke_raidc_" .. fightSeq

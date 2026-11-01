@@ -16,8 +16,9 @@
 --   * The idle boss: workspace.ClientRaidGate.Boss_<id>, built here for this client alone at the centre of the colosseum floor (the
 --     NC_BattleZone part with Mode "Raid" and ZoneId "Arena"), facing the lobby, in the colours and size of MY tier, while the
 --     player is within K.RANGE studs and no fight has the floor (ArenaState.Raid: Active false, FloorHiddenIn 0). A floor fight's
---     "Start" takes it away at once. Its head follows the player (at most 30 Hz, turning at K.TURN_SPEED rad/s). Graphics Low: the
---     Low model, no aura, it stands still.
+--     "Start" takes it away at once, and it comes back only when BattleController has stopped drawing that fight (the end's linger: the
+--     server says Active false at the end). Its head follows the player (at most 30 Hz, turning at K.TURN_SPEED rad/s). Graphics Low:
+--     the Low model, no aura, it stands still.
 --   * The gate tag: one pixel-sized BillboardGui RaidGateTag on the gate's crest (tag NC_RaidGateCrest, else the RaidGate part):
 --     "<Boss> - your tier: <Tier> (L<n> boss)", the reward line, "<Tier> boss back in N s" while my tier's fight is closed, else "Walk
 --     through to fight". Refreshed every second from the last ArenaState; hidden while the player fights.
@@ -295,13 +296,19 @@ function H.floorFrame(zone)
 	return zone.CFrame * CFrame.new(0, y - zone.Position.Y, 0)
 end
 
+-- the fight's own boss still stands on the floor here (a lost fight: the end's linger, nothing on the server says so)
+function H.fightOnFloor()
+	local battle = H.controller("BattleController")
+	return battle ~= nil and type(battle.DrawsRaidFloor) == "function" and battle.DrawsRaidFloor() == true
+end
+
 function H.syncBoss()
 	local raid = H.raid()
 	local zone = H.floorZone()
 	local pos = H.rootPosition()
 	local tier = RaidGateController.Tier()
 	local want = raid ~= nil and raid.Active ~= true and H.left(raid.FloorHiddenIn) <= 0 and zone ~= nil and tier ~= nil and pos ~= nil
-		and (pos - zone.Position).Magnitude <= K.RANGE
+		and (pos - zone.Position).Magnitude <= K.RANGE and not H.fightOnFloor()
 	if not want then
 		H.dropModel()
 		return

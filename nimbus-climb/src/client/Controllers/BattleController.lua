@@ -23,6 +23,7 @@
 --   BattleController.GetUnit(id) -> { Id, Side, Kind, Name, Hp, MaxHp, State, Meter, Model, X, Z, World, Card, Level,
 --                                     Evo, Xp, XpNext, Crowned, Writes, Benched, Windup, Drawn (the drawn root position),
 --                                     Pose, PoseP (the battle pose drawn: a PetPoses name | nil, its p) }
+--   BattleController.DrawsRaidFloor() -> bool  a fight on the real floor is still drawn here, its end's linger included
 --   BattleController.GetStats() / ResetStats() / IsHudVisible() / ScreenPick(x, y) / GetTelegraphs()   (as Phase 3;
 --                                     GetStats().AttackFx = AttackFx.Stats() once the pet attack VFX are loaded)
 --
@@ -9168,6 +9169,12 @@ function BattleController.GetBattle()
 		InterpDelay = interpDelay(B),
 		TeamPlace = Hud.teamPlace,
 	}
+end
+
+-- RaidGateController: a fight on the real floor is still drawn here, its end's linger included (its boss stands on the floor until then)
+function BattleController.DrawsRaidFloor()
+	local B = St.battle
+	return B ~= nil and B.Mode == "Raid" and type(B.Raid) == "table" and B.Raid.Pocket == false
 end
 
 -- the drawn telegraphs (tests): { { Id, Shape, At, From, SafeAt, Late, Lethal, RimWidth, RimColor } ... } on the render clock
