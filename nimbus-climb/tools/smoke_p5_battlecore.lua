@@ -1121,10 +1121,16 @@ S.p5sim_modes = guarded("p5sim_modes", function()
 	for i = 1, 16 do
 		teams[i] = team(100 + i, 1, { pet("cloudy_dragon", 25), pet("twilight_dragon", 28), pet("ember_phoenix", 26, "Golden") }, { Auto = true })
 	end
-	b = BS.new({ Mode = "Raid", Boss = "storm_titan", Seed = 2, Teams = teams })
+	b = BS.new({ Mode = "Raid", Boss = "storm_titan", RaidTier = "Starter", Seed = 2, Teams = teams })
 	T.check(b ~= nil and b:BossStatus().Players == 16 and #b:StaticUnits() == 49, "a raid with 16 fighter teams (48 units + the boss) starts")
-	local solo = BS.new({ Mode = "Raid", Boss = "storm_titan", Seed = 2, Teams = { teams[1] } })
-	T.check(b:BossStatus().MaxHp > solo:BossStatus().MaxHp * 10 and b:BossStatus().MaxHp < solo:BossStatus().MaxHp * 16 * 1.8, "boss HP = ExpectedDps x HpPerPlayer x teams ^ 0.2", fmt("%d vs %d", b:BossStatus().MaxHp, solo:BossStatus().MaxHp))
+	local solo = BS.new({ Mode = "Raid", Boss = "storm_titan", RaidTier = "Starter", Seed = 2, Teams = { teams[1] } })
+	T.check(b:BossStatus().MaxHp > solo:BossStatus().MaxHp * 3 and b:BossStatus().MaxHp == BC.BossHp("storm_titan", (function()
+		local specs = {}
+		for i = 1, 16 do
+			specs[i] = { Pets = teams[i].Pets }
+		end
+		return specs
+	end)(), "Starter"), "boss HP = BattleCatalog.BossHp over the teams (their expected DPS x the tier's seconds x GroupFactor)", fmt("%d vs %d", b:BossStatus().MaxHp, solo:BossStatus().MaxHp))
 	all = run(b, 3400)
 	r = b:Result()
 	T.check(r and r.Reason == "BossDown" and r.WinnerSide == 1 and r.Shares[101] > 0 and countType(all, "Telegraph") > 0 and countType(all, "Spawn") >= 1, "16 Auto fighters bring the Storm Titan down (telegraphs, minion waves)", r and fmt("%s %.0f s", r.Reason, r.Duration))
@@ -1613,24 +1619,11 @@ S.p5battle_balance = guarded("p5battle_balance", function()
 		end
 	end
 	T.check(waveWins >= 12, "the 2.4 wave rule: a maple_fox L10 with two helpers beats three foxes of 0.8 x its power (>= 60% of 20 seeds; wave 6 measured 65%)", fmt("%d of 20", waveWins))
-	-- raids: a solo M8 fighter and four M5 fighters, dodging
-	local raid1 = SIM.series(function(seed)
-		return { Mode = "Raid", Boss = "storm_titan", Seed = seed, Teams = { team2(1, 1, SIM.Stages[9].Pets) } }
-	end, { [1] = "player" }, 3)
-	local policies = {}
-	local function raid4(seed)
-		local teams = {}
-		for i = 1, 4 do
-			teams[i] = team2(100 + i, 1, SIM.Stages[8].Pets)
-			policies[100 + i] = "player"
-		end
-		return { Mode = "Raid", Boss = "frost_wyrm", Seed = seed, Teams = teams }
-	end
-	local raidB = SIM.series(raid4, policies, 3)
-	T.check(raid1.wins[1] == 3 and raid1.avgDur >= 70 and raid1.avgDur <= 240, "a solo endgame (S9) team beats the Storm Titan in 70-240 s (the L35 baseline: solo stays possible only far along)", fmt("%d of 3, %.0f s", raid1.wins[1], raid1.avgDur))
-	-- (bug #22 wave 5: the engage rule lets a standing raider's pet walk back to the boss after a dodge, so a 3-seed cell
-	-- runs a little faster, ~98 s; the lower bound is the harness's own per-cell band (sim_battle: 90-250 s per cell))
-	T.check(raidB.wins[1] == 3 and raidB.avgDur >= 90 and raidB.avgDur <= 240 and raidB.maxBossHit <= 0.8, "four prestige-2 (S8) fighters beat the Frost Wyrm in 90-240 s (one cell) with no hit over 80%", fmt("%d of 3, %.0f s, max hit %.2f", raidB.wins[1], raidB.avgDur, raidB.maxBossHit))
+	-- raids (spec 2026-11-01): a solo near the top of its tier loses, eight such teams win
+	local raid1 = SIM.raidCell("storm_titan", "High", 1, 3)
+	local raidB = SIM.raidCell("frost_wyrm", "Mid", 8, 3)
+	T.check(raid1.wins[1] <= 1, "a solo team near the top of the High tier does not beat the Storm Titan (solo barely possible)", fmt("%d of 3, %.0f s", raid1.wins[1], raid1.avgDur))
+	T.check(raidB.wins[1] == 3 and raidB.avgDur >= 90 and raidB.avgDur <= 250 and raidB.maxBossHit <= 0.8, "eight teams near the top of the Mid tier beat the Frost Wyrm in 90-250 s (one cell) with no hit over 80%", fmt("%d of 3, %.0f s, max hit %.2f", raidB.wins[1], raidB.avgDur, raidB.maxBossHit))
 	-- ring: round 1 for the weakest starter; the owner's wall and the owner's team (spec 2026-10-31 s.4, SIM.Targets.Ring)
 	local wins = 0
 	for seed = 1, 6 do

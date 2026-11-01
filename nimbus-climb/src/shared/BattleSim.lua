@@ -1098,6 +1098,7 @@ local function makeBoss(self, bossId)
 		enraged = false,
 		tierId = tier.Id,
 		tierHit = tier.Hit,
+		groupMin = tier.GroupMin, -- nil = BossRules.DamageGroup.Min
 		damageMult = tier.Hit,
 		cooldownMult = 1,
 		attackUntil = 0,
@@ -2321,7 +2322,7 @@ function bossBasis(self, victim)
 	if group then
 		local teams = self.playerTeamCount or 1
 		local fullAt = max(2, num(group.FullAt, 8))
-		local lo = num(group.Min, 0.6)
+		local lo = num(self.boss and self.boss.groupMin, num(group.Min, 0.6))
 		factor = lo + (1 - lo) * min(1, (teams - 1) / (fullAt - 1))
 	end
 	return (num(basis.Own, 0.6) * victim.maxHp + num(basis.Average, 0.4) * self.avgPetHp) * factor

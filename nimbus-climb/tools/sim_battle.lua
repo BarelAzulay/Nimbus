@@ -8,17 +8,16 @@
 --   duels     mirror duels per stage (scripted players both sides): 40-60%, no draws, none at the 120 s limit
 --             + the element counter (balance-5: Water vs Flame, the wheel on vs off): it decides an even fight (>= 90%)
 --             and is worth x1.15-1.45 TeamPower
---   raids     the baseline: BossRules.Baseline is a L35 evolved Legendary and the owner's L10/11/11 Secrets win 0 of 8 solo raids;
---             4 and 8 owner-teams finish in 100-240 s; 1 / 4 / 8 / 16 parrying trainers (wave 6: the trainer stands, times the
---             Dash) win nearly every raid in 100-240 s; a solo under a quarter of the boss's BaselineDps loses (bug batch 2 #2);
---             8 x M5 win >= 90% in 240 s; 8 x Lv 5 win >= 70%; no one-shots; joins / leaves; idle alts
+--   raids     per boss and fight tier (spec 2026-11-01, SIM.RaidTeams, SIM.Targets.Raid), a team near the top of the tier with
+--             the default trainer: solo <= 15%, 3 teams 25-55%, 8 teams >= 70%; won group fights last 100-240 s; a dare
+--             is harder; the lethal attack spares a dodging fighter and kills a standing one; joins / leaves; idle alts
 --   ring      the owner's wall (spec 2026-10-31 s.4, run XP + loss XP, HP carried, fainted pets out; SIM.Targets.Ring): 3 L1 Commons
 --             win 2-4 rounds, Ring 5 in <= 10% of seeds; Legendaries, the owner's Secrets, L50, maxed by band; round 1 is an easy
 --             Common; shown level and power never drop; the champions on the player formula (no Boss / Handicap / Boost)
 --   dungeon   3 L1 Commons: room 1 >= 90%, room 2 40-60%, floor 1 < 15%; L7 Commons clear it; the team ladder (SIM.Targets.Dungeon);
 --             the tutorial's eased room; a 4-party +1 floor
 --   progress  a new player's real pace (3 L1 Commons, run XP): minutes to Ring 5, floor 1 and Ring 10 (SIM.Targets.Progress)
---   training  trained / evolved TeamPower ratios; trained mirror duels fair; trained raids 100-240 s
+--   training  trained / evolved TeamPower ratios; trained mirror duels fair; eight trained teams win their tier's raids in 100-240 s
 --   move      the B1 character patterns (random targets + an r 14 circle) at the legal run speed with a 200 ms feed delay:
 --             the server fighter keeps up (gap <= 0.5 after the catch-up, zero leashes); a run-off past the zone is leashed;
 --             wave 6: an engaged pet ignores the walking character (zero Engage off), a wandering trainer's raid plays
@@ -253,11 +252,24 @@ SIM.Targets = {
 		Max = { Floor = { 12, 12 } },
 	},
 	Progress = { Ring5 = { 4, 9 }, F1 = { 4, 10 }, Ring10 = { 20, 45 } },
-	Raid = { OwnerSoloWins = 0, Group = { 100, 240 } },
+	Raid = { Solo = 15, Three = { 25, 55 }, Eight = 70, Group = { 100, 240 } },
 }
 local function inBand(value, band)
 	return value >= band[1] and value <= band[2]
 end
+-- the fight tiers' reference teams (spec 2026-11-01): RaidTeams near the top of the tier, RaidBottom at its bottom edge
+SIM.RaidTeams = {
+	Starter = { pet("aurora_fox", 18), pet("moonlit_owl", 17), pet("ember_phoenix", 16) },
+	Mid = { pet("ember_phoenix", 47, nil, { Evo = 1 }), pet("twilight_dragon", 46, nil, { Evo = 1 }), pet("aurora_fox", 45, "Golden", { Evo = 1 }) },
+	High = { pet("cloudy_dragon", 77, "Golden", { Evo = 2 }), pet("stormfang", 76, nil, { Evo = 2 }), pet("eclipse_dragon", 75, nil, { Evo = 2 }) },
+	Max = SIM.Maxed,
+}
+SIM.RaidBottom = {
+	Starter = SIM.Teams.S1,
+	Mid = { pet("mallow_kitten", 20, nil, { Evo = 1 }), pet("puddle_frog", 20, nil, { Evo = 1 }), pet("pebble_pup", 20, nil, { Evo = 1 }) },
+	High = { pet("ember_phoenix", 50, nil, { Evo = 2 }), pet("twilight_dragon", 50, nil, { Evo = 2 }), pet("sunbeam_bear", 50, nil, { Evo = 2 }) },
+	Max = { pet("stormfang", 80, nil, { Evo = 2 }), pet("eclipse_dragon", 80, nil, { Evo = 2 }), pet("obsidian_phoenix", 80, nil, { Evo = 2 }) },
+}
 
 ----------------------------------------------------------------------
 -- A scripted player (the trainer + the kit). Wave 6: the trainer STANDS (opts.move "stand", default; "wander" = a slow
@@ -312,6 +324,7 @@ function Player.new(battle, owner, seed, opts)
 	local me = tinfo and tinfo.Fighter and snap.Units[tinfo.Fighter]
 	self.cx, self.cz = me and me.x or 0, me and me.z or 0
 	self.dashAt = nil
+	self.lethals = {}
 	self.wanderX, self.wanderZ = nil, nil
 	self.wanderRand = lcg(seed + 101) -- its own stream: wandering never changes the Dash rolls
 	self.castAt = nil
@@ -363,11 +376,16 @@ function Player:step(events, snapshot)
 	if mistime == nil then
 		mistime = 0.5
 	end
-	-- the timed Dash: a wind-up aimed at my fighter, a telegraph covering it
+	-- the timed Dash: a wind-up aimed at my fighter, a telegraph covering it (a lethal one, wherever it is: the player watches
+	-- it the whole warning, its press is kept below and fires if the fighter is in or near the shape by then)
 	for _, ev in ipairs(events) do
 		local at = nil
+		local lethal = false
 		if ev.type == "Windup" and ev.target == fid then
 			at = ev.at
+		elseif ev.type == "Telegraph" and ev.lethal then
+			at = ev.at
+			lethal = true
 		elseif ev.type == "Telegraph" and inShape(ev, me.x, me.z, myInfo.radius or 2) then
 			at = ev.at
 		elseif ev.type == "Parry" and ev.unit == fid then
@@ -383,7 +401,9 @@ function Player:step(events, snapshot)
 			end
 			if press then
 				press = max(press, t + self:reaction())
-				if not self.dashAt or press < self.dashAt then
+				if lethal then
+					self.lethals[#self.lethals + 1] = { ev = ev, press = press }
+				elseif not self.dashAt or press < self.dashAt then
 					self.dashAt = press
 				end
 			end
@@ -430,10 +450,26 @@ function Player:step(events, snapshot)
 	if self.opts.cheer ~= false and (self.mode == "Raid" or self.mode == "Dungeon") and (cdNow.Cheer or 0) <= 0 and target then
 		b:Command(self.owner, "Cheer")
 	end
-	-- dash
-	if self.dashAt and t >= self.dashAt then
+	-- dash (a player saves it for a lethal attack: no press that would leave it on cooldown when the lethal lands)
+	local lethalDue, lethalNext = false, nil
+	for i = #self.lethals, 1, -1 do
+		local pending = self.lethals[i]
+		local close = inShape(pending.ev, me.x, me.z, (myInfo.radius or 2) + 3)
+		if t >= pending.press or t + DT >= pending.ev.at then -- (a press between the last step and the hit goes in on the last step, as a real command would)
+			lethalDue = lethalDue or close
+			table.remove(self.lethals, i)
+		elseif close and (not lethalNext or pending.press < lethalNext) then
+			lethalNext = pending.press
+		end
+	end
+	if lethalDue then
 		self.dashAt = nil
 		if b:Command(self.owner, "Dash") then
+			self.dodges = self.dodges + 1
+		end
+	elseif self.dashAt and t >= self.dashAt then
+		self.dashAt = nil
+		if (not lethalNext or t + BC.Fighter.DashCooldown <= lethalNext) and b:Command(self.owner, "Dash") then
 			self.dodges = self.dodges + 1
 		end
 	end
@@ -521,7 +557,7 @@ function SIM.run(setup, policies, playerOpts)
 	table.sort(players, function(a, c)
 		return tostring(a.owner) < tostring(c.owner)
 	end)
-	local stats = { steps = 0, events = 0, hits = 0, misses = 0, kos = 0, specials = 0, telegraphs = 0, maxPetHit = 0, maxBossHit = 0, bossHits = 0, dodges = 0, parries = 0, teleHits = 0, swaps = 0, buffs = 0, elements = 0 }
+	local stats = { steps = 0, events = 0, hits = 0, misses = 0, kos = 0, specials = 0, telegraphs = 0, maxPetHit = 0, maxBossHit = 0, bossHits = 0, dodges = 0, parries = 0, teleHits = 0, swaps = 0, buffs = 0, elements = 0, lethalHits = 0 }
 	local hpOf = {}
 	local kindOf = {}
 	for _, info in ipairs(b:StaticUnits()) do
@@ -548,7 +584,9 @@ function SIM.run(setup, policies, playerOpts)
 							if ev.tele then
 								stats.teleHits = stats.teleHits + 1
 							end
-							if frac > stats.maxBossHit then
+							if ev.lethal then
+								stats.lethalHits = stats.lethalHits + 1
+							elseif frac > stats.maxBossHit then
 								stats.maxBossHit = frac
 							end
 						elseif frac > stats.maxPetHit then
@@ -598,7 +636,7 @@ function SIM.run(setup, policies, playerOpts)
 end
 
 local function series(makeSetup, policies, seeds, playerOpts)
-	local agg = { n = 0, wins = { [1] = 0, [2] = 0 }, draws = 0, timeouts = 0, dur = 0, maxDur = 0, maxPetHit = 0, maxBossHit = 0, kos = 0, specials = 0, seconds = 0, dodges = 0, parries = 0, telegraphs = 0, teleHits = 0, bossHits = 0, misses = 0, durations = {} }
+	local agg = { n = 0, wins = { [1] = 0, [2] = 0 }, draws = 0, timeouts = 0, dur = 0, wonDur = 0, maxDur = 0, maxPetHit = 0, maxBossHit = 0, kos = 0, specials = 0, seconds = 0, dodges = 0, parries = 0, telegraphs = 0, teleHits = 0, bossHits = 0, misses = 0, lethalHits = 0, durations = {} }
 	for seed = 1, seeds do
 		local result, stats = SIM.run(makeSetup(seed), policies, playerOpts)
 		if result then
@@ -607,6 +645,9 @@ local function series(makeSetup, policies, seeds, playerOpts)
 				agg.wins[result.WinnerSide] = agg.wins[result.WinnerSide] + 1
 			else
 				agg.draws = agg.draws + 1
+			end
+			if result.WinnerSide == 1 then
+				agg.wonDur = agg.wonDur + result.Duration
 			end
 			if result.Reason == "Timeout" then
 				agg.timeouts = agg.timeouts + 1
@@ -625,10 +666,12 @@ local function series(makeSetup, policies, seeds, playerOpts)
 			agg.teleHits = agg.teleHits + stats.teleHits
 			agg.bossHits = agg.bossHits + stats.bossHits
 			agg.misses = agg.misses + stats.misses
+			agg.lethalHits = agg.lethalHits + stats.lethalHits
 		end
 	end
 	agg.winPct = pct(agg.wins[1], agg.n)
 	agg.avgDur = agg.n > 0 and agg.dur / agg.n or 0
+	agg.avgWonDur = agg.wins[1] > 0 and agg.wonDur / agg.wins[1] or 0
 	return agg
 end
 
@@ -1019,167 +1062,105 @@ function SIM.midGroup(boss, players, seeds, pets)
 	end, policies, seeds)
 end
 
+-- `players` default-trainer teams of a fight tier's reference team (or `pets`) against one boss at that tier: the series aggregate
+function SIM.raidCell(boss, tierId, players, seeds, pets)
+	pets = pets or SIM.RaidTeams[tierId]
+	local policies = {}
+	for i = 1, players do
+		policies[100 + i] = "player"
+	end
+	return series(function(seed)
+		local teams = {}
+		for i = 1, players do
+			teams[i] = team(100 + i, 1, pets)
+		end
+		return { Mode = "Raid", Boss = boss, RaidTier = tierId, Seed = seed, Teams = teams }
+	end, policies, seeds)
+end
+
 -- 5. raids
+-- the lethal attack, one boss x tier: `casts` lethal telegraphs land on a fighter nothing else can hurt -> times covered, KOs
+local function lethalRun(boss, tierId, seed, casts, playerOpts)
+	local b = BS.new({ Mode = "Raid", Boss = boss, RaidTier = tierId, Seed = seed, TimeLimit = 900, Specials = false, Teams = { team(1, 1, SIM.RaidTeams[tierId]) } })
+	local player = Player.new(b, 1, seed * 31 + 1, playerOpts)
+	local landed, kos, seen = 0, 0, 0
+	local mine = {}
+	for _, u in ipairs(b.teamByOwner[1].units) do
+		mine[u.id] = true
+	end
+	for _ = 1, 8000 do
+		b.boss.hp = 0.29 * b.boss.maxHp
+		local f = b.teamByOwner[1].fighter
+		if f and f.alive then
+			f.maxHp, f.hp = 1e7, 1e7
+		end
+		local events = b:Step(DT)
+		for _, ev in ipairs(events) do
+			if ev.type == "Telegraph" and ev.lethal then
+				seen = seen + 1
+			elseif ev.type == "Hit" and ev.lethal then
+				landed = landed + 1
+			elseif ev.type == "KO" and mine[ev.unit] then
+				kos = kos + 1
+			end
+		end
+		player:step(events, b:Snapshot())
+		if b:IsFinished() or seen > casts or kos > 0 then
+			break
+		end
+	end
+	return seen, landed, kos
+end
+
 section("raids", function(opts)
 	local T = SIM.Targets.Raid
-	local B = BC.BossRules.Baseline
-	header(fmt("Raids: the baseline (%s L%d evolved %d, BaselineDps %.0f): the owner's L10/11/11 Secrets solo every boss, 8 seeds", B.PetId, B.Level, B.Evo or 0, BC.BaselineDps(BC.BossOrder[1])))
-	local ownerWins = 0
+	local seeds = opts.quick and 4 or 12
+	local seeds8 = opts.quick and 2 or 6
+	header(fmt("Raids per boss and tier (default trainer, a team near the top of the tier): %d seeds a cell, %d for 8 teams", seeds, seeds8))
+	local soloOk, threeOk, eightOk, groupDurOk = true, true, true, true
+	local worstSolo, worstThreeLo, worstThreeHi, worstEight, longest, shortest = 0, 100, 0, 100, 0, huge
 	for _, boss in ipairs(BC.BossOrder) do
-		local agg = series(function(seed)
-			return { Mode = "Raid", Boss = boss, Seed = seed, Teams = { team(1, 1, SIM.Teams.Owner) } }
-		end, { [1] = "player" }, 8)
-		out(fmt("  %-13s solo: wins %d of %d, %5.1f s, maxBossHit %.2f", boss, agg.wins[1], agg.n, agg.avgDur, agg.maxBossHit))
-		ownerWins = ownerWins + agg.wins[1]
-	end
-	local baselineDef = PC.Get(B.PetId)
-	target("BossRules.Baseline is a L35 evolved Legendary and the owner's L10/11/11 Secrets win 0 of 8 solo raids on every boss", B.Level == 35 and (B.Evo or 0) >= 1 and baselineDef.Rarity == "Legendary" and ownerWins == T.OwnerSoloWins, fmt("%d wins", ownerWins))
-	local groupOk, groupRows = true, {}
-	local groupSeeds = opts.quick and 3 or 8
-	for _, players in ipairs({ 4, 8 }) do
-		for _, boss in ipairs({ "storm_titan", "shadow_hydra" }) do
-			local agg = SIM.midGroup(boss, players, groupSeeds, SIM.Teams.Owner)
-			groupRows[#groupRows + 1] = fmt("%dp %s %.0f s (%d%%)", players, boss, agg.avgDur, agg.winPct)
-			if agg.winPct < 100 or not inBand(agg.avgDur, T.Group) then
-				groupOk = false
+		for _, tierId in ipairs(BC.RaidTierOrder) do
+			local solo = SIM.raidCell(boss, tierId, 1, seeds)
+			local three = SIM.raidCell(boss, tierId, 3, seeds)
+			local eight = SIM.raidCell(boss, tierId, 8, seeds8)
+			local bottom = SIM.raidCell(boss, tierId, 1, max(2, floor(seeds / 2)), SIM.RaidBottom[tierId])
+			out(fmt("  %-13s %-7s solo %3d%% %3.0f s | 3p %3d%% %3.0f s | 8p %3d%% %3.0f s | bottom solo %3d%%", boss, tierId, solo.winPct, solo.avgDur, three.winPct, three.avgWonDur, eight.winPct, eight.avgWonDur, bottom.winPct))
+			soloOk = soloOk and solo.winPct <= T.Solo
+			threeOk = threeOk and inBand(three.winPct, T.Three)
+			eightOk = eightOk and eight.winPct >= T.Eight
+			worstSolo = max(worstSolo, solo.winPct)
+			worstThreeLo, worstThreeHi = min(worstThreeLo, three.winPct), max(worstThreeHi, three.winPct)
+			worstEight = min(worstEight, eight.winPct)
+			for _, cell in ipairs({ three, eight }) do
+				if cell.wins[1] > 0 then
+					groupDurOk = groupDurOk and inBand(cell.avgWonDur, T.Group)
+					longest, shortest = max(longest, cell.avgWonDur), min(shortest, cell.avgWonDur)
+				end
 			end
 		end
 	end
-	out("  owner-teams: " .. table.concat(groupRows, ", "))
-	target("4 and 8 owner-teams finish storm_titan and shadow_hydra in 100-240 s", groupOk, table.concat(groupRows, ", "))
+	target("solo: a team near the top of its tier wins at most 15% in every boss x tier cell (about 5%)", soloOk, fmt("worst %d%%", worstSolo))
+	target("3 teams: 25-55% in every cell", threeOk, fmt("%d%%-%d%%", worstThreeLo, worstThreeHi))
+	target("8 teams: at least 70% in every cell", eightOk, fmt("worst %d%%", worstEight))
+	target("won group fights (3 and 8 teams) average 100-240 s in every cell, Lava Golem included", groupDurOk, fmt("%.0f-%.0f s", shortest, longest))
 
-	header("Raids: 1 / 4 / 8 / 16 dodging fighters (70% of wind-ups and telegraphs) should finish every boss in 100-240 s (a solo under a quarter of BaselineDps should lose)")
-	local seeds = max(1, floor(opts.seeds / 8))
-	local stages = { { Id = "M5", Pets = SIM.Stages[5].Pets }, { Id = "M8", Pets = SIM.Stages[8].Pets } }
-	local wonCombos, combos, anyBossHit = 0, 0, 0
-	local weakSolos, weakSolosLost = 0, 0
-	local cellOk, avgOk = true, true
+	header("Raids: a dare is harder (SIM.RaidTeams.Mid solo against a High boss)")
+	local dareWins, dareN = 0, 0
 	for _, boss in ipairs(BC.BossOrder) do
-		for _, stage in ipairs(stages) do
-			local sumDur, cells = 0, 0
-			for _, players in ipairs({ 1, 4, 8, 16 }) do
-				local n = (players >= 8) and max(1, floor(seeds / 2)) or seeds + 1
-				local policies = {}
-				for i = 1, players do
-					policies[100 + i] = "player"
-				end
-				local agg = series(function(seed)
-					local teams = {}
-					for i = 1, players do
-						teams[i] = team(100 + i, 1, stage.Pets)
-					end
-					return { Mode = "Raid", Boss = boss, Seed = seed, Teams = teams }
-				end, policies, n)
-				out(fmt("  %-13s %-3s %2dp: win %3d%% dur %5.1f s (dashes %5.1f, parries %5.1f, dodged hits %5.1f, KOs %4.1f, maxBossHit %.2f, tele hits %4.1f)",
-					boss, stage.Id, players, agg.winPct, agg.avgDur, agg.dodges / max(1, agg.n), agg.parries / max(1, agg.n), agg.misses / max(1, agg.n), agg.kos / max(1, agg.n), agg.maxBossHit, agg.teleHits / max(1, agg.n)))
-				-- bug batch 2 #2: a solo with under a quarter of the boss's BaselineDps meets the HP floor and should lose (near
-				-- it is the edge: the L35 baseline puts M8 at ~0.37 x, its helpers make it a coin flip per boss)
-				local weakSolo = players == 1 and BC.BaselineDps and BC.ExpectedDps({ Pets = stage.Pets }) < 0.25 * BC.BaselineDps(boss)
-				if weakSolo then
-					weakSolos = weakSolos + 1
-					if agg.winPct < 50 then
-						weakSolosLost = weakSolosLost + 1
-					end
-				else
-					combos = combos + 1
-				end
-				-- a raid under half the BaselineDps fights the HP floor at the edge of the 330 s window (the L35 baseline: 4 x M5, a
-				-- solo M8): it can win, but it counts neither as a raid to win nor in the 100-240 s band
-				local floorGroup = BC.ExpectedDps({ Pets = stage.Pets }) * players < 0.5 * BC.BaselineDps(boss)
-				if not weakSolo and floorGroup then
-					combos = combos - 1
-				end
-				if agg.winPct >= 50 then
-					wonCombos = wonCombos + ((weakSolo or floorGroup) and 0 or 1)
-					if not floorGroup then
-						if agg.avgDur < 90 or agg.avgDur > 250 then
-							cellOk = false
-						end
-						sumDur, cells = sumDur + agg.avgDur, cells + 1
-					end
-				end
-				anyBossHit = max(anyBossHit, agg.maxBossHit)
-			end
-			if cells > 0 and (sumDur / cells < 100 or sumDur / cells > 240) then
-				avgOk = false
-			end
-			out(fmt("  %-13s %-3s average over 1/4/8/16 players: %.0f s", boss, stage.Id, cells > 0 and sumDur / cells or 0))
-		end
+		local agg = SIM.raidCell(boss, "High", 1, seeds, SIM.RaidTeams.Mid)
+		out(fmt("  %-13s Mid team, High boss: win %3d%% in %3.0f s", boss, agg.winPct, agg.avgDur))
+		dareWins, dareN = dareWins + agg.wins[1], dareN + agg.n
 	end
-	target("dodging fighters win nearly every raid (1/4/8/16 players, two stages, four bosses: >= 90% of the combos; weak solos aside)", wonCombos >= combos * 0.9, fmt("%d of %d", wonCombos, combos))
-	target("a solo under a quarter of the boss's BaselineDps loses (bug batch 2 #2)", weakSolosLost == weakSolos, fmt("%d of %d lost", weakSolosLost, weakSolos))
-	target("won raids last 100-240 s per boss and stage (every single cell within 90-250 s: a few seeds per cell)", avgOk and cellOk)
-	target("no boss hit takes more than 80% of a fighter before the enrage", anyBossHit <= 0.8, fmt("max %.2f", anyBossHit))
-
-	-- balance-5: the 8p cells above run 1 (quick) / 4 (full) seeds, too few to see a group that only wins a coin flip
-	-- (lava_golem M5 8p was 44% of 32 seeds after the bug #22 EngagePull 7 ruling, before HpPerPlayer 90 -> 85; wave 6's
-	-- parrying trainer put it back at 90: 84% of 32 seeds, while 85 made the M8 cells finish under 90 s)
-	local groupSeeds = opts.quick and 8 or 16
-	header(fmt("Raids (bug #2: groups win): eight mid (M5) teams against every boss, %d seeds", groupSeeds))
-	-- the group-raid guard for the mid stage: the floorGroup cells above (4 x M5) count neither as wins nor in the band
-	local worstGroup, worstBoss, longestGroup = 100, "-", 0
-	for _, boss in ipairs(BC.BossOrder) do
-		local r = SIM.midGroup(boss, 8, groupSeeds)
-		out(fmt("  %-13s M5 8p: win %3d%%  dur %5.1f s (max %5.1f)  KOs %4.1f", boss, r.winPct, r.avgDur, r.maxDur, r.kos / max(1, r.n)))
-		if r.winPct < worstGroup then
-			worstGroup, worstBoss = r.winPct, boss
-		end
-		longestGroup = max(longestGroup, r.avgDur)
-	end
-	target("eight mid (M5) teams beat every boss (>= 90% of the seeds each) in at most 240 s on average", worstGroup >= 90 and longestGroup <= 240, fmt("worst %s %d%%, longest %.0f s", worstBoss, worstGroup, longestGroup))
-
-	header("Raids (bug batch 2 #2): 1 / 4 / 8 dodging teams at Lv 5 and Lv 40 vs the 330 s window (a Lv 5 solo cannot win)")
-	local raidSeeds = max(1, floor(seeds / 2))
-	local lv5 = { pet("maple_fox", 5), pet("bubble_axolotl", 5), pet("storm_tabby", 5) }
-	local lv40 = { pet("cloudy_dragon", 40, "Golden", { Evo = 1 }), pet("stormfang", 35, nil, { Evo = 1 }), pet("eclipse_dragon", 35, nil, { Evo = 1 }) }
-	local lv5SoloWins, lv5GroupOk, lv40Ok = 0, true, true
-	for _, boss in ipairs(BC.BossOrder) do
-		for _, case in ipairs({ { "Lv5", lv5 }, { "Lv40", lv40 } }) do
-			for _, players in ipairs({ 1, 4, 8 }) do
-				local policies = {}
-				for i = 1, players do
-					policies[100 + i] = "player"
-				end
-				-- (the two cells the target below judges get enough seeds to see a share: Lv 5 x 8 ~70-100 %, a Lv 40 solo ~90-100 %)
-				local cellSeeds = ((case[1] == "Lv5" and players == 8) or (case[1] == "Lv40" and players == 1)) and max(8, raidSeeds) or raidSeeds
-				local agg = series(function(seed)
-					local teams = {}
-					for i = 1, players do
-						teams[i] = team(100 + i, 1, case[2])
-					end
-					return { Mode = "Raid", Boss = boss, Seed = seed, Teams = teams }
-				end, policies, cellSeeds)
-				local hp = BC.BossHp(boss, (function()
-					local list = {}
-					for i = 1, players do
-						list[i] = { Pets = case[2] }
-					end
-					return list
-				end)())
-				out(fmt("  %-13s %-4s %dp: boss HP %8d  win %3d%%  dur %5.1f s  KOs %4.1f", boss, case[1], players, hp, agg.winPct, agg.avgDur, agg.kos / max(1, agg.n)))
-				if case[1] == "Lv5" and players == 1 then
-					lv5SoloWins = lv5SoloWins + agg.wins[1]
-				elseif case[1] == "Lv5" and players == 8 and agg.winPct < 70 then
-					lv5GroupOk = false
-				elseif case[1] == "Lv40" and agg.winPct < ((players == 1) and 75 or 100) then
-					-- balance-5: a Lv 40 solo can still lose all 3 lives to the Shadow Hydra's triple fangs: 30 of 32
-					-- seeds won (94%, with the engage rule on or off), so seed 4 of the full run's 4 is a loss
-					lv40Ok = false
-				end
-			end
-		end
-	end
-	target("a Lv 5 solo never beats a raid boss (the BaselineDps HP floor)", lv5SoloWins == 0, fmt("%d wins", lv5SoloWins))
-	target("eight Lv 5 teams win >= 70% of every boss (the L35 baseline's floor); Lv 40 groups beat every boss and a Lv 40 solo wins >= 75% of each", lv5GroupOk and lv40Ok)
+	target("a dare is harder: SIM.RaidTeams.Mid loses >= 95% solo against a High boss", dareWins <= dareN * 0.05, fmt("%d of %d won", dareWins, dareN))
 
 	header("Raids: joining late and leaving (boss HP shares)")
-	-- S9 (Lv 40): above the BaselineDps floor, so its own DPS sets the boss HP (bug batch 2 #2)
-	local b = BS.new({ Mode = "Raid", Boss = "frost_wyrm", Seed = 2, Teams = { team(1, 1, SIM.Stages[9].Pets, { Auto = true }) } })
+	local b = BS.new({ Mode = "Raid", Boss = "frost_wyrm", RaidTier = "High", Seed = 2, Teams = { team(1, 1, SIM.RaidTeams.High, { Auto = true }) } })
 	local hp0 = b:BossStatus().MaxHp
 	for _ = 1, 50 do
 		b:Step(DT)
 	end
-	b:AddTeam(team(2, 1, SIM.Stages[9].Pets, { Auto = true }))
+	b:AddTeam(team(2, 1, SIM.RaidTeams.High, { Auto = true }))
 	local hp1 = b:BossStatus().MaxHp
 	for _ = 1, 50 do
 		b:Step(DT)
@@ -1190,15 +1171,31 @@ section("raids", function(opts)
 	target("boss HP grows when a player joins and shrinks back when they leave", hp1 > hp0 * 1.8 and abs(hp2 - hp0) <= hp0 * 0.05)
 
 	header("Raids: joiners who bring nothing (idle alts with level-1 Commons) do not inflate the boss for the real player")
-	local withAlts = { team(400, 1, SIM.Stages[9].Pets) } -- S9: above the BaselineDps floor (bug batch 2 #2)
+	local withAlts = { team(400, 1, SIM.RaidTeams.High) }
 	for i = 1, 7 do
 		withAlts[#withAlts + 1] = team(400 + i, 1, SIM.Stages[1].Pets, { Auto = true })
 	end
-	local solo = BS.new({ Mode = "Raid", Boss = "storm_titan", Seed = 5, Teams = { team(400, 1, SIM.Stages[9].Pets) } })
-	local crowded = BS.new({ Mode = "Raid", Boss = "storm_titan", Seed = 5, Teams = withAlts })
-	local soloHp, crowdedHp = solo:BossStatus().MaxHp, crowded:BossStatus().MaxHp
-	out(fmt("  Storm Titan HP for one S9 team %d, with 7 idle alt teams %d (x%.2f); weighted head count %.2f", soloHp, crowdedHp, crowdedHp / soloHp, crowded.playerTeamCount or 0))
+	local soloB = BS.new({ Mode = "Raid", Boss = "storm_titan", RaidTier = "High", Seed = 5, Teams = { team(400, 1, SIM.RaidTeams.High) } })
+	local crowded = BS.new({ Mode = "Raid", Boss = "storm_titan", RaidTier = "High", Seed = 5, Teams = withAlts })
+	local soloHp, crowdedHp = soloB:BossStatus().MaxHp, crowded:BossStatus().MaxHp
+	out(fmt("  Storm Titan HP for one High team %d, with 7 idle alt teams %d (x%.2f); weighted head count %.2f", soloHp, crowdedHp, crowdedHp / soloHp, crowded.playerTeamCount or 0))
 	target("seven alt teams with level-1 Commons add less than 15% to the boss's HP", crowdedHp <= soloHp * 1.15, fmt("x%.2f", crowdedHp / soloHp))
+
+	header("Raids: the lethal attack (a fighter nothing else can hurt; the boss held under 30%)")
+	local dodgedOk, standOk, castsSeen = true, true, 0
+	for _, boss in ipairs(BC.BossOrder) do
+		local dodgeSeen, dodgeLanded, dodgeKos = 0, 0, 0
+		for seed = 1, opts.quick and 2 or 4 do
+			local seen, landed, kos = lethalRun(boss, "Mid", seed, 6, { dodge = 1, element = false, specials = false, buffs = false, swap = false })
+			dodgeSeen, dodgeLanded, dodgeKos = dodgeSeen + seen, dodgeLanded + landed, dodgeKos + kos
+		end
+		local standSeen, _, standKos = lethalRun(boss, "Mid", 1, 1, { dodge = 0, mistime = 0, element = false, specials = false, buffs = false, swap = false })
+		out(fmt("  %-13s dodge 1: %d casts, %d landed, %d KOs | stands still: %d casts, %d KOs", boss, dodgeSeen, dodgeLanded, dodgeKos, standSeen, standKos))
+		castsSeen = castsSeen + dodgeSeen
+		dodgedOk = dodgedOk and dodgeSeen > 0 and dodgeLanded == 0 and dodgeKos == 0
+		standOk = standOk and standKos > 0
+	end
+	target("the lethal: a dodging fighter (dodge 1) is never knocked out by it; a standing one (dodge 0, mistime 0) always is", dodgedOk and standOk, fmt("%d casts dodged", castsSeen))
 end)
 
 -- 6. the Champion Ring
@@ -1744,12 +1741,13 @@ section("training", function(opts)
 		end
 	end
 	target("trained mirror duels are fair (40-60% over every case together) with no draws", pct(wins1, n) >= 40 and pct(wins1, n) <= 60 and draws == 0, fmt("side 1 %d%%, draws %d", pct(wins1, n), draws))
-	header("Training: a trained + evolved team (S7, rank 10, Evolved II) vs every boss with 1 / 4 dodging fighters")
+	header("Training: a trained + evolved team (S7, rank 10, Evolved II) vs every boss at its own tier, 8 dodging fighters")
 	local seeds = max(1, floor(opts.seeds / 8))
 	local pets7 = trained(SIM.Stages[7].Pets, ranks(10), 2)
 	local won, combos, durOk, bossHit = 0, 0, true, 0
+	local tier7 = BC.RaidTierOfTeam(pets7).Id
 	for _, boss in ipairs(BC.BossOrder) do
-		for _, players in ipairs({ 1, 4 }) do
+		for _, players in ipairs({ 8 }) do
 			local policies = {}
 			for i = 1, players do
 				policies[500 + i] = "player"
@@ -1759,7 +1757,7 @@ section("training", function(opts)
 				for i = 1, players do
 					teams[i] = team(500 + i, 1, pets7)
 				end
-				return { Mode = "Raid", Boss = boss, Seed = seed, Teams = teams }
+				return { Mode = "Raid", Boss = boss, RaidTier = tier7, Seed = seed, Teams = teams }
 			end, policies, seeds)
 			out(fmt("  %-13s %dp: win %3d%% dur %5.1f s (dodges %4.1f, KOs %4.1f, maxBossHit %.2f)", boss, players, agg.winPct, agg.avgDur, agg.dodges / max(1, agg.n), agg.kos / max(1, agg.n), agg.maxBossHit))
 			combos = combos + 1
@@ -1772,7 +1770,7 @@ section("training", function(opts)
 			end
 		end
 	end
-	target("a trained team still wins its raids (>= 90% of the combos) in 100-240 s", won >= combos * 0.9 and durOk, fmt("%d of %d won", won, combos))
+	target("eight trained teams still win their tier's raids (>= 90% of the combos) in 100-240 s", won >= combos * 0.9 and durOk, fmt("%d of %d won", won, combos))
 	target("no boss hit takes more than 80% of a trained fighter", bossHit <= 0.8, fmt("max %.2f", bossHit))
 end)
 
@@ -1901,11 +1899,11 @@ section("move", function()
 		local function raid(seed)
 			local teams = {}
 			local policies = {}
-			for i = 1, 4 do
+			for i = 1, 8 do -- (spec 2026-11-01: 3-4 teams are a coin flip now, 8 win: the same outcome can be asked of them)
 				teams[i] = team(400 + i, 1, SIM.Stages[5].Pets)
 				policies[400 + i] = "player"
 			end
-			return { Mode = "Raid", Boss = "frost_wyrm", Seed = seed, Teams = teams }, policies
+			return { Mode = "Raid", Boss = "frost_wyrm", RaidTier = "Starter", Seed = seed, Teams = teams }, policies
 		end
 		local stand, wander = 0, 0
 		local okAll = true
@@ -1919,7 +1917,7 @@ section("move", function()
 			okAll = okAll and r1 and r2 and r1.WinnerSide == r2.WinnerSide
 		end
 		local ratio = wander / max(1, stand)
-		out(fmt("  frost_wyrm M5 4p, 2 seeds: standing trainers %.1f s, wandering trainers %.1f s (x%.2f)", stand / 2, wander / 2, ratio))
+		out(fmt("  frost_wyrm M5 8p, 2 seeds: standing trainers %.1f s, wandering trainers %.1f s (x%.2f)", stand / 2, wander / 2, ratio))
 		target("a wandering trainer's raid plays like a standing one's (same outcome, duration within 15%)", okAll and abs(ratio - 1) <= 0.15)
 	end
 end)
@@ -1932,11 +1930,11 @@ section("perf", function()
 		teams[i] = team(600 + i, 1, SIM.Stages[6].Pets, { Auto = true })
 		policies[600 + i] = "auto"
 	end
-	local result, stats = SIM.run({ Mode = "Raid", Boss = "storm_titan", Seed = 4, Teams = teams }, policies)
+	local result, stats = SIM.run({ Mode = "Raid", Boss = "storm_titan", RaidTier = "Max", Seed = 4, Teams = teams }, policies)
 	local perStep = stats.seconds / max(1, stats.steps) * 1000
 	out(fmt("  result %s in %.1f s: %d steps in %.2f s = %.3f ms per step, %d events", result.Reason, result.Duration, stats.steps, stats.seconds, perStep, stats.events))
 	target("a 16-fighter raid step costs under 1 ms", perStep < 1, fmt("%.3f ms", perStep))
-	local b = BS.new({ Mode = "Raid", Boss = "storm_titan", Seed = 4, Teams = teams })
+	local b = BS.new({ Mode = "Raid", Boss = "storm_titan", RaidTier = "Max", Seed = 4, Teams = teams })
 	for _ = 1, 20 do
 		b:Step(DT)
 	end

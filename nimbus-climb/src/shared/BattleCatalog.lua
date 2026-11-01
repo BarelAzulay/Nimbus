@@ -1591,9 +1591,13 @@ BattleCatalog.BossRules = {
 	FloorSeconds = 100, -- the boss HP floor = this x BaselineDps(bossId, tierId), whatever the tier's HpSeconds (RaidTiers[i].Baseline)
 	MinionHp = 0.7,
 	MinionDamage = 0.035,
-	GroupExponent = 0.2, -- boss HP x teams ^ GroupExponent (Phase 5: 0.25 -> 0.2, so 8 fighters finish in ~220 s)
-	GroupBonus = 0.55, -- ... x (1 + GroupBonus x (1 - 1 / teams)): a group lasts 100-240 s, a solo keeps its short fight (it would not survive a longer one)
-	DamageGroup = { Min = 0.7, FullAt = 8 }, -- dungeon fixes (7): 0.55 -> 0.35 (no bench regen); #2: 0.35 -> 0.7 (a solo raid is meant to be hard)
+	-- boss HP x GroupFactor(teams) = teams ^ GroupExponent x (1 + GroupBonus x (1 - 1 / teams)): x1 solo, x1.85 at 3 teams, x1.95 at 8.
+	-- Spec 2026-11-01: 0.2 / 0.55 made 8 teams last 2.25 x a solo and hit the 330 s limit (Mid 8p 0% at 330 s) while solos won 50-100%.
+	GroupExponent = -0.1,
+	GroupBonus = 1.6,
+	-- the boss hits a small group harder (x Min solo, x1 at FullAt teams; a tier may set GroupMin). Spec 2026-11-01: 0.7 -> 1.6, three
+	-- teams survived 280 s at Mid against the 240 s band and won 100%; now 150-240 s and about 40%
+	DamageGroup = { Min = 1.6, FullAt = 8 },
 	MinionInterval = 1.4,
 	MinionLevelOf = "average",
 	EnrageAt = 0.3, -- share of the boss's health (spec 2026-11-01: moved from a clock); the 330 s TimeLimit stays
@@ -1621,6 +1625,7 @@ BattleCatalog.Bosses = {
 		Element = "Storm",
 		Blurb = "A thunderhead given arms. Earth pets ground its lightning.",
 		HpFactor = 1,
+		HpTier = { Starter = 1.24, Mid = 1.03, High = 0.89, Max = 1.22 }, -- per fight tier, each fitted so 3 teams win about 40% (48 seeds)
 		Radius = 7,
 		Scale = 1,
 		Basic = { Name = "Zap", Interval = 2.4, Damage = 0.05, Range = 20 },
@@ -1628,7 +1633,7 @@ BattleCatalog.Bosses = {
 			attack("slam", "Thunder Slam", "Circle", { Radius = 7, Telegraph = 2.2, Cooldown = 18, Damage = 0.2, Target = "Cluster", First = 8 }),
 			attack("chain", "Chain Lightning", "Line", { Width = 4, Length = 48, Telegraph = 2.2, Cooldown = 22, Damage = 0.35, Target = "Random", First = 17 }),
 		},
-		Lethal = attack("judgement", "Heaven's Judgement", "Circle", { Radius = 9, Telegraph = 3.2, Cooldown = 22, Target = "Cluster", Lethal = true }),
+		Lethal = attack("judgement", "Heaven's Judgement", "Circle", { Radius = 9, Telegraph = 3.2, Cooldown = 18, Target = "Cluster", Lethal = true }),
 		MinionPet = "storm_tabby",
 		Minions = { Name = "Spark Tabby", Waves = { { At = 0.7, PerPlayer = 0.5 }, { At = 0.35, PerPlayer = 0.75 } } },
 		TimeLimit = 330,
@@ -1638,15 +1643,16 @@ BattleCatalog.Bosses = {
 		Name = "Lava Golem",
 		Element = "Flame",
 		Blurb = "A walking volcano. Water pets cool it down.",
-		HpFactor = 0.65, -- its Eruption sends every melee fighter running, so its HP is lower (was HpPerPlayer 65 against ~100)
+		HpFactor = 0.85, -- its Eruption sends every melee fighter running, so its HP is lower (0.65 + its old hits: 3 teams won 100% in 130-170 s)
+		HpTier = { Starter = 1.16, Mid = 0.90, High = 0.97, Max = 1.25 },
 		Radius = 8,
 		Scale = 1,
-		Basic = { Name = "Magma Fist", Interval = 2.8, Damage = 0.05, Range = 20 },
+		Basic = { Name = "Magma Fist", Interval = 2.8, Damage = 0.06, Range = 20 }, -- spec 2026-11-01: 0.05 -> 0.06, pool 0.15 -> 0.18, eruption 0.2 -> 0.23 (3 Starter teams outlived the 240 s band: 8p 277-325 s)
 		Attacks = {
-			attack("pool", "Magma Pool", "Circle", { Radius = 7, Telegraph = 2.2, Cooldown = 18, Damage = 0.15, Target = "Cluster", Linger = 5, LingerDamage = 0.015, First = 8 }), -- dungeon fixes (7): LingerDamage 0.03 -> 0.015
-			attack("eruption", "Eruption", "Circle", { Radius = 15, Telegraph = 2.4, Cooldown = 30, Damage = 0.2, Target = "Self", First = 18 }),
+			attack("pool", "Magma Pool", "Circle", { Radius = 7, Telegraph = 2.2, Cooldown = 18, Damage = 0.18, Target = "Cluster", Linger = 5, LingerDamage = 0.015, First = 8 }), -- dungeon fixes (7): LingerDamage 0.03 -> 0.015
+			attack("eruption", "Eruption", "Circle", { Radius = 15, Telegraph = 2.4, Cooldown = 30, Damage = 0.23, Target = "Self", First = 18 }),
 		},
-		Lethal = attack("cataclysm", "Cataclysm", "Circle", { Radius = 9, Telegraph = 3.2, Cooldown = 22, Target = "Cluster", Lethal = true }),
+		Lethal = attack("cataclysm", "Cataclysm", "Circle", { Radius = 9, Telegraph = 3.2, Cooldown = 18, Target = "Cluster", Lethal = true }),
 		MinionPet = "maple_fox",
 		Minions = { Name = "Cinder Fox", Waves = { { At = 0.65, PerPlayer = 0.5 }, { At = 0.3, PerPlayer = 0.75 } } },
 		TimeLimit = 330,
@@ -1657,14 +1663,15 @@ BattleCatalog.Bosses = {
 		Element = "Frost",
 		Blurb = "A serpent of living ice. Flame pets melt its armour.",
 		HpFactor = 1,
+		HpTier = { Starter = 1.30, Mid = 1.27, High = 0.68, Max = 0.66 },
 		Radius = 7,
 		Scale = 1,
-		Basic = { Name = "Ice Spit", Interval = 2.2, Damage = 0.045, Range = 20 },
+		Basic = { Name = "Ice Spit", Interval = 2.2, Damage = 0.06, Range = 20 }, -- spec 2026-11-01: 0.045 -> 0.06, breath 0.3 -> 0.28, blizzard 0.15 -> 0.27 (Flame teams outlived the band: 3 teams 300 s, 8 teams 326 s; a flatter pair so Max is not one-shot)
 		Attacks = {
-			attack("breath", "Frost Breath", "Line", { Width = 5, Length = 44, Telegraph = 2.2, Cooldown = 20, Damage = 0.3, Target = "Random", Freeze = 2.0, First = 8 }),
-			attack("blizzard", "Blizzard", "Circle", { Radius = 8, Telegraph = 2.2, Cooldown = 22, Damage = 0.15, Target = "Cluster", Freeze = 2.5, First = 18 }),
+			attack("breath", "Frost Breath", "Line", { Width = 5, Length = 44, Telegraph = 2.2, Cooldown = 20, Damage = 0.28, Target = "Random", Freeze = 2.0, First = 8 }),
+			attack("blizzard", "Blizzard", "Circle", { Radius = 8, Telegraph = 2.2, Cooldown = 22, Damage = 0.27, Target = "Cluster", Freeze = 2.5, First = 18 }),
 		},
-		Lethal = attack("absolute_zero", "Absolute Zero", "Line", { Width = 10, Length = 48, Telegraph = 3.2, Cooldown = 22, Target = "Cluster", Lethal = true }),
+		Lethal = attack("absolute_zero", "Absolute Zero", "Circle", { Radius = 10, Telegraph = 3.2, Cooldown = 18, Target = "Cluster", Lethal = true }),
 		MinionPet = "frostling_penguin",
 		Minions = { Name = "Ice Shard", Waves = { { At = 0.7, PerPlayer = 0.5 }, { At = 0.35, PerPlayer = 0.75 } } },
 		TimeLimit = 330,
@@ -1675,14 +1682,15 @@ BattleCatalog.Bosses = {
 		Element = "Shadow",
 		Blurb = "Three heads, one grudge. Celestial pets shine through its dark.",
 		HpFactor = 1,
+		HpTier = { Starter = 1.27, Mid = 0.93, High = 0.85, Max = 1.15 },
 		Radius = 7,
 		Scale = 1,
-		Basic = { Name = "Shadow Bite", Interval = 1.8, Damage = 0.04, Range = 20 },
+		Basic = { Name = "Shadow Bite", Interval = 1.8, Damage = 0.035, Range = 20 }, -- spec 2026-11-01: 0.04 -> 0.035, fangs 0.3 -> 0.26, pulse 0.2 -> 0.18 (High and Max groups fell in 84-99 s under the 100 s band)
 		Attacks = {
-			attack("fangs", "Void Fangs", "Line", { Width = 4, Length = 44, Count = 3, Spread = 30, Telegraph = 2.2, Cooldown = 20, Damage = 0.3, Target = "Random", First = 8 }),
-			attack("pulse", "Shadow Pulse", "Circle", { Radius = 8, Telegraph = 2.2, Cooldown = 20, Damage = 0.2, Target = "Cluster", First = 18 }),
+			attack("fangs", "Void Fangs", "Line", { Width = 4, Length = 44, Count = 3, Spread = 30, Telegraph = 2.2, Cooldown = 20, Damage = 0.26, Target = "Random", First = 8 }),
+			attack("pulse", "Shadow Pulse", "Circle", { Radius = 8, Telegraph = 2.2, Cooldown = 20, Damage = 0.18, Target = "Cluster", First = 18 }),
 		},
-		Lethal = attack("oblivion", "Oblivion", "Line", { Width = 10, Length = 48, Telegraph = 3.2, Cooldown = 22, Target = "Cluster", Lethal = true }),
+		Lethal = attack("oblivion", "Oblivion", "Line", { Width = 10, Length = 48, Telegraph = 3.2, Cooldown = 18, Target = "Cluster", Lethal = true }),
 		MinionPet = "twilight_dragon",
 		Minions = { Name = "Shade Hatchling", Waves = { { At = 0.75, PerPlayer = 0.5 }, { At = 0.5, PerPlayer = 0.5 }, { At = 0.25, PerPlayer = 0.75 } } },
 		TimeLimit = 330,
@@ -1692,13 +1700,14 @@ BattleCatalog.BossOrder = { "storm_titan", "lava_golem", "frost_wyrm", "shadow_h
 
 -- The fight tiers (spec 2026-11-01): one boss, four strengths. A team fights the tier of its highest pet (a dare picks a
 -- higher one). Hit (share of the boss's damage), Reward, EventScale (the chances of Gems and event pets), Level and
--- BossLevel are the owner's numbers; HpSeconds (seconds of every team's expected DPS, x the boss's HpFactor), Scale and
--- Baseline (the HP floor's fighter) are tuned with tools/sim_battle.lua's raids section.
+-- BossLevel are the owner's numbers; HpSeconds (seconds of every team's expected DPS, x the boss's HpFactor and HpTier), Scale and
+-- Baseline (the HP floor's fighter) are tuned with tools/sim_battle.lua's raids section. GroupMin: Max only, DamageGroup.Min 1.6 left
+-- no fight to tune there (3 teams fell in 95-100 s, 8 teams in 82-88 s against the 100 s band).
 BattleCatalog.RaidTiers = {
-	{ Id = "Starter", Level = { 1, 19 }, BossLevel = 15, Hit = 0.6, Reward = 0.4, EventScale = 0.5, Scale = 0.85, HpSeconds = 100, Baseline = { PetId = "ember_phoenix", Level = 15, Evo = 0, Tier = "Normal" } },
-	{ Id = "Mid", Level = { 20, 49 }, BossLevel = 40, Hit = 0.8, Reward = 0.7, EventScale = 0.5, Scale = 1, HpSeconds = 100, Baseline = { PetId = "ember_phoenix", Level = 40, Evo = 1, Tier = "Normal" } },
-	{ Id = "High", Level = { 50, 79 }, BossLevel = 70, Hit = 1, Reward = 1, EventScale = 1, Scale = 1.15, HpSeconds = 100, Baseline = { PetId = "ember_phoenix", Level = 70, Evo = 2, Tier = "Normal" } },
-	{ Id = "Max", Level = { 80, 100 }, BossLevel = 95, Hit = 1.3, Reward = 1.3, EventScale = 1, Scale = 1.3, HpSeconds = 100, Crown = true, Baseline = { PetId = "ember_phoenix", Level = 95, Evo = 2, Tier = "Rainbow" } },
+	{ Id = "Starter", Level = { 1, 19 }, BossLevel = 15, Hit = 0.6, Reward = 0.4, EventScale = 0.5, Scale = 0.85, HpSeconds = 120, Baseline = { PetId = "ember_phoenix", Level = 15, Evo = 0, Tier = "Normal" } },
+	{ Id = "Mid", Level = { 20, 49 }, BossLevel = 40, Hit = 0.8, Reward = 0.7, EventScale = 0.5, Scale = 1, HpSeconds = 98, Baseline = { PetId = "ember_phoenix", Level = 40, Evo = 1, Tier = "Normal" } },
+	{ Id = "High", Level = { 50, 79 }, BossLevel = 70, Hit = 1, Reward = 1, EventScale = 1, Scale = 1.15, HpSeconds = 112, Baseline = { PetId = "ember_phoenix", Level = 70, Evo = 2, Tier = "Normal" } },
+	{ Id = "Max", Level = { 80, 100 }, BossLevel = 95, Hit = 1.3, Reward = 1.3, EventScale = 1, Scale = 1.3, HpSeconds = 127, GroupMin = 1.35, Crown = true, Baseline = { PetId = "ember_phoenix", Level = 95, Evo = 2, Tier = "Rainbow" } },
 }
 BattleCatalog.RaidTierOrder = { "Starter", "Mid", "High", "Max" }
 

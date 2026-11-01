@@ -121,9 +121,9 @@ S.raid_tiers = guarded("raid_tiers", function()
 		T.check(hpStart < hpHigh and BC.BaselineDps(id, "Starter") < BC.BaselineDps(id, "Max"), "raid boss " .. id .. ": a Starter boss is smaller than a High one, the HP floor grows per tier")
 		T.check(BC.BossHp(id, { { Pets = SIM_S1 } }, "Mid") >= BC.BossRules.FloorSeconds * BC.BaselineDps(id, "Mid") - 1, "raid boss " .. id .. ": a dare meets the dared tier's HP floor")
 		T.check(BC.BossHp(id, { { Pets = SIM_HIGH } }) == hpHigh and BC.BaselineDps(id) == BC.BaselineDps(id, "High"), "raid boss " .. id .. ": no tier = High")
-		local own = BC.RaidTierById("Mid").HpSeconds * b.HpFactor * BC.ExpectedDps({ Pets = SIM_MID })
+		local own = BC.RaidTierById("Mid").HpSeconds * b.HpFactor * b.HpTier.Mid * BC.ExpectedDps({ Pets = SIM_MID })
 		local hpMid = BC.BossHp(id, { { Pets = SIM_MID } }, "Mid")
-		T.check(hpMid == BC.BossHp(id, { { Pets = SIM_S1 } }, "Mid") or abs(hpMid - own) <= 1, "raid boss " .. id .. ": a solo above the floor keeps HpSeconds x HpFactor seconds of its own DPS", fmt("%d vs %.0f", hpMid, own))
+		T.check(hpMid == BC.BossHp(id, { { Pets = SIM_S1 } }, "Mid") or abs(hpMid - own) <= 1, "raid boss " .. id .. ": a solo above the floor keeps HpSeconds x HpFactor x HpTier seconds of its own DPS", fmt("%d vs %.0f", hpMid, own))
 	end
 	T.check(BC.Bosses.lava_golem.HpFactor < BC.Bosses.storm_titan.HpFactor, "raid boss: the Lava Golem keeps its lower HP (HpFactor)")
 	T.check(BC.BossRules.EnrageAt == 0.3 and BC.BossRules.Baseline == nil and BC.BossRules.Enrage.LethalFirst == 4, "raid boss rules: enrage at 30% health, no single baseline")
@@ -207,14 +207,18 @@ S.raid_lethal = guarded("raid_lethal", function()
 		local u = spawn and b.units[spawn.units[1].id]
 		minionHit[id] = u and u.hit or 0
 	end
-	T.check(minionHit.High > 0 and abs(minionHit.Max / minionHit.High - 1.3) < 1e-6, "raid tier: minion hits x the tier's Hit", fmt("%.2f / %.2f", minionHit.Max, minionHit.High))
+	-- (the solo group factor comes on top: a tier's GroupMin, else DamageGroup.Min)
+	local function groupLoOf(id)
+		return BC.RaidTierById(id).GroupMin or BC.BossRules.DamageGroup.Min
+	end
+	T.check(minionHit.High > 0 and abs(minionHit.Max / minionHit.High - 1.3 * groupLoOf("Max") / groupLoOf("High")) < 1e-6, "raid tier: minion hits x the tier's Hit", fmt("%.2f / %.2f", minionHit.Max, minionHit.High))
 	-- ... and a join's rescale keeps it
 	local bJoin = raidOf("Max")
 	bJoin.boss.hp = 0.69 * bJoin.boss.maxHp
 	local spawnJoin = firstEvent(bJoin:Step(DT), "Spawn")
 	bJoin:AddTeam(team(2, SIM_MID))
 	local joined = spawnJoin and bJoin.units[spawnJoin.units[1].id]
-	local groupLo = BC.BossRules.DamageGroup.Min
+	local groupLo = groupLoOf("Max")
 	T.check(joined and abs(joined.hit / minionHit.Max - (groupLo + (1 - groupLo) / 7) / groupLo) < 1e-6, "raid tier: a join's rescale of the minions keeps the tier's Hit", joined and fmt("%.2f vs %.2f", joined.hit, minionHit.Max) or "no minion")
 
 	-- no enrage on a clock: 260 s (past the old EnrageAt 240) above 30% health

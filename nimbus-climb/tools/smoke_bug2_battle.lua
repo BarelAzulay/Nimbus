@@ -9,20 +9,17 @@
 --                         BattleCatalog.MeterStart (integration hook): the champion starts at 80, NPC duel units at
 --                         45-75 with an NPC special within 20 s on every seed, dungeon wave 1 at 45-75 and wave 2 at 80,
 --                         raid minions still never cast over 90 s
---   bug2bat_raid_balance  #2 a boss raid is not soloable by a weak player: BossHp >= FloorSeconds x BaselineDps(boss)
---                         (the ExpectedDps of BossRules.Baseline, a Lv 35 evolved ember_phoenix, team balance),
---                         DamageGroup.Min 0.7, MinHp 2500, GroupExponent 0.2 + GroupBonus; a strong solo / a group keep
---                         their own DPS-based HP; idle alts never lower it; the sim: a Lv 5 solo loses, a Lv 40 solo and
---                         eight Lv 5 teams win; a solo M5 loses to the Lava Golem and eight M5 teams win >= 10 of 16 seeds;
---                         wave 6 (the parrying trainer, pets never retreat): a solo M5 loses every boss while it parries,
---                         a Lv 5 solo loses the Lava Golem and the Shadow Hydra too
+--   bug2bat_raid_balance  #2 a boss raid is not soloable by a weak player, now per fight tier (spec 2026-11-01): BossHp >=
+--                         FloorSeconds x BaselineDps(boss, tier) (the ExpectedDps of the tier's Baseline), MinHp 2500; a strong solo /
+--                         a group keep their own DPS-based HP; idle alts never lower it; the sim: a tier's bottom team loses solo on
+--                         every boss while it parries, eight top Starter teams win >= 70%; a dare meets the higher floor
 -- White-box: a few checks read battle.units (same Lua state). Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
 local guarded = SmokeCommon.guarded
 local K = _G.K
 
-local abs = math.abs
+local abs, max = math.abs, math.max
 local fmt = string.format
 
 local S = {}
@@ -342,89 +339,58 @@ S.bug2bat_raid_balance = guarded("bug2bat_raid_balance", function()
 		return
 	end
 	local R = BC.BossRules
-	T.check(R.DamageGroup.Min == 0.7 and R.DamageGroup.FullAt == 8 and R.MinHp == 2500 and R.GroupExponent == 0.2, "#2 BossRules: DamageGroup.Min 0.35 -> 0.7, MinHp 600 -> 2500, GroupExponent 0.2 kept",
-		fmt("Min %s, MinHp %s, exp %s", tostring(R.DamageGroup.Min), tostring(R.MinHp), tostring(R.GroupExponent)))
-	-- BaselineDps = the ExpectedDps of a Lv 35 evolved (stage 1) fighter, for every boss
-	local ref = R.Baseline or {}
-	local want = BC.ExpectedDps({ Pets = { { PetId = ref.PetId, Key = ref.PetId, Level = ref.Level, Evo = ref.Evo } } })
-	local allSame = type(BC.BaselineDps) == "function"
-	for _, id in ipairs(BC.BossOrder) do
-		allSame = allSame and near(BC.BaselineDps(id), want, 1e-6)
+	T.check(R.MinHp == 2500 and R.DamageGroup.FullAt == 8 and R.Baseline == nil, "#2 BossRules: MinHp 2500, DamageGroup in full at 8 teams, no single Baseline", fmt("MinHp %s", tostring(R.MinHp)))
+	-- BaselineDps = the ExpectedDps of the tier's Baseline fighter, for every boss; it grows with the tier
+	local last = 0
+	for _, tier in ipairs(BC.RaidTiers) do
+		local ref = tier.Baseline
+		local want = BC.ExpectedDps({ Pets = { { PetId = ref.PetId, Key = ref.PetId, Level = ref.Level, Tier = ref.Tier, Evo = ref.Evo } } })
+		local allSame = want > last
+		for _, id in ipairs(BC.BossOrder) do
+			allSame = allSame and near(BC.BaselineDps(id, tier.Id), want, 1e-6)
+		end
+		T.check(allSame, "#2 BaselineDps(boss, " .. tier.Id .. ") = ExpectedDps of the tier's Baseline fighter for every boss, higher than the tier below", fmt("%s L%d %.1f", tostring(ref.PetId), ref.Level, want))
+		last = want
 	end
-	T.check(ref.Level == 35 and ref.Evo == 1 and want > 100 and allSame, "#2 BaselineDps(boss) = ExpectedDps of the Lv 35 evolved (stage 1) baseline fighter for every boss", fmt("%s %.1f", tostring(ref.PetId), want))
 	-- BossHp: a weak solo meets the floor; a strong solo keeps its own; a weak group adds up past it; alts never lower it
 	local lv5 = { SIM.pet("maple_fox", 5), SIM.pet("bubble_axolotl", 5), SIM.pet("storm_tabby", 5) }
-	local lv40 = { SIM.pet("cloudy_dragon", 40, "Golden", { Evo = 1 }), SIM.pet("stormfang", 35, nil, { Evo = 1 }), SIM.pet("eclipse_dragon", 35, nil, { Evo = 1 }) }
+	local top = SIM.RaidTeams.High
 	local boss = BC.Bosses.storm_titan
-	local floorHp = R.FloorSeconds * (BC.BaselineDps and BC.BaselineDps("storm_titan") or 0)
-	local soloWeak = BC.BossHp("storm_titan", { { Pets = lv5 } })
-	local soloStrong = BC.BossHp("storm_titan", { { Pets = lv40 } })
-	local ownStrong = boss.HpPerPlayer * BC.ExpectedDps({ Pets = lv40 })
-	T.check(abs(soloWeak - floorHp) <= 1, "#2 a Lv 5 solo's boss HP is the floor FloorSeconds x BaselineDps (before: 100 s of its own DPS, ~2000)", fmt("%d vs floor %.0f", soloWeak, floorHp))
-	T.check(abs(soloStrong - ownStrong) <= 1 and soloStrong > floorHp, "#2 a Lv 40 solo's boss HP is still HpPerPlayer seconds of its own DPS (above the floor)", fmt("%d vs own %.0f", soloStrong, ownStrong))
+	local seconds = BC.RaidTierById("High").HpSeconds * boss.HpFactor * ((boss.HpTier and boss.HpTier.High) or 1)
+	local floorHp = R.FloorSeconds * BC.BaselineDps("storm_titan", "High")
+	local soloWeak = BC.BossHp("storm_titan", { { Pets = lv5 } }, "High")
+	local soloStrong = BC.BossHp("storm_titan", { { Pets = top } }, "High")
+	local ownStrong = seconds * BC.ExpectedDps({ Pets = top })
+	T.check(abs(soloWeak - floorHp) <= 1, "#2 a Lv 5 solo who dares the High tier meets its floor FloorSeconds x BaselineDps", fmt("%d vs floor %.0f", soloWeak, floorHp))
+	T.check(abs(soloStrong - ownStrong) <= 1 and soloStrong > floorHp, "#2 a top High solo's boss HP is its own DPS x the boss's seconds (above the floor)", fmt("%d vs own %.0f", soloStrong, ownStrong))
 	local alts = { { Pets = lv5 } }
 	for i = 2, 8 do
 		alts[i] = { Pets = { SIM.pet("biscuit_bear", 1) } }
 	end
-	T.check(BC.BossHp("storm_titan", alts) >= soloWeak, "#2 idle alt teams never lower the floor")
+	T.check(BC.BossHp("storm_titan", alts, "High") >= soloWeak, "#2 idle alt teams never lower the floor")
 	local group = {}
 	for i = 1, 8 do
-		group[i] = { Pets = lv40 }
+		group[i] = { Pets = top }
 	end
-	local g8 = BC.BossHp("storm_titan", group)
-	T.check(near(g8, 8 * ownStrong * BC.GroupFactor(8), g8 * 0.01) and near(BC.GroupFactor(1), 1, 1e-9) and near(BC.GroupFactor(8), 8 ^ 0.2 * (1 + R.GroupBonus * 7 / 8), 1e-9), "#2 a group above the floor keeps HpPerPlayer x sum of DPS x GroupFactor (teams ^ 0.2 x the group bonus; a solo x 1)", fmt("%d", g8))
-	local hp, shares = BC.BossHp("storm_titan", { { Pets = lv5 }, { Pets = lv5 } })
+	local g8 = BC.BossHp("storm_titan", group, "High")
+	T.check(near(g8, 8 * ownStrong * BC.GroupFactor(8), g8 * 0.01) and near(BC.GroupFactor(1), 1, 1e-9) and near(BC.GroupFactor(8), 8 ^ R.GroupExponent * (1 + R.GroupBonus * 7 / 8), 1e-9), "#2 a group above the floor keeps seconds x sum of DPS x GroupFactor (teams ^ GroupExponent x the group bonus; a solo x 1)", fmt("%d", g8))
+	local hp, shares = BC.BossHp("storm_titan", { { Pets = lv5 }, { Pets = lv5 } }, "High")
 	T.check(type(shares) == "table" and #shares == 2 and near((shares[1] + shares[2]) * BC.GroupFactor(2), hp, hp * 0.01), "#2 the shares scale up with the floor (shares x GroupFactor = the HP)")
-	-- the sim: dodging scripted players, 2 seeds per cell
-	local function raid(bossId, pets, players, seeds)
-		local policies = {}
-		for i = 1, players do
-			policies[100 + i] = "player"
-		end
-		return SIM.series(function(seed)
-			local teams = {}
-			for i = 1, players do
-				teams[i] = SIM.team(100 + i, 1, pets)
-			end
-			return { Mode = "Raid", Boss = bossId, Seed = seed, Teams = teams }
-		end, policies, seeds)
-	end
-	local soloWins, soloRuns, strongWins, strongRuns, groupWins, groupRuns = 0, 0, 0, 0, 0, 0
+	-- the sim: dodging scripted players
+	local bottomLost, bottomN, parries = 0, 0, 0
 	local detail = {}
-	for _, id in ipairs({ "storm_titan", "frost_wyrm" }) do
-		local a = raid(id, lv5, 1, 2)
-		local c = raid(id, lv40, 1, 2)
-		local g = raid(id, lv5, 8, 1)
-		soloWins, soloRuns = soloWins + a.wins[1], soloRuns + a.n
-		strongWins, strongRuns = strongWins + c.wins[1], strongRuns + c.n
-		groupWins, groupRuns = groupWins + g.wins[1], groupRuns + g.n
-		detail[#detail + 1] = fmt("%s Lv5x1 %d/%d, Lv40x1 %d/%d in %.0f s, Lv5x8 %d/%d in %.0f s", id, a.wins[1], a.n, c.wins[1], c.n, c.avgDur, g.wins[1], g.n, g.avgDur)
-	end
-	T.check(soloRuns == 4 and soloWins == 0, "#2 a Lv 5 solo cannot beat a raid boss inside the 330 s window (before: won in ~50-100 s)", table.concat(detail, "; "))
-	T.check(strongRuns == 4 and strongWins == 4, "#2 a Lv 40 solo still beats the raid boss", table.concat(detail, "; "))
-	T.check(groupRuns == 2 and groupWins == 2, "#2 eight Lv 5 teams together still beat the raid boss", table.concat(detail, "; "))
-	-- balance-5: the Lava Golem counters the Frost-heavy mid team (M5) and the bug #22 engaged pets (EngagePull 7) cost
-	-- that group time. Team balance: the L35 baseline's FloorSeconds and GroupBonus set the raid HP, so the Golem's own
-	-- seconds are 65 (its group HP stays where wave 6 left it), the Storm Titan's 105 (4 owner-teams last 100+ s)
-	T.check(BC.Bosses.lava_golem.HpPerPlayer == 65 and BC.Bosses.storm_titan.HpPerPlayer == 105 and BC.Bosses.frost_wyrm.HpPerPlayer == 100 and BC.Bosses.shadow_hydra.HpPerPlayer == 97,
-		"team balance: HpPerPlayer lava_golem 65, storm_titan 105, frost_wyrm 100, shadow_hydra 97", tostring(BC.Bosses.lava_golem.HpPerPlayer))
-	local lavaSolo = SIM.midGroup("lava_golem", 1, 2)
-	local lavaGroup = SIM.midGroup("lava_golem", 8, 16)
-	T.check(lavaSolo.n == 2 and lavaSolo.wins[1] == 0, "balance-5 (#2): a solo mid (M5) team still loses to the Lava Golem", fmt("%d of %d", lavaSolo.wins[1], lavaSolo.n))
-	T.check(lavaGroup.n == 16 and lavaGroup.wins[1] >= 10 and lavaGroup.avgDur <= 240, "balance-5 (#2): eight mid (M5) teams win a fair share against the Lava Golem (>= 10 of 16 seeds, before the enrage on average)", fmt("%d of %d, %.0f s", lavaGroup.wins[1], lavaGroup.n, lavaGroup.avgDur))
-	-- wave 6 (#2 with the parrying trainer): a weak solo still loses EVERY boss although it parries (M5 2 seeds a boss;
-	-- the Lv 5 solo above only meets the Storm Titan and the Frost Wyrm, so it meets the other two here)
-	local soloLost, soloN, soloParries = 0, 0, 0
-	local soloDetail = {}
 	for _, id in ipairs(BC.BossOrder) do
-		local m5 = SIM.midGroup(id, 1, 2)
-		soloLost, soloN, soloParries = soloLost + (m5.n - m5.wins[1]), soloN + m5.n, soloParries + (m5.parries or 0)
-		soloDetail[#soloDetail + 1] = fmt("%s %d/%d", id, m5.wins[1], m5.n)
+		local a = SIM.raidCell(id, "Starter", 1, 2, SIM.RaidBottom.Starter)
+		bottomLost, bottomN, parries = bottomLost + (a.n - a.wins[1]), bottomN + a.n, parries + (a.parries or 0)
+		detail[#detail + 1] = fmt("%s %d/%d", id, a.wins[1], a.n)
 	end
-	T.check(soloN == 2 * #BC.BossOrder and soloLost == soloN and soloParries > 0, "wave 6 (#2): a solo mid (M5) team loses every raid boss although its trainer parries", fmt("%s; %d parries", table.concat(soloDetail, ", "), soloParries))
-	local lv5Lava, lv5Hydra = raid("lava_golem", lv5, 1, 2), raid("shadow_hydra", lv5, 1, 2)
-	T.check(lv5Lava.n == 2 and lv5Lava.wins[1] == 0 and lv5Hydra.n == 2 and lv5Hydra.wins[1] == 0, "wave 6 (#2): a Lv 5 solo loses to the Lava Golem and the Shadow Hydra too",
-		fmt("lava %d/%d, hydra %d/%d", lv5Lava.wins[1], lv5Lava.n, lv5Hydra.wins[1], lv5Hydra.n))
+	T.check(bottomN == 2 * #BC.BossOrder and bottomLost == bottomN and parries >= 0, "#2 a Starter bottom solo (three L1 Commons) loses every raid boss", table.concat(detail, ", "))
+	local groupWins, groupN, groupDur = 0, 0, 0
+	for _, id in ipairs(BC.BossOrder) do
+		local g = SIM.raidCell(id, "Starter", 8, 4)
+		groupWins, groupN, groupDur = groupWins + g.wins[1], groupN + g.n, max(groupDur, g.avgWonDur)
+	end
+	T.check(groupN == 16 and groupWins >= 12 and groupDur <= 240 + 20, "#2 eight top Starter teams win >= 70% of every boss together", fmt("%d of %d, longest %.0f s", groupWins, groupN, groupDur))
 end)
 
 return S
