@@ -10,6 +10,11 @@
 --                          same floor, the Arena on the same tab, through Care too; a silent close comes back nowhere
 --   client_tb_faces_empty  an empty team opens the Pets window in pick mode on slot 1 and sends nothing, at every entry button; a
 --                          team of busy pets says why; closing it never enters; 0 pets get the hint and no window
+--   tb_ring_pick           (pure) BattleCatalog.RingPickStart: the highest unlocked start the team should beat (TeamPower >= Ring.ReadyRatio x
+--                          RingPower(start, 1)): the owner's L10/11/11 Secrets 10 not 20, 3 L1 Commons 1, maxed pets the highest start they can
+--                          win, a part of a team, an empty one, no record; each pick checked with tools/sim_battle.lua's own fights
+--   client_tb_ring_pick    the Ring panel preselects it on a fresh visit; every unlocked start stays pickable; Best and Runs untouched; a tile
+--                          picked in the visit stays through a sync and Edit team, the next visit picks again; busy and empty teams don't error
 --   client_tb_faces_phone  (844x390 and 390x844 touch) the Ring row in the right column of a landscape phone, clear of the jump button;
 --                          every Edit team and entry button >= 44 px, texts >= 14 px, rows inside their windows
 -- Deterministic: mock clock only. The viewport, the attributes and the profile are restored at the end.
@@ -74,6 +79,95 @@ local function serverScenarios()
 		T.check(K.moduleInstance("client/TeamPick") == nil, "tb panels: client/TeamPick is gone")
 		T.check(K.moduleInstance("client/UI/TeamFaces") ~= nil, "tb panels: client/UI/TeamFaces exists")
 		K.flushErrors("tb_panels_text")
+	end)
+
+	-- a veteran's start under the new balance: the numbers come from tools/sim_battle.lua's ladder and fights, not from a guess
+	S.tb_ring_pick = guarded("tb_ring_pick", function()
+		local BC = req("shared/BattleCatalog")
+		if not T.check(BC and type(BC.RingPickStart) == "function", "tb ring pick: BattleCatalog.RingPickStart exists") then
+			return
+		end
+		local fh = io.open("tools/sim_battle.lua", "r") or io.open("sim_battle.lua", "r") or io.open("../tools/sim_battle.lua", "r")
+		if not T.check(fh ~= nil, "tb ring pick: tools/sim_battle.lua found from the working directory") then
+			return
+		end
+		local src = fh:read("*a")
+		fh:close()
+		_G.SIM_BATTLE_LIBRARY = true
+		local okLoad, SIM = pcall(assert((loadstring or load)(src, "=tools/sim_battle.lua")))
+		_G.SIM_BATTLE_LIBRARY = nil
+		if not T.check(okLoad and type(SIM) == "table" and type(SIM.ringRun) == "function", "tb ring pick: sim_battle.lua returns ringRun", tostring(SIM)) then
+			return
+		end
+		SIM.print = function() end
+		-- the panel's rule: round 1 and the latest seven boss rounds beaten
+		local function unlocked(best)
+			local out, top = { 1 }, math.floor(best / BC.Ring.BossEvery)
+			for k = math.max(1, top - 6), top do
+				out[#out + 1] = k * BC.Ring.BossEvery
+			end
+			return out
+		end
+		local TEAMS = SIM.Teams
+		T.check(BC.Ring.ReadyRatio == 1.15, "tb ring pick: the margin is Ring.ReadyRatio 1.15", tostring(BC.Ring.ReadyRatio))
+		T.eq(BC.RingPickStart(TEAMS.Owner, unlocked(37)), 10, "tb ring pick: the owner's L10/11/11 Secrets with Best 37 get start 10, not 20 or 30")
+		T.eq(BC.RingPickStart(TEAMS.Owner, unlocked(12)), 10, "tb ring pick: ...with Best 12 too")
+		T.eq(BC.RingPickStart(TEAMS.Owner, unlocked(9)), 1, "tb ring pick: ...with Best 9 only round 1 is unlocked")
+		T.eq(BC.RingPickStart(TEAMS.S1, unlocked(37)), 1, "tb ring pick: 3 L1 Commons get round 1")
+		T.eq(BC.RingPickStart(TEAMS.Max, unlocked(65)), 60, "tb ring pick: 3 L100 maxed with Best 65 (their usual record) get their highest start, 60")
+		T.eq(BC.RingPickStart(TEAMS.Max, unlocked(79)), 70, "tb ring pick: ...with Best 79, 70")
+		T.eq(BC.RingPickStart(TEAMS.Max, unlocked(89)), 80, "tb ring pick: ...with Best 89, 80")
+		T.eq(BC.RingPickStart(TEAMS.Max, unlocked(120)), 80, "tb ring pick: ...and above that still 80: round 90's three L100 Rainbow champions beat them (sim below)")
+		T.eq(BC.RingPickStart({}, unlocked(37)), 1, "tb ring pick: an empty team gets round 1")
+		T.eq(BC.RingPickStart(nil, unlocked(37)), 1, "tb ring pick: no team at all gets round 1, no error")
+		T.eq(BC.RingPickStart({ TEAMS.Owner[1] }, unlocked(37)), 10, "tb ring pick: the owner's fighter alone (two helpers busy) still gets 10")
+		T.eq(BC.RingPickStart({ TEAMS.Owner[2], TEAMS.Owner[3] }, unlocked(37)), 10, "tb ring pick: ...two of the team (the fighter busy) too")
+		T.eq(BC.RingPickStart({ { Key = "no_such_pet", Level = 5 } }, unlocked(37)), 1, "tb ring pick: a pet the catalog does not know counts for nothing, no error")
+		T.eq(BC.RingPickStart(TEAMS.Owner, unlocked(0)), 1, "tb ring pick: a new player with no record gets round 1")
+		T.eq(BC.RingPickStart(TEAMS.Owner, nil), 1, "tb ring pick: no starts at all: round 1")
+		local list = unlocked(37)
+		BC.RingPickStart(TEAMS.Owner, list)
+		T.eq(table.concat(list, ","), "1,10,20,30", "tb ring pick: the list it reads stays as it was")
+		-- the rule against the same comparison the panel shows
+		local power = BC.TeamPower(TEAMS.Owner)
+		T.check(power >= BC.Ring.ReadyRatio * BC.RingPower(10, 1) and power < BC.Ring.ReadyRatio * BC.RingPower(20, 1), "tb ring pick: the owner's TeamPower is ready for round 10's champion, not round 20's", string.format("%d against %d and %d", power, BC.RingPower(10, 1), BC.RingPower(20, 1)))
+		-- the sim's own fights: the start picked is one the team wins
+		local every = { 1 }
+		for r = 10, 100, 10 do
+			every[#every + 1] = r
+		end
+		local function copy(pets)
+			local out = {}
+			for i, p in ipairs(pets) do
+				local c = {}
+				for k, v in pairs(p) do
+					c[k] = v
+				end
+				out[i] = c
+			end
+			return out
+		end
+		local n = 12
+		local function wins(pets, round)
+			local won = 0
+			for seed = 1, n do
+				if SIM.ringRun(copy(pets), 1000 + seed, round, { Xp = true, Start = round }) >= round then
+					won = won + 1
+				end
+			end
+			return won
+		end
+		local lastPick = 0
+		for _, id in ipairs({ "One", "S1", "L7", "Leg", "Owner", "L50", "Max" }) do
+			local pick = BC.RingPickStart(TEAMS[id], every)
+			local won = wins(TEAMS[id], pick)
+			T.check(won >= 0.9 * n, "tb ring pick: sim: " .. id .. " wins its first fight from start " .. pick .. " in >= 90% of the runs", won .. " of " .. n)
+			T.check(pick >= lastPick, "tb ring pick: a stronger team never gets a lower start", id .. " " .. pick .. " after " .. lastPick)
+			lastPick = pick
+		end
+		T.check(wins(TEAMS.Owner, 20) < 0.9 * n, "tb ring pick: sim: the owner's team does not reliably win from start 20", wins(TEAMS.Owner, 20) .. " of " .. n)
+		T.check(wins(TEAMS.Max, 90) < 0.9 * n, "tb ring pick: sim: maxed pets do not reliably win from start 90", wins(TEAMS.Max, 90) .. " of " .. n)
+		K.flushErrors("tb_ring_pick")
 	end)
 
 	return S
@@ -360,6 +454,98 @@ local function clientScenarios()
 		H.at(390, 844, true, "tb panels portrait", function(AC)
 			ringChecks(AC, "tb panels portrait")
 		end)
+	end)
+
+	-- the veteran's panel: the teams of tools/sim_battle.lua's ladder (SIM.Teams.Owner / S1)
+	S.client_tb_ring_pick = guarded("client_tb_ring_pick", function()
+		local OWNER = { stormfang = 10, obsidian_phoenix = 11, phantom_kitsune = 11 }
+		local OWNER_TEAM = { "stormfang", "obsidian_phoenix", "phantom_kitsune" }
+		local COMMONS = { mallow_kitten = 1, puddle_frog = 1, pebble_pup = 1 }
+		local COMMON_TEAM = { "mallow_kitten", "puddle_frog", "pebble_pup" }
+		local function record(best, runs)
+			return { Ring = { Best = best, Runs = runs } }
+		end
+		H.at(1920, 1080, false, "tb ring pick", function(AC, _, PC)
+			local function opened()
+				AC.OpenRing()
+				KC.advance(0.5)
+				return AC.RingInfo()
+			end
+			local function shut()
+				AC.Close()
+				KC.advance(0.3)
+			end
+			-- the veteran: Best 37, a new team that wins 10 rounds from start 10 and none from 20
+			H.feed(OWNER, OWNER_TEAM, nil, record(37, 9))
+			local info = opened()
+			T.eq(info.Start, 10, "tb ring pick: the owner's team with Best 37 opens on start 10, not 30")
+			T.eq(table.concat(info.Starts, ","), "1,10,20,30", "tb ring pick: every unlocked start is still offered")
+			T.check(info.Best == 37 and info.Runs == 9, "tb ring pick: Best and Runs are untouched", tostring(info.Best) .. " " .. tostring(info.Runs))
+			local win = H.ringWin()
+			for _, name in ipairs({ "Start1", "Start10", "Start20", "Start30" }) do
+				T.check(H.shown(H.find(win, name)), "tb ring pick: tile " .. name .. " stays", name)
+			end
+			T.eq(H.find(win, "Start").Text, "CONTINUE", "tb ring pick: a boss start reads CONTINUE")
+			T.check(H.find(win, "Verdict").Text:find("look ready", 1, true) ~= nil, "tb ring pick: the panel's verdict agrees with the pick", H.find(win, "Verdict").Text)
+			-- a tile picked in the visit stays: through a sync, through Edit team and back
+			Mock.Click(H.find(win, "Start30"))
+			KC.advance(0.3)
+			T.eq(AC.RingInfo().Start, 30, "tb ring pick: start 30 can be picked")
+			H.feed(OWNER, OWNER_TEAM, nil, record(37, 10))
+			T.eq(AC.RingInfo().Start, 30, "tb ring pick: ...a profile sync keeps it")
+			Mock.Click(H.find(H.row(win), "EditTeam"))
+			KC.advance(0.3)
+			T.check(PC.IsOpen() and not AC.IsOpen(), "tb ring pick: Edit team opens the Pets window")
+			PC.Close()
+			KC.advance(0.3)
+			T.check(AC.GetState().Window == "Ring" and AC.GetState().RingStart == 30, "tb ring pick: ...and comes back on the same start", tostring(AC.GetState().RingStart))
+			local mark = #Mock.RemoteLog
+			Mock.Click(H.find(H.ringWin(), "Start"))
+			KC.advance(0.1)
+			local sent = H.requests("BattleRequest", mark, "Ring")
+			T.check(#sent == 1 and sent[1].args[2] == 30, "tb ring pick: START sends the start picked", tostring(sent[1] and sent[1].args[2]))
+			shut()
+			-- the next visit picks again
+			T.eq(opened().Start, 10, "tb ring pick: closing ends the visit: the next one opens on the team's start")
+			-- the preselected start stays through Edit team too, even when the team changes there
+			Mock.Click(H.find(H.row(H.ringWin()), "EditTeam"))
+			KC.advance(0.3)
+			H.feed(COMMONS, COMMON_TEAM, nil, record(37, 10))
+			PC.Close()
+			KC.advance(0.3)
+			T.eq(AC.GetState().RingStart, 10, "tb ring pick: Edit team keeps a preselected start as well")
+			shut()
+			-- a weak team: round 1, the boss starts stay pickable
+			T.eq(opened().Start, 1, "tb ring pick: 3 L1 Commons with Best 37 open on round 1")
+			T.eq(H.find(H.ringWin(), "Start").Text, "START", "tb ring pick: ...which reads START")
+			T.check(H.shown(H.find(H.ringWin(), "Start30")), "tb ring pick: ...and start 30 can still be picked")
+			shut()
+			-- the server's OpenPanel without a start is a visit like the portal's; with one it is that start
+			KC.toClient("OpenPanel", "Ring", {})
+			KC.advance(0.5)
+			T.eq(AC.RingInfo().Start, 1, "tb ring pick: OpenPanel('Ring') picks the same way")
+			shut()
+			KC.toClient("OpenPanel", "Ring", { Start = 20 })
+			KC.advance(0.5)
+			T.eq(AC.RingInfo().Start, 20, "tb ring pick: OpenPanel('Ring', { Start = 20 }) opens on that start")
+			shut()
+			-- part of the team busy
+			H.feed(OWNER, OWNER_TEAM, { stormfang = "Training" }, record(37, 9))
+			T.eq(opened().Start, 10, "tb ring pick: the fighter in training: the two left still get start 10")
+			shut()
+			H.feed(OWNER, { "stormfang" }, { stormfang = "Training" }, record(37, 9))
+			T.eq(opened().Start, 1, "tb ring pick: a whole team busy: round 1, no error")
+			shut()
+			H.feed(OWNER, {}, nil, record(37, 9))
+			T.eq(opened().Start, 1, "tb ring pick: an empty team: round 1, no error")
+			shut()
+			-- a new player
+			H.feed(OWNER, OWNER_TEAM, nil, record(0, 0))
+			info = opened()
+			T.check(info.Start == 1 and #info.Starts == 1, "tb ring pick: no record: round 1 is the only start", tostring(info.Start))
+			shut()
+		end)
+		KC.flushErrors("client_tb_ring_pick")
 	end)
 
 	S.client_tb_faces_return = guarded("client_tb_faces_return", function()

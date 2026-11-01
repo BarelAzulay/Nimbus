@@ -22,8 +22,8 @@
 --                       pass at once for a player who already has a ring record / a trained pet; a skipped tutorial never
 --                       shows chapter 4; no script errors from TutorialService
 --   client_p4ui         (client) the Champion Ring window: OpenPanel("Ring") and a RingPrompt open it; "Best: Round 24",
---                       the runs, the start picker = round 1 + the beaten boss rounds (10, 20; not 30), the latest boss
---                       round picked, "CONTINUE" / "START", the champion's BOSS tag, "Next win: +$X +Y XP" equal to
+--                       the runs, the start picker = round 1 + the beaten boss rounds (10, 20; not 30), the start the team should beat
+--                       picked, "CONTINUE" / "START", the champion's BOSS tag, "Next win: +$X +Y XP" equal to
 --                       BattleCatalog.RingRewards (x3 on a new record), the fighters (the battle team, a training pet
 --                       skipped), the server's best from Portal_Ring's RingBoard (top 3), the refusal reasons (no home,
 --                       far from the portal) and START -> BattleRequest("Ring", start), a refusal toast shown in the footer;
@@ -702,7 +702,10 @@ local function clientScenarios()
 		end
 		table.sort(tiles)
 		T.eq(table.concat(tiles, ","), "Start1,Start10,Start20", "p4ui ring: the start picker offers round 1 and the beaten boss rounds 10 and 20 (not 30)")
-		T.eq(AC.RingInfo().Start, 20, "p4ui ring: the latest beaten boss round is picked when the window opens")
+		T.eq(AC.RingInfo().Start, BC.RingPickStart(AC.RingInfo().Fighters, AC.RingInfo().Starts), "p4ui ring: the window opens on the highest start this team should beat (tb_ring_pick)")
+		Mock.Click(find(picker, "Start20"))
+		advance(0.4)
+		T.eq(AC.RingInfo().Start, 20, "p4ui ring: every beaten boss round can be picked")
 		local start = find(win, "Start")
 		T.check(start and start:IsA("GuiButton") and start.Text == "CONTINUE", "p4ui ring: a boss start reads CONTINUE", start and start.Text)
 		local tags = find(win, "Champion")

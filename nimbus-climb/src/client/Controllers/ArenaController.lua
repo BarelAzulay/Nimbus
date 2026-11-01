@@ -5,7 +5,7 @@
 --   ArenaController.Init()
 --   ArenaController.OpenArena(tab|nil)        the Arena panel: tab "Duels" | "Raid" | "Leaderboard" (OpenPanel("Arena",
 --                                             {Tab}), the duel pads, the event board, the trophy board, the main gate)
---   ArenaController.OpenRing(start|nil, portal|nil)  Phase 4: the Champion Ring window (Portal_Ring's RingPrompt,
+--   ArenaController.OpenRing(start|nil, portal|nil)  Phase 4: the Champion Ring window; no start = the highest unlocked one the team should beat (Portal_Ring's RingPrompt,
 --                                             OpenPanel("Ring", {Start}))
 --   ArenaController.Close()
 --   Extras: ArenaController.IsOpen() -> bool, ArenaController.GetState() -> { Arena = last ArenaState, Lobby = last
@@ -801,6 +801,18 @@ function Ring.starts(best)
 	return out
 end
 
+-- the start a fresh visit opens on: the highest unlocked one the fighters should beat (BattleCatalog.RingPickStart)
+function Ring.pickStart(starts)
+	local BC = catalog()
+	if BC and type(BC.RingPickStart) == "function" then
+		local ok, round = pcall(BC.RingPickStart, Ring.fighters(), starts)
+		if ok and type(round) == "number" then
+			return round
+		end
+	end
+	return starts[1]
+end
+
 function Ring.ownedKeys()
 	local ok, keys = pcall(State.Keys)
 	return (ok and type(keys) == "table") and keys or {}
@@ -926,7 +938,6 @@ function Ring.startTile(ui, round, order)
 	})
 	tile.Button.Activated:Connect(function()
 		Ring.Start = round
-		Ring.Picked = true
 		Ring.Refusal = nil
 		refreshOpen()
 	end)
@@ -1166,7 +1177,7 @@ function Ring.verdict(mine, champ)
 		return "Put pets in your team first!", C.WarnText
 	end
 	local ratio = mine / champ
-	if ratio >= 1.15 then
+	if ratio >= (Ring.cfg().ReadyRatio or 1.15) then
 		return "Your pets look ready: go for it!", C.GoodText
 	elseif ratio >= 0.9 then
 		return "A close fight: tap SPECIAL when it is ready.", C.WarnText
@@ -2581,15 +2592,9 @@ function ArenaController.OpenRing(start, portal)
 	if n then
 		Ring.Start = math.floor(n)
 	elseif S.Open ~= "Ring" then
-		local best = Ring.record()
-		local starts = Ring.starts(best)
-		local keep = false
-		for _, r in ipairs(starts) do
-			keep = keep or (Ring.Picked and r == Ring.Start)
-		end
-		if not keep then
-			Ring.Start = starts[#starts] -- the latest beaten boss round, else round 1 (a round the kid picked stays)
-		end
+		-- a new visit. Inside one the start stays: a tile picked keeps it while the window is open, Edit team comes back
+		-- with a number (panelReturn), Fight again sends the run's own start.
+		Ring.Start = Ring.pickStart(Ring.starts((Ring.record())))
 	end
 	Ring.Refusal = nil
 	Ring.Pending = false

@@ -965,6 +965,7 @@ BattleCatalog.Ring = {
 	-- rounds 1..OpeningRounds: the weakest level-1 Commons that do not heal, weakest first (every single level-1 starter
 	-- wins each of them; the opening never needs a level raise)
 	OpeningRounds = 1,
+	ReadyRatio = 1.15, -- TeamPower / RingPower that counts as ready: the panel's "look ready" verdict and RingPickStart (sim, 110 teams and rounds at 1.15-2: that round won in 99% of the runs)
 	-- the species of a round: a seeded pick among the band's species that match the round before within MaxLevelRaise
 	-- levels of the curve (so the shown level follows the curve instead of jumping L42 -> L26 -> ...)
 	MaxLevelRaise = 5,
@@ -1506,6 +1507,23 @@ end
 function BattleCatalog.RingPower(round, seed)
 	local h = P4.ring(P4.round(round), P4.seed(seed))
 	return h and h.Power or 0
+end
+
+-- The start the Champion Ring panel preselects: the highest of `starts` (the unlocked rounds, round 1 first) whose champions the
+-- team should beat: TeamPower(team) >= Ring.ReadyRatio x RingPower(start, 1), the two numbers the panel shows. Else the first one.
+-- team = the pets that will fight (entries like TeamPower's; nil / empty = round 1). Pure: reads nothing else, changes nothing.
+function BattleCatalog.RingPickStart(team, starts)
+	local list = type(starts) == "table" and starts or {}
+	local pick = list[1] or 1
+	local power = BattleCatalog.TeamPower(team)
+	local ratio = num(BattleCatalog.Ring.ReadyRatio, 1.15)
+	for _, round in ipairs(list) do
+		local champion = BattleCatalog.RingPower(round, 1)
+		if round > pick and champion > 0 and power >= ratio * champion then
+			pick = round
+		end
+	end
+	return pick
 end
 
 function BattleCatalog.RingSeconds(round)

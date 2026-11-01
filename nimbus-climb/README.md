@@ -1069,7 +1069,7 @@ Boss Raids).
 
 The golden **Champion Ring** gate stands in the Gate Court. All you need is a home and one pet. Press **E** at it:
 the ring window shows your record, the best in this server, the pets that will fight and what the next win pays. Pick
-where to start (round 1, or any boss round you have beaten) and press **START**.
+where to start (round 1, or any boss round you have beaten; it opens on the highest one your team should beat) and press **START**.
 
 - **Every round a little stronger.** Round 1 is a level-1 Common that any single level-1 pet beats; rounds 2-4 climb
   to level 15, so three level-1 Commons win about 3 rounds; then the champions level up and get rarer, from round 56 they come as a pack of two and from round 66 as a pack of three,
