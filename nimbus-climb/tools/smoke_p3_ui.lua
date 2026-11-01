@@ -23,9 +23,9 @@
 --                       team or a busy pet sends nothing; the Stats window's battle record; ArenaController: OpenPanel /
 --                       prompts (OpenPanel + OpenPanelTab / RingIndex) open the Trial window (30 levels: cleared checks,
 --                       locks, BOSS tags; START only for an open level: BattleRequest Trial) and the Arena panel (Duels:
---                       Queue / Challenge; Raid: JOIN; Leaders: ArenaState.Leaderboard with the player's row), one
+--                       Queue / Challenge; Raid: no Join, my tier; Leaders: ArenaState.Leaderboard with the player's row), one
 --                       window at a time with the menu; side cards: a duel invite (Accept -> ChallengeReply), the queue
---                       (Leave -> Unqueue), the raid card (JOIN -> JoinRaid), the event countdown; hidden while
+--                       (Leave -> Unqueue), no raid card, the Double Rewards countdown; hidden while
 --                       fighting; every text >= 18 design px; no script errors
 --   client_p3ui_mobile  (phone 390x844) the Pets window, the Trial window and the Arena tabs keep every text >= 14 px;
 --                       (844x390) the seven-tile menu stays two labelled columns above the thumbstick
@@ -546,7 +546,7 @@ local function clientScenarios()
 
 	local function arenaState(over)
 		local s = {
-			Next = { Kind = "BossRaid", BossId = "storm_titan", Name = "Storm Titan", StartsIn = 90, Announced = true },
+			Next = { Kind = "BossRaid", BossId = "storm_titan", Name = "Storm Titan", StartsIn = 90 },
 			Raid = nil,
 			Double = { Active = false },
 			Leaderboard = {
@@ -830,14 +830,12 @@ local function clientScenarios()
 		local small4 = smallTexts(arenaWin, 18)
 		T.check(#small4 == 0, "p3ui arena: every text of the Duels tab is >= 18 design px", table.concat(small4, ", "))
 		AC.OpenArena("Raid")
-		toClient("ArenaState", arenaState({ Raid = { Active = true, BossId = "lava_golem", Name = "Lava Golem", Hp = 500, MaxHp = 1000, Players = 2, EndsIn = 200, Joinable = true, JoinEndsIn = 40, Waiting = false, BattleId = "raid-1" } }))
+		toClient("ArenaState", arenaState({ Raid = { Active = true, BossId = "lava_golem", Name = "Lava Golem", BattleId = "raid-1", FloorTier = "Starter", FloorHiddenIn = 0, NextBossIn = 600, NextBoss = "frost_wyrm", Closed = {},
+			Fights = { Starter = { Tier = "Starter", Floor = true, Players = 2, Hp = 500, MaxHp = 1000, EndsIn = 200 } } } }))
 		advance(0.5)
-		mark = #Mock.RemoteLog
-		local join = find(arenaWin, "JoinRaid")
-		T.check(join and shown(join) and not disabled(join), "p3ui arena: the Raid tab offers JOIN RAID while the raid can be joined")
-		Mock.Click(join)
-		advance(0.3)
-		T.check(lastRequest(mark, "JoinRaid") ~= nil, "p3ui arena: JOIN RAID sends BattleRequest('JoinRaid')")
+		T.check(find(arenaWin, "JoinRaid") == nil and find(arenaWin, "Why") == nil, "p3ui arena: the Raid tab has no JOIN RAID: walking through the gate is the whole step")
+		local tierLine = find(arenaWin, "TierLine")
+		T.check(tierLine and shown(tierLine) and tierLine.Text:find("Your tier: Starter", 1, true) ~= nil, "p3ui arena: ...it says my tier instead", tierLine and tierLine.Text)
 		local small5 = smallTexts(arenaWin, 18)
 		T.check(#small5 == 0, "p3ui arena: every text of the Raid tab is >= 18 design px", table.concat(small5, ", "))
 		AC.Close()
@@ -867,18 +865,13 @@ local function clientScenarios()
 		Mock.Click(queue and find(queue, "Leave"))
 		advance(0.3)
 		T.check(lastRequest(mark, "Unqueue") ~= nil, "p3ui side: the queue card's Leave sends BattleRequest('Unqueue')")
-		local raidCard = stack and stack:FindFirstChild("Raid")
-		T.check(raidCard and shown(raidCard), "p3ui side: an open raid shows the raid join card")
-		mark = #Mock.RemoteLog
-		Mock.Click(raidCard and find(raidCard, "Join"))
-		advance(0.3)
-		T.check(lastRequest(mark, "JoinRaid") ~= nil, "p3ui side: the raid card's JOIN sends BattleRequest('JoinRaid')")
-		toClient("ArenaState", arenaState({ Next = { Kind = "BossRaid", BossId = "frost_wyrm", Name = "Frost Wyrm", StartsIn = 75 } }))
+		T.check(stack and stack:FindFirstChild("Raid") == nil, "p3ui side: a running raid shows no side card")
+		toClient("ArenaState", arenaState({ Next = { Kind = "DoubleRewards", StartsIn = 75 } }))
 		toClient("BattleState", "Lobby", { Queue = { Queued = false, Waiting = 0 }, Invites = {} })
 		advance(0.6)
 		local chip = stack and stack:FindFirstChild("Countdown")
 		local clock = chip and find(chip, "Clock")
-		T.check(chip and shown(chip) and clock and clock.Text:match("^1:1%d$"), "p3ui side: an announced raid shows the countdown chip (1:1x)", clock and clock.Text)
+		T.check(chip and shown(chip) and clock and clock.Text:match("^1:1%d$"), "p3ui side: Double Rewards on its way shows the countdown chip (1:1x)", clock and clock.Text)
 		local small6 = smallTexts(side, 18)
 		T.check(#small6 == 0, "p3ui side: every side card text is >= 18 design px", table.concat(small6, ", "))
 		LocalPlayer:SetAttribute("InBattle", "some-battle")
@@ -912,7 +905,8 @@ local function clientScenarios()
 		MC.Init()
 		AC.Init()
 		toClient("ProfileSync", snapshot(1))
-		toClient("ArenaState", arenaState({ Raid = { Active = true, BossId = "storm_titan", Name = "Storm Titan", Hp = 900, MaxHp = 1000, Players = 3, EndsIn = 120, Joinable = true, JoinEndsIn = 30 } }))
+		toClient("ArenaState", arenaState({ Raid = { Active = true, BossId = "storm_titan", Name = "Storm Titan", BattleId = "raid-1", FloorTier = "High", FloorHiddenIn = 0, NextBossIn = 120, NextBoss = "frost_wyrm", Closed = { Mid = 30 },
+			Fights = { High = { Tier = "High", Floor = true, Players = 3, Hp = 900, MaxHp = 1000, EndsIn = 120 } } } }))
 		advance(0.5)
 		local function check(label, root)
 			local small = smallOnScreen(root, 14)

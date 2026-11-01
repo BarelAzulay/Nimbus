@@ -17,10 +17,10 @@
 --                       part of their name; /raid starts a Boss Raid next to the showcase commands (which keep working
 --                       while it runs), a second /raid is refused with a reason; /devhelp answers with two side
 --                       toasts that list every command and fit a toast (<= 90 characters, info, 8 s); nothing saved
---   client_p3evo_panel  (client, 1920x1080 + 1280x720) the DEV panel lists every button in order (Start Boss Raid and
+--   client_p3evo_panel  (client, 1920x1080 + 1280x720) the DEV panel lists every button in order (Next raid boss and
 --                       the showcase among them), docked right, readable, never centred; when its list is taller
 --                       than the panel it scrolls (scroll bar, canvas covers the last button, scrolling down brings
---                       "Reset my data" into view); "Start Boss Raid" sends DevCommand("raid"); the two /devhelp toasts
+--                       "Reset my data" into view); "Next raid boss" sends DevCommand("raid"); the two /devhelp toasts
 --                       show whole (wrapped inside their cards, not truncated), readable, at the side
 --   client_p3evo_lineup (client) EvolutionFx's Phase 4 confetti (opts.Confetti: 20-40 voxel bits at the reveal, all gone at
 --                       the end, none without it); DevPetShow builds the /pets 2 lineup with the three event pets in it (Low detail, name
@@ -572,7 +572,7 @@ local function clientScenarios()
 	-- the panel's buttons in order (DevController): id, label
 	local BUTTONS = {
 		{ "allpets", "Give all pets" }, { "tokens" }, { "cash" }, { "gems" }, { "skiptutorial", "Skip tutorial" },
-		{ "raid", "Start Boss Raid" }, { "evolveall", "Evolve every pet" }, { "pets0", "Show all pets" },
+		{ "raid", "Next raid boss" }, { "evolveall", "Evolve every pet" }, { "pets0", "Show all pets" },
 		{ "pets1", "Show evolved pets" }, { "pets2", "Show Evolved II pets" }, { "clearpets", "Clear pet show" },
 		{ "reset", "Reset my data" },
 	}
@@ -659,7 +659,7 @@ local function clientScenarios()
 				prevY = button.AbsolutePosition.Y
 			end
 		end
-		T.check(#missing == 0 and order, label .. ": the panel lists every button in order (Start Boss Raid and the pet showcase among them)", table.concat(missing, ", "))
+		T.check(#missing == 0 and order, label .. ": the panel lists every button in order (Next raid boss and the pet showcase among them)", table.concat(missing, ", "))
 		-- docked right, never centred, readable
 		local vp = Mock.Viewport
 		local p0, ps = panel.AbsolutePosition, panel.AbsoluteSize
@@ -702,7 +702,7 @@ local function clientScenarios()
 			advance(0.4)
 			local calls = KC.serverCalls("DevCommand", mark)
 			local c = calls[#calls]
-			T.check(#calls == 1 and c.args[1] == "raid" and c.args[2] == nil, label .. ": 'Start Boss Raid' sends DevCommand('raid')", c and (tostring(c.args[1]) .. " x" .. #calls) or "nothing sent")
+			T.check(#calls == 1 and c.args[1] == "raid" and c.args[2] == nil, label .. ": 'Next raid boss' sends DevCommand('raid')", c and (tostring(c.args[1]) .. " x" .. #calls) or "nothing sent")
 			list.CanvasPosition = Vector2.new(0, 0)
 		end
 		Dev.Close()

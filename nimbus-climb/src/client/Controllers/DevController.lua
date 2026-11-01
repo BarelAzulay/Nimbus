@@ -23,7 +23,7 @@
 --     second and on every screen size change.
 --   * DevPanel: a compact CloudUI panel docked to the right edge, never centred, titled "Developer tools":
 --     "Give all pets", "+1M tokens" (Config.Dev.GrantTokens through Theme.ShortNumber), "Restart tutorial",
---     "Skip tutorial", "Start Boss Raid" (Phase 3: DevCommand "raid"), the pet showcase ("Evolve every pet" =
+--     "Skip tutorial", "Next raid boss" (DevCommand "raid"), the pet showcase ("Evolve every pet" =
 --     DevCommand("evolve", "all"), "Show all pets" / "Show evolved pets" / "Show Evolved II pets" =
 --     DevCommand("pets", "0" | "1" | "2"), "Clear pet show" = DevCommand("clearpets"); client/Controllers/DevPetShow.lua
 --     builds them), the tools on all my pets ("Evolve my pets" = DevCommand("evolvepets"); a number box and "Level all pets" =
@@ -678,7 +678,7 @@ local function buildPanel(gui)
 		{ Id = "gems", Text = amountLabel(grantAmount("GrantGems", 1000), "Gems"), Style = "Blue" },
 		{ Id = "tutorial", Text = "Restart tutorial", Style = "Blue" },
 		{ Id = "skiptutorial", Text = "Skip tutorial", Style = "Pink" },
-		{ Id = "raid", Text = "Start Boss Raid", Style = "Gold" }, -- Phase 3 (events): DevCommand("raid")
+		{ Id = "raid", Text = "Next raid boss", Style = "Gold" }, -- boss raids: DevCommand("raid") brings the next boss (now, or when the fights end)
 		-- the pet showcase (DevService: evolve / pets / clearpets)
 		{ Id = "evolveall", Text = "Evolve every pet", Style = "Gold", Command = "evolve", Arg = "all" },
 		{ Id = "pets0", Text = "Show all pets", Style = "Blue", Command = "pets", Arg = "0" },

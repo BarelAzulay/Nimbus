@@ -1541,7 +1541,7 @@ src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientS
              AttackFx (plays the pet attack effects: Blender cores, flipbook particles, beams, trails and lights,
              pooled, within a budget, plus the battle poses; BattleController plays it first, cubes as the fallback), Care (Food Machine, Garden, training and EVOLVE
              windows), HomeFx (roaming pets, Cloud Cash, berries), HomePortalFx (the home portal), Fusion, Battle,
-             Arena, Dungeon (the Dungeon window and run), LossScreen (the result screen of a lost run), Obby (the level picker), PortalFx (the gates' soft
+             Arena, RaidGate (the idle boss on the colosseum floor, the boss gate's tag, the dare panel), Dungeon (the Dungeon window and run), LossScreen (the result screen of a lost run), Obby (the level picker), PortalFx (the gates' soft
              animation: a light running round the ring, the swirl breathing, gems twinkling), FountainFx (the lobby
              fountain's paper-boat drift + an optional water loop), MeadowFx (grows the lobby's wind-blown grass and
              wildflower clumps near the camera from the server's Meadow scatter and sways them), RingCrowdFx (the Champion

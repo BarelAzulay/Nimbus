@@ -697,26 +697,28 @@ local function clientScenarios()
 			T.check(AC.GetState().Window == "Ring" and #H.requests("BattleRequest", mark) == 0, "tb panels: ...back on the Ring window, nothing sent")
 			AC.Close()
 			KC.advance(0.3)
-			-- Raid + Duels: JOIN RAID stays on; Find a match
+			-- the dare panel + Duels: a dare stays on; Find a match
 			AC.OpenArena("Raid")
 			KC.advance(0.4)
 			KC.toClient("ArenaState", {
-				Next = { Kind = "BossRaid", BossId = "storm_titan", Name = "Storm Titan", StartsIn = 90, Announced = true },
-				Raid = { Active = true, BossId = "lava_golem", Name = "Lava Golem", Hp = 500, MaxHp = 1000, Players = 2, EndsIn = 200, Joinable = true, JoinEndsIn = 40, Waiting = false, BattleId = "raid-1" },
+				Next = { Kind = "BossRaid", BossId = "storm_titan", Name = "Storm Titan", StartsIn = 90 },
+				Raid = { Active = true, BossId = "lava_golem", Name = "Lava Golem", BattleId = "raid-1", FloorTier = "High", FloorHiddenIn = 0, NextBossIn = 90, NextBoss = "storm_titan", Closed = {},
+					Fights = { High = { Tier = "High", Floor = true, Players = 2, Hp = 500, MaxHp = 1000, EndsIn = 200 } } },
 				Double = { Active = false },
 				Leaderboard = {},
 			})
 			KC.advance(0.4)
-			local page = H.find(H.arenaWin(), "Page_Raid")
-			local join = H.find(page, "JoinRaid")
-			T.check(join and join:GetAttribute("Disabled") ~= true, "tb panels: JOIN RAID is on with an empty team")
-			mark = #Mock.RemoteLog
-			Mock.Click(join)
+			local RG = H.mod("RaidGateController")
+			RG.OpenDare()
 			KC.advance(0.2)
-			petsPick("tb panels: JOIN RAID with an empty team", mark)
+			local dare = H.find(H.find(H.pg(), "Dare"), "Dare_Mid")
+			T.check(dare and dare:GetAttribute("Disabled") ~= true, "tb panels: a dare is on with an empty team")
+			mark = #Mock.RemoteLog
+			Mock.Click(dare)
+			KC.advance(0.2)
+			petsPick("tb panels: a dare with an empty team", mark)
 			PC.Close()
 			KC.advance(0.3)
-			T.check(AC.GetState().Window == "Arena" and AC.GetState().Tab == "Raid", "tb panels: ...back on the Raid page")
 			AC.OpenArena("Duels")
 			KC.advance(0.4)
 			mark = #Mock.RemoteLog
@@ -854,8 +856,16 @@ local function clientScenarios()
 				if T.check(ar ~= nil, label .. ": the Raid page's row is shown") then
 					T.check(H.find(ar, "EditTeam").AbsoluteSize.Y >= 44, label .. ": ...Edit team >= 44 px")
 					T.check(H.inside(ar, H.find(H.arenaWin(), "ArenaPanel")), label .. ": ...inside the window")
-					T.check(H.find(H.arenaWin(), "JoinRaid").AbsoluteSize.Y >= 44, label .. ": ...JOIN RAID >= 44 px")
 				end
+				-- the dare panel's buttons
+				local RG = H.mod("RaidGateController")
+				RG.OpenDare()
+				KC.advance(0.3)
+				local dareWin = H.find(H.pg(), "Dare")
+				local firstDare = H.find(dareWin, "Dare_Mid") or H.find(dareWin, "Dare_High") or H.find(dareWin, "Dare_Max")
+				T.check(firstDare and H.shown(firstDare) and firstDare.AbsoluteSize.Y >= 44, label .. ": a Dare button >= 44 px", firstDare and fmt("%.1f", firstDare.AbsoluteSize.Y))
+				RG.Close()
+				KC.advance(0.3)
 				AC.OpenArena("Duels")
 				KC.advance(0.8)
 				local queue = H.find(H.find(H.arenaWin(), "Page_Duels"), "Queue")

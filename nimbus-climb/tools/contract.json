@@ -976,7 +976,22 @@
         "Start",
         "Stop",
         "Refresh",
-        "State"
+        "State",
+        "SetLocalEvent"
+      ]
+    },
+    "client/Controllers/RaidGateController": {
+      "optional": true,
+      "_comment": "docs/superpowers/plans/2026-11-01-raid-boss.md Task 4: the idle boss on the colosseum floor, the gate tag, the dare panel",
+      "functions": [
+        "Init",
+        "OpenDare",
+        "Close",
+        "IsOpen",
+        "Refresh",
+        "Stop",
+        "Tier",
+        "RewardLine"
       ]
     },
     "shared/MeshLibrary": {

@@ -35,6 +35,7 @@ local CONTROLLER_NAMES = {
 	-- Phase 3
 	"BattleController",
 	"ArenaController",
+	"RaidGateController", -- boss raids: the idle boss on the colosseum floor, the gate tag, the dare panel
 	-- Phase 4 (ARCHITECTURE_V3.md "Phase 4 build contract")
 	"CareController", -- Food Machine feed list, garden picker, Training Place window, the EVOLVE moment
 	"HomePortalFx", -- the home portal and the arrival ring
@@ -61,7 +62,7 @@ local TAG = "[NimbusClimb] "
 local OPTIONAL = { PetsController = true, SkyDragonController = true, IndexController = true, NpcController = true, TutorialController = true,
 	ShowcaseController = true, DevController = true, DevPetShow = true,
 	HomeFx = true, FusionController = true,
-	BattleController = true, ArenaController = true,
+	BattleController = true, ArenaController = true, RaidGateController = true,
 	CareController = true, HomePortalFx = true,
 	MainMenuController = true, DungeonController = true, ObbyController = true, FountainFx = true,
 	MeadowFx = true, RingCrowdFx = true, DungeonFx = true,

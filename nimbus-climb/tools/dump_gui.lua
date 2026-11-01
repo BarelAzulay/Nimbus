@@ -1080,8 +1080,9 @@ scenario("arena", function(view, arg)
 	local raidOpen = view == "raid" or view == "side"
 	local state = {
 		Next = (view == "side") and { Kind = "DoubleRewards", Name = "Double Rewards", StartsIn = 95, Announced = true }
-			or { Kind = "BossRaid", BossId = "storm_titan", Name = "Storm Titan", StartsIn = raidOpen and 1180 or 95, Announced = true },
-		Raid = raidOpen and { Active = true, BossId = "lava_golem", Name = "Lava Golem", Hp = 61000, MaxHp = 90000, Players = 3, EndsIn = 214, Joinable = true, JoinEndsIn = 41, Waiting = false } or nil,
+			or { Kind = "BossRaid", BossId = "storm_titan", Name = "Storm Titan", StartsIn = raidOpen and 1180 or 95 },
+		Raid = raidOpen and { Active = true, BossId = "lava_golem", Name = "Lava Golem", BattleId = "R1", FloorTier = "High", FloorHiddenIn = 0, NextBoss = "storm_titan", NextBossIn = 1180, Closed = { Starter = 41 },
+			Fights = { High = { Tier = "High", Floor = true, Players = 3, Hp = 61000, MaxHp = 90000, EndsIn = 214 }, Mid = { Tier = "Mid", Floor = false, Players = 2, Hp = 20000, MaxHp = 40000, EndsIn = 120 } } } or nil,
 		Double = { Active = view == "leaders", EndsIn = 1800 },
 		Leaderboard = leaders,
 	}

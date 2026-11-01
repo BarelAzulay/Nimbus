@@ -392,6 +392,20 @@ for _, tab in ipairs({ "Duels", "Raid", "Leaderboard" }) do
 	}
 end
 COVER[#COVER + 1] = {
+	Scene = "arena:dare",
+	Open = function()
+		pcall(DGC.mod("RaidGateController").OpenDare)
+	end,
+	Close = function()
+		pcall(DGC.mod("RaidGateController").Close)
+		DGC.closeAll()
+	end,
+	Window = function()
+		local g = NK.pg():FindFirstChild("NimbusRaidGate")
+		return g and g:FindFirstChild("Dare")
+	end,
+}
+COVER[#COVER + 1] = {
 	Scene = "arena:dungeon",
 	Open = function()
 		local cleared = {}

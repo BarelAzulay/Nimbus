@@ -25,12 +25,13 @@
 --   * Arena panel (OpenPanel = "Arena", OpenPanelTab = "Events" | "Leaderboard" | "Raid"; the duel pads carry
 --     RingIndex / PadIndex): DUELS (the quick queue: Queue / Unqueue + the wait; challenge a player in the server:
 --     Challenge(userId); incoming invites with Accept / Decline (the practice flag); the player's trophies and duel
---     record), BOSS RAID (the running raid: boss, element, HP, fighters, time left, JOIN / LEAVE; the next event with its
---     countdown; Double Rewards; which elements beat the boss; the reward tiers) and LEADERS (ArenaState.Leaderboard,
+--     record), BOSS RAID (no button: the boss waits behind the back gate and walking through is the whole step. The boss, its
+--     element, my fight tier and what it means, the reward clock, the fights running per tier, the next boss; Double Rewards;
+--     which elements beat the boss; the medals at my tier's numbers) and LEADERS (ArenaState.Leaderboard,
 --     top 10, the player's own row highlighted). Team balance: the Duels page's quick match box and the Raid page's boss
---     card start with UI/TeamFaces (the three faces, Edit team); Find a match, JOIN RAID, Challenge and a duel's Accept (the
+--     card start with UI/TeamFaces (the three faces, Edit team); Find a match, Challenge and a duel's Accept (the
 --     side card's too) with an empty team open the Pets window in pick mode and send nothing (TeamFaces.Ensure, no silent
---     auto-fill; JOIN RAID is not disabled for an empty team).
+--     auto-fill).
 --   * Champion Ring window (Portal_Ring's prompt, OpenPanel = "Ring"): the record "Best: Round N" and the runs, the best
 --     of this server (Portal_Ring's RingBoard attribute, top 3), the start picker (round 1 or a boss round 10, 20 ...
 --     already beaten), the start round's champion, "Next win: +$X +Y XP", the TeamFaces row (the team the server will field;
@@ -40,11 +41,12 @@
 --     Arena: pets can battle here" / "Safe zone: no pet battles here".
 --   * Side cards (right edge, above the hotbar, never in the screen centre; ScreenGui "NimbusArenaSide"): a duel
 --     invite (BattleState "Lobby".Invites) with Accept / Decline and a draining timer, the invite the player sent,
---     the quick-queue status with Leave, the raid join card while a raid can be joined and the event countdown chip
---     ("Boss Raid in 1:45", "2x Rewards 29:12"). Countdowns tick locally between two ArenaState messages. All of it
---     hides in an obby match and while the player fights (attribute InBattle).
+--     the quick-queue status with Leave and the Double Rewards countdown chip ("2x Rewards in 1:45", "2x Rewards 29:12").
+--     Countdowns tick locally between two ArenaState messages. All of it hides in an obby match and while the player fights
+--     (attribute InBattle).
+--   * The boss gate's DarePrompt (OpenPanel = "Dare") is handed to RaidGateController.OpenDare, next to "Ring" and "Dungeon".
 -- Remotes: BattleState ("Lobby" in), ArenaState (in), OpenPanel (in), Notify (in: ring refusals), BattleRequest (out:
--- Ring, Challenge, ChallengeReply, Queue, Unqueue, JoinRaid, LeaveRaid). Every request is spaced on the client too (K.FIRE_GAP).
+-- Ring, Challenge, ChallengeReply, Queue, Unqueue, RaidDare, LeaveRaid). Every request is spaced on the client too (K.FIRE_GAP).
 -- One side panel at a time: opening one closes the menu windows, the Pet Index, the Fusion / Care windows, the Dungeon
 -- window and the obby picker, and their opening closes this one. Esc / gamepad B / the red X close it; walking away from
 -- the Ring portal closes the Ring window. Readability rule: everything is designed in 1080p pixels (body 19, captions
@@ -118,7 +120,7 @@ local K = {
 	SIDE_BOTTOM_PORTRAIT = 340, -- portrait phones: above the HUD's raised bottom-left block (vitals + currency)
 	SIDE_MAX_CARDS = 3,
 	SIDE_MAX_CARDS_SHORT = 1,
-	ANNOUNCE = 120, -- seconds before an event when the countdown chip appears (BattleCatalog.Events.AnnounceSeconds)
+	ANNOUNCE = 120, -- seconds before Double Rewards when the countdown chip appears (BattleCatalog.Events.Schedule's AnnounceSeconds)
 	BACK_ACTION = "NimbusArenaBack",
 	TICK = 0.25, -- seconds between two refreshes of the live numbers
 	ATTR_IN_BATTLE = "InBattle", -- BattleService's attribute (the battle id while the player fights)
@@ -1460,18 +1462,32 @@ local function countersOf(element)
 	return out
 end
 
+-- ArenaState.Raid: the boss always waits, so it is there whether a fight runs or not
 local function raidStatus()
 	local raid = S.Arena and S.Arena.Raid
-	if type(raid) == "table" and raid.Active ~= false then
+	if type(raid) == "table" then
 		return raid
 	end
 	return nil
 end
 
-local function inRaid()
-	local raid = raidStatus()
-	local id = battleId()
-	return raid ~= nil and id ~= nil and raid.BattleId ~= nil and tostring(raid.BattleId) == id
+-- my fight tier and the reward clock: RaidGateController owns them (the gate tag shows the same)
+local function myRaidTier()
+	local gate = otherController("RaidGateController")
+	if gate and type(gate.Tier) == "function" then
+		local ok, tier = pcall(gate.Tier)
+		return ok and type(tier) == "table" and tier or nil
+	end
+	return nil
+end
+
+local function raidRewardLine()
+	local gate = otherController("RaidGateController")
+	if gate and type(gate.RewardLine) == "function" then
+		local ok, line = pcall(gate.RewardLine)
+		return ok and line or ""
+	end
+	return ""
 end
 
 local function buildArena()
@@ -1597,51 +1613,13 @@ local function buildArena()
 	ui.BossElement = makeFrame(bossHead, "Element", { Size = UDim2.fromOffset(0, 30), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 3 })
 	listLayout(ui.BossElement, Enum.FillDirection.Horizontal, 4, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
 	ui.BossBlurb = wrapText(ui.BossCard, "Blurb", "", "Body", 19, MUTED, 2)
-	local hpTrack = makeFrame(ui.BossCard, "Hp", {
-		BackgroundTransparency = 0,
-		BackgroundColor3 = Color3.fromRGB(14, 20, 48),
-		Size = UDim2.new(1, 0, 0, 30),
-		LayoutOrder = 3,
-	})
-	corner(hpTrack, 10)
-	stroke(hpTrack, NAVY, 3, 0)
-	ui.BossHpFill = makeFrame(hpTrack, "Fill", {
-		BackgroundTransparency = 0,
-		BackgroundColor3 = C.Boss,
-		Size = UDim2.new(1, 0, 1, 0),
-	})
-	corner(ui.BossHpFill, 10)
-	Theme.Gradient(ui.BossHpFill, Color3.fromRGB(255, 255, 255), Color3.fromRGB(200, 170, 180), 90)
-	ui.BossHpText = makeText(hpTrack, "Text", "", "Heading", 19, WHITE, { Size = UDim2.new(1, 0, 1, 0), ZIndex = 3 })
-	ui.BossLine = wrapText(ui.BossCard, "Line", "", "Heading", 20, WHITE, 4)
-	local raidButtons = makeFrame(ui.BossCard, "Buttons", { Size = UDim2.new(1, 0, 0, 56), LayoutOrder = 5 })
-	ui.JoinButton = CloudUI.Button({
-		Name = "JoinRaid",
-		Text = "JOIN RAID",
-		Size = UDim2.fromOffset(240, 56),
-		Style = "Red",
-		TextSize = 26,
-		Parent = raidButtons,
-		Callback = function()
-			if inRaid() then
-				request("LeaveRaid")
-			else
-				if inArena() == false then
-					toast("Walk into the Battle Arena to join the raid!", "info")
-					return
-				end
-				withTeam(function()
-					request("JoinRaid")
-				end)
-			end
-		end,
-	})
-	ui.JoinWhy = makeText(raidButtons, "Why", "", "Body", 19, C.WarnText, {
-		Position = UDim2.fromOffset(256, 0),
-		Size = UDim2.new(1, -256, 1, 0),
-		TextWrapped = true,
-		TextXAlignment = Enum.TextXAlignment.Left,
-	})
+	ui.TierLine = wrapText(ui.BossCard, "TierLine", "", "Heading", 20, WHITE, 3)
+	ui.RewardLine = wrapText(ui.BossCard, "RewardLine", "", "Heading", 20, C.Power, 4)
+	ui.BossLine = wrapText(ui.BossCard, "Line", "", "Body", 19, WHITE, 5)
+	ui.FightList = makeFrame(ui.BossCard, "Fights", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 6 })
+	listLayout(ui.FightList, Enum.FillDirection.Vertical, 4)
+	ui.FightRows = {}
+	ui.NextBoss = wrapText(ui.BossCard, "NextBoss", "", "Body", 19, MUTED, 7)
 
 	ui.NextCard = inset(ui.RaidScroll, "Next", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2 })
 	pad(ui.NextCard, 16, 10, 16, 12)
@@ -1711,7 +1689,6 @@ local function buildArena()
 			ui.Challenge.Position = UDim2.fromOffset(leftW + 12, 0)
 			ui.Challenge.Size = UDim2.new(1, -(leftW + 12), 1, 0)
 		end
-		ui.JoinWhy.Visible = not tall
 		ui.BossName.TextSize = tall and 24 or 30
 		local mode = w < K.FACES_NARROW and "Compact" or "Card"
 		ui.DuelFaces.SetMode(mode)
@@ -1920,8 +1897,7 @@ local function buildArena()
 
 	local function refreshRaid()
 		local raid = raidStatus()
-		local nextEvent = S.Arena and type(S.Arena.Next) == "table" and S.Arena.Next or nil
-		local bossId = raid and raid.BossId or (nextEvent and nextEvent.BossId)
+		local bossId = raid and raid.BossId
 		local boss = bossInfo(bossId)
 		local element = boss and boss.Element
 		if ui.BossElementSig ~= tostring(element) then
@@ -1931,75 +1907,67 @@ local function buildArena()
 				elementPill(ui.BossElement, element, 18, 1)
 			end
 		end
-		ui.BossName.Text = (raid and raid.Name) or (boss and boss.Name) or (nextEvent and nextEvent.Name) or "Boss Raid"
-		ui.BossBlurb.Text = boss and tostring(boss.Blurb or "") or "A giant boss appears on the colosseum floor. Everyone in the arena can fight it together!"
-		local hpVisible = false
-		if raid then
-			local maxHp = tonumber(raid.MaxHp) or 0
-			local hp = tonumber(raid.Hp) or 0
-			if raid.Waiting or maxHp <= 0 then
-				ui.BossState.Text = "OPEN"
-				ui.BossState.BackgroundColor3 = Color3.fromRGB(226, 160, 54)
-				ui.BossLine.Text = "Waiting for the first fighter! Join closes in " .. clock(arenaSeconds(raid.JoinEndsIn) or 0)
-			else
-				hpVisible = true
-				ui.BossState.Text = raid.Enraged and "ENRAGED" or "LIVE"
-				ui.BossState.BackgroundColor3 = C.Boss
-				ui.BossHpFill.Size = UDim2.new(Util.Clamp(hp / maxHp, 0, 1), 0, 1, 0)
-				ui.BossHpText.Text = commas(hp) .. " / " .. commas(maxHp)
-				local line = commas(raid.Players or 0) .. " fighting " .. G.Bullet .. " " .. clock(arenaSeconds(raid.EndsIn) or 0) .. " left"
-				if raid.Joinable then
-					line = line .. " " .. G.Bullet .. " join closes in " .. clock(arenaSeconds(raid.JoinEndsIn) or 0)
-				end
-				ui.BossLine.Text = line
-			end
-		else
-			ui.BossState.Text = "SOON"
+		ui.BossName.Text = (raid and raid.Name) or (boss and boss.Name) or "Boss Raid"
+		ui.BossBlurb.Text = boss and tostring(boss.Blurb or "") or "A boss always waits behind the colosseum's back gate."
+		local tier = myRaidTier()
+		local fights = raid and type(raid.Fights) == "table" and raid.Fights or {}
+		local closed = (raid and tier and type(raid.Closed) == "table" and arenaSeconds(raid.Closed[tier.Id])) or 0
+		local mine = tier and type(fights[tier.Id]) == "table" and fights[tier.Id] or nil
+		if closed > 0 then
+			ui.BossState.Text = "DOWN"
 			ui.BossState.BackgroundColor3 = Color3.fromRGB(90, 120, 190)
-			local starts = nextEvent and nextEvent.Kind == "BossRaid" and arenaSeconds(nextEvent.StartsIn) or nil
-			ui.BossLine.Text = starts and ("Starts in " .. clock(starts) .. ". Be in the arena with your team!") or "No raid running right now."
-		end
-		ui.BossHpFill.Parent.Visible = hpVisible
-		-- join / leave
-		local why = nil
-		local canJoin = raid ~= nil and (raid.Joinable == true or raid.Waiting == true)
-		if inRaid() then
-			ui.JoinButton.Text = "LEAVE RAID"
-			CloudUI.SetStyle(ui.JoinButton, "Gray")
+			ui.BossLine.Text = tostring(tier.Id) .. " boss back in " .. tostring(math.ceil(closed)) .. " s"
 		else
-			ui.JoinButton.Text = "JOIN RAID"
-			CloudUI.SetStyle(ui.JoinButton, "Red")
-			if not raid then
-				why = "Raids start every " .. ((catalog() and catalog().Events and catalog().Events.Schedule and catalog().Events.Schedule[1]
-					and catalog().Events.Schedule[1].EveryMinutes) or 20) .. " minutes."
-			elseif not canJoin then
-				why = "The join window has closed. Watch from the stands!"
-			elseif battleId() then
-				why = "Finish your current battle first."
-			elseif inArena() == false then
-				why = "Walk into the Battle Arena to join."
+			ui.BossState.Text = mine and (mine.Enraged and "ENRAGED" or "LIVE") or "WAITING"
+			ui.BossState.BackgroundColor3 = mine and C.Boss or Color3.fromRGB(226, 160, 54)
+			ui.BossLine.Text = "Walk through the boss gate at the back of the colosseum to fight. Its pillar lets you dare a higher tier."
+		end
+		ui.TierLine.Text = tier and ("Your tier: " .. tostring(tier.Id) .. " - boss L" .. tostring(tier.BossLevel) .. ", hits x" .. tostring(tier.Hit) .. ", rewards x" .. tostring(tier.Reward)) or ""
+		ui.RewardLine.Text = raidRewardLine()
+		-- the fights running now, one row per tier
+		local anyFight = false
+		local BC = catalog()
+		for i, id in ipairs(BC and BC.RaidTierOrder or {}) do
+			local fight = fights[id]
+			local row = ui.FightRows[id]
+			if type(fight) == "table" then
+				anyFight = true
+				if not row then
+					row = wrapText(ui.FightList, "Fight_" .. id, "", "Body", 19, WHITE, i)
+					ui.FightRows[id] = row
+				end
+				local maxHp = tonumber(fight.MaxHp) or 0
+				local percent = maxHp > 0 and math.floor(Util.Clamp((tonumber(fight.Hp) or 0) / maxHp, 0, 1) * 100 + 0.5) or 0
+				row.Text = id .. " - " .. commas(fight.Players or 0) .. " fighting - HP " .. percent .. "%" .. (fight.Floor == true and " (floor)" or "")
+				row.Visible = true
+			elseif row then
+				row.Visible = false
 			end
 		end
-		CloudUI.SetDisabled(ui.JoinButton, why ~= nil and not inRaid())
-		ui.JoinWhy.Text = why or ""
-		-- next event + double rewards
+		ui.FightList.Visible = anyFight
+		local nextIn = raid and arenaSeconds(raid.NextBossIn)
+		local nextInfo = raid and bossInfo(raid.NextBoss)
+		ui.NextBoss.Visible = nextIn ~= nil
+		if nextIn then
+			ui.NextBoss.Text = "Next boss: " .. tostring(nextInfo and nextInfo.Name or "?") .. " in " .. clock(nextIn)
+		end
+		-- Double Rewards: on its way or running (the boss rotation is the line above, not an event)
+		local nextEvent = S.Arena and type(S.Arena.Next) == "table" and S.Arena.Next.Kind == "DoubleRewards" and S.Arena.Next or nil
+		local double = S.Arena and type(S.Arena.Double) == "table" and S.Arena.Double or nil
+		local doubleOn = double ~= nil and double.Active == true
+		ui.NextCard.Visible = nextEvent ~= nil or doubleOn
+		ui.NextName.Visible = nextEvent ~= nil
+		ui.NextClock.Visible = nextEvent ~= nil
 		if nextEvent then
 			ui.NextClock.Text = clock(arenaSeconds(nextEvent.StartsIn) or 0)
-			local kind = nextEvent.Kind == "DoubleRewards" and "Double Rewards hour" or "Boss Raid"
-			ui.NextName.Text = kind .. ((nextEvent.Name and nextEvent.Kind ~= "DoubleRewards") and (": " .. tostring(nextEvent.Name)) or "")
-		else
-			ui.NextClock.Text = "--:--"
-			ui.NextName.Text = "Nothing scheduled"
+			ui.NextName.Text = "Double Rewards hour"
 		end
-		local double = S.Arena and type(S.Arena.Double) == "table" and S.Arena.Double or nil
-		if double and double.Active then
+		ui.DoubleLine.Visible = doubleOn
+		if doubleOn then
 			ui.DoubleLine.Text = G.Double .. "2 Double Rewards for " .. clock(arenaSeconds(double.EndsIn) or 0) .. ": every battle pays twice the tokens!"
-			ui.DoubleLine.Visible = true
-		else
-			ui.DoubleLine.Visible = false
 		end
 		-- tips: elements that beat the boss + the reward tiers
-		local sig = tostring(bossId)
+		local sig = tostring(bossId) .. "|" .. tostring(tier and tier.Id)
 		if ui.TipsSig ~= sig then
 			ui.TipsSig = sig
 			clearChildren(ui.Tips)
@@ -2020,17 +1988,18 @@ local function buildArena()
 					end
 				end
 			end
-			wrapText(ui.Tips, "Retreat", "Glowing circles and lines on the floor mean a big hit is coming: press RETREAT to get your pets out!", "Body", 19, MUTED, 4)
+			wrapText(ui.Tips, "Dash", "Glowing circles and lines on the floor mean a big hit is coming: DASH out of them! Below 30% health the boss enrages, and its huge attack knocks out whatever still stands in it.", "Body", 19, MUTED, 4)
 			local BC = catalog()
 			local tiers = BC and BC.Raid and BC.Raid.Tiers
 			if type(tiers) == "table" then
-				makeText(ui.Tips, "TiersTitle", "Rewards by damage dealt", "Heading", 20, WHITE, {
+				makeText(ui.Tips, "TiersTitle", "Rewards by damage dealt" .. (tier and (" (" .. tostring(tier.Id) .. " tier)") or ""), "Heading", 20, WHITE, {
 					Size = UDim2.new(1, 0, 0, 26),
 					TextXAlignment = Enum.TextXAlignment.Left,
 					LayoutOrder = 5,
 				})
-				for i, tier in ipairs(tiers) do
-					tierLine(ui.Tips, tier, 5 + i)
+				for i, medal in ipairs(tiers) do
+					-- the medal at my tier's numbers (the share that earns it: Helper has none of its own)
+					tierLine(ui.Tips, BC.RaidTier(math.max(tonumber(medal.MinShare) or 0, 0.001), true, tier and tier.Id) or medal, 5 + i)
 				end
 			end
 		end
@@ -2144,7 +2113,7 @@ local function buildArena()
 end
 
 ----------------------------------------------------------------------
--- Side cards (right edge): duel invites, the sent invite, the queue, the raid join card, the event countdown
+-- Side cards (right edge): duel invites, the sent invite, the queue, the Double Rewards countdown
 ----------------------------------------------------------------------
 local function sideCard(name, accent, order)
 	local card = makeFrame(U.Side, name, {
@@ -2204,7 +2173,7 @@ end
 
 -- true while a menu window, the Pet Index or the Fusion window covers the screen (the side cards step back)
 local function otherWindowOpen()
-	for _, name in ipairs({ "MenuController", "IndexController", "FusionController", "CareController", "DungeonController", "ObbyController" }) do
+	for _, name in ipairs({ "MenuController", "IndexController", "FusionController", "CareController", "DungeonController", "ObbyController", "RaidGateController" }) do
 		local mod = otherController(name)
 		if mod and type(mod.IsOpen) == "function" then
 			local ok, open = pcall(mod.IsOpen)
@@ -2231,14 +2200,10 @@ local function sideSignature()
 	if type(lobby.Queue) == "table" and lobby.Queue.Queued then
 		parts[#parts + 1] = "q"
 	end
-	local raid = raidStatus()
-	if raid and (raid.Joinable or raid.Waiting) and not inRaid() then
-		parts[#parts + 1] = "r" .. tostring(raid.BossId) .. tostring(inArena())
-	end
-	local nextEvent = S.Arena and type(S.Arena.Next) == "table" and S.Arena.Next or nil
+	local nextEvent = S.Arena and type(S.Arena.Next) == "table" and S.Arena.Next.Kind == "DoubleRewards" and S.Arena.Next or nil
 	local starts = nextEvent and arenaSeconds(nextEvent.StartsIn)
 	if starts and starts <= K.ANNOUNCE and starts > 0 then
-		parts[#parts + 1] = "n" .. tostring(nextEvent.Kind)
+		parts[#parts + 1] = "n"
 	end
 	local double = S.Arena and type(S.Arena.Double) == "table" and S.Arena.Double
 	if double and double.Active then
@@ -2387,65 +2352,8 @@ function refreshSide()
 				text.Text = "Finding a duel... " .. clock(seconds)
 			end)
 		end
-		-- 4. the raid join card
-		local raid = raidStatus()
-		if raid and (raid.Joinable or raid.Waiting) and not inRaid() and count < maxCards then
-			count = count + 1
-			local card = sideCard("Raid", C.Boss, 40)
-			makeText(card, "Title", G.Skull .. " BOSS RAID: " .. tostring(raid.Name or (bossInfo(raid.BossId) or {}).Name or "Boss"), "Heading", 21, Theme.Lighten(C.Boss, 0.45), {
-				Size = UDim2.new(1, 0, 0, 28),
-				TextXAlignment = Enum.TextXAlignment.Left,
-				TextTruncate = Enum.TextTruncate.AtEnd,
-				LayoutOrder = 1,
-			})
-			local line = makeText(card, "Line", "", "Body", 19, WHITE, {
-				Size = UDim2.new(1, 0, 0, 24),
-				TextXAlignment = Enum.TextXAlignment.Left,
-				LayoutOrder = 2,
-			})
-			local here = inArena()
-			if here == false then
-				makeText(card, "Where", "Head to the Battle Arena to join!", "Body", 19, C.WarnText, {
-					Size = UDim2.new(1, 0, 0, 24),
-					TextXAlignment = Enum.TextXAlignment.Left,
-					LayoutOrder = 3,
-				})
-			else
-				local buttons = makeFrame(card, "Buttons", { Size = UDim2.new(1, 0, 0, 46), LayoutOrder = 3 })
-				CloudUI.Button({
-					Name = "Join",
-					Text = "JOIN RAID",
-					Size = UDim2.new(0.62, -4, 0, 44),
-					Style = "Red",
-					TextSize = 21,
-					Parent = buttons,
-					Callback = function()
-						withTeam(function()
-							request("JoinRaid")
-						end)
-					end,
-				})
-				CloudUI.Button({
-					Name = "Info",
-					Text = "Info",
-					AnchorPoint = Vector2.new(1, 0),
-					Position = UDim2.new(1, 0, 0, 0),
-					Size = UDim2.new(0.38, -4, 0, 44),
-					Style = "Blue",
-					TextSize = 21,
-					Parent = buttons,
-					Callback = function()
-						ArenaController.OpenArena("Raid")
-					end,
-				})
-			end
-			table.insert(U.SideCards, function()
-				local r = raidStatus() or raid
-				line.Text = commas(r.Players or 0) .. " fighting " .. G.Bullet .. " join closes in " .. clock(arenaSeconds(r.JoinEndsIn) or 0)
-			end)
-		end
-		-- 5. the event countdown chip (always last: closest to the hotbar corner)
-		local nextEvent = S.Arena and type(S.Arena.Next) == "table" and S.Arena.Next or nil
+		-- 4. the Double Rewards countdown chip (always last: closest to the hotbar corner)
+		local nextEvent = S.Arena and type(S.Arena.Next) == "table" and S.Arena.Next.Kind == "DoubleRewards" and S.Arena.Next or nil
 		local starts = nextEvent and arenaSeconds(nextEvent.StartsIn)
 		local double = S.Arena and type(S.Arena.Double) == "table" and S.Arena.Double
 		local showNext = starts and starts <= K.ANNOUNCE and starts > 0
@@ -2466,7 +2374,7 @@ function refreshSide()
 			table.insert(U.SideCards, function()
 				local s2 = nextEvent and arenaSeconds(nextEvent.StartsIn)
 				if s2 and s2 <= K.ANNOUNCE and s2 > 0 then
-					label.Text = (nextEvent.Kind == "DoubleRewards" and (G.Double .. "2 Rewards in") or (G.Skull .. " Boss Raid in"))
+					label.Text = G.Double .. "2 Rewards in"
 					clockLabel.Text = clock(s2)
 				elseif double and double.Active then
 					label.Text = G.Double .. "2 Rewards"
@@ -2686,6 +2594,12 @@ local function onPromptTriggered(prompt)
 		if dungeon and type(dungeon.Open) == "function" then
 			ArenaController.Close()
 			dungeon.Open(nil, prompt.Parent)
+		end
+	elseif panel == "Dare" then
+		-- the boss gate's pillar: the dare panel is RaidGateController's
+		local gate = otherController("RaidGateController")
+		if gate and type(gate.OpenDare) == "function" then
+			gate.OpenDare(prompt)
 		end
 	elseif panel == "Arena" then
 		local tab = prompt:GetAttribute("OpenPanelTab")
