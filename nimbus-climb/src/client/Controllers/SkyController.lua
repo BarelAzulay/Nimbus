@@ -18,6 +18,8 @@
 --     SkyEventAt starts a transition FROM what showed at that moment (St.From = { Id, Blend }): back-to-back raids
 --     (SkyEvent storm_titan -> lava_golem, no clear) blend raid sky to raid sky (the skybox swap at the midpoint),
 --     never back through the cycle look; a raid that ends half blended in leaves from where it was
+--   * the local raid sky (SetLocalEvent, a fight in a side pocket): for this client alone it takes the place of the SkyEvent /
+--     SkyEventAt attributes, with the same blend in and out; taken off, the attributes are back in charge (from that moment)
 --   * the battle lift (Config.Sky.Lift): in an outdoor pet battle (Config.Attr.InBattle "B...") under a dark look
 --     (Night, the eclipse raid) LightingStack.Push("SkyLift") over 1.5 s, popped over 1.5 s after the fight / at dawn
 --   * the lamps (Config.Sky.Lamps): the lobby's LampGlass / LanternLight / StallLight / DomeGlow PointLights glow
@@ -32,9 +34,11 @@
 --   SkyController.Init() / Start()   idempotent: the loop, the attribute signals, a first (instant) refresh
 --   SkyController.Stop()             tests: the loop ends, signals dropped, lift popped, lamps back, fireflies gone
 --   SkyController.Refresh(now)       one step (tests drive it); now = server time (default Workspace:GetServerTimeNow())
---   SkyController.State() -> { Phase, Next, Look, Theme, Event, EventBlend, EventFrom, Lift, Lamps, Fireflies, Applies,
+--   SkyController.SetLocalEvent(bossId|nil) -> ok   the local raid sky on (a boss with a raid sky; anything else is refused) / off
+--   SkyController.State() -> { Phase, Next, Look, Theme, Event, EventBlend, EventFrom, Local, Lift, Lamps, Fireflies, Applies,
 --                              Skipped, Loops, Running }   (Lamps / Fireflies = how many lights raised / emitters on;
---                              EventFrom = the raid sky Event blends from on a back-to-back change, else nil)
+--                              EventFrom = the raid sky Event blends from on a back-to-back change, else nil;
+--                              Local = the boss of the local raid sky, else nil)
 -- Plain Lua 5.1-compatible syntax only.
 
 local Players = game:GetService("Players")
@@ -68,6 +72,8 @@ local St = {
 	EvId = nil, -- the raid sky it goes to (nil = back to the cycle)
 	From = nil, -- { Id, Blend }: the raid sky showing when it started (nil = the plain cycle)
 	EventFrom = nil, -- the raid sky blending out under the new one (State)
+	Local = nil, -- { Id, At }: the local raid sky (SetLocalEvent) in place of the attributes
+	LocalOut = nil, -- { At, Attr }: it was taken off At, while SkyEventAt said Attr: the blend out runs from At until SkyEventAt moves
 	Seg = nil, -- the clock segment applied last (a phase name or a raid boss id)
 	Clock = nil, -- the ClockTime applied last
 	Lift = false,
@@ -150,6 +156,15 @@ local function eventNow(now)
 	local at = Workspace:GetAttribute(sky.Attr.EventAt)
 	if not finite(at) then
 		at = nil
+	end
+	if St.Local then
+		id, at = raidId(St.Local.Id), St.Local.At
+	elseif St.LocalOut then
+		if at == St.LocalOut.Attr then
+			at = St.LocalOut.At
+		else
+			St.LocalOut = nil
+		end
 	end
 	if St.EvSeen and at ~= St.EvAt then
 		-- a new transition starts from what the old one shows at its moment (one { Id, Blend }: a raid-to-raid blend
@@ -419,6 +434,7 @@ function SkyController.State()
 		Event = St.Event,
 		EventBlend = St.EventBlend,
 		EventFrom = St.EventFrom,
+		Local = St.Local and St.Local.Id or nil,
 		Lift = St.Lift,
 		Lamps = St.Lamps,
 		Fireflies = St.Fireflies,
@@ -482,6 +498,24 @@ end
 
 SkyController.Init = SkyController.Start
 
+function SkyController.SetLocalEvent(bossId)
+	if bossId == nil then
+		if St.Local then
+			St.LocalOut = { At = Workspace:GetServerTimeNow(), Attr = Workspace:GetAttribute(cfg().Attr.EventAt) }
+		end
+		St.Local = nil
+		return true
+	end
+	if not raidId(bossId) then
+		return false
+	end
+	if not (St.Local and St.Local.Id == bossId) then
+		St.Local = { Id = bossId, At = Workspace:GetServerTimeNow() }
+	end
+	St.LocalOut = nil
+	return true
+end
+
 function SkyController.Stop()
 	if not St.Running then
 		return
@@ -502,6 +536,7 @@ function SkyController.Stop()
 	settle()
 	St.Seg, St.Clock = nil, nil
 	resetEvent()
+	St.Local, St.LocalOut = nil, nil
 end
 
 return SkyController
