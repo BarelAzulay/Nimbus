@@ -2,7 +2,8 @@
 
 Date: 2026-11-01. Status: **standing rule** (owner's ask: "a program that knows when to use which model for what AND what
 effort"). It refines the law in `ABSOLUTE_RULES.md` ("Opus 5.5 builds and implements; Fable 5.1 does the hardest design,
-review, judging and adversarial verification"); it never replaces it. This is the routing table, not a program.
+review, judging and adversarial verification"); it never replaces it. This is the routing table; `tools/pick_model.py` is the
+program that holds it as data, so a change here goes there too.
 
 ## The words
 

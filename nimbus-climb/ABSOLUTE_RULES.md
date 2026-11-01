@@ -6,6 +6,7 @@ Source: [`claude-setup/CLAUDE_SYSTEM_SETUP.md`](claude-setup/CLAUDE_SYSTEM_SETUP
 ## Absolute laws
 - Every substantive task: think it through with the brainstorming skill first, then run it as a multi-agent Workflow (standing opt-in: always use workflows).
 - Mix models per stage: **Opus 5.5** builds and implements; **Fable 5.1** does the hardest design, review, judging and adversarial verification. Which model and effort each job kind gets, what moves a job up or down, and when a whole job runs easy / medium / high / xhigh / ultracode: [`docs/superpowers/specs/2026-11-01-model-effort-router.md`](docs/superpowers/specs/2026-11-01-model-effort-router.md). In doubt the route goes up, never down.
+- Model picker: before each stage of a build, pick the model and effort with `py -3.12 tools/pick_model.py` (`--job <kind>` or `--build <kind>`, plus the flags that apply), which may raise any stage up to ultracode. It never lowers a build's quality or scope, and never drops a test, review, pitch or evidence step. Say the route in one line.
 - Work autonomously: take the recommended option, say it in one line, keep going. Collect questions and ask them at the END, never mid-build. Only stop for destructive actions.
 - Never claim something works without evidence (tests, checks, screenshots). Report failures honestly.
 - Commit and push after every milestone.

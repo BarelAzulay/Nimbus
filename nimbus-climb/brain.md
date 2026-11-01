@@ -22,3 +22,4 @@ Read with [`ABSOLUTE_RULES.md`](ABSOLUTE_RULES.md) before working.
   model (Fable / Opus / Sonnet / Haiku) and effort (low .. max) each job kind gets, what moves a job up or down, and when a whole
   job runs easy / medium / high / xhigh / ultracode. Ultracode is a way of running a job (several workflows, adversarial
   verification, completeness critics, loop until dry), not an effort value; it is kept for saves / money / security / releases.
+- 2026-11-01: the router is a program too (owner's rule): `tools/pick_model.py` holds that table as data and is asked before each stage of a build; `tools/test_pick_model.py` keeps its floors.
