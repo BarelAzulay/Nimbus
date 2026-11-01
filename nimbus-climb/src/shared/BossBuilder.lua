@@ -7,19 +7,28 @@
 --   BossBuilder.Build(bossId, opts) -> Model | nil
 --       opts = { Detail = "High" | "Low" (default High; Low merges shades: about half the parts), Scale = n (default
 --       BattleCatalog.Bosses[id].Scale or 1), CFrame = where the feet centre stands (LookVector = facing; default
---       identity), Parent, Pose = "Idle" (the first pose applied), PoseTime = 0 }.
+--       identity), Parent, Pose = "Idle" (the first pose applied), PoseTime = 0, Tier = a BattleCatalog.RaidTiers id (the
+--       scale grows by the tier's Scale, then SetTier dresses it; nil = no dressing, today's boss), NoAura = true (see SetTier) }.
 --       The sculpt runs once per (bossId, detail, scale) and is cached: later builds clone it (fast). Call
---       BossBuilder.Preload(bossId) during the 2-minute raid announcement so the raid start never hitches.
+--       BossBuilder.Preload(bossId, { Tier }) ahead of a fight so its start never hitches.
 --   BossBuilder.Animate(model, pose, t, opts)   applies a pose at time t (seconds, any running clock):
 --       pose = "Idle" | "Windup" | "Attack" | "Basic" | "Enrage" | "Hurt" | "Down"
 --       opts = { CFrame = the root CFrame this frame (the client's interpolated boss position; default: unchanged),
 --                Progress = 0..1 (how far into a Windup / Attack / Basic / Enrage / Hurt / Down; default from t),
 --                Attack = attack id (BattleCatalog.Bosses[id].Attacks[i].Id: picks the move, e.g. a one-arm zap or
---                the two-arm slam), Enraged = true (faster, fiercer idle) }
+--                the two-arm slam), Enraged = true (faster, fiercer idle),
+--                LookAt = Vector3 (world): the head joint(s) turn toward it, at most 1 rad either way (the builder is stateless:
+--                the caller smooths it); nil = today's pose }
 --       One BulkMoveTo per call (parts are anchored; only Workspace:BulkMoveTo or CFrame writes, nothing per part
 --       allocated): cheap enough every frame for the one raid boss.
 --   BossBuilder.SetEnraged(model, on)           the glowing parts (Glow / Eye / Bolt / Magma ... keys) turn the boss's
 --                                               enrage colour (and back); the core light brightens
+--   BossBuilder.TierLooks[tierId]               { Color, Aura, Crown } per fight tier
+--   BossBuilder.SetTier(model, tierId, opts) -> ok  dresses a built boss for a fight tier (again with another tier; nil takes it off;
+--                                               an unknown tier is refused): the glow parts lean to the tier's colour (the enrage
+--                                               colours win while enraged), a TierAura emitter and a TierLight on Fx_Core, Max's
+--                                               TierCrown of 8 Neon spikes (rig parts: Animate moves them); model attribute Tier.
+--                                               No aura on a Low boss or with opts.NoAura = true (Graphics Low)
 --   BossBuilder.Colors(bossId) -> { Glow, Telegraph, Edge, Enrage, Element }   (Color3s)
 --   BossBuilder.TelegraphColor(bossId, attackId) -> fill Color3, edge Color3     colour of a floor telegraph
 --   BossBuilder.FxPoint(model, name) -> Vector3 | nil   world position of a named effect point ("Mouth", "HandL",
@@ -39,6 +48,7 @@
 --     Head      Model  storm_titan / lava_golem / frost_wyrm          Jaw   Model  frost_wyrm (opens for the breath)
 --     ArmL/ArmR Model  storm_titan / lava_golem (the fists that slam) Base  Model  storm_titan (its spinning vortex)
 --     WingL/WingR Model frost_wyrm                                     Head1/Head2/Head3 Model shadow_hydra (L, C, R)
+--     TierCrown Model  a Max boss's 8 spikes (SetTier; not a joint: each spike follows the joint under the crown)
 --   Every joint Model has attributes Pivot (Vector3, studs, Root space at rest) and JointParent (string, "" = Root).
 --   Effect points are Attachments named "Fx_<name>" inside the joint that carries them.
 -- Facing: -Z (Root.CFrame.LookVector). The bosses are 22-27 studs tall at Scale 1 (VoxelSize 0.5 stud), so they read
@@ -102,6 +112,14 @@ local ATTACK_COLORS = {
 }
 
 local FALLBACK_COLORS = { Element = "Storm", Glow = rgb(255, 220, 120), Telegraph = rgb(255, 90, 70), Edge = rgb(255, 230, 160), Enrage = rgb(255, 50, 50) }
+
+-- the same boss dressed for its fight tier (BattleCatalog.RaidTiers; the size is the tier's Scale there)
+BossBuilder.TierLooks = {
+	Starter = { Color = rgb(150, 210, 150), Aura = 0 },
+	Mid = { Color = rgb(90, 160, 255), Aura = 0.5 },
+	High = { Color = rgb(200, 110, 255), Aura = 1 },
+	Max = { Color = rgb(255, 170, 60), Aura = 1.5, Crown = true },
+}
 
 function BossBuilder.Colors(bossId)
 	local c = COLORS[bossId] or FALLBACK_COLORS
@@ -748,7 +766,7 @@ local SCULPT = {
 -- shading (ART DIRECTION: 2-3 shades per colour region); below it the LOD folds the shades away and the biggest
 -- surfaces of the bosses read as one flat colour. The storm vortex stays lean (it spins: detail there is noise).
 local BUDGET = {
-	storm_titan = { Base = 170, Body = 420, Head = 130, ArmL = 150, ArmR = 150 },
+	storm_titan = { Base = 170, Body = 405, Head = 130, ArmL = 150, ArmR = 150 }, -- (Body 420 -> 405: 968 parts with the Max crown against the 960 budget)
 	lava_golem = { Body = 560, Head = 90, ArmL = 150, ArmR = 150 },
 	frost_wyrm = { Body = 560, Head = 170, Jaw = 60, WingL = 120, WingR = 120 },
 	shadow_hydra = { Body = 470, Head1 = 160, Head2 = 160, Head3 = 160 },
@@ -781,6 +799,11 @@ local function scaleOf(bossId, opts)
 	end
 	if s ~= s or s <= 0 then
 		s = 1
+	end
+	local bc = battleCatalog()
+	local tier = opts and opts.Tier and bc and type(bc.RaidTierById) == "function" and bc.RaidTierById(opts.Tier)
+	if tier and tonumber(tier.Scale) then
+		s = s * tier.Scale
 	end
 	return min(max(s, 0.1), 4)
 end
@@ -1017,7 +1040,7 @@ local function registerRig(model, bossId)
 	end
 	local rootInv = root.CFrame:Inverse()
 	local rig = { BossId = bossId, Model = model, Root = root, Joints = {}, Order = {}, Parts = { root }, Rest = { CFrame.new() },
-		Owner = { false }, CFs = { root.CFrame }, Glow = {}, Light = model:FindFirstChild("BossLight", true), Enraged = false }
+		Owner = { false }, CFs = { root.CFrame }, Glow = {}, Heads = {}, Light = model:FindFirstChild("BossLight", true), Enraged = false }
 	for _, name in ipairs(rigDef.Order) do
 		local group = model:FindFirstChild(name)
 		if group then
@@ -1027,6 +1050,9 @@ local function registerRig(model, bossId)
 			j.PivotInv = CFrame.new(-j.Pivot)
 			rig.Joints[name] = j
 			table.insert(rig.Order, j)
+			if name:match("^Head%d*$") then
+				table.insert(rig.Heads, name)
+			end
 			for _, d in ipairs(group:GetDescendants()) do
 				if d:IsA("BasePart") then
 					table.insert(rig.Parts, d)
@@ -1035,7 +1061,8 @@ local function registerRig(model, bossId)
 					table.insert(rig.CFs, d.CFrame)
 					local glowKey = GLOW_KEYS[d.Name] and d.Name or d:GetAttribute("MK_Key")
 					if GLOW_KEYS[glowKey] then
-						table.insert(rig.Glow, { Part = d, Color = d.Color, Key = glowKey })
+						-- (Rest = the sculpted colour; Color = what it wears, the tier's tint on top)
+						table.insert(rig.Glow, { Part = d, Color = d.Color, Rest = d.Color, Key = glowKey })
 					end
 				end
 			end
@@ -1085,6 +1112,9 @@ function BossBuilder.Build(bossId, opts)
 	end
 	registerRig(model, bossId)
 	BossBuilder.Animate(model, opts.Pose or "Idle", tonumber(opts.PoseTime) or 0, { CFrame = typeof(opts.CFrame) == "CFrame" and opts.CFrame or CFrame.new(), Progress = opts.Progress, Attack = opts.Attack, Enraged = opts.Enraged })
+	if opts.Tier ~= nil then
+		BossBuilder.SetTier(model, opts.Tier, { NoAura = opts.NoAura })
+	end
 	if opts.Enraged then
 		BossBuilder.SetEnraged(model, true)
 	end
@@ -1394,6 +1424,7 @@ local POSES = { storm_titan = titanPose, lava_golem = golemPose, frost_wyrm = wy
 BossBuilder.Poses = { "Idle", "Windup", "Attack", "Basic", "Enrage", "Hurt", "Down" }
 -- default one-shot lengths (seconds) when Progress is not given
 local POSE_SECONDS = { Windup = 1.8, Attack = 1.0, Basic = 0.6, Enrage = 1.6, Hurt = 0.35, Down = 1.4 }
+local LOOK_MAX = 1 -- radians: how far Animate's LookAt turns a head
 
 local function bulkMove(parts, cfs)
 	local ws = workspace
@@ -1435,6 +1466,14 @@ function BossBuilder.Animate(model, pose, t, opts)
 		local ok, result = pcall(fn, pose, t, p, opts)
 		if ok and type(result) == "table" then
 			locals = result
+		end
+	end
+	if typeof(opts.LookAt) == "Vector3" then
+		-- the extra yaw toward the point, in Root space (the boss faces -Z)
+		local rel = rootCF:PointToObjectSpace(opts.LookAt)
+		local yaw = max(-LOOK_MAX, min(LOOK_MAX, math.atan2(-rel.X, -rel.Z)))
+		for _, name in ipairs(rig.Heads) do
+			locals[name] = A(0, yaw, 0) * (locals[name] or IDENTITY)
 		end
 	end
 	for _, j in ipairs(rig.Order) do
@@ -1480,6 +1519,147 @@ function BossBuilder.SetEnraged(model, on)
 		rig.Light.Color = on and colors.Enrage or colors.Glow
 		rig.Light.Brightness = on and 3 or 1.6
 	end
+	return true
+end
+
+----------------------------------------------------------------------
+-- Tier dressing (boss raids)
+----------------------------------------------------------------------
+-- where the crown sits: the rig's Crown point (joint, voxels); the hydra has none, so on the centre head's skull
+local CROWN_AT = { shadow_hydra = { "Head2", { 0, 37, -13.5 } } }
+local CROWN_SPIKES = 8
+local CROWN_RADIUS = 5 -- voxels from the crown's centre
+local CROWN_TILT = 0.35 -- radians outward
+local SPIKE_SIZE = Vector3.new(1.2, 3.5, 1.2) -- studs at Scale 1
+
+-- the spikes are the rig's last parts (nothing else is added after registerRig)
+local function removeCrown(rig)
+	local crown = rig.Model:FindFirstChild("TierCrown")
+	if not crown then
+		return
+	end
+	for i = #rig.Parts, #rig.Parts - #crown:GetChildren() + 1, -1 do
+		rig.Parts[i], rig.Rest[i], rig.Owner[i], rig.CFs[i] = nil, nil, nil, nil
+	end
+	crown:Destroy()
+end
+
+local function addCrown(rig, color)
+	local spec = CROWN_AT[rig.BossId] or BossBuilder.Rigs[rig.BossId].Fx.Crown
+	local joint = spec and rig.Joints[spec[1]]
+	if not joint then
+		return
+	end
+	local scale = tonumber(rig.Model:GetAttribute("Scale")) or 1
+	local centre = CFrame.new(vec3(spec[2], VOXEL * scale))
+	local size = SPIKE_SIZE * scale
+	local crown = Instance.new("Model")
+	crown.Name = "TierCrown"
+	for i = 1, CROWN_SPIKES do
+		local rest = centre * A(0, (i - 1) / CROWN_SPIKES * 2 * pi, 0) * CFrame.new(0, 0, -CROWN_RADIUS * VOXEL * scale) * A(-CROWN_TILT, 0, 0) * CFrame.new(0, size.Y / 2, 0)
+		local world = rig.RootCF * joint.World * rest
+		local spike = Instance.new("Part")
+		spike.Name = "Spike"
+		spike.Shape = Enum.PartType.Block
+		spike.Size = size
+		spike.CFrame = world
+		spike.Color = color
+		spike.Material = Enum.Material.Neon
+		spike.Anchored = true
+		spike.CanCollide = false
+		spike.CanQuery = false
+		spike.CanTouch = false
+		spike.CastShadow = false
+		spike.Parent = crown
+		table.insert(rig.Parts, spike)
+		table.insert(rig.Rest, rest)
+		table.insert(rig.Owner, joint)
+		table.insert(rig.CFs, world)
+	end
+	crown.Parent = rig.Model
+end
+
+local function setAura(core, look, on)
+	local aura = core:FindFirstChild("TierAura")
+	if not on or not look or look.Aura <= 0 then
+		if aura then
+			aura:Destroy()
+		end
+		return
+	end
+	if not aura then
+		aura = Instance.new("ParticleEmitter")
+		aura.Name = "TierAura"
+		aura.Lifetime = NumberRange.new(1.2, 2)
+		aura.Speed = NumberRange.new(1, 3)
+		aura.SpreadAngle = Vector2.new(180, 180)
+		aura.LightEmission = 0.6
+		aura.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(1, 1) })
+		aura.Parent = core
+	end
+	aura.Rate = 12 * look.Aura
+	aura.Size = NumberSequence.new(3 + 2 * look.Aura)
+	aura.Color = ColorSequence.new(look.Color)
+end
+
+local function setTierLight(host, look)
+	local light = host:FindFirstChild("TierLight")
+	if not look then
+		if light then
+			light:Destroy()
+		end
+		return
+	end
+	if not light then
+		light = Instance.new("PointLight")
+		light.Name = "TierLight"
+		light.Brightness = 1.2
+		light.Shadows = false
+		light.Parent = host
+	end
+	light.Color = look.Color
+	light.Range = 18 + 6 * look.Aura
+end
+
+function BossBuilder.SetTier(model, tierId, opts)
+	local rig = typeof(model) == "Instance" and rigs[model]
+	if not rig then
+		return false
+	end
+	local look = nil
+	if tierId ~= nil then
+		look = BossBuilder.TierLooks[tierId]
+		if not look then
+			return false
+		end
+	end
+	for _, entry in ipairs(rig.Glow) do
+		entry.Color = look and entry.Rest:Lerp(look.Color, 0.5) or entry.Rest
+		if not rig.Enraged then
+			entry.Part.Color = entry.Color
+		end
+	end
+	local core = model:FindFirstChild("Fx_Core", true)
+	if core then
+		local noAura = (type(opts) == "table" and opts.NoAura == true) or model:GetAttribute("Detail") == "Low"
+		setAura(core, look, not noAura)
+		if core.Parent and core.Parent:IsA("BasePart") then
+			setTierLight(core.Parent, look)
+		end
+	end
+	if look and look.Crown then
+		local crown = model:FindFirstChild("TierCrown")
+		if crown then
+			for _, spike in ipairs(crown:GetChildren()) do
+				spike.Color = look.Color
+			end
+		else
+			addCrown(rig, look.Color)
+		end
+	else
+		removeCrown(rig)
+	end
+	model:SetAttribute("Tier", tierId)
 	return true
 end
 

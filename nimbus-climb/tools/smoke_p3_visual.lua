@@ -337,6 +337,12 @@ local function serverScenarios()
 				T.check(#lost == 0, "visual bosses: " .. id .. "'s Low detail keeps the accents too", "missing " .. table.concat(lost, ", "))
 				high:Destroy()
 				low:Destroy()
+				-- boss raids: the Max tier's crown stays inside the raid budget
+				local maxed = BB.Build(id, { Detail = "High", Tier = "Max" })
+				T.check(maxed ~= nil and #partsOf(maxed) <= 960, "visual bosses: " .. id .. " at the Max tier within 960 parts", maxed and tostring(#partsOf(maxed)) or "nil")
+				if maxed then
+					maxed:Destroy()
+				end
 			end
 		end
 	end)
