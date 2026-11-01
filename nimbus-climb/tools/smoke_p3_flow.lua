@@ -8,7 +8,7 @@
 -- (a stand-in for many roulette spins); everything after that goes through the game.
 -- Loaded by tools/smoke.py in BOTH worlds (ARGS.context picks the half). In the server world the scenarios are chapters
 -- of ONE story and run in order (before the Phase 2 care block: the raid advances the clock by minutes):
---   p3flow_arrive   the schedule is cleared (the next Boss Raid ~20 minutes away); the interfaces the modules hand each
+--   p3flow_arrive   no fight or Double Rewards left running; the interfaces the modules hand each
 --                   other are all there (signals at module load, APIs, BattleSim constants, the BattleCatalog helpers the
 --                   UI uses, ArenaInfo); Ava and Bo (new players) and Cy (a Phase 2 save: Prestige 1, a pet in his
 --                   Garden, the home chapter of the tutorial finished, no Teams / Battle) join: ArenaState on join (the
@@ -34,31 +34,30 @@
 --                   battle record and pets are gone (ProfileSync, the leaderboard at 0, a queue refused without a
 --                   team) and the reset survives the next autosave; Bo builds a new team
 --   p3flow_raid     Eli rejoins with the loss of the duel he left. Double Rewards (the developer start: toast,
---                   ArenaState.Double, a trial pays x2); then the scheduled Boss Raid from its announcement: the toast
---                   naming the boss + the countdown in ArenaState (every second), the 30 s reminder, the opening toast,
---                   ArenaState.Raid; Cy standing in the arena finishes the battle chapter of the tutorial (its reward
---                   once). Six teams join through the remote (Cy with his team as it is now), Hal watches from the
+--                   ArenaState.Double, the countdown chip); then the boss that is already there, no announcement:
+--                   ArenaState.Raid says it waits; six teams walk through the boss gate (Cy with his team as it is now, which
+--                   finishes the battle chapter of his tutorial, its reward once), Hal watches from the
 --                   stands, Gus leaves early (LeaveRaid: the boss sheds his share, no reward, no rejoin), Eli
---                   disconnects mid-raid (a Leave event, no reward, nothing in his save), Fay joins late (the boss HP
---                   grows, the others see her units Spawn), Hal is too late. The fighters attack, cast specials and
+--                   disconnects mid-raid (a Leave event, no reward, nothing in his save), Fay walks in late (the boss HP
+--                   grows, the others see her units Spawn). The fighters attack, cast specials and
 --                   retreat from telegraphs until the boss falls: each fighter gets the tier of their damage share with
 --                   Double Rewards tokens, its gems and (the chances forced to 1 for this raid) an event pet they did not
 --                   have (owned, discovered, in Battle.EventPets, the shout-out to the others), pet XP, Raids + 1;
 --                   BattleEnded once, nothing paid twice (EventService's fallback payer stays quiet), the everyone-toast,
---                   EventService's LastRaid and the next raid ~20 minutes away; Double Rewards end
+--                   EventService's LastRaid and the tier closed for its 60 s; Double Rewards end
 --   p3flow_rejoin   Ava leaves (the save: Teams + Battle in the stored encoding) and rejoins: teams, record, pet levels
 --                   and her event pet are back, Trial 4 is open (and forfeited), the leaderboard has her again; Eli
---                   rejoins after his raid disconnect (no raid in his record, no raid to rejoin); Cy rejoins: his
+--                   rejoins after his raid disconnect (no raid in his record, a stale Join does nothing); Cy rejoins: his
 --                   finished tutorial pays nothing again, his 4-pet preset is kept and his trainee still trains or came
 --                   back with its rank
---   p3flow_solo     Roblox Studio Play Solo: everybody else leaves; Ava starts a Boss Raid with the DEV button
---                   (DevCommand raid), joins it alone (a raid for one team), fights it and gets the tier of all the damage,
+--   p3flow_solo     Roblox Studio Play Solo: everybody else leaves; Ava calls the next boss with the DEV button
+--                   (DevCommand raid), walks in alone (a fight for one team), fights it and gets the medal of all the damage,
 --                   paid once; then she waits for the SCHEDULED Double Rewards hour: announced ~2 minutes ahead, it
 --                   starts by itself (EventService, BattleService, the Workspace attribute), a trial pays x2, the next
 --                   one is EveryMinutes away; no battle, raid or Double Rewards of the flow is left behind
 --   client_p3flow   (client) the real server messages of the flow, replayed into the client as Ava: BattleController
 --                   draws her first trial (HUD with her three pets, the VICTORY card with the tokens the server paid),
---                   ArenaController shows the challenge she sent and the raid countdown chip, the raid with its boss
+--                   ArenaController shows the challenge she sent and the Double Rewards countdown chip, the raid with its boss
 --                   model, the raid result card (tier, tokens, event pet, Double rewards); State mirrors her saved teams
 --                   and record; Cy's real chapter-3 TutorialState messages walk the card through arena > team > trial >
 --                   raid with the world guide on the arena targets; no client errors
@@ -282,7 +281,7 @@ if CONTEXT ~= "server" then
 			elseif e.remote == "ArenaState" and not seen.countdown then
 				local args = Mock.Deserialize(e.args)
 				local st = args[1]
-				if type(st) == "table" and type(st.Next) == "table" and st.Next.Kind == "BossRaid" and st.Next.Announced == true and LocalPlayer:GetAttribute("InBattle") == nil then
+				if type(st) == "table" and type(st.Double) == "table" and st.Double.Active == true and LocalPlayer:GetAttribute("InBattle") == nil then
 					advance(0.6)
 					local stack = sideStack()
 					local chip = stack and stack:FindFirstChild("Countdown")
@@ -294,7 +293,7 @@ if CONTEXT ~= "server" then
 					end
 					local stA = ACtl.GetState()
 					seen.countdown = {
-						ok = stA and stA.Arena and stA.Arena.Next and stA.Arena.Next.Kind == "BossRaid" and shown(chip) and clock ~= nil and tostring(clock.Text):match("^%d+:%d%d$") ~= nil,
+						ok = stA and stA.Arena and stA.Arena.Double and stA.Arena.Double.Active == true and shown(chip) and clock ~= nil and tostring(clock.Text):match("^[%d:]+:%d%d$") ~= nil,
 						text = clock and clock.Text,
 					}
 				end
@@ -308,7 +307,7 @@ if CONTEXT ~= "server" then
 		T.check(seen.trialEnd ~= nil and seen.trialEnd.ok, "client flow: ...the real 'End' shows the result card with the tokens the server paid",
 			seen.trialEnd and tostring(seen.trialEnd.tokens) or "never reached")
 		T.check(seen.sent == true, "client flow: the real 'Lobby' of her challenge: ArenaController keeps it and shows the Sent card (waiting for Bo)")
-		T.check(seen.countdown ~= nil and seen.countdown.ok, "client flow: the real raid countdown (ArenaState.Next): the side countdown chip ticks",
+		T.check(seen.countdown ~= nil and seen.countdown.ok, "client flow: the real Double Rewards countdown (ArenaState.Double): the side countdown chip ticks",
 			seen.countdown and tostring(seen.countdown.text) or "never reached")
 		T.check(seen.raidStart == true, "client flow: the real raid 'Start': the raid is drawn with its boss model and her HUD")
 		T.check(seen.raidEnd == true, "client flow: the real raid 'End': BOSS DEFEATED with her tier, tokens, the event pet and Double rewards")
@@ -1121,6 +1120,10 @@ local function scenario(name, fn)
 			end
 			F.savedTiers = nil
 		end
+		if F.savedEventScale then
+			F.savedEventScale[1].EventScale = F.savedEventScale[2]
+			F.savedEventScale = nil
+		end
 		K.flushErrors(name)
 		return ok
 	end
@@ -1141,15 +1144,30 @@ local function ready(label)
 	return true
 end
 
--- the raid schedule: no raid running, the next one far enough away for the chapters before the raid
-local function clearRaids()
-	local bs, es = BS(), ES()
-	if bs.GetRaidStatus() ~= nil then
-		es.EndNow("BossRaid")
-		waitFor(function()
-			return bs.GetRaidStatus() == nil
-		end, 10)
+-- the sim of a running battle (white-box: St is an upvalue of IsInBattle, as in smoke_raid_service.lua)
+local function simOf(id)
+	local f = BS().IsInBattle
+	for i = 1, 80 do
+		local name, v = debug.getupvalue(f, i)
+		if not name then
+			break
+		end
+		if name == "St" and type(v) == "table" and type(v.battles) == "table" then
+			return v.battles[id] and v.battles[id].Sim or nil
+		end
 	end
+	return nil
+end
+
+-- no boss fight running, no tier closed
+local function clearRaids()
+	local bs = BS()
+	if bs.EndRaids("Ended") > 0 then
+		advance(0.3)
+	end
+	waitFor(function()
+		return next(bs.GetRaidStatus().Closed) == nil and bs.GetRaidStatus().FloorHiddenIn == 0
+	end, 70)
 end
 
 ----------------------------------------------------------------------------------------------------
@@ -1206,16 +1224,6 @@ S.p3flow_arrive = scenario("p3flow_arrive", function()
 	if es.IsDoubleRewards() then
 		es.EndNow("DoubleRewards")
 	end
-	local left = es.SecondsUntil("BossRaid") or 0
-	if left < 15 * 60 then
-		es.StartNow("BossRaid")
-		es.EndNow("BossRaid")
-		waitFor(function()
-			return bs.GetRaidStatus() == nil
-		end, 10)
-	end
-	left = es.SecondsUntil("BossRaid") or 0
-	T.check(left > 15 * 60, "flow: (setup) the next Boss Raid is ~20 minutes away", string.format("%.0f s", left))
 
 	-- Cy's Phase 2 save, then everybody joins
 	Mock.DataStore.Data[storeKey(IDS.Cy)] = phase2Save()
@@ -1241,7 +1249,7 @@ S.p3flow_arrive = scenario("p3flow_arrive", function()
 		return type(sig) == "table" and type(sig.Connect) == "function" and type(sig.Fire) == "function"
 	end
 	need(isSignal(bs.BattleEnded) and isSignal(data.TeamsChanged), "BattleService.BattleEnded / DataService.TeamsChanged (signals at module load)")
-	for _, fn in ipairs({ "Challenge", "StartRaid", "EndRaid", "GetBattle", "IsInBattle", "GetRaidStatus", "OpenEncounter", "FinishEncounter", "TeamSpec" }) do
+	for _, fn in ipairs({ "Challenge", "EnterRaid", "EndRaids", "GetBattle", "IsInBattle", "GetRaidStatus", "OpenEncounter", "FinishEncounter", "TeamSpec" }) do
 		need(type(bs[fn]) == "function", "BattleService." .. fn)
 	end
 	for _, fn in ipairs({ "GetTeams", "SetTeam", "SelectTeam", "ActiveTeamKeys", "GetBattle", "MutateBattle", "AddTrophies" }) do
@@ -1753,7 +1761,6 @@ S.p3flow_reset = scenario("p3flow_reset", function()
 	advance(0.3)
 	T.check(sameList(data.ActiveTeamKeys(bo), TEAMS.BoNew), "flow reset: Bo builds a new team afterwards")
 	toLobby(bo, -6)
-	T.check(es.SecondsUntil("BossRaid") > 125, "flow reset: (the next raid is still ahead)")
 end)
 
 ----------------------------------------------------------------------------------------------------
@@ -1764,8 +1771,8 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 		return
 	end
 	local bs, es, data, bc = BS(), ES(), DS(), BC()
-	-- this flow watches the boss HP move with the teams; the L35 baseline's floor would hold these mid teams flat (team
-	-- balance; the floor has its own checks in bug2bat_raid_balance)
+	-- this flow watches the boss HP move with the teams; the baseline's floor would hold these teams flat (team balance;
+	-- the floor has its own checks in bug2bat_raid_balance)
 	local floorSeconds0 = bc.BossRules.FloorSeconds
 	bc.BossRules.FloorSeconds = 15
 	local info = arenaInfo()
@@ -1792,6 +1799,7 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 	toLobby(gus, -18)
 
 	-- Double Rewards (the developer start; the schedule's hour works the same way)
+	F.keepArena = true -- the client half replays this countdown
 	local mD = K.logSize()
 	local okD = es.StartNow("DoubleRewards")
 	local mult = bc.Events.DoubleRewardsMultiplier or 2
@@ -1801,39 +1809,17 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 	advance(1.2)
 	local stD = lastArenaState(ava, mD)
 	T.check(stD and type(stD.Double) == "table" and stD.Double.Active == true and stD.Double.EndsIn > 3000, "flow double: ArenaState.Double = { Active, EndsIn }")
-	toLobby(ava)
-
-	-- the scheduled raid: the announcement ~2 minutes ahead
-	clearRaids()
-	local entry = nil
-	for _, e in ipairs(bc.Events.Schedule) do
-		if e.Kind == "BossRaid" then
-			entry = e
-		end
-	end
-	local announce = entry and entry.AnnounceSeconds or 120
-	local left = es.SecondsUntil("BossRaid")
-	if left > announce + 5 then
-		advance(left - announce - 5)
-	end
-	local stTut = tutorial(cy)
-	T.check(stTut ~= nil, "flow tutorial: Cy has a tutorial state (the Phase 5 chapter 3 steps are the tutorial owner's, W4)", stTut and tostring(stTut.Id) or "nil")
-	F.keepArena = true -- the client half replays this countdown
-	local mA = K.logSize()
-	local announced = waitFor(function()
-		return (toasted(hal, "Boss Raid in", mA))
-	end, 15)
-	local nextRaid = es.GetState().NextRaid
-	local bossId = nextRaid and nextRaid.BossId
-	local bossName = bossId and bc.Bosses[bossId] and bc.Bosses[bossId].Name or "?"
-	local okAnn, annText = toasted(hal, "Boss Raid in", mA)
-	T.check(announced and okAnn and annText:find(bossName, 1, true) ~= nil, "flow raid: ~2 minutes ahead everyone gets a side toast naming the boss (" .. bossName .. ")", annText)
 	local mC = K.logSize()
 	advance(5.2)
 	local fast = arenaStates(ava, mC)
-	local stN = fast[#fast]
-	T.check(#fast >= 4 and stN and stN.Next and stN.Next.Kind == "BossRaid" and stN.Next.BossId == bossId and stN.Next.Announced == true and stN.Next.StartsIn <= announce,
-		"flow raid: ArenaState counts the raid down about every second (Next { Kind, BossId, StartsIn, Announced })", stN and plain(stN.Next) or "none")
+	T.check(#fast >= 1 and fast[#fast].Double and fast[#fast].Double.EndsIn < stD.Double.EndsIn, "flow double: ArenaState keeps counting it down", tostring(#fast))
+	toLobby(ava)
+	F.keepArena = nil
+
+	-- the boss is already there: no announcement, no opening
+	clearRaids()
+	local stTut = tutorial(cy)
+	T.check(stTut ~= nil, "flow tutorial: Cy has a tutorial state (the Phase 5 chapter 3 steps are the tutorial owner's, W4)", stTut and tostring(stTut.Id) or "nil")
 	-- everyone walks into the arena (Cy too: he is on the tutorial's last step)
 	toArena(ava, -10, 6)
 	toArena(bo, -5, 6)
@@ -1844,48 +1830,47 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 	toArena(eli, 20, 6)
 	Mock.Teleport(hal, info.Floor.CFrame * CFrame.new(0, 3, 62)) -- in the colosseum's stands, off the floor
 	advance(0.1)
-	local mR = K.logSize()
-	local reminded = waitFor(function()
-		return (toasted(ava, "arrives in", mR))
-	end, announce)
-	T.check(reminded, "flow raid: the 30 s reminder toast")
-	local cyTokens0 = tokens(cy)
 	local mO = K.logSize()
-	local opened = waitFor(function()
-		return bs.GetRaidStatus() ~= nil
-	end, 40)
-	if not T.check(opened, "flow raid: at its time the raid opens (BattleService.StartRaid by the scheduler)") then
-		return
-	end
 	F.record = true -- the client half replays the start of Ava's raid
-	F.keepArena = nil
 	local status = bs.GetRaidStatus()
-	local raidId = status.BattleId
-	T.check(status.BossId == bossId and status.Waiting == true and status.Joinable == true and status.Players == 0,
-		"flow raid: GetRaidStatus: the announced boss, waiting for fighters, joinable", plain(status))
-	T.check((toasted(gus, "Boss Raid!", mO)), "flow raid: ...the 'Boss Raid!' toast to everyone")
-	advance(1.2)
+	local bossId = status.BossId
+	local bossName = bossId and bc.Bosses[bossId] and bc.Bosses[bossId].Name or "?"
+	T.check(type(bossId) == "string" and bc.Bosses[bossId] ~= nil and status.Active == false and next(status.Fights) == nil,
+		"flow raid: GetRaidStatus: the boss waits, no fight yet", plain(status))
+	advance(5.2)
 	local stO = lastArenaState(ava, mO)
-	T.check(stO and type(stO.Raid) == "table" and stO.Raid.Active == true and stO.Raid.BossId == bossId and stO.Raid.Joinable == true,
-		"flow raid: ArenaState.Raid = BattleService.GetRaidStatus()")
+	T.check(stO and type(stO.Raid) == "table" and stO.Raid.Active == false and stO.Raid.BossId == bossId and type(stO.Raid.Fights) == "table" and type(stO.Raid.NextBossIn) == "number",
+		"flow raid: ArenaState.Raid = BattleService.GetRaidStatus() + the rotation")
+	T.check(not (toasted(gus, "Boss Raid", mO)), "flow raid: ...and no announcement")
 	-- (the tutorial's chapter 3 under Phase 5 is the tutorial owner's (W4): no chapter check here)
-	advance(1.0)
 
-	-- joins through the remote
+	-- they walk through the boss gate
+	local gateCF = info.Gate.CFrame
+	local function walkIn(p)
+		Mock.Teleport(p, gateCF)
+		return waitFor(function()
+			return type(p:GetAttribute("InBattle")) == "string"
+		end, 2)
+	end
 	local fighters = { ava, bo, cy, dee, eli, gus }
 	local maxHp = {}
 	local trs = {}
+	local raidId, raidTier = nil, nil
+	local function fightNow()
+		return raidTier and bs.GetRaidStatus().Fights[raidTier] or {}
+	end
 	for i, p in ipairs(fighters) do
 		local m = K.logSize()
 		trs[p] = drvTracker(p, m)
-		request(p, "JoinRaid")
+		walkIn(p)
 		advance(0.2)
-		local s = bs.GetRaidStatus()
-		maxHp[i] = s and s.MaxHp or 0
+		raidTier = raidTier or select(1, bs.RaidTierFor(p))
+		raidId = raidId or p:GetAttribute("InBattle")
+		maxHp[i] = fightNow().MaxHp or 0
 		local start = lastMsg(p, "Start", m)
 		if i == 1 then
-			T.check(p:GetAttribute("InBattle") == raidId and start and start.Mode == "Raid" and start.BossId == bossId and start.Spectator == false,
-				"flow raid: Ava joins (BattleRequest JoinRaid): 'Start' Mode Raid with the boss, InBattle = the raid id")
+			T.check(p:GetAttribute("InBattle") == raidId and start and start.Mode == "Raid" and start.BossId == bossId and start.Spectator == false and start.Raid and start.Raid.Tier == "Starter",
+				"flow raid: Ava walks through the gate: 'Start' Mode Raid with the boss and her tier, InBattle = the raid id")
 		elseif p == cy then
 			local mine = {}
 			for _, u in ipairs(start and start.Units or {}) do
@@ -1905,8 +1890,12 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 				"flow raid: Cy fights with his team of three as it is now", listText(mine))
 		end
 	end
-	local players = bs.GetRaidStatus().Players
-	T.check(players == 6 and maxHp[6] > maxHp[1], "flow raid: six teams joined; the boss HP grew with every team", players .. " teams, " .. maxHp[1] .. " -> " .. maxHp[6])
+	local players = fightNow().Players or 0
+	T.check(players == 6 and maxHp[6] > maxHp[1], "flow raid: six teams walked in; the boss HP grew with every team", players .. " teams, " .. maxHp[1] .. " -> " .. maxHp[6])
+	local floorFight = fightNow()
+	T.check(floorFight.Floor == true and bs.GetRaidStatus().Active == true and bs.GetRaidStatus().BattleId == raidId, "flow raid: the first fight has the real floor")
+	local cyStep = tutorial(cy)
+	T.check(cyStep and chapter3Finished(cyStep), "flow raid: walking in finishes Cy's battle chapter", cyStep and tostring(cyStep.Id))
 	advance(1.5)
 	local specStart = lastMsg(hal, "Start", mO)
 	T.check(specStart and specStart.BattleId == raidId and specStart.Spectator == true and specStart.Side == 0,
@@ -1931,14 +1920,18 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 		F.savedTiers[i] = { tier.GemChance, tier.EventPetChance }
 		tier.GemChance, tier.EventPetChance = 1, 1
 	end
+	-- (Starter's half chance too)
+	local tierRow = bc.RaidTierById(raidTier)
+	F.savedEventScale = { tierRow, tierRow.EventScale }
+	tierRow.EventScale = 1
 
 	-- the fight (Phase 5: the characters walk at the boss, ATTACK / ELEMENT / SPECIAL, DASH out of telegraphs); Gus leaves
-	-- early, Fay joins late, Hal is too late
+	-- early, Fay walks in late
 	local cursor = K.logSize()
 	local t0 = Mock.Clock.now
 	local opened0 = Mock.Clock.now
 	local specials, telegraphs = 0, 0
-	local gusLeft, fayJoined, halTried, eliLeft = false, false, false, false
+	local gusLeft, fayJoined, eliLeft = false, false, false
 	local recordUntil = Mock.Clock.now + 6
 	while F.w.find(raidId) == nil and Mock.Clock.now - t0 < 420 do
 		for _ = 1, 5 do
@@ -1959,18 +1952,16 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 		local since = Mock.Clock.now - opened0
 		if not gusLeft and since > 12 then
 			gusLeft = true
-			local before1 = bs.GetRaidStatus().MaxHp
+			local before1 = fightNow().MaxHp
 			local mG = K.logSize()
 			request(gus, "LeaveRaid")
 			advance(0.3)
 			local eg = lastMsg(gus, "End", mG)
-			local s1 = bs.GetRaidStatus()
+			local s1 = fightNow()
 			T.check(eg and eg.Outcome == "Left" and gus:GetAttribute("InBattle") == nil and s1 and s1.Players == 5 and s1.MaxHp < before1,
 				"flow raid: Gus leaves early (BattleRequest LeaveRaid): 'End' Outcome Left, the boss sheds his share", before1 .. " -> " .. tostring(s1 and s1.MaxHp))
-			advance(1.2)
-			local mG2 = K.logSize()
-			request(gus, "JoinRaid")
-			T.check((toasted(gus, "You left this raid", mG2)) and gus:GetAttribute("InBattle") == nil, "flow raid: ...and he cannot join the same raid again")
+			local okG, whyG = bs.EnterRaid(gus)
+			T.check(okG == false and tostring(whyG):find("You left this fight", 1, true) ~= nil and gus:GetAttribute("InBattle") == nil, "flow raid: ...and he cannot join the same fight again", tostring(whyG))
 			local leaveSeen = false
 			for _, ev in ipairs(eventsOf(ava, mG, "Leave")) do
 				leaveSeen = leaveSeen or ev.owner == gus.UserId
@@ -1979,11 +1970,11 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 		end
 		if not eliLeft and since > 25 then
 			eliLeft = true
-			local hpE = bs.GetRaidStatus().MaxHp
+			local hpE = fightNow().MaxHp
 			local mE2 = K.logSize()
 			Mock.RemovePlayer(eli)
 			advance(0.4)
-			local s3 = bs.GetRaidStatus()
+			local s3 = fightNow()
 			local leaveE = false
 			for _, ev in ipairs(eventsOf(ava, mE2, "Leave")) do
 				leaveE = leaveE or ev.owner == IDS.Eli
@@ -1993,26 +1984,26 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 		end
 		if not fayJoined and since > 40 then
 			fayJoined = true
-			local hp0 = bs.GetRaidStatus().MaxHp
+			local hp0 = fightNow().MaxHp
 			local mF = K.logSize()
 			trs[fay] = drvTracker(fay, mF)
-			request(fay, "JoinRaid")
+			walkIn(fay)
 			advance(0.4)
-			local s2 = bs.GetRaidStatus()
+			local s2 = fightNow()
 			local fs = lastMsg(fay, "Start", mF)
 			local spawnSeen = false
 			for _, ev in ipairs(eventsOf(ava, mF, "Spawn")) do
 				spawnSeen = spawnSeen or ev.owner == fay.UserId
 			end
 			T.check(fay:GetAttribute("InBattle") == raidId and fs and fs.Spectator == false and s2.MaxHp > hp0 and spawnSeen,
-				"flow raid: Fay joins late (40 s in): her own 'Start', the boss HP grows, the others see her units Spawn", hp0 .. " -> " .. tostring(s2 and s2.MaxHp))
+				"flow raid: Fay walks in late (40 s in): her own 'Start', the boss HP grows, the others see her units Spawn", hp0 .. " -> " .. tostring(s2 and s2.MaxHp))
 			fighters[#fighters + 1] = fay
 		end
-		if not halTried and since > 62 then
-			halTried = true
-			local mH = K.logSize()
-			request(hal, "JoinRaid")
-			T.check((toasted(hal, "Join the next one", mH)) and hal:GetAttribute("InBattle") == nil, "flow raid: Hal is too late (after the join window): refused with a toast")
+		-- the chapters after this one need the win: a boss still standing after two minutes of real play is nearly gone
+		-- (a group's chance is about 40-85% on purpose; the balance itself is tools/sim_battle.lua's job)
+		if since > 120 and simOf(raidId) then
+			local boss = simOf(raidId).boss
+			boss.hp = math.min(boss.hp, 1)
 		end
 	end
 	F.record = nil
@@ -2043,7 +2034,7 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 		local share = res.Shares[uid] or 0
 		shareSum = shareSum + share
 		-- nil for no damage (pets that never hit the boss): that fighter earns nothing (Tier "None")
-		local tier = bc.RaidTier(share, won) or { Id = "None", Tokens = 0, Gems = 0, Xp = 0 }
+		local tier = bc.RaidTier(share, won, raidTier) or { Id = "None", Tokens = 0, Gems = 0, Xp = 0 }
 		local b = before[p]
 		local paidTokens = tokens(p) - b.tokens
 		local paidGems = gems(p) - b.gems
@@ -2092,7 +2083,7 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 	end
 	T.check(not won or shout, "flow raid: the others hear who won an event pet (Hal hears about Ava's)")
 	local fighters = type(res.Fighters) == "table" and #res.Fighters or -1
-	local okAll, allText = toasted(hal, bossName .. " was defeated by " .. fighters .. " raiders", mO)
+	local okAll, allText = toasted(hal, bossName .. " (" .. tostring(raidTier) .. ") was defeated by " .. fighters .. " raiders", mO)
 	T.check(fighters == #fightersLeft and (not won or okAll), "flow raid: everyone hears how the raid went (" .. fighters .. " raiders: those still in at the end, not Gus and Eli who left)", allText)
 	-- nothing is paid twice (EventService's fallback payer stays out of it)
 	local after = {}
@@ -2114,13 +2105,9 @@ S.p3flow_raid = scenario("p3flow_raid", function()
 	local mE = K.logSize()
 	advance(5.5)
 	local stAfter = lastArenaState(ava, mE)
-	-- the raid's own countdown is NextRaid: Next is the soonest event of any kind, and the scheduled Double Rewards
-	-- window (every 3 h of server time) may well come before the next raid this far into the run
-	local raidNext = stAfter and stAfter.NextRaid
-	T.check(stAfter and stAfter.Raid == nil and type(raidNext) == "table" and raidNext.StartsIn > 15 * 60 and stAfter.Next
-		and (stAfter.Next.Kind == "BossRaid" and stAfter.Next.StartsIn == raidNext.StartsIn or stAfter.Next.Kind ~= "BossRaid" and stAfter.Next.StartsIn <= raidNext.StartsIn),
-		"flow raid: ArenaState afterwards: no raid, the next one ~20 minutes away", stAfter and (plain(stAfter.Next) .. " / NextRaid " .. plain(raidNext)) or "none")
-	T.check(bs.GetRaidStatus() == nil and ava:GetAttribute("InBattle") == nil and fay:GetAttribute("InBattle") == nil, "flow raid: everyone is free again")
+	T.check(stAfter and stAfter.Raid and stAfter.Raid.Active == false and next(stAfter.Raid.Fights) == nil and type(stAfter.Raid.Closed) == "table" and (stAfter.Raid.Closed[raidTier] or 0) > 40 and stAfter.Raid.FloorHiddenIn > 40,
+		"flow raid: ArenaState afterwards: no fight, the tier closed for its 60 s, the idle boss hidden", stAfter and plain(stAfter.Raid) or "none")
+	T.check(next(bs.GetRaidStatus().Fights) == nil and ava:GetAttribute("InBattle") == nil and fay:GetAttribute("InBattle") == nil, "flow raid: everyone is free again")
 	-- Double Rewards end
 	local mX = K.logSize()
 	es.EndNow("DoubleRewards")
@@ -2198,8 +2185,8 @@ S.p3flow_rejoin = scenario("p3flow_rejoin", function()
 	advance(1.1)
 	local mEl = K.logSize()
 	request(eli, "JoinRaid")
-	T.check(re.Trophies == want.Trophies and (re.Raids or 0) == 0 and count(re.EventPets) == 0 and (toasted(eli, "no boss raid", mEl)),
-		"flow rejoin: Eli rejoins after his raid disconnect: his trophies kept, no raid / event pet in his record, no raid to rejoin", plain(re))
+	T.check(re.Trophies == want.Trophies and (re.Raids or 0) == 0 and count(re.EventPets) == 0 and eli:GetAttribute("InBattle") == nil and #toasts(eli, mEl) == 0,
+		"flow rejoin: Eli rejoins after his raid disconnect: his trophies kept, no raid / event pet in his record, a stale Join does nothing", plain(re))
 	-- Cy's finished tutorial pays nothing again
 	if cy and cy.Parent then
 		local tc0 = tokens(cy)
@@ -2214,7 +2201,7 @@ S.p3flow_rejoin = scenario("p3flow_rejoin", function()
 end)
 
 ----------------------------------------------------------------------------------------------------
--- p3flow_solo: Roblox Studio Play Solo (one player): a Boss Raid from the DEV button, fought alone
+-- p3flow_solo: Roblox Studio Play Solo (one player): the next boss from the DEV button, fought alone
 ----------------------------------------------------------------------------------------------------
 S.p3flow_solo = scenario("p3flow_solo", function()
 	if not ready("solo") then
@@ -2236,20 +2223,24 @@ S.p3flow_solo = scenario("p3flow_solo", function()
 	clearRaids()
 	toArena(ava, 0, 6)
 	advance(2.2)
+	-- (she won a raid a moment ago: this one is past her reward clocks)
+	local fakeLater = os.time() + 3600
+	bs.Debug = { RaidNow = function()
+		return fakeLater
+	end }
+	local boss0 = bs.GetRaidStatus().BossId
 	local mark = K.logSize()
 	devCommand(ava, "raid")
 	local status = bs.GetRaidStatus()
-	T.check(status ~= nil and (toasted(ava, "DEV: raid started", mark)), "flow solo: alone in the server, Ava starts a Boss Raid with the DEV button (DevCommand raid)",
+	T.check(status.BossId ~= boss0 and next(status.Fights) == nil, "flow solo: alone in the server, Ava calls the next boss with the DEV button (DevCommand raid)",
 		table.concat(toasts(ava, mark), " | "))
-	if not status then
-		return
-	end
-	local raidId = status.BattleId
 	advance(1.1)
-	request(ava, "JoinRaid")
-	advance(0.3)
-	local s1 = bs.GetRaidStatus()
-	T.check(ava:GetAttribute("InBattle") == raidId and s1 and s1.Players == 1 and s1.MaxHp > 0, "flow solo: she joins alone: a raid for one team", s1 and plain(s1) or "no status")
+	Mock.Teleport(ava, arenaInfo().Gate.CFrame)
+	advance(0.6)
+	local raidId = ava:GetAttribute("InBattle")
+	local soloTier = select(1, bs.RaidTierFor(ava))
+	local s1 = bs.GetRaidStatus().Fights[soloTier]
+	T.check(type(raidId) == "string" and s1 and s1.Players == 1 and s1.MaxHp > 0 and s1.BattleId == raidId, "flow solo: she walks in alone: a fight for one team", s1 and plain(s1) or "no fight")
 	local tokens0, gems0, rec0 = tokens(ava), gems(ava), record(ava)
 	local xp0 = xpOf(ava, data.ActiveTeamKeys(ava))
 	local t0 = Mock.Clock.now
@@ -2261,7 +2252,7 @@ S.p3flow_solo = scenario("p3flow_solo", function()
 		local won = res.Reason == "BossDown"
 		T.info("*flow solo raid: " .. tostring(res.Reason) .. " after " .. tostring(res.Duration) .. " s")
 		local rw = res.Rewards[ava.UserId]
-		local tier = bc.RaidTier(res.Shares[ava.UserId] or 0, won)
+		local tier = bc.RaidTier(res.Shares[ava.UserId] or 0, won, soloTier)
 		T.check(rw and rw.Tier == tier.Id and rw.Tokens == tier.Tokens * doubled(rw) and tokens(ava) - tokens0 == rw.Tokens and gems(ava) - gems0 == rw.Gems
 			and record(ava).Raids == (rec0.Raids or 0) + 1, "flow solo: her reward is the tier of her damage share (all of it), paid once", rw and plain(rw) or "none")
 		local okXp = gainedXp(ava, xp0, tier.Xp)
@@ -2302,8 +2293,7 @@ S.p3flow_solo = scenario("p3flow_solo", function()
 			tostring(nextD))
 		es.EndNow("DoubleRewards")
 	end
-	-- the end of the story: no battle of the flow's players is left behind (a scheduled raid that opened by itself during
-	-- the wait is closed, so the scenarios after this one start without a raid)
+	-- the end of the story: no battle of the flow's players is left behind
 	K.removePlayers({ ava })
 	advance(5)
 	clearRaids()
@@ -2318,7 +2308,7 @@ S.p3flow_solo = scenario("p3flow_solo", function()
 		end
 	end
 	T.eq(left, 0, "flow: no battle of the flow's players is left behind")
-	T.check(bs.GetRaidStatus() == nil and es.IsDoubleRewards() == false, "flow: no raid and no Double Rewards left running at the end of the story")
+	T.check(next(bs.GetRaidStatus().Fights) == nil and es.IsDoubleRewards() == false, "flow: no raid and no Double Rewards left running at the end of the story")
 	-- every message the flow's players got survives Roblox's remote serialization unchanged
 	local flowIds = {}
 	for _, id in pairs(IDS) do

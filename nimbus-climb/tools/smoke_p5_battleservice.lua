@@ -15,8 +15,8 @@
 --   p5svc_duel_fair       Duel.PowerGap 2 (practice beyond it: nothing paid, Practice in the invite), the queue's power
 --                         band, MaxHit 0.6 in duels, a passive duel ends at 120 s (no overtime: DoubleKoByDamage / Draw),
 --                         a played duel pays once, a leaver loses
---   p5svc_raid            16 fighters + the boss: BossHp(bossId, teams) with ExpectedDps, ~25 units, every client under
---                         6 KB/s (p5battle_net16), a leaver removed, tiers paid once at the end
+--   p5svc_raid            8 fighters + the boss: BossHp(bossId, teams, tier) with ExpectedDps, 25 units, every client under
+--                         6 KB/s, a leaver removed, medals paid once at the end
 --   p5svc_ring            rounds 1-3 won by ONE level-25 pet pressing ATTACK once per second (moving toward the champion;
 --                         HUD cleanup Task 4: no heal between rounds, plain level-1 champions), XP once per round, Start.Team / Ring info, the loss third on the natural end
 --   p5svc_encounter       the encounter API with NO run provider (KeysInBattle / canBattle work), OpenEncounter 1 and 4
@@ -255,24 +255,6 @@ local function totalXp(p, key)
 	return total
 end
 
--- EventService's scheduler must not open a raid in the middle of these scenarios
-local realStartRaid = nil
-local function holdRaidSchedule(bs)
-	if realStartRaid == nil then
-		realStartRaid = bs.StartRaid
-		bs.StartRaid = function()
-			return false, "A raid is already running"
-		end
-	end
-	return realStartRaid
-end
-local function releaseRaidSchedule(bs)
-	if realStartRaid then
-		bs.StartRaid = realStartRaid
-		realStartRaid = nil
-	end
-end
-
 local function endAnyRaid(bs)
 	if bs.EndRaids("Ended") > 0 then
 		advance(0.2)
@@ -316,7 +298,6 @@ local function scenario(name, fn)
 		local ok = run(...)
 		local bs = BS()
 		if bs then
-			releaseRaidSchedule(bs)
 			bs.Debug = nil
 			if bs.SetDoubleRewards then
 				bs.SetDoubleRewards(nil)
@@ -1349,7 +1330,7 @@ S.p5svc_duel_fair = scenario("p5svc_duel_fair", function()
 end)
 
 ----------------------------------------------------------------------------------------------------
--- p5svc_raid: 16 fighters + the boss
+-- p5svc_raid: 8 fighters + the boss
 ----------------------------------------------------------------------------------------------------
 S.p5svc_raid = scenario("p5svc_raid", function()
 	if not ready("p5svc_raid") then
@@ -1358,56 +1339,60 @@ S.p5svc_raid = scenario("p5svc_raid", function()
 	quietReplication()
 	local bs, bc = BS(), BC()
 	local w = watchEnded()
-	local startRaid = holdRaidSchedule(bs)
 	endAnyRaid(bs)
+	bs.SetRaidBoss("lava_golem")
 	local teams = { STRONG, MID, ALT, WEAK }
 	local raiders = {}
-	for i = 1, 16 do
-		raiders[i] = newPlayer("Raid16", teams[(i - 1) % 4 + 1], 20)
-		toArena(raiders[i], (i - 8) * 3, 6)
+	for i = 1, 8 do
+		raiders[i] = newPlayer("Raid8", teams[(i - 1) % 4 + 1], 20)
+		toArena(raiders[i], (i - 4) * 3, 6)
 	end
-	local ok, raidId = startRaid("lava_golem")
 	local mark = K.logSize()
 	local specs = {}
-	for i = 1, 16 do
-		local okJ = bs.JoinRaid(raiders[i])
+	local raidId = nil
+	for i = 1, 8 do
+		local okJ, id = bs.EnterRaid(raiders[i])
 		if not okJ then
-			T.fail("p5 raid: (setup) raider " .. i .. " could not join")
+			T.fail("p5 raid: (setup) raider " .. i .. " could not enter")
 		end
+		raidId = raidId or id
 		specs[i] = bs.TeamSpec(raiders[i])
 	end
 	advance(0.3)
-	local st = bs.GetRaidStatus()
-	local want = bc.BossHp("lava_golem", specs, st and st.Tier or "Starter") -- (the server-wide raid fights at Starter until the fights per tier)
-	T.check(ok and st and st.Players == 16 and math.abs(st.MaxHp - want) <= math.max(2, want * 0.005), "p5 raid: 16 raiders joined; the boss HP = BattleCatalog.BossHp(bossId, teams) (ExpectedDps of the fighters)",
+	local function fight()
+		return bs.GetRaidStatus().Fights.Mid
+	end
+	local st = fight()
+	local want = bc.BossHp("lava_golem", specs, "Mid")
+	T.check(st and st.Players == 8 and math.abs(st.MaxHp - want) <= math.max(2, want * 0.005), "p5 raid: 8 raiders at Mid; the boss HP = BattleCatalog.BossHp(bossId, teams, tier) (ExpectedDps of the fighters)",
 		st and string.format("%d vs %d", st.MaxHp, want) or "no status")
 	local trs = {}
-	for i = 1, 16 do
+	for i = 1, 8 do
 		trs[i] = tracker(raiders[i])
 		trs[i].cursor = mark
 	end
 	advance(0.5)
-	pump(trs[16])
+	pump(trs[8])
 	local onFloor, total = 0, 0
-	for id, u in pairs(trs[16].units) do
+	for id, u in pairs(trs[8].units) do
 		total = total + 1
 		if u.state ~= BENCHED and u.state ~= DOWN then
 			onFloor = onFloor + 1
 		end
 	end
-	T.check(onFloor >= 17 and onFloor <= 21 and total == 49, "p5 raid: 17 units on the floor (16 fighters + the boss; the 32 helpers are benched)", onFloor .. " of " .. total)
-	-- everybody plays for 10 s: bytes per client under 6 KB/s (p5battle_net16)
+	T.check(onFloor >= 9 and onFloor <= 13 and total == 25, "p5 raid: 9 units on the floor (8 fighters + the boss; the 16 helpers are benched)", onFloor .. " of " .. total)
+	-- everybody plays for 10 s: bytes per client under 6 KB/s
 	local m2 = K.logSize()
 	local t0 = Mock.Clock.now
 	for _ = 1, 100 do
 		advance(0.1)
-		for i = 1, 16 do
+		for i = 1, 8 do
 			playTick(trs[i], { kit = true })
 		end
 	end
 	local seconds = Mock.Clock.now - t0
 	local worst, worstHz, worstSnap, worstEv = 0, 0, 0, 0
-	for i = 1, 16 do
+	for i = 1, 8 do
 		local bytes, snaps, snapBytes, evBytes = 0, 0, 0, 0
 		for _, e in ipairs(battleMsgs(raiders[i], m2)) do
 			local n = bs.EstimateBytes(e.args[2]) + 4 + #tostring(e.args[1]) + #tostring(e.args[3] or "")
@@ -1424,44 +1409,44 @@ S.p5svc_raid = scenario("p5svc_raid", function()
 		end
 		worstHz = math.max(worstHz, snaps / seconds)
 	end
-	local st2 = bs.GetRaidStatus()
-	T.info(string.format("*16-raid traffic: worst client %.0f B/s (snapshots %.0f, events %.0f) over %.1f s, %.1f snapshots/s, boss %d/%d", worst, worstSnap, worstEv, seconds, worstHz, st2 and st2.Hp or -1, st2 and st2.MaxHp or -1))
-	T.check(worst > 0 and worst < 6000, "p5 raid: every client stays under 6 KB/s in a 16-fighter raid (p5battle_net16)", string.format("%.0f B/s", worst))
+	local st2 = fight()
+	T.info(string.format("*8-raider traffic: worst client %.0f B/s (snapshots %.0f, events %.0f) over %.1f s, %.1f snapshots/s, boss %d/%d", worst, worstSnap, worstEv, seconds, worstHz, st2 and st2.Hp or -1, st2 and st2.MaxHp or -1))
+	T.check(worst > 0 and worst < 6000, "p5 raid: every client stays under 6 KB/s in an 8-fighter raid", string.format("%.0f B/s", worst))
 	T.check(st2 and st2.Hp < st2.MaxHp, "p5 raid: the played fighters damage the boss")
 	-- a leaver (arena) is removed; a disconnect too
 	local m3 = K.logSize()
-	toLobby(raiders[16])
+	toLobby(raiders[8])
 	advance(1.5)
-	local e16 = lastMsg(raiders[16], "End", m3)
-	Mock.RemovePlayer(raiders[15])
+	local e8 = lastMsg(raiders[8], "End", m3)
+	Mock.RemovePlayer(raiders[7])
 	advance(0.5)
-	local st3 = bs.GetRaidStatus()
-	T.check(e16 and e16.Outcome == "Left" and st3 and st3.Players == 14 and raiders[16]:GetAttribute("InBattle") == nil, "p5 raid: a raider who leaves the arena and one who disconnects are removed (14 left)",
+	local st3 = fight()
+	T.check(e8 and e8.Outcome == "Left" and st3 and st3.Players == 6 and raiders[8]:GetAttribute("InBattle") == nil, "p5 raid: a raider who leaves the arena and one who disconnects are removed (6 left)",
 		st3 and tostring(st3.Players) or "nil")
 	-- the end: tiers paid once
 	local before = {}
-	for i = 1, 14 do
+	for i = 1, 6 do
 		before[i] = tokens(raiders[i])
 	end
-	bs.EndRaid()
+	bs.EndRaids("Ended")
 	local res = w.find(raidId)
 	local consistent = res ~= nil
-	for i = 1, 14 do
+	for i = 1, 6 do
 		local rw = res and res.Rewards[raiders[i].UserId]
 		local paid = tokens(raiders[i]) - before[i]
 		if not rw or paid ~= (rw.Tokens or 0) then
 			consistent = false
 		end
 	end
-	T.check(consistent and res and res.Rewards[raiders[16].UserId] == nil and w.count(raidId) == 1, "p5 raid: EndRaid pays every fighter still in the tier of their share once; leavers nothing; BattleEnded once")
+	T.check(consistent and res and res.Rewards[raiders[8].UserId] == nil and w.count(raidId) == 1, "p5 raid: EndRaids pays every fighter still in the tier of their share once; leavers nothing; BattleEnded once")
 	K.flushErrors("p5svc_raid")
 	K.flushWarnings("p5svc_raid", ALLOWED_WARNINGS)
 	w.stop()
 	local list = {}
-	for i = 1, 14 do
+	for i = 1, 6 do
 		list[#list + 1] = raiders[i]
 	end
-	list[#list + 1] = raiders[16]
+	list[#list + 1] = raiders[8]
 	cleanup(list)
 end)
 
@@ -1982,7 +1967,6 @@ S.p5svc_shutdown = scenario("p5svc_shutdown", function()
 	quietReplication()
 	local bs, data, bc = BS(), DS(), BC()
 	local w = watchEnded()
-	local startRaid = holdRaidSchedule(bs)
 	endAnyRaid(bs)
 	-- a duel, a raid, a ring run and an encounter all running
 	local a = newPlayer("ShutA", MID, 10)
@@ -1992,9 +1976,9 @@ S.p5svc_shutdown = scenario("p5svc_shutdown", function()
 	local okD, duelId = bs.StartDuel(a, b)
 	local r1 = newPlayer("ShutR", STRONG, 20)
 	toArena(r1, 0, 8)
-	startRaid("frost_wyrm")
+	bs.SetRaidBoss("frost_wyrm")
 	local tr1 = tracker(r1)
-	local okJ, raidId = bs.JoinRaid(r1)
+	local okJ, raidId = bs.EnterRaid(r1)
 	for _ = 1, 40 do
 		advance(0.1)
 		playTick(tr1, {})

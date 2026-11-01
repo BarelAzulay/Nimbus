@@ -12,10 +12,10 @@
 --                  limit (no trophies), a disconnect (the leaver's penalty is in the saved profile, the opponent wins)
 --   p3bs_queue     the quick queue: Queue / Unqueue, "Lobby" Queued / Waiting, similar trophies pair at once, far apart
 --                  only after the allowance grew, leaving the arena cancels
---   p3bs_raid      StartRaid / GetRaidStatus / JoinRaid (inside the arena, the join window) / LeaveRaid, the boss HP grows
+--   p3bs_raid      SetRaidBoss / GetRaidStatus / EnterRaid (inside the arena, a late joiner) / LeaveRaid, the boss HP grows
 --                  and shrinks per participant, a spectator becoming a fighter, a joiner who leaves the arena is
---                  removed, EndRaid (a timeout loss, rewards once, Double Rewards pushed), a raid nobody joined, and a
---                  full raid won by three active fighters (tiers by damage share)
+--                  removed, EndRaids (a timeout loss, rewards once, Double Rewards pushed), the boss waiting with nobody
+--                  in, and a full raid fought by three active fighters (medals by damage share)
 --   p3bs_exploits  junk remote arguments, commands for other units / bad slots / from spectators / from outside the zone,
 --                  spam (token buckets, cooldowns), starting two battles, a duel player teleported out of the arena,
 --                  an obby match during a battle, the portal lock, rewards once after the end
@@ -198,25 +198,6 @@ local function doubled(rw)
 	return 1
 end
 
--- EventService's scheduler (when it is in the build) must not start a raid in the middle of these scenarios: while
--- they run, BattleService.StartRaid refuses (EventService waits and retries later); the tests call the real one
-local realStartRaid = nil
-local function holdRaidSchedule(bs)
-	if realStartRaid == nil then
-		realStartRaid = bs.StartRaid
-		bs.StartRaid = function()
-			return false, "A raid is already running"
-		end
-	end
-	return realStartRaid
-end
-local function releaseRaidSchedule(bs)
-	if realStartRaid then
-		bs.StartRaid = realStartRaid
-		realStartRaid = nil
-	end
-end
-
 local function contains(list, value)
 	for _, v in ipairs(type(list) == "table" and list or {}) do
 		if v == value then
@@ -310,6 +291,21 @@ local function distanceToZone(p, zoneCF)
 		return math.huge
 	end
 	return (root.Position - zoneCF.Position).Magnitude
+end
+
+-- the sim of a running battle (white-box: St is an upvalue of IsInBattle, as in smoke_raid_service.lua)
+local function simOf(id)
+	local f = BS().IsInBattle
+	for i = 1, 80 do
+		local name, v = debug.getupvalue(f, i)
+		if not name then
+			break
+		end
+		if name == "St" and type(v) == "table" and type(v.battles) == "table" then
+			return v.battles[id] and v.battles[id].Sim or nil
+		end
+	end
+	return nil
 end
 
 local function endAnyRaid(bs)
@@ -478,7 +474,6 @@ local function scenario(name, fn)
 		local ok = run(...)
 		local bs = BS()
 		if bs then
-			releaseRaidSchedule(bs)
 			bs.Debug = nil
 			if bs.SetDoubleRewards then
 				bs.SetDoubleRewards(nil)
@@ -501,15 +496,16 @@ S.p3bs_contract = scenario("p3bs_contract", function()
 		return
 	end
 	local missing = {}
-	for _, fn in ipairs({ "Init", "Challenge", "StartRaid", "EndRaid", "GetBattle", "IsInBattle", "GetRaidStatus",
-		"StartDuel", "ReplyChallenge", "Queue", "Unqueue", "JoinRaid", "LeaveRaid", "Command", "Forfeit", "SetDoubleRewards",
+	for _, fn in ipairs({ "Init", "Challenge", "EnterRaid", "EndRaids", "SetRaidBoss", "RaidTierFor", "RaidRewardStatus", "GetBattle", "IsInBattle", "GetRaidStatus",
+		"StartDuel", "ReplyChallenge", "Queue", "Unqueue", "LeaveRaid", "Command", "Forfeit", "SetDoubleRewards",
 		"IsDoubleRewards", "GetNetStats", "EstimateBytes", "ListBattles", "StartRing", "KeysInBattle",
 		"OpenEncounter", "SpawnWave", "FinishEncounter", "RemoveEncounterTeam", "EncounterStatus", "TeamSpec", "SetRunProvider" }) do
 		if type(bs[fn]) ~= "function" then
 			missing[#missing + 1] = fn
 		end
 	end
-	T.check(#missing == 0, "p3 bs: the contract API (Challenge, StartRaid / EndRaid, GetBattle, IsInBattle, GetRaidStatus, StartRing / KeysInBattle, the Phase 5 encounter API) and the extras exist", table.concat(missing, ", "))
+	T.check(#missing == 0, "p3 bs: the contract API (Challenge, EnterRaid / EndRaids, GetBattle, IsInBattle, GetRaidStatus, StartRing / KeysInBattle, the Phase 5 encounter API) and the extras exist", table.concat(missing, ", "))
+	T.check(bs.StartRaid == nil and bs.EndRaid == nil and bs.JoinRaid == nil, "p3 bs: StartRaid / EndRaid / JoinRaid are gone (the boss is always there)")
 	T.check(bs.StartTrial == nil, "p3 bs: StartTrial is gone (Phase 5 contract 10.5)")
 	-- the mode names (Phase 5: Duel / Raid / Ring / Dungeon, no Trial) and the safe answers of the new API
 	local sim = req("shared/BattleSim")
@@ -530,12 +526,12 @@ S.p3bs_contract = scenario("p3bs_contract", function()
 	T.check(string.find("\n" .. source, "\nBattleService%.BattleEnded = Util%.Signal%(%)") ~= nil, "p3 bs: ...created at module load (other services connect before Init)")
 	T.check(string.find(source, "[^%.%w_]wait%(") == nil and string.find(source, "[^%.%w_]spawn%(") == nil and string.find(source, "[^%.%w_]delay%(") == nil,
 		"p3 bs: task.* only (no wait / spawn / delay globals)")
-	if bs.GetRaidStatus() ~= nil then
-		bs.EndRaid("test") -- a scheduled raid may be live at this point of the full run (the shared game clock)
+	if bs.EndRaids("test") > 0 then -- a fight of an earlier scenario may be live at this point of the full run
 		advance(0.5)
 	end
-	T.check(bs.IsInBattle(nil) == false and bs.GetBattle(nil) == nil and bs.GetRaidStatus() == nil and bs.EndRaid() == false,
-		"p3 bs: nil players and 'no raid' answer safely (IsInBattle false, GetBattle nil, GetRaidStatus nil, EndRaid false)")
+	local idle = bs.GetRaidStatus()
+	T.check(bs.IsInBattle(nil) == false and bs.GetBattle(nil) == nil and idle ~= nil and idle.Active == false and next(idle.Fights) == nil and bs.EndRaids() == 0 and bs.EnterRaid(nil) == false,
+		"p3 bs: nil players and 'no fight' answer safely (IsInBattle false, GetBattle nil, the boss waits with no fight, EndRaids 0, EnterRaid(nil) false)")
 	-- Init ran through Main: the BattleRequest remote answers (a queue request away from the arena is refused with a toast)
 	local p = newPlayer("BsApi", STRONG)
 	toLobby(p)
@@ -825,9 +821,6 @@ S.p3bs_raid = scenario("p3bs_raid", function()
 	local bs, bc = BS(), BC()
 	local info = arenaInfo()
 	local w = watchEnded()
-	-- hold the EventService schedule BEFORE ending a leftover raid: late in a full run the game clock can sit at a
-	-- scheduled raid moment, and the schedule would open the next raid right away (the "no raid" check then sees it)
-	local startRaid = holdRaidSchedule(bs)
 	endAnyRaid(bs)
 	local r1 = newPlayer("Raid", STRONG, 10)
 	local r2 = newPlayer("Raid", MID, 10)
@@ -838,32 +831,27 @@ S.p3bs_raid = scenario("p3bs_raid", function()
 	Mock.Teleport(r3, info.Floor.CFrame * CFrame.new(0, 3, 62)) -- inside the colosseum, off the fighting floor
 	advance(0.05)
 	toLobby(outsider)
-	local okNo, whyNo = bs.JoinRaid(r1)
-	T.check(bs.GetRaidStatus() == nil and okNo == false and type(whyNo) == "string", "p3 raid: no raid: GetRaidStatus nil, JoinRaid refused", tostring(whyNo))
-	endAnyRaid(bs)
-	T.check(startRaid("no_such_boss") == false, "p3 raid: an unknown boss is refused")
+	T.check(bs.SetRaidBoss("no_such_boss") == false, "p3 raid: an unknown boss is refused")
 	-- Phase 5: one fighter alone does not outlive the boss for a whole minute (its basics are a share of the fighter's HP),
-	-- so this scenario's raid has a shorter join window (the catalog knob, put back at the end)
-	local events = bc.Events
-	local savedWindow = events.JoinWindowSeconds
-	events.JoinWindowSeconds = 25
-	-- team balance: this scenario watches the boss HP move with its level-10 teams; the L35 baseline's floor would hold it flat
+	-- so the solo stretch below lasts 25 s
+	-- team balance: this scenario watches the boss HP move with its level-10 teams; the baseline's floor would hold it flat
 	local savedFloor = bc.BossRules.FloorSeconds
 	bc.BossRules.FloorSeconds = 5
 	local window = 25
-	local ok, raidId = startRaid("storm_titan")
-	T.check(ok == true and type(raidId) == "string" and startRaid("lava_golem") == false, "p3 raid: StartRaid opens one raid at a time", tostring(raidId))
+	T.check(bs.SetRaidBoss("storm_titan") == true, "p3 raid: (the boss is Storm Titan)")
 	local st = bs.GetRaidStatus()
-	T.check(st and st.Active == true and st.Waiting == true and st.Joinable == true and st.BossId == "storm_titan" and st.Players == 0 and st.JoinEndsIn >= window - 1
-		and st.JoinEndsIn <= window and st.BattleId == raidId and type(st.Name) == "string",
-		"p3 raid: GetRaidStatus before anyone joined: { Active, Waiting, Joinable, BossId, Name, Players = 0, JoinEndsIn = the join window }")
-	local okO, whyO = bs.JoinRaid(outsider)
-	T.check(okO == false and type(whyO) == "string" and whyO:find("Battle Arena") ~= nil, "p3 raid: a player outside the arena cannot join", tostring(whyO))
+	T.check(st and st.Active == false and st.BossId == "storm_titan" and next(st.Fights) == nil and st.BattleId == nil and type(st.Name) == "string",
+		"p3 raid: GetRaidStatus before anyone walks in: { Active = false, BossId, Name, no fights }")
+	local okO, whyO = bs.EnterRaid(outsider)
+	T.check(okO == false and type(whyO) == "string" and whyO:find("Battle Arena") ~= nil, "p3 raid: a player outside the arena cannot enter", tostring(whyO))
 	local mark = K.logSize()
-	local okJ, idJ = bs.JoinRaid(r1)
-	T.check(okJ == true and idJ == raidId and r1:GetAttribute("InBattle") == raidId, "p3 raid: JoinRaid inside the arena: the raid battle starts (InBattle = raid id)", tostring(idJ))
-	local s1 = bs.GetRaidStatus()
-	T.check(s1 and s1.Players == 1 and s1.MaxHp > 0 and s1.Hp == s1.MaxHp and s1.Waiting == false and s1.EndsIn > 300, "p3 raid: the boss HP is set for one team", s1 and (s1.Hp .. "/" .. s1.MaxHp) or "nil")
+	local okJ, raidId = bs.EnterRaid(r1)
+	T.check(okJ == true and type(raidId) == "string" and r1:GetAttribute("InBattle") == raidId, "p3 raid: EnterRaid inside the arena: the raid battle starts (InBattle = raid id)", tostring(raidId))
+	local function fight()
+		return bs.GetRaidStatus().Fights.Starter
+	end
+	local s1 = fight()
+	T.check(s1 and s1.Players == 1 and s1.MaxHp > 0 and s1.Hp == s1.MaxHp and s1.EndsIn > 300 and s1.BattleId == raidId, "p3 raid: the boss HP is set for one team", s1 and (s1.Hp .. "/" .. s1.MaxHp) or "nil")
 	local start1 = lastMsg(r1, "Start", mark)
 	local bossUnit = nil
 	for _, u in ipairs(start1 and start1.Units or {}) do
@@ -876,10 +864,10 @@ S.p3bs_raid = scenario("p3bs_raid", function()
 	local rim = planarTo(r1, info.Floor.CFrame)
 	T.check(rim > 46 and rim < 62, "p3 raid: the joiner stands on the floor's rim", string.format("%.1f studs from the centre", rim))
 	local m2 = K.logSize()
-	bs.JoinRaid(r2)
-	local s2 = bs.GetRaidStatus()
+	bs.EnterRaid(r2)
+	local s2 = fight()
 	-- bug batch 2 #2: two level-10 teams can sit on the boss's BaselineDps floor (FloorSeconds x BaselineDps): then the HP holds
-	local floorHp = bc.BaselineDps and (bc.BossRules.FloorSeconds * bc.BaselineDps("storm_titan")) or 0
+	local floorHp = bc.BaselineDps and (bc.BossRules.FloorSeconds * bc.BaselineDps("storm_titan", "Starter")) or 0
 	T.check(s2.Players == 2 and (s2.MaxHp > s1.MaxHp or (s1.MaxHp <= floorHp + 1 and s2.MaxHp == s1.MaxHp)), "p3 raid: a second team raises the boss HP (or both sit on the BaselineDps floor)",
 		s1.MaxHp .. " -> " .. s2.MaxHp .. string.format(" (floor %.0f)", floorHp))
 	advance(0.3)
@@ -897,21 +885,21 @@ S.p3bs_raid = scenario("p3bs_raid", function()
 	local firstR2 = battleMsgs(r2, m2)[1]
 	T.check(spawnToR1 and firstR2 and firstR2.args[1] == "Start" and not spawnToR2,
 		"p3 raid: the fighters see the newcomer's units arrive (Spawn); the newcomer gets one 'Start' instead")
-	T.check(bs.JoinRaid(r2) == false, "p3 raid: joining twice is refused")
+	T.check(bs.EnterRaid(r2) == false, "p3 raid: joining twice is refused")
 	advance(1.5)
 	local spec = lastMsg(r3, "Start", m2)
 	T.check(spec and spec.Spectator == true and spec.BattleId == raidId, "p3 raid: a player watching in the arena spectates the raid")
 	local m3 = K.logSize()
-	bs.JoinRaid(r3)
+	bs.EnterRaid(r3)
 	advance(0.3)
 	local st3 = lastMsg(r3, "Start", m3)
-	T.check(st3 and st3.Spectator == false and st3.Side == 1 and bs.GetRaidStatus().Players == 3, "p3 raid: a spectator who joins gets a fresh 'Start' as a fighter")
+	T.check(st3 and st3.Spectator == false and st3.Side == 1 and fight().Players == 3, "p3 raid: a spectator who joins gets a fresh 'Start' as a fighter")
 	-- leaving
-	local before = bs.GetRaidStatus().MaxHp
+	local before = fight().MaxHp
 	local m4 = K.logSize()
 	T.check(bs.LeaveRaid(r2) == true, "p3 raid: LeaveRaid")
 	local e2 = lastMsg(r2, "End", m4)
-	local s4 = bs.GetRaidStatus()
+	local s4 = fight()
 	T.check(e2 and e2.Outcome == "Left" and r2:GetAttribute("InBattle") == nil and s4.Players == 2 and s4.MaxHp < before,
 		"p3 raid: the leaver gets 'End' (Outcome Left), InBattle is cleared, the boss sheds that share", before .. " -> " .. s4.MaxHp)
 	advance(0.3)
@@ -922,55 +910,55 @@ S.p3bs_raid = scenario("p3bs_raid", function()
 		end
 	end
 	T.check(leaveSeen, "p3 raid: the others get a Leave event")
-	local okR, whyR = bs.JoinRaid(r2)
+	local okR, whyR = bs.EnterRaid(r2)
 	T.check(okR == false and type(whyR) == "string" and whyR:find("left") ~= nil, "p3 raid: a leaver cannot rejoin the same raid", tostring(whyR))
 	toLobby(r3)
 	advance(1.5)
-	T.check(r3:GetAttribute("InBattle") == nil and bs.GetRaidStatus().Players == 1, "p3 raid: a fighter who leaves the arena is out of the raid")
-	-- the join window (r1 fights meanwhile: the boss must be hit for the Loss tier)
+	T.check(r3:GetAttribute("InBattle") == nil and fight().Players == 1, "p3 raid: a fighter who leaves the arena is out of the raid")
+	-- a late joiner (r1 fights meanwhile: the boss must be hit for the Loss tier)
 	local late = newPlayer("RaidLate", WEAK)
 	toArena(late, 0, 8)
 	drvPlay({ drvTracker(r1, mark) }, window, nil, { every = 20 }) -- r1 fights on (a hit every 2 s) and dodges the telegraphs
-	local okL, whyL = bs.JoinRaid(late)
-	T.check(okL == false and type(whyL) == "string" and whyL:find("started") ~= nil, "p3 raid: JoinRaid is refused after the join window", tostring(whyL))
-	-- EndRaid: the fighters still in it lose by timeout; rewards once; Double Rewards pushed by EventService
+	local okL, idL = bs.EnterRaid(late)
+	T.check(okL == true and idL == raidId and fight().Players == 2, "p3 raid: no join window: a late joiner gets into the running fight", tostring(idL))
+	T.check(bs.LeaveRaid(late) == true, "p3 raid: (the late joiner leaves again)")
+	-- EndRaids: the fighters still in it lose by timeout; rewards once; Double Rewards pushed by EventService
 	bs.SetDoubleRewards(true, 600)
 	T.check(bs.IsDoubleRewards() == true, "p3 raid: SetDoubleRewards(true) turns Double Rewards on")
 	local tok1, tok2 = tokens(r1), tokens(r2)
 	local raids0 = record(r1).Raids or 0
-	T.check(bs.EndRaid() == true, "p3 raid: EndRaid ends the running raid")
+	T.eq(bs.EndRaids("Ended"), 1, "p3 raid: EndRaids ends the running fight")
 	local res = w.find(raidId)
 	T.check(res and res.Mode == "Raid" and res.BossId == "storm_titan" and contains(res.Losers, r1.UserId) and not contains(res.Losers, r2.UserId)
 		and type(res.Damage) == "table" and (res.Damage[r1.UserId] or 0) > 0,
 		"p3 raid: the result { Mode Raid, BossId, Losers = the fighters still in it, Damage = {[userId] = n} }")
-	local loss = bc.RaidTier(1, false)
+	local loss = bc.RaidTier(1, false, "Starter")
 	local rw1 = res and res.Rewards[r1.UserId]
 	T.check(rw1 and rw1.Tier == "Loss" and rw1.Tokens == loss.Tokens * 2 and tokens(r1) - tok1 == loss.Tokens * 2,
 		"p3 raid: a failed raid pays the Loss tier, doubled during Double Rewards", rw1 and tostring(rw1.Tokens) or "none")
 	T.check(res and res.Rewards[r2.UserId] == nil and tokens(r2) == tok2, "p3 raid: a player who left gets nothing")
 	T.check(record(r1).Raids == raids0 + 1 and (record(r1).RaidBestDamage or 0) > 0, "p3 raid: Raids + 1 and RaidBestDamage in the battle record")
-	T.check(bs.GetRaidStatus() == nil and bs.EndRaid() == false and w.count(raidId) == 1 and r1:GetAttribute("InBattle") == nil,
-		"p3 raid: afterwards: no status, EndRaid false, BattleEnded once, InBattle cleared")
+	local afterEnd = bs.GetRaidStatus()
+	T.check(afterEnd.Active == false and next(afterEnd.Fights) == nil and next(afterEnd.Closed) == nil and bs.EndRaids("Ended") == 0 and w.count(raidId) == 1 and r1:GetAttribute("InBattle") == nil,
+		"p3 raid: afterwards: no fight, no closure (a timeout is no kill), EndRaids 0, BattleEnded once, InBattle cleared")
 	bs.SetDoubleRewards(false)
 	T.check(bs.IsDoubleRewards() == false, "p3 raid: SetDoubleRewards(false) turns it off")
 	bs.SetDoubleRewards(nil)
-	-- a raid nobody joined closes at the end of its join window
-	endAnyRaid(bs)
-	local okN, idN = startRaid("lava_golem")
+	-- with nobody in, the boss just waits: no fight opens, nothing ends
 	advance(window + 1.5)
-	local resN = idN and w.find(idN)
-	T.check(okN and resN and resN.Reason == "NoPlayers" and #resN.Winners == 0 and #resN.Losers == 0 and bs.GetRaidStatus() == nil,
-		"p3 raid: a raid nobody joined closes after the join window (BattleEnded, Reason NoPlayers)")
-	events.JoinWindowSeconds = savedWindow
+	local waiting = bs.GetRaidStatus()
+	T.check(waiting.Active == false and waiting.BossId == "storm_titan" and next(waiting.Fights) == nil and bs.EndRaids("Ended") == 0, "p3 raid: with nobody in the boss waits (no fight, no end)")
 	bc.BossRules.FloorSeconds = savedFloor
 	cleanup({ r1, r2, r3, outsider, late })
 
-	-- a whole raid with three active teams (specials, retreat from telegraphs): rewards follow the damage tiers
+	-- a whole raid with three active teams at High (specials, retreat from telegraphs): rewards follow the damage medals. A boss
+	-- still standing after 90 s of real play is nearly gone, so the win's drops are always checked (a group's chance is about 40%
+	-- on purpose; the balance itself is tools/sim_battle.lua's job)
 	endAnyRaid(bs)
 	local heroes = {}
 	local teams = { STRONG, MID, ALT }
 	for i = 1, 3 do
-		heroes[i] = newPlayer("Hero", teams[i], 20)
+		heroes[i] = newPlayer("Hero", teams[i], 60)
 		toArena(heroes[i], i * 3 - 6, 2)
 	end
 	-- this raid's drops are certain (the tiers' GemChance / EventPetChance raised for the test, restored below)
@@ -979,12 +967,14 @@ S.p3bs_raid = scenario("p3bs_raid", function()
 		saved[i] = { tier.GemChance, tier.EventPetChance }
 		tier.GemChance, tier.EventPetChance = 1, 1
 	end
-	local okW, idW = startRaid("storm_titan")
+	local idW = nil
 	local heroTrs = {}
 	for i = 1, 3 do
 		heroTrs[i] = drvTracker(heroes[i])
-		bs.JoinRaid(heroes[i])
+		local _, id = bs.EnterRaid(heroes[i])
+		idW = idW or id
 	end
+	local okW = type(idW) == "string" and bs.GetRaidStatus().Fights.High ~= nil and bs.GetRaidStatus().Fights.High.Players == 3
 	local before0, gems0 = {}, {}
 	for i = 1, 3 do
 		before0[i] = tokens(heroes[i])
@@ -999,6 +989,10 @@ S.p3bs_raid = scenario("p3bs_raid", function()
 		local tele = eventsOf(heroes[1], cursor, "Telegraph")
 		telegraphs = telegraphs + #tele
 		cursor = K.logSize()
+		if os.clock() - t0 > 90 and simOf(idW) then
+			local boss = simOf(idW).boss
+			boss.hp = math.min(boss.hp, 1)
+		end
 		for _, tr in ipairs(heroTrs) do
 			drvTick(tr, { every = 1 })
 			if #tele > 0 then
@@ -1016,7 +1010,7 @@ S.p3bs_raid = scenario("p3bs_raid", function()
 			local uid = heroes[i].UserId
 			local share = resW.Shares[uid] or 0
 			sum = sum + share
-			local tier = bc.RaidTier(share, won)
+			local tier = bc.RaidTier(share, won, "High")
 			local rw = resW.Rewards[uid]
 			local paid = tokens(heroes[i]) - before0[i]
 			detail[#detail + 1] = string.format("%s %.2f %s", tostring(rw and rw.Tier), share, tostring(paid))
@@ -1038,7 +1032,7 @@ S.p3bs_raid = scenario("p3bs_raid", function()
 				local h = heroes[i]
 				local rw = resW.Rewards[h.UserId]
 				local pet = rw and rw.EventPet
-				local tier = bc.RaidTier(resW.Shares[h.UserId] or 0, true)
+				local tier = bc.RaidTier(resW.Shares[h.UserId] or 0, true, "High")
 				local prof = DS().GetProfile(h)
 				local owned = pet and prof and (prof.Pets[pet] or 0) >= 1
 				local marked = pet and record(h).EventPets and record(h).EventPets[pet] == true
@@ -1050,8 +1044,8 @@ S.p3bs_raid = scenario("p3bs_raid", function()
 			end
 			T.check(good, "p3 raid: a winning tier's gem chance pays its Gems and its event-pet chance gives a new event pet (owned, in Battle.EventPets)",
 				table.concat(why, " | "))
-		elseif not won then
-			T.info("*full raid lost: the event pet / gem drop check was skipped")
+		else
+			T.fail("p3 raid: the full raid ends in a win, so the drops are checked", tostring(resW.Reason))
 		end
 	end
 	for i, tier in ipairs(bc.Raid.Tiers) do
@@ -1174,7 +1168,7 @@ S.p3bs_exploits = scenario("p3bs_exploits", function()
 	T.check(n >= 1 and n <= 12, "p3 exploits: 300 commands in one frame reach the battle at most 12 times (token bucket)", n .. " orders")
 	advance(0.4)
 	-- two battles at once
-	T.check(bs.JoinRaid(x) == false and bs.Queue(x) == false and bs.Challenge(x, z) == false and bs.StartDuel(x, z) == false and bs.StartRing(x, 1) == false,
+	T.check(bs.EnterRaid(x) == false and bs.Queue(x) == false and bs.Challenge(x, z) == false and bs.StartDuel(x, z) == false and bs.StartRing(x, 1) == false,
 		"p3 exploits: a player in a battle cannot start or join another (raid, queue, challenge, duel, ring)")
 	-- the portal lock (canBattle)
 	local v = newPlayer("Locked", WEAK)
@@ -1257,14 +1251,14 @@ S.p3bs_net = scenario("p3bs_net", function()
 	local duelRate, duelHz = rate(d1, m, 5)
 	-- an 8-player raid
 	endAnyRaid(bs)
-	local okR = holdRaidSchedule(bs)("shadow_hydra")
+	local okR = bs.SetRaidBoss("shadow_hydra")
 	local raiders, raidTrs = {}, {}
 	local teams = { STRONG, MID, ALT, WEAK }
 	for i = 1, 8 do
 		raiders[i] = newPlayer("NetRaid", teams[(i - 1) % 4 + 1], 5)
 		toArena(raiders[i], (i - 4) * 3, 8)
 		raidTrs[i] = drvTracker(raiders[i])
-		bs.JoinRaid(raiders[i])
+		bs.EnterRaid(raiders[i])
 	end
 	local far = newPlayer("NetFar", WEAK)
 	toLobby(far)
@@ -1272,7 +1266,7 @@ S.p3bs_net = scenario("p3bs_net", function()
 	m = K.logSize()
 	drvPlay(raidTrs, 10)
 	local raidRate, raidHz = rate(raiders[1], m, 10)
-	local status = bs.GetRaidStatus()
+	local status = bs.GetRaidStatus().Fights.Starter
 	T.info(string.format("*BattleState traffic per client (estimated): duel %.1f KB/s, 8-player raid %.1f KB/s (%d teams)",
 		duelRate / 1000, raidRate / 1000, status and status.Players or 0))
 	T.check(duelRate > 0 and duelRate < 6000, "p3 net: a played duel stays under 6 KB/s per client", string.format("%.0f B/s", duelRate))
@@ -1303,7 +1297,7 @@ S.p3bs_net = scenario("p3bs_net", function()
 	if #lookProblems > 0 then
 		T.warn("p3 net: unit looks (catalog data) contain sparse / mixed tables: " .. table.concat(lookProblems, " | "))
 	end
-	bs.EndRaid()
+	bs.EndRaids("Ended")
 	K.flushErrors("p3 net")
 	local all = { d1, d2, far }
 	for _, p in ipairs(raiders) do
