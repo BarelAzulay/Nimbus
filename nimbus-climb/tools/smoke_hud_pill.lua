@@ -89,8 +89,11 @@ local function serverScenarios()
 			K.advance(0.1)
 			T.eq(#Mock.Errors, errs, "hudpill: QuickTravel with garbage raises no errors")
 			T.eq(b:GetAttribute(Config.Attr.HomePortal), nil, "hudpill: ...and opens nothing")
+			-- (the other avatar out of the way: right ahead of b it would put the portal at b's feet, and the next portal tick takes b through.
+			-- The spawn offsets are random, so this failed or passed with the order of the whole run)
+			Mock.Teleport(a, spawn * CFrame.new(40, 0, 0))
 			Mock.FromClient(remote, b, "Plaza")
-			K.advance(0.1)
+			K.advance(1)
 			T.check(type(b:GetAttribute(Config.Attr.HomePortal)) == "string", "hudpill: QuickTravel('Plaza') opens the portal")
 		end
 		K.removePlayers(players)
