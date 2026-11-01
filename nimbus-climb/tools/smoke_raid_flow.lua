@@ -617,6 +617,13 @@ local function clientScenarios()
 		endRaid("smoke_raidflow_2", { Tier = "Gold", Tokens = 200, Xp = 160, Share = 1, Damage = 1000 }, true)
 		T.check(battleText("Gold tier") and not battleText("Rewards again"), "raid flow client: a paid win shows its medal, no limit line")
 		KC.advance(14)
+		-- a shutdown pays like a loss (payRaid): the card says so
+		startRaid("smoke_raidflow_3")
+		LocalPlayer:SetAttribute("InBattle", nil)
+		KC.toClient("BattleState", "End", { BattleId = "smoke_raidflow_3", Mode = "Raid", Outcome = "Loss", Won = false, Spectator = false, Reason = "Shutdown", Rewards = { Tier = "Loss", Tokens = 10, Xp = 8, Share = 0.9, Damage = 1000 } }, "smoke_raidflow_3")
+		KC.advance(0.6)
+		T.check(battleText("pays like a loss") and not battleText("still counts"), "raid flow client: a shutdown's card says the fight pays like a loss, as the server paid it")
+		KC.advance(14)
 		KC.flushErrors("client_raid_flow")
 	end)
 

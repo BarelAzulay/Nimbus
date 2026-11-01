@@ -6233,7 +6233,7 @@ function Hud.ShowResult(B, payload)
 		Ended = "The raid has ended.",
 		Error = "The battle was cancelled. No rewards were lost.",
 		Void = "Both players left: this duel does not count.",
-		Shutdown = raid and "The server is restarting: your damage so far still counts." or "The server is restarting: this battle does not count.",
+		Shutdown = raid and "The server is restarting: this fight pays like a loss." or "The server is restarting: this battle does not count.",
 		Cleared = "Room cleared!",
 		Fainted = "Your whole team fainted.",
 	}
