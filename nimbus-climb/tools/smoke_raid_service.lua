@@ -5,8 +5,8 @@
 --                   not count), the first fight takes the floor, another tier a pocket, a late joiner, the ninth raider
 --   raid_svc_dare   own / lower / junk tiers refused, the remote: spam and junk away from the gate start nothing, a dare at the
 --                   gate fights the dared tier with its HP floor
---   raid_svc_gate   the walk-through: inside the gate = in the fight, next to it = not, a ring run = not, the 3 s after a release, a
---                   refusal toasts once per cooldown
+--   raid_svc_gate   the walk-through: inside the gate = in the fight, next to it = not, a ring run = not, the 3 s after a release;
+--                   only walking in counts: standing there when a fight ends opens none, a refusal toasts once per walk-in
 --   raid_svc_ends   a kill closes that tier 60 s and hides the idle boss, everyone leaving closes nothing, a teammate leaving
 --                   keeps the fight, a pocket raider comes back to the gate and the pocket is freed, the rotation waits
 --   raid_svc_floor  the floor fight ends while a pocket fight runs: the next NEW fight takes the floor, BattleEnded carries RaidTier /
@@ -471,21 +471,46 @@ S.raid_svc_gate = scenario("raid_svc_gate", function(add)
 	T.check(ringer:GetAttribute("InBattle") == nil and bs.GetRaidStatus().Fights.Starter.Players == 1, "raid gate: a player in a ring run stays out")
 	St.ringRuns[ringer] = nil
 	toArena(ringer, -2, 0)
-	-- leaving: standing in the gate does not re-enter for 3 s
+	-- leaving: walking back into the gate does not re-enter for 3 s
 	bs.LeaveRaid(walker)
 	Mock.Teleport(walker, gate.CFrame)
 	advance(0.6)
-	T.check(walker:GetAttribute("InBattle") == nil and bs.GetRaidStatus().Fights.Starter == nil, "raid gate: after leaving, standing in the gate does not re-enter at once")
+	T.check(walker:GetAttribute("InBattle") == nil and bs.GetRaidStatus().Fights.Starter == nil, "raid gate: after leaving, walking into the gate does not re-enter at once")
 	advance(3)
 	T.check(type(walker:GetAttribute("InBattle")) == "string", "raid gate: ...3 s later it does")
+	-- a fighter standing in the gate when the fight ends: no new fight they never walked into
+	Mock.Teleport(walker, gate.CFrame)
+	advance(0.6)
+	local idFloor = walker:GetAttribute("InBattle")
+	T.check(type(idFloor) == "string", "raid gate: (a floor fighter stands in the gate)")
+	wipe(idFloor, walker)
+	advance(0.3)
+	T.check(walker:GetAttribute("InBattle") == nil and bs.GetRaidStatus().Fights.Starter == nil, "raid gate: (the fight is lost)")
+	advance(5)
+	T.check(walker:GetAttribute("InBattle") == nil and bs.GetRaidStatus().Fights.Starter == nil, "raid gate: standing in the gate when the fight ends opens no new one")
+	toArena(walker, 2, 0)
+	advance(0.6)
+	Mock.Teleport(walker, gate.CFrame)
+	advance(0.6)
+	T.check(type(walker:GetAttribute("InBattle")) == "string", "raid gate: ...stepping out and back in does")
 	bs.LeaveRaid(walker)
 	toArena(walker, 2, 0)
 	advance(0.3)
-	-- a refusal toasts once per cooldown
+	-- a refusal: one toast however long they stand there, and one more for walking in again
 	local mark = K.logSize()
 	Mock.Teleport(empty, gate.CFrame)
 	advance(2.5)
 	T.check(empty:GetAttribute("InBattle") == nil and toastCount(empty, "team", mark) == 1, "raid gate: a refused player gets one toast, not one per poll", tostring(toastCount(empty, "team", mark)))
+	advance(10)
+	T.check(toastCount(empty, "team", mark) == 1, "raid gate: ...and no more while they stand there", tostring(toastCount(empty, "team", mark)))
+	toArena(empty, 4, 0)
+	advance(3)
+	Mock.Teleport(empty, gate.CFrame)
+	advance(0.6)
+	T.check(toastCount(empty, "team", mark) == 2, "raid gate: walking back in asks again", tostring(toastCount(empty, "team", mark)))
+	-- a pocket raider's way back lands outside the gate, whatever the jitter
+	local rel = gate.CFrame:PointToObjectSpace(gate.Return.Position)
+	T.check(math.abs(rel.Z) - 2 > gate.Size.Z / 2, "raid gate: the way back from a pocket lands outside the gate", tostring(rel))
 end)
 
 ----------------------------------------------------------------------------------------------------

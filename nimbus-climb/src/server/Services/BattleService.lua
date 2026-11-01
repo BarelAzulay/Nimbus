@@ -93,8 +93,9 @@
 --     Power, ExpiresIn, Practice }... }, Sent = { ToUserId, ToName, ExpiresIn } | nil }) to every player whose status changed.
 --   * Raid (spec 2026-11-01): one boss is always there (St.raidBoss; EventService's rotation changes it) and each fight tier has at
 --     most one fight, St.raids[tierId] = { Tier, Id, BossId, Battle, Floor, Pocket, PocketIndex, CreatedAt }. A player walks into
---     ArenaInfo.Gate (the gate poll, C.RAID_GATE_POLL: EnterRaid(player) for their own tier, a release or a refusal keeps them out
---     for C.RAID_GATE_COOLDOWN s) or dares a higher tier ("RaidDare" within C.RAID_DARE_RANGE of the gate). The first of a tier creates
+--     ArenaInfo.Gate (the gate poll, C.RAID_GATE_POLL: EnterRaid(player) for their own tier, once per walk-in: whoever stays in the gate
+--     must step out first, a release or a refusal keeps them out for C.RAID_GATE_COOLDOWN s) or dares a higher tier ("RaidDare" within
+--     C.RAID_DARE_RANGE of the gate). The first of a tier creates
 --     the BattleSim (RaidTier = tierId, the boss HP of BattleCatalog.BossHp for the tier), later ones AddTeam, up to Raid.MaxRaiders;
 --     everyone stands on the fight's rim at their team's place. The fight takes the real floor when it is free, else a pocket
 --     (BuildPocket(index, "Raid"), the shared St.pocketBusy pool); a new fight may take the floor as soon as the last one left it, a
@@ -328,7 +329,7 @@ local C = {
 	DUEL_POWER_GAP = 3, -- a duel between teams whose TeamPower differs by more than this factor is practice (no rewards)
 	RAID_RIM = 6, -- studs outside the raid floor where a joiner is placed
 	RAID_GATE_POLL = 0.25, -- seconds between two looks at who stands in the boss gate
-	RAID_GATE_COOLDOWN = 3, -- seconds the gate ignores a player after a release or a refusal (nobody re-enters by standing still)
+	RAID_GATE_COOLDOWN = 3, -- seconds the gate ignores a player after a release or a refusal (a step back and forth at its edge is one try)
 	RAID_DARE_RANGE = 20, -- studs from the gate where a dare is taken
 	DUEL_PAD_OUTSIDE = 5, -- studs outside the duel floor where the duellists stand (the ring's pads)
 	ZONE_HEIGHT = 30, -- Size.Y of the zone in "Start"
@@ -392,6 +393,7 @@ local St = {
 	raidClosed = {}, -- [tierId] = os.clock() until which that tier's boss is away (after a kill)
 	raidFloorHiddenUntil = nil, -- os.clock() until which the idle floor boss is hidden (after a kill on the floor)
 	gateCooldown = {}, -- [Player] = os.clock() until which the gate leaves the player alone
+	gateHeld = {}, -- [Player] = true: stands in the gate and has had their try (or fought there): they step out before it asks again
 	ringBusy = {}, -- [ringIndex] = battleId | os.clock() of release
 	pocketBusy = {}, -- [pocketIndex] = battleId
 	invitesFrom = {}, -- [fromUserId] = invite
@@ -4054,7 +4056,8 @@ function Raid.insideGate(gate, position)
 	return abs(rel.X) <= size.X / 2 and abs(rel.Z) <= size.Z / 2 and rel.Y >= yLow and rel.Y <= yHigh
 end
 
--- the walk-through: a free player inside ArenaInfo.Gate goes into their own tier's fight; a refusal is toasted once per cooldown
+-- the walk-through: a free player who walks into ArenaInfo.Gate goes into their own tier's fight, or gets one refusal toast. Only walking in
+-- counts: nobody re-enters by standing there, and a fighter standing there when their fight ends opens no new one
 function Raid.gatePoll()
 	local info = arena()
 	local gate = info and info.Gate
@@ -4063,14 +4066,17 @@ function Raid.gatePoll()
 	end
 	local t = now()
 	for _, player in ipairs(Players:GetPlayers()) do
-		if not St.battleOf[player] and not St.ringRuns[player] and t >= (St.gateCooldown[player] or 0) then
-			local root = aliveRoot(player)
-			if root and Raid.insideGate(gate, root.Position) then
-				local ok, why = BattleService.EnterRaid(player)
-				if not ok then
-					St.gateCooldown[player] = now() + C.RAID_GATE_COOLDOWN
-					notify(player, why, "bad", 3)
-				end
+		local root = aliveRoot(player)
+		if not root or not Raid.insideGate(gate, root.Position) then
+			St.gateHeld[player] = nil
+		elseif St.battleOf[player] or St.ringRuns[player] then
+			St.gateHeld[player] = true
+		elseif not St.gateHeld[player] and t >= (St.gateCooldown[player] or 0) then
+			St.gateHeld[player] = true
+			local ok, why = BattleService.EnterRaid(player)
+			if not ok then
+				St.gateCooldown[player] = now() + C.RAID_GATE_COOLDOWN
+				notify(player, why, "bad", 3)
 			end
 		end
 	end
@@ -5219,6 +5225,7 @@ local function onPlayerRemoving(player)
 	St.toasts[player] = nil
 	St.watchCooldown[player] = nil
 	St.gateCooldown[player] = nil
+	St.gateHeld[player] = nil
 	St.net[player.UserId] = nil
 end
 
