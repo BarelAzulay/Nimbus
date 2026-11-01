@@ -8,8 +8,8 @@
 -- BALANCE: tuned with tools/sim_battle.lua (lupa, see tools/README.md): Support DPS ratio ~0.7, mirror duels 40-60%
 -- with no timeouts, raids 100-240 s for 1 / 4 / 8 / 16 fighters, the no-heal Ring stage medians (S1 13 .. S10 51),
 -- the dungeon ladder (floor 1 for any single level-1 pet, S10 >= floor 10). Change a number -> re-run the sim; the
--- smoke scenarios (tools/smoke_p5_battlecore.lua) check the basics. 2026-11-01 (attack effects spec, real reach): full sim 64 of 64
--- targets, one number moved: Frost Wyrm HpPerPlayer 100 -> 108.
+-- smoke scenarios (tools/smoke_p5_battlecore.lua) check the basics. 2026-11-01 (attack effects spec, real reach): raids re-tuned on the
+-- merged tree in BossHp's HpTier (Storm Titan High 0.90, Shadow Hydra Mid 0.96); the fight tiers replaced that build's HpPerPlayer tune.
 --
 -- Stat sources: BattleStatsOf(subject, level, tier, stage), the battle-only path (2026-10-31: level beats rarity), scales
 -- Power / Health by BattleStats.RarityScale, BattleLevelFactor(level, stage) and tier. PetCatalog.GetStats stays the garden's
@@ -1644,7 +1644,7 @@ BattleCatalog.Bosses = {
 		Element = "Storm",
 		Blurb = "A thunderhead given arms. Earth pets ground its lightning.",
 		HpFactor = 1,
-		HpTier = { Starter = 1.24, Mid = 0.98, High = 0.89, Max = 1.22 }, -- per fight tier, each fitted so 3 teams win about 40% (48 seeds); Mid 1.03 -> 0.98: eight trained S7 teams took 246 s against the 240 s band
+		HpTier = { Starter = 1.24, Mid = 0.98, High = 0.90, Max = 1.22 }, -- per fight tier, each fitted so 3 teams win about 40% (48 seeds); Mid 1.03 -> 0.98: eight trained S7 teams took 246 s against the 240 s band; High 0.89 -> 0.90 with attack effects' reach: the top High solo won 17% against the 15% ceiling
 		Radius = 7,
 		Scale = 1,
 		Basic = { Name = "Zap", Interval = 2.4, Damage = 0.05, Range = 20 },
@@ -1701,7 +1701,7 @@ BattleCatalog.Bosses = {
 		Element = "Shadow",
 		Blurb = "Three heads, one grudge. Celestial pets shine through its dark.",
 		HpFactor = 1,
-		HpTier = { Starter = 1.27, Mid = 0.93, High = 0.85, Max = 1.15 },
+		HpTier = { Starter = 1.27, Mid = 0.96, High = 0.85, Max = 1.15 }, -- Mid 0.93 -> 0.96 with attack effects' reach: 3 Mid teams won 58% against the 55% ceiling (0.94, 0.95 still 58%)
 		Radius = 7,
 		Scale = 1,
 		Basic = { Name = "Shadow Bite", Interval = 1.8, Damage = 0.035, Range = 20 }, -- spec 2026-11-01: 0.04 -> 0.035, fangs 0.3 -> 0.26, pulse 0.2 -> 0.18 (High and Max groups fell in 84-99 s under the 100 s band)
