@@ -648,7 +648,7 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 					if mineRecipe then
 						local ids, kinds = idSet(mineRecipe), kindSet(mineRecipe)
 						if prevIds then
-							-- (attack effects, 2026-11-01: the Sparks yield to the 6-emitter cap where a higher rarity's Trail / Slash fills it: recipe.Dropped says so)
+							-- (attack effects, 2026-11-01: a layer yields to the 6-emitter cap so the package's Sparks stay (fitCap): recipe.Dropped says which)
 							if mineRecipe.Dropped then
 								for _, gone in ipairs(mineRecipe.Dropped) do
 									ids[gone] = true

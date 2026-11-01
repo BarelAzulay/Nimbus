@@ -2243,15 +2243,16 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 	T.check(hidden2, "mid-build error: the returned kits are hidden", tostring(what2))
 
 	-- 13) a charge glow dropped for lack of time takes no emitter slot (an over-cap recipe: >= 7 emitter layers, cap 6) --
-	-- (Task 9: every catalog recipe fits the cap now, so the over-cap recipe is SYNTHETIC: the real Flame Secret Melee
-	-- (a mouth charge glow + 5 more emitters) plus 3 extra impact emitters, through a catalog stand-in)
+	-- (Task 9: every catalog recipe fits the cap now, so the over-cap recipe is SYNTHETIC: the real Celestial Secret Melee
+	-- (a mouth charge glow + more emitters; attack effects, review: a Flame melee at Rare+ gave its Charge up to the Sparks)
+	-- plus 3 extra impact emitters, through a catalog stand-in)
 	local function engineEmitter(l)
 		return type(l) == "table" and (l.Kind == "Emitter" or (l.Kind == "Decal" and type(l.Texture) == "string"))
 	end
 	local synthCat = setmetatable({
 		Resolve = function(req)
 			local r = Cat.Resolve(req)
-			if r and req.Element == "Flame" and req.Attack == "Melee" then
+			if r and req.Element == "Celestial" and req.Attack == "Melee" then
 				for i = 1, 3 do
 					r.Layers[#r.Layers + 1] = { Id = "Synth" .. i, Kind = "Emitter", Texture = "fx_glow", Beat = "Impact", At = "Target", Color = Color3.new(1, 1, 1), Count = 4, Size = 1 }
 				end
@@ -2261,7 +2262,7 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 	}, { __index = Cat })
 	local over = nil
 	do
-		local r = synthCat.Resolve({ Element = "Flame", Attack = "Melee", Rarity = "Secret", Stage = 0, Mine = true, Distance = 12 })
+		local r = synthCat.Resolve({ Element = "Celestial", Attack = "Melee", Rarity = "Secret", Stage = 0, Mine = true, Distance = 12 })
 		local n, hasCharge = 0, false
 		for _, l in ipairs(r and r.Layers or {}) do
 			if engineEmitter(l) then
@@ -2273,7 +2274,7 @@ S.client_p7vfx_engine = guarded("client_p7vfx_engine", function()
 			n = n + 1
 		end
 		if n >= Fx.MAX_EMITTERS.High + 1 and hasCharge then
-			over = { Element = "Flame", Attack = "Melee", N = n }
+			over = { Element = "Celestial", Attack = "Melee", N = n }
 		end
 	end
 	Fx._Deps({ AttackFxCatalog = synthCat })

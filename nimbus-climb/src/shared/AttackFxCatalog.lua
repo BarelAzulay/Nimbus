@@ -45,7 +45,7 @@
 --                                                                  travel, default 14). nil for an unknown element / attack / kind /
 --                                                                  shape (the caller falls back to the cube Fx).
 --     recipe = { Element, Attack, Kind, Shape, Rarity, Stage, Band, Size, CloudSize, Density (1 mine / 0.6 others), Dropped?
---                ({ "Sparks" }: the 6-emitter cap left no room for them), Afterglow (seconds, Afterglow[band]; 0 on support casts
+--                ({ "Charge" | "Slash" | "Trail" | "Sparks" }: the layer that yielded to the 6-emitter cap), Afterglow (seconds, Afterglow[band]; 0 on support casts
 --                and reactions), CameraPunch (false, or { Amount, Crit, Seconds, Basic, Gap }: an own attack; never a reaction or a
 --                support cast; the engine adds Crit on a crit, a Basic kick waits Gap since the last one), ScreenGlow (mine and band 4; not Quiet),
 --                Signature (petId | nil), Sig = { Name, Twist, Actor, DimWorld } | nil, Palette = { Core, Mid, Edge, Hot, Smoke }, Text,
@@ -229,7 +229,7 @@ AttackFxCatalog.LayerSlots = {
 	Shockwave = { Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Mid", Grow = 1.7, Transparency = 0.35 },
 	Shockwave2 = { Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Core", Grow = 2.4, Delay = 0.08, Transparency = 0.5 },
 	Flash = { Kind = "Light", Beat = "Impact", At = "$Hit", Tint = "Core", Brightness = 1.6, Range = 8 },
-	-- (attack effects, 2026-11-01) a few hot sparks off every hit: the package's only emitter, it yields to the cap (Resolve)
+	-- (attack effects, 2026-11-01) a few hot sparks off every hit: the package's only emitter; at the cap another layer yields first (fitCap)
 	Sparks = { Kind = "Emitter", Texture = "fx_sparks", Beat = "Impact", At = "$Hit", Tint = "Hot", Count = 5, Size = 0.6, SpeedScale = 1.5, LightEmission = 0.6 },
 	Afterimage = { Kind = "Trail", Texture = "fx_speedlines", Beat = "Travel", At = "Core", Tint = "Edge", Afterimages = 2 },
 	Bloom = { Kind = "Light", Beat = "Release", At = "Core", Tint = "Hot", Brightness = 1.4, Range = 8, Pulse = true },
@@ -1444,21 +1444,32 @@ local function isEmitterLayer(layer)
 	return layer.Kind == "Emitter" or (layer.Kind == "Decal" and type(layer.Texture) == "string")
 end
 
--- the 6-emitter cap (AttackFx.MAX_EMITTERS.High) comes first: where the recipe would pass it, the Sparks yield
-local function fitSparks(recipe)
+-- who yields when the Sparks would pass the 6-emitter cap (AttackFx.MAX_EMITTERS.High), in this order, so a rarity's new
+-- Trail / Slash never takes the package away from it (review, 2026-11-01). A basic or element hit gives up its Charge glow, the
+-- engine's last-ranked emitter. A Special keeps its (the charge cues hang on it) and gives up the swing; a Beam or a Storm has
+-- neither, its own layers fill the cap at every rarity and it goes without the Sparks
+local CAP_YIELD = { Hit = { "Charge", "Slash", "Trail", "Sparks" }, Special = { "Slash", "Trail", "Sparks" } }
+
+local function fitCap(recipe, attack)
 	local count = isEmitterLayer(recipe.Alive) and 1 or 0
-	local sparksAt = nil
-	for i, layer in ipairs(recipe.Layers) do
+	local hasSparks = false
+	for _, layer in ipairs(recipe.Layers) do
 		if isEmitterLayer(layer) then
 			count = count + 1
 		end
-		if layer.Id == "Sparks" then
-			sparksAt = i
-		end
+		hasSparks = hasSparks or layer.Id == "Sparks"
 	end
-	if sparksAt and count > 6 then
-		table.remove(recipe.Layers, sparksAt)
-		recipe.Dropped = { "Sparks" }
+	if not hasSparks or count <= 6 then
+		return
+	end
+	for _, id in ipairs(CAP_YIELD[(attack == "Special") and "Special" or "Hit"]) do
+		for i, layer in ipairs(recipe.Layers) do
+			if layer.Id == id then
+				table.remove(recipe.Layers, i)
+				recipe.Dropped = { id }
+				return
+			end
+		end
 	end
 end
 
@@ -1685,7 +1696,7 @@ function AttackFxCatalog.Resolve(req)
 		Alive = (def.Alive and not (sig and sig.Alive == false)) and aliveOf(element, palette, ctx.detailScale, sig and sig.Tints) or {},
 		LowKeep = {},
 	}
-	fitSparks(recipe)
+	fitCap(recipe, req.Attack)
 	-- Low quality's second emitter after the Burst (AttackFx: MAX_EMITTERS.Low 2): the kind's pick, then the attack's,
 	-- then the element's; the engine keeps the first one this effect has
 	for _, list in ipairs({ (sig and sig.LowKeep) or {}, def.LowKeep or {}, element.LowKeep or {} }) do -- (a signature's own pick first)

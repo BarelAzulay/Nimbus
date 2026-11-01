@@ -4,8 +4,9 @@
 --                        out-sizes an unevolved Secret
 --   afx_impact_package   every hit of every element and rarity has the ring, the flash, the sparks and the ground mark (Shockwave2 from
 --                        Epic), stronger by band (ImpactScale); no support cast or reaction has any of them; the 6-emitter / 3-light / light
---                        caps hold; Sparks yield only where 6 emitters already fill the recipe (never at Common on a basic or element
---                        attack; the list is printed for the owner)
+--                        caps hold; where a recipe passes 6 emitters a basic or element hit gives up its Charge glow, a Special its
+--                        Slash or Trail, and only a Beam or Storm whose own layers fill the cap goes without Sparks, at every rarity;
+--                        a higher rarity never has fewer package layers than a lower one (the list is printed for the owner)
 --   afx_impact_readable  a Secret Evo 2 recipe differs from the Stage 0 one by Size alone: same layers, same particle counts and sizes, same
 --                        cloud size, same lights; the 12 signatures fit their caps at Stage 2
 -- Client world:
@@ -146,8 +147,10 @@ local function serverScenarios()
 		local strong = T.tally("afx package: stronger by band: Ring Grow, GroundGlow Size, Sparks Count, Flash Brightness x ImpactScale")
 		local dropped, droppedSeen = {}, {}
 		local dropBad, commonBad = {}, {}
+		local order = T.tally("afx package: per element x attack a higher rarity never has fewer package layers than a lower one")
 		for _, element in ipairs(elements) do
 			for _, v in ipairs(HITS) do
+				local prevPackage = 0
 				for i, rarity in ipairs(RARITIES) do
 					local r = resolve(C, element, v, rarity)
 					local label = fmt("%s %s %s", element, v.label, rarity)
@@ -159,10 +162,19 @@ local function serverScenarios()
 					elseif v.Kind == "Freeze" then
 						flash = layerById(r, "Flash") == nil and layerById(r, "Lock") or nil
 					end
-					local isDropped = type(r.Dropped) == "table" and r.Dropped[1] == "Sparks"
-					if isDropped and rarity == "Common" and v.Attack ~= "Special" then
+					local isDropped = false
+					for _, gone in ipairs(type(r.Dropped) == "table" and r.Dropped or {}) do
+						isDropped = isDropped or gone == "Sparks"
+					end
+					if isDropped and v.Kind ~= "Beam" and v.Kind ~= "Storm" then
 						commonBad[#commonBad + 1] = label
 					end
+					local packageCount = 0
+					for _, id in ipairs(PACKAGE) do
+						packageCount = packageCount + (layerById(r, id) and 1 or 0)
+					end
+					order:case(packageCount >= prevPackage, fmt("%s: %d package layers after %d", label, packageCount, prevPackage))
+					prevPackage = packageCount
 					has:case(sw ~= nil and sw.Kind == "Ring" and sw.At == "Ground"
 						and flash ~= nil and flash.Kind == "Light"
 						and glow ~= nil and glow.Kind == "Decal" and glow.At == "Ground"
@@ -197,10 +209,19 @@ local function serverScenarios()
 		has:report()
 		caps:report()
 		strong:report()
+		order:report()
 		table.sort(dropped)
 		T.check(#dropBad == 0, "afx package: Sparks dropped only where 6 emitters already fill the recipe", table.concat(dropBad, ", "))
-		T.check(#commonBad == 0, "afx package: a Common basic or element attack always has its sparks (the pets this package is for)", table.concat(commonBad, ", "))
-		T.check(#dropped <= 42, "afx package: Sparks yield on no more element x attack pairs than the 42 the owner was told about", #dropped .. ": " .. table.concat(dropped, ", "))
+		T.check(#commonBad == 0, "afx package: every hit but a full Beam or Storm has its sparks, at every rarity", table.concat(commonBad, ", "))
+		T.check(#dropped <= 9, "afx package: Sparks yield on no more element x attack pairs than the 9 the owner was told about (Beam and Storm only)", #dropped .. ": " .. table.concat(dropped, ", "))
+		local function droppedOf(element, attack, kind, rarity)
+			local r = C.Resolve({ Element = element, Attack = attack, Kind = kind, Rarity = rarity, Mine = true })
+			return r and r.Dropped and table.concat(r.Dropped, ",") or "", r
+		end
+		local fm, fmr = droppedOf("Flame", "Melee", nil, "Rare")
+		T.check(fm == "Charge" and layerById(fmr, "Sparks") ~= nil and layerById(fmr, "Slash") ~= nil, "afx package: a Rare Flame melee keeps Sparks and Slash, its Charge glow yields", fm)
+		local wb, wbr = droppedOf("Water", "Special", "Blast", "Rare")
+		T.check(wb == "Slash" and layerById(wbr, "Sparks") ~= nil and layerById(wbr, "Charge") ~= nil, "afx package: a Rare Water Blast keeps Sparks and its charge cue, its Slash yields", wb)
 		print("  [afx package] Sparks yield to the 6-emitter cap on: " .. (#dropped > 0 and table.concat(dropped, ", ") or "nothing"))
 
 		local quiet = T.tally("afx package: no support cast or reaction has any of the five (Shockwave, Shockwave2, Flash, Sparks, GroundGlow)")
@@ -444,6 +465,8 @@ local function clientScenarios()
 		end
 		full:report()
 		T.check(n6 > 0, "afx engine: recipes listed Sparks", tostring(n6))
+		local _, rareFlame = play({ Element = "Flame", Rarity = "Rare" })
+		T.check(rareFlame.Sparks ~= nil, "afx engine: a Rare Flame hit draws the sparks a Common one does (the order never inverts)")
 
 		-- Graphics Low: rings, lights and ground marks only: no Sparks, still 2 emitters at most
 		Fx.SetQuality("Low")
