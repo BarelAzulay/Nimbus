@@ -68,9 +68,15 @@
 --   BattleCatalog.ChampionCount(round) -> 1..3   Ring.Helpers
 --   ChampionTeam -> { Owner "npc", Side 2, Npc, Name, Round, Seed, Power = TeamPower(Pets), Champion = { PetId, Level, Tier, Evo,
 --       Count, Boss (flag), Name, Power }, Pets = { { PetId, Key, Level, Tier, Evo, Slot, Crowned, MeterStart }... } }
---   BattleCatalog.Bosses / BossOrder / NextBoss / BossHp(bossId, teams) / WeightedTeams / GroupFactor / BossRules (GroupExponent 0.2)
---   BattleCatalog.BaselineDps(bossId) -> n                        the boss HP floor's DPS (BossRules.FloorSeconds x it): BossRules.Baseline's ExpectedDps
---   BattleCatalog.Events / Raid / RaidTier(share, won) / EventPets() / Trophies / Duel (PowerGap 2, the quick queue band)
+--   BattleCatalog.Bosses / BossOrder / NextBoss / BossHp(bossId, teams, tierId) / WeightedTeams / GroupFactor / BossRules
+--   BattleCatalog.RaidTiers / RaidTierOrder                       the fight tiers Starter / Mid / High / Max (spec 2026-11-01): { Id, Level = { lo, hi },
+--                                                                  BossLevel, Hit, Reward, EventScale, Scale, HpSeconds, Baseline, Crown }
+--   BattleCatalog.RaidTierOf(level) -> tier                       clamped (< 1 Starter, > 100 Max, junk Starter)
+--   BattleCatalog.RaidTierOfTeam(pets) -> tier, highestLevel      by the highest pet (empty / junk: Starter, 1)
+--   BattleCatalog.RaidTierById(id) -> tier | nil;  RaidTierIndex(id) -> 1..4 | nil;  RaidCanDare(fromId, toId) -> bool (a strictly higher known tier)
+--   BattleCatalog.BaselineDps(bossId, tierId) -> n                the boss HP floor's DPS (BossRules.FloorSeconds x it): the tier's Baseline's ExpectedDps (nil tier = High)
+--   BattleCatalog.Events / Raid / EventPets() / Trophies / Duel (PowerGap 2, the quick queue band)
+--   BattleCatalog.RaidTier(share, won, tierId) -> medal | nil     a COPY of the medal: Tokens / Xp / Gems x the tier's Reward, chances x EventScale, Scale, FightTier
 --   BattleCatalog.Zones { Duel, Raid, Ring, Dungeon 44, DungeonBoss 56 x 72 }, TimeLimits { Duel 120, Raid 330, Ring 90, Dungeon 120 (fallback) }, Modes
 --   BattleCatalog.Dungeon / DungeonFloors (5.1); DungeonPower(floor, partySize); DungeonWave(floor, room, wave, partySize, seed, opts) ->
 --       { Pets = { { PetId, Key, Level, Tier, Slot, Boss, Boost, Handicap, Wild = true }... }, Boss = bool, Power, Target, Floor, Room, Wave };
@@ -1573,18 +1579,16 @@ BattleCatalog.Duel = {
 
 ----------------------------------------------------------------------
 -- The boss roster (Phase 3, kept). Boss damage is a fraction of the fighters' HP (DamageBasis blends each victim's own
--- max HP with the raid's average); boss HP lasts HpPerPlayer seconds of every team's expected DPS (BossHp), but never
--- less than FloorSeconds of BaselineDps (#2: a weak solo cannot finish inside the 330 s raid window). Telegraph
+-- max HP with the raid's average) x the fight tier's Hit; boss HP lasts the tier's HpSeconds x the boss's HpFactor seconds
+-- of every team's expected DPS (BossHp), but never less than FloorSeconds of the tier's BaselineDps. Telegraph
 -- shapes: Circle { Radius } at a target point, Line { Width, Length } from the boss through a target point. The dash's
--- i-frames and a step out of the shape both dodge a telegraph.
+-- i-frames and a step out of the shape both dodge a telegraph. Below BossRules.EnrageAt of its health a boss enrages and
+-- starts casting its Lethal attack (no Damage: whoever it hits is knocked out).
 ----------------------------------------------------------------------
 BattleCatalog.BossRules = {
 	DamageBasis = { Own = 0.6, Average = 0.4 },
 	MinHp = 2500, -- #2: 600 -> 2500
-	FloorSeconds = 100, -- the boss HP floor = this x BaselineDps(bossId), whatever the boss's HpPerPlayer
-	-- #2: the boss HP floor = FloorSeconds x BaselineDps(bossId): the ExpectedDps of this fighter (a level-35 evolved
-	-- (stage 1) Legendary, spec 2026-10-31 s.6: the owner's L10-11 Secrets cannot solo), unless the boss sets its own BaselineDps
-	Baseline = { PetId = "ember_phoenix", Level = 35, Evo = 1 },
+	FloorSeconds = 100, -- the boss HP floor = this x BaselineDps(bossId, tierId), whatever the tier's HpSeconds (RaidTiers[i].Baseline)
 	MinionHp = 0.7,
 	MinionDamage = 0.035,
 	GroupExponent = 0.2, -- boss HP x teams ^ GroupExponent (Phase 5: 0.25 -> 0.2, so 8 fighters finish in ~220 s)
@@ -1592,7 +1596,8 @@ BattleCatalog.BossRules = {
 	DamageGroup = { Min = 0.7, FullAt = 8 }, -- dungeon fixes (7): 0.55 -> 0.35 (no bench regen); #2: 0.35 -> 0.7 (a solo raid is meant to be hard)
 	MinionInterval = 1.4,
 	MinionLevelOf = "average",
-	Enrage = { Damage = 2, Cooldown = 0.7 },
+	EnrageAt = 0.3, -- share of the boss's health (spec 2026-11-01: moved from a clock); the 330 s TimeLimit stays
+	Enrage = { Damage = 2, Cooldown = 0.7, LethalFirst = 4 }, -- the lethal's first cast LethalFirst s after the enrage
 	WaveMin = 2,
 	WaveMax = 8,
 	CirclesPerTeams = 2,
@@ -1615,7 +1620,7 @@ BattleCatalog.Bosses = {
 		Name = "Storm Titan",
 		Element = "Storm",
 		Blurb = "A thunderhead given arms. Earth pets ground its lightning.",
-		HpPerPlayer = 105, -- seconds of each team's expected DPS (dodging and dashing cost about a third of the uptime)
+		HpFactor = 1,
 		Radius = 7,
 		Scale = 1,
 		Basic = { Name = "Zap", Interval = 2.4, Damage = 0.05, Range = 20 },
@@ -1623,9 +1628,9 @@ BattleCatalog.Bosses = {
 			attack("slam", "Thunder Slam", "Circle", { Radius = 7, Telegraph = 2.2, Cooldown = 18, Damage = 0.2, Target = "Cluster", First = 8 }),
 			attack("chain", "Chain Lightning", "Line", { Width = 4, Length = 48, Telegraph = 2.2, Cooldown = 22, Damage = 0.35, Target = "Random", First = 17 }),
 		},
+		Lethal = attack("judgement", "Heaven's Judgement", "Circle", { Radius = 9, Telegraph = 3.2, Cooldown = 22, Target = "Cluster", Lethal = true }),
 		MinionPet = "storm_tabby",
 		Minions = { Name = "Spark Tabby", Waves = { { At = 0.7, PerPlayer = 0.5 }, { At = 0.35, PerPlayer = 0.75 } } },
-		EnrageAt = 240,
 		TimeLimit = 330,
 	},
 	lava_golem = {
@@ -1633,10 +1638,7 @@ BattleCatalog.Bosses = {
 		Name = "Lava Golem",
 		Element = "Flame",
 		Blurb = "A walking volcano. Water pets cool it down.",
-		HpPerPlayer = 65, -- its Eruption sends every melee fighter running, so its HP is lower (balance-5: 90 -> 85, the bug #22
-		-- engaged pets (EngagePull 7) cost the Frost-heavy mid group time: 8 x M5 won 44% of 32 seeds, then 84%). Wave 6: 85 ->
-		-- 90 again: pets that never retreat + the parrying trainer made it fast. Team balance: 90 -> 65 under GroupBonus 0.55,
-		-- which leaves the group's HP where it was (M8 4p ~94 s, 8 x M5 ~236 s); the floor keeps a solo M5 / Lv 5 from winning
+		HpFactor = 0.65, -- its Eruption sends every melee fighter running, so its HP is lower (was HpPerPlayer 65 against ~100)
 		Radius = 8,
 		Scale = 1,
 		Basic = { Name = "Magma Fist", Interval = 2.8, Damage = 0.05, Range = 20 },
@@ -1644,9 +1646,9 @@ BattleCatalog.Bosses = {
 			attack("pool", "Magma Pool", "Circle", { Radius = 7, Telegraph = 2.2, Cooldown = 18, Damage = 0.15, Target = "Cluster", Linger = 5, LingerDamage = 0.015, First = 8 }), -- dungeon fixes (7): LingerDamage 0.03 -> 0.015
 			attack("eruption", "Eruption", "Circle", { Radius = 15, Telegraph = 2.4, Cooldown = 30, Damage = 0.2, Target = "Self", First = 18 }),
 		},
+		Lethal = attack("cataclysm", "Cataclysm", "Circle", { Radius = 9, Telegraph = 3.2, Cooldown = 22, Target = "Cluster", Lethal = true }),
 		MinionPet = "maple_fox",
 		Minions = { Name = "Cinder Fox", Waves = { { At = 0.65, PerPlayer = 0.5 }, { At = 0.3, PerPlayer = 0.75 } } },
-		EnrageAt = 240,
 		TimeLimit = 330,
 	},
 	frost_wyrm = {
@@ -1654,7 +1656,7 @@ BattleCatalog.Bosses = {
 		Name = "Frost Wyrm",
 		Element = "Frost",
 		Blurb = "A serpent of living ice. Flame pets melt its armour.",
-		HpPerPlayer = 100,
+		HpFactor = 1,
 		Radius = 7,
 		Scale = 1,
 		Basic = { Name = "Ice Spit", Interval = 2.2, Damage = 0.045, Range = 20 },
@@ -1662,9 +1664,9 @@ BattleCatalog.Bosses = {
 			attack("breath", "Frost Breath", "Line", { Width = 5, Length = 44, Telegraph = 2.2, Cooldown = 20, Damage = 0.3, Target = "Random", Freeze = 2.0, First = 8 }),
 			attack("blizzard", "Blizzard", "Circle", { Radius = 8, Telegraph = 2.2, Cooldown = 22, Damage = 0.15, Target = "Cluster", Freeze = 2.5, First = 18 }),
 		},
+		Lethal = attack("absolute_zero", "Absolute Zero", "Line", { Width = 10, Length = 48, Telegraph = 3.2, Cooldown = 22, Target = "Cluster", Lethal = true }),
 		MinionPet = "frostling_penguin",
 		Minions = { Name = "Ice Shard", Waves = { { At = 0.7, PerPlayer = 0.5 }, { At = 0.35, PerPlayer = 0.75 } } },
-		EnrageAt = 240,
 		TimeLimit = 330,
 	},
 	shadow_hydra = {
@@ -1672,7 +1674,7 @@ BattleCatalog.Bosses = {
 		Name = "Shadow Hydra",
 		Element = "Shadow",
 		Blurb = "Three heads, one grudge. Celestial pets shine through its dark.",
-		HpPerPlayer = 97,
+		HpFactor = 1,
 		Radius = 7,
 		Scale = 1,
 		Basic = { Name = "Shadow Bite", Interval = 1.8, Damage = 0.04, Range = 20 },
@@ -1680,13 +1682,78 @@ BattleCatalog.Bosses = {
 			attack("fangs", "Void Fangs", "Line", { Width = 4, Length = 44, Count = 3, Spread = 30, Telegraph = 2.2, Cooldown = 20, Damage = 0.3, Target = "Random", First = 8 }),
 			attack("pulse", "Shadow Pulse", "Circle", { Radius = 8, Telegraph = 2.2, Cooldown = 20, Damage = 0.2, Target = "Cluster", First = 18 }),
 		},
+		Lethal = attack("oblivion", "Oblivion", "Line", { Width = 10, Length = 48, Telegraph = 3.2, Cooldown = 22, Target = "Cluster", Lethal = true }),
 		MinionPet = "twilight_dragon",
 		Minions = { Name = "Shade Hatchling", Waves = { { At = 0.75, PerPlayer = 0.5 }, { At = 0.5, PerPlayer = 0.5 }, { At = 0.25, PerPlayer = 0.75 } } },
-		EnrageAt = 240,
 		TimeLimit = 330,
 	},
 }
 BattleCatalog.BossOrder = { "storm_titan", "lava_golem", "frost_wyrm", "shadow_hydra" }
+
+-- The fight tiers (spec 2026-11-01): one boss, four strengths. A team fights the tier of its highest pet (a dare picks a
+-- higher one). Hit (share of the boss's damage), Reward, EventScale (the chances of Gems and event pets), Level and
+-- BossLevel are the owner's numbers; HpSeconds (seconds of every team's expected DPS, x the boss's HpFactor), Scale and
+-- Baseline (the HP floor's fighter) are tuned with tools/sim_battle.lua's raids section.
+BattleCatalog.RaidTiers = {
+	{ Id = "Starter", Level = { 1, 19 }, BossLevel = 15, Hit = 0.6, Reward = 0.4, EventScale = 0.5, Scale = 0.85, HpSeconds = 100, Baseline = { PetId = "ember_phoenix", Level = 15, Evo = 0, Tier = "Normal" } },
+	{ Id = "Mid", Level = { 20, 49 }, BossLevel = 40, Hit = 0.8, Reward = 0.7, EventScale = 0.5, Scale = 1, HpSeconds = 100, Baseline = { PetId = "ember_phoenix", Level = 40, Evo = 1, Tier = "Normal" } },
+	{ Id = "High", Level = { 50, 79 }, BossLevel = 70, Hit = 1, Reward = 1, EventScale = 1, Scale = 1.15, HpSeconds = 100, Baseline = { PetId = "ember_phoenix", Level = 70, Evo = 2, Tier = "Normal" } },
+	{ Id = "Max", Level = { 80, 100 }, BossLevel = 95, Hit = 1.3, Reward = 1.3, EventScale = 1, Scale = 1.3, HpSeconds = 100, Crown = true, Baseline = { PetId = "ember_phoenix", Level = 95, Evo = 2, Tier = "Rainbow" } },
+}
+BattleCatalog.RaidTierOrder = { "Starter", "Mid", "High", "Max" }
+
+function BattleCatalog.RaidTierById(id)
+	for _, tier in ipairs(BattleCatalog.RaidTiers) do
+		if tier.Id == id then
+			return tier
+		end
+	end
+	return nil
+end
+
+function BattleCatalog.RaidTierIndex(id)
+	for i, tier in ipairs(BattleCatalog.RaidTiers) do
+		if tier.Id == id then
+			return i
+		end
+	end
+	return nil
+end
+
+function BattleCatalog.RaidTierOf(level)
+	local tiers = BattleCatalog.RaidTiers
+	local n = tonumber(level)
+	if not n or n ~= n then
+		return tiers[1]
+	end
+	for _, tier in ipairs(tiers) do
+		if n <= tier.Level[2] then
+			return tier
+		end
+	end
+	return tiers[#tiers]
+end
+
+function BattleCatalog.RaidTierOfTeam(pets)
+	local highest = nil
+	for _, p in ipairs(type(pets) == "table" and pets or {}) do
+		local level = type(p) == "table" and tonumber(p.Level) or nil
+		if level and level == level and (not highest or level > highest) then
+			highest = level
+		end
+	end
+	return BattleCatalog.RaidTierOf(highest), highest or 1
+end
+
+function BattleCatalog.RaidCanDare(fromId, toId)
+	local from, to = BattleCatalog.RaidTierIndex(fromId), BattleCatalog.RaidTierIndex(toId)
+	return from ~= nil and to ~= nil and to > from
+end
+
+-- a known tier by id, anything else is the High tier (no tier: raids outside the fight service, x1)
+local function raidTierOrHigh(tierId)
+	return BattleCatalog.RaidTierById(tierId) or BattleCatalog.RaidTierById("High")
+end
 
 function BattleCatalog.NextBoss(index)
 	local order = BattleCatalog.BossOrder
@@ -1718,13 +1785,13 @@ function BattleCatalog.WeightedTeams(dpsList)
 end
 
 -- The DPS a boss's HP floor is measured against (#2): the boss's own BaselineDps, else the ExpectedDps of the
--- BossRules.Baseline fighter (so it follows the stat formulas)
-function BattleCatalog.BaselineDps(bossId)
+-- tier's Baseline fighter (so it follows the stat formulas)
+function BattleCatalog.BaselineDps(bossId, tierId)
 	local boss = BattleCatalog.Bosses[bossId]
 	if boss and finite(boss.BaselineDps) and boss.BaselineDps > 0 then
 		return boss.BaselineDps
 	end
-	local ref = BattleCatalog.BossRules.Baseline
+	local ref = raidTierOrHigh(tierId).Baseline
 	if type(ref) ~= "table" then
 		return 0
 	end
@@ -1732,13 +1799,14 @@ function BattleCatalog.BaselineDps(bossId)
 	return (ok and finite(dps) and dps > 0) and dps or 0
 end
 
--- Boss HP for a list of team specs (each { Pets = {...} }): HpPerPlayer seconds of every team's expected DPS, each
--- team's share weighted like the head count, x GroupFactor; never below FloorSeconds of BaselineDps (#2: the
+-- Boss HP for a list of team specs (each { Pets = {...} }): the tier's HpSeconds x the boss's HpFactor seconds of every
+-- team's expected DPS, each team's share weighted like the head count, x GroupFactor; never below FloorSeconds of the tier's BaselineDps (#2: the
 -- floor is for the whole raid, so a weak group still adds up past it while a weak solo cannot), nor MinHp.
 -- Returns the total and the shares (scaled up with the floor, so they still add up to the total before GroupFactor).
-function BattleCatalog.BossHp(bossId, teams)
+function BattleCatalog.BossHp(bossId, teams, tierId)
 	local boss = BattleCatalog.Bosses[bossId]
-	local seconds = boss and boss.HpPerPlayer or 150
+	local tier = raidTierOrHigh(tierId)
+	local seconds = tier.HpSeconds * num(boss and boss.HpFactor, 1) * num(boss and boss.HpTier and boss.HpTier[tier.Id], 1)
 	local dpsList = {}
 	local top = 0
 	for i, team in ipairs(type(teams) == "table" and teams or {}) do
@@ -1753,7 +1821,7 @@ function BattleCatalog.BossHp(bossId, teams)
 		total = total + shares[i]
 	end
 	total = total * BattleCatalog.GroupFactor(BattleCatalog.WeightedTeams(dpsList))
-	local floorHp = num(BattleCatalog.BossRules.FloorSeconds, seconds) * BattleCatalog.BaselineDps(bossId)
+	local floorHp = num(BattleCatalog.BossRules.FloorSeconds, seconds) * BattleCatalog.BaselineDps(bossId, tierId)
 	if total > 0 and total < floorHp then
 		local scale = floorHp / total
 		for i = 1, #shares do
@@ -1781,12 +1849,11 @@ end
 ----------------------------------------------------------------------
 BattleCatalog.Events = {
 	Schedule = {
-		{ Kind = "BossRaid", EveryMinutes = 20, AnnounceSeconds = 120, DurationSeconds = 330 },
+		{ Kind = "BossRaid", EveryMinutes = 20 }, -- the boss rotation (spec 2026-11-01: no window, no announcement)
 		{ Kind = "DoubleRewards", EveryMinutes = 180, AnnounceSeconds = 120, DurationSeconds = 3600 },
 	},
 	FirstAfterSeconds = 300,
 	DoubleRewardsMultiplier = 2,
-	JoinWindowSeconds = 60,
 }
 
 BattleCatalog.Raid = {
@@ -1799,23 +1866,44 @@ BattleCatalog.Raid = {
 	MinShare = 0,
 	LossTokens = 25,
 	LossXp = 20,
+	ReturnSeconds = 60, -- a tier's fight is closed this long after a kill
+	RewardMinutes = 20, -- a win pays once per this, per player (saved)
+	LossMinutes = 5, -- the loss reward pays once per this, per player (saved)
+	MaxRaiders = 8, -- per fight
 }
 
-function BattleCatalog.RaidTier(share, won)
+-- A medal scaled to the fight tier: a copy, the Raid.Tiers table stays as it is. tierId nil = High (x1).
+local function scaledMedal(medal, tierId)
+	local tier = raidTierOrHigh(tierId)
+	local reward, chance = tier.Reward, tier.EventScale
+	return {
+		Id = medal.Id,
+		MinShare = medal.MinShare,
+		Tokens = floor(medal.Tokens * reward + 0.5),
+		Xp = floor(medal.Xp * reward + 0.5),
+		Gems = floor(medal.Gems * reward + 0.5),
+		GemChance = medal.GemChance * chance,
+		EventPetChance = medal.EventPetChance * chance,
+		Scale = reward,
+		FightTier = tier.Id,
+	}
+end
+
+function BattleCatalog.RaidTier(share, won, tierId)
 	local s = tonumber(share) or 0
 	if s ~= s or s <= 0 or s < BattleCatalog.Raid.MinShare then
 		return nil
 	end
 	if won == false then
-		return { Id = "Loss", MinShare = BattleCatalog.Raid.MinShare, Tokens = BattleCatalog.Raid.LossTokens, Xp = BattleCatalog.Raid.LossXp, Gems = 0, GemChance = 0, EventPetChance = 0 }
+		return scaledMedal({ Id = "Loss", MinShare = BattleCatalog.Raid.MinShare, Tokens = BattleCatalog.Raid.LossTokens, Xp = BattleCatalog.Raid.LossXp, Gems = 0, GemChance = 0, EventPetChance = 0 }, tierId)
 	end
 	local tiers = BattleCatalog.Raid.Tiers
 	for _, tier in ipairs(tiers) do
 		if s >= tier.MinShare then
-			return tier
+			return scaledMedal(tier, tierId)
 		end
 	end
-	return tiers[#tiers]
+	return scaledMedal(tiers[#tiers], tierId)
 end
 
 function BattleCatalog.EventPets()
@@ -2289,11 +2377,13 @@ function BattleCatalog.Validate()
 			if not validElements[b.Element] then
 				bad("boss " .. id .. ": Element " .. tostring(b.Element) .. " is not in Config.Elements.Order")
 			end
-			if not finite(b.HpPerPlayer) or b.HpPerPlayer <= 0 then
-				bad("boss " .. id .. ": HpPerPlayer must be positive")
+			if not finite(b.HpFactor) or b.HpFactor <= 0 then
+				bad("boss " .. id .. ": HpFactor must be positive")
 			end
-			if BattleCatalog.BaselineDps(id) <= 0 then
-				bad("boss " .. id .. ": BaselineDps must be positive (BossRules.Baseline names a real pet)")
+			for _, tier in ipairs(BattleCatalog.RaidTiers) do
+				if BattleCatalog.BaselineDps(id, tier.Id) <= 0 then
+					bad("boss " .. id .. ": BaselineDps must be positive (tier " .. tostring(tier.Id) .. "'s Baseline names a real pet)")
+				end
 			end
 			if type(b.Attacks) ~= "table" or #b.Attacks < 1 then
 				bad("boss " .. id .. ": needs attacks")
@@ -2325,13 +2415,57 @@ function BattleCatalog.Validate()
 			if pc and pc.Get and b.MinionPet and not pc.Get(b.MinionPet) then
 				bad("boss " .. id .. ": unknown minion pet " .. tostring(b.MinionPet))
 			end
-			if not finite(b.EnrageAt) or not finite(b.TimeLimit) or b.TimeLimit <= b.EnrageAt then
-				bad("boss " .. id .. ": TimeLimit must come after EnrageAt")
+			if not finite(b.TimeLimit) or b.TimeLimit <= 0 then
+				bad("boss " .. id .. ": TimeLimit must be positive")
+			end
+			-- the lethal: a long warning (past any freeze and the dash cooldown), one cast at a time, small enough for the sidestep
+			local l = b.Lethal
+			if type(l) ~= "table" or l.Lethal ~= true then
+				bad("boss " .. id .. ": needs a Lethal attack")
+			else
+				if not finite(l.Telegraph) or l.Telegraph < 3 then
+					bad("boss " .. id .. ": the Lethal's Telegraph must be >= 3 s")
+				end
+				if l.Count ~= nil and l.Count ~= 1 then
+					bad("boss " .. id .. ": the Lethal is one shape (no Count)")
+				end
+				if l.Damage ~= nil then
+					bad("boss " .. id .. ": the Lethal has no Damage (it knocks out)")
+				end
+				if not finite(l.Cooldown) or l.Cooldown < 18 then
+					bad("boss " .. id .. ": the Lethal's Cooldown must be >= 18 s")
+				end
+				local fits = (l.Shape == "Circle" and finite(l.Radius) and l.Radius <= 10 and l.Target == "Cluster") or (l.Shape == "Line" and finite(l.Width) and l.Width <= 12 and finite(l.Length))
+				if not fits then
+					bad("boss " .. id .. ": the Lethal must be a Cluster Circle with Radius <= 10 or a Line with Width <= 12")
+				end
 			end
 		end
 	end
-	if BattleCatalog.BossRules.GroupExponent ~= 0.2 then
-		bad("BossRules.GroupExponent is 0.2 in Phase 5")
+	local enrageAt = BattleCatalog.BossRules.EnrageAt
+	if not finite(enrageAt) or enrageAt <= 0 or enrageAt >= 1 then
+		bad("BossRules.EnrageAt must be a share of the boss's health in (0, 1)")
+	end
+	-- the fight tiers: contiguous levels 1..MaxPetLevel, positive numbers, a real Baseline pet
+	local nextLevel = 1
+	for _, tier in ipairs(BattleCatalog.RaidTiers) do
+		if type(tier.Level) ~= "table" or tier.Level[1] ~= nextLevel or tier.Level[2] < tier.Level[1] then
+			bad("raid tier " .. tostring(tier.Id) .. ": Level must start at " .. nextLevel)
+		else
+			nextLevel = tier.Level[2] + 1
+		end
+		for _, field in ipairs({ "Hit", "Reward", "EventScale", "Scale", "HpSeconds" }) do
+			if not finite(tier[field]) or tier[field] <= 0 then
+				bad("raid tier " .. tostring(tier.Id) .. ": " .. field .. " must be positive")
+			end
+		end
+		if pc and pc.Get and not (type(tier.Baseline) == "table" and pc.Get(tier.Baseline.PetId)) then
+			bad("raid tier " .. tostring(tier.Id) .. ": Baseline must name a real pet")
+		end
+	end
+	local topLevel = (pc and pc.MaxPetLevel) and pc.MaxPetLevel() or 100
+	if nextLevel ~= topLevel + 1 then
+		bad("raid tiers must cover the levels up to " .. topLevel)
 	end
 	-- raid tiers sorted by share, nothing paid for no damage, trophies floor
 	local lastShare = 2

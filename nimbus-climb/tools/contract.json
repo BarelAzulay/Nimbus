@@ -552,6 +552,14 @@
     },
     "shared/BattleCatalog": {
       "functions": [
+        "RaidTierOf",
+        "RaidTierOfTeam",
+        "RaidTierById",
+        "RaidTierIndex",
+        "RaidCanDare",
+        "RaidTier",
+        "BossHp",
+        "BaselineDps",
         "UnitStats",
         "BattleLevelFactor",
         "BattleStatsOf",
@@ -576,6 +584,12 @@
         "DungeonChest"
       ],
       "fields": [
+        "RaidTiers",
+        "RaidTierOrder",
+        "Raid",
+        "Events",
+        "Bosses",
+        "BossRules",
         "Zones",
         "TimeLimits",
         "TrainingSkills",

@@ -9,12 +9,13 @@
 -- Special / Dash / Buff / Swap; the server owns reach, cooldowns, meter, lives and damage (Y1). NPC teams (side 2,
 -- enemy waves, the Ring champion, raid minions) have every pet on the floor, driven by the AI: threat target, melee
 -- orbit, a WIND-UP (Winding, 0.45 s) before every hit so the 0.35 s dash i-frames can dodge it. Bosses keep their
--- telegraphed patterns, minion waves and enrage. Every number lives in BattleCatalog / PetCatalog.
+-- telegraphed patterns, minion waves, the enrage at 30% health and its lethal attack. Every number lives in BattleCatalog / PetCatalog.
 --
 -- API (the contract):
 --   BattleSim.new(setup) -> battle | nil, reason
 --     setup = { Mode = "Duel" | "Raid" | "Ring" | "Dungeon" (default Duel), Seed, Id, Zone = n | { X, Z } | { w, d },
---               Teams = { team... }, Boss = bossId (Raid), Round (Ring), TimeLimit (nil = BattleCatalog.TimeLimits[Mode]),
+--               Teams = { team... }, Boss = bossId (Raid), RaidTier = tierId (Raid; nil / junk = "High"), Round (Ring),
+--               TimeLimit (nil = BattleCatalog.TimeLimits[Mode]),
 --               Specials = false (harness: nobody casts) }
 --     team  = { Owner, Side = 1 | 2, Name, Npc = bool, Auto = bool, Anchor = { x, z }, Specials = false, Wave = n,
 --               Pets = { entry x 1..3 } }   entry: Key, PetId, Def, Level, Tier, Slot, Evo, Train, Boost, Handicap, Boss,
@@ -96,16 +97,16 @@
 --                                     element, elements, maxHp, level, tier, scale, ranged, range, radius, special, evo, xp, xpNext,
 --                                     crowned, role ("Fighter" | "Support"), buff = { Kind, Name, Seconds, Value, Cooldown },
 --                                     elementAttack = { Name, Shape, Element }, bench = 2 | 3 | nil, wild, walk, run }
---   battle:Time(), IsFinished(), Owners(), BossStatus(), SetAnchor(owner, x, z)
+--   battle:Time(), IsFinished(), Owners(), BossStatus() (+ Tier, Lethal = a lethal telegraph is pending), SetAnchor(owner, x, z)
 --   BattleSim.States = { Idle 0, Moving 1, Attacking 2, Benched 3, Casting 4, Down 5, Stunned 6, Dashing 7 }  (Winding = Attacking + windup bit)
 --   BattleSim.Events = { Hit, Special, KO, Telegraph, Spawn, Enrage, Order, Zone, Leave, End, Element, Dash, Buff, Swap, Windup, Wave,
 --                        EnemiesDown, Speed, Engage, Parry, Cheer }
 -- Event shapes:
 --   Engage     { owner, unit (the fighter), on = true, target }  /  { owner, unit, on = false }   (only the FOLLOW / ENGAGED flips)
 --   Hit        { from, to, dmg, elem, crit, absorbed, miss = true (dodged), burn = true, leech = n, element = name, special = kind,
---                tele, zone, attack, buffDmg = true }
+--                tele, zone, attack, buffDmg = true, lethal = true (the enraged boss's lethal attack: dmg = the whole HP + shield, a KO follows) }
 --   Special    { unit, kind, name, x, z, tx, tz, target, targets, heals, shields, stunned, angle }
---   KO         { unit, by, forfeit }          Telegraph { id, boss, name, attack, shape, x, z, r | angle + length + width, at, hits, freeze, linger }
+--   KO         { unit, by, forfeit }          Telegraph { id, boss, name, attack, shape, x, z, r | angle + length + width, at, hits, freeze, linger, lethal = true }
 --   Spawn      { units, wave, boss, owner }   Enrage { unit }      Zone { unit, kind, x, z, r, seconds, side }     Leave { owner, units }
 --   Order      { owner, order, target, rejected }   (every refused command echoes `rejected`; Attack / Target / Forfeit echo when accepted)
 --   Element    { unit, element, name, x, z, angle | tx, tz, targets }
@@ -961,7 +962,7 @@ function BattleSim:_bossMaxHp()
 		end
 	end
 	if bc and bc.BossHp then
-		local hp = bc.BossHp(self.bossId, specs)
+		local hp = bc.BossHp(self.bossId, specs, self.raidTier)
 		if finite(hp) and hp > 0 then
 			return hp
 		end
@@ -1021,7 +1022,7 @@ function BattleSim:_refreshRaidScale()
 	for _, u in ipairs(self.units) do
 		if u.kind == "Minion" and u.alive then
 			local rules = (catalog() and catalog().BossRules) or {}
-			u.hit = num(rules.MinionDamage, 0.05) * bossBasis(self, { maxHp = self.avgPetHp })
+			u.hit = num(rules.MinionDamage, 0.05) * bossBasis(self, { maxHp = self.avgPetHp }) * (self.boss and self.boss.tierHit or 1)
 		end
 	end
 end
@@ -1038,6 +1039,7 @@ local function makeBoss(self, bossId)
 	self.teams[#self.teams + 1] = team
 	self.teamByOwner["boss"] = team
 	self.bossId = bossId
+	local tier = bc.RaidTierById(self.raidTier)
 	local hp = self:_bossMaxHp()
 	local attacks = {}
 	for i, a in ipairs(def.Attacks or {}) do
@@ -1065,7 +1067,7 @@ local function makeBoss(self, bossId)
 		moveSpeed = 0,
 		range = num(def.Basic and def.Basic.Range, 14),
 		ranged = true,
-		radius = num(def.Radius, 7),
+		radius = num(def.Radius, 7) * tier.Scale,
 		specialPower = 0,
 		special = nil,
 		powerMult = 1,
@@ -1091,9 +1093,12 @@ local function makeBoss(self, bossId)
 		damage = 0,
 		kills = 0,
 		attacks = attacks,
+		lethal = def.Lethal and { def = def.Lethal, nextAt = huge } or nil, -- cast only while enraged (bossStep)
 		wavesDone = {},
 		enraged = false,
-		damageMult = 1,
+		tierId = tier.Id,
+		tierHit = tier.Hit,
+		damageMult = tier.Hit,
 		cooldownMult = 1,
 		attackUntil = 0,
 		dashUntil = 0,
@@ -1143,6 +1148,7 @@ function BattleSim.new(setup)
 	self.rngState = seedState(self.seed)
 	self.t = 0
 	self.stepCount = 0
+	self.raidTier = (bc and bc.RaidTierById and bc.RaidTierById(setup.RaidTier) and setup.RaidTier) or "High"
 	self.zone = parseZone(mode, setup.Zone)
 	self.teams = {}
 	self.teamByOwner = {}
@@ -1334,12 +1340,21 @@ function BattleSim:BossStatus()
 	if not b then
 		return nil
 	end
+	local lethal = false
+	for _, tele in ipairs(self.telegraphs) do
+		if tele.boss == b and tele.lethal then
+			lethal = true
+			break
+		end
+	end
 	return {
 		BossId = self.bossId,
+		Tier = b.tierId,
 		Name = b.name,
 		Hp = max(0, floor(b.hp + 0.5)),
 		MaxHp = floor(b.maxHp + 0.5),
 		Enraged = b.enraged,
+		Lethal = lethal,
 		EndsIn = max(0, self.timeLimit - self.t),
 		Players = self:_playerTeams(),
 	}
@@ -2413,7 +2428,7 @@ local function startTelegraph(self, boss, entry, events)
 	for _, shape in ipairs(shapes) do
 		local id = self.nextTelegraphId
 		self.nextTelegraphId = id + 1
-		local tele = { id = id, boss = boss, attack = a, at = at, shape = a.Shape, x = shape.x, z = shape.z, angle = shape.angle, length = shape.length, width = shape.width, r = shape.r }
+		local tele = { id = id, boss = boss, attack = a, at = at, shape = a.Shape, x = shape.x, z = shape.z, angle = shape.angle, length = shape.length, width = shape.width, r = shape.r, lethal = a.Lethal == true or nil }
 		self.telegraphs[#self.telegraphs + 1] = tele
 		local ev = {
 			type = EV.Telegraph,
@@ -2440,9 +2455,26 @@ local function startTelegraph(self, boss, entry, events)
 		if finite(a.Linger) then
 			ev.linger = a.Linger
 		end
+		if tele.lethal then
+			ev.lethal = true
+		end
 		events[#events + 1] = ev
 	end
 	return true
+end
+
+-- the lethal attack: the whole remaining HP + shield, past Defense, elements and every other multiplier
+local function lethalHit(self, boss, e, events, teleId, attackId)
+	if e.arriveUntil and self.t < e.arriveUntil then
+		return
+	end
+	local dealt = e.hp + e.shield
+	boss.damage = boss.damage + dealt
+	boss.team.damage = boss.team.damage + dealt
+	e.threat = boss
+	e.threatAt = self.t
+	events[#events + 1] = { type = EV.Hit, from = boss.id, to = e.id, dmg = floor(dealt + 0.5), tele = teleId, attack = attackId, lethal = true }
+	knockOut(self, e, boss, events)
 end
 
 local function resolveTelegraph(self, tele, events)
@@ -2465,6 +2497,8 @@ local function resolveTelegraph(self, tele, events)
 				missEvent(self, boss, e, events, { tele = tele.id, attack = a.Id, parry = true })
 			elseif inIFrames(self, e) then
 				missEvent(self, boss, e, events, extra)
+			elseif tele.lethal then
+				lethalHit(self, boss, e, events, tele.id, a.Id)
 			else
 				if finite(a.Freeze) then
 					if applyStun(self, e, a.Freeze) then
@@ -2521,7 +2555,7 @@ local function spawnMinions(self, boss, wave, waveIndex, events)
 		u.name = (def.Minions and def.Minions.Name) or petDef.Name
 		u.maxHp = num(rules.MinionHp, 0.9) * self.avgPetHp
 		u.hp = u.maxHp
-		u.hit = num(rules.MinionDamage, 0.05) * bossBasis(self, { maxHp = self.avgPetHp })
+		u.hit = num(rules.MinionDamage, 0.05) * bossBasis(self, { maxHp = self.avgPetHp }) * boss.tierHit
 		u.interval = num(rules.MinionInterval, 1.4)
 		u.specialPower = 0
 		u.specialKind = nil
@@ -2548,12 +2582,15 @@ local function bossStep(self, boss, events)
 	end
 	local def = boss.boss
 	local t = self.t
-	if not boss.enraged and finite(def.EnrageAt) and t >= def.EnrageAt then
-		local rules = (catalog() and catalog().BossRules) or {}
-		local en = type(rules.Enrage) == "table" and rules.Enrage or { Damage = 2, Cooldown = 0.7 }
+	local rules = (catalog() and catalog().BossRules) or {}
+	if not boss.enraged and boss.hp / boss.maxHp <= num(rules.EnrageAt, 0.3) then
+		local en = type(rules.Enrage) == "table" and rules.Enrage or { Damage = 2, Cooldown = 0.7, LethalFirst = 4 }
 		boss.enraged = true
-		boss.damageMult = num(en.Damage, 2)
+		boss.damageMult = boss.tierHit * num(en.Damage, 2)
 		boss.cooldownMult = num(en.Cooldown, 0.7)
+		if boss.lethal then
+			boss.lethal.nextAt = t + num(en.LethalFirst, 4)
+		end
 		events[#events + 1] = { type = EV.Enrage, unit = boss.id }
 	end
 	local waves = def.Minions and def.Minions.Waves
@@ -2595,6 +2632,16 @@ local function bossStep(self, boss, events)
 			pendingForBoss = true
 			break
 		end
+	end
+	-- the lethal goes first: nothing else is pending when it starts and nothing else starts while it is (its warning is
+	-- longer than the dash cooldown and any freeze, so the Dash is always ready for it)
+	local lethal = boss.lethal
+	if not pendingForBoss and lethal and t >= lethal.nextAt then
+		if startTelegraph(self, boss, lethal, events) then
+			boss.state = S_CASTING
+			pendingForBoss = true
+		end
+		lethal.nextAt = t + num(lethal.def.Cooldown, 22) * boss.cooldownMult
 	end
 	if not pendingForBoss then
 		for _, entry in ipairs(boss.attacks) do
