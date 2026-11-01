@@ -3006,6 +3006,9 @@ local function toStored(p)
 	end
 	if not P3.isDefaultBattle(p.Battle) then
 		rec.Battle = P3.encodeBattle(p.Battle)
+		-- (a reward clock never started is left out: a save from before the raid clocks stays as it was until the first paid fight)
+		rec.Battle.RaidRewardAt = rec.Battle.RaidRewardAt > 0 and rec.Battle.RaidRewardAt or nil
+		rec.Battle.RaidLossAt = rec.Battle.RaidLossAt > 0 and rec.Battle.RaidLossAt or nil
 	end
 	-- Phase 4: left out while empty / default (zero numbers inside growth entries left out too)
 	if next(p.PetGrowth) ~= nil then

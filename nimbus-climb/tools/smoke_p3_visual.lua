@@ -180,7 +180,7 @@ local function serverScenarios()
 
 		-- the event board shows the live boss's HP as a bar (in the Double Rewards pill's slot)
 		if AB.ApplyArenaState then
-			AB.ApplyArenaState({ Raid = { Active = true, BossId = "lava_golem", Hp = 61000, MaxHp = 90000, Players = 3, EndsIn = 200 }, Leaderboard = {} })
+			AB.ApplyArenaState({ Raid = { Active = true, BossId = "lava_golem", FloorTier = "High", Fights = { High = { Tier = "High", Floor = true, Hp = 61000, MaxHp = 90000, Players = 3, EndsIn = 200 } } }, Leaderboard = {} })
 			local bar = find(model, "RaidHpBar")
 			local fill = bar and bar:FindFirstChild("Fill")
 			T.check(bar and bar.Visible and fill and abs(fill.Size.X.Scale - 61000 / 90000) < 0.01, "visual arena: the event board draws the raid boss's HP bar",
