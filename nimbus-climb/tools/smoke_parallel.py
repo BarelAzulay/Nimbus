@@ -183,8 +183,9 @@ def merge(parts, repeated):
 
 
 def comparable(name):
-    """A check's name without what changes between any two runs: measured numbers, table addresses, a randomly picked word."""
-    return re.sub(r"0x[0-9a-f]+|-?\d+(\.\d+)?", "N", re.sub(r"\([A-Z][a-z]+\)$", "(word)", name))
+    """A check's name without what changes between any two single runs: measured numbers, table addresses, and the closing
+    bracket, where checks print what they saw (a picked word, a random payload)."""
+    return re.sub(r"0x[0-9a-f]+|-?\d+(\.\d+)?", "N", re.sub(r"\([^()]*\)$", "(seen)", name))
 
 
 def compare(merged, base_path):

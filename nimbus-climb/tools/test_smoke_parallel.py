@@ -111,6 +111,8 @@ def main():
         same, _ = quiet_compare([rec("ok", "a", "plot of his own (#7) 0x02f"), rec("ok", "a", "Easy: set (Zigzag)"), rec("ok", "b", "gone")], single)
         check(same, "measured numbers, addresses and a picked word do not count as a difference")
         check(P.comparable("at its Speed (-12 deg/s)") == P.comparable("at its Speed (30.5 deg/s)"), "a measured number's sign does not count as a difference")
+        check(P.comparable("shows '*' (a=1:2*;b=3:4)") == P.comparable("shows '*' (a=1:2;b=3:4*)"), "a random payload in the closing bracket does not count as a difference")
+        check(P.comparable("check one (x)") != P.comparable("check two (x)"), "the words outside the bracket still count")
         same, text = quiet_compare([rec("ok", "a", "plot of his own (#3) 0x01a"), rec("ok", "a", "Easy: set (Serpent)")], single)
         check(not same and "gone" in text, "a check missing from the parallel run is a difference, and is named")
         same, text = quiet_compare([rec("ok", "a", "plot of his own (#3) 0x01a"), rec("ok", "a", "Easy: set (Serpent)"), rec("fail", "b", "gone")], single)
