@@ -631,6 +631,12 @@ Nobody gets weaker: every evolved pet is a little stronger than before. The bonu
 EVOLVE (never from the level alone), so every pet gets its own big moment. Evolutions are kept through Prestige and
 fusion, and a star on the pet's card shows them (★ / ★★). Not during a battle.
 
+**Evolved pets reach farther and hit bigger:** every evolution makes a pet's abilities really cover more ground, **Reach +15%**
+after the first and **+30%** in total after the second (the Pets window says so). That counts for the radius of Blast, Storm and
+Freeze, the length and width of Beam, the range of Pounce and the size of the element attack; how long things last, their damage
+and a cone's angle stay the same. Their effects grow with them, x1.15 and x1.3, on top of the size their rarity gives (Common
+x1.3 up to Secret x1.6). NPC and enemy pets follow the same rule by their own evolution.
+
 **Evolved pets look evolved everywhere:** following you, roaming your garden, on the Pet Podium, in the Pets window,
 the Pet Index (your best stage), the Pets window, the Fusion window, the Food Machine and Training lists, the roulette
 reveal, the Champion Ring window and in every battle (your fighter and your helpers' pictures).
@@ -910,7 +916,11 @@ them and train their skills at the Training Place.
   around the target), **Heal** (restores a big chunk of health), **Shield** (soaks up damage for a few seconds),
   **Storm** (a storm cloud that hurts enemies under it), **Pounce** (a dash and one heavy strike), **Freeze** (enemies
   around the target cannot move or attack for a moment), **Beam** (hits every enemy in a line), **Rally** (+35 %
-  damage) and **Haste** (35 % faster).
+  damage) and **Haste** (35 % faster). Evolved pets reach farther (+15 %, then +30 %: see
+  [Evolution](#evolution-the-evolve-button)).
+- **The look of a hit:** every hit from every pet lands with a shockwave ring, a flash, sparks and a ground mark, stronger at
+  higher rarities. Scorch marks, embers and storm zones stay on the ground a moment after they end (up to 2 seconds), dim and
+  still: a dim mark is over and cannot hurt you. Graphics **Low** keeps it simple: no sparks and no lingering marks.
 - **The screen:** top-left your fighter's card (name, level, health bar, ENERGY bar and three hearts for the lives)
   with the two helper pictures under it (cooldown rings, the buff's name, SWAP); on the right one row per enemy (the
   picked one first); a boss bar at the top; the action buttons at the bottom right. Nothing covers the middle of the
@@ -957,7 +967,7 @@ You need a pet; you do not need a home.
   blocks that fall away to reveal the Entrance Hall (any key, click or tap skips). After each door you walk into the
   room together (the camera in front of you, any key skips) and the fight starts when the first of you crosses the line
   inside the door; nobody waits more than 3 seconds. Your pets follow you the whole time, and the camera sits a little
-  over your shoulder (big attacks punch the view, hits shake it; the Camera shake setting turns off only the hit shakes: the rush, the
+  over your shoulder (big attacks punch the view, hits shake it, and in every battle your own attacks give a short camera kick; the Camera shake setting turns off only the hit shakes and the camera kick: the rush, the
   walk-in and the punch are short, skippable and always play). Every room has 2-3 waves (floor 1: one, two and then three single enemies, so three level-1 Commons win the first room and
   about half of the second, and three level-7 Commons clear the floor); every wave arrives in a flash of light (for a moment it cannot be hit and does not attack). When a room is
   clear its exit opens: go to the next door and press `E` (the whole party presses it, then the screen fades into the
@@ -1230,7 +1240,7 @@ never drops below 14 px on a phone.
   seconds), then the **main menu** over a slow flight around the Gate Court: **PLAY**, **SETTINGS** and **UPDATES**
   (with a NEW badge when there is something new). Your character only appears when you press PLAY.
 - **Settings** (in the main menu, and later from the **Settings** tile): Music and Sound volume (0-10), Graphics
-  (**Auto**, **Low** for slow phones and PCs, **High**), Camera shake (on / off: the small shakes when you are hit; the dungeon's entrance rush, walk-in and big-attack
+  (**Auto**, **Low** for slow phones and PCs, **High**), Camera shake (on / off: the small shakes when you are hit and the short camera kick on your own attacks; the dungeon's entrance rush, walk-in and big-attack
   zoom are not shakes and always play) and **Mouse lock** (on / off, or
   press `L`: the cursor stays in the middle of the screen and the mouse turns the camera; windows free it). They
   apply at once and are saved with your profile.

@@ -10,6 +10,7 @@
 -- enemy waves, the Ring champion, raid minions) have every pet on the floor, driven by the AI: threat target, melee
 -- orbit, a WIND-UP (Winding, 0.45 s) before every hit so the 0.35 s dash i-frames can dodge it. Bosses keep their
 -- telegraphed patterns, minion waves and enrage. Every number lives in BattleCatalog / PetCatalog.
+-- 2026-11-01: docs/superpowers/specs/2026-11-01-attack-fx-design.md (a unit's areas are catalog x reachOf(u), its stage through stageOf(u)).
 --
 -- API (the contract):
 --   BattleSim.new(setup) -> battle | nil, reason

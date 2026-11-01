@@ -3,6 +3,7 @@
 -- quality, readability"; plan docs/superpowers/plans/2026-10-23-pet-attack-vfx.md Task 6). Client only: every
 -- instance is local, nothing replicates. BattleController (Task 7) calls Play from its attack handlers and keeps its
 -- cube Fx.* call as the fallback whenever Play returns false. Plain Lua 5.1-compatible syntax only.
+-- 2026-11-01: docs/superpowers/specs/2026-11-01-attack-fx-design.md (areas drawn as they hit, clouds capped, tails, the kick).
 --
 -- API:
 --   AttackFx.Play(ctx) -> bool     false = not played (the caller draws its cube Fx.* instead): unknown attack /

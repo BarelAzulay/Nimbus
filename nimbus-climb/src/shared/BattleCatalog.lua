@@ -8,7 +8,8 @@
 -- BALANCE: tuned with tools/sim_battle.lua (lupa, see tools/README.md): Support DPS ratio ~0.7, mirror duels 40-60%
 -- with no timeouts, raids 100-240 s for 1 / 4 / 8 / 16 fighters, the no-heal Ring stage medians (S1 13 .. S10 51),
 -- the dungeon ladder (floor 1 for any single level-1 pet, S10 >= floor 10). Change a number -> re-run the sim; the
--- smoke scenarios (tools/smoke_p5_battlecore.lua) check the basics.
+-- smoke scenarios (tools/smoke_p5_battlecore.lua) check the basics. 2026-11-01 (attack effects spec, real reach): full sim 64 of 64
+-- targets, one number moved: Frost Wyrm HpPerPlayer 100 -> 108.
 --
 -- Stat sources: BattleStatsOf(subject, level, tier, stage), the battle-only path (2026-10-31: level beats rarity), scales
 -- Power / Health by BattleStats.RarityScale, BattleLevelFactor(level, stage) and tier. PetCatalog.GetStats stays the garden's
@@ -1671,7 +1672,7 @@ BattleCatalog.Bosses = {
 		Name = "Frost Wyrm",
 		Element = "Frost",
 		Blurb = "A serpent of living ice. Flame pets melt its armour.",
-		HpPerPlayer = 100,
+		HpPerPlayer = 108, -- attack effects 2026-11-01: 100 -> 108, an evolved team's real reach took the trained solo from 101.6 s to 97.7 s, under the 100 s band (105-107 still missed in one of quick / full)
 		Radius = 7,
 		Scale = 1,
 		Basic = { Name = "Ice Spit", Interval = 2.2, Damage = 0.045, Range = 20 },

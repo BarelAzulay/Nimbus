@@ -2,6 +2,7 @@
 -- plan docs/superpowers/plans/2026-10-23-pet-attack-vfx.md Task 4). The single source of every effect's data: the
 -- AttackFx engine (client) and BattleController only PLAY what Resolve returns. Pure data + pure functions: no
 -- Instances, no services, no yields; safe on the server and the client. Plain Lua 5.1-compatible syntax only.
+-- 2026-11-01: docs/superpowers/specs/2026-11-01-attack-fx-design.md (bigger, an impact package for every hit, lingering marks, the kick).
 --
 -- Tables a designer tunes (each one mirrors a spec section):
 --   Bands / Sizes / StageBonus / SizeCap        "Rarity ladder": 4 bands (Common+Uncommon, Rare+Epic, Legendary+Mythic,

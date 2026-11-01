@@ -9,6 +9,8 @@
 --                      champion at Evo 2 reaches x1.3 like a player's pet
 --   afx_reach_timers   every Seconds / Stun / Cooldown of Specials, ElementAttacks and Buffs is the frozen literal: visuals last
 --                      longer in this spec, ability timers never move
+--   afx_docs           README.md says Reach +15% / +30% in its Evolution section and names the camera kick; tools/README.md names the
+--                      three smoke_afx_*.lua files
 -- Client world:
 --   client_afx_reach_draw    the event's numbers reach the drawing: the Blast ground ring peaks at r, the Beam stretches to its real
 --                            length and width, the element shapes; an old event with no numbers draws catalog x the unit's stage
@@ -416,6 +418,36 @@ local function serverScenarios()
 		end
 		T.check(BC.Damage.CastSeconds == 0.5, "afx timers: Damage.CastSeconds unchanged", tostring(BC.Damage.CastSeconds))
 		T.check(BC.Fighter.ElementCooldown == 7, "afx timers: Fighter.ElementCooldown unchanged", tostring(BC.Fighter.ElementCooldown))
+	end)
+
+	-- "rb": Windows text mode stops at byte 0x1A
+	local function readFile(rel)
+		for _, prefix in ipairs({ "", "../", "nimbus-climb/" }) do
+			local fh = io.open(prefix .. rel, "rb")
+			if fh then
+				local src = fh:read("*a")
+				fh:close()
+				return src
+			end
+		end
+		return nil
+	end
+
+	-- the player's guide and the tools guide say what this spec changed
+	S.afx_docs = guarded("afx_docs", function()
+		local readme = readFile("README.md")
+		local tools = readFile("tools/README.md")
+		if not T.check(readme ~= nil and tools ~= nil, "afx docs: README.md and tools/README.md load") then
+			return
+		end
+		local from = readme:find("### Evolution: the EVOLVE button", 1, true)
+		local to = from and readme:find("\n### ", from + 1, true)
+		local evolution = from and readme:sub(from, to or #readme) or ""
+		T.check(evolution:find("Reach +15%", 1, true) ~= nil and evolution:find("+30%", 1, true) ~= nil, "afx docs: the README's Evolution section says Reach +15% and +30%")
+		T.check(readme:find("camera kick", 1, true) ~= nil, "afx docs: the README names the camera kick")
+		for _, name in ipairs({ "smoke_afx_reach.lua", "smoke_afx_impact.lua", "smoke_afx_linger.lua" }) do
+			T.check(tools:find(name, 1, true) ~= nil, "afx docs: tools/README.md names " .. name)
+		end
 	end)
 
 	return S
