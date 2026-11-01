@@ -33,7 +33,7 @@
 --   pays the same tiers itself from the BattleEnded result, once per (battle, player): the record is marked first.
 -- ArenaState (remote, server -> client, one table): broadcast every BROADCAST_FAST s while a countdown (the last
 --   AnnounceSeconds) or a raid runs, else every BROADCAST_SLOW s, and to every player who joins:
---   { Next = { Kind, BossId, Name, StartsIn, Announced } | nil   (the soonest scheduled event)
+--   { Next = { Kind, BossId, Name, StartsIn, Announced } | nil   (the soonest event players are told about; the silent boss rotation is Raid.NextBoss)
 --     Raid = BattleService.GetRaidStatus() -> { BossId, Name, Active, BattleId, FloorTier, FloorHiddenIn, Fights, Closed } + NextBossIn,
 --            NextBoss (the rotation) | nil
 --     Double = { Active, EndsIn } | nil
@@ -493,7 +493,7 @@ local function nextEvent()
 	local best = nil
 	for _, slot in pairs(St.slots) do
 		local kind = KINDS[slot.Kind]
-		if kind and kind.Possible() and (not best or slot.At < best.At) then
+		if kind and not kind.Silent and kind.Possible() and (not best or slot.At < best.At) then
 			best = slot
 		end
 	end

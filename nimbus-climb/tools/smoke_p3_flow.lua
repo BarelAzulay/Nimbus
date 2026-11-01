@@ -1307,13 +1307,11 @@ S.p3flow_arrive = scenario("p3flow_arrive", function()
 		return #st.Leaderboard <= 10
 	end
 	local st = lastArenaState(ava, mark)
-	-- (the flows run late, when the game clock is large: Next is the soonest event of ANY kind, a scheduled Double
-	-- Rewards hour may come first; the raid's own countdown is NextRaid)
-	local nextOk = st and st.Next and (st.Next.Kind == "BossRaid" or st.Next.Kind == "DoubleRewards")
-	local raidNext = st and (st.NextRaid or (st.Next and st.Next.Kind == "BossRaid" and st.Next) or nil)
-	T.check(arenaShapeOk(st) and nextOk and (raidNext == nil or (type(raidNext.BossId) == "string" and type(raidNext.StartsIn) == "number")),
-		"flow arrive: a joining player gets ArenaState { Next = { Kind, StartsIn }, NextRaid = { BossId }, Raid, Double, Leaderboard }",
-		st and (plain(st.Next) .. " / NextRaid " .. plain(st.NextRaid)) or "none")
+	-- (Next is the soonest event players are told about; the silent boss rotation's countdown is Raid.NextBoss / NextBossIn)
+	local nextOk = st and st.Next and st.Next.Kind == "DoubleRewards"
+	T.check(arenaShapeOk(st) and nextOk and type(st.Raid) == "table" and type(st.Raid.NextBoss) == "string" and type(st.Raid.NextBossIn) == "number",
+		"flow arrive: a joining player gets ArenaState { Next = { Kind, StartsIn }, Raid = { NextBoss, NextBossIn }, Double, Leaderboard }",
+		st and (plain(st.Next) .. " / Raid " .. plain(st.Raid)) or "none")
 
 	-- ProfileSync: Teams + Battle (Phase 3)
 	local sa = lastSync(ava, mark)
