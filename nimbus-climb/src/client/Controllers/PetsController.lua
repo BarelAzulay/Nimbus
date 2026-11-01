@@ -90,6 +90,11 @@ local K = {
 	TOUCH = 44, -- screen px: the smallest tap target
 	PHONE_CHIPS = { 96, 116, 88 }, -- Sort, Auto-fill, Clear on a landscape phone's top row; they share what the close button leaves
 	PC_CARD = { 116, 170, 8 }, -- w, h, gap
+	POWER_W = 240, -- design px Team power needs beside the button columns (a big number at 24 px); with less (a tablet) the top row stacks
+	STACK_W = 446, -- design px of a stacked top row: Auto-fill + Clear + the three team buttons
+	STACK_CLEAR_W = 100, -- ... Clear's (or Undo's) part of it
+	WIDE_ROWS_W = 380, -- design px of the detail's rows: below this the two columns share them unevenly
+	WIDE_W = 1150, -- design px: from this window width the buttons and the detail take their full size
 	PHONE_CARD = { 104, 130, 6 },
 }
 
@@ -1160,6 +1165,21 @@ function H.touchSize()
 	return math.max(K.TOUCH, math.ceil(K.TOUCH / S.Scale))
 end
 
+-- the four rows in two columns. On PC the right column is the wider one under the full detail's width: 'Battle power' is the long
+-- label there and a pet's power the long number.
+function H.placeRows(x, y, totalW, rowH, gap, phone)
+	local leftW = math.floor((totalW - gap) / 2)
+	local rightW = leftW
+	if not phone and totalW < K.WIDE_ROWS_W then
+		leftW = math.floor((totalW - gap) * 0.41)
+		rightW = totalW - gap - leftW
+	end
+	for i, row in ipairs(ROWS) do
+		local right, line = (i - 1) % 2 == 1, math.floor((i - 1) / 2)
+		place(U.Rows[row[1]].Frame, right and x + leftW + gap or x, y + line * rowH, right and rightW or leftW, rowH)
+	end
+end
+
 function H.layoutDetail(w, h)
 	local d = U.D
 	local phone = S.Mode == "Phone"
@@ -1197,11 +1217,7 @@ function H.layoutDetail(w, h)
 			y = pic + 14
 		end
 		local rowX = (narrow or not phone) and pad or x
-		local rowW = math.floor((w - rowX - pad - 8) / 2)
-		for i, row in ipairs(ROWS) do
-			local col, line = (i - 1) % 2, math.floor((i - 1) / 2)
-			place(U.Rows[row[1]].Frame, rowX + col * (rowW + 8), y + line * 24, rowW, 24)
-		end
+		H.placeRows(rowX, y, w - rowX - pad, 24, 8, phone)
 		y = y + 2 * 24 + 2
 		if phone and not narrow then
 			y = math.max(y, pic + 12)
@@ -1217,11 +1233,7 @@ function H.layoutDetail(w, h)
 		d.Meta.TextWrapped = false
 		place(d.Xp.Root, pad, y + 66, textW, 26)
 		y = y + 98
-		local rowW = math.floor((textW - 12) / 2)
-		for i, row in ipairs(ROWS) do
-			local col, line = (i - 1) % 2, math.floor((i - 1) / 2)
-			place(U.Rows[row[1]].Frame, pad + col * (rowW + 12), y + line * 28, rowW, 28)
-		end
+		H.placeRows(pad, y, textW, 28, 12, phone)
 		y = y + 2 * 28 + 4
 	end
 	d.TextY = y
@@ -1309,33 +1321,59 @@ function H.layoutPC(W, H0)
 	local x0, gap = 20, 8
 	local slot = math.max(116, math.min(168, math.floor(H0 * 0.19)))
 	local top = 4
-	local presetW, buttonW = 192, W >= 1150 and 190 or 160
-	for i, item in ipairs(U.Slots) do
-		place(item.Button, x0 + (i - 1) * (slot + gap), top, slot, slot)
-		H.layoutSlot(item, slot, slot)
-		item.Tag.Visible = true
-	end
+	local presetW, buttonW = 192, W >= K.WIDE_W and 190 or 160
 	local right = W - x0
 	local presetX = right - presetW
 	local buttonX = presetX - 12 - buttonW
 	local powerX = x0 + 3 * (slot + gap) + 4
 	local powerW = buttonX - 12 - powerX
-	U.TeamPower.TextSize = powerW >= 250 and 28 or 24
-	place(U.TeamPower, powerX, top + 8, powerW, 36)
-	place(U.Breakdown, powerX, top + 50, powerW, slot - 54)
-	U.Breakdown.Visible = true
-	place(U.AutoFill, buttonX, top + 8, buttonW, 60)
-	place(U.Clear, buttonX, top + 80, buttonW, 60)
-	U.AutoFill.TextSize, U.Clear.TextSize, U.Undo.TextSize = 22, 20, 22
-	for i, button in ipairs(U.Presets) do
-		place(button, presetX + (i - 1) * 66, top + 8, 60, 60)
-		button.TextSize = 26
+	-- a tablet has no room for Team power between the slots and the two button columns: power and breakdown go on top, the buttons
+	-- in one row under them, and the slots give up what that row still lacks
+	local stacked = powerW < K.POWER_W
+	U.TopStacked = stacked
+	if stacked then
+		slot = math.max(116, math.min(slot, math.floor((right - K.STACK_W - 4 - x0) / 3) - gap))
+		powerX = x0 + 3 * (slot + gap) + 4
+		powerW = right - powerX
 	end
-	place(U.Undo, presetX, top + 80, presetW, 60)
+	for i, item in ipairs(U.Slots) do
+		place(item.Button, x0 + (i - 1) * (slot + gap), top, slot, slot)
+		H.layoutSlot(item, slot, slot)
+		item.Tag.Visible = true
+	end
+	U.Breakdown.Visible = true
+	U.AutoFill.TextSize, U.Clear.TextSize, U.Undo.TextSize = 22, 20, 22
+	if stacked then
+		local barY = top + slot - 60
+		local clearW = K.STACK_CLEAR_W
+		local clearX = presetX - 8 - clearW
+		U.TeamPower.TextSize = 28
+		place(U.TeamPower, powerX, top, powerW, 34)
+		place(U.Breakdown, powerX, top + 34, powerW, barY - top - 34 - 2)
+		place(U.AutoFill, powerX, barY, clearX - 8 - powerX, 60)
+		U.AutoFill.TextSize = 20
+		place(U.Clear, clearX, barY, clearW, 60)
+		place(U.Undo, clearX, barY, clearW, 60)
+		for i, button in ipairs(U.Presets) do
+			place(button, presetX + (i - 1) * 66, barY, 60, 60)
+			button.TextSize = 26
+		end
+	else
+		U.TeamPower.TextSize = powerW >= 250 and 28 or 24
+		place(U.TeamPower, powerX, top + 8, powerW, 36)
+		place(U.Breakdown, powerX, top + 50, powerW, slot - 54)
+		place(U.AutoFill, buttonX, top + 8, buttonW, 60)
+		place(U.Clear, buttonX, top + 80, buttonW, 60)
+		for i, button in ipairs(U.Presets) do
+			place(button, presetX + (i - 1) * 66, top + 8, 60, 60)
+			button.TextSize = 26
+		end
+		place(U.Undo, presetX, top + 80, presetW, 60)
+	end
 	-- the well and the detail below
 	local bodyY = top + slot + 14
 	local bodyH = H0 - 62 - bodyY - 16
-	local detailW = W >= 1150 and 425 or 340
+	local detailW = W >= K.WIDE_W and 425 or 360
 	local wellW = W - 2 * x0 - detailW - 15
 	place(U.Well, x0, bodyY, wellW, bodyH)
 	U.Well.Visible = true
@@ -1647,8 +1685,8 @@ function H.refreshTop()
 	CloudUI.SetStyle(U.Clear, S.ClearArmed ~= 0 and "Red" or "Gray")
 	local undo = S.Undo ~= nil and not (phone and picking)
 	U.Undo.Visible = undo
-	if phone then
-		U.Clear.Visible = U.Clear.Visible and not undo
+	if phone or U.TopStacked then
+		U.Clear.Visible = U.Clear.Visible and not undo -- Undo sits in Clear's place
 	end
 	U.Sort.Text = S.Sort
 end

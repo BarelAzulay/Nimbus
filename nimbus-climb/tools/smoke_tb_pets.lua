@@ -15,6 +15,8 @@
 --                           target >= 44 px, the sheet over the grid (not the slots) with its actions at the bottom edge; the
 --                           menu tiles step aside; 667x375 and 640x360: the top row ends before the close button, labels fit;
 --                           a 1024x768 touch tablet: PC layout, touch controls off while open, targets >= 44 px
+--   client_tb_pets_fit      (every PC-layout screen, tablets first) Team power is whole and clear of the slots and the buttons, big numbers
+--                           too; the Breakdown and the buttons don't touch; 'Battle power' and the other rows keep a gap to their value
 -- Deterministic: mock clock only. The viewport, the attributes and the profile are restored at the end.
 -- Plain Lua 5.1 syntax only.
 
@@ -903,6 +905,106 @@ local function clientScenarios()
 			T.check(empty and H.shown(empty) and H.find(empty, "OpenShop") and H.shown(H.find(empty, "OpenShop")), "tb pets: no pets: the empty state with Open Shop")
 			H.feed()
 		end)
+	end)
+
+	-- the top row and the detail's rows on every PC-layout screen: a tablet is 981 design px wide, 1920x1080 is 1260
+	S.client_tb_pets_fit = guarded("client_tb_pets_fit", function()
+		local function touches(a, b)
+			local ap, as, bp, bs = a.AbsolutePosition, a.AbsoluteSize, b.AbsolutePosition, b.AbsoluteSize
+			return ap.X < bp.X + bs.X - 0.5 and bp.X < ap.X + as.X - 0.5 and ap.Y < bp.Y + bs.Y - 0.5 and bp.Y < ap.Y + as.Y - 0.5
+		end
+		-- (the mock's TextBounds are design px, AbsoluteSize is screen px under the window's UIScale)
+		local function checkSizes(tag, PC, touch, scale)
+			PC.Open({ Key = K2 })
+			KC.advance(0.5)
+			local win = H.win()
+			if not T.check(H.shown(win) and PC.Layout() == "PC", tag .. ": the PC layout", PC.Layout()) then
+				return
+			end
+			local power, breakdown = H.find(win, "TeamPower"), H.find(win, "TeamBreakdown")
+			local others = { "Slot3", "AutoFill", "ClearTeam", "PresetA", "PresetB", "PresetC", "Close" }
+			local function clear(obj, label, names)
+				local wp, ws = win.AbsolutePosition, win.AbsoluteSize
+				local op, os_ = obj.AbsolutePosition, obj.AbsoluteSize
+				T.check(op.X >= wp.X - 0.5 and op.X + os_.X <= wp.X + ws.X + 0.5, tag .. ": " .. label .. " inside the window", fmt("%.0f..%.0f in %.0f..%.0f", op.X, op.X + os_.X, wp.X, wp.X + ws.X))
+				for _, name in ipairs(names) do
+					local other = H.find(win, name)
+					if other and H.shown(other) then
+						T.check(not touches(obj, other), tag .. ": " .. label .. " clear of " .. name, fmt("%s at %.0f,%.0f %.0fx%.0f; %s at %.0f,%.0f %.0fx%.0f", label, op.X, op.Y, os_.X, os_.Y, name, other.AbsolutePosition.X, other.AbsolutePosition.Y, other.AbsoluteSize.X, other.AbsoluteSize.Y))
+					end
+				end
+			end
+			local real = power.Text
+			for _, text in ipairs({ real, "Team power 283,928" }) do
+				power.Text = text
+				T.check(H.shown(power) and power.TextBounds.X * scale <= power.AbsoluteSize.X - 1, tag .. ": '" .. text .. "' is whole", fmt("%.0f in %.0f", power.TextBounds.X * scale, power.AbsoluteSize.X))
+			end
+			power.Text = real
+			clear(power, "TeamPower", others)
+			clear(breakdown, "TeamBreakdown", { "Slot3", "AutoFill", "ClearTeam", "PresetA", "PresetB", "PresetC", "Close" })
+			T.check(breakdown.AbsoluteSize.Y >= 18, tag .. ": TeamBreakdown has a line at least", fmt("%.0f", breakdown.AbsoluteSize.Y))
+			T.check(breakdown.TextBounds.Y * scale <= breakdown.AbsoluteSize.Y + 1, tag .. ": the breakdown fits its box", fmt("%.0f in %.0f", breakdown.TextBounds.Y * scale, breakdown.AbsoluteSize.Y))
+			clear(H.find(win, "AutoFill"), "AutoFill", { "Slot3", "ClearTeam", "PresetA", "Undo", "Close" })
+			clear(H.find(win, "ClearTeam"), "ClearTeam", { "Slot3", "PresetA", "Close" })
+			clear(H.find(win, "PresetC"), "PresetC", { "Close" })
+			for _, name in ipairs({ "AutoFill", "ClearTeam" }) do
+				local b = H.find(win, name)
+				T.check(b.TextBounds.X * scale <= b.AbsoluteSize.X - 2, tag .. ": " .. name .. " '" .. b.Text .. "' fits", fmt("%.0f in %.0f", b.TextBounds.X * scale, b.AbsoluteSize.X))
+			end
+			-- Clear's second tap and Undo keep their words and their room
+			Mock.Click(H.find(win, "ClearTeam"))
+			KC.advance(0.05)
+			local clearButton = H.find(win, "ClearTeam")
+			T.check(clearButton.TextBounds.X * scale <= clearButton.AbsoluteSize.X - 2 and clearButton.TextBounds.Y * scale <= clearButton.AbsoluteSize.Y - 2, tag .. ": '" .. clearButton.Text .. "' fits", fmt("%.0fx%.0f in %.0fx%.0f", clearButton.TextBounds.X * scale, clearButton.TextBounds.Y * scale, clearButton.AbsoluteSize.X, clearButton.AbsoluteSize.Y))
+			KC.advance(3.1)
+			Mock.Click(H.find(win, "AutoFill"))
+			KC.advance(0.1)
+			local undo = H.find(win, "Undo")
+			if T.check(H.shown(undo), tag .. ": Undo shows after Auto-fill best") then
+				clear(undo, "Undo", { "AutoFill", "PresetA", "PresetB", "PresetC", "Slot3", "Close" })
+				if H.shown(H.find(win, "ClearTeam")) then
+					T.check(not touches(undo, H.find(win, "ClearTeam")), tag .. ": Undo clear of ClearTeam")
+				end
+			end
+			H.feed()
+			KC.advance(6.5)
+			-- the rows: label and value on one line with a gap, with this pet's numbers and with big ones
+			local detail = H.find(win, "Detail")
+			local gapPx = 6 -- screen px
+			for _, row in ipairs({ { "Income", "$12.3K/s" }, { "Power", "123,456" }, { "Health", "123,456" }, { "Speed", "1,234" } }) do
+				local frame = H.find(detail, "Row_" .. row[1])
+				local label, value = frame and H.find(frame, "Label"), frame and H.find(frame, "Value")
+				if T.check(label and value and H.shown(frame), tag .. ": Row_" .. row[1] .. " shows") then
+					local real2 = value.Text
+					for _, text in ipairs({ real2, row[2] }) do
+						value.Text = text
+						T.check((label.TextBounds.X + value.TextBounds.X) * scale + gapPx <= frame.AbsoluteSize.X, tag .. ": '" .. label.Text .. "' keeps a gap to its value " .. text, fmt("%.0f + %.0f in %.0f", label.TextBounds.X * scale, value.TextBounds.X * scale, frame.AbsoluteSize.X))
+					end
+					value.Text = real2
+					local dp, ds, fp, fs_ = detail.AbsolutePosition, detail.AbsoluteSize, frame.AbsolutePosition, frame.AbsoluteSize
+					T.check(fp.X >= dp.X - 0.5 and fp.X + fs_.X <= dp.X + ds.X + 0.5, tag .. ": Row_" .. row[1] .. " inside the detail")
+				end
+			end
+			local a, b = H.find(detail, "Row_Income"), H.find(detail, "Row_Power")
+			T.check(not touches(a, b), tag .. ": the two columns of rows don't touch")
+			for _, target in ipairs(H.targets(win)) do
+				if touch then
+					T.check(target.AbsoluteSize.Y >= 44, tag .. ": " .. target.Name .. " >= 44 px", fmt("%.1f", target.AbsoluteSize.Y))
+				end
+			end
+			-- nothing falls off: the grid keeps at least three cards a row
+			local grid = H.find(win, "Grid")
+			T.check(grid.AbsoluteSize.X >= 3 * H.card(K1).AbsoluteSize.X, tag .. ": the grid keeps three cards a row", fmt("%.0f against %.0f", grid.AbsoluteSize.X, H.card(K1).AbsoluteSize.X))
+			PC.Close(true)
+			KC.advance(0.3)
+		end
+		for _, size in ipairs({ { 1024, 768, true }, { 1024, 768, false }, { 1080, 810, true }, { 1112, 834, true }, { 1180, 820, true }, { 960, 640, false }, { 1280, 720, false }, { 1366, 768, false }, { 1600, 900, false }, { 1920, 1080, false }, { 2560, 1440, false } }) do
+			local tag = fmt("tb pets fit %dx%d", size[1], size[2])
+			H.at(size[1], size[2], size[3], "client_tb_pets_fit", function(PC)
+				checkSizes(tag, PC, size[3], H.req("shared/Theme").ScreenFactor(size[2]))
+			end)
+		end
+		KC.flushErrors("client_tb_pets_fit")
 	end)
 
 	S.client_tb_pets_phone = guarded("client_tb_pets_phone", function()
