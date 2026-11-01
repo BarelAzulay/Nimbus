@@ -46,7 +46,8 @@ BattleCatalog numbers and report it. Add a pin: an evolved pet's area is larger 
 
 ## Non-goals
 
-- Longer ability timers, new abilities, new effects per evolution stage.
+- Longer ability timers.
+- Evolved forms. The owner then added that evolving must grant a better ability: "stormfang's special is now pounce, evolved makes it shadow storm wolfs charge at the enemy, last evolve makes them even cooler with lightning". That is being pitched and gets its own spec, built on top of this one. So read a unit's stage and reach through one function each, so forms can plug in later, and don't build forms here.
 - New textures or meshes: use the existing `fx_*` textures and `vfx_*` meshes. Any new visible model or texture would be made in Blender and uploaded by the keyed session.
 - Raids: built separately on branch `raid-boss`. Stay out of its fight service. It adds a lethal telegraph and may touch `BattleSim`'s boss code, so keep your `BattleSim` change small and easy to merge.
 
