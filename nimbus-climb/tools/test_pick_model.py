@@ -66,8 +66,8 @@ class RealValues(unittest.TestCase):
         expected = {
             "game-feature": ((OPUS, "high"), (FABLE, "high")),
             "saves": ((FABLE, "high"), (FABLE, "xhigh")),
-            "money": ((OPUS, "high"), (FABLE, "xhigh")),
-            "security": ((OPUS, "high"), (FABLE, "xhigh")),
+            "money": ((FABLE, "high"), (FABLE, "xhigh")),
+            "security": ((FABLE, "high"), (FABLE, "xhigh")),
             "balance": ((OPUS, "medium"), (FABLE, "medium")),
             "effects-gui": ((OPUS, "high"), (FABLE, "medium")),
             "pitch": ((FABLE, "high"), None),
@@ -147,8 +147,8 @@ class RaisingNeverLowers(unittest.TestCase):
 class Floors(unittest.TestCase):
     FLOORS = {
         "saves": ((FABLE, "high"), (FABLE, "xhigh")),
-        "money": ((OPUS, "high"), (FABLE, "xhigh")),
-        "security": ((OPUS, "high"), (FABLE, "xhigh")),
+        "money": ((FABLE, "high"), (FABLE, "xhigh")),
+        "security": ((FABLE, "high"), (FABLE, "xhigh")),
     }
 
     def test_those_jobs_never_route_below_the_floor(self):
@@ -181,6 +181,11 @@ class Floors(unittest.TestCase):
         # spec section 3 and 3.1: data, security and money tasks go to Fable in a whole build
         for kind in self.FLOORS:
             self.assertEqual(P.stages(kind, ())["build"], (FABLE, "high"), kind)
+
+    def test_a_stage_picked_with_job_matches_the_same_stage_of_a_build(self):
+        for kind in self.FLOORS:
+            for flags in flag_sets():
+                self.assertEqual(P.route(kind, flags)["builder"][0], P.stages(kind, flags)["build"][0], (kind, flags))
 
 
 class Levels(unittest.TestCase):

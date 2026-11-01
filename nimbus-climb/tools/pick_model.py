@@ -37,11 +37,11 @@ JOBS = {
         "Saves and player data: a bad save is live data and hard to undo; fixtures only hold the cases someone thought of.",
         up=["saves"]),
     "money": _job(
-        (OPUS, "high"), (FABLE, "xhigh"), "xhigh", "sim_tycoon.py ALL TARGETS MET",
+        (FABLE, "high"), (FABLE, "xhigh"), "xhigh", "sim_tycoon.py ALL TARGETS MET",
         "Money and rewards: a double payout is live, visible and cannot be undone; Fable gates the once-per-member rules.",
         up=["money"]),
     "security": _job(
-        (OPUS, "high"), (FABLE, "xhigh"), "xhigh", "the adversarial review itself: it plays the exploiter",
+        (FABLE, "high"), (FABLE, "xhigh"), "xhigh", "the adversarial review itself: it plays the exploiter",
         "Security of remotes: no test plays an exploiter, so the reviewer must.",
         up=["security"]),
     "balance": _job(
@@ -114,8 +114,8 @@ def _flag(help_text, builder=_UP_BUILDER, reviewer=_UP_REVIEWER, item=None, forc
 # Spec section 2. item = the Up item it belongs to: the whole-job level counts items, not flags. None = route only.
 FLAGS = {
     "saves": _flag("touches saves or player data", (FABLE, "high"), _REVIEW_XHIGH, item="live-data"),
-    "money": _flag("touches money or rewards", (OPUS, "high"), _REVIEW_XHIGH, item="live-data"),
-    "security": _flag("touches remote security", (OPUS, "high"), _REVIEW_XHIGH, item="live-data"),
+    "money": _flag("touches money or rewards", (FABLE, "high"), _REVIEW_XHIGH, item="live-data"),
+    "security": _flag("touches remote security", (FABLE, "high"), _REVIEW_XHIGH, item="live-data"),
     "live": _flag("touches live data", item="live-data"),
     "hard-to-undo": _flag("hard to undo: uploads, merges to main, schema changes, anything players keep", item="hard-to-undo"),
     "many-systems": _flag("many systems at once: a wave with 4+ owners", item="many-systems"),
@@ -184,8 +184,6 @@ def stages(kind, flags=()):
     plan = {"easy": None, "medium": (OPUS, "medium")}.get(lvl, (FABLE, "high"))
     plan = _join(up(plan), _REVIEW_XHIGH if lvl in ("xhigh", "ultracode") else None) if plan else got["builder"]
     build = got["builder"]
-    if (frozenset(flags) | JOBS[kind]["up"]) & {"saves", "money", "security"}:
-        build = _join(build, (FABLE, "high"))  # "data, security and money tasks go to Fable"
     if lvl == "ultracode":
         build = _join(build, (OPUS, "high"))
     review = _join(got["reviewer"], {"xhigh": _REVIEW_XHIGH, "ultracode": (FABLE, "max")}.get(lvl))
