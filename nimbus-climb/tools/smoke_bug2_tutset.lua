@@ -2,11 +2,11 @@
 -- the server world and the client world:
 --   bug2tut_raidstep      (server, #24 "the tutorial tells a new player to wait 20 min for the boss raid") the raid step
 --                         (index 18) is informational: its payload has AlsoNext + "Got it!" and a hint without a raid
---                         countdown; standing at the forum with no raid it waits; stepping onto the Boss Raid floor
---                         completes it (chapter 3 reward paid once, no bonus toast without a raid); "Next" completes it
---                         for a player anywhere; "Next" is still refused on a step without AlsoNext ("team"); a stored
---                         mid-step profile (Step 18, Done) whose player already stands on the floor finishes on load (not
---                         stuck); a live raid seen in the arena completes it with the "Bonus!" toast
+--                         countdown; standing at the forum it waits; stepping into the boss gate completes it, also for a
+--                         player the gate refuses (chapter 3 reward paid once); "Next" completes it for a player anywhere;
+--                         "Next" is still refused on a step without AlsoNext ("team"); a stored mid-step profile (Step 18,
+--                         Done) whose player already stands at the gate finishes on load (not stuck); somebody else's fight
+--                         on the floor completes nothing, no bonus toast (the boss is always there)
 --   bug2tut_mousedata     (server, #21 "mouse lock on gameplay") Settings.MouseLock: a new profile is true (kept out of the
 --                         store while default); a stored Settings table WITHOUT MouseLock (saved before the option) loads
 --                         as true; a stored false WITHOUT the P5MouseLock marker (the old default written along with
@@ -95,6 +95,7 @@ local function serverScenarios()
 		end
 		local forum = info.Spawn * CFrame.new(0, 3, 0)
 		local onFloor = info.Floor.CFrame * CFrame.new(12, 3, -10)
+		local atGate = info.Gate.CFrame * CFrame.new(0, 3, 0)
 		local src = K.moduleInstance("server/Services/TutorialService")
 		local reward = 500
 		do
@@ -110,25 +111,29 @@ local function serverScenarios()
 		onStep(p, RAID)
 		T.eq(stepId(p), "raid", "bug2 raid step: (setup) a player on 'raid', at the arena forum")
 		local st = TSv.GetState(p)
-		T.check(st and st.AlsoNext == true and st.Button == "Got it!" and st.CompleteOn == "RaidFloor",
-			"bug2 raid step: the payload has AlsoNext + a 'Got it!' button (CompleteOn RaidFloor)", st and (tostring(st.CompleteOn) .. " / " .. tostring(st.AlsoNext)))
+		T.check(st and st.AlsoNext == true and st.Button == "Got it!" and st.CompleteOn == "RaidGate",
+			"bug2 raid step: the payload has AlsoNext + a 'Got it!' button (CompleteOn RaidGate)", st and (tostring(st.CompleteOn) .. " / " .. tostring(st.AlsoNext)))
 		T.check(st and type(st.Hint) == "string" and not st.Hint:find("min", 1, true) and not st.Hint:find("Next Boss Raid", 1, true),
 			"bug2 raid step: the hint has no raid countdown", st and tostring(st.Hint))
-		T.check(st and tostring(st.Text):find("the board shows the timer", 1, true) ~= nil, "bug2 raid step: the text says the board shows the raid timer", st and tostring(st.Text))
+		T.check(st and tostring(st.Text):find("always waits", 1, true) ~= nil, "bug2 raid step: the text says the boss always waits", st and tostring(st.Text))
 		advance(2.5)
-		T.eq(stepId(p), "raid", "bug2 raid step: no raid, not on the floor: it waits")
+		T.eq(stepId(p), "raid", "bug2 raid step: not at the gate: it waits")
+		Mock.Teleport(p, onFloor)
+		advance(2.5)
+		T.eq(stepId(p), "raid", "bug2 raid step: the floor alone is not the gate: it waits")
 
-		-- 2. stepping onto the raid floor completes it (the reward once, no bonus without a raid)
+		-- 2. stepping into the boss gate completes it, even for a player the gate refuses (the empty team: no fight)
 		local tokens0 = DataS.GetTokens(p)
 		local mark = K.logSize()
-		Mock.Teleport(p, onFloor)
+		Mock.Teleport(p, atGate)
 		waitFor(function()
 			return stepId(p) ~= "raid"
 		end, 3)
 		st = TSv.GetState(p)
-		T.check(st and st.Step == NEXT and st.Chapter == 4, "bug2 raid step: standing on the Boss Raid floor completes 'raid' (on to chapter 4)", st and tostring(st.Id))
+		T.check(st and st.Step == NEXT and st.Chapter == 4, "bug2 raid step: standing in the boss gate completes 'raid' (on to chapter 4)", st and tostring(st.Id))
 		T.eq(DataS.GetTokens(p) - tokens0, reward, "bug2 raid step: ...and pays the battle chapter's reward (" .. reward .. ") once")
-		T.check(not K.notified(p, "Bonus", nil, mark), "bug2 raid step: ...no bonus toast without a live raid")
+		T.check(not K.notified(p, "Bonus", nil, mark), "bug2 raid step: ...no bonus toast")
+		T.check(p:GetAttribute("InBattle") == nil, "bug2 raid step: ...an empty team stays out of the fight")
 		leave(p)
 
 		-- 3. Next completes it anywhere; Next on a step without AlsoNext is still refused
@@ -146,35 +151,39 @@ local function serverScenarios()
 		T.check(okTeam == false and stepId(q) == "team", "bug2 raid step: 'Next' is still refused on a step without AlsoNext", tostring(why))
 		leave(q)
 
-		-- 4. an existing profile stored mid-step (Step 18, Done) whose player stands on the floor finishes on load
+		-- 4. an existing profile stored mid-step (Step 18, Done) whose player stands at the gate finishes on load
 		local r = join("RaidStored")
-		Mock.Teleport(r, onFloor)
+		Mock.Teleport(r, atGate)
 		DataS.SetTeam(r, 1, {})
 		DataS.SetTutorial(r, { Step = RAID, Done = true, Gifted = true })
 		TSv.Reload(r)
 		waitFor(function()
 			return stepId(r) ~= "raid"
 		end, 2)
-		T.eq(stepId(r), Steps.Steps[NEXT].Id, "bug2 raid step: a profile saved on 'raid' (Step 18) is not stuck: on the floor it finishes on load")
+		T.eq(stepId(r), Steps.Steps[NEXT].Id, "bug2 raid step: a profile saved on 'raid' (Step 18) is not stuck: at the gate it finishes on load")
 		leave(r)
 
-		-- 5. a live raid seen in the arena: completes, with the bonus toast
-		local w = join("RaidBonus")
+		-- 5. somebody else's fight on the floor: the watcher's step goes on waiting, no bonus toast
+		local w = join("RaidWatcher")
 		Mock.Teleport(w, forum)
 		onStep(w, RAID)
 		T.eq(stepId(w), "raid", "bug2 raid step: (setup) a player on 'raid' at the forum")
+		local fighter = join("RaidFighter")
+		local fProfile = DataS.GetProfile(fighter)
+		fProfile.Pets.pebble_pup = (fProfile.Pets.pebble_pup or 0) + 1
+		DataS.MarkDirty(fighter)
+		DataS.SetTeam(fighter, 1, { "pebble_pup" })
+		Mock.Teleport(fighter, forum)
+		advance(0.1)
 		mark = K.logSize()
-		local okRaid = BS.StartRaid(nil)
-		waitFor(function()
-			return stepId(w) ~= "raid"
-		end, 3)
-		T.check(okRaid == true, "bug2 raid step: (setup) a raid opens")
-		T.eq(stepId(w), Steps.Steps[NEXT].Id, "bug2 raid step: a live raid seen in the arena completes 'raid' too")
-		T.check(K.notified(w, "Bonus", nil, mark), "bug2 raid step: ...with the 'Bonus!' toast")
-		pcall(BS.EndRaid)
-		waitFor(function()
-			return BS.GetRaidStatus() == nil
-		end, 20)
+		local okRaid = BS.EnterRaid(fighter)
+		T.check(okRaid == true, "bug2 raid step: (setup) another player fights the boss")
+		advance(2.5)
+		T.eq(stepId(w), "raid", "bug2 raid step: a fight seen in the arena does not complete 'raid'")
+		T.check(not K.notified(w, "Bonus", nil, mark), "bug2 raid step: ...no bonus toast")
+		BS.EndRaids("Ended")
+		advance(0.3)
+		leave(fighter)
 		leave(w)
 
 		local mine = 0
@@ -405,7 +414,7 @@ local function clientScenarios()
 		end
 		T.check(nextButton ~= nil and nextButton.Visible and nextButton.Text == "Got it!", "bug2 raid next: the raid step shows a 'Got it!' Next button",
 			nextButton and (tostring(nextButton.Visible) .. " '" .. tostring(nextButton.Text) .. "'") or "none")
-		T.check(hint ~= nil and hint.Visible and tostring(hint.Text):find("raid floor", 1, true) ~= nil, "bug2 raid next: ...next to the hint line", hint and hint.Text or "none")
+		T.check(hint ~= nil and hint.Visible and tostring(hint.Text):find("boss gate", 1, true) ~= nil, "bug2 raid next: ...next to the hint line", hint and hint.Text or "none")
 		if nextButton and nextButton.Visible then
 			local mark = #Mock.RemoteLog
 			local function sent()

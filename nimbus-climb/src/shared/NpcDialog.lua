@@ -51,7 +51,7 @@ do
 	end
 end
 
--- Phase 3: the battle numbers (raid schedule, trial count, trophies, synergy); optional
+-- Phase 3: the battle numbers (trial count, trophies, synergy); optional
 local BattleCatalog = nil
 do
 	local module = script.Parent:FindFirstChild("BattleCatalog")
@@ -336,13 +336,8 @@ do
 		recordWord = "x" .. number(mult)
 	end
 end
-local raidMinutes, floorCount, trophyWin, synergyPair = 20, 12, 20, "10%"
+local floorCount, trophyWin, synergyPair = 12, 20, "10%"
 do
-	local events = type(BC.Events) == "table" and BC.Events or {}
-	local first = type(events.Schedule) == "table" and events.Schedule[1] or nil
-	if type(first) == "table" and tonumber(first.EveryMinutes) then
-		raidMinutes = math.floor(tonumber(first.EveryMinutes))
-	end
 	-- Phase 5: the Dungeon's floors (BattleCatalog.Dungeon.Floors, a count; DungeonFloors as a fallback)
 	local dungeon = type(BC.Dungeon) == "table" and BC.Dungeon or {}
 	if tonumber(dungeon.Floors) then
@@ -395,7 +390,7 @@ NpcDialog.Npcs = {
 			"Ahoy! Hop on the Obby portal pad together: up to " .. number(M.MaxPlayers or 4) .. " climbers sail one course. Beat a level to unlock the next!",
 			"Teammate down? Keep climbing! Reaching the next checkpoint revives everyone who is down.",
 			"A fallen teammate comes back at the next checkpoint with half health, so keep climbing and ring it for them!",
-			"A Boss Raid starts every " .. raidMinutes .. " minutes in the arena: everyone fights one giant boss together!",
+			"A boss always waits behind the colosseum's back gate: walk through it to fight it at your level!",
 			"Outside the Battle Arena, the rings and the Dungeon it's a safe zone: no battles. In a fight, DASH out of glowing circles!",
 		},
 	},

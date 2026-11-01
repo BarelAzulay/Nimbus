@@ -60,12 +60,13 @@
 --                 or FloorCleared(player, floor), or the saved Dungeon.Best >= 1 / Cleared[1] (DataService.GetDungeon), or a legacy
 --                 Battle.TrialCleared[1] / TrialBest >= 1 (DataService.GetBattle): a veteran does not redo the step. While the
 --                 step is open DungeonService eases room 1 for a solo run (IsOnStep)
---   RaidSeen      the player joined a Boss Raid (BattleService.RaidJoined / a Raid BattleEnded naming them), has a raid
---                 in the record (Battle.Raids), or stands in the arena while BattleService.GetRaidStatus() is not nil
---   RaidFloor     (bug batch 2 #24, the raid step) the character stands on the Boss Raid floor (ArenaInfo.Floor footprint,
---                 2 Hz poll), or anything that completes RaidSeen; the step also has AlsoNext, so "Next" completes it.
---                 A live raid seen when it completes (joined, or in the arena while one runs) gives a bonus toast. The
---                 hint is static ("Step onto the raid floor"), no countdown; a running raid says so instead.
+--   RaidGate      (boss raids, the raid step) the character stands in the boss gate (ArenaInfo.Gate footprint, 2 Hz poll; no Gate:
+--                 the floor), or anything that completes RaidSeen; the step also has AlsoNext, so "Next" completes it. Somebody
+--                 else's fight on the floor completes nothing: the boss is always there, nobody has to catch it
+--   RaidSeen      the player fought a Boss Raid (BattleService.RaidJoined / a Raid BattleEnded naming them) or has a raid in the
+--                 record (Battle.Raids). No step uses it; kept for old data
+--   RaidFloor     the character stands on the Boss Raid floor (ArenaInfo.Floor footprint, 2 Hz poll), or anything that completes
+--                 RaidSeen. No step uses it since the boss gate; kept for old data
 --   Next / ShopOpened / IndexOpened: client reports through the TutorialEvent remote, accepted only when they
 --                 match the CURRENT step. "Skip" ends the tutorial (no reward, no later chapter); "Sync" asks for the
 --                 current state again. The remote is type checked and rate limited.
@@ -82,11 +83,10 @@
 -- { Kind = "Spot", Position, SpotIndex, Label } (or { Kind = "Menu", Id = "Pets" }) with a matching Hint, and the
 -- poll re-sends the state whenever the target or the hint changes. Phase 3 targets { Kind = "Arena", Place } are
 -- resolved from ArenaInfo the same way (sent as Kind "Spot" + Position: the client draws its guide arrow for those):
--- "Gate" = the Arena gate of the Gate Court (ArenaInfo.ArenaPortal; else ArenaInfo.Spawn, the forum), "Floor" = the
--- colosseum floor, "Ring" = the Champion Ring portal (ArenaInfo.RingPortal; the gate of a free home first while the
+-- "Gate" = the Arena gate of the Gate Court (ArenaInfo.ArenaPortal; else ArenaInfo.Spawn, the forum), "BossGate" = the boss
+-- gate at the back of the colosseum floor (ArenaInfo.Gate; else the floor), "Floor" = the colosseum floor, "Ring" = the Champion Ring portal (ArenaInfo.RingPortal; the gate of a free home first while the
 -- player has none), "Dungeon" = the Dungeon gate's pad (DungeonInfo.Pad); no arrow while the player fights (attribute
--- InBattle) or runs the Dungeon (DungeonService.GetRun). A "RaidSeen" step's hint counts down to the next raid in
--- minutes (EventService.SecondsUntil) or says that one is running (the raid step is "RaidFloor" now: no countdown).
+-- InBattle) or runs the Dungeon (DungeonService.GetRun).
 --
 -- TutorialState payload (server -> that player, on join, on every change, on "Sync"):
 --   { Step = n, Total = #Steps, Id, Title, Text, Target = {Kind, Id, Label, Position = Vector3|nil, SpotIndex},
@@ -128,7 +128,7 @@ local RING_FINISH_TOKENS = 300
 local FEED_BERRIES = 500
 local DUNGEON_PAD_RADIUS = 12 -- studs (horizontal) around DungeonInfo.Pad: standing there opens the Dungeon window once
 local ARENA_RADIUS = 160 -- studs around ArenaInfo.Center that count as the arena when ArenaBuilder.InArena is missing
-local RAID_FLOOR_MARGIN = 4 -- studs around the Boss Raid floor's footprint that still count as on it (the raid step)
+local RAID_FLOOR_MARGIN = 4 -- studs around the boss gate's / the Boss Raid floor's footprint that still count as on it (the raid step)
 local RAID_FLOOR_RADIUS = 48 -- studs around a Floor given only as a position (half of BattleCatalog.Zones.Raid)
 local ATTR_IN_BATTLE = "InBattle" -- BattleService's attribute (the battle id while the player fights)
 local STATION_FRONT_GAP = 2.5 -- studs in front of a station's footprint where its guide arrow stands
@@ -159,8 +159,9 @@ local KNOWN_COMPLETE_ON = {
 	-- Phase 3 (the pet-battle chapter)
 	ArenaReached = true,
 	TeamSet = true,
+	RaidGate = true, -- boss raids (the raid step)
 	RaidSeen = true,
-	RaidFloor = true, -- bug batch 2 #24 (the raid step)
+	RaidFloor = true, -- bug batch 2 #24 (kept for old data)
 	-- Phase 4 (chapter 2 rewritten + chapter 4)
 	GardenPlaced = true,
 	CoinsScooped = true,
@@ -203,8 +204,6 @@ local lobby = nil
 -- Phase 3 (the pet-battle chapter): every use is guarded
 local BattleService = nil
 local ArenaBuilder = nil -- read-only: InArena(position)
-local EventService = nil -- read-only: SecondsUntil("BossRaid")
-local BattleCatalog = nil
 local arenaInfo = nil
 -- Phase 5 (the Dungeon step): every use is guarded
 local DungeonService = nil
@@ -284,15 +283,6 @@ local function formatText(text)
 	text = tostring(text or "")
 	text = text:gsub("{GiftTokens}", tostring(giftTokens()))
 	text = text:gsub("{FinishTokens}", tostring(finishTokens()))
-	if text:find("{RaidMinutes}", 1, true) then
-		local minutes = 20
-		local events = type(BattleCatalog) == "table" and BattleCatalog.Events
-		local first = type(events) == "table" and type(events.Schedule) == "table" and events.Schedule[1]
-		if type(first) == "table" and tonumber(first.EveryMinutes) then
-			minutes = math.floor(tonumber(first.EveryMinutes))
-		end
-		text = text:gsub("{RaidMinutes}", tostring(minutes))
-	end
 	return text
 end
 
@@ -1007,7 +997,7 @@ local function homeTarget(player, track, step)
 end
 
 ----------------------------------------------------------------------
--- Phase 3: the Battle Arena (ArenaInfo from ArenaBuilder.Build, BattleService, EventService)
+-- Phase 3: the Battle Arena (ArenaInfo from ArenaBuilder.Build, BattleService)
 ----------------------------------------------------------------------
 local function positionOfInfo(value)
 	if typeof(value) == "CFrame" then
@@ -1077,9 +1067,15 @@ local function inBattle(player)
 	return id ~= nil and id ~= false and id ~= ""
 end
 
--- true while the character stands on the Boss Raid floor (ArenaInfo.Floor = { CFrame on the surface, Size }: inside
--- its X / Z footprint + RAID_FLOOR_MARGIN, up to NEAR_SPOT_HEIGHT above it); a Floor given only as a position counts
--- RAID_FLOOR_RADIUS around it (bug batch 2 #24)
+-- inside the X / Z footprint of { CFrame on the surface, Size } + RAID_FLOOR_MARGIN, up to NEAR_SPOT_HEIGHT above it
+local function onFootprint(root, cf, size)
+	local rel = cf:PointToObjectSpace(root.Position)
+	return math.abs(rel.X) <= size.X / 2 + RAID_FLOOR_MARGIN and math.abs(rel.Z) <= size.Z / 2 + RAID_FLOOR_MARGIN
+		and rel.Y >= -RAID_FLOOR_MARGIN and rel.Y <= NEAR_SPOT_HEIGHT
+end
+
+-- true while the character stands on the Boss Raid floor (ArenaInfo.Floor = { CFrame on the surface, Size }); a Floor given
+-- only as a position counts RAID_FLOOR_RADIUS around it (bug batch 2 #24)
 local function onRaidFloor(player)
 	local root = rootOf(player)
 	local info = getArenaInfo()
@@ -1090,9 +1086,7 @@ local function onRaidFloor(player)
 	local cf = type(floor) == "table" and floor.CFrame or nil
 	local size = type(floor) == "table" and floor.Size or nil
 	if typeof(cf) == "CFrame" and typeof(size) == "Vector3" then
-		local rel = cf:PointToObjectSpace(root.Position)
-		return math.abs(rel.X) <= size.X / 2 + RAID_FLOOR_MARGIN and math.abs(rel.Z) <= size.Z / 2 + RAID_FLOOR_MARGIN
-			and rel.Y >= -RAID_FLOOR_MARGIN and rel.Y <= NEAR_SPOT_HEIGHT
+		return onFootprint(root, cf, size)
 	end
 	local center = positionOfInfo(cf) or positionOfInfo(floor)
 	if typeof(center) ~= "Vector3" then
@@ -1100,6 +1094,18 @@ local function onRaidFloor(player)
 	end
 	local offset = root.Position - center
 	return Vector3.new(offset.X, 0, offset.Z).Magnitude <= RAID_FLOOR_RADIUS and math.abs(offset.Y) <= NEAR_SPOT_HEIGHT
+end
+
+-- true while the character stands in the boss gate (ArenaInfo.Gate = { CFrame on the floor surface, Size }); an arena without
+-- one has the floor instead
+local function onRaidGate(player)
+	local info = getArenaInfo()
+	local gate = info and info.Gate
+	if type(gate) ~= "table" or typeof(gate.CFrame) ~= "CFrame" or typeof(gate.Size) ~= "Vector3" then
+		return onRaidFloor(player)
+	end
+	local root = rootOf(player)
+	return root ~= nil and onFootprint(root, gate.CFrame, gate.Size)
 end
 
 local function activeTeamSize(player)
@@ -1191,36 +1197,6 @@ local function dungeonPadPosition()
 	return positionOfInfo(info.Pad) or positionOfInfo(info.PromptPart) or positionOfInfo(info.Portal)
 end
 
-local function raidStatus()
-	if not hasFunction(BattleService, "GetRaidStatus") then
-		return nil
-	end
-	local ok, status = pcall(BattleService.GetRaidStatus)
-	if ok and type(status) == "table" and status.Active ~= false then -- (the boss always waits now: only a running floor fight counts here)
-		return status
-	end
-	return nil
-end
-
--- the raid step's hint: a running raid, or the minutes to the next one (minute steps: the state is re-sent rarely)
-local function raidHint(step)
-	local status = raidStatus()
-	if status then
-		return "A Boss Raid is on! Go to the colosseum"
-	end
-	if hasFunction(EventService, "SecondsUntil") then
-		local ok, seconds = pcall(EventService.SecondsUntil, "BossRaid")
-		if ok and type(seconds) == "number" and seconds >= 0 and seconds < math.huge then
-			local minutes = math.max(1, math.ceil(seconds / 60))
-			if minutes <= 1 then
-				return "Next Boss Raid in under a minute!"
-			end
-			return "Next Boss Raid in " .. minutes .. " min"
-		end
-	end
-	return step.Hint
-end
-
 -- { Kind = "Spot", Position, Label } for an Arena target (the client draws world arrows for Spot targets), or nil
 local function arenaTarget(player, target)
 	if inBattle(player) or inDungeonRun(player) then
@@ -1239,7 +1215,9 @@ local function arenaTarget(player, target)
 	if not info then
 		return nil
 	end
-	if target.Place == "Floor" then
+	if target.Place == "BossGate" then
+		position = (type(info.Gate) == "table" and positionOfInfo(info.Gate.CFrame)) or positionOfInfo(info.Floor) or positionOfInfo(info.Center)
+	elseif target.Place == "Floor" then
 		position = positionOfInfo(info.Floor) or positionOfInfo(info.Center)
 	elseif target.Place == "Ring" then
 		position = positionOfInfo(info.RingPortal) or positionOfInfo(info.RingSite)
@@ -1257,12 +1235,6 @@ end
 local function resolveStep(player, track, step)
 	local target = step.Target
 	local hint = step.Hint
-	if step.CompleteOn == "RaidSeen" then
-		hint = raidHint(step)
-	elseif step.CompleteOn == "RaidFloor" and raidStatus() then
-		-- (bug batch 2 #24: no countdown any more, it made new players wait; a raid on right now is worth a look)
-		hint = "A Boss Raid is on! Go to the colosseum"
-	end
 	if not target then
 		return nil, hint
 	end
@@ -1527,11 +1499,6 @@ local function advance(player, track)
 		return
 	end
 	local index = track.Step
-	if step.CompleteOn == "RaidFloor" and (track.RaidSeen == true or (raidStatus() ~= nil and inArena(player))) then
-		-- bug batch 2 #24: a live raid seen on the raid step is a bonus (it never blocks the step any more); the toast IS
-		-- the bonus (nothing is stored: a badge would need a Profile.Tutorial field)
-		notify(player, "Bonus! You caught a live Boss Raid. Jump in and fight!", "good", 5)
-	end
 	TutorialService.StepCompleted:Fire(player, step.Id, index)
 	if index >= #steps then
 		finish(player, track, false)
@@ -1589,22 +1556,19 @@ local function impossible(player, track, step)
 		return not hasFunction(DungeonService, "StartSolo")
 	elseif kind == "RaidSeen" then
 		return BattleService == nil or not (hasFunction(BattleService, "GetRaidStatus") or hasSignal(BattleService, "BattleEnded"))
-	elseif kind == "RaidFloor" then
+	elseif kind == "RaidGate" or kind == "RaidFloor" then
 		return not arenaKnown()
 	end
 	return false
 end
 
--- the "RaidSeen" conditions: joined a raid this step, a raid in the record, or in the arena while one runs
+-- the "RaidSeen" conditions: joined a raid this step, or a raid in the record
 local function raidSeen(player, track)
 	if track.RaidSeen == true then
 		return true
 	end
 	local record = battleRecord(player)
-	if record and (tonumber(record.Raids) or 0) >= 1 then
-		return true
-	end
-	return raidStatus() ~= nil and inArena(player)
+	return record ~= nil and (tonumber(record.Raids) or 0) >= 1
 end
 
 local function nearSpot(player)
@@ -1652,8 +1616,10 @@ local function satisfied(player, track, step)
 		return track.DungeonRoom == true or dungeonOneCleared(player)
 	elseif kind == "RaidSeen" then
 		return raidSeen(player, track)
+	elseif kind == "RaidGate" then
+		-- at the gate (or Next, HandleEvent) is enough; a team the gate refuses still gets past the step
+		return (not inMatch(player) and onRaidGate(player)) or raidSeen(player, track)
 	elseif kind == "RaidFloor" then
-		-- bug batch 2 #24: on the floor (or Next, HandleEvent) is enough; a raid seen counts too, never needed
 		return (not inMatch(player) and onRaidFloor(player)) or raidSeen(player, track)
 	end
 	return false
@@ -1695,7 +1661,7 @@ end
 local function refreshTarget(player, track)
 	local step = currentStep(track)
 	local t = step and step.Target
-	local dynamic = step ~= nil and (step.CompleteOn == "RaidSeen" or (t ~= nil and t.Kind == "Arena"))
+	local dynamic = step ~= nil and t ~= nil and t.Kind == "Arena"
 	if not dynamic and (not t or not (t.Gate or t.Pad or t.Station or t.Food or t.GardenSpot or t.Coins)) then
 		return
 	end
@@ -2072,8 +2038,6 @@ function TutorialService.Init(lobbyInfo, deps)
 	BattleService = deps.BattleService or loadModule(services, "BattleService")
 	arenaInfo = type(deps.ArenaInfo) == "table" and deps.ArenaInfo or nil
 	ArenaBuilder = loadModule(services, "ArenaBuilder")
-	EventService = deps.EventService or loadModule(services, "EventService")
-	BattleCatalog = loadModule(Shared, "BattleCatalog")
 	-- Phase 5 (the Dungeon step; Main passes DungeonBuilder.Build's info and the module table, its Init runs later)
 	DungeonService = deps.DungeonService or loadModule(services, "DungeonService")
 	dungeonInfo = type(deps.DungeonInfo) == "table" and deps.DungeonInfo or nil
@@ -2193,7 +2157,7 @@ function TutorialService.Init(lobbyInfo, deps)
 				local player = type(userId) == "number" and Players:GetPlayerByUserId(userId) or nil
 				local track = player and tracks[player]
 				local step = currentStep(track)
-				if step and (step.CompleteOn == mark or (mark == "RaidSeen" and step.CompleteOn == "RaidFloor")) then
+				if step and (step.CompleteOn == mark or (mark == "RaidSeen" and (step.CompleteOn == "RaidGate" or step.CompleteOn == "RaidFloor"))) then
 					track[mark] = true
 					nudge(player)
 				end
@@ -2228,7 +2192,7 @@ function TutorialService.Init(lobbyInfo, deps)
 		BattleService.RaidJoined:Connect(function(player)
 			local track = typeof(player) == "Instance" and tracks[player] or nil
 			local step = currentStep(track)
-			if step and (step.CompleteOn == "RaidSeen" or step.CompleteOn == "RaidFloor") then
+			if step and (step.CompleteOn == "RaidGate" or step.CompleteOn == "RaidSeen" or step.CompleteOn == "RaidFloor") then
 				track.RaidSeen = true
 				nudge(player)
 			end

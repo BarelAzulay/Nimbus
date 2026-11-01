@@ -23,9 +23,7 @@
 --               (chapter 1: Config.Tutorial.FinishReward; chapters 2, 3 and 4: TutorialService's rewards)
 --   Title       short headline shown above the text
 --   Text        what Nimbus says (short, friendly). Placeholders filled in by TutorialService:
---               {GiftTokens} = Config.Tutorial.GiftTokens, {FinishTokens} = Config.Tutorial.FinishReward.Tokens,
---               {RaidMinutes} = minutes between two Boss Raids (BattleCatalog.Events; the raid step builds its text from
---               BattleCatalog when this module loads, so it needs no placeholder)
+--               {GiftTokens} = Config.Tutorial.GiftTokens, {FinishTokens} = Config.Tutorial.FinishReward.Tokens
 --   Target      nil, or where the guide arrow points:
 --                 { Kind = "Spot" }                     the player's own home plot (SpotIndex attribute)
 --                 { Kind = "Spot", Gate = true }        the gate of the plot the player should claim: their claimed
@@ -49,9 +47,10 @@
 --                 { Kind = "Arena", Place = "Gate" }    Phase 3, resolved by TutorialService from ArenaInfo and sent as
 --                                                       { Kind = "Spot", Position, Label }: "Gate" = the Arena gate of the
 --                                                       Gate Court (ArenaInfo.ArenaPortal; else the forum, ArenaInfo.Spawn),
---                                                       "Floor" = the colosseum floor (raids), "Ring" = the Champion Ring
---                                                       portal (ArenaInfo.RingPortal), "Dungeon" (Phase 5) = the Dungeon
---                                                       gate's pad (DungeonInfo.Pad)
+--                                                       "BossGate" = the boss gate at the back of the colosseum floor
+--                                                       (ArenaInfo.Gate; else the floor), "Floor" = the colosseum floor,
+--                                                       "Ring" = the Champion Ring portal (ArenaInfo.RingPortal),
+--                                                       "Dungeon" (Phase 5) = the Dungeon gate's pad (DungeonInfo.Pad)
 --               Label (optional) names the target on the floating sign above the arrow. TutorialService resolves
 --               the home targets on the server and sends Kind "Spot" + Position (or Kind "Menu") to the client.
 --   CompleteOn  "Next"         the player presses Next (client event)
@@ -71,10 +70,10 @@
 --                              (DataService.TeamsChanged / ActiveTeamKeys / FieldableKeys)
 --               "DungeonRoom"  (Phase 5, replaces TrialWon; team balance: the first room) a room of Dungeon floor 1 is cleared (DungeonService.FloorCleared, or the
 --                              saved Dungeon.Best >= 1, or a legacy Battle.TrialCleared[1]: veterans skip it)
---               "RaidSeen"     the player joined a Boss Raid, or stood in the arena while one was running (no step
---                              uses it since bug batch 2 #24; kept for old data)
+--               "RaidGate"     the player fought a Boss Raid, or stands in the boss gate (ArenaInfo.Gate, server poll)
+--               "RaidSeen"     the player fought a Boss Raid (no step uses it since bug batch 2 #24; kept for old data)
 --               "RaidFloor"    the player stands on the Boss Raid floor (ArenaInfo.Floor, server poll), or anything
---                              that completes "RaidSeen" (a live raid seen then also earns a bonus toast)
+--                              that completes "RaidSeen" (no step uses it since the boss gate; kept for old data)
 --               "GardenPlaced" (Phase 4) a pet sits in an open place of the Pet Garden (Home.Garden)
 --               "CoinsScooped" the player scooped Cloud Cash (TycoonService.CoinsScooped; a home that already has
 --                              the Food Machine passes at once)
@@ -106,19 +105,12 @@ do
 	end
 end
 
--- minutes between two Boss Raids for the chapter 3 text (BattleCatalog.Events; data read once, 20 without it) and the
--- name of Dungeon floor 1 (BattleCatalog.DungeonFloors[1].Name; "Mossy Cellar" without it)
-local RAID_MINUTES = 20
+-- the name of Dungeon floor 1 (BattleCatalog.DungeonFloors[1].Name; "Mossy Cellar" without it)
 local FLOOR_ONE = "Mossy Cellar"
 do
 	local module = script.Parent:FindFirstChild("BattleCatalog")
 	if module then
 		local ok, catalog = pcall(require, module)
-		local events = ok and type(catalog) == "table" and catalog.Events or nil
-		local first = type(events) == "table" and type(events.Schedule) == "table" and events.Schedule[1] or nil
-		if type(first) == "table" and tonumber(first.EveryMinutes) then
-			RAID_MINUTES = math.floor(tonumber(first.EveryMinutes))
-		end
 		local floors = ok and type(catalog) == "table" and catalog.DungeonFloors or nil
 		local one = type(floors) == "table" and floors[1] or nil
 		if type(one) == "table" and type(one.Name) == "string" and one.Name ~= "" then
@@ -309,20 +301,18 @@ TutorialSteps.Steps = {
 		Hint = "Clear the first room of Dungeon floor 1",
 	},
 	{
-		-- (bug batch 2 #24: was CompleteOn "RaidSeen", which kept a new player waiting up to RAID_MINUTES for a raid.
-		-- Informational now: standing on the raid floor or pressing Next completes it; a live raid seen on the way is a
-		-- bonus, never a blocker. The index stays 18, so a saved Step 18 lands here and can finish at once.)
+		-- (bug batch 2 #24: informational, nobody waits for a raid. Boss raids: the boss is always there, so walking through
+		-- its gate or pressing Next completes it. The index stays 18, so a saved Step 18 lands here and can finish at once.)
 		Id = "raid",
 		Chapter = 3,
 		ChapterEnd = true,
 		Title = "Boss Raids!",
-		Text = "A giant boss stomps into the colosseum and everyone fights it! Raids run every " .. RAID_MINUTES
-			.. " minutes: the board shows the timer.",
-		Target = { Kind = "Arena", Place = "Floor", Label = "Boss Raid floor" },
-		CompleteOn = "RaidFloor",
+		Text = "A boss always waits behind the colosseum's back gate. Walk through it to fight it at your level, or press Next.",
+		Target = { Kind = "Arena", Place = "BossGate", Label = "Boss gate" },
+		CompleteOn = "RaidGate",
 		AlsoNext = true,
 		Button = "Got it!",
-		Hint = "Step onto the raid floor",
+		Hint = "Walk through the boss gate",
 	},
 	---------------------------------------------------------------------- chapter 4: pets make the money (Phase 4)
 	{

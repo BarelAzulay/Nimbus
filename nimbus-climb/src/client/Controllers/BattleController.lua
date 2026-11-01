@@ -6397,6 +6397,10 @@ function Hud.RewardLines(B, rw)
 	end
 	if rw.Tier == "None" then
 		lines[#lines + 1] = { "No hits on the boss: no reward", COLORS.Weak }
+	elseif rw.Tier == "Cooldown" then
+		-- a boss raid won inside the 20 minute reward limit: nothing paid, the server says when
+		local wait = num(rw.AgainIn, 0)
+		lines[#lines + 1] = { string.format("Rewards again in %d:%02d", floor(wait / 60), wait % 60), COLORS.Weak }
 	elseif rw.Tier then
 		local share = num(rw.Share, 0)
 		lines[#lines + 1] = { tostring(rw.Tier) .. " tier", COLORS.Gold }

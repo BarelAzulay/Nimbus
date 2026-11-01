@@ -6,16 +6,17 @@
 --   (Phase 5, owner tutorial W4: step 17 "trial" became "dungeon", DungeonRoom (team balance), the Dungeon gate's pad; the Arena step
 --   points at the Gate Court's Arena gate; the NPC needles follow the Phase 5 lines: DASH instead of RETREAT, the Dungeon)
 --   p3ui_content        (server, content) chapter 3 is appended after the home chapter (arena, team, dungeon, raid; chapter
---                       3 up to ChapterStart[4] - 1, the raid step ends it, known CompleteOn, Arena targets with a Place, short texts, the raid
---                       minutes placeholder); NPC tips: every NPC keeps 3-5 lines that fit the dialog, and the battle
---                       controls (Sparky Fox), Boss Raids with the real schedule (Captain Penguin), the Trial Portal,
+--                       3 up to ChapterStart[4] - 1, the raid step ends it, known CompleteOn, Arena targets with a Place, short texts, no
+--                       placeholder left); NPC tips: every NPC keeps 3-5 lines that fit the dialog, and the battle
+--                       controls (Sparky Fox), Boss Raids at the back gate (Captain Penguin), the Trial Portal,
 --                       battle teams and trophies (Coach Corgi), elements and synergy in battle (Professor Axolotl) are
 --                       explained with the numbers of BattleCatalog
 --   p3ui_tutorial       (server, booted) a player who finished the home chapter resumes at "arena": the arrow points at
 --                       the arena's forum (ArenaInfo.Spawn); walking in -> "team" (the Pets menu tile); a battle team ->
---                       "trial" (the arrow at the Trial Portal, none while fighting); Trial 1 cleared -> "raid" (a hint
---                       with the raid countdown); standing in the arena while a raid runs ends the chapter: on to
---                       chapter 4 (Phase 4), the token reward paid once; a BattleEnded trial win completes "trial" by itself
+--                       "trial" (the arrow at the Trial Portal, none while fighting); Trial 1 cleared -> "raid" (the arrow at
+--                       the boss gate, the hint says walk through it); somebody else's fight changes nothing; walking through the
+--                       gate ends the chapter: on to chapter 4 (Phase 4), the token reward paid once; a BattleEnded trial win
+--                       completes "trial" by itself
 --   client_p3ui         (client) the team in the Pets window (Open("Team"), team balance): slots (name, level, power), three of
 --                       them before and after Prestige 1, the team power and what it is made of, the cards (every owned copy,
 --                       busy ones labelled); remove / add / swap
@@ -101,7 +102,7 @@ local function serverScenarios()
 			byId[step.Id] = step
 		end
 		local bad = {}
-		local placed = { Gate = true, Dungeon = true, Floor = true }
+		local placed = { Gate = true, Dungeon = true, BossGate = true }
 		for i = start, last do
 			local step = Steps.Steps[i]
 			if step.Chapter ~= 3 then
@@ -126,11 +127,11 @@ local function serverScenarios()
 		T.check(byId.trial == nil and byId.dungeon and byId.dungeon.CompleteOn == "DungeonRoom" and byId.dungeon.Target
 			and byId.dungeon.Target.Place == "Dungeon" and Steps.IndexOf.dungeon == 17,
 			"p3ui: step 17 'trial' became 'dungeon': the Dungeon portal, completes on DungeonRoom")
-		local minutes = BC and BC.Events and BC.Events.Schedule and BC.Events.Schedule[1] and BC.Events.Schedule[1].EveryMinutes or 20
-		-- (bug batch 2 #24: informational: the raid floor or Next completes it, the text gives the schedule + the board tip)
-		T.check(byId.raid and byId.raid.CompleteOn == "RaidFloor" and byId.raid.AlsoNext == true and byId.raid.ChapterEnd == true and byId.raid.Target and byId.raid.Target.Place == "Floor"
-			and tostring(byId.raid.Text):find("Raids run every " .. tostring(minutes) .. " minutes: the board shows the timer", 1, true) ~= nil and not tostring(byId.raid.Text):find("{", 1, true),
-			"p3ui: 'raid' ends the chapter (ChapterEnd), points at the colosseum floor, completes on the floor or Next and quotes the raid schedule (every " .. tostring(minutes) .. " minutes)")
+		-- (bug batch 2 #24: informational; boss raids: the gate or Next completes it, the boss is always there)
+		T.check(byId.raid and byId.raid.CompleteOn == "RaidGate" and byId.raid.AlsoNext == true and byId.raid.ChapterEnd == true and byId.raid.Target and byId.raid.Target.Place == "BossGate"
+			and tostring(byId.raid.Text):find("always waits behind the colosseum's back gate", 1, true) ~= nil and not tostring(byId.raid.Text):find("{", 1, true),
+			"p3ui: 'raid' ends the chapter (ChapterEnd), points at the boss gate, completes on the gate or Next and says the boss always waits")
+		T.check(#tostring(byId.raid.Text) >= 97 and #tostring(byId.raid.Text) <= 125, "p3ui: the raid step's text is 97-125 bytes", tostring(#tostring(byId.raid.Text)))
 		local ends = 0
 		for i = start, last do
 			if Steps.Steps[i].ChapterEnd then
@@ -140,7 +141,7 @@ local function serverScenarios()
 		T.eq(ends, 1, "p3ui: chapter 3 has exactly one ChapterEnd step")
 		local src = sourceOf("server/Services/TutorialService")
 		if type(src) == "string" then
-			for _, kind in ipairs({ "ArenaReached", "TeamSet", "DungeonRoom", "RaidSeen", "RaidFloor" }) do
+			for _, kind in ipairs({ "ArenaReached", "TeamSet", "DungeonRoom", "RaidGate", "RaidSeen", "RaidFloor" }) do
 				T.check(src:find(kind .. " = true", 1, true) ~= nil, "p3ui: TutorialService knows CompleteOn " .. kind)
 			end
 		end
@@ -171,13 +172,14 @@ local function serverScenarios()
 			end
 			return true
 		end
-		local raidMinutes = BC and BC.Events and BC.Events.Schedule and BC.Events.Schedule[1] and BC.Events.Schedule[1].EveryMinutes or 20
 		local floors = BC and BC.Dungeon and BC.Dungeon.Floors or 12
 		local win = BC and BC.Trophies and BC.Trophies.Win or 20
 		T.check(says("sparky_fox", "ATTACK", "ELEMENT", "SPECIAL", "DASH", "F = ", "E = ", "Q = ") and not says("sparky_fox", "RETREAT"),
 			"p3ui: Sparky Fox explains the Phase 5 battle keys (F ATTACK, E ELEMENT, Q SPECIAL, DASH; no RETREAT)")
-		T.check(says("captain_penguin", "Boss Raid", "every " .. tostring(raidMinutes) .. " minutes", "DASH") and not says("captain_penguin", "RETREAT"),
-			"p3ui: Captain Penguin explains Boss Raids (every " .. tostring(raidMinutes) .. " minutes) and dashing out of telegraphs")
+		T.check(says("captain_penguin", "always waits behind the colosseum's back gate", "DASH") and not says("captain_penguin", "RETREAT", "minutes in the arena"),
+			"p3ui: Captain Penguin explains the boss at the back gate (no schedule) and dashing out of telegraphs")
+		T.check(type(ND.Get) == "function" and ND.Get("captain_penguin") and table.concat(ND.Get("captain_penguin").Keywords or {}, ","):find("Boss Raid", 1, true) ~= nil,
+			"p3ui: Captain Penguin's keywords keep 'Boss Raid'")
 		T.check(says("coach_corgi", "Dungeon", tostring(floors) .. " floors", "Open Pets", "+" .. tostring(win) .. " trophies", "fighter", "two helpers"),
 			"p3ui: Coach Corgi explains the Dungeon (" .. tostring(floors) .. " floors), the team of a fighter + 2 helpers and trophies (+" .. tostring(win) .. ")")
 		local strong = Config.Elements and Config.Elements.StrongMultiplier or 1.5
@@ -300,25 +302,26 @@ local function serverScenarios()
 		end, 3)
 		T.eq(stepId(p), "raid", "p3ui tutorial: clearing Dungeon floor 1 completes 'dungeon'")
 		st = state(p)
-		T.check(st and st.Target and near(st.Target.Position, info.Floor.CFrame.Position), "p3ui tutorial: 'raid' points at the colosseum floor")
-		T.check(st and tostring(st.Hint):find("raid floor", 1, true) ~= nil and not tostring(st.Hint):find(" min", 1, true),
-			"p3ui tutorial: 'raid' hints at the raid floor, no countdown (bug batch 2 #24)", st and tostring(st.Hint))
-		T.check(st and not tostring(st.Text):find("{", 1, true), "p3ui tutorial: the raid text has its minutes filled in", st and tostring(st.Text))
+		T.check(st and st.Target and near(st.Target.Position, info.Gate.CFrame.Position), "p3ui tutorial: 'raid' points at the boss gate")
+		T.check(st and tostring(st.Hint):find("boss gate", 1, true) ~= nil and not tostring(st.Hint):find(" min", 1, true),
+			"p3ui tutorial: 'raid' hints at the boss gate, no countdown (bug batch 2 #24)", st and tostring(st.Hint))
+		T.check(st and not tostring(st.Text):find("{", 1, true), "p3ui tutorial: the raid text has no placeholder left", st and tostring(st.Text))
 		advance(1)
-		T.eq(stepId(p), "raid", "p3ui tutorial: no raid yet: 'raid' waits")
+		T.eq(stepId(p), "raid", "p3ui tutorial: away from the gate: 'raid' waits")
 
-		-- a raid runs while the player stands in the arena
+		-- walking through the boss gate
 		local tokens0 = DataS.GetTokens(p)
-		local okRaid = BS.StartRaid(nil)
+		Mock.Teleport(p, info.Gate.CFrame)
 		waitFor(function()
 			return stepId(p) ~= "raid"
 		end, 3)
-		T.check(okRaid == true, "p3ui tutorial: (setup) a raid opens")
+		advance(1)
+		T.check(BS.GetBattle(p) ~= nil and BS.GetBattle(p).Mode == "Raid", "p3ui tutorial: (the gate puts the player in the fight)", BS.GetBattle(p) and tostring(BS.GetBattle(p).Mode))
 		st = state(p)
 		-- (Phase 4: chapter 4 follows, so the tutorial goes on at its first step instead of being Done)
 		local chapter4 = Steps.ChapterStart[4]
 		T.check(st and ((chapter4 and st.Done ~= true and st.Step == chapter4 and st.Chapter == 4) or (not chapter4 and st.Done == true and st.Completed == true)),
-			"p3ui tutorial: being in the arena during a Boss Raid ends the battle chapter (on to chapter 4)", st and tostring(st.Id))
+			"p3ui tutorial: walking through the boss gate ends the battle chapter (on to chapter 4)", st and tostring(st.Id))
 		local paid = DataS.GetTokens(p) - tokens0
 		local src = sourceOf("server/Services/TutorialService")
 		local reward = type(src) == "string" and tonumber(src:match("local ARENA_FINISH_TOKENS = (%d+)")) or 500
@@ -327,10 +330,8 @@ local function serverScenarios()
 		advance(0.6)
 		T.eq(DataS.GetTokens(p) - tokens0, reward, "p3ui tutorial: nothing is paid twice")
 		T.eq(DataS.GetTutorial(p).Step, chapter4 or (#Steps.Steps + 1), "p3ui tutorial: the stored Step is one past the battle chapter (ChapterStart[4])")
-		pcall(BS.EndRaid)
-		waitFor(function()
-			return BS.GetRaidStatus() == nil
-		end, 20)
+		BS.EndRaids("Ended")
+		advance(0.3)
 		leave(p)
 
 		-- a cleared floor reported by DungeonService completes 'dungeon' even before the record is read
