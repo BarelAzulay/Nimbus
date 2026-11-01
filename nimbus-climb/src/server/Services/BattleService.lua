@@ -3701,6 +3701,7 @@ function BattleService.JoinRaid(player)
 			Zone = { X = zone.X, Z = zone.Z },
 			Teams = { spec },
 			Boss = raid.BossId,
+			RaidTier = "Starter", -- bridge until the fights per tier replace this block: the one server-wide raid takes any level
 		})
 		if not okS or type(sim) ~= "table" then
 			warn("[BattleService] raid setup failed: " .. tostring(okS and simWhy or sim))

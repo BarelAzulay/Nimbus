@@ -1381,7 +1381,7 @@ S.p5svc_raid = scenario("p5svc_raid", function()
 	end
 	advance(0.3)
 	local st = bs.GetRaidStatus()
-	local want = bc.BossHp("lava_golem", specs)
+	local want = bc.BossHp("lava_golem", specs, st and st.Tier or "Starter") -- (the server-wide raid fights at Starter until the fights per tier)
 	T.check(ok and st and st.Players == 16 and math.abs(st.MaxHp - want) <= math.max(2, want * 0.005), "p5 raid: 16 raiders joined; the boss HP = BattleCatalog.BossHp(bossId, teams) (ExpectedDps of the fighters)",
 		st and string.format("%d vs %d", st.MaxHp, want) or "no status")
 	local trs = {}

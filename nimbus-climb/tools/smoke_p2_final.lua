@@ -1161,8 +1161,10 @@ local function checkRaids(BC, PC, Config, lines, raidText, doubleText)
 	local raid = scheduleOf(BC, "BossRaid")
 	t:case(has(f, "**every " .. num(raid.EveryMinutes) .. " minutes**"), "a raid every " .. tostring(raid.EveryMinutes) .. " minutes")
 	t:case(has(f, "the first one " .. minutesText(ev.FirstAfterSeconds) .. " after a server starts"), "the first raid " .. minutesText(ev.FirstAfterSeconds) .. " after the start")
-	t:case(has(f, "**" .. minutesText(raid.AnnounceSeconds) .. "** before"), "the raid is announced " .. minutesText(raid.AnnounceSeconds) .. " before")
-	t:case(has(f, "**first " .. num(ev.JoinWindowSeconds) .. " seconds**"), "joining is open the first " .. tostring(ev.JoinWindowSeconds) .. " seconds")
+	-- (bridge: the catalog dropped these three for the always-there boss, the README's raid chapter is rewritten with the service; until then the code's own fallbacks)
+	local announceSeconds, joinSeconds, enrageSeconds = raid.AnnounceSeconds or 120, ev.JoinWindowSeconds or 60, 240
+	t:case(has(f, "**" .. minutesText(announceSeconds) .. "** before"), "the raid is announced " .. minutesText(announceSeconds) .. " before")
+	t:case(has(f, "**first " .. num(joinSeconds) .. " seconds**"), "joining is open the first " .. tostring(joinSeconds) .. " seconds")
 	local rows = tableRows(lines, "| Boss | Element |")
 	if t:case(rows ~= nil, "no boss table (| Boss | Element | Strong pets against it | Its big attacks |)") then
 		t:case(#rows == #(BC.BossOrder or {}), "the boss table has " .. #rows .. " rows, BattleCatalog " .. #(BC.BossOrder or {}) .. " bosses")
@@ -1180,7 +1182,7 @@ local function checkRaids(BC, PC, Config, lines, raidText, doubleText)
 				tostring(boss.Name) .. ": every boss shares the documented enrage time and time limit")
 		end
 		local first = BC.Bosses[(BC.BossOrder or {})[1]] or {}
-		t:case(has(f, "**enraged** after **" .. minutesText(first.EnrageAt) .. "**"), "the enrage comes after " .. minutesText(first.EnrageAt))
+		t:case(has(f, "**enraged** after **" .. minutesText(enrageSeconds) .. "**"), "the enrage comes after " .. minutesText(enrageSeconds))
 		t:case(((BC.BossRules or {}).Enrage or {}).Damage == 2 and has(f, "hits twice as hard"), "enraged bosses hit x" .. tostring(((BC.BossRules or {}).Enrage or {}).Damage))
 		t:case(has(f, "after **" .. minutesText(first.TimeLimit) .. "**"), "a raid ends after " .. minutesText(first.TimeLimit))
 	end

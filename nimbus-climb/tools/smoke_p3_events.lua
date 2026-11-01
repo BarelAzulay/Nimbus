@@ -410,7 +410,7 @@ S.p3events_schedule = guarded("p3events_schedule", function()
 	local announce = 120
 	for _, e in ipairs(bc.Events.Schedule) do
 		if e.Kind == "BossRaid" then
-			every, announce = e.EveryMinutes * 60, e.AnnounceSeconds
+			every, announce = e.EveryMinutes * 60, e.AnnounceSeconds or announce -- (bridge: the row has no AnnounceSeconds now, EventService still falls back to 120 until the rotation replaces it)
 		end
 	end
 	T.check(left <= every + 2, "schedule: the next raid is at most EveryMinutes away", string.format("%.0f s", left))

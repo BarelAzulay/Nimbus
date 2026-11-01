@@ -929,7 +929,11 @@ local function drvPump(tr)
 					elseif ev.type == "Speed" and ev.owner == uid then
 						tr.speed = { Walk = ev.walk, Run = ev.run }
 					elseif ev.type == "Telegraph" then
-						tr.telegraphAt = Mock.Clock.now
+						if ev.lethal then
+							tr.lethalAt = Mock.Clock.now + (tonumber(ev.hits) or 3) - 0.25 -- saved for the last moment: the i-frames are short
+						else
+							tr.telegraphAt = Mock.Clock.now
+						end
 					end
 				end
 			elseif kind == "End" and type(payload) == "table" and payload.Spectator ~= true and payload.BattleId == tr.id then
@@ -999,6 +1003,10 @@ local function drvTick(tr, opts)
 	end
 	if tr.telegraphAt and Mock.Clock.now - tr.telegraphAt < 0.25 and opts.dodge ~= false then
 		bs.Command(tr.p, "Dash") -- a boss telegraph: the i-frames dodge it
+	end
+	if tr.lethalAt and Mock.Clock.now >= tr.lethalAt and opts.dodge ~= false then
+		tr.lethalAt = nil
+		bs.Command(tr.p, "Dash")
 	end
 	if opts.kit ~= false and tr.ticks % 10 == 0 then
 		bs.Command(tr.p, "Element")
