@@ -597,6 +597,7 @@
       "functions": [
         "BandOf",
         "SizeOf",
+        "CloudSizeOf",
         "Resolve",
         "Unit"
       ],
@@ -612,6 +613,10 @@
         "Textures",
         "Bands",
         "Sizes",
+        "StageBonus",
+        "SizeCap",
+        "CloudCap",
+        "ImpactScale",
         "Rarities",
         "AttackNames",
         "KindNames",

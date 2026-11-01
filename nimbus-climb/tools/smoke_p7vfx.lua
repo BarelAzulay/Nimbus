@@ -4,7 +4,7 @@
 --               integer (an Image id, checked in Studio when uploaded; the file is written by tools/upload_assets.py
 --               --textures), TextureIds has no key besides those and the gate vortex layers (blender/textures/
 --               textures.json), and every vfx_* key of blender/catalog/vfx.json is in shared/MeshIds (the 22 cores).
---   p7vfx_catalog (pure) shared/AttackFxCatalog (Task 4): bands / sizes (1.4 cap), every element x attack x rarity x
+--   p7vfx_catalog (pure) shared/AttackFxCatalog (Task 4): bands / sizes (SizeCap), every element x attack x rarity x
 --               stage x mine resolves (beats, size, band, known texture / core keys, Beam / Trail strips vs Emitter
 --               flipbooks, <= 6 emitters), monotonic layers, density / camera punch / screen glow, the 12 signatures,
 --               Unit (hybrids: first element + the hybrid's rarity), Nature's petal trail with no green-only colour.
@@ -141,7 +141,7 @@ end
 
 local RARITIES = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Secret" }
 local BAND = { Common = 1, Uncommon = 1, Rare = 2, Epic = 2, Legendary = 3, Mythic = 3, Secret = 4 }
-local SIZE = { Common = 1.0, Uncommon = 1.05, Rare = 1.1, Epic = 1.15, Legendary = 1.2, Mythic = 1.3, Secret = 1.4 }
+local SIZE = { Common = 1.3, Uncommon = 1.35, Rare = 1.4, Epic = 1.45, Legendary = 1.5, Mythic = 1.55, Secret = 1.6 } -- (attack effects, 2026-11-01)
 local KINDS = { "Blast", "Beam", "Pounce", "Storm", "Freeze", "Heal", "Shield", "Rally", "Haste" }
 local SHAPES = { "Cone", "Circle", "Line" }
 -- fix round 3: elements whose recipes still go over the 6-emitter budget (the engine cap trims them by rank). Task 9
@@ -547,20 +547,20 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	end
 	bands:case(C.BandOf("Bogus") == 1 and C.BandOf(nil) == 1 and C.BandOf(7) == 1, "unknown -> " .. tostring(C.BandOf("Bogus")))
 	bands:report()
-	local sizes = T.tally("p7vfx catalog: SizeOf = rarity size x (1, 1.05, 1.10) by stage, never past the 1.4 cap")
+	local sizes = T.tally("p7vfx catalog: SizeOf = rarity size x (1, 1.15, 1.30) by stage, never past the SizeCap (attack effects, 2026-11-01)")
 	for _, r in ipairs(RARITIES) do
 		for stage = 0, 2 do
-			local want = math.min(1.4, SIZE[r] * (1 + 0.05 * stage))
+			local want = math.min(C.SizeCap, SIZE[r] * (1 + 0.15 * stage))
 			local got = C.SizeOf(r, stage)
-			sizes:case(finiteNum(got) and math.abs(got - want) < 1e-6 and got <= 1.4, fmt("%s stage %d: %s (want %.4f)", r, stage, tostring(got), want))
+			sizes:case(finiteNum(got) and math.abs(got - want) < 1e-6 and got <= C.SizeCap, fmt("%s stage %d: %s (want %.4f)", r, stage, tostring(got), want))
 		end
 	end
-	sizes:case(C.SizeOf("Bogus", 0) == 1 and C.SizeOf("Secret", 9) == 1.4 and C.SizeOf("Common", nil) == 1, "unknown rarity / stage")
+	sizes:case(C.SizeOf("Bogus", 0) == 1.3 and C.SizeOf("Secret", 9) == 2.08 and C.SizeOf("Common", nil) == 1.3, "unknown rarity / stage")
 	sizes:report()
 
 	-- the full matrix: element x attack variant x rarity x stage x mine
 	local elements = Config.Elements.Order
-	local matrix = T.tally("p7vfx catalog: every element x attack x rarity x stage resolves (finite beats <= 2.5 s / specials <= 3.5 s, Size <= 1.4, Band, known keys, strip/flipbook per layer kind, <= 6 emitters, unique layer ids)")
+	local matrix = T.tally("p7vfx catalog: every element x attack x rarity x stage resolves (finite beats <= 2.5 s / specials <= 3.5 s, Size <= SizeCap, Band, known keys, strip/flipbook per layer kind, <= 6 emitters, unique layer ids)")
 	local mineRules = T.tally("p7vfx catalog: Mine = false -> Density 0.6, no camera punch, no screen glow; Mine = true -> Density 1, punch at band >= 3, glow at band 4 (never for the Quiet ShieldHit ripple)")
 	local mono = T.tally("p7vfx catalog: each rarity keeps every layer of the rarities below it (layer ids and kinds monotonic across bands)")
 	-- fix round 3 (review Important 1): every recipe fits AttackFx's 6-emitter budget (MAX_EMITTERS.High), counted by the
@@ -596,7 +596,7 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 							if sum > cap then
 								problems[#problems + 1] = fmt("beats sum %.2f > %.1f", sum, cap)
 							end
-							if not (finiteNum(r.Size) and r.Size <= 1.4 and math.abs(r.Size - C.SizeOf(rarity, stage)) < 1e-9) then
+							if not (finiteNum(r.Size) and r.Size <= C.SizeCap and math.abs(r.Size - C.SizeOf(rarity, stage)) < 1e-9) then
 								problems[#problems + 1] = "Size " .. tostring(r.Size)
 							end
 							if r.Band ~= C.BandOf(rarity) then
@@ -634,6 +634,12 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 					if mineRecipe then
 						local ids, kinds = idSet(mineRecipe), kindSet(mineRecipe)
 						if prevIds then
+							-- (attack effects, 2026-11-01: the Sparks yield to the 6-emitter cap where a higher rarity's Trail / Slash fills it: recipe.Dropped says so)
+							if mineRecipe.Dropped then
+								for _, gone in ipairs(mineRecipe.Dropped) do
+									ids[gone] = true
+								end
+							end
 							local okIds, missing = subset(prevIds, ids)
 							mono:case(okIds, label .. " lost layer " .. tostring(missing))
 						end
@@ -690,8 +696,8 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	end
 	badT:report()
 	local unknownRarity = C.Resolve({ Element = "Frost", Attack = "Ranged", Rarity = "Bogus", Stage = "x", Mine = true })
-	T.check(type(unknownRarity) == "table" and unknownRarity.Band == 1 and unknownRarity.Size == 1,
-		"p7vfx catalog: an unknown rarity / stage resolves as band 1, size 1.0")
+	T.check(type(unknownRarity) == "table" and unknownRarity.Band == 1 and unknownRarity.Size == 1.3,
+		"p7vfx catalog: an unknown rarity / stage resolves as band 1, size 1.3 (Common)")
 	local defShape = C.Resolve({ Element = "Storm", Attack = "Element", Rarity = "Rare" })
 	T.check(type(defShape) == "table" and defShape.Shape == "Line",
 		"p7vfx catalog: Element without a Shape uses BattleCatalog.ElementAttacks (Storm Bolt = Line)", defShape and tostring(defShape.Shape))
@@ -946,7 +952,8 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	grow:report()
 
 	-- the ladder layers join exactly where the spec ladder puts them (Melee / Ranged of every element)
-	local LADDER_AT = { Charge = "Common", Burst = "Common", Trail = "Uncommon", Slash = "Rare", GroundGlow = "Rare", Shockwave = "Epic", Flash = "Epic",
+	-- (attack effects, 2026-11-01: the impact package plays from Common, a second ring from Epic)
+	local LADDER_AT = { Charge = "Common", Burst = "Common", Trail = "Uncommon", Slash = "Rare", GroundGlow = "Common", Shockwave = "Common", Flash = "Common", Sparks = "Common", Shockwave2 = "Epic",
 		Afterimage = "Legendary", Bloom = "Legendary", DoubleArc = "Mythic", Field = "Mythic", PlasmaRim = "Secret",
 		MuzzleRing = "Rare", ShotArcs = "Mythic", ShotAfterimage = "Legendary" } -- (Ranged: Slash -> MuzzleRing, DoubleArc ->
 	-- ShotArcs, Afterimage -> ShotAfterimage, player note 1)
@@ -1034,7 +1041,7 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 
 	-- fix round 3, player note (b): every element's ranged impact EXPLODES: a flash (BoomFlash), a bigger burst of the
 	-- element's own particles (Burst Count / Size boosted over Melee's) and a pop + shockwave ring (Boom, BoomRing), all
-	-- non-emitter solids (no emitter budget), sized by the band (Size <= 1.4), <= 3 lights, no Epic Flash on top
+	-- non-emitter solids (no emitter budget), sized by the band (Size <= SizeCap), <= 3 lights, no package Flash on top
 	-- (Task 9: Water's shot explodes as its boosted geyser splash, not a pop ball: the ball read as a shield bubble.
 	-- Water drops the Boom (Ranged.Drop); every other element keeps it)
 	local NO_POP = { Water = true }
@@ -1057,7 +1064,7 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 			boom:case(r ~= nil and popOk
 				and rg ~= nil and rg.Kind == "Ring" and rg.At == "Ground" and rg.Beat == "Impact"
 				and fl ~= nil and fl.Kind == "Light" and fl.Beat == "Impact"
-				and layerById(r, "Flash") == nil and lights <= 3 and bigger and r.Size <= 1.4 + 1e-9 and r.Size >= prevSize
+				and layerById(r, "Flash") == nil and lights <= 3 and bigger and r.Size <= C.SizeCap + 1e-9 and r.Size >= prevSize
 				and layerById(m, "Boom") == nil and layerById(m, "BoomRing") == nil and layerById(m, "BoomFlash") == nil,
 				fmt("%s Ranged %s: boom %s ring %s flash %s, Flash %s, lights %d, burst %s/%s vs melee %s/%s, size %.2f",
 					element, rarity, tostring(b ~= nil), tostring(rg ~= nil), tostring(fl ~= nil), tostring(layerById(r, "Flash") ~= nil), lights,

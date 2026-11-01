@@ -938,8 +938,8 @@ local function studioRound2(env)
 	T.check(ringOk, "Task 11c R7: the Wishing Star's heal rings ~40 % thinner (<= 0.65 x), see-through, gold (not near-white)",
 		fmt("%d rings, %.2f studs across vs the plain heal's %.2f, transparency %s", #hr, wishW, plainW, hr[1] and fmt("%.2f", hr[1].Trans) or "-"))
 
-	-- R8) the Void Fangs ground rings (the roar pulses, the ring under each ally, the shockwave) <= 0.55 x the plain
-	--     Shadow Rally's across
+	-- R8) the Void Fangs ground rings (the roar pulses, the ring under each ally) <= 0.55 x the plain Shadow Rally's across
+	--     (attack effects, 2026-11-01: a support cast has no Shockwave at any rarity now)
 	local function rallyRings(el)
 		local pulse, ally, shock = {}, {}, {}
 		for _, it in ipairs(el and el.Items or {}) do
@@ -976,7 +976,7 @@ local function studioRound2(env)
 	local plainR = rallyPeaks(play({ Element = "Shadow", Attack = "Special", Kind = "Rally", Rarity = "Secret" }, allies(2)))
 	local hydR = rallyPeaks(sig("hydralotl", allies(2)))
 	local ringBad = {}
-	for g, name in ipairs({ "roar pulses", "ally rings", "shockwave" }) do
+	for g, name in ipairs({ "roar pulses", "ally rings" }) do
 		if not (plainR[g] > 0 and hydR[g] > 0 and hydR[g] <= 0.55 * plainR[g]) then
 			ringBad[#ringBad + 1] = fmt("%s %.2f vs plain %.2f", name, hydR[g], plainR[g])
 		end

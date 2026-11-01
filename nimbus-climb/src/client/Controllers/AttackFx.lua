@@ -75,7 +75,7 @@
 -- Budget: MAX_LIVE (10) full effects; over it a play steps down one rarity band (MAX_STEPPED more at most), then
 -- Play returns false. Per effect: MAX_EMITTERS (6 High / 2 Low) ParticleEmitters, MAX_BEAMS, MAX_TRAILS,
 -- MAX_LIGHTS, MAX_CORES solid pieces. Over a cap the layers are RANKED, never cut in catalog order: emitters by
--- emitterRank (the Burst, LowKeep, impact detail ...), beams by beamRank (the alive detail, the recipe's own beams, the
+-- emitterRank (the Burst, LowKeep, impact detail, Sparks ...), beams by beamRank (the alive detail, the recipe's own beams, the
 -- ladder's DoubleArc / ShotArcs; one beam each first, then each layer's KeepCount (a kind's identity: the Beam's two
 -- spiral arcs, Task 10 review I2), then each layer's own count, best first: beamBudget).
 -- Counts are the catalog's FULL density x recipe.Density (0.6 for others' pets)
@@ -1915,6 +1915,8 @@ local function emitterRank(layer, keep)
 		return 0
 	elseif keep and keep[layer.Id] then
 		return 0.5 + keep[layer.Id] * 0.01
+	elseif layer.Id == "Sparks" then -- (attack effects, 2026-11-01) the impact package's sparks: after the impact detail, before Slash / Travel
+		return 1.2
 	elseif layer.Beat == "Impact" then
 		return 1
 	elseif layer.Id == "Slash" then
@@ -2050,7 +2052,9 @@ local function tuneEmitter(eff, it, layer)
 	else
 		em.Color = ColorSequence.new(c, c:Lerp(BLACK, 0.2))
 	end
-	local S = eff.Size
+	-- (attack effects, 2026-11-01, Gemini: clouds past x1.6 hide the target) particles and their spread stop at CloudSize; a
+	-- flat ground mark lies under the target and takes the full Size
+	local S = (layer.Kind == "Decal") and eff.Size or eff.CloudSize
 	local sz = (finite(layer.Size) and layer.Size or 1) * S * (eff.Strong and 1.12 or 1)
 	local m = it.Preset
 	local life = { 0.35, 0.6 }
@@ -3420,7 +3424,7 @@ function AttackFx.Play(ctx)
 		end
 		eff = {
 			Recipe = r, Unit = src.Unit, Src = src, Targets = targets, T = {}, S = src.Last, Dir = dir, Right = dir:Cross(UP),
-			Path = r.Core.Path, Area = area, Reach = reach, Width = width, WidthScale = width / 4, Drop = drop, Size = r.Size or 1,
+			Path = r.Core.Path, Area = area, Reach = reach, Width = width, WidthScale = width / 4, Drop = drop, Size = r.Size or 1, CloudSize = r.CloudSize or r.Size or 1,
 			Start = start, Times = T, EndRel = endRel, End = start + endRel,
 			Mine = ctx.Mine == true, Crit = ctx.Crit == true, Strong = ctx.Strong == true, Miss = ctx.Miss == true,
 			Stepped = step, Low = quality == "Low", Items = {}, Emitters = 0, Beams = 0, Trails = 0, Lights = 0, Cores = 0, Rims = 0,
@@ -3440,7 +3444,7 @@ function AttackFx.Play(ctx)
 		for _, layer in ipairs(r.Layers or {}) do
 			if layer.At == "Above" and finite(layer.Height) then
 				eff.CloudLift = layer.Height
-				eff.CloudTop = layer.Height + 0.5 * (finite(layer.Size) and layer.Size or 1) * eff.Size
+				eff.CloudTop = layer.Height + 0.5 * (finite(layer.Size) and layer.Size or 1) * eff.CloudSize
 				break
 			end
 		end
@@ -3486,7 +3490,8 @@ function AttackFx.Play(ctx)
 		local glowFirst = finite(ctx.DueAt) and r.Attack == "Special" and T.Release >= AttackFx.CUE_MIN
 		local ranked = {}
 		for i, layer in ipairs(layers) do
-			if isEmitter(layer) and not chargeDropped(eff, layer) then
+			-- (attack effects, 2026-11-01) Graphics Low gets rings, lights and ground marks of the impact package, not its emitter
+			if isEmitter(layer) and not chargeDropped(eff, layer) and not (quality == "Low" and layer.Id == "Sparks") then
 				local rank = emitterRank(layer, keep)
 				if glowFirst and layer.Beat == "Charge" and layer.At == "Source" and rank > 0.9 then
 					rank = 0.9

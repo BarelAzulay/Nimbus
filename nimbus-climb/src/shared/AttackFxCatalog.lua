@@ -5,7 +5,11 @@
 --
 -- Tables a designer tunes (each one mirrors a spec section):
 --   Bands / Sizes / StageBonus / SizeCap        "Rarity ladder": 4 bands (Common+Uncommon, Rare+Epic, Legendary+Mythic,
---                                               Secret), sizes 1.0 .. 1.4, Evolved +5% / Evolved II +10%, hard cap 1.4
+--                                               Secret), sizes 1.3 .. 1.6, Evolved +15% / Evolved II +30%, hard cap 2.08
+--                                               (attack effects spec 2026-11-01)
+--   CloudCap                                    particle clouds stop growing at 1.6 (the target stays visible): evolved
+--                                               size goes into rings, ground marks and shapes
+--   ImpactScale[band]                           how strong the impact package plays: ring / ground mark / sparks / flash
 --   CoreLook[band]                              the core's intensity and shape per band (plain -> hot inner core ->
 --                                               blazing + upgraded shape -> white plasma with a colour-shifting rim)
 --   Ladder                                      the layers each rarity ADDS (every rarity keeps all the layers below it)
@@ -25,8 +29,9 @@
 --
 -- API:
 --   AttackFxCatalog.BandOf(rarity) -> 1..4                         unknown rarity -> 1
---   AttackFxCatalog.SizeOf(rarity, stage) -> number                Sizes[rarity] x (1 + StageBonus[stage]), <= SizeCap 1.4;
+--   AttackFxCatalog.SizeOf(rarity, stage) -> number                Sizes[rarity] x (1 + StageBonus[stage]), <= SizeCap 2.08;
 --                                                                  unknown rarity = Common, stage clamped to 0..2 (non-number 0)
+--   AttackFxCatalog.CloudSizeOf(rarity, stage) -> number           SizeOf, <= CloudCap 1.6: what an emitter's particles scale by
 --   AttackFxCatalog.Resolve(req) -> recipe | nil                   req = { Element, Attack, Kind, Shape, Rarity, Stage, PetId,
 --                                                                  Mine, Distance? }; Attack = "Melee" | "Ranged" | "Special" |
 --                                                                  "Element" | "Hurt" | "Ko" | "Victory" | "ShieldHit"; Kind = one of the 9
@@ -35,7 +40,8 @@
 --                                                                  BattleCatalog shape); Distance = studs to the target (projectile
 --                                                                  travel, default 14). nil for an unknown element / attack / kind /
 --                                                                  shape (the caller falls back to the cube Fx).
---     recipe = { Element, Attack, Kind, Shape, Rarity, Stage, Band, Size, Density (1 mine / 0.6 others), CameraPunch
+--     recipe = { Element, Attack, Kind, Shape, Rarity, Stage, Band, Size, CloudSize, Density (1 mine / 0.6 others), Dropped?
+--                ({ "Sparks" }: the 6-emitter cap left no room for them), CameraPunch
 --                (mine and band >= 3; never a Quiet reaction: ShieldHit), ScreenGlow (mine and band 4; not Quiet),
 --                Signature (petId | nil), Sig = { Name, Twist, Actor, DimWorld } | nil, Palette = { Core, Mid, Edge, Hot, Smoke }, Text,
 --                Beats = { Charge, Release, Travel, Impact, Linger, MinTravel? } (seconds), ImpactAt (= Charge + Release +
@@ -153,9 +159,13 @@ end
 -- Rarity ladder (spec "Rarity ladder"): rarity shows through the core's intensity and shape in 4 bands, not sheer size
 ----------------------------------------------------------------------
 AttackFxCatalog.Bands = { Common = 1, Uncommon = 1, Rare = 2, Epic = 2, Legendary = 3, Mythic = 3, Secret = 4 }
-AttackFxCatalog.Sizes = { Common = 1.0, Uncommon = 1.05, Rare = 1.1, Epic = 1.15, Legendary = 1.2, Mythic = 1.3, Secret = 1.4 }
-AttackFxCatalog.StageBonus = { [0] = 0, [1] = 0.05, [2] = 0.10 } -- Evolved +5%, Evolved II +10%
-AttackFxCatalog.SizeCap = 1.4
+AttackFxCatalog.Sizes = { Common = 1.3, Uncommon = 1.35, Rare = 1.4, Epic = 1.45, Legendary = 1.5, Mythic = 1.55, Secret = 1.6 }
+AttackFxCatalog.StageBonus = { [0] = 0, [1] = 0.15, [2] = 0.30 } -- Evolved +15%, Evolved II +30%
+AttackFxCatalog.SizeCap = 2.08 -- (= Secret 1.6 x 1.3)
+-- (Gemini, spec 2026-11-01: clouds past x1.6 hide the target) an emitter's particles stop at this; evolved size goes
+-- into the cores, rings, ground marks and light ranges, which take the full Size
+AttackFxCatalog.CloudCap = 1.6
+AttackFxCatalog.ImpactScale = { 0.8, 0.95, 1.1, 1.25 } -- the impact package by band: Secret's is stronger than Common's
 AttackFxCatalog.OthersDensity = 0.6 -- other players' and wild pets' effects (own team: 1)
 AttackFxCatalog.CountScale = { 1, 1.2, 1.4, 1.6 } -- particle counts per band: ladder / kind layers (full density)
 AttackFxCatalog.DetailScale = { 0.5, 0.75, 1, 1.25 } -- the element's own impact + alive detail: every rarity, reduced at band 1
@@ -176,10 +186,12 @@ AttackFxCatalog.CoreLook = {
 -- the layers each rarity adds, in rarity order (each keeps everything below it). The element's OWN impact detail
 -- (Elements[e].Detail + the attack's own Layers) and its alive detail are NOT on the ladder: they show at every rarity.
 AttackFxCatalog.Ladder = {
-	{ Tier = "Common", Add = { "Charge", "Burst" } }, -- core shape + impact burst (+ the charge glow of beat 1)
+	-- (attack effects, 2026-11-01: the owner's "impact package for everyone": the ring, the flash, the sparks and the ground
+	-- mark at every rarity, ImpactScale makes them stronger by band; a second, wider ring from Epic)
+	{ Tier = "Common", Add = { "Charge", "Burst", "Shockwave", "Flash", "Sparks", "GroundGlow" } }, -- core shape + impact burst (+ the charge glow of beat 1) + the impact package
 	{ Tier = "Uncommon", Add = { "Trail" } }, -- + element trail
-	{ Tier = "Rare", Add = { "Slash", "GroundGlow" } }, -- + crescent slash arc, ground glow
-	{ Tier = "Epic", Add = { "Shockwave", "Flash" } }, -- + shockwave ring, light flash
+	{ Tier = "Rare", Add = { "Slash" } }, -- + crescent slash arc
+	{ Tier = "Epic", Add = { "Shockwave2" } }, -- + a second, wider ring
 	{ Tier = "Legendary", Add = { "Afterimage", "Bloom" } }, -- + afterimages, bloom pulse (camera punch: own pet)
 	{ Tier = "Mythic", Add = { "DoubleArc", "Field" } }, -- + double arcs, a ground-only lingering field
 	{ Tier = "Secret", Add = { "PlasmaRim" } }, -- + the colour-shifting rim (signature layer on signature pets; screen glow: own pet)
@@ -199,8 +211,14 @@ AttackFxCatalog.LayerSlots = {
 	GroundGlow = { Kind = "Decal", Beat = "Impact", At = "Ground", Tint = "Edge", Size = 5, Seconds = 0.6 }, -- an untextured glow disc
 	-- (Task 8, Studio + Gemini: at 3 / 4 the flash + bloom washed the pets white and a 14-stud ring buried the target:
 	-- lights <= 2 brightness / 8 studs range, the shockwave ~7 studs across and see-through)
+	-- (attack effects, 2026-11-01: these now play from Common, x ImpactScale, with Size up to 2.08: rings grow with the owner's
+	-- numbers, stay flat on the ground and see-through, so they leave the target in view; the light caps above are kept,
+	-- only a Studio check may move them)
 	Shockwave = { Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Mid", Grow = 1.7, Transparency = 0.35 },
+	Shockwave2 = { Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Core", Grow = 2.4, Delay = 0.08, Transparency = 0.5 },
 	Flash = { Kind = "Light", Beat = "Impact", At = "$Hit", Tint = "Core", Brightness = 1.6, Range = 8 },
+	-- (attack effects, 2026-11-01) a few hot sparks off every hit: the package's only emitter, it yields to the cap (Resolve)
+	Sparks = { Kind = "Emitter", Texture = "fx_sparks", Beat = "Impact", At = "$Hit", Tint = "Hot", Count = 5, Size = 0.6, SpeedScale = 1.5, LightEmission = 0.6 },
 	Afterimage = { Kind = "Trail", Texture = "fx_speedlines", Beat = "Travel", At = "Core", Tint = "Edge", Afterimages = 2 },
 	Bloom = { Kind = "Light", Beat = "Release", At = "Core", Tint = "Hot", Brightness = 1.4, Range = 8, Pulse = true },
 	-- the second crescent, a curved Beam (Task 8 Studio: untextured it read as a flat white slab; streaked with the arc sheet)
@@ -622,10 +640,11 @@ AttackFxCatalog.Basic = {
 		Swap = { Slash = "MuzzleRing", DoubleArc = "ShotArcs", Afterimage = "ShotAfterimage" },
 		-- player note (b), fix round 3: the shot's impact EXPLODES at every rarity: a bigger burst of the element's sheet
 		-- (BurstBoost: Count / Size x), a fireball pop of the element's colour (Boom), a ground shock ring (BoomRing) and a
-		-- flash (BoomFlash, which replaces the Epic Flash: <= 3 lights at Secret). It grows with the effect's Size
-		-- (1.0 .. 1.4 by rarity) and with the ladder (the Epic Shockwave adds a second, wider ring). No emitter is added.
+		-- flash (BoomFlash, which replaces the package's Flash: <= 3 lights at Secret). It grows with the effect's Size
+		-- (1.3 .. 2.08 by rarity and stage) and with the ladder (the Shockwave and, from Epic, the Shockwave2 add wider rings).
 		Skip = { Flash = true },
 		BurstBoost = { Count = 1.25, Size = 1.15 }, -- (Task 9: at 1.4 / 1.3 the Secret explosion hid the target)
+		-- (attack effects, 2026-11-01: these stay; Size grew, but the burst's particles stop at CloudCap 1.6 for the same reason)
 		Layers = {
 			{ Id = "Muzzle", Kind = "Emitter", Texture = "$Burst", Beat = "Release", At = "Source", Tint = "Mid", Count = 4, Size = 1.3 },
 			-- (Task 8 Studio: untextured, the streak read as a flat white ribbon on a bright sky; streaked + the deep edge colour,
@@ -654,7 +673,8 @@ AttackFxCatalog.Shapes = {
 -- Slots override the element's sheets for this kind; Layers are the kind's own (From = the tier they join, default
 -- Common); Skip = ladder layers the kind never draws; Detail = false = no element impact detail (the support kinds).
 ----------------------------------------------------------------------
-local SUPPORT_SKIP = { Trail = true, Slash = true, Afterimage = true, DoubleArc = true }
+-- (attack effects, 2026-11-01: support casts land on allies, not a hit: no impact package at any rarity)
+local SUPPORT_SKIP = { Trail = true, Slash = true, Afterimage = true, DoubleArc = true, Shockwave = true, Shockwave2 = true, Flash = true, Sparks = true, GroundGlow = true }
 
 -- Task 10 (the 9 kinds for every element; Gemini design pass, see task-10-report.md). Each kind draws the element's own
 -- sheets through slots: $Burst (the impact burst), $Trail, $Motif, $Arc, $Rain*, and the kind slots below, which an
@@ -666,7 +686,7 @@ local SUPPORT_SKIP = { Trail = true, Slash = true, Afterimage = true, DoubleArc 
 -- Kind fields besides Core / Beats / Layers / Slots / Skip / LowKeep: Swap (ladder layer -> LayerSlots template, like
 -- Basic.Ranged), CoreCount[band] (the core's piece count per band: rarity = more), ThickBand[band] (the Beam's thickness
 -- per band). Every kind fits the effect caps (6 emitters, 4 beams, 4 trails, 3 lights: Rally / Freeze have their own
--- light, so the Epic Flash is skipped).
+-- light, so the package's Flash is skipped).
 AttackFxCatalog.Specials = {
 	Blast = {
 		Text = "an orb grows above the pet, fires, and explodes into a dome + shockwave",
@@ -684,7 +704,7 @@ AttackFxCatalog.Specials = {
 	Beam = {
 		Text = "charge glow at the mouth, then a thick beam wrapped in spiral arcs; impact flare at the end",
 		Core = { Key = "vfx_beam", Path = "Projectile", Stretch = true, Thick = 1.4 },
-		-- (Task 10, Gemini: a wider beam by band reads as rarer without one more emitter; x Size 1.0 .. 1.4)
+		-- (Task 10, Gemini: a wider beam by band reads as rarer without one more emitter; x Size)
 		ThickBand = { 1.1, 1.3, 1.5, 1.7 },
 		Beats = { Charge = 0.5, Travel = 0.1, Linger = 0.5 },
 		Layers = {
@@ -795,7 +815,7 @@ AttackFxCatalog.Specials = {
 			{ Id = "Rouse", Kind = "Emitter", Texture = "$Motif", Beat = "Impact", At = "Allies", Motion = "Rise", Tint = "Mid", Count = 8, Size = 1 },
 		},
 		LowKeep = { "Roar" },
-		Skip = { Trail = true, Slash = true, Afterimage = true, DoubleArc = true, Flash = true }, -- (AllyGlow is its flash)
+		Skip = { Trail = true, Slash = true, Afterimage = true, DoubleArc = true, Flash = true, Shockwave = true, Shockwave2 = true, Sparks = true, GroundGlow = true }, -- (AllyGlow is its flash; no impact package on a support cast)
 		Detail = false, -- lands on allies: no element impact detail
 	},
 	Haste = {
@@ -818,14 +838,15 @@ AttackFxCatalog.Specials = {
 ----------------------------------------------------------------------
 -- Reactions: hit reaction, KO poof, victory sparkle (small; no element extras, no alive detail)
 ----------------------------------------------------------------------
-local REACTION_SKIP = { Charge = true, Trail = true, Slash = true, Afterimage = true, DoubleArc = true, Field = true }
+-- (attack effects, 2026-11-01: a reaction is no hit of its own: no impact package at any rarity)
+local REACTION_SKIP = { Charge = true, Trail = true, Slash = true, Afterimage = true, DoubleArc = true, Field = true, Shockwave = true, Shockwave2 = true, Flash = true, Sparks = true, GroundGlow = true }
 
 AttackFxCatalog.Reactions = {
 	Hurt = {
 		Text = "quick squash + flinch, a flash of the hit element",
 		Core = { Key = "vfx_orb", Path = "Self", Scale = 0.45, Flash = true },
 		Beats = { Charge = 0, Release = 0, Travel = 0, Linger = 0.4 },
-		Skip = { Charge = true, Trail = true, Slash = true, GroundGlow = true, Shockwave = true, Afterimage = true, Bloom = true, DoubleArc = true, Field = true },
+		Skip = { Charge = true, Trail = true, Slash = true, GroundGlow = true, Shockwave = true, Shockwave2 = true, Flash = true, Sparks = true, Afterimage = true, Bloom = true, DoubleArc = true, Field = true },
 	},
 	Ko = {
 		Text = "tumble + element-coloured poof",
@@ -862,7 +883,7 @@ AttackFxCatalog.Reactions = {
 		-- (Task 10 re-review I4) no camera punch, no screen glow at any band: it plays on every absorbed hit, a Linger
 		-- zone's 0.5 s ticks included, and on a boss hit beside the Hurt's own punch
 		Quiet = true,
-		Skip = { Charge = true, Trail = true, Slash = true, GroundGlow = true, Shockwave = true, Flash = true, Afterimage = true, Bloom = true, DoubleArc = true, Field = true, PlasmaRim = true },
+		Skip = { Charge = true, Trail = true, Slash = true, GroundGlow = true, Shockwave = true, Shockwave2 = true, Flash = true, Sparks = true, Afterimage = true, Bloom = true, DoubleArc = true, Field = true, PlasmaRim = true },
 	},
 }
 
@@ -1059,9 +1080,10 @@ AttackFxCatalog.Signatures = {
 		-- (Task 11c, Studio round 2, R6: the shielded ally drowned in an overexposed white-blue glow ball: the ladder's three
 		-- lights on it, the hot hex burst, the wisps and the neon orbs) the lights at half brightness, the hex burst and the
 		-- wisps half-lit and ~0.3 more see-through, the orbs 0.4 see-through: the pet inside stays readable
+		-- (attack effects, 2026-11-01: a support cast has no Flash now, its tweak went with it; two lights are left)
 		Actor = { Key = "vfx_sig_fox_orb", At = "Allies", Motion = "FoxFire", Beat = "Charge", Count = 9, Scale = 0.55, Tint = "Mid", Transparency = 0.4 },
 		Tweak = {
-			Flash = { Brightness = 0.8 }, Bloom = { Brightness = 0.7 }, PlasmaRim = { Brightness = 0.6 },
+			Bloom = { Brightness = 0.7 }, PlasmaRim = { Brightness = 0.6 },
 			Burst = { LightEmission = 0.4, Transparency = 0.3 }, Ward = { LightEmission = 0.2, Transparency = 0.3 },
 		},
 	},
@@ -1118,9 +1140,10 @@ AttackFxCatalog.Signatures = {
 		-- pet's head (AttackFx MOVE.Actor RiseRoar); 0.25 see-through
 		Actor = { Key = "vfx_sig_serpent", At = "Behind", Motion = "RiseRoar", Beat = "Charge", Count = 3, Tint = "Mid", Transparency = 0.25, Rim = { Tint = "Hot", Scale = 1.08, Transparency = 0.25 } },
 		-- (Task 11c, Studio round 2, R8: the purple ground rings spread to the bottom of the screen: the roar pulses grew to
-		-- ~22 studs) every ground ring x0.5 across: the roar pulses (Grow 4 -> 2), the ring under each ally, the shockwave
+		-- ~22 studs) every ground ring x0.5 across: the roar pulses (Grow 4 -> 2), the ring under each ally
+		-- (attack effects, 2026-11-01: a support cast has no Shockwave now, its tweak went with it)
 		Core = { Grow = 2 },
-		Tweak = { AllyRing = { Grow = 0.65 }, Shockwave = { Grow = 0.85 } },
+		Tweak = { AllyRing = { Grow = 0.65 } },
 	},
 }
 
@@ -1146,6 +1169,10 @@ function AttackFxCatalog.SizeOf(rarity, stage)
 	local size = AttackFxCatalog.Sizes[cleanRarity(rarity) or "Common"]
 	local bonus = AttackFxCatalog.StageBonus[cleanStage(stage)] or 0
 	return min(AttackFxCatalog.SizeCap, size * (1 + bonus))
+end
+
+function AttackFxCatalog.CloudSizeOf(rarity, stage)
+	return min(AttackFxCatalog.CloudCap, AttackFxCatalog.SizeOf(rarity, stage))
 end
 
 ----------------------------------------------------------------------
@@ -1361,6 +1388,49 @@ local function aliveOf(element, palette, countScale, sigTints)
 	return a
 end
 
+-- the impact package (spec 2026-11-01 "More effects"), x ImpactScale[band]: a Ring's Grow, a Decal's Size, an Emitter's
+-- Count, a Light's Brightness (capped at 2; the Range never moves: the light caps stay, Task 8)
+local PACKAGE = { Shockwave = true, Shockwave2 = true, Flash = true, Sparks = true, GroundGlow = true }
+
+local function scaleImpact(layers, scale)
+	for _, layer in ipairs(layers) do
+		if PACKAGE[layer.Id] then
+			if layer.Kind == "Ring" then
+				layer.Grow = layer.Grow * scale
+			elseif layer.Kind == "Decal" then
+				layer.Size = layer.Size * scale
+			elseif layer.Kind == "Emitter" then
+				layer.Count = max(1, floor(layer.Count * scale + 0.5))
+			elseif layer.Kind == "Light" then
+				layer.Brightness = min(2, layer.Brightness * scale)
+			end
+		end
+	end
+end
+
+-- AttackFx's emitter rule (isEmitter): an Emitter layer or a textured Decal
+local function isEmitterLayer(layer)
+	return layer.Kind == "Emitter" or (layer.Kind == "Decal" and type(layer.Texture) == "string")
+end
+
+-- the 6-emitter cap (AttackFx.MAX_EMITTERS.High) comes first: where the recipe would pass it, the Sparks yield
+local function fitSparks(recipe)
+	local count = isEmitterLayer(recipe.Alive) and 1 or 0
+	local sparksAt = nil
+	for i, layer in ipairs(recipe.Layers) do
+		if isEmitterLayer(layer) then
+			count = count + 1
+		end
+		if layer.Id == "Sparks" then
+			sparksAt = i
+		end
+	end
+	if sparksAt and count > 6 then
+		table.remove(recipe.Layers, sparksAt)
+		recipe.Dropped = { "Sparks" }
+	end
+end
+
 function AttackFxCatalog.Resolve(req)
 	if type(req) ~= "table" then
 		return nil
@@ -1546,6 +1616,8 @@ function AttackFxCatalog.Resolve(req)
 		end
 	end
 
+	scaleImpact(layers, AttackFxCatalog.ImpactScale[band])
+
 	-- (Task 9 Studio, Storm c2: the ranged Muzzle puff is the element's Burst sheet, but fully additive (fx_glow 1) it read
 	-- as a white glare at the mouth: it takes the element's BurstLight like the Burst itself)
 	if finite(element.BurstLight) then
@@ -1565,6 +1637,7 @@ function AttackFxCatalog.Resolve(req)
 		Stage = stage,
 		Band = band,
 		Size = AttackFxCatalog.SizeOf(rarity, stage),
+		CloudSize = AttackFxCatalog.CloudSizeOf(rarity, stage),
 		Density = mine and 1 or AttackFxCatalog.OthersDensity,
 		CameraPunch = mine and band >= 3 and not def.Quiet,
 		ScreenGlow = mine and band == 4 and not def.Quiet,
@@ -1580,6 +1653,7 @@ function AttackFxCatalog.Resolve(req)
 		Alive = (def.Alive and not (sig and sig.Alive == false)) and aliveOf(element, palette, ctx.detailScale, sig and sig.Tints) or {},
 		LowKeep = {},
 	}
+	fitSparks(recipe)
 	-- Low quality's second emitter after the Burst (AttackFx: MAX_EMITTERS.Low 2): the kind's pick, then the attack's,
 	-- then the element's; the engine keeps the first one this effect has
 	for _, list in ipairs({ (sig and sig.LowKeep) or {}, def.LowKeep or {}, element.LowKeep or {} }) do -- (a signature's own pick first)
