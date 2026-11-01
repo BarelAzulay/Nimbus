@@ -68,7 +68,9 @@
 --                (an emitter streaming off the caster through its leap: the Pounce's storm-cloud ride), Strike? (a Beam
 --                layer whose bolts strike down round the hit: the Pounce slam), Level? (a vfx_ring at the hit's height,
 --                not flat on the floor), OrbRadius? (a Ring's peak radius = this x the Blast orb's peak radius), Reach? (a
---                Ring peaking at the attack's real radius, eff.Reach: the ground ring that shows an area as it hits), Linger? (a
+--                Ring peaking at the attack's real radius, eff.Reach: the ground ring that shows an area as it hits), Thin? (a
+--                Ring whose height stops growing at its full size: a wide ring stays a line on the floor), PeakStuds? (a Ring is
+--                at most this wide, studs across, and never past the attack's real radius), Linger? (a
 --                ground mark / ember layer that outlives the beats by the Afterglow, dim and still: only Decal and Alive layers) ... } } (a template's
 --                Except = { [Attack or special Kind] = true } leaves
 --                it out of those attacks), Alive = { Kind ("Emitter"|"Beam"|"Decal"|"Mesh"), Texture?,
@@ -222,12 +224,13 @@ AttackFxCatalog.LayerSlots = {
 	GroundGlow = { Kind = "Decal", Beat = "Impact", At = "Ground", Tint = "Edge", Size = 5, Seconds = 0.6, Linger = true }, -- an untextured glow disc
 	-- (Task 8, Studio + Gemini: at 3 / 4 the flash + bloom washed the pets white and a 14-stud ring buried the target:
 	-- lights <= 2 brightness / 8 studs range, the shockwave ~7 studs across and see-through)
-	-- (attack effects, 2026-11-01: these now play from Common, x ImpactScale, with Size up to 2.08: rings grow with the owner's
-	-- numbers, stay flat on the ground and see-through, so they leave the target in view; the light caps above are kept on
+	-- (attack effects, 2026-11-01: these now play from Common, x ImpactScale, with Size up to 2.08. Review: uncapped the rings reached
+	-- 19 / 25 studs across and 2.5 studs tall, past the ring Task 8 cut: they stay a thin line (Thin), stop at 14 / 16 studs across
+	-- (PeakStuds) and never pass the attack's real radius, so a Secret's evolved size shows in its core and ground marks; the light caps above are kept on
 	-- screen too: AttackFx stops a light's Size at 1.4 (Flash 11.2 studs at most) and its Brightness at 2 after a crit; only a
 	-- Studio check may move them)
-	Shockwave = { Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Mid", Grow = 1.7, Transparency = 0.35 },
-	Shockwave2 = { Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Core", Grow = 2.4, Delay = 0.08, Transparency = 0.5 },
+	Shockwave = { Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Mid", Grow = 1.7, Transparency = 0.35, Thin = true, PeakStuds = 14 },
+	Shockwave2 = { Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Core", Grow = 2.4, Delay = 0.08, Transparency = 0.5, Thin = true, PeakStuds = 16 },
 	Flash = { Kind = "Light", Beat = "Impact", At = "$Hit", Tint = "Core", Brightness = 1.6, Range = 8 },
 	-- (attack effects, 2026-11-01) a few hot sparks off every hit: the package's only emitter; at the cap another layer yields first (fitCap)
 	Sparks = { Kind = "Emitter", Texture = "fx_sparks", Beat = "Impact", At = "$Hit", Tint = "Hot", Count = 5, Size = 0.6, SpeedScale = 1.5, LightEmission = 0.6 },
@@ -709,9 +712,10 @@ AttackFxCatalog.Specials = {
 		Layers = {
 			-- (Task 8: a see-through dome ~1.5x a pet, the target stays visible inside it; the blastwave ~9 studs)
 			{ Id = "Dome", Kind = "Ring", Key = "vfx_shell", Beat = "Impact", At = "$Hit", Tint = "Mid", Grow = 1.5, Transparency = 0.72 },
-			{ Id = "Blastwave", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Core", Grow = 2.2, Transparency = 0.3, Reach = true },
+			{ Id = "Blastwave", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Core", Grow = 2.2, Transparency = 0.3, Reach = true, Thin = true },
 		},
-		Skip = {},
+		-- (attack effects, review: the Blastwave is this kind's ring: a package ring past it would say the blast reaches farther than it does)
+		Skip = { Shockwave = true, Shockwave2 = true },
 	},
 	Beam = {
 		Text = "charge glow at the mouth, then a thick beam wrapped in spiral arcs; impact flare at the end",
@@ -744,7 +748,7 @@ AttackFxCatalog.Specials = {
 			{ Id = "SlamCrack", Kind = "Decal", Texture = "fx_crack", Beat = "Impact", At = "Ground", Size = 6, Seconds = 0.8, Linger = true },
 		},
 		Swap = { Afterimage = "LeapEcho" },
-		Skip = { Trail = true },
+		Skip = { Trail = true, Shockwave2 = true }, -- (attack effects, review: the slam ring is one of the package's two)
 	},
 	Storm = {
 		Text = "a cloud gathers over the target and rains the element",
@@ -782,10 +786,11 @@ AttackFxCatalog.Specials = {
 		Layers = {
 			{ Id = "Lock", Kind = "Light", Beat = "Impact", At = "$Hit", Tint = "Core", Brightness = 2, Range = 8 },
 			-- (attack effects, 2026-11-01: the cage stands on the target; this ground ring shows the real radius, evolved too)
-			{ Id = "FrostReach", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Mid", Reach = true, Transparency = 0.45 },
+			{ Id = "FrostReach", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Mid", Reach = true, Transparency = 0.45, Thin = true },
 		},
 		-- (Task 10: the Lock is the flash (3 lights at Secret); no double crescent on a cage)
-		Skip = { Trail = true, Slash = true, Afterimage = true, DoubleArc = true, Flash = true },
+		-- (attack effects, review: the FrostReach is this kind's ring: someone a package ring passed over would expect the stun)
+		Skip = { Trail = true, Slash = true, Afterimage = true, DoubleArc = true, Flash = true, Shockwave = true, Shockwave2 = true },
 	},
 	Heal = {
 		Text = "spirals of glowing petals rise around allies, plus-shaped sparkles",
@@ -1022,7 +1027,7 @@ AttackFxCatalog.Signatures = {
 		Name = "Storm Pounce", Rarity = "Secret", Element = "Storm", Kind = "Pounce",
 		Twist = "a lightning storm-wolf charges through the target",
 		Actor = { Key = "vfx_sig_wolf", At = "Source", Motion = "ChargeThrough", Beat = "Travel", Color = rgb(80, 180, 255), Rim = { Color = rgb(40, 60, 200), Scale = 1.1, Transparency = 0.3 } },
-		Skip = { DoubleArc = true, Flash = true }, -- (the slam's own flash replaces the ladder's: <= 3 lights)
+		Skip = { DoubleArc = true, Flash = true, Shockwave = true }, -- (the slam's own flash replaces the ladder's: <= 3 lights; its SigShock + the slam ring are the rings)
 		Tints = { SigBolts = rgb(90, 170, 255), SigSlamBolts = rgb(150, 210, 255), SigCloudRide = rgb(46, 60, 120) },
 		-- (Studio findings round, Gemini top 5 #3: the Secret landing read weaker than Lava Slam / Glacier Breath) the slam:
 		-- a wide shock ring races over the ground, two bolts strike down round the target, a lightning flash; the pet rides a

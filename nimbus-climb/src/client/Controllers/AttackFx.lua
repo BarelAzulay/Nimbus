@@ -968,6 +968,9 @@ MOVE.Ring = function(eff, it, t)
 	end
 	local g = it.From + (it.To - it.From) * outCubic(seg(t, it.T0, it.TG))
 	local fade = smooth(seg(t, it.TF, it.T1))
+	if it.Thin then -- (attack effects, review) wider, not taller: a thin line on the floor, however far it runs
+		return CFrame.new(p), V3(g, min(g, 1), g), fadeTo(it, fade)
+	end
 	if it.Face then -- stood up across the attack's direction (the flat XZ ring turned to face eff.Dir)
 		return face(p, eff.Dir) * CFrame.Angles(pi / 2, 0, 0), ONE * g, fadeTo(it, fade)
 	end
@@ -2580,7 +2583,7 @@ local function addRingLayer(eff, layer)
 	local ring = addSolid(eff, key, {
 		Layer = layer, Move = MOVE.Ring, Flat = (flatRing and layer.Level ~= true) or layer.At == "Ground", Anchor = anchor, Color = layer.Color, Material = Enum.Material.Neon,
 		Trans = finite(layer.Transparency) and layer.Transparency or 0.1, T0 = t0, TG = t0 + max(0.25, T.Linger - T.Impact + 0.2), TF = t0 + 0.08,
-		T1 = min(eff.TailAt, t0 + max(0.4, T.Linger - T.Impact + 0.35)), From = 0.35, To = finite(layer.Grow) and layer.Grow or 2.5,
+		T1 = min(eff.TailAt, t0 + max(0.4, T.Linger - T.Impact + 0.35)), From = 0.35, To = finite(layer.Grow) and layer.Grow or 2.5, Thin = layer.Thin == true,
 	})
 	-- (Studio findings round: the Eclipse Nova) OrbRadius: the ring's peak radius = this x the Blast orb's peak radius (its
 	-- main core piece at the impact: MOVE.Projectile's pop, x1.5)
@@ -2597,6 +2600,11 @@ local function addRingLayer(eff, layer)
 	-- (attack effects, 2026-11-01) Reach: the ring's peak radius = the attack's real radius
 	if ring and layer.Reach == true then
 		ring.To = eff.Reach / max(0.01, ring.Base.X * ring.S / 2)
+		ring.From = min(ring.From, ring.To * 0.3)
+	end
+	-- (attack effects, review) PeakStuds: at most this wide, and never past the attack's real radius (a Storm's zone)
+	if ring and finite(layer.PeakStuds) then
+		ring.To = min(ring.To, min(layer.PeakStuds / 2, eff.Reach) / max(0.01, ring.Base.X * ring.S / 2))
 		ring.From = min(ring.From, ring.To * 0.3)
 	end
 end

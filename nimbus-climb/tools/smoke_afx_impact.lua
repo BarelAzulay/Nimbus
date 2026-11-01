@@ -2,7 +2,8 @@
 -- "Claude's calls"; plan Task 2), loaded by tools/smoke.py in both worlds. Server world, pure:
 --   afx_impact_sizes     SizeOf = rarity 1.3 .. 1.6 x (1, 1.15, 1.3) by stage, cap 2.08; CloudSizeOf caps at 1.6; an Evolved II Common
 --                        out-sizes an unevolved Secret
---   afx_impact_package   every hit of every element and rarity has the ring, the flash, the sparks and the ground mark (Shockwave2 from
+--   afx_impact_package   every hit of every element and rarity has the ring (a Blast's and a Freeze's is the one that shows the real
+--                        radius; a Pounce's second is its slam), the flash, the sparks and the ground mark (Shockwave2 from
 --                        Epic), stronger by band (ImpactScale); no support cast or reaction has any of them; the 6-emitter / 3-light / light
 --                        caps hold; where a recipe passes 6 emitters a basic or element hit gives up its Charge glow, a Special its
 --                        Slash or Trail, and only a Beam or Storm whose own layers fill the cap goes without Sparks, at every rarity;
@@ -11,7 +12,8 @@
 --                        cloud size, same lights; the 12 signatures fit their caps at Stage 2
 -- Client world:
 --   client_afx_impact_engine  the engine draws it: particles follow CloudSize, rings and ground marks the full Size; Sparks survive the cap
---                             where the recipe lists them; Graphics Low gets no Sparks
+--                             where the recipe lists them; Graphics Low gets no Sparks; the lights keep the effective caps; the package rings
+--                             stay thin, stop at 14 / 16 studs across and never peak past the attack's real radius
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -142,7 +144,7 @@ local function serverScenarios()
 		if not T.check(type(sc) == "table" and near(sc[1], 0.8) and near(sc[2], 0.95) and near(sc[3], 1.1) and near(sc[4], 1.25), "afx package: ImpactScale 0.8 / 0.95 / 1.1 / 1.25 by band") then
 			return
 		end
-		local has = T.tally("afx package: every hit of every element and rarity has the Shockwave ring, the Flash (Ranged: BoomFlash, Freeze: Lock), the GroundGlow and the Sparks (unless Dropped); Shockwave2 from Epic")
+		local has = T.tally("afx package: every hit of every element and rarity has a ground ring (Blast: Blastwave, Freeze: FrostReach), the Flash (Ranged: BoomFlash, Freeze: Lock), the GroundGlow and the Sparks (unless Dropped); Shockwave2 from Epic, except where the kind's own ring stands in")
 		local caps = T.tally("afx package: <= 6 emitters, <= 3 lights, every Light Brightness <= 2 and Range <= 8")
 		local strong = T.tally("afx package: stronger by band: Ring Grow, GroundGlow Size, Sparks Count, Flash Brightness x ImpactScale")
 		local dropped, droppedSeen = {}, {}
@@ -175,11 +177,15 @@ local function serverScenarios()
 					end
 					order:case(packageCount >= prevPackage, fmt("%s: %d package layers after %d", label, packageCount, prevPackage))
 					prevPackage = packageCount
-					has:case(sw ~= nil and sw.Kind == "Ring" and sw.At == "Ground"
+					-- a kind that draws its real radius has that ring instead; a Pounce's core is its first ring, the Shockwave the second
+					local ownRing = (v.Kind == "Blast" and layerById(r, "Blastwave")) or (v.Kind == "Freeze" and layerById(r, "FrostReach")) or nil
+					local ring = ownRing or sw
+					local secondFrom = (v.Kind == "Blast" or v.Kind == "Freeze" or v.Kind == "Pounce") and 99 or 4
+					has:case(ring ~= nil and ring.Kind == "Ring" and ring.At == "Ground" and (ownRing == nil or sw == nil)
 						and flash ~= nil and flash.Kind == "Light"
 						and glow ~= nil and glow.Kind == "Decal" and glow.At == "Ground"
 						and (isDropped or (sparks ~= nil and sparks.Kind == "Emitter" and sparks.Texture == "fx_sparks"))
-						and ((i >= 4) == (sw2 ~= nil)),
+						and ((i >= secondFrom) == (sw2 ~= nil)),
 						fmt("%s: ring %s flash %s glow %s sparks %s (dropped %s) second ring %s", label, tostring(sw ~= nil), tostring(flash ~= nil), tostring(glow ~= nil), tostring(sparks ~= nil), tostring(isDropped), tostring(sw2 ~= nil)))
 					local lights = lightsOf(r)
 					local lightsOk = #lights <= 3
@@ -188,7 +194,7 @@ local function serverScenarios()
 					end
 					caps:case(emitterCount(r) <= 6 and lightsOk, fmt("%s: %d emitters, %d lights", label, emitterCount(r), #lights))
 					local s = sc[band]
-					strong:case(sw ~= nil and near(sw.Grow, 1.7 * s) and glow ~= nil and near(glow.Size, 5 * s)
+					strong:case((sw == nil or near(sw.Grow, 1.7 * s)) and glow ~= nil and near(glow.Size, 5 * s)
 						and (sw2 == nil or near(sw2.Grow, 2.4 * s))
 						and (layerById(r, "Flash") == nil or near(layerById(r, "Flash").Brightness, min(2, 1.6 * s)))
 						and (sparks == nil or sparks.Count == math.max(1, math.floor(math.floor(5 * C.CountScale[band] + 0.5) * s + 0.5))),
@@ -250,6 +256,17 @@ local function serverScenarios()
 		local sparksCommon = C.Resolve({ Element = "Celestial", Attack = "Melee", Rarity = "Common", Mine = true })
 		local sparksSecret = C.Resolve({ Element = "Celestial", Attack = "Melee", Rarity = "Secret", Mine = true })
 		T.check(layerById(sparksCommon, "Sparks").Count == 4 and layerById(sparksSecret, "Sparks").Count == 10, "afx package: Sparks 4 at Common, 10 at Secret")
+		local ringSw, ringSw2 = layerById(secret, "Shockwave"), layerById(secret, "Shockwave2")
+		T.check(ringSw.Thin == true and ringSw.PeakStuds == 14 and ringSw2.Thin == true and ringSw2.PeakStuds == 16, "afx package: the package rings stay thin and stop at 14 / 16 studs across")
+		-- a signature with its own wide ground ring has none of the package's on top (the Storm Pounce's SigShock)
+		local sigRings = T.tally("afx package: a signature with its own ground ring (SigShock) adds no package ring")
+		for petId, sig in pairs(C.Signatures) do
+			local r = C.Resolve({ Attack = "Special", PetId = petId, Element = sig.Element, Kind = sig.Kind, Rarity = "Secret", Mine = true })
+			if layerById(r, "SigShock") then
+				sigRings:case(layerById(r, "Shockwave") == nil and layerById(r, "Shockwave2") == nil, petId)
+			end
+		end
+		sigRings:report()
 	end)
 
 	S.afx_impact_readable = guarded("afx_impact_readable", function()
@@ -333,7 +350,7 @@ local function clientScenarios()
 				m.Name = key
 				local p = Instance.new("MeshPart")
 				p.Name = "Core"
-				p.Size = Vector3.new(2, 2, 2)
+				p.Size = (key == "vfx_ring") and Vector3.new(4, 0.4, 4) or Vector3.new(2, 2, 2) -- (the real ring's size: the studs below are the player's)
 				p.Anchored = true
 				p.Parent = m
 				return m
@@ -370,6 +387,10 @@ local function clientScenarios()
 			return
 		end
 		Fx.ClearAll()
+		local oldFolder = Fx.Folder()
+		if oldFolder then
+			oldFolder:Destroy() -- (the pool goes with it: pieces another scenario's fake library made are not this one's real ring size)
+		end
 		Fx._Deps({ MeshLibrary = fakeMeshLibrary() })
 		Fx.SetQuality("High")
 		local holder = Instance.new("Folder")
@@ -440,6 +461,61 @@ local function clientScenarios()
 		local slamSig = slamPet and Cat.Signatures[slamPet]
 		local _, slam = play(slamSig and { Attack = "Special", PetId = slamPet, Element = slamSig.Element, Kind = slamSig.Kind, Rarity = "Secret", Stage = 2 } or {})
 		T.check(slam.SigSlamFlash ~= nil and near(slam.SigSlamFlash.Range, 14 * LS, 1e-6) and near(slam.SigSlamFlash.B, 4, 1e-6), "afx lights: the Storm Pounce's slam flash reaches 19.6 studs, not 29 (its own Brightness 4 stays)", slam.SigSlamFlash and fmt("%s @ %s", tostring(slam.SigSlamFlash.B), tostring(slam.SigSlamFlash.Range)))
+
+		-- the package rings: thin however wide, 14 / 16 studs across at most, never past the attack's real radius
+		local rings = T.tally("afx rings: each rarity x stage: Shockwave = min(14, 4 x Size x 1.7 x ImpactScale) across, Shockwave2 = min(16, 4 x Size x 2.4 x ImpactScale); the band's height stays base x Size")
+		local bigger = T.tally("afx rings: a higher rarity or stage never has a narrower ring")
+		local sizesSeen, prev = {}, {}
+		for _, rarity in ipairs(RARITIES) do
+			local line = {}
+			for stage = 0, 2 do
+				local eff = play({ Rarity = rarity, Stage = stage })
+				local sc = Cat.ImpactScale[Cat.BandOf(rarity)]
+				local size = Cat.SizeOf(rarity, stage)
+				for _, it in ipairs(eff.Items) do
+					local id = it.Layer and it.Layer.Id
+					if id == "Shockwave" or id == "Shockwave2" then
+						local across = it.To * it.Base.X * it.S
+						local want = (id == "Shockwave") and min(14, 4 * size * 1.7 * sc) or min(16, 4 * size * 2.4 * sc)
+						local _, sv = it.Move(eff, it, it.TG)
+						local height = sv and it.Base.Y * sv.Y * it.S
+						rings:case(near(across, want, 1e-6) and height ~= nil and height <= 0.4 * size + 1e-6, fmt("%s stage %d %s: %s studs across (want %.2f), %s tall", rarity, stage, id, tostring(across), want, tostring(height)))
+						bigger:case(across >= (prev[id .. stage] or 0) - 1e-6 and across >= (prev[id .. rarity] or 0) - 1e-6, fmt("%s stage %d %s: %s", rarity, stage, id, tostring(across)))
+						prev[id .. stage], prev[id .. rarity] = across, across
+						line[#line + 1] = fmt("%s S%d %.1f", (id == "Shockwave") and "ring" or "ring2", stage, across)
+					end
+				end
+			end
+			sizesSeen[#sizesSeen + 1] = rarity .. ": " .. table.concat(line, ", ")
+		end
+		rings:report()
+		bigger:report()
+		print("  [afx rings] studs across: " .. table.concat(sizesSeen, " | "))
+		local inside = T.tally("afx rings: on every hit a package ring peaks inside the attack's real radius (Reach)")
+		local noStack = T.tally("afx rings: a Blast or Freeze draws only its real radius, a Pounce its slam + one ring")
+		local shapes = { { Attack = "Melee" }, { Attack = "Ranged" }, { Attack = "Element", Shape = "Cone" }, { Attack = "Element", Shape = "Circle" }, { Attack = "Element", Shape = "Line" },
+			{ Attack = "Special", Kind = "Blast" }, { Attack = "Special", Kind = "Beam" }, { Attack = "Special", Kind = "Pounce" }, { Attack = "Special", Kind = "Freeze" }, { Attack = "Special", Kind = "Storm" } }
+		for _, element in ipairs(moduleAt(ROOTS.shared .. "/Config").Elements.Order) do
+			for _, v in ipairs(shapes) do
+				for stage = 0, 2 do
+					local radius = (v.Kind == "Storm") and 6 * (1 + 0.15 * stage) or nil
+					local eff = play({ Element = element, Attack = v.Attack, Shape = v.Shape, Kind = v.Kind, Stage = stage, Radius = radius })
+					local n = 0
+					for _, it in ipairs(eff and eff.Items or {}) do
+						local id = it.Layer and it.Layer.Id
+						if id == "Shockwave" or id == "Shockwave2" then
+							n = n + 1
+							local r = it.To * it.Base.X * it.S / 2
+							inside:case(r <= eff.Reach + 1e-6, fmt("%s %s %s stage %d %s: radius %.2f, reach %.2f", element, v.Attack, tostring(v.Kind or v.Shape), stage, id, r, eff.Reach))
+						end
+					end
+					local allowed = ((v.Kind == "Blast" or v.Kind == "Freeze") and 0) or (v.Kind == "Pounce" and 1) or 2
+					noStack:case(eff ~= nil and n <= allowed, fmt("%s %s: %d package rings", element, tostring(v.Kind or v.Attack), n))
+				end
+			end
+		end
+		inside:report()
+		noStack:report()
 
 		-- Common: the package plays at the bottom of the ladder too
 		local _, c = play({ Rarity = "Common" })
