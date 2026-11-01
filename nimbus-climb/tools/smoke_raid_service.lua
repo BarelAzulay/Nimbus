@@ -14,7 +14,7 @@
 --   raid_rewards    the reward clocks: a win stamps, a second win pays nothing and says when, a loss never touches the win clock,
 --                   a second loss pays nothing, a won dare pays the dared tier, Double Rewards still double
 --   raid_svc_cost   4 fights x 8 raiders: the sim step time and the pockets' parts (for the report)
--- The real gate is Task 3's: until it exists this file installs a stand-in ArenaInfo.Gate. White-box: the kills write the sim's boss
+-- The real gate is ArenaBuilder's (a build without it gets a stand-in ArenaInfo.Gate here). White-box: the kills write the sim's boss
 -- (St is an upvalue of IsInBattle, as in smoke_p5_battleservice.lua). Plain Lua 5.1 syntax only.
 
 local K = _G.K

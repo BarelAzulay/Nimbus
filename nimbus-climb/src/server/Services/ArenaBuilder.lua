@@ -22,6 +22,12 @@
 --                               gate centre (LobbyInfo.GateSites.Ring, LookVector = towards the plaza)
 --       ArenaPortal  = BasePart (Phase 5) Portal_Arena's prompt part (ArenaPortalPrompt -> Spawn)
 --       LobbyCFrame  = CFrame   (Phase 5) in front of Portal_Arena, looking at the plaza (the forum's Return gate)
+--       Gate         = { CFrame, Size, Zone, Return, Prompt, Crest }   (boss raids) the boss gate at the back of the floor (the BossGate
+--                               segment, k = 8): CFrame = the passage centre on the floor surface, -Z = towards the floor's centre,
+--                               Size = what counts as walking through, Zone = the invisible part "RaidGate" (tagged NC_RaidGate), Return =
+--                               on the floor in front of it, looking at the centre (raiders come back from a pocket), Prompt =
+--                               "DarePrompt" (OpenPanel = "Dare") on the pillar beside it, Crest = the gold crest over the gate (tagged
+--                               NC_RaidGateCrest: the client's gate tag stands on it; the segment's other gold is its outer wall's banner)
 --       -- extras
 --       Radius, Bounds = { CFrame, Size }   the island (InArena uses its real outline); Link = "Bridge" | "Portal"
 --       EventBoard = { Model, Gui, Labels }, Leaderboard = { Model, Gui, Rows }   the SurfaceGuis (see ApplyArenaState)
@@ -30,17 +36,21 @@
 --   ArenaBuilder.BuildPocket(index, kind) -> { Model, CFrame, Size, Spawn, Zone, Index, Kind } | nil
 --       a private battle pocket (index 1..MAX_POCKETS), cloned from one template, far out in the sky on its own grid
 --       cell; CFrame = floor surface centre (axis aligned), Size = the battle floor (BattleCatalog.Zones.Ring), Spawn =
---       where the fighter stands (side 1, -Z, looking at the enemy side). Phase 5: the only kind is "Ring" (nil and
---       unknown kinds build it too; the Trial pocket is deleted): the Champion Ring, a round ring (16-gon floor of
+--       where the fighter stands (side 1, -Z, looking at the enemy side). "Ring" (nil and unknown kinds build it too;
+--       the Trial pocket is deleted): the Champion Ring, a round ring (16-gon floor of
 --       apothem 33: the 44 x 44 square fits at any rotation) with a gold rim, four crown posts, the compass-star emblem (RingEmblem) and the sky-sailor crowd (bug #11: one
 --       RingCrowd Model per Ring.CAST cloud incl. Drizzle the drummer, the flag masts, the bell; RingCrowdFx animates
 --       them on the client) on a stone bleacher behind the champion's side (<= 250 parts, zone Mode "Ring", ZoneId "Ring"). Building an index that exists returns it.
+--       "Raid" (boss raids): a fight that found the real floor taken: a sand 16-gon of apothem 72 like the colosseum's (the 96 x 96
+--       square fits at any rotation) on a cloud, a stone kerb, four unlit crown posts, no crowd (<= 160 parts, Size =
+--       BattleCatalog.Zones.Raid, zone Mode "Raid", ZoneId "Raid", no mesh tag). The caller's pool keeps the two kinds off one index.
 --   ArenaBuilder.FreePocket(zone)              removes that pocket (the table from BuildPocket, its index or Model)
 --   ArenaBuilder.ApplyArenaState(state)        EventService: draws the ArenaState table (the same one it broadcasts:
---       { Next = { Kind, BossId, StartsIn }, Raid = { Active, BossId, Hp, MaxHp, Players, EndsIn }, Double = { Active,
---       EndsIn }, Leaderboard = { { UserId, Name, Trophies }... } }) on the event board and the trophy leaderboard; the
---       countdowns tick down every second between two states. Without any state for a while the boards show the
---       schedule and the trophies of the players in the server (DataService) on their own.
+--       { Next = { Kind, BossId, StartsIn }, Raid = BattleService.GetRaidStatus() + NextBossIn, Double = { Active,
+--       EndsIn }, Leaderboard = { { UserId, Name, Trophies }... } }) on the event board and the trophy leaderboard: no floor
+--       fight = the boss waits at the gate, the next boss's clock and a line per running tier fight; a floor fight = its live HP bar;
+--       the countdowns tick down every second between two states. Without any state for a while the boards say the
+--       boss waits and show the trophies of the players in the server (DataService) on their own.
 --   ArenaBuilder.InArena(position) -> bool      on (or just above) the arena island
 --   ArenaBuilder.ZoneAt(position) -> part|nil   the NC_BattleZone part that contains the position
 --   ArenaBuilder.GetInfo() / GetPocket(index)   what was built
@@ -65,6 +75,8 @@
 --   * Battle zones: invisible parts tagged NC_BattleZone with the attributes Mode ("Raid" | "Duel" | "Ring"), Size
 --     (Vector3, the battle floor: X, height, Z), ZoneId and Index; the part itself covers the floor plus a small margin
 --     (where the controls work). CanCollide / CanTouch / CanQuery false: test membership with the part's CFrame + Size.
+--   * The boss gate at the back (ArenaInfo.Gate): the BossGate segment with a portcullis players walk through; its RaidGate part takes
+--     them into their tier's fight (BattleService), the prompt on the pillar beside it opens the dare panel (the client).
 --   * The Gate Court gates (Phase 5, 6.1 / 6.2, C4 / C12): Portal_Ring and Portal_Arena are WorldStyle.BuildGate gates
 --     at LobbyInfo.GateSites.Ring / .Arena, parented to LobbyInfo.GatesFolder (workspace.NimbusLobby.Gates; the arena
 --     island's budget no longer holds them). Portal_Ring: gold, the crown glyph, a pad, two crowned pedestals, the
@@ -1769,7 +1781,8 @@ local function segmentTemplate(kind)
 		Keep = { "Seat", "Banner", "Gold", "Recess", "Passage", "Iron" },
 	})
 	for _, d in ipairs(m:GetDescendants()) do
-		if d:IsA("BasePart") and (d.Name == "Recess" or d.Name == "Banner") then
+		-- (the boss gate's portcullis: players walk through it into the fight; the grid and its bake stay as they are)
+		if d:IsA("BasePart") and (d.Name == "Recess" or d.Name == "Banner" or (kind == "BossGate" and d.Name == "Iron")) then
 			d.CanCollide = false
 			d.CanQuery = false
 		end
@@ -2126,6 +2139,11 @@ local function buildEventBoard(parent, cf)
 	})
 	rounded(labels.RaidFill, 16)
 	labels.RaidBar = track
+	-- a line per running tier fight while the boss waits (the countdown shrinks to make room; at most 3: the fourth would have the floor)
+	labels.Fights = {}
+	for i = 1, 3 do
+		labels.Fights[i] = signText(p, "FightLine" .. i, "", "Body", 30, C.Text, 0.04, 0.6 + (i - 1) * 0.08, 0.92, 0.08)
+	end
 	makePrompt(panel, "BoardPrompt", "Events", "Event Board", "Arena", { OpenPanelTab = "Events" })
 	return { Model = m, Gui = gui, Panel = panel, Labels = labels }
 end
@@ -2184,17 +2202,19 @@ local function elementColorById(id)
 	return nil
 end
 
-local function raidEveryMinutes()
+-- GetRaidStatus().Fights -> the board's lines, in tier order: "Mid: 3 fighting, HP 50%"
+local function raidFightLines(fights)
 	local bc = battleCatalog()
-	local ev = bc and type(bc.Events) == "table" and bc.Events
-	if ev and type(ev.Schedule) == "table" then
-		for _, s in ipairs(ev.Schedule) do
-			if type(s) == "table" and s.Kind == "BossRaid" and tonumber(s.EveryMinutes) then
-				return tonumber(s.EveryMinutes)
-			end
+	local lines = {}
+	for _, tierId in ipairs(bc and type(bc.RaidTierOrder) == "table" and bc.RaidTierOrder or {}) do
+		local fight = fights[tierId]
+		if type(fight) == "table" then
+			local hp, maxHp = tonumber(fight.Hp) or 0, tonumber(fight.MaxHp) or 0
+			local pct = maxHp > 0 and floor(100 * max(0, hp) / maxHp + 0.5) or 0
+			lines[#lines + 1] = string.format("%s: %d fighting, HP %d%%", tierId, floor(tonumber(fight.Players) or 0), pct)
 		end
 	end
-	return 20
+	return lines
 end
 
 -- the label's width in px from its fractions of the board canvas (SurfaceGuis lay out on the client only)
@@ -2221,33 +2241,47 @@ local function drawBoard()
 	local L = b.Labels
 	local st = S.boardState
 	local now = os.clock()
+	local lines = st and st.RaidWaiting and st.RaidLines or {}
 	if st and st.RaidActive then
 		setLabel(L.Next, "BOSS RAID LIVE!", 34, C.Gold)
 		local name, element = bossName(st.RaidBoss)
-		setLabel(L.Boss, name, 46, elementColorById(element) and elementColorById(element):Lerp(C.Text, 0.35) or C.Text)
+		setLabel(L.Boss, st.RaidTier and (name .. " - " .. tostring(st.RaidTier)) or name, 46, elementColorById(element) and elementColorById(element):Lerp(C.Text, 0.35) or C.Text)
 		setLabel(L.Countdown, clockText((st.RaidEndsAt or now) - now), 100, C.Text)
 		local hpText = ""
 		if tonumber(st.RaidHp) and tonumber(st.RaidMaxHp) and st.RaidMaxHp > 0 then
 			hpText = string.format("HP %d%%", floor(100 * max(0, st.RaidHp) / st.RaidMaxHp + 0.5))
 		end
 		local players = tonumber(st.RaidPlayers) or 0
-		setLabel(L.Status, hpText .. (hpText ~= "" and "  " .. GLYPH.Dot .. "  " or "") .. players .. (players == 1 and " fighter" or " fighters") .. " - join in the arena!", 30, C.Text)
+		setLabel(L.Status, hpText .. (hpText ~= "" and "  " .. GLYPH.Dot .. "  " or "") .. players .. (players == 1 and " fighter" or " fighters"), 30, C.Text)
+	elseif st and st.RaidWaiting then
+		local name, element = bossName(st.RaidBoss)
+		setLabel(L.Next, name .. " waits at the gate", 34, elementColorById(element) and elementColorById(element):Lerp(C.Text, 0.35) or C.Text)
+		setLabel(L.Boss, "Next boss in", 46, C.Text)
+		setLabel(L.Countdown, st.NextBossAt and clockText(st.NextBossAt - now) or "--:--", 100, C.Text)
+		setLabel(L.Status, "Walk through the gate to fight", 30, C.Text)
 	elseif st and st.NextKind then
 		if st.NextKind == "DoubleRewards" then
 			setLabel(L.Next, "NEXT: DOUBLE REWARDS", 34, C.TextDim)
 			setLabel(L.Boss, "x2 Tokens + XP", 46, C.Gold)
 		else
-			setLabel(L.Next, "NEXT: BOSS RAID", 34, C.TextDim)
+			setLabel(L.Next, "NEXT BOSS", 34, C.TextDim)
 			local name, element = bossName(st.NextBoss)
 			setLabel(L.Boss, name, 46, elementColorById(element) and elementColorById(element):Lerp(C.Text, 0.35) or C.Text)
 		end
 		setLabel(L.Countdown, clockText((st.NextAt or now) - now), 100, C.Text)
-		setLabel(L.Status, "Be in the arena with your team to join", 30, C.Text)
+		setLabel(L.Status, "Walk through the gate to fight", 30, C.Text)
 	else
 		setLabel(L.Next, "BOSS RAIDS", 34, C.TextDim)
-		setLabel(L.Boss, "Every " .. raidEveryMinutes() .. " minutes", 46, C.Text)
+		setLabel(L.Boss, "A boss waits at the gate", 46, C.Text)
 		setLabel(L.Countdown, "--:--", 100, C.TextDim)
-		setLabel(L.Status, "Watch this board for the countdown", 30, C.Text)
+		setLabel(L.Status, "Walk through the gate to fight", 30, C.Text)
+	end
+	-- the fight lines take the status's slot and the lower half of the countdown's
+	L.Status.Visible = #lines == 0
+	L.Countdown.Size = UDim2.new(0.92, 0, #lines > 0 and 0.15 or 0.27, 0)
+	L.Countdown.TextSize = #lines > 0 and 64 or 100
+	for i, label in ipairs(L.Fights) do
+		setLabel(label, lines[i] or "", 30, C.Text)
 	end
 	local doubleOn = st and st.DoubleActive and (st.DoubleAt or 0) > now
 	-- the HP bar takes the pill's slot while a raid runs, unless Double Rewards needs it (the HP % stays in the text)
@@ -2261,9 +2295,13 @@ local function drawBoard()
 			L.RaidFill.BackgroundColor3 = elementColorById(element) or C.Crimson
 		end
 	end
-	L.DoublePill.Visible = doubleOn and true or false
+	-- (the boss's lines fill the board while it waits: the pill says when the next Double Rewards comes too)
+	local doubleNext = not doubleOn and st and st.RaidWaiting and st.NextKind == "DoubleRewards"
+	L.DoublePill.Visible = (doubleOn or doubleNext) and true or false
 	if doubleOn then
 		setLabel(L.Double, "x2 REWARDS  " .. clockText(st.DoubleAt - now), 30, C.Text)
+	elseif doubleNext then
+		setLabel(L.Double, "x2 REWARDS IN " .. clockText((st.NextAt or now) - now), 30, C.Text)
 	else
 		L.Double.Text = ""
 	end
@@ -2345,13 +2383,23 @@ function ArenaBuilder.ApplyArenaState(state)
 		st.NextAt = now + max(0, tonumber(nxt.StartsIn) or 0)
 	end
 	local raid = state.Raid
-	if type(raid) == "table" and raid.Active then
-		st.RaidActive = true
-		st.RaidBoss = raid.BossId
-		st.RaidHp = tonumber(raid.Hp)
-		st.RaidMaxHp = tonumber(raid.MaxHp)
-		st.RaidPlayers = tonumber(raid.Players) or (type(raid.Players) == "table" and #raid.Players) or 0
-		st.RaidEndsAt = now + max(0, tonumber(raid.EndsIn) or 0)
+	if type(raid) == "table" then
+		local fights = type(raid.Fights) == "table" and raid.Fights or {}
+		local floorFight = raid.Active and raid.FloorTier ~= nil and fights[raid.FloorTier]
+		if type(floorFight) == "table" then
+			st.RaidActive = true
+			st.RaidBoss = raid.BossId
+			st.RaidTier = raid.FloorTier
+			st.RaidHp = tonumber(floorFight.Hp)
+			st.RaidMaxHp = tonumber(floorFight.MaxHp)
+			st.RaidPlayers = tonumber(floorFight.Players) or 0
+			st.RaidEndsAt = now + max(0, tonumber(floorFight.EndsIn) or 0)
+		elseif type(raid.BossId) == "string" then
+			st.RaidWaiting = true
+			st.RaidBoss = raid.BossId
+			st.NextBossAt = tonumber(raid.NextBossIn) and now + max(0, tonumber(raid.NextBossIn)) or nil
+			st.RaidLines = raidFightLines(fights)
+		end
 	end
 	local double = state.Double
 	if type(double) == "table" and double.Active then
@@ -2574,7 +2622,7 @@ local function buildGateSign(parent, A)
 	local gui = surfaceGui(part, Enum.NormalId.Front)
 	local p = signPanel(gui, C.TextGold)
 	signText(p, "Title", "BATTLE ARENA", "Title", 64, C.TextGold, 0.04, 0.08, 0.92, 0.48)
-	signText(p, "Subtitle", "Boss raids every " .. raidEveryMinutes() .. " min", "Heading", 30, C.Text, 0.04, 0.6, 0.92, 0.3)
+	signText(p, "Subtitle", "Duels and boss raids", "Heading", 30, C.Text, 0.04, 0.6, 0.92, 0.3)
 	-- the main gate's own prompt: the arena panel (raids, duels, the queue)
 	local anchor = anchorPart(parent, "GatePromptAnchor", A * CFrame.new(0, 3, -(COL.WallOut + 2)), Vector3.new(1, 1, 1))
 	makePrompt(anchor, "ArenaPrompt", "Arena", "Battle Arena", "Arena", { OpenPanelTab = "Raid" })
@@ -2820,6 +2868,37 @@ function Gates.buildReturn(model, A)
 	p.MaxActivationDistance = PROMPT_RANGE + 2
 	S.gatePrompts[p] = true
 	return gate
+end
+
+-- The boss gate (boss raids, ArenaInfo.Gate): the BossGate segment's art is untouched (its portcullis just lets players through, see
+-- segmentTemplate). Added here: the invisible walk-through (BattleService polls who stands in it) and the small pillar with the dare
+-- prompt, beside it so that walking up to the prompt never takes anyone in. The prompt keeps the arena's PROMPT_RANGE: from
+-- anywhere it shows, a dare is within BattleService's C.RAID_DARE_RANGE of the gate.
+function Gates.buildBoss(model, A)
+	local m = newModel(model, "BossGateSite")
+	local cf = A * CFrame.new(0, 0, COL.FloorR - 2) -- island-local -Z is the floor's centre from here
+	local size = Vector3.new(11, 8, 8)
+	local zone = box(m, "RaidGate", cf * CFrame.new(0, size.Y / 2, 0), size, C.Crimson, { Transparency = 1, Shadow = false })
+	zone.CanCollide = false
+	zone.CanQuery = false
+	zone.CanTouch = false
+	CollectionService:AddTag(zone, "NC_RaidGate")
+	local pillar = Art.part(m, "DarePillar", A * CFrame.new(-8, 4, 68), Vector3.new(2, 8, 2), "Marble", { Collide = true })
+	local prompt = makePrompt(pillar, "DarePrompt", "Dare a higher tier", "Boss gate", "Dare")
+	-- the crest: the gold over the gate (Segment_08 has more Gold, its banner on the outer wall stands higher)
+	local crest, best = nil, math.huge
+	local crestAt = (A * CFrame.new(0, 6.5, COL.FloorR)).Position
+	local colosseum = model:FindFirstChild("Colosseum")
+	local seg = colosseum and colosseum:FindFirstChild("Segment_08", true)
+	for _, d in ipairs(seg and seg:GetDescendants() or {}) do
+		if d:IsA("BasePart") and d.Name == "Gold" and (d.Position - crestAt).Magnitude < best then
+			crest, best = d, (d.Position - crestAt).Magnitude
+		end
+	end
+	if crest then
+		CollectionService:AddTag(crest, "NC_RaidGateCrest")
+	end
+	return { CFrame = cf, Size = size, Zone = zone, Return = cf * CFrame.new(0, 3, -10), Prompt = prompt, Crest = crest }
 end
 
 -- The status pill of Portal_Ring from its RingBoard attribute ("Alex|31;Sam|24;Kim|20", written by BattleService when
@@ -3234,6 +3313,54 @@ function Ring.pocketTemplate()
 	return root
 end
 
+-- the Raid pocket template (centre = the floor surface, axis aligned, no mesh key): the colosseum's floor without its stands, for a
+-- fight that found the real floor taken. The apothem is the floor's: the raid zone and the fighters' rim stand exactly as they do there.
+function Ring.raidPocketTemplate()
+	if Ring.raidTpl then
+		return Ring.raidTpl
+	end
+	local hf = COL.FloorR
+	local root = newModel(nil, "RaidPocket")
+	local rng = Util.NewRng(SEED + 43)
+	local puffs = {}
+	for deg = 45, 359, 90 do
+		local a = rad(deg)
+		local sz = rng:Float(16, 20)
+		puffs[#puffs + 1] = { cos(a) * (hf + 2), rng:Float(-11, -8), sin(a) * (hf + 2), sz, sz * 0.6, sz }
+	end
+	puffs[#puffs + 1] = { 0, -20, 0, 44, 12, 44 }
+	local function sdf(x, z)
+		return sqrt(x * x + z * z) - (hf + 6)
+	end
+	local g = cloudGrid({
+		V = 8,
+		Sdf = sdf,
+		Bounds = { -(hf + 12), hf + 12, -(hf + 12), hf + 12 },
+		Tiers = { { Inset = 0, H = 1 }, { Inset = 16, H = 1 } },
+		Puffs = puffs,
+		Carve = function(x, y, z)
+			return y > 0 and sdf(x, z) < -4
+		end,
+		Seed = 15,
+	})
+	Art.shadeCloud(VX.Build(g, { V = 8, Pal = CLOUD_PAL, Name = "RaidCloud", CF = CFrame.new(0, -1.2 - 4, 0), Collide = true, MaxParts = 40, Parent = root }), CFrame.new(), 30)
+	-- the floor: as the colosseum's (buildFloor): sand, a stone band and a gold line along the edge
+	disc16(root, "RaidFloor", CFrame.new(), hf + 1, -0.1, 1, Art.P.Sand, MAT.Sand, true)
+	ring16(root, "RaidBand", CFrame.new(), hf - 8, hf + 1, 0, 1, Art.P.SlateLight, MAT.Slate, true)
+	ring16(root, "RaidGold", CFrame.new(), hf - 9.6, hf - 8, 0.02, 1, Art.P.Brass, MAT.Metal, true)
+	for j = 0, 15 do
+		Art.kerb(root, CFrame.Angles(0, j * STEP16, 0) * CFrame.new(0, 0, -(hf + 1)), 2 * (hf + 1) * TAN16)
+	end
+	-- four unlit crown posts on the diagonals, just outside the 96 x 96 square's corners
+	for j = 0, 3 do
+		local a = rad(45 + 90 * j)
+		Ring.crownPost(root, CFrame.new(cos(a) * (hf - 1), 0, sin(a) * (hf - 1)), false)
+	end
+	root:SetAttribute("ArtFixes", Art.enforce(root))
+	Ring.raidTpl = root
+	return root
+end
+
 -- the pocket's dress targets (bug #11): RingBase = arena_pocket, RingEmblem = arena_emblem, the rigging, and every crowd
 -- root (its CrowdKey / CrowdOff / CrowdTint attributes); siblings, never nested
 function Ring.tagPocket(model, cf)
@@ -3269,8 +3396,8 @@ function ArenaBuilder.GetPocket(index)
 	return S.pockets[index]
 end
 
--- Phase 5: the only pocket is the Champion Ring's ("Ring"); nil / unknown kinds build it too (the Trial pocket is
--- deleted). An index that is already built returns that pocket.
+-- "Raid" builds the boss raids' pocket; "Ring", nil and unknown kinds the Champion Ring's (the Trial pocket is deleted). An index
+-- that is already built returns that pocket.
 function ArenaBuilder.BuildPocket(index, kind)
 	index = tonumber(index)
 	if not index or index ~= index or index < 1 or index > MAX_POCKETS or index ~= floor(index) then
@@ -3283,9 +3410,10 @@ function ArenaBuilder.BuildPocket(index, kind)
 	if not Voxel then
 		return nil
 	end
-	local okT, tpl = pcall(Ring.pocketTemplate)
+	local raid = kind == "Raid"
+	local okT, tpl = pcall(raid and Ring.raidPocketTemplate or Ring.pocketTemplate)
 	if not okT or not tpl then
-		warn("[ArenaBuilder] ring pocket template failed: " .. tostring(tpl))
+		warn("[ArenaBuilder] " .. (raid and "raid" or "ring") .. " pocket template failed: " .. tostring(tpl))
 		return nil
 	end
 	local col = (index - 1) % POCKET_COLUMNS
@@ -3298,15 +3426,22 @@ function ArenaBuilder.BuildPocket(index, kind)
 		holder.Name = "BattlePockets"
 		holder.Parent = Workspace
 	end
-	local model = place(tpl, cf, holder, "RingPocket_" .. index)
+	local pocketKind = raid and "Raid" or "Ring"
+	local model = place(tpl, cf, holder, pocketKind .. "Pocket_" .. index)
 	model:SetAttribute("PocketIndex", index)
-	model:SetAttribute("PocketKind", "Ring")
-	Ring.tagPocket(model, cf)
-	local floorSize = zoneFloorSize("Ring")
-	local hf = Ring.FloorA
-	local zone = makeZone(model, "BattleZone_Ring", cf, Ring.RimOut, "Ring", floorSize, "Ring", index)
-	local spawn = CFrame.lookAt(pos + Vector3.new(0, 3, -(hf - 7)), pos + Vector3.new(0, 3, hf))
-	local info = { Model = model, CFrame = cf, Size = floorSize, Spawn = spawn, Zone = zone, Index = index, Kind = "Ring" }
+	model:SetAttribute("PocketKind", pocketKind)
+	local floorSize = zoneFloorSize(pocketKind)
+	local zone, spawn = nil, nil
+	if raid then
+		zone = makeZone(model, "BattleZone_Raid", cf, COL.FloorR + 3, "Raid", floorSize, "Raid", index)
+		spawn = CFrame.lookAt(pos + Vector3.new(0, 3, -(COL.FloorR - 8)), pos + Vector3.new(0, 3, COL.FloorR))
+	else
+		Ring.tagPocket(model, cf)
+		local hf = Ring.FloorA
+		zone = makeZone(model, "BattleZone_Ring", cf, Ring.RimOut, "Ring", floorSize, "Ring", index)
+		spawn = CFrame.lookAt(pos + Vector3.new(0, 3, -(hf - 7)), pos + Vector3.new(0, 3, hf))
+	end
+	local info = { Model = model, CFrame = cf, Size = floorSize, Spawn = spawn, Zone = zone, Index = index, Kind = pocketKind }
 	S.pockets[index] = info
 	return info
 end
@@ -3616,6 +3751,10 @@ function ArenaBuilder.Build(lobbyInfo)
 	section("gate sign", function()
 		buildGateSign(model, A)
 	end)
+	local bossGate = nil
+	section("boss gate", function()
+		bossGate = Gates.buildBoss(model, A)
+	end)
 
 	-- the battle floor (raid)
 	local zones = newModel(model, "BattleZones")
@@ -3714,6 +3853,7 @@ function ArenaBuilder.Build(lobbyInfo)
 		Bounds = { CFrame = A * CFrame.new(0, 20, (ISL.FrontZ + ISL.DiscR) / 2), Size = Vector3.new(ISL.HalfW * 2 + 24, 90, ISL.DiscR - ISL.FrontZ + 24) },
 		Link = link,
 		LobbyCFrame = lobbyCF,
+		Gate = bossGate,
 		EventBoard = eventBoard,
 		Leaderboard = leaderboard,
 		Parts = parts,
@@ -3750,7 +3890,7 @@ function ArenaBuilder.InArena(position)
 	return islandSdf(rel.X, rel.Z) <= 2
 end
 
--- The NC_BattleZone part (arena floor, a duel ring or a Champion Ring pocket: Mode "Raid" | "Duel" | "Ring") that
+-- The NC_BattleZone part (arena floor, a duel ring or a pocket: Mode "Raid" | "Duel" | "Ring") that
 -- contains the position.
 function ArenaBuilder.ZoneAt(position)
 	if typeof(position) ~= "Vector3" then

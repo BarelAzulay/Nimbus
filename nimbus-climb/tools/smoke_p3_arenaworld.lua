@@ -316,10 +316,10 @@ S.p3arena_world = guarded("p3arena_world", function()
 
 	-- every prompt: sane, panel prompts carry a known panel id
 	local prompts = promptsUnder(model)
-	local promptOk = T.tally("arena: every prompt has an action, a range <= 14 and (when it opens a window) OpenPanel Arena / Ring")
+	local promptOk = T.tally("arena: every prompt has an action, a range <= 14 and (when it opens a window) OpenPanel Arena / Ring / Dare")
 	for _, pr in ipairs(prompts) do
 		local panel = pr:GetAttribute("OpenPanel")
-		promptOk:case(pr.ActionText ~= "" and pr.MaxActivationDistance <= 14 and (panel == nil or panel == "Arena" or panel == "Ring"), pr:GetFullName())
+		promptOk:case(pr.ActionText ~= "" and pr.MaxActivationDistance <= 14 and (panel == nil or panel == "Arena" or panel == "Ring" or panel == "Dare"), pr:GetFullName())
 	end
 	promptOk:report()
 
@@ -607,11 +607,10 @@ S.p3arena_boards = guarded("p3arena_boards", function()
 	end
 	advance(2)
 	local idle = visibleText(board)
-	-- EventService draws its next raid (NEXT: BOSS RAID, the boss, a countdown); without it the board shows the schedule;
-	-- a scheduled raid that happens to be running when this scenario starts (the shared game clock of a full run) shows
-	-- BOSS RAID LIVE, which is right too
-	T.check(idle:find("NEXT: BOSS RAID", 1, true) ~= nil or idle:find("Every %d+ minutes") ~= nil or idle:find("BOSS RAIDS") ~= nil or idle:find("BOSS RAID LIVE", 1, true) ~= nil,
-		"boards: the event board shows when the next Boss Raid comes (EventService's state, or the schedule without it)", idle)
+	-- EventService draws the waiting boss (its name, the next boss's clock); without it the board says a boss waits; a floor fight
+	-- that happens to be running when this scenario starts shows BOSS RAID LIVE, which is right too
+	T.check(idle:find("waits at the gate", 1, true) ~= nil or idle:find("BOSS RAID LIVE", 1, true) ~= nil,
+		"boards: the event board says the boss waits at the gate (EventService's state, or on its own without it)", idle)
 
 	local BC = battleCatalog()
 	local bossId, bossName = nil, nil
@@ -674,7 +673,7 @@ S.p3arena_boards = guarded("p3arena_boards", function()
 	T.check(longOk, "boards: a long player name is cut to fit its row")
 
 	-- a live raid and double rewards
-	AB.ApplyArenaState({ Raid = { Active = true, BossId = bossId, Hp = 500, MaxHp = 1000, Players = 3, EndsIn = 90 }, Double = { Active = true, EndsIn = 600 }, Leaderboard = { list[1] } })
+	AB.ApplyArenaState({ Raid = { Active = true, BossId = bossId, FloorTier = "High", Fights = { High = { Tier = "High", Floor = true, Hp = 500, MaxHp = 1000, Players = 3, EndsIn = 90 } } }, Double = { Active = true, EndsIn = 600 }, Leaderboard = { list[1] } })
 	text = visibleText(board)
 	T.check(text:find("LIVE", 1, true) ~= nil and text:find("50%", 1, true) ~= nil and text:find("3 fighters", 1, true) ~= nil, "boards: a live raid shows LIVE, the boss HP and the fighters", text)
 	T.check(text:find("x2", 1, true) ~= nil and text:find("10:00", 1, true) ~= nil, "boards: Double Rewards shows its pill with the time left", text)
@@ -685,7 +684,7 @@ S.p3arena_boards = guarded("p3arena_boards", function()
 
 	-- junk never errors
 	local junkOk = true
-	for _, junk in ipairs({ 5, "x", true, {}, { Next = 5 }, { Next = { Kind = 5, StartsIn = "x" } }, { Raid = { Active = true, Hp = "x", MaxHp = 0, Players = {}, EndsIn = -5 } }, { Leaderboard = { 5, "x", { Name = 7 }, { UserId = "x", Trophies = -9 } } }, { Double = { Active = true, EndsIn = math.huge } } }) do
+	for _, junk in ipairs({ 5, "x", true, {}, { Next = 5 }, { Next = { Kind = 5, StartsIn = "x" } }, { Raid = { Active = true, FloorTier = "High", Fights = { High = { Hp = "x", MaxHp = 0, Players = {}, EndsIn = -5 } } } }, { Leaderboard = { 5, "x", { Name = 7 }, { UserId = "x", Trophies = -9 } } }, { Double = { Active = true, EndsIn = math.huge } } }) do
 		local okCall = pcall(AB.ApplyArenaState, junk)
 		if not okCall then
 			junkOk = false
@@ -821,6 +820,14 @@ S.p3arena_pockets = guarded("p3arena_pockets", function()
 	end
 	T.check(left == 0, "pockets: freed pockets leave no Trial / Ring zone behind", left .. " left")
 	T.check(workspace:FindFirstChild("BattlePockets") == nil, "pockets: the BattlePockets folder goes away with the last pocket")
+	-- boss raids: the Raid pocket stands on the same grid and frees the same way
+	local raidPocket = AB.BuildPocket(9, "Raid")
+	T.check(raidPocket and raidPocket.Kind == "Raid" and #partsOf(raidPocket.Model) <= 160, "raid pocket: BuildPocket(9, \"Raid\") within 160 parts", raidPocket and (#partsOf(raidPocket.Model) .. " parts") or "none")
+	if raidPocket then
+		local gx9, gz9 = zoneSize("Raid")
+		squareFits("raid pocket", raidPocket.CFrame, gx9, gz9, true)
+		T.check(AB.FreePocket(raidPocket) == true and workspace:FindFirstChild("BattlePockets") == nil, "raid pocket: freed")
+	end
 	local junkOk = true
 	for _, junk in ipairs({ 0, -1, 1.5, "x", 1e9, {}, true, 0 / 0 }) do
 		local okCall, res = pcall(AB.BuildPocket, junk)
