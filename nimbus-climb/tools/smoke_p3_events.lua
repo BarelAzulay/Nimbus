@@ -8,12 +8,13 @@
 --                      named joints (Pivot attributes), Root as PrimaryPart, anchored non-colliding parts, sane part
 --                      budgets and size, effect points, every pose animates (no NaN, joints move, the root CFrame is
 --                      followed), SetEnraged recolours the glow and back, telegraph colours for every attack
---   p3events_schedule  (booted) the scheduler: ArenaState on join (contract shape), the raid announced ~2 minutes ahead
---                      with a side toast and fast ArenaState updates, the raid opened through BattleService at its time,
---                      the toast, a raid nobody joins closes and is reported, the next one is ~20 minutes away
---   p3events_raid      (booted) StartNow("BossRaid") / EndNow, a second raid refused, Double Rewards (multiplier, Workspace
---                      attribute, BattleService sees it, RaidTierFor), the fallback raid payer (only when BattleService
---                      did not pay, exactly once), the event pet shout-out, the developer /raid command + help (<= 90)
+--   p3events_schedule  (booted) the scheduler: ArenaState on join (contract shape), the BossRaid slot is the boss rotation: the boss
+--                      changes through BattleService.SetRaidBoss at its time with no announcement, no toast and no fast ArenaState,
+--                      ArenaState.Raid = the status + NextBoss / NextBossIn, the next change is ~20 minutes away
+--   p3events_raid      (booted) StartNow("BossRaid") = the next boss (now, or when the fights end), EndNow = EndRaids, Double Rewards
+--                      (multiplier, Workspace attribute, BattleService sees it, RaidTierFor), the fallback raid payer (only when
+--                      BattleService did not pay, exactly once, under the reward clocks), the event pet shout-out, the developer
+--                      /raid [boss|end] command + help (<= 90)
 -- Plain Lua 5.1 syntax only.
 
 local K = _G.K
@@ -365,10 +366,10 @@ end
 
 local function clearRaid()
 	local es = ES()
-	if BS().GetRaidStatus() then
+	if next(BS().GetRaidStatus().Fights) ~= nil then
 		es.EndNow("BossRaid")
 		K.waitFor(function()
-			return BS().GetRaidStatus() == nil
+			return next(BS().GetRaidStatus().Fights) == nil
 		end, 10)
 	end
 end
@@ -403,76 +404,51 @@ S.p3events_schedule = guarded("p3events_schedule", function()
 		T.check(found and #(last.Leaderboard) <= 10, "schedule: the leaderboard lists the players in the server ({ UserId, Name, Trophies }, <= 10)")
 	end
 	local left = es.SecondsUntil("BossRaid")
-	if not T.check(type(left) == "number", "schedule: a Boss Raid is scheduled") then
+	if not T.check(type(left) == "number", "schedule: the boss rotation is scheduled") then
 		return
 	end
-	local every = 20 * 60
-	local announce = 120
-	for _, e in ipairs(bc.Events.Schedule) do
-		if e.Kind == "BossRaid" then
-			every, announce = e.EveryMinutes * 60, e.AnnounceSeconds or announce -- (bridge: the row has no AnnounceSeconds now, EventService still falls back to 120 until the rotation replaces it)
+	local every = bc.Events.Schedule[1].EveryMinutes * 60
+	T.check(left <= every + 2, "schedule: the next boss is at most EveryMinutes away", string.format("%.0f s", left))
+	local s0 = es.GetState()
+	local waiting = BS().GetRaidStatus()
+	T.check(s0.NextRaid == nil and type(s0.Raid) == "table" and s0.Raid.Active == false and s0.Raid.BossId == waiting.BossId and bc.Bosses[s0.Raid.NextBoss] ~= nil
+		and s0.Raid.NextBossIn > 0 and s0.Raid.NextBossIn <= every + 2, "schedule: ArenaState.Raid = the waiting boss + NextBoss / NextBossIn; NextRaid is gone")
+	local slotBoss = s0.Raid.NextBoss
+	local announced, started = 0, 0
+	local c1 = es.EventAnnounced:Connect(function(kind)
+		if kind == "BossRaid" then
+			announced = announced + 1
 		end
-	end
-	T.check(left <= every + 2, "schedule: the next raid is at most EveryMinutes away", string.format("%.0f s", left))
-	if left < announce + 5 then
-		-- already announced (the clock of earlier scenarios): let this one open, close it, and watch the next one
-		K.waitFor(function()
-			return BS().GetRaidStatus() ~= nil
-		end, left + 10)
-		clearRaid()
-		advance(1.5)
-		left = es.SecondsUntil("BossRaid")
-	end
-	if left > announce + 5 then
-		advance(left - announce - 5)
+	end)
+	local c2 = es.EventStarted:Connect(function(kind)
+		if kind == "BossRaid" then
+			started = started + 1
+		end
+	end)
+	-- the last two minutes before the change: none of the old raid's countdown
+	if left > 110 then
+		advance(left - 110)
 	end
 	mark = K.logSize()
-	local announced = K.waitFor(function()
-		return (toasted(p, "Boss Raid in", mark))
-	end, 12)
-	local okT, text = toasted(p, "Boss Raid in", mark)
-	T.check(announced and okT, "schedule: about 2 minutes ahead every player gets a side toast naming the boss", text)
-	local slotBoss = nil
-	local es2 = es.GetState()
-	if es2.NextRaid then
-		slotBoss = es2.NextRaid.BossId
-	end
-	T.check(okT and slotBoss ~= nil and text:find(bc.Bosses[slotBoss].Name, 1, true) ~= nil, "schedule: ...the toast names the next boss (" .. tostring(slotBoss) .. ")", text)
 	local m2 = K.logSize()
-	advance(5.2)
-	local fast = arenaStates(p, m2)
-	local lastSt = fast[#fast]
-	T.check(#fast >= 4, "schedule: during the countdown ArenaState comes about every second", tostring(#fast))
-	T.check(lastSt and lastSt.Next and lastSt.Next.Kind == "BossRaid" and lastSt.Next.Announced == true and lastSt.Next.StartsIn <= announce and lastSt.Next.StartsIn > 0,
-		"schedule: ArenaState.Next counts the raid down", lastSt and lastSt.Next and tostring(lastSt.Next.StartsIn) or "nil")
-	mark = K.logSize()
-	local started = K.waitFor(function()
-		return BS().GetRaidStatus() ~= nil
-	end, announce + 10)
-	T.check(started, "schedule: at its time the raid opens through BattleService.StartRaid")
-	if not started then
-		return
+	advance(11)
+	local slow = arenaStates(p, m2)
+	if (es.SecondsUntil("DoubleRewards") or math.huge) > 180 then
+		T.check(#slow <= 4, "schedule: no fast ArenaState before a boss change (about every 5 s)", tostring(#slow))
 	end
-	local status = BS().GetRaidStatus()
-	T.eq(status.BossId, slotBoss, "schedule: ...with the announced boss")
-	T.check((toasted(p, "Boss Raid!", mark)), "schedule: ...and a 'Boss Raid!' toast to everyone")
-	advance(1.2)
-	local sts = arenaStates(p, mark)
-	local s3 = sts[#sts]
-	T.check(s3 and type(s3.Raid) == "table" and s3.Raid.Active == true and s3.Raid.BossId == slotBoss, "schedule: ArenaState.Raid = BattleService.GetRaidStatus()")
+	local upTo = es.SecondsUntil("BossRaid") or 0
+	local changed = K.waitFor(function()
+		return (es.SecondsUntil("BossRaid") or 0) > upTo
+	end, upTo + 10)
+	T.check(changed, "schedule: at its time the slot moves on")
+	T.eq(BS().GetRaidStatus().BossId, slotBoss, "schedule: ...and the boss changed through BattleService.SetRaidBoss")
+	T.check(not toasted(p, "Boss", mark) and not toasted(p, "arrives", mark), "schedule: ...with no toast")
+	T.check(announced == 0 and started == 0, "schedule: ...no EventAnnounced, no EventStarted (the sky waits for a floor fight)", announced .. " / " .. started)
 	local nextLeft = es.SecondsUntil("BossRaid")
-	T.check(nextLeft and nextLeft > every - 30 and nextLeft <= every + 2, "schedule: the next raid is ~EveryMinutes later", tostring(nextLeft))
-	-- nobody joins: the raid closes at the end of the join window and everyone hears about it
-	mark = K.logSize()
-	local closed = K.waitFor(function()
-		return BS().GetRaidStatus() == nil
-	end, (bc.Events.JoinWindowSeconds or 60) + 15)
-	T.check(closed, "schedule: a raid nobody joined closes after the join window")
-	advance(0.5)
-	local okN, nt = toasted(p, "Nobody fought", mark)
-	T.check(okN, "schedule: ...and every player is told (toast)", nt)
-	local state = es.GetState()
-	T.check(state.LastRaid and state.LastRaid.BossId == slotBoss and state.LastRaid.Players == 0, "schedule: GetState().LastRaid records it")
+	T.check(nextLeft and nextLeft > every - 30 and nextLeft <= every + 2, "schedule: the next boss is ~EveryMinutes later", tostring(nextLeft))
+	T.check(es.GetState().Next == nil or es.GetState().Next.Announced ~= true or es.GetState().Next.Kind ~= "BossRaid", "schedule: ArenaState.Next never counts a boss change down as announced")
+	c1:Disconnect()
+	c2:Disconnect()
 	K.removePlayers({ p })
 end)
 
@@ -490,18 +466,34 @@ S.p3events_raid = guarded("p3events_raid", function()
 	-- StartNow / EndNow
 	local mark = K.logSize()
 	local ok, msg = es.StartNow("BossRaid")
-	T.check(ok == true and type(msg) == "string", "raid: StartNow('BossRaid') opens a raid at once", tostring(msg))
+	T.check(ok == true and type(msg) == "string" and msg:find("next boss", 1, true) ~= nil and msg:find("(now)", 1, true) ~= nil, "raid: StartNow('BossRaid') changes the boss now with no fight running", tostring(msg))
 	local status = bs.GetRaidStatus()
-	T.check(status ~= nil and status.Active == true, "raid: ...BattleService.GetRaidStatus() is active")
-	T.check(status and msg:find(bc.Bosses[status.BossId].Name, 1, true) ~= nil, "raid: ...the answer names the boss", msg)
-	T.check((toasted(q, "Boss Raid!", mark)), "raid: ...everyone gets the 'Boss Raid!' toast")
-	local again, why = es.StartNow("BossRaid")
-	T.check(again == false and type(why) == "string", "raid: a second StartNow while a raid runs is refused", tostring(why))
+	T.check(status.Active == false and msg:find(bc.Bosses[status.BossId].Name, 1, true) ~= nil, "raid: ...the answer names the boss", msg)
+	T.check(not toasted(q, "Boss", mark), "raid: ...and nobody gets a toast")
 	local left = es.SecondsUntil("BossRaid")
-	T.check(left and left > 15 * 60, "raid: the schedule restarts from a raid started by hand", tostring(left))
-	T.check(es.EndNow("BossRaid") == true, "raid: EndNow('BossRaid') ends it")
+	T.check(left and left > 15 * 60, "raid: the rotation restarts from a boss set by hand", tostring(left))
+	local okB = es.StartNow("BossRaid", "lava_golem")
+	T.check(okB == true and bs.GetRaidStatus().BossId == "lava_golem", "raid: StartNow('BossRaid', bossId) sets that boss")
+	local endNone, endWhy = es.EndNow("BossRaid")
+	T.check(endNone == false and type(endWhy) == "string", "raid: EndNow with no fight running is refused", tostring(endWhy))
+	-- a fight runs: the change waits, EndNow = EndRaids
+	local fighter = newPlayer("EvFight")
+	local data = ds.GetProfile(fighter)
+	data.Pets.pebble_pup = 1
+	ds.MarkDirty(fighter)
+	ds.SetTeam(fighter, 1, { "pebble_pup" })
+	local arena = req("server/Services/ArenaBuilder").GetInfo()
+	Mock.Teleport(fighter, arena.Spawn)
+	advance(0.05)
+	local okF, idF = bs.EnterRaid(fighter)
+	T.check(okF == true, "raid: (a fighter in a fight)", tostring(idF))
+	local okQ, msgQ = es.StartNow("BossRaid", "frost_wyrm")
+	T.check(okQ == true and tostring(msgQ):find("when the fights end", 1, true) ~= nil and bs.GetRaidStatus().BossId == "lava_golem", "raid: StartNow while a fight runs: the boss waits for the end", tostring(msgQ))
+	T.check(es.GetState().Raid.Active == true and es.GetState().Raid.Fights.Starter ~= nil, "raid: ArenaState.Raid shows the fight")
+	T.check(es.EndNow("BossRaid") == true, "raid: EndNow('BossRaid') ends the fights")
 	advance(1)
-	T.check(bs.GetRaidStatus() == nil, "raid: ...no raid afterwards")
+	T.check(next(bs.GetRaidStatus().Fights) == nil and bs.GetRaidStatus().BossId == "frost_wyrm", "raid: ...no fight afterwards, the queued boss applies")
+	K.removePlayers({ fighter })
 	T.check(select(1, es.StartNow("Nonsense")) == false and select(1, es.EndNow("Nonsense")) == false, "raid: unknown event kinds are refused")
 
 	-- Double Rewards (a scheduled hour may be running this late in a run: end it first)
@@ -549,6 +541,14 @@ S.p3events_raid = guarded("p3events_raid", function()
 	bs.BattleEnded:Fire("smoke-raid-unpaid", unpaid)
 	advance(0.3)
 	T.eq(ds.GetTokens(p), mid, "payer: the same raid result twice pays once")
+	T.check((rec1.RaidRewardAt or 0) > 0, "payer: ...and the win stamps the reward clock")
+	bs.BattleEnded:Fire("smoke-raid-unpaid-2", { Mode = "Raid", BossId = "lava_golem", Winners = { uid }, Losers = {}, Participants = { uid }, Shares = { [uid] = 0.3 }, Damage = { [uid] = 4321 }, Forfeit = false, RewardsPaid = false })
+	advance(0.3)
+	T.eq(ds.GetTokens(p), mid, "payer: a second win inside the limit pays nothing")
+	bs.BattleEnded:Fire("smoke-raid-unpaid-3", { Mode = "Raid", BossId = "lava_golem", RaidTier = "Starter", Winners = {}, Losers = { uid }, Participants = { uid }, Shares = { [uid] = 0.3 }, Damage = { [uid] = 4321 }, Forfeit = false, RewardsPaid = false })
+	advance(0.3)
+	T.eq(ds.GetTokens(p) - mid, bc.RaidTier(0.3, false, "Starter").Tokens, "payer: a loss pays the Loss medal of result.RaidTier")
+	T.check((ds.GetBattle(p).RaidLossAt or 0) > 0 and ds.GetBattle(p).RaidRewardAt == rec1.RaidRewardAt, "payer: ...stamps its own clock and leaves the win's")
 	bs.PayRaidRewards = flag
 	T.check((toasted(q, "lava golem", mark) or toasted(q, "Lava Golem", mark)), "raid end: everyone hears how the raid went")
 
@@ -571,12 +571,18 @@ S.p3events_raid = guarded("p3events_raid", function()
 		T.check(list:find("raid", 1, true) ~= nil, "dev: DevService.Commands lists raid")
 		mark = K.logSize()
 		local okR, m = Dev.Run(p, "raid", nil, "test")
-		T.check(okR == true and bs.GetRaidStatus() ~= nil, "dev: the raid command starts a Boss Raid", tostring(m))
-		local okT, text = toasted(p, "^DEV: raid started", mark)
+		T.check(okR == true, "dev: the raid command changes the boss", tostring(m))
+		local okT, text = toasted(p, "^DEV: next boss", mark)
 		T.check(okT and #text <= 90, "dev: ...answered with a 'DEV:' toast (<= 90 chars)", text)
 		advance(2.1)
-		local okR2 = Dev.Run(p, "raid", nil, "test")
-		T.check(okR2 == false, "dev: a second /raid while one runs is refused")
+		local okW = Dev.Run(p, "raid", "storm", "test")
+		T.check(okW == true and bs.GetRaidStatus().BossId == "storm_titan", "dev: /raid <boss word> picks that boss")
+		advance(2.1)
+		local okX = Dev.Run(p, "raid", "nosuchboss", "test")
+		T.check(okX == false and bs.GetRaidStatus().BossId == "storm_titan", "dev: an unknown boss word is refused")
+		advance(2.1)
+		local okE = Dev.Run(p, "raid", "end", "test")
+		T.check(okE == false, "dev: /raid end with no fight running is refused")
 		advance(2.1)
 		mark = K.logSize()
 		Dev.Run(p, "devhelp", nil, "test")

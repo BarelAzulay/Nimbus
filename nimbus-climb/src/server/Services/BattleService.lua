@@ -11,10 +11,17 @@
 --   BattleService.Init(deps)      deps = { DataService, PetService, PetCareService, TycoonService, ArenaBuilder,
 --                                 ArenaInfo } (every dep optional; players already in the game are handled)
 --   BattleService.Challenge(a, b) -> ok, reason          a challenges b to a duel (b answers with ChallengeReply)
---   BattleService.StartRaid(bossId|nil) -> ok, raidId | reason       EventService: opens a Boss Raid on the arena floor
---   BattleService.EndRaid() -> ok                         EventService: ends it (a running fight ends as a timeout)
---   BattleService.GetRaidStatus() -> { Active, BossId, Name, Hp, MaxHp, Players, EndsIn, Enraged, Joinable, JoinEndsIn,
---                                 Waiting, BattleId } | nil                       (ArenaState.Raid)
+--   BattleService.EnterRaid(player, tierId|nil) -> ok, battleId | reason   into a boss fight: nil = the player's own tier, a higher
+--                                 tier = a dare (see "Modes")
+--   BattleService.LeaveRaid(player) -> ok, reason
+--   BattleService.GetRaidStatus() -> { BossId, Name, Active (the FLOOR fight runs: always a boolean), BattleId (the floor fight),
+--                                 FloorTier, FloorHiddenIn, Fights = { [tierId] = { Tier, BattleId, Hp, MaxHp, Players, EndsIn, Enraged,
+--                                 Lethal, Floor } }, Closed = { [tierId] = seconds left of the return } } | nil before Init (ArenaState.Raid)
+--   BattleService.SetRaidBoss(bossId) -> ok, "set" | "queued" | reason     EventService's rotation: at once with no fight running, else
+--                                 when the last running fight ends (a running fight keeps its own boss)
+--   BattleService.EndRaids(reason) -> n                   ends every running fight as a timeout (dev, tests)
+--   BattleService.RaidTierFor(player) -> tierId, level | nil, reason       the tier of the active team right now (busy pets don't count)
+--   BattleService.RaidRewardStatus(player) -> { WinIn, LossIn, Now }       seconds to the next paid win / loss (0 = free now), the raid clock
 --   BattleService.StartRing(player, startRound) -> ok, battleId | reason     Phase 4: the Champion Ring (see "Modes")
 --   BattleService.KeysInBattle(player) -> { [key] = true }   the pet keys in the player's running battle or ring run, OR-ed
 --                                 with the run provider's KeysInRun (a dungeon run between two rooms)
@@ -60,18 +67,18 @@
 --   "Abandoned" | "Shutdown" | "Error", Duration, Fighters = { userId... } (participants not Left whose Damage >= Dungeon.MinShare
 --   x the party's total damage; a solo team qualifies with any damage > 0), Damage, Hp, Survivors, Waves, BossHp, Extra }.
 -- Extras: StartDuel(a, b) -> ok, battleId | reason, ReplyChallenge(player, fromUserId, accept) -> ok, reason,
---   Queue(player) / Unqueue(player) -> ok, reason, JoinRaid(player) / LeaveRaid(player) -> ok, reason,
+--   Queue(player) / Unqueue(player) -> ok, reason,
 --   Command(player, action, arg) -> ok, reason, extra (what BattleCommand does), Forfeit(player) -> ok,
 --   SetDoubleRewards(active, seconds|nil) (EventService may push the Double Rewards hour; it is also read from
 --   EventService itself), IsDoubleRewards(), SetArena(arenaInfo, arenaBuilder), GetNetStats(), EstimateBytes(value),
---   ListBattles() -> { summary... }, signals BattleStarted(battleId, info) and RaidJoined(player, battleId),
+--   ListBattles() -> { summary... }, signals BattleStarted(battleId, info) and RaidJoined(player, battleId, tierId),
 --   flag BattleService.PayRaidRewards (default true: this service pays the raid tiers; see "Rewards"),
 --   Shutdown() (what game:BindToClose runs; tests call it: every running battle ends void with Reason "Shutdown", new
 --   battles are refused), SetClosing(bool) (tests: reopen after a Shutdown),
 --   LevelSnapshot(player, keys) / LevelReport(player, keys, snapshot) (team balance: the loss screen's server-side levels),
---   BattleService.Debug = nil | { FailEnd = n, HoldEnd = bool } (tests: the next n battle ends fail, to exercise the fail-safe
---   that frees the players, ring / pocket / raid, sends "End" and fires BattleEnded with Reason "Error" exactly once;
---   HoldEnd leaves a finished dungeon sim un-finalized so the 10 s fail-safe shows).
+--   BattleService.Debug = nil | { FailEnd = n, HoldEnd = bool, RaidNow = fn } (tests: the next n battle ends fail, to exercise the
+--   fail-safe that frees the players, ring / pocket / raid, sends "End" and fires BattleEnded with Reason "Error" exactly once;
+--   HoldEnd leaves a finished dungeon sim un-finalized so the 10 s fail-safe shows; RaidNow replaces os.time for the reward clocks).
 --
 -- Modes (every mode runs the same engine: a player team = Pets[1] the FIGHTER on the floor + Pets[2..3] the bench)
 --   * Duel: both players inside the Battle Arena (ArenaBuilder.InArena). "Challenge" (userId) -> an invite that expires
@@ -84,12 +91,20 @@
 --     paid, nothing counted); a challenge more than Duel.PracticeInvite (2) apart carries Practice = true in the invite.
 --     Status: BattleState("Lobby", { Queue = { Queued, Waiting, Seconds }, Invites = { { FromUserId, FromName, Trophies,
 --     Power, ExpiresIn, Practice }... }, Sent = { ToUserId, ToName, ExpiresIn } | nil }) to every player whose status changed.
---   * Raid: EventService calls StartRaid(bossId); for BattleCatalog.Events.JoinWindowSeconds players inside the arena
---     may "JoinRaid" (the first joiner creates the BattleSim with the boss, later ones AddTeam: the boss HP grows per
---     participant, BattleCatalog.BossHp with the new ExpectedDps); a joiner is placed on the floor's rim at their team's
---     place. "LeaveRaid" / leaving the arena / a disconnect / the leash removes the team (RemoteTeam: the boss sheds that
---     share). The raid ends when the sim ends (boss down, wipe, the boss's time limit, everybody left) or on EndRaid(); a
---     raid nobody joined closes at the end of the join window. ArenaState.Raid = GetRaidStatus().
+--   * Raid (spec 2026-11-01): one boss is always there (St.raidBoss; EventService's rotation changes it) and each fight tier has at
+--     most one fight, St.raids[tierId] = { Tier, Id, BossId, Battle, Floor, Pocket, PocketIndex, CreatedAt }. A player walks into
+--     ArenaInfo.Gate (the gate poll, C.RAID_GATE_POLL: EnterRaid(player) for their own tier, a release or a refusal keeps them out
+--     for C.RAID_GATE_COOLDOWN s) or dares a higher tier ("RaidDare" within C.RAID_DARE_RANGE of the gate). The first of a tier creates
+--     the BattleSim (RaidTier = tierId, the boss HP of BattleCatalog.BossHp for the tier), later ones AddTeam, up to Raid.MaxRaiders;
+--     everyone stands on the fight's rim at their team's place. The fight takes the real floor when it is free, else a pocket
+--     (BuildPocket(index, "Raid"), the shared St.pocketBusy pool); a new fight may take the floor as soon as the last one left it, a
+--     running one stays where it is. "LeaveRaid" / leaving the arena (a pocket fighter: the pocket) / a disconnect / the leash removes
+--     the team (RemoveTeam: the boss sheds that share), and a leaver can't come back to the same running fight (the sim's owner stays taken; a
+--     fresh full-HP team would also dodge a knock-out). The fight ends when the sim ends (boss down, wipe, the time limit, everybody left) or on
+--     EndRaids(). A kill closes that tier for Raid.ReturnSeconds and, on the floor, hides the idle boss as long
+--     (St.raidClosed, St.raidFloorHiddenUntil); no other end closes anything. A queued boss (St.raidNextBoss) applies when the last fight ends.
+--     A pocket raider who leaves or whose fight ended goes back to ArenaInfo.Gate.Return RETURN_DELAY s later (the pocket is freed then
+--     too); floor raiders stay where they are. "Start" carries Raid = { Tier, Pocket, BossId }. ArenaState.Raid = GetRaidStatus().
 --   * Ring (Phase 4 contract 3.8 / 3.11 / 5.1-5.4; every helper lives in the RingRun table): BattleRequest("Ring",
 --     startRound) near Portal_Ring (ArenaInfo.RingPortal, else the Portal_Ring model; RING_RANGE studs) -> StartRing. The
 --     entry checks, in this order with their toasts: a home claimed this session (TycoonService.GetPlot, "Claim your home
@@ -171,7 +186,7 @@
 --   caller's own team (the owner is always the caller). Forfeit works anywhere (refused in a dungeon).
 -- BattleRequest (action, a, b): "TeamSet" (preset 1-3, {keys}), "TeamSelect" (preset) (DataService validates: owned,
 --   unique, not training, at most 3 keys: "Teams have 3 pets: a fighter and two helpers"), "Challenge" (userId),
---   "ChallengeReply" (userId, accept), "Queue", "Unqueue", "JoinRaid", "LeaveRaid", "Ring" (startRound). Type-checked, a
+--   "ChallengeReply" (userId, accept), "Queue", "Unqueue", "RaidDare" (tierId), "LeaveRaid", "Ring" (startRound). Type-checked, a
 --   cooldown per action plus a shared bucket (req: burst 4, refill 1/s); refusals answer with a side toast (never centred).
 --
 -- Teams (4.8): the active preset (DataService.ActiveTeamKeys, at most GetTeams().Slots = 3 pets: slot 1 = the fighter), each
@@ -192,7 +207,7 @@
 --   * A dungeon participant who leaves / is leashed / disconnects is removed (RemoveEncounterTeam, OnLeave); nothing is paid
 --     by this service in a dungeon, ever (DungeonService pays per room with its own pay-once marks, Y4 / Y6).
 --   * game:BindToClose -> Shutdown(): every running battle ends void (Reason "Shutdown"): duels and ring rounds pay
---     nothing and penalise nobody, raids pay the tier of each fighter's current share (no event-pet roll), encounters end
+--     nothing and penalise nobody, raids pay like a loss (the Loss medal under its reward clock), encounters end
 --     with Reason "Shutdown" (OnEnd fires, nothing paid); meanwhile new battles are refused.
 --   * The player attribute InBattle (Config.Attr.InBattle) holds the battle id (a string) while the player takes part (nil
 --     otherwise); ring runs keep it until the player is back at the portal; dungeon participants (KeepInBattle) are never
@@ -203,16 +218,19 @@
 --   * Ring round won: Cash (seconds of the climber's own garden income, floor 20 + 2r, x3 on a new record), XP 20 + 6r
 --     per team pet, +100 Tokens for the first clear of a boss round; the run's last round: the loss third (see "Modes").
 --   * Duel: BattleCatalog.Trophies (Win / Loss / Draw / Forfeit, Tokens, Xp); PvPWins / PvPLosses.
---   * Raid (only to the teams still in it at the end, when BattleService.PayRaidRewards is true): the tier of the
---     player's damage share, BattleCatalog.RaidTier(share, won): Tokens, Xp, a GemChance of Gems and an EventPetChance
---     of an event pet; Raids + 1, RaidBestDamage.
+--   * Raid (only to the teams still in it at the end, when BattleService.PayRaidRewards is true): the medal of the
+--     player's damage share scaled to the fight's tier, BattleCatalog.RaidTier(share, won, tierId): Tokens, Xp, a GemChance of Gems
+--     and an EventPetChance of an event pet; Raids + 1, RaidBestDamage. The reward clocks live on the Battle record (saved, merged
+--     across servers by maximum): a paid win stamps RaidRewardAt and the next win pays after Raid.RewardMinutes (until then Tier
+--     "Cooldown" + AgainIn, nothing paid); a paid loss stamps RaidLossAt, pays again after Raid.LossMinutes and never touches the win clock.
 --   * Double Rewards (EventService's hour) doubles the Tokens (BattleCatalog.Events.DoubleRewardsMultiplier).
 --   * Pet XP goes through PetCareService.GrantXp (level caps, level-up toasts); DataService.AddPetXp without it.
--- EventService integration: StartRaid(bossId) opens the raid at once (announce it before calling); GetRaidStatus() is
---   non-nil until the raid is over; BattleEnded fires once for the raid id (Mode "Raid", Reason "BossDown" | "Wipe" |
---   "Timeout" | "Abandoned" | "NoPlayers" | "Ended") after the rewards were paid: result.Rewards[userId] holds each
---   fighter's tier (do not pay the tiers again, or set BattleService.PayRaidRewards = false). The fight runs on the boss's
---   own clock; EndRaid() ends a running fight at once as a timeout. Double Rewards: SetDoubleRewards(true, seconds) /
+-- EventService integration: SetRaidBoss(bossId) is the rotation; GetRaidStatus() is non-nil from Init on; a FLOOR fight's start calls
+--   EventService.RaidFloorStarted({ Kind, BossId, Name, BattleId, Tier, Source = "floor" }) (the server-wide sky and the boards follow the floor
+--   fight); BattleEnded fires once per fight (Mode "Raid", Reason "BossDown" | "Wipe" | "Timeout" | "Abandoned", RaidTier, RaidFloor) after the
+--   rewards were paid: result.Rewards[userId] holds each fighter's medal (do not pay them again, or set
+--   BattleService.PayRaidRewards = false). The fight runs on the boss's own clock; EndRaids() ends the running fights at once as a timeout.
+--   Double Rewards: SetDoubleRewards(true, seconds) /
 --   SetDoubleRewards(false), or EventService.IsDoubleRewards() -> bool (also IsDoubleActive, DoubleRewardsActive, IsDouble,
 --   GetDouble() -> { Active }, EventService.Double = { Active }), or the workspace attribute DoubleRewards.
 -- Deleted (10.5): StartTrial, payTrial, finishTrial, forfeitTrial, trialPortalPosition, St.trialPortal, TRIAL_RANGE,
@@ -233,7 +251,7 @@ local Remotes = require(Shared.Remotes)
 local BattleService = {}
 BattleService.BattleEnded = Util.Signal() -- Fire(battleId, result) once per battle, after the rewards were paid
 BattleService.BattleStarted = Util.Signal() -- extra: Fire(battleId, { Mode, Players = {userId...}, Level, BossId })
-BattleService.RaidJoined = Util.Signal() -- extra: Fire(player, battleId)
+BattleService.RaidJoined = Util.Signal() -- extra: Fire(player, battleId, tierId)
 BattleService.PayRaidRewards = true -- extra: EventService may set false to pay the raid tiers itself
 -- team balance: why a battle is refused (keyed by the `why` of DataService.ActiveTeamKeys); never a silent fill
 BattleService.TEAM_REFUSALS = {
@@ -286,7 +304,7 @@ local C = {
 	STEP = 0.1, -- fixed simulation step (BattleCatalog.StepSeconds)
 	MAX_CATCHUP = 3, -- steps one loop tick may run for a battle that fell behind
 	MONITOR_PERIOD = 0.5, -- presence checks + anchors
-	HOUSEKEEPING_PERIOD = 1, -- invites, queue pairing, spectators, raid window
+	HOUSEKEEPING_PERIOD = 1, -- invites, queue pairing, spectators
 	OUT_STRIKES = 2, -- consecutive failed presence checks before a forfeit / leave (1 s)
 	RING_RANGE = 30, -- studs from Portal_Ring where a Champion Ring run may start (Phase 4 contract 3.8)
 	RETURN_DELAY = 4, -- seconds between a ring run's end and the teleport back
@@ -309,6 +327,9 @@ local C = {
 	PAIR_WINDOW = 1800, -- ... per this many seconds
 	DUEL_POWER_GAP = 3, -- a duel between teams whose TeamPower differs by more than this factor is practice (no rewards)
 	RAID_RIM = 6, -- studs outside the raid floor where a joiner is placed
+	RAID_GATE_POLL = 0.25, -- seconds between two looks at who stands in the boss gate
+	RAID_GATE_COOLDOWN = 3, -- seconds the gate ignores a player after a release or a refusal (nobody re-enters by standing still)
+	RAID_DARE_RANGE = 20, -- studs from the gate where a dare is taken
 	DUEL_PAD_OUTSIDE = 5, -- studs outside the duel floor where the duellists stand (the ring's pads)
 	ZONE_HEIGHT = 30, -- Size.Y of the zone in "Start"
 	SPECTATOR_SNAPSHOT_EVERY = 2, -- spectators get every 2nd snapshot (5 Hz)
@@ -335,7 +356,7 @@ local C = {
 		ChallengeReply = 0.5,
 		Queue = 1,
 		Unqueue = 0.5,
-		JoinRaid = 1,
+		RaidDare = 1,
 		LeaveRaid = 1,
 		Ring = 1.5, -- Phase 4: BattleRequest("Ring", startRound)
 	},
@@ -364,7 +385,13 @@ local St = {
 	watching = {}, -- [Player] = battle record (spectator)
 	watchCooldown = {}, -- [Player] = { [battleId] = os.clock() until which it may not spectate that battle }
 	seq = 0,
-	raid = nil, -- { Id, BossId, Opened, JoinUntil, Battle }
+	raids = {}, -- [tierId] = the fight: { Tier, Id, BossId, Battle, Floor, Pocket, PocketIndex, CreatedAt }
+	raidBoss = nil, -- the boss the next fight uses (set at Init; EventService's rotation changes it)
+	raidNextBoss = nil, -- a rotation that waits for the last running fight
+	raidFloorTier = nil, -- the tier whose fight holds the real floor
+	raidClosed = {}, -- [tierId] = os.clock() until which that tier's boss is away (after a kill)
+	raidFloorHiddenUntil = nil, -- os.clock() until which the idle floor boss is hidden (after a kill on the floor)
+	gateCooldown = {}, -- [Player] = os.clock() until which the gate leaves the player alone
 	ringBusy = {}, -- [ringIndex] = battleId | os.clock() of release
 	pocketBusy = {}, -- [pocketIndex] = battleId
 	invitesFrom = {}, -- [fromUserId] = invite
@@ -394,6 +421,8 @@ local RingRun = {}
 -- Phase 5 encounter API helpers (4.6) and the command / position layer (4.4-4.5): tables, not locals (the 200-locals limit)
 local Enc = {}
 local Cmd = {}
+-- Boss raids 2026-11-01: the fights per tier (the block "Boss raids" below)
+local Raid = {}
 
 ----------------------------------------------------------------------
 -- Small helpers
@@ -990,6 +1019,9 @@ local function startPayload(b, player, spectator)
 	if b.Mode == "Dungeon" then
 		d.Dungeon = b.Extra or {}
 	end
+	if b.Mode == "Raid" then
+		d.Raid = { Tier = b.RaidTier, Pocket = not b.RaidFloor, BossId = b.BossId } -- the client's tier line, the local pocket sky
+	end
 	if part and not part.Left then
 		-- the receiver's own team: fighter / bench ids, lives, the legal speeds (SetBattleSpeed) and the cooldowns
 		local okT, team = pcall(b.Sim.TeamOf, b.Sim, part.UserId)
@@ -1465,16 +1497,40 @@ local function payRaid(b, part, res)
 	end
 	local player = part.Player
 	local uid = part.UserId
-	local shutdown = res.Reason == "Shutdown"
-	local won = res.WinnerSide == 1 or shutdown -- a shutdown pays the tier of the share so far
+	local won = res.WinnerSide == 1 -- a win is a win; a shutdown is none (it pays like a loss)
 	local share = (type(res.Shares) == "table" and tonumber(res.Shares[uid])) or 0
 	local damage = (type(res.Damage) == "table" and tonumber(res.Damage[uid])) or 0
-	local tier = BattleCatalog.RaidTier(share, won)
+	local tier = BattleCatalog.RaidTier(share, won, b.RaidTier)
 	if not tier or damage <= 0 then
 		-- no damage at all (an idle joiner whose pets never hit the boss): nothing, not even the Loss tier
 		local rw = emptyRewards()
 		rw.Tier, rw.Share, rw.Damage = "None", floor(share * 1000 + 0.5) / 1000, floor(damage)
 		notify(player, "No raid reward this time: your pets never hit the boss.", "info", 5)
+		return rw
+	end
+	-- the reward clocks: a paid win starts its limit, a paid loss only its own (a loss can't cost a player their win)
+	local clocks = BattleService.RaidRewardStatus(player)
+	local wait = won and clocks.WinIn or clocks.LossIn
+	try(dataService(), "MutateBattle", player, function(rec)
+		rec.Raids = (tonumber(rec.Raids) or 0) + 1
+		if damage > (tonumber(rec.RaidBestDamage) or 0) then
+			rec.RaidBestDamage = floor(damage)
+		end
+		if wait <= 0 and won then
+			rec.RaidRewardAt = clocks.Now
+		elseif wait <= 0 then
+			rec.RaidLossAt = clocks.Now
+		end
+	end)
+	if wait > 0 then
+		local rw = emptyRewards()
+		rw.Tier, rw.Share, rw.Damage = "Loss", floor(share * 1000 + 0.5) / 1000, floor(damage)
+		if won then
+			rw.Tier, rw.AgainIn = "Cooldown", wait
+			notify(player, string.format("Boss defeated! Rewards again in %d:%02d", floor(wait / 60), wait % 60), "good", 5)
+		else
+			notify(player, "The boss won this time.", "info", 5)
+		end
 		return rw
 	end
 	local double = BattleService.IsDoubleRewards()
@@ -1489,15 +1545,9 @@ local function payRaid(b, part, res)
 	if gemChance > 0 and St.rng:NextNumber() < gemChance then
 		gems = tonumber(tier.Gems) or 0
 	end
-	try(dataService(), "MutateBattle", player, function(rec)
-		rec.Raids = (tonumber(rec.Raids) or 0) + 1
-		if damage > (tonumber(rec.RaidBestDamage) or 0) then
-			rec.RaidBestDamage = floor(damage)
-		end
-	end)
 	local eventPet = nil
 	local petChance = tonumber(tier.EventPetChance) or 0
-	if petChance > 0 and not shutdown and St.rng:NextNumber() < petChance then
+	if petChance > 0 and St.rng:NextNumber() < petChance then
 		eventPet = grantEventPet(player)
 	end
 	grantTokens(player, tokens)
@@ -1510,8 +1560,8 @@ local function payRaid(b, part, res)
 	rw.Tokens, rw.Gems, rw.Xp, rw.Double = tokens, gems, xp, double
 	rw.Tier, rw.Share, rw.Damage, rw.EventPet = tier.Id, floor(share * 1000 + 0.5) / 1000, floor(damage), eventPet
 	local text
-	if shutdown then
-		text = "The server is restarting: " .. tostring(tier.Id) .. " tier for your damage so far, +" .. tokens .. " tokens"
+	if res.Reason == "Shutdown" then
+		text = "The server is restarting: +" .. tokens .. " tokens"
 	elseif won then
 		text = "Boss defeated! " .. tostring(tier.Id) .. " tier: +" .. tokens .. " tokens"
 	else
@@ -1541,7 +1591,7 @@ local function payOnce(b, part, res)
 	end
 	b.Paid[uid] = false
 	if res.Reason == "Error" or (res.Reason == "Shutdown" and b.Mode ~= "Raid") then
-		-- void: nothing paid, nothing lost (raids on a shutdown pay the share so far: payRaid)
+		-- void: nothing paid, nothing lost (raids on a shutdown pay like a loss: payRaid)
 		local rw = emptyRewards()
 		rw.Void = true
 		if b.Mode == "Ring" then
@@ -1737,11 +1787,25 @@ local function releaseParticipant(b, part)
 	end
 	if isPlayer(player) then
 		St.watchCooldown[player] = { [b.Id] = now() + C.SPECTATE_COOLDOWN }
+		if b.Mode == "Raid" then
+			St.gateCooldown[player] = now() + C.RAID_GATE_COOLDOWN
+		end
 	end
 end
 
 local function returnCFrame(part, mode)
 	local info = arena()
+	if mode == "Raid" then
+		-- a pocket raider comes back on the floor side of the boss gate, else on the floor's rim
+		local gate = info and info.Gate
+		if type(gate) == "table" and typeof(gate.Return) == "CFrame" then
+			return gate.Return * CFrame.new(St.rng:NextNumber(-3, 3), 0, St.rng:NextNumber(-2, 2))
+		end
+		local zone = info and type(info.Floor) == "table" and typeof(info.Floor.CFrame) == "CFrame" and zoneFrom(info.Floor.CFrame, info.Floor.Size) or nil
+		if zone then
+			return lookFrom((zone.CFrame * CFrame.new(0, 3, -(max(zone.X, zone.Z) / 2 + C.RAID_RIM))).Position, zone.CFrame.Position)
+		end
+	end
 	if mode == "Ring" then
 		-- ring climbers come back in front of the Champion Ring portal (built like ReturnCFrame from the trial site),
 		-- else where they pressed START (within RING_RANGE of it); an older lobby without RingSite: where they pressed START
@@ -1794,7 +1858,7 @@ local function forceRelease(b)
 		pcall(RingRun.abandon, b.Ring)
 	end
 	for _, part in ipairs(b.PartList) do
-		if b.Mode == "Ring" and isPlayer(part.Player) and St.battleOf[part.Player] == b then
+		if (b.Mode == "Ring" or (b.Mode == "Raid" and not b.RaidFloor)) and isPlayer(part.Player) and St.battleOf[part.Player] == b then
 			-- nobody stays stranded in a pocket far out in the sky
 			pcall(function()
 				local root = aliveRoot(part.Player)
@@ -1825,8 +1889,8 @@ local function forceRelease(b)
 		end
 		St.pocketBusy[index] = nil
 	end
-	if St.raid and St.raid.Battle == b then
-		St.raid = nil
+	if b.Mode == "Raid" then
+		Raid.fightEnded(b, nil)
 	end
 	unregister(b)
 	if not b.EndedFired then
@@ -1919,6 +1983,9 @@ local function finalizeBody(b, forcedReason)
 		Rewards = {},
 		RewardsPaid = true,
 	}
+	if b.Mode == "Raid" then
+		result.RaidTier, result.RaidFloor = b.RaidTier, b.RaidFloor == true
+	end
 	if b.Mode == "Dungeon" then
 		-- the boss's HP share (0..1) for the dungeon's result card; the raw raid numbers stay for raids
 		local okH, frac = pcall(b.Sim.BossHp, b.Sim)
@@ -2030,8 +2097,9 @@ local function finalizeBody(b, forcedReason)
 		if b.Mode == "Duel" and b.RingIndex then
 			St.ringBusy[b.RingIndex] = now() + C.RING_COOLDOWN
 		end
-		if b.Mode == "Raid" and St.raid and St.raid.Battle == b then
-			St.raid = nil
+		if b.Mode == "Raid" then
+			Raid.fightEnded(b, result.Reason)
+			Raid.pocketLater(b)
 		end
 		unregister(b)
 	end
@@ -2167,6 +2235,7 @@ local function leaveRaid(b, part, why)
 		send(player, "End", payload, b.Id)
 	end
 	releaseParticipant(b, part)
+	Raid.leaverLater(b, part)
 	if why then
 		notify(player, why, "info", 4)
 	end
@@ -3104,13 +3173,14 @@ function RingRun.freePocketIndex()
 	return nil
 end
 
--- ArenaBuilder.BuildPocket(index, "Ring") under pcall; the trial pocket is the fallback. -> pocket info | nil
-function RingRun.buildPocket(builder, index)
-	local okP, pocket = pcall(builder.BuildPocket, index, "Ring")
+-- ArenaBuilder.BuildPocket(index, kind) under pcall (kind: "Ring" by default, "Raid"); the trial pocket is the fallback. -> pocket info | nil
+function RingRun.buildPocket(builder, index, kind)
+	kind = kind or "Ring"
+	local okP, pocket = pcall(builder.BuildPocket, index, kind)
 	if okP and type(pocket) == "table" and typeof(pocket.CFrame) == "CFrame" then
 		return pocket
 	end
-	warn("[BattleService] BuildPocket(" .. index .. ", Ring) failed: " .. tostring(pocket) .. " (the trial pocket stands in)")
+	warn("[BattleService] BuildPocket(" .. index .. ", " .. kind .. ") failed: " .. tostring(pocket) .. " (the trial pocket stands in)")
 	okP, pocket = pcall(builder.BuildPocket, index)
 	if okP and type(pocket) == "table" and typeof(pocket.CFrame) == "CFrame" then
 		return pocket
@@ -3596,57 +3666,11 @@ function BattleService.KeysInBattle(player)
 end
 
 ----------------------------------------------------------------------
--- Boss raids (EventService opens / ends them; players join inside the arena)
+-- Boss raids (spec 2026-11-01: one boss, one fight per tier, the floor or a pocket; players walk in through the gate)
 ----------------------------------------------------------------------
 local function bossName(bossId)
 	local boss = BattleCatalog and type(BattleCatalog.Bosses) == "table" and BattleCatalog.Bosses[bossId]
 	return (boss and boss.Name) or tostring(bossId)
-end
-
-local function raidEndedWithoutPlayers(raid, reason)
-	if St.raid == raid then
-		St.raid = nil
-	end
-	BattleService.BattleEnded:Fire(raid.Id, {
-		BattleId = raid.Id,
-		Mode = "Raid",
-		Reason = reason or "NoPlayers",
-		Winners = {},
-		Losers = {},
-		BossId = raid.BossId,
-		Damage = {},
-		Shares = {},
-		Forfeit = false,
-		Draw = false,
-		Participants = {},
-		Rewards = {},
-		RewardsPaid = true,
-	})
-end
-
-function BattleService.StartRaid(bossId)
-	if not BattleSim or not BattleCatalog or type(BattleCatalog.Bosses) ~= "table" then
-		return false, "Battles are not ready yet"
-	end
-	if St.raid then
-		return false, "A raid is already running"
-	end
-	St.raidCount = (St.raidCount or 0) + 1
-	if bossId == nil and type(BattleCatalog.NextBoss) == "function" then
-		bossId = BattleCatalog.NextBoss(St.raidCount)
-	end
-	if type(bossId) ~= "string" or not BattleCatalog.Bosses[bossId] then
-		return false, "Unknown boss"
-	end
-	local info = arena()
-	if not info or type(info.Floor) ~= "table" or typeof(info.Floor.CFrame) ~= "CFrame" then
-		return false, "The Battle Arena is closed"
-	end
-	local events = type(BattleCatalog.Events) == "table" and BattleCatalog.Events or {}
-	local window = tonumber(events.JoinWindowSeconds) or 60
-	local t = now()
-	St.raid = { Id = newBattleId(), BossId = bossId, Opened = t, JoinUntil = t + window, Battle = nil }
-	return true, St.raid.Id
 end
 
 -- where a raid team stands: on the floor's rim at its anchor's angle, looking at the boss
@@ -3665,66 +3689,237 @@ local function raidStand(b, uid)
 	return lookFrom(pos, b.Zone.CFrame.Position)
 end
 
-function BattleService.JoinRaid(player)
-	local raid = St.raid
-	if not raid then
-		return false, "There is no boss raid right now"
+-- the reward clock: Unix seconds (saved on the Battle record); tests replace it through Debug.RaidNow
+function Raid.now()
+	local dbg = BattleService.Debug
+	if type(dbg) == "table" and type(dbg.RaidNow) == "function" then
+		return dbg.RaidNow()
 	end
-	local b = raid.Battle
-	if b and b.Parts[player.UserId] then
-		return false, b.Parts[player.UserId].Left and "You left this raid" or "You are already in the raid"
+	return os.time()
+end
+
+-- a new fight for the tier: the real floor when it is free, else a pocket. -> battle | nil, reason
+function Raid.openFight(tier, bossId, spec)
+	local info = arena()
+	if not info or type(info.Floor) ~= "table" or typeof(info.Floor.CFrame) ~= "CFrame" then
+		return nil, "The Battle Arena is closed"
 	end
-	if now() > raid.JoinUntil then
-		return false, "The raid has started. Join the next one!"
+	local onFloor = St.raidFloorTier == nil
+	local zone, pocket, index = nil, nil, nil
+	if onFloor then
+		zone = zoneFrom(info.Floor.CFrame, info.Floor.Size, info.Floor.Zone)
+	else
+		local builder = St.arenaBuilder
+		index = hasFn(builder, "BuildPocket") and RingRun.freePocketIndex() or nil
+		pocket = index and RingRun.buildPocket(builder, index, "Raid") or nil
+		if not pocket then
+			return nil, "The boss is busy. Try again in a moment!"
+		end
+		zone = zoneFrom(pocket.CFrame, pocket.Size, pocket.Zone)
+		zone.Spawn = pocket.Spawn
+		zone.Pocket = pocket
+		zone.PocketIndex = index
 	end
+	local id = newBattleId()
+	local okS, sim, simWhy = pcall(BattleSim.new, {
+		Mode = "Raid",
+		Id = id,
+		Seed = newSeed(),
+		Zone = { X = zone.X, Z = zone.Z },
+		Teams = { spec },
+		Boss = bossId,
+		RaidTier = tier.Id,
+	})
+	if not okS or type(sim) ~= "table" then
+		warn("[BattleService] raid setup failed: " .. tostring(okS and simWhy or sim))
+		if pocket and hasFn(St.arenaBuilder, "FreePocket") then
+			pcall(St.arenaBuilder.FreePocket, pocket)
+		end
+		return nil, "The fight could not start"
+	end
+	local b = newBattle(id, "Raid", sim, zone)
+	b.BossId, b.RaidTier, b.RaidFloor = bossId, tier.Id, onFloor
+	St.raids[tier.Id] = { Tier = tier.Id, Id = id, BossId = bossId, Battle = b, Floor = onFloor, Pocket = pocket, PocketIndex = index, CreatedAt = now() }
+	if onFloor then
+		St.raidFloorTier = tier.Id
+	end
+	if index then
+		St.pocketBusy[index] = id
+	end
+	return b
+end
+
+-- the record of an ended fight is gone (before BattleEnded fires): the floor is free, a kill closes the tier, a queued boss applies
+function Raid.fightEnded(b, reason)
+	local tierId = b.RaidTier
+	local fight = St.raids[tierId]
+	if fight and fight.Battle == b then
+		St.raids[tierId] = nil
+	end
+	if b.RaidFloor and St.raidFloorTier == tierId then
+		St.raidFloorTier = nil
+	end
+	if reason == "BossDown" then
+		local back = now() + BattleCatalog.Raid.ReturnSeconds
+		St.raidClosed[tierId] = back
+		if b.RaidFloor then
+			St.raidFloorHiddenUntil = back
+		end
+	end
+	if St.raidNextBoss and next(St.raids) == nil then
+		St.raidBoss, St.raidNextBoss = St.raidNextBoss, nil
+	end
+end
+
+-- a pocket raider still at the pocket goes back to the gate (not one who died and respawned elsewhere)
+function Raid.sendBack(b, part)
+	local player = part.Player
+	if not isPlayer(player) or St.battleOf[player] then
+		return
+	end
+	local root = aliveRoot(player)
+	if root then
+		local x, _, z = zoneLocal(b.Zone, root.Position)
+		if sqrt(x * x + z * z) <= C.POCKET_LEASH + 40 then
+			teleport(player, returnCFrame(part, "Raid"))
+		end
+	end
+end
+
+-- an ended pocket fight: RETURN_DELAY s for the result card, then everyone back and the pocket freed (floor fights hold nothing)
+function Raid.pocketLater(b)
+	if b.RaidFloor then
+		return
+	end
+	task.delay(C.RETURN_DELAY, function()
+		local ok, err = pcall(function()
+			for _, part in ipairs(b.PartList) do
+				if not part.Left then
+					Raid.sendBack(b, part)
+				end
+			end
+			local index = b.Zone.PocketIndex
+			if index and St.pocketBusy[index] == b.Id then
+				if hasFn(St.arenaBuilder, "FreePocket") then
+					pcall(St.arenaBuilder.FreePocket, b.Zone.Pocket or index)
+				end
+				St.pocketBusy[index] = nil
+			end
+		end)
+		if not ok then
+			warn("[BattleService] raid pocket cleanup failed: " .. tostring(err))
+		end
+	end)
+end
+
+-- one raider left a pocket fight that goes on: back to the gate RETURN_DELAY s later (they don't watch their own fight meanwhile)
+function Raid.leaverLater(b, part)
+	if b.RaidFloor or not isPlayer(part.Player) then
+		return
+	end
+	St.watchCooldown[part.Player] = { [b.Id] = now() + C.RETURN_DELAY + C.SPECTATE_COOLDOWN }
+	task.delay(C.RETURN_DELAY, function()
+		local ok, err = pcall(Raid.sendBack, b, part)
+		if not ok then
+			warn("[BattleService] raid return failed: " .. tostring(err))
+		end
+	end)
+end
+
+function BattleService.RaidTierFor(player)
+	if not isPlayer(player) then
+		return nil, "That player is not here"
+	end
+	if not BattleCatalog then
+		return nil, "Battles are not ready yet"
+	end
+	local spec, reason = teamOf(player, 1)
+	if not spec then
+		return nil, reason
+	end
+	local tier, level = BattleCatalog.RaidTierOfTeam(spec.Pets)
+	return tier.Id, level
+end
+
+-- 0 on a clock = free now: never paid (an old save reads 0) or the limit has passed; never more than the limit (a server clock behind)
+function BattleService.RaidRewardStatus(player)
+	local rec = battleRecord(player)
+	local t = Raid.now()
+	local function left(at, minutes)
+		local limit = minutes * 60
+		at = rec and tonumber(rec[at]) or 0
+		if at <= 0 then
+			return 0
+		end
+		return secondsLeft(min(limit, at + limit - t))
+	end
+	local rules = BattleCatalog.Raid
+	return { WinIn = left("RaidRewardAt", rules.RewardMinutes), LossIn = left("RaidLossAt", rules.LossMinutes), Now = t }
+end
+
+-- into a boss fight: tierId nil = the player's own tier (read now, from the server's copy of the active team), a higher tier = a dare
+function BattleService.EnterRaid(player, tierId)
 	local ok, why = canBattle(player)
 	if not ok then
 		return false, why
 	end
 	if not playerInArena(player) then
-		return false, "Go to the Battle Arena to join the raid"
+		return false, "Go to the Battle Arena to fight the boss"
 	end
 	local spec, reason = teamOf(player, 1)
 	if not spec then
 		return false, reason
 	end
+	local tier = BattleCatalog.RaidTierOfTeam(spec.Pets)
+	if tierId ~= nil then
+		if not BattleCatalog.RaidCanDare(tier.Id, tierId) then
+			return false, "You can only dare a higher tier"
+		end
+		tier = BattleCatalog.RaidTierById(tierId)
+	end
+	local closedUntil = St.raidClosed[tier.Id]
+	if closedUntil and now() < closedUntil then
+		return false, bossName(St.raidBoss) .. " is back in " .. secondsLeft(closedUntil - now()) .. " s"
+	end
+	local fight = St.raids[tier.Id]
+	local b = fight and fight.Battle
+	if b then
+		if b.Parts[player.UserId] then
+			return false, "You left this fight. Wait for the next one!"
+		end
+		local raiders = 0
+		for _, part in ipairs(b.PartList) do
+			if not part.Left then
+				raiders = raiders + 1
+			end
+		end
+		if raiders >= BattleCatalog.Raid.MaxRaiders then
+			return false, "This fight is full"
+		end
+	elseif not St.raidBoss or not BattleCatalog.Bosses[St.raidBoss] then
+		return false, "The boss is away"
+	end
 	if not b then
-		local info = arena()
-		if not info or type(info.Floor) ~= "table" or typeof(info.Floor.CFrame) ~= "CFrame" then
-			return false, "The Battle Arena is closed"
+		local why2
+		b, why2 = Raid.openFight(tier, St.raidBoss, spec)
+		if not b then
+			return false, why2
 		end
-		local zone = zoneFrom(info.Floor.CFrame, info.Floor.Size, info.Floor.Zone)
-		local okS, sim, simWhy = pcall(BattleSim.new, {
-			Mode = "Raid",
-			Id = raid.Id,
-			Seed = newSeed(),
-			Zone = { X = zone.X, Z = zone.Z },
-			Teams = { spec },
-			Boss = raid.BossId,
-			RaidTier = "Starter", -- bridge until the fights per tier replace this block: the one server-wide raid takes any level
-		})
-		if not okS or type(sim) ~= "table" then
-			warn("[BattleService] raid setup failed: " .. tostring(okS and simWhy or sim))
-			return false, "The raid could not start"
-		end
-		b = newBattle(raid.Id, "Raid", sim, zone)
-		b.BossId = raid.BossId
-		raid.Battle = b
 		stopWatching(player, "Joined")
 		addParticipant(b, player, 1, spec)
 		teleport(player, raidStand(b, player.UserId))
 		beginBattle(b)
-	else
-		if b.State ~= "Running" then
-			return false, "The raid is over"
+		if b.RaidFloor then
+			try(eventService(), "RaidFloorStarted", { Kind = "BossRaid", BossId = b.BossId, Name = bossName(b.BossId), BattleId = b.Id, Tier = tier.Id, Source = "floor" })
 		end
+	else
 		local okA, infos, addWhy = pcall(b.Sim.AddTeam, b.Sim, spec)
 		if not okA or type(infos) ~= "table" then
 			warn("[BattleService] raid join failed: " .. tostring(okA and addWhy or infos))
-			return false, "Could not join the raid"
+			return false, "Could not join the fight"
 		end
 		if St.watching[player] == b then
-			-- a spectator of this raid becomes a fighter: a fresh "Start" after the next step (not this Spawn event)
+			-- a spectator of this fight becomes a fighter: a fresh "Start" after the next step (not this Spawn event)
 			St.watching[player] = nil
 			b.Spectators[player] = nil
 			b.Receivers[player] = nil
@@ -3736,8 +3931,8 @@ function BattleService.JoinRaid(player)
 		teleport(player, raidStand(b, player.UserId))
 	end
 	leaveLobby(player)
-	BattleService.RaidJoined:Fire(player, b.Id)
-	notify(player, "You joined the raid on " .. bossName(raid.BossId) .. "! DASH out of glowing circles and lines.", "info", 4)
+	BattleService.RaidJoined:Fire(player, b.Id, tier.Id)
+	notify(player, "You fight " .. bossName(b.BossId) .. " (" .. tier.Id .. " tier)! DASH out of glowing circles and lines.", "info", 4)
 	return true, b.Id
 end
 
@@ -3754,81 +3949,143 @@ function BattleService.LeaveRaid(player)
 	return true
 end
 
--- ends the raid now: a running fight ends as a timeout (the participants get the raid's loss tier unless the boss
--- falls in that last step); a raid nobody joined just closes
-function BattleService.EndRaid(reason)
-	local raid = St.raid
-	if not raid then
-		return false
+-- the rotation: at once with no fight running, else when the last running fight ends (a running fight keeps its own boss)
+function BattleService.SetRaidBoss(bossId)
+	if not BattleCatalog or type(bossId) ~= "string" or not BattleCatalog.Bosses[bossId] then
+		return false, "Unknown boss"
 	end
-	local b = raid.Battle
-	if not b then
-		raidEndedWithoutPlayers(raid, type(reason) == "string" and reason or "Ended")
-		return true
+	if next(St.raids) == nil then
+		St.raidBoss, St.raidNextBoss = bossId, nil
+		return true, "set"
 	end
-	if b.State == "Running" then
-		local sim = b.Sim
-		pcall(function()
-			if type(sim.timeLimit) == "number" then
-				sim.timeLimit = sim:Time()
-			end
-		end)
-		stepOnce(b)
-		if not simFinished(b) then
-			-- the sim did not take the timeout: everybody leaves (an abandoned raid pays nothing)
-			for _, part in ipairs(b.PartList) do
-				if not part.Left then
-					pcall(sim.RemoveTeam, sim, part.UserId)
+	St.raidNextBoss = bossId
+	return true, "queued"
+end
+
+-- ends every running fight now, each as a timeout (the participants get the loss medal unless the boss falls in that last step). -> how many
+function BattleService.EndRaids(reason)
+	local fights = {}
+	for _, fight in pairs(St.raids) do
+		fights[#fights + 1] = fight
+	end
+	for _, fight in ipairs(fights) do
+		local b = fight.Battle
+		if b.State == "Running" then
+			local sim = b.Sim
+			pcall(function()
+				if type(sim.timeLimit) == "number" then
+					sim.timeLimit = sim:Time()
 				end
-			end
+			end)
 			stepOnce(b)
+			if not simFinished(b) then
+				-- the sim did not take the timeout: everybody leaves (an abandoned fight pays nothing)
+				for _, part in ipairs(b.PartList) do
+					if not part.Left then
+						pcall(sim.RemoveTeam, sim, part.UserId)
+					end
+				end
+				stepOnce(b)
+			end
+			flush(b)
+			finalize(b, type(reason) == "string" and reason or "Ended")
 		end
-		flush(b)
-		finalize(b, "Ended")
 	end
-	if St.raid == raid then
-		St.raid = nil
-	end
-	return true
+	return #fights
 end
 
 function BattleService.GetRaidStatus()
-	local raid = St.raid
-	if not raid then
+	if not St.raidBoss then
 		return nil
 	end
 	local t = now()
-	local joinLeft = max(0, raid.JoinUntil - t)
+	local floorFight = St.raidFloorTier and St.raids[St.raidFloorTier] or nil
 	local status = {
-		Active = true,
-		BattleId = raid.Id,
-		BossId = raid.BossId,
-		Name = bossName(raid.BossId),
-		Hp = 0,
-		MaxHp = 0,
-		Players = 0,
-		EndsIn = secondsLeft(joinLeft),
-		Enraged = false,
-		Joinable = joinLeft > 0,
-		JoinEndsIn = secondsLeft(joinLeft),
-		Waiting = true,
+		BossId = St.raidBoss,
+		Name = bossName(St.raidBoss),
+		Active = floorFight ~= nil and floorFight.Battle.State == "Running",
+		BattleId = floorFight and floorFight.Id or nil,
+		FloorTier = St.raidFloorTier,
+		FloorHiddenIn = secondsLeft((St.raidFloorHiddenUntil or t) - t),
+		Fights = {},
+		Closed = {},
 	}
-	local b = raid.Battle
-	if b then
+	for tierId, fight in pairs(St.raids) do
+		local b = fight.Battle
 		local ok, bs = pcall(b.Sim.BossStatus, b.Sim)
-		if ok and type(bs) == "table" then
-			status.Hp = tonumber(bs.Hp) or 0
-			status.MaxHp = tonumber(bs.MaxHp) or 0
-			status.Players = tonumber(bs.Players) or 0
-			status.EndsIn = secondsLeft(tonumber(bs.EndsIn) or 0)
-			status.Enraged = bs.Enraged == true
-			status.Name = bs.Name or status.Name
+		bs = (ok and type(bs) == "table") and bs or {}
+		status.Fights[tierId] = {
+			Tier = tierId,
+			BattleId = b.Id,
+			Hp = tonumber(bs.Hp) or 0,
+			MaxHp = tonumber(bs.MaxHp) or 0,
+			Players = tonumber(bs.Players) or 0,
+			EndsIn = secondsLeft(tonumber(bs.EndsIn) or 0),
+			Enraged = bs.Enraged == true,
+			Lethal = bs.Lethal == true,
+			Floor = fight.Floor == true,
+		}
+	end
+	for tierId, untilT in pairs(St.raidClosed) do
+		if t < untilT then
+			status.Closed[tierId] = secondsLeft(untilT - t)
+		else
+			St.raidClosed[tierId] = nil
 		end
-		status.Waiting = false
-		status.Joinable = joinLeft > 0 and b.State == "Running"
-		status.Active = b.State == "Running"
 	end
 	return status
+end
+
+-- inside the gate itself, with no margin: the dare prompt stands right next to it and walking past must not take anyone in
+function Raid.insideGate(gate, position)
+	local part = typeof(gate.Zone) == "Instance" and gate.Zone or nil
+	local cf = part and part.CFrame or gate.CFrame
+	local size = part and part.Size or gate.Size
+	if typeof(size) ~= "Vector3" then
+		return false
+	end
+	local rel = cf:PointToObjectSpace(position)
+	local yLow, yHigh = -size.Y / 2 - 2, size.Y / 2 + 2 -- the zone part stands on its centre ...
+	if not part then
+		yLow, yHigh = -2, size.Y + 2 -- ... the gate's CFrame on the floor surface
+	end
+	return abs(rel.X) <= size.X / 2 and abs(rel.Z) <= size.Z / 2 and rel.Y >= yLow and rel.Y <= yHigh
+end
+
+-- the walk-through: a free player inside ArenaInfo.Gate goes into their own tier's fight; a refusal is toasted once per cooldown
+function Raid.gatePoll()
+	local info = arena()
+	local gate = info and info.Gate
+	if type(gate) ~= "table" or typeof(gate.CFrame) ~= "CFrame" then
+		return
+	end
+	local t = now()
+	for _, player in ipairs(Players:GetPlayers()) do
+		if not St.battleOf[player] and not St.ringRuns[player] and t >= (St.gateCooldown[player] or 0) then
+			local root = aliveRoot(player)
+			if root and Raid.insideGate(gate, root.Position) then
+				local ok, why = BattleService.EnterRaid(player)
+				if not ok then
+					St.gateCooldown[player] = now() + C.RAID_GATE_COOLDOWN
+					notify(player, why, "bad", 3)
+				end
+			end
+		end
+	end
+end
+
+-- BattleRequest "RaidDare" (a = tierId): nil is no dare on the remote (EnterRaid's nil = my own tier); only at the gate when the arena has one
+function Raid.dare(player, tierId)
+	if type(tierId) ~= "string" then
+		return false, "You can only dare a higher tier"
+	end
+	local info = arena()
+	local gate = info and info.Gate
+	local root = aliveRoot(player)
+	if type(gate) == "table" and typeof(gate.CFrame) == "CFrame" and root and (root.Position - gate.CFrame.Position).Magnitude > C.RAID_DARE_RANGE then
+		return false, "Walk to the boss gate to dare a higher tier"
+	end
+	return BattleService.EnterRaid(player, tierId)
 end
 
 ----------------------------------------------------------------------
@@ -4649,11 +4906,11 @@ end
 ----------------------------------------------------------------------
 -- Presence monitor (twice a second): participants stay where their battle is; anchors follow the owners
 ----------------------------------------------------------------------
--- true while the participant is where they belong (ring: at their pocket; duel / raid: inside the arena; dungeon: inside
+-- true while the participant is where they belong (ring, pocket raid: at their pocket; duel / floor raid: inside the arena; dungeon: inside
 -- the encounter's zone part + ZONE_MARGIN). Commands need `insideZone` on top for duels / raids (the arena is bigger).
 local function present(b, part, root)
 	local pos = root.Position
-	if b.Mode == "Ring" then
+	if b.Mode == "Ring" or (b.Mode == "Raid" and not b.RaidFloor) then
 		local x, y, z = zoneLocal(b.Zone, pos)
 		if sqrt(x * x + z * z) > C.POCKET_LEASH or y > 220 then
 			return false
@@ -4742,10 +4999,6 @@ local function housekeeping()
 	expireInvites()
 	pairQueue()
 	refreshSpectators()
-	local raid = St.raid
-	if raid and not raid.Battle and now() >= raid.JoinUntil then
-		raidEndedWithoutPlayers(raid, "NoPlayers")
-	end
 	-- forget old duel pairs
 	local t = now()
 	for key, list in pairs(St.pairs) do
@@ -4917,8 +5170,8 @@ local function onRequest(player, action, a, b)
 		ok, why = BattleService.Queue(player)
 	elseif action == "Unqueue" then
 		ok, why = BattleService.Unqueue(player)
-	elseif action == "JoinRaid" then
-		ok, why = BattleService.JoinRaid(player)
+	elseif action == "RaidDare" then
+		ok, why = Raid.dare(player, a)
 	elseif action == "LeaveRaid" then
 		ok, why = BattleService.LeaveRaid(player)
 	elseif action == "Ring" then
@@ -4963,6 +5216,7 @@ local function onPlayerRemoving(player)
 	St.cooldowns[player] = nil
 	St.toasts[player] = nil
 	St.watchCooldown[player] = nil
+	St.gateCooldown[player] = nil
 	St.net[player.UserId] = nil
 end
 
@@ -4999,7 +5253,7 @@ local function onHeartbeat()
 end
 
 -- game:BindToClose (tests call it too): every running battle ends void with Reason "Shutdown" (duels / trials pay
--- nothing and penalise nobody, raids pay the share so far), new battles are refused and leavers are no forfeits
+-- nothing and penalise nobody, raids pay like a loss), new battles are refused and leavers are no forfeits
 function BattleService.Shutdown()
 	St.closing = true
 	for _, b in ipairs(runningBattles()) do
@@ -5029,10 +5283,6 @@ function BattleService.Shutdown()
 		if not ok then
 			warn("[BattleService] shutdown of ring run " .. tostring(run.Id) .. " failed: " .. tostring(err))
 		end
-	end
-	local raid = St.raid
-	if raid and not raid.Battle then
-		raidEndedWithoutPlayers(raid, "Shutdown")
 	end
 	if Podium then
 		Podium.ReleaseAll() -- wave 6: nobody stays anchored
@@ -5122,10 +5372,14 @@ function BattleService.Init(deps)
 			setInBattle(player, nil)
 		end
 	end
+	if BattleCatalog and type(BattleCatalog.BossOrder) == "table" then
+		St.raidBoss = BattleCatalog.BossOrder[1] -- the boss waits from the start; EventService's rotation changes it
+	end
 	St.running = true
 	RunService.Heartbeat:Connect(onHeartbeat)
 	every(C.MONITOR_PERIOD, monitorTick, "monitor")
 	every(C.HOUSEKEEPING_PERIOD, housekeeping, "housekeeping")
+	every(C.RAID_GATE_POLL, Raid.gatePoll, "raid gate")
 end
 
 return BattleService

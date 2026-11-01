@@ -54,8 +54,8 @@
 --                   the "spin" gift is not paid again either (rewards are never paid twice). Without the hook the
 --                   command is refused, nothing changes, and the panel hides the button (NC_DevTutorial).
 --   skiptutorial    mark the tutorial done without the finish reward (TutorialService.HandleEvent(player, "Skip"))
---   raid            Phase 3: start a Boss Raid in the arena right now (EventService.StartNow("BossRaid"); without an
---                   EventService, BattleService.StartRaid()). Touches no profile data; refused while a raid runs.
+--   raid [boss|end] boss raids: the next boss (or that boss) now, or when the running fights end (EventService.StartNow("BossRaid"));
+--                   "end" ends the running fights (EventService.EndNow("BossRaid")). Touches no profile data.
 --   berries [n]     Phase 5: DataService.AddBerries(n): n defaults to Config.Dev.GrantBerries (5000 without it),
 --                   whole numbers only, clamped like tokens; the Berries attribute follows (allowed while provisional)
 --   petlevel <n>    Phase 4: sets every EQUIPPED pet's level to n (1..the curve's max level, 100; XP 0) through
@@ -190,10 +190,10 @@ local NO_PROFILE = { pet = true, pets = true, evolve = true, fx = true, clearpet
 local NUMERIC = { tokens = true, cash = true, gems = true, berries = true, petlevel = true, levelall = true }
 -- the commands that take a value, and its type (tokens / cash / gems / berries / petlevel: a number; the showcase: the
 -- rest of the chat line)
-local ARG_KIND = { tokens = "number", cash = "number", gems = "number", berries = "number", petlevel = "number", levelall = "number", pet = "string", pets = "string", evolve = "string", fx = "string", sky = "string", kick = "string", ban = "string", unban = "string" }
+local ARG_KIND = { raid = "string", tokens = "number", cash = "number", gems = "number", berries = "number", petlevel = "number", levelall = "number", pet = "string", pets = "string", evolve = "string", fx = "string", sky = "string", kick = "string", ban = "string", unban = "string" }
 -- the example value a refusal toast shows for a numeric command (50000 for the currencies), and for a text one
 local ARG_EXAMPLE = { petlevel = "20", levelall = "50" }
-local TEXT_EXAMPLE = { sky = "/sky sunset", kick = "/kick name reason", ban = "/ban name reason", unban = "/unban name" }
+local TEXT_EXAMPLE = { raid = "/raid lava", sky = "/sky sunset", kick = "/kick name reason", ban = "/ban name reason", unban = "/unban name" }
 local MAX_ARG_LENGTH = 48
 local MAX_REASON_ARG_LENGTH = 180 -- /kick and /ban: a name and a reason
 local DEFAULT_MAX_PET_LEVEL = 100 -- /petlevel's cap when neither PetCatalog nor TycoonCatalog names one
@@ -821,24 +821,27 @@ local function cmdPetLevel(player, profile, arg)
 	return true, set .. (set == 1 and " equipped pet is" or " equipped pets are") .. " level " .. arg .. " now", true
 end
 
--- Phase 3: a Boss Raid now (events owner). Nothing in the profile changes.
-local function cmdRaid()
-	if hasFunction(EventService, "StartNow") then
-		local ok, started, message = pcall(EventService.StartNow, "BossRaid")
-		if not ok then
-			warn("[DevService] EventService.StartNow failed: " .. tostring(started))
-			return false, "the raid could not start"
-		end
-		return started == true, tostring(message or (started and "raid started" or "the raid could not start")), false
+-- Boss raids: /raid = the next boss, /raid <boss word> = that boss, /raid end = end the fights (events owner). Nothing in the profile changes.
+local function cmdRaid(_, _, arg)
+	if not hasFunction(EventService, "StartNow") then
+		return false, "boss raids are not in this build", false
 	end
-	if hasFunction(BattleService, "StartRaid") then
-		local ok, started, why = pcall(BattleService.StartRaid)
-		if ok and started == true then
-			return true, "raid started (join at the Arena)", false
+	local word = string.match(string.lower(type(arg) == "string" and arg or ""), "%S+")
+	local fn, boss = EventService.StartNow, nil
+	if word == "end" then
+		fn = EventService.EndNow
+	elseif word then
+		boss = hasFunction(SkyService, "Find") and SkyService.Find(word) or nil
+		if not boss then
+			return false, "no boss starts with \"" .. word .. "\"", false
 		end
-		return false, string.lower(tostring(ok and why or "the raid could not start")), false
 	end
-	return false, "boss raids are not in this build", false
+	local ok, started, message = pcall(fn, "BossRaid", boss)
+	if not ok then
+		warn("[DevService] /raid failed: " .. tostring(started))
+		return false, "the boss could not change", false
+	end
+	return started == true, tostring(message or (started and "done" or "the boss could not change")), false
 end
 
 -- The living sky (SkyService): the clock and the raid sky are Workspace attributes, so this changes the sky of everyone

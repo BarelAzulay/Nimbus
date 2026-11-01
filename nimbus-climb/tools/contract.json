@@ -694,10 +694,18 @@
         "TeamSpec",
         "SetRunProvider",
         "LevelSnapshot",
-        "LevelReport"
+        "LevelReport",
+        "EnterRaid",
+        "LeaveRaid",
+        "GetRaidStatus",
+        "SetRaidBoss",
+        "EndRaids",
+        "RaidTierFor",
+        "RaidRewardStatus"
       ],
       "signals": [
-        "BattleEnded"
+        "BattleEnded",
+        "RaidJoined"
       ]
     },
     "server/Services/HomeBuilder": {

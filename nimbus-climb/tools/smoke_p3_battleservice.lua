@@ -313,8 +313,7 @@ local function distanceToZone(p, zoneCF)
 end
 
 local function endAnyRaid(bs)
-	if bs.GetRaidStatus() ~= nil then
-		bs.EndRaid()
+	if bs.EndRaids("Ended") > 0 then
 		advance(0.2)
 	end
 end
@@ -805,13 +804,11 @@ S.p3bs_queue = scenario("p3bs_queue", function()
 	toArena(q5, 0, 10)
 	bs.Queue(q5)
 	endAnyRaid(bs)
-	local okR = holdRaidSchedule(bs)("frost_wyrm")
 	local m3 = K.logSize()
-	local okJ = bs.JoinRaid(q5)
+	local okJ = bs.EnterRaid(q5)
 	local l6 = lastMsg(q5, "Lobby", m3)
-	T.check(okR and okJ and l6 and l6.Queue.Queued == false and not bs.Unqueue(q5), "p3 queue: joining a raid takes the player out of the queue ('Lobby' Queued = false)")
-	bs.EndRaid()
-	releaseRaidSchedule(bs)
+	T.check(okJ and l6 and l6.Queue.Queued == false and not bs.Unqueue(q5), "p3 queue: entering a boss fight takes the player out of the queue ('Lobby' Queued = false)")
+	endAnyRaid(bs)
 	K.flushErrors("p3 queue")
 	cleanup({ q1, q2, q3, q4, q5 })
 	loudReplication()

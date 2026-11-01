@@ -256,7 +256,8 @@ local function serverScenarios()
 			T.eq(Workspace:GetAttribute(A.Event), "", "a Raid BattleEnded without a battle id clears")
 		end)
 		-- the watchdog: the raid status is the truth every Config.Sky.EventWatch seconds
-		local status = nil
+		local waiting = { Active = false, BossId = "lava_golem", Fights = {}, Closed = {} } -- the boss always waits: Active = a floor fight runs
+		local status = waiting
 		withFakes(Sky, cfg, function()
 			return status
 		end, function(ES)
@@ -268,7 +269,7 @@ local function serverScenarios()
 			T.eq(Workspace:GetAttribute(A.Event), "lava_golem", "watchdog: a raid that started without EventStarted gets its sky")
 			advance(cfg.EventWatch + 0.5)
 			T.eq(Workspace:GetAttribute(A.Event), "lava_golem", "watchdog: ...and keeps it while the raid runs (no flicker)")
-			status = nil
+			status = waiting
 			advance(cfg.EventWatch + 0.5)
 			T.eq(Workspace:GetAttribute(A.Event), "", "watchdog: ...cleared once the raid is gone")
 			Sky.SetEvent("frost_wyrm", "dev")

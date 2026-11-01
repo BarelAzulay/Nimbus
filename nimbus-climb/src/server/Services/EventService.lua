@@ -3,26 +3,24 @@
 --
 --   EventService.Init(deps)        deps = { DataService, BattleService, PetCareService, ArenaInfo } (all optional; players
 --                                  already in the game get the ArenaState at once)
---   EventService.StartNow(kind, bossId|nil) -> ok, message      start an event at once (developer tools: /raid, the
---                                  DEV panel's "Start Boss Raid"): kind = "BossRaid" | "DoubleRewards"
+--   EventService.StartNow(kind, bossId|nil) -> ok, message      start an event at once (developer tools: /raid, the DEV panel's
+--                                  "Next raid boss"): kind = "BossRaid" (the next boss now, or when the running fights end) | "DoubleRewards"
 --   EventService.RewardMultiplier() -> n                         BattleCatalog.Events.DoubleRewardsMultiplier during a
 --                                  Double Rewards hour, else 1 (BattleService multiplies battle Tokens by it)
 --   EventService.IsDoubleRewards() -> bool, EventService.GetDouble() -> { Active, EndsIn } | nil
 --   EventService.GetState() -> the ArenaState table (below), EventService.Broadcast() sends it now
 --   Extras: EndNow(kind) -> ok, message (ends a running event), SecondsUntil(kind) -> seconds to the next one
---   EventService.RaidTierFor(share, won) -> BattleCatalog.RaidTier(...) with the Tokens of this moment (Double Rewards)
+--   EventService.RaidTierFor(share, won, tierId) -> BattleCatalog.RaidTier(...) with the Tokens of this moment (Double Rewards)
+--   EventService.RaidFloorStarted(info): BattleService tells a floor fight began; fires EventStarted("BossRaid", info)
 --   Signals (exist at module load, Util.Signal): EventAnnounced(kind, info), EventStarted(kind, info),
 --   EventEnded(kind, info). info = { Kind, BossId, Name, StartsIn | Seconds, Won, Players, ... }
 --
 -- The scheduler (numbers from BattleCatalog.Events, never duplicated here):
---   * Boss Raid: every Schedule.BossRaid.EveryMinutes (20), the first FirstAfterSeconds (300) after the server starts.
---     AnnounceSeconds (120) before, every player gets a side toast (Notify, never centred) naming the boss, a reminder
---     30 s before, and the ArenaState countdown (the event board in the arena shows it too). At the time,
---     BattleService.StartRaid(bossId) opens the raid on the colosseum floor (the roster rotates: BattleCatalog.NextBoss);
---     players join inside the arena during JoinWindowSeconds. BattleService runs and ends the fight; EventService
---     watches it (a raid still open DurationSeconds + the join window + RAID_GRACE after its start is closed with
---     BattleService.EndRaid) and, on BattleService.BattleEnded (Mode "Raid"), tells everyone how it went and who won
---     an event pet. A raid that is due while one still runs (a developer started one) waits for it to end.
+--   * Boss Raid: the boss is always there (BattleService runs the fights, see its header), so the BossRaid slot is only the ROTATION:
+--     every Schedule.BossRaid.EveryMinutes (20), the first FirstAfterSeconds (300) after the server starts,
+--     BattleService.SetRaidBoss(the next of BattleCatalog.NextBoss) changes the boss, at once or when the running fights end. No
+--     announcement, no toast. On BattleService.BattleEnded (Mode "Raid"), a win is told to everyone with who won an event pet;
+--     EventStarted / EventEnded("BossRaid") follow the FLOOR fight only (the server-wide sky and the boards).
 --   * Double Rewards: a DurationSeconds (1 hour) window every EveryMinutes (180), the first one EveryMinutes after the
 --     server starts (or the entry's FirstAfterSeconds when the catalog adds one). Announced like the raid; while it
 --     runs RewardMultiplier() is 2, the Workspace attribute DoubleRewards is true (clients / boards) and BattleService
@@ -36,11 +34,11 @@
 -- ArenaState (remote, server -> client, one table): broadcast every BROADCAST_FAST s while a countdown (the last
 --   AnnounceSeconds) or a raid runs, else every BROADCAST_SLOW s, and to every player who joins:
 --   { Next = { Kind, BossId, Name, StartsIn, Announced } | nil   (the soonest scheduled event)
---     Raid = BattleService.GetRaidStatus() -> { Active, BossId, Hp, MaxHp, Players, EndsIn, ... } | nil
+--     Raid = BattleService.GetRaidStatus() -> { BossId, Name, Active, BattleId, FloorTier, FloorHiddenIn, Fights, Closed } + NextBossIn,
+--            NextBoss (the rotation) | nil
 --     Double = { Active, EndsIn } | nil
 --     Leaderboard = { { UserId, Name, Trophies } x 10 }   (the players in this server, by Battle.Trophies)
---     -- extras: NextRaid = { BossId, Name, StartsIn } | nil, LastRaid = { BossId, Name, Won, Players, Top = {
---        { UserId, Name, Damage, Tier }... }, Ago } | nil, Multiplier = n }
+--     -- extras: LastRaid = { BossId, Name, Tier, Won, Players, Top = { { UserId, Name, Damage, Tier }... }, Ago } | nil, Multiplier = n }
 --   The same table is drawn on the arena's event board + trophy leaderboard (ArenaBuilder.ApplyArenaState) whenever
 --   what they show changes (the boards tick their countdowns themselves), at least every BOARD_KEEPALIVE s.
 -- Plain Lua 5.1-compatible syntax only; task.* only; no client -> server remote (nothing to trust).
@@ -79,11 +77,8 @@ local PetKeys = loadShared("PetKeys")
 -- Local constants (not in Config / BattleCatalog; see the deviations list)
 ----------------------------------------------------------------------
 local TICK = 1 -- scheduler step (seconds)
-local BROADCAST_FAST = 1 -- ArenaState period while a countdown or a raid runs
+local BROADCAST_FAST = 1 -- ArenaState period while a countdown or a raid fight runs
 local BROADCAST_SLOW = 5 -- ... otherwise
-local REMINDER_SECONDS = 30 -- the second raid toast
-local RAID_GRACE = 30 -- seconds past DurationSeconds + the join window before a raid is closed by force
-local POSTPONE = 30 -- a raid due while another raid runs waits this long, then checks again
 local TOAST_SECONDS = 6
 local LEADERS = 10
 
@@ -94,9 +89,8 @@ local St = {
 	initialized = false,
 	running = false,
 	deps = {},
-	slots = {}, -- [kind] = { Kind, At, Announced, Reminded, Entry, BossId }
-	raidIndex = 0, -- the rotation position of the last boss that was scheduled
-	raid = nil, -- { BossId, StartedAt, Id } while a raid we started (or saw) is open
+	slots = {}, -- [kind] = { Kind, At, Announced, Entry, BossId }
+	raidIndex = 1, -- the rotation position of the last boss that was scheduled (BossOrder[1] waits from the start: BattleService.Init)
 	double = nil, -- { EndsAt, StartedAt }
 	lastRaid = nil,
 	lastBroadcast = -math.huge,
@@ -272,11 +266,11 @@ function EventService.RewardMultiplier()
 	return 1
 end
 
-function EventService.RaidTierFor(share, won)
+function EventService.RaidTierFor(share, won, tierId)
 	if not BattleCatalog or not hasFn(BattleCatalog, "RaidTier") then
 		return nil
 	end
-	local tier = BattleCatalog.RaidTier(share, won)
+	local tier = BattleCatalog.RaidTier(share, won, tierId)
 	if type(tier) ~= "table" then
 		return nil
 	end
@@ -337,7 +331,7 @@ end
 
 local function raidsPossible()
 	local bs = battleService()
-	return hasFn(bs, "StartRaid") and BattleCatalog ~= nil and type(BattleCatalog.Bosses) == "table"
+	return hasFn(bs, "SetRaidBoss") and BattleCatalog ~= nil and type(BattleCatalog.Bosses) == "table"
 end
 
 local function nextBossId()
@@ -348,32 +342,23 @@ local function nextBossId()
 	return nil
 end
 
-local function joinWindow()
-	return tonumber(eventsConfig().JoinWindowSeconds) or 60
+-- the rotation's step -> ok, "set" | "queued" | why
+local function setRaidBoss(bossId)
+	local ok, okSet, how = pcall(battleService().SetRaidBoss, bossId)
+	if not ok then
+		warn("[EventService] SetRaidBoss failed: " .. tostring(okSet))
+		return false, "the boss could not change"
+	end
+	if okSet ~= true then
+		return false, string.lower(tostring(how or "the boss could not change"))
+	end
+	return true, how
 end
 
-local function startRaid(bossId, source)
-	local bs = battleService()
-	if not hasFn(bs, "StartRaid") then
-		return false, "battles are not ready"
-	end
-	if raidStatus() then
-		return false, "a raid is already running"
-	end
-	local ok, okStart, idOrWhy = pcall(bs.StartRaid, bossId)
-	if not ok then
-		warn("[EventService] StartRaid failed: " .. tostring(okStart))
-		return false, "the raid could not start"
-	end
-	if okStart ~= true then
-		return false, string.lower(tostring(idOrWhy or "the raid could not start"))
-	end
-	local status = raidStatus()
-	local realBoss = (status and status.BossId) or bossId
-	St.raid = { BossId = realBoss, StartedAt = now(), Id = idOrWhy }
-	notifyAll("Boss Raid! " .. bossName(realBoss) .. " is in the Battle Arena. Join within " .. joinWindow() .. " s!", "good", 7)
-	EventService.EventStarted:Fire("BossRaid", { Kind = "BossRaid", BossId = realBoss, Name = bossName(realBoss), BattleId = idOrWhy, Source = source })
-	return true, idOrWhy
+-- BattleService: a fight began on the real floor (the server-wide sky and the boards follow that one)
+function EventService.RaidFloorStarted(info)
+	EventService.EventStarted:Fire("BossRaid", info)
+	EventService.Broadcast()
 end
 
 ----------------------------------------------------------------------
@@ -399,25 +384,15 @@ local KINDS = {}
 
 KINDS.BossRaid = {
 	Possible = raidsPossible,
+	Silent = true, -- the rotation: no toast, no EventAnnounced, no fast ArenaState
 	FirstAfter = function(entry)
 		return tonumber(entry.FirstAfterSeconds) or tonumber(eventsConfig().FirstAfterSeconds) or 300
 	end,
 	Prepare = function(slot)
 		slot.BossId = nextBossId()
 	end,
-	Announce = function(slot, secondsLeft)
-		notifyAll("Boss Raid in " .. minutesText(secondsLeft) .. ": " .. bossName(slot.BossId) .. "! Gather at the Battle Arena.", "info", 7)
-	end,
-	Remind = function(slot, secondsLeft)
-		notifyAll(bossName(slot.BossId) .. " arrives in " .. math.max(1, math.floor(secondsLeft + 0.5)) .. " s at the Battle Arena!", "info", 5)
-	end,
-	-- -> "started" | "wait" | "skip"
 	Start = function(slot)
-		if raidStatus() then
-			return "wait"
-		end
-		local ok = startRaid(slot.BossId, "schedule")
-		return ok and "started" or "skip"
+		setRaidBoss(slot.BossId)
 	end,
 }
 
@@ -434,7 +409,6 @@ KINDS.DoubleRewards = {
 	end,
 	Start = function(slot)
 		startDouble(tonumber(slot.Entry.DurationSeconds) or 3600, "schedule")
-		return "started"
 	end,
 }
 
@@ -444,7 +418,7 @@ local function buildSlots()
 	for _, entry in ipairs(eventsConfig().Schedule or {}) do
 		local kind = type(entry) == "table" and KINDS[entry.Kind]
 		if kind then
-			local slot = { Kind = entry.Kind, Entry = entry, At = t + kind.FirstAfter(entry), Announced = false, Reminded = false }
+			local slot = { Kind = entry.Kind, Entry = entry, At = t + kind.FirstAfter(entry), Announced = false }
 			kind.Prepare(slot)
 			St.slots[entry.Kind] = slot
 		end
@@ -456,7 +430,6 @@ local function reschedule(slot, from)
 	local kind = KINDS[slot.Kind]
 	slot.At = (from or now()) + everySeconds(slot.Entry)
 	slot.Announced = false
-	slot.Reminded = false
 	kind.Prepare(slot)
 end
 
@@ -467,22 +440,14 @@ local function tickSlot(slot, t)
 	end
 	local left = slot.At - t
 	local announce = announceSeconds(slot.Entry)
-	if not slot.Announced and left <= announce and left > 0 then
+	if not kind.Silent and not slot.Announced and left <= announce and left > 0 then
 		slot.Announced = true
 		kind.Announce(slot, left)
 		EventService.EventAnnounced:Fire(slot.Kind, { Kind = slot.Kind, BossId = slot.BossId, Name = slot.BossId and bossName(slot.BossId) or nil, StartsIn = math.ceil(left) })
 	end
-	if kind.Remind and not slot.Reminded and left <= REMINDER_SECONDS and left > 0 then
-		slot.Reminded = true
-		kind.Remind(slot, left)
-	end
 	if left <= 0 then
-		local result = kind.Start(slot)
-		if result == "wait" then
-			slot.At = t + POSTPONE
-		else
-			reschedule(slot, t)
-		end
+		kind.Start(slot)
+		reschedule(slot, t)
 	end
 end
 
@@ -558,8 +523,9 @@ function EventService.GetState()
 		Multiplier = EventService.RewardMultiplier(),
 	}
 	local raidSlot = St.slots.BossRaid
-	if raidSlot and KINDS.BossRaid.Possible() then
-		state.NextRaid = { BossId = raidSlot.BossId, Name = bossName(raidSlot.BossId), StartsIn = math.max(0, math.ceil(raidSlot.At - t)) }
+	if state.Raid and raidSlot and KINDS.BossRaid.Possible() then
+		state.Raid.NextBoss = raidSlot.BossId
+		state.Raid.NextBossIn = math.max(0, math.ceil(raidSlot.At - t))
 	end
 	if St.lastRaid then
 		local lr = {}
@@ -595,10 +561,18 @@ local function boardSignature(state, t)
 	if type(r) == "table" then
 		add(r.Active)
 		add(r.BossId)
-		add(r.Hp)
-		add(r.MaxHp)
-		add(r.Players)
-		add(at(r.EndsIn))
+		add(r.FloorTier)
+		add(at(r.NextBossIn))
+		for _, tierId in ipairs((BattleCatalog and BattleCatalog.RaidTierOrder) or {}) do
+			local f = type(r.Fights) == "table" and r.Fights[tierId]
+			if type(f) == "table" then
+				add(tierId)
+				add(f.Hp)
+				add(f.MaxHp)
+				add(f.Players)
+				add(at(f.EndsIn))
+			end
+		end
 	end
 	local d = state.Double
 	if type(d) == "table" then
@@ -657,7 +631,8 @@ function EventService.Broadcast(player)
 end
 
 local function fastMode(t)
-	if raidStatus() then
+	local raid = raidStatus()
+	if raid and type(raid.Fights) == "table" and next(raid.Fights) ~= nil then
 		return true
 	end
 	for _, slot in pairs(St.slots) do
@@ -733,9 +708,14 @@ local function payRaider(battleId, result, uid, won)
 	if not isPlayer(player) then
 		return nil
 	end
+	-- the same reward clocks as BattleService's payer: nothing while the limit runs, a payment stamps it
+	local clocks = try(battleService(), "RaidRewardStatus", player)
+	if type(clocks) == "table" and ((won and clocks.WinIn > 0) or (not won and clocks.LossIn > 0)) then
+		return nil
+	end
 	local share = (type(result.Shares) == "table" and tonumber(result.Shares[uid] or result.Shares[tostring(uid)])) or 0
 	local damage = (type(result.Damage) == "table" and tonumber(result.Damage[uid] or result.Damage[tostring(uid)])) or 0
-	local tier = EventService.RaidTierFor(share, won)
+	local tier = EventService.RaidTierFor(share, won, result.RaidTier)
 	if not tier then
 		return nil
 	end
@@ -744,6 +724,11 @@ local function payRaider(battleId, result, uid, won)
 		rec.Raids = (tonumber(rec.Raids) or 0) + 1
 		if damage > (tonumber(rec.RaidBestDamage) or 0) then
 			rec.RaidBestDamage = math.floor(damage)
+		end
+		if type(clocks) == "table" and won then
+			rec.RaidRewardAt = clocks.Now
+		elseif type(clocks) == "table" then
+			rec.RaidLossAt = clocks.Now
 		end
 	end)
 	local eventPet = nil
@@ -787,7 +772,7 @@ local function onBattleEnded(battleId, result)
 	if type(result) ~= "table" or result.Mode ~= "Raid" then
 		return
 	end
-	local bossId = result.BossId or (St.raid and St.raid.BossId)
+	local bossId = result.BossId
 	local won = type(result.Winners) == "table" and #result.Winners > 0
 	local participants = {}
 	if type(result.Participants) == "table" then
@@ -838,19 +823,10 @@ local function onBattleEnded(battleId, result)
 	while #top > 5 do
 		table.remove(top)
 	end
-	St.lastRaid = { BossId = bossId, Name = bossName(bossId), Won = won, Players = #fighters, Top = top, EndedAt = now() }
-	St.raid = nil
-	local raidSlot = St.slots.BossRaid
-	local nextText = ""
-	if raidSlot then
-		nextText = " Next raid in " .. minutesText(math.max(60, raidSlot.At - now())) .. "."
-	end
-	if #participants == 0 then
-		notifyAll("Nobody fought " .. bossName(bossId) .. "." .. nextText, "info", 5)
-	elseif won then
-		notifyAll(bossName(bossId) .. " was defeated by " .. #fighters .. (#fighters == 1 and " raider!" or " raiders!") .. nextText, "good", 6)
-	else
-		notifyAll(bossName(bossId) .. " won this time." .. nextText, "info", 6)
+	St.lastRaid = { BossId = bossId, Name = bossName(bossId), Tier = result.RaidTier, Won = won, Players = #fighters, Top = top, EndedAt = now() }
+	if won then
+		local who = bossName(bossId) .. (result.RaidTier and (" (" .. tostring(result.RaidTier) .. ")") or "")
+		notifyAll(who .. " was defeated by " .. #fighters .. (#fighters == 1 and " raider!" or " raiders!"), "good", 6)
 	end
 	-- shout-out for every event pet won (BattleService or the fallback payer)
 	for uid, rw in pairs(rewards) do
@@ -864,7 +840,9 @@ local function onBattleEnded(battleId, result)
 			end
 		end
 	end
-	EventService.EventEnded:Fire("BossRaid", { Kind = "BossRaid", BossId = bossId, Name = bossName(bossId), Won = won, Players = #fighters, BattleId = battleId })
+	if result.RaidFloor == true then
+		EventService.EventEnded:Fire("BossRaid", { Kind = "BossRaid", BossId = bossId, Name = bossName(bossId), Tier = result.RaidTier, Won = won, Players = #fighters, BattleId = battleId })
+	end
 	EventService.Broadcast()
 end
 
@@ -881,9 +859,6 @@ function EventService.StartNow(kind, bossId)
 		if not raidsPossible() then
 			return false, "boss raids are not ready in this build"
 		end
-		if raidStatus() then
-			return false, "a raid is already running"
-		end
 		local slot = St.slots.BossRaid
 		local boss = nil
 		if type(bossId) == "string" and BattleCatalog.Bosses[bossId] then
@@ -893,16 +868,16 @@ function EventService.StartNow(kind, bossId)
 		else
 			boss = nextBossId()
 		end
-		local ok, why = startRaid(boss, "dev")
+		local ok, how = setRaidBoss(boss)
 		if not ok then
-			return false, why
+			return false, how
 		end
-		-- the cycle restarts from now (the announced boss was used, the next one is queued)
+		-- the cycle restarts from now (the waiting boss was used, the next one is queued)
 		if slot then
 			reschedule(slot, now())
 		end
 		EventService.Broadcast()
-		return true, "raid started: " .. bossName(boss) .. " (join at the Arena within " .. joinWindow() .. " s)"
+		return true, "next boss: " .. bossName(boss) .. (how == "set" and " (now)" or " (when the fights end)")
 	elseif kind == "DoubleRewards" then
 		local entry = scheduleEntry("DoubleRewards") or {}
 		startDouble(tonumber(entry.DurationSeconds) or 3600, "dev")
@@ -922,12 +897,12 @@ function EventService.EndNow(kind)
 		EventService.Broadcast()
 		return true, "Double Rewards ended"
 	elseif kind == nil or kind == "BossRaid" or kind == "raid" then
-		if not raidStatus() then
+		local ended = try(battleService(), "EndRaids", "Ended")
+		if not ended or ended <= 0 then
 			return false, "no raid running"
 		end
-		try(battleService(), "EndRaid", "Ended")
 		EventService.Broadcast()
-		return true, "raid ended"
+		return true, ended == 1 and "raid ended" or (ended .. " raids ended")
 	end
 	return false, "unknown event " .. tostring(kind)
 end
@@ -939,20 +914,6 @@ local function tick()
 	local t = now()
 	if St.double and t >= St.double.EndsAt then
 		endDouble()
-	end
-	-- a raid that outlived every limit is closed (BattleService normally ends it itself)
-	local status = raidStatus()
-	if status and not St.raid then
-		St.raid = { BossId = status.BossId, StartedAt = t, Id = status.BattleId }
-	end
-	if St.raid and status then
-		local boss = BattleCatalog and BattleCatalog.Bosses and BattleCatalog.Bosses[St.raid.BossId]
-		local limit = (scheduleEntry("BossRaid") or {}).DurationSeconds or (boss and boss.TimeLimit) or 330
-		if t - St.raid.StartedAt > limit + joinWindow() + RAID_GRACE then
-			try(battleService(), "EndRaid", "Timeout")
-		end
-	elseif St.raid and not status and t - St.raid.StartedAt > 5 then
-		St.raid = nil -- ended without a BattleEnded we heard (should not happen)
 	end
 	for _, slot in pairs(St.slots) do
 		local ok, err = pcall(tickSlot, slot, t)

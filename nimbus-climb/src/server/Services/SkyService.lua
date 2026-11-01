@@ -17,13 +17,13 @@
 --   SkyService.ClearEvent() -> ok                 SkyEvent "" (the clients blend back to the cycle)
 --   SkyService.Status() -> { Phase, Next, T, Blend, LoopT, Seconds, Length, Speed, Offset, Event, Source }
 --   SkyService.Find(word) -> bossId | nil         an exact boss id or a unique prefix ("storm" -> storm_titan)
--- The raid sky (server-wide, raids are server-wide events):
---   * on   EventService.EventStarted("BossRaid", { BossId, BattleId }) for a boss with a RaidThemes sky
+-- The raid sky (server-wide; it follows the FLOOR fight, the one the whole colosseum sees: fighters in a pocket get theirs locally):
+--   * on   EventService.EventStarted("BossRaid", { BossId, BattleId }), the floor fight's start, for a boss with a RaidThemes sky
 --   * off  BattleService.BattleEnded(battleId, result) with result.Mode "Raid" (every Reason: BossDown, Wipe, Error,
 --          Timeout, NoPlayers) and EventService.EventEnded("BossRaid", info); an end that names ANOTHER raid's battle id
 --          (a late end of the raid before) leaves the current raid's sky up. Non-Raid ends never clear.
---   * the watchdog, every Config.Sky.EventWatch s: BattleService.GetRaidStatus() is the truth for raid skies (a raid gone
---          without an end we heard clears, a raid that started without EventStarted gets its sky); dev previews are
+--   * the watchdog, every Config.Sky.EventWatch s: BattleService.GetRaidStatus().Active (the floor fight) is the truth for raid skies (a
+--          fight gone without an end we heard clears, a fight that started without EventStarted gets its sky); dev previews are
 --          left alone. A server shutdown takes the attributes with it (a new server starts on SkyEvent "").
 -- SkyEventAt changes only when SkyEvent does (the same boss again does not restart the clients' blend).
 -- Plain Lua 5.1-compatible syntax only.

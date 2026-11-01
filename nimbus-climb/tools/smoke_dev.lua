@@ -431,6 +431,7 @@ local function serverScenarios()
 				b.TrialBest = 3
 				b.Raids, b.RaidBestDamage, b.PvPWins, b.PvPLosses = 2, 900, 5, 1
 				b.EventPets[teamPet] = true
+				b.RaidRewardAt, b.RaidLossAt = 1700000000, 1700000100
 			end)
 			local rec = DataS.GetBattle(owner) or {}
 			T.check(rec.Trophies == 40 and rec.TrialBest == 3 and rec.PvPWins == 5 and rec.EventPets and rec.EventPets[teamPet] == true,
@@ -530,7 +531,7 @@ local function serverScenarios()
 			expect(#(presets[1] or {}) == 0 and #(presets[2] or {}) == 0 and #(presets[3] or {}) == 0 and tm.Active == 1, "battle teams")
 			local b = type(prof.Battle) == "table" and prof.Battle or {}
 			expect(b.Trophies == 0 and b.TrialBest == 0 and next(b.TrialCleared or {}) == nil and b.Raids == 0 and b.RaidBestDamage == 0
-				and b.PvPWins == 0 and b.PvPLosses == 0 and next(b.EventPets or {}) == nil, "battle record")
+				and b.PvPWins == 0 and b.PvPLosses == 0 and next(b.EventPets or {}) == nil and (b.RaidRewardAt or 0) == 0 and (b.RaidLossAt or 0) == 0, "battle record")
 		end
 		-- Phase 4: evolution stages, training ranks / jobs and the Champion Ring record go too; the Migrations markers stay
 		-- (smoke_p4_data.lua p4data_dev sets them up first and checks the ResetFields overwrite past an autosave)

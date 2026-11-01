@@ -274,8 +274,7 @@ local function releaseRaidSchedule(bs)
 end
 
 local function endAnyRaid(bs)
-	if bs.GetRaidStatus() ~= nil then
-		bs.EndRaid()
+	if bs.EndRaids("Ended") > 0 then
 		advance(0.2)
 	end
 end
@@ -933,14 +932,12 @@ S.p5svc_position = scenario("p5svc_position", function()
 
 	-- a raid: a raider teleported far is REMOVED (the others fight on); Speed events on Swap
 	endAnyRaid(bs)
-	local startRaid = holdRaidSchedule(bs)
 	local r1 = newPlayer("PosRaid", STRONG, 10)
 	local r2 = newPlayer("PosRaid", MID, 10)
 	toArena(r1, -6, 0)
 	toArena(r2, 6, 0)
-	local okR, raidId = startRaid("storm_titan")
-	bs.JoinRaid(r1)
-	bs.JoinRaid(r2)
+	local okR = bs.EnterRaid(r1)
+	bs.EnterRaid(r2)
 	advance(0.5)
 	do
 		-- (the FOLLOW leash: wave 6 skips it while the pet fights, the floor bounds the pet; held off here)
@@ -978,12 +975,12 @@ S.p5svc_position = scenario("p5svc_position", function()
 		end
 	end
 	local e1 = lastMsg(r1, "End", m4)
-	local st = bs.GetRaidStatus()
+	local st = bs.GetRaidStatus().Fights.Starter
 	-- (wave 6: the FOLLOW leash counts from the teleport's first tick, no engage to drop first: -0.4 s tick slack)
 	T.check(e1 and e1.Outcome == "Left" and removedAt and removedAt >= F.LeashSeconds - 0.4 and removedAt <= F.LeashSeconds + 1.6 and st and st.Players == 1 and bs.IsInBattle(r2)
 		and r1:GetAttribute("InBattle") == nil and toasted(r1, "ran off", m4),
 		"p5 pos: a raider leashed out is removed from the raid (End Outcome Left, the others fight on)", string.format("after %.1f s, players %s", removedAt or -1, st and tostring(st.Players) or "nil"))
-	bs.EndRaid()
+	bs.EndRaids("Ended")
 	advance(0.3)
 
 	-- W5 battle-dungeon-3 (4.4 / B1 / C15): a STUNNED / frozen fighter stands (the sim caps its move at 0) while the
@@ -1954,14 +1951,11 @@ S.p5svc_encounter = scenario("p5svc_encounter", function()
 	local okCh, whyCh = bs.Challenge(runner, other)
 	local okCh2, whyCh2 = bs.Challenge(other, runner)
 	endAnyRaid(bs)
-	local startRaid = holdRaidSchedule(bs)
-	startRaid("storm_titan")
-	local okJR, whyJR = bs.JoinRaid(runner)
+	local okJR, whyJR = bs.EnterRaid(runner)
 	local okRg, whyRg = bs.StartRing(runner, 1)
-	bs.EndRaid()
 	local want = "Finish your dungeon run first"
 	T.check(okQ == false and whyQ == want and okCh == false and whyCh == want and okJR == false and whyJR == want and okRg == false and whyRg == want and okCh2 == false,
-		"p5 enc: with GetRun set, Queue / Challenge / JoinRaid / StartRing are refused 'Finish your dungeon run first' (and nobody can challenge the runner)",
+		"p5 enc: with GetRun set, Queue / Challenge / EnterRaid / StartRing are refused 'Finish your dungeon run first' (and nobody can challenge the runner)",
 		tostring(whyQ) .. " | " .. tostring(whyJR) .. " | " .. tostring(whyRg) .. " | " .. tostring(whyCh2))
 	bs.SetRunProvider(nil)
 	other:SetAttribute("InBattle", "D12")

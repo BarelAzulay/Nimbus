@@ -1196,7 +1196,7 @@ local function raidStatus()
 		return nil
 	end
 	local ok, status = pcall(BattleService.GetRaidStatus)
-	if ok and type(status) == "table" then
+	if ok and type(status) == "table" and status.Active ~= false then -- (the boss always waits now: only a running floor fight counts here)
 		return status
 	end
 	return nil
