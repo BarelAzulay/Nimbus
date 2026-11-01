@@ -18,3 +18,7 @@ Read with [`ABSOLUTE_RULES.md`](ABSOLUTE_RULES.md) before working.
   is already signed in. Paste the prompt there and read the reply. Never open the Gemini desktop app from an agent.
 - 2026-10-31: the speed scout (owner's rule, `ABSOLUTE_RULES.md`): always search for a way to make progress quicker without affecting the build or its quality.
   First use: the team-balance build ran its Pets window and loss screen side by side, since the two share almost no files.
+- 2026-11-01: the model and effort router (owner's rule): `docs/superpowers/specs/2026-11-01-model-effort-router.md` says which
+  model (Fable / Opus / Sonnet / Haiku) and effort (low .. max) each job kind gets, what moves a job up or down, and when a whole
+  job runs easy / medium / high / xhigh / ultracode. Ultracode is a way of running a job (several workflows, adversarial
+  verification, completeness critics, loop until dry), not an effort value; it is kept for saves / money / security / releases.
