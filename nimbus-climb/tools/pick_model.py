@@ -107,20 +107,20 @@ _UP_BUILDER, _UP_REVIEWER = (OPUS, "medium"), (FABLE, "high")  # any Up item end
 _REVIEW_XHIGH = (FABLE, "xhigh")
 
 
-def _flag(help_text, builder=_UP_BUILDER, reviewer=_UP_REVIEWER, counts=True, forces_ultracode=False):
-    return {"help": help_text, "builder": builder, "reviewer": reviewer, "counts": counts, "forces": forces_ultracode}
+def _flag(help_text, builder=_UP_BUILDER, reviewer=_UP_REVIEWER, item=None, forces_ultracode=False):
+    return {"help": help_text, "builder": builder, "reviewer": reviewer, "item": item, "forces": forces_ultracode}
 
 
-# Spec section 2: the Up items. counts = it moves the whole-job level, not only the route.
+# Spec section 2. item = the Up item it belongs to: the whole-job level counts items, not flags. None = route only.
 FLAGS = {
-    "saves": _flag("touches saves or player data", (FABLE, "high"), _REVIEW_XHIGH),
-    "money": _flag("touches money or rewards", (OPUS, "high"), _REVIEW_XHIGH),
-    "security": _flag("touches remote security", (OPUS, "high"), _REVIEW_XHIGH),
-    "live": _flag("touches live data"),
-    "hard-to-undo": _flag("hard to undo: uploads, merges to main, schema changes, anything players keep"),
-    "many-systems": _flag("many systems at once: a wave with 4+ owners"),
-    "failed-before": _flag("a past failure in this area"),
-    "studio-only": _flag("the mock cannot see the mistake", counts=False),
+    "saves": _flag("touches saves or player data", (FABLE, "high"), _REVIEW_XHIGH, item="live-data"),
+    "money": _flag("touches money or rewards", (OPUS, "high"), _REVIEW_XHIGH, item="live-data"),
+    "security": _flag("touches remote security", (OPUS, "high"), _REVIEW_XHIGH, item="live-data"),
+    "live": _flag("touches live data", item="live-data"),
+    "hard-to-undo": _flag("hard to undo: uploads, merges to main, schema changes, anything players keep", item="hard-to-undo"),
+    "many-systems": _flag("many systems at once: a wave with 4+ owners", item="many-systems"),
+    "failed-before": _flag("a past failure in this area", item="failed-before"),
+    "studio-only": _flag("the mock cannot see the mistake"),
     "release": _flag("a release to main with players on it", forces_ultracode=True),
     "failed-twice": _flag("a second failure in the same area", forces_ultracode=True),
 }
@@ -167,7 +167,7 @@ def level(kind, flags=()):
     items = frozenset(flags) | JOBS[kind]["up"]
     if any(FLAGS[f]["forces"] for f in items):
         return "ultracode"
-    count = sum(1 for f in items if FLAGS[f]["counts"])
+    count = len({FLAGS[f]["item"] for f in items} - {None})
     if count >= 2:
         return "ultracode"
     return "xhigh" if count == 1 else base

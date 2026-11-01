@@ -30,9 +30,9 @@ py -3.12 tools/pick_model.py --build game-feature --many-systems  # plan, build,
 ```
 
 Flags only raise a route: `--saves --money --security --live --hard-to-undo --many-systems --failed-before --studio-only
---release --failed-twice`. Any one of them goes one effort step up and ends a Sonnet or Haiku route. Two that count, or
-`--release`, or `--failed-twice`, make the build ultracode; `--studio-only` raises the route but not the level, since the
-owner's look is the test there. An unknown kind exits 2 and lists the kinds (`other` is the table's default, Opus high with
+--release --failed-twice`. Any one of them goes one effort step up and ends a Sonnet or Haiku route. Two Up items (`--saves
+--money --security --live` are one item together), or `--release`, or `--failed-twice`, make the build ultracode;
+`--studio-only` raises the route but not the level, since the owner's look is the test there. An unknown kind exits 2 and lists the kinds (`other` is the table's default, Opus high with
 a Fable high review). Change a route in the spec and here together; `test_pick_model.py` pins the table and the floors.
 
 ## Place verifier: is the place file up to date?

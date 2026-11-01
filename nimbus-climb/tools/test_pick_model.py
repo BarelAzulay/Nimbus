@@ -197,6 +197,22 @@ class Levels(unittest.TestCase):
         self.assertEqual(P.level("saves", {"many-systems"}), "ultracode")
         self.assertEqual(P.level("saves", {"saves"}), "xhigh")
 
+    def test_saves_money_security_and_live_data_are_one_up_item(self):
+        # spec section 2: they are one bullet, so together they are still one item (Extra high)
+        live_data = ("saves", "money", "security", "live")
+        for a, b in itertools.combinations(live_data, 2):
+            self.assertEqual(P.level("game-feature", {a, b}), "xhigh", (a, b))
+        self.assertEqual(P.level("game-feature", set(live_data)), "xhigh")
+        for kind in ("saves", "money", "security"):
+            for flag in live_data:
+                self.assertEqual(P.level(kind, {flag}), "xhigh", (kind, flag))
+
+    def test_the_spec_ultracode_examples_are_still_ultracode(self):
+        self.assertEqual(P.level("money", {"live", "many-systems"}), "ultracode")  # the Robux shop
+        self.assertEqual(P.level("saves", {"hard-to-undo", "many-systems"}), "ultracode")  # a save-schema change
+        self.assertEqual(P.level("saves", {"hard-to-undo"}), "ultracode")  # a schema change is its own Up item
+        self.assertEqual(P.level("game-feature", {"hard-to-undo", "release"}), "ultracode")  # a long-lived merge
+
     def test_a_release_or_a_second_failure_is_ultracode_alone(self):
         self.assertEqual(P.level("game-feature", {"release"}), "ultracode")
         self.assertEqual(P.level("game-feature", {"failed-twice"}), "ultracode")
@@ -254,7 +270,7 @@ class CommandLine(unittest.TestCase):
         self.assertIn("ultracode: YES", run("--build", "saves", "--many-systems").stdout)
 
     def test_ultracode_prints_its_extra_stages(self):
-        out = run("--build", "saves", "--live").stdout
+        out = run("--build", "saves", "--many-systems").stdout
         self.assertIn("completeness critics", out)
         self.assertIn("loop until dry", out)
 

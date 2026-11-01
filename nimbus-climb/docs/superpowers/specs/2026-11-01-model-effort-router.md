@@ -44,11 +44,13 @@ Default when a job is not in the table: Opus high builder, Fable high reviewer (
 
 ## 2. What moves a job
 
-**Up** (one is enough; two or more = also consider ultracode, section 3): it touches saves, money, rewards, remote security
+**Up** (one is enough; two or more = ultracode, section 3): it touches saves, money, rewards, remote security
 or live data; it is hard to undo (uploads, merges to main, schema changes, anything players keep); it touches many systems at
 once (a wave with 4+ owners); there was a past failure in that area (the court pivot, the sky cube, berries dup, the mesh
 preload order: those files get Fable review even for small edits); the mock cannot see the mistake (Studio-only behaviour).
 Up means: the builder one effort step higher, the reviewer one model or effort step higher, never fewer steps.
+Each item between semicolons counts once: a job that touches money and saves and live data is one Up item, not three. A save
+or Cash that players keep does not make a job "hard to undo" as well; that item is for an upload, a merge or a schema change.
 
 **Down** (all three must hold): the work is mechanical (wiring, renames, tables, notes); it is easy to check by eye or by
 re-reading; a test or tool catches a mistake (`p2final_docs`, `check.mjs`, `verify_place.py`, the sims). Down means a
