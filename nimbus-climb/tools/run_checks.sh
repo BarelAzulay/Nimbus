@@ -94,6 +94,7 @@ if [ $do_static -eq 1 ]; then
 		step "Upload tool tests (tools/test_upload_assets.py, offline)" python3 tools/test_upload_assets.py
 		step "Sky manifest tests (tools/test_sky_manifest.py, offline)" python3 tools/test_sky_manifest.py
 		step "Parallel runner tests (tools/test_smoke_parallel.py, offline)" python3 tools/test_smoke_parallel.py
+		step "Model router tests (tools/test_pick_model.py, offline)" python3 tools/test_pick_model.py
 	fi
 fi
 

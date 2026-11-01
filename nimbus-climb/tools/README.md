@@ -18,6 +18,23 @@ Check it with `py -3.12 -c "import lupa, numpy, PIL; print('ok')"`, and run the 
 --quick` wherever this file says `python3`. If `py` is not found right after the install, open a new terminal (or
 call `%LOCALAPPDATA%\Programs\Python\Launcher\py.exe` directly).
 
+## Model picker: which model and effort for this job?
+
+`pick_model.py` (Python 3 only, no other packages) holds the table of
+[the router spec](../docs/superpowers/specs/2026-11-01-model-effort-router.md) as data. Ask it before each stage of a build:
+
+```sh
+py -3.12 tools/pick_model.py --list                               # every job kind
+py -3.12 tools/pick_model.py --job saves                          # model, effort, reviewer, gate, reason
+py -3.12 tools/pick_model.py --build game-feature --many-systems  # plan, build, review, fix, gate + is it ultracode?
+```
+
+Flags only raise a route: `--saves --money --security --live --hard-to-undo --many-systems --failed-before --studio-only
+--release --failed-twice`. Any one of them goes one effort step up and ends a Sonnet or Haiku route. Two Up items (`--saves
+--money --security --live` are one item together), or `--release`, or `--failed-twice`, make the build ultracode;
+`--studio-only` raises the route but not the level, since the owner's look is the test there. An unknown kind exits 2 and lists the kinds (`other` is the table's default, Opus high with
+a Fable high review). Change a route in the spec and here together; `test_pick_model.py` pins the table and the floors.
+
 ## Place verifier: is the place file up to date?
 
 `verify_place.py` checks a Rojo-built place against `src/` (Python 3 only, no other packages): every
