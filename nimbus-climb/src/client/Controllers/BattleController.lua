@@ -299,6 +299,7 @@ local K = {
 	NUMBER_RISE = 2.6,
 	NUMBER_PX = 26, -- 1080p pixel size of a damage number (World text rule: >= 22)
 	CRIT_PX = 32,
+	LETHAL_CALLOUT = 1.2, -- seconds a "DASH!" floats over a fighter standing in a lethal telegraph (then the next one)
 	CALLOUT_PX = 26,
 	NUMBER_DISTANCE = 170,
 	BAR_DISTANCE = 140,
@@ -1176,6 +1177,8 @@ local function newBattle(payload, battleId)
 		TimeLimit = num(payload.TimeLimit, 0),
 		Level = payload.Level,
 		BossId = payload.BossId,
+		-- boss raids: "Start".Raid = { Tier, Pocket, BossId, Enraged } (a late joiner comes in enraged)
+		Raid = type(payload.Raid) == "table" and payload.Raid or nil,
 		-- Phase 4: the Champion Ring's "Start".Ring = { Round, Best, Start, Champion = { PetId, Level, Tier, Boss, Name } }
 		Ring = type(payload.Ring) == "table" and payload.Ring or nil,
 		Round = num(payload.Round or (type(payload.Ring) == "table" and payload.Ring.Round), 0),
@@ -1203,7 +1206,8 @@ local function newBattle(payload, battleId)
 		pending = {},
 		ended = false,
 		simEnded = false,
-		enraged = false,
+		enraged = type(payload.Raid) == "table" and payload.Raid.Enraged == true,
+		lethalPending = false, -- a lethal telegraph is up (the enrage pill says DASH!)
 		wave = 0,
 		folder = nil,
 	}
@@ -1489,7 +1493,9 @@ local function buildUnit(B, u)
 			error("BossBuilder is missing")
 		end
 		local cf = worldFrame(B, u.x, 0, u.z, u.yaw)
-		local model = BB.Build(u.bossId, { Detail = "High", CFrame = cf })
+		-- a raid boss wears its fight's tier: colours, size (as the sim's radius grows), aura (none on Graphics Low)
+		local tier = B.Raid and B.Raid.Tier or nil
+		local model = BB.Build(u.bossId, { Detail = "High", CFrame = cf, Tier = tier, NoAura = tier ~= nil and Me.LowGraphics() })
 		if not model then
 			error("BossBuilder.Build returned nil for " .. tostring(u.bossId))
 		end
@@ -2706,6 +2712,51 @@ function Me.Glow(color, seconds)
 	BattleController._wake()
 end
 
+function Me.LowGraphics()
+	if Mods.Gfx == nil then
+		Mods.Gfx = optional(Client, "GraphicsQuality") or false
+	end
+	local gq = Mods.Gfx
+	if gq and type(gq.Effective) == "function" then
+		local ok, mode = pcall(gq.Effective)
+		return ok and mode == "Low"
+	end
+	return false
+end
+
+-- an enraged raid boss: the same edges hold `color`, pulsing 0.35-0.55 at 1 Hz (steady 0.5 on Graphics Low), until EdgeHold(nil)
+function Me.PaintHold(g, now)
+	local a = Me.LowGraphics() and 0.5 or (0.45 + 0.1 * sin(now * 2 * pi))
+	for _, f in ipairs(g.edges) do
+		f.BackgroundColor3 = g.hold.color
+		f.BackgroundTransparency = a
+		f.Visible = true
+	end
+end
+
+function Me.EdgeHold(color)
+	if color == nil then
+		local held = St.screenFx
+		if held and held.hold then
+			held.hold = nil
+			if not held.glow then
+				for _, f in ipairs(held.edges) do
+					f.BackgroundTransparency = 1
+					f.Visible = false
+				end
+			end
+		end
+		return
+	end
+	local g = Me.ScreenFx()
+	if not g then
+		return
+	end
+	g.hold = { color = color }
+	Me.PaintHold(g, os.clock())
+	BattleController._wake()
+end
+
 -- (Task 11) the battle dim's look: the world darker, a little desaturated and violet (Eclipse Nova's black sun); the
 -- HUD and the effects' Neon stay bright. RELATIVE to the look under it (LightingStack.Value without the dim itself):
 -- the arena (server ExposureCompensation -0.15, NimbusColor Brightness 0 / Saturation 0.14) -> -0.9 / -0.06 / -0.21,
@@ -2919,7 +2970,7 @@ function Me.UpdateScreenFx(now)
 		Me.Undim(nil, K.DIM_OUT)
 	end
 	local g = St.screenFx
-	if not g or not g.glow then
+	if not g or not (g.glow or g.hold) then
 		return St.dim ~= nil
 	end
 	if g.glow then
@@ -2933,7 +2984,10 @@ function Me.UpdateScreenFx(now)
 			g.glow = nil
 		end
 	end
-	return g.glow ~= nil or St.dim ~= nil
+	if g.hold and not g.glow then
+		Me.PaintHold(g, now) -- (a pet's glow on top gives the red edges back when it fades)
+	end
+	return g.glow ~= nil or g.hold ~= nil or St.dim ~= nil
 end
 
 ----------------------------------------------------------------------
@@ -3735,6 +3789,7 @@ function Tele.Start(B, ev)
 	local at = num(ev.at, B.renderT + hits)
 	local tl = {
 		id = id,
+		lethal = ev.lethal == true, -- the enraged boss's lethal attack: a thicker rim in the late colour, the DASH! callout
 		shape = ev.shape == "Line" and "Line" or "Circle",
 		x = num(ev.x, 0),
 		z = num(ev.z, 0),
@@ -3782,8 +3837,14 @@ function Tele.Start(B, ev)
 	end
 	-- a crisp rim in the saturated telegraph colour: the pale area alone barely reads on the arena's sand, the rim
 	-- says exactly where safety starts (16 segments round a circle; two rails and an end cap along a line)
-	local rimColor = fill:Lerp(Color3.new(0, 0, 0), 0.22)
+	local rimColor = tl.lethal and COLORS.LateRim or fill:Lerp(Color3.new(0, 0, 0), 0.22)
+	local rimWidth = tl.lethal and 1.1 or 0.55
+	local rimIn = rimWidth / 2 - 0.005
+	tl.rimWidth, tl.rimColor = rimWidth, rimColor
 	tl.rim = {}
+	if tl.lethal then
+		B.lethalPending = true
+	end
 	if tl.shape == "Circle" then
 		local segLen = 2 * tl.r * math.tan(pi / 16) + 0.12
 		for j = 0, 15 do
@@ -3791,18 +3852,18 @@ function Tele.Start(B, ev)
 			if not seg then
 				break
 			end
-			seg.Size = Vector3.new(segLen, 0.16, 0.55)
-			seg.CFrame = worldFrame(B, tl.x, 0.14, tl.z, 0) * CFrame.Angles(0, j * pi / 8, 0) * CFrame.new(0, 0, -(tl.r - 0.27))
+			seg.Size = Vector3.new(segLen, 0.16, rimWidth)
+			seg.CFrame = worldFrame(B, tl.x, 0.14, tl.z, 0) * CFrame.Angles(0, j * pi / 8, 0) * CFrame.new(0, 0, -(tl.r - rimIn))
 			tl.rim[#tl.rim + 1] = seg
 		end
 	else
 		-- the frame of edgePart: local X across the line, local Z along it
 		local mid = worldFrame(B, tl.x + tl.dx * tl.length / 2, 0.14, tl.z + tl.dz * tl.length / 2, tl.yaw)
-		local tip = worldFrame(B, tl.x + tl.dx * (tl.length - 0.27), 0.14, tl.z + tl.dz * (tl.length - 0.27), tl.yaw)
+		local tip = worldFrame(B, tl.x + tl.dx * (tl.length - rimIn), 0.14, tl.z + tl.dz * (tl.length - rimIn), tl.yaw)
 		local pieces = {
-			{ mid * CFrame.new(tl.width / 2 - 0.27, 0, 0), Vector3.new(0.55, 0.16, tl.length) },
-			{ mid * CFrame.new(-(tl.width / 2 - 0.27), 0, 0), Vector3.new(0.55, 0.16, tl.length) },
-			{ tip, Vector3.new(tl.width, 0.16, 0.55) },
+			{ mid * CFrame.new(tl.width / 2 - rimIn, 0, 0), Vector3.new(rimWidth, 0.16, tl.length) },
+			{ mid * CFrame.new(-(tl.width / 2 - rimIn), 0, 0), Vector3.new(rimWidth, 0.16, tl.length) },
+			{ tip, Vector3.new(tl.width, 0.16, rimWidth) },
 		}
 		for _, piece in ipairs(pieces) do
 			local seg = Fx.Part(rimColor, Enum.Material.Neon, 0.1)
@@ -3862,10 +3923,10 @@ local function threatened(B, tl)
 	for slot = 1, 4 do
 		local u = B.mine[slot]
 		if u and u.hp > 0 and u.state ~= S_DOWN and u.state ~= S_BENCHED and Tele.Covers(tl, u.x, u.z, K.THREAT_PAD) then
-			return true
+			return u
 		end
 	end
-	return false
+	return nil
 end
 
 function Tele.Update(B, now)
@@ -3875,9 +3936,20 @@ function Tele.Update(B, now)
 		if not threat and B.Fighter and t < tl.at and threatened(B, tl) then
 			threat = true
 		end
+		-- the lethal attack: the engaged pet does not follow the walking trainer, so the Dash is the escape and the copy says so
+		if tl.lethal and B.Fighter and t < tl.at and now >= (tl.calloutAt or 0) then
+			local inside = threatened(B, tl)
+			if inside and inside.root then
+				tl.calloutAt = now + K.LETHAL_CALLOUT
+				Fx.Number(inside.root, (inside.height or 3) / 2 + 2.6, "DASH!", COLORS.LateRim, K.CRIT_PX, K.LETHAL_CALLOUT)
+			end
+		end
 		if t >= tl.at then
 			if not tl.impactAt then
 				tl.impactAt = now
+				if tl.lethal then
+					B.lethalPending = false
+				end
 				-- the hit: a flash of the shape + a shock ring / burst
 				local center
 				if tl.shape == "Circle" then
@@ -3959,6 +4031,7 @@ function Tele.ClearAll(B)
 		Tele.Free(tl)
 		B.teles[id] = nil
 	end
+	B.lethalPending = false
 end
 
 ----------------------------------------------------------------------
@@ -4341,6 +4414,9 @@ Handlers[EV.Enrage] = function(B, ev)
 			Fx.Number(boss.root, numberHeight(boss) + 1, "ENRAGED!", COLORS.Enemy, K.CRIT_PX, 1.6)
 		end
 		Fx.Ring(unitCenter(B, boss), 14, COLORS.Enemy, 24, 1, 0.8, 0.1)
+	end
+	if B.Fighter then
+		Me.EdgeHold(COLORS.Enemy)
 	end
 end
 
@@ -5841,9 +5917,11 @@ function Hud.Update(B, now, force)
 		end
 	end
 	if Hud.pills.Visible then
-		if last.enraged ~= B.enraged then
-			last.enraged = B.enraged
+		local lethal = B.lethalPending == true
+		if last.enraged ~= B.enraged or last.lethal ~= lethal then
+			last.enraged, last.lethal = B.enraged, lethal
 			Hud.enragePill.Visible = B.enraged == true
+			Hud.enragePill.Text = lethal and "ENRAGED - DASH!" or "ENRAGED"
 		end
 		local minions, players = 0, {}
 		for _, u in ipairs(B.list) do
@@ -6026,6 +6104,9 @@ function Hud.ModeText(B)
 	local text, color
 	if B.Mode == "Raid" then
 		text, color = "BOSS RAID", COLORS.Enemy
+		if B.Raid and B.Raid.Tier then
+			text = text .. " - " .. tostring(B.Raid.Tier)
+		end
 	elseif B.Mode == "Dungeon" then
 		local d = B.Dungeon or {}
 		local compact = Hud.m and Hud.m.Compact
@@ -8106,10 +8187,41 @@ function Net.RewardSound()
 	end
 end
 
+-- a raid fight's own screen: a pocket's fighters get the raid sky locally (the floor fight's is server-wide), a late joiner the red edges
+function Net.LocalSky(bossId)
+	if Mods.Sky == nil then
+		Mods.Sky = optional(script.Parent, "SkyController") or false
+	end
+	local sky = Mods.Sky
+	if sky and type(sky.SetLocalEvent) == "function" then
+		pcall(sky.SetLocalEvent, bossId)
+	end
+end
+
+function Net.RaidStart(B)
+	if not B.Raid or not B.Fighter then
+		return
+	end
+	if B.Raid.Pocket == true then
+		Net.LocalSky(B.Raid.BossId or B.BossId)
+	end
+	if B.enraged then
+		Me.EdgeHold(COLORS.Enemy)
+	end
+end
+
+function Net.RaidEnd(B)
+	if B.Raid then
+		Net.LocalSky(nil)
+		Me.EdgeHold(nil)
+	end
+end
+
 function Net.Cleanup(B, immediate)
 	if not B then
 		return
 	end
+	Net.RaidEnd(B)
 	if B.Mode == "Dungeon" then
 		pcall(Me.RecordDrawn, B)
 	end
@@ -8161,6 +8273,7 @@ function Net.Start(payload, battleId)
 		B.Fighter = not B.Spectator
 		B.Names = type(payload.Names) == "table" and payload.Names or B.Names
 		B.sides = type(payload.Sides) == "table" and payload.Sides or B.sides
+		B.Raid = type(payload.Raid) == "table" and payload.Raid or B.Raid
 		local keep = {}
 		for _, info in ipairs(type(payload.Units) == "table" and payload.Units or {}) do
 			local u = Units.Add(B, info)
@@ -8191,6 +8304,7 @@ function Net.Start(payload, battleId)
 		Net.Team(B, payload)
 		Input.Bind(B.Fighter)
 		Input.Movement(B, B.Fighter)
+		Net.RaidStart(B)
 		Hud.Rebuild()
 		Net.Music()
 		return
@@ -8225,7 +8339,7 @@ function Net.Start(payload, battleId)
 	if B.Mode == "Raid" then
 		local BB = lazyBoss()
 		if BB and B.BossId and type(BB.Preload) == "function" then
-			pcall(BB.Preload, B.BossId)
+			pcall(BB.Preload, B.BossId, { Tier = B.Raid and B.Raid.Tier or nil })
 		end
 	end
 	St.result = nil
@@ -8234,6 +8348,7 @@ function Net.Start(payload, battleId)
 	end
 	Input.Bind(B.Fighter)
 	Input.Movement(B, B.Fighter)
+	Net.RaidStart(B)
 	Hud.Rebuild()
 	Net.Music()
 	BattleController._wake()
@@ -8683,6 +8798,7 @@ function Net.End(payload, battleId)
 	end
 	B.ended = true
 	B.endAt = os.clock()
+	Net.RaidEnd(B)
 	Atk.EndSoon(B) -- (when the sim's End event has not played: the grace starts now, the cheers wait for it)
 	Input.Bind(false)
 	Input.Movement(B, false)
@@ -9050,12 +9166,12 @@ function BattleController.GetBattle()
 	}
 end
 
--- the drawn telegraphs (tests): { { Id, Shape, At, From, SafeAt, Late } ... } on the render clock
+-- the drawn telegraphs (tests): { { Id, Shape, At, From, SafeAt, Late, Lethal, RimWidth, RimColor } ... } on the render clock
 function BattleController.GetTelegraphs()
 	local B = St.battle
 	local out = {}
 	for id, tl in pairs(B and B.teles or {}) do
-		out[#out + 1] = { Id = id, Shape = tl.shape, At = tl.at, From = tl.from, SafeAt = tl.safeAt, Late = tl.late == true }
+		out[#out + 1] = { Id = id, Shape = tl.shape, At = tl.at, From = tl.from, SafeAt = tl.safeAt, Late = tl.late == true, Lethal = tl.lethal == true, RimWidth = tl.rimWidth, RimColor = tl.rimColor }
 	end
 	return out
 end

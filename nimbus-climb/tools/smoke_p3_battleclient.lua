@@ -213,7 +213,7 @@ local function newDriver(opts)
 		sim:SpawnEnemies(opts.Wave, { Wave = 1, Anchor = { 0, 10 } })
 	end
 	local d = setmetatable({ sim = sim, id = id, zoneCF = opts.ZoneCF or CFrame.new(0, 200, 0), side = opts.Side or 1, logIndex = #Mock.RemoteLog, events = {}, stepped = 0, ring = opts.Ring,
-		dungeon = opts.Dungeon }, Driver)
+		dungeon = opts.Dungeon, raid = opts.Raid }, Driver)
 	d.me = LocalPlayer.UserId
 	return d
 end
@@ -228,6 +228,7 @@ function Driver:startPayload()
 	p.T = self.sim:Time()
 	p.Ring = self.ring -- Phase 4: BattleService's "Start".Ring for a Champion Ring round
 	p.Dungeon = self.dungeon -- Phase 5: the room's floor / room / waves
+	p.Raid = self.raid -- boss raids: BattleService's "Start".Raid
 	local team = self.side ~= 0 and self.sim:TeamOf(self.me) or nil -- Phase 5: the receiver's own team
 	if team then
 		p.Team = { Fighter = team.Fighter, Bench = team.Bench, Lives = team.Lives, Speed = team.Speed, Cooldowns = { Element = 0, Dash = 0, Swap = 0, Buff = {} } }
@@ -711,6 +712,7 @@ S.client_p3battle_raid = guarded("client_p3battle_raid", function()
 	local d, why = newDriver({
 		Mode = "Raid",
 		Boss = "storm_titan",
+		Raid = { Tier = "High", Pocket = false, BossId = "storm_titan" },
 		Teams = {
 			{ Owner = LocalPlayer.UserId, Side = 1, Pets = catalogTeam(3) },
 			{ Owner = 77, Side = 1, Pets = catalogTeam(3, 2), Auto = true },
@@ -781,7 +783,7 @@ S.client_p3battle_raid = guarded("client_p3battle_raid", function()
 	local grows = #fills >= 3 and peak > fills[1] + 0.5
 	T.check(grows, "raid: a telegraph fills up before the hit", #fills > 0 and (fmt(fills[1]) .. " -> " .. fmt(peak) .. " studs") or "no samples")
 	T.check(teleGone, "raid: a telegraph vanishes after its hit")
-	T.check(hasText(find("Root.TopCard"), "Storm Titan") and hasText(find("Root.TopCard"), "BOSS RAID"), "raid HUD: the top card names the boss")
+	T.check(hasText(find("Root.TopCard"), "Storm Titan") and hasText(find("Root.TopCard"), "BOSS RAID %- High"), "raid HUD: the top card names the boss and the fight's tier")
 	T.check(shown(find("Root.TopCard.BossBar")) and shown(find("Root.TopCard.BossBar.Hp.Fill")), "raid HUD: the boss bar at the top centre")
 	T.check(shown(find("Root.Team.Fighter")) and shown(find("Root.Team.Helpers.Helper1")) and shown(find("Root.Team.Helpers.Helper2")), "raid HUD: my fighter card + two helper portraits")
 	-- a minion wave + enrage + a leaving team
