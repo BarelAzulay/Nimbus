@@ -691,6 +691,7 @@ S.tb_team_rollout = guarded("tb_team_rollout", function()
 		T.check(prof.Pets[K4] == 1 and Data.MigratedNow(p, "B4TeamFollow") ~= nil, "tb team rollout: no lost key")
 		leave(p)
 	end)
+	release()
 	if not okRun then
 		error(errRun, 0)
 	end
