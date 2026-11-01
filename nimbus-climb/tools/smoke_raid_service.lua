@@ -271,6 +271,7 @@ local function scenario(name, fn)
 			error(err, 0)
 		end
 		K.flushErrors(name)
+		K.flushWarnings(name, { "injected end failure" })
 	end)
 end
 
