@@ -400,7 +400,7 @@ S.evo_pounce = guarded("evo_pounce", function()
 	end
 	-- the target, on the way, beside the line, behind the pet (inside the drawn line's start), past the line's end at 15 (a bear's radius
 	-- is 2.4: the body's edge rule, so 18)
-	local b, f, foes = field(BS, fighter(PC, "Pounce", 1), { { 12, 0 }, { 6, 0 }, { 6, 7.5 }, { -5, 0 }, { 18, 0 } })
+	local b, f, foes = field(BS, fighter(PC, "Pounce", 1), { { 12, 0 }, { 6, 0 }, { 6, 5 }, { -5, 0 }, { 18, 0 } })
 	local ev, evs = special(b, f, foes[1])
 	T.check(ev ~= nil and ev.form == 1 and near(ev.x0, -8, 0.6) and near(ev.z0, 0, 1e-6) and near(ev.angle, 0, 1e-3) and near(ev.length, 8 + 12 + 3, 0.6) and near(ev.width, 4 * 1.15, 1e-6),
 		"evo pounce: the charge line is drawn from 8 behind the pet through the target to 3 past it, Beam width x reach",
@@ -1062,6 +1062,33 @@ S.evo_haste = guarded("evo_haste", function()
 	b, f, foes = field(BS, fighter(PC, "Haste", 2), { { 5, 0 } })
 	special(b, f, foes[1])
 	T.check(near(f.doubleUntil, f.speedBuffUntil, 1e-9) and near(f.quickUntil, f.speedBuffUntil, 1e-9), "evo haste: a real cast: Double strike and Quick hands last as long as the Haste")
+	-- an NPC follows its own stage (a Ring champion): its landed hits strike twice too
+	local npc = { Def = withSpecial(PC, LEG, "Haste"), Key = LEG, Level = 50, Evo = 2, Slot = 1 }
+	local nb = BS.new({ Mode = "Duel", Seed = 9, Zone = { X = 160, Z = 160 }, TimeLimit = 900,
+		Teams = { { Owner = 1, Side = 1, Pets = { { Key = "biscuit_bear", Level = 40, NoSpecial = true, Slot = 1 } } }, { Owner = "npc", Side = 2, Npc = true, Specials = false, Pets = { npc } } } })
+	local me = standFighter(nb.teams[1], 0, 0)
+	local enemy = nil
+	for _, e in ipairs(nb.units) do
+		if e.side == 2 then
+			enemy = e
+			e.maxHp, e.hp = 1e7, 1e7
+			e.x, e.z, e.px, e.pz, e.moveSpeed = 8, 0, 8, 0, 0
+			e.interval, e.doubleUntil = 0.3, huge
+		end
+	end
+	landed, double = 0, 0
+	for _ = 1, 3000 do
+		for _, h in ipairs(nb:Step(0.1)) do
+			if h.type == "Hit" and h.from == enemy.id and h.to == me.id and not h.miss then
+				if h.double then
+					double = double + 1
+				else
+					landed = landed + 1
+				end
+			end
+		end
+	end
+	T.check(landed >= 100 and double >= 0.1 * landed and double <= 0.3 * landed, "evo haste: an NPC's Double strike lands too", fmt("%d of %d", double, landed))
 end)
 
 ----------------------------------------------------------------------------------------------------
@@ -1301,6 +1328,29 @@ S.evo_delayed = guarded("evo_delayed", function()
 	b, f, foes = field(BS, fighter(PC, "Beam", 0), { { 10, 0 } })
 	special(b, f, foes[1])
 	T.check(#b.delayed == 0, "evo delayed: a stage-0 Beam queues nothing")
+	-- every kind at Evo 2, played out by the Auto kit on both sides: no error, and the same seed replays the same fight
+	local tally = T.tally("evo delayed: an Evo 2 fight of every kind replays byte for byte")
+	for _, kind in ipairs(BC.SpecialKinds) do
+		local function duel()
+			local function side(owner, s)
+				return { Owner = owner, Side = s, Auto = true, Pets = {
+					{ Def = withSpecial(PC, LEG, kind), Key = LEG, Level = 50, Evo = 2, Slot = 1 },
+					{ Def = withSpecial(PC, "stormfang", kind), Key = "stormfang", Level = 50, Evo = 2, Slot = 2 },
+				} }
+			end
+			local battle = BS.new({ Mode = "Duel", Seed = 21, Zone = { X = 60, Z = 60 }, Teams = { side(1, 1), side(2, 2) } })
+			local twistEvents = 0
+			for _ = 1, 400 do
+				for _, ev in ipairs(battle:Step(0.1)) do
+					twistEvents = twistEvents + ((ev.type == "Twist") and 1 or 0)
+				end
+			end
+			return fmt("%.3f %.3f %d %.3f", battle.teams[1].damage, battle.teams[2].damage, twistEvents, battle:Time())
+		end
+		local one, two = duel(), duel()
+		tally:case(one == two, kind .. ": " .. one .. " / " .. two)
+	end
+	tally:report()
 end)
 
 ----------------------------------------------------------------------------------------------------
