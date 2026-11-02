@@ -53,7 +53,9 @@ A Fable review checked this spec against the code. These sentences settle what i
 - **War pace** shares `speedBuffMult` with the Haste helper buff: keep the larger, no overwrite.
 - **Quick hands:** a cooldown set while Haste is on is x0.75.
 - **Bench helper buttons keep their plain buff.** Forms change the fighter's own special only. My call.
-- **Hybrids stay at stage 0.** The sim treats every hybrid as stage 0, so they have no evolved forms until hybrids can evolve. This replaces the hybrid line above. My call.
+- **Hybrids evolve, so they get forms.** This corrects an earlier line here that said they can't. A hybrid's stage is stored per key like any pet's (`PetCareService.Evolve`, `DataService.GetEvolution`), and `BattleService` passes it to the fight. `BattleCatalog.FormStageOf` must read that real stage, not force 0. Forms follow the first evolved-forms rule: by its special's kind and normal's element, in its own colours, with a generic name per kind. `FormDpsOf` counts them.
+- **Storm Titan Starter:** `HpTier.Starter` 1.24 to 1.23, the owner's OK, 2026-11-02.
+- **Owner's OKs, 2026-11-02:** boss health counting forms, softer form values, keeping the Mythic index rule, bench helpers plain, boss bonus hit, DASH! text.
 
 **Looks**
 - Stormfang's start drops the Actor and its signature bolts, and keeps the slam ring, bolts and cloud. Thunder Pack's bolts are 4 strikes at most (`MAX_BEAMS`). On Low, wolves are plain.
@@ -67,7 +69,7 @@ A Fable review checked this spec against the code. These sentences settle what i
 - The meter doesn't tick while retreated. Retreated teams still count in boss scaling. The lethal knocks out only the unit.
 - Retreat gets the same grace as a stun against the 10-stud leash, so a trainer running from a far pet isn't kicked.
 - Add Retreat and Engage to `Cmd.ACTIONS`, `VALID_ACTIONS` and `BattleSim.Actions`.
-- **No free win:** one player whose team was retreated for over half its time in the fight gets the loss pay on a win, not the win pay and no event pet roll. It's judged per player, so everyone else keeps their pay. My call.
+- **No free pet:** one player whose team was retreated for over half its time in the fight keeps the win pay on a win but gets no event pet roll. It's judged per player. The owner's choice, 2026-11-02.
 
 **Switch Target**
 - Tap fires on release under 0.4 s, or a hold would switch and then clear. Hold clears the lock: the pet keeps its engaged target and picks the nearest after that. One enemy: a client check says so and does nothing. Tutorial text needs no change.
