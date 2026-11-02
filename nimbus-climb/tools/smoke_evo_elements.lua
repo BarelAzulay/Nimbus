@@ -11,6 +11,7 @@
 --   evo_el_shadow         Hollow Rend's weaken (the strongest stands), Soul Rend's leech
 --   evo_el_ranged_circle  a ranged pet's Circle on its aim point, at stage 0 too (at most its range away); melee, Cones and Lines keep today's rule
 --   evo_el_boss           a boss keeps its immunities: a bonus hit instead; every timed twist lands on it, Ice Snare marks it
+--   evo_el_form_dps       what a boss's HP counts for a fighter's forms (BattleCatalog.FormDps): x1 at stage 0 and on a hybrid
 -- White-box: reaches into battle.units / battle.teams (same Lua state). Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -206,13 +207,15 @@ local function landed(BC, f, foe, hit, share, tol)
 end
 
 local MELEE, RANGED = "sunbeam_bear", "ember_phoenix" -- Legendaries: both evolve twice
+local RANGED_SHORT = "nebula_axolotl" -- evolves twice, range 12: its Circle's radius is its range at every stage (max(8 x 1.3, 12))
 
 local function melee(PC, element, evo)
 	return { Def = cloneDef(PC, MELEE, { Element = element, Elements = { element } }), Key = MELEE, Level = 50, Evo = evo }
 end
 
-local function ranged(PC, element, evo)
-	return { Def = cloneDef(PC, RANGED, { Element = element, Elements = { element } }), Key = RANGED, Level = 50, Evo = evo }
+local function ranged(PC, element, evo, petId)
+	petId = petId or RANGED
+	return { Def = cloneDef(PC, petId, { Element = element, Elements = { element } }), Key = petId, Level = 50, Evo = evo }
 end
 
 local function modules()
@@ -261,7 +264,7 @@ S.evo_el_names = guarded("evo_el_names", function()
 	-- field-wise merge: a later stage's same field wins, stage 2 keeps stage 1
 	local water = BC.ElementFormOf("Water", 2)
 	T.check(water.Slow == 0.8 and water.Seconds == 2 and water.Share == 0.5 and water.Delay == 0.5 and water.Riptide ~= nil and water.Maelstrom ~= nil, "evo el: Water at stage 2 keeps Riptide's slow and adds the wave")
-	T.check(BC.ElementFormOf("Storm", 1).Jumps == 1 and BC.ElementFormOf("Storm", 2).Jumps == 2 and BC.ElementFormOf("Storm", 2).Share == 0.4 and BC.ElementFormOf("Storm", 2).Meter == 5, "evo el: the later field wins (Thunder Lance's two jumps)")
+	T.check(BC.ElementFormOf("Storm", 1).Jumps == 1 and BC.ElementFormOf("Storm", 2).Jumps == 2 and BC.ElementFormOf("Storm", 2).Share == 0.3 and BC.ElementFormOf("Storm", 2).Meter == 3, "evo el: the later field wins (Thunder Lance's two jumps)")
 	local earth = BC.ElementFormOf("Earth", 2)
 	T.check(earth.Fissure.Delay == 0.5 and earth.Rockspire.Delay == 1.0 and earth.Rockspire.Band == 4, "evo el: each twist keeps its own numbers (Earth's two delays)")
 	local ids = BC.ElementFormOf("Frost", 2).Ids
@@ -271,11 +274,11 @@ S.evo_el_names = guarded("evo_el_names", function()
 		return BC.ElementAttacks[element].Forms[stage]
 	end
 	T.check(F("Water", 1).Slow == 0.8 and F("Water", 1).Seconds == 2 and F("Water", 2).Share == 0.5 and F("Water", 2).Delay == 0.5, "evo el: Water's numbers")
-	T.check(F("Flame", 1).BurnShare == 0.35 and F("Flame", 2).Seconds == 2 and F("Flame", 2).Radius == 5, "evo el: Flame's numbers")
+	T.check(F("Flame", 1).BurnShare == 0.35 and F("Flame", 2).Share == 0.45 and F("Flame", 2).Seconds == 2 and F("Flame", 2).Radius == 5, "evo el: Flame's numbers")
 	T.check(F("Frost", 1).Slow == 0.5 and F("Frost", 2).Mark == 1.10, "evo el: Frost's numbers")
 	T.check(F("Nature", 1).Leech == 0.4 and F("Nature", 2).Root == 0.4, "evo el: Nature's numbers")
 	T.check(F("Earth", 1).Share == 0.4 and F("Earth", 1).Delay == 0.5 and F("Earth", 2).Share == 0.4 and F("Earth", 2).Delay == 1.0 and F("Earth", 2).Band == 4, "evo el: Earth's numbers")
-	T.check(F("Storm", 1).Share == 0.4 and F("Storm", 1).Jumps == 1 and F("Storm", 1).Reach == 10 and F("Storm", 2).Jumps == 2 and F("Storm", 2).Meter == 5, "evo el: Storm's numbers")
+	T.check(F("Storm", 1).Share == 0.3 and F("Storm", 1).Jumps == 1 and F("Storm", 1).Reach == 10 and F("Storm", 2).Jumps == 2 and F("Storm", 2).Meter == 3, "evo el: Storm's numbers")
 	T.check(F("Celestial", 1).MeterGain == 20 and F("Celestial", 2).Heal == 0.08, "evo el: Celestial's numbers")
 	T.check(F("Shadow", 1).Weaken == 0.8 and F("Shadow", 2).Leech == 0.15, "evo el: Shadow's numbers")
 	-- stage 0's base numbers never moved
@@ -389,7 +392,7 @@ S.evo_el_flame = guarded("evo_el_flame", function()
 	local hit = hitsOn(evs, foes[1].id, function(h)
 		return h.element ~= nil
 	end)[1]
-	T.check(#ticks >= 3 and hit ~= nil and near(dealt(ticks) / onFoe(hitOf(BC, f) * 0.5, foes[1], ticks[1]), 1, 0.3), "evo el flame: zone Hits for 2 s, near 0.5 x the hit in all", fmt("%d ticks, %d", #ticks, dealt(ticks)))
+	T.check(#ticks >= 3 and hit ~= nil and near(dealt(ticks) / onFoe(hitOf(BC, f) * 0.45, foes[1], ticks[1]), 1, 0.3), "evo el flame: zone Hits for 2 s, near 0.45 x the hit in all", fmt("%d ticks, %d", #ticks, dealt(ticks)))
 	T.check(#hitsOn(evs, foes[2].id) == 0, "evo el flame: nothing outside it")
 	local after = run(b, 1)
 	T.check(#hitsOn(after, foes[1].id, function(h)
@@ -541,24 +544,24 @@ S.evo_el_storm = guarded("evo_el_storm", function()
 	T.check(has(ev.targets, foes[1].id) and not has(ev.targets, foes[2].id), "evo el storm: the line hits A only")
 	local onA, onB = hitsOn(evs, foes[1].id), hitsOn(evs, foes[2].id)
 	T.check(#onA == 1 and onA[1].twist == nil and landed(BC, f, foes[1], onA[1], 1), "evo el storm: A takes the full hit, once", tostring(#onA))
-	T.check(#onB == 1 and onB[1].twist == "Forked" and landed(BC, f, foes[2], onB[1], 0.4), "evo el storm: B takes 0.4 x with twist Forked", onB[1] and tostring(onB[1].dmg))
+	T.check(#onB == 1 and onB[1].twist == "Forked" and landed(BC, f, foes[2], onB[1], 0.3), "evo el storm: B takes 0.3 x with twist Forked", onB[1] and tostring(onB[1].dmg))
 	T.check(#hitsOn(evs, foes[3].id) == 0, "evo el storm: C (18 from A) is not reached")
 	local tw = twists(evs, "Forked")
 	T.check(#tw == 1 and tw[1].kind == "Storm" and tw[1].x == 10 and tw[1].z == 0 and tw[1].tx == 10 and tw[1].tz == 6.5 and has(tw[1].targets, foes[2].id), "evo el storm: a Twist Forked from the last struck to the next", tw[1] and fmt("%s %s %s %s", tostring(tw[1].x), tostring(tw[1].z), tostring(tw[1].tx), tostring(tw[1].tz)))
 	T.check(near(f.meter, 0, 0.31), "evo el storm: Evo 1 adds no meter (a step's tick aside)", tostring(f.meter))
-	-- a lone bear in the line: hit twice (full, then 0.4 x), never three times; Evo 1 and Evo 2 alike
+	-- a lone bear in the line: hit twice (full, then 0.3 x), never three times; Evo 1 and Evo 2 alike
 	for _, evo in ipairs({ 1, 2 }) do
 		b, f, foes = field(BS, melee(PC, "Storm", evo), { { 10, 0 } })
 		evs = select(2, cast(b, f, foes[1].id))
 		run(b, 1, evs)
 		local on = hitsOn(evs, foes[1].id)
-		T.check(#on == 2 and on[1].twist == nil and on[2].twist == "Forked" and landed(BC, f, foes[1], on[2], 0.4), "evo el storm: a lone bear is struck again ONCE at Evo " .. evo, tostring(#on))
+		T.check(#on == 2 and on[1].twist == nil and on[2].twist == "Forked" and landed(BC, f, foes[1], on[2], 0.3), "evo el storm: a lone bear is struck again ONCE at Evo " .. evo, tostring(#on))
 	end
 	-- two bears in the line, no third: no strike again (the line didn't hit exactly one)
 	b, f, foes = field(BS, melee(PC, "Storm", 2), { { 8, 0 }, { 14, 0 } })
 	evs = select(2, cast(b, f, foes[1].id))
 	T.check(#hitsOn(evs, foes[1].id) == 1 and #hitsOn(evs, foes[2].id) == 1, "evo el storm: two in the line and nobody near: one hit each")
-	-- Evo 2: A, B, then D (within 10 of B, 14 from A): three strikes, and +5 meter
+	-- Evo 2: A, B, then D (within 10 of B, 14 from A): three strikes, and +3 meter
 	b, f, foes = field(BS, melee(PC, "Storm", 2), { { 10, 0 }, { 10, 6.5 }, { 10, 14 }, { 10, 40 } })
 	f.meter = 0
 	evs = select(2, cast(b, f, foes[1].id))
@@ -567,7 +570,7 @@ S.evo_el_storm = guarded("evo_el_storm", function()
 	T.check(#onA == 1 and #onB == 1 and #onD == 1 and onB[1].twist == "Forked" and onD[1].twist == "Forked", "evo el storm: Thunder Lance jumps twice: A, B, then D", fmt("%d %d %d", #onA, #onB, #onD))
 	T.check(#hitsOn(evs, foes[4].id) == 0, "evo el storm: ...no further")
 	T.check(#twists(evs, "Forked") == 2 and twists(evs, "Forked")[2].x == 10 and twists(evs, "Forked")[2].z == 6.5, "evo el storm: ...each jump from the last struck")
-	T.check(near(f.meter, 5, 0.31), "evo el storm: +5 meter (a step's tick aside)", tostring(f.meter))
+	T.check(near(f.meter, 3, 0.31), "evo el storm: +3 meter (a step's tick aside)", tostring(f.meter))
 	-- the jump goes from the LAST body the line struck, to the nearest not yet hit
 	b, f, foes = field(BS, melee(PC, "Storm", 1), { { 6, 0 }, { 16, 0 }, { 16, 6.5 }, { 16, 8 } })
 	evs = select(2, cast(b, f, foes[1].id))
@@ -671,21 +674,25 @@ S.evo_el_ranged_circle = guarded("evo_el_ranged_circle", function()
 	if not T.check(ready, "evo el ranged: the modules load") then
 		return
 	end
-	T.check(BC.ProfileOf(PC.Get(RANGED)).Attack == "Ranged" and BC.ProfileOf(PC.Get(MELEE)).Attack == "Melee", "evo el ranged: the fixture's pets are what they say")
-	local range = BC.ProfileOf(PC.Get(RANGED)).Range
+	T.check(BC.ProfileOf(PC.Get(RANGED_SHORT)).Attack == "Ranged" and BC.ProfileOf(PC.Get(MELEE)).Attack == "Melee", "evo el ranged: the fixture's pets are what they say")
+	local range = BC.ProfileOf(PC.Get(RANGED_SHORT)).Range
+	T.check(range == 12, "evo el ranged: the short fixture's range is 12", tostring(range))
+	local function short(element, evo)
+		return ranged(PC, element, evo, RANGED_SHORT)
+	end
 	for _, element in ipairs({ "Earth", "Celestial" }) do
 		for _, evo in ipairs({ 0, 2 }) do
-			-- standing 14 from a bear: the bear at the aim, one 2 studs beside the pet, one 6 past the aim
-			local b, f, foes = field(BS, ranged(PC, element, evo), { { 14, 0 }, { 0, 2 }, { 20, 0 } })
+			-- standing 10 from a bear: the bear at the aim, one 6 behind the pet (today's circle round the pet hit it), one 6 past the aim (today's missed it)
+			local b, f, foes = field(BS, short(element, evo), { { 10, 0 }, { -6, 0 }, { 16, 0 } })
 			local ev, evs = cast(b, f, foes[1].id)
-			T.check(ev ~= nil and ev.tx == 14 and ev.tz == 0 and ev.x == 0 and ev.z == 0, "evo el ranged: x, z stay the caster, tx, tz the aim", ev and fmt("%s %s", tostring(ev.tx), tostring(ev.tz)))
+			T.check(ev ~= nil and ev.tx == 10 and ev.tz == 0 and ev.x == 0 and ev.z == 0, "evo el ranged: x, z stay the caster, tx, tz the aim", ev and fmt("%s %s", tostring(ev.tx), tostring(ev.tz)))
 			T.check(has(ev.targets, foes[1].id) and #hitsOn(evs, foes[1].id) >= 1, element .. " Evo " .. evo .. ": the bear at the aim is hit")
-			T.check(not has(ev.targets, foes[2].id) and #hitsOn(evs, foes[2].id) == 0, element .. " Evo " .. evo .. ": one 2 studs beside the pet is NOT")
+			T.check(not has(ev.targets, foes[2].id) and #hitsOn(evs, foes[2].id) == 0, element .. " Evo " .. evo .. ": one 6 behind the pet is NOT")
 			T.check(has(ev.targets, foes[3].id), element .. " Evo " .. evo .. ": one 6 past the aim is (the circle sits on the enemy's area)")
 			if evo == 0 then
 				T.check(ev.r == nil, element .. " Evo 0: no number on the wire")
 			else
-				T.check(near(ev.r, 10.4, 1e-6), element .. " Evo 2: the catalog's radius x reach, not its range", tostring(ev.r))
+				T.check(near(ev.r, 12, 1e-6), element .. " Evo 2: the radius is today's, max(the catalog's x reach, its range)", tostring(ev.r))
 			end
 		end
 		-- a melee pet: centred on itself (today)
@@ -695,35 +702,35 @@ S.evo_el_ranged_circle = guarded("evo_el_ranged_circle", function()
 			T.check(has(ev.targets, foes[1].id) and has(ev.targets, foes[2].id) and not has(ev.targets, foes[3].id), element .. " Evo " .. evo .. ": a melee pet's Circle is round itself")
 		end
 		-- the centre is at most its range away: a far lock or point falls short, never across the floor
-		local b, f, foes = field(BS, ranged(PC, element, 0), { { 60, 0 } })
+		local b, f, foes = field(BS, short(element, 0), { { 60, 0 } })
 		local ev = cast(b, f, foes[1].id)
 		T.check(ev ~= nil and near(ev.tx, range, 0.051) and ev.tz == 0 and not has(ev.targets, foes[1].id), element .. ": a far aimed enemy: the centre falls at its range, nothing is hit", ev and tostring(ev.tx))
-		b, f, foes = field(BS, ranged(PC, element, 0), { { 60, 0 } })
+		b, f, foes = field(BS, short(element, 0), { { 60, 0 } })
 		ev = cast(b, f, { x = 70, z = 0 })
 		T.check(ev ~= nil and near(ev.tx, range, 0.051) and not has(ev.targets, foes[1].id), element .. ": a far aimed point too", ev and tostring(ev.tx))
 		-- a point within range is the centre
-		b, f, foes = field(BS, ranged(PC, element, 0), { { 10, 5 } })
+		b, f, foes = field(BS, short(element, 0), { { 10, 5 } })
 		ev = cast(b, f, { x = 10, z = 5 })
 		T.check(ev ~= nil and ev.tx == 10 and ev.tz == 5 and has(ev.targets, foes[1].id), element .. ": an aimed point in range is the centre")
 		-- an enemy at the edge of its fighting reach still takes it: what reached before still does
-		b, f, foes = field(BS, ranged(PC, element, 0), { { range + 2, 0 } })
+		b, f, foes = field(BS, short(element, 0), { { range + 2, 0 } })
 		ev = cast(b, f, foes[1].id)
 		T.check(ev ~= nil and has(ev.targets, foes[1].id), element .. ": an enemy just past its range is still in the circle", ev and tostring(ev.tx))
 	end
 	-- Earth's stun lands where the circle does
-	local b, f, foes = field(BS, ranged(PC, "Earth", 0), { { 14, 0 }, { 0, 2 } })
+	local b, f, foes = field(BS, short("Earth", 0), { { 10, 0 }, { -6, 0 } })
 	local _, _, t0 = cast(b, f, foes[1].id)
 	T.check(near(foes[1].stunUntil, t0 + 0.5, 1e-6) and foes[2].stunUntil == 0, "evo el ranged: the Quake's stun lands in the aimed circle")
-	-- a real ranged Celestial pet
-	b, f, foes = field(BS, { Key = "moonlit_owl", Level = 50, Evo = 2 }, { { 14, 0 }, { 0, 2 } })
+	-- a real ranged Celestial pet (range 18): 8 behind it is out of a circle of 18 on an aim 14 ahead
+	b, f, foes = field(BS, { Key = "moonlit_owl", Level = 50, Evo = 2 }, { { 14, 0 }, { -8, 0 } })
 	local ev = cast(b, f, foes[1].id)
 	T.check(f.ranged == true and ev ~= nil and ev.name == "Starfall" and has(ev.targets, foes[1].id) and not has(ev.targets, foes[2].id), "evo el ranged: Moonlit Owl's Starfall lands on its aim")
-	-- Evo 1 Fissure at the aimed centre, the same for Rockspire
-	b, f, foes = field(BS, ranged(PC, "Earth", 2), { { 14, 0 }, { 14, 12.4 }, { 0, 2 } })
+	-- Evo 1 Fissure at the aimed centre, the same for Rockspire: the crack's circle is 12, the ring 12 to 17.2
+	b, f, foes = field(BS, short("Earth", 2), { { 10, 0 }, { 10, 15 }, { -6, 0 } })
 	local evs = select(2, cast(b, f, foes[1].id))
 	run(b, 1.1, evs)
-	T.check(twists(evs, "Fissure")[1] ~= nil and twists(evs, "Fissure")[1].x == 14 and #twistHits(evs, foes[1].id, "Fissure") == 1 and #twistHits(evs, foes[3].id, "Fissure") == 0, "evo el ranged: the crack erupts at the aimed centre")
-	T.check(twists(evs, "Rockspire")[1] ~= nil and twists(evs, "Rockspire")[1].x == 14 and #twistHits(evs, foes[2].id, "Rockspire") == 1, "evo el ranged: the ring rings the aimed centre")
+	T.check(twists(evs, "Fissure")[1] ~= nil and twists(evs, "Fissure")[1].x == 10 and #twistHits(evs, foes[1].id, "Fissure") == 1 and #twistHits(evs, foes[3].id, "Fissure") == 0, "evo el ranged: the crack erupts at the aimed centre")
+	T.check(twists(evs, "Rockspire")[1] ~= nil and twists(evs, "Rockspire")[1].x == 10 and #twistHits(evs, foes[2].id, "Rockspire") == 1, "evo el ranged: the ring rings the aimed centre")
 	-- a ranged Cone / Line keeps today's rule: from the pet, max(Length x reach, its range)
 	b, f, foes = field(BS, ranged(PC, "Flame", 0), { { 16, 0 }, { 8, 1 } })
 	ev = cast(b, f, foes[1].id)
@@ -750,7 +757,7 @@ S.evo_el_boss = guarded("evo_el_boss", function()
 	local function oneBonus(what, element, evo)
 		local b, f, boss, evs = onBoss(element, evo)
 		local bonus = bonusHits(evs, boss.id)
-		T.check(#bonus == 1 and landed(BC, f, boss, bonus[1], 0.1) and bonus[1].element ~= nil, "evo el boss: " .. what .. ": one bonus Hit near 0.1 x the element hit", fmt("%d hits, %s", #bonus, bonus[1] and tostring(bonus[1].dmg)))
+		T.check(#bonus == 1 and landed(BC, f, boss, bonus[1], 0.07) and bonus[1].element ~= nil, "evo el boss: " .. what .. ": one bonus Hit near 0.07 x the element hit", fmt("%d hits, %s", #bonus, bonus[1] and tostring(bonus[1].dmg)))
 		T.check(boss.slowUntil == 0 and boss.slowMult == 1 and boss.stunUntil == 0 and boss.burnLeft == 0, "evo el boss: " .. what .. ": no slow, stun or burn")
 		return b, f, boss, evs
 	end
@@ -794,6 +801,52 @@ S.evo_el_boss = guarded("evo_el_boss", function()
 	b.teams[1].fighter.alive = false
 	evs = run(b, 1.2)
 	T.check(#twists(evs, "Fissure") == 0 and #twists(evs, "Rockspire") == 0, "evo el boss: a fallen caster's crack and ring are dropped")
+end)
+
+----------------------------------------------------------------------------------------------------
+-- What a boss's HP counts for a fighter's forms
+----------------------------------------------------------------------------------------------------
+S.evo_el_form_dps = guarded("evo_el_form_dps", function()
+	local BC, BS, PC, ready = modules()
+	if not T.check(ready and type(BC.FormDps) == "table" and type(BC.FormDpsOf) == "function" and type(BC.FormStageOf) == "function", "evo form dps: the catalog has it") then
+		return
+	end
+	local D = BC.FormDps
+	T.check(D[0] == 1 and D[1] >= 1 and D[2] >= D[1], "evo form dps: stage 0 counts x1, never falling with the stage", fmt("%s %s", tostring(D[1]), tostring(D[2])))
+	local bear, hybrid = PC.Get(MELEE), cloneDef(PC, MELEE, { Look = { Species = "Bear", BodyId = MELEE, StyleId = "stormfang" } })
+	T.check(BC.FormStageOf(bear, 0) == 0 and BC.FormStageOf(bear, 1) == 1 and BC.FormStageOf(bear, 2) == 2 and BC.FormStageOf(bear, 7) == 2, "evo form dps: FormStageOf is the stored stage, at most 2")
+	T.check(BC.FormStageOf(PC.Get("pebble_pup"), BC.UnitStats({ Key = "pebble_pup", Level = 60, Evo = 2 }).Evo) == 1, "evo form dps: ...a once-evolver with a stored 2 is at its top form (UnitStats' stage that counts)")
+	T.check(BC.FormStageOf(hybrid, 2) == 0, "evo form dps: ...a hybrid stays at stage 0")
+	-- the factor: stage x kind x element, on the fighter alone
+	local function factor(def, evo)
+		return BC.FormDpsOf(def, { Evo = evo, Elements = def.Elements or { def.Element } })
+	end
+	local storm = PC.Get("stormfang")
+	local mid = PC.Get("ember_phoenix")
+	T.check(factor(mid, 0) == 1 and factor(storm, 0) == 1 and factor(hybrid, 2) == 1, "evo form dps: x1 at stage 0 and on a hybrid")
+	T.check(near(factor(mid, 1), D[1], 1e-9), "evo form dps: a Blast + Flame fighter at stage 1 is the stage's alone", tostring(factor(mid, 1)))
+	T.check(near(factor(storm, 2), D[2] * D.Pounce * D.Storm, 1e-9), "evo form dps: a Pounce + Storm fighter at stage 2: stage x kind x element", tostring(factor(storm, 2)))
+	-- ExpectedDps follows it, stage 0 not at all
+	local function dps(entry)
+		return BC.ExpectedDps({ entry })
+	end
+	local keep1, keep2 = D[1], D[2]
+	local e0, e1, e2, eh = dps({ Key = MELEE, Level = 50, Evo = 0 }), dps({ Key = MELEE, Level = 50, Evo = 1 }), dps({ Key = MELEE, Level = 50, Evo = 2 }), dps({ Def = hybrid, Key = MELEE, Level = 50, Evo = 2 })
+	D[1], D[2] = keep1 * 2, keep2 * 3
+	local n0, n1, n2, nh = dps({ Key = MELEE, Level = 50, Evo = 0 }), dps({ Key = MELEE, Level = 50, Evo = 1 }), dps({ Key = MELEE, Level = 50, Evo = 2 }), dps({ Def = hybrid, Key = MELEE, Level = 50, Evo = 2 })
+	D[1], D[2] = keep1, keep2
+	T.check(n0 == e0 and nh == eh, "evo form dps: a stage-0 team's and a hybrid's expected damage do not move", fmt("%s -> %s, %s -> %s", tostring(e0), tostring(n0), tostring(eh), tostring(nh)))
+	T.check(near(n1 / e1, 2, 1e-9) and near(n2 / e2, 3, 1e-9), "evo form dps: an evolved team's follows its stage", fmt("x%.3f, x%.3f", n1 / e1, n2 / e2))
+	-- Validate
+	T.check(BC.Validate() == true, "evo form dps: Validate passes")
+	D[0] = 1.1
+	local zero = BC.Validate()
+	D[0], D[1] = 1, 0.9
+	local low = BC.Validate()
+	D[1], D[2] = keep1, keep1 - 0.01
+	local falling = BC.Validate()
+	D[1], D[2] = keep1, keep2
+	T.check(zero == false and low == false and falling == false and BC.Validate() == true, "evo form dps: Validate catches a stage 0 past x1, a form that lowers it, a stage 2 under stage 1")
 end)
 
 return S

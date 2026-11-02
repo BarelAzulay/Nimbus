@@ -18,6 +18,7 @@
 --             the tutorial's eased room; a 4-party +1 floor
 --   progress  a new player's real pace (3 L1 Commons, run XP): minutes to Ring 5, floor 1 and Ring 10 (SIM.Targets.Progress)
 --   training  trained / evolved TeamPower ratios; trained mirror duels fair; eight trained teams win their tier's raids in 100-240 s
+--   forms     what each evolved form adds against a lone boss (its damage against the same pet at the same stage with no form): the specials, the element attacks
 --   move      the B1 character patterns (random targets + an r 14 circle) at the legal run speed with a 200 ms feed delay:
 --             the server fighter keeps up (gap <= 0.5 after the catch-up, zero leashes); a run-off past the zone is leashed;
 --             wave 6: an engaged pet ignores the walking character (zero Engage off), a wandering trainer's raid plays
@@ -1838,7 +1839,111 @@ section("training", function(opts)
 	target("no boss hit takes more than 80% of a trained fighter", bossHit <= 0.8, fmt("max %.2f", bossHit))
 end)
 
--- 9. move: the B1 character patterns at the legal speed through a 200 ms old feed
+-- 9. forms: what each evolved form adds against a lone boss (spec 2026-11-01-evolved-forms: before and after, against a lone boss)
+-- one pet alone against a Storm Titan (High), the boss's HP pinned at its max (no waves, no enrage), the Default trainer -> damage, seconds lived
+local function loneBoss(entry, seed, playerOpts)
+	local b = BS.new({ Mode = "Raid", Boss = "storm_titan", RaidTier = "High", Seed = seed, TimeLimit = 90, Teams = { team(601, 1, { entry }) } })
+	local player = Player.new(b, 601, seed * 31 + 601, playerOpts)
+	for _ = 1, floor(60 / DT) do
+		if b:IsFinished() then
+			break
+		end
+		b.boss.hp = b.boss.maxHp
+		player:step(b:Step(DT), b:Snapshot())
+	end
+	return b.teams[1].damage, b:Time()
+end
+
+-- the same pet at `evo`, with or without its form: IsHybrid keeps its stats and reach and takes the form away (a hybrid's forms stay at stage 0)
+local function formEntry(def, evo, form, noSpecial)
+	local d = {}
+	for k, v in pairs(def) do
+		d[k] = v
+	end
+	d.IsHybrid = (not form) or nil
+	return pet(def.Key, 50, nil, { Def = d, Evo = evo, NoSpecial = noSpecial })
+end
+
+-- a row: FORM_SEEDS of each case -> the stage-0 damage, each stage's raw ratio (with the evolution's stats) and form ratio (the form alone, same stats)
+local FORM_SEEDS = 192 -- (a fight's small changes scatter it: 8 or 96 seeds read a real +0.5% as x0.98 or x0.999)
+local function formRow(def, noSpecial, playerOpts)
+	local function total(evo, form)
+		local sum, lived = 0, 0
+		for seed = 1, FORM_SEEDS do
+			local dmg, secs = loneBoss(formEntry(def, evo, form, noSpecial), seed, playerOpts)
+			sum, lived = sum + dmg, lived + secs
+		end
+		return sum / FORM_SEEDS, lived / FORM_SEEDS
+	end
+	local d0, lived0 = total(0, true)
+	local row = { d0 = d0, lived0 = lived0 }
+	for stage = 1, 2 do
+		local plain = total(stage, false)
+		local with, lived = total(stage, true)
+		row[stage] = { raw = with / max(1, d0), form = with / max(1, plain), lived = lived }
+	end
+	return row
+end
+
+section("forms", function()
+	header("Forms: one pet alone against a Storm Titan (High) for 60 s, the boss's HP pinned, the Default trainer, " .. FORM_SEEDS .. " seeds; x = the form alone against the same pet at the same stage with no form; raw = with the evolution's stats, against stage 0")
+	local function line(name, row)
+		out(fmt("  %-16s stage0 %7d (%2.0f s) | stage1 x%.2f raw x%.2f (%2.0f s) | stage2 x%.2f raw x%.2f (%2.0f s)", name, row.d0, row.lived0, row[1].form, row[1].raw, row[1].lived, row[2].form, row[2].raw, row[2].lived))
+	end
+	local function band(rows, lo1, hi1, lo2, hi2)
+		local worst1, top1, worst2, top2 = huge, 0, huge, 0
+		for _, row in ipairs(rows) do
+			worst1, top1 = min(worst1, row[1].form), max(top1, row[1].form)
+			worst2, top2 = min(worst2, row[2].form), max(top2, row[2].form)
+		end
+		return worst1 >= lo1 and top1 <= hi1 and worst2 >= lo2 and top2 <= hi2, fmt("stage 1 x%.2f-%.2f, stage 2 x%.2f-%.2f", worst1, top1, worst2, top2)
+	end
+	-- a special kind on a Legendary, the trainer leaves the element attack alone (the element's forms would blur the row)
+	local base = PC.Get("ember_phoenix")
+	local function kindDef(kind)
+		local def = {}
+		for k, v in pairs(base) do
+			def[k] = v
+		end
+		def.Id = "forms_" .. kind
+		def.Key = "ember_phoenix"
+		def.Special = { Id = "forms_" .. kind, Name = kind, Kind = kind, Power = 40, Color = base.Special.Color }
+		return def
+	end
+	local attacks, supports = {}, {}
+	for _, kind in ipairs({ "Pounce", "Blast", "Storm", "Beam", "Freeze" }) do
+		local row = formRow(kindDef(kind), nil, { element = false })
+		attacks[#attacks + 1] = row
+		line(kind, row)
+	end
+	for _, kind in ipairs({ "Heal", "Shield", "Rally", "Haste" }) do
+		local row = formRow(kindDef(kind), nil, { element = false })
+		supports[#supports + 1] = row
+		line(kind, row)
+	end
+	-- an element's Combat pet, made a Legendary so it reaches stage 2, with no special (a special's form would blur the row)
+	local elements = {}
+	for _, case in ipairs({ { "Water", "bubble_axolotl" }, { "Flame", "maple_fox" }, { "Frost", "aurora_fox" }, { "Nature", "bamboo_panda" }, { "Earth", "biscuit_bear" }, { "Storm", "storm_tabby" }, { "Celestial", "mallow_kitten" }, { "Shadow", "twilight_dragon" } }) do
+		local def = {}
+		for k, v in pairs(PC.Get(case[2])) do
+			def[k] = v
+		end
+		def.Id = "forms_" .. case[1]
+		def.Key = case[2]
+		def.Rarity = "Legendary"
+		local row = formRow(def, true, { specials = false })
+		elements[#elements + 1] = row
+		line(case[1] .. " " .. case[2], row)
+	end
+	local ok, detail = band(attacks, 1.0, 1.6, 1.05, 1.9)
+	target("every offensive special form (Pounce, Blast, Storm, Beam, Freeze) adds x1.0-1.6 against a lone boss at stage 1 and x1.05-1.9 at stage 2 (the form alone, same stats)", ok, detail)
+	ok, detail = band(supports, 1.0, 1.3, 1.0, 1.3)
+	target("every support special form (Heal, Shield, Rally, Haste) stays within x1.0-1.3", ok, detail)
+	ok, detail = band(elements, 1.0, 1.5, 1.05, 1.75)
+	target("every element form adds x1.0-1.5 at stage 1 and x1.05-1.75 at stage 2 (the form alone, same stats)", ok, detail)
+end)
+
+-- 10. move: the B1 character patterns at the legal speed through a 200 ms old feed
 section("move", function()
 	header("Move: the character runs the B1 patterns at its legal run speed; the server fighter sees a 200 ms old position (cap = run x MoveSlack)")
 	local F = BC.Fighter

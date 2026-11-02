@@ -52,6 +52,9 @@
 --   BattleCatalog.ReachOf(stage) -> n                             Reach[stage]: floored, clamped 0..2, junk = stage 0 (x1); BattleSim's areas and the drawing read it
 --   BattleCatalog.Forms = { BossBonus, [kind] = { [1], [2] } }    what each evolution adds to a fighter's special: twist tables { Id, Share, ... } (the ONLY form tunables)
 --   BattleCatalog.FormOf(kind, stage) -> { [Id] = twist } | nil   every twist of stages 1..stage (stage 2 keeps stage 1); nil at stage 0 / a junk kind / stage
+--   BattleCatalog.FormStageOf(def, stage) -> 0 | 1 | 2            the stage a pet's forms read: a stored stage, floored and clamped; a hybrid is 0
+--   BattleCatalog.FormDps = { [0] 1, [1], [2], [kind | element] } what a fighter's forms add to its damage, as a raid boss's HP counts it (ExpectedDps)
+--   BattleCatalog.FormDpsOf(def, unitStats) -> n                  FormDps[stage] x its kind's x its element's at stage >= 1, x1 at stage 0 / a hybrid
 --   BattleCatalog.FormNames = { [petId] = { first, last | nil } } every pet's form names (the spec's tables)
 --   BattleCatalog.FormNameOf(petId, kind, stage) -> name | nil    FormNames[petId][stage], an unknown pet: the kind's generic twist Id; nil at stage 0 / past the pet's names
 --   BattleCatalog.BattleStats                                     the ONLY tunables of the battle path: RarityScale { Common 1 .. Secret 5 }, Level { Linear, Quadratic, Cubic }
@@ -67,7 +70,7 @@
 --                                                                  synergy included (a list of 1 is the fighter alone)
 --   BattleCatalog.NpcPower(list) -> n                             the sum of the units' powers (Boss / Handicap / Boost applied): enemy waves and champions
 --   BattleCatalog.Synergy(list) / SynergyBonus(list)              as before (pairs / trios; Balanced health); SynergyRules.SameElement = { [2], [3] }
---   BattleCatalog.ExpectedDps(team) -> n                          fighter DPS x (1 + SpecialDpsShare) x KitFactor ^ 0.5 (x Fighter.MeleeUptime for a melee
+--   BattleCatalog.ExpectedDps(team) -> n                          fighter DPS x (1 + SpecialDpsShare) x KitFactor ^ 0.5 x FormDps of its stage (x Fighter.MeleeUptime for a melee
 --                                                                  fighter; the bench adds nothing)
 --   BattleCatalog.AverageMaxHp(team) -> n                         the fighter's MaxHp (Balanced bonus included)
 --   BattleCatalog.LossRules = { LossShare 1/3, LossMinSeconds 20, LossMinDamage 0.2 }; RealLoss(seconds, dealtShare); LossXp(winXp, seconds, dealtShare)
@@ -395,7 +398,7 @@ BattleCatalog.ElementAttacks = {
 	},
 	Flame = {
 		Name = "Flare", Shape = "Cone", Angle = 60, Length = 14, Burn = { Seconds = 3, Share = 0.25 },
-		Forms = { { Id = "Wildfire", Name = "Wildfire", BurnShare = 0.35 }, { Id = "Inferno", Name = "Inferno", Share = 0.5, Seconds = 2, Radius = 5 } },
+		Forms = { { Id = "Wildfire", Name = "Wildfire", BurnShare = 0.35 }, { Id = "Inferno", Name = "Inferno", Share = 0.45, Seconds = 2, Radius = 5 } },
 	},
 	Frost = {
 		Name = "Frostbite", Shape = "Cone", Angle = 70, Length = 14, Slow = { Seconds = 4, Mult = 0.6 },
@@ -411,7 +414,7 @@ BattleCatalog.ElementAttacks = {
 	},
 	Storm = {
 		Name = "Bolt", Shape = "Line", Length = 24, Width = 4,
-		Forms = { { Id = "Forked", Name = "Forked Bolt", Share = 0.4, Jumps = 1, Reach = 10 }, { Id = "Lance", Name = "Thunder Lance", Jumps = 2, Meter = 5 } },
+		Forms = { { Id = "Forked", Name = "Forked Bolt", Share = 0.3, Jumps = 1, Reach = 10 }, { Id = "Lance", Name = "Thunder Lance", Jumps = 2, Meter = 3 } },
 	},
 	Celestial = {
 		Name = "Radiance", Shape = "Circle", Radius = 8, MeterGain = 15,
@@ -470,19 +473,28 @@ end
 -- Forms[kind][stage] (stage 2 keeps stage 1): every Share = x the ability's base power, every Radius = studs x reach. Only these values
 -- tune a form; no existing Seconds / Stun / Cooldown moves. A control twist on a boss pays a bonus hit of BossBonus x that power instead
 -- (bosses keep their immunities). Sim pin: Rally's uptime stays at most 80% (FiredUp.Meter is 10, not 20).
+-- Moved by the tuning pass against tools/sim_battle.lua (the spec's first number in brackets): BossBonus 0.07 (0.1): a Pounce's bonus hits took the top Max solo past
+-- the 15% ceiling; Charge / Landing 0.35 (0.5) and Beam's Mark 1.10 (1.15), Twin 0.4 (0.5): uncut, 3 teams read 17-100% against 25-55%. ElementAttacks: Forked Bolt 0.3 (0.4)
+-- and Thunder Lance's Meter 3 (5), the same reason (these six were searched as a set); Inferno 0.45 (0.5): the evolved mirror duel read side 1 61% against the 60% ceiling.
 ----------------------------------------------------------------------
 BattleCatalog.Forms = {
-	BossBonus = 0.1,
-	Pounce = { { Id = "Charge", Share = 0.5, Back = 8, Past = 3 }, { Id = "Landing", Share = 0.5, Radius = 5 } },
+	BossBonus = 0.07,
+	Pounce = { { Id = "Charge", Share = 0.35, Back = 8, Past = 3 }, { Id = "Landing", Share = 0.35, Radius = 5 } },
 	Blast = { { Id = "Aftershock", Share = 0.3, Delay = 0.6 }, { Id = "Patch", Share = 0.5, Seconds = 3 } },
 	Storm = { { Id = "Winds", Slow = 0.7 }, { Id = "LastStrike", Share = 0.4 } },
-	Beam = { { Id = "Mark", Mark = 1.15, Seconds = 4 }, { Id = "Twin", Share = 0.5, Delay = 0.5 } },
+	Beam = { { Id = "Mark", Mark = 1.10, Seconds = 4 }, { Id = "Twin", Share = 0.4, Delay = 0.5 } },
 	Freeze = { { Id = "Chill", Slow = 0.6, Seconds = 3 }, { Id = "Shatter", Share = 0.6 } },
 	Heal = { { Id = "Lingering", Share = 0.3, Seconds = 4, Ticks = 4 }, { Id = "Overflow", Cap = 0.5, Seconds = 6 } },
 	Shield = { { Id = "Thorns", Share = 0.2 }, { Id = "Burst", Share = 0.6, Radius = 6 } },
 	Rally = { { Id = "WarPace", Speed = 0.15 }, { Id = "FiredUp", Meter = 10 } },
 	Haste = { { Id = "QuickHands", Recharge = 0.75 }, { Id = "DoubleStrike", Chance = 0.2 } },
 }
+
+-- what a fighter's forms add to its damage, as a raid boss's HP counts it (ExpectedDps): a boss's HP follows the team's damage, and a form is
+-- damage UnitStats does not see. Stage 0 stays x1: an unevolved team's boss is the same boss. A hybrid is stage 0 (FormStageOf).
+-- [2] 1.23: the S7 team at Evo 2 stays under the 240 s of 8 trained teams (1.25 took 240.3 s). Storm x kind: High and Max's fighters (Beam + Storm, Pounce + Storm), whose
+-- twists are worth more against a raid than a lone boss. The raids' fixed seeds scatter (one cell's 12 seeds: 14 points), so each number's last digit is the scan's first pass, not a measurement
+BattleCatalog.FormDps = { [0] = 1, [1] = 1.145, [2] = 1.23, Storm = 1.105, Beam = 1.016, Pounce = 1.001 }
 
 -- every pet's form names by stage (the spec's tables): one per evolution it can make
 BattleCatalog.FormNames = {
@@ -535,6 +547,24 @@ local function formStage(stage)
 		return nil
 	end
 	return min(2, floor(s))
+end
+
+-- the stage a pet's forms read: a stored stage, but every hybrid is stage 0 until hybrids can evolve
+function BattleCatalog.FormStageOf(def, stage)
+	if type(def) == "table" and (def.IsHybrid == true or (type(def.Look) == "table" and def.Look.BodyId ~= nil)) then
+		return 0
+	end
+	return formStage(stage) or 0
+end
+
+-- the x a boss's HP counts for a fighter's forms: its stage's, and its kind's and element's where those twists are worth more in a raid than on a lone boss
+function BattleCatalog.FormDpsOf(def, us)
+	local stage = BattleCatalog.FormStageOf(def, us.Evo)
+	if stage < 1 then
+		return 1
+	end
+	local kind = type(def.Special) == "table" and def.Special.Kind
+	return num(BattleCatalog.FormDps[stage], 1) * num(BattleCatalog.FormDps[kind], 1) * num(BattleCatalog.FormDps[us.Elements[1]], 1)
 end
 
 function BattleCatalog.FormOf(kind, stage)
@@ -1071,7 +1101,7 @@ function BattleCatalog.ExpectedDps(team)
 	if not us.Ranged then
 		dps = dps * num(F.MeleeUptime, 1)
 	end
-	return dps * sqrt(num(F.KitFactor, 1.5))
+	return dps * sqrt(num(F.KitFactor, 1.5)) * BattleCatalog.FormDpsOf(BattleCatalog.StatsOf(list[1]), us)
 end
 
 -- the fighter's MaxHp (Balanced bonus included): the raid boss's damage yardstick
@@ -2443,6 +2473,10 @@ function BattleCatalog.Validate()
 				bad(species .. ": " .. key .. " must be a positive number")
 			end
 		end
+	end
+	-- what a boss's HP counts for the forms: x1 unevolved, never falling with the stage
+	if BattleCatalog.FormDps[0] ~= 1 or not finite(BattleCatalog.FormDps[1]) or not finite(BattleCatalog.FormDps[2]) or BattleCatalog.FormDps[1] < 1 or BattleCatalog.FormDps[2] < BattleCatalog.FormDps[1] then
+		bad("FormDps: [0] = 1, never falling with the stage")
 	end
 	-- reach: x1 unevolved, never falling with the stage
 	if BattleCatalog.Reach[0] ~= 1 then

@@ -584,11 +584,11 @@ end
 
 -- the stage its forms read: every hybrid is stage 0 until hybrids can evolve (spec "Settled against the real code")
 local function formStageOf(u)
-	local def = u.def
-	if type(def) == "table" and (def.IsHybrid == true or (type(def.Look) == "table" and def.Look.BodyId ~= nil)) then
-		return 0
+	local bc = catalog()
+	if bc and type(bc.FormStageOf) == "function" then
+		return bc.FormStageOf(u.def, stageOf(u))
 	end
-	return stageOf(u)
+	return 0
 end
 
 -- the unit's special's twists { [Id] = twist } (BattleCatalog.FormOf), nil at stage 0: the stage-0 path reads nothing new
@@ -2534,6 +2534,13 @@ local function castSpecial(self, u, events)
 					end
 				end
 			end
+			-- aimed at a boss the strike is the whole of it: each twist pays its bonus hit, so it never does nothing
+			if target.kind == "Boss" then
+				bossBonus(self, u, target, base, kind, events)
+				if form.Landing then
+					bossBonus(self, u, target, base, kind, events)
+				end
+			end
 		end
 	elseif kind == "Freeze" then
 		local r = num(S.Radius, 7) * reach
@@ -2751,7 +2758,7 @@ local function castElement(self, team, u, arg, events)
 			end
 		end
 	else
-		r = num(a.Radius, 8) * reach -- round a melee pet, on a ranged pet's aim
+		r = max(num(a.Radius, 8) * reach, reachOut) -- round a melee pet, on a ranged pet's aim
 		ev.r = areaField(reach, r)
 		for _, e in ipairs(enemies) do
 			if inCircle(e, cx, cz, r) then
