@@ -36,6 +36,49 @@ to 'switch target'. And an R button only in boss raids for 'retreat'".
 - **Hybrids** use the tables by their special's kind and normal's element, in their own colours, with a generic name per kind.
 - **Budgets:** ghost copies, wolves and bolts stay under the attack effects budget, on a phone and with several raiders. Other players' forms use `OthersDensity`.
 
+## Settled against the real code (design review, 2026-11-02)
+
+A Fable review checked this spec against the code. These sentences settle what it found. Where they differ from the tables or calls above, these win. The owner was asleep: the ones marked "my call" are in the morning report.
+
+**The sim**
+- **Bosses keep their immunity** to stun, root, slow, push and burn. Against a boss a control twist pays a bonus hit of 10% of that ability's power instead, so it never does nothing. Shatter and Last strike still fire on their timer. My call.
+- **Slows** become a per-unit `slowMult`, strongest wins, replacing the one global `D.Slow`. A slow cuts move and attack speed, as it does today.
+- **Delayed hits** use a `pending` queue stepped like telegraphs, plus zone-end and shield-break hooks. A delayed hit fires from the caster's position at that moment along the original angle (Twin) or at the original point (Aftershock, Last strike, Shatter). A dead or gone caster's pending hits are dropped.
+- **Mark and Ice Snare** are one status, `markMult`, strongest wins, no stacking, multiplied with the ally Taken buff so neither overwrites the other.
+- **The charge line** runs from 8 studs behind the pet (clamped to the floor) through the target to 3 studs past it, width Beam Width 4 x reach. Enemies inside it but the target take half. Pounce still doesn't move a player fighter. The wolves and ghost copies are drawn on that same line.
+- **Rally Fired up** fills 10, not 20, of the meter. Sim pin: Rally uptime at most 80%. **Hydra's Hunger** is the same effect.
+- **Heal Overflow:** the shield is at most half the heal and lasts 6 s.
+- **Thunder Lance** on a lone enemy strikes it again once, never twice.
+- **Patches:** one pet's burning ground replaces its own last patch. Patches from different pets stack, as Storm zones do today. They do hurt bosses, as zones do.
+- **War pace** shares `speedBuffMult` with the Haste helper buff: keep the larger, no overwrite.
+- **Quick hands:** a cooldown set while Haste is on is x0.75.
+- **Bench helper buttons keep their plain buff.** Forms change the fighter's own special only. My call.
+- **Hybrids stay at stage 0.** The sim treats every hybrid as stage 0, so they have no evolved forms until hybrids can evolve. This replaces the hybrid line above. My call.
+
+**Looks**
+- Stormfang's start drops the Actor and its signature bolts, and keeps the slam ring, bolts and cloud. Thunder Pack's bolts are 4 strikes at most (`MAX_BEAMS`). On Low, wolves are plain.
+
+**Ranged pets**
+- `castElement` already reaches from where the pet stands for cones and lines. So the rule is: a ranged pet's Circle (Earth, Celestial) is centred on its aim point. Cones and Lines keep today's rule.
+
+**Retreat**
+- Retreat is on the team, built on `team.noEngage`, so an incoming helper inherits it and the button still says Engage.
+- Boss targeting skips retreated pets. When no fighter is engaged, retreated pets are targetable again, and the boss keeps attacking. A telegraph already placed keeps its point: the short dodge is what saves the pet.
+- The meter doesn't tick while retreated. Retreated teams still count in boss scaling. The lethal knocks out only the unit.
+- Retreat gets the same grace as a stun against the 10-stud leash, so a trainer running from a far pet isn't kicked.
+- Add Retreat and Engage to `Cmd.ACTIONS`, `VALID_ACTIONS` and `BattleSim.Actions`.
+- **No free win:** one player whose team was retreated for over half its time in the fight gets the loss pay on a win, not the win pay and no event pet roll. It's judged per player, so everyone else keeps their pay. My call.
+
+**Switch Target**
+- Tap fires on release under 0.4 s, or a hold would switch and then clear. Hold clears the lock: the pet keeps its engaged target and picks the nearest after that. One enemy: a client check says so and does nothing. Tutorial text needs no change.
+
+**Rarity moves**
+- Magma Cub and Hydralotl would lose x0.65 garden and x0.74 battle power by the rarity lookups. So add `StatRarity = "Secret"`, read by both lookups. Stats stay exactly the same.
+- Candy Unicorn rises by rarity on its own, x1.57 garden and x1.33 battle. Its base stats stay. Next to Sunbeam Bear its Income and Power match, Health is lower and Speed higher. My call.
+- The Mythic index reward now needs both raid drop pets, and the Secret reward no longer does. Keep it: raids are always there, so the pets can always be earned. A reward already claimed stays claimed. My call, in the morning questions.
+- Signature rarity is hardcoded "Secret" (`AttackFxCatalog`), and the 12-signature pin needs an update. An Economy Candy Unicorn can now champion Ring rounds 20-29: check it in the sim.
+- Report the hatch odds: Candy Unicorn leaves Cloud; Storm 5 to 1.25%, Sky 11.25 to 4.25%, Celestial 11.25 to 10%; other Epics x1.33-2, Legendaries x0.75.
+
 ## Non-goals
 
 - A form for the automatic attack. It only gets the approved bigger hits.
