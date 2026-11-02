@@ -44,7 +44,9 @@
 -- Hybrid merge rules (section 11 + the Phase 2 contract): the FIRST parent (Body) gives the species, body colour
 --   (Primary) and eyes, the special and the shape; the SECOND (Style) gives Secondary, the wings (style + colour), the
 --   accessory (the Body's when the Style has none) and its element (Elements = both, deduplicated). Rarity = the
---   higher of the two (or the record's), Stats and Perks = the parents' average x1.2, Role from the merged stats,
+--   higher of the two (or the record's), StatRarity = the higher of the parents' stat rarities when that differs from a
+--   Rarity that is the parents' own (never saved: a raid pet's hybrid keeps Secret-grade stats), Stats and Perks = the parents'
+--   average x1.2, Role from the merged stats,
 --   Name = the record's or a blend of both names ("Pip Penguin" + "Ember Phoenix" -> "Pengnix").
 --
 -- Extras (nothing depends on them): Tiers, TierMultiplier, HybridPrefix, HybridStatBonus, Base(key), TierOf(key),
