@@ -283,6 +283,9 @@ local K = {
 	--                    shot's flight is never cut below AttackFx's MinTravel (player note 1)
 	RIPPLE_TICK_GAP = 0.75, -- (Task 10 re-review M8) a zone / burn tick's shield ripple waits this long after the unit's
 	--                    last ripple: every other 0.5 s zone tick (the cube path's 50 % zone flash, made deterministic)
+	-- (evolved forms) a Rally's bigger pet by stage (a look only: hit radius, range and hitboxes never hear of it)
+	AURA_SCALE = { [0] = 1.12, [1] = 1.2, [2] = 1.28 },
+	AURA_SNAP = 0.5, -- a Speed event ends an aura due within this: its buff has just ended on the server (a slow also moves the speed: that aura runs on)
 	-- (Task 11) a signature's battle dim (Eclipse Nova, own pet): LightingStack preset DIM_ID, in over DIM_IN, out over
 	-- DIM_OUT once its seconds are up, at once (DIM_CUT) when the battle is torn down
 	DIM_ID = "AttackFxDim",
@@ -1632,6 +1635,27 @@ function Units.Rebuild(B, u)
 		u.rebuild = true
 		B.buildQueue[#B.buildQueue + 1] = u
 	end
+end
+
+-- (evolved forms) a Rally's bigger pet (AttackFx Hooks.AuraScale, k = 1: its size again): Model:ScaleTo x k over the size it had. A look only: the unit's radius, range and hitboxes are the sim's
+function Units.AuraScale(u, k)
+	local m = u.model
+	if not m or u.gone then
+		u.auraBase = nil
+		return
+	end
+	if k == 1 then
+		if u.auraBase then
+			pcall(m.ScaleTo, m, u.auraBase)
+			u.auraBase = nil
+		end
+		return
+	end
+	if not u.auraBase then
+		local ok, s = pcall(m.GetScale, m)
+		u.auraBase = (ok and tonumber(s)) or 1
+	end
+	pcall(m.ScaleTo, m, u.auraBase * k)
 end
 
 -- Phase 6 (runtime-pets): when MeshLibrary makes a pet's Blender mesh keys usable here (PetBuilder.MeshVersion
@@ -3050,7 +3074,7 @@ local SUPPORT_KINDS = { Heal = true, Shield = true, Rally = true, Haste = true }
 -- a helper buff's Effect (BattleCatalog.Buffs) -> the support special whose look it borrows
 local BUFF_LOOK = { Heal = "Heal", Regen = "Heal", Shield = "Shield", Taken = "Shield", Damage = "Rally", Lifesteal = "Rally", Speed = "Haste", AttackSpeed = "Haste", Chill = "Haste" }
 -- the events AttackFx plays (on arrival: Net.Events)
-Atk.EVENTS = { [EV.Hit] = true, [EV.Special] = true, [EV.Element or "Element"] = true, [EV.KO] = true, [EV.Buff or "Buff"] = true, [EV.Swap or "Swap"] = true }
+Atk.EVENTS = { [EV.Hit] = true, [EV.Special] = true, [EV.Element or "Element"] = true, [EV.KO] = true, [EV.Buff or "Buff"] = true, [EV.Swap or "Swap"] = true, [EV.Twist or "Twist"] = true }
 Atk.bodyOpts = { Pose = nil } -- (one table for every PetBuilder.PoseBody call)
 
 -- AttackFx's hooks go to Me: camera kick = Me.Shake (the Shake setting and SHAKE_MAX apply), the edge glow, and a
@@ -3081,6 +3105,14 @@ function Atk.Hook(m)
 	end
 	m.Hooks.Shatter = function(mine)
 		Me.ShatterSound(mine)
+	end
+	-- (evolved forms) a Rally's bigger pet
+	m.Hooks.AuraScale = function(unit, k)
+		local B = St.battle
+		local u = B and B.units[unit]
+		if u then
+			Units.AuraScale(u, k)
+		end
 	end
 end
 
@@ -3172,6 +3204,14 @@ function Atk.Cancel(id)
 	end
 end
 
+-- (evolved forms) a Rally's / Haste's aura ends with its buff, whatever else ends it: the wearer's KO, its swap, the battle's end (id nil = every aura)
+function Atk.EndAura(id)
+	local AF = Mods.AttackFx
+	if AF and type(AF.EndAura) == "function" then
+		pcall(AF.EndAura, id)
+	end
+end
+
 -- every effect and pose ends now (a teardown: Leave of my team, Net.Cleanup, Stop); a pending End grace is over too
 function Atk.ClearAll()
 	St.fxEndAt = nil
@@ -3195,6 +3235,7 @@ function Atk.EndSoon(B)
 		return
 	end
 	B.fxGrace = true
+	Atk.EndAura(nil) -- (evolved forms: the fight is over, so are its buffs)
 	if not St.fxEndAt then
 		St.fxEndAt = os.clock() + K.FX_END_GRACE
 	end
@@ -3375,10 +3416,29 @@ function Atk.ShieldHit(B, v, a, dueAt, tick)
 	return played
 end
 
+-- (evolved forms) a hit that is no swing of its own: a Double strike's extra hit flashes on the victim; a Shield's Thorns (from the wearer, to its attacker) is a thin bolt back,
+-- one per RIPPLE_TICK_GAP (a boss's flurry would be a strobe). In the attacker's look: a Haste / Shield pet's flavour
+function Atk.HitTwist(B, ev, dueAt, v, a)
+	if not a or not Atk.Drawable(v) then
+		return "none"
+	end
+	if ev.double then
+		return Atk.Play(lookCtx(a, { Attack = "Special", Kind = "Haste", Twist = "DoubleHit", From = Atk.Side(B, v), Mine = a.mine == true, DueAt = dueAt, Ground = groundOf(B, v) }))
+	end
+	if not Atk.Drawable(a) or (a.thornAt and dueAt - a.thornAt < K.RIPPLE_TICK_GAP) then
+		return "none"
+	end
+	a.thornAt = dueAt
+	return Atk.Play(lookCtx(a, { Attack = "Special", Kind = "Shield", Twist = "Thorns", From = Atk.Side(B, a), To = Atk.Side(B, v), Mine = a.mine == true, DueAt = dueAt, Ground = groundOf(B, a) }))
+end
+
 -- the Hit's own play (Atk.Hit): its result and the seconds its impact lands after dueAt (a ranged shot's flight)
 local function hitPlay(B, ev, dueAt, v, a)
 	if ev.special or ev.element or ev.zone or ev.burn then
 		return "none", 0
+	end
+	if ev.double or ev.thorns then
+		return Atk.HitTwist(B, ev, dueAt, v, a), 0
 	end
 	if ev.tele or (a and a.isBoss) then
 		if ev.miss or v.isBoss or not v.mine or not Atk.Drawable(v) then
@@ -3536,11 +3596,24 @@ function Atk.Special(B, ev, dueAt)
 		St.pre = nil
 	end
 	local S = SPECIALS[kind] or {}
+	-- (evolved forms) a form's look: the pack's real charge line (the sim's floor space -> the world); a Rally's / Haste's aura, to the buff's end as it plays on the render clock
+	local line = nil
+	if tonumber(ev.x0) and tonumber(ev.z0) then
+		local p = worldPoint(B, tonumber(ev.x0), 0, tonumber(ev.z0))
+		line = { X0 = p.X, Z0 = p.Z, Angle = worldAngle(B, num(ev.angle, 0)), Length = num(ev.length, 0), Width = num(ev.width, 4) }
+	end
+	local seconds, scale = nil, nil
+	if (kind == "Rally" or kind == "Haste") and tonumber(ev["until"]) then
+		local simNow = B.haveOffset and (os.clock() + B.offset) or B.renderT
+		seconds = (tonumber(ev["until"]) - simNow) + (dueAt - os.clock())
+		scale = (kind == "Rally") and (K.AURA_SCALE[num(ev.form, 0)] or K.AURA_SCALE[0]) or nil
+	end
 	local ctx = lookCtx(u, {
 		Attack = "Special", Kind = kind, From = Atk.Side(B, u), To = to, Mine = u.mine == true, DueAt = dueAt,
 		Angle = tonumber(ev.angle) and worldAngle(B, tonumber(ev.angle)) or nil, Ground = groundOf(B, u),
 		Radius = areaOf(ev.r, S.Radius, u), Length = areaOf(ev.length, S.Length, u), Width = areaOf(ev.width, S.Width, u),
 		Precharged = precharged or nil, LateMax = (not precharged and kind ~= "Pounce") and K.LATE_MAX or nil,
+		Form = tonumber(ev.form), Line = line, Seconds = seconds, Scale = scale,
 	})
 	local played = Atk.Play(ctx)
 	u.fxDriven = played
@@ -3556,6 +3629,21 @@ function Atk.Special(B, ev, dueAt)
 		cover(B, to, dueAt)
 		if kind == "Storm" then
 			u.stormFxUntil = dueAt + 1 -- its Zone draws only the damage field (AttackFx's cloud rains)
+		end
+		-- (evolved forms) a stage-2 Pounce's Landing burst, at its real radius, round the target: no event of its own
+		if tonumber(ev.burstR) then
+			local struck = {}
+			for _, id in ipairs(type(ev.burstTargets) == "table" and ev.burstTargets or {}) do
+				local t = B.units[tonumber(id) or -1]
+				if t and not t.gone then
+					struck[#struck + 1] = Atk.Side(B, t)
+				end
+			end
+			Atk.Play(lookCtx(u, {
+				Attack = "Special", Kind = kind, Twist = "Landing", From = { Unit = u.id, Pos = worldPoint(B, num(ev.tx, u.x), u.centerY or 1.5, num(ev.tz, u.z)) }, To = struck,
+				Radius = tonumber(ev.burstR), Mine = u.mine == true, DueAt = dueAt, Ground = groundOf(B, u),
+			}))
+			cover(B, struck, dueAt)
 		end
 	end
 	return played
@@ -3612,10 +3700,67 @@ function Atk.Element(B, ev, dueAt)
 	local played = Atk.Play(lookCtx(u, {
 		Attack = "Element", Shape = shape, Element = element, From = Atk.Side(B, u), To = (#to > 0) and to or nil,
 		Angle = worldAngle(B, num(ev.angle, 0)), Radius = radius, Length = length, Width = width, Mine = u.mine == true, DueAt = dueAt,
-		Ground = groundOf(B, u),
+		Ground = groundOf(B, u), Form = tonumber(ev.form),
+		-- (evolved forms: a ranged pet's Circle stands on its aim point; the sim's too)
+		Center = (shape == "Circle" and u.ranged) and worldPoint(B, tx, u.centerY or 1.5, tz) or nil,
 	}))
 	u.fxDriven = played
 	if played then
+		cover(B, to, dueAt)
+	end
+	return played
+end
+
+-- (evolved forms) a form's delayed hit (the Twist event, BattleSim's header has its fields): one effect of AttackFxCatalog.Twists in the caster's look, at the point the sim used.
+-- The caster does not cast again; To = whoever it reached. A special's twist = its kind's, an element's: the element's
+function Atk.Twist(B, ev, dueAt)
+	local u = B.units[tonumber(ev.unit) or -1]
+	if not u then
+		return nil
+	end
+	if u.isBoss or not Atk.Drawable(u) then
+		return "none"
+	end
+	local kind = tostring(ev.kind or "")
+	local special = SPECIALS[kind] ~= nil
+	local function sides(list, first)
+		local out = {}
+		for _, entry in ipairs(type(list) == "table" and list or {}) do
+			local t = B.units[tonumber(first and entry[1] or entry) or -1]
+			if t and not t.gone then
+				out[#out + 1] = Atk.Side(B, t)
+			end
+		end
+		return out
+	end
+	local at = nil
+	if tonumber(ev.x) and tonumber(ev.z) then
+		at = worldPoint(B, tonumber(ev.x), u.centerY or 1.5, tonumber(ev.z))
+	end
+	local from, to, center = Atk.Side(B, u), sides(ev.targets), nil
+	if type(ev.heals) == "table" then -- (Lingering on each ally healed; Starfall falls on the caster: AttackFx has no one else to flinch)
+		to = (tostring(ev.twist) == "Lingering") and sides(ev.heals, true) or {}
+	elseif type(ev.shields) == "table" then
+		to = sides(ev.shields)
+	elseif tonumber(ev.tx) and at then -- (Forked: from the last one struck to the next, wherever they have moved on the screen)
+		from = { Unit = u.id, Pos = at }
+		local t = tonumber(ev.targets and ev.targets[1])
+		to = { { Unit = t, Pos = worldPoint(B, tonumber(ev.tx), u.centerY or 1.5, num(ev.tz, 0)) } }
+	elseif tostring(ev.twist) == "Twin" then
+		-- (a line from where the caster stands now: the sim's too)
+		from = Atk.Side(B, u)
+	elseif not special and tonumber(ev.r) then -- (an element's circle stands on the point; From stays the caster: its own effect's area)
+		center = at
+	elseif at and tostring(ev.twist) ~= "Chill" then
+		from = { Unit = u.id, Pos = at }
+	end
+	local played = Atk.Play(lookCtx(u, {
+		Attack = special and "Special" or "Element", Kind = special and kind or nil, Element = (not special) and kind or nil, Twist = tostring(ev.twist or ""),
+		From = from, To = (#to > 0) and to or nil, Center = center, Mine = u.mine == true, DueAt = dueAt, Ground = groundOf(B, u),
+		Angle = tonumber(ev.angle) and worldAngle(B, tonumber(ev.angle)) or nil, AimFixed = tonumber(ev.angle) and true or nil,
+		Radius = tonumber(ev.r), Length = tonumber(ev.length), Width = tonumber(ev.width), Band = tonumber(ev.band),
+	}))
+	if played and not ev.heals and not ev.shields and tostring(ev.twist) ~= "Chill" then
 		cover(B, to, dueAt)
 	end
 	return played
@@ -3700,6 +3845,8 @@ function Atk.Event(B, ev, dueAt)
 		return Atk.Buff(B, ev, dueAt)
 	elseif t == (EV.Swap or "Swap") then
 		return Atk.Swap(B, ev, dueAt)
+	elseif t == (EV.Twist or "Twist") then
+		return Atk.Twist(B, ev, dueAt)
 	end
 	return "none"
 end
@@ -4212,8 +4359,8 @@ Handlers[EV.Hit] = function(B, ev)
 		return
 	end
 	-- attacker motion: plain attacks lunge (melee) or shoot a bolt (ranged); my fighter too (it attacks by itself:
-	-- its lunges come only from these server hits, never from a press)
-	if attacker and not ev.special and not ev.zone and not ev.tele and not ev.element then
+	-- its lunges come only from these server hits, never from a press). (evolved forms: a Thorns or Double strike hit is no swing)
+	if attacker and not ev.special and not ev.zone and not ev.tele and not ev.element and not ev.thorns and not ev.double then
 		if attacker.isBoss then
 			if attacker.pose ~= "Windup" and attacker.pose ~= "Attack" and attacker.pose ~= "Enrage" then
 				Units.SetPose(attacker, "Basic", 0.6, ev.attack)
@@ -4417,6 +4564,10 @@ Handlers[EV.Zone] = function(B, ev)
 		-- AttackFx's Storm special rains from its own cloud: the zone then draws only its damage field on the floor
 		local field = u and u.stormFxUntil ~= nil and os.clock() <= u.stormFxUntil
 		Fx.Zone(floorCF, r, seconds, specialColor(u, "Storm"), field and "Field" or "Storm")
+	elseif kind == "Patch" then
+		-- (evolved forms) a form's burning ground (Patch, Inferno): the disc of its real r in the colour of the special or the element it came from, the Field's dim tail after it
+		local special = tostring(ev.special or "")
+		Fx.Zone(floorCF, r, seconds, SPECIALS[special] and specialColor(B.units[tonumber(ev.unit) or -1], special) or elementColor(special), "Field")
 	else
 		local color = Color3.fromRGB(255, 120, 60)
 		local BB = lazyBoss()
@@ -4454,6 +4605,7 @@ Handlers[EV.KO] = function(B, ev)
 	end
 	u.hp = 0
 	u.state = S_DOWN
+	Atk.EndAura(u.id) -- (evolved forms) its buff is over: the aura and the bigger pet end with it
 	Me.UndimCaster(u.id) -- (Task 11) a knocked-out caster's battle dim ends with it (its effect may still finish its beats)
 	if B.lock == u.id then
 		B.lock = nil
@@ -4547,7 +4699,8 @@ Handlers[EV.Element or "Element"] = function(B, ev)
 	end
 	local dx, dz = cos(angle), sin(angle)
 	if shape == "Circle" then
-		local c = worldPoint(B, sx, 0.6, sz)
+		local ranged = u and u.ranged -- (evolved forms: a ranged pet's Circle stands on its aim point)
+		local c = worldPoint(B, ranged and num(ev.tx, sx) or sx, 0.6, ranged and num(ev.tz, sz) or sz)
 		Fx.Ring(c, elementAreaOf(ev.r, 8, u), color, 22, 0.8, 0.5, 0.05)
 		Fx.Burst(c + Vector3.new(0, 0.8, 0), color, 14, 11, 0.55, 0.55, { color2 = COLORS.White, up = 0.8 })
 	elseif shape == "Line" then
@@ -4568,6 +4721,40 @@ end
 
 -- the PET dashes (the character never does, decision 5): every pet's Dash draws its streak; my own fighter's already
 -- started when the event arrived (Net.Pre: no render delay for my own dodge)
+-- (evolved forms) a form's delayed hit: AttackFx (played on arrival) draws it, the cube ring when it did not; the name over the caster when the recipe calls it out, the heal and shield
+-- numbers and the shield's bookkeeping either way (its damage comes as Hit events)
+Handlers[EV.Twist or "Twist"] = function(B, ev)
+	local u = B.units[tonumber(ev.unit) or -1]
+	local kind = tostring(ev.kind or "")
+	local color = SPECIALS[kind] and specialColor(u, kind) or elementColor(kind)
+	local played = Atk.Result(B, ev)
+	local twists = Mods.FxCat and Mods.FxCat.Twists
+	local tw = type(twists) == "table" and twists[tostring(ev.twist)] or nil
+	if tw and tw.Callout then
+		calloutAbove(u, string.upper(tw.Name) .. "!", color:Lerp(COLORS.White, 0.2))
+	end
+	for _, h in ipairs(type(ev.heals) == "table" and ev.heals or {}) do
+		local a = B.units[tonumber(h[1]) or -1]
+		if a and a.root and not a.parked and num(h[2], 0) > 0 then
+			Fx.Number(a.root, numberHeight(a), "+" .. tostring(floor(num(h[2], 0) + 0.5)), COLORS.Heal, K.NUMBER_PX)
+		end
+	end
+	for _, id in ipairs(type(ev.shields) == "table" and ev.shields or {}) do
+		local a = B.units[tonumber(id) or -1]
+		if a then
+			-- (its later absorbed hits ripple in u's look while the shield lasts: Atk.ShieldHit)
+			a.shieldUntil = os.clock() + num(SPECIALS.Shield and SPECIALS.Shield.Seconds, 6) + 0.5
+			a.shieldBy = u and u.id or nil
+			if a.root and not a.parked and num(ev.amount, 0) > 0 then
+				Fx.Number(a.root, numberHeight(a), "+" .. tostring(floor(num(ev.amount, 0) + 0.5)), COLORS.Shield, K.NUMBER_PX - 2)
+			end
+		end
+	end
+	if not played and tonumber(ev.x) and tonumber(ev.z) then
+		Fx.Ring(worldPoint(B, tonumber(ev.x), 0.6, tonumber(ev.z)), num(ev.r, 4), color, 14, 0.6, 0.5, 0.05)
+	end
+end
+
 Handlers[EV.Dash or "Dash"] = function(B, ev)
 	local u = B.units[tonumber(ev.unit) or -1]
 	if u and u.dashEv ~= ev then
@@ -4625,6 +4812,7 @@ end
 
 Handlers[EV.Swap or "Swap"] = function(B, ev)
 	local incoming = B.units[tonumber(ev["in"]) or -1]
+	Atk.EndAura(tonumber(ev.out) or -1) -- (evolved forms: it left the floor, its aura does not wait for it)
 	-- (fix round 2, I2-b) a held auto-swap: the incoming pet leaves the bench now (another player's is unparked for its
 	-- GO!), and my two pets trade places now (Me.Switch; Net.Pre left it for this moment)
 	if incoming and incoming.unbenchAt then
@@ -4674,8 +4862,21 @@ Handlers[EV.EnemiesDown or "EnemiesDown"] = function(B)
 	calloutAbove(f, "WAVE CLEARED!", COLORS.Mine, K.CALLOUT_PX, 1.2)
 end
 
-Handlers[EV.Speed or "Speed"] = function()
-	-- (handled on arrival: Net.Pre)
+-- (the HUD side: on arrival, Net.Pre) (evolved forms) a Haste's aura ends the moment its buff ends: the Speed event says so, a little ahead of the aura's own count when the
+-- render clock has drifted. A slow moves the speed too: an aura with more than AURA_SNAP left runs on
+Handlers[EV.Speed or "Speed"] = function(B, ev)
+	local AF = Mods.AttackFx
+	if not AF or type(AF.AuraLeft) ~= "function" then
+		return
+	end
+	for _, u in ipairs(B.list) do
+		if u.owner == ev.owner and not u.benched then
+			local ok, left = pcall(AF.AuraLeft, u.id)
+			if ok and left and left <= K.AURA_SNAP then
+				Atk.EndAura(u.id)
+			end
+		end
+	end
 end
 
 -- bug #22: my pet leaves me to fight (the server's engage rule): the arrival hop = "it goes"; nothing else (no parts,
