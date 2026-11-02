@@ -3,6 +3,7 @@
 -- AttackFx engine (client) and BattleController only PLAY what Resolve returns. Pure data + pure functions: no
 -- Instances, no services, no yields; safe on the server and the client. Plain Lua 5.1-compatible syntax only.
 -- 2026-11-01: docs/superpowers/specs/2026-11-01-attack-fx-design.md (bigger, an impact package for every hit, lingering marks, the kick).
+-- 2026-11-02: docs/superpowers/specs/2026-11-01-evolved-forms-design.md (every special and element form has its look).
 --
 -- Tables a designer tunes (each one mirrors a spec section):
 --   Bands / Sizes / StageBonus / SizeCap        "Rarity ladder": 4 bands (Common+Uncommon, Rare+Epic, Legendary+Mythic,
@@ -26,7 +27,14 @@
 --   Specials[kind]                              "Specials (the 9 kinds)": core, beats, extra layers, skipped ladder layers;
 --                                               each element retextures them by its sheets (slots) + Elements[e].Specials
 --   Reactions (Hurt / Ko / Victory / ShieldHit) the small reaction effects (ShieldHit: a shield absorbs a later hit)
---   Signatures[petId]                           "Signature specials (12 pets)": overrides on top of their kind
+--   Signatures[petId]                           "Signature specials (12 pets)": overrides on top of their kind; Forms = { [1], [2] }: the
+--                                               pet's unique evolved looks; Plain = true (four Epic / Legendary pets): no signature at
+--                                               the start, their kind's recipe, only the forms are theirs
+--   Forms[kind][stage]                          evolved forms: the shared look of a kind's form, in the pet's colours (Common to Rare
+--                                               wear it as it is; a pet with Forms adds its own over it)
+--   ElementForms[element][stage]                the normal attacks' forms, by element
+--   Twists[id]                                  the short recipes of a form's delayed hits (Aftershock, Twin ...): no charge, the
+--                                               element's colours
 --   Textures[key]                               mirror of blender/vfx/textures.json { Grid = 4 | 1, Baked = bool } (smoke
 --                                               p7vfx_catalog checks it): Grid 1 strips (fx_lightning, fx_speedlines) are
 --                                               for Beam / Trail layers ONLY; every Emitter / Decal texture is a 4x4 flipbook
@@ -44,11 +52,17 @@
 --                                                                  BattleCatalog shape); Distance = studs to the target (projectile
 --                                                                  travel, default 14). nil for an unknown element / attack / kind /
 --                                                                  shape (the caller falls back to the cube Fx).
+--                                                                  (evolved forms) Form = the stage of the form to draw (the event's, a
+--                                                                  Special or an Element: absent = the plain recipe, so a helper's buff
+--                                                                  stays plain); Twist = a Twists id (a form's delayed hit, nil when
+--                                                                  unknown); Seconds = an aura's length (Rally / Haste: recipe.Aura)
 --     recipe = { Element, Attack, Kind, Shape, Rarity, Stage, Band, Size, CloudSize, Density (1 mine / 0.6 others), Dropped?
---                ({ "Charge" | "Slash" | "Trail" | "Sparks" }: the layer that yielded to the 6-emitter cap), Afterglow (seconds, Afterglow[band]; 0 on support casts
+--                ({ "Charge" | "Slash" | "Trail" | "Sparks" | "Pulse" }: the layers that yielded to the 6-emitter cap), Afterglow (seconds, Afterglow[band]; 0 on support casts
 --                and reactions), CameraPunch (false, or { Amount, Crit, Seconds, Basic, Gap }: an own attack; never a reaction or a
 --                support cast; the engine adds Crit on a crit, a Basic kick waits Gap since the last one), ScreenGlow (mine and band 4; not Quiet),
---                Signature (petId | nil), Sig = { Name, Twist, Actor, DimWorld } | nil, Palette = { Core, Mid, Edge, Hot, Smoke }, Text,
+--                Signature (petId | nil), Sig = { Name, Twist, Actor, DimWorld } | nil (a form's Name; also when a form or twist has an Actor),
+--                Twist (a Twists id | nil), Aura (seconds | nil: AllyRing, Rouse, Wind and Gust carry Linger, they hold until the aura ends),
+--                Palette = { Core, Mid, Edge, Hot, Smoke }, Text,
 --                Beats = { Charge, Release, Travel, Impact, Linger, MinTravel? } (seconds), ImpactAt (= Charge + Release +
 --                Travel: the engine starts the effect so that impact lands on the server event, never later, except
 --                that a basic Ranged shot keeps MinTravel of flight: player note 1, the shot is always seen crossing),
@@ -71,7 +85,9 @@
 --                Ring peaking at the attack's real radius, eff.Reach: the ground ring that shows an area as it hits), Thin? (a
 --                Ring whose height stops growing at its full size: a wide ring stays a line on the floor), PeakStuds? (a Ring is
 --                at most this wide, studs across, and never past the attack's real radius), Linger? (a
---                ground mark / ember layer that outlives the beats by the Afterglow, dim and still: only Decal and Alive layers) ... } } (a template's
+--                ground mark / ember layer that outlives the beats by the Afterglow, dim and still: only Decal and Alive layers; in an aura, a
+--                layer that holds until it ends), (evolved forms) Each? (a Ring At "Target": one on each target), NoLow? (not drawn on Graphics
+--                Low), CountFixed? (a Count no band scales: Thunder Pack's 4 strikes), Seconds? (a Beam At "Path": how long it stays) ... } } (a template's
 --                Except = { [Attack or special Kind] = true } leaves
 --                it out of those attacks), Alive = { Kind ("Emitter"|"Beam"|"Decal"|"Mesh"), Texture?,
 --                Key?, Motion, Color, Count, Seconds, Text } ({} = none) }
@@ -85,14 +101,15 @@
 --     ladder / kind layers x CountScale[band]; the element's own impact detail and alive detail x DetailScale[band]
 --     (reduced at band 1, growing by band). The engine multiplies them by Density and its quality factor. Recipes are
 --     fresh tables every call.
---   AttackFxCatalog.Unit(info) -> { Element, Rarity, Stage, PetId, Ranged }   from a BattleSim unitInfo (petId, key, look,
+--   AttackFxCatalog.Unit(info) -> { Element, Rarity, Stage, PetId, Ranged, Form }   from a BattleSim unitInfo (petId, key, look,
 --                                                                  element, elements, evo, ranged): Rarity = an explicit
 --                                                                  info.rarity / look.Rarity, else PetCatalog.Get(petId | key's
 --                                                                  base).Rarity, else a hybrid's: the HIGHER of its look.BodyId
 --                                                                  and look.StyleId pets' rarities (PetKeys' own rule), else
 --                                                                  "Common"; Element = the FIRST of `elements` (else `element`);
---                                                                  Stage = evo clamped 0..2
---   AttackFxCatalog.Signatures[petId]                              the 12 signature pets (Element, Kind, Rarity, Twist, overrides)
+--                                                                  Stage = evo clamped 0..2; Form = info.special.Form (a hybrid's 0)
+--   AttackFxCatalog.Signatures[petId]                              the 12 signature pets + the 4 Plain ones (Element, Kind, Rarity, Twist, overrides, Forms)
+--   AttackFxCatalog.Forms / ElementForms / Twists                  the evolved forms' looks (above)
 --   AttackFxCatalog.AttackNames / KindNames / ShapeNames / Rarities   ordered name lists (the /fx dev command validates with them)
 
 local Shared = script.Parent
@@ -724,7 +741,8 @@ AttackFxCatalog.Specials = {
 		Text = "charge glow at the mouth, then a thick beam wrapped in spiral arcs; impact flare at the end",
 		Core = { Key = "vfx_beam", Path = "Projectile", Stretch = true, Thick = 1.4 },
 		-- (Task 10, Gemini: a wider beam by band reads as rarer without one more emitter; x Size)
-		ThickBand = { 1.1, 1.3, 1.5, 1.7 },
+		-- (evolved forms, the owner: "today's beams look boring": x 1.15 at every stage, start included)
+		ThickBand = { 1.1 * 1.15, 1.3 * 1.15, 1.5 * 1.15, 1.7 * 1.15 },
 		Beats = { Charge = 0.5, Travel = 0.1, Linger = 0.5 },
 		Layers = {
 			-- (KeepCount, Task 10 review I2: the kind's identity, "wrapped in spiral arcs", keeps both arcs under the 4-beam
@@ -735,6 +753,9 @@ AttackFxCatalog.Specials = {
 			-- (Task 10) the element streams along the beam while it holds (fire licks, a water jet's drops, snow, petals,
 			-- dust, sparks, sparkle, wisps): sparse and small, drifting off the beam (Gemini: a dense wrap looks messy)
 			{ Id = "Wrap", Kind = "Emitter", Texture = "$Wrap", Beat = "Travel", At = "Path", Along = true, Tint = "Mid", Count = 9, Size = 0.9 },
+			-- (evolved forms: every stage) a lens gathers at the mouth through the charge; pulses of light run down the beam (at the 6-emitter cap: fitCap)
+			{ Id = "Lens", Kind = "Ring", Key = "vfx_ring", Beat = "Charge", At = "Source", Level = true, Grow = 1.2, Tint = "Hot", Transparency = 0.35 },
+			{ Id = "Pulse", Kind = "Emitter", Texture = "fx_glow", Beat = "Travel", At = "Path", Along = true, Tint = "Core", Count = 5, Size = 1.4 },
 		},
 		-- (no Afterimage: the beam does not move, a trail on it would draw nothing; Task 10 review I2: no Mythic double
 		-- crescent either, a slash arc on a beam reads as nothing and took one of the 4 beams from the spiral: the wider
@@ -856,6 +877,199 @@ AttackFxCatalog.Specials = {
 }
 
 ----------------------------------------------------------------------
+-- Evolved forms (docs/superpowers/specs/2026-11-01-evolved-forms-design.md). A stage's look over the kind's recipe, in the pet's colours; Name = BattleCatalog.Forms'
+-- Id. Fields as a Signature's (Core, Beats, Palette, Slots, Tints, Tweak, Skip, Drop, Layers, LowKeep, Actor). Resolve merges stage 1, then 2, then a pet's own. The
+-- additions are rings and glow discs: no emitter (the kinds fill the 6-emitter cap at Secret). Core.ThickK = x the Beam's / a Line's thickness.
+-- ACCEPTED DEVIATION from the spec's "ghost kittens": a Common to Rare Pounce charges with glowing orbs in the pet's colour on the real line, no copy of the pet:
+-- there is no per-pet mesh and no new mesh in this spec (a Studio check; the owner may want more).
+----------------------------------------------------------------------
+AttackFxCatalog.Forms = {
+	Pounce = {
+		{ Name = "Charge", Actor = { Key = "vfx_orb", Count = 3, Motion = "PackCharge", Beat = "Travel", Scale = 0.5, Tint = "Mid", Transparency = 0.35 } },
+		{ Name = "Landing", Tweak = { SlamCrack = { Size = 8 } } },
+	},
+	Blast = {
+		{ Name = "Aftershock", Layers = { { Id = "ShockEcho", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Edge", Grow = 1.2, Delay = 0.12, Transparency = 0.5, Thin = true } } },
+		{ Name = "Patch", Layers = { { Id = "PatchGlow", Kind = "Decal", Beat = "Impact", At = "Ground", Tint = "Edge", Size = 6, Seconds = 1.2, Linger = true } } },
+	},
+	Storm = {
+		{ Name = "Winds", Layers = { { Id = "WindRing", Kind = "Ring", Key = "vfx_ring", Beat = "Travel", At = "Ground", Tint = "Edge", Reach = true, Thin = true, Transparency = 0.55 } } },
+		{ Name = "LastStrike", Layers = { { Id = "StormEdge", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Core", Reach = true, Thin = true, Delay = 0.1, Transparency = 0.6 } } },
+	},
+	Beam = {
+		{ Name = "Mark", Layers = { { Id = "MarkRing", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Target", Each = true, Level = true, Grow = 1.4, Tint = "Hot", Transparency = 0.4 } } },
+		{ Name = "Twin", Tweak = { Flare = { Size = 3.4 } } },
+	},
+	Freeze = {
+		{ Name = "Chill", Layers = { { Id = "ChillHalo", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Core", Grow = 2, Delay = 0.1, Transparency = 0.5, Thin = true } } },
+		{ Name = "Shatter", Layers = { { Id = "FrostGlow", Kind = "Decal", Beat = "Impact", At = "Ground", Tint = "Mid", Size = 6, Seconds = 1 } } },
+	},
+	Heal = {
+		{ Name = "Lingering", Layers = { { Id = "HealHalo", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Allies", Tint = "Core", Grow = 1.2, Transparency = 0.5 } } },
+		{ Name = "Overflow", Tweak = { HealHalo = { Grow = 1.5, Transparency = 0.35 } } },
+	},
+	Shield = {
+		{ Name = "Thorns", Layers = { { Id = "ThornRing", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Allies", Tint = "Edge", Grow = 1.2, Transparency = 0.5 } } },
+		{ Name = "Burst", Core = { Transparency = 0.62 } },
+	},
+	-- (the aura's growth: AttackFx ctx.Scale 1.12 / 1.2 / 1.28, a look only; BattleController picks it by stage)
+	Rally = {
+		{ Name = "WarPace", Layers = { { Id = "PaceRing", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Self", Level = true, Tint = "Edge", Grow = 1.5, Transparency = 0.5, NoLow = true } } },
+		{ Name = "FiredUp", Layers = { { Id = "FiredRing", Kind = "Ring", Key = "vfx_ring", Beat = "Release", At = "Self", Level = true, Tint = "Hot", Grow = 1.2, Transparency = 0.45, NoLow = true } } },
+	},
+	Haste = {
+		{ Name = "QuickHands", Layers = { { Id = "HasteRing", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Self", Level = true, Grow = 1.3, Tint = "Mid", Transparency = 0.5, NoLow = true } } },
+		{ Name = "DoubleStrike", Tweak = { HasteRing = { Grow = 1.5 } } },
+	},
+}
+
+-- the normal attacks' forms: pets of one element share them, in the pet's colour. Rings and glow discs, no emitter: Secret's element attacks fill the cap
+AttackFxCatalog.ElementForms = {
+	Water = {
+		{ Name = "Riptide", Layers = { { Id = "RiptideRing", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Edge", Grow = 1.6, Transparency = 0.45, Thin = true } } },
+		{ Name = "Maelstrom", Layers = { { Id = "MaelstromPool", Kind = "Decal", Beat = "Impact", At = "Ground", Tint = "Mid", Size = 6, Seconds = 0.8 } } },
+	},
+	Flame = {
+		{ Name = "Wildfire", Layers = { { Id = "WildfireGlow", Kind = "Decal", Beat = "Impact", At = "Ground", Tint = "Edge", Size = 6, Seconds = 1, Linger = true } } },
+		{ Name = "Inferno", Layers = { { Id = "InfernoRing", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Core", Grow = 1.8, Transparency = 0.35, Thin = true } } },
+	},
+	Frost = {
+		{ Name = "Deep Frost", Layers = { { Id = "DeepFrostRing", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Core", Grow = 1.7, Transparency = 0.4, Thin = true } } },
+		{ Name = "Ice Snare", Layers = { { Id = "SnareGlow", Kind = "Decal", Beat = "Impact", At = "Ground", Tint = "Mid", Size = 6, Seconds = 1, Linger = true } } },
+	},
+	Nature = {
+		{ Name = "Bramble Lash", Layers = { { Id = "BrambleRing", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Edge", Grow = 1.5, Transparency = 0.45, Thin = true } } },
+		{ Name = "Worldroot", Layers = { { Id = "WorldrootRoots", Kind = "Mesh", Key = "vfx_root", Beat = "Impact", At = "Target", Tint = "Mid", Count = 3, CountFixed = true, Transparency = 0.2 } } },
+	},
+	Earth = {
+		{ Name = "Fissure", Layers = { { Id = "FissureRing", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Mid", Grow = 1.8, Transparency = 0.4, Thin = true } } },
+		{ Name = "Rockspire", Layers = { { Id = "RockspireGlow", Kind = "Decal", Beat = "Impact", At = "Ground", Tint = "Edge", Size = 7, Seconds = 1, Linger = true } } },
+	},
+	Storm = {
+		{ Name = "Forked Bolt", Layers = { { Id = "ForkRing", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Core", Grow = 1.4, Transparency = 0.45, Thin = true } } },
+		{ Name = "Thunder Lance", Core = { ThickK = 1.25 }, Layers = { { Id = "LanceRing", Kind = "Ring", Key = "vfx_ring", Beat = "Release", At = "Source", Level = true, Tint = "Hot", Grow = 1, Transparency = 0.4 } } },
+	},
+	Celestial = {
+		{ Name = "Halo", Layers = { { Id = "HaloRing", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Self", Level = true, Tint = "Hot", Grow = 1.2, Transparency = 0.35 } } },
+		{ Name = "Starfall", Layers = { { Id = "StarGlow", Kind = "Decal", Beat = "Impact", At = "Ground", Tint = "Mid", Size = 6, Seconds = 0.9, Linger = true } } },
+	},
+	Shadow = {
+		{ Name = "Hollow Rend", Layers = { { Id = "HollowGlow", Kind = "Decal", Motion = "Darken", Beat = "Impact", At = "Ground", Tint = "Edge", Size = 5, Seconds = 0.9 } } },
+		{ Name = "Soul Rend", Layers = { { Id = "SoulRing", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Self", Level = true, Tint = "Mid", Grow = 1.2, Transparency = 0.4 } } },
+	},
+}
+
+-- the short recipes of a form's delayed hits, tinted by the element (a signature pet's palette too). Beats: no charge, no release, no travel (Twin: 0.1), so the impact lands on
+-- the Twist event's time. Core = { Path } draws no piece of its own; the ladder gives only its Burst x BurstBoost (NoBurst: none), never the impact package; no Afterglow, no camera kick,
+-- no screen glow: quiet beside the cast. Shape = an element's area (hitOf). Actor = its solid pieces (as a Signature's). Callout = BattleController calls Name out over the caster
+-- (an element's twist: its cast already named it). A pet's Forms[n].Twists[id] adds its flavour. The hit's own recipes, Hit.thorns and Hit.double, are here too
+local function twistBeats(linger, travel)
+	return { Charge = 0, Release = 0, Travel = travel or 0, Linger = linger }
+end
+
+AttackFxCatalog.Twists = {
+	Aftershock = {
+		Name = "Aftershock", Callout = true, Text = "the Blast's dome and blastwave again, smaller",
+		Core = { Path = "Self" }, Beats = twistBeats(0.4),
+		Layers = {
+			{ Id = "Dome", Kind = "Ring", Key = "vfx_shell", Beat = "Impact", At = "Self", Tint = "Mid", Grow = 1.5 * 0.7, Transparency = 0.72 },
+			{ Id = "Blastwave", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Core", Grow = 2.2 * 0.7, Transparency = 0.3, Reach = true, Thin = true },
+		},
+	},
+	Twin = {
+		Name = "Twin", Callout = true, Text = "a second beam: the core and the spiral, thinner",
+		Core = { Key = "vfx_beam", Path = "Projectile", Stretch = true, Thick = 1.4, ThickK = 0.8 }, ThickBand = AttackFxCatalog.Specials.Beam.ThickBand, Beats = twistBeats(0.4, 0.1), NoBurst = true,
+		Layers = {
+			{ Id = "Spiral", Kind = "Beam", Texture = "$Arc", Beat = "Travel", At = "Path", Tint = "Edge", Spiral = true, Width = 0.4, Count = 2, KeepCount = 2, CountFixed = true },
+			{ Id = "Flare", Kind = "Emitter", Texture = "fx_glow", Beat = "Impact", At = "Target", Tint = "Hot", Count = 3, Size = 2.4 },
+		},
+	},
+	LastStrike = {
+		Name = "Last Strike", Callout = true, Text = "a huge bolt column and a wide ring at the storm's end",
+		Core = { Path = "Self" }, Beats = twistBeats(0.5),
+		Layers = {
+			{ Id = "StrikeBolts", Kind = "Beam", Texture = "fx_lightning", Beat = "Impact", At = "Ground", Strike = true, Count = 3, KeepCount = 3, CountFixed = true, Width = 1.6 },
+			{ Id = "StrikeRing", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Core", Reach = true, Thin = true, Transparency = 0.2 },
+			{ Id = "StrikeFlash", Kind = "Light", Beat = "Impact", At = "Self", Tint = "Hot", Brightness = 2, Range = 12 },
+		},
+	},
+	Shatter = {
+		Name = "Shatter", Callout = true, Text = "the cage bursts outward as the ice thaws",
+		Core = { Path = "Self" }, Beats = twistBeats(0.5), BurstBoost = { Size = 0.8, Count = 0.6 },
+		Actor = { Key = "vfx_cage", At = "Target", Motion = "Shatter", Beat = "Impact", Count = 4, Tint = "Mid", Material = "Glass", Transparency = 0.35, Radius = 2.4 },
+		Layers = {
+			{ Id = "ShatterRing", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Mid", Reach = true, Thin = true, Transparency = 0.35 },
+			{ Id = "Shards", Kind = "Emitter", Texture = "$Burst", Beat = "Impact", At = "Self", Motion = "Shatter", Tint = "Mid", Count = 8, Size = 1.2 },
+		},
+	},
+	Burst = {
+		Name = "Burst", Callout = true, Text = "the shield's shell bursts in a ring",
+		Core = { Key = "vfx_shell", Path = "Self", Flash = true, From = 0.6, To = 1.5, Material = "Glass", KeepMaterial = true, Transparency = 0.6 }, Beats = twistBeats(0.4),
+		Slots = { Burst = "fx_hexshield" }, BurstBoost = { Size = 0.8, Count = 0.6 },
+		Layers = { { Id = "BurstRing", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Mid", Reach = true, Thin = true, Transparency = 0.3 } },
+	},
+	-- (no Twist event: BattleController plays it with a stage-2 Pounce, at the event's burstR)
+	Landing = {
+		Name = "Landing", Text = "the Pounce's slam ring again, at the burst's real radius",
+		Core = { Path = "Self" }, Beats = twistBeats(0.4), BurstBoost = { Size = 0.6, Count = 0.5 },
+		Layers = { { Id = "LandRing", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Tint = "Mid", Grow = 2.2 * 0.6, Reach = true, Thin = true, Transparency = 0.25 } },
+	},
+	Lingering = {
+		Name = "Lingering", Text = "a few plus sparkles on each ally a tick heals",
+		Core = { Path = "Allies" }, Beats = twistBeats(0.4), Slots = { Burst = "fx_sparkle" }, BurstShape = "Plus", BurstBoost = { Size = 0.6, Count = 1 / 3 },
+	},
+	Overflow = {
+		Name = "Overflow", Callout = true, Text = "the extra healing ripples into a shield",
+		Core = { Key = "vfx_shell", Path = "Allies", Material = "Glass", KeepMaterial = true, Transparency = 0.7, Fit = 1.35, TopClear = 0.3 }, Beats = twistBeats(0.35),
+		Slots = { Burst = "fx_hexshield" }, BurstBoost = { Size = 0.7, Count = 0.5 },
+	},
+	Chill = {
+		Name = "Chill", Callout = true, Text = "a frost ring under each thawed enemy",
+		Core = { Path = "Allies" }, Beats = twistBeats(0.4), NoBurst = true,
+		Layers = { { Id = "ChillRing", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Allies", Color = rgb(170, 225, 255), Grow = 1.4, Transparency = 0.3 } },
+	},
+	Maelstrom = {
+		Name = "Maelstrom", Text = "the cone again, smaller, its blades running back to the pet", Shape = "Cone",
+		Core = { Key = "vfx_crescent", Path = "Area", Fan = true, Count = 3, Scale = 0.7, Reversed = true, Transparency = 0.25 }, Beats = twistBeats(0.45), BurstBoost = { Size = 0.7, Count = 0.5 },
+	},
+	Fissure = {
+		Name = "Fissure", Text = "the Earth circle erupts again: brown spikes round the crack", Shape = "Circle",
+		Core = { Key = "vfx_ring", Path = "Area", Grow = 4, Transparency = 0.3 }, Beats = twistBeats(0.5), BurstBoost = { Size = 0.7, Count = 0.5 },
+		Actor = { Key = "vfx_sig_lava_spike", At = "Target", Motion = "RingRise", Beat = "Impact", Count = 5, Color = rgb(122, 86, 54), Scale = 0.6, Transparency = 0.1, ReachK = 0.6 },
+	},
+	-- (the ring stands in the band it really hits: eff.Reach + half of ctx.Band, ReachK 1)
+	Rockspire = {
+		Name = "Rockspire", Text = "a ring of brown spikes round the circle", Shape = "Circle",
+		Core = { Key = "vfx_ring", Path = "Area", Grow = 4, Transparency = 0.45 }, Beats = twistBeats(0.5), NoBurst = true,
+		Actor = { Key = "vfx_sig_lava_spike", At = "Target", Motion = "RingRise", Beat = "Impact", Count = 6, Color = rgb(122, 86, 54), Scale = 0.75, Transparency = 0.1, ReachK = 1 },
+	},
+	Forked = {
+		Name = "Forked", Text = "one bolt from the last struck to the next",
+		Core = { Path = "Ground" }, Beats = twistBeats(0.3), BurstBoost = { Size = 0.5, Count = 0.4 },
+		Layers = { { Id = "ForkBolt", Kind = "Beam", Texture = "fx_lightning", Beat = "Impact", At = "Path", Count = 1, KeepCount = 1, CountFixed = true, Width = 1, Seconds = 0.25 } },
+	},
+	Starfall = {
+		Name = "Starfall", Text = "falling stars on the caster",
+		Core = { Path = "Self" }, Beats = twistBeats(0.5), Slots = { Burst = "fx_stars" }, BurstBoost = { Size = 0.5, Count = 0.4 },
+		Layers = { { Id = "StarRain", Kind = "Emitter", Texture = "fx_stars", Beat = "Travel", At = "Self", Fall = true, Count = 10, Size = 1 } },
+	},
+	-- the hits with no special of their own: a Double strike's extra hit on the victim; a Shield's Thorns back at the attacker (from the wearer)
+	DoubleHit = {
+		Name = "Double strike", Text = "two sparks on the victim of the extra hit",
+		Core = { Path = "Self" }, Beats = twistBeats(0.25), NoBurst = true,
+		Layers = { { Id = "DoubleSpark", Kind = "Emitter", Texture = "fx_sparks", Beat = "Impact", At = "Self", Tint = "Hot", Count = 2, CountFixed = true, Size = 0.6, SpeedScale = 1.5, LightEmission = 0.6 } },
+	},
+	Thorns = {
+		Name = "Thorns", Text = "a thin bolt from the shield to the attacker, a few sparks",
+		Core = { Path = "Ground" }, Beats = twistBeats(0.25), NoBurst = true,
+		Layers = {
+			{ Id = "ThornBolt", Kind = "Beam", Beat = "Impact", At = "Path", Tint = "Edge", Count = 1, CountFixed = true, Width = 0.35, Seconds = 0.16 },
+			{ Id = "ThornSpark", Kind = "Emitter", Texture = "fx_sparks", Beat = "Impact", At = "Target", Tint = "Hot", Count = 3, CountFixed = true, Size = 0.5, SpeedScale = 1.5, LightEmission = 0.6 },
+		},
+	},
+}
+
+----------------------------------------------------------------------
 -- Reactions: hit reaction, KO poof, victory sparkle (small; no element extras, no alive detail)
 ----------------------------------------------------------------------
 -- (attack effects, 2026-11-01: a reaction is no hit of its own: no impact package at any rarity)
@@ -934,9 +1148,12 @@ AttackFxCatalog.Reactions = {
 --                its Storm zone)
 --   DimWorld  (Eclipse Nova) seconds the battle stays dim after the impact (own pet only: AttackFx.Hooks.DimWorld ->
 --             BattleController, a LightingStack preset; it dims from the cast's first frame, Undim on end / KO / teardown)
+--   Forms     (evolved forms) { [1], [2] }: the pet's look at each stage, over its kind's Forms and the entries above: Name (BattleCatalog.FormNames), the same fields; an Actor with
+--             another Key replaces, without one its fields merge (Rim / Echo too); Twists = { [twist id] = its flavour on that delayed hit (Palette, Slots, Tints, Core, Beats, Layers, Actor) }
+--   Plain     (evolved forms) no signature at the start: the kind's recipe; only the Forms make it one
 -- Every signature is checked at every rarity it can be drawn at (all 7: a budget step-down draws one band lower) x
 -- stage within the effect caps (6 emitters, 4 beams, 4 trails, 3 lights, 14 pieces), its core / actor / identity
--- layers drawn at their count (smoke p7vfx_catalog, client_p7vfx_engine 17).
+-- layers drawn at their count (smoke p7vfx_catalog, client_p7vfx_engine 17); its forms too (smoke evo_looks_catalog).
 ----------------------------------------------------------------------
 AttackFxCatalog.Signatures = {
 	-- the Blast orb IS a phoenix: it forms over the pet with its wings spread (a gold phoenix glowing inside a see-through
@@ -945,6 +1162,13 @@ AttackFxCatalog.Signatures = {
 	ember_phoenix = {
 		Name = "Phoenix Flare", Rarity = "Legendary", Element = "Flame", Kind = "Blast",
 		Twist = "spreads blazing wings, the orb is a phoenix-shaped fireball",
+		Forms = {
+			{ Name = "Phoenix Burst", Twist = "a second fire-bird shape bursts after the first",
+				Twists = { Aftershock = { Actor = { Key = "vfx_sig_phoenix_wing", At = "Target", Motion = "Rise", Beat = "Impact", Scale = 0.75, Tint = "Mid", Transparency = 0.3 } } } },
+			{ Name = "Phoenix Rebirth", Twist = "a fire bird rises out of the burning ground",
+				Actor = { Key = "vfx_sig_phoenix_wing", At = "Target", Motion = "Rise", Beat = "Linger", Scale = 0.6, Tint = "Core", Transparency = 0.35 },
+				Layers = { { Id = "SigRebirthGlow", Kind = "Decal", Beat = "Impact", At = "Ground", Tint = "Mid", Size = 7, Seconds = 1.4, Linger = true } } },
+		},
 		Core = { Key = "vfx_sig_phoenix_wing", Scale = 0.75, Tint = "Mid", InnerTint = "Core", NoTwin = true, Transparency = 0.3 },
 		Slots = { Trail = "fx_flame" },
 		Skip = { Slash = true, Bloom = true },
@@ -961,6 +1185,12 @@ AttackFxCatalog.Signatures = {
 	sunbeam_bear = {
 		Name = "Golden Aegis", Rarity = "Legendary", Element = "Earth", Kind = "Shield",
 		Twist = "a golden sun-disc shield with rays",
+		Forms = {
+			{ Name = "Solar Aegis", Twist = "the sun disc fires rays back at attackers", Tweak = { SigRays = { Size = 4.2 } },
+				Twists = { Thorns = { Palette = { Edge = rgb(255, 210, 110), Hot = rgb(255, 255, 230) } } } },
+			{ Name = "Sunburst Aegis", Twist = "the sun disc explodes when it breaks",
+				Twists = { Burst = { Palette = { Mid = rgb(255, 210, 110), Core = rgb(255, 244, 196) }, Actor = { Key = "vfx_sig_sun_disc", At = "Target", Motion = "Shatter", Beat = "Impact", Count = 3, Scale = 0.45, Color = rgb(255, 210, 110), Transparency = 0.25, Radius = 2.6 } } } },
+		},
 		Palette = { Core = rgb(255, 244, 196), Mid = rgb(255, 210, 110), Edge = rgb(232, 150, 40), Hot = rgb(255, 255, 230) },
 		Actor = { Key = "vfx_sig_sun_disc", At = "Allies", Motion = "Seal", Beat = "Travel", Scale = 0.6, Tint = "Mid", Transparency = 0.25 },
 		Layers = { { Id = "SigRays", Kind = "Emitter", Texture = "fx_rays", Beat = "Impact", At = "Allies", Count = 3, Size = 3.5, LightEmission = 0.4 } },
@@ -974,6 +1204,11 @@ AttackFxCatalog.Signatures = {
 	twilight_dragon = {
 		Name = "Dusk Storm", Rarity = "Legendary", Element = "Shadow", Kind = "Storm",
 		Twist = "a dusk-purple storm with falling shadow stars",
+		Forms = {
+			{ Name = "Nightfall Storm", Twist = "a bigger moon and dark winds drag at enemies", Actor = { Scale = 1.15 }, Tints = { WindRing = rgb(64, 34, 110) } },
+			{ Name = "Dusk's End", Twist = "the moon drops onto the storm at the end",
+				Twists = { LastStrike = { Beats = { Travel = 0.3 }, Actor = { Key = "vfx_crescent", At = "Above", Motion = "Eclipse", Beat = "Release", Scale = 1.1, Color = rgb(198, 162, 250), Transparency = 0.25, Rim = { Color = rgb(112, 56, 210), Scale = 1.12, Transparency = 0.4 } } } } },
+		},
 		Palette = { Core = rgb(236, 190, 255), Mid = rgb(150, 96, 220), Edge = rgb(64, 34, 110), Hot = rgb(255, 150, 240) },
 		Slots = { RainKey = "vfx_star", RainTexture = "fx_sparkle", RainKind = "Emitter" },
 		Core = { Tint = "Mid", Scale = 1.1 },
@@ -992,6 +1227,12 @@ AttackFxCatalog.Signatures = {
 	cloudy_dragon = {
 		Name = "Cloud Breath", Rarity = "Mythic", Element = "Storm", Kind = "Beam",
 		Twist = "a cloud dragon spirals up, then breathes the beam on the dive",
+		Forms = {
+			{ Name = "Thunderhead Breath", Twist = "the cloud dragon's breath crackles and marks",
+				Layers = { { Id = "SigCrackle", Kind = "Beam", Texture = "fx_lightning", Beat = "Travel", At = "Path", Count = 1, KeepCount = 1, CountFixed = true } } },
+			{ Name = "Twin Storm Breath", Twist = "a second cloud dragon breathes after the first",
+				Twists = { Twin = { Core = { Transparency = 0.5, Segments = 3, Gap = 0.22 }, Actor = { Key = "vfx_sig_cloud_dragon", At = "Source", Motion = "SpiralUp", Beat = "Charge", Tint = "Core", Transparency = 0.1 } } } },
+		},
 		Beats = { Charge = 0.65 },
 		-- (Studio findings round, Gemini top 5 #5: a solid white neon bar with a glare that hid the target) the breath is
 		-- 3 see-through segments with gaps (Segments / Gap: AttackFx MOVE.Stretch), the target shows through and between
@@ -1012,6 +1253,12 @@ AttackFxCatalog.Signatures = {
 	starlight_unicorn = {
 		Name = "Wishing Star", Rarity = "Mythic", Element = "Celestial", Kind = "Heal",
 		Twist = "a giant wishing star rises and showers allies",
+		Forms = {
+			{ Name = "Falling Wishes", Twist = "the star keeps showering healing stars",
+				Twists = { Lingering = { Slots = { Burst = "fx_stars" }, Layers = { { Id = "SigWishRain", Kind = "Emitter", Texture = "fx_stars", Beat = "Travel", At = "Allies", Fall = true, Count = 5, Size = 0.8 } } } } },
+			{ Name = "Wish Upon the Stars", Twist = "extra stars turn into a shining shield",
+				Twists = { Overflow = { Slots = { Burst = "fx_stars" }, Layers = { { Id = "SigWishShield", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Allies", Tint = "Hot", Grow = 1.3, Transparency = 0.4 } } } } },
+		},
 		-- (Studio findings round, Gemini top 5 #4: the giant star rose straight through the player's avatar) its path keeps
 		-- Clear studs (x size, + its own half-width) away from the caster and the local player's character, pushed Forward
 		-- toward the allies' side
@@ -1024,23 +1271,28 @@ AttackFxCatalog.Signatures = {
 		-- half the size, half the light
 		Tweak = { Burst = { Size = 1.25, LightEmission = 0.5 } },
 	},
-	-- as the pet leaps, an electric storm-wolf charges out of it and through the target, two bolts crackling along its
-	-- path (the Mythic slash arc is left out: both bolts under the 4-beam cap)
+	-- (evolved forms, the owner's decision) the start is a plain storm pounce: the lightning wolf and its path bolts went to the forms. Shadow Pack: three shadow
+	-- wolves from behind the pet, on the real charge line. Thunder Pack: five wolves wrapped in lightning, bolts strike where they land (4 at most: MAX_BEAMS; the
+	-- slam's two yield to them). (the Mythic slash arc is left out)
 	stormfang = {
 		Name = "Storm Pounce", Rarity = "Secret", Element = "Storm", Kind = "Pounce",
-		Twist = "a lightning storm-wolf charges through the target",
-		Actor = { Key = "vfx_sig_wolf", At = "Source", Motion = "ChargeThrough", Beat = "Travel", Color = rgb(80, 180, 255), Rim = { Color = rgb(40, 60, 200), Scale = 1.1, Transparency = 0.3 } },
+		Twist = "a plain storm pounce: the slam and the storm cloud",
+		Forms = {
+			{ Name = "Shadow Pack", Twist = "three shadow storm wolves charge at the enemy from behind the pet",
+				Actor = { Key = "vfx_sig_wolf", Count = 3, Motion = "PackCharge", Beat = "Travel", Color = rgb(40, 30, 70), Rim = { Color = rgb(120, 80, 200), Scale = 1.08, Transparency = 0.4 } } },
+			{ Name = "Thunder Pack", Twist = "five wolves wrapped in lightning, bolts strike where they land",
+				Actor = { Count = 5, Color = rgb(150, 210, 255), Rim = { Color = rgb(80, 180, 255) } }, Drop = { SigSlamBolts = true },
+				Layers = { { Id = "SigLandBolts", Kind = "Beam", Texture = "fx_lightning", Beat = "Impact", At = "Path", Strike = true, Count = 4, KeepCount = 4, CountFixed = true, Width = 1.1 } } },
+		},
 		Skip = { DoubleArc = true, Flash = true, Shockwave = true }, -- (the slam's own flash replaces the ladder's: <= 3 lights; its SigShock + the slam ring are the rings)
-		Tints = { SigBolts = rgb(90, 170, 255), SigSlamBolts = rgb(150, 210, 255), SigCloudRide = rgb(46, 60, 120) },
+		Tints = { SigSlamBolts = rgb(150, 210, 255), SigLandBolts = rgb(150, 210, 255), SigCloudRide = rgb(46, 60, 120) },
 		-- (Studio findings round, Gemini top 5 #3: the Secret landing read weaker than Lava Slam / Glacier Breath) the slam:
 		-- a wide shock ring races over the ground, two bolts strike down round the target, a lightning flash; the pet rides a
-		-- storm cloud through the leap (its two bolts, the slam bolts: the 4-beam cap; the slam bolts replace the element's
-		-- stray alive bolts: Alive = false)
+		-- storm cloud through the leap (the slam bolts replace the element's stray alive bolts: Alive = false)
 		Alive = false,
 		Layers = {
-			{ Id = "SigBolts", Kind = "Beam", Texture = "fx_lightning", Beat = "Travel", At = "Path", Count = 2, KeepCount = 2 },
 			{ Id = "SigShock", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Ground", Color = rgb(130, 205, 255), Grow = 3.6, Transparency = 0.2 },
-			{ Id = "SigSlamBolts", Kind = "Beam", Texture = "fx_lightning", Beat = "Impact", At = "Ground", Strike = true, Count = 2, KeepCount = 2, Width = 1.1 },
+			{ Id = "SigSlamBolts", Kind = "Beam", Texture = "fx_lightning", Beat = "Impact", At = "Ground", Strike = true, Count = 2, KeepCount = 2, CountFixed = true, Width = 1.1 },
 			{ Id = "SigSlamFlash", Kind = "Light", Beat = "Impact", At = "Ground", Color = rgb(150, 210, 255), Brightness = 4, Range = 14 },
 			{ Id = "SigCloudRide", Kind = "Emitter", Texture = "fx_stormcloud", Beat = "Travel", At = "Self", Ride = true, Tint2 = "Mid", Count = 16, Size = 2.2, Transparency = 0.3 },
 		},
@@ -1052,6 +1304,12 @@ AttackFxCatalog.Signatures = {
 	eclipse_dragon = {
 		Name = "Eclipse Nova", Rarity = "Secret", Element = "Shadow", Kind = "Blast",
 		Twist = "the battle dims for a moment; a black-sun ring bursts",
+		Forms = {
+			{ Name = "Black Sun Nova", Twist = "a second black ring bursts after the first",
+				Twists = { Aftershock = { Layers = { { Id = "SigNova2", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Self", Level = true, Color = rgb(40, 12, 72), Grow = 2.6, Transparency = 0.15 } } } } },
+			{ Name = "Total Eclipse", Twist = "the black sun leaves a dark burning crater",
+				Layers = { { Id = "SigCrater", Kind = "Decal", Motion = "Darken", Beat = "Impact", At = "Ground", Color = rgb(24, 10, 40), Size = 8, Seconds = 1.6, Linger = true } } },
+		},
 		DimWorld = 0.6,
 		Actor = { Key = "vfx_sig_black_sun", At = "Above", Motion = "Eclipse", Beat = "Charge", Color = rgb(18, 8, 28), Scale = 0.6, Rim = { Color = rgb(186, 104, 255), Scale = 1.14, Transparency = 0.15 } },
 		Skip = { Slash = true },
@@ -1076,6 +1334,11 @@ AttackFxCatalog.Signatures = {
 	obsidian_phoenix = {
 		Name = "Shadowflame Storm", Rarity = "Secret", Element = "Flame", Kind = "Storm",
 		Twist = "black-flame wings sweep the field; dark fire rains",
+		Forms = {
+			{ Name = "Cinder Wings", Twist = "black-flame wings drag at enemies inside", Tints = { WindRing = rgb(96, 26, 120) } },
+			{ Name = "Obsidian Rain", Twist = "the phoenix dives into the storm at the end",
+				Twists = { LastStrike = { Beats = { Travel = 0.3 }, Actor = { Key = "vfx_sig_phoenix_wing", At = "Above", Motion = "Eclipse", Beat = "Release", Scale = 0.5, Color = rgb(34, 12, 42), Rim = { Color = rgb(222, 86, 255), Scale = 1.1, Transparency = 0.2 } } } } },
+		},
 		Palette = { Core = rgb(255, 150, 240), Mid = rgb(150, 40, 170), Edge = rgb(40, 12, 44), Smoke = rgb(30, 16, 36) },
 		Tints = { Rain = rgb(170, 70, 210), Burst = rgb(200, 90, 255), Alive = rgb(220, 110, 255), Cloud = rgb(92, 58, 108) }, -- the baked fire sheets darkened to shadow-fire
 		Core = { Spread = true },
@@ -1095,6 +1358,12 @@ AttackFxCatalog.Signatures = {
 	phantom_kitsune = {
 		Name = "Foxfire Ward", Rarity = "Secret", Element = "Shadow", Kind = "Shield",
 		Twist = "nine ghost fox-fire orbs circle each ally",
+		Forms = {
+			{ Name = "Nine-Tail Ward", Twist = "fox-fire orbs fly back at attackers",
+				Twists = { Thorns = { Palette = { Edge = rgb(60, 150, 170), Hot = rgb(124, 252, 228) }, Actor = { Key = "vfx_sig_fox_orb", At = "Target", Motion = "Rise", Beat = "Impact", Scale = 0.4, Color = rgb(124, 252, 228), Transparency = 0.4 } } } },
+			{ Name = "Phantom Foxfire", Twist = "all nine orbs explode when it breaks",
+				Twists = { Burst = { Palette = { Mid = rgb(124, 252, 228), Core = rgb(220, 255, 250) }, Actor = { Key = "vfx_sig_fox_orb", At = "Target", Motion = "Shatter", Beat = "Impact", Count = 9, Scale = 0.5, Color = rgb(124, 252, 228), Transparency = 0.35, Radius = 3 } } } },
+		},
 		Palette = { Core = rgb(220, 255, 250), Mid = rgb(124, 252, 228), Edge = rgb(60, 150, 170) },
 		Tints = { Ward = rgb(124, 252, 228) },
 		-- (Task 11c, Studio round 2, R6: the shielded ally drowned in an overexposed white-blue glow ball: the ladder's three
@@ -1117,6 +1386,12 @@ AttackFxCatalog.Signatures = {
 		-- (Mythic since evolved forms, Secret-grade stats by PetCatalog's StatRarity: an effect goes by the listed rarity, Sizes 1.55, band 3)
 		Name = "Lava Slam", Rarity = "Mythic", Element = "Flame", Kind = "Blast",
 		Twist = "erupts from a lava crack; magma spikes ring the target",
+		Forms = {
+			{ Name = "Magma Rift", Twist = "the ground cracks and erupts again",
+				Twists = { Aftershock = { Actor = { Key = "vfx_sig_lava_spike", At = "Target", Motion = "RingRise", Beat = "Impact", Count = 3, Tint = "Mid", Scale = 0.7, Transparency = 0.2, Radius = 2.2 } } } },
+			{ Name = "Volcano Slam", Twist = "a lava field stays where it hit",
+				Layers = { { Id = "SigLavaField", Kind = "Decal", Beat = "Impact", At = "Ground", Tint = "Mid", Size = 9, Seconds = 1.6, Linger = true } } },
+		},
 		Palette = { Core = rgb(255, 206, 96), Mid = rgb(255, 92, 24), Edge = rgb(150, 28, 8), Hot = rgb(255, 238, 150), Smoke = rgb(74, 44, 36) },
 		Core = { Key = "vfx_chunk", Scale = 1.5, Transparency = 0, InnerTint = "Hot" },
 		Skip = { Slash = true },
@@ -1141,6 +1416,12 @@ AttackFxCatalog.Signatures = {
 	rime_wyrmling = {
 		Name = "Glacier Breath", Rarity = "Secret", Element = "Frost", Kind = "Freeze",
 		Twist = "breathes a glacier that rises around the target",
+		Forms = {
+			{ Name = "Ice Prison", Twist = "glacier walls stay and chill enemies",
+				Layers = { { Id = "SigPrison", Kind = "Decal", Beat = "Impact", At = "Ground", Tint = "Core", Size = 7, Seconds = 1.2, Linger = true } } },
+			{ Name = "Glacier Shatter", Twist = "the whole glacier shatters outward",
+				Twists = { Shatter = { Actor = { Key = "vfx_sig_glacier", At = "Target", Motion = "Shatter", Beat = "Impact", Count = 3, Scale = 0.6, Tint = "Mid", Material = "Glass", Transparency = 0.45, Radius = 2.8 } } } },
+		},
 		-- (Studio findings round: the glacier buried the target's flinch) thinner: 0.55 -> 0.66
 		Core = { Key = "vfx_sig_glacier", Transparency = 0.66 },
 		Beats = { Travel = 0.35 },
@@ -1157,6 +1438,12 @@ AttackFxCatalog.Signatures = {
 		-- (Mythic since evolved forms, Secret-grade stats by PetCatalog's StatRarity: an effect goes by the listed rarity, Sizes 1.55, band 3)
 		Name = "Void Fangs", Rarity = "Mythic", Element = "Shadow", Kind = "Rally",
 		Twist = "void serpent heads rise behind the pet and roar",
+		Forms = {
+			{ Name = "Void Chorus", Twist = "the serpent heads roar and speed lines stream",
+				Layers = { { Id = "SigChorus", Kind = "Trail", Texture = "fx_speedlines", Beat = "Linger", At = "Allies", Tint = "Hot", Linger = true } } },
+			{ Name = "Hydra's Hunger", Twist = "the heads feed the Special meter",
+				Layers = { { Id = "SigHunger", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Self", Level = true, Tint = "Hot", Grow = 0.9, Transparency = 0.4, NoLow = true } } },
+		},
 		-- (Task 11d, Studio round 3, S5: 7-8 studs tall and rooted in front of the pet from the /fx camera, the necks hid it
 		-- and its name tag) "Behind" = just past the pet's body AWAY from the viewer, the tallest top at most 0.3 over the
 		-- pet's head (AttackFx MOVE.Actor RiseRoar); 0.25 see-through
@@ -1166,6 +1453,44 @@ AttackFxCatalog.Signatures = {
 		-- (attack effects, 2026-11-01: a support cast has no Shockwave now, its tweak went with it)
 		Core = { Grow = 2 },
 		Tweak = { AllyRing = { Grow = 0.65 } },
+	},
+	-- (evolved forms) the pets of the spec's tables with no signature of their own: Plain = the kind's recipe at the start, only the forms are theirs. None draws a mesh of its own
+	aurora_fox = {
+		Name = "Aurora Beam", Plain = true, Rarity = "Epic", Element = "Frost", Kind = "Beam",
+		Forms = {
+			{ Name = "Aurora Mark", Twist = "a wider ribbon that leaves a glowing mark", Core = { ThickK = 1.25 }, Tints = { Spiral = rgb(140, 255, 210) },
+				Layers = { { Id = "SigAuroraMark", Kind = "Decal", Beat = "Impact", At = "Ground", Color = rgb(140, 255, 210), Size = 6, Seconds = 1.2, Linger = true } } },
+			{ Name = "Twin Aurora", Twist = "two ribbons of light, one after the other",
+				Twists = { Twin = { Core = { Transparency = 0.25 }, Tints = { Spiral = rgb(200, 150, 255), Flare = rgb(200, 150, 255) } } } },
+		},
+	},
+	-- (the crescent stands as a moon like the Dusk Storm's; the full moon is the sun disc recoloured: no new mesh)
+	moonlit_owl = {
+		Name = "Moonlight Ward", Plain = true, Rarity = "Epic", Element = "Celestial", Kind = "Shield",
+		Forms = {
+			{ Name = "Crescent Ward", Twist = "a crescent moon shield throws light back",
+				Actor = { Key = "vfx_crescent", At = "Above", Motion = "MoonRise", Beat = "Charge", Scale = 0.7, Color = rgb(226, 232, 255), Transparency = 0.25, Rim = { Color = rgb(150, 170, 255), Scale = 1.1, Transparency = 0.45 } },
+				Twists = { Thorns = { Palette = { Edge = rgb(226, 232, 255), Hot = rgb(255, 255, 255) } } } },
+			{ Name = "Full Moon Ward", Twist = "a full moon that bursts when it breaks",
+				Actor = { Key = "vfx_sig_sun_disc", At = "Allies", Motion = "Seal", Beat = "Travel", Scale = 0.6, Color = rgb(226, 232, 255), Transparency = 0.3, Rim = false },
+				Twists = { Burst = { Layers = { { Id = "SigMoonBurst", Kind = "Ring", Key = "vfx_ring", Beat = "Impact", At = "Self", Level = true, Color = rgb(226, 232, 255), Grow = 2.4, Transparency = 0.25 } } } } },
+		},
+	},
+	nebula_axolotl = {
+		Name = "Stardust Swirl", Plain = true, Rarity = "Epic", Element = "Water", Kind = "Haste",
+		Forms = {
+			{ Name = "Nebula Swirl", Twist = "a bigger cloud of stars around it", Slots = { Gust = "fx_stars" }, Tweak = { Gust = { Count = 14, Size = 1.2 } } },
+			{ Name = "Supernova Swirl", Twist = "stars flash on each double hit",
+				Twists = { DoubleHit = { Layers = { { Id = "SigSupernova", Kind = "Emitter", Texture = "fx_stars", Beat = "Impact", At = "Self", Count = 3, CountFixed = true, Size = 1.1 } } } } },
+		},
+	},
+	candy_unicorn = {
+		Name = "Sugar Rush", Plain = true, Rarity = "Legendary", Element = "Celestial", Kind = "Haste",
+		Forms = {
+			{ Name = "Candy Rush", Twist = "a rainbow candy trail", Tints = { Wind = rgb(255, 120, 200), Gust = rgb(140, 230, 255) }, Slots = { Gust = "fx_sparkle" } },
+			{ Name = "Sugar Frenzy", Twist = "candy bursts on each double hit",
+				Twists = { DoubleHit = { Layers = { { Id = "SigCandy", Kind = "Emitter", Texture = "fx_sparkle", Beat = "Impact", At = "Self", Color = rgb(255, 160, 220), Count = 4, CountFixed = true, Size = 1 } } } } },
+		},
 	},
 }
 
@@ -1202,12 +1527,30 @@ end
 ----------------------------------------------------------------------
 local REACTIONS = AttackFxCatalog.Reactions
 local HIT_AT = { Projectile = "Target", Swipe = "Target", Ground = "Target", Area = "Target", Self = "Self", Allies = "Allies" }
+-- (evolved forms) a twist's ladder: its Burst x BurstBoost and no more (NoBurst: not even that); the Burst's size when the twist does not say
+local TWIST_SKIP = REACTION_SKIP
+local TWIST_SKIP_ALL = merge(copy(REACTION_SKIP), { Burst = true })
+local TWIST_BURST = { Size = 0.7, Count = 0.5 }
+-- (evolved forms) the kinds with an aura, the layers that hold through it (recipe.Aura)
+local AURA_KINDS = { Rally = true, Haste = true }
+local AURA_HOLD = { AllyRing = true, Rouse = true, Wind = true, Gust = true }
 
 -- the attack definition: { Core, Beats, Skip, Layers (lists: kind / reaction layers), Detail (lists: the attack's own
 -- element detail, e.g. Nature's thorns), Slots (list), Alive?, Extras? (= the element's impact detail), Kind?, Shape?,
--- Text, Special? }
+-- Text, Special?, Twist? }
 local function attackDef(req, element, sig)
 	local attack = req.Attack
+	if req.Twist ~= nil then -- (evolved forms) a form's delayed hit: the Twists recipe
+		local tw = AttackFxCatalog.Twists[req.Twist]
+		if not tw or (attack ~= "Special" and attack ~= "Element") then
+			return nil
+		end
+		return {
+			Core = tw.Core, Beats = copy(tw.Beats), Skip = tw.NoBurst and TWIST_SKIP_ALL or TWIST_SKIP, Layers = { tw.Layers or {} }, Detail = {}, Slots = { tw.Slots or {} }, Alive = false,
+			Extras = false, Kind = (attack == "Special") and (req.Kind or (sig and sig.Kind)) or nil, Shape = tw.Shape, Text = tw.Text, BurstBoost = tw.BurstBoost or TWIST_BURST,
+			BurstShape = tw.BurstShape, Short = true, Quiet = true, ThickBand = tw.ThickBand, Twist = req.Twist,
+		}
+	end
 	if attack == "Melee" or attack == "Ranged" then
 		local entry = element[attack]
 		local base = AttackFxCatalog.Basic[attack]
@@ -1379,7 +1722,7 @@ local function buildLayer(id, tpl, ctx, scale)
 		end
 	end
 	if finite(count) then
-		layer.Count = max(1, floor(count * (scale or ctx.countScale) + 0.5))
+		layer.Count = tpl.CountFixed and count or max(1, floor(count * (scale or ctx.countScale) + 0.5))
 	end
 	layer.Tint = nil
 	layer.From = nil
@@ -1460,27 +1803,151 @@ end
 -- neither, its own layers fill the cap at every rarity and it goes without the Sparks
 local CAP_YIELD = { Hit = { "Charge", "Slash", "Trail", "Sparks" }, Special = { "Slash", "Trail", "Sparks" } }
 
-local function fitCap(recipe, attack)
+local function yieldLayer(recipe, id)
+	for i, layer in ipairs(recipe.Layers) do
+		if layer.Id == id then
+			table.remove(recipe.Layers, i)
+			recipe.Dropped = recipe.Dropped or {}
+			recipe.Dropped[#recipe.Dropped + 1] = id
+			return layer
+		end
+	end
+	return nil
+end
+
+local function fitCap(recipe, attack, elementDetail)
 	local count = isEmitterLayer(recipe.Alive) and 1 or 0
-	local hasSparks = false
+	local hasSparks, hasPulse = false, false
 	for _, layer in ipairs(recipe.Layers) do
 		if isEmitterLayer(layer) then
 			count = count + 1
 		end
 		hasSparks = hasSparks or layer.Id == "Sparks"
+		hasPulse = hasPulse or layer.Id == "Pulse"
 	end
-	if not hasSparks or count <= 6 then
-		return
-	end
-	for _, id in ipairs(CAP_YIELD[(attack == "Special") and "Special" or "Hit"]) do
-		for i, layer in ipairs(recipe.Layers) do
-			if layer.Id == id then
-				table.remove(recipe.Layers, i)
-				recipe.Dropped = { id }
-				return
+	-- (the Sparks yield as they did before the Beam had a Pulse: the Pulse takes nothing from the package)
+	if hasSparks and count - (hasPulse and 1 or 0) > 6 then
+		for _, id in ipairs(CAP_YIELD[(attack == "Special") and "Special" or "Hit"]) do
+			local gone = yieldLayer(recipe, id)
+			if gone then
+				count = count - (isEmitterLayer(gone) and 1 or 0)
+				break
 			end
 		end
 	end
+	-- (evolved forms, the owner: "today's beams look boring") a Beam still over the cap: the last of the element's impact details yields to its Pulse, the point of the
+	-- cooler beam: the Wrap and the Burst still say which element it is. With none to give, the Pulse yields (the Wrap never does)
+	if hasPulse and count > 6 then
+		for i = #(elementDetail or {}), 1, -1 do
+			local tpl = elementDetail[i]
+			if count > 6 and isEmitterLayer(tpl) and yieldLayer(recipe, tpl.Id) then
+				count = count - 1
+			end
+		end
+		if count > 6 then
+			yieldLayer(recipe, "Pulse")
+		end
+	end
+end
+
+----------------------------------------------------------------------
+-- A form's look (evolved forms): what Resolve reads where a signature alone used to stand
+----------------------------------------------------------------------
+-- an Actor with another Key replaces the one below; with none its fields merge (the Rim's and Echo's too)
+local function mergeActor(a, o)
+	if type(o) ~= "table" then
+		return a
+	end
+	if type(a) ~= "table" or (o.Key ~= nil and o.Key ~= a.Key) then
+		return copy(o)
+	end
+	for k, v in pairs(o) do
+		if (k == "Rim" or k == "Echo") and type(v) == "table" and type(a[k]) == "table" then
+			merge(a[k], v)
+		else
+			a[k] = copy(v)
+		end
+	end
+	return a
+end
+
+local LOOK_MERGED = { "Core", "Palette", "Slots", "Beats", "Tints", "Drop", "Skip" }
+local LOOK_SCALARS = { "Name", "Twist", "Alive", "DimWorld" }
+
+-- `into`, a look being built, with one more on top: its tables merge, its Layers go after, its LowKeep before (a pet's own pick first)
+local function overlay(into, o)
+	if type(o) ~= "table" then
+		return into
+	end
+	for _, field in ipairs(LOOK_MERGED) do
+		if type(o[field]) == "table" then
+			into[field] = merge(into[field] or {}, o[field])
+		end
+	end
+	if type(o.Tweak) == "table" then
+		into.Tweak = into.Tweak or {}
+		for id, fields in pairs(o.Tweak) do
+			into.Tweak[id] = merge(into.Tweak[id] or {}, fields)
+		end
+	end
+	if type(o.Layers) == "table" then
+		into.Layers = into.Layers or {}
+		for _, tpl in ipairs(o.Layers) do
+			into.Layers[#into.Layers + 1] = tpl
+		end
+	end
+	if type(o.LowKeep) == "table" then
+		local keep = copy(o.LowKeep)
+		for _, id in ipairs(into.LowKeep or {}) do
+			keep[#keep + 1] = id
+		end
+		into.LowKeep = keep
+	end
+	into.Actor = mergeActor(into.Actor, o.Actor)
+	for _, field in ipairs(LOOK_SCALARS) do
+		if o[field] ~= nil then
+			into[field] = o[field]
+		end
+	end
+	return into
+end
+
+-- the look over this attack's recipe and whether it is a pet's own: a twist = its recipe's Actor + a pet's flavour from the stage that names it; a kind's form, then the
+-- signature, then the pet's forms; an element's form; the start = the signature as it is (a Plain pet: the kind's recipe). No Form = the start, so a helper's buff stays plain
+local function lookOf(req, def, sig, elementName)
+	if def.Twist then
+		local look = { Palette = sig and copy(sig.Palette), Tints = sig and copy(sig.Tints), Actor = copy(AttackFxCatalog.Twists[def.Twist].Actor), Name = AttackFxCatalog.Twists[def.Twist].Name }
+		for n = 1, cleanStage(req.Form or req.Stage) do
+			local form = sig and type(sig.Forms) == "table" and sig.Forms[n]
+			overlay(look, form and type(form.Twists) == "table" and form.Twists[def.Twist])
+		end
+		return look, nil
+	end
+	local stage = cleanStage(req.Form)
+	if stage >= 1 and req.Attack == "Special" then
+		local look = {}
+		local shared = AttackFxCatalog.Forms[def.Kind]
+		for n = 1, stage do
+			overlay(look, shared and shared[n])
+		end
+		overlay(look, sig)
+		for n = 1, stage do
+			overlay(look, sig and type(sig.Forms) == "table" and sig.Forms[n])
+		end
+		return look, sig
+	end
+	if stage >= 1 and req.Attack == "Element" then
+		local look = {}
+		local shared = AttackFxCatalog.ElementForms[elementName]
+		for n = 1, stage do
+			overlay(look, shared and shared[n])
+		end
+		return look, nil
+	end
+	if sig and sig.Plain then
+		return nil, nil
+	end
+	return sig, sig
 end
 
 function AttackFxCatalog.Resolve(req)
@@ -1500,7 +1967,7 @@ function AttackFxCatalog.Resolve(req)
 	if not element then
 		return nil
 	end
-	local def = attackDef({ Attack = req.Attack, Kind = req.Kind, Shape = req.Shape, Element = elementName, Distance = req.Distance }, element, sig)
+	local def = attackDef({ Attack = req.Attack, Kind = req.Kind, Shape = req.Shape, Element = elementName, Distance = req.Distance, Twist = req.Twist }, element, sig)
 	if not def then
 		return nil
 	end
@@ -1510,29 +1977,31 @@ function AttackFxCatalog.Resolve(req)
 	local band = AttackFxCatalog.BandOf(rarity)
 	local mine = req.Mine == true
 	local B = AttackFxCatalog.Beats
+	-- (evolved forms) from here on the look stands where the signature did; ownSig = the pet's own signature, for recipe.Signature
+	local look, ownSig = lookOf(req, def, sig, elementName)
 
-	local palette = merge(copy(element.Palette), sig and sig.Palette)
+	local palette = merge(copy(element.Palette), look and look.Palette)
 	palette.White = WHITE
-	local refs = slotsOf(def, element, sig)
+	local refs = slotsOf(def, element, look)
 
 	-- core
 	local core = copy(def.Core)
-	merge(core, sig and sig.Core)
+	merge(core, look and look.Core)
 	core.Key = ref(core.Key, refs)
 	core.Text = nil
 	core.Layers = nil
 	for slotName in pairs(refs) do
 		core[slotName] = nil -- slot overrides that rode on the element's Melee / Ranged entry
 	end
-	local look = AttackFxCatalog.CoreLook[band]
-	core.Color = palette[look.Color] or palette.Mid
-	core.InnerColor = look.Inner and palette[(look.Inner == "White" and element.PlasmaColor) or look.Inner] or nil -- (Earth's band 4: a gold-hot heart)
-	core.RimColor = look.Rim and palette[look.Rim] or nil
-	core.RimShift = look.RimShift == true
-	core.Glow = look.Glow
-	core.Upgraded = look.Upgraded == true
+	local bandLook = AttackFxCatalog.CoreLook[band]
+	core.Color = palette[bandLook.Color] or palette.Mid
+	core.InnerColor = bandLook.Inner and palette[(bandLook.Inner == "White" and element.PlasmaColor) or bandLook.Inner] or nil -- (Earth's band 4: a gold-hot heart)
+	core.RimColor = bandLook.Rim and palette[bandLook.Rim] or nil
+	core.RimShift = bandLook.RimShift == true
+	core.Glow = bandLook.Glow
+	core.Upgraded = bandLook.Upgraded == true
 	if not (core.KeepMaterial and core.Material) then -- the Shield shell / Freeze cage stay Glass at every band
-		core.Material = look.Material or core.Material or element.Material or "Neon"
+		core.Material = bandLook.Material or core.Material or element.Material or "Neon"
 	end
 	if core.Path == "Projectile" and not core.Stretch then
 		core.Speed = core.Speed or (def.Shot and B.RangedSpeed) or B.ProjectileSpeed
@@ -1544,10 +2013,14 @@ function AttackFxCatalog.Resolve(req)
 	if type(def.ThickBand) == "table" and finite(def.ThickBand[band]) then
 		core.Thick = def.ThickBand[band]
 	end
+	if finite(core.ThickK) and core.Thick then -- (evolved forms) a form's thicker Beam / Line, the Twin's thinner one
+		core.Thick = core.Thick * core.ThickK
+	end
+	core.ThickK = nil
 	-- (Task 11) a signature's core colour: Tint / InnerTint name the Palette entries its body / hot heart take instead of
 	-- the band's (Ember's orange phoenix with a gold one inside, not the band's pale yellow round a blue-hot heart);
 	-- NoTwin = no band 3+ quarter-turned twin (a phoenix crossed with itself reads as a spinning star)
-	local sc = sig and type(sig.Core) == "table" and sig.Core or nil
+	local sc = look and type(look.Core) == "table" and look.Core or nil
 	if sc then
 		if sc.Tint and palette[sc.Tint] then
 			core.Color = palette[sc.Tint]
@@ -1562,7 +2035,7 @@ function AttackFxCatalog.Resolve(req)
 	core.Tint, core.InnerTint, core.NoTwin = nil, nil, nil
 
 	-- beats
-	local beats = merge(def.Beats, sig and sig.Beats)
+	local beats = merge(def.Beats, look and look.Beats)
 	local special = def.Special == true
 	local chargeStep = special and 0.05 or B.ChargeStep
 	local charge = beats.Charge or 0
@@ -1602,16 +2075,16 @@ function AttackFxCatalog.Resolve(req)
 		countScale = AttackFxCatalog.CountScale[band],
 		detailScale = AttackFxCatalog.DetailScale[band],
 		-- (the element's Tints, then its own take on this special kind (Task 10), then a signature's)
-		tints = (element.Tints or def.Tints or (sig and sig.Tints)) and merge(merge(copy(element.Tints or {}), def.Tints), sig and sig.Tints) or nil,
+		tints = (element.Tints or def.Tints or (look and look.Tints)) and merge(merge(copy(element.Tints or {}), def.Tints), look and look.Tints) or nil,
 		attack = req.Attack,
 		kind = def.Kind, -- the resolved kind (a signature special may come with Kind nil: Task 8 review)
 		drop = def.Drop, -- the element's Melee / Ranged Drop: shared attack layers it replaces (Water's shot: no Boom ball)
-		tweaks = sig and type(sig.Tweak) == "table" and sig.Tweak or nil,
+		tweaks = look and type(look.Tweak) == "table" and look.Tweak or nil,
 	}
-	if sig and type(sig.Drop) == "table" then -- (Task 11) the kind / element layers a signature replaces (Rime: its glacier IS the spikes)
-		ctx.drop = merge(copy(def.Drop or {}), sig.Drop)
+	if look and type(look.Drop) == "table" then -- (Task 11) the kind / element layers a signature replaces (Rime: its glacier IS the spikes)
+		ctx.drop = merge(copy(def.Drop or {}), look.Drop)
 	end
-	local sigSkip = sig and type(sig.Skip) == "table" and sig.Skip or {} -- (Task 11) ladder layers a signature trades for its own
+	local sigSkip = look and type(look.Skip) == "table" and look.Skip or {} -- (Task 11) ladder layers a signature trades for its own
 	local layers = {}
 	local myOrder = rarityOrder[rarity]
 	for _, step in ipairs(AttackFxCatalog.Ladder) do
@@ -1663,8 +2136,8 @@ function AttackFxCatalog.Resolve(req)
 		if def.Extras then
 			addExtras(layers, element.Detail, step.Tier, ctx, ctx.detailScale)
 		end
-		if sig then
-			addExtras(layers, sig.Layers, step.Tier, ctx)
+		if look then
+			addExtras(layers, look.Layers, step.Tier, ctx)
 		end
 	end
 
@@ -1680,6 +2153,17 @@ function AttackFxCatalog.Resolve(req)
 		end
 	end
 
+	-- (evolved forms) a Rally's / Haste's cast with its buff's seconds: these layers hold until the buff ends. A helper's buff has no Seconds: plain
+	local aura = nil
+	if AURA_KINDS[def.Kind] and not def.Twist and finite(req.Seconds) and req.Seconds > 0 then
+		aura = req.Seconds
+		for _, layer in ipairs(layers) do
+			if AURA_HOLD[layer.Id] then
+				layer.Linger = true
+			end
+		end
+	end
+
 	local recipe = {
 		Element = elementName,
 		Attack = req.Attack,
@@ -1691,11 +2175,13 @@ function AttackFxCatalog.Resolve(req)
 		Size = AttackFxCatalog.SizeOf(rarity, stage),
 		CloudSize = AttackFxCatalog.CloudSizeOf(rarity, stage),
 		Density = mine and 1 or AttackFxCatalog.OthersDensity,
-		Afterglow = isStrike(req.Attack, def.Kind) and AttackFxCatalog.Afterglow[band] or 0,
+		Afterglow = (not def.Twist and isStrike(req.Attack, def.Kind)) and AttackFxCatalog.Afterglow[band] or 0,
 		TailTrans = AttackFxCatalog.TailTransparency,
-		CameraPunch = kickOf(req.Attack, def.Kind, band, mine),
+		CameraPunch = not def.Twist and kickOf(req.Attack, def.Kind, band, mine),
 		ScreenGlow = mine and band == 4 and not def.Quiet,
-		Signature = sig and petId or nil,
+		Signature = ownSig and petId or nil,
+		Twist = def.Twist,
+		Aura = aura,
 		Palette = palette,
 		Text = def.Text,
 		Beats = out,
@@ -1704,19 +2190,19 @@ function AttackFxCatalog.Resolve(req)
 		Layers = layers,
 		-- (Task 11: a signature may leave the element's alive detail out (Alive = false: Sunbeam's ward has no bouncing rocks)
 		-- or tint it, Tints.Alive: Obsidian's embers burn violet)
-		Alive = (def.Alive and not (sig and sig.Alive == false)) and aliveOf(element, palette, ctx.detailScale, sig and sig.Tints) or {},
+		Alive = (def.Alive and not (look and look.Alive == false)) and aliveOf(element, palette, ctx.detailScale, look and look.Tints) or {},
 		LowKeep = {},
 	}
-	fitCap(recipe, req.Attack)
+	fitCap(recipe, req.Attack, def.Extras and element.Detail or nil)
 	-- Low quality's second emitter after the Burst (AttackFx: MAX_EMITTERS.Low 2): the kind's pick, then the attack's,
 	-- then the element's; the engine keeps the first one this effect has
-	for _, list in ipairs({ (sig and sig.LowKeep) or {}, def.LowKeep or {}, element.LowKeep or {} }) do -- (a signature's own pick first)
+	for _, list in ipairs({ (look and look.LowKeep) or {}, def.LowKeep or {}, element.LowKeep or {} }) do -- (a signature's own pick first)
 		for _, id in ipairs(list) do
 			recipe.LowKeep[#recipe.LowKeep + 1] = id
 		end
 	end
-	if sig then
-		local actor = copy(sig.Actor)
+	if ownSig or (look and look.Actor) then -- (evolved forms: a shared form's or a twist's Actor too)
+		local actor = copy(look.Actor)
 		if actor then
 			actor.Color = actor.Color or palette[actor.Tint or "Mid"] or palette.Mid
 			actor.Tint = nil
@@ -1725,7 +2211,7 @@ function AttackFxCatalog.Resolve(req)
 				actor.Rim.Tint = nil
 			end
 		end
-		recipe.Sig = { Name = sig.Name, Twist = sig.Twist, Actor = actor, DimWorld = sig.DimWorld }
+		recipe.Sig = { Name = look.Name, Twist = look.Twist, Actor = actor, DimWorld = look.DimWorld }
 	end
 	return recipe
 end
@@ -1778,6 +2264,7 @@ function AttackFxCatalog.Unit(info)
 		Stage = cleanStage(info.evo),
 		PetId = petId,
 		Ranged = info.ranged == true,
+		Form = type(info.special) == "table" and info.special.Form or nil,
 	}
 end
 

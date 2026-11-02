@@ -311,17 +311,17 @@ local function serverScenarios()
 		end
 		same:report()
 
-		local sigs = T.tally("afx readable: the 12 signatures resolve at Stage 2 with Size <= 2.08, <= 6 emitters, <= 3 lights")
+		local sigs = T.tally("afx readable: the 16 signatures (12 + 4 Plain) resolve at Stage 2, Form 2 with Size <= 2.08, <= 6 emitters, <= 3 lights")
 		local n = 0
 		for petId, sig in pairs(C.Signatures) do
 			n = n + 1
-			local r = C.Resolve({ Attack = "Special", PetId = petId, Element = sig.Element, Kind = sig.Kind, Rarity = sig.Rarity, Stage = 2, Mine = true })
+			local r = C.Resolve({ Attack = "Special", PetId = petId, Element = sig.Element, Kind = sig.Kind, Rarity = sig.Rarity, Stage = 2, Form = 2, Mine = true })
 			local lights = r and lightsOf(r) or {}
 			local ok = r ~= nil and r.Size <= 2.08 + 1e-9 and emitterCount(r) <= 6 and #lights <= 3
 			sigs:case(ok, fmt("%s: size %s, %d emitters, %d lights", petId, tostring(r and r.Size), r and emitterCount(r) or -1, #lights))
 		end
 		sigs:report()
-		T.check(n == 12, "afx readable: 12 signatures", tostring(n))
+		T.check(n == 16, "afx readable: 16 signatures", tostring(n))
 	end)
 
 	return S

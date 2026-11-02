@@ -334,7 +334,7 @@ local SIG_SPEC = {
 	twilight_dragon = { Core = "vfx_star", Actor = "vfx_crescent", Rim = true, Ids = { "Cloud", "Rain", "SigDusk" } },
 	cloudy_dragon = { Actor = "vfx_sig_cloud_dragon", Ids = { "SigCloud", "Spiral", "Wrap" } },
 	starlight_unicorn = { Actor = "vfx_sig_wish_star", Rim = true, Ids = { "SigShower", "Spiral" } },
-	stormfang = { Actor = "vfx_sig_wolf", Rim = true, Ids = { "SigBolts", "Leap" }, Not = { "DoubleArc" } },
+	stormfang = { Ids = { "SigShock", "SigSlamBolts", "Leap" }, Not = { "DoubleArc", "SigBolts" } }, -- (evolved forms: a plain storm pounce at the start; the wolves are its forms)
 	eclipse_dragon = { Actor = "vfx_sig_black_sun", Rim = true, Ids = { "SigCorona", "Dome", "Blastwave" }, Not = { "Slash" }, Dim = true },
 	obsidian_phoenix = { Actor = "vfx_sig_phoenix_wing", Rim = true, Ids = { "Cloud", "Rain" } },
 	phantom_kitsune = { Actor = "vfx_sig_fox_orb", Ids = { "Ward" } },
@@ -433,9 +433,9 @@ local function signatureCatalog(C, tex, cores)
 		"p7vfx catalog: Magma Cub: a solid molten boulder with a yellow-hot heart, the lava crack opens under the target before the impact, 5 magma spikes ring the target")
 	T.check(ri.Core.Transparency >= 0.55 and ri.Core.Material == "Glass" and sigLayer(ri, "SigBreath").Kind == "Beam" and sigLayer(ri, "SigSnow").Along == true,
 		"p7vfx catalog: Rime Wyrmling: a see-through glass glacier (>= 0.55), a frost-breath beam with snow streaming along it")
-	T.check(sigLayer(sf, "SigBolts").KeepCount == 2 and sf.Sig.Actor.Motion == "ChargeThrough" and ob.Sig.Actor.Motion == "Sweep" and ob.Core.Spread == true and type(ob.Sig.Actor.Echo) == "table" and typeof(ob.Sig.Actor.Echo.Color) == "Color3" and tw.Sig.Actor.Motion == "MoonRise" and ks.Sig.Actor.Count == 9
+	T.check(sigLayer(sf, "SigSlamBolts").KeepCount == 2 and sf.Sig.Actor == nil and ob.Sig.Actor.Motion == "Sweep" and ob.Core.Spread == true and type(ob.Sig.Actor.Echo) == "table" and typeof(ob.Sig.Actor.Echo.Color) == "Color3" and tw.Sig.Actor.Motion == "MoonRise" and ks.Sig.Actor.Count == 9
 		and ec.Sig.Actor.Motion == "Eclipse" and ec.Sig.DimWorld > 0 and ec.Sig.DimWorld <= 1,
-		"p7vfx catalog: Stormfang keeps its 2 bolts, the wolf charges through; Obsidian's phoenix sweeps the field (no dive) with trailing black-flame echoes and rains on every target; Twilight's dusk moon rises; nine fox orbs; the black sun bursts after a short dim")
+		"p7vfx catalog: Stormfang's start keeps its slam's 2 bolts, no wolf (evolved forms); Obsidian's phoenix sweeps the field (no dive) with trailing black-flame echoes and rains on every target; Twilight's dusk moon rises; nine fox orbs; the black sun bursts after a short dim")
 	-- (Task 11c, review M2) every signature Tweak names a layer its recipe has at the pet's own rarity, sets only the
 	-- whitelisted fields, and lands on that layer (a Count as the full-density count, scaled like the template's)
 	local tweakBad = {}
@@ -761,18 +761,18 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	end
 	ranges:report()
 
-	-- signatures: exactly the 12 spec pets, on their special only
+	-- signatures: exactly the 12 spec pets, on their special only (evolved forms: + the 4 Plain ones, signatures only through their forms)
 	local sigKeys = {}
 	for k in pairs(type(C.Signatures) == "table" and C.Signatures or {}) do
 		sigKeys[#sigKeys + 1] = k
 	end
 	table.sort(sigKeys)
-	local want = {}
+	local want = { "aurora_fox", "moonlit_owl", "nebula_axolotl", "candy_unicorn" }
 	for _, id in ipairs(SIGNATURE_PETS) do
 		want[#want + 1] = id
 	end
 	table.sort(want)
-	T.check(table.concat(sigKeys, ",") == table.concat(want, ","), "p7vfx catalog: Signatures are keyed by the 12 spec pets", table.concat(sigKeys, ","))
+	T.check(table.concat(sigKeys, ",") == table.concat(want, ","), "p7vfx catalog: Signatures are keyed by the 12 spec pets + the 4 Plain ones", table.concat(sigKeys, ","))
 	local isSig = {}
 	for _, id in ipairs(SIGNATURE_PETS) do
 		isSig[id] = true
@@ -810,6 +810,20 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	end
 	sigT:report(pets .. " pets")
 	sigOk:report()
+	-- (evolved forms: a mesh may be a form's or a form's twist's alone: the wolf is Stormfang's forms')
+	local function usedActor(actor)
+		if type(actor) == "table" and actor.Key then
+			usedSig[actor.Key] = true
+		end
+	end
+	for _, s in pairs(C.Signatures) do
+		for _, form in ipairs(s.Forms or {}) do
+			usedActor(form.Actor)
+			for _, flavour in pairs(form.Twists or {}) do
+				usedActor(flavour.Actor)
+			end
+		end
+	end
 	local unused = {}
 	for _, k in ipairs(coreList) do
 		if string.sub(k, 1, 8) == "vfx_sig_" and not usedSig[k] then
@@ -1209,10 +1223,10 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 	-- Phoenix Flare is a Blast) still leaves out Flame's Smoke (Except Blast), like the same Blast asked by name
 	local sigNil = C.Resolve({ Element = "Flame", Attack = "Special", PetId = "ember_phoenix", Rarity = "Legendary", Mine = true })
 	local sigNamed = C.Resolve({ Element = "Flame", Attack = "Special", Kind = "Blast", PetId = "ember_phoenix", Rarity = "Legendary", Mine = true })
-	local plainStorm = C.Resolve({ Element = "Flame", Attack = "Special", Kind = "Beam", Rarity = "Legendary", Mine = true })
+	local plainStorm = C.Resolve({ Element = "Flame", Attack = "Special", Kind = "Pounce", Rarity = "Legendary", Mine = true })
 	T.check(sigNil and sigNil.Kind == "Blast" and layerById(sigNil, "Smoke") == nil and sigNamed and layerById(sigNamed, "Smoke") == nil
 		and plainStorm and layerById(plainStorm, "Smoke") ~= nil,
-		"p7vfx catalog: Except matches the resolved kind (a signature Blast with Kind nil leaves out Flame's Smoke; a Beam keeps it)")
+		"p7vfx catalog: Except matches the resolved kind (a signature Blast with Kind nil leaves out Flame's Smoke; a Pounce keeps it; evolved forms: a Beam gives it to its Pulse)")
 
 	-- Task 9: Low quality's 2 emitters are chosen on purpose: the Burst + the element's most characteristic emitter
 	-- (recipe.LowKeep, the kind's / attack's pick first); every element's Melee and Ranged have one of them, at every rarity

@@ -552,10 +552,11 @@ local function clientScenarios()
 		KC.advance(15)
 	end
 
-	-- a melee Epic+ fighter with no signature of its own (a signature re-points the kind's layers): evolves twice
+	-- a melee Epic+ fighter with no signature of its own (a signature re-points the kind's layers; evolved forms: a Plain one has its kind's recipe, until its forms): evolves twice
 	local function plainPet(PC, Cat, BCat)
 		for _, def in ipairs(PC.Pets) do
-			if def.Rarity == "Epic" and not Cat.Signatures[def.Id] and def.Role ~= "Economy" and not def.EventOnly and BCat.ProfileOf(def).Attack == "Melee" then
+			local sig = Cat.Signatures[def.Id]
+			if def.Rarity == "Epic" and (not sig or sig.Plain) and def.Role ~= "Economy" and not def.EventOnly and BCat.ProfileOf(def).Attack == "Melee" then
 				return def.Id
 			end
 		end
