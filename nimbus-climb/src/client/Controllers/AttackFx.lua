@@ -18,7 +18,11 @@
 --               Radius (Cone reach / Circle radius, default 9 / 8; Special Blast / Freeze / Storm, default 7 / 6 / 6),
 --               Length (Line, default 24; Special Beam, default 26), Width (Line / Beam, default 4: eff.WidthScale = Width / 4)
 --               (the numbers the server used: an evolved pet's areas are drawn as they hit),
---               Ground (world Y of the floor under From; default From.Y - 1.6), Now (the clock; default os.clock()) }
+--               Ground (world Y of the floor under From; default From.Y - 1.6), Now (the clock; default os.clock()),
+--               (evolved forms, 2026-11-02:) Form (a Special's / an Element's stage: absent = the plain recipe), Twist (a form's delayed hit: AttackFxCatalog.Twists; no pose on the caster),
+--               Line = { X0, Z0, Angle, Length, Width } (world: a Pounce's real charge line, the wolves run on it; none: from 8 studs behind the caster through the target),
+--               Seconds (a Rally's / Haste's: how long from now its aura holds; a predicted charge's Seconds stay the wait), Scale (a Rally's bigger pet),
+--               Center (world: where an Element Circle lands, a ranged pet's aim point; default the caster), Band (Rockspire's ring: its depth), AimFixed (with Angle: the aim never follows a target) }
 --       Play writes ctx.ImpactLate = seconds the impact lands after DueAt (0 unless a Ranged shot's MinTravel needed
 --       more time than DueAt left; BattleController then plays the Hit that much later).
 --       A point is Model:GetPivot() while the Model is in the game, else its last known point, else Pos: a unit
@@ -43,6 +47,8 @@
 --       / the caster's PB_Scale (the leap's only clamp: PetPoses' LEAP_REACH_MAX is a safety ceiling that a reach from
 --       here never meets, so a small pet lands as far as a big one). src / tgt = { Model?, Last = Vector3 }
 --   AttackFx.Cancel(unitId)         drops the unit's pose and ends the effects it cast (a unit swapped out / gone)
+--   AttackFx.EndAura(unitId?) -> bool  (evolved forms) the unit's Rally / Haste aura ends now (nil = every aura): the kits it held go back, the pet is its size again; its beats play on
+--   AttackFx.AuraLeft(unitId, now?) -> seconds | nil   how long the unit's aura still has to run
 --   AttackFx.ClearAll()             ends everything (the battle is over)
 --   AttackFx.SetQuality("Low" | "High" | nil)   nil = follow client/GraphicsQuality.Effective(). Low: emitters per
 --       effect <= 2 (the Burst, then the first of the recipe's LowKeep it has: the element's most characteristic one),
@@ -52,8 +58,8 @@
 --       Live = full effects, Stepped = stepped-down ones, Tails = effects past their beats with only their lingering marks left,
 --       the rest = kits held by live effects / pooled kits
 --   AttackFx.Hooks = { Punch = fn(amount, seconds), ScreenGlow = fn(color, seconds), DimWorld = fn(seconds, token, unit),
---                      Undim = fn(token), Inhale = fn(seconds, token, mine), Hush = fn(token), Shatter = fn(mine, unit) }
---       set by the caller: the camera kick (own attacks, recipe.CameraPunch: by kind and band, about 0.15 s, amount <= PUNCH_MAX
+--                      Undim = fn(token), Inhale = fn(seconds, token, mine), Hush = fn(token), Shatter = fn(mine, unit), AuraScale = fn(unit, k) }
+--       set by the caller: AuraScale (evolved forms) = a Rally's bigger pet, k at the impact and 1 when it ends for any reason (the From model's "AuraScale" attribute says the same; a look only); the camera kick (own attacks, recipe.CameraPunch: by kind and band, about 0.15 s, amount <= PUNCH_MAX
 --       0.35, basic hits at most once per its Gap: route it through BattleController's Me.Shake / ShakeScale path), the edge glow
 --       (own pet, band 4) and a signature's dimming
 --       (own pet: Eclipse Nova; seconds = from now to the recipe's Sig.DimWorld after the impact, token = a number of
@@ -79,6 +85,8 @@
 -- recipe.Afterglow x Density (0 at Low, on a miss and on a predicted charge). Past TailAt an effect is a tail (eff.Tail): its
 -- Linger layers alone (the ground marks, the embers) stay on, dim, still and only fading, so nobody dodges a ghost; everything else went
 -- back to the pool and its dim / inhale ended, as they did before there were tails.
+-- An aura (evolved forms: recipe.Aura, a Rally / Haste with its buff's Seconds) is a tail too: eff.AuraRel = when it ends; its Linger layers (AllyRing, Rouse, Wind, Gust) hold and
+-- follow the pet until then, and MAX_TAILS never finishes it: it ends with the buff (EndAura, the Seconds), a KO, a swap or a switch to Low.
 -- Budget: MAX_LIVE (10) full effects; over it a play steps down one rarity band (MAX_STEPPED more at most), then
 -- Play returns false. A tail counts in neither; MAX_TAILS (12) of them at once, a newer one finishes the oldest. Per effect: MAX_EMITTERS (6 High / 2 Low) ParticleEmitters, MAX_BEAMS, MAX_TRAILS,
 -- MAX_LIGHTS, MAX_CORES solid pieces. Over a cap the layers are RANKED, never cut in catalog order: emitters by
@@ -111,7 +119,7 @@
 -- (flash, bloom pulse, the colour-shifting plasma rim), Ring (vfx_ring / vfx_shell expanding), Mesh (vfx_* pieces
 -- erupting). Layer Delay = seconds after its beat starts; At "Behind" = behind the caster. Unknown motions play as
 -- a plain burst. The signature Actor (vfx_sig_*) moves by its Motion (SpiralUp, ChargeThrough, Eclipse, Sweep,
--- WishRise, Seal, FoxFire, RingRise, RiseRoar, MoonRise, Rise: see MOVE.Actor); Task 11: it is built right after the core (the
+-- WishRise, Seal, FoxFire, RingRise, RiseRoar, MoonRise, Rise, PackCharge, Shatter: see MOVE.Actor); Task 11: it is built right after the core (the
 -- piece cap never cuts it), Count x Density pieces for others' pets, Rim = a bigger glowing copy behind each piece, Echo =
 -- dimmer copies trailing it along its path (Obsidian's black-flame wings); Low quality builds neither (fix round 1, M1).
 -- A Storm core with Spread = true rains on EVERY target (round robin), not round the aimed one (Obsidian: the enemies in
@@ -147,7 +155,7 @@ AttackFx.HIT_STOP = 0.05
 AttackFx.MAX_RIMS = 3
 AttackFx.CUE_MIN = 0.15
 AttackFx.SHATTER = 0.45
-AttackFx.Hooks = { Punch = nil, ScreenGlow = nil, DimWorld = nil, Undim = nil, Inhale = nil, Hush = nil, Shatter = nil }
+AttackFx.Hooks = { Punch = nil, ScreenGlow = nil, DimWorld = nil, Undim = nil, Inhale = nil, Hush = nil, Shatter = nil, AuraScale = nil }
 
 -- (attack effects, 2026-11-01) the Specials with a drawn radius: eff.Reach when ctx.Radius did not come (BattleCatalog's numbers)
 local SPECIAL_RADIUS = { Blast = 7, Freeze = 6, Storm = 6 }
@@ -211,6 +219,22 @@ local K = {
 	-- round, its brightness stops at 2 after the crit (a signature's own light over that keeps its number)
 	LIGHT_SIZE = 1.4,
 	LIGHT_BRIGHT = 2,
+	-- (evolved forms) the pack on the real charge line (MOVE.Actor PackCharge)
+	PACK_BEHIND = 8, -- no Line: it starts this far behind the caster ...
+	PACK_PAST_TARGET = 3, -- ... and ends this far past the target (BattleCatalog's Pounce line)
+	PACK_GAP = 0.08, -- the stagger between wolves
+	PACK_MIN = 0.3, -- a wolf runs to the target for at least this long: a charge cut to the event still shows it
+	PACK_PAST = 0.25, -- ... from the target to the line's end for this long
+	PACK_FADE = 0.15, -- ... and fades over this
+	PACK_SPREAD = 1.2, -- how far across the line the outer wolves run (x size, <= half the line's width)
+	PACK_NEAR = 0.25, -- the share of that left as they pass the target, so all of them reach it
+	PACK_CLOSE = 0.35, -- ... closing over this share of the line round it
+	SHATTER_RADIUS = 2.4, -- studs (x size) a Shatter actor's pieces fly out, unless the actor says
+	-- (evolved forms) a held layer (an aura's Linger)
+	AURA_LIFE = 0.5, -- its stream stops this long before the aura's end: the last particles end with it
+	AURA_RATE = 0.75, -- its stream's particles a second, x the layer's Count
+	AURA_FADE = 0.3, -- its ring fades over this at the end
+	WIND_SPIN = 7, -- radians a second round the pet
 }
 AttackFx.POOL_KEEP_TOTAL = K.KEEP.Emitter + K.KEEP.Beam + K.KEEP.Trail + K.KEEP.Light + K.KEEP.Disc + K.KEEP.Rim + K.CORE_KEEP * K.CORE_KEYS
 
@@ -728,7 +752,7 @@ local function hitOf(eff)
 	elseif eff.Area == "Line" then
 		hit = eff.S + eff.Dir * (eff.Reach * 0.5)
 	elseif eff.Area == "Circle" then
-		hit = eff.S
+		hit = eff.Center or eff.S -- (evolved forms: a ranged pet's Circle lands on its aim point)
 	else
 		hit = eff.T[1] or (eff.S + eff.Dir * 8)
 	end
@@ -750,7 +774,7 @@ local function refresh(eff)
 		end
 	end
 	local first = eff.T[1]
-	if first and not eff.Area then
+	if first and not eff.Area and not eff.AimFixed then
 		local d = flat(first - eff.S)
 		if d.Magnitude > 0.2 then
 			eff.Dir = d.Unit
@@ -1056,9 +1080,17 @@ MOVE.Star = function(eff, it, t)
 	return face(p, eff.Dir) * CFrame.Angles(0, t * 6, 0), ONE * outBack(seg(u, 0, 0.2)), fadeTo(it, smooth(seg(u, 0.7, 1)))
 end
 
--- a fanned blade flying out (the Cone element attack)
+-- a fanned blade flying out (the Cone element attack); Back: from the cone's end back to the pet (Maelstrom)
 MOVE.Fly = function(eff, it, t)
 	local T = eff.Times
+	if it.Back then
+		if t < T.Impact then
+			return nil
+		end
+		local u = 1 - outCubic(seg(t, T.Impact, it.T1 - 0.1))
+		local d = eff.Dir * cos(it.Ang) + eff.Right * sin(it.Ang)
+		return face(eff.Mouth + d * (eff.Reach * 0.85 * u), -d), ONE * ((0.6 + 0.7 * u) * outBack(seg(t, T.Impact, T.Impact + 0.08))), fadeTo(it, smooth(seg(t, it.T1 - 0.1, it.T1)))
+	end
 	if t < T.Release then
 		return nil
 	end
@@ -1195,6 +1227,9 @@ AttackFx._FieldLine = fieldLine -- (tests)
 --                  upright, rocking
 --   RingRise       (Magma Cub) MOVE.Rise in a ring round the target (set in buildActor); Rise (and unknown motions):
 --                  comes up into place, holds, fades
+--   PackCharge     (evolved forms: Stormfang's wolves, a Pounce's orbs) on eff.Line, frozen at the Play: from its start through the target (FHit along it, at TA) to its end (at TE), on the
+--                  floor, Across to the side but closing on the target as it passes
+--   Shatter        (evolved forms) what broke flies apart round the hit: a cage, the glacier, the foxfire
 MOVE.Actor = function(eff, it, t)
 	local T = eff.Times
 	if t < it.T0 then
@@ -1227,6 +1262,23 @@ MOVE.Actor = function(eff, it, t)
 	elseif m == "ChargeThrough" then
 		local p = eff.Mouth:Lerp(eff.Hit + eff.Dir * 3, outCubic(u))
 		return face(p, eff.Dir), ONE * outBack(seg(u, 0, 0.15)), fadeTo(it, fade)
+	elseif m == "PackCharge" then
+		local L = eff.Line
+		local f
+		if t < it.TA then
+			local v = seg(t, it.T0, it.TA)
+			f = it.FHit * v * v -- (out of a standing start)
+		else
+			f = it.FHit + (1 - it.FHit) * seg(t, it.TA, it.TE)
+		end
+		local lat = it.Across * (K.PACK_NEAR + (1 - K.PACK_NEAR) * min(1, abs(f - it.FHit) / K.PACK_CLOSE))
+		local p = L.From + L.Dir * (f * L.Length) + L.Right * lat
+		return face(V3(p.X, groundOf(eff, p).Y + it.Base.Y * it.S / 2, p.Z), L.Dir), ONE * outBack(seg(t, it.T0, it.T0 + 0.12)), fadeTo(it, fade)
+	elseif m == "Shatter" then
+		local v = outCubic(u)
+		local out = V3(cos(it.Ang), 0, sin(it.Ang))
+		local p = eff.Hit + out * (it.Rad * v) + UP * (eff.Size * (0.5 + 1.2 * sin(pi * v)))
+		return face(p, out) * CFrame.Angles(t * 5, 0, t * 3), ONE * outBack(seg(u, 0, 0.12)), fadeTo(it, fade)
 	elseif m == "Eclipse" then
 		local spin = CFrame.Angles(0, 0, t * 1.4)
 		local hang = face(eff.Hit + UP * (4.2 * eff.Size), -eff.Dir) * spin
@@ -1594,7 +1646,12 @@ function DRAW.Trail(eff, it, t)
 	elseif it.Mode == "Wind" then
 		local c = eff.T[it.Ally] or eff.S
 		local a = u * TAU * 1.5 + it.Ally
-		p = c + V3(cos(a) * 1.4 * eff.Size, (u * 1.6 - 0.6) * eff.Size, sin(a) * 1.4 * eff.Size)
+		local y = u * 1.6 - 0.6
+		if it.Held then -- (evolved forms) an aura's wind circles at its own speed for as long as the buff lasts, breathing up and down
+			a = t * K.WIND_SPIN + it.Ally
+			y = 0.5 * sin(t * 1.7)
+		end
+		p = c + V3(cos(a) * 1.4 * eff.Size, y * eff.Size, sin(a) * 1.4 * eff.Size)
 		look = V3(-sin(a), 0, cos(a))
 	else
 		p = (eff.CorePos or eff.Hit) + eff.Right * it.Side
@@ -1716,9 +1773,14 @@ end
 ----------------------------------------------------------------------
 -- Building an effect's items
 ----------------------------------------------------------------------
--- (attack effects, 2026-11-01) does this layer outlive the beats in this effect? (a Linger layer of an effect with an Afterglow)
+-- (attack effects, 2026-11-01) does this layer outlive the beats in this effect? (a Linger layer of an effect with an Afterglow, or with an aura: evolved forms)
 local function lingers(eff, layer)
-	return layer.Linger == true and eff.Afterglow > 0
+	return layer.Linger == true and (eff.Afterglow > 0 or eff.AuraRel ~= nil)
+end
+
+-- (evolved forms) ... does it hold through this effect's aura?
+local function heldByAura(eff, layer)
+	return layer.Linger == true and eff.AuraRel ~= nil
 end
 
 local function beatStart(eff, beat)
@@ -1768,7 +1830,7 @@ local function addSolid(eff, key, it)
 	it.S = it.S or eff.Size
 	it.Trans = it.Trans or 0
 	it.T0 = it.T0 or 0
-	it.T1 = min(it.T1 or eff.TailAt, eff.TailAt)
+	it.T1 = min(it.T1 or eff.TailAt, it.Lingers and eff.EndRel or eff.TailAt) -- (a held piece: an aura's ring)
 	return addItem(eff, it)
 end
 
@@ -1873,18 +1935,19 @@ local function buildCore(eff)
 			local n = min(5, finite(core.Count) and core.Count or 3)
 			for i = 1, n do
 				local ang = (n == 1) and 0 or (-0.45 + 0.9 * (i - 1) / (n - 1))
-				addSolid(eff, key, look({ Move = MOVE.Fly, T0 = T.Release, T1 = T.Linger + 0.15, Ang = ang, Trans = (i == (n + 1) / 2) and trans or max(trans, 0.25) }))
+				-- (evolved forms: Reversed = Maelstrom's blades run back to the pet, over the whole recipe)
+				addSolid(eff, key, look({ Move = MOVE.Fly, T0 = T.Release, T1 = core.Reversed and eff.TailAt or (T.Linger + 0.15), Ang = ang, Back = core.Reversed, Trans = (i == (n + 1) / 2) and trans or max(trans, 0.25) }))
 			end
 		elseif core.Stretch then
 			-- (the recipe's Core.Thick wins: Task 8, the Line core was always 1.2 thick whatever the catalog said)
 			addSolid(eff, key, look({ Move = MOVE.Stretch, T0 = T.Travel - 0.02, Line = true, Thick = (finite(core.Thick) and core.Thick or 1.2) * eff.WidthScale }))
 		elseif key == "vfx_ring" then -- the Circle nova
 			local to = (eff.Reach * 2) / 4 / max(0.1, S)
-			addSolid(eff, key, look({ Move = MOVE.Ring, Flat = true, Anchor = "Self", T0 = T.Travel, TG = T.Impact + 0.1, TF = T.Impact, T1 = T.Linger + 0.35, From = 0.3, To = to }))
+			addSolid(eff, key, look({ Move = MOVE.Ring, Flat = true, Anchor = eff.Center and "Hit" or "Self", T0 = T.Travel, TG = T.Impact + 0.1, TF = T.Impact, T1 = T.Linger + 0.35, From = 0.3, To = to })) -- (evolved forms: a ranged pet's Circle stands on its aim point)
 		else -- the ground elements' spikes / roots over the attack's shape
 			local n = min(6, finite(core.Count) and core.Count or 4)
 			for i = 1, n do
-				local it = look({ Move = MOVE.Rise, T0 = 0, TS = T.Linger + (eff.TailAt - T.Linger) * 0.3, T1 = eff.TailAt, Anchor = "Self" })
+				local it = look({ Move = MOVE.Rise, T0 = 0, TS = T.Linger + (eff.TailAt - T.Linger) * 0.3, T1 = eff.TailAt, Anchor = eff.Center and "Hit" or "Self" })
 				local f = (i - 0.5) / n
 				if eff.Area == "Circle" then
 					local a = f * TAU
@@ -1967,9 +2030,9 @@ local function isEmitter(layer)
 	return layer.Kind == "Emitter" or (layer.Kind == "Decal" and type(layer.Texture) == "string")
 end
 
--- the beams a Beam layer asks for (addBeamLayer draws at most this many)
+-- the beams a Beam layer asks for (addBeamLayer draws at most this many; evolved forms: a KeepCount may ask past the 3, Thunder Pack's 4 strikes)
 local function beamWant(layer)
-	return min(3, max(1, finite(layer.Count) and floor(layer.Count) or 1))
+	return min(max(3, finite(layer.KeepCount) and floor(layer.KeepCount) or 0), max(1, finite(layer.Count) and floor(layer.Count) or 1))
 end
 
 -- the beam layers this effect can afford, best first, like emitterRank (Task 9 review I1 / M6: built in catalog order
@@ -2263,13 +2326,14 @@ local function tuneEmitter(eff, it, layer)
 	if finite(layer.SpeedScale) and layer.SpeedScale > 0 then
 		em.Speed = NumberRange.new(em.Speed.Min * layer.SpeedScale, em.Speed.Max * layer.SpeedScale)
 	end
-	-- particles end with the effect: the kit is reused right after it
-	local latest = eff.TailAt - it.T1
+	-- particles end with the effect: the kit is reused right after it (evolved forms: an aura's stream, with the aura)
+	local held = heldByAura(eff, layer)
+	local latest = (held and eff.EndRel or eff.TailAt) - it.T1
 	local hi = max(0.12, min(life[2], latest))
 	local lo = min(life[1], hi)
 	-- (attack effects, 2026-11-01) a lingering mark / ember: its particle lives on by the Afterglow, past `knee` (its share of the old life) only fading
 	local knee = 1
-	if lingers(eff, layer) then
+	if lingers(eff, layer) and not held then
 		hi = max(0.12, min((finite(layer.Seconds) and layer.Seconds or life[2]) + eff.Afterglow, eff.EndRel - it.T1))
 		lo = (m == "Flat") and hi or hi * 0.75 -- (no quick particle dimming out while the hit still plays)
 		knee = min(1, life[2] / hi)
@@ -2335,10 +2399,17 @@ local function addEmitterLayer(eff, layer)
 	elseif EMITTER_MOTIONS[layer.Motion] then
 		preset = layer.Motion
 	end
-	if mode == "Burst" then
-		t1 = t0
+	-- (evolved forms) in an aura it streams (a burst's preset kept) until the aura's near its end
+	local held = heldByAura(eff, layer)
+	if held then
+		mode = "Stream"
+		t1 = max(t0, eff.AuraRel - K.AURA_LIFE)
+	else
+		if mode == "Burst" then
+			t1 = t0
+		end
+		t1 = max(t0, min(t1, eff.TailAt - 0.05))
 	end
-	t1 = max(t0, min(t1, eff.TailAt - 0.05))
 	local kit = take("Emitter")
 	eff.Emitters = eff.Emitters + 1
 	local count = (finite(layer.Count) and layer.Count or 1) * eff.Recipe.Density * (eff.Low and K.LOW_COUNT or 1)
@@ -2359,7 +2430,7 @@ local function addEmitterLayer(eff, layer)
 	end
 	local it = addItem(eff, {
 		Kind = "Emitter", Kit = kit, Layer = layer, At = at, T0 = t0, T1 = t1, Mode = mode, Preset = preset, Stream = stream,
-		Count = count, Rate = count / max(0.05, t1 - t0), Acc = 1, Pts = {}, Flat = preset == "Flat", Fn = DRAW.Emitter, Lift = lift, Lingers = lingers(eff, layer),
+		Count = count, Rate = held and (count * K.AURA_RATE) or (count / max(0.05, t1 - t0)), Acc = held and (count * 0.5) or 1, Pts = {}, Flat = preset == "Flat", Fn = DRAW.Emitter, Lift = lift, Lingers = lingers(eff, layer),
 	})
 	tuneEmitter(eff, it, layer)
 end
@@ -2381,7 +2452,7 @@ local function addBeamLayer(eff, layer, allow)
 	elseif layer.Strike then -- (Studio findings round) bolts strike down round the hit from the beat (the Pounce slam)
 		mode, t1 = "Strike", t0 + 0.35
 	elseif at == "Path" then
-		mode, t1 = "Path", T.Impact + 0.08
+		mode, t1 = "Path", T.Impact + (finite(layer.Seconds) and layer.Seconds or 0.08) -- (evolved forms: Seconds = a twist's bolt, drawn at its impact)
 	else
 		mode, t1 = "Arc", T.Impact + 0.15
 	end
@@ -2482,7 +2553,8 @@ local function addTrailLayer(eff, layer)
 		local hw = 0.45 * eff.Size
 		kit.A0.Position = V3(0, hw, 0)
 		kit.A1.Position = V3(0, -hw, 0)
-		addItem(eff, { Kind = "Trail", Kit = kit, Layer = layer, Mode = spec.Mode, Ally = spec.Ally, Side = spec.Side, T0 = t0, T1 = max(t0 + 0.05, t1), Fn = DRAW.Trail })
+		local held = heldByAura(eff, layer) -- (evolved forms) an aura's wind: until the aura ends
+		addItem(eff, { Kind = "Trail", Kit = kit, Layer = layer, Mode = spec.Mode, Ally = spec.Ally, Side = spec.Side, T0 = t0, T1 = held and eff.AuraRel or max(t0 + 0.05, t1), Fn = DRAW.Trail, Lingers = held or nil, Held = held or nil })
 	end
 end
 
@@ -2570,11 +2642,22 @@ local function addRingLayer(eff, layer)
 		return
 	end
 	if layer.At == "Allies" then -- (Task 10: the Rally lights up each ally) one ring under each ally (<= MAX_ALLIES)
+		local held = heldByAura(eff, layer) -- (evolved forms) an aura's ring stays under its pet, fading only at the end
 		for i = 1, min(K.MAX_ALLIES, max(1, #eff.T)) do
 			addSolid(eff, key, {
 				Layer = layer, Move = MOVE.Ring, Flat = true, Anchor = eff.T[i] and i or "Self", Color = layer.Color, Material = Enum.Material.Neon,
-				Trans = finite(layer.Transparency) and layer.Transparency or 0.1, T0 = t0, TG = t0 + 0.35, TF = t0 + 0.12,
-				T1 = min(eff.TailAt, t0 + 0.6), From = 0.4, To = finite(layer.Grow) and layer.Grow or 1.3, Spin = 1.5,
+				Trans = finite(layer.Transparency) and layer.Transparency or 0.1, T0 = t0, TG = t0 + 0.35, TF = held and (eff.AuraRel - K.AURA_FADE) or (t0 + 0.12),
+				T1 = held and eff.AuraRel or min(eff.TailAt, t0 + 0.6), From = 0.4, To = finite(layer.Grow) and layer.Grow or 1.3, Spin = 1.5, Lingers = held or nil,
+			})
+		end
+		return
+	end
+	if layer.Each == true then -- (evolved forms: a Beam's mark) a level ring on each target (<= MAX_ALLIES)
+		for i = 1, min(K.MAX_ALLIES, #eff.T) do
+			addSolid(eff, key, {
+				Layer = layer, Move = MOVE.Ring, Anchor = i, Color = layer.Color, Material = Enum.Material.Neon,
+				Trans = finite(layer.Transparency) and layer.Transparency or 0.1, T0 = t0, TG = t0 + 0.25, TF = t0 + 0.1,
+				T1 = min(eff.TailAt, t0 + 0.5), From = 0.4, To = finite(layer.Grow) and layer.Grow or 1.3,
 			})
 		end
 		return
@@ -2657,6 +2740,9 @@ end
 
 local function addLayer(eff, layer, beams)
 	local kind = layer.Kind
+	if eff.Low and layer.NoLow then -- (evolved forms: a Rally's / Haste's stage rings: simple on Graphics Low)
+		return
+	end
 	if isEmitter(layer) then
 		addEmitterLayer(eff, layer)
 	elseif kind == "Decal" then
@@ -2788,6 +2874,22 @@ local function buildActor(eff)
 				it.TF = T.Impact + (it.T1 - T.Impact) * 0.5
 			elseif motion == "ChargeThrough" then
 				it.T0, it.T1, it.TF = T.Travel, T.Linger + 0.2, T.Impact + 0.05
+			elseif motion == "PackCharge" then
+				local L = eff.Line
+				it.TA = max(T.Impact, T.Travel + K.PACK_MIN)
+				-- (each a beat behind the one before, all on the target at the impact; the last ones run on a little later)
+				local lag = min(K.PACK_GAP * (i - 1), (it.TA - T.Travel) * 0.6)
+				it.T0 = T.Travel + lag
+				it.TE = it.TA + K.PACK_PAST + lag
+				it.T1 = it.TE + K.PACK_FADE
+				it.TF = it.TE - 0.05
+				it.FHit = max(0.05, min(0.95, (eff.Hit - L.From):Dot(L.Dir) / max(0.1, L.Length)))
+				it.Across = (n > 1) and ((i - (n + 1) / 2) / ((n - 1) / 2) * min(K.PACK_SPREAD * eff.Size, L.Width / 2)) or 0
+			elseif motion == "Shatter" then
+				it.Ang = (i - 1) / n * TAU + hash(i, 48) * 0.5
+				it.Rad = (finite(actor.Radius) and actor.Radius or K.SHATTER_RADIUS) * eff.Size
+				it.T1 = it.T0 + 0.7
+				it.TF = it.T0 + 0.25
 			elseif motion == "Eclipse" then
 				it.T1 = min(eff.TailAt, T.Impact + 0.7)
 			elseif motion == "Sweep" then -- (the pass, 0.64 s, centred on the impact; with a cut charge from the first frame)
@@ -2813,6 +2915,10 @@ local function buildActor(eff)
 				it.Move = MOVE.Rise
 				-- (Task 11c R5: the ring's Radius, studs x size: Lava Slam's spikes spread so the target shows between them)
 				local rad = (finite(actor.Radius) and actor.Radius or 2.5) * eff.Size
+				-- (evolved forms) ReachK: on the area itself, x its real radius, in the middle of its Band (Rockspire, Fissure)
+				if finite(actor.ReachK) then
+					rad = eff.Reach * actor.ReachK + (eff.Band or 0) / 2
+				end
 				it.OffR, it.OffD = cos(a) * rad, sin(a) * rad
 				it.TR = t0 + 0.03 * (i - 1)
 				it.TS = T.Linger + (eff.TailAt - T.Linger) * 0.3
@@ -2961,7 +3067,9 @@ local function schedulePoses(eff, now)
 	local ranged = A == "Ranged"
 	local segs = {}
 	local offensive = eff.Path ~= "Self" and eff.Path ~= "Allies"
-	if A == "Melee" or A == "Ranged" or (A == "Element" and eff.Area ~= "Circle") or (A == "Special" and r.Kind == "Pounce") then
+	if r.Twist then -- (evolved forms) a form's delayed hit: the caster does not cast again; whoever it reached flinches (To = the struck, BattleController)
+		offensive = eff.Path ~= "Allies"
+	elseif A == "Melee" or A == "Ranged" or (A == "Element" and eff.Area ~= "Circle") or (A == "Special" and r.Kind == "Pounce") then
 		if T.Release > 0.04 then
 			segs[#segs + 1] = { Name = "Windup", T0 = st, Dur = T.Release, Ranged = ranged }
 		end
@@ -3002,7 +3110,9 @@ local function schedulePoses(eff, now)
 	elseif A == "Victory" then
 		segs[1] = { Name = "Victory", T0 = st, Dur = K.VICTORY }
 	end
-	setPoses(eff.Unit, segs, now)
+	if not r.Twist then
+		setPoses(eff.Unit, segs, now)
+	end
 	if offensive and not eff.Miss and (A == "Melee" or A == "Ranged" or A == "Element" or A == "Special") then
 		for _, side in ipairs(eff.Targets) do
 			if side.Unit ~= nil and side.Unit ~= eff.Unit then
@@ -3054,12 +3164,29 @@ local function endCues(eff)
 	end
 end
 
+-- (evolved forms) a Rally's bigger pet: k, or back to its size (a look only: the attribute and Hooks.AuraScale, whatever draws the pet reads them)
+local function setAuraScale(eff, k)
+	local m = eff.Src and eff.Src.Model
+	if m then
+		pcall(m.SetAttribute, m, "AuraScale", k)
+	end
+	callHook("AuraScale", eff.Unit, k)
+end
+
+local function resetAuraScale(eff)
+	if eff.ScaleOn then
+		eff.ScaleOn = nil
+		setAuraScale(eff, 1)
+	end
+end
+
 local function finish(eff)
 	for i = #St.live, 1, -1 do
 		if St.live[i] == eff then
 			table.remove(St.live, i)
 		end
 	end
+	resetAuraScale(eff)
 	if eff.Pre and St.pre[eff.Unit] == eff then
 		St.pre[eff.Unit] = nil
 	end
@@ -3074,9 +3201,11 @@ end
 -- Low quality: drop the Beams / Trails / bloom of a live effect at once
 local function strip(eff)
 	eff.Low = true
-	-- (attack effects, 2026-11-01) and no afterglow: a tail ends at the next Update
+	-- (attack effects, 2026-11-01) and no afterglow: a tail ends at the next Update (evolved forms: no aura, the pet back to its size)
 	eff.EndRel = min(eff.EndRel, eff.TailAt)
 	eff.End = eff.Start + eff.EndRel
+	eff.AuraRel, eff.Scale = nil, nil
+	resetAuraScale(eff)
 	local keep = {}
 	for _, it in ipairs(eff.Items) do
 		local layer = it.Layer
@@ -3135,7 +3264,14 @@ local function stepEffect(eff, now)
 	if t < 0 then
 		return
 	end
+	if eff.Scale and not eff.ScaleOn and t >= eff.Times.Impact then -- (evolved forms) a Rally's bigger pet, from its impact
+		eff.ScaleOn = true
+		setAuraScale(eff, eff.Scale)
+	end
 	if eff.Tail then -- (attack effects, 2026-11-01) what is left lies where it fell: the units' moves no longer carry it
+		if eff.AuraRel then -- (evolved forms: an aura follows its pet)
+			refresh(eff)
+		end
 		for _, it in ipairs(eff.Items) do
 			if it.Kit then
 				it.Fn(eff, it, t)
@@ -3227,6 +3363,7 @@ local function resolve(ctx, distance, step)
 	local ok, r = pcall(Cat.Resolve, {
 		Element = ctx.Element, Attack = ctx.Attack, Kind = ctx.Kind, Shape = ctx.Shape, Rarity = rarity, Stage = ctx.Stage,
 		PetId = ctx.PetId, Mine = ctx.Mine == true, Distance = distance,
+		Form = ctx.Form, Twist = ctx.Twist, Seconds = (ctx.Pre ~= true) and ctx.Seconds or nil, -- (a predicted charge's Seconds are its wait)
 	})
 	if ok and type(r) == "table" and type(r.Beats) == "table" and type(r.Core) == "table" then
 		return r
@@ -3343,12 +3480,31 @@ local function startTail(eff, now)
 	endCues(eff)
 end
 
--- at most MAX_TAILS at once: the oldest makes room
+-- (evolved forms) the aura ends now, whatever is left of it: the kits it held go back, the pet is its size again; the beats, if they still run, play on
+local function endAura(eff)
+	local keep = {}
+	for _, it in ipairs(eff.Items) do
+		if it.Lingers and it.Kit then
+			give(it.Kit)
+			it.Kit = nil
+		elseif it.Kit then
+			keep[#keep + 1] = it
+		end
+	end
+	eff.Items = keep
+	recount(eff)
+	eff.AuraRel, eff.Scale = nil, nil
+	eff.EndRel = eff.TailAt
+	eff.End = eff.Start + eff.TailAt
+	resetAuraScale(eff)
+end
+
+-- at most MAX_TAILS at once: the oldest makes room (evolved forms: an aura ends with its buff, it never makes room)
 local function trimTails()
 	while true do
 		local n, oldest = 0, nil
 		for _, e in ipairs(St.live) do
-			if e.Tail then
+			if e.Tail and not e.AuraRel then
 				n = n + 1
 				if not oldest or e.TailSince < oldest.TailSince then
 					oldest = e
@@ -3420,6 +3576,17 @@ local function adopt(eff, pre, now)
 	eff.PreStart = pre.Start
 	recount(pre)
 	retire(pre, now)
+end
+
+-- (evolved forms) ctx.Line as the pack reads it: { From, Dir, Right, Length, Width }, all in the world
+local function chargeLineOf(eff, line)
+	if type(line) == "table" and finite(line.X0) and finite(line.Z0) and finite(line.Angle) and finite(line.Length) then
+		local dir = V3(cos(line.Angle), 0, sin(line.Angle))
+		return { From = V3(line.X0, eff.S.Y, line.Z0), Dir = dir, Right = dir:Cross(UP), Length = line.Length, Width = finite(line.Width) and line.Width or 4 }
+	end
+	local from = eff.S - eff.Dir * K.PACK_BEHIND
+	local gap = flat(eff.Hit - eff.S).Magnitude
+	return { From = from, Dir = eff.Dir, Right = eff.Right, Length = K.PACK_BEHIND + gap + K.PACK_PAST_TARGET, Width = 4 }
 end
 
 -- (Task 11b) the predicted charge's pose: Cast (a Pounce: its Windup) held at PRE_CAST_P / PRE_WINDUP_P until the real
@@ -3512,6 +3679,9 @@ function AttackFx.Play(ctx)
 			endRel = K.PRE_HOLD + 0.5
 		end
 		local area = (r.Attack == "Element") and (r.Shape or "Cone") or nil
+		if r.Twist and not r.Shape then
+			area = nil -- (evolved forms: an element's twist with no area of its own: Forked's bolt, Starfall)
+		end
 		local specialArea = (r.Attack == "Special") and ctx.Kind or nil
 		local reach
 		if area == "Line" then
@@ -3530,11 +3700,17 @@ function AttackFx.Play(ctx)
 		if finite(ctx.Angle) then
 			dir = V3(cos(ctx.Angle), 0, sin(ctx.Angle))
 		end
-		if targets[1] then
+		local aimFixed = ctx.AimFixed == true and finite(ctx.Angle) -- (evolved forms: a Twin runs where the first beam ran)
+		if targets[1] and not aimFixed then
 			local d = flat(targets[1].Last - src.Last)
 			if d.Magnitude > 0.2 then
 				dir = d.Unit
 			end
+		end
+		-- (evolved forms) an aura holds from now for its Seconds (a Rally's / Haste's buff), when that is past its beats; Low: no bigger pet
+		local auraRel = nil
+		if finite(r.Aura) and (now - start) + r.Aura > endRel then
+			auraRel = (now - start) + r.Aura
 		end
 		local drop = K.DROP
 		if finite(ctx.Ground) then
@@ -3546,7 +3722,9 @@ function AttackFx.Play(ctx)
 		eff = {
 			Recipe = r, Unit = src.Unit, Src = src, Targets = targets, T = {}, S = src.Last, Dir = dir, Right = dir:Cross(UP),
 			Path = r.Core.Path, Area = area, Reach = reach, Width = width, WidthScale = width / 4, Drop = drop, Size = r.Size or 1, CloudSize = r.CloudSize or r.Size or 1,
-			Start = start, Times = T, TailAt = endRel, Afterglow = afterglow, TailTrans = r.TailTrans, EndRel = endRel + afterglow, End = start + endRel + afterglow,
+			Start = start, Times = T, TailAt = endRel, Afterglow = afterglow, TailTrans = r.TailTrans, EndRel = auraRel or (endRel + afterglow), End = start + (auraRel or (endRel + afterglow)),
+			AuraRel = auraRel, Scale = (auraRel and quality ~= "Low" and finite(ctx.Scale)) and ctx.Scale or nil, AimFixed = aimFixed or nil, Band = finite(ctx.Band) and ctx.Band or nil,
+			Center = (typeof(ctx.Center) == "Vector3" and area == "Circle") and ctx.Center or nil,
 			Mine = ctx.Mine == true, Crit = ctx.Crit == true, Strong = ctx.Strong == true, Miss = ctx.Miss == true,
 			Stepped = step, Low = quality == "Low", Items = {}, Emitters = 0, Beams = 0, Trails = 0, Lights = 0, Cores = 0, Rims = 0,
 			Kind = ctx.Kind, Pre = isPre or nil, CueSeconds = isPre and (finite(ctx.Seconds) and max(0.1, ctx.Seconds) or K.PRE_HOLD) or nil,
@@ -3557,6 +3735,19 @@ function AttackFx.Play(ctx)
 		end
 		refresh(eff)
 		eff.CorePos = corePosOf(eff, 0)
+		-- (evolved forms) one aura a unit: a new cast replaces the one it still wears
+		if auraRel then
+			for _, e in ipairs(St.live) do
+				if e.AuraRel and e.Unit == eff.Unit then
+					endAura(e)
+				end
+			end
+		end
+		-- (evolved forms) the charge line the pack runs on, frozen now, in the world: the event's, else from behind the caster through the target
+		local packs = type(r.Sig) == "table" and type(r.Sig.Actor) == "table" and r.Sig.Actor.Motion == "PackCharge"
+		if not isPre and (packs or type(ctx.Line) == "table") then
+			eff.Line = chargeLineOf(eff, ctx.Line)
+		end
 		-- (Task 11c, review M8) the cloud's lift, from the first "Above" layer with a Height, before the core / actor /
 		-- layers that read it (the rain emitter, the falling pieces, the dusk moon), whatever the layers' order
 		-- (Task 11d, review M5: read from the recipe's layers, so the rain and the falling pieces start from the cloud's
@@ -3644,6 +3835,7 @@ function AttackFx.Play(ctx)
 		end
 		if not anyLinger then
 			eff.Afterglow, eff.EndRel, eff.End = 0, eff.TailAt, eff.Start + eff.TailAt
+			eff.AuraRel = nil
 		end
 		St.live[#St.live + 1] = eff
 		if isPre then
@@ -3840,6 +4032,28 @@ function AttackFx.Cancel(unit)
 			pcall(finish, eff)
 		end
 	end
+end
+
+-- (evolved forms) the unit's aura ends with its buff (nil = every aura): -> whether one ended
+function AttackFx.EndAura(unit)
+	local ended = false
+	for _, eff in ipairs(St.live) do
+		if eff.AuraRel and (unit == nil or eff.Unit == unit) then
+			local ok = pcall(endAura, eff)
+			ended = ended or ok
+		end
+	end
+	return ended
+end
+
+-- (evolved forms) how long the unit's aura still has to run | nil
+function AttackFx.AuraLeft(unit, now)
+	for _, eff in ipairs(St.live) do
+		if eff.AuraRel and eff.Unit == unit then
+			return eff.End - (finite(now) and now or (St.now or os.clock()))
+		end
+	end
+	return nil
 end
 
 function AttackFx.ClearAll()

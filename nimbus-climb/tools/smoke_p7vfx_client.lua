@@ -158,8 +158,8 @@ local SIGNATURE_PETS_C = {
 -- allies = { 4 ally models } }. For each signature at every rarity (7: its own, and lower ones a budget step-down draws)
 -- the effect plays within every per-effect cap and DRAWS its signature: every non-light recipe layer has >= 1 item, the
 -- lights are min(3, light layers), its alive detail, its core (the signature's key), its actor pieces at their count
--- (x the allies for a per-ally actor, its rim copy for each, others' pets x Density 0.6), the identity counts (Storm
--- Pounce's 2 bolts, Cloud Breath's 2 spiral arcs). Kitsune's nine orbs: all nine on 1, 2 or 4 allies, spread round
+-- (x the allies for a per-ally actor, its rim copy for each, others' pets x Density 0.6), the identity counts (the Storm
+-- Pounce slam's 2 bolts, Cloud Breath's 2 spiral arcs). Kitsune's nine orbs: all nine on 1, 2 or 4 allies, spread round
 -- robin. Low quality: the actor stays, <= 2 emitters. The Eclipse dim: own pet only, given back on end / Cancel / ClearAll.
 local SIG_DRAW = {
 	ember_phoenix = { Core = "vfx_sig_phoenix_wing" },
@@ -167,7 +167,7 @@ local SIG_DRAW = {
 	twilight_dragon = { Core = "vfx_star", Actor = 1, Rim = true },
 	cloudy_dragon = { Actor = 1, Count = { Spiral = 2 } },
 	starlight_unicorn = { Actor = 1, Rim = true },
-	stormfang = { Actor = 1, Rim = true, Count = { SigBolts = 2 } },
+	stormfang = { Count = { SigSlamBolts = 2 } }, -- (evolved forms: a plain storm pounce at the start; the wolves are its forms: smoke_evo_looks)
 	eclipse_dragon = { Actor = 1, Rim = true },
 	obsidian_phoenix = { Actor = 1, Rim = true, Echo = 2 },
 	phantom_kitsune = { Actor = 9 },
@@ -1353,7 +1353,7 @@ local function signatureEngine(env)
 		end
 	end
 	T.check(#bad == 0 and seen == 12 * #Cat.Rarities * 2,
-		"Task 11: each of the 12 signatures at every rarity (mine / others) plays within the caps and draws all its layers, its alive detail, its signature core, its actor pieces + rims at their count (others' x 0.6), Storm Pounce's 2 bolts and Cloud Breath's 2 spiral arcs",
+		"Task 11: each of the 12 signatures at every rarity (mine / others) plays within the caps and draws all its layers, its alive detail, its signature core, its actor pieces + rims at their count (others' x 0.6), the Storm Pounce slam's 2 strike bolts and Cloud Breath's 2 spiral arcs",
 		fmt("%d ok; %s", seen, table.concat(bad, " | ")))
 
 	-- 17a) nine fox-fire orbs whatever the allies: all nine circle one ally; on 2 / 4 allies they are shared round robin
