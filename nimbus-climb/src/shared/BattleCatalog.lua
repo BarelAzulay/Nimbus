@@ -47,6 +47,10 @@
 --   BattleCatalog.BuffOf(def|petId|key) -> kind, buff             a helper's button: its Support kind, else its FIRST element's buff
 --   BattleCatalog.Reach = { [0] 1, [1] 1.15, [2] 1.3 }            an evolved pet's abilities reach this much farther (the ONLY reach tunable)
 --   BattleCatalog.ReachOf(stage) -> n                             Reach[stage]: floored, clamped 0..2, junk = stage 0 (x1); BattleSim's areas and the drawing read it
+--   BattleCatalog.Forms = { BossBonus, [kind] = { [1], [2] } }    what each evolution adds to a fighter's special: twist tables { Id, Share, ... } (the ONLY form tunables)
+--   BattleCatalog.FormOf(kind, stage) -> { [Id] = twist } | nil   every twist of stages 1..stage (stage 2 keeps stage 1); nil at stage 0 / a junk kind / stage
+--   BattleCatalog.FormNames = { [petId] = { first, last | nil } } every pet's form names (the spec's tables)
+--   BattleCatalog.FormNameOf(petId, kind, stage) -> name | nil    FormNames[petId][stage], an unknown pet: the kind's generic twist Id; nil at stage 0 / past the pet's names
 --   BattleCatalog.BattleStats                                     the ONLY tunables of the battle path: RarityScale { Common 1 .. Secret 5 }, Level { Linear, Quadratic, Cubic }
 --   BattleCatalog.BattleLevelFactor(level, stage) -> n            1 + (Linear x + Quadratic x^2 + Cubic x^3) x EvolutionBonus[stage], x = level - 1 (level clamped 1..MaxPetLevel, junk stage 0)
 --   BattleCatalog.BattleStatsOf(subject, level, tier, stage)      { Power, Health, Speed } | nil: base x RarityScale x BattleLevelFactor x tier (Speed unscaled, no Income);
@@ -433,6 +437,108 @@ function BattleCatalog.ReachOf(stage)
 end
 
 ----------------------------------------------------------------------
+-- Evolved forms (docs/superpowers/specs/2026-11-01-evolved-forms-design.md): what each evolution adds to a fighter's special.
+-- Forms[kind][stage] (stage 2 keeps stage 1): every Share = x the ability's base power, every Radius = studs x reach. Only these values
+-- tune a form; no existing Seconds / Stun / Cooldown moves. A control twist on a boss pays a bonus hit of BossBonus x that power instead
+-- (bosses keep their immunities). Sim pin: Rally's uptime stays at most 80% (FiredUp.Meter is 10, not 20).
+----------------------------------------------------------------------
+BattleCatalog.Forms = {
+	BossBonus = 0.1,
+	Pounce = { { Id = "Charge", Share = 0.5, Back = 8, Past = 3 }, { Id = "Landing", Share = 0.5, Radius = 5 } },
+	Blast = { { Id = "Aftershock", Share = 0.3, Delay = 0.6 }, { Id = "Patch", Share = 0.5, Seconds = 3 } },
+	Storm = { { Id = "Winds", Slow = 0.7 }, { Id = "LastStrike", Share = 0.4 } },
+	Beam = { { Id = "Mark", Mark = 1.15, Seconds = 4 }, { Id = "Twin", Share = 0.5, Delay = 0.5 } },
+	Freeze = { { Id = "Chill", Slow = 0.6, Seconds = 3 }, { Id = "Shatter", Share = 0.6 } },
+	Heal = { { Id = "Lingering", Share = 0.3, Seconds = 4, Ticks = 4 }, { Id = "Overflow", Cap = 0.5, Seconds = 6 } },
+	Shield = { { Id = "Thorns", Share = 0.2 }, { Id = "Burst", Share = 0.6, Radius = 6 } },
+	Rally = { { Id = "WarPace", Speed = 0.15 }, { Id = "FiredUp", Meter = 10 } },
+	Haste = { { Id = "QuickHands", Recharge = 0.75 }, { Id = "DoubleStrike", Chance = 0.2 } },
+}
+
+-- every pet's form names by stage (the spec's tables): one per evolution it can make
+BattleCatalog.FormNames = {
+	-- Common
+	pebble_pup = { "Boulder Fetch" },
+	mallow_kitten = { "Marshmallow Stampede" },
+	puddle_frog = { "Puddle Geyser" },
+	honey_bunny = { "Honey Rain" },
+	biscuit_bear = { "Crumble Guard" },
+	pip_penguin = { "Snowspike Wall" },
+	-- Uncommon
+	maple_fox = { "Burning Leaf Rush" },
+	bamboo_panda = { "Bamboo Quake" },
+	mochi_slime = { "Sticky Rebound" },
+	sleepy_owl = { "Dream Lullaby" },
+	waffle_corgi = { "Golden Howl" },
+	bubble_axolotl = { "Popping Barrier" },
+	-- Rare
+	blossom_bunny = { "Petal Gale" },
+	shroomie_frog = { "Spore Surge" },
+	frostling_penguin = { "Blizzard Burst" },
+	storm_tabby = { "Static Snare" },
+	cherry_panda = { "Cherry Downpour" },
+	-- Epic
+	aurora_fox = { "Aurora Mark", "Twin Aurora" },
+	moonlit_owl = { "Crescent Ward", "Full Moon Ward" },
+	nebula_axolotl = { "Nebula Swirl", "Supernova Swirl" },
+	-- Legendary
+	ember_phoenix = { "Phoenix Burst", "Phoenix Rebirth" },
+	sunbeam_bear = { "Solar Aegis", "Sunburst Aegis" },
+	twilight_dragon = { "Nightfall Storm", "Dusk's End" },
+	candy_unicorn = { "Candy Rush", "Sugar Frenzy" },
+	-- Mythic
+	cloudy_dragon = { "Thunderhead Breath", "Twin Storm Breath" },
+	starlight_unicorn = { "Falling Wishes", "Wish Upon the Stars" },
+	magma_cub = { "Magma Rift", "Volcano Slam" },
+	hydralotl = { "Void Chorus", "Hydra's Hunger" },
+	-- Secret
+	stormfang = { "Shadow Pack", "Thunder Pack" },
+	eclipse_dragon = { "Black Sun Nova", "Total Eclipse" },
+	obsidian_phoenix = { "Cinder Wings", "Obsidian Rain" },
+	phantom_kitsune = { "Nine-Tail Ward", "Phantom Foxfire" },
+	rime_wyrmling = { "Ice Prison", "Glacier Shatter" },
+}
+
+-- a stage as a whole number in 1..2, or nil (stage 0, junk)
+local function formStage(stage)
+	local s = tonumber(stage)
+	if not finite(s) or s < 1 then
+		return nil
+	end
+	return min(2, floor(s))
+end
+
+function BattleCatalog.FormOf(kind, stage)
+	local s = formStage(stage)
+	local forms = BattleCatalog.Forms[kind]
+	if not s or type(forms) ~= "table" then
+		return nil
+	end
+	local twists = {}
+	for i = 1, s do
+		local twist = forms[i]
+		if type(twist) == "table" then
+			twists[twist.Id] = twist
+		end
+	end
+	return twists
+end
+
+function BattleCatalog.FormNameOf(petId, kind, stage)
+	local s = formStage(stage)
+	if not s then
+		return nil
+	end
+	local names = BattleCatalog.FormNames[petId]
+	if names then
+		return names[s]
+	end
+	local forms = BattleCatalog.Forms[kind]
+	local twist = type(forms) == "table" and forms[s]
+	return type(twist) == "table" and twist.Id or nil
+end
+
+----------------------------------------------------------------------
 -- Resolving what a list entry means: a pet id, a pet key ("cat@Golden", "hyb:..."), a def table (PetKeys.DefOf),
 -- or { PetId | Key | Def, Level, Tier }. Returns def, level, tier (tier nil = the def's own tier).
 ----------------------------------------------------------------------
@@ -515,7 +621,7 @@ function BattleCatalog.BattleStatsOf(subject, level, tier, stage)
 	end
 	local mult = pc.TierMultiplier(tier == nil and def or tier)
 	local cleanStage = stage ~= nil and pc.EvolutionStage(def, level, stage) or 0
-	local factor = num(BattleCatalog.BattleStats.RarityScale[def.Rarity], 1) * BattleCatalog.BattleLevelFactor(level, cleanStage) * mult
+	local factor = num(BattleCatalog.BattleStats.RarityScale[def.StatRarity or def.Rarity], 1) * BattleCatalog.BattleLevelFactor(level, cleanStage) * mult
 	return { Power = num(def.Stats.Power, 0) * factor, Health = num(def.Stats.Health, 0) * factor, Speed = def.Stats.Speed }
 end
 
@@ -2294,6 +2400,33 @@ function BattleCatalog.Validate()
 	for stage = 1, 2 do
 		if not finite(BattleCatalog.Reach[stage]) or BattleCatalog.Reach[stage] < BattleCatalog.Reach[stage - 1] then
 			bad("Reach must not fall with the stage (stage " .. stage .. ")")
+		end
+	end
+	-- evolved forms: both stages of every kind, one name per evolution of every catalog pet
+	if not finite(BattleCatalog.Forms.BossBonus) or BattleCatalog.Forms.BossBonus < 0 or BattleCatalog.Forms.BossBonus > 0.5 then
+		bad("Forms.BossBonus must be in 0..0.5")
+	end
+	for _, kind in ipairs(BattleCatalog.SpecialKinds) do
+		local forms = BattleCatalog.Forms[kind]
+		for stage = 1, 2 do
+			if type(forms) ~= "table" or type(forms[stage]) ~= "table" or type(forms[stage].Id) ~= "string" then
+				bad("Forms." .. kind .. " has no form at stage " .. stage)
+			end
+		end
+	end
+	if pc and pc.Get and type(pc.Pets) == "table" then
+		for petId, names in pairs(BattleCatalog.FormNames) do
+			local def = pc.Get(petId)
+			if not def then
+				bad("FormNames: no catalog pet " .. tostring(petId))
+			elseif #names ~= (pc.EvolveTwice[def.Rarity] and 2 or 1) then
+				bad("FormNames." .. tostring(petId) .. " must name each evolution of a " .. tostring(def.Rarity))
+			end
+		end
+		for _, def in ipairs(pc.Pets) do
+			if not BattleCatalog.FormNames[def.Id] then
+				bad("FormNames: no names for " .. tostring(def.Id))
+			end
 		end
 	end
 	-- specials for every kind (the catalog's list and ours)
