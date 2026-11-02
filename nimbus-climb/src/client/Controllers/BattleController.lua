@@ -236,7 +236,6 @@ local K = {
 	TELE_MIN_FILL = 0.5, -- seconds: the fill never gets shorter than this (a very slow connection)
 	PING_DEFAULT = 0.1, -- round trip assumed when Player:GetNetworkPing is unavailable
 	PING_MAX = 0.5,
-	THREAT_PAD = 1.5, -- studs around a pet's centre that count as "in the shape" for the RETREAT! cue
 	OFFSET_RATE = 0.1, -- clock offset filter
 	MAX_SNAPS = 8,
 	PET_SCALE = 1.3, -- battle pets are a little bigger than followers, so they read from the stands
@@ -3982,11 +3981,12 @@ function Tele.Covers(tl, x, z, pad)
 	return dx * dx + dz * dz <= (tl.r + pad) * (tl.r + pad)
 end
 
--- my fighter stands in a telegraph that has not hit yet (the HUD's DASH cue: dash through it)
+-- my fighter's body reaches a telegraph that has not hit yet (the HUD's DASH cue: dash through it): the sim's own test,
+-- the shape + the unit's radius, so every pet it would hit is warned
 local function threatened(B, tl)
 	for slot = 1, 4 do
 		local u = B.mine[slot]
-		if u and u.hp > 0 and u.state ~= S_DOWN and u.state ~= S_BENCHED and Tele.Covers(tl, u.x, u.z, K.THREAT_PAD) then
+		if u and u.hp > 0 and u.state ~= S_DOWN and u.state ~= S_BENCHED and Tele.Covers(tl, u.x, u.z, u.radius) then
 			return u
 		end
 	end

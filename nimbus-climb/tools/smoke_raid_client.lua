@@ -7,7 +7,8 @@
 --   client_raid_panel   the Arena panel's Raid page: no Join, my tier, the reward state, the running fights, the next boss, the medals at my tier's
 --                       numbers; no raid side card; the countdown chip is Double Rewards only
 --   client_raid_enrage  BattleController fed by a real BattleSim: the local sky of a pocket fight, the tier in the mode line and on the boss, the red
---                       edges, the lethal telegraph (rim, pill, DASH! callout) on the sim's own Enrage and lethal Telegraph, a late joiner, Low
+--                       edges, the lethal telegraph (rim, pill, DASH! callout) on the sim's own Enrage and lethal Telegraph, the warning by the
+--                       server's own hit test (the whole body counts, on either shape), a late joiner, Low
 --   client_raid_sky     SkyController.SetLocalEvent: the local sky blends in and out like the server's, and hands over to the server's
 --   client_raid_mobile  (phone world, 844x390) the dare buttons >= 44 px, under the top bar, no nested scrolling on the Raid page, the tag >= 14 px
 -- Plain Lua 5.1 syntax only.
@@ -575,13 +576,13 @@ end)
 ----------------------------------------------------------------------------------------------------
 local fightSeq = 0
 
-function newFight(raid, bossId)
+function newFight(raid, bossId, keys)
 	local Sim = req("shared/BattleSim")
 	fightSeq = fightSeq + 1
 	local id = "smoke_raidc_" .. fightSeq
 	local me = LocalPlayer.UserId
 	local pets = {}
-	for i, key in ipairs({ "ember_phoenix", "biscuit_bear", "sunbeam_bear" }) do
+	for i, key in ipairs(keys or { "ember_phoenix", "biscuit_bear", "sunbeam_bear" }) do
 		pets[i] = { Key = key, PetId = key, Level = 60, Tier = "Normal", Slot = i }
 	end
 	local sim = Sim.new({ Mode = "Raid", Seed = 3, Id = id, Boss = bossId or "storm_titan", RaidTier = raid.Tier, Specials = false, Teams = { { Owner = me, Side = 1, Pets = pets } } })
@@ -600,6 +601,9 @@ function newFight(raid, bossId)
 	KC.toClient("BattleState", "Start", p, id)
 	function d.step(fps)
 		local evs = sim:Step(0.1)
+		if d.pin then
+			d.pin()
+		end
 		if #evs > 0 then
 			KC.toClient("BattleState", "Events", evs, id)
 		end
@@ -770,6 +774,61 @@ S.client_raid_enrage = guarded("client_raid_enrage", function()
 	d.run(1)
 	T.check(SC.State().Local == nil, "raid battle client: a floor fight leaves the sky to the server")
 	T.check(hudHas("BOSS RAID %- Starter"), "raid battle client: a floor fight names its tier too")
+	d.finish()
+	KC.advance(14)
+
+	-- the warning goes by the server's own hit test: the sim hits a body whose edge reaches the shape (shape + the unit's radius, on a
+	-- Circle and along a Line), so the client warns that body; a shape that misses it warns nothing. A Bear held still, the boss kept
+	-- from casting; the sim's own telegraphs, so the server's Hit says what really lands.
+	d = newFight({ Tier = "High", Pocket = true, BossId = "frost_wyrm" }, "frost_wyrm", { "biscuit_bear" })
+	d.run(1)
+	local bear = d.sim.teamByOwner[d.me].fighter
+	local bearX, bearZ = bear.x, bear.z
+	d.sim.boss.staggerUntil = math.huge
+	function d.pin()
+		bear.x, bear.z = bearX, bearZ
+		if bear.alive then
+			bear.hp = bear.maxHp
+		end
+	end
+	d.run(0.6)
+	local drawn = BC.GetUnit(bear.id)
+	T.check(bear.radius == 2.4 and drawn ~= nil and math.abs(drawn.X - bearX) < 0.01 and math.abs(drawn.Z - bearZ) < 0.01, "raid battle client: (setup) a Bear, radius 2.4, drawn where the sim holds it", drawn and string.format("radius %s, drawn %.2f, %.2f, sim %.2f, %.2f", tostring(bear.radius), drawn.X, drawn.Z, bearX, bearZ) or "no unit")
+	local absoluteZero = d.sim.boss.boss.Lethal
+	local probeId = 90100
+	-- one telegraph of the sim's: true while it counts down: the HUD's threat, the floating DASH!; and the server's Hit on the Bear
+	local function probe(tele)
+		probeId = probeId + 1
+		local hits = 1
+		tele.id, tele.boss, tele.attack, tele.at = probeId, d.sim.boss, absoluteZero, d.sim:Time() + hits
+		d.sim.telegraphs[#d.sim.telegraphs + 1] = tele
+		d.sim.pending[#d.sim.pending + 1] = { type = "Telegraph", id = tele.id, boss = d.sim.boss.id, name = absoluteZero.Name, attack = absoluteZero.Id, shape = tele.shape, x = tele.x, z = tele.z, r = tele.r, angle = tele.angle, length = tele.length, width = tele.width, at = tele.at, hits = hits, lethal = tele.lethal }
+		local warned, called, struck = false, false, false
+		d.run(hits + 0.8, function(evs)
+			warned = warned or BC.GetBattle().Threat
+			called = called or calloutShown()
+			for _, e in ipairs(evs) do
+				if e.type == "Hit" and e.tele == tele.id and e.to == bear.id then
+					struck = true
+				end
+			end
+			return struck
+		end)
+		return warned, called, struck
+	end
+	local R, LEN, WIDTH = 10, 30, 5
+	local rim = 1.95 -- the body overlaps the edge (a pad of 1.5 would call it safe)
+	local past = bear.radius + 0.3 -- the body clears the edge
+	local warned, called, struck = probe({ shape = "Circle", x = bearX + R + past, z = bearZ, r = R, lethal = true })
+	T.check(not struck and not warned and not called, "raid battle client: a lethal circle that misses the body warns nothing", string.format("warned %s, called %s, struck %s", tostring(warned), tostring(called), tostring(struck)))
+	warned, called, struck = probe({ shape = "Line", x = bearX - LEN / 2, z = bearZ - WIDTH / 2 - past, angle = 0, length = LEN, width = WIDTH })
+	T.check(not struck and not warned, "raid battle client: a line that misses the body warns nothing", string.format("warned %s, struck %s", tostring(warned), tostring(struck)))
+	warned, called, struck = probe({ shape = "Line", x = bearX - LEN / 2, z = bearZ - WIDTH / 2 - rim, angle = 0, length = LEN, width = WIDTH })
+	T.check(struck and warned, "raid battle client: a line whose side overlaps the body warns it, as the server hits it", string.format("warned %s, struck %s", tostring(warned), tostring(struck)))
+	warned, called, struck = probe({ shape = "Line", x = bearX - LEN - rim, z = bearZ, angle = 0, length = LEN, width = WIDTH })
+	T.check(struck and warned, "raid battle client: ...and a line whose tip overlaps it", string.format("warned %s, struck %s", tostring(warned), tostring(struck)))
+	warned, called, struck = probe({ shape = "Circle", x = bearX + R + rim, z = bearZ, r = R, lethal = true })
+	T.check(struck and warned and called, "raid battle client: a lethal circle whose rim overlaps the body warns it and floats DASH!, as the server knocks it out", string.format("warned %s, called %s, struck %s", tostring(warned), tostring(called), tostring(struck)))
 	d.finish()
 	KC.advance(14)
 
