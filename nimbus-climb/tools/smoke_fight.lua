@@ -16,13 +16,14 @@
 --                         never disengages (the gap > Fighter.Leash on the way); the Engage event reaches the client;
 --                         Attack(id) on a far enemy still toasts "Too far!" once; a jump + run-off out of the zone removes
 --                         the player (the presence check) within LeashSeconds + 3
---   client_fight_attack   (client world) F tap = ONE Attack(nil) and no Target; F held 0.4 s = exactly one Target(next)
---                         and nothing on release; the ATTACK button (mouse / touch) and ButtonX the same; a held world
---                         click = one Attack(id), never a Target; the caption ATTACK, NEXT for 0.6 s after a hold-cycle;
+--   client_fight_attack   (client world; evolved forms: F is Switch Target) F tap = ONE Target(next) on release and no Attack;
+--                         F held 0.4 s = exactly one Target(nil) and nothing on release; the TARGET button (mouse / touch)
+--                         and ButtonX the same; a held world click = one Target(id), never an Attack; the caption TARGET,
+--                         AUTO for 0.6 s after a hold;
 --                         my fighter's Engage { on = true } hops it and builds no Instance; Me.FighterTarget draws a pet
 --                         8 studs out where the server has it (and on the shoulder at my side), on High and Low
 --   client_fight_dev      (client world) NC_Dev + a fighting battle HUD: the DEV tile touches none of NimbusBattle.Root's
---   client_fight_dev_mobile (phone world)  visible blocks (>= 4 px clear) and the ATTACK caption is whole on screen
+--   client_fight_dev_mobile (phone world)  visible blocks (>= 4 px clear) and the TARGET caption is whole on screen
 --                         and not under it: 1920x1080, 1366x768, 844x390, 390x844, 749x388 (the phone: 390x844, 844x390,
 --                         749x388 with touch)
 -- White-box: the server half reaches into battle.units / battle.teams (same Lua state). Plain Lua 5.1 syntax only.
@@ -883,47 +884,41 @@ local function clientScenarios()
 			H.step(max(1, floor(seconds * 30 + 0.5)), 1 / 30)
 			Mock.TriggerAction(name, "End", Mock.NewInput(key, kind, "End"))
 		end
-		-- a tap of F: ONE Attack(nil), no Target
+		-- a tap of F: ONE Target(next), no Attack
 		d.noForward = true
 		local idx = #Mock.RemoteLog
-		press("NimbusBattleAttack", "F", "Keyboard", 0.2)
+		press("NimbusBattleSwitch", "F", "Keyboard", 0.2)
 		H.step(30, 1 / 30)
 		local cmds = H.commands(idx)
-		T.check(#cmds == 1 and cmds[1].action == "Attack" and cmds[1].arg == nil and H.count(idx, "Target") == 0, "fight client: a tap of F sends ONE Attack() and no Target", #cmds .. " sent")
-		-- forward it: the server locks the nearest and echoes it (the client's lock)
+		T.check(#cmds == 1 and cmds[1].action == "Target" and contains(ids, cmds[1].arg) and H.count(idx, "Attack") == 0, "fight client: a tap of F sends ONE Target(next) and no Attack", #cmds .. " sent")
+		-- forward it: the server locks it and echoes it (the client's lock)
 		d.noForward = false
 		d.logIndex = idx
 		d:run(0.4, 30)
 		local lock = BC.GetBattle().Lock
 		T.check(lock ~= nil and contains(ids, lock), "fight client: (setup) the echo sets my lock", tostring(lock))
-		-- F held 0.5 s: the Attack at once + exactly ONE Target(next) at 0.4 s, nothing on release
+		-- F held 0.5 s: exactly ONE Target(nil) at 0.4 s, nothing on release
 		d.noForward = true
 		H.step(10, 1 / 30)
 		idx = #Mock.RemoteLog
-		Mock.TriggerAction("NimbusBattleAttack", "Begin", Mock.NewInput("F", "Keyboard", "Begin"))
+		Mock.TriggerAction("NimbusBattleSwitch", "Begin", Mock.NewInput("F", "Keyboard", "Begin"))
 		H.step(9, 1 / 30) -- 0.3 s: not yet
 		local early = H.count(idx, "Target")
 		H.step(5, 1 / 30) -- 0.47 s
-		local cap = H.find("Root.Commands.AttackButton.Caption")
+		local cap = H.find("Root.Commands.TargetButton.Caption")
 		local capHold = cap and cap.Text
-		Mock.TriggerAction("NimbusBattleAttack", "End", Mock.NewInput("F", "Keyboard", "End"))
+		Mock.TriggerAction("NimbusBattleSwitch", "End", Mock.NewInput("F", "Keyboard", "End"))
 		local idxRel = #Mock.RemoteLog
 		H.step(30, 1 / 30)
 		cmds = H.commands(idx)
-		local target = nil
-		for _, c in ipairs(cmds) do
-			if c.action == "Target" then
-				target = c.arg
-			end
-		end
-		T.check(early == 0 and H.count(idx, "Attack") == 1 and H.count(idx, "Target") == 1 and target ~= nil and target ~= lock and contains(ids, target),
-			"fight client: F held >= 0.4 s = ONE Attack + exactly ONE Target(the NEXT enemy), none before 0.4 s", fmt("%d cmds, early %d, target %s (lock %s)", #cmds, early, tostring(target), tostring(lock)))
+		T.check(early == 0 and #cmds == 1 and cmds[1].action == "Target" and cmds[1].arg == nil,
+			"fight client: F held >= 0.4 s = exactly ONE Target(nil), none before 0.4 s, no Attack", fmt("%d cmds, early %d (lock %s)", #cmds, early, tostring(lock)))
 		T.check(#H.commands(idxRel) == 0, "fight client: ...and nothing on the release")
-		T.check(capHold == "NEXT", "fight client: the caption flashes NEXT after a hold-cycle", tostring(capHold))
+		T.check(capHold == "AUTO", "fight client: the caption flashes AUTO after a hold", tostring(capHold))
 		H.step(15, 1 / 30)
-		T.check(cap and cap.Text == "ATTACK", "fight client: ...and reads ATTACK again after NEXT_FLASH", cap and cap.Text or "nil")
-		-- the ATTACK button (mouse and touch) and the gamepad X: the same gesture
-		local btn = H.find("Root.Commands.AttackButton")
+		T.check(cap and cap.Text == "TARGET", "fight client: ...and reads TARGET again after NEXT_FLASH", cap and cap.Text or "nil")
+		-- the TARGET button (mouse and touch) and the gamepad X: the same gesture
+		local btn = H.find("Root.Commands.TargetButton")
 		local function onBtn()
 			local a, s = btn.AbsolutePosition, btn.AbsoluteSize
 			return Vector3.new(a.X + s.X / 2, a.Y + s.Y / 2, 0)
@@ -946,12 +941,12 @@ local function clientScenarios()
 				buttonHold(kind, 0.6)
 				local a2, t2 = H.count(idx, "Attack"), H.count(idx, "Target")
 				detail[#detail + 1] = fmt("%s tap %d/%d hold %d/%d", kind, a1, t1, a2, t2)
-				okButtons = okButtons and a1 == 1 and t1 == 0 and a2 == 1 and t2 == 1
+				okButtons = okButtons and a1 == 0 and t1 == 1 and a2 == 0 and t2 == 1
 				H.step(10, 1 / 30)
 			end
 		end
-		T.check(okButtons, "fight client: the ATTACK button: a tap = one Attack, a 0.4 s hold = one Attack + one Target (mouse and touch)", table.concat(detail, "; "))
-		-- a slide off the ATTACK button within 0.4 s: no re-target (the button's own InputEnded never fires)
+		T.check(okButtons, "fight client: the TARGET button: a tap = one Target, a 0.4 s hold = one Target(nil), no Attack (mouse and touch)", table.concat(detail, "; "))
+		-- a slide off the TARGET button within 0.4 s: no re-target (the button's own InputEnded never fires)
 		local slideOk, slideDetail = btn ~= nil, {}
 		for _, kind in ipairs({ "Touch", "MouseButton1" }) do
 			if btn then
@@ -972,6 +967,7 @@ local function clientScenarios()
 				inp = Mock.NewInput("Unknown", kind, "Begin", { Position = onBtn() })
 				Mock.FireSignal(btn, "InputBegan", inp, false)
 				H.step(6, 1 / 30)
+				inp.Position = onBtn() + Vector3.new(-260, -220, 0)
 				inp.UserInputState = Enum.UserInputState.End
 				Mock.FireSignal(UserInputService, "InputEnded", inp, false)
 				H.step(20, 1 / 30)
@@ -981,18 +977,18 @@ local function clientScenarios()
 				H.step(10, 1 / 30)
 			end
 		end
-		T.check(slideOk, "fight client: a touch / click slid off the ATTACK button within 0.4 s never re-targets (held off it, or released off it)", table.concat(slideDetail, "; "))
+		T.check(slideOk, "fight client: a touch / click slid off the TARGET button within 0.4 s never re-targets (held off it, or released off it)", table.concat(slideDetail, "; "))
 		idx = #Mock.RemoteLog
-		press("NimbusBattleAttack", "ButtonX", "Gamepad1", 0.15)
+		press("NimbusBattleSwitch", "ButtonX", "Gamepad1", 0.15)
 		H.step(20, 1 / 30)
 		local xa, xt = H.count(idx, "Attack"), H.count(idx, "Target")
 		H.step(10, 1 / 30)
 		idx = #Mock.RemoteLog
-		press("NimbusBattleAttack", "ButtonX", "Gamepad1", 0.6)
+		press("NimbusBattleSwitch", "ButtonX", "Gamepad1", 0.6)
 		H.step(20, 1 / 30)
-		T.check(xa == 1 and xt == 0 and H.count(idx, "Attack") == 1 and H.count(idx, "Target") == 1, "fight client: gamepad X: tap = Attack, hold = Attack + Target(next)",
+		T.check(xa == 0 and xt == 1 and H.count(idx, "Attack") == 0 and H.count(idx, "Target") == 1, "fight client: gamepad X: tap = Target(next), hold = Target(nil)",
 			fmt("tap %d/%d hold %d/%d", xa, xt, H.count(idx, "Attack"), H.count(idx, "Target")))
-		-- a held world click on an enemy: one Attack(id), never a Target
+		-- a held world click on an enemy: one Target(id), never an Attack
 		local vp = Mock.Viewport
 		idx = #Mock.RemoteLog
 		Mock.FireSignal(UserInputService, "InputBegan", Mock.NewInput("Unknown", "MouseButton1", "Begin", { Position = Vector3.new(vp.X / 2, vp.Y / 2 - 36, 0) }), false)
@@ -1000,7 +996,7 @@ local function clientScenarios()
 		Mock.FireSignal(UserInputService, "InputEnded", Mock.NewInput("Unknown", "MouseButton1", "End", { Position = Vector3.new(vp.X / 2, vp.Y / 2 - 36, 0) }))
 		H.step(10, 1 / 30)
 		cmds = H.commands(idx)
-		T.check(#cmds == 1 and cmds[1].action == "Attack" and contains(ids, cmds[1].arg), "fight client: a world click held 0.8 s = ONE Attack(its id), never a Target", #cmds .. " sent")
+		T.check(#cmds == 1 and cmds[1].action == "Target" and contains(ids, cmds[1].arg), "fight client: a world click held 0.8 s = ONE Target(its id), never an Attack", #cmds .. " sent")
 		-- my fighter's Engage { on = true }: the hop, no Instance
 		d.noForward = false
 		d.logIndex = #Mock.RemoteLog
@@ -1183,13 +1179,13 @@ local function clientScenarios()
 					T.check(movedVisible and back, tag .. ": a VISIBLE Commands button blocks the tile, a HIDDEN one reserves no slot",
 						fmt("visible moved %s, hidden back %s", tostring(movedVisible), tostring(back)))
 				end
-				local cap = H.find("Root.Commands.AttackButton.Caption")
+				local cap = H.find("Root.Commands.TargetButton.Caption")
 				if cap and shownIn(cap) then
 					local cr = rectOf(cap)
 					local vp = Mock.Viewport
 					local inset = Mock.TopInset or 0
-					T.check(cr.x0 >= 0 and cr.y0 >= -inset and cr.x1 <= vp.X and cr.y1 <= vp.Y - inset and not touches(tr, cr, 0) and cap.Text == "ATTACK",
-						tag .. ": the ATTACK caption is whole on screen, reads ATTACK and is not under the tile", fmt("%s %d,%d-%d,%d", tostring(cap.Text), cr.x0, cr.y0, cr.x1, cr.y1))
+					T.check(cr.x0 >= 0 and cr.y0 >= -inset and cr.x1 <= vp.X and cr.y1 <= vp.Y - inset and not touches(tr, cr, 0) and cap.Text == "TARGET",
+						tag .. ": the TARGET caption is whole on screen, reads TARGET and is not under the tile", fmt("%s %d,%d-%d,%d", tostring(cap.Text), cr.x0, cr.y0, cr.x1, cr.y1))
 				end
 			end
 		end

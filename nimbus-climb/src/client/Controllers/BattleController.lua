@@ -8,8 +8,8 @@
 --   BattleController.Init()                 connects BattleState, the frame loop and the input (once)
 --   BattleController.Stop()                 tears everything down (tests / hot reload)
 --   BattleController.HandleState(kind, payload, battleId)   what the BattleState remote does (tests / dump_gui)
---   BattleController.Command(action, arg) -> bool   sends BattleCommand: "Attack" (unitId|nil), "Element", "Special",
---                                           "Dash", "Target" (unitId|nil), "Buff" (slot), "Swap" (slot), "Forfeit",
+--   BattleController.Command(action, arg) -> bool   sends BattleCommand: "Element", "Special", "Dash", "Target" (unitId|nil),
+--                                           "Buff" (slot), "Swap" (slot), "Forfeit" ("Attack" (unitId|nil) stays valid for the server; the HUD no longer sends it),
 --                                           with a local throttle and local checks (a refused press shakes its
 --                                           button); false when refused here
 --   BattleController.Focus(unitId)          lock an enemy (= Command("Target", unitId)); nil clears the lock
@@ -111,8 +111,11 @@
 --   * TopCard (top centre, under the Roblox bar): the mode line "CHAMPION RING - Round 8 - Best 12", "DUNGEON - Floor
 --     3 - Room 2" (purple), "DUEL - vs Sam", "BOSS RAID" + the timer; the boss bar (raid boss / dungeon mini-boss) with
 --     its element / ENRAGED / minions / players / wave pills; the ring's pay pills.
---   * Commands (bottom right): ATTACK (88), ELEMENT, SPECIAL, DASH (64) round buttons with cooldown rings (SPECIAL =
---     the energy, gold at 100) and key chips on desktop; captions under them on wide screens.
+--   * Commands (bottom right): SPECIAL (88, the biggest), TARGET, ELEMENT, DASH (64) round buttons with cooldown rings
+--     (SPECIAL = the energy, gold at 100) and key chips on desktop. Evolved forms: SPECIAL and ELEMENT show the attack's
+--     name (the form's at the pet's stage): under the button on wide screens, up to 2 lines; on touch inside the face, the
+--     glyph above it, 2 lines at 11-15 px (the one place under MIN_TEXT_PX, by the spec's call), with SPECIAL at least
+--     SPECIAL_TOUCH_PX and ELEMENT at least ELEMENT_TOUCH_PX on the screen so the longest names fit.
 --   * Compact layout (touch, or a screen under 900 x 600 px): a smaller fighter card, the portraits in a column, the
 --     enemy list 2 rows, the mode line under the list when the top is full, the cluster a 2 x 2 grid above the jump /
 --     RUN buttons (portrait) or left of the jump button (landscape); the menu column hides while fighting.
@@ -126,19 +129,21 @@
 --   reset on End.
 -- * Dungeon fixes (docs/dungeon-fixes/plan.md): enemies spawned after "Start" come in Wave / Spawn events and are
 --   added there (root cause A); an enemy whose info says Arrive > 0 arrives with EvolutionFx.Arrive (the model hidden
---   until the flash, then a hop); the fighter attacks by itself (server): ATTACK sends one "Attack" order per press
---   (the enemy clicked / under the screen centre while MouseLock holds the cursor, else nil = the nearest / the next),
---   no hold repeat, no predicted swing (lunges from the server's Hits); the gold arrow shows the enemy the pet attacks
+--   until the flash, then a hop); the fighter attacks by itself (server): no attack button, no predicted swing (lunges
+--   from the server's Hits); a click picks the enemy under the cursor (the screen centre while MouseLock holds the cursor
+--   there), a click on nothing sends nothing; the gold arrow shows the enemy the pet attacks
 --   (the lock, else its snapshot target, see-through); Dash events draw the pet's dash (mine on arrival); ELEMENT's E
 --   passes to a shown ProximityPrompt; MouseLock.Hold / Release ("BattleResult", "BattleLeave") via a pcall'd require.
--- * Bugs #16 / #22 (wave 5): a tap of F / X / ATTACK = Attack() at once (the server KEEPS a live lock in EngageRange:
---   no re-target); HOLD it ATTACK_HOLD (0.4 s) = the next target (Input.CycleTarget -> Target(id), Tab / RT's path; the
---   caption flashes NEXT for NEXT_FLASH); a world click stays one Attack(pick) (holding the mouse never cycles). The
---   server's engage rule walks my pet off to fight while I stand: the shoulder offset fades with the blend share (an
---   engaged pet is drawn where the server has it) and its Engage { on = true } plays the arrival hop.
+-- * Evolved forms (2026-11-02, docs/superpowers/specs/2026-11-01-evolved-forms-design.md): F / X / the TARGET button is
+--   Switch Target in every battle. A tap fires on release under TARGET_HOLD (0.4 s) = the next enemy (Input.SwitchTarget:
+--   Target(id), Tab / RT's path, nearest first; the caption flashes NEXT for NEXT_FLASH; one enemy: ONE ENEMY, nothing
+--   sent); a hold of 0.4 s clears the lock (Target(nil), AUTO): the pet keeps its engaged target and picks the nearest
+--   after that. A world click or a tap on an enemy is Target(pick) (holding the mouse never cycles).
+-- * Bug #22 (wave 5): the server's engage rule walks my pet off to fight while I stand: the shoulder offset fades with the
+--   blend share (an engaged pet is drawn where the server has it) and its Engage { on = true } plays the arrival hop.
 -- Keys (ContextActionService, High priority, sunk, bound ONLY while fighting and inert before UiGate.HasPlayed()):
--- F / X attack (hold = the next target), E / Y element (E passes while a prompt is shown), Q / RB special, Tab / T / RT / LT
--- lock, 1 / 2 (LB / D-up) buff (hold = swap), D-left / D-right swap; the item hotbar keeps 1-4 outside battles.
+-- F / X switch target (tap = the next enemy, hold = automatic), E / Y element (E passes while a prompt is shown), Q / RB special,
+-- Tab / T / RT / LT lock, 1 / 2 (LB / D-up) buff (hold = swap), D-left / D-right swap; the item hotbar keeps 1-4 outside battles.
 --
 -- Cost: one RenderStepped connection, alive only while a battle is drawn or effects play. Per frame: one root CFrame
 -- write per pet + PetBuilder.Animate per visible pet (strided for far / crowded ones; a strided frame moves the
@@ -319,17 +324,17 @@ local K = {
 	TAP_TIME = 0.35,
 	TAP_MOVE = 14, -- px
 	TAP_REACH = 64, -- px (1080p, scaled) around an enemy's centre on the screen
-	ACTION_ATTACK = "NimbusBattleAttack",
+	ACTION_SWITCH = "NimbusBattleSwitch",
 	ACTION_ELEMENT = "NimbusBattleElement",
 	ACTION_SPECIAL = "NimbusBattleSpecial",
 	ACTION_TARGET = "NimbusBattleTarget",
 	ACTION_HELPER = "NimbusBattleHelper",
-	ATTACK_GAP = 0.2, -- local throttle of ATTACK (the hold repeats at the fighter's interval)
+	ATTACK_GAP = 0.2, -- local throttle of an "Attack" order
 	CD_SLACK = 0.15, -- a press this close to the end of a cooldown is sent (the server's clock decides)
 	PENDING_TIMEOUT = 0.6, -- seconds a prediction waits for its event
 	SWAP_HOLD = 0.5, -- hold a helper key / portrait this long = swap
-	ATTACK_HOLD = 0.4, -- bug #16: hold F / X / ATTACK this long = the next target (a tap attacks at once)
-	NEXT_FLASH = 0.6, -- the ATTACK caption reads NEXT this long after a hold-cycle
+	TARGET_HOLD = 0.4, -- hold F / X / TARGET this long = back to automatic (shorter: the tap, on release = the next enemy)
+	NEXT_FLASH = 0.6, -- the TARGET caption reads NEXT / AUTO / ONE ENEMY this long
 	RING_DT = 0.1, -- the rings / countdowns are written at 10 Hz
 	LOSS_TIME = 0.4, -- the red HP loss trail drains this long behind a loss
 	-- the drawn fighter / helpers (B1, 4.7)
@@ -369,7 +374,17 @@ local K = {
 	MODE_H = 40,
 	ATTACK_D = 88,
 	ACTION_D = 64,
-	MIN_TEXT_PX = 14, -- no HUD text is ever drawn smaller on the screen (Readability rule)
+	-- a touch screen: the buttons are at least this big on the screen (the names sit inside SPECIAL's and ELEMENT's faces)
+	SPECIAL_TOUCH_PX = 84,
+	SPECIAL_TOUCH_MIN_PX = 72, -- ...a small landscape phone has less room: the vitals card, the enemy list
+	ELEMENT_TOUCH_PX = 68,
+	ELEMENT_TOUCH_MIN_PX = 56,
+	SMALL_TOUCH_PX = 48, -- TARGET, DASH
+	CAPTION_TEXT = 14, -- a caption under its button (design px; FixText keeps it >= MIN_TEXT_PX on the screen)
+	NAME_MIN_PX = 11, -- a name inside a face on touch: TextScaled between these (the spec's call: long names must fit)
+	NAME_MAX_PX = 15,
+	NAME_GLYPH = 0.55, -- ...and the glyph keeps this top share of the face
+	MIN_TEXT_PX = 14, -- no HUD text is ever drawn smaller on the screen (Readability rule; the names above are the one exception)
 	RESULT_W = 440,
 	-- LEAVE (Ring only): the first press arms it for LEAVE_CONFIRM seconds, the second sends "Forfeit"
 	LEAVE_CONFIRM = 3,
@@ -433,7 +448,7 @@ local COLORS = {
 	Dodge = Color3.fromRGB(110, 236, 255),
 	Windup = Color3.fromRGB(255, 220, 60),
 	Action = {
-		Attack = Theme.Neon and Theme.Neon.Red or Color3.fromRGB(255, 76, 100),
+		Target = Theme.Neon and Theme.Neon.Red or Color3.fromRGB(255, 76, 100),
 		Element = Theme.Neon and Theme.Neon.Blue or Color3.fromRGB(64, 170, 255),
 		Special = Theme.Neon and Theme.Neon.Gold or Color3.fromRGB(255, 196, 64),
 		Dash = Theme.Neon and Theme.Neon.Cyan or Color3.fromRGB(64, 226, 236),
@@ -4944,7 +4959,7 @@ local ELEMENT_GLYPH = {
 	Shadow = "\240\159\140\153", -- moon
 }
 local GLYPH = {
-	Attack = "\226\154\148", -- crossed swords
+	Target = "\240\159\142\175", -- bullseye
 	Special = "\226\152\133", -- star
 	Dash = "\240\159\146\168", -- dash
 	Swap = "\226\135\132", -- left-right arrows
@@ -5013,9 +5028,9 @@ end
 -- the key hints (keyboard / gamepad)
 function Hud.KeyText(kind, index)
 	if St.gamepad then
-		return ({ Attack = "X", Element = "Y", Special = "RB", Dash = "B", Buff = (index == 2) and "\226\134\145" or "LB", Swap = (index == 2) and "\226\134\146" or "\226\134\144" })[kind] or ""
+		return ({ Target = "X", Element = "Y", Special = "RB", Dash = "B", Buff = (index == 2) and "\226\134\145" or "LB", Swap = (index == 2) and "\226\134\146" or "\226\134\144" })[kind] or ""
 	end
-	return ({ Attack = "F", Element = "E", Special = "Q", Dash = "\226\135\167", Buff = tostring(index or 1), Swap = "hold " .. tostring(index or 1) })[kind] or ""
+	return ({ Target = "F", Element = "E", Special = "Q", Dash = "\226\135\167", Buff = tostring(index or 1), Swap = "hold " .. tostring(index or 1) })[kind] or ""
 end
 
 ----------------------------------------------------------------------
@@ -5173,9 +5188,9 @@ function Hud.Portrait(H, u)
 end
 
 ----------------------------------------------------------------------
--- the action cluster (bottom right): ATTACK (big), ELEMENT, SPECIAL, DASH; cooldown rings, key chips on desktop
+-- the action cluster (bottom right): SPECIAL (big), TARGET, ELEMENT, DASH; cooldown rings, key chips on desktop
 ----------------------------------------------------------------------
-local ACTIONS = { "Attack", "Element", "Special", "Dash" }
+local ACTIONS = { "Special", "Target", "Element", "Dash" }
 
 function Hud.BuildActions()
 	for _, kind in ipairs(ACTIONS) do
@@ -5201,32 +5216,31 @@ function Hud.BuildActions()
 		A.Face = face
 		A.Glyph = label(face, GLYPH[kind] or "", "Display", 30, { Name = "Glyph", Size = UDim2.fromScale(1, 1), ZIndex = 4, TextXAlignment = Enum.TextXAlignment.Center })
 		A.Count = label(face, "", "Display", 26, { Name = "Count", Size = UDim2.fromScale(1, 1), ZIndex = 5, Visible = false, TextXAlignment = Enum.TextXAlignment.Center })
-		A.Caption = label(b, string.upper(kind), "Heading", 15, { Name = "Caption", AnchorPoint = Vector2.new(0.5, 0), ZIndex = 6, TextXAlignment = Enum.TextXAlignment.Center })
+		-- (Label: the narrower caption face, so "MARSHMALLOW" stays one word on one line)
+		A.Caption = label(b, string.upper(kind), "Label", K.CAPTION_TEXT, { Name = "Caption", AnchorPoint = Vector2.new(0.5, 0), ZIndex = 6, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top, TextWrapped = true })
+		make("UITextSizeConstraint", { Name = "NameSize", MinTextSize = K.NAME_MIN_PX, MaxTextSize = K.NAME_MAX_PX }, A.Caption)
 		A.Key = keyChip(b, Hud.KeyText(kind), { Name = "Key", AnchorPoint = Vector2.new(0.5, 0.5) })
 		Hud.buttons[kind] = A
 		local action = kind
 		b.InputBegan:Connect(function(input)
 			local t = input.UserInputType
 			if t == Enum.UserInputType.Touch or t == Enum.UserInputType.MouseButton1 then
-				Input.Press(action, true)
-				if action == "Attack" then
-					-- bug #16: hold 0.4 s = the next target; the hold remembers its input + button so a slide off the button
-					-- (whose own InputEnded may never fire) cancels it instead of re-targeting
-					Input.HoldStart("attackButton", 0, os.clock(), "Attack", input, b)
+				if action == "Target" then
+					-- a tap fires on release, a hold of 0.4 s clears the lock; the hold remembers its input + button so a slide
+					-- off the button (whose own InputEnded may never fire) cancels it instead of re-targeting
+					Input.HoldStart("targetButton", 0, os.clock(), "Target", input, b)
+				else
+					Input.Press(action, true)
 				end
 			end
 		end)
 		b.InputEnded:Connect(function(input)
 			local t = input.UserInputType
-			if t == Enum.UserInputType.Touch or t == Enum.UserInputType.MouseButton1 then
-				Input.Press(action, false)
-				if action == "Attack" then
-					Input.HoldEnd("attackButton")
-				end
+			if action == "Target" and (t == Enum.UserInputType.Touch or t == Enum.UserInputType.MouseButton1) then
+				Input.TargetButtonEnded(input)
 			end
 		end)
 	end
-	Hud.attack = Hud.buttons.Attack.Button
 	Hud.leave = Leave.Make(Hud.root, 20)
 	CheerUp.Make(Hud.root)
 end
@@ -5455,6 +5469,12 @@ function Hud.TouchRects(m)
 	return rects
 end
 
+-- a caption's box under its button, two lines of the size FixText will give it (design px)
+function Hud.CaptionH(m)
+	local px = max(K.CAPTION_TEXT, math.ceil(K.MIN_TEXT_PX / max(0.05, m.F) - 1e-6))
+	return 2 * math.ceil(px * 1.2)
+end
+
 -- the action buttons' centres + diameters (design px, Commands-local; Commands is anchored at its bottom-right
 -- corner = the gui area's bottom-right corner) and the cluster's size. Touch phones: around Roblox's jump button and
 -- the RUN button (MovementController puts RUN straight above the jump button in a battle), clear of the centre 40%.
@@ -5462,9 +5482,10 @@ function Hud.ClusterLayout(m)
 	local big, small = K.ATTACK_D, K.ACTION_D
 	local out = {}
 	if not (m.Compact and m.Touch) then
-		out.Attack = { -74, -98, big }
-		out.Special = { -74 - big / 2 - 26 - small / 2, -90, small }
-		out.Element = { -74, -98 - big / 2 - 36 - small / 2, small }
+		out.Special = { -74, -98, big }
+		out.Target = { -74 - big / 2 - 26 - small / 2, -90, small }
+		-- (Element's caption may take two lines between it and SPECIAL)
+		out.Element = { -74, -98 - big / 2 - max(36, Hud.CaptionH(m) + 2) - small / 2, small }
 		out.Dash = { -74 - big / 2 - 26 - small / 2, -98 - big / 2 - 28 - small / 2, small }
 		out.w, out.h = 236, 270
 		return out
@@ -5472,31 +5493,49 @@ function Hud.ClusterLayout(m)
 	local f = max(0.05, m.F)
 	local r = Hud.TouchRects(m)
 	local gap = 7 * f
-	local bigPx, smallPx = big * f, small * f
+	-- (design px, at least the touch minimums on the screen)
+	big = max(big, K.SPECIAL_TOUCH_PX / f)
+	local element = max(small, K.ELEMENT_TOUCH_PX / f)
+	small = max(small, K.SMALL_TOUCH_PX / f)
+	local bigPx, elementPx, smallPx = big * f, element * f, small * f
 	local vx = m.VX
 	-- screen px (x from the left, yb from the bottom) -> Commands-local design px
 	local function at(cx, cyb, d)
 		return { (cx - vx) / f, -cyb / f, d }
 	end
 	if m.VY >= m.VX then
-		-- portrait: up the right edge above the RUN button: ATTACK, then [SPECIAL][ELEMENT], then DASH
+		-- portrait: up the right edge above the RUN button: SPECIAL, then ELEMENT, then [TARGET][DASH] (a small phone's
+		-- vitals card reaches under SPECIAL: above it then; TARGET beside ELEMENT would reach the middle of the screen)
 		local right = vx - 10 * f
 		local base = max(r.jump[4], r.run[4]) + gap + 2
-		out.Attack = at(right - bigPx / 2 - 4 * f, base + bigPx / 2, big)
+		local v = CheerUp.Layout()
+		if v and right - bigPx - 4 * f < v.X + v.W then
+			base = max(base, m.VY - m.Inset - v.Y + 2)
+		end
+		out.Special = at(right - bigPx / 2 - 4 * f, base + bigPx / 2, big)
 		local row2 = base + bigPx + gap
-		out.Element = at(right - smallPx / 2, row2 + smallPx / 2, small)
-		out.Special = at(right - smallPx - gap - smallPx / 2, row2 + smallPx / 2, small)
-		local row3 = row2 + smallPx + gap
+		out.Element = at(right - elementPx / 2, row2 + elementPx / 2, element)
+		local row3 = row2 + elementPx + gap
 		out.Dash = at(right - smallPx / 2, row3 + smallPx / 2, small)
+		out.Target = at(right - smallPx - gap - smallPx / 2, row3 + smallPx / 2, small)
 	else
-		-- landscape: [SPECIAL][ATTACK] left of the jump button (the bottom strip), ELEMENT then DASH above ATTACK
+		-- landscape: [TARGET][SPECIAL] left of the jump button (the bottom strip), ELEMENT then DASH above SPECIAL. A small
+		-- phone: the vitals card ends the strip and the enemy list (two rows + "+n more") the stack, so SPECIAL, ELEMENT and
+		-- DASH give up their extra size (and the strip sits a hair lower than the jump button: the card ends just above it)
 		local left = r.jump[1] - gap
-		local base = r.jump[2]
-		out.Attack = at(left - bigPx / 2, base + bigPx / 2, big)
-		out.Special = at(left - bigPx - gap - smallPx / 2, base + smallPx / 2, small)
+		local base = r.jump[2] - 4
+		local v = CheerUp.Layout()
+		bigPx = clamp(left - (v and (v.X + v.W) or 0) - 2 * gap - smallPx, K.SPECIAL_TOUCH_MIN_PX, bigPx)
+		big = bigPx / f
+		out.Special = at(left - bigPx / 2, base + bigPx / 2, big)
+		out.Target = at(left - bigPx - gap - smallPx / 2, base + smallPx / 2, small)
 		local row2 = base + bigPx + gap
-		out.Element = at(left - bigPx / 2, row2 + smallPx / 2, small)
-		out.Dash = at(left - bigPx / 2, row2 + smallPx + gap + smallPx / 2, small)
+		local listBottom = ((Hud.listTop or K.EDGE) + K.ROWS_COMPACT * (K.ROW_H_COMPACT + K.ROW_GAP) + 24 - K.ROW_GAP) * f
+		local room = m.VY - m.Inset - listBottom - row2 - gap
+		elementPx = clamp(room - K.SMALL_TOUCH_PX, K.ELEMENT_TOUCH_MIN_PX, elementPx)
+		local dashPx = clamp(room - elementPx, K.SMALL_TOUCH_PX, smallPx)
+		out.Element = at(left - bigPx / 2, row2 + elementPx / 2, elementPx / f)
+		out.Dash = at(left - bigPx / 2, row2 + elementPx + gap + dashPx / 2, dashPx / f)
 	end
 	out.w, out.h = 10, 10
 	return out
@@ -5555,6 +5594,7 @@ function Hud.Rebuild()
 	Hud.teamPlace = (isFighting or between) and "TopLeft" or nil
 	-- enemy list (right) -----------------------------------------------------------------------------
 	local rightY = (curBottom > 0 and curRight > m.W * m.F - (K.ROW_W + 40) * m.F) and (curBottom + 6) or topY
+	Hud.listTop = rightY
 	Hud.enemies.Visible = isFighting
 	local listH = 0
 	if isFighting then
@@ -5576,14 +5616,7 @@ function Hud.Rebuild()
 			local d = spec[3]
 			A.Button.Size = UDim2.fromOffset(d, d)
 			A.Button.Position = UDim2.new(1, spec[1], 1, spec[2])
-			A.Glyph.TextSize = floor(d * 0.4)
-			A.Glyph:SetAttribute("BaseText", A.Glyph.TextSize)
-			A.Count.TextSize = floor(d * 0.36)
-			A.Count:SetAttribute("BaseText", A.Count.TextSize)
-			A.Caption.Visible = not m.Touch
-			A.Caption.Position = UDim2.new(0.5, 0, 1, 2)
-			A.Caption.Size = UDim2.fromOffset(d + 24, 20)
-			A.Caption.TextTruncate = Enum.TextTruncate.AtEnd
+			Hud.PlaceFace(A, d, m)
 			A.Key.Visible = not m.Touch
 			A.Key.Position = UDim2.new(0.15, 0, 0.15, 0)
 		end
@@ -5598,6 +5631,52 @@ function Hud.Rebuild()
 	Hud.last = {}
 	Hud.enemyDirty = false
 	Hud.Update(B, os.clock(), true)
+end
+
+-- a button's glyph, countdown and caption for its diameter d. Wide screens: the caption under the button, up to 2 lines.
+-- Touch: the caption sits inside the face (DASH keeps a plain face), the glyph and the countdown above it
+function Hud.PlaceFace(A, d, m)
+	local inFace = m.Touch and A.kind ~= "Dash"
+	local share = inFace and (1 - Hud.FaceNameH(A, d) / (d - 10)) or 1
+	A.Glyph.Size = UDim2.fromScale(1, share)
+	A.Glyph.TextSize = floor(d * (inFace and 0.3 or 0.4))
+	A.Glyph:SetAttribute("BaseText", A.Glyph.TextSize)
+	A.Count.Size = UDim2.fromScale(1, share)
+	A.Count.TextSize = floor(d * (inFace and 0.3 or 0.36))
+	A.Count:SetAttribute("BaseText", A.Count.TextSize)
+	local cap = A.Caption
+	cap.Visible = inFace or not m.Touch
+	cap.TextScaled = inFace
+	local outline = cap:FindFirstChild("TextOutline")
+	if outline then
+		outline.Thickness = inFace and 1 or 2 -- (a thick outline fills in small letters)
+	end
+	if inFace then
+		cap.TextTruncate = Enum.TextTruncate.None
+		Hud.PlaceFaceName(A, d, false)
+	else
+		cap.TextTruncate = Enum.TextTruncate.AtEnd
+		cap.Position = UDim2.new(0.5, 0, 1, 2)
+		cap.Size = UDim2.fromOffset(d + ((A.kind == "Special") and 56 or (A.kind == "Element") and 40 or 24), Hud.CaptionH(m))
+	end
+end
+
+-- the height of a touch button's name in its face (design px): the part under the glyph, at least its lines at NAME_MIN_PX
+-- (a name has two, TARGET one)
+function Hud.FaceNameH(A, d)
+	local lines = (A.kind == "Target") and 1 or 2
+	return max((d - 10) * (1 - K.NAME_GLYPH), lines * math.ceil(K.NAME_MIN_PX * 1.2) / max(0.05, Hud.m and Hud.m.F or 1))
+end
+
+-- a touch button's name: the lower part of the face (an attack's name a little wider than the face: letters with an
+-- outline read on its ring and past it; TARGET is short and on a phone sits at the edge of the middle of the screen), or
+-- the whole face (`whole`: TARGET's flash, the glyph steps aside)
+function Hud.PlaceFaceName(A, d, whole)
+	local face = d - 10
+	local h = whole and face or Hud.FaceNameH(A, d)
+	A.Caption.Position = UDim2.new(0.5, 0, 0, 5 + face - h)
+	A.Caption.Size = UDim2.fromOffset(d + ((A.kind == "Target") and 0 or 14), h)
+	A.Caption.TextYAlignment = whole and Enum.TextYAlignment.Center or Enum.TextYAlignment.Top
 end
 
 -- the fighter card + helper cells (sizes + positions; Team-local); returns the Team block's size
@@ -5779,17 +5858,23 @@ function Hud.Bench(B)
 	return out
 end
 
--- the action captions: ATTACK picks the enemy the pet attacks (it attacks by itself), the element attack's name
+-- the action captions: the attacks' names (the form's at the pet's stage), TARGET + its flash (NEXT / AUTO / ONE ENEMY)
 function Hud.Captions(B)
 	local f = B.fighterId and B.units[B.fighterId]
 	local ea = f and type(f.info.elementAttack) == "table" and f.info.elementAttack or nil
+	local sp = f and type(f.info.special) == "table" and f.info.special or nil
 	local caps = {
-		-- bug #16: ATTACK (a tap attacks the lock / the nearest); NEXT for NEXT_FLASH after a hold picked the next target
-		Attack = (St.nextFlashUntil and os.clock() < St.nextFlashUntil) and "NEXT" or "ATTACK",
+		Target = St.targetFlash or "TARGET",
 		Element = ea and string.upper(tostring(ea.Name)) or "ELEMENT",
-		Special = "SPECIAL",
+		Special = sp and string.upper(tostring(sp.Name)) or "SPECIAL",
 		Dash = "DASH",
 	}
+	local T = Hud.buttons.Target
+	if T and Hud.m and Hud.m.Touch then
+		-- (a phone: the flash takes the whole face, "ONE ENEMY" is two lines)
+		setVisible(T.Glyph, St.targetFlash == nil)
+		Hud.PlaceFaceName(T, T.Button.Size.X.Offset, St.targetFlash ~= nil)
+	end
 	for kind, A in pairs(Hud.buttons) do
 		setText(A.Caption, caps[kind] or kind)
 		if kind == "Element" and f then
@@ -7535,9 +7620,10 @@ end
 
 ----------------------------------------------------------------------
 -- Input (contract 4.7 control map; bound through ContextActionService at High priority ONLY while fighting)
---   ATTACK  left click / F / X / the big round button: ONE "Attack" order per press (dungeon fixes decision 4): the
---           fighter attacks by itself (server auto-attack); "Attack"(id) = attack this one (a click on an enemy; with
---           the mouse locked the enemy under the screen centre), "Attack"() = the nearest / the next one
+--   TARGET  F / X / its button: the fighter attacks by itself (server auto-attack): a tap (on release, under 0.4 s) =
+--           Target(the next enemy), the pet goes after it; a hold of 0.4 s = Target(nil), back to automatic. One enemy:
+--           the caption says so, nothing is sent. A left click on an enemy (with the mouse locked the enemy under the
+--           screen centre) or a tap on it = Target(its id); a click on nothing sends nothing
 --   ELEMENT E / Y / its button (cooldown ring); E passes through while a ProximityPrompt is shown (exit, chest)
 --   SPECIAL Q / RB / its button (lights gold at 100)
 --   DASH    Shift / B / its button: the PET dashes ("Dash"; MovementController.SetPetDash: no character impulse, no
@@ -7621,12 +7707,13 @@ function Input.OnAction(name, state, input)
 		return pass() -- the shown prompt (the room's exit, a chest) gets the E
 	end
 	local ended = state == Enum.UserInputState.End or state == Enum.UserInputState.Cancel
-	if name == K.ACTION_ATTACK then
+	if name == K.ACTION_SWITCH then
 		if began then
-			Input.Press("Attack", true)
-			Input.HoldStart("attackKey", 0, os.clock(), "Attack") -- bug #16: hold 0.4 s = the next target
+			Input.HoldStart("targetKey", 0, os.clock(), "Target")
+		elseif state == Enum.UserInputState.Cancel then
+			Input.HoldDrop("targetKey") -- (the key was taken away: no press the player finished)
 		elseif ended then
-			Input.HoldEnd("attackKey")
+			Input.HoldEnd("targetKey")
 		end
 	elseif name == K.ACTION_ELEMENT then
 		if began then
@@ -7639,9 +7726,9 @@ function Input.OnAction(name, state, input)
 	elseif name == K.ACTION_TARGET then
 		if began then
 			if key == Enum.KeyCode.T or key == Enum.KeyCode.ButtonL2 then
-				BattleController.Focus(nil)
+				Input.ClearTarget()
 			else
-				Input.CycleTarget()
+				Input.SwitchTarget()
 			end
 		end
 	elseif name == K.ACTION_HELPER then
@@ -7673,7 +7760,7 @@ function Input.Bind(on)
 			priority = Enum.ContextActionPriority.High.Value
 		end)
 		pcall(function()
-			ContextActionService:BindActionAtPriority(K.ACTION_ATTACK, Input.OnAction, false, priority, Enum.KeyCode.F, Enum.KeyCode.ButtonX)
+			ContextActionService:BindActionAtPriority(K.ACTION_SWITCH, Input.OnAction, false, priority, Enum.KeyCode.F, Enum.KeyCode.ButtonX)
 			ContextActionService:BindActionAtPriority(K.ACTION_ELEMENT, Input.OnAction, false, priority, Enum.KeyCode.E, Enum.KeyCode.ButtonY)
 			ContextActionService:BindActionAtPriority(K.ACTION_SPECIAL, Input.OnAction, false, priority, Enum.KeyCode.Q, Enum.KeyCode.ButtonR1)
 			ContextActionService:BindActionAtPriority(K.ACTION_TARGET, Input.OnAction, false, priority, Enum.KeyCode.Tab, Enum.KeyCode.T, Enum.KeyCode.ButtonR2, Enum.KeyCode.ButtonL2)
@@ -7684,7 +7771,7 @@ function Input.Bind(on)
 			)
 		end)
 	else
-		for _, name in ipairs({ K.ACTION_ATTACK, K.ACTION_ELEMENT, K.ACTION_SPECIAL, K.ACTION_TARGET, K.ACTION_HELPER }) do
+		for _, name in ipairs({ K.ACTION_SWITCH, K.ACTION_ELEMENT, K.ACTION_SPECIAL, K.ACTION_TARGET, K.ACTION_HELPER }) do
 			pcall(function()
 				ContextActionService:UnbindAction(name)
 			end)
@@ -7740,47 +7827,40 @@ function Input.PetDash()
 	return BattleController.Command("Dash")
 end
 
--- a button press of an action (keys, the round buttons): ONE command per press (ATTACK never repeats: the fighter
--- attacks by itself, ATTACK only tells it which enemy; arg = that enemy's id, nil = the nearest / the next one)
-function Input.Press(kind, down, arg)
+-- a button press of an action (keys, the round buttons): ONE command per press
+function Input.Press(kind, down)
 	if not down or not fighting() then
-		return
-	end
-	if kind == "Attack" then
-		BattleController.Command("Attack", arg)
 		return
 	end
 	BattleController.Command(kind)
 end
 
--- per frame: a helper key / portrait held 0.5 s swaps; an ATTACK key / button held 0.4 s locks the next target (bug #16)
+-- per frame: a helper key / portrait held 0.5 s swaps; a TARGET key / button held 0.4 s clears the lock
 function Input.Tick(B, now)
 	if not B or not fighting() then
 		return
 	end
 	for key, h in pairs(St.holds or {}) do
-		if h.kind == "Attack" and not h.fired and h.gui and h.input and not Input.OnButton(h.input, h.gui) then
-			St.holds[key] = nil -- the touch / cursor slid off the ATTACK button: no re-target the player did not ask for
-		elseif h.kind == "Attack" then
-			if not h.fired and now - h.t >= K.ATTACK_HOLD then
+		if h.kind == "Target" and not h.fired and h.gui and h.input and not Input.OnButton(h.input, h.gui) then
+			St.holds[key] = nil -- the touch / cursor slid off the TARGET button: nothing the player asked for
+		elseif h.kind == "Target" then
+			if not h.fired and now - h.t >= K.TARGET_HOLD then
 				h.fired = true
-				Input.CycleTarget()
-				St.nextFlashUntil = os.clock() + K.NEXT_FLASH
-				Hud.Captions(B)
+				Input.ClearTarget()
 			end
 		elseif not h.fired and now - h.t >= K.SWAP_HOLD then
 			h.fired = true
 			Input.Helper("Swap", h.index)
 		end
 	end
-	if St.nextFlashUntil and os.clock() >= St.nextFlashUntil then
-		St.nextFlashUntil = nil
+	if St.targetFlashUntil and os.clock() >= St.targetFlashUntil then
+		St.targetFlash, St.targetFlashUntil = nil, nil
 		Hud.Captions(B)
 	end
 end
 
--- `kind` "Attack" = an ATTACK hold (bug #16: it cycles the target, never a helper's Buff / Swap); `input` / `gui` (the
--- ATTACK button's touch / click): the hold is dropped when that input leaves the button or ends anywhere
+-- `kind` "Target" = a TARGET hold (never a helper's Buff / Swap); `input` / `gui` (the TARGET button's touch / click): the
+-- hold is dropped when that input leaves the button
 function Input.HoldStart(key, index, t, kind, input, gui)
 	if not fighting() or not Input.GateOpen() then
 		return
@@ -7796,8 +7876,33 @@ function Input.HoldEnd(key)
 		return
 	end
 	St.holds[key] = nil
-	if not h.fired and h.kind ~= "Attack" then
+	if h.fired then
+		return
+	end
+	if h.kind == "Target" then
+		Input.SwitchTarget() -- the tap: released under 0.4 s (a fired hold has cleared the lock and sends nothing more)
+	else
 		Input.Helper("Buff", h.index)
+	end
+end
+
+function Input.HoldDrop(key)
+	if St.holds then
+		St.holds[key] = nil
+	end
+end
+
+-- the TARGET button's touch / click ended, over the button or anywhere (a release off it never reaches the button's own
+-- InputEnded; both may come for one release, the hold answers once): a release off the button is no tap
+function Input.TargetButtonEnded(input)
+	local h = St.holds and St.holds.targetButton
+	if not h then
+		return
+	end
+	if h.fired or Input.OnButton(input, h.gui) then
+		Input.HoldEnd("targetButton")
+	else
+		Input.HoldDrop("targetButton")
 	end
 end
 
@@ -7805,7 +7910,7 @@ end
 function Input.HoldFrac(index, now)
 	local best = 0
 	for _, h in pairs(St.holds or {}) do
-		if h.index == index and not h.fired and h.kind ~= "Attack" then
+		if h.index == index and not h.fired and h.kind ~= "Target" then
 			local p = (now - h.t - 0.1) / (K.SWAP_HOLD - 0.1)
 			if p > best then
 				best = min(1, p)
@@ -7833,8 +7938,25 @@ function Input.Helper(action, index)
 	return BattleController.Command(action, u.slot)
 end
 
--- Tab / RT: lock the next enemy, nearest to my fighter first
-function Input.CycleTarget()
+-- TARGET's caption reads `text` for NEXT_FLASH
+function Input.FlashTarget(B, text)
+	St.targetFlash, St.targetFlashUntil = text, os.clock() + K.NEXT_FLASH
+	Hud.Captions(B)
+end
+
+-- a hold of F / X / TARGET, T / LT: back to automatic (the pet keeps its engaged target, then picks the nearest)
+function Input.ClearTarget()
+	local B = St.battle
+	if not B then
+		return
+	end
+	BattleController.Focus(nil)
+	Input.FlashTarget(B, "AUTO")
+end
+
+-- a tap of F / X / TARGET, Tab / RT: lock the next enemy, nearest to my fighter first (the pet goes after the lock: the
+-- server's engage order). One enemy: nothing to switch to, it says so and sends nothing
+function Input.SwitchTarget()
 	local B = St.battle
 	if not B then
 		return
@@ -7851,6 +7973,11 @@ function Input.CycleTarget()
 	if #list == 0 then
 		return
 	end
+	if #list == 1 then
+		Hud.Shake(Hud.ButtonOf("Target"))
+		Input.FlashTarget(B, "ONE ENEMY")
+		return
+	end
 	table.sort(list, function(a, b)
 		if a.d ~= b.d then
 			return a.d < b.d
@@ -7864,7 +7991,10 @@ function Input.CycleTarget()
 			break
 		end
 	end
-	BattleController.Focus(pick.id)
+	if BattleController.Focus(pick.id) then
+		Hud.Pop(Hud.ButtonOf("Target"))
+		Input.FlashTarget(B, "NEXT")
+	end
 end
 
 -- the enemy a tap / click at viewport pixel (x, y) picks (nearest projected enemy within reach), or nil
@@ -7927,14 +8057,17 @@ function Input.OnBegan(input, processed)
 	if t == Enum.UserInputType.Touch then
 		St.tap = { x = input.Position.X, y = input.Position.Y, t = os.clock(), input = input }
 	elseif t == Enum.UserInputType.MouseButton1 then
-		-- one "Attack" order: the enemy under the cursor (the screen centre while MouseLock holds the cursor there),
-		-- else the nearest / the next one
+		-- a click on an enemy picks it: the one under the cursor (the screen centre while MouseLock holds the cursor there);
+		-- a click on nothing sends nothing, holding the mouse never cycles
 		local x, y = input.Position.X, input.Position.Y + guiInset()
 		local cam = workspace.CurrentCamera
 		if Input.MouseLocked() and cam then
 			x, y = cam.ViewportSize.X / 2, cam.ViewportSize.Y / 2
 		end
-		Input.Press("Attack", true, BattleController.ScreenPick(x, y))
+		local id = BattleController.ScreenPick(x, y)
+		if id then
+			BattleController.Focus(id)
+		end
 	end
 end
 
@@ -7961,11 +8094,10 @@ end
 
 function Input.OnEnded(input)
 	local t = input.UserInputType
-	-- the ATTACK button's hold ends with its own touch / the mouse button wherever it is released (bug #16 review: a
-	-- release off the button never reaches the button's InputEnded)
-	local ah = St.holds and St.holds.attackButton
+	-- the TARGET button's hold ends with its own touch / the mouse button wherever it is released
+	local ah = St.holds and St.holds.targetButton
 	if ah and ((t == Enum.UserInputType.MouseButton1 and (ah.input == nil or ah.input.UserInputType == t)) or (t == Enum.UserInputType.Touch and (ah.input == nil or ah.input == input))) then
-		Input.HoldEnd("attackButton")
+		Input.TargetButtonEnded(input)
 	end
 	local tap = St.tap
 	if not tap or t ~= Enum.UserInputType.Touch then
@@ -8115,8 +8247,8 @@ function BattleController.Focus(unitId)
 	if not B or not B.Fighter or B.ended then
 		return false
 	end
-	if unitId == nil and B.lock == nil then
-		return false
+	if unitId == B.lock then
+		return false -- (no lock to clear, or the enemy already picked: no traffic)
 	end
 	return BattleController.Command("Target", unitId)
 end

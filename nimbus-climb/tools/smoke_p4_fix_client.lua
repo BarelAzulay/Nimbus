@@ -487,7 +487,7 @@ end
 -- what LEAVE must keep clear of: the battle HUD's other parts + every other GUI's buttons
 local function obstacles(card)
 	local out = {}
-	for _, path in ipairs({ "Root.TopCard", "Root.Commands.AttackButton", "Root.Commands.DashButton", "Root.ResultCard" }) do
+	for _, path in ipairs({ "Root.TopCard", "Root.Commands.TargetButton", "Root.Commands.DashButton", "Root.ResultCard" }) do
 		local o = at(path)
 		if o and shown(o) then
 			out[#out + 1] = { path, rect(o) }
@@ -628,7 +628,7 @@ S.client_p4fix_leave = guarded("client_p4fix_leave", function()
 	local du = newBattle("Duel")
 	if du then
 		du.start()
-		T.check(shown(at("Root.Commands.AttackButton")) and not shown(at("Root.LeaveButton")), "p4fix leave: a duel has no LEAVE")
+		T.check(shown(at("Root.Commands.TargetButton")) and not shown(at("Root.LeaveButton")), "p4fix leave: a duel has no LEAVE")
 		du.finish({ Mode = "Duel", Outcome = "Win", Won = true, Spectator = false, Reason = "Wipe", Rewards = { Tokens = 60, Gems = 0, Xp = 60, Trophies = 25, LevelUps = 0 } })
 		closeBattle()
 	end

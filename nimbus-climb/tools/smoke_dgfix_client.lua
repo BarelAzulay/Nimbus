@@ -555,31 +555,36 @@ S.client_dgfix_attack = guarded("client_dgfix_attack", function()
 	else
 		T.check(BC.GetStats().Focus == nil, "dgfix attack: no pick and no target of its own: no arrow")
 	end
-	-- F: one order (a tap; bug #16: a hold of 0.4 s adds ONE Target(next), smoke_fight.lua), no repeat
+	-- F: one order on release (a tap; a hold of 0.4 s = ONE Target(nil), smoke_fight.lua), no repeat
 	local idx = #Mock.RemoteLog
 	d.noForward = true
-	Mock.TriggerAction("NimbusBattleAttack", "Begin", Mock.NewInput("F", "Keyboard", "Begin"))
+	Mock.TriggerAction("NimbusBattleSwitch", "Begin", Mock.NewInput("F", "Keyboard", "Begin"))
 	H.step(6, 1 / 30)
-	Mock.TriggerAction("NimbusBattleAttack", "End", Mock.NewInput("F", "Keyboard", "End"))
+	Mock.TriggerAction("NimbusBattleSwitch", "End", Mock.NewInput("F", "Keyboard", "End"))
 	H.step(54, 1 / 30)
 	local cmds = H.commands(idx)
-	T.check(#cmds == 1 and cmds[1].action == "Attack" and cmds[1].arg == nil, "dgfix attack: F sends ONE Attack (nil = keep the live lock / the nearest), nothing repeats",
+	T.check(#cmds == 1 and cmds[1].action == "Target" and isEnemy(cmds[1].arg), "dgfix attack: F sends ONE Target(the next enemy), no Attack, nothing repeats",
 		#cmds .. " sent")
 	local f = BC.GetUnit(BC.GetBattle().FighterId)
 	T.check(f and f.Drawn ~= nil, "dgfix attack: my fighter is drawn")
-	-- the ATTACK button: one order per press
+	-- the TARGET button: one order per press
 	H.step(10, 0.05)
 	idx = #Mock.RemoteLog
-	local btn = H.find("Root.Commands.AttackButton")
+	local btn = H.find("Root.Commands.TargetButton")
 	if btn then
-		Mock.Click(btn)
+		local a, s = btn.AbsolutePosition, btn.AbsoluteSize
+		local mid = Vector3.new(a.X + s.X / 2, a.Y + s.Y / 2, 0)
+		Mock.FireSignal(btn, "InputBegan", Mock.NewInput("Unknown", "MouseButton1", "Begin", { Position = mid }), false)
+		Mock.FireSignal(btn, "InputEnded", Mock.NewInput("Unknown", "MouseButton1", "End", { Position = mid }), false)
 	end
 	H.step(30, 1 / 30)
 	cmds = H.commands(idx)
-	T.check(btn and #cmds == 1 and cmds[1].action == "Attack", "dgfix attack: the ATTACK button sends one Attack order", #cmds .. " sent")
-	local cap = H.find("Root.Commands.AttackButton.Caption")
-	T.check(cap and cap.Text == "ATTACK", "dgfix attack: the ATTACK caption says ATTACK (bug #16)", cap and cap.Text or "nil")
-	-- a click on an enemy (the mock camera projects every unit to the screen centre): Attack(its id), the arrow on it
+	T.check(btn and #cmds == 1 and cmds[1].action == "Target" and isEnemy(cmds[1].arg), "dgfix attack: the TARGET button sends one Target order", #cmds .. " sent")
+	local cap = H.find("Root.Commands.TargetButton.Caption")
+	T.check(cap and cap.Text == "TARGET", "dgfix attack: the caption says TARGET", cap and cap.Text or "nil")
+	-- back to automatic, so the click below is a change of lock
+	Mock.TriggerAction("NimbusBattleTarget", "Begin", Mock.NewInput("T", "Keyboard", "Begin"))
+	-- a click on an enemy (the mock camera projects every unit to the screen centre): Target(its id), the arrow on it
 	H.step(10, 0.05)
 	local vp = Mock.Viewport
 	idx = #Mock.RemoteLog
@@ -588,16 +593,17 @@ S.client_dgfix_attack = guarded("client_dgfix_attack", function()
 	H.step(30, 1 / 30)
 	cmds = H.commands(idx)
 	local picked = cmds[1] and cmds[1].arg
-	T.check(#cmds == 1 and cmds[1].action == "Attack" and isEnemy(picked), "dgfix attack: a click on an enemy sends Attack(its id), once", #cmds .. " sent, arg " .. tostring(picked))
+	T.check(#cmds == 1 and cmds[1].action == "Target" and isEnemy(picked), "dgfix attack: a click on an enemy sends Target(its id), once", #cmds .. " sent, arg " .. tostring(picked))
 	local focus = BC.GetStats().Focus
 	T.check(focus and focus.Id == picked and focus.Auto == false, "dgfix attack: ... and the arrow marks it (solid: picked)", focus and tostring(focus.Id) or "nil")
-	-- a click on empty ground: Attack() (the server picks the nearest / next)
+	-- a click on empty ground: nothing
 	H.step(10, 0.05)
 	idx = #Mock.RemoteLog
 	Mock.FireSignal(UserInputService, "InputBegan", Mock.NewInput("Unknown", "MouseButton1", "Begin", { Position = Vector3.new(30, 60, 0) }), false)
 	H.step(5, 1 / 30)
 	cmds = H.commands(idx)
-	T.check(#cmds == 1 and cmds[1].action == "Attack" and cmds[1].arg == nil, "dgfix attack: a click on nothing sends Attack() once", #cmds .. " sent")
+	T.check(#cmds == 0, "dgfix attack: a click on nothing sends nothing", #cmds .. " sent")
+	Mock.TriggerAction("NimbusBattleTarget", "Begin", Mock.NewInput("T", "Keyboard", "Begin"))
 	-- the mouse locked at the centre (MouseLock): the same click targets the enemy under the screen centre
 	H.step(10, 0.05)
 	local okLock = pcall(function()
@@ -607,7 +613,7 @@ S.client_dgfix_attack = guarded("client_dgfix_attack", function()
 	Mock.FireSignal(UserInputService, "InputBegan", Mock.NewInput("Unknown", "MouseButton1", "Begin", { Position = Vector3.new(30, 60, 0) }), false)
 	H.step(5, 1 / 30)
 	cmds = H.commands(idx)
-	T.check(okLock and #cmds == 1 and cmds[1].action == "Attack" and isEnemy(cmds[1].arg), "dgfix attack: with the mouse locked a click targets the enemy under the screen centre",
+	T.check(okLock and #cmds == 1 and cmds[1].action == "Target" and isEnemy(cmds[1].arg), "dgfix attack: with the mouse locked a click targets the enemy under the screen centre",
 		#cmds .. " sent, arg " .. tostring(cmds[1] and cmds[1].arg))
 	pcall(function()
 		UserInputService.MouseBehavior = Enum.MouseBehavior.Default

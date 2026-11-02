@@ -73,7 +73,7 @@ ids were found. A yellow `[MeshLibrary] <name> ... stays on the Part build` line
 
 - **Fight with one pet, bring two helpers.** Your battle team is **3 pets**. The first is your **FIGHTER**: you walk
   your character and your fighter fights right where you go (fast pets make you faster in a fight). Your fighter
-  attacks by itself; **ATTACK** (`F` or a click) picks the enemy it attacks. Use **ELEMENT** (`E`, your fighter's
+  attacks by itself; **SWITCH TARGET** (`F`, or click an enemy) picks the enemy it attacks. Use **ELEMENT** (`E`, your fighter's
   element attack), **SPECIAL** (`Q`, when the energy bar is full) and **DASH** (`Shift`: your pet dashes and dodges a
   hit). `Tab` picks the next enemy. The other two pets are your
   **HELPERS**: they float behind you, and `1` / `2` (or a tap on a helper's picture) give that helper's **buff**. Hold
@@ -296,7 +296,7 @@ or the VS Code "Rojo" extension are the easy ways to get it).
 | Scoop your Cloud Cash | walk over it | walk over it | walk over it |
 | Go home through your own portal | **Home** tile -> **Go home**, then walk into the portal | the same | the same |
 | No home yet: find a free one | **Home** tile -> **Claim a home**, walk into the portal, press `E` at the gate | the same | the same |
-| Battle: **ATTACK** (your pet attacks by itself: this picks the enemy it attacks) | `F` (or left click) | **ATTACK** button | `X` |
+| Battle: **SWITCH TARGET** (your pet attacks by itself: tap for the next enemy, hold to go back to automatic) | `F` (or click an enemy) | **TARGET** button | `X` |
 | Battle: **ELEMENT** (your fighter's element attack; a door or chest prompt you can see gets `E` first) | `E` | **ELEMENT** button | `Y` |
 | Battle: **SPECIAL** (when the energy bar is full) | `Q` | **SPECIAL** button | `RB` |
 | Battle: **DASH** (your pet dashes and dodges a hit) | `Shift` | **DASH** button | `B` |
@@ -358,7 +358,7 @@ ends it (it asks first). Your step is saved, so the tutorial continues where you
 
   | NPC | Talks about |
   |---|---|
-  | **Sparky Fox**, Movement Trainer | running (Shift / RUN), dashing (Q / DASH), dash-only gaps, healing at the next checkpoint, the battle buttons (ATTACK, ELEMENT, SPECIAL, DASH), a helper's buff and SWAP |
+  | **Sparky Fox**, Movement Trainer | running (Shift / RUN), dashing (Q / DASH), dash-only gaps, healing at the next checkpoint, the battle buttons (SWITCH TARGET, ELEMENT, SPECIAL, DASH), a helper's buff and SWAP |
   | **Captain Penguin**, Co-op Captain | the Obby portal and its level picker, parties, reviving teammates at the next checkpoint, the boss behind the back gate and dodging with DASH, the safe zone outside the Battle Arena, the Dungeon with friends |
   | **Granny Owl**, Pet Expert | roulettes on the shop island and their chances (also with Gems), Mythic pets, the Pet Index, the Berry Basket, the Food Machine (Feed), the EVOLVE button and how evolved pets grow |
   | **Coach Corgi**, Token Coach | tokens that are yours to keep, the Dungeon, the Training Place, the Champion Ring and beating your record, your battle Team (a fighter and two helpers), duels and trophies |
@@ -873,7 +873,7 @@ them and train their skills at the Training Place.
 
 | Button | PC | Phone | Gamepad | What it does |
 |---|---|---|---|---|
-| **ATTACK** | `F` or left click | the big round button (**PICK TARGET**) | `X` | Your fighter attacks by itself, all the time. ATTACK picks the enemy it attacks: the one you click (with **Mouse lock** on: the one in the middle of the screen), else the nearest one; press again for the next one. A gold arrow shows who your pet is attacking. |
+| **SWITCH TARGET** | `F` | the **TARGET** button | `X` | Your fighter attacks by itself, all the time. Tap for the next enemy, nearest first, and your pet goes after it; hold to go back to automatic. With one enemy it says so and does nothing. Clicking or tapping an enemy picks it too (with **Mouse lock** on: the one in the middle of the screen). A gold arrow shows who your pet is attacking. |
 | **ELEMENT** | `E` | ELEMENT button | `Y` | Your fighter's element attack (see below), then a **7 s** cooldown. When a door or chest prompt shows, `E` presses the prompt. |
 | **SPECIAL** | `Q` | SPECIAL button | `RB` | Your fighter's special attack, when the **ENERGY** bar is full (100). |
 | **DASH** | `Shift` | DASH button | `B` | Your PET dashes (your character stays put): a hit during the dash misses ("DODGED!"). It costs no stamina, one dash every **2.5 s**. In a battle RUN is `Ctrl`. |

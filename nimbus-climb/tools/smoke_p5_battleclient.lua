@@ -8,8 +8,8 @@
 --                          name, the cooldown ring from the Buff event, KO greys), late-join cooldowns from Start.Team
 --   client_p5hud_enemies   one row per living enemy, the LOCKED row first (gold bracket + TARGET), max 8 + "+n more",
 --                          the wind-up "!" flash, the boss bar at the top and never in the screen centre
---   client_p5input         the 4.7 map bound only while fighting (and inert before UiGate.HasPlayed), ATTACK = ONE
---                          "Attack" order per press (dungeon fixes 4: no hold repeat, the pet attacks by itself), a
+--   client_p5input         the 4.7 map bound only while fighting (and inert before UiGate.HasPlayed), F = SWITCH TARGET: a tap
+--                          = ONE Target order on release, a hold = ONE Target(nil), no repeat (the pet attacks by itself), a
 --                          helper key: tap = Buff, hold 0.5 s = Swap, Tab cycles the lock,
 --                          predictions (the ring starts at once) + a rejected Order (owner-only) puts it back and shakes
 --                          the button + the 0.6 s timeout; MovementController.SetPetDash (Shift = the pet's dash) /
@@ -649,7 +649,7 @@ S.client_p5input = guarded("client_p5input", function()
 	end
 	local MC = H.moduleAt("client", "Controllers/MovementController")
 	local out0, err0 = #Mock.Output, #Mock.Errors
-	local names = { "NimbusBattleAttack", "NimbusBattleElement", "NimbusBattleSpecial", "NimbusBattleTarget", "NimbusBattleHelper" }
+	local names = { "NimbusBattleSwitch", "NimbusBattleElement", "NimbusBattleSpecial", "NimbusBattleTarget", "NimbusBattleHelper" }
 	local function bound()
 		local n = 0
 		for _, nm in ipairs(names) do
@@ -671,7 +671,7 @@ S.client_p5input = guarded("client_p5input", function()
 	end
 	H.begin(d)
 	T.eq(bound(), #names, "p5 input: the map is bound while fighting")
-	local att = Mock.BoundActions.NimbusBattleAttack
+	local att = Mock.BoundActions.NimbusBattleSwitch
 	T.check(att and att.priority == Enum.ContextActionPriority.High.Value, "p5 input: bound at High priority", att and tostring(att.priority) or "nil")
 	local function hasKey(action, key)
 		local a = Mock.BoundActions[action]
@@ -682,10 +682,10 @@ S.client_p5input = guarded("client_p5input", function()
 		end
 		return false
 	end
-	T.check(hasKey("NimbusBattleAttack", "F") and hasKey("NimbusBattleAttack", "ButtonX") and hasKey("NimbusBattleElement", "E") and hasKey("NimbusBattleElement", "ButtonY")
+	T.check(hasKey("NimbusBattleSwitch", "F") and hasKey("NimbusBattleSwitch", "ButtonX") and hasKey("NimbusBattleElement", "E") and hasKey("NimbusBattleElement", "ButtonY")
 		and hasKey("NimbusBattleSpecial", "Q") and hasKey("NimbusBattleSpecial", "ButtonR1") and hasKey("NimbusBattleTarget", "Tab") and hasKey("NimbusBattleTarget", "T")
 		and hasKey("NimbusBattleHelper", "One") and hasKey("NimbusBattleHelper", "Two") and hasKey("NimbusBattleHelper", "ButtonL1") and hasKey("NimbusBattleHelper", "DPadLeft"),
-		"p5 input: F/X attack, E/Y element, Q/RB special, Tab/T lock, 1/2/LB/D-pad helpers")
+		"p5 input: F/X switch target, E/Y element, Q/RB special, Tab/T lock, 1/2/LB/D-pad helpers")
 	-- MovementController: Shift = the pet's dash (SetPetDash), the battle speeds from Start.Team.Speed
 	local team = d:team()
 	if MC and type(MC.GetSpeedState) == "function" then
@@ -720,22 +720,23 @@ S.client_p5input = guarded("client_p5input", function()
 	else
 		T.fail("p5 input: MovementController.GetSpeedState missing")
 	end
-	-- ATTACK (F): ONE direct order per press, nothing repeats while it is held (the pet attacks by itself)
+	-- SWITCH TARGET (F): a tap = ONE Target on release, a hold = ONE Target(nil), nothing repeats (the pet attacks by itself)
 	local idx = #Mock.RemoteLog
-	Mock.TriggerAction("NimbusBattleAttack", "Begin", Mock.NewInput("F", "Keyboard", "Begin"))
 	d.noForward = true
+	Mock.TriggerAction("NimbusBattleSwitch", "Begin", Mock.NewInput("F", "Keyboard", "Begin"))
+	H.step(3, 1 / 30)
+	Mock.TriggerAction("NimbusBattleSwitch", "End", Mock.NewInput("F", "Keyboard", "End"))
+	T.eq(H.count(idx, "Target"), 1, "p5 input: a tap of F sends ONE Target order")
+	H.step(10, 1 / 30)
+	idx = #Mock.RemoteLog
+	Mock.TriggerAction("NimbusBattleSwitch", "Begin", Mock.NewInput("F", "Keyboard", "Begin"))
 	H.step(75, 1 / 30) -- 2.5 s held
-	local held = H.count(idx, "Attack")
-	local heldTarget = H.count(idx, "Target")
-	Mock.TriggerAction("NimbusBattleAttack", "End", Mock.NewInput("F", "Keyboard", "End"))
-	T.eq(held, 1, "p5 input: F sends ONE Attack order, holding it repeats nothing")
-	T.eq(heldTarget, 1, "p5 input: ... a hold (>= 0.4 s) adds exactly ONE Target(next) (bug #16), no repeat")
+	local held = H.commands(idx)
+	Mock.TriggerAction("NimbusBattleSwitch", "End", Mock.NewInput("F", "Keyboard", "End"))
+	T.check(#held == 1 and held[1].action == "Target" and held[1].arg == nil, "p5 input: holding F sends ONE Target(nil), no repeat", #held .. " sent")
 	local idx2 = #Mock.RemoteLog
 	H.step(30, 1 / 30)
 	T.eq(H.count(idx2, "Attack") + H.count(idx2, "Target"), 0, "p5 input: ... and nothing after the release")
-	-- (the hold's Target was not forwarded: T clears that predicted lock so Tab below starts from no lock)
-	Mock.TriggerAction("NimbusBattleTarget", "Begin", Mock.NewInput("T", "Keyboard", "Begin"))
-	H.step(3, 1 / 30)
 	d.noForward = false
 	d.logIndex = #Mock.RemoteLog
 	-- helper keys: a tap = Buff, held 0.5 s = Swap
@@ -833,8 +834,8 @@ S.client_p5input = guarded("client_p5input", function()
 	end
 	idx = #Mock.RemoteLog
 	H.step(10, 0.05)
-	local r1 = Mock.TriggerAction("NimbusBattleAttack", "Begin", Mock.NewInput("F", "Keyboard", "Begin"))
-	Mock.TriggerAction("NimbusBattleAttack", "End", Mock.NewInput("F", "Keyboard", "End"))
+	local r1 = Mock.TriggerAction("NimbusBattleSwitch", "Begin", Mock.NewInput("F", "Keyboard", "Begin"))
+	Mock.TriggerAction("NimbusBattleSwitch", "End", Mock.NewInput("F", "Keyboard", "End"))
 	T.check(#H.commands(idx) == 0 and r1 == Enum.ContextActionResult.Pass, "p5 input: the keys are inert (passed through) before UiGate.HasPlayed()")
 	BC.Hooks.Gate = nil
 	-- the end: everything released, MovementController back to the obby
@@ -1106,7 +1107,7 @@ function H.phoneChecks(BC, label)
 	T.check(bad == nil, label .. ": nothing of the HUD in the centre 40% of the width", tostring(bad) .. where)
 	-- the action buttons: >= 60 design px, on the screen
 	local small = nil
-	for _, kind in ipairs({ "Attack", "Element", "Special", "Dash" }) do
+	for _, kind in ipairs({ "Target", "Element", "Special", "Dash" }) do
 		local btn = H.find("Root.Commands." .. kind .. "Button")
 		if not (btn and H.shown(btn)) then
 			small = kind .. " missing"
@@ -1117,7 +1118,7 @@ function H.phoneChecks(BC, label)
 			end
 		end
 	end
-	T.check(small == nil, label .. ": ATTACK / ELEMENT / SPECIAL / DASH >= 60 design px and on the screen", tostring(small))
+	T.check(small == nil, label .. ": SPECIAL / TARGET / ELEMENT / DASH >= 60 design px and on the screen", tostring(small))
 	-- every text >= 14 px on the screen
 	local scale = H.find("Root.ReadScale")
 	local f = scale and scale.Scale or 1
@@ -1132,7 +1133,7 @@ function H.phoneChecks(BC, label)
 	T.check(b and b.MenuHidden == true, label .. ": the menu column is hidden while fighting")
 	-- no HUD part over another GUI's button (RUN, menu, hotbar, vitals...)
 	local mine = {}
-	for _, path in ipairs({ "Root.Team.Fighter", "Root.Team.Helpers", "Root.Enemies", "Root.TopCard", "Root.Commands.AttackButton", "Root.Commands.ElementButton", "Root.Commands.SpecialButton", "Root.Commands.DashButton" }) do
+	for _, path in ipairs({ "Root.Team.Fighter", "Root.Team.Helpers", "Root.Enemies", "Root.TopCard", "Root.Commands.TargetButton", "Root.Commands.ElementButton", "Root.Commands.SpecialButton", "Root.Commands.DashButton" }) do
 		local o = H.find(path)
 		if o and H.shown(o) then
 			mine[#mine + 1] = { path, H.rect(o) }

@@ -546,7 +546,7 @@ local function landscapeChecks(BC, label, pets)
 	T.check(column ~= nil and shown(column) and column.AbsoluteSize.X > 0, label .. ": ...while the column frame keeps its place (the HUD measures it)")
 	-- no card on the top card, the commands, the vitals, the hotbar or any other button
 	local others = {}
-	for _, p in ipairs({ { "NimbusBattle", "Root.TopCard" }, { "NimbusBattle", "Root.Commands.AttackButton" }, { "NimbusBattle", "Root.Commands.SpecialButton" }, { "NimbusBattle", "Root.Commands.ElementButton" }, { "NimbusBattle", "Root.Commands.DashButton" }, { "NimbusHud", "BottomLeft.Vitals" }, { "NimbusHud", "TopRight.Currency" } }) do
+	for _, p in ipairs({ { "NimbusBattle", "Root.TopCard" }, { "NimbusBattle", "Root.Commands.TargetButton" }, { "NimbusBattle", "Root.Commands.SpecialButton" }, { "NimbusBattle", "Root.Commands.ElementButton" }, { "NimbusBattle", "Root.Commands.DashButton" }, { "NimbusHud", "BottomLeft.Vitals" }, { "NimbusHud", "TopRight.Currency" } }) do
 		local r = namedRect(p[1], p[2])
 		if r then
 			others[#others + 1] = { p[1] .. "." .. p[2], r }

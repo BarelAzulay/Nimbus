@@ -174,8 +174,8 @@ local function serverScenarios()
 		end
 		local floors = BC and BC.Dungeon and BC.Dungeon.Floors or 12
 		local win = BC and BC.Trophies and BC.Trophies.Win or 20
-		T.check(says("sparky_fox", "ATTACK", "ELEMENT", "SPECIAL", "DASH", "F = ", "E = ", "Q = ") and not says("sparky_fox", "RETREAT"),
-			"p3ui: Sparky Fox explains the Phase 5 battle keys (F ATTACK, E ELEMENT, Q SPECIAL, DASH; no RETREAT)")
+		T.check(says("sparky_fox", "SWITCH TARGET", "ELEMENT", "SPECIAL", "DASH", "F = ", "E = ", "Q = ") and not says("sparky_fox", "RETREAT"),
+			"p3ui: Sparky Fox explains the battle keys (F SWITCH TARGET, E ELEMENT, Q SPECIAL, DASH; no RETREAT)")
 		T.check(says("captain_penguin", "always waits behind the colosseum's back gate", "DASH") and not says("captain_penguin", "RETREAT", "minutes in the arena"),
 			"p3ui: Captain Penguin explains the boss at the back gate (no schedule) and dashing out of telegraphs")
 		T.check(type(ND.Get) == "function" and ND.Get("captain_penguin") and table.concat(ND.Get("captain_penguin").Keywords or {}, ","):find("Boss Raid", 1, true) ~= nil,

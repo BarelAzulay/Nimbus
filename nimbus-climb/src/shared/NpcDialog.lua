@@ -366,7 +366,7 @@ NpcDialog.Npcs = {
 		PetId = "aurora_fox",
 		Species = "Fox",
 		Accent = Color3.fromRGB(64, 188, 192),
-		Keywords = { "Shift", "RUN", "DASH!", "DASH", "Q", "checkpoint", "ATTACK", "ELEMENT", "SPECIAL", "helper", "SWAP" },
+		Keywords = { "Shift", "RUN", "DASH!", "DASH", "Q", "checkpoint", "SWITCH TARGET", "ELEMENT", "SPECIAL", "helper", "SWAP" },
 		Lines = {
 			"Zap! Hold Shift to run (the RUN button on phones; Ctrl in a battle). Running drains stamina, walking refills it.",
 			"Press Q to dash (DASH on phones). It costs " .. number(P.DashStaminaCost or 35) .. " stamina, recharges in "
@@ -375,7 +375,7 @@ NpcDialog.Npcs = {
 			-- HUD cleanup: the obby items are gone; the checkpoint heal is the way back up
 			"Low on health in a climb? Reach the next checkpoint: everyone still up heals "
 				.. percent(Config.Damage.CheckpointHealFraction) .. " there.",
-			"Pets attack by themselves! F = ATTACK picks who, E = ELEMENT, Q = SPECIAL, Shift = DASH, 1 or 2 = a helper, hold it to SWAP!",
+			"Pets attack by themselves! F = SWITCH TARGET, E = ELEMENT, Q = SPECIAL, Shift = DASH, 1 or 2 = a helper, hold it to SWAP!",
 		},
 	},
 	{
@@ -426,7 +426,7 @@ NpcDialog.Npcs = {
 			trainLine(skillList),
 			"Try the Champion Ring on the plaza: one champion after another, each stronger. Beat your record for "
 				.. recordWord .. " Cash!",
-			"Your team is a fighter and two helpers. Your fighter attacks by itself: ATTACK picks who; tap a helper for its buff!",
+			"A fighter and two helpers! It attacks by itself: tap TARGET for the next enemy, hold for automatic, tap a helper for a buff!",
 		},
 	},
 	{

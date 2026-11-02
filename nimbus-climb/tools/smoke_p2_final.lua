@@ -840,7 +840,7 @@ end
 local TOPICS3 = {
 	{ "getting to the arena: the Arena gate, the bridge and the home Arena Gate", { "Battle Arena", "Arena gate", "bridge", "BATTLE ARENA", "**Arena Gate**", "press **E**" } },
 	{ "the Pets window (a fighter and two helpers)", { "**Pets**", "**A**", "team power", "**FIGHTER**", "**HELPERS**", "Make fighter" } },
-	{ "the battle buttons and keys", { "**ATTACK**", "**ELEMENT**", "**SPECIAL**", "**DASH**", "**SWAP**", "`F`", "`E`", "`Q`", "`Shift`", "`Tab`", "`1` / `2`", "Phone", "ENERGY" } },
+	{ "the battle buttons and keys", { "**SWITCH TARGET**", "**ELEMENT**", "**SPECIAL**", "**DASH**", "**SWAP**", "`F`", "`E`", "`Q`", "`Shift`", "`Tab`", "`1` / `2`", "Phone", "ENERGY" } },
 	{ "lives and the bench", { "3 lives", "steps in by itself" } },
 	{ "helpers and Supporters", { "Helper buff", "**Support**", "Who gives it" } },
 	{ "the Dungeon", { "Dungeon", "**SOLO**", "**PARTY**", "**READY**", "**START**", "boss room", "first clear", "chest", "LEAVE" } },
@@ -1014,7 +1014,7 @@ local function checkBattleRules(BC, Config, TC, p3, text, controllerSource)
 		return nil
 	end
 	for _, spec in ipairs({
-		{ "ACTION_ATTACK", "F", "ButtonX", "X", "Battle: **ATTACK**" },
+		{ "ACTION_SWITCH", "F", "ButtonX", "X", "Battle: **SWITCH TARGET**" },
 		{ "ACTION_ELEMENT", "E", "ButtonY", "Y", "Battle: **ELEMENT**" },
 		{ "ACTION_SPECIAL", "Q", "ButtonR1", "RB", "Battle: **SPECIAL**" },
 		{ "ACTION_TARGET", "Tab", "ButtonR2", "RT", "Battle: pick the next enemy" },
@@ -1036,9 +1036,9 @@ local function checkBattleRules(BC, Config, TC, p3, text, controllerSource)
 		"BattleController makes Shift the pet's battle dash (MovementController.SetPetDash, PET_DASH_KEYS LeftShift)")
 	local dashRow = controlRow("Battle: **DASH**")
 	t:case(dashRow ~= nil and dashRow[2] == "`Shift`" and has(flat(dashRow[1]), "your pet dashes"), "the controls table's battle DASH row reads `Shift` (your pet dashes)")
-	local attackRow = controlRow("Battle: **ATTACK**")
+	local attackRow = controlRow("Battle: **SWITCH TARGET**")
 	t:case(attackRow ~= nil and has(flat(attackRow[1]), "attacks by itself") and not has(f, "Hold it to keep attacking") and not has(f, "hold to keep attacking"),
-		"ATTACK picks the target, the pet attacks by itself (no hold-to-attack text left)")
+		"SWITCH TARGET picks the target, the pet attacks by itself (no hold-to-attack text left)")
 	t:case(has(f, "Your PET dashes") and has(f, "RUN is `Ctrl`"), "the battle section: Shift makes the PET dash, RUN is `Ctrl` in a battle")
 	t:case(not src:find("ACTION_RETREAT", 1, true) and not has(f, "RETREAT"), "RETREAT is gone (BattleController and the battle section)")
 	t:report()
@@ -1769,7 +1769,7 @@ end
 ----------------------------------------------------------------------------------------------------
 local TOPICS5 = {
 	{ "teams of 3: a fighter and two helpers", { "**FIGHTER**", "**HELPERS**", "**buff**", "**SWAP**", "three lives", "RETREAT is gone" } },
-	{ "the new battle controls (keys and touch)", { "**ATTACK**", "**ELEMENT**", "**SPECIAL**", "**DASH**", "`F`", "`E`", "`Q`", "`Shift`", "`Tab`", "`1` / `2`", "big touch buttons" } },
+	{ "the new battle controls (keys and touch)", { "**SWITCH TARGET**", "**ELEMENT**", "**SPECIAL**", "**DASH**", "`F`", "`E`", "`Q`", "`Shift`", "`Tab`", "`1` / `2`", "big touch buttons" } },
 	{ "helpers / Supporters", { "Supporters", "**Heal**", "**Shield**", "**Rally**", "**Haste**", "about 70 %", "battle power" } },
 	{ "levels and evolutions", { "+10 %", "EVOLVE", "Nobody gets weaker" } },
 	{ "the Dungeon (floors, party, loot)", { "**The Dungeon**", "boss room", "loot", "first time pays big Tokens and Gems", "Trial record" } },

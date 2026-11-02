@@ -405,7 +405,7 @@ S.client_p3battle_trial = guarded("client_p3battle_trial", function()
 	KC.advance(0.5)
 	T.check(BC.GetBattle() == nil and not BC.IsHudVisible(), "BattleController: no battle and no battle HUD in the lobby")
 	T.check(not shown(find("Root.Team")) and not shown(find("Root.Commands")), "BattleController: battle controls hidden outside a battle")
-	T.check(Mock.BoundActions.NimbusBattleSpecial == nil and Mock.BoundActions.NimbusBattleAttack == nil and Mock.BoundActions.NimbusBattleHelper == nil,
+	T.check(Mock.BoundActions.NimbusBattleSpecial == nil and Mock.BoundActions.NimbusBattleSwitch == nil and Mock.BoundActions.NimbusBattleHelper == nil,
 		"BattleController: the battle keys (F / E / Q / 1-2) are not bound outside a battle (the hotbar keeps 1-4)")
 
 	-- a follower to hide
@@ -441,13 +441,13 @@ S.client_p3battle_trial = guarded("client_p3battle_trial", function()
 	end
 	T.check(shown(find("Root.Team.Fighter")) and helpers == 2, "battle HUD: the fighter card + two helper portraits", helpers .. " helpers")
 	local buttons = 0
-	for _, k in ipairs({ "Attack", "Element", "Special", "Dash" }) do
+	for _, k in ipairs({ "Target", "Element", "Special", "Dash" }) do
 		if shown(find("Root.Commands." .. k .. "Button")) then
 			buttons = buttons + 1
 		end
 	end
-	T.eq(buttons, 4, "battle HUD: ATTACK / ELEMENT / SPECIAL / DASH buttons")
-	T.check(Mock.BoundActions.NimbusBattleSpecial ~= nil and Mock.BoundActions.NimbusBattleAttack ~= nil and Mock.BoundActions.NimbusBattleElement ~= nil and Mock.BoundActions.NimbusBattleTarget ~= nil,
+	T.eq(buttons, 4, "battle HUD: SPECIAL / TARGET / ELEMENT / DASH buttons")
+	T.check(Mock.BoundActions.NimbusBattleSpecial ~= nil and Mock.BoundActions.NimbusBattleSwitch ~= nil and Mock.BoundActions.NimbusBattleElement ~= nil and Mock.BoundActions.NimbusBattleTarget ~= nil,
 		"BattleController: F / E / Q / Tab bound while fighting")
 	ff = followerFolder()
 	T.check(ff == nil or ff.Parent == nil, "PetController: the follower is parked while InBattle (the team fights on the floor)")
@@ -543,15 +543,14 @@ S.client_p3battle_trial = guarded("client_p3battle_trial", function()
 	end
 	T.check(#centred == 0, "battle HUD: nothing in the screen centre", KC.describeCentred(centred))
 
-	-- commands: keys through ContextActionService, the attack throttle, ELEMENT's cooldown, SPECIAL's meter
+	-- commands: keys through ContextActionService, ELEMENT's cooldown, SPECIAL's meter
 	local idx = #Mock.RemoteLog
 	d.logIndex = idx
-	Mock.TriggerAction("NimbusBattleAttack", "Begin", Mock.NewInput("F", "Keyboard", "Begin"))
+	Mock.TriggerAction("NimbusBattleSwitch", "Begin", Mock.NewInput("F", "Keyboard", "Begin"))
+	T.eq(#commandsSince(idx), 0, "controls: F sends nothing while it is down (the tap fires on release)")
+	Mock.TriggerAction("NimbusBattleSwitch", "End", Mock.NewInput("F", "Keyboard", "End"))
 	local cmds = commandsSince(idx)
-	T.check(#cmds == 1 and cmds[1].action == "Attack", "controls: F sends BattleCommand Attack", #cmds .. " calls")
-	Mock.TriggerAction("NimbusBattleAttack", "Begin", Mock.NewInput("F", "Keyboard", "Begin"))
-	T.eq(#commandsSince(idx), 1, "controls: a second ATTACK within the throttle is not sent")
-	Mock.TriggerAction("NimbusBattleAttack", "End", Mock.NewInput("F", "Keyboard", "End"))
+	T.check(#cmds == 1 and cmds[1].action == "Target", "controls: a tap of F sends BattleCommand Target", #cmds .. " calls")
 	d:step(30)
 	-- (bug batch 2 #27: wave NPCs start at 45-75 meter and cast in the first seconds, so a Freeze or a fighter swap can
 	-- leave the fighter Stunned / Casting (arriving) right now; wait, at most 2 s, until it can act before testing ELEMENT)
@@ -600,21 +599,32 @@ S.client_p3battle_trial = guarded("client_p3battle_trial", function()
 	T.check(#cmds == 1 and cmds[1].action == "Special", "controls: Q sends BattleCommand Special", #cmds > 0 and tostring(cmds[1].action) or "none")
 	d:step(30)
 
-	-- lock: a TARGET row, then a tap on an enemy in the world
+	-- lock: a TARGET row (F's tap above locked the first one), then a tap on an enemy in the world
 	local enemies = d:enemyIds()
 	local row = find("Root.Enemies.Row1")
 	idx = #Mock.RemoteLog
 	if row then
 		Mock.Click(row)
 	end
+	T.eq(#commandsSince(idx), 0, "controls: clicking the row already locked sends nothing")
+	row = find("Root.Enemies.Row2")
+	if row then
+		Mock.Click(row)
+	end
 	cmds = commandsSince(idx)
-	T.check(#cmds == 1 and cmds[1].action == "Target" and type(cmds[1].arg) == "number", "controls: clicking a TARGET row locks it (Target with its unit id)")
+	T.check(#cmds == 1 and cmds[1].action == "Target" and type(cmds[1].arg) == "number", "controls: clicking another TARGET row locks it (Target with its unit id)", #cmds .. " calls")
 	d:run(0.4, 30)
 	b = BC.GetBattle()
 	T.check(b.Lock ~= nil, "controls: the Order echo sets the lock", tostring(b.Lock))
 	if installProjection() then
 		local cam = workspace.CurrentCamera
-		local target = BC.GetUnit(enemies[#enemies])
+		local target = nil
+		for i = #enemies, 1, -1 do
+			if enemies[i] ~= b.Lock then
+				target = BC.GetUnit(enemies[i])
+				break
+			end
+		end
 		if cam and target and target.World then
 			local center = d.zoneCF.Position
 			cam.CFrame = CFrame.lookAt(center + Vector3.new(0, 30, -45), center)
@@ -639,16 +649,15 @@ S.client_p3battle_trial = guarded("client_p3battle_trial", function()
 			Mock.Step(0.3)
 			idx = #Mock.RemoteLog
 			local empty = Vector3.new(4, 4, 0)
+			T.check(BC.ScreenPick(4, 4 + inset) == nil, "controls: nothing to pick at the screen corner")
+			-- (a free cursor: while MouseLock holds it this click would land on the screen centre, among the enemies)
+			local behaviour = UserInputService.MouseBehavior
+			UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 			Mock.FireSignal(UserInputService, "InputBegan", Mock.NewInput("Unknown", "MouseButton1", "Begin", { Position = empty }), false)
 			Mock.Step(0.05)
 			Mock.FireSignal(UserInputService, "InputEnded", Mock.NewInput("Unknown", "MouseButton1", "End", { Position = empty }), false)
-			local targets = 0
-			for _, c in ipairs(commandsSince(idx)) do
-				if c.action == "Target" then
-					targets = targets + 1
-				end
-			end
-			T.eq(targets, 0, "controls: a click on empty space changes no lock (it only attacks)")
+			UserInputService.MouseBehavior = behaviour
+			T.eq(#commandsSince(idx), 0, "controls: a click on empty space sends nothing (it changes no lock)")
 		else
 			T.fail("controls: tap lock test could not set up the camera / target")
 		end
@@ -936,14 +945,14 @@ S.client_p3battle_mobile = guarded("client_p3battle_mobile", function()
 	local b = BC.GetBattle()
 	T.check(b and b.Layout == "Compact", "phone: the compact battle HUD", b and b.Layout or "nil")
 	local tiny = nil
-	for _, k in ipairs({ "Attack", "Element", "Special", "Dash" }) do
+	for _, k in ipairs({ "Target", "Element", "Special", "Dash" }) do
 		local btn = find("Root.Commands." .. k .. "Button")
 		local r = btn and shown(btn) and screenRect(btn)
 		if not r or (r.x1 - r.x0) < 48 or (r.y1 - r.y0) < 48 then
 			tiny = k .. " " .. (r and (fmt(r.x1 - r.x0, 0) .. "x" .. fmt(r.y1 - r.y0, 0)) or "missing")
 		end
 	end
-	T.check(tiny == nil, "phone: ATTACK / ELEMENT / SPECIAL / DASH are touch-sized (>= 48 px on the screen)", tostring(tiny))
+	T.check(tiny == nil, "phone: SPECIAL / TARGET / ELEMENT / DASH are touch-sized (>= 48 px on the screen)", tostring(tiny))
 	-- every battle text >= 14 px on the screen
 	local scale = find("Root.ReadScale")
 	local f = scale and scale.Scale or 1
@@ -956,7 +965,7 @@ S.client_p3battle_mobile = guarded("client_p3battle_mobile", function()
 	T.check(small == nil, "phone: every battle HUD text is >= 14 px on the screen", tostring(small))
 	-- nothing over the RUN / DASH buttons, the vitals card or the menu column
 	local mine = {}
-	for _, path in ipairs({ "Root.TopCard", "Root.Team.Fighter", "Root.Team.Helpers.Helper1", "Root.Team.Helpers.Helper2", "Root.Enemies", "Root.Commands.AttackButton", "Root.Commands.ElementButton", "Root.Commands.SpecialButton", "Root.Commands.DashButton" }) do
+	for _, path in ipairs({ "Root.TopCard", "Root.Team.Fighter", "Root.Team.Helpers.Helper1", "Root.Team.Helpers.Helper2", "Root.Enemies", "Root.Commands.TargetButton", "Root.Commands.ElementButton", "Root.Commands.SpecialButton", "Root.Commands.DashButton" }) do
 		local o = find(path)
 		if o and shown(o) then
 			mine[#mine + 1] = { path, screenRect(o) }
@@ -1291,8 +1300,8 @@ S.client_p3battle_ring = guarded("client_p3battle_ring", function()
 	T.check(shown(top) and hasText(top, "CHAMPION RING") and hasText(top, "Round 1 %- Best 12"), "ring HUD: the top card reads CHAMPION RING - Round 1 - Best 12")
 	T.check(hasText(find("Root.TopCard.RingInfo"), "Win: %+%$[%d,%.KMB]+  %+33 XP"), "ring HUD: the Cash and XP of a win (RingRewards: round 1 pays 33 XP)", tostring((find("Root.TopCard.RingInfo.WinPay") or {}).Text))
 	T.check(not shown(find("Root.TopCard.RingInfo.Record")) and not shown(find("Root.TopCard.RingInfo.Boss")), "ring HUD: no record / boss pill on round 1 (best 12)")
-	T.check(shown(find("Root.Commands.AttackButton")) and shown(find("Root.Commands.ElementButton")) and shown(find("Root.Commands.SpecialButton")) and shown(find("Root.Commands.DashButton")) and shown(find("Root.Team.Fighter")),
-		"ring HUD: the Phase 5 controls (ATTACK / ELEMENT / SPECIAL / DASH + the fighter card) in the ring")
+	T.check(shown(find("Root.Commands.TargetButton")) and shown(find("Root.Commands.ElementButton")) and shown(find("Root.Commands.SpecialButton")) and shown(find("Root.Commands.DashButton")) and shown(find("Root.Team.Fighter")),
+		"ring HUD: the controls (SPECIAL / TARGET / ELEMENT / DASH + the fighter card) in the ring")
 	-- the champion: crowned, a name tag above its card
 	local ch = champion(d1)
 	local cu = ch and BC.GetUnit(ch.id)
@@ -1359,7 +1368,7 @@ S.client_p3battle_ring = guarded("client_p3battle_ring", function()
 	T.check(same == #d2:myUnits() and parented == same, "ring: End -> Start in one pocket keeps my pets' models (no rebuild, no blink)", same .. "/" .. #d2:myUnits())
 	b = BC.GetBattle()
 	T.check(b and b.Id == d2.id and b.Round == 2 and not b.Ended and b.Next == nil, "ring: the next Start is the new round", b and tostring(b.Round) or "nil")
-	T.check(not shown(find("Root.NextRoundCard")) and hasText(find("Root.TopCard"), "Round 2 %- Best 12") and shown(find("Root.Commands.AttackButton")), "ring: the side card goes, the top card says Round 2, the commands are back")
+	T.check(not shown(find("Root.NextRoundCard")) and hasText(find("Root.TopCard"), "Round 2 %- Best 12") and shown(find("Root.Commands.TargetButton")), "ring: the side card goes, the top card says Round 2, the commands are back")
 	local cb = workspace:FindFirstChild("ClientBattle")
 	T.check(cb and cb:FindFirstChild("Battle_" .. d1.id) == nil, "ring: the won round's floor folder is freed (cleanup keyed by battle id)")
 	d2:run(1.0, 30)
