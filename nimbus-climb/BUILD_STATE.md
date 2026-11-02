@@ -48,6 +48,32 @@ Updated: 2026-10-18 (after wave 2). Branch `v3-phase4`. Plan: `ARCHITECTURE_V3.m
   | Shadow Hydra | Max | 0 % | 42 % | 176 / 180 | 100 % | 161 / 161 |
 
   Within every band; away from the spec's "about" numbers: 8 teams win almost always (99 % on average against about 85), 3 teams average 37 %, Shadow Hydra is never beaten solo in these seeds (solo average 3.5 % against about 5), four 3-team cells sit on the band's floor of 25 %, and Storm Titan Starter (239 s) and Frost Wyrm Max (103 s) sit on the duration band's edges. A bottom-of-tier team solo: 0 % everywhere, as the spec expects. Four fights x 8 raiders: 0.05 ms per sim step under LuaJIT, 3 pockets of 144 parts; a floor or pocket fighter 3.4 KB/s (peak second 6.8 KB), a spectator 2.7 KB/s, 5.3 KB/s during an 8-raider minion wave. Not looked at in Studio yet: the gate pillar and dare prompt, the Raid pocket, the crown and auras on the four bosses, the board with fight lines and the always-on x2 pill, the red edges and lethal rim on a phone, the tutorial arrow to the gate.
+- 2026-11-02 (raids and attack effects together, branch `raid-fx`, not merged): main merged into `raid-boss`'s tree. Frost Wyrm's HpPerPlayer 108 is gone with the number it tuned; the fight tiers keep their HpTier. Evolved reach moved two raid cells over their ceilings (Storm Titan High solo 17 %, Shadow Hydra Mid 3 teams 58 %), so two numbers moved: Storm Titan High HpTier 0.89 -> 0.90, Shadow Hydra Mid 0.93 -> 0.96 (0.94 and 0.95 still gave 58 %). No other cell moved with them; Specials, ElementAttacks and timers untouched.
+  Measured, `SIM_BATTLE=full` on the merged tree (64 of 64 targets; same seeds as the table above; every Starter row is identical to it, Starter teams are unevolved). No group fight timed out, the longest single one lasted 280 s:
+
+  | Boss | Tier | Solo win (<= 15, about 5) | 3 teams win (25-55, about 40) | 3 teams s, won / all | 8 teams win (>= 70, about 85) | 8 teams s, won / all |
+  |---|---|---|---|---|---|---|
+  | Storm Titan | Starter | 8 % | 33 % | 239 / 239 | 100 % | 220 / 220 |
+  | Storm Titan | Mid | 0 % | 42 % | 186 / 193 | 100 % | 189 / 189 |
+  | Storm Titan | High | 8 % | 50 % | 149 / 148 | 100 % | 146 / 146 |
+  | Storm Titan | Max | 0 % | 50 % | 179 / 184 | 83 % | 178 / 192 |
+  | Lava Golem | Starter | 8 % | 25 % | 237 / 223 | 100 % | 224 / 224 |
+  | Lava Golem | Mid | 0 % | 42 % | 163 / 163 | 100 % | 153 / 153 |
+  | Lava Golem | High | 0 % | 25 % | 148 / 142 | 100 % | 133 / 133 |
+  | Lava Golem | Max | 8 % | 50 % | 164 / 174 | 100 % | 158 / 158 |
+  | Frost Wyrm | Starter | 8 % | 42 % | 201 / 210 | 100 % | 225 / 225 |
+  | Frost Wyrm | Mid | 8 % | 33 % | 166 / 173 | 100 % | 167 / 167 |
+  | Frost Wyrm | High | 0 % | 25 % | 117 / 115 | 100 % | 111 / 111 |
+  | Frost Wyrm | Max | 0 % | 42 % | 111 / 114 | 100 % | 103 / 103 |
+  | Shadow Hydra | Starter | 0 % | 42 % | 236 / 233 | 100 % | 210 / 210 |
+  | Shadow Hydra | Mid | 0 % | 42 % | 196 / 190 | 100 % | 185 / 185 |
+  | Shadow Hydra | High | 0 % | 42 % | 155 / 149 | 100 % | 137 / 137 |
+  | Shadow Hydra | Max | 0 % | 33 % | 182 / 180 | 100 % | 165 / 165 |
+
+  Within every band: solo average 3.0 %, 3 teams 38.6 %, 8 teams 98.9 %; three 3-team cells sit on the band's floor of 25 % (Lava Golem Starter and High, Frost Wyrm High). A High bottom-of-tier solo now wins now and then, no target asks otherwise: 48 seeds, Storm Titan 8 % (reach x1: 4 %), Frost Wyrm 8 % (reach x1: 2 %).
+  A weak team in a Max raid (the owner's question, 48 seeds a cell, rule unchanged): it does not count as a team. A boss's HP weighs each team by its DPS against the strongest, so a Mid team, 1.1 % of a Max team's DPS, adds 0.001 % (Storm Titan 263,668,558 -> 263,671,297; a real eighth Max team adds 14.1 %). Win and time stay within noise (7 Max 88-100 %, 104-193 s; with the Mid team 92-100 %, 104-191 s). It also lowers the average fighter HP from 1.63 M to 1.43 M, so the boss's hits on the Max teams are about 5 % lighter, and every hit on it is a one-shot (biggest calm hit 5.7-13.7 x its health). A win pays it the Helper medal at Max scale: 78 tokens, 65 XP.
+  Frost Wyrm's biggest hit in a large group (0.39 -> 0.59 in the attack-fx log): not a bug and not reach. M5 is unevolved; the 108 tune pushed its slowest fights past main's clock enrage at 240 s, where hits double (HP 108 with the enrage moved off: 0.39). On this tree that clock is gone and every fight enrages at 30 % health, so the biggest hit is always an enraged one: calm 0.20 / 0.20 / 0.33 / 0.30, enraged 0.39 / 0.53 / 0.67 / 0.60 at Starter / Mid / High / Max (8 teams). The spec's x2 is the rule, nothing changed.
+  Eight M5 teams (highest pet L14, Evo 0, so the Starter tier) win 0 of 16 against Frost Wyrm in 278 s: raid-boss's numbers, no target covers a team in the middle of its tier; for the owner to judge. `node tools/check.mjs` 0 errors, `smoke_parallel.py --quick` 18863 passed / 0 failed. Not run here: the single `smoke.py --quick` (the last gate before a merge), `--mesh`. The place file is main's, not rebuilt. Nothing looked at in Studio.
 - 2026-10-28 (player ruling, wave 5 dungeon camera): the Camera shake setting OFF turns off ONLY the hit shakes; the dungeon entrance rush, the room walk-in shot and the FOV punch on big attacks always play (short, skippable). The rush is skipped when the camera is > 60 studs from the gate.
 - Evolve button; 2nd evolution only Epic+; level cap 100 for all pets (XP curve keeps rising).
 - Presses become food plants, Collector = Coin Magnet, Kitchen = Food Machine, Gym = Training Place.
