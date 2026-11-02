@@ -4,7 +4,7 @@
 --   p5svc_commands        the validation ladder: junk types through the remote break nothing, NaN / huge aims and bad
 --                         slots / targets refused, the cmd bucket (12 / 8 per s), NotInZone + the throttled toasts
 --                         (NotInZone / OutOfReach "Too far!" / Charging / Cooldown), every refusal echoes Order { rejected },
---                         a spectator cannot command, Element with an aim point, unknown actions (Retreat is gone)
+--                         a spectator cannot command, Element with an aim point, unknown actions
 --   p5svc_position        a character teleported across the floor: the server fighter walks at <= legal run x 1.25; a
 --                         gap > Leash 10 for LeashSeconds 3 = a leaver in a duel / a RemoveTeam in a raid; Start.Team.Speed
 --                         = Fighter.SpeedsOf(MoveSpeed); Speed events on Swap
@@ -635,7 +635,7 @@ S.p5svc_commands = scenario("p5svc_commands", function()
 		"p5 cmd: junk through BattleCommand before a battle breaks nothing and starts nothing")
 	T.check(bs.Command(x, "Attack") == false and select(2, bs.Command(x, "Attack")) == "NoBattle", "p5 cmd: Command without a battle -> NoBattle")
 	local okR, whyR = bs.Command(x, "Retreat")
-	T.check(okR == false and whyR == "UnknownAction", "p5 cmd: 'Retreat' is gone (UnknownAction)", tostring(whyR))
+	T.check(okR == false and whyR == "NoBattle", "p5 cmd: 'Retreat' without a battle -> NoBattle (evolved forms: a raid command again; the sim refuses it elsewhere)", tostring(whyR))
 
 	-- a duel to poke at: x on side 1, y on side 2 (both on their pads, outside the floor but inside the zone margin)
 	local mark = K.logSize()

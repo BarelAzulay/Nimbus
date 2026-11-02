@@ -152,12 +152,13 @@
 -- and gains nothing). Bug #22 / wave 6: while the sim team is ENGAGED (BattleSim's engage rule: the pet fights any enemy in
 -- the fight area, whatever the character does) the leash is skipped (Cmd.engaged, white-box like Cmd.stunned): the sim's
 -- floor bounds the pet, and a run-off out of the zone is still caught by the presence check (OUT_STRIKES); the FOLLOW
--- leash runs again once no enemy is left (a teleport is leashed at most ~1 s later). After each step: "Events" (the Step() events) to the receivers that already have the battle,
+-- leash runs again once no enemy is left (a teleport is leashed at most ~1 s later). Evolved forms: a RETREATED team has the leash off too, and a
+-- stun's catch-up after its Engage (Cmd.retreated: a trainer running from a far pet is not kicked). After each step: "Events" (the Step() events) to the receivers that already have the battle,
 -- "Start" to new receivers, then "Snapshot". Messages (BattleState(kind, payload, battleId)):
 --   "Start"    battle:Describe() + Zone = { CFrame (floor centre), Size (Vector3: X, height, Z), X, Z } + Names =
 --              { [tostring(userId)] = name } + Side (the receiver's side, 0 for a spectator) + Spectator + T + Ring (ring
---              info) / Dungeon (= spec.Extra) + Team = { Fighter, Bench, Lives, Speed = { Walk, Run }, Cooldowns = { Element,
---              Dash, Swap, Cheer (wave 6), Buff } } (the
+--              info) / Dungeon (= spec.Extra) + Team = { Fighter, Bench, Lives, Speed = { Walk, Run }, Retreated, Cooldowns = { Element,
+--              Dash, Swap, Cheer (wave 6), Retreat, Buff } } (the
 --              receiver's own team: BattleController calls MovementController.SetBattleSpeed(walk, run) from Speed).
 --   "Snapshot" battle:SnapshotDelta(last) = { BattleId, T, U = { number... } }: the units whose picture changed since the
 --              receiver's previous snapshot, as flat numbers (BattleSim.DecodeSnapshot decodes; code = id x 1024 + lives x 256
@@ -179,6 +180,7 @@
 --   toast), "Element" (unit id | { x, z } | nil), "Special", "Dash",
 --   "Target" (unit id | nil), "Buff" (2 | 3), "Swap" (2 | 3), "Cheer" (wave 6: Cheer up!, no argument at all; raids and
 --   dungeons, the sim refuses NoCheer elsewhere; its own bucket CHEER_BURST 2 / CHEER_REFILL 0.5 on top of the cmd bucket),
+--   "Retreat" / "Engage" (evolved forms: no argument at all; boss raids, the sim refuses NoRetreat elsewhere: BattleSim "Retreat"),
 --   "Forfeit". The validation ladder, in order: isPlayer -> type
 --   (action string <= 16 chars; arg number / nil / { x, z } of two finite numbers) -> the rate bucket (cmd: burst 12, refill
 --   8/s) -> a running battle, a live participant, inside the zone (present) -> Sim:Command (reach, cooldowns, meter, lives)
@@ -224,6 +226,8 @@
 --     and an EventPetChance of an event pet; Raids + 1, RaidBestDamage. The reward clocks live on the Battle record (saved, merged
 --     across servers by maximum): a paid win stamps RaidRewardAt and the next win pays after Raid.RewardMinutes (until then Tier
 --     "Cooldown" + AgainIn, nothing paid); a paid loss stamps RaidLossAt, pays again after Raid.LossMinutes and never touches the win clock.
+--     No free win (evolved forms): a player whose team was retreated for over half of ITS OWN time in the fight (Result().Retreated / Fought, so a late
+--     joiner is judged on the seconds it was there) is paid as a loss on a win: Tier "SatOut" + Reason, the loss clock, no Gems, no event pet. Per player.
 --     A paid win saves at once: DataService has no session lock, so a server that loads before the stamp is stored could pay again. What is
 --     left is a hop that lands while that save and its retries are failing (one extra payout at most for each such hop, no worse than a store
 --     outage's other effects); a load that fails outright is provisional: no team, so no fight.
@@ -238,7 +242,7 @@
 --   SetDoubleRewards(false), or EventService.IsDoubleRewards() -> bool (also IsDoubleActive, DoubleRewardsActive, IsDouble,
 --   GetDouble() -> { Active }, EventService.Double = { Active }), or the workspace attribute DoubleRewards.
 -- Deleted (10.5): StartTrial, payTrial, finishTrial, forfeitTrial, trialPortalPosition, St.trialPortal, TRIAL_RANGE,
---   REQUEST_COOLDOWNS.Trial, b.TrialInfo / d.Trial, the "Trial" dispatch, "Retreat" and the per-slot "Special" command;
+--   REQUEST_COOLDOWNS.Trial, b.TrialInfo / d.Trial, the "Trial" dispatch, the old "Retreat" order and the per-slot "Special" command;
 --   TRIAL_RETURN_DELAY -> RETURN_DELAY (POCKET_LEASH stays).
 -- Plain Lua 5.1-compatible syntax only.
 
@@ -1044,7 +1048,8 @@ local function startPayload(b, player, spectator)
 				Bench = team.Bench,
 				Lives = team.Lives,
 				Speed = team.Speed,
-				Cooldowns = { Element = cds.Element, Dash = cds.Dash, Swap = cds.Swap, Cheer = cds.Cheer, Buff = buff },
+				Retreated = team.Retreated,
+				Cooldowns = { Element = cds.Element, Dash = cds.Dash, Swap = cds.Swap, Cheer = cds.Cheer, Retreat = cds.Retreat, Buff = buff },
 			}
 		end
 	end
@@ -1507,7 +1512,12 @@ local function payRaid(b, part, res)
 	local won = res.WinnerSide == 1 -- a win is a win; a shutdown is none (it pays like a loss)
 	local share = (type(res.Shares) == "table" and tonumber(res.Shares[uid])) or 0
 	local damage = (type(res.Damage) == "table" and tonumber(res.Damage[uid])) or 0
-	local tier = BattleCatalog.RaidTier(share, won, b.RaidTier)
+	-- evolved forms, no free win: back for over half of the team's OWN time in the fight (a late joiner's is its own seconds): the loss pay, per player
+	local retreated = (type(res.Retreated) == "table" and tonumber(res.Retreated[uid])) or 0
+	local fought = (type(res.Fought) == "table" and tonumber(res.Fought[uid])) or tonumber(res.Duration) or 0
+	local satOut = won and retreated > 0.5 * max(1, fought)
+	local paidWin = won and not satOut
+	local tier = BattleCatalog.RaidTier(share, paidWin, b.RaidTier)
 	if not tier or damage <= 0 then
 		-- no damage at all (an idle joiner whose pets never hit the boss): nothing, not even the Loss tier
 		local rw = emptyRewards()
@@ -1517,22 +1527,26 @@ local function payRaid(b, part, res)
 	end
 	-- the reward clocks: a paid win starts its limit, a paid loss only its own (a loss can't cost a player their win)
 	local clocks = BattleService.RaidRewardStatus(player)
-	local wait = won and clocks.WinIn or clocks.LossIn
+	local wait = paidWin and clocks.WinIn or clocks.LossIn
 	try(dataService(), "MutateBattle", player, function(rec)
 		rec.Raids = (tonumber(rec.Raids) or 0) + 1
 		if damage > (tonumber(rec.RaidBestDamage) or 0) then
 			rec.RaidBestDamage = floor(damage)
 		end
-		if wait <= 0 and won then
+		if wait <= 0 and paidWin then
 			rec.RaidRewardAt = clocks.Now
 		elseif wait <= 0 then
 			rec.RaidLossAt = clocks.Now
 		end
 	end)
+	local satOutText = "You sat out more than half the fight: the small reward only."
 	if wait > 0 then
 		local rw = emptyRewards()
 		rw.Tier, rw.Share, rw.Damage = "Loss", floor(share * 1000 + 0.5) / 1000, floor(damage)
-		if won then
+		if satOut then
+			rw.Tier, rw.Reason = "SatOut", satOutText
+			notify(player, satOutText, "info", 5)
+		elseif won then
 			rw.Tier, rw.AgainIn = "Cooldown", wait
 			notify(player, string.format("Boss defeated! Rewards again in %d:%02d", floor(wait / 60), wait % 60), "good", 5)
 		else
@@ -1567,7 +1581,10 @@ local function payRaid(b, part, res)
 	rw.Tokens, rw.Gems, rw.Xp, rw.Double = tokens, gems, xp, double
 	rw.Tier, rw.Share, rw.Damage, rw.EventPet = tier.Id, floor(share * 1000 + 0.5) / 1000, floor(damage), eventPet
 	local text
-	if res.Reason == "Shutdown" then
+	if satOut then
+		rw.Tier, rw.Reason = "SatOut", satOutText
+		text = satOutText .. " +" .. tokens .. " tokens"
+	elseif res.Reason == "Shutdown" then
 		text = "The server is restarting: +" .. tokens .. " tokens"
 	elseif won then
 		text = "Boss defeated! " .. tostring(tier.Id) .. " tier: +" .. tokens .. " tokens"
@@ -1577,8 +1594,8 @@ local function payRaid(b, part, res)
 	if gems > 0 then
 		text = text .. ", +" .. gems .. " gems"
 	end
-	notify(player, text, won and "good" or "info", 5)
-	if won then
+	notify(player, text, paidWin and "good" or "info", 5)
+	if paidWin then
 		task.defer(try, dataService(), "Save", player)
 	end
 	return rw
@@ -4107,13 +4124,15 @@ end
 ----------------------------------------------------------------------
 -- action -> the argument shape: "unit" (id | nil), "aim" (id | { x, z } | nil), "none" (ignored), "noarg" (wave 6: anything
 -- but nil is refused BadArg), "slot" (2 | 3)
-Cmd.ACTIONS = { Attack = "unit", Element = "aim", Special = "none", Dash = "none", Target = "unit", Buff = "slot", Swap = "slot", Cheer = "noarg" }
+Cmd.ACTIONS = { Attack = "unit", Element = "aim", Special = "none", Dash = "none", Target = "unit", Buff = "slot", Swap = "slot", Cheer = "noarg", Retreat = "noarg", Engage = "noarg" }
 -- the refusals that get a (throttled) toast; everything else is silent (the Order { rejected } echo shakes the button)
 Cmd.TOASTS = {
 	NotInZone = "Step into the battle zone to fight.",
 	Charging = "SPECIAL is still charging.",
 	Cooldown = "Not ready yet.",
 	OutOfReach = "Too far!",
+	NoRetreat = "Retreat is for boss raids.",
+	Retreated = "Your pet is back with you: press Engage first.",
 }
 
 -- the remote's type gate: nil, a finite number or a table of exactly two finite numbers ({ x, z } / { X, Z } / { a, b })
@@ -4267,6 +4286,27 @@ function Cmd.stunned(b, part, gap, F)
 	return (part.LeashGraceUntil or 0) > t
 end
 
+-- evolved forms: the team is RETREATED (white-box: BattleSim's team.retreat), or its Engage came less than a catch-up ago: a pet running back from
+-- across the floor is far from its trainer on purpose. The same grace as a stun: the time the gap needs to close, capped at STUN_CATCHUP_MAX
+function Cmd.retreated(b, part, gap, F)
+	local team = Cmd.simTeam(b, part.UserId)
+	if not team then
+		return false
+	end
+	local okT, t = pcall(b.Sim.Time, b.Sim)
+	if not okT or not finite(t) then
+		return false
+	end
+	if team.retreat then
+		local f = team.fighter
+		local run = type(f) == "table" and finite(f.run) and f.run > 0 and f.run or 15.6
+		local closing = max(2, run * ((tonumber(F.MoveSlack) or 1.25) - 1))
+		part.LeashGraceUntil = max(part.LeashGraceUntil or 0, t + min(C.STUN_CATCHUP_MAX, gap / closing))
+		return true
+	end
+	return (part.LeashGraceUntil or 0) > t
+end
+
 -- bug #22 / wave 6: the sim team is ENGAGED (white-box: BattleSim's team.engage): its pet fights in the fight area
 function Cmd.engaged(b, part)
 	local team = Cmd.simTeam(b, part.UserId)
@@ -4293,7 +4333,7 @@ function Cmd.leash(b, part, dt)
 	-- a stunned / frozen fighter stands (the sim caps its move at 0) while the character keeps running: no leash while
 	-- the stun lasts, nor during the catch-up after it (the gap closes at legal run x (MoveSlack - 1)); B1 / C15: a legit
 	-- raider frozen by a boss is never leashed. The presence check (the zone + its margin) still applies.
-	if Cmd.stunned(b, part, gap, F) then
+	if Cmd.stunned(b, part, gap, F) or Cmd.retreated(b, part, gap, F) then
 		part.LeashT = 0
 		return false
 	end

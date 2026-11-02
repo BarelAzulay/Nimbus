@@ -120,7 +120,7 @@ Config.Remotes = {
 	"Fusion", -- (action:string, a:any, b:any)  Upgrade / Mix
 	-- Phase 3 (ARCHITECTURE_V3.md "Phase 3 build contract")
 	"BattleState", -- server -> client (kind:string, payload:table)  Start / Snapshot / Events / End
-	"BattleCommand", -- (action:string, a:any, b:any)  Phase 5: Attack / Element / Special / Dash / Target / Buff / Swap / Forfeit (Retreat is gone)
+	"BattleCommand", -- (action:string, a:any, b:any)  Phase 5: Attack / Element / Special / Dash / Target / Buff / Swap / Cheer / Retreat / Engage (boss raids) / Forfeit
 	"BattleRequest", -- (action:string, a:any, b:any)  TeamSet / TeamSelect / Challenge / ChallengeReply / Queue / Unqueue / RaidDare (tierId) / LeaveRaid / Ring (Phase 4: startRound); Phase 5: Trial is gone
 	"ArenaState", -- server -> client (state:table)  next event, countdown, raid status, leaderboard
 	-- Phase 5 (ARCHITECTURE_V3.md "Phase 5 build contract" 5.7, 6.3, 7.2)

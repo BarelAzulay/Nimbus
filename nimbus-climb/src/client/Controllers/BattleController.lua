@@ -15,9 +15,11 @@
 --   BattleController.Focus(unitId)          lock an enemy (= Command("Target", unitId)); nil clears the lock
 --   BattleController.Cheer() -> bool        wave 6: Cheer up! (= Command("Cheer")): Raid / Dungeon fighters only; the
 --                                           button right above the vitals card (CheerUp) does the same
+--   BattleController.Retreat() -> bool      evolved forms: the R button (= Command("Retreat"), or "Engage" while back): boss raid fighters only
 --   BattleController.GetBattle() -> { Id, Mode, Side, Spectator, Fighter, Ended, Units, Models, Lock, Focus (= Lock),
 --                                     FighterId, Lives, Hud, Layout = "Wide" | "Compact", Cooldowns = { Element, Dash,
---                                     Swap, Cheer, Buff = { [slot] = s } } (seconds left), Cheering (the Cheer up! glow), Pending = { [action] = true },
+--                                     Swap, Cheer, Retreat, Buff = { [slot] = s } } (seconds left), Cheering (the Cheer up! glow),
+--                                     Retreated (my team is back), Pending = { [action] = true },
 --                                     Speed = { Walk, Run }, Dungeon, Threat, Cue ("Dash" | nil), InterpDelay, TeamPlace,
 --                                     Round, Best, Next, ... } | nil
 --   BattleController.GetUnit(id) -> { Id, Side, Kind, Name, Hp, MaxHp, State, Meter, Model, X, Z, World, Card, Level,
@@ -139,11 +141,14 @@
 --   Target(id), Tab / RT's path, nearest first; the caption flashes NEXT for NEXT_FLASH; one enemy: ONE ENEMY, nothing
 --   sent); a hold of 0.4 s clears the lock (Target(nil), AUTO): the pet keeps its engaged target and picks the nearest
 --   after that. A world click or a tap on an enemy is Target(pick) (holding the mouse never cycles).
+--   RETREAT (the Retreat block, boss raid fighters only): R / D-pad down / the button in the Cheer up! row send Retreat or Engage; the server's Order
+--   echo flips the label (B.retreated), Engage starts the dark sweep of the 10 s wait, the stroke pulses on Engage (plain on Graphics Low).
 -- * Bug #22 (wave 5): the server's engage rule walks my pet off to fight while I stand: the shoulder offset fades with the
 --   blend share (an engaged pet is drawn where the server has it) and its Engage { on = true } plays the arrival hop.
 -- Keys (ContextActionService, High priority, sunk, bound ONLY while fighting and inert before UiGate.HasPlayed()):
 -- F / X switch target (tap = the next enemy, hold = automatic), E / Y element (E passes while a prompt is shown), Q / RB special,
--- Tab / T / RT / LT lock, 1 / 2 (LB / D-up) buff (hold = swap), D-left / D-right swap; the item hotbar keeps 1-4 outside battles.
+-- Tab / T / RT / LT lock, 1 / 2 (LB / D-up) buff (hold = swap), D-left / D-right swap, R / D-down retreat (bound only while fighting a boss raid);
+-- the item hotbar keeps 1-4 outside battles.
 --
 -- Cost: one RenderStepped connection, alive only while a battle is drawn or effects play. Per frame: one root CFrame
 -- write per pet + PetBuilder.Animate per visible pet (strided for far / crowded ones; a strided frame moves the
@@ -332,6 +337,7 @@ local K = {
 	ACTION_SPECIAL = "NimbusBattleSpecial",
 	ACTION_TARGET = "NimbusBattleTarget",
 	ACTION_HELPER = "NimbusBattleHelper",
+	ACTION_RETREAT = "NimbusBattleRetreat",
 	ATTACK_GAP = 0.2, -- local throttle of an "Attack" order
 	CD_SLACK = 0.15, -- a press this close to the end of a cooldown is sent (the server's clock decides)
 	PENDING_TIMEOUT = 0.6, -- seconds a prediction waits for its event
@@ -404,6 +410,7 @@ local K = {
 	CHEER_TOUCH_PX = 46, -- a touch screen: the button is at least this tall (screen px; the 44 px tap rule)
 	CHEER_TOUCH_W_PX = 112,
 	CHEER_CENTRE_TOL = 0.15, -- the screen middle it never enters (HudController's CENTRE_TOL 0.145 + a margin)
+	RETREAT_PULSE = 3.5, -- evolved forms: rad/s of the Engage button's stroke
 }
 
 local STATES = (BattleSim and BattleSim.States) or { Idle = 0, Moving = 1, Attacking = 2, Benched = 3, Casting = 4, Down = 5, Stunned = 6, Dashing = 7 }
@@ -509,6 +516,7 @@ local Cards = {} -- Phase 4: the PetCard above every battle unit
 local Ring = {} -- Phase 4: the Champion Ring HUD (round / record / next-round side card / run card)
 local Leave = {} -- LEAVE (two presses -> BattleCommand "Forfeit"): Champion Ring runs only
 local CheerUp = {} -- wave 6: the Cheer up! button (BattleCommand "Cheer"): Raid / Dungeon fighters only
+local Retreat = {} -- evolved forms: the Retreat / Engage button and the R key: boss raid fighters only
 local Me = {} -- Phase 5: my fighter at the character's shoulder, my helpers behind me, the camera shake
 local Atk = {} -- pet attack VFX: client/Controllers/AttackFx first (the cube Fx.* as the fallback) + the battle poses
 
@@ -1244,9 +1252,10 @@ local function newBattle(payload, battleId)
 		lives = nil,
 		speed = nil, -- { Walk, Run }
 		lock = nil,
-		cd = { Element = 0, Dash = 0, Swap = 0, Cheer = 0, Buff = {} },
-		cdLen = { Element = 7, Dash = 2.5, Swap = 10, Cheer = 20, Buff = {} },
+		cd = { Element = 0, Dash = 0, Swap = 0, Cheer = 0, Retreat = 0, Buff = {} },
+		cdLen = { Element = 7, Dash = 2.5, Swap = 10, Cheer = 20, Retreat = 10, Buff = {} },
 		cheerUntil = 0, -- wave 6: os.clock time the Cheer up! glow ends
+		retreated = false, -- evolved forms: my team is back (Start.Team.Retreated, the Order echoes)
 		pending = {},
 		ended = false,
 		simEnded = false,
@@ -5229,9 +5238,9 @@ end
 -- the key hints (keyboard / gamepad)
 function Hud.KeyText(kind, index)
 	if St.gamepad then
-		return ({ Target = "X", Element = "Y", Special = "RB", Dash = "B", Buff = (index == 2) and "\226\134\145" or "LB", Swap = (index == 2) and "\226\134\146" or "\226\134\144" })[kind] or ""
+		return ({ Target = "X", Element = "Y", Special = "RB", Dash = "B", Retreat = "\226\134\147", Buff = (index == 2) and "\226\134\145" or "LB", Swap = (index == 2) and "\226\134\146" or "\226\134\144" })[kind] or ""
 	end
-	return ({ Target = "F", Element = "E", Special = "Q", Dash = "\226\135\167", Buff = tostring(index or 1), Swap = "hold " .. tostring(index or 1) })[kind] or ""
+	return ({ Target = "F", Element = "E", Special = "Q", Dash = "\226\135\167", Retreat = "R", Buff = tostring(index or 1), Swap = "hold " .. tostring(index or 1) })[kind] or ""
 end
 
 ----------------------------------------------------------------------
@@ -5444,6 +5453,7 @@ function Hud.BuildActions()
 	end
 	Hud.leave = Leave.Make(Hud.root, 20)
 	CheerUp.Make(Hud.root)
+	Retreat.Make(Hud.root)
 end
 
 ----------------------------------------------------------------------
@@ -5762,6 +5772,7 @@ function Hud.Rebuild()
 		Hud.SetMenuHidden(false)
 		Leave.Place(m, nil, false)
 		CheerUp.Place(m, nil, false)
+		Retreat.Place(m, nil, false)
 		return
 	end
 	local isFighting = B.Fighter and not B.ended
@@ -5827,6 +5838,7 @@ function Hud.Rebuild()
 	Hud.SetMenuHidden((isFighting or between) and m.Compact) -- a phone: the menu column steps aside (wide screens keep it)
 	Leave.Place(m, B, isFighting)
 	CheerUp.Place(m, B, isFighting)
+	Retreat.Place(m, B, isFighting)
 	Ring.PlaceNext(B)
 	Hud.FixText(Hud.root, m.F)
 	Hud.last = {}
@@ -6221,6 +6233,9 @@ function Hud.Keys()
 			setText(t, Hud.KeyText("Buff", i))
 		end
 	end
+	if Hud.retreat then
+		setText(Hud.retreat.Key, Hud.KeyText("Retreat"))
+	end
 end
 
 -- seconds left of a cooldown (B.cd[kind], or the buff of helper slot), clamped >= 0
@@ -6387,6 +6402,7 @@ function Hud.Update(B, now, force)
 	Hud.ringAt = now
 	Input.CheckPending(B, now)
 	CheerUp.Update(B, now)
+	Retreat.Update(B, now)
 	for kind, A in pairs(Hud.buttons) do
 		local frac, color, countText = 1, COLORS.Action[kind], ""
 		if kind == "Element" or kind == "Dash" then
@@ -6529,6 +6545,9 @@ end
 function Hud.ButtonOf(action, slot)
 	if action == "Cheer" then
 		return Hud.cheer and Hud.cheer.Button or nil
+	end
+	if action == "Retreat" or action == "Engage" then
+		return Hud.retreat and Hud.retreat.Button or nil
 	end
 	if action == "Buff" or action == "Swap" then
 		for _, H in ipairs(Hud.helpers or {}) do
@@ -6712,6 +6731,7 @@ function Hud.ShowResult(B, payload)
 	Hud.SetMenuHidden(false)
 	Leave.Place(m, nil, false)
 	CheerUp.Place(m, nil, false)
+	Retreat.Place(m, nil, false)
 	local keep = St.result and St.result.payload == payload and St.result.t0 -- a relayout (rotation) keeps the timer
 	St.result = { t0 = keep or os.clock(), dur = K.RESULT_SECONDS, battle = B, payload = payload }
 	Me.MouseHold("BattleResult", true) -- the cursor is free for the card's OK
@@ -6748,6 +6768,9 @@ function Hud.RewardLines(B, rw)
 	end
 	if rw.Tier == "None" then
 		lines[#lines + 1] = { "No hits on the boss: no reward", COLORS.Weak }
+	elseif rw.Tier == "SatOut" then
+		-- a won raid with the pet back for over half of the team's time: the loss pay (rw.Reason, the server's toast, says the long version)
+		lines[#lines + 1] = { "Sat out over half the fight", COLORS.Weak }
 	elseif rw.Tier == "Cooldown" then
 		-- a boss raid won inside the 20 minute reward limit: nothing paid, the server says when
 		local wait = num(rw.AgainIn, 0)
@@ -6818,6 +6841,7 @@ function Hud.SetVisible(on)
 			Hud.leave.Visible = false
 		end
 		CheerUp.Place(Hud.m or {}, nil, false)
+		Retreat.Place(Hud.m or {}, nil, false)
 	end
 end
 
@@ -7045,6 +7069,7 @@ function CheerUp.Place(m, B, isFighting)
 	local on = B ~= nil and isFighting == true and CheerUp.Allowed(B)
 	C.Button.Visible = on
 	C.Glow.Visible = on
+	CheerUp.beside = false
 	if not on then
 		CheerUp.placed = nil
 		return
@@ -7074,6 +7099,7 @@ function CheerUp.Place(m, B, isFighting)
 		if v then
 			cx = (v.X - K.CHEER_GAP_PX) / f - w / 2
 			bottom = v.Y / f + h
+			CheerUp.beside = true -- (Retreat stacks above it then: the row's left is Roblox's stick)
 		else
 			cx = bandL - 4 - w / 2
 		end
@@ -7096,6 +7122,7 @@ function CheerUp.Update(B, now)
 	local key = v and string.format("%d,%d,%d,%d", v.X, v.Y, v.W, v.H) or "-"
 	if key ~= CheerUp.placed and Hud.m then
 		CheerUp.Place(Hud.m, B, B.Fighter and not B.ended)
+		Retreat.Place(Hud.m, B, B.Fighter and not B.ended)
 	end
 	local left = cdLeft(B, "Cheer", nil, now)
 	setVisible(C.Sweep, left > 0.05)
@@ -7109,6 +7136,84 @@ function CheerUp.Update(B, now)
 	end
 	if C.Button:GetAttribute("Cheering") ~= cheering then
 		C.Button:SetAttribute("Cheering", cheering)
+	end
+end
+
+----------------------------------------------------------------------
+-- evolved forms: RETREAT (boss raid fighters only): BattleCommand "Retreat" / "Engage"; the server decides (BattleSim "Retreat"). The button sits in the
+-- Cheer up! row, its left, the same size; where that row sits beside the vitals card (a landscape phone: its left is Roblox's stick) it stacks above
+-- Cheer up!. The label follows the server's echo (B.retreated), a dark veil that shrinks to the right is the 10 s wait after an Engage, the stroke
+-- pulses while it says Engage (plain on Graphics Low).
+----------------------------------------------------------------------
+function Retreat.Allowed(B)
+	return B ~= nil and B.Fighter == true and not B.ended and B.Mode == "Raid"
+end
+
+function Retreat.Make(parent)
+	local b = make("TextButton", { Name = "Retreat", Text = "Retreat", AutoButtonColor = true, BackgroundColor3 = Theme.Buttons.Blue, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 1), Size = UDim2.fromOffset(K.CHEER_W, K.CHEER_H), Visible = false, ZIndex = 4 }, parent)
+	Theme.Style(b, "Button", { Size = 20, Stroke = 0.2, Outline = 2 })
+	Theme.Corner(b, UDim.new(0, 12))
+	local stroke = Theme.Stroke(b, Theme.Colors.PanelInk or COLORS.Navy, 3, 0)
+	b:SetAttribute("BaseText", 20)
+	local sweep = make("Frame", { Name = "Sweep", BackgroundColor3 = COLORS.Navy, BackgroundTransparency = 0.35, BorderSizePixel = 0, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromScale(0, 1), Visible = false, ZIndex = 5 }, b)
+	Theme.Corner(sweep, UDim.new(0, 12))
+	local key = label(b, Hud.KeyText("Retreat"), "Label", 14, { Name = "Key", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 8, 0.5, 0), Size = UDim2.fromOffset(18, 18), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 6 })
+	b.Activated:Connect(function()
+		BattleController.Retreat()
+	end)
+	Hud.retreat = { Button = b, Sweep = sweep, Stroke = stroke, Key = key }
+	return b
+end
+
+-- Cheer up! has been placed (Hud.Rebuild, CheerUp.Update): the row is its row
+function Retreat.Place(m, B, isFighting)
+	local R = Hud.retreat
+	if not R then
+		return
+	end
+	local on = B ~= nil and isFighting == true and Retreat.Allowed(B)
+	R.Button.Visible = on
+	if not on then
+		return
+	end
+	local C = Hud.cheer.Button
+	local w, h = C.Size.X.Offset, C.Size.Y.Offset
+	local cx, bottom = C.Position.X.Offset, C.Position.Y.Offset
+	local gap = K.CHEER_GAP_PX / max(0.05, m.F)
+	local x, y = cx - w - gap, bottom
+	-- the same test as Cheer up!'s: the row keeps to the screen and out of the middle band, else above Cheer up!
+	if CheerUp.beside or x - w / 2 < K.EDGE then
+		x, y = cx, bottom - h - gap
+	end
+	R.Button.Size = UDim2.fromOffset(w, h)
+	R.Button.Position = UDim2.fromOffset(x, y)
+	setVisible(R.Key, not m.Touch)
+end
+
+-- 10 Hz: the label, the wait's sweep, the pulse
+function Retreat.Update(B, now)
+	local R = Hud.retreat
+	if not R or not R.Button.Visible then
+		return
+	end
+	local back = B.retreated == true
+	setText(R.Button, back and "Engage" or "Retreat")
+	local color = back and Theme.Buttons.Red or Theme.Buttons.Blue
+	if R.Button.BackgroundColor3 ~= color then
+		R.Button.BackgroundColor3 = color
+	end
+	local left = cdLeft(B, "Retreat", nil, now)
+	setVisible(R.Sweep, left > 0.05)
+	if left > 0.05 then
+		R.Sweep.Size = UDim2.fromScale(clamp(left / cdLen(B, "Retreat"), 0, 1), 1)
+	end
+	local pulse = back and not Me.LowGraphics()
+	if R.Button:GetAttribute("Pulse") ~= pulse then
+		R.Button:SetAttribute("Pulse", pulse)
+	end
+	local a = pulse and (0.25 + 0.25 * sin(now * K.RETREAT_PULSE)) or 0
+	if abs(R.Stroke.Transparency - a) > 0.02 then
+		R.Stroke.Transparency = a
 	end
 end
 
@@ -7946,6 +8051,10 @@ function Input.OnAction(name, state, input)
 				Input.HoldEnd("key" .. index)
 			end
 		end
+	elseif name == K.ACTION_RETREAT then
+		if began then
+			BattleController.Retreat()
+		end
 	end
 	return sink()
 end
@@ -7970,9 +8079,13 @@ function Input.Bind(on)
 				Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.KeypadOne, Enum.KeyCode.KeypadTwo,
 				Enum.KeyCode.ButtonL1, Enum.KeyCode.DPadUp, Enum.KeyCode.DPadLeft, Enum.KeyCode.DPadRight
 			)
+			-- (R stays free everywhere but a boss raid)
+			if Retreat.Allowed(St.battle) then
+				ContextActionService:BindActionAtPriority(K.ACTION_RETREAT, Input.OnAction, false, priority, Enum.KeyCode.R, Enum.KeyCode.DPadDown)
+			end
 		end)
 	else
-		for _, name in ipairs({ K.ACTION_SWITCH, K.ACTION_ELEMENT, K.ACTION_SPECIAL, K.ACTION_TARGET, K.ACTION_HELPER }) do
+		for _, name in ipairs({ K.ACTION_SWITCH, K.ACTION_ELEMENT, K.ACTION_SPECIAL, K.ACTION_TARGET, K.ACTION_HELPER, K.ACTION_RETREAT }) do
 			pcall(function()
 				ContextActionService:UnbindAction(name)
 			end)
@@ -8322,7 +8435,7 @@ end
 ----------------------------------------------------------------------
 -- Commands (BattleCommand(action, arg)); the server decides everything, the client predicts only the button's ring
 ----------------------------------------------------------------------
-local VALID_ACTIONS = { Attack = true, Element = true, Special = true, Dash = true, Target = true, Buff = true, Swap = true, Forfeit = true, Cheer = true }
+local VALID_ACTIONS = { Attack = true, Element = true, Special = true, Dash = true, Target = true, Buff = true, Swap = true, Forfeit = true, Cheer = true, Retreat = true, Engage = true }
 
 local function commandRemote()
 	if St.remoteCmd and St.remoteCmd.Parent then
@@ -8342,6 +8455,7 @@ function Input.CooldownLengths(B)
 		Dash = num(F.DashCooldown, 2.5),
 		Swap = num(F.SwapCooldown, 10),
 		Cheer = num(F.CheerCooldown, 20),
+		Retreat = num(F.RetreatWait, 10),
 		Buff = {},
 	}
 	for slot = 1, 4 do
@@ -8408,6 +8522,14 @@ function BattleController.Command(action, arg)
 		if arg ~= nil or cdLeft(B, "Cheer", nil, now) > K.CD_SLACK then
 			return refuse(action)
 		end
+	elseif action == "Retreat" or action == "Engage" then
+		-- (evolved forms) boss raids only; the wait, and a press the echo already answered
+		if not Retreat.Allowed(B) then
+			return false
+		end
+		if arg ~= nil or (action == "Engage") ~= (B.retreated == true) or (action == "Retreat" and cdLeft(B, "Retreat", nil, now) > K.CD_SLACK) then
+			return refuse(action)
+		end
 	elseif (action == "Attack" or action == "Target") and arg ~= nil then
 		local u = B.units[arg]
 		if not u or u.ally or u.hp <= 0 then
@@ -8440,6 +8562,12 @@ end
 -- wave 6: Cheer up! (the button does the same)
 function BattleController.Cheer()
 	return BattleController.Command("Cheer")
+end
+
+-- evolved forms: the R button: Retreat, or Engage while my team is back (the key and the button do the same)
+function BattleController.Retreat()
+	local B = St.battle
+	return BattleController.Command((B and B.retreated) and "Engage" or "Retreat")
 end
 
 -- lock-on: Target(id) (nil clears); the server echoes the lock (Order "Target")
@@ -8771,8 +8899,9 @@ function Net.Team(B, payload)
 		if type(team.Speed) == "table" and tonumber(team.Speed.Walk) then
 			B.speed = { Walk = tonumber(team.Speed.Walk), Run = tonumber(team.Speed.Run) }
 		end
+		B.retreated = team.Retreated == true
 		local cds = type(team.Cooldowns) == "table" and team.Cooldowns or {}
-		for _, kind in ipairs({ "Element", "Dash", "Swap", "Cheer" }) do
+		for _, kind in ipairs({ "Element", "Dash", "Swap", "Cheer", "Retreat" }) do
 			local left = num(cds[kind], 0)
 			B.cd[kind] = left > 0 and (now + left) or 0
 		end
@@ -8836,6 +8965,17 @@ function Net.Pre(B, ev)
 			B.lock = tonumber(ev.target)
 			B.pending[action] = nil
 			Hud.enemyDirty = true
+		elseif action == "Retreat" then
+			-- (evolved forms) the echo flips the button; the server dropped the lock
+			B.retreated = true
+			B.lock = nil
+			B.pending.Target = nil
+			Hud.enemyDirty = true
+			Hud.ringAt = 0
+		elseif action == "Engage" then
+			B.retreated = false
+			B.cd.Retreat = now + (B.cdLen.Retreat or 10)
+			Hud.ringAt = 0
 		end
 	elseif t == EV.Element or t == EV.Dash then
 		if t == EV.Dash and B.fighterId and tonumber(ev.unit) == B.fighterId then
@@ -9531,7 +9671,7 @@ function BattleController.GetBattle()
 		Cooldowns = (function()
 			local now = os.clock()
 			local out = { Buff = {} }
-			for _, kind in ipairs({ "Element", "Dash", "Swap", "Cheer" }) do
+			for _, kind in ipairs({ "Element", "Dash", "Swap", "Cheer", "Retreat" }) do
 				out[kind] = max(0, (B.cd[kind] or 0) - now)
 			end
 			for slot, t in pairs(B.cd.Buff) do
@@ -9540,6 +9680,7 @@ function BattleController.GetBattle()
 			return out
 		end)(),
 		Cheering = os.clock() < (B.cheerUntil or 0),
+		Retreated = B.retreated == true,
 		Pending = (function()
 			local out = {}
 			for k in pairs(B.pending) do
@@ -9765,6 +9906,7 @@ function BattleController.Stop()
 	Hud.leave = nil
 	Hud.cheer = nil
 	CheerUp.placed = nil
+	Hud.retreat = nil
 	Leave.buttons = {}
 	St.result = nil
 	St.next = nil
