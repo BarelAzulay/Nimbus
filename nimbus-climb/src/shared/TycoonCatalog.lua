@@ -33,7 +33,7 @@
 --   FoldLegacy(home, firstTime) -> changed   (9.2 step 3; pure, mutates `home`): Press1-4 -> one Berry Farm (the food
 --     floor on firstTime), Collector -> LegacyMagnet / LegacyMagnetStar, old decor -> Fence / Fountain + DecorCredit
 --   Cloud Cash: FoodOf(home) (0 without a Garden, else Coins.GrassFood + the Farm's Food), PetPower(entry, level, tier,
---     stage) = RarityScale x PetCatalog.LevelFactor(level, stage) x TierMultiplier x RoleMult (stage = the STORED stage
+--     stage) = RarityScale (of def.StatRarity or def.Rarity) x PetCatalog.LevelFactor(level, stage) x TierMultiplier x RoleMult (stage = the STORED stage
 --     cleaned by PetCatalog.EvolutionStage), GardenSlots(home), IncomePerSecond(home, entries, prestige) -> cash/s,
 --     parts, LuckyChance, LuckyEV, CoinValue(home, power, prestige), ScoopRadius(home) = max(Garden Radius,
 --     LegacyMagnet radius) (Coins.BaseRadius without a Garden), PileSeconds(home) = max(Garden PileSeconds, LegacyMagnet
@@ -703,13 +703,13 @@ local function defOfKey(key)
 	return def, suffix
 end
 
--- RarityScale of a def / {Def} entry / rarity id / pet id / pet key, or nil
+-- RarityScale of a def / {Def} entry / rarity id / pet id / pet key, or nil (a pet's stats' rarity: def.StatRarity or def.Rarity)
 local function scaleOfSubject(subject)
 	if type(subject) == "table" then
 		if type(subject.Def) == "table" then
 			subject = subject.Def
 		end
-		return rarityScaleOf(subject.Rarity)
+		return rarityScaleOf(subject.StatRarity or subject.Rarity)
 	end
 	if type(subject) == "string" then
 		local s = rarityScaleOf(subject)
@@ -717,7 +717,7 @@ local function scaleOfSubject(subject)
 			return s
 		end
 		local def = defOfKey(subject)
-		return def and rarityScaleOf(def.Rarity) or nil
+		return def and rarityScaleOf(def.StatRarity or def.Rarity) or nil
 	end
 	return nil
 end
@@ -1128,7 +1128,7 @@ function TycoonCatalog.PetPower(entry, level, tier, stage)
 		end
 		return 0
 	end
-	local scale = rarityScaleOf(def.Rarity)
+	local scale = rarityScaleOf(def.StatRarity or def.Rarity)
 	if not scale then
 		return 0
 	end

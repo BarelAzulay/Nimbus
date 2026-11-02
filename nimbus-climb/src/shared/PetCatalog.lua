@@ -19,7 +19,7 @@
 --   PetCatalog.IndexGroups()              -> { { Id, Rarity, Pets = {PetDef...}, Reward = {Tokens = n} }... }
 --                                            one group per rarity that has pets, in rarity order (Secret last)
 --   PetCatalog.GetStats(petId, level, tier, stage) -> { Income, Power, Health, Speed } | nil   (Phase 2: tier; Phase 5: stage)
---                                            base * Config.PetStats.RarityScale[rarity] * LevelFactor(level, stage)
+--                                            base * Config.PetStats.RarityScale[StatRarity or Rarity] * LevelFactor(level, stage)
 --                                            * tier multiplier (Normal 1, Golden 1.5, Rainbow 2.5). The same numbers
 --                                            as TycoonCatalog.PetPower x FoodOf / MealSeconds, so the Income shown is the Cash/s the Garden
 --                                            pays (prestige not applied). petId may also be a pet key ("cat@Golden":
@@ -83,6 +83,11 @@
 --             Bear / Dog / earthy -> Earth, Owl / electric / windy sky pets -> Storm, Unicorn / halo -> Celestial,
 --             dark Secrets -> Shadow). Every element has at least 3 pets across several rarities.
 --   Signature = true (optional): the player's own creature (Stormfang); it leads its rarity in every list.
+--   StatRarity = a rarity id (optional, evolved forms): the rarity whose scale the pet's STATS use, when it differs from
+--             the Rarity it is listed and drawn at. Magma Cub and Hydralotl are Mythic with StatRarity = "Secret": read by
+--             both stat lookups (StatsOf here, BattleCatalog.BattleStatsOf) and by TycoonCatalog's coins, feed and training
+--             prices, so moving a pet down the list never takes power from anyone who owns it. Nothing else reads it: the
+--             Index, the odds, the effects and the fusion prices go by Rarity. A hybrid of one inherits it (PetKeys).
 --   EventOnly = true (optional, Phase 3 events): an exclusive Boss Raid drop. Never in any roulette (RollPet /
 --             GetOdds / PossiblePets / IsRollable skip it and ListByRarity, the roulette pool every roulette
 --             (token and gems-only) is built from, leaves it out unless asked with ListByRarity(rarity, true)).
@@ -380,7 +385,7 @@ local RAW = {
 		Special = Special("blossom_rain", "Blossom Rain", "Heal", 30, C(246, 182, 200)),
 	},
 
-	------------------------------------------------------------ Epic (4): 2 Economy, 2 Combat
+	------------------------------------------------------------ Epic (3): 1 Economy, 2 Combat
 	{
 		Id = "aurora_fox", Name = "Aurora Fox", Rarity = "Epic",
 		Blurb = "Antlers shimmering with northern lights. Leaves a glowing trail at dusk.",
@@ -420,8 +425,10 @@ local RAW = {
 		Stats = Stats(12, 3, 30, 9),
 		Special = Special("stardust_swirl", "Stardust Swirl", "Haste", 20, C(176, 146, 244)),
 	},
+
+	------------------------------------------------------------ Legendary (4): 2 Economy, 2 Combat
 	{
-		Id = "candy_unicorn", Name = "Candy Unicorn", Rarity = "Epic",
+		Id = "candy_unicorn", Name = "Candy Unicorn", Rarity = "Legendary",
 		Blurb = "Sprinkle-swirl mane, sugar-spun horn and not a single worry.",
 		Look = {
 			Species = "Unicorn", Primary = C(244, 204, 224), Secondary = C(166, 210, 244), Eye = C(98, 50, 122),
@@ -433,8 +440,6 @@ local RAW = {
 		Stats = Stats(12, 4, 30, 11),
 		Special = Special("sugar_rush", "Sugar Rush", "Haste", 30, C(246, 170, 214)),
 	},
-
-	------------------------------------------------------------ Legendary (3): 1 Economy, 2 Combat
 	{
 		Id = "ember_phoenix", Name = "Ember Phoenix", Rarity = "Legendary",
 		Blurb = "Rises from every fall, just like you. Warm as a campfire.",
@@ -475,7 +480,7 @@ local RAW = {
 		Special = Special("dusk_storm", "Dusk Storm", "Storm", 28, C(176, 124, 236)),
 	},
 
-	------------------------------------------------------------ Mythic (2): 1 Economy, 1 Combat
+	------------------------------------------------------------ Mythic (4): 2 Economy, 2 Combat
 	{
 		Id = "cloudy_dragon", Name = "Cloudy Dragon", Rarity = "Mythic",
 		Blurb = "The fluffy guardian of the sky. Wings of cloud, a heart of sunshine.",
@@ -488,6 +493,36 @@ local RAW = {
 		Role = "Combat",
 		Stats = Stats(3, 12, 70, 11),
 		Special = Special("cloud_breath", "Cloud Breath", "Beam", 50, C(196, 228, 255)),
+	},
+	-- Hydralotl and Magma Cub are Boss Raid drops (EventOnly = true: never in a roulette, see the header), each a little
+	-- echo of an arena boss: the Shadow Hydra's many-headed gills, the Lava Golem's basalt and magma. Mythic on every list
+	-- since evolved forms; StatRarity = "Secret" keeps every stat they had as Secrets (we never take power from a pet
+	-- someone owns). Perks between the best Mythic and Stormfang, Power below Stormfang's.
+	{
+		Id = "hydralotl", Name = "Hydralotl", Rarity = "Mythic", StatRarity = "Secret", EventOnly = true,
+		Blurb = "The Shadow Hydra's smallest head wandered off and grew a body. Its six gills whisper to each other.",
+		Look = {
+			Species = "Axolotl", Primary = C(52, 38, 82), Secondary = C(118, 255, 196), Eye = C(196, 255, 120),
+			Glow = true, Accessory = "Horns", WingStyle = "Bat", WingColor = C(96, 58, 156),
+		},
+		Perks = { TokenBonus = 0.24, CheckpointHeal = 0.22 },
+		Element = "Shadow",
+		Role = "Economy", -- a raid prize for the tycoon side too: its gills hum over the Garden all day
+		Stats = Stats(12, 4, 36, 13),
+		Special = Special("void_fangs", "Void Fangs", "Rally", 40, C(150, 110, 255)),
+	},
+	{
+		Id = "magma_cub", Name = "Magma Cub", Rarity = "Mythic", StatRarity = "Secret", EventOnly = true,
+		Blurb = "Chipped off the Lava Golem's shoulder. Its basalt fur cracks with glowing magma when it is happy.",
+		Look = {
+			Species = "Bear", Primary = C(58, 46, 46), Secondary = C(255, 104, 28), Eye = C(255, 214, 92),
+			Glow = true, Accessory = "Horns", WingStyle = "Flame", WingColor = C(255, 104, 36),
+		},
+		Perks = { CheckpointHeal = 0.26, StaminaRegen = 0.19 },
+		Element = "Flame",
+		Role = "Combat",
+		Stats = Stats(3, 12, 72, 9),
+		Special = Special("lava_slam", "Lava Slam", "Blast", 50, C(255, 112, 40)),
 	},
 	{
 		Id = "starlight_unicorn", Name = "Starlight Unicorn", Rarity = "Mythic",
@@ -563,24 +598,10 @@ local RAW = {
 		Special = Special("foxfire_ward", "Foxfire Ward", "Shield", 44, C(124, 252, 228)),
 	},
 
-	------------------------------------------------------------ Event pets (Phase 3): Boss Raid drops only
-	-- EventOnly = true: never in a roulette (see the header). Each one is a little echo of an arena boss: the Lava
-	-- Golem's basalt and magma, the Frost Wyrm's glacier crystal, the Shadow Hydra's many-headed gills. Secret
-	-- rarity (the raid's rarest prize; the v2 rarities keep their lineup); perks between the best Mythic and
-	-- Stormfang, Power below Stormfang's; two Combat pets and one Economy pet (the Secret tier stays mixed).
-	{
-		Id = "magma_cub", Name = "Magma Cub", Rarity = "Secret", EventOnly = true,
-		Blurb = "Chipped off the Lava Golem's shoulder. Its basalt fur cracks with glowing magma when it is happy.",
-		Look = {
-			Species = "Bear", Primary = C(58, 46, 46), Secondary = C(255, 104, 28), Eye = C(255, 214, 92),
-			Glow = true, Accessory = "Horns", WingStyle = "Flame", WingColor = C(255, 104, 36),
-		},
-		Perks = { CheckpointHeal = 0.26, StaminaRegen = 0.19 },
-		Element = "Flame",
-		Role = "Combat",
-		Stats = Stats(3, 12, 72, 9),
-		Special = Special("lava_slam", "Lava Slam", "Blast", 50, C(255, 112, 40)),
-	},
+	------------------------------------------------------------ Event pet (Phase 3): a Boss Raid drop only
+	-- EventOnly = true: never in a roulette (see the header). A little echo of an arena boss: the Frost Wyrm's glacier
+	-- crystal. The one raid drop of Secret rarity (the other two are in the Mythic block); perks between the best Mythic
+	-- and Stormfang, Power below Stormfang's.
 	{
 		Id = "rime_wyrmling", Name = "Rime Wyrmling", Rarity = "Secret", EventOnly = true,
 		Blurb = "Hatched from a shard of the Frost Wyrm's crown. Its breath paints frost ferns on every window.",
@@ -593,19 +614,6 @@ local RAW = {
 		Role = "Combat",
 		Stats = Stats(3, 12, 66, 12),
 		Special = Special("glacier_breath", "Glacier Breath", "Freeze", 46, C(156, 230, 255)),
-	},
-	{
-		Id = "hydralotl", Name = "Hydralotl", Rarity = "Secret", EventOnly = true,
-		Blurb = "The Shadow Hydra's smallest head wandered off and grew a body. Its six gills whisper to each other.",
-		Look = {
-			Species = "Axolotl", Primary = C(52, 38, 82), Secondary = C(118, 255, 196), Eye = C(196, 255, 120),
-			Glow = true, Accessory = "Horns", WingStyle = "Bat", WingColor = C(96, 58, 156),
-		},
-		Perks = { TokenBonus = 0.24, CheckpointHeal = 0.22 },
-		Element = "Shadow",
-		Role = "Economy", -- a raid prize for the tycoon side too: its gills hum over the Garden all day
-		Stats = Stats(12, 4, 36, 13),
-		Special = Special("void_fangs", "Void Fangs", "Rally", 40, C(150, 110, 255)),
 	},
 }
 
@@ -1221,6 +1229,7 @@ end
 -- copies carry StatMultiplier, hybrids their averaged base Stats and the higher rarity). tier nil -> the def's own tier.
 -- stage (Phase 5) = the STORED stage (PetGrowth[key].Evo), cleaned by EvolutionStage(def, level, stage): nil -> 0, and
 -- the level alone never evolves a pet; it scales the level bonus (LevelFactor), never the stat itself.
+-- The rarity scale is StatRarity's when the pet has one (Magma Cub, Hydralotl: Mythic with Secret-grade stats).
 function PetCatalog.StatsOf(def, level, tier, stage)
 	if type(def) ~= "table" or type(def.Stats) ~= "table" then
 		return nil
@@ -1235,7 +1244,7 @@ function PetCatalog.StatsOf(def, level, tier, stage)
 	if stage ~= nil then
 		cleanStage = PetCatalog.EvolutionStage(def, level, stage)
 	end
-	local factor = rarityScale(def.Rarity) * PetCatalog.LevelFactor(level, cleanStage) * mult
+	local factor = rarityScale(def.StatRarity or def.Rarity) * PetCatalog.LevelFactor(level, cleanStage) * mult
 	local out = {}
 	for _, key in ipairs(PetCatalog.StatOrder) do
 		local base = def.Stats[key]
@@ -1480,6 +1489,9 @@ function PetCatalog.Validate()
 		if not rarityById[def.Rarity] then
 			bad(id .. ": unknown rarity " .. tostring(def.Rarity))
 		end
+		if def.StatRarity ~= nil and not rarityById[def.StatRarity] then
+			bad(id .. ": unknown StatRarity " .. tostring(def.StatRarity))
+		end
 		local look = def.Look
 		if type(look) ~= "table" then
 			bad(id .. ": missing Look")
@@ -1607,7 +1619,8 @@ function PetCatalog.Validate()
 		end
 	end
 
-	-- Secret pets must outclass the best Mythic (total perk strength).
+	-- Secret pets must outclass the best Mythic (total perk strength). A pet counts by its stats' rarity: Hydralotl (0.46)
+	-- is a Mythic on the list with the power of a Secret, so it does not set the bar for Rime Wyrmling (0.44).
 	local function perkSum(def)
 		local sum = 0
 		for _, v in pairs(def.Perks or {}) do
@@ -1618,11 +1631,13 @@ function PetCatalog.Validate()
 		return sum
 	end
 	local bestMythic = 0
-	for _, def in ipairs(byRarity.Mythic or {}) do
-		bestMythic = math.max(bestMythic, perkSum(def))
+	for _, def in ipairs(PetCatalog.Pets) do
+		if (def.StatRarity or def.Rarity) == "Mythic" then
+			bestMythic = math.max(bestMythic, perkSum(def))
+		end
 	end
-	for _, def in ipairs(byRarity[SECRET] or {}) do
-		if perkSum(def) < bestMythic then
+	for _, def in ipairs(PetCatalog.Pets) do
+		if (def.StatRarity or def.Rarity) == SECRET and perkSum(def) < bestMythic then
 			bad(tostring(def.Id) .. ": a Secret pet's perks must be at least as strong as the best Mythic")
 		end
 	end

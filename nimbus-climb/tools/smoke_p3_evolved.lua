@@ -1,7 +1,8 @@
 -- smoke_p3_evolved.lua: the evolved forms of the Phase 3 event pets and the merged developer tools (evolved-pets
 -- branch: PetBuilder Evolved = 1 | 2, DevPetShow, DevService pet / pets / evolve / clearpets next to the Phase 3
 -- /raid). Loaded by tools/smoke.py in BOTH worlds; ARGS.context picks the half:
---   p3evo_pets          (server, content) the three EventOnly Secret pets (Magma Cub, Rime Wyrmling, Hydralotl) have
+--   p3evo_pets          (server, content) the three EventOnly raid pets (Magma Cub and Hydralotl: Mythic with Secret-grade
+--                       stats; Rime Wyrmling: Secret) have
 --                       bespoke evolved looks that echo their boss, not just their species' generic form: magma cracks,
 --                       the basalt volcano and the molten core (Lava Golem); the glacier-crystal crown, frost ferns,
 --                       ice horns and glass crystal wings (Frost Wyrm); the hydra heads on the gills and, at the second
@@ -150,7 +151,9 @@ local function serverScenarios()
 		for _, id in ipairs(EVENT_IDS) do
 			local def = PC.Get and PC.Get(id)
 			if T.check(def ~= nil and def.EventOnly == true and events[id] ~= nil, "evolved event pets: " .. id .. " is an EventOnly catalog pet") then
-				T.eq(PB.MaxEvolution(def), 2, "evolved event pets: " .. id .. " (Secret) has a second evolution")
+				T.check(def.Rarity == (id == "rime_wyrmling" and "Secret" or "Mythic") and (def.StatRarity or def.Rarity) == "Secret",
+					"evolved event pets: " .. id .. " has Secret-grade stats (Rime Wyrmling is a Secret, the other two are listed Mythic)", tostring(def.Rarity))
+				T.eq(PB.MaxEvolution(def), 2, "evolved event pets: " .. id .. " (" .. tostring(def.Rarity) .. ") has a second evolution")
 				local twin = copyDef(def, id .. "_smoketwin")
 				for stage = 1, 2 do
 					for _, detail in ipairs({ "High", "Low" }) do

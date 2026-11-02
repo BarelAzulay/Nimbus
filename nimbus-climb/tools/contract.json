@@ -1056,9 +1056,9 @@
       "Common": 6,
       "Uncommon": 6,
       "Rare": 5,
-      "Epic": 4,
-      "Legendary": 3,
-      "Mythic": 2
+      "Epic": 3,
+      "Legendary": 4,
+      "Mythic": 4
     },
     "mascotPetId": "cloudy_dragon",
     "partBudget": {

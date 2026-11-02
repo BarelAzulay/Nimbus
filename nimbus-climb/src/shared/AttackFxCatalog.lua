@@ -1114,7 +1114,8 @@ AttackFxCatalog.Signatures = {
 	-- a lava crack glows open under the target just before (Gemini's second pass: the cub's own crack lived in the
 	-- charge, which a battle cuts) and 5 magma spikes erupt from it in a ring; deeper lava reds
 	magma_cub = {
-		Name = "Lava Slam", Rarity = "Secret", Element = "Flame", Kind = "Blast",
+		-- (Mythic since evolved forms, Secret-grade stats by PetCatalog's StatRarity: an effect goes by the listed rarity, Sizes 1.55, band 3)
+		Name = "Lava Slam", Rarity = "Mythic", Element = "Flame", Kind = "Blast",
 		Twist = "erupts from a lava crack; magma spikes ring the target",
 		Palette = { Core = rgb(255, 206, 96), Mid = rgb(255, 92, 24), Edge = rgb(150, 28, 8), Hot = rgb(255, 238, 150), Smoke = rgb(74, 44, 36) },
 		Core = { Key = "vfx_chunk", Scale = 1.5, Transparency = 0, InnerTint = "Hot" },
@@ -1153,7 +1154,8 @@ AttackFxCatalog.Signatures = {
 	-- three void serpent heads (a glitch-pink rim) rise from the floor behind the pet in a fan, the middle one tallest,
 	-- and lunge forward roaring at the release with the Rally's void roar and rings
 	hydralotl = {
-		Name = "Void Fangs", Rarity = "Secret", Element = "Shadow", Kind = "Rally",
+		-- (Mythic since evolved forms, Secret-grade stats by PetCatalog's StatRarity: an effect goes by the listed rarity, Sizes 1.55, band 3)
+		Name = "Void Fangs", Rarity = "Mythic", Element = "Shadow", Kind = "Rally",
 		Twist = "void serpent heads rise behind the pet and roar",
 		-- (Task 11d, Studio round 3, S5: 7-8 studs tall and rooted in front of the pet from the /fx camera, the necks hid it
 		-- and its name tag) "Behind" = just past the pet's body AWAY from the viewer, the tallest top at most 0.3 over the

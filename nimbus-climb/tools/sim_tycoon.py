@@ -133,8 +133,8 @@ ROLE_MULT = [1.6, 1]  # PetCatalog.RoleMult Economy, Combat
 EVOLUTION_LEVELS = [20, 50]  # PetCatalog.EvolutionLevels
 EVOLUTION_BONUS = [1.5, 1.875]  # PetCatalog.EvolutionBonus[1], [2]: an evolution multiplies the LEVEL BONUS
 EVOLVE_TWICE = [0, 0, 0, 1, 1, 1, 1]  # PetCatalog.MaxEvolution(rarity) == 2 (Epic and rarer)
-PET_ROLLABLE = [6, 6, 5, 4, 3, 2]  # rollable pets per rarity, Common .. Mythic (Secret pets are not in these roulettes)
-PET_ECON_ROLLABLE = [3, 3, 3, 2, 1, 1]  # ...of which Economy pets (the rest are Combat)
+PET_ROLLABLE = [6, 6, 5, 3, 4, 2]  # rollable pets per rarity, Common .. Mythic (Secret pets are not in these roulettes)
+PET_ECON_ROLLABLE = [3, 3, 3, 1, 2, 1]  # ...of which Economy pets (the rest are Combat)
 ODDS_Cloud = [60, 28, 10, 2, 0, 0]  # Config.Roulettes weights, Common .. Mythic
 ODDS_Storm = [0, 35, 40, 20, 5, 0]
 ODDS_Sky = [0, 0, 35, 45, 17, 3]

@@ -776,8 +776,8 @@ see below). You spend them on:
   Sky 75 and Celestial 300 Gems a spin.
 - **The Secret Roulette** at the **Storm Altar** (press **E** at the altar, or find it in the Shop's Gems tab):
   1,500 Gems a spin, **Mythic 85 %, Secret 15 %**. It is the only place the four roulette Secret pets come from
-  (Stormfang, Eclipse Dragon, Obsidian Phoenix, Phantom Kitsune). The three Boss Raid Secrets (Magma Cub, Rime
-  Wyrmling, Hydralotl) are in no roulette at all: they only drop in Boss Raids.
+  (Stormfang, Eclipse Dragon, Obsidian Phoenix, Phantom Kitsune). The three Boss Raid pets (Magma Cub and Hydralotl,
+  Mythic with Secret-grade stats, and the Secret Rime Wyrmling) are in no roulette at all: they only drop in Boss Raids.
 - **Fusion Mixes** with Mythic or Secret pets.
 
 The odds of every roulette are always one tap away (the odds list). Where Roblox does not allow paid random items
@@ -1087,8 +1087,10 @@ and Mid:
 If the boss wins, everyone whose pets hit it still gets **25 tokens** and **20 XP** (scaled the same way). Only a raider whose pets never
 hit the boss gets no reward.
 
-**The three Boss Raid pets** are Secret pets that are in no roulette at all: **Magma Cub** (Flame, a little echo of
-the Lava Golem), **Rime Wyrmling** (Frost, from the Frost Wyrm) and **Hydralotl** (Shadow, from the Shadow Hydra).
+**The three Boss Raid pets** are in no roulette at all: **Magma Cub** (Flame, a little echo of the Lava Golem) and
+**Hydralotl** (Shadow, from the Shadow Hydra) are Mythic pets with Secret-grade stats: their power in battle, their coins
+and their feed and training prices are a Secret's, while their list, their effects and their fusion prices go by Mythic.
+**Rime Wyrmling** (Frost, from the Frost Wyrm) is a Secret pet.
 A raid can drop one you do not have yet; they are in the Pet Index like every other pet.
 
 ### Double Rewards
@@ -1154,8 +1156,10 @@ later you are back at the gate.
 ## Pets and roulettes
 
 **33 pets** in seven rarities follow their owner, and everybody sees everybody's pets: Common 6,
-Uncommon 6, Rare 5, Epic 4, Legendary 3, Mythic 2 and **Secret 7** (Stormfang, Eclipse Dragon, Obsidian Phoenix,
-Phantom Kitsune, and the three Boss Raid pets Magma Cub, Rime Wyrmling and Hydralotl). Visit the **shop island** or
+Uncommon 6, Rare 5, Epic 3, Legendary 4, Mythic 4 and Secret 5.
+The Legendaries are Candy Unicorn, Ember Phoenix, Sunbeam Bear and Twilight Dragon. The Mythics are Cloudy Dragon,
+Starlight Unicorn and two Boss Raid pets, Magma Cub and Hydralotl. The Secrets are Stormfang, Eclipse Dragon, Obsidian
+Phoenix, Phantom Kitsune and the third Boss Raid pet, Rime Wyrmling. Visit the **shop island** or
 press the **Shop** tile, pick a roulette and spin. Duplicates stack (up to 99 per pet).
 
 | Roulette | Price | Odds per spin (pets inside a rarity are equally likely) |
@@ -1168,7 +1172,7 @@ press the **Shop** tile, pick a roulette and spin. Duplicates stack (up to 99 pe
 
 Secret pets are in none of the token roulettes: Stormfang and the other three roulette Secrets come from the
 gems-only Secret Roulette at the Storm Altar (see [Gems](#gems-and-the-secret-roulette)), and the three Boss Raid
-pets only drop in Boss Raids.
+pets only drop in Boss Raids, so a roulette's Mythics are Cloudy Dragon and Starlight Unicorn.
 
 Put up to **3** pets in your team from the Pets window (a pet in training cannot join). Each pet has one or two perks:
 **Max Health**, **Cloud Tokens** (more tokens per pickup), **Stamina Regen** and **Checkpoint Heal**. Perks add up,
@@ -1232,8 +1236,8 @@ Pet Index has a small **Elements** card that shows the wheel.
 Open it with the **Index** tile. On the left one tile per rarity group with your progress ("3/6"); in the middle
 the group's pets (pets you have not found yet are black `???` silhouettes); on the right a detail card with the
 pet's rarity, element (with "Strong vs / Weak vs"), role, stats and special attack, and for Stormfang the
-owner's artwork as a banner. Every pet you ever win counts as discovered. The footer shows "Unlocked: x/33" (the
-three Boss Raid pets are listed with the Secret pets).
+owner's artwork as a banner. Every pet you ever win counts as discovered. The footer shows "Unlocked: x/33" (each
+Boss Raid pet is listed under its own rarity: Magma Cub and Hydralotl with the Mythics, Rime Wyrmling with the Secrets).
 
 Discover every pet of a group and press **CLAIM** for its reward (once per group; a red `!` on the group tile
 means a reward is waiting):
@@ -1241,6 +1245,9 @@ means a reward is waiting):
 | Group | Common | Uncommon | Rare | Epic | Legendary | Mythic | Secret |
 |---|---|---|---|---|---|---|---|
 | Reward (Cloud Tokens) | 50 | 120 | 300 | 800 | 2,000 | 5,000 | 10,000 |
+
+The Mythic reward needs both raid drops (Magma Cub and Hydralotl), the Secret reward only Rime Wyrmling. A reward you
+already claimed stays claimed.
 
 Under the groups, the **Fusions** tile lists your Golden, Rainbow and hybrid pets (with a hybrid's parents and
 elements). Fusions are not part of the group rewards.

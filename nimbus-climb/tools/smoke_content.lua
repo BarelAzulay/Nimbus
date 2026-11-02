@@ -140,8 +140,10 @@ local function catalogV3(PC, Config, rank)
 		if type(sp) == "table" and type(sp.Id) == "string" then
 			specialIds[sp.Id] = true
 		end
-		perRole[def.Rarity] = perRole[def.Rarity] or { Economy = 0, Combat = 0, n = 0 }
-		local pr = perRole[def.Rarity]
+		-- (evolved forms: a raid drop counts by its stats' rarity: Hydralotl is listed Mythic with the power of a Secret)
+		local statRarity = def.StatRarity or def.Rarity
+		perRole[statRarity] = perRole[statRarity] or { Economy = 0, Combat = 0, n = 0 }
+		local pr = perRole[statRarity]
 		pr.n = pr.n + 1
 		if def.Role == "Economy" or def.Role == "Combat" then
 			pr[def.Role] = pr[def.Role] + 1
@@ -213,10 +215,10 @@ local function catalogV3(PC, Config, rank)
 		T.eq(secretRolls, 0, "1600 RollPet calls over every roulette never return a Secret pet")
 	end
 
-	-- GetStats(petId, level) = base * RarityScale[rarity] * (1 + 0.1 * (level - 1))
+	-- GetStats(petId, level) = base * RarityScale[StatRarity or rarity] * (1 + 0.1 * (level - 1))
 	local stats = T.tally("GetStats(petId, level) = base * RarityScale * (1 + 0.1 * (level - 1)) for levels 1, 2, 10")
 	for _, def in ipairs(PC.Pets) do
-		local scale = Config.PetStats.RarityScale[def.Rarity] or 1
+		local scale = Config.PetStats.RarityScale[def.StatRarity or def.Rarity] or 1
 		for _, level in ipairs({ 1, 2, 10 }) do
 			local got = PC.GetStats(def.Id, level)
 			local ok = type(got) == "table"
@@ -471,10 +473,11 @@ S.catalog = guarded("catalog", function()
 	end
 	shape:report()
 	T.check(sorted, "PetCatalog.Pets is sorted by rarity order, then Name (Stormfang, the player's own creature, leads the Secrets)")
-	-- the v2 rarities keep their v2 lineup; v3 adds the Secret tier (3 dark Secrets + Stormfang) after the Mythics
+	-- the v2 rarities' lineup (evolved forms: Candy Unicorn is a Legendary, two raid pets are Mythic: EventOnly, so ListByRarity needs
+	-- includeEvent to name them); v3 adds the Secret tier (3 dark Secrets + Stormfang) after the Mythics
 	for rarity, want in pairs(CONTRACT.v2.petCounts) do
 		T.eq(counts[rarity] or 0, want, "lineup has " .. want .. " " .. rarity .. " pets")
-		T.eq(#PC.ListByRarity(rarity), want, "ListByRarity('" .. rarity .. "') returns them")
+		T.eq(#PC.ListByRarity(rarity, true), want, "ListByRarity('" .. rarity .. "', true) returns them")
 	end
 	T.check((counts[SECRET] or 0) >= CONTRACT.v3.minSecretPets, "lineup has at least " .. CONTRACT.v3.minSecretPets .. " Secret pets", tostring(counts[SECRET]))
 	local eventSecrets = 0

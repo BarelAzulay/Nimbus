@@ -659,9 +659,20 @@ local function hybridDef(key, parsed, rec)
 	if #elements == 0 then
 		elements = cleanElements({ body.Element, style.Element })
 	end
+	local listed = higherRarity(body.Rarity, style.Rarity)
 	local rarity = rec.Rarity
 	if type(rarity) ~= "string" or not rarityOrder(rarity) then
-		rarity = higherRarity(body.Rarity, style.Rarity)
+		rarity = listed
+	end
+	-- a raid pet is listed Mythic with Secret-grade stats (StatRarity), and a hybrid of one keeps them. Read off the parents,
+	-- never saved: FusionService stores the listed rarity on a new record, so that counts as new too. A record stored with
+	-- another rarity (made before its parent moved) is kept as it was: its own Rarity already gives its stats.
+	local statRarity = nil
+	if rarity == listed then
+		local top = higherRarity(body.StatRarity or body.Rarity, style.StatRarity or style.Rarity)
+		if top ~= rarity then
+			statRarity = top
+		end
 	end
 	local bonus = PetKeys.HybridStatBonus
 	local stats = average(body.Stats, style.Stats, bonus)
@@ -688,6 +699,7 @@ local function hybridDef(key, parsed, rec)
 		Name = name,
 		DisplayName = tierLabel(tier, name),
 		Rarity = rarity,
+		StatRarity = statRarity,
 		Blurb = "A fusion of " .. tostring(body.Name) .. " and " .. tostring(style.Name) .. ".",
 		Look = look,
 		Perks = average(body.Perks, style.Perks, bonus),

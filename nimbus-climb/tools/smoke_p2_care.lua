@@ -68,7 +68,7 @@ S.p2care_stats = guarded("p2care_stats", function()
 	local tiers = { Normal = 1, Golden = 1.5, Rainbow = 2.5 }
 	local formula = T.tally("care stats: GetStats(petId, level, tier) = base x RarityScale x (1 + 0.1 x (level - 1)) x tier (every pet; levels 1, 2, 7, top; 3 tiers)")
 	for _, def in ipairs(PCat.Pets) do
-		local scale = Config.PetStats.RarityScale[def.Rarity] or 1
+		local scale = Config.PetStats.RarityScale[def.StatRarity or def.Rarity] or 1 -- (evolved forms: a raid drop keeps Secret-grade stats)
 		for _, level in ipairs({ 1, 2, 7, top }) do
 			for tier, m in pairs(tiers) do
 				local got = PCat.GetStats(def.Id, level, tier)
