@@ -11,6 +11,7 @@
 -- orbit, a WIND-UP (Winding, 0.45 s) before every hit so the 0.35 s dash i-frames can dodge it. Bosses keep their
 -- telegraphed patterns, minion waves, the enrage at 30% health and its lethal attack. Every number lives in BattleCatalog / PetCatalog.
 -- 2026-11-01: docs/superpowers/specs/2026-11-01-attack-fx-design.md (a unit's areas are catalog x reachOf(u), its stage through stageOf(u)).
+-- 2026-11-02: docs/superpowers/specs/2026-11-01-evolved-forms-design.md (a fighter's special gains its form's twists by formOf(u); hybrids are stage 0).
 --
 -- API (the contract):
 --   BattleSim.new(setup) -> battle | nil, reason
@@ -95,23 +96,32 @@
 --                                     Hp > 0: a pet at 0 HP when the fight ends is fainted) }
 --   battle:Describe() -> { BattleId, Mode, Seed, Zone = { X, Z }, TimeLimit, BossId, Round, Sides, Units = { unitInfo... } }
 --   battle:StaticUnits() -> { unitInfo... }   unitInfo = { id, side, owner, slot, kind, key, petId, boss, name, species, look,
---                                     element, elements, maxHp, level, tier, scale, ranged, range, radius, special, evo, xp, xpNext,
+--                                     element, elements, maxHp, level, tier, scale, ranged, range, radius,
+--                                     special = { Id, Name (the form's at stage >= 1), Base, Kind, Color, Form (0 | 1 | 2) }, evo, xp, xpNext,
 --                                     reach (x its catalog areas: BattleCatalog.ReachOf of its stage; nil = x1),
 --                                     crowned, role ("Fighter" | "Support"), buff = { Kind, Name, Seconds, Value, Cooldown },
 --                                     elementAttack = { Name, Shape, Element }, bench = 2 | 3 | nil, wild, walk, run }
 --   battle:Time(), IsFinished(), Owners(), BossStatus() (+ Tier, Lethal = a lethal telegraph is pending), SetAnchor(owner, x, z)
 --   BattleSim.States = { Idle 0, Moving 1, Attacking 2, Benched 3, Casting 4, Down 5, Stunned 6, Dashing 7 }  (Winding = Attacking + windup bit)
 --   BattleSim.Events = { Hit, Special, KO, Telegraph, Spawn, Enrage, Order, Zone, Leave, End, Element, Dash, Buff, Swap, Windup, Wave,
---                        EnemiesDown, Speed, Engage, Parry, Cheer }
+--                        EnemiesDown, Speed, Engage, Parry, Cheer, Twist }
 -- Event shapes:
 --   Engage     { owner, unit (the fighter), on = true, target }  /  { owner, unit, on = false }   (only the FOLLOW / ENGAGED flips)
 --   Hit        { from, to, dmg, elem, crit, absorbed, miss = true (dodged), burn = true, leech = n, element = name, special = kind,
---                tele, zone, attack, buffDmg = true, lethal = true (the enraged boss's lethal attack: dmg = the whole HP + shield, a KO follows) }
+--                tele, zone, attack, buffDmg = true, lethal = true (the enraged boss's lethal attack: dmg = the whole HP + shield, a KO follows),
+--                twist = "Charge" | "Landing" | "Aftershock" | "Twin" | "LastStrike" | "Shatter" | "Burst", bonus = true (a boss's bonus hit),
+--                thorns = true, double = true }
 --   Special    { unit, kind, name, x, z, tx, tz, target, targets, heals, shields, stunned, angle, r (Blast / Freeze / Storm),
 --                length + width (Beam), range (Pounce) }   (an evolved pet's areas as the server used them, 0.1 steps; an unevolved
 --                pet's stay off the wire, the client knows them: a full raid's traffic budget is tight)
+--                stage >= 1 only: form = 1 | 2, name = the form's name; Pounce: x0, z0, angle (3 decimals), length, width = the charge line
+--                (the drawn area IS the real area), targets = the aimed target first, then those on the line; stage 2: burstR, burstTargets
+--   Twist      { unit, kind (the special kind), twist = "Aftershock" | "Twin" | "LastStrike" | "Shatter" | "Burst" | "Lingering" | "Overflow" | "Chill",
+--                x, z (the point, 0.1 steps), angle (Twin, 3 decimals), r | length + width (0.1 steps), targets, heals = { { id, hp }... } (Lingering),
+--                shields = { id... } + amount (Overflow) }   (a twist that lands later than its cast; stage >= 1 only)
 --   KO         { unit, by, forfeit }          Telegraph { id, boss, name, attack, shape, x, z, r | angle + length + width, at, hits, freeze, linger, lethal = true }
---   Spawn      { units, wave, boss, owner }   Enrage { unit }      Zone { unit, kind, x, z, r, seconds, side }     Leave { owner, units }
+--   Spawn      { units, wave, boss, owner }   Enrage { unit }      Zone { unit, kind (Storm | Linger | Patch), special (Patch: the kind it came from),
+--                                                                     x, z, r, seconds, side }     Leave { owner, units }
 --   Order      { owner, order, target, rejected }   (every refused command echoes `rejected`; Attack / Target / Forfeit echo when accepted)
 --   Element    { unit, element, name, x, z, angle | tx, tz, targets, length (Cone / Line), width (Line), r (Circle) }
 --   Dash       { unit, dir = { dx, dz } (the SIDESTEP: unit vector in floor space, 0.01 steps), target (the threat's source | nil) }
@@ -176,6 +186,7 @@ BattleSim.Events = {
 	Engage = "Engage",
 	Parry = "Parry",
 	Cheer = "Cheer",
+	Twist = "Twist",
 }
 BattleSim.Actions = { "Attack", "Element", "Special", "Dash", "Target", "Buff", "Swap", "Move", "Cheer", "Forfeit" }
 BattleSim.Modes = { "Duel", "Raid", "Ring", "Dungeon" }
@@ -553,6 +564,46 @@ local function meterStart(self, D, team, entry)
 	return num(ms, 0)
 end
 
+-- a unit's evolution stage (0 | 1 | 2) and how far its abilities reach: the one place the sim reads either; u.evo is UnitStats'
+-- cleaned stage (the STORED stage), a unit with none (a wild pet, a hybrid) is stage 0
+local function stageOf(u)
+	return max(0, min(2, floor(num(u.evo, 0))))
+end
+
+local function reachOf(u)
+	local bc = catalog()
+	if bc and type(bc.ReachOf) == "function" then
+		return bc.ReachOf(stageOf(u))
+	end
+	return 1
+end
+
+-- the stage its forms read: every hybrid is stage 0 until hybrids can evolve (spec "Settled against the real code")
+local function formStageOf(u)
+	local def = u.def
+	if type(def) == "table" and (def.IsHybrid == true or (type(def.Look) == "table" and def.Look.BodyId ~= nil)) then
+		return 0
+	end
+	return stageOf(u)
+end
+
+-- the unit's special's twists { [Id] = twist } (BattleCatalog.FormOf), nil at stage 0: the stage-0 path reads nothing new
+local function formOf(u)
+	local bc = catalog()
+	if u.specialKind and bc and type(bc.FormOf) == "function" then
+		return bc.FormOf(u.specialKind, formStageOf(u))
+	end
+	return nil
+end
+
+local function formNameOf(u)
+	local bc = catalog()
+	if u.specialKind and bc and type(bc.FormNameOf) == "function" then
+		return bc.FormNameOf(u.petId, u.specialKind, formStageOf(u))
+	end
+	return nil
+end
+
 local function unitFromDef(self, team, def, entry, slot, kind)
 	local bc = catalog()
 	local us = bc and bc.UnitStats and bc.UnitStats(def, entry.Level, entry.Tier, entry)
@@ -662,11 +713,21 @@ local function unitFromDef(self, team, def, entry, slot, kind)
 		buffReadyAt = 0,
 		-- statuses
 		slowUntil = 0,
+		slowMult = 1, -- strongest wins (applySlow)
 		weakenUntil = 0,
+		weakenMult = 1,
+		markUntil = 0,
+		markMult = 1, -- strongest wins (applyMark)
 		burnLeft = 0,
 		burnAmount = 0,
 		burnNextAt = 0,
 		burnFrom = nil,
+		-- evolved forms: a stage-2 Shield's burst, a stage-1 Shield's reflection, the unit's own burning ground, Haste's windows
+		shieldForm = nil,
+		thorns = nil,
+		patch = nil,
+		quickUntil = 0,
+		doubleUntil = 0,
 		dmgBuffUntil = 0,
 		dmgBuffMult = 1,
 		speedBuffUntil = 0,
@@ -687,6 +748,7 @@ local function unitFromDef(self, team, def, entry, slot, kind)
 		threat = nil,
 		threatAt = -huge,
 	}
+	u.formName = formNameOf(u)
 	self.units[id] = u
 	return u
 end
@@ -709,20 +771,6 @@ local function placeTeamUnits(self, team)
 		u.px, u.pz = u.x, u.z
 	end
 	team.faceX, team.faceZ = cx, cz
-end
-
--- a unit's evolution stage (0 | 1 | 2) and how far its abilities reach: the one place the sim reads either (evolved forms, a
--- later spec, plug in here); u.evo is UnitStats' cleaned stage, a unit with none (a wild pet, a hybrid) is stage 0
-local function stageOf(u)
-	return max(0, min(2, floor(num(u.evo, 0))))
-end
-
-local function reachOf(u)
-	local bc = catalog()
-	if bc and type(bc.ReachOf) == "function" then
-		return bc.ReachOf(stageOf(u))
-	end
-	return 1
 end
 
 -- an area on an event: the number the sim used. An unevolved pet's stays off the wire: the client knows it (the catalog's
@@ -786,7 +834,7 @@ local function unitInfo(u, t)
 		info.bench = u.slot
 	end
 	if u.special then
-		info.special = { Id = u.special.Id, Name = u.special.Name, Kind = u.special.Kind, Color = u.special.Color }
+		info.special = { Id = u.special.Id, Name = u.formName or u.special.Name, Base = u.special.Name, Kind = u.special.Kind, Color = u.special.Color, Form = formStageOf(u) }
 	end
 	if u.buffDef then
 		info.buff = { Kind = u.buffKind, Name = u.buffDef.Name, Seconds = u.buffDef.Seconds, Value = u.buffDef.Value, Cooldown = u.buffDef.Cooldown }
@@ -1138,10 +1186,19 @@ local function makeBoss(self, bossId)
 		iframesUntil = 0,
 		buffReadyAt = 0,
 		slowUntil = 0,
+		slowMult = 1,
 		weakenUntil = 0,
+		weakenMult = 1,
+		markUntil = 0,
+		markMult = 1,
 		burnLeft = 0,
 		burnAmount = 0,
 		burnNextAt = 0,
+		shieldForm = nil,
+		thorns = nil,
+		patch = nil,
+		quickUntil = 0,
+		doubleUntil = 0,
 		dmgBuffUntil = 0,
 		dmgBuffMult = 1,
 		speedBuffUntil = 0,
@@ -1188,6 +1245,7 @@ function BattleSim.new(setup)
 	self.units = {}
 	self.telegraphs = {}
 	self.zones = {}
+	self.delayed = {} -- the evolved twists' delayed hits (self.pending holds a step's events)
 	self.pending = {}
 	self.order = {}
 	self.order2 = {}
@@ -1312,7 +1370,7 @@ local function legalSpeeds(self, team)
 		mult = mult * f.speedBuffMult
 	end
 	if self.t < f.slowUntil then
-		mult = mult * num(damageRules().Slow, 0.6)
+		mult = mult * f.slowMult
 	end
 	return num(f.walk, 12) * mult, num(f.run, 15.6) * mult
 end
@@ -1653,6 +1711,8 @@ local function knockOut(self, u, by, events, forfeit)
 	u.state = S_DOWN
 	u.target = nil
 	u.shield = 0
+	u.shieldForm = nil -- a KO'd unit never bursts
+	u.thorns = nil
 	u.windAt = nil
 	u.windTarget = nil
 	u.burnLeft = 0
@@ -1706,10 +1766,34 @@ local function attackMult(self, attacker)
 		m = m * attacker.dmgBuffMult
 	end
 	if attacker.weakenUntil and self.t < attacker.weakenUntil then
-		m = m * num(damageRules().Weaken, 0.85)
+		m = m * attacker.weakenMult
 	end
 	return m
 end
+
+-- a slow on `e` (bosses keep their immunity): the strongest active one wins, the later end stands -> applied?
+local function applySlow(self, e, mult, seconds)
+	if e.kind == "Boss" then
+		return false
+	end
+	local t = self.t
+	e.slowMult = min(mult, (t < e.slowUntil) and e.slowMult or 1)
+	e.slowUntil = max(e.slowUntil, t + seconds)
+	return true
+end
+
+-- Mark / Ice Snare, one status: the strongest active one wins, no stacking. Not in a boss's immunities
+local function applyMark(self, e, mult, seconds)
+	local t = self.t
+	e.markMult = max(mult, (t < e.markUntil) and e.markMult or 1)
+	e.markUntil = max(e.markUntil, t + seconds)
+end
+
+local function inIFrames(self, u)
+	return self.t < (u.iframesUntil or 0)
+end
+
+local shieldBreak -- forward
 
 -- Applies `amount` of damage from `attacker` (may be nil for zones) to `victim`. Returns the damage dealt (after
 -- shields). `extra` fields are copied into the Hit event; extra == nil marks a plain attack (crits, meter, chill, leech).
@@ -1746,6 +1830,9 @@ local function applyDamage(self, attacker, victim, amount, events, extra, noVari
 	if victim.takenUntil and self.t < victim.takenUntil then
 		dmg = dmg * victim.takenMult
 	end
+	if victim.markUntil and self.t < victim.markUntil then
+		dmg = dmg * victim.markMult
+	end
 	local cap = self.maxHitShare
 	if cap and attacker and attacker.kind ~= "Boss" and dmg > victim.maxHp * cap then
 		dmg = victim.maxHp * cap
@@ -1770,8 +1857,7 @@ local function applyDamage(self, attacker, victim, amount, events, extra, noVari
 			local top = isFighter and num(F.SpecialMeterMax, 100) or num(D.MeterMax, 100)
 			attacker.meter = min(top, attacker.meter + gain * (attacker.meterRate or 1))
 			-- Chill: the fighter's plain hits slow its enemies
-			if attacker.chillUntil and self.t < attacker.chillUntil and victim.kind ~= "Boss" then
-				victim.slowUntil = max(victim.slowUntil or 0, self.t + 2)
+			if attacker.chillUntil and self.t < attacker.chillUntil and applySlow(self, victim, num(D.Slow, 0.6), 2) then
 				ev.slow = true
 			end
 		end
@@ -1821,6 +1907,16 @@ local function applyDamage(self, attacker, victim, amount, events, extra, noVari
 	if victim.hp <= 0 then
 		knockOut(self, victim, attacker, events)
 	end
+	-- evolved Shield, once the Hit stands (a KO'd unit has neither: knockOut cleared them). A Thorns hit never reflects a Thorns hit;
+	-- the shield's last point still reflects, then it ends
+	if absorbed > 0 then
+		if victim.thorns and attacker and not (extra and extra.thorns) and not inIFrames(self, attacker) then
+			applyDamage(self, victim, attacker, absorbed * victim.thorns.share, events, { thorns = true }, true)
+		end
+		if victim.shield <= 0 and (victim.shieldForm or victim.thorns) then
+			shieldBreak(self, victim, events)
+		end
+	end
 	return dmg + absorbed
 end
 
@@ -1833,10 +1929,6 @@ local function missEvent(self, attacker, victim, events, extra)
 		end
 	end
 	events[#events + 1] = ev
-end
-
-local function inIFrames(self, u)
-	return self.t < (u.iframesUntil or 0)
 end
 
 ----------------------------------------------------------------------
@@ -1976,8 +2068,9 @@ local function applyBuff(self, target, buff, mult, events, ev)
 		target.dmgBuffMult = 1 + value
 		target.dmgBuffUntil = untilT
 	elseif effect == "Speed" then
-		target.speedBuffMult = 1 + value
-		target.speedBuffUntil = untilT
+		-- the Haste buttons and War pace share it: the larger stands, no overwrite
+		target.speedBuffMult = max((t < target.speedBuffUntil) and target.speedBuffMult or 1, 1 + value)
+		target.speedBuffUntil = max(target.speedBuffUntil, untilT)
 	elseif effect == "Regen" then
 		target.regenRate = value
 		target.regenUntil = untilT
@@ -2014,6 +2107,194 @@ local function specialRules(kind)
 	return nil
 end
 
+-- Evolved forms: the delayed hits, the charge line, burning ground, the boss bonus (BattleCatalog.Forms; a stage-0 unit reaches none of this)
+-- a Twist event: a twist that lands later than its cast (or adds to it), on the wire in 0.1 steps
+local function twistEvent(u, kind, twist, x, z)
+	return { type = EV.Twist, unit = u.id, kind = kind, twist = twist, x = x and r1(x), z = z and r1(z) }
+end
+
+-- a twist's hit: a body in its dash i-frames dodges it, as every timed hit
+local function twistHit(self, u, e, amount, events, extra)
+	if inIFrames(self, e) then
+		missEvent(self, u, e, events, extra)
+	else
+		applyDamage(self, u, e, amount, events, extra)
+	end
+end
+
+-- a control twist on a boss (its immunities stand) pays a bonus hit, so it never does nothing
+local function bossBonus(self, u, boss, base, kind, events)
+	local bc = catalog()
+	return applyDamage(self, u, boss, base * num(bc and bc.Forms and bc.Forms.BossBonus, 0.1), events, { special = kind, bonus = true })
+end
+
+-- the real and drawn Pounce charge: from Back studs behind `u` (clamped to the floor) through `target` to Past studs past it, Beam Width x
+-- reach -> x0, z0, angle, length, width. A clamped start is re-aimed: the line still runs through the target
+local function chargeLine(self, u, target, twist, reach)
+	local dx, dz = target.x - u.x, target.z - u.z
+	local d = sqrt(dx * dx + dz * dz)
+	local dirX, dirZ = 1, 0
+	if d > 0.01 then
+		dirX, dirZ = dx / d, dz / d
+	end
+	local x0, z0 = clampPoint(self, u.x - dirX * num(twist.Back, 8), u.z - dirZ * num(twist.Back, 8), u.radius)
+	dx, dz = target.x - x0, target.z - z0
+	d = sqrt(dx * dx + dz * dz)
+	if d > 0.01 then
+		dirX, dirZ = dx / d, dz / d
+	end
+	local S = specialRules("Beam")
+	return x0, z0, atan2(dirZ, dirX), d + num(twist.Past, 3), num(S and S.Width, 4) * reach
+end
+
+-- burning ground: a zone that deals `total` over `seconds`. A pet has one (the next replaces it); different pets' stack, as Storm zones do
+local function patchZone(self, u, x, z, r, total, seconds, kind, events)
+	local zones = self.zones
+	for i = #zones, 1, -1 do
+		if zones[i] == u.patch then
+			table.remove(zones, i)
+			break
+		end
+	end
+	local zone = { x = x, z = z, r = r, dps = total / seconds, untilT = self.t + seconds, nextTick = self.t + ZONE_TICK, side = u.side, from = u, kind = "Patch", special = kind }
+	zones[#zones + 1] = zone
+	u.patch = zone
+	events[#events + 1] = { type = EV.Zone, unit = u.id, kind = "Patch", special = kind, x = r1(x), z = r1(z), r = r1(r), seconds = seconds, side = u.side }
+	return zone
+end
+
+-- a stage-2 Shield's burst, once: when the shield ends (broken, run out) around the unit that wore it. Thorns end with it. Nothing fires
+-- from the bench, or for a fallen caster (a KO'd wearer has no form left: knockOut)
+function shieldBreak(self, a, events)
+	local form = a.shieldForm
+	a.shieldForm = nil
+	a.thorns = nil
+	if not form or not onFloor(a) or not onFloor(form.from) then
+		return
+	end
+	local from = form.from
+	local tw = twistEvent(from, "Shield", "Burst", a.x, a.z)
+	tw.r = r1(form.r)
+	tw.targets = {}
+	events[#events + 1] = tw
+	local extra = { special = "Shield", twist = "Burst" }
+	for _, e in ipairs(livingEnemies(self, a.side)) do
+		if inCircle(e, a.x, a.z, form.r) then
+			tw.targets[#tw.targets + 1] = e.id
+			twistHit(self, from, e, form.base * form.share, events, extra)
+		end
+	end
+end
+
+-- a delayed twist lands. Twin: a line from where the caster stands NOW, along the original angle. Aftershock, Shatter, Last strike: a circle
+-- at the original point. Chill: the slow at the thaw. Lingering: one tick of healing
+local function fireDelayed(self, d, events)
+	local u = d.from
+	if d.twist == "Chill" then
+		local tw = twistEvent(u, d.kind, d.twist, d.x, d.z)
+		tw.targets = {}
+		for _, e in ipairs(d.targets) do
+			if e.alive and not e.gone and applySlow(self, e, d.slow, d.seconds) then
+				tw.targets[#tw.targets + 1] = e.id
+			end
+		end
+		if #tw.targets > 0 then
+			events[#events + 1] = tw
+		end
+		return
+	elseif d.twist == "Lingering" then
+		local tw = twistEvent(u, d.kind, d.twist)
+		tw.heals = {}
+		for _, a in ipairs(d.targets) do
+			if a.alive and not a.gone and a.hp < a.maxHp then
+				local got = min(d.base * d.share, a.maxHp - a.hp)
+				a.hp = a.hp + got
+				tw.heals[#tw.heals + 1] = { a.id, floor(got + 0.5) }
+			end
+		end
+		if #tw.heals > 0 then
+			events[#events + 1] = tw
+		end
+		return
+	end
+	local line = d.twist == "Twin"
+	local x, z = d.x, d.z
+	if line then
+		x, z = u.x, u.z
+	end
+	local tw = twistEvent(u, d.kind, d.twist, x, z)
+	if line then
+		tw.angle = floor(d.angle * 1000 + 0.5) / 1000
+		tw.length, tw.width = r1(d.length), r1(d.width)
+	else
+		tw.r = r1(d.r)
+	end
+	tw.targets = {}
+	events[#events + 1] = tw
+	local extra = { special = d.kind, twist = d.twist }
+	for _, e in ipairs(livingEnemies(self, u.side)) do
+		local inside
+		if line then
+			inside = inLine(e, x, z, d.angle, d.length, d.width)
+		else
+			inside = inCircle(e, x, z, d.r)
+		end
+		if inside then
+			tw.targets[#tw.targets + 1] = e.id
+			twistHit(self, u, e, d.base * d.share, events, extra)
+		end
+	end
+end
+
+-- the delayed-hit queue (self.delayed; self.pending holds a step's events), stepped like the telegraphs. A caster who fell, left or sits
+-- on the bench drops its hits. entry = { at, from, kind, twist, x, z, angle, length, width, r, base, share, targets, every, left, slow, seconds }
+local function queueDelayed(self, entry)
+	self.delayed[#self.delayed + 1] = entry
+end
+
+local function resolveDelayed(self, events)
+	local list = self.delayed
+	local i = 1
+	while i <= #list do
+		local d = list[i]
+		if self.t < d.at then
+			i = i + 1
+		elseif not onFloor(d.from) then
+			table.remove(list, i)
+		else
+			fireDelayed(self, d, events)
+			if d.every and d.left > 1 then
+				d.left = d.left - 1
+				d.at = d.at + d.every
+				i = i + 1
+			else
+				table.remove(list, i)
+			end
+		end
+	end
+end
+
+-- Quick hands: a cooldown set while the fighter's Haste is on is shorter
+local function rechargeOf(self, u)
+	if self.t < u.quickUntil then
+		local form = formOf(u)
+		if form and form.QuickHands then
+			return num(form.QuickHands.Recharge, 1)
+		end
+	end
+	return 1
+end
+
+-- Double strike, after a landed swing: the extra draw exists only while the twist is on, so a stage-0 fight's stream never moves
+local function doubleStrike(self, u, target, events)
+	if self.t < u.doubleUntil then
+		local form = formOf(u)
+		if form and form.DoubleStrike and rand(self) < num(form.DoubleStrike.Chance, 0) then
+			applyDamage(self, u, target, u.hit, events, { double = true })
+		end
+	end
+end
+
 local function castSpecial(self, u, events)
 	local kind = u.specialKind
 	local S = kind and specialRules(kind)
@@ -2025,6 +2306,7 @@ local function castSpecial(self, u, events)
 	local isFighter = team.player and u == team.fighter
 	local base = u.specialPower * D.DamageScale * num(S.Scale, 1) * num(D.SpecialScale, 1)
 	local reach = reachOf(u)
+	local form = formOf(u) -- nil at stage 0
 	local offensive = kind ~= "Heal" and kind ~= "Shield" and kind ~= "Rally" and kind ~= "Haste"
 	local target = nil
 	if offensive then
@@ -2051,7 +2333,10 @@ local function castSpecial(self, u, events)
 		u.nextAttack = u.castUntil
 	end
 	u.autoCastAt = nil
-	local ev = { type = EV.Special, unit = u.id, kind = kind, name = u.special and u.special.Name or kind, x = r1(u.x), z = r1(u.z) }
+	local ev = { type = EV.Special, unit = u.id, kind = kind, name = u.formName or (u.special and u.special.Name) or kind, x = r1(u.x), z = r1(u.z) }
+	if form then
+		ev.form = formStageOf(u)
+	end
 	if target then
 		ev.tx, ev.tz = r1(target.x), r1(target.z)
 		ev.target = target.id
@@ -2068,19 +2353,51 @@ local function castSpecial(self, u, events)
 				applyDamage(self, u, e, base, events, extra)
 			end
 		end
+		if form then
+			queueDelayed(self, { at = self.t + form.Aftershock.Delay, from = u, kind = kind, twist = "Aftershock", x = target.x, z = target.z, r = r, base = base, share = form.Aftershock.Share })
+			if form.Patch then
+				patchZone(self, u, target.x, target.z, r, base * form.Patch.Share, form.Patch.Seconds, kind, events)
+			end
+		end
 	elseif kind == "Heal" then
 		ev.heals = {}
 		local amount = base
 		if isFighter then
 			amount = base * num(S.Solo, 3) -- a fighter's heal: x Solo on the fighter and on each benched pet
 		end
+		-- Lingering ticks on the same units; Overflow: the part of the heal a unit could not take becomes its shield
+		local healed, overflow = {}, form and form.Overflow
+		local shields, topShield = {}, 0
 		-- dungeon fixes (7): a player's healer heals its fighter AND the benched pets (an NPC: its pets on the floor)
 		for _, a in ipairs(team.units) do
-			if a.alive and not a.gone and a.hp < a.maxHp and (isFighter or not a.benched) then
-				local got = min(amount, a.maxHp - a.hp)
-				a.hp = a.hp + got
-				ev.heals[#ev.heals + 1] = { a.id, floor(got + 0.5) }
+			if a.alive and not a.gone and (isFighter or not a.benched) then
+				local got = 0
+				if a.hp < a.maxHp then
+					got = min(amount, a.maxHp - a.hp)
+					a.hp = a.hp + got
+					ev.heals[#ev.heals + 1] = { a.id, floor(got + 0.5) }
+					healed[#healed + 1] = a
+				end
+				if overflow then
+					local shield = min(amount - got, amount * overflow.Cap)
+					if shield > 0 and shield > a.shield then
+						a.shield = shield
+						a.shieldUntil = self.t + overflow.Seconds
+						shields[#shields + 1] = a.id
+						topShield = max(topShield, shield)
+					end
+				end
 			end
+		end
+		if form and #healed > 0 then
+			local twist = form.Lingering
+			local every = twist.Seconds / twist.Ticks
+			queueDelayed(self, { at = self.t + every, from = u, kind = kind, twist = "Lingering", targets = healed, base = amount, share = twist.Share / twist.Ticks, every = every, left = twist.Ticks })
+		end
+		if #shields > 0 then
+			local tw = twistEvent(u, kind, "Overflow")
+			tw.shields, tw.amount = shields, floor(topShield + 0.5)
+			events[#events + 1] = tw
 		end
 	elseif kind == "Shield" then
 		ev.shields = {}
@@ -2095,14 +2412,34 @@ local function castSpecial(self, u, events)
 				end
 				a.shieldUntil = self.t + num(S.Seconds, 6)
 				ev.shields[#ev.shields + 1] = a.id
+				if form then
+					a.thorns = { from = u, share = form.Thorns.Share }
+					if form.Burst then
+						a.shieldForm = { from = u, base = base, share = form.Burst.Share, r = form.Burst.Radius * reach }
+					end
+				end
 			end
 		end
 	elseif kind == "Rally" or kind == "Haste" then
 		local bc = catalog()
 		local buff = bc and type(bc.Buffs) == "table" and bc.Buffs[kind] or { Effect = (kind == "Rally") and "Damage" or "Speed", Value = num(S.Value, 0.35), Seconds = num(S.Seconds, 8) }
 		local b = { Effect = buff.Effect, Value = num(S.Value, buff.Value), Seconds = num(S.Seconds, buff.Seconds) }
-		applyBuff(self, u, b, u.specialBoost, events, ev)
+		local untilT = applyBuff(self, u, b, u.specialBoost, events, ev)
 		ev.targets = { u.id }
+		if form then
+			if form.WarPace then
+				applyBuff(self, u, { Effect = "Speed", Value = form.WarPace.Speed, Seconds = b.Seconds }, u.specialBoost, events, {})
+			end
+			if form.FiredUp then
+				u.meter = min(isFighter and num(fighterRules().SpecialMeterMax, 100) or num(D.MeterMax, 100), u.meter + form.FiredUp.Meter)
+			end
+			if form.QuickHands then
+				u.quickUntil = untilT
+			end
+			if form.DoubleStrike then
+				u.doubleUntil = untilT
+			end
+		end
 	elseif kind == "Storm" then
 		local seconds = num(S.Seconds, 4)
 		local zone = {
@@ -2116,10 +2453,23 @@ local function castSpecial(self, u, events)
 			from = u,
 			kind = kind,
 		}
+		if form then
+			zone.slow = form.Winds.Slow
+			zone.base = base
+			zone.bonusDone = {}
+			if form.LastStrike then
+				zone.onEnd = { from = u, kind = kind, twist = "LastStrike", x = zone.x, z = zone.z, r = zone.r, base = base, share = form.LastStrike.Share }
+			end
+		end
 		self.zones[#self.zones + 1] = zone
 		ev.r = areaField(reach, zone.r)
 		events[#events + 1] = { type = EV.Zone, unit = u.id, kind = kind, x = r1(zone.x), z = r1(zone.z), r = zone.r, seconds = seconds, side = u.side }
 	elseif kind == "Pounce" then
+		-- the charge line runs from where the pet stands now (an NPC leaps below)
+		local lineX, lineZ, lineAngle, lineLength, lineWidth
+		if form then
+			lineX, lineZ, lineAngle, lineLength, lineWidth = chargeLine(self, u, target, form.Charge, reach)
+		end
 		local dx, dz = target.x - u.x, target.z - u.z
 		local d = sqrt(dx * dx + dz * dz)
 		local stop = target.radius + u.radius + 0.5
@@ -2135,22 +2485,61 @@ local function castSpecial(self, u, events)
 		else
 			applyDamage(self, u, target, base, events, extra)
 		end
+		if form then
+			ev.x0, ev.z0 = r1(lineX), r1(lineZ)
+			ev.angle = floor(lineAngle * 1000 + 0.5) / 1000
+			ev.length, ev.width = r1(lineLength), r1(lineWidth)
+			local on = { special = kind, twist = "Charge" }
+			for _, e in ipairs(livingEnemies(self, u.side)) do
+				if e ~= target and inLine(e, lineX, lineZ, lineAngle, lineLength, lineWidth) then
+					ev.targets[#ev.targets + 1] = e.id
+					twistHit(self, u, e, base * form.Charge.Share, events, on)
+				end
+			end
+			if form.Landing then
+				local r = form.Landing.Radius * reach
+				ev.burstR = r1(r)
+				ev.burstTargets = {}
+				local burst = { special = kind, twist = "Landing" }
+				for _, e in ipairs(livingEnemies(self, u.side)) do
+					if e ~= target and inCircle(e, target.x, target.z, r) then
+						ev.burstTargets[#ev.burstTargets + 1] = e.id
+						twistHit(self, u, e, base * form.Landing.Share, events, burst)
+					end
+				end
+			end
+		end
 	elseif kind == "Freeze" then
 		local r = num(S.Radius, 7) * reach
 		local stun = num(S.Stun, 2) * (u.specialFactor or 1)
 		ev.r = areaField(reach, r)
 		ev.targets, ev.stunned = {}, {}
+		local frozen = {}
 		for _, e in ipairs(livingEnemies(self, u.side)) do
 			if inCircle(e, target.x, target.z, r) then
 				ev.targets[#ev.targets + 1] = e.id
 				if inIFrames(self, e) then
 					missEvent(self, u, e, events, extra)
 				else
-					if applyStun(self, e, stun) then
+					local stunned = applyStun(self, e, stun)
+					if stunned then
 						ev.stunned[#ev.stunned + 1] = e.id
+						frozen[#frozen + 1] = e
 					end
 					applyDamage(self, u, e, base, events, extra)
+					if form and not stunned and e.kind == "Boss" then
+						bossBonus(self, u, e, base, kind, events) -- Chill: its immunity stands
+					end
 				end
+			end
+		end
+		if form then
+			local thaw = self.t + stun
+			if #frozen > 0 then
+				queueDelayed(self, { at = thaw, from = u, kind = kind, twist = "Chill", x = target.x, z = target.z, targets = frozen, slow = form.Chill.Slow, seconds = form.Chill.Seconds })
+			end
+			if form.Shatter then
+				queueDelayed(self, { at = thaw, from = u, kind = kind, twist = "Shatter", x = target.x, z = target.z, r = r, base = base, share = form.Shatter.Share })
 			end
 		end
 	elseif kind == "Beam" then
@@ -2170,8 +2559,14 @@ local function castSpecial(self, u, events)
 					missEvent(self, u, e, events, extra)
 				else
 					applyDamage(self, u, e, base, events, extra)
+					if form then
+						applyMark(self, e, form.Mark.Mark, form.Mark.Seconds)
+					end
 				end
 			end
+		end
+		if form and form.Twin then
+			queueDelayed(self, { at = self.t + form.Twin.Delay, from = u, kind = kind, twist = "Twin", angle = angle, length = length, width = width, base = base, share = form.Twin.Share })
 		end
 	else
 		ev.targets = { target.id }
@@ -2280,7 +2675,7 @@ local function castElement(self, team, u, arg, events)
 			end
 		end
 	end
-	team.elementReadyAt = self.t + num(F.ElementCooldown, 7)
+	team.elementReadyAt = self.t + num(F.ElementCooldown, 7) * rechargeOf(self, u)
 	team.faceX, team.faceZ = cos(angle), sin(angle)
 	u.attackUntil = self.t + ATTACK_POSE
 	events[#events + 1] = ev
@@ -2307,10 +2702,11 @@ local function castElement(self, team, u, arg, events)
 				if type(a.Burn) == "table" then
 					applyBurn(self, u, e, dealt * num(a.Burn.Share, 0.25), num(a.Burn.Seconds, 3))
 				end
-				if type(a.Slow) == "table" and e.kind ~= "Boss" then
-					e.slowUntil = max(e.slowUntil, self.t + num(a.Slow.Seconds, 4))
+				if type(a.Slow) == "table" then
+					applySlow(self, e, num(a.Slow.Mult, num(damageRules().Slow, 0.6)), num(a.Slow.Seconds, 4))
 				end
 				if type(a.Weaken) == "table" then
+					e.weakenMult = num(a.Weaken.Mult, num(damageRules().Weaken, 0.85))
 					e.weakenUntil = max(e.weakenUntil, self.t + num(a.Weaken.Seconds, 5))
 				end
 				if finite(a.Stun) then
@@ -2731,6 +3127,10 @@ local function tickZones(self, events)
 	while i <= #zones do
 		local zone = zones[i]
 		if self.t >= zone.untilT or (zone.from and zone.from.gone) then
+			-- Last strike: on all still inside, at the zone's real end, unless the caster fell or sits on the bench
+			if zone.onEnd and self.t >= zone.untilT and onFloor(zone.from) then
+				fireDelayed(self, zone.onEnd, events)
+			end
 			zones[i] = zones[#zones]
 			zones[#zones] = nil
 		else
@@ -2742,6 +3142,15 @@ local function tickZones(self, events)
 					local e = list[k]
 					if e.side ~= zone.side and onFloor(e) and inCircle(e, zone.x, zone.z, zone.r) and not inIFrames(self, e) then
 						applyDamage(self, zone.from, e, amount, events, { zone = true, kind = zone.kind }, true)
+						-- Dragging winds; a boss's immunity stands: one bonus hit per zone instead
+						if zone.slow and e.kind == "Boss" then
+							if not zone.bonusDone[e.id] then
+								zone.bonusDone[e.id] = true
+								bossBonus(self, zone.from, e, zone.base, zone.kind, events)
+							end
+						elseif zone.slow then
+							applySlow(self, e, zone.slow, ZONE_TICK + 0.1)
+						end
 					end
 				end
 			end
@@ -2794,6 +3203,15 @@ local function tickStatuses(self, u, dt, events)
 	local t = self.t
 	if u.shield > 0 and t >= u.shieldUntil then
 		u.shield = 0
+		if u.shieldForm or u.thorns then
+			shieldBreak(self, u, events)
+		end
+	end
+	if t >= u.slowUntil then
+		u.slowMult = 1
+	end
+	if t >= u.markUntil then
+		u.markMult = 1
 	end
 	if u.burnLeft > 0 and t >= u.burnNextAt then
 		u.burnLeft = u.burnLeft - 1
@@ -2833,7 +3251,7 @@ local function npcStep(self, u, dt, events)
 		u.state = S_CASTING
 		return
 	end
-	local slow = (t < u.slowUntil) and num(D.Slow, 0.6) or 1
+	local slow = (t < u.slowUntil) and u.slowMult or 1
 	-- a wind-up in progress: the hit lands at windAt if the target is still in reach and not dodging
 	if u.windAt then
 		if t >= u.windAt then
@@ -2844,6 +3262,7 @@ local function npcStep(self, u, dt, events)
 				local reach = u.range + target.radius + D.EngageSlack + 1.0
 				if dist(u.x, u.z, target.x, target.z) <= reach and not inIFrames(self, target) then
 					applyDamage(self, u, target, u.hit, events)
+					doubleStrike(self, u, target, events)
 				else
 					missEvent(self, u, target, events)
 				end
@@ -2936,7 +3355,7 @@ local function attackInterval(self, f)
 		interval = interval / f.speedBuffMult
 	end
 	if t < f.slowUntil then
-		interval = interval / num(damageRules().Slow, 0.6)
+		interval = interval / f.slowMult
 	end
 	return interval
 end
@@ -2997,6 +3416,7 @@ function fighterSwing(self, team, f, events)
 		missEvent(self, f, target, events)
 	else
 		applyDamage(self, f, target, f.hit, events)
+		doubleStrike(self, f, target, events)
 	end
 	return true
 end
@@ -3485,6 +3905,7 @@ function BattleSim:Step(dt)
 		bossStep(self, self.boss, events)
 	end
 	resolveTelegraphs(self, events)
+	resolveDelayed(self, events)
 	tickZones(self, events)
 	local list = self.units
 	local n = #list
@@ -3868,7 +4289,7 @@ function doCommand(self, team, action, arg, events)
 		end
 		f.dashUntil = t + num(F.DashSeconds, 0.35)
 		f.iframesUntil = t + num(F.DashIFrames, 0.35)
-		team.dashReadyAt = t + num(F.DashCooldown, 2.5)
+		team.dashReadyAt = t + num(F.DashCooldown, 2.5) * rechargeOf(self, f)
 		f.state = S_DASHING
 		-- wave 6: the timed threats; those landing inside ParryWindow are PARRIED (the i-frames already make them miss)
 		local threats = findThreats(self, f)

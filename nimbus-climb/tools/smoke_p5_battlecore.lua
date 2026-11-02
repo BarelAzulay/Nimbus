@@ -869,7 +869,7 @@ S.p5sim_fighter = guarded("p5sim_fighter", function()
 		b10:Step(0.1)
 		T.check(near(f10.z, sp.Run * 1.35 * F.MoveSlack * 0.1, 0.03) and near(b10:SpeedOf(1).Run, sp.Run * 1.35, 1e-6), "Haste raises the cap and SpeedOf by x1.35")
 		f10.speedBuffUntil = 0
-		f10.slowUntil = b10:Time() + 5
+		f10.slowMult, f10.slowUntil = 0.6, b10:Time() + 5
 		f10.x, f10.z = 0, 0
 		b10:Step(0.1)
 		T.check(near(f10.z, sp.Run * 0.6 * F.MoveSlack * 0.1, 0.03) and near(b10:SpeedOf(1).Run, sp.Run * 0.6, 1e-6), "a Slow lowers the cap and SpeedOf by x0.6")
@@ -1009,13 +1009,13 @@ S.p5sim_ai = guarded("p5sim_ai", function()
 	local z0 = e4.z
 	b4:Step(0.1)
 	local plain = z0 - e4.z
-	e4.slowUntil = b4:Time() + 5
+	e4.slowMult, e4.slowUntil = D.Slow, b4:Time() + 5
 	z0 = e4.z
 	b4:Step(0.1)
 	local slowed = z0 - e4.z
 	T.check(near(slowed, plain * D.Slow, 0.02) and plain > 0.5, "a slowed NPC moves at x0.6", fmt("%.2f -> %.2f", plain, slowed))
 	e4.slowUntil = 0
-	e4.weakenUntil = b4:Time() + 5
+	e4.weakenMult, e4.weakenUntil = D.Weaken, b4:Time() + 5
 	e4.x, e4.z = 0, -15 + 4
 	f4.x, f4.z = 0, -15
 	e4.px, e4.pz, f4.px, f4.pz = e4.x, e4.z, f4.x, f4.z
