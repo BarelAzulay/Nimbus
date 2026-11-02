@@ -35,7 +35,8 @@
 --                                                                  SupportCooldown 12, Windup 0.45, ArriveSeconds 1.2 (a spawned enemy's entrance),
 --                                                                  KitFactor 1.5, HelperWeight 0.35, Lives 3, WalkMult 1.15, WalkMin 12, WalkMax 20, RunMult 1.3,
 --                                                                  MoveSlack 1.25, Leash 10, LeashSeconds 3, ParryWindow 0.25, ParryStagger
---                                                                  0.4, ParryMeter 8, ParryBossGap 3, CheerBoost 0.05, CheerSeconds 5, CheerCooldown 20
+--                                                                  0.4, ParryMeter 8, ParryBossGap 3, CheerBoost 0.05, CheerSeconds 5, CheerCooldown 20,
+--                                                                  RetreatWait 10, RetreatDodge 0.5 (evolved forms: Retreat in boss raids, BattleSim "Retreat")
 --                                                                  (wave 6: a timed Dash parries; Cheer up!; no Engage*
 --                                                                  numbers: the pet fights any enemy in the fight area whatever the character
 --                                                                  does; BattleSim "ENGAGE")
@@ -364,6 +365,10 @@ BattleCatalog.Fighter = {
 	CheerBoost = 0.05,
 	CheerSeconds = 5,
 	CheerCooldown = 20,
+	-- evolved forms: Retreat (boss raids only; BattleSim "Retreat"): after an Engage the team waits this long before it can retreat again (so
+	-- players cannot take turns to reset the boss); the pet starts its run back with this short dodge (a boss's hit is often already on its way)
+	RetreatWait = 10,
+	RetreatDodge = 0.5,
 	-- wave 6 (the engage rule, BattleSim fighterStep): the pet fights any targetable enemy on the floor (the fight area) and
 	-- the character's movement never pulls it off: EngageRange / EngageLeash / EngagePull / EngageStillSeconds /
 	-- EngageCooldown are gone (the floor is the bound)
@@ -2570,6 +2575,13 @@ function BattleCatalog.Validate()
 	end
 	if not finite(F.CheerSeconds) or not finite(F.CheerCooldown) or F.CheerSeconds <= 0 or F.CheerSeconds >= F.CheerCooldown then
 		bad("Fighter.CheerSeconds must be above 0 and below CheerCooldown")
+	end
+	-- evolved forms: Retreat
+	if not finite(F.RetreatWait) or F.RetreatWait <= 0 then
+		bad("Fighter.RetreatWait must be above 0")
+	end
+	if not finite(F.RetreatDodge) or F.RetreatDodge <= 0 then
+		bad("Fighter.RetreatDodge must be above 0")
 	end
 	-- wave 6: the stand-still engage rule is gone; a stray Engage* number means a half-reverted catalog
 	for _, key in ipairs({ "EngageRange", "EngageLeash", "EngagePull", "EngageStillSeconds", "EngageCooldown" }) do

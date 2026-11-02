@@ -77,6 +77,18 @@
 --                                     CheerSeconds 5; cooldown CheerCooldown 20; never stacks (a cheer SETS the window). Refused:
 --                                     NoCheer (Ring / Duel: the podium cheer there is visual only), Down, Cooldown (extra =
 --                                     seconds left). Event Cheer { owner, unit (the fighter), untilT }
+--     "Retreat" ()                    evolved forms, Raid only (NoRetreat elsewhere; Down with no living fighter; Cooldown + seconds left during the
+--                                     RetreatWait; Retreated when already back): team.retreat, team.noEngage = true, drops the engage and the lock,
+--                                     the short dodge (i-frames for Fighter.RetreatDodge, no Dash event). Accepted while Stunned / Casting /
+--                                     Dashing (the pet runs once it can). Back: the pet runs to the Move point (FOLLOW), Attack / Element / Special
+--                                     refused Retreated, no auto-attack, no meter from time, hurt or a parry (a helper's buff still fills it); Target /
+--                                     Buff / Swap / Cheer / Dash / Forfeit work; a Swap or a KO keeps it (it is on the team, the incoming pet is back too).
+--                                     Echo: Order { order = "Retreat" }. TARGETING: while some other fighter is on the floor, not back (self.anyEngaged, set
+--                                     at the top of every step), the boss's basic attack, its telegraph points and the minions skip retreated pets; when
+--                                     nobody is, retreated pets are targets again, so the boss never stalls. An area already placed keeps its point: a
+--                                     telegraph, a lethal (it knocks out only that unit) and a zone hit a retreated pet standing in them. Retreated teams
+--                                     still count in the boss's scaling.
+--     "Engage" ()                     Raid only (NoRetreat); NotRetreated when not back: the pet fights again, the RetreatWait starts. Echo: Order { order = "Engage" }
 --     "Forfeit" ()                    Duel / Ring: the team is knocked out; Raid / Dungeon: RemoveTeam
 --   battle:Step(dt) -> events;  battle:Snapshot();  battle:SnapshotDelta(last);  BattleSim.DecodeSnapshot(payload, prev)
 --   battle:AddTeam(team) -> infos | nil, reason;  battle:RemoveTeam(owner) -> ok
@@ -85,8 +97,8 @@
 --   battle:LivingEnemies() -> n;  battle:BossHp() -> 0..1 | nil;  battle:Finish(reason) -> ok, events  ("Cleared" = side 1 wins,
 --                                     "Abandoned" / "Shutdown" / ... = no winner);  battle:Abort(reason) = Finish
 --   battle:TeamOf(owner) -> { Owner, Side, Fighter = id, Bench = { id, id }, Lives, Speed = { Walk, Run }, Cooldowns = { Element, Dash,
---                                     Swap, Cheer, Buff = { [slot] = seconds } }, Lock, Engaged (the engaged target id | nil),
---                                     Cheering (the Cheer up! boost is on), Damage, Kills,
+--                                     Swap, Cheer, Retreat, Buff = { [slot] = seconds } }, Lock, Engaged (the engaged target id | nil),
+--                                     Cheering (the Cheer up! boost is on), Retreated (bool), Damage, Kills,
 --                                     Left, Forfeited, Units = { {id, slot, hp,
 --                                     maxHp, meter, state, alive, bench}... } }
 --   battle:SpeedOf(owner) -> { Walk, Run }   the fighter's current legal speeds (speed buffs / slows included)
@@ -94,7 +106,8 @@
 --                                     { [owner] = n }, Shares, Duration, Survivors = { [owner] = lives }, Hp = { [side] = share }, Kills =
 --                                     { [owner] = n }, Waves, BossHp, BossMaxHp, Units = { [owner] = { { Key, Hp, MaxHp, Alive }... } }
 --                                     (every player team's pets in slot order, bench included; Hp rounded, Alive = alive and
---                                     Hp > 0: a pet at 0 HP when the fight ends is fainted) }
+--                                     Hp > 0: a pet at 0 HP when the fight ends is fainted), Retreated = { [owner] = seconds back }, Fought =
+--                                     { [owner] = seconds since the team joined the fight } (0.1 steps) }
 --   battle:Describe() -> { BattleId, Mode, Seed, Zone = { X, Z }, TimeLimit, BossId, Round, Sides, Units = { unitInfo... } }
 --   battle:StaticUnits() -> { unitInfo... }   unitInfo = { id, side, owner, slot, kind, key, petId, boss, name, species, look,
 --                                     element, elements, maxHp, level, tier, scale, ranged, range, radius,
@@ -149,7 +162,7 @@
 --   equal = Draw). Ring: no lives = loss, timeout = loss. Raid: BossDown / Wipe / Timeout / Abandoned. Dungeon: side-1 wipe ->
 --   "Wipe", timeout -> "Timeout", never ends on an empty side 2 (Finish does).
 -- Deleted (10.5): ATTACK / RETREAT orders, Retreating, Damage.Retreat*, the per-slot Special command, the Trial setup, Overtime,
---   Result.Level, Describe.Level.
+--   Result.Level, Describe.Level. (Evolved forms' "Retreat" is a new, raid-only team state, not that order: no state of its own, no lock timer.)
 
 local Shared = script.Parent
 
@@ -192,7 +205,7 @@ BattleSim.Events = {
 	Cheer = "Cheer",
 	Twist = "Twist",
 }
-BattleSim.Actions = { "Attack", "Element", "Special", "Dash", "Target", "Buff", "Swap", "Move", "Cheer", "Forfeit" }
+BattleSim.Actions = { "Attack", "Element", "Special", "Dash", "Target", "Buff", "Swap", "Move", "Cheer", "Forfeit", "Retreat", "Engage" }
 BattleSim.Modes = { "Duel", "Raid", "Ring", "Dungeon" }
 local MODE_OK = {}
 for _, m in ipairs(BattleSim.Modes) do
@@ -488,8 +501,13 @@ local function newTeamRecord(self, spec, side)
 		lock = nil,
 		wantX = nil,
 		wantZ = nil,
-		-- the engage rule (wave 6): nil | { target, unit, since }; noEngage = true holds it off (white-box, smoke tests only)
+		-- the engage rule (wave 6): nil | { target, unit, since }; noEngage = true holds it off (Retreat; white-box in the smoke tests)
 		engage = nil,
+		-- evolved forms: nil | { since } while the team is back (Raid); the wait after an Engage; the seconds back; when it joined (Result)
+		retreat = nil,
+		retreatReadyAt = 0,
+		retreatSeconds = 0,
+		joinedAt = self.t,
 		faceX = 0,
 		faceZ = 1,
 		anchorX = 0,
@@ -896,9 +914,19 @@ local function arriving(self, u)
 	return u.arriveUntil ~= nil and self.t < u.arriveUntil
 end
 
--- a living enemy on the floor that may be chosen as a target (not arriving)
-local function targetable(self, e)
+-- a living enemy on the floor that an area already placed can hit (not arriving)
+local function hittable(self, e)
 	return e.alive and not e.gone and not e.benched and not (e.arriveUntil and self.t < e.arriveUntil)
+end
+
+-- evolved forms: a retreated pet is no target while someone else fights (self.anyEngaged, set at the top of every step)
+local function hiddenByRetreat(self, e)
+	return e.team.retreat ~= nil and self.anyEngaged == true
+end
+
+-- a living enemy on the floor that may be chosen as a target (not arriving, not back while others fight)
+local function targetable(self, e)
+	return hittable(self, e) and not hiddenByRetreat(self, e)
 end
 
 -- Adds a team (also used by new / SpawnEnemies). Returns the unit infos, or nil + reason.
@@ -1427,9 +1455,11 @@ function BattleSim:TeamOf(owner)
 			Dash = max(0, team.dashReadyAt - t),
 			Swap = max(0, team.swapReadyAt - t),
 			Cheer = max(0, team.cheerReadyAt - t),
+			Retreat = max(0, team.retreatReadyAt - t),
 			Buff = buffs,
 		},
 		Cheering = t < team.cheerUntil,
+		Retreated = team.retreat ~= nil,
 		Lock = team.lock and team.lock.id or nil,
 		Engaged = team.engage and team.engage.target.id or nil,
 		Damage = team.damage,
@@ -1895,7 +1925,8 @@ local function applyDamage(self, attacker, victim, amount, events, extra, noVari
 		victim.threat = attacker
 		victim.threatAt = self.t
 	end
-	if victim.kind ~= "Boss" then
+	-- (a retreated team gains no meter, hurt or not)
+	if victim.kind ~= "Boss" and not victim.team.retreat then
 		local isFighter = victim.team.player and victim == victim.team.fighter
 		local gain = isFighter and num(F.MeterOnHurt, 2) or num(D.MeterOnHurt, 2)
 		local top = isFighter and num(F.SpecialMeterMax, 100) or num(D.MeterMax, 100)
@@ -1999,7 +2030,8 @@ end
 local function pickTarget(self, u)
 	local D = damageRules()
 	local threat = u.threat
-	if threat and threat.alive and not threat.gone and not threat.benched and threat.side ~= u.side and self.t - u.threatAt <= num(D.ThreatSeconds, 3) then
+	if threat and threat.alive and not threat.gone and not threat.benched and threat.side ~= u.side and self.t - u.threatAt <= num(D.ThreatSeconds, 3)
+		and not hiddenByRetreat(self, threat) then
 		return threat
 	end
 	local nearest, dmin2 = nearestEnemy(self, u)
@@ -2008,7 +2040,7 @@ local function pickTarget(self, u)
 	end
 	local sticky = num(D.TargetSticky, 1.6)
 	local cur = u.target
-	if cur and cur.alive and not cur.gone and not cur.benched and cur.side ~= u.side then
+	if cur and cur.alive and not cur.gone and not cur.benched and cur.side ~= u.side and not hiddenByRetreat(self, cur) then
 		local dx, dz = cur.px - u.px, cur.pz - u.pz
 		if dx * dx + dz * dz <= dmin2 * sticky * sticky then
 			return cur
@@ -2041,6 +2073,19 @@ local function livingEnemies(self, side)
 	for i = 1, #list do
 		local e = list[i]
 		if e.side ~= side and targetable(self, e) then -- an arriving enemy is not in any shape yet
+			out[#out + 1] = e
+		end
+	end
+	return out
+end
+
+-- every enemy an area already placed can catch: a retreated pet standing in a telegraph is hit, whoever else fights
+local function hittableEnemies(self, side)
+	local out = {}
+	local list = self.units
+	for i = 1, #list do
+		local e = list[i]
+		if e.side ~= side and hittable(self, e) then
 			out[#out + 1] = e
 		end
 	end
@@ -3079,7 +3124,7 @@ local function resolveTelegraph(self, tele, events)
 	end
 	local extra = { tele = tele.id, attack = a.Id }
 	local fraction = num(a.Damage, 0.3) * boss.damageMult
-	for _, e in ipairs(livingEnemies(self, boss.side)) do
+	for _, e in ipairs(hittableEnemies(self, boss.side)) do
 		local inside
 		if tele.shape == "Line" then
 			inside = inLine(e, tele.x, tele.z, tele.angle, tele.length, tele.width)
@@ -3440,7 +3485,7 @@ local function npcStep(self, u, dt, events)
 		end
 	end
 	local target = u.target
-	if not target or not target.alive or target.gone or target.benched or t >= u.retargetAt then
+	if not target or not target.alive or target.gone or target.benched or t >= u.retargetAt or hiddenByRetreat(self, target) then
 		target = pickTarget(self, u)
 		u.target = target
 		u.retargetAt = t + D.RetargetSeconds
@@ -3542,7 +3587,7 @@ end
 -- one auto-attack swing when the fighter can (not Stunned / Casting / Dashing / arriving, the interval ready) -> hit?
 function fighterSwing(self, team, f, events)
 	local t = self.t
-	if not f.alive or f.gone or f.benched or t < f.stunUntil or t < f.castUntil or t < f.dashUntil or arriving(self, f) then
+	if team.retreat or not f.alive or f.gone or f.benched or t < f.stunUntil or t < f.castUntil or t < f.dashUntil or arriving(self, f) then
 		return false
 	end
 	local F = fighterRules()
@@ -3671,7 +3716,11 @@ local function fighterStep(self, team, dt, events)
 	local F = fighterRules()
 	local D = damageRules()
 	local t = self.t
-	f.meter = min(num(F.SpecialMeterMax, 100), f.meter + num(F.MeterPerSecond, 6) * dt * (f.meterRate or 1))
+	if team.retreat then
+		team.retreatSeconds = team.retreatSeconds + dt -- (no meter while back; a team with no living fighter is not counted)
+	else
+		f.meter = min(num(F.SpecialMeterMax, 100), f.meter + num(F.MeterPerSecond, 6) * dt * (f.meterRate or 1))
+	end
 	if team.auto and not team.npc then
 		autoFighter(self, team, f, dt, events)
 	end
@@ -3914,6 +3963,15 @@ local function finish(self, winnerSide, reason, events)
 			result.Units[team.owner] = rows
 		end
 	end
+	-- evolved forms: each team's seconds back, against its OWN time in the fight (BattleService's no-free-win rule; a late joiner from its AddTeam)
+	result.Retreated = {}
+	result.Fought = {}
+	for _, team in ipairs(self.teams) do
+		if team.player then
+			result.Retreated[team.owner] = r1(team.retreatSeconds)
+			result.Fought[team.owner] = r1(self.t - team.joinedAt)
+		end
+	end
 	self.result = result
 	events[#events + 1] = { type = EV.End, reason = reason, winnerSide = winnerSide }
 end
@@ -4031,6 +4089,16 @@ local function checkSpeeds(self, team, events)
 	end
 end
 
+-- evolved forms: a side-1 player team not left, not back, with a fighter that can be targeted (false: retreated pets are targets again, the boss never stalls)
+local function anyEngaged(self)
+	for _, team in ipairs(self.teams) do
+		if team.side == 1 and team.player and not team.left and not team.retreat and team.fighter and hittable(self, team.fighter) then
+			return true
+		end
+	end
+	return false
+end
+
 function BattleSim:Step(dt)
 	local events = {}
 	if self.result then
@@ -4050,6 +4118,7 @@ function BattleSim:Step(dt)
 		end
 		self.pending = {}
 	end
+	self.anyEngaged = anyEngaged(self)
 	if self.boss then
 		bossStep(self, self.boss, events)
 	end
@@ -4350,8 +4419,39 @@ function doCommand(self, team, action, arg, events)
 	if not team.player then
 		return false, "NotPlayer"
 	end
+	if (action == "Retreat" or action == "Engage") and self.mode ~= "Raid" then
+		return false, "NoRetreat"
+	end
 	if not f or not f.alive then
 		return false, "Down"
+	end
+	if action == "Retreat" then
+		-- no busy check: a stunned / casting / dashing pet runs once it can, the dodge applies now
+		if team.retreat then
+			return false, "Retreated"
+		end
+		if t < team.retreatReadyAt then
+			return false, "Cooldown", r1(team.retreatReadyAt - t)
+		end
+		team.retreat = { since = t }
+		team.noEngage = true
+		dropEngage(self, team, events)
+		team.lock = nil
+		f.iframesUntil = max(f.iframesUntil or 0, t + num(F.RetreatDodge, 0.5))
+		events[#events + 1] = { type = EV.Order, owner = team.owner, order = "Retreat" }
+		return true
+	elseif action == "Engage" then
+		if not team.retreat then
+			return false, "NotRetreated"
+		end
+		team.retreat = nil
+		team.noEngage = nil
+		team.retreatReadyAt = t + num(F.RetreatWait, 10)
+		events[#events + 1] = { type = EV.Order, owner = team.owner, order = "Engage" }
+		return true
+	end
+	if team.retreat and (action == "Attack" or action == "Element" or action == "Special") then
+		return false, "Retreated"
 	end
 	if action == "Target" then
 		if arg == nil then
@@ -4447,7 +4547,9 @@ function doCommand(self, team, action, arg, events)
 		for _, th in ipairs(threats) do
 			if th.at > t - 1e-9 and th.at - t <= window + 1e-6 then
 				local src = th.src
-				f.meter = min(num(F.SpecialMeterMax, 100), f.meter + num(F.ParryMeter, 8))
+				if not team.retreat then
+					f.meter = min(num(F.SpecialMeterMax, 100), f.meter + num(F.ParryMeter, 8))
+				end
 				if src.kind == "Boss" then
 					-- applyStun refuses bosses: a short stagger instead (no new basic attack / telegraph), once per ParryBossGap
 					if t - (src.staggerAt or -huge) >= num(F.ParryBossGap, 3) then

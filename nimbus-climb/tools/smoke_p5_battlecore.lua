@@ -887,7 +887,7 @@ S.p5sim_fighter = guarded("p5sim_fighter", function()
 		T.check(f10.x <= b10.zone.HalfX and f10.z <= b10.zone.HalfZ, "a wanted point outside the floor is clamped")
 		-- the NPC side never accepts fighter commands
 		T.check(select(2, b10:Command("npc", "Attack")) == "NotPlayer" and select(2, b10:Command("npc", "Move", 0, 0)) == "NotPlayer", "NPC teams refuse player commands (NotPlayer)")
-		T.check(select(2, b10:Command(1, "Retreat")) == "UnknownAction" and select(2, b10:Command(1, 42)) == "UnknownAction", "Retreat / junk actions are UnknownAction")
+		T.check(select(2, b10:Command(1, "Retreat")) == "NoRetreat" and select(2, b10:Command(1, "Engage")) == "NoRetreat" and select(2, b10:Command(1, 42)) == "UnknownAction" and select(2, b10:Command(1, "Teleport")) == "UnknownAction", "evolved forms: Retreat / Engage are raid-only (NoRetreat); junk actions are UnknownAction")
 	end
 end)
 
