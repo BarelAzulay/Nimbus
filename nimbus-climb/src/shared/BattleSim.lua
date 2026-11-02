@@ -40,7 +40,8 @@
 --                                     targetable and within range + radius + AttackSlack, else the nearest targetable enemy in that
 --                                     reach (applyDamage; nextAttack = max(nextAttack, t) + Interval). It never moves the unit.
 --     "Element" (id | { x, z } | nil) cooldown Fighter.ElementCooldown; the shape of ElementAttacks[fighter.elems[1]] from the SERVER
---                                     fighter position toward the target / aim / lock / facing
+--                                     fighter position toward the target / aim / lock / facing (a ranged pet's Circle lands on the
+--                                     aim point, at most its range away); its twists by ElementFormOf at stage >= 1
 --     "Special" ()                    meter >= SpecialMeterMax; offensive kinds as before; Heal / Shield / Rally / Haste act on the fighter
 --     "Dash" ()                       cooldown DashCooldown -> Dashing for DashSeconds, i-frames until t + DashIFrames. Wave 6: the
 --                                     pet SIDESTEPS out of the threat (never into the boss): the soonest timed threat aimed at /
@@ -100,7 +101,7 @@
 --                                     special = { Id, Name (the form's at stage >= 1), Base, Kind, Color, Form (0 | 1 | 2) }, evo, xp, xpNext,
 --                                     reach (x its catalog areas: BattleCatalog.ReachOf of its stage; nil = x1),
 --                                     crowned, role ("Fighter" | "Support"), buff = { Kind, Name, Seconds, Value, Cooldown },
---                                     elementAttack = { Name, Shape, Element }, bench = 2 | 3 | nil, wild, walk, run }
+--                                     elementAttack = { Name (the form's at stage >= 1), Shape, Element }, bench = 2 | 3 | nil, wild, walk, run }
 --   battle:Time(), IsFinished(), Owners(), BossStatus() (+ Tier, Lethal = a lethal telegraph is pending), SetAnchor(owner, x, z)
 --   BattleSim.States = { Idle 0, Moving 1, Attacking 2, Benched 3, Casting 4, Down 5, Stunned 6, Dashing 7 }  (Winding = Attacking + windup bit)
 --   BattleSim.Events = { Hit, Special, KO, Telegraph, Spawn, Enrage, Order, Zone, Leave, End, Element, Dash, Buff, Swap, Windup, Wave,
@@ -109,21 +110,24 @@
 --   Engage     { owner, unit (the fighter), on = true, target }  /  { owner, unit, on = false }   (only the FOLLOW / ENGAGED flips)
 --   Hit        { from, to, dmg, elem, crit, absorbed, miss = true (dodged), burn = true, leech = n, element = name, special = kind,
 --                tele, zone, attack, buffDmg = true, lethal = true (the enraged boss's lethal attack: dmg = the whole HP + shield, a KO follows),
---                twist = "Charge" | "Landing" | "Aftershock" | "Twin" | "LastStrike" | "Shatter" | "Burst", bonus = true (a boss's bonus hit),
---                thorns = true, double = true }
+--                twist = "Charge" | "Landing" | "Aftershock" | "Twin" | "LastStrike" | "Shatter" | "Burst" | "Maelstrom" | "Fissure" | "Rockspire" | "Forked",
+--                bonus = true (a boss's bonus hit), thorns = true, double = true }
 --   Special    { unit, kind, name, x, z, tx, tz, target, targets, heals, shields, stunned, angle, r (Blast / Freeze / Storm),
 --                length + width (Beam), range (Pounce) }   (an evolved pet's areas as the server used them, 0.1 steps; an unevolved
 --                pet's stay off the wire, the client knows them: a full raid's traffic budget is tight)
 --                stage >= 1 only: form = 1 | 2, name = the form's name; Pounce: x0, z0, angle (3 decimals), length, width = the charge line
 --                (the drawn area IS the real area), targets = the aimed target first, then those on the line; stage 2: burstR, burstTargets
---   Twist      { unit, kind (the special kind), twist = "Aftershock" | "Twin" | "LastStrike" | "Shatter" | "Burst" | "Lingering" | "Overflow" | "Chill",
---                x, z (the point, 0.1 steps), angle (Twin, 3 decimals), r | length + width (0.1 steps), targets, heals = { { id, hp }... } (Lingering),
---                shields = { id... } + amount (Overflow) }   (a twist that lands later than its cast; stage >= 1 only)
+--   Twist      { unit, kind (the special kind, or the element), twist = "Aftershock" | "Twin" | "LastStrike" | "Shatter" | "Burst" | "Lingering" | "Overflow" | "Chill"
+--                | "Maelstrom" | "Fissure" | "Rockspire" | "Forked" | "Starfall",
+--                x, z (the point, 0.1 steps), angle (Twin, Maelstrom: 3 decimals), r | length + width (0.1 steps), band (Rockspire: the ring runs r .. r + band),
+--                tx, tz (Forked: x, z = the last one struck, tx, tz = the next), targets, heals = { { id, hp }... } (Lingering, Starfall),
+--                shields = { id... } + amount (Overflow) }   (a twist that lands later than its cast or adds to it; stage >= 1 only)
 --   KO         { unit, by, forfeit }          Telegraph { id, boss, name, attack, shape, x, z, r | angle + length + width, at, hits, freeze, linger, lethal = true }
---   Spawn      { units, wave, boss, owner }   Enrage { unit }      Zone { unit, kind (Storm | Linger | Patch), special (Patch: the kind it came from),
+--   Spawn      { units, wave, boss, owner }   Enrage { unit }      Zone { unit, kind (Storm | Linger | Patch), special (Patch: the kind or element it came from),
 --                                                                     x, z, r, seconds, side }     Leave { owner, units }
 --   Order      { owner, order, target, rejected }   (every refused command echoes `rejected`; Attack / Target / Forfeit echo when accepted)
---   Element    { unit, element, name, x, z, angle | tx, tz, targets, length (Cone / Line), width (Line), r (Circle) }
+--   Element    { unit, element, name (the form's at stage >= 1), x, z, angle | tx, tz, targets, length (Cone / Line), width (Line), r (Circle), form = 1 | 2 (stage >= 1 only) }
+--              (x, z = the caster, tx, tz = the aim. A Circle is round a melee pet; a ranged pet's is centred on (tx, tz), its aim point at most its range away)
 --   Dash       { unit, dir = { dx, dz } (the SIDESTEP: unit vector in floor space, 0.01 steps), target (the threat's source | nil) }
 --   Cheer      { owner, unit (the fighter), untilT (the boost's end, battle time) }
 --   Parry      { unit (the fighter), from (the attacker), tele (the telegraph id | nil) }; the parried telegraph's Hit on the
@@ -604,6 +608,15 @@ local function formNameOf(u)
 	return nil
 end
 
+-- the unit's element attack's twists (BattleCatalog.ElementFormOf), nil at stage 0
+local function elementFormOf(u)
+	local bc = catalog()
+	if bc and type(bc.ElementFormOf) == "function" then
+		return bc.ElementFormOf(u.elems[1], formStageOf(u))
+	end
+	return nil
+end
+
 local function unitFromDef(self, team, def, entry, slot, kind)
 	local bc = catalog()
 	local us = bc and bc.UnitStats and bc.UnitStats(def, entry.Level, entry.Tier, entry)
@@ -842,7 +855,8 @@ local function unitInfo(u, t)
 	local bc = catalog()
 	local ea = bc and type(bc.ElementAttacks) == "table" and u.elems[1] and bc.ElementAttacks[u.elems[1]]
 	if ea then
-		info.elementAttack = { Name = ea.Name, Shape = ea.Shape, Element = u.elems[1] }
+		local form = elementFormOf(u)
+		info.elementAttack = { Name = form and form.Name or ea.Name, Shape = ea.Shape, Element = u.elems[1] }
 	end
 	return info
 end
@@ -2122,10 +2136,12 @@ local function twistHit(self, u, e, amount, events, extra)
 	end
 end
 
--- a control twist on a boss (its immunities stand) pays a bonus hit, so it never does nothing
-local function bossBonus(self, u, boss, base, kind, events)
+-- a control twist on a boss (its immunities stand) pays a bonus hit, so it never does nothing. `element`: the attack's name, when the twist
+-- is an element attack's (its Hit then reads as that attack's, as the cast's own)
+local function bossBonus(self, u, boss, base, kind, events, element)
 	local bc = catalog()
-	return applyDamage(self, u, boss, base * num(bc and bc.Forms and bc.Forms.BossBonus, 0.1), events, { special = kind, bonus = true })
+	local extra = element and { element = element, bonus = true } or { special = kind, bonus = true }
+	return applyDamage(self, u, boss, base * num(bc and bc.Forms and bc.Forms.BossBonus, 0.1), events, extra)
 end
 
 -- the real and drawn Pounce charge: from Back studs behind `u` (clamped to the floor) through `target` to Past studs past it, Beam Width x
@@ -2186,8 +2202,9 @@ function shieldBreak(self, a, events)
 	end
 end
 
--- a delayed twist lands. Twin: a line from where the caster stands NOW, along the original angle. Aftershock, Shatter, Last strike: a circle
--- at the original point. Chill: the slow at the thaw. Lingering: one tick of healing
+-- a delayed twist lands. Twin: a line from where the caster stands NOW, along the original angle. Aftershock, Shatter, Last strike, Fissure: a
+-- circle at the original point. Maelstrom: the same cone again (d.half). Rockspire: the ring round the area (d.band). Chill: the slow at the
+-- thaw. Lingering: one tick of healing. d.element: the element attack's name, when the twist is one (d.kind = the element)
 local function fireDelayed(self, d, events)
 	local u = d.from
 	if d.twist == "Chill" then
@@ -2226,16 +2243,25 @@ local function fireDelayed(self, d, events)
 	if line then
 		tw.angle = floor(d.angle * 1000 + 0.5) / 1000
 		tw.length, tw.width = r1(d.length), r1(d.width)
+	elseif d.half then
+		tw.angle = floor(d.angle * 1000 + 0.5) / 1000
+		tw.length = r1(d.length)
 	else
 		tw.r = r1(d.r)
+		tw.band = d.band and r1(d.band) or nil
 	end
 	tw.targets = {}
 	events[#events + 1] = tw
-	local extra = { special = d.kind, twist = d.twist }
+	local extra = d.element and { element = d.element, twist = d.twist } or { special = d.kind, twist = d.twist }
 	for _, e in ipairs(livingEnemies(self, u.side)) do
 		local inside
 		if line then
 			inside = inLine(e, x, z, d.angle, d.length, d.width)
+		elseif d.half then
+			inside = inCone(e, x, z, d.angle, d.half, d.length)
+		elseif d.band then
+			local away = dist(x, z, e.x, e.z)
+			inside = away + e.radius >= d.r and away - e.radius <= d.r + d.band -- a body counts by its edge, as in every shape
 		else
 			inside = inCircle(e, x, z, d.r)
 		end
@@ -2634,6 +2660,48 @@ local function aimOf(self, team, u, arg)
 	return angle, tx, tz, target
 end
 
+-- Forked Bolt / Thunder Lance, after the line's hits: each jump strikes the nearest enemy not yet hit, within Reach of the last one struck; a
+-- line that struck exactly one enemy with nobody in reach strikes it again, once
+local function forkBolt(self, u, struck, form, dmg, name, events)
+	local last = struck[#struck]
+	if not last then
+		return
+	end
+	local twist = form.Forked
+	local done = {}
+	for _, e in ipairs(struck) do
+		done[e] = true
+	end
+	local extra = { element = name, twist = "Forked" }
+	local amount = dmg * twist.Share
+	local jumped = false
+	for _ = 1, form.Jumps do
+		local best, bestD = nil, twist.Reach
+		for _, e in ipairs(livingEnemies(self, u.side)) do
+			local d = dist(last.x, last.z, e.x, e.z)
+			if not done[e] and d <= bestD then
+				best, bestD = e, d
+			end
+		end
+		if not best then
+			break
+		end
+		local tw = twistEvent(u, u.elems[1], "Forked", last.x, last.z)
+		tw.tx, tw.tz, tw.targets = r1(best.x), r1(best.z), { best.id }
+		events[#events + 1] = tw
+		twistHit(self, u, best, amount, events, extra)
+		done[best] = true
+		last = best
+		jumped = true
+	end
+	if not jumped and #struck == 1 and last.alive then
+		local tw = twistEvent(u, u.elems[1], "Forked", last.x, last.z)
+		tw.tx, tw.tz, tw.targets = r1(last.x), r1(last.z), { last.id }
+		events[#events + 1] = tw
+		twistHit(self, u, last, amount, events, extra)
+	end
+end
+
 local function castElement(self, team, u, arg, events)
 	local bc = catalog()
 	local F = fighterRules()
@@ -2642,16 +2710,32 @@ local function castElement(self, team, u, arg, events)
 	if not a then
 		return false, "NoElement"
 	end
+	local form = elementFormOf(u) -- nil at stage 0
+	local name = form and form.Name or a.Name
 	local angle, tx, tz = aimOf(self, team, u, arg)
-	local ev = { type = EV.Element, unit = u.id, element = element, name = a.Name, x = r1(u.x), z = r1(u.z), angle = floor(angle * 1000 + 0.5) / 1000, tx = r1(tx), tz = r1(tz), shape = a.Shape, targets = {} }
-	local hits = {}
-	local enemies = livingEnemies(self, u.side)
 	-- a ranged fighter reaches out to its own range at least (the design's "ranged pets use max(Range, 14)")
 	local reachOut = u.ranged and num(u.range, 0) or 0
 	local reach = reachOf(u)
+	local cx, cz = u.x, u.z -- a Circle's centre
+	if a.Shape == "Circle" and u.ranged then
+		-- a ranged pet's Circle lands on its aim point, no farther than its range: a far aim falls short, never across the floor
+		local dx, dz = tx - u.x, tz - u.z
+		local d = sqrt(dx * dx + dz * dz)
+		if d > reachOut then
+			tx, tz = u.x + dx / d * reachOut, u.z + dz / d * reachOut
+		end
+		cx, cz = tx, tz
+	end
+	local ev = { type = EV.Element, unit = u.id, element = element, name = name, x = r1(u.x), z = r1(u.z), angle = floor(angle * 1000 + 0.5) / 1000, tx = r1(tx), tz = r1(tz), shape = a.Shape, targets = {} }
+	if form then
+		ev.form = formStageOf(u)
+	end
+	local hits = {}
+	local enemies = livingEnemies(self, u.side)
+	local half, length, width, r = nil, nil, nil, nil
 	if a.Shape == "Cone" then
-		local half = num(a.Angle, 60) * pi / 360
-		local length = max(num(a.Length, num(F.ElementRange, 14)) * reach, reachOut)
+		half = num(a.Angle, 60) * pi / 360
+		length = max(num(a.Length, num(F.ElementRange, 14)) * reach, reachOut)
 		ev.length = areaField(reach, length)
 		for _, e in ipairs(enemies) do
 			if inCone(e, u.x, u.z, angle, half, length) then
@@ -2659,7 +2743,7 @@ local function castElement(self, team, u, arg, events)
 			end
 		end
 	elseif a.Shape == "Line" then
-		local length, width = max(num(a.Length, 24) * reach, reachOut), num(a.Width, 4) * reach
+		length, width = max(num(a.Length, 24) * reach, reachOut), num(a.Width, 4) * reach
 		ev.length, ev.width = areaField(reach, length), areaField(reach, width)
 		for _, e in ipairs(enemies) do
 			if inLine(e, u.x, u.z, angle, length, width) then
@@ -2667,10 +2751,10 @@ local function castElement(self, team, u, arg, events)
 			end
 		end
 	else
-		local r = max(num(a.Radius, 8) * reach, reachOut)
+		r = num(a.Radius, 8) * reach -- round a melee pet, on a ranged pet's aim
 		ev.r = areaField(reach, r)
 		for _, e in ipairs(enemies) do
-			if inCircle(e, u.x, u.z, r) then
+			if inCircle(e, cx, cz, r) then
 				hits[#hits + 1] = e
 			end
 		end
@@ -2680,17 +2764,23 @@ local function castElement(self, team, u, arg, events)
 	u.attackUntil = self.t + ATTACK_POSE
 	events[#events + 1] = ev
 	local dmg = u.hit * num(F.ElementMult, 2.4)
-	local extra = { element = a.Name }
-	if finite(a.Leech) then
+	local extra = { element = name }
+	if form and finite(form.Leech) then
+		extra.leech = form.Leech -- Bramble Lash, Soul Rend
+	elseif finite(a.Leech) then
 		extra.leech = a.Leech
 	end
+	local struck = {}
 	for _, e in ipairs(hits) do
 		ev.targets[#ev.targets + 1] = e.id
 		if inIFrames(self, e) then
-			missEvent(self, u, e, events, { element = a.Name })
+			missEvent(self, u, e, events, { element = name })
 		else
 			local dealt = applyDamage(self, u, e, dmg, events, extra)
+			struck[#struck + 1] = e
 			if e.alive then
+				-- a twist a boss is immune to (burn, slow, root) pays one bonus hit instead
+				local immune = false
 				if finite(a.Push) and e.kind ~= "Boss" then
 					local dx, dz = e.x - u.x, e.z - u.z
 					local d = sqrt(dx * dx + dz * dz)
@@ -2700,25 +2790,77 @@ local function castElement(self, team, u, arg, events)
 					end
 				end
 				if type(a.Burn) == "table" then
-					applyBurn(self, u, e, dealt * num(a.Burn.Share, 0.25), num(a.Burn.Seconds, 3))
+					applyBurn(self, u, e, dealt * num(form and form.BurnShare, num(a.Burn.Share, 0.25)), num(a.Burn.Seconds, 3))
+					immune = form ~= nil
 				end
 				if type(a.Slow) == "table" then
-					applySlow(self, e, num(a.Slow.Mult, num(damageRules().Slow, 0.6)), num(a.Slow.Seconds, 4))
+					applySlow(self, e, num(form and form.Slow, num(a.Slow.Mult, num(damageRules().Slow, 0.6))), num(a.Slow.Seconds, 4))
+					immune = form ~= nil
+					if form and form.IceSnare then
+						applyMark(self, e, form.IceSnare.Mark, num(a.Slow.Seconds, 4))
+					end
+				end
+				if form and form.Riptide then
+					applySlow(self, e, form.Riptide.Slow, form.Riptide.Seconds)
+					immune = true
 				end
 				if type(a.Weaken) == "table" then
-					e.weakenMult = num(a.Weaken.Mult, num(damageRules().Weaken, 0.85))
+					-- the strongest Weaken stands while it lasts: a weaker one from another pet never overwrites it
+					e.weakenMult = min(num(form and form.Weaken, num(a.Weaken.Mult, num(damageRules().Weaken, 0.85))), (self.t < e.weakenUntil) and e.weakenMult or 1)
 					e.weakenUntil = max(e.weakenUntil, self.t + num(a.Weaken.Seconds, 5))
 				end
 				if finite(a.Stun) then
 					applyStun(self, e, a.Stun)
 				end
+				if form and form.Worldroot then
+					applyStun(self, e, form.Worldroot.Root)
+					immune = true
+				end
+				if immune and e.kind == "Boss" then
+					bossBonus(self, u, e, dmg, element, events, name)
+				end
 			end
 		end
 	end
-	if finite(a.MeterGain) then
-		u.meter = min(num(F.SpecialMeterMax, 100), u.meter + a.MeterGain)
+	if form then
+		if form.Maelstrom then
+			queueDelayed(self, { at = self.t + form.Maelstrom.Delay, from = u, kind = element, element = name, twist = "Maelstrom", x = u.x, z = u.z, angle = angle, half = half, length = length, base = dmg, share = form.Maelstrom.Share })
+		end
+		if form.Inferno then
+			-- the ground burns where the attack lands: at the aim, no farther than the cone's end
+			local dx, dz = tx - u.x, tz - u.z
+			local d = sqrt(dx * dx + dz * dz)
+			local px, pz = tx, tz
+			if d > length then
+				px, pz = u.x + dx / d * length, u.z + dz / d * length
+			end
+			patchZone(self, u, px, pz, form.Inferno.Radius * reach, dmg * form.Inferno.Share, form.Inferno.Seconds, element, events)
+		end
+		if form.Fissure then
+			queueDelayed(self, { at = self.t + form.Fissure.Delay, from = u, kind = element, element = name, twist = "Fissure", x = cx, z = cz, r = r, base = dmg, share = form.Fissure.Share })
+		end
+		if form.Rockspire then
+			queueDelayed(self, { at = self.t + form.Rockspire.Delay, from = u, kind = element, element = name, twist = "Rockspire", x = cx, z = cz, r = r, band = form.Rockspire.Band * reach, base = dmg, share = form.Rockspire.Share })
+		end
+		if form.Forked then
+			forkBolt(self, u, struck, form, dmg, name, events)
+		end
+		if form.Lance then
+			u.meter = min(num(F.SpecialMeterMax, 100), u.meter + form.Lance.Meter)
+		end
+		if form.Starfall and u.hp < u.maxHp then
+			local got = min(u.maxHp * form.Starfall.Heal, u.maxHp - u.hp)
+			u.hp = u.hp + got
+			local tw = twistEvent(u, element, "Starfall", u.x, u.z)
+			tw.heals = { { u.id, floor(got + 0.5) } }
+			events[#events + 1] = tw
+		end
 	end
-	return true, a.Name
+	local gain = num(form and form.MeterGain, a.MeterGain)
+	if finite(gain) then
+		u.meter = min(num(F.SpecialMeterMax, 100), u.meter + gain)
+	end
+	return true, name
 end
 
 ----------------------------------------------------------------------

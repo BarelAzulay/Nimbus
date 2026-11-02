@@ -563,6 +563,7 @@
         "ReachOf",
         "FormOf",
         "FormNameOf",
+        "ElementFormOf",
         "UnitStats",
         "BattleLevelFactor",
         "BattleStatsOf",

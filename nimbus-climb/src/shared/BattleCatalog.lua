@@ -41,7 +41,10 @@
 --                                                                  does; BattleSim "ENGAGE")
 --   BattleCatalog.Fighter.WalkOf(moveSpeed) -> walk (12..20); Fighter.RunOf(walk) -> walk x RunMult; Fighter.SpeedsOf(moveSpeed) -> walk, run
 --   BattleCatalog.ElementAttacks[element]                          { Name, Shape = "Cone"|"Circle"|"Line", Angle, Length, Radius, Width, Push, Burn, Slow, Leech,
---                                                                  Stun, MeterGain, Weaken } one per Config.Elements.Order
+--                                                                  Stun, MeterGain, Weaken, Forms = { [1], [2] } (a twist table each: the ONLY element form tunables) }
+--                                                                  one per Config.Elements.Order
+--   BattleCatalog.ElementFormOf(element, stage)                    { Ids = { id... }, Name, [Id] = twist, <every twist's fields merged, a later stage's wins> } | nil:
+--                                                                  stage 2 keeps stage 1; nil at stage 0 / a junk element / stage
 --   BattleCatalog.Buffs[kind]                                      { Name, Seconds, Value, Text, Cooldown, Kind, Effect } for Heal / Shield / Rally / Haste (Support,
 --                                                                  cooldown 12) and Water / Flame / Frost / Nature / Earth / Storm / Celestial / Shadow (element, 15)
 --   BattleCatalog.BuffOf(def|petId|key) -> kind, buff             a helper's button: its Support kind, else its FIRST element's buff
@@ -383,15 +386,41 @@ end
 -- Element attacks (one per Config.Elements.Order): the fighter's ELEMENT button, cast from the SERVER fighter position
 -- toward the target / aim / lock; damage = a basic hit x Fighter.ElementMult on every enemy inside the shape
 ----------------------------------------------------------------------
+-- Forms[stage] (evolved forms, stage 2 keeps stage 1; ElementFormOf merges them): every Share = x the element hit, Radius / Band = studs x
+-- reach, Reach = plain studs. Only these values tune a form; the base numbers above each Forms stay stage 0's
 BattleCatalog.ElementAttacks = {
-	Water = { Name = "Tide Burst", Shape = "Cone", Angle = 70, Length = 14, Push = 4 },
-	Flame = { Name = "Flare", Shape = "Cone", Angle = 60, Length = 14, Burn = { Seconds = 3, Share = 0.25 } },
-	Frost = { Name = "Frostbite", Shape = "Cone", Angle = 70, Length = 14, Slow = { Seconds = 4, Mult = 0.6 } },
-	Nature = { Name = "Thorn Lash", Shape = "Cone", Angle = 60, Length = 14, Leech = 0.3 },
-	Earth = { Name = "Quake", Shape = "Circle", Radius = 8, Stun = 0.5 },
-	Storm = { Name = "Bolt", Shape = "Line", Length = 24, Width = 4 },
-	Celestial = { Name = "Radiance", Shape = "Circle", Radius = 8, MeterGain = 15 },
-	Shadow = { Name = "Void Rend", Shape = "Cone", Angle = 60, Length = 14, Weaken = { Seconds = 5, Mult = 0.85 } },
+	Water = {
+		Name = "Tide Burst", Shape = "Cone", Angle = 70, Length = 14, Push = 4,
+		Forms = { { Id = "Riptide", Name = "Riptide", Slow = 0.8, Seconds = 2 }, { Id = "Maelstrom", Name = "Maelstrom", Share = 0.5, Delay = 0.5 } },
+	},
+	Flame = {
+		Name = "Flare", Shape = "Cone", Angle = 60, Length = 14, Burn = { Seconds = 3, Share = 0.25 },
+		Forms = { { Id = "Wildfire", Name = "Wildfire", BurnShare = 0.35 }, { Id = "Inferno", Name = "Inferno", Share = 0.5, Seconds = 2, Radius = 5 } },
+	},
+	Frost = {
+		Name = "Frostbite", Shape = "Cone", Angle = 70, Length = 14, Slow = { Seconds = 4, Mult = 0.6 },
+		Forms = { { Id = "DeepFrost", Name = "Deep Frost", Slow = 0.5 }, { Id = "IceSnare", Name = "Ice Snare", Mark = 1.10 } },
+	},
+	Nature = {
+		Name = "Thorn Lash", Shape = "Cone", Angle = 60, Length = 14, Leech = 0.3,
+		Forms = { { Id = "Bramble", Name = "Bramble Lash", Leech = 0.4 }, { Id = "Worldroot", Name = "Worldroot", Root = 0.4 } },
+	},
+	Earth = {
+		Name = "Quake", Shape = "Circle", Radius = 8, Stun = 0.5,
+		Forms = { { Id = "Fissure", Name = "Fissure", Share = 0.4, Delay = 0.5 }, { Id = "Rockspire", Name = "Rockspire", Share = 0.4, Delay = 1.0, Band = 4 } },
+	},
+	Storm = {
+		Name = "Bolt", Shape = "Line", Length = 24, Width = 4,
+		Forms = { { Id = "Forked", Name = "Forked Bolt", Share = 0.4, Jumps = 1, Reach = 10 }, { Id = "Lance", Name = "Thunder Lance", Jumps = 2, Meter = 5 } },
+	},
+	Celestial = {
+		Name = "Radiance", Shape = "Circle", Radius = 8, MeterGain = 15,
+		Forms = { { Id = "Halo", Name = "Halo", MeterGain = 20 }, { Id = "Starfall", Name = "Starfall", Heal = 0.08 } },
+	},
+	Shadow = {
+		Name = "Void Rend", Shape = "Cone", Angle = 60, Length = 14, Weaken = { Seconds = 5, Mult = 0.85 },
+		Forms = { { Id = "Hollow", Name = "Hollow Rend", Weaken = 0.80 }, { Id = "Soul", Name = "Soul Rend", Leech = 0.15 } },
+	},
 }
 for element, a in pairs(BattleCatalog.ElementAttacks) do
 	a.Element = element
@@ -536,6 +565,28 @@ function BattleCatalog.FormNameOf(petId, kind, stage)
 	local forms = BattleCatalog.Forms[kind]
 	local twist = type(forms) == "table" and forms[s]
 	return type(twist) == "table" and twist.Id or nil
+end
+
+function BattleCatalog.ElementFormOf(element, stage)
+	local s = formStage(stage)
+	local a = BattleCatalog.ElementAttacks[element]
+	if not s or type(a) ~= "table" or type(a.Forms) ~= "table" then
+		return nil
+	end
+	local form = { Ids = {} }
+	for i = 1, s do
+		local twist = a.Forms[i]
+		if type(twist) == "table" then
+			for k, v in pairs(twist) do
+				if k ~= "Id" then
+					form[k] = v
+				end
+			end
+			form.Ids[#form.Ids + 1] = twist.Id
+			form[twist.Id] = twist
+		end
+	end
+	return form
 end
 
 ----------------------------------------------------------------------
@@ -2511,6 +2562,12 @@ function BattleCatalog.Validate()
 			bad("element attack " .. e .. ": a Line needs Length and Width")
 		elseif a.Shape ~= "Cone" and a.Shape ~= "Circle" and a.Shape ~= "Line" then
 			bad("element attack " .. e .. ": unknown shape " .. tostring(a.Shape))
+		end
+		for stage = 1, 2 do
+			local form = type(a) == "table" and type(a.Forms) == "table" and a.Forms[stage]
+			if type(form) ~= "table" or type(form.Id) ~= "string" or type(form.Name) ~= "string" then
+				bad("element attack " .. e .. " has no form with Id and Name at stage " .. stage)
+			end
 		end
 		local b = BattleCatalog.Buffs[e]
 		if type(b) ~= "table" or type(b.Name) ~= "string" or not finite(b.Value) or not finite(b.Seconds) or b.Cooldown ~= F.HelperCooldown then
