@@ -1263,7 +1263,7 @@ S.evo_slow_mark = guarded("evo_slow_mark", function()
 	b, f, foes = field(BS, fighter(PC, "Beam", 1), { { 5, 0 } })
 	foes[1].markMult, foes[1].markUntil = 1.3, -1
 	special(b, f, foes[1])
-	T.check(foes[1].markMult == 1.15, "evo mark: an expired mark does not", tostring(foes[1].markMult))
+	T.check(near(foes[1].markMult, BC.Forms.Beam[1].Mark, 1e-9), "evo mark: an expired mark does not hold; the special sets the catalog's Forms.Beam[1].Mark", fmt("%s vs %s", tostring(foes[1].markMult), tostring(BC.Forms.Beam[1].Mark)))
 	run(b, 4.1)
 	T.check(foes[1].markMult == 1, "evo mark: after markUntil markMult reads 1", tostring(foes[1].markMult))
 	b, f, foes = field(BS, fighter(PC, "Beam", 0), { { 5, 0 } })

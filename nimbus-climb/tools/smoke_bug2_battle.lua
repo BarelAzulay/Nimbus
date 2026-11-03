@@ -4,7 +4,8 @@
 --                         fighter keeps Fighter.MeterPerSecond 6 / MeterOnHit 4 and Damage.MeterStart 20-50),
 --                         BattleCatalog.MeterStart (NPC 45-75, the Ring champion + dungeon waves 2+ at 80, players
 --                         20-50), the champion entry carries MeterStart 80; a 20 s Ring fight (round 15 vs a Lv 6 team,
---                         the screenshot) shows an NPC special on every seed; most dungeon enemies cast before they
+--                         the screenshot): the champion's meter fills on every seed and every champion whose special is
+--                         always wanted (not Heal / Shield, which wait for a hurt ally) casts; most dungeon enemies cast before they
 --                         die; raid minions never cast; BattleSim.meterStart rolls the start meter from
 --                         BattleCatalog.MeterStart (integration hook): the champion starts at 80, NPC duel units at
 --                         45-75 with an NPC special within 20 s on every seed, dungeon wave 1 at 45-75 and wave 2 at 80,
@@ -79,7 +80,8 @@ local function near(a, b, tol)
 end
 
 -- steps a battle (a scripted player for `owner` when given) for up to `seconds`; -> the Special events of side 2
-local function npcSpecials(SIM, b, owner, seconds)
+-- (onStep(b), when given, runs after every step)
+local function npcSpecials(SIM, b, owner, seconds, onStep)
 	local side = {}
 	for _, info in ipairs(b:StaticUnits()) do
 		side[info.id] = info.side
@@ -90,6 +92,9 @@ local function npcSpecials(SIM, b, owner, seconds)
 	while not b:IsFinished() and steps < seconds * 10 do
 		local events = b:Step(0.1)
 		steps = steps + 1
+		if onStep then
+			onStep(b)
+		end
 		for _, ev in ipairs(events) do
 			if ev.type == "Spawn" or ev.type == "Wave" then
 				for _, info in ipairs(ev.units) do
@@ -143,21 +148,48 @@ S.bug2bat_npc_specials = guarded("bug2bat_npc_specials", function()
 		local lo4, hi4 = BC.MeterStart(nil, false, 99)
 		T.check(lo == 100 and hi == 100 and lo4 == 20 and hi4 == 50, "#27 MeterStart clamps to 0..MeterMax and ignores the wave for a player team")
 	end
-	-- a 20 s Ring fight: round 15's champion vs a Lv 6 team (the screenshot) casts on every seed
-	local fights, withSpecial, total = 0, 0, 0
+	-- a 20 s Ring fight: round 15's champion vs a Lv 6 team (the screenshot). #27's promise is the CHARGE: the champion's
+	-- meter fills on every seed, and a champion whose special is always wanted casts. A Heal / Shield special waits for a hurt
+	-- ally by design (BattleSim autoSpecialWanted: Heal < 80% hp, Shield < 95% hp and no shield), so a solo champion that wins
+	-- untouched holds it (round 15 seed 4 since dea0867: moonlit_owl, Shield, meter 100 from ~2.5 s, 96% hp, the fight over at 8.1 s)
+	local waitsForHurt = { Heal = true, Shield = true }
+	local fights, filled, wanted, wantedCast, total = 0, 0, 0, 0, 0
+	local misses = {}
 	for seed = 1, 6 do
 		local b = BS.new({ Mode = "Ring", Seed = seed, Round = 15, Teams = { SIM.team(1, 1, SIM.Stages[3].Pets), BC.ChampionTeam(15, seed) } })
 		if b then
-			local list = npcSpecials(SIM, b, 1, 20)
+			local full, kind = false, nil
+			local list = npcSpecials(SIM, b, 1, 20, function(bb)
+				for _, u in pairs(bb.units) do
+					if u.side == 2 and u.specialKind then
+						kind = u.specialKind
+						if u.meter >= D.MeterMax then
+							full = true
+						end
+					end
+				end
+			end)
 			fights = fights + 1
 			total = total + #list
-			if #list > 0 then
-				withSpecial = withSpecial + 1
+			if full or #list > 0 then
+				filled = filled + 1
+			else
+				misses[#misses + 1] = fmt("seed %d %s: meter never full", seed, tostring(kind))
+			end
+			if kind and not waitsForHurt[kind] then
+				wanted = wanted + 1
+				if #list > 0 then
+					wantedCast = wantedCast + 1
+				else
+					misses[#misses + 1] = fmt("seed %d %s: no special", seed, kind)
+				end
 			end
 		end
 	end
-	T.check(fights == 6 and withSpecial == 6, "#27 a 20 s Ring fight (round 15 champion vs a Lv 6 team) shows an NPC special on every seed (before: 5 of 6)",
-		fmt("%d of %d fights, %.2f specials per fight", withSpecial, fights, total / math.max(1, fights)))
+	T.check(fights == 6 and filled == 6, "#27 a 20 s Ring fight (round 15 champion vs a Lv 6 team): the champion's special meter fills on every seed",
+		fmt("%d of %d fights; %s", filled, fights, table.concat(misses, ", ")))
+	T.check(wanted >= 3 and wantedCast == wanted, "#27 ...and every champion whose special is always wanted (not Heal / Shield, which wait for a hurt ally) casts within 20 s",
+		fmt("%d of %d such fights cast, %.2f specials per fight; %s", wantedCast, wanted, total / math.max(1, fights), table.concat(misses, ", ")))
 	-- dungeon floor 3 (a solo S6 team, every wave room; team balance: S3 falls on floor 1 now): most enemies cast before they die (before: 23%)
 	local enemies, casters = 0, 0
 	for seed = 1, 3 do
