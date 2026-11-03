@@ -53,11 +53,11 @@
 --   BattleCatalog.ReachOf(stage) -> n                             Reach[stage]: floored, clamped 0..2, junk = stage 0 (x1); BattleSim's areas and the drawing read it
 --   BattleCatalog.Forms = { BossBonus, [kind] = { [1], [2] } }    what each evolution adds to a fighter's special: twist tables { Id, Share, ... } (the ONLY form tunables)
 --   BattleCatalog.FormOf(kind, stage) -> { [Id] = twist } | nil   every twist of stages 1..stage (stage 2 keeps stage 1); nil at stage 0 / a junk kind / stage
---   BattleCatalog.FormStageOf(def, stage) -> 0 | 1 | 2            the stage a pet's forms read: a stored stage, floored and clamped; a hybrid is 0
---                                                                  (evolved forms, docs/superpowers/specs/2026-11-01-evolved-forms-design.md, 2026-11-02; the owner's
---                                                                  answer "hybrids get forms by their real stage" is NOT applied yet: a hybrid still reads 0 here)
+--   BattleCatalog.FormStageOf(def, stage) -> 0 | 1 | 2            the stage a pet's forms read: its stored stage, floored and clamped (junk / nil / NaN / < 1 = 0);
+--                                                                  a hybrid too: hybrids evolve, so they get forms by their real stage (evolved forms,
+--                                                                  docs/superpowers/specs/2026-11-01-evolved-forms-design.md, the owner's answer of 2026-11-02, applied 2026-11-03)
 --   BattleCatalog.FormDps = { [0] 1, [1], [2], [kind | element] } what a fighter's forms add to its damage, as a raid boss's HP counts it (ExpectedDps)
---   BattleCatalog.FormDpsOf(def, unitStats) -> n                  FormDps[stage] x its kind's x its element's at stage >= 1, x1 at stage 0 / a hybrid
+--   BattleCatalog.FormDpsOf(def, unitStats) -> n                  FormDps[stage] x its kind's x its element's at stage >= 1 (a hybrid's too), x1 at stage 0
 --   BattleCatalog.FormNames = { [petId] = { first, last | nil } } every pet's form names (the spec's tables)
 --   BattleCatalog.FormNameOf(petId, kind, stage) -> name | nil    FormNames[petId][stage], an unknown pet: the kind's generic twist Id; nil at stage 0 / past the pet's names
 --   BattleCatalog.BattleStats                                     the ONLY tunables of the battle path: RarityScale { Common 1 .. Secret 5 }, Level { Linear, Quadratic, Cubic }
@@ -498,7 +498,7 @@ BattleCatalog.Forms = {
 }
 
 -- what a fighter's forms add to its damage, as a raid boss's HP counts it (ExpectedDps): a boss's HP follows the team's damage, and a form is
--- damage UnitStats does not see. Stage 0 stays x1: an unevolved team's boss is the same boss. A hybrid is stage 0 (FormStageOf).
+-- damage UnitStats does not see. Stage 0 stays x1: an unevolved team's boss is the same boss. A hybrid counts by its real stage (FormStageOf).
 -- [2] 1.23: the S7 team at Evo 2 stays under the 240 s of 8 trained teams (1.25 took 240.3 s). Storm x kind: High and Max's fighters (Beam + Storm, Pounce + Storm), whose
 -- twists are worth more against a raid than a lone boss. The raids' fixed seeds scatter (one cell's 12 seeds: 14 points), so each number's last digit is the scan's first pass, not a measurement
 BattleCatalog.FormDps = { [0] = 1, [1] = 1.145, [2] = 1.23, Storm = 1.105, Beam = 1.016, Pounce = 1.001 }
@@ -556,11 +556,9 @@ local function formStage(stage)
 	return min(2, floor(s))
 end
 
--- the stage a pet's forms read: a stored stage, but every hybrid is stage 0 until hybrids can evolve
+-- the stage a pet's forms read: its stored stage, a hybrid's too (hybrids evolve, so they get forms: the owner's answer of 2026-11-02).
+-- def is kept in the signature for the callers; junk / nil / NaN / a stage below 1 = 0
 function BattleCatalog.FormStageOf(def, stage)
-	if type(def) == "table" and (def.IsHybrid == true or (type(def.Look) == "table" and def.Look.BodyId ~= nil)) then
-		return 0
-	end
 	return formStage(stage) or 0
 end
 

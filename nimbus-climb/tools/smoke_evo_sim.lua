@@ -14,7 +14,8 @@
 --   evo_boss_twists    a boss keeps its immunities: a bonus hit instead; every timed twist still lands on it
 --   evo_slow_mark      slowMult / markMult: strongest wins, the three readers of the slow, stage 0's numbers
 --   evo_delayed        a queued hit whose caster fell, left or was benched is dropped; two pets' hits both fire
---   evo_wire           the Special / Twist / Zone fields, unitInfo.special, a hybrid stays at stage 0
+--   evo_wire           the Special / Twist / Zone fields, unitInfo.special, a hybrid gets forms by its real stage (the kind's
+--                      generic names, never its body pet's own; the owner's answer of 2026-11-02)
 -- White-box: reaches into battle.units / battle.teams (same Lua state). Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -1365,7 +1366,7 @@ end)
 -- The wire
 ----------------------------------------------------------------------------------------------------
 S.evo_wire = guarded("evo_wire", function()
-	local _, BS, PC, ready = modules()
+	local BC, BS, PC, ready = modules()
 	if not T.check(ready, "evo wire: the modules load") then
 		return
 	end
@@ -1420,17 +1421,35 @@ S.evo_wire = guarded("evo_wire", function()
 	b, f = field(BS, { Key = "pebble_pup", Level = 60, Evo = 2 }, { { 12, 0 } })
 	info = infoOf(b, f)
 	T.check(info.special.Form == 1 and info.special.Name == "Boulder Fetch", "evo wire: a Common with a stored Evo 2 is at its top form", tostring(info.special.Name))
-	-- a hybrid def stays at stage 0
-	local hybrid = withSpecial(PC, LEG, "Blast", { Look = { Species = "Phoenix", BodyId = LEG, StyleId = "stormfang" } })
-	b, f, foes = field(BS, { Def = hybrid, Key = LEG, Level = 50, Evo = 2 }, { { 20, 0 } })
+	-- a hybrid evolves, so it gets forms by its real stage: the kind's generic name per stage (BattleCatalog.Forms' Id), its twists on the cast
+	local generic2 = BC.Forms.Blast[2].Id
+	local hybrid = withSpecial(PC, LEG, "Blast", { Id = "hyb:evowire1", Look = { Species = "Phoenix", BodyId = LEG, StyleId = "stormfang" } })
+	b, f, foes = field(BS, { Def = hybrid, Key = "hyb:evowire1", Level = 50, Evo = 2 }, { { 20, 0 } })
 	info = infoOf(b, f)
-	T.check(info.special.Form == 0 and info.special.Name == "Test Blast", "evo wire: a hybrid def (Look.BodyId set) at Evo 2: Form 0", tostring(info.special.Form))
+	T.check(info.special.Form == 2 and info.special.Name == generic2 and info.special.Base == "Test Blast", "evo wire: a hybrid def (Look.BodyId set) at Evo 2: Form 2, the kind's generic name", fmt("%s %s", tostring(info.special.Form), tostring(info.special.Name)))
 	ev, evs = special(b, f, foes[1])
 	run(b, 1, evs)
-	T.check(ev ~= nil and ev.form == nil and findEvent(evs, "Zone") == nil and #twists(evs, "Aftershock") == 0 and #b.delayed == 0, "evo wire: ...no twist on its cast")
-	local real = withSpecial(PC, LEG, "Blast", { IsHybrid = true })
-	b, f, foes = field(BS, { Def = real, Key = LEG, Level = 50, Evo = 2 }, { { 20, 0 } })
-	T.check(infoOf(b, f).special.Form == 0, "evo wire: ...PetKeys' own IsHybrid too")
+	local hz = findEvent(evs, "Zone")
+	T.check(ev ~= nil and ev.form == 2 and ev.name == generic2 and hz ~= nil and hz.kind == "Patch" and #twists(evs, "Aftershock") == 1, "evo wire: ...its cast carries the stage-2 twists (Aftershock, the Patch zone)", ev and tostring(ev.form))
+	local real = withSpecial(PC, LEG, "Blast", { IsHybrid = true, Id = "hyb:evowire2" })
+	b, f, foes = field(BS, { Def = real, Key = "hyb:evowire2", Level = 50, Evo = 1 }, { { 20, 0 } })
+	info = infoOf(b, f)
+	T.check(info.special.Form == 1 and info.special.Name == BC.Forms.Blast[1].Id, "evo wire: ...PetKeys' own IsHybrid too (Evo 1: Form 1)", tostring(info.special.Name))
+	-- a real PetKeys hybrid whose body is a signature pet: its special is the body's, but its forms are the kind's generic ones, never the body's own names
+	local PK = req("PetKeys")
+	local hkey = PK and PK.HybridKey("evowire3", "Normal")
+	local hdef = hkey and PK.DefOf(hkey, { Pets = {}, Tiers = {}, Hybrids = { evowire3 = { Body = LEG, Style = "stormfang", Tier = "Normal" } } })
+	if T.check(type(hdef) == "table" and hdef.IsHybrid == true and hdef.PetId == nil and type(hdef.Special) == "table", "evo wire: (setup) a real PetKeys hybrid def (body " .. LEG .. ")", tostring(hkey)) then
+		local kind = hdef.Special.Kind
+		local own = BC.FormNames[LEG]
+		for stage = 1, 2 do
+			b, f, foes = field(BS, { Def = hdef, Key = hkey, Level = 60, Evo = stage }, { { 20, 0 } })
+			info = infoOf(b, f)
+			local elemName = BC.ElementFormOf(hdef.Elements[1], stage).Name
+			T.check(info.special.Form == stage and info.special.Name == BC.Forms[kind][stage].Id and info.special.Name ~= own[stage] and info.special.Base == PC.Get(LEG).Special.Name and info.elementAttack.Name == elemName,
+				fmt("evo wire: ...at Evo %d: Form %d, the generic %s name, never %s; its element attack is %s", stage, stage, kind, tostring(own[stage]), tostring(elemName)), fmt("%s / %s", tostring(info.special.Name), tostring(info.elementAttack and info.elementAttack.Name)))
+		end
+	end
 	-- no wire noise for a stage-0 fight: no Twist event, no new key on a Hit
 	b, f, foes = field(BS, fighter(PC, "Blast", 0), { { 20, 0 } })
 	evs = select(2, special(b, f, foes[1]))

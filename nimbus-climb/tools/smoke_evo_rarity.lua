@@ -8,7 +8,9 @@
 --   evo_rarity_ring    a Legendary Candy Unicorn champions Ring rounds 20-29; the raid drops never do
 --   evo_rarity_docs    README.md says the new counts, names Candy Unicorn a Legendary, the raid drops keep "Secret-grade stats"
 --   evo_rarity_saves   (booted) what a player already owns: a claimed reward stays claimed, the Secret group no longer needs the two
---                      raid pets, a stored hybrid keeps its stored rarity, a new fusion of a raid pet keeps Secret-grade stats
+--                      raid pets, a stored hybrid keeps its stored rarity, a new fusion of a raid pet keeps Secret-grade stats; that
+--                      fused hybrid evolves through PetCareService.Evolve and fights a Champion Ring round with Form 1 (the kind's
+--                      generic name, never its body's own: hybrids get forms, the owner's answer of 2026-11-02)
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -35,6 +37,61 @@ end
 
 local function near(a, b, tol)
 	return type(a) == "number" and type(b) == "number" and abs(a - b) <= (tol or 1e-6)
+end
+
+-- BattleService's St (the upvalue of IsInBattle; white-box, tests only: smoke_ring_noheal.lua's fixture)
+local function svcState(bs)
+	local f = bs and bs.IsInBattle
+	if type(f) ~= "function" then
+		return nil
+	end
+	for i = 1, 80 do
+		local name, v = debug.getupvalue(f, i)
+		if not name then
+			break
+		end
+		if name == "St" and type(v) == "table" and type(v.battles) == "table" then
+			return v
+		end
+	end
+	return nil
+end
+
+-- a home for the Champion Ring's first check, then the player at its portal (smoke_ring_noheal.lua's fixtures)
+local function claimHome(p)
+	local Ty = req("server/Services/TycoonService")
+	local SS = req("server/Services/SpotService")
+	local spots = (K.W.lobbyInfo and K.W.lobbyInfo.Spots) or {}
+	for i = 1, K.config().Lobby.SpotCount do
+		if spots[i] and not (SS and SS.GetOwner(i)) then
+			if Ty.Claim(p, i) then
+				K.advance(0.6)
+				Ty.Buy(p, "Garden")
+				K.advance(0.3)
+				return i
+			end
+		end
+	end
+	return nil
+end
+
+local function toRing(p)
+	local AB = req("server/Services/ArenaBuilder")
+	local info = AB and AB.GetInfo and AB.GetInfo()
+	local portal = info and info.RingPortal
+	if type(portal) == "table" then
+		portal = portal.Model or portal.Pad or portal.Part
+	end
+	if typeof(portal) ~= "Instance" then
+		portal = workspace:FindFirstChild("Portal_Ring", true)
+	end
+	if typeof(portal) ~= "Instance" then
+		return false
+	end
+	local pos = portal:IsA("BasePart") and portal.Position or portal:GetPivot().Position
+	Mock.Teleport(p, CFrame.new(pos + Vector3.new(0, 3, 6)))
+	K.advance(0.05)
+	return true
 end
 
 -- "rb": Windows text mode stops at byte 0x1A
@@ -429,6 +486,47 @@ S.evo_rarity_saves = guarded("evo_rarity_saves", function()
 			local rec = prof.Hybrids[PK.Parse(key).HybridId]
 			T.check(rec and rec.Rarity == "Mythic" and rec.StatRarity == nil and hdef.Rarity == "Mythic" and hdef.StatRarity == "Secret" and secretScaled(hdef),
 				"evo saves: a real fusion of Magma Cub stores Mythic, shows Mythic and keeps Secret-grade stats", tostring(rec and rec.Rarity))
+			-- (2026-11-03) hybrids evolve, so they get forms: PetCareService.Evolve stores the stage by key (DataService.SetEvolution /
+			-- GetEvolution), BattleService's team spec hands it to the sim as Evo, unitInfo.special.Form reads it (BattleCatalog.FormStageOf)
+			local Care, BSvc = K.mod("PetCareService"), K.mod("BattleService")
+			if T.check(Care and type(Care.Evolve) == "function" and BSvc and type(BSvc.StartRing) == "function" and svcState(BSvc) ~= nil, "evo saves: PetCareService.Evolve, BattleService.StartRing and its St load") then
+				prof.PetLevels[key] = { Level = 20, Xp = 0 }
+				DataS.MarkDirty(p)
+				local okEvo, stage = Care.Evolve(p, key)
+				T.check(okEvo == true and stage == 1 and DataS.GetEvolution(p, key) == 1 and DataS.GetGrowth(p, key).Evo == 1,
+					"evo saves: PetCareService.Evolve evolves the fused hybrid at level 20 (DataService stores Evo 1 by its key)", fmt("%s %s %s", tostring(okEvo), tostring(stage), tostring(DataS.GetEvolution(p, key))))
+				local okTeam = DataS.SetTeam(p, 1, { key })
+				local home = claimHome(p)
+				local atRing = toRing(p)
+				local okR, id = BSvc.StartRing(p)
+				if T.check(okTeam and home ~= nil and atRing and okR == true and type(id) == "string", "evo saves: (setup) the evolved hybrid starts a Champion Ring round", tostring(id)) then
+					local St = svcState(BSvc)
+					local b = St.battles[id]
+					local team = b and b.Sim and b.Sim.teamByOwner and b.Sim.teamByOwner[p.UserId]
+					local unit = nil
+					for _, u in ipairs(team and team.units or {}) do
+						if u.key == key then
+							unit = u
+						end
+					end
+					local info = nil
+					for _, i in ipairs(b and b.Sim and b.Sim:StaticUnits() or {}) do
+						if unit and i.id == unit.id then
+							info = i
+						end
+					end
+					local kind = hdef.Special and hdef.Special.Kind
+					local generic = kind and BC.Forms[kind] and BC.Forms[kind][1] and BC.Forms[kind][1].Id
+					T.check(unit ~= nil and unit.evo == 1 and info ~= nil and info.evo == 1 and type(info.special) == "table" and info.special.Form == 1,
+						"evo saves: the hybrid fighter's unitInfo.special.Form == 1 (its real stage, through BattleService)", info and info.special and tostring(info.special.Form))
+					T.check(info and info.special and info.special.Name == generic and info.special.Name ~= BC.FormNames.magma_cub[1] and info.key == key and info.petId == key,
+						"evo saves: ...named by its kind (" .. tostring(generic) .. "), never its body's own " .. tostring(BC.FormNames.magma_cub[1]) .. "; it carries its own key", info and info.special and fmt("%s / %s", tostring(info.special.Name), tostring(info.petId)))
+					if BSvc.IsInBattle(p) then
+						BSvc.Forfeit(p)
+					end
+					K.advance(5.5)
+				end
+			end
 		end
 	else
 		T.fail("evo saves: FusionService.Mix is loaded")

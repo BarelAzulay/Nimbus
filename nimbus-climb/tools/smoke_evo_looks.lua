@@ -451,6 +451,25 @@ local function serverScenarios()
 		T.check(none.Sig == nil or none.Sig.Actor == nil, "evo looks: ...another pet's plain Aftershock has none")
 
 		T.check(Cat.Unit({ petId = "stormfang", special = { Form = 2 } }).Form == 2 and Cat.Unit({ petId = "stormfang" }).Form == nil, "evo looks: Unit carries info.special.Form")
+
+		-- a hybrid with Stormfang's body never draws Stormfang's own signature form: its unit carries its own key as PetId (BattleSim: def.Id, the key;
+		-- BattleService: parsed.PetId or def.PetId, nil for a hybrid), so Form 1 is the SHARED Pounce form in its colours, with the kind's generic name
+		local hlook = { Species = "Wolf", Hybrid = true, BodyId = "stormfang", StyleId = "maple_fox" }
+		local sharedName = Cat.Forms.Pounce[1].Name
+		for _, info in ipairs({
+			{ petId = "hyb:evolook1", key = "hyb:evolook1", look = hlook, elements = { "Storm", "Flame" }, evo = 1, special = { Kind = "Pounce", Form = 1 } },
+			{ key = "hyb:evolook1@Golden", look = hlook, elements = { "Storm" }, evo = 1, special = { Kind = "Pounce", Form = 1 } },
+		}) do
+			local hu = Cat.Unit(info)
+			local hr = Cat.Resolve({ Element = hu.Element, Attack = "Special", Kind = "Pounce", Rarity = hu.Rarity, Stage = hu.Stage, Form = hu.Form, PetId = hu.PetId, Mine = true })
+			local tag = tostring(info.petId or info.key)
+			T.check(hu.PetId ~= "stormfang" and Cat.Signatures[hu.PetId or ""] == nil and hu.Form == 1 and hu.Rarity == "Secret", "evo looks: a hybrid's unit (" .. tag .. ") carries its own id, not its body's; Form 1, the body's rarity", fmt("%s %s %s", tostring(hu.PetId), tostring(hu.Form), tostring(hu.Rarity)))
+			T.check(hr ~= nil and hr.Signature == nil and hr.Sig ~= nil and hr.Sig.Name == sharedName and hr.Sig.Name ~= "Shadow Pack" and hr.Sig.Actor ~= nil and hr.Sig.Actor.Key == Cat.Forms.Pounce[1].Actor.Key and hr.Sig.Actor.Key ~= "vfx_sig_wolf",
+				"evo looks: ...it resolves to the SHARED Pounce form (" .. tostring(sharedName) .. ": orbs), never Shadow Pack's wolves", hr and hr.Sig and fmt("%s %s", tostring(hr.Sig.Name), tostring(hr.Sig.Actor and hr.Sig.Actor.Key)))
+		end
+		local plainPounce = Cat.Resolve({ Element = "Storm", Attack = "Special", Kind = "Pounce", Rarity = "Secret", Stage = 1, Form = 1, Mine = true })
+		local hybridPounce = Cat.Resolve({ Element = "Storm", Attack = "Special", Kind = "Pounce", Rarity = "Secret", Stage = 1, Form = 1, PetId = Cat.Unit({ key = "hyb:evolook1", look = hlook }).PetId, Mine = true })
+		T.check(plainPounce and hybridPounce and idList(plainPounce) == idList(hybridPounce) and plainPounce.Sig.Name == hybridPounce.Sig.Name, "evo looks: ...the same recipe as a pet with no signature at Form 1")
 	end)
 
 	return S

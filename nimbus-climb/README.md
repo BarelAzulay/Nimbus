@@ -648,6 +648,8 @@ with a huge bolt, a Freeze shatters, a Shield bursts when it breaks...). Epic pe
 Stormfang's Storm Pounce becomes **Shadow Pack** (three shadow storm wolves charge at the enemy from behind it) and then
 **Thunder Pack** (five wolves wrapped in lightning, bolts striking where they land); Ember Phoenix's Phoenix Flare becomes
 Phoenix Burst and then Phoenix Rebirth, and so on. Common to Rare pets share one look per kind, in their own colours.
+Fused pets evolve and get forms too, by their special's kind and their element, with the shared name per kind (never their
+body pet's unique form).
 Element attacks evolve by element (Tide Burst becomes Riptide, then Maelstrom; Bolt becomes Forked Bolt, then Thunder
 Lance...). The SPECIAL and ELEMENT buttons, the Pets window and the Pet Index show the current name. Bosses stay immune to
 stuns, roots, slows and burns: against a boss such a twist deals a bonus hit instead.

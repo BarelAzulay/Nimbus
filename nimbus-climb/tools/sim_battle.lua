@@ -82,6 +82,14 @@ end
 
 local Shared = Mock.GetPath(ROOTS.shared)
 local BC = require(Shared.BattleCatalog)
+-- the sim's own form-off marker (formEntry): a def with SimNoForm reads stage 0 forms; BattleSim's catalog() is this same module table
+local realFormStageOf = BC.FormStageOf
+BC.FormStageOf = function(def, stage)
+	if type(def) == "table" and def.SimNoForm then
+		return 0
+	end
+	return realFormStageOf(def, stage)
+end
 local BS = require(Shared.BattleSim)
 local PC = require(Shared.PetCatalog)
 local TC = require(Shared.TycoonCatalog)
@@ -1854,13 +1862,13 @@ local function loneBoss(entry, seed, playerOpts)
 	return b.teams[1].damage, b:Time()
 end
 
--- the same pet at `evo`, with or without its form: IsHybrid keeps its stats and reach and takes the form away (a hybrid's forms stay at stage 0)
+-- the same pet at `evo`, with or without its form: SimNoForm keeps its stats and reach and takes the form away
 local function formEntry(def, evo, form, noSpecial)
 	local d = {}
 	for k, v in pairs(def) do
 		d[k] = v
 	end
-	d.IsHybrid = (not form) or nil
+	d.SimNoForm = (not form) or nil
 	return pet(def.Key, 50, nil, { Def = d, Evo = evo, NoSpecial = noSpecial })
 end
 

@@ -11,7 +11,8 @@
 --   evo_el_shadow         Hollow Rend's weaken (the strongest stands), Soul Rend's leech
 --   evo_el_ranged_circle  a ranged pet's Circle on its aim point, at stage 0 too (at most its range away); melee, Cones and Lines keep today's rule
 --   evo_el_boss           a boss keeps its immunities: a bonus hit instead; every timed twist lands on it, Ice Snare marks it
---   evo_el_form_dps       what a boss's HP counts for a fighter's forms (BattleCatalog.FormDps): x1 at stage 0 and on a hybrid
+--   evo_el_form_dps       what a boss's HP counts for a fighter's forms (BattleCatalog.FormDps): x1 at stage 0; a hybrid counts by
+--                         its real stage, exactly like the plain pet (the owner's answer of 2026-11-02)
 -- White-box: reaches into battle.units / battle.teams (same Lua state). Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -301,16 +302,19 @@ S.evo_el_names = guarded("evo_el_names", function()
 	T.check(infoOf(b, f).elementAttack.Name == "Frostbite", "evo el: ...Frostbite at Evo 0", tostring(infoOf(b, f).elementAttack.Name))
 	ev = cast(b, f, foes[1].id)
 	T.check(ev ~= nil and ev.name == "Frostbite" and ev.form == nil, "evo el: ...and the Evo 0 event has no form field", ev and tostring(ev.name))
-	-- a once-evolver with a stored 2 is at its top form; a hybrid stays at stage 0
+	-- a once-evolver with a stored 2 is at its top form; a hybrid evolves too: its element attack takes the element's form name
 	b, f, foes = field(BS, { Key = "pebble_pup", Level = 60, Evo = 2 }, { { 5, 0 } })
 	T.check(infoOf(b, f).elementAttack.Name == "Fissure", "evo el: a Common with a stored Evo 2 is at its top form", tostring(infoOf(b, f).elementAttack.Name))
 	local hybrid = cloneDef(PC, MELEE, { Element = "Water", Elements = { "Water" }, Look = { Species = "Bear", BodyId = MELEE, StyleId = "stormfang" } })
+	b, f, foes = field(BS, { Def = hybrid, Key = MELEE, Level = 50, Evo = 1 }, { { 5, 0 } })
+	T.check(infoOf(b, f).elementAttack.Name == "Riptide", "evo el: a hybrid at Evo 1 takes the element's form name (Riptide)", tostring(infoOf(b, f).elementAttack.Name))
 	b, f, foes = field(BS, { Def = hybrid, Key = MELEE, Level = 50, Evo = 2 }, { { 5, 0 } })
-	T.check(infoOf(b, f).elementAttack.Name == "Tide Burst", "evo el: a hybrid at Evo 2 keeps the base name", tostring(infoOf(b, f).elementAttack.Name))
+	T.check(infoOf(b, f).elementAttack.Name == "Maelstrom", "evo el: ...at Evo 2: Maelstrom", tostring(infoOf(b, f).elementAttack.Name))
 	local evs
 	ev, evs = cast(b, f, foes[1].id)
+	local slowed = foes[1].slowMult == 0.8 and foes[1].slowUntil > 0
 	run(b, 1, evs)
-	T.check(ev ~= nil and ev.name == "Tide Burst" and ev.form == nil and foes[1].slowUntil == 0 and #twists(evs, "Maelstrom") == 0 and #b.delayed == 0, "evo el: ...and no twist on its cast")
+	T.check(ev ~= nil and ev.name == "Maelstrom" and ev.form == 2 and slowed and #twists(evs, "Maelstrom") == 1, "evo el: ...and its cast carries the forms (Riptide's slow, the Maelstrom wave)", ev and fmt("%s %s %d", tostring(ev.name), tostring(ev.form), #twists(evs, "Maelstrom")))
 end)
 
 ----------------------------------------------------------------------------------------------------
@@ -816,14 +820,16 @@ S.evo_el_form_dps = guarded("evo_el_form_dps", function()
 	local bear, hybrid = PC.Get(MELEE), cloneDef(PC, MELEE, { Look = { Species = "Bear", BodyId = MELEE, StyleId = "stormfang" } })
 	T.check(BC.FormStageOf(bear, 0) == 0 and BC.FormStageOf(bear, 1) == 1 and BC.FormStageOf(bear, 2) == 2 and BC.FormStageOf(bear, 7) == 2, "evo form dps: FormStageOf is the stored stage, at most 2")
 	T.check(BC.FormStageOf(PC.Get("pebble_pup"), BC.UnitStats({ Key = "pebble_pup", Level = 60, Evo = 2 }).Evo) == 1, "evo form dps: ...a once-evolver with a stored 2 is at its top form (UnitStats' stage that counts)")
-	T.check(BC.FormStageOf(hybrid, 2) == 0, "evo form dps: ...a hybrid stays at stage 0")
+	T.check(BC.FormStageOf(hybrid, 2) == 2 and BC.FormStageOf(hybrid, 1) == 1 and BC.FormStageOf(hybrid, 0) == 0 and BC.FormStageOf({ IsHybrid = true }, 2) == 2, "evo form dps: ...a hybrid reads its real stage (Look.BodyId or IsHybrid)")
+	T.check(BC.FormStageOf(hybrid, nil) == 0 and BC.FormStageOf(hybrid, 0 / 0) == 0 and BC.FormStageOf(hybrid, -1) == 0 and BC.FormStageOf(nil, 1) == 1, "evo form dps: ...junk (nil / NaN / negative) is stage 0")
 	-- the factor: stage x kind x element, on the fighter alone
 	local function factor(def, evo)
 		return BC.FormDpsOf(def, { Evo = evo, Elements = def.Elements or { def.Element } })
 	end
 	local storm = PC.Get("stormfang")
 	local mid = PC.Get("ember_phoenix")
-	T.check(factor(mid, 0) == 1 and factor(storm, 0) == 1 and factor(hybrid, 2) == 1, "evo form dps: x1 at stage 0 and on a hybrid")
+	T.check(factor(mid, 0) == 1 and factor(storm, 0) == 1 and factor(hybrid, 0) == 1, "evo form dps: x1 at stage 0, a hybrid's too")
+	T.check(factor(hybrid, 2) > 1 and near(factor(hybrid, 2), factor(bear, 2), 1e-9) and near(factor(hybrid, 1), factor(bear, 1), 1e-9), "evo form dps: a hybrid's factor is the plain pet's at its stage", fmt("%s vs %s", tostring(factor(hybrid, 2)), tostring(factor(bear, 2))))
 	T.check(near(factor(mid, 1), D[1], 1e-9), "evo form dps: a Blast + Flame fighter at stage 1 is the stage's alone", tostring(factor(mid, 1)))
 	T.check(near(factor(storm, 2), D[2] * D.Pounce * D.Storm, 1e-9), "evo form dps: a Pounce + Storm fighter at stage 2: stage x kind x element", tostring(factor(storm, 2)))
 	-- ExpectedDps follows it, stage 0 not at all
@@ -835,7 +841,8 @@ S.evo_el_form_dps = guarded("evo_el_form_dps", function()
 	D[1], D[2] = keep1 * 2, keep2 * 3
 	local n0, n1, n2, nh = dps({ Key = MELEE, Level = 50, Evo = 0 }), dps({ Key = MELEE, Level = 50, Evo = 1 }), dps({ Key = MELEE, Level = 50, Evo = 2 }), dps({ Def = hybrid, Key = MELEE, Level = 50, Evo = 2 })
 	D[1], D[2] = keep1, keep2
-	T.check(n0 == e0 and nh == eh, "evo form dps: a stage-0 team's and a hybrid's expected damage do not move", fmt("%s -> %s, %s -> %s", tostring(e0), tostring(n0), tostring(eh), tostring(nh)))
+	T.check(n0 == e0, "evo form dps: a stage-0 team's expected damage does not move", fmt("%s -> %s", tostring(e0), tostring(n0)))
+	T.check(near(nh / eh, 3, 1e-9) and near(nh / eh, n2 / e2, 1e-9), "evo form dps: a hybrid team's at Evo 2 moves exactly like a stage-2 team's", fmt("x%.3f vs x%.3f", nh / eh, n2 / e2))
 	T.check(near(n1 / e1, 2, 1e-9) and near(n2 / e2, 3, 1e-9), "evo form dps: an evolved team's follows its stage", fmt("x%.3f, x%.3f", n1 / e1, n2 / e2))
 	-- Validate
 	T.check(BC.Validate() == true, "evo form dps: Validate passes")

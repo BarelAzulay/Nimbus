@@ -587,7 +587,7 @@ local function meterStart(self, D, team, entry)
 end
 
 -- a unit's evolution stage (0 | 1 | 2) and how far its abilities reach: the one place the sim reads either; u.evo is UnitStats'
--- cleaned stage (the STORED stage), a unit with none (a wild pet, a hybrid) is stage 0
+-- cleaned stage (the STORED stage, a hybrid's too); a unit with none (a wild pet) is stage 0
 local function stageOf(u)
 	return max(0, min(2, floor(num(u.evo, 0))))
 end
@@ -600,7 +600,7 @@ local function reachOf(u)
 	return 1
 end
 
--- the stage its forms read: every hybrid is stage 0 until hybrids can evolve (spec "Settled against the real code")
+-- the stage its forms read: the stored stage, a hybrid's real one too (BattleCatalog.FormStageOf; the owner's answer of 2026-11-02)
 local function formStageOf(u)
 	local bc = catalog()
 	if bc and type(bc.FormStageOf) == "function" then

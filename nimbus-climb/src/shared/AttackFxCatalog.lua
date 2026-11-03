@@ -107,7 +107,11 @@
 --                                                                  base).Rarity, else a hybrid's: the HIGHER of its look.BodyId
 --                                                                  and look.StyleId pets' rarities (PetKeys' own rule), else
 --                                                                  "Common"; Element = the FIRST of `elements` (else `element`);
---                                                                  Stage = evo clamped 0..2; Form = info.special.Form (a hybrid's 0)
+--                                                                  Stage = evo clamped 0..2; Form = info.special.Form (a hybrid's
+--                                                                  real stage too); PetId = info.petId, else the key's base: a
+--                                                                  hybrid's is its own key ("hyb:<uid>@Tier"), never look.BodyId,
+--                                                                  so it draws the SHARED form of its kind, never its body pet's
+--                                                                  signature (Shadow Pack is Stormfang's alone)
 --   AttackFxCatalog.Signatures[petId]                              the 12 signature pets + the 4 Plain ones (Element, Kind, Rarity, Twist, overrides, Forms)
 --   AttackFxCatalog.Forms / ElementForms / Twists                  the evolved forms' looks (above)
 --   AttackFxCatalog.AttackNames / KindNames / ShapeNames / Rarities   ordered name lists (the /fx dev command validates with them)
