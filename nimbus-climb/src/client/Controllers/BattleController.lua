@@ -143,6 +143,9 @@
 --   after that. A world click or a tap on an enemy is Target(pick) (holding the mouse never cycles).
 --   RETREAT (the Retreat block, boss raid fighters only): R / D-pad down / the button in the Cheer up! row send Retreat or Engage; the server's Order
 --   echo flips the label (B.retreated), Engage starts the dark sweep of the 10 s wait, the stroke pulses on Engage (plain on Graphics Low).
+--   Its place: left of Cheer up! in its row; where that row has no room (its left is the screen edge or Roblox's stick) it stacks above
+--   Cheer up!, and where the stack would cover the fighter's cards or the screen's middle (every landscape phone, a portrait phone) it sits
+--   under the vitals card, from the card's left edge, clear of Roblox's stick (Retreat.Place; Retreat.how = "row" | "stack" | "under").
 -- * Bug #22 (wave 5): the server's engage rule walks my pet off to fight while I stand: the shoulder offset fades with the
 --   blend share (an engaged pet is drawn where the server has it) and its Engage { on = true } plays the arrival hop.
 -- Keys (ContextActionService, High priority, sunk, bound ONLY while fighting and inert before UiGate.HasPlayed()):
@@ -411,6 +414,10 @@ local K = {
 	CHEER_TOUCH_W_PX = 112,
 	CHEER_CENTRE_TOL = 0.15, -- the screen middle it never enters (HudController's CENTRE_TOL 0.145 + a margin)
 	RETREAT_PULSE = 3.5, -- evolved forms: rad/s of the Engage button's stroke
+	-- Roblox's own thumbstick zone (screen px; HudController's numbers): the Retreat button under the vitals card keeps right of it
+	STICK_SMALL_PHONE = 500, -- the smaller screen side at most this = the small controls
+	STICK_W_SMALL = 110,
+	STICK_W_LARGE = 190,
 }
 
 local STATES = (BattleSim and BattleSim.States) or { Idle = 0, Moving = 1, Attacking = 2, Benched = 3, Casting = 4, Down = 5, Stunned = 6, Dashing = 7 }
@@ -6768,9 +6775,6 @@ function Hud.RewardLines(B, rw)
 	end
 	if rw.Tier == "None" then
 		lines[#lines + 1] = { "No hits on the boss: no reward", COLORS.Weak }
-	elseif rw.Tier == "SatOut" then
-		-- a won raid with the pet back for over half of the team's time: the loss pay (rw.Reason, the server's toast, says the long version)
-		lines[#lines + 1] = { "Sat out over half the fight", COLORS.Weak }
 	elseif rw.Tier == "Cooldown" then
 		-- a boss raid won inside the 20 minute reward limit: nothing paid, the server says when
 		local wait = num(rw.AgainIn, 0)
@@ -6779,6 +6783,11 @@ function Hud.RewardLines(B, rw)
 		local share = num(rw.Share, 0)
 		lines[#lines + 1] = { tostring(rw.Tier) .. " tier", COLORS.Gold }
 		lines[#lines + 1] = { tostring(floor(share * 100 + 0.5)) .. "% of the damage", Color3.fromRGB(150, 110, 220) }
+	end
+	if rw.SatOut == true then
+		-- a won raid with the pet back for over half of the team's time: the medal is paid, the Boss Raid pet roll is not (rw.Reason, the server's
+		-- toast, says the long version)
+		lines[#lines + 1] = { "Sat out over half the fight: no pet this time", COLORS.Weak }
 	end
 	if rw.EventPet then
 		local name = tostring(rw.EventPet)
@@ -7141,9 +7150,11 @@ end
 
 ----------------------------------------------------------------------
 -- evolved forms: RETREAT (boss raid fighters only): BattleCommand "Retreat" / "Engage"; the server decides (BattleSim "Retreat"). The button sits in the
--- Cheer up! row, its left, the same size; where that row sits beside the vitals card (a landscape phone: its left is Roblox's stick) it stacks above
--- Cheer up!. The label follows the server's echo (B.retreated), a dark veil that shrinks to the right is the 10 s wait after an Engage, the stroke
--- pulses while it says Engage (plain on Graphics Low).
+-- Cheer up! row, its left, the same size; where that row has no room on its left (the screen edge, Roblox's stick) it stacks above Cheer up!; where
+-- that stack would cover the fighter's cards (a landscape phone: Cheer up! sits beside the card, right under the cards) or the screen's middle (a
+-- portrait phone) it goes under the vitals card instead, from the card's left edge and right of Roblox's stick. The label follows the server's
+-- echo (B.retreated), a dark veil that shrinks to the right is the 10 s wait after an Engage, the stroke pulses while it says Engage (plain on
+-- Graphics Low).
 ----------------------------------------------------------------------
 function Retreat.Allowed(B)
 	return B ~= nil and B.Fighter == true and not B.ended and B.Mode == "Raid"
@@ -7179,15 +7190,44 @@ function Retreat.Place(m, B, isFighting)
 	local C = Hud.cheer.Button
 	local w, h = C.Size.X.Offset, C.Size.Y.Offset
 	local cx, bottom = C.Position.X.Offset, C.Position.Y.Offset
-	local gap = K.CHEER_GAP_PX / max(0.05, m.F)
+	local f = max(0.05, m.F)
+	local gap = K.CHEER_GAP_PX / f
 	local x, y = cx - w - gap, bottom
-	-- the same test as Cheer up!'s: the row keeps to the screen and out of the middle band, else above Cheer up!
+	Retreat.how = "row"
+	-- the row's left is the screen edge or Roblox's stick (Cheer up! beside the card): above Cheer up!
 	if CheerUp.beside or x - w / 2 < K.EDGE then
 		x, y = cx, bottom - h - gap
+		Retreat.how = "stack"
+		-- ...unless the stack covers the fighter's cards (the Team block) or the screen's middle: under the vitals card then
+		local covers = false
+		if Hud.team and Hud.team.Visible then
+			local tx, ty = Hud.team.Position.X.Offset, Hud.team.Position.Y.Offset
+			local tr, tb = tx + Hud.team.Size.X.Offset, ty + Hud.team.Size.Y.Offset
+			covers = x + w / 2 > tx - gap and x - w / 2 < tr + gap and y > ty - gap and y - h < tb + gap
+		end
+		local v = CheerUp.Layout()
+		if v and (covers or Retreat.inMiddle(m, x, y, w, h)) then
+			local small = min(m.VX, m.VY) <= K.STICK_SMALL_PHONE
+			local stickW = (small and K.STICK_W_SMALL or K.STICK_W_LARGE) / f
+			x = max(v.X / f, stickW + gap) + w / 2
+			y = min((v.Y + v.H) / f + gap + h, m.H - K.EDGE) -- (never below the screen's edge, whatever the card's bottom margin becomes)
+			Retreat.how = "under"
+		end
 	end
+	x = clamp(x, w / 2 + K.EDGE, m.W - w / 2 - K.EDGE)
 	R.Button.Size = UDim2.fromOffset(w, h)
 	R.Button.Position = UDim2.fromOffset(x, y)
 	setVisible(R.Key, not m.Touch)
+end
+
+-- a button centred on x with its bottom at y (design px) would enter the screen's middle band (HudController's CENTRE_TOL band, as CheerUp.Place)
+function Retreat.inMiddle(m, x, y, w, h)
+	local f = max(0.05, m.F)
+	local tol = K.CHEER_CENTRE_TOL
+	local bandL, bandR = m.W * (0.5 - tol), m.W * (0.5 + tol)
+	local midY = (m.VY / 2 - m.Inset) / f
+	local bandT, bandB = midY - m.VY * tol / f, midY + m.VY * tol / f
+	return x + w / 2 > bandL and x - w / 2 < bandR and y > bandT and y - h < bandB
 end
 
 -- 10 Hz: the label, the wait's sweep, the pulse

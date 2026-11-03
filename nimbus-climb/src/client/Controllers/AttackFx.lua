@@ -23,6 +23,7 @@
 --               Line = { X0, Z0, Angle, Length, Width } (world: a Pounce's real charge line, the wolves run on it; none: from 8 studs behind the caster through the target),
 --               Seconds (a Rally's / Haste's: how long from now its aura holds; a predicted charge's Seconds stay the wait), Scale (a Rally's bigger pet),
 --               Center (world: where an Element Circle lands, a ranged pet's aim point; default the caster), Band (Rockspire's ring: its depth), AimFixed (with Angle: the aim never follows a target) }
+--               (the form fields above: docs/superpowers/specs/2026-11-01-evolved-forms-design.md, plan Task 4, 2026-11-02).
 --       Play writes ctx.ImpactLate = seconds the impact lands after DueAt (0 unless a Ranged shot's MinTravel needed
 --       more time than DueAt left; BattleController then plays the Hit that much later).
 --       A point is Model:GetPivot() while the Model is in the game, else its last known point, else Pos: a unit

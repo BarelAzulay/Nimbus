@@ -6,12 +6,14 @@
 --                             the unit, the 10 s wait, Stunned / Casting / Dashing accepted, Down refused, NoRetreat outside a raid, Result / TeamOf
 --   evo_docs                  (server world, pure) README, tools/README and BUILD_STATE know the whole build
 --   evo_retreat_service       (server world, booted) the remote, the argument and spam rules, the Start payload, the leash's grace, the presence check
---   evo_retreat_pay           (server world, booted) the no-free-win rule: per player, against the team's OWN time in the fight, on the loss clock
+--   evo_retreat_pay           (server world, booted) the no-free-pet rule (the owner's choice 2026-11-02): per player, against the team's OWN time in
+--                             the fight; the win's medal, Tokens, XP and clock stay, the Boss Raid pet roll goes, rw.SatOut + Reason say so
 --   evo_retreat_flow          (server world, booted) solo, a pocket fight, a group of three, end to end
 --   client_evo_retreat        (client world) the button and the R key: only in a raid, Retreat / Engage, one remote a press, the 10 s sweep, a refusal's
 --                             shake, a late joiner's Start, Graphics Low, the result card's line
---   client_evo_retreat_mobile (phone world) the button on phones: >= 44 px, in the Cheer up! row or stacked above it, clear of everything, out of the
---                             screen's middle
+--   client_evo_retreat_mobile (phone world) the button on phones: >= 44 px, in the Cheer up! row, stacked above it or under the vitals card (where
+--                             the stack would cover the fighter's cards or the screen's middle: every landscape phone, a portrait phone), clear of
+--                             everything, out of the screen's middle
 -- White-box: the sim's units and teams (same Lua state); the service's St is an upvalue of IsInBattle, as in smoke_raid_service.lua. Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -827,6 +829,11 @@ local function serverScenarios()
 	----------------------------------------------------------------------------------------------------
 	-- evo_retreat_service
 	----------------------------------------------------------------------------------------------------
+	-- a won raid's medal: a Tier that is neither the loss pay nor a no-pay id
+	local function medal(rw)
+		return rw ~= nil and rw.Tier ~= nil and rw.Tier ~= "Loss" and rw.Tier ~= "None" and rw.Tier ~= "Cooldown" and rw.Tier ~= "SatOut"
+	end
+
 	S.evo_retreat_service = scenario("evo_retreat_service", function(add)
 		local bs = setUp()
 		local A, B, C = add(newPlayer("RetA", 10)), add(newPlayer("RetB", 10)), add(newPlayer("RetC", 10))
@@ -949,8 +956,12 @@ local function serverScenarios()
 		local bs = setUp()
 		local data = DS()
 		local BCat = BC()
-		-- the fight of `who` (each { player, retreated seconds, fought seconds }) at battle time 120: the boss falls -> Rewards per player
-		local function won(who, boss_wins)
+		-- the fight of `who` (each { player, retreated seconds, fought seconds }) at battle time 120: the boss falls -> Rewards per player.
+		-- opts.rngZero: the service's rng answers 0 to every NextNumber while the fight is paid (a pet WOULD drop for anyone rolled) and
+		-- counts its draws; returned third
+		local draws = 0
+		local function won(who, boss_wins, opts)
+			opts = opts or {}
 			setUp()
 			fakeNow = 5000
 			local ok, id
@@ -976,51 +987,91 @@ local function serverScenarios()
 			for i, w in ipairs(who) do
 				players[i] = w[1]
 			end
+			local St, oldRng = nil, nil
+			draws = 0
+			if opts.rngZero then
+				St = svcState()
+				oldRng = St and St.rng
+				if St then
+					St.rng = {
+						NextNumber = function()
+							draws = draws + 1
+							return 0
+						end,
+						NextInteger = function(_, lo)
+							return lo
+						end,
+					}
+				end
+			end
 			if boss_wins then
 				wipe(id, unpack(players))
 			else
 				killBoss(id, unpack(players))
 			end
 			advance(0.3)
+			if St then
+				St.rng = oldRng
+			end
 			local out = {}
 			for _, w in ipairs(who) do
 				local msg = lastMsg(w[1], "End", mark)
 				out[w[1]] = msg and msg.Rewards or {}
 			end
 			advance(RETURN_DELAY + 1)
-			return out, mark
+			return out, mark, draws
 		end
 		local function loss(share)
 			return BCat.RaidTier(share, false, "Starter")
 		end
 
-		-- 70%: the loss pay, on the loss clock; the other keeps the win
+		local function win(share)
+			return BCat.RaidTier(share, true, "Starter")
+		end
+
+		-- 70%: the win medal is paid and the win clock starts; the Boss Raid pet roll goes (the owner's choice 2026-11-02: no free pet); the other
+		-- keeps everything
 		local A, B = add(newPlayer("PayA", 10)), add(newPlayer("PayB", 10))
 		local rw, mark = won({ { A, 70, 100 }, { B, 0, 100 } })
 		local ra, rb = rw[A] or {}, rw[B] or {}
-		T.check(ra.Tier == "SatOut", "evo retreat pay: retreated for 70% of its time in a won fight: Tier SatOut", tostring(ra.Tier))
-		T.check(type(ra.Reason) == "string" and ra.Reason:find("sat out") ~= nil, "evo retreat pay: ...rw.Reason says why", tostring(ra.Reason))
-		T.check(ra.Tokens == loss(0.5).Tokens and ra.Xp == loss(0.5).Xp, "evo retreat pay: ...paid the Loss medal", fmt("%s tokens, %s xp", tostring(ra.Tokens), tostring(ra.Xp)))
-		T.check((ra.Gems or 0) == 0 and ra.EventPet == nil, "evo retreat pay: ...no Gems, no event pet")
-		T.check(data.GetBattle(A).RaidLossAt == 5000 and data.GetBattle(A).RaidRewardAt == 0, "evo retreat pay: ...RaidLossAt stamped, RaidRewardAt not",
-			fmt("%s %s", tostring(data.GetBattle(A).RaidLossAt), tostring(data.GetBattle(A).RaidRewardAt)))
+		T.check(ra.SatOut == true, "evo retreat pay: retreated for 70% of its time in a won fight: rw.SatOut", tostring(ra.SatOut))
+		T.check(type(ra.Reason) == "string" and ra.Reason:find("sat out") ~= nil and ra.Reason:find("no Boss Raid pet") ~= nil, "evo retreat pay: ...rw.Reason says why", tostring(ra.Reason))
+		T.check(medal(ra) and ra.Tier == win(0.5).Id, "evo retreat pay: ...the win medal, not the Loss tier and no tier named SatOut", tostring(ra.Tier))
+		T.check(ra.Tokens == win(0.5).Tokens and ra.Xp == win(0.5).Xp, "evo retreat pay: ...paid the medal's Tokens and XP", fmt("%s tokens, %s xp", tostring(ra.Tokens), tostring(ra.Xp)))
+		T.check(ra.EventPet == nil, "evo retreat pay: ...no event pet")
+		T.check(data.GetBattle(A).RaidRewardAt == 5000 and data.GetBattle(A).RaidLossAt == 0, "evo retreat pay: ...RaidRewardAt stamped (a paid win), RaidLossAt not",
+			fmt("%s %s", tostring(data.GetBattle(A).RaidRewardAt), tostring(data.GetBattle(A).RaidLossAt)))
 		T.check(toastCount(A, "sat out more than half the fight", mark) == 1, "evo retreat pay: ...the toast says so")
-		T.check(rb.Tier ~= "SatOut" and rb.Tier ~= "Loss" and (rb.Tokens or 0) > (ra.Tokens or 0), "evo retreat pay: the one who fought gets the win medal", tostring(rb.Tier) .. " " .. tostring(rb.Tokens))
+		T.check(toastCount(A, "Boss defeated!", mark) == 1, "evo retreat pay: ...and the win's own toast too")
+		-- the pet roll: with an rng that drops a pet on every roll the one who fought gets one and the sat-out one does not; the sat-out roll is
+		-- drawn and thrown away (one rng pays every raider in turn: 2 draws a paid player, Gems then the pet), so nobody else's rolls move
+		local A2, B2 = add(newPlayer("PayA2", 10)), add(newPlayer("PayB2", 10))
+		local rw2, _, n = won({ { A2, 70, 100 }, { B2, 0, 100 } }, false, { rngZero = true })
+		T.check(rw2[A2] and medal(rw2[A2]) and rw2[A2].SatOut == true and rw2[A2].EventPet == nil, "evo retreat pay: an rng that always drops a pet: the sat-out winner still gets none", rw2[A2] and tostring(rw2[A2].EventPet))
+		T.check(rw2[B2] and medal(rw2[B2]) and type(rw2[B2].EventPet) == "string", "evo retreat pay: ...the one who fought gets a Boss Raid pet", rw2[B2] and tostring(rw2[B2].EventPet))
+		T.eq(n, 4, "evo retreat pay: ...and the rng was drawn 4 times (the sat-out roll drawn and thrown away, not skipped)")
+		T.check(medal(rb) and rb.SatOut == nil and rb.Reason == nil and rb.Tokens == ra.Tokens, "evo retreat pay: the one who fought gets the same medal, no line", tostring(rb.Tier) .. " " .. tostring(rb.Tokens))
+		T.check(toastCount(B, "sat out", mark) == 0, "evo retreat pay: ...and no sat-out toast")
 		T.check(data.GetBattle(B).RaidRewardAt == 5000 and data.GetBattle(B).RaidLossAt == 0, "evo retreat pay: ...on the win clock")
-		-- 40% and exactly half: the win medal
+		-- 40% and exactly half: the win medal, no line, the pet roll kept (a chance, so only its absence is pinned: SatOut nil)
 		local C, D = add(newPlayer("PayC", 10)), add(newPlayer("PayD", 10))
 		rw = won({ { C, 40, 100 }, { D, 50, 100 } })
-		T.check(rw[C] and rw[C].Tier ~= "SatOut" and rw[C].Tier ~= "Loss", "evo retreat pay: retreated 40%: the win medal", rw[C] and tostring(rw[C].Tier))
-		T.check(rw[D] and rw[D].Tier ~= "SatOut" and rw[D].Tier ~= "Loss", "evo retreat pay: retreated exactly half: still the win medal", rw[D] and tostring(rw[D].Tier))
+		T.check(medal(rw[C]) and rw[C].SatOut == nil, "evo retreat pay: retreated 40%: the win medal, no line", rw[C] and tostring(rw[C].Tier))
+		T.check(medal(rw[D]) and rw[D].SatOut == nil, "evo retreat pay: retreated exactly half: still no line", rw[D] and tostring(rw[D].Tier))
+		-- the boundary is "over half": 50.2 of about 100 s is, 50 is not (the fight's own 0.1 s step keeps both on their side)
+		local D2 = add(newPlayer("PayD2", 10))
+		rw = won({ { D2, 50.2, 100 } })
+		T.check(medal(rw[D2]) and rw[D2].SatOut == true, "evo retreat pay: retreated 50.2 of 100: just over half sat out", rw[D2] and tostring(rw[D2].SatOut))
 		-- the late joiner: judged against its own time, never the fight's Duration (120 s here)
 		local E, G, H = add(newPlayer("PayE", 10)), add(newPlayer("PayG", 10)), add(newPlayer("PayH", 10))
 		rw = won({ { E, 0, 120 }, { G, 0, 20 }, { H, 15, 20 } })
-		T.check(rw[G] and rw[G].Tier ~= "SatOut" and rw[G].Tier ~= "Loss", "evo retreat pay: a late joiner who fought its last 20 s keeps the win medal", rw[G] and tostring(rw[G].Tier))
-		T.check(rw[H] and rw[H].Tier == "SatOut", "evo retreat pay: a late joiner back for 15 of its 20 s sat out (not 15 of the fight's 120)", rw[H] and tostring(rw[H].Tier))
-		-- the boss wins: the loss medal as today, whatever the seconds
+		T.check(medal(rw[G]) and rw[G].SatOut == nil, "evo retreat pay: a late joiner who fought its last 20 s keeps the win medal, no line", rw[G] and tostring(rw[G].Tier))
+		T.check(medal(rw[H]) and rw[H].SatOut == true and rw[H].EventPet == nil, "evo retreat pay: a late joiner back for 15 of its 20 s sat out (not 15 of the fight's 120): the medal, no pet", rw[H] and tostring(rw[H].Tier))
+		-- the boss wins: the loss medal as today, whatever the seconds, and no line (nothing was won)
 		local I, J = add(newPlayer("PayI", 10)), add(newPlayer("PayJ", 10))
 		rw = won({ { I, 90, 100 }, { J, 0, 100 } }, true)
-		T.check(rw[I] and rw[I].Tier == "Loss" and rw[J] and rw[J].Tier == "Loss", "evo retreat pay: the boss wins: everyone the loss medal as today", (rw[I] and tostring(rw[I].Tier) or "nil") .. " " .. (rw[J] and tostring(rw[J].Tier) or "nil"))
+		T.check(rw[I] and rw[I].Tier == "Loss" and rw[I].SatOut == nil and rw[J] and rw[J].Tier == "Loss", "evo retreat pay: the boss wins: everyone the loss medal as today, no line", (rw[I] and tostring(rw[I].Tier) or "nil") .. " " .. (rw[J] and tostring(rw[J].Tier) or "nil"))
+		T.check(rw[I] and rw[I].Tokens == loss(0.5).Tokens, "evo retreat pay: ...the Loss medal's tokens", rw[I] and tostring(rw[I].Tokens))
 		-- no hits at all: no reward, as today
 		local L = add(newPlayer("PayL", 10))
 		setUp()
@@ -1041,17 +1092,19 @@ local function serverScenarios()
 			T.check(msgL and msgL.Rewards and msgL.Rewards.Tier == "None", "evo retreat pay: back the whole fight, no hits: the Tier None of today", msgL and msgL.Rewards and tostring(msgL.Rewards.Tier))
 			advance(RETURN_DELAY + 1)
 		end
-		-- a second sit-out inside the loss clock pays nothing, says so, and the win clock stays free
+		-- a sat-out win is a paid win: a second one inside the 20 minute clock pays nothing (Tier Cooldown, as any win), keeps the line, and the
+		-- loss clock is never touched
 		local M = add(newPlayer("PayM", 10))
 		won({ { M, 70, 100 } })
 		local tokensM = data.GetTokens(M)
-		local stamp = data.GetBattle(M).RaidLossAt
+		local stamp = data.GetBattle(M).RaidRewardAt
+		T.check(stamp == 5000 and tokensM > 0, "evo retreat pay: (setup) the first sat-out win paid and stamped the win clock", fmt("%s %s", tostring(stamp), tostring(tokensM)))
 		rw = won({ { M, 70, 100 } })
-		T.check(rw[M] and rw[M].Tier == "SatOut" and rw[M].Tokens == 0 and data.GetTokens(M) == tokensM and data.GetBattle(M).RaidLossAt == stamp,
-			"evo retreat pay: a second sit-out inside the loss clock pays nothing, the clock stays", rw[M] and fmt("%s %s", tostring(rw[M].Tier), tostring(rw[M].Tokens)))
-		T.eq(data.GetBattle(M).RaidRewardAt, 0, "evo retreat pay: ...and a sit-out never touches the win clock")
+		T.check(rw[M] and rw[M].Tier == "Cooldown" and rw[M].SatOut == true and (rw[M].Tokens or 0) == 0 and data.GetTokens(M) == tokensM and data.GetBattle(M).RaidRewardAt == stamp,
+			"evo retreat pay: a second sit-out inside the win clock pays nothing (Cooldown), keeps the line, the clock stays", rw[M] and fmt("%s %s %s", tostring(rw[M].Tier), tostring(rw[M].SatOut), tostring(rw[M].Tokens)))
+		T.eq(data.GetBattle(M).RaidLossAt, 0, "evo retreat pay: ...and a sat-out win never touches the loss clock")
 		rw = won({ { M, 0, 100 } })
-		T.check(rw[M] and rw[M].Tier ~= "SatOut" and rw[M].Tier ~= "Loss" and data.GetBattle(M).RaidRewardAt == 5000, "evo retreat pay: ...so the next real win pays", rw[M] and tostring(rw[M].Tier))
+		T.check(rw[M] and rw[M].Tier == "Cooldown" and rw[M].SatOut == nil, "evo retreat pay: ...a real win inside the same clock is Cooldown too, without the line", rw[M] and tostring(rw[M].Tier))
 	end)
 
 	----------------------------------------------------------------------------------------------------
@@ -1181,9 +1234,9 @@ local function serverScenarios()
 		advance(0.3)
 		local msgX, msgY = lastMsg(X, "End", markEnd), lastMsg(Y, "End", markEnd)
 		local rx, ry = msgX and msgX.Rewards or {}, msgY and msgY.Rewards or {}
-		T.check(rx.Tier == "SatOut" and tostring(rx.Reason):find("sat out") ~= nil, "evo retreat flow group: the result carries the SatOut line for the one who sat out", tostring(rx.Tier))
+		T.check(rx.SatOut == true and tostring(rx.Reason):find("sat out") ~= nil and medal(rx), "evo retreat flow group: the result carries the sat-out line and the win medal for the one who sat out", tostring(rx.Tier) .. " " .. tostring(rx.SatOut))
 		T.check(msgX and msgX.Won == true, "evo retreat flow group: ...the fight is still a win for it", msgX and tostring(msgX.Won))
-		T.check(ry.Tier ~= "SatOut" and ry.Tier ~= "Loss" and ry.Tier ~= nil, "evo retreat flow group: ...and the others keep their medals", tostring(ry.Tier))
+		T.check(ry.SatOut == nil and medal(ry), "evo retreat flow group: ...and the others keep their medals without the line", tostring(ry.Tier))
 	end)
 
 	return S
@@ -1458,11 +1511,14 @@ local function clientScenarios()
 		local why = {}
 		local vp = Mock.Viewport
 		local areaY = vp.Y - (Mock.TopInset or 0)
-		-- the Cheer row: its left, 8 px apart, the same height; or stacked above it where the row sits beside the vitals card
+		-- the Cheer row: its left, 8 px apart, the same height; or stacked above it where the row sits beside the vitals card; or under the
+		-- vitals card (8 px below it, from its left edge or further right) where that stack would cover the fighter's cards or the middle
 		local row = abs((rc.x0 - r.x1) - 8) <= 2 and abs(r.y0 - rc.y0) <= 2 and abs(r.y1 - rc.y1) <= 2
 		local stack = abs((rc.y0 - r.y1) - 8) <= 2 and abs(r.x0 - rc.x0) <= 2 and abs(r.x1 - rc.x1) <= 2
-		if not (row or stack) then
-			why[#why + 1] = "neither left of Cheer up! nor stacked above it: " .. rstr(r) .. " vs " .. rstr(rc)
+		local v = H.moduleAt("client", "Controllers/HudController").GetLayout().Vitals
+		local under = v ~= nil and abs((r.y0 - (v.Y + v.H)) - 8) <= 2 and r.x0 >= v.X - 2 and r.x1 <= v.X + v.W + 2
+		if not (row or stack or under) then
+			why[#why + 1] = "neither left of Cheer up!, stacked above it nor under the vitals card: " .. rstr(r) .. " vs " .. rstr(rc)
 		end
 		if r.x0 < 0 or r.y0 < 0 or r.x1 > vp.X or r.y1 > areaY then
 			why[#why + 1] = "off the screen " .. rstr(r)
@@ -1480,7 +1536,7 @@ local function clientScenarios()
 		if r.x0 < cx + vp.X * 0.145 and r.x1 > cx - vp.X * 0.145 and r.y0 < cy + vp.Y * 0.145 and r.y1 > cy - vp.Y * 0.145 then
 			why[#why + 1] = "in the middle of the screen " .. rstr(r)
 		end
-		return #why > 0 and table.concat(why, "; ") or nil, r, row and "row" or "stack"
+		return #why > 0 and table.concat(why, "; ") or nil, r, row and "row" or (stack and "stack" or (under and "under" or "none"))
 	end
 
 	------------------------------------------------------------------------------------------------
@@ -1612,23 +1668,30 @@ local function clientScenarios()
 		d = H.fight({ Mode = "Raid" })
 		if T.check(d ~= nil, "evo retreat client: (setup) a raid for the result card") then
 			KC.toClient("BattleState", "End", { BattleId = d.id, Mode = "Raid", Outcome = "Win", Won = true, Spectator = false, Reason = "BossDown",
-				Rewards = { Tier = "SatOut", Reason = "You sat out more than half the fight: the small reward only.", Tokens = 25, Xp = 20, Share = 0.2, Damage = 900 } }, d.id)
+				Rewards = { Tier = "Gold", SatOut = true, Reason = "You sat out more than half the fight: no Boss Raid pet this time.", Tokens = 500, Xp = 400, Share = 0.5, Damage = 900 } }, d.id)
 			LocalPlayer:SetAttribute("InBattle", nil)
 			KC.advance(1)
 			local card = H.find("Root.ResultCard")
-			local found, tier = false, false
+			local found, raw = false, false
 			for _, o in ipairs(card and card:GetDescendants() or {}) do
 				if (o:IsA("TextLabel") or o:IsA("TextButton")) and shownIn(o) then
-					if tostring(o.Text):find("Sat out") then
+					if tostring(o.Text):find("Sat out", 1, true) and tostring(o.Text):find("no pet this time", 1, true) then
 						found = true
 					end
-					if tostring(o.Text):find("SatOut", 1, true) then
-						tier = true
+					if tostring(o.Text) == "true" or tostring(o.Text):find("SatOut", 1, true) then
+						raw = true
 					end
 				end
 			end
-			T.check(found, "evo retreat client: the result card says the player sat out")
-			T.check(not tier, "evo retreat client: ...in words, not the tier's id")
+			T.check(found, "evo retreat client: the result card says the player sat out and gets no pet this time")
+			T.check(not raw, "evo retreat client: ...in words, never the raw flag")
+			local gold = false
+			for _, o in ipairs(card and card:GetDescendants() or {}) do
+				if (o:IsA("TextLabel") or o:IsA("TextButton")) and shownIn(o) and tostring(o.Text):find("Gold tier", 1, true) then
+					gold = true
+				end
+			end
+			T.check(gold, "evo retreat client: ...and the medal's line is still there (the win was paid)")
 			H.cleanup(BC, d)
 		end
 
@@ -1689,14 +1752,14 @@ local function clientScenarios()
 			local d = H.fight({ Mode = "Raid" })
 			if T.check(d ~= nil and BC.GetBattle() ~= nil, tag .. "(setup) a raid") then
 				local why, r, how = placeProblem(true)
-				T.check(why == nil, tag .. "the button: >= 44 px, in the Cheer up! row or stacked above it, on the screen, clear of everything, out of the middle", tostring(why) .. (r and (" " .. rstr(r)) or ""))
+				T.check(why == nil, tag .. "the button: >= 44 px, in the Cheer up! row, stacked above it or under the vitals card, on the screen, clear of everything, out of the middle", tostring(why) .. (r and (" " .. rstr(r)) or ""))
 				local v = H.moduleAt("client", "Controllers/HudController").GetLayout().Vitals
 				local c = H.find("Root.Cheer")
 				if v and c then
 					local rc = rectOf(c)
-					-- Cheer up! beside the vitals card -> Retreat stacks above it
+					-- Cheer up! beside the vitals card -> Retreat stacks above it, or sits under the card where the stack would cover the fighter's cards
 					if rc.x1 <= v.X + 1 and rc.y1 > v.Y then
-						T.check(how == "stack", tag .. "the row sits beside the card: it stacks above Cheer up!", tostring(how))
+						T.check(how == "stack" or how == "under", tag .. "the row sits beside the card: it stacks above Cheer up! or sits under the card", tostring(how))
 					end
 				end
 				local b = H.find("Root.Retreat")

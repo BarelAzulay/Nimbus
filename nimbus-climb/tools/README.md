@@ -117,6 +117,7 @@ SIM_BATTLE="quick only=duels,raids" python3 -c "import lupa.luajit21 as L; L.Lua
   | `progress` | a new player's pace with real run XP: minutes to Ring 5, floor 1 and Ring 10 (`SIM.Targets.Progress`) |
   | `training` | trained / evolved TeamPower ratios; trained mirror duels fair, evolved reach on both sides; trained raids 100-240 s with the evolved team's real reach |
   | `move` | the character patterns (random targets + an r 14 circle) at the legal run speed with a 200 ms feed delay for mochi_slime L1 / sunbeam_bear L20 / stormfang L50: the server fighter keeps up (gap <= 0.5 stud, zero leashes); a straight run-off is leashed after 3 s |
+  | `forms` | evolved forms (spec 2026-11-01): one pet alone against a High Storm Titan for 60 s with the boss's HP pinned, per special kind and per element at stage 1 and 2: the damage with the form against the same pet at the same stage with no form (x) and against stage 0 (raw); the bands per stage, stage 2 >= stage 1, stage 0 untouched |
   | `perf` | a 16-fighter raid with minion waves steps in well under 1 ms |
   | `progression` | the XP and Cash behind each stage, `Validate()` |
 
@@ -128,7 +129,8 @@ SIM_BATTLE="quick only=duels,raids" python3 -c "import lupa.luajit21 as L; L.Lua
   `Move`, presses ATTACK / ELEMENT / SPECIAL / the buffs, swaps and dashes out of wind-ups and telegraphs after a
   human-ish delay (options: dodge share, delay steps, buffs, swap, element). `Auto = true` teams are driven by the
   engine's own AI (tests only; BattleService never sets it). The Phase 3 / 4 sections (`trials`, `dodge`, `specials`,
-  `extremes`, `elements`, `level100`) are gone with the Trials and RETREAT.
+  `extremes`, `elements`, `level100`) are gone with the Trials and the old per-slot RETREAT (today's RETREAT is the boss raids'
+  R button: `smoke_evo_retreat.lua`; it presses nothing in the sim, so no section reads it).
 
 ## Model renderer: see the voxel art without Studio
 
@@ -230,7 +232,8 @@ python3 tools/render_gui.py portal:Hard:2 -o portal.png              # a portal'
   with `--json`. `--list` prints them.
 * `battle[:<mode>[:<phase>]]` (BattleController): the battle HUD fed by a real BattleSim stepped at 10 Hz through
   BattleState. Since Phase 5 this is the fighter / helpers HUD (see the Phase 5 scenarios below); the Phase 3 team rows,
-  ATTACK / RETREAT and the regroup countdown are gone. e.g. `python3 tools/render_gui.py battle:raid:ready --grid -o raid.png`.
+  ATTACK, the old per-slot RETREAT and the regroup countdown are gone (a raid HUD shows the boss raids' RETREAT button next to
+  Cheer up!). e.g. `python3 tools/render_gui.py battle:raid:ready --grid -o raid.png`.
 * `arena[:<view>[:<arg>]]` (Phase 3 UI: MenuController's Team window, ArenaController): a profile with a battle team,
   trophies and a few Dungeon floors cleared, then `team` (default), `newteam` (empty presets),
   `duels` / `raid` / `leaders` (the Arena panel's tabs, with two
@@ -337,6 +340,7 @@ The Phase 4 files (still run, updated for Phase 5 where 12.2 says so):
 | `smoke_p4_ui.lua` | the tutorial chapters 2 and 4, the NPC tips and the ring window (ArenaController) |
 | `smoke_p4_flow.lua` | end-to-end runs of several players through the home: garden, coins, Food Machine, EVOLVE, training, the ring, the portal, prestige, rejoin |
 | `smoke_afx_reach.lua`, `smoke_afx_impact.lua`, `smoke_afx_linger.lua` | attack effects (spec 2026-11-01): real reach x1.15 / x1.3 on the server and drawn as it hits, the frozen ability timers, the docs (`afx_docs`); sizes, the impact package and its caps (who yields to the 6-emitter cap, the rings' 14 / 16 studs inside the real radius, the lights' effective caps); the lingering tails, their budget, the disc pool in a sustained fight, the camera kick, the FOV punch's list and the zone tail |
+| `smoke_evo_sim.lua`, `smoke_evo_elements.lua`, `smoke_evo_rarity.lua`, `smoke_evo_looks.lua`, `smoke_evo_buttons.lua`, `smoke_evo_retreat.lua` | evolved forms, Switch Target and Retreat (spec 2026-11-01, plan 2026-11-02): every special's forms in the sim (`BattleCatalog.Forms` / `FormNames`, the frozen stage-0 replay `evo_stage0_pinned`, the charge line, the delayed-hit queue, per-unit slow / mark, the boss bonus hit, the `Twist` wire); every element's forms and a ranged pet's Circle on its aim point; Candy Unicorn Legendary, Magma Cub and Hydralotl Mythic with `StatRarity` (stats, odds, index, saves); the looks (form recipes, the wolf pack on the real charge line, cooler beams, auras that end with the buff, budgets, phones); F / X = Switch Target, the biggest Special button, names on buttons, keys and gamepad; Retreat end to end (the sim, the service and its leash grace, the no-free-pet pay rule, the HUD button on every screen, the docs `evo_docs`) |
 
 ### Mesh mode: `--mesh` (Phase 6)
 

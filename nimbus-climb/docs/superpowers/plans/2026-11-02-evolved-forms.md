@@ -349,6 +349,8 @@ Expected: all pass; 0 errors.
 
 ### Task 6: Retreat (the R button in boss raids; the team-level state; the pay rule; the docs for the whole build)
 
+> Overruled 2026-11-02 (the owner, d283e75): the pay rule in this task is NOT the loss pay written below; the win's medal, Tokens, XP, Gems and the win clock stay and only the Boss Raid pet roll is skipped. See deviation 14 and the spec's "No free pet". Built that way on 2026-11-03.
+
 **Files:**
 - Modify: `src/shared/BattleCatalog.lua` (`Fighter` 313-360: `RetreatWait = 10`, `RetreatDodge = 0.5`; `Validate` 2321-2326: both positive; header line 31-41)
 - Modify: `src/shared/BattleSim.lua` (header: the "Retreat" / "Engage" commands, `Result().Retreated / Fought`, `TeamOf().Retreated / Cooldowns.Retreat`; `BattleSim.Actions` 180 + `"Retreat", "Engage"`; `newTeamRecord` 461-499: `retreat = nil`, `retreatReadyAt = 0`, `retreatSeconds = 0`, `joinedAt = self.t`; `targetable` 838-840 + a new `hittable(self, e)`; `livingEnemies` 1932-1942 (targets) vs `resolveTelegraph` 2537 using `hittable`; `applyDamage` 1798-1803: no meter for a retreated victim's team; `swapIn` 2332-2356: the incoming fighter inherits (team-level: nothing to do, pin it); `fighterSwing` 2977: `false` while `team.retreat`; `fighterStep` 3105: no meter tick while retreated, `retreatSeconds += dt`; `Step` 3465+: `self.anyEngaged` computed before `bossStep`; `finish` 3290+ / `Result`: `Retreated = { [owner] = seconds }`, `Fought = { [owner] = t - joinedAt }`; `TeamOf` 1329-1369; `doCommand` 3761+: "Retreat" / "Engage", `Attack` / `Element` / `Special` refused `Retreated`)
@@ -435,7 +437,7 @@ Not side by side: 1 / 3 (`BattleCatalog.lua`, `contract.json`), 3 / 4 (`AttackFx
 11. Names on touch sit inside the button face (captions are hidden on touch today); Special >= 72 px on touch so two lines at >= 11 px fit.
 12. Rally's bigger pet: `Model:ScaleTo` under `pcall`; the mock keeps the `AuraScale` attribute (the test reads it).
 13. The Retreat button sits in the Cheer up! row (left of it); keys `R` and `DPadDown`; Retreat is accepted while Stunned / Casting / Dashing (the pet runs when it can), refused `Down`; `Attack` / `Element` / `Special` are `Retreated`, `Buff` / `Swap` / `Cheer` / `Target` / `Dash` work.
-14. The no-free-win rule judges a team against its OWN time in the fight (`Fought`), paid as a loss with the loss clock (`RaidLossAt`), the card line "SatOut".
+14. The no-free-win rule judges a team against its OWN time in the fight (`Fought`), paid as a loss with the loss clock (`RaidLossAt`), the card line "SatOut". **Overruled by the owner on 2026-11-02 (d283e75; the spec's "No free pet"): the win's medal, Tokens, XP, Gems and the win clock stay, only the Boss Raid pet roll is skipped (`rw.SatOut` + `Reason`); built that way on 2026-11-03.**
 15. The stage-0 pin is a frozen replay (damage, KO steps, reason) of a Duel of unmoved pets; it is the one test every later task must keep.
 
 ## Questions that are the owner's (not stopping for them; in the ledger's morning list)

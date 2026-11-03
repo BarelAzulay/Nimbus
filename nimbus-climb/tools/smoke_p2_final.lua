@@ -1040,7 +1040,11 @@ local function checkBattleRules(BC, Config, TC, p3, text, controllerSource)
 	t:case(attackRow ~= nil and has(flat(attackRow[1]), "attacks by itself") and not has(f, "Hold it to keep attacking") and not has(f, "hold to keep attacking"),
 		"SWITCH TARGET picks the target, the pet attacks by itself (no hold-to-attack text left)")
 	t:case(has(f, "Your PET dashes") and has(f, "RUN is `Ctrl`"), "the battle section: Shift makes the PET dash, RUN is `Ctrl` in a battle")
-	t:case(not src:find("ACTION_RETREAT", 1, true) and not has(f, "RETREAT"), "RETREAT is gone (BattleController and the battle section)")
+	-- evolved forms (2026-11-02): the old per-slot RETREAT is gone; the new RETREAT is the boss raids' R (ACTION_RETREAT bound only in a raid)
+	t:case(bound("ACTION_RETREAT", "R") and bound("ACTION_RETREAT", "DPadDown")
+		and src:find("if%s+Retreat%.Allowed%(.-%)%s+then%s+ContextActionService:BindActionAtPriority%(K%.ACTION_RETREAT") ~= nil
+		and has(f, "**RETREAT**") and has(f, "Boss raids only") and has(f, "**Engage**") and not has(f, "RETREAT is gone"),
+		"RETREAT is the boss raids' R / D-pad down only (BattleController binds it inside the raid guard; the battle section says so)")
 	t:report()
 end
 
@@ -1719,8 +1723,16 @@ local function checkOwner4(TC, text, lines, petCardText, devSource)
 		"**PLAY**" }) do
 		t:case(has(c, word), "the controls table should say " .. show(word))
 	end
-	t:case(not has(c, "Cook") and not has(c, "Collector") and not has(c, "RETREAT") and not has(c, "Trial Portal"),
-		"the controls table no longer cooks, banks the Collector, RETREATs or opens the Trial Portal")
+	t:case(not has(c, "Cook") and not has(c, "Collector") and not has(c, "Trial Portal"),
+		"the controls table no longer cooks, banks the Collector or opens the Trial Portal")
+	local retreatRow = nil
+	for _, row in ipairs(controls) do
+		if row[1]:sub(1, #"Battle: **RETREAT**") == "Battle: **RETREAT**" then
+			retreatRow = row
+		end
+	end
+	t:case(retreatRow ~= nil and retreatRow[2] == "`R`" and retreatRow[4] == "D-pad down" and has(flat(retreatRow[1]), "boss raids only") and has(flat(retreatRow[1]), "**Engage**"),
+		"the controls table's RETREAT row reads `R` / D-pad down, boss raids only, Engage (evolved forms)")
 	-- pet cards
 	local p = flat(petCardText)
 	for _, word in ipairs({ "keeping its distance from you and from the others", "Big pets keep further back", "**Lv 12**", "(★ / ★★)", "blue XP bar",
@@ -1768,7 +1780,7 @@ end
 -- checklist "## Phase 5: owner checklist" (ARCHITECTURE_V3.md 10.6: steps 0-7, one needle per step; judge M9)
 ----------------------------------------------------------------------------------------------------
 local TOPICS5 = {
-	{ "teams of 3: a fighter and two helpers", { "**FIGHTER**", "**HELPERS**", "**buff**", "**SWAP**", "three lives", "RETREAT is gone" } },
+	{ "teams of 3: a fighter and two helpers", { "**FIGHTER**", "**HELPERS**", "**buff**", "**SWAP**", "three lives", "In a Boss Raid **RETREAT**" } },
 	{ "the new battle controls (keys and touch)", { "**SWITCH TARGET**", "**ELEMENT**", "**SPECIAL**", "**DASH**", "`F`", "`E`", "`Q`", "`Shift`", "`Tab`", "`1` / `2`", "big touch buttons" } },
 	{ "helpers / Supporters", { "Supporters", "**Heal**", "**Shield**", "**Rally**", "**Haste**", "about 70 %", "battle power" } },
 	{ "levels and evolutions", { "+10 %", "EVOLVE", "Nobody gets weaker" } },

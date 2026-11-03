@@ -78,7 +78,8 @@ ids were found. A yellow `[MeshLibrary] <name> ... stays on the Part build` line
   hit). `Tab` picks the next enemy. The other two pets are your
   **HELPERS**: they float behind you, and `1` / `2` (or a tap on a helper's picture) give that helper's **buff**. Hold
   `1` / `2` (or tap **SWAP**) to swap a helper in as your fighter. If your fighter is knocked out, the next pet steps
-  in: three lives. On a phone the same big touch buttons sit at the bottom right. RETREAT is gone. The same controls
+  in: three lives. On a phone the same big touch buttons sit at the bottom right. In a Boss Raid **RETREAT** (`R`)
+  calls your pet back to you and the boss picks someone else; press it again (**Engage**) to go back in. The same controls
   work in the Dungeon, the Champion Ring, duels and Boss Raids (see
   [In a battle](#in-a-battle-one-fighter-two-helpers)).
 - **Economy pets are Supporters.** In a fight they hit for about 70 % of a Combat pet, and their special and their
@@ -300,6 +301,7 @@ or the VS Code "Rojo" extension are the easy ways to get it).
 | Battle: **ELEMENT** (your fighter's element attack; a door or chest prompt you can see gets `E` first) | `E` | **ELEMENT** button | `Y` |
 | Battle: **SPECIAL** (when the energy bar is full) | `Q` | **SPECIAL** button | `RB` |
 | Battle: **DASH** (your pet dashes and dodges a hit) | `Shift` | **DASH** button | `B` |
+| Battle: **RETREAT** (boss raids only: your pet runs back to you and the boss picks someone else; press again to **Engage**, then 10 s before the next retreat) | `R` | **RETREAT** button | D-pad down |
 | Battle: pick the next enemy | `Tab` (or click it; `T` clears) | tap it | `RT` (`LT` clears) |
 | Battle: a helper's buff (tap) or swap it in (hold) | `1` / `2` | tap / hold its picture, or **SWAP** | `LB` / D-pad up (D-pad left / right swap) |
 | Open the Pets window on a pet that is ready to evolve | click its gold **EVOLVE!** pill | tap the pill | - |
@@ -638,6 +640,18 @@ Freeze, the length and width of Beam, the range of Pounce and the size of the el
 and a cone's angle stay the same. Their effects grow with them, x1.15 and x1.3, on top of the size their rarity gives (Common
 x1.3 up to Secret x1.6). NPC and enemy pets follow the same rule by their own evolution.
 
+**Evolved pets get new abilities:** every evolution gives a pet's special a new name, look and effect, and its
+element attack too. The first evolution adds something to the special (a Pounce also hits everything on its way, a Blast
+bursts a second time, a Beam marks its targets, a Heal keeps healing, a Shield hits back, a Rally adds speed, a Haste
+recharges your other buttons faster...), the last evolution adds more on top (a Pounce explodes where it lands, a Storm ends
+with a huge bolt, a Freeze shatters, a Shield bursts when it breaks...). Epic pets and up get their own unique form:
+Stormfang's Storm Pounce becomes **Shadow Pack** (three shadow storm wolves charge at the enemy from behind it) and then
+**Thunder Pack** (five wolves wrapped in lightning, bolts striking where they land); Ember Phoenix's Phoenix Flare becomes
+Phoenix Burst and then Phoenix Rebirth, and so on. Common to Rare pets share one look per kind, in their own colours.
+Element attacks evolve by element (Tide Burst becomes Riptide, then Maelstrom; Bolt becomes Forked Bolt, then Thunder
+Lance...). The SPECIAL and ELEMENT buttons, the Pets window and the Pet Index show the current name. Bosses stay immune to
+stuns, roots, slows and burns: against a boss such a twist deals a bonus hit instead.
+
 **Evolved pets look evolved everywhere:** following you, roaming your garden, on the Pet Podium, in the Pets window,
 the Pet Index (your best stage), the Pets window, the Fusion window, the Food Machine and Training lists, the roulette
 reveal, the Champion Ring window and in every battle (your fighter and your helpers' pictures).
@@ -875,8 +889,9 @@ them and train their skills at the Training Place.
 |---|---|---|---|---|
 | **SWITCH TARGET** | `F` | the **TARGET** button | `X` | Your fighter attacks by itself, all the time. Tap for the next enemy, nearest first, and your pet goes after it; hold to go back to automatic. With one enemy it says so and does nothing. Clicking or tapping an enemy picks it too (with **Mouse lock** on: the one in the middle of the screen). A gold arrow shows who your pet is attacking. |
 | **ELEMENT** | `E` | ELEMENT button | `Y` | Your fighter's element attack (see below), then a **7 s** cooldown. When a door or chest prompt shows, `E` presses the prompt. |
-| **SPECIAL** | `Q` | SPECIAL button | `RB` | Your fighter's special attack, when the **ENERGY** bar is full (100). |
+| **SPECIAL** | `Q` | SPECIAL button | `RB` | Your fighter's special attack, when the **ENERGY** bar is full (100). The button is the biggest one and shows the attack's name (an evolved pet's new form: see [Evolution](#evolution-the-evolve-button)); the ELEMENT button shows its attack's name too. |
 | **DASH** | `Shift` | DASH button | `B` | Your PET dashes (your character stays put): a hit during the dash misses ("DODGED!"). It costs no stamina, one dash every **2.5 s**. In a battle RUN is `Ctrl`. |
+| **RETREAT** | `R` | RETREAT button (next to Cheer up!, above it on a small phone, or under your fighter's card on a landscape phone) | D-pad down | **Boss raids only.** Your pet runs back to you (with a short dodge on the way) and the boss picks someone else. While it is back it does not attack, its ENERGY does not fill and it does not heal by itself; the helper buttons, a Heal included, still work. The button then says **Engage**: press it (or `R`) to go back in, and wait **10 s** before you can retreat again. If nobody else is fighting, the boss comes for you anyway. Sit out more than half of your time in a won fight and you still get your medal, Tokens, XP and Gems, but no Boss Raid pet can drop for you that time. |
 | Pick an enemy | `Tab` (next), click it, `T` clears | tap it or its row | `RT` / `LT` | The picked enemy gets a gold "TARGET" bracket. |
 | Helper buff | `1` / `2` | tap the helper's picture | `LB` / D-pad up | That helper's buff (see the table below). |
 | **SWAP** | hold `1` / `2` | hold the picture, or **SWAP** | D-pad left / right | The helper becomes your fighter and your fighter rests as a helper (every **10 s**). |
@@ -1072,6 +1087,14 @@ the floor and fills up. Walk out of it, or **DASH** out of it before it is full 
 too late). Each boss also calls **minion waves**. Below **30 %** of its health it gets **enraged**: the screen edges turn red, it
 hits twice as hard and it starts casting a huge attack with at least 2.5 seconds of warning, even if you were just frozen (it waits
 for you to thaw). **DASH** out of that one: it knocks a pet out. A fight ends when the boss is down, when every raider is knocked out or gone, or after **5 min 30 s**.
+
+**RETREAT** (`R`, D-pad down, or the button next to Cheer up!) is for boss raids only: your pet runs back to you with a short
+dodge, and the boss picks someone else while anyone is still fighting. While it is back it does not attack, its ENERGY does not
+fill and it does not heal by itself; the helper buttons (a Heal included) still work, and a helper swapped in stays back. The button then says **Engage**:
+press it to send the pet back in, and wait **10 s** before you can retreat again. If nobody else is fighting, the boss comes for
+your pet anyway, and the lethal attack still knocks it out if it stands in the area. **No free pet:** sit out more than half of
+your own time in a won fight and you keep your medal, Tokens, XP and Gems, but no Boss Raid pet can drop for you that time (the
+result card says so).
 
 **Rewards** go to everyone who is still in the fight at the end, by the share of the boss's health they took off. The table shows
 High's numbers; Tokens, XP and Gems scale with the fight's tier (x0.4, x0.7, x1, x1.3), and Gem and pet chances are half at Starter

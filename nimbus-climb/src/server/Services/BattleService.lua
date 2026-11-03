@@ -226,8 +226,11 @@
 --     and an EventPetChance of an event pet; Raids + 1, RaidBestDamage. The reward clocks live on the Battle record (saved, merged
 --     across servers by maximum): a paid win stamps RaidRewardAt and the next win pays after Raid.RewardMinutes (until then Tier
 --     "Cooldown" + AgainIn, nothing paid); a paid loss stamps RaidLossAt, pays again after Raid.LossMinutes and never touches the win clock.
---     No free win (evolved forms): a player whose team was retreated for over half of ITS OWN time in the fight (Result().Retreated / Fought, so a late
---     joiner is judged on the seconds it was there) is paid as a loss on a win: Tier "SatOut" + Reason, the loss clock, no Gems, no event pet. Per player.
+--     No free pet (evolved forms, the owner's choice 2026-11-02): a player whose team was retreated for over half of ITS OWN time in the fight
+--     (Result().Retreated / Fought, so a late joiner is judged on the seconds it was there) keeps the win's medal, Tokens, XP, Gems and the win
+--     clock, but gets no Boss Raid pet roll: rw.SatOut = true + rw.Reason on the result (a toast says it too when something was paid; inside the
+--     20 minute clock the Cooldown toast is enough, the card line still says it). Per player; the others' pay is untouched, and their rolls are
+--     exactly what they were (the sat-out player's pet roll is drawn and thrown away, never skipped: one rng pays every raider in turn).
 --     A paid win saves at once: DataService has no session lock, so a server that loads before the stamp is stored could pay again. What is
 --     left is a hop that lands while that save and its retries are failing (one extra payout at most for each such hop, no worse than a store
 --     outage's other effects); a load that fails outright is provisional: no team, so no fight.
@@ -1512,12 +1515,12 @@ local function payRaid(b, part, res)
 	local won = res.WinnerSide == 1 -- a win is a win; a shutdown is none (it pays like a loss)
 	local share = (type(res.Shares) == "table" and tonumber(res.Shares[uid])) or 0
 	local damage = (type(res.Damage) == "table" and tonumber(res.Damage[uid])) or 0
-	-- evolved forms, no free win: back for over half of the team's OWN time in the fight (a late joiner's is its own seconds): the loss pay, per player
+	-- evolved forms, no free pet (the owner's choice 2026-11-02): back for over half of the team's OWN time in the fight (a late joiner's is its own
+	-- seconds): the win is paid as a win, without the Boss Raid pet roll; per player
 	local retreated = (type(res.Retreated) == "table" and tonumber(res.Retreated[uid])) or 0
 	local fought = (type(res.Fought) == "table" and tonumber(res.Fought[uid])) or tonumber(res.Duration) or 0
 	local satOut = won and retreated > 0.5 * max(1, fought)
-	local paidWin = won and not satOut
-	local tier = BattleCatalog.RaidTier(share, paidWin, b.RaidTier)
+	local tier = BattleCatalog.RaidTier(share, won, b.RaidTier)
 	if not tier or damage <= 0 then
 		-- no damage at all (an idle joiner whose pets never hit the boss): nothing, not even the Loss tier
 		local rw = emptyRewards()
@@ -1527,26 +1530,26 @@ local function payRaid(b, part, res)
 	end
 	-- the reward clocks: a paid win starts its limit, a paid loss only its own (a loss can't cost a player their win)
 	local clocks = BattleService.RaidRewardStatus(player)
-	local wait = paidWin and clocks.WinIn or clocks.LossIn
+	local wait = won and clocks.WinIn or clocks.LossIn
 	try(dataService(), "MutateBattle", player, function(rec)
 		rec.Raids = (tonumber(rec.Raids) or 0) + 1
 		if damage > (tonumber(rec.RaidBestDamage) or 0) then
 			rec.RaidBestDamage = floor(damage)
 		end
-		if wait <= 0 and paidWin then
+		if wait <= 0 and won then
 			rec.RaidRewardAt = clocks.Now
 		elseif wait <= 0 then
 			rec.RaidLossAt = clocks.Now
 		end
 	end)
-	local satOutText = "You sat out more than half the fight: the small reward only."
+	local satOutText = "You sat out more than half the fight: no Boss Raid pet this time."
 	if wait > 0 then
 		local rw = emptyRewards()
 		rw.Tier, rw.Share, rw.Damage = "Loss", floor(share * 1000 + 0.5) / 1000, floor(damage)
 		if satOut then
-			rw.Tier, rw.Reason = "SatOut", satOutText
-			notify(player, satOutText, "info", 5)
-		elseif won then
+			rw.SatOut, rw.Reason = true, satOutText
+		end
+		if won then
 			rw.Tier, rw.AgainIn = "Cooldown", wait
 			notify(player, string.format("Boss defeated! Rewards again in %d:%02d", floor(wait / 60), wait % 60), "good", 5)
 		else
@@ -1568,8 +1571,13 @@ local function payRaid(b, part, res)
 	end
 	local eventPet = nil
 	local petChance = tonumber(tier.EventPetChance) or 0
-	if petChance > 0 and St.rng:NextNumber() < petChance then
-		eventPet = grantEventPet(player)
+	if petChance > 0 then
+		-- no free pet: a sat-out player's roll is drawn and thrown away (the one rng pays every raider in turn, so skipping the draw
+		-- would move every later player's Gem and pet rolls; drawing keeps them exactly what they were)
+		local roll = St.rng:NextNumber()
+		if not satOut and roll < petChance then
+			eventPet = grantEventPet(player)
+		end
 	end
 	grantTokens(player, tokens)
 	if gems > 0 and not grantGems(player, gems) then
@@ -1582,9 +1590,9 @@ local function payRaid(b, part, res)
 	rw.Tier, rw.Share, rw.Damage, rw.EventPet = tier.Id, floor(share * 1000 + 0.5) / 1000, floor(damage), eventPet
 	local text
 	if satOut then
-		rw.Tier, rw.Reason = "SatOut", satOutText
-		text = satOutText .. " +" .. tokens .. " tokens"
-	elseif res.Reason == "Shutdown" then
+		rw.SatOut, rw.Reason = true, satOutText
+	end
+	if res.Reason == "Shutdown" then
 		text = "The server is restarting: +" .. tokens .. " tokens"
 	elseif won then
 		text = "Boss defeated! " .. tostring(tier.Id) .. " tier: +" .. tokens .. " tokens"
@@ -1594,8 +1602,11 @@ local function payRaid(b, part, res)
 	if gems > 0 then
 		text = text .. ", +" .. gems .. " gems"
 	end
-	notify(player, text, paidWin and "good" or "info", 5)
-	if paidWin then
+	notify(player, text, won and "good" or "info", 5)
+	if satOut then
+		notify(player, satOutText, "info", 5)
+	end
+	if won then
 		task.defer(try, dataService(), "Save", player)
 	end
 	return rw
