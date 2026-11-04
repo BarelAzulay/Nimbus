@@ -112,6 +112,49 @@ if [ $do_smoke -eq 1 ]; then
 	fi
 fi
 
+# [store] Balance matrix: the economy sims with every paid multiplier and free gift on (spec 2026-11-04-shop-retention-design.md
+# section 10): six sim_tycoon.py knob sets must each print ALL TARGETS MET and a quick sim_battle run at xpmult=2 must print
+# no "  MISS" line. Skipped with --static and with --only (a smoke subset is a quick check, not the gate). One record per line.
+matrix_line() {
+	local name="$1"
+	local want="$2"
+	shift 2
+	echo
+	echo "=== $name ==="
+	local output
+	output="$("$@" 2>&1)"
+	local code=$?
+	printf '%s\n' "$output"
+	if [ "$want" = "met" ]; then
+		if [ $code -eq 0 ] && printf '%s\n' "$output" | grep -q '^ALL TARGETS MET$'; then
+			record "$name" "ok"
+		else
+			record "$name" "FAILED (exit $code, no ALL TARGETS MET)"
+		fi
+	else
+		if [ $code -eq 0 ] && ! printf '%s\n' "$output" | grep -q '^  MISS'; then
+			record "$name" "ok"
+		else
+			record "$name" "FAILED (exit $code or a MISS line)"
+		fi
+	fi
+}
+if [ $do_smoke -eq 1 ] && [ $has_only -eq 0 ]; then
+	if need python3 "install Python 3" && python3 -c "import lupa" 2>/dev/null; then
+		echo
+		echo "=== Balance matrix (sim_tycoon.py x6 + sim_battle quick xpmult=2) ==="
+		matrix_line "Balance matrix: --daily --grant 2000@3,200" met python3 tools/sim_tycoon.py --quiet --daily --grant 2000@3,200
+		matrix_line "Balance matrix: --daily --vip" met python3 tools/sim_tycoon.py --quiet --daily --vip
+		matrix_line "Balance matrix: --cash-mult 2" met python3 tools/sim_tycoon.py --quiet --cash-mult 2
+		matrix_line "Balance matrix: --xp-mult 2" met python3 tools/sim_tycoon.py --quiet --xp-mult 2
+		matrix_line "Balance matrix: --cash-mult 2 --xp-mult 2" met python3 tools/sim_tycoon.py --quiet --cash-mult 2 --xp-mult 2
+		matrix_line "Balance matrix: everything on" met python3 tools/sim_tycoon.py --quiet --cash-mult 2 --xp-mult 3 --dungeon 0.1 --daily --grant 2000@3,200
+		matrix_line "Balance matrix: sim_battle quick xpmult=2" nomiss env SIM_BATTLE="quick xpmult=2" python3 -c "import lupa.luajit21 as L; L.LuaRuntime().execute(open('tools/sim_battle.lua').read())"
+	else
+		record "Balance matrix (sim_tycoon.py x6 + sim_battle quick xpmult=2)" "FAILED (python3 / lupa missing)"
+	fi
+fi
+
 echo
 echo "=== summary ==="
 failed=0

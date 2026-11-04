@@ -18,6 +18,15 @@ HOW TO RUN (from the repo root; Python 3.8+, no packages needed for the simulati
     python3 tools/sim_tycoon.py --ring 0.08      a kid who climbs the Champion Ring regularly (+8% Cash, from minute 30)
     python3 tools/sim_tycoon.py --dungeon 0.1    a kid who runs a dungeon floor every 10 minutes (contract 5.2 Cash; the
                                                  run takes 3+ minutes away from the yard; from minute 30)
+    python3 tools/sim_tycoon.py --cash-mult 2    the x2 Cash pass: the Cash credited at the scoop, the Ring and the Dungeon
+                                                 x2 (the lawn, the piles and the berries stay base)
+    python3 tools/sim_tycoon.py --xp-mult 2      the x2 Pet XP pass / an XP potion: the feed XP x2 (battle XP is
+                                                 sim_battle.lua's xpmult=N; the balance matrix runs both)
+    python3 tools/sim_tycoon.py --daily          the daily gift ladders of Config.Daily on the sim clock: the day-1 streak
+                                                 cell at minute 0, the play tiers at 10/20/30/60/90/120/180 min
+    python3 tools/sim_tycoon.py --daily --vip    VIP doubles the Cash / Tokens streak cells of that ladder
+    python3 tools/sim_tycoon.py --grant 2000@3,200   a one-time grant (the Sky Trove): $2,000 and 200 Tokens at minute 3;
+                                                 the Tokens buy Cloud spins at 50 (repeatable)
     python3 tools/sim_tycoon.py --check          compare the constants below with src/shared/TycoonCatalog.lua (tables,
                                                  AvailablePads with stars, SignedPads, FoldLegacy, BasketCap,
                                                  FeedBerries, income) and run its Validate() (needs `pip install lupa`)
@@ -180,6 +189,18 @@ HL_PUSH = 0.2  # extra share for any level while the next house waits for Home L
 FEED_INCOME_SHARE = 0.25  # the kid spends a quarter of the coins at the Food Machine (--feed)
 RING_BONUS = 0.0  # extra Cash per second as a share of garden income (a regular Champion Ring climber: --ring 0.08)
 DUNGEON_RUNS = 0.0  # dungeon runs per minute of play (--dungeon 0.1: a run every 10 minutes)
+# [store] the paid multipliers and the free gifts of the Store build (spec 2026-11-04-shop-retention-design.md section 10):
+# every knob reads these module constants unless simulate() gets the keyword; main() sets them from the flags
+CASH_MULT = 1.0  # --cash-mult: the x2 Cash pass scales the wallet credit at the scoop, the Ring Cash and the Dungeon Cash
+XP_MULT = 1.0  # --xp-mult: the x2 Pet XP pass / potion scales the feed XP (the only XP this sim pays)
+DAILY = False  # --daily: the Config.Daily ladders paid on the sim clock (DAILY_STREAK at minute 0, DAILY_TIERS)
+VIP = False  # --vip: doubles the Cash / Tokens STREAK cells (Config.Store.Perks.Vip.DailyMult; never Gems or the play tiers)
+GRANT = []  # --grant CASH@MIN,TOKENS: (cash, minute, tokens) each; the Tokens buy Cloud spins at 50 (GRANT_SPIN_TOKENS)
+DAILY_STREAK = (120, 400)  # Config.Daily.Days[1]: Cash = max(Min 400, income/s x 2 min)
+# Config.Daily.Play.Tiers by minute: ("Cash", seconds of income, Min) | ("Tokens", n) | ("Gems", n) | ("Berries",) = the basket cap
+DAILY_TIERS = {10: ("Cash", 60, 200), 20: ("Tokens", 40), 30: ("Cash", 180, 600), 60: ("Gems", 10), 90: ("Tokens", 150),
+               120: ("Berries",), 180: ("Gems", 25)}
+GRANT_SPIN_TOKENS = 50  # Config.Roulettes Cloud price: granted Tokens become Cloud spins at the grant's minute
 # a dungeon run's Cash (contract 5.2, BattleCatalog.DungeonRewards; not catalog data here): per room
 # max(20 + 10 x floor, income x RoomSeconds), RoomSeconds 3 / 4 / 5 / 12 (boss); the boss chest pays 30 s of income
 # 60% of the time; the floor the kid runs: 1 + stars (at most 10)
@@ -212,6 +233,13 @@ TARGETS = dict(
     pile_scoops=10,  # an active player never fills a pile: the smallest pile >= 10x the scoop gap
     offline_hours=2.0,  # the best Vault pays at most 2 h of income (and more than nothing)
 )
+
+
+def TARGETS_PAID(m):
+    """[store] the four targets a paid multiplier moves (spec section 10), m = max(cash_mult, xp_mult, 1): the lower bounds
+    shrink by m (a paying player reaches the Villa, the first prestige and the first EVOLVE sooner), the prestige Gems per
+    hour may grow by m; the other targets stay TARGETS."""
+    return dict(villa=(25 / m, 40), p1=(120 / m, 180), evolve_min=(40 / m, 100), gems_per_hour=135 * m)
 
 
 # ------------------------------------------------------------------------------------------------
@@ -543,6 +571,12 @@ class Result:
         self.dungeon_cash = 0
         self.dungeon_runs = 0
         self.garden_cash = 0
+        self.daily_cash = 0  # [store] --daily: the Cash of the streak cell and the Cash play tiers
+        self.daily_tokens = 0  # recorded, never spent
+        self.daily_gems = 0
+        self.daily_berries = 0  # berries the Basket tier added
+        self.grant_cash = 0  # [store] --grant
+        self.grant_tokens = 0
         self.evolve_t = None
         self.evolve2_t = None
         self.inc_at = {}  # minute -> income (first run)
@@ -594,9 +628,19 @@ def dungeon_cash(inc, stars):
     return rooms + DUNGEON_CHEST[0] * DUNGEON_CHEST[1] * inc
 
 
-def simulate(seed=1, runs=3, mode="random", max_minutes=900, ring=None, feed_share=None, dungeon=None):
+def simulate(seed=1, runs=3, mode="random", max_minutes=900, ring=None, feed_share=None, dungeon=None, cash_mult=None, xp_mult=None,
+             daily=None, vip=None, grant=None):
     ring = RING_BONUS if ring is None else ring
     dungeon = DUNGEON_RUNS if dungeon is None else dungeon
+    cash_mult = CASH_MULT if cash_mult is None else cash_mult
+    xp_mult = XP_MULT if xp_mult is None else xp_mult
+    daily = DAILY if daily is None else daily
+    vip = VIP if vip is None else vip
+    grant = GRANT if grant is None else grant
+    rolls = ROLLS
+    if grant:  # a grant's Tokens are Cloud spins at its minute, in a COPY of the schedule (sorted: the roll loop walks it in order)
+        rolls = sorted(ROLLS + [(minute, "Cloud") for _, minute, tokens in grant for _ in range(int(tokens // GRANT_SPIN_TOKENS))],
+                       key=lambda r: r[0])
     dungeon_every = int(round(60 / dungeon)) if dungeon > 0 else 0
     feed_share = FEED_INCOME_SHARE if feed_share is None else feed_share
     rng = random.Random(seed)
@@ -614,9 +658,9 @@ def simulate(seed=1, runs=3, mode="random", max_minutes=900, ring=None, feed_sha
     inc = 0.0
     dirty = True
     while t < max_minutes * 60 and run < runs:
-        while roll_i < len(ROLLS) and ROLLS[roll_i][0] * 60 <= t:
+        while roll_i < len(rolls) and rolls[roll_i][0] * 60 <= t:
             if mode in ("random", "combat"):
-                pets.append(roll(rng, ROLLS[roll_i][1], mode))
+                pets.append(roll(rng, rolls[roll_i][1], mode))
                 dirty = True
             elif mode == "one" and not pets:
                 pets.append(new_pet(0, False))
@@ -632,7 +676,7 @@ def simulate(seed=1, runs=3, mode="random", max_minutes=900, ring=None, feed_sha
         lawn = min(lawn + inc, inc * pile_seconds(st)) if inc > 0 else lawn  # a full lawn: the pets nap
         res.garden_cash += inc
         if t >= BATTLE_START_MINUTES * 60:
-            cash += inc * ring
+            cash += inc * ring * cash_mult
         if (dungeon_every and t >= BATTLE_START_MINUTES * 60 and t % dungeon_every == 0 and st.get("Garden", 0)):
             away = int(60 * (DUNGEON_RUN_MINUTES[0] + DUNGEON_RUN_MINUTES[1] * (dungeon_floor(stars) - 1)))
             next_scoop = max(next_scoop, t + away)
@@ -640,9 +684,36 @@ def simulate(seed=1, runs=3, mode="random", max_minutes=900, ring=None, feed_sha
             res.dungeon_runs += 1
         if pending_dungeon and t >= pending_dungeon[0]:
             if pending_dungeon[2] == run:  # a prestige meanwhile resets Cash: nothing carried over
-                cash += pending_dungeon[1]
+                cash += pending_dungeon[1] * cash_mult
                 res.dungeon_cash += pending_dungeon[1]
             pending_dungeon = None
+        # [store] the free gifts on the sim clock: the daily ladders (--daily) and the one-time grants (--grant); Tokens,
+        # Gems and Berries are recorded, never spent (the sim buys pads with Cash only)
+        if (daily or grant) and t % 60 == 0:
+            minute = t // 60
+            if daily:
+                if minute == 0:
+                    g = max(DAILY_STREAK[1], inc * DAILY_STREAK[0]) * (2 if vip else 1)
+                    cash += g
+                    res.daily_cash += g
+                tier = DAILY_TIERS.get(minute)
+                if tier:
+                    if tier[0] == "Cash":
+                        g = max(tier[2], inc * tier[1])
+                        cash += g
+                        res.daily_cash += g
+                    elif tier[0] == "Tokens":
+                        res.daily_tokens += tier[1]
+                    elif tier[0] == "Gems":
+                        res.daily_gems += tier[1]
+                    else:
+                        res.daily_berries += max(0.0, basket_cap(inc) - berries)
+                        berries = max(berries, float(basket_cap(inc)))
+            for g_cash, g_minute, g_tokens in grant:
+                if g_minute == minute:
+                    cash += g_cash
+                    res.grant_cash += g_cash
+                    res.grant_tokens += g_tokens
         feed_budget += inc * feed_share
         t += 1
         key = (tuple(sorted(st.items())), stars)
@@ -662,7 +733,7 @@ def simulate(seed=1, runs=3, mode="random", max_minutes=900, ring=None, feed_sha
         since = t - last_scoop
         last_scoop = t
         next_scoop = t + SCOOP_EVERY
-        cash += lawn
+        cash += lawn * cash_mult  # the x2 Cash pass pays at the scoop (the lawn, the piles and the berries stay base)
         lawn = 0
         kl = st.get("Kitchen", 0)
         # --- feeding: berries from the Berry Farm (no Cash); the kid feeds whenever it scoops ---
@@ -683,7 +754,7 @@ def simulate(seed=1, runs=3, mode="random", max_minutes=900, ring=None, feed_sha
                 berries -= cost
                 res.feeds += 1
                 res.feed_cash += cost
-                grow(bp, feed_xp(bp["level"], kl), t, res)
+                grow(bp, feed_xp(bp["level"], kl) * xp_mult, t, res)
                 dirty = True
         # --- buying ---
         while True:
@@ -843,6 +914,10 @@ def run_report(args):
             1 / dng, 100.0 * one.dungeon_cash / max(1.0, one.garden_cash)))
     print("\nThis player: income/s by minute: " + ", ".join(
         "%d: %.0f" % (m, one.inc_at[m]) for m in (1, 5, 10, 20, 30, 60, 90, 120, 150) if m in one.inc_at))
+    if DAILY or GRANT or CASH_MULT != 1 or XP_MULT != 1:
+        print("  store knobs: cash x%.2g, feed XP x%.2g%s; daily gifts %s$%.0f Cash, %d Tokens, %d Gems, %.0f berries; grants $%.0f Cash, %d Tokens" % (
+            CASH_MULT, XP_MULT, ", VIP" if VIP else "", "(off) " if not DAILY else "", one.daily_cash, one.daily_tokens, one.daily_gems,
+            one.daily_berries, one.grant_cash, one.grant_tokens))
     print("  top-3 pet levels every 30 min of run 1: %s" % one.levels_at)
 
     # Monte Carlo over pet luck
@@ -900,6 +975,7 @@ def run_report(args):
         print(row)
 
     print("\nTargets:")
+    TP = TARGETS_PAID(max(CASH_MULT, XP_MULT, 1))  # [store] the four targets a paid multiplier moves; the rest stay TARGETS
     firsts = ms.get("first_paid", [])
     check(bool(firsts) and len(firsts) == n and max(firsts) <= TARGETS["first_paid_s"],
           "first paid purchase within %d s (worst %s)" % (TARGETS["first_paid_s"], fmt(max(firsts or [0]))))
@@ -907,23 +983,23 @@ def run_report(args):
     check(lo <= pct(em, .5) / 60 <= hi, "a purchase every %.1f-%.0f min early on (median mean gap %.2f min)" % (lo, hi, pct(em, .5) / 60))
     check(pct(ep, .5) / 60 <= TARGETS["early_p90"], "early gaps short (p90 %.2f min <= %.0f)" % (pct(ep, .5) / 60, TARGETS["early_p90"]))
     v = pct(ms.get("Villa0", [1e9]), .5) / 60
-    check(TARGETS["villa"][0] <= v <= TARGETS["villa"][1], "Villa at %d-%d min (median %.1f)" % (TARGETS["villa"] + (v,)))
+    check(TP["villa"][0] <= v <= TP["villa"][1], "Villa at %.0f-%.0f min (median %.1f)" % (TP["villa"] + (v,)))
     p1 = pct(ms.get("run1", [1e9]), .5) / 60
     # C10 (lead, W1 gate): a player who also runs the Ring and the Dungeon may prestige a little sooner (floor 115)
-    p1_lo = 115 if (ring > 0 and dng > 0) else TARGETS["p1"][0]
-    check(p1_lo <= p1 <= TARGETS["p1"][1], "first Prestige after 2-3 h (median %.0f min, floor %d)" % (p1, p1_lo))
+    p1_lo = 115 if (ring > 0 and dng > 0) else TP["p1"][0]
+    check(p1_lo <= p1 <= TP["p1"][1], "first Prestige after 2-3 h (median %.0f min, floor %.0f)" % (p1, p1_lo))
     r2, r3 = pct(ms.get("run2", [1e9]), .5) / 60, pct(ms.get("run3", [1e9]), .5) / 60
     check(r2 < p1 and r3 < r2, "later prestiges faster (%.0f -> %.0f -> %.0f min)" % (p1, r2, r3))
     check(len(runs) == 10 and min(runs) >= TARGETS["run_floor_min"],
           "no throw-away prestiges: every run of 10 >= %d min (shortest %.1f)" % (TARGETS["run_floor_min"], min(runs or [0])))
-    check(len(gph) > 1 and max(gph[1:]) <= TARGETS["gems_per_hour"],
-          "prestige Gems <= %d per hour on runs 2-10 (max %.0f/h; Phase 3 ran 100-133)" % (TARGETS["gems_per_hour"], max(gph[1:] or [0])))
+    check(len(gph) > 1 and max(gph[1:]) <= TP["gems_per_hour"],
+          "prestige Gems <= %.0f per hour on runs 2-10 (max %.0f/h; Phase 3 ran 100-133)" % (TP["gems_per_hour"], max(gph[1:] or [0])))
     wd = max(max(dead), combat.dead[0]) / 60
     check(wd <= TARGETS["dead"], "never more than %.0f min with nothing to buy (worst %.1f, combat-only player included)" % (TARGETS["dead"], wd))
     cp1 = combat.ms.get("run1", 1e9) / 60
     check(cp1 <= TARGETS["combat_p1"], "a Combat-pets-only player still prestiges (%.0f min <= %d)" % (cp1, TARGETS["combat_p1"]))
     e = pct(evo, .5) / 60
-    check(TARGETS["evolve_min"][0] <= e <= TARGETS["evolve_min"][1], "first EVOLVE moment after %d-%d min (median %.0f min)" % (TARGETS["evolve_min"] + (e,)))
+    check(TP["evolve_min"][0] <= e <= TP["evolve_min"][1], "first EVOLVE moment after %.0f-%.0f min (median %.0f min)" % (TP["evolve_min"] + (e,)))
     check(min(piles) >= TARGETS["pile_scoops"],
           "an active player (scoops every %d s) never fills a pile (smallest pile = %.0fx the gap)" % (SCOOP_EVERY, min(piles)))
     best = max(offline_earnings({"Vault": v}, 48 * 3600, 1.0) for v in range(1, 6)) / 3600
@@ -1516,7 +1592,17 @@ def run_plan(path):
     return 0 if ok else 1
 
 
+def parse_grant(text):
+    """[store] '2000@3,200' -> (2000, 3, 200): Cash at a minute plus Tokens at the same minute; exit 2 on a malformed value."""
+    parts = text.strip().replace("@", ",").split(",")
+    if len(parts) != 3 or not all(p.isdigit() for p in parts) or "@" not in text:
+        print("--grant expects CASH@MIN,TOKENS (for example 2000@3,200), got %r" % text, file=sys.stderr)
+        sys.exit(2)
+    return int(parts[0]), int(parts[1]), int(parts[2])
+
+
 def main():
+    global CASH_MULT, XP_MULT, DAILY, VIP, GRANT
     ap = argparse.ArgumentParser(description="Nimbus Climb tycoon economy simulation (Phase 5: one Berry Farm, berries, roaming pets)")
     ap.add_argument("--seed", type=int, default=3, help="roulette luck of the timeline player (default 3)")
     ap.add_argument("--runs", type=int, default=3, help="prestige runs in the timeline (default 3)")
@@ -1526,6 +1612,12 @@ def main():
     ap.add_argument("--ring", type=float, default=RING_BONUS, help="Champion Ring Cash as a share of garden income (default 0)")
     ap.add_argument("--feed", type=float, default=FEED_INCOME_SHARE, help="unused since Phase 5 (feeding spends berries); kept for old command lines")
     ap.add_argument("--dungeon", type=float, default=DUNGEON_RUNS, help="dungeon runs per minute of play (0.1 = one every 10 min; default 0)")
+    ap.add_argument("--cash-mult", type=float, default=CASH_MULT, help="[store] the x2 Cash pass: the Cash credited at the scoop, the Ring and the Dungeon (default 1)")
+    ap.add_argument("--xp-mult", type=float, default=XP_MULT, help="[store] the x2 Pet XP pass / potion: the feed XP (default 1; battle XP is sim_battle.lua xpmult=N)")
+    ap.add_argument("--daily", action="store_true", help="[store] pay the Config.Daily ladders on the sim clock (day-1 streak cell at 0 min, play tiers at 10..180 min)")
+    ap.add_argument("--vip", action="store_true", help="[store] VIP: doubles the Cash / Tokens streak cells of --daily")
+    ap.add_argument("--grant", action="append", default=[], metavar="CASH@MIN,TOKENS",
+                    help="[store] a one-time grant, e.g. the Sky Trove 2000@3,200 (Cash and Tokens at that minute; Tokens = Cloud spins at 50); repeatable")
     ap.add_argument("--quiet", action="store_true", help="no purchase-by-purchase timeline")
     ap.add_argument("--check", action="store_true", help="compare with src/shared/TycoonCatalog.lua (lupa) and Validate()")
     ap.add_argument("--migrate5", nargs="?", const=300, type=int, metavar="N",
@@ -1538,6 +1630,9 @@ def main():
         return run_migrate5(args.migrate5)
     if args.plan:
         return run_plan(args.plan)
+    # [store] the knobs live in the module constants so run_report's five simulate() calls need no new arguments
+    CASH_MULT, XP_MULT, DAILY, VIP = args.cash_mult, args.xp_mult, args.daily, args.vip
+    GRANT = [parse_grant(g) for g in args.grant]
     return run_report(args)
 
 

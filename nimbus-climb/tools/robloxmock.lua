@@ -1659,6 +1659,8 @@ for name in ("KeyCode UserInputType Font FontWeight FontStyle ContextActionPrior
 end
 -- [owner: runtime, Phase 6] ContentProvider:PreloadAsync callback status (MeshLibrary client preload)
 CLOSED_ENUMS.AssetFetchStatus = CLOSED_ENUMS.AssetFetchStatus or "Success Failure None Loading TimedOut"
+-- [store, W0] GroupService:PromptJoinAsync's answer (TroveController reads it): a closed list, so a typo fails here
+CLOSED_ENUMS.GroupMembershipStatus = CLOSED_ENUMS.GroupMembershipStatus or "None Joined JoinRequestPending AlreadyMember"
 
 local enumTypes = {}
 local function getEnumType(name)
@@ -5214,6 +5216,9 @@ defclass("Player", "Instance", {
 		HealthDisplayDistance = T.num(100), NameDisplayDistance = T.num(100), RespawnLocation = T.inst(), MembershipType = T.any(nil), FollowUserId = T.num(0),
 		CharacterAppearanceId = T.num(0), AutoJumpEnabled = T.bool(true), GameplayPaused = T.bool(false), ReplicationFocus = T.inst(), Guest = T.bool(false),
 		LocaleId = T.str("en-us"), CanLoadCharacterAppearance = T.bool(true),
+		-- [store, W0] a PROP, not a method, so a test installs a per-player double (`p.IsInGroupAsync = function(_, gid) ... end`)
+		-- and `= nil` restores the default (a method key is read-only to writes); called as a method: fn(player, groupId)
+		IsInGroupAsync = T.any(function() return false end),
 	},
 	events = { "CharacterAdded", "CharacterRemoving", "CharacterAppearanceLoaded", "Chatted", "Idled" },
 	methods = {
@@ -5899,7 +5904,8 @@ for _, n in ipairs({ "ReplicatedStorage", "ReplicatedFirst", "ServerScriptServic
 	service(n, {})
 end
 -- TextChatService: the default chat of new places (no TextChatCommand class here: commands that need one are skipped)
-service("TextChatService", { props = { ChatVersion = T.enum("ChatVersion", "TextChatService"), CreateDefaultCommands = T.bool(true), CreateDefaultTextChannels = T.bool(true) }, events = { "SendingMessage", "MessageReceived" } })
+-- OnIncomingMessage [store, W0]: the client's chat callback (VipController's gold [VIP] prefix); a plain assignable prop here
+service("TextChatService", { props = { ChatVersion = T.enum("ChatVersion", "TextChatService"), CreateDefaultCommands = T.bool(true), CreateDefaultTextChannels = T.bool(true), OnIncomingMessage = T.any(nil) }, events = { "SendingMessage", "MessageReceived" } })
 service("StarterPlayer", { props = { CharacterWalkSpeed = T.num(16), CharacterJumpPower = T.num(50), CharacterJumpHeight = T.num(7.2), CharacterUseJumpPower = T.bool(false), CharacterMaxHealth = T.num(100), CameraMaxZoomDistance = T.num(128), CameraMinZoomDistance = T.num(0.5), AutoJumpEnabled = T.bool(true) } })
 service("StarterGui", {
 	props = { ScreenOrientation = T.any(nil), ShowDevelopmentGui = T.bool(true), ResetPlayerGuiOnSpawn = T.bool(true) },
@@ -6473,7 +6479,23 @@ service("ProximityPromptService", {
 	props = { Enabled = T.bool(true), MaxPromptsVisible = T.num(16), MaxIndicatorsVisible = T.num(4) },
 	events = { "PromptTriggered", "PromptTriggerEnded", "PromptShown", "PromptHidden", "PromptButtonHoldBegan", "PromptButtonHoldEnded" },
 })
-for _, n in ipairs({ "MarketplaceService", "TeleportService", "PhysicsService", "PathfindingService", "ContentProvider", "Stats", "SocialService", "BadgeService", "MessagingService", "MemoryStoreService", "GroupService", "AssetService", "InsertService", "LocalizationService", "VRService", "HapticService", "TestService", "VoiceChatService", "AvatarEditorService", "UserService", "PolicyService", "NotificationService", "AnalyticsService", "GamepadService", "MaterialService", "LogService", "CoreGui", "Selection", "StudioService", "ScriptContext", "NetworkClient", "UGCValidationService", "RbxAnalyticsService", "ChangeHistoryService", "CaptureService", "DraggerService", "AvatarChatService", "AdService" }) do
+-- [store, W0] MarketplaceService and GroupService: every engine call a test may need to double is a PROP (never a `methods`
+-- entry, which would be read-only to writes): a scenario assigns a function to install its double and assigns nil to restore
+-- the default shown here (the smoke_p2_gems removeDoubles shape). The defaults are called as methods, so each takes `self`
+-- first. ProcessReceipt starts nil (GemService's boot writes it). The enum item is resolved at call time, after the enum
+-- tables exist.
+service("MarketplaceService", {
+	props = {
+		UserOwnsGamePassAsync = T.any(function() return false end),
+		PromptGamePassPurchase = T.any(function() end),
+		PromptProductPurchase = T.any(function() end),
+		GetProductInfo = T.any(function(_, id) return { Name = "Product " .. tostring(id), PriceInRobux = 0, ProductId = id } end),
+		ProcessReceipt = T.any(nil),
+	},
+	events = { "PromptGamePassPurchaseFinished", "PromptProductPurchaseFinished" },
+})
+service("GroupService", { props = { PromptJoinAsync = T.any(function() return Enum.GroupMembershipStatus.None end) } })
+for _, n in ipairs({ "TeleportService", "PhysicsService", "PathfindingService", "ContentProvider", "Stats", "SocialService", "BadgeService", "MessagingService", "MemoryStoreService", "AssetService", "InsertService", "LocalizationService", "VRService", "HapticService", "TestService", "VoiceChatService", "AvatarEditorService", "UserService", "PolicyService", "NotificationService", "AnalyticsService", "GamepadService", "MaterialService", "LogService", "CoreGui", "Selection", "StudioService", "ScriptContext", "NetworkClient", "UGCValidationService", "RbxAnalyticsService", "ChangeHistoryService", "CaptureService", "DraggerService", "AvatarChatService", "AdService" }) do
 	if not Classes[n] then
 		service(n, { generic = true })
 	end

@@ -27,7 +27,8 @@
 --
 -- Run it (lupa, from the repo root; see tools/README.md):
 --   python3 -c "import lupa.luajit21 as L; L.LuaRuntime().execute(open('tools/sim_battle.lua').read())"
---   SIM_BATTLE="quick only=duels,raids" python3 -c "..."     options: quick | full | seeds=N | only=a,b | verbose
+--   SIM_BATTLE="quick only=duels,raids" python3 -c "..."     options: quick | full | seeds=N | only=a,b | xpmult=N | verbose
+--   (xpmult=N [store]: the x2 Pet XP pass / potion; every XP the progression pays through addXp is multiplied)
 -- The smoke scenario p5battle_balance loads this file as a library (global SIM_BATTLE_LIBRARY = true before the load)
 -- and runs a short subset; p5dgn_balance (team balance) uses SIM.Teams / SIM.Targets / SIM.floorSummary / SIM.ladder.
 -- Plain Lua 5.1 syntax only.
@@ -110,7 +111,7 @@ end
 -- Options
 ----------------------------------------------------------------------
 local function parseArgs(str)
-	local opts = { quick = false, seeds = nil, only = nil, verbose = false }
+	local opts = { quick = false, seeds = nil, only = nil, verbose = false, xpmult = 1 }
 	for raw in tostring(str or ""):gmatch("%S+") do
 		local word = (raw:gsub("^%-%-", ""))
 		if word == "quick" then
@@ -123,6 +124,8 @@ local function parseArgs(str)
 			local key, value = word:match("^(%w+)=(.+)$")
 			if key == "seeds" then
 				opts.seeds = tonumber(value)
+			elseif key == "xpmult" then
+				opts.xpmult = tonumber(value) or 1
 			elseif key == "only" then
 				opts.only = {}
 				for name in value:gmatch("[^,]+") do
@@ -1277,9 +1280,11 @@ local function ringFight(pets, round, runSeed, battleSeed, playerOpts)
 end
 
 -- XP like DataService.GrantXp (the level-up loop) + the player who evolves a pet as soon as it can (stage 1 at level 20,
--- stage 2 at level 50 when PetCatalog.EvolveTwice names its rarity)
+-- stage 2 at level 50 when PetCatalog.EvolveTwice names its rarity). XP_MULT [store]: the xpmult=N option (the x2 Pet XP
+-- pass / potion), set by SIM.main before the sections run; every Ring and Dungeon XP gain passes through here.
+local XP_MULT = 1
 local function addXp(p, gain)
-	p.Xp = (p.Xp or 0) + gain
+	p.Xp = (p.Xp or 0) + gain * XP_MULT
 	while p.Level < PC.MaxPetLevel() and p.Xp >= TC.XpToNext(p.Level) do
 		p.Xp = p.Xp - TC.XpToNext(p.Level)
 		p.Level = p.Level + 1
@@ -2187,7 +2192,8 @@ function SIM.main(argString)
 	if opts.seeds == nil then
 		opts.seeds = opts.quick and 24 or 64
 	end
-	out(fmt("Nimbus Climb battle balance report (%s, %d seeds per matchup)", opts.quick and "quick" or "full", opts.seeds))
+	XP_MULT = opts.xpmult or 1
+	out(fmt("Nimbus Climb battle balance report (%s, %d seeds per matchup%s)", opts.quick and "quick" or "full", opts.seeds, XP_MULT ~= 1 and fmt(", XP x%g", XP_MULT) or ""))
 	local started = clock()
 	for _, name in ipairs(order) do
 		if not opts.only or opts.only[name] then
