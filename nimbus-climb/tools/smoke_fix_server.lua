@@ -525,6 +525,22 @@ S.fixsrv_receipt_merge = guarded("fixsrv_receipt_merge", function()
 		mark = K.logSize()
 		T.eq(run(r2), GRANTED, "receipt thanks: a purchase saved at once is granted...")
 		T.check(toastCount(c, "Thank you", mark) == 1 and grantsOf("fixsrv-thanks-2") == 1, "receipt thanks: ...and thanked right away, once")
+
+		-- D) the store build (P7): the grant record exists and the gem path's number grant still means { Gems = n }: a
+		--    receipt marked with MarkReceipt(p, id, product.Gems) that another server's save already holds adds no gems
+		T.eq(type(D.NoteReceiptGrant), "function", "receipt merge: DataService.NoteReceiptGrant exists (the P7 grant record)")
+		local e = join("GemNumber", newUserId())
+		players[#players + 1] = e
+		D.AddTokens(e, 1)
+		D.Save(e)
+		local gE = (stored(e.UserId) or {}).Gems or 0
+		local recE = stored(e.UserId)
+		recE.Gems = (recE.Gems or 0) + pack.Gems
+		recE.GemReceipts = type(recE.GemReceipts) == "table" and recE.GemReceipts or {}
+		recE.GemReceipts["fixsrv-number-1"] = os.time()
+		T.check(D.MarkReceipt(e, "fixsrv-number-1", pack.Gems) == true and D.AddGems(e, pack.Gems) and D.Save(e) == true,
+			"receipt merge: (number grant) MarkReceipt(p, id, gems) with a number, the gems added, the save lands")
+		T.eq((stored(e.UserId) or {}).Gems, gE + pack.Gems, "receipt merge: ...a number grant still means { Gems = n }: the store holds the pack's Gems once")
 	end)
 	conn:Disconnect()
 	pack.Id = saved.Id

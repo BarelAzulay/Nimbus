@@ -662,6 +662,13 @@ local function cmdReset(player, profile)
 	wipe(dungeon)
 	dungeon.Best, dungeon.Cleared, dungeon.Runs, dungeon.Clears = 0, {}, 0, 0
 	profile.Berries = 0
+	-- Store build: the daily gifts (streak, play-day) and the Trove asks start over; Store (bought packs, passes seen,
+	-- potion ends) is kept: Robux
+	local daily = tableField(profile, "Daily")
+	wipe(daily)
+	daily.Streak, daily.Paid, daily.LastClaimAt, daily.Weeks, daily.Pet = 0, 0, 0, 0, false
+	daily.PlayStart, daily.PlaySec, daily.PlayClaimed = 0, 0, {}
+	wipe(tableField(profile, "Trove"))
 	if Config.Attr.Berries and player:GetAttribute(Config.Attr.Berries) ~= nil then
 		player:SetAttribute(Config.Attr.Berries, 0)
 	end
@@ -721,6 +728,9 @@ local function cmdReset(player, profile)
 		Ring = true,
 		-- Phase 5: Dungeon Best / Cleared only grow in the merge (Berries travel as a delta, Settings stay)
 		Dungeon = true,
+		-- Store build: the Daily pair / Play group merge as maxima and the Trove asks as a union (Store is kept)
+		Daily = true,
+		Trove = true,
 	})
 	if rewound then
 		rewindTutorial(player, profile, reload, true)

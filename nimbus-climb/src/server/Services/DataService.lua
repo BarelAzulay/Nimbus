@@ -36,7 +36,31 @@
 --     Berries = whole number >= 0 (left out while 0),
 --     Settings = { Music 0..10, Sfx 0..10, Gfx "Auto"|"Low"|"High", Shake bool, SeenNotes 0..1000, MouseLock bool }
 --       (left out while default),
---     Home.DecorCredit = 1..18 | nil, Home.LegacyMagnet = 1..5 | nil, Home.LegacyMagnetStar = the Prestige it was folded at }
+--     Home.DecorCredit = 1..18 | nil, Home.LegacyMagnet = 1..5 | nil, Home.LegacyMagnetStar = the Prestige it was folded at,
+--     -- Store build (spec docs/superpowers/specs/2026-11-04-shop-retention-design.md section 6; new TOP-LEVEL fields
+--     -- again, foreign to every older server; helper table P7)
+--     Store = { Bought = {[key]=unix}, Passes = {[key]=unix}, Boosts = {[id]=endsUnix} }   -- the Once packs bought, the
+--       passes seen owned, the potion ends (left out while empty; kept by the dev reset: Robux)
+--     Daily = { Streak, Paid, LastClaimAt, Weeks, Pet (bool), PlayStart, PlaySec, PlayClaimed = {[tier]=true} }   -- the
+--       streak gifts and the play-time gifts (clocks in Unix seconds, 0 = never; PlayClaimed a DENSE boolean array in
+--       the store like TrialCleared; left out while all zero; wiped by the dev reset)
+--     Trove = {[askId]=true}   -- the Sky Trove asks paid (left out while empty; wiped by the dev reset) }
+--   Store build rules (P7): Bought / Passes merge as a union (the earlier time wins), a potion end per id as the later
+--   end MINUS the seconds of this session's receipt grants the store already holds (the twin rule, before the max);
+--   Daily: the pair (LastClaimAt, Streak) travels together and the higher LastClaimAt wins it, EXCEPT that a session
+--   claim less than Config.Daily.ReadySeconds after the STORED LastClaimAt was paid elsewhere (its grant comes off the
+--   deltas, the stored pair stays); Paid / Weeks max, Pet sticks once true; the higher PlayStart wins the whole Play
+--   group (PlayStart, PlaySec, PlayClaimed), at the same PlayStart the session's seconds add up (0..MaxDaySeconds) and
+--   its tiers join the stored ones, and a Play grant whose (PlayStart, tier) the store holds comes off the deltas; a
+--   stand-in delta never carries a Play group; a stored LastClaimAt further in the future than FutureClockSlack (a
+--   wrong clock) loses the pair to the session's clamp and drops no grant. Trove: a union; an ask the store already
+--   holds takes the session's grant off the deltas. The grant records (cache annotations, never stored):
+--   ReceiptGrants = {[purchaseId] = grant} (replaces ReceiptGems; a number grant still means { Gems = n }),
+--   DailyClaims = { grant... } (each { Kind = "Day" | "Play", Tier, At, PlayStart, ...amounts }), TroveGrants =
+--   {[askId] = grant}; a grant = { Cash, Tokens, Gems, Berries, Pets = {[id]=n}, Boost = {[id]=seconds} }. applyDelta
+--   sums every grant the store already holds into `drop` and takes it off the Tokens / Pets / Cash / Gems / Berries
+--   deltas and the potion ends where each kind is applied. Every claim and its grant are written in ONE non-yielding
+--   step and ride one UpdateAsync; the orphan retry carries them (Z11 / Z14).
 --   Phase 5 rules: Teams hold 3 keys per preset (slot 1 = the fighter; a stored 4th key leaves the preset only, the pet
 --   stays owned); Dungeon merges Best max / Cleared union / Runs delta / Clears delta (the P5Dungeon migration's own
 --   Clears as a max, so two servers migrating one save do not double it); Berries merge as a +/- delta clamped at 0,
@@ -149,8 +173,14 @@
 --     elsewhere); a key the session removed travels as `false`. Ring.Best keeps the higher value,
 --     Ring.Runs travels as a +/- delta. Migrations only grow (union). Home.LegacySlots / LegacyPrices merge with the
 --     Home (per-key replace; a higher Prestige wins the whole Home, which has them cleared).
+--     Store build: Store.Bought / Passes union (the earlier time), Boosts the later end per id minus the session's
+--     own receipt seconds the store already holds; Daily by the pair / Play group rules of the header; Trove union;
+--     the grant records of the three twin rules take a grant the store already holds off every delta (one purchase
+--     id, one claim, one ask: ONE grant across retries, rejoins and two servers).
 --     The ONE exception is ResetFields (developer tools only):
---     the fields it names are written over the stored ones at the next successful save instead of merged.
+--     the fields it names are written over the stored ones at the next successful save instead of merged (Daily and
+--     Trove are among them: their merges are unions / maxima, so the dev reset could not stick otherwise; Store is
+--     not: Robux, like GemReceipts).
 --   * A PROVISIONAL profile (the load failed while the DataStore is reachable, e.g. an outage) holds
 --     defaults, not the player's data. One-time rewards must not be decided from it: GetTutorial
 --     answers nil and SetTutorial refuses until the background recovery read the real save (then
@@ -321,9 +351,30 @@
 --     -> ok (the session's CURRENT values of those fields replace the stored ones at the next successful save),
 --     HasReceipt(player, purchaseId) -> bool | nil, MarkReceipt(player, purchaseId, gems?) -> true (new: grant now) |
 --     false (already processed: grant nothing) | nil (not decidable now: profile not loaded or provisional -> answer
---     NotProcessedYet; `gems` = the amount granted with it, so a purchase another server already stored is never
---     added twice), SyncSoon(player) (a throttled Sync: at most one snapshot per 0.25 s, trailing call kept),
---     signal ProfileRebased(player, profile).
+--     NotProcessedYet; `gems` = the amount granted with it (a number = { Gems = n }, or a grant table), so a purchase
+--     another server already stored is never added twice), SyncSoon(player) (a throttled Sync: at most one snapshot
+--     per 0.25 s, trailing call kept), signal ProfileRebased(player, profile).
+--   Store build (spec section 6; helper table P7; nothing here yields; every write is one step and rides the next
+--   UpdateAsync with its grant record):
+--     NoteReceiptGrant(player, purchaseId, grant) -> ok   records what a receipt REALLY granted (substitutes included;
+--                                       replaces what MarkReceipt recorded) for a receipt in the live profile but not
+--                                       in the store yet; false otherwise, until loaded and while provisional
+--     MarkBought(player, key) -> ok     Store.Bought[key] = os.time(); false when already set, until loaded, provisional
+--     GetStore(player) -> copy | nil    { Bought, Passes, Boosts } (nil until loaded and while provisional)
+--     MarkPassSeen(player, key) -> ok   Store.Passes[key] = os.time() once (a union: allowed while provisional)
+--     AddBoost(player, id, seconds) -> ok, ends   Store.Boosts[id] = max(now, the running end) + seconds (no cap: a
+--                                       paid potion is never eaten, Z7); refused until loaded / while provisional
+--     GetDaily(player) -> copy | nil    the live shape (PlayClaimed a set); nil until loaded and while provisional
+--     MutateDaily(player, fn, grant?) -> ok   fn(daily) edits the LIVE Daily and must not yield; an error, or fn
+--                                       returning false, restores it (-> false); afterwards it is sanitised in place.
+--                                       A `grant` table ({ Kind = "Day" | "Play", Tier, Cash, Tokens, Gems, Berries,
+--                                       Pets }) is stamped At = os.time() and PlayStart = daily.PlayStart (after fn)
+--                                       and kept in the entry's DailyClaims for the merge: pay it right after, nothing
+--                                       yielding between. Refused until loaded / while provisional. Not synced.
+--     GetTrove(player) -> copy | nil    {[askId] = true}; nil until loaded and while provisional
+--     MarkTrove(player, askId, grant) -> ok   Trove[askId] = true + the grant record; false when set, until loaded,
+--                                       while provisional
+--     ResetFields gained Daily and Trove (the dev reset); Store is not resettable.
 --
 -- Plain Lua 5.1-compatible syntax only.
 
@@ -381,6 +432,8 @@ local OVERWRITABLE = {
 	Teams = true, Battle = true, -- Phase 3: the battle record's sets only grow and its best values only rise
 	PetGrowth = true, Ring = true, Migrations = true, -- Phase 4: ranks / stages / Best only rise, Migrations only grow
 	Dungeon = true, -- Phase 5: Best max / Cleared union would bring a reset record back
+	Daily = true, Trove = true, -- Store build: the pair / Play group maxima and the ask union would bring them back; Store
+	-- stays out (Robux: bought packs and potion ends are never reset)
 }
 -- Stored keys this version owns. Anything else in a stored profile belongs to a newer phase and is written back
 -- untouched by every save (see keepForeign).
@@ -390,6 +443,7 @@ local KNOWN_TOP = {
 	Food = true, Tiers = true, Hybrids = true, GemReceipts = true, Teams = true, Battle = true,
 	PetGrowth = true, Ring = true, Migrations = true, -- Phase 4
 	Dungeon = true, Berries = true, Settings = true, -- Phase 5
+	Store = true, Daily = true, Trove = true, -- Store build
 	UpdatedAt = true,
 }
 local KNOWN_HOME = {
@@ -411,7 +465,11 @@ local KNOWN_STATS = { Matches = true, Wins = true, TokensEarned = true, Spins = 
 --     cleared only after a successful write, so orphan retries and BindToClose carry it too),
 --   OverwriteGen = counter bumped by every ResetFields (a reset during an in-flight save stays pending),
 --   LastSync = os.clock() of the last ProfileSync, SyncQueued = a trailing SyncSoon is scheduled,
---   ReceiptGems = { [purchaseId] = gems } granted with receipts not in the store yet (MarkReceipt; nil when none)
+--   ReceiptGrants = { [purchaseId] = grant } granted with receipts not in the store yet (MarkReceipt / NoteReceiptGrant;
+--     nil when none; the Store build's name of ReceiptGems: a grant table instead of a gem count),
+--   DailyClaims = { grant... } the daily claims (MutateDaily's grant, stamped At / PlayStart) not in the store yet,
+--   TroveGrants = { [askId] = grant } the Trove asks (MarkTrove) not in the store yet (P7.pruneGrants drops all three
+--     after a confirmed save)
 -- }
 local cache = {}
 local store = nil
@@ -737,6 +795,20 @@ local P6 = {
 	REFUND_MAX = 5, -- the old Config.Items.MaxCarry: stored counts clamp to it (on read, in the merge and in the refund)
 }
 
+-- Store build (2026-11-04, spec section 6; plan Task 5): the Robux Store / daily gifts / Sky Trove fields and the grant
+-- records of their twin rules. ONE table again (the one new top-level local). Save-format constants only; the rules
+-- (prices, the gift cells, the asks) live in Config.Store / Config.Daily / Config.Trove and shared/StoreCatalog.
+local P7 = {
+	MAX_TIER = 16, -- Daily.PlayClaimed tiers 1..16 (Config.Daily.Play.Tiers has 7)
+	MAX_STREAK = 100000, -- Daily.Streak / Paid / Weeks sanity cap
+	MAX_BOOST = 1000000000, -- seconds one AddBoost may add (sanity)
+	KINDS = { Day = true, Play = true }, -- DailyClaims grant kinds
+	AMOUNTS = { "Cash", "Tokens", "Gems", "Berries" }, -- the currency amounts of a grant
+	STORE_MAPS = { "Bought", "Passes", "Boosts" },
+	DAILY_NUMBERS = { "Streak", "Paid", "Weeks" }, -- whole numbers 0..MAX_STREAK
+	DAILY_CLOCKS = { "LastClaimAt", "PlayStart" }, -- Unix seconds, 0 = never
+}
+
 -- The Dungeon record: Best = the highest floor cleared (0 = none), Cleared = { [floor] = true } in the live profile
 -- (a dense boolean array in the store and the snapshot, like Battle.TrialCleared), Runs = finished runs, Clears =
 -- first clears (counter).
@@ -987,6 +1059,10 @@ local function newProfile()
 		Dungeon = P5.newDungeon(),
 		Berries = 0,
 		Settings = P5.newSettings(),
+		-- Store build (spec section 6)
+		Store = P7.newStore(),
+		Daily = P7.newDaily(),
+		Trove = {},
 	}
 end
 
@@ -2069,6 +2145,381 @@ function P4.applyRing(out, dr)
 end
 
 -- Live (possibly messy) profile -> clean profile with whole numbers. Read defensively: other modules mutate it.
+----------------------------------------------------------------------
+-- Store build (P7): the Store / Daily / Trove records, their deltas and merges, the grant records of the twin rules
+----------------------------------------------------------------------
+
+function P7.newStore()
+	return { Bought = {}, Passes = {}, Boosts = {} }
+end
+
+function P7.newDaily()
+	return { Streak = 0, Paid = 0, LastClaimAt = 0, Weeks = 0, Pet = false, PlayStart = 0, PlaySec = 0, PlayClaimed = {} }
+end
+
+-- Config.Daily is read lazily (the spec's numbers; the defaults when an older Config lacks the table).
+function P7.dailyNumber(key, sub, default)
+	local daily = Config.Daily
+	local holder = type(daily) == "table" and (sub and daily[sub] or daily) or nil
+	local value = type(holder) == "table" and holder[key] or nil
+	if isFinite(value) and value > 0 then
+		return value
+	end
+	return default
+end
+
+function P7.readySeconds()
+	return P7.dailyNumber("ReadySeconds", nil, 72000)
+end
+
+function P7.futureSlack()
+	return P7.dailyNumber("FutureClockSlack", nil, 300)
+end
+
+function P7.maxDaySeconds()
+	return P7.dailyNumber("MaxDaySeconds", "Play", 36000)
+end
+
+-- { [key] = Unix seconds } with valid keys and sane clocks (a stored `true` counts as time 0).
+function P7.cleanClocks(raw)
+	local out = {}
+	for key, value in pairs(tableOr(raw)) do
+		if validKey(key) then
+			if value == true then
+				out[key] = 0
+			elseif isFinite(value) then
+				out[key] = sanitizeTime(value)
+			end
+		end
+	end
+	return out
+end
+
+-- Untrusted Store -> a clean record (Bought / Passes = the Unix time of the first mark, Boosts = the potion ends).
+function P7.cleanStore(raw)
+	local r = tableOr(raw)
+	local s = P7.newStore()
+	for _, key in ipairs(P7.STORE_MAPS) do
+		s[key] = P7.cleanClocks(r[key])
+	end
+	return s
+end
+
+function P7.isDefaultStore(s)
+	for _, key in ipairs(P7.STORE_MAPS) do
+		if next(s[key]) ~= nil then
+			return false
+		end
+	end
+	return true
+end
+
+-- Clean store -> the stored form (an empty map left out).
+function P7.encodeStore(s)
+	local rec = {}
+	for _, key in ipairs(P7.STORE_MAPS) do
+		if next(s[key]) ~= nil then
+			rec[key] = copyMap(s[key])
+		end
+	end
+	return rec
+end
+
+-- A play tier: a whole number 1..MAX_TIER (a numeric string too), or nil.
+function P7.tierOf(value)
+	local n = value
+	if type(value) == "string" and string.find(value, "^%d+$") then
+		n = tonumber(value)
+	end
+	if isFinite(n) and n >= 1 and n <= P7.MAX_TIER and n == math.floor(n) then
+		return n
+	end
+	return nil
+end
+
+-- Untrusted Daily -> a clean record (whole numbers >= 0, clocks capped at MAX_TIME, Pet a boolean, PlaySec
+-- 0..MaxDaySeconds, PlayClaimed a set from a set or from the stored dense boolean array).
+function P7.cleanDaily(raw)
+	local r = tableOr(raw)
+	local d = P7.newDaily()
+	for _, key in ipairs(P7.DAILY_NUMBERS) do
+		d[key] = clampCount(r[key], P7.MAX_STREAK)
+	end
+	for _, key in ipairs(P7.DAILY_CLOCKS) do
+		d[key] = sanitizeTime(r[key])
+	end
+	d.Pet = r.Pet == true
+	d.PlaySec = clampCount(r.PlaySec, P7.maxDaySeconds())
+	for key, value in pairs(tableOr(r.PlayClaimed)) do
+		local tier = nil
+		if value == true then
+			tier = P7.tierOf(key)
+		elseif type(key) == "number" and type(value) == "number" then
+			tier = P7.tierOf(value)
+		end
+		if tier then
+			d.PlayClaimed[tier] = true
+		end
+	end
+	return d
+end
+
+function P7.isDefaultDaily(d)
+	return d.Streak == 0 and d.Paid == 0 and d.LastClaimAt == 0 and d.Weeks == 0 and d.Pet == false and d.PlayStart == 0 and d.PlaySec == 0 and next(d.PlayClaimed) == nil
+end
+
+-- Clean record -> the stored form (PlayClaimed a dense boolean array; no sparse array for the DataStore).
+function P7.encodeDaily(d)
+	local claimed, top = {}, 0
+	for tier in pairs(d.PlayClaimed) do
+		if tier > top then
+			top = tier
+		end
+	end
+	for tier = 1, top do
+		claimed[tier] = d.PlayClaimed[tier] == true
+	end
+	return { Streak = d.Streak, Paid = d.Paid, LastClaimAt = d.LastClaimAt, Weeks = d.Weeks, Pet = d.Pet, PlayStart = d.PlayStart, PlaySec = d.PlaySec, PlayClaimed = claimed }
+end
+
+function P7.cleanTrove(raw)
+	return cleanSet(raw)
+end
+
+-- An untrusted grant (what a receipt, a daily claim or a Trove ask REALLY paid) -> a clean record { Cash, Tokens, Gems,
+-- Berries, Pets = {[id] = n}, Boost = {[id] = seconds}, Kind, Tier, At, PlayStart } (zero amounts left out), or nil
+-- when it carries nothing to take back. A number means { Gems = n } (the gem packs' MarkReceipt call).
+function P7.cleanGrant(raw)
+	if type(raw) == "number" then
+		raw = { Gems = raw }
+	end
+	if type(raw) ~= "table" then
+		return nil
+	end
+	local g, any = {}, false
+	for _, key in ipairs(P7.AMOUNTS) do
+		local n = raw[key]
+		if isFinite(n) and n >= 1 then
+			g[key] = math.floor(n + 0.5)
+			any = true
+		end
+	end
+	for id, n in pairs(tableOr(raw.Pets)) do
+		local count = validKey(id) and clampCount(n, Config.Pets.MaxPerStack) or 0
+		if count > 0 then
+			g.Pets = g.Pets or {}
+			g.Pets[id] = count
+			any = true
+		end
+	end
+	for id, seconds in pairs(tableOr(raw.Boost)) do
+		local n = validKey(id) and clampCount(seconds, P7.MAX_BOOST) or 0
+		if n > 0 then
+			g.Boost = g.Boost or {}
+			g.Boost[id] = n
+			any = true
+		end
+	end
+	if not any then
+		return nil
+	end
+	if type(raw.Kind) == "string" and P7.KINDS[raw.Kind] then
+		g.Kind = raw.Kind
+	end
+	g.Tier = P7.tierOf(raw.Tier)
+	g.At = isFinite(raw.At) and sanitizeTime(raw.At) or nil
+	g.PlayStart = isFinite(raw.PlayStart) and sanitizeTime(raw.PlayStart) or nil
+	return g
+end
+
+-- The daily claims of `claims` that are still open against the clean record `daily` (an entry's Base, or the store):
+-- the ones its merge would keep. Settled: a Day grant at or before its LastClaimAt (held) or less than ReadySeconds
+-- after it (the merge dropped it against that claim: paid elsewhere, never dropped twice); a Play grant of its
+-- play-day whose tier it holds, or of an EARLIER play-day (the higher PlayStart replaced that day: never matched again).
+function P7.pendingClaims(claims, daily)
+	local out = {}
+	local ready = P7.readySeconds()
+	for _, g in ipairs(tableOr(claims)) do
+		local held
+		if g.Kind == "Play" then
+			local start = g.PlayStart or 0
+			held = start < daily.PlayStart or (start == daily.PlayStart and g.Tier ~= nil and daily.PlayClaimed[g.Tier] == true)
+		else
+			held = (g.At or 0) - daily.LastClaimAt < ready
+		end
+		if not held then
+			out[#out + 1] = g
+		end
+	end
+	return out
+end
+
+-- The Store delta (both clean), or nil: Bought / Passes = the keys the session marked (their times), Boosts = the ids
+-- whose end the session changed (the session's end).
+function P7.diffStore(live, base)
+	local d, any = P7.newStore(), false
+	for _, key in ipairs({ "Bought", "Passes" }) do
+		for id, t in pairs(live[key]) do
+			if base[key][id] == nil then
+				d[key][id] = t
+				any = true
+			end
+		end
+	end
+	for id, ends in pairs(live.Boosts) do
+		if base.Boosts[id] ~= ends then
+			d.Boosts[id] = ends
+			any = true
+		end
+	end
+	if not any then
+		return nil
+	end
+	return d
+end
+
+-- The Daily delta (both clean), or nil when the session changed nothing: the pair (LastClaimAt, Streak), Paid / Weeks /
+-- Pet as candidates, the Play group (PlayStart; PlaySec = the seconds the session added to that play-day, the whole
+-- live count when the session started the day; PlaySecNow = the live count; PlayClaimed = the live set). A stand-in
+-- delta carries no Play group (its base is defaults, not store data).
+function P7.diffDaily(live, base, standIn)
+	if deepEqual(live, base) then
+		return nil
+	end
+	local d = { Streak = live.Streak, LastClaimAt = live.LastClaimAt, Paid = live.Paid, Weeks = live.Weeks, Pet = live.Pet }
+	if not standIn then
+		d.PlayStart = live.PlayStart
+		d.PlaySecNow = live.PlaySec
+		if live.PlayStart == base.PlayStart then
+			d.PlaySec = live.PlaySec - base.PlaySec
+		else
+			d.PlaySec = live.PlaySec
+		end
+		d.PlayClaimed = copyMap(live.PlayClaimed)
+	end
+	return d
+end
+
+function P7.newDrop()
+	return { Tokens = 0, Cash = 0, Gems = 0, Berries = 0, Pets = {}, Boosts = {} }
+end
+
+-- Adds a grant the store already holds to `drop` (what applyDelta takes off the session's deltas).
+function P7.dropGrant(drop, grant)
+	if type(grant) ~= "table" then
+		return
+	end
+	for _, key in ipairs(P7.AMOUNTS) do
+		if isFinite(grant[key]) then
+			drop[key] = drop[key] + grant[key]
+		end
+	end
+	for id, n in pairs(tableOr(grant.Pets)) do
+		drop.Pets[id] = (drop.Pets[id] or 0) + n
+	end
+	for id, seconds in pairs(tableOr(grant.Boost)) do
+		drop.Boosts[id] = (drop.Boosts[id] or 0) + seconds
+	end
+end
+
+-- The Daily merge (`out` = the merged profile, `dd` = the Daily delta or nil, `claims` = the session's pending claim
+-- grants, `drop` collects the grants the store already paid). The store decides against ITS values before the merge:
+-- a Day grant less than ReadySeconds after the stored LastClaimAt was paid elsewhere (dropped; the stored pair stays);
+-- else the higher LastClaimAt wins the pair; a stored clock further in the future than FutureClockSlack is a wrong
+-- clock: it drops nothing and loses the pair to the session's clamp. Paid / Weeks max, Pet sticks. The higher
+-- PlayStart wins the whole Play group; at the same PlayStart the seconds add up and the tiers join; a Play grant whose
+-- (PlayStart, tier) the store holds was paid elsewhere.
+function P7.applyDaily(out, dd, claims, drop)
+	local stored = P7.cleanDaily(out.Daily)
+	local ready = P7.readySeconds()
+	local wrongClock = stored.LastClaimAt > os.time() + P7.futureSlack()
+	local droppedAt = {}
+	for _, g in ipairs(tableOr(claims)) do
+		if g.Kind == "Play" then
+			if (g.PlayStart or 0) == stored.PlayStart and g.Tier ~= nil and stored.PlayClaimed[g.Tier] == true then
+				P7.dropGrant(drop, g)
+			end
+		elseif not wrongClock and (g.At or 0) - stored.LastClaimAt < ready then
+			P7.dropGrant(drop, g)
+			droppedAt[g.At or 0] = true
+		end
+	end
+	if not dd then
+		return
+	end
+	local d = out.Daily
+	if (dd.LastClaimAt > stored.LastClaimAt or wrongClock) and not droppedAt[dd.LastClaimAt] then
+		d.LastClaimAt = dd.LastClaimAt
+		d.Streak = dd.Streak
+	end
+	if dd.Paid > d.Paid then
+		d.Paid = dd.Paid
+	end
+	if dd.Weeks > d.Weeks then
+		d.Weeks = dd.Weeks
+	end
+	if dd.Pet == true then
+		d.Pet = true
+	end
+	if isFinite(dd.PlayStart) then
+		local maxDay = P7.maxDaySeconds()
+		if dd.PlayStart > stored.PlayStart then
+			d.PlayStart = dd.PlayStart
+			d.PlaySec = clampCount(dd.PlaySecNow, maxDay)
+			d.PlayClaimed = {}
+		end
+		if dd.PlayStart >= stored.PlayStart then
+			if dd.PlayStart == stored.PlayStart then
+				d.PlaySec = clampCount(stored.PlaySec + (isFinite(dd.PlaySec) and dd.PlaySec or 0), maxDay)
+			end
+			for tier in pairs(tableOr(dd.PlayClaimed)) do
+				if P7.tierOf(tier) then
+					d.PlayClaimed[tier] = true
+				end
+			end
+		end
+	end
+end
+
+-- The Trove merge: the asks are a union; an ask the store already holds was paid there (its grant off the deltas).
+function P7.applyTrove(out, asks, grants, drop)
+	for ask in pairs(tableOr(asks)) do
+		if validKey(ask) then
+			if out.Trove[ask] == true then
+				P7.dropGrant(drop, tableOr(grants)[ask])
+			end
+			out.Trove[ask] = true
+		end
+	end
+end
+
+-- The Store merge: Bought / Passes a union (the earlier time wins); a potion end per id: the session's end MINUS the
+-- seconds of its receipt grants the store already holds (in `drop`), then the later end of the two.
+function P7.applyStore(out, ds, drop)
+	if not ds then
+		return
+	end
+	local s = out.Store
+	for _, key in ipairs({ "Bought", "Passes" }) do
+		for id, t in pairs(tableOr(ds[key])) do
+			if validKey(id) and isFinite(t) then
+				local current = s[key][id]
+				if current == nil or t < current then
+					s[key][id] = sanitizeTime(t)
+				end
+			end
+		end
+	end
+	for id, ends in pairs(tableOr(ds.Boosts)) do
+		if validKey(id) and isFinite(ends) then
+			local want = ends - (drop.Boosts[id] or 0)
+			if want > (s.Boosts[id] or 0) then
+				s.Boosts[id] = sanitizeTime(want)
+			end
+		end
+	end
+end
+
 local function copyProfile(p)
 	local out = newProfile()
 	out.Tokens = p.Tokens
@@ -2102,6 +2553,10 @@ local function copyProfile(p)
 	out.Dungeon = P5.cleanDungeon(p.Dungeon)
 	out.Berries = P5.cleanBerries(p.Berries)
 	out.Settings = P5.cleanSettings(p.Settings)
+	-- Store build
+	out.Store = P7.cleanStore(p.Store)
+	out.Daily = P7.cleanDaily(p.Daily)
+	out.Trove = P7.cleanTrove(p.Trove)
 	-- Phase 3 (the copies, the Home and its prestige are final above: the presets are pruned against them)
 	out.Teams = P3.cleanTeams(p.Teams)
 	P3.prune(out, out.Teams)
@@ -2176,6 +2631,10 @@ local function normalizeProfile(raw, info)
 	p.Dungeon = P5.cleanDungeon(raw.Dungeon)
 	p.Berries = P5.cleanBerries(raw.Berries)
 	p.Settings = P5.cleanSettings(raw.Settings)
+	-- Store build (absent in older saves: the defaults stay)
+	p.Store = P7.cleanStore(raw.Store)
+	p.Daily = P7.cleanDaily(raw.Daily)
+	p.Trove = P7.cleanTrove(raw.Trove)
 	normalizeEquipped(p)
 	-- v3 fields (absent in v2 saves: the defaults from newProfile stay)
 	p.Discovered = cleanSet(raw.Discovered)
@@ -2248,6 +2707,10 @@ local function profilesEqual(a, b)
 		and deepEqual(a.Dungeon, b.Dungeon)
 		and a.Berries == b.Berries
 		and P5.settingsEqual(a.Settings, b.Settings)
+		-- Store build
+		and deepEqual(a.Store, b.Store)
+		and deepEqual(a.Daily, b.Daily)
+		and mapsEqual(a.Trove, b.Trove)
 end
 
 ----------------------------------------------------------------------
@@ -2367,6 +2830,13 @@ local function overwriteValues(live, overwrite)
 	-- Phase 5 (the dev reset: Best max / Cleared union would bring the record back)
 	if overwrite.Dungeon then
 		out.Dungeon = P5.cleanDungeon(live.Dungeon)
+	end
+	-- Store build (the dev reset: the pair / Play group maxima and the ask union would bring them back)
+	if overwrite.Daily then
+		out.Daily = P7.cleanDaily(live.Daily)
+	end
+	if overwrite.Trove then
+		out.Trove = P7.cleanTrove(live.Trove)
 	end
 	if next(out) == nil then
 		return nil
@@ -2592,7 +3062,16 @@ local function diffProfiles(live, base, overwrite, opts)
 		CashNow = sanitizeCash(live.Cash),
 		StandIn = opts.StandIn == true,
 		StarGems = {},
-		ReceiptGems = {},
+		-- Store build (P7): the Store record (new marks, changed potion ends), the Daily record by its pair / Play group
+		-- rules (nil when unchanged; a stand-in delta carries no Play group), the asks the session set (a union), and
+		-- the grant records of the three twin rules: what the session paid for each new receipt (filled below), each
+		-- daily claim its Base does not hold, each new ask (filled below)
+		Store = P7.diffStore(P7.cleanStore(live.Store), P7.cleanStore(base.Store)),
+		Daily = P7.diffDaily(P7.cleanDaily(live.Daily), P7.cleanDaily(base.Daily), opts.StandIn == true),
+		Trove = diffSet(live.Trove, base.Trove),
+		ReceiptGrants = {},
+		DailyClaims = P7.pendingClaims(opts.DailyClaims, P7.cleanDaily(base.Daily)),
+		TroveGrants = {},
 	}
 	if not d.StandIn and liveStars > baseStars then
 		d.StarGems = starRewards(baseStars, liveStars)
@@ -2624,14 +3103,21 @@ local function diffProfiles(live, base, overwrite, opts)
 		d.Settings = liveSettings
 	end
 	local baseReceipts = cleanReceipts(base.GemReceipts)
-	local receiptGems = type(opts.ReceiptGems) == "table" and opts.ReceiptGems or {}
+	local receiptGrants = type(opts.ReceiptGrants) == "table" and opts.ReceiptGrants or {}
 	for id, t in pairs(cleanReceipts(live.GemReceipts)) do
 		if baseReceipts[id] == nil then
 			d.GemReceipts[id] = t
-			local gems = receiptGems[id]
-			if isFinite(gems) and gems >= 1 then
-				d.ReceiptGems[id] = math.floor(gems)
+			local grant = P7.cleanGrant(receiptGrants[id])
+			if grant then
+				d.ReceiptGrants[id] = grant
 			end
+		end
+	end
+	local troveGrants = type(opts.TroveGrants) == "table" and opts.TroveGrants or {}
+	for ask in pairs(d.Trove) do
+		local grant = P7.cleanGrant(troveGrants[ask])
+		if grant then
+			d.TroveGrants[ask] = grant
 		end
 	end
 	return d
@@ -2665,6 +3151,11 @@ local function isEmptyDelta(d)
 		and d.Berries == 0
 		and d.Settings == nil
 		and d.Overwrite == nil
+		-- Store build
+		and d.Store == nil
+		and d.Daily == nil
+		and next(d.Trove) == nil
+		and #d.DailyClaims == 0
 end
 
 local function applyCounts(target, deltas, maxCount)
@@ -2806,6 +3297,13 @@ local function applyDelta(stored, d)
 		if o.Dungeon then
 			out.Dungeon = P5.cleanDungeon(o.Dungeon)
 		end
+		-- Store build (the dev reset; Store is never overwritten)
+		if o.Daily then
+			out.Daily = P7.cleanDaily(o.Daily)
+		end
+		if o.Trove then
+			out.Trove = P7.cleanTrove(o.Trove)
+		end
 	end
 	-- HUD cleanup: the session's own item refund is left out when the store already holds another server's (the
 	-- marker, read from the stored record before the union below): one save is refunded once
@@ -2813,8 +3311,34 @@ local function applyDelta(stored, d)
 	if tableOr(stored.Migrations)[P6.MARK] == true and isFinite(d.ItemsRefunded) and d.ItemsRefunded > 0 then
 		refunded = d.ItemsRefunded
 	end
-	out.Tokens = sanitize(out.Tokens + d.Tokens - refunded)
-	applyCounts(out.Pets, d.Pets, Config.Pets.MaxPerStack)
+	-- Store build (P7): ONE pass sums every grant the store already holds into `drop` (the twin rules: a receipt the
+	-- stored set holds, a Trove ask set there, a daily claim paid there by another server or by this session's own
+	-- earlier save that landed unconfirmed) while it merges the Trove / Daily / Store records by their rules (an
+	-- overwritten Daily / Trove already is the session's whole value). The amounts then come off the Tokens / Pets /
+	-- Cash / Gems / Berries deltas where each kind is applied below (`d` itself stays untouched: UpdateAsync may run
+	-- this more than once). A dropped pet comes off the delta even when the session lost that copy again (a fuse, a
+	-- release): the store's copy of the grant is the one that counts.
+	local drop = P7.newDrop()
+	if type(d.ReceiptGrants) == "table" then
+		for id in pairs(tableOr(d.GemReceipts)) do
+			if out.GemReceipts[id] ~= nil then
+				P7.dropGrant(drop, d.ReceiptGrants[id])
+			end
+		end
+	end
+	if not (o and o.Trove) then
+		P7.applyTrove(out, d.Trove, d.TroveGrants, drop)
+	end
+	if not (o and o.Daily) then
+		P7.applyDaily(out, d.Daily, d.DailyClaims, drop)
+	end
+	P7.applyStore(out, d.Store, drop)
+	local petDeltas = copyMap(d.Pets)
+	for id, n in pairs(drop.Pets) do
+		petDeltas[id] = (petDeltas[id] or 0) - n
+	end
+	out.Tokens = sanitize(out.Tokens + d.Tokens - refunded - drop.Tokens)
+	applyCounts(out.Pets, petDeltas, Config.Pets.MaxPerStack)
 	applyCounts(out.Items, d.Items, P6.REFUND_MAX)
 	for key, delta in pairs(d.Stats) do
 		if key == "TokensEarned" then
@@ -2857,15 +3381,18 @@ local function applyDelta(stored, d)
 	--   otherwise        a plain delta
 	-- Skipped for a ResetFields Home (written over the store as it is) and a stand-in base (not store data).
 	local cashDelta, gemDelta = d.Cash, d.Gems
+	local cashReplaced = false -- the prestige rule replaced the delta with the session's balance, or reset it
 	if not (o and o.Home) and not d.StandIn and isFinite(d.BasePrestige) and isFinite(d.LivePrestige) then
 		local s, b, l = out.Home.Prestige, d.BasePrestige, d.LivePrestige
 		if l > b and l > s then
 			cashDelta = sanitizeCash(d.CashNow) - out.Cash
+			cashReplaced = true
 		elseif s > b then
 			if l == s then
 				cashDelta = sanitizeCash(d.CashNow)
 			else
 				cashDelta = 0
+				cashReplaced = true
 			end
 		end
 		-- stars b+1 .. min(l, s) were reached and paid by the server that wrote the store too
@@ -2876,16 +3403,14 @@ local function applyDelta(stored, d)
 			end
 		end
 	end
-	-- a purchase whose receipt the store already holds was granted by another server: its gems are not added again
-	-- (out.GemReceipts is still the stored set here: the receipts merge below)
-	if type(d.ReceiptGems) == "table" then
-		for id in pairs(d.GemReceipts) do
-			local gems = d.ReceiptGems[id]
-			if out.GemReceipts[id] ~= nil and isFinite(gems) then
-				gemDelta = gemDelta - gems
-			end
-		end
+	-- Store build (P7): a Cash / Gems grant the store already holds (a receipt, a claim or an ask paid elsewhere: `drop`
+	-- above) comes off whatever delta survives the prestige rule. When that rule replaced the Cash delta with the
+	-- session's balance (it holds the grant once; the store's copy went with the balance it replaced) or reset it
+	-- (that run's Cash was reset anyway), there is nothing to take off.
+	if not cashReplaced then
+		cashDelta = cashDelta - drop.Cash
 	end
+	gemDelta = gemDelta - drop.Gems
 	out.Cash = sanitizeCash(out.Cash + cashDelta)
 	out.Gems = sanitize(out.Gems + gemDelta)
 	applyReplace(out.PetLevels, d.PetLevels)
@@ -2940,6 +3465,7 @@ local function applyDelta(stored, d)
 		if homeMarked and isFinite(d.BerriesMigrated) and d.BerriesMigrated > 0 then
 			delta = delta - d.BerriesMigrated
 		end
+		delta = delta - drop.Berries -- Store build: a berry grant the store already holds
 		out.Berries = P5.cleanBerries(out.Berries + delta)
 	end
 	if type(d.Settings) == "table" then
@@ -3029,6 +3555,16 @@ local function toStored(p)
 	end
 	if not P5.isDefaultSettings(p.Settings) then
 		rec.Settings = copyMap(p.Settings)
+	end
+	-- Store build: left out while default / empty (PlayClaimed as a dense boolean array)
+	if not P7.isDefaultStore(p.Store) then
+		rec.Store = P7.encodeStore(p.Store)
+	end
+	if not P7.isDefaultDaily(p.Daily) then
+		rec.Daily = P7.encodeDaily(p.Daily)
+	end
+	if next(p.Trove) ~= nil then
+		rec.Trove = copyMap(p.Trove)
 	end
 	return rec
 end
@@ -3143,6 +3679,10 @@ local function replaceContents(target, src)
 	refill(ensureTable(target, "Dungeon"), src.Dungeon)
 	target.Berries = src.Berries
 	refill(ensureTable(target, "Settings"), src.Settings)
+	-- Store build (in place too)
+	refill(ensureTable(target, "Store"), src.Store)
+	refill(ensureTable(target, "Daily"), src.Daily)
+	refill(ensureTable(target, "Trove"), src.Trove)
 end
 
 -- Prunes the LIVE presets in place (keys no longer owned: fused away, released; a junk structure is repaired too) and
@@ -3169,7 +3709,11 @@ end
 -- load has not finished, or failed and was not recovered yet: the Base is defaults, not store data).
 local function deltaOpts(entry)
 	return {
-		ReceiptGems = entry.ReceiptGems,
+		-- Store build: the grant records of the three twin rules (what the session paid for its receipts, its daily
+		-- claims and its Trove asks that are not in the store yet)
+		ReceiptGrants = entry.ReceiptGrants,
+		DailyClaims = entry.DailyClaims,
+		TroveGrants = entry.TroveGrants,
 		StandIn = entry.LoadFailed == true or entry.Loaded ~= true,
 		-- Phase 5: the Clears the session's own P5Dungeon migration wrote (merge as a max until the store holds them)
 		DungeonMigrated = entry.DungeonMigrated,
@@ -3181,22 +3725,41 @@ local function deltaOpts(entry)
 	}
 end
 
--- Drops the receipt amounts the entry no longer needs: receipts the store holds (they are in Base) or the live
--- profile lost (taken back / trimmed). Only receipts still on their way to the store are looked up.
-local function pruneReceiptGems(entry)
-	local map = entry.ReceiptGems
-	if type(map) ~= "table" then
-		return
-	end
-	local live = tableOr(entry.Profile.GemReceipts)
-	local saved = type(entry.Base) == "table" and tableOr(entry.Base.GemReceipts) or {}
-	for id in pairs(copyMap(map)) do
-		if live[id] == nil or saved[id] ~= nil then
-			map[id] = nil
+-- Drops the grant records the entry no longer needs (after a confirmed save): receipts the store holds (they are in
+-- Base) or the live profile lost (taken back / trimmed), daily claims the Base holds (a Day grant at or before its
+-- LastClaimAt, a Play grant whose (PlayStart, tier) it holds or of an earlier play-day), Trove asks set in the Base or
+-- gone from the live profile. Only grants still on their way to the store are looked up by diffProfiles.
+function P7.pruneGrants(entry)
+	local base = type(entry.Base) == "table" and entry.Base or {}
+	local receipts = entry.ReceiptGrants
+	if type(receipts) == "table" then
+		local live = tableOr(entry.Profile.GemReceipts)
+		local saved = tableOr(base.GemReceipts)
+		for id in pairs(copyMap(receipts)) do
+			if live[id] == nil or saved[id] ~= nil then
+				receipts[id] = nil
+			end
+		end
+		if next(receipts) == nil then
+			entry.ReceiptGrants = nil
 		end
 	end
-	if next(map) == nil then
-		entry.ReceiptGems = nil
+	if type(entry.DailyClaims) == "table" then
+		local left = P7.pendingClaims(entry.DailyClaims, P7.cleanDaily(base.Daily))
+		entry.DailyClaims = #left > 0 and left or nil
+	end
+	local asks = entry.TroveGrants
+	if type(asks) == "table" then
+		local live = tableOr(entry.Profile.Trove)
+		local saved = tableOr(base.Trove)
+		for ask in pairs(copyMap(asks)) do
+			if live[ask] == nil or saved[ask] ~= nil then
+				asks[ask] = nil
+			end
+		end
+		if next(asks) == nil then
+			entry.TroveGrants = nil
+		end
 	end
 end
 
@@ -3809,7 +4372,7 @@ local function writeEntry(entry, userId)
 			else
 				entry.Base = snapshot
 			end
-			pruneReceiptGems(entry)
+			P7.pruneGrants(entry)
 			return true
 		end
 
@@ -4759,11 +5322,13 @@ end
 
 -- Records a processed purchase id. true = new (grant it now, in the same step), false = already processed (grant
 -- nothing, the purchase is done), nil = cannot decide now (not loaded / provisional: answer NotProcessedYet).
--- The receipt and the granted gems travel in the same save (one UpdateAsync). `gems` (optional) = what the caller
--- grants for it: the merge then makes the grant follow its receipt atomically. When the stored profile already holds
--- that receipt (another server granted the same purchase while this server's save failed and the player moved on),
--- this session's grant is not added to the store a second time.
-function DataService.MarkReceipt(player, purchaseId, gems)
+-- The receipt and its grant travel in the same save (one UpdateAsync). `grant` (optional) = what the caller grants
+-- for it (a number = that many Gems, the gem packs; or a grant table { Cash, Tokens, Gems, Berries, Pets, Boost }):
+-- the merge then makes the grant follow its receipt atomically. When the stored profile already holds that receipt
+-- (another server granted the same purchase while this server's save failed and the player moved on), this
+-- session's grant is not added to the store a second time. NoteReceiptGrant replaces the record once the grant is
+-- known for real (substitutes).
+function DataService.MarkReceipt(player, purchaseId, grant)
 	local entry = player and cache[player.UserId]
 	if not entry or not entry.Loaded or isProvisional(entry) or not validKey(purchaseId) then
 		return nil
@@ -4774,14 +5339,189 @@ function DataService.MarkReceipt(player, purchaseId, gems)
 	end
 	receipts[purchaseId] = sanitizeTime(os.time())
 	trimReceipts(receipts, { [purchaseId] = true })
-	if isFinite(gems) and gems >= 1 then
-		local amounts = entry.ReceiptGems
-		if type(amounts) ~= "table" then
-			amounts = {}
-			entry.ReceiptGems = amounts
+	P7.noteGrant(entry, "ReceiptGrants", purchaseId, grant)
+	entry.Dirty = true
+	return true
+end
+
+-- Writes (or with a grant of nothing clears) one grant record of the entry's annotation `field` ({[key] = grant}).
+function P7.noteGrant(entry, field, key, grant)
+	local g = P7.cleanGrant(grant)
+	local map = entry[field]
+	if type(map) ~= "table" then
+		if not g then
+			return
 		end
-		amounts[purchaseId] = math.floor(gems + 0.5) -- AddGems rounds the same way
+		map = {}
+		entry[field] = map
 	end
+	map[key] = g
+	if next(map) == nil then
+		entry[field] = nil
+	end
+end
+
+-- Store build: records what a receipt REALLY granted (substitutes included) for a receipt this session marked that
+-- is not in the store yet, replacing MarkReceipt's record; the merge takes it off the deltas when the store turns out
+-- to hold the receipt. false for a receipt the store already holds / not marked here, until loaded, while provisional.
+function DataService.NoteReceiptGrant(player, purchaseId, grant)
+	local entry = P3.realEntry(player)
+	if not entry or not validKey(purchaseId) then
+		return false
+	end
+	if tableOr(entry.Profile.GemReceipts)[purchaseId] == nil or tableOr(entry.Base.GemReceipts)[purchaseId] ~= nil then
+		return false
+	end
+	P7.noteGrant(entry, "ReceiptGrants", purchaseId, grant)
+	entry.Dirty = true
+	return true
+end
+
+----------------------------------------------------------------------
+-- Store build (P7): the Store record (bought packs, passes seen, potion ends), the Daily record (streak and play-time
+-- gifts) and the Trove asks. Nothing here yields; every write is one step and rides the next UpdateAsync with its
+-- grant record (the twin rules of the merge). One-time grants are refused on a stand-in (P3.realEntry).
+----------------------------------------------------------------------
+
+-- The live Store sub-map `key` (Bought / Passes / Boosts) of an entry, created when missing.
+function P7.storeMap(entry, key)
+	return ensureTable(ensureTable(entry.Profile, "Store"), key)
+end
+
+-- Marks a Once pack bought (Store.Bought[key] = now). false when already bought, for junk, until loaded, provisional.
+function DataService.MarkBought(player, key)
+	local entry = P3.realEntry(player)
+	if not entry or not validKey(key) then
+		return false
+	end
+	local bought = P7.storeMap(entry, "Bought")
+	if bought[key] ~= nil then
+		return false
+	end
+	bought[key] = sanitizeTime(os.time())
+	entry.Dirty = true
+	return true
+end
+
+-- A clean copy of the Store record, or nil until loaded and while provisional.
+function DataService.GetStore(player)
+	local entry = P3.realEntry(player)
+	if not entry then
+		return nil
+	end
+	return P7.cleanStore(entry.Profile.Store)
+end
+
+-- Records a pass seen owned (Store.Passes[key] = now, once). A union: allowed before the load and while provisional.
+function DataService.MarkPassSeen(player, key)
+	local entry = player and cache[player.UserId]
+	if not entry or not validKey(key) then
+		return false
+	end
+	local passes = P7.storeMap(entry, "Passes")
+	if passes[key] == nil then
+		passes[key] = sanitizeTime(os.time())
+		entry.Dirty = true
+	end
+	return true
+end
+
+-- Adds potion time: the end is max(now, the running end) + seconds (stacks in TIME, restarts once expired; no cap:
+-- a paid potion is never eaten, Z7). -> ok, ends. Refused for junk, until loaded and while provisional.
+function DataService.AddBoost(player, id, seconds)
+	local entry = P3.realEntry(player)
+	if not entry or not validKey(id) or not isFinite(seconds) then
+		return false
+	end
+	local add = math.floor(seconds + 0.5)
+	if add <= 0 then
+		return false
+	end
+	local boosts = P7.storeMap(entry, "Boosts")
+	local from = isFinite(boosts[id]) and boosts[id] or 0
+	local now = os.time()
+	if from < now then
+		from = now
+	end
+	local ends = sanitizeTime(from + math.min(add, P7.MAX_BOOST))
+	boosts[id] = ends
+	entry.Dirty = true
+	return true, ends
+end
+
+-- A clean copy of the Daily record (PlayClaimed a set), or nil until loaded and while provisional.
+function DataService.GetDaily(player)
+	local entry = P3.realEntry(player)
+	if not entry then
+		return nil
+	end
+	return P7.cleanDaily(entry.Profile.Daily)
+end
+
+-- fn(daily) edits the LIVE Daily record (no yields); an error, or fn returning false, restores it (-> false);
+-- afterwards it is sanitised in place. A `grant` table is stamped At = os.time() and PlayStart = daily.PlayStart
+-- (after fn) and kept for the merge (DailyClaims): pay it right after this returned true, nothing yielding between.
+-- Refused until loaded and while provisional.
+function DataService.MutateDaily(player, fn, grant)
+	if type(fn) ~= "function" then
+		return false
+	end
+	local entry = P3.realEntry(player)
+	if not entry then
+		return false
+	end
+	local live = ensureTable(entry.Profile, "Daily")
+	local before = P7.cleanDaily(live)
+	local ok, result = pcall(fn, live)
+	entry.Profile.Daily = live -- the record stays this table even if fn replaced the field
+	if not ok then
+		warn("[DataService] MutateDaily callback errored (record restored): " .. tostring(result))
+		refill(live, before)
+		return false
+	end
+	if result == false then
+		refill(live, before)
+		return false
+	end
+	refill(live, P7.cleanDaily(live))
+	if type(grant) == "table" then
+		local g = P7.cleanGrant(grant)
+		if g then
+			g.At = sanitizeTime(os.time())
+			g.PlayStart = live.PlayStart
+			local claims = entry.DailyClaims
+			if type(claims) ~= "table" then
+				claims = {}
+				entry.DailyClaims = claims
+			end
+			claims[#claims + 1] = g
+		end
+	end
+	entry.Dirty = true
+	return true
+end
+
+-- A copy of the Trove asks {[askId] = true}, or nil until loaded and while provisional.
+function DataService.GetTrove(player)
+	local entry = P3.realEntry(player)
+	if not entry then
+		return nil
+	end
+	return P7.cleanTrove(entry.Profile.Trove)
+end
+
+-- Sets a Trove ask with its grant record (one step). false when already set, for junk, until loaded, provisional.
+function DataService.MarkTrove(player, askId, grant)
+	local entry = P3.realEntry(player)
+	if not entry or not validKey(askId) then
+		return false
+	end
+	local trove = ensureTable(entry.Profile, "Trove")
+	if trove[askId] == true then
+		return false
+	end
+	trove[askId] = true
+	P7.noteGrant(entry, "TroveGrants", askId, grant)
 	entry.Dirty = true
 	return true
 end
