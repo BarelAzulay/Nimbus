@@ -135,7 +135,7 @@ seconds). Cash gifts are income-minutes (the Ring/Dungeon chest pattern), floore
 Config.Daily = {
   ReadySeconds = 20*3600, KeepSeconds = 48*3600, PipDelaySeconds = 20, FutureClockSlack = 300,
   Days = { {Cash={Minutes=2,Min=400}}, {Tokens=50}, {Gems=10}, {Cash={Minutes=5,Min=1000}}, {Tokens=250}, {Gems=25},
-           {Pet="week_wisp", Else={Gems=40}} },   -- *
+           {Pet="week_wisp", Else={Gems=40}} },   -- * (Else only when the stack is full: 13b.2)
   Play = { DaySeconds = 20*3600, TickSeconds = 10, ActiveWindow = 180, MoveStuds = 2, MaxDaySeconds = 36000,
     ActiveRemotes = { "HomeAction", "PetCare", "BattleRequest", "BattleCommand", "DungeonRequest", "BuyRoulette", "Dash" },
     Tiers = { {Min=10,Cash={Minutes=1,Min=200}}, {Min=20,Tokens=40}, {Min=30,Cash={Minutes=3,Min=600}}, {Min=60,Gems=10},
@@ -366,6 +366,35 @@ stat boosts (Q16), mounts, auto-roll, skins and equipment wait. Changed by the b
 (5.1); week_wisp through `PetService.GrantPet` in W0 (5.2, 12); re-earned, not re-paid (`Paid`, 5.2); no Trove VERIFY (5.3); the daily
 twin rule keys on claim time against the stored `LastClaimAt`, play claims on (PlayStart, tier) (6); no play tick while provisional
 (5.2); a paid receipt never pends for a full stack or bank (5.4, Z7).
+
+### 13b. Gemini's check of the pitch (2026-11-04 03:40, web Pro) and what it changed
+
+Gemini read the twelve cards and answered with nine points. Four were wrong or already covered and are NOT taken: the Roulettes tab
+"hops to a 3D shop" (the Cloud Shop is a window opened by the same pill; the hop is a window switch, and the Cloud Shop's Get Gems
+button is the way back, relabelled **Robux Store**); the 20 h rolling clock "drifts into bedtime" (ready = claim + 20 h is always
+4 h BEFORE the same time next day, so a daily player never drifts; only an ever-earlier player could, and the 48 h keep covers it);
+pass + potion "misread as x4" (5.1's Have-it state already dims the potion card with "You already have x2 Pet XP forever!");
+the Crown Phoenix "looks like a hack" outside the Index (an Index silhouette row with a Shop Exclusive tag that counts toward no
+completion is a good later idea; parked in section 14, not built now). Five points hold and OVERRIDE the earlier text where they differ:
+
+1. **Cash packs (5.1, Q5): Claude's pick becomes NO Cash packs now** (Tokens, Gems and potions only). Gemini: a kid buys 3 h of Cash,
+   Prestiges five minutes later, loses it, the parent reports the game. If the owner picks Cash packs anyway (Q5 = keep), the Prestige
+   confirm must name the Cash lost and the card keeps its line; `Config.Store.Items` keeps the three Cash entries with `Id = 0` and
+   `Enabled = false` so the data is ready either way.
+2. **Day 7 every kept week = another `week_wisp` (5.2, Q7)**, never "later weeks 40 Gems" (an anticlimax). Duplicate copies fuse
+   into Golden / Rainbow like any pet (the existing fusion path by `StatRarity or Rarity`), so no new art. `Config.Daily.Days[7] =
+   { Pet = "week_wisp" }` with `Else` only when the stack is full (`MaxPerStack`): then 40 Gems. The `Paid` rule (re-earned, never
+   re-paid) is unchanged.
+3. **Amounts are numbers on the client, never "minutes of income" (5.2, 8).** `DailyState` carries each cell's and tier's RESOLVED
+   amount (the server computes `max(Min, income x Minutes)` from the player's current income at state time and again at the claim;
+   the claim pays the claim-time value). Copy: "Gets you: $1,450". The pitch's "2 min of income" wording is for the owner only.
+4. **The play clock shows its paused state (5.2, 8).** When no activity was seen for `ActiveWindow` (180 s) the Gifts button's ring dims
+   and the Play tab's header reads "Paused: move around to keep counting!" (Body 15, Neon.Gold). `DailyState.PlayActive = bool`, sent
+   on each change (not per tick). Never a flashing banner, nothing in the screen centre.
+5. **Trove copy (5.3):** the false answer reads "Roblox says you're not in the group yet. Joined for real? Rejoin the game and open the
+   Trove again!" (no "hop to a new server"). The Community ROW is cut (wasted space for a kid with no button); the footer line becomes
+   "Community links are on our game page. Prizes go straight to you. Once per player." `Config.Trove.Asks` = Group and Like only; the
+   no_discord grep stays. The panel is two rows (Group with JOIN / DONE; the Like line) + footer: phone 352x236, 1080p 520x380.
 
 ## 14. Left to the builder
 
