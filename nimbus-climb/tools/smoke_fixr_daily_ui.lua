@@ -38,6 +38,11 @@
 --   client_fixr_touch_handoff     (phone world) 360x640: the Store opened over the Pets window and the Pets window opened
 --                                 over the Store keep Roblox's thumbstick and jump button hidden while one is up and bring
 --                                 them back when the last one closes, round after round (finding 4)
+-- Re-review round 3:
+--   client_fixr_daily_repair_wait (1920x1080, 844x390, 360x640) the wait before a claim that only repairs (Repair, not
+--                                 ready yet: right after a repair claim that still leaves Streak + 1 <= Paid) counts down
+--                                 "Streak repair in ...", never "Next gift in ..." (fits, inside the window); a paying
+--                                 claim's wait still names the next gift (finding 3)
 -- Every payload is fired at the client with KC.toClient("DailyState", ...). The viewport, the graphics level, the
 -- attributes, SoundFx.Play and MenuController.Hint are restored at the end of each scenario.
 -- Plain Lua 5.1 syntax only.
@@ -1110,6 +1115,62 @@ local function clientScenarios()
 		end
 		KC.flushErrors("client_fixr_daily_stale")
 		KC.flushWarnings("client_fixr_daily_stale")
+	end)
+
+	-- re-review round 3, finding 3: the countdown before a claim that will only repair never promises a gift
+	S.client_fixr_daily_repair_wait = guarded("client_fixr_daily_repair_wait", function()
+		local restoreScreen = H.saveScreen()
+		local DC = H.moduleAt("client", "Controllers/DailyController")
+		if not T.check(DC ~= nil, "fixr daily repair wait: DailyController exists") then
+			restoreScreen()
+			return
+		end
+		local restoreMeasure = H.realMeasure()
+		local okRun, errRun = pcall(function()
+			for _, scr in ipairs({ { 1920, 1080, false }, { 844, 390, true }, { 360, 640, true } }) do
+				local tag = fmt("%dx%d", scr[1], scr[2])
+				H.setScreen(scr[1], scr[2], scr[3])
+				DC.Close()
+				KC.advance(0.2)
+				-- right after a repair claim (Paid 10, the missed day took Streak 10 -> 9): the next claim (day 10 <= Paid)
+				-- repairs again, 20 h from now (DailyService: Repair = true while not ready yet)
+				local now = H.now()
+				local p = H.streak(now, 9, 10)
+				p.Repair = true
+				p.Days[p.Cell].Repair = true
+				p.ReadyAt = now + 72000
+				p.KeepUntil = now + 48 * 3600
+				p.StaleAt = now + 48 * 3600 + 1
+				H.fire(p)
+				DC.Open({ Tab = "Daily" })
+				KC.advance(1.1)
+				local win = H.win()
+				local claim, count = H.find(win, "ClaimButton"), H.find(win, "Countdown")
+				T.check(not H.shown(claim) and H.shown(count) and count.Text:find("^Streak repair in %d+h %d+m$") ~= nil and H.body():find("Next gift", 1, true) == nil,
+					"fixr daily repair wait: " .. tag .. " the countdown before a repair claim says 'Streak repair in ...', never 'Next gift in ...'", count and count.Text or "no countdown")
+				local ok, detail = H.fits(count)
+				local wx, wy, ww, wh = H.rect(win)
+				T.check(ok and H.inside(count, wx, wy, wx + ww, wy + wh), "fixr daily repair wait: " .. tag .. " ...its text fits (real font widths), inside the window", detail .. " " .. H.desc(count))
+				-- control: the same wait before a paying claim still names the next gift
+				local g = H.streak(now, 9, 9)
+				g.ReadyAt = now + 72000
+				g.KeepUntil = now + 48 * 3600
+				H.fire(g)
+				KC.advance(1.1)
+				count = H.find(H.win(), "Countdown")
+				T.check(H.shown(count) and count.Text:find("^Next gift in %d+h %d+m$") ~= nil, "fixr daily repair wait: " .. tag .. " (control) before a paying claim it says 'Next gift in ...'", count and count.Text or "no countdown")
+				DC.Close()
+				KC.advance(0.2)
+			end
+		end)
+		restoreMeasure()
+		H.fire(H.base(H.now()))
+		restoreScreen()
+		if not okRun then
+			error(errRun, 0)
+		end
+		KC.flushErrors("client_fixr_daily_repair_wait")
+		KC.flushWarnings("client_fixr_daily_repair_wait")
 	end)
 
 	S.client_fixr_touch_handoff = guarded("client_fixr_touch_handoff", function()

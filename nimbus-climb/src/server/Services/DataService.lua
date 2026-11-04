@@ -42,10 +42,11 @@
 --     Store = { Bought = {[key]=unix}, Passes = {[key]=unix}, Boosts = {[id]=endsUnix} }   -- the Once packs bought, the
 --       passes seen owned, the potion ends (left out while empty; kept by the dev reset: Robux)
 --     Daily = { Streak, Paid, LastClaimAt, Weeks, Pet (bool), PlayStart, PlaySec, PlayClaimed = {[tier]=true},
---       ClampFrom, ClampAt }   -- the streak gifts and the play-time gifts (clocks in Unix seconds, 0 = never;
---       PlayClaimed a DENSE boolean array in the store like TrialCleared; ClampFrom / ClampAt = DailyService's Z8 first
---       sight of a wrong-clock LastClaimAt (the stamp it was seen against, the now of that first sight), left out of the
---       store while 0; the Daily left out while all zero; wiped by the dev reset)
+--       ClampFrom, ClampAt, ClampJob }   -- the streak gifts and the play-time gifts (clocks in Unix seconds, 0 = never;
+--       PlayClaimed a DENSE boolean array in the store like TrialCleared; ClampFrom / ClampAt / ClampJob =
+--       DailyService's Z8 first sight of a wrong-clock LastClaimAt (the stamp it was seen against, the now of that first
+--       sight, the game.JobId of the server whose clock read it: re-review 3), left out of the store while 0; the Daily
+--       left out while all zero; wiped by the dev reset)
 --     Trove = {[askId]=true}   -- the Sky Trove asks paid (left out while empty; wiped by the dev reset) }
 --   Store build rules (P7): Bought / Passes merge as a union (the earlier time wins), a potion end per id as the later
 --   end MINUS the seconds of this session's receipt grants the store already holds (the twin rule, before the max);
@@ -61,10 +62,13 @@
 --   stamp (or holds this session's own earlier claim the grant follows) the grant is this session's next claim, never a
 --   twin, even less than ReadySeconds after the stamp (a claim after a Z8 clamp); against any other stored stamp the
 --   ReadySeconds rule decides, so a clamp claim whose stamp another server has since replaced is still dropped as the
---   twin (P7.pendingClaims / P7.applyDaily). A session whose Base stamp is still the stored one takes the pair with any
---   claim it made. The Z8 first sight (ClampFrom, ClampAt) belongs to its stamp: it is kept only while ClampFrom is the
---   merged LastClaimAt, and two first sights of one stamp keep the later ClampAt. Trove: a union; an ask the
---   store already holds takes the session's grant off the deltas. The grant records (cache annotations, never stored):
+--   twin (P7.pendingClaims / P7.applyDaily). Only a session that moved its own pair (a claim) takes the pair (re-review
+--   3: an unmoved pair is just its Base, so a late save that only ticked play time or noted a Z8 first sight never puts
+--   back a stamp another server's claim replaced); a session whose Base stamp is still the stored one takes it with any
+--   claim it made. The Z8 first sight (ClampFrom, ClampAt, ClampJob) belongs to its stamp: it is kept only while
+--   ClampFrom is the merged LastClaimAt, and two first sights of one stamp keep the later ClampAt. Trove: a union; an
+--   ask the store already holds takes the session's grant off the deltas. The grant records (cache annotations, never
+--   stored):
 --   ReceiptGrants = {[purchaseId] = grant} (replaces ReceiptGems; a number grant still means { Gems = n }),
 --   DailyClaims = { grant... } (each { Kind = "Day" | "Play", Tier, At, Prev, PlayStart, ...amounts }), TroveGrants =
 --   {[askId] = grant}; a grant = { Cash, Tokens, Gems, Berries, Pets = {[id]=n}, Boost = {[id]=seconds}, Star } (Star =
@@ -2172,7 +2176,16 @@ function P7.newStore()
 end
 
 function P7.newDaily()
-	return { Streak = 0, Paid = 0, LastClaimAt = 0, Weeks = 0, Pet = false, PlayStart = 0, PlaySec = 0, PlayClaimed = {}, ClampFrom = 0, ClampAt = 0 }
+	return { Streak = 0, Paid = 0, LastClaimAt = 0, Weeks = 0, Pet = false, PlayStart = 0, PlaySec = 0, PlayClaimed = {}, ClampFrom = 0, ClampAt = 0, ClampJob = "" }
+end
+
+-- The server of a Z8 first sight (its game.JobId, re-review 3): a short string of letters, digits and dashes, else ""
+-- (none / unknown).
+function P7.jobOf(value)
+	if type(value) == "string" and #value <= 64 and string.find(value, "^[%w%-]*$") then
+		return value
+	end
+	return ""
 end
 
 -- Config.Daily is read lazily (the spec's numbers; the defaults when an older Config lacks the table).
@@ -2266,6 +2279,7 @@ function P7.cleanDaily(raw)
 	for _, key in ipairs(P7.DAILY_CLOCKS) do
 		d[key] = sanitizeTime(r[key])
 	end
+	d.ClampJob = (d.ClampFrom > 0 and d.ClampAt > 0) and P7.jobOf(r.ClampJob) or ""
 	d.Pet = r.Pet == true
 	d.PlaySec = clampCount(r.PlaySec, P7.maxDaySeconds())
 	for key, value in pairs(tableOr(r.PlayClaimed)) do
@@ -2284,7 +2298,7 @@ end
 
 function P7.isDefaultDaily(d)
 	return d.Streak == 0 and d.Paid == 0 and d.LastClaimAt == 0 and d.Weeks == 0 and d.Pet == false and d.PlayStart == 0 and d.PlaySec == 0 and next(d.PlayClaimed) == nil
-		and d.ClampFrom == 0 and d.ClampAt == 0
+		and d.ClampFrom == 0 and d.ClampAt == 0 and d.ClampJob == ""
 end
 
 -- Clean record -> the stored form (PlayClaimed a dense boolean array; no sparse array for the DataStore; the Z8 first
@@ -2303,6 +2317,9 @@ function P7.encodeDaily(d)
 	if d.ClampFrom > 0 and d.ClampAt > 0 then
 		out.ClampFrom = d.ClampFrom
 		out.ClampAt = d.ClampAt
+		if d.ClampJob ~= "" then
+			out.ClampJob = d.ClampJob
+		end
 	end
 	return out
 end
@@ -2438,7 +2455,7 @@ function P7.diffDaily(live, base, standIn)
 		return nil
 	end
 	local d = { Streak = live.Streak, LastClaimAt = live.LastClaimAt, BaseClaimAt = base.LastClaimAt, Paid = live.Paid, Weeks = live.Weeks, Pet = live.Pet,
-		ClampFrom = live.ClampFrom, ClampAt = live.ClampAt }
+		ClampFrom = live.ClampFrom, ClampAt = live.ClampAt, ClampJob = live.ClampJob }
 	if not standIn then
 		d.PlayStart = live.PlayStart
 		d.PlaySecNow = live.PlaySec
@@ -2483,12 +2500,14 @@ end
 -- when the stored LastClaimAt is the stamp one of the claims built on (its Prev, P7.chainFrom), the store holds this
 -- session's claims before that one (dropped: paid there) and none from it on (kept, however soon after the stamp: a
 -- claim after a Z8 clamp, re-review 2); otherwise a Day grant less than ReadySeconds after the stored LastClaimAt was
--- paid elsewhere (dropped; the stored pair stays). Else the higher LastClaimAt wins the pair, and a session whose Base
--- stamp is still the stored one takes it with any claim it made. A stored clock further in the future than
+-- paid elsewhere (dropped; the stored pair stays). Else the higher LastClaimAt of a session that MOVED its pair wins
+-- the pair, and a session whose Base stamp is still the stored one takes it with any claim it made; an unmoved pair
+-- never takes it (re-review 3: it is only the session's Base). A stored clock further in the future than
 -- FutureClockSlack is a wrong clock: it loses the pair to a session that MOVED its pair (a claim; DailyService's Z8
 -- clamp never moves LastClaimAt), but it still drops a twin, so one day is never paid twice. Paid / Weeks max, Pet
--- sticks. The Z8 first sight (ClampFrom, ClampAt) stays only while ClampFrom is the merged LastClaimAt; the store's and
--- the session's first sights of that one stamp keep the later ClampAt (a slower clock's earlier sight never wins).
+-- sticks. The Z8 first sight (ClampFrom, ClampAt, ClampJob) stays only while ClampFrom is the merged LastClaimAt; the
+-- store's and the session's first sights of that one stamp keep the later ClampAt with its ClampJob (DailyService
+-- reuses a sight only on the server that took it, so either one is safe to keep).
 -- The higher PlayStart wins the whole Play group; at the same PlayStart the seconds add up and the tiers join; a Play
 -- grant whose (PlayStart, tier) the store holds was paid elsewhere.
 function P7.applyDaily(out, dd, claims, drop)
@@ -2512,21 +2531,26 @@ function P7.applyDaily(out, dd, claims, drop)
 		return
 	end
 	local d = out.Daily
-	local moved = dd.LastClaimAt ~= dd.BaseClaimAt -- a Play tick alone never takes a wrong-clock pair
+	-- only a session that MOVED its pair (a claim) takes it (re-review 3): an unmoved pair is just the session's Base, no
+	-- news about the claim, so a late save that only ticked play time or noted a Z8 first sight never puts back a stamp
+	-- another server's claim has replaced (which would reopen P7.chainFrom's exemption for a twin built on that stamp)
+	local moved = dd.LastClaimAt ~= dd.BaseClaimAt
 	local successor = moved and stored.LastClaimAt == dd.BaseClaimAt -- nothing claimed in the store since the Base
-	if (dd.LastClaimAt > stored.LastClaimAt or (wrongClock and moved) or successor) and not droppedAt[dd.LastClaimAt] then
+	if moved and (dd.LastClaimAt > stored.LastClaimAt or wrongClock or successor) and not droppedAt[dd.LastClaimAt] then
 		d.LastClaimAt = dd.LastClaimAt
 		d.Streak = dd.Streak
 	end
-	local seenAt = 0
+	local seenAt, seenJob = 0, ""
 	if stored.ClampFrom > 0 and stored.ClampFrom == d.LastClaimAt then
-		seenAt = stored.ClampAt
+		seenAt, seenJob = stored.ClampAt, stored.ClampJob
 	end
 	if isFinite(dd.ClampFrom) and dd.ClampFrom > 0 and dd.ClampFrom == d.LastClaimAt and isFinite(dd.ClampAt) and dd.ClampAt > seenAt then
 		seenAt = sanitizeTime(dd.ClampAt)
+		seenJob = P7.jobOf(dd.ClampJob)
 	end
 	d.ClampFrom = seenAt > 0 and d.LastClaimAt or 0
 	d.ClampAt = seenAt
+	d.ClampJob = seenAt > 0 and seenJob or ""
 	if dd.Paid > d.Paid then
 		d.Paid = dd.Paid
 	end

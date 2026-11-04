@@ -17,12 +17,20 @@
 --                             the claim then repairs and pays nothing; a kept streak and a VIP (never steps back) still
 --                             show the gift; (re-review 2, findings 2 / 5 / 8) the kept claims after a multi-day miss
 --                             that only climb back to Paid are repairs too (cells 4 and 5 after Streak 5 / Paid 5 fell
---                             to 3), and so is a VIP's kept claim while Paid > Streak; day 6 is a gift again
+--                             to 3), and so is a VIP's kept claim while Paid > Streak; day 6 is a gift again;
+--                             (re-review 3, finding 3) the wait right after a repair claim that still leaves
+--                             Streak + 1 <= Paid is a wait for a repair: a claim sent then is refused with "Streak
+--                             repair in ...", never "Next gift in ..."
 --   fixr_daily_clamp_rejoin   (re-review 2, findings 3 / 7) the first sight of a wrong-clock stamp outlives the session:
 --                             the record notes it (ClampFrom / ClampAt, never LastClaimAt), a rejoin 21 h later keeps
 --                             the countdown the window showed and the claim pays; a slow server's first sight of a
 --                             correct stamp is ignored by a server that sees that stamp as past (re-review 1 stays
 --                             fixed); the merge keeps the later first sight of one stamp, and a claim drops it
+--   fixr_daily_clamp_frame    (re-review 3, findings 2 / 5) a first sight counts only on the server whose clock took it
+--                             (ClampJob = its JobId): a sight a 2 h slow server noted of a fast stamp, or a 10 h slow
+--                             server noted of a correct one, never starts the countdown here; this server counts 20 h
+--                             from its own first sight, notes it in its place, keeps it on a rejoin here, and the claim
+--                             11 h in is refused, 20 h in pays
 --   fixr_daily_keep_resend    (re-review 2, findings 6 / 9) the payload names the moment its streak view stops being
 --                             true (StaleAt = KeepUntil + 1, then each further missed day) and a tick re-sends it then:
 --                             the repair shows before the claim; a VIP pass answer that changes Vip re-sends it too
@@ -514,6 +522,15 @@ S.fixr_daily_repair_state = guarded("fixr_daily_repair_state", function()
 	d = DS().GetDaily(p)
 	T.check(d.Streak == 3 and d.Paid == 5 and toastCount(p, "Streak repaired! Day 3 of 7", mark) == 1,
 		"fixr daily repair state: (setup) the step-back claim repairs day 3 (Streak 3, Paid 5)", describeDaily(d))
+	-- re-review 3 (finding 3): the wait right after it is the wait for another repair; a claim sent meanwhile is refused
+	-- with a countdown that names no gift
+	st = lastState(p)
+	T.check(st ~= nil and st.Repair == true and st.ReadyAt > st.ServerNow and st.Cell == 4,
+		"fixr daily repair state: right after the repair claim the payload waits 20 h for another repair (Repair, ReadyAt ahead)", cellsText(st))
+	mark = K.logSize()
+	claim(p)
+	T.check(DS().GetDaily(p).Streak == 3 and toastCount(p, "Streak repair in ", mark) == 1 and toastCount(p, "Next gift", mark) == 0,
+		"fixr daily repair state: ...a claim sent then is refused with 'Streak repair in ...', never 'Next gift in ...'", describeDaily(DS().GetDaily(p)))
 	for _, day in ipairs({ 4, 5 }) do
 		setDaily(p, { LastClaimAt = os.time() - 24 * 3600 }) -- a day later: the streak is kept
 		st = D.State(p)
@@ -693,6 +710,87 @@ S.fixr_daily_clamp_rejoin = guarded("fixr_daily_clamp_rejoin", function()
 	end
 	K.flushErrors("fixr_daily_clamp_rejoin")
 	K.flushWarnings("fixr_daily_clamp_rejoin", ALLOWED_WARNINGS)
+end)
+
+----------------------------------------------------------------------------------------------------
+-- fixr_daily_clamp_frame (re-review round 3, findings 2 / 5: a first sight counts only on the clock that took it)
+----------------------------------------------------------------------------------------------------
+S.fixr_daily_clamp_frame = guarded("fixr_daily_clamp_frame", function()
+	if not K.needBoot() then
+		return
+	end
+	local READY, KEEP = config().Daily.ReadySeconds, config().Daily.KeepSeconds
+	local DSt = Mock.DataStore
+	local JOB = tostring(game.JobId)
+	local function seed(uid, daily)
+		DSt.Data[storeKey(uid)] = {
+			Version = 2, Tokens = 3, Gems = 5, Pets = {}, Equipped = {}, Items = {},
+			Stats = { Matches = 0, Wins = 0, TokensEarned = 0, Spins = 0, BestTimes = {} }, Daily = daily,
+		}
+	end
+	local function gap(st)
+		return st and ("ReadyAt - ServerNow = " .. tostring(st.ReadyAt - st.ServerNow) .. ", KeepUntil - ServerNow = " .. tostring(st.KeepUntil - st.ServerNow)) or "no payload"
+	end
+	-- 1) a fast server's stamp F (3 days ahead here); a server whose clock runs 2 h behind this one saw it first and
+	--    noted that sight (ClampAt 2 h before this server's now, its own JobId): it is in that clock's frame (finding 5)
+	local uid = newUserId()
+	local F = os.time() + 3 * 86400
+	seed(uid, { Streak = 2, Paid = 2, LastClaimAt = F, Weeks = 0, Pet = false, PlayStart = 0, PlaySec = 0, PlayClaimed = {},
+		ClampFrom = F, ClampAt = os.time() - 7200, ClampJob = "fixr-slow-job" })
+	local mark = K.logSize()
+	local p = join("FxFrame", uid)
+	loaded(p)
+	advance(0.5)
+	local first = firstPayload(p, mark)
+	T.check(first ~= nil and first.ReadyAt >= first.ServerNow + READY - 5 and first.ReadyAt <= first.ServerNow + READY,
+		"clamp frame: a first sight another server's clock took (2 h behind) is never reused: the join counts 20 h from this server's own first sight (finding 5)", gap(first))
+	T.check(first ~= nil and first.KeepUntil >= first.ServerNow + KEEP - 5 and first.KeepUntil <= first.ServerNow + KEEP,
+		"clamp frame: ...and the keep window from that same moment (no early step-back)", gap(first))
+	local d = DS().GetDaily(p)
+	local seen = first and (first.ReadyAt - READY) or -1
+	T.check(d.LastClaimAt == F and d.ClampFrom == F and d.ClampAt == seen and d.ClampJob == JOB,
+		"clamp frame: ...the record notes this server's own first sight in its place (ClampAt = the join, ClampJob = this server's JobId)",
+		clampText(d) .. " ClampJob " .. tostring(d.ClampJob) .. " seen " .. tostring(seen) .. " JobId " .. JOB)
+	advance(3600)
+	leave(p)
+	local rec = stored(uid) or {}
+	T.check(type(rec.Daily) == "table" and rec.Daily.LastClaimAt == F and rec.Daily.ClampAt == seen and rec.Daily.ClampJob == JOB,
+		"clamp frame: the leave save stores this server's first sight (the later sight of one stamp wins the merge)", clampText(rec.Daily))
+	mark = K.logSize()
+	p = join("FxFrame", uid)
+	loaded(p)
+	advance(0.5)
+	local again = firstPayload(p, mark)
+	T.check(again ~= nil and first ~= nil and again.ReadyAt == first.ReadyAt,
+		"clamp frame: a rejoin on this server keeps its own countdown (one clock)", again and ("ReadyAt " .. tostring(again.ReadyAt) .. " first " .. tostring(first and first.ReadyAt)) or "no payload")
+	leave(p)
+
+	-- 2) a CORRECT claim r0 that this server (its clock 1 h behind) reads 1 h ahead; a server whose clock runs 10 h
+	--    behind saw it first: its sight would make the gift ready 11 h after the real claim here (finding 2)
+	local uid2 = newUserId()
+	local r0 = os.time() + 3600
+	seed(uid2, { Streak = 1, Paid = 1, LastClaimAt = r0, Weeks = 0, Pet = false, PlayStart = 0, PlaySec = 0, PlayClaimed = {},
+		ClampFrom = r0, ClampAt = os.time() - 9 * 3600 + 60, ClampJob = "fixr-slower-job" })
+	mark = K.logSize()
+	local q = join("FxFrameB", uid2)
+	loaded(q)
+	advance(0.5)
+	local st = firstPayload(q, mark)
+	T.check(st ~= nil and st.ReadyAt >= st.ServerNow + READY - 5 and st.ReadyAt <= st.ServerNow + READY,
+		"clamp frame: a slower server's first sight of a correct claim never pulls the gift earlier: ReadyAt = this server's own first sight + 20 h (finding 2)", gap(st))
+	advance(11 * 3600 + 120) -- past the moment the slower sight made it ready (its ClampAt + 20 h)
+	local tokens0 = DS().GetTokens(q)
+	local m2 = K.logSize()
+	claim(q)
+	T.check(DS().GetDaily(q).Streak == 1 and DS().GetTokens(q) == tokens0 and toastCount(q, "Next gift in", m2) == 1,
+		"clamp frame: ...11 h later (when that sight said ready) the claim is refused and pays nothing", describeDaily(DS().GetDaily(q)))
+	advance(9 * 3600)
+	tokens0 = DS().GetTokens(q)
+	local t2 = claim(q)
+	d = DS().GetDaily(q)
+	T.check(d.Streak == 2 and d.LastClaimAt == t2 and DS().GetTokens(q) == tokens0 + 50,
+		"clamp frame: 20 h after this server's own first sight the claim pays day 2", describeDaily(d) .. " t2 " .. t2)
+	finish("fixr_daily_clamp_frame", q)
 end)
 
 ----------------------------------------------------------------------------------------------------

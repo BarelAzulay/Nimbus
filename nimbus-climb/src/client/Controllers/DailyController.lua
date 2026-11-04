@@ -40,7 +40,8 @@
 --     Pulsing: each day its own saturated colour (DAY_COLORS: the NeonStroke + the Fill gradient), today's card is
 --     Neon.Gold and its border pulses; a Repair payload's today cell reads "Repair" with the Repair glyph, no amount),
 --     Footer (ClaimButton "CLAIM!", or "Repair streak (no gift)" (RepairW wide) when the claim is a repair | Countdown
---     "Next gift in 4h 12m" + Keep "Come back tomorrow to keep your streak!"), WeekBanner. PlayPage: Header "47 min
+--     "Next gift in 4h 12m", or "Streak repair in 4h 12m" while that claim will be a repair (re-review 3), + Keep "Come
+--     back tomorrow to keep your streak!"), WeekBanner. PlayPage: Header "47 min
 --     played today · Resets in 5h" or "Paused: move around to keep counting!" (Body 15, Neon.Gold), Tiers > Tier1..7
 --     reward cells like the day strip (each tier its own
 --     saturated colour, TIER_COLORS; attribute State = "Ready" | "Claimed" | "Locked"; Time "10 min", IconBox > Icon,
@@ -1010,7 +1011,8 @@ function H.renderDaily(st, M)
 	if waiting then
 		U.Countdown.Text = "Getting your gifts ready..."
 	elseif not ready then
-		U.Countdown.Text = "Next gift in " .. leftText((tonumber(st.ReadyAt) or 0) - now())
+		-- the wait before a claim that only repairs (Repair, re-review 3) never names a gift
+		U.Countdown.Text = (st.Repair == true and "Streak repair in " or "Next gift in ") .. leftText((tonumber(st.ReadyAt) or 0) - now())
 	end
 	U.Banner.Visible = time() < S.BannerUntil
 end

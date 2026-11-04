@@ -16,7 +16,9 @@
 --     while Paid > Streak; the Days' Claimed / Today come from that streak (Today on the repair cell, flagged Repair),
 --     never a gift the claim will not pay. StaleAt = the moment that view changes by itself (the keep deadline passing,
 --     KeepUntil + 1, then each further missed day; 0 = never): the tick re-sends the payload then, and a VIP answer that
---     changes Vip (StoreService.Changed) re-sends it at once.
+--     changes Vip (StoreService.Changed) re-sends it at once. The wait before such a claim names no gift either
+--     (re-review 3): a claim sent before it is ready is refused with "Streak repair in 4h 12m" (the window counts down
+--     the same text), "Next gift in 4h 12m" only before a claim that pays.
 --   * VIP (StoreService.Owns(player, "VIP")) never steps back and gets x2 (Config.Store.Perks.Vip.DailyMult) on the
 --     Cash and Tokens cells only (never Gems, the pet or the play tiers). A pass still "Checking" with a step-back due
 --     holds the claim ("Checking your VIP pass, one moment", nothing written); no StoreService or an Unavailable pass
@@ -31,14 +33,18 @@
 --     now + 20 h and the window counts down to a claim; or a claim, which is then refused once with "Next gift in 20h
 --     0m"): the player is never locked out for hours. LastClaimAt itself is NEVER written (re-review 1: a bare clamp in
 --     the store would let a server whose clock runs behind pull the next gift earlier on every other server, visit after
---     visit). The first sight is noted next to it (re-review 2): Daily.ClampFrom = the stamp, ClampAt = that now (one
---     MutateDaily, NO grant, only when the record holds no first sight of this stamp), so a later session on any server
---     whose clock also sees the stamp ahead counts from the same moment instead of starting the 20 h over. A server
---     that sees the stamp as past uses the stamp itself: a slow server's first sight of a correct claim never pulls the
---     gift earlier there. The cost (accepted, spec section 6): when a fast server's stamp falls behind the clocks before
---     the countdown ends, a NEW session counts from the stamp (at most that clock's offset later than the window said);
---     the session that saw it keeps its countdown. A changed stamp (a claim, a rebase) drops the session's clamp; a claim
---     clears ClampFrom / ClampAt. A second request finds LastClaimAt = now. Two servers: the section 6 merge (a claim
+--     visit). The first sight is noted next to it (re-review 2): Daily.ClampFrom = the stamp, ClampAt = that now,
+--     ClampJob = this server's game.JobId (one MutateDaily, NO grant, only when the record holds no first sight of this
+--     stamp from this server), so a later session on THIS server counts from the same moment instead of starting the
+--     20 h over (a rejoin here). A sight another server noted is never reused (re-review 3): it is a reading of another
+--     clock, and a slower one would start the countdown early; that session counts from its own first sight and notes
+--     it in its place. A server that sees the stamp as past uses the stamp itself: a slow server's first sight of a
+--     correct claim never pulls the gift earlier there. The costs (accepted, spec Z8): a session on another server
+--     starts the 20 h over while the stamp still reads ahead there (bounded by the stamp's lead); when a fast server's
+--     stamp falls behind the clocks before the countdown ends, a NEW session counts from the stamp (at most that clock's
+--     offset later than the window said); the session that saw it keeps its countdown. A changed stamp (a claim, a
+--     rebase) drops the session's clamp; a claim clears ClampFrom / ClampAt / ClampJob. A second request finds
+--     LastClaimAt = now. Two servers: the section 6 merge (a claim
 --     less than ReadySeconds after a STORED claim it did not build on loses its grant; the grant's Prev names the stamp
 --     it built on, so a claim after a clamp is no exception). The claim's one `now` is its LastClaimAt AND its grant's At
 --     (MutateDaily's `now` argument): a second ticking inside Claim never splits the pair from its grant in the merge.
@@ -99,6 +105,7 @@ local TEXT = {
 	InMatch = "Finish your match first!",
 	Checking = "Checking your VIP pass, one moment",
 	Next = "Next gift in %dh %dm",
+	RepairNext = "Streak repair in %dh %dm", -- the wait before a claim that only repairs (re-review 3)
 	Repaired = "Streak repaired! Day %d of 7",
 	Week = "WEEK DONE! %s is yours!",
 	Day = "%s Day %d of 7",
@@ -304,14 +311,16 @@ local function validTier(tier)
 	return type(tier) == "number" and tier == tier and tier >= 1 and tier <= n and tier == math.floor(tier)
 end
 
-local function nextText(seconds)
+-- the refusal of a claim that is not ready yet: "Next gift in 4h 12m", or "Streak repair in 4h 12m" when that claim
+-- will only repair (`repair`), so the wait never names a gift the claim will not pay
+local function nextText(seconds, repair)
 	seconds = math.max(0, whole(seconds))
 	local h = math.floor(seconds / 3600)
 	local m = math.floor((seconds % 3600) / 60)
 	if h == 0 and m == 0 and seconds > 0 then
 		m = 1
 	end
-	return string.format(TEXT.Next, h, m)
+	return string.format(repair and TEXT.RepairNext or TEXT.Next, h, m)
 end
 
 -- the grant record of a resolved reward ({ Kind, Tier, Cash | Tokens | Gems | Berries | Pets }), nil when nothing is paid
@@ -386,12 +395,22 @@ local function dayOver(d, now)
 	return start > 0 and now >= start + num(playCfg().DaySeconds, 72000)
 end
 
+-- this server's game.JobId (the clock a Z8 first sight was read on; "" in Studio or when unreadable)
+local function jobId()
+	local ok, id = pcall(function()
+		return game.JobId
+	end)
+	return (ok and type(id) == "string") and id or ""
+end
+
 -- Z8: this session's LastClaimAt. A stored stamp more than FutureClockSlack ahead of now counts as the now of its
--- first sight: the record's ClampAt when it noted one for this stamp (ClampFrom == LastClaimAt: any server, any
--- session; never later than now), else this call's now, which is then noted in the record (ClampFrom / ClampAt, no
--- grant; LastClaimAt is never touched). The session keeps that value until the stored stamp changes (a claim, a
--- rebase), also after the stamp falls behind now. A stamp this server sees as past is used as it is (see the header).
--- Answers the stamp and true when this call started the session's clamp.
+-- first sight ON THIS SERVER'S CLOCK: the record's ClampAt when this server noted one for this stamp (ClampFrom ==
+-- LastClaimAt and ClampJob == game.JobId: a rejoin here; never later than now), else this call's now, which is then
+-- noted in the record in place of any other (ClampFrom / ClampAt / ClampJob, no grant; LastClaimAt is never touched).
+-- A sight another server noted is never reused (re-review 3): it is a reading of that server's clock, and a slower
+-- clock's sight would start the countdown early here. The session keeps that value until the stored stamp changes (a
+-- claim, a rebase), also after the stamp falls behind now. A stamp this server sees as past is used as it is (see the
+-- header). Answers the stamp and true when this call started the session's clamp.
 local function lastClaimOf(player, d, now)
 	local stored = d.LastClaimAt
 	local c = clamps[player]
@@ -404,7 +423,8 @@ local function lastClaimOf(player, d, now)
 	end
 	local at = now
 	local seen = num(d.ClampAt, 0)
-	if num(d.ClampFrom, 0) == stored and seen > 0 then
+	local job = jobId()
+	if num(d.ClampFrom, 0) == stored and seen > 0 and d.ClampJob == job then
 		at = math.min(seen, now)
 	else
 		local DS = deps.DataService
@@ -415,6 +435,7 @@ local function lastClaimOf(player, d, now)
 				end
 				live.ClampFrom = stored
 				live.ClampAt = now
+				live.ClampJob = job
 				return true
 			end)
 		end
@@ -424,7 +445,7 @@ local function lastClaimOf(player, d, now)
 end
 
 local function defaultDaily()
-	return { Streak = 0, Paid = 0, LastClaimAt = 0, Weeks = 0, Pet = false, PlayStart = 0, PlaySec = 0, PlayClaimed = {}, ClampFrom = 0, ClampAt = 0 }
+	return { Streak = 0, Paid = 0, LastClaimAt = 0, Weeks = 0, Pet = false, PlayStart = 0, PlaySec = 0, PlayClaimed = {}, ClampFrom = 0, ClampAt = 0, ClampJob = "" }
 end
 
 ----------------------------------------------------------------------
@@ -599,7 +620,8 @@ function DailyService.Claim(player)
 		if clamped then
 			DailyService.Send(player)
 		end
-		return false, nextText(ready - (now - last))
+		-- not ready means no step-back is due (gap < ReadySeconds < KeepSeconds): the claim builds on d.Streak
+		return false, nextText(ready - (now - last), num(d.Streak, 0) + 1 <= num(d.Paid, 0))
 	end
 	local gap = now - last
 	local stepBack = 0
@@ -624,6 +646,7 @@ function DailyService.Claim(player)
 		live.LastClaimAt = now
 		live.ClampFrom = 0 -- the Z8 first sight belonged to the stamp this claim replaces
 		live.ClampAt = 0
+		live.ClampJob = ""
 		live.Paid = math.max(num(live.Paid, 0), streak)
 		live.Weeks = math.max(num(live.Weeks, 0), math.floor(streak / WEEK))
 		if r and r.Kind == "Pet" then

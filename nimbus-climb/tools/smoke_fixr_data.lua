@@ -21,6 +21,11 @@
 --                             save fails (an orphan); another server loads the stale F and pays the same day; the
 --                             orphan retry lands last: the day is paid ONCE (the clamp claim is no exception to the
 --                             twin rule: its grant records the stamp it built on, Prev = F)
+--   fixr_data_revert_twin     (re-review round 3, findings 1 / 4) a save that never moved its pair (a play-time tick, a
+--                             noted Z8 first sight) lands late, after another server's claim replaced a stamp F that was
+--                             30 h / 3 days ahead: the claim stays in the store (F never comes back), so a third
+--                             server's claim built on F is still the twin and day 3 is paid ONCE; the stale first sight
+--                             of F never comes back with it
 -- White-box: the booted helpers of smoke_p7_data.lua; "server A" / "server B" are copies of DataService against the same
 -- mock store (the smoke_p5_data.lua secondServer shape). Plain Lua 5.1 syntax only.
 
@@ -638,6 +643,116 @@ S.fixr_data_clamp_twin = guarded("fixr_data_clamp_twin", function()
 	end
 	K.flushErrors("fixr_data_clamp_twin")
 	K.flushWarnings("fixr_data_clamp_twin", { "[DataService]", "[DailyService]", "[TycoonService]", "[PetCareService]", "[SpotService]" })
+end)
+
+----------------------------------------------------------------------------------------------------
+-- fixr_data_revert_twin (re-review round 3, findings 1 / 4: a save that never moved its pair never takes it)
+----------------------------------------------------------------------------------------------------
+S.fixr_data_revert_twin = guarded("fixr_data_revert_twin", function()
+	if not K.needBoot() then
+		return
+	end
+	local DSt = Mock.DataStore
+	local U, cloneU, releaseU = secondServer("DataServiceFixrRevertU")
+	local V, cloneV, releaseV = secondServer("DataServiceFixrRevertT")
+	local W, cloneW, releaseW = secondServer("DataServiceFixrRevertS")
+	if not T.check(U ~= nil and V ~= nil and W ~= nil and type(U.MutateDaily) == "function",
+		"revert twin: three more copies of DataService load as 'server U' / 'server T' / 'server S'", tostring(cloneU) .. " / " .. tostring(cloneV) .. " / " .. tostring(cloneW)) then
+		for _, release in ipairs({ releaseU, releaseV, releaseW }) do
+			if release then
+				release()
+			end
+		end
+		return
+	end
+	local function record(daily0)
+		return { Version = 2, Tokens = 3, Pets = {}, Equipped = {}, Items = {}, Stats = statsOf(), Daily = daily0 }
+	end
+	local okRun, errRun = pcall(function()
+		-- 1) the store holds F, 30 h ahead (a fast server's day-2 claim). U and S load it; U only ticks play time and
+		--    saves late; T loads it and pays day 3 at tT (< F) first (finding 1)
+		local uid = newUserId()
+		local p = join("FixrRevert", uid)
+		local F = os.time() + 30 * 3600
+		DSt.Data[storeKey(uid)] = record({ Streak = 2, Paid = 2, LastClaimAt = F, Weeks = 0, Pet = false, PlayStart = 0, PlaySec = 0, PlayClaimed = {} })
+		U.Load(p)
+		W.Load(p)
+		advance(0.2)
+		T.check(U.GetDaily(p) ~= nil and U.GetDaily(p).LastClaimAt == F and W.GetDaily(p) ~= nil and W.GetDaily(p).LastClaimAt == F,
+			"revert twin: (precondition) servers U and S loaded the stamp F, 30 h ahead")
+		local tick = os.time()
+		T.check(U.MutateDaily(p, function(d)
+			d.PlayStart = tick
+			d.PlaySec = 10
+			return true
+		end), "revert twin: server U counts play time only (its pair untouched, not saved yet)")
+		V.Load(p)
+		advance(0.2)
+		local tT = os.time()
+		T.check(claimDay(V, p, 3, tT, 10) and V.Save(p) == true, "revert twin: server T pays day 3 at tT (before F) and saves")
+		local rec = stored(uid) or {}
+		T.check(type(rec.Daily) == "table" and rec.Daily.LastClaimAt == tT and rec.Daily.Streak == 3 and rec.Daily.Paid == 3 and rec.Tokens == 13,
+			"revert twin: (precondition) the store holds T's pair (tT, 3), Paid 3, +10 Tokens", dailyText(rec))
+		T.eq(U.Save(p), true, "revert twin: server U's late save lands")
+		rec = stored(uid) or {}
+		T.check(type(rec.Daily) == "table" and rec.Daily.LastClaimAt == tT and rec.Daily.Streak == 3 and rec.Daily.Paid == 3 and rec.Daily.PlayStart == tick,
+			"revert twin: a save that never moved its pair leaves T's claim (tT, 3) in the store (it never puts F back); its play time lands",
+			dailyText(rec) .. " tT " .. tT .. " F " .. F)
+		advance(5)
+		local tS = os.time()
+		T.check(claimDay(W, p, 3, tS, 10) and W.Save(p) == true, "revert twin: server S (it loaded F before T's claim) pays day 3 again and saves")
+		rec = stored(uid) or {}
+		T.check(rec.Tokens == 13, "revert twin: day 3 is paid ONCE: S's claim built on F, and F is no longer the stored stamp",
+			"Tokens " .. tostring(rec.Tokens) .. " (3 + 10 once = 13)")
+		T.check(type(rec.Daily) == "table" and rec.Daily.LastClaimAt == tT and rec.Daily.Streak == 3 and rec.Daily.Paid == 3,
+			"revert twin: ...the stored pair stays T's (tT, 3)", dailyText(rec) .. " tS " .. tS)
+		leave(p)
+
+		-- 2) a first sight noted on server U (ClampFrom / ClampAt, no claim) lands; U's later save carries only play time
+		--    and lands after server T's claim built on that stamp: the claim stays (finding 4)
+		local uid2 = newUserId()
+		local q = join("FixrRevertB", uid2)
+		local F2 = os.time() + 3 * 86400
+		DSt.Data[storeKey(uid2)] = record({ Streak = 4, Paid = 4, LastClaimAt = F2, Weeks = 0, Pet = false, PlayStart = 0, PlaySec = 0, PlayClaimed = {} })
+		U.Load(q)
+		advance(0.2)
+		local b0 = os.time()
+		T.check(U.MutateDaily(q, function(d)
+			d.ClampFrom = F2
+			d.ClampAt = b0
+			return true
+		end) and U.Save(q) == true, "revert twin: server U notes its first sight of F2 (3 days ahead) and saves")
+		rec = stored(uid2) or {}
+		T.check(type(rec.Daily) == "table" and rec.Daily.LastClaimAt == F2 and rec.Daily.ClampFrom == F2 and rec.Daily.ClampAt == b0,
+			"revert twin: (precondition) the store holds F2 and U's first sight of it", dailyText(rec))
+		local tick2 = os.time()
+		T.check(U.MutateDaily(q, function(d)
+			d.PlayStart = tick2
+			d.PlaySec = 10
+			return true
+		end), "revert twin: server U counts play time (not saved yet)")
+		V.Load(q)
+		advance(0.2)
+		local tC = os.time()
+		T.check(claimDay(V, q, 5, tC, 10) and V.Save(q) == true, "revert twin: server T pays day 5 at tC (before F2) and saves")
+		rec = stored(uid2) or {}
+		T.check(type(rec.Daily) == "table" and rec.Daily.LastClaimAt == tC and rec.Daily.Streak == 5 and (rec.Daily.ClampFrom or 0) == 0,
+			"revert twin: (precondition) the store holds T's pair (tC, 5) and no first sight", dailyText(rec))
+		T.eq(U.Save(q), true, "revert twin: server U's late save lands")
+		rec = stored(uid2) or {}
+		T.check(type(rec.Daily) == "table" and rec.Daily.LastClaimAt == tC and rec.Daily.Streak == 5 and rec.Daily.Paid == 5
+			and (rec.Daily.ClampFrom or 0) == 0 and (rec.Daily.ClampAt or 0) == 0 and rec.Tokens == 13,
+			"revert twin: ...the store keeps T's claim (tC, 5), Paid 5, and no first sight of F2 (the next claim is no repair)",
+			dailyText(rec) .. " ClampFrom " .. tostring(type(rec.Daily) == "table" and rec.Daily.ClampFrom) .. " tC " .. tC)
+		leave(q)
+	end)
+	advance(12)
+	T.check(releaseU() == true and releaseV() == true and releaseW() == true, "revert twin: servers U, T and S drop their hooks with them")
+	if not okRun then
+		error(errRun, 0)
+	end
+	K.flushErrors("fixr_data_revert_twin")
+	K.flushWarnings("fixr_data_revert_twin", { "[DataService]", "[DailyService]", "[TycoonService]", "[PetCareService]", "[SpotService]" })
 end)
 
 return S
