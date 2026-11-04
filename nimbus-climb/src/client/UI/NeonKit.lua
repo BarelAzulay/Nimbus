@@ -10,6 +10,7 @@
 --   NeonKit.Pill(props)   -> { Root, Card, Coin, Glyph, Text, SetText(text), SetColor(color) }
 --   NeonKit.Button(props) -> TextButton (Variant "Primary" | "Outline"; hover 1.04 / press 0.95; Disabled attribute)
 --   NeonKit.SideRect(prefW, prefH, minW, minH) -> { x, y, w, h, scale, mode = "Side" | "Sheet", designW, designH }
+--   NeonKit.BigRect(K, opts) -> { x, y, w, h, scale, mode = "PC" | "Phone", portrait }   (the Pets / Store window box)
 --   NeonKit.Dock(holder, uiScale, prefW, prefH, minW, minH) -> { Rect, Refresh(), Disconnect() }
 --     (also a MouseLock hold while the holder is shown: client/MouseLock.WatchVisible; dungeon-fixes decision 6)
 --
@@ -92,6 +93,16 @@ NeonKit.Glyphs = {
 	Close = "\226\156\149", -- multiplication x
 	Lock = "\240\159\148\146",
 	Play = "\226\150\182",
+	-- store (2026-11-04): the Store window, its tabs, the Gifts button, the VIP crown, the Sky Trove
+	Store = "\240\159\143\170", -- convenience store
+	Packs = "\240\159\147\166", -- package
+	Passes = "\240\159\142\171", -- ticket
+	Boosts = "\240\159\167\170", -- test tube (the potions)
+	Currency = "\240\159\146\176", -- money bag
+	Roulettes = "\240\159\142\161", -- ferris wheel
+	Gifts = "\240\159\142\129", -- wrapped gift
+	VipCrown = "\240\159\145\145", -- crown
+	Trove = "\240\159\167\176", -- toolbox (a chest)
 }
 
 ----------------------------------------------------------------------
@@ -822,6 +833,49 @@ function NeonKit.SideRect(prefW, prefH, minW, minH, opts)
 	rect.designH = rect.h / rect.scale
 	rect.margin = m
 	return rect
+end
+
+-- The big-window rule (store 2026-11-04): the box of a full-size window centred under the top bar, the Pets window's
+-- H.rect shared with the Store. The window grows between two screen heights (RECT.H0 -> RECT.H1: W0 x Y0 -> W1 x Y1
+-- px, times the readability factor above 1), never wider than the screen minus MARGIN each side nor, on a landscape
+-- screen at least PC_MIN_H tall, than PC_MAX_W of the width (the menu tiles and the currency pills stay free), never
+-- taller than the screen under the gui inset. A box narrower than PHONE_W or lower than SHORT design px is the Phone
+-- layout at scale 1; otherwise the PC layout at the readability factor.
+--   K    = { RECT = { H0, W0, Y0, H1, W1, Y1 }, MARGIN, PHONE_W, SHORT, PC_MIN_H, PC_MAX_W }   the caller's numbers
+--   opts (optional, tests) = { Width, Height, Inset }   override the viewport and GuiService:GetGuiInset().Y
+--   -> { x, y, w, h (screen px), scale, mode = "PC" | "Phone", portrait }
+function NeonKit.BigRect(K, opts)
+	opts = opts or {}
+	local vp = viewport()
+	local w = tonumber(opts.Width) or vp.X
+	local h = tonumber(opts.Height) or vp.Y
+	local inset = tonumber(opts.Inset)
+	if inset == nil then
+		inset = 58
+		pcall(function()
+			inset = GuiService:GetGuiInset().Y
+		end)
+	end
+	local R = K.RECT
+	local t = math.max(0, math.min(1, (h - R.H0) / (R.H1 - R.H0)))
+	local factor = Theme.ScreenFactor(h)
+	local big = math.max(1, factor)
+	local pxW = math.min((R.W0 + (R.W1 - R.W0) * t) * big, w - 2 * K.MARGIN)
+	if w > h and h >= K.PC_MIN_H then
+		pxW = math.min(pxW, w * K.PC_MAX_W)
+	end
+	local pxH = math.min((R.Y0 + (R.Y1 - R.Y0) * t) * big, h - inset - 2)
+	local phone = pxW / factor < K.PHONE_W or pxH / factor < K.SHORT
+	local scale = phone and 1 or factor
+	return {
+		x = math.floor((w - pxW) / 2 + 0.5),
+		y = math.floor(inset + (h - inset - pxH) / 2 + 0.5),
+		w = pxW,
+		h = pxH,
+		scale = scale,
+		mode = phone and "Phone" or "PC",
+		portrait = pxH > pxW,
+	}
 end
 
 local function guiInsetOf(holder)

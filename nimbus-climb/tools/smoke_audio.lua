@@ -49,7 +49,7 @@ table.sort(AUDIO_KEYS)
 -- uploaded to audio/audio.json, NOT wired yet (move a key up into AUDIO_KEYS when it is wired): none today
 local WAVE2_KEYS = {}
 -- wired in Config.Audio.Keys before any take exists (no file in audio.json, no AudioIds id: silent until one is approved)
-local PENDING_KEYS = { "FountainLoop" }
+local PENDING_KEYS = { "FountainLoop", "StorePop", "StoreBuy", "TroveOpen", "DailyWeek" } -- store (2026-11-04): the four Store keys
 local MANIFEST_KEYS = {}
 for _, list in ipairs({ AUDIO_KEYS, WAVE2_KEYS }) do
 	for _, key in ipairs(list) do

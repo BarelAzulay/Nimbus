@@ -45,7 +45,9 @@ local NAMES = { "Click", "Confirm", "Error", "Reward", "Whoosh", "Inhale", "Shat
 	"HitWater", "HitFlame", "HitFrost", "HitNature", "HitEarth", "HitStorm", "HitCelestial", "HitShadow", "Crit",
 	"KO", "KO2", "KO3", "KO4", "Dash", "Parry", "PortalEnter", "PortalArrive", "StationBuild", "HouseTier",
 	"DialogOpen", "DialogBlip", "DialogNext", "TutorialStep", "SpinStart", "SpinTick", "SpinLand",
-	"RevealCommon", "RevealRare", "RevealLegendary" }
+	"RevealCommon", "RevealRare", "RevealLegendary",
+	-- store (2026-11-04): silent until AudioIds has the key; StorePop / StoreBuy callers fall back to Click / Reward
+	"StorePop", "StoreBuy", "TroveOpen", "DailyWeek" }
 do
 	-- the NPC voices (Config.Audio.Keys.Sfx Npc<Name><Kind>), sorted
 	local keys = type(Config.Audio) == "table" and type(Config.Audio.Keys) == "table" and Config.Audio.Keys.Sfx or {}

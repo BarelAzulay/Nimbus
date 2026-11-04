@@ -27,7 +27,10 @@
         "Tutorial",
         "PetStats",
         "Elements",
-        "Art"
+        "Art",
+        "Store",
+        "Daily",
+        "Trove"
       ]
     },
     "shared/Theme": {
@@ -112,7 +115,13 @@
         "EvolutionBonus",
         "SpecialKinds",
         "LevelBonus"
-      ]
+      ],
+      "pending": {
+        "_comment": "store (2026-11-04) W0 Task 3: the exclusive pets (ExclusiveTo = Store | Daily)",
+        "functions": [
+          "IsExclusive"
+        ]
+      }
     },
     "shared/PetBuilder": {
       "functions": [
@@ -226,7 +235,21 @@
       "signals": [
         "ProfileLoaded",
         "Migrated"
-      ]
+      ],
+      "pending": {
+        "_comment": "store (2026-11-04) W1-data Task 5: the Store / Daily / Trove fields (helper table P7)",
+        "functions": [
+          "MarkBought",
+          "GetStore",
+          "MarkPassSeen",
+          "AddBoost",
+          "GetDaily",
+          "MutateDaily",
+          "GetTrove",
+          "MarkTrove",
+          "NoteReceiptGrant"
+        ]
+      }
     },
     "server/Services/DamageService": {
       "functions": [
@@ -306,7 +329,13 @@
       "signals": [
         "PerksChanged",
         "Rolled"
-      ]
+      ],
+      "pending": {
+        "_comment": "store (2026-11-04) W0 Task 3: the one pet-grant path of the Store and the daily gifts",
+        "functions": [
+          "GrantPet"
+        ]
+      }
     },
     "server/Services/SpotService": {
       "functions": [
@@ -890,7 +919,13 @@
         "Pill",
         "Dock",
         "SideRect"
-      ]
+      ],
+      "pending": {
+        "_comment": "store (2026-11-04) W0 Task 2: the big-window rule shared by the Pets and Store windows",
+        "functions": [
+          "BigRect"
+        ]
+      }
     },
     "client/Controllers/MainMenuController": {
       "optional": true,
@@ -1038,6 +1073,177 @@
         "Clear"
       ],
       "fields": []
+    },
+    "server/Services/GemService": {
+      "_comment": "store (2026-11-04) W0 Task 2: the first contract group of GemService (its header's Public API); W2 routes its receipts through StoreCatalog / StoreService",
+      "optional": true,
+      "functions": [
+        "Init",
+        "ProcessReceipt",
+        "PromptPurchase",
+        "GetProducts",
+        "GetProduct",
+        "PolicyState",
+        "IsRestricted",
+        "SecretRouletteState",
+        "GetRoulette",
+        "ListRoulettes",
+        "RoulettePrice",
+        "Quote",
+        "Roll",
+        "RollPet",
+        "GetOdds",
+        "GetRarityOdds",
+        "PossiblePets"
+      ],
+      "signals": [
+        "GemsPurchased"
+      ],
+      "fields": [
+        "ProfileWaitSeconds"
+      ]
+    },
+    "shared/StoreCatalog": {
+      "optional": true,
+      "pending": {
+        "_comment": "store (2026-11-04) W0 Task 4: the pure product / pass lookup over Config.Store.Items and Config.Gems.Products",
+        "functions": [
+          "ProductById",
+          "PassById",
+          "Item",
+          "List",
+          "Validate",
+          "GrantLines",
+          "Created",
+          "Perk"
+        ]
+      }
+    },
+    "server/Services/StoreService": {
+      "optional": true,
+      "pending": {
+        "_comment": "store (2026-11-04) W2-money Task 9: the one grant path of a receipt, the pass cache, the prompt, the preview flag",
+        "functions": [
+          "Init",
+          "ApplyGrant",
+          "PromptPurchase",
+          "Owns",
+          "PassState",
+          "IsPreview",
+          "BoostEnds",
+          "Refresh"
+        ],
+        "signals": [
+          "Purchased",
+          "Changed"
+        ]
+      }
+    },
+    "server/Services/Multipliers": {
+      "optional": true,
+      "pending": {
+        "_comment": "store (2026-11-04) W2-money Task 9: the paid multipliers at the five earning sites (Init deps only)",
+        "functions": [
+          "Init",
+          "Cash",
+          "PetXp",
+          "State",
+          "Refresh"
+        ]
+      }
+    },
+    "server/Services/DailyService": {
+      "optional": true,
+      "pending": {
+        "_comment": "store (2026-11-04) W2-daily Task 10: the streak and play-time gifts",
+        "functions": [
+          "Init",
+          "State",
+          "Claim",
+          "ClaimPlay",
+          "Resolve",
+          "Send",
+          "Tick"
+        ],
+        "signals": [
+          "Claimed"
+        ]
+      }
+    },
+    "server/Services/TroveService": {
+      "optional": true,
+      "pending": {
+        "_comment": "store (2026-11-04) W1-lobby Task 6: the Sky Trove's prompt, the one group check per visit, the grant",
+        "functions": [
+          "Init",
+          "State",
+          "Joined",
+          "Open"
+        ],
+        "signals": [
+          "Claimed"
+        ]
+      }
+    },
+    "client/Controllers/StoreController": {
+      "optional": true,
+      "pending": {
+        "_comment": "store (2026-11-04) W1-store-ui Task 7: the Store window",
+        "functions": [
+          "Init",
+          "Open",
+          "Close",
+          "IsOpen",
+          "Cards",
+          "Layout"
+        ]
+      }
+    },
+    "client/Controllers/DailyController": {
+      "optional": true,
+      "pending": {
+        "_comment": "store (2026-11-04) W1-daily-ui Task 8: the Gifts button, its pip and the window",
+        "functions": [
+          "Init",
+          "Open",
+          "Close",
+          "IsOpen",
+          "State",
+          "PipShown"
+        ]
+      }
+    },
+    "client/Controllers/TroveController": {
+      "optional": true,
+      "pending": {
+        "_comment": "store (2026-11-04) W1-lobby Task 6: the Trove panel and the lid",
+        "functions": [
+          "Init",
+          "Open",
+          "Close",
+          "IsOpen"
+        ]
+      }
+    },
+    "client/Controllers/BoostBadgeController": {
+      "optional": true,
+      "pending": {
+        "_comment": "store (2026-11-04) W1-daily-ui Task 8: the boost chips under the currency pills",
+        "functions": [
+          "Init",
+          "Chips"
+        ]
+      }
+    },
+    "client/Controllers/VipController": {
+      "optional": true,
+      "pending": {
+        "_comment": "store (2026-11-04) W1-daily-ui Task 8: the VIP chat tag and the lobby crown",
+        "functions": [
+          "Init",
+          "IsVip"
+        ]
+      }
     }
   },
   "scripts": [

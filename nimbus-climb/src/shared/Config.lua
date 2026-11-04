@@ -59,6 +59,8 @@ Config.Tags = {
 	WindGust = "NC_WindGust", -- invisible volume part; attrs Force (studs/s push), Direction (Vector3 unit), Interval, Warning
 	CloudCannon = "NC_CloudCannon", -- the pad part; attrs Target (Vector3 world landing point), FlightTime (s)
 	GoldenToken = "NC_GoldenToken", -- a CloudToken whose Value is 5 (also carries CloudToken tag)
+	-- store (2026-11-04)
+	TroveLid = "NC_TroveLid", -- the Sky Trove's lid part (TroveController swings it open on the client; no attrs)
 }
 
 -- Attributes set on Player instances by the server (client HUD reads them).
@@ -86,6 +88,12 @@ Config.Attr = {
 	ProfileLoaded = "ProfileLoaded", -- true once the profile is loaded or provisional (DataService writes; the loading screen reads it)
 	-- wave 6 (fight focus): the trainer is locked on the podium (Champion Ring / PvP duel); the client loops the cheer emote
 	OnPodium = "OnPodium", -- bool, absent when free (BattleService / Podium write)
+	-- store (2026-11-04; docs/superpowers/specs/2026-11-04-shop-retention-design.md 5.4): StoreService / Multipliers write,
+	-- the client only reads them (attributes are never read back by the server: Z3)
+	OwnedPasses = "OwnedPasses", -- csv of the owned pass keys, e.g. "VIP,Cash2x" ("" when none)
+	StoreBought = "StoreBought", -- csv of the Once pack keys bought, e.g. "Starter" ("" when none)
+	XpBoostEnds = "XpBoostEnds", -- unix seconds the XP potion bank ends; 0 = no potion running
+	StorePreview = "StorePreview", -- bool: Studio or an allowed dev sees every Store item, Id 0 included (PREVIEW buttons prompt nothing)
 }
 
 Config.Remotes = {
@@ -130,6 +138,12 @@ Config.Remotes = {
 	"SettingsSet", -- (key:string, value:any)  Music / Sfx 0..10, Gfx "Auto"|"Low"|"High", Shake / MouseLock bool, SeenNotes int (DataService)
 	"MenuPlay", -- ()  the main menu's PLAY: the server spawns the character (PlayerService.SpawnPlayer; first per session, 1/s)
 	"QuickTravel", -- (dest:string) "Plaza"  the pill's Travel button: opens the home portal to the lobby (GateService.Travel)
+	-- store (2026-11-04; docs/superpowers/specs/2026-11-04-shop-retention-design.md): the Store, the daily gifts, the Sky Trove
+	"StoreRequest", -- (action:string, key:string)  "Buy" (a Config.Store.Items key): the server prompts the pass / product; the client never prompts
+	"DailyRequest", -- (action:string, tier:number|nil)  "Claim" (the streak gift) / "ClaimPlay" (tier) (DailyService)
+	"DailyState", -- server -> client (state:table)  the streak, the resolved cells, the play clock and its tiers, Play.Active
+	"TroveRequest", -- (action:string)  "Joined": the client's PromptJoinAsync answered Joined / AlreadyMember (TroveService checks once per visit)
+	"TroveState", -- server -> client (state:table)  the asks' states (Open / Done / Checked / Unavailable) and the reward
 }
 
 ----------------------------------------------------------------------
@@ -494,6 +508,108 @@ Config.Gems = {
 	},
 }
 
+-- The Robux Store (docs/superpowers/specs/2026-11-04-shop-retention-design.md 5.1; store W0): every Robux item of the
+-- full-size Store window (packs, passes, potions, Tokens). The gem packs stay Config.Gems.Products (StoreCatalog.List
+-- appends them). Id 0 = not created on the Creator Hub yet: hidden outside the Studio preview and never sold; the owner
+-- creates each product / pass there and pastes its id. Robux = the suggested Creator Hub price (for the owner and the
+-- sims; never shown in the game).
+Config.Store = {
+	PriceRetrySeconds = 10, -- the client reads GetProductInfo once per session in the background; one retry this long after a failure
+	TrustLedgerAfter = 0, -- seconds of UserOwnsGamePassAsync failures after which a session trusts the saved Store.Passes; 0 = never
+	Potion = {
+		CapSeconds = 7 * 86400, -- an XP potion bank past this only dims the card (a paid receipt is never refused: it still extends)
+		WarnSeconds = 300, -- the boost chip warns this close to the potion's end
+	},
+	Tabs = { "Packs", "Passes", "Boosts", "Currency", "Roulettes" }, -- the window's tab order; Roulettes hops to the Cloud Shop
+	-- what each perk name does (Multipliers reads these; a pass or a Once pack lists the names it grants)
+	Perks = {
+		CashX2 = { Cash = 2 }, -- x2 Cash at the scoop, the Ring and the Dungeon (bank, piles and berries stay base)
+		XpX2 = { PetXp = 2 }, -- x2 Pet XP forever; a potion gives the same x2 and the two never stack (max, not product)
+		ProXp = { PetXpPvE = 1.5 }, -- x1.5 Pet XP in Dungeons and raids only (the Pro Pack): never duels, the Ring or feeding
+		Vip = { DailyMult = 2 }, -- x2 on the Cash / Tokens streak cells of the daily gifts (never Gems, the pet or the play tiers)
+	},
+	-- { Key, Kind = "Product" | "Pass", Tab, Id, Robux, Name, Grants } plus Once (one per account), Hero (the tab's big
+	-- card), Enabled = false (kept for the data, never listed or sold: 13b.1) and Line (a card's extra sentence).
+	-- Grants, exactly: Pets = { [petId] = { Count, Level } }, Cash, Tokens, Boost = { XpPotion = seconds }, Perks = { name... }
+	Items = {
+		{ Key = "Starter", Kind = "Product", Tab = "Packs", Id = 0, Robux = 99, Name = "Starter Pack", Once = true, Hero = true,
+			Grants = { Pets = { storm_tabby = { Count = 1, Level = 5 } }, Cash = 1000, Boost = { XpPotion = 3600 } } },
+		{ Key = "Pro", Kind = "Product", Tab = "Packs", Id = 0, Robux = 799, Name = "Pro Pack", Once = true,
+			Grants = { Pets = { crown_phoenix = { Count = 1, Level = 10 } }, Tokens = 5000, Perks = { "ProXp" } } },
+		{ Key = "VIP", Kind = "Pass", Tab = "Passes", Id = 0, Robux = 399, Name = "VIP", Hero = true, Grants = { Perks = { "Vip" } } },
+		{ Key = "Cash2x", Kind = "Pass", Tab = "Passes", Id = 0, Robux = 399, Name = "x2 Cash", Grants = { Perks = { "CashX2" } } },
+		{ Key = "PetXp2x", Kind = "Pass", Tab = "Passes", Id = 0, Robux = 450, Name = "x2 Pet XP", Grants = { Perks = { "XpX2" } } },
+		{ Key = "XpPotion1", Kind = "Product", Tab = "Boosts", Id = 0, Robux = 49, Name = "XP Potion (1 h)", Grants = { Boost = { XpPotion = 3600 } } },
+		{ Key = "XpPotion3", Kind = "Product", Tab = "Boosts", Id = 0, Robux = 99, Name = "XP Potion (3 h)", Grants = { Boost = { XpPotion = 10800 } } },
+		{ Key = "Tokens1", Kind = "Product", Tab = "Currency", Id = 0, Robux = 49, Name = "500 Cloud Tokens", Grants = { Tokens = 500 } },
+		{ Key = "Tokens2", Kind = "Product", Tab = "Currency", Id = 0, Robux = 149, Name = "2,500 Cloud Tokens", Grants = { Tokens = 2500 } },
+		{ Key = "Tokens3", Kind = "Product", Tab = "Currency", Id = 0, Robux = 399, Name = "10,000 Cloud Tokens", Grants = { Tokens = 10000 } },
+		-- Cash packs: NOT on sale (13b.1: a kid who Prestiges five minutes after buying loses it). Kept with Enabled = false so
+		-- the data is ready if the owner turns them on (Q5). Amounts = 20 min / 1 h / 3 h of the median minute-60 income of
+		-- tools/sim_tycoon.py --quiet (146 Cash/s on 2026-11-04), rounded to two figures.
+		{ Key = "Cash1", Kind = "Product", Tab = "Currency", Id = 0, Robux = 49, Name = "Cash (20 min)", Enabled = false,
+			Grants = { Cash = 180000 }, Line = "Cash resets when you Prestige, so spend it!" },
+		{ Key = "Cash2", Kind = "Product", Tab = "Currency", Id = 0, Robux = 149, Name = "Cash (1 h)", Enabled = false,
+			Grants = { Cash = 530000 }, Line = "Cash resets when you Prestige, so spend it!" },
+		{ Key = "Cash3", Kind = "Product", Tab = "Currency", Id = 0, Robux = 399, Name = "Cash (3 h)", Enabled = false,
+			Grants = { Cash = 1600000 }, Line = "Cash resets when you Prestige, so spend it!" },
+	},
+}
+
+-- Daily gifts (spec 5.2 / 13b): the 7-day streak and the per-day play-time gifts behind the one Gifts button. Every
+-- number is a starting proposal the balance gate (spec 10) may move; the rules never move. Cash cells are minutes of
+-- the player's income with a floor: the server resolves the amount (at state time and again at the claim) and the
+-- client shows the number, never "minutes of income" (13b.3).
+Config.Daily = {
+	ReadySeconds = 20 * 3600, -- the next streak gift is ready this long after the last claim (the server clock)
+	KeepSeconds = 48 * 3600, -- claimed within this of the last claim the streak is kept; later it steps back a day per missed day
+	PipDelaySeconds = 20, -- the Gifts button's pip waits this long after the join (nothing is announced on join)
+	FutureClockSlack = 300, -- a stored LastClaimAt further in the future than this came from a wrong clock: clamped to now, refused once
+	-- the seven cells: cell ((Streak - 1) % 7) + 1 of the new Streak; re-earned, never re-paid (Paid = the highest Streak paid)
+	Days = {
+		{ Cash = { Minutes = 2, Min = 400 } },
+		{ Tokens = 50 },
+		{ Gems = 10 },
+		{ Cash = { Minutes = 5, Min = 1000 } },
+		{ Tokens = 250 },
+		{ Gems = 25 },
+		{ Pet = "week_wisp", Else = { Gems = 40 } }, -- every kept week a Week Wisp; Else only when its stack is full (13b.2)
+	},
+	-- play time per day on the same rolling clock (PlayStart); unclaimed tiers are lost with the play-day (Q17)
+	Play = {
+		DaySeconds = 20 * 3600, -- a new play-day on the first tick this long after PlayStart
+		TickSeconds = 10, -- the play clock's tick
+		ActiveWindow = 180, -- a tick counts when the root moved MoveStuds since the last sample OR an ActiveRemotes remote fired within this
+		MoveStuds = 2,
+		MaxDaySeconds = 36000, -- at most 10 h count per play-day
+		ActiveRemotes = { "HomeAction", "PetCare", "BattleRequest", "BattleCommand", "DungeonRequest", "BuyRoulette", "Dash" },
+		-- Min = play minutes of the day; Berries = "Basket" fills the Berry Basket to TycoonCatalog.BasketCap
+		Tiers = {
+			{ Min = 10, Cash = { Minutes = 1, Min = 200 } },
+			{ Min = 20, Tokens = 40 },
+			{ Min = 30, Cash = { Minutes = 3, Min = 600 } },
+			{ Min = 60, Gems = 10 },
+			{ Min = 90, Tokens = 150 },
+			{ Min = 120, Berries = "Basket" },
+			{ Min = 180, Gems = 25 },
+		},
+	},
+}
+
+-- The Sky Trove (spec 5.3 / 13b.5): the lobby chest in the old Item Shop stall's place that pays once per account for a
+-- verified group join (Player:IsInGroupAsync once per server visit, only after the client's PromptJoinAsync said Joined).
+Config.Trove = {
+	GroupId = 0, -- the owner's Roblox group id; 0 = "Coming soon", no JOIN button (the Studio preview renders the row as PREVIEW)
+	PromptRange = 10, -- studs: the chest's ProximityPrompt ("Sky Trove" / "Open")
+	Slack = 6, -- studs past PromptRange the server still accepts an Open (16 in all)
+	Cooldown = 5, -- seconds between two Opens / Joined of one player
+	-- the panel's two rows (13b.5): Group (JOIN / DONE and its reward) and the Like line; the footer points at the game page
+	Asks = {
+		{ Id = "Group", Reward = { Cash = 2000, Tokens = 200 } },
+		{ Id = "Like" },
+	},
+}
+
 -- Developer tools (owner only). The game's owner (and the extra UserIds in Admins, and everyone while testing in
 -- Roblox Studio) gets a small DEV button and chat commands: /allpets, /tokens <n>, /cash <n>, /gems <n>, /reset, /tutorial, /skiptutorial,
 -- /devhelp. Nobody else can use them: the server checks every request.
@@ -786,6 +902,8 @@ local AUDIO_WAVE2 = {
 	"KO", "KO2", "KO3", "KO4", "Dash", "Parry", "PortalEnter", "PortalArrive", "StationBuild", "HouseTier",
 	"DialogOpen", "DialogBlip", "DialogNext", "TutorialStep", "SpinStart", "SpinTick", "SpinLand",
 	"RevealCommon", "RevealRare", "RevealLegendary",
+	-- store (2026-11-04): a card tap, a purchase landing, the Trove's lid, the week's pet
+	"StorePop", "StoreBuy", "TroveOpen", "DailyWeek",
 }
 -- the NPC voices (wordless, one voice per NPC): Npc<Name><Kind>, <Name> = the NpcDialog Id in CamelCase
 local AUDIO_NPCS = { "SparkyFox", "CaptainPenguin", "GrannyOwl", "CoachCorgi", "MayorPanda", "ProfessorAxolotl" }
@@ -849,6 +967,11 @@ Config.Audio = {
 		RevealCommon = 0.7,
 		RevealRare = 0.75,
 		RevealLegendary = 0.8,
+		-- store (2026-11-04): silent until AudioIds has the key (the existing rule); StorePop / StoreBuy fall back to Click / Reward
+		StorePop = 0.6,
+		StoreBuy = 0.8,
+		TroveOpen = 0.8,
+		DailyWeek = 0.8,
 		-- (the NPC voices: 0.6 each, set below)
 	},
 	-- the frequent / quiet keys that may sit at or under the music (every other effect sits above it)

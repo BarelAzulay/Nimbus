@@ -87,6 +87,29 @@ local function serverScenarios()
 		Mock.RemovePlayer(p)
 	end)
 
+	S.store_config = guarded("store_config", function()
+		local Config, Theme = K.config(), K.M["shared/Theme"]
+		T.check(type(Config.Store) == "table" and #Config.Store.Items == 13 and Config.Store.Potion.CapSeconds == 604800 and Config.Store.Potion.WarnSeconds == 300 and Config.Store.TrustLedgerAfter == 0 and Config.Store.PriceRetrySeconds == 10, "store config: Config.Store (13 items, Potion, TrustLedgerAfter 0, PriceRetrySeconds 10)")
+		if type(Config.Store) ~= "table" then
+			return
+		end
+		T.check(Config.Store.Perks.CashX2.Cash == 2 and Config.Store.Perks.XpX2.PetXp == 2 and Config.Store.Perks.ProXp.PetXpPvE == 1.5 and Config.Store.Perks.Vip.DailyMult == 2, "store config: the four perks")
+		local byKey = {}
+		for _, it in ipairs(Config.Store.Items) do byKey[it.Key] = it end
+		T.check(byKey.Starter.Once == true and byKey.Starter.Hero == true and byKey.Starter.Grants.Pets.storm_tabby.Level == 5 and byKey.Starter.Grants.Cash == 1000 and byKey.Starter.Grants.Boost.XpPotion == 3600 and byKey.Starter.Robux == 99, "store config: Starter = Storm Tabby L5 + $1,000 + 1 h potion, Once, Hero, 99 R$")
+		T.check(byKey.Pro.Grants.Pets.crown_phoenix.Level == 10 and byKey.Pro.Grants.Tokens == 5000 and byKey.Pro.Grants.Perks[1] == "ProXp" and byKey.Pro.Robux == 799, "store config: Pro = Crown Phoenix L10 + 5,000 Tokens + ProXp, 799 R$")
+		T.check(byKey.VIP.Kind == "Pass" and byKey.VIP.Hero == true and byKey.Cash2x.Robux == 399 and byKey.PetXp2x.Robux == 450 and byKey.XpPotion3.Grants.Boost.XpPotion == 10800 and byKey.Tokens3.Grants.Tokens == 10000, "store config: passes and potions as the spec table")
+		T.check(byKey.Cash1.Enabled == false and byKey.Cash2.Enabled == false and byKey.Cash3.Enabled == false and byKey.Cash3.Grants.Cash > byKey.Cash2.Grants.Cash and byKey.Cash2.Grants.Cash > byKey.Cash1.Grants.Cash and byKey.Cash1.Line ~= nil, "store config: the three Cash packs exist, Enabled = false, with their Prestige line (13b.1)")
+		for _, it in ipairs(Config.Store.Items) do T.eq(it.Id, 0, "store config: " .. it.Key .. " ships with Id 0") end
+		T.check(Config.Daily.ReadySeconds == 72000 and Config.Daily.KeepSeconds == 172800 and Config.Daily.PipDelaySeconds == 20 and Config.Daily.FutureClockSlack == 300 and #Config.Daily.Days == 7 and Config.Daily.Days[7].Pet == "week_wisp" and Config.Daily.Days[7].Else.Gems == 40 and Config.Daily.Days[1].Cash.Minutes == 2 and Config.Daily.Days[1].Cash.Min == 400, "store config: Config.Daily streak numbers")
+		T.check(Config.Daily.Play.DaySeconds == 72000 and Config.Daily.Play.TickSeconds == 10 and Config.Daily.Play.ActiveWindow == 180 and Config.Daily.Play.MoveStuds == 2 and Config.Daily.Play.MaxDaySeconds == 36000 and #Config.Daily.Play.Tiers == 7 and Config.Daily.Play.Tiers[6].Berries == "Basket" and Config.Daily.Play.Tiers[7].Min == 180 and #Config.Daily.Play.ActiveRemotes == 7, "store config: Config.Daily.Play numbers")
+		T.check(Config.Trove.GroupId == 0 and Config.Trove.PromptRange == 10 and Config.Trove.Slack == 6 and Config.Trove.Cooldown == 5 and #Config.Trove.Asks == 2 and Config.Trove.Asks[1].Reward.Cash == 2000 and Config.Trove.Asks[1].Reward.Tokens == 200 and Config.Trove.Asks[2].Id == "Like", "store config: Config.Trove (two asks, 13b.5)")
+		for _, name in ipairs({ "StoreRequest", "DailyRequest", "DailyState", "TroveRequest", "TroveState" }) do T.check(table.find(Config.Remotes, name) ~= nil, "store config: remote " .. name .. " listed") end
+		T.check(Config.Attr.OwnedPasses == "OwnedPasses" and Config.Attr.StoreBought == "StoreBought" and Config.Attr.XpBoostEnds == "XpBoostEnds" and Config.Attr.StorePreview == "StorePreview" and Config.Tags.TroveLid == "NC_TroveLid", "store config: the attributes and the lid tag")
+		T.check(Theme.Category.Store == "Gold" and Theme.Category.Daily == "Gold" and Theme.Category.Trove == "Green", "store config: Theme.Category Store / Daily / Trove")
+		for _, k in ipairs({ "StorePop", "StoreBuy", "TroveOpen", "DailyWeek" }) do T.check(Config.Audio.Keys.Sfx[k] == k and type(Config.Audio.Volume[k]) == "number", "store config: audio key " .. k) end
+	end)
+
 	return S
 end
 
@@ -95,6 +118,35 @@ end
 ----------------------------------------------------------------------------------------------------
 local function clientScenarios()
 	local S = {}
+
+	-- a module of the client build (the H.moduleAt shape of smoke_evo_retreat.lua; ROOTS is smoke.py's)
+	local function moduleAt(top, rest)
+		local inst = Mock.GetPath(ROOTS[top] .. "/" .. rest)
+		if not inst then
+			return nil
+		end
+		local ok, result = pcall(require, inst)
+		return ok and type(result) == "table" and result or nil
+	end
+
+	-- the expectations were checked by hand against PetsController H.rect: 844x390 / inset 36 gives x 12, y 48, 820x330,
+	-- scale 1, Phone; 1920x1080 gives x 330, 1260x900, PC
+	S.client_store_bigrect = guarded("client_store_bigrect", function()
+		local NK = moduleAt("client", "UI/NeonKit")
+		T.check(type(NK) == "table" and type(NK.BigRect) == "function", "store bigrect: NeonKit.BigRect exists")
+		if type(NK) ~= "table" or type(NK.BigRect) ~= "function" then
+			return
+		end
+		local KP = { RECT = { H0 = 390, W0 = 820, Y0 = 330, H1 = 1080, W1 = 1260, Y1 = 900 }, MARGIN = 12, PHONE_W = 900, SHORT = 560, PC_MIN_H = 600, PC_MAX_W = 0.76 }
+		local r = NK.BigRect(KP, { Width = 844, Height = 390, Inset = 36 })
+		T.check(r.mode == "Phone" and r.scale == 1 and r.w == 820 and math.abs(r.h - 330) < 1 and r.x == 12 and r.y >= 36, "store bigrect: 844x390 = 820x330 at scale 1, Phone, under the inset", string.format("%s %sx%s at %s,%s scale %s", tostring(r.mode), tostring(r.w), tostring(r.h), tostring(r.x), tostring(r.y), tostring(r.scale)))
+		r = NK.BigRect(KP, { Width = 1920, Height = 1080, Inset = 58 })
+		T.check(r.mode == "PC" and math.abs(r.w - 1260) < 1 and math.abs(r.h - 900) < 1 and math.abs(r.x - 330) < 1, "store bigrect: 1920x1080 = 1260x900 centred, PC", string.format("%s %sx%s at %s,%s scale %s", tostring(r.mode), tostring(r.w), tostring(r.h), tostring(r.x), tostring(r.y), tostring(r.scale)))
+		T.check(r.portrait == false, "store bigrect: a landscape window is not portrait")
+		T.check(NK.Glyphs.Store ~= nil and NK.Glyphs.Gifts ~= nil and NK.Glyphs.Packs ~= nil and NK.Glyphs.Roulettes ~= nil and NK.Glyphs.VipCrown ~= nil and NK.Glyphs.Trove ~= nil, "store bigrect: the new glyph ids")
+		T.check(NK.Glyphs.Passes ~= nil and NK.Glyphs.Boosts ~= nil and NK.Glyphs.Currency ~= nil, "store bigrect: the tab glyph ids")
+	end)
+
 	return S
 end
 

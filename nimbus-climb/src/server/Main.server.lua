@@ -245,6 +245,12 @@ local TycoonService = loadOptionalService("TycoonService")
 local PetCareService = loadOptionalService("PetCareService")
 local FusionService = loadOptionalService("FusionService")
 local GemService = loadOptionalService("GemService")
+-- store (2026-11-04; docs/superpowers/specs/2026-11-04-shop-retention-design.md): the Robux Store, the paid multipliers,
+-- the daily gifts and the Sky Trove
+local StoreService = loadOptionalService("StoreService") -- receipts' one grant path, the pass cache, StoreRequest
+local Multipliers = loadOptionalService("Multipliers") -- x2 Cash / x2 Pet XP at the five earning sites (Init deps only)
+local DailyService = loadOptionalService("DailyService") -- the streak and play-time gifts
+local TroveService = loadOptionalService("TroveService") -- the lobby chest's once-per-account group reward
 -- Phase 3 services (ARCHITECTURE_V3.md "Phase 3 build contract")
 local ArenaBuilder = loadOptionalService("ArenaBuilder")
 local BattleService = loadOptionalService("BattleService")
@@ -402,6 +408,18 @@ if TutorialService then call("TutorialService.Init", TutorialService, "Init", lo
 	DungeonInfo = dungeonInfo, -- Phase 5: chapter 3 points at the Dungeon gate (the module tables below Init later)
 	DungeonService = DungeonService,
 }) end
+-- store: StoreService before every earning site (Multipliers reads its passes) and before DevService.Init (StoreService
+-- calls DevService.IsAllowed only inside its join task.spawn, never in Init); Multipliers reaches TycoonService,
+-- PetCareService, BattleService and DungeonService through their Init deps only (plan decision 8).
+if StoreService then call("StoreService.Init", StoreService, "Init", {
+	DataService = DataService,
+	PetService = PetService,
+	DevService = DevService,
+}) end
+if Multipliers then call("Multipliers.Init", Multipliers, "Init", {
+	StoreService = StoreService,
+	DataService = DataService,
+}) end
 -- Phase 4: TycoonService (the home portal), PetCareService (feeding / evolving / training) and FusionService refuse
 -- pets in a running battle or Champion Ring run: they get BattleService's module table now (its Init runs below).
 if TycoonService then call("TycoonService.Init", TycoonService, "Init", lobbyInfo, {
@@ -410,12 +428,14 @@ if TycoonService then call("TycoonService.Init", TycoonService, "Init", lobbyInf
 	SpotService = SpotService,
 	BattleService = BattleService,
 	GateService = GateService, -- the pill's Travel: a Lobby portal lands through GateService.ToLobby
+	Multipliers = Multipliers, -- store: x2 Cash at the scoop
 }) end
 if PetCareService then call("PetCareService.Init", PetCareService, "Init", {
 	DataService = DataService,
 	PetService = PetService,
 	TycoonService = TycoonService,
 	BattleService = BattleService,
+	Multipliers = Multipliers, -- store: x2 Pet XP at grantXp (GrantXp and the Food Machine)
 }) end
 if FusionService then call("FusionService.Init", FusionService, "Init", {
 	DataService = DataService,
@@ -426,6 +446,7 @@ if FusionService then call("FusionService.Init", FusionService, "Init", {
 if GemService then call("GemService.Init", GemService, "Init", {
 	DataService = DataService,
 	PetService = PetService,
+	StoreService = StoreService, -- store: non-gem receipts route through StoreCatalog.ProductById -> StoreService.ApplyGrant
 }) end
 if BattleService then call("BattleService.Init", BattleService, "Init", {
 	DataService = DataService,
@@ -434,6 +455,7 @@ if BattleService then call("BattleService.Init", BattleService, "Init", {
 	TycoonService = TycoonService,
 	ArenaBuilder = ArenaBuilder,
 	ArenaInfo = arenaInfo,
+	Multipliers = Multipliers, -- store: x2 Cash on a Ring win
 }) end
 -- Phase 5 (5.4, C16): the dungeon lands AFTER BattleService and registers itself with BattleService.SetRunProvider
 -- inside its own Init; BattleService never requires DungeonService.
@@ -447,6 +469,18 @@ if DungeonService then call("DungeonService.Init", DungeonService, "Init", {
 	DungeonInfo = dungeonInfo,
 	LobbyInfo = lobbyInfo,
 	PetService = PetService,
+	Multipliers = Multipliers, -- store: x2 Cash on the room and chest Cash
+}) end
+-- store: the daily gifts (after the earning services: Cash cells read TycoonService's income) and the Sky Trove
+if DailyService then call("DailyService.Init", DailyService, "Init", {
+	DataService = DataService,
+	StoreService = StoreService,
+	PetService = PetService,
+	TycoonService = TycoonService,
+	TutorialService = TutorialService,
+}) end
+if TroveService then call("TroveService.Init", TroveService, "Init", lobbyInfo, {
+	DataService = DataService,
 }) end
 if EventService then call("EventService.Init", EventService, "Init", {
 	DataService = DataService,

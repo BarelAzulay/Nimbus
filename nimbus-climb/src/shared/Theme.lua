@@ -233,6 +233,10 @@ Theme.Category = {
 	Care = "Green",
 	Fusion = "Pink",
 	Battle = "Red",
+	-- store (2026-11-04): the Robux Store and the Gifts window share the gold; the Sky Trove is a prize chest
+	Store = "Gold",
+	Daily = "Gold",
+	Trove = "Green",
 }
 
 -- Base colours of the glossy button styles (CloudUI.Button / IconButton).

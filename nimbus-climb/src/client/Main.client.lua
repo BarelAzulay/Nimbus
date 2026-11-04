@@ -19,6 +19,12 @@ local CONTROLLER_NAMES = {
 	"MenuController",
 	"PetsController", -- team balance: the Pets window (MenuController delegates to it)
 	"TopBarController", -- HUD cleanup: the top-left pill (Shop / Travel / Settings)
+	-- store (2026-11-04)
+	"StoreController", -- the full-size Robux Store window (packs, passes, potions, Tokens, Gems)
+	"DailyController", -- the Gifts button, its pip and the streak / play-time window
+	"BoostBadgeController", -- the boost chips (XP potion, passes) under the currency pills
+	"VipController", -- the VIP chat tag and the lobby crown
+	"TroveController", -- the Sky Trove panel and the chest's lid
 	"PetController",
 	"TokenFx",
 	-- v3 (ARCHITECTURE_V3.md)
@@ -66,7 +72,8 @@ local OPTIONAL = { PetsController = true, SkyDragonController = true, IndexContr
 	CareController = true, HomePortalFx = true,
 	MainMenuController = true, DungeonController = true, ObbyController = true, FountainFx = true,
 	MeadowFx = true, RingCrowdFx = true, DungeonFx = true,
-	RingAmbience = true }
+	RingAmbience = true,
+	StoreController = true, DailyController = true, BoostBadgeController = true, VipController = true, TroveController = true }
 
 local client = script.Parent
 task.spawn(function() local okMesh, MeshLibrary = pcall(function() return require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("MeshLibrary", 30)) end) if okMesh and type(MeshLibrary) == "table" then MeshLibrary.Start() end end) -- Phase 6: Blender meshes
