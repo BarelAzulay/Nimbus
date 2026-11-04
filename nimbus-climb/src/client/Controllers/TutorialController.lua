@@ -174,8 +174,9 @@ local C = {
 local EVENT_NEEDS = { Next = "Next", ShopOpened = "ShopOpened", IndexOpened = "IndexOpened", PetsOpened = "Equipped" }
 -- window / panel ids (WindowOpened, OpenPanel, menu buttons) -> event
 local WINDOW_EVENTS = { Shop = "ShopOpened", Index = "IndexOpened", Pets = "PetsOpened", Inventory = "PetsOpened" }
--- the menu button that leads to what the current step waits for
-local HOOK_FOR = { ShopOpened = "Shop", IndexOpened = "Index", Equipped = "Pets" }
+-- the menu button that leads to what the current step waits for (store W1: the pill's Shop button opens the Robux
+-- Store now, so ShopOpened has no button: the roulette machines open the Cloud Shop)
+local HOOK_FOR = { IndexOpened = "Index", Equipped = "Pets" }
 local WORLD_KINDS = { Spot = true, Shop = true, Roulette = true, Portal = true }
 local DEFAULT_HINTS = {
 	NearSpot = "Walk to your plot",

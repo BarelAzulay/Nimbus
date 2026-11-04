@@ -643,6 +643,12 @@ end
 local function clickEntry(name)
 	local entry = windowOf("MenuColumn") and windowOf("MenuColumn"):FindFirstChild("Entry_" .. name)
 	local button = entry and entry:FindFirstChildWhichIsA("TextButton", true)
+	if not button and name == "Shop" and M.MenuController then
+		-- store W1: the pill's Shop button opens the Robux Store (smoke_store_ui.lua); the Cloud Shop is MenuController.Open("Shop")
+		M.MenuController.Open("Shop")
+		advance(0.5)
+		return true
+	end
 	if not button then
 		-- HUD cleanup: Shop / Settings are buttons of TopBarController's pill (NimbusTopBar.Pill.PillButton_<name>)
 		local bar = gui():FindFirstChild("NimbusTopBar")

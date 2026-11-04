@@ -14,8 +14,11 @@
 --                                           TopBarController; a hint until that panel exists)
 --   MenuController.OpenTeam(preset)      -- the Pets window showing that team
 --   MenuController.WindowOpened          -- Util.Signal, Fire(windowId) whenever a window opens:
---                                           "Pets" (fired by PetsController), "Shop", "Stats", "Home" or "Index" (the
---                                           tutorial listens); this controller closes its own windows on "Pets"
+--                                           "Pets" (fired by PetsController), "Store" (StoreController), "Daily"
+--                                           (DailyController), "Trove" (TroveController), "Shop", "Stats", "Home" or
+--                                           "Index" (the tutorial listens); this controller closes its own windows, the
+--                                           Pet Index and the Pets window on "Pets", "Store", "Daily" and "Trove"
+--                                           (store W1: those four never overlap)
 --   Extra: MenuController.GetButton(id) -> the MenuButton_<id> tile (or nil; "Home" is the Spot tile)
 --          MenuController.IsOpen() -> true while a window (the Pets window too), the odds popup or the roulette stage is up
 --          MenuController.IsPrewarmed(petId) -> true once that pet was pre-sculpted for the roulette strip
@@ -57,8 +60,8 @@
 --     does now -> next ("+7 -> +9 food", "Feeds fill 30% -> 35% of a bar", "2 pets train at once"), the next price
 --     and Build / Upgrade (or why it is locked: "Reach Home Level 10", "Needs the Villa", "Unlocks at Prestige 1").
 --     Everything is re-checked by the server (HomeAction "Upgrade" / "Prestige" / "GoHome").
---   * Shop Gems tab: the Gem packs (developer products with an id: MarketplaceService:PromptProductPurchase; the
---     server grants them in ProcessReceipt), the gems-only Secret Roulette and every roulette with a gem price,
+--   * Shop Gems tab (store W1): one "Robux Store" button (the gem packs live in StoreController's Currency tab:
+--     P5.openStore({ Tab = "Currency" })), the gems-only Secret Roulette and every roulette with a gem price,
 --     each with its odds popup (always shown); hidden with a note while the PaidRandomItemsRestricted attribute
 --     is true. A gem spin sends BuyRoulette(id, "Gems").
 --   * Roulette stage: a scrolling strip of pet viewports that eases to the server result (RouletteResult),
@@ -92,7 +95,6 @@ local UserInputService = game:GetService("UserInputService")
 local ContextActionService = game:GetService("ContextActionService")
 local TweenService = game:GetService("TweenService")
 local Debris = game:GetService("Debris")
-local MarketplaceService = game:GetService("MarketplaceService")
 local TextService = game:GetService("TextService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -227,7 +229,6 @@ K.HOME_LEFT_W_NARROW = 300
 K.STATION_ROW_H = 96
 K.STATION_ROW_H_TALL = 132
 K.LIVE_GAP = 0.25 -- seconds between two live refreshes of the Home window (collector / income tick every second)
-K.GEM_PACK_H = 248
 K.GEM_ROW_H = 120
 K.INFO_CHARS = 34 -- a station row's "now -> next" line longer than this shows "Next: ..." only
 K.CONFIRM_W = 560 -- the prestige confirmation
@@ -327,9 +328,8 @@ local Back = { Bound = false, Busy = false, Swallowed = false } -- gamepad B bin
 local Index = { Module = nil, Tried = false } -- IndexController (loaded lazily, optional)
 local Entries = {} -- id -> menu tile widgets
 local Hint = { Frame = nil, Label = nil, Token = 0 }
--- Phase 2: the Home window's live plot watch, the Feed picker, the shop's Gems tab
+-- Phase 2: the Home window's live plot watch, the Feed picker
 local Home = { Folder = nil, Conns = {}, LiveAt = 0, LivePending = false }
-local Gems = { Prices = {}, PriceAsked = {} }
 
 -- Phase 5 helpers (one table: the main chunk stays under Lua's 200-local limit). Kit = NeonKit (Card, Tile, SideRect, Dock).
 local P5 = { Kit = require(Client:WaitForChild("UI"):WaitForChild("NeonKit")) }
@@ -1302,6 +1302,36 @@ function P5.openPets(args)
 	end
 end
 
+-- store W1: the Robux Store window is StoreController's (optional, required on use). The ONE path of OpenPanel("Store")
+-- (onOpenPanel's store branch) and the Gems tab's Robux Store button; StoreController never listens to OpenPanel itself.
+function P5.store()
+	if P5.Store == nil then
+		P5.Store = false
+		local module = script.Parent:FindFirstChild("StoreController")
+		local ok, mod = pcall(function()
+			return module and require(module)
+		end)
+		if ok and type(mod) == "table" and type(mod.Open) == "function" then
+			P5.Store = mod
+		end
+	end
+	return P5.Store or nil
+end
+
+function P5.openStore(args)
+	local store = P5.store()
+	if store and not Spin.Stage then
+		safe("store open", store.Open, args)
+	end
+end
+
+function P5.closeStore()
+	local store = P5.store()
+	if store and type(store.IsOpen) == "function" and store.IsOpen() then
+		safe("store close", store.Close)
+	end
+end
+
 local function normalizeTab(windowId, tab)
 	if type(tab) ~= "string" then
 		return nil
@@ -1421,6 +1451,7 @@ local function closeEverything()
 		closeWindow(openId)
 	end
 	P5.closePets()
+	P5.closeStore()
 	closeIndex()
 end
 
@@ -2602,58 +2633,10 @@ local function buildShop(win)
 	end
 
 	------------------------------------------------------------------
-	-- Gems page (Phase 2): gem packs (developer products), the Secret roulette, roulettes priced in Gems
+	-- Gems page (Phase 2; store W1): the Robux Store button, the Secret roulette, roulettes priced in Gems
 	------------------------------------------------------------------
 	shop.GemCards = {} -- rouletteId -> { Roulette, Root, Stroke, Spin, Odds, Hint, Price, Parts }
-	shop.Packs = {} -- { Product, Root, Price, Buy }
 	local G2 = {} -- widgets of the Gems page
-
-	local function createdProducts()
-		local out = {}
-		local gems = Config.Gems
-		for index, product in ipairs(type(gems) == "table" and gems.Products or {}) do
-			local id = type(product) == "table" and tonumber(product.Id) or nil
-			if id and id > 0 and tonumber(product.Gems) then
-				out[#out + 1] = { Index = index, Id = math.floor(id), Gems = math.floor(product.Gems), Name = tostring(product.Name or "Gems") }
-			end
-		end
-		return out
-	end
-
-	-- the Robux price of a developer product (MarketplaceService:GetProductInfo, asked once, in the background)
-	local function askPrice(productId)
-		if Gems.PriceAsked[productId] then
-			return
-		end
-		Gems.PriceAsked[productId] = true
-		task.spawn(function()
-			local ok, info = pcall(function()
-				return MarketplaceService:GetProductInfo(productId, Enum.InfoType.Product)
-			end)
-			if ok and type(info) == "table" and tonumber(info.PriceInRobux) then
-				Gems.Prices[productId] = math.floor(tonumber(info.PriceInRobux))
-				refreshWindow(windows.Shop)
-			end
-		end)
-	end
-
-	local function buyPack(product)
-		if inMatch() then
-			showHint("The shop is closed during a match.", "info")
-			return
-		end
-		local now = os.clock()
-		if Gems.LastPrompt and now - Gems.LastPrompt < 1 then
-			return
-		end
-		Gems.LastPrompt = now
-		local ok = pcall(function()
-			MarketplaceService:PromptProductPurchase(LocalPlayer, product.Id)
-		end)
-		if not ok then
-			showHint("The Robux store did not open. Try again in a moment.", "bad")
-		end
-	end
 
 	local function sectionTitle(parent, name, text, order)
 		local header = makeFrame(parent, name, {
@@ -2810,82 +2793,6 @@ local function buildShop(win)
 		return entry
 	end
 
-	-- every pack looks a step richer than the one before: a bigger disc, a bigger pile of gems, a warmer colour
-	-- (the biggest pack gold with a sparkle)
-	local PACK_LOOKS = {
-		{ Disc = 60, Pile = G.Gem, Size = 38 },
-		{ Disc = 64, Pile = G.Gem .. G.Gem, Size = 28, Color = Color3.fromRGB(92, 214, 230) },
-		{ Disc = 68, Pile = G.Gem .. "\n" .. G.Gem .. G.Gem, Size = 24, Color = Color3.fromRGB(150, 122, 240) },
-		{ Disc = 72, Pile = G.Gem .. "\n" .. G.Gem .. G.Gem, Size = 26, Color = Color3.fromRGB(246, 192, 70), Sparkle = true },
-	}
-
-	local function buildPack(parent, product, order)
-		local look = PACK_LOOKS[math.min(#PACK_LOOKS, math.max(1, product.Index))]
-		local tint = look.Color or C2.Gem
-		local card = makeFrame(parent, "Pack_" .. product.Index, {
-			BackgroundColor3 = WHITE,
-			BackgroundTransparency = 0,
-			LayoutOrder = order,
-		})
-		corner(card, 16)
-		stroke(card, look.Sparkle and Theme.Darken(tint, 0.35) or NAVY, 4, 0)
-		Theme.Gradient(card, Theme.Darken(tint, 0.25), Theme.Darken(tint, 0.68), 90)
-		local disc = makeFrame(card, "Disc", {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.new(0.5, 0, 0, 48),
-			Size = UDim2.fromOffset(look.Disc, look.Disc),
-			BackgroundTransparency = 0,
-			BackgroundColor3 = tint,
-		})
-		round(disc)
-		stroke(disc, NAVY, 3, 0)
-		Theme.Gradient(disc, Theme.Lighten(tint, 0.5), Theme.Darken(tint, 0.15), 90)
-		local pile = makeText(disc, "Glyph", look.Pile, "Title", look.Size, WHITE, { Size = UDim2.new(1, 0, 1, 0) })
-		pile.LineHeight = 0.8
-		if look.Sparkle then
-			for i, spot in ipairs({ { 0.06, 0.02 }, { 0.84, 0.14 }, { 0.78, 0.74 } }) do
-				makeText(disc, "Sparkle" .. i, G.Sparkle, "Title", 22, Color3.fromRGB(255, 246, 200), {
-					AnchorPoint = Vector2.new(0.5, 0.5),
-					Position = UDim2.fromScale(spot[1], spot[2]),
-					Size = UDim2.fromOffset(20, 20),
-					ZIndex = 3,
-				})
-			end
-		end
-		local name = makeText(card, "Name", product.Name, "Title", 22, WHITE, {
-			Position = UDim2.fromOffset(8, 88),
-			Size = UDim2.new(1, -16, 0, 28),
-			TextScaled = true,
-		})
-		Util.Create("UITextSizeConstraint", { MaxTextSize = 22, MinTextSize = 18, Parent = name })
-		makeText(card, "Amount", P2.gemAmount(product.Gems), "Display", 30, Theme.Lighten(C2.Gem, 0.25), {
-			Position = UDim2.fromOffset(0, 116),
-			Size = UDim2.new(1, 0, 0, 36),
-		})
-		local price = makeText(card, "Robux", "", "Heading", 19, MUTED, {
-			Position = UDim2.fromOffset(0, 154),
-			Size = UDim2.new(1, 0, 0, 24),
-		})
-		local buy = CloudUI.Button({
-			Name = "Buy",
-			Text = "Buy",
-			Style = "Green",
-			AnchorPoint = Vector2.new(0.5, 1),
-			Position = UDim2.new(0.5, 0, 1, -10),
-			Size = UDim2.new(1, -28, 0, 48),
-			TextSize = 22,
-			Callback = function()
-				buyPack(product)
-			end,
-			Parent = card,
-		})
-		Util.Create("UISizeConstraint", { MaxSize = Vector2.new(180, 48), Parent = buy })
-		local entry = { Product = product, Root = card, Price = price, Buy = buy }
-		shop.Packs[#shop.Packs + 1] = entry
-		askPrice(product.Id)
-		return entry
-	end
-
 	local function buildGemsPage(page)
 		local scroll = scroller(page, "Gems", { Size = UDim2.new(1, 0, 1, 0) })
 		pad(scroll, 2, 2, 14, 8)
@@ -2894,32 +2801,19 @@ local function buildShop(win)
 
 		-- gem packs
 		sectionTitle(scroll, "PacksTitle", G.Gem .. " Gem packs", 1)
-		local products = createdProducts()
-		if #products > 0 then
-			local packs = makeFrame(scroll, "Packs", {
-				Size = UDim2.new(1, 0, 0, K.GEM_PACK_H),
-				LayoutOrder = 2,
-			})
-			G2.PacksLayout = Util.Create("UIGridLayout", {
-				CellSize = UDim2.new(0.25, -8, 0, K.GEM_PACK_H),
-				CellPadding = UDim2.fromOffset(10, 10),
-				SortOrder = Enum.SortOrder.LayoutOrder,
-				HorizontalAlignment = Enum.HorizontalAlignment.Center,
-				Parent = packs,
-			})
-			G2.Packs = packs
-			for i, product in ipairs(products) do
-				buildPack(packs, product, i)
-			end
-		else
-			local soon = makeInset(scroll, "PacksSoon", { Size = UDim2.new(1, 0, 0, 64), LayoutOrder = 2 })
-			makeText(soon, "Text", G.Gem .. "  Gem packs open soon! You can still earn Gems by prestiging your home.", "Heading", 19, MUTED, {
-				Position = UDim2.fromOffset(16, 0),
-				Size = UDim2.new(1, -32, 1, 0),
-				TextWrapped = true,
-				TextXAlignment = Enum.TextXAlignment.Left,
-			})
-		end
+		-- store W1: the gem packs are the Robux Store's Currency tab now (spec 5.1); one button leads there
+		CloudUI.Button({
+			Name = "RobuxStore",
+			Text = "Robux Store",
+			Style = "Gold",
+			Size = UDim2.fromOffset(260, 56),
+			TextSize = 24,
+			LayoutOrder = 2,
+			Callback = function()
+				P5.openStore({ Tab = "Currency" })
+			end,
+			Parent = scroll,
+		})
 
 		-- the Secret roulette (gems only) and the token roulettes priced in Gems
 		G2.Roulettes = {}
@@ -2960,11 +2854,6 @@ local function buildShop(win)
 		local gems = P2.gemBalance()
 		local state = gemRoulettesState()
 		local match = inMatch()
-		for _, packEntry in ipairs(shop.Packs) do
-			local robux = Gems.Prices[packEntry.Product.Id]
-			packEntry.Price.Text = robux and (G.Robux .. " " .. commas(robux)) or "for Robux"
-			CloudUI.SetDisabled(packEntry.Buy, match)
-		end
 		local open = state == "Open"
 		for _, inst in ipairs(G2.Roulettes or {}) do
 			inst.Visible = open
@@ -3006,14 +2895,8 @@ local function buildShop(win)
 		end
 	end
 
-	-- wide: 4 packs per row, the roulette text left of the buttons; tall (portrait): 2 packs per row, the price
-	-- and buttons under the text
+	-- wide: the roulette text left of the buttons; tall (portrait): the price and buttons under the text
 	local function layoutGemsPage(_w, tall)
-		if G2.Packs then
-			local rows = math.ceil(#shop.Packs / (tall and 2 or 4))
-			G2.PacksLayout.CellSize = UDim2.new(tall and 0.5 or 0.25, -8, 0, K.GEM_PACK_H)
-			G2.Packs.Size = UDim2.new(1, 0, 0, rows * K.GEM_PACK_H + math.max(0, rows - 1) * 10)
-		end
 		for _, card in pairs(shop.GemCards) do
 			local P = card.Parts
 			local big = card.Big
@@ -5579,6 +5462,8 @@ local function onOpenPanel(panelId, args, fromRemote)
 			return
 		end
 		openWindow("Shop", args)
+	elseif key == "store" then
+		P5.openStore(args) -- store W1: the Robux Store window (refused in a match by StoreController itself)
 	elseif key == "pets" or key == "inventory" or key == "items" or key == "team" or key == "teams" then
 		P5.openPets(args) -- team balance: the one Pets window (the Team and Items tabs are gone)
 	elseif key == "home" or key == "spot" then
@@ -5861,14 +5746,18 @@ function MenuController.Init()
 	end
 
 	safe("connect index", connectIndex)
-	-- the Pets window (PetsController) opened: one window at a time; its tile glows while it is up
+	-- the Pets window (PetsController) opened: one window at a time; its tile glows while it is up. Store W1 (spec 8):
+	-- the Store, the Gifts window and the Sky Trove close the menu's windows the same way, and the Pets window too
 	MenuController.WindowOpened:Connect(function(id)
-		if id == "Pets" then
+		if id == "Pets" or id == "Store" or id == "Daily" or id == "Trove" then
 			closeOdds()
 			if openId then
 				closeWindow(openId, true)
 			end
 			closeIndex()
+			if id ~= "Pets" then
+				P5.closePets()
+			end
 			updateMenuActive()
 		end
 	end)

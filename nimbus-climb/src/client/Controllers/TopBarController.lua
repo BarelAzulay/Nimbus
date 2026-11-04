@@ -10,8 +10,9 @@
 --   * Frame "Pill": one rounded navy pill inside Roblox's top-bar band (y 0 .. GuiService:GetGuiInset().Y), right of
 --     Roblox's own buttons: GuiService.TopbarInset.Min.X + 8 (read under pcall; K.FALLBACK_LEFT 212 while it is not
 --     available) and left of TopbarInset.Max.X (else K.RIGHT_RESERVE px off the right edge: the "..." button).
---     TextButtons PillButton_Shop (MenuController.Open("Shop"); in a match the side hint "The shop is closed during a
---     match."; a second tap closes the open shop), PillButton_Travel and PillButton_Settings
+--     TextButtons PillButton_Shop (store W1: StoreController.Open(), the Robux Store window; in a match the side hint "The
+--     Store is closed during a match."; a second tap closes the open Store; the Cloud Shop is the Store's Roulettes tab,
+--     the roulette machines and MenuController.Open("Shop")), PillButton_Travel and PillButton_Settings
 --     (MenuController.OpenSettings: MainMenuController's settings panel). Icon + label; icons only on phones (the
 --     smaller screen side <= K.SMALL_PHONE) or when the labels do not fit; squeezed to K.MIN_BTN_W when even that
 --     does not fit (a tooltip names an icon-only button).
@@ -283,29 +284,35 @@ end
 ----------------------------------------------------------------------
 -- Actions
 ----------------------------------------------------------------------
-local function shopShown()
-	local pg = LocalPlayer and LocalPlayer:FindFirstChildOfClass("PlayerGui")
-	local menuGui = pg and pg:FindFirstChild("NimbusMenu")
-	local win = menuGui and menuGui:FindFirstChild("Window_Shop")
-	return win ~= nil and win:IsA("GuiObject") and win.Visible
+-- the Robux Store window (StoreController, store W1; required on use: it is optional and boots after this controller)
+local function store()
+	local inst = script.Parent:FindFirstChild("StoreController")
+	local ok, mod = pcall(function()
+		return inst and require(inst)
+	end)
+	return ok and type(mod) == "table" and type(mod.Open) == "function" and mod or nil
 end
 
 local function onShop()
 	local mc = menu()
-	if not mc then
-		return
-	end
 	if LocalPlayer:GetAttribute(Config.Attr.InMatch) == true then
-		if type(mc.Hint) == "function" then
-			mc.Hint("The shop is closed during a match.", "info")
+		if mc and type(mc.Hint) == "function" then
+			mc.Hint("The Store is closed during a match.", "info")
 		end
 		return
 	end
-	if shopShown() and type(mc.Close) == "function" then
-		mc.Close()
+	local sc = store()
+	if not sc then
+		if mc then
+			mc.Open("Shop") -- (a build without the Store: the Cloud Shop, as before)
+		end
 		return
 	end
-	mc.Open("Shop")
+	if type(sc.IsOpen) == "function" and sc.IsOpen() then
+		sc.Close()
+		return
+	end
+	sc.Open()
 end
 
 local function onSettings()

@@ -7,7 +7,7 @@
 --   client_hudpill     (client, 1920x1080) the NimbusTopBar ScreenGui (IgnoreGuiInset, order 21) and its Pill in Roblox's
 --                      top-bar band right of Roblox's buttons (GuiService.TopbarInset.Min.X + 8, fallback 212) and left
 --                      of its right-side buttons; PillButton_Shop / Travel / Settings; PillRight / PillBottom; Shop opens
---                      the Cloud Shop and is refused in a match with the hint; Settings opens MainMenuController's
+--                      the Robux Store (store W1; not the Cloud Shop) and is refused in a match with the hint; Settings opens MainMenuController's
 --                      panel; a tap on Travel fires QuickTravel("Plaza") once with no drop-down and no fade; Travel
 --                      hides in a battle and a match, and shows on the Arena island and at home; the menu column keeps
 --                      Pets, Index, Home, Stats (no gear, Team or Items tile)
@@ -223,12 +223,17 @@ local function clientScenarios()
 		KC.advance(0.3)
 		Mock.Click(H.button(pill, "Shop"))
 		KC.advance(0.5)
-		T.check(H.shown(H.menu():FindFirstChild("Window_Shop")), "hudpill: Shop opens the Cloud Shop window")
+		local storeWin = H.pg():FindFirstChild("NimbusStore") and H.pg().NimbusStore:FindFirstChild("StoreWindow", true)
+		T.check(storeWin ~= nil and H.shown(storeWin) and not H.shown(H.menu():FindFirstChild("Window_Shop")),
+			"hudpill: Shop opens the Robux Store (NimbusStore), not the Cloud Shop")
+		Mock.Click(H.button(pill, "Shop"))
+		KC.advance(0.3)
 		LocalPlayer:SetAttribute(Config.Attr.InMatch, true)
 		KC.advance(0.1)
 		Mock.Click(H.button(pill, "Shop"))
 		KC.advance(0.3)
-		T.check(not H.shown(H.menu():FindFirstChild("Window_Shop")) and H.hintText():find("closed during a match", 1, true) ~= nil,
+		storeWin = H.pg():FindFirstChild("NimbusStore") and H.pg().NimbusStore:FindFirstChild("StoreWindow", true)
+		T.check(not (storeWin and H.shown(storeWin)) and H.hintText():find("The Store is closed during a match.", 1, true) ~= nil,
 			"hudpill: Shop is refused in a match with the hint", H.hintText())
 		LocalPlayer:SetAttribute(Config.Attr.InMatch, false)
 		KC.advance(0.6)
