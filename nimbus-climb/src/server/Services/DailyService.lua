@@ -21,15 +21,20 @@
 --     resolved at state time (the payload carries numbers, 13b.3) and again at the claim (the claim pays its own
 --     value). Berries = "Basket" fills the Berry Basket to TycoonCatalog.BasketCap(home, income) minus what is owned.
 --   * Z8: a stored LastClaimAt more than FutureClockSlack ahead of now (a wrong-clock server wrote it) is rewritten to
---     now by the next claim through MutateDaily with NO grant, and that claim is refused once with "Next gift in 20h 0m":
---     the player is never locked out for hours. A second request finds LastClaimAt = now. Two servers: the section 6
---     merge (a claim less than ReadySeconds after the STORED claim loses its grant).
+--     now through MutateDaily with NO grant where the payload is built (State, so the join's ReadyAt is now + 20 h and
+--     the window can count down to a claim) and, as the backstop, by a claim, which is then refused once with "Next
+--     gift in 20h 0m": the player is never locked out for hours. A second request finds LastClaimAt = now. Two servers:
+--     the section 6 merge (a claim less than ReadySeconds after the STORED claim loses its grant). The claim's one
+--     `now` is its LastClaimAt AND its grant's At (MutateDaily's `now` argument): a second ticking inside Claim never
+--     splits the pair from its grant in the merge.
 --
 -- Play time (5.2, 13b.4, Q17, Z9)
 --   * Per play-day on the rolling PlayStart clock: a Tick every TickSeconds (10 s) counts for a player whose root moved
 --     more than MoveStuds since the last sample OR whose client fired one of Play.ActiveRemotes within ActiveWindow
---     (180 s; this service adds its own OnServerEvent listener to each). The first counting tick >= DaySeconds (20 h)
---     after PlayStart starts a new day: PlayStart = now, PlaySec = 0, PlayClaimed = {} (unclaimed tiers are LOST, Q17).
+--     (180 s; this service adds its own OnServerEvent listener to each). The first tick >= DaySeconds (20 h) after
+--     PlayStart starts a new day, counting or not: PlayStart = now, PlaySec = 0, PlayClaimed = {} (unclaimed tiers are
+--     LOST, Q17); until that tick runs (no root) State shows no tier Ready and ClaimPlay refuses ("That play day is
+--     over!"). A first PlayStart is set by the first COUNTING tick only.
 --     PlaySec caps at MaxDaySeconds (10 h). Matches count as play; a provisional profile never ticks (its stand-in's
 --     PlayStart would win the stored Play group).
 --   * No root (no Character, no HumanoidRootPart) or a dead Humanoid (between respawns): nothing happens: no seconds,
@@ -85,6 +90,7 @@ local TEXT = {
 	Full = "Your Berry Basket is full!",
 	Already = "You already claimed that!",
 	NotYet = "Play %d more minutes!",
+	DayOver = "That play day is over!",
 	Unavailable = "Player unavailable",
 }
 
@@ -356,6 +362,26 @@ local function readyCount(d, tiers)
 	return n
 end
 
+-- true when the record's play-day has run its DaySeconds (its tiers are lost; the next tick starts a new day)
+local function dayOver(d, now)
+	local start = num(d.PlayStart, 0)
+	return start > 0 and now >= start + num(playCfg().DaySeconds, 72000)
+end
+
+-- Z8: a stored LastClaimAt more than FutureClockSlack ahead (a wrong-clock server wrote it) is rewritten to now
+-- (NO grant); answers true when it clamped. `d` is the caller's copy and follows the write.
+local function clampFuture(player, d, now)
+	if d.LastClaimAt <= now + num(cfg().FutureClockSlack, 300) then
+		return false
+	end
+	local ok = deps.DataService.MutateDaily(player, function(live)
+		live.LastClaimAt = now
+		return true
+	end)
+	d.LastClaimAt = now
+	return ok == true
+end
+
 local function defaultDaily()
 	return { Streak = 0, Paid = 0, LastClaimAt = 0, Weeks = 0, Pet = false, PlayStart = 0, PlaySec = 0, PlayClaimed = {} }
 end
@@ -425,6 +451,9 @@ function DailyService.State(player)
 		loading = true
 		d = defaultDaily()
 	end
+	if not loading then
+		clampFuture(player, d, now)
+	end
 	local ready = num(C.ReadySeconds, 72000)
 	local keep = num(C.KeepSeconds, 172800)
 	local vip = ownsVip(player)
@@ -436,10 +465,11 @@ function DailyService.State(player)
 		days[i] = { Kind = r.Kind, Amount = r.Amount, PetId = r.PetId, Claimed = claimed, Today = (i == cell) and not claimed }
 	end
 	local tiers = {}
+	local over = dayOver(d, now)
 	for i, t in ipairs(type(P.Tiers) == "table" and P.Tiers or {}) do
 		local r = DailyService.Resolve(player, t, false)
 		local claimed = d.PlayClaimed[i] == true
-		tiers[i] = { Min = num(t.Min, 0), Kind = r.Kind, Amount = r.Amount, PetId = r.PetId, Claimed = claimed, Ready = (not loading) and d.PlaySec >= num(t.Min, 0) * 60 and not claimed }
+		tiers[i] = { Min = num(t.Min, 0), Kind = r.Kind, Amount = r.Amount, PetId = r.PetId, Claimed = claimed, Ready = (not loading) and (not over) and d.PlaySec >= num(t.Min, 0) * 60 and not claimed }
 	end
 	local readyAt = now
 	if loading then
@@ -499,13 +529,8 @@ function DailyService.Claim(player)
 	local now = os.time()
 	local ready = num(C.ReadySeconds, 72000)
 	local keep = num(C.KeepSeconds, 172800)
-	local slack = num(C.FutureClockSlack, 300)
-	if d.LastClaimAt > now + slack then
+	if clampFuture(player, d, now) then
 		-- Z8: a wrong-clock server wrote the future; this refused claim clamps it and the next claim is 20 h away
-		DS.MutateDaily(player, function(live)
-			live.LastClaimAt = now
-			return true
-		end)
 		DailyService.Send(player)
 		return false, nextText(ready)
 	end
@@ -540,7 +565,7 @@ function DailyService.Claim(player)
 			live.Pet = true
 		end
 		return true
-	end, grant)
+	end, grant, now) -- the grant's At is this claim's now: the merge pairs them by that one stamp
 	if not ok then
 		return false, TEXT.Loading
 	end
@@ -581,6 +606,9 @@ function DailyService.ClaimPlay(player, tier)
 	end
 	local t = playCfg().Tiers[tier]
 	local need = num(t.Min, 0) * 60
+	if dayOver(d, os.time()) then
+		return false, TEXT.DayOver
+	end
 	if d.PlayClaimed[tier] == true then
 		return false, TEXT.Already
 	end
@@ -637,20 +665,23 @@ local function tickPlayer(player, P, now, clock)
 		a.On = on
 		send = true
 	end
-	if on then
+	-- a finished play-day resets on this tick even when it does not count (Q17: its tiers are never banked)
+	if on or dayOver(d, now) then
 		local tiers = type(P.Tiers) == "table" and P.Tiers or {}
 		local readyBefore = readyCount(d, tiers)
 		local reset = false
 		local daySeconds = num(P.DaySeconds, 72000)
 		local ok = DS.MutateDaily(player, function(live)
 			local start = num(live.PlayStart, 0)
-			if start == 0 or now >= start + daySeconds then
+			if (on and start == 0) or (start > 0 and now >= start + daySeconds) then
 				live.PlayStart = now
 				live.PlaySec = 0
 				live.PlayClaimed = {}
 				reset = true
 			end
-			live.PlaySec = math.min(num(P.MaxDaySeconds, 36000), num(live.PlaySec, 0) + num(P.TickSeconds, 10))
+			if on then
+				live.PlaySec = math.min(num(P.MaxDaySeconds, 36000), num(live.PlaySec, 0) + num(P.TickSeconds, 10))
+			end
 			return true
 		end)
 		if ok then

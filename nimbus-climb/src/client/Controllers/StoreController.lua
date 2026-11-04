@@ -8,6 +8,7 @@
 --   StoreController.IsOpen() -> bool
 --   StoreController.Layout() -> "PC" | "Phone"
 --   StoreController.Cards() -> { [key] = { State, Price, Tab } }   every card shown (tests)
+--   StoreController.Palette(key) -> { Top, Bottom, Edge } | nil   a pack's own colours (tests)
 --   StoreController.RobuxGlyph() -> string   "\238\128\130" (U+E002, the Robux glyph) or "R$" when the font lacks it
 --
 -- Who opens it: the top bar pill's Shop button (TopBarController), the Cloud Shop's "Robux Store" button and a server
@@ -19,15 +20,23 @@
 -- Screen: ScreenGui "NimbusStore" (DisplayOrder 19, IgnoreGuiInset = true), Frame "StoreWindow" sized like the Pets
 -- window (NeonKit.BigRect: 1260x900 at 1080p x ScreenFactor, 820x330 at scale 1 on an 844x390 phone) with a UIScale "Fit".
 --   TitleBar: Title "Store", the three balances Balance_Tokens / Balance_Cash / Balance_Gems, Close (X).
---   Tabs: Tab_<name> (Icon + Label; attribute Selected) for Packs, Passes, Boosts, Currency, Roulettes. A tab with no item
---     to show is hidden; Roulettes always shows and closes the Store for MenuController.Open("Shop").
---   Pages: Page_<tab> ScrollingFrames of Card_<key> (NeonKit.Card TextButtons: Art, Name, GetsYou, Line1..n, Status,
---     PricePill.Text, Buy). The tab's hero card (attribute Hero) comes first and is taller. "Soon" reads "The Store opens
---     soon!" when nothing is created (and no StorePreview).
+--   Tabs: Tab_<name> (Icon + Label; attribute Selected) for Packs, Passes, Boosts, Currency, Roulettes. The Icon is
+--     NeonKit.Icon(button, tab) (the glyph, or an image once Config.Icons[tab] holds one: re-checked on every layout). A tab
+--     with no item to show is hidden; Roulettes always shows and closes the Store for MenuController.Open("Shop").
+--   Pages: Page_<tab> ScrollingFrames of Card_<key> (NeonKit.Card TextButtons: Paint, Art, Name, GetsYou, Line1..n,
+--     Status, PricePill.Text, Buy). The tab's hero card (attribute Hero) comes first and is taller; the cards rebuild when
+--     a tab's hero changes. "Soon" reads "The Store opens soon!" when nothing is created (and no StorePreview).
+-- Colours (the owner's "make colors for every pack"): every pack has its own PALETTE entry (a saturated Top -> Bottom
+-- gradient on the card's Paint frame, an Edge colour on its neon stroke and glow); the hero runs Bottom -> Top -> a
+-- near-white highlight left to right (the highlight behind its price pill and Buy) with a thicker edge, so it is the
+-- brightest card of its tab; a Have-it card goes grey. Every card text keeps its
+-- dark outline and the Bottom stop is dark, so white text reads on every pack.
 -- Items: StoreCatalog.List() (Config.Store.Items + the gem packs), shown when created (Id > 0) or under the StorePreview
 -- attribute (then an Id 0 item is a "Preview" card: its Buy reads PREVIEW, disabled). The window hero is the Starter Pack
 -- while it is unbought and shown, else VIP; another tab's hero is its first Hero item not owned / claimed.
--- Card states: Buy, Owned (a pass key in OwnedPasses), Claimed (a Once key in StoreBought), Active (an XP potion while
+-- Card states: Buy, Owned (a pass key in OwnedPasses), Claimed (a Once key in StoreBought), Loading (a Once item while
+-- StoreBought is absent: the server writes it only from a real record, so absent = loading or provisional, never
+-- "unbought": the Buy reads "...", disabled, and no Once pack becomes a hero), Active (an XP potion while
 -- XpBoostEnds > now: "58 m left"), HaveIt (an XP potion while the x2 Pet XP pass is owned or the potion bank is full:
 -- dimmed), Preview. Buy -> StoreRequest:FireServer("Buy", key) (1 s client gap): the client never prompts a purchase.
 -- Prices: MarketplaceService:GetProductInfo once per session per created id, in the background, one retry after
@@ -35,10 +44,11 @@
 -- Shine (GraphicsQuality High only, built on open, torn down on close): the hero's UIGradient "HeroSpin" turns 360
 -- degrees every 8 s (a Heartbeat step), a sheen sweeps the hero every 6-9 s, the hero's Buy pulses (1 -> 1.04) every
 -- 2.5 s, pet cards show a turning CloudUI.PetViewport. Low: a static gradient and the glyph art, no tweens.
--- Sounds: StorePop on a card tap (Click until AudioIds has it), StoreBuy on the server's "Thank you..." toast (Reward).
--- Art: the glyph of each item (the store_* renders of spec 9 need a TextureIds image path this file may not build: the
--- asset-id rule of tools/check.mjs; the glyphs stay until the art lands).
--- Plain Lua 5.1-compatible syntax only. All text goes through Theme roles; no asset ids.
+-- Sounds: StorePop on a card tap (Click until AudioIds has it), StoreBuy on a purchase toast (Reward): the Store's
+-- "Thank you! ..." (StoreService.Thank) and the gem pack's "+550 Gems! Thank you for your support!" (GemService).
+-- Art: the store_* render of spec 9 (TextureIds[ART_KEYS key], an ImageLabel "Image" in the Art box) when it has an id,
+-- else the item's glyph; High swaps a pet card's art for the turning viewport.
+-- Plain Lua 5.1-compatible syntax only. All text goes through Theme roles; no asset ids (TextureIds numbers only).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -109,6 +119,42 @@ local GOLD = Theme.Neon.Gold
 local TAB_COLORS = { Packs = "Gold", Passes = "Purple", Boosts = "Pink", Currency = "Blue", Roulettes = "Green" }
 local CURRENCY_ORDER = { "Tokens", "Cash", "Gems" }
 local CLOSE_GLYPH = "\226\156\149"
+
+-- every pack's own colours (the owner's note, 2026-11-04): Top -> Bottom is the card's gradient (saturated, the Bottom
+-- dark enough for white text), Edge its neon stroke and glow. No two packs share a pair.
+local function rgb(r, g, b)
+	return Color3.fromRGB(r, g, b)
+end
+local PALETTE = {
+	Starter = { Top = rgb(255, 150, 30), Bottom = rgb(150, 40, 10), Edge = rgb(255, 214, 90) }, -- sunrise orange
+	Pro = { Top = rgb(200, 70, 255), Bottom = rgb(70, 15, 140), Edge = rgb(255, 140, 255) }, -- royal purple
+	VIP = { Top = rgb(255, 196, 40), Bottom = rgb(140, 70, 0), Edge = rgb(255, 236, 150) }, -- crown gold
+	Cash2x = { Top = rgb(50, 215, 100), Bottom = rgb(5, 100, 45), Edge = rgb(150, 255, 170) }, -- money green
+	PetXp2x = { Top = rgb(40, 190, 255), Bottom = rgb(15, 60, 170), Edge = rgb(150, 225, 255) }, -- sky blue
+	XpPotion1 = { Top = rgb(255, 80, 170), Bottom = rgb(130, 15, 90), Edge = rgb(255, 170, 220) }, -- bubblegum
+	XpPotion3 = { Top = rgb(140, 90, 255), Bottom = rgb(45, 20, 150), Edge = rgb(190, 160, 255) }, -- violet brew
+	Tokens1 = { Top = rgb(90, 190, 255), Bottom = rgb(20, 80, 180), Edge = rgb(150, 220, 255) }, -- cloud blue
+	Tokens2 = { Top = rgb(40, 210, 215), Bottom = rgb(5, 95, 120), Edge = rgb(150, 255, 245) }, -- lagoon
+	Tokens3 = { Top = rgb(90, 110, 255), Bottom = rgb(30, 25, 160), Edge = rgb(170, 185, 255) }, -- storm cobalt
+	Gems1 = { Top = rgb(50, 225, 160), Bottom = rgb(5, 110, 85), Edge = rgb(165, 255, 215) }, -- emerald
+	Gems2 = { Top = rgb(255, 55, 95), Bottom = rgb(140, 10, 45), Edge = rgb(255, 160, 180) }, -- ruby
+	Gems3 = { Top = rgb(190, 80, 255), Bottom = rgb(85, 15, 160), Edge = rgb(220, 150, 255) }, -- amethyst
+	Gems4 = { Top = rgb(255, 130, 40), Bottom = rgb(175, 25, 120), Edge = rgb(255, 215, 130) }, -- fire opal
+	Cash1 = { Top = rgb(130, 220, 60), Bottom = rgb(45, 110, 15), Edge = rgb(200, 255, 150) }, -- (not on sale: 13b.1)
+	Cash2 = { Top = rgb(200, 225, 50), Bottom = rgb(100, 115, 5), Edge = rgb(240, 255, 150) },
+	Cash3 = { Top = rgb(60, 200, 130), Bottom = rgb(10, 95, 55), Edge = rgb(170, 255, 205) },
+}
+local DIM_PALETTE = { Top = rgb(120, 124, 140), Bottom = rgb(45, 48, 60), Edge = rgb(150, 155, 170) } -- a Have-it card
+local HERO_LIFT = 0.7 -- the hero's highlight stop (right, behind the price and Buy): Top this far toward white
+local HERO_EDGE = 4.5 -- the hero's neon stroke (a card's is NeonKit's 3)
+local CARD_EDGE = 3
+local CARD_CORNER = 14 -- NeonKit.Card's default corner (the Paint frame follows it)
+
+-- the store_* render of each item (spec 9; TextureIds keys, the glyph while a key has no id)
+local ART_KEYS = {
+	Starter = "store_starter", Pro = "store_pro", VIP = "store_vip", Cash2x = "store_x2cash", PetXp2x = "store_x2xp",
+	XpPotion1 = "store_potion_1h", XpPotion3 = "store_potion_3h",
+}
 
 local initialized = false
 local LocalPlayer = nil
@@ -246,6 +292,15 @@ function H.attr(name)
 	return LocalPlayer and LocalPlayer:GetAttribute(Config.Attr[name] or name) or nil
 end
 
+-- a purchase toast: the Store's "Thank you! ..." (StoreService.Thank) or a gem pack's "+550 Gems! Thank you for your
+-- support!" (GemService.sendThanks)
+function H.isThanks(message)
+	if type(message) ~= "string" then
+		return false
+	end
+	return message:sub(1, 9) == "Thank you" or string.match(message, "^%+[%d,]+ Gems! Thank you") ~= nil
+end
+
 function H.remote(name)
 	local ok, remote = pcall(Remotes.Get, name)
 	return ok and remote or nil
@@ -272,6 +327,17 @@ local function robuxGlyph()
 		S.Glyph = K.ROBUX_FALLBACK
 	end
 	return S.Glyph
+end
+
+-- shared/TextureIds (the upload session fills it; empty = every card keeps its glyph)
+local function textureIds()
+	if S.TextureIds == nil then
+		local ok, ids = pcall(function()
+			return require(Shared:FindFirstChild("TextureIds"))
+		end)
+		S.TextureIds = (ok and type(ids) == "table") and ids or {}
+	end
+	return S.TextureIds
 end
 
 ----------------------------------------------------------------------
@@ -322,10 +388,13 @@ function H.timeLeft(seconds)
 	return string.format("%d m left", minutes)
 end
 
--- -> state, status text
-function H.stateOf(item, owned, bought, xpPass)
+-- -> state, status text (known = the StoreBought attribute exists: a real record is loaded)
+function H.stateOf(item, owned, bought, xpPass, known)
 	if not item.Created then
 		return "Preview", ""
+	end
+	if item.Once and not known then
+		return "Loading", ""
 	end
 	if item.Kind == "Pass" then
 		if owned[item.Key] then
@@ -354,10 +423,15 @@ function H.stateOf(item, owned, bought, xpPass)
 	return "Buy", ""
 end
 
+-- the StoreBought attribute exists (absent = the record is loading or provisional: no Once pack can be decided)
+function H.boughtKnown()
+	return type(H.attr("StoreBought")) == "string"
+end
+
 function H.windowHero()
 	local bought = csvSet(H.attr("StoreBought"))
 	local starter = S.ByKey.Starter
-	if starter and not bought.Starter then
+	if starter and H.boughtKnown() and not bought.Starter then
 		return starter
 	end
 	return S.ByKey.VIP
@@ -381,11 +455,21 @@ function H.heroOf(tab)
 	end
 	for _, item in ipairs(H.tabItems(tab)) do
 		local st = S.States[item.Key]
-		if item.Hero and not (st and (st.State == "Owned" or st.State == "Claimed")) then
+		if item.Hero and not (st and (st.State == "Owned" or st.State == "Claimed" or st.State == "Loading")) then
 			return item
 		end
 	end
 	return nil
+end
+
+-- the heroes of every tab, as a string: a change (a pack bought, the record arriving) rebuilds the pages
+function H.heroSignature()
+	local parts = {}
+	for _, tab in ipairs(StoreCatalog.Tabs) do
+		local hero = tab ~= "Roulettes" and H.heroOf(tab) or nil
+		parts[#parts + 1] = hero and hero.Key or "-"
+	end
+	return table.concat(parts, "|")
 end
 
 function H.tabShown(tab)
@@ -504,19 +588,91 @@ function H.build()
 		button.LayoutOrder = i
 		Theme.Corner(button, UDim.new(0, 10))
 		local outline = Theme.Stroke(button, Theme.NeonColor(TAB_COLORS[tab] or "Blue"), 2, 0.2)
-		local icon = label("Icon", button, NeonKit.Glyphs[tab] or "", "Display", 20)
 		local name = label("Label", button, tab, "Button", 15)
 		button.Parent = tabs
 		button.Activated:Connect(function()
 			safe("tab", H.tapTab, tab)
 		end)
-		U.Tabs[tab] = { Button = button, Icon = icon, Label = name, Stroke = outline }
+		U.Tabs[tab] = { Button = button, Label = name, Stroke = outline }
+		H.syncTabIcon(tab)
 	end
 
 	-- the pages and the empty text
 	local pages = frame("Pages", body)
 	U.PagesFrame = pages
 	U.Soon = label("Soon", pages, K.SOON, "Heading", 20, { Visible = false, TextWrapped = true, Size = UDim2.fromScale(1, 1) })
+end
+
+-- the tab's icon through NeonKit.Icon (the only path that reads Config.Icons): rebuilt when Config.Icons[tab] changed
+function H.syncTabIcon(tab)
+	local t = U.Tabs[tab]
+	local icons = Config.Icons
+	local want = type(icons) == "table" and icons[tab] or nil
+	if type(want) ~= "string" or want == "" then
+		want = false
+	end
+	if t.Icon and t.IconImage == want then
+		return
+	end
+	if t.Icon then
+		t.Icon:Destroy()
+	end
+	t.Icon = NeonKit.Icon(t.Button, tab, 20)
+	t.IconImage = want
+end
+
+-- the pack's colours (a key without an entry: its tab's neon colour)
+function H.palette(item)
+	local p = PALETTE[item.Key]
+	if p then
+		return p
+	end
+	local c = Theme.NeonColor(TAB_COLORS[item.Tab] or "Blue")
+	return { Top = c, Bottom = Theme.Darken(c, 0.6), Edge = Theme.Lighten(c, 0.3) }
+end
+
+-- paints a card: the gradient on its Paint frame, the edge on its neon stroke and glow (the hero brighter and thicker)
+function H.paint(entry, dim)
+	local p = dim and DIM_PALETTE or H.palette(entry.Item)
+	local keys
+	local rotation = 90
+	if entry.Hero and not dim then
+		-- left to right: the dark stop under the art and the texts, the highlight behind the price pill and Buy
+		keys = {
+			ColorSequenceKeypoint.new(0, p.Bottom),
+			ColorSequenceKeypoint.new(0.5, p.Top),
+			ColorSequenceKeypoint.new(1, p.Top:Lerp(WHITE, HERO_LIFT)),
+		}
+		rotation = 12
+	else
+		keys = { ColorSequenceKeypoint.new(0, p.Top), ColorSequenceKeypoint.new(1, p.Bottom) }
+	end
+	entry.PaintGradient.Color = ColorSequence.new(keys)
+	entry.PaintGradient.Rotation = rotation
+	entry.Card.SetColor(p.Edge)
+	entry.Card.Stroke.Thickness = entry.Hero and HERO_EDGE or CARD_EDGE
+	entry.Art.BackgroundColor3 = Theme.Darken(p.Bottom, 0.35)
+end
+
+-- the art box shows the render (Image) or the glyph, unless a pet viewport covers it (High)
+function H.showArt(entry, on)
+	if entry.Image then
+		entry.Image.Visible = on
+		entry.Glyph.Visible = false
+	else
+		entry.Glyph.Visible = on
+	end
+end
+
+function H.artKey(item)
+	if ART_KEYS[item.Key] then
+		return ART_KEYS[item.Key]
+	end
+	local kind, n = string.match(item.Key, "^(%a+)(%d+)$")
+	if kind == "Gems" or kind == "Tokens" or kind == "Cash" then
+		return "store_" .. string.lower(kind) .. "_" .. n
+	end
+	return nil
 end
 
 -- one card: Art | Name + Gets you lines + Status | PricePill over Buy
@@ -533,13 +689,38 @@ function H.buildCard(item, page, isHero)
 	})
 	card.Root:SetAttribute("Hero", isHero == true)
 	card.Root:SetAttribute("Key", item.Key)
+	-- the pack's own gradient: a Paint frame under the Body (the root is a TextButton, whose own gradient is NeonKit's)
+	card.Root.BackgroundTransparency = 1
+	local paint = frame("Paint", card.Root, {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = WHITE,
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = card.Root.ZIndex - 1,
+	})
+	Theme.Corner(paint, UDim.new(0, CARD_CORNER))
+	local paintGradient = Util.Create("UIGradient", { Name = "PaintGradient", Rotation = 90, Parent = paint })
 	card.Root.Activated:Connect(function()
 		sfx("StorePop", "Click")
 	end)
 	local b = card.Body
-	local art = frame("Art", b, { BackgroundTransparency = 0.35, BackgroundColor3 = Theme.Darken(Theme.NeonColor(color), 0.6) })
+	local art = frame("Art", b, { BackgroundTransparency = 0.35, BackgroundColor3 = Theme.Darken(H.palette(item).Bottom, 0.35) })
 	Theme.Corner(art, UDim.new(0, 12))
 	local glyph = label("Glyph", art, H.artGlyph(item), "Display", 40, { Size = UDim2.fromScale(1, 1), TextTruncate = Enum.TextTruncate.None })
+	local image = nil
+	local artKey = H.artKey(item)
+	local artId = artKey and tonumber(textureIds()[artKey]) or nil
+	if artId and artId > 0 and artId == math.floor(artId) then
+		image = Util.Create("ImageLabel", {
+			Name = "Image",
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Image = "rbxassetid://" .. tostring(artId),
+			ScaleType = Enum.ScaleType.Fit,
+			Size = UDim2.fromScale(1, 1),
+			Parent = art,
+		})
+		glyph.Visible = false
+	end
 	local name = label("Name", b, item.Name or item.Key, "Title", 24, { TextXAlignment = Enum.TextXAlignment.Left })
 	local gets = label("GetsYou", b, "Gets you:", "Body", 16, { TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = MUTED })
 	local lines = {}
@@ -567,9 +748,11 @@ function H.buildCard(item, page, isHero)
 		Parent = buyHolder,
 	})
 	local entry = {
-		Item = item, Card = card, Root = card.Root, Art = art, Glyph = glyph, Name = name, GetsYou = gets, Lines = lines,
-		Status = status, PricePill = pricePill, Price = price, BuyHolder = buyHolder, Pulse = pulse, Buy = buy, Hero = isHero == true,
+		Item = item, Card = card, Root = card.Root, Art = art, Glyph = glyph, Image = image, Name = name, GetsYou = gets,
+		Lines = lines, Status = status, PricePill = pricePill, Price = price, BuyHolder = buyHolder, Pulse = pulse, Buy = buy,
+		Hero = isHero == true, Paint = paint, PaintGradient = paintGradient,
 	}
+	H.paint(entry, false)
 	U.Cards[item.Key] = entry
 	return entry
 end
@@ -723,15 +906,23 @@ function H.layout()
 			place(t.Button, 0, y, M.TabW, M.TabH)
 			y = y + M.TabH + M.TabGap
 			local phone = S.Mode == "Phone"
+			H.syncTabIcon(tab)
 			-- phone: the icon over the label; PC: the icon left of the label
+			local ix, iy, iw, ih
 			if phone then
-				place(t.Icon, 0, 1, M.TabW, M.TabIcon + 2)
+				ix, iy, iw, ih = 0, 1, M.TabW, M.TabIcon + 2
 				place(t.Label, 2, M.TabIcon + 2, M.TabW - 4, M.TabH - M.TabIcon - 3)
 			else
-				place(t.Icon, 10, 0, M.TabIcon + 12, M.TabH)
+				ix, iy, iw, ih = 10, 0, M.TabIcon + 12, M.TabH
 				place(t.Label, M.TabIcon + 26, 0, M.TabW - M.TabIcon - 32, M.TabH)
 			end
-			t.Icon.TextSize = M.TabIcon
+			if t.Icon:IsA("TextLabel") then
+				place(t.Icon, ix, iy, iw, ih)
+				t.Icon.TextSize = M.TabIcon
+			else
+				local s = M.TabIcon + 2
+				place(t.Icon, ix + (iw - s) / 2, iy + (ih - s) / 2, s, s)
+			end
 			t.Label.TextSize = M.TabLabel
 		end
 	end
@@ -770,16 +961,17 @@ end
 function H.computeStates()
 	local owned = csvSet(H.attr("OwnedPasses"))
 	local bought = csvSet(H.attr("StoreBought"))
+	local known = H.boughtKnown()
 	local xpPass = H.xpPassKey()
 	local states = {}
 	for _, item in ipairs(S.Items) do
-		local st, status = H.stateOf(item, owned, bought, xpPass)
+		local st, status = H.stateOf(item, owned, bought, xpPass, known)
 		states[item.Key] = { State = st, Status = status }
 	end
 	S.States = states
 end
 
-local BUY_TEXT = { Buy = "Buy", Active = "Buy", Owned = "Owned", Claimed = "Claimed!", HaveIt = "Buy", Preview = "PREVIEW" }
+local BUY_TEXT = { Buy = "Buy", Active = "Buy", Owned = "Owned", Claimed = "Claimed!", HaveIt = "Buy", Preview = "PREVIEW", Loading = "..." }
 
 function H.paintCards()
 	local match = H.inMatch()
@@ -794,7 +986,7 @@ function H.paintCards()
 		entry.PricePill.Root.Visible = st.State ~= "Owned" and st.State ~= "Claimed"
 		entry.Status.Text = st.Status
 		local dim = st.State == "HaveIt"
-		entry.Card.SetColor(dim and Theme.Neon.Grey or Theme.NeonColor(TAB_COLORS[entry.Item.Tab] or "Blue"))
+		H.paint(entry, dim)
 		entry.Name.TextColor3 = dim and MUTED or WHITE
 		for _, line in ipairs(entry.Lines) do
 			line.TextColor3 = dim and MUTED or WHITE
@@ -838,15 +1030,16 @@ function H.refresh()
 	end
 	local items, byKey, sig = H.collect()
 	S.Items, S.ByKey = items, byKey
-	if sig ~= S.Signature then
+	H.computeStates()
+	local heroes = H.heroSignature()
+	if sig ~= S.Signature or heroes ~= S.Heroes then
 		S.Signature = sig
+		S.Heroes = heroes
 		H.rebuild()
 		H.selectTab(S.Tab)
 		if S.Open then
 			H.askPrices()
 		end
-	else
-		H.computeStates()
 	end
 	H.paintCards()
 	if S.Open then
@@ -938,9 +1131,9 @@ function H.shineOn()
 			Name = "HeroSpin",
 			Rotation = 35,
 			Color = ColorSequence.new({
-				ColorSequenceKeypoint.new(0, GOLD),
+				ColorSequenceKeypoint.new(0, H.palette(hero.Item).Edge),
 				ColorSequenceKeypoint.new(0.5, WHITE),
-				ColorSequenceKeypoint.new(1, Theme.NeonColor(TAB_COLORS[hero.Item.Tab] or "Gold")),
+				ColorSequenceKeypoint.new(1, H.palette(hero.Item).Top),
 			}),
 			Transparency = NumberSequence.new({
 				NumberSequenceKeypoint.new(0, 0.2),
@@ -1001,7 +1194,7 @@ function H.shineOn()
 				local petId = next(pets)
 				local ok, view = pcall(CloudUI.PetViewport, entry.Art, petId, UDim2.fromScale(1, 1), {})
 				if ok and type(view) == "table" then
-					entry.Glyph.Visible = false
+					H.showArt(entry, false)
 					shine.Views[#shine.Views + 1] = { View = view, Entry = entry }
 				end
 			end
@@ -1034,7 +1227,7 @@ function H.shineOff()
 				v.View.Frame:Destroy()
 			end
 		end)
-		v.Entry.Glyph.Visible = true
+		H.showArt(v.Entry, true)
 	end
 	for _, entry in pairs(U.Cards) do
 		entry.Pulse.Scale = 1
@@ -1114,6 +1307,15 @@ function StoreController.Cards()
 		out[key] = { State = st and st.State or "Buy", Price = entry.Price.Text, Tab = entry.Item.Tab }
 	end
 	return out
+end
+
+function StoreController.Palette(key)
+	local item = S.ByKey[key] or StoreCatalog.Item(key)
+	if not item then
+		return nil
+	end
+	local p = H.palette(item)
+	return { Top = p.Top, Bottom = p.Bottom, Edge = p.Edge }
 end
 
 function StoreController.Open(args)
@@ -1236,7 +1438,7 @@ function StoreController.Init()
 		local remote = H.remote("Notify")
 		if remote then
 			remote.OnClientEvent:Connect(function(message)
-				if type(message) == "string" and message:sub(1, 9) == "Thank you" then
+				if H.isThanks(message) then
 					sfx("StoreBuy", "Reward")
 				end
 			end)

@@ -12,8 +12,13 @@
 --   Neon.Purple, while XpBoostEnds > now, the time left refreshed every second; "x2 XP" while OwnedPasses has PetXp2x: the
 --   pass and a potion never stack, the pass wins). 46x24 at 1080p (text 18), 34x18 text 15 on a phone (the smaller screen
 --   side <= 500); a chip grows with its text. Hidden with the strips (InMatch / InBattle, or no top-right strips).
--- Side hints (MenuController.Hint): "x2 Pet XP started!" when XpBoostEnds rises from 0 (not for a value already set at the
--- join), "x2 Pet XP ends in 5 min" once per potion when its time left crosses Config.Store.Potion.WarnSeconds downward.
+-- Side hints (MenuController.Hint): "x2 Pet XP started!" only for a potion that starts during this view: XpBoostEnds rises
+-- from a value that was no running potion (0, or an old end already in the past: the server leaves the last end on the
+-- attribute) to an end whose time left is one whole potion (a Config.Store.Items Boost.XpPotion length, within
+-- START_SLACK s); never for the first value seen (the attribute absent until then), an end in the past, an extension of a
+-- running potion, or a potion bought earlier that arrives late (a provisional recovery, a slow profile load: part of it is
+-- already used). "x2 Pet XP ends in 5 min" once per potion when its time left crosses Config.Store.Potion.WarnSeconds
+-- downward.
 -- Plain Lua 5.1-compatible syntax only. All text goes through Theme roles.
 
 local Players = game:GetService("Players")
@@ -39,6 +44,7 @@ local K = {
 	PC = { W = 46, H = 24, Text = 18, Pad = 8 },
 	PHONE = { W = 34, H = 18, Text = 15, Pad = 5 },
 	TICK = 1,
+	START_SLACK = 15, -- seconds: a fresh potion's time left is its full length within this (os.time vs the server clock)
 }
 BoostBadgeController.K = K
 
@@ -47,7 +53,7 @@ local DOT = "\194\183"
 local LocalPlayer = nil
 local initialized = false
 local U = {}
-local S = { Ends = 0, WarnedFor = nil, Started = false }
+local S = { Ends = 0, Seen = false, WarnedFor = nil, Started = false }
 local warned = {}
 
 local function warnOnce(key, err)
@@ -91,8 +97,36 @@ local function hasPass(key)
 	return false
 end
 
+local function boostAttr()
+	return LocalPlayer and LocalPlayer:GetAttribute(Config.Attr.XpBoostEnds or "XpBoostEnds")
+end
+
 local function boostEnds()
-	return tonumber(LocalPlayer and LocalPlayer:GetAttribute(Config.Attr.XpBoostEnds or "XpBoostEnds")) or 0
+	return tonumber(boostAttr()) or 0
+end
+
+-- the lengths of one XP potion (seconds): every Boost.XpPotion grant of Config.Store.Items
+local function potionLengths()
+	local out = {}
+	local items = Config.Store and Config.Store.Items
+	for _, item in ipairs(type(items) == "table" and items or {}) do
+		local boost = type(item) == "table" and type(item.Grants) == "table" and item.Grants.Boost
+		local secs = type(boost) == "table" and tonumber(boost.XpPotion)
+		if secs and secs > 0 then
+			out[#out + 1] = secs
+		end
+	end
+	return out
+end
+
+-- a potion that has just started: its time left is one whole potion length
+local function freshPotion(left)
+	for _, secs in ipairs(potionLengths()) do
+		if math.abs(left - secs) <= K.START_SLACK then
+			return true
+		end
+	end
+	return false
 end
 
 -- "58m" / "1h 5m"
@@ -187,12 +221,15 @@ function H.layout()
 	U.Xp.Visible = chips.Xp ~= nil
 end
 
--- the potion hints: started (a rise from 0) and the WarnSeconds crossing (once per potion end)
+-- the potion hints: started (see the header) and the WarnSeconds crossing (once per potion end)
 function H.watchPotion()
 	local ends = boostEnds()
 	local was = S.Ends
+	local seen = S.Seen
 	S.Ends = ends
-	if S.Started and was <= 0 and ends > now() then
+	S.Seen = boostAttr() ~= nil -- absent again: the next value is a first value (a baseline)
+	local t = now()
+	if S.Started and seen and was <= t and ends > t and freshPotion(ends - t) then
 		hint("x2 Pet XP started!")
 	end
 	if ends ~= was then
@@ -242,6 +279,7 @@ function BoostBadgeController.Init()
 	U.Xp = H.chip("Chip_Xp", Theme.Neon.Purple)
 	U.Xp.LayoutOrder = 1
 	S.Ends = boostEnds()
+	S.Seen = boostAttr() ~= nil
 	S.LastLeft = S.Ends - now()
 	S.Started = true
 	local attr = Config.Attr

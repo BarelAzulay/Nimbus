@@ -28,15 +28,21 @@
 --     RingLeft, each a clipped circle whose UIStroke carries a stepped UIGradient), Neon.Gold, 40 % transparent while
 --     Play.Active == false.
 --   * Frame "DailyHolder" (UIScale "Scale") > NeonKit.Card "DailyWindow": PC 760x420 design px at the screen factor, phone
---     560x300 at scale 1; under the button with the right edges aligned (moved up only as far as the screen needs). Title
---     row: Tab_Daily ("Daily"), Tab_Play ("Play time"), CloseButton. DailyPage: Header "Day 3 of 7 · Week 2", VipChip
+--     560x300 at scale 1; a portrait phone too narrow for 560 px + the 12 px side margins: "Portrait", the gui width - 24 x
+--     404 at scale 1 (the day cells in rows of 4, the tier cells in rows of 3). Under the button with the right edges
+--     aligned, kept inside the side margins (moved up only as far as the screen needs). Title row (44 px targets on every
+--     layout): Tab_Daily ("Daily"), Tab_Play ("Play time"), CloseButton. DailyPage: Header "Day 3 of 7 · Week 2", VipChip
 --     "VIP x2", Cells > Cell1..7 (Day, Art (glyph or the pet's PetViewport), Amount, Dim, Check; attributes Claimed / Today /
---     Pulsing: today's card is Neon.Gold and its border pulses), Footer (ClaimButton "CLAIM!" | Countdown "Next gift in 4h
---     12m" + Keep "Come back tomorrow to keep your streak!"), WeekBanner. PlayPage: Header "47 min played today · Resets in
---     5h" or "Paused: move around to keep counting!" (Body 15, Neon.Gold), Rows > Row1..7 (Label "10 min · +$200", Claim
---     "CLAIM", ToGo "13 min to go", Check). Fx: the week's Rainbow Sweep and 24 Confetti frames (both skipped on Low).
---   * A grown claimed set pops the cell / row (1.15 -> 1, 0.25 s) with SoundFx "Reward"; a Streak that grew onto a multiple of
---     7: the sweep, the confetti, "WEEK DONE! Week Wisp is yours!", SoundFx "DailyWeek"; StepBack > 0: the side hint
+--     Pulsing: each day its own saturated colour (DAY_COLORS: the NeonStroke + the Fill gradient), today's card is
+--     Neon.Gold and its border pulses), Footer (ClaimButton "CLAIM!" | Countdown "Next gift in 4h 12m" + Keep "Come back
+--     tomorrow to keep your streak!"), WeekBanner. PlayPage: Header "47 min played today · Resets in 5h" or "Paused: move
+--     around to keep counting!" (Body 15, Neon.Gold), Tiers > Tier1..7 reward cells like the day strip (each tier its own
+--     saturated colour, TIER_COLORS; attribute State = "Ready" | "Claimed" | "Locked"; Time "10 min", IconBox > Icon,
+--     Reward "+$200", Claim "CLAIM" (44 px tall on a phone), ToGo "13 min to go", Check "Claimed", Dim). Fx: the week's
+--     Rainbow Sweep and 24 Confetti frames (both skipped on Low).
+--   * A grown claimed set pops the cell (1.15 -> 1, 0.25 s) with SoundFx "Reward"; a paid week (Weeks rose with the Streak
+--     onto a multiple of 7; a repair claim back onto day 7 leaves Weeks alone and celebrates nothing): the sweep, the
+--     confetti, "WEEK DONE! Week Wisp is yours!", SoundFx "DailyWeek"; StepBack > 0: the side hint
 --     "Welcome back! You stepped back n day(s). Keep going!" once per claim (MenuController.Hint).
 --   * Closes on X, Esc, gamepad B (bound only while open), InMatch / InBattle, and any other WindowOpened id.
 -- Art: glyph fallbacks (NeonKit.Icon: "Gifts", "Cash", "Tokens", "Gems"); Config.Icons swaps in the uploaded images later.
@@ -82,29 +88,76 @@ local K = {
 	CONFETTI = 24,
 	CONFETTI_TIME = 1.6,
 	PULSE = 0.55, -- today's border fades to this and back, once a second
-	EDGE = 4, -- the window keeps this far from the screen edges
+	EDGE = 4, -- the window keeps this far from the screen's top and bottom edges ...
+	MARGIN = 12, -- ... and this far from its sides (the other windows' MARGIN)
 	BACK_ACTION = "NimbusDailyBack",
-	-- the window in design px: PC at the screen factor, Phone at scale 1 (texts >= 15)
+	-- the window in design px: PC at the screen factor, Phone and Portrait at scale 1 (texts >= 15, phone targets >= 44).
+	-- Cells: the 7-day strip (CellsPerRow per row, the last row centred); Tiers: the play-time reward cells (TierCols per
+	-- row, the last row centred, or right-aligned on PC so no text sits in the screen centre), each TierH tall: the time on
+	-- top, the reward, the CLAIM / "n min to go" / Claimed slot.
 	PC = {
 		W = 760, H = 420, Pad = 20, TitleY = 14, TitleH = 44, TabW = { 150, 170 }, TabText = 22, Close = 44,
 		HeaderY = 70, HeaderH = 34, HeaderText = 26, ChipW = 120, ChipText = 20,
-		CellsY = 112, CellW = 92, CellH = 132, DayText = 17, IconPx = 44, PetPx = 70, AmountText = 20, CheckText = 24,
+		CellsY = 112, CellsPerRow = 7, CellGapY = 0, CellW = 92, CellH = 132, DayText = 17, IconPx = 44, PetPx = 70, AmountText = 20, CheckText = 24,
 		FooterY = 258, FooterH = 76, ClaimW = 260, ClaimH = 56, ClaimText = 28, CountText = 22, KeepText = 18,
 		BannerY = 344, BannerH = 40, BannerText = 26,
-		RowsY = 112, RowH = 38, RowGap = 4, Columns = 1, RowText = 19, RowBtnW = 120, RowBtnH = 34, RowBtnText = 18, ToGoW = 160,
+		RowsY = 112, TierCols = 4, TierGap = 12, TierH = 136, TierLastRow = "Right", TimeText = 22, RewardText = 20, TierIconPx = 26,
+		TierBtnW = 130, TierBtnH = 40, TierBtnText = 18, ToGoText = 18,
 		PausedText = 15,
 	},
 	PHONE = {
-		W = 560, H = 300, Pad = 10, TitleY = 8, TitleH = 40, TabW = { 110, 130 }, TabText = 17, Close = 40,
-		HeaderY = 54, HeaderH = 24, HeaderText = 18, ChipW = 84, ChipText = 15,
-		CellsY = 82, CellW = 64, CellH = 92, DayText = 15, IconPx = 28, PetPx = 44, AmountText = 15, CheckText = 18,
-		FooterY = 180, FooterH = 56, ClaimW = 200, ClaimH = 48, ClaimText = 22, CountText = 17, KeepText = 15,
+		W = 560, H = 300, Pad = 10, TitleY = 8, TitleH = 44, TabW = { 110, 130 }, TabText = 17, Close = 44,
+		HeaderY = 56, HeaderH = 24, HeaderText = 18, ChipW = 84, ChipText = 15,
+		CellsY = 86, CellsPerRow = 7, CellGapY = 0, CellW = 64, CellH = 92, DayText = 15, IconPx = 28, PetPx = 44, AmountText = 15, CheckText = 18,
+		FooterY = 184, FooterH = 56, ClaimW = 200, ClaimH = 48, ClaimText = 22, CountText = 17, KeepText = 15,
 		BannerY = 250, BannerH = 32, BannerText = 20,
-		RowsY = 86, RowH = 46, RowGap = 6, Columns = 2, RowText = 15, RowBtnW = 92, RowBtnH = 40, RowBtnText = 15, ToGoW = 104,
+		RowsY = 86, TierCols = 4, TierGap = 8, TierH = 98, TimeText = 15, RewardText = 15, TierIconPx = 18,
+		TierBtnW = 112, TierBtnH = 44, TierBtnText = 15, ToGoText = 15,
+		PausedText = 15,
+	},
+	-- a portrait phone (the gui narrower than PHONE.W + 2 MARGIN): W = the gui width - 2 MARGIN, CellW fills four columns
+	PORTRAIT = {
+		H = 404, Pad = 10, TitleY = 8, TitleH = 44, TabW = { 96, 120 }, TabText = 17, Close = 44,
+		HeaderY = 58, HeaderH = 24, PlayHeaderH = 40, HeaderText = 18, ChipW = 84, ChipText = 15,
+		CellsY = 90, CellsPerRow = 4, CellGapY = 8, CellMaxW = 72, CellH = 92, DayText = 15, IconPx = 28, PetPx = 44, AmountText = 15, CheckText = 18,
+		FooterY = 290, FooterH = 68, ClaimW = 200, ClaimH = 48, ClaimText = 22, CountText = 17, KeepText = 15, KeepLines = 2,
+		BannerY = 362, BannerH = 32, BannerText = 20,
+		RowsY = 100, TierCols = 3, TierGap = 8, TierH = 92, TimeText = 15, RewardText = 15, TierIconPx = 18,
+		TierBtnW = 88, TierBtnH = 44, TierBtnText = 15, ToGoText = 15,
 		PausedText = 15,
 	},
 }
 DailyController.K = K
+
+-- the owner's colourful cells (kept here, not in Theme): one saturated colour per day (today is Neon.Gold) and per tier
+local DAY_COLORS = {
+	Color3.fromRGB(72, 224, 120), -- green
+	Color3.fromRGB(64, 226, 236), -- cyan
+	Color3.fromRGB(64, 150, 255), -- blue
+	Color3.fromRGB(176, 104, 255), -- purple
+	Color3.fromRGB(255, 92, 200), -- pink
+	Color3.fromRGB(255, 140, 40), -- orange
+	Color3.fromRGB(255, 76, 100), -- red (the Week Wisp)
+}
+local TIER_COLORS = {
+	Color3.fromRGB(64, 226, 236), -- 10 min: cyan
+	Color3.fromRGB(72, 224, 120), -- green
+	Color3.fromRGB(64, 150, 255), -- blue
+	Color3.fromRGB(176, 104, 255), -- purple
+	Color3.fromRGB(255, 92, 200), -- pink
+	Color3.fromRGB(255, 140, 40), -- orange
+	Color3.fromRGB(255, 200, 50), -- 3 h: gold
+}
+DailyController.DayColors = DAY_COLORS
+DailyController.TierColors = TIER_COLORS
+-- a cell's fill gradient (top, bottom: Theme.Darken amounts) and outline transparency per state
+local CELL_LOOK = {
+	Today = { 0.25, 0.7, 0 },
+	Open = { 0.4, 0.8, 0 },
+	Ready = { 0.2, 0.62, 0 },
+	Locked = { 0.45, 0.8, 0.35 },
+	Claimed = { 0.45, 0.8, 0.5 },
+}
 
 local DOT = "\194\183"
 local CHECK = "\226\156\148"
@@ -115,7 +168,7 @@ local MUTED = Theme.Colors.Muted or Color3.fromRGB(212, 224, 246)
 
 local LocalPlayer = nil
 local initialized = false
-local U = { Cells = {}, Rows = {} } -- the instances
+local U = { Cells = {}, Tiers = {} } -- the instances
 local S = {
 	Open = false,
 	Tab = "Daily",
@@ -491,17 +544,64 @@ end
 ----------------------------------------------------------------------
 -- The window
 ----------------------------------------------------------------------
+-- the gui area (the viewport until the gui has a size)
+function H.area()
+	local area = U.Gui.AbsoluteSize
+	if area.X > 2 and area.Y > 2 then
+		return area
+	end
+	return viewport()
+end
+
+-- "PC" | "Phone" | "Portrait": the Phone layout (560 px at scale 1) on a portrait screen too narrow for it (plus the side
+-- margins) is the Portrait layout, as wide as the screen allows
 function H.mode()
+	local area = H.area()
+	local phone = "Phone"
+	if area.X - 2 * K.MARGIN < K.PHONE.W and area.Y >= area.X then
+		phone = "Portrait"
+	end
 	if H.small() then
-		return "Phone"
+		return phone
 	end
 	local f = Theme.ScreenFactor(viewport().Y)
-	local area = U.Gui.AbsoluteSize
 	local top = K.TOP + H.buttonSize() + K.GAP
-	if area.Y > 2 and (top + K.PC.H * f > area.Y - K.EDGE or K.PC.W * f > area.X - 2 * K.EDGE) then
-		return "Phone"
+	if top + K.PC.H * f > area.Y - K.EDGE or K.PC.W * f > area.X - 2 * K.EDGE then
+		return phone
 	end
 	return "PC"
+end
+
+-- the design numbers of a mode (Portrait: W and CellW from the gui width)
+function H.metrics(mode)
+	if mode == "PC" then
+		return K.PC
+	elseif mode == "Phone" then
+		return K.PHONE
+	end
+	local M = {}
+	for k, v in pairs(K.PORTRAIT) do
+		M[k] = v
+	end
+	M.W = math.min(K.PHONE.W, math.floor(H.area().X - 2 * K.MARGIN))
+	M.CellW = math.min(M.CellMaxW, math.floor((M.W - 2 * M.Pad - (M.CellsPerRow - 1) * 8) / M.CellsPerRow))
+	return M
+end
+
+-- the offsets of `count` cells of w x h in rows of `perRow` across `inner` px (the full rows spread over inner, every
+-- row centred, or the last one right-aligned when lastRow == "Right"; gapY between rows)
+function H.grid(count, perRow, w, h, inner, gapY, lastRow)
+	local gapX = perRow > 1 and math.floor((inner - perRow * w) / (perRow - 1)) or 0
+	local out = {}
+	for i = 1, count do
+		local row = math.floor((i - 1) / perRow)
+		local inRow = math.min(perRow, count - row * perRow)
+		local free = inner - (inRow * w + (inRow - 1) * gapX)
+		local x0 = (lastRow == "Right" and inRow < perRow) and free or math.floor(free / 2)
+		local col = (i - 1) % perRow
+		out[i] = { x = x0 + col * (w + gapX), y = row * (h + gapY) }
+	end
+	return out
 end
 
 function H.tabButton(name, text, x, M, width)
@@ -525,16 +625,18 @@ end
 
 function H.build()
 	local mode = H.mode()
-	if U.Holder and S.Mode == mode then
+	local M = H.metrics(mode)
+	local key = mode .. ":" .. tostring(M.W)
+	if U.Holder and S.BuildKey == key then
 		return
 	end
 	if U.Holder then
 		U.Holder:Destroy()
 	end
 	S.Mode = mode
-	local M = mode == "PC" and K.PC or K.PHONE
+	S.BuildKey = key
 	U.M = M
-	U.Cells, U.Rows = {}, {}
+	U.Cells, U.Tiers = {}, {}
 	local holder = Instance.new("Frame")
 	holder.Name = "DailyHolder"
 	holder.BackgroundTransparency = 1
@@ -581,13 +683,13 @@ function H.build()
 	local cells = Instance.new("Frame")
 	cells.Name = "Cells"
 	cells.BackgroundTransparency = 1
-	place(cells, M.Pad, M.CellsY, inner, M.CellH)
+	local cellRows = math.ceil(7 / M.CellsPerRow)
+	place(cells, M.Pad, M.CellsY, inner, cellRows * M.CellH + (cellRows - 1) * M.CellGapY)
 	cells.Parent = daily
-	local gap = math.floor((inner - 7 * M.CellW) / 6)
-	local x0 = math.floor((inner - (7 * M.CellW + 6 * gap)) / 2)
+	local spots = H.grid(7, M.CellsPerRow, M.CellW, M.CellH, inner, M.CellGapY)
 	for i = 1, 7 do
-		local c = NeonKit.Card({ Name = "Cell" .. i, Color = "Blue", Size = UDim2.fromOffset(M.CellW, M.CellH), Floor = false, Corner = 10,
-			Position = UDim2.fromOffset(x0 + (i - 1) * (M.CellW + gap), 0), Parent = cells })
+		local c = NeonKit.Card({ Name = "Cell" .. i, Color = DAY_COLORS[i], Size = UDim2.fromOffset(M.CellW, M.CellH), Floor = true, Corner = 10,
+			Position = UDim2.fromOffset(spots[i].x, spots[i].y), Parent = cells })
 		local pop = Instance.new("UIScale")
 		pop.Name = "Pop"
 		pop.Parent = c.Root
@@ -613,7 +715,7 @@ function H.build()
 		dim.Parent = c.Body
 		local check = label("Check", CHECK, "Title", M.CheckText, c.Body, { TextColor3 = Theme.Neon.Green, ZIndex = 4, Visible = false })
 		place(check, M.CellW - M.CheckText - 6, 2, M.CheckText + 4, M.CheckText + 4)
-		U.Cells[i] = { Card = c, Root = c.Root, Pop = pop, Art = art, Amount = amount, Dim = dim, Check = check, ArtKey = nil }
+		U.Cells[i] = { Card = c, Root = c.Root, Pop = pop, Art = art, Amount = amount, Dim = dim, Check = check, ArtKey = nil, LookKey = nil }
 	end
 	local footer = Instance.new("Frame")
 	footer.Name = "Footer"
@@ -628,7 +730,7 @@ function H.build()
 	U.Countdown = label("Countdown", "", "Heading", M.CountText, footer)
 	place(U.Countdown, 0, 2, inner, M.CountText + 8)
 	U.Keep = label("Keep", "Come back tomorrow to keep your streak!", "Body", M.KeepText, footer, { TextColor3 = MUTED })
-	place(U.Keep, 0, M.CountText + 12, inner, M.KeepText + 8)
+	place(U.Keep, 0, M.CountText + 12, inner, M.KeepText * (M.KeepLines or 1) + 8)
 	U.Banner = label("WeekBanner", "WEEK DONE! Week Wisp is yours!", "Title", M.BannerText, daily, { TextColor3 = GOLD, Visible = false })
 	place(U.Banner, M.Pad, M.BannerY, inner, M.BannerH)
 
@@ -641,42 +743,70 @@ function H.build()
 	playPage.Parent = U.Body
 	U.PlayPage = playPage
 	U.PlayHeader = label("Header", "", "Heading", M.HeaderText, playPage, { TextXAlignment = Enum.TextXAlignment.Left })
-	place(U.PlayHeader, M.Pad, M.HeaderY, inner, M.HeaderH)
-	local rows = Instance.new("Frame")
-	rows.Name = "Rows"
-	rows.BackgroundTransparency = 1
-	place(rows, M.Pad, M.RowsY, inner, M.H - M.RowsY - M.Pad)
-	rows.Parent = playPage
-	local perColumn = math.ceil(7 / M.Columns)
-	local colW = math.floor((inner - (M.Columns - 1) * 10) / M.Columns)
+	place(U.PlayHeader, M.Pad, M.HeaderY, inner, M.PlayHeaderH or M.HeaderH)
+	-- the reward cells: like the 7-day strip, one saturated colour per tier
+	local tierFrame = Instance.new("Frame")
+	tierFrame.Name = "Tiers"
+	tierFrame.BackgroundTransparency = 1
+	place(tierFrame, M.Pad, M.RowsY, inner, M.H - M.RowsY - M.Pad)
+	tierFrame.Parent = playPage
+	local tw = math.floor((inner - (M.TierCols - 1) * M.TierGap) / M.TierCols)
+	local th = M.TierH
+	local slotY = th - M.TierBtnH - 6
+	local rewardY = slotY - M.RewardText - 8
+	local timeH = M.TimeText + 6
+	local iconRoom = rewardY - (4 + timeH)
+	local compact = iconRoom < M.TierIconPx -- no room between the time and the reward: the icon sits in the top corner
+	local tierSpots = H.grid(7, M.TierCols, tw, th, inner, M.TierGap, M.TierLastRow)
 	for i = 1, 7 do
-		local col = math.floor((i - 1) / perColumn)
-		local rowIndex = (i - 1) % perColumn
-		local r = Instance.new("Frame")
-		r.Name = "Row" .. i
-		r.BackgroundColor3 = Theme.Colors.PanelTop or Color3.fromRGB(26, 32, 72)
-		r.BackgroundTransparency = 0.25
-		r.BorderSizePixel = 0
-		place(r, col * (colW + 10), rowIndex * (M.RowH + M.RowGap), colW, M.RowH)
-		Theme.Corner(r, UDim.new(0, 8))
-		r.Parent = rows
+		local c = NeonKit.Card({ Name = "Tier" .. i, Color = TIER_COLORS[i], Size = UDim2.fromOffset(tw, th), Floor = true, Corner = 10,
+			Position = UDim2.fromOffset(tierSpots[i].x, tierSpots[i].y), Parent = tierFrame })
 		local pop = Instance.new("UIScale")
 		pop.Name = "Pop"
-		pop.Parent = r
-		local right = M.ToGoW
-		local text = label("Label", "", "Body", M.RowText, r, { TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = false })
-		text.TextTruncate = Enum.TextTruncate.AtEnd
-		place(text, 10, 0, colW - right - 16, M.RowH)
-		local togo = label("ToGo", "", "Body", M.RowText, r, { TextColor3 = MUTED, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
-		place(togo, colW - right - 6, 0, right, M.RowH)
-		local check = label("Check", CHECK, "Title", M.RowText + 4, r, { TextColor3 = Theme.Neon.Green, TextXAlignment = Enum.TextXAlignment.Right })
-		place(check, colW - right - 6, 0, right, M.RowH)
+		pop.Parent = c.Root
+		local iconBox = Instance.new("Frame")
+		iconBox.Name = "IconBox"
+		iconBox.BackgroundTransparency = 1
+		iconBox.ZIndex = 2
+		if compact then
+			local box = math.floor(M.TierIconPx * 1.25 + 0.5)
+			place(iconBox, tw - box - 4, 3, box, box)
+		else
+			place(iconBox, 0, 4 + timeH, tw, iconRoom)
+		end
+		iconBox.Parent = c.Body
+		local timeLabel = label("Time", "", "Heading", M.TimeText, c.Body, { TextWrapped = false })
+		if compact then
+			timeLabel.TextXAlignment = Enum.TextXAlignment.Left
+			place(timeLabel, 6, 4, tw - 12 - math.floor(M.TierIconPx * 1.25 + 0.5), timeH)
+		else
+			place(timeLabel, 4, 4, tw - 8, timeH)
+		end
+		local reward = label("Reward", "", "Display", M.RewardText, c.Body, { TextWrapped = false })
+		reward.TextTruncate = Enum.TextTruncate.AtEnd
+		place(reward, 4, rewardY, tw - 8, M.RewardText + 6)
+		local dim = Instance.new("Frame")
+		dim.Name = "Dim"
+		dim.BackgroundColor3 = INK
+		dim.BackgroundTransparency = 0.45
+		dim.BorderSizePixel = 0
+		dim.Size = UDim2.fromScale(1, 1)
+		dim.ZIndex = 3
+		dim.Visible = false
+		Theme.Corner(dim, UDim.new(0, 10))
+		dim.Parent = c.Body
+		local togo = label("ToGo", "", "Body", M.ToGoText, c.Body, { TextColor3 = WHITE })
+		place(togo, 4, slotY, tw - 8, M.TierBtnH)
+		local check = label("Check", CHECK .. " Claimed", "Heading", M.ToGoText, c.Body, { TextColor3 = Theme.Neon.Green, ZIndex = 4, TextWrapped = false })
+		place(check, 4, slotY, tw - 8, M.TierBtnH)
 		local tier = i
-		local claim = NeonKit.Button({ Name = "Claim", Text = "CLAIM", Color = "Green", Size = UDim2.fromOffset(M.RowBtnW, M.RowBtnH), TextSize = M.RowBtnText,
-			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -4, 0.5, 0), Parent = r, Callback = function()
+		local claim = NeonKit.Button({ Name = "Claim", Text = "CLAIM", Color = "Green", Size = UDim2.fromOffset(math.min(M.TierBtnW, tw - 12), M.TierBtnH),
+			TextSize = M.TierBtnText, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, slotY), Parent = c.Body, Callback = function()
 				H.send("ClaimPlay", tier)
 			end })
-		U.Rows[i] = { Root = r, Pop = pop, Label = text, ToGo = togo, Check = check, Claim = claim }
+		claim.ZIndex = 5
+		U.Tiers[i] = { Card = c, Root = c.Root, Pop = pop, Time = timeLabel, Reward = reward, IconBox = iconBox, Dim = dim, ToGo = togo,
+			Check = check, Claim = claim, IconKey = nil, LookKey = nil }
 	end
 
 	-- the week's sweep + confetti layer (inside the window only)
@@ -698,13 +828,13 @@ function H.layoutWindow()
 	end
 	local M = U.M
 	local scale = S.Mode == "PC" and Theme.ScreenFactor(viewport().Y) or 1
-	local area = U.Gui.AbsoluteSize
+	local area = H.area()
 	local w, h = M.W * scale, M.H * scale
 	local b = S.ButtonRect
 	local right = b.x + b.size
-	local x = right - w
-	if x < K.EDGE then
-		x = K.EDGE
+	local x = math.min(right - w, area.X - K.MARGIN - w) -- right-aligned to the button, inside the side margins
+	if x < K.MARGIN then
+		x = K.MARGIN
 	end
 	local y = b.y + b.size + K.GAP
 	if area.Y > 2 and y + h > area.Y - K.EDGE then
@@ -753,6 +883,33 @@ function H.paintArt(cell, entry, M)
 	icon.ZIndex = 2
 end
 
+-- a cell's colour, its saturated fill gradient and its glow for a CELL_LOOK state (painted only when it changes)
+function H.paintLook(cell, color, look)
+	local key = tostring(color) .. "|" .. look
+	if cell.LookKey == key then
+		return
+	end
+	cell.LookKey = key
+	local L = CELL_LOOK[look] or CELL_LOOK.Open
+	cell.Card.SetColor(color)
+	cell.Card.SetFill(Theme.Darken(color, L[1]), Theme.Darken(color, L[2]))
+	cell.Card.SetGlow(look ~= "Claimed" and look ~= "Locked")
+	cell.Card.Floor.Visible = look ~= "Claimed"
+end
+
+function H.paintTierIcon(cell, tier, M)
+	local id = (tier.Kind == "Pet" and "Gifts") or tostring(tier.Kind or "Gifts")
+	if cell.IconKey == id then
+		return
+	end
+	cell.IconKey = id
+	for _, child in ipairs(cell.IconBox:GetChildren()) do
+		child:Destroy()
+	end
+	local icon = NeonKit.Icon(cell.IconBox, id, M.TierIconPx)
+	icon.ZIndex = 2
+end
+
 function H.renderDaily(st, M)
 	local loading = type(st) ~= "table" or st.Loading == true
 	if loading then
@@ -771,9 +928,9 @@ function H.renderDaily(st, M)
 		cell.Root:SetAttribute("Pulsing", today)
 		cell.Dim.Visible = claimed
 		cell.Check.Visible = claimed
-		cell.Card.SetColor(today and "Gold" or "Blue")
+		H.paintLook(cell, today and GOLD or DAY_COLORS[i], today and "Today" or (claimed and "Claimed" or "Open"))
 		if not today then
-			cell.Card.Stroke.Transparency = 0
+			cell.Card.Stroke.Transparency = claimed and CELL_LOOK.Claimed[3] or 0
 		end
 		if e.Kind ~= nil then
 			cell.Amount.Text = cellAmount(e)
@@ -815,23 +972,29 @@ function H.renderPlay(st, M)
 		U.PlayHeader.TextSize = M.HeaderText
 	end
 	local list = tiers(st)
-	for i, row in ipairs(U.Rows) do
+	for i, cell in ipairs(U.Tiers) do
 		local t = list[i]
-		row.Root.Visible = type(t) == "table"
+		cell.Root.Visible = type(t) == "table"
 		if type(t) == "table" then
 			local goal = (tonumber(t.Min) or 0) * 60
-			row.Label.Text = tostring(tonumber(t.Min) or 0) .. " min " .. DOT .. " " .. tierReward(t)
+			cell.Time.Text = tostring(tonumber(t.Min) or 0) .. " min"
+			cell.Reward.Text = tierReward(t)
+			H.paintTierIcon(cell, t, M)
 			local claimed = t.Claimed == true
 			local ready = not claimed and t.Ready == true and not loading
-			row.Check.Visible = claimed
-			row.Claim.Visible = ready
-			row.ToGo.Visible = not claimed and not ready
+			local state = claimed and "Claimed" or (ready and "Ready" or "Locked")
+			cell.Root:SetAttribute("State", state)
+			cell.Check.Visible = claimed
+			cell.Dim.Visible = claimed
+			cell.Claim.Visible = ready
+			cell.ToGo.Visible = state == "Locked"
 			if goal > seconds then
-				row.ToGo.Text = math.ceil((goal - seconds) / 60) .. " min to go"
+				cell.ToGo.Text = math.ceil((goal - seconds) / 60) .. " min to go"
 			else
-				row.ToGo.Text = loading and "" or "Almost!"
+				cell.ToGo.Text = loading and "" or "Almost!"
 			end
-			row.Root.BackgroundTransparency = claimed and 0.55 or 0.25
+			H.paintLook(cell, TIER_COLORS[i] or GOLD, state)
+			cell.Card.Stroke.Transparency = CELL_LOOK[state][3]
 		end
 	end
 end
@@ -952,8 +1115,8 @@ function H.onState(payload)
 			local a, b = entryAt(ta, i), entryAt(tb, i)
 			if a.Claimed == true and b.Claimed ~= true then
 				popped = true
-				if U.Rows[i] then
-					H.pop(U.Rows[i].Pop)
+				if U.Tiers[i] then
+					H.pop(U.Tiers[i].Pop)
 				end
 			end
 			if a.Ready == true and a.Claimed ~= true and b.Ready ~= true then
@@ -963,8 +1126,11 @@ function H.onState(payload)
 		if popped then
 			pcall(SoundFx.Play, "Reward")
 		end
+		-- the week moment only for a PAID week: DailyService raises Weeks (= floor(Paid / 7)) only when a claim pays a day
+		-- 7; a repair claim that climbs back onto a multiple of 7 ("Streak repaired! Day 7 of 7") leaves Weeks alone
 		local streak, was = tonumber(payload.Streak) or 0, tonumber(prev.Streak) or 0
-		if streak > was and streak > 0 and streak % 7 == 0 then
+		local weeks, wasWeeks = tonumber(payload.Weeks) or 0, tonumber(prev.Weeks) or 0
+		if streak > was and weeks > wasWeeks and streak > 0 and streak % 7 == 0 then
 			H.week()
 		end
 		if newlyReady then

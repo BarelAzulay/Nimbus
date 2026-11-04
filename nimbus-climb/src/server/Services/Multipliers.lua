@@ -9,7 +9,11 @@
 --                                 x 1.5 with Store.Bought.Pro on a PvE source only (Dungeon / Raid; never Ring, Duel, Feed)
 --   State(player) -> { Cash = 1 | 2, PetXp = 1 | 2, PvE = 1 | 1.5, PotionEnds, Passes = {[key] = true}, Bought = {[key] = true} }
 --   Refresh(player)               writes OwnedPasses (csv, Config.Store.Items order), StoreBought (csv), XpBoostEnds
---                                 (unix or 0) on the Player, only on change; connected to StoreService.Changed
+--                                 (unix or 0) on the Player, only on change; connected to StoreService.Changed and to
+--                                 DataService.ProfileLoaded / ProfileRebased (the load, a provisional profile's recovery)
+--   StoreBought comes ONLY from a real record: while DataService.GetStore answers nil (loading or provisional) the
+--   attribute is absent (nil; cleared if it was set), never "" (the client reads absent as "not known yet", "" as
+--   "nothing bought"); once GetStore answers it is the csv ("" for nothing bought).
 --   Init(deps)                    deps = { StoreService, DataService }; without StoreService every factor is 1
 -- A junk amount (nil, NaN) passes through unchanged; the sites floor as they do today.
 --
@@ -32,7 +36,7 @@ local PVE = { Dungeon = true, Raid = true }
 local S = {
 	Store = nil,
 	DS = nil,
-	Last = {}, -- [player] = { Passes = csv, Bought = csv, Ends = n } the attributes as last written
+	Last = {}, -- [player] = { Passes = csv, Bought = csv | nil (absent), Ends = n } the attributes as last written
 	Started = false,
 }
 Multipliers._S = S
@@ -162,7 +166,9 @@ function Multipliers.Refresh(player)
 		return
 	end
 	local state = Multipliers.State(player)
-	local now = { Passes = csvOf(state.Passes), Bought = csvOf(state.Bought), Ends = state.PotionEnds }
+	-- no record (loading / provisional) = StoreBought absent: undecidable, not "nothing bought"
+	local bought = recordOf(player) ~= nil and csvOf(state.Bought) or nil
+	local now = { Passes = csvOf(state.Passes), Bought = bought, Ends = state.PotionEnds }
 	local last = S.Last[player] or {}
 	S.Last[player] = now
 	local passesAttr, boughtAttr, endsAttr = attrName("OwnedPasses"), attrName("StoreBought"), attrName("XpBoostEnds")
@@ -191,7 +197,8 @@ function Multipliers.Init(deps)
 	else
 		warn("[Multipliers] StoreService is missing: every multiplier is x1")
 	end
-	-- the Bought csv needs the loaded profile: refresh when it lands (and after a rebase)
+	-- the Bought csv needs the loaded profile: refresh when it lands and after a rebase (ProfileRebased also fires when
+	-- a provisional profile recovers: DataService's recover -> announceRebase)
 	local DS = S.DS
 	for _, name in ipairs({ "ProfileLoaded", "ProfileRebased" }) do
 		local signal = DS and DS[name]

@@ -20,7 +20,8 @@
 --   (0 = never). Owns / PassState read THIS server's cache only; the attributes are written, never read back.
 -- * StoreRequest ("Buy", key): a live player, a string key, 1 request/s, refused in a match ("The Store is closed
 --   during a match"), for an Id 0 item (preview or not), a bought Once pack or an owned pass ("You already have
---   that!"); else PromptPurchase -> PromptGamePassPurchase / PromptProductPurchase. A prompt never grants (Z1).
+--   that!"), a Once pack while the save loads or is provisional ("Your save is still loading": GetStore answers nil,
+--   undecidable); else PromptPurchase -> PromptGamePassPurchase / PromptProductPurchase. A prompt never grants (Z1).
 -- * StorePreview: written once at the join, true in Studio (RunService:IsStudio()) or for DevService.IsAllowed(player)
 --   (may yield once: a task.spawn), never on a timer.
 --
@@ -490,8 +491,12 @@ function StoreService.PromptPurchase(player, key)
 			return false, TEXT.Have
 		end
 	elseif item.Once then
+		-- nil = loading or provisional: undecidable, not unbought (a stand-in profile must never sell a bought pack again)
 		local store = storeOf(player)
-		if store and type(store.Bought) == "table" and store.Bought[key] ~= nil then
+		if not store then
+			return false, TEXT.Loading
+		end
+		if type(store.Bought) == "table" and store.Bought[key] ~= nil then
 			return false, TEXT.Have -- Z6: a bought item is never prompted
 		end
 	end

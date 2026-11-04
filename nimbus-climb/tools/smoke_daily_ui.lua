@@ -3,7 +3,7 @@
 --   client_daily_window  (1920x1080) the Gifts button 8 px left of the currency strips (56 px), the window on Daily with
 --                        WindowOpened("Daily"), the header, seven cells (claimed dim, today pulsing, the resolved amounts),
 --                        CLAIM! -> DailyRequest("Claim"), the countdown after a claim, the week banner + 24 confetti (none on
---                        Low), the step-back hint once, the VIP chip, the Play tab rows, the paused header, a row CLAIM ->
+--                        Low), the step-back hint once, the VIP chip, the Play tab cells, the paused header, a tier cell CLAIM ->
 --                        ClaimPlay(tier), nothing in the screen centre, the window rule (Pets / Shop / Gifts never overlap)
 --   client_daily_pip     the pip waits PipDelaySeconds after a spawn and the tutorial's spin step, the shake when a tier
 --                        becomes Ready (never on the first payload after a Loading one), the ring's fill and its paused dim,
@@ -260,14 +260,15 @@ local function clientScenarios()
 		end
 		return false
 	end
+	-- the Play tab's reward cells (Tiers > Tier1..7; review fix D turned the rows into cells)
 	function H.row(i)
-		return H.find(H.find(H.win(), "Rows"), "Row" .. i)
+		return H.find(H.find(H.win(), "Tiers"), "Tier" .. i)
 	end
 	function H.rowCount()
 		local n = 0
-		local rows = H.find(H.win(), "Rows")
+		local rows = H.find(H.win(), "Tiers")
 		for _, c in ipairs(rows and rows:GetChildren() or {}) do
-			if c.Name:match("^Row%d$") and H.shown(c) then
+			if c.Name:match("^Tier%d$") and H.shown(c) then
 				n = n + 1
 			end
 		end
@@ -358,7 +359,7 @@ local function clientScenarios()
 		T.check(H.cellDimmed(3) and H.claimButton() == nil and H.footer():find("Next gift in 19h 59m", 1, true) ~= nil and H.footer():find("keep your streak", 1, true) ~= nil,
 			"daily window: after the claim the cell pops dim and the countdown shows", H.footer())
 		local p3 = H.base(now)
-		p3.Streak, p3.Paid, p3.Cell, p3.ReadyAt = 7, 7, 1, now + 72000
+		p3.Streak, p3.Paid, p3.Weeks, p3.Cell, p3.ReadyAt = 7, 7, 2, 1, now + 72000 -- a paid week: Weeks rises (1 -> 2)
 		for i = 1, 7 do
 			p3.Days[i].Claimed, p3.Days[i].Today = true, false
 		end
@@ -391,8 +392,8 @@ local function clientScenarios()
 		T.check(H.body():find("VIP x2", 1, true) == nil, "daily window: no VIP chip without the pass")
 		H.tapTab("Play time")
 		T.check(H.activeTab() == "Play" and H.header():find("47 min played today", 1, true) ~= nil and H.header():find("Resets in", 1, true) ~= nil
-			and H.rowCount() == 7 and H.rowText(4):find("13 min to go", 1, true) ~= nil and H.rowText(1):find("10 min " .. DOT .. " +$200", 1, true) ~= nil,
-			"daily window: the Play tab rows", fmt("tab %s, header '%s', %d rows, row1 '%s', row4 '%s'", tostring(H.activeTab()), H.header(), H.rowCount(), H.rowText(1), H.rowText(4)))
+			and H.rowCount() == 7 and H.rowText(4):find("13 min to go", 1, true) ~= nil and H.rowText(1):find("10 min", 1, true) ~= nil and H.rowText(1):find("+$200", 1, true) ~= nil,
+			"daily window: the Play tab cells", fmt("tab %s, header '%s', %d rows, row1 '%s', row4 '%s'", tostring(H.activeTab()), H.header(), H.rowCount(), H.rowText(1), H.rowText(4)))
 		T.check(H.find(H.row(1), "Check") ~= nil and H.shown(H.find(H.row(1), "Check")) and H.rowButton(4) == nil, "daily window: a claimed tier has its check, a far one no CLAIM")
 		local p6 = H.base(now)
 		p6.Play.Active = false
@@ -404,7 +405,7 @@ local function clientScenarios()
 		mark = #Mock.RemoteLog
 		H.tap(H.rowButton(4))
 		sent = H.sent(mark)
-		T.check(#sent == 1 and sent[1].args[1] == "ClaimPlay" and sent[1].args[2] == 4, "daily window: a row CLAIM -> ClaimPlay(tier)", tostring(#sent))
+		T.check(#sent == 1 and sent[1].args[1] == "ClaimPlay" and sent[1].args[2] == 4, "daily window: a tier cell CLAIM -> ClaimPlay(tier)", tostring(#sent))
 		local centred = H.centred()
 		T.check(#centred == 0, "daily window: nothing in the screen centre", KC.describeCentred(centred))
 		H.tapTab("Daily")
@@ -585,10 +586,12 @@ local function clientScenarios()
 			chip and fmt("chip %d,%d %dx%d; TopRightBottom %s, gui %d", chip.AbsolutePosition.X, chip.AbsolutePosition.Y, chip.AbsoluteSize.X, chip.AbsoluteSize.Y, tostring(bottom), gui.AbsoluteSize.X) or "no chip")
 		T.check(chip ~= nil and chip.AbsoluteSize.Y == 24 and chip.AbsoluteSize.X >= 46, "daily chips: 46x24 at 1080p", chip and fmt("%dx%d", chip.AbsoluteSize.X, chip.AbsoluteSize.Y) or "")
 		local now = H.now()
+		LocalPlayer:SetAttribute("XpBoostEnds", now + 3600) -- one fresh 1 h potion
+		KC.advance(0.2)
+		T.check(w.count("x2 Pet XP started!") == 1, "daily chips: the hint when the potion starts", w.last())
 		LocalPlayer:SetAttribute("XpBoostEnds", now + 58 * 60)
 		KC.advance(0.2)
 		T.eq(BB.Chips().Xp, "x2 XP " .. DOT .. " 58m", "daily chips: the potion's chip with its time left")
-		T.check(w.count("x2 Pet XP started!") == 1, "daily chips: the hint when the potion starts", w.last())
 		KC.advance(60)
 		T.eq(BB.Chips().Xp, "x2 XP " .. DOT .. " 57m", "daily chips: the time left counts down")
 		local xchip = H.find(gui, "Chip_Xp")
@@ -776,7 +779,7 @@ local function clientScenarios()
 				inside = false
 			end
 		end
-		T.check(inside, "daily mobile: every row inside the window")
+		T.check(inside, "daily mobile: every tier cell inside the window")
 		DC.Close()
 		KC.advance(0.3)
 		local oldPasses = LocalPlayer:GetAttribute("OwnedPasses")

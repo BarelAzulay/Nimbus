@@ -53,14 +53,20 @@
 --   group (PlayStart, PlaySec, PlayClaimed), at the same PlayStart the session's seconds add up (0..MaxDaySeconds) and
 --   its tiers join the stored ones, and a Play grant whose (PlayStart, tier) the store holds comes off the deltas; a
 --   stand-in delta never carries a Play group; a stored LastClaimAt further in the future than FutureClockSlack (a
---   wrong clock) loses the pair to the session's clamp and drops no grant. Trove: a union; an ask the store already
---   holds takes the session's grant off the deltas. The grant records (cache annotations, never stored):
+--   wrong clock) loses the pair to a session that moved its pair (the Z8 clamp, a claim after it), but the twin rule
+--   still holds against it (a claim the session made without knowing it is the same day paid there: dropped; a claim
+--   after the clamp is already settled against the session's own Base, P7.pendingClaims). Trove: a union; an ask the
+--   store already holds takes the session's grant off the deltas. The grant records (cache annotations, never stored):
 --   ReceiptGrants = {[purchaseId] = grant} (replaces ReceiptGems; a number grant still means { Gems = n }),
 --   DailyClaims = { grant... } (each { Kind = "Day" | "Play", Tier, At, PlayStart, ...amounts }), TroveGrants =
---   {[askId] = grant}; a grant = { Cash, Tokens, Gems, Berries, Pets = {[id]=n}, Boost = {[id]=seconds} }. applyDelta
---   sums every grant the store already holds into `drop` and takes it off the Tokens / Pets / Cash / Gems / Berries
---   deltas and the potion ends where each kind is applied. Every claim and its grant are written in ONE non-yielding
---   step and ride one UpdateAsync; the orphan retry carries them (Z11 / Z14).
+--   {[askId] = grant}; a grant = { Cash, Tokens, Gems, Berries, Pets = {[id]=n}, Boost = {[id]=seconds}, Star } (Star =
+--   the session's Home.Prestige when it was paid). applyDelta sums every grant the store already holds into `drop` and
+--   takes it off the Tokens / Pets / Cash / Gems / Berries deltas and the potion ends where each kind is applied; the
+--   Cash of a grant comes off only while the session's balance still holds it (a plain delta; when both sides
+--   prestiged to the stored star, only a grant paid at that star: a prestige reset the earlier ones), and a pet whose
+--   grant the store holds keeps the higher PetLevels entry of the two (a pack's level write never lowers it). Every
+--   claim and its grant are written in ONE non-yielding step and ride one UpdateAsync; the orphan retry carries them
+--   (Z11 / Z14).
 --   Phase 5 rules: Teams hold 3 keys per preset (slot 1 = the fighter; a stored 4th key leaves the preset only, the pet
 --   stays owned); Dungeon merges Best max / Cleared union / Runs delta / Clears delta (the P5Dungeon migration's own
 --   Clears as a max, so two servers migrating one save do not double it); Berries merge as a +/- delta clamped at 0,
@@ -365,12 +371,14 @@
 --     AddBoost(player, id, seconds) -> ok, ends   Store.Boosts[id] = max(now, the running end) + seconds (no cap: a
 --                                       paid potion is never eaten, Z7); refused until loaded / while provisional
 --     GetDaily(player) -> copy | nil    the live shape (PlayClaimed a set); nil until loaded and while provisional
---     MutateDaily(player, fn, grant?) -> ok   fn(daily) edits the LIVE Daily and must not yield; an error, or fn
---                                       returning false, restores it (-> false); afterwards it is sanitised in place.
---                                       A `grant` table ({ Kind = "Day" | "Play", Tier, Cash, Tokens, Gems, Berries,
---                                       Pets }) is stamped At = os.time() and PlayStart = daily.PlayStart (after fn)
---                                       and kept in the entry's DailyClaims for the merge: pay it right after, nothing
---                                       yielding between. Refused until loaded / while provisional. Not synced.
+--     MutateDaily(player, fn, grant?, now?) -> ok   fn(daily) edits the LIVE Daily and must not yield; an error,
+--                                       or fn returning false, restores it (-> false); afterwards it is sanitised in
+--                                       place. A `grant` table ({ Kind = "Day" | "Play", Tier, Cash, Tokens, Gems,
+--                                       Berries, Pets }) is stamped At = `now` (the caller's one clock of the claim;
+--                                       without it ONE os.time() read), PlayStart = daily.PlayStart (after fn) and Star
+--                                       = the live Home.Prestige, and kept in the entry's DailyClaims for the merge: pay
+--                                       it right after, nothing yielding between. A number in the grant's place is
+--                                       `now` (no grant). Refused until loaded / while provisional. Not synced.
 --     GetTrove(player) -> copy | nil    {[askId] = true}; nil until loaded and while provisional
 --     MarkTrove(player, askId, grant) -> ok   Trove[askId] = true + the grant record; false when set, until loaded,
 --                                       while provisional
@@ -467,7 +475,7 @@ local KNOWN_STATS = { Matches = true, Wins = true, TokensEarned = true, Spins = 
 --   LastSync = os.clock() of the last ProfileSync, SyncQueued = a trailing SyncSoon is scheduled,
 --   ReceiptGrants = { [purchaseId] = grant } granted with receipts not in the store yet (MarkReceipt / NoteReceiptGrant;
 --     nil when none; the Store build's name of ReceiptGems: a grant table instead of a gem count),
---   DailyClaims = { grant... } the daily claims (MutateDaily's grant, stamped At / PlayStart) not in the store yet,
+--   DailyClaims = { grant... } the daily claims (MutateDaily's grant, stamped At / PlayStart / Star) not in the store yet,
 --   TroveGrants = { [askId] = grant } the Trove asks (MarkTrove) not in the store yet (P7.pruneGrants drops all three
 --     after a confirmed save)
 -- }
@@ -2287,8 +2295,8 @@ function P7.cleanTrove(raw)
 end
 
 -- An untrusted grant (what a receipt, a daily claim or a Trove ask REALLY paid) -> a clean record { Cash, Tokens, Gems,
--- Berries, Pets = {[id] = n}, Boost = {[id] = seconds}, Kind, Tier, At, PlayStart } (zero amounts left out), or nil
--- when it carries nothing to take back. A number means { Gems = n } (the gem packs' MarkReceipt call).
+-- Berries, Pets = {[id] = n}, Boost = {[id] = seconds}, Kind, Tier, At, PlayStart, Star } (zero amounts left out), or
+-- nil when it carries nothing to take back. A number means { Gems = n } (the gem packs' MarkReceipt call).
 function P7.cleanGrant(raw)
 	if type(raw) == "number" then
 		raw = { Gems = raw }
@@ -2329,7 +2337,13 @@ function P7.cleanGrant(raw)
 	g.Tier = P7.tierOf(raw.Tier)
 	g.At = isFinite(raw.At) and sanitizeTime(raw.At) or nil
 	g.PlayStart = isFinite(raw.PlayStart) and sanitizeTime(raw.PlayStart) or nil
+	g.Star = isFinite(raw.Star) and clampCount(raw.Star, MAX_LEVEL) or nil
 	return g
+end
+
+-- The live Home.Prestige of a profile: the star a grant is paid at (its record's Star).
+function P7.starOf(profile)
+	return clampCount(type(profile.Home) == "table" and profile.Home.Prestige or 0, MAX_LEVEL)
 end
 
 -- The daily claims of `claims` that are still open against the clean record `daily` (an entry's Base, or the store):
@@ -2378,15 +2392,16 @@ function P7.diffStore(live, base)
 	return d
 end
 
--- The Daily delta (both clean), or nil when the session changed nothing: the pair (LastClaimAt, Streak), Paid / Weeks /
--- Pet as candidates, the Play group (PlayStart; PlaySec = the seconds the session added to that play-day, the whole
--- live count when the session started the day; PlaySecNow = the live count; PlayClaimed = the live set). A stand-in
--- delta carries no Play group (its base is defaults, not store data).
+-- The Daily delta (both clean), or nil when the session changed nothing: the pair (LastClaimAt, Streak) and the Base's
+-- LastClaimAt (BaseClaimAt: did the session move the pair?), Paid / Weeks / Pet as candidates, the Play group
+-- (PlayStart; PlaySec = the seconds the session added to that play-day, the whole live count when the session started
+-- the day; PlaySecNow = the live count; PlayClaimed = the live set). A stand-in delta carries no Play group (its base
+-- is defaults, not store data).
 function P7.diffDaily(live, base, standIn)
 	if deepEqual(live, base) then
 		return nil
 	end
-	local d = { Streak = live.Streak, LastClaimAt = live.LastClaimAt, Paid = live.Paid, Weeks = live.Weeks, Pet = live.Pet }
+	local d = { Streak = live.Streak, LastClaimAt = live.LastClaimAt, BaseClaimAt = base.LastClaimAt, Paid = live.Paid, Weeks = live.Weeks, Pet = live.Pet }
 	if not standIn then
 		d.PlayStart = live.PlayStart
 		d.PlaySecNow = live.PlaySec
@@ -2400,8 +2415,9 @@ function P7.diffDaily(live, base, standIn)
 	return d
 end
 
+-- CashAt = {[star] = Cash} the dropped Cash by the prestige star it was paid at (a grant record's Star).
 function P7.newDrop()
-	return { Tokens = 0, Cash = 0, Gems = 0, Berries = 0, Pets = {}, Boosts = {} }
+	return { Tokens = 0, Cash = 0, Gems = 0, Berries = 0, Pets = {}, Boosts = {}, CashAt = {} }
 end
 
 -- Adds a grant the store already holds to `drop` (what applyDelta takes off the session's deltas).
@@ -2414,6 +2430,9 @@ function P7.dropGrant(drop, grant)
 			drop[key] = drop[key] + grant[key]
 		end
 	end
+	if isFinite(grant.Cash) and isFinite(grant.Star) then
+		drop.CashAt[grant.Star] = (drop.CashAt[grant.Star] or 0) + grant.Cash
+	end
 	for id, n in pairs(tableOr(grant.Pets)) do
 		drop.Pets[id] = (drop.Pets[id] or 0) + n
 	end
@@ -2425,10 +2444,12 @@ end
 -- The Daily merge (`out` = the merged profile, `dd` = the Daily delta or nil, `claims` = the session's pending claim
 -- grants, `drop` collects the grants the store already paid). The store decides against ITS values before the merge:
 -- a Day grant less than ReadySeconds after the stored LastClaimAt was paid elsewhere (dropped; the stored pair stays);
--- else the higher LastClaimAt wins the pair; a stored clock further in the future than FutureClockSlack is a wrong
--- clock: it drops nothing and loses the pair to the session's clamp. Paid / Weeks max, Pet sticks. The higher
--- PlayStart wins the whole Play group; at the same PlayStart the seconds add up and the tiers join; a Play grant whose
--- (PlayStart, tier) the store holds was paid elsewhere.
+-- else the higher LastClaimAt wins the pair. A stored clock further in the future than FutureClockSlack is a wrong
+-- clock: it loses the pair to a session that MOVED its pair (the Z8 clamp, or a claim after it), but it still drops a
+-- twin (a pending claim never saw that stored claim: a claim after the clamp is settled against the session's own
+-- Base, P7.pendingClaims, and never reaches this loop), so one day is never paid twice. Paid / Weeks max, Pet sticks.
+-- The higher PlayStart wins the whole Play group; at the same PlayStart the seconds add up and the tiers join; a Play
+-- grant whose (PlayStart, tier) the store holds was paid elsewhere.
 function P7.applyDaily(out, dd, claims, drop)
 	local stored = P7.cleanDaily(out.Daily)
 	local ready = P7.readySeconds()
@@ -2439,7 +2460,7 @@ function P7.applyDaily(out, dd, claims, drop)
 			if (g.PlayStart or 0) == stored.PlayStart and g.Tier ~= nil and stored.PlayClaimed[g.Tier] == true then
 				P7.dropGrant(drop, g)
 			end
-		elseif not wrongClock and (g.At or 0) - stored.LastClaimAt < ready then
+		elseif (g.At or 0) - stored.LastClaimAt < ready then
 			P7.dropGrant(drop, g)
 			droppedAt[g.At or 0] = true
 		end
@@ -2448,7 +2469,8 @@ function P7.applyDaily(out, dd, claims, drop)
 		return
 	end
 	local d = out.Daily
-	if (dd.LastClaimAt > stored.LastClaimAt or wrongClock) and not droppedAt[dd.LastClaimAt] then
+	local moved = dd.LastClaimAt ~= dd.BaseClaimAt -- a Play tick alone never takes a wrong-clock pair
+	if (dd.LastClaimAt > stored.LastClaimAt or (wrongClock and moved)) and not droppedAt[dd.LastClaimAt] then
 		d.LastClaimAt = dd.LastClaimAt
 		d.Streak = dd.Streak
 	end
@@ -2489,6 +2511,20 @@ function P7.applyTrove(out, asks, grants, drop)
 				P7.dropGrant(drop, tableOr(grants)[ask])
 			end
 			out.Trove[ask] = true
+		end
+	end
+end
+
+-- PetLevels per key (the session's replacement, a removal too), EXCEPT for a pet whose grant the store already holds
+-- (`drop.Pets`, the twin rules): the session's level write of that grant (a pack's Level) must never lower the stored
+-- level, so that key keeps the higher { Level, Xp } of the two.
+function P7.applyLevels(target, changes, drop)
+	for key, value in pairs(changes) do
+		local current = target[key]
+		if value == false then
+			target[key] = nil
+		elseif not ((drop.Pets[key] or 0) > 0 and type(current) == "table" and (current.Level > value.Level or (current.Level == value.Level and current.Xp >= value.Xp))) then
+			target[key] = deepCopy(value)
 		end
 	end
 end
@@ -3381,18 +3417,19 @@ local function applyDelta(stored, d)
 	--   otherwise        a plain delta
 	-- Skipped for a ResetFields Home (written over the store as it is) and a stand-in base (not store data).
 	local cashDelta, gemDelta = d.Cash, d.Gems
-	local cashReplaced = false -- the prestige rule replaced the delta with the session's balance, or reset it
+	local cashDrop = drop.Cash -- the dropped Cash that is still in cashDelta (the prestige rule below narrows it)
 	if not (o and o.Home) and not d.StandIn and isFinite(d.BasePrestige) and isFinite(d.LivePrestige) then
 		local s, b, l = out.Home.Prestige, d.BasePrestige, d.LivePrestige
 		if l > b and l > s then
 			cashDelta = sanitizeCash(d.CashNow) - out.Cash
-			cashReplaced = true
+			cashDrop = 0
 		elseif s > b then
 			if l == s then
 				cashDelta = sanitizeCash(d.CashNow)
+				cashDrop = drop.CashAt[l] or 0
 			else
 				cashDelta = 0
-				cashReplaced = true
+				cashDrop = 0
 			end
 		end
 		-- stars b+1 .. min(l, s) were reached and paid by the server that wrote the store too
@@ -3404,16 +3441,17 @@ local function applyDelta(stored, d)
 		end
 	end
 	-- Store build (P7): a Cash / Gems grant the store already holds (a receipt, a claim or an ask paid elsewhere: `drop`
-	-- above) comes off whatever delta survives the prestige rule. When that rule replaced the Cash delta with the
-	-- session's balance (it holds the grant once; the store's copy went with the balance it replaced) or reset it
-	-- (that run's Cash was reset anyway), there is nothing to take off.
-	if not cashReplaced then
-		cashDelta = cashDelta - drop.Cash
-	end
+	-- above) comes off whatever delta survives the prestige rule, and only while that delta still holds it. When the
+	-- rule replaced the Cash delta with the session's balance (it holds the grant once; the store's copy went with the
+	-- balance it replaced) or reset it (that run's Cash was reset anyway), there is nothing to take off; when both
+	-- sides prestiged to the stored star, the session's balance since its prestige holds only the grants paid AT that
+	-- star (their Star): an earlier one went with the session's own prestige, and taking it off again would remove
+	-- Cash the player earned.
+	cashDelta = cashDelta - cashDrop
 	gemDelta = gemDelta - drop.Gems
 	out.Cash = sanitizeCash(out.Cash + cashDelta)
 	out.Gems = sanitize(out.Gems + gemDelta)
-	applyReplace(out.PetLevels, d.PetLevels)
+	P7.applyLevels(out.PetLevels, d.PetLevels, drop) -- per key; a twin-dropped pet keeps the higher level
 	-- Phase 2
 	if not (o and o.Home) then
 		applyHome(out, d.Home) -- an overwritten Home already is the session's whole Home
@@ -5344,9 +5382,13 @@ function DataService.MarkReceipt(player, purchaseId, grant)
 	return true
 end
 
--- Writes (or with a grant of nothing clears) one grant record of the entry's annotation `field` ({[key] = grant}).
+-- Writes (or with a grant of nothing clears) one grant record of the entry's annotation `field` ({[key] = grant}),
+-- stamped with the star it is paid at (Star).
 function P7.noteGrant(entry, field, key, grant)
 	local g = P7.cleanGrant(grant)
+	if g then
+		g.Star = P7.starOf(entry.Profile)
+	end
 	local map = entry[field]
 	if type(map) ~= "table" then
 		if not g then
@@ -5459,12 +5501,20 @@ function DataService.GetDaily(player)
 end
 
 -- fn(daily) edits the LIVE Daily record (no yields); an error, or fn returning false, restores it (-> false);
--- afterwards it is sanitised in place. A `grant` table is stamped At = os.time() and PlayStart = daily.PlayStart
--- (after fn) and kept for the merge (DailyClaims): pay it right after this returned true, nothing yielding between.
+-- afterwards it is sanitised in place. A `grant` table is stamped At = `now` (the caller's one clock of the claim, so
+-- the grant pairs with the LastClaimAt fn wrote from it; without it ONE os.time() read for the whole mutation),
+-- PlayStart = daily.PlayStart (after fn) and Star = the live Home.Prestige, and kept for the merge (DailyClaims): pay
+-- it right after this returned true, nothing yielding between. A number in the grant's place is `now` (no grant).
 -- Refused until loaded and while provisional.
-function DataService.MutateDaily(player, fn, grant)
+function DataService.MutateDaily(player, fn, grant, now)
 	if type(fn) ~= "function" then
 		return false
+	end
+	if isFinite(grant) and now == nil then
+		grant, now = nil, grant
+	end
+	if type(grant) == "table" then
+		now = sanitizeTime(isFinite(now) and now or os.time())
 	end
 	local entry = P3.realEntry(player)
 	if not entry then
@@ -5487,8 +5537,9 @@ function DataService.MutateDaily(player, fn, grant)
 	if type(grant) == "table" then
 		local g = P7.cleanGrant(grant)
 		if g then
-			g.At = sanitizeTime(os.time())
+			g.At = now
 			g.PlayStart = live.PlayStart
+			g.Star = P7.starOf(entry.Profile)
 			local claims = entry.DailyClaims
 			if type(claims) ~= "table" then
 				claims = {}
