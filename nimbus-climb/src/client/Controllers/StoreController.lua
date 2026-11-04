@@ -647,7 +647,7 @@ function H.layoutCard(entry, w, h, M)
 	place(entry.Root, entry.Root.Position.X.Offset, entry.Root.Position.Y.Offset, w, h)
 	local art = math.max(40, math.min(M.Art, h - 2 * pad, math.floor(w * 0.3)))
 	place(entry.Art, pad, math.floor((h - art) / 2), art, art)
-	entry.Glyph.TextSize = math.max(20, math.floor(art * 0.5))
+	entry.Glyph.TextSize = math.min(100, math.max(20, math.floor(art * 0.5))) -- Roblox caps TextSize at 100
 	local buyW, buyH = math.min(M.BuyW, math.floor(w * 0.3)), M.BuyH
 	local rightX = w - pad - buyW
 	local buyY = h - pad - buyH

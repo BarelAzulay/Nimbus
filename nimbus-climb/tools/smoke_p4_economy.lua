@@ -986,7 +986,8 @@ local function simChecks(TC, PC, Config)
 		rollable[i], econ[i] = 0, 0
 	end
 	for _, def in ipairs(PC.Pets) do
-		if not def.EventOnly then
+		-- store (2026-11-04): the exclusive pets (Week Wisp, Crown Phoenix) are in no roulette (PC.IsRollable false)
+		if not def.EventOnly and not PC.IsExclusive(def.Id) then
 			for i = 1, 6 do
 				if RARITY_ORDER[i] == def.Rarity then
 					rollable[i] = rollable[i] + 1

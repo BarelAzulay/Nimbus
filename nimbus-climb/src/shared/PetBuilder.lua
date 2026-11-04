@@ -3828,6 +3828,9 @@ local EVO_LOOKS = {
 	eclipse_dragon = { Gem = { 255, 66, 168 }, GemB = { 76, 228, 216 }, Wing = { 104, 56, 186 }, Tip = { 232, 96, 212 } },
 	obsidian_phoenix = { Gem = { 255, 56, 156 }, GemB = { 88, 208, 255 }, Wing = { 206, 64, 196 }, Tip = { 255, 186, 116 } },
 	phantom_kitsune = { Gem = { 176, 116, 255 }, GemB = { 140, 255, 220 }, Wing = { 146, 116, 228 }, Tip = { 236, 226, 255 } },
+	-- store (2026-11-04): the two exclusive pets (spec 9: Owl rig / Phoenix rig + crown, new palettes)
+	week_wisp = { Gem = { 255, 196, 64 }, GemB = { 120, 210, 255 }, Wing = { 250, 220, 140 }, Tip = { 255, 250, 232 } },
+	crown_phoenix = { Gem = { 226, 36, 66 }, GemB = { 255, 236, 150 }, Wing = { 250, 206, 92 }, Tip = { 255, 250, 236 } },
 }
 for k, v in pairs(EVO_LOOKS) do
 	EVO.Look[k] = v
@@ -4589,6 +4592,11 @@ local EVO_COLOURS = {
 		pal.FlameHot = { Color = rgb(255, 222, 90), Material = NEON }
 		pal.WingTip = { Color = rgb(255, 214, 90), Material = NEON }
 	end,
+	crown_phoenix = function(pal)
+		pal.Flame = { Color = rgb(255, 196, 60), Material = NEON }
+		pal.FlameHot = { Color = rgb(255, 246, 200), Material = NEON }
+		pal.WingTip = { Color = rgb(255, 236, 150), Material = NEON }
+	end,
 	obsidian_phoenix = function(pal)
 		pal.Flame = { Color = rgb(236, 70, 200), Material = NEON }
 		pal.FlameHot = { Color = rgb(255, 170, 230), Material = NEON }
@@ -4703,6 +4711,8 @@ ASC.Look = {
 	eclipse_dragon = { Glow = { 255, 84, 204 }, GlowB = { 90, 240, 222 }, Aura = "Orb" },
 	obsidian_phoenix = { Glow = { 255, 84, 214 }, GlowB = { 255, 176, 116 }, Aura = "Shard" },
 	phantom_kitsune = { Glow = { 120, 255, 222 }, GlowB = { 196, 150, 255 }, Aura = "Wisp" },
+	week_wisp = { Glow = { 255, 226, 120 }, GlowB = { 150, 220, 255 }, Aura = "Wisp" },
+	crown_phoenix = { Glow = { 255, 232, 130 }, GlowB = { 255, 170, 60 }, Aura = "Flame" },
 }
 
 function ASC.Palette(ctx)
@@ -5352,6 +5362,35 @@ ASC.Pets.ember_phoenix = function(ctx)
 	EVO.Necklace(ctx, { R = 4.8, DY = -0.6, Tilt = 0.5, Double = true, Drops = 4 })
 	ascPhoenixTail(ctx)
 	ASC.Aura(ctx, "Flame", { R = 20 })
+end
+
+-- store (2026-11-04): the Pro Pack's Crown Phoenix: the phoenix train in gold-and-white flames under its own crown
+-- (the Crown accessory stays: no EVO.Pets entry), a double necklace and an aura of flames
+ASC.Pets.crown_phoenix = function(ctx)
+	EVO.Necklace(ctx, { R = 4.8, DY = -0.6, Tilt = 0.5, Double = true, Drops = 4 })
+	ascPhoenixTail(ctx)
+	ASC.Aura(ctx, "Flame", { R = 20 })
+end
+
+-- store (2026-11-04): the daily gifts' Week Wisp: sunrise-gold ear tufts with glowing tips, a fan of tail feathers
+-- tipped with light and seven-sunrise wisps orbiting it
+ASC.Pets.week_wisp = function(ctx)
+	local g = ctx.Body
+	local c = ctx.HeadC
+	pair(function(s)
+		cone(g, "Fur", { s * 7, c[2] + 7, c[3] + 0.6 }, { s * 11, c[2] + 15, c[3] + 3 }, 2.2, 0.35)
+		ell(g, "Glow", { s * 10.8, c[2] + 14.4, c[3] + 2.9 }, { 1, 1.3, 1 }, { Op = "Paint", OnlyKeys = "Fur" })
+	end)
+	EVO.Necklace(ctx, { R = 9.4, DY = -0.5, Tilt = 0.3, Drops = 4 })
+	local t = newTail(ctx, ctx.TailHinge, 0.15)
+	for i = -3, 3 do
+		local a = i * 0.24
+		local tip = { math.sin(a) * 9, -2 - math.abs(i) * 0.5, 10 + math.cos(a) * 3 }
+		evoFeather(t, (i % 2 == 0) and "Fur" or "WingTrim", { 0, 0, 0 }, { tip[1], tip[2], tip[3] }, 2.1, 0)
+		ell(t, "Glow", { tip[1] * 0.92, tip[2] * 0.92, tip[3] * 0.94 }, { 1.2, 1.5, 1.2 }, { Op = "Paint", OnlyKeys = { Fur = true, WingTrim = true } })
+	end
+	ctx.Wing2Offset = { -0.6, -5.4, 4.2 }
+	ASC.Aura(ctx, "Wisp", { R = 20 })
 end
 
 ASC.Pets.obsidian_phoenix = function(ctx)
