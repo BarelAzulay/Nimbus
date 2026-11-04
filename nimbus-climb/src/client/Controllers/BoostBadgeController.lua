@@ -18,7 +18,8 @@
 -- START_SLACK s); never for the first value seen (the attribute absent until then), an end in the past, an extension of a
 -- running potion, or a potion bought earlier that arrives late (a provisional recovery, a slow profile load: part of it is
 -- already used). "x2 Pet XP ends in 5 min" once per potion when its time left crosses Config.Store.Potion.WarnSeconds
--- downward.
+-- downward. Neither while OwnedPasses has PetXp2x: the pass wins (Chips() shows its untimed "x2 XP"), so a potion on top
+-- of it (a Starter pack's) neither starts nor ends anything (re-review 1).
 -- Plain Lua 5.1-compatible syntax only. All text goes through Theme roles.
 
 local Players = game:GetService("Players")
@@ -229,7 +230,7 @@ function H.watchPotion()
 	S.Ends = ends
 	S.Seen = boostAttr() ~= nil -- absent again: the next value is a first value (a baseline)
 	local t = now()
-	if S.Started and seen and was <= t and ends > t and freshPotion(ends - t) then
+	if S.Started and seen and was <= t and ends > t and freshPotion(ends - t) and not hasPass("PetXp2x") then
 		hint("x2 Pet XP started!")
 	end
 	if ends ~= was then
@@ -244,7 +245,9 @@ function H.tick()
 	if ends > 0 and left > 0 and left <= warnAt and S.WarnedFor ~= ends then
 		if S.LastLeft and S.LastLeft > warnAt then
 			S.WarnedFor = ends
-			hint("x2 Pet XP ends in " .. math.floor(warnAt / 60 + 0.5) .. " min")
+			if not hasPass("PetXp2x") then -- the pass keeps x2: nothing ends
+				hint("x2 Pet XP ends in " .. math.floor(warnAt / 60 + 0.5) .. " min")
+			end
 		end
 	end
 	S.LastLeft = left

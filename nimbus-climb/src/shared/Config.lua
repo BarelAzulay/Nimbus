@@ -564,7 +564,7 @@ Config.Daily = {
 	ReadySeconds = 20 * 3600, -- the next streak gift is ready this long after the last claim (the server clock)
 	KeepSeconds = 48 * 3600, -- claimed within this of the last claim the streak is kept; later it steps back a day per missed day
 	PipDelaySeconds = 20, -- the Gifts button's pip waits this long after the join (nothing is announced on join)
-	FutureClockSlack = 300, -- a stored LastClaimAt further in the future than this came from a wrong clock: clamped to now, refused once
+	FutureClockSlack = 300, -- a stored LastClaimAt further in the future than this is a wrong clock: counted as now for that session only (never written), refused once
 	-- the seven cells: cell ((Streak - 1) % 7) + 1 of the new Streak; re-earned, never re-paid (Paid = the highest Streak paid)
 	Days = {
 		{ Cash = { Minutes = 2, Min = 400 } },

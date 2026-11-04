@@ -10,8 +10,9 @@
 --
 -- Data: DailyState (server -> client) is the only source (DailyService builds it; nothing here decides a reward):
 --   { Loading = bool (provisional: no CLAIM), Streak, Paid, Weeks, Pet, ReadyAt (unix), KeepUntil (unix), Cell (1..7: the NEXT
---     cell), Vip = bool, StepBack = n (the last claim's step-back), Days = { { Kind = "Cash" | "Tokens" | "Gems" | "Pet",
---     Amount = n | nil, PetId = "week_wisp" | nil, Claimed, Today } x7 }, Play = { Seconds, DayEnds (unix), Active = bool,
+--     cell), Repair = bool (the next claim repairs a missed day and pays nothing), Vip = bool, StepBack = n (the last claim's
+--     step-back), Days = { { Kind = "Cash" | "Tokens" | "Gems" | "Pet", Amount = n | nil, PetId = "week_wisp" | nil, Claimed,
+--     Today, Repair = true | nil (today's cell of a repair) } x7 }, Play = { Seconds, DayEnds (unix), Active = bool,
 --     Tiers = { { Min, Kind, Amount, PetId, Claimed, Ready } x7 } }, ServerNow (unix) }
 --   Amounts are the server's resolved numbers (13b.3). Countdowns use ReadyAt / DayEnds - workspace:GetServerTimeNow().
 --   A claim fires DailyRequest("Claim") / DailyRequest("ClaimPlay", tier) (1 s client gap per action); the toast is the
@@ -19,6 +20,8 @@
 --
 -- Screen: ScreenGui "NimbusDaily" (DisplayOrder 19 like the Store and the Pets window: they never overlap, each Open fires
 -- MenuController.WindowOpened(id) and each closes on any other id; IgnoreGuiInset = false: the HUD attributes are gui px).
+-- While open, MenuController.SetColumnCovered(windowLeft, "Daily") steps the menu tiles (NimbusMenu, DisplayOrder 20) aside
+-- when the window reaches over them (the Portrait layout); nil on close.
 --   * TextButton "GiftsButton": round, x = NimbusHud.TopRightLeft - 8 - size, y = 6 (gui px); 56 px at 1080p (x the screen
 --     factor), 44 px on a phone; hidden with the strips (InMatch / InBattle, or no top-right strips); re-laid out on the HUD's
 --     TopRightLeft / TopRightBottom signals. Children: the Gifts glyph, Frame "Pip" (a 10 px Neon.Red dot: a claim or a play
@@ -34,9 +37,11 @@
 --     layout): Tab_Daily ("Daily"), Tab_Play ("Play time"), CloseButton. DailyPage: Header "Day 3 of 7 · Week 2", VipChip
 --     "VIP x2", Cells > Cell1..7 (Day, Art (glyph or the pet's PetViewport), Amount, Dim, Check; attributes Claimed / Today /
 --     Pulsing: each day its own saturated colour (DAY_COLORS: the NeonStroke + the Fill gradient), today's card is
---     Neon.Gold and its border pulses), Footer (ClaimButton "CLAIM!" | Countdown "Next gift in 4h 12m" + Keep "Come back
---     tomorrow to keep your streak!"), WeekBanner. PlayPage: Header "47 min played today · Resets in 5h" or "Paused: move
---     around to keep counting!" (Body 15, Neon.Gold), Tiers > Tier1..7 reward cells like the day strip (each tier its own
+--     Neon.Gold and its border pulses; a Repair payload's today cell reads "Repair" with the Repair glyph, no amount),
+--     Footer (ClaimButton "CLAIM!", or "Repair streak (no gift)" (RepairW wide) when the claim is a repair | Countdown
+--     "Next gift in 4h 12m" + Keep "Come back tomorrow to keep your streak!"), WeekBanner. PlayPage: Header "47 min
+--     played today · Resets in 5h" or "Paused: move around to keep counting!" (Body 15, Neon.Gold), Tiers > Tier1..7
+--     reward cells like the day strip (each tier its own
 --     saturated colour, TIER_COLORS; attribute State = "Ready" | "Claimed" | "Locked"; Time "10 min", IconBox > Icon,
 --     Reward "+$200", Claim "CLAIM" (44 px tall on a phone), ToGo "13 min to go", Check "Claimed", Dim). Fx: the week's
 --     Rainbow Sweep and 24 Confetti frames (both skipped on Low).
@@ -44,7 +49,10 @@
 --     onto a multiple of 7; a repair claim back onto day 7 leaves Weeks alone and celebrates nothing): the sweep, the
 --     confetti, "WEEK DONE! Week Wisp is yours!", SoundFx "DailyWeek"; StepBack > 0: the side hint
 --     "Welcome back! You stepped back n day(s). Keep going!" once per claim (MenuController.Hint).
---   * Closes on X, Esc, gamepad B (bound only while open), InMatch / InBattle, and any other WindowOpened id.
+--   * Closes on X, Esc, gamepad B (bound only while open), InMatch / InBattle, and any other WindowOpened id. A relayout
+--     that rebuilds the open window (a mode or a Portrait width change) shows the new one at once.
+--   * Texts that would not fit their cell (TextService measures the real font) fall back to a shorter form: a pet's last
+--     word ("Week Wisp" -> "Wisp"), "Full Berry Basket" -> "Berry Basket" -> "Full Basket", big numbers as "$1.2M".
 -- Art: glyph fallbacks (NeonKit.Icon: "Gifts", "Cash", "Tokens", "Gems"); Config.Icons swaps in the uploaded images later.
 -- Plain Lua 5.1-compatible syntax only. All text goes through Theme roles.
 
@@ -52,6 +60,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local ContextActionService = game:GetService("ContextActionService")
+local TextService = game:GetService("TextService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
@@ -91,6 +100,8 @@ local K = {
 	EDGE = 4, -- the window keeps this far from the screen's top and bottom edges ...
 	MARGIN = 12, -- ... and this far from its sides (the other windows' MARGIN)
 	BACK_ACTION = "NimbusDailyBack",
+	REPAIR_TEXT = "Repair streak (no gift)", -- the footer button of a repair claim (re-review 1)
+	FIT_SLACK = 2, -- px a text keeps free in its box (the outline)
 	-- the window in design px: PC at the screen factor, Phone and Portrait at scale 1 (texts >= 15, phone targets >= 44).
 	-- Cells: the 7-day strip (CellsPerRow per row, the last row centred); Tiers: the play-time reward cells (TierCols per
 	-- row, the last row centred, or right-aligned on PC so no text sits in the screen centre), each TierH tall: the time on
@@ -99,7 +110,7 @@ local K = {
 		W = 760, H = 420, Pad = 20, TitleY = 14, TitleH = 44, TabW = { 150, 170 }, TabText = 22, Close = 44,
 		HeaderY = 70, HeaderH = 34, HeaderText = 26, ChipW = 120, ChipText = 20,
 		CellsY = 112, CellsPerRow = 7, CellGapY = 0, CellW = 92, CellH = 132, DayText = 17, IconPx = 44, PetPx = 70, AmountText = 20, CheckText = 24,
-		FooterY = 258, FooterH = 76, ClaimW = 260, ClaimH = 56, ClaimText = 28, CountText = 22, KeepText = 18,
+		FooterY = 258, FooterH = 76, ClaimW = 260, RepairW = 390, ClaimH = 56, ClaimText = 28, CountText = 22, KeepText = 18,
 		BannerY = 344, BannerH = 40, BannerText = 26,
 		RowsY = 112, TierCols = 4, TierGap = 12, TierH = 136, TierLastRow = "Right", TimeText = 22, RewardText = 20, TierIconPx = 26,
 		TierBtnW = 130, TierBtnH = 40, TierBtnText = 18, ToGoText = 18,
@@ -109,7 +120,7 @@ local K = {
 		W = 560, H = 300, Pad = 10, TitleY = 8, TitleH = 44, TabW = { 110, 130 }, TabText = 17, Close = 44,
 		HeaderY = 56, HeaderH = 24, HeaderText = 18, ChipW = 84, ChipText = 15,
 		CellsY = 86, CellsPerRow = 7, CellGapY = 0, CellW = 64, CellH = 92, DayText = 15, IconPx = 28, PetPx = 44, AmountText = 15, CheckText = 18,
-		FooterY = 184, FooterH = 56, ClaimW = 200, ClaimH = 48, ClaimText = 22, CountText = 17, KeepText = 15,
+		FooterY = 184, FooterH = 56, ClaimW = 200, RepairW = 300, ClaimH = 48, ClaimText = 22, CountText = 17, KeepText = 15,
 		BannerY = 250, BannerH = 32, BannerText = 20,
 		RowsY = 86, TierCols = 4, TierGap = 8, TierH = 98, TimeText = 15, RewardText = 15, TierIconPx = 18,
 		TierBtnW = 112, TierBtnH = 44, TierBtnText = 15, ToGoText = 15,
@@ -120,7 +131,7 @@ local K = {
 		H = 404, Pad = 10, TitleY = 8, TitleH = 44, TabW = { 96, 120 }, TabText = 17, Close = 44,
 		HeaderY = 58, HeaderH = 24, PlayHeaderH = 40, HeaderText = 18, ChipW = 84, ChipText = 15,
 		CellsY = 90, CellsPerRow = 4, CellGapY = 8, CellMaxW = 72, CellH = 92, DayText = 15, IconPx = 28, PetPx = 44, AmountText = 15, CheckText = 18,
-		FooterY = 290, FooterH = 68, ClaimW = 200, ClaimH = 48, ClaimText = 22, CountText = 17, KeepText = 15, KeepLines = 2,
+		FooterY = 290, FooterH = 68, ClaimW = 200, RepairW = 300, ClaimH = 48, ClaimText = 22, CountText = 17, KeepText = 15, KeepLines = 2,
 		BannerY = 362, BannerH = 32, BannerText = 20,
 		RowsY = 100, TierCols = 3, TierGap = 8, TierH = 92, TimeText = 15, RewardText = 15, TierIconPx = 18,
 		TierBtnW = 88, TierBtnH = 44, TierBtnText = 15, ToGoText = 15,
@@ -273,34 +284,43 @@ local function petName(petId)
 	return (def and def.Name) or "a pet"
 end
 
--- the short amount of a cell ("$1,450", "50", "Week Wisp")
-local function cellAmount(entry)
-	local kind = entry.Kind
-	if kind == "Cash" then
-		return "$" .. commas(entry.Amount)
-	elseif kind == "Pet" then
-		return petName(entry.PetId)
-	elseif kind == "Berries" then
-		return "Berries"
-	end
-	return commas(entry.Amount)
+local function short(n)
+	return Theme.ShortNumber(math.floor(tonumber(n) or 0), 1000)
 end
 
--- the words of a play tier's reward ("+$200", "+40 Tokens")
-local function tierReward(tier)
+-- a pet's name and its last word ("Week Wisp", "Wisp")
+local function petNames(petId)
+	local name = petName(petId)
+	return { name, string.match(name, "(%S+)%s*$") or name }
+end
+
+-- the short amount of a cell, the longest form first ("$1,450", "50", "Week Wisp" / "Wisp", "$1,234,567" / "$1.2M")
+local function cellAmounts(entry)
+	local kind = entry.Kind
+	if kind == "Cash" then
+		return { "$" .. commas(entry.Amount), "$" .. short(entry.Amount) }
+	elseif kind == "Pet" then
+		return petNames(entry.PetId)
+	elseif kind == "Berries" then
+		return { "Berries" }
+	end
+	return { commas(entry.Amount), short(entry.Amount) }
+end
+
+-- the words of a play tier's reward, the longest form first ("+$200", "+40 Tokens", "Full Berry Basket" / "Berry Basket"
+-- / "Full Basket")
+local function tierRewards(tier)
 	local kind = tier.Kind
 	if kind == "Cash" then
-		return "+$" .. commas(tier.Amount)
-	elseif kind == "Tokens" then
-		return "+" .. commas(tier.Amount) .. " Tokens"
-	elseif kind == "Gems" then
-		return "+" .. commas(tier.Amount) .. " Gems"
+		return { "+$" .. commas(tier.Amount), "+$" .. short(tier.Amount) }
+	elseif kind == "Tokens" or kind == "Gems" then
+		return { "+" .. commas(tier.Amount) .. " " .. kind, "+" .. short(tier.Amount) .. " " .. kind, "+" .. short(tier.Amount) }
 	elseif kind == "Berries" then
-		return "Full Berry Basket"
+		return { "Full Berry Basket", "Berry Basket", "Full Basket" }
 	elseif kind == "Pet" then
-		return petName(tier.PetId)
+		return petNames(tier.PetId)
 	end
-	return "+" .. commas(tier.Amount)
+	return { "+" .. commas(tier.Amount), "+" .. short(tier.Amount) }
 end
 
 local function days(st)
@@ -378,6 +398,21 @@ local function hiddenByPlay()
 end
 
 local H = {}
+
+-- the first of `texts` that fits the label's box (its design width less FIT_SLACK) at its size and font, measured by
+-- TextService (the real font: a cell's text is never cut to "Week W..."); the last one when none does
+function H.fitText(lbl, texts)
+	local width = lbl.Size.X.Offset - K.FIT_SLACK
+	for i = 1, #texts - 1 do
+		local ok, size = pcall(function()
+			return TextService:GetTextSize(texts[i], lbl.TextSize, lbl.Font, Vector2.new(4096, 1024))
+		end)
+		if not ok or typeof(size) ~= "Vector2" or size.X <= width then
+			return texts[i]
+		end
+	end
+	return texts[#texts]
+end
 
 ----------------------------------------------------------------------
 -- The button, its pip and ring
@@ -843,6 +878,15 @@ function H.layoutWindow()
 	U.Holder.Position = UDim2.fromOffset(math.floor(x + 0.5), math.floor(y + 0.5))
 	U.Scale.Scale = scale
 	S.Scale = scale
+	S.WindowX = math.floor(x + 0.5)
+end
+
+-- the menu tiles (NimbusMenu draws above this window) step aside while the open window reaches over them (n1)
+function H.coverColumn()
+	local menu = controller("MenuController")
+	if menu and type(menu.SetColumnCovered) == "function" then
+		safe("cover", menu.SetColumnCovered, (S.Open and U.Holder and S.WindowX) or nil, "Daily")
+	end
 end
 
 function H.setTab(tab)
@@ -932,14 +976,21 @@ function H.renderDaily(st, M)
 		if not today then
 			cell.Card.Stroke.Transparency = claimed and CELL_LOOK.Claimed[3] or 0
 		end
-		if e.Kind ~= nil then
-			cell.Amount.Text = cellAmount(e)
+		if today and e.Repair == true then
+			-- the claim re-earns this day and pays nothing: no amount, no gift art (re-review 1)
+			cell.Amount.Text = "Repair"
+			H.paintArt(cell, { Kind = "Repair" }, M)
+		elseif e.Kind ~= nil then
+			cell.Amount.Text = H.fitText(cell.Amount, cellAmounts(e))
 			H.paintArt(cell, e, M)
 		else
 			cell.Amount.Text = ""
 		end
 	end
 	local ready = claimReady(st)
+	local repair = ready and st.Repair == true
+	U.Claim.Text = repair and K.REPAIR_TEXT or "CLAIM!"
+	U.Claim.Size = UDim2.fromOffset(repair and math.min(M.RepairW, M.W - 2 * M.Pad) or M.ClaimW, M.ClaimH)
 	U.Claim.Visible = ready
 	U.Countdown.Visible = not ready
 	U.Keep.Visible = not ready and not loading
@@ -978,7 +1029,7 @@ function H.renderPlay(st, M)
 		if type(t) == "table" then
 			local goal = (tonumber(t.Min) or 0) * 60
 			cell.Time.Text = tostring(tonumber(t.Min) or 0) .. " min"
-			cell.Reward.Text = tierReward(t)
+			cell.Reward.Text = H.fitText(cell.Reward, tierRewards(t))
 			H.paintTierIcon(cell, t, M)
 			local claimed = t.Claimed == true
 			local ready = not claimed and t.Ready == true and not loading
@@ -1196,13 +1247,13 @@ end
 function H.relayout()
 	H.layoutButton()
 	if S.Open then
-		local mode = S.Mode
 		H.build()
-		if S.Mode ~= mode then
-			U.Holder.Visible = true
-		end
+		-- a rebuild (a mode change, or a Portrait width change: the BuildKey is mode:W) makes a hidden holder; the window
+		-- is open, so it shows (re-review 1: a width change inside Portrait left it invisible while S.Open stayed true)
+		U.Holder.Visible = true
 		H.layoutWindow()
 		H.render()
+		H.coverColumn()
 	end
 end
 
@@ -1267,6 +1318,7 @@ function DailyController.Open(args)
 			menu.WindowOpened:Fire("Daily")
 		end
 	end
+	H.coverColumn() -- after WindowOpened: the window it closed clears only its own cover
 	return true
 end
 
@@ -1279,6 +1331,7 @@ function DailyController.Close()
 		U.Holder.Visible = false
 	end
 	H.syncBack()
+	H.coverColumn()
 end
 
 function DailyController.Init()

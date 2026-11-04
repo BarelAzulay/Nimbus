@@ -11,6 +11,11 @@
 --                                 glyph; the tab icons go through NeonKit.Icon (Config.Icons[tab] swaps in an image)
 --   client_fixr_store_gem_thanks  the gem pack thank-you toast ("+550 Gems! Thank you for your support!") plays StoreBuy
 --                                 (Reward) like the Store's "Thank you! ..."; another gem toast plays nothing
+--   client_fixr_store_portrait    (re-review 1, finding 6) 360x640 portrait phone, every item created at the widest price,
+--                                 nothing / everything owned: the title under no balance pill, the pills and the X inside
+--                                 the window, every tab on screen >= 44 px with its label fitting, every card full width
+--                                 with every text fitting its box (real font widths: TextService measures them for the
+--                                 scenario) inside the card, Buy >= 44 px; 844x390 is the landscape layout again
 -- Every scenario restores the Config ids, the attributes, TextureIds / Config.Icons and the swapped functions it touched.
 -- Deterministic: mock clock only. Plain Lua 5.1 syntax only.
 
@@ -284,6 +289,121 @@ local function clientScenarios()
 		KC.advance(0.5)
 	end
 
+	-- Real text widths (the mock measures a flat 0.5 em per character): the advance widths (1/1000 em) of ASCII 32..126 in
+	-- Roblox's shipped FredokaOne-Regular.ttf (Display), BuilderSans-Bold.otf (Body / Label) and Montserrat-Black.ttf (the
+	-- metric stand-in for GothamBlack, a cloud font: Title / Heading / Button / Toast); any other character counts 0.6 em
+	local ADVANCE = {
+		Fredoka = { 253, 267, 429, 749, 475, 838, 748, 208, 384, 384, 503, 527, 238, 433, 237, 526, 608, 407, 609, 608, 592, 530, 560, 561, 582, 560, 238, 237, 627, 478, 627, 512, 908, 765, 646, 679, 704, 638, 637, 714, 699, 257, 549, 639, 587, 870, 720, 775, 632, 830, 631, 583, 731, 726, 783, 999, 741, 686, 643, 348, 528, 348, 526, 826, 482, 596, 592, 517, 598, 573, 450, 585, 605, 255, 252, 536, 327, 851, 606, 600, 582, 582, 457, 489, 449, 606, 638, 793, 567, 604, 586, 381, 217, 381, 651 },
+		Gotham = { 300, 314, 489, 740, 657, 917, 777, 254, 381, 381, 473, 620, 304, 390, 304, 440, 692, 418, 608, 614, 712, 619, 661, 645, 678, 661, 304, 304, 620, 620, 620, 606, 1037, 806, 773, 744, 826, 673, 644, 769, 804, 350, 574, 765, 617, 954, 804, 848, 743, 848, 745, 657, 654, 784, 786, 1206, 762, 710, 687, 410, 440, 410, 620, 500, 600, 639, 700, 615, 705, 653, 426, 711, 702, 326, 334, 713, 326, 1040, 702, 678, 700, 700, 456, 565, 460, 698, 644, 977, 645, 644, 570, 438, 320, 438, 620 },
+		Builder = { 250, 278, 458, 685, 580, 894, 704, 268, 366, 366, 431, 518, 264, 350, 264, 424, 646, 407, 585, 587, 612, 589, 615, 528, 632, 615, 292, 292, 518, 518, 518, 541, 919, 704, 635, 677, 702, 576, 574, 693, 720, 280, 505, 649, 566, 894, 720, 745, 627, 745, 641, 574, 556, 690, 716, 960, 658, 642, 559, 377, 424, 377, 476, 422, 276, 566, 613, 533, 613, 567, 405, 616, 601, 260, 255, 531, 260, 879, 601, 590, 613, 613, 415, 483, 403, 591, 574, 806, 536, 574, 465, 478, 294, 478, 600 },
+	}
+	local FACE = { FredokaOne = "Fredoka", BuilderSansBold = "Builder", BuilderSans = "Builder", BuilderSansMedium = "Builder", BuilderSansExtraBold = "Builder" }
+	function H.realWidth(text, size, font)
+		local name = (typeof(font) == "EnumItem" and font.Name) or tostring(font)
+		local adv = ADVANCE[FACE[name] or "Gotham"]
+		local em = 0
+		for ch in tostring(text):gmatch("[%z\1-\127\194-\244][\128-\191]*") do
+			local b = ch:byte()
+			if #ch == 1 then
+				if b >= 32 and b <= 126 then
+					em = em + adv[b - 31] / 1000
+				end
+			else
+				em = em + 0.6
+			end
+		end
+		return em * (tonumber(size) or 14)
+	end
+	-- the word-wrapped rows of `text` in `width` px with the real widths (math.huge: one word alone is wider than the box)
+	function H.realRows(text, size, font, width)
+		local rows, cur = 0, 0
+		local space = H.realWidth(" ", size, font)
+		for word in tostring(text):gmatch("%S+") do
+			local w = H.realWidth(word, size, font)
+			if w > width + 0.5 then
+				return math.huge
+			end
+			if cur > 0 and cur + space + w <= width + 0.5 then
+				cur = cur + space + w
+			else
+				rows = rows + 1
+				cur = w
+			end
+		end
+		return math.max(rows, 1)
+	end
+	-- TextService:GetTextSize measures with the real widths while a scenario runs (Roblox measures its real fonts; the
+	-- mock's flat 0.5 em would let a layout pick a text that only fits in the mock). Answers the restore function.
+	function H.realMeasure()
+		game:GetService("TextService") -- the class is finalized once the service exists
+		local methods = Mock.Classes.TextService.methods
+		local old = methods.GetTextSize
+		methods.GetTextSize = function(_, text, size, font, frame)
+			local w = H.realWidth(text, size, font)
+			local limit = (typeof(frame) == "Vector2" and frame.X > 0) and frame.X or math.huge
+			if w <= limit then
+				return Vector2.new(w, size)
+			end
+			local rows = H.realRows(text, size, font, limit)
+			return Vector2.new(limit, (rows == math.huge and 99 or rows) * size)
+		end
+		return function()
+			methods.GetTextSize = old
+		end
+	end
+	-- the product of the UIScales on and above a gui object (the window's Scale / Fit, a cell's Pop)
+	function H.scaleOf(o)
+		local s, node = 1, o
+		while node and not node:IsA("ScreenGui") do
+			for _, ch in ipairs(node:GetChildren()) do
+				if ch:IsA("UIScale") then
+					s = s * ch.Scale
+				end
+			end
+			node = node.Parent
+		end
+		return s
+	end
+	-- does a text object's text fit its box with the real widths? One line unless TextWrapped (then the rows by words);
+	-- a TextScaled text always fits. Answers ok, detail.
+	function H.fits(o)
+		local text = tostring(o.Text)
+		if text:gsub("%s", "") == "" or o.TextScaled then
+			return true, ""
+		end
+		local s = math.max(0.01, H.scaleOf(o))
+		local boxW, boxH = o.AbsoluteSize.X / s, o.AbsoluteSize.Y / s
+		local pad = o:FindFirstChildOfClass("UIPadding")
+		if pad then
+			boxW = boxW - pad.PaddingLeft.Offset - pad.PaddingRight.Offset
+			boxH = boxH - pad.PaddingTop.Offset - pad.PaddingBottom.Offset
+		end
+		local size = o.TextSize
+		local w = H.realWidth(text, size, o.Font)
+		local detail = fmt("%s '%s' %.1f px at %d (%s) in %.0fx%.0f", o.Name, (text:gsub("[\128-\255]+", "?")), w, size, o.Font.Name, boxW, boxH)
+		if w <= boxW + 0.5 then
+			return true, detail
+		end
+		if not o.TextWrapped then
+			return false, detail
+		end
+		local rows = H.realRows(text, size, o.Font, boxW)
+		return rows * size * (o.LineHeight or 1) <= boxH + 1, detail .. " rows " .. tostring(rows)
+	end
+	-- every shown text under `root` that does not fit (a list of details)
+	function H.unfit(root)
+		local bad = {}
+		for _, d in ipairs(root and root:GetDescendants() or {}) do
+			if (d:IsA("TextLabel") or d:IsA("TextButton")) and KC.isShown(d) then
+				local ok, detail = H.fits(d)
+				if not ok then
+					bad[#bad + 1] = detail
+				end
+			end
+		end
+		return bad
+	end
+
 	S.client_fixr_store_colors = guarded("client_fixr_store_colors", function()
 		local SC = H.ctrl("StoreController")
 		if not T.check(type(SC) == "table" and type(SC.Open) == "function" and type(SC.Cards) == "function", "store colors: StoreController loads") then
@@ -528,6 +648,153 @@ local function clientScenarios()
 		SFX.Play = realPlay
 		H.finish(saved)
 		KC.flushErrors("client_fixr_store_gem_thanks")
+	end)
+
+	-- the rect of a gui object { x0, y0, x1, y1 }; two rects overlap (by more than a pixel); a inside b (1 px slack)
+	function H.box(o)
+		local p, s = o.AbsolutePosition, o.AbsoluteSize
+		return { x0 = p.X, y0 = p.Y, x1 = p.X + s.X, y1 = p.Y + s.Y }
+	end
+	function H.overlap(a, b)
+		return a.x0 < b.x1 - 1 and b.x0 < a.x1 - 1 and a.y0 < b.y1 - 1 and b.y0 < a.y1 - 1
+	end
+	function H.within(a, b)
+		return a.x0 >= b.x0 - 1 and a.y0 >= b.y0 - 1 and a.x1 <= b.x1 + 1 and a.y1 <= b.y1 + 1
+	end
+	function H.desc(o)
+		local b = H.box(o)
+		return fmt("%s %d,%d %dx%d", o.Name, b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0)
+	end
+
+	S.client_fixr_store_portrait = guarded("client_fixr_store_portrait", function()
+		local SC = H.ctrl("StoreController")
+		if not T.check(type(SC) == "table" and type(SC.Open) == "function", "store portrait: StoreController loads") then
+			return
+		end
+		local Config = KC.env()
+		local UIS = game:GetService("UserInputService")
+		local saved = H.begin()
+		local touch = { UIS.TouchEnabled, UIS.KeyboardEnabled, UIS.MouseEnabled }
+		local restoreMeasure = H.realMeasure()
+		local okRun, errRun = pcall(function()
+			UIS.TouchEnabled, UIS.KeyboardEnabled, UIS.MouseEnabled = true, false, false
+			Mock.SetViewport(360, 640)
+			KC.advance(0.5)
+			H.createAll()
+			MPS.GetProductInfo = function(_, id)
+				return { Name = "Product " .. tostring(id), PriceInRobux = 1999, ProductId = id } -- the widest price
+			end
+			local passes = {
+				{ Tag = "nothing owned", Owned = "", Bought = "" },
+				{ Tag = "everything owned", Owned = "VIP,Cash2x,PetXp2x", Bought = "Starter,Pro" },
+			}
+			for _, pass in ipairs(passes) do
+				H.setAttr("OwnedPasses", pass.Owned)
+				H.setAttr("StoreBought", pass.Bought)
+				H.reopen(SC)
+				KC.advance(0.5)
+				local tag = "store portrait: 360x640 (" .. pass.Tag .. ")"
+				local win = H.win()
+				local gui = H.pg():FindFirstChild("NimbusStore")
+				local wb = win and H.box(win)
+				T.check(win ~= nil and SC.IsOpen() and SC.Layout() == "Phone" and H.within(wb, H.box(gui)) and (wb.x1 - wb.x0) >= 300,
+					tag .. " (setup) the Store opens inside the screen", win and H.desc(win) or "no window")
+				-- the title bar: the title under no balance pill, the pills and the X inside the window, the X >= 44
+				local bar = win:FindFirstChild("TitleBar", true)
+				local title = bar and bar:FindFirstChild("Title")
+				local clash, outside = {}, {}
+				for _, id in ipairs({ "Tokens", "Cash", "Gems" }) do
+					local pill = bar and bar:FindFirstChild("Balance_" .. id)
+					if not pill or not H.shownIn(pill) then
+						outside[#outside + 1] = "Balance_" .. id .. " missing"
+					else
+						if title and H.overlap(H.box(title), H.box(pill)) then
+							clash[#clash + 1] = H.desc(pill) .. " over " .. H.desc(title)
+						end
+						if not H.within(H.box(pill), wb) then
+							outside[#outside + 1] = H.desc(pill)
+						end
+					end
+				end
+				T.check(title ~= nil and #clash == 0, tag .. " the title sits under no balance pill", table.concat(clash, "; "))
+				local okTitle, dTitle = H.fits(title)
+				T.check(okTitle, tag .. " ...and its text fits", dTitle)
+				T.check(#outside == 0, tag .. " the three balance pills inside the window", table.concat(outside, "; "))
+				local close = bar and bar:FindFirstChild("Close")
+				T.check(close ~= nil and H.within(H.box(close), wb) and close.AbsoluteSize.X >= 43.5 and close.AbsoluteSize.Y >= 43.5, tag .. " the X inside the window, >= 44 px", close and H.desc(close) or "no X")
+				-- the tabs: each inside the window, >= 44 px, its label fits, no two overlap
+				local tabs, badTabs = {}, {}
+				for _, tabName in ipairs(Config.Store.Tabs) do
+					local tb = win:FindFirstChild("Tab_" .. tabName, true)
+					if tb and H.shownIn(tb) then
+						tabs[#tabs + 1] = tb
+						local okL, dL = H.fits(tb:FindFirstChild("Label"))
+						if not (H.within(H.box(tb), wb) and tb.AbsoluteSize.Y >= 43.5 and tb.AbsoluteSize.X >= 43.5 and okL) then
+							badTabs[#badTabs + 1] = H.desc(tb) .. " " .. dL
+						end
+					end
+				end
+				for i = 1, #tabs do
+					for j = i + 1, #tabs do
+						if H.overlap(H.box(tabs[i]), H.box(tabs[j])) then
+							badTabs[#badTabs + 1] = tabs[i].Name .. " overlaps " .. tabs[j].Name
+						end
+					end
+				end
+				T.check(#tabs >= 5 and #badTabs == 0, tag .. " every tab on screen inside the window, >= 44 px, its label fits, none overlap", #tabs .. " tabs; " .. table.concat(badTabs, "; "))
+				-- every page: full-width cards whose every text fits its box and sits inside its card, Buy >= 44 px
+				local checked, badCards, sizes = 0, {}, {}
+				for _, tabName in ipairs(Config.Store.Tabs) do
+					local tb = win:FindFirstChild("Tab_" .. tabName, true)
+					local page = win:FindFirstChild("Page_" .. tabName, true)
+					if tabName ~= "Roulettes" and tb and H.shownIn(tb) and page then
+						Mock.Click(tb)
+						KC.advance(0.3)
+						local pb = H.box(page)
+						for _, card in ipairs(page:GetChildren()) do
+							if card.Name:sub(1, 5) == "Card_" and H.shownIn(card) then
+								checked = checked + 1
+								local cb = H.box(card)
+								sizes[#sizes + 1] = fmt("%s %dx%d", card.Name:sub(6), cb.x1 - cb.x0, cb.y1 - cb.y0)
+								if cb.x1 - cb.x0 < (pb.x1 - pb.x0) - 12 then
+									badCards[#badCards + 1] = card.Name .. " not full width " .. H.desc(card)
+								end
+								for _, d in ipairs(card:GetDescendants()) do
+									if (d:IsA("TextLabel") or d:IsA("TextButton")) and KC.isShown(d) and tostring(d.Text):gsub("%s", "") ~= "" then
+										local okF, dF = H.fits(d)
+										if not okF then
+											badCards[#badCards + 1] = card.Name .. ": " .. dF
+										elseif not H.within(H.box(d), cb) then
+											badCards[#badCards + 1] = card.Name .. ": " .. H.desc(d) .. " outside " .. H.desc(card)
+										end
+									end
+								end
+								local buy = card:FindFirstChild("Buy", true)
+								if not (buy and buy.AbsoluteSize.Y >= 43.5 and H.within(H.box(buy), cb)) then
+									badCards[#badCards + 1] = card.Name .. ": Buy " .. (buy and H.desc(buy) or "missing")
+								end
+							end
+						end
+					end
+				end
+				T.check(checked >= 12 and #badCards == 0, tag .. " every card full width, every card text fits its box (real font widths) inside the card, Buy >= 44 px",
+					checked .. " cards; " .. table.concat(badCards, "; "))
+				local pf = win:FindFirstChild("Pages", true)
+				T.info("*" .. tag .. ": window " .. H.desc(win) .. ", pages " .. (pf and H.desc(pf) or "?") .. ", cards " .. table.concat(sizes, ", "))
+			end
+			-- back to a landscape phone: the cards go back to one-line texts and the side tab column
+			Mock.SetViewport(844, 390)
+			KC.advance(0.5)
+			T.check(SC.IsOpen() and SC.Layout() == "Phone" and not (SC.Portrait and SC.Portrait()), "store portrait: 844x390 is the landscape phone layout again")
+		end)
+		restoreMeasure()
+		UIS.TouchEnabled, UIS.KeyboardEnabled, UIS.MouseEnabled = touch[1], touch[2], touch[3]
+		H.finish(saved)
+		if not okRun then
+			error(errRun, 0)
+		end
+		KC.flushErrors("client_fixr_store_portrait")
+		KC.flushWarnings("client_fixr_store_portrait")
 	end)
 
 	return S

@@ -7,6 +7,7 @@
 --   StoreController.Close()
 --   StoreController.IsOpen() -> bool
 --   StoreController.Layout() -> "PC" | "Phone"
+--   StoreController.Portrait() -> bool   the Phone layout on a portrait screen (the portrait card layout below)
 --   StoreController.Cards() -> { [key] = { State, Price, Tab } }   every card shown (tests)
 --   StoreController.Palette(key) -> { Top, Bottom, Edge } | nil   a pack's own colours (tests)
 --   StoreController.RobuxGlyph() -> string   "\238\128\130" (U+E002, the Robux glyph) or "R$" when the font lacks it
@@ -26,6 +27,10 @@
 --   Pages: Page_<tab> ScrollingFrames of Card_<key> (NeonKit.Card TextButtons: Paint, Art, Name, GetsYou, Line1..n,
 --     Status, PricePill.Text, Buy). The tab's hero card (attribute Hero) comes first and is taller; the cards rebuild when
 --     a tab's hero changes. "Soon" reads "The Store opens soon!" when nothing is created (and no StorePreview).
+--   Portrait (re-review 1: BigRect reports a portrait Phone rect, e.g. 336x536 on a 360x640 phone; K.PORTRAIT): the X on
+--     the title row, the three balances on a row of their own under it, the tabs in rows of three above the pages (icon
+--     over label, >= 44 px), full-width cards: the art left of the texts (the name and the lines wrap to the rows
+--     TextService measures, every card as tall as its texts), the price pill and Buy on a row under them.
 -- Colours (the owner's "make colors for every pack"): every pack has its own PALETTE entry (a saturated Top -> Bottom
 -- gradient on the card's Paint frame, an Edge colour on its neon stroke and glow); the hero runs Bottom -> Top -> a
 -- near-white highlight left to right (the highlight behind its price pill and Buy) with a thicker edge, so it is the
@@ -109,6 +114,14 @@ local K = {
 		TabX = 14, TabY = 72, TabW = 180, TabH = 72, TabGap = 12, TabIcon = 30, TabLabel = 22,
 		ScrollX = 210, Gap = 12, Hero = 250, Card = 150, Art = 210, Pad = 14,
 		Name = 32, Line = 22, Status = 20, Price = 28, BuyW = 220, BuyH = 60, BuyText = 26, Soon = 30,
+	},
+	-- a portrait phone (scale 1): rows instead of the tab column; NameRows / LineRows / StatusRows cap the wrapped rows
+	PORTRAIT = {
+		Title = 44, TitleText = 24, PillH = 30, PillGap = 6, PillText = 16, Close = 44,
+		TabH = 44, TabGap = 6, TabsPerRow = 3, TabIcon = 18, TabLabel = 15,
+		Gap = 8, Art = 64, HeroArt = 84, Pad = 8,
+		Name = 20, NameRows = 2, Line = 15, LineRows = 3, Status = 15, StatusRows = 2,
+		Price = 20, PriceW = 92, BuyW = 104, BuyH = 44, BuyText = 18, Soon = 20,
 	},
 }
 
@@ -822,12 +835,22 @@ end
 -- Layout
 ----------------------------------------------------------------------
 function H.metrics()
+	if S.Portrait then
+		return K.PORTRAIT
+	end
 	return S.Mode == "Phone" and K.PHONE or K.PC
 end
 
 function H.layoutCard(entry, w, h, M)
 	local pad = M.Pad
 	place(entry.Root, entry.Root.Position.X.Offset, entry.Root.Position.Y.Offset, w, h)
+	-- one line each (a portrait layout before may have wrapped them)
+	entry.Name.TextWrapped = false
+	entry.GetsYou.TextWrapped = false
+	entry.Status.TextWrapped = false
+	for _, line in ipairs(entry.Lines) do
+		line.TextWrapped = false
+	end
 	local art = math.max(40, math.min(M.Art, h - 2 * pad, math.floor(w * 0.3)))
 	place(entry.Art, pad, math.floor((h - art) / 2), art, art)
 	entry.Glyph.TextSize = math.min(100, math.max(20, math.floor(art * 0.5))) -- Roblox caps TextSize at 100
@@ -866,6 +889,136 @@ function H.layoutCard(entry, w, h, M)
 	entry.Status.Visible = statusOn
 end
 
+-- the rows `text` wraps to at `size` in `width` px (TextService measures the real font; 1 when it cannot)
+local function rowsOf(lbl, text, size, width)
+	local ok, v = pcall(function()
+		return TextService:GetTextSize(text, size, lbl.Font, Vector2.new(width, 10000))
+	end)
+	if not ok or typeof(v) ~= "Vector2" or v.Y <= 0 then
+		return 1
+	end
+	return math.max(1, math.floor(v.Y / size + 0.5))
+end
+
+-- a portrait card (w wide): the art left of the texts, each text as many rows as it needs (up to its cap), the price
+-- pill and Buy on a row under both; answers the card's height
+function H.layoutCardPortrait(entry, w, M)
+	local pad = M.Pad
+	local art = entry.Hero and M.HeroArt or M.Art
+	local textX = pad + art + pad
+	local textW = w - textX - pad
+	local y = pad
+	local function put(lbl, size, maxRows, lineH)
+		lbl.TextSize = size
+		local rows = math.min(maxRows, rowsOf(lbl, lbl.Text, size, textW))
+		lbl.TextWrapped = rows > 1
+		place(lbl, textX, y, textW, rows * lineH)
+		y = y + rows * lineH
+	end
+	put(entry.Name, M.Name, M.NameRows, M.Name + 2)
+	y = y + 2
+	entry.GetsYou.Visible = #entry.Lines > 0
+	if entry.GetsYou.Visible then
+		put(entry.GetsYou, M.Line, 1, M.Line + 3)
+	end
+	for _, line in ipairs(entry.Lines) do
+		put(line, M.Line, M.LineRows, M.Line + 3)
+	end
+	local statusOn = entry.Status.Text ~= ""
+	entry.Status.Visible = statusOn
+	if statusOn then
+		put(entry.Status, M.Status, M.StatusRows, M.Status + 3)
+	end
+	place(entry.Art, pad, pad, art, art)
+	entry.Glyph.TextSize = math.min(100, math.max(20, math.floor(art * 0.5)))
+	local rowY = math.max(y, pad + art) + 6
+	local buyX = w - pad - M.BuyW
+	place(entry.BuyHolder, buyX, rowY, M.BuyW, M.BuyH)
+	entry.Buy.TextSize = M.BuyText
+	local pillH = M.Price + 8
+	place(entry.PricePill.Root, buyX - 8 - M.PriceW, rowY + math.floor((M.BuyH - pillH) / 2), M.PriceW, pillH)
+	entry.Price.TextSize = M.Price
+	local h = rowY + M.BuyH + pad
+	place(entry.Root, entry.Root.Position.X.Offset, entry.Root.Position.Y.Offset, w, h)
+	return h
+end
+
+-- the portrait window (W x Hh at scale 1): the title row, the balances row, the tab rows, the full-width cards
+function H.layoutPortrait(W, Hh, M)
+	local pad = M.Pad
+	local inner = W - 2 * pad
+	local barH = M.Title + M.PillH + 6
+	place(U.TitleBar, 0, 0, W, barH)
+	place(U.Title, pad + 6, 0, W - M.Close - 12 - (pad + 6), M.Title)
+	U.Title.TextSize = M.TitleText
+	place(U.Close, W - M.Close - 4, 0, M.Close, M.Close)
+	U.Close.TextSize = math.floor(M.Close * 0.5)
+	local n = #CURRENCY_ORDER
+	local pw = math.floor((inner - (n - 1) * M.PillGap) / n)
+	for i, id in ipairs(CURRENCY_ORDER) do
+		local pill = U.Pills[id]
+		place(pill.Root, pad + (i - 1) * (pw + M.PillGap), M.Title + 2, pw, M.PillH)
+		place(pill.Glyph, 4, 0, M.PillText + 4, M.PillH)
+		place(pill.Text, M.PillText + 10, 0, pw - M.PillText - 14, M.PillH)
+		pill.Glyph.TextSize = M.PillText
+		pill.Text.TextSize = M.PillText
+	end
+	-- the tabs: rows of TabsPerRow (hidden ones leave no hole), the icon over the label
+	local shown = {}
+	for _, tab in ipairs(StoreCatalog.Tabs) do
+		local t = U.Tabs[tab]
+		t.Button.Visible = H.tabShown(tab)
+		if t.Button.Visible then
+			shown[#shown + 1] = tab
+		end
+	end
+	local perRow = math.max(1, math.min(M.TabsPerRow, #shown))
+	local rows = math.max(1, math.ceil(#shown / perRow))
+	local tw = math.floor((inner - (perRow - 1) * M.TabGap) / perRow)
+	local tabsY = barH + 4
+	local tabsH = rows * M.TabH + (rows - 1) * M.TabGap
+	place(U.TabColumn, pad, tabsY, inner, tabsH)
+	for i, tab in ipairs(shown) do
+		local t = U.Tabs[tab]
+		local row, col = math.floor((i - 1) / perRow), (i - 1) % perRow
+		place(t.Button, col * (tw + M.TabGap), row * (M.TabH + M.TabGap), tw, M.TabH)
+		H.syncTabIcon(tab)
+		local ih = M.TabIcon + 2
+		place(t.Label, 2, ih, tw - 4, M.TabH - ih - 1)
+		if t.Icon:IsA("TextLabel") then
+			place(t.Icon, 0, 1, tw, ih)
+			t.Icon.TextSize = M.TabIcon
+		else
+			place(t.Icon, (tw - ih) / 2, 1, ih, ih)
+		end
+		t.Label.TextSize = M.TabLabel
+	end
+	-- the pages: full-width cards, each as tall as its texts
+	local pagesY = tabsY + tabsH + 8
+	local sw, sh = inner, Hh - pagesY - pad
+	place(U.PagesFrame, pad, pagesY, sw, sh)
+	U.Soon.TextSize = M.Soon
+	local cw = sw - K.SCROLLBAR - 2
+	for tab, page in pairs(U.Pages) do
+		place(page, 0, 0, sw, sh)
+		local list = {}
+		for _, entry in pairs(U.Cards) do
+			if entry.Item.Tab == tab then
+				list[#list + 1] = entry
+			end
+		end
+		table.sort(list, function(a, b)
+			return (a.Order or 0) < (b.Order or 0)
+		end)
+		local cy = 0
+		for _, entry in ipairs(list) do
+			entry.Root.Position = UDim2.fromOffset(0, cy)
+			cy = cy + H.layoutCardPortrait(entry, cw, M) + M.Gap
+		end
+		page.CanvasSize = UDim2.fromOffset(0, math.max(0, cy - M.Gap))
+	end
+end
+
 function H.layout()
 	if not S.Built then
 		return
@@ -873,11 +1026,17 @@ function H.layout()
 	local r = NeonKit.BigRect(K)
 	S.Rect = r
 	S.Mode, S.Scale = r.mode, r.scale
+	S.Portrait = r.mode == "Phone" and r.portrait == true
 	local M = H.metrics()
 	local W = math.floor(r.w / r.scale + 0.5)
 	local Hh = math.floor(r.h / r.scale + 0.5)
 	place(U.Holder, r.x, r.y, W, Hh)
 	U.Fit.Scale = r.scale
+	if S.Portrait then
+		H.layoutPortrait(W, Hh, M)
+		H.coverColumn()
+		return
+	end
 	-- title bar
 	place(U.TitleBar, 0, 0, W, M.Title)
 	place(U.Title, M.Pad + 6, 0, math.max(80, W * 0.3), M.Title)
@@ -1258,7 +1417,7 @@ end
 function H.coverColumn()
 	local menu = H.controller("MenuController")
 	if menu and type(menu.SetColumnCovered) == "function" then
-		safe("cover", menu.SetColumnCovered, (S.Open and S.Rect) and S.Rect.x or nil)
+		safe("cover", menu.SetColumnCovered, (S.Open and S.Rect) and S.Rect.x or nil, "Store")
 	end
 	H.syncTouch()
 end
@@ -1294,6 +1453,10 @@ function StoreController.Layout()
 		return S.Mode
 	end
 	return NeonKit.BigRect(K).mode
+end
+
+function StoreController.Portrait()
+	return S.Portrait == true
 end
 
 function StoreController.RobuxGlyph()

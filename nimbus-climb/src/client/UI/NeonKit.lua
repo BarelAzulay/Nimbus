@@ -101,6 +101,7 @@ NeonKit.Glyphs = {
 	Currency = "\240\159\146\176", -- money bag
 	Roulettes = "\240\159\142\161", -- ferris wheel
 	Gifts = "\240\159\142\129", -- wrapped gift
+	Repair = "\240\159\148\167", -- wrench (the Gifts window's streak repair: a claim that pays nothing)
 	VipCrown = "\240\159\145\145", -- crown
 	Trove = "\240\159\167\176", -- toolbox (a chest)
 }

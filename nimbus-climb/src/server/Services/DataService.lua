@@ -53,9 +53,10 @@
 --   group (PlayStart, PlaySec, PlayClaimed), at the same PlayStart the session's seconds add up (0..MaxDaySeconds) and
 --   its tiers join the stored ones, and a Play grant whose (PlayStart, tier) the store holds comes off the deltas; a
 --   stand-in delta never carries a Play group; a stored LastClaimAt further in the future than FutureClockSlack (a
---   wrong clock) loses the pair to a session that moved its pair (the Z8 clamp, a claim after it), but the twin rule
---   still holds against it (a claim the session made without knowing it is the same day paid there: dropped; a claim
---   after the clamp is already settled against the session's own Base, P7.pendingClaims). Trove: a union; an ask the
+--   wrong clock) loses the pair to a session that moved its pair (a claim: DailyService's Z8 clamp is that session's
+--   view and is never written, so a server whose clock runs behind cannot pull the stored claim earlier), but the twin
+--   rule still holds against it (a claim the session made without knowing it is the same day paid there: dropped; a
+--   claim after the session's clamp is already settled against its own Base, P7.pendingClaims). Trove: a union; an ask the
 --   store already holds takes the session's grant off the deltas. The grant records (cache annotations, never stored):
 --   ReceiptGrants = {[purchaseId] = grant} (replaces ReceiptGems; a number grant still means { Gems = n }),
 --   DailyClaims = { grant... } (each { Kind = "Day" | "Play", Tier, At, PlayStart, ...amounts }), TroveGrants =
@@ -2445,9 +2446,10 @@ end
 -- grants, `drop` collects the grants the store already paid). The store decides against ITS values before the merge:
 -- a Day grant less than ReadySeconds after the stored LastClaimAt was paid elsewhere (dropped; the stored pair stays);
 -- else the higher LastClaimAt wins the pair. A stored clock further in the future than FutureClockSlack is a wrong
--- clock: it loses the pair to a session that MOVED its pair (the Z8 clamp, or a claim after it), but it still drops a
--- twin (a pending claim never saw that stored claim: a claim after the clamp is settled against the session's own
--- Base, P7.pendingClaims, and never reaches this loop), so one day is never paid twice. Paid / Weeks max, Pet sticks.
+-- clock: it loses the pair to a session that MOVED its pair (a claim; DailyService never writes a bare Z8 clamp), but
+-- it still drops a twin (a pending claim never saw that stored claim: a claim after the session's clamp is settled
+-- against the session's own Base, P7.pendingClaims, and never reaches this loop), so one day is never paid twice.
+-- Paid / Weeks max, Pet sticks.
 -- The higher PlayStart wins the whole Play group; at the same PlayStart the seconds add up and the tiers join; a Play
 -- grant whose (PlayStart, tier) the store holds was paid elsewhere.
 function P7.applyDaily(out, dd, claims, drop)

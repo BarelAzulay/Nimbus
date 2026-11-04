@@ -9,11 +9,14 @@
 --                                 x 1.5 with Store.Bought.Pro on a PvE source only (Dungeon / Raid; never Ring, Duel, Feed)
 --   State(player) -> { Cash = 1 | 2, PetXp = 1 | 2, PvE = 1 | 1.5, PotionEnds, Passes = {[key] = true}, Bought = {[key] = true} }
 --   Refresh(player)               writes OwnedPasses (csv, Config.Store.Items order), StoreBought (csv), XpBoostEnds
---                                 (unix or 0) on the Player, only on change; connected to StoreService.Changed and to
+--                                 (unix or 0; both absent without a record) on the Player, only on change; connected
+--                                 to StoreService.Changed and to
 --                                 DataService.ProfileLoaded / ProfileRebased (the load, a provisional profile's recovery)
---   StoreBought comes ONLY from a real record: while DataService.GetStore answers nil (loading or provisional) the
---   attribute is absent (nil; cleared if it was set), never "" (the client reads absent as "not known yet", "" as
---   "nothing bought"); once GetStore answers it is the csv ("" for nothing bought).
+--   StoreBought and XpBoostEnds come ONLY from a real record: while DataService.GetStore answers nil (loading or
+--   provisional) both attributes are absent (nil; cleared if they were set), never "" / 0 (the client reads absent as
+--   "not known yet": StoreBought "" means "nothing bought", and the first XpBoostEnds the client sees is its baseline,
+--   so it must be the real end, never a stand-in 0 that a late load then "raises"); once GetStore answers they are the
+--   csv ("" for nothing bought) and the potion end (0 for none).
 --   Init(deps)                    deps = { StoreService, DataService }; without StoreService every factor is 1
 -- A junk amount (nil, NaN) passes through unchanged; the sites floor as they do today.
 --
@@ -36,7 +39,7 @@ local PVE = { Dungeon = true, Raid = true }
 local S = {
 	Store = nil,
 	DS = nil,
-	Last = {}, -- [player] = { Passes = csv, Bought = csv | nil (absent), Ends = n } the attributes as last written
+	Last = {}, -- [player] = { Passes = csv, Bought = csv | nil (absent), Ends = n | nil (absent) } as last written
 	Started = false,
 }
 Multipliers._S = S
@@ -166,9 +169,12 @@ function Multipliers.Refresh(player)
 		return
 	end
 	local state = Multipliers.State(player)
-	-- no record (loading / provisional) = StoreBought absent: undecidable, not "nothing bought"
-	local bought = recordOf(player) ~= nil and csvOf(state.Bought) or nil
-	local now = { Passes = csvOf(state.Passes), Bought = bought, Ends = state.PotionEnds }
+	-- no record (loading / provisional) = StoreBought and XpBoostEnds absent: undecidable, not "nothing bought" / "no
+	-- potion" (re-review 1, n2: XpBoostEnds follows StoreBought's rule)
+	local known = recordOf(player) ~= nil
+	local bought = known and csvOf(state.Bought) or nil
+	local ends = known and state.PotionEnds or nil
+	local now = { Passes = csvOf(state.Passes), Bought = bought, Ends = ends }
 	local last = S.Last[player] or {}
 	S.Last[player] = now
 	local passesAttr, boughtAttr, endsAttr = attrName("OwnedPasses"), attrName("StoreBought"), attrName("XpBoostEnds")

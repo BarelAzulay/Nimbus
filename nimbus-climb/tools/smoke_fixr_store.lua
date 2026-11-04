@@ -11,6 +11,10 @@
 --   fixr_store_bought_attr         Multipliers' StoreBought attribute: absent while the save loads and while provisional (a
 --                                  Refresh too), the csv after the recovery (ProfileRebased), "" on a loaded empty record,
 --                                  and back to absent when GetStore answers nil again (a DataService.GetStore double)
+--   fixr_store_boost_attr          (re-review 1, n2) XpBoostEnds follows the same rule: absent while the save loads and
+--                                  while provisional (a Refresh too), the stored potion end once the record lands (the
+--                                  load, the recovery), 0 on a loaded record with no potion, absent again when GetStore
+--                                  answers nil (so the client's first XpBoostEnds is the real one, never a stand-in 0)
 -- White-box: the booted helpers of smoke_store.lua (join / setId / savedIds / restoreIds / storeKey / storedRecord /
 -- toastCount); the MarketplaceService prompt doubles are props (nil restores). Plain Lua 5.1 syntax only.
 
@@ -119,6 +123,14 @@ local function seedBought(uid, bought)
 		Version = 2, Tokens = 5, Pets = {}, Equipped = {}, Items = {},
 		Stats = { Matches = 0, Wins = 0, TokensEarned = 0, Spins = 0, BestTimes = {} },
 		Store = { Bought = bought },
+	}
+end
+-- a stored record with a Store record (Boosts / Bought / Passes maps of clocks)
+local function seedStore(uid, store)
+	Mock.DataStore.Data[storeKey(uid)] = {
+		Version = 2, Tokens = 5, Pets = {}, Equipped = {}, Items = {},
+		Stats = { Matches = 0, Wins = 0, TokensEarned = 0, Spins = 0, BestTimes = {} },
+		Store = store,
 	}
 end
 -- Notify toasts to p since the log mark whose text holds `needle` (a plain find)
@@ -304,6 +316,81 @@ S.fixr_store_bought_attr = guarded("fixr_store_bought_attr", function()
 		D.GetStore = saved.GetStore
 		Mult.Refresh(fresh)
 		T.eq(fresh:GetAttribute(ATTR), "", "fixr store attr: ...and '' again once it answers")
+	end)
+	D.GetStore = saved.GetStore
+	DSt.Latency = saved.Latency
+	DSt.Fail = saved.Fail
+	leaveAll(players)
+	if not okRun then
+		error(errRun, 0)
+	end
+end)
+
+----------------------------------------------------------------------------------------------------
+-- fixr_store_boost_attr (re-review round 1, open item n2)
+----------------------------------------------------------------------------------------------------
+S.fixr_store_boost_attr = guarded("fixr_store_boost_attr", function()
+	if not K.needBoot() then
+		return
+	end
+	local Config = K.config()
+	local Store, Mult, D = SS(), MU(), DS()
+	local ATTR = Config.Attr and Config.Attr.XpBoostEnds
+	if not T.check(type(Store) == "table" and type(Mult) == "table" and type(Mult.Refresh) == "function" and type(D) == "table" and ATTR == "XpBoostEnds", "fixr store boost attr: StoreService, Multipliers, DataService and Config.Attr.XpBoostEnds") then
+		return
+	end
+	local DSt = Mock.DataStore
+	local saved = { Fail = DSt.Fail, Latency = DSt.Latency, GetStore = D.GetStore }
+	local players = {}
+	local okRun, errRun = pcall(function()
+		-- the load window: no record yet, no attribute (not a stand-in 0)
+		DSt.Latency = 2
+		local uidL = newUserId()
+		local endsL = os.time() + 1800
+		seedStore(uidL, { Boosts = { XpPotion = endsL } })
+		local pl = Mock.AddPlayer("FixrBoostLoad" .. tostring(uidL % 1000), uidL)
+		players[#players + 1] = pl
+		K.advance(0.5)
+		T.check(D.GetProfile(pl) == nil, "fixr store boost attr: (precondition) the save is still loading")
+		T.eq(pl:GetAttribute(ATTR), nil, "fixr store boost attr: XpBoostEnds is absent while the save loads")
+		DSt.Latency = saved.Latency
+		T.check(loaded(pl), "fixr store boost attr: (precondition) the load lands")
+		K.advance(0.2)
+		T.eq(pl:GetAttribute(ATTR), endsL, "fixr store boost attr: ...the stored potion end once it lands (ProfileLoaded)")
+
+		-- provisional: absent, a Refresh too
+		DSt.Fail = true
+		local uidP = newUserId()
+		local endsP = os.time() + 3000
+		seedStore(uidP, { Boosts = { XpPotion = endsP } })
+		local prov = join("FixrBoostProv", uidP)
+		players[#players + 1] = prov
+		T.check(provisional(prov), "fixr store boost attr: (precondition) a load during an outage leaves a provisional profile")
+		T.eq(prov:GetAttribute(ATTR), nil, "fixr store boost attr: XpBoostEnds is absent while provisional")
+		Store.Refresh(prov)
+		K.advance(0.2)
+		T.eq(prov:GetAttribute(ATTR), nil, "fixr store boost attr: ...still absent after StoreService.Refresh (Changed -> Multipliers.Refresh)")
+		DSt.Fail = saved.Fail
+		T.check(recovered(prov), "fixr store boost attr: (precondition) the recovery reads the real save")
+		K.advance(0.2)
+		T.eq(prov:GetAttribute(ATTR), endsP, "fixr store boost attr: the stored end after the recovery (ProfileRebased -> Refresh)")
+
+		-- a loaded record with no potion: 0
+		local fresh = join("FixrBoostNew", newUserId())
+		players[#players + 1] = fresh
+		T.check(loaded(fresh), "fixr store boost attr: (precondition) a new player's empty record loads")
+		K.advance(0.2)
+		T.eq(fresh:GetAttribute(ATTR), 0, "fixr store boost attr: 0 on a loaded record with no potion")
+
+		-- the record turns undecidable again (a GetStore double answering nil): absent, then 0 once it answers
+		D.GetStore = function()
+			return nil
+		end
+		Mult.Refresh(fresh)
+		T.eq(fresh:GetAttribute(ATTR), nil, "fixr store boost attr: set back to absent when GetStore answers nil")
+		D.GetStore = saved.GetStore
+		Mult.Refresh(fresh)
+		T.eq(fresh:GetAttribute(ATTR), 0, "fixr store boost attr: ...and 0 again once it answers")
 	end)
 	D.GetStore = saved.GetStore
 	DSt.Latency = saved.Latency

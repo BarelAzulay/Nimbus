@@ -26,8 +26,9 @@
 --          MenuController.Hint(text, kind) -> the side hint (CareController's local refusals use it)
 --          MenuController.SetColumnHidden(hidden) -> hides / shows the menu tiles (BattleController: the team cards
 --          take the left edge of a landscape phone during a battle; the column frame keeps its place)
---          MenuController.SetColumnCovered(windowLeft) -> PetsController: its window reaches over the tiles from that
---          screen x (nil = closed): the tiles step aside while it is up
+--          MenuController.SetColumnCovered(windowLeft, who) -> a window reaches over the tiles from that screen x (nil =
+--          closed): the tiles step aside while ANY window covers them. `who` names the window ("Pets" when left out:
+--          PetsController; "Store", "Daily"), so one window closing never brings the tiles back over another one
 --          MenuController.SetColumnCollapsed(collapsed, animate) / IsColumnCollapsed() -> folds the column against the
 --          left edge like its arrow tab does (bug batch 2 #1; remembered for the session)
 --
@@ -5645,10 +5646,20 @@ function MenuController.SetColumnHidden(hidden)
 	end
 end
 
--- Team balance: PetsController's window reaches over the tiles from screen x `windowLeft` (a phone, a tablet); nil = it
--- closed. The tiles step aside like SetColumnHidden's (the column frame keeps its place).
-function MenuController.SetColumnCovered(windowLeft)
-	local covered = type(windowLeft) == "number" and windowLeft < columnRight()
+-- Team balance: a window reaches over the tiles from screen x `windowLeft` (a phone, a tablet); nil = it closed. `who` is
+-- the window ("Pets" by default: PetsController; the Store and the Gifts window pass "Store" / "Daily", re-review 1): the
+-- tiles step aside like SetColumnHidden's (the column frame keeps its place) while any window's left edge is left of
+-- the column's right edge, so the Store closing on the Gifts window's WindowOpened never brings them back over it.
+function MenuController.SetColumnCovered(windowLeft, who)
+	U.Covers = type(U.Covers) == "table" and U.Covers or {}
+	U.Covers[type(who) == "string" and who or "Pets"] = type(windowLeft) == "number" and windowLeft or nil
+	local right = columnRight()
+	local covered = false
+	for _, left in pairs(U.Covers) do
+		if left < right then
+			covered = true
+		end
+	end
 	if covered == (U.Covered == true) then
 		return
 	end

@@ -339,7 +339,9 @@ local function clientScenarios()
 			and not H.cellPulsing(4), "daily window: 7 cells, claimed dim, today pulsing",
 			fmt("%d cells, cell1 '%s', dim %s %s %s, pulse %s", H.cellCount(), H.cellText(1), tostring(H.cellDimmed(1)), tostring(H.cellDimmed(2)), tostring(H.cellDimmed(3)), tostring(H.cellPulsing(3))))
 		T.check(H.cellText(3):find("1,450", 1, true) ~= nil, "daily window: amounts are the resolved numbers (13b.3)", H.cellText(3))
-		T.check(H.find(H.cell(7), "PetViewport") ~= nil and H.cellText(7):find("Week Wisp", 1, true) ~= nil, "daily window: day 7 shows the Week Wisp", H.cellText(7))
+		-- (re-review 1: "Week Wisp" is wider than the day cell on every layout, so the cell names the pet by its last word;
+		-- the week banner and the toast keep the full name; smoke_fixr_daily_ui.lua client_fixr_daily_fit checks the fit)
+		T.check(H.find(H.cell(7), "PetViewport") ~= nil and H.cellText(7):find("Wisp", 1, true) ~= nil, "daily window: day 7 shows the Week Wisp (its viewport, named 'Wisp' in the cell)", H.cellText(7))
 		local claim = H.claimButton()
 		T.check(claim ~= nil and claim.Text == "CLAIM!" and claim.AbsoluteSize.X >= 260 and claim.AbsoluteSize.Y >= 56, "daily window: CLAIM! when ready",
 			claim and fmt("%s %dx%d", claim.Text, claim.AbsoluteSize.X, claim.AbsoluteSize.Y) or H.footer())

@@ -15,6 +15,22 @@
 --   client_fixr_daily_phone       (phone world) 360x640 portrait: the window inside the screen with the 12 px side margins,
 --                                 the X, both tabs, the seven cells, CLAIM! and the seven tier cells reachable, every target
 --                                 >= 44, texts >= 15; 844x390: the X, the tabs and the tier CLAIM buttons are 44 px tall
+-- Re-review round 1:
+--   client_fixr_daily_repair      (1920x1080, 844x390, 360x640) a repair payload (Streak 3 / Paid 3, a missed day) draws the
+--                                 repair: today's gold cell is the repair cell reading "Repair" (no amount) and the footer
+--                                 button says "Repair streak (no gift)" (fits, >= 44 px), never CLAIM!; a kept streak is
+--                                 CLAIM! with the next day's gift again (finding 2)
+--   client_fixr_boost_pass        a PetXp2x owner gets neither "x2 Pet XP started!" nor "x2 Pet XP ends in 5 min" for a
+--                                 potion (the pass wins, as Chips() shows); without the pass the crossing warns (finding 3)
+--   client_fixr_daily_fit         (1920x1080, 844x390, 360x640) every day cell and play-time cell text fits its box with
+--                                 the real font widths (TextService:GetTextSize measures them for the scenario): day 7
+--                                 names its pet, tier 6 says what it gives (finding 5)
+--   client_fixr_daily_resize      (phone world) the open Portrait window stays shown when the gui width changes while the
+--                                 screen stays portrait (360x640 -> 375x667 -> 390x844 -> 360x640); the first Gifts tap
+--                                 closes it (findings 4 / 7)
+--   client_fixr_menu_cover        (phone world) 360x640: no NimbusMenu tile draws over the open Gifts window or the Store,
+--                                 also when one window opens over another (the Store, the Pets window); the tiles come back
+--                                 when every window is closed (open item n1)
 -- Every payload is fired at the client with KC.toClient("DailyState", ...). The viewport, the graphics level, the
 -- attributes, SoundFx.Play and MenuController.Hint are restored at the end of each scenario.
 -- Plain Lua 5.1 syntax only.
@@ -274,6 +290,121 @@ local function clientScenarios()
 		return min, which
 	end
 
+	-- Real text widths (the mock measures a flat 0.5 em per character): the advance widths (1/1000 em) of ASCII 32..126 in
+	-- Roblox's shipped FredokaOne-Regular.ttf (Display), BuilderSans-Bold.otf (Body / Label) and Montserrat-Black.ttf (the
+	-- metric stand-in for GothamBlack, a cloud font: Title / Heading / Button / Toast); any other character counts 0.6 em
+	local ADVANCE = {
+		Fredoka = { 253, 267, 429, 749, 475, 838, 748, 208, 384, 384, 503, 527, 238, 433, 237, 526, 608, 407, 609, 608, 592, 530, 560, 561, 582, 560, 238, 237, 627, 478, 627, 512, 908, 765, 646, 679, 704, 638, 637, 714, 699, 257, 549, 639, 587, 870, 720, 775, 632, 830, 631, 583, 731, 726, 783, 999, 741, 686, 643, 348, 528, 348, 526, 826, 482, 596, 592, 517, 598, 573, 450, 585, 605, 255, 252, 536, 327, 851, 606, 600, 582, 582, 457, 489, 449, 606, 638, 793, 567, 604, 586, 381, 217, 381, 651 },
+		Gotham = { 300, 314, 489, 740, 657, 917, 777, 254, 381, 381, 473, 620, 304, 390, 304, 440, 692, 418, 608, 614, 712, 619, 661, 645, 678, 661, 304, 304, 620, 620, 620, 606, 1037, 806, 773, 744, 826, 673, 644, 769, 804, 350, 574, 765, 617, 954, 804, 848, 743, 848, 745, 657, 654, 784, 786, 1206, 762, 710, 687, 410, 440, 410, 620, 500, 600, 639, 700, 615, 705, 653, 426, 711, 702, 326, 334, 713, 326, 1040, 702, 678, 700, 700, 456, 565, 460, 698, 644, 977, 645, 644, 570, 438, 320, 438, 620 },
+		Builder = { 250, 278, 458, 685, 580, 894, 704, 268, 366, 366, 431, 518, 264, 350, 264, 424, 646, 407, 585, 587, 612, 589, 615, 528, 632, 615, 292, 292, 518, 518, 518, 541, 919, 704, 635, 677, 702, 576, 574, 693, 720, 280, 505, 649, 566, 894, 720, 745, 627, 745, 641, 574, 556, 690, 716, 960, 658, 642, 559, 377, 424, 377, 476, 422, 276, 566, 613, 533, 613, 567, 405, 616, 601, 260, 255, 531, 260, 879, 601, 590, 613, 613, 415, 483, 403, 591, 574, 806, 536, 574, 465, 478, 294, 478, 600 },
+	}
+	local FACE = { FredokaOne = "Fredoka", BuilderSansBold = "Builder", BuilderSans = "Builder", BuilderSansMedium = "Builder", BuilderSansExtraBold = "Builder" }
+	function H.realWidth(text, size, font)
+		local name = (typeof(font) == "EnumItem" and font.Name) or tostring(font)
+		local adv = ADVANCE[FACE[name] or "Gotham"]
+		local em = 0
+		for ch in tostring(text):gmatch("[%z\1-\127\194-\244][\128-\191]*") do
+			local b = ch:byte()
+			if #ch == 1 then
+				if b >= 32 and b <= 126 then
+					em = em + adv[b - 31] / 1000
+				end
+			else
+				em = em + 0.6
+			end
+		end
+		return em * (tonumber(size) or 14)
+	end
+	-- the word-wrapped rows of `text` in `width` px with the real widths (math.huge: one word alone is wider than the box)
+	function H.realRows(text, size, font, width)
+		local rows, cur = 0, 0
+		local space = H.realWidth(" ", size, font)
+		for word in tostring(text):gmatch("%S+") do
+			local w = H.realWidth(word, size, font)
+			if w > width + 0.5 then
+				return math.huge
+			end
+			if cur > 0 and cur + space + w <= width + 0.5 then
+				cur = cur + space + w
+			else
+				rows = rows + 1
+				cur = w
+			end
+		end
+		return math.max(rows, 1)
+	end
+	-- TextService:GetTextSize measures with the real widths while a scenario runs (Roblox measures its real fonts; the
+	-- mock's flat 0.5 em would let a layout pick a text that only fits in the mock). Answers the restore function.
+	function H.realMeasure()
+		game:GetService("TextService") -- the class is finalized once the service exists
+		local methods = Mock.Classes.TextService.methods
+		local old = methods.GetTextSize
+		methods.GetTextSize = function(_, text, size, font, frame)
+			local w = H.realWidth(text, size, font)
+			local limit = (typeof(frame) == "Vector2" and frame.X > 0) and frame.X or math.huge
+			if w <= limit then
+				return Vector2.new(w, size)
+			end
+			local rows = H.realRows(text, size, font, limit)
+			return Vector2.new(limit, (rows == math.huge and 99 or rows) * size)
+		end
+		return function()
+			methods.GetTextSize = old
+		end
+	end
+	-- the product of the UIScales on and above a gui object (the window's Scale / Fit, a cell's Pop)
+	function H.scaleOf(o)
+		local s, node = 1, o
+		while node and not node:IsA("ScreenGui") do
+			for _, ch in ipairs(node:GetChildren()) do
+				if ch:IsA("UIScale") then
+					s = s * ch.Scale
+				end
+			end
+			node = node.Parent
+		end
+		return s
+	end
+	-- does a text object's text fit its box with the real widths? One line unless TextWrapped (then the rows by words);
+	-- a TextScaled text always fits. Answers ok, detail.
+	function H.fits(o)
+		local text = tostring(o.Text)
+		if text:gsub("%s", "") == "" or o.TextScaled then
+			return true, ""
+		end
+		local s = math.max(0.01, H.scaleOf(o))
+		local boxW, boxH = o.AbsoluteSize.X / s, o.AbsoluteSize.Y / s
+		local pad = o:FindFirstChildOfClass("UIPadding")
+		if pad then
+			boxW = boxW - pad.PaddingLeft.Offset - pad.PaddingRight.Offset
+			boxH = boxH - pad.PaddingTop.Offset - pad.PaddingBottom.Offset
+		end
+		local size = o.TextSize
+		local w = H.realWidth(text, size, o.Font)
+		local detail = fmt("%s '%s' %.1f px at %d (%s) in %.0fx%.0f", o.Name, (text:gsub("[\128-\255]+", "?")), w, size, o.Font.Name, boxW, boxH)
+		if w <= boxW + 0.5 then
+			return true, detail
+		end
+		if not o.TextWrapped then
+			return false, detail
+		end
+		local rows = H.realRows(text, size, o.Font, boxW)
+		return rows * size * (o.LineHeight or 1) <= boxH + 1, detail .. " rows " .. tostring(rows)
+	end
+	-- every shown text under `root` that does not fit (a list of details)
+	function H.unfit(root)
+		local bad = {}
+		for _, d in ipairs(root and root:GetDescendants() or {}) do
+			if (d:IsA("TextLabel") or d:IsA("TextButton")) and KC.isShown(d) then
+				local ok, detail = H.fits(d)
+				if not ok then
+					bad[#bad + 1] = detail
+				end
+			end
+		end
+		return bad
+	end
+
 	S.client_fixr_daily_week = guarded("client_fixr_daily_week", function()
 		local restoreScreen = H.saveScreen()
 		H.setScreen(1920, 1080, false)
@@ -378,8 +509,10 @@ local function clientScenarios()
 		T.check(gradients, "fixr play cells: every cell carries a coloured Fill gradient (UIGradient)")
 		-- the time and the reward
 		local t1, t6 = H.texts(H.tier(1)), H.texts(H.tier(6))
-		T.check(t1:find("10 min", 1, true) ~= nil and t1:find("+$200", 1, true) ~= nil and t6:find("120 min", 1, true) ~= nil and t6:find("Full Berry Basket", 1, true) ~= nil,
-			"fixr play cells: each cell shows its time and its reward", t1 .. " || " .. t6)
+		-- (re-review 1: "Full Berry Basket" is wider than the PC cell, so the cell says "Berry Basket"; client_fixr_daily_fit
+		-- checks that every cell text fits)
+		T.check(t1:find("10 min", 1, true) ~= nil and t1:find("+$200", 1, true) ~= nil and t6:find("120 min", 1, true) ~= nil and t6:find("Berry Basket", 1, true) ~= nil,
+			"fixr play cells: each cell shows its time and its reward", (t1 .. " || " .. t6):gsub("[\128-\255]+", "?"))
 		T.check(H.find(H.tier(1), "Icon") ~= nil, "fixr play cells: the reward's icon")
 		-- the states
 		local function state(i)
@@ -589,6 +722,333 @@ local function clientScenarios()
 		H.fire(H.base(H.now()))
 		restoreScreen()
 		KC.flushErrors("client_fixr_daily_phone")
+	end)
+
+	-- the rect of a gui object { x0, y0, x1, y1 } and whether two rects overlap (by more than a pixel)
+	function H.box(o)
+		local x, y, w, h = H.rect(o)
+		return { x0 = x, y0 = y, x1 = x + w, y1 = y + h }
+	end
+	function H.overlap(a, b)
+		return a.x0 < b.x1 - 1 and b.x0 < a.x1 - 1 and a.y0 < b.y1 - 1 and b.y0 < a.y1 - 1
+	end
+	-- the DailyService shape of a repair (re-review 1, finding 2): Streak 3 / Paid 3, the last claim 50 h ago: the claim
+	-- steps back to 2 and re-earns day 3 unpaid, so Cell 3, days 1-2 claimed, day 3 Today + Repair, Repair = true
+	function H.repair(now)
+		local p = H.streak(now, 2, 3)
+		p.Streak, p.Paid, p.Weeks = 3, 3, 0
+		p.Repair = true
+		p.Days[3].Repair = true
+		p.ReadyAt = now - 30 * 3600
+		p.KeepUntil = now - 2 * 3600
+		return p
+	end
+
+	S.client_fixr_daily_repair = guarded("client_fixr_daily_repair", function()
+		local restoreScreen = H.saveScreen()
+		local DC = H.moduleAt("client", "Controllers/DailyController")
+		if not T.check(DC ~= nil, "fixr daily repair: DailyController exists") then
+			restoreScreen()
+			return
+		end
+		local restoreMeasure = H.realMeasure()
+		local okRun, errRun = pcall(function()
+			local REPAIR = "Repair streak (no gift)"
+			for _, scr in ipairs({ { 1920, 1080, false }, { 844, 390, true }, { 360, 640, true } }) do
+				local tag = fmt("%dx%d", scr[1], scr[2])
+				H.setScreen(scr[1], scr[2], scr[3])
+				DC.Close()
+				KC.advance(0.2)
+				local now = H.now()
+				H.fire(H.repair(now))
+				DC.Open({ Tab = "Daily" })
+				KC.advance(0.3)
+				local win = H.win()
+				local c3, c4 = H.cell(3), H.cell(4)
+				T.check(c3 ~= nil and c3:GetAttribute("Today") == true and c4 ~= nil and c4:GetAttribute("Today") ~= true,
+					"fixr daily repair: " .. tag .. " today's gold cell is the repair cell (day 3), not day 4's gift")
+				local amount = H.find(c3, "Amount")
+				T.check(amount ~= nil and amount.Text == "Repair" and H.texts(c3):find("$", 1, true) == nil,
+					"fixr daily repair: " .. tag .. " ...it reads 'Repair', no amount", H.texts(c3))
+				local claim = H.find(win, "ClaimButton")
+				T.check(H.shown(claim) and claim.Text == REPAIR and H.body():find("CLAIM!", 1, true) == nil,
+					"fixr daily repair: " .. tag .. " the footer button says 'Repair streak (no gift)', never CLAIM!", claim and claim.Text or "no button")
+				local ok, detail = H.fits(claim)
+				local wx, wy, ww, wh = H.rect(win)
+				T.check(ok and H.inside(claim, wx, wy, wx + ww, wy + wh) and claim.AbsoluteSize.Y >= 44 - 0.5,
+					"fixr daily repair: " .. tag .. " ...its text fits (real font widths), inside the window, >= 44 px tall", detail .. " " .. H.desc(claim))
+				if scr[1] == 1920 then
+					local mark = #Mock.RemoteLog
+					H.tap(claim)
+					local sent = KC.serverCalls("DailyRequest", mark)
+					T.check(#sent == 1 and sent[1].args[1] == "Claim", "fixr daily repair: the repair button sends DailyRequest(\"Claim\")", tostring(#sent))
+				end
+				-- a kept streak: CLAIM! again at its own size
+				local p = H.streak(now, 3, 3)
+				p.ReadyAt = now - 1
+				p.KeepUntil = now + 28 * 3600
+				H.fire(p)
+				KC.advance(0.1)
+				claim = H.find(H.win(), "ClaimButton")
+				T.check(H.shown(claim) and claim.Text == "CLAIM!" and H.cell(4):GetAttribute("Today") == true and H.find(H.cell(4), "Amount").Text ~= "Repair",
+					"fixr daily repair: " .. tag .. " a kept streak shows CLAIM! and day 4's gift again", claim and claim.Text or "no button")
+				DC.Close()
+				KC.advance(0.2)
+			end
+		end)
+		restoreMeasure()
+		H.fire(H.base(H.now()))
+		restoreScreen()
+		if not okRun then
+			error(errRun, 0)
+		end
+		KC.flushErrors("client_fixr_daily_repair")
+		KC.flushWarnings("client_fixr_daily_repair")
+	end)
+
+	S.client_fixr_boost_pass = guarded("client_fixr_boost_pass", function()
+		local BB = H.moduleAt("client", "Controllers/BoostBadgeController")
+		local MC = H.moduleAt("client", "Controllers/MenuController")
+		if not T.check(BB ~= nil and MC ~= nil, "fixr boost pass: BoostBadgeController and MenuController exist") then
+			return
+		end
+		local w = H.watchMenu(MC)
+		local oldPasses, oldEnds = LocalPlayer:GetAttribute("OwnedPasses"), LocalPlayer:GetAttribute("XpBoostEnds")
+		local START, WARN = "x2 Pet XP started!", "x2 Pet XP ends in"
+		local okRun, errRun = pcall(function()
+			-- a PetXp2x owner buys the Starter pack: its 1 h potion lands on XpBoostEnds (the pass already gives x2)
+			LocalPlayer:SetAttribute("OwnedPasses", "PetXp2x")
+			LocalPlayer:SetAttribute("XpBoostEnds", 0)
+			KC.advance(1.1)
+			local n = w.count(START)
+			LocalPlayer:SetAttribute("XpBoostEnds", H.now() + 3600)
+			KC.advance(0.2)
+			T.eq(w.count(START) - n, 0, "fixr boost pass: a pass owner's fresh potion says nothing (the pass wins, the potion adds nothing)")
+			T.eq(BB.Chips().Xp, "x2 XP", "fixr boost pass: ...the chip stays the pass's untimed 'x2 XP'")
+			-- its time left crossing WarnSeconds: no 'ends in 5 min' while the pass keeps x2
+			local m = w.count(WARN)
+			LocalPlayer:SetAttribute("XpBoostEnds", H.now() + 302)
+			KC.advance(1.1)
+			KC.advance(3.2)
+			T.eq(w.count(WARN) - m, 0, "fixr boost pass: no 'x2 Pet XP ends in 5 min' for a pass owner")
+			-- control: without the pass the same crossing warns once
+			LocalPlayer:SetAttribute("OwnedPasses", "")
+			LocalPlayer:SetAttribute("XpBoostEnds", 0)
+			KC.advance(1.1)
+			m = w.count(WARN)
+			LocalPlayer:SetAttribute("XpBoostEnds", H.now() + 302)
+			KC.advance(1.1)
+			KC.advance(3.2)
+			T.eq(w.count(WARN) - m, 1, "fixr boost pass: (control) without the pass the same crossing warns once")
+			-- the pass bought while a potion runs: its end warning stays quiet
+			LocalPlayer:SetAttribute("XpBoostEnds", 0)
+			KC.advance(1.1)
+			m = w.count(WARN)
+			LocalPlayer:SetAttribute("XpBoostEnds", H.now() + 303)
+			KC.advance(1.1)
+			LocalPlayer:SetAttribute("OwnedPasses", "PetXp2x")
+			KC.advance(4.2)
+			T.eq(w.count(WARN) - m, 0, "fixr boost pass: the pass bought while a potion runs: no end warning for that potion")
+		end)
+		LocalPlayer:SetAttribute("OwnedPasses", oldPasses)
+		LocalPlayer:SetAttribute("XpBoostEnds", oldEnds)
+		KC.advance(0.3)
+		w.restore()
+		if not okRun then
+			error(errRun, 0)
+		end
+		KC.flushErrors("client_fixr_boost_pass")
+		KC.flushWarnings("client_fixr_boost_pass")
+	end)
+
+	S.client_fixr_daily_fit = guarded("client_fixr_daily_fit", function()
+		local restoreScreen = H.saveScreen()
+		local DC = H.moduleAt("client", "Controllers/DailyController")
+		if not T.check(DC ~= nil, "fixr daily fit: DailyController exists") then
+			restoreScreen()
+			return
+		end
+		local restoreMeasure = H.realMeasure()
+		local okRun, errRun = pcall(function()
+			for _, scr in ipairs({ { 1920, 1080, false, "PC" }, { 844, 390, true, "Phone" }, { 360, 640, true, "Portrait" } }) do
+				local tag = fmt("%dx%d (%s)", scr[1], scr[2], scr[4])
+				H.setScreen(scr[1], scr[2], scr[3])
+				DC.Close()
+				KC.advance(0.2)
+				local now = H.now()
+				local p = H.base(now)
+				p.Play.Tiers[4].Ready = true
+				p.Play.Seconds = 62 * 60
+				H.fire(p)
+				DC.Open({ Tab = "Daily" })
+				KC.advance(0.3)
+				local win = H.win()
+				T.check(win ~= nil and DC.IsOpen(), "fixr daily fit: " .. tag .. " (setup) the window opens")
+				local bad = H.unfit(H.find(win, "Cells"))
+				T.check(#bad == 0, "fixr daily fit: " .. tag .. " every day cell text fits its box (day 7's pet name included)", table.concat(bad, "; "))
+				local a7 = H.find(H.cell(7), "Amount")
+				T.check(a7 ~= nil and a7.Text ~= "" and a7.Text:find("Wisp", 1, true) ~= nil, "fixr daily fit: " .. tag .. " ...day 7 still names its pet", a7 and a7.Text or "no label")
+				H.tapTab("Tab_Play")
+				bad = H.unfit(H.find(win, "Tiers"))
+				T.check(#bad == 0, "fixr daily fit: " .. tag .. " every play-time cell text fits its box (tier 6's basket included)", table.concat(bad, "; "))
+				local r6 = H.find(H.tier(6), "Reward")
+				T.check(r6 ~= nil and r6.Text:find("Basket", 1, true) ~= nil, "fixr daily fit: " .. tag .. " ...tier 6 still says what it gives", r6 and r6.Text or "no label")
+				DC.Close()
+				KC.advance(0.2)
+			end
+		end)
+		restoreMeasure()
+		H.fire(H.base(H.now()))
+		restoreScreen()
+		if not okRun then
+			error(errRun, 0)
+		end
+		KC.flushErrors("client_fixr_daily_fit")
+		KC.flushWarnings("client_fixr_daily_fit")
+	end)
+
+	S.client_fixr_daily_resize = guarded("client_fixr_daily_resize", function()
+		local restoreScreen = H.saveScreen()
+		H.setScreen(360, 640, true)
+		local DC = H.moduleAt("client", "Controllers/DailyController")
+		if not T.check(DC ~= nil, "fixr daily resize: DailyController exists") then
+			restoreScreen()
+			return
+		end
+		H.fire(H.base(H.now()))
+		DC.Close()
+		KC.advance(0.2)
+		DC.Open({ Tab = "Daily" })
+		KC.advance(0.3)
+		T.check(DC.IsOpen() and H.shown(H.win()), "fixr daily resize: (setup) the window is open at 360x640 (Portrait)")
+		-- the gui width changes while the screen stays portrait (an emulator switch, a narrow desktop window resized)
+		for _, size in ipairs({ { 375, 667 }, { 390, 844 }, { 360, 640 } }) do
+			H.setScreen(size[1], size[2], true)
+			local gui = H.gui()
+			local GW, GH = gui.AbsoluteSize.X, gui.AbsoluteSize.Y
+			local win = H.win()
+			T.check(DC.IsOpen() and H.shown(win) and H.inside(win, 0, 0, GW, GH),
+				fmt("fixr daily resize: %dx%d keeps the open window shown (rebuilt for the new width)", size[1], size[2]), H.desc(win) .. " open " .. tostring(DC.IsOpen()))
+		end
+		-- the Gifts button's first tap closes the shown window (never an invisible one)
+		local btn = H.btn()
+		if H.shown(btn) then
+			H.tap(btn)
+			T.check(not DC.IsOpen() and not H.shown(H.win()), "fixr daily resize: ...the first Gifts tap closes it")
+			H.tap(btn)
+			T.check(DC.IsOpen() and H.shown(H.win()), "fixr daily resize: ...and the next one opens it again")
+		else
+			T.warn("fixr daily resize: the Gifts button is hidden in this world (the tap half skipped)")
+		end
+		DC.Close()
+		KC.advance(0.3)
+		restoreScreen()
+		KC.flushErrors("client_fixr_daily_resize")
+	end)
+
+	S.client_fixr_menu_cover = guarded("client_fixr_menu_cover", function()
+		local restoreScreen = H.saveScreen()
+		H.setScreen(360, 640, true)
+		local DC = H.moduleAt("client", "Controllers/DailyController")
+		local SC = H.moduleAt("client", "Controllers/StoreController")
+		local MC = H.moduleAt("client", "Controllers/MenuController")
+		if not T.check(DC ~= nil and SC ~= nil and MC ~= nil and type(MC.GetButton) == "function", "fixr menu cover: DailyController, StoreController and MenuController exist") then
+			restoreScreen()
+			return
+		end
+		local function tiles()
+			local out = {}
+			for _, id in ipairs({ "Pets", "Index", "Spot", "Stats" }) do
+				local b = MC.GetButton(id)
+				if b and H.shown(b) then
+					out[#out + 1] = b
+				end
+			end
+			return out
+		end
+		-- the shown menu tiles that draw over the window `win` (NimbusMenu's DisplayOrder 20 is above the windows' 19)
+		local function over(win)
+			local out = {}
+			if not win then
+				return { "no window" }
+			end
+			local wb = H.box(win)
+			for _, b in ipairs(tiles()) do
+				if H.overlap(H.box(b), wb) then
+					out[#out + 1] = H.desc(b)
+				end
+			end
+			return out
+		end
+		local function storeWin()
+			local gui = H.pg():FindFirstChild("NimbusStore")
+			return gui and gui:FindFirstChild("StoreWindow", true)
+		end
+		local okRun, errRun = pcall(function()
+			H.fire(H.base(H.now()))
+			DC.Close()
+			SC.Close()
+			MC.Close()
+			KC.advance(0.5)
+			T.check(#tiles() > 0, "fixr menu cover: (setup) the menu tiles show at 360x640 with no window open", tostring(#tiles()))
+			-- the Gifts window
+			DC.Open({ Tab = "Daily" })
+			KC.advance(0.5)
+			local bad = over(H.win())
+			T.check(DC.IsOpen() and #bad == 0, "fixr menu cover: no menu tile draws over the open Gifts window", table.concat(bad, "; ") .. " | " .. H.desc(H.win()))
+			DC.Close()
+			KC.advance(0.5)
+			T.check(#tiles() > 0, "fixr menu cover: ...the tiles come back when it closes")
+			-- the Store
+			SC.Open()
+			KC.advance(0.5)
+			bad = over(storeWin())
+			T.check(SC.IsOpen() and #bad == 0, "fixr menu cover: no menu tile draws over the open Store", table.concat(bad, "; "))
+			-- the Gifts window opened over the Store (the Store closes on WindowOpened): its close never brings the tiles back
+			DC.Open({ Tab = "Daily" })
+			KC.advance(0.5)
+			bad = over(H.win())
+			T.check(DC.IsOpen() and not SC.IsOpen() and #bad == 0, "fixr menu cover: the Gifts window opened over the Store stays uncovered", table.concat(bad, "; "))
+			-- the Store opened over the Gifts window
+			SC.Open()
+			KC.advance(0.5)
+			bad = over(storeWin())
+			T.check(SC.IsOpen() and not DC.IsOpen() and #bad == 0, "fixr menu cover: the Store opened over the Gifts window stays uncovered", table.concat(bad, "; "))
+			-- the Pets window, then the Gifts window over it
+			SC.Close()
+			KC.advance(0.3)
+			MC.Open("Pets")
+			KC.advance(0.8)
+			DC.Open({ Tab = "Daily" })
+			KC.advance(0.5)
+			bad = over(H.win())
+			T.check(DC.IsOpen() and #bad == 0, "fixr menu cover: the Gifts window opened over the Pets window stays uncovered", table.concat(bad, "; "))
+			DC.Close()
+			MC.Close()
+			KC.advance(0.6)
+			-- the Sky Trove panel (DisplayOrder 18; a bottom sheet on a portrait phone): no tile over it either
+			local TC = H.moduleAt("client", "Controllers/TroveController")
+			if TC and type(TC.Open) == "function" then
+				TC.Open()
+				KC.advance(0.5)
+				local tg = H.pg():FindFirstChild("NimbusTrove")
+				local tp = tg and tg:FindFirstChild("TrovePanel", true)
+				bad = over(tp)
+				T.check(TC.IsOpen() and #bad == 0, "fixr menu cover: no menu tile draws over the open Sky Trove panel", table.concat(bad, "; ") .. " | " .. (tp and H.desc(tp) or "no panel"))
+				TC.Close()
+				KC.advance(0.3)
+			end
+			T.check(#tiles() > 0, "fixr menu cover: ...and every window closed brings the tiles back", tostring(#tiles()))
+		end)
+		DC.Close()
+		SC.Close()
+		MC.Close()
+		KC.advance(0.3)
+		restoreScreen()
+		if not okRun then
+			error(errRun, 0)
+		end
+		KC.flushErrors("client_fixr_menu_cover")
 	end)
 
 	return S

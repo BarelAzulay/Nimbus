@@ -10,8 +10,9 @@
 --   daily_miss          47 h 59 m kept; 49 h steps back one day (repaired, unpaid, StepBack once); 10 days -> Streak 1
 --   daily_provisional   a stand-in profile: only Loading payloads, the claim refused, no tick, the stored Play group kept
 --   daily_two_servers   the (LastClaimAt, Streak) pair and a play tier across two DataService copies: paid once
---   daily_future_clock  a stored LastClaimAt inside the slack is kept; past it the claim rewrites it to now (no grant),
---                       is refused once with "Next gift in 20h 0m", and 20 h later pays (Z8)
+--   daily_future_clock  a stored LastClaimAt inside the slack is kept; past it the claim counts it as now for this
+--                       session only (never written: no grant, no bare clamp in the store), is refused once with "Next
+--                       gift in 20h 0m", and 20 h later pays (Z8)
 --   daily_rejoin        PlaySec survives a rejoin; a play tier pays once
 --   daily_idle          a still root adds nothing; a remote counts 180 s; a 3-stud move counts, 1 stud not; Play.Active
 --                       flips send one payload each, ticks none
@@ -724,8 +725,8 @@ S.daily_future_clock = guarded("daily_future_clock", function()
 	mark = K.logSize()
 	local t = claim(p)
 	d = DS().GetDaily(p)
-	T.check(d.LastClaimAt == t and d.Streak == 1 and d.Paid == 1 and DS().GetCash(p) == cash0 and DS().GetTokens(p) == tokens0 and DS().GetGems(p) == gems0,
-		"daily future clock: a LastClaimAt 2 h ahead (past FutureClockSlack) is rewritten to now by the claim, nothing else changes", describeDaily(d) .. " t " .. t)
+	T.check(d.LastClaimAt == now + 7200 and d.Streak == 1 and d.Paid == 1 and DS().GetCash(p) == cash0 and DS().GetTokens(p) == tokens0 and DS().GetGems(p) == gems0,
+		"daily future clock: a LastClaimAt 2 h ahead (past FutureClockSlack) counts as now for the claim and is never written (re-review 1), nothing else changes", describeDaily(d) .. " t " .. t)
 	T.check(toastCount(p, "Next gift in 20h 0m", mark) == 1, "daily future clock: ...and the claim is refused this once with 'Next gift in 20h 0m'")
 	local st = lastState(p)
 	T.check(st ~= nil and st.ReadyAt == t + config().Daily.ReadySeconds, "daily future clock: the payload after it shows the next gift 20 h on", tostring(st and st.ReadyAt) .. " vs " .. (t + config().Daily.ReadySeconds))
