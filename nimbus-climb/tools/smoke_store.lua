@@ -195,6 +195,86 @@ local function serverScenarios()
 		leaks:report()
 	end)
 
+	S.store_catalog = guarded("store_catalog", function()
+		local inst = K.moduleInstance("shared/StoreCatalog")
+		local SC = K.M["shared/StoreCatalog"] or (inst and select(2, pcall(require, inst)))
+		local Config = K.config()
+		T.check(type(SC) == "table" and type(SC.Validate) == "function", "store catalog: shared/StoreCatalog loads")
+		if type(SC) ~= "table" or type(SC.Validate) ~= "function" then
+			return
+		end
+		T.check(select(1, SC.Validate()) == true, "store catalog: Validate passes on the shipped Config", table.concat(select(2, SC.Validate()) or {}, "; "))
+		T.check(#SC.Tabs == #Config.Store.Tabs and SC.Tabs[1] == "Packs" and SC.Tabs[5] == "Roulettes" and SC.Tabs ~= Config.Store.Tabs, "store catalog: Tabs is a copy of Config.Store.Tabs")
+		local list = SC.List()
+		T.eq(#list, 10 + #Config.Gems.Products, "store catalog: List = the 10 enabled items + the gem packs (Cash packs Enabled = false left out)")
+		T.check(list[1].Key == "Starter" and list[10].Key == "Tokens3" and list[11].Key == "Gems1" and list[11].Kind == "Product" and list[11].Tab == "Currency" and list[11].Index == 1 and list[11].Name == "Pouch of Gems" and list[11].Grants.Gems == 100 and list[11].Gem == true, "store catalog: Config order, then the gem packs as Currency products")
+		T.check(list[1].Created == false and list[1].Robux == 99 and list[1].Id == 0 and list[1].Once == true and list[1].Hero == true and SC.Created(list[1]) == false, "store catalog: a List item is a cleaned copy (Id 0, Created false, Robux, Once, Hero)")
+		T.check(SC.Item("Cash1") == nil and SC.Item("Starter").Grants.Cash == 1000 and SC.Item("Gems2").Grants.Gems == 550 and SC.Item("Gems2").Hero == true and SC.Item("Gems1").Hero ~= true, "store catalog: Item by key; the Bag is the Currency hero")
+		T.check(SC.Item("nope") == nil and SC.Item(nil) == nil and SC.Item(5) == nil, "store catalog: Item answers nil for junk keys")
+		T.check(SC.ProductById(0) == nil and SC.PassById(0) == nil and SC.ProductById(nil) == nil and SC.ProductById("1") == nil and SC.PassById(-1) == nil, "store catalog: Id 0 (and junk) resolves to nothing on both sides")
+		T.check(SC.Perk("CashX2").Cash == 2 and SC.Perk("Vip").DailyMult == 2 and SC.Perk("Nope") == nil and SC.Perk(nil) == nil, "store catalog: Perk reads Config.Store.Perks")
+		local pro, gems = Config.Store.Items[2], Config.Gems.Products[3]
+		local savedPro, savedGems = pro.Id, gems.Id
+		pro.Id, gems.Id = 4411, 4412
+		T.check(SC.ProductById(4411).Key == "Pro" and SC.ProductById(4412).Gem == true and SC.ProductById(4412).Grants.Gems == 1200 and SC.PassById(4411) == nil, "store catalog: a product id resolves (a gem pack too), never as a pass")
+		T.check(SC.Item("Pro").Created == true and SC.Created(SC.Item("Pro")) == true and SC.Item("Gems3").Created == true, "store catalog: Created follows the Id")
+		Config.Store.Items[3].Id = 4413
+		T.check(SC.PassById(4413).Key == "VIP" and SC.ProductById(4413) == nil, "store catalog: a pass id resolves, never as a product")
+		Config.Store.Items[3].Id, pro.Id, gems.Id = 0, savedPro, savedGems
+		T.check(SC.ProductById(4411) == nil and SC.PassById(4413) == nil, "store catalog: Config.Store.Items is read on every call (the ids put back resolve to nothing)")
+		local lines = SC.GrantLines(SC.Item("Starter").Grants)
+		T.check(#lines == 3 and lines[1] == "1x Storm Tabby (Lv 5)" and lines[2] == "$1,000 Cash" and lines[3] == "1 h x2 Pet XP", "store catalog: the Starter's literal lines", table.concat(lines, " | "))
+		lines = SC.GrantLines(SC.Item("Pro").Grants)
+		T.check(#lines == 3 and lines[1] == "1x Crown Phoenix (Lv 10)" and lines[2] == "5,000 Cloud Tokens", "store catalog: the Pro's pet and Tokens lines", table.concat(lines, " | "))
+		T.eq(lines[3], "x1.5 Pet XP in Dungeons and raids", "store catalog: the Pro perk line")
+		T.check(SC.GrantLines(SC.Item("XpPotion3").Grants)[1] == "3 h x2 Pet XP" and SC.GrantLines({ Boost = { XpPotion = 1500 } })[1] == "25 min x2 Pet XP", "store catalog: potion lines (3 h, 25 min)")
+		T.check(SC.GrantLines(SC.Item("Gems2").Grants)[1] == "550 Gems" and SC.GrantLines(SC.Item("VIP").Grants)[1] == "VIP: x2 daily Cash and Tokens, [VIP] in chat" and SC.GrantLines(SC.Item("Cash2x").Grants)[1] == "x2 Cash forever" and SC.GrantLines(SC.Item("PetXp2x").Grants)[1] == "x2 Pet XP forever", "store catalog: the Gems and perk lines")
+		T.check(SC.GrantLines({ Pets = { storm_tabby = { Count = 2 } } })[1] == "2x Storm Tabby" and #SC.GrantLines(nil) == 0 and #SC.GrantLines({}) == 0, "store catalog: no (Lv n) without a Level; junk grants = no lines")
+		-- Validate refusals: a deep copy of Config.Store.Items mutated, then restored; each a false with a problem naming the key
+		local function deepCopy(t)
+			if type(t) ~= "table" then
+				return t
+			end
+			local out = {}
+			for k, v in pairs(t) do
+				out[k] = deepCopy(v)
+			end
+			return out
+		end
+		local function refused(label, key, mutate)
+			local saved, savedGemId = Config.Store.Items, Config.Gems.Products[1].Id
+			Config.Store.Items = deepCopy(saved)
+			mutate(Config.Store.Items)
+			local ok, problems = SC.Validate()
+			Config.Store.Items, Config.Gems.Products[1].Id = saved, savedGemId
+			local named = false
+			for _, pr in ipairs(problems or {}) do
+				if string.find(pr, key, 1, true) then
+					named = true
+				end
+			end
+			T.check(ok == false and named, "store catalog: Validate refuses " .. label .. " (naming " .. key .. ")", table.concat(problems or {}, "; "))
+		end
+		refused("a duplicate Key", "Tokens1", function(c) c[9].Key = "Tokens1" end)
+		refused("two items with Id 5", "Tokens2", function(c) c[8].Id = 5; c[9].Id = 5 end)
+		refused("an Id shared with a gem product", "Tokens1", function(c) c[8].Id = 77; Config.Gems.Products[1].Id = 77 end)
+		refused("a Pass granting Cash", "VIP", function(c) c[3].Grants.Cash = 5 end)
+		refused("an unknown pet", "Starter", function(c) c[1].Grants.Pets = { nope = { Count = 1 } } end)
+		refused("Level 0", "Starter", function(c) c[1].Grants.Pets.storm_tabby.Level = 0 end)
+		refused("Count 100", "Starter", function(c) c[1].Grants.Pets.storm_tabby.Count = 100 end)
+		refused("a potion past CapSeconds", "XpPotion3", function(c) c[7].Grants.Boost.XpPotion = Config.Store.Potion.CapSeconds + 1 end)
+		refused("a perk name Nope", "Pro", function(c) c[2].Grants.Perks = { "Nope" } end)
+		refused("Tab Gifts", "Tokens1", function(c) c[8].Tab = "Gifts" end)
+		refused("Kind Thing", "Tokens1", function(c) c[8].Kind = "Thing" end)
+		refused("a second Hero in Packs", "Pro", function(c) c[2].Hero = true end)
+		refused("a Cash pack without its Line", "Cash1", function(c) c[11].Line = nil end)
+		refused("Robux -1", "Tokens1", function(c) c[8].Robux = -1 end)
+		refused("Tokens 0", "Tokens1", function(c) c[8].Grants.Tokens = 0 end)
+		refused("a fractional Cash", "Starter", function(c) c[1].Grants.Cash = 10.5 end)
+		refused("Once on a Pass", "VIP", function(c) c[3].Once = true end)
+		refused("an empty Key", "item 8", function(c) c[8].Key = "" end)
+	end)
+
 	S.store_grantpet = guarded("store_grantpet", function()
 		K.needBoot()
 		local p = join("Grant", newUserId())
