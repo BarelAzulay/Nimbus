@@ -3150,6 +3150,8 @@ function RingRun.pay(b, part, res)
 		isRecord = okM == true and isRecord
 		local rewards = BattleCatalog.RingRewards(round, RingRun.income(player), isRecord)
 		local cash = tonumber(rewards.Cash) or 0
+		local mult = St.deps.Multipliers -- store: x2 Cash with the pass (Init deps only); the Tokens and the XP stay as they are
+		cash = mult and mult.Cash(player, cash, "Ring") or cash
 		if cash > 0 and try(dataService(), "AddCash", player, cash) ~= true then
 			cash = 0
 		end

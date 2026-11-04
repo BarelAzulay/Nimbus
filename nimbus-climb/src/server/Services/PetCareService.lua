@@ -114,6 +114,7 @@ local dataService = nil
 local petService = nil
 local tycoonService = nil
 local battleService = nil
+local multipliers = nil -- Multipliers module table (store: x2 Pet XP by pass or potion, x1.5 PvE; Init deps only)
 local catalog = nil -- TycoonCatalog
 local petKeys = nil -- PetKeys (optional)
 local petCatalog = nil -- PetCatalog (optional)
@@ -783,6 +784,8 @@ end
 -- Cap-aware XP. Returns xpGiven, levelsGained, reason (nil on success), the new level / XP / cap / def and whether the
 -- pet is now ready to evolve.
 local function grantXp(player, key, xp, source)
+	-- store: the ONE Pet XP multiplier site (GrantXp's callers' source: Dungeon / Raid / Ring / Duel; the Food Machine's Feed)
+	xp = multipliers and multipliers.PetXp(player, xp, source) or xp
 	-- whole XP only: DataService reads XP back as whole points, so a fraction could never be seen to arrive
 	xp = isFinite(xp) and math.floor(xp) or 0
 	if xp < 1 then
@@ -1886,6 +1889,7 @@ function PetCareService.Init(deps)
 	petService = deps.PetService
 	tycoonService = deps.TycoonService
 	battleService = deps.BattleService
+	multipliers = deps.Multipliers
 	catalog = requireModule(Shared, "TycoonCatalog")
 	petKeys = requireModule(Shared, "PetKeys")
 	petCatalog = requireModule(Shared, "PetCatalog")

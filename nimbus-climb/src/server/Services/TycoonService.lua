@@ -161,6 +161,7 @@ local petService = nil
 local spotService = nil
 local battleService = nil -- BattleService module table (its Init runs after ours: every call is guarded)
 local gateService = nil -- GateService module table (a Lobby portal's landing)
+local multipliers = nil -- Multipliers module table (store: x2 Cash at the scoop; Init deps only, never a lazy lookup)
 local homeBuilder = nil
 local catalog = nil -- TycoonCatalog
 local petKeys = nil -- PetKeys (optional)
@@ -1211,7 +1212,9 @@ function Coins.scoop(player, index)
 		Coins.reconcile(st, bankOf(getHome(player) or home)) -- the bank holds less than the drops claim
 		return false, "Nothing to scoop yet"
 	end
-	if not dataService.AddCash(player, paid) then
+	-- store: the paid multiplier applies to the credit only; the bank still drops `paid` and the refund below is base
+	local credit = multipliers and multipliers.Cash(player, paid, "Scoop") or paid
+	if not dataService.AddCash(player, credit) then
 		mutateHome(player, function(live)
 			live.CollectorCash = bankOf(live) + paid -- the Cash could not be banked: back onto the lawn
 			return true
@@ -3101,6 +3104,7 @@ function TycoonService.Init(lobbyInfo, deps)
 	spotService = deps.SpotService or requireModule(script.Parent, "SpotService")
 	battleService = deps.BattleService
 	gateService = deps.GateService
+	multipliers = deps.Multipliers
 	catalog = requireModule(Shared, "TycoonCatalog")
 	homeRoam = requireModule(Shared, "HomeRoam")
 	petKeys = requireModule(Shared, "PetKeys")

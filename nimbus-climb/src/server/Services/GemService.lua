@@ -3,21 +3,26 @@
 --
 -- * Developer products: Config.Gems.Products = { {Id, Gems, Name}... }. Id 0 means the owner has not created that
 --   product yet (Creator Hub -> the experience -> Monetization -> Developer Products, then paste its id into Config):
---   such a pack is hidden and never sold.
+--   such a pack is hidden and never sold. Store (2026-11-04, spec 5.4): every receipt is looked up with
+--   StoreCatalog.ProductById (the gem packs AND Config.Store.Items) and a Store item is granted by
+--   StoreService.ApplyGrant in the same non-yielding step as the receipt (substitutes for a full stack, a potion past
+--   its cap: a paid receipt is never eaten); without StoreService only gem packs are granted.
 -- * ProcessReceipt: MarketplaceService.ProcessReceipt is set here and nowhere else (Roblox allows one callback per
---   server). Idempotent through the profile's GemReceipts (DataService.MarkReceipt): the purchase id and the gems are
+--   server). Idempotent through the profile's GemReceipts (DataService.MarkReceipt): the purchase id and the grant are
 --   written to the live profile in ONE non-yielding step, then the profile is saved (one UpdateAsync carries both),
 --   and only a successful save answers PurchaseGranted. So a purchase is granted once per purchase id: a second call
 --   (Roblox retries, another server after a rejoin) finds the receipt and grants nothing. A failed save keeps the
---   receipt and the gems in the live profile and DataService keeps retrying that save (also after the player left);
---   MarkReceipt records how many gems came with the receipt, so when another server granted the same purchase first
---   (Roblox re-sent it there after a rejoin) the late save adds no gems for it: one purchase, one grant. While the
---   profile is not loaded yet (or provisional: the load failed, the real save is unknown) the callback waits up to
---   ProfileWaitSeconds, then answers NotProcessedYet and Roblox asks again later. Unknown product, malformed receipt,
---   player not in this server, failed save: NotProcessedYet. In Studio a failed save still answers PurchaseGranted
---   (test purchases cost nothing and the gems are already in the session). The thank-you toast and GemsPurchased
---   come once per purchase, when it is granted for good (the save succeeded, or Studio): after a failed save, the
---   retry that saves it sends them.
+--   receipt and the grant in the live profile and DataService keeps retrying that save (also after the player left);
+--   MarkReceipt records what came with the receipt (NoteReceiptGrant replaces it with what was REALLY granted), so
+--   when another server granted the same purchase first (Roblox re-sent it there after a rejoin) the late save adds
+--   nothing for it: one purchase, one grant. While the profile is not loaded yet (or provisional: the load failed,
+--   the real save is unknown) the callback waits up to ProfileWaitSeconds, then answers NotProcessedYet and Roblox
+--   asks again later. Unknown product, malformed receipt, player not in this server, failed save: NotProcessedYet.
+--   InMatch is NEVER checked here: a late receipt of an earlier prompt is granted in a match. In Studio a failed save
+--   still answers PurchaseGranted (test purchases cost nothing and the grant is already in the session). The
+--   thank-you toast (the gem text for a gem pack, StoreService.Thank's "Thank you! ..." for a Store item),
+--   GemsPurchased (gem packs) and StoreService.Purchased come once per purchase, when it is granted for good (the
+--   save succeeded, or Studio): after a failed save, the retry that saves it sends them.
 -- * PromptPurchase(player, ref): a validated request (live player, not in a match, a CREATED product picked by its
 --   index in Config.Gems.Products or by its product id, a 1 s cooldown) -> MarketplaceService:PromptProductPurchase.
 --   A client may also prompt by itself: Gems are only ever granted by ProcessReceipt. Config.Remotes has no gem remote
@@ -34,7 +39,7 @@
 --   exact numbers the roll uses, and a roulette whose odds cannot be listed is not sold.
 --
 -- Public API
---   GemService.Init(deps)                         deps = { DataService, PetService } (players already in game too)
+--   GemService.Init(deps)                         deps = { DataService, PetService, StoreService? } (players already in game too)
 --   GemService.ProcessReceipt(receiptInfo) -> Enum.ProductPurchaseDecision     (yields: profile wait + save)
 --   GemService.PromptPurchase(player, ref) -> ok, reason    ref = product index (1..n) or developer product id
 --   GemService.GetProducts() -> { {Index, ProductId, Gems, Name}... }   created products only (Id ~= 0)
@@ -92,11 +97,13 @@ local THANKS_SECONDS = 5
 local initialized = false
 local dataRef = nil
 local petRef = nil
+local storeRef = nil -- StoreService (Init deps): the grant path of a Store item, Thank, Purchased
 local catalogRef = nil
 local catalogTried = false
+local storeCatalogRef = nil -- shared/StoreCatalog: ProductById over the gem packs and Config.Store.Items
 
 local policy = {} -- [Player] = { State = "Checking"|"Allowed"|"Restricted", Busy, Fails, NextTry, LastTry }
-local pendingThanks = {} -- [Player] = { [receiptKey] = { Gems, ProductId, Done } } granted here, not saved yet
+local pendingThanks = {} -- [Player] = { [receiptKey] = { Item, Granted, ProductId, Done } } granted here, not saved yet
 local promptAt = {} -- [Player] = os.clock() of the last purchase prompt
 local lastCall = {} -- [Player] = { [key] = os.clock() }
 local warned = {} -- [key] = true: one warning per problem per server
@@ -131,6 +138,13 @@ local function getCatalog()
 		catalogRef = requireIn(Shared, "PetCatalog")
 	end
 	return catalogRef
+end
+
+local function getStoreCatalog()
+	if not storeCatalogRef then
+		storeCatalogRef = requireIn(Shared, "StoreCatalog")
+	end
+	return storeCatalogRef
 end
 
 ----------------------------------------------------------------------
@@ -220,14 +234,14 @@ local function copyProduct(p)
 	return { Index = p.Index, ProductId = p.ProductId, Gems = p.Gems, Name = p.Name, Created = p.Created }
 end
 
--- The first CREATED product with that developer product id.
+-- The Store item (a gem pack or a Config.Store.Items product) with that developer product id: StoreCatalog's
+-- ProductById (a disabled entry still resolves: a paid receipt is never eaten). { Key, Kind, Id, Grants, Gem?, Once? }
 local function productById(productId)
-	for _, p in ipairs(readProducts()) do
-		if p.Created and p.ProductId == productId then
-			return p
-		end
+	local sc = getStoreCatalog()
+	if not sc or type(sc.ProductById) ~= "function" then
+		return nil
 	end
-	return nil
+	return sc.ProductById(productId)
 end
 
 -- ref = an index into Config.Gems.Products (1..n) or a created product's id.
@@ -779,19 +793,20 @@ end
 
 -- A purchase granted here waits for its save before the player is thanked (the grant may still be answered
 -- NotProcessedYet). Returns the record the granting call keeps (a retry looks it up by the receipt key).
-local function holdThanks(player, key, gems, productId)
+local function holdThanks(player, key, item, granted, productId)
 	local map = pendingThanks[player]
 	if not map then
 		map = {}
 		pendingThanks[player] = map
 	end
-	local rec = { Gems = gems, ProductId = productId, Done = false }
+	local rec = { Item = item, Granted = granted, ProductId = productId, Done = false }
 	map[key] = rec
 	return rec
 end
 
--- The purchase is granted for good: the thank-you toast and GemsPurchased, once per purchase. `rec` = the record of
--- the call that granted it (nil for a retry, which finds it in pendingThanks; nothing when it was thanked already).
+-- The purchase is granted for good: the thank-you toast, GemsPurchased (gem packs) and StoreService.Purchased, once
+-- per purchase. `rec` = the record of the call that granted it (nil for a retry, which finds it in pendingThanks;
+-- nothing when it was thanked already).
 local function sendThanks(player, key, rec)
 	local map = pendingThanks[player]
 	if map then
@@ -805,8 +820,32 @@ local function sendThanks(player, key, rec)
 		return
 	end
 	rec.Done = true
-	notify(player, "+" .. Util.Commas(rec.Gems) .. " Gems! Thank you for your support!", "good", THANKS_SECONDS)
-	GemService.GemsPurchased:Fire(player, rec.Gems, rec.ProductId, key)
+	local item, granted = rec.Item, rec.Granted
+	if type(item) == "table" and item.Gem then
+		local gems = type(granted) == "table" and granted.Gems or 0
+		notify(player, "+" .. Util.Commas(gems) .. " Gems! Thank you for your support!", "good", THANKS_SECONDS)
+		GemService.GemsPurchased:Fire(player, gems, rec.ProductId, key)
+		if storeRef and type(storeRef.Purchased) == "table" and type(storeRef.Purchased.Fire) == "function" then
+			storeRef.Purchased:Fire(player, item.Key, granted, key)
+		end
+	elseif storeRef and type(storeRef.Thank) == "function" then
+		storeRef.Thank(player, item, granted, key)
+	end
+end
+
+-- The record DataService keeps with the receipt (the twin rule of the merge): the grant table shape without the
+-- Substitute annotation (its Tokens are already counted in Tokens).
+local function recordOf(granted)
+	if type(granted) ~= "table" then
+		return nil
+	end
+	local out = {}
+	for k, v in pairs(granted) do
+		if k ~= "Substitute" then
+			out[k] = v
+		end
+	end
+	return out
 end
 
 function GemService.ProcessReceipt(receiptInfo)
@@ -822,10 +861,10 @@ function GemService.ProcessReceipt(receiptInfo)
 		warnOnce("receipt-shape", "[GemService] a malformed receipt was not granted (Roblox keeps it pending)")
 		return NOT_YET
 	end
-	local product = productById(productId)
-	if not product then
+	local item = productById(productId)
+	if not item or type(item.Grants) ~= "table" then
 		warnOnce("product-" .. tostring(productId), "[GemService] receipt for developer product " .. tostring(productId)
-			.. ", which Config.Gems.Products does not list: not granted (Roblox keeps it pending)")
+			.. ", which neither Config.Gems.Products nor Config.Store.Items lists: not granted (Roblox keeps it pending)")
 		return NOT_YET
 	end
 	local data = getData()
@@ -839,26 +878,46 @@ function GemService.ProcessReceipt(receiptInfo)
 	end
 
 	-- Was it granted before? Only a loaded, non-provisional profile can tell (MarkReceipt answers nil until then).
-	-- The amount travels with the receipt: a purchase another server already saved is never added to the store twice.
-	local marked = data.MarkReceipt(player, key, product.Gems)
+	-- The grant travels with the receipt: a purchase another server already saved is never added to the store twice.
+	local spec = item.Gem and item.Grants.Gems or item.Grants
+	local marked = data.MarkReceipt(player, key, spec)
 	local waited = 0
 	while marked == nil and player.Parent == Players and waited < GemService.ProfileWaitSeconds do
 		task.wait(PROFILE_POLL)
 		waited = waited + PROFILE_POLL
-		marked = data.MarkReceipt(player, key, product.Gems)
+		marked = data.MarkReceipt(player, key, spec)
 	end
 	if marked == nil then
 		return NOT_YET
 	end
 	local thanks = nil
 	if marked == true then
-		-- a new purchase: the gems go in now, in the same step as the receipt (nothing yields in between)
-		if not data.AddGems(player, product.Gems) then
+		-- a new purchase: the grant goes in now, in the same step as the receipt (nothing yields in between)
+		local granted
+		if storeRef and type(storeRef.ApplyGrant) == "function" then
+			local ok, result = storeRef.ApplyGrant(player, item, key)
+			if not ok then
+				unmarkReceipt(data, player, key)
+				warnOnce("receipt-grant", "[GemService] could not grant a purchase (" .. tostring(result) .. "): it stays pending")
+				return NOT_YET
+			end
+			granted = result
+			if type(data.NoteReceiptGrant) == "function" then
+				data.NoteReceiptGrant(player, key, recordOf(granted)) -- what was REALLY granted (substitutes)
+			end
+		elseif item.Gem then
+			if not data.AddGems(player, item.Grants.Gems) then
+				unmarkReceipt(data, player, key)
+				warnOnce("receipt-grant", "[GemService] could not add the Gems of a purchase: it stays pending")
+				return NOT_YET
+			end
+			granted = { Gems = item.Grants.Gems }
+		else
 			unmarkReceipt(data, player, key)
-			warnOnce("receipt-grant", "[GemService] could not add the Gems of a purchase: it stays pending")
+			warnOnce("receipt-store", "[GemService] StoreService is missing: Store items stay pending (gem packs are still granted)")
 			return NOT_YET
 		end
-		thanks = holdThanks(player, key, product.Gems, productId)
+		thanks = holdThanks(player, key, item, granted, productId)
 	end
 	-- Durable before Roblox hears "done": the save carries the receipt and the gems together (a duplicate call saves
 	-- too: an earlier save of this purchase may have failed). The player is thanked once it is granted for good.
@@ -980,12 +1039,18 @@ function GemService.Init(deps)
 		if type(deps.PetService) == "table" then
 			petRef = deps.PetService -- PetService pulls prices / the policy from here; kept for later callers
 		end
+		if type(deps.StoreService) == "table" then
+			storeRef = deps.StoreService
+		end
 	end
 	if initialized then
 		return
 	end
 	initialized = true
 	getCatalog()
+	if not getStoreCatalog() then
+		warn("[GemService] shared/StoreCatalog is missing: no receipt can be looked up (purchases stay pending)")
+	end
 	local okCheck, errCheck = pcall(checkConfig)
 	if not okCheck then
 		warn("[GemService] config check failed: " .. tostring(errCheck))

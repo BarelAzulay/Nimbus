@@ -1411,6 +1411,7 @@ end
 function Dg.payRoom(run, room, result)
 	local BC = catalog()
 	local DS, PC, TS, BS = St.deps.DataService, St.deps.PetCareService, St.deps.TycoonService, St.deps.BattleService
+	local mult = St.deps.Multipliers -- store: x2 Cash with the pass (Init deps only); Tokens and XP are not its business
 	if not BC then
 		return
 	end
@@ -1428,6 +1429,7 @@ function Dg.payRoom(run, room, result)
 			if okR and type(rewards) == "table" then
 				local loot = lootOf(run, uid)
 				local cash, tokens, xp = floor(num(rewards.Cash, 0)), floor(num(rewards.Tokens, 0)), floor(num(rewards.Xp, 0))
+				cash = mult and mult.Cash(m.Player, cash, "Dungeon") or cash
 				if cash > 0 then
 					try(DS, "AddCash", m.Player, cash)
 				end
@@ -1762,6 +1764,7 @@ function Dg.openChest(run, m, slot, auto)
 	Dg.markChest(run, slot, m)
 	local BC = catalog()
 	local DS, TS = St.deps.DataService, St.deps.TycoonService
+	local mult = St.deps.Multipliers -- store: x2 Cash with the pass on a Cash chest only
 	if not BC then
 		return false
 	end
@@ -1774,6 +1777,7 @@ function Dg.openChest(run, m, slot, auto)
 	if chest.Kind == "Cash" then
 		local income = try(TS, "IncomePerSecond", m.Player) or 0
 		amount = max(amount, floor(income * num(chest.Seconds, 30)))
+		amount = mult and mult.Cash(m.Player, amount, "Chest") or amount
 		if amount > 0 then
 			try(DS, "AddCash", m.Player, amount)
 		end
