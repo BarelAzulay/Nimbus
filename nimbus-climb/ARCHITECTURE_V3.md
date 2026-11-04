@@ -515,6 +515,8 @@ parents; names blended ("Pengnix"). The window opens with E at the machine. The 
 the Creator Hub and pastes the ids), idempotent `MarketplaceService.ProcessReceipt` (GemReceipts), `PolicyService`
 paid-random-items check (hide gem-priced roulettes where restricted), roulettes with `GemPrice`, and the gems-only
 **Secret roulette** at the Storm Altar (its prompt opens the shop on that roulette; `AllowSecret = true`). Odds always shown.
+(The store round, 2026-11-04: `ProcessReceipt` stays in GemService and routes every receipt through
+`StoreCatalog.ProductById -> StoreService.ApplyGrant`, the gem packs included; see "The Store round" at the end.)
 
 **UI (ui).** Menu tile "My Spot" becomes "Home": the Home window (stations with levels and Upgrade buttons, income per
 second, Collector cash, house tier, prestige progress, "Go home"); the Pets panel gets "Feed", "Place in Garden",
@@ -2549,7 +2551,9 @@ right edge; NPC dialog moves to the side on phones; the results card = one compa
 `ArenaController`, `FusionController`, `DungeonController`, `ObbyController`, `BattleController` use `NeonKit.Dock` / NeonKit cards (their owners).
 
 **HUD layout (bug batch 2 #1, option A "Split & shift"; replaces the 2x3 grid and the bottom-left pills above).**
-`MenuController`: ONE column `MenuColumn` of 8 tiles (Pets, Items, Team, Index, Shop, Home, Stats, gear; 66 design px, 56 px at 1080p,
+`MenuController`: ONE column `MenuColumn` of 8 tiles (Pets, Items, Team, Index, Shop, Home, Stats, gear (HUD cleanup: Shop moved into the
+top-left pill; the store round (2026-11-04): the pill's Shop opens the Robux Store window `Store`, the Cloud Shop stays reachable from its
+Roulettes tab); 66 design px, 56 px at 1080p,
 50 px on touch, >= 44 px), left edge, vertically centred; phones wrap it into the fewest columns (2, or 3 on 740x360-class) that fit
 above the thumbstick, never into the screen middle. The arrow tab `MenuColumn.Toggle` sits right after the last tile (the gear) and
 folds the column (0.25 s slide, only the tab at x 0; `MenuCollapsed` on NimbusMenu, `MenuController.SetColumnCollapsed(c, animate)` /
@@ -2674,6 +2678,10 @@ contract section 4: a Phase 4 server rebuilds `Battle`, `Teams`, `Tutorial`, `Pe
 | `Battle.TrialBest / TrialCleared` | kept in saves, sanitised by `P3.cleanBattle`, never written again; read by the migration and the tutorial | | unchanged | | zeroed as today |
 | `Food` | converted into berries ONCE by the P5Home step (Snack 200 / Meal 1200 / Feast 6400 each, `Berries.LegacyFood`) and zeroed; never written again (m16) | | delta | | |
 | `Stats.BestTimes` | unchanged; read by `ObbyLevels` | | | | |
+| `Store` (NEW top; the store round 2026-11-04) | `{ Bought = {[key]=unix}, Passes = {[key]=unix}, Boosts = {[id]=endsUnix} }` | `{}` | Bought/Passes union; Boosts max per id MINUS the session's own seconds for a receipt the store already holds (twin rule, before the max); `P7.cleanStore` | `MarkBought`/`AddBoost` refused (`MarkReceipt` nil -> NotProcessedYet); `MarkPassSeen` allowed | kept (Robux) |
+| `Daily` (NEW top; the store round) | `{ Streak, Paid, LastClaimAt, Weeks, Pet, PlayStart, PlaySec, PlayClaimed }` (Unix s clocks, 0 never; PlayClaimed = `{[tier]=true}`, stored as a dense boolean array like TrialCleared: check.mjs forbids bitwise operators) | all zero | the pair (LastClaimAt, Streak) travels together; twin rule: a session claim (`DailyClaims`) less than `ReadySeconds` after the STORED LastClaimAt was paid elsewhere: the stored pair stays and `P7.dropGrant` takes its grant off the deltas; else the higher LastClaimAt wins the pair and the grant stays (a day-old session may undercount Streak by one: accepted); Paid/Weeks max; Pet monotone; the higher PlayStart wins the whole Play group; at equal PlayStart PlaySec +delta, PlayClaimed union, a play claim whose (PlayStart, tier) the store holds drops its grant; a stand-in delta (`opts.StandIn`) never touches the Play group; `P7.cleanDaily` | `Claim`/`ClaimPlay` refused; no tick | wiped |
+| `Trove` (NEW top; the store round) | `{ [askId] = true }` | `{}` | union; twin rule: an ask the store already holds drops the session's grant from the deltas | refused | wiped |
+| cache annotation `ReceiptGrants` (replaces `ReceiptGems`, never stored) | `{[purchaseId] = grant}`; a number still means `{ Gems = n }` | | a receipt the store ALREADY holds: `P7.dropGrant(d, grant)` (Cash/Tokens/Gems/Berries off the deltas, pet counts off `d.Pets` clamped at 0, potion seconds before the max); the same helper serves `DailyClaims` and the Trove | | |
 API: `GetDungeon(player)`, `MutateDungeon(player, fn) -> ok, first` (non-yielding; Best never down; Cleared only grows; `first` = this call set a
 new `Cleared[f]`), `GetBerries`, `AddBerries(player, n) -> ok`, `SpendBerries(player, n) -> ok` (check-then-subtract in one step), `GetSettings`,
 `SetSetting`, `IsMigrated / MarkMigrated` (exist). State: `State.Dungeon()`, `State.Berries()`, `State.Settings()` + `SettingsChanged`,
@@ -2785,7 +2793,7 @@ Fixture tests: the lead freezes `tools/fixtures/DataService_phase4.lua` and `too
 | Lua locals (200) | baselines by `tools/count_locals.py` (column-0 `local` statements; the earlier numbers came from another count, m4): MenuController 181 (+2 max; new code in helper tables), ArenaBuilder 182 (+0: gate and art code in `Gates` / `Art` helper tables), BattleService 136 (`Enc`, `Cmd`, `Run` tables), HomeFx 141 (+2, `R`), DataService 158 + 1 (`P5`), TycoonService 128 + 2 (`Coins` grows), HudController 153 + 2, LobbyBuilder 142 (`Court`, `Gates`), PetController 105 + 1 (`F5`), PlayerService + 2, new files <= 120 | every engineer re-runs `python3 tools/count_locals.py <file>` before handing in; the W0 gate prints the table |
 | DataStore | + <= ~0.3 KB per profile (Dungeon, Berries, Settings, Home keys) | additive |
 
-#### 10.4 Exploits closed (new ones; X1-X24 of Phase 4 hold)
+#### 10.4 Exploits closed (new ones; X1-X24 of Phase 4 hold; Z1-Z14: the store round, 2026-11-04)
 | # | Attempt | Closed by |
 |---|---|---|
 | Y1 | Forge damage / hit from the client | the client sends only actions; reach, cooldowns, meter, lives and damage are decided by `BattleSim` on the server fighter position |
@@ -2801,6 +2809,20 @@ Fixture tests: the lead freezes `tools/fixtures/DataService_phase4.lua` and `too
 | Y11 | Junk settings | key whitelist, ranges, types; `SeenNotes` only up |
 | Y12 | Use a gate prompt from afar / in a match / in a battle | distance, `InMatch`, `InBattle`, `IsLocked` checks + 1.5 s cooldown in GateService |
 | Y13 | Never send `MenuPlay` / disable the menu to hide in the plaza | the server spawns the character on `MenuPlay` or after `FallbackSeconds 90` whatever the client does; the tutorial is event-driven; a client without the menu only sees the plaza from a camera until its character exists |
+| Z1 | Grant from a remote | `StoreRequest` only PROMPTS; grants come from `ProcessReceipt` or a server-decided claim |
+| Z2 | Replay a receipt (retry, rejoin, two servers) | `GemReceipts` key + the `ReceiptGrants` twin rule: one purchase id, one grant |
+| Z3 | Spoof a pass | the server reads only its own cache from the two engine APIs; attributes are written, never read |
+| Z4 | Forge a potion end/clock | server `os.time()`; only `ApplyGrant` and DevService write `Store.Boosts` |
+| Z5 | Double a refund or the tutorial gift | the hook sits at the five earning sites, never inside `AddCash`/`AddPetXp` |
+| Z6 | A once-pack twice across servers | `Bought` union + the receipt grant subtraction; a bought item is never prompted |
+| Z7 | A client prompts a bought Once pack; a receipt on a full stack or potion bank | granted again with a warn; the 5.4 substitutes: Robux is never eaten, a paid receipt never pends for a cap |
+| Z8 | Claim the daily early/twice/on two servers; a future clock | `ReadySeconds` on server time; a second request finds `LastClaimAt = now`; the section 6 merge; `FutureClockSlack` clamps |
+| Z9 | Farm play time idle, app-cycle, forge ticks; a tier twice/on two servers | server-side movement/remote sampling, 10 h cap, per-day on the server clock; tier flag + grant in one step; the section 6 merge |
+| Z10 | Trove: forged prompt from afar, in a match, no join, cache poisoned on join | distance + `InMatch`/`InBattle` + cooldown; `IsInGroupAsync` only inside Joined, once per visit; a set ask refuses silently |
+| Z11 | Trove twice across servers | union + twin rule; a failed save keeps grant and bit for the orphan retry |
+| Z12 | Junk on the five new remotes; buy in a match or an Id 0 item | type/NaN/whole/whitelist checks, 1 req/s + the burst pattern; `StoreRequest` refused `InMatch` (a late receipt is still granted) and on Id 0, preview or not |
+| Z13 | A one-time grant from a provisional profile | refused everywhere; `MarkReceipt` nil -> NotProcessedYet, Roblox retries |
+| Z14 | A purchase lost on a failed save/leave | the grant sits in the live profile, the orphan retry saves it, PurchaseGranted only after a save |
 
 #### 10.5 What is deleted (index; the areas' lists are the detail): BattleCatalog / BattleSim / BattleService / BattleController Trial + RETREAT
 machinery (4.2-4.4, 4.7); `ArenaBuilder` `Portal_Trials`, `buildTrialPortal` (-> `buildGatePortal` using `WorldStyle.BuildGate`), `TrialPrompt`,
@@ -3146,3 +3168,58 @@ These rulings amend sections 4 and 5 of Phase 5 (they win over the older text th
 * **Healing (4.x):** no passive heal in combat (`BenchRegenPerSecond` / `BenchRegenCap` 0, code removed; wave gaps count). A player's
   Heal special heals the fighter AND both benched pets; the Heal helper buff heals the fighter and the other benched pet.
   Raid retune: `BossRules.DamageGroup.Min` 0.55 -> 0.35, lava_golem `LingerDamage` 0.03 -> 0.015.
+
+## The Store round (2026-11-04; branch `shop`; spec `docs/superpowers/specs/2026-11-04-shop-retention-design.md`, plan `docs/superpowers/plans/2026-11-04-store.md`)
+
+One money path: a full-size Robux Store window, a 7-day streak and per-day play-time gifts behind one Gifts button, the Sky Trove chest in
+the lobby (one verified group join, once per account), and one `Multipliers` module at the five earning sites. Every grant is decided on
+the server and idempotent across retries, rejoins and two servers (Z1-Z14 in 10.4; the fields `Store`, `Daily`, `Trove` and the
+`ReceiptGrants` annotation in 9.1). The spec's section 13b (Gemini's check of the pitch) overrides its earlier text: no Cash packs on sale
+(the three entries stay with `Enabled = false`), a Week Wisp every kept week (`Else = { Gems = 40 }` only on a full stack), resolved amounts
+on the client, the paused play clock (`DailyState.Play.Active`, the spec's `PlayActive`), the Trove's two rows and its rejoin wording.
+
+Modules:
+- `shared/StoreCatalog.lua` (pure): `List()`, `Item(key)`, `ProductById(id)` (over `Config.Store.Items` AND `Config.Gems.Products`; a
+  disabled entry still resolves so a paid receipt is never eaten), `PassById(id)`, `Created(item)`, `Perk(name)`, `GrantLines(grants)`
+  (the literal "Gets you:" lines), `Validate()`.
+- `server/Services/StoreService.lua`: `Init({ DataService, PetService, DevService? })`, `ApplyGrant(player, item, purchaseId) -> ok,
+  granted` (non-yielding, CHECK then WRITE; the only false is "not loaded or provisional"; a full stack pays the rarity's Index Tokens, a
+  potion extends past the 7-day cap), `Thank`, `PromptPurchase(player, key)`, `Owns(player, key)` (this server's cache only),
+  `PassState`, `IsPreview`, `BoostEnds`, `Refresh`, signals `Purchased` (once, after the save that lands) and `Changed`. Passes: on join
+  one `pcall(UserOwnsGamePassAsync)` per pass with Id > 0, retried 5 / 15 / 45 / 120 s then every 300 s, fail closed
+  (`Config.Store.TrustLedgerAfter = 0`); `PromptGamePassPurchaseFinished(..., true)` marks Owned at once.
+- `server/Services/Multipliers.lua`: `Init({ StoreService, DataService })`, `Cash(player, amount, source)`, `PetXp(player, xp, source)`
+  (`max(pass, potion)`, never x4; x1.5 `ProXp` on PvE sources only), `State(player)`, `Refresh(player)` (writes the three attributes).
+- `server/Services/DailyService.lua`: the streak (ready 20 h after the last claim on the server clock, kept within 48 h, a step back per
+  missed day, re-earned never re-paid by `Paid`, VIP x2 on the Cash / Tokens cells and no step-back) and the play-time tiers (a 10 s tick
+  that counts only on movement or a recent `Play.ActiveRemotes` remote, 10 h cap, a rolling 20 h play-day whose unclaimed tiers are
+  lost); every claim and its grant in one `DataService.MutateDaily` step.
+- `server/Services/TroveService.lua`: `Init(lobbyInfo, { DataService })`, `Open`, `Joined`, `State`, signal `Claimed`; the chest replaces the
+  boarded-up stall (`LobbyInfo.Shop.ItemShop` points at it); `Player:IsInGroupAsync` only inside Joined, at most once per server visit;
+  the grant ($2,000 Cash + 200 Tokens, raw, never through Multipliers) and the ask bit in one save (`MarkTrove`).
+- `DataService` helper table `P7` (beside `P6`, the one new column-0 local): `MarkReceipt(player, id, grant)`, `NoteReceiptGrant`,
+  `MarkBought`, `GetStore`, `MarkPassSeen`, `AddBoost`, `GetDaily`, `MutateDaily(player, fn, grant)`, `GetTrove`, `MarkTrove(player,
+  askId, grant)`; DevService `/reset` wipes `Daily` and `Trove`, keeps `Store`. `PetCatalog.ExclusiveTo` / `IsExclusive` (Week Wisp
+  `Daily`, Crown Phoenix `Store`: in no roulette, event list or Index group) and `PetService.GrantPet(player, petId, { Count, Level })`.
+- Client controllers (registered `OPTIONAL` in `Main.client.lua`): `StoreController` (`NimbusStore`, DisplayOrder 19, window id `Store`,
+  tabs Packs / Passes / Boosts / Currency / Roulettes, opened by the pill's `PillButton_Shop` and MenuController's `OpenPanel("Store")`
+  branch), `DailyController` (the Gifts button, pip and window `Daily`, `NimbusDaily`), `BoostBadgeController` (the x2 chips under the
+  strips), `VipController` (the `[VIP]` chat prefix through `TextChatService.OnIncomingMessage`, the lobby crown billboard),
+  `TroveController` (`NimbusTrove`, DisplayOrder 18, docked right, the lid and coins on High). Store, Gifts, Trove and Pets never overlap
+  (`MenuController.WindowOpened`).
+
+The five remotes: `StoreRequest` ("Buy", key: prompts only), `DailyRequest` ("Claim" / "ClaimPlay", tier), `DailyState` (server ->
+client, resolved amounts, `Play.Active`), `TroveRequest` ("Joined"), `TroveState` (server -> client). No `StoreState`: the client reads
+the attributes and `OpenPanel`.
+
+The four attributes (on the Player, server written, never read back by the server, Z3): `OwnedPasses` (csv of pass keys), `StoreBought`
+(csv of bought Once keys), `XpBoostEnds` (unix, 0 none), `StorePreview` (bool).
+
+The five hook sites (`Multipliers` reached through `Init` deps only): TycoonService's scoop (bank, piles and berries stay base),
+BattleService's Ring Cash, DungeonService's room Cash and chest Cash, PetCareService's internal `grantXp` (covers `GrantXp` and the Food
+Machine). Not multiplied: the tutorial's gifts, refunds, BattleService's fallback, prestige Gems, Double Rewards, the Trove.
+
+The Studio preview rule: StoreService writes `StorePreview = true` at the join when `RunService:IsStudio()` or
+`DevService.IsAllowed(player)`; with it every Id 0 item (and the GroupId 0 Trove row) renders with an inert PREVIEW button; the server
+still refuses `Buy` on Id 0, preview or not. `ProcessReceipt` is set in GemService only; the word Discord appears nowhere under `src/`
+(`trove_no_discord`).

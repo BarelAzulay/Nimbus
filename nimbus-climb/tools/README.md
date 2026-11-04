@@ -18,6 +18,13 @@ Check it with `py -3.12 -c "import lupa, numpy, PIL; print('ok')"`, and run the 
 --quick` wherever this file says `python3`. If `py` is not found right after the install, open a new terminal (or
 call `%LOCALAPPDATA%\Programs\Python\Launcher\py.exe` directly).
 
+`bash tools/run_checks.sh` (with the shim that puts a real `python3` first on PATH) runs, after the smoke test, the
+step **Balance matrix** (the store round, 2026-11-04; spec `docs/superpowers/specs/2026-11-04-shop-retention-design.md`
+section 10): six `sim_tycoon.py --quiet` knob sets, each of which must print `ALL TARGETS MET` (free `--daily --grant
+2000@3,200`; `--daily --vip`; `--cash-mult 2`; `--xp-mult 2`; `--cash-mult 2 --xp-mult 2`; the worst case `--cash-mult 2
+--xp-mult 3 --dungeon 0.1 --daily --grant 2000@3,200`), and `SIM_BATTLE="quick xpmult=2"`, which must print no `  MISS`
+line; one record per line. It is skipped with `--static` and with `--only`.
+
 ## Model picker: which model and effort for this job?
 
 `pick_model.py` (Python 3 only, no other packages) holds the table of
@@ -71,6 +78,9 @@ python3 tools/sim_tycoon.py --mode combat            # the timeline player only 
 python3 tools/sim_tycoon.py --check                  # catalog == sim: tables, pads, income, berries, the fold (lupa)
 python3 tools/sim_tycoon.py --migrate5               # 300 Phase 4 homes on their first Phase 5 load (the fold)
 python3 tools/sim_tycoon.py --plan yard.png          # the yard from above: stations, pads, the garden (lupa + Pillow)
+python3 tools/sim_tycoon.py --quiet --daily --grant 2000@3,200   # a free player: the daily gifts + the Sky Trove at minute 3
+python3 tools/sim_tycoon.py --quiet --cash-mult 2 --xp-mult 2    # both x2 passes
+python3 tools/sim_tycoon.py --quiet --cash-mult 2 --xp-mult 3 --dungeon 0.1 --daily --grant 2000@3,200   # the worst case
 ```
 
 * `--ring R`: Champion Ring Cash as a share of garden income (0 by default). `--dungeon N`: Dungeon runs per minute
@@ -86,6 +96,15 @@ python3 tools/sim_tycoon.py --plan yard.png          # the yard from above: stat
   (18 stations) at random moments, folds them with the Phase 5 rules (plants -> Berry Farm with the food floor, the
   Coin Magnet -> LegacyMagnet, old decor -> DecorCredit) and gates on: Home Level never down, no dead end, and a median
   time-to-the-next-pad ratio <= 1.0 in every house tier / star bucket. (The Phase 3 `--migrate` is gone.)
+* The store round (2026-11-04) knobs: `--cash-mult M` (float, default 1: scales ONLY the wallet credit at the scoop and
+  the Ring / Dungeon Cash, the x2 Cash pass), `--xp-mult M` (float, default 1: the feed XP, the x2 Pet XP pass or a
+  potion; battle XP is `sim_battle.lua`'s `xpmult=N`), `--daily` (pays the `Config.Daily` ladders on the sim clock: the
+  streak cell at minute 0, the play tiers at 10 .. 180 minutes), `--vip` (doubles the Cash / Tokens streak cells of
+  `--daily`) and `--grant CASH@MIN,TOKENS` (a one-time grant, repeatable; the Sky Trove is `2000@3,200`, its Tokens
+  spent as Cloud spins; a malformed value exits 2). `main` reads them only on a plain or `--quiet` run (`--check`
+  returns before them). The pacing targets stay fixed; the four speed targets use the paid band `TARGETS_PAID(m)` with
+  m = max(cash-mult, xp-mult, 1): Villa (25 / m, 40) min, first prestige (120 / m, 180), first EVOLVE (40 / m, 100),
+  prestige Gems per hour up to 135 x m.
 * Exit status 1 when a target is missed (or `--check` / `--migrate5` finds a problem).
 
 ## Battle balance simulation (Phase 5)
@@ -102,7 +121,9 @@ SIM_BATTLE="quick only=duels,raids" python3 -c "import lupa.luajit21 as L; L.Lua
 ```
 
 * `SIM_BATTLE` options: `quick` (fewer seeds, ~20 s per section) or `full` (the default), `seeds=N`, `only=a,b`,
-  `verbose` (section timings). The sections:
+  `xpmult=N` (the store round: the x2 Pet XP pass / potion; every XP the progression pays through `addXp` is
+  multiplied; the balance matrix runs `SIM_BATTLE="quick xpmult=2"` and expects no `  MISS` line), `verbose` (section
+  timings). The sections:
 
   | Section | What it measures (targets) |
   |---|---|
@@ -341,6 +362,12 @@ The Phase 4 files (still run, updated for Phase 5 where 12.2 says so):
 | `smoke_p4_flow.lua` | end-to-end runs of several players through the home: garden, coins, Food Machine, EVOLVE, training, the ring, the portal, prestige, rejoin |
 | `smoke_afx_reach.lua`, `smoke_afx_impact.lua`, `smoke_afx_linger.lua` | attack effects (spec 2026-11-01): real reach x1.15 / x1.3 on the server and drawn as it hits, the frozen ability timers, the docs (`afx_docs`); sizes, the impact package and its caps (who yields to the 6-emitter cap, the rings' 14 / 16 studs inside the real radius, the lights' effective caps); the lingering tails, their budget, the disc pool in a sustained fight, the camera kick, the FOV punch's list and the zone tail |
 | `smoke_evo_sim.lua`, `smoke_evo_elements.lua`, `smoke_evo_rarity.lua`, `smoke_evo_looks.lua`, `smoke_evo_buttons.lua`, `smoke_evo_retreat.lua` | evolved forms, Switch Target and Retreat (spec 2026-11-01, plan 2026-11-02): every special's forms in the sim (`BattleCatalog.Forms` / `FormNames`, the frozen stage-0 replay `evo_stage0_pinned`, the charge line, the delayed-hit queue, per-unit slow / mark, the boss bonus hit, the `Twist` wire); every element's forms and a ranged pet's Circle on its aim point; Candy Unicorn Legendary, Magma Cub and Hydralotl Mythic with `StatRarity` (stats, odds, index, saves); the looks (form recipes, the wolf pack on the real charge line, cooler beams, auras that end with the buff, budgets, phones); F / X = Switch Target, the biggest Special button, names on buttons, keys and gamepad; Retreat end to end (the sim, the service and its leash grace, the no-free-pet pay rule, the HUD button on every screen, the docs `evo_docs`) |
+| `smoke_store.lua` | the Robux Store (spec 2026-11-04, plan `2026-11-04-store.md`), server half: the mock doubles (`store_doubles`), `Config.Store` (`store_config`), the exclusive pets in no pool (`store_exclusive`), `StoreCatalog` (`store_catalog`), `PetService.GrantPet`, the receipt router (`store_router`: once, retries, rejoin, provisional, a failed save, the full-stack Tokens and the potion past its cap), the passes with retries and fail-closed, the multipliers at the five earning sites (`store_mult`), `StoreRequest`'s refusals |
+| `smoke_store_ui.lua` | StoreController (client): the pill opens the Store, the Cloud Shop keeps its entries and the Robux Store button, the tabs, the hero, the five card states, prices in the background, PREVIEW under `StorePreview`, no tweens on Low, the phone and 1080p sizes, `NeonKit.BigRect` |
+| `smoke_p7_data.lua` | DataService `P7`: the `Store` / `Daily` / `Trove` fields and their cross-server merges (the receipt, daily and Trove twin rules, the Play group), the provisional refusals, `/reset` (wipes Daily and Trove, keeps Store) |
+| `smoke_trove.lua` | the Sky Trove: the chest model in the old stall's place, one `IsInGroupAsync` per visit and only inside Joined, the grant once per account, a false answer then a rejoin, provisional, two servers, no Discord under `src/` (`trove_no_discord`), the exploits, the docked panel on both sizes |
+| `smoke_daily.lua` | DailyService: the 20 h / 48 h streak, the week and its Week Wisp, step-backs re-earned never re-paid, the future clock, two servers, rejoin, idle and the play-day, the remote's refusals, VIP, a quiet join |
+| `smoke_daily_ui.lua` | DailyController (the Gifts button, pip, ring and window), BoostBadgeController (the x2 chips), VipController (the chat tag, the lobby crown) |
 
 ### Mesh mode: `--mesh` (Phase 6)
 

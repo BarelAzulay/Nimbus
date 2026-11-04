@@ -273,9 +273,9 @@ or the VS Code "Rojo" extension are the easy ways to get it).
 - **After publishing an update, move the live servers to it.** Once people play the game, every time you publish
   a new version use **Migrate to Latest Update** on the Creator Hub (the steps are in
   [Publishing an update](#publishing-an-update-owner)).
-- **Gem packs need Developer Products.** Until you create them (see
-  [Selling Gems](#selling-gems-the-owners-setup)), the Shop's Gems tab says the packs open soon. Everything else
-  works without them: players still earn Gems by prestiging.
+- **The Store needs Developer Products and passes.** Until you create them (see
+  [The Store: the owner's setup](#the-store-the-owners-setup)), the Store's items stay hidden and the window says
+  "The Store opens soon!". Everything else works without them: players still earn Gems by prestiging.
 - Leave *StreamingEnabled* off. Everything else (sky, lighting, gravity, the village) is created by the scripts,
   so an empty baseplate is all you need. To test parties and duels use Test -> Clients and Servers with 2-4
   players (see [Testing battles in Studio](#testing-battles-in-studio-owner)).
@@ -785,8 +785,9 @@ pad.
 ### Gems and the Secret Roulette
 
 **Gems** are the premium currency (shown on the HUD next to your tokens and Cash). You get them from every
-**Prestige** and by buying **Gem packs** with Robux in the Shop's **Gems** tab (once the owner has created them,
-see below). You spend them on:
+**Prestige**, from the daily gifts and by buying **Gem packs** with Robux in the **Store**'s **Currency** tab (the
+pill's **Shop**; the Cloud Shop's Gems tab has a **Robux Store** button that leads there; once the owner has created
+them, see below). You spend them on:
 
 - **Roulette spins**, a cheaper premium way to roll, with the same odds as with tokens: Cloud 5, Storm 20,
   Sky 75 and Celestial 300 Gems a spin.
@@ -800,43 +801,119 @@ The odds of every roulette are always one tap away (the odds list). Where Roblox
 for an account, the gem-priced roulettes and the Secret Roulette are hidden for that player and the altar says
 it is not available on their account; Gem packs and everything else still work.
 
-### Selling Gems: the owner's setup
+### The Store: the owner's setup
 
-The four Gem packs are **Developer Products**: one-time Robux purchases that you, the owner, create on the
-Creator Hub. Until a pack has a real id it stays hidden (id `0` means "not created yet"), and with no pack
-created the Gems tab says "Gem packs open soon!".
+Every Robux item of the Store is a **Developer Product** (bought as often as a player likes; the Starter Pack and the
+Pro Pack once per account) or a **Pass** (bought once, kept forever) that you, the owner, create on the Creator Hub.
+Until an item has a real id it stays hidden (id `0` means "not created yet"), and with nothing created the Store
+says "The Store opens soon!".
 
-1. **Publish the game first** (File -> Publish to Roblox): developer products belong to a published experience.
-2. Open the **Creator Hub** (create.roblox.com) -> **Creations** -> your experience -> **Monetization** ->
-   **Developer Products**, and create a product for each pack: a name (for example "Pouch of Gems"), a
-   description, an icon if you like, and the **price in Robux** you want to charge.
-3. Copy each product's **ID** from the Developer Products list.
-4. Paste the ids into `Config.Gems.Products` in `src/shared/Config.lua`, one per pack. `Gems` is how many Gems the
-   game grants for that product (the Robux price is only set on the Creator Hub), `Name` is what the Shop shows:
+1. **Publish the game first** (File -> Publish to Roblox): passes and developer products belong to a published
+   experience.
+2. Open the **Creator Hub** (create.roblox.com) -> **Creations** -> your experience -> **Monetization**. Under
+   **Passes** create VIP, x2 Cash and x2 Pet XP; under **Developer Products** create the Starter Pack, the Pro Pack,
+   the two XP potions, the three Token packs and the four Gem packs (a name, a description, an icon if you like and
+   the **price in Robux**). The suggested prices are `Robux` in `Config.Store.Items` (only a suggestion for you and
+   the economy sims: the game never shows it; the price you set on the Creator Hub is what players pay):
 
-   ```lua
-   Config.Gems = {
-       Products = {
-           { Id = 1234567890, Gems = 100, Name = "Pouch of Gems" },  -- your real product ids here
-           { Id = 1234567891, Gems = 550, Name = "Bag of Gems" },
-           { Id = 1234567892, Gems = 1200, Name = "Chest of Gems" },
-           { Id = 1234567893, Gems = 6500, Name = "Vault of Gems" },
-       },
-       -- (the rest of Config.Gems stays as it is)
-   ```
+   | Key | Name | Kind | Suggested R$ | Gets you |
+   |---|---|---|---|---|
+   | `Starter` | Starter Pack | Product, once per account | 99 | 1x Storm Tabby (Lv 5), $1,000 Cash, 1 h x2 Pet XP |
+   | `Pro` | Pro Pack | Product, once per account | 799 | 1x Crown Phoenix (Lv 10), 5,000 Cloud Tokens, x1.5 Pet XP in Dungeons and raids forever |
+   | `VIP` | VIP | Pass | 399 | x2 Cash and Tokens on the daily streak gifts, a streak that never steps back, `[VIP]` in chat, the lobby crown |
+   | `Cash2x` | x2 Cash | Pass | 399 | x2 Cash forever (scooping, the Champion Ring, the Dungeon) |
+   | `PetXp2x` | x2 Pet XP | Pass | 450 | x2 Pet XP forever |
+   | `XpPotion1` | XP Potion (1 h) | Product | 49 | 1 h x2 Pet XP |
+   | `XpPotion3` | XP Potion (3 h) | Product | 99 | 3 h x2 Pet XP |
+   | `Tokens1` | 500 Cloud Tokens | Product | 49 | 500 Cloud Tokens |
+   | `Tokens2` | 2,500 Cloud Tokens | Product | 149 | 2,500 Cloud Tokens |
+   | `Tokens3` | 10,000 Cloud Tokens | Product | 399 | 10,000 Cloud Tokens |
+   | Gem packs | Pouch / Bag / Chest / Vault of Gems | Product | your price | 100 / 550 / 1,200 / 6,500 Gems |
 
-5. Rebuild the place file (or let Rojo sync it into Studio), publish, then use **Migrate to Latest Update** so every
+3. Copy each item's **ID** (the Passes list and the Developer Products list show it) and paste it into
+   `src/shared/Config.lua`: a pass or a Store product into the `Id` of its entry in `Config.Store.Items` (found by
+   its `Key`), a Gem pack into `Config.Gems.Products` (see [Selling Gems](#selling-gems-the-gem-pack-ids) below).
+4. **The group (the Sky Trove):** create a group (a community) on the Creator Hub, set it to **open join** (anyone can
+   join at once; with manual approval a player only gets "Your request is waiting for the group. Come back later!"),
+   and paste its id into `Config.Trove.GroupId`. Until then the Trove's group row says "Coming soon".
+5. **Studio preview:** in Studio, and for the developer role (`Config.Dev`) on a live server, every Id `0` item and the
+   GroupId `0` Trove render with **PREVIEW** buttons that do nothing, so you can look at the whole Store before
+   creating anything. Players never see an item without an id, and the server refuses to sell one either way.
+6. Rebuild the place file (or let Rojo sync it into Studio), publish, then use **Migrate to Latest Update** so every
    server runs the new ids (see [Publishing an update](#publishing-an-update-owner)).
 
-Good to know: use each product id for one pack only, and keep the products you sold alive on the Creator Hub.
-Every purchase is granted **exactly once**: the purchase id is saved with the Gems in the player's save before
+Good to know: use each id for one item only, and keep the products and passes you sold alive on the Creator Hub.
+Every purchase is granted **exactly once**: the purchase id is saved with what it granted in the player's save before
 Roblox is told it went through, so a retried or repeated receipt (even after the player rejoined another server)
-never pays twice, and a purchase whose save failed stays pending until Roblox asks again. Saving must work for
-that (a published place, see [Place settings](#how-to-open-the-game)). In Studio, test purchases cost nothing and
-grant the Gems right away. The gem prices of the roulettes (`Config.Gems.RouletteGemPrices`) and the Secret
-Roulette's price and odds (`Config.Gems.SecretRoulette`) are in the same table. The game sets
-`MarketplaceService.ProcessReceipt` in one place only (`GemService`): Roblox allows one per game, so do not add
-another one.
+never pays twice, and a purchase whose save failed stays pending until Roblox asks again. Saving must work for that (a
+published place, see [Place settings](#how-to-open-the-game)). A bought pet whose stack is full (99) pays its
+rarity's Index Tokens instead (Storm Tabby 300, Crown Phoenix 2,000), and XP potions stack in time (two 1 h potions =
+2 h; the card only dims past 7 days): a paid purchase is never lost. Cash packs exist in `Config.Store.Items` (`Cash1`
+to `Cash3`) but are off (`Enabled = false`) because Cash resets on Prestige. In Studio, test purchases cost nothing
+and grant right away. The game sets `MarketplaceService.ProcessReceipt` in one place only (`GemService`): Roblox
+allows one per game, so do not add another one. Discord may not be named in the game (a Roblox rule): put your
+community links on the game page; the Trove's footer points there. The Trove's Like row only asks for a thumbs up
+and rewards nothing (Roblox cannot check a like).
+
+### Selling Gems: the Gem pack ids
+
+The four Gem packs are Developer Products like the rest of the Store (they show in its **Currency** tab). Until a pack
+has a real id it stays hidden (id `0` means "not created yet"). Paste the ids into `Config.Gems.Products` in
+`src/shared/Config.lua`, one per pack. `Gems` is how many Gems the game grants for that product (the Robux price is
+only set on the Creator Hub), `Name` is what the Store shows:
+
+```lua
+Config.Gems = {
+    Products = {
+        { Id = 1234567890, Gems = 100, Name = "Pouch of Gems" },  -- your real product ids here
+        { Id = 1234567891, Gems = 550, Name = "Bag of Gems" },
+        { Id = 1234567892, Gems = 1200, Name = "Chest of Gems" },
+        { Id = 1234567893, Gems = 6500, Name = "Vault of Gems" },
+    },
+    -- (the rest of Config.Gems stays as it is)
+```
+
+The gem prices of the roulettes (`Config.Gems.RouletteGemPrices`) and the Secret Roulette's price and odds
+(`Config.Gems.SecretRoulette`) are in the same table.
+
+## The Store, daily gifts and the Sky Trove
+
+Three things for players, none of which ever pops up by itself: nothing opens on join, nothing is announced in the
+middle of the screen, and there are no timers or "only N left" labels.
+
+### The Robux Store
+
+Press **Shop** in the top-left pill. The **Store** window has five tabs: **Packs** (the Starter Pack until you buy it,
+then the Pro Pack), **Passes** (VIP, x2 Cash, x2 Pet XP), **Boosts** (XP potions), **Currency** (Cloud Tokens and Gem
+packs) and **Roulettes** (it opens the Cloud Shop with the roulette machines). Every card says exactly what you get
+("Gets you: 1x Storm Tabby (Lv 5), $1,000 Cash, 1 h x2 Pet XP") and shows the price in Robux; Roblox asks you to
+confirm every purchase. Owned passes say Owned, a running potion shows its time left ("58 m left"), and an XP potion is
+dimmed while you own x2 Pet XP forever (a pass and a potion never add up to x4). The Store is closed during a match.
+The x2 passes count where you earn: x2 Cash when you scoop your home's Cash, in the Champion Ring and in the Dungeon;
+x2 Pet XP when your pets feed and fight. While a pass or a potion is on, small chips under the currency strips say so
+("x2 Cash", "x2 XP · 58m"). VIP players get a gold `[VIP]` tag in chat and a crown over their head in the lobby.
+
+### Daily gifts
+
+The round **Gifts** button left of the currency strips (a red dot = a gift is waiting) opens two tabs:
+
+- **Daily:** a new gift every 20 hours; claim it within 48 hours of the last one to keep your streak. Seven gifts make
+  a week (Cash, Tokens, Gems, more Cash, more Tokens, more Gems), and day 7 of every kept week is a **Week Wisp**, an
+  Epic pet you can only get here (40 Gems instead when your Week Wisp stack is full). Missing a day steps your streak
+  back one day for each missed day, never to zero at once, and a gift you already got is not paid again on the way
+  back up ("Streak repaired!"). VIP players never step back and get x2 Cash and Tokens on these gifts.
+- **Play time:** gifts for 10, 20, 30, 60, 90, 120 and 180 minutes of play in a day (Cash, Tokens, Gems and a full Berry
+  Basket). Only active play counts: when you stand still for 3 minutes the clock pauses ("Paused: move around to keep
+  counting!"). A play-day lasts 20 hours from its first minute; gifts you did not claim by then are gone.
+
+Every amount is shown as a number before you claim it.
+
+### The Sky Trove
+
+A wooden chest on the shop island, where the old item stall stood. Walk up and press **Open**: join the game's group
+from the Trove and it pays **$2,000 Cash and 200 Cloud Tokens**, once per player. If Roblox says you are not in the
+group yet, rejoin the game and open the Trove again. The second row only asks for a thumbs up on the game page and pays
+nothing.
 
 ## Pet battles
 
@@ -1122,7 +1199,7 @@ A raid can drop one you do not have yet; they are in the Pet Index like every ot
 
 Every **3 hours** a **Double Rewards** hour starts (announced 2 minutes before, shown on the event board and on
 the countdown chip at the right edge): for **1 hour** every battle pays **x2 Cloud Tokens** (Dungeon rooms, duels and
-Boss Raids).
+Boss Raids). x2 Cash / x2 Pet XP passes and XP potions are separate (the Store).
 
 ### The Champion Ring
 
@@ -1180,12 +1257,13 @@ later you are back at the gate.
 
 ## Pets and roulettes
 
-**33 pets** in seven rarities follow their owner, and everybody sees everybody's pets: Common 6,
-Uncommon 6, Rare 5, Epic 3, Legendary 4, Mythic 4 and Secret 5.
+**35 pets** in seven rarities follow their owner, and everybody sees everybody's pets: Common 6,
+Uncommon 6, Rare 5, Epic 3, Legendary 4, Mythic 4 and Secret 5 in the roulettes and the Index, plus two exclusive pets
+outside them: Week Wisp (Epic, the seventh gift of a kept week) and Crown Phoenix (Legendary, the Pro Pack).
 The Legendaries are Candy Unicorn, Ember Phoenix, Sunbeam Bear and Twilight Dragon. The Mythics are Cloudy Dragon,
 Starlight Unicorn and two Boss Raid pets, Magma Cub and Hydralotl. The Secrets are Stormfang, Eclipse Dragon, Obsidian
 Phoenix, Phantom Kitsune and the third Boss Raid pet, Rime Wyrmling. Visit the **shop island** or
-press the **Shop** tile, pick a roulette and spin. Duplicates stack (up to 99 per pet).
+press **Shop** in the top-left pill and open the Store's **Roulettes** tab, pick a roulette and spin. Duplicates stack (up to 99 per pet).
 
 | Roulette | Price | Odds per spin (pets inside a rarity are equally likely) |
 |---|---|---|
@@ -1261,8 +1339,9 @@ Pet Index has a small **Elements** card that shows the wheel.
 Open it with the **Index** tile. On the left one tile per rarity group with your progress ("3/6"); in the middle
 the group's pets (pets you have not found yet are black `???` silhouettes); on the right a detail card with the
 pet's rarity, element (with "Strong vs / Weak vs"), role, stats and special attack, and for Stormfang the
-owner's artwork as a banner. Every pet you ever win counts as discovered. The footer shows "Unlocked: x/33" (each
-Boss Raid pet is listed under its own rarity: Magma Cub and Hydralotl with the Mythics, Rime Wyrmling with the Secrets).
+owner's artwork as a banner. Every pet you ever win counts as discovered. The footer shows "Unlocked: x/35" (each
+Boss Raid pet is listed under its own rarity: Magma Cub and Hydralotl with the Mythics, Rime Wyrmling with the Secrets;
+the two exclusive pets, Week Wisp and Crown Phoenix, are in no group and count in the footer only).
 
 Discover every pet of a group and press **CLAIM** for its reward (once per group; a red `!` on the group tile
 means a reward is waiting):
@@ -1298,17 +1377,23 @@ never drops below 14 px on a phone.
   zoom are not shakes and always play) and **Mouse lock** (on / off, or
   press `L`: the cursor stays in the middle of the screen and the mouse turns the camera; windows free it). They
   apply at once and are saved with your profile.
-- **Left, vertically centred: the menu**, one slim column of glossy square tiles: Pets, Index, Shop,
-  Home, Stats and the Settings gear. The small **arrow tab** beside the gear folds the column against the left edge
+- **Left, vertically centred: the menu**, one slim column of glossy square tiles: Pets, Index, Home and Stats (no
+  Shop tile; Shop, Travel and the Settings gear sit in the top-left pill). The small **arrow tab** beside the last
+  tile folds the column against the left edge
   (only the tab stays; a red dot on it means a tile has news) and brings it back; the game remembers it until you
   leave. A tutorial step that points at a tile unfolds it. On phones the tiles wrap into two slim columns (three on
   very small phones) so nothing sits under your thumbstick. Windows close with Esc, the red X or gamepad B.
+- **Top-left pill:** **Shop** opens the Robux **Store** (packs, passes, potions, Tokens and Gems; its Roulettes tab
+  opens the Cloud Shop), **Travel** opens the portal to the lobby, the gear opens **Settings**.
 - **Top-left:** party panel in the lobby (the obby level with its stars, the countdown, members, the **Leave** button
   and, for the leader, **CHANGE**), match panel (difficulty, timer, checkpoints, team) in a climb. The tutorial card
   sits below it.
 - **Top-right:** your **Cloud Tokens**, **Cash** and **Gems** as thin strips (coin + number with K / M), right under
   Roblox's top bar; in a climb only the token strip shows, with the "+n" you picked up. On a portrait phone they
   sit side by side in one row; in a battle on a phone they move into Roblox's top bar.
+- **Left of the strips: the Gifts button** (the daily and play-time gifts; a red dot when one is waiting). **Under the
+  strips: the boost chips** ("x2 Cash", "x2 XP · 58m") while a pass or an XP potion is on. Both hide in a match and a
+  battle, with the strips.
 - **Bottom-centre:** the **health and stamina card**: a heart badge with
   a thick health bar (it flashes and shakes when you are hit and pulses when you are low), a lightning badge with
   the stamina bar (thin marks show how many dashes you have left), and the dash ring that sweeps while dash
@@ -1464,7 +1549,7 @@ Things only you can do, by hand, once. Steps 3 and 4 are optional; everything wo
    `HitEarth`, `HitStorm`, `HitCelestial`, `HitShadow`, `Crit`, the KO rotation `KO`, `KO2`, `KO3`, `KO4`, `Dash`,
    `Parry`, `PortalEnter`, `PortalArrive`, `StationBuild`, `HouseTier`, `DialogOpen`, `DialogBlip`, `DialogNext`,
    `TutorialStep`, the roulette's `SpinStart`, `SpinTick`, `SpinLand`, `RevealCommon`, `RevealRare`,
-   `RevealLegendary`, and the wordless NPC voices `NpcSparkyFoxGreet`, `NpcSparkyFoxHmm`, `NpcSparkyFoxPleased`,
+   `RevealLegendary`, the Store's `StorePop`, `StoreBuy`, the daily gifts' `DailyWeek`, the Sky Trove's `TroveOpen`, and the wordless NPC voices `NpcSparkyFoxGreet`, `NpcSparkyFoxHmm`, `NpcSparkyFoxPleased`,
    `NpcCaptainPenguinGreet`, `NpcCaptainPenguinHmm`, `NpcCaptainPenguinPleased`, `NpcGrannyOwlGreet`,
    `NpcGrannyOwlHmm`, `NpcGrannyOwlPleased`, `NpcCoachCorgiGreet`, `NpcCoachCorgiHmm`, `NpcCoachCorgiPleased`,
    `NpcMayorPandaGreet`, `NpcMayorPandaHmm`, `NpcMayorPandaPleased`, `NpcProfessorAxolotlGreet`,
@@ -1476,10 +1561,11 @@ Things only you can do, by hand, once. Steps 3 and 4 are optional; everything wo
    example `Config.Icons.Shop = "rbxassetid://..."`) replaces one.
 5. **Lighting:** since phase 6 the game is back to the bright cartoon look: `default.project.json` has the line
    `"Technology": "ShadowMap"` (fast on phones too). Players can also pick Graphics: **Low** in SETTINGS.
-6. **Gems for Robux** (open since phase 2): create.roblox.com -> your experience -> Monetization -> **Developer
+6. **Gems and the Store for Robux:** create.roblox.com -> your experience -> Monetization -> **Developer
    Products** -> Create (one per pack: a name and the Robux price) -> copy each Product ID into
-   `Config.Gems.Products` (`{ Id = ..., Gems = 100, Name = "Pouch of Gems" }`); until then the Gems tab says the packs
-   open soon (see [Selling Gems](#selling-gems-the-owners-setup)).
+   `Config.Gems.Products` (`{ Id = ..., Gems = 100, Name = "Pouch of Gems" }`); the passes, packs, potions and Token
+   packs go into `Config.Store.Items` and the group into `Config.Trove.GroupId`; until then they stay hidden (see
+   [The Store: the owner's setup](#the-store-the-owners-setup)).
 7. **After any change:** Studio -> Play (F5) once, then View -> **Output**: no red line starting with `[Config]` or
    `[LightingService]` = good.
 
@@ -1583,7 +1669,8 @@ src/shared   Config (every number)  TycoonCatalog (every tycoon number)  Theme  
              battle simulation)  BossBuilder  WorldStyle (gates, plinths, the art rules)  HomeRoam (the roaming plan
              of garden pets, shared by server and clients)  TokenLook (the coin look of tokens and Cloud Cash)
              MeshLibrary (loads the Blender models)  MeshIds (generated: model asset ids)  TextureIds (generated:
-             the gate vortex image ids)  AudioIds (generated: the original music and sound ids)  MeshManifests (generated:
+             the gate vortex image ids)  AudioIds (generated: the original music and sound ids)  StoreCatalog (the one
+             product / pass lookup of the Robux Store and the gem packs)  MeshManifests (generated:
              one module per Blender model)  PetFx (the auras and effects of evolved pets)  AttackFxCatalog (the look
              of every pet attack effect: recipes by element, attack, rarity band, signature)  PetPoses (the
              battle poses pets strike, cast, flinch and celebrate with, on PetBuilder's rig)  SkyCycle (the living
@@ -1594,7 +1681,9 @@ src/server   Main.server.lua; Services: Lighting, LobbyBuilder, StormAltar, Play
              Index, Tutorial, Npc, Dev, Tycoon, HomeBuilder, PetCare, Fusion, Gem, ArenaBuilder, Battle, Event,
              Dungeon (parties, runs, loot), DungeonBuilder (the Dungeon gate and rooms), Podium (wave 6: the trainer
              stands locked on the Ring / PvP podium), Sky (the living sky: the clock attributes, the raid skies,
-             /sky)
+             /sky), Store (the Robux Store: every paid grant, the pass cache, StorePreview), Multipliers (the x2
+             Cash / Pet XP factors at the five earning sites), Daily (the daily streak and play-time gifts), Trove
+             (the Sky Trove's group join reward)
 src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientSettings; SoundFx; GraphicsQuality;
              PortalVortex (the swirling vortex inside every gate hoop); MouseLock (the Mouse lock option);
              LightingStack (lighting looks, e.g. the Dungeon); UI/CloudUI; UI/NeonKit (the neon cards, tiles and side
@@ -1617,7 +1706,9 @@ src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientS
              and drums, heard only near the ring), TrainerCheer (wave 6: my avatar's cheer emote on the podium and on
              Cheer up!), TopBar (the top-left Shop / Travel / Settings pill; Travel opens the portal to the lobby), Sky (the
              living sky on this client: the cycle and the raid skies as the LightingStack base, the night battle lift,
-             the night lamps, fireflies)
+             the night lamps, fireflies), Store (the Robux Store window), Daily (the Gifts button and window),
+             BoostBadge (the x2 chips under the strips), Vip (the VIP chat tag and lobby crown), Trove (the Sky Trove
+             panel, the lid and coins)
 ```
 
 The **server is authoritative** (health, tokens, Cash, Gems, berries, pets, items, checkpoints, matches, home
