@@ -606,6 +606,60 @@
    "description": "Shop entrance arch (the sign board stays a Part)"
   },
   {
+   "key": "prop_trove_body",
+   "type": "prop",
+   "prop": "lobby_trove_body",
+   "budget": "propBig",
+   "description": "Sky Trove chest body (replaces the boarded-up Item Shop stall): planks, brass bands, straps and corner caps, lock, hinge knuckles, a coin and gem heap with Neon glows; attachments LidHinge / LidOpen (18 deg) / GapGlow"
+  },
+  {
+   "key": "prop_trove_body_low",
+   "type": "prop",
+   "prop": "lobby_trove_body",
+   "lod": "Low",
+   "budget": "propBig",
+   "description": "Sky Trove chest body far LOD (0.5-stud voxels, no seams / rivets / handle bars)",
+   "args": {
+    "low": true
+   }
+  },
+  {
+   "key": "prop_trove_lid",
+   "type": "prop",
+   "prop": "lobby_trove_lid",
+   "budget": "propBig",
+   "description": "Sky Trove lid (own key, tweened 18 -> 70 deg): barrel lid built closed, pivot on the hinge line (body LidHinge), brass rim and straps, the SKY TROVE plate"
+  },
+  {
+   "key": "prop_trove_lid_low",
+   "type": "prop",
+   "prop": "lobby_trove_lid",
+   "lod": "Low",
+   "budget": "propBig",
+   "description": "Sky Trove lid far LOD (0.5-stud voxels, plate letters painted flush)",
+   "args": {
+    "low": true
+   }
+  },
+  {
+   "key": "prop_trove_sign",
+   "type": "prop",
+   "prop": "lobby_trove_sign",
+   "budget": "prop",
+   "description": "Sky Trove post sign: two posts, framed plank board, rose cap with a gift bow, FREE GIFT panel"
+  },
+  {
+   "key": "prop_trove_sign_low",
+   "type": "prop",
+   "prop": "lobby_trove_sign",
+   "lod": "Low",
+   "budget": "prop",
+   "description": "Sky Trove post sign far LOD (0.5-stud voxels, letters painted flush)",
+   "args": {
+    "low": true
+   }
+  },
+  {
    "key": "prop_pond",
    "type": "prop",
    "prop": "lobby_pond",
@@ -767,6 +821,38 @@
   {
    "name": "lobby_prop_shop_arch",
    "body": "prop_shop_arch",
+   "res": 420
+  },
+  {
+   "name": "lobby_prop_trove",
+   "body": "prop_trove_body",
+   "res": 420,
+   "attach": [
+    "prop_trove_lid"
+   ],
+   "at": {
+    "prop_trove_lid": "LidOpen"
+   }
+  },
+  {
+   "name": "lobby_prop_trove_low",
+   "body": "prop_trove_body_low",
+   "res": 420,
+   "attach": [
+    "prop_trove_lid_low"
+   ],
+   "at": {
+    "prop_trove_lid_low": "LidOpen"
+   }
+  },
+  {
+   "name": "lobby_prop_trove_sign",
+   "body": "prop_trove_sign",
+   "res": 420
+  },
+  {
+   "name": "lobby_prop_trove_sign_low",
+   "body": "prop_trove_sign_low",
    "res": 420
   },
   {
