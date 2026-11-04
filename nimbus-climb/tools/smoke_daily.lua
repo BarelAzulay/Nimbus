@@ -726,7 +726,7 @@ S.daily_future_clock = guarded("daily_future_clock", function()
 	local t = claim(p)
 	d = DS().GetDaily(p)
 	T.check(d.LastClaimAt == now + 7200 and d.Streak == 1 and d.Paid == 1 and DS().GetCash(p) == cash0 and DS().GetTokens(p) == tokens0 and DS().GetGems(p) == gems0,
-		"daily future clock: a LastClaimAt 2 h ahead (past FutureClockSlack) counts as now for the claim and is never written (re-review 1), nothing else changes", describeDaily(d) .. " t " .. t)
+		"daily future clock: a LastClaimAt 2 h ahead (past FutureClockSlack) counts as now for the claim (its first sight) and is never written (re-review 1), Streak / Paid / the currencies unchanged", describeDaily(d) .. " t " .. t)
 	T.check(toastCount(p, "Next gift in 20h 0m", mark) == 1, "daily future clock: ...and the claim is refused this once with 'Next gift in 20h 0m'")
 	local st = lastState(p)
 	T.check(st ~= nil and st.ReadyAt == t + config().Daily.ReadySeconds, "daily future clock: the payload after it shows the next gift 20 h on", tostring(st and st.ReadyAt) .. " vs " .. (t + config().Daily.ReadySeconds))

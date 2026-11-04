@@ -1534,7 +1534,9 @@ function H.layout()
 end
 
 -- The phone window fills the screen and a tablet's reaches them: Roblox's thumbstick and jump button would sit over slot 3
--- and the cards, or the Detail's buttons. They go while it is up and come back as they were.
+-- and the cards, or the Detail's buttons. They go while it is up and come back as they were: MenuController keeps ONE
+-- owner set for every window (re-review 2: the Store opened over this window, or this one over the Store, lays out
+-- before WindowOpened closes the other, so a snapshot per window would bring back the other's false).
 function H.syncTouch()
 	local touchOnly = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 	local want = S.Open and (S.Mode == "Phone" or touchOnly)
@@ -1542,6 +1544,11 @@ function H.syncTouch()
 		return
 	end
 	S.TouchOff = want
+	local menu = H.controller("MenuController")
+	if menu and type(menu.SetTouchHidden) == "function" then
+		safe("touch", menu.SetTouchHidden, "Pets", want)
+		return
+	end
 	pcall(function()
 		if want then
 			S.TouchWas = GuiService.TouchControlsEnabled

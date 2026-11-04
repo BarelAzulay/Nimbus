@@ -10,7 +10,8 @@
 --
 -- Data: DailyState (server -> client) is the only source (DailyService builds it; nothing here decides a reward):
 --   { Loading = bool (provisional: no CLAIM), Streak, Paid, Weeks, Pet, ReadyAt (unix), KeepUntil (unix), Cell (1..7: the NEXT
---     cell), Repair = bool (the next claim repairs a missed day and pays nothing), Vip = bool, StepBack = n (the last claim's
+--     cell), Repair = bool (the next claim repairs a missed day and pays nothing), StaleAt (unix: the view changes then by
+--     itself, the keep deadline or another missed day; 0 = never), Vip = bool, StepBack = n (the last claim's
 --     step-back), Days = { { Kind = "Cash" | "Tokens" | "Gems" | "Pet", Amount = n | nil, PetId = "week_wisp" | nil, Claimed,
 --     Today, Repair = true | nil (today's cell of a repair) } x7 }, Play = { Seconds, DayEnds (unix), Active = bool,
 --     Tiers = { { Min, Kind, Amount, PetId, Claimed, Ready } x7 } }, ServerNow (unix) }
@@ -49,6 +50,8 @@
 --     onto a multiple of 7; a repair claim back onto day 7 leaves Weeks alone and celebrates nothing): the sweep, the
 --     confetti, "WEEK DONE! Week Wisp is yours!", SoundFx "DailyWeek"; StepBack > 0: the side hint
 --     "Welcome back! You stepped back n day(s). Keep going!" once per claim (MenuController.Hint).
+--   * A payload past its StaleAt (re-review 2) no longer says what the claim does: no gold today cell, no claim button,
+--     "Getting your gifts ready..." until DailyService's fresh payload (its tick re-sends one at StaleAt).
 --   * Closes on X, Esc, gamepad B (bound only while open), InMatch / InBattle, and any other WindowOpened id. A relayout
 --     that rebuilds the open window (a mode or a Portrait width change) shows the new one at once.
 --   * Texts that would not fit their cell (TextService measures the real font) fall back to a shorter form: a pet's last
@@ -339,6 +342,12 @@ end
 local function entryAt(list, i)
 	local e = list[i]
 	return type(e) == "table" and e or {}
+end
+
+-- true once the payload's view went stale (StaleAt passed): the server's fresh payload is on its way (re-review 2)
+local function stale(st)
+	local at = type(st) == "table" and tonumber(st.StaleAt) or nil
+	return at ~= nil and at > 0 and now() >= at
 end
 
 local function claimReady(st)
@@ -760,7 +769,9 @@ function H.build()
 	U.Claim = NeonKit.Button({ Name = "ClaimButton", Text = "CLAIM!", Color = "Green", Size = UDim2.fromOffset(M.ClaimW, M.ClaimH), TextSize = M.ClaimText,
 		AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, math.floor((M.FooterH - M.ClaimH) / 2)), Parent = footer,
 		Callback = function()
-			H.send("Claim")
+			if not stale(S.State) then -- a stale view never claims what it no longer shows (re-review 2)
+				H.send("Claim")
+			end
 		end })
 	U.Countdown = label("Countdown", "", "Heading", M.CountText, footer)
 	place(U.Countdown, 0, 2, inner, M.CountText + 8)
@@ -962,11 +973,13 @@ function H.renderDaily(st, M)
 		U.DailyHeader.Text = "Day " .. tostring(tonumber(st.Cell) or 1) .. " of 7 " .. DOT .. " Week " .. tostring((tonumber(st.Weeks) or 0) + 1)
 	end
 	U.VipChip.Visible = not loading and st.Vip == true
+	-- a stale payload (StaleAt passed) promises nothing: no gold today cell, no claim, until the fresh one arrives
+	local waiting = loading or stale(st)
 	local list = days(st)
 	for i, cell in ipairs(U.Cells) do
 		local e = entryAt(list, i)
 		local claimed = e.Claimed == true
-		local today = e.Today == true and not claimed and not loading
+		local today = e.Today == true and not claimed and not waiting
 		cell.Root:SetAttribute("Claimed", claimed)
 		cell.Root:SetAttribute("Today", today)
 		cell.Root:SetAttribute("Pulsing", today)
@@ -987,14 +1000,14 @@ function H.renderDaily(st, M)
 			cell.Amount.Text = ""
 		end
 	end
-	local ready = claimReady(st)
+	local ready = claimReady(st) and not waiting
 	local repair = ready and st.Repair == true
 	U.Claim.Text = repair and K.REPAIR_TEXT or "CLAIM!"
 	U.Claim.Size = UDim2.fromOffset(repair and math.min(M.RepairW, M.W - 2 * M.Pad) or M.ClaimW, M.ClaimH)
 	U.Claim.Visible = ready
 	U.Countdown.Visible = not ready
-	U.Keep.Visible = not ready and not loading
-	if loading then
+	U.Keep.Visible = not ready and not waiting
+	if waiting then
 		U.Countdown.Text = "Getting your gifts ready..."
 	elseif not ready then
 		U.Countdown.Text = "Next gift in " .. leftText((tonumber(st.ReadyAt) or 0) - now())

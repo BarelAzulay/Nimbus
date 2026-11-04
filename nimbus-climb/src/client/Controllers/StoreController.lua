@@ -1396,7 +1396,9 @@ end
 ----------------------------------------------------------------------
 -- Touch controls, the menu column, gamepad B
 ----------------------------------------------------------------------
--- the phone window fills the screen: Roblox's thumbstick and jump button go while it is up (the PetsController rule)
+-- the phone window fills the screen: Roblox's thumbstick and jump button go while it is up (the PetsController rule),
+-- through MenuController's one owner set (re-review 2: the Store and the Pets window handing over to each other never
+-- leave them off)
 function H.syncTouch()
 	local touchOnly = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 	local want = S.Open and (S.Mode == "Phone" or touchOnly)
@@ -1404,6 +1406,11 @@ function H.syncTouch()
 		return
 	end
 	S.TouchOff = want
+	local menu = H.controller("MenuController")
+	if menu and type(menu.SetTouchHidden) == "function" then
+		safe("touch", menu.SetTouchHidden, "Store", want)
+		return
+	end
 	pcall(function()
 		if want then
 			S.TouchWas = GuiService.TouchControlsEnabled

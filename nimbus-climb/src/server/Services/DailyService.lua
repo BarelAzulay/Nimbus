@@ -10,10 +10,13 @@
 --   * A miss steps back one day per missed day at the next claim: stepBack = 1 + floor((gap - 48 h) / 86400),
 --     Streak = max(0, Streak - stepBack) + 1. Exactly 48 h is still kept; the boundary is a strict '>'.
 --   * Re-earned, never re-paid: Paid = the highest Streak ever paid; a claim pays only when the new Streak > Paid, else
---     "Streak repaired! Day N of 7" and nothing. A miss costs one gift per missed day, never the week. Since Paid >=
---     Streak, every step-back claim is such a repair, and State says so before the claim (re-review 1): Repair = true,
---     the Days' Claimed / Today from the stepped-back streak (Today on the repair cell, flagged Repair), never the next
---     day's gift.
+--     "Streak repaired! Day N of 7" and nothing. A miss costs one gift per missed day, never the week. State says what
+--     the next claim does before it (re-review 1 and 2): Repair = (the streak it builds on + 1 <= Paid), Claim's own
+--     rule, for EVERY claim: the step-back claim and the kept claims after it that climb back to Paid, and a VIP's
+--     while Paid > Streak; the Days' Claimed / Today come from that streak (Today on the repair cell, flagged Repair),
+--     never a gift the claim will not pay. StaleAt = the moment that view changes by itself (the keep deadline passing,
+--     KeepUntil + 1, then each further missed day; 0 = never): the tick re-sends the payload then, and a VIP answer that
+--     changes Vip (StoreService.Changed) re-sends it at once.
 --   * VIP (StoreService.Owns(player, "VIP")) never steps back and gets x2 (Config.Store.Perks.Vip.DailyMult) on the
 --     Cash and Tokens cells only (never Gems, the pet or the play tiers). A pass still "Checking" with a step-back due
 --     holds the claim ("Checking your VIP pass, one moment", nothing written); no StoreService or an Unavailable pass
@@ -24,15 +27,21 @@
 --     resolved at state time (the payload carries numbers, 13b.3) and again at the claim (the claim pays its own
 --     value). Berries = "Basket" fills the Berry Basket to TycoonCatalog.BasketCap(home, income) minus what is owned.
 --   * Z8: a stored LastClaimAt more than FutureClockSlack ahead of now (a wrong clock: the server that wrote it ran
---     fast, or this one runs behind) counts, for THIS session only, as the now of the first time the session saw it
---     (State at the join, so the join's ReadyAt is now + 20 h and the window counts down to a claim; or a claim, which
---     is then refused once with "Next gift in 20h 0m"): the player is never locked out for hours. The clamp is NEVER
---     written (re-review 1): a bare clamp in the store would let a server whose clock runs behind pull the next gift
---     earlier on every other server, visit after visit. The record keeps the stored stamp until a real claim writes
---     its own pair; a changed stamp (a claim, a rebase) drops the session's clamp. A second request finds LastClaimAt
---     = now. Two servers: the section 6 merge (a claim less than ReadySeconds after the STORED claim loses its grant).
---     The claim's one `now` is its LastClaimAt AND its grant's At (MutateDaily's `now` argument): a second ticking
---     inside Claim never splits the pair from its grant in the merge.
+--     fast, or this one runs behind) counts as the now of its FIRST SIGHT (State at the join, so the join's ReadyAt is
+--     now + 20 h and the window counts down to a claim; or a claim, which is then refused once with "Next gift in 20h
+--     0m"): the player is never locked out for hours. LastClaimAt itself is NEVER written (re-review 1: a bare clamp in
+--     the store would let a server whose clock runs behind pull the next gift earlier on every other server, visit after
+--     visit). The first sight is noted next to it (re-review 2): Daily.ClampFrom = the stamp, ClampAt = that now (one
+--     MutateDaily, NO grant, only when the record holds no first sight of this stamp), so a later session on any server
+--     whose clock also sees the stamp ahead counts from the same moment instead of starting the 20 h over. A server
+--     that sees the stamp as past uses the stamp itself: a slow server's first sight of a correct claim never pulls the
+--     gift earlier there. The cost (accepted, spec section 6): when a fast server's stamp falls behind the clocks before
+--     the countdown ends, a NEW session counts from the stamp (at most that clock's offset later than the window said);
+--     the session that saw it keeps its countdown. A changed stamp (a claim, a rebase) drops the session's clamp; a claim
+--     clears ClampFrom / ClampAt. A second request finds LastClaimAt = now. Two servers: the section 6 merge (a claim
+--     less than ReadySeconds after a STORED claim it did not build on loses its grant; the grant's Prev names the stamp
+--     it built on, so a claim after a clamp is no exception). The claim's one `now` is its LastClaimAt AND its grant's At
+--     (MutateDaily's `now` argument): a second ticking inside Claim never splits the pair from its grant in the merge.
 --
 -- Play time (5.2, 13b.4, Q17, Z9)
 --   * Per play-day on the rolling PlayStart clock: a Tick every TickSeconds (10 s) counts for a player whose root moved
@@ -53,7 +62,8 @@
 -- Remote DailyRequest(action, tier): "Claim" (no second argument) / "ClaimPlay" (a whole 1..7). isPlayer, one request
 -- per second per action, type checks, refused InMatch with a toast; junk is dropped without an answer (Z12).
 -- ProfileLoaded / ProfileRebased -> Send(player) (a Loading payload while provisional), NO Notify on load: nothing is
--- announced on join (the client's pip waits PipDelaySeconds).
+-- announced on join (the client's pip waits PipDelaySeconds). The tick re-sends a payload whose StaleAt has passed;
+-- StoreService.Changed re-sends it when the VIP answer differs from the last payload's Vip.
 --
 -- Public API
 --   DailyService.Init(deps)              deps = { DataService, StoreService?, PetService, TycoonService?, TutorialService? }
@@ -105,7 +115,8 @@ local active = {} -- [player] = { On = bool, LastRemote = os.clock() | nil }
 local sample = {} -- [player] = the root's Vector3 at the last tick
 local lastRequest = {} -- [player] = { [action] = os.clock() }
 local stepBacks = {} -- [player] = the last claim's step-back, sent once
-local clamps = {} -- [player] = { From = the stored future LastClaimAt, At = os.time() the session first saw it } (Z8)
+local clamps = {} -- [player] = { From = the stored future LastClaimAt, At = the now of its first sight } (Z8)
+local sent = {} -- [player] = { Vip = the last payload's Vip, StaleAt = its StaleAt } (the re-sends)
 local started = false
 local tickAt = -1
 
@@ -375,9 +386,12 @@ local function dayOver(d, now)
 	return start > 0 and now >= start + num(playCfg().DaySeconds, 72000)
 end
 
--- Z8: this session's LastClaimAt. A stored stamp more than FutureClockSlack ahead of now counts as the now of the
--- first time this session saw it, and keeps counting so until the stored stamp changes (a claim, a rebase). Nothing is
--- written (see the header). Answers the stamp and true when this call started the clamp.
+-- Z8: this session's LastClaimAt. A stored stamp more than FutureClockSlack ahead of now counts as the now of its
+-- first sight: the record's ClampAt when it noted one for this stamp (ClampFrom == LastClaimAt: any server, any
+-- session; never later than now), else this call's now, which is then noted in the record (ClampFrom / ClampAt, no
+-- grant; LastClaimAt is never touched). The session keeps that value until the stored stamp changes (a claim, a
+-- rebase), also after the stamp falls behind now. A stamp this server sees as past is used as it is (see the header).
+-- Answers the stamp and true when this call started the session's clamp.
 local function lastClaimOf(player, d, now)
 	local stored = d.LastClaimAt
 	local c = clamps[player]
@@ -385,15 +399,32 @@ local function lastClaimOf(player, d, now)
 		return c.At, false
 	end
 	clamps[player] = nil
-	if stored > now + num(cfg().FutureClockSlack, 300) then
-		clamps[player] = { From = stored, At = now }
-		return now, true
+	if stored <= now + num(cfg().FutureClockSlack, 300) then
+		return stored, false
 	end
-	return stored, false
+	local at = now
+	local seen = num(d.ClampAt, 0)
+	if num(d.ClampFrom, 0) == stored and seen > 0 then
+		at = math.min(seen, now)
+	else
+		local DS = deps.DataService
+		if DS and type(DS.MutateDaily) == "function" then
+			pcall(DS.MutateDaily, player, function(live)
+				if num(live.LastClaimAt, 0) ~= stored then
+					return false
+				end
+				live.ClampFrom = stored
+				live.ClampAt = now
+				return true
+			end)
+		end
+	end
+	clamps[player] = { From = stored, At = at }
+	return at, true
 end
 
 local function defaultDaily()
-	return { Streak = 0, Paid = 0, LastClaimAt = 0, Weeks = 0, Pet = false, PlayStart = 0, PlaySec = 0, PlayClaimed = {} }
+	return { Streak = 0, Paid = 0, LastClaimAt = 0, Weeks = 0, Pet = false, PlayStart = 0, PlaySec = 0, PlayClaimed = {}, ClampFrom = 0, ClampAt = 0 }
 end
 
 ----------------------------------------------------------------------
@@ -461,17 +492,29 @@ function DailyService.State(player)
 		loading = true
 		d = defaultDaily()
 	end
-	local last = loading and 0 or lastClaimOf(player, d, now) -- Z8: this session's stamp (never written here)
+	local last = loading and 0 or lastClaimOf(player, d, now) -- Z8: this session's stamp (LastClaimAt never written here)
 	local ready = num(C.ReadySeconds, 72000)
 	local keep = num(C.KeepSeconds, 172800)
 	local vip = ownsVip(player)
-	-- the streak the claim will build on: a step-back due (Claim's rule) lowers it first, and that claim re-earns a paid
-	-- day (Paid >= Streak): a repair, so Today moves to the repair cell and no gift is promised (re-review 1)
+	-- the streak the claim will build on: a step-back due (Claim's rule; never for a VIP) lowers it first. The claim
+	-- re-earns a paid day whenever that streak + 1 <= Paid (Claim's pays = streak > Paid): a repair, so Today moves to
+	-- the repair cell and no gift is promised. Every claim: the step-back one, the kept ones that climb back to Paid,
+	-- a VIP's while Paid > Streak (re-review 1 and 2)
 	local streak = d.Streak
-	local repair = false
-	if not loading and not vip and last > 0 and now - last > keep then
+	local missed = not loading and not vip and last > 0 and now - last > keep
+	if missed then
 		streak = math.max(0, d.Streak - (1 + math.floor((now - last - keep) / 86400)))
-		repair = streak + 1 <= d.Paid
+	end
+	local repair = (not loading) and streak + 1 <= d.Paid
+	-- StaleAt: when this view changes with no claim: the keep deadline passing (Claim's strict '>'), then each further
+	-- missed day while the streak can still fall; 0 = never (loading, a VIP, no claim yet, a streak already at 0)
+	local staleAt = 0
+	if not loading and not vip and last > 0 and streak > 0 then
+		if missed then
+			staleAt = last + keep + 86400 * (math.floor((now - last - keep) / 86400) + 1)
+		else
+			staleAt = last + keep + 1
+		end
 	end
 	local cell = (streak % WEEK) + 1
 	local days = {}
@@ -508,6 +551,7 @@ function DailyService.State(player)
 		Weeks = d.Weeks,
 		Cell = cell,
 		Repair = repair, -- the next claim repairs the streak and pays nothing (Today = the repair cell)
+		StaleAt = staleAt, -- this view (Repair, Cell, Today) stops being true at this server time; 0 = never
 		ReadyAt = readyAt,
 		KeepUntil = last > 0 and last + keep or 0,
 		ServerNow = now,
@@ -526,6 +570,7 @@ end
 function DailyService.Send(player)
 	local state = DailyService.State(player)
 	if state then
+		sent[player] = { Vip = state.Vip == true, StaleAt = num(state.StaleAt, 0) }
 		fire("DailyState", player, state)
 	end
 	return state
@@ -577,6 +622,8 @@ function DailyService.Claim(player)
 	local ok = DS.MutateDaily(player, function(live)
 		live.Streak = streak
 		live.LastClaimAt = now
+		live.ClampFrom = 0 -- the Z8 first sight belonged to the stamp this claim replaces
+		live.ClampAt = 0
 		live.Paid = math.max(num(live.Paid, 0), streak)
 		live.Weeks = math.max(num(live.Weeks, 0), math.floor(streak / WEEK))
 		if r and r.Kind == "Pet" then
@@ -726,6 +773,14 @@ function DailyService.Tick()
 		if not ok then
 			warn("[DailyService] tick failed for " .. tostring(player.Name) .. ": " .. tostring(err))
 		end
+		-- the last payload's view went stale (the keep deadline or another missed day passed): send the fresh one
+		local s = sent[player]
+		if s and s.StaleAt > 0 and now >= s.StaleAt then
+			local okS, errS = pcall(DailyService.Send, player)
+			if not okS then
+				warn("[DailyService] re-send failed for " .. tostring(player.Name) .. ": " .. tostring(errS))
+			end
+		end
 	end
 end
 
@@ -795,6 +850,19 @@ function DailyService.Init(given)
 	else
 		warn("[DailyService] Init without DataService: nothing can be claimed")
 	end
+	-- a VIP answer after the payload was built (a pass still Checking at the join): re-send when Vip changed
+	local SS = deps.StoreService
+	if type(SS) == "table" and type(SS.Changed) == "table" and type(SS.Changed.Connect) == "function" then
+		SS.Changed:Connect(function(player)
+			local s = sent[player]
+			if s and isLivePlayer(player) and ownsVip(player) ~= s.Vip then
+				local okS, errS = pcall(DailyService.Send, player)
+				if not okS then
+					warn("[DailyService] VIP re-send failed: " .. tostring(errS))
+				end
+			end
+		end)
+	end
 	local okRemote, remote = pcall(Remotes.Get, "DailyRequest")
 	if okRemote and remote then
 		remote.OnServerEvent:Connect(onRequest)
@@ -819,6 +887,7 @@ function DailyService.Init(given)
 		lastRequest[player] = nil
 		stepBacks[player] = nil
 		clamps[player] = nil
+		sent[player] = nil
 	end)
 	task.spawn(function()
 		while true do

@@ -31,6 +31,13 @@
 --   client_fixr_menu_cover        (phone world) 360x640: no NimbusMenu tile draws over the open Gifts window or the Store,
 --                                 also when one window opens over another (the Store, the Pets window); the tiles come back
 --                                 when every window is closed (open item n1)
+-- Re-review round 2:
+--   client_fixr_daily_stale       (1920x1080) a payload past its StaleAt (the keep deadline passed since it was built)
+--                                 never promises its gift: no CLAIM!, no gold today cell, "Getting your gifts ready..."
+--                                 until the server's fresh payload (the repair) arrives (findings 6 / 9)
+--   client_fixr_touch_handoff     (phone world) 360x640: the Store opened over the Pets window and the Pets window opened
+--                                 over the Store keep Roblox's thumbstick and jump button hidden while one is up and bring
+--                                 them back when the last one closes, round after round (finding 4)
 -- Every payload is fired at the client with KC.toClient("DailyState", ...). The viewport, the graphics level, the
 -- attributes, SoundFx.Play and MenuController.Hint are restored at the end of each scenario.
 -- Plain Lua 5.1 syntax only.
@@ -1049,6 +1056,115 @@ local function clientScenarios()
 			error(errRun, 0)
 		end
 		KC.flushErrors("client_fixr_menu_cover")
+	end)
+
+	S.client_fixr_daily_stale = guarded("client_fixr_daily_stale", function()
+		local restoreScreen = H.saveScreen()
+		local DC = H.moduleAt("client", "Controllers/DailyController")
+		if not T.check(DC ~= nil, "fixr daily stale: DailyController exists") then
+			restoreScreen()
+			return
+		end
+		local okRun, errRun = pcall(function()
+			H.setScreen(1920, 1080, false)
+			DC.Close()
+			KC.advance(0.2)
+			-- a kept streak (day 3's gift, ready) whose keep deadline passes 2 s from now: DailyService's StaleAt
+			local now = H.now()
+			local p = H.base(now)
+			p.KeepUntil = now + 1
+			p.StaleAt = now + 2
+			H.fire(p)
+			DC.Open({ Tab = "Daily" })
+			KC.advance(0.3)
+			local claim = H.find(H.win(), "ClaimButton")
+			T.check(H.shown(claim) and claim.Text == "CLAIM!" and H.cell(3):GetAttribute("Today") == true,
+				"fixr daily stale: (setup) before StaleAt the window shows CLAIM! and day 3's gold cell", claim and claim.Text or "no button")
+			KC.advance(3.2) -- the window's 1 s tick runs past StaleAt; no fresh payload yet
+			claim = H.find(H.win(), "ClaimButton")
+			local count = H.find(H.win(), "Countdown")
+			T.check(not H.shown(claim) and H.cell(3):GetAttribute("Today") ~= true,
+				"fixr daily stale: past StaleAt the stale payload promises nothing: no CLAIM!, no gold today cell",
+				"claim shown " .. tostring(H.shown(claim)) .. " today " .. tostring(H.cell(3):GetAttribute("Today")))
+			T.check(H.shown(count) and count.Text == "Getting your gifts ready...", "fixr daily stale: ...the footer waits for the server's fresh payload",
+				count and count.Text or "no countdown")
+			local mark = #Mock.RemoteLog
+			H.tap(claim)
+			T.eq(#KC.serverCalls("DailyRequest", mark), 0, "fixr daily stale: ...and nothing can be claimed meanwhile")
+			-- the fresh payload (DailyService re-sends it at StaleAt): the repair, its own StaleAt a day later
+			now = H.now()
+			local fresh = H.repair(now)
+			fresh.StaleAt = now + 86400
+			H.fire(fresh)
+			KC.advance(0.1)
+			claim = H.find(H.win(), "ClaimButton")
+			T.check(H.shown(claim) and claim.Text == "Repair streak (no gift)" and H.cell(3):GetAttribute("Today") == true,
+				"fixr daily stale: the fresh payload shows the repair the claim will make", claim and claim.Text or "no button")
+			DC.Close()
+			KC.advance(0.2)
+		end)
+		H.fire(H.base(H.now()))
+		restoreScreen()
+		if not okRun then
+			error(errRun, 0)
+		end
+		KC.flushErrors("client_fixr_daily_stale")
+		KC.flushWarnings("client_fixr_daily_stale")
+	end)
+
+	S.client_fixr_touch_handoff = guarded("client_fixr_touch_handoff", function()
+		local restoreScreen = H.saveScreen()
+		H.setScreen(360, 640, true)
+		local DC = H.moduleAt("client", "Controllers/DailyController")
+		local SC = H.moduleAt("client", "Controllers/StoreController")
+		local MC = H.moduleAt("client", "Controllers/MenuController")
+		local GuiService = game:GetService("GuiService")
+		if not T.check(DC ~= nil and SC ~= nil and MC ~= nil, "fixr touch handoff: DailyController, StoreController and MenuController exist") then
+			restoreScreen()
+			return
+		end
+		local function touch()
+			return GuiService.TouchControlsEnabled
+		end
+		local okRun, errRun = pcall(function()
+			DC.Close()
+			SC.Close()
+			MC.Close()
+			KC.advance(0.6)
+			T.check(touch() == true, "fixr touch handoff: (setup) with every window closed the thumbstick and jump button show", tostring(touch()))
+			for round = 1, 2 do
+				local tag = "fixr touch handoff (round " .. round .. "): "
+				-- the Pets window, then the Store over it (the Store lays out before WindowOpened closes the Pets window)
+				MC.Open("Pets")
+				KC.advance(0.8)
+				T.check(touch() == false, tag .. "the Pets window hides Roblox's touch controls", tostring(touch()))
+				SC.Open()
+				KC.advance(0.5)
+				T.check(SC.IsOpen() and touch() == false, tag .. "the Store opened over it keeps them hidden", tostring(touch()))
+				SC.Close()
+				KC.advance(0.5)
+				T.check(not SC.IsOpen() and touch() == true, tag .. "...and closing the Store (the last window) brings them back", tostring(touch()))
+				-- the Store, then the Pets window over it (the Pets window lays out before WindowOpened closes the Store)
+				SC.Open()
+				KC.advance(0.5)
+				T.check(touch() == false, tag .. "the Store hides them", tostring(touch()))
+				MC.Open("Pets")
+				KC.advance(0.8)
+				T.check(not SC.IsOpen() and touch() == false, tag .. "the Pets window opened over the Store keeps them hidden", tostring(touch()))
+				MC.Close()
+				KC.advance(0.6)
+				T.check(touch() == true, tag .. "...and closing it (the last window) brings them back", tostring(touch()))
+			end
+		end)
+		DC.Close()
+		SC.Close()
+		MC.Close()
+		KC.advance(0.3)
+		restoreScreen()
+		if not okRun then
+			error(errRun, 0)
+		end
+		KC.flushErrors("client_fixr_touch_handoff")
 	end)
 
 	return S

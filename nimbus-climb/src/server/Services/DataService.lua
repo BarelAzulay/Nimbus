@@ -41,9 +41,11 @@
 --     -- again, foreign to every older server; helper table P7)
 --     Store = { Bought = {[key]=unix}, Passes = {[key]=unix}, Boosts = {[id]=endsUnix} }   -- the Once packs bought, the
 --       passes seen owned, the potion ends (left out while empty; kept by the dev reset: Robux)
---     Daily = { Streak, Paid, LastClaimAt, Weeks, Pet (bool), PlayStart, PlaySec, PlayClaimed = {[tier]=true} }   -- the
---       streak gifts and the play-time gifts (clocks in Unix seconds, 0 = never; PlayClaimed a DENSE boolean array in
---       the store like TrialCleared; left out while all zero; wiped by the dev reset)
+--     Daily = { Streak, Paid, LastClaimAt, Weeks, Pet (bool), PlayStart, PlaySec, PlayClaimed = {[tier]=true},
+--       ClampFrom, ClampAt }   -- the streak gifts and the play-time gifts (clocks in Unix seconds, 0 = never;
+--       PlayClaimed a DENSE boolean array in the store like TrialCleared; ClampFrom / ClampAt = DailyService's Z8 first
+--       sight of a wrong-clock LastClaimAt (the stamp it was seen against, the now of that first sight), left out of the
+--       store while 0; the Daily left out while all zero; wiped by the dev reset)
 --     Trove = {[askId]=true}   -- the Sky Trove asks paid (left out while empty; wiped by the dev reset) }
 --   Store build rules (P7): Bought / Passes merge as a union (the earlier time wins), a potion end per id as the later
 --   end MINUS the seconds of this session's receipt grants the store already holds (the twin rule, before the max);
@@ -53,13 +55,18 @@
 --   group (PlayStart, PlaySec, PlayClaimed), at the same PlayStart the session's seconds add up (0..MaxDaySeconds) and
 --   its tiers join the stored ones, and a Play grant whose (PlayStart, tier) the store holds comes off the deltas; a
 --   stand-in delta never carries a Play group; a stored LastClaimAt further in the future than FutureClockSlack (a
---   wrong clock) loses the pair to a session that moved its pair (a claim: DailyService's Z8 clamp is that session's
---   view and is never written, so a server whose clock runs behind cannot pull the stored claim earlier), but the twin
---   rule still holds against it (a claim the session made without knowing it is the same day paid there: dropped; a
---   claim after the session's clamp is already settled against its own Base, P7.pendingClaims). Trove: a union; an ask the
+--   wrong clock) loses the pair to a session that moved its pair (a claim: DailyService's Z8 clamp never moves the
+--   stored claim, so a server whose clock runs behind cannot pull it earlier), but the twin rule still holds against it.
+--   Every Day grant records Prev, the LastClaimAt its claim built on (re-review 2): while the record still holds that
+--   stamp (or holds this session's own earlier claim the grant follows) the grant is this session's next claim, never a
+--   twin, even less than ReadySeconds after the stamp (a claim after a Z8 clamp); against any other stored stamp the
+--   ReadySeconds rule decides, so a clamp claim whose stamp another server has since replaced is still dropped as the
+--   twin (P7.pendingClaims / P7.applyDaily). A session whose Base stamp is still the stored one takes the pair with any
+--   claim it made. The Z8 first sight (ClampFrom, ClampAt) belongs to its stamp: it is kept only while ClampFrom is the
+--   merged LastClaimAt, and two first sights of one stamp keep the later ClampAt. Trove: a union; an ask the
 --   store already holds takes the session's grant off the deltas. The grant records (cache annotations, never stored):
 --   ReceiptGrants = {[purchaseId] = grant} (replaces ReceiptGems; a number grant still means { Gems = n }),
---   DailyClaims = { grant... } (each { Kind = "Day" | "Play", Tier, At, PlayStart, ...amounts }), TroveGrants =
+--   DailyClaims = { grant... } (each { Kind = "Day" | "Play", Tier, At, Prev, PlayStart, ...amounts }), TroveGrants =
 --   {[askId] = grant}; a grant = { Cash, Tokens, Gems, Berries, Pets = {[id]=n}, Boost = {[id]=seconds}, Star } (Star =
 --   the session's Home.Prestige when it was paid). applyDelta sums every grant the store already holds into `drop` and
 --   takes it off the Tokens / Pets / Cash / Gems / Berries deltas and the potion ends where each kind is applied; the
@@ -376,7 +383,8 @@
 --                                       or fn returning false, restores it (-> false); afterwards it is sanitised in
 --                                       place. A `grant` table ({ Kind = "Day" | "Play", Tier, Cash, Tokens, Gems,
 --                                       Berries, Pets }) is stamped At = `now` (the caller's one clock of the claim;
---                                       without it ONE os.time() read), PlayStart = daily.PlayStart (after fn) and Star
+--                                       without it ONE os.time() read), Prev = the LastClaimAt before fn (the stamp the
+--                                       claim built on), PlayStart = daily.PlayStart (after fn) and Star
 --                                       = the live Home.Prestige, and kept in the entry's DailyClaims for the merge: pay
 --                                       it right after, nothing yielding between. A number in the grant's place is
 --                                       `now` (no grant). Refused until loaded / while provisional. Not synced.
@@ -476,7 +484,8 @@ local KNOWN_STATS = { Matches = true, Wins = true, TokensEarned = true, Spins = 
 --   LastSync = os.clock() of the last ProfileSync, SyncQueued = a trailing SyncSoon is scheduled,
 --   ReceiptGrants = { [purchaseId] = grant } granted with receipts not in the store yet (MarkReceipt / NoteReceiptGrant;
 --     nil when none; the Store build's name of ReceiptGems: a grant table instead of a gem count),
---   DailyClaims = { grant... } the daily claims (MutateDaily's grant, stamped At / PlayStart / Star) not in the store yet,
+--   DailyClaims = { grant... } the daily claims (MutateDaily's grant, stamped At / Prev / PlayStart / Star) not in the
+--     store yet, in claim order,
 --   TroveGrants = { [askId] = grant } the Trove asks (MarkTrove) not in the store yet (P7.pruneGrants drops all three
 --     after a confirmed save)
 -- }
@@ -815,7 +824,7 @@ local P7 = {
 	AMOUNTS = { "Cash", "Tokens", "Gems", "Berries" }, -- the currency amounts of a grant
 	STORE_MAPS = { "Bought", "Passes", "Boosts" },
 	DAILY_NUMBERS = { "Streak", "Paid", "Weeks" }, -- whole numbers 0..MAX_STREAK
-	DAILY_CLOCKS = { "LastClaimAt", "PlayStart" }, -- Unix seconds, 0 = never
+	DAILY_CLOCKS = { "LastClaimAt", "PlayStart", "ClampFrom", "ClampAt" }, -- Unix seconds, 0 = never
 }
 
 -- The Dungeon record: Best = the highest floor cleared (0 = none), Cleared = { [floor] = true } in the live profile
@@ -2163,7 +2172,7 @@ function P7.newStore()
 end
 
 function P7.newDaily()
-	return { Streak = 0, Paid = 0, LastClaimAt = 0, Weeks = 0, Pet = false, PlayStart = 0, PlaySec = 0, PlayClaimed = {} }
+	return { Streak = 0, Paid = 0, LastClaimAt = 0, Weeks = 0, Pet = false, PlayStart = 0, PlaySec = 0, PlayClaimed = {}, ClampFrom = 0, ClampAt = 0 }
 end
 
 -- Config.Daily is read lazily (the spec's numbers; the defaults when an older Config lacks the table).
@@ -2275,9 +2284,11 @@ end
 
 function P7.isDefaultDaily(d)
 	return d.Streak == 0 and d.Paid == 0 and d.LastClaimAt == 0 and d.Weeks == 0 and d.Pet == false and d.PlayStart == 0 and d.PlaySec == 0 and next(d.PlayClaimed) == nil
+		and d.ClampFrom == 0 and d.ClampAt == 0
 end
 
--- Clean record -> the stored form (PlayClaimed a dense boolean array; no sparse array for the DataStore).
+-- Clean record -> the stored form (PlayClaimed a dense boolean array; no sparse array for the DataStore; the Z8 first
+-- sight only while it is set, so a record without one keeps its stored shape).
 function P7.encodeDaily(d)
 	local claimed, top = {}, 0
 	for tier in pairs(d.PlayClaimed) do
@@ -2288,7 +2299,12 @@ function P7.encodeDaily(d)
 	for tier = 1, top do
 		claimed[tier] = d.PlayClaimed[tier] == true
 	end
-	return { Streak = d.Streak, Paid = d.Paid, LastClaimAt = d.LastClaimAt, Weeks = d.Weeks, Pet = d.Pet, PlayStart = d.PlayStart, PlaySec = d.PlaySec, PlayClaimed = claimed }
+	local out = { Streak = d.Streak, Paid = d.Paid, LastClaimAt = d.LastClaimAt, Weeks = d.Weeks, Pet = d.Pet, PlayStart = d.PlayStart, PlaySec = d.PlaySec, PlayClaimed = claimed }
+	if d.ClampFrom > 0 and d.ClampAt > 0 then
+		out.ClampFrom = d.ClampFrom
+		out.ClampAt = d.ClampAt
+	end
+	return out
 end
 
 function P7.cleanTrove(raw)
@@ -2337,6 +2353,7 @@ function P7.cleanGrant(raw)
 	end
 	g.Tier = P7.tierOf(raw.Tier)
 	g.At = isFinite(raw.At) and sanitizeTime(raw.At) or nil
+	g.Prev = isFinite(raw.Prev) and sanitizeTime(raw.Prev) or nil
 	g.PlayStart = isFinite(raw.PlayStart) and sanitizeTime(raw.PlayStart) or nil
 	g.Star = isFinite(raw.Star) and clampCount(raw.Star, MAX_LEVEL) or nil
 	return g
@@ -2347,18 +2364,36 @@ function P7.starOf(profile)
 	return clampCount(type(profile.Home) == "table" and profile.Home.Prestige or 0, MAX_LEVEL)
 end
 
+-- The index in `claims` (a session's grants, in claim order) of the first Day grant built on the stamp `stamp` (its
+-- Prev): the record holding `stamp` holds this session's chain up to that claim and none after it. nil = no such grant.
+function P7.chainFrom(claims, stamp)
+	for i, g in ipairs(claims) do
+		if g.Kind ~= "Play" and g.Prev ~= nil and g.Prev == stamp then
+			return i
+		end
+	end
+	return nil
+end
+
 -- The daily claims of `claims` that are still open against the clean record `daily` (an entry's Base, or the store):
--- the ones its merge would keep. Settled: a Day grant at or before its LastClaimAt (held) or less than ReadySeconds
--- after it (the merge dropped it against that claim: paid elsewhere, never dropped twice); a Play grant of its
--- play-day whose tier it holds, or of an EARLIER play-day (the higher PlayStart replaced that day: never matched again).
+-- the ones its merge would keep. A record that still holds the stamp a Day grant built on (its Prev, P7.chainFrom)
+-- holds the claims before it and none from it on: those are open, even less than ReadySeconds after that stamp (a
+-- claim after a Z8 clamp, re-review 2). Otherwise a Day grant is settled at or before the record's LastClaimAt (held)
+-- or less than ReadySeconds after it (the merge dropped it against that claim: paid elsewhere, never dropped twice); a
+-- Play grant of its play-day whose tier it holds, or of an EARLIER play-day (the higher PlayStart replaced that day:
+-- never matched again).
 function P7.pendingClaims(claims, daily)
 	local out = {}
 	local ready = P7.readySeconds()
-	for _, g in ipairs(tableOr(claims)) do
+	local list = tableOr(claims)
+	local from = P7.chainFrom(list, daily.LastClaimAt)
+	for i, g in ipairs(list) do
 		local held
 		if g.Kind == "Play" then
 			local start = g.PlayStart or 0
 			held = start < daily.PlayStart or (start == daily.PlayStart and g.Tier ~= nil and daily.PlayClaimed[g.Tier] == true)
+		elseif from then
+			held = i < from
 		else
 			held = (g.At or 0) - daily.LastClaimAt < ready
 		end
@@ -2402,7 +2437,8 @@ function P7.diffDaily(live, base, standIn)
 	if deepEqual(live, base) then
 		return nil
 	end
-	local d = { Streak = live.Streak, LastClaimAt = live.LastClaimAt, BaseClaimAt = base.LastClaimAt, Paid = live.Paid, Weeks = live.Weeks, Pet = live.Pet }
+	local d = { Streak = live.Streak, LastClaimAt = live.LastClaimAt, BaseClaimAt = base.LastClaimAt, Paid = live.Paid, Weeks = live.Weeks, Pet = live.Pet,
+		ClampFrom = live.ClampFrom, ClampAt = live.ClampAt }
 	if not standIn then
 		d.PlayStart = live.PlayStart
 		d.PlaySecNow = live.PlaySec
@@ -2444,12 +2480,15 @@ end
 
 -- The Daily merge (`out` = the merged profile, `dd` = the Daily delta or nil, `claims` = the session's pending claim
 -- grants, `drop` collects the grants the store already paid). The store decides against ITS values before the merge:
--- a Day grant less than ReadySeconds after the stored LastClaimAt was paid elsewhere (dropped; the stored pair stays);
--- else the higher LastClaimAt wins the pair. A stored clock further in the future than FutureClockSlack is a wrong
--- clock: it loses the pair to a session that MOVED its pair (a claim; DailyService never writes a bare Z8 clamp), but
--- it still drops a twin (a pending claim never saw that stored claim: a claim after the session's clamp is settled
--- against the session's own Base, P7.pendingClaims, and never reaches this loop), so one day is never paid twice.
--- Paid / Weeks max, Pet sticks.
+-- when the stored LastClaimAt is the stamp one of the claims built on (its Prev, P7.chainFrom), the store holds this
+-- session's claims before that one (dropped: paid there) and none from it on (kept, however soon after the stamp: a
+-- claim after a Z8 clamp, re-review 2); otherwise a Day grant less than ReadySeconds after the stored LastClaimAt was
+-- paid elsewhere (dropped; the stored pair stays). Else the higher LastClaimAt wins the pair, and a session whose Base
+-- stamp is still the stored one takes it with any claim it made. A stored clock further in the future than
+-- FutureClockSlack is a wrong clock: it loses the pair to a session that MOVED its pair (a claim; DailyService's Z8
+-- clamp never moves LastClaimAt), but it still drops a twin, so one day is never paid twice. Paid / Weeks max, Pet
+-- sticks. The Z8 first sight (ClampFrom, ClampAt) stays only while ClampFrom is the merged LastClaimAt; the store's and
+-- the session's first sights of that one stamp keep the later ClampAt (a slower clock's earlier sight never wins).
 -- The higher PlayStart wins the whole Play group; at the same PlayStart the seconds add up and the tiers join; a Play
 -- grant whose (PlayStart, tier) the store holds was paid elsewhere.
 function P7.applyDaily(out, dd, claims, drop)
@@ -2457,12 +2496,14 @@ function P7.applyDaily(out, dd, claims, drop)
 	local ready = P7.readySeconds()
 	local wrongClock = stored.LastClaimAt > os.time() + P7.futureSlack()
 	local droppedAt = {}
-	for _, g in ipairs(tableOr(claims)) do
+	local list = tableOr(claims)
+	local from = P7.chainFrom(list, stored.LastClaimAt)
+	for i, g in ipairs(list) do
 		if g.Kind == "Play" then
 			if (g.PlayStart or 0) == stored.PlayStart and g.Tier ~= nil and stored.PlayClaimed[g.Tier] == true then
 				P7.dropGrant(drop, g)
 			end
-		elseif (g.At or 0) - stored.LastClaimAt < ready then
+		elseif (from and i < from) or (not from and (g.At or 0) - stored.LastClaimAt < ready) then
 			P7.dropGrant(drop, g)
 			droppedAt[g.At or 0] = true
 		end
@@ -2472,10 +2513,20 @@ function P7.applyDaily(out, dd, claims, drop)
 	end
 	local d = out.Daily
 	local moved = dd.LastClaimAt ~= dd.BaseClaimAt -- a Play tick alone never takes a wrong-clock pair
-	if (dd.LastClaimAt > stored.LastClaimAt or (wrongClock and moved)) and not droppedAt[dd.LastClaimAt] then
+	local successor = moved and stored.LastClaimAt == dd.BaseClaimAt -- nothing claimed in the store since the Base
+	if (dd.LastClaimAt > stored.LastClaimAt or (wrongClock and moved) or successor) and not droppedAt[dd.LastClaimAt] then
 		d.LastClaimAt = dd.LastClaimAt
 		d.Streak = dd.Streak
 	end
+	local seenAt = 0
+	if stored.ClampFrom > 0 and stored.ClampFrom == d.LastClaimAt then
+		seenAt = stored.ClampAt
+	end
+	if isFinite(dd.ClampFrom) and dd.ClampFrom > 0 and dd.ClampFrom == d.LastClaimAt and isFinite(dd.ClampAt) and dd.ClampAt > seenAt then
+		seenAt = sanitizeTime(dd.ClampAt)
+	end
+	d.ClampFrom = seenAt > 0 and d.LastClaimAt or 0
+	d.ClampAt = seenAt
 	if dd.Paid > d.Paid then
 		d.Paid = dd.Paid
 	end
@@ -5524,6 +5575,7 @@ function DataService.MutateDaily(player, fn, grant, now)
 	end
 	local live = ensureTable(entry.Profile, "Daily")
 	local before = P7.cleanDaily(live)
+	local prev = before.LastClaimAt -- the stamp a claim in fn builds on (its grant's Prev)
 	local ok, result = pcall(fn, live)
 	entry.Profile.Daily = live -- the record stays this table even if fn replaced the field
 	if not ok then
@@ -5540,6 +5592,7 @@ function DataService.MutateDaily(player, fn, grant, now)
 		local g = P7.cleanGrant(grant)
 		if g then
 			g.At = now
+			g.Prev = prev
 			g.PlayStart = live.PlayStart
 			g.Star = P7.starOf(entry.Profile)
 			local claims = entry.DailyClaims

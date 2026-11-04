@@ -4,17 +4,28 @@
 --                             count (a still root, no remote); while no tick has run (no root) State shows no tier
 --                             Ready and ClaimPlay refuses with the day-over text: a dead day's tiers are never banked (Q17)
 --   fixr_daily_readyat        a stored LastClaimAt past FutureClockSlack (a wrong-clock server) is clamped where the
---                             payload is built: the join's payload has ReadyAt <= ServerNow + ReadySeconds, the clamp is
---                             this session's only (the record and the store keep the stamp), a claim then waits 20 h and
---                             pays; a stamp inside the slack is kept as it is (Z8)
+--                             payload is built: the join's payload has ReadyAt <= ServerNow + ReadySeconds, the clamp
+--                             never moves LastClaimAt (the record and the store keep the stamp; re-review 2 notes the
+--                             first sight next to it), a claim then waits 20 h and pays; a stamp inside the slack is kept
+--                             as it is (Z8)
 --   fixr_daily_slow_clock     (re-review 1, finding 1) a store claim at r0 read by a server whose clock runs 2 h behind:
 --                             the join's payload counts down from now, but neither the payload nor a hand-sent claim
---                             writes the clamp, so no save lowers the stored LastClaimAt; 20 h after the join the claim
+--                             moves LastClaimAt, so no save lowers the stored LastClaimAt; 20 h after the join the claim
 --                             pays and its own pair (with its grant) is stored
 --   fixr_daily_repair_state   (re-review 1, finding 2) after a missed day the payload shows what the claim will do: a
 --                             repair (Repair = true, Today on the repair cell, no gift on it), never the next day's gift;
 --                             the claim then repairs and pays nothing; a kept streak and a VIP (never steps back) still
---                             show the gift
+--                             show the gift; (re-review 2, findings 2 / 5 / 8) the kept claims after a multi-day miss
+--                             that only climb back to Paid are repairs too (cells 4 and 5 after Streak 5 / Paid 5 fell
+--                             to 3), and so is a VIP's kept claim while Paid > Streak; day 6 is a gift again
+--   fixr_daily_clamp_rejoin   (re-review 2, findings 3 / 7) the first sight of a wrong-clock stamp outlives the session:
+--                             the record notes it (ClampFrom / ClampAt, never LastClaimAt), a rejoin 21 h later keeps
+--                             the countdown the window showed and the claim pays; a slow server's first sight of a
+--                             correct stamp is ignored by a server that sees that stamp as past (re-review 1 stays
+--                             fixed); the merge keeps the later first sight of one stamp, and a claim drops it
+--   fixr_daily_keep_resend    (re-review 2, findings 6 / 9) the payload names the moment its streak view stops being
+--                             true (StaleAt = KeepUntil + 1, then each further missed day) and a tick re-sends it then:
+--                             the repair shows before the claim; a VIP pass answer that changes Vip re-sends it too
 --   fixr_daily_stamp_race     the claim's now and its grant's At are ONE stamp: a wall-clock second ticking inside
 --                             Claim no longer lets a dropped claim's pair replace the stored one (the section 6 merge;
 --                             needs DataService.MutateDaily's `now` argument)
@@ -298,7 +309,7 @@ S.fixr_daily_readyat = guarded("fixr_daily_readyat", function()
 	-- clock runs behind pull the next gift earlier on every other server
 	local d = DS().GetDaily(p)
 	T.check(first ~= nil and d.LastClaimAt == future and d.Streak == 1 and d.Paid == 1,
-		"fixr daily readyat: ...the clamp is never written: the live record keeps the stored stamp (Streak / Paid kept)", describeDaily(d))
+		"fixr daily readyat: ...the clamp never moves LastClaimAt: the live record keeps the stored stamp (Streak / Paid kept)", describeDaily(d))
 	T.check(DS().Save(p) == true and (stored(uid) or {}).Daily ~= nil and stored(uid).Daily.LastClaimAt == future, "fixr daily readyat: ...and a save leaves the stored stamp as it was",
 		tostring(stored(uid) and stored(uid).Daily and stored(uid).Daily.LastClaimAt) .. " vs " .. tostring(future))
 	local tokens0 = DS().GetTokens(p)
@@ -423,14 +434,14 @@ S.fixr_daily_slow_clock = guarded("fixr_daily_slow_clock", function()
 		first and ("ReadyAt - ServerNow = " .. tostring(first.ReadyAt - first.ServerNow)) or "no payload")
 	T.check(first ~= nil and first.KeepUntil <= first.ServerNow + KEEP, "fixr daily slow clock: ...and the keep window from the same clamped stamp",
 		first and ("KeepUntil - ServerNow = " .. tostring(first.KeepUntil - first.ServerNow)) or "no payload")
-	T.eq(DS().GetDaily(p).LastClaimAt, r0, "fixr daily slow clock: building the payload writes nothing (the live record keeps r0)")
+	T.eq(DS().GetDaily(p).LastClaimAt, r0, "fixr daily slow clock: building the payload never moves LastClaimAt (the live record keeps r0)")
 	-- a hand-sent claim (the window never sends one now) is refused and writes nothing either
 	local tokens0 = DS().GetTokens(p)
 	mark = K.logSize()
 	claim(p)
 	local d = DS().GetDaily(p)
 	T.check(d.LastClaimAt == r0 and d.Streak == 1 and DS().GetTokens(p) == tokens0 and toastCount(p, "Next gift in", mark) == 1,
-		"fixr daily slow clock: a hand-sent claim is refused ('Next gift in ...') and leaves the record at r0", describeDaily(d))
+		"fixr daily slow clock: a hand-sent claim is refused ('Next gift in ...') and leaves the record's LastClaimAt at r0", describeDaily(d))
 	-- the autosave / leave save never lowers the stored stamp (the exploit: each visit to a slow server cut the next wait)
 	T.check(DS().Save(p) == true and (stored(uid) or {}).Daily ~= nil and stored(uid).Daily.LastClaimAt == r0 and stored(uid).Daily.Streak == 1,
 		"fixr daily slow clock: a save after the join and the refused claim leaves the stored LastClaimAt at r0",
@@ -496,6 +507,29 @@ S.fixr_daily_repair_state = guarded("fixr_daily_repair_state", function()
 	st = D.State(p)
 	T.check(st ~= nil and st.Repair == true and st.Cell == 3 and st.Days[3].Today == true and st.Days[3].Repair == true and st.Days[2].Claimed == true and st.Days[3].Claimed ~= true and st.Days[6].Today ~= true,
 		"fixr daily repair state: three missed days (Streak 5, Paid 5, 98 h): a repair of day 3", cellsText(st))
+	-- re-review 2 (findings 2 / 5 / 8): the repair claim, then the kept claims that climb back to Paid 5 repair too
+	cash0, tokens0, gems0 = DS().GetCash(p), DS().GetTokens(p), DS().GetGems(p)
+	mark = K.logSize()
+	claim(p)
+	d = DS().GetDaily(p)
+	T.check(d.Streak == 3 and d.Paid == 5 and toastCount(p, "Streak repaired! Day 3 of 7", mark) == 1,
+		"fixr daily repair state: (setup) the step-back claim repairs day 3 (Streak 3, Paid 5)", describeDaily(d))
+	for _, day in ipairs({ 4, 5 }) do
+		setDaily(p, { LastClaimAt = os.time() - 24 * 3600 }) -- a day later: the streak is kept
+		st = D.State(p)
+		T.check(st ~= nil and st.Repair == true and st.Cell == day and st.Days[day].Today == true and st.Days[day].Repair == true and st.Days[day - 1].Claimed == true and st.Days[day].Claimed ~= true,
+			"fixr daily repair state: a kept claim a day after it (Streak " .. (day - 1) .. " < Paid 5) shows the repair of day " .. day .. ", never its gift", cellsText(st))
+		mark = K.logSize()
+		claim(p)
+		d = DS().GetDaily(p)
+		T.check(d.Streak == day and d.Paid == 5 and DS().GetCash(p) == cash0 and DS().GetTokens(p) == tokens0 and DS().GetGems(p) == gems0 and toastCount(p, "Streak repaired! Day " .. day .. " of 7", mark) == 1,
+			"fixr daily repair state: ...and that claim repairs day " .. day .. " and pays nothing, as the window said", describeDaily(d))
+	end
+	setDaily(p, { LastClaimAt = os.time() - 24 * 3600 })
+	st = D.State(p)
+	T.check(st ~= nil and st.Repair ~= true and st.Cell == 6 and st.Days[6].Today == true and st.Days[6].Repair ~= true and (st.Days[6].Amount or 0) >= 1,
+		"fixr daily repair state: day 6 (Streak 6 > Paid 5) shows its gift again", cellsText(st))
+	now = os.time()
 	-- a kept streak (30 h): the next day's gift, no repair
 	setDaily(p, { Streak = 3, Paid = 3, LastClaimAt = now - 30 * 3600 })
 	st = D.State(p)
@@ -516,12 +550,232 @@ S.fixr_daily_repair_state = guarded("fixr_daily_repair_state", function()
 		st = D.State(p)
 		T.check(st ~= nil and st.Vip == true and st.Repair ~= true and st.Cell == 4 and st.Days[4].Today == true,
 			"fixr daily repair state: a VIP (never steps back) with the same missed day sees day 4's gift", cellsText(st))
+		-- re-review 2 (finding 2): a VIP whose Paid is above its Streak (it stepped back before buying VIP) re-earns a
+		-- paid day on a kept claim: a repair too
+		setDaily(p, { Streak = 3, Paid = 5, LastClaimAt = now - 30 * 3600 })
+		st = D.State(p)
+		T.check(st ~= nil and st.Vip == true and st.Repair == true and st.Cell == 4 and st.Days[4].Today == true and st.Days[4].Repair == true,
+			"fixr daily repair state: a VIP with Paid 5 > Streak 3 (kept) sees the repair of day 4, never its gift", cellsText(st))
 	end)
 	deps.StoreService = realStore
 	if not okVip then
 		error(errVip, 0)
 	end
 	finish("fixr_daily_repair_state", p)
+end)
+
+local function clampText(d)
+	if type(d) ~= "table" then
+		return tostring(d)
+	end
+	return describeDaily(d) .. " ClampFrom " .. tostring(d.ClampFrom) .. " ClampAt " .. tostring(d.ClampAt)
+end
+
+----------------------------------------------------------------------------------------------------
+-- fixr_daily_clamp_rejoin (re-review round 2, findings 3 / 7: the first sight of a wrong clock outlives the session)
+----------------------------------------------------------------------------------------------------
+S.fixr_daily_clamp_rejoin = guarded("fixr_daily_clamp_rejoin", function()
+	if not K.needBoot() then
+		return
+	end
+	local READY = config().Daily.ReadySeconds
+	-- 1) a server whose clock ran 3 days fast paid day 1: the store holds F, 3 days ahead of this server
+	local uid = newUserId()
+	local p = join("FxRejoin", uid)
+	loaded(p)
+	claim(p)
+	T.eq(DS().GetDaily(p).Streak, 1, "fixr daily clamp rejoin: (setup) day 1 claimed")
+	local F = os.time() + 3 * 86400
+	T.check(setDaily(p, { LastClaimAt = F }) and DS().Save(p) == true and (stored(uid) or {}).Daily ~= nil and stored(uid).Daily.LastClaimAt == F,
+		"fixr daily clamp rejoin: (setup) the store holds a LastClaimAt 3 days ahead")
+	leave(p)
+	local mark = K.logSize()
+	p = join("FxRejoin", uid)
+	loaded(p)
+	advance(0.5)
+	local first = firstPayload(p, mark)
+	T.check(first ~= nil and first.ReadyAt <= first.ServerNow + READY and first.ReadyAt >= first.ServerNow + READY - 5,
+		"fixr daily clamp rejoin: the join's payload counts down 20 h from the first sight", first and ("ReadyAt - ServerNow = " .. tostring(first.ReadyAt - first.ServerNow)) or "no payload")
+	local d = DS().GetDaily(p)
+	local seen = first and (first.ReadyAt - READY) or -1
+	T.check(d.LastClaimAt == F and d.ClampFrom == F and d.ClampAt == seen,
+		"fixr daily clamp rejoin: ...the record keeps F and notes that first sight next to it (ClampFrom = F, ClampAt = the join)", clampText(d) .. " seen " .. tostring(seen))
+	advance(3600)
+	leave(p)
+	local rec = stored(uid) or {}
+	T.check(type(rec.Daily) == "table" and rec.Daily.LastClaimAt == F and rec.Daily.ClampFrom == F and rec.Daily.ClampAt == seen,
+		"fixr daily clamp rejoin: the leave save an hour later stores F unchanged and the first sight with it", clampText(rec.Daily))
+	-- 21 h after the first sight (F still ahead): the rejoin keeps the countdown the window showed, and the gift is ready
+	advance(20 * 3600)
+	mark = K.logSize()
+	p = join("FxRejoin", uid)
+	loaded(p)
+	advance(0.5)
+	local again = firstPayload(p, mark)
+	T.check(again ~= nil and first ~= nil and again.ReadyAt == first.ReadyAt and again.ReadyAt <= again.ServerNow,
+		"fixr daily clamp rejoin: the rejoin's payload keeps the first countdown (no restart at the rejoin): the gift is ready",
+		again and ("ReadyAt " .. tostring(again.ReadyAt) .. " (first " .. tostring(first and first.ReadyAt) .. ") ServerNow " .. tostring(again.ServerNow)) or "no payload")
+	local tokens0 = DS().GetTokens(p)
+	local t2 = claim(p)
+	d = DS().GetDaily(p)
+	T.check(d.Streak == 2 and d.LastClaimAt == t2 and DS().GetTokens(p) == tokens0 + 50 and (d.ClampFrom or 0) == 0 and (d.ClampAt or 0) == 0,
+		"fixr daily clamp rejoin: the claim pays day 2; its own stamp replaces F and the first sight goes with it", clampText(d) .. " t2 " .. t2)
+	T.check(DS().Save(p) == true and stored(uid).Daily.LastClaimAt == t2 and (stored(uid).Daily.ClampFrom or 0) == 0 and (stored(uid).Daily.ClampAt or 0) == 0,
+		"fixr daily clamp rejoin: ...and the save stores the claim's pair and no first sight", clampText(stored(uid).Daily))
+	leave(p)
+
+	-- 2) a first sight written by a server whose clock runs 2 h behind, of a CORRECT stamp L: this server sees L as past and
+	--    ignores it (a slow server never pulls the next gift earlier here, re-review 1)
+	local uid2 = newUserId()
+	local q = join("FxRejoinB", uid2)
+	loaded(q)
+	claim(q)
+	local L = DS().GetDaily(q).LastClaimAt
+	T.check(setDaily(q, { ClampFrom = L, ClampAt = L - 7200 }) and DS().Save(q) == true and (stored(uid2) or {}).Daily ~= nil and stored(uid2).Daily.ClampFrom == L,
+		"fixr daily clamp rejoin: (setup) the store holds a slow server's first sight of the correct stamp L (2 h before L)", clampText((stored(uid2) or {}).Daily))
+	leave(q)
+	q = join("FxRejoinB", uid2)
+	loaded(q)
+	local st = DSV().State(q)
+	T.check(st ~= nil and st.ReadyAt == L + READY and st.KeepUntil == L + config().Daily.KeepSeconds,
+		"fixr daily clamp rejoin: a server that sees L as past counts from L (ReadyAt = L + 20 h), never from the slow first sight",
+		st and ("ReadyAt - L = " .. tostring(st.ReadyAt - L)) or "no payload")
+	leave(q)
+
+	-- 3) the merge: two first sights of one stamp keep the later one; a claim on top drops it
+	local B, cloneB, releaseB = secondServer("DataServiceFixrClampB")
+	if not T.check(B ~= nil and type(B.MutateDaily) == "function", "fixr daily clamp rejoin: a second copy of DataService loads as 'server B'", tostring(cloneB)) then
+		return
+	end
+	local okRun, errRun = pcall(function()
+		local uid3 = newUserId()
+		local r = join("FxRejoinC", uid3)
+		loaded(r)
+		claim(r)
+		local F3 = os.time() + 2 * 86400
+		T.check(setDaily(r, { LastClaimAt = F3 }) and DS().Save(r) == true, "fixr daily clamp rejoin: (setup) a stamp 2 days ahead in the store")
+		leave(r)
+		r = join("FxRejoinC", uid3)
+		loaded(r)
+		advance(0.5)
+		local a = DS().GetDaily(r).ClampAt or 0
+		T.check(DS().GetDaily(r).ClampFrom == F3 and a > 0 and DS().Save(r) == true and stored(uid3).Daily.ClampAt == a,
+			"fixr daily clamp rejoin: (setup) this server's first sight of it is stored", clampText(stored(uid3).Daily))
+		B.Load(r)
+		advance(0.2)
+		local function setB(at)
+			return B.MutateDaily(r, function(dd)
+				dd.ClampFrom = F3
+				dd.ClampAt = at
+				return true
+			end) and B.Save(r) == true
+		end
+		T.check(setB(a - 100), "fixr daily clamp rejoin: server B saves an EARLIER first sight of the same stamp")
+		T.check(stored(uid3).Daily.ClampFrom == F3 and stored(uid3).Daily.ClampAt == a and stored(uid3).Daily.LastClaimAt == F3,
+			"fixr daily clamp rejoin: ...the store keeps the later one (a slower clock's earlier sight never wins)", clampText(stored(uid3).Daily))
+		T.check(setB(a + 100) and stored(uid3).Daily.ClampAt == a + 100, "fixr daily clamp rejoin: a LATER first sight of the same stamp wins", clampText(stored(uid3).Daily))
+		local tb = os.time()
+		T.check(B.MutateDaily(r, function(dd)
+			dd.Streak = 2
+			dd.Paid = math.max(dd.Paid or 0, 2)
+			dd.LastClaimAt = tb
+			return true
+		end, { Kind = "Day", Tokens = 50 }, tb) and B.Save(r) == true, "fixr daily clamp rejoin: server B claims day 2 (a new stamp) and saves")
+		rec = stored(uid3) or {}
+		T.check(type(rec.Daily) == "table" and rec.Daily.LastClaimAt == tb and rec.Daily.Streak == 2 and (rec.Daily.ClampFrom or 0) == 0 and (rec.Daily.ClampAt or 0) == 0,
+			"fixr daily clamp rejoin: ...its pair lands and the first sight of the old stamp is dropped", clampText(rec.Daily))
+		leave(r)
+	end)
+	advance(12)
+	T.check(releaseB() == true, "fixr daily clamp rejoin: server B's hooks are dropped with it")
+	if not okRun then
+		error(errRun, 0)
+	end
+	K.flushErrors("fixr_daily_clamp_rejoin")
+	K.flushWarnings("fixr_daily_clamp_rejoin", ALLOWED_WARNINGS)
+end)
+
+----------------------------------------------------------------------------------------------------
+-- fixr_daily_keep_resend (re-review round 2, findings 6 / 9: a payload is re-sent when its streak view stops being true)
+----------------------------------------------------------------------------------------------------
+S.fixr_daily_keep_resend = guarded("fixr_daily_keep_resend", function()
+	if not K.needBoot() then
+		return
+	end
+	local KEEP = config().Daily.KeepSeconds
+	local D = DSV()
+	local deps = D._deps and D._deps() or nil
+	if not T.check(type(deps) == "table" and type(deps.StoreService) == "table" and deps.StoreService.Changed ~= nil, "keep resend: DailyService._deps() holds the booted StoreService (its Changed signal)") then
+		return
+	end
+	local function cellsOf(st)
+		local parts = {}
+		for i, e in ipairs(st and st.Days or {}) do
+			parts[#parts + 1] = i .. ":" .. (e.Claimed and "C" or "") .. (e.Today and "T" or "") .. (e.Repair and "R" or "")
+		end
+		return "Cell " .. tostring(st and st.Cell) .. " Repair " .. tostring(st and st.Repair) .. " Vip " .. tostring(st and st.Vip) .. " StaleAt " .. tostring(st and st.StaleAt) .. " " .. table.concat(parts, " ")
+	end
+	local function lastSince(p, mark)
+		local list = states(p, mark)
+		local e = list[#list]
+		return e and e.args[1] or nil, #list
+	end
+	local p = join("FxKeep", newUserId())
+	loaded(p)
+	alignTicks()
+	-- Streak 3 / Paid 3, the keep deadline 25 s away: day 4's gift, and the payload says when that stops being true
+	local last = os.time() - KEEP + 25
+	setDaily(p, { Streak = 3, Paid = 3, LastClaimAt = last })
+	local st = D.Send(p)
+	T.check(st ~= nil and st.Repair ~= true and st.Cell == 4 and st.StaleAt == last + KEEP + 1,
+		"keep resend: 25 s before the keep deadline the payload shows day 4's gift and StaleAt = KeepUntil + 1", cellsOf(st))
+	local mark = K.logSize()
+	advance(10)
+	local _, n = lastSince(p, mark)
+	T.eq(n, 0, "keep resend: (precondition) a tick before the deadline sends nothing")
+	advance(30)
+	local got
+	got, n = lastSince(p, mark)
+	T.check(n >= 1 and got ~= nil and got.Repair == true and got.Cell == 3 and type(got.Days) == "table" and got.Days[3].Repair == true and got.Days[3].Today == true,
+		"keep resend: once the keep deadline passes a tick re-sends the payload: the repair of day 3, before any claim (finding 6)", cellsOf(got))
+	T.check(got ~= nil and got.StaleAt == last + KEEP + 86400, "keep resend: ...whose StaleAt is the next missed day (KeepUntil + 24 h)", cellsOf(got))
+	mark = K.logSize()
+	advance(20)
+	_, n = lastSince(p, mark)
+	T.eq(n, 0, "keep resend: ...and it is sent once (no payload on the next ticks)")
+	-- a VIP pass still Checking when the payload was built (a step-back due: the repair shows), then it answers Owned
+	local real = deps.StoreService
+	local owned = false
+	deps.StoreService = {
+		Owns = function(_, key)
+			return owned and key == "VIP"
+		end,
+		PassState = function()
+			return owned and "Owned" or "Checking"
+		end,
+		Changed = real.Changed,
+	}
+	local okVip, errVip = pcall(function()
+		st = D.Send(p)
+		T.check(st ~= nil and st.Vip ~= true and st.Repair == true, "keep resend: (setup) while the pass is Checking the payload shows the repair", cellsOf(st))
+		mark = K.logSize()
+		owned = true
+		real.Changed:Fire(p)
+		advance(0.2)
+		got, n = lastSince(p, mark)
+		T.check(n == 1 and got ~= nil and got.Vip == true and got.Repair ~= true and got.Cell == 4 and got.Days[4].Today == true and got.StaleAt == 0,
+			"keep resend: the pass answer (StoreService.Changed) re-sends it: VIP, no step-back, day 4's gift (finding 9)", cellsOf(got) .. " n " .. n)
+		mark = K.logSize()
+		real.Changed:Fire(p)
+		advance(0.2)
+		_, n = lastSince(p, mark)
+		T.eq(n, 0, "keep resend: ...a Changed that leaves Vip as it was sends nothing")
+	end)
+	deps.StoreService = real
+	if not okVip then
+		error(errVip, 0)
+	end
+	finish("fixr_daily_keep_resend", p)
 end)
 
 return S

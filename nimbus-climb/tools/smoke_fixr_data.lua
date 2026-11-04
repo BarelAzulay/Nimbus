@@ -16,6 +16,11 @@
 --   fixr_data_daily_stamp     MutateDaily(player, fn, grant, now) stamps the grant's At with `now`: a clock second that
 --                             ticks inside fn never splits a dropped claim from its pair (the stored pair stays); without
 --                             `now` MutateDaily reads os.time() once; a number in the grant's place is `now`
+--   fixr_data_clamp_twin      (re-review round 2, finding 1) a store stamp F 6 min ahead (a fast server wrote it): the
+--                             session's Z8 clamp lets it claim 20 h after the join (less than 20 h after F), its final
+--                             save fails (an orphan); another server loads the stale F and pays the same day; the
+--                             orphan retry lands last: the day is paid ONCE (the clamp claim is no exception to the
+--                             twin rule: its grant records the stamp it built on, Prev = F)
 -- White-box: the booted helpers of smoke_p7_data.lua; "server A" / "server B" are copies of DataService against the same
 -- mock store (the smoke_p5_data.lua secondServer shape). Plain Lua 5.1 syntax only.
 
@@ -540,6 +545,99 @@ S.fixr_data_daily_stamp = guarded("fixr_data_daily_stamp", function()
 	end
 	K.flushErrors("fixr_data_daily_stamp")
 	K.flushWarnings("fixr_data_daily_stamp", ALLOWED_WARNINGS)
+end)
+
+----------------------------------------------------------------------------------------------------
+-- fixr_data_clamp_twin (re-review round 2, finding 1: a claim built on a session clamp keeps the twin rule)
+----------------------------------------------------------------------------------------------------
+S.fixr_data_clamp_twin = guarded("fixr_data_clamp_twin", function()
+	if not K.needBoot() then
+		return
+	end
+	local D = DS()
+	local DV = mod("DailyService")
+	local DSt = Mock.DataStore
+	local daily = type(config().Daily) == "table" and config().Daily or {}
+	local READY = daily.ReadySeconds or 72000
+	local SLACK = daily.FutureClockSlack or 300
+	local C, cloneC, releaseC = secondServer("DataServiceFixrClampC")
+	if not T.check(C ~= nil and type(C.MutateDaily) == "function" and type(DV) == "table" and type(DV.Claim) == "function",
+		"clamp twin: a second copy of DataService loads as 'server C'; DailyService is booted", tostring(cloneC)) then
+		if releaseC then
+			releaseC()
+		end
+		return
+	end
+	local saved = { Fail = DSt.Fail }
+	local okRun, errRun = pcall(function()
+		-- the store: day 2 paid by a server whose clock ran 6 min fast (past the slack): F reads 6 min ahead here
+		local uid = newUserId()
+		local F = os.time() + SLACK + 60
+		DSt.Data[storeKey(uid)] = {
+			Version = 2, Tokens = 3, Gems = 5, Pets = {}, Equipped = {}, Items = {}, Stats = statsOf(),
+			Daily = { Streak = 2, Paid = 2, LastClaimAt = F, Weeks = 0, Pet = false, PlayStart = 0, PlaySec = 0, PlayClaimed = {} },
+		}
+		-- server B (this one, with DailyService) loads it at T: the join's clamp counts from T for the session
+		local p = join("FixrClamp", uid)
+		local loaded = K.waitFor(function()
+			return D.GetDaily(p) ~= nil
+		end, 10)
+		local T0 = os.time()
+		local st = DV.State(p)
+		T.check(loaded and st ~= nil and st.ReadyAt <= T0 + READY and D.GetDaily(p).LastClaimAt == F,
+			"clamp twin: (precondition) B's clamp counts from the join (ReadyAt <= now + 20 h) while the record keeps F",
+			st and ("ReadyAt - now " .. tostring(st.ReadyAt - T0)) or "no payload")
+		-- 20 h after the join B pays day 3 (less than 20 h after F); then its saves fail and the player leaves
+		advance(READY + 2)
+		local gemsB = D.GetGems(p)
+		local tB = os.time()
+		local ok, info = DV.Claim(p)
+		T.check(ok == true and type(info) == "table" and info.Streak == 3 and D.GetGems(p) == gemsB + 10 and tB - F < READY,
+			"clamp twin: B claims day 3 (+10 Gems) 20 h after the join, " .. tostring(tB - F) .. " s after F", tostring(ok) .. " " .. tostring(type(info) == "table" and info.Streak or info))
+		D.AddTokens(p, 7) -- B's own Tokens: they show the orphan retry landed
+		DSt.Fail = true
+		T.eq(D.Save(p), false, "clamp twin: (server B, store failing) the save fails")
+		leave(p)
+		advance(400) -- B's orphan retries at 10 .. 390 s fail too; the next is at 510 s
+		DSt.Fail = false
+		local rec = stored(uid) or {}
+		T.check(type(rec.Daily) == "table" and rec.Daily.LastClaimAt == F and rec.Daily.Streak == 2 and rec.Gems == 5 and rec.Tokens == 3,
+			"clamp twin: (precondition) none of B's saves reached the store", dailyText(rec) .. " Gems " .. tostring(rec.Gems))
+		-- server C loads the stale (F, 2) and pays day 3 again, at F + 20 h, and saves before B's retry
+		C.Load(p)
+		advance(0.2)
+		local tC = os.time()
+		T.check(tC - F >= READY, "clamp twin: (precondition) C's claim is a full 20 h after F")
+		local okC = C.MutateDaily(p, function(d)
+			d.Streak = 3
+			d.Paid = math.max(d.Paid or 0, 3)
+			d.LastClaimAt = tC
+			return true
+		end, { Kind = "Day", Gems = 10 }, tC)
+		if okC then
+			C.AddGems(p, 10)
+		end
+		T.check(okC and C.Save(p) == true, "clamp twin: server C (the stale F) pays day 3 again and saves")
+		rec = stored(uid) or {}
+		T.check(type(rec.Daily) == "table" and rec.Daily.LastClaimAt == tC and rec.Daily.Streak == 3 and rec.Gems == 15,
+			"clamp twin: (precondition) the store holds C's pair (tC, 3) and +10 Gems", dailyText(rec) .. " Gems " .. tostring(rec.Gems))
+		advance(130) -- B's orphan retry lands last
+		rec = stored(uid) or {}
+		T.eq(rec.Tokens, 3 + 7, "clamp twin: B's orphan retry landed (its 7 Tokens)")
+		T.check(rec.Gems == 15, "clamp twin: day 3 is paid ONCE: B's clamp claim (less than 20 h after F, but after C's stored claim) is the twin and comes off",
+			"Gems " .. tostring(rec.Gems) .. " (5 + 10 once = 15)")
+		T.check(type(rec.Daily) == "table" and rec.Daily.LastClaimAt == tC and rec.Daily.Streak == 3 and rec.Daily.Paid == 3,
+			"clamp twin: ...the stored pair stays C's (tC, 3), Paid 3", dailyText(rec) .. " tC " .. tC .. " tB " .. tB)
+		advance(0.3)
+	end)
+	DSt.Fail = saved.Fail
+	advance(12)
+	T.check(releaseC() == true, "clamp twin: server C's hooks are dropped with it")
+	if not okRun then
+		error(errRun, 0)
+	end
+	K.flushErrors("fixr_data_clamp_twin")
+	K.flushWarnings("fixr_data_clamp_twin", { "[DataService]", "[DailyService]", "[TycoonService]", "[PetCareService]", "[SpotService]" })
 end)
 
 return S

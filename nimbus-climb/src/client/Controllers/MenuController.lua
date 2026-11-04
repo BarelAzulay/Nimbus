@@ -29,6 +29,10 @@
 --          MenuController.SetColumnCovered(windowLeft, who) -> a window reaches over the tiles from that screen x (nil =
 --          closed): the tiles step aside while ANY window covers them. `who` names the window ("Pets" when left out:
 --          PetsController; "Store", "Daily"), so one window closing never brings the tiles back over another one
+--          MenuController.SetTouchHidden(who, on) -> Roblox's thumbstick and jump button go while ANY window asked for
+--          it (`who` = "Pets" / "Store") and come back as they were when the last one lets go: one owner set, one
+--          snapshot taken while no window held them (re-review 2: a window handing over to another never restores a
+--          value the other one wrote)
 --          MenuController.SetColumnCollapsed(collapsed, animate) / IsColumnCollapsed() -> folds the column against the
 --          left edge like its arrow tab does (bug batch 2 #1; remembered for the session)
 --
@@ -5670,6 +5674,30 @@ function MenuController.SetColumnCovered(windowLeft, who)
 	if U.Tab then
 		U.Tab.Visible = not U.ColumnHidden and not U.Covered
 	end
+end
+
+-- Re-review 2: Roblox's touch controls (GuiService.TouchControlsEnabled) for the windows that fill a phone. `who` names
+-- the window ("Pets" when left out), `on` = true while it wants them gone. They go when the first window asks and come
+-- back as they were (the one snapshot, taken while no window held them) when the last one lets go, so the Store and
+-- the Pets window opening over each other (each lays out before WindowOpened closes the other) never leave them off.
+function MenuController.SetTouchHidden(who, on)
+	U.TouchOwners = type(U.TouchOwners) == "table" and U.TouchOwners or {}
+	local before = next(U.TouchOwners) ~= nil
+	U.TouchOwners[type(who) == "string" and who or "Pets"] = (on == true) or nil
+	local after = next(U.TouchOwners) ~= nil
+	if before == after then
+		return
+	end
+	pcall(function()
+		local GuiService = game:GetService("GuiService")
+		if after then
+			U.TouchWas = GuiService.TouchControlsEnabled
+			GuiService.TouchControlsEnabled = false
+		else
+			GuiService.TouchControlsEnabled = U.TouchWas ~= false
+			U.TouchWas = nil
+		end
+	end)
 end
 
 -- Bug batch 2 #1: folds the menu column against the left edge (true) or brings it back (false); the arrow tab does
