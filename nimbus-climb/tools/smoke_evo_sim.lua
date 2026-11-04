@@ -277,6 +277,8 @@ local SPEC_NAMES = {
 	magma_cub = { "Magma Rift", "Volcano Slam" }, hydralotl = { "Void Chorus", "Hydra's Hunger" },
 	stormfang = { "Shadow Pack", "Thunder Pack" }, eclipse_dragon = { "Black Sun Nova", "Total Eclipse" }, obsidian_phoenix = { "Cinder Wings", "Obsidian Rain" },
 	phantom_kitsune = { "Nine-Tail Ward", "Phantom Foxfire" }, rime_wyrmling = { "Ice Prison", "Glacier Shatter" },
+	-- store (2026-11-04): the two exclusive pets (plan Task 3)
+	week_wisp = { "Gale Crown", "Tempest Crown" }, crown_phoenix = { "Royal Flare", "Sovereign Flare" },
 }
 
 S.evo_forms_table = guarded("evo_forms_table", function()
@@ -316,7 +318,7 @@ S.evo_forms_table = guarded("evo_forms_table", function()
 	for _ in pairs(BC.FormNames) do
 		known = known + 1
 	end
-	T.check(pets == 33 and known == 33, "evo forms: 33 pets, 33 FormNames entries", fmt("%d, %d", pets, known))
+	T.check(pets == 35 and known == 35, "evo forms: 35 pets, 35 FormNames entries", fmt("%d, %d", pets, known))
 	T.check(BC.Validate() == true, "evo forms: Validate passes", select(2, BC.Validate()) and tostring(select(2, BC.Validate())[1]))
 	-- Validate catches a gap
 	local function caught(mutate, restore)

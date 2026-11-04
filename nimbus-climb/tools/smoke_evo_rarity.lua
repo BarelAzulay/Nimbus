@@ -254,7 +254,7 @@ S.evo_rarity_stats = guarded("evo_rarity_stats", function()
 			end
 		end
 	end
-	T.check(sorted and PC.TotalCount() == 33, "evo rarity: PC.Pets stays sorted by rarity, then Name; 33 pets, every id kept", tostring(PC.TotalCount()))
+	T.check(sorted and PC.TotalCount() == 35, "evo rarity: PC.Pets stays sorted by rarity, then Name; 35 pets, every id kept", tostring(PC.TotalCount()))
 	T.check(at.candy_unicorn < at.ember_phoenix and at.cloudy_dragon < at.hydralotl and at.hydralotl < at.magma_cub and at.magma_cub < at.starlight_unicorn and at.starlight_unicorn < at.stormfang,
 		"evo rarity: Candy Unicorn before Ember Phoenix; Cloudy Dragon, Hydralotl, Magma Cub, Starlight Unicorn; then the Secrets, Stormfang first")
 end)

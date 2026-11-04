@@ -529,8 +529,10 @@ BattleCatalog.FormNames = {
 	aurora_fox = { "Aurora Mark", "Twin Aurora" },
 	moonlit_owl = { "Crescent Ward", "Full Moon Ward" },
 	nebula_axolotl = { "Nebula Swirl", "Supernova Swirl" },
+	week_wisp = { "Gale Crown", "Tempest Crown" }, -- store (2026-11-04): the daily gifts' pet
 	-- Legendary
 	ember_phoenix = { "Phoenix Burst", "Phoenix Rebirth" },
+	crown_phoenix = { "Royal Flare", "Sovereign Flare" }, -- store (2026-11-04): the Pro Pack's pet
 	sunbeam_bear = { "Solar Aegis", "Sunburst Aegis" },
 	twilight_dragon = { "Nightfall Storm", "Dusk's End" },
 	candy_unicorn = { "Candy Rush", "Sugar Frenzy" },

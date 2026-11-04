@@ -11,6 +11,16 @@
 --   PetService.GetTokenMultiplier(player) -> number >= 1
 --   PetService.PerksChanged                  Util.Signal, Fire(player)
 --   PetService.Rolled                        Util.Signal, Fire(player, petId) after every successful roll (v3)
+--   PetService.GrantPet(player, petId, opts) -> ok, result|reason   store (2026-11-04, spec 5.4): the ONE pet-grant path
+--                                            outside the roulette (the Store's packs, the daily gifts' Week Wisp). opts =
+--                                            { Count = n >= 1 (default 1), Level = n | nil }. Grants min(Count, MaxPerStack
+--                                            - owned) Normal copies through the roll's own add path WITHOUT a spin: the
+--                                            first-pet auto-equip, the Index discovery, SetPetLevel(max(current, Level)),
+--                                            MarkDirty, Refresh, Sync. result = { PetId, Key, Granted, Count, IsNew,
+--                                            NewDiscovery, Level }. Refused: not here, a save not loaded or provisional
+--                                            ("Your save is still loading"), an unknown pet, a junk Count / Level, a full
+--                                            stack ("Stack full": nothing written, the caller substitutes). Never fires
+--                                            Rolled. Non-yielding.
 --   Extra (Phase 2): PetService.Refresh(player) -> changed   DataService.SyncEquipped (the followers = the active team minus
 --                    busy pets, after FusionService / DevService removed copies, a training job, a Garden change) and
 --                    republishes the attributes and perks. DataService.TeamsChanged republishes them too.
@@ -735,6 +745,49 @@ local function ownedAnyForm(profile, petId)
 	return n
 end
 
+-- The one add path of a pet grant (the roll and PetService.GrantPet share it; nothing here yields): n Normal copies of
+-- petId into the profile, the first pet ever into the active team's slot 1, the Index discovery (before the Sync, so the
+-- snapshot shows it), the level raised to `level` when given (never lowered), MarkDirty, the perks / attributes, the
+-- Sync. The caller checked the stack room and does its own spin / charge. -> { PetId, Key, Granted, Count, IsNew,
+-- NewDiscovery, Level }
+local function addCopies(player, profile, petId, n, level)
+	local owned = profile.Pets[petId] or 0
+	local everOwned = ownedAnyForm(profile, petId)
+	local firstPetEver = totalPets(profile) == 0
+	profile.Pets[petId] = owned + n
+	if firstPetEver then
+		-- the first pet ever joins the active team's slot 1 (a provisional profile has no teams yet: its list becomes a
+		-- team once the recovery migrates it)
+		local team, preset = activeTeam(player)
+		if not team then
+			table.insert(profile.Equipped, petId)
+		elseif #team == 0 then
+			DataService.SetTeam(player, preset, { petId })
+		end
+	end
+	local newDiscovery = markDiscovered(player, petId) -- before the Sync, so the snapshot shows it in the Index
+	local levelNow = nil
+	if type(level) == "number" and type(DataService.GetPetLevel) == "function" and type(DataService.SetPetLevel) == "function" then
+		local current = DataService.GetPetLevel(player, petId) or 1
+		levelNow = math.max(current, level)
+		if levelNow > current then
+			DataService.SetPetLevel(player, petId, levelNow)
+		end
+	end
+	DataService.MarkDirty(player)
+	refreshPlayer(player, false)
+	DataService.Sync(player)
+	return {
+		PetId = petId,
+		Key = petId,
+		Granted = n,
+		Count = owned + n,
+		IsNew = everOwned == 0,
+		NewDiscovery = newDiscovery,
+		Level = levelNow,
+	}
+end
+
 -- The roll every way of paying shares (Cloud Tokens, or Gems through GemService's quote).
 -- Roll first (pure), then check the stack cap, then charge() -> ok, reason (must not yield): a capped pull costs
 -- nothing, which is the same outcome as "charge, refund, fail". Nothing between the charge and the grant yields, so
@@ -761,39 +814,24 @@ local function rollAndGrant(player, profile, rouletteId, charge, roll, opts)
 	if owned >= Config.Pets.MaxPerStack then
 		return false, "You already own the maximum of " .. def.Name
 	end
-	local everOwned = ownedAnyForm(profile, petId)
 	local charged, reason = charge()
 	if not charged then
 		return false, reason or "Not enough cloud tokens"
 	end
 
-	-- Nothing below yields, so the check + charge + grant is atomic.
-	local firstPetEver = totalPets(profile) == 0
-	profile.Pets[petId] = owned + 1
+	-- Nothing below yields, so the check + charge + grant is atomic. The spin is the roulette's own; the add path is
+	-- shared with GrantPet.
 	profile.Stats.Spins = profile.Stats.Spins + 1
-	if firstPetEver then
-		-- the first pet ever joins the active team's slot 1 (a provisional profile has no teams yet: its list becomes a
-		-- team once the recovery migrates it)
-		local team, preset = activeTeam(player)
-		if not team then
-			table.insert(profile.Equipped, petId)
-		elseif #team == 0 then
-			DataService.SetTeam(player, preset, { petId })
-		end
-	end
-	local newDiscovery = markDiscovered(player, petId) -- before the Sync, so the snapshot shows it in the Index
-	DataService.MarkDirty(player)
-	refreshPlayer(player, false)
-	DataService.Sync(player)
+	local added = addCopies(player, profile, petId, 1, nil)
 
 	local result = {
 		Ok = true,
 		RouletteId = rouletteId,
 		PetId = petId,
 		Key = petId, -- the copy's key (a roulette always grants a Normal copy)
-		IsNew = everOwned == 0,
-		NewDiscovery = newDiscovery,
-		Count = owned + 1,
+		IsNew = added.IsNew,
+		NewDiscovery = added.NewDiscovery,
+		Count = added.Count,
 		Tokens = DataService.GetTokens(player),
 		Strip = buildStrip(rouletteId, petId, seed + 7919, roll),
 	}
@@ -924,6 +962,44 @@ function PetService.BuyRoulette(player, rouletteId, currency)
 		end
 		return false, "Not enough cloud tokens"
 	end, nil, { AllowSecret = roulette.AllowSecret == true, Currency = "Tokens", Price = price })
+end
+
+-- store (2026-11-04, spec 5.4): the one pet-grant path outside the roulette (see the header). Non-yielding; nothing
+-- between the checks and the write yields. A full stack answers "Stack full" and writes nothing: the caller
+-- substitutes (StoreService pays the rarity's Index Tokens, DailyService pays Days[7].Else).
+function PetService.GrantPet(player, petId, opts)
+	if not isLivePlayer(player) then
+		return false, "Player unavailable"
+	end
+	opts = type(opts) == "table" and opts or {}
+	local def = (PetCatalog and type(PetCatalog.Get) == "function" and type(petId) == "string") and PetCatalog.Get(petId) or nil
+	if not def then
+		return false, "Unknown pet"
+	end
+	local count = opts.Count
+	if count == nil then
+		count = 1
+	end
+	if type(count) ~= "number" or count ~= count or count < 1 or count > 1e6 or count ~= math.floor(count) then
+		return false, "Bad count"
+	end
+	local level = opts.Level
+	if level ~= nil then
+		local top = (type(PetCatalog.MaxPetLevel) == "function" and PetCatalog.MaxPetLevel()) or 100
+		if type(level) ~= "number" or level ~= level or level < 1 or level ~= math.floor(level) then
+			return false, "Bad level"
+		end
+		level = math.min(level, top)
+	end
+	local profile = DataService.GetProfile(player)
+	if not profile or (type(DataService.IsProvisional) == "function" and DataService.IsProvisional(player) == true) then
+		return false, "Your save is still loading"
+	end
+	local room = Config.Pets.MaxPerStack - (profile.Pets[petId] or 0)
+	if room <= 0 then
+		return false, "Stack full"
+	end
+	return true, addCopies(player, profile, petId, math.min(count, room), level)
 end
 
 ----------------------------------------------------------------------

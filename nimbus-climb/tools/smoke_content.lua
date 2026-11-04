@@ -268,7 +268,14 @@ local function catalogV3(PC, Config, rank)
 			rarityWithPets = rarityWithPets + 1
 		end
 	end
-	T.check(groupsOk and #groups == rarityWithPets and covered == #PC.Pets, "IndexGroups() covers every pet exactly once (" .. rarityWithPets .. " groups)", table.concat(order, ","))
+	-- store (2026-11-04): an exclusive pet (PC.IsExclusive) is in no Index group by design
+	local exclusives = 0
+	for _, def in ipairs(PC.Pets) do
+		if type(PC.IsExclusive) == "function" and PC.IsExclusive(def.Id) then
+			exclusives = exclusives + 1
+		end
+	end
+	T.check(groupsOk and #groups == rarityWithPets and covered == #PC.Pets - exclusives, "IndexGroups() covers every non-exclusive pet exactly once (" .. rarityWithPets .. " groups)", table.concat(order, ","))
 	T.eq(order[#order], SECRET, "the Secret group comes last")
 	if groupsOk and groups[1] then
 		groups[1].Pets[1] = nil
@@ -475,9 +482,16 @@ S.catalog = guarded("catalog", function()
 	T.check(sorted, "PetCatalog.Pets is sorted by rarity order, then Name (Stormfang, the player's own creature, leads the Secrets)")
 	-- the v2 rarities' lineup (evolved forms: Candy Unicorn is a Legendary, two raid pets are Mythic: EventOnly, so ListByRarity needs
 	-- includeEvent to name them); v3 adds the Secret tier (3 dark Secrets + Stormfang) after the Mythics
+	-- store (2026-11-04): the lineup counts every pet; the exclusive ones (Week Wisp: Epic, Crown Phoenix: Legendary) are in no list
+	local exclusiveByRarity = {}
+	for _, def in ipairs(PC.Pets) do
+		if type(PC.IsExclusive) == "function" and PC.IsExclusive(def.Id) then
+			exclusiveByRarity[def.Rarity] = (exclusiveByRarity[def.Rarity] or 0) + 1
+		end
+	end
 	for rarity, want in pairs(CONTRACT.v2.petCounts) do
 		T.eq(counts[rarity] or 0, want, "lineup has " .. want .. " " .. rarity .. " pets")
-		T.eq(#PC.ListByRarity(rarity, true), want, "ListByRarity('" .. rarity .. "', true) returns them")
+		T.eq(#PC.ListByRarity(rarity, true), want - (exclusiveByRarity[rarity] or 0), "ListByRarity('" .. rarity .. "', true) returns the rollable ones")
 	end
 	T.check((counts[SECRET] or 0) >= CONTRACT.v3.minSecretPets, "lineup has at least " .. CONTRACT.v3.minSecretPets .. " Secret pets", tostring(counts[SECRET]))
 	local eventSecrets = 0

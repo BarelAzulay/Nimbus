@@ -411,7 +411,7 @@ local function serverScenarios()
 			end
 		end
 		names:report(fmt("%d names, %d the pets' own", total, own))
-		T.check(total == 49 and own == 32, "evo looks: 33 pets name 49 forms (17 with one, 16 with two; the plan's '40' miscounts)", fmt("%d / %d", total, own))
+		T.check(total == 53 and own == 32, "evo looks: 35 pets name 53 forms (17 with one, 18 with two; the plan's '40' miscounts)", fmt("%d / %d", total, own))
 		local kinds = T.tally("evo looks: Forms has both stages of every kind, named as BattleCatalog.Forms")
 		for _, kind in ipairs(Cat.KindNames) do
 			for stage = 1, 2 do

@@ -64,7 +64,7 @@
 --                                            uses its best element, a dual defender combines both matchups
 --                                            (clamped to weak .. strong). Unknown / nil elements count as x1.
 -- Extras (nothing depends on them): PerkOrder, PerkNames, Accessories, WingStyles, Roles, RoleBlurbs,
---   StatOrder, StatNames, SpecialKinds, GetRarityOdds, PerkLines, GetIndexGroup, IsRollable, Validate.
+--   StatOrder, StatNames, SpecialKinds, GetRarityOdds, PerkLines, GetIndexGroup, IsRollable, IsExclusive, Validate.
 --   Phase 5 (contract 3.2): SpecialKinds + "Rally" (fighter damage +35% for 8 s) and "Haste" (attack + move speed
 --   +35% for 8 s). Every Economy pet (a Support in battle) has exactly one Support kind: Heal, Shield, Rally or Haste;
 --   ids kept, names kept where they fit. Combat pets keep their specials. Validate enforces it.
@@ -93,6 +93,12 @@
 --             (token and gems-only) is built from, leaves it out unless asked with ListByRarity(rarity, true)).
 --             It is still a full catalog pet: in PetCatalog.Pets, Get, TotalCount and its rarity's Pet Index group
 --             (after the regular pets). Helpers: PetCatalog.EventPets() -> { PetDef... }, PetCatalog.IsEventOnly(id).
+--   ExclusiveTo = "Store" | "Daily" (optional, store 2026-11-04): a pet only the Robux Store (Crown Phoenix, the Pro
+--             Pack) or the daily gifts (Week Wisp, day 7 of a kept week) grant, through PetService.GrantPet. ONE site
+--             skips it, the fill of the rarity lists below the sort: so it is in no roulette pool (not even
+--             ListByRarity(rarity, true)), no odds, no Pet Index group, and IsRollable answers false; never together
+--             with EventOnly (Validate). Still a full catalog pet: Pets, Get, ById and TotalCount list it.
+--             Helper: PetCatalog.IsExclusive(id) -> bool (false for unknown ids).
 --
 -- Secret pets (Rarity "Secret") come only from a roulette that sets `AllowSecret = true` (the gems-only Secret
 -- roulette of phase 2). No current roulette does, so RollPet / GetOdds / PossiblePets never offer them.
@@ -412,6 +418,21 @@ local RAW = {
 		Stats = Stats(2, 10, 64, 11),
 		Special = Special("moonlight_ward", "Moonlight Ward", "Shield", 40, C(222, 214, 255)),
 	},
+	-- store (2026-11-04): the daily gifts' pet (ExclusiveTo = "Daily", see the header): day 7 of every kept week grants
+	-- one through PetService.GrantPet; in no roulette, no Index group. Moonlit Owl's numbers: an Epic's band.
+	{
+		Id = "week_wisp", Name = "Week Wisp", Rarity = "Epic", ExclusiveTo = "Daily",
+		Blurb = "Seven sunrises in a row and it comes to stay. It remembers every one.",
+		Look = {
+			Species = "Owl", Primary = C(246, 204, 90), Secondary = C(250, 246, 232), Eye = C(80, 60, 20),
+			Glow = true, WingStyle = "Feather", WingColor = C(255, 226, 150),
+		},
+		Perks = { MaxHealth = 0.10, CheckpointHeal = 0.15 },
+		Element = "Storm",
+		Role = "Combat",
+		Stats = Stats(2, 10, 64, 11),
+		Special = Special("wisp_gale", "Wisp Gale", "Storm", 40, C(255, 230, 150)),
+	},
 	{
 		Id = "nebula_axolotl", Name = "Nebula Axolotl", Rarity = "Epic",
 		Blurb = "Swims through the sky as if it were a pond full of stardust.",
@@ -452,6 +473,21 @@ local RAW = {
 		Role = "Combat",
 		Stats = Stats(3, 12, 60, 13),
 		Special = Special("phoenix_flare", "Phoenix Flare", "Blast", 44, C(255, 140, 60)),
+	},
+	-- store (2026-11-04): the Robux Store's pet (ExclusiveTo = "Store", see the header): the Pro Pack grants one at
+	-- level 10 through PetService.GrantPet; in no roulette, no Index group. Ember Phoenix's numbers.
+	{
+		Id = "crown_phoenix", Name = "Crown Phoenix", Rarity = "Legendary", ExclusiveTo = "Store",
+		Blurb = "Wears the only crown in the sky and acts like it. Loyal to one owner.",
+		Look = {
+			Species = "Phoenix", Primary = C(246, 196, 70), Secondary = C(252, 248, 236), Eye = C(255, 214, 120),
+			Glow = true, Accessory = "Crown", WingStyle = "Flame", WingColor = C(255, 220, 120),
+		},
+		Perks = { CheckpointHeal = 0.22, MaxHealth = 0.10 },
+		Element = "Flame",
+		Role = "Combat",
+		Stats = Stats(3, 12, 60, 13),
+		Special = Special("crown_flare", "Crown Flare", "Blast", 44, C(255, 210, 90)),
 	},
 	{
 		Id = "sunbeam_bear", Name = "Sunbeam Bear", Rarity = "Legendary",
@@ -659,16 +695,23 @@ table.sort(PetCatalog.Pets, function(a, b)
 	return a.Name < b.Name
 end)
 
--- rarityId -> { PetDef... } (already in display order because Pets is)
+-- rarityId -> { PetDef... } (already in display order because Pets is). An exclusive pet (ExclusiveTo: the Store's
+-- Crown Phoenix, the daily gifts' Week Wisp) is skipped HERE and nowhere else, so the pools, ListByRarity(r, true), the
+-- odds, buildGroup and Validate's event loop never see it while Pets / Get / ById / TotalCount still list it.
 local byRarity = {}
+local exclusivePets = {}
 for _, r in ipairs(rarityList) do
 	byRarity[r.Id] = {}
 end
 for _, def in ipairs(PetCatalog.Pets) do
-	if not byRarity[def.Rarity] then
-		byRarity[def.Rarity] = {}
+	if def.ExclusiveTo ~= nil then
+		table.insert(exclusivePets, def)
+	else
+		if not byRarity[def.Rarity] then
+			byRarity[def.Rarity] = {}
+		end
+		table.insert(byRarity[def.Rarity], def)
 	end
-	table.insert(byRarity[def.Rarity], def)
 end
 
 -- rarityId -> { PetDef... } without the EventOnly pets: the roulette pools (Phase 3 event pets are raid drops only)
@@ -739,6 +782,12 @@ end
 function PetCatalog.IsEventOnly(petId)
 	local def = PetCatalog.Get(petId)
 	return def ~= nil and def.EventOnly == true
+end
+
+-- store (2026-11-04): true for a pet only the Store or the daily gifts grant (ExclusiveTo); false for unknown ids.
+function PetCatalog.IsExclusive(petId)
+	local def = PetCatalog.Get(petId)
+	return def ~= nil and def.ExclusiveTo ~= nil
 end
 
 ----------------------------------------------------------------------
@@ -868,7 +917,7 @@ end
 -- Extra: true when at least one current roulette can roll this pet (Secret pets: false until phase 2).
 function PetCatalog.IsRollable(petId)
 	local def = PetCatalog.Get(petId)
-	if not def or def.EventOnly == true then
+	if not def or def.EventOnly == true or def.ExclusiveTo ~= nil then
 		return false
 	end
 	for _, roulette in ipairs(Config.Roulettes) do
@@ -1492,6 +1541,14 @@ function PetCatalog.Validate()
 		if def.StatRarity ~= nil and not rarityById[def.StatRarity] then
 			bad(id .. ": unknown StatRarity " .. tostring(def.StatRarity))
 		end
+		if def.ExclusiveTo ~= nil then
+			if def.ExclusiveTo ~= "Store" and def.ExclusiveTo ~= "Daily" then
+				bad(id .. ": ExclusiveTo must be \"Store\" or \"Daily\", got " .. tostring(def.ExclusiveTo))
+			end
+			if def.EventOnly == true then
+				bad(id .. ": ExclusiveTo and EventOnly together")
+			end
+		end
 		local look = def.Look
 		if type(look) ~= "table" then
 			bad(id .. ": missing Look")
@@ -1666,6 +1723,19 @@ function PetCatalog.Validate()
 		for _, poolDef in ipairs(poolByRarity[def.Rarity] or {}) do
 			if poolDef == def then
 				bad(tostring(def.Id) .. ": an EventOnly pet is in a roulette pool")
+			end
+		end
+	end
+	-- store (2026-11-04): an exclusive pet is in no roulette pool and in no Index group (buildGroup reads the rarity lists)
+	for _, def in ipairs(exclusivePets) do
+		for _, poolDef in ipairs(poolByRarity[def.Rarity] or {}) do
+			if poolDef == def then
+				bad(tostring(def.Id) .. ": an exclusive pet is in a roulette pool")
+			end
+		end
+		for _, listDef in ipairs(byRarity[def.Rarity] or {}) do
+			if listDef == def then
+				bad(tostring(def.Id) .. ": an exclusive pet is in its rarity's Index group")
 			end
 		end
 	end

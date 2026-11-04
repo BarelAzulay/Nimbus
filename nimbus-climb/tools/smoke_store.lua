@@ -40,6 +40,42 @@ local CONTEXT = (ARGS and ARGS.context) or "server"
 ----------------------------------------------------------------------------------------------------
 local function serverScenarios()
 	local S = {}
+	local K = _G.K
+
+	-- the booted helpers (the smoke_fix_server.lua shape)
+	local function requireAt(key)
+		local inst = K.moduleInstance(key)
+		if not inst then
+			return nil
+		end
+		local ok, result = pcall(require, inst)
+		if ok and type(result) == "table" then
+			return result
+		end
+		return nil
+	end
+	local function DS()
+		return K.mod("DataService")
+	end
+	local function PS()
+		return requireAt("server/Services/PetService")
+	end
+	local userSeq = 0
+	local function newUserId()
+		userSeq = userSeq + 1
+		return 983100 + userSeq
+	end
+	local function join(prefix, uid)
+		local p = Mock.AddPlayer(prefix .. tostring(uid % 1000), uid)
+		K.advance(1.2)
+		return p
+	end
+	local function leave(p)
+		if p and p.Parent then
+			Mock.RemovePlayer(p)
+		end
+		K.advance(0.8)
+	end
 
 	S.store_doubles = guarded("store_doubles", function()
 		local p = Mock.AddPlayer("Doubles", 983001)
@@ -108,6 +144,98 @@ local function serverScenarios()
 		T.check(Config.Attr.OwnedPasses == "OwnedPasses" and Config.Attr.StoreBought == "StoreBought" and Config.Attr.XpBoostEnds == "XpBoostEnds" and Config.Attr.StorePreview == "StorePreview" and Config.Tags.TroveLid == "NC_TroveLid", "store config: the attributes and the lid tag")
 		T.check(Theme.Category.Store == "Gold" and Theme.Category.Daily == "Gold" and Theme.Category.Trove == "Green", "store config: Theme.Category Store / Daily / Trove")
 		for _, k in ipairs({ "StorePop", "StoreBuy", "TroveOpen", "DailyWeek" }) do T.check(Config.Audio.Keys.Sfx[k] == k and type(Config.Audio.Volume[k]) == "number", "store config: audio key " .. k) end
+	end)
+
+	S.store_exclusive = guarded("store_exclusive", function()
+		local PC, BC, Config = K.M["shared/PetCatalog"], K.M["shared/BattleCatalog"], K.config()
+		local wisp, crown = PC.Get("week_wisp"), PC.Get("crown_phoenix")
+		T.check(wisp ~= nil and wisp.Rarity == "Epic" and wisp.ExclusiveTo == "Daily" and crown ~= nil and crown.Rarity == "Legendary" and crown.ExclusiveTo == "Store", "store exclusive: the two pets exist with ExclusiveTo")
+		if not wisp or not crown or type(PC.IsExclusive) ~= "function" then
+			return
+		end
+		T.check(PC.IsExclusive("week_wisp") and PC.IsExclusive("crown_phoenix") and not PC.IsExclusive("storm_tabby") and not PC.IsExclusive("nope"), "store exclusive: IsExclusive")
+		local function inList(list, id)
+			for _, d in ipairs(list) do
+				if d.Id == id then
+					return true
+				end
+			end
+			return false
+		end
+		T.check(not inList(PC.ListByRarity("Epic"), "week_wisp") and not inList(PC.ListByRarity("Epic", true), "week_wisp") and not inList(PC.ListByRarity("Legendary", true), "crown_phoenix"), "store exclusive: in no pool, not even with includeEvent")
+		for _, roulette in ipairs(Config.Roulettes) do
+			T.check(not inList(PC.PossiblePets(roulette.Id), "week_wisp") and not inList(PC.PossiblePets(roulette.Id), "crown_phoenix"), "store exclusive: not in " .. roulette.Id .. "'s odds")
+		end
+		local inGroup = false
+		for _, g in ipairs(PC.IndexGroups()) do
+			if inList(g.Pets, "week_wisp") or inList(g.Pets, "crown_phoenix") then
+				inGroup = true
+			end
+		end
+		T.check(not inGroup, "store exclusive: NO Index group lists them")
+		T.check(not table.find(BC.EventPets(), "week_wisp") and not table.find(BC.EventPets(), "crown_phoenix"), "store exclusive: BattleCatalog.EventPets reads EventOnly only")
+		T.check(not PC.IsRollable("week_wisp") and not PC.IsRollable("crown_phoenix"), "store exclusive: IsRollable false")
+		T.eq(PC.TotalCount(), 35, "store exclusive: TotalCount 35")
+		T.check(select(1, PC.Validate()) == true and select(1, BC.Validate()) == true, "store exclusive: both catalogs Validate", table.concat(select(2, PC.Validate()) or {}, "; "))
+		T.check(BC.FormNames.week_wisp[2] == "Tempest Crown" and BC.FormNames.crown_phoenix[2] == "Sovereign Flare", "store exclusive: form names")
+		-- 2000 rolls of every roulette with Util.NewRng(seed): never an exclusive id (the smoke_p2_gems loop shape)
+		local Util = K.M["shared/Util"]
+		local rng = Util.NewRng(20261104)
+		local leaks = T.tally("store exclusive: 2000 rolls of every roulette never give an exclusive pet")
+		for _, r in ipairs(Config.Roulettes) do
+			local found = nil
+			for _ = 1, 2000 do
+				local id = PC.RollPet(r.Id, rng)
+				if id == nil or PC.IsExclusive(id) then
+					found = tostring(id)
+				end
+			end
+			leaks:case(found == nil, r.Id .. ": " .. tostring(found))
+		end
+		leaks:report()
+	end)
+
+	S.store_grantpet = guarded("store_grantpet", function()
+		K.needBoot()
+		local p = join("Grant", newUserId())
+		K.waitFor(function() return DS().GetProfile(p) ~= nil end, 10)
+		T.check(type(PS().GrantPet) == "function", "grantpet: PetService.GrantPet exists")
+		if type(PS().GrantPet) ~= "function" then
+			leave(p)
+			return
+		end
+		local ok, res = PS().GrantPet(p, "storm_tabby", { Count = 1, Level = 5 })
+		T.check(ok == true and type(res) == "table" and res.Granted == 1 and res.Count == 1 and res.IsNew == true and res.Level == 5, "grantpet: one Storm Tabby at level 5", tostring(res) .. (type(res) == "table" and (" granted " .. tostring(res.Granted) .. " count " .. tostring(res.Count)) or ""))
+		T.eq(select(1, DS().GetPetLevel(p, "storm_tabby")), 5, "grantpet: the level was written")
+		T.eq(DS().GetProfile(p).Stats.Spins, 0, "grantpet: no spin counted")
+		T.check(DS().IsDiscovered(p, "storm_tabby") and PS().GetEquipped(p)[1] == "storm_tabby", "grantpet: discovered and auto-equipped as the first pet", table.concat(PS().GetEquipped(p), ","))
+		ok, res = PS().GrantPet(p, "storm_tabby", { Count = 2, Level = 3 })
+		T.check(ok and res.Granted == 2 and res.Count == 3 and select(1, DS().GetPetLevel(p, "storm_tabby")) == 5, "grantpet: +2 copies, the level never goes down")
+		T.check(res.IsNew == false and res.PetId == "storm_tabby" and res.Key == "storm_tabby", "grantpet: the second grant is not new; PetId / Key answered")
+		DS().GetProfile(p).Pets.storm_tabby = 99
+		ok, res = PS().GrantPet(p, "storm_tabby", { Count = 1 })
+		T.check(ok == false and res == "Stack full" and DS().GetProfile(p).Pets.storm_tabby == 99, "grantpet: a full stack is refused, nothing written", tostring(res))
+		DS().GetProfile(p).Pets.storm_tabby = 98
+		ok, res = PS().GrantPet(p, "storm_tabby", { Count = 5 })
+		T.check(ok == true and res.Granted == 1 and res.Count == 99, "grantpet: a stack with room for one grants min(Count, room)")
+		T.check(not PS().GrantPet(p, "nope") and not PS().GrantPet(p, "storm_tabby", { Count = 0 }) and not PS().GrantPet(p, "storm_tabby", { Count = 1.5 }) and not PS().GrantPet(p, "storm_tabby", { Count = "2" }), "grantpet: unknown pet / junk count refused")
+		ok, res = PS().GrantPet(p, "crown_phoenix", { Count = 1, Level = 10 })
+		T.check(ok == true and res.Granted == 1 and res.Level == 10 and res.NewDiscovery == true and DS().IsDiscovered(p, "crown_phoenix"), "grantpet: an exclusive pet is granted like any other (Crown Phoenix L10, discovered)")
+		ok, res = PS().GrantPet(p, "week_wisp")
+		T.check(ok == true and res.Granted == 1 and res.Level == nil and select(1, DS().GetPetLevel(p, "week_wisp")) == 1, "grantpet: no Level given = the level is left alone (1)")
+		T.eq(DS().GetProfile(p).Stats.Spins, 0, "grantpet: still no spin counted")
+		leave(p)
+		-- a provisional player (the Mock.DataStore.Fail pattern of smoke_p2_gems): GrantPet answers false, "Your save is still loading"
+		local savedFail = Mock.DataStore.Fail
+		Mock.DataStore.Fail = true
+		local prov = join("GrantOutage", newUserId())
+		local isProv = K.waitFor(function() return DS().IsProvisional(prov) == true end, 10)
+		T.check(isProv, "grantpet: (precondition) a load during an outage leaves a provisional profile")
+		ok, res = PS().GrantPet(prov, "storm_tabby", { Count = 1, Level = 5 })
+		T.check(ok == false and res == "Your save is still loading" and (DS().GetProfile(prov) == nil or (DS().GetProfile(prov).Pets.storm_tabby or 0) == 0), "grantpet: a provisional save is refused, nothing written", tostring(res))
+		Mock.DataStore.Fail = savedFail
+		K.waitFor(function() return DS().IsProvisional(prov) ~= true end, 60)
+		leave(prov)
 	end)
 
 	return S
