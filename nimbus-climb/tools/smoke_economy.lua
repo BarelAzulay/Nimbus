@@ -1087,7 +1087,8 @@ S.economy = guarded("economy", function()
 			T.check(e ~= nil and e.args[1] == "Shop" and type(e.args[2]) == "table" and e.args[2].Tab == "Roulette" and e.args[2].RouletteId == r.Id, "triggering the " .. r.Id .. " machine opens the Shop on its roulette tab", e and (tostring(e.args[1]) .. " " .. tostring(e.args[2] and e.args[2].Tab) .. " " .. tostring(e.args[2] and e.args[2].RouletteId)))
 		end
 	end
-	T.eq(info.Shop.ItemShop.PromptPart:FindFirstChildOfClass("ProximityPrompt"), nil, "HUD cleanup: the boarded-up item stall has no prompt")
+	local trovePrompt = info.Shop.ItemShop.PromptPart:FindFirstChildOfClass("ProximityPrompt")
+	T.check(trovePrompt ~= nil and trovePrompt.ObjectText == "Sky Trove", "the Sky Trove's prompt")
 
 	-- stats
 	prof.Stats = { Matches = 0, Wins = 0, TokensEarned = 0, Spins = 0, BestTimes = {} }

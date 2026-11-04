@@ -20,9 +20,10 @@
 --                    player asked; the Home window's Go home portal is the way home). This module builds Obby and Altar
 --                    into the Gates folder; ArenaBuilder adds Ring + Arena, DungeonBuilder the Dungeon gate.
 --   * SHOP ISLAND    at Config.Lobby.ShopOffset: four voxel gacha machines (Model Roulette_<Id>, built in
---                    the roulette colour), the striped item stall (Model ItemShop; HUD cleanup: decoration only,
---                    boarded up with a Closed sign, no prompt), a rarity board, a token
---                    statue and an entrance arch, joined to the plaza by a short stone neck.
+--                    the roulette colour), the Sky Trove (Model SkyTrove, store 2026-11-04: a brass-banded chest in the
+--                    old item stall's place, its Lid a separate Model hinged at the back and resting open 18 degrees,
+--                    a sign post, the gap's light; TroveService puts the prompt on its PromptPart), a rarity board, a
+--                    token statue and an entrance arch, joined to the plaza by a short stone neck.
 --   * HOME PLOTS     Config.Lobby.SpotCount cloud islands on Config.Lobby.SpotRingRadius: a puffy cloud body
 --                    (billows along the sides and back, a hanging cumulus underneath, a soft rim of puffs on the
 --                    outer margins) under a flat PlotSize x PlotSize mowed lawn yard (kept EMPTY for the
@@ -36,7 +37,7 @@
 --
 -- LobbyBuilder.Build() -> LobbyInfo (ARCHITECTURE.md / _V2 / _V3 contract):
 --   Folder, SpawnCFrame, Portals = { Obby = PortalInfo (+ Model, PromptPart) } (Phase 5: the one Sky Obby portal),
---   Spots[i] = SpotInfo, Shop = { Roulettes[id], ItemShop },
+--   Spots[i] = SpotInfo, Shop = { Roulettes[id], ItemShop = { PromptPart, Center, Model, Lid } } (ItemShop = the Sky Trove),
 --   NpcSpots = { CFrame x6 }   ground-level CFrames on the plaza lawn beside the walkways, LookVector = towards
 --                              the walkway / court, each with ~5 studs of free space for an NPC pedestal
 --   AltarSite = CFrame | nil   reserved, empty spot inside the ring for the Storm Altar island (faces the plaza)
@@ -3374,98 +3375,109 @@ local function fallbackMachine(parent, cf, roulette)
 	return { Id = roulette.Id, PromptPart = prompt, Center = cabinet.Position, Model = model }
 end
 
--- Striped market stall with goods on the shelf (Model ItemShop). Front (-Z of the sculpt) faces the customer.
-local function buildItemStall(parent, cf)
-	local model = newModel(parent, "ItemShop")
-	local g = Voxel.NewGrid(14)
-	VX.RoundRect(g, 0, 0, 10, 3, 0.6, 0, 2, "Wood")
-	VX.RoundRect(g, 0, 0, 11, 4, 0.8, 3, 3, "Top")
-	for x = -4, 4 do
-		for y = 0, 2 do
-			Voxel.Set(g, x, y, -2, (math.floor((x + 4) / 1) % 2 == 0) and "Rose" or "Cream")
-		end
+-- The Sky Trove (store 2026-11-04, spec 5.3): a sky-sailor's treasure chest left on the shop lawn where the boarded-up
+-- item stall stood. Plank body with two brass bands, gold corners, a lock plate and iron side handles on four feet; the
+-- Lid is its own Model hinged at the back edge (PrimaryPart Hinge on the hinge line) and rests OPEN 18 degrees so the
+-- gold inside and the warm light show through the gap (TroveController swings it to 70 degrees on the client when a
+-- player's prize pays out); a little sign post beside it (the lawn here steps between 0.0 and 0.4 studs, so nothing
+-- lies flat on it). Front (-Z) faces the customer. <= 60 parts; mesh keys prop_trove_body / prop_trove_lid /
+-- prop_trove_sign (the Blender dress comes later: until a key has an id the Parts stay). TroveService puts the
+-- ProximityPrompt on PromptPart. -> { PromptPart, Center, Model, Lid }
+local function buildTrove(parent, cf)
+	local REST_DEG = 18 -- the lid's resting angle (TroveController swings it to 70 from here)
+	local model = newModel(parent, "SkyTrove")
+	local brass, brassDark = C.Gold, C.GoldDark
+	-- the body: core box, two seams, two brass bands, four corners, the rim, the lock, the handles, the feet
+	local body = newModel(model, "Body")
+	local core = box(body, "Core", cf * CFrame.new(0, 2.6, 0), Vector3.new(9, 4.2, 6), C.Plank, { Collide = true })
+	for i, y in ipairs({ 1.9, 3.3 }) do
+		box(body, "Seam" .. i, cf * CFrame.new(0, y, -3.04), Vector3.new(8.6, 0.18, 0.12), C.PlankDark)
 	end
-	VX.Fill(g, -5, 5, 0, 8, 3, 3, "WoodDark")
-	VX.Fill(g, -4, 4, 5, 5, 2, 2, "Wood")
-	for _, sx in ipairs({ -6, 6 }) do
-		VX.Fill(g, sx, sx, 0, 8, -3, -3, "Post")
-		VX.Fill(g, sx, sx, 0, 10, 3, 3, "Post")
+	for i, x in ipairs({ -2.9, 2.9 }) do
+		box(body, "Band" .. i, cf * CFrame.new(x, 2.6, 0), Vector3.new(0.6, 4.36, 6.16), brassDark)
 	end
-	-- striped awning in three steps, sloping down to the front, with a scalloped fringe
-	for x = -7, 7 do
-		local stripe = (math.floor((x + 7) / 2) % 2 == 0) and "Rose" or "Cream"
-		for z = -4, 4 do
-			local y = 9 + math.floor((z + 4) / 3)
-			Voxel.Set(g, x, y, z, stripe)
-		end
-		if x % 2 == 0 then
-			Voxel.Set(g, x, 8, -4, stripe)
-		end
+	local corners = { { -4.45, -2.95 }, { 4.45, -2.95 }, { -4.45, 2.95 }, { 4.45, 2.95 } }
+	for i, c in ipairs(corners) do
+		box(body, "Corner" .. i, cf * CFrame.new(c[1], 2.6, c[2]), Vector3.new(0.4, 4.36, 0.4), brass)
+		box(body, "Foot" .. i, cf * CFrame.new(c[1] * 0.86, 0.25, c[2] * 0.82), Vector3.new(1.1, 0.5, 1.1), C.PlankDark)
 	end
-	-- goods: heal cloud, shield bubble, phoenix feather on the shelf; coins on the counter
-	Voxel.Shape(g, { Kind = "Ellipsoid", Center = { -3, 6.5, 2 }, Radius = { 1.3, 0.8, 0.6 }, Key = "Heal" })
-	Voxel.Shape(g, { Kind = "Ellipsoid", Center = { 0, 6.7, 2 }, Radius = { 0.9, 0.9, 0.6 }, Key = "Shield" })
-	Voxel.Shape(g, { Kind = "Curve", Points = { { 2.6, 6, 2 }, { 3.2, 7, 2 }, { 3.5, 8.1, 2 } }, Radius = 0.45, RadiusB = 0.2, Key = "Feather" })
-	Voxel.Set(g, 3, 8, 2, "Gold")
-	Voxel.Set(g, 2, 4, 0, "Gold")
-	Voxel.Set(g, 3, 4, -1, "Gold")
-	Voxel.Set(g, -3, 4, 0, "Heal")
-	Voxel.Shade(g, { Skip = { Shield = true, Rose = true, Cream = true }, Smooth = 1, Seed = 13 })
-	local stallModel = VX.Build(g, {
-		V = 1,
-		Name = "Stall",
-		CF = cf * CFrame.new(0, 0.5, 0),
-		Collide = true,
-		Parent = model,
-		Pal = {
-			Wood = P.Plank,
-			WoodDark = P.PlankDark,
-			Post = P.PlankDark,
-			Top = { Color = C.Cream, Material = materialOf("Fabric") },
-			Rose = { Color = C.Rose, Material = materialOf("Fabric") },
-			Cream = { Color = C.Cream, Material = materialOf("Fabric") },
-			Heal = { Color = rgb(124, 214, 150), Material = materialOf("Glass") },
-			Shield = { Color = rgb(120, 184, 250), Material = MAT.Glass, Transparency = 0.35 },
-			Feather = rgb(244, 136, 70),
-			Gold = C.Gold,
-		},
-		MaxParts = 80,
+	box(body, "Rim", cf * CFrame.new(0, 4.72, -2.95), Vector3.new(9.1, 0.25, 0.3), brass)
+	box(body, "LockPlate", cf * CFrame.new(0, 4.0, -3.12), Vector3.new(1.3, 1.3, 0.25), brass)
+	box(body, "Keyhole", cf * CFrame.new(0, 3.85, -3.26), Vector3.new(0.25, 0.5, 0.06), C.Ink)
+	for i, x in ipairs({ -4.65, 4.65 }) do
+		box(body, "Handle" .. i, cf * CFrame.new(x, 3.3, 0), Vector3.new(0.3, 0.35, 2), C.Iron)
+	end
+	-- the treasure seen through the gap: a gold bed, three square coins on edge and a rose gem (blocks only: the lobby
+	-- has no round primitives)
+	box(body, "Treasure", cf * CFrame.new(0, 4.55, 0), Vector3.new(8.4, 0.3, 5.4), C.Gold)
+	for i, c in ipairs({ { -2, 0.8, 20 }, { 1.5, -0.6, -35 }, { 2.8, 1.2, 60 } }) do
+		box(body, "Coin" .. i, cf * CFrame.new(c[1], 4.95, c[2]) * CFrame.Angles(0, math.rad(c[3]), math.rad(12)) * CFrame.Angles(math.rad(45), 0, 0), Vector3.new(0.18, 0.8, 0.8), C.GoldDark)
+	end
+	box(body, "Gem", cf * CFrame.new(-0.4, 4.95, 0.3) * CFrame.Angles(math.rad(45), math.rad(30), 0), Vector3.new(0.7, 0.7, 0.7), C.Rose)
+	Mesh.tag(body, "prop_trove_body", cf)
+
+	-- the lid: hinged on the back top edge, built at its resting angle (Hinge = the hinge line, the client's pivot)
+	local lid = newModel(model, "Lid")
+	local lidCF = cf * CFrame.new(0, 4.7, 3) * CFrame.Angles(math.rad(REST_DEG), 0, 0)
+	local hinge = box(lid, "Hinge", lidCF, Vector3.new(0.4, 0.4, 0.4), C.Iron, { Transparency = 1, Shadow = false })
+	box(lid, "Slab", lidCF * CFrame.new(0, 0.45, -3.05), Vector3.new(9.2, 0.9, 6.2), C.Plank, { Collide = true })
+	box(lid, "Crown", lidCF * CFrame.new(0, 1.15, -3.05), Vector3.new(8.4, 0.5, 5.2), C.PlankLight)
+	for i, x in ipairs({ -2.9, 2.9 }) do
+		box(lid, "Band" .. i, lidCF * CFrame.new(x, 0.75, -3.05), Vector3.new(0.65, 1.6, 6.3), brassDark)
+		box(lid, "Hinge" .. i, lidCF * CFrame.new(x, 0.2, 0.15), Vector3.new(1, 0.5, 0.45), C.Iron)
+	end
+	box(lid, "Lip", lidCF * CFrame.new(0, 0.35, -6.15), Vector3.new(9.3, 0.5, 0.25), brass)
+	box(lid, "Hasp", lidCF * CFrame.new(0, -0.1, -6.25), Vector3.new(1, 1, 0.2), brass)
+	lid.PrimaryPart = hinge
+	CollectionService:AddTag(lid, Config.Tags.TroveLid)
+	-- the name plate rides the lid (one pixel-sized tag, the world text rule)
+	local plateAnchor = anchorPart(lid, "PlateAnchor", (lidCF * CFrame.new(0, 1.6, -3)).Position)
+	local bb = newTag(plateAnchor, "TroveBillboard", 320, 110, 1.4, 80)
+	local plate = tagPlate(bb, Theme.Neon and Theme.Neon.Green or C.Gold, 160)
+	tagText(plate, "Title", "SKY TROVE", "Title", TAG_NAME, C.TextGold, 1)
+	Mesh.tag(lid, "prop_trove_lid", lidCF, nil, { "Hinge", "PlateAnchor" })
+
+	-- the warm light and the sparkles in the gap (pure decor: Low graphics parks them)
+	local glow = anchorPart(model, "TroveGlow", (cf * CFrame.new(0, 5.3, -0.5)).Position, Vector3.new(6, 0.6, 4))
+	pointLight(glow, C.Lamp, 1.2, 14)
+	emitter(glow, {
+		Color = ColorSequence.new(C.TextGold, C.Gold),
+		Rate = 4,
+		Lifetime = NumberRange.new(1.2, 2),
+		Speed = NumberRange.new(0.6, 1.6),
+		SpreadAngle = Vector2.new(25, 25),
+		EmissionDirection = Enum.NormalId.Top,
+		Size = popSize(0.5),
 	})
-	if stallModel then
-		Mesh.tag(stallModel, "prop_item_stall", cf) -- Phase 6
-	end
-	-- Phase 6 / HUD cleanup: the stall is decoration, boarded up (no prompt). Two dark planks cross the counter front;
-	-- each end is nailed to a front post (x +-6, front face z -3.5; the mesh dress has the same posts), and they sit in
-	-- their own Model Boards beside the mesh-tagged Stall, so the Phase 6 mesh dress leaves them in place.
-	local boards = newModel(model, "Boards")
-	box(boards, "Plank1", cf * CFrame.new(0, 5, -3.68) * CFrame.Angles(0, 0, math.rad(28)), Vector3.new(13.4, 0.9, 0.35), P.PlankDark.Color, { Collide = false })
-	box(boards, "Plank2", cf * CFrame.new(0, 5, -3.68) * CFrame.Angles(0, 0, -math.rad(28)), Vector3.new(13.4, 0.9, 0.35), P.PlankDark.Color, { Collide = false })
-	local lamp = anchorPart(model, "StallLight", (cf * CFrame.new(0, 7.5, 0)).Position)
-	pointLight(lamp, C.Lamp, 0.8, 16)
+	CollectionService:AddTag(glow, DETAIL_TAG)
 
-	-- name tag standing on the awning (bottom edge 13.3 studs up)
-	local anchor = anchorPart(model, "SignAnchor", (cf * CFrame.new(0, 15.5, 0)).Position)
-	local bb = newTag(anchor, "ItemShopBillboard", 320, 110, -2.2, 80)
-	local plate = tagPlate(bb, C.Rose, 160)
-	tagText(plate, "NameLabel", "Item Shop", "Title", TAG_NAME, C.Text, 1)
-	tagText(plate, "SubLabel", "Closed", "Body", TAG_INFO, C.Text, 2, 2)
+	-- the sign post beside the chest (a painted gold star on a plank board; no words: the lid plate names it)
+	local sign = newModel(model, "Sign")
+	local signCF = cf * CFrame.new(6.2, 0, -1.4)
+	box(sign, "Footing", signCF * CFrame.new(0, 0.15, 0), Vector3.new(1.2, 0.3, 1.2), C.StoneDark)
+	box(sign, "Post", signCF * CFrame.new(0, 2.2, 0), Vector3.new(0.45, 4.2, 0.45), C.PlankDark, { Collide = true })
+	box(sign, "Board", signCF * CFrame.new(0, 3.7, -0.32), Vector3.new(2.4, 1.3, 0.22), C.Plank)
+	box(sign, "Star", signCF * CFrame.new(0, 3.7, -0.45) * CFrame.Angles(0, 0, math.rad(45)), Vector3.new(0.7, 0.7, 0.08), C.Gold)
+	Mesh.tag(sign, "prop_trove_sign", signCF)
 
-	local prompt = box(model, "PromptPart", cf * CFrame.new(0, 2, -4.6), Vector3.new(5, 4, 3), C.Cloud, { Transparency = 1, Shadow = false })
-	local counter = model:FindFirstChild("Stall")
-	model.PrimaryPart = (counter and counter.PrimaryPart) or prompt
-	return { PromptPart = prompt, Center = (cf * CFrame.new(0, 1.7, 0)).Position, Model = model }
+	local prompt = box(model, "PromptPart", cf * CFrame.new(0, 2, -5.4), Vector3.new(5, 4, 3), C.Cloud, { Transparency = 1, Shadow = false })
+	model.PrimaryPart = core
+	return { PromptPart = prompt, Center = (cf * CFrame.new(0, 2.6, 0)).Position, Model = model, Lid = lid }
 end
 
-local function fallbackItemStall(parent, cf)
-	local old = parent:FindFirstChild("ItemShop")
+-- The plain stand-in when buildTrove failed: a counter box, the PromptPart and an empty Lid model (still tagged).
+local function fallbackTrove(parent, cf)
+	local old = parent:FindFirstChild("SkyTrove")
 	if old then
 		old:Destroy()
 	end
-	local model = newModel(parent, "ItemShop")
+	local model = newModel(parent, "SkyTrove")
 	local counter = box(model, "Counter", cf * CFrame.new(0, 1.7, 0), Vector3.new(9, 3.4, 3.2), C.Plank, { Collide = true })
-	local prompt = box(model, "PromptPart", cf * CFrame.new(0, 2, -4.6), Vector3.new(5, 4, 3), C.Cloud, { Transparency = 1, Shadow = false })
+	local prompt = box(model, "PromptPart", cf * CFrame.new(0, 2, -5.4), Vector3.new(5, 4, 3), C.Cloud, { Transparency = 1, Shadow = false })
+	local lid = newModel(model, "Lid")
+	CollectionService:AddTag(lid, Config.Tags.TroveLid)
 	model.PrimaryPart = counter
-	return { PromptPart = prompt, Center = counter.Position, Model = model }
+	return { PromptPart = prompt, Center = counter.Position, Model = model, Lid = lid }
 end
 
 -- Board that explains the roulettes: price, and which rarities each one can give.
@@ -3663,13 +3675,13 @@ local function buildShop(root, L)
 		roulettes[roulette.Id] = result
 	end
 
-	-- Item stall (left of the entrance) and rarity board (right), both facing the centre.
+	-- The Sky Trove (left of the entrance, in the old item stall's place) and the rarity board (right), both facing the centre.
 	local stallPos = at(-21, -8) - Vector3.new(0, LAWN, 0) -- on the lawn layer
 	local stallCF = flatLook(stallPos, S - Vector3.new(0, LAWN, 0))
-	local okStall, stall = pcall(buildItemStall, f, stallCF)
+	local okStall, stall = pcall(buildTrove, f, stallCF)
 	if not okStall then
-		warn("[LobbyBuilder] item stall failed: " .. tostring(stall))
-		stall = fallbackItemStall(f, stallCF)
+		warn("[LobbyBuilder] sky trove failed: " .. tostring(stall))
+		stall = fallbackTrove(f, stallCF)
 	end
 	local okBoard, errBoard = pcall(buildRarityBoard, f, flatLook(at(21, -8) - Vector3.new(0, LAWN, 0), S - Vector3.new(0, LAWN, 0)))
 	if not okBoard then
@@ -3730,7 +3742,7 @@ local function buildShop(root, L)
 	return { Roulettes = roulettes, ItemShop = stall }
 end
 
--- Last-resort shop: plain machines and a counter with their PromptParts, so pets and items stay purchasable.
+-- Last-resort shop: plain machines and the Trove's counter with their PromptParts, so pets stay purchasable.
 local function fallbackShop(root, L)
 	local f = newFolder(root, "ShopFallback")
 	local S = L.ShopCenter
@@ -3746,7 +3758,7 @@ local function fallbackShop(root, L)
 		roulettes[roulette.Id] = fallbackMachine(f, flatLook(pos, S), roulette)
 	end
 	local stallPos = S + Vector3.new(0, 0, 12)
-	local stall = fallbackItemStall(f, flatLook(stallPos, S))
+	local stall = fallbackTrove(f, flatLook(stallPos, S))
 	return { Roulettes = roulettes, ItemShop = stall }
 end
 

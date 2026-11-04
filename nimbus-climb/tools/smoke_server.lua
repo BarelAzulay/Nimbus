@@ -1483,7 +1483,7 @@ S.lobby = guarded("lobby", function()
 			T.check(typeof(stall.PromptPart) == "Instance" and stall.PromptPart:IsA("BasePart"), "ItemShop.PromptPart is a BasePart")
 			T.check(typeof(stall.Center) == "Vector3" and typeof(stall.Model) == "Instance", "ItemShop Center and Model are set")
 			local prompt = stall.PromptPart and stall.PromptPart:FindFirstChildOfClass("ProximityPrompt")
-			T.check(prompt == nil, "HUD cleanup: no ProximityPrompt under ItemShop (the stall is boarded up)")
+			T.check(prompt ~= nil and prompt.ObjectText == "Sky Trove" and prompt.ActionText == "Open", "the Sky Trove's prompt sits under ItemShop.PromptPart (TroveService)")
 		end
 	end
 

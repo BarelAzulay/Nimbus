@@ -95,20 +95,13 @@ local function serverScenarios()
 				prompts = prompts + 1
 			end
 		end
-		T.eq(prompts, 0, "huditems: the item stall has no prompt")
-		local boards = stall.Model:FindFirstChild("Boards")
-		local planks = 0
-		for _, c in ipairs(boards and boards:GetChildren() or {}) do
-			if c:IsA("BasePart") then
-				planks = planks + 1
-			end
-		end
-		T.check(boards ~= nil and boards:IsA("Model") and planks >= 2, "huditems: ...it is boarded up (Model Boards, two planks)", tostring(planks))
-		local sculpt = stall.Model:FindFirstChild("Stall")
-		T.check(boards ~= nil and boards.Parent == stall.Model and (sculpt == nil or not boards:IsDescendantOf(sculpt)),
-			"huditems: ...the boards sit beside the mesh-tagged Stall, not inside it")
-		local sub = find(stall.Model, "SubLabel")
-		T.check(sub ~= nil and sub.Text == "Closed", "huditems: ...its sign says Closed", sub and sub.Text)
+		T.eq(prompts, 1, "huditems: the Sky Trove has one prompt")
+		T.eq(stall.Model.Name, "SkyTrove", "huditems: the stall's place holds the Sky Trove (Model SkyTrove)")
+		local lid = stall.Model:FindFirstChild("Lid")
+		T.check(lid ~= nil and lid:IsA("Model") and game:GetService("CollectionService"):HasTag(lid, Config.Tags.TroveLid),
+			"huditems: ...its Lid is a Model carrying the TroveLid tag")
+		local title = find(stall.Model, "Title")
+		T.check(title ~= nil and title:IsA("TextLabel") and title.Text == "SKY TROVE", "huditems: ...the lid plate reads SKY TROVE", title and title.Text)
 		local shopFolder = stall.Model.Parent
 		local shopPrompts = 0
 		for _, d in ipairs(shopFolder and shopFolder:GetDescendants() or {}) do
@@ -116,7 +109,7 @@ local function serverScenarios()
 				shopPrompts = shopPrompts + 1
 			end
 		end
-		T.eq(shopPrompts, #Config.Roulettes, "huditems: PetService's roulette prompts are the only shop prompts")
+		T.eq(shopPrompts, #Config.Roulettes + 1, "huditems: the roulette prompts and the Trove's are the only shop prompts")
 
 		local NpcDialog = req("shared/NpcDialog")
 		if T.check(NpcDialog and type(NpcDialog.Npcs) == "table", "huditems: NpcDialog loads") then

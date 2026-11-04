@@ -728,7 +728,7 @@ local function serverScenarios()
 			end
 		end
 		T.check(gateCount >= 3, "polish worldtext: the Gate Court gates carry a GateTag each", gateCount .. " gates with a tag")
-		local want = { Nameplate = Config.Lobby.SpotCount, GateTag = math.max(3, gateCount), PriceBillboard = #Config.Roulettes, ItemShopBillboard = 1, NameTag = 1, SignGui = 5, HintTag = 5 }
+		local want = { Nameplate = Config.Lobby.SpotCount, GateTag = math.max(3, gateCount), PriceBillboard = #Config.Roulettes, TroveBillboard = 1, NameTag = 1, SignGui = 5, HintTag = 5 }
 		local short = {}
 		for name, n in pairs(want) do
 			if (names[name] or 0) < n then
