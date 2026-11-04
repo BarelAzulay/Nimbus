@@ -67,7 +67,7 @@ local function serverScenarios()
 	local userSeq = 0
 	local function newUserId()
 		userSeq = userSeq + 1
-		return 984100 + userSeq
+		return 985100 + userSeq
 	end
 	local function join(prefix, uid)
 		local p = Mock.AddPlayer(prefix .. tostring(uid % 1000), uid)
