@@ -720,7 +720,7 @@ def simulate(seed=1, runs=3, mode="random", max_minutes=900, ring=None, feed_sha
         if key != cache_key:
             cache_key = key
             cheapest = min([p[2] for p in pads(st, stars) if p[3] is None] or [math.inf])
-        if cheapest < math.inf and cheapest > cash + lawn:
+        if cheapest < math.inf and cheapest > cash + lawn * cash_mult:  # what the next scoop really pays (the x2 Cash pass doubles it)
             if dead_start is None:
                 dead_start = t
         elif dead_start is not None:
