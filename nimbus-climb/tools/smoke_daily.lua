@@ -21,6 +21,10 @@
 --   daily_remote        junk, spam, InMatch, no StoreService (never VIP), the VIP seam (x2 Cash / Tokens, x1 Gems and
 --                       tiers, no step-back), "Checking" only blocks a claim with a step-back due
 --   daily_quiet_join    nothing announced on join; the payload within 1 s of ProfileLoaded; ReadyAt <= ServerNow
+-- Since gui-redo Task 4 (the 10-minute unlock, smoke_redo_daily.lua) every streak claim here first gets the play-day's
+-- UnlockSeconds through unlock(p, fresh) (claim() does it; the two direct DailyService.Claim calls of daily_miss too): a
+-- fresh play-day at the claim's second keeps the 20 h / 48 h boundaries exact; daily_two_servers and daily_remote (they
+-- also check play tiers) keep their live play-day.
 -- White-box: the booted helpers of smoke_store.lua / smoke_p7_data.lua ("server B" = a second DataService copy against the
 -- same mock store). The mock's os.time() is floor(EPOCH + clock): a claim is fired FIRST and the clock advanced AFTER (an
 -- advance between a clock write and the fire can add a second and break a boundary). Plain Lua 5.1 syntax only.
@@ -116,8 +120,34 @@ local function request(p, ...)
 	Mock.FromClient(remote("DailyRequest"), p, ...)
 end
 
--- fires DailyRequest "Claim" FIRST (at the current os.time(), returned) and lets the 1 req/s window pass AFTER
-local function claim(p)
+-- [gui-redo, Task 4] the 10-minute unlock: a streak claim needs Config.Daily.UnlockSeconds counted play seconds of the live
+-- play-day. unlock(p, fresh) gives the record that many: `fresh` (the streak-boundary scenarios) starts the play-day at this
+-- second, so the hold's keepAt is the claim's now exactly and every 20 h / 48 h boundary reads as before; without it a live
+-- play-day (and its tiers) is kept and only topped up. Nothing while the profile is not loaded or provisional (the claim is
+-- refused before the lock there).
+local function unlock(p, fresh)
+	if DS().GetDaily(p) == nil then
+		return false
+	end
+	local need = tonumber(config().Daily.UnlockSeconds) or 0
+	local day = config().Daily.Play.DaySeconds
+	return DS().MutateDaily(p, function(d)
+		local now = os.time()
+		local start = tonumber(d.PlayStart) or 0
+		if fresh or start <= 0 or now >= start + day then
+			d.PlayStart = now
+			d.PlaySec = 0
+			d.PlayClaimed = {}
+		end
+		d.PlaySec = math.max(tonumber(d.PlaySec) or 0, need)
+		return true
+	end)
+end
+
+-- fires DailyRequest "Claim" FIRST (at the current os.time(), returned) and lets the 1 req/s window pass AFTER; the play-day
+-- is unlocked right before (fresh unless `keepDay`: the scenarios that also check play tiers)
+local function claim(p, keepDay)
+	unlock(p, not keepDay)
 	local t = os.time()
 	request(p, "Claim")
 	advance(1.05)
@@ -516,6 +546,7 @@ S.daily_miss = guarded("daily_miss", function()
 	cash0 = DS().GetCash(b)
 	local gems0, tokens0 = DS().GetGems(b), DS().GetTokens(b)
 	local mark = K.logSize()
+	unlock(b, true)
 	local ok, result = DSV().Claim(b)
 	advance(1.05)
 	d = DS().GetDaily(b)
@@ -538,6 +569,7 @@ S.daily_miss = guarded("daily_miss", function()
 	loaded(c)
 	atStreak7(c, 10 * 86400)
 	cash0 = DS().GetCash(c)
+	unlock(c, true)
 	ok, result = DSV().Claim(c)
 	advance(1.05)
 	d = DS().GetDaily(c)
@@ -656,7 +688,7 @@ S.daily_two_servers = guarded("daily_two_servers", function()
 		B.Load(p)
 		advance(0.5)
 		local cash0 = (stored(uid) or {}).Cash or 0
-		local tA = claim(p)
+		local tA = claim(p, true)
 		local dA = D.GetDaily(p)
 		T.check(dA.Streak == 1 and dA.LastClaimAt == tA and D.Save(p) == true, "daily two servers: A claims day 1 through DailyService and saves", describeDaily(dA))
 		local rec = stored(uid) or {}
@@ -928,7 +960,7 @@ S.daily_remote = guarded("daily_remote", function()
 	p:SetAttribute(config().Attr.InMatch, true)
 	mark = K.logSize()
 	elapse(p, 72000)
-	claim(p)
+	claim(p, true) -- keepDay: the live play-day stays (this scenario also claims tier 1)
 	claimPlay(p, 1)
 	d = DS().GetDaily(p)
 	local texts = {}
@@ -942,13 +974,13 @@ S.daily_remote = guarded("daily_remote", function()
 	local savedStore = deps.StoreService
 	atStreak7(p, 49 * HOUR)
 	mark = K.logSize()
-	claim(p)
+	claim(p, true)
 	d = DS().GetDaily(p)
 	T.check(d.Streak == 7 and d.Paid == 7 and toastCount(p, "Streak repaired! Day 7 of 7", mark) == 1 and toastCount(p, "Checking", mark) == 0,
 		"daily remote: without a VIP answer (StoreService absent or the pass Id 0) a step-back due is applied, never held on 'Checking'", describeDaily(d))
 	elapse(p, 72000)
 	cash0 = DS().GetCash(p)
-	claim(p)
+	claim(p, true)
 	T.check(DS().GetDaily(p).Streak == 8 and DS().GetCash(p) == cash0 + 400, "daily remote: ...and the Cash cell pays x1", "cash +" .. (DS().GetCash(p) - cash0))
 	-- VIP through the seam
 	local okRun, errRun = pcall(function()
@@ -967,22 +999,22 @@ S.daily_remote = guarded("daily_remote", function()
 		elapse(p, 72000)
 		tokens0 = DS().GetTokens(p)
 		mark = K.logSize()
-		claim(p)
+		claim(p, true)
 		T.check(DS().GetDaily(p).Streak == 9 and DS().GetTokens(p) == tokens0 + 100 and toastCount(p, "+100 Tokens! Day 2 of 7", mark) == 1, "daily remote: VIP: the Tokens cell pays x2", "tokens +" .. (DS().GetTokens(p) - tokens0))
 		elapse(p, 72000)
 		gems0 = DS().GetGems(p)
-		claim(p)
+		claim(p, true)
 		T.check(DS().GetDaily(p).Streak == 10 and DS().GetGems(p) == gems0 + 10, "daily remote: VIP: the Gems cell pays x1", "gems +" .. (DS().GetGems(p) - gems0))
 		cash0 = DS().GetCash(p)
 		claimPlay(p, 1)
 		T.check(DS().GetCash(p) == cash0 + 200, "daily remote: VIP: the play tiers pay x1", "cash +" .. (DS().GetCash(p) - cash0))
 		elapse(p, 72000)
 		cash0 = DS().GetCash(p)
-		claim(p)
+		claim(p, true)
 		T.check(DS().GetDaily(p).Streak == 11 and DS().GetCash(p) == cash0 + 2000, "daily remote: VIP: the Cash cell pays x2 (day 4: $1000 x 2)", "cash +" .. (DS().GetCash(p) - cash0))
 		elapse(p, 49 * HOUR)
 		tokens0 = DS().GetTokens(p)
-		claim(p)
+		claim(p, true)
 		d = DS().GetDaily(p)
 		T.check(d.Streak == 12 and d.Paid == 12 and DS().GetTokens(p) == tokens0 + 500, "daily remote: VIP: a 49 h gap never steps back (Streak +1, day 5 pays 250 x 2 Tokens)", describeDaily(d))
 		-- "Checking" (Owns false): only a claim with a step-back due waits
@@ -997,13 +1029,13 @@ S.daily_remote = guarded("daily_remote", function()
 		elapse(p, 49 * HOUR)
 		local before = DS().GetDaily(p)
 		mark = K.logSize()
-		claim(p)
+		claim(p, true)
 		d = DS().GetDaily(p)
 		T.check(d.Streak == before.Streak and d.LastClaimAt == before.LastClaimAt and d.Paid == before.Paid and toastCount(p, "Checking your VIP pass, one moment", mark) == 1, "daily remote: a step-back due while the pass is Checking waits, nothing written", describeDaily(d))
 		setLast(p, os.time() - 72000)
 		gems0 = DS().GetGems(p)
 		mark = K.logSize()
-		claim(p)
+		claim(p, true)
 		d = DS().GetDaily(p)
 		T.check(d.Streak == 13 and d.Paid == 13 and DS().GetGems(p) == gems0 + 25 and toastCount(p, "Checking", mark) == 0, "daily remote: Checking with NO step-back due goes through as a non-VIP (day 6: 25 Gems)", describeDaily(d))
 	end)

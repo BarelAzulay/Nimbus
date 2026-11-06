@@ -565,6 +565,7 @@ Config.Daily = {
 	KeepSeconds = 48 * 3600, -- claimed within this of the last claim the streak is kept; later it steps back a day per missed day
 	PipDelaySeconds = 20, -- the Gifts button's pip waits this long after the join (nothing is announced on join)
 	FutureClockSlack = 300, -- a stored LastClaimAt further in the future than this is a wrong clock: counted as the now of its first sight on this server's clock (noted in Daily.ClampFrom / ClampAt / ClampJob, reused only on that server; LastClaimAt never written), refused once
+	UnlockSeconds = 600, -- a streak claim needs this many counted play seconds of the current play-day (0 = off: no lock, no hold)
 	-- the seven cells: cell ((Streak - 1) % 7) + 1 of the new Streak; re-earned, never re-paid (Paid = the highest Streak paid)
 	Days = {
 		{ Cash = { Minutes = 2, Min = 400 } },
