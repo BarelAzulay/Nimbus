@@ -22,8 +22,10 @@
 --     SkyEventAt attributes, with the same blend in and out; taken off, the attributes are back in charge (from that moment)
 --   * the battle lift (Config.Sky.Lift): in an outdoor pet battle (Config.Attr.InBattle "B...") under a dark look
 --     (Night, the eclipse raid) LightingStack.Push("SkyLift") over 1.5 s, popped over 1.5 s after the fight / at dawn
---   * the lamps (Config.Sky.Lamps): the lobby's LampGlass / LanternLight / StallLight / DomeGlow PointLights glow
---     x1.6 under a dark look; written on a look change only (a lamp streamed in later waits for the next change)
+--   * the lamps (Config.Sky.Lamps): the lobby's LampGlass / LanternLight / StallLight / DomeGlow / TroveGlow PointLights
+--     glow x1.4 under a dark look and dim to x0.35 under every other (bug batch 6: they burned at full strength all day),
+--     never over 1.5; written on a look change, and on a lamp that arrives under the lobby later; no clock / Stop = their
+--     own value
 --   * the fireflies (Config.Sky.Fireflies): at Night on High graphics a few emitters round the lobby trees (one local
 --     folder, capped); none on Low (GraphicsQuality.Effective()) or by day
 --   * Low graphics: GraphicsQuality.Recap after each applied refresh (the GfxLow cloud cap follows the sky, updated in
@@ -36,7 +38,7 @@
 --   SkyController.Refresh(now)       one step (tests drive it); now = server time (default Workspace:GetServerTimeNow())
 --   SkyController.SetLocalEvent(bossId|nil) -> ok   the local raid sky on (a boss with a raid sky; anything else is refused) / off
 --   SkyController.State() -> { Phase, Next, Look, Theme, Event, EventBlend, EventFrom, Local, Lift, Lamps, Fireflies, Applies,
---                              Skipped, Loops, Running }   (Lamps / Fireflies = how many lights raised / emitters on;
+--                              Skipped, Loops, Running }   (Lamps / Fireflies = how many lamps written / emitters on;
 --                              EventFrom = the raid sky Event blends from on a back-to-back change, else nil;
 --                              Local = the boss of the local raid sky, else nil)
 -- Plain Lua 5.1-compatible syntax only.
@@ -78,7 +80,9 @@ local St = {
 	Clock = nil, -- the ClockTime applied last
 	Lift = false,
 	LampLook = nil, -- the look the lamps were written for
-	LampBase = setmetatable({}, { __mode = "k" }), -- [PointLight] = its own Brightness (while raised)
+	LampBase = setmetatable({}, { __mode = "k" }), -- [PointLight] = its own Brightness (while written)
+	LampRoot = nil, -- the lobby root watched for lamps that arrive later ...
+	LampConn = nil, -- ... and its DescendantAdded connection (dropped with the clock / on Stop)
 	Lamps = 0,
 	Fireflies = 0,
 	FireflyFolder = nil,
@@ -218,6 +222,10 @@ end
 ----------------------------------------------------------------------
 
 local function restoreLamps()
+	if St.LampConn then
+		St.LampConn:Disconnect()
+		St.LampConn, St.LampRoot = nil, nil
+	end
 	for light, brightness in pairs(St.LampBase) do
 		pcall(function()
 			light.Brightness = brightness
@@ -227,23 +235,44 @@ local function restoreLamps()
 	St.Lamps = 0
 end
 
-local function raiseLamps()
+-- one lamp under the look in St.LampLook: its own value x Night (a dark look) or x Day, never over Max
+local function writeLamp(d)
 	local C = cfg().Lamps
-	local root = Workspace:FindFirstChild(C.Root)
+	if not (d:IsA("PointLight") and d.Parent and C.Names[d.Parent.Name]) then
+		return false
+	end
+	if St.LampBase[d] == nil then
+		St.LampBase[d] = d.Brightness
+	end
+	local k = C.Looks[St.LampLook] and C.Night or C.Day
+	d.Brightness = math.min(St.LampBase[d] * k, C.Max)
+	return true
+end
+
+local function writeLamps()
+	local root = Workspace:FindFirstChild(cfg().Lamps.Root)
 	if not root then
 		return
 	end
 	local n = 0
 	for _, d in ipairs(root:GetDescendants()) do
-		if d:IsA("PointLight") and d.Parent and C.Names[d.Parent.Name] then
-			if St.LampBase[d] == nil then
-				St.LampBase[d] = d.Brightness
-			end
-			d.Brightness = St.LampBase[d] * C.Night
+		if writeLamp(d) then
 			n = n + 1
 		end
 	end
 	St.Lamps = n
+	-- a lamp that replicates in later takes the look at once (by day its built value is the bright one)
+	if St.LampRoot ~= root then
+		if St.LampConn then
+			St.LampConn:Disconnect()
+		end
+		St.LampRoot = root
+		St.LampConn = root.DescendantAdded:Connect(function(d)
+			if St.LampLook and writeLamp(d) then
+				St.Lamps = St.Lamps + 1
+			end
+		end)
+	end
 end
 
 local function setLamps()
@@ -252,9 +281,10 @@ local function setLamps()
 		return
 	end
 	St.LampLook = look
-	restoreLamps()
-	if look and cfg().Lamps.Looks[look] then
-		raiseLamps()
+	if look then
+		writeLamps()
+	else
+		restoreLamps()
 	end
 end
 

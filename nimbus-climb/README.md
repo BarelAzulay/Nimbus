@@ -1714,7 +1714,7 @@ src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientS
              and drums, heard only near the ring), TrainerCheer (wave 6: my avatar's cheer emote on the podium and on
              Cheer up!), TopBar (the top-left Shop / Travel / Settings pill; Travel opens the portal to the lobby), Sky (the
              living sky on this client: the cycle and the raid skies as the LightingStack base, the night battle lift,
-             the night lamps, fireflies), Store (the Robux Store window), Daily (the Gifts button and window),
+             the lobby lamps dim by day and warm at night, fireflies), Store (the Robux Store window), Daily (the Gifts button and window),
              BoostBadge (the x2 chips under the strips), Vip (the VIP chat tag and lobby crown), Trove (the Sky Trove
              panel, the lid and coins)
 ```

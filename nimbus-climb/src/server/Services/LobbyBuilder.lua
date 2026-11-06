@@ -3335,7 +3335,7 @@ local function buildMachine(parent, cf, roulette)
 		end
 	end
 	local glow = anchorPart(model, "DomeGlow", (cf * CFrame.new(0, 9.5, 0)).Position)
-	pointLight(glow, roulette.Color or C.Lamp, 0.9, 18)
+	pointLight(glow, roulette.Color or C.Lamp, 0.9, 16) -- range 16: art rule 7 (bug batch 6; was 18)
 	emitter(glow, {
 		Color = ColorSequence.new((roulette.Color or C.Rose):Lerp(rgb(255, 255, 255), 0.4), C.TextGold),
 		Rate = 3,

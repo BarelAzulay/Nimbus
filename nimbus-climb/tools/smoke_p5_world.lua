@@ -1346,6 +1346,92 @@ local function serverScenarios()
 		K.flushErrors("p5world_client_total")
 	end)
 
+	------------------------------------------------------------------------------------------------
+	-- bb6_lobby_lights (bug batch 6, the owner: "whats up with the brightness with the lights"): a census of the lobby's
+	-- lights. The lamps SkyController drives (Config.Sky.Lamps.Names) stay inside art rule 7 (warm lanterns <= 1.5,
+	-- range <= 16, no shadows) at their built value; nothing else in the lobby outshines the Gate Court's pinned P4 gate
+	-- light (28 / 1.3); no spot or surface lights. The list (grouped) and every light, beam and big Neon part within 40
+	-- studs of Sparky Fox go to the log: the list Studio checks against the owner's screenshot.
+	------------------------------------------------------------------------------------------------
+	S.bb6_lobby_lights = guarded("bb6_lobby_lights", function()
+		if not K.needBoot() then
+			return
+		end
+		local Lamps = config().Sky.Lamps
+		local lobby = workspace:FindFirstChild(Lamps.Root)
+		if not T.check(lobby ~= nil and type(Lamps.Names) == "table", "the lobby (workspace." .. tostring(Lamps.Root) .. ") and Config.Sky.Lamps.Names") then
+			return
+		end
+		T.check(Lamps.Names.TroveGlow == true and Lamps.Names.LampGlass == true and Lamps.Names.DomeGlow == true, "the Sky Trove's TroveGlow is a lamp the sky drives (it took StallLight's place)")
+		local lamps = T.tally("every lobby lamp (LampGlass / LanternLight / StallLight / DomeGlow / TroveGlow) at <= 1.2 brightness, range <= 16, no shadows (art rule 7)")
+		local others = T.tally("every other lobby light <= 1.5 brightness and range <= 28 (the gate light's pinned 1.3 / 28)")
+		local groups, order = {}, {}
+		local spots, lampCount = 0, 0
+		for _, d in ipairs(lobby:GetDescendants()) do
+			if d:IsA("SpotLight") or d:IsA("SurfaceLight") then
+				spots = spots + 1
+				T.info("*lobby " .. d.ClassName .. ": " .. d:GetFullName())
+			elseif d:IsA("PointLight") then
+				local key = d.Parent and d.Parent.Name or "?"
+				if Lamps.Names[key] then
+					lampCount = lampCount + 1
+					lamps:case(d.Brightness <= 1.2 + 1e-6 and d.Range <= 16 and d.Shadows == false, d:GetFullName() .. " " .. fmt(d.Brightness) .. " / " .. fmt(d.Range, 0))
+				else
+					others:case(d.Brightness <= 1.5 + 1e-6 and d.Range <= 28, d:GetFullName() .. " " .. fmt(d.Brightness) .. " / " .. fmt(d.Range, 0))
+				end
+				local g = groups[key]
+				if not g then
+					g = { N = 0, B0 = math.huge, B1 = 0, R0 = math.huge, R1 = 0 }
+					groups[key] = g
+					order[#order + 1] = key
+				end
+				g.N = g.N + 1
+				g.B0, g.B1 = min(g.B0, d.Brightness), max(g.B1, d.Brightness)
+				g.R0, g.R1 = min(g.R0, d.Range), max(g.R1, d.Range)
+			end
+		end
+		lamps:report(lampCount .. " lamps")
+		others:report()
+		T.eq(spots, 0, "no SpotLight or SurfaceLight in the lobby")
+		table.sort(order)
+		local parts = {}
+		for _, key in ipairs(order) do
+			local g = groups[key]
+			parts[#parts + 1] = string.format("%s x%d (%s-%s / %s-%s)%s", key, g.N, fmt(g.B0), fmt(g.B1), fmt(g.R0, 0), fmt(g.R1, 0), Lamps.Names[key] and " lamp" or "")
+		end
+		T.info("*lobby lights: " .. table.concat(parts, ", "))
+		-- around Sparky Fox (the screenshot's spot): every light, beam and Neon part over 2 studs, nearest first
+		local npc = workspace:FindFirstChild("NimbusNpcs") and workspace.NimbusNpcs:FindFirstChild("Npc_sparky_fox")
+		if T.check(npc ~= nil, "Sparky Fox stands in the lobby (workspace.NimbusNpcs.Npc_sparky_fox)") then
+			local at = npc:GetPivot().Position
+			local near = {}
+			for _, root in ipairs({ lobby, workspace.NimbusNpcs, workspace:FindFirstChild("BattleArena") }) do
+				for _, d in ipairs(root and root:GetDescendants() or {}) do
+					local pos, what = nil, nil
+					if d:IsA("Light") and d.Parent and d.Parent:IsA("BasePart") then
+						pos, what = d.Parent.Position, d.ClassName .. " " .. fmt(d.Brightness) .. " / " .. fmt(d.Range, 0)
+					elseif d:IsA("Beam") and d.Attachment0 then
+						pos, what = d.Attachment0.WorldPosition, "Beam LightEmission " .. fmt(d.LightEmission)
+					elseif d:IsA("BasePart") and d.Material == Enum.Material.Neon and d.Transparency < 1 and d.Size.Magnitude > 2 then
+						pos, what = d.Position, "Neon " .. fmt(d.Size.X, 1) .. "x" .. fmt(d.Size.Y, 1) .. "x" .. fmt(d.Size.Z, 1)
+					end
+					if pos and (pos - at).Magnitude <= 40 then
+						near[#near + 1] = { D = (pos - at).Magnitude, Text = string.format("%s %s at %s", d:GetFullName(), what, fmt((pos - at).Magnitude, 1)) }
+					end
+				end
+			end
+			table.sort(near, function(a, b)
+				return a.D < b.D
+			end)
+			local lines = {}
+			for i = 1, min(#near, 12) do
+				lines[#lines + 1] = near[i].Text
+			end
+			T.info("*near Sparky Fox (" .. #near .. "): " .. table.concat(lines, "; "))
+		end
+		K.flushErrors("bb6_lobby_lights")
+	end)
+
 	return S
 end
 

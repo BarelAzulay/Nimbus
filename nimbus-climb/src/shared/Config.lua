@@ -699,11 +699,15 @@ Config.Sky = {
 		},
 	},
 	-- the lobby's lamps (LobbyBuilder pointLight() on these part names, under workspace.<Root>): their PointLight
-	-- Brightness x Night under the Looks, their own value otherwise; written on a look change only
+	-- Brightness x Night under the Looks, x Day under every other look, never over Max (art rule 7: warm lanterns <= 1.5);
+	-- their own (built) value with no clock. Written on a look change, and on a lamp that arrives later. Bug batch 6 (the
+	-- owner: "whats up with the brightness with the lights"): they burned at their full value all day (Day was 1)
 	Lamps = {
 		Root = "NimbusLobby",
-		Names = { LampGlass = true, LanternLight = true, StallLight = true, DomeGlow = true },
-		Night = 1.6,
+		Names = { LampGlass = true, LanternLight = true, StallLight = true, DomeGlow = true, TroveGlow = true },
+		Night = 1.4,
+		Day = 0.35,
+		Max = 1.5,
 		Looks = { Night = true, shadow_hydra = true },
 	},
 	-- a few soft fireflies round the lobby trees (models named "...Tree" under workspace.<Root>) under the Looks, on

@@ -51,8 +51,10 @@
 --                      blended in leaves from where it was (no jump up to 1)
 --   client_sky_battle_lift (client) InBattle "B12" at Night -> Push("SkyLift", Config.Sky.Lift.Preset, 1.5); "D3" (a
 --                      dungeon run) -> no lift; cleared -> Pop over 1.5 s; Day -> no lift
---   client_sky_lamps   (client) LampGlass / LanternLight / StallLight / DomeGlow PointLights x Config.Sky.Lamps.Night at
---                      Night, their own value otherwise; other lights untouched; written on a look change only
+--   client_sky_lamps   (client; bug batch 6) LampGlass / LanternLight / StallLight / DomeGlow / TroveGlow PointLights x Day
+--                      (0.35) by day / Dawn / a bright raid sky, min(x Night (1.4), 1.5) at Night and under the eclipse raid,
+--                      their own value with no clock and after Stop; a lamp added later takes the look at once; other
+--                      lights and the gate light untouched; written on a look change only
 --   client_sky_fireflies (client) Night + High graphics -> one capped emitter group near the lobby trees; Low -> none;
 --                      Day -> none
 --   client_gfx_cloud_cap (client) GfxLow Clouds Density = min(0.4, the cycle's), Recap follows the moving base
@@ -1279,33 +1281,76 @@ local function clientScenarios()
 		return l
 	end
 
+	-- bug batch 6 (the owner: "whats up with the brightness with the lights"): the lamps burned at their full built value all
+	-- day. Now every look change writes them: x Day (0.35) under every look but the dark ones, min(x Night (1.4), Max 1.5)
+	-- under Night and the eclipse raid; no clock / Stop = their own value again
 	S.client_sky_lamps = withSky("client_sky_lamps", function(SC, LS, SCy)
 		local box, cleanup = testLobby()
-		local k = Cfg.Sky.Lamps.Night
+		local C = Cfg.Sky.Lamps
 		local glass = lampPart(box, "LampGlass", 1.0)
 		local lantern = lampPart(box, "LanternLight", 0.8)
 		local stall = lampPart(box, "StallLight", 0.8)
 		local dome = lampPart(box, "DomeGlow", 0.9)
+		local trove = lampPart(box, "TroveGlow", 1.2)
 		local other = lampPart(box, "Window", 1.0)
+		local gate = lampPart(box, "GlowCore", 1.3) -- a Gate Court gate's GateLight
+		local lamps = { { glass, 1.0 }, { lantern, 0.8 }, { stall, 0.8 }, { dome, 0.9 }, { trove, 1.2 } }
+		local function all(factor)
+			local ok, got = true, {}
+			for _, e in ipairs(lamps) do
+				local want = math.min(e[2] * factor, C.Max)
+				ok = ok and near(e[1].Brightness, want)
+				got[#got + 1] = fmt("%.3f", e[1].Brightness)
+			end
+			return ok, table.concat(got, " ")
+		end
 		local ok, err = pcall(function()
-			publish(300)
+			T.check(C.Day == 0.35 and C.Night == 1.4 and C.Max == 1.5 and C.Names.TroveGlow == true, "Config.Sky.Lamps: Day 0.35, Night 1.4, Max 1.5 (art rule 7), TroveGlow is a lamp")
+			publish(300) -- Day
 			SC.Refresh()
-			T.check(glass.Brightness == 1.0 and dome.Brightness == 0.9, "Day: lamps at their own value")
-			publish(1100)
+			local okDay, day = all(C.Day)
+			T.check(okDay, "Day: every lamp (TroveGlow too) dims to x0.35 of its own value", day)
+			T.check(other.Brightness == 1.0 and gate.Brightness == 1.3, "Day: other lights and the gate light are untouched")
+			T.check((SC.State().Lamps or 0) >= 5, "State().Lamps counts the lamps written", tostring(SC.State().Lamps))
+			-- a lamp that arrives later (replication) takes the look's value at once
+			local late = lampPart(box, "LampGlass", 1.2)
+			KC.advance(0.1)
+			T.check(near(late.Brightness, 1.2 * C.Day), "Day: a lamp added later dims at once (never glares until the next look)", fmt("%.3f", late.Brightness))
+			lamps[#lamps + 1] = { late, 1.2 }
+			publish(1100) -- Night
 			SC.Refresh()
-			T.check(near(glass.Brightness, 1.0 * k) and near(lantern.Brightness, 0.8 * k) and near(stall.Brightness, 0.8 * k) and near(dome.Brightness, 0.9 * k), fmt("Night: LampGlass / LanternLight / StallLight / DomeGlow x%.1f", k), fmt("%.3f %.3f %.3f %.3f", glass.Brightness, lantern.Brightness, stall.Brightness, dome.Brightness))
-			T.eq(other.Brightness, 1.0, "Night: another light is untouched")
-			T.check((SC.State().Lamps or 0) >= 4, "State().Lamps counts the raised lamps", tostring(SC.State().Lamps))
+			local okNight, night = all(C.Night)
+			local over = false
+			for _, e in ipairs(lamps) do
+				over = over or e[1].Brightness > C.Max + 1e-6
+			end
+			T.check(okNight and not over, "Night: every lamp at min(x1.4, 1.5): none over art rule 7's 1.5", night)
+			T.check(other.Brightness == 1.0 and gate.Brightness == 1.3, "Night: other lights and the gate light are untouched")
 			-- written on a look change only: a second Night refresh writes nothing
 			glass.Brightness = 3
 			SC.Refresh()
 			KC.advance(2.1)
-			T.eq(glass.Brightness, 3, "the same look again: no lamp write (phase changes only)")
-			glass.Brightness = 1.0 * k
+			T.eq(glass.Brightness, 3, "the same look again: no lamp write (look changes only)")
 			publish(100) -- Dawn
 			SC.Refresh()
-			T.check(near(glass.Brightness, 1.0) and near(lantern.Brightness, 0.8) and near(dome.Brightness, 0.9), "Dawn: every lamp back to its own value", fmt("%.3f %.3f", glass.Brightness, dome.Brightness))
-			T.eq(SC.State().Lamps or 0, 0, "Dawn: no lamp raised")
+			local okDawn, dawn = all(C.Day)
+			T.check(okDawn, "Dawn: the day value again, from each lamp's own value (not from a written one)", dawn)
+			publish(300, "shadow_hydra") -- the eclipse raid is a dark look
+			SC.Refresh()
+			local okEclipse, eclipse = all(C.Night)
+			T.check(okEclipse, "the eclipse raid sky (shadow_hydra) lights the lamps like the night", eclipse)
+			publish(300, "lava_golem")
+			SC.Refresh()
+			local okLava, lava = all(C.Day)
+			T.check(okLava, "a bright raid sky (lava_golem) keeps the day value", lava)
+			SC.Stop()
+			local okStop, stop = all(1)
+			T.check(okStop and (SC.State().Lamps or 0) == 0, "Stop: every lamp back to its own value", stop)
+			late.Parent.Parent = nil
+			local after = lampPart(box, "LampGlass", 0.8)
+			KC.advance(0.1)
+			T.eq(after.Brightness, 0.8, "stopped: a lamp added later keeps its own value (the watch is gone)")
+			SC.Start()
 		end)
 		cleanup()
 		T.check(ok, "client_sky_lamps body", tostring(err))
