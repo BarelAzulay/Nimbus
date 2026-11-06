@@ -934,7 +934,8 @@ local function serverScenarios()
 		advance(5)
 		T.check(A:GetAttribute("InBattle") == fightId and not b.Parts[A.UserId].Left, "evo retreat svc: A's character 30 studs from its retreated pet for 5 s: still in the fight",
 			tostring(A:GetAttribute("InBattle")))
-		T.check(B:GetAttribute("InBattle") == nil or b.Parts[B.UserId].Left, "evo retreat svc: ...the same gap on a team that is not retreated is the leash's", tostring(B:GetAttribute("InBattle")))
+		-- (bug batch 6: no leash in a raid at all; the fight area's countdown is the raid's presence rule)
+		T.check(B:GetAttribute("InBattle") == fightId and not b.Parts[B.UserId].Left, "evo retreat svc: ...and so is B, not retreated: a raid has no leash (bug batch 6)", tostring(B:GetAttribute("InBattle")))
 		-- after Engage the catch-up grace keeps it in, as a stun's does
 		T.check(bs.Command(A, "Engage") == true, "evo retreat svc: (setup) A engages again")
 		ta.noEngage = true -- (white-box: no engage rule, only the grace is left)
@@ -945,7 +946,7 @@ local function serverScenarios()
 		-- a run-off out of the arena is still the presence check's
 		T.check(tc.retreat ~= nil, "evo retreat svc: (C is still back)")
 		Mock.Teleport(C, CFrame.new(K.config().Lobby.Origin + Vector3.new(10, 4, 10)))
-		advance(4.5) -- (bug batch 6: the fight area's warning and 3-2-1 come first; was 2)
+		advance(6.5) -- (bug batch 6: the fight area's warning and 5 s countdown come first; was 2)
 		T.check(C:GetAttribute("InBattle") == nil or b.Parts[C.UserId].Left, "evo retreat svc: a retreated raider who runs out of the arena is out (the presence check)", tostring(C:GetAttribute("InBattle")))
 	end)
 

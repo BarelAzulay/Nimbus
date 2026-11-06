@@ -103,7 +103,7 @@
 --     the team (RemoveTeam: the boss sheds that share), and a leaver can't come back to the same running fight (the sim's owner stays taken; a
 --     fresh full-HP team would also dodge a knock-out). The fight area (bug batch 6, Raid.watchArea, twice a second): Zone.Radius (ArenaInfo.Floor.Radius
 --     74, the podium wall; a Raid pocket's Radius 74) + AREA_SLACK 4 studs around the floor centre, -POCKET_FALL..AREA_TOP high. Out for AREA_BLIP
---     0.5 s = BattleState "Area" { BattleId, Out = true, Left = AREA_SECONDS 3 } (the client's 3-2-1 banner); AREA_SECONDS later still out =
+--     0.5 s = BattleState "Area" { BattleId, Out = true, Left = AREA_SECONDS 5 } (the client's 5-4-3-2-1 banner); AREA_SECONDS later still out =
 --     out of the raid exactly as LEAVE (leaveRaid, End Reason "Area", "You left the fight area" toast); back in before that = "Area" { Out =
 --     false }. The AREA_GRACE 2 s after a teleport of ours (the walk in, a respawn hop, the pocket's fall rescue) count as in. A dead raider
 --     is never counted out: a respawn (or a new character) goes back on the stand with the grace. Falling under a pocket = back on its spawn
@@ -155,7 +155,8 @@
 -- server catches up at most MAX_CATCHUP steps per frame, merging their events into one message). Before the steps of a
 -- tick every live participant's character root (zone-local) is fed as Command(owner, "Move", x, z); after them the LEASH
 -- measures the gap between the character and the server fighter: a gap > Fighter.Leash (10) for Fighter.LeashSeconds (3)
--- = a leaver in Duel / Ring, a RemoveTeam in Raid / Dungeon (a run-off or a teleport; an in-zone speed hack is not leashed
+-- = a leaver in Duel / Ring, a RemoveTeam in Dungeon (never in a Raid since bug batch 6: the fight area's countdown is the raid's
+-- presence rule and a raider walks at the normal speed, faster than a slow pet) (a run-off or a teleport; an in-zone speed hack is not leashed
 -- and gains nothing). Bug #22 / wave 6: while the sim team is ENGAGED (BattleSim's engage rule: the pet fights any enemy in
 -- the fight area, whatever the character does) the leash is skipped (Cmd.engaged, white-box like Cmd.stunned): the sim's
 -- floor bounds the pet, and a run-off out of the zone is still caught by the presence check (OUT_STRIKES); the FOLLOW
@@ -353,7 +354,7 @@ local C = {
 	RAID_GATE_COOLDOWN = 3, -- seconds the gate ignores a player after a release or a refusal (a step back and forth at its edge is one try)
 	RAID_DARE_RANGE = 20, -- studs from the gate where a dare is taken
 	-- bug batch 6: the raid's fight area (Raid.watchArea)
-	AREA_SECONDS = 3, -- a raider out of the fight area is warned (a 3-2-1), then out of the raid this many seconds later
+	AREA_SECONDS = 5, -- a raider out of the fight area is warned (a 5-4-3-2-1; owner, Studio: 3 was too short), then out of the raid this many seconds later
 	AREA_SLACK = 4, -- studs past the area's Radius that still count as in (the podium wall's cap, a stumble)
 	AREA_BLIP = 0.5, -- seconds out before the warning (a dash or a knockback over the edge is back sooner)
 	AREA_GRACE = 2, -- seconds after a teleport of ours (walking in, a respawn hop, the pocket's fall rescue): the server may still see the old spot
@@ -4445,6 +4446,12 @@ function Cmd.leash(b, part, dt)
 	-- bug #22 / wave 6: an ENGAGED pet fights away from its character on purpose (the trainer never pulls it off); the sim's
 	-- floor bounds it, a run-off out of the zone is the presence check's job, and this leash runs again in FOLLOW
 	if Cmd.engaged(b, part) then
+		part.LeashT = 0
+		return false
+	end
+	-- bug batch 6 (owner, Studio): a raider moves at the normal walk / run, faster than a slow pet in FOLLOW; in a raid the fight
+	-- area's warning and countdown (Raid.watchArea) is the one presence rule, so no leash there
+	if b.Mode == "Raid" then
 		part.LeashT = 0
 		return false
 	end

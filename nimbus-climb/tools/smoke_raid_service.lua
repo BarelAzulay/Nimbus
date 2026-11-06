@@ -17,8 +17,8 @@
 -- Bug batch 6 (docs/superpowers/plans/2026-11-06-bug-batch-6.md, Task A):
 --   raid_svc_leave        LEAVE (Forfeit, also through BattleCommand) and LeaveRaid: End Left with no Rewards, a "no reward" toast, no
 --                         rejoin of that fight, a pocket leaver back at the gate after RETURN_DELAY, the others paid, a late Forfeit refused
---   raid_svc_area_kick    out of the fight area (Floor.Radius + 4) for 0.5 s: the Area warning (Out, Left 3), 3 s later End Reason "Area"
---   raid_svc_area_return  back in during the 3-2-1: Out = false, no kick
+--   raid_svc_area_kick    out of the fight area (Floor.Radius + 4) for 0.5 s: the Area warning (Out, Left 5), 5 s later End Reason "Area"
+--   raid_svc_area_return  back in during the 5-4-3-2-1: Out = false, no kick
 --   raid_svc_area_blip    out for under 0.5 s (a dash / a knockback) or inside the 4-stud slack: nothing
 --   raid_svc_area_grace   the 2 s after a teleport in: nothing; the pocket's fall rescue puts them back and never kicks
 --   raid_svc_area_dead    dead: no countdown; a respawn (or a reloaded character) is put back on the stand
@@ -621,8 +621,8 @@ S.raid_svc_ends = scenario("raid_svc_ends", function(add)
 	local warned = lastMsg(high60, "Area", markW)
 	-- (bug batch 6: a warning and 3-2-1 first, then out; was out after 1 s)
 	T.check(high60:GetAttribute("InBattle") ~= nil and warned and warned.Out == true, "raid ends: a pocket raider who walks off is warned first")
-	advance(3.3)
-	T.check(high60:GetAttribute("InBattle") == nil, "raid ends: leaving the pocket takes a pocket raider out of the fight after the 3-2-1")
+	advance(5.3)
+	T.check(high60:GetAttribute("InBattle") == nil, "raid ends: leaving the pocket takes a pocket raider out of the fight after the countdown")
 	advance(RETURN_DELAY + 0.5)
 	T.check((K.root(high60).Position - lobbyAt).Magnitude < 5, "raid ends: ...and nobody pulls them back to the gate")
 	T.check(bs.GetRaidStatus().Fights.High == nil, "raid ends: ...the emptied pocket fight is over")
@@ -954,15 +954,15 @@ S.raid_svc_area_kick = scenario("raid_svc_area_kick", function(add)
 	Mock.Teleport(p, floorSpot(info, R + 10))
 	advance(1.05)
 	local a = lastMsg(p, "Area", mark)
-	T.check(a and a.Out == true and a.Left == 3 and a.BattleId == id and p:GetAttribute("InBattle") == id,
-		"raid area: out of the fight area: the warning comes (Out, Left = 3) and the raider is still in", a and (tostring(a.Out) .. " " .. tostring(a.Left)) or "no Area")
+	T.check(a and a.Out == true and a.Left == 5 and a.BattleId == id and p:GetAttribute("InBattle") == id,
+		"raid area: out of the fight area: the warning comes (Out, Left = 5) and the raider is still in", a and (tostring(a.Out) .. " " .. tostring(a.Left)) or "no Area")
 	T.check(countMsgs(p, "Area", mark) == 1, "raid area: ...once, not every tick", tostring(countMsgs(p, "Area", mark)))
-	advance(2.35)
-	T.check(lastMsg(p, "End", mark) == nil and p:GetAttribute("InBattle") == id, "raid area: no End during the 3-2-1")
+	advance(4.35)
+	T.check(lastMsg(p, "End", mark) == nil and p:GetAttribute("InBattle") == id, "raid area: no End during the 5-4-3-2-1")
 	advance(1.2)
 	local e = lastMsg(p, "End", mark)
 	T.check(e and e.Reason == "Area" and e.Outcome == "Left" and e.Rewards == nil and p:GetAttribute("InBattle") == nil,
-		"raid area: after 3 s out: out of the raid (End Left, Reason Area, no Rewards)", e and tostring(e.Reason) or "no End")
+		"raid area: after 5 s out: out of the raid (End Left, Reason Area, no Rewards)", e and tostring(e.Reason) or "no End")
 	T.check(countMsgs(p, "End", mark) == 1 and toastCount(p, "fight area", mark) == 1, "raid area: one End, one toast naming the fight area")
 	T.check(stay:GetAttribute("InBattle") == id, "raid area: the raider on the stand fights on")
 	local ok, why = bs.EnterRaid(p)
@@ -985,8 +985,23 @@ S.raid_svc_area_return = scenario("raid_svc_area_return", function(add)
 	advance(0.6)
 	local back = lastMsg(p, "Area", mark)
 	T.check(back and back.Out == false and back.BattleId == id, "raid area return: stepping back in sends Out = false (the banner goes)")
-	advance(5)
+	advance(7)
 	T.check(lastMsg(p, "End", mark) == nil and p:GetAttribute("InBattle") == id, "raid area return: ...and the countdown is cancelled: still raiding")
+end)
+
+-- owner, Studio: a slow pet made the trainer too slow to get back in time; raids move at least at the normal walk / run (16 / 27)
+S.raid_svc_speed_floor = scenario("raid_svc_speed_floor", function(add)
+	local bs = setUp()
+	local p = add(newPlayer("SpeedF", 10))
+	toArena(p, 2, 0)
+	local mark = K.logSize()
+	local ok = bs.EnterRaid(p)
+	T.check(ok == true, "raid speed: (joined)")
+	advance(0.3)
+	local s = lastMsg(p, "Start", mark)
+	local sp = s and s.Team and s.Team.Speed
+	T.check(type(sp) == "table" and (tonumber(sp.Walk) or 0) >= 16 - 1e-6 and (tonumber(sp.Run) or 0) >= 27 - 1e-6,
+		"raid speed: a raider walks >= 16 and runs >= 27 (the normal speeds)", sp and (tostring(sp.Walk) .. " / " .. tostring(sp.Run)) or "no Speed")
 end)
 
 S.raid_svc_area_blip = scenario("raid_svc_area_blip", function(add)
