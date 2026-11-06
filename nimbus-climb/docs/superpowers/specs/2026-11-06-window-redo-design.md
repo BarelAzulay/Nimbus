@@ -185,7 +185,8 @@ hint, the pop and "Reward" sound on a newly claimed tile, the Loading state.
 **The 10-minute rule (server, DailyService).**
 
 - New knob `Config.Daily.UnlockSeconds = 600`: the counted play seconds of the current play-day a streak claim needs. `0` turns
-  the rule off (today's behaviour).
+  the rule off (today's behaviour): no lock, no `Unlock.Left`, and no hold either (`keepAt = now`, the held seconds are not
+  counted), so every step-back is exactly today's.
 - **The counter is the existing play-time counter:** `Daily.PlaySec` on the current play-day (`Daily.PlayStart`, 20 h rolling,
   `Config.Daily.Play.DaySeconds`), the same seconds the play-time gifts count. A play-day that is over (`dayOver`) or not started
   (`PlayStart == 0`) counts as 0. Left = `max(0, UnlockSeconds - live PlaySec)`.
