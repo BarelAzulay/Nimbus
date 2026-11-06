@@ -24,9 +24,10 @@
 --     (Night, the eclipse raid) LightingStack.Push("SkyLift") over 1.5 s, popped over 1.5 s after the fight / at dawn
 --   * the lamps (Config.Sky.Lamps): the lobby's LampGlass / LanternLight / StallLight / DomeGlow / TroveGlow PointLights
 --     glow x1.4 under a dark look and dim to x0.35 under every other (bug batch 6: they burned at full strength all day),
---     never over 1.5; written on a look change, and on a lamp that arrives under the lobby later; each lamp's own value
---     is kept on the light (attribute Lamps.BaseAttr, never a Lua-only weak cache: a lost base made the written value
---     the next one); no clock / Stop = their own value
+--     never over 1.5; written on a look change, on a lamp that arrives under the lobby later, and on a lobby root that
+--     arrives or is replaced later (the next refresh, same look); each lamp's own value is kept on the light (attribute
+--     Lamps.BaseAttr, never a Lua-only weak cache: a lost base made the written value the next one); no clock / Stop =
+--     their own value
 --   * the fireflies (Config.Sky.Fireflies): at Night on High graphics a few emitters round the lobby trees (one local
 --     folder, capped); none on Low (GraphicsQuality.Effective()) or by day
 --   * Low graphics: GraphicsQuality.Recap after each applied refresh (the GfxLow cloud cap follows the sky, updated in
@@ -81,7 +82,7 @@ local St = {
 	Clock = nil, -- the ClockTime applied last
 	Lift = false,
 	LampLook = nil, -- the look the lamps were written for (each lamp's own Brightness: attribute Config.Sky.Lamps.BaseAttr)
-	LampRoot = nil, -- the lobby root watched for lamps that arrive later ...
+	LampRoot = nil, -- the lobby root written and watched for lamps that arrive later ...
 	LampConn = nil, -- ... and its DescendantAdded connection (dropped with the clock / on Stop)
 	Lamps = 0,
 	Fireflies = 0,
@@ -285,9 +286,11 @@ local function writeLamps()
 	end
 end
 
+-- written on a look change; under the same look only while the lobby root is missing or was replaced (a lobby that
+-- replicates after the first refresh, a LobbyBuilder.Build), never again over the same root
 local function setLamps()
 	local look = St.Running and St.Look or nil
-	if look == St.LampLook then
+	if look == St.LampLook and (look == nil or (St.LampRoot and St.LampRoot.Parent)) then
 		return
 	end
 	St.LampLook = look

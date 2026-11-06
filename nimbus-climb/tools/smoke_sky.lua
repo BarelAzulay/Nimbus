@@ -58,6 +58,8 @@
 --   client_sky_lamps_base_kept (client; bug batch 6 review) the controller's weak tables emptied (a GC) between the look
 --                      changes: Day / Sunset / Night / Dawn still write x0.35 / min(x1.4, 1.5) of the built value (never of
 --                      a written one) and Stop restores the built value
+--   client_sky_lamps_late_root (client; bug batch 6 review) the lobby root missing at the Day look, then there: the next
+--                      refresh writes its lamps; a rebuilt root (the same look) too; the same look + root again writes nothing
 --   client_sky_fireflies (client) Night + High graphics -> one capped emitter group near the lobby trees; Low -> none;
 --                      Day -> none
 --   client_gfx_cloud_cap (client) GfxLow Clouds Density = min(0.4, the cycle's), Recap follows the moving base
@@ -1408,6 +1410,45 @@ local function clientScenarios()
 		end)
 		cleanup()
 		T.check(ok, "client_sky_lamps_base_kept body", tostring(err))
+	end)
+
+	-- bug batch 6 review: Main starts SkyController without waiting for the lobby, and LobbyBuilder.Build replaces
+	-- NimbusLobby: a lobby root that is missing at a look change, or replaced after it, still gets its lamps written by the
+	-- next refresh under the same look (not only at the next look, minutes later)
+	S.client_sky_lamps_late_root = withSky("client_sky_lamps_late_root", function(SC, LS, SCy)
+		local C = Cfg.Sky.Lamps
+		local root0 = C.Root
+		local made = {}
+		local function lobby(brightness)
+			local folder = Instance.new("Folder")
+			folder.Name = C.Root
+			local light = lampPart(folder, "LampGlass", brightness)
+			folder.Parent = Workspace
+			made[#made + 1] = folder
+			return folder, light
+		end
+		local ok, err = pcall(function()
+			C.Root = "SkyLampTestLobby"
+			publish(300) -- Day, before the lobby is there
+			SC.Refresh()
+			local first, early = lobby(1.2)
+			SC.Refresh() -- the same look
+			T.check(near(early.Brightness, 1.2 * C.Day), "a lobby that arrives after the Day look began: its lamps dim at the next refresh", fmt("%.3f", early.Brightness))
+			first:Destroy()
+			local _, rebuilt = lobby(1.0)
+			SC.Refresh()
+			T.check(near(rebuilt.Brightness, 1.0 * C.Day), "a rebuilt lobby (a new root, the same look): its lamps dim at the next refresh", fmt("%.3f", rebuilt.Brightness))
+			rebuilt.Brightness = 3
+			SC.Refresh()
+			T.eq(rebuilt.Brightness, 3, "the same look and the same lobby: no lamp write")
+		end)
+		C.Root = root0
+		for _, folder in ipairs(made) do
+			pcall(function()
+				folder:Destroy()
+			end)
+		end
+		T.check(ok, "client_sky_lamps_late_root body", tostring(err))
 	end)
 
 	S.client_sky_fireflies = withSky("client_sky_fireflies", function(SC, LS, SCy)
