@@ -472,6 +472,16 @@
         "Ensure"
       ]
     },
+    "client/UI/PetPicker": {
+      "optional": true,
+      "functions": [
+        "Open",
+        "Close",
+        "IsOpen",
+        "Entries",
+        "Sorted"
+      ]
+    },
     "client/Controllers/TopBarController": {
       "functions": [
         "Init",

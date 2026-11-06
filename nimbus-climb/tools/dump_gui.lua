@@ -3043,6 +3043,67 @@ end)
 -- (tutorial panel + pointer scenes for chapters 2-4)
 -- [owner: tutorial] end
 
+-- [gui-redo] begin
+-- picker[:train|:upgrade|:mix]  gui-redo Task 6: the shared pet picker sheet (client/UI/PetPicker) over the lobby with a
+--                       24-pet collection (the mock's pets and more, a hybrid, a Golden and a Rainbow copy, copies 5 / 4 /
+--                       3 / 2 / 1, a 3-pet team): train = Train context, one pet in training (its live chip), the second
+--                       team pet selected; upgrade = Upgrade context, Maple Fox (x5) selected, the 1-2 copy cards dimmed, the
+--                       training pet blocked; mix = Mix context for the Style slot with Maple Fox in the Body slot, so every
+--                       Maple Fox finish is blocked ("In Body")
+local PICKDUMP = {
+	FIX = {
+		{ "storm_tabby", 22, 1 }, { "aurora_fox", 34, 1, 1 }, { "ember_phoenix", 41, 1, 1 }, { "maple_fox", 12, 5 },
+		{ "maple_fox@Rainbow", 3, 1 }, { "pebble_pup", 8, 4 }, { "honey_bunny", 20, 3 }, { "mochi_slime", 15, 2 },
+		{ "bubble_axolotl", 6, 2 }, { "pip_penguin", 5, 2 }, { "stormfang", 11, 1 }, { "twilight_dragon", 33, 1 },
+		{ "moonlit_owl", 27, 1 }, { "candy_unicorn", 25, 1 }, { "cherry_panda", 18, 1 }, { "biscuit_bear", 14, 1 },
+		{ "hyb:h1", 13, 1 }, { "sleepy_owl", 9, 1 }, { "sleepy_owl@Golden", 10, 1 }, { "bamboo_panda", 19, 1 },
+		{ "blossom_bunny", 21, 1 }, { "frostling_penguin", 23, 1 }, { "sunbeam_bear", 30, 1 }, { "cloudy_dragon", 28, 1 },
+	},
+}
+function PICKDUMP.profile()
+	local snap = snapshot()
+	local pets, tiers, levels, growth, hybrids = {}, {}, {}, {}, {}
+	for _, f in ipairs(PICKDUMP.FIX) do
+		local key, level, copies, evo = f[1], f[2], f[3], f[4]
+		local base, tier = key:match("^(.-)@(%a+)$")
+		if key:sub(1, 4) == "hyb:" then
+			hybrids[key:sub(5)] = { Body = "maple_fox", Style = "storm_tabby", Elements = { "Flame", "Storm" }, Name = "Foxby", Rarity = "Rare", Tier = "Normal", Seed = 7 }
+		elseif tier then
+			tiers[base] = tiers[base] or {}
+			tiers[base][tier] = copies
+			snap.Discovered[base] = true
+		else
+			pets[key] = copies
+			snap.Discovered[key] = true
+		end
+		levels[key] = { Level = level, Xp = 5 }
+		if evo then
+			growth[key] = { Evo = evo }
+		end
+	end
+	growth.storm_tabby = { Job = { Stat = "Speed", Ends = os.time() + 190, Rank = 5, Slot = 1, From = "Follow", Paid = 26250 } }
+	snap.Pets, snap.Tiers, snap.Hybrids, snap.PetLevels, snap.PetGrowth = pets, tiers, hybrids, levels, growth
+	snap.Equipped = { "aurora_fox", "ember_phoenix" }
+	snap.Teams = { Presets = { { "aurora_fox", "ember_phoenix", "storm_tabby" }, {}, {} }, Active = 1, Slots = 3, Busy = { storm_tabby = "Training" } }
+	snap.Home = { Level = 21, Prestige = 1, Stations = { Garden = 3, FusionMachine = 1 }, Garden = {}, Gym = {} }
+	snap.Cash, snap.Gems = 48250, 85
+	toClient("ProfileSync", snap)
+	advance(0.5)
+end
+scenario("picker", function(view)
+	PICKDUMP.profile()
+	local PP = req("client/UI/PetPicker")
+	if view == "upgrade" then
+		PP.Open({ Context = "Upgrade", Title = "Pick a pet to upgrade", Selected = "maple_fox" })
+	elseif view == "mix" then
+		PP.Open({ Context = "Mix", Title = "Pick the Style pet", Blocked = { maple_fox = "In Body", ["maple_fox@Rainbow"] = "In Body" } })
+	else
+		PP.Open({ Context = "Train", Title = "Pick a pet to train", Selected = "ember_phoenix" })
+	end
+	advance(2.5)
+end)
+-- [gui-redo] end
+
 local function boot(width, height, touch, keepTitle)
 	Config = req("shared/Config")
 	local okMetrics, why = installMetrics()
