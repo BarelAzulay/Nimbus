@@ -205,8 +205,9 @@
 --   * Duel rewards are gated against farming (payDuel): withheld for a forfeit before FORFEIT_MIN_SECONDS and for a loser
 --     who dealt no damage; the same two players earn from at most PAIR_LIMIT duels per PAIR_WINDOW seconds; a practice
 --     duel (Duel.PowerGap) pays nothing and counts for nothing.
---   * A raid player who leaves the arena / the game / is leashed is removed from the raid (no reward); a raider whose
---     fighter never hit the boss (damage 0) gets no reward either; any hit earns at least the Helper tier.
+--   * A raid player who presses LEAVE (BattleController's, the Ring's button: BattleCommand "Forfeit", or the "LeaveRaid" request), leaves
+--     the arena / the game or is leashed is removed from the raid (no reward, said in the toast and on the result card; no rejoin of that
+--     running fight); a raider whose fighter never hit the boss (damage 0) gets no reward either; any hit earns at least the Helper tier.
 --   * A dungeon participant who leaves / is leashed / disconnects is removed (RemoveEncounterTeam, OnLeave); nothing is paid
 --     by this service in a dungeon, ever (DungeonService pays per room with its own pay-once marks, Y4 / Y6).
 --   * game:BindToClose -> Shutdown(): every running battle ends void (Reason "Shutdown"): duels and ring rounds pay
@@ -435,6 +436,7 @@ local Enc = {}
 local Cmd = {}
 -- Boss raids 2026-11-01: the fights per tier (the block "Boss raids" below)
 local Raid = {}
+Raid.LEFT_TOAST = "You left the raid: no reward for this fight." -- LEAVE / LeaveRaid (bug batch 6: the HUD says it before the second tap too)
 
 ----------------------------------------------------------------------
 -- Small helpers
@@ -3985,7 +3987,7 @@ function BattleService.LeaveRaid(player)
 	if not part or part.Left then
 		return false, "You are not in a raid"
 	end
-	leaveRaid(b, part, "You left the raid.")
+	leaveRaid(b, part, Raid.LEFT_TOAST)
 	return true
 end
 
@@ -4916,7 +4918,7 @@ function BattleService.Forfeit(player)
 		return false, "Use LEAVE"
 	end
 	if b.Mode == "Raid" then
-		leaveRaid(b, part, "You left the raid.")
+		leaveRaid(b, part, Raid.LEFT_TOAST) -- the HUD's LEAVE (bug batch 6)
 	elseif b.Mode == "Duel" then
 		forfeitDuel(b, part, "You forfeited the duel.")
 	elseif b.Mode == "Ring" then

@@ -18,6 +18,11 @@
 --   client_p4fix_leave_mobile (phone world) the same layout checks on the touch phone (390x844, 844x390, 740x360,
 --                             667x375): LEAVE covers no other button (RUN / DASH, menu, hotbar), no team card, no
 --                             top card and stays on the screen
+--   client_bb6_raid_leave     (bug batch 6, Task A1) a boss raid fighter has LEAVE too: the first tap says "No reward! Tap again", the
+--                             second sends one Forfeit; the result card says leaving (or leaving the fight area) pays no reward; no
+--                             LEAVE for a raid spectator; clear of RETREAT, Cheer up!, SWITCH TARGET, the boss bar and the vitals card at
+--                             1920x1080 / 1280x720 / 390x844 / 844x390, the armed text fits the button
+--   client_bb6_raid_leave_mobile (phone world) the same layout on the touch phone (390x844, 844x390, 740x360, 667x375)
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -370,8 +375,8 @@ local function team(count)
 	return out
 end
 
--- a battle sent the way BattleService sends it (Start / Snapshot / End through BattleState)
-local function newBattle(mode, round)
+-- a battle sent the way BattleService sends it (Start / Snapshot / End through BattleState); spectator = a raid watcher (Side 0)
+local function newBattle(mode, round, spectator)
 	local Sim = moduleAt("shared", "BattleSim")
 	local BCat = moduleAt("shared", "BattleCatalog")
 	if not Sim or not BCat then
@@ -380,8 +385,16 @@ local function newBattle(mode, round)
 	local me = LocalPlayer.UserId
 	local id = "p4fix_" .. mode .. "_" .. tostring(math.random(100000, 999999))
 	local opts = { Mode = mode, Seed = 5, Id = id, Zone = { X = 44, Z = 44 }, TimeLimit = 90 }
-	local ring = nil
-	if mode == "Ring" then
+	local ring, raid = nil, nil
+	if mode == "Raid" then
+		-- (bug batch 6) a boss raid on the colosseum floor, as BattleService.EnterRaid opens it
+		opts.Zone = { X = 96, Z = 96 }
+		opts.TimeLimit = nil
+		opts.Boss = "storm_titan"
+		opts.RaidTier = "Starter"
+		opts.Teams = { { Owner = spectator and 78 or me, Side = 1, Pets = team(3) } }
+		raid = { Tier = "Starter", Pocket = false, BossId = "storm_titan" }
+	elseif mode == "Ring" then
 		local spec = BCat.ChampionTeam(round, 7)
 		local ch = spec.Champion or {}
 		opts.Round = round
@@ -403,11 +416,14 @@ local function newBattle(mode, round)
 		p.BattleId = id
 		p.Zone = { CFrame = CFrame.new(0, 200, 0), Size = Vector3.new(p.Zone.X, 30, p.Zone.Z), X = p.Zone.X, Z = p.Zone.Z }
 		p.Names = { [tostring(me)] = LocalPlayer.Name, ["78"] = "Rival" }
-		p.Side = 1
-		p.Spectator = false
+		p.Side = spectator and 0 or 1
+		p.Spectator = spectator == true
 		p.T = sim:Time()
 		p.Ring = ring
-		LocalPlayer:SetAttribute("InBattle", id)
+		p.Raid = raid
+		if not spectator then
+			LocalPlayer:SetAttribute("InBattle", id)
+		end
 		_G.KC.toClient("BattleState", "Start", p, id)
 		for _ = 1, 3 do
 			sim:Step(0.1)
@@ -652,6 +668,166 @@ S.client_p4fix_leave_mobile = guarded("client_p4fix_leave_mobile", function()
 	advance(0.5)
 	T.check(BC.GetBattle() == nil and #Mock.Errors == errBefore, "p4fix leave phone: everything freed, no errors", tostring(Mock.Errors[#Mock.Errors]))
 	_G.KC.flushErrors("client_p4fix_leave_mobile")
+end)
+
+----------------------------------------------------------------------------------------------------
+-- bug batch 6 (docs/superpowers/plans/2026-11-06-bug-batch-6.md, Task A1): "theres no leave option in the raid boss"
+----------------------------------------------------------------------------------------------------
+local RAID_ARMED = "No reward! Tap again"
+
+local function raidEnd(reason)
+	return { Mode = "Raid", Outcome = "Left", Won = false, Spectator = false, Reason = reason or "Left" }
+end
+
+-- the armed text reads in its button: words wrapped at a generous 0.6 em a character (the mock has no font metrics), at most
+-- as many lines as the button is tall, no word wider than the button
+local function textFits(b)
+	local scale = at("Root.ReadScale")
+	local px = b.TextSize * (scale and scale.Scale or 1)
+	local boxW, boxH = b.AbsoluteSize.X - 8, b.AbsoluteSize.Y
+	local lines, lineW = 1, 0
+	for word in string.gmatch(b.Text, "%S+") do
+		local w = #word * 0.6 * px
+		if w > boxW then
+			return false, string.format("'%s' is %.0f px in a %.0f px button", word, w, boxW)
+		end
+		local need = (lineW > 0) and (lineW + 0.3 * px + w) or w
+		if need > boxW then
+			lines = lines + 1
+			lineW = w
+		else
+			lineW = need
+		end
+	end
+	if lines * px > boxH + 0.5 then
+		return false, string.format("%d lines of %.0f px in a %.0f px tall button", lines, px, boxH)
+	end
+	return true, string.format("%d line(s)", lines)
+end
+
+-- what the raid HUD's LEAVE must keep clear of: the battle HUD's parts (the boss bar is in the top card), RETREAT, Cheer up!,
+-- every action button (SWITCH TARGET is the TARGET button), the enemy list, the fighter's cards, the vitals card and the other GUIs
+local function raidObstacles()
+	local out = obstacles(true)
+	for _, path in ipairs({ "Root.Cheer", "Root.Retreat", "Root.Commands.SpecialButton", "Root.Commands.ElementButton", "Root.TopCard.BossBar" }) do
+		local o = at(path)
+		if o and shown(o) then
+			out[#out + 1] = { path, rect(o) }
+		end
+	end
+	for _, holder in ipairs({ "Root.Enemies", "Root.Team" }) do
+		local h = at(holder)
+		for _, c in ipairs(h and h:GetChildren() or {}) do
+			if c:IsA("GuiObject") and shown(c) and c.AbsoluteSize.X > 1 and c.AbsoluteSize.Y > 1 then
+				out[#out + 1] = { holder .. "." .. c.Name, rect(c) }
+			end
+		end
+	end
+	return out
+end
+
+-- the raid HUD's LEAVE at each size: shown, readable, clear of everything; its armed text fits
+local function checkRaidLeaveLayout(tag, sizes)
+	for _, size in ipairs(sizes) do
+		local w, h = size[1], size[2]
+		local name = "bb6 raid leave " .. tag .. " " .. w .. "x" .. h
+		Mock.SetViewport(w, h)
+		advance(0.5)
+		local d = newBattle("Raid")
+		if not T.check(d ~= nil, name .. ": a raid to lay out") then
+			return
+		end
+		d.start()
+		advance(0.3)
+		local b = at("Root.LeaveButton")
+		local why = leaveProblem(b, w, h, raidObstacles())
+		T.check(why == nil, name .. ": LEAVE is readable, off the centre and covers no control / card / button (RETREAT, Cheer up!, SWITCH TARGET, the boss bar, the vitals card)",
+			tostring(why) .. (b and string.format(" [%.0f,%.0f %.0fx%.0f]", b.AbsolutePosition.X, b.AbsolutePosition.Y, b.AbsoluteSize.X, b.AbsoluteSize.Y) or ""))
+		if b and shown(b) then
+			T.info(string.format("bb6 raid leave %s %dx%d: LEAVE at %.0f,%.0f (%.0fx%.0f px)", tag, w, h, b.AbsolutePosition.X, b.AbsolutePosition.Y, b.AbsoluteSize.X, b.AbsoluteSize.Y))
+			Mock.Click(b)
+			advance(0.1)
+			local fits, how = textFits(b)
+			T.check(b.Text == RAID_ARMED and fits, name .. ": the armed '" .. RAID_ARMED .. "' fits the button", tostring(b.Text) .. ": " .. tostring(how))
+		end
+		d.finish(raidEnd("Left"))
+		closeBattle()
+	end
+end
+
+S.client_bb6_raid_leave = guarded("client_bb6_raid_leave", function()
+	bootIfNeeded()
+	local BC = moduleAt("client", "Controllers/BattleController")
+	if not T.check(BC ~= nil and type(BC.Command) == "function", "bb6 raid leave: BattleController loads") then
+		return
+	end
+	local errBefore = #Mock.Errors
+	Mock.SetViewport(1920, 1080)
+	advance(0.5)
+	local d = newBattle("Raid")
+	if not T.check(d ~= nil, "bb6 raid leave: a raid (BattleSim with a boss)") then
+		return
+	end
+	d.start()
+	advance(0.3)
+	local b = at("Root.LeaveButton")
+	T.check(b and shown(b) and b.Text == "LEAVE", "bb6 raid leave: a raid fighter has LEAVE", b and tostring(b.Text) or "missing")
+	local mark = #Mock.RemoteLog
+	if b then
+		Mock.Click(b)
+	end
+	advance(0.1)
+	T.check(b and b.Text == RAID_ARMED and forfeits(mark) == 0, "bb6 raid leave: the first tap only asks, and says leaving pays nothing ('" .. RAID_ARMED .. "')", b and b.Text or "")
+	if b then
+		advance(0.5)
+		Mock.Click(b)
+	end
+	advance(0.1)
+	T.check(forfeits(mark) == 1, "bb6 raid leave: the second tap within 3 s sends exactly one BattleCommand('Forfeit')", forfeits(mark) .. " sent")
+	-- the server's End for a leaver (BattleService.leaveRaid)
+	d.finish(raidEnd("Left"))
+	advance(0.3)
+	local reason = at("Root.ResultCard.Body.Reason")
+	T.check(shown(at("Root.ResultCard")) and reason and tostring(reason.Text):find("no reward") ~= nil and not shown(at("Root.LeaveButton")),
+		"bb6 raid leave: the result card says the raid was left with no reward; LEAVE is gone", reason and reason.Text or "no reason line")
+	closeBattle()
+	-- out of the fight area (Task A2's End Reason "Area"): its own line
+	d = newBattle("Raid")
+	d.start()
+	advance(0.3)
+	d.finish(raidEnd("Area"))
+	advance(0.3)
+	reason = at("Root.ResultCard.Body.Reason")
+	T.check(reason and tostring(reason.Text):find("fight area") ~= nil and tostring(reason.Text):find("no reward") ~= nil,
+		"bb6 raid leave: a kick for leaving the fight area says so on the card", reason and reason.Text or "no reason line")
+	closeBattle()
+	-- a raid spectator has no LEAVE
+	local sp = newBattle("Raid", nil, true)
+	sp.start()
+	advance(0.3)
+	T.check(not shown(at("Root.LeaveButton")), "bb6 raid leave: a raid spectator has no LEAVE")
+	sp.finish({ Mode = "Raid", Outcome = nil, Won = false, Spectator = true, Reason = "OutOfRange" })
+	closeBattle()
+	-- the layout at the four render sizes (this world is a desktop: the small sizes use the compact HUD)
+	checkRaidLeaveLayout("desktop", { { 1920, 1080 }, { 1280, 720 }, { 390, 844 }, { 844, 390 } })
+	Mock.SetViewport(1920, 1080)
+	advance(0.5)
+	T.check(BC.GetBattle() == nil and #Mock.Errors == errBefore, "bb6 raid leave: everything freed, no errors", tostring(Mock.Errors[#Mock.Errors]))
+	_G.KC.flushErrors("client_bb6_raid_leave")
+end)
+
+S.client_bb6_raid_leave_mobile = guarded("client_bb6_raid_leave_mobile", function()
+	bootIfNeeded()
+	local BC = moduleAt("client", "Controllers/BattleController")
+	if not T.check(BC ~= nil, "bb6 raid leave phone: BattleController loads") then
+		return
+	end
+	local errBefore = #Mock.Errors
+	checkRaidLeaveLayout("phone", { { 390, 844 }, { 844, 390 }, { 740, 360 }, { 667, 375 } })
+	Mock.SetViewport(390, 844)
+	advance(0.5)
+	T.check(BC.GetBattle() == nil and #Mock.Errors == errBefore, "bb6 raid leave phone: everything freed, no errors", tostring(Mock.Errors[#Mock.Errors]))
+	_G.KC.flushErrors("client_bb6_raid_leave_mobile")
 end)
 
 return S

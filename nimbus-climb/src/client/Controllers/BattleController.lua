@@ -121,8 +121,8 @@
 --   * Compact layout (touch, or a screen under 900 x 600 px): a smaller fighter card, the portraits in a column, the
 --     enemy list 2 rows, the mode line under the list when the top is full, the cluster a 2 x 2 grid above the jump /
 --     RUN buttons (portrait) or left of the jump button (landscape); the menu column hides while fighting.
---   * LEAVE (Champion Ring only; two presses -> "Forfeit"), the ring's next-round side card, the result card (bottom
---     right; top right on phones) with "Lives left" and the dungeon's lines.
+--   * LEAVE (Champion Ring and boss raids; two presses -> "Forfeit"; a raid's first press says "No reward! Tap again"), the ring's
+--     next-round side card, the result card (bottom right; top right on phones) with "Lives left" and the dungeon's lines.
 -- * Prediction: a press starts its button's ring at once and records St.pending; the matching event within 0.6 s
 --   confirms it, a rejected Order (owner-only) or the timeout puts the ring back and shakes the button. HP, numbers,
 --   kills and the meter are never predicted. Late joiners get their cooldowns from Start.Team.Cooldowns.
@@ -398,12 +398,13 @@ local K = {
 	NAME_GLYPH = 0.55, -- ...and the glyph keeps this top share of the face
 	MIN_TEXT_PX = 14, -- no HUD text is ever drawn smaller on the screen (Readability rule; the names above are the one exception)
 	RESULT_W = 440,
-	-- LEAVE (Ring only): the first press arms it for LEAVE_CONFIRM seconds, the second sends "Forfeit"
+	-- LEAVE (Ring and Raid): the first press arms it for LEAVE_CONFIRM seconds, the second sends "Forfeit"
 	LEAVE_CONFIRM = 3,
 	LEAVE_W = 150,
 	LEAVE_H = 52,
 	LEAVE_W_COMPACT = 150,
 	LEAVE_W_TOP = 100, -- a landscape phone: right of the mode card
+	LEAVE_W_TOP_RAID = 150, -- ...a raid's: "No reward! Tap again" reads in two lines
 	LEAVE_H_COMPACT = 46,
 	LEAVE_CARD_W = 230,
 	-- wave 6: Cheer up! (Raid / Dungeon), right above the vitals card
@@ -521,7 +522,7 @@ local Input = {} -- keys, gamepad, taps
 local Net = {} -- messages
 local Cards = {} -- Phase 4: the PetCard above every battle unit
 local Ring = {} -- Phase 4: the Champion Ring HUD (round / record / next-round side card / run card)
-local Leave = {} -- LEAVE (two presses -> BattleCommand "Forfeit"): Champion Ring runs only
+local Leave = {} -- LEAVE (two presses -> BattleCommand "Forfeit"): Champion Ring runs and boss raids
 local CheerUp = {} -- wave 6: the Cheer up! button (BattleCommand "Cheer"): Raid / Dungeon fighters only
 local Retreat = {} -- evolved forms: the Retreat / Engage button and the R key: boss raid fighters only
 local Me = {} -- Phase 5: my fighter at the character's shoulder, my helpers behind me, the camera shake
@@ -6125,8 +6126,8 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 		local free = m.W - (K.EDGE + teamW + 12) - (K.ROW_W_COMPACT + K.EDGE + 12)
 		if free >= w then
 			x = K.EDGE + teamW + 12 + free / 2
-			if m.Landscape and Leave.Allowed(B) and free >= w + 8 + K.LEAVE_W_TOP then
-				x = K.EDGE + teamW + 12 + (free - 8 - K.LEAVE_W_TOP) / 2 -- room for LEAVE on its right
+			if m.Landscape and Leave.Allowed(B) and free >= w + 8 + Leave.TopW(B) then
+				x = K.EDGE + teamW + 12 + (free - 8 - Leave.TopW(B)) / 2 -- room for LEAVE on its right
 			end
 		elseif spectator then
 			w = min(w, m.W - 2 * K.EDGE)
@@ -6613,6 +6614,11 @@ function Hud.ShowResult(B, payload)
 		Cleared = "Room cleared!",
 		Fainted = "Your whole team fainted.",
 	}
+	if raid then
+		-- (bug batch 6) a raid left by LEAVE, or by staying out of the fight area for the 3-2-1
+		reasons.Left = "You left the raid: no reward."
+		reasons.Area = "You left the fight area: no reward."
+	end
 	local sub = reasons[tostring(payload.Reason)] or ""
 	if B.Mode == "Ring" then
 		titleText, color, sub = Ring.ResultTitle(B, payload, sub)
@@ -6881,16 +6887,22 @@ end
 
 ----------------------------------------------------------------------
 -- LEAVE: stops a Champion Ring run (BattleCommand "Forfeit"; the server ends the run cleanly and the climber comes
--- back at the portal). Never in duels (a forfeit costs trophies), raids or the dungeon (DungeonController's LEAVE).
--- Two presses: the first turns it into "Sure? Tap again" for LEAVE_CONFIRM seconds, the second sends it. One button
--- beside the action cluster and one on the ring's next-round card; both share the confirm state.
+-- back at the portal) or leaves a boss raid (bug batch 6: the server's leaveRaid, as walking out: no reward, no rejoin of that
+-- fight, a pocket raider back at the gate). Never in duels (a forfeit costs trophies) or the dungeon (DungeonController's LEAVE).
+-- Two presses: the first turns it into "Sure? Tap again" (a raid: "No reward! Tap again") for LEAVE_CONFIRM seconds, the
+-- second sends it. One button beside the action cluster and one on the ring's next-round card; both share the confirm state.
 ----------------------------------------------------------------------
 Leave.armedUntil = 0
 Leave.sentUntil = 0
 Leave.buttons = {}
 
 function Leave.Allowed(B)
-	return B ~= nil and B.Fighter == true and B.Mode == "Ring"
+	return B ~= nil and B.Fighter == true and (B.Mode == "Ring" or B.Mode == "Raid")
+end
+
+-- the width of LEAVE in a landscape phone's top strip (a raid's armed text is longer)
+function Leave.TopW(B)
+	return (B and B.Mode == "Raid") and K.LEAVE_W_TOP_RAID or K.LEAVE_W_TOP
 end
 
 function Leave.Make(parent, textSize)
@@ -6908,17 +6920,18 @@ function Leave.Make(parent, textSize)
 	return b
 end
 
-function Leave.State(now)
+-- mode: the battle's Mode (a raid's armed text says what leaving pays)
+function Leave.State(now, mode)
 	if now < Leave.sentUntil then
 		return "Leaving...", "Gray"
 	elseif now < Leave.armedUntil then
-		return "Sure? Tap again", "Red"
+		return (mode == "Raid") and "No reward! Tap again" or "Sure? Tap again", "Red"
 	end
 	return "LEAVE", "Pink"
 end
 
 function Leave.Paint()
-	local text, style = Leave.State(os.clock())
+	local text, style = Leave.State(os.clock(), Leave.battle and Leave.battle.Mode)
 	Me.MouseHold("BattleLeave", style ~= "Pink") -- "Sure? Tap again": the cursor is free for the second press
 	local live = {}
 	for _, b in ipairs(Leave.buttons) do
@@ -6980,10 +6993,10 @@ function Leave.Place(m, B, isFighting)
 	if not m.Compact then
 		b.Size = UDim2.fromOffset(K.LEAVE_W, K.LEAVE_H)
 		b.Position = UDim2.fromOffset(m.W - K.EDGE - 300, m.H - K.EDGE - 8)
-	elseif m.Landscape and Hud.topRect and Hud.top.Visible and Hud.topRect[3] + 8 + K.LEAVE_W_TOP <= m.W - K.EDGE - K.ROW_W_COMPACT - 8 then
+	elseif m.Landscape and Hud.topRect and Hud.top.Visible and Hud.topRect[3] + 8 + Leave.TopW(B) <= m.W - K.EDGE - K.ROW_W_COMPACT - 8 then
 		-- a landscape phone: right of the mode card in the top strip (the cluster needs the right edge)
 		b.AnchorPoint = Vector2.new(0, 0)
-		b.Size = UDim2.fromOffset(K.LEAVE_W_TOP, K.MODE_H)
+		b.Size = UDim2.fromOffset(Leave.TopW(B), K.MODE_H)
 		b.Position = UDim2.fromOffset(Hud.topRect[3] + 8, Hud.topRect[2])
 	else
 		-- above the cluster's top row, at the right edge

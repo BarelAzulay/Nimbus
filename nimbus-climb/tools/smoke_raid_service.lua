@@ -14,6 +14,9 @@
 --   raid_rewards    the reward clocks: a win stamps, a second win pays nothing and says when, a loss never touches the win clock,
 --                   a second loss pays nothing, a won dare pays the dared tier, Double Rewards still double
 --   raid_svc_cost   4 fights x 8 raiders: the sim step time and the pockets' parts (for the report)
+-- Bug batch 6 (docs/superpowers/plans/2026-11-06-bug-batch-6.md, Task A):
+--   raid_svc_leave        LEAVE (Forfeit, also through BattleCommand) and LeaveRaid: End Left with no Rewards, a "no reward" toast, no
+--                         rejoin of that fight, a pocket leaver back at the gate after RETURN_DELAY, the others paid, a late Forfeit refused
 -- The real gate is ArenaBuilder's (a build without it gets a stand-in ArenaInfo.Gate here). White-box: the kills write the sim's boss
 -- (St is an upvalue of IsInBattle, as in smoke_p5_battleservice.lua). Plain Lua 5.1 syntax only.
 
@@ -840,6 +843,85 @@ S.raid_svc_cost = scenario("raid_svc_cost", function(add)
 	end
 	T.info(string.format("*raid cost: 4 fights x 8 raiders: %.2f ms per sim step (%d steps), %d pockets, largest %d parts", stepMs, steps, pockets, parts))
 	T.check(stepMs < 2 and parts <= 250 and pockets == 3, "raid cost: a sim step under 2 ms, 3 pockets within 250 parts", string.format("%.2f ms, %d pockets, %d parts", stepMs, pockets, parts))
+end)
+
+----------------------------------------------------------------------------------------------------
+-- bug batch 6 (docs/superpowers/plans/2026-11-06-bug-batch-6.md, Task A): the raid's LEAVE, and the fight area's warning + 3-2-1
+----------------------------------------------------------------------------------------------------
+-- (a floor leaver who stays in the arena watches the fight: their spectator End does not count)
+local function countMsgs(p, kind, fromIndex)
+	local n = 0
+	for i = (fromIndex or 0) + 1, #Mock.RemoteLog do
+		local e = Mock.RemoteLog[i]
+		if e.remote == "BattleState" and e.kind == "client" and e.userId == p.UserId and e.args[1] == kind and not (type(e.args[2]) == "table" and e.args[2].Spectator == true) then
+			n = n + 1
+		end
+	end
+	return n
+end
+
+-- where EnterRaid puts a floor raider: the rim (the stand) at the anchor's angle
+local function onRim(p, info)
+	local r = planarTo(p, info.Floor.CFrame)
+	return r > 46 and r < 62, r
+end
+
+-- a spot `out` studs from the floor centre (the main gate's side) and a spot on the stand
+local function floorSpot(info, r)
+	return info.Floor.CFrame * CFrame.new(0, 3, -r)
+end
+
+-- A1: LEAVE (BattleCommand "Forfeit") and LeaveRaid: no reward, said up front; the raid's own rules for leaving stay
+S.raid_svc_leave = scenario("raid_svc_leave", function(add)
+	local bs, _, _, gate = setUp()
+	local r1 = add(newPlayer("LeaveA", 10))
+	local r2 = add(newPlayer("LeaveB", 10))
+	local r4 = add(newPlayer("LeaveC", 10))
+	local r3 = add(newPlayer("LeaveP", 30))
+	for i, p in ipairs({ r1, r2, r4, r3 }) do
+		toArena(p, i * 2, 0)
+	end
+	local _, id = bs.EnterRaid(r1)
+	bs.EnterRaid(r2)
+	bs.EnterRaid(r4)
+	advance(0.3)
+	local tokens1 = DS().GetTokens(r1)
+	local mark = K.logSize()
+	T.check(bs.Forfeit(r1) == true, "raid leave: Forfeit (the HUD's LEAVE) takes a raider out")
+	advance(0.3)
+	local e1 = lastMsg(r1, "End", mark)
+	T.check(e1 and e1.Outcome == "Left" and e1.Reason == "Left" and e1.Rewards == nil and r1:GetAttribute("InBattle") == nil,
+		"raid leave: the leaver's End says Left, Reason Left, no Rewards; InBattle cleared", e1 and (tostring(e1.Outcome) .. " / " .. tostring(e1.Reason)) or "no End")
+	T.check(toastCount(r1, "no reward", mark) == 1, "raid leave: the toast says leaving pays no reward", tostring(toastCount(r1, "no reward", mark)))
+	local okBack, whyBack = bs.EnterRaid(r1)
+	T.check(okBack == false and tostring(whyBack):find("You left this fight") ~= nil and r2:GetAttribute("InBattle") == id,
+		"raid leave: the leaver cannot rejoin that running fight; the others fight on", tostring(whyBack))
+	local mark4 = K.logSize()
+	T.check(bs.LeaveRaid(r4) == true and toastCount(r4, "no reward", mark4) == 1, "raid leave: LeaveRaid says the same (no reward)")
+	-- a pocket raider leaves through the remote, as the HUD sends it: back at the gate RETURN_DELAY s later
+	local _, idP = bs.EnterRaid(r3)
+	T.check(battleOf(idP) ~= nil and battleOf(idP).RaidFloor == false, "raid leave: (setup) a Mid fight in a pocket")
+	local cmd = K.remoteFolder():FindFirstChild("BattleCommand")
+	local markP = K.logSize()
+	Mock.FromClient(cmd, r3, "Forfeit")
+	advance(0.3)
+	local e3 = lastMsg(r3, "End", markP)
+	T.check(e3 and e3.Outcome == "Left" and r3:GetAttribute("InBattle") == nil and toastCount(r3, "no reward", markP) == 1,
+		"raid leave: BattleCommand Forfeit from the client leaves a pocket fight (End Left, the toast)")
+	advance(RETURN_DELAY + 0.1)
+	T.check(planarTo(r3, gate.Return) < 6 and K.root(r3).Position.Y < 1000, "raid leave: the pocket leaver is back at the gate after RETURN_DELAY",
+		string.format("%.1f studs from Gate.Return", planarTo(r3, gate.Return)))
+	-- the floor fight ends: the one still in is paid, the leaver gets no second End and nothing
+	local mark2 = K.logSize()
+	killBoss(id, r2)
+	advance(0.3)
+	local e2 = lastMsg(r2, "End", mark2)
+	T.check(e2 and e2.Outcome == "Win" and type(e2.Rewards) == "table", "raid leave: the raider still in gets the fight's End with Rewards")
+	T.check(countMsgs(r1, "End", mark) == 1 and DS().GetTokens(r1) == tokens1,
+		"raid leave: the leaver gets no second End and no tokens", tostring(countMsgs(r1, "End", mark)))
+	-- LEAVE racing the fight's own End (the boss fell before the second tap): refused, nothing changes
+	local okLate, whyLate = bs.Forfeit(r2)
+	T.check(okLate == false and whyLate == "NoBattle" and countMsgs(r2, "End", mark2) == 1, "raid leave: a Forfeit after the fight's End is refused (one End only)", tostring(whyLate))
 end)
 
 return S
