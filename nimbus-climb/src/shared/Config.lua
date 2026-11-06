@@ -125,7 +125,7 @@ Config.Remotes = {
 	-- Phase 2 (ARCHITECTURE_V3.md "Phase 2 build contract")
 	"HomeAction", -- (action:string, arg:any)  Upgrade / GardenSet / Collect / Prestige / GoHome (Phase 4: GoHome opens the home portal)
 	"PetCare", -- (action:string, a:any, b:any)  Phase 5: Feed (key) spends berries; Evolve (key) / Train (key, stat) / TrainStop (key); Cook / GymSet are retired (one toast)
-	"Fusion", -- (action:string, a:any, b:any)  Upgrade / Mix
+	"Fusion", -- (action:string, a:any, b:any, moves:string|nil)  Upgrade / Mix (moves "BB" | "BS" | "SB" | "SS"; nil = "BB")
 	-- Phase 3 (ARCHITECTURE_V3.md "Phase 3 build contract")
 	"BattleState", -- server -> client (kind:string, payload:table)  Start / Snapshot / Events / End
 	"BattleCommand", -- (action:string, a:any, b:any)  Phase 5: Attack / Element / Special / Dash / Target / Buff / Swap / Cheer / Retreat / Engage (boss raids) / Forfeit

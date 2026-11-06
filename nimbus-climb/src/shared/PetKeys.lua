@@ -57,7 +57,11 @@
 -- Extras (nothing depends on them): Tiers, TierMultiplier, HybridPrefix, HybridStatBonus, Base(key), TierOf(key),
 --   NextTier(tier), HybridKey(uid, tier), IsHybridKey(key), ValidHybridId(uid), NewHybridId(profile, seed),
 --   BlendName(nameA, nameB), DisplayName(key, profile), CleanHybrid(record) (keeps SpecialFrom only when exactly
---   "Style", never as one of its 8 extras), Owned(profile) -> { [key] = n }.
+--   "Style", never as one of its 8 extras), Owned(profile) -> { [key] = n },
+--   ValidMoves(moves) -> bool (the Mix move choice: nil or exactly "BB" | "BS" | "SB" | "SS"; letter 1 = the parent of the
+--   normal attack, letter 2 = the parent of the special, B = Body, S = Style),
+--   MixMoves(bodyDef, styleDef, moves) -> elements, specialFrom (a new hybrid record's Elements, attack parent's first and
+--   deduplicated, and SpecialFrom = "Style" | nil; nil / junk moves = "BB", today's rule).
 
 local PetKeys = {}
 
@@ -576,6 +580,45 @@ function PetKeys.BlendName(a, b)
 	end
 	local name = string.lower(front .. back)
 	return string.upper(string.sub(name, 1, 1)) .. string.sub(name, 2)
+end
+
+-- The Mix move choice (gui-redo): `moves` is two letters, letter 1 = the parent of the normal attack (the element attack),
+-- letter 2 = the parent of the special, "B" = Body, "S" = Style: "BB" | "BS" | "SB" | "SS". nil = "BB" (today's rule, an old
+-- client). FusionService refuses anything else; the server and the client both build a record through MixMoves.
+local MIX_MOVES = { BB = true, BS = true, SB = true, SS = true }
+
+function PetKeys.ValidMoves(moves)
+	if moves == nil then
+		return true
+	end
+	return type(moves) == "string" and MIX_MOVES[moves] == true
+end
+
+-- elements, specialFrom for a new hybrid of bodyDef + styleDef (catalog defs): elements = { the attack parent's element, the
+-- other parent's } (deduplicated: two parents of one element give one); specialFrom = "Style" when letter 2 is "S", else nil
+-- (left out of the record = the Body). Anything that is not one of the four strings reads as "BB".
+function PetKeys.MixMoves(bodyDef, styleDef, moves)
+	if moves == nil or not PetKeys.ValidMoves(moves) then
+		moves = "BB"
+	end
+	local attackFromStyle = string.sub(moves, 1, 1) == "S"
+	local first, second = bodyDef, styleDef
+	if attackFromStyle then
+		first, second = styleDef, bodyDef
+	end
+	local elements, seen = {}, {}
+	for _, d in ipairs({ first, second }) do
+		local e = type(d) == "table" and d.Element or nil
+		if type(e) == "string" and not seen[e] then
+			seen[e] = true
+			elements[#elements + 1] = e
+		end
+	end
+	local specialFrom = nil
+	if string.sub(moves, 2, 2) == "S" then
+		specialFrom = "Style"
+	end
+	return elements, specialFrom
 end
 
 local function tierLabel(tier, name)

@@ -4,9 +4,14 @@
 -- * UPGRADE (key): 3 copies of the same key -> 1 copy of the next tier: Normal -> Golden (x1.5 stats / perks) ->
 --   Rainbow (x2.5). Costs TycoonCatalog.FusionCost("Upgrade", rarity, targetTier, machineLevel) (Cloud Tokens; the
 --   machine's TokenDiscount lowers them). Hybrids are one of a kind (one copy each), so they cannot be upgraded.
--- * MIX (keyA, keyB): two different catalog pets -> a brand-new hybrid record (PetKeys "hyb:<uid>"): Body = the first
---   pet (species, body colour, eyes, special), Style = the second (colours, wings, accessory), Elements = both
---   (deduplicated), Rarity = the higher of the two, Name = PetKeys.BlendName ("Pip Penguin" + "Ember Phoenix" ->
+-- * MIX (keyA, keyB, moves): two different catalog pets -> a brand-new hybrid record (PetKeys "hyb:<uid>"): Body = the
+--   first pet (species, body colour, eyes), Style = the second (colours, wings, accessory). The move choice (gui-redo,
+--   spec 2026-11-06-window-redo 5.6): `moves` = "BB" | "BS" | "SB" | "SS", letter 1 = the parent of the normal attack,
+--   letter 2 = the parent of the special (B = Body, S = Style); nil = "BB" (today's rule: an old client); anything else
+--   is refused ("Pick the moves again"), nothing fused or charged. The record is built through PetKeys.MixMoves: Elements =
+--   { the attack parent's element, the other's } (deduplicated; Elements[1] is the hybrid's first element), SpecialFrom =
+--   "Style" when letter 2 is S (left out otherwise = the Body gives the special).
+--   Rarity = the higher of the two, Name = PetKeys.BlendName ("Pip Penguin" + "Ember Phoenix" ->
 --   "Pengnix"), a random look Seed (PetBuilder varies the blend with it; PetService publishes it for other clients),
 --   Tier = the LOWER tier of the two inputs (two Golden pets make a Golden hybrid, so no finish is ever gained for
 --   free). Stats = the parents' average x1.2 (PetKeys.DefOf). Costs TycoonCatalog.FusionCost("Mix", higherRarity, nil,
@@ -36,17 +41,20 @@
 -- * Atomic: every check runs first; then the inputs are removed, the result added and the price paid in ONE
 --   non-yielding step (anything unexpected restores the pets and nothing is charged). Then PetService.Refresh
 --   republishes the equipped attributes / perks and the profile is synced.
--- * Remote Fusion(action, a, b): "Upgrade" (key), "Mix" (keyA, keyB). Types, lengths and keys are validated; a
---   per-player cooldown plus a burst budget rate-limit it; refusals answer with a side toast (repeats throttled).
+-- * Remote Fusion(action, a, b, moves): "Upgrade" (key; a 4th argument is ignored), "Mix" (keyA, keyB, moves). Types,
+--   lengths and keys are validated, then a Mix's moves (PetKeys.ValidMoves) before anything else is read: junk answers
+--   { Ok = false, Reason = "Pick the moves again" } with a toast; a per-player cooldown plus a burst budget rate-limit
+--   it; refusals answer with a side toast (repeats throttled).
 --   The server answers on the same RemoteEvent: Fusion:FireClient(player, "Result", { Ok, Action, Key, Name, Rarity,
 --   Tier, Reason, Consumed = {key...} }) so the window can play its fusion animation (FusionController).
 --
 -- Public API (the contract): Init(deps)   deps = { DataService, PetService, TycoonService }
 -- Extras: Upgrade(player, key) -> ok, resultKey | reason
---         Mix(player, keyA, keyB) -> ok, resultKey | reason
---         Preview(player, action, a, b) -> ok, plan | reason   (no changes; plan = { Action, Cost = {Tokens|Gems = n},
+--         Mix(player, keyA, keyB, moves) -> ok, resultKey | reason   (moves as the remote's; nil = "BB")
+--         Preview(player, action, a, b, moves) -> ok, plan | reason   (no changes; plan = { Action, Cost = {Tokens|Gems = n},
 --                                          ResultKey (Upgrade; nil for Mix: the uid is drawn on fusing), ResultName,
---                                          Rarity, Tier, Inputs = { {Key, Count} }, Freed = { Equipped, Garden, Gym } })
+--                                          Rarity, Tier, Inputs = { {Key, Count} }, Freed = { Equipped, Garden, Gym },
+--                                          Mix only: Elements = { ... } (the record's order), SpecialFrom = "Style" | nil })
 --         Unlocked(player) -> ok, reason, { Prestige, MachineLevel }
 --         Fused  Util.Signal Fire(player, action, resultKey, consumedKeys)
 --
@@ -73,6 +81,7 @@ local MACHINE_RANGE = 36 -- studs: remote requests must come from near the playe
 local MAX_ACTION_LENGTH = 16
 local MAX_KEY_LENGTH = 48
 local MAX_NAME_CHARS = 30
+local MOVES_TEXT = "Pick the moves again" -- a Mix whose move choice is not "BB" | "BS" | "SB" | "SS" (or nil)
 local DEFAULT_UNLOCK = 1 -- prestige stars that unlock the machine (TycoonCatalog.Prestige.FusionUnlock)
 local MACHINE_ID = "FusionMachine"
 local TIER_RANK = { Normal = 1, Golden = 2, Rainbow = 3 }
@@ -606,9 +615,20 @@ local function checkEquippedRule(profile, freed)
 	return true
 end
 
+-- The Mix move choice: nil or exactly "BB" | "BS" | "SB" | "SS" (PetKeys.ValidMoves; without it only nil = today's rule).
+local function validMoves(moves)
+	if petKeys and type(petKeys.ValidMoves) == "function" then
+		return petKeys.ValidMoves(moves) == true
+	end
+	return moves == nil
+end
+
 -- ok, plan | reason. plan = { Action, Inputs = {{Key, Count}}, Cost, Currency, Price, ResultKey, ResultName, Rarity,
--- Tier, Record (Mix), Freed, Profile, Home, MachineLevel, Level }
-local function buildPlan(player, action, a, b)
+-- Tier, Record (Mix: its Elements order and SpecialFrom from `moves`), Freed, Profile, Home, MachineLevel, Level }
+local function buildPlan(player, action, a, b, moves)
+	if action == "Mix" and not validMoves(moves) then
+		return false, MOVES_TEXT
+	end
 	local ok, reason, info, home, profile = checkUnlocked(player)
 	if not ok then
 		return false, reason
@@ -693,13 +713,13 @@ local function buildPlan(player, action, a, b)
 		if (TIER_RANK[pb.Tier] or 1) < (TIER_RANK[tier] or 1) then
 			tier = pb.Tier
 		end
-		local elements = {}
-		local seen = {}
-		for _, e in ipairs({ baseA.Element, baseB.Element }) do
-			if type(e) == "string" and not seen[e] then
-				seen[e] = true
-				elements[#elements + 1] = e
-			end
+		-- the move choice: Elements in the attack parent's order (deduplicated), SpecialFrom = "Style" | nil
+		local okMoves, elements, specialFrom = false, nil, nil
+		if type(petKeys.MixMoves) == "function" then
+			okMoves, elements, specialFrom = pcall(petKeys.MixMoves, baseA, baseB, moves)
+		end
+		if not okMoves or type(elements) ~= "table" then
+			return false, "These pets cannot be mixed"
 		end
 		local name = nil
 		if type(petKeys.BlendName) == "function" then
@@ -713,6 +733,9 @@ local function buildPlan(player, action, a, b)
 			{ Key = b, Count = 1, Short = "You do not own " .. displayName(defB, b) },
 		}
 		plan.Record = { Body = pa.PetId, Style = pb.PetId, Elements = elements, Name = name, Rarity = rarity, Tier = tier }
+		if specialFrom == "Style" then
+			plan.Record.SpecialFrom = "Style" -- left out otherwise (= the Body, today's rule)
+		end
 		plan.ResultName = name or "Hybrid"
 		plan.Rarity = rarity
 		plan.Tier = tier
@@ -1112,11 +1135,14 @@ function FusionService.Unlocked(player)
 	return ok, reason, info
 end
 
-function FusionService.Preview(player, action, a, b)
+function FusionService.Preview(player, action, a, b, moves)
 	if action ~= "Upgrade" and action ~= "Mix" then
 		return false, "Unknown fusion"
 	end
-	local ok, plan = buildPlan(player, action, a, b)
+	if action == "Upgrade" then
+		moves = nil
+	end
+	local ok, plan = buildPlan(player, action, a, b, moves)
 	if not ok then
 		return false, plan
 	end
@@ -1131,6 +1157,7 @@ function FusionService.Preview(player, action, a, b)
 	for i, s in ipairs(plan.Freed.Gym) do
 		gym[i] = s
 	end
+	local record = plan.Record
 	return true, {
 		Action = plan.Action,
 		Cost = deepCopy(plan.Cost),
@@ -1140,11 +1167,13 @@ function FusionService.Preview(player, action, a, b)
 		Tier = plan.Tier,
 		Inputs = inputs,
 		Freed = { Equipped = countKeys(plan.Freed.Equipped), Garden = garden, Gym = gym },
+		Elements = record and copyList(record.Elements) or nil, -- Mix: the new record's element order
+		SpecialFrom = record and record.SpecialFrom or nil, -- Mix: "Style" | nil (the Body)
 	}
 end
 
-local function run(player, action, a, b)
-	local ok, plan = buildPlan(player, action, a, b)
+local function run(player, action, a, b, moves)
+	local ok, plan = buildPlan(player, action, a, b, moves)
 	if not ok then
 		return false, plan
 	end
@@ -1160,12 +1189,12 @@ function FusionService.Upgrade(player, key)
 	return run(player, "Upgrade", key, nil)
 end
 
-function FusionService.Mix(player, keyA, keyB)
-	return run(player, "Mix", keyA, keyB)
+function FusionService.Mix(player, keyA, keyB, moves)
+	return run(player, "Mix", keyA, keyB, moves)
 end
 
 ----------------------------------------------------------------------
--- Remote Fusion(action, a, b)
+-- Remote Fusion(action, a, b, moves)
 ----------------------------------------------------------------------
 
 local function machineModel(player)
@@ -1230,7 +1259,7 @@ local function validKeyArg(v)
 	return type(v) == "string" and v ~= "" and #v <= MAX_KEY_LENGTH
 end
 
-local function onFusionRemote(player, action, a, b)
+local function onFusionRemote(player, action, a, b, moves)
 	if not isPlayer(player) or type(action) ~= "string" or #action > MAX_ACTION_LENGTH then
 		return
 	end
@@ -1244,8 +1273,15 @@ local function onFusionRemote(player, action, a, b)
 		reply(player, { Ok = false, Action = action, Reason = "Pick the pets to fuse" })
 		return
 	end
+	-- the move choice is checked (type and one of the four strings) before anything else is read; nil = today's rule
+	if action == "Mix" and not validMoves(moves) then
+		reply(player, { Ok = false, Action = "Mix", Reason = MOVES_TEXT })
+		toastOnce(player, MOVES_TEXT, "bad")
+		return
+	end
 	if action == "Upgrade" then
 		b = nil
+		moves = nil -- Upgrade ignores a 4th argument
 	end
 	if not cooldownReady(player) then
 		reply(player, { Ok = false, Action = action, Reason = "One fusion at a time", Quiet = true })
@@ -1257,7 +1293,7 @@ local function onFusionRemote(player, action, a, b)
 		reply(player, { Ok = false, Action = action, Reason = whyNear })
 		return
 	end
-	local ok, result = run(player, action, a, b)
+	local ok, result = run(player, action, a, b, moves)
 	if not ok then
 		toastOnce(player, result or "That fusion is not possible", "bad")
 		reply(player, { Ok = false, Action = action, Reason = result })
