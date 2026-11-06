@@ -945,7 +945,7 @@ local function serverScenarios()
 		-- a run-off out of the arena is still the presence check's
 		T.check(tc.retreat ~= nil, "evo retreat svc: (C is still back)")
 		Mock.Teleport(C, CFrame.new(K.config().Lobby.Origin + Vector3.new(10, 4, 10)))
-		advance(2)
+		advance(4.5) -- (bug batch 6: the fight area's warning and 3-2-1 come first; was 2)
 		T.check(C:GetAttribute("InBattle") == nil or b.Parts[C.UserId].Left, "evo retreat svc: a retreated raider who runs out of the arena is out (the presence check)", tostring(C:GetAttribute("InBattle")))
 	end)
 

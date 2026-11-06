@@ -99,9 +99,16 @@
 --     the BattleSim (RaidTier = tierId, the boss HP of BattleCatalog.BossHp for the tier), later ones AddTeam, up to Raid.MaxRaiders;
 --     everyone stands on the fight's rim at their team's place. The fight takes the real floor when it is free, else a pocket
 --     (BuildPocket(index, "Raid"), the shared St.pocketBusy pool); a new fight may take the floor as soon as the last one left it, a
---     running one stays where it is. "LeaveRaid" / leaving the arena (a pocket fighter: the pocket) / a disconnect / the leash removes
+--     running one stays where it is. LEAVE ("Forfeit") / "LeaveRaid" / staying out of the fight area / a disconnect / the leash removes
 --     the team (RemoveTeam: the boss sheds that share), and a leaver can't come back to the same running fight (the sim's owner stays taken; a
---     fresh full-HP team would also dodge a knock-out). The fight ends when the sim ends (boss down, wipe, the time limit, everybody left) or on
+--     fresh full-HP team would also dodge a knock-out). The fight area (bug batch 6, Raid.watchArea, twice a second): Zone.Radius (ArenaInfo.Floor.Radius
+--     74, the podium wall; a Raid pocket's Radius 74) + AREA_SLACK 4 studs around the floor centre, -POCKET_FALL..AREA_TOP high. Out for AREA_BLIP
+--     0.5 s = BattleState "Area" { BattleId, Out = true, Left = AREA_SECONDS 3 } (the client's 3-2-1 banner); AREA_SECONDS later still out =
+--     out of the raid exactly as LEAVE (leaveRaid, End Reason "Area", "You left the fight area" toast); back in before that = "Area" { Out =
+--     false }. The AREA_GRACE 2 s after a teleport of ours (the walk in, a respawn hop, the pocket's fall rescue) count as in. A dead raider
+--     is never counted out: a respawn (or a new character) goes back on the stand with the grace. Falling under a pocket = back on its spawn
+--     (the fall rescue), never a kick. The boss's return (Raid.ReturnSeconds) and the dare are untouched.
+--     The fight ends when the sim ends (boss down, wipe, the time limit, everybody left) or on
 --     EndRaids(). A kill closes that tier for Raid.ReturnSeconds and, on the floor, hides the idle boss as long
 --     (St.raidClosed, St.raidFloorHiddenUntil); no other end closes anything. A queued boss (St.raidNextBoss) applies when the last fight ends.
 --     A pocket raider who leaves or whose fight ended goes back to ArenaInfo.Gate.Return RETURN_DELAY s later (the pocket is freed then
@@ -171,6 +178,8 @@
 --              receiver's own, nil for spectators), Outcome = "Win" | "Loss" | "Draw" | "Left" | nil, Won, Spectator,
 --              Reason }. A spectator who walks out of range also gets an "End" with Spectator = true, Reason "OutOfRange".
 --   "Lobby"    the duel lobby status (above).
+--   "Area"     (bug batch 6, boss raids) { BattleId, Out = true, Left = seconds } a raider out of the fight area (Raid.watchArea) | { BattleId,
+--              Out = false } back in; to that raider only.
 --   Spectators: a player who is in no battle watches the NEAREST running battle within SPECTATE_MARGIN studs of its zone
 --   (one at a time; refreshed once a second). Bandwidth: EstimateBytes approximates the remote encoding; GetNetStats()
 --   reports bytes per second per client; a 16-raid stays under 6 KB/s per client (p5battle_net16).
@@ -205,8 +214,9 @@
 --   * Duel rewards are gated against farming (payDuel): withheld for a forfeit before FORFEIT_MIN_SECONDS and for a loser
 --     who dealt no damage; the same two players earn from at most PAIR_LIMIT duels per PAIR_WINDOW seconds; a practice
 --     duel (Duel.PowerGap) pays nothing and counts for nothing.
---   * A raid player who presses LEAVE (BattleController's, the Ring's button: BattleCommand "Forfeit", or the "LeaveRaid" request), leaves
---     the arena / the game or is leashed is removed from the raid (no reward, said in the toast and on the result card; no rejoin of that
+--   * A raid player who presses LEAVE (BattleController's, the Ring's button: BattleCommand "Forfeit", or the "LeaveRaid" request), stays
+--     out of the fight area through the warning's 3-2-1 (never while dead), leaves the game or is leashed is removed from the raid
+--     (no reward, said in the toast and on the result card; no rejoin of that
 --     running fight); a raider whose fighter never hit the boss (damage 0) gets no reward either; any hit earns at least the Helper tier.
 --   * A dungeon participant who leaves / is leashed / disconnects is removed (RemoveEncounterTeam, OnLeave); nothing is paid
 --     by this service in a dungeon, ever (DungeonService pays per room with its own pay-once marks, Y4 / Y6).
@@ -342,6 +352,12 @@ local C = {
 	RAID_GATE_POLL = 0.25, -- seconds between two looks at who stands in the boss gate
 	RAID_GATE_COOLDOWN = 3, -- seconds the gate ignores a player after a release or a refusal (a step back and forth at its edge is one try)
 	RAID_DARE_RANGE = 20, -- studs from the gate where a dare is taken
+	-- bug batch 6: the raid's fight area (Raid.watchArea)
+	AREA_SECONDS = 3, -- a raider out of the fight area is warned (a 3-2-1), then out of the raid this many seconds later
+	AREA_SLACK = 4, -- studs past the area's Radius that still count as in (the podium wall's cap, a stumble)
+	AREA_BLIP = 0.5, -- seconds out before the warning (a dash or a knockback over the edge is back sooner)
+	AREA_GRACE = 2, -- seconds after a teleport of ours (walking in, a respawn hop, the pocket's fall rescue): the server may still see the old spot
+	AREA_TOP = 220, -- studs above the floor surface that still count as in
 	DUEL_PAD_OUTSIDE = 5, -- studs outside the duel floor where the duellists stand (the ring's pads)
 	ZONE_HEIGHT = 30, -- Size.Y of the zone in "Start"
 	SPECTATOR_SNAPSHOT_EVERY = 2, -- spectators get every 2nd snapshot (5 Hz)
@@ -982,7 +998,7 @@ local function addParticipant(b, player, side, spec)
 	for i, pet in ipairs(spec.Pets) do
 		keys[i] = pet.Key
 	end
-	local root = aliveRoot(player)
+	local root, _, char = aliveRoot(player)
 	local part = {
 		Player = player,
 		UserId = player.UserId,
@@ -999,6 +1015,10 @@ local function addParticipant(b, player, side, spec)
 		LeashT = 0, -- seconds the character has been more than Fighter.Leash studs from the server fighter
 		LeashGraceUntil = 0, -- sim time until which a stun's catch-up keeps the leash off (Cmd.stunned)
 		Lives = nil, -- the fighter's lives at the last tick (OnDown)
+		-- raids (bug batch 6, Raid.watchArea): AreaOutAt (os.clock() first seen out, nil inside), AreaWarned (os.clock() of the warning),
+		-- Dead (no living character at the last look), AreaChar (the character we placed), AreaGraceUntil (a teleport of ours: count as in)
+		AreaGraceUntil = now() + C.AREA_GRACE,
+		AreaChar = char,
 	}
 	b.Parts[player.UserId] = part
 	b.PartList[#b.PartList + 1] = part
@@ -2260,7 +2280,8 @@ local function forfeitDuel(b, part, why)
 	return true
 end
 
-local function leaveRaid(b, part, why)
+-- reason: the End's Reason ("Left" = LEAVE / walking out; "Area" = out of the fight area for the 3-2-1, bug batch 6)
+local function leaveRaid(b, part, why, reason)
 	if part.Left then
 		return false
 	end
@@ -2271,7 +2292,7 @@ local function leaveRaid(b, part, why)
 	b.Pending[player] = nil
 	b.Spectators[player] = nil
 	if isPlayer(player) then
-		local payload = { BattleId = b.Id, Mode = "Raid", Outcome = "Left", Won = false, Spectator = false, Reason = "Left" }
+		local payload = { BattleId = b.Id, Mode = "Raid", Outcome = "Left", Won = false, Spectator = false, Reason = reason or "Left" }
 		send(player, "End", payload, b.Id)
 	end
 	releaseParticipant(b, part)
@@ -3750,6 +3771,7 @@ function Raid.openFight(tier, bossId, spec)
 	local zone, pocket, index = nil, nil, nil
 	if onFloor then
 		zone = zoneFrom(info.Floor.CFrame, info.Floor.Size, info.Floor.Zone)
+		zone.Radius = tonumber(info.Floor.Radius)
 	else
 		local builder = St.arenaBuilder
 		index = hasFn(builder, "BuildPocket") and RingRun.freePocketIndex() or nil
@@ -3761,7 +3783,9 @@ function Raid.openFight(tier, bossId, spec)
 		zone.Spawn = pocket.Spawn
 		zone.Pocket = pocket
 		zone.PocketIndex = index
+		zone.Radius = tonumber(pocket.Radius)
 	end
+	zone.Radius = zone.Radius or (max(zone.X, zone.Z) / 2 + 20) -- the fight area (Raid.watchArea); a builder without one: the floor + its rim
 	local id = newBattleId()
 	local okS, sim, simWhy = pcall(BattleSim.new, {
 		Mode = "Raid",
@@ -3868,6 +3892,73 @@ function Raid.leaverLater(b, part)
 	end)
 end
 
+-- a raider onto the fight's stand (walking in, the respawn hop) with the teleport's grace (the server may still see the old spot)
+function Raid.toStand(b, part)
+	teleport(part.Player, raidStand(b, part.UserId))
+	local _, _, char = aliveRoot(part.Player)
+	part.AreaChar = char
+	part.AreaGraceUntil = now() + C.AREA_GRACE
+end
+
+-- inside the fight area: within Zone.Radius + AREA_SLACK of the floor centre (planar), -POCKET_FALL..AREA_TOP high
+function Raid.inArea(b, pos)
+	local x, y, z = zoneLocal(b.Zone, pos)
+	local r = tonumber(b.Zone.Radius) or (max(b.Zone.X, b.Zone.Z) / 2 + 20)
+	return sqrt(x * x + z * z) <= r + C.AREA_SLACK and y >= -C.POCKET_FALL and y <= C.AREA_TOP
+end
+
+-- the countdown stops; a raider who saw the warning is told (the banner goes)
+function Raid.areaClear(b, part)
+	part.AreaOutAt = nil
+	if part.AreaWarned then
+		part.AreaWarned = nil
+		send(part.Player, "Area", { BattleId = b.Id, Out = false }, b.Id)
+	end
+end
+
+-- bug batch 6 ("if the player leaves the boss ring make it warn him then kick him after 3 seconds"), the monitor's look at one raider:
+-- dead = never counted out (the respawn goes back on the stand); under a pocket = its fall rescue; in the area or in a teleport's grace =
+-- in (the anchor follows); out for AREA_BLIP = the warning, AREA_SECONDS after it still out = out of the raid exactly as LEAVE
+function Raid.watchArea(b, part, t)
+	local player = part.Player
+	local root, _, char = aliveRoot(player)
+	if not root then
+		part.Dead = true
+		Raid.areaClear(b, part)
+		return
+	end
+	if part.Dead or char ~= part.AreaChar then
+		part.Dead = false
+		Raid.toStand(b, part)
+		Raid.areaClear(b, part)
+		return
+	end
+	local x, y, z = zoneLocal(b.Zone, root.Position)
+	if b.Zone.Spawn and y < -C.POCKET_FALL and sqrt(x * x + z * z) <= C.POCKET_LEASH then
+		teleport(player, b.Zone.Spawn) -- slipped off the pocket: back on its spawn, no kick
+		part.AreaGraceUntil = t + C.AREA_GRACE
+		Raid.areaClear(b, part)
+		return
+	end
+	local inside = Raid.inArea(b, root.Position)
+	if inside or t < (part.AreaGraceUntil or 0) then
+		Raid.areaClear(b, part)
+		if inside then
+			pcall(b.Sim.SetAnchor, b.Sim, part.UserId, x, z)
+		end
+		return
+	end
+	part.AreaOutAt = part.AreaOutAt or t
+	if not part.AreaWarned then
+		if t - part.AreaOutAt >= C.AREA_BLIP - 0.01 then
+			part.AreaWarned = t
+			send(player, "Area", { BattleId = b.Id, Out = true, Left = C.AREA_SECONDS }, b.Id)
+		end
+	elseif t - part.AreaWarned >= C.AREA_SECONDS - 0.01 then
+		leaveRaid(b, part, "You left the fight area: you are out of the raid.", "Area")
+	end
+end
+
 function BattleService.RaidTierFor(player)
 	if not isPlayer(player) then
 		return nil, "That player is not here"
@@ -3948,8 +4039,7 @@ function BattleService.EnterRaid(player, tierId)
 			return false, why2
 		end
 		stopWatching(player, "Joined")
-		addParticipant(b, player, 1, spec)
-		teleport(player, raidStand(b, player.UserId))
+		Raid.toStand(b, addParticipant(b, player, 1, spec))
 		beginBattle(b)
 		if b.RaidFloor then
 			try(eventService(), "RaidFloorStarted", { Kind = "BossRaid", BossId = b.BossId, Name = bossName(b.BossId), BattleId = b.Id, Tier = tier.Id, Source = "floor" })
@@ -3968,9 +4058,9 @@ function BattleService.EnterRaid(player, tierId)
 		else
 			stopWatching(player, "Joined")
 		end
-		addParticipant(b, player, 1, spec)
+		local part = addParticipant(b, player, 1, spec)
 		b.Pending[player] = true
-		teleport(player, raidStand(b, player.UserId))
+		Raid.toStand(b, part)
 	end
 	leaveLobby(player)
 	BattleService.RaidJoined:Fire(player, b.Id, tier.Id)
@@ -4975,11 +5065,12 @@ end
 ----------------------------------------------------------------------
 -- Presence monitor (twice a second): participants stay where their battle is; anchors follow the owners
 ----------------------------------------------------------------------
--- true while the participant is where they belong (ring, pocket raid: at their pocket; duel / floor raid: inside the arena; dungeon: inside
--- the encounter's zone part + ZONE_MARGIN). Commands need `insideZone` on top for duels / raids (the arena is bigger).
+-- true while the participant is where they belong (ring: at their pocket; duel: inside the arena; dungeon: inside the encounter's zone
+-- part + ZONE_MARGIN). Commands need `insideZone` on top for duels (the arena is bigger). Raids have their fight area instead
+-- (Raid.watchArea, bug batch 6).
 local function present(b, part, root)
 	local pos = root.Position
-	if b.Mode == "Ring" or (b.Mode == "Raid" and not b.RaidFloor) then
+	if b.Mode == "Ring" then
 		local x, y, z = zoneLocal(b.Zone, pos)
 		if sqrt(x * x + z * z) > C.POCKET_LEASH or y > 220 then
 			return false
@@ -5014,6 +5105,8 @@ local function monitorBattle(b)
 				dropOut(b, part, nil)
 			elseif player:GetAttribute(Config.Attr.InMatch) == true then
 				dropOut(b, part, b.Mode == "Raid" and "You left the raid for an obby match." or "You left the battle for an obby match.")
+			elseif b.Mode == "Raid" then
+				Raid.watchArea(b, part, now()) -- the fight area: a warning and 3-2-1 first (bug batch 6)
 			else
 				local root = aliveRoot(player)
 				if root and present(b, part, root) then
@@ -5024,9 +5117,7 @@ local function monitorBattle(b)
 					part.Strikes = part.Strikes + 1
 					if part.Strikes >= C.OUT_STRIKES then
 						local why
-						if b.Mode == "Raid" then
-							why = "You left the arena: you are out of the raid."
-						elseif b.Mode == "Duel" then
+						if b.Mode == "Duel" then
 							why = "You left the arena: the duel is lost."
 						elseif b.Mode == "Ring" then
 							why = "You left the ring: the run is over."

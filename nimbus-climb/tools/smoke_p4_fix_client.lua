@@ -23,6 +23,9 @@
 --                             LEAVE for a raid spectator; clear of RETREAT, Cheer up!, SWITCH TARGET, the boss bar and the vitals card at
 --                             1920x1080 / 1280x720 / 390x844 / 844x390, the armed text fits the button
 --   client_bb6_raid_leave_mobile (phone world) the same layout on the touch phone (390x844, 844x390, 740x360, 667x375)
+--   client_bb6_area_banner    (Task A2) BattleState "Area" { Out = true, Left = 3 }: Root.AreaWarn "Back to the fight! 3" counts 3, 2, 1
+--                             on the client and holds 1; Out = false, the End or another battle's id: hidden / ignored; junk is
+--                             harmless; >= 14 px, in the top band and clear of the HUD at 1920x1080 / 1280x720 / 390x844 / 844x390
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -828,6 +831,164 @@ S.client_bb6_raid_leave_mobile = guarded("client_bb6_raid_leave_mobile", functio
 	advance(0.5)
 	T.check(BC.GetBattle() == nil and #Mock.Errors == errBefore, "bb6 raid leave phone: everything freed, no errors", tostring(Mock.Errors[#Mock.Errors]))
 	_G.KC.flushErrors("client_bb6_raid_leave_mobile")
+end)
+
+----------------------------------------------------------------------------------------------------
+-- bug batch 6 (Task A2): "if the player leaves the boss ring make it warn him then kick him after 3 seconds"
+----------------------------------------------------------------------------------------------------
+local function areaMsg(d, payload, battleId)
+	payload.BattleId = battleId or d.id
+	_G.KC.toClient("BattleState", "Area", payload, battleId or d.id)
+	Mock.Step(1 / 30)
+	Mock.Step(1 / 30)
+end
+
+-- a contains b (1 px slack)
+local function covers(a, b)
+	return a.x0 <= b.x0 + 1 and a.y0 <= b.y0 + 1 and a.x1 >= b.x1 - 1 and a.y1 >= b.y1 - 1
+end
+
+-- the banner's problems at this viewport (nil = fine): readable, its text fits, in the top band, clear of the HUD's other parts; it
+-- may lie over the top card (the boss bar) only when it covers it whole (a phone: it takes the card's place for those seconds)
+local function bannerProblem(w, h)
+	local bn = at("Root.AreaWarn")
+	if not bn or not shown(bn) then
+		return "not shown"
+	end
+	local scale = at("Root.ReadScale")
+	local f = scale and scale.Scale or 1
+	local parts = { bn }
+	local sub = bn:FindFirstChild("Sub")
+	if sub and shown(sub) then
+		parts[#parts + 1] = sub
+	end
+	local others = raidObstacles()
+	for _, path in ipairs({ "Root.LeaveButton" }) do
+		local o = at(path)
+		if o and shown(o) then
+			others[#others + 1] = { path, rect(o) }
+		end
+	end
+	local whole = rect(bn)
+	for _, lb in ipairs(parts) do
+		if lb.TextSize * f < 13.99 then
+			return string.format("%s text %.1f px", lb.Name, lb.TextSize * f)
+		end
+		local r = rect(lb)
+		if r.x0 < -1 or r.x1 > w + 1 or r.y0 < -1 then
+			return lb.Name .. " off the screen"
+		end
+		if r.y1 > h * 0.35 then
+			return string.format("%s reaches %.0f px down (the top band ends at %.0f)", lb.Name, r.y1, h * 0.35)
+		end
+		if not covers(whole, r) then
+			return lb.Name .. " sticks out of the banner"
+		end
+	end
+	-- the main line on one line in the banner's top, the sub line in its own box (textFits: 0.6 em a character)
+	local fits, how = textFits(bn)
+	if not fits or not how:find("^1 line") then
+		return "AreaWarn: the main line needs " .. how
+	end
+	if sub then
+		fits, how = textFits(sub)
+		if not fits then
+			return "Sub: " .. how
+		end
+	end
+	for _, o in ipairs(others) do
+		if hits(whole, o[2]) and not (o[1]:find("^Root%.TopCard") and covers(whole, o[2])) then
+			return "the banner covers part of " .. o[1]
+		end
+	end
+	return nil
+end
+
+-- the banner exists and is shown (shown(nil) would say true)
+local function bannerShown()
+	local bn = at("Root.AreaWarn")
+	return bn ~= nil and shown(bn)
+end
+
+S.client_bb6_area_banner = guarded("client_bb6_area_banner", function()
+	bootIfNeeded()
+	local BC = moduleAt("client", "Controllers/BattleController")
+	if not T.check(BC ~= nil, "bb6 area banner: BattleController loads") then
+		return
+	end
+	local errBefore = #Mock.Errors
+	Mock.SetViewport(1920, 1080)
+	advance(0.5)
+	local d = newBattle("Raid")
+	if not T.check(d ~= nil, "bb6 area banner: a raid") then
+		return
+	end
+	d.start()
+	advance(0.3)
+	T.check(not bannerShown(), "bb6 area banner: no banner in a raid by itself")
+	areaMsg(d, { Out = true, Left = 3 })
+	local bn = at("Root.AreaWarn")
+	T.check(bn and shown(bn) and bn.Text == "Back to the fight! 3", "bb6 area banner: the server's warning shows 'Back to the fight! 3'", bn and bn.Text or "missing")
+	local sub = bn and bn:FindFirstChild("Sub")
+	T.check(sub and shown(sub) and tostring(sub.Text):find("leave the raid") ~= nil, "bb6 area banner: ...and says what staying out does ('Or you leave the raid.')", sub and sub.Text or "no Sub line")
+	advance(1.05)
+	T.check(bn and bn.Text == "Back to the fight! 2", "bb6 area banner: it counts down on the client (3, 2, 1)", bn and bn.Text or "")
+	advance(1.0)
+	T.check(bn and bn.Text == "Back to the fight! 1", "bb6 area banner: ...1", bn and bn.Text or "")
+	advance(1.5)
+	T.check(bn and shown(bn) and bn.Text == "Back to the fight! 1", "bb6 area banner: it stays at 1 until the server decides (never 0)", bn and bn.Text or "")
+	areaMsg(d, { Out = false })
+	advance(0.1)
+	T.check(not bannerShown(), "bb6 area banner: back in the area (Out = false): the banner goes")
+	areaMsg(d, { Out = true, Left = 3 }, "some_other_battle")
+	advance(0.1)
+	T.check(not bannerShown(), "bb6 area banner: another battle's warning is ignored")
+	areaMsg(d, { Out = true, Left = 3 })
+	advance(0.1)
+	T.check(bannerShown(), "bb6 area banner: (out again)")
+	d.finish(raidEnd("Area"))
+	advance(0.3)
+	T.check(not bannerShown(), "bb6 area banner: the End takes the banner away (the result card says why)")
+	closeBattle()
+	-- a warning left over from a raid never shows in the next one
+	d = newBattle("Raid")
+	d.start()
+	advance(0.3)
+	T.check(not bannerShown(), "bb6 area banner: a new raid starts without a banner")
+	d.finish(raidEnd("Left"))
+	closeBattle()
+	-- junk payloads are ignored
+	d = newBattle("Raid")
+	d.start()
+	advance(0.3)
+	for _, junk in ipairs({ { Out = true, Left = "x" }, { Out = "yes" }, { Out = true, Left = 1e9 } }) do
+		local okJ = pcall(areaMsg, d, junk)
+		T.check(okJ, "bb6 area banner: a junk payload does not break the HUD")
+	end
+	bn = at("Root.AreaWarn")
+	T.check(not bn or not shown(bn) or tostring(bn.Text):match("^Back to the fight! [1-9]$") ~= nil, "bb6 area banner: a junk count still reads one digit (1..9)", bn and bn.Text or "")
+	d.finish(raidEnd("Left"))
+	closeBattle()
+	-- its place at the four render sizes: readable (>= 14 px), in the top band, over nothing else of the HUD
+	for _, size in ipairs({ { 1920, 1080 }, { 1280, 720 }, { 390, 844 }, { 844, 390 } }) do
+		Mock.SetViewport(size[1], size[2])
+		advance(0.5)
+		d = newBattle("Raid")
+		d.start()
+		advance(0.3)
+		areaMsg(d, { Out = true, Left = 3 })
+		advance(0.1)
+		local why = bannerProblem(size[1], size[2])
+		local b2 = at("Root.AreaWarn")
+		T.check(why == nil, string.format("bb6 area banner %dx%d: readable, in the top band, clear of the boss bar / cards / buttons", size[1], size[2]),
+			tostring(why) .. (b2 and string.format(" [%.0f,%.0f %.0fx%.0f]", b2.AbsolutePosition.X, b2.AbsolutePosition.Y, b2.AbsoluteSize.X, b2.AbsoluteSize.Y) or ""))
+		d.finish(raidEnd("Left"))
+		closeBattle()
+	end
+	Mock.SetViewport(1920, 1080)
+	advance(0.5)
+	T.check(BC.GetBattle() == nil and #Mock.Errors == errBefore, "bb6 area banner: everything freed, no errors", tostring(Mock.Errors[#Mock.Errors]))
+	_G.KC.flushErrors("client_bb6_area_banner")
 end)
 
 return S

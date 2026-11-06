@@ -245,8 +245,9 @@ local function serverScenarios()
 			end
 		end)
 		Mock.Teleport(p, info.Gate.CFrame)
+		-- (the tutorial's 2 Hz look and the gate's 4 Hz poll race: wait for both, whichever comes first)
 		waitFor(function()
-			return stepId(p) ~= "raid"
+			return stepId(p) ~= "raid" and joined ~= nil
 		end, 3)
 		conn:Disconnect()
 		T.check(joined ~= nil and joined[2] == "Starter", "raid flow new: walking into the gate fires RaidJoined on Starter", joined and tostring(joined[2]))

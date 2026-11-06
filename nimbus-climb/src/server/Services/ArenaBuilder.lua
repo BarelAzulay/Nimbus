@@ -10,9 +10,11 @@
 --       Model        = workspace.BattleArena (Model)
 --       Center       = CFrame   the colosseum floor centre on the walking surface, LookVector = towards the lobby (the
 --                               main gate, the forum and the bridge are on that side)
---       Floor        = { CFrame, Size, Zone }   the boss stage (Mode "Raid"): CFrame on the floor surface at the
+--       Floor        = { CFrame, Size, Zone, Radius }   the boss stage (Mode "Raid"): CFrame on the floor surface at the
 --                               colosseum centre (rotated like Center), Size = the battle floor (X, height, Z: studs; X / Z
---                               = BattleCatalog.Zones.Raid), Zone = its NC_BattleZone part
+--                               = BattleCatalog.Zones.Raid), Zone = its NC_BattleZone part, Radius = the fight area (bug batch 6:
+--                               the sand with its podium wall, COL.PodiumR 74; BattleService warns a raider outside it, then takes
+--                               them out of the raid)
 --       Rings        = { { CFrame, Size, Pads = { BasePart... }, Zone, Index }... }   the duel rings (Mode "Duel"); the
 --                               challenge pads carry the "Arena" prompts
 --       Spawn        = CFrame   arrival point on the forum (the Arena Gate teleport lands here), looking at the gate
@@ -33,7 +35,8 @@
 --       EventBoard = { Model, Gui, Labels }, Leaderboard = { Model, Gui, Rows }   the SurfaceGuis (see ApplyArenaState)
 --       ApplyArenaState = ArenaBuilder.ApplyArenaState, InArena = ArenaBuilder.InArena
 --     }
---   ArenaBuilder.BuildPocket(index, kind) -> { Model, CFrame, Size, Spawn, Zone, Index, Kind } | nil
+--   ArenaBuilder.BuildPocket(index, kind) -> { Model, CFrame, Size, Spawn, Zone, Index, Kind, Radius (a "Raid" pocket: its fight area,
+--       74 like the colosseum's: the sand's apothem 73 + its kerb) } | nil
 --       a private battle pocket (index 1..MAX_POCKETS), cloned from one template, far out in the sky on its own grid
 --       cell; CFrame = floor surface centre (axis aligned), Size = the battle floor (BattleCatalog.Zones.Ring), Spawn =
 --       where the fighter stands (side 1, -Z, looking at the enemy side). "Ring" (nil and unknown kinds build it too;
@@ -3441,7 +3444,7 @@ function ArenaBuilder.BuildPocket(index, kind)
 		zone = makeZone(model, "BattleZone_Ring", cf, Ring.RimOut, "Ring", floorSize, "Ring", index)
 		spawn = CFrame.lookAt(pos + Vector3.new(0, 3, -(hf - 7)), pos + Vector3.new(0, 3, hf))
 	end
-	local info = { Model = model, CFrame = cf, Size = floorSize, Spawn = spawn, Zone = zone, Index = index, Kind = pocketKind }
+	local info = { Model = model, CFrame = cf, Size = floorSize, Spawn = spawn, Zone = zone, Index = index, Kind = pocketKind, Radius = raid and COL.PodiumR or nil }
 	S.pockets[index] = info
 	return info
 end
@@ -3842,7 +3845,7 @@ function ArenaBuilder.Build(lobbyInfo)
 	local info = {
 		Model = model,
 		Center = A,
-		Floor = { CFrame = floorCF, Size = floorSize, Zone = floorZone },
+		Floor = { CFrame = floorCF, Size = floorSize, Zone = floorZone, Radius = COL.PodiumR }, -- Radius: the raid's fight area (bug batch 6)
 		Rings = rings,
 		Spawn = spawn,
 		ReturnCFrame = returnCF,

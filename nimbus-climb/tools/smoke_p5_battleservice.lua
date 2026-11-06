@@ -1418,7 +1418,7 @@ S.p5svc_raid = scenario("p5svc_raid", function()
 	-- a leaver (arena) is removed; a disconnect too
 	local m3 = K.logSize()
 	toLobby(raiders[8])
-	advance(1.5)
+	advance(4.5) -- (bug batch 6: 0.5 s out, the warning, its 3-2-1, one 0.5 s monitor tick; was 1.5)
 	local e8 = lastMsg(raiders[8], "End", m3)
 	Mock.RemovePlayer(raiders[7])
 	advance(0.5)

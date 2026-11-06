@@ -17,6 +17,11 @@
 -- Bug batch 6 (docs/superpowers/plans/2026-11-06-bug-batch-6.md, Task A):
 --   raid_svc_leave        LEAVE (Forfeit, also through BattleCommand) and LeaveRaid: End Left with no Rewards, a "no reward" toast, no
 --                         rejoin of that fight, a pocket leaver back at the gate after RETURN_DELAY, the others paid, a late Forfeit refused
+--   raid_svc_area_kick    out of the fight area (Floor.Radius + 4) for 0.5 s: the Area warning (Out, Left 3), 3 s later End Reason "Area"
+--   raid_svc_area_return  back in during the 3-2-1: Out = false, no kick
+--   raid_svc_area_blip    out for under 0.5 s (a dash / a knockback) or inside the 4-stud slack: nothing
+--   raid_svc_area_grace   the 2 s after a teleport in: nothing; the pocket's fall rescue puts them back and never kicks
+--   raid_svc_area_dead    dead: no countdown; a respawn (or a reloaded character) is put back on the stand
 -- The real gate is ArenaBuilder's (a build without it gets a stand-in ArenaInfo.Gate here). White-box: the kills write the sim's boss
 -- (St is an upvalue of IsInBattle, as in smoke_p5_battleservice.lua). Plain Lua 5.1 syntax only.
 
@@ -608,10 +613,16 @@ S.raid_svc_ends = scenario("raid_svc_ends", function(add)
 	bs.EnterRaid(starter5)
 	local _, idA = bs.EnterRaid(high60)
 	T.check(battleOf(idA) and battleOf(idA).RaidFloor == false, "raid ends: (a High fight in a pocket)")
+	advance(2.2) -- (bug batch 6: past the 2 s grace of the teleport in)
+	local markW = K.logSize()
 	toLobby(high60)
 	local lobbyAt = K.root(high60).Position
 	advance(1.3)
-	T.check(high60:GetAttribute("InBattle") == nil, "raid ends: leaving the pocket takes a pocket raider out of the fight")
+	local warned = lastMsg(high60, "Area", markW)
+	-- (bug batch 6: a warning and 3-2-1 first, then out; was out after 1 s)
+	T.check(high60:GetAttribute("InBattle") ~= nil and warned and warned.Out == true, "raid ends: a pocket raider who walks off is warned first")
+	advance(3.3)
+	T.check(high60:GetAttribute("InBattle") == nil, "raid ends: leaving the pocket takes a pocket raider out of the fight after the 3-2-1")
 	advance(RETURN_DELAY + 0.5)
 	T.check((K.root(high60).Position - lobbyAt).Magnitude < 5, "raid ends: ...and nobody pulls them back to the gate")
 	T.check(bs.GetRaidStatus().Fights.High == nil, "raid ends: ...the emptied pocket fight is over")
@@ -922,6 +933,145 @@ S.raid_svc_leave = scenario("raid_svc_leave", function(add)
 	-- LEAVE racing the fight's own End (the boss fell before the second tap): refused, nothing changes
 	local okLate, whyLate = bs.Forfeit(r2)
 	T.check(okLate == false and whyLate == "NoBattle" and countMsgs(r2, "End", mark2) == 1, "raid leave: a Forfeit after the fight's End is refused (one End only)", tostring(whyLate))
+end)
+
+-- A2: out of the fight area for 0.5 s = the warning (Area { Out = true, Left = 3 }), 3 s later out of the raid (End Reason "Area")
+S.raid_svc_area_kick = scenario("raid_svc_area_kick", function(add)
+	local bs, _, info = setUp()
+	local p = add(newPlayer("AreaK", 10))
+	local stay = add(newPlayer("AreaS", 10))
+	toArena(p, 2, 0)
+	toArena(stay, 4, 0)
+	local R = info.Floor.Radius
+	T.check(type(R) == "number" and R >= 72 and R <= 76, "raid area: ArenaInfo.Floor.Radius is the floor with its podium wall (74)", tostring(R))
+	if type(R) ~= "number" then
+		return
+	end
+	local _, id = bs.EnterRaid(p)
+	bs.EnterRaid(stay)
+	advance(2.2) -- (past the teleport-in grace)
+	local mark = K.logSize()
+	Mock.Teleport(p, floorSpot(info, R + 10))
+	advance(1.05)
+	local a = lastMsg(p, "Area", mark)
+	T.check(a and a.Out == true and a.Left == 3 and a.BattleId == id and p:GetAttribute("InBattle") == id,
+		"raid area: out of the fight area: the warning comes (Out, Left = 3) and the raider is still in", a and (tostring(a.Out) .. " " .. tostring(a.Left)) or "no Area")
+	T.check(countMsgs(p, "Area", mark) == 1, "raid area: ...once, not every tick", tostring(countMsgs(p, "Area", mark)))
+	advance(2.35)
+	T.check(lastMsg(p, "End", mark) == nil and p:GetAttribute("InBattle") == id, "raid area: no End during the 3-2-1")
+	advance(1.2)
+	local e = lastMsg(p, "End", mark)
+	T.check(e and e.Reason == "Area" and e.Outcome == "Left" and e.Rewards == nil and p:GetAttribute("InBattle") == nil,
+		"raid area: after 3 s out: out of the raid (End Left, Reason Area, no Rewards)", e and tostring(e.Reason) or "no End")
+	T.check(countMsgs(p, "End", mark) == 1 and toastCount(p, "fight area", mark) == 1, "raid area: one End, one toast naming the fight area")
+	T.check(stay:GetAttribute("InBattle") == id, "raid area: the raider on the stand fights on")
+	local ok, why = bs.EnterRaid(p)
+	T.check(ok == false and tostring(why):find("You left this fight") ~= nil, "raid area: ...and the kicked raider cannot rejoin that fight (as LEAVE)", tostring(why))
+end)
+
+S.raid_svc_area_return = scenario("raid_svc_area_return", function(add)
+	local bs, _, info = setUp()
+	local p = add(newPlayer("AreaR", 10))
+	toArena(p, 2, 0)
+	local R = info.Floor.Radius or 74
+	local _, id = bs.EnterRaid(p)
+	advance(2.2)
+	local mark = K.logSize()
+	Mock.Teleport(p, floorSpot(info, R + 10))
+	advance(1.05)
+	local a = lastMsg(p, "Area", mark)
+	T.check(a and a.Out == true, "raid area return: (warned)")
+	Mock.Teleport(p, floorSpot(info, 54))
+	advance(0.6)
+	local back = lastMsg(p, "Area", mark)
+	T.check(back and back.Out == false and back.BattleId == id, "raid area return: stepping back in sends Out = false (the banner goes)")
+	advance(5)
+	T.check(lastMsg(p, "End", mark) == nil and p:GetAttribute("InBattle") == id, "raid area return: ...and the countdown is cancelled: still raiding")
+end)
+
+S.raid_svc_area_blip = scenario("raid_svc_area_blip", function(add)
+	local bs, _, info = setUp()
+	local p = add(newPlayer("AreaB", 10))
+	toArena(p, 2, 0)
+	local R = info.Floor.Radius or 74
+	local _, id = bs.EnterRaid(p)
+	advance(2.2)
+	local mark = K.logSize()
+	-- a dash or a knockback over the edge: out for 0.3 s, five times
+	for _ = 1, 5 do
+		Mock.Teleport(p, floorSpot(info, R + 10))
+		advance(0.3)
+		Mock.Teleport(p, floorSpot(info, 54))
+		advance(0.7)
+	end
+	T.check(lastMsg(p, "Area", mark) == nil and lastMsg(p, "End", mark) == nil and p:GetAttribute("InBattle") == id,
+		"raid area blip: out for under 0.5 s (five times): no warning, no kick", tostring(countMsgs(p, "Area", mark)) .. " Area messages")
+	-- inside the 4-stud slack past the edge: never out
+	Mock.Teleport(p, floorSpot(info, R + 3))
+	advance(10)
+	T.check(lastMsg(p, "Area", mark) == nil and p:GetAttribute("InBattle") == id, "raid area blip: 3 studs past the edge (inside the slack) for 10 s: no warning")
+end)
+
+S.raid_svc_area_grace = scenario("raid_svc_area_grace", function(add)
+	local bs, _, _, gate = setUp()
+	local floorP = add(newPlayer("GraceF", 10))
+	local p = add(newPlayer("GraceP", 30))
+	toArena(floorP, 2, 0)
+	toArena(p, 4, 0)
+	bs.EnterRaid(floorP)
+	local mark = K.logSize()
+	local _, idP = bs.EnterRaid(p)
+	local b = battleOf(idP)
+	T.check(b ~= nil and b.RaidFloor == false, "raid area grace: (setup) a Mid fight in a pocket")
+	if not b then
+		return
+	end
+	-- the server still sees them where they walked in (the teleport not landed yet)
+	Mock.Teleport(p, gate.CFrame)
+	advance(1.5)
+	T.check(lastMsg(p, "Area", mark) == nil and p:GetAttribute("InBattle") == idP, "raid area grace: the 2 s after the teleport in: no warning")
+	advance(1.55)
+	local a = lastMsg(p, "Area", mark)
+	T.check(a and a.Out == true and p:GetAttribute("InBattle") == idP, "raid area grace: after the grace, out of the pocket = the warning")
+	-- the pocket's fall rescue stays: under the pocket = back on its spawn, the warning off, no kick
+	local markF = K.logSize()
+	Mock.Teleport(p, b.Zone.CFrame * CFrame.new(10, -40, 10))
+	advance(0.6)
+	local y = K.root(p).Position.Y - b.Zone.CFrame.Position.Y
+	local off = lastMsg(p, "Area", markF)
+	T.check(y > -5 and y < 10 and off and off.Out == false, "raid area grace: a raider falling under the pocket is put back on it, the warning off", string.format("y %.1f", y))
+	advance(5)
+	T.check(lastMsg(p, "End", markF) == nil and p:GetAttribute("InBattle") == idP and lastMsg(p, "Area", markF).Out == false,
+		"raid area grace: ...and never kicked for the fall")
+end)
+
+S.raid_svc_area_dead = scenario("raid_svc_area_dead", function(add)
+	local bs, _, info = setUp()
+	local p = add(newPlayer("AreaD", 10))
+	local stay = add(newPlayer("AreaS", 10))
+	toArena(p, 2, 0)
+	toArena(stay, 4, 0)
+	local R = info.Floor.Radius or 74
+	local _, id = bs.EnterRaid(p)
+	bs.EnterRaid(stay)
+	advance(2.2)
+	local mark = K.logSize()
+	Mock.Kill(p)
+	advance(4)
+	T.check(lastMsg(p, "Area", mark) == nil and lastMsg(p, "End", mark) == nil and p:GetAttribute("InBattle") == id,
+		"raid area dead: a dead raider gets no countdown and stays in the fight")
+	advance(6) -- (the mock respawns the character after Players.RespawnTime 5 s, at the lobby's spawn)
+	local okRim, rim = onRim(p, info)
+	T.check(okRim and lastMsg(p, "Area", mark) == nil and lastMsg(p, "End", mark) == nil and p:GetAttribute("InBattle") == id,
+		"raid area dead: the respawned raider is put back on the stand, no warning, still in", string.format("%.1f studs from the centre", rim))
+	-- a new character without a death (LoadCharacter) is a respawn too
+	Mock.Respawn(p)
+	local away = planarTo(p, info.Floor.CFrame)
+	advance(1)
+	okRim, rim = onRim(p, info)
+	T.check(away > R + 4 and okRim, "raid area dead: a reloaded character is put back on the stand", string.format("spawned %.1f, now %.1f studs from the centre", away, rim))
+	advance(2)
+	T.check(lastMsg(p, "Area", mark) == nil and p:GetAttribute("InBattle") == id, "raid area dead: ...no warning after the hop, still raiding")
 end)
 
 return S

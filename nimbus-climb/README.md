@@ -1175,6 +1175,13 @@ your pet anyway, and the lethal attack still knocks it out if it stands in the a
 your own time in a won fight and you keep your medal, Tokens, XP and Gems, but no Boss Raid pet can drop for you that time (the
 result card says so).
 
+**LEAVE** (the pink button by the action buttons) takes you out of a boss fight: tap it twice (the first tap says **No reward!
+Tap again**). Leaving pays nothing and you cannot rejoin that fight while it runs (the next one is fine); from a sky pocket you are
+back at the boss gate 4 s later. **Stay in the fight area:** the colosseum floor up to its low wall (in a sky pocket, its sand). Step
+out and after half a second a red banner counts **Back to the fight! 3, 2, 1**; step back in and it goes. Still out when the count
+ends = out of the raid, exactly as with LEAVE. A dash or a knockback over the edge for a moment, the first 2 s after you are
+teleported in, and your character dying (a reset) never count: after a respawn you are put back at the edge of the floor.
+
 **Rewards** go to everyone who is still in the fight at the end, by the share of the boss's health they took off. The table shows
 High's numbers; Tokens, XP and Gems scale with the fight's tier (x0.4, x0.7, x1, x1.3), and Gem and pet chances are half at Starter
 and Mid:

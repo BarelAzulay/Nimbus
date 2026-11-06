@@ -41,6 +41,9 @@
 --              its owner (the shake).
 --   "End"      { BattleId, Mode, Result, Rewards, Outcome, Won, Spectator, Reason } (Rewards.Dungeon = true + Extra in
 --              the dungeon: no result card for a cleared room, DungeonController shows the loot)
+--   "Area"     (bug batch 6, boss raids) { BattleId, Out, Left }: Out = true: I am out of the fight area, the server takes me out of
+--              the raid Left (3) s later unless I step back in (AreaWarn's banner counts it down); Out = false: back in (the banner
+--              goes). Only for the drawn battle; the End and the HUD's closing take the banner away too.
 --
 -- Drawing (kept from Phases 3-4; the Phase 5 lines marked *)
 --   * Snapshots are buffered and drawn INTERP_DELAY seconds behind the estimated server clock; events are queued with
@@ -123,6 +126,9 @@
 --     RUN buttons (portrait) or left of the jump button (landscape); the menu column hides while fighting.
 --   * LEAVE (Champion Ring and boss raids; two presses -> "Forfeit"; a raid's first press says "No reward! Tap again"), the ring's
 --     next-round side card, the result card (bottom right; top right on phones) with "Lives left" and the dungeon's lines.
+--   * AreaWarn (bug batch 6): a raid fighter out of the fight area sees "Back to the fight! 3" (+ "Or you leave the raid."), counting
+--     3, 2, 1 on the client (it holds 1: the server decides when it ends); wide screens: centred under the top card; phones (the top band
+--     is full there): over the top card, which it covers whole for those seconds.
 -- * Prediction: a press starts its button's ring at once and records St.pending; the matching event within 0.6 s
 --   confirms it, a rejected Order (owner-only) or the timeout puts the ring back and shakes the button. HP, numbers,
 --   kills and the meter are never predicted. Late joiners get their cooldowns from Start.Team.Cooldowns.
@@ -407,6 +413,12 @@ local K = {
 	LEAVE_W_TOP_RAID = 150, -- ...a raid's: "No reward! Tap again" reads in two lines
 	LEAVE_H_COMPACT = 46,
 	LEAVE_CARD_W = 230,
+	-- bug batch 6: the out-of-the-fight-area banner (AreaWarn), centred under the top band's cards
+	AREA_W = 460,
+	AREA_H = 74,
+	AREA_TEXT = 28,
+	AREA_TEXT_COMPACT = 22, -- a phone: the banner takes the top card's place (300 wide)
+	AREA_SUB_TEXT = 17,
 	-- wave 6: Cheer up! (Raid / Dungeon), right above the vitals card
 	CHEER_W = 150,
 	CHEER_H = 44,
@@ -525,6 +537,7 @@ local Ring = {} -- Phase 4: the Champion Ring HUD (round / record / next-round s
 local Leave = {} -- LEAVE (two presses -> BattleCommand "Forfeit"): Champion Ring runs and boss raids
 local CheerUp = {} -- wave 6: the Cheer up! button (BattleCommand "Cheer"): Raid / Dungeon fighters only
 local Retreat = {} -- evolved forms: the Retreat / Engage button and the R key: boss raid fighters only
+local AreaWarn = {} -- bug batch 6: the "Back to the fight! 3" banner (BattleState "Area": out of a raid's fight area)
 local Me = {} -- Phase 5: my fighter at the character's shoulder, my helpers behind me, the camera shake
 local Atk = {} -- pet attack VFX: client/Controllers/AttackFx first (the cube Fx.* as the fallback) + the battle poses
 
@@ -5462,6 +5475,7 @@ function Hud.BuildActions()
 	Hud.leave = Leave.Make(Hud.root, 20)
 	CheerUp.Make(Hud.root)
 	Retreat.Make(Hud.root)
+	AreaWarn.Make(Hud.root)
 end
 
 ----------------------------------------------------------------------
@@ -5781,6 +5795,7 @@ function Hud.Rebuild()
 		Leave.Place(m, nil, false)
 		CheerUp.Place(m, nil, false)
 		Retreat.Place(m, nil, false)
+		AreaWarn.Hide()
 		return
 	end
 	local isFighting = B.Fighter and not B.ended
@@ -5847,6 +5862,7 @@ function Hud.Rebuild()
 	Leave.Place(m, B, isFighting)
 	CheerUp.Place(m, B, isFighting)
 	Retreat.Place(m, B, isFighting)
+	AreaWarn.Place(m, B)
 	Ring.PlaceNext(B)
 	Hud.FixText(Hud.root, m.F)
 	Hud.last = {}
@@ -6411,6 +6427,7 @@ function Hud.Update(B, now, force)
 	Input.CheckPending(B, now)
 	CheerUp.Update(B, now)
 	Retreat.Update(B, now)
+	AreaWarn.Update(B, now)
 	for kind, A in pairs(Hud.buttons) do
 		local frac, color, countText = 1, COLORS.Action[kind], ""
 		if kind == "Element" or kind == "Dash" then
@@ -6745,6 +6762,7 @@ function Hud.ShowResult(B, payload)
 	Leave.Place(m, nil, false)
 	CheerUp.Place(m, nil, false)
 	Retreat.Place(m, nil, false)
+	AreaWarn.Hide()
 	local keep = St.result and St.result.payload == payload and St.result.t0 -- a relayout (rotation) keeps the timer
 	St.result = { t0 = keep or os.clock(), dur = K.RESULT_SECONDS, battle = B, payload = payload }
 	Me.MouseHold("BattleResult", true) -- the cursor is free for the card's OK
@@ -6857,6 +6875,7 @@ function Hud.SetVisible(on)
 		end
 		CheerUp.Place(Hud.m or {}, nil, false)
 		Retreat.Place(Hud.m or {}, nil, false)
+		AreaWarn.Hide()
 	end
 end
 
@@ -7267,6 +7286,141 @@ function Retreat.Update(B, now)
 	local a = pulse and (0.25 + 0.25 * sin(now * K.RETREAT_PULSE)) or 0
 	if abs(R.Stroke.Transparency - a) > 0.02 then
 		R.Stroke.Transparency = a
+	end
+end
+
+----------------------------------------------------------------------
+-- bug batch 6: OUT OF THE FIGHT AREA (boss raid fighters). The server watches where my character is (BattleService Raid.watchArea:
+-- the floor with its podium wall, or the Raid pocket's sand, + a 4-stud slack) and after 0.5 s outside sends BattleState "Area"
+-- { Out = true, Left = 3 }; Left seconds later it takes me out of the raid exactly as LEAVE does, unless I step back in ({ Out =
+-- false }). The banner only shows what the server said: "Back to the fight! 3", 2, 1 on the client clock, holding 1 until the
+-- server's End or Out = false. Wide screens: centred, its top just under whatever the top band holds in its column (the top card
+-- with the boss bar, the fighter's cards, the enemy list, the currency pills, LEAVE). Phones (Compact): the top band has no room
+-- left (under it is the screen's middle), so the banner lies over the top card, a little bigger than it, for those seconds.
+----------------------------------------------------------------------
+function AreaWarn.Make(parent)
+	local b = label(parent, "", "Title", K.AREA_TEXT, { Name = "AreaWarn", AnchorPoint = Vector2.new(0.5, 0), Size = UDim2.fromOffset(K.AREA_W, K.AREA_H), TextYAlignment = Enum.TextYAlignment.Top, TextColor3 = COLORS.White, BackgroundColor3 = Theme.Darken(COLORS.Enemy, 0.35), BackgroundTransparency = 0.08, Visible = false, ZIndex = 7 })
+	b:SetAttribute("BaseText", K.AREA_TEXT)
+	Theme.Corner(b, UDim.new(0, 14))
+	Theme.Stroke(b, COLORS.Alert, 3, 0)
+	make("UIPadding", { PaddingTop = UDim.new(0, 8) }, b)
+	local sub = label(b, "Or you leave the raid.", "Body", K.AREA_SUB_TEXT, { Name = "Sub", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -6), Size = UDim2.new(1, -16, 0, 24), TextColor3 = COLORS.Alert, TextWrapped = true, ZIndex = 8 })
+	sub:SetAttribute("BaseText", K.AREA_SUB_TEXT)
+	Hud.area = b
+	return b
+end
+
+-- the server's "Area" message for the drawn battle (another battle's, a spectator's or an ended one's is ignored)
+function AreaWarn.Set(payload, battleId)
+	local B = St.battle
+	if type(payload) ~= "table" or not B or not B.Fighter or B.ended or B.Mode ~= "Raid" then
+		return
+	end
+	local id = payload.BattleId or battleId
+	if id ~= B.Id then
+		return
+	end
+	if payload.Out ~= true then
+		AreaWarn.Hide()
+		return
+	end
+	local left = clamp(floor(num(payload.Left, 3) + 0.5), 1, 9)
+	AreaWarn.battleId = B.Id
+	AreaWarn.untilT = os.clock() + left
+	AreaWarn.shown = nil
+	if Hud.m then
+		AreaWarn.Place(Hud.m, B)
+		Hud.FixText(Hud.area, Hud.m.F)
+	end
+	AreaWarn.Update(B, os.clock())
+end
+
+function AreaWarn.Hide()
+	AreaWarn.untilT = nil
+	AreaWarn.battleId = nil
+	AreaWarn.shown = nil
+	if Hud.area then
+		Hud.area.Visible = false
+	end
+end
+
+-- a design-px rect { x0, y0, x1, y1 } of a shown HUD part placed by offsets (its AnchorPoint applied), nil when hidden
+function AreaWarn.rectOf(obj, m)
+	if not obj or not obj.Visible then
+		return nil
+	end
+	local p, sz, a = obj.Position, obj.Size, obj.AnchorPoint
+	local w, h = sz.X.Offset + sz.X.Scale * m.W, sz.Y.Offset + sz.Y.Scale * m.H
+	local x = p.X.Offset + p.X.Scale * m.W - a.X * w
+	local y = p.Y.Offset + p.Y.Scale * m.H - a.Y * h
+	return { x, y, x + w, y + h }
+end
+
+-- centred; its top under every top-band part in its column (each push can uncover another: a few passes)
+function AreaWarn.Place(m, B)
+	local b = Hud.area
+	if not b then
+		return
+	end
+	if not B or B ~= St.battle or AreaWarn.battleId ~= B.Id or AreaWarn.untilT == nil then
+		b.Visible = false
+		return
+	end
+	local size = (m.Compact and Hud.topRect and Hud.top.Visible) and K.AREA_TEXT_COMPACT or K.AREA_TEXT
+	if b:GetAttribute("BaseText") ~= size then
+		b:SetAttribute("BaseText", size)
+		b.TextSize = size
+	end
+	if size == K.AREA_TEXT_COMPACT then
+		local r = Hud.topRect
+		b.Size = UDim2.fromOffset(r[3] - r[1] + 8, r[4] - r[2] + 8)
+		b.Position = UDim2.fromOffset((r[1] + r[3]) / 2, r[2] - 4)
+		b.Visible = true
+		return
+	end
+	local w = min(K.AREA_W, m.W - 2 * K.EDGE)
+	local h = K.AREA_H
+	local x0, x1 = m.W / 2 - w / 2, m.W / 2 + w / 2
+	local rects = {}
+	for _, obj in ipairs({ Hud.top, Hud.team, Hud.enemies, Hud.leave }) do
+		rects[#rects + 1] = AreaWarn.rectOf(obj, m)
+	end
+	local curBottom, curLeft, curRight = Hud.CurrencyTop(m)
+	if curBottom > 0 then
+		rects[#rects + 1] = { curLeft, 0, curRight, curBottom }
+	end
+	local y = K.EDGE
+	for _ = 1, 6 do
+		local moved = false
+		for _, r in ipairs(rects) do
+			if r[1] < x1 and r[3] > x0 and r[2] < y + h + 8 and r[4] + 8 > y then
+				y = r[4] + 8
+				moved = true
+			end
+		end
+		if not moved then
+			break
+		end
+	end
+	b.Size = UDim2.fromOffset(w, h)
+	b.Position = UDim2.fromOffset(m.W / 2, y)
+	b.Visible = true
+end
+
+-- 10 Hz: 3, 2, 1 (holds 1); a banner of a battle no longer drawn goes
+function AreaWarn.Update(B, now)
+	local b = Hud.area
+	if not b or AreaWarn.untilT == nil then
+		return
+	end
+	if not B or B ~= St.battle or B.ended or AreaWarn.battleId ~= B.Id then
+		AreaWarn.Hide()
+		return
+	end
+	local secs = max(1, math.ceil(AreaWarn.untilT - now - 1e-6))
+	if AreaWarn.shown ~= secs then
+		AreaWarn.shown = secs
+		setText(b, "Back to the fight! " .. secs)
 	end
 end
 
@@ -9393,6 +9547,7 @@ function Net.End(payload, battleId)
 	end
 	B.ended = true
 	B.endAt = os.clock()
+	AreaWarn.Hide()
 	Net.RaidEnd(B)
 	Atk.EndSoon(B) -- (when the sim's End event has not played: the grace starts now, the cheers wait for it)
 	Input.Bind(false)
@@ -9444,6 +9599,8 @@ function BattleController.HandleState(kind, payload, battleId)
 		Net.Events(payload, battleId)
 	elseif kind == "End" then
 		Net.End(payload, battleId)
+	elseif kind == "Area" then
+		AreaWarn.Set(payload, battleId)
 	end
 end
 
