@@ -805,6 +805,15 @@
         "IsOpen"
       ]
     },
+    "client/Controllers/TrainController": {
+      "optional": true,
+      "functions": [
+        "Init",
+        "Open",
+        "Close",
+        "IsOpen"
+      ]
+    },
     "client/Controllers/HomePortalFx": {
       "optional": true,
       "functions": [

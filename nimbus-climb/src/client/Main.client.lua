@@ -43,7 +43,8 @@ local CONTROLLER_NAMES = {
 	"ArenaController",
 	"RaidGateController", -- boss raids: the idle boss on the colosseum floor, the gate tag, the dare panel
 	-- Phase 4 (ARCHITECTURE_V3.md "Phase 4 build contract")
-	"CareController", -- Food Machine feed list, garden picker, Training Place window, the EVOLVE moment
+	"CareController", -- Food Machine feed list, garden picker, the EVOLVE moment (Train forwards to TrainController)
+	"TrainController", -- gui-redo Task 7: the Training Place window (big pet card, four skill cards, its own confirm)
 	"HomePortalFx", -- the home portal and the arrival ring
 	-- Phase 5 (ARCHITECTURE_V3.md "Phase 5 build contract" 5.6, 6.3)
 	"DungeonController", -- the Dungeon window, run cards, chest prompt, the dungeon lighting preset
@@ -69,7 +70,7 @@ local OPTIONAL = { PetsController = true, SkyDragonController = true, IndexContr
 	ShowcaseController = true, DevController = true, DevPetShow = true,
 	HomeFx = true, FusionController = true,
 	BattleController = true, ArenaController = true, RaidGateController = true,
-	CareController = true, HomePortalFx = true,
+	CareController = true, TrainController = true, HomePortalFx = true,
 	MainMenuController = true, DungeonController = true, ObbyController = true, FountainFx = true,
 	MeadowFx = true, RingCrowdFx = true, DungeonFx = true,
 	RingAmbience = true,
