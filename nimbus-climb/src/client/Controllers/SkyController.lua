@@ -24,8 +24,9 @@
 --     (Night, the eclipse raid) LightingStack.Push("SkyLift") over 1.5 s, popped over 1.5 s after the fight / at dawn
 --   * the lamps (Config.Sky.Lamps): the lobby's LampGlass / LanternLight / StallLight / DomeGlow / TroveGlow PointLights
 --     glow x1.4 under a dark look and dim to x0.35 under every other (bug batch 6: they burned at full strength all day),
---     never over 1.5; written on a look change, and on a lamp that arrives under the lobby later; no clock / Stop = their
---     own value
+--     never over 1.5; written on a look change, and on a lamp that arrives under the lobby later; each lamp's own value
+--     is kept on the light (attribute Lamps.BaseAttr, never a Lua-only weak cache: a lost base made the written value
+--     the next one); no clock / Stop = their own value
 --   * the fireflies (Config.Sky.Fireflies): at Night on High graphics a few emitters round the lobby trees (one local
 --     folder, capped); none on Low (GraphicsQuality.Effective()) or by day
 --   * Low graphics: GraphicsQuality.Recap after each applied refresh (the GfxLow cloud cap follows the sky, updated in
@@ -79,8 +80,7 @@ local St = {
 	Seg = nil, -- the clock segment applied last (a phase name or a raid boss id)
 	Clock = nil, -- the ClockTime applied last
 	Lift = false,
-	LampLook = nil, -- the look the lamps were written for
-	LampBase = setmetatable({}, { __mode = "k" }), -- [PointLight] = its own Brightness (while written)
+	LampLook = nil, -- the look the lamps were written for (each lamp's own Brightness: attribute Config.Sky.Lamps.BaseAttr)
 	LampRoot = nil, -- the lobby root watched for lamps that arrive later ...
 	LampConn = nil, -- ... and its DescendantAdded connection (dropped with the clock / on Stop)
 	Lamps = 0,
@@ -222,30 +222,40 @@ end
 ----------------------------------------------------------------------
 
 local function restoreLamps()
+	local attr = cfg().Lamps.BaseAttr
+	local root = St.LampRoot
 	if St.LampConn then
 		St.LampConn:Disconnect()
-		St.LampConn, St.LampRoot = nil, nil
 	end
-	for light, brightness in pairs(St.LampBase) do
-		pcall(function()
-			light.Brightness = brightness
-		end)
+	St.LampConn, St.LampRoot = nil, nil
+	if root then
+		for _, d in ipairs(root:GetDescendants()) do
+			local base = d:IsA("PointLight") and d:GetAttribute(attr)
+			if finite(base) then
+				pcall(function()
+					d.Brightness = base
+					d:SetAttribute(attr, nil)
+				end)
+			end
+		end
 	end
-	St.LampBase = setmetatable({}, { __mode = "k" })
 	St.Lamps = 0
 end
 
--- one lamp under the look in St.LampLook: its own value x Night (a dark look) or x Day, never over Max
+-- one lamp under the look in St.LampLook: its own value x Night (a dark look) or x Day, never over Max. The own value
+-- is kept on the light (BaseAttr) the first time, so it never becomes a written one (no x0.35 on x0.35)
 local function writeLamp(d)
 	local C = cfg().Lamps
 	if not (d:IsA("PointLight") and d.Parent and C.Names[d.Parent.Name]) then
 		return false
 	end
-	if St.LampBase[d] == nil then
-		St.LampBase[d] = d.Brightness
+	local base = d:GetAttribute(C.BaseAttr)
+	if not finite(base) then
+		base = d.Brightness
+		d:SetAttribute(C.BaseAttr, base)
 	end
 	local k = C.Looks[St.LampLook] and C.Night or C.Day
-	d.Brightness = math.min(St.LampBase[d] * k, C.Max)
+	d.Brightness = math.min(base * k, C.Max)
 	return true
 end
 

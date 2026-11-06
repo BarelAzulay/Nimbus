@@ -709,6 +709,9 @@ Config.Sky = {
 		Day = 0.35,
 		Max = 1.5,
 		Looks = { Night = true, shadow_hydra = true },
+		-- the client keeps each lamp's own value on the light itself in this attribute (local, never replicated) while it
+		-- is written: a Lua-only weak cache could lose it, and the written value would become the next base
+		BaseAttr = "SkyLampBase",
 	},
 	-- a few soft fireflies round the lobby trees (models named "...Tree" under workspace.<Root>) under the Looks, on
 	-- High graphics only: one local folder, at most Max emitters (one per tree), the default sparkle, pale

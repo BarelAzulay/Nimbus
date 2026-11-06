@@ -55,6 +55,9 @@
 --                      (0.35) by day / Dawn / a bright raid sky, min(x Night (1.4), 1.5) at Night and under the eclipse raid,
 --                      their own value with no clock and after Stop; a lamp added later takes the look at once; other
 --                      lights and the gate light untouched; written on a look change only
+--   client_sky_lamps_base_kept (client; bug batch 6 review) the controller's weak tables emptied (a GC) between the look
+--                      changes: Day / Sunset / Night / Dawn still write x0.35 / min(x1.4, 1.5) of the built value (never of
+--                      a written one) and Stop restores the built value
 --   client_sky_fireflies (client) Night + High graphics -> one capped emitter group near the lobby trees; Low -> none;
 --                      Day -> none
 --   client_gfx_cloud_cap (client) GfxLow Clouds Density = min(0.4, the cycle's), Recap follows the moving base
@@ -1354,6 +1357,57 @@ local function clientScenarios()
 		end)
 		cleanup()
 		T.check(ok, "client_sky_lamps body", tostring(err))
+	end)
+
+	-- bug batch 6 review: a lamp's own value must survive the look changes even when the controller's Lua tables lose it
+	-- (a weak-keyed cache whose PointLight keys no script holds can be emptied by a GC). Lost, the written value became the
+	-- next base: x0.35 on x0.35 by day, x1.4 on that at night, and Stop restored nothing
+	S.client_sky_lamps_base_kept = withSky("client_sky_lamps_base_kept", function(SC, LS, SCy)
+		local box, cleanup = testLobby()
+		local C = Cfg.Sky.Lamps
+		local glass = lampPart(box, "LampGlass", 1.2)
+		local lantern = lampPart(box, "LanternLight", 0.8)
+		-- what a GC does to a weak-keyed table no script holds the keys of: every one in the controller's state emptied
+		local function forget()
+			for key, value in pairs(SC._St) do
+				local mt = type(value) == "table" and getmetatable(value)
+				if mt and type(mt.__mode) == "string" and mt.__mode:find("k") then
+					SC._St[key] = setmetatable({}, { __mode = mt.__mode })
+				end
+			end
+		end
+		local function both(factor)
+			local ok = near(glass.Brightness, math.min(1.2 * factor, C.Max)) and near(lantern.Brightness, math.min(0.8 * factor, C.Max))
+			return ok, fmt("%.3f %.3f", glass.Brightness, lantern.Brightness)
+		end
+		local ok, err = pcall(function()
+			publish(300) -- Day
+			SC.Refresh()
+			local okDay, day = both(C.Day)
+			T.check(okDay, "Day: x0.35 of the built value", day)
+			forget()
+			publish(700) -- Sunset: another look, the same day value
+			SC.Refresh()
+			local okSunset, sunset = both(C.Day)
+			T.check(okSunset, "Sunset after the cache was lost: x0.35 of the built value again (not x0.35 twice)", sunset)
+			forget()
+			publish(1100) -- Night
+			SC.Refresh()
+			local okNight, night = both(C.Night)
+			T.check(okNight, "Night after the cache was lost: min(x1.4, 1.5) of the built value", night)
+			forget()
+			publish(100) -- Dawn
+			SC.Refresh()
+			local okDawn, dawn = both(C.Day)
+			T.check(okDawn, "Dawn after the cache was lost: x0.35 of the built value (not of the night one)", dawn)
+			forget()
+			SC.Stop()
+			local okStop, stop = both(1)
+			T.check(okStop, "Stop after the cache was lost: every lamp back to its built value", stop)
+			SC.Start()
+		end)
+		cleanup()
+		T.check(ok, "client_sky_lamps_base_kept body", tostring(err))
 	end)
 
 	S.client_sky_fireflies = withSky("client_sky_fireflies", function(SC, LS, SCy)
