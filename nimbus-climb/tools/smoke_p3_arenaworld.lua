@@ -1492,4 +1492,157 @@ S.p3arena_mesh = guarded("p3arena_mesh", function()
 end)
 -- [owner: art-arenadungeon] end
 
+----------------------------------------------------------------------------------------------------
+-- scenario: bug batch 6 (the owner: "this gate is too interupting, make it smaller and on the side not in the way
+-- blocking everything"): the forum's "To the Plaza" gate at 0.6 size beside the arrival, out of the avenue
+----------------------------------------------------------------------------------------------------
+-- the box of every BasePart under `root` (or of one part), in `frame`'s space: { x0, x1, y0, y1, z0, z1 }
+local function boxIn(frame, root)
+	local b = { huge, -huge, huge, -huge, huge, -huge }
+	local parts = root:IsA("BasePart") and { root } or partsOf(root)
+	for _, p in ipairs(parts) do
+		local h = p.Size / 2
+		for _, sx in ipairs({ -1, 1 }) do
+			for _, sy in ipairs({ -1, 1 }) do
+				for _, sz in ipairs({ -1, 1 }) do
+					local c = frame:PointToObjectSpace((p.CFrame * CFrame.new(sx * h.X, sy * h.Y, sz * h.Z)).Position)
+					b[1], b[2] = min(b[1], c.X), max(b[2], c.X)
+					b[3], b[4] = min(b[3], c.Y), max(b[4], c.Y)
+					b[5], b[6] = min(b[5], c.Z), max(b[6], c.Z)
+				end
+			end
+		end
+	end
+	return b
+end
+
+local function boxesTouch(a, b, slack)
+	return a[1] < b[2] - slack and b[1] < a[2] - slack and a[3] < b[4] - slack and b[3] < a[4] - slack and a[5] < b[6] - slack and b[5] < a[6] - slack
+end
+
+-- name|size|offset from the GlowCore of every part, sorted (the same gate part for part)
+local function gateLayout(gate)
+	local core = gate:FindFirstChild("GlowCore")
+	local out = {}
+	for _, p in ipairs(partsOf(gate)) do
+		local l = core.CFrame:PointToObjectSpace(p.Position)
+		out[#out + 1] = string.format("%s|%.3f,%.3f,%.3f|%.3f,%.3f,%.3f", p.Name, p.Size.X, p.Size.Y, p.Size.Z, l.X, l.Y, l.Z)
+	end
+	table.sort(out)
+	return table.concat(out, ";")
+end
+
+S.arena_return_side = guarded("arena_return_side", function()
+	if not K.needBoot() then
+		return
+	end
+	local AB = arenaBuilder()
+	local WS = K.M["shared/WorldStyle"]
+	local info = AB and AB.GetInfo()
+	if not T.check(type(info) == "table" and info.Model and WS and type(WS.BuildGate) == "function", "return side: the arena and WorldStyle are built") then
+		return
+	end
+	local model, A = info.Model, info.Center
+	local gate = model:FindFirstChild("Portal_Return", true)
+	local prompt = gate and gate:FindFirstChild("ArenaReturnPrompt", true)
+	if not T.check(gate ~= nil and prompt ~= nil and AB.InArena(gate:GetPivot().Position), "return side: Portal_Return still carries ArenaReturnPrompt, on the island") then
+		return
+	end
+	local tag = gate:FindFirstChild("GateTag", true)
+	local title = tag and tag:FindFirstChild("Title", true)
+	T.check(title ~= nil and title.Text == "To the Plaza" and gate:GetAttribute("GateId") == "Return" and gate:GetAttribute("Glyph") == "house", "return side: the same gate (Title, house crest, GateId Return)")
+
+	-- out of the avenue: clear of its Marble borders (|x| <= 10.6 + 0.6) and of the arrival star on it, off the front promenade
+	local star = model:FindFirstChild("ArrivalStar", true)
+	local frontZ = star and A:PointToObjectSpace(star.Position).Z - 22 or -205
+	local ext = boxIn(A, gate)
+	T.check(ext[2] < -11.2 or ext[1] > 11.2, "return side: the whole gate stands beside the avenue (clear of |x| <= 11.2: the borders and the arrival star)", string.format("x %.1f .. %.1f", ext[1], ext[2]))
+	local pivot = A:PointToObjectSpace(gate:GetPivot().Position)
+	T.check(abs(pivot.X) >= 24, "return side: its centre is 24+ studs to the side of the avenue's axis", string.format("x %.1f", pivot.X))
+	T.check(ext[5] >= frontZ + 5, "return side: it stays off the promenade along the island's front edge", string.format("z0 %.1f, front %.1f", ext[5], frontZ))
+	T.check((gate:GetPivot().Position - info.Spawn.Position).Magnitude <= 40, "return side: easy to find, within 40 studs of the arrival (ArenaInfo.Spawn)", string.format("%.1f", (gate:GetPivot().Position - info.Spawn.Position).Magnitude))
+	-- it faces the avenue by the arrival: its front (-Z) within 30 degrees of (0, FrontZ + 30)
+	local look = A:VectorToObjectSpace(gate:GetPivot().LookVector)
+	local to = Vector3.new(0 - pivot.X, 0, frontZ + 30 - pivot.Z)
+	local flat = Vector3.new(look.X, 0, look.Z)
+	T.check(flat.Magnitude > 0.9 and flat.Unit:Dot(to.Unit) >= math.cos(math.rad(30)), "return side: its front faces the avenue beside the arrival", string.format("dot %.2f", flat.Magnitude > 0 and flat.Unit:Dot(to.Unit) or 0))
+
+	-- 0.6 x a full-size gate of the same spec on every axis (measured in each gate's own frame)
+	local folder = Instance.new("Folder")
+	folder.Name = "ReturnSideRef"
+	folder.Parent = workspace
+	local spec = { Id = "RefReturn", Title = "To the Plaza", Info = "Homes, gates, shop", Color = "Green", Glyph = "house", Pad = false }
+	local full = WS.BuildGate(folder, CFrame.new(3600, 600, 2600), spec)
+	local fb = boxIn(full:FindFirstChild("GlowCore").CFrame, full)
+	local sb = boxIn(gate:FindFirstChild("GlowCore").CFrame, gate)
+	local ratios = {}
+	for i = 1, 5, 2 do
+		ratios[#ratios + 1] = (sb[i + 1] - sb[i]) / (fb[i + 1] - fb[i])
+	end
+	local ratioOk = true
+	for _, r in ipairs(ratios) do
+		ratioOk = ratioOk and r >= 0.55 and r <= 0.65
+	end
+	T.check(ratioOk, "return side: 0.55..0.65 x the full gate on every axis", string.format("%.3f / %.3f / %.3f", ratios[1], ratios[2], ratios[3]))
+	T.check(gate:GetAttribute("GateScale") == 0.6 and gate:GetAttribute("ML_Scale") == 0.6, "return side: GateScale and ML_Scale 0.6 (the Blender gate mesh and the vortex dress at the same size)", tostring(gate:GetAttribute("ML_Scale")))
+	local light = gate:FindFirstChild("GateLight", true)
+	T.check(light ~= nil and abs(light.Range - 16.8) < 1e-6 and abs(light.Brightness - 1.3) < 1e-6, "return side: the GateLight reaches 0.6 x 28 = 16.8 (brightness kept)", light and string.format("%.2f", light.Range))
+	local sparkles = gate:FindFirstChild("Sparkles", true)
+	local top = 0
+	for _, kp in ipairs(sparkles and sparkles.Size.Keypoints or {}) do
+		top = max(top, kp.Value)
+	end
+	T.check(sparkles ~= nil and abs(top - 0.54) < 1e-6 and abs(sparkles.Speed.Max - 2.1) < 1e-6, "return side: the sparkles are 0.6 x as big and fast", string.format("size %.2f", top))
+	-- the tag: 0.6 x 27 studs over the site, at its pixel size (World text rule)
+	if tag and tag.Adornee then
+		local site = gate:GetPivot() * CFrame.new(0, -11.5 * 0.6, 0)
+		local anchorY = tag.Adornee.Position.Y + tag.StudsOffsetWorldSpace.Y
+		T.check(abs(anchorY - (site.Y + 16.2)) < 0.05 and abs(site.Y - A.Y) < 0.05, "return side: the tag sits 16.2 studs over the ground", string.format("%.2f", anchorY - site.Y))
+		T.check(title and title.TextSize == 28 and tag.Size.X.Offset > 0, "return side: the tag keeps its pixel size")
+	end
+
+	-- nothing of the forum's decor (banner poles, lanterns, torches, hedges, planters, trees) or a duel ring in it
+	local hits = {}
+	local others = {}
+	local decor = model:FindFirstChild("ForumDecor", true)
+	if decor then
+		others[#others + 1] = decor
+	end
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("Model") and d.Name:sub(1, 9) == "DuelRing_" then
+			others[#others + 1] = d
+		end
+	end
+	for _, root in ipairs(others) do
+		for _, p in ipairs(partsOf(root)) do
+			local pb = boxIn(A, p)
+			for _, gp in ipairs(partsOf(gate)) do
+				if boxesTouch(boxIn(A, gp), pb, 0.05) then
+					hits[#hits + 1] = gp.Name .. " x " .. p:GetFullName()
+					break
+				end
+			end
+			if #hits >= 5 then
+				break
+			end
+		end
+	end
+	T.check(decor ~= nil and #hits == 0, "return side: it overlaps no forum decor and no duel ring", table.concat(hits, "; "))
+
+	-- BuildGate without Scale (and Scale = 1) is today's gate part for part; junk and extremes clamp to 0.3 .. 1
+	local same = WS.BuildGate(folder, CFrame.new(3600, 600, 2700), { Id = "RefReturn", Title = "To the Plaza", Info = "Homes, gates, shop", Color = "Green", Glyph = "house", Pad = false, Scale = 1 })
+	T.check(gateLayout(same) == gateLayout(full) and full:GetAttribute("GateScale") == nil and full:GetAttribute("ML_Scale") == nil, "return side: no Scale / Scale 1 = today's gate (same parts, sizes and offsets, no scale attributes)")
+	local fullLight = full:FindFirstChild("GateLight", true)
+	T.check(fullLight and fullLight.Range == 28, "return side: a full gate keeps GateLight Range 28")
+	for _, c in ipairs({ { 5, 1 }, { 0.1, 0.3 }, { "junk", 1 }, { -2, 0.3 } }) do
+		local g = WS.BuildGate(folder, CFrame.new(3600, 600, 2800), { Id = "Clamp", Glyph = "house", Color = "Green", Scale = c[1] })
+		local gl = g:FindFirstChild("GateLight", true)
+		T.check(gl and abs(gl.Range - 28 * c[2]) < 1e-6, "return side: Scale " .. tostring(c[1]) .. " -> " .. c[2], gl and string.format("%.2f", gl.Range))
+		g:Destroy()
+	end
+	folder:Destroy()
+	K.flushErrors("arena_return_side")
+	K.flushWarnings("arena_return_side")
+end)
+
 return S

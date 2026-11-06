@@ -22,7 +22,10 @@
 --       siteCFrame = ground CFrame of the gate centre, LookVector toward the plaza (the gate's front, local -Z).
 --       spec = { Id, Title, Info, Color (Palette.Accent name | Theme.Neon name | Color3), Glyph = "house" | "cloud" |
 --                "torch" | "crown" | "swords" | "bolt", Pad = bool, Name = "Portal_<Id>", Pill = text (optional),
---                Stars = 0..5 (the "cloud" star crest, default 5), Accent = Color3 (the crowned arch's glow) }
+--                Stars = 0..5 (the "cloud" star crest, default 5), Accent = Color3 (the crowned arch's glow),
+--                Scale = 0.3..1 (default 1; bug batch 6: the arena's Return gate is 0.6): a smaller gate, every part's size and
+--                offset from the site, GateLight's Range, the sparkles and the tag's lift times Scale, the tag's pixel size kept;
+--                attributes GateScale and ML_Scale (the Blender mesh and the vortex dress at that size) }
 --       Shape by glyph: "crown" = the P4 Champion Ring crowned square arch (gold trim, violet glow, crown baked into
 --       the voxels); every other glyph = the round hoop: a stone base, two stone pillars with coloured caps and a
 --       glowing dot, a chunky pixel ring whose outer band is the gate colour around a white cloud frame, an inner Neon
@@ -835,8 +838,9 @@ local function keepList(keep)
 	return table.concat(names, ",")
 end
 
--- model pivot = GlowCore (SwirlY up the site): ML_Offset puts the mesh origin back on the site
-local function tagGateMesh(model, key, color, stars)
+-- model pivot = GlowCore (SwirlY x scale up the site): ML_Offset puts the mesh origin back on the site, ML_Scale (a
+-- smaller gate only) dresses the mesh at the gate's size
+local function tagGateMesh(model, key, color, stars, scale)
 	local ML = meshLibrary()
 	if not ML then
 		return
@@ -848,7 +852,10 @@ local function tagGateMesh(model, key, color, stars)
 			keep[d.Name] = true
 		end
 	end
-	ML.Tag(model, key, { Primary = color, Stars = stars, Offset = CFrame.new(0, -GATE.SwirlY, 0) }, keep)
+	ML.Tag(model, key, { Primary = color, Stars = stars, Offset = CFrame.new(0, -GATE.SwirlY * scale, 0) }, keep)
+	if scale < 1 then
+		model:SetAttribute("ML_Scale", scale)
+	end
 	model.DescendantAdded:Connect(function(d)
 		if d:IsA("BasePart") and not hide[d.Name] and not keep[d.Name] and model:GetAttribute("ML_DressKey") == key then
 			keep[d.Name] = true
@@ -863,6 +870,31 @@ local function popSize(maxSize)
 		NumberSequenceKeypoint.new(0.3, maxSize),
 		NumberSequenceKeypoint.new(1, 0),
 	})
+end
+
+-- bug batch 6 (the arena's Return gate): a gate built at full size, then scaled about its site by s (< 1): every
+-- part's size and offset from the site, the light's range, the sparkles' size and speed and the tag's lift. The tag
+-- keeps its pixel size (World text rule).
+local function scaleGate(model, site, s)
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("BasePart") then
+			local rel = site:ToObjectSpace(d.CFrame)
+			d.Size = d.Size * s
+			d.CFrame = site * CFrame.new(rel.Position * s) * rel.Rotation
+		elseif d:IsA("PointLight") then
+			d.Range = d.Range * s
+		elseif d:IsA("ParticleEmitter") then
+			local keys = {}
+			for i, k in ipairs(d.Size.Keypoints) do
+				keys[i] = NumberSequenceKeypoint.new(k.Time, k.Value * s, k.Envelope * s)
+			end
+			d.Size = NumberSequence.new(keys)
+			d.Speed = NumberRange.new(d.Speed.Min * s, d.Speed.Max * s)
+		elseif d:IsA("BillboardGui") then
+			d.StudsOffsetWorldSpace = d.StudsOffsetWorldSpace * s
+		end
+	end
+	model:SetAttribute("GateScale", s)
 end
 
 function WorldStyle.BuildGate(parent, siteCFrame, spec)
@@ -951,8 +983,12 @@ function WorldStyle.BuildGate(parent, siteCFrame, spec)
 
 	buildTag(core, GATE.TagLift - GATE.SwirlY, spec, color)
 	model.PrimaryPart = core
+	local scale = max(0.3, min(1, tonumber(spec.Scale) or 1))
+	if scale < 1 then
+		scaleGate(model, site, scale)
+	end
 	local stars = (shape == "Hoop" and not (Crest[glyph] and glyph ~= "cloud")) and max(0, min(5, floor(tonumber(spec.Stars) or 5))) or nil
-	tagGateMesh(model, WorldStyle.GateMeshKey(shape, glyph), color, stars)
+	tagGateMesh(model, WorldStyle.GateMeshKey(shape, glyph), color, stars, scale)
 	model.Parent = parent
 	return model, pad, promptPart
 end

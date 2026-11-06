@@ -171,6 +171,18 @@ S.p6portalfx_curves = guarded("p6portalfx_curves", function()
 		ids.vortex_arms = nil
 		T.eq(PV.Mode(ids), "Fallback", "...one missing id falls back")
 		T.check(PV.K.ARMS_SPEED > 0 and PV.K.FINE_SPEED > PV.K.ARMS_SPEED and PV.K.CRACKLE_GAP[1] >= 0.5, "two speeds (the fine layer faster), crackles at least 0.5 s apart (soft, no strobe)")
+		-- bug batch 6: a smaller gate (GateScale 0.6, the arena's Return gate) pads the textured disc under its thinner
+		-- glow ring by as much less, so the rim never shows past the ring
+		local m = Instance.new("Model")
+		m:SetAttribute("GateShape", "Hoop")
+		local rec = { Origin = CFrame.new(), Model = m, Swirl = { { Part = { Position = Vector3.new(0, 0, 0), Size = Vector3.new(10, 10, 0.4) } } } }
+		local full = PV.Layout(rec, "Texture")
+		m:SetAttribute("GateScale", 0.6)
+		rec.Swirl[1].Part.Size = Vector3.new(6, 6, 0.24)
+		local small = PV.Layout(rec, "Texture")
+		T.check(math.abs(full.Radius - (5 + PV.K.RIM_PAD)) < 1e-6 and math.abs(small.Radius - 0.6 * full.Radius) < 1e-6 and small.Behind,
+			"PortalVortex.Layout: a 0.6 gate's textured disc is 0.6 x as wide, rim pad included", string.format("%.3f vs %.3f", small.Radius, full.Radius))
+		m:Destroy()
 	end
 	T.check(not vsrc:find("CanCollide = true", 1, true) and vsrc:find("CanCollide = false", 1, true) ~= nil and vsrc:find("CanQuery = false", 1, true) ~= nil
 		and vsrc:find("CanTouch = false", 1, true) ~= nil, "the vortex planes never collide, query or touch")

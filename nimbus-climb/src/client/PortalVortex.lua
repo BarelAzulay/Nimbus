@@ -145,7 +145,9 @@ function PortalVortex.Layout(rec, mode)
 	local arch = rec.Model and rec.Model:GetAttribute("GateShape") == "Arch" or (h - w) > 1.5
 	arch = arch and true or false
 	local behind = mode == "Texture" and not arch
-	local radius = math.min(w, h) / 2 + (behind and K.RIM_PAD or 0)
+	-- a smaller gate (WorldStyle's GateScale, the arena's Return gate) has a thinner glow ring: the pad shrinks with it
+	local scale = rec.Model and tonumber(rec.Model:GetAttribute("GateScale")) or 1
+	local radius = math.min(w, h) / 2 + (behind and K.RIM_PAD * scale or 0)
 	return { Center = origin * CFrame.new(cx, cy, behind and -0.1 or -0.6), Radius = radius, Arch = arch, Behind = behind }
 end
 

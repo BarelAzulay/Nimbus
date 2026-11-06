@@ -2747,7 +2747,7 @@ local Gates = {
 }
 
 -- A Gate Court gate: WorldStyle.BuildGate (or a plain stand-in when WorldStyle is missing / throws) -> model, pad,
--- promptPart, the tag's pill label. spec = { Id, Title, Info, Color, Glyph, Pad, Pill }
+-- promptPart, the tag's pill label. spec = { Id, Title, Info, Color, Glyph, Pad, Pill, Scale (WorldStyle's gate only) }
 function Gates.build(parent, site, spec)
 	local model, pad, prompt = nil, nil, nil
 	if WorldStyle and type(WorldStyle.BuildGate) == "function" then
@@ -2759,6 +2759,7 @@ function Gates.build(parent, site, spec)
 			Glyph = spec.Glyph,
 			Pad = spec.Pad,
 			Pill = spec.Pill,
+			Scale = spec.Scale,
 			Name = "Portal_" .. spec.Id,
 		})
 		if ok then
@@ -2863,10 +2864,12 @@ function Gates.buildArena(lobbyInfo, fallbackParent)
 	return prompt, landing
 end
 
--- The Return gate on the forum (always built): lands in front of Portal_Arena (ArenaInfo.LobbyCFrame).
+-- The Return gate on the forum (always built): lands in front of Portal_Arena (ArenaInfo.LobbyCFrame). Bug batch 6 (the
+-- owner: "too interupting, make it smaller and on the side"): 0.6 size on the lawn 30 studs left of the arrival, out of the
+-- avenue and off the front promenade, its front turned to the avenue beside the arrival star (where everyone lands)
 function Gates.buildReturn(model, A)
-	local rSite = A * CFrame.new(0, 0, ISL.FrontZ + 34) * CFrame.Angles(0, pi, 0)
-	local gate, _, prompt = Gates.build(model, rSite, { Id = "Return", Title = "To the Plaza", Info = "Homes, gates, shop", Color = "Green", Glyph = "house", Pad = false })
+	local rSite = CFrame.lookAt((A * CFrame.new(-30, 0, ISL.FrontZ + 12)).Position, (A * CFrame.new(0, 0, ISL.FrontZ + 30)).Position)
+	local gate, _, prompt = Gates.build(model, rSite, { Id = "Return", Title = "To the Plaza", Info = "Homes, gates, shop", Color = "Green", Glyph = "house", Pad = false, Scale = 0.6 })
 	local p = makePrompt(prompt, "ArenaReturnPrompt", "Travel", "Plaza")
 	p.MaxActivationDistance = PROMPT_RANGE + 2
 	S.gatePrompts[p] = true
