@@ -64,6 +64,12 @@
 --     sends too (the pip shake).
 --   * ClaimPlay(tier): PlaySec >= Tiers[tier].Min x 60 and not yet claimed: the flag and the grant in one step
 --     ({ Kind = "Play", Tier }), paid right after; two servers at one PlayStart pay once (the (PlayStart, tier) merge).
+--   * ClaimPlayAll (gui-redo 5.4, the gift boxes' CLAIM ALL): every Ready tier in tier order through ClaimPlay's own
+--     quiet step (claimTier: each tier its own MutateDaily flag + grant, paid right after it; nothing yields), then ONE
+--     toast and ONE payload; Claimed fires once per tier. Toast: one tier = ClaimPlay's text; several = each pay text
+--     without its "!", joined with ", ", then ": n gifts!" ("+$2,160 Cash, +10 Gems: 2 gifts!"), or "n gifts claimed!"
+--     when that would pass 60 characters. None Ready: "No gifts ready yet!". The same refusals as ClaimPlay (loaded, a
+--     play-day that is over); the merge pays each (PlayStart, tier) once, as for ClaimPlay.
 --
 -- The 10-minute unlock and the hold (gui-redo, docs/superpowers/specs/2026-11-06-window-redo-design.md 5.3)
 --   * Every streak claim (a paid day, the Week Wisp, the first ever, a VIP's, the repair) needs Config.Daily.UnlockSeconds
@@ -84,8 +90,9 @@
 --   * Payload: Unlock = { Need = UnlockSeconds, Left = max(0, Need - live PlaySec) } (Loading: Left = Need). The tick sends
 --     a payload when the live PlaySec crosses UnlockSeconds (before < Need <= after), so CLAIM shows on time.
 --
--- Remote DailyRequest(action, tier): "Claim" (no second argument) / "ClaimPlay" (a whole 1..7). isPlayer, one request
--- per second per action, type checks, refused InMatch with a toast; junk is dropped without an answer (Z12).
+-- Remote DailyRequest(action, tier): "Claim" (no second argument) / "ClaimPlay" (a whole 1..7) / "ClaimPlayAll" (no
+-- second argument). isPlayer, one request per second per action (each action its own gap), type checks, refused InMatch
+-- with a toast; junk (any third argument too) is dropped without an answer and spends no gap (Z12).
 -- ProfileLoaded / ProfileRebased -> Send(player) (a Loading payload while provisional), NO Notify on load: nothing is
 -- announced on join (the client's pip waits PipDelaySeconds). The tick re-sends a payload whose StaleAt has passed;
 -- StoreService.Changed re-sends it when the VIP answer differs from the last payload's Vip.
@@ -97,6 +104,8 @@
 --   DailyService.Send(player)            fires DailyState(State(player)) to that client
 --   DailyService.Claim(player) -> ok, { Cell, Streak, Grant, StepBack } | reason
 --   DailyService.ClaimPlay(player, tier) -> ok, { Tier, Grant } | reason
+--   DailyService.ClaimPlayAll(player) -> ok, { Tiers = { tier... }, Grants = { grant | false... } } | reason
+--                                        (Grants[i] belongs to Tiers[i]; false = that tier paid nothing: a full Basket)
 --   DailyService.Tick()                  one play-time tick over every player
 --   DailyService.Claimed                 Util.Signal Fire(player, "Day" | "Play", cellOrTier, grant)
 --   DailyService._deps()                 test-only: the live deps table (a test swaps deps.StoreService for a double)
@@ -137,7 +146,11 @@ local TEXT = {
 	Unavailable = "Player unavailable",
 	Locked = "Play %d more min to unlock today's gift!", -- a ready streak claim before UnlockSeconds of play (gui-redo 5.3)
 	LockedRepair = "Play %d more min to repair your streak!", -- ...when that claim would only repair
+	NoneReady = "No gifts ready yet!", -- ClaimPlayAll with no Ready tier (gui-redo 5.4)
+	Gifts = "%s: %d gifts!", -- ClaimPlayAll, several tiers: the joined pay texts
+	GiftsShort = "%d gifts claimed!", -- ...when the joined text would pass GIFTS_MAX characters
 }
+local GIFTS_MAX = 60
 
 local deps = {}
 local active = {} -- [player] = { On = bool, LastRemote = os.clock() | nil }
@@ -772,6 +785,34 @@ function DailyService.Claim(player)
 	return true, { Cell = cell, Streak = streak, Grant = grant, StepBack = stepBack }
 end
 
+-- One play tier's claim, QUIET (ClaimPlay and ClaimPlayAll share it): `d` is the loaded record of a play-day that is not
+-- over. PlaySec >= the tier's minutes and not yet claimed: the flag and the grant in one MutateDaily step, paid right after
+-- (nothing yields between). Answers true, grant | nil, pay's text | nil, or false, reason. The caller toasts, fires
+-- Claimed and sends.
+local function claimTier(player, d, tier)
+	local t = playCfg().Tiers[tier]
+	local need = num(t.Min, 0) * 60
+	if d.PlayClaimed[tier] == true then
+		return false, TEXT.Already
+	end
+	if d.PlaySec < need then
+		return false, string.format(TEXT.NotYet, math.ceil((need - d.PlaySec) / 60))
+	end
+	local r = DailyService.Resolve(player, t, false)
+	local grant = grantOf(r, "Play", tier)
+	local ok = deps.DataService.MutateDaily(player, function(live)
+		if type(live.PlayClaimed) ~= "table" then
+			live.PlayClaimed = {}
+		end
+		live.PlayClaimed[tier] = true
+		return true
+	end, grant)
+	if not ok then
+		return false, TEXT.Loading
+	end
+	return true, grant, pay(player, r)
+end
+
 function DailyService.ClaimPlay(player, tier)
 	if not isLivePlayer(player) then
 		return false, TEXT.Unavailable
@@ -784,36 +825,74 @@ function DailyService.ClaimPlay(player, tier)
 	if not DS or not d then
 		return false, TEXT.Loading
 	end
-	local t = playCfg().Tiers[tier]
-	local need = num(t.Min, 0) * 60
 	if dayOver(d, os.time()) then
 		return false, TEXT.DayOver
 	end
-	if d.PlayClaimed[tier] == true then
-		return false, TEXT.Already
-	end
-	if d.PlaySec < need then
-		return false, string.format(TEXT.NotYet, math.ceil((need - d.PlaySec) / 60))
-	end
-	local r = DailyService.Resolve(player, t, false)
-	local grant = grantOf(r, "Play", tier)
-	local ok = DS.MutateDaily(player, function(live)
-		if type(live.PlayClaimed) ~= "table" then
-			live.PlayClaimed = {}
-		end
-		live.PlayClaimed[tier] = true
-		return true
-	end, grant)
+	local ok, grant, head = claimTier(player, d, tier)
 	if not ok then
-		return false, TEXT.Loading
+		return false, grant
 	end
-	local head = pay(player, r)
 	if head then
-		notify(player, string.format(TEXT.Play, head, num(t.Min, 0)), "good")
+		notify(player, string.format(TEXT.Play, head, num(playCfg().Tiers[tier].Min, 0)), "good")
 	end
 	DailyService.Claimed:Fire(player, "Play", tier, grant)
 	DailyService.Send(player)
 	return true, { Tier = tier, Grant = grant }
+end
+
+-- Claim All (5.4): every Ready tier in tier order through claimTier, then ONE toast and ONE payload (header)
+function DailyService.ClaimPlayAll(player)
+	if not isLivePlayer(player) then
+		return false, TEXT.Unavailable
+	end
+	local d = dailyOf(player)
+	if not deps.DataService or not d then
+		return false, TEXT.Loading
+	end
+	if dayOver(d, os.time()) then
+		return false, TEXT.DayOver
+	end
+	local list = type(playCfg().Tiers) == "table" and playCfg().Tiers or {}
+	local tiers, grants, heads = {}, {}, {}
+	local refusal = TEXT.NoneReady
+	for tier, t in ipairs(list) do
+		if d.PlayClaimed[tier] ~= true and d.PlaySec >= num(t.Min, 0) * 60 then
+			local ok, grant, head = claimTier(player, d, tier)
+			if not ok then
+				refusal = grant -- the record went away mid-way (nothing yields: only a removed profile); keep what committed
+				break
+			end
+			tiers[#tiers + 1] = tier
+			grants[#tiers] = grant or false
+			if head then
+				heads[#heads + 1] = head
+			end
+		end
+	end
+	if #tiers == 0 then
+		return false, refusal
+	end
+	local text
+	if #tiers == 1 then
+		text = heads[1] and string.format(TEXT.Play, heads[1], num(list[tiers[1]].Min, 0)) or nil
+	else
+		local parts = {}
+		for i, head in ipairs(heads) do
+			parts[i] = (string.gsub(head, "!$", ""))
+		end
+		text = string.format(TEXT.Gifts, table.concat(parts, ", "), #tiers)
+		if #heads == 0 or #text > GIFTS_MAX then
+			text = string.format(TEXT.GiftsShort, #tiers)
+		end
+	end
+	if text then
+		notify(player, text, "good")
+	end
+	for i, tier in ipairs(tiers) do
+		DailyService.Claimed:Fire(player, "Play", tier, grants[i] or nil)
+	end
+	DailyService.Send(player)
+	return true, { Tiers = tiers, Grants = grants }
 end
 
 ----------------------------------------------------------------------
@@ -927,7 +1006,7 @@ local function onRequest(player, action, tier, extra)
 	if not isLivePlayer(player) or extra ~= nil then
 		return
 	end
-	if action == "Claim" then
+	if action == "Claim" or action == "ClaimPlayAll" then
 		if tier ~= nil then
 			return -- junk
 		end
@@ -948,6 +1027,8 @@ local function onRequest(player, action, tier, extra)
 	local ok, success, info
 	if action == "Claim" then
 		ok, success, info = pcall(DailyService.Claim, player)
+	elseif action == "ClaimPlayAll" then
+		ok, success, info = pcall(DailyService.ClaimPlayAll, player)
 	else
 		ok, success, info = pcall(DailyService.ClaimPlay, player, tier)
 	end

@@ -21,6 +21,12 @@
 --   daily_unlock_hop   6 min of play on one server session, the player leaves (saved), 4 min on the next session (a hop:
 --                      no held seconds there, only the stored play-day) -> unlocked; the claim past 48 h is kept by the
 --                      stored PlayStart and pays once
+--   daily_claim_all    (Task 5, spec 5.4 "Server" / 7) DailyRequest("ClaimPlayAll"): three Ready tiers -> each claimed and
+--                      paid once, ONE toast ("+$200 Cash, +40 Tokens, +$600 Cash: 3 gifts!"), ONE DailyState payload,
+--                      Claimed fired per tier; again -> "No gifts ready yet!"; one Ready tier -> ClaimPlay's own text and
+--                      the { Tiers, Grants } answer; junk arguments dropped without an answer (and never spend the gap); a
+--                      second request inside 1 s dropped (ClaimPlay keeps its own gap); InMatch refused; a play-day that is
+--                      over refused; all 7 at once -> "7 gifts claimed!"; two servers at one PlayStart pay each tier once
 -- White-box: the booted helpers of smoke_daily.lua. The mock's os.time() is floor(EPOCH + clock); alignTicks lands 5 s after a
 -- loop tick, so every tick() (10 s) holds exactly one tick. Plain Lua 5.1 syntax only.
 
@@ -207,6 +213,49 @@ local function finish(name, ...)
 	end
 	K.flushErrors(name)
 	K.flushWarnings(name, ALLOWED_WARNINGS)
+end
+
+-- a second, independent copy of DataService (own cache, same mock store): "another server" (smoke_daily.lua's shape)
+local function secondServer(name)
+	local inst = K.moduleInstance("server/Services/DataService")
+	if not inst then
+		return nil
+	end
+	local sigs = { game:GetService("Players").PlayerRemoving }
+	for _, rn in ipairs({ "RequestProfile", "SettingsSet" }) do
+		local r = remote(rn)
+		if r then
+			sigs[#sigs + 1] = r.OnServerEvent
+		end
+	end
+	local marks = {}
+	for _, sig in ipairs(sigs) do
+		local conns = type(sig) == "table" and rawget(sig, "_conns") or nil
+		marks[#marks + 1] = { conns = conns, n = conns and #conns or 0 }
+	end
+	local clone = inst:Clone()
+	clone.Name = name
+	clone.Parent = inst.Parent
+	local ok, module = pcall(require, clone)
+	if not ok then
+		clone:Destroy()
+		return nil, module
+	end
+	local function release()
+		clone:Destroy()
+		for _, m in ipairs(marks) do
+			if m.conns then
+				for i = #m.conns, m.n + 1, -1 do
+					local conn = m.conns[i]
+					if type(conn) == "table" and conn.Disconnect then
+						conn:Disconnect()
+					end
+				end
+			end
+		end
+		return true
+	end
+	return module, clone, release
 end
 
 -- today's StaleAt rule of DailyService evaluated at t for the stamp `last` (spec 5.3 "StaleAt": the keep deadline passing,
@@ -601,6 +650,281 @@ S.daily_unlock_hop = guarded("daily_unlock_hop", function()
 	T.check(DS().Save(p) == true and (stored(uid) or {}).Daily ~= nil and stored(uid).Daily.Streak == 4 and stored(uid).Cash == cashStored + 1000,
 		"daily unlock hop: ...and the save stores Streak 4 and the $1,000 once", describeDaily((stored(uid) or {}).Daily) .. " cash " .. tostring((stored(uid) or {}).Cash) .. " (before " .. cashStored .. ")")
 	finish("daily_unlock_hop", p)
+end)
+
+----------------------------------------------------------------------------------------------------
+-- daily_claim_all (Task 5)
+----------------------------------------------------------------------------------------------------
+local function commas(n)
+	local s = tostring(math.floor(tonumber(n) or 0))
+	while true do
+		local k
+		s, k = string.gsub(s, "^(-?%d+)(%d%d%d)", "%1,%2")
+		if k == 0 then
+			break
+		end
+	end
+	return s
+end
+
+-- DailyService's pay text for a resolved reward ("+$200 Cash!", "+40 Tokens!", "+10 Gems!", "+N Berries!", the full basket)
+local function headOf(r)
+	if r.Kind == "Cash" then
+		return "+$" .. commas(r.Amount) .. " Cash!"
+	elseif r.Kind == "Tokens" then
+		return "+" .. commas(r.Amount) .. " Tokens!"
+	elseif r.Kind == "Gems" then
+		return "+" .. commas(r.Amount) .. " Gems!"
+	elseif r.Kind == "Berries" then
+		return r.Amount >= 1 and ("+" .. commas(r.Amount) .. " Berries!") or "Your Berry Basket is full!"
+	end
+	return nil
+end
+
+local function claimedText(d)
+	local out = {}
+	for i = 1, 7 do
+		out[#out + 1] = (type(d) == "table" and type(d.PlayClaimed) == "table" and d.PlayClaimed[i] == true) and tostring(i) or "-"
+	end
+	return "PlayClaimed " .. table.concat(out, "") .. " PlaySec " .. tostring(type(d) == "table" and d.PlaySec or nil)
+end
+
+local function balances(p)
+	return { Cash = DS().GetCash(p), Tokens = DS().GetTokens(p), Gems = DS().GetGems(p), Berries = DS().GetBerries(p) }
+end
+
+-- the balances moved by exactly `want` ({ Kind = amount }), every other kind unchanged
+local function movedBy(p, before, want)
+	local now = balances(p)
+	for _, kind in ipairs({ "Cash", "Tokens", "Gems", "Berries" }) do
+		if now[kind] ~= before[kind] + (want[kind] or 0) then
+			return false, kind .. " " .. tostring(before[kind]) .. " -> " .. tostring(now[kind]) .. " (want +" .. tostring(want[kind] or 0) .. ")"
+		end
+	end
+	return true, "ok"
+end
+
+S.daily_claim_all = guarded("daily_claim_all", function()
+	if not K.needBoot() then
+		return
+	end
+	local C = config().Daily
+	local tiers = C.Play.Tiers
+	local D = DSV()
+	T.check(type(D.ClaimPlayAll) == "function", "daily claim all: DailyService.ClaimPlayAll exists")
+	local p = join("ClaimAll", newUserId())
+	loaded(p)
+	local fired = {}
+	local conn = D.Claimed:Connect(function(pl, kind, which)
+		if pl == p and kind == "Play" then
+			fired[#fired + 1] = which
+		end
+	end)
+	local okRun, errRun = pcall(function()
+		alignTicks()
+		-- three Ready tiers at 47 min: one request claims and pays each once, one toast, one payload, Claimed per tier
+		setDaily(p, { PlayStart = os.time(), PlaySec = 47 * 60, PlayClaimed = {} })
+		local want, heads = {}, {}
+		for i = 1, 3 do
+			local r = D.Resolve(p, tiers[i], false)
+			want[r.Kind] = (want[r.Kind] or 0) + r.Amount
+			heads[i] = string.gsub(headOf(r), "!$", "")
+		end
+		local expect = table.concat(heads, ", ") .. ": 3 gifts!"
+		local before = balances(p)
+		local mark = K.logSize()
+		request(p, "ClaimPlayAll")
+		advance(1.05)
+		local d = DS().GetDaily(p)
+		T.check(d.PlayClaimed[1] == true and d.PlayClaimed[2] == true and d.PlayClaimed[3] == true and d.PlayClaimed[4] ~= true,
+			"daily claim all: one ClaimPlayAll at 47 min claims tiers 1-3 (tier 4 not ready)", claimedText(d))
+		local okPay, payText = movedBy(p, before, want)
+		T.check(okPay, "daily claim all: ...Cash / Tokens up by exactly tiers 1-3's resolved amounts", payText)
+		T.check(#K.remotesFor("Notify", p.UserId, mark) == 1 and toastTexts(p, mark) == expect, "daily claim all: ...exactly one toast: '" .. expect .. "'", toastTexts(p, mark))
+		T.check(#states(p, mark) == 1, "daily claim all: ...exactly one new DailyState payload", tostring(#states(p, mark)))
+		T.check(#fired == 3 and fired[1] == 1 and fired[2] == 2 and fired[3] == 3, "daily claim all: ...DailyService.Claimed fired once per tier, in tier order", table.concat(fired, ","))
+		-- again: nothing ready
+		before = balances(p)
+		mark = K.logSize()
+		request(p, "ClaimPlayAll")
+		advance(1.05)
+		okPay, payText = movedBy(p, before, {})
+		T.check(toastCount(p, "No gifts ready yet!", mark) == 1 and #K.remotesFor("Notify", p.UserId, mark) == 1 and okPay and #fired == 3,
+			"daily claim all: again -> 'No gifts ready yet!', nothing paid", toastTexts(p, mark) .. " " .. payText)
+		-- one Ready tier (the direct API): ClaimPlay's own text and the { Tiers, Grants } answer
+		setDaily(p, { PlaySec = 60 * 60 })
+		local r4 = D.Resolve(p, tiers[4], false)
+		local one = string.format("%s %d min played", headOf(r4), tiers[4].Min)
+		before = balances(p)
+		mark = K.logSize()
+		local ok, info = false, nil
+		if type(D.ClaimPlayAll) == "function" then
+			ok, info = D.ClaimPlayAll(p)
+		end
+		advance(0.1)
+		T.check(ok == true and type(info) == "table" and type(info.Tiers) == "table" and #info.Tiers == 1 and info.Tiers[1] == 4
+			and type(info.Grants) == "table" and type(info.Grants[1]) == "table" and info.Grants[1].Kind == "Play" and info.Grants[1].Tier == 4 and info.Grants[1][r4.Kind] == r4.Amount,
+			"daily claim all: one Ready tier -> ok, { Tiers = { 4 }, Grants = { its grant } }", tostring(ok) .. " " .. tostring(info))
+		okPay, payText = movedBy(p, before, { [r4.Kind] = r4.Amount })
+		T.check(toastTexts(p, mark) == one and okPay, "daily claim all: ...the toast is ClaimPlay's text for that tier: '" .. one .. "'", toastTexts(p, mark) .. " " .. payText)
+		-- junk is dropped without an answer, and never spends the request gap
+		setDaily(p, { PlaySec = 90 * 60 })
+		before = balances(p)
+		mark = K.logSize()
+		request(p, "ClaimPlayAll", 1)
+		request(p, "ClaimPlayAll", nil, "x")
+		request(p, "ClaimPlayAll", {})
+		request(p, "ClaimPlayAll", 0 / 0)
+		request(p, "ClaimPlayAll", "ClaimPlayAll")
+		advance(0.1)
+		okPay, payText = movedBy(p, before, {})
+		T.check(DS().GetDaily(p).PlayClaimed[5] ~= true and okPay and #K.remotesFor("Notify", p.UserId, mark) == 0 and #states(p, mark) == 0,
+			"daily claim all: ('ClaimPlayAll', 1), (.., nil, 'x'), a table, NaN, a string -> dropped, no answer, nothing paid", claimedText(DS().GetDaily(p)) .. " " .. payText .. " toasts: " .. toastTexts(p, mark))
+		local r5 = D.Resolve(p, tiers[5], false)
+		mark = K.logSize()
+		request(p, "ClaimPlayAll")
+		advance(0.5)
+		okPay, payText = movedBy(p, before, { [r5.Kind] = r5.Amount })
+		T.check(DS().GetDaily(p).PlayClaimed[5] == true and okPay and #K.remotesFor("Notify", p.UserId, mark) == 1,
+			"daily claim all: ...a clean request right after the junk goes through (tier 5)", claimedText(DS().GetDaily(p)) .. " " .. payText)
+		-- a second request 0.5 s later is dropped; ClaimPlay keeps its own gap
+		setDaily(p, { PlaySec = 180 * 60 })
+		local r7 = D.Resolve(p, tiers[7], false)
+		mark = K.logSize()
+		request(p, "ClaimPlayAll")
+		request(p, "ClaimPlay", 7)
+		advance(0.1)
+		d = DS().GetDaily(p)
+		local seven = string.format("%s %d min played", headOf(r7), tiers[7].Min)
+		T.check(d.PlayClaimed[6] ~= true and d.PlayClaimed[7] == true and toastTexts(p, mark) == seven,
+			"daily claim all: a second ClaimPlayAll 0.5 s after the first is dropped (tier 6 waits); a ClaimPlay(7) in the same moment has its own gap", claimedText(d) .. " toasts: " .. toastTexts(p, mark))
+		advance(0.6)
+		local r6 = D.Resolve(p, tiers[6], false)
+		before = balances(p)
+		mark = K.logSize()
+		request(p, "ClaimPlayAll")
+		advance(1.05)
+		d = DS().GetDaily(p)
+		okPay, payText = movedBy(p, before, { [r6.Kind] = r6.Amount })
+		local six = string.format("%s %d min played", headOf(r6), tiers[6].Min)
+		T.check(d.PlayClaimed[6] == true and okPay and toastTexts(p, mark) == six, "daily claim all: ...past the 1 s gap it claims tier 6 ('" .. six .. "')", claimedText(d) .. " " .. payText .. " toasts: " .. toastTexts(p, mark))
+		-- InMatch: refused with the toast, nothing claimed
+		setDaily(p, { PlayStart = os.time(), PlaySec = 20 * 60, PlayClaimed = {} })
+		before = balances(p)
+		p:SetAttribute(config().Attr.InMatch, true)
+		mark = K.logSize()
+		request(p, "ClaimPlayAll")
+		advance(1.05)
+		p:SetAttribute(config().Attr.InMatch, false)
+		d = DS().GetDaily(p)
+		okPay, payText = movedBy(p, before, {})
+		T.check(d.PlayClaimed[1] ~= true and d.PlayClaimed[2] ~= true and okPay and toastTexts(p, mark) == "Finish your match first!",
+			"daily claim all: InMatch -> 'Finish your match first!', nothing claimed or paid", claimedText(d) .. " toasts: " .. toastTexts(p, mark))
+		-- a play-day that is over (no tick has reset it yet): refused
+		alignTicks()
+		setDaily(p, { PlayStart = os.time() - C.Play.DaySeconds - 5, PlaySec = 20 * 60, PlayClaimed = {} })
+		before = balances(p)
+		mark = K.logSize()
+		request(p, "ClaimPlayAll")
+		advance(1.05)
+		d = DS().GetDaily(p)
+		okPay, payText = movedBy(p, before, {})
+		T.check(d.PlayClaimed[1] ~= true and okPay and toastTexts(p, mark) == "That play day is over!", "daily claim all: a play-day that is over -> 'That play day is over!', nothing paid", claimedText(d) .. " toasts: " .. toastTexts(p, mark))
+		-- all 7 at once: the short toast
+		alignTicks()
+		setDaily(p, { PlayStart = os.time(), PlaySec = 180 * 60, PlayClaimed = {} })
+		want = {}
+		for i = 1, 7 do
+			local r = D.Resolve(p, tiers[i], false)
+			want[r.Kind] = (want[r.Kind] or 0) + r.Amount
+		end
+		before = balances(p)
+		local fired0 = #fired
+		mark = K.logSize()
+		request(p, "ClaimPlayAll")
+		advance(1.05)
+		d = DS().GetDaily(p)
+		local all = true
+		for i = 1, 7 do
+			all = all and d.PlayClaimed[i] == true
+		end
+		okPay, payText = movedBy(p, before, want)
+		local text = toastTexts(p, mark)
+		T.check(all and okPay and #fired == fired0 + 7, "daily claim all: 180 min -> all 7 tiers claimed and paid once, Claimed fired 7 times", claimedText(d) .. " " .. payText .. " fired +" .. tostring(#fired - fired0))
+		T.check(#K.remotesFor("Notify", p.UserId, mark) == 1 and text == "7 gifts claimed!" and #text <= 90 and #states(p, mark) == 1,
+			"daily claim all: ...one toast '7 gifts claimed!' (the joined text would pass 60 characters; <= 90) and one payload", text .. " (" .. #text .. " chars), payloads " .. #states(p, mark))
+	end)
+	conn:Disconnect()
+	if p and p.Parent then
+		p:SetAttribute(config().Attr.InMatch, false)
+	end
+	if not okRun then
+		error(errRun, 0)
+	end
+
+	-- two servers at one PlayStart, both claiming tiers 1-2: each tier paid once after both saves (p7data_daily_merge's shape:
+	-- server B makes ClaimPlayAll's writes directly, one MutateDaily flag + grant per tier, paid right after; it saves FIRST,
+	-- so the real ClaimPlayAll's per-tier grants on A are the ones the merge must drop)
+	local B, cloneB, releaseB = secondServer("DataServiceClaimAllB")
+	if not T.check(B ~= nil and type(B.MutateDaily) == "function", "daily claim all: a second copy of DataService loads as 'server B'", tostring(cloneB)) then
+		finish("daily_claim_all", p)
+		return
+	end
+	local okTwo, errTwo = pcall(function()
+		local uid = newUserId()
+		local q = join("ClaimAllTwo", uid)
+		loaded(q)
+		alignTicks()
+		local P = os.time()
+		setDaily(q, { PlayStart = P, PlaySec = 20 * 60, PlayClaimed = {} })
+		T.eq(DS().Save(q), true, "daily claim all two servers: (setup) A saves the play-day")
+		B.Load(q)
+		advance(0.5)
+		local rec = stored(uid) or {}
+		local cash0, tokens0 = rec.Cash or 0, rec.Tokens or 0
+		local r1, r2 = D.Resolve(q, tiers[1], false), D.Resolve(q, tiers[2], false)
+		T.check(r1.Kind == "Cash" and r2.Kind == "Tokens", "daily claim all two servers: (setup) tier 1 pays Cash, tier 2 Tokens", r1.Kind .. " / " .. r2.Kind)
+		local okB = true
+		for i, r in ipairs({ r1, r2 }) do
+			local g = { Kind = "Play", Tier = i }
+			g[r.Kind] = r.Amount
+			local done = B.MutateDaily(q, function(dd)
+				dd.PlayClaimed[i] = true
+				return true
+			end, g)
+			okB = okB and done
+			if done and r.Kind == "Cash" then
+				B.AddCash(q, r.Amount)
+			elseif done then
+				B.AddTokens(q, r.Amount)
+			end
+		end
+		T.check(okB and B.Save(q) == true, "daily claim all two servers: B claims tiers 1-2 at the same PlayStart and saves first")
+		rec = stored(uid) or {}
+		T.check(type(rec.Daily) == "table" and rec.Daily.PlayStart == P and rec.Daily.PlayClaimed[1] == true and rec.Daily.PlayClaimed[2] == true and rec.Cash == cash0 + r1.Amount and rec.Tokens == tokens0 + r2.Amount,
+			"daily claim all two servers: the store holds B's tiers and pay", "cash " .. tostring(rec.Cash) .. " tokens " .. tostring(rec.Tokens))
+		local st = D.State(q)
+		T.check(st ~= nil and st.Play.Tiers[1].Ready == true and st.Play.Tiers[2].Ready == true, "daily claim all two servers: (setup) A's session still shows both tiers Ready")
+		local mark = K.logSize()
+		request(q, "ClaimPlayAll")
+		advance(1.05)
+		local d = DS().GetDaily(q)
+		T.check(d.PlayClaimed[1] == true and d.PlayClaimed[2] == true and toastCount(q, ": 2 gifts!", mark) == 1, "daily claim all two servers: A claims both through DailyRequest('ClaimPlayAll')", claimedText(d) .. " toasts: " .. toastTexts(q, mark))
+		T.check(DS().Save(q) == true, "daily claim all two servers: A saves")
+		rec = stored(uid) or {}
+		T.check(type(rec.Daily) == "table" and rec.Daily.PlayStart == P and rec.Daily.PlayClaimed[1] == true and rec.Daily.PlayClaimed[2] == true and rec.Cash == cash0 + r1.Amount and rec.Tokens == tokens0 + r2.Amount,
+			"daily claim all two servers: after both saves each tier is paid once (A's per-tier grants dropped)",
+			"cash " .. tostring(rec.Cash) .. " (base " .. cash0 .. ", +" .. r1.Amount .. ") tokens " .. tostring(rec.Tokens) .. " (base " .. tokens0 .. ", +" .. r2.Amount .. ")")
+		advance(0.3)
+		T.check(DS().GetCash(q) == rec.Cash and DS().GetTokens(q) == rec.Tokens, "daily claim all two servers: A adopted the merged balance", "A cash " .. tostring(DS().GetCash(q)) .. " tokens " .. tostring(DS().GetTokens(q)))
+		leave(q)
+	end)
+	advance(12)
+	T.check(releaseB() == true, "daily claim all two servers: server B's hooks are dropped with it")
+	if not okTwo then
+		error(errTwo, 0)
+	end
+	finish("daily_claim_all", p)
 end)
 
 return S

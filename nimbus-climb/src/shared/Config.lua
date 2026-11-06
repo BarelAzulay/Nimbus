@@ -140,7 +140,7 @@ Config.Remotes = {
 	"QuickTravel", -- (dest:string) "Plaza"  the pill's Travel button: opens the home portal to the lobby (GateService.Travel)
 	-- store (2026-11-04; docs/superpowers/specs/2026-11-04-shop-retention-design.md): the Store, the daily gifts, the Sky Trove
 	"StoreRequest", -- (action:string, key:string)  "Buy" (a Config.Store.Items key): the server prompts the pass / product; the client never prompts
-	"DailyRequest", -- (action:string, tier:number|nil)  "Claim" (the streak gift) / "ClaimPlay" (tier) (DailyService)
+	"DailyRequest", -- (action:string, tier:number|nil)  "Claim" (the streak gift) / "ClaimPlay" (tier) / "ClaimPlayAll" (every Ready play tier, one toast) (DailyService)
 	"DailyState", -- server -> client (state:table)  the streak, the resolved cells, the play clock and its tiers, Play.Active
 	"TroveRequest", -- (action:string)  "Joined": the client's PromptJoinAsync answered Joined / AlreadyMember (TroveService checks once per visit)
 	"TroveState", -- server -> client (state:table)  the asks' states (Open / Done / Checked / Unavailable) and the reward
