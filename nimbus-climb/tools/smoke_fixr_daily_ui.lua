@@ -14,7 +14,8 @@
 --                                 past, never the first value seen, never an extension
 --   client_fixr_daily_phone       (phone world) 360x640 portrait: the window inside the screen with the 12 px side margins,
 --                                 the X, both tabs, the seven cells, CLAIM! and the seven tier cells reachable, every target
---                                 >= 44, texts >= 15; 844x390: the X, the tabs and the tier CLAIM buttons are 44 px tall
+--                                 >= 44, texts >= 15; 844x390 (the 820x330 BigRect window since gui-redo Task 9): the X, the
+--                                 tabs and the tier CLAIM buttons are 44 px tall
 -- Re-review round 1:
 --   client_fixr_daily_repair      (1920x1080, 844x390, 360x640) a repair payload (Streak 3 / Paid 3, a missed day) draws the
 --                                 repair: today's gold cell is the repair cell reading "Repair" (no amount) and the footer
@@ -717,7 +718,8 @@ local function clientScenarios()
 		DC.Open({ Tab = "Play" })
 		KC.advance(0.3)
 		win = H.win()
-		T.check(win ~= nil and abs(win.AbsoluteSize.X - 560) <= 1 and abs(win.AbsoluteSize.Y - 300) <= 1, "fixr daily phone: 844x390 keeps the 560x300 window", H.desc(win))
+		-- (gui-redo Task 9: the BigRect box, 820x330 on 844x390; it was the 560x300 drop-down)
+		T.check(win ~= nil and abs(win.AbsoluteSize.X - 820) <= 1 and abs(win.AbsoluteSize.Y - 330) <= 1, "fixr daily phone: 844x390 is the 820x330 window", H.desc(win))
 		targets({ H.tab("CloseButton"), H.tab("Tab_Daily"), H.tab("Tab_Play"), H.tierButton(4), H.tierButton(5) }, "fixr daily phone: 844x390 the X, the tabs and the tier CLAIM buttons >= 44 px")
 		local wx, wy, ww, wh = H.rect(win)
 		local all = true

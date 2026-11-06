@@ -39,6 +39,7 @@
 --   garden[:<slot>]       the garden picker for place <slot> (default 3: an empty place)
 --   train[:<key>]         the Training Place window (default: the pet that is training, with its timer and Stop);
 --                         train:mats = gui-redo Task 8's mats row (see the [gui-redo] block)
+--   daily[:locked|:play]  gui-redo Task 9: the Gifts window (see the [gui-redo] block)
 --   evolve                the EVOLVE confirm over the Pets window
 --   ring[:<view>]         Phase 4 (ArenaController's Champion Ring window): OpenPanel("Ring") with a ring record
 --                         (Best 24); view new (no record yet) | record (default)
@@ -3122,6 +3123,44 @@ SCENARIOS.train = function(key, ...)
 	toClient("OpenPanel", "Train", { Key = ids.Epic })
 	advance(3)
 end
+-- daily[:locked|:play]  gui-redo Task 9: the Gifts window (DailyController, card A) with a VIP player on Week 2 Day 3
+--                       (Streak 9, days 1-2 claimed, today's $1,450 ready: CLAIM!); locked = the same day held by the
+--                       10-minute rule with 6 min to go; play = the Play time tab (the store build's cells)
+local function dailyPayload(view)
+	local now = workspace:GetServerTimeNow()
+	local days = {
+		{ Kind = "Cash", Amount = 400, Claimed = true, Today = false },
+		{ Kind = "Tokens", Amount = 50, Claimed = true, Today = false },
+		{ Kind = "Cash", Amount = 1450, Claimed = false, Today = true },
+		{ Kind = "Cash", Amount = 1000, Claimed = false, Today = false },
+		{ Kind = "Tokens", Amount = 250, Claimed = false, Today = false },
+		{ Kind = "Gems", Amount = 25, Claimed = false, Today = false },
+		{ Kind = "Pet", PetId = "week_wisp", Claimed = false, Today = false },
+	}
+	local tiers = {
+		{ Min = 10, Kind = "Cash", Amount = 200, Claimed = true, Ready = false },
+		{ Min = 20, Kind = "Tokens", Amount = 40, Claimed = true, Ready = false },
+		{ Min = 30, Kind = "Cash", Amount = 600, Claimed = false, Ready = true },
+		{ Min = 60, Kind = "Gems", Amount = 10, Claimed = false, Ready = false },
+		{ Min = 90, Kind = "Tokens", Amount = 150, Claimed = false, Ready = false },
+		{ Min = 120, Kind = "Berries", Claimed = false, Ready = false },
+		{ Min = 180, Kind = "Gems", Amount = 25, Claimed = false, Ready = false },
+	}
+	return {
+		Loading = false, Streak = 9, Paid = 9, Weeks = 1, Pet = true, ReadyAt = now - 1, KeepUntil = now + 28 * 3600, StaleAt = 0,
+		Cell = 3, Repair = false, Vip = true, StepBack = 0, Days = days, ServerNow = now,
+		Unlock = { Need = 600, Left = view == "locked" and 330 or 0 },
+		Play = { Seconds = 36 * 60, DayEnds = now + 5 * 3600, Active = true, Tiers = tiers },
+	}
+end
+scenario("daily", function(view)
+	view = tostring(view or ""):lower()
+	toClient("DailyState", dailyPayload(view))
+	advance(0.5)
+	local DC = req("client/Controllers/DailyController")
+	DC.Open({ Tab = view == "play" and "Play" or "Daily" })
+	advance(1.5)
+end)
 -- [gui-redo] end
 
 local function boot(width, height, touch, keepTitle)

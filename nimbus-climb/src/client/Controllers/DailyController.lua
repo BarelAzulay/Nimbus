@@ -1,70 +1,95 @@
--- DailyController (client, store 2026-11-04; spec 5.2 / 8 "Gifts" / 13b.3-4): the Gifts button, its pip and ring, and the
--- daily-gifts window (the 7-day streak strip and the play-time rows).
+-- DailyController (client, store 2026-11-04; spec 5.2 / 8 "Gifts" / 13b.3-4; window redo gui-redo Task 9:
+-- docs/superpowers/specs/2026-11-06-window-redo-design.md 5.1 / 5.3, plan docs/superpowers/plans/2026-11-06-window-redo.md):
+-- the Gifts button, its pip and ring, and the Gifts window (the Daily page: the 7-day streak, card A; the Play time page).
 --
 --   DailyController.Init()
---   DailyController.Open(args)    args = { Tab = "Daily" | "Play" } (nil: Daily, or Play when only a play tier is ready)
+--   DailyController.Open(args)    args = { Tab = "Daily" | "Play" } (nil: Daily, or Play when only a play tier is claimable)
 --   DailyController.Close()
 --   DailyController.IsOpen() -> bool
 --   DailyController.State() -> the last DailyState payload | nil
 --   DailyController.PipShown() -> bool
+--   DailyController.Layout() -> "PC" | "Phone" | "Portrait"   (the open window's layout, or the one it would open in)
+--   DailyController.ClaimView(st, now, touch) -> { Mode, Line1, Line2, Repair }   pure: what the claim slot says for the
+--       payload `st` at server time `now` (`touch`: a touch-only device). Mode:
+--         "Claim"   (Line1 "CLAIM!") | "Repair" ("Repair streak (no gift)")
+--         "Locked"  ready, but the 10-minute rule still holds it (Unlock.Left > 0 and Unlock.Need > 0): Line1 "Unlocks after
+--                   10 min of play" (the minutes of Need), Line2 by priority: "Day resets in N min" when the live play-day
+--                   ends before the unlock can come (0 < Play.DayEnds - now < the seconds left); else "Paused: move
+--                   around!" (a touch device: "Paused: close this and move!": the stick is hidden while the window is
+--                   open) while Play.Active == false; else "N min to go". The seconds left count down from the payload's
+--                   ServerNow while Play.Active and hold at "1 min to go" until a payload says Left == 0: the client
+--                   never unlocks on its own clock. Repair = true for a locked repair (it keeps the wide repair button).
+--         "Wait"    not ready yet: "Next gift in 4h 12m" ("Streak repair in 4h 12m" when that claim only repairs)
+--         "Stale"   past StaleAt, and "Loading" (no payload, or a Loading one): "Getting your gifts ready..."
+--       A payload with no Unlock (an older server) or Need 0 (the rule off) is unlocked.
 --
 -- Data: DailyState (server -> client) is the only source (DailyService builds it; nothing here decides a reward):
 --   { Loading = bool (provisional: no CLAIM), Streak, Paid, Weeks, Pet, ReadyAt (unix), KeepUntil (unix), Cell (1..7: the NEXT
 --     cell), Repair = bool (the next claim repairs a missed day and pays nothing), StaleAt (unix: the view changes then by
 --     itself, the keep deadline or another missed day; 0 = never), Vip = bool, StepBack = n (the last claim's
---     step-back), Days = { { Kind = "Cash" | "Tokens" | "Gems" | "Pet", Amount = n | nil, PetId = "week_wisp" | nil, Claimed,
---     Today, Repair = true | nil (today's cell of a repair) } x7 }, Play = { Seconds, DayEnds (unix), Active = bool,
---     Tiers = { { Min, Kind, Amount, PetId, Claimed, Ready } x7 } }, ServerNow (unix) }
+--     step-back), Unlock = { Need = 600, Left = n } (gui-redo Task 4: the counted play seconds of the live play-day a
+--     streak claim still needs), Days = { { Kind = "Cash" | "Tokens" | "Gems" | "Pet", Amount = n | nil, PetId =
+--     "week_wisp" | nil, Claimed, Today, Repair = true | nil (today's cell of a repair) } x7 }, Play = { Seconds, DayEnds
+--     (unix), Active = bool, Tiers = { { Min, Kind, Amount, PetId, Claimed, Ready } x7 } }, ServerNow (unix) }
 --   Amounts are the server's resolved numbers (13b.3). Countdowns use ReadyAt / DayEnds - workspace:GetServerTimeNow().
 --   A claim fires DailyRequest("Claim") / DailyRequest("ClaimPlay", tier) (1 s client gap per action); the toast is the
 --   server's. The tutorial gate reads TutorialState (Done, or Step >= the index of the "spin" step).
 --
 -- Screen: ScreenGui "NimbusDaily" (DisplayOrder 19 like the Store and the Pets window: they never overlap, each Open fires
 -- MenuController.WindowOpened(id) and each closes on any other id; IgnoreGuiInset = false: the HUD attributes are gui px).
--- While open, MenuController.SetColumnCovered(windowLeft, "Daily") steps the menu tiles (NimbusMenu, DisplayOrder 20) aside
--- when the window reaches over them (the Portrait layout); nil on close.
 --   * TextButton "GiftsButton": round, x = NimbusHud.TopRightLeft - 8 - size, y = 6 (gui px); 56 px at 1080p (x the screen
 --     factor), 44 px on a phone; hidden with the strips (InMatch / InBattle, or no top-right strips); re-laid out on the HUD's
---     TopRightLeft / TopRightBottom signals. Children: the Gifts glyph, Frame "Pip" (a 10 px Neon.Red dot: a claim or a play
---     tier is ready, >= Config.Daily.PipDelaySeconds after the last CharacterAdded, the tutorial at its spin step or later),
---     a 0.4 s shake when a play tier becomes Ready in a payload that is not the first after a join / Loading one.
---     Frame "Ring" (around the button, attribute Fill = Play.Seconds / the next tier's seconds): two half arcs (RingRight /
---     RingLeft, each a clipped circle whose UIStroke carries a stepped UIGradient), Neon.Gold, 40 % transparent while
---     Play.Active == false.
---   * Frame "DailyHolder" (UIScale "Scale") > NeonKit.Card "DailyWindow": PC 760x420 design px at the screen factor, phone
---     560x300 at scale 1; a portrait phone too narrow for 560 px + the 12 px side margins: "Portrait", the gui width - 24 x
---     404 at scale 1 (the day cells in rows of 4, the tier cells in rows of 3). Under the button with the right edges
---     aligned, kept inside the side margins (moved up only as far as the screen needs). Title row (44 px targets on every
---     layout): Tab_Daily ("Daily"), Tab_Play ("Play time"), CloseButton. DailyPage: Header "Day 3 of 7 · Week 2", VipChip
---     "VIP x2", Cells > Cell1..7 (Day, Art (glyph or the pet's PetViewport), Amount, Dim, Check; attributes Claimed / Today /
---     Pulsing: each day its own saturated colour (DAY_COLORS: the NeonStroke + the Fill gradient), today's card is
---     Neon.Gold and its border pulses; a Repair payload's today cell reads "Repair" with the Repair glyph, no amount),
---     Footer (ClaimButton "CLAIM!", or "Repair streak (no gift)" (RepairW wide) when the claim is a repair | Countdown
---     "Next gift in 4h 12m", or "Streak repair in 4h 12m" while that claim will be a repair (re-review 3), + Keep "Come
---     back tomorrow to keep your streak!"), WeekBanner. PlayPage: Header "47 min
---     played today · Resets in 5h" or "Paused: move around to keep counting!" (Body 15, Neon.Gold), Tiers > Tier1..7
---     reward cells like the day strip (each tier its own
---     saturated colour, TIER_COLORS; attribute State = "Ready" | "Claimed" | "Locked"; Time "10 min", IconBox > Icon,
---     Reward "+$200", Claim "CLAIM" (44 px tall on a phone), ToGo "13 min to go", Check "Claimed", Dim). Fx: the week's
---     Rainbow Sweep and 24 Confetti frames (both skipped on Low).
+--     TopRightLeft / TopRightBottom signals. Children: the Gifts glyph, Frame "Pip" (a 10 px Neon.Red dot: an unlocked
+--     claim (ClaimView "Claim" / "Repair") or a ready play tier, >= Config.Daily.PipDelaySeconds after the last
+--     CharacterAdded, the tutorial at its spin step or later), a 0.4 s shake when a play tier becomes Ready in a payload
+--     that is not the first after a join / Loading one. Frame "Ring" (around the button, attribute Fill = Play.Seconds /
+--     the next tier's seconds): two half arcs (RingRight / RingLeft, each a clipped circle whose UIStroke carries a stepped
+--     UIGradient), Neon.Gold, 40 % transparent while Play.Active == false. The button, the pip and the ring stay where they
+--     were before the window redo.
+--   * The window: Frame "DailyHolder" (UIScale "Fit") centred in its NeonKit.BigRect box (RECT 820 x 330 at 390 px high ->
+--     1180 x 720 at 1080 px; MARGIN 12, PHONE_W 900, SHORT 560, PC_MIN_H 600, PC_MAX_W 0.76: an 820 x 330 box at 12,59 on a
+--     844 x 390 phone, "Phone" at scale 1; "PC" at the screen factor; a phone box taller than wide is "Portrait"). The PC
+--     layout is computed in the design box (box px / scale) with card A's 1080p numbers as its largest form. Inside:
+--     "DailyWindow" (navy, gold edge, UIScale "Pop" for the 0.22 s Back-Out open) > "TitleBar" (gold: Tab_Daily "Daily",
+--     Tab_Play "Play time", the red CloseButton: 56 px PC / 44 px phone, header 76 / 50) and "Body" > DailyPage, PlayPage,
+--     Fx. While open on a phone (or a touch-only device) Roblox's stick and jump are hidden (MenuController.
+--     SetTouchHidden("Daily", on)) and the menu tiles step aside (MenuController.SetColumnCovered(windowLeft, "Daily")).
+--   * DailyPage (card A): Header "Day 3 of 7 . Week 2" (the middle dot), StreakChip "Streak: 9 days" (phone "Streak: 9";
+--     hidden at 0), VipChip "VIP x2" (VIP only); Cells > Cell1..7 glossy tiles (NeonKit cards, DAY_COLORS; Day "Day n" or
+--     "TODAY" while today's gift is due, Art (glyph or the Week Wisp's PetViewport), Amount, Dim, Check: a big tick on a
+--     claimed tile; attributes Claimed / Today / Pulsing). Day 7 is twice a tile plus the gap; today is raised 8 px (same
+--     bottom), Neon.Gold, its border pulsing; a Repair payload's today tile reads "Repair" with the Repair glyph. WispText
+--     "Week Wisp in N more days" (N = 7 - Cell; "in 1 more day"; Cell 7: "Week Wisp today!") over WispBar (Seg1..7,
+--     attribute State = "Claimed" | "Today" | "Open"). ClaimButton (PC 360 x 88 centred, phone 230 x 64 at the right,
+--     portrait centred): "CLAIM!", or "Repair streak (no gift)" on the wider repair button; locked: greyed out, disabled,
+--     its Line1 / Line2 labels say why (ClaimView). Countdown takes its place while waiting ("Next gift in ...", "Getting
+--     your gifts ready..."). Keep "Come back tomorrow to keep your streak!" under it (not while loading / stale).
+--     WeekBanner "WEEK DONE! Week Wisp is yours!" takes the Wisp line's place for 4.5 s. Portrait: four tiles a row (Day 7
+--     the double tile of row 2), the chips under the header, the claim and the keep line stacked.
+--   * PlayPage (the reward cells of the store build until gui-redo Task 10 redraws it): Header "47 min played today .
+--     Resets in 5h" or "Paused: move around to keep counting!" (Neon.Gold), Tiers > Tier1..7 reward cells (TIER_COLORS;
+--     attribute State = "Ready" | "Claimed" | "Locked"; Time "10 min", IconBox > Icon, Reward "+$200", Claim "CLAIM", ToGo
+--     "13 min to go", Check "Claimed", Dim), four a row (portrait three). Fx: the week's Rainbow Sweep and 24 Confetti
+--     frames (both skipped on Low).
 --   * A grown claimed set pops the cell (1.15 -> 1, 0.25 s) with SoundFx "Reward"; a paid week (Weeks rose with the Streak
 --     onto a multiple of 7; a repair claim back onto day 7 leaves Weeks alone and celebrates nothing): the sweep, the
---     confetti, "WEEK DONE! Week Wisp is yours!", SoundFx "DailyWeek"; StepBack > 0: the side hint
---     "Welcome back! You stepped back n day(s). Keep going!" once per claim (MenuController.Hint).
---   * A payload past its StaleAt (re-review 2) no longer says what the claim does: no gold today cell, no claim button,
+--     confetti, the banner, SoundFx "DailyWeek"; StepBack > 0: the side hint "Welcome back! You stepped back n day(s).
+--     Keep going!" once per claim (MenuController.Hint: it can arrive while the window is closed).
+--   * A payload past its StaleAt (re-review 2) no longer says what the claim does: no gold today tile, no claim button,
 --     "Getting your gifts ready..." until DailyService's fresh payload (its tick re-sends one at StaleAt).
---   * Closes on X, Esc, gamepad B (bound only while open), InMatch / InBattle, and any other WindowOpened id. A relayout
---     that rebuilds the open window (a mode or a Portrait width change) shows the new one at once.
+--   * Closes on X, Esc, gamepad B (bound only while open), InMatch / InBattle, and any other WindowOpened id. A screen
+--     change while open lays the open window out again at once (it is built once and re-laid out, never rebuilt).
 --   * Texts that would not fit their cell (TextService measures the real font) fall back to a shorter form: a pet's last
 --     word ("Week Wisp" -> "Wisp"), "Full Berry Basket" -> "Berry Basket" -> "Full Basket", big numbers as "$1.2M".
 -- Art: glyph fallbacks (NeonKit.Icon: "Gifts", "Cash", "Tokens", "Gems"); Config.Icons swaps in the uploaded images later.
--- Plain Lua 5.1-compatible syntax only. All text goes through Theme roles.
+-- Plain Lua 5.1-compatible syntax only. All text goes through Theme roles. Glyphs are UTF-8 byte escapes.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local ContextActionService = game:GetService("ContextActionService")
 local TextService = game:GetService("TextService")
+local GuiService = game:GetService("GuiService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
@@ -83,11 +108,11 @@ local DailyController = {}
 
 local K = {
 	DISPLAY_ORDER = 19,
-	GAP = 8, -- the button's gap to the strips, the window's gap under the button
+	GAP = 8, -- the button's gap to the strips
 	TOP = 6, -- the button's y (gui px)
 	BTN = 56, -- the button at 1080p (x the screen factor) ...
 	BTN_MIN = 44, -- ... never below this
-	SMALL = 500, -- the smaller screen side at most this = a phone
+	SMALL = 500, -- the smaller screen side at most this = a phone (the button)
 	PIP = 10,
 	RING_PAD = 4, -- the ring sits this far outside the button
 	RING_STROKE = 3,
@@ -101,48 +126,74 @@ local K = {
 	CONFETTI = 24,
 	CONFETTI_TIME = 1.6,
 	PULSE = 0.55, -- today's border fades to this and back, once a second
-	EDGE = 4, -- the window keeps this far from the screen's top and bottom edges ...
-	MARGIN = 12, -- ... and this far from its sides (the other windows' MARGIN)
+	-- the window box: NeonKit.BigRect, the Pets window / Store / Training Place rule (spec 5.1)
+	RECT = { H0 = 390, W0 = 820, Y0 = 330, H1 = 1080, W1 = 1180, Y1 = 720 },
+	MARGIN = 12,
+	PHONE_W = 900,
+	SHORT = 560,
+	PC_MIN_H = 600,
+	PC_MAX_W = 0.76,
+	OPEN_FROM = 0.86, -- the open tween (one per window root: the "Pop" UIScale)
+	OPEN_TIME = 0.22,
 	BACK_ACTION = "NimbusDailyBack",
-	REPAIR_TEXT = "Repair streak (no gift)", -- the footer button of a repair claim (re-review 1)
+	REPAIR_TEXT = "Repair streak (no gift)", -- the claim button of a repair claim (re-review 1)
 	FIT_SLACK = 2, -- px a text keeps free in its box (the outline)
-	-- the window in design px: PC at the screen factor, Phone and Portrait at scale 1 (texts >= 15, phone targets >= 44).
-	-- Cells: the 7-day strip (CellsPerRow per row, the last row centred); Tiers: the play-time reward cells (TierCols per
-	-- row, the last row centred, or right-aligned on PC so no text sits in the screen centre), each TierH tall: the time on
-	-- top, the reward, the CLAIM / "n min to go" / Claimed slot.
+	-- design px per layout. PC: card A at 1080p (body 1180 x 644) is the largest form; the vertical parts slide from Full
+	-- (a 644 body) to Compact (a 485 body, the shortest PC box) and the tiles take the rest. Phone: card A on a 844 x 390
+	-- phone (body 820 x 280). Portrait: one column, four tiles a row.
 	PC = {
-		W = 760, H = 420, Pad = 20, TitleY = 14, TitleH = 44, TabW = { 150, 170 }, TabText = 22, Close = 44,
-		HeaderY = 70, HeaderH = 34, HeaderText = 26, ChipW = 120, ChipText = 20,
-		CellsY = 112, CellsPerRow = 7, CellGapY = 0, CellW = 92, CellH = 132, DayText = 17, IconPx = 44, PetPx = 70, AmountText = 20, CheckText = 24,
-		FooterY = 258, FooterH = 76, ClaimW = 260, RepairW = 390, ClaimH = 56, ClaimText = 28, CountText = 22, KeepText = 18,
-		BannerY = 344, BannerH = 40, BannerText = 26,
-		RowsY = 112, TierCols = 4, TierGap = 12, TierH = 136, TierLastRow = "Right", TimeText = 22, RewardText = 20, TierIconPx = 26,
-		TierBtnW = 130, TierBtnH = 40, TierBtnText = 18, ToGoText = 18,
-		PausedText = 15,
+		Header = 76, HeadPad = 24, TabY = 12, TabH = 52, TabW = { 170, 200 }, TabGap = 10, TabText = 26, Close = 56, CloseY = 10,
+		Side = 28, HeaderY = 18, HeaderH = 44, HeaderText = 34, ChipY = 20, ChipH = 44, ChipText = 22, ChipPad = 18,
+		StreakW = 220, VipW = 150, ChipGap = 16, LongStreak = true,
+		TileSide = 22, TileGap = 16, TileW = 128, TileMaxH = 260, Raise = 8, PadTop = 12, PadBottom = 14, DayText = 22,
+		AmountText = 30, IconPx = 76, PetPx = 150, CheckText = 60,
+		WispW = 700, WispText = 24, BannerW = 900, BannerText = 28, SegGap = 6, ClaimW = 360, RepairW = 440, ClaimText = 40,
+		RepairText = 32, Line1 = 24, Line2 = 22, CountText = 28, KeepW = 800, KeepText = 22,
+		FullBody = 644, CompactBody = 485,
+		Full = { TilesY = 96, AfterTiles = 36, WispH = 32, WispGap = 6, BarH = 30, BarGap = 34, ClaimH = 88, ClaimGap = 16, KeepH = 32, Bottom = 14 },
+		Compact = { TilesY = 76, AfterTiles = 16, WispH = 30, WispGap = 4, BarH = 20, BarGap = 16, ClaimH = 72, ClaimGap = 8, KeepH = 30, Bottom = 10 },
+		PlayY = 18, PlayH = 44, PlayText = 28, PausedText = 22, RowsY = 86, TierCols = 4, TierGap = 16, TierMaxH = 230,
+		TimeText = 24, RewardText = 22, TierIconPx = 40, TierBtnW = 160, TierBtnH = 56, TierBtnText = 22, ToGoText = 20,
 	},
 	PHONE = {
-		W = 560, H = 300, Pad = 10, TitleY = 8, TitleH = 44, TabW = { 110, 130 }, TabText = 17, Close = 44,
-		HeaderY = 56, HeaderH = 24, HeaderText = 18, ChipW = 84, ChipText = 15,
-		CellsY = 86, CellsPerRow = 7, CellGapY = 0, CellW = 64, CellH = 92, DayText = 15, IconPx = 28, PetPx = 44, AmountText = 15, CheckText = 18,
-		FooterY = 184, FooterH = 56, ClaimW = 200, RepairW = 300, ClaimH = 48, ClaimText = 22, CountText = 17, KeepText = 15,
-		BannerY = 250, BannerH = 32, BannerText = 20,
-		RowsY = 86, TierCols = 4, TierGap = 8, TierH = 98, TimeText = 15, RewardText = 15, TierIconPx = 18,
-		TierBtnW = 112, TierBtnH = 44, TierBtnText = 15, ToGoText = 15,
-		PausedText = 15,
+		Header = 50, HeadPad = 10, TabY = 3, TabH = 44, TabW = { 110, 140 }, TabGap = 6, TabText = 17, Close = 44, CloseY = 3,
+		Side = 14, HeaderY = 6, HeaderH = 30, HeaderText = 18, ChipY = 6, ChipH = 30, ChipText = 15, ChipPad = 10,
+		StreakW = 118, VipW = 84, ChipGap = 8,
+		TileSide = 14, TileGap = 8, TileW = 92, TileMaxH = 122, TileMinH = 80, Raise = 8, PadTop = 6, PadBottom = 8, DayText = 15,
+		AmountText = 17, IconPx = 40, PetPx = 60, CheckText = 36,
+		TilesY = 48, AfterTiles = 12, WispH = 22, WispText = 15, WispGap = 4, BarH = 16, BarGap = 8, SegGap = 4, KeepH = 40,
+		KeepText = 15, Bottom = 8, ColGap = 16, BannerText = 15, ClaimW = 230, RepairW = 300, ClaimH = 64, ClaimText = 26,
+		RepairText = 22, Line1 = 15, Line2 = 15, CountText = 17,
+		PlayY = 6, PlayH = 30, PlayText = 18, PausedText = 15, RowsY = 44, TierCols = 4, TierGap = 8, TierMaxH = 110,
+		TimeText = 15, RewardText = 15, TierIconPx = 18, TierBtnW = 112, TierBtnH = 44, TierBtnText = 15, ToGoText = 15,
 	},
-	-- a portrait phone (the gui narrower than PHONE.W + 2 MARGIN): W = the gui width - 2 MARGIN, CellW fills four columns
 	PORTRAIT = {
-		H = 404, Pad = 10, TitleY = 8, TitleH = 44, TabW = { 96, 120 }, TabText = 17, Close = 44,
-		HeaderY = 58, HeaderH = 24, PlayHeaderH = 40, HeaderText = 18, ChipW = 84, ChipText = 15,
-		CellsY = 90, CellsPerRow = 4, CellGapY = 8, CellMaxW = 72, CellH = 92, DayText = 15, IconPx = 28, PetPx = 44, AmountText = 15, CheckText = 18,
-		FooterY = 290, FooterH = 68, ClaimW = 200, RepairW = 300, ClaimH = 48, ClaimText = 22, CountText = 17, KeepText = 15, KeepLines = 2,
-		BannerY = 362, BannerH = 32, BannerText = 20,
-		RowsY = 100, TierCols = 3, TierGap = 8, TierH = 92, TimeText = 15, RewardText = 15, TierIconPx = 18,
-		TierBtnW = 88, TierBtnH = 44, TierBtnText = 15, ToGoText = 15,
-		PausedText = 15,
+		Header = 50, HeadPad = 10, TabY = 3, TabH = 44, TabW = { 110, 140 }, TabGap = 6, TabText = 17, Close = 44, CloseY = 3,
+		Side = 10, HeaderY = 4, HeaderH = 26, HeaderText = 18, ChipY = 34, ChipH = 28, ChipText = 15, ChipPad = 10,
+		StreakW = 104, VipW = 84, ChipGap = 8,
+		TileGap = 8, TileW = 92, TileMaxH = 122, TileMinH = 64, Raise = 8, PadTop = 3, PadBottom = 4, DayText = 15,
+		AmountText = 15, IconPx = 28, PetPx = 44, CheckText = 28,
+		TilesY = 72, RowGap = 12, AfterTiles = 12, WispH = 22, WispText = 15, WispGap = 4, BarH = 14, BarGap = 10, SegGap = 4,
+		ClaimH = 64, ClaimGap = 8, KeepH = 40, KeepText = 15, Bottom = 6, BannerText = 15, ClaimW = 230, RepairW = 300,
+		ClaimText = 26, RepairText = 22, Line1 = 15, Line2 = 15, CountText = 17,
+		PlayY = 6, PlayH = 40, PlayText = 18, PausedText = 15, RowsY = 52, TierCols = 3, TierGap = 8, TierMaxH = 92,
+		TimeText = 15, RewardText = 15, TierIconPx = 18, TierBtnW = 88, TierBtnH = 44, TierBtnText = 15, ToGoText = 15,
 	},
 }
 DailyController.K = K
+
+-- the window's words (spec 5.3)
+local TEXT = {
+	Claim = "CLAIM!",
+	Getting = "Getting your gifts ready...",
+	Keep = "Come back tomorrow to keep your streak!",
+	Week = "WEEK DONE! Week Wisp is yours!",
+	Unlock = "Unlocks after %d min of play",
+	Resets = "Day resets in %d min",
+	PausedPC = "Paused: move around!",
+	PausedTouch = "Paused: close this and move!",
+	ToGo = "%d min to go",
+}
 
 -- the owner's colourful cells (kept here, not in Theme): one saturated colour per day (today is Neon.Gold) and per tier
 local DAY_COLORS = {
@@ -180,10 +231,12 @@ local WHITE = Theme.Colors.White
 local GOLD = Theme.Neon.Gold
 local INK = Theme.Colors.PanelInk or Color3.fromRGB(8, 10, 28)
 local MUTED = Theme.Colors.Muted or Color3.fromRGB(212, 224, 246)
+local NAVY = Color3.fromRGB(11, 16, 48)
+local SEG_OFF = Color3.fromRGB(30, 38, 86)
 
 local LocalPlayer = nil
 local initialized = false
-local U = { Cells = {}, Tiers = {} } -- the instances
+local U = { Cells = {}, Tiers = {}, Segs = {} } -- the instances
 local S = {
 	Open = false,
 	Tab = "Daily",
@@ -192,7 +245,7 @@ local S = {
 	Tutorial = nil, -- the last TutorialState payload
 	SpawnAt = 0, -- time() of the last CharacterAdded
 	LastFire = {},
-	Mode = nil, -- "PC" | "Phone" of the built window
+	Mode = nil, -- "PC" | "Phone" | "Portrait" of the laid-out window
 	ShakeX = 0,
 	ShakeToken = 0,
 	StepBackKey = nil,
@@ -200,6 +253,7 @@ local S = {
 	Pulse = false,
 	BackBound = false,
 	Hidden = true,
+	TouchOff = false,
 }
 local warned = {}
 
@@ -247,8 +301,8 @@ end
 
 local function place(inst, x, y, w, h)
 	inst.AnchorPoint = Vector2.new(0, 0)
-	inst.Position = UDim2.fromOffset(x, y)
-	inst.Size = UDim2.fromOffset(w, h)
+	inst.Position = UDim2.fromOffset(math.floor(x + 0.5), math.floor(y + 0.5))
+	inst.Size = UDim2.fromOffset(math.max(0, math.floor(w + 0.5)), math.max(0, math.floor(h + 0.5)))
 end
 
 local function viewport()
@@ -346,13 +400,15 @@ local function entryAt(list, i)
 end
 
 -- true once the payload's view went stale (StaleAt passed): the server's fresh payload is on its way (re-review 2)
-local function stale(st)
-	local at = type(st) == "table" and tonumber(st.StaleAt) or nil
-	return at ~= nil and at > 0 and now() >= at
+local function stale(st, at)
+	local staleAt = type(st) == "table" and tonumber(st.StaleAt) or nil
+	return staleAt ~= nil and staleAt > 0 and (at or now()) >= staleAt
 end
 
-local function claimReady(st)
-	return type(st) == "table" and st.Loading ~= true and tonumber(st.ReadyAt) ~= nil and now() >= tonumber(st.ReadyAt)
+-- a streak claim the server will take now: ready, not stale and not held by the 10-minute rule
+local function claimable(st)
+	local mode = DailyController.ClaimView(st, now(), false).Mode
+	return mode == "Claim" or mode == "Repair"
 end
 
 local function tierReady(st)
@@ -422,6 +478,21 @@ function H.fitText(lbl, texts)
 		end
 	end
 	return texts[#texts]
+end
+
+-- a text's width at a size and font (TextService; the mock's flat 0.5 em when that fails)
+function H.width(text, size, font)
+	local ok, v = pcall(function()
+		return TextService:GetTextSize(text, size, font, Vector2.new(4096, 1024))
+	end)
+	if ok and typeof(v) == "Vector2" then
+		return v.X
+	end
+	return #tostring(text) * size * 0.5
+end
+
+function H.touchOnly()
+	return UserInputService.TouchEnabled == true and UserInputService.KeyboardEnabled ~= true
 end
 
 ----------------------------------------------------------------------
@@ -557,7 +628,6 @@ function H.layoutButton()
 	if S.Hidden then
 		U.Ring.Visible = false
 	end
-	S.ButtonRect = { x = x, y = K.TOP, size = size }
 	H.refreshPip()
 end
 
@@ -587,317 +657,534 @@ function H.shake()
 end
 
 ----------------------------------------------------------------------
--- The window
+-- The window: built once, laid out on every screen change
 ----------------------------------------------------------------------
--- the gui area (the viewport until the gui has a size)
-function H.area()
-	local area = U.Gui.AbsoluteSize
-	if area.X > 2 and area.Y > 2 then
-		return area
-	end
-	return viewport()
-end
-
--- "PC" | "Phone" | "Portrait": the Phone layout (560 px at scale 1) on a portrait screen too narrow for it (plus the side
--- margins) is the Portrait layout, as wide as the screen allows
-function H.mode()
-	local area = H.area()
-	local phone = "Phone"
-	if area.X - 2 * K.MARGIN < K.PHONE.W and area.Y >= area.X then
-		phone = "Portrait"
-	end
-	if H.small() then
-		return phone
-	end
-	local f = Theme.ScreenFactor(viewport().Y)
-	local top = K.TOP + H.buttonSize() + K.GAP
-	if top + K.PC.H * f > area.Y - K.EDGE or K.PC.W * f > area.X - 2 * K.EDGE then
-		return phone
-	end
-	return "PC"
-end
-
--- the design numbers of a mode (Portrait: W and CellW from the gui width)
-function H.metrics(mode)
-	if mode == "PC" then
-		return K.PC
-	elseif mode == "Phone" then
-		return K.PHONE
-	end
-	local M = {}
-	for k, v in pairs(K.PORTRAIT) do
-		M[k] = v
-	end
-	M.W = math.min(K.PHONE.W, math.floor(H.area().X - 2 * K.MARGIN))
-	M.CellW = math.min(M.CellMaxW, math.floor((M.W - 2 * M.Pad - (M.CellsPerRow - 1) * 8) / M.CellsPerRow))
-	return M
-end
-
--- the offsets of `count` cells of w x h in rows of `perRow` across `inner` px (the full rows spread over inner, every
--- row centred, or the last one right-aligned when lastRow == "Right"; gapY between rows)
-function H.grid(count, perRow, w, h, inner, gapY, lastRow)
-	local gapX = perRow > 1 and math.floor((inner - perRow * w) / (perRow - 1)) or 0
-	local out = {}
-	for i = 1, count do
-		local row = math.floor((i - 1) / perRow)
-		local inRow = math.min(perRow, count - row * perRow)
-		local free = inner - (inRow * w + (inRow - 1) * gapX)
-		local x0 = (lastRow == "Right" and inRow < perRow) and free or math.floor(free / 2)
-		local col = (i - 1) % perRow
-		out[i] = { x = x0 + col * (w + gapX), y = row * (h + gapY) }
-	end
-	return out
-end
-
-function H.tabButton(name, text, x, M, width)
-	local b = Instance.new("TextButton")
-	b.Name = name
-	b.AutoButtonColor = false
-	b.BorderSizePixel = 0
-	b.Text = text
-	Theme.Style(b, "Button", { Size = M.TabText, Stroke = 0.6, Outline = 1.5 })
-	place(b, x, M.TitleY, width, M.TitleH)
-	Theme.Corner(b, UDim.new(0, 10))
+-- a tab: its fill is a sibling frame under the (transparent) button, so the fill's gradient never tints the text
+function H.tabButton(name, text)
+	local fill = Instance.new("Frame")
+	fill.Name = name .. "Fill"
+	fill.BorderSizePixel = 0
+	fill.BackgroundColor3 = WHITE
+	fill.ZIndex = 5
+	Theme.Corner(fill, UDim.new(0, 12))
 	local stroke = Instance.new("UIStroke")
 	stroke.Name = "TabStroke"
 	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	stroke.Thickness = 2
-	stroke.Color = GOLD
-	stroke.Parent = b
-	b.Parent = U.Body
+	stroke.Color = WHITE
+	stroke.Parent = fill
+	local grad = Instance.new("UIGradient")
+	grad.Name = "TabFill"
+	grad.Rotation = 90
+	grad.Parent = fill
+	fill.Parent = U.Bar
+	local b = Instance.new("TextButton")
+	b.Name = name
+	b.AutoButtonColor = false
+	b.BorderSizePixel = 0
+	b.BackgroundTransparency = 1
+	b.Text = text
+	b.ZIndex = 6
+	Theme.Style(b, "Button", { Size = 17, Stroke = 0.6, Outline = 1.5 })
+	b.Parent = U.Bar
 	return b
 end
 
-function H.build()
-	local mode = H.mode()
-	local M = H.metrics(mode)
-	local key = mode .. ":" .. tostring(M.W)
-	if U.Holder and S.BuildKey == key then
+-- a dark pill with a light edge (the streak and VIP chips)
+function H.chip(name, color, parent)
+	local c = label(name, "", "Heading", 15, parent, {
+		TextColor3 = color, BackgroundTransparency = 0.35, BackgroundColor3 = INK, TextWrapped = false, ZIndex = 5,
+	})
+	Theme.Corner(c, UDim.new(0.5, 0))
+	Theme.Stroke(c, WHITE, 2, 0.75)
+	return c
+end
+
+function H.newCell(i, parent)
+	local c = NeonKit.Card({ Name = "Cell" .. i, Color = DAY_COLORS[i], Size = UDim2.fromOffset(92, 122), Floor = true, Corner = 12, ZIndex = 4, Parent = parent })
+	local pop = Instance.new("UIScale")
+	pop.Name = "Pop"
+	pop.Parent = c.Root
+	local day = label("Day", "Day " .. i, "Label", 15, c.Body, { TextWrapped = false, ZIndex = 5 })
+	local art = Instance.new("Frame")
+	art.Name = "Art"
+	art.BackgroundTransparency = 1
+	art.ZIndex = 5
+	art.Parent = c.Body
+	local amount = label("Amount", "", "Display", 17, c.Body, { TextWrapped = false, ZIndex = 5 })
+	amount.TextTruncate = Enum.TextTruncate.AtEnd
+	local dim = Instance.new("Frame")
+	dim.Name = "Dim"
+	dim.BackgroundColor3 = INK
+	dim.BackgroundTransparency = 0.45
+	dim.BorderSizePixel = 0
+	dim.Size = UDim2.fromScale(1, 1)
+	dim.ZIndex = 6
+	dim.Visible = false
+	Theme.Corner(dim, UDim.new(0, 12))
+	dim.Parent = c.Body
+	local check = label("Check", CHECK, "Title", 36, c.Body, { TextColor3 = Theme.Neon.Green, ZIndex = 7, Visible = false, TextWrapped = false })
+	U.Cells[i] = { Card = c, Root = c.Root, Pop = pop, Day = day, Art = art, Amount = amount, Dim = dim, Check = check, ArtKey = nil, LookKey = nil }
+end
+
+function H.newTier(i, parent)
+	local c = NeonKit.Card({ Name = "Tier" .. i, Color = TIER_COLORS[i], Size = UDim2.fromOffset(120, 100), Floor = true, Corner = 10, ZIndex = 4, Parent = parent })
+	local pop = Instance.new("UIScale")
+	pop.Name = "Pop"
+	pop.Parent = c.Root
+	local iconBox = Instance.new("Frame")
+	iconBox.Name = "IconBox"
+	iconBox.BackgroundTransparency = 1
+	iconBox.ZIndex = 5
+	iconBox.Parent = c.Body
+	local timeLabel = label("Time", "", "Heading", 15, c.Body, { TextWrapped = false, ZIndex = 5 })
+	local reward = label("Reward", "", "Display", 15, c.Body, { TextWrapped = false, ZIndex = 5 })
+	reward.TextTruncate = Enum.TextTruncate.AtEnd
+	local dim = Instance.new("Frame")
+	dim.Name = "Dim"
+	dim.BackgroundColor3 = INK
+	dim.BackgroundTransparency = 0.45
+	dim.BorderSizePixel = 0
+	dim.Size = UDim2.fromScale(1, 1)
+	dim.ZIndex = 6
+	dim.Visible = false
+	Theme.Corner(dim, UDim.new(0, 10))
+	dim.Parent = c.Body
+	local togo = label("ToGo", "", "Body", 15, c.Body, { TextColor3 = WHITE, ZIndex = 5 })
+	local check = label("Check", CHECK .. " Claimed", "Heading", 15, c.Body, { TextColor3 = Theme.Neon.Green, ZIndex = 7, TextWrapped = false })
+	local claim = NeonKit.Button({ Name = "Claim", Text = "CLAIM", Color = "Green", Size = UDim2.fromOffset(112, 44), TextSize = 15,
+		AnchorPoint = Vector2.new(0.5, 0), Parent = c.Body, Callback = function()
+			H.send("ClaimPlay", i)
+		end })
+	claim.ZIndex = 8
+	U.Tiers[i] = { Card = c, Root = c.Root, Pop = pop, Time = timeLabel, Reward = reward, IconBox = iconBox, Dim = dim, ToGo = togo,
+		Check = check, Claim = claim, IconKey = nil, LookKey = nil }
+end
+
+function H.ensureWindow()
+	if U.Holder then
 		return
 	end
-	if U.Holder then
-		U.Holder:Destroy()
-	end
-	S.Mode = mode
-	S.BuildKey = key
-	U.M = M
-	U.Cells, U.Tiers = {}, {}
-	local holder = Instance.new("Frame")
-	holder.Name = "DailyHolder"
-	holder.BackgroundTransparency = 1
-	holder.BorderSizePixel = 0
-	holder.Size = UDim2.fromOffset(M.W, M.H)
-	holder.Visible = false
-	holder.ZIndex = 4
-	local scale = Instance.new("UIScale")
-	scale.Name = "Scale"
-	scale.Parent = holder
-	U.Scale = scale
+	U.Cells, U.Tiers, U.Segs = {}, {}, {}
+	local holder = Util.Create("Frame", { Name = "DailyHolder", BackgroundTransparency = 1, BorderSizePixel = 0, Active = true, Visible = false, ZIndex = 4, Parent = U.Gui })
 	U.Holder = holder
-	local card = NeonKit.Card({ Name = "DailyWindow", Color = "Gold", Size = UDim2.fromScale(1, 1), Floor = false, ZIndex = 4, Parent = holder })
-	U.Window = card.Root
-	U.Body = card.Body
-	U.Body.ClipsDescendants = true
-	U.TabDaily = H.tabButton("Tab_Daily", "Daily", M.Pad, M, M.TabW[1])
-	U.TabPlay = H.tabButton("Tab_Play", "Play time", M.Pad + M.TabW[1] + 8, M, M.TabW[2])
+	U.Fit = Util.Create("UIScale", { Name = "Fit", Scale = 1, Parent = holder })
+	local win = Util.Create("Frame", {
+		Name = "DailyWindow", BackgroundColor3 = NAVY, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1, 1), ZIndex = 4, Parent = holder,
+	})
+	Theme.Corner(win, UDim.new(0, 18))
+	Theme.Stroke(win, GOLD, 3, 0)
+	U.Window = win
+	U.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = win })
+	-- the gold title bar (square at the bottom)
+	local bar = Util.Create("Frame", { Name = "TitleBar", BackgroundColor3 = WHITE, BorderSizePixel = 0, ZIndex = 5, Parent = win })
+	Theme.Corner(bar, UDim.new(0, 18))
+	Theme.Gradient(bar, Theme.Lighten(GOLD, 0.12), Theme.Darken(GOLD, 0.3), 90)
+	U.Bar = bar
+	U.BarFoot = Util.Create("Frame", { Name = "TitleFoot", BackgroundColor3 = WHITE, BorderSizePixel = 0, ZIndex = 5, Parent = bar })
+	Theme.Gradient(U.BarFoot, Theme.Lighten(GOLD, 0.12):Lerp(Theme.Darken(GOLD, 0.3), 0.76), Theme.Darken(GOLD, 0.3), 90)
+	U.TabDaily = H.tabButton("Tab_Daily", "Daily")
+	U.TabPlay = H.tabButton("Tab_Play", "Play time")
 	U.TabDaily.Activated:Connect(function()
 		H.setTab("Daily")
 	end)
 	U.TabPlay.Activated:Connect(function()
 		H.setTab("Play")
 	end)
-	local close = NeonKit.Button({ Name = "CloseButton", Text = NeonKit.Glyphs.Close, Color = "Red", Size = M.Close, TextSize = M.TabText,
-		Position = UDim2.fromOffset(M.W - M.Pad - M.Close, M.TitleY), Parent = U.Body, Callback = function()
-			DailyController.Close()
-		end })
-	close.ZIndex = 5
+	U.Close = NeonKit.Button({ Name = "CloseButton", Text = NeonKit.Glyphs.Close, Color = "Red", Size = 44, TextSize = 22, Parent = bar, Callback = function()
+		DailyController.Close()
+	end })
+	U.Close.ZIndex = 7
+	U.Body = Util.Create("Frame", { Name = "Body", BackgroundTransparency = 1, BorderSizePixel = 0, ClipsDescendants = true, ZIndex = 4, Parent = win })
 
-	-- the Daily page
-	local inner = M.W - 2 * M.Pad
-	local daily = Instance.new("Frame")
-	daily.Name = "DailyPage"
-	daily.BackgroundTransparency = 1
-	daily.Size = UDim2.fromScale(1, 1)
-	daily.Parent = U.Body
+	-- the Daily page (card A)
+	local daily = Util.Create("Frame", { Name = "DailyPage", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 4, Parent = U.Body })
 	U.DailyPage = daily
-	U.DailyHeader = label("Header", "", "Title", M.HeaderText, daily, { TextXAlignment = Enum.TextXAlignment.Left })
-	place(U.DailyHeader, M.Pad, M.HeaderY, inner - M.ChipW - 8, M.HeaderH)
-	U.VipChip = label("VipChip", "VIP x2", "Heading", M.ChipText, daily, { BackgroundTransparency = 0.15, BackgroundColor3 = Theme.Darken(GOLD, 0.55), TextColor3 = GOLD })
-	place(U.VipChip, M.W - M.Pad - M.ChipW, M.HeaderY + 2, M.ChipW, M.HeaderH - 4)
-	Theme.Corner(U.VipChip, UDim.new(0.5, 0))
-	local cells = Instance.new("Frame")
-	cells.Name = "Cells"
-	cells.BackgroundTransparency = 1
-	local cellRows = math.ceil(7 / M.CellsPerRow)
-	place(cells, M.Pad, M.CellsY, inner, cellRows * M.CellH + (cellRows - 1) * M.CellGapY)
-	cells.Parent = daily
-	local spots = H.grid(7, M.CellsPerRow, M.CellW, M.CellH, inner, M.CellGapY)
+	U.DailyHeader = label("Header", "", "Title", 18, daily, { TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = false, ZIndex = 5 })
+	U.StreakChip = H.chip("StreakChip", WHITE, daily)
+	U.VipChip = H.chip("VipChip", GOLD, daily)
+	U.VipChip.Text = "VIP x2"
+	U.CellsFrame = Util.Create("Frame", { Name = "Cells", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 4, Parent = daily })
 	for i = 1, 7 do
-		local c = NeonKit.Card({ Name = "Cell" .. i, Color = DAY_COLORS[i], Size = UDim2.fromOffset(M.CellW, M.CellH), Floor = true, Corner = 10,
-			Position = UDim2.fromOffset(spots[i].x, spots[i].y), Parent = cells })
-		local pop = Instance.new("UIScale")
-		pop.Name = "Pop"
-		pop.Parent = c.Root
-		local day = label("Day", "Day " .. i, "Label", M.DayText, c.Body)
-		place(day, 2, 4, M.CellW - 4, M.DayText + 4)
-		local art = Instance.new("Frame")
-		art.Name = "Art"
-		art.BackgroundTransparency = 1
-		place(art, 0, M.DayText + 8, M.CellW, M.CellH - 2 * M.DayText - 20)
-		art.Parent = c.Body
-		local amount = label("Amount", "", "Display", M.AmountText, c.Body, { TextWrapped = false, TextScaled = false })
-		place(amount, 2, M.CellH - M.AmountText - 10, M.CellW - 4, M.AmountText + 6)
-		amount.TextTruncate = Enum.TextTruncate.AtEnd
-		local dim = Instance.new("Frame")
-		dim.Name = "Dim"
-		dim.BackgroundColor3 = INK
-		dim.BackgroundTransparency = 0.45
-		dim.BorderSizePixel = 0
-		dim.Size = UDim2.fromScale(1, 1)
-		dim.ZIndex = 3
-		dim.Visible = false
-		Theme.Corner(dim, UDim.new(0, 10))
-		dim.Parent = c.Body
-		local check = label("Check", CHECK, "Title", M.CheckText, c.Body, { TextColor3 = Theme.Neon.Green, ZIndex = 4, Visible = false })
-		place(check, M.CellW - M.CheckText - 6, 2, M.CheckText + 4, M.CheckText + 4)
-		U.Cells[i] = { Card = c, Root = c.Root, Pop = pop, Art = art, Amount = amount, Dim = dim, Check = check, ArtKey = nil, LookKey = nil }
+		H.newCell(i, U.CellsFrame)
 	end
-	local footer = Instance.new("Frame")
-	footer.Name = "Footer"
-	footer.BackgroundTransparency = 1
-	place(footer, M.Pad, M.FooterY, inner, M.FooterH)
-	footer.Parent = daily
-	U.Claim = NeonKit.Button({ Name = "ClaimButton", Text = "CLAIM!", Color = "Green", Size = UDim2.fromOffset(M.ClaimW, M.ClaimH), TextSize = M.ClaimText,
-		AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, math.floor((M.FooterH - M.ClaimH) / 2)), Parent = footer,
+	U.WispText = label("WispText", "", "Heading", 15, daily, { TextWrapped = false, ZIndex = 5 })
+	U.WispBar = Util.Create("Frame", { Name = "WispBar", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 5, Parent = daily })
+	for i = 1, 7 do
+		local seg = Util.Create("Frame", { Name = "Seg" .. i, BackgroundColor3 = SEG_OFF, BorderSizePixel = 0, ZIndex = 6, Parent = U.WispBar })
+		Theme.Corner(seg, UDim.new(0, 6))
+		Theme.Stroke(seg, INK, 2, 0)
+		seg:SetAttribute("State", "Open")
+		U.Segs[i] = seg
+	end
+	U.Claim = NeonKit.Button({ Name = "ClaimButton", Text = TEXT.Claim, Color = "Green", Size = UDim2.fromOffset(360, 88), TextSize = 40, ZIndex = 6, Parent = daily,
 		Callback = function()
-			if not stale(S.State) then -- a stale view never claims what it no longer shows (re-review 2)
-				H.send("Claim")
-			end
+			H.onClaim()
 		end })
-	U.Countdown = label("Countdown", "", "Heading", M.CountText, footer)
-	place(U.Countdown, 0, 2, inner, M.CountText + 8)
-	U.Keep = label("Keep", "Come back tomorrow to keep your streak!", "Body", M.KeepText, footer, { TextColor3 = MUTED })
-	place(U.Keep, 0, M.CountText + 12, inner, M.KeepText * (M.KeepLines or 1) + 8)
-	U.Banner = label("WeekBanner", "WEEK DONE! Week Wisp is yours!", "Title", M.BannerText, daily, { TextColor3 = GOLD, Visible = false })
-	place(U.Banner, M.Pad, M.BannerY, inner, M.BannerH)
+	U.Line1 = label("Line1", "", "Body", 15, U.Claim, { TextWrapped = false, Visible = false, ZIndex = 9 })
+	U.Line2 = label("Line2", "", "Body", 15, U.Claim, { TextWrapped = false, Visible = false, ZIndex = 9, TextColor3 = MUTED })
+	U.Countdown = label("Countdown", "", "Heading", 17, daily, { ZIndex = 5 })
+	U.Keep = label("Keep", TEXT.Keep, "Body", 15, daily, { TextColor3 = MUTED, ZIndex = 5, TextYAlignment = Enum.TextYAlignment.Top })
+	U.Banner = label("WeekBanner", TEXT.Week, "Title", 15, daily, { TextColor3 = GOLD, Visible = false, ZIndex = 5 })
 
-	-- the Play page
-	local playPage = Instance.new("Frame")
-	playPage.Name = "PlayPage"
-	playPage.BackgroundTransparency = 1
-	playPage.Size = UDim2.fromScale(1, 1)
-	playPage.Visible = false
-	playPage.Parent = U.Body
+	-- the Play page (the store build's reward cells; gui-redo Task 10 redraws it)
+	local playPage = Util.Create("Frame", { Name = "PlayPage", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Visible = false, ZIndex = 4, Parent = U.Body })
 	U.PlayPage = playPage
-	U.PlayHeader = label("Header", "", "Heading", M.HeaderText, playPage, { TextXAlignment = Enum.TextXAlignment.Left })
-	place(U.PlayHeader, M.Pad, M.HeaderY, inner, M.PlayHeaderH or M.HeaderH)
-	-- the reward cells: like the 7-day strip, one saturated colour per tier
-	local tierFrame = Instance.new("Frame")
-	tierFrame.Name = "Tiers"
-	tierFrame.BackgroundTransparency = 1
-	place(tierFrame, M.Pad, M.RowsY, inner, M.H - M.RowsY - M.Pad)
-	tierFrame.Parent = playPage
+	U.PlayHeader = label("Header", "", "Heading", 18, playPage, { TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 5 })
+	U.TiersFrame = Util.Create("Frame", { Name = "Tiers", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 4, Parent = playPage })
+	for i = 1, 7 do
+		H.newTier(i, U.TiersFrame)
+	end
+
+	-- the week's sweep + confetti layer (inside the window only)
+	U.Fx = Util.Create("Frame", { Name = "Fx", BackgroundTransparency = 1, ClipsDescendants = true, Size = UDim2.fromScale(1, 1), ZIndex = 8, Parent = U.Body })
+	-- the cursor is free while the window is shown (client/MouseLock, as the Pets window and the Training Place)
+	local mouseLock = Client:FindFirstChild("MouseLock")
+	local okLock, lock = pcall(function()
+		return mouseLock and require(mouseLock)
+	end)
+	if okLock and type(lock) == "table" and type(lock.WatchVisible) == "function" then
+		safe("mouse lock", lock.WatchVisible, "Dock:" .. holder.Name, holder)
+	end
+	S.Pulse = false
+end
+
+-- the design numbers of the laid-out layout
+function H.metrics()
+	if S.Mode == "PC" then
+		return K.PC
+	elseif S.Mode == "Portrait" then
+		return K.PORTRAIT
+	end
+	return K.PHONE
+end
+
+function H.inset()
+	local inset = 58
+	pcall(function()
+		inset = GuiService:GetGuiInset().Y
+	end)
+	return inset
+end
+
+-- the box (NeonKit.BigRect) -> the holder at its place and scale, then every part in the design box
+function H.layout()
+	if not U.Holder then
+		return
+	end
+	local r = NeonKit.BigRect(K)
+	local mode = r.mode
+	if mode == "Phone" and r.portrait then
+		mode = "Portrait"
+	end
+	S.Rect, S.Mode, S.Scale = r, mode, r.scale
+	local W = math.floor(r.w / r.scale + 0.5)
+	local Hh = math.floor(r.h / r.scale + 0.5)
+	-- (NimbusDaily keeps the gui inset: its area starts under the top bar)
+	place(U.Holder, r.x, r.y - H.inset(), W, Hh)
+	U.Fit.Scale = r.scale
+	S.WindowX = math.floor(r.x + 0.5)
+	local M = H.metrics()
+	place(U.Bar, 0, 0, W, M.Header)
+	place(U.BarFoot, 0, M.Header - 18, W, 18)
+	for i, tab in ipairs({ U.TabDaily, U.TabPlay }) do
+		local x = M.HeadPad + (i == 2 and (M.TabW[1] + M.TabGap) or 0)
+		place(tab, x, M.TabY, M.TabW[i], M.TabH)
+		place(U.Bar:FindFirstChild(tab.Name .. "Fill"), x, M.TabY, M.TabW[i], M.TabH)
+	end
+	U.TabDaily.TextSize, U.TabPlay.TextSize = M.TabText, M.TabText
+	place(U.Close, W - M.HeadPad - M.Close, M.CloseY, M.Close, M.Close)
+	U.Close.TextSize = math.floor(M.Close * 0.5)
+	local B = Hh - M.Header
+	place(U.Body, 0, M.Header, W, B)
+	H.layoutDaily(M, W, B)
+	H.layoutPlay(M, W, B)
+end
+
+-- the Daily page's geometry (S.G); the chips and the claim slot follow the payload, so render places them (keyed)
+function H.layoutDaily(M, W, B)
+	local G = { W = W, B = B }
+	S.G = G
+	S.ChipKey, S.BottomKey = nil, nil
+	U.DailyHeader.TextSize = M.HeaderText
+	U.StreakChip.TextSize, U.VipChip.TextSize = M.ChipText, M.ChipText
+	U.WispText.TextSize, U.Banner.TextSize = M.WispText, M.BannerText
+	U.Countdown.TextSize, U.Keep.TextSize = M.CountText, M.KeepText
+	U.Line1.TextSize, U.Line2.TextSize = M.Line1, M.Line2
+	local spots = {}
+	local tw, th, x0, gap, tilesY
+	if S.Mode == "Portrait" then
+		gap = M.TileGap
+		tw = math.min(M.TileW, math.floor((W - 2 * M.Side - 3 * gap) / 4))
+		local after = M.AfterTiles + M.WispH + M.WispGap + M.BarH + M.BarGap + M.ClaimH + M.ClaimGap + M.KeepH + M.Bottom
+		th = math.max(M.TileMinH, math.min(M.TileMaxH, math.floor((B - M.TilesY - M.RowGap - after) / 2)))
+		local extra = math.max(0, B - (M.TilesY + 2 * th + M.RowGap + after))
+		tilesY = M.TilesY + math.floor(extra / 2)
+		x0 = math.floor((W - (4 * tw + 3 * gap)) / 2)
+		for i = 1, 7 do
+			local row = i <= 4 and 0 or 1
+			local col = i <= 4 and (i - 1) or (i - 5)
+			spots[i] = { x = col * (tw + gap), y = M.Raise + row * (th + M.RowGap), w = i == 7 and (2 * tw + gap) or tw, h = th }
+		end
+		place(U.CellsFrame, x0, tilesY - M.Raise, 4 * tw + 3 * gap, 2 * th + M.RowGap + M.Raise)
+		G.Y0 = tilesY + 2 * th + M.RowGap + M.AfterTiles
+		G.ClaimY = G.Y0 + M.WispH + M.WispGap + M.BarH + M.BarGap
+		G.KeepY = G.ClaimY + M.ClaimH + M.ClaimGap
+		G.ClaimH, G.KeepH = M.ClaimH, M.KeepH
+	else
+		gap = M.TileGap
+		tw = math.min(M.TileW, math.floor((W - 2 * M.TileSide - 7 * gap) / 8))
+		local P = {}
+		if S.Mode == "PC" then
+			-- the vertical parts slide from Compact to Full with the body; the tiles take the rest
+			local k = math.max(0, math.min(1, (B - M.CompactBody) / (M.FullBody - M.CompactBody)))
+			for name, full in pairs(M.Full) do
+				P[name] = math.floor(M.Compact[name] + (full - M.Compact[name]) * k + 0.5)
+			end
+		else
+			for _, name in ipairs({ "TilesY", "AfterTiles", "WispH", "WispGap", "BarH", "BarGap", "ClaimH", "KeepH", "Bottom" }) do
+				P[name] = M[name]
+			end
+			P.ClaimGap = 0
+		end
+		local fixed
+		if S.Mode == "PC" then
+			fixed = P.TilesY + P.AfterTiles + P.WispH + P.WispGap + P.BarH + P.BarGap + P.ClaimH + P.ClaimGap + P.KeepH + P.Bottom
+		else
+			-- phone: the claim sits beside the Wisp line, the bar and the keep line
+			fixed = P.TilesY + P.AfterTiles + P.WispH + P.WispGap + P.BarH + P.BarGap + P.KeepH + P.Bottom
+		end
+		th = math.max(M.TileMinH or 0, math.min(M.TileMaxH, B - fixed))
+		local extra = math.max(0, B - fixed - th)
+		tilesY = P.TilesY + math.floor(extra / 2)
+		x0 = math.floor((W - (8 * tw + 7 * gap)) / 2)
+		for i = 1, 7 do
+			spots[i] = { x = (i - 1) * (tw + gap), y = M.Raise, w = i == 7 and (2 * tw + gap) or tw, h = th }
+		end
+		place(U.CellsFrame, x0, tilesY - M.Raise, 8 * tw + 7 * gap, th + M.Raise)
+		G.Y0 = tilesY + th + P.AfterTiles
+		G.WispH, G.WispGap, G.BarH, G.BarGap = P.WispH, P.WispGap, P.BarH, P.BarGap
+		G.ClaimH, G.KeepH = P.ClaimH, P.KeepH
+		G.ClaimY = G.Y0 + P.WispH + P.WispGap + P.BarH + P.BarGap
+		G.KeepY = G.ClaimY + P.ClaimH + P.ClaimGap
+		if S.Mode ~= "PC" then
+			-- (phone: the keep line under the bar; the claim slot beside the three, from the Wisp line's top)
+			G.KeepY = G.ClaimY
+			G.ClaimY = G.Y0 + 2
+			if B < G.KeepY + M.KeepH + 2 then
+				G.KeepH = math.max(M.KeepText + 6, B - G.KeepY - 2)
+			end
+		end
+	end
+	G.WispH = G.WispH or M.WispH
+	G.WispGap = G.WispGap or M.WispGap
+	G.BarH = G.BarH or M.BarH
+	G.BarGap = G.BarGap or M.BarGap
+	G.TileW = tw
+	for i, cell in ipairs(U.Cells) do
+		cell.Spot = spots[i]
+		cell.PlaceKey = nil
+	end
+end
+
+-- a tile at its spot (today: raised by M.Raise, the bottom kept), its insides fitted to its size
+function H.placeTile(cell, M, today, wide)
+	local s = cell.Spot
+	if not s then
+		return
+	end
+	local y, h = s.y, s.h
+	if today then
+		y, h = s.y - M.Raise, s.h + M.Raise
+	end
+	local key = table.concat({ tostring(S.Mode), s.x, y, s.w, h }, ",")
+	if cell.PlaceKey == key then
+		return
+	end
+	cell.PlaceKey = key
+	place(cell.Root, s.x, y, s.w, h)
+	local w = s.w
+	local dayH = M.DayText + 4
+	place(cell.Day, 2, M.PadTop, w - 4, dayH)
+	cell.Day.TextSize = M.DayText
+	local amountH = M.AmountText + 6
+	local amountY = h - M.PadBottom - amountH
+	place(cell.Amount, 2, amountY, w - 4, amountH)
+	cell.Amount.TextSize = M.AmountText
+	local artY = M.PadTop + dayH + 1
+	local artH = math.max(0, amountY - 1 - artY)
+	place(cell.Art, 0, artY, w, artH)
+	local check = math.max(15, math.min(M.CheckText, math.floor(math.min(w, h) * 0.5)))
+	cell.Check.TextSize = check
+	place(cell.Check, (w - check - 8) / 2, (h - check - 8) / 2, check + 8, check + 8)
+	cell.ArtPx = math.max(12, math.min(wide and M.PetPx or M.IconPx, artH, w - 8))
+end
+
+-- the streak / VIP chips and the header's width (they follow the payload)
+function H.placeChips(M, showStreak, showVip)
+	local G = S.G
+	local key = table.concat({ tostring(S.Mode), G.W, tostring(showStreak), tostring(showVip), U.StreakChip.Text }, ",")
+	if S.ChipKey == key then
+		return
+	end
+	S.ChipKey = key
+	local streakW = math.max(M.StreakW, math.ceil(H.width(U.StreakChip.Text, M.ChipText, U.StreakChip.Font)) + 2 * M.ChipPad)
+	local vipW = math.max(M.VipW, math.ceil(H.width(U.VipChip.Text, M.ChipText, U.VipChip.Font)) + 2 * M.ChipPad)
+	if S.Mode == "Portrait" then
+		place(U.DailyHeader, M.Side, M.HeaderY, G.W - 2 * M.Side, M.HeaderH)
+		local x = M.Side
+		if showStreak then
+			place(U.StreakChip, x, M.ChipY, streakW, M.ChipH)
+			x = x + streakW + M.ChipGap
+		end
+		place(U.VipChip, x, M.ChipY, vipW, M.ChipH)
+		return
+	end
+	local right = G.W - M.Side
+	if showVip then
+		right = right - vipW
+		place(U.VipChip, right, M.ChipY, vipW, M.ChipH)
+		right = right - M.ChipGap
+	end
+	if showStreak then
+		right = right - streakW
+		place(U.StreakChip, right, M.ChipY, streakW, M.ChipH)
+		right = right - M.ChipGap
+	end
+	place(U.DailyHeader, M.Side, M.HeaderY, math.max(40, right - M.Side), M.HeaderH)
+end
+
+-- the Wisp line, the bar, the claim slot (`slotW` wide: the repair and the waiting texts take the wider one) and the
+-- keep line
+function H.placeBottom(M, slotW)
+	local G = S.G
+	local key = table.concat({ tostring(S.Mode), G.W, G.B, slotW }, ",")
+	if S.BottomKey == key then
+		return
+	end
+	S.BottomKey = key
+	local W = G.W
+	local wispX, wispW, claimX, keepX, keepW
+	if S.Mode == "PC" then
+		wispW = math.min(M.WispW, W - 2 * M.Side)
+		wispX = (W - wispW) / 2
+		claimX = (W - slotW) / 2
+		keepW = math.min(M.KeepW, W - 2 * M.Side)
+		keepX = (W - keepW) / 2
+		local bannerW = math.min(M.BannerW, W - 2 * M.Side)
+		place(U.Banner, (W - bannerW) / 2, G.Y0, bannerW, G.WispH)
+		U.WispText.TextXAlignment = Enum.TextXAlignment.Center
+		U.Keep.TextXAlignment = Enum.TextXAlignment.Center
+	elseif S.Mode == "Portrait" then
+		slotW = math.min(slotW, W - 2 * M.Side)
+		wispX, wispW = M.Side, W - 2 * M.Side
+		claimX = (W - slotW) / 2
+		keepX, keepW = M.Side, W - 2 * M.Side
+		place(U.Banner, wispX, G.Y0, wispW, G.WispH)
+		U.WispText.TextXAlignment = Enum.TextXAlignment.Center
+		U.Keep.TextXAlignment = Enum.TextXAlignment.Center
+	else
+		claimX = W - M.Side - slotW
+		wispX = M.Side
+		wispW = math.max(60, claimX - M.ColGap - M.Side)
+		keepX, keepW = wispX, wispW
+		place(U.Banner, wispX, G.Y0, wispW, G.WispH)
+		U.WispText.TextXAlignment = Enum.TextXAlignment.Left
+		U.Keep.TextXAlignment = Enum.TextXAlignment.Left
+	end
+	place(U.WispText, wispX, G.Y0, wispW, G.WispH)
+	place(U.WispBar, wispX, G.Y0 + G.WispH + G.WispGap, wispW, G.BarH)
+	local g = M.SegGap
+	local segW = (wispW - 6 * g) / 7
+	for i, seg in ipairs(U.Segs) do
+		place(seg, (i - 1) * (segW + g), 0, segW, G.BarH)
+	end
+	place(U.Claim, claimX, G.ClaimY, slotW, G.ClaimH)
+	place(U.Countdown, claimX, G.ClaimY, slotW, G.ClaimH)
+	place(U.Keep, keepX, G.KeepY, keepW, G.KeepH)
+	-- the locked lines inside the claim button (its UIPadding keeps them off the edges)
+	local block = (M.Line1 + 4) + (M.Line2 + 4)
+	local top = math.floor((G.ClaimH - block) / 2)
+	U.Line1.Position = UDim2.fromOffset(0, top)
+	U.Line1.Size = UDim2.new(1, 0, 0, M.Line1 + 4)
+	U.Line2.Position = UDim2.fromOffset(0, top + M.Line1 + 4)
+	U.Line2.Size = UDim2.new(1, 0, 0, M.Line2 + 4)
+end
+
+-- the offsets of `count` cells of w x h in rows of `perRow` across `inner` px (the full rows spread over inner, every
+-- row centred; gapY between rows)
+function H.grid(count, perRow, w, h, inner, gapY)
+	local gapX = perRow > 1 and math.floor((inner - perRow * w) / (perRow - 1)) or 0
+	local out = {}
+	for i = 1, count do
+		local row = math.floor((i - 1) / perRow)
+		local inRow = math.min(perRow, count - row * perRow)
+		local free = inner - (inRow * w + (inRow - 1) * gapX)
+		local col = (i - 1) % perRow
+		out[i] = { x = math.floor(free / 2) + col * (w + gapX), y = row * (h + gapY) }
+	end
+	return out
+end
+
+-- the Play page: the header and the seven reward cells (rows of TierCols)
+function H.layoutPlay(M, W, B)
+	local inner = W - 2 * M.Side
+	place(U.PlayHeader, M.Side, M.PlayY, inner, M.PlayH)
+	local rows = math.ceil(7 / M.TierCols)
 	local tw = math.floor((inner - (M.TierCols - 1) * M.TierGap) / M.TierCols)
-	local th = M.TierH
+	local th = math.min(M.TierMaxH, math.floor((B - M.RowsY - (rows - 1) * M.TierGap - M.TierGap) / rows))
+	place(U.TiersFrame, M.Side, M.RowsY, inner, rows * th + (rows - 1) * M.TierGap)
+	local spots = H.grid(7, M.TierCols, tw, th, inner, M.TierGap)
+	for i, cell in ipairs(U.Tiers) do
+		place(cell.Root, spots[i].x, spots[i].y, tw, th)
+		H.layoutTier(cell, tw, th, M)
+	end
+end
+
+-- a reward cell's insides: the time on top, the icon, the reward, the CLAIM / "n min to go" / Claimed slot
+function H.layoutTier(cell, tw, th, M)
 	local slotY = th - M.TierBtnH - 6
 	local rewardY = slotY - M.RewardText - 8
 	local timeH = M.TimeText + 6
 	local iconRoom = rewardY - (4 + timeH)
-	local compact = iconRoom < M.TierIconPx -- no room between the time and the reward: the icon sits in the top corner
-	local tierSpots = H.grid(7, M.TierCols, tw, th, inner, M.TierGap, M.TierLastRow)
-	for i = 1, 7 do
-		local c = NeonKit.Card({ Name = "Tier" .. i, Color = TIER_COLORS[i], Size = UDim2.fromOffset(tw, th), Floor = true, Corner = 10,
-			Position = UDim2.fromOffset(tierSpots[i].x, tierSpots[i].y), Parent = tierFrame })
-		local pop = Instance.new("UIScale")
-		pop.Name = "Pop"
-		pop.Parent = c.Root
-		local iconBox = Instance.new("Frame")
-		iconBox.Name = "IconBox"
-		iconBox.BackgroundTransparency = 1
-		iconBox.ZIndex = 2
-		if compact then
-			local box = math.floor(M.TierIconPx * 1.25 + 0.5)
-			place(iconBox, tw - box - 4, 3, box, box)
-		else
-			place(iconBox, 0, 4 + timeH, tw, iconRoom)
-		end
-		iconBox.Parent = c.Body
-		local timeLabel = label("Time", "", "Heading", M.TimeText, c.Body, { TextWrapped = false })
-		if compact then
-			timeLabel.TextXAlignment = Enum.TextXAlignment.Left
-			place(timeLabel, 6, 4, tw - 12 - math.floor(M.TierIconPx * 1.25 + 0.5), timeH)
-		else
-			place(timeLabel, 4, 4, tw - 8, timeH)
-		end
-		local reward = label("Reward", "", "Display", M.RewardText, c.Body, { TextWrapped = false })
-		reward.TextTruncate = Enum.TextTruncate.AtEnd
-		place(reward, 4, rewardY, tw - 8, M.RewardText + 6)
-		local dim = Instance.new("Frame")
-		dim.Name = "Dim"
-		dim.BackgroundColor3 = INK
-		dim.BackgroundTransparency = 0.45
-		dim.BorderSizePixel = 0
-		dim.Size = UDim2.fromScale(1, 1)
-		dim.ZIndex = 3
-		dim.Visible = false
-		Theme.Corner(dim, UDim.new(0, 10))
-		dim.Parent = c.Body
-		local togo = label("ToGo", "", "Body", M.ToGoText, c.Body, { TextColor3 = WHITE })
-		place(togo, 4, slotY, tw - 8, M.TierBtnH)
-		local check = label("Check", CHECK .. " Claimed", "Heading", M.ToGoText, c.Body, { TextColor3 = Theme.Neon.Green, ZIndex = 4, TextWrapped = false })
-		place(check, 4, slotY, tw - 8, M.TierBtnH)
-		local tier = i
-		local claim = NeonKit.Button({ Name = "Claim", Text = "CLAIM", Color = "Green", Size = UDim2.fromOffset(math.min(M.TierBtnW, tw - 12), M.TierBtnH),
-			TextSize = M.TierBtnText, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, slotY), Parent = c.Body, Callback = function()
-				H.send("ClaimPlay", tier)
-			end })
-		claim.ZIndex = 5
-		U.Tiers[i] = { Card = c, Root = c.Root, Pop = pop, Time = timeLabel, Reward = reward, IconBox = iconBox, Dim = dim, ToGo = togo,
-			Check = check, Claim = claim, IconKey = nil, LookKey = nil }
+	local box = math.floor(M.TierIconPx * 1.25 + 0.5)
+	-- no room between the time and the reward: the icon sits in the top corner
+	if iconRoom < M.TierIconPx then
+		place(cell.IconBox, tw - box - 4, 3, box, box)
+		cell.Time.TextXAlignment = Enum.TextXAlignment.Left
+		place(cell.Time, 6, 4, tw - 12 - box, timeH)
+	else
+		place(cell.IconBox, 0, 4 + timeH, tw, iconRoom)
+		cell.Time.TextXAlignment = Enum.TextXAlignment.Center
+		place(cell.Time, 4, 4, tw - 8, timeH)
 	end
-
-	-- the week's sweep + confetti layer (inside the window only)
-	local fx = Instance.new("Frame")
-	fx.Name = "Fx"
-	fx.BackgroundTransparency = 1
-	fx.ClipsDescendants = true
-	fx.Size = UDim2.fromScale(1, 1)
-	fx.ZIndex = 8
-	fx.Parent = U.Body
-	U.Fx = fx
-	holder.Parent = U.Gui
-	S.Pulse = false
+	cell.Time.TextSize = M.TimeText
+	place(cell.Reward, 4, rewardY, tw - 8, M.RewardText + 6)
+	cell.Reward.TextSize = M.RewardText
+	place(cell.ToGo, 4, slotY, tw - 8, M.TierBtnH)
+	place(cell.Check, 4, slotY, tw - 8, M.TierBtnH)
+	cell.ToGo.TextSize, cell.Check.TextSize = M.ToGoText, M.ToGoText
+	cell.Claim.AnchorPoint = Vector2.new(0.5, 0)
+	cell.Claim.Position = UDim2.new(0.5, 0, 0, slotY)
+	cell.Claim.Size = UDim2.fromOffset(math.min(M.TierBtnW, tw - 12), M.TierBtnH)
+	cell.Claim.TextSize = M.TierBtnText
+	cell.IconKey = nil
 end
 
-function H.layoutWindow()
-	if not U.Holder or not S.ButtonRect then
-		return
-	end
-	local M = U.M
-	local scale = S.Mode == "PC" and Theme.ScreenFactor(viewport().Y) or 1
-	local area = H.area()
-	local w, h = M.W * scale, M.H * scale
-	local b = S.ButtonRect
-	local right = b.x + b.size
-	local x = math.min(right - w, area.X - K.MARGIN - w) -- right-aligned to the button, inside the side margins
-	if x < K.MARGIN then
-		x = K.MARGIN
-	end
-	local y = b.y + b.size + K.GAP
-	if area.Y > 2 and y + h > area.Y - K.EDGE then
-		y = math.max(K.EDGE, area.Y - K.EDGE - h)
-	end
-	U.Holder.Position = UDim2.fromOffset(math.floor(x + 0.5), math.floor(y + 0.5))
-	U.Scale.Scale = scale
-	S.Scale = scale
-	S.WindowX = math.floor(x + 0.5)
-end
-
--- the menu tiles (NimbusMenu draws above this window) step aside while the open window reaches over them (n1)
+-- the menu tiles (NimbusMenu draws above this window) step aside while the open window reaches over them, and on a
+-- phone (or a touch-only device) Roblox's stick and jump go while it is open
 function H.coverColumn()
 	local menu = controller("MenuController")
 	if menu and type(menu.SetColumnCovered) == "function" then
 		safe("cover", menu.SetColumnCovered, (S.Open and U.Holder and S.WindowX) or nil, "Daily")
+	end
+	local want = S.Open and (S.Mode ~= "PC" or H.touchOnly())
+	if want ~= S.TouchOff then
+		S.TouchOff = want
+		if menu and type(menu.SetTouchHidden) == "function" then
+			safe("touch", menu.SetTouchHidden, "Daily", want)
+		end
 	end
 end
 
@@ -906,19 +1193,30 @@ function H.setTab(tab)
 	H.render()
 end
 
+-- selected: light gold (the mock's #fff3c4 -> #ffc93c) under white outlined text; else dark glass under muted text
 function H.paintTab(button, selected)
-	button.BackgroundColor3 = selected and Theme.Darken(GOLD, 0.45) or (Theme.Colors.PanelBottom or INK)
-	button.BackgroundTransparency = selected and 0 or 0.2
 	button.TextColor3 = selected and WHITE or MUTED
 	button:SetAttribute("Selected", selected)
-	local stroke = button:FindFirstChild("TabStroke")
+	local fill = U.Bar:FindFirstChild(button.Name .. "Fill")
+	if not fill then
+		return
+	end
+	fill.BackgroundColor3 = selected and WHITE or INK
+	fill.BackgroundTransparency = selected and 0 or 0.55
+	local grad = fill:FindFirstChild("TabFill")
+	if grad then
+		grad.Color = selected and ColorSequence.new(Theme.Lighten(GOLD, 0.7), GOLD) or ColorSequence.new(WHITE, WHITE)
+	end
+	local stroke = fill:FindFirstChild("TabStroke")
 	if stroke then
-		stroke.Transparency = selected and 0 or 0.6
+		stroke.Color = selected and INK or WHITE
+		stroke.Transparency = selected and 0 or 0.8
 	end
 end
 
-function H.paintArt(cell, entry, M)
-	local key = tostring(entry.Kind) .. ":" .. tostring(entry.PetId)
+function H.paintArt(cell, entry)
+	local px = cell.ArtPx or 28
+	local key = tostring(entry.Kind) .. ":" .. tostring(entry.PetId) .. ":" .. px
 	if cell.ArtKey == key then
 		return
 	end
@@ -928,15 +1226,16 @@ function H.paintArt(cell, entry, M)
 	end
 	if entry.Kind == "Pet" and type(entry.PetId) == "string" then
 		local ok = pcall(function()
-			local vp = CloudUI.PetViewport(cell.Art, entry.PetId, M.PetPx, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Spin = "sway" })
+			local vp = CloudUI.PetViewport(cell.Art, entry.PetId, px, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Spin = "sway" })
 			vp.Name = "PetViewport"
+			vp.ZIndex = 5
 		end)
 		if ok then
 			return
 		end
 	end
-	local icon = NeonKit.Icon(cell.Art, (entry.Kind == "Pet" and "Gifts") or (entry.Kind == "Berries" and "Berries") or tostring(entry.Kind or "Gifts"), M.IconPx)
-	icon.ZIndex = 2
+	local icon = NeonKit.Icon(cell.Art, (entry.Kind == "Pet" and "Gifts") or (entry.Kind == "Berries" and "Berries") or tostring(entry.Kind or "Gifts"), px)
+	icon.ZIndex = 5
 end
 
 -- a cell's colour, its saturated fill gradient and its glow for a CELL_LOOK state (painted only when it changes)
@@ -955,35 +1254,63 @@ end
 
 function H.paintTierIcon(cell, tier, M)
 	local id = (tier.Kind == "Pet" and "Gifts") or tostring(tier.Kind or "Gifts")
-	if cell.IconKey == id then
+	local key = id .. ":" .. M.TierIconPx
+	if cell.IconKey == key then
 		return
 	end
-	cell.IconKey = id
+	cell.IconKey = key
 	for _, child in ipairs(cell.IconBox:GetChildren()) do
 		child:Destroy()
 	end
 	local icon = NeonKit.Icon(cell.IconBox, id, M.TierIconPx)
-	icon.ZIndex = 2
+	icon.ZIndex = 5
+end
+
+-- "Week Wisp in 4 more days" / "in 1 more day" / "Week Wisp today!"
+function H.wispText(cell)
+	local left = 7 - cell
+	if left <= 0 then
+		return "Week Wisp today!"
+	elseif left == 1 then
+		return "Week Wisp in 1 more day"
+	end
+	return "Week Wisp in " .. left .. " more days"
 end
 
 function H.renderDaily(st, M)
-	local loading = type(st) ~= "table" or st.Loading == true
+	local view = DailyController.ClaimView(st, now(), H.touchOnly())
+	S.View = view
+	local loading = view.Mode == "Loading"
+	-- a stale payload (StaleAt passed) promises nothing: no gold today tile, no claim, until the fresh one arrives
+	local waiting = loading or view.Mode == "Stale"
+	local due = view.Mode == "Claim" or view.Mode == "Repair" or view.Mode == "Locked"
+	local cellNo = tonumber(type(st) == "table" and st.Cell) or 1
 	if loading then
 		U.DailyHeader.Text = "Daily gifts"
 	else
-		U.DailyHeader.Text = "Day " .. tostring(tonumber(st.Cell) or 1) .. " of 7 " .. DOT .. " Week " .. tostring((tonumber(st.Weeks) or 0) + 1)
+		U.DailyHeader.Text = "Day " .. tostring(cellNo) .. " of 7 " .. DOT .. " Week " .. tostring((tonumber(st.Weeks) or 0) + 1)
 	end
-	U.VipChip.Visible = not loading and st.Vip == true
-	-- a stale payload (StaleAt passed) promises nothing: no gold today cell, no claim, until the fresh one arrives
-	local waiting = loading or stale(st)
+	local streak = (not loading) and math.floor(tonumber(st.Streak) or 0) or 0
+	if S.Mode == "PC" then
+		U.StreakChip.Text = "Streak: " .. streak .. (streak == 1 and " day" or " days")
+	else
+		U.StreakChip.Text = "Streak: " .. streak
+	end
+	local showVip = not loading and st.Vip == true
+	U.StreakChip.Visible = streak > 0
+	U.VipChip.Visible = showVip
+	H.placeChips(M, streak > 0, showVip)
+	-- the tiles
 	local list = days(st)
 	for i, cell in ipairs(U.Cells) do
 		local e = entryAt(list, i)
 		local claimed = e.Claimed == true
 		local today = e.Today == true and not claimed and not waiting
+		H.placeTile(cell, M, today, i == 7)
 		cell.Root:SetAttribute("Claimed", claimed)
 		cell.Root:SetAttribute("Today", today)
 		cell.Root:SetAttribute("Pulsing", today)
+		cell.Day.Text = (today and due) and "TODAY" or ("Day " .. i)
 		cell.Dim.Visible = claimed
 		cell.Check.Visible = claimed
 		H.paintLook(cell, today and GOLD or DAY_COLORS[i], today and "Today" or (claimed and "Claimed" or "Open"))
@@ -993,28 +1320,44 @@ function H.renderDaily(st, M)
 		if today and e.Repair == true then
 			-- the claim re-earns this day and pays nothing: no amount, no gift art (re-review 1)
 			cell.Amount.Text = "Repair"
-			H.paintArt(cell, { Kind = "Repair" }, M)
+			H.paintArt(cell, { Kind = "Repair" })
 		elseif e.Kind ~= nil then
 			cell.Amount.Text = H.fitText(cell.Amount, cellAmounts(e))
-			H.paintArt(cell, e, M)
+			H.paintArt(cell, e)
 		else
 			cell.Amount.Text = ""
 		end
 	end
-	local ready = claimReady(st) and not waiting
-	local repair = ready and st.Repair == true
-	U.Claim.Text = repair and K.REPAIR_TEXT or "CLAIM!"
-	U.Claim.Size = UDim2.fromOffset(repair and math.min(M.RepairW, M.W - 2 * M.Pad) or M.ClaimW, M.ClaimH)
-	U.Claim.Visible = ready
-	U.Countdown.Visible = not ready
-	U.Keep.Visible = not ready and not waiting
-	if waiting then
-		U.Countdown.Text = "Getting your gifts ready..."
-	elseif not ready then
-		-- the wait before a claim that only repairs (Repair, re-review 3) never names a gift
-		U.Countdown.Text = (st.Repair == true and "Streak repair in " or "Next gift in ") .. leftText((tonumber(st.ReadyAt) or 0) - now())
+	-- the Week Wisp line and its bar (the banner takes the line's place while it is up)
+	local banner = time() < S.BannerUntil
+	U.Banner.Visible = banner
+	U.WispText.Text = loading and "" or H.wispText(cellNo)
+	U.WispText.Visible = not banner and not loading
+	for i, seg in ipairs(U.Segs) do
+		local e = entryAt(list, i)
+		local state = (e.Claimed == true and "Claimed") or ((e.Today == true and not waiting) and "Today") or "Open"
+		seg:SetAttribute("State", state)
+		seg.BackgroundColor3 = (state == "Claimed" and Theme.Neon.Green) or (state == "Today" and GOLD) or SEG_OFF
 	end
-	U.Banner.Visible = time() < S.BannerUntil
+	-- the claim slot
+	local wide = view.Repair == true or view.Mode == "Repair" or waiting
+	H.placeBottom(M, wide and M.RepairW or M.ClaimW)
+	U.Claim.Visible = due
+	U.Countdown.Visible = not due
+	U.Claim:SetAttribute("Mode", view.Mode)
+	if view.Mode == "Locked" then
+		U.Claim.Text = ""
+		U.Claim:SetAttribute("Disabled", true)
+		U.Line1.Text, U.Line2.Text = view.Line1 or "", view.Line2 or ""
+		U.Line1.Visible, U.Line2.Visible = true, true
+	else
+		U.Claim.Text = (view.Mode == "Repair") and K.REPAIR_TEXT or TEXT.Claim
+		U.Claim.TextSize = (view.Mode == "Repair") and M.RepairText or M.ClaimText
+		U.Claim:SetAttribute("Disabled", false)
+		U.Line1.Visible, U.Line2.Visible = false, false
+	end
+	U.Countdown.Text = due and "" or (view.Line1 or "")
+	U.Keep.Visible = not waiting
 end
 
 function H.renderPlay(st, M)
@@ -1025,7 +1368,7 @@ function H.renderPlay(st, M)
 		U.PlayHeader.Text = "Play time gifts"
 		U.PlayHeader.Font = Theme.Fonts.Heading
 		U.PlayHeader.TextColor3 = WHITE
-		U.PlayHeader.TextSize = M.HeaderText
+		U.PlayHeader.TextSize = M.PlayText
 	elseif p.Active == false then
 		U.PlayHeader.Text = "Paused: move around to keep counting!"
 		U.PlayHeader.Font = Theme.Fonts.Body
@@ -1035,7 +1378,7 @@ function H.renderPlay(st, M)
 		U.PlayHeader.Text = math.floor(seconds / 60) .. " min played today " .. DOT .. " Resets in " .. resetText((tonumber(p.DayEnds) or 0) - now())
 		U.PlayHeader.Font = Theme.Fonts.Heading
 		U.PlayHeader.TextColor3 = WHITE
-		U.PlayHeader.TextSize = M.HeaderText
+		U.PlayHeader.TextSize = M.PlayText
 	end
 	local list = tiers(st)
 	for i, cell in ipairs(U.Tiers) do
@@ -1066,10 +1409,10 @@ function H.renderPlay(st, M)
 end
 
 function H.render()
-	if not U.Holder then
+	if not U.Holder or not S.G then
 		return
 	end
-	local M = U.M
+	local M = H.metrics()
 	local st = S.State
 	H.paintTab(U.TabDaily, S.Tab == "Daily")
 	H.paintTab(U.TabPlay, S.Tab == "Play")
@@ -1240,6 +1583,13 @@ function H.send(action, tier)
 	return true
 end
 
+-- the claim button: only what the view promises (a stale, waiting or locked view never claims; the server decides anyway)
+function H.onClaim()
+	if claimable(S.State) then
+		H.send("Claim")
+	end
+end
+
 function H.syncBack()
 	if S.Open and not S.BackBound then
 		S.BackBound = true
@@ -1261,12 +1611,9 @@ end
 
 function H.relayout()
 	H.layoutButton()
-	if S.Open then
-		H.build()
-		-- a rebuild (a mode change, or a Portrait width change: the BuildKey is mode:W) makes a hidden holder; the window
-		-- is open, so it shows (re-review 1: a width change inside Portrait left it invisible while S.Open stayed true)
+	if S.Open and U.Holder then
+		H.layout()
 		U.Holder.Visible = true
-		H.layoutWindow()
 		H.render()
 		H.coverColumn()
 	end
@@ -1290,12 +1637,65 @@ function DailyController.IsOpen()
 	return S.Open
 end
 
+function DailyController.Layout()
+	if S.Open and S.Mode then
+		return S.Mode
+	end
+	local r = NeonKit.BigRect(K)
+	if r.mode == "Phone" and r.portrait then
+		return "Portrait"
+	end
+	return r.mode
+end
+
+-- what the claim slot says (see the header): pure over its arguments
+function DailyController.ClaimView(st, at, touch)
+	at = tonumber(at) or now()
+	if type(st) ~= "table" or st.Loading == true then
+		return { Mode = "Loading", Line1 = TEXT.Getting }
+	end
+	if stale(st, at) then
+		return { Mode = "Stale", Line1 = TEXT.Getting }
+	end
+	local repair = st.Repair == true
+	local readyAt = tonumber(st.ReadyAt)
+	if readyAt == nil or at < readyAt then
+		-- the wait before a claim that only repairs (Repair, re-review 3) never names a gift
+		return { Mode = "Wait", Line1 = (repair and "Streak repair in " or "Next gift in ") .. leftText((readyAt or at) - at), Repair = repair or nil }
+	end
+	local unlock = type(st.Unlock) == "table" and st.Unlock or nil
+	local need = unlock and tonumber(unlock.Need) or 0
+	local left = unlock and tonumber(unlock.Left) or 0
+	if need > 0 and left > 0 then
+		local p = play(st)
+		-- the seconds left, counted down on the client only while the server counts (Active), from its ServerNow
+		local live = left
+		if p.Active == true then
+			live = left - math.max(0, at - (tonumber(st.ServerNow) or at))
+		end
+		local dayLeft = (tonumber(p.DayEnds) or 0) - at
+		local line2
+		if dayLeft > 0 and dayLeft < live then
+			line2 = string.format(TEXT.Resets, math.max(1, math.ceil(dayLeft / 60)))
+		elseif p.Active == false then
+			line2 = touch and TEXT.PausedTouch or TEXT.PausedPC
+		else
+			line2 = string.format(TEXT.ToGo, math.max(1, math.ceil(live / 60)))
+		end
+		return { Mode = "Locked", Line1 = string.format(TEXT.Unlock, math.ceil(need / 60)), Line2 = line2, Repair = repair or nil }
+	end
+	if repair then
+		return { Mode = "Repair", Line1 = K.REPAIR_TEXT, Repair = true }
+	end
+	return { Mode = "Claim", Line1 = TEXT.Claim }
+end
+
 function DailyController.PipShown()
 	local st = S.State
 	if type(st) ~= "table" or st.Loading == true or S.Hidden then
 		return false
 	end
-	if not (claimReady(st) or tierReady(st)) then
+	if not (claimable(st) or tierReady(st)) then
 		return false
 	end
 	if time() - S.SpawnAt < (Config.Daily and Config.Daily.PipDelaySeconds or 20) then
@@ -1316,18 +1716,18 @@ function DailyController.Open(args)
 	if args.Tab == "Play" or args.Tab == "Daily" then
 		S.Tab = args.Tab
 	elseif not wasOpen then
-		S.Tab = (not claimReady(S.State) and tierReady(S.State)) and "Play" or "Daily"
+		S.Tab = (not claimable(S.State) and tierReady(S.State)) and "Play" or "Daily"
 	end
 	S.Open = true
 	H.layoutButton()
-	H.build()
-	H.layoutWindow()
+	H.ensureWindow()
+	H.layout()
 	U.Holder.Visible = true
 	H.render()
 	H.syncBack()
 	if not wasOpen then
-		U.Scale.Scale = (S.Scale or 1) * 0.92
-		Util.Tween(U.Scale, 0.18, { Scale = S.Scale or 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+		U.Pop.Scale = K.OPEN_FROM
+		Util.Tween(U.Pop, K.OPEN_TIME, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 		local menu = controller("MenuController")
 		if menu and menu.WindowOpened then
 			menu.WindowOpened:Fire("Daily")

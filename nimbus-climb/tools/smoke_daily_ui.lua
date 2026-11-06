@@ -4,7 +4,10 @@
 --                        WindowOpened("Daily"), the header, seven cells (claimed dim, today pulsing, the resolved amounts),
 --                        CLAIM! -> DailyRequest("Claim"), the countdown after a claim, the week banner + 24 confetti (none on
 --                        Low), the step-back hint once, the VIP chip, the Play tab cells, the paused header, a tier cell CLAIM ->
---                        ClaimPlay(tier), nothing in the screen centre, the window rule (Pets / Shop / Gifts never overlap)
+--                        ClaimPlay(tier), the window rule (Pets / Shop / Gifts never overlap). gui-redo Task 9: the window is
+--                        the big centred one (NeonKit.BigRect: 1180x720 at 1080p, the button stays where it is), so "nothing
+--                        in the screen centre" became the Store's form: opening it puts no OTHER text in the middle, and no
+--                        Gifts text is left there after Close
 --   client_daily_pip     the pip waits PipDelaySeconds after a spawn and the tutorial's spin step, the shake when a tier
 --                        becomes Ready (never on the first payload after a Loading one), the ring's fill and its paused dim,
 --                        the button hides in a match
@@ -12,8 +15,9 @@
 --                        hints, 46x24 at 1080p, right-aligned under the strips
 --   client_daily_vip     VipController.IsVip, the gold [VIP] chat prefix, the lobby crown on High only, hidden in a battle,
 --                        gone on leave
---   client_daily_mobile  (phone world, 844x390 touch) the 44 px button, the 560x300 window at scale 1 right-aligned to the
---                        button, 64x92 cells, CLAIM! 200x48, texts >= 15, chips 34x18 text 15
+--   client_daily_mobile  (phone world, 844x390 touch) the 44 px button, the 820x330 window at 12,59 at scale 1 (gui-redo
+--                        Task 9: the BigRect box; it was 560x300 under the button), 92x122 tiles (were 64x92), CLAIM! 230x64
+--                        (was 200x48), texts >= 15, chips 34x18 text 15
 -- No DailyService yet (W2): every payload is fired at the client with KC.toClient("DailyState", ...). The viewport, the
 -- graphics level, the tutorial state, the attributes and MenuController.Hint are restored at the end of each scenario.
 -- Plain Lua 5.1 syntax only.
@@ -232,8 +236,42 @@ local function clientScenarios()
 		local b = H.find(H.win(), "ClaimButton")
 		return H.shown(b) and b or nil
 	end
+	-- the Daily page's texts under the tiles (gui-redo Task 9 dropped the Footer frame: the Wisp line, the claim slot and the
+	-- keep line sit in the page)
 	function H.footer()
-		return H.texts(H.find(H.win(), "Footer"))
+		local out = {}
+		for _, name in ipairs({ "WispText", "WeekBanner", "ClaimButton", "Countdown", "Keep" }) do
+			local o = H.find(H.win(), name)
+			if H.shown(o) then
+				local t = tostring(o.Text or "")
+				local inner = H.texts(o)
+				if inner ~= "" then
+					t = (t ~= "" and (t .. " | ") or "") .. inner
+				end
+				if t ~= "" then
+					out[#out + 1] = t
+				end
+			end
+		end
+		return table.concat(out, " | ")
+	end
+	-- the window's BigRect box (NimbusDaily keeps the gui inset: AbsolutePosition.Y + 58 = the box's screen y)
+	function H.inBox(win, DC)
+		local NK = H.moduleAt("client", "UI/NeonKit")
+		local r = NK and DC and DC.K and NK.BigRect(DC.K)
+		return win ~= nil and r ~= nil and abs(win.AbsolutePosition.X - r.x) <= 1 and abs(win.AbsolutePosition.Y + 58 - r.y) <= 1
+			and abs(win.AbsoluteSize.X - r.w) <= 1 and abs(win.AbsoluteSize.Y - r.h) <= 1
+			and abs(win.AbsolutePosition.X + win.AbsoluteSize.X / 2 - Mock.Viewport.X / 2) <= 1
+	end
+	-- the centred texts (KC.centredTexts entries) whose path passes pred
+	function H.centredWhere(pred)
+		local out = {}
+		for _, e in ipairs(KC.centredTexts(0.14)) do
+			if pred(e.path) then
+				out[#out + 1] = e
+			end
+		end
+		return out
 	end
 	function H.body()
 		return H.texts(H.win())
@@ -281,16 +319,6 @@ local function clientScenarios()
 		local b = H.find(H.row(i), "Claim")
 		return H.shown(b) and b or nil
 	end
-	function H.centred()
-		local Config = KC.env()
-		local out = {}
-		for _, e in ipairs(KC.centredTexts(0.14)) do
-			if e.path:find("^NimbusDaily") or e.path:find("^NimbusBoosts") then
-				out[#out + 1] = e
-			end
-		end
-		return out
-	end
 	function H.sent(mark)
 		return KC.serverCalls("DailyRequest", mark)
 	end
@@ -325,15 +353,23 @@ local function clientScenarios()
 		T.eq(gui.DisplayOrder, 19, "daily window: NimbusDaily.DisplayOrder = 19")
 		T.eq(gui.IgnoreGuiInset, false, "daily window: NimbusDaily.IgnoreGuiInset = false (the HUD attributes are gui-area px)")
 		T.check(type(DC.State()) == "table" and DC.State().Streak == 2, "daily window: State() is the last payload")
+		local before = {} -- what else sits in the middle of the screen before the window opens
+		for _, e in ipairs(H.centredWhere(function(path)
+			return path:find("^NimbusDaily") == nil
+		end)) do
+			before[e.path] = true
+		end
 		w.opened = {}
 		H.tap(btn)
 		T.check(DC.IsOpen() and w.opened[#w.opened] == "Daily" and H.activeTab() == "Daily", "daily window: opens on Daily and fires WindowOpened",
 			fmt("open %s, opened %s, tab %s", tostring(DC.IsOpen()), table.concat(w.opened, ","), tostring(H.activeTab())))
 		local win = H.win()
-		T.check(win ~= nil and abs(win.AbsoluteSize.X - 760) <= 1 and abs(win.AbsoluteSize.Y - 420) <= 1, "daily window: 760x420 at 1080p",
-			win and fmt("%dx%d", win.AbsoluteSize.X, win.AbsoluteSize.Y) or "no window")
-		T.check(win ~= nil and abs(win.AbsolutePosition.X + win.AbsoluteSize.X - (btn.AbsolutePosition.X + btn.AbsoluteSize.X)) <= 1
-			and win.AbsolutePosition.Y >= btn.AbsolutePosition.Y + btn.AbsoluteSize.Y, "daily window: under the button, the right edges aligned")
+		-- (gui-redo Task 9: the big centred window replaced the 760x420 drop-down under the button)
+		T.check(win ~= nil and abs(win.AbsoluteSize.X - 1180) <= 1 and abs(win.AbsoluteSize.Y - 720) <= 1 and DC.Layout() == "PC", "daily window: 1180x720 at 1080p (PC)",
+			win and fmt("%dx%d %s", win.AbsoluteSize.X, win.AbsoluteSize.Y, tostring(DC.Layout())) or "no window")
+		T.check(H.inBox(win, DC) and H.shown(btn) and abs(btn.AbsolutePosition.X + btn.AbsoluteSize.X - (left - 8)) <= 1 and btn.AbsolutePosition.Y == 6,
+			"daily window: centred in its BigRect box, the Gifts button stays where it was",
+			win and fmt("window %d,%d %dx%d, button %d,%d", win.AbsolutePosition.X, win.AbsolutePosition.Y, win.AbsoluteSize.X, win.AbsoluteSize.Y, btn.AbsolutePosition.X, btn.AbsolutePosition.Y) or "no window")
 		T.check(H.header():find("Day 3 of 7", 1, true) ~= nil and H.header():find("Week 2", 1, true) ~= nil, "daily window: the header", H.header())
 		T.check(H.cellCount() == 7 and H.cellText(1):find("$", 1, true) ~= nil and H.cellDimmed(1) and H.cellDimmed(2) and not H.cellDimmed(3) and H.cellPulsing(3)
 			and not H.cellPulsing(4), "daily window: 7 cells, claimed dim, today pulsing",
@@ -408,14 +444,23 @@ local function clientScenarios()
 		H.tap(H.rowButton(4))
 		sent = H.sent(mark)
 		T.check(#sent == 1 and sent[1].args[1] == "ClaimPlay" and sent[1].args[2] == 4, "daily window: a tier cell CLAIM -> ClaimPlay(tier)", tostring(#sent))
-		local centred = H.centred()
+		-- (gui-redo Task 9: the big window fills the middle by design, as the Store does; what stays pinned is that opening it
+		-- puts no OTHER text there and that none of its text is left there after Close)
+		local function others(path)
+			return path:find("^NimbusDaily") == nil and not before[path]
+		end
+		local centred = H.centredWhere(others)
 		T.check(#centred == 0, "daily window: nothing in the screen centre", KC.describeCentred(centred))
 		H.tapTab("Daily")
-		centred = H.centred()
+		centred = H.centredWhere(others)
 		T.check(#centred == 0, "daily window: nothing in the screen centre (Daily tab)", KC.describeCentred(centred))
 		-- X closes; Esc closes
 		H.tap(H.find(H.win(), "CloseButton"))
 		T.check(not DC.IsOpen() and not H.shown(H.win()), "daily window: X closes it")
+		centred = H.centredWhere(function(path)
+			return path:find("^NimbusDaily") ~= nil
+		end)
+		T.check(#centred == 0, "daily window: no Gifts text is left in the screen centre after Close", KC.describeCentred(centred))
 		DC.Open({ Tab = "Play" })
 		KC.advance(0.3)
 		T.check(DC.IsOpen() and H.activeTab() == "Play", "daily window: Open({ Tab = \"Play\" })")
@@ -751,15 +796,16 @@ local function clientScenarios()
 		H.tap(btn)
 		local win = H.win()
 		local gui = H.gui()
-		T.check(DC.IsOpen() and win ~= nil and abs(win.AbsoluteSize.X - 560) <= 1 and abs(win.AbsoluteSize.Y - 300) <= 1, "daily mobile: the window is 560x300 at scale 1",
-			win and fmt("%dx%d", win.AbsoluteSize.X, win.AbsoluteSize.Y) or "none")
-		T.check(win ~= nil and abs(win.AbsolutePosition.X + win.AbsoluteSize.X - (btn.AbsolutePosition.X + btn.AbsoluteSize.X)) <= 1
+		-- (gui-redo Task 9: the BigRect window, 820x330 at 12,59 on 844x390; it was a 560x300 drop-down under the button)
+		T.check(DC.IsOpen() and win ~= nil and abs(win.AbsoluteSize.X - 820) <= 1 and abs(win.AbsoluteSize.Y - 330) <= 1 and DC.Layout() == "Phone",
+			"daily mobile: the window is 820x330 at scale 1 (Phone)", win and fmt("%dx%d %s", win.AbsoluteSize.X, win.AbsoluteSize.Y, tostring(DC.Layout())) or "none")
+		T.check(H.inBox(win, DC) and abs(win.AbsolutePosition.X - 12) <= 1 and abs(win.AbsolutePosition.Y + 58 - 59) <= 1
 			and win.AbsolutePosition.Y >= 0 and win.AbsolutePosition.Y + win.AbsoluteSize.Y <= gui.AbsoluteSize.Y,
-			"daily mobile: under the button, the right edges aligned, inside the screen", win and fmt("%d,%d in %dx%d", win.AbsolutePosition.X, win.AbsolutePosition.Y, gui.AbsoluteSize.X, gui.AbsoluteSize.Y) or "")
+			"daily mobile: centred at 12,59, inside the screen", win and fmt("%d,%d in %dx%d", win.AbsolutePosition.X, win.AbsolutePosition.Y, gui.AbsoluteSize.X, gui.AbsoluteSize.Y) or "")
 		local cell = H.cell(1)
-		T.check(cell ~= nil and abs(cell.AbsoluteSize.X - 64) <= 1 and abs(cell.AbsoluteSize.Y - 92) <= 1, "daily mobile: cells 64x92", cell and fmt("%dx%d", cell.AbsoluteSize.X, cell.AbsoluteSize.Y) or "")
+		T.check(cell ~= nil and abs(cell.AbsoluteSize.X - 92) <= 1 and abs(cell.AbsoluteSize.Y - 122) <= 1, "daily mobile: tiles 92x122", cell and fmt("%dx%d", cell.AbsoluteSize.X, cell.AbsoluteSize.Y) or "")
 		local claim = H.claimButton()
-		T.check(claim ~= nil and abs(claim.AbsoluteSize.X - 200) <= 1 and abs(claim.AbsoluteSize.Y - 48) <= 1, "daily mobile: CLAIM! 200x48", claim and fmt("%dx%d", claim.AbsoluteSize.X, claim.AbsoluteSize.Y) or "")
+		T.check(claim ~= nil and abs(claim.AbsoluteSize.X - 230) <= 1 and abs(claim.AbsoluteSize.Y - 64) <= 1, "daily mobile: CLAIM! 230x64", claim and fmt("%dx%d", claim.AbsoluteSize.X, claim.AbsoluteSize.Y) or "")
 		local function smallest(root)
 			local min, which = math.huge, ""
 			for _, d in ipairs(KC.texts(root, true)) do
