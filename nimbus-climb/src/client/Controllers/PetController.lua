@@ -17,13 +17,16 @@
 --   PetController.GetFollowerInfo(player) -- debug: { { Key, Model, Stage = built model stage, Want = card stage,
 --                                      Level, Card = BillboardGui | nil, Parked, Diving, Back / Side = the slot (studs), Width, Slot,
 --                                      Sitting = the owner sits and the pet has its ground spot (bug batch 2 #7) } }
+--   PetController.ParseHybrids(text) -> { Hybrids = { [uid] = record } }   (pure; the EquippedHybrids reader, field 6 =
+--                                      Elements; public for the tests)
 --
 -- What it does
 --   * Reads the player attribute `EquippedPets` (csv of pet KEYS, Config.Attr.EquippedPets) of EVERY player
 --     and keeps one follower per player. A key is a plain pet id (Normal copy), "petId@Golden" / "petId@Rainbow"
 --     (tier copies: PetBuilder draws the finish from Look.Finish) or "hyb:<uid>" (a fused hybrid). Every follower is
 --     built from PetKeys.DefOf(key); hybrids need their record, which the server publishes for the equipped ones in
---     the attribute `EquippedHybrids` ("uid=Body/Style/Tier/Rarity[/Seed];...", PetService). Keys that cannot be
+--     the attribute `EquippedHybrids` ("uid=Body/Style/Tier/Rarity[/Seed[/Elements]];...", PetService; field 6 =
+--     the record's Elements joined by "+", so the first element matches the owner's). Keys that cannot be
 --     described (unknown pets, a hybrid without its record yet) are ignored, at most Config.Pets.MaxEquipped are
 --     used. All pets are drawn on this client only (workspace.ClientPets, one Folder per owner named after the
 --     UserId); the server pays nothing.
@@ -732,7 +735,9 @@ local function acquireRoot(f)
 	snapAllPets(f)
 end
 
--- "uid=Body/Style/Tier/Rarity[/Seed];..." -> a stand-in profile { Hybrids = { [uid] = record } } for PetKeys.DefOf
+-- "uid=Body/Style/Tier/Rarity[/Seed[/Elements]];..." -> a stand-in profile { Hybrids = { [uid] = record } } for
+-- PetKeys.DefOf. Field 6 (gui-redo) = the owner's Elements order joined by "+" -> rec.Elements (DefOf drops unknown names);
+-- without it DefOf falls back to the parents' elements as before. Later fields are ignored.
 local function parseHybrids(text)
 	local hybrids = {}
 	if type(text) ~= "string" then
@@ -757,12 +762,22 @@ local function parseHybrids(text)
 				if seed then
 					rec.Seed = seed
 				end
+				if fields[6] and fields[6] ~= "" then
+					local elements = {}
+					for e in string.gmatch(fields[6], "[^+]+") do
+						elements[#elements + 1] = e
+					end
+					if #elements > 0 then
+						rec.Elements = elements
+					end
+				end
 				hybrids[uid] = rec
 			end
 		end
 	end
 	return { Hybrids = hybrids }
 end
+PetController.ParseHybrids = parseHybrids -- public for the tests (gui-redo Task 3); no new top-level local
 
 -- The definition to build for one key (nil: skip it).
 local function defForKey(key, hybridProfile)

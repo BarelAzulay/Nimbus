@@ -10,6 +10,13 @@
 --                  junk moves are refused with one "Pick the moves again" toast and nothing fused or charged, Upgrade ignores a 4th
 --                  argument, FusionService.Mix / Preview take the moves (Preview carries Elements and SpecialFrom), and two pets of
 --                  one element give a one-element hybrid
+--   pet_attr_hybrid_elements          (booted; Task 3, spec 6 "Other players' view") PetService's EquippedHybrids attribute
+--                  "uid=Body/Style/Tier/Rarity/Seed/Elements;...": field 6 = the record's Elements joined by "+" (the chosen first
+--                  element first), field 5 "" when the record has no Seed (field 6 keeps its place); a record with no Elements
+--                  keeps today's 4 / 5-field value byte for byte; junk element entries in a live record never break the value
+--   client_pet_attr_hybrid_elements   (client; Task 3) PetController.ParseHybrids reads field 6 into the stand-in record's
+--                  Elements, so PetKeys.DefOf gives other players' hybrids the same first element; 4 / 5-field values (older
+--                  servers) read as before; junk never errors; another player's 6-field value still draws the follower
 -- Fixture pets (every hybrid test of the plan): Body maple_fox (Uncommon, Flame, "Leaf Pounce" kind Pounce), Style storm_tabby
 -- (Rare, Storm, "Static Storm" kind Storm); ember_phoenix is a second Flame pet (the equal-elements case).
 -- Plain Lua 5.1 syntax only.
@@ -368,14 +375,234 @@ local function serverScenarios()
 		K.flushErrors("fusion_moves")
 	end)
 
+	S.pet_attr_hybrid_elements = guarded("pet_attr_hybrid_elements", function()
+		if not K.needBoot() then
+			return
+		end
+		local advance, mod = K.advance, K.mod
+		local D, PS = mod("DataService"), mod("PetService")
+		local PK = req("shared/PetKeys")
+		if not T.check(D ~= nil and PS ~= nil and PK ~= nil and type(PS.Equip) == "function" and type(PS.Refresh) == "function" and type(D.SetTeam) == "function",
+			"pet attr: DataService, PetService and PetKeys load") then
+			return
+		end
+		local ATTR = "EquippedHybrids"
+		local p = Mock.AddPlayer("AttrHybrid", 987200)
+		advance(1.0)
+		local okRun, errRun = pcall(function()
+			local prof = D.GetProfile(p)
+			local teams = D.GetTeams(p)
+			if not T.check(prof ~= nil and type(teams) == "table", "pet attr: (precondition) the profile and the teams load") then
+				return
+			end
+			local function setTeam(keys)
+				local ok, why = D.SetTeam(p, teams.Active, keys)
+				advance(0.3)
+				return ok, why
+			end
+			local function equip(key)
+				advance(0.3)
+				local ok, why = PS.Equip(p, key)
+				T.check(ok == true, "pet attr: (setup) equip " .. key, tostring(why))
+			end
+			-- uid -> "Body/Style/Tier/Rarity[/Seed[/Elements]]" of every entry of the attribute
+			local function entries()
+				local out = {}
+				local text = p:GetAttribute(ATTR)
+				for entry in string.gmatch(type(text) == "string" and text or "", "[^;]+") do
+					local uid, rest = string.match(entry, "^([^=]+)=(.*)$")
+					if uid then
+						out[uid] = rest
+					end
+				end
+				return out, tostring(text)
+			end
+			local function add(uid, elements, seed)
+				local ok = PK.Add(prof, "hyb:" .. uid, 1, { Body = BODY, Style = STYLE, Rarity = "Rare", Tier = "Normal", Elements = elements, Seed = seed })
+				T.check(ok == true, "pet attr: (setup) hybrid " .. uid)
+			end
+			add("pa1", { "Storm", "Flame" }, 42) -- an SB hybrid (Storm Tabby gives the normal attack) with a Seed
+			add("pa2", { "Storm", "Flame" }, nil) -- the same with no Seed
+			add("pa3", { "Flame" }, 9) -- two parents of one element
+			add("pa4", nil, nil) -- a record from before the element order: no Elements, no Seed
+			add("pa5", nil, 7) -- no Elements, a Seed
+			D.MarkDirty(p)
+			T.check(setTeam({}) == true, "pet attr: (setup) an empty team")
+
+			equip("hyb:pa1")
+			local e, raw = entries()
+			T.check(string.find(raw, "=maple_fox/storm_tabby/Normal/Rare/42/Storm+Flame", 1, true) ~= nil,
+				"pet attr: an equipped SB hybrid with Seed 42 -> EquippedHybrids carries '=maple_fox/storm_tabby/Normal/Rare/42/Storm+Flame'", raw)
+			T.eq(e.pa1, "maple_fox/storm_tabby/Normal/Rare/42/Storm+Flame", "pet attr: ...field 6 = the record's Elements in their order, joined by '+'")
+			equip("hyb:pa2")
+			equip("hyb:pa3")
+			e, raw = entries()
+			T.check(string.find(raw, "/Rare//Storm+Flame", 1, true) ~= nil, "pet attr: a record with no Seed -> '/Rare//Storm+Flame' (field 5 empty, field 6 keeps its place)", raw)
+			T.eq(e.pa2, "maple_fox/storm_tabby/Normal/Rare//Storm+Flame", "pet attr: ...the whole entry of the no-Seed hybrid")
+			T.eq(e.pa3, "maple_fox/storm_tabby/Normal/Rare/9/Flame", "pet attr: a one-element hybrid -> field 6 is that element")
+			T.eq(e.pa1, "maple_fox/storm_tabby/Normal/Rare/42/Storm+Flame", "pet attr: ...the first hybrid's entry is unchanged next to the others")
+
+			-- records with no Elements keep today's value byte for byte (an older client reads it as before)
+			T.check(setTeam({}) == true, "pet attr: (setup) the team emptied again")
+			equip("hyb:pa4")
+			equip("hyb:pa5")
+			e, raw = entries()
+			T.eq(e.pa4, "maple_fox/storm_tabby/Normal/Rare", "pet attr: a record with no Elements and no Seed -> today's 4 fields")
+			T.eq(e.pa5, "maple_fox/storm_tabby/Normal/Rare/7", "pet attr: a record with no Elements and a Seed -> today's 5 fields")
+			T.check(not string.find(raw, "//", 1, true), "pet attr: ...no empty Seed field without an Elements field", raw)
+
+			-- junk in a live record's Elements never breaks the value (only plain names are written)
+			T.check(setTeam({}) == true, "pet attr: (setup) the team emptied for the junk case")
+			equip("hyb:pa1")
+			prof.Hybrids.pa1.Elements = { "Storm", "Fl/ame", 5, "a;b", "x+y", "Flame" }
+			PS.Refresh(p)
+			advance(0.3)
+			e, raw = entries()
+			T.eq(e.pa1, "maple_fox/storm_tabby/Normal/Rare/42/Storm+Flame", "pet attr: junk element entries in the live record are left out of field 6")
+			prof.Hybrids.pa1.Elements = { "Fl/ame", 5 }
+			PS.Refresh(p)
+			advance(0.3)
+			e, raw = entries()
+			T.eq(e.pa1, "maple_fox/storm_tabby/Normal/Rare/42", "pet attr: ...and only junk -> no field 6 (today's 5 fields)")
+			T.check(setTeam({}) == true and (p:GetAttribute(ATTR) or "") == "", "pet attr: an empty team clears the attribute", tostring(p:GetAttribute(ATTR)))
+		end)
+		if p.Parent then
+			Mock.RemovePlayer(p)
+		end
+		advance(0.6)
+		if not okRun then
+			error(errRun, 0)
+		end
+		K.flushErrors("pet_attr_hybrid_elements")
+	end)
+
 	return S
 end
 
 ----------------------------------------------------------------------------------------------------
--- client half (Task 3 adds its scenario here)
+-- client half
 ----------------------------------------------------------------------------------------------------
 local function clientScenarios()
 	local S = {}
+
+	local function moduleAt(top, rest)
+		local inst = Mock.GetPath(ROOTS[top] .. "/" .. rest)
+		if not inst then
+			return nil
+		end
+		local ok, result = pcall(require, inst)
+		return ok and type(result) == "table" and result or nil
+	end
+
+	S.client_pet_attr_hybrid_elements = guarded("client_pet_attr_hybrid_elements", function()
+		local KC = _G.KC
+		local advance = KC.advance
+		local PCtl = (KC.M and KC.M.PetController) or moduleAt("client", "Controllers/PetController")
+		local PK = moduleAt("shared", "PetKeys")
+		if not T.check(type(PCtl) == "table" and type(PCtl.ParseHybrids) == "function" and PK ~= nil,
+			"client pet attr: PetController.ParseHybrids is a function (and PetKeys loads)") then
+			return
+		end
+		local function parse(text)
+			local ok, result = pcall(PCtl.ParseHybrids, text)
+			if not ok then
+				T.fail("client pet attr: ParseHybrids(" .. movesLabel(text) .. ") does not error", tostring(result))
+				return nil, nil
+			end
+			local h = type(result) == "table" and type(result.Hybrids) == "table" and result.Hybrids or {}
+			return result, h
+		end
+		local function defOf(key, parsed)
+			local ok, def = pcall(PK.DefOf, key, parsed)
+			return ok and def or nil
+		end
+
+		-- six fields: the element order arrives
+		local parsed, h = parse("h1=maple_fox/storm_tabby/Normal/Rare/42/Storm+Flame")
+		local rec = h and h.h1
+		T.check(rec ~= nil and sameList(rec.Elements, { "Storm", "Flame" }) and rec.Seed == 42 and rec.Body == BODY and rec.Style == STYLE and rec.Rarity == "Rare" and rec.Tier == "Normal",
+			"client pet attr: ParseHybrids('h1=maple_fox/storm_tabby/Normal/Rare/42/Storm+Flame') -> Elements {Storm+Flame}, Seed 42 (Body, Style, Tier, Rarity as before)", keysText(rec))
+		local def = parsed and defOf("hyb:h1", parsed)
+		T.check(def ~= nil and def.Element == "Storm" and sameList(def.Elements, { "Storm", "Flame" }),
+			"client pet attr: ...PetKeys.DefOf('hyb:h1', parsed).Element == 'Storm' (the owner's chosen first element)", def and (tostring(def.Element) .. " " .. listText(def.Elements)) or "no def")
+
+		-- five fields (an older server): no Elements, today's fallback (the Body's element first)
+		parsed, h = parse("h1=maple_fox/storm_tabby/Normal/Rare/42")
+		rec = h and h.h1
+		T.check(rec ~= nil and rec.Elements == nil and rec.Seed == 42, "client pet attr: the 5-field value -> no Elements, Seed 42", keysText(rec))
+		def = parsed and defOf("hyb:h1", parsed)
+		T.check(def ~= nil and def.Element == "Flame", "client pet attr: ...DefOf(...).Element == 'Flame' (today's fallback)", def and tostring(def.Element) or "no def")
+
+		-- empty field 5, field 6 present
+		parsed, h = parse("h1=maple_fox/storm_tabby/Normal/Rare//Storm+Flame")
+		rec = h and h.h1
+		T.check(rec ~= nil and rec.Seed == nil and sameList(rec.Elements, { "Storm", "Flame" }),
+			"client pet attr: 'h1=maple_fox/storm_tabby/Normal/Rare//Storm+Flame' -> Seed nil, Elements {Storm+Flame}", keysText(rec))
+		def = parsed and defOf("hyb:h1", parsed)
+		T.check(def ~= nil and def.Element == "Storm", "client pet attr: ...DefOf(...).Element == 'Storm'", def and tostring(def.Element) or "no def")
+
+		-- four fields (the oldest value) still read
+		parsed, h = parse("h1=maple_fox/storm_tabby/Golden/Rare")
+		rec = h and h.h1
+		T.check(rec ~= nil and rec.Seed == nil and rec.Elements == nil and rec.Tier == "Golden" and rec.Rarity == "Rare",
+			"client pet attr: the 4-field value reads as before (Tier Golden, Rarity Rare, no Seed, no Elements)", keysText(rec))
+
+		-- several entries keep their own order
+		parsed, h = parse("a1=maple_fox/storm_tabby/Normal/Rare/1/Flame+Storm;a2=maple_fox/storm_tabby/Normal/Rare/2/Storm+Flame")
+		T.check(h ~= nil and h.a1 ~= nil and h.a2 ~= nil and sameList(h.a1.Elements, { "Flame", "Storm" }) and sameList(h.a2.Elements, { "Storm", "Flame" }),
+			"client pet attr: two entries -> each keeps its own element order", h and (keysText(h.a1) .. " | " .. keysText(h.a2)) or "nil")
+		local d1, d2 = parsed and defOf("hyb:a1", parsed), parsed and defOf("hyb:a2", parsed)
+		T.check(d1 ~= nil and d2 ~= nil and d1.Element == "Flame" and d2.Element == "Storm", "client pet attr: ...and their defs lead with Flame / Storm",
+			tostring(d1 and d1.Element) .. " / " .. tostring(d2 and d2.Element))
+
+		-- junk never errors; DefOf drops unknown element names (and falls back to the parents when none is left)
+		parsed, h = parse("h1=maple_fox/storm_tabby/Normal/Rare/42/Junk+Storm")
+		def = parsed and defOf("hyb:h1", parsed)
+		T.check(def ~= nil and def.Element == "Storm", "client pet attr: field 6 'Junk+Storm' -> DefOf leads with Storm (the unknown name dropped)", def and tostring(def.Element) or "no def")
+		parsed, h = parse("h1=maple_fox/storm_tabby/Normal/Rare/42/+")
+		rec = h and h.h1
+		def = parsed and defOf("hyb:h1", parsed)
+		T.check(rec ~= nil and rec.Elements == nil and def ~= nil and def.Element == "Flame", "client pet attr: field 6 '+' -> no Elements, today's fallback",
+			keysText(rec) .. " / " .. tostring(def and def.Element))
+		parsed, h = parse("h1=maple_fox/storm_tabby/Normal/Rare/42/Storm+Flame/more")
+		rec = h and h.h1
+		T.check(rec ~= nil and sameList(rec.Elements, { "Storm", "Flame" }), "client pet attr: a 7th field (a later server) is ignored, field 6 still read", keysText(rec))
+		for _, junk in ipairs({ "", "x", ";;", "h1=", "h1=/", 5 }) do
+			local _, hj = parse(junk)
+			T.check(hj ~= nil and next(hj) == nil, "client pet attr: junk " .. movesLabel(junk) .. " -> no record, no error")
+		end
+
+		-- another player's 6-field value still draws their follower
+		local Config = moduleAt("shared", "Config")
+		local friend = Mock.AddPlayer("AttrFriend", 6202)
+		advance(1.0)
+		local okRun, errRun = pcall(function()
+			local myRoot = KC.root and KC.root()
+			if myRoot then
+				Mock.Teleport(friend, myRoot.Position + Vector3.new(18, 0, 0))
+			end
+			friend:SetAttribute("EquippedHybrids", "g6=maple_fox/storm_tabby/Normal/Rare/42/Storm+Flame")
+			friend:SetAttribute(Config.Attr.EquippedPets, "hyb:g6")
+			advance(2.0)
+			local folder = workspace:FindFirstChild("ClientPets")
+			local f = folder and folder:FindFirstChild(tostring(friend.UserId))
+			local models = {}
+			for _, c in ipairs(f and f:GetChildren() or {}) do
+				if c:IsA("Model") then
+					models[#models + 1] = c
+				end
+			end
+			T.check(#models == 1 and models[1]:GetAttribute("PetId") == "hyb:g6",
+				"client pet attr: another player's hybrid with the 6-field value is drawn as their follower", #models .. " models")
+		end)
+		Mock.RemovePlayer(friend)
+		advance(1.0)
+		if not okRun then
+			error(errRun, 0)
+		end
+		KC.flushErrors("client_pet_attr_hybrid_elements")
+	end)
+
 	return S
 end
 
