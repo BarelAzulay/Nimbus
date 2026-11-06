@@ -24,8 +24,9 @@
 --                               gate centre (LobbyInfo.GateSites.Ring, LookVector = towards the plaza)
 --       ArenaPortal  = BasePart (Phase 5) Portal_Arena's prompt part (ArenaPortalPrompt -> Spawn)
 --       LobbyCFrame  = CFrame   (Phase 5) in front of Portal_Arena, looking at the plaza (the forum's Return gate)
---       Gate         = { CFrame, Size, Zone, Return, Prompt, Crest }   (boss raids) the boss gate at the back of the floor (the BossGate
---                               segment, k = 8): CFrame = the passage centre on the floor surface, -Z = towards the floor's centre,
+--       Gate         = { CFrame, Size, Zone, Return, Prompt, Crest }   (boss raids) the boss gate beside the main entrance (the BossGate
+--                               segment, k = COL.BossK = 1 since bug batch 6; the back k = 8 before): CFrame = the passage centre on
+--                               the floor surface, -Z = towards the floor's centre,
 --                               Size = what counts as walking through, Zone = the invisible part "RaidGate" (tagged NC_RaidGate), Return =
 --                               on the floor in front of it, looking at the centre (raiders come back from a pocket), Prompt =
 --                               "DarePrompt" (OpenPanel = "Dare") on the pillar beside it, Crest = the gold crest over the gate (tagged
@@ -70,7 +71,7 @@
 --     trophy statue, banners, planters) and the COLOSSEUM behind: a 16-sided stadium whose sand floor (apothem 72)
 --     holds the raid zone at any rotation, an element wheel in its centre, a podium wall, four tiers of seats in the
 --     eight element colours, an outer wall with blind arches, element banners and crenellations, pillars with
---     braziers; the main gate (sign "BATTLE ARENA", an "Arena" prompt), two side gates and the boss gate at the back.
+--     braziers; the main gate (sign "BATTLE ARENA", an "Arena" prompt), two side gates and the boss gate beside the main gate.
 --   * Two DUEL RINGS on the forum (16-sided, apothem 33: the duel zone fits at any rotation) with a coloured curb,
 --     torch posts, a crossed-swords emblem and two challenge pads each (prompt "Duel", attribute OpenPanel = "Arena").
 --   * The EVENT BOARD and the TROPHY LEADERBOARD: free-standing stone frames flanking the avenue in front of the main
@@ -78,7 +79,8 @@
 --   * Battle zones: invisible parts tagged NC_BattleZone with the attributes Mode ("Raid" | "Duel" | "Ring"), Size
 --     (Vector3, the battle floor: X, height, Z), ZoneId and Index; the part itself covers the floor plus a small margin
 --     (where the controls work). CanCollide / CanTouch / CanQuery false: test membership with the part's CFrame + Size.
---   * The boss gate at the back (ArenaInfo.Gate): the BossGate segment with a portcullis players walk through; its RaidGate part takes
+--   * The boss gate beside the main gate (ArenaInfo.Gate; bug batch 6, was the back): the BossGate segment with a portcullis
+--     players walk through, 13+ studs from the main gate's passage; its RaidGate part takes
 --     them into their tier's fight (BattleService), the prompt on the pillar beside it opens the dare panel (the client).
 --   * The Gate Court gates (Phase 5, 6.1 / 6.2, C4 / C12): Portal_Ring and Portal_Arena are WorldStyle.BuildGate gates
 --     at LobbyInfo.GateSites.Ring / .Arena, parented to LobbyInfo.GatesFolder (workspace.NimbusLobby.Gates; the arena
@@ -227,6 +229,7 @@ local COL = {
 	PillarOut = 97,
 	GateHalf = 6, -- passages are 13 studs wide (|x| <= 6.5)
 	GateH = 13,
+	BossK = 1, -- bug batch 6 (the owner: "make it at the main enterance"): the boss gate's segment, beside the main gate (k = 0)
 }
 local RING_A = 33 -- duel ring apothem
 local RING_Y = 0.6 -- duel ring floor top above the forum
@@ -1871,11 +1874,13 @@ local function buildFloor(parent, A)
 	return m
 end
 
+-- the main gate (k = 0, towards the lobby), the two side gates, the boss gate beside the main gate (COL.BossK; the back,
+-- k = 8, is a stand since bug batch 6)
 local function segmentKind(k)
-	if k == 0 or k == 4 or k == 12 then
-		return "Gate"
-	elseif k == 8 then
+	if k == COL.BossK then
 		return "BossGate"
+	elseif k == 0 or k == 4 or k == 12 then
+		return "Gate"
 	end
 	return "Stand"
 end
@@ -2865,8 +2870,9 @@ function Gates.buildArena(lobbyInfo, fallbackParent)
 end
 
 -- The Return gate on the forum (always built): lands in front of Portal_Arena (ArenaInfo.LobbyCFrame). Bug batch 6 (the
--- owner: "too interupting, make it smaller and on the side"): 0.6 size on the lawn 30 studs left of the arrival, out of the
--- avenue and off the front promenade, its front turned to the avenue beside the arrival star (where everyone lands)
+-- owner: "too interupting, make it smaller and on the side"): 0.6 size on the lawn 30 studs beside the arrival (island x = -30:
+-- on the right as you face the colosseum), out of the avenue and off the front promenade, its front turned to the avenue
+-- beside the arrival star (where everyone lands)
 function Gates.buildReturn(model, A)
 	local rSite = CFrame.lookAt((A * CFrame.new(-30, 0, ISL.FrontZ + 12)).Position, (A * CFrame.new(0, 0, ISL.FrontZ + 30)).Position)
 	local gate, _, prompt = Gates.build(model, rSite, { Id = "Return", Title = "To the Plaza", Info = "Homes, gates, shop", Color = "Green", Glyph = "house", Pad = false, Scale = 0.6 })
@@ -2879,23 +2885,27 @@ end
 -- The boss gate (boss raids, ArenaInfo.Gate): the BossGate segment's art is untouched (its portcullis just lets players through, see
 -- segmentTemplate). Added here: the invisible walk-through (BattleService polls who stands in it) and the small pillar with the dare
 -- prompt, beside it so that walking up to the prompt never takes anyone in. The prompt keeps the arena's PROMPT_RANGE: from
--- anywhere it shows, a dare is within BattleService's C.RAID_DARE_RANGE of the gate.
+-- anywhere it shows, a dare is within BattleService's C.RAID_DARE_RANGE of the gate. Bug batch 6: the gate is the segment beside
+-- the main gate (COL.BossK = 1; k = 8 gave today's frame exactly), its walk-through 13+ studs from the main gate's passage and
+-- the pillar on its far side from it, so walking in and out of the colosseum never starts a raid.
 function Gates.buildBoss(model, A)
 	local m = newModel(model, "BossGateSite")
-	local cf = A * CFrame.new(0, 0, COL.FloorR - 2) -- island-local -Z is the floor's centre from here
+	-- the passage centre in the podium wall; -Z looks at the floor's centre
+	local cf = A * CFrame.Angles(0, COL.BossK * STEP16, 0) * CFrame.new(0, 0, -(COL.FloorR - 2)) * CFrame.Angles(0, pi, 0)
 	local size = Vector3.new(11, 8, 8)
 	local zone = box(m, "RaidGate", cf * CFrame.new(0, size.Y / 2, 0), size, C.Crimson, { Transparency = 1, Shadow = false })
 	zone.CanCollide = false
 	zone.CanQuery = false
 	zone.CanTouch = false
 	CollectionService:AddTag(zone, "NC_RaidGate")
-	local pillar = Art.part(m, "DarePillar", A * CFrame.new(-8, 4, 68), Vector3.new(2, 8, 2), "Marble", { Collide = true })
+	local side = (COL.BossK < 8) and 1 or -1 -- the pillar's side: away from the main gate
+	local pillar = Art.part(m, "DarePillar", cf * CFrame.new(side * 8, 4, -2), Vector3.new(2, 8, 2), "Marble", { Collide = true })
 	local prompt = makePrompt(pillar, "DarePrompt", "Dare a higher tier", "Boss gate", "Dare")
-	-- the crest: the gold over the gate (Segment_08 has more Gold, its banner on the outer wall stands higher)
+	-- the crest: the gold over the gate (the segment has more Gold, its banner on the outer wall stands higher)
 	local crest, best = nil, math.huge
-	local crestAt = (A * CFrame.new(0, 6.5, COL.FloorR)).Position
+	local crestAt = (cf * CFrame.new(0, 6.5, 2)).Position
 	local colosseum = model:FindFirstChild("Colosseum")
-	local seg = colosseum and colosseum:FindFirstChild("Segment_08", true)
+	local seg = colosseum and colosseum:FindFirstChild(string.format("Segment_%02d", COL.BossK), true)
 	for _, d in ipairs(seg and seg:GetDescendants() or {}) do
 		if d:IsA("BasePart") and d.Name == "Gold" and (d.Position - crestAt).Magnitude < best then
 			crest, best = d, (d.Position - crestAt).Magnitude

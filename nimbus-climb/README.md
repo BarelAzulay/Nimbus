@@ -11,7 +11,7 @@ Index**, and build your own **tycoon home**: claim a plot at its gate, put your 
 roam the yard, eat at the Food Bowl and poop **Cloud Cash** (that is your **Cash**), grow berries on your **Berry
 Farm**, feed your pets at the Food Machine, **EVOLVE** them, train their battle skills, fuse them and prestige. Then
 fight with a team of three (one **fighter** you steer and two **helpers**) in the **Dungeon**, in duels against other
-players, in Boss Raids behind the colosseum's back gate and in the endless **Champion Ring**.
+players, in Boss Raids at the boss gate by the colosseum's main entrance and in the endless **Champion Ring**.
 
 Version 3 turns Nimbus Climb into a multi-concept game: the **tycoon homes** are the main mode, **pet battles**
 are the second one, and the climb (obby) stays as a side mode. This build is **v3 phase 6**: phase 1 brought the
@@ -179,7 +179,7 @@ Pet Garden, food is berries now, and the Trials made way for the Dungeon (see
 - **Duels and trophies.** Challenge another player on the arena's duel rings or join the quick queue, win
   **trophies** and climb the trophy **leaderboard**. Nobody ever loses a pet.
 - **Boss Raids.** A giant boss (Storm Titan, Lava Golem, Frost Wyrm or Shadow Hydra) always waits in the colosseum: walk
-  through the back gate to fight it at your level, alone or with anyone else on your tier. Dodge its glowing attacks, win
+  through the iron boss gate by the main entrance to fight it at your level, alone or with anyone else on your tier. Dodge its glowing attacks, win
   tokens, XP, Gems and maybe one of the three **Boss Raid pets**. Every few hours a **Double Rewards** hour doubles the
   battle tokens.
 - **And around it:** a third tutorial chapter, new NPC tips about battles, and for the owner the **Next raid
@@ -329,7 +329,7 @@ the end. Players who finished the phase 1 tutorial start right at this chapter.
 A third chapter teaches pet battles in four steps: follow the arrow to the Arena gate and visit the Battle Arena, open
 **Pets** and put 3 pets in your team (a fighter and two helpers: tap a slot and pick a pet, or tap **Auto-fill best**), press **E** at the Dungeon gate and clear the first
 room of floor 1, the Mossy Cellar (while this step is open that room is easy enough for any level 1 pet on a solo run; players
-who already cleared the floor, or Trial 1 before phase 5, skip this step), then walk through the boss gate at the back of the colosseum (or press Next). Nimbus pays **500 Cloud Tokens** at the end. Players who finished the first two chapters start right at this
+who already cleared the floor, or Trial 1 before phase 5, skip this step), then walk through the boss gate by the colosseum's main entrance (or press Next). Nimbus pays **500 Cloud Tokens** at the end. Players who finished the first two chapters start right at this
 one.
 
 A fourth chapter teaches the phase 4 pet care in three steps: *Training Time* (start a training at your Training
@@ -361,7 +361,7 @@ ends it (it asks first). Your step is saved, so the tutorial continues where you
   | NPC | Talks about |
   |---|---|
   | **Sparky Fox**, Movement Trainer | running (Shift / RUN), dashing (Q / DASH), dash-only gaps, healing at the next checkpoint, the battle buttons (SWITCH TARGET, ELEMENT, SPECIAL, DASH), a helper's buff and SWAP |
-  | **Captain Penguin**, Co-op Captain | the Obby portal and its level picker, parties, reviving teammates at the next checkpoint, the boss behind the back gate and dodging with DASH, the safe zone outside the Battle Arena, the Dungeon with friends |
+  | **Captain Penguin**, Co-op Captain | the Obby portal and its level picker, parties, reviving teammates at the next checkpoint, the boss gate by the main entrance and dodging with DASH, the safe zone outside the Battle Arena, the Dungeon with friends |
   | **Granny Owl**, Pet Expert | roulettes on the shop island and their chances (also with Gems), Mythic pets, the Pet Index, the Berry Basket, the Food Machine (Feed), the EVOLVE button and how evolved pets grow |
   | **Coach Corgi**, Token Coach | tokens that are yours to keep, the Dungeon, the Training Place, the Champion Ring and beating your record, your battle Team (a fighter and two helpers), duels and trophies |
   | **Mayor Panda**, Village Mayor | claiming a home at a free gate (press E), the Pet Garden, the Food Bowl and Cloud Cash, the Berry Farm and the Food Machine, Home Level, Prestige, the Home window and the home portal |
@@ -938,7 +938,7 @@ Arena ("Battle Arena: pets can battle here") and out again ("Safe zone").
 - **The Arena gate:** press **E** at the Arena gate in the Gate Court and you are on the arena island. The arena is a
   big colosseum on its own cloud island: the round **boss floor** inside, two **duel rings** on the square in front of
   it, the **event board** (next event and its countdown) and the **trophy leaderboard** next to the main gate. The
-  **Return** gate on the arena's forum takes you back to the plaza.
+  small green **To the Plaza** gate on the lawn beside where you arrive takes you back to the plaza.
 - **The bridge:** you can still walk: follow the village street to the stone bridge with the **BATTLE ARENA** arch and
   walk across.
 - **The Arena Gate at home:** build the **Arena Gate** pad on your yard (after the Training Place) and press **E**
@@ -1131,7 +1131,8 @@ Duel other players on the two **duel rings** in front of the colosseum. Both of 
 
 ### Boss Raids
 
-A boss **always waits** on the colosseum floor. Walk through the **back gate** of the colosseum and you are in the fight for
+A boss **always waits** on the colosseum floor. Walk through the iron **boss gate** just inside the **main entrance** (on the
+right as you come in) and you are in the fight for
 your **tier**, together with anyone else on your tier in this server: no Join button, no window, no countdown. Only walking in
 counts: standing in the gate does nothing, so step out and back in to try again. The first fight runs on the real floor, in view
 of the stands; the other tiers' fights run at the same moment in a side pocket. A fight holds up to **8 raiders**, and the boss
@@ -1252,7 +1253,7 @@ later you are back at the gate.
 - **The Dungeon and the Champion Ring** work in a normal **Play** test: press **PLAY** in the main menu, then **E** at
   the Dungeon or the Champion Ring gate in the Gate Court (the ring needs a claimed home and a pet). `/petlevel 20`
   makes your team strong enough for the first floors.
-- **Boss Raids:** press **Play**, go to the arena and walk through the boss gate at the back of the colosseum floor. One
+- **Boss Raids:** press **Play**, go to the arena and walk through the boss gate by the colosseum's main entrance. One
   player is enough. The DEV panel's **Next raid boss** button or `/raid` in the chat changes the boss, `/raid end` ends the
   running fights (see [Developer tools](#developer-tools-owner-only)).
 - **Duels and Dungeon parties need two players:** on Studio's **Test** tab choose **Clients and Servers**, set **2

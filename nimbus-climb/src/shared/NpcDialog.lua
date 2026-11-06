@@ -390,7 +390,7 @@ NpcDialog.Npcs = {
 			"Ahoy! Hop on the Obby portal pad together: up to " .. number(M.MaxPlayers or 4) .. " climbers sail one course. Beat a level to unlock the next!",
 			"Teammate down? Keep climbing! Reaching the next checkpoint revives everyone who is down.",
 			"A fallen teammate comes back at the next checkpoint with half health, so keep climbing and ring it for them!",
-			"A Boss Raid always waits behind the colosseum's back gate: walk through it to fight it at your level!",
+			"A Boss Raid always waits by the colosseum's main entrance: walk through its iron gate to fight it at your level!",
 			"Outside the Battle Arena, the rings and the Dungeon it's a safe zone: no battles. In a fight, DASH out of glowing circles!",
 		},
 	},

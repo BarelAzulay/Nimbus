@@ -543,7 +543,7 @@ local function serverScenarios()
 		-- the saved tutorial step
 		T.eq(stepId(p), "raid", "raid flow oldsave: a saved Step 18 lands on the raid step")
 		local st = tut.GetState(p)
-		T.check(st and st.CompleteOn == "RaidGate" and tostring(st.Text):find("back gate", 1, true) ~= nil, "raid flow oldsave: ...the gate step", st and tostring(st.Text))
+		T.check(st and st.CompleteOn == "RaidGate" and tostring(st.Text):find("main entrance", 1, true) ~= nil, "raid flow oldsave: ...the gate step (by the main entrance)", st and tostring(st.Text))
 		T.eq(tut.HandleEvent(p, "Next"), true, "raid flow oldsave: Next completes it")
 		advance(0.4)
 		T.eq(stepId(p), steps.Steps[steps.ChapterStart[4]].Id, "raid flow oldsave: ...on to chapter 4")

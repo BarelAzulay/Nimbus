@@ -846,7 +846,7 @@ local TOPICS3 = {
 	{ "the Dungeon", { "Dungeon", "**SOLO**", "**PARTY**", "**READY**", "**START**", "boss room", "first clear", "chest", "LEAVE" } },
 	{ "duels: challenge, the quick queue, practice duels", { "duel rings", "Challenge", "Accept", "Find a match", "practice duel" } },
 	{ "trophies and the leaderboard", { "Trophies", "leaderboard", "top 10" } },
-	{ "Boss Raids: walking in and dodging", { "Boss Raid", "back gate", "dare", "circle or line", "**DASH** out of it", "minion waves", "enraged" } },
+	{ "Boss Raids: walking in and dodging", { "Boss Raid", "main entrance", "dare", "circle or line", "**DASH** out of it", "minion waves", "enraged" } },
 	{ "Double Rewards", { "Double Rewards" } },
 	{ "elements and team synergy in battle", { "synergy", "Balanced" } },
 	{ "the developer raid tools", { "/raid", "Next raid boss" } },

@@ -84,7 +84,7 @@
 -- poll re-sends the state whenever the target or the hint changes. Phase 3 targets { Kind = "Arena", Place } are
 -- resolved from ArenaInfo the same way (sent as Kind "Spot" + Position: the client draws its guide arrow for those):
 -- "Gate" = the Arena gate of the Gate Court (ArenaInfo.ArenaPortal; else ArenaInfo.Spawn, the forum), "BossGate" = the boss
--- gate at the back of the colosseum floor (ArenaInfo.Gate; else the floor), "Floor" = the colosseum floor, "Ring" = the Champion Ring portal (ArenaInfo.RingPortal; the gate of a free home first while the
+-- gate beside the colosseum's main entrance (ArenaInfo.Gate; else the floor), "Floor" = the colosseum floor, "Ring" = the Champion Ring portal (ArenaInfo.RingPortal; the gate of a free home first while the
 -- player has none), "Dungeon" = the Dungeon gate's pad (DungeonInfo.Pad); no arrow while the player fights (attribute
 -- InBattle) or runs the Dungeon (DungeonService.GetRun).
 --

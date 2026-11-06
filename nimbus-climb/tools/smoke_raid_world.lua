@@ -1,7 +1,8 @@
 -- smoke_raid_world.lua: boss raids, Task 3 (docs/superpowers/specs/2026-11-01-raid-boss-design.md: the boss gate, the Raid pockets and
 -- the boards in server/Services/ArenaBuilder.lua, the tier dressing and head tracking in shared/BossBuilder.lua). Server world only
 -- (listed in server_files of tools/smoke.py), booted, before shutdown:
---   raid_world_gate    ArenaInfo.Gate: where it stands, the walk-through zone, the Return frame, the dare prompt, the crest; the
+--   raid_world_gate    ArenaInfo.Gate: where it stands (bug batch 6: Segment_01, beside the main gate, never in its way), the
+--                      walk-through zone, the Return frame, the dare prompt, the crest; the
 --                      portcullis lets a player through and the segment's art is untouched
 --   raid_world_pocket  BuildPocket(index, "Raid"): 96 x 96, a colliding floor, no crowd, the part budget; FreePocket; the Ring pocket
 --                      is unchanged
@@ -82,15 +83,78 @@ S.raid_world_gate = guarded("raid_world_gate", function()
 	if not T.check(type(gate) == "table" and typeof(gate.CFrame) == "CFrame" and typeof(gate.Size) == "Vector3" and gate.Zone and gate.Zone:IsA("BasePart") and gate.Zone.CanCollide == false and typeof(gate.Return) == "CFrame", "raid gate: ArenaInfo.Gate = { CFrame, Size, Zone, Return }") then
 		return
 	end
-	local rel = info.Floor.CFrame:PointToObjectSpace(gate.CFrame.Position)
-	T.check(math.abs(rel.X) < 1 and rel.Z > 66 and rel.Z < 74 and math.abs(rel.Y) < 2, "raid gate: the gate sits in the podium wall at the back (the BossGate segment, k = 8)", tostring(rel))
+	-- bug batch 6 (the owner: "why put it there? make it at the main enterance."): the BossGate is the segment beside the
+	-- main gate (k = 1); the back (k = 8) is a stand again. Segment k's frame: Center turned k x 22.5 degrees, outward = -Z.
+	local STEP16, FLOOR_R, GATE_HALF, WALL_OUT = math.pi / 8, 72, 6, 92
+	local stands = info.Model.Colosseum.Stands
+	local kinds = {}
+	for k = 0, 15 do
+		local s = stands:FindFirstChild(string.format("Segment_%02d", k))
+		kinds[#kinds + 1] = k .. "=" .. tostring(s and s:GetAttribute("Kind"))
+	end
+	local function kindOf(k)
+		local s = stands:FindFirstChild(string.format("Segment_%02d", k))
+		return s and s:GetAttribute("Kind")
+	end
+	local nBoss = 0
+	for k = 0, 15 do
+		if kindOf(k) == "BossGate" then
+			nBoss = nBoss + 1
+		end
+	end
+	T.check(nBoss == 1 and kindOf(1) == "BossGate" and kindOf(8) == "Stand" and kindOf(0) == "Gate" and kindOf(4) == "Gate" and kindOf(12) == "Gate",
+		"raid gate: Segment_01 (beside the main gate) is the one BossGate, Segment_08 a Stand, Segment_00 / 04 / 12 the gates", table.concat(kinds, " "))
+	local seg01, seg08 = stands:FindFirstChild("Segment_01"), stands:FindFirstChild("Segment_08")
+	-- (the recorded Tag calls: p3arena_mesh strips the live ML_* attributes when it is done)
+	local placed = type(AB._Mesh) == "table" and type(AB._Mesh.Placed) == "table" and AB._Mesh.Placed or {}
+	local function dressKey(seg)
+		return seg and placed[seg] and placed[seg].Key
+	end
+	T.check(dressKey(seg01) == "arena_seg_bossgate" and dressKey(seg08) == "arena_seg_stand",
+		"raid gate: the existing Blender segments dress the swapped slots (arena_seg_bossgate on 01, arena_seg_stand on 08)", tostring(dressKey(seg01)) .. " / " .. tostring(dressKey(seg08)))
+	local main = info.Center -- Segment_00's frame: the main gate looks along -Z
+	local segFrame = info.Center * CFrame.Angles(0, STEP16, 0)
+	local rel = segFrame:PointToObjectSpace(gate.CFrame.Position)
+	T.check(math.abs(rel.X) < 0.5 and math.abs(rel.Z + (FLOOR_R - 2)) < 0.5 and math.abs(rel.Y) < 2, "raid gate: the gate sits in Segment_01's podium wall, FloorR - 2 from the centre, 22.5 degrees off the main gate", tostring(rel))
 	T.check(gate.CFrame.LookVector:Dot((info.Floor.CFrame.Position - gate.CFrame.Position).Unit) > 0.99, "raid gate: -Z looks at the floor's centre")
+	T.check(math.abs(gate.CFrame.UpVector.Y - 1) < 1e-6, "raid gate: upright")
+	-- never in the way in or out: the main gate's corridor (|x| <= GateHalf + 1, from FloorR - 6 to WallOut + 4 out) stays 13+
+	-- studs from the walk-through's footprint
+	local zone = gate.Zone
+	local hx, hz = zone.Size.X / 2, zone.Size.Z / 2
+	local function toCorridor(p)
+		local l = main:PointToObjectSpace(p)
+		local dx = math.max(math.abs(l.X) - (GATE_HALF + 1), 0)
+		local dz = math.max((FLOOR_R - 6) - (-l.Z), (-l.Z) - (WALL_OUT + 4), 0)
+		return math.sqrt(dx * dx + dz * dz)
+	end
+	local function toZone(p)
+		local l = zone.CFrame:PointToObjectSpace(p)
+		local dx, dz = math.max(math.abs(l.X) - hx, 0), math.max(math.abs(l.Z) - hz, 0)
+		return math.sqrt(dx * dx + dz * dz)
+	end
+	local gap = math.huge
+	for i = -20, 20 do
+		local t = i / 20
+		for _, o in ipairs({ { t * hx, -hz }, { t * hx, hz }, { -hx, t * hz }, { hx, t * hz } }) do
+			gap = math.min(gap, toCorridor((zone.CFrame * CFrame.new(o[1], 0, o[2])).Position))
+		end
+	end
+	for _, cx in ipairs({ -(GATE_HALF + 1), GATE_HALF + 1 }) do
+		for _, r in ipairs({ FLOOR_R - 6, WALL_OUT + 4 }) do
+			gap = math.min(gap, toZone((main * CFrame.new(cx, zone.Position.Y - main.Y, -r)).Position))
+		end
+	end
+	T.check(gap >= 13, "raid gate: walking in or out of the main gate never touches the walk-through (13+ studs from its corridor)", string.format("%.1f studs", gap))
+	local ret = gate.Return.Position
+	local rl = main:PointToObjectSpace(ret)
+	T.check(Vector3.new(rl.X, 0, rl.Z).Magnitude < FLOOR_R and toZone(ret) > 0 and toCorridor(ret) > 0, "raid gate: Return stands on the sand, outside the walk-through and the main gate's corridor", tostring(rl))
 	T.check((gate.Return.Position - info.Floor.CFrame.Position).Magnitude < (gate.CFrame.Position - info.Floor.CFrame.Position).Magnitude and gate.Return.LookVector:Dot((info.Floor.CFrame.Position - gate.Return.Position).Unit) > 0.9, "raid gate: Return is on the floor side of the gate, looking at the centre")
 	T.check(CollectionService:HasTag(gate.Zone, "NC_RaidGate") and gate.Zone.Name == "RaidGate" and gate.Zone.CanTouch == false and gate.Zone.CanQuery == false and gate.Zone.Transparency >= 1, "raid gate: the zone is an invisible part tagged NC_RaidGate")
 	T.check(CollectionService:HasTag(gate.Zone, "NC_BattleZone") == false, "raid gate: the zone is no battle zone")
 	local floorRel = gate.Zone.CFrame:PointToObjectSpace(gate.CFrame.Position + Vector3.new(0, 3, 0))
 	T.check(math.abs(floorRel.Y) <= gate.Zone.Size.Y / 2, "raid gate: the zone covers a standing player's root")
-	local seg = info.Model.Colosseum.Stands:FindFirstChild("Segment_08")
+	local seg = seg01
 	local bars = 0
 	for _, d in ipairs(seg:GetDescendants()) do
 		if d:IsA("BasePart") and d.Name == "Iron" then
@@ -113,11 +177,13 @@ S.raid_world_gate = guarded("raid_world_gate", function()
 		local px = gate.Zone.CFrame:PointToObjectSpace(pillar.Position)
 		T.check(math.abs(px.X) - pillar.Size.X / 2 >= gate.Zone.Size.X / 2, "raid gate: the pillar stands beside the walk-through, not in it", tostring(px))
 		T.check((pillar.Position - gate.CFrame.Position).Magnitude + gate.Prompt.MaxActivationDistance <= 20, "raid gate: anywhere the prompt shows is within BattleService's dare range")
+		T.check(math.abs(main:PointToObjectSpace(pillar.Position).X) > math.abs(main:PointToObjectSpace(zone.Position).X) and toCorridor(pillar.Position) >= 13,
+			"raid gate: the pillar stands on the far side of the walk-through from the main gate")
 	end
-	T.check(gate.Crest and gate.Crest:IsA("BasePart") and gate.Crest:IsDescendantOf(seg) and gate.Crest.Name == "Gold", "raid gate: the crest part for the client's tag")
+	T.check(gate.Crest and gate.Crest:IsA("BasePart") and gate.Crest:IsDescendantOf(seg) and gate.Crest.Name == "Gold", "raid gate: the crest part for the client's tag (in Segment_01)")
 	if gate.Crest then
-		local crel = info.Floor.CFrame:PointToObjectSpace(gate.Crest.Position)
-		T.check(math.abs(crel.X) < 2 and crel.Y > 5 and crel.Y < 9 and crel.Z > 70 and crel.Z < 75, "raid gate: the crest is the gold over the gate, not the banner's on the outer wall", tostring(crel))
+		local crel = segFrame:PointToObjectSpace(gate.Crest.Position)
+		T.check(math.abs(crel.X) < 2 and crel.Y > 5 and crel.Y < 9 and crel.Z < -70 and crel.Z > -75, "raid gate: the crest is the gold over the gate, not the banner's on the outer wall", tostring(crel))
 		T.check(CollectionService:HasTag(gate.Crest, "NC_RaidGateCrest"), "raid gate: the crest is tagged for the client")
 	end
 	T.check(AB.InArena(gate.CFrame.Position) and info.Parts <= 2800, "raid gate: inside the arena; the island stays within 2800 parts", tostring(info.Parts))

@@ -8,7 +8,7 @@
 --   p3ui_content        (server, content) chapter 3 is appended after the home chapter (arena, team, dungeon, raid; chapter
 --                       3 up to ChapterStart[4] - 1, the raid step ends it, known CompleteOn, Arena targets with a Place, short texts, no
 --                       placeholder left); NPC tips: every NPC keeps 3-5 lines that fit the dialog, and the battle
---                       controls (Sparky Fox), Boss Raids at the back gate (Captain Penguin), the Trial Portal,
+--                       controls (Sparky Fox), Boss Raids at the main entrance (Captain Penguin; bug batch 6), the Trial Portal,
 --                       battle teams and trophies (Coach Corgi), elements and synergy in battle (Professor Axolotl) are
 --                       explained with the numbers of BattleCatalog
 --   p3ui_tutorial       (server, booted) a player who finished the home chapter resumes at "arena": the arrow points at
@@ -129,7 +129,7 @@ local function serverScenarios()
 			"p3ui: step 17 'trial' became 'dungeon': the Dungeon portal, completes on DungeonRoom")
 		-- (bug batch 2 #24: informational; boss raids: the gate or Next completes it, the boss is always there)
 		T.check(byId.raid and byId.raid.CompleteOn == "RaidGate" and byId.raid.AlsoNext == true and byId.raid.ChapterEnd == true and byId.raid.Target and byId.raid.Target.Place == "BossGate"
-			and tostring(byId.raid.Text):find("always waits behind the colosseum's back gate", 1, true) ~= nil and not tostring(byId.raid.Text):find("{", 1, true),
+			and tostring(byId.raid.Text):find("always waits by the colosseum's main entrance", 1, true) ~= nil and not tostring(byId.raid.Text):find("back gate", 1, true) and not tostring(byId.raid.Text):find("{", 1, true),
 			"p3ui: 'raid' ends the chapter (ChapterEnd), points at the boss gate, completes on the gate or Next and says the boss always waits")
 		T.check(#tostring(byId.raid.Text) >= 97 and #tostring(byId.raid.Text) <= 125, "p3ui: the raid step's text is 97-125 bytes", tostring(#tostring(byId.raid.Text)))
 		local ends = 0
@@ -176,8 +176,8 @@ local function serverScenarios()
 		local win = BC and BC.Trophies and BC.Trophies.Win or 20
 		T.check(says("sparky_fox", "SWITCH TARGET", "ELEMENT", "SPECIAL", "DASH", "F = ", "E = ", "Q = ") and not says("sparky_fox", "RETREAT"),
 			"p3ui: Sparky Fox explains the battle keys (F SWITCH TARGET, E ELEMENT, Q SPECIAL, DASH; no RETREAT)")
-		T.check(says("captain_penguin", "always waits behind the colosseum's back gate", "DASH") and not says("captain_penguin", "RETREAT", "minutes in the arena"),
-			"p3ui: Captain Penguin explains the boss at the back gate (no schedule) and dashing out of telegraphs")
+		T.check(says("captain_penguin", "always waits by the colosseum's main entrance", "DASH") and not says("captain_penguin", "RETREAT", "minutes in the arena") and not says("captain_penguin", "back gate"),
+			"p3ui: Captain Penguin explains the boss by the main entrance (bug batch 6; no schedule) and dashing out of telegraphs")
 		T.check(type(ND.Get) == "function" and ND.Get("captain_penguin") and table.concat(ND.Get("captain_penguin").Keywords or {}, ","):find("Boss Raid", 1, true) ~= nil,
 			"p3ui: Captain Penguin's keywords keep 'Boss Raid'")
 		T.check(says("coach_corgi", "Dungeon", tostring(floors) .. " floors", "Open Pets", "+" .. tostring(win) .. " trophies", "fighter", "two helpers"),

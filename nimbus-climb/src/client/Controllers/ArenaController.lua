@@ -25,7 +25,7 @@
 --   * Arena panel (OpenPanel = "Arena", OpenPanelTab = "Events" | "Leaderboard" | "Raid"; the duel pads carry
 --     RingIndex / PadIndex): DUELS (the quick queue: Queue / Unqueue + the wait; challenge a player in the server:
 --     Challenge(userId); incoming invites with Accept / Decline (the practice flag); the player's trophies and duel
---     record), BOSS RAID (no button: the boss waits behind the back gate and walking through is the whole step. The boss, its
+--     record), BOSS RAID (no button: the boss waits by the main entrance and walking through its gate is the whole step. The boss, its
 --     element, my fight tier and what it means, the reward clock, the fights running per tier, the next boss; Double Rewards;
 --     which elements beat the boss; the medals at my tier's numbers) and LEADERS (ArenaState.Leaderboard,
 --     top 10, the player's own row highlighted). Team balance: the Duels page's quick match box and the Raid page's boss
@@ -1908,7 +1908,7 @@ local function buildArena()
 			end
 		end
 		ui.BossName.Text = (raid and raid.Name) or (boss and boss.Name) or "Boss Raid"
-		ui.BossBlurb.Text = boss and tostring(boss.Blurb or "") or "A boss always waits behind the colosseum's back gate."
+		ui.BossBlurb.Text = boss and tostring(boss.Blurb or "") or "A boss always waits by the colosseum's main entrance."
 		local tier = myRaidTier()
 		local fights = raid and type(raid.Fights) == "table" and raid.Fights or {}
 		local closed = (raid and tier and type(raid.Closed) == "table" and arenaSeconds(raid.Closed[tier.Id])) or 0
@@ -1920,7 +1920,7 @@ local function buildArena()
 		else
 			ui.BossState.Text = mine and (mine.Enraged and "ENRAGED" or "LIVE") or "WAITING"
 			ui.BossState.BackgroundColor3 = mine and C.Boss or Color3.fromRGB(226, 160, 54)
-			ui.BossLine.Text = "Walk through the boss gate at the back of the colosseum to fight. Its pillar lets you dare a higher tier."
+			ui.BossLine.Text = "Walk through the iron boss gate beside the colosseum's main entrance to fight. Its pillar lets you dare a higher tier."
 		end
 		ui.TierLine.Text = tier and ("Your tier: " .. tostring(tier.Id) .. " - boss L" .. tostring(tier.BossLevel) .. ", hits x" .. tostring(tier.Hit) .. ", rewards x" .. tostring(tier.Reward)) or ""
 		ui.RewardLine.Text = raidRewardLine()

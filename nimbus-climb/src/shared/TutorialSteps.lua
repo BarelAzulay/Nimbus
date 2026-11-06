@@ -47,7 +47,7 @@
 --                 { Kind = "Arena", Place = "Gate" }    Phase 3, resolved by TutorialService from ArenaInfo and sent as
 --                                                       { Kind = "Spot", Position, Label }: "Gate" = the Arena gate of the
 --                                                       Gate Court (ArenaInfo.ArenaPortal; else the forum, ArenaInfo.Spawn),
---                                                       "BossGate" = the boss gate at the back of the colosseum floor
+--                                                       "BossGate" = the boss gate beside the colosseum's main entrance
 --                                                       (ArenaInfo.Gate; else the floor), "Floor" = the colosseum floor,
 --                                                       "Ring" = the Champion Ring portal (ArenaInfo.RingPortal),
 --                                                       "Dungeon" (Phase 5) = the Dungeon gate's pad (DungeonInfo.Pad)
@@ -307,7 +307,7 @@ TutorialSteps.Steps = {
 		Chapter = 3,
 		ChapterEnd = true,
 		Title = "Boss Raids!",
-		Text = "A boss always waits behind the colosseum's back gate. Walk through it to fight it at your level, or press Next.",
+		Text = "A boss always waits by the colosseum's main entrance. Walk through its iron gate to fight it at your level, or press Next.",
 		Target = { Kind = "Arena", Place = "BossGate", Label = "Boss gate" },
 		CompleteOn = "RaidGate",
 		AlsoNext = true,
