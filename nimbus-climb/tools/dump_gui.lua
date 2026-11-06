@@ -39,7 +39,7 @@
 --   garden[:<slot>]       the garden picker for place <slot> (default 3: an empty place)
 --   train[:<key>]         the Training Place window (default: the pet that is training, with its timer and Stop);
 --                         train:mats = gui-redo Task 8's mats row (see the [gui-redo] block)
---   daily[:locked|:play]  gui-redo Task 9: the Gifts window (see the [gui-redo] block)
+--   daily[:locked|:play]  gui-redo Tasks 9-10: the Gifts window (see the [gui-redo] block)
 --   evolve                the EVOLVE confirm over the Pets window
 --   ring[:<view>]         Phase 4 (ArenaController's Champion Ring window): OpenPanel("Ring") with a ring record
 --                         (Best 24); view new (no record yet) | record (default)
@@ -3125,7 +3125,8 @@ SCENARIOS.train = function(key, ...)
 end
 -- daily[:locked|:play]  gui-redo Task 9: the Gifts window (DailyController, card A) with a VIP player on Week 2 Day 3
 --                       (Streak 9, days 1-2 claimed, today's $1,450 ready: CLAIM!); locked = the same day held by the
---                       10-minute rule with 6 min to go; play = the Play time tab (the store build's cells)
+--                       10-minute rule with 6 min to go; play = the Play time tab (Task 10, card B's gift boxes: 47 min
+--                       played and paused, tiers 1-2 claimed, the 30 min gift ready, CLAIM ALL (1))
 local function dailyPayload(view)
 	local now = workspace:GetServerTimeNow()
 	local days = {
@@ -3150,7 +3151,7 @@ local function dailyPayload(view)
 		Loading = false, Streak = 9, Paid = 9, Weeks = 1, Pet = true, ReadyAt = now - 1, KeepUntil = now + 28 * 3600, StaleAt = 0,
 		Cell = 3, Repair = false, Vip = true, StepBack = 0, Days = days, ServerNow = now,
 		Unlock = { Need = 600, Left = view == "locked" and 330 or 0 },
-		Play = { Seconds = 36 * 60, DayEnds = now + 5 * 3600, Active = true, Tiers = tiers },
+		Play = { Seconds = (view == "play" and 47 or 36) * 60, DayEnds = now + 5 * 3600 + 600, Active = view ~= "play", Tiers = tiers },
 	}
 end
 scenario("daily", function(view)

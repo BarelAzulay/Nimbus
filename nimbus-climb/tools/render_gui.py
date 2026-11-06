@@ -76,7 +76,7 @@ SCENARIOS = ["gallery", "lobby", "title", "match", "match:hit", "countdown", "pa
              "dungeon", "dungeon:lobby", "dungeon:party", "dungeon:leader", "dungeon:countdown", "dungeon:run", "dungeon:loot",
              "dungeon:treasure", "dungeon:end", "dungeon:wipe", "obby", "obby:party", "obby:toast", "portal:Obby",
              # gui-redo (Task 6): the shared pet picker sheet in its Train, Upgrade and Mix contexts; (Task 8) the
-             # Training Place's mats row; (Task 9) the Gifts window: ready, locked and the Play time tab
+             # Training Place's mats row; (Task 9) the Gifts window: ready, locked; (Task 10) the Play time tab (gift boxes)
              "picker:train", "picker:upgrade", "picker:mix", "train:mats", "daily", "daily:locked", "daily:play"]
 
 # ---------------------------------------------------------------------------------------------------

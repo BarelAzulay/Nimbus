@@ -7,7 +7,9 @@
 --                        ClaimPlay(tier), the window rule (Pets / Shop / Gifts never overlap). gui-redo Task 9: the window is
 --                        the big centred one (NeonKit.BigRect: 1180x720 at 1080p, the button stays where it is), so "nothing
 --                        in the screen centre" became the Store's form: opening it puts no OTHER text in the middle, and no
---                        Gifts text is left there after Close
+--                        Gifts text is left there after Close. gui-redo Task 10: the Play tab is card B's gift boxes, so
+--                        the header is PlayHeader and a far tier shows its own clock ("12:50", counting from ServerNow)
+--                        instead of "13 min to go"
 --   client_daily_pip     the pip waits PipDelaySeconds after a spawn and the tutorial's spin step, the shake when a tier
 --                        becomes Ready (never on the first payload after a Loading one), the ring's fill and its paused dim,
 --                        the button hides in a match
@@ -207,7 +209,8 @@ local function clientScenarios()
 
 	-- the window's parts (DailyController names them; see its header)
 	function H.header()
-		local h = H.find(H.page(), "Header")
+		-- (gui-redo Task 10: the Play page's line is PlayHeader)
+		local h = H.find(H.page(), "Header") or H.find(H.page(), "PlayHeader")
 		return H.shown(h) and tostring(h.Text) or ""
 	end
 	function H.cell(i)
@@ -430,8 +433,10 @@ local function clientScenarios()
 		T.check(H.body():find("VIP x2", 1, true) == nil, "daily window: no VIP chip without the pass")
 		H.tapTab("Play time")
 		T.check(H.activeTab() == "Play" and H.header():find("47 min played today", 1, true) ~= nil and H.header():find("Resets in", 1, true) ~= nil
-			and H.rowCount() == 7 and H.rowText(4):find("13 min to go", 1, true) ~= nil and H.rowText(1):find("10 min", 1, true) ~= nil and H.rowText(1):find("+$200", 1, true) ~= nil,
-			"daily window: the Play tab cells", fmt("tab %s, header '%s', %d rows, row1 '%s', row4 '%s'", tostring(H.activeTab()), H.header(), H.rowCount(), H.rowText(1), H.rowText(4)))
+			-- (gui-redo Task 10: the 60 min box shows its own clock, counting from the payload's ServerNow: at most "13:00")
+			and H.rowCount() == 7 and (H.find(H.row(4), "Clock") and H.find(H.row(4), "Clock").Text or ""):find("^1[23]:%d%d$") ~= nil
+			and H.rowText(1):find("10 min", 1, true) ~= nil and H.rowText(1):find("+$200", 1, true) ~= nil,
+			"daily window: the Play tab boxes", fmt("tab %s, header '%s', %d rows, row1 '%s', row4 '%s'", tostring(H.activeTab()), H.header(), H.rowCount(), H.rowText(1), H.rowText(4)))
 		T.check(H.find(H.row(1), "Check") ~= nil and H.shown(H.find(H.row(1), "Check")) and H.rowButton(4) == nil, "daily window: a claimed tier has its check, a far one no CLAIM")
 		local p6 = H.base(now)
 		p6.Play.Active = false

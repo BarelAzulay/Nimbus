@@ -29,6 +29,23 @@
 --   client_daily_portrait  (phone world, 390x844 touch; and 360x640) Layout() "Portrait", the day tiles four per row (Day 7
 --                          the double tile of row 2), RedoGeom.check passes for the ready, locked and wait views and the
 --                          Play tab
+-- Task 10 (spec 5.4, the Play time page, card B: gift boxes with their own countdowns and CLAIM ALL):
+--   client_play_ui_b       the pure DailyController.TierCountdown(i, st, now) ("13:00" mm:ss under an hour, "2h 13m" from
+--                          an hour, counting from ServerNow only while Active, never below "0:01" without a payload, ""
+--                          for a ready / claimed / missing tier or a Loading payload); the page (1920x1080, then 844x390
+--                          touch): PlayHeader "47 min played today . Resets in 5h" (phone "47 min today . ..."), seven
+--                          gift boxes (Time, Gift, Reward and one of Claim / Clock / Check), Tier3's CLAIM (its box
+--                          pulsing, its gift bobbing), Tier4's clock "13:00" counting down on the window's tick, frozen
+--                          while paused (the gold paused header; on touch "Paused: close this and move around!"), held
+--                          at "0:01", CLAIM ALL (n) sending one DailyRequest("ClaimPlayAll") (none within 1 s), a box's
+--                          CLAIM sending ClaimPlay(i), CLAIM ALL greyed out at 0 in the same place and size
+--   client_play_layouts    844x390 (touch), 1280x720, 1366x768, 1920x1080 (+ 667x375 touch): RedoGeom.check of the
+--                          window on the Play tab (the named controls never overlap), with 3 ready and paused; every
+--                          text fits with the real font widths; phone: seven boxes in one row (104 x 204 on 844x390,
+--                          CLAIM ALL 166 x 44); PC: four boxes on top and three under, both rows centred (260 x 250 and
+--                          CLAIM ALL 252 x 60 at 1080p)
+--   client_play_portrait   (phone world, 390x844 touch; and 360x640) the boxes four per row (row 2 centred), the check
+--                          passes, every text fits
 -- Every payload is fired at the client with KC.toClient("DailyState", ...). Every scenario puts the screen, the input
 -- flags and the tutorial state back and leaves the window closed. Deterministic: mock clock only. Plain Lua 5.1 syntax.
 
@@ -572,6 +589,321 @@ local function clientScenarios()
 						local gap = c[2].AbsolutePosition.X - (c[1].AbsolutePosition.X + c[1].AbsoluteSize.X)
 						T.check(H.near(c[7].AbsoluteSize.X, 2 * c[1].AbsoluteSize.X + gap) and H.near(c[7].AbsolutePosition.X + c[7].AbsoluteSize.X, c[4].AbsolutePosition.X + c[4].AbsoluteSize.X),
 							label .. ": Day 7 is the double tile at the end of row 2", RedoGeom.desc(c[7]))
+					end
+				end)
+			end)
+		end
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- Task 10: the Play time page (card B)
+	local PLAY_NAMES = { "Tab_Daily", "Tab_Play", "CloseButton", "PlayHeader", "ClaimAll", "Tier1", "Tier2", "Tier3", "Tier4", "Tier5", "Tier6", "Tier7" }
+	-- the base payload with tier 3 Ready: 47 min played, tiers 1-2 claimed, 30 min ready, 60 min in 13 min; the play-day
+	-- resets in 5 h 10 m (the header says "5h" all through a scenario)
+	function H.play(now, active)
+		local p = H.base(now)
+		p.Play.Tiers[3].Claimed, p.Play.Tiers[3].Ready = false, true
+		p.Play.Active = active ~= false
+		p.Play.DayEnds = now + 5 * 3600 + 600
+		return p
+	end
+	function H.tier(i)
+		return H.find("Tier" .. i, H.find("Tiers"))
+	end
+	function H.part(i, name)
+		return H.find(name, H.tier(i))
+	end
+	function H.claimAll()
+		return H.find("ClaimAll")
+	end
+	-- the slot a box shows: "Claim" | "Clock" | "Check" (several joined with "+"; "none")
+	function H.slot(i)
+		local out = {}
+		for _, name in ipairs({ "Claim", "Clock", "Check" }) do
+			if H.shown(H.part(i, name)) then
+				out[#out + 1] = name
+			end
+		end
+		return #out > 0 and table.concat(out, "+") or "none"
+	end
+	-- TextService measures with the real font widths while fn runs (the controller then picks the texts Roblox would)
+	function H.realMeasure(fn)
+		game:GetService("TextService")
+		local methods = Mock.Classes.TextService.methods
+		local old = methods.GetTextSize
+		methods.GetTextSize = function(_, text, size, font, frame)
+			local w = RedoGeom.realWidth(text, size, font)
+			local limit = (typeof(frame) == "Vector2" and frame.X > 0) and frame.X or math.huge
+			if w <= limit then
+				return Vector2.new(w, size)
+			end
+			return Vector2.new(limit, 2 * size)
+		end
+		local ok, err = pcall(fn)
+		methods.GetTextSize = old
+		if not ok then
+			error(err, 0)
+		end
+	end
+	-- every shown text under root fits its box with the real widths
+	function H.allFit(root, label)
+		local bad = {}
+		for _, d in ipairs(root and root:GetDescendants() or {}) do
+			if (d:IsA("TextLabel") or d:IsA("TextButton")) and KC.isShown(d) then
+				local ok, detail = RedoGeom.fits(d)
+				if not ok then
+					bad[#bad + 1] = detail
+				end
+			end
+		end
+		T.check(#bad == 0, label .. ": every text fits its box (real font widths)", table.concat(bad, "; "))
+	end
+
+	S.client_play_ui_b = guarded("client_play_ui_b", function()
+		local DC = H.dc()
+		if not T.check(DC ~= nil and type(DC.TierCountdown) == "function", "play ui b: DailyController.TierCountdown exists") then
+			return
+		end
+		-- the pure countdown
+		local now = 1000000
+		local st = H.play(now)
+		local function cd(i, at, s)
+			local ok, v = pcall(DC.TierCountdown, i, s or st, at or now)
+			return ok and v or ("error: " .. tostring(v))
+		end
+		T.eq(cd(4), "13:00", "play ui b: the 60 min gift at 47 min played -> '13:00'")
+		T.eq(cd(4, now + 60), "12:00", "play ui b: ...'12:00' a minute later while Active")
+		T.eq(cd(4, now + 61.5), "11:59", "play ui b: ...the seconds tick (mm:ss)")
+		T.eq(cd(5), "43:00", "play ui b: the 90 min gift -> '43:00'")
+		T.eq(cd(6), "1h 13m", "play ui b: the 120 min gift -> '1h 13m'")
+		T.eq(cd(7), "2h 13m", "play ui b: the 180 min gift (2 h away) -> '2h 13m'")
+		local paused = H.play(now, false)
+		T.eq(cd(4, now + 600, paused), "13:00", "play ui b: frozen while the clock is paused")
+		local edge = H.play(now)
+		edge.Play.Seconds = 0
+		T.eq(cd(4, now, edge), "1h 0m", "play ui b: exactly an hour -> '1h 0m'")
+		edge.Play.Seconds = 1
+		T.eq(cd(4, now, edge), "59:59", "play ui b: under an hour -> mm:ss")
+		local near = H.play(now)
+		near.Play.Seconds = 60 * 60 - 5
+		T.eq(cd(4, now, near), "0:05", "play ui b: five seconds left -> '0:05'")
+		T.eq(cd(4, now + 30, near), "0:01", "play ui b: never below '0:01' until a payload marks it Ready")
+		T.eq(cd(3), "", "play ui b: a Ready tier has no countdown")
+		T.eq(cd(1), "", "play ui b: a claimed tier has no countdown")
+		T.eq(cd(9), "", "play ui b: no such tier")
+		T.eq(cd(4, now, { Loading = true }), "", "play ui b: a Loading payload counts nothing")
+
+		-- the page
+		for _, sz in ipairs({ { 1920, 1080, false, "PC" }, { 844, 390, true, "Phone" } }) do
+			local label = fmt("play ui b %dx%d", sz[1], sz[2])
+			RedoGeom.at(sz[1], sz[2], sz[3], label, function()
+				H.with(label, function(DCx)
+					local Theme = H.theme()
+					local t0 = H.now()
+					H.fire(H.play(t0))
+					H.open(DCx, "Play")
+					T.check(H.shown(H.find("PlayPage")) and not H.shown(H.find("DailyPage")), label .. ": the Play page is shown")
+					local header = H.find("PlayHeader")
+					local want = (sz[4] == "PC" and "47 min played today " or "47 min today ") .. DOT .. " Resets in 5h"
+					T.eq(H.text(header), want, label .. ": the header")
+					-- the boxes
+					local n = 0
+					for _, c in ipairs(H.find("Tiers") and H.find("Tiers"):GetChildren() or {}) do
+						if c.Name:match("^Tier%d$") and H.shown(c) then
+							n = n + 1
+						end
+					end
+					T.eq(n, 7, label .. ": seven gift boxes")
+					local times, ok = {}, true
+					for i, m in ipairs({ 10, 20, 30, 60, 90, 120, 180 }) do
+						times[i] = H.text(H.part(i, "Time"))
+						if times[i] ~= m .. " min" then
+							ok = false
+						end
+					end
+					T.check(ok, label .. ": each box says its minutes on top", table.concat(times, ", "))
+					T.check(H.find("Icon", H.part(1, "Gift")) ~= nil and H.text(H.part(1, "Reward")) == "+$200", label .. ": the gift art and the resolved reward", H.text(H.part(1, "Reward")))
+					T.check(H.slot(1) == "Check" and H.shown(H.part(1, "Dim")) and H.tier(1):GetAttribute("State") == "Claimed", label .. ": a claimed box: the tick, dimmed", H.slot(1))
+					local claim3 = H.part(3, "Claim")
+					T.check(H.slot(3) == "Claim" and claim3.Text == "CLAIM" and H.tier(3):GetAttribute("State") == "Ready", label .. ": the ready box: CLAIM", H.slot(3))
+					T.check(H.tier(3):GetAttribute("Pulsing") == true and H.part(3, "Gift"):GetAttribute("Bobbing") == true
+						and H.tier(4):GetAttribute("Pulsing") ~= true and H.part(4, "Gift"):GetAttribute("Bobbing") ~= true, label .. ": ...its box pulses and its gift bobs (only that one)")
+					T.check(H.slot(4) == "Clock" and H.text(H.part(4, "Clock")) == "13:00" and H.tier(4):GetAttribute("State") == "Locked", label .. ": the next box: its clock '13:00'",
+						H.slot(4) .. " '" .. H.text(H.part(4, "Clock")) .. "'")
+					T.eq(H.text(H.part(5, "Clock")), "43:00", label .. ": the 90 min box '43:00'")
+					T.eq(H.text(H.part(7, "Clock")), "2h 13m", label .. ": the 180 min box '2h 13m'")
+					-- CLAIM ALL
+					local all = H.claimAll()
+					local size = sz[4] == "PC" and { 252, 60 } or { 166, 44 }
+					T.check(H.shown(all) and all.Text == "CLAIM ALL (1)" and not H.disabled(all), label .. ": CLAIM ALL (1)", all and all.Text or "missing")
+					T.check(all ~= nil and H.near(all.AbsoluteSize.X, size[1]) and H.near(all.AbsoluteSize.Y, size[2]), label .. fmt(": CLAIM ALL is %dx%d", size[1], size[2]), RedoGeom.desc(all))
+					-- the countdown on the window's tick
+					KC.advance(60)
+					local c4 = H.text(H.part(4, "Clock"))
+					T.check(c4 == "12:00" or c4 == "12:01", label .. ": a minute later the clock reads 12:00 (the window's 1 s tick)", c4)
+					DCx.Open({ Tab = "Play" }) -- (a render now, off the tick's phase)
+					T.eq(H.text(H.part(4, "Clock")), "12:00", label .. ": ...exactly 12:00 on a render now")
+					T.check(H.text(header):find("^48 min ") ~= nil, label .. ": ...and the header counts the live minutes", H.text(header))
+					-- paused: frozen, the gold paused header
+					H.fire(H.play(H.now(), false))
+					KC.advance(1.1)
+					T.eq(H.text(header), sz[3] and "Paused: close this and move around!" or "Paused: move around to keep counting!", label .. ": the paused header")
+					T.check(header ~= nil and header.TextColor3 == Theme.Neon.Gold, label .. ": ...in gold")
+					KC.advance(30)
+					T.eq(H.text(H.part(4, "Clock")), "13:00", label .. ": the clock holds while paused")
+					-- one second left, no payload: it holds at 0:01
+					local nearP = H.play(H.now())
+					nearP.Play.Seconds = 60 * 60 - 1
+					H.fire(nearP)
+					KC.advance(5)
+					T.check(H.text(H.part(4, "Clock")) == "0:01" and H.slot(4) == "Clock", label .. ": it holds at '0:01' until a payload says Ready", H.slot(4) .. " '" .. H.text(H.part(4, "Clock")) .. "'")
+					-- the payload that marks it Ready: CLAIM, and its border bright at once (not only on the next pulse)
+					local stroke4 = H.tier(4):FindFirstChild("NeonStroke")
+					local dimBefore = stroke4 and stroke4.Transparency or -1
+					local readyP = H.play(H.now())
+					readyP.Play.Seconds = 60 * 60 + 5
+					readyP.Play.Tiers[4].Ready = true
+					KC.toClient("DailyState", readyP)
+					KC.advance(0.02)
+					T.check(H.slot(4) == "Claim" and dimBefore > 0.3 and stroke4.Transparency < 0.05, label .. ": the Ready payload: CLAIM, the border bright at once",
+						fmt("%s, border %.2f -> %.2f", H.slot(4), dimBefore, stroke4 and stroke4.Transparency or -1))
+					-- CLAIM ALL sends one request
+					H.fire(H.play(H.now()))
+					KC.advance(1.1)
+					local box = { all.AbsolutePosition.X, all.AbsolutePosition.Y, all.AbsoluteSize.X, all.AbsoluteSize.Y }
+					local mark = #Mock.RemoteLog
+					H.click(all)
+					local sent = H.sent(mark)
+					T.check(#sent == 1 and sent[1].args[1] == "ClaimPlayAll" and sent[1].args[2] == nil, label .. ": CLAIM ALL -> one DailyRequest(\"ClaimPlayAll\")", tostring(#sent))
+					mark = #Mock.RemoteLog
+					H.click(all)
+					T.eq(#H.sent(mark), 0, label .. ": a second tap within 1 s sends nothing")
+					-- one box's CLAIM
+					KC.advance(1.1)
+					mark = #Mock.RemoteLog
+					H.click(H.part(3, "Claim"))
+					sent = H.sent(mark)
+					T.check(#sent == 1 and sent[1].args[1] == "ClaimPlay" and sent[1].args[2] == 3, label .. ": a box's CLAIM -> DailyRequest(\"ClaimPlay\", 3)", tostring(#sent))
+					-- three ready
+					local three = H.play(H.now())
+					three.Play.Seconds = 95 * 60
+					three.Play.Tiers[4].Ready, three.Play.Tiers[5].Ready = true, true
+					H.fire(three)
+					T.eq(all.Text, "CLAIM ALL (3)", label .. ": three ready -> CLAIM ALL (3)")
+					-- none ready: greyed out, the same place and size, sends nothing
+					KC.advance(1.1)
+					H.fire(H.base(H.now()))
+					T.check(H.disabled(all) and H.shown(all), label .. ": none ready -> CLAIM ALL greyed out", all.Text)
+					T.check(all.AbsolutePosition.X == box[1] and all.AbsolutePosition.Y == box[2] and all.AbsoluteSize.X == box[3] and all.AbsoluteSize.Y == box[4],
+						label .. ": ...in the same place and size", RedoGeom.desc(all))
+					mark = #Mock.RemoteLog
+					H.click(all)
+					T.eq(#H.sent(mark), 0, label .. ": ...and sends nothing")
+				end)
+			end)
+		end
+	end)
+
+	-- the Play tab's geometry with 3 ready, then paused (real font widths)
+	function H.checkPlay(DC, label)
+		local three = H.play(H.now())
+		three.Play.Seconds = 95 * 60
+		three.Play.Tiers[4].Ready, three.Play.Tiers[5].Ready = true, true
+		three.Vip = true
+		H.fire(three)
+		H.open(DC, "Play")
+		RedoGeom.check(H.win(), label .. " (3 ready)", { NoOverlap = PLAY_NAMES })
+		H.allFit(H.find("PlayPage"), label .. " (3 ready)")
+		local p = H.play(H.now(), false)
+		H.fire(p)
+		KC.advance(1.1)
+		RedoGeom.check(H.win(), label .. " (paused)", { NoOverlap = PLAY_NAMES })
+		H.allFit(H.find("PlayPage"), label .. " (paused)")
+		local tierBad = {}
+		for i = 1, 7 do
+			if not H.inside(H.tier(i), H.find("Body")) then
+				tierBad[#tierBad + 1] = RedoGeom.desc(H.tier(i))
+			end
+		end
+		T.check(#tierBad == 0, label .. ": every box inside the window's body", table.concat(tierBad, "; "))
+	end
+
+	S.client_play_layouts = guarded("client_play_layouts", function()
+		local sizes = { { 844, 390, true, "Phone" }, { 1280, 720, false, "PC" }, { 1366, 768, false, "PC" }, { 1920, 1080, false, "PC" }, { 667, 375, true, "Phone" } }
+		for _, sz in ipairs(sizes) do
+			local label = fmt("play layouts %dx%d", sz[1], sz[2])
+			RedoGeom.at(sz[1], sz[2], sz[3], label, function()
+				H.with(label, function(DC)
+					H.realMeasure(function()
+						H.checkPlay(DC, label)
+					end)
+					T.eq(DC.Layout(), sz[4], label .. ": Layout()")
+					local t = {}
+					for i = 1, 7 do
+						t[i] = H.tier(i)
+					end
+					local win = H.win()
+					if sz[4] == "Phone" then
+						local row = true
+						for i = 2, 7 do
+							if not (t[i] and t[1] and H.near(t[i].AbsolutePosition.Y, t[1].AbsolutePosition.Y) and t[i].AbsolutePosition.X > t[i - 1].AbsolutePosition.X + t[i - 1].AbsoluteSize.X - 1) then
+								row = false
+							end
+						end
+						T.check(row, label .. ": seven boxes in one row", RedoGeom.desc(t[1]) .. " .. " .. RedoGeom.desc(t[7]))
+						if sz[1] == 844 then
+							T.check(H.near(t[1].AbsoluteSize.X, 104) and H.near(t[1].AbsoluteSize.Y, 204), label .. ": the boxes are 104 x 204", RedoGeom.desc(t[1]))
+						end
+					else
+						local function y(o)
+							return o.AbsolutePosition.Y
+						end
+						local function mid(a, b)
+							return (a.AbsolutePosition.X + b.AbsolutePosition.X + b.AbsoluteSize.X) / 2
+						end
+						local wx = win.AbsolutePosition.X + win.AbsoluteSize.X / 2
+						T.check(H.near(y(t[1]), y(t[4])) and H.near(y(t[5]), y(t[7])) and y(t[5]) >= y(t[1]) + t[1].AbsoluteSize.Y - 1,
+							label .. ": four boxes on top, three under", RedoGeom.desc(t[1]) .. " / " .. RedoGeom.desc(t[5]))
+						T.check(H.near(mid(t[1], t[4]), wx, 2) and H.near(mid(t[5], t[7]), wx, 2), label .. ": both rows centred in the window",
+							fmt("row 1 %.0f, row 2 %.0f, window %.0f", mid(t[1], t[4]), mid(t[5], t[7]), wx))
+						if sz[1] == 1920 then
+							T.check(H.near(t[1].AbsoluteSize.X, 260) and H.near(t[1].AbsoluteSize.Y, 250), label .. ": the boxes are 260 x 250 at 1080p", RedoGeom.desc(t[1]))
+						end
+					end
+					-- CLAIM ALL at the top right of the body, right of the header line
+					local all, header, body = H.claimAll(), H.find("PlayHeader"), H.find("Body")
+					local rightGap = all and win and (win.AbsolutePosition.X + win.AbsoluteSize.X) - (all.AbsolutePosition.X + all.AbsoluteSize.X) or -1
+					T.check(all ~= nil and header ~= nil and body ~= nil and all.AbsolutePosition.X >= header.AbsolutePosition.X + header.AbsoluteSize.X - 1
+						and rightGap >= 0 and rightGap <= 40 and all.AbsolutePosition.Y - body.AbsolutePosition.Y <= 20,
+						label .. ": CLAIM ALL at the top right, right of the header", RedoGeom.desc(all) .. " / " .. RedoGeom.desc(header) .. fmt(" gap %.0f", rightGap))
+				end)
+			end)
+		end
+	end)
+
+	S.client_play_portrait = guarded("client_play_portrait", function()
+		for _, sz in ipairs({ { 390, 844 }, { 360, 640 } }) do
+			local label = fmt("play portrait %dx%d", sz[1], sz[2])
+			RedoGeom.at(sz[1], sz[2], true, label, function()
+				H.with(label, function(DC)
+					H.realMeasure(function()
+						H.checkPlay(DC, label)
+					end)
+					T.eq(DC.Layout(), "Portrait", label .. ": Layout()")
+					local t = {}
+					for i = 1, 7 do
+						t[i] = H.tier(i)
+					end
+					if T.check(t[1] and t[4] and t[5] and t[7], label .. ": the boxes exist") then
+						local function y(o)
+							return o.AbsolutePosition.Y
+						end
+						T.check(H.near(y(t[1]), y(t[4])) and H.near(y(t[5]), y(t[7])) and y(t[5]) >= y(t[1]) + t[1].AbsoluteSize.Y - 1,
+							label .. ": four boxes a row, the 90 min box starts row 2", RedoGeom.desc(t[1]) .. " / " .. RedoGeom.desc(t[4]) .. " / " .. RedoGeom.desc(t[5]))
+						local win = H.win()
+						local wx = win.AbsolutePosition.X + win.AbsoluteSize.X / 2
+						local m2 = (t[5].AbsolutePosition.X + t[7].AbsolutePosition.X + t[7].AbsoluteSize.X) / 2
+						T.check(H.near(m2, wx, 2), label .. ": row 2 centred", fmt("%.0f vs %.0f", m2, wx))
 					end
 				end)
 			end)

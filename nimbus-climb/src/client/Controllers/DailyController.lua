@@ -22,6 +22,10 @@
 --         "Wait"    not ready yet: "Next gift in 4h 12m" ("Streak repair in 4h 12m" when that claim only repairs)
 --         "Stale"   past StaleAt, and "Loading" (no payload, or a Loading one): "Getting your gifts ready..."
 --       A payload with no Unlock (an older server) or Need 0 (the rule off) is unlocked.
+--   DailyController.TierCountdown(i, st, now) -> text   pure (gui-redo Task 10): play tier i's own countdown at server time
+--       `now`: the seconds to its minute = Min x 60 - live, live = Play.Seconds + (now - ServerNow while Play.Active, else
+--       0); "13:00" (m:ss) under an hour, "2h 13m" from an hour; never below "0:01" (the server's payload marks the tier
+--       Ready: the client never does on its own clock); "" for a Ready / claimed / missing tier or a Loading payload.
 --
 -- Data: DailyState (server -> client) is the only source (DailyService builds it; nothing here decides a reward):
 --   { Loading = bool (provisional: no CLAIM), Streak, Paid, Weeks, Pet, ReadyAt (unix), KeepUntil (unix), Cell (1..7: the NEXT
@@ -32,8 +36,8 @@
 --     "week_wisp" | nil, Claimed, Today, Repair = true | nil (today's cell of a repair) } x7 }, Play = { Seconds, DayEnds
 --     (unix), Active = bool, Tiers = { { Min, Kind, Amount, PetId, Claimed, Ready } x7 } }, ServerNow (unix) }
 --   Amounts are the server's resolved numbers (13b.3). Countdowns use ReadyAt / DayEnds - workspace:GetServerTimeNow().
---   A claim fires DailyRequest("Claim") / DailyRequest("ClaimPlay", tier) (1 s client gap per action); the toast is the
---   server's. The tutorial gate reads TutorialState (Done, or Step >= the index of the "spin" step).
+--   A claim fires DailyRequest("Claim") / DailyRequest("ClaimPlay", tier) / DailyRequest("ClaimPlayAll") (1 s client gap per
+--   action); the toast is the server's. The tutorial gate reads TutorialState (Done, or Step >= the index of the "spin" step).
 --
 -- Screen: ScreenGui "NimbusDaily" (DisplayOrder 19 like the Store and the Pets window: they never overlap, each Open fires
 -- MenuController.WindowOpened(id) and each closes on any other id; IgnoreGuiInset = false: the HUD attributes are gui px).
@@ -66,12 +70,21 @@
 --     your gifts ready..."). Keep "Come back tomorrow to keep your streak!" under it (not while loading / stale).
 --     WeekBanner "WEEK DONE! Week Wisp is yours!" takes the Wisp line's place for 4.5 s. Portrait: four tiles a row (Day 7
 --     the double tile of row 2), the chips under the header, the claim and the keep line stacked.
---   * PlayPage (the reward cells of the store build until gui-redo Task 10 redraws it): Header "47 min played today .
---     Resets in 5h" or "Paused: move around to keep counting!" (Neon.Gold), Tiers > Tier1..7 reward cells (TIER_COLORS;
---     attribute State = "Ready" | "Claimed" | "Locked"; Time "10 min", IconBox > Icon, Reward "+$200", Claim "CLAIM", ToGo
---     "13 min to go", Check "Claimed", Dim), four a row (portrait three). Fx: the week's Rainbow Sweep and 24 Confetti
---     frames (both skipped on Low).
---   * A grown claimed set pops the cell (1.15 -> 1, 0.25 s) with SoundFx "Reward"; a paid week (Weeks rose with the Streak
+--   * PlayPage (card B, gui-redo Task 10, spec 5.4): PlayHeader "47 min played today . Resets in 5h" (phone / portrait "47
+--     min today . Resets in 5h"; the minutes are live: Play.Seconds + the time since ServerNow while Active), or Neon.Gold
+--     "Paused: move around to keep counting!" while Play.Active == false (a touch-only device: "Paused: close this and
+--     move around!", the stick is hidden while the window is open). ClaimAll "CLAIM ALL (n)" (n = the Ready tiers; PC
+--     252 x 60, phone 166 x 44 at the top right, portrait centred under the header): DailyRequest("ClaimPlayAll"), greyed
+--     out at 0 in the same place. Tiers > Tier1..7 gift boxes (NeonKit cards in TIER_COLORS; attributes State = "Ready" |
+--     "Claimed" | "Locked", Pulsing): Time "10 min" on top, Gift (an Orb in the tier's colour under the "Gifts" icon;
+--     attribute Bobbing: a Ready box's gift bobs and its border pulses on the 1 s tick), Reward (the resolved amount; on a
+--     box narrower inside than WRAP_BELOW it takes two lines: "+150" / "Tokens", "Berry" / "Basket"), and one slot: Claim
+--     (green "CLAIM": DailyRequest("ClaimPlay", i)), Clock (+ ClockGlyph when it fits: TierCountdown, on the 1 s tick) or
+--     Check (claimed: a big tick over the Dim). PC: 260 x 250 boxes at 1080p, four on top and three under, both rows
+--     centred (the rows slide from PlayCompact to PlayFull with the body); phone: seven 104 x 204 boxes in one row; portrait:
+--     four a row, row 2 centred. Fx: the week's Rainbow Sweep and 24 Confetti frames (both skipped on Low).
+--   * A grown claimed set pops the cell or box (1.15 -> 1, 0.25 s) with SoundFx "Reward" (once per payload: CLAIM ALL
+--     pops every box it claimed with one sound); a paid week (Weeks rose with the Streak
 --     onto a multiple of 7; a repair claim back onto day 7 leaves Weeks alone and celebrates nothing): the sweep, the
 --     confetti, the banner, SoundFx "DailyWeek"; StepBack > 0: the side hint "Welcome back! You stepped back n day(s).
 --     Keep going!" once per claim (MenuController.Hint: it can arrive while the window is closed).
@@ -138,6 +151,8 @@ local K = {
 	BACK_ACTION = "NimbusDailyBack",
 	REPAIR_TEXT = "Repair streak (no gift)", -- the claim button of a repair claim (re-review 1)
 	FIT_SLACK = 2, -- px a text keeps free in its box (the outline)
+	WRAP_BELOW = 96, -- a gift box narrower inside than this gives its reward two lines
+	BOB = 5, -- px a ready box's gift bobs up
 	-- design px per layout. PC: card A at 1080p (body 1180 x 644) is the largest form; the vertical parts slide from Full
 	-- (a 644 body) to Compact (a 485 body, the shortest PC box) and the tiles take the rest. Phone: card A on a 844 x 390
 	-- phone (body 820 x 280). Portrait: one column, four tiles a row.
@@ -152,8 +167,12 @@ local K = {
 		FullBody = 644, CompactBody = 485,
 		Full = { TilesY = 96, AfterTiles = 36, WispH = 32, WispGap = 6, BarH = 30, BarGap = 34, ClaimH = 88, ClaimGap = 16, KeepH = 32, Bottom = 14 },
 		Compact = { TilesY = 76, AfterTiles = 16, WispH = 30, WispGap = 4, BarH = 20, BarGap = 16, ClaimH = 72, ClaimGap = 8, KeepH = 30, Bottom = 10 },
-		PlayY = 18, PlayH = 44, PlayText = 28, PausedText = 22, RowsY = 86, TierCols = 4, TierGap = 16, TierMaxH = 230,
-		TimeText = 24, RewardText = 22, TierIconPx = 40, TierBtnW = 160, TierBtnH = 56, TierBtnText = 22, ToGoText = 20,
+		-- the Play page (card B at 1080p: body 1180 x 644; the rows slide from PlayCompact to PlayFull like the Daily page)
+		PlaySide = 28, PlayY = 18, PlayH = 44, PlayText = 32, PausedText = 26, AllW = 252, AllH = 60, AllY = 12, AllText = 24,
+		AllGap = 16, BoxSide = 28, BoxW = 260, BoxMaxH = 250, BoxCols = 4, BoxGap = 28, BoxPadTop = 12, BoxPadBottom = 14,
+		TimeText = 24, GiftPx = 110, RewardText = 24, SlotH = 56, TierBtnW = 200, TierBtnText = 24, ClockText = 26, TickText = 40,
+		BoxMinGap = 6,
+		PlayFull = { BoxRowsY = 92, BoxRowGap = 30, BoxBottom = 22 }, PlayCompact = { BoxRowsY = 80, BoxRowGap = 14, BoxBottom = 10 },
 	},
 	PHONE = {
 		Header = 50, HeadPad = 10, TabY = 3, TabH = 44, TabW = { 110, 140 }, TabGap = 6, TabText = 17, Close = 44, CloseY = 3,
@@ -164,8 +183,11 @@ local K = {
 		TilesY = 48, AfterTiles = 12, WispH = 22, WispText = 15, WispGap = 4, BarH = 16, BarGap = 8, SegGap = 4, KeepH = 40,
 		KeepText = 15, Bottom = 8, ColGap = 16, BannerText = 15, ClaimW = 230, RepairW = 300, ClaimH = 64, ClaimText = 26,
 		RepairText = 22, Line1 = 15, Line2 = 15, CountText = 17,
-		PlayY = 6, PlayH = 30, PlayText = 18, PausedText = 15, RowsY = 44, TierCols = 4, TierGap = 8, TierMaxH = 110,
-		TimeText = 15, RewardText = 15, TierIconPx = 18, TierBtnW = 112, TierBtnH = 44, TierBtnText = 15, ToGoText = 15,
+		-- the Play page (card B on a 844 x 390 phone: body 820 x 280, seven boxes in one row)
+		PlaySide = 14, PlayY = 2, PlayH = 44, PlayText = 17, PausedText = 15, AllW = 166, AllH = 44, AllY = 2, AllText = 15,
+		AllGap = 12, BoxSide = 10, BoxW = 104, BoxMaxH = 204, BoxCols = 7, BoxGap = 12, BoxRowsY = 58, BoxRowGap = 0,
+		BoxBottom = 6, BoxPadTop = 6, BoxPadBottom = 6, TimeText = 15, GiftPx = 52, RewardText = 15, SlotH = 44, TierBtnW = 92,
+		TierBtnText = 16, ClockText = 16, TickText = 28, BoxMinGap = 4,
 	},
 	PORTRAIT = {
 		Header = 50, HeadPad = 10, TabY = 3, TabH = 44, TabW = { 110, 140 }, TabGap = 6, TabText = 17, Close = 44, CloseY = 3,
@@ -176,8 +198,11 @@ local K = {
 		TilesY = 72, RowGap = 12, AfterTiles = 12, WispH = 22, WispText = 15, WispGap = 4, BarH = 14, BarGap = 10, SegGap = 4,
 		ClaimH = 64, ClaimGap = 8, KeepH = 40, KeepText = 15, Bottom = 6, BannerText = 15, ClaimW = 230, RepairW = 300,
 		ClaimText = 26, RepairText = 22, Line1 = 15, Line2 = 15, CountText = 17,
-		PlayY = 6, PlayH = 40, PlayText = 18, PausedText = 15, RowsY = 52, TierCols = 3, TierGap = 8, TierMaxH = 92,
-		TimeText = 15, RewardText = 15, TierIconPx = 18, TierBtnW = 88, TierBtnH = 44, TierBtnText = 15, ToGoText = 15,
+		-- the Play page: the header on two lines, CLAIM ALL centred under it, four boxes a row
+		PlaySide = 10, PlayY = 4, PlayH = 40, PlayText = 17, PausedText = 15, AllW = 166, AllH = 44, AllY = 48, AllText = 15,
+		AllGap = 0, BoxSide = 8, BoxW = 104, BoxMaxH = 204, BoxCols = 4, BoxGap = 6, BoxRowsY = 100, BoxRowGap = 10,
+		BoxBottom = 6, BoxPadTop = 4, BoxPadBottom = 4, TimeText = 15, GiftPx = 52, RewardText = 15, SlotH = 44, TierBtnW = 92,
+		TierBtnText = 15, ClockText = 15, TickText = 28, BoxMinGap = 4,
 	},
 }
 DailyController.K = K
@@ -193,6 +218,12 @@ local TEXT = {
 	PausedPC = "Paused: move around!",
 	PausedTouch = "Paused: close this and move!",
 	ToGo = "%d min to go",
+	-- the Play page (spec 5.4)
+	PlayLoading = "Play time gifts",
+	PlayPausedPC = { "Paused: move around to keep counting!", "Paused: move around!" },
+	PlayPausedTouch = { "Paused: close this and move around!", "Paused: close this and move!" },
+	ClaimAll = "CLAIM ALL (%d)",
+	ClockGlyph = "\226\143\176", -- alarm clock
 }
 
 -- the owner's colourful cells (kept here, not in Theme): one saturated colour per day (today is Neon.Gold) and per tier
@@ -491,6 +522,63 @@ function H.width(text, size, font)
 	return #tostring(text) * size * 0.5
 end
 
+-- the rows `text` word-wraps into at `width` px (each word measured by TextService; math.huge when one word is wider)
+function H.rows(text, size, font, width)
+	local rows, cur = 0, 0
+	local space = H.width(" ", size, font)
+	for word in string.gmatch(tostring(text), "%S+") do
+		local w = H.width(word, size, font)
+		if w > width then
+			return math.huge
+		end
+		if cur > 0 and cur + space + w <= width then
+			cur = cur + space + w
+		else
+			rows = rows + 1
+			cur = w
+		end
+	end
+	return math.max(rows, 1)
+end
+
+-- H.fitText for a label of `lines` rows: the first of `texts` that word-wraps into them (one row: H.fitText)
+function H.fitLines(lbl, texts, lines)
+	if (lines or 1) <= 1 then
+		return H.fitText(lbl, texts)
+	end
+	local width = lbl.Size.X.Offset - K.FIT_SLACK
+	for i = 1, #texts - 1 do
+		if H.rows(texts[i], lbl.TextSize, lbl.Font, width) <= lines then
+			return texts[i]
+		end
+	end
+	return texts[#texts]
+end
+
+-- the played seconds at server time `at`: the payload's, plus the time since ServerNow while the server counts (Active)
+function H.liveSeconds(st, at)
+	local p = play(st)
+	local seconds = tonumber(p.Seconds) or 0
+	if p.Active == true then
+		seconds = seconds + math.max(0, (tonumber(at) or now()) - (tonumber(type(st) == "table" and st.ServerNow) or at or now()))
+	end
+	return seconds
+end
+
+-- the play tiers a CLAIM ALL would claim now
+function H.readyCount(st)
+	if type(st) ~= "table" or st.Loading == true then
+		return 0
+	end
+	local n = 0
+	for _, t in ipairs(tiers(st)) do
+		if type(t) == "table" and t.Ready == true and t.Claimed ~= true then
+			n = n + 1
+		end
+	end
+	return n
+end
+
 function H.touchOnly()
 	return UserInputService.TouchEnabled == true and UserInputService.KeyboardEnabled ~= true
 end
@@ -727,17 +815,15 @@ function H.newCell(i, parent)
 	U.Cells[i] = { Card = c, Root = c.Root, Pop = pop, Day = day, Art = art, Amount = amount, Dim = dim, Check = check, ArtKey = nil, LookKey = nil }
 end
 
+-- a play-time gift box (card B): the minutes, the gift, the reward and one slot (CLAIM, the clock or the tick)
 function H.newTier(i, parent)
-	local c = NeonKit.Card({ Name = "Tier" .. i, Color = TIER_COLORS[i], Size = UDim2.fromOffset(120, 100), Floor = true, Corner = 10, ZIndex = 4, Parent = parent })
+	local c = NeonKit.Card({ Name = "Tier" .. i, Color = TIER_COLORS[i], Size = UDim2.fromOffset(104, 204), Floor = true, Corner = 12, ZIndex = 4, Parent = parent })
 	local pop = Instance.new("UIScale")
 	pop.Name = "Pop"
 	pop.Parent = c.Root
-	local iconBox = Instance.new("Frame")
-	iconBox.Name = "IconBox"
-	iconBox.BackgroundTransparency = 1
-	iconBox.ZIndex = 5
-	iconBox.Parent = c.Body
 	local timeLabel = label("Time", "", "Heading", 15, c.Body, { TextWrapped = false, ZIndex = 5 })
+	local gift = Util.Create("Frame", { Name = "Gift", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 5, Parent = c.Body })
+	gift:SetAttribute("Bobbing", false)
 	local reward = label("Reward", "", "Display", 15, c.Body, { TextWrapped = false, ZIndex = 5 })
 	reward.TextTruncate = Enum.TextTruncate.AtEnd
 	local dim = Instance.new("Frame")
@@ -748,17 +834,18 @@ function H.newTier(i, parent)
 	dim.Size = UDim2.fromScale(1, 1)
 	dim.ZIndex = 6
 	dim.Visible = false
-	Theme.Corner(dim, UDim.new(0, 10))
+	Theme.Corner(dim, UDim.new(0, 12))
 	dim.Parent = c.Body
-	local togo = label("ToGo", "", "Body", 15, c.Body, { TextColor3 = WHITE, ZIndex = 5 })
-	local check = label("Check", CHECK .. " Claimed", "Heading", 15, c.Body, { TextColor3 = Theme.Neon.Green, ZIndex = 7, TextWrapped = false })
-	local claim = NeonKit.Button({ Name = "Claim", Text = "CLAIM", Color = "Green", Size = UDim2.fromOffset(112, 44), TextSize = 15,
-		AnchorPoint = Vector2.new(0.5, 0), Parent = c.Body, Callback = function()
+	local clock = label("Clock", "", "Display", 16, c.Body, { TextColor3 = WHITE, TextWrapped = false, ZIndex = 5, Visible = false })
+	local glyph = label("ClockGlyph", TEXT.ClockGlyph, "Display", 16, c.Body, { TextWrapped = false, ZIndex = 5, Visible = false })
+	local check = label("Check", CHECK, "Title", 28, c.Body, { TextColor3 = Theme.Neon.Green, ZIndex = 7, TextWrapped = false, Visible = false })
+	local claim = NeonKit.Button({ Name = "Claim", Text = "CLAIM", Color = "Green", Size = UDim2.fromOffset(92, 44), TextSize = 16,
+		Parent = c.Body, Callback = function()
 			H.send("ClaimPlay", i)
 		end })
 	claim.ZIndex = 8
-	U.Tiers[i] = { Card = c, Root = c.Root, Pop = pop, Time = timeLabel, Reward = reward, IconBox = iconBox, Dim = dim, ToGo = togo,
-		Check = check, Claim = claim, IconKey = nil, LookKey = nil }
+	U.Tiers[i] = { Card = c, Root = c.Root, Pop = pop, Time = timeLabel, Gift = gift, Reward = reward, Dim = dim, Clock = clock,
+		Glyph = glyph, Check = check, Claim = claim, GiftKey = nil, ClockKey = nil, LookKey = nil }
 end
 
 function H.ensureWindow()
@@ -828,10 +915,14 @@ function H.ensureWindow()
 	U.Keep = label("Keep", TEXT.Keep, "Body", 15, daily, { TextColor3 = MUTED, ZIndex = 5, TextYAlignment = Enum.TextYAlignment.Top })
 	U.Banner = label("WeekBanner", TEXT.Week, "Title", 15, daily, { TextColor3 = GOLD, Visible = false, ZIndex = 5 })
 
-	-- the Play page (the store build's reward cells; gui-redo Task 10 redraws it)
+	-- the Play page (card B: the header line, CLAIM ALL, seven gift boxes)
 	local playPage = Util.Create("Frame", { Name = "PlayPage", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Visible = false, ZIndex = 4, Parent = U.Body })
 	U.PlayPage = playPage
-	U.PlayHeader = label("Header", "", "Heading", 18, playPage, { TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 5 })
+	U.PlayHeader = label("PlayHeader", "", "Heading", 17, playPage, { TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = false, ZIndex = 5 })
+	U.ClaimAll = NeonKit.Button({ Name = "ClaimAll", Text = string.format(TEXT.ClaimAll, 0), Color = "Green", Size = UDim2.fromOffset(166, 44), TextSize = 15,
+		ZIndex = 6, Parent = playPage, Callback = function()
+			H.claimAll()
+		end })
 	U.TiersFrame = Util.Create("Frame", { Name = "Tiers", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 4, Parent = playPage })
 	for i = 1, 7 do
 		H.newTier(i, U.TiersFrame)
@@ -1112,64 +1203,81 @@ function H.placeBottom(M, slotW)
 	U.Line2.Size = UDim2.new(1, 0, 0, M.Line2 + 4)
 end
 
--- the offsets of `count` cells of w x h in rows of `perRow` across `inner` px (the full rows spread over inner, every
--- row centred; gapY between rows)
-function H.grid(count, perRow, w, h, inner, gapY)
-	local gapX = perRow > 1 and math.floor((inner - perRow * w) / (perRow - 1)) or 0
-	local out = {}
-	for i = 1, count do
-		local row = math.floor((i - 1) / perRow)
-		local inRow = math.min(perRow, count - row * perRow)
-		local free = inner - (inRow * w + (inRow - 1) * gapX)
-		local col = (i - 1) % perRow
-		out[i] = { x = math.floor(free / 2) + col * (w + gapX), y = row * (h + gapY) }
-	end
-	return out
-end
-
--- the Play page: the header and the seven reward cells (rows of TierCols)
+-- the Play page (card B): the header line and CLAIM ALL on top, then the gift boxes in centred rows of BoxCols (PC: the
+-- rows slide from PlayCompact to PlayFull with the body, as the Daily page's parts do)
 function H.layoutPlay(M, W, B)
-	local inner = W - 2 * M.Side
-	place(U.PlayHeader, M.Side, M.PlayY, inner, M.PlayH)
-	local rows = math.ceil(7 / M.TierCols)
-	local tw = math.floor((inner - (M.TierCols - 1) * M.TierGap) / M.TierCols)
-	local th = math.min(M.TierMaxH, math.floor((B - M.RowsY - (rows - 1) * M.TierGap - M.TierGap) / rows))
-	place(U.TiersFrame, M.Side, M.RowsY, inner, rows * th + (rows - 1) * M.TierGap)
-	local spots = H.grid(7, M.TierCols, tw, th, inner, M.TierGap)
+	local portrait = S.Mode == "Portrait"
+	if portrait then
+		place(U.PlayHeader, M.PlaySide, M.PlayY, W - 2 * M.PlaySide, M.PlayH)
+		place(U.ClaimAll, (W - M.AllW) / 2, M.AllY, M.AllW, M.AllH)
+	else
+		place(U.ClaimAll, W - M.PlaySide - M.AllW, M.AllY, M.AllW, M.AllH)
+		place(U.PlayHeader, M.PlaySide, M.PlayY, math.max(40, W - 2 * M.PlaySide - M.AllW - M.AllGap), M.PlayH)
+	end
+	U.PlayHeader.TextWrapped = portrait
+	U.ClaimAll.TextSize = M.AllText
+	local P ={ BoxRowsY = M.BoxRowsY, BoxRowGap = M.BoxRowGap, BoxBottom = M.BoxBottom }
+	if S.Mode == "PC" then
+		local k = math.max(0, math.min(1, (B - M.CompactBody) / (M.FullBody - M.CompactBody)))
+		for name, full in pairs(M.PlayFull) do
+			P[name] = math.floor(M.PlayCompact[name] + (full - M.PlayCompact[name]) * k + 0.5)
+		end
+	end
+	local cols = M.BoxCols
+	local rows = math.ceil(7 / cols)
+	local bw = math.min(M.BoxW, math.floor((W - 2 * M.BoxSide - (cols - 1) * M.BoxGap) / cols))
+	local bh = math.min(M.BoxMaxH, math.floor((B - P.BoxRowsY - (rows - 1) * P.BoxRowGap - P.BoxBottom) / rows))
+	local gridH = rows * bh + (rows - 1) * P.BoxRowGap
+	local y0 = P.BoxRowsY + math.floor(math.max(0, B - P.BoxRowsY - P.BoxBottom - gridH) / 2)
+	place(U.TiersFrame, 0, y0, W, gridH)
 	for i, cell in ipairs(U.Tiers) do
-		place(cell.Root, spots[i].x, spots[i].y, tw, th)
-		H.layoutTier(cell, tw, th, M)
+		local row = math.floor((i - 1) / cols)
+		local inRow = math.min(cols, 7 - row * cols)
+		local rowW = inRow * bw + (inRow - 1) * M.BoxGap
+		local x = math.floor((W - rowW) / 2) + ((i - 1) % cols) * (bw + M.BoxGap)
+		place(cell.Root, x, row * (bh + P.BoxRowGap), bw, bh)
+		H.layoutTier(cell, bw, bh, M)
 	end
 end
 
--- a reward cell's insides: the time on top, the icon, the reward, the CLAIM / "n min to go" / Claimed slot
-function H.layoutTier(cell, tw, th, M)
-	local slotY = th - M.TierBtnH - 6
-	local rewardY = slotY - M.RewardText - 8
-	local timeH = M.TimeText + 6
-	local iconRoom = rewardY - (4 + timeH)
-	local box = math.floor(M.TierIconPx * 1.25 + 0.5)
-	-- no room between the time and the reward: the icon sits in the top corner
-	if iconRoom < M.TierIconPx then
-		place(cell.IconBox, tw - box - 4, 3, box, box)
-		cell.Time.TextXAlignment = Enum.TextXAlignment.Left
-		place(cell.Time, 6, 4, tw - 12 - box, timeH)
-	else
-		place(cell.IconBox, 0, 4 + timeH, tw, iconRoom)
-		cell.Time.TextXAlignment = Enum.TextXAlignment.Center
-		place(cell.Time, 4, 4, tw - 8, timeH)
-	end
+-- a gift box's insides, top to bottom with even gaps (the mock's space-between column): the minutes, the gift (as big
+-- as the room allows, up to GiftPx), the reward (two lines in a narrow box), the slot (CLAIM / the clock / the tick)
+function H.layoutTier(cell, bw, bh, M)
+	local inner = bw - 8
+	local lines = inner < K.WRAP_BELOW and 2 or 1
+	local timeH = M.TimeText + 4
+	local rewardH = lines * M.RewardText + 6
+	local free = bh - M.BoxPadTop - M.BoxPadBottom - timeH - rewardH - M.SlotH
+	-- (the gift gives way first: the three gaps keep BoxMinGap, so the reward never touches the CLAIM button's glow)
+	local px = math.max(0, math.min(M.GiftPx, free - 3 * M.BoxMinGap, bw - 12))
+	local gap = math.max(0, (free - px) / 3)
+	local y = M.BoxPadTop
+	place(cell.Time, 4, y, inner, timeH)
 	cell.Time.TextSize = M.TimeText
-	place(cell.Reward, 4, rewardY, tw - 8, M.RewardText + 6)
+	y = y + timeH + gap
+	place(cell.Gift, (bw - px) / 2, y, px, px)
+	cell.GiftX, cell.GiftY, cell.GiftPx = cell.Gift.Position.X.Offset, cell.Gift.Position.Y.Offset, px
+	y = y + px + gap
+	place(cell.Reward, 4, y, inner, rewardH)
 	cell.Reward.TextSize = M.RewardText
-	place(cell.ToGo, 4, slotY, tw - 8, M.TierBtnH)
-	place(cell.Check, 4, slotY, tw - 8, M.TierBtnH)
-	cell.ToGo.TextSize, cell.Check.TextSize = M.ToGoText, M.ToGoText
-	cell.Claim.AnchorPoint = Vector2.new(0.5, 0)
-	cell.Claim.Position = UDim2.new(0.5, 0, 0, slotY)
-	cell.Claim.Size = UDim2.fromOffset(math.min(M.TierBtnW, tw - 12), M.TierBtnH)
+	cell.Reward.TextWrapped = lines > 1
+	cell.Lines = lines
+	local slotY = bh - M.BoxPadBottom - M.SlotH
+	cell.SlotY, cell.SlotH, cell.Inner = slotY, M.SlotH, inner
+	local btnW = math.min(M.TierBtnW, inner)
+	place(cell.Claim, (bw - btnW) / 2, slotY, btnW, M.SlotH)
 	cell.Claim.TextSize = M.TierBtnText
-	cell.IconKey = nil
+	local pad = cell.Claim:FindFirstChildOfClass("UIPadding")
+	if pad then
+		-- (a narrow box's CLAIM keeps its word: NeonKit's 10 px sides would cut it)
+		local side = btnW < 80 and 4 or 10
+		pad.PaddingLeft, pad.PaddingRight = UDim.new(0, side), UDim.new(0, side)
+	end
+	cell.Clock.TextSize, cell.Glyph.TextSize = M.ClockText, M.ClockText
+	local tick = M.TickText
+	cell.Check.TextSize = tick
+	place(cell.Check, (bw - tick - 8) / 2, slotY + (M.SlotH - tick - 8) / 2, tick + 8, tick + 8)
+	cell.GiftKey, cell.ClockKey = nil, nil
 end
 
 -- the menu tiles (NimbusMenu draws above this window) step aside while the open window reaches over them, and on a
@@ -1252,18 +1360,47 @@ function H.paintLook(cell, color, look)
 	cell.Card.Floor.Visible = look ~= "Claimed"
 end
 
-function H.paintTierIcon(cell, tier, M)
-	local id = (tier.Kind == "Pet" and "Gifts") or tostring(tier.Kind or "Gifts")
-	local key = id .. ":" .. M.TierIconPx
-	if cell.IconKey == key then
+-- a box's gift: the "Gifts" icon on an orb of the tier's colour (the tint: an emoji glyph takes no colour), redrawn only
+-- when its size or colour changes
+function H.paintGift(cell, color)
+	local px = cell.GiftPx or 0
+	local key = tostring(color) .. ":" .. px
+	if cell.GiftKey == key then
 		return
 	end
-	cell.IconKey = key
-	for _, child in ipairs(cell.IconBox:GetChildren()) do
+	cell.GiftKey = key
+	for _, child in ipairs(cell.Gift:GetChildren()) do
 		child:Destroy()
 	end
-	local icon = NeonKit.Icon(cell.IconBox, id, M.TierIconPx)
-	icon.ZIndex = 5
+	if px < 12 then
+		return
+	end
+	local orb = NeonKit.Orb(cell.Gift, Theme.Lighten(color, 0.1), px)
+	orb.ZIndex = 5
+	local icon = NeonKit.Icon(cell.Gift, "Gifts", math.max(14, math.floor(px * 0.6)))
+	icon.ZIndex = 6
+end
+
+-- the clock slot: the countdown centred with the clock glyph before it, or alone when both would not fit the box
+function H.placeClock(cell, text)
+	local key = text .. "|" .. tostring(cell.SlotY) .. "|" .. tostring(cell.Inner) .. "|" .. cell.Clock.TextSize
+	if cell.ClockKey == key then
+		return
+	end
+	cell.ClockKey = key
+	local inner, slotY, slotH = cell.Inner or 0, cell.SlotY or 0, cell.SlotH or 44
+	local size = cell.Clock.TextSize
+	local textW = H.width(text, size, cell.Clock.Font)
+	local room = size + 8 -- the glyph's box (size + 4) and a 4 px gap
+	local withGlyph = text ~= "" and textW + room <= inner - K.FIT_SLACK
+	cell.Glyph.Visible = withGlyph
+	if withGlyph then
+		-- the label is shifted right by the glyph's room, so the glyph + the centred text sit centred together
+		place(cell.Clock, 4 + room, slotY, inner - room, slotH)
+		place(cell.Glyph, 4 + (inner - textW) / 2 - room / 2, slotY + (slotH - size - 4) / 2, size + 4, size + 4)
+	else
+		place(cell.Clock, 4, slotY, inner, slotH)
+	end
 end
 
 -- "Week Wisp in 4 more days" / "in 1 more day" / "Week Wisp today!"
@@ -1360,50 +1497,66 @@ function H.renderDaily(st, M)
 	U.Keep.Visible = not waiting
 end
 
+-- the Play page (card B): the header line, CLAIM ALL (n) and the seven gift boxes
 function H.renderPlay(st, M)
 	local p = play(st)
 	local loading = type(st) ~= "table" or st.Loading == true
-	local seconds = tonumber(p.Seconds) or 0
+	local at = now()
+	local texts
 	if loading then
-		U.PlayHeader.Text = "Play time gifts"
-		U.PlayHeader.Font = Theme.Fonts.Heading
-		U.PlayHeader.TextColor3 = WHITE
-		U.PlayHeader.TextSize = M.PlayText
+		texts = { TEXT.PlayLoading }
 	elseif p.Active == false then
-		U.PlayHeader.Text = "Paused: move around to keep counting!"
-		U.PlayHeader.Font = Theme.Fonts.Body
-		U.PlayHeader.TextColor3 = GOLD
-		U.PlayHeader.TextSize = M.PausedText
+		-- (on a touch device the stick is hidden while this window is open: only closing it lets the player move)
+		texts = H.touchOnly() and TEXT.PlayPausedTouch or TEXT.PlayPausedPC
 	else
-		U.PlayHeader.Text = math.floor(seconds / 60) .. " min played today " .. DOT .. " Resets in " .. resetText((tonumber(p.DayEnds) or 0) - now())
-		U.PlayHeader.Font = Theme.Fonts.Heading
-		U.PlayHeader.TextColor3 = WHITE
-		U.PlayHeader.TextSize = M.PlayText
+		local mins = math.floor(H.liveSeconds(st, at) / 60)
+		local reset = " " .. DOT .. " Resets in " .. resetText((tonumber(p.DayEnds) or 0) - at)
+		texts = { mins .. " min today" .. reset }
+		if S.Mode == "PC" then
+			texts = { mins .. " min played today" .. reset, texts[1] }
+		end
 	end
+	local paused = not loading and p.Active == false
+	U.PlayHeader.Font = paused and Theme.Fonts.Body or Theme.Fonts.Heading
+	U.PlayHeader.TextColor3 = paused and GOLD or WHITE
+	U.PlayHeader.TextSize = paused and M.PausedText or M.PlayText
+	U.PlayHeader.Text = H.fitLines(U.PlayHeader, texts, S.Mode == "Portrait" and 2 or 1)
+	-- CLAIM ALL: the ready count; greyed out at 0, in the same place
+	local readyCount = H.readyCount(st)
+	U.ClaimAll.Text = string.format(TEXT.ClaimAll, readyCount)
+	U.ClaimAll:SetAttribute("Disabled", readyCount == 0)
 	local list = tiers(st)
 	for i, cell in ipairs(U.Tiers) do
 		local t = list[i]
 		cell.Root.Visible = type(t) == "table"
 		if type(t) == "table" then
-			local goal = (tonumber(t.Min) or 0) * 60
+			local color = TIER_COLORS[i] or GOLD
 			cell.Time.Text = tostring(tonumber(t.Min) or 0) .. " min"
-			cell.Reward.Text = H.fitText(cell.Reward, tierRewards(t))
-			H.paintTierIcon(cell, t, M)
+			cell.Reward.Text = H.fitLines(cell.Reward, tierRewards(t), cell.Lines)
+			H.paintGift(cell, color)
 			local claimed = t.Claimed == true
 			local ready = not claimed and t.Ready == true and not loading
 			local state = claimed and "Claimed" or (ready and "Ready" or "Locked")
 			cell.Root:SetAttribute("State", state)
+			cell.Root:SetAttribute("Pulsing", ready)
+			cell.Gift:SetAttribute("Bobbing", ready)
+			if not ready and cell.GiftY and cell.Gift.Position.Y.Offset ~= cell.GiftY then
+				cell.Gift.Position = UDim2.fromOffset(cell.GiftX, cell.GiftY)
+			end
 			cell.Check.Visible = claimed
 			cell.Dim.Visible = claimed
 			cell.Claim.Visible = ready
-			cell.ToGo.Visible = state == "Locked"
-			if goal > seconds then
-				cell.ToGo.Text = math.ceil((goal - seconds) / 60) .. " min to go"
-			else
-				cell.ToGo.Text = loading and "" or "Almost!"
+			local countdown = state == "Locked" and DailyController.TierCountdown(i, st, at) or ""
+			cell.Clock.Text = countdown
+			cell.Clock.Visible = countdown ~= ""
+			H.placeClock(cell, countdown)
+			H.paintLook(cell, color, state)
+			if not ready then
+				cell.Card.Stroke.Transparency = CELL_LOOK[state][3]
+			elseif cell.State ~= "Ready" then
+				cell.Card.Stroke.Transparency = CELL_LOOK.Ready[3] -- (just ready: bright at once; the tick then pulses it)
 			end
-			H.paintLook(cell, TIER_COLORS[i] or GOLD, state)
-			cell.Card.Stroke.Transparency = CELL_LOOK[state][3]
+			cell.State = state
 		end
 	end
 end
@@ -1430,6 +1583,19 @@ function H.tick()
 	end
 	H.render()
 	S.Pulse = not S.Pulse
+	if S.Tab == "Play" then
+		-- a ready gift box: its border pulses and its gift bobs
+		for _, cell in ipairs(U.Tiers) do
+			if cell.Root:GetAttribute("Pulsing") == true then
+				Util.Tween(cell.Card.Stroke, 0.9, { Transparency = S.Pulse and K.PULSE or 0 })
+			end
+			if cell.Gift:GetAttribute("Bobbing") == true and cell.GiftY then
+				Util.Tween(cell.Gift, 0.9, { Position = UDim2.fromOffset(cell.GiftX, cell.GiftY - (S.Pulse and K.BOB or 0)) },
+					Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+			end
+		end
+		return
+	end
 	for _, cell in ipairs(U.Cells) do
 		if cell.Root:GetAttribute("Pulsing") == true then
 			Util.Tween(cell.Card.Stroke, 0.9, { Transparency = S.Pulse and K.PULSE or 0 })
@@ -1590,6 +1756,13 @@ function H.onClaim()
 	end
 end
 
+-- CLAIM ALL: one request for every ready play gift (the server claims each through ClaimPlay's step, one toast)
+function H.claimAll()
+	if H.readyCount(S.State) > 0 then
+		H.send("ClaimPlayAll")
+	end
+end
+
 function H.syncBack()
 	if S.Open and not S.BackBound then
 		S.BackBound = true
@@ -1688,6 +1861,23 @@ function DailyController.ClaimView(st, at, touch)
 		return { Mode = "Repair", Line1 = K.REPAIR_TEXT, Repair = true }
 	end
 	return { Mode = "Claim", Line1 = TEXT.Claim }
+end
+
+-- play tier i's own countdown (see the header): pure over its arguments
+function DailyController.TierCountdown(i, st, at)
+	if type(st) ~= "table" or st.Loading == true then
+		return ""
+	end
+	local t = tiers(st)[i]
+	if type(t) ~= "table" or t.Claimed == true or t.Ready == true then
+		return ""
+	end
+	at = tonumber(at) or now()
+	local left = math.max(1, math.ceil((tonumber(t.Min) or 0) * 60 - H.liveSeconds(st, at)))
+	if left >= 3600 then
+		return math.floor(left / 3600) .. "h " .. math.floor((left % 3600) / 60) .. "m"
+	end
+	return math.floor(left / 60) .. ":" .. string.format("%02d", left % 60)
 end
 
 function DailyController.PipShown()

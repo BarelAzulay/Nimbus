@@ -4,10 +4,10 @@
 --   client_fixr_daily_week        (1920x1080) a repair claim (Streak 6 -> 7 with Paid 7, Weeks unchanged) plays no week
 --                                 celebration (no banner, no confetti, no DailyWeek); a paid week (Weeks rises) does; the
 --                                 same at 14
---   client_fixr_daily_play_cells  (1920x1080) the Play time tab is a grid of seven reward cells, one per tier, each its own
---                                 saturated colour (Fill UIGradient + NeonStroke), the time and the reward, the states
---                                 Claimed / Ready (CLAIM -> ClaimPlay(tier)) / Locked ("n min to go"); the Daily cells are
---                                 coloured per day too (today Gold)
+--   client_fixr_daily_play_cells  (1920x1080) the Play time tab is seven gift boxes (gui-redo Task 10, card B), one per tier,
+--                                 each its own saturated colour (Fill UIGradient + NeonStroke), the time, the gift and the
+--                                 reward, the states Claimed (the tick over the Dim) / Ready (CLAIM -> ClaimPlay(tier)) /
+--                                 Locked (its own clock "28:00"); the Daily cells are coloured per day too (today Gold)
 --   client_fixr_boost_toast       "x2 Pet XP started!" only for a potion that starts during this view: a second potion
 --                                 after an expired one (the attribute still holds the old end), never a potion bought
 --                                 earlier that arrives late (a provisional recovery / a slow profile), never an end in the
@@ -497,7 +497,7 @@ local function clientScenarios()
 				n = n + 1
 			end
 		end
-		T.check(n == 7 and H.find(win, "Rows") == nil, "fixr play cells: seven reward cells (Tiers > Tier1..7), one per tier, no rows", fmt("%d cells", n))
+		T.check(n == 7 and H.find(win, "Rows") == nil, "fixr play cells: seven gift boxes (Tiers > Tier1..7), one per tier, no rows", fmt("%d boxes", n))
 		-- each tier its own saturated colour: the cell's NeonStroke and its Fill gradient
 		local seen, distinct, saturated, gradients = {}, 0, true, true
 		local detail = {}
@@ -526,20 +526,21 @@ local function clientScenarios()
 		-- checks that every cell text fits)
 		T.check(t1:find("10 min", 1, true) ~= nil and t1:find("+$200", 1, true) ~= nil and t6:find("120 min", 1, true) ~= nil and t6:find("Berry Basket", 1, true) ~= nil,
 			"fixr play cells: each cell shows its time and its reward", (t1 .. " || " .. t6):gsub("[\128-\255]+", "?"))
-		T.check(H.find(H.tier(1), "Icon") ~= nil, "fixr play cells: the reward's icon")
+		T.check(H.find(H.find(H.tier(1), "Gift"), "Icon") ~= nil, "fixr play cells: the gift art (gui-redo Task 10: the Gifts icon in every box)")
 		-- the states
 		local function state(i)
 			local c = H.tier(i)
 			return c and c:GetAttribute("State")
 		end
-		T.check(state(1) == "Claimed" and H.shown(H.find(H.tier(1), "Check")) and H.texts(H.tier(1)):find("Claimed", 1, true) ~= nil and H.tierButton(1) == nil,
-			"fixr play cells: a claimed tier says Claimed with its check", H.texts(H.tier(1)))
+		T.check(state(1) == "Claimed" and H.shown(H.find(H.tier(1), "Check")) and H.shown(H.find(H.tier(1), "Dim")) and H.tierButton(1) == nil
+			and not H.shown(H.find(H.tier(1), "Clock")), "fixr play cells: a claimed box shows its tick over the dim", H.texts(H.tier(1)))
 		local b4 = H.tierButton(4)
-		T.check(state(4) == "Ready" and b4 ~= nil and b4.Text == "CLAIM" and not H.shown(H.find(H.tier(4), "ToGo")), "fixr play cells: a ready tier has its CLAIM", H.texts(H.tier(4)))
-		T.check(state(5) == "Locked" and H.tierButton(5) == nil and H.texts(H.tier(5)):find("28 min to go", 1, true) ~= nil and not H.shown(H.find(H.tier(5), "Check")),
-			"fixr play cells: a locked tier says how long to go", H.texts(H.tier(5)))
+		T.check(state(4) == "Ready" and b4 ~= nil and b4.Text == "CLAIM" and not H.shown(H.find(H.tier(4), "Clock")), "fixr play cells: a ready box has its CLAIM", H.texts(H.tier(4)))
+		local clock5 = H.find(H.tier(5), "Clock")
+		T.check(state(5) == "Locked" and H.tierButton(5) == nil and H.shown(clock5) and clock5.Text == "28:00" and not H.shown(H.find(H.tier(5), "Check")),
+			"fixr play cells: a locked box counts down to its gift (its own clock)", H.texts(H.tier(5)))
 		local s4, s5 = H.stroke(H.tier(4)), H.stroke(H.tier(5))
-		T.check(s4 and s5 and s4.Transparency < s5.Transparency, "fixr play cells: a ready cell's outline is brighter than a locked one's",
+		T.check(s4 and s5 and s4.Transparency < s5.Transparency, "fixr play cells: a ready box's outline is brighter than a locked one's",
 			fmt("ready %s, locked %s", tostring(s4 and s4.Transparency), tostring(s5 and s5.Transparency)))
 		local mark = #Mock.RemoteLog
 		H.tap(b4)
