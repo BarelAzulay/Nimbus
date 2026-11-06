@@ -27,7 +27,17 @@
 --                          open (1920x1080 -> 844x390 -> 1920x1080) passes each time; the empty state and the TRAIN confirm
 --                          pass too
 --   client_train_portrait  (phone world, 390x844 touch) one column: the pet above the skills, RedoGeom.check passes (the
---                          window, its TRAIN confirm and the empty state)
+--                          window, its TRAIN confirm and the empty state); Task 8: the five mats in their band, apart
+--   client_train_mats      (Task 8; 1920x1080, then 844x390 touch) the mats row: the pure TrainController.Mats(home,
+--                          growthMap, selectedKey) (a job on its Slot, the pending pet on the first free open mat, "+ Add a
+--                          pet", locked mats with their unlock level; a job with no Slot / a second job on a taken slot on
+--                          the next free mat; a job on a closed mat keeps it with a lock badge; a full place has no pending
+--                          mat; no Training Place: five locked mats); the window: Mat1..Mat5 with State / Key / LockBadge,
+--                          their texts, a job mat's live timer, tapping a job mat selects that pet (its skill turns
+--                          "Training"), "+ Add a pet" opens the sheet, a locked mat only says how to open it on the HintLine
+--                          (with the house that allows that level when the house caps it); a job ending, a Training Place
+--                          upgrade and a Prestige-like snapshot re-render the mats while open; RedoGeom.check with the mats
+--                          apart and clear of the pet card and the skills, each inside the band
 -- Fixture: six pets (a Rare in training on Physique, an evolved Epic, a stage-2 Legendary with Speed at rank 10, three
 -- plain ones), the Training Place at Lv 3 (3 spots). Every scenario puts the profile and the attributes it found back.
 -- Deterministic: mock clock only. Plain Lua 5.1 syntax only.
@@ -175,7 +185,8 @@ local function clientScenarios()
 	end
 
 	-- a ProfileSync snapshot of the fixture. opts: Gym (Training Place level; 0 = not built), Job (false = nobody trains),
-	-- Paid (the job's Paid), NoPets
+	-- Paid (the job's Paid), NoPets, JobSlot (the training pet's Slot), Extra ({ { key, stat, slot, seconds }... }: more
+	-- pets in training), House (the House station level = the house tier)
 	function H.snapshot(opts)
 		opts = opts or {}
 		local pets, levels, growth, discovered, busy = {}, {}, {}, {}, {}
@@ -191,8 +202,13 @@ local function clientScenarios()
 				growth[f[1]] = g
 			end
 			if opts.Job ~= false then
-				growth[TRAINING].Job = { Stat = JOB.Stat, Ends = os.time() + JOB.In, Rank = JOB.Rank, Slot = JOB.Slot, From = "Follow", Paid = opts.Paid or JOB.Paid }
+				growth[TRAINING].Job = { Stat = JOB.Stat, Ends = os.time() + JOB.In, Rank = JOB.Rank, Slot = opts.JobSlot or JOB.Slot, From = "Follow", Paid = opts.Paid or JOB.Paid }
 				busy[TRAINING] = "Training"
+			end
+			for _, x in ipairs(opts.Extra or {}) do
+				local g = growth[x[1]]
+				g.Job = { Stat = x[2], Ends = os.time() + x[4], Rank = (g[x[2]] or 0) + 1, Slot = x[3], From = "Follow", Paid = 100 }
+				busy[x[1]] = "Training"
 			end
 		end
 		local preset, equipped = {}, {}
@@ -211,6 +227,9 @@ local function clientScenarios()
 		local stations = { Garden = 1 }
 		if gym > 0 then
 			stations.Gym = gym
+		end
+		if opts.House then
+			stations.House = opts.House
 		end
 		return {
 			Tokens = 900, Pets = pets, Equipped = equipped, Items = {},
@@ -710,7 +729,277 @@ local function clientScenarios()
 			H.picker().Close()
 			KC.advance(0.3)
 			RedoGeom.check(H.win(), label .. " (empty)", { NoOverlap = NAMES })
+			-- (Task 8) the five mats sit in their band, apart and clear of the pet card and the skills
+			H.matsApart(label .. " (mats)")
 		end)
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- Task 8: the mats row
+	local DOT = "\194\183"
+	local MATS = { "Mat1", "Mat2", "Mat3", "Mat4", "Mat5" }
+	local MAT_NAMES = {
+		"Mat1", "Mat2", "Mat3", "Mat4", "Mat5", "PetCard", "PetName", "PetLevel", "PrevButton", "ChangeButton", "NextButton",
+		"Skill_Speed", "Skill_Physique", "Skill_Ability", "Skill_Defense", "CloseButton", "SpotsChip",
+	}
+	function H.mat(i)
+		return H.find("Mat" .. i)
+	end
+	-- "Job,Pending,Job,Locked,Locked" of the window's mats
+	function H.matStates()
+		local out = {}
+		for i = 1, 5 do
+			local m = H.mat(i)
+			out[i] = tostring(m and m:GetAttribute("State"))
+		end
+		return table.concat(out, ",")
+	end
+	-- every shown text under mat i, joined with "|"
+	function H.matText(i)
+		local m = H.mat(i)
+		local out = {}
+		for _, d in ipairs(m and m:GetDescendants() or {}) do
+			if (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Text ~= "" and KC.isShown(d) then
+				out[#out + 1] = d.Text
+			end
+		end
+		return table.concat(out, "|")
+	end
+	function H.has(text, part)
+		return tostring(text):find(part, 1, true) ~= nil
+	end
+	-- the five mats inside the band, apart from each other and from the pet card and the skills
+	function H.matsApart(label)
+		local win = H.win()
+		RedoGeom.check(win, label, { NoOverlap = MAT_NAMES })
+		local band = H.find("Mats")
+		local bp, bs = band.AbsolutePosition, band.AbsoluteSize
+		local out = {}
+		for i = 1, 5 do
+			local m = H.mat(i)
+			local p, s = m.AbsolutePosition, m.AbsoluteSize
+			if p.X < bp.X - 0.5 or p.Y < bp.Y - 0.5 or p.X + s.X > bp.X + bs.X + 0.5 or p.Y + s.Y > bp.Y + bs.Y + 0.5 then
+				out[#out + 1] = RedoGeom.desc(m)
+			end
+		end
+		T.check(#out == 0, label .. ": every mat lies inside the Mats band", RedoGeom.desc(band) .. " / " .. table.concat(out, "; "))
+	end
+	-- the home tier that first allows Training Place level lv (the Home window's "Needs the ..." house)
+	function H.houseFor(lv)
+		local TCat = H.req("shared/TycoonCatalog")
+		local caps = TCat.Get("Gym").TierCaps
+		for _, tier in ipairs(TCat.HouseTiers) do
+			if (caps[tier.Id] or 0) >= lv then
+				return tier.Name
+			end
+		end
+		return nil
+	end
+
+	S.client_train_mats = guarded("client_train_mats", function()
+		-- the pure function
+		RedoGeom.at(1920, 1080, false, "train mats pure", function()
+			H.with("client_train_mats (pure)", nil, function(TC)
+				if not T.check(type(TC.Mats) == "function", "train mats: TrainController.Mats(home, growthMap, selectedKey) exists") then
+					return
+				end
+				local now = os.time()
+				local function job(slot, inSec, stat)
+					return { Evo = 0, Speed = 0, Physique = 0, Ability = 0, Defense = 0, Job = { Stat = stat or "Speed", Ends = now + (inSec or 100), Rank = 1, Slot = slot } }
+				end
+				local function home(gym, house)
+					return { Stations = { Gym = gym, House = house } }
+				end
+				local function states(m)
+					local out = {}
+					for i = 1, 5 do
+						out[i] = tostring(m[i] and m[i].State)
+					end
+					return table.concat(out, ",")
+				end
+				local function keys(m)
+					local out = {}
+					for i = 1, 5 do
+						out[i] = tostring(m[i] and m[i].Key)
+					end
+					return table.concat(out, ",")
+				end
+				local map = { a = job(1), b = job(3) }
+				local m = TC.Mats(home(3), map, nil)
+				T.check(type(m) == "table" and #m == 5, "train mats pure: five mats always", type(m) == "table" and tostring(#m) or type(m))
+				T.eq(states(m), "Job,Add,Job,Locked,Locked", "train mats pure: slots 3, jobs on Slot 1 and 3 -> Job, Add, Job, Locked, Locked")
+				T.check(m[1].Key == "a" and m[3].Key == "b" and m[1].Job == map.a.Job and m[3].Job == map.b.Job and m[2].Key == nil,
+					"train mats pure: ...each job on its own mat, with its Job", keys(m))
+				T.check(m[4].Unlock == 4 and m[5].Unlock == 5 and m[1].Unlock == nil, "train mats pure: ...the locked mats say the level that opens them",
+					tostring(m[4].Unlock) .. " / " .. tostring(m[5].Unlock))
+				local badge = false
+				for i = 1, 5 do
+					badge = badge or m[i].LockBadge == true
+				end
+				T.check(not badge, "train mats pure: ...no lock badge")
+				map.c = { Evo = 0, Speed = 2 }
+				m = TC.Mats(home(3), map, "c")
+				T.check(states(m) == "Job,Pending,Job,Locked,Locked" and m[2].Key == "c" and m[2].Job == nil,
+					"train mats pure: a selected free pet -> mat 2 'Pending' with that pet", states(m) .. " " .. keys(m))
+				m = TC.Mats(home(3), { a = job(1) }, "fresh_pet")
+				T.check(states(m) == "Job,Pending,Add,Locked,Locked" and m[2].Key == "fresh_pet",
+					"train mats pure: a selected pet with no growth entry yet is pending too", states(m) .. " " .. keys(m))
+				m = TC.Mats(home(3), { a = job(1) }, "a")
+				T.eq(states(m), "Job,Add,Add,Locked,Locked", "train mats pure: the selected pet in training: no pending mat")
+				for _, slot in ipairs({ 0, false, 2.5, -1, 6, 99 }) do
+					local j = job(2)
+					local free = job(0)
+					free.Job.Slot = slot or nil
+					m = TC.Mats(home(3), { a = j, b = free }, nil)
+					T.check(states(m) == "Job,Job,Add,Locked,Locked" and m[1].Key == "b" and m[2].Key == "a" and not m[1].LockBadge,
+						"train mats pure: a job with no Slot (" .. tostring(slot) .. ") -> the first free mat", states(m) .. " " .. keys(m))
+				end
+				m = TC.Mats(home(3), { a = job(2, 50), b = job(2, 100) }, nil)
+				T.check(states(m) == "Add,Job,Job,Locked,Locked" and m[2].Key == "a" and m[3].Key == "b",
+					"train mats pure: two jobs on Slot 2 -> the sooner keeps it, the second on the next free mat", states(m) .. " " .. keys(m))
+				m = TC.Mats(home(3), { b = job(2, 100), a = job(2, 50), c = job(3) }, nil)
+				T.check(states(m) == "Job,Job,Job,Locked,Locked" and m[1].Key == "b" and m[2].Key == "a" and not m[1].LockBadge,
+					"train mats pure: ...the next free OPEN mat, wrapping round (no lock badge)", states(m) .. " " .. keys(m))
+				m = TC.Mats(home(3), { a = job(5) }, nil)
+				T.check(states(m) == "Add,Add,Add,Locked,Job" and m[5].Key == "a" and m[5].LockBadge == true and m[5].Unlock == 5,
+					"train mats pure: a job on Slot 5 with slots 3 -> mat 5 'Job' with LockBadge", states(m) .. " " .. keys(m))
+				m = TC.Mats(home(3), { a = job(1), b = job(2), c = job(3) }, "d")
+				T.eq(states(m), "Job,Job,Job,Locked,Locked", "train mats pure: every spot in use: no pending mat")
+				m = TC.Mats(home(2), { a = job(1), b = job(3) }, "d")
+				T.check(states(m) == "Job,Add,Job,Locked,Locked" and m[3].LockBadge == true,
+					"train mats pure: slots 2, a job on closed mat 3: two jobs fill the place, so mat 2 is 'Add', not pending", states(m))
+				m = TC.Mats({ Stations = {} }, {}, "d")
+				T.check(states(m) == "Locked,Locked,Locked,Locked,Locked" and m[1].Unlock == 1 and m[5].Unlock == 5,
+					"train mats pure: no Training Place: five locked mats (Lv 1..5)", states(m))
+				local ok, res = pcall(TC.Mats, nil, nil, nil)
+				T.check(ok and type(res) == "table" and states(res) == "Locked,Locked,Locked,Locked,Locked", "train mats pure: junk arguments do not error",
+					ok and states(res) or tostring(res))
+				ok, res = pcall(TC.Mats, home(5), { x = "junk", y = { Job = "junk" }, z = { Job = { Slot = 2 } } }, nil)
+				T.check(ok and type(res) == "table" and res[2].State == "Job" and res[2].Key == "z" and res[1].State == "Add",
+					"train mats pure: junk growth entries are skipped", ok and states(res) or tostring(res))
+				m = TC.Mats(home(5), {}, nil)
+				T.eq(states(m), "Add,Add,Add,Add,Add", "train mats pure: Lv 5: five open mats")
+			end)
+		end)
+
+		-- the window at 1920x1080 and on a landscape phone
+		local sizes = { { 1920, 1080, false }, { 844, 390, true } }
+		for _, sz in ipairs(sizes) do
+			local pc = sz[1] == 1920
+			local label = fmt("train mats %dx%d", sz[1], sz[2])
+			local fixture = { Extra = { { "honey_bunny", "Defense", 3, 200 } }, House = 3 }
+			RedoGeom.at(sz[1], sz[2], sz[3], label, function()
+				H.with(label, fixture, function(TC, PP)
+					TC.Open({ Key = "maple_fox" })
+					KC.advance(0.6)
+					local band = H.find("Mats")
+					T.check(band ~= nil and H.shown(band), label .. ": the Mats band is shown")
+					local all = true
+					for i = 1, 5 do
+						local m = H.mat(i)
+						if not (m and H.shown(m) and m.Parent == band) then
+							all = false
+						end
+					end
+					if not T.check(all, label .. ": Mat1..Mat5 shown in the band") then
+						return
+					end
+					T.eq(H.matStates(), "Job,Pending,Job,Locked,Locked", label .. ": two jobs + the pending pet")
+					T.check(H.mat(1):GetAttribute("Key") == TRAINING and H.mat(2):GetAttribute("Key") == "maple_fox" and H.mat(3):GetAttribute("Key") == "honey_bunny"
+						and H.mat(4):GetAttribute("Key") == nil, label .. ": ...each mat's Key")
+					T.check(H.mat(5):GetAttribute("LockBadge") == false and H.mat(1):GetAttribute("LockBadge") == false, label .. ": ...no lock badge")
+					T.eq(H.text(H.find("SpotsChip")), pc and "Training spots: 2 / 3 in use" or "2 / 3 spots", label .. ": the chip counts both jobs")
+					-- the mats' texts
+					local t1, t2, t4 = H.matText(1), H.matText(2), H.matText(4)
+					T.check(H.has(t1, "Tabby") and H.has(t1, " left"), label .. ": a job mat shows the pet and its time left", t1)
+					if pc then
+						T.check(H.has(t1, "Storm Tabby") and H.has(t1, "Physique " .. DOT .. " Rank " .. JOB.Rank), label .. ": (PC) ...and 'Physique " .. DOT .. " Rank 4'", t1)
+						T.check(H.has(t2, "Maple Fox") and H.has(t2, "Pick a skill below"), label .. ": (PC) the pending mat: 'Pick a skill below'", t2)
+						T.check(H.has(t4, "Training Place Lv 4"), label .. ": (PC) a locked mat: 'Training Place Lv 4'", t4)
+					else
+						T.check(H.has(t2, "Pick a skill") and not H.has(t2, "below"), label .. ": (phone) the pending mat: 'Pick a skill'", t2)
+						T.check(H.has(t4, "Lv 4") and not H.has(t4, "Training Place"), label .. ": (phone) a locked mat: 'Lv 4'", t4)
+					end
+					-- sizes (spec 5.5)
+					local s1 = H.mat(1).AbsoluteSize
+					if pc then
+						T.check(s1.X >= 250 and s1.X <= 290 and math.abs(s1.Y - band.AbsoluteSize.Y) <= 1 and math.abs(band.AbsoluteSize.Y - 132) <= 1,
+							label .. ": (PC) mats about 268 wide in a 132 band", RedoGeom.desc(H.mat(1)) .. " / " .. RedoGeom.desc(band))
+					else
+						local gap = H.mat(2).AbsolutePosition.X - (H.mat(1).AbsolutePosition.X + s1.X)
+						T.check(math.abs(s1.X - 152) <= 1 and math.abs(s1.Y - 52) <= 1 and math.abs(gap - 8) <= 1,
+							label .. ": (phone) mats 152 x 52, 8 px apart", RedoGeom.desc(H.mat(1)) .. " gap " .. tostring(gap))
+					end
+					-- the timer counts down while open
+					local before = t1
+					KC.advance(2.1)
+					T.check(H.matText(1) ~= before, label .. ": a job mat's timer counts down", before .. " -> " .. H.matText(1))
+					-- the geometry
+					H.matsApart(label)
+					-- a job mat selects its pet
+					H.click(H.mat(3))
+					T.check(TC.Key() == "honey_bunny" and H.skill("Defense"):GetAttribute("State") == "Training" and not PP.IsOpen(),
+						label .. ": tapping a job mat selects that pet; its skill card turns 'Training'", tostring(TC.Key()) .. " " .. H.states())
+					T.check(H.mat(3):GetAttribute("Selected") == true and H.mat(1):GetAttribute("Selected") ~= true, label .. ": ...that mat is marked selected")
+					T.eq(H.matStates(), "Job,Add,Job,Locked,Locked", label .. ": ...a pet in training is not pending: mat 2 reads '+ Add a pet'")
+					T.check(H.has(H.matText(2), "Add a pet") or H.has(H.matText(2), "Add"), label .. ": ...'+ Add a pet'", H.matText(2))
+					-- "+ Add a pet" opens the sheet
+					H.click(H.mat(2))
+					T.check(PP.IsOpen(), label .. ": tapping '+ Add a pet' opens the sheet")
+					PP.Close()
+					KC.advance(0.3)
+					-- a locked mat only says how to open it
+					local mark = #Mock.RemoteLog
+					H.click(H.mat(5))
+					local hint = H.find("HintLine")
+					local house = H.houseFor(5)
+					T.check(house ~= nil and H.houseFor(4) ~= house, label .. ": (setup) the Manor allows Lv 4, not Lv 5")
+					T.check(hint and H.shown(hint) and hint.Text == "Upgrade your Training Place to Lv 5 to open this spot. Needs the " .. tostring(house) .. ".",
+						label .. ": a locked mat over the house's cap: the HintLine says the level and the house", H.text(hint))
+					T.check(TC.Key() == "honey_bunny" and not PP.IsOpen() and #KC.serverCalls("PetCare", mark) == 0 and not H.shown(H.confirm()),
+						label .. ": ...and nothing else happens")
+					H.click(H.mat(4))
+					T.eq(H.text(hint), "Upgrade your Training Place to Lv 4 to open this spot.", label .. ": a locked mat the house allows: the level only")
+					-- a job ending: its mat goes back to '+ Add a pet' (or pending), the chip drops
+					TC.Select("maple_fox")
+					KC.advance(0.3)
+					H.feed({ Job = false, Extra = fixture.Extra, House = 3 })
+					KC.advance(0.3)
+					T.eq(H.matStates(), "Pending,Add,Job,Locked,Locked", label .. ": a job ends: its mat frees up (the pending pet moves there)")
+					T.eq(H.text(H.find("SpotsChip")), pc and "Training spots: 1 / 3 in use" or "1 / 3 spots", label .. ": ...the chip count drops")
+					-- the slots change while open (Review Focus 5)
+					H.feed({ Gym = 4, Extra = fixture.Extra, House = 3 })
+					KC.advance(0.3)
+					T.eq(H.matStates(), "Job,Pending,Job,Add,Locked", label .. ": the Training Place reaches Lv 4: Mat4 opens at once")
+					H.feed({ Gym = 2, Extra = fixture.Extra, House = 3 })
+					KC.advance(0.3)
+					T.check(H.mat(3):GetAttribute("State") == "Job" and H.mat(3):GetAttribute("LockBadge") == true and H.mat(3):GetAttribute("Key") == "honey_bunny",
+						label .. ": a Prestige-like snapshot (2 spots, a job on Slot 3): Mat3 keeps its job with a lock badge", H.matStates())
+					local badgeShown = false
+					for _, d in ipairs(H.mat(3):GetDescendants()) do
+						if d.Name == "LockBadge" and KC.isShown(d) then
+							badgeShown = true
+						end
+					end
+					T.check(badgeShown, label .. ": ...the lock badge is drawn")
+					T.eq(H.matStates(), "Job,Add,Job,Locked,Locked", label .. ": ...two jobs fill 2 spots: no pending mat")
+					T.eq(H.text(H.find("SpotsChip")), pc and "Training spots: 2 / 2 in use" or "2 / 2 spots", label .. ": ...the chip reads 2 / 2")
+					H.matsApart(label .. " (lock badge)")
+					-- no Training Place: five locked mats, the build text in the body
+					H.feed({ Gym = 0, Job = false })
+					KC.advance(0.3)
+					T.eq(H.matStates(), "Locked,Locked,Locked,Locked,Locked", label .. ": no Training Place: five locked mats")
+					T.check(H.shownText(H.win(), "Build the Training Place at home first. Training makes pets tougher in battles!") ~= nil,
+						label .. ": ...the body says how to build it")
+					H.click(H.mat(1))
+					T.eq(H.text(H.find("HintLine")), "Build the Training Place at home to open this spot.", label .. ": ...the first mat says to build it")
+					-- (the build text takes the skills' place: it reads, stays on the screen and clear of the mats and the pet)
+					RedoGeom.check(H.win(), label .. " (no Training Place)", {
+						NoOverlap = { "Mat1", "Mat2", "Mat3", "Mat4", "Mat5", "PetCard", "PetName", "PrevButton", "ChangeButton", "NextButton", "Empty", "CloseButton" },
+					})
+				end)
+			end)
+		end
 	end)
 
 	return S

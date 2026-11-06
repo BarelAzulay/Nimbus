@@ -15,6 +15,22 @@
 --   TrainController.DropReturn()   another window, a match or a battle took over: closing does not go back to the Pets window
 --   TrainController.Layout()       -> "PC" | "Phone" | "Portrait"
 --   TrainController.SkillState(stat) -> "Ready" | "Training" | "Busy" | "Full" | "Short" | "Max" | "Match" | "NoPet" | "NoPlace"
+--   TrainController.Mats(home, growthMap, selectedKey) -> { [1..5] = { State = "Job" | "Pending" | "Add" | "Locked",
+--       Key = key | nil, Job = job | nil, Unlock = level | nil, LockBadge = boolean } }   (Task 8; pure: reads only its
+--       arguments and the catalogs). Five mats always; TycoonCatalog.TrainingSlots(home) of them are open. Mat i shows the
+--       job whose Job.Slot == i (two on one slot: the sooner done keeps it); a job with no Slot, or the second on a taken
+--       slot, goes on the next free open mat (wrapping round), else the next free mat of all five; a job on a mat above the
+--       open count keeps that mat with LockBadge = true (a Prestige closed it; running jobs survive). The first open mat
+--       with no job holds the selected pet ("Pending") when it is not training and the place is not full (jobs < slots,
+--       the server's own count); the other open mats are "Add"; the rest "Locked" with Unlock = the Training Place level
+--       that opens them. Display only: the server still picks the mat.
+--
+-- The mats row (Task 8, spec 5.5 "The mats row"): Mats > Mat1..Mat5 (TextButtons; attributes State, Key, LockBadge,
+-- Selected). Job: the pet's face, its name, PC "Physique . Rank 5", a purple timer bar with "3:10 left"; tap = select that
+-- pet. Pending: gold glow, the face, "Pick a skill below" (phone "Pick a skill"); tap = the sheet. Add: dashed, "+ Add a
+-- pet"; tap = the sheet. Locked: a lock, "Training Place Lv i" (phone "Lv i"); tap = the HintLine says which level opens
+-- it, and the house that allows that level when today's house caps the station (the Home window's "Needs the ..." rule).
+-- With no Training Place the five mats are locked and the skills' place says how to build it.
 --
 -- One window at a time, through CareController (so no other controller changes): on open this closes the menu windows (the
 -- Pets window, the Store, the Index with them), the Pet Index, the Fusion Machine, the Gifts window and Care's own Feed /
@@ -22,7 +38,7 @@
 -- Care.Closed fires on close; CareController.Close() / its DropReturn close this one too. It never fires
 -- MenuController.WindowOpened.
 -- Instances: ScreenGui NimbusTrain (23, IgnoreGuiInset) > Window_Train (UIScale Fit) > Panel > Header (Icon, Title,
--- SpotsChip, CloseButton) and Body (Mats [the band Task 8 fills], PetCard [PickPrompt], PetName, PetLevel, PrevButton,
+-- SpotsChip, CloseButton) and Body (Mats [Mat1..Mat5], PetCard [PickPrompt], PetName, PetLevel, PrevButton,
 -- ChangeButton, NextButton, RestNote, Skills > Skill_<Id> [attribute State; Name, Rank, Bar, Now, Next, Cost, Time, Action,
 -- MaxTag], Empty, HintLine); ConfirmShade + Confirm (Title, Text, Yes, No): siblings of Window_Train above it.
 -- Sends PetCare("Train", key, stat) / PetCare("TrainStop", key), each asked first, at most every 0.3 s; the server checks
@@ -62,6 +78,7 @@ local function optionalShared(name)
 end
 
 local BattleCatalog = optionalShared("BattleCatalog")
+local TycoonCatalog = optionalShared("TycoonCatalog")
 
 local TrainController = {}
 
@@ -84,6 +101,20 @@ local K = {
 	VIEW_CACHE = 6, -- pet viewports kept (the shown one + parked ones)
 	CONFIRM_W = 560,
 	BACK_ACTION = "NimbusTrainBack",
+	MAX_MATS = 5, -- the Training Place's mats (Gym Slots 1..5; PetCareService / HomeFx MAX_TRAIN_SLOTS)
+	MAT_VIEW_CACHE = 8, -- mat face viewports kept (the five shown + parked ones)
+	-- the mats' insides per style: pc (a 132 band), phone (a 52 band, mats >= 100 wide), mini (a portrait phone)
+	MAT = {
+		pc = {
+			Gap = 12, Pad = 10, Top = 8, Face = 56, Name = 22, NameMin = 18, Line = 19, LineMin = 18, LineH = 26, BarH = 28,
+			BarText = 18, Plus = 52, Lock = 36, Badge = 30, BadgeText = 18, Dash = 14, DashGap = 8,
+		},
+		phone = { Gap = 8, Pad = 4, Face = 44, Text = 15, LineH = 18, BarH = 5, Badge = 18, BadgeText = 15, Dash = 8, DashGap = 6 },
+		mini = { Gap = 6, Pad = 2, Face = 32, Text = 15, LineH = 19, Plus = 26, Lock = 18, Badge = 17, BadgeText = 15, Dash = 6, DashGap = 5 },
+		Corner = 12,
+		DashThick = 2,
+		FitMargin = 0.25, -- x the text size: px kept free beside a fitted mat text (its outline and the side bearings)
+	},
 	PC = {
 		Header = 76, HeadPad = 24, Icon = 52, IconText = 36, TitleText = 34, TitleMin = 24, Close = 56, ChipText = 20,
 		ChipH = 44, ChipPad = 18, Gap = 16, Pad = 24, MatsY = 12, MatsH = 132, Top = 158, Bottom = 14, LeftMax = 420,
@@ -150,6 +181,7 @@ local G = {
 	Arrow = "\226\134\146",
 	Dot = "\194\183",
 	Plus = "+",
+	Lock = "\240\159\148\146",
 	Icons = {
 		Speed = "\226\154\161",
 		Physique = "\226\157\164\239\184\143",
@@ -184,6 +216,10 @@ local TEXTS = {
 	NoPets = "No pets yet! Spin a roulette in the Shop to hatch one.",
 	NoPlace = "Build the Training Place at home first. Training makes pets tougher in battles!",
 	Rest = "Training pets rest at home until they're done.",
+	-- the mats row (Task 8)
+	BuildMat = "Build the Training Place at home to open this spot.",
+	OpenMat = "Upgrade your Training Place to Lv %d to open this spot.",
+	NeedsHouse = " Needs the %s.",
 }
 
 ----------------------------------------------------------------------
@@ -214,8 +250,9 @@ local S = {
 	BackBound = false,
 	RefreshPending = false,
 	Warned = {},
+	FitSigs = setmetatable({}, { __mode = "k" }), -- the mats' last text fits per label
 }
-local U = { Skills = {}, Views = {} }
+local U = { Skills = {}, Views = {}, MatList = {}, MatViews = {} }
 local H = {} -- helpers (one table: the module stays far below Lua's local limit)
 
 local function warnOnce(key, err)
@@ -355,8 +392,158 @@ function H.placeLevel(home)
 	return 0
 end
 
+-- the open mats: TycoonCatalog.TrainingSlots(home), 0..5 (the server's Care.trainingSlots clamp)
 function H.slots(home)
-	return tonumber(Bits.catalogCall("TrainingSlots", home)) or 0
+	local ok, n = pcall(function()
+		return TycoonCatalog.TrainingSlots(home)
+	end)
+	n = ok and tonumber(n) or 0
+	if n ~= n then
+		n = 0
+	end
+	return math.max(0, math.min(K.MAX_MATS, math.floor(n)))
+end
+
+-- the Training Place level that opens mat i (the first Gym level whose Slots reach i)
+function H.unlockOf(i)
+	local def = TycoonCatalog and type(TycoonCatalog.Get) == "function" and TycoonCatalog.Get("Gym") or nil
+	if type(def) == "table" and type(def.Effects) == "table" then
+		for lv = 1, #def.Effects do
+			local fx = def.Effects[lv]
+			if type(fx) == "table" and (tonumber(fx.Slots) or 0) >= i then
+				return lv
+			end
+		end
+	end
+	return i
+end
+
+-- the house tier name that first allows Training Place level lv (nil when none does)
+function H.houseFor(lv)
+	local def = TycoonCatalog and type(TycoonCatalog.Get) == "function" and TycoonCatalog.Get("Gym") or nil
+	local tiers = TycoonCatalog and TycoonCatalog.HouseTiers
+	if type(def) ~= "table" or type(def.TierCaps) ~= "table" or type(tiers) ~= "table" then
+		return nil
+	end
+	for _, tier in ipairs(tiers) do
+		if (tonumber(def.TierCaps[tier.Id]) or 0) >= lv then
+			return tier.Name
+		end
+	end
+	return nil
+end
+
+-- the HintLine text of a locked mat: the level that opens it, plus the house when today's house caps the station
+function H.lockHint(lv)
+	lv = math.max(1, math.floor(tonumber(lv) or 1))
+	local home = Bits.homeData()
+	if lv <= 1 then
+		return TEXTS.BuildMat
+	end
+	local text = string.format(TEXTS.OpenMat, lv)
+	local cap = tonumber(Bits.catalogCall("MaxLevelAt", "Gym", home)) or lv
+	if lv > cap then
+		local house = H.houseFor(lv)
+		if house then
+			text = text .. string.format(TEXTS.NeedsHouse, house)
+		end
+	end
+	return text
+end
+
+-- the mat a job asks for: its Slot when it is a whole 1..5, else nil (no Slot: an old save sends 0)
+function H.jobSlot(job)
+	local s = tonumber(job.Slot)
+	if s and s == s and s >= 1 and s <= K.MAX_MATS and s == math.floor(s) then
+		return s
+	end
+	return nil
+end
+
+-- the pure mats row (see the header): five mats from the home, a growth map and the selected key
+function H.mats(home, growthMap, selectedKey)
+	local slots = H.slots(home)
+	local mats = {}
+	for i = 1, K.MAX_MATS do
+		if i <= slots then
+			mats[i] = { State = "Add", LockBadge = false }
+		else
+			mats[i] = { State = "Locked", Unlock = H.unlockOf(i), LockBadge = false }
+		end
+	end
+	-- the jobs in a fixed order: by Slot (none last), then the sooner done, then the key
+	local jobs = {}
+	if type(growthMap) == "table" then
+		for key, e in pairs(growthMap) do
+			if type(key) == "string" and type(e) == "table" and type(e.Job) == "table" then
+				local ends = tonumber(e.Job.Ends) or math.huge
+				if ends ~= ends then
+					ends = math.huge
+				end
+				jobs[#jobs + 1] = { Key = key, Job = e.Job, Slot = H.jobSlot(e.Job), Ends = ends }
+			end
+		end
+	end
+	table.sort(jobs, function(a, b)
+		local sa, sb = a.Slot or 99, b.Slot or 99
+		if sa ~= sb then
+			return sa < sb
+		end
+		if a.Ends ~= b.Ends then
+			return a.Ends < b.Ends
+		end
+		return a.Key < b.Key
+	end)
+	-- (a job on a closed mat keeps that mat's Unlock level next to its lock badge)
+	local function put(i, j)
+		local m = mats[i]
+		m.State, m.Key, m.Job = "Job", j.Key, j.Job
+		m.LockBadge = i > slots
+	end
+	local later = {}
+	for _, j in ipairs(jobs) do
+		if j.Slot and mats[j.Slot].Key == nil then
+			put(j.Slot, j)
+		else
+			later[#later + 1] = j
+		end
+	end
+	-- no Slot / a taken slot: the next free open mat after it (wrapping round), else the next free mat of all five
+	for _, j in ipairs(later) do
+		local from, at = j.Slot or 0, nil
+		for step = 1, slots do
+			local i = ((from + step - 1) % slots) + 1
+			if mats[i].Key == nil then
+				at = i
+				break
+			end
+		end
+		if not at then
+			for step = 1, K.MAX_MATS do
+				local i = ((from + step - 1) % K.MAX_MATS) + 1
+				if mats[i].Key == nil then
+					at = i
+					break
+				end
+			end
+		end
+		if at then
+			put(at, j)
+		end
+	end
+	-- the pending pet: selected, not training, and the place not full (the server counts every job)
+	if type(selectedKey) == "string" and #jobs < slots then
+		local e = type(growthMap) == "table" and growthMap[selectedKey] or nil
+		if not (type(e) == "table" and type(e.Job) == "table") then
+			for i = 1, slots do
+				if mats[i].Key == nil then
+					mats[i].State, mats[i].Key = "Pending", selectedKey
+					break
+				end
+			end
+		end
+	end
+	return mats
 end
 
 -- the jobs running (the growth map: a job can belong to a copy no longer listed)
@@ -495,6 +682,7 @@ function H.ensureGui()
 	U.Gui.IgnoreGuiInset = true
 	S.Built = false
 	U.Skills, U.Views, S.ViewId = {}, {}, nil
+	U.MatList, U.MatViews = {}, {}
 	U.Gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
 		if S.Open or S.Confirm then
 			safe("relayout", H.layout)
@@ -542,9 +730,11 @@ function H.build()
 	-- body
 	local body = Util.Create("Frame", { Name = "Body", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 2, Parent = panel })
 	U.Body = body
-	U.Mats = Util.Create("Frame", { Name = "Mats", BackgroundColor3 = C.Well, BackgroundTransparency = 0.15, BorderSizePixel = 0, ZIndex = 3, Parent = body })
-	Theme.Corner(U.Mats, UDim.new(0, 14))
-	Theme.Stroke(U.Mats, C.WellEdge, 2, 0.3)
+	-- the mats row: a plain band holding Mat1..Mat5 (each mat draws its own card)
+	U.Mats = Util.Create("Frame", { Name = "Mats", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 3, Parent = body })
+	for i = 1, K.MAX_MATS do
+		H.newMat(i)
+	end
 	-- the big pet card (tap: the sheet)
 	U.Card = NeonKit.Card({ Name = "PetCard", Class = "TextButton", Color = C.Grey, Corner = 18, Floor = true, ZIndex = 3, Parent = body })
 	U.Card.Root.Activated:Connect(function()
@@ -648,6 +838,36 @@ function H.newSkill(skill)
 	U.Skills[id] = item
 end
 
+-- one mat: a clickable card with a face, two lines, a big glyph, a timer bar, a lock badge and the dashed edge of "+ Add a pet"
+function H.newMat(i)
+	local card = NeonKit.Card({ Name = "Mat" .. i, Class = "TextButton", Color = C.WellEdge, Corner = K.MAT.Corner, Floor = false, Glow = false, ZIndex = 4, Parent = U.Mats })
+	local root, body = card.Root, card.Body
+	root:SetAttribute("State", "Locked")
+	root:SetAttribute("LockBadge", false)
+	root:SetAttribute("Selected", false)
+	pcall(NeonKit.AttachFx, root)
+	local m = { Index = i, Card = card, Root = root, Dashes = {} }
+	m.Dash = Util.Create("Frame", { Name = "Dashes", BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false, Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = body })
+	m.Art = Util.Create("Frame", { Name = "Face", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 5, Parent = body })
+	m.Line1 = label(body, "Line1", "Heading", 22, { ZIndex = 7 })
+	m.Line2 = label(body, "Line2", "Body", 19, { ZIndex = 7 })
+	m.Big = label(body, "Big", "Display", 48, { ZIndex = 7, TextTruncate = Enum.TextTruncate.None })
+	m.Bar = Util.Create("Frame", { Name = "TimerBar", BackgroundColor3 = C.SegOff, BorderSizePixel = 0, ZIndex = 6, Parent = body })
+	Theme.Corner(m.Bar, UDim.new(0.5, 0))
+	m.Fill = Util.Create("Frame", { Name = "Fill", BackgroundColor3 = Theme.Lighten(C.Purple, 0.25), BorderSizePixel = 0, ZIndex = 7, Size = UDim2.fromScale(0, 1), Parent = m.Bar })
+	Theme.Corner(m.Fill, UDim.new(0.5, 0))
+	m.BarText = label(m.Bar, "Left", "Heading", 18, { ZIndex = 8, Size = UDim2.fromScale(1, 1), TextTruncate = Enum.TextTruncate.None })
+	m.Badge = label(body, "LockBadge", "Heading", 18, {
+		ZIndex = 9, Visible = false, Text = G.Lock, BackgroundTransparency = 0.05, BackgroundColor3 = Color3.fromRGB(28, 20, 60), TextTruncate = Enum.TextTruncate.None,
+	})
+	Theme.Corner(m.Badge, UDim.new(0.5, 0))
+	Theme.Stroke(m.Badge, C.Gold, 2, 0.1)
+	root.Activated:Connect(function()
+		safe("mat tap", H.onMat, i)
+	end)
+	U.MatList[i] = m
+end
+
 function H.buildConfirm()
 	U.Shade = Util.Create("TextButton", {
 		Name = "ConfirmShade", Text = "", AutoButtonColor = false, BorderSizePixel = 0, Active = true, Selectable = false, Visible = false,
@@ -742,6 +962,7 @@ function H.layoutPC(W, Hh)
 	local bodyH = Hh - M.Header
 	place(U.Body, 0, M.Header, W, bodyH)
 	place(U.Mats, M.Pad, M.MatsY, W - 2 * M.Pad, M.MatsH)
+	H.layoutMats(W - 2 * M.Pad, M.MatsH, K.MAT.pc.Gap)
 	local y0 = M.Top
 	local A = bodyH - y0 - M.Bottom
 	local leftW = math.min(M.LeftMax, math.floor(W * M.LeftShare))
@@ -790,7 +1011,7 @@ function H.layoutPC(W, Hh)
 		end
 	end
 	S.EmptyBody = { M.Pad, y0, W - 2 * M.Pad, A, M.Empty }
-	S.EmptyBand = { M.Pad + 20, M.MatsY, W - 2 * M.Pad - 40, M.MatsH, 24 }
+	S.EmptySkills = { sx + 20, y0, sw - 40, A, M.Empty }
 	place(U.Hint, M.Pad + 40, bodyH - M.HintH - 10, W - 2 * M.Pad - 80, M.HintH)
 	U.Hint.TextSize = M.Hint
 end
@@ -800,6 +1021,7 @@ function H.layoutPhone(W, Hh)
 	local bodyH = Hh - M.Header
 	place(U.Body, 0, M.Header, W, bodyH)
 	place(U.Mats, M.Pad, M.MatsY, W - 2 * M.Pad, M.MatsH)
+	H.layoutMats(W - 2 * M.Pad, M.MatsH, K.MAT.phone.Gap)
 	local y0 = M.Top
 	local leftW = M.Left
 	-- the card gives way on a lower phone so the buttons stay on the screen
@@ -833,7 +1055,7 @@ function H.layoutPhone(W, Hh)
 		H.layoutSkillSmall(item, cw, ch, K.CARD.phone)
 	end
 	S.EmptyBody = { M.Pad, y0, W - 2 * M.Pad, A, M.Empty }
-	S.EmptyBand = { M.Pad + 8, M.MatsY, W - 2 * M.Pad - 16, M.MatsH, 15 }
+	S.EmptySkills = { sx + 8, y0, sw - 16, A, M.Empty }
 	place(U.Hint, M.Pad + 10, bodyH - M.HintH - 6, W - 2 * M.Pad - 20, M.HintH)
 	U.Hint.TextSize = M.Hint
 end
@@ -844,6 +1066,7 @@ function H.layoutPortrait(W, Hh)
 	place(U.Body, 0, M.Header, W, bodyH)
 	local pad = 12
 	place(U.Mats, pad, M.MatsY, W - 2 * pad, 60)
+	H.layoutMats(W - 2 * pad, 60, K.MAT.mini.Gap)
 	local y0 = 72
 	local cardW, cardH = 150, 140
 	place(U.Card.Root, pad, y0, cardW, cardH)
@@ -875,7 +1098,7 @@ function H.layoutPortrait(W, Hh)
 		H.layoutSkillRow(item, W - 2 * pad, ch, K.CARD.row)
 	end
 	S.EmptyBody = { pad, y0, W - 2 * pad, bodyH - y0 - 6, M.Empty }
-	S.EmptyBand = { pad + 6, M.MatsY, W - 2 * pad - 12, 60, 15 }
+	S.EmptySkills = { pad + 6, sy, W - 2 * pad - 12, A, M.Empty }
 	place(U.Hint, pad + 6, bodyH - 44, W - 2 * pad - 12, 38)
 	U.Hint.TextSize = M.Hint
 end
@@ -891,6 +1114,51 @@ function H.layoutCardInside(w, h, small)
 	U.Prompt.TextSize = small and K.PHONE.PromptText or K.PC.PromptText
 	place(U.Prompt, 4, 0, w - 8, h)
 	S.CardW, S.CardSmall = w, small
+end
+
+-- the five mats across the band (equal widths, `gap` apart); the style follows the room: pc (a tall band), phone (a 52
+-- band with mats >= 100 wide), mini (a portrait phone). Each mat's inside is placed by its paint (it depends on the state).
+function H.layoutMats(bandW, bandH, gap)
+	local n = K.MAX_MATS
+	local w = math.floor((bandW - (n - 1) * gap) / n)
+	local style = (bandH >= 96 and "pc") or (w >= 100 and "phone") or "mini"
+	for i, m in ipairs(U.MatList) do
+		place(m.Root, (i - 1) * (w + gap), 0, w, bandH)
+		m.W, m.H, m.Style = w, bandH, style
+		H.layoutDashes(m, w, bandH, K.MAT[style])
+	end
+end
+
+-- the dashed edge of a "+ Add a pet" mat: short bars along each side, the rounded corners left open
+function H.layoutDashes(m, w, h, mm)
+	local thick, r = K.MAT.DashThick, K.MAT.Corner
+	local n = 0
+	local function edge(x0, y0, len, horizontal)
+		local count = math.max(1, math.floor((len + mm.DashGap) / (mm.Dash + mm.DashGap)))
+		local start = (len - (count * mm.Dash + (count - 1) * mm.DashGap)) / 2
+		for k = 0, count - 1 do
+			n = n + 1
+			local piece = m.Dashes[n]
+			if not piece then
+				piece = Util.Create("Frame", { Name = "Dash", BackgroundColor3 = C.Muted, BorderSizePixel = 0, ZIndex = 6, Parent = m.Dash })
+				m.Dashes[n] = piece
+			end
+			piece.Visible = true
+			local off = start + k * (mm.Dash + mm.DashGap)
+			if horizontal then
+				place(piece, x0 + off, y0, mm.Dash, thick)
+			else
+				place(piece, x0, y0 + off, thick, mm.Dash)
+			end
+		end
+	end
+	edge(r, 1, w - 2 * r, true)
+	edge(r, h - 1 - thick, w - 2 * r, true)
+	edge(1, r, h - 2 * r, false)
+	edge(w - 1 - thick, r, h - 2 * r, false)
+	for k = n + 1, #m.Dashes do
+		m.Dashes[k].Visible = false
+	end
 end
 
 function H.layoutBar(item, x, y, w, h)
@@ -1064,17 +1332,20 @@ function H.paint()
 	for _, o in ipairs({ U.Card.Root, U.Name, U.Level, U.Prev, U.Change, U.Next, U.SkillsFrame }) do
 		o.Visible = hasPets
 	end
+	-- (no Training Place: the build text takes the skills' place; the five mats show locked above it)
+	U.SkillsFrame.Visible = hasPets and level >= 1
 	U.Note.Visible = hasPets and S.NoteOn == true
 	H.paintPet()
 	for _, skill in ipairs(SKILLS) do
 		safe("skill " .. skill.Id, H.paintSkill, U.Skills[skill.Id])
 	end
-	-- the empty texts: no pets (the body), no Training Place (the mats band)
+	safe("mats", H.paintMats)
+	-- the empty texts: no pets (the body), no Training Place (the skills' place)
 	local spec, text = nil, nil
 	if not hasPets then
 		spec, text = S.EmptyBody, TEXTS.NoPets
 	elseif level < 1 then
-		spec, text = S.EmptyBand, TEXTS.NoPlace
+		spec, text = S.EmptySkills, TEXTS.NoPlace
 	end
 	U.Empty.Visible = spec ~= nil
 	if spec then
@@ -1181,6 +1452,335 @@ function H.trimViews()
 		if v then
 			pcall(v.Handle.Destroy)
 		end
+	end
+end
+
+----------------------------------------------------------------------
+-- The mats row (Task 8)
+----------------------------------------------------------------------
+function H.growthMap()
+	local ok, map = pcall(State.PetGrowthMap)
+	return (ok and type(map) == "table") and map or {}
+end
+
+function H.matsNow()
+	local selected = (S.Key and H.valid(S.Key)) and S.Key or nil
+	return H.mats(Bits.homeData(), H.growthMap(), selected), selected
+end
+
+function H.paintMats()
+	if #U.MatList == 0 then
+		return
+	end
+	local mats, selected = H.matsNow()
+	for i, m in ipairs(U.MatList) do
+		safe("mat " .. i, H.paintMat, m, mats[i] or { State = "Locked", Unlock = i }, selected)
+	end
+end
+
+-- a text that fits `width`: refit only when the texts, the width or the label's own text changed (the 0.5 s tick
+-- repaints the mats; TextService is not asked again for the same answer)
+function H.fitMat(lbl, texts, width, maxSize, minSize)
+	local sig = table.concat(texts, "\n") .. "|" .. width .. "|" .. maxSize .. "|" .. minSize
+	local c = S.FitSigs[lbl]
+	if c and c.Sig == sig and c.Text == lbl.Text and c.Size == lbl.TextSize then
+		return
+	end
+	-- (the outlined text needs a little more than its measured width: a quarter of its size, K.MAT.FitMargin)
+	H.fit(lbl, texts, width - math.ceil(maxSize * K.MAT.FitMargin), maxSize, minSize)
+	S.FitSigs[lbl] = { Sig = sig, Text = lbl.Text, Size = lbl.TextSize }
+end
+
+function H.paintMat(m, spec, selected)
+	local st, key = spec.State, spec.Key
+	local root, card = m.Root, m.Card
+	local style = m.Style or "pc"
+	local mm = K.MAT[style]
+	local w, h = m.W or 200, m.H or 100
+	local isSelected = key ~= nil and key == selected
+	root:SetAttribute("State", st)
+	root:SetAttribute("Key", key)
+	root:SetAttribute("LockBadge", spec.LockBadge == true)
+	root:SetAttribute("Selected", isSelected)
+	local def = key and H.def(key) or nil
+	local name = def and Bits.displayName(key, def) or "A pet"
+	local lastWord = name:match("(%S+)$") or name
+	-- the card
+	local job = st == "Job"
+	local color, fillTop, fillBottom = C.WellEdge, Color3.fromRGB(26, 32, 74), Color3.fromRGB(14, 18, 46)
+	if job then
+		color, fillTop, fillBottom = C.Purple, Color3.fromRGB(56, 36, 110), Color3.fromRGB(24, 16, 58)
+	elseif st == "Pending" then
+		color, fillTop, fillBottom = C.Gold, Color3.fromRGB(58, 52, 40), Color3.fromRGB(24, 22, 40)
+	elseif st == "Add" then
+		color, fillTop, fillBottom = C.Muted, Color3.fromRGB(24, 30, 70), Color3.fromRGB(16, 20, 52)
+	end
+	card.SetColor(color)
+	card.SetFill(fillTop, fillBottom)
+	card.Stroke.Transparency = st == "Add" and 1 or 0
+	root.BackgroundTransparency = st == "Add" and 0.35 or 0
+	card.SetGlow(st == "Pending" or (job and isSelected))
+	m.Dash.Visible = st == "Add"
+	-- reset the insides
+	m.Line1.Visible, m.Line2.Visible, m.Big.Visible, m.Bar.Visible = false, false, false, false
+	m.Line1.TextXAlignment, m.Line2.TextXAlignment = Enum.TextXAlignment.Left, Enum.TextXAlignment.Left
+	m.Line1.TextColor3, m.Line2.TextColor3, m.Big.TextColor3 = C.White, C.White, C.White
+	local face = (job or st == "Pending") and def ~= nil
+	H.matView(m, face and key or nil, def, face and Bits.stage(key) or 0)
+	m.Art.Visible = face
+	-- the lock badge (a job on a mat a Prestige closed)
+	local badge = job and spec.LockBadge == true
+	m.Badge.Visible = badge
+	local badgeW = 0
+	if badge then
+		badgeW = mm.Badge + 4
+		place(m.Badge, w - mm.Badge - (style == "pc" and 8 or 2), style == "pc" and 8 or 2, mm.Badge, mm.Badge)
+		m.Badge.TextSize = mm.BadgeText
+	end
+	-- the job's numbers
+	local left, frac, statLines = 0, 0, nil
+	if job then
+		local j = spec.Job or {}
+		left = math.max(0, (tonumber(j.Ends) or 0) - H.now())
+		local rank = math.max(1, math.floor(tonumber(j.Rank) or 1))
+		local total = tonumber(Bits.catalogCall("TrainSeconds", rank)) or 60
+		frac = math.max(0, math.min(1, 1 - left / math.max(1, total)))
+		local stat = tostring(j.Stat or "")
+		statLines = { H.skillName(stat) .. " " .. G.Dot .. " Rank " .. rank, stat .. " " .. G.Dot .. " Rank " .. rank, "Rank " .. rank }
+	end
+	if style == "pc" then
+		H.paintMatPC(m, st, spec, mm, w, h, name, lastWord, face, badgeW, left, frac, statLines)
+	elseif style == "phone" then
+		H.paintMatPhone(m, st, spec, mm, w, h, name, lastWord, face, badgeW, left, frac)
+	else
+		H.paintMatMini(m, st, spec, mm, w, h, face, left)
+	end
+end
+
+function H.paintMatPC(m, st, spec, mm, w, h, name, lastWord, face, badgeW, left, frac, statLines)
+	local pad = mm.Pad
+	if st == "Job" or st == "Pending" then
+		local fx = pad
+		if face then
+			place(m.Art, pad, mm.Top, mm.Face, mm.Face)
+			fx = pad + mm.Face + 8
+		end
+		local nameW = w - fx - pad - badgeW
+		m.Line1.Visible = true
+		place(m.Line1, fx, mm.Top, nameW, mm.Face)
+		H.fitMat(m.Line1, { name, lastWord }, nameW - 2, mm.Name, mm.NameMin)
+		local y2 = mm.Top + mm.Face + 2
+		m.Line2.Visible = true
+		place(m.Line2, pad, y2, w - 2 * pad, mm.LineH)
+		local barY = h - pad - mm.BarH
+		if st == "Job" then
+			H.fitMat(m.Line2, statLines, w - 2 * pad - 2, mm.Line, mm.LineMin)
+			m.Bar.Visible = true
+			place(m.Bar, pad, barY, w - 2 * pad, mm.BarH)
+			m.Fill.Size = UDim2.fromScale(frac, 1)
+			m.BarText.TextSize = mm.BarText
+			m.BarText.Text = H.clock(left) .. " left"
+		else
+			-- the pending pet: its level, then the call to pick a skill
+			local key = spec.Key
+			local lv = key and Bits.petLevel(key) or 0
+			m.Line2.TextColor3 = C.Muted
+			H.fitMat(m.Line2, { "Lv " .. lv }, w - 2 * pad - 2, mm.Line, mm.LineMin)
+			m.Big.Visible = true
+			m.Big.Font = U.Note.Font
+			m.Big.TextColor3 = C.Good
+			m.Big.TextXAlignment = Enum.TextXAlignment.Left
+			place(m.Big, pad, barY, w - 2 * pad, mm.BarH)
+			H.fitMat(m.Big, { "Pick a skill below", "Pick a skill" }, w - 2 * pad - 2, mm.Line, mm.LineMin)
+		end
+	elseif st == "Add" then
+		local block = mm.Plus + 4 + 30
+		local top = math.floor((h - block) / 2)
+		m.Big.Visible = true
+		m.Big.Font = U.Title.Font
+		m.Big.TextXAlignment = Enum.TextXAlignment.Center
+		m.Big.TextSize = mm.Plus
+		m.Big.Text = G.Plus
+		place(m.Big, 0, top, w, mm.Plus)
+		m.Line1.Visible = true
+		m.Line1.TextXAlignment = Enum.TextXAlignment.Center
+		place(m.Line1, pad, top + mm.Plus + 4, w - 2 * pad, 30)
+		H.fitMat(m.Line1, { "Add a pet", "Add" }, w - 2 * pad - 2, mm.Name, mm.NameMin)
+	else
+		-- locked
+		local lv = spec.Unlock or m.Index
+		local block = mm.Lock + 8 + mm.LineH
+		local top = math.floor((h - block) / 2)
+		m.Big.Visible = true
+		m.Big.Font = U.Title.Font
+		m.Big.TextXAlignment = Enum.TextXAlignment.Center
+		m.Big.TextSize = mm.Lock
+		m.Big.Text = G.Lock
+		place(m.Big, 0, top, w, mm.Lock + 4)
+		m.Line2.Visible = true
+		m.Line2.TextXAlignment = Enum.TextXAlignment.Center
+		m.Line2.TextColor3 = C.Muted
+		place(m.Line2, pad, top + mm.Lock + 8, w - 2 * pad, mm.LineH)
+		H.fitMat(m.Line2, { "Training Place Lv " .. lv, "Lv " .. lv }, w - 2 * pad - 2, mm.Line, mm.LineMin)
+	end
+end
+
+function H.paintMatPhone(m, st, spec, mm, w, h, name, lastWord, face, badgeW, left, frac)
+	local pad = mm.Pad
+	if st == "Job" or st == "Pending" then
+		local fx = pad + 2
+		if face then
+			place(m.Art, pad, math.floor((h - mm.Face) / 2), mm.Face, mm.Face)
+			fx = pad + mm.Face + 4
+		end
+		local tw = w - fx - pad
+		local job = st == "Job"
+		local y1 = job and 3 or math.floor(h / 2) - mm.LineH - 1
+		m.Line1.Visible = true
+		place(m.Line1, fx, y1, tw - badgeW, mm.LineH)
+		H.fitMat(m.Line1, { name, lastWord }, tw - badgeW - 2, mm.Text, mm.Text)
+		m.Line2.Visible = true
+		place(m.Line2, fx, y1 + mm.LineH, tw, mm.LineH)
+		if job then
+			m.Line2.TextColor3 = Theme.Lighten(C.Purple, 0.45)
+			H.fitMat(m.Line2, { H.clock(left) .. " left", H.clock(left) }, tw - 2, mm.Text, mm.Text)
+			m.Bar.Visible = true
+			place(m.Bar, fx, h - mm.BarH - 4, tw, mm.BarH)
+			m.Fill.Size = UDim2.fromScale(frac, 1)
+			m.BarText.Text = ""
+		else
+			m.Line2.TextColor3 = C.Good
+			H.fitMat(m.Line2, { "Pick a skill", "Pick" }, tw - 2, mm.Text, mm.Text)
+		end
+	else
+		-- "+ Add a pet" / the lock and its level, one centred line
+		m.Line1.Visible = true
+		m.Line1.TextXAlignment = Enum.TextXAlignment.Center
+		place(m.Line1, pad, 0, w - 2 * pad, h)
+		if st == "Add" then
+			H.fitMat(m.Line1, { G.Plus .. " Add a pet", G.Plus .. " Add" }, w - 2 * pad - 2, mm.Text, mm.Text)
+		else
+			m.Line1.TextColor3 = C.Muted
+			H.fitMat(m.Line1, { G.Lock .. " Lv " .. (spec.Unlock or m.Index) }, w - 2 * pad - 2, mm.Text, mm.Text)
+		end
+	end
+end
+
+-- a portrait phone: the face (or a big glyph) over one short line
+function H.paintMatMini(m, st, spec, mm, w, h, face, left)
+	local lineY = h - mm.LineH - 2
+	m.Line2.Visible = true
+	m.Line2.TextXAlignment = Enum.TextXAlignment.Center
+	place(m.Line2, mm.Pad, lineY, w - 2 * mm.Pad, mm.LineH)
+	local text
+	if st == "Job" or st == "Pending" then
+		if face then
+			place(m.Art, math.floor((w - mm.Face) / 2), 3, mm.Face, mm.Face)
+		end
+		if st == "Job" then
+			m.Line2.TextColor3 = Theme.Lighten(C.Purple, 0.45)
+			text = { H.clock(left) }
+		else
+			m.Line2.TextColor3 = C.Good
+			text = { "Pick a skill", "Pick" }
+		end
+	else
+		m.Big.Visible = true
+		m.Big.Font = U.Title.Font
+		m.Big.TextXAlignment = Enum.TextXAlignment.Center
+		local size = st == "Add" and mm.Plus or mm.Lock
+		m.Big.TextSize = size
+		m.Big.Text = st == "Add" and G.Plus or G.Lock
+		place(m.Big, 0, math.max(2, math.floor((lineY - size) / 2)), w, size + 4)
+		if st == "Add" then
+			text = { "Add" }
+		else
+			m.Line2.TextColor3 = C.Muted
+			text = { "Lv " .. (spec.Unlock or m.Index) }
+		end
+	end
+	H.fitMat(m.Line2, text, w - 2 * mm.Pad - 2, mm.Text, mm.Text)
+end
+
+-- the mat's face: a Low viewport of key at its stage, cached per key and stage (a key shows on one mat at most)
+function H.matView(m, key, def, stage)
+	local id = key and (key .. "#" .. tostring(stage or 0)) or nil
+	local v = id and U.MatViews[id] or nil
+	if m.ViewId == id and (not id or (v and v.Handle.Frame.Parent == m.Art)) then
+		return
+	end
+	if m.ViewId and U.MatViews[m.ViewId] and U.MatViews[m.ViewId].Handle.Frame.Parent == m.Art then
+		U.MatViews[m.ViewId].Handle.Frame.Parent = U.Cache
+	end
+	m.ViewId = nil
+	if not id then
+		return
+	end
+	for _, other in ipairs(U.MatList) do
+		if other ~= m and other.ViewId == id then
+			other.ViewId = nil -- it moves over to this mat
+		end
+	end
+	if not v then
+		local ok, handle = pcall(CloudUI.PetViewport, m.Art, def, UDim2.fromScale(1, 1), {
+			Detail = "Low", Spin = "sway", Evolved = (stage or 0) >= 1 and stage or nil, ZIndex = 6,
+		})
+		if not (ok and type(handle) == "table" and handle.Frame) then
+			warnOnce("mat viewport", handle)
+			return
+		end
+		v = { Handle = handle }
+		U.MatViews[id] = v
+	end
+	v.Handle.Frame.Parent = m.Art
+	v.Used = os.clock()
+	m.ViewId = id
+	-- the cache: drop the oldest parked faces
+	local parked = {}
+	for vid, pv in pairs(U.MatViews) do
+		local shown = false
+		for _, other in ipairs(U.MatList) do
+			if other.ViewId == vid then
+				shown = true
+			end
+		end
+		if not shown then
+			parked[#parked + 1] = { Id = vid, Used = pv.Used or 0 }
+		end
+	end
+	table.sort(parked, function(a, b)
+		return a.Used < b.Used
+	end)
+	for i = 1, #parked - (K.MAT_VIEW_CACHE - K.MAX_MATS) do
+		local pv = U.MatViews[parked[i].Id]
+		U.MatViews[parked[i].Id] = nil
+		if pv then
+			pcall(pv.Handle.Destroy)
+		end
+	end
+end
+
+-- a tap on mat i: a job selects its pet, a free mat opens the sheet, a locked one says how to open it
+function H.onMat(i)
+	if not S.Open or H.inMatch() then
+		return
+	end
+	local spec = (H.matsNow())[i]
+	if not spec then
+		return
+	end
+	if spec.State == "Job" then
+		if spec.Key and H.valid(spec.Key) then
+			TrainController.Select(spec.Key)
+		end
+	elseif spec.State == "Pending" or spec.State == "Add" then
+		if #H.order() == 0 then
+			H.hint(TEXTS.NoPets)
+		else
+			H.openSheet()
+		end
+	else
+		H.hint(H.lockHint(spec.Unlock or i))
 	end
 end
 
@@ -1600,6 +2200,11 @@ function TrainController.SkillState(stat)
 		return nil
 	end
 	return H.skillState(stat)
+end
+
+-- the mats row as data (pure: its arguments and the catalogs only; see the header)
+function TrainController.Mats(home, growthMap, selectedKey)
+	return H.mats(home, growthMap, selectedKey)
 end
 
 function TrainController.Select(key)

@@ -37,7 +37,8 @@
 --   feed                  Phase 4 (CareController): the Food Machine list (garden pets first, leftovers, a pet ready to
 --                         EVOLVE, a level-100 pet, the machine footer)
 --   garden[:<slot>]       the garden picker for place <slot> (default 3: an empty place)
---   train[:<key>]         the Training Place window (default: the pet that is training, with its timer and Stop)
+--   train[:<key>]         the Training Place window (default: the pet that is training, with its timer and Stop);
+--                         train:mats = gui-redo Task 8's mats row (see the [gui-redo] block)
 --   evolve                the EVOLVE confirm over the Pets window
 --   ring[:<view>]         Phase 4 (ArenaController's Champion Ring window): OpenPanel("Ring") with a ring record
 --                         (Best 24); view new (no record yet) | record (default)
@@ -3102,6 +3103,25 @@ scenario("picker", function(view)
 	end
 	advance(2.5)
 end)
+-- train:mats            gui-redo Task 8: the Training Place's mats row on the careui profile with a Lv 3 place (the
+--                       Manor): the Rare training on mat 1, the Epic picked and waiting on mat 2 ("Pick a skill below"),
+--                       mat 3 "+ Add a pet", mat 4 locked, and the Legend training on mat 5, a mat a Prestige closed (its
+--                       lock badge). train[:<key>] stays the careui scene.
+local trainScene = SCENARIOS.train
+SCENARIOS.train = function(key, ...)
+	if key ~= "mats" then
+		return trainScene(key, ...)
+	end
+	local ids, snap = CAREUI.profile()
+	snap.Home.Stations.Gym = 3
+	snap.Home.Stations.House = 3
+	local legend = snap.PetGrowth[ids.Legend]
+	legend.Job = { Stat = "Defense", Ends = os.time() + 250, Rank = (legend.Defense or 0) + 1, Slot = 5, From = "Follow", Paid = 4800 }
+	toClient("ProfileSync", snap)
+	advance(0.5)
+	toClient("OpenPanel", "Train", { Key = ids.Epic })
+	advance(3)
+end
 -- [gui-redo] end
 
 local function boot(width, height, touch, keepTitle)
