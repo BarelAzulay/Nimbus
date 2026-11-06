@@ -99,7 +99,13 @@ Anti-goals (a failure even if it works)
 - Opening: a 0.2-0.25 s scale/fade in (Back Out), one tween per window root (no per-child loops). Buttons: hover 1.04, press 0.95,
   disabled = desaturated (NeonKit.Button already does this).
 - While open on a phone (or a touch-only device): stick and jump hidden through `SetTouchHidden`; the menu column stepped aside
-  through `SetColumnCovered` when the box covers it.
+  through `SetColumnCovered` when the box covers it. This holds for the Gifts window too (it fills a phone like the others), so
+  on a touch device the play clock pauses while it is open: every "Paused" text there says so ("Paused: close this and move
+  around!", see 5.3 and 5.4). On PC the keyboard still moves the character under an open window, so PC keeps "move around".
+- Window-local hints (a refusal the client can explain without the server, such as a locked mat) show inside the window that
+  caused them: a hint line at the bottom of its body (`HintLine`, 3 s, the window's own ScreenGui), never
+  `MenuController.Hint` (that draws in `NimbusMenu`, DisplayOrder 20, under these windows). Server toasts stay
+  `NotifyController`'s (DisplayOrder 30, above every window).
 - Portrait screens (BigRect `portrait = true`) are not in the mock-ups but must keep working, as today's windows do: the rows wrap
   (day tiles and gift boxes 4 per row, the mats row on top and the pet above the skills in one column, Fusion's slots above the
   result), every rule above still holds.
@@ -154,7 +160,12 @@ close the sheet first; a second press closes the window. Entering a match closes
   card has room (PC). Phone card 124 x 100 (art 56), PC card 180 x 226; the grid fills the width (6 per row on the phone, 7 at
   1080p) and scrolls vertically. Only cards in view hold a viewport; clones are cached per key and built under the per-frame budget.
 - **Layout:** phone body (280 tall): search 220 x 44, sort 170 x 44, filter chips 44 tall in one row, the grid from y 58.
-  PC: search 460 x 60, sort 280 x 60, chips 50 tall, grid from y 100. See `pickerC` in the mock-up page.
+  PC: search 460 x 60, sort 280 x 60, chips 50 tall, grid from y 100. See `pickerC` in the mock-up page. The mock's PC sheet is
+  1640 wide; the real box is at most 1440 (BigRect W1, PC_MAX_W), where Train's five chips (760 px with gaps) do not fit beside
+  search + sort (they would end at x 1562). Rule (PC, every context): the chips sit on the first row when they end at least 24 px
+  before the body's right edge; otherwise they move to a second row at y 92 (50 tall) and the grid starts at y 166. At 1920x1080
+  that puts Train's chips on row 2 and keeps Upgrade's and Mix's three chips on row 1. Nothing in the top rows may overlap
+  another control or the window's X.
 - **Opens by itself** when no pet is picked: see each window (5.5, 5.6). Nothing opens by itself when the context has no pet.
 
 ### 5.3 Daily gifts (card A) and the 10-minute rule
@@ -196,16 +207,33 @@ hint, the pop and "Reward" sound on a newly claimed tile, the Loading state.
   nothing written, toast "Play 6 more min to unlock today's gift!" (a repair: "Play 6 more min to repair your streak!"; minutes =
   ceil(left / 60)) -> VIP "Checking" -> the step-back (with the hold below) -> commit and pay as today.
 - **The hold (Claude's call; protects the streak):** without it a player who comes back at 47 h 55 m would claim at 48 h 05 m and
-  lose a day the rule made him wait for. So the step-back gap is measured at `keepAt` instead of `now`:
-  `keepAt = min(now, max(PlayStart, LastClaimAt + ReadySeconds))` while the current play-day is live (`PlayStart > 0`, not
-  `dayOver`), else `now`. `stepBack = 1 + floor((keepAt - last - KeepSeconds) / 86400)` when `keepAt - last > KeepSeconds`.
-  In words: if you started playing before the deadline, you keep the streak for the rest of that play-day. It can never pay more:
-  the step-back still counts every day you were away, up to the moment you started playing again. `last` is the session's Z8 stamp
-  (`lastClaimOf`) as today.
+  lose a day the rule made him wait for. So the step-back gap is measured at `keepAt` instead of `now`. Two sources say when
+  the player started playing toward this claim:
+  1. `PlayStart` of the live play-day (`PlayStart > 0`, not `dayOver`). It is stored and merged across servers, so it also covers a
+     hop in the middle of the 10 minutes.
+  2. **This session's held seconds** (review fix: a play-day can reset while the player is still playing toward the unlock, which
+     moves `PlayStart` past the deadline). In memory, per player: `holds[player] = { Last = last, Sec = n }`. Each **counting**
+     tick (`on == true`) that finds a streak claim due (`last > 0`, `now >= last + ReadySeconds`) and still locked (the live
+     `PlaySec < UnlockSeconds` before this tick adds its seconds), with `UnlockSeconds > 0`, adds `TickSeconds` to `Sec`. `Last`
+     is the `last` the seconds were counted for: a changed stamp (a claim, a rebase, another server's claim merged in) starts
+     `Sec` over at 0; leaving the server drops it. No save field.
+  `from = min(PlayStart if the play-day is live, now - holds.Sec if Sec > 0 and Last == last)` (nil when neither applies);
+  `keepAt = min(now, max(from, last + ReadySeconds))` when `from` exists, else `now`.
+  `stepBack = 1 + floor((keepAt - last - KeepSeconds) / 86400)` when `keepAt - last > KeepSeconds`.
+  In words: if you started playing before the deadline, you keep the streak for the rest of that play-day, and the minutes of
+  play this session spent waiting for the unlock never count as time away, even across a play-day reset. Source 2 can never
+  pay more than today's rule: it only counts ticks after the gift was due, while it was locked and while the player was moving,
+  so `now - Sec` is never earlier than the moment a player of today's rule could have claimed in this session; time spent
+  standing still, and time after the unlock, still count as away. `last` is the session's Z8 stamp (`lastClaimOf`) as today.
+  The tick computes `last` before its `MutateDaily` step (never inside it: `lastClaimOf` may write the Z8 first sight itself).
 - **`State` uses the same `keepAt`** for `missed`, `Repair`, `Cell` and `Today`, so the window never promises what the claim will
-  not do. **`StaleAt`:** while the play-day is live and the hold applies (`max(PlayStart, due) <= now`), the view can only change
-  when that play-day ends: `StaleAt = PlayStart + DaySeconds` (same guards as today: not loading, not VIP, a claim exists,
-  streak > 0); with no live play-day today's rule stands. The tick already sends a payload when a play-day starts or resets.
+  not do. One helper computes it for both (`keepOf(player, d, last, now) -> keepAt, source`). **`StaleAt`** (same guards as
+  today: not loading, not VIP, a claim exists, streak > 0): with no hold (`from` nil or `max(from, due) >= now`) today's rule on
+  `now`; held by source 1 (`from` = the live `PlayStart`), the view can only change when that play-day ends:
+  `StaleAt = PlayStart + DaySeconds`; held by source 2, today's rule evaluated on `keepAt` and shifted by `Sec`
+  (`StaleAt = rule(keepAt) + Sec`: the moment `now - Sec` would pass the next boundary if the player stood still from now on;
+  while he keeps playing toward the unlock, `Sec` grows as fast as `now`, so that moment never comes early). The tick already
+  sends a payload when a play-day starts or resets.
 - **Payload:** new `Unlock = { Need = UnlockSeconds, Left = seconds }` (Left 0 = unlocked; Need 0 = rule off).
 - **Tick:** `tickPlayer` also sends a payload when the live `PlaySec` crosses `UnlockSeconds` (before < Need <= after), next to the
   tier-crossing check, so CLAIM appears on time.
@@ -213,15 +241,22 @@ hint, the pop and "Reward" sound on a newly claimed tile, the Loading state.
   6 minutes on server A plus 4 on server B unlock the gift after the hop.
 
 **The window while locked** (ready, `Unlock.Left > 0`): the CLAIM button is grey and disabled, two lines: "Unlocks after 10 min
-of play" / "6 min to go" (while `Play.Active == false` the second line reads "Paused: move around!"). Phone 230 x 64 holds both
-lines at 15 px. The minutes count down on the client while `Play.Active` is true, from the payload's `ServerNow`, and hold at
-"1 min to go" until the server's payload says `Left = 0`: the client never shows CLAIM on its own clock. A repair reads the same
-way. The Gifts pip shows only when a claim is unlocked or a play tier is ready.
+of play" / "6 min to go". The second line, in this order of priority:
+1. the live play-day ends before the unlock can come (`Play.DayEnds - now < Left`, the play-day started): "Day resets in 4 min"
+   (minutes = ceil((DayEnds - now) / 60)); after the reset the server's payload restarts the count at "10 min to go";
+2. `Play.Active == false`: "Paused: move around!" on PC, "Paused: close this and move!" on a touch device (the stick is hidden
+   while the window is open, 5.1);
+3. else "6 min to go".
+Phone 230 x 64 holds both lines at 15 px. The minutes count down on the client while `Play.Active` is true, from the payload's
+`ServerNow`, and hold at "1 min to go" until the server's payload says `Left = 0`: the client never shows CLAIM on its own clock.
+A repair reads the same way. A payload with no `Unlock` (an older server) is unlocked. The Gifts pip shows only when a claim is
+unlocked or a play tier is ready.
 
 ### 5.4 Play time gifts (card B) and Claim All
 
 **Layout** (`playB`): header line "47 min played today · Resets in 5h" (phone: "47 min today · Resets in 5h"), or the gold
-"Paused: move around to keep counting!" while `Play.Active == false`; CLAIM ALL (n) at the top right (phone 166 x 44, PC 252 x 60).
+"Paused: move around to keep counting!" while `Play.Active == false` (a touch device: "Paused: close this and move around!",
+5.1); CLAIM ALL (n) at the top right (phone 166 x 44, PC 252 x 60).
 Seven gift boxes, each its `TIER_COLORS` colour: "10 min" on top, the gift art (tinted "Gifts" icon; bobbing when ready), the
 resolved reward ("+$720", "+40 Tokens", "Berry Basket" / "Full Basket" by the existing fit fallback), and a slot: CLAIM (green,
 pulsing box), a clock and its own countdown, or a tick (claimed, dimmed). Phone: 7 boxes 104 x 204 in one row (x step 116); PC:
@@ -246,6 +281,28 @@ Garden and Evolve; its `Open("Train", args)` forwards to `TrainController.Open(a
 `IsOpen()` report the Training window while it is up, so `OpenPanel("Train")`, the TrainPrompt and the Pets window's Train button
 (with `args.ReturnTo`) keep working unchanged. **No server change** for training: `PetCare("Train", key, stat)` and
 `PetCare("TrainStop", key)` are unchanged (the server still picks the first free mat).
+
+**One window at a time (review fix): the Training window keeps every wire the Care window has today**, through CareController,
+so none of the other controllers change:
+- `CareController.Close()` always calls `TrainController.Close()` first (before its own "nothing open" early return), and
+  CareController's `H.dropReturn()` also calls `TrainController.DropReturn()`. So ArenaController, DungeonController,
+  ObbyController and RaidGateController, which close other windows through `CareController.Close()`, close Training too, and
+  CareController's own hooks (MenuController.WindowOpened, Index / Fusion / Arena / Dungeon / Obby Opened, InMatch) close it.
+- `CareController.Opened:Fire("Train")` when the Training window opens and `CareController.Closed:Fire()` when it closes
+  (TrainController fires them through `CareController.NotifyTrain(open)`), so the five controllers that hook
+  `CareController.Opened` (Arena, Dungeon, RaidGate, Obby, Trove) close themselves exactly as today.
+- TrainController does **not** fire `MenuController.WindowOpened` (its id would close nothing new, and CareController's own
+  WindowOpened hook would close the window that fired it). On open it closes the others the way `CareController.H.closeOthers`
+  does today: `MenuController.Close()` (the menu windows, the Pets window, the Store and the Index), `IndexController.Close()`,
+  `FusionController.Close()`, and CareController's own Feed / Garden window (`CareController.CloseOwn()`, which never forwards);
+  plus `DailyController.Close()` (the Gifts window, DisplayOrder 19, would otherwise stay open under it; the rebuilt Fusion
+  window does the same). CareController's `Open("Feed" | "Garden")` calls `TrainController.Close()` first.
+- `args.ReturnTo` works as in the Care window today: closing Training (X, Esc, B) reopens the Pets window on that pet, unless
+  `DropReturn` ran (another window, a match or a battle took over).
+- **Layers:** `NimbusTrain` has DisplayOrder 23. TrainController owns its TRAIN / STOP confirm **inside `NimbusTrain`** (a frame
+  above the window's ZIndex range), so it can never draw under the window; `NimbusCare`'s confirm stays for Evolve. The picker
+  sheet (`NimbusPetPicker`, 24) is never open together with the confirm (the confirm closes the sheet first).
+- Its hints (the locked mat, "Pick a pet first") use its own `HintLine` (5.1).
 
 **Layout, PC** (body 764 under a 76 px header): header "Training Place" (dumbbell icon) + chip "Training spots: 1 / 3 in use" + X.
 1. **Mats row** (top, 132 tall, 5 mats ~268 wide). 
@@ -277,6 +334,13 @@ Garden and Evolve; its `Open("Train", args)` forwards to `TrainController.Open(a
 **Behaviour**
 - Open with `args.Key`: that pet. Without: the first pet in training (soonest done). No pet in training (and a Training Place and a
   pet exist): **the picker opens by itself** (Train context).
+- **No pet selected** (the sheet closed without a pick, X or the first Esc; or the selected pet left the collection): the window
+  stays open in its empty state. The big pet card reads "Pick a pet" with a "+" (tapping it opens the sheet); the name line is
+  empty and "Change pet" reads "Pick a pet"; ‹ › step from the default Train order's ends (› picks its first entry, ‹ its last);
+  the four skill cards are greyed, with the skill name and "Pick a pet first" on a disabled button, no rank numbers, cost or
+  time; the mats row and the chip work as usual (a mat with a job still selects its pet). Nothing reads a nil key or keeps the
+  last pet's numbers. No pets at all: the body says "No pets yet! Spin a roulette in the Shop to hatch one." (today's text) and the
+  picker does not open by itself.
 - ‹ › step to the previous / next pet in the picker's default Train order (`PetPicker.Sorted("Train", ..., "Default")`), wrapping,
   without opening the sheet. "Change pet" opens the sheet with the current pet selected. "+ Add a pet" opens it too.
 - Skill card states: ready (TRAIN, cost, time); the selected pet trains this skill: purple card, "Rank 5 · 3:10 left", STOP (pink);
@@ -315,8 +379,14 @@ without a pick ends that chain.
 - When both parents have the same element, both attack chips are lit and not tappable (the hybrid has one element).
 - The choice follows the **pet**, not the slot: the swap button swaps the looks (Body / Style) and the chips move with their pets
   (the letters flip). Picking a new pet for either slot resets the choice to the default (Body gives both).
-- The NEW HYBRID card shows the outcome in the owner's format: "Normal attack: Flame (Flare)" and "Special: Pounce (Leaf
-  Pounce)".
+- The outcome in the owner's format, "Normal attack: Flame (Flare)" and "Special: Pounce (Leaf Pounce)":
+  - **PC:** two lines inside the NEW HYBRID card, above its pills (the card is 480 wide; 22 px text).
+  - **Phone (review fix):** the 176 px NEW card has no room for them, so they go on ONE line under the slot row, in the place the
+    mock gave its info line (x 14, y 222, 792 x 40, 15 px): "Normal attack: Flame (Flare) · Special: Pounce (Leaf Pounce)". If
+    the measured text is wider than the line, the kind words drop first ("Normal attack: Flare · Special: Leaf Pounce"), then it
+    wraps to a second line inside the same 40 px; it is never cut.
+  - Both read the same pure helper (`FusionController.MovesText(bodyKey, styleKey, moves) -> { Attack = { Element, Name },
+    Special = { Kind, Name } }`), so the chips, the lines and the record agree.
 
 **Remote and server** (FusionService):
 - `Fusion("Mix", bodyKey, styleKey, moves)`: `moves` is a 2-letter string, letter 1 = the parent of the normal attack, letter 2 =
@@ -360,8 +430,13 @@ Left }`. The Daily merge, encode and clean code is untouched.
   first-load toast. A record with an empty `Elements` keeps today's fallback `{ body.Element, style.Element }`.
 - `DataService.cleanHybrid` and `PetKeys.CleanHybrid`: `SpecialFrom` becomes a known field, kept only when it is exactly
   `"Style"` (anything else is dropped = Body) and excluded from the extras count. `Elements` keeps its order (both cleaners already
-  do). The Hybrids merge (`diffReplace` / `applyReplace` by deepEqual) and the ProfileSync snapshot (`cleanHybrids`) carry it with
-  no other change.
+  do). The Hybrids merge (`diffReplace` / `applyReplace` by deepEqual) and the server's ProfileSync snapshot (DataService
+  `cleanHybrids`) carry it with no other change.
+- **The client snapshot too (review fix):** `src/client/State.lua` `cleanHybrids` copies only Body, Style, Elements, Tier, Name,
+  Rarity and Seed today, and `State.DefOf` builds every hybrid def from that cleaned record, so without a change the owner's own
+  windows (the Pets window's "Special:" line, the form names at stage 1-2, the Training and Fusion cards) would show Body's
+  special for a "BS" hybrid while its battles use Style's. `cleanHybrids` keeps `SpecialFrom` when it is exactly `"Style"`
+  (else leaves it out), so `State.DefOf(key)` gives the same def as the server's `PetKeys.DefOf(key, profile)`.
 - **Rollout:** `main`'s `cleanHybrid` keeps unknown short string fields as extras, so a record written by this build keeps its
   `SpecialFrom` through a save by an older server; an older server's client reads the record without it (Body's special) until it
   updates. Ship with or after `shop` (the Daily itself is not live yet).
@@ -386,8 +461,10 @@ Left }`. The Daily merge, encode and clean code is untouched.
 | File | Change |
 |---|---|
 | `src/client/UI/PetPicker.lua` | new (5.2) |
-| `src/client/Controllers/TrainController.lua` | new (5.5): the Training Place window |
-| `src/client/Controllers/CareController.lua` | Train mode removed; `Open("Train")` forwards; `Mode` / `IsOpen` report it |
+| `src/client/Controllers/TrainController.lua` | new (5.5): the Training Place window, its confirm and hint line in `NimbusTrain` |
+| `src/client/Controllers/CareController.lua` | Train mode removed; `Open("Train")` forwards; `Mode` / `IsOpen` report it; `Close` and `dropReturn` forward; `Opened` / `Closed` fire for Train (`NotifyTrain`); `CloseOwn` |
+| `src/client/Main.client.lua` | boots `TrainController` after `CareController` (optional, like the others) |
+| `src/client/State.lua` | `cleanHybrids` keeps `SpecialFrom = "Style"` (6) |
 | `src/client/Controllers/DailyController.lua` | Daily page (A), Play page (B), the locked CLAIM, Claim All, BigRect placement |
 | `src/client/Controllers/FusionController.lua` | layout A, slots open the picker, the move chips, `SetMoves`, `moves` sent with Mix |
 | `src/server/Services/DailyService.lua` | the unlock, the hold, `Unlock` payload, the crossing send, `ClaimPlayAll` |
@@ -406,8 +483,12 @@ New scenarios (each red on today's code first):
   remote count; 600 s unlocks; a payload on the crossing; `Unlock` in the payload; the repair, a VIP and the first claim wait too;
   a play-day reset restarts the count; `UnlockSeconds = 0` gives today's behaviour.
 - `daily_unlock_hold`: join at 47 h 55 m, 10 min of play, claim at 48 h 05 m -> kept; join at 49 h -> one step back; a play-day
-  started at 30 h, back at 49 h 05 m in the same play-day -> kept; `State` (Repair / Cell / Today) agrees with `Claim` in each case;
-  `StaleAt` with a live play-day = its end.
+  started at 30 h, back at 49 h 05 m in the same play-day -> kept; **the play-day ends at 48 h 05 m while the player is mid-unlock
+  (a 1 min visit at 28 h 05 m, back at 47 h 58 m, playing without a stop) -> the claim after the new play-day's 10 minutes is
+  kept**; the same player who stops moving after the unlock and claims at 50 h -> one step back (the held seconds stop at the
+  unlock); a claim or a changed stamp resets the held seconds; `State` (Repair / Cell / Today) agrees with `Claim` in each case;
+  `StaleAt` with a live play-day = its end, held by the session's seconds = `rule(keepAt) + Sec`; the payload's `Play.DayEnds`
+  lets the window say "Day resets in N min".
 - `daily_unlock_hop`: 6 min on server A, 4 on server B after the hop -> unlocked (the Play group merge).
 - `daily_claim_all`: three ready tiers -> one request pays each once, one toast, one payload; again -> "No gifts ready yet!";
   junk arguments dropped; the 1 s gap; InMatch; a day that is over; two servers pay each tier once.
@@ -417,17 +498,26 @@ New scenarios (each red on today's code first):
   -> today's def exactly; junk `SpecialFrom` -> Body; the cache keeps two records apart.
 - `hybrid_moves_save`: `SpecialFrom` survives clean / encode / merge / the snapshot; junk dropped; an old record is byte-identical
   after a load and save.
+- `client_hybrid_moves_state` (client world): a ProfileSync snapshot with a Body Maple Fox + Style Storm Tabby hybrid with
+  `SpecialFrom = "Style"` goes through `State`: `State.Hybrids()[uid].SpecialFrom == "Style"` and
+  `State.DefOf(key).Special.Name == "Static Storm"`; junk `SpecialFrom` -> `"Leaf Pounce"`; an old record -> `"Leaf Pounce"`.
 - `hybrid_moves_battle`: a Body Maple Fox + Style Storm Tabby hybrid with "SS": `unitInfo.elementAttack.Name == "Bolt"`,
   `special.Name == "Static Storm"`; at stages 1 and 2 `FormOf("Storm", s)`, `ElementFormOf("Storm", s)` and the generic form names;
   `PetCareService.Evolve` on it works; `FormDpsOf` reads the chosen kind and element.
 - `pet_attr_hybrid_elements`: field 6 written and read; a 5-field value still reads.
-- Client: `picker_ui` (contexts, default orders, sorts, filters, search, blocked, auto-open, ‹ › order, closes with its opener),
-  `daily_ui_a` (tiles, today, Day 7, the locked CLAIM's two lines, the pip only when unlocked), `play_ui_b` (boxes, countdowns
-  freeze while paused, never reach 0 alone, Claim All count), `train_ui` (mats per job slot, pending mat, locked mats, the n / slots
-  chip, purple card + STOP, Spots full, forwarding from `CareController`), `fusion_ui_a` (stack and slots open the picker, the move
-  chips, the swap keeps the choice with its pet, the preview's moves, the `moves` string sent).
+- Client: `picker_ui` (contexts, default orders, sorts, filters, search, blocked, auto-open, ‹ › order, closes with its opener,
+  the PC chips row rule: Train's chips on row 2 at 1920x1080, Upgrade's on row 1), `daily_ui_a` (tiles, today, Day 7, the locked
+  CLAIM's two lines in their priority order: "Day resets in N min", the paused text per device, "N min to go"; the pip only when
+  unlocked; stick and jump hidden while open on touch), `play_ui_b` (boxes, countdowns freeze while paused, never reach 0 alone,
+  Claim All count, the touch paused header), `train_ui` (mats per job slot, pending mat, locked mats and their hint in the
+  window's own `HintLine`, the n / slots chip, purple card + STOP, Spots full, the empty state after the sheet closes without a
+  pick, forwarding from `CareController`: `Close()` closes Training, `Opened` fires "Train", the Pets window and the menu windows
+  close on open, `ReturnTo` reopens the Pets window, the confirm draws above the window), `fusion_ui_a` (stack and slots open the
+  picker, the move chips, the swap keeps the choice with its pet, the preview's moves, the outcome lines: two lines in the card on
+  PC, one line under the slots at 844x390 with the long-name fallback, the `moves` string sent).
 - Geometry, every new window and the picker at 844x390 and 1920x1080 through the mock's dump (`tools/dump_gui.lua`): text >= 14 px,
-  targets >= 44 px, inside the screen and under the gui inset, nothing overlapping.
+  targets >= 44 px, inside the screen and under the gui inset, nothing overlapping (the picker in its Train, Upgrade and Mix
+  contexts; the Fusion outcome line; the Training empty state).
 
 Rewritten for the new rules (never deleted): the claiming scenarios of `smoke_daily.lua` and `smoke_fixr_daily.lua` (they play 10
 minutes first, or set the play-day with `setDaily`; `UnlockSeconds = 0` only in the one scenario that pins the old rule),
@@ -464,7 +554,8 @@ Gate step: the whole `smoke.py --quick`, `--mesh`, `node tools/check.mjs` 0 erro
    "Paused" line already exist.
 2. **The repair claim waits too**, and **VIP waits too** (one rule, one countdown).
 3. **The hold:** started playing before the 48 h deadline = the streak is kept for that play-day, even if the 10 minutes finish
-   after it. Without it the rule would cost streak days.
+   after it; and the minutes this session played while the gift was due but locked never count as time away, even across a
+   play-day reset (review fix). Without it the rule would cost streak days.
 4. **The rolling play-day is "the day"** (20 h from the first counted tick), not a calendar day; see the accepted edge in 5.3.
 5. **Claim All is one server request** that claims each ready tier through the normal path, with one toast.
 6. **The moves follow the pet** through the swap button; equal elements make the attack choice a no-op.
@@ -472,6 +563,14 @@ Gate step: the whole `smoke.py --quick`, `--mesh`, `node tools/check.mjs` 0 erro
    hybrid's first element (its bench buff and aura colour), because the game has one "first element" for all of those.
 8. **Training moves into its own controller** (`TrainController`), with `CareController` forwarding, to keep the big modules small.
 9. Mix's picker blocks the other slot's species and training pets; Upgrade's dims (but allows) pets with fewer than 3 copies.
+10. **The Gifts window hides the stick on touch like every big window** (review fix), and its paused texts say "close this and
+    move" there, instead of keeping the stick over a window that fills the phone.
+11. **The phone shows the Fusion outcome as one line under the slots**, the PC as two lines in the result card (review fix).
+
+Review fixes (2026-11-06, design review of this spec): the client snapshot keeps `SpecialFrom` (6); the hold survives a play-day
+reset during the 10 minutes and the locked line says when the day resets (5.3); the Training window's one-window wiring, its own
+confirm layer and its empty state (5.5); window-local hints inside the window (5.1); the phone's Fusion outcome line (5.6); the
+picker's PC chips row at 1440 px (5.2); the touch paused texts (5.1, 5.3, 5.4).
 
 Gemini was not asked: its API answered 402 (prepayment credits depleted) during this step, and the web fallback was not driven from
 inside the workflow. Calls 1-3 are the ones worth a Gemini check before the build starts.
