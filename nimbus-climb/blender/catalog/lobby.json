@@ -802,6 +802,13 @@
    "prop": "lobby_portal_ring",
    "budget": "portal",
    "description": "Storm Altar return portal (lobby-shop portal C): standing charcoal voussoir ring 7 x 9.5 studs on a plinth, keystone with a navy sign board (text on SignFace), two cyan crystals, inner Neon rim + trim tinted Primary (the Return-gate green); attachments PortalCenter / SignFace / Pad"
+  },
+  {
+   "key": "portal_altar_ring",
+   "type": "prop",
+   "prop": "lobby_altar_ring",
+   "budget": "portal",
+   "description": "Storm Altar summon ring (lobby-shop portal C, spec 5.11 b; dresses StormAltar PortalGlow.GlowRing, which turns): 16 crystal-cyan Neon bars (GlowBar) with pale Neon ridges (GlowBarHeart) and chamfered ends, each in a straight charcoal stone collar (light lip, rounded corners, worn cells, a mason's tick), even 0.2-stud joints; bars on r 5.65, stone inside r 6.0 (clear of the Portal rim at 6.1); 11.8 x 0.8 x 11.8, pivot = the disc centre on the glow disc's top, attachment Center"
   }
  ],
  "sets": [],
@@ -1045,6 +1052,11 @@
   {
    "name": "lobby_portal_ring",
    "body": "portal_ring",
+   "res": 420
+  },
+  {
+   "name": "lobby_portal_altar_ring",
+   "body": "portal_altar_ring",
    "res": 420
   }
  ]

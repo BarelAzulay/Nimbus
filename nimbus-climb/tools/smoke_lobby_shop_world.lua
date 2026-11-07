@@ -48,9 +48,13 @@
 --                      centre line, within the deck and outside the landing box, the mesh's bounds clear of the rim clouds
 --                      and the stone ring, nothing collidable but the pads over the pad, the PlazaGatePrompt E / 8, the
 --                      sign "To the Plaza" (a pixel
---                      BillboardGui on the Part fallback); the altar <= 500 parts, its lights within the lobby rule; a
---                      rebuild with StormAltar._Kit (and, in the default run, the portal_ring tag forced to "dressed"; in
---                      --mesh a fixture holder): the portal_altar_ring request on GlowRing at the disc centre on the disc
+--                      BillboardGui on the Part fallback); the altar <= 500 parts, its lights within the lobby rule; the
+--                      portal_altar_ring manifest (Task 29) against the built altar: seated (its foot reaches into the old
+--                      disc), inside the Portal rim's nearest stone face as it turns (a 16-gon: half extent / cos 11.25),
+--                      no taller than the Part ring, one Fixed SmoothPlastic part + Neon Glow* parts, GlowBar the ring's
+--                      cyan; a rebuild with StormAltar._Kit (and, in the default run, the portal_ring tag forced to
+--                      "dressed"; in --mesh fixture holders for portal_ring and portal_altar_ring): the portal_altar_ring
+--                      request on GlowRing at the disc centre on the disc
 --                      top, the portal_ring request on ReturnPortal.Ring (origin Y = the octagons' top - 1.05, the ring's
 --                      facing, Look.Primary the Return green), the mesh-side sign (a SurfaceGui at 50 px per stud on a
 --                      SignFace part at the manifest's SignFace), ML_DressKey only where the key is not missing
@@ -959,7 +963,7 @@ local GLOW = {
 	Heart = Color3.fromRGB(186, 236, 255),
 	Green = Color3.fromRGB(96, 190, 140),
 	White = Color3.fromRGB(255, 255, 255),
-	RingR = 6.0, -- the summon ring's centre radius (the layout Task 22's portal_altar_ring mesh shares)
+	RingR = 6.0, -- the summon ring's centre radius (its Part build; the portal_altar_ring mesh of Task 29 dresses it)
 	RingUp = 0.35, -- ...its height over the disc top
 	Seg = Vector3.new(2 * 6.0 * math.tan(math.rad(11.25)) + 0.08, 0.5, 0.3),
 	Lane = 4.25, -- every ReturnPortal part (rotated bounds) off the bridge's centre line (the mesh's nearest corner ~4.32)
@@ -1155,7 +1159,7 @@ local function checkGlow(label, altar, A, Config, SA, ML)
 	T.check(hearts >= 1 and heartOk and heartTop > discTop and heartTop - discTop <= 0.05, label .. ": GlowHeart, the lighter heart rgb(186,236,255), just over the glow disc",
 		fmt("%d parts, %.3f over the disc", hearts, heartTop - discTop))
 	T.check(#solid == 0, label .. ": no PortalGlow part collides or touches", table.concat(solid, ", "))
-	-- the spinning ring (its Part build; the portal_altar_ring mesh dresses it once it has an id)
+	-- the spinning ring (its Part build; the portal_altar_ring mesh dresses it once it has an id: checkAltarRingMesh)
 	local centre = (A * CFrame.new(0, discTop, 0)).Position
 	local ring = glow:FindFirstChild("GlowRing")
 	if T.check(ring ~= nil and ring:IsA("Model"), label .. ": GlowRing is a Model") then
@@ -1338,6 +1342,58 @@ local function checkSurfaceSign(label, portal, origin)
 		label .. ": ...Face Front, 50 px per stud, lines >= 0.6 stud (no TextScaled), LightInfluence 0", tostring(gui.PixelsPerStud) .. " px/stud; small: " .. table.concat(small, ", "))
 end
 
+-- the portal_altar_ring manifest (Task 29) against a built altar: the mesh the client dresses GlowRing with
+local function checkAltarRingMesh(label, altar, A, ML)
+	local man = ML and ML.Manifest("portal_altar_ring")
+	local b = man and man.Bounds
+	local lo, hi = b and (b.Min or b.min), b and (b.Max or b.max)
+	if not T.check(type(lo) == "table" and type(hi) == "table", label .. ": the portal_altar_ring manifest exists (Task 29) with its bounds") then
+		return
+	end
+	local att = man.Attachments and man.Attachments.Center
+	local cp = att and (att.Pos or att.pos)
+	T.check(type(cp) == "table" and math.abs(cp[1]) + math.abs(cp[2]) + math.abs(cp[3]) < 1e-6, label .. ": ...attachment Center at its pivot (the disc centre on the glow disc's top)")
+	-- the old Disc's top (under the glow disc, studs from the ring's pivot) and the Portal rim's nearest stone face
+	local portal = altar:FindFirstChild("Portal")
+	local _, glowTop = discTops(altar, A)
+	local discTop, rimIn = -math.huge, math.huge
+	for _, d in ipairs(portal and portal:GetChildren() or {}) do
+		if d:IsA("BasePart") and d.Name == "Disc" then
+			discTop = math.max(discTop, topOf(d) - A.Position.Y - glowTop)
+		elseif d:IsA("BasePart") and d.Name == "Rim" then
+			rimIn = math.min(rimIn, hdist(d.Position, A.Position) - d.Size.Z / 2)
+		end
+	end
+	T.check(lo[2] < discTop and lo[2] > discTop - 0.2, label .. ": ...seated: its foot reaches into the old disc (no gap under it), not through it",
+		fmt("foot %.3f, the old disc's top %.3f", lo[2], discTop))
+	-- it turns, so its farthest point sweeps a circle: a 16-gon's corners are its half extent / cos 11.25 out
+	local half = math.max(math.abs(lo[1]), math.abs(hi[1]), math.abs(lo[3]), math.abs(hi[3]))
+	local reach = half / math.cos(math.rad(11.25))
+	T.check(reach < rimIn - 0.05, label .. ": ...inside the Portal rim's nearest stone face as it turns (16-gon corners < the face - 0.05)",
+		fmt("reach %.3f, the rim's face %.3f", reach, rimIn))
+	T.check(hi[2] <= GLOW.RingUp + GLOW.Seg.Y / 2 + 0.1, label .. ": ...no taller than the Part ring (+0.1)", fmt("top %.3f", hi[2]))
+	-- one Fixed SmoothPlastic part (the baked stone) and Neon parts named Glow*, GlowBar in the ring's crystal cyan
+	-- (MeshLibrary.Manifest hands the parts over with lower-case fields; the raw manifest has them capitalised)
+	local fixed, bad, bar = 0, {}, false
+	for _, p in ipairs(man.Parts or {}) do
+		local name, mat, c = tostring(p.name or p.Name), p.material or p.Material, p.color or p.Color
+		if mat == "Neon" then
+			if string.sub(name, 1, 4) ~= "Glow" then
+				bad[#bad + 1] = name
+			end
+			if name == "GlowBar" and type(c) == "table" and c[1] == "rgb" then
+				bar = sameColor(Color3.fromRGB(c[2], c[3], c[4]), GLOW.Cyan)
+			end
+		elseif name == "Fixed" and mat == "SmoothPlastic" then
+			fixed = fixed + 1
+		else
+			bad[#bad + 1] = name .. " " .. tostring(mat)
+		end
+	end
+	T.check(fixed == 1 and #bad == 0 and bar, label .. ": ...one Fixed SmoothPlastic part and Neon Glow* parts, GlowBar in the crystal cyan rgb(63,200,255)",
+		fixed .. " Fixed; " .. table.concat(bad, ", ") .. (bar and "" or "; GlowBar not cyan"))
+end
+
 S.altar_portal_glow = guarded("altar_portal_glow", function()
 	if not K.needBoot() then
 		return
@@ -1354,6 +1410,7 @@ S.altar_portal_glow = guarded("altar_portal_glow", function()
 	------------------------------------------------------------------ the booted altar
 	local A, landing = SA.GetCFrame(), SA.GetLanding().Position
 	checkGlow("altar glow", altar, A, Config, SA, ML)
+	checkAltarRingMesh("summon ring mesh", altar, A, ML)
 	local portal, centre, padTop, face = checkReturn("return ring", SA, altar, A, landing)
 	if portal then
 		local okSt, st = pcall(ML.Status, "portal_ring")
@@ -1376,15 +1433,17 @@ S.altar_portal_glow = guarded("altar_portal_glow", function()
 	local okRun, errRun = pcall(function()
 		SA._Kit = { Targets = {} }
 		if MESH_MODE then
-			-- --mesh: a fixture holder for portal_ring in the fixture MeshLibrary's root (Status -> "loading"), removed after;
-			-- portal_altar_ring has no manifest until Task 22, so it stays missing here
+			-- --mesh: fixture holders for portal_ring and portal_altar_ring (its manifest since Task 29) in the fixture
+			-- MeshLibrary's root (Status -> "loading"), removed after
 			local root = RS:FindFirstChild("P6PetsMeshLibrary")
 			if T.check(root ~= nil, "altar portal glow (--mesh): the fixture MeshLibrary root exists") then
-				local h = Instance.new("Folder")
-				h.Name = "portal_ring"
-				h.Parent = root
-				undo[#undo + 1] = function()
-					h:Destroy()
+				for _, key in ipairs({ "portal_ring", "portal_altar_ring" }) do
+					local h = Instance.new("Folder")
+					h.Name = key
+					h.Parent = root
+					undo[#undo + 1] = function()
+						h:Destroy()
+					end
 				end
 			end
 		else
@@ -1435,7 +1494,7 @@ S.altar_portal_glow = guarded("altar_portal_glow", function()
 			laneCheck("return ring: the portal_ring mesh's bounds (9 x 9.5 x 3, rotated) at the dress origin are", meshCorners(ML, "portal_ring", rec.Origin), A2, landing2)
 			checkSurfaceSign("return ring (dressed)", portal2, rec.Origin)
 		end
-		-- ML_DressKey only where the key is not missing (portal_altar_ring waits for Task 22's manifest)
+		-- ML_DressKey only where the key is not missing (the default run has no ids; --mesh has the two holders)
 		for _, kv in ipairs({ { "portal_altar_ring", gring }, { "portal_ring", ring2 } }) do
 			local key, target = kv[1], kv[2]
 			local okSt, st = pcall(ML.Status, key)
@@ -1444,8 +1503,8 @@ S.altar_portal_glow = guarded("altar_portal_glow", function()
 				local want = (key == "portal_ring") and rec and rec.Origin or (ra[1] and ra[1].Origin)
 				T.check(target ~= nil and target:GetAttribute("ML_DressKey") == key and off ~= nil and want ~= nil and near((target:GetPivot() * off).Position, want.Position, 0.01),
 					"altar portal glow: ML_DressKey = " .. key .. " (the key is " .. tostring(st) .. "), the mesh placed at the dress origin")
-			elseif MESH_MODE and key == "portal_ring" then
-				T.fail("altar portal glow (--mesh): the fixture holder should make portal_ring's status not 'missing'", tostring(st))
+			elseif MESH_MODE then
+				T.fail("altar portal glow (--mesh): the fixture holder should make " .. key .. "'s status not 'missing'", tostring(st))
 			else
 				T.check(target ~= nil and target:GetAttribute("ML_DressKey") == nil, "altar portal glow: no ML_DressKey = " .. key .. " while the key is missing (the Part build shows)")
 			end

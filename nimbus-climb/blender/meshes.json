@@ -11831,6 +11831,19 @@
    "structureHash": "71804cf90a7a495f898c74ac7d46b6fb",
    "tris": 2076
   },
+  "portal_altar_ring": {
+   "class": "lobby",
+   "contentHash": "906012de4510bd3198b8f1bfe77dd2a9",
+   "description": "Storm Altar summon ring (lobby-shop portal C, spec 5.11 b; dresses StormAltar PortalGlow.GlowRing, which turns): 16 crystal-cyan Neon bars (GlowBar) with pale Neon ridges (GlowBarHeart) and chamfered ends, each in a straight charcoal stone collar (light lip, rounded corners, worn cells, a mason's tick), even 0.2-stud joints; bars on r 5.65, stone inside r 6.0 (clear of the Portal rim at 6.1); 11.8 x 0.8 x 11.8, pivot = the disc centre on the glow disc's top, attachment Center",
+   "displayName": "NC Portal Altar Ring",
+   "fbx": "blender/out/portal_altar_ring.fbx",
+   "fbxSha256": "f998b703d95f2961f3dab75633829afa07736856d429f629024b847d608bb577",
+   "manifest": "src/shared/MeshManifests/portal_altar_ring.lua",
+   "maxTrianglesPerMesh": 1612,
+   "parts": 3,
+   "structureHash": "f1abef8cf1c0926e905d3f1b799cc922",
+   "tris": 2988
+  },
   "portal_ring": {
    "class": "lobby",
    "contentHash": "f6e4fd7e3bfc96e0c128ec78270f6e73",

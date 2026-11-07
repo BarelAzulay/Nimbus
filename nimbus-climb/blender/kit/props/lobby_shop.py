@@ -43,6 +43,21 @@ into one Fixed part per grid, Neon only for glows.  Nothing here needs a texture
                         line on the plinth's front edge and round the sign board.  Pivot = ground centre, front -Z.
                         Attachments: PortalCenter (centre of the opening: the game's swirl), SignFace (the board's
                         front face centre, facing -Z: the game's SurfaceGui / text part), Pad (on the plinth top).
+  * "lobby_altar_ring"  portal_altar_ring: the summon ring that turns on the Storm Altar's portal disc (StormAltar
+                        PortalGlow.GlowRing, the Part ring it dresses: 16 cyan Neon segments on r 6.0, 0.1 - 0.6 up):
+                        16 crystal-cyan Neon bars (GlowBar, the altar's CrystalCore rgb(63,200,255)) with a pale Neon
+                        ridge on top (GlowBarHeart, the glow disc's heart rgb(186,236,255)) and chamfered ends, so
+                        each reads as a crystal blade; each stands in its own charcoal stone collar (the altar's
+                        Stone / StoneB / StoneC, a hash pick per collar) with a light lip, rounded corners, a few worn
+                        dark lip cells and a dark mason's tick on the face towards the disc centre; an even 0.2-stud
+                        joint between collars shows the disc.  The collars are straight (a 16-gon like the Part
+                        ring), each voxeled on a grid of its own aligned with it and turned into place, so their
+                        walls are flat (arcs on one grid stair-stepped to 8.7k tris).  The bars stand on r 5.65 and
+                        the stone ends at r 6.0 (the outer corners), inside the Portal rim's nearest stone face at
+                        r 6.1: the ring turns, so it never grinds through the rim.  The collars sink 0.15 under the
+                        pivot (into the old disc under the glow disc), so nothing floats.  11.8 x 0.8 x 11.8 studs,
+                        0.1-stud cells.  Pivot = the disc centre on the glow disc's top (GlowRing's pivot; it turns
+                        about +Y), front -Z.  Attachment Center (the pivot).
 
 Deterministic (hash picks only, no RNG state).
 """
@@ -80,6 +95,7 @@ SPAL = {
 }
 NEONS = {
     "GemGlint": (255, 255, 255), "CrystalCore": (63, 200, 255),
+    "GlowBar": (63, 200, 255), "GlowBarHeart": (186, 236, 255),     # the summon ring (StormAltar C.CrystalCore / GlowHeart)
 }
 RETURN_GREEN = (96, 190, 140)    # WorldStyle Green: the arena's Return gate
 
@@ -642,4 +658,83 @@ def lobby_portal_ring(entry, kit):
         "SignFace": {"pos": [0.0, (SIGN[2] + SIGN[3]) / 2, SIGN_Z], "rot": eye},
         "Pad": {"pos": [0.0, 1.0, 0.0], "rot": eye},
     }
+    return m
+
+
+# ---------------------------------------------------------------------------------------------- summon ring
+# Studs over the pivot (the glow disc's top).  Under it: the old navy disc's top at -0.092 and the glow disc's star
+# (points out to r 5.94) at 0, so the collars' foot at -0.15 sinks into the old disc.  The Portal rim's stones stand
+# from r 6.1 (their middles) to 6.31 (their joints).  The collars are straight (a 16-gon, like the Part ring), so
+# their outer corners are the farthest stone: the outer face at 5.9 puts those corners at 6.0.
+ALT_N, ALT_R = 16, 5.65                   # the collars' and bars' centre line, studs from the pivot
+ALT_COLLAR = (0.25, 0.1, -0.15, 0.25)     # half width (across the ring), half joint (each end), foot, top
+ALT_BAR = (0.15, 0.2, 0.05, 0.55)         # the bar (and the collar's groove): half width, end clearance, foot, top
+ALT_RIDGE = (0.06, 0.6, 0.65)             # the pale ridge on the bar: half width, end clearance, top
+ALT_TONES = ("Stone", "StoneB", "StoneC")
+ALT_K = 10.0
+
+
+def _altar_collar(kit, i):
+    """collar i with its bar and ridge, straight, centred on the front (-Z) at ALT_R, on a grid of its own aligned
+    with it (cell faces on its sides: flat walls, no staircase); its ends are mitred to the radial joint lines"""
+    S = ShopSculpt(kit, ALT_K, 1.4, origin=(0.0, 0.25, -ALT_R + 0.05), name="altarring%d" % i)  # rows on -0.15, -0.05..
+    vs = S.vs
+    X, Y, Z = S.X, S.Y, S.Z
+    half = math.pi / ALT_N
+    d = np.abs(-Z - ALT_R)                                                     # studs across the ring
+    e = (-Z) * math.sin(half) - np.abs(X) * math.cos(half)                     # studs from the nearer joint line
+    cw, cj, c0, c1 = ALT_COLLAR
+    bw, be, b0, b1 = ALT_BAR
+    collar = (d < cw) & (e > cj) & (Y > c0) & (Y < c1)                         # joints of an even 0.2 stud
+    groove = (d < bw) & (e > be) & (Y > b0)
+    # its own stone tone (no dark footing course: it would sit under the old disc)
+    S.put(ALT_TONES[int(hsh(i, 29) * 2.999)], collar & ~groove)
+    # the lip: the top row light, its four corners rounded off, a worn dark cell or two here and there (old stone;
+    # worn, not cut: the walls are one cell thick, so a hole would show the bar's glow through the stone)
+    lip = collar & ~groove & (Y > c1 - vs)
+    S.put("StoneLight", lip)
+    S.cut(lip & (e < be) & (d > bw))
+    for k in range(2):
+        if hsh(i, k, 31) < 0.45:
+            side = 1 if hsh(i, k, 37) < 0.5 else -1                            # the outer or the inner wall
+            at = (hsh(i, k, 41) - 0.5) * 1.4                                   # studs along the collar
+            S.put("StoneDeep", lip & (np.sign(-Z - ALT_R) == side) & (np.abs(X - at) < 0.1))
+    # a mason's tick on the face towards the disc centre: a dark notch two rows tall at the collar's middle
+    S.put("StoneDeep", collar & (-Z < ALT_R - cw + vs) & (np.abs(X) < 0.1) & (Y > c0 + vs) & (Y < c0 + 3 * vs))
+    # the bar: a crystal blade standing in the groove, its ends chamfered at 45 degrees above the collar
+    S.glow("GlowBar", (d < bw) & (Y > b0) & (Y < b1) & (e > be + np.clip(Y - c1, 0, None)))
+    rw, re_, r1 = ALT_RIDGE
+    S.glow("GlowBarHeart", (d < rw) & (e > re_) & (Y > b1) & (Y < r1))
+    return S
+
+
+def _merge_turned(m, part, rot):
+    """add the parts of the model `part` to `m`, turned by the 3x3 `rot` about the model origin (same names merge
+    into one part: one Fixed, one GlowBar, one GlowBarHeart)"""
+    R = np.asarray(rot, float)
+    for name, o in part.objects.items():
+        dst = m.obj(name, group=o.group, region=o.region, shade=o.shade, recipe=o.recipe, material=o.material,
+                    baked=o.baked)
+        dst.keys |= o.keys
+        for attr in ("key", "transparency"):
+            if hasattr(o, attr):
+                setattr(dst, attr, getattr(o, attr))
+        if hasattr(o, "fixed_keys"):
+            dst.fixed_keys = sorted(set(getattr(dst, "fixed_keys", [])) | set(o.fixed_keys))
+        dst.quads.extend((np.asarray(cs, float) @ R.T, col) for cs, col in o.quads)
+    m.stats.setdefault("grids", []).extend(part.stats.get("grids", []))
+
+
+@prop("lobby_altar_ring")
+def lobby_altar_ring(entry, kit):
+    vs = 1.0 / ALT_K
+    m = kit.model(entry["key"], "prop", vs=vs, K=ALT_K)
+    for i in range(ALT_N):
+        part = kit.model(entry["key"], "prop", vs=vs, K=ALT_K)
+        _altar_collar(kit, i).mesh_at(part, "Ring", {})
+        t = -i * TAU / ALT_N                       # collar i centred at i * 22.5 degrees round from the front, to +X
+        _merge_turned(m, part, [[math.cos(t), 0.0, math.sin(t)], [0.0, 1.0, 0.0], [-math.sin(t), 0.0, math.cos(t)]])
+    finish(m, {"source": "designed (lobby-shop pitch portal C, spec 5.11 b): the summon ring that turns on the Storm "
+               "Altar's portal disc", "pivot": "the disc centre on the glow disc's top (GlowRing's pivot); turns about +Y"})
+    m.attachments = {"Center": {"pos": [0.0, 0.0, 0.0], "rot": np.eye(3).tolist()}}
     return m
