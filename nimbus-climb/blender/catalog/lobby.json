@@ -41,6 +41,18 @@
   "meadowFlower": {
    "tris": 500,
    "parts": 2
+  },
+  "egg": {
+   "tris": 4000,
+   "parts": 6
+  },
+  "gem": {
+   "tris": 4000,
+   "parts": 6
+  },
+  "portal": {
+   "tris": 8000,
+   "parts": 8
   }
  },
  "keys": [
@@ -695,6 +707,101 @@
    "args": {
     "V": 4.0
    }
+  },
+  {
+   "key": "egg_common",
+   "type": "prop",
+   "prop": "lobby_egg",
+   "budget": "egg",
+   "description": "Common rarity egg (lobby-shop egglook C, sky weather): grey shell, a big white cloud + a small one; picture front and back, raised, dark outline; pivot bottom centre, attachment Center",
+   "args": {
+    "rarity": "common"
+   }
+  },
+  {
+   "key": "egg_uncommon",
+   "type": "prop",
+   "prop": "lobby_egg",
+   "budget": "egg",
+   "description": "Uncommon rarity egg (lobby-shop egglook C, sky weather): green shell, a white breeze swirl with a gust tail and a lime leaf; picture front and back, raised, dark outline; pivot bottom centre, attachment Center",
+   "args": {
+    "rarity": "uncommon"
+   }
+  },
+  {
+   "key": "egg_rare",
+   "type": "prop",
+   "prop": "lobby_egg",
+   "budget": "egg",
+   "description": "Rare rarity egg (lobby-shop egglook C, sky weather): blue shell, three pale raindrops with white highlights; picture front and back, raised, dark outline; pivot bottom centre, attachment Center",
+   "args": {
+    "rarity": "rare"
+   }
+  },
+  {
+   "key": "egg_epic",
+   "type": "prop",
+   "prop": "lobby_egg",
+   "budget": "egg",
+   "description": "Epic rarity egg (lobby-shop egglook C, sky weather): purple shell, a gold Neon lightning bolt; picture front and back, raised, dark outline; pivot bottom centre, attachment Center",
+   "args": {
+    "rarity": "epic"
+   }
+  },
+  {
+   "key": "egg_legendary",
+   "type": "prop",
+   "prop": "lobby_egg",
+   "budget": "egg",
+   "description": "Legendary rarity egg (lobby-shop egglook C, sky weather): gold shell, a sun: warm yellow Neon disc + orange rays; picture front and back, raised, dark outline; pivot bottom centre, attachment Center",
+   "args": {
+    "rarity": "legendary"
+   }
+  },
+  {
+   "key": "egg_mythic",
+   "type": "prop",
+   "prop": "lobby_egg",
+   "budget": "egg",
+   "description": "Mythic rarity egg (lobby-shop egglook C, sky weather): pink shell, three wavy Neon aurora bands (teal / green / violet) right round the egg; picture front and back, raised, dark outline; pivot bottom centre, attachment Center",
+   "args": {
+    "rarity": "mythic"
+   }
+  },
+  {
+   "key": "egg_secret",
+   "type": "prop",
+   "prop": "lobby_egg",
+   "budget": "egg",
+   "description": "Secret rarity egg (lobby-shop egglook C, sky weather): near-black night shell with a violet horizon, a Neon crescent moon and 4-point stars; picture front and back, raised, dark outline; pivot bottom centre, attachment Center",
+   "args": {
+    "rarity": "secret"
+   }
+  },
+  {
+   "key": "gem_world",
+   "type": "prop",
+   "prop": "lobby_gem",
+   "budget": "gem",
+   "description": "World gem (lobby-shop gemlook A): cut crown + pavilion facets in the GUI gem's three cyan tones, navy girdle, dark facet edges, white Neon star glint; 6 studs across, pivot girdle centre (floats over the Storm Altar)"
+  },
+  {
+   "key": "gem_world_low",
+   "type": "prop",
+   "prop": "lobby_gem",
+   "lod": "Low",
+   "budget": "gem",
+   "description": "World gem far / small LOD (0.5-stud voxels, no facet edges): for 1.5-stud gem drops",
+   "args": {
+    "low": true
+   }
+  },
+  {
+   "key": "portal_ring",
+   "type": "prop",
+   "prop": "lobby_portal_ring",
+   "budget": "portal",
+   "description": "Storm Altar return portal (lobby-shop portal C): standing charcoal voussoir ring 7 x 9.5 studs on a plinth, keystone with a navy sign board (text on SignFace), two cyan crystals, inner Neon rim + trim tinted Primary (the Return-gate green); attachments PortalCenter / SignFace / Pad"
   }
  ],
  "sets": [],
@@ -888,6 +995,56 @@
   {
    "name": "lobby_prop_altar_ring",
    "body": "prop_altar_ring",
+   "res": 420
+  },
+  {
+   "name": "lobby_egg_common",
+   "body": "egg_common",
+   "res": 420
+  },
+  {
+   "name": "lobby_egg_uncommon",
+   "body": "egg_uncommon",
+   "res": 420
+  },
+  {
+   "name": "lobby_egg_rare",
+   "body": "egg_rare",
+   "res": 420
+  },
+  {
+   "name": "lobby_egg_epic",
+   "body": "egg_epic",
+   "res": 420
+  },
+  {
+   "name": "lobby_egg_legendary",
+   "body": "egg_legendary",
+   "res": 420
+  },
+  {
+   "name": "lobby_egg_mythic",
+   "body": "egg_mythic",
+   "res": 420
+  },
+  {
+   "name": "lobby_egg_secret",
+   "body": "egg_secret",
+   "res": 420
+  },
+  {
+   "name": "lobby_gem_world",
+   "body": "gem_world",
+   "res": 420
+  },
+  {
+   "name": "lobby_gem_world_low",
+   "body": "gem_world_low",
+   "res": 420
+  },
+  {
+   "name": "lobby_portal_ring",
+   "body": "portal_ring",
    "res": 420
   }
  ]
