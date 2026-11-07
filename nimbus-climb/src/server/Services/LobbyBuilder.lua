@@ -28,7 +28,8 @@
 --                    (Model SkyTrove, store 2026-11-04: a brass-banded chest, its Lid a separate Model hinged at the back
 --                    and resting open 18 degrees, a sign post, the gap's light, the Join sign; TroveService puts the
 --                    prompt on its PromptPart) is built with the shop (its folder) but stands on the plaza lawn (lobby
---                    shop, spec 5.9: polar G.Trove.Angle, r G.Trove.R, facing the centre).
+--                    shop, spec 5.9 / 16.2: polar G.Trove.Angle, r G.Trove.R, facing the centre: spot C on the west
+--                    lawn, between the two west benches by the Guide board).
 --   * HOME PLOTS     Config.Lobby.SpotCount cloud islands on Config.Lobby.SpotRingRadius: a puffy cloud body
 --                    (billows along the sides and back, a hanging cumulus underneath, a soft rim of puffs on the
 --                    outer margins) under a flat PlotSize x PlotSize mowed lawn yard (kept EMPTY for the
@@ -182,9 +183,11 @@ G.SpokeW = 10
 G.GardenR = (PLAZA_R + G.StreetR - G.StreetW / 2) / 2 -- garden island centres, halfway between the plaza and the street (221)
 G.GardenSize = 22 -- garden island radius
 G.ArenaBridgeW = 12 -- Phase 3: the arena bridge (ArenaBuilder) leaves the street through a gap this wide + 1.6
--- lobby shop (spec 5.9): the Sky Trove on the plaza lawn (polar degrees, radius, plazaSpot clearance): the front-left lawn
--- seen from the spawn, beside the How to play board (32 degrees, r 48; 12.75 studs apart, 12.5 needed) and the bench
-G.Trove = { Angle = 43, R = 56, Clear = 6.5 }
+-- lobby shop (spec 5.9; spot C, the owner's pick, spec 16.2): the Sky Trove on the plaza lawn (polar degrees, radius,
+-- plazaSpot clearance) at plaza-local (-48.30, 12.94): the west lawn between the two west benches (130 / 200 degrees r 44,
+-- 28.84 studs each), beside the Guide board (148 degrees r 48, 14.62 apart, 12.5 needed), 12.94 off the west walk's
+-- centre line (11.5 needed); about 75 degrees to the right of the spawn's view up the avenue
+G.Trove = { Angle = 165, R = 50, Clear = 6.5 }
 
 ----------------------------------------------------------------------
 -- Palette: cheerful but not blinding. Nothing is pure white (cloud tops stay below 249 on red).
@@ -3494,7 +3497,8 @@ local function buildTrove(parent, cf)
 	CollectionService:AddTag(glow, DETAIL_TAG)
 
 	-- the sign post beside the chest (a painted gold star on a plank board; no words: the lid plate names it). lobby shop
-	-- (spec 5.9): mirrored to local x -6.2 (was +6.2), so it does not stand behind the How to play board on the plaza
+	-- (spec 5.9 / 16.2): at local x -6.2 (was +6.2), the west walk side at spot C (open lawn; its footing ends 0.86 stud
+	-- off the walk's border), since at +6.2 it would crowd the Guide board's post (under a stud from its foot)
 	local sign = newModel(model, "Sign")
 	local signCF = cf * CFrame.new(-6.2, 0, -1.4)
 	box(sign, "Footing", signCF * CFrame.new(0, 0.15, 0), Vector3.new(1.2, 0.3, 1.2), C.StoneDark)

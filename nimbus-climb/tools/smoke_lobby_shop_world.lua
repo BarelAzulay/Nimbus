@@ -1,11 +1,17 @@
 -- smoke_lobby_shop_world.lua: the lobby-shop world (docs/superpowers/specs/2026-11-07-lobby-shop-design.md 5.9 / 5.6 / 5.11;
 -- plan docs/superpowers/plans/2026-11-07-lobby-shop.md Tasks 10 / 12 / 13 / 14). Server world only (booted):
---   lobby_trove_plaza  the Sky Trove on the plaza lawn: its centre at polar 43 degrees r 56 from Config.Lobby.Origin
---                      (+-0.5), facing the plaza centre, <= 60 parts, the sign post at local x -6.2, the PromptPart in
---                      front, LobbyInfo.Shop.ItemShop = { PromptPart, Center, Model, Lid }; the Join sign (JoinAnchor 10.5
+--   lobby_trove_plaza  the Sky Trove on the plaza lawn at spot C (spec 16.2, Task 17): its centre at polar 165 degrees r 50
+--                      from Config.Lobby.Origin (+-0.5), facing the plaza centre, <= 60 parts, the sign post at local x
+--                      -6.2 (the walk side), the PromptPart in front, LobbyInfo.Shop.ItemShop = { PromptPart, Center,
+--                      Model, Lid }; its neighbours (spec 16.2's table): the Guide board >= 12.5 studs, both west benches
+--                      >= 10 and within 0.5 of each other (it stands between them), every other bench >= 10, every NPC spot
+--                      >= 11.5, every lawn flower bed >= 10.5, the west cross walk's centre line >= 11.5, the spawn court's
+--                      centre >= 42.5; the sign's Footing >= 0.5 stud outside the west walk (half width 5) and off every
+--                      Paths / PathBorders cell; the Join sign (JoinAnchor 10.5
 --                      studs up, JoinBillboard): "Group rewards coming soon!" at GroupId 0, "Join the group!" over "2,000
 --                      Cash + 200 Tokens" when rebuilt with GroupId 123, tagged NC_Bob (BobStuds 0.5, BobSeconds 2.4); the
---                      forced fallback shop (LobbyBuilder._ForceShopFallback) puts its trove on the same plaza spot; one
+--                      forced fallback shop (LobbyBuilder._ForceShopFallback) puts its trove on the same plaza spot, facing
+--                      the centre; one
 --                      SkyTrove in a lobby either way; the TroveGroupDone attribute (a stored claim after the load and after
 --                      a provisional load's recovery, at the claim, never for a player without the claim); the Egg Guide
 --                      at the trove's old spot (at(-21, -8)): the 11 x 8 board reads "Every egg hatches a random pet of
@@ -79,6 +85,10 @@ local EGG_KEYS = {
 	Legendary = "egg_legendary", Mythic = "egg_mythic", Secret = "egg_secret",
 }
 local LAWN = 0.4
+-- spot C (spec 16.2): polar 165 degrees, r 50 (plaza-local x -48.30, z 12.94); the plazaSpot clearances it must keep
+local TROVE_DEG, TROVE_R = 165, 50
+local TROVE_NEED = { Guide = 12.5, Bench = 10, BenchPair = 0.5, Npc = 11.5, Bed = 10.5, Walk = 11.5, Court = 42.5, Footing = 0.5 }
+local WALK_HALF = 5 -- G.PathHalf: the cross walks' half width, border included
 local SOON_TEXT = "Group rewards coming soon!"
 local GUIDE_FOOTER = "Every egg hatches a random pet of its rarity"
 local RARITY_SUB = "Every egg hatches a pet of its rarity"
@@ -263,14 +273,86 @@ local function checkTrovePlace(label, stall)
 		return nil
 	end
 	local o = K.config().Lobby.Origin
-	local spot = polar(43, 56)
+	local spot = polar(TROVE_DEG, TROVE_R)
 	T.check(typeof(stall.Center) == "Vector3" and hdist(stall.Center, spot) <= 0.5,
-		label .. ": the trove's centre stands at polar 43 degrees, r 56 from the origin (+-0.5)", stall.Center and fmt("%.2f off", hdist(stall.Center, spot)) or "no Center")
+		label .. fmt(": the trove's centre stands at spot C, polar %d degrees, r %d from the origin (+-0.5)", TROVE_DEG, TROVE_R),
+		stall.Center and fmt("%.2f off", hdist(stall.Center, spot)) or "no Center")
 	local cf = model.PrimaryPart.CFrame
 	local toC = flat(o - cf.Position).Unit
 	T.check(cf.LookVector:Dot(toC) > 0.99, label .. ": the trove faces the plaza centre", fmt("dot %.4f", cf.LookVector:Dot(toC)))
 	T.check(math.abs(cf.Position.Y - 2.6 - (o.Y - LAWN)) <= 0.05, label .. ": the trove stands on the plaza lawn (Origin.Y - 0.4)", fmt("%.2f", cf.Position.Y - 2.6))
 	return cf
+end
+
+-- spot C's neighbours (spec 16.2's table, measured on the built lobby): centre-to-centre distances in plaza-local studs
+local function checkTroveNeighbours(label, root, info, stall, Config)
+	local o = Config.Lobby.Origin
+	local c = stall.Center
+	local guide = root:FindFirstChild("GuideBoard", true)
+	local gface = guide and guide:FindFirstChild("Face")
+	local dGuide = gface and hdist(c, gface.Position) or -1
+	T.check(gface ~= nil and dGuide >= TROVE_NEED.Guide, label .. fmt(": the Guide board stands >= %.1f studs off", TROVE_NEED.Guide), fmt("%.2f", dGuide))
+	local benches, beds = {}, {}
+	for _, d in ipairs(root:GetDescendants()) do
+		if d:IsA("Model") and d.Parent and d.Parent.Name == "LawnDecor" then
+			if d.Name == "Bench" then
+				benches[#benches + 1] = hdist(c, d:GetPivot().Position)
+			elseif d.Name == "FlowerBed" then
+				beds[#beds + 1] = hdist(c, d:GetPivot().Position)
+			end
+		end
+	end
+	table.sort(benches)
+	table.sort(beds)
+	local b1, b2 = benches[1] or -1, benches[2] or -1
+	T.check(#benches >= 4 and b1 >= TROVE_NEED.Bench and math.abs(b2 - b1) <= TROVE_NEED.BenchPair,
+		label .. fmt(": both west benches stand >= %d studs off and within %.1f of each other (the chest between them); every bench >= %d", TROVE_NEED.Bench, TROVE_NEED.BenchPair, TROVE_NEED.Bench),
+		fmt("%d benches, nearest %.2f / %.2f", #benches, b1, b2))
+	T.check(#beds >= 1 and beds[1] >= TROVE_NEED.Bed, label .. fmt(": every lawn flower bed stands >= %.1f studs off", TROVE_NEED.Bed), fmt("%d beds, nearest %.2f", #beds, beds[1] or -1))
+	local npc = math.huge
+	for _, s in ipairs(info.NpcSpots or {}) do
+		npc = math.min(npc, hdist(c, s.Position))
+	end
+	T.check(#(info.NpcSpots or {}) >= 6 and npc >= TROVE_NEED.Npc, label .. fmt(": every NPC spot stands >= %.1f studs off", TROVE_NEED.Npc), fmt("%d spots, nearest %.2f", #(info.NpcSpots or {}), npc))
+	-- the west cross walk: L.CrossAngles = MidAngle +- 90 (MidAngle = Config.Lobby.GateFacing), the west one at 180
+	local wa = math.rad(((Config.Lobby.GateFacing or 90) + 90) % 360)
+	local ux, uz = math.cos(wa), math.sin(wa)
+	local function lateral(p)
+		local px, pz = p.X - o.X, p.Z - o.Z
+		return math.abs(-px * uz + pz * ux), px * ux + pz * uz
+	end
+	local dWalk, along = lateral(c)
+	T.check(dWalk >= TROVE_NEED.Walk and along > 34 and along < 100, label .. fmt(": the west cross walk's centre line runs >= %.1f studs off (beside its stretch)", TROVE_NEED.Walk), fmt("%.2f off, %.1f along", dWalk, along))
+	local dCourt = hdist(c, o)
+	T.check(dCourt >= TROVE_NEED.Court, label .. fmt(": the spawn court's centre is >= %.1f studs off", TROVE_NEED.Court), fmt("%.2f", dCourt))
+	-- the sign's footing: outside the walk band and off every path / border voxel cell
+	local sign = stall.Model:FindFirstChild("Sign")
+	local foot = sign and sign:FindFirstChild("Footing")
+	if not T.check(foot ~= nil and foot:IsA("BasePart"), label .. ": the sign has its Footing") then
+		return
+	end
+	local band = math.huge
+	for _, q in ipairs(corners(foot)) do
+		band = math.min(band, lateral(q) - WALK_HALF)
+	end
+	T.check(band >= TROVE_NEED.Footing, label .. fmt(": the sign's footing ends >= %.1f stud outside the west walk (half width %d)", TROVE_NEED.Footing, WALK_HALF), fmt("%.2f", band))
+	local cell, cells, cellName = math.huge, 0, "-"
+	for _, m in ipairs(root:GetDescendants()) do
+		if m:IsA("Model") and (m.Name == "Paths" or m.Name == "PathBorders") then
+			for _, p in ipairs(m:GetDescendants()) do
+				local g = p:IsA("BasePart") and rectGap(foot, p) or math.huge
+				if g < 40 then
+					cells = cells + 1
+					if g < cell then
+						cell, cellName = g, m.Name
+					end
+				end
+			end
+		end
+	end
+	T.check(cells > 0 and cell >= TROVE_NEED.Footing, label .. fmt(": the sign's footing stands >= %.1f stud off every path / border cell", TROVE_NEED.Footing), fmt("%d cells near, nearest (%s) %.2f", cells, cellName, cell))
+	T.info(fmt("*%s: Guide board %.2f, west benches %.2f / %.2f, NPC spot %.2f, flower bed %.2f, west walk %.2f, spawn court %.2f studs; the footing %.2f outside the walk band, %.2f off the nearest path cell",
+		label, dGuide, b1, b2, npc, beds[1] or -1, dWalk, dCourt, band, cell))
 end
 
 local function checkEggGuide(label, lobby, Config)
@@ -455,8 +537,9 @@ S.lobby_trove_plaza = guarded("lobby_trove_plaza", function()
 		T.check(countParts(model) <= 60, "trove plaza: the trove stays <= 60 parts (the Join sign's anchor included)", tostring(countParts(model)))
 		local post = model:FindFirstChild("Sign") and model.Sign:FindFirstChild("Post")
 		local lx = post and cf:PointToObjectSpace(post.Position).X
-		T.check(lx ~= nil and math.abs(lx + 6.2) <= 0.05, "trove plaza: the sign post stands at local x -6.2 (mirrored, clear of the How to play board)", tostring(lx))
+		T.check(lx ~= nil and math.abs(lx + 6.2) <= 0.05, "trove plaza: the sign post stands at local x -6.2 (the west walk side, open lawn; +6.2 is the Guide board's side)", tostring(lx))
 		T.check((stall.PromptPart.Position - stall.Center).Magnitude < 10, "trove plaza: the PromptPart stands within 10 studs of the centre")
+		checkTroveNeighbours("trove plaza", lobby, info, stall, Config)
 		T.check(#troveOf(lobby) == 1, "trove plaza: exactly one SkyTrove in the booted lobby", tostring(#troveOf(lobby)))
 		local anchor = model:FindFirstChild("JoinAnchor")
 		local bb = anchor and anchor:FindFirstChild("JoinBillboard")
@@ -586,8 +669,14 @@ S.lobby_trove_plaza = guarded("lobby_trove_plaza", function()
 		local stall2 = built.Shop and built.Shop.ItemShop
 		T.check(type(stall2) == "table" and stall2.PromptPart and typeof(stall2.Center) == "Vector3" and stall2.Model and stall2.Lid,
 			"trove plaza fallback: ItemShop keeps { PromptPart, Center, Model, Lid }")
-		T.check(stall2 and stall2.Model and stall2.Model.Parent == folder.ShopFallback and typeof(stall2.Center) == "Vector3" and hdist(stall2.Center, polar(43, 56)) <= 0.5,
-			"trove plaza fallback: the fallback trove stands on the same plaza spot (polar 43, r 56)", stall2 and stall2.Center and fmt("%.2f off", hdist(stall2.Center, polar(43, 56))) or "")
+		local spot = polar(TROVE_DEG, TROVE_R)
+		T.check(stall2 and stall2.Model and stall2.Model.Parent == folder.ShopFallback and typeof(stall2.Center) == "Vector3" and hdist(stall2.Center, spot) <= 0.5,
+			fmt("trove plaza fallback: the fallback trove stands on the same plaza spot (spot C, polar %d, r %d)", TROVE_DEG, TROVE_R),
+			stall2 and stall2.Center and fmt("%.2f off", hdist(stall2.Center, spot)) or "")
+		local pp = stall2 and stall2.Model and stall2.Model.PrimaryPart
+		local o = K.config().Lobby.Origin
+		T.check(pp ~= nil and pp.CFrame.LookVector:Dot(flat(o - pp.Position).Unit) > 0.99, "trove plaza fallback: ...facing the plaza centre",
+			pp and fmt("dot %.4f", pp.CFrame.LookVector:Dot(flat(o - pp.Position).Unit)) or "no PrimaryPart")
 		T.eq(#troveOf(folder), 1, "trove plaza fallback: exactly one SkyTrove in the lobby")
 		local sk = skippedWarns(cursor)
 		T.check(#sk == 0, "trove plaza fallback: no 'plaza decor skipped' warn on that build either", table.concat(sk, " | "))
