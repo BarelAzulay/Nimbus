@@ -161,7 +161,8 @@ K.PC = {
 	Crack1 = { Egg = 380, Word = 80 }, Crack3 = { Egg = 220, Word = 80 }, Col3 = 520,
 	R1 = { BannerY = 20, BannerH = 104, Word = 84, BannerMin = 320, BannerPad = 80, Gap = 8, Pet = 420, PetMin = 252, Ped = 90 / 420, NameGap = 16, NameH = 60, Name = 54, NoteGap = 4, NoteH = 32, Note = 24, NewW = 120, NewH = 44, New = 26 },
 	R3 = { BannerH = 70, Word = 56, BannerMin = 200, BannerPad = 60, Gap = 12, Pet = 300, PetMin = 180, PedW = 0.8, PedH = 0.18, NameGap = 12, NameH = 44, Name = 36, NoteGap = 4, NoteH = 52, Note = 20, NewW = 96, NewH = 36, New = 22 },
-	Bar = { Gap = 16, Text = 22, Skip = { 440, 300, 60 }, SkipReveal = { 360, 330, 60 }, Fast = { 280, 240, 52 }, Again = { 440, 400, 92 }, Done = { 220, 200, 92 }, Coin = 34, FastText = 22 },
+	-- (Fast is 56 tall: at the PC factor's floor of 0.8, 1280x720 / 1366x768, it is still a 44.8 px tap target)
+	Bar = { Gap = 16, Text = 22, Skip = { 440, 300, 60 }, SkipReveal = { 360, 330, 60 }, Fast = { 280, 240, 56 }, Again = { 440, 400, 92 }, Done = { 220, 200, 92 }, Coin = 34, FastText = 22 },
 }
 K.PHONE = {
 	TitleY = 6, TitleH = 28, TitleSize = 28, Side = 10,

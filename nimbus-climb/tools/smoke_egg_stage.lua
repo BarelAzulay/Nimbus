@@ -1144,6 +1144,14 @@ S.client_egg_stage_mobile = guarded("client_egg_stage_mobile", function()
 		end)
 		local b = bar and G.box(bar)
 		T.check(b ~= nil and b.y + b.h <= h - 12 - inset + 0.6, label .. ": the bottom bar sits above the bottom inset (12 px margin)", b and fmt("bar bottom %.1f of %d", b.y + b.h, h) or "no bar")
+		-- (Task 31, found in the evidence renders) every shown bar button is a 44 px tap target, the PC factor 0.8 included
+		for _, name in ipairs(BAR) do
+			local btn = bar and (bar:FindFirstChild(name) or bar:FindFirstChild(name, true))
+			if btn and (btn:IsA("TextButton") or btn:IsA("ImageButton")) and G.shown(btn) then
+				local s = btn.AbsoluteSize
+				T.check(math.min(s.X, s.Y) >= 44 - 0.6, label .. ": " .. name .. " is a 44 px tap target", fmt("%.1fx%.1f", s.X, s.Y))
+			end
+		end
 	end
 	local SIZES = {
 		{ 640, 360, true }, { 667, 375, true }, { 844, 390, true }, { 360, 640, true }, { 390, 844, true }, { 1280, 720, false }, { 1366, 768, false },
