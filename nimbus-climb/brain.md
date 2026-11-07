@@ -29,3 +29,13 @@ Read with [`ABSOLUTE_RULES.md`](ABSOLUTE_RULES.md) before working.
   (`Config.Daily.UnlockSeconds`, a hold so no streak day is lost), several pets in training shown on a mats row, and Mix lets
   the player choose which parent gives the normal attack and which the special (hybrid field `SpecialFrom`; old hybrids
   unchanged). Details in `BUILD_STATE.md`.
+- 2026-11-07: the lobby shop (branch `lobby-shop`, spec `docs/superpowers/specs/2026-11-07-lobby-shop-design.md` with the
+  owner's pitch answers in its section 16, plan `docs/superpowers/plans/2026-11-07-lobby-shop.md`): every roulette spin
+  hatches the egg of its rarity in a GUI-only cutscene (x1 / x3, Skip from the first frame, Fast hatch; the camera and
+  the character are never touched); one Shop window with a tab rail (Eggs, Gems, Packs, Passes, Boosts; the Robux Store
+  merged in, StoreController only forwards) opened from the pill, the walk-up Egg Guide prompt and the machines; the
+  owner's gem prices (spins 20 / 40 / 60 / 180, the Secret Roulette 500 at Mythic 60 / Secret 40 with the 7th-spin pity,
+  Celestial 2 % Secret); token-granting Robux products never sold to accounts restricted from paid random items; gems
+  drawn as cut gems (`UI/GemIcon`); the Sky Trove at spot C; a global leaderboard (Trophies, Pets found, Ring best) and
+  server-written titles (Top 10, Top 100, Creator = `DevService.IsOwner` only) with a Rank column; the altar portals lit.
+  No save session lock in this build (the 15 s gem settle hold covers gems). Details in `BUILD_STATE.md`.

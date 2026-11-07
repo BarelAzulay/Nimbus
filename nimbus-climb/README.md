@@ -6,7 +6,7 @@ A cosy, co-op **sky village** game for Roblox. You live in a floating stone-and-
 sky full of clouds. Five gates stand side by side in the **Gate Court** on the plaza: walk through the Obby gate with up to
 three friends and you get flown to a freshly generated **sky course** that you climb as a team (dash over gaps, dodge
 spinning bars, lightning and swinging beams, share checkpoints and pick each other back up). Along the way you collect
-**Cloud Tokens**, and back home you spend them on **pets** (from roulettes), fill your **Pet
+**Cloud Tokens**, and back home you spend them on **pets** (every roulette spin hatches an egg), fill your **Pet
 Index**, and build your own **tycoon home**: claim a plot at its gate, put your pets in your **Pet Garden**, where they
 roam the yard, eat at the Food Bowl and poop **Cloud Cash** (that is your **Cash**), grow berries on your **Berry
 Farm**, feed your pets at the Food Machine, **EVOLVE** them, train their battle skills, fuse them and prestige. Then
@@ -22,7 +22,10 @@ Machine (see [Tycoon homes](#tycoon-homes)), phase 3 added the **Battle Arena** 
 [What's new in phase 4](#whats-new-in-phase-4-pets-make-the-money)), and phase 5, the **Big Sky Update**, brings a new
 battle system, the Dungeon, the Gate Court, a simpler home and a whole new look (see
 [Phase 5: the Big Sky Update](#phase-5-the-big-sky-update)), and phase 6 brings back the cute voxel look with
-Blender models for everything (see [Phase 6: Blender models](#phase-6-blender-models)).
+Blender models for everything (see [Phase 6: Blender models](#phase-6-blender-models)). The lobby shop update puts
+every roulette, pack and pass into one **Shop**, turns every spin into an egg that hatches in a short cutscene, adds a
+global leaderboard with titles above the head and lights up the Storm Altar (see
+[The Shop, eggs and the leaderboard](#the-shop-eggs-and-the-leaderboard)).
 
 Every model is made in Blender (until the owner uploads them, the game builds the same shapes in code from plain
 parts; no toolbox models), and all text uses one small
@@ -30,6 +33,41 @@ parts; no toolbox models), and all text uses one small
 artwork (`Config.Art.StormfangImage`) and the optional sky, music, sound and icon ids the owner pastes into
 `src/shared/Config.lua` (see [Phase 5: owner checklist](#phase-5-owner-checklist)); until then the game uses its
 built-in sky, stays silent and draws emoji icons.
+
+## The Shop, eggs and the leaderboard
+
+- **One Shop for everything.** Press **Shop** in the top-left pill, walk up to the **Egg Guide** on the shop island and
+  press **E** ("Open" / "Shop"), or press **E** at a roulette machine (the Shop opens on that machine's card). A tab rail
+  on the left holds **Eggs**, **Gems**, **Packs**, **Passes** and **Boosts**: the old Cloud Shop and the Robux Store
+  are one window now (see [The Shop](#the-shop)).
+- **Every spin hatches an egg.** Each rarity is an egg, from the **Cloud Puff Egg** (Common) to the **Starry Night
+  Egg** (Secret), and the egg gives a random pet of its rarity. Spin once, or **x3** (three eggs for three times the
+  token price, one payment). The machines keep their prices and odds, every card shows its odds before you pay, and
+  the server decides every egg.
+- **The egg-opening cutscene.** The world dims behind it, the eggs slide past on a strip and stop on yours, the egg
+  rises onto a pedestal, shakes, glows through its cracks and bursts in rays and sparks inside a turning cloud ring,
+  then the pet appears with **SPIN AGAIN** and **DONE**. **Skip** works from the very first frame, and **Fast hatch**
+  makes the whole thing about three times shorter (saved with your profile). The camera and your character are never
+  touched. Legendary and better pulls get one line in the chat for everyone.
+- **The Secret Roulette's promise.** The 7th Secret Roulette spin in a row without a Secret always gives one, and its
+  card counts down ("Secret for sure in 3 more spins"). The **Celestial Roulette** now hatches a Secret at **2 %** a
+  spin too (see [Gems](#gems-and-the-secret-roulette)).
+- **Painted eggs.** Every egg in the windows is painted with its own motifs (a zigzag belt, stars, a crown, runes), with
+  sparkles and a glow from Rare up. The seven eggs on the Egg Guide's shelf are painted Blender models that turn
+  slowly, and the rare ones sparkle.
+- **Cut gems.** Every Gem in the game's windows is drawn as a cut gem with a shine, and a big gem spins on the Storm
+  Altar's deck where Gems are spent.
+- **The owner's gem prices** (Cloud 20, Storm 40, Sky 60, Celestial 180, the Secret Roulette 500) and the **XP Potion
+  for 100 Gems** in the Shop's Gems tab (see [Gems](#gems-and-the-secret-roulette)).
+- **The Sky Trove moved to the plaza:** on the west lawn between the two west benches by the Guide board, with a
+  bobbing "Join the group!" sign that disappears for you once you have claimed it (see [The Sky Trove](#the-sky-trove)).
+- **A global leaderboard** stands on the south lawn: the top 10 of all servers on three pages, **Trophies**, **Pets
+  found** and **Ring best**, with your own place under them. Tap a tab, or it turns by itself every 15 seconds.
+- **Titles above the head.** The global Trophies top 10 wear a rainbow **TOP 10** tag, the top 100 a gold **TOP 100**
+  tag, and the game's owner **CREATOR**. Roblox's player list gets a **Rank** column that says the same.
+- **The altar portals light up.** The Storm Altar gate in the Gate Court has a stone pad, a **Secret Roulette** pill and
+  a brighter vortex; on the altar the summon portal glows cyan with a turning summon ring and a beam into the sky, and
+  the way back is a standing green ring beside the landing.
 
 ## Phase 6: Blender models
 
@@ -274,9 +312,10 @@ or the VS Code "Rojo" extension are the easy ways to get it).
 - **After publishing an update, move the live servers to it.** Once people play the game, every time you publish
   a new version use **Migrate to Latest Update** on the Creator Hub (the steps are in
   [Publishing an update](#publishing-an-update-owner)).
-- **The Store needs Developer Products and passes.** Until you create them (see
-  [The Store: the owner's setup](#the-store-the-owners-setup)), the Store's items stay hidden and the window says
-  "The Store opens soon!". Everything else works without them: players still earn Gems by prestiging.
+- **The Shop's Robux items need Developer Products and passes.** Until you create them (see
+  [The Store: the owner's setup](#the-store-the-owners-setup)), the Packs, Passes and Boosts items stay hidden (an
+  empty tab says "The Shop opens soon!") and the Gem and Token packs say "Coming soon". Everything else works without
+  them: the Eggs tab spins with tokens and Gems, and players still earn Gems by prestiging.
 - Leave *StreamingEnabled* off. Everything else (sky, lighting, gravity, the village) is created by the scripts,
   so an empty baseplate is all you need. To test parties and duels use Test -> Clients and Servers with 2-4
   players (see [Testing battles in Studio](#testing-battles-in-studio-owner)).
@@ -355,7 +394,15 @@ ends it (it asks first). Your step is saved, so the tutorial continues where you
   | **Arena** | takes you to the Battle Arena island (see [Pet battles](#pet-battles)) |
   | **Storm Altar** | takes you to the Storm Altar island |
 
-- **The shop island** (follow the boardwalk): four roulette machines and the old item stall (boarded up, closed).
+  The Storm Altar gate stands on a stone pad like the Obby gate's, with a Secret Roulette pill on its sign and a
+  brighter vortex; the pad is only a landing spot, **Travel** at the gate is the way in.
+- **The Sky Trove** stands on the west lawn, between the two west benches by the Guide board, facing the plaza; a
+  "Join the group!" sign bobs over it until you have claimed it (see [The Sky Trove](#the-sky-trove)).
+- **The leaderboard** stands on the south lawn: a wooden board with a little roof that shows the top 10 of all servers
+  (see [The leaderboard and titles](#the-leaderboard-and-titles)).
+- **The shop island** (follow the boardwalk, its arch says "eggs & gems"): four roulette machines and, where the old
+  item stall stood, the **Egg Guide**: a board with the seven eggs on a turning shelf. Walk up to it and press **E**
+  ("Open" / "Shop"), or press **E** at a machine: both open the [Shop](#the-shop) on its Eggs tab.
 - **Six NPC pets** stand on the lawns around the plaza. Each one has a name tag; walk up and press **E** to
   talk. They cycle through a few tips each (Next / Close):
 
@@ -370,9 +417,10 @@ ends it (it asks first). Your step is saved, so the tutorial continues where you
 
 - **The Storm Altar** on its dark storm cloud at the village edge, with Stormfang prowling over the portal
   disc. Take its gate in the Gate Court or cross its bridge from the street, then press **E** at the altar to open
-  the gems-only **Secret Roulette** (see [Gems](#gems-and-the-secret-roulette)). To go back, step on the small
-  glowing **return portal** beside the landing and press **E** ("Travel / Plaza"): it puts you on the plaza in front
-  of the Storm Altar gate.
+  the gems-only **Secret Roulette** in the Shop (see [Gems](#gems-and-the-secret-roulette)). The summon portal glows
+  cyan, with a turning ring of crystal bars (the summon ring) and a beam of light into the sky you can see from the
+  plaza, and a big cut gem spins on the deck. To go back, walk to the standing green ring beside the landing (the
+  **return portal**) and press **E** ("Travel / Plaza"): it puts you on the plaza in front of the Storm Altar gate.
 - **Benches you can sit on.** Walk up to a lawn or garden bench and press **E** ("Sit"); two players fit on each
   bench, and jumping stands you up. While you sit, your pets lie down on the ground in front of you and get up
   again when you stand.
@@ -806,25 +854,31 @@ pad.
 
 ### Gems and the Secret Roulette
 
-**Gems** are the premium currency (shown on the HUD next to your tokens and Cash). You get them from every
-**Prestige**, from the daily gifts and by buying **Gem packs** with Robux in the **Store**'s **Currency** tab (the
-pill's **Shop**; the Cloud Shop's Gems tab has a **Robux Store** button that leads there; once the owner has created
-them, see below). You spend them on:
+**Gems** are the premium currency (shown on the HUD next to your tokens and Cash, drawn as a cut gem with a shine).
+You get them from every **Prestige**, from the daily gifts and by buying **Gem packs** with Robux in the
+[Shop](#the-shop)'s **Gems** tab (once the owner has created them, see below; the tab's ribbons show how many more Gems
+per Robux a pack gives than the smallest one). You spend them on:
 
 - **Roulette spins**, a premium way to roll, with the same odds as with tokens: Cloud 20, Storm 40, Sky 60 and
-  Celestial 180 Gems a spin.
-- **The Secret Roulette** at the **Storm Altar** (press **E** at the altar, or find it in the Shop's Gems tab):
-  500 Gems a spin, **Mythic 60 %, Secret 40 %**, and the 7th spin in a row without a Secret always gives one (about
-  1,215 Gems per Secret pet on average). It is the surest place for the four roulette Secret pets (Stormfang, Eclipse
+  Celestial 180 Gems a spin (the gem button on each machine card in the Shop's Eggs tab; gem spins are one egg at a
+  time, **x3** is for tokens).
+- **The Secret Roulette** at the **Storm Altar** (press **E** at the altar, or press its big card at the top of the
+  Shop's Eggs tab): 500 Gems a spin, **Mythic 60 %, Secret 40 %**, one egg at a time, and the 7th spin in a row
+  without a Secret always gives one; its card counts down ("Secret for sure in 3 more spins", on a phone "Secret in 3")
+  and the count is kept in your save (about 1,215 Gems per Secret pet on average). It is the surest place for the four roulette Secret pets (Stormfang, Eclipse
   Dragon, Obsidian Phoenix, Phantom Kitsune); the **Celestial Roulette** also hatches them at **2 %** a spin, with
   Cloud Tokens or Gems (that luck never counts toward the altar's 7th-spin promise). The three Boss Raid pets (Magma
   Cub and Hydralotl, Mythic with Secret-grade stats, and the Secret Rime Wyrmling) are in no roulette at all: they
   only drop in Boss Raids.
 - **Fusion Mixes** with Mythic (40 Gems) or Secret (100 Gems) pets.
-- **The XP Potion (30 min)** in the Store's Boosts tab: 100 Gems.
+- **The XP Potion (30 min)** in the Shop's Gems tab: 100 Gems for 30 minutes of x2 Pet XP, added to any potion time
+  you have. It is not sold while you own the x2 Pet XP pass (it would add nothing) or while 7 days of potion time are
+  already banked.
 
-The odds of every roulette are always one tap away (the odds list). Where Roblox does not allow paid random items
-for an account, the gem-priced roulettes and the Secret Roulette are hidden for that player and the altar says
+Right after you join, the gem buttons read **Loading...** for about 15 seconds while the game re-reads your saved Gems
+(a guard against spending the same Gems on two servers at once); token spins never wait. The odds of every roulette
+are printed on its card in the Shop's Eggs tab, so you see them before you pay. Where Roblox does not allow paid random
+items for an account, the gem spin buttons and the Secret Roulette read **Locked** for that player and the altar says
 it is not available on their account, and the Robux packs that give Cloud Tokens (the three Token packs and the Pro
 Pack) are not sold to them ("Token packs are not available on your account"; while Roblox has not answered yet:
 "Checking your account, try again in a moment"), because a token spin can now give a Secret. A purchase that was
@@ -832,10 +886,11 @@ already paid is always granted. Gem packs and everything else still work.
 
 ### The Store: the owner's setup
 
-Every Robux item of the Store is a **Developer Product** (bought as often as a player likes; the Starter Pack and the
+Every Robux item of the Shop is a **Developer Product** (bought as often as a player likes; the Starter Pack and the
 Pro Pack once per account) or a **Pass** (bought once, kept forever) that you, the owner, create on the Creator Hub.
-Until an item has a real id it stays hidden (id `0` means "not created yet"), and with nothing created the Store
-says "The Store opens soon!".
+Until an item has a real id it stays hidden (id `0` means "not created yet"; a Gem pack without an id shows its price
+with "Coming soon" and cannot be bought), and a Packs, Passes or Boosts tab with nothing created says "The Shop opens
+soon!".
 
 1. **Publish the game first** (File -> Publish to Roblox): passes and developer products belong to a published
    experience.
@@ -869,7 +924,7 @@ says "The Store opens soon!".
    join at once; with manual approval a player only gets "Your request is waiting for the group. Come back later!"),
    and paste its id into `Config.Trove.GroupId`. Until then the Trove's group row says "Coming soon".
 5. **Studio preview:** in Studio, and for the developer role (`Config.Dev`) on a live server, every Id `0` item and the
-   GroupId `0` Trove render with **PREVIEW** buttons that do nothing, so you can look at the whole Store before
+   GroupId `0` Trove render with **PREVIEW** buttons that do nothing, so you can look at the whole Shop before
    creating anything. Players never see an item without an id, and the server refuses to sell one either way.
 6. Rebuild the place file (or let Rojo sync it into Studio), publish, then use **Migrate to Latest Update** so every
    server runs the new ids (see [Publishing an update](#publishing-an-update-owner)).
@@ -889,11 +944,12 @@ and rewards nothing (Roblox cannot check a like).
 
 ### Selling Gems: the Gem pack ids
 
-The four Gem packs are Developer Products like the rest of the Store (they show in its **Currency** tab). Until a pack
-has a real id it stays hidden (id `0` means "not created yet"). Paste the ids into `Config.Gems.Products` in
-`src/shared/Config.lua`, one per pack. `Gems` is how many Gems the game grants for that product, `Name` is what the
-Store shows and `Robux` is the suggested price (only a suggestion for you and the sims: the price you set on the
-Creator Hub is what players pay):
+The four Gem packs are Developer Products like the rest of the Shop (they show in its **Gems** tab). Until a pack has
+a real id it cannot be bought (id `0` means "not created yet": the tile shows the suggested price and "Coming soon").
+Paste the ids into `Config.Gems.Products` in `src/shared/Config.lua`, one per pack. `Gems` is how many Gems the game
+grants for that product, `Name` is what the Shop shows and `Robux` is the suggested price (only a suggestion for you
+and the sims: the price you set on the Creator Hub is what players pay; once a pack has an id the Shop shows Roblox's
+real price, and its "+N%" ribbon and **BEST VALUE** follow the prices shown):
 
 ```lua
 Config.Gems = {
@@ -909,19 +965,57 @@ Config.Gems = {
 The gem prices of the roulettes (`Config.Gems.RouletteGemPrices`) and the Secret Roulette's price and odds
 (`Config.Gems.SecretRoulette`) are in the same table.
 
-## The Store, daily gifts and the Sky Trove
+## The Shop, daily gifts, the Sky Trove and the leaderboard
 
-Three things for players, none of which ever pops up by itself: nothing opens on join, nothing is announced in the
+Four things for players, none of which ever pops up by itself: nothing opens on join, nothing is announced in the
 middle of the screen, and there are no timers or "only N left" labels.
 
-### The Robux Store
+### The Shop
 
-Press **Shop** in the top-left pill. The **Store** window has five tabs: **Packs** (the Starter Pack until you buy it,
-then the Pro Pack), **Passes** (VIP, x2 Cash, x2 Pet XP), **Boosts** (XP potions), **Currency** (Cloud Tokens and Gem
-packs) and **Roulettes** (it opens the Cloud Shop with the roulette machines). Every card says exactly what you get
+One big window for everything you can buy. Open it with **Shop** in the top-left pill (it opens on the tab you used
+last this session, the Eggs tab the first time; press the pill again to close it), with **E** at the **Egg Guide** on
+the shop island ("Open" / "Shop", the Eggs tab), with **E** at a roulette machine (the Eggs tab, that machine's card
+outlined in gold), with **E** at the Storm Altar (the Secret Roulette's card) or with **Open Shop** in the Pets window.
+The header shows your Gems and Cloud Tokens. A **tab rail** on the left (on a portrait phone a row of tabs on top)
+holds **Eggs**, **Gems**, **Packs**, **Passes** and **Boosts**; a gold dot on Packs means the Starter Pack is on sale
+and you have not bought it. The Shop closes with Esc, its X or gamepad B, and it is closed during a match.
+
+- **Eggs:** the **Secret Roulette** on top (500 Gems, its odds, the "Secret for sure in N more spins" chip) and one card
+  per roulette machine (Cloud, Storm, Sky, Celestial): the machine with its eggs, the odds of every egg it can hatch,
+  **SPIN** and **x3** for Cloud Tokens and a button for one spin with Gems. A card without odds cannot spin. While a
+  spin waits for the server the cards dim; with no answer after about 7 seconds they come back with a short message.
+  On a computer the bottom of the rail holds the **Fast hatch** switch.
+- **Gems:** the four Gem packs (the Chest of Gems as the big card: "Chest: 1,950 gems buys 3 Secret spins + 2
+  Celestial spins"), each with a "+N%" ribbon for the Gems per Robux it adds over the smallest pack and **BEST VALUE**
+  on the best one; the **XP Potion (30 min)** for 100 Gems; and the three Token packs (1,500, 7,500 and 30,000 Cloud
+  Tokens, **BEST VALUE** on the best one, no % ribbon).
+- **Packs** (the Starter Pack until you buy it, then the Pro Pack), **Passes** (VIP, x2 Cash, x2 Pet XP) and **Boosts**
+  (the XP potions for Robux).
+
+**Hatching an egg.** A spin hides the Shop and plays the egg-opening cutscene: the world behind it dims (and blurs on
+High graphics), a strip of eggs slides past and stops on yours (the strip comes from the server, nothing is staged to
+look close), the egg rises onto a cloud-stone pedestal, shakes, glows through its cracks and bursts in rays and sparks
+inside a turning cloud ring (a gold flash for Legendary and better), and then the pet appears with its name and rarity,
+**SPIN AGAIN** and **DONE**. **x3** hatches three eggs side by side, cracking in the order the server rolled them. **Skip**
+(or Esc / gamepad B) jumps to the reveal at any moment, from the very first frame. **Fast hatch** (on the Eggs tab's
+rail and in the cutscene's bottom bar) shortens a single egg from about 5.8 to 1.9 seconds and x3 from 7.2 to 2.7; it is
+saved with your profile, so it follows you to other devices. The camera and your character are never touched: the
+cutscene even plays on through a respawn, and only DONE, an error, a match start or closing every window ends it. The
+Shop comes back after DONE. A pull that lands on a full stack (99) is never refused: you get another pet of the same
+rarity, or that rarity's Index Tokens when every pet of it is full. A Legendary, Mythic or Secret pull puts one line in
+the chat for everyone ("Sam hatched a Legendary Candy Unicorn!", the rarity word in its colour; Secret in a light
+violet that reads on the dark chat).
+
+**The eggs** (one per rarity): Cloud Puff Egg (Common), Breeze Egg (Uncommon), Raindrop Egg (Rare), Thunder Egg
+(Epic), Sunburst Egg (Legendary), Aurora Egg (Mythic) and Starry Night Egg (Secret). Each is painted with its own
+motifs (spots and dots, a zigzag belt, bands, a band of stars, a crown with gems, waves and swirls, stars and runes), and from Rare up it has a
+glow and a few sparkles that grow with the rarity. The same painted eggs, as Blender models, sit on the Egg Guide's
+shelf on the shop island: they turn slowly, the rare ones sparkle, and a soft light shines over the shelf.
+
+**Robux items.** Every card says exactly what you get
 ("Gets you: 1x Storm Tabby (Lv 5), $1,000 Cash, 1 h x2 Pet XP") and shows the price in Robux; Roblox asks you to
 confirm every purchase. Owned passes say Owned, a running potion shows its time left ("58 m left"), and an XP potion is
-dimmed while you own x2 Pet XP forever (a pass and a potion never add up to x4). The Store is closed during a match.
+dimmed while you own x2 Pet XP forever (a pass and a potion never add up to x4).
 The x2 passes count where you earn: x2 Cash when you scoop your home's Cash, in the Champion Ring and in the Dungeon;
 x2 Pet XP when your pets feed and fight. While a pass or a potion is on, small chips under the currency strips say so
 ("x2 Cash", "x2 XP · 58m"). VIP players get a gold `[VIP]` tag in chat and a crown over their head in the lobby.
@@ -951,10 +1045,30 @@ Every amount is shown as a number before you claim it.
 
 ### The Sky Trove
 
-A wooden chest on the shop island, where the old item stall stood. Walk up and press **Open**: join the game's group
+A wooden chest on the plaza's west lawn, between the two west benches beside the Guide board, facing the middle of the
+plaza (right of the avenue as you look from the spawn). A "Join the group!" sign bobs over it; once you have claimed
+the Trove the sign is hidden for you (other players still see theirs). Walk up and press **Open**: join the game's group
 from the Trove and it pays **$2,000 Cash and 200 Cloud Tokens**, once per player. If Roblox says you are not in the
 group yet, rejoin the game and open the Trove again. The second row only asks for a thumbs up on the game page and pays
 nothing.
+
+### The leaderboard and titles
+
+**The board** stands on the plaza's south lawn: a wooden notice board under a small roof. It shows the **top 10 of all
+servers** ("All players · all time") with their Roblox head pictures, on three pages: **Trophies**, **Pets found** and
+**Ring best** (the best Champion Ring round). Under the ten rows your own row says your value and your place ("You ·
+1,240 · #37", or "not in the top 100"). Tap a tab to switch pages; otherwise the board turns to the next page every 15
+seconds. The lists are read again every 4 minutes (the footer counts down). The board is drawn only within 80 studs.
+When the global lists cannot be read (no data store yet, or Roblox does not answer), it says "This server only" and
+shows the players in this server; the game never writes to the global lists from Studio. The trophy board inside the
+Battle Arena still shows this server's top 10 (see [Duels and trophies](#duels-and-trophies)).
+
+**Titles** come from the global Trophies list: places 1-10 wear a **TOP 10** tag above the head in a slowly moving
+rainbow ("TOP 10 · #3"), places 11-100 a gold **TOP 100** tag, and the game's owner (the creator of the experience, or
+the owner of its group) a cyan-violet **CREATOR** tag, which wins over a rank. Everybody sees everybody's title, except
+in battles; you see your own only when the camera is not in first person. Roblox's player list gets a **Rank** column
+that says the same ("Top 10", "Top 100", "Creator"; empty otherwise). Only the server writes titles: they change when
+the list is read again.
 
 ## Pet battles
 
@@ -1168,7 +1282,9 @@ Duel other players on the two **duel rings** in front of the colosseum. Both of 
   **2 times** stronger than the other (team power), the duel is a **practice duel**: a side toast says so, and
   nobody wins or loses trophies, tokens or XP. Practice duels are great for trying things out with a friend.
 - **The leaderboard:** the trophy board by the main gate and the **Leaders** tab of the Arena panel show the top 10
-  players in the server by trophies. Your trophies are saved.
+  players in the server by trophies. Your trophies are saved. The board on the lobby's south lawn shows the top 10 of
+  all servers, and the global top 10 and top 100 wear a title above the head (see
+  [The leaderboard and titles](#the-leaderboard-and-titles)).
 
 ### Boss Raids
 
@@ -1248,7 +1364,7 @@ A raid can drop one you do not have yet; they are in the Pet Index like every ot
 
 Every **3 hours** a **Double Rewards** hour starts (announced 2 minutes before, shown on the event board and on
 the countdown chip at the right edge): for **1 hour** every battle pays **x2 Cloud Tokens** (Dungeon rooms, duels and
-Boss Raids). x2 Cash / x2 Pet XP passes and XP potions are separate (the Store).
+Boss Raids). x2 Cash / x2 Pet XP passes and XP potions are separate (the Shop).
 
 ### The Champion Ring
 
@@ -1311,8 +1427,10 @@ Uncommon 6, Rare 5, Epic 3, Legendary 4, Mythic 4 and Secret 5 in the roulettes 
 outside them: Week Wisp (Epic, the seventh gift of a kept week) and Crown Phoenix (Legendary, the Pro Pack).
 The Legendaries are Candy Unicorn, Ember Phoenix, Sunbeam Bear and Twilight Dragon. The Mythics are Cloudy Dragon,
 Starlight Unicorn and two Boss Raid pets, Magma Cub and Hydralotl. The Secrets are Stormfang, Eclipse Dragon, Obsidian
-Phoenix, Phantom Kitsune and the third Boss Raid pet, Rime Wyrmling. Visit the **shop island** or
-press **Shop** in the top-left pill and open the Store's **Roulettes** tab, pick a roulette and spin. Duplicates stack (up to 99 per pet).
+Phoenix, Phantom Kitsune and the third Boss Raid pet, Rime Wyrmling. Press **Shop** in the top-left pill (or **E** at
+the Egg Guide or a machine on the **shop island**), pick a roulette on the Eggs tab and spin once or **x3**. Every spin
+hatches the egg of the rarity it rolled, and the egg gives a random pet of that rarity (see
+[The Shop](#the-shop)). Duplicates stack (up to 99 per pet).
 
 | Roulette | Price | Odds per spin (pets inside a rarity are equally likely) |
 |---|---|---|
@@ -1434,8 +1552,11 @@ never drops below 14 px on a phone.
   (only the tab stays; a red dot on it means a tile has news) and brings it back; the game remembers it until you
   leave. A tutorial step that points at a tile unfolds it. On phones the tiles wrap into two slim columns (three on
   very small phones) so nothing sits under your thumbstick. Windows close with Esc, the red X or gamepad B.
-- **Top-left pill:** **Shop** opens the Robux **Store** (packs, passes, potions, Tokens and Gems; its Roulettes tab
-  opens the Cloud Shop), **Travel** opens the portal to the lobby, the gear opens **Settings**.
+- **Top-left pill:** **Shop** opens the [Shop](#the-shop) (eggs, Gems, Tokens, packs, passes and potions; on the tab
+  you used last, Eggs the first time; press it again to close), **Travel** opens the portal to the lobby, the gear
+  opens **Settings**.
+- **Gems** are drawn as a cut gem with a shine everywhere (the HUD strip, the Shop, the Fusion Machine, the Dungeon and
+  Arena cards), not as a text symbol.
 - **Top-left:** party panel in the lobby (the obby level with its stars, the countdown, members, the **Leave** button
   and, for the leader, **CHANGE**), match panel (difficulty, timer, checkpoints, team) in a climb. The tutorial card
   sits below it.
@@ -1600,7 +1721,10 @@ Things only you can do, by hand, once. Steps 3 and 4 are optional; everything wo
    `HitEarth`, `HitStorm`, `HitCelestial`, `HitShadow`, `Crit`, the KO rotation `KO`, `KO2`, `KO3`, `KO4`, `Dash`,
    `Parry`, `PortalEnter`, `PortalArrive`, `StationBuild`, `HouseTier`, `DialogOpen`, `DialogBlip`, `DialogNext`,
    `TutorialStep`, the roulette's `SpinStart`, `SpinTick`, `SpinLand`, `RevealCommon`, `RevealRare`,
-   `RevealLegendary`, the Store's `StorePop`, `StoreBuy`, the daily gifts' `DailyWeek`, the Sky Trove's `TroveOpen`, and the wordless NPC voices `NpcSparkyFoxGreet`, `NpcSparkyFoxHmm`, `NpcSparkyFoxPleased`,
+   `RevealLegendary`, the egg-opening cutscene's `EggStripTick`, `EggStripLand`, `EggRise`, `EggShake`, `EggCrack`,
+   `EggBurst`, `EggCloudRing`, `EggRevealCommon`, `EggRevealEpic`, `EggRevealLegend`, `EggRevealSecret` (made, not
+   uploaded yet: until a key has its id the cutscene plays the sound named in `Config.Audio.Fallback` in its place, or
+   nothing), the Store's `StorePop`, `StoreBuy`, the daily gifts' `DailyWeek`, the Sky Trove's `TroveOpen`, and the wordless NPC voices `NpcSparkyFoxGreet`, `NpcSparkyFoxHmm`, `NpcSparkyFoxPleased`,
    `NpcCaptainPenguinGreet`, `NpcCaptainPenguinHmm`, `NpcCaptainPenguinPleased`, `NpcGrannyOwlGreet`,
    `NpcGrannyOwlHmm`, `NpcGrannyOwlPleased`, `NpcCoachCorgiGreet`, `NpcCoachCorgiHmm`, `NpcCoachCorgiPleased`,
    `NpcMayorPandaGreet`, `NpcMayorPandaHmm`, `NpcMayorPandaPleased`, `NpcProfessorAxolotlGreet`,
