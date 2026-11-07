@@ -18,7 +18,8 @@
 --                             server's save during the hold arrives through a rebase (ProfileRebased once, its listeners
 --                             still see false); a failed read retries every 5 s; with no store it is settled at 15 s with
 --                             no read; a provisional load waits for its recovery read (>= 20 s), which counts as the
---                             settle read; _SettleForTest settles at once; a gem Mix waits for the settle, a token Mix not
+--                             settle read; _SettleForTest settles at once; a gem Mix waits for the settle, a token Mix not;
+--                             part 2 (Task 4): a gem x1 / x3 spin waits for the settle (nothing charged), a token spin not
 --   client_fasthatch_setting  (client) ClientSettings knows FastHatch (default false, booleans only, the 0.4 s debounce,
 --                             one SettingsSet) and State.Settings() follows the snapshot's Settings.FastHatch
 -- White-box: the booted helpers of smoke_server.lua; "server B" is a second copy of DataService against the same mock
@@ -696,6 +697,46 @@ local function serverScenarios()
 				end
 			end
 			leave(s)
+
+			------------------------------------------------------------------------------------------------
+			-- part 2 (Task 4): gem-priced spins wait for the settle; token spins do not. The PolicyService double
+			-- allows the account, so the settle is the only hold
+			------------------------------------------------------------------------------------------------
+			local PetS = mod("PetService")
+			local PolS = game:GetService("PolicyService")
+			PolS.GetPolicyInfoForPlayerAsync = function()
+				return { ArePaidRandomItemsRestricted = false, IsPaidItemTradingAllowed = true }
+			end
+			local okSpin, errSpin = pcall(function()
+				local uidG = newUserId()
+				local g = join("SettleSpin", uidG)
+				players[#players + 1] = g
+				local cloudGems = Config.Gems.RouletteGemPrices.Cloud
+				D.AddTokens(g, 1000)
+				D.AddGems(g, 10 * cloudGems)
+				local function wallet()
+					local prof = D.GetProfile(g)
+					return D.GetTokens(g) .. "/" .. D.GetGems(g) .. "/" .. count(prof and prof.Pets) .. "/" .. tostring(prof and prof.Stats.Spins)
+				end
+				T.eq(D.GemsSettled(g), false, "gem settle spin: (precondition) not settled right after the join")
+				local before = wallet()
+				local ok1, why1 = PetS.BuyRoulette(g, "Cloud", "Gems")
+				local ok3, why3 = PetS.BuyRoulette(g, "Cloud", "Gems", 3)
+				T.check(ok1 == false and why1 == "Your data is still loading" and ok3 == false and why3 == "Your data is still loading",
+					"gem settle spin: before the settle a gem x1 and a gem x3 are refused 'Your data is still loading'", tostring(why1) .. " / " .. tostring(why3))
+				T.eq(wallet(), before, "gem settle spin: ...nothing charged or granted (tokens / gems / pets / spins)")
+				local t0, g0 = D.GetTokens(g), D.GetGems(g)
+				local okT = PetS.BuyRoulette(g, "Cloud")
+				T.check(okT == true and D.GetTokens(g) == t0 - Config.Roulettes[1].Price, "gem settle spin: ...a token spin before the settle is granted")
+				T.eq(D._SettleForTest(g), true, "gem settle spin: (setup) _SettleForTest(p)")
+				local okG = PetS.BuyRoulette(g, "Cloud", "Gems")
+				T.check(okG == true and D.GetGems(g) == g0 - cloudGems, "gem settle spin: ...after the settle the gem spin is granted (the settle was the only hold)", tostring(D.GetGems(g)))
+				leave(g)
+			end)
+			PolS.GetPolicyInfoForPlayerAsync = nil
+			if not okSpin then
+				error(errSpin, 0)
+			end
 		end)
 		DSt.Fail = false
 		DSt.Unavailable = false

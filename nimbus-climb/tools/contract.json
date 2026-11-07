@@ -323,6 +323,8 @@
       "functions": [
         "Init",
         "BuyRoulette",
+        "_SetRngForTest",
+        "_SetFaultForTest",
         "Equip",
         "Unequip",
         "GetEquipped",

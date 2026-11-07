@@ -1,20 +1,27 @@
 -- PetService: pet ownership, roulette purchases, equipping and pet perks (ARCHITECTURE_V2.md s.2).
 --
 --   PetService.Init(lobbyInfo, deps)         deps = { DataService = }
---   PetService.BuyRoulette(player, rouletteId, currency|nil) -> ok, result|reason
+--   PetService.BuyRoulette(player, rouletteId, currency|nil, spins|nil) -> ok, reply|reason
 --                                            currency: nil = the roulette's own ("Tokens"; the gems-only Secret
---                                            roulette: "Gems"), "Tokens" or "Gems" (also { Currency = ... })
+--                                            roulette: "Gems"), "Tokens" or "Gems" (also { Currency = ... });
+--                                            spins: nil = 1, only 1 or 3 (never 3 on a gems-only roulette): anything
+--                                            else answers "Bad spins". See "The money step" below.
+--   PetService._SetRngForTest(rollRng, stripRng)   Studio / the mock only: seeded generators (nil keeps the current)
+--   PetService._SetFaultForTest(stage, fn)         Studio / the mock only: fn() runs inside step 3 ("plan") or inside
+--                                            the step-6 refresh pcall ("after"); nil fn clears it
 --   PetService.Equip / Unequip(player, key)    -> ok, reason   (team balance: put a key in / take it out of the active
 --                                            team, through DataService.SetTeam: Equip fills the first empty slot)
 --   PetService.GetEquipped(player) -> {key...}
 --   PetService.GetPerks(player) -> {MaxHealth, TokenBonus, StaminaRegen, CheckpointHeal}
 --   PetService.GetTokenMultiplier(player) -> number >= 1
 --   PetService.PerksChanged                  Util.Signal, Fire(player)
---   PetService.Rolled                        Util.Signal, Fire(player, petId) after every successful roll (v3)
+--   PetService.Rolled                        Util.Signal, Fire(player, petId) after every successful roll (v3; once per
+--                                            pull of a request, after the reply)
 --   PetService.GrantPet(player, petId, opts) -> ok, result|reason   store (2026-11-04, spec 5.4): the ONE pet-grant path
 --                                            outside the roulette (the Store's packs, the daily gifts' Week Wisp). opts =
 --                                            { Count = n >= 1 (default 1), Level = n | nil }. Grants min(Count, MaxPerStack
---                                            - owned) Normal copies through the roll's own add path WITHOUT a spin: the
+--                                            - owned) Normal copies through the roll's own two parts (planCopies +
+--                                            writeCopies) WITHOUT a spin: the
 --                                            first-pet auto-equip, the Index discovery, SetPetLevel(max(current, Level)),
 --                                            MarkDirty, Refresh, Sync. result = { PetId, Key, Granted, Count, IsNew,
 --                                            NewDiscovery, Level }. Refused: not here, a save not loaded or provisional
@@ -58,6 +65,41 @@
 -- for a roulette without a gem price is refused before anything is charged. Secret pets only ever come out of a
 -- roulette with AllowSecret = true: a Secret result of any other roulette is refused (nothing charged). The
 -- BuyRoulette remote takes the optional currency as its second argument; RouletteResult gains Currency, Price, Gems.
+--
+-- The money step (lobby-shop spec 5.1 / 7): BuyRoulette(player, rouletteId, currency, spins) is ONE non-yielding step
+-- (no task.wait, DataStore or remote call) that never refuses after the roll:
+--   1. the checks, in order, with today's texts: a live player, a known roulette, the currency ("Unknown currency"),
+--      the spins count ("Bad spins"), not in a match, the profile loaded ("Your data is still loading"), a gem-priced
+--      spin only once DataService.GemsSettled (the server-hop settle hold, same text), GemService.Quote (the
+--      PolicyService lock, unchanged), the balance against Price = UnitPrice x spins (computed once, both currencies);
+--   2. the pulls, from RNG.Roll in order (roll(id, RNG.Roll): PetCatalog.RollPet, or the quote's GemService.RollPet
+--      for the Secret Roulette). A pull's rarity is its rolled pet's and never changes. A pet the player cannot hold
+--      another copy of (owned + earlier pulls of this request >= MaxPerStack) is re-picked uniformly with RNG.Roll from
+--      PetCatalog.RarityPool(id, rarity) minus the full pets; only when every pet of that rarity is full the pull keeps
+--      its pet and becomes a Substitute of that rarity's Config.Index.Rewards Tokens (Count = the full stack). The kept
+--      exception: a Secret pet out of a roulette without AllowSecret refuses the whole request "The roulette jammed, try
+--      again" (an impossible roll, before the charge);
+--   3. everything that can fail, before the charge, in a pcall: the grant plans (planCopies: IsNew, NewDiscovery,
+--      Count), PoolSize, the strips (buildStrip, RNG.Strip), the reply table; an error answers "The roulette jammed, try
+--      again" with nothing charged;
+--   4. one charge (SpendTokens / SpendGems of Price);
+--   5. plain writes: writeCopies per pull in order (the Pets counts, Discovered), AddTokens per substitute,
+--      Stats.Spins += spins, MarkDirty;
+--   6. after the step, each in its own pcall (a failure is logged and never undoes the grant): refreshPlayer, the first
+--      pet ever into the active team (SetTeam), one Sync, the RouletteResult reply, Rolled:Fire per pull (a substitute
+--      fires with its rolled pet), the announcement (per pull, Rare and up, until lobby-shop Task 6).
+-- Every accepted request is charged once and gets all its pulls; a refused request writes nothing. x3 costs exactly 3 x
+-- x1. The two generators (RNG.Roll for the pulls, RNG.Strip for the strips) are made once at Init with Util.NewRng()
+-- (Random.new() without a seed: engine seeded, never the clock, the user id or Stats.Spins, never sent), so the pulls
+-- of an x3 are independent and a strip says nothing about the roll generator.
+-- The reply (RouletteResult, and BuyRoulette's second value):
+--   { Ok = true, RouletteId, Currency, Spins, UnitPrice, Price = UnitPrice x Spins,
+--     Pulls = { { PetId, Key, Rarity, IsNew, NewDiscovery, Count, PoolSize, Strip = { petId x 40, the winner at 34 },
+--                 Pity = true|nil, Substitute = { Tokens } | nil }... },
+--     PetId, Key, IsNew, NewDiscovery, Count, Strip (pull 1 mirrored for older readers), Tokens, Gems (after the step) }
+--   The remote's failure answer: { Ok = false, Reason, RouletteId, Currency, Spins, Tokens, Gems }.
+-- The BuyRoulette remote (rouletteId, currency, spins): the 0.25 s cooldown first, then rouletteId a string <= 48 and
+-- spins nil / 1 / 3 (3 never on a gems-only roulette); anything else is dropped silently.
 --
 -- Everything is server authoritative: the client only sends ids, we validate ownership, prices,
 -- stack caps and slot limits, then write to the live profile and Sync it back.
@@ -166,6 +208,10 @@ local INFO_GAP = 0.5 -- EquippedInfo is written at most this often per player (l
 local remotesConnected = false
 local playersConnected = false
 local promptObjects = {}
+-- The money step's two server-wide generators (see the header): Roll for the pulls, Strip for the cosmetic strips.
+-- Made in Init (or at the first spin); PetService._SetRngForTest swaps them in Studio / the mock.
+local RNG = { Roll = nil, Strip = nil }
+local faults = {} -- [stage] = fn: PetService._SetFaultForTest (Studio / the mock only), "plan" (step 3) or "after" (step 6)
 
 local ZERO_PERKS = { MaxHealth = 0, TokenBonus = 0, StaminaRegen = 0, CheckpointHeal = 0 }
 
@@ -710,14 +756,16 @@ end
 -- Public API: roulette
 ----------------------------------------------------------------------
 
--- Cosmetic strip: STRIP_LENGTH pet ids drawn like real rolls (so it shows realistic rarities),
--- with the real result at WIN_INDEX. `roll` = the roulette's roll (PetCatalog.RollPet when nil).
-local function buildStrip(rouletteId, resultId, seed, roll)
-	local rng = Util.NewRng(seed)
+-- Cosmetic strip: STRIP_LENGTH pet ids drawn like real rolls (so it shows realistic rarities), with the real result at
+-- WIN_INDEX. `roll` = the roulette's roll (PetCatalog.RollPet when nil), always the plain call roll(id, RNG.Strip):
+-- never RNG.Roll and never forced, so a strip says nothing about the roll generator and a forced pull's strip shows the
+-- normal odds.
+local function buildStrip(rouletteId, resultId, roll)
+	RNG.Strip = RNG.Strip or Util.NewRng()
 	local strip = {}
 	for i = 1, STRIP_LENGTH do
 		local id = nil
-		local ok, rolled = pcall(roll or PetCatalog.RollPet, rouletteId, rng)
+		local ok, rolled = pcall(roll or PetCatalog.RollPet, rouletteId, RNG.Strip)
 		if ok and type(rolled) == "string" then
 			id = rolled
 		end
@@ -761,27 +809,40 @@ local function ownedAnyForm(profile, petId)
 	return n
 end
 
--- The one add path of a pet grant (the roll and PetService.GrantPet share it; nothing here yields): n Normal copies of
--- petId into the profile, the first pet ever into the active team's slot 1, the Index discovery (before the Sync, so the
--- snapshot shows it), the level raised to `level` when given (never lowered), MarkDirty, the perks / attributes, the
--- Sync. The caller checked the stack room and does its own spin / charge. -> { PetId, Key, Granted, Count, IsNew,
--- NewDiscovery, Level }
-local function addCopies(player, profile, petId, n, level)
-	local owned = profile.Pets[petId] or 0
-	local everOwned = ownedAnyForm(profile, petId)
-	local firstPetEver = totalPets(profile) == 0
-	profile.Pets[petId] = owned + n
-	if firstPetEver then
-		-- the first pet ever joins the active team's slot 1 (a provisional profile has no teams yet: its list becomes a
-		-- team once the recovery migrates it)
+-- The plan part of a pet grant (reads only, nothing written; the roll's step 3 and PetService.GrantPet): n Normal
+-- copies of petId on top of `before` copies of it this request planned already (`earlier` = every copy it planned).
+-- -> { PetId, Key, Granted, Count, IsNew, NewDiscovery, FirstPet }
+local function planCopies(profile, petId, n, before, earlier)
+	before, earlier = before or 0, earlier or 0
+	local discovered = type(profile.Discovered) == "table" and profile.Discovered[petId] == true
+	return {
+		PetId = petId,
+		Key = petId, -- the copy's key (a grant always adds Normal copies)
+		Granted = n,
+		Count = (profile.Pets[petId] or 0) + before + n,
+		IsNew = ownedAnyForm(profile, petId) + before == 0, -- "first time owned"
+		NewDiscovery = not discovered and before == 0,
+		FirstPet = totalPets(profile) + earlier == 0,
+	}
+end
+
+-- The write part (plain writes, nothing here yields or refuses; the caller checked the stack room and did its own spin /
+-- charge): the copies, the first pet ever into the active team's slot 1 (a provisional profile has no teams yet: into
+-- its Equipped list, which becomes a team once the recovery migrates it; the team's SetTeam only when `withTeam`: the
+-- roll runs it after its step), the Index discovery (before the caller's Sync, so the snapshot shows it), the level
+-- raised to `level` when given (never lowered), MarkDirty. -> newDiscovery, level (or nil)
+local function writeCopies(player, profile, plan, level, withTeam)
+	local petId = plan.PetId
+	profile.Pets[petId] = (profile.Pets[petId] or 0) + plan.Granted
+	if plan.FirstPet then
 		local team, preset = activeTeam(player)
 		if not team then
 			table.insert(profile.Equipped, petId)
-		elseif #team == 0 then
+		elseif withTeam and #team == 0 then
 			DataService.SetTeam(player, preset, { petId })
 		end
 	end
-	local newDiscovery = markDiscovered(player, petId) -- before the Sync, so the snapshot shows it in the Index
+	local newDiscovery = markDiscovered(player, petId)
 	local levelNow = nil
 	if type(level) == "number" and type(DataService.GetPetLevel) == "function" and type(DataService.SetPetLevel) == "function" then
 		local current = DataService.GetPetLevel(player, petId) or 1
@@ -791,77 +852,99 @@ local function addCopies(player, profile, petId, n, level)
 		end
 	end
 	DataService.MarkDirty(player)
-	refreshPlayer(player, false)
-	DataService.Sync(player)
-	return {
-		PetId = petId,
-		Key = petId,
-		Granted = n,
-		Count = owned + n,
-		IsNew = everOwned == 0,
-		NewDiscovery = newDiscovery,
-		Level = levelNow,
-	}
+	return newDiscovery, levelNow
 end
 
--- The roll every way of paying shares (Cloud Tokens, or Gems through GemService's quote).
--- Roll first (pure), then check the stack cap, then charge() -> ok, reason (must not yield): a capped pull costs
--- nothing, which is the same outcome as "charge, refund, fail". Nothing between the charge and the grant yields, so
--- check + charge + grant is atomic. Grants ONE Normal copy (key = petId). `roll` (optional) replaces
--- PetCatalog.RollPet(rouletteId, rng) for roulettes the catalog does not list (the gems-only Secret roulette).
--- `opts` = { AllowSecret = bool (only then may a Secret pet come out), Currency = "Tokens"|"Gems", Price = n }.
--- Returns ok, result|reason.
-local function rollAndGrant(player, profile, rouletteId, charge, roll, opts)
-	opts = type(opts) == "table" and opts or {}
-	local seed = (os.time() + player.UserId + profile.Stats.Spins + math.floor(os.clock() * 1000)) % 2147483647
-	local rolledOk, petId = pcall(roll or PetCatalog.RollPet, rouletteId, Util.NewRng(seed))
-	if not rolledOk or type(petId) ~= "string" then
-		return false, "The roulette jammed, try again"
+-- Step 2 of the money step (see the header): `spins` pulls from RNG.Roll in order, a full stack re-picked inside its
+-- rarity or turned into a Substitute, the AllowSecret guard. ctx = { Id, Roll, AllowSecret }.
+-- -> { { PetId, Rarity, Substitute = { Tokens } | nil }... } | nil, reason (nothing written either way)
+local function rollPulls(profile, ctx, spins)
+	RNG.Roll = RNG.Roll or Util.NewRng()
+	local pulls, taken = {}, {}
+	local function isFull(petId)
+		return (profile.Pets[petId] or 0) + (taken[petId] or 0) >= Config.Pets.MaxPerStack
 	end
-	local def = PetCatalog.Get(petId)
-	if not def then
-		return false, "The roulette jammed, try again"
+	for j = 1, spins do
+		local ok, petId = pcall(ctx.Roll, ctx.Id, RNG.Roll)
+		local def = ok and type(petId) == "string" and PetCatalog.Get(petId) or nil
+		if not def then
+			return nil, "The roulette jammed, try again"
+		end
+		if def.Rarity == SECRET_RARITY and ctx.AllowSecret ~= true then
+			-- Secret pets only come from a roulette with AllowSecret: never from any other one, whatever it rolled
+			return nil, "The roulette jammed, try again"
+		end
+		local pull = { PetId = petId, Rarity = def.Rarity }
+		if isFull(petId) then
+			local open = {}
+			for _, other in ipairs(PetCatalog.RarityPool(ctx.Id, def.Rarity)) do
+				if not isFull(other.Id) then
+					open[#open + 1] = other.Id
+				end
+			end
+			if #open > 0 then
+				local k = tonumber(RNG.Roll:Int(1, #open)) or 1
+				pull.PetId = open[math.max(1, math.min(#open, math.floor(k)))]
+			else
+				local reward = type(Config.Index) == "table" and type(Config.Index.Rewards) == "table" and Config.Index.Rewards[def.Rarity]
+				pull.Substitute = { Tokens = type(reward) == "table" and tonumber(reward.Tokens) or 0 }
+			end
+		end
+		if not pull.Substitute then
+			taken[pull.PetId] = (taken[pull.PetId] or 0) + 1
+		end
+		pulls[j] = pull
 	end
-	if def.Rarity == SECRET_RARITY and opts.AllowSecret ~= true then
-		-- Secret pets only come from the gems-only Secret roulette: never from any other one, whatever it rolled
-		return false, "The roulette jammed, try again"
-	end
-	local owned = profile.Pets[petId] or 0
-	if owned >= Config.Pets.MaxPerStack then
-		return false, "You already own the maximum of " .. def.Name
-	end
-	local charged, reason = charge()
-	if not charged then
-		return false, reason or "Not enough cloud tokens"
-	end
+	return pulls
+end
 
-	-- Nothing below yields, so the check + charge + grant is atomic. The spin is the roulette's own; the add path is
-	-- shared with GrantPet.
-	profile.Stats.Spins = profile.Stats.Spins + 1
-	local added = addCopies(player, profile, petId, 1, nil)
-
-	local result = {
+-- Step 3 (the caller runs it in a pcall; nothing written): each pull's grant plan, PoolSize and strip, and the reply
+-- (header). ctx = { Id, Currency, UnitPrice, Price, Roll }. -> reply, plans ([j] = planCopies' plan; nil for a substitute)
+local function planSpin(profile, ctx, pulls)
+	if faults.plan then
+		faults.plan()
+	end
+	local plans, out, before, earlier = {}, {}, {}, 0
+	for j, pull in ipairs(pulls) do
+		local petId = pull.PetId
+		local item = {
+			PetId = petId,
+			Key = petId,
+			Rarity = pull.Rarity,
+			PoolSize = #PetCatalog.RarityPool(ctx.Id, pull.Rarity),
+			Strip = buildStrip(ctx.Id, petId, ctx.Roll),
+			Pity = pull.Pity,
+			Substitute = pull.Substitute,
+		}
+		if pull.Substitute then
+			-- the stack is full: nothing is granted, the reveal shows the full stack
+			item.IsNew, item.NewDiscovery = false, false
+			item.Count = (profile.Pets[petId] or 0) + (before[petId] or 0)
+		else
+			local plan = planCopies(profile, petId, 1, before[petId], earlier)
+			item.IsNew, item.NewDiscovery, item.Count = plan.IsNew, plan.NewDiscovery, plan.Count
+			plans[j] = plan
+			before[petId] = (before[petId] or 0) + 1
+			earlier = earlier + 1
+		end
+		out[j] = item
+	end
+	local first = out[1]
+	return {
 		Ok = true,
-		RouletteId = rouletteId,
-		PetId = petId,
-		Key = petId, -- the copy's key (a roulette always grants a Normal copy)
-		IsNew = added.IsNew,
-		NewDiscovery = added.NewDiscovery,
-		Count = added.Count,
-		Tokens = DataService.GetTokens(player),
-		Strip = buildStrip(rouletteId, petId, seed + 7919, roll),
-	}
-	if opts.Currency then
-		result.Currency = opts.Currency -- what paid this spin ("Tokens" | "Gems") and how much
-		result.Price = opts.Price
-	end
-	if type(DataService.GetGems) == "function" then
-		result.Gems = DataService.GetGems(player)
-	end
-	fireClient("RouletteResult", player, result)
-	announcePull(player, def)
-	PetService.Rolled:Fire(player, petId)
-	return true, result
+		RouletteId = ctx.Id,
+		Currency = ctx.Currency,
+		Spins = #out,
+		UnitPrice = ctx.UnitPrice,
+		Price = ctx.Price,
+		Pulls = out,
+		PetId = first.PetId,
+		Key = first.Key,
+		IsNew = first.IsNew,
+		NewDiscovery = first.NewDiscovery,
+		Count = first.Count,
+		Strip = first.Strip,
+	}, plans
 end
 
 -- The optional currency of a spin: nil (the roulette's own), "Tokens" or "Gems" (any case; also { Currency = ... }).
@@ -901,14 +984,21 @@ local function gemsOnlyRoulette(rouletteId)
 	return nil
 end
 
--- A spin paid in Gems: GemService quotes it (gem price, PolicyService check, the roulette's roll), then the shared
--- roll charges the Gems and grants in one non-yielding step.
-local function buyWithGems(player, profile, rouletteId)
+-- The gem part of step 1: the settle hold (spec 5.2: a gem-priced spin waits for DataService.GemsSettled; fails closed
+-- when the call errors, skipped without that API), then GemService.Quote (gem price, PolicyService check, the
+-- roulette's roll; its texts, the lock unchanged). Fills ctx.UnitPrice / Roll / AllowSecret. -> ok, reason
+local function gemQuote(player, ctx)
+	if type(DataService.GemsSettled) == "function" then
+		local okSettle, settled = pcall(DataService.GemsSettled, player)
+		if not okSettle or settled ~= true then
+			return false, "Your data is still loading"
+		end
+	end
 	local gems = getGemService()
 	if not gems or type(gems.Quote) ~= "function" or type(DataService.SpendGems) ~= "function" or type(DataService.GetGems) ~= "function" then
 		return false, "Gem roulettes are not available right now"
 	end
-	local okQuote, ok, quote = pcall(gems.Quote, player, rouletteId)
+	local okQuote, ok, quote = pcall(gems.Quote, player, ctx.Id)
 	if not okQuote then
 		warn("[PetService] GemService.Quote errored: " .. tostring(ok))
 		return false, "Gem roulettes are not available right now"
@@ -920,64 +1010,153 @@ local function buyWithGems(player, profile, rouletteId)
 	if type(price) ~= "number" or price ~= price or price < 1 or price ~= math.floor(price) or price > 1e9 then
 		return false, "Gem roulettes are not available right now"
 	end
-	if DataService.GetGems(player) < price then
-		return false, "Not enough Gems"
-	end
-	local roll = type(quote.Roll) == "function" and quote.Roll or nil
-	return rollAndGrant(player, profile, rouletteId, function()
-		if DataService.SpendGems(player, price) then
-			return true
-		end
-		return false, "Not enough Gems"
-	end, roll, { AllowSecret = quote.AllowSecret == true, Currency = "Gems", Price = price })
+	ctx.UnitPrice = price
+	ctx.Roll = type(quote.Roll) == "function" and quote.Roll or ctx.Roll
+	ctx.AllowSecret = quote.AllowSecret == true
+	return true
 end
 
-function PetService.BuyRoulette(player, rouletteId, currency)
+-- The money step (see the header). Never yields; nothing refuses after the roll.
+function PetService.BuyRoulette(player, rouletteId, currency, spins)
+	-- step 1: the checks
 	if not isLivePlayer(player) then
 		return false, "Player unavailable"
 	end
 	if type(rouletteId) ~= "string" then
 		return false, "Unknown roulette"
 	end
+	local roulette = roulettes[rouletteId]
+	-- not a token roulette: a gems-only one (the Secret roulette) is paid in Gems even when no currency is named
+	local gemsOnly = not roulette and gemsOnlyRoulette(rouletteId) or nil
+	if not roulette and not gemsOnly then
+		return false, "Unknown roulette"
+	end
 	local paidWith = parseCurrency(currency)
 	if paidWith == false then
 		return false, "Unknown currency"
 	end
-	local roulette = roulettes[rouletteId]
-	if not roulette then
-		-- not a token roulette: a gems-only one (the Secret roulette) is paid in Gems even when no currency is named
-		local gemsOnly = gemsOnlyRoulette(rouletteId)
-		if not gemsOnly then
-			return false, "Unknown roulette"
-		end
+	if gemsOnly then
 		if paidWith == "Tokens" then
 			return false, tostring(gemsOnly.DisplayName or "That roulette") .. " takes Gems only"
 		end
 		paidWith = "Gems"
 	end
-	if player:GetAttribute(Config.Attr.InMatch) == true then
+	if spins == nil then
+		spins = 1
+	end
+	if (spins ~= 1 and spins ~= 3) or (spins == 3 and gemsOnly) then
+		return false, "Bad spins"
+	end
+	if inMatch(player) then
 		return false, "The shop is closed during a match"
 	end
-	if not PetCatalog or type(PetCatalog.RollPet) ~= "function" or type(PetCatalog.Get) ~= "function" then
+	if not PetCatalog or type(PetCatalog.RollPet) ~= "function" or type(PetCatalog.Get) ~= "function" or type(PetCatalog.RarityPool) ~= "function" then
 		return false, "Pets are unavailable right now"
 	end
 	local profile = DataService.GetProfile(player)
 	if not profile then
 		return false, "Your data is still loading"
 	end
-	if paidWith == "Gems" then
-		return buyWithGems(player, profile, rouletteId)
-	end
-	local price = roulette.Price
-	if DataService.GetTokens(player) < price then
-		return false, "Not enough cloud tokens"
-	end
-	return rollAndGrant(player, profile, rouletteId, function()
-		if DataService.SpendTokens(player, price) then
-			return true
+	local ctx = {
+		Id = rouletteId,
+		Currency = paidWith or "Tokens",
+		Roll = PetCatalog.RollPet, -- read now: tests that replace RollPet still steer the pulls
+		AllowSecret = roulette ~= nil and roulette.AllowSecret == true,
+		UnitPrice = roulette and roulette.Price,
+	}
+	if ctx.Currency == "Gems" then
+		local okQuote, reason = gemQuote(player, ctx)
+		if not okQuote then
+			return false, reason
 		end
-		return false, "Not enough cloud tokens"
-	end, nil, { AllowSecret = roulette.AllowSecret == true, Currency = "Tokens", Price = price })
+	end
+	ctx.Price = ctx.UnitPrice * spins -- computed once: the balance check and the charge use it
+	local poor = ctx.Currency == "Gems" and "Not enough Gems" or "Not enough cloud tokens"
+	local balance = ctx.Currency == "Gems" and DataService.GetGems(player) or DataService.GetTokens(player)
+	if balance < ctx.Price then
+		return false, poor
+	end
+
+	-- step 2: the pulls (the only refusal after them: the AllowSecret guard, still before the charge)
+	local pulls, why = rollPulls(profile, ctx, spins)
+	if not pulls then
+		return false, why
+	end
+
+	-- step 3: everything that can fail, before the charge
+	local okPlan, reply, plans = pcall(planSpin, profile, ctx, pulls)
+	if not okPlan or type(reply) ~= "table" then
+		warn("[PetService] spin plan failed (nothing charged): " .. tostring(reply))
+		return false, "The roulette jammed, try again"
+	end
+
+	-- step 4: one charge
+	local charged
+	if ctx.Currency == "Gems" then
+		charged = DataService.SpendGems(player, ctx.Price)
+	else
+		charged = DataService.SpendTokens(player, ctx.Price)
+	end
+	if not charged then
+		return false, poor
+	end
+
+	-- step 5: plain writes only
+	local firstPet = nil
+	for j, pull in ipairs(pulls) do
+		if pull.Substitute then
+			DataService.AddTokens(player, pull.Substitute.Tokens)
+		else
+			writeCopies(player, profile, plans[j], nil, false)
+			if plans[j].FirstPet then
+				firstPet = pull.PetId
+			end
+		end
+	end
+	profile.Stats.Spins = profile.Stats.Spins + spins
+	DataService.MarkDirty(player)
+
+	-- step 6: after the step, each in its own pcall (a failure is logged and never undoes the grant)
+	local after = {
+		{ "refresh", function()
+			reply.Tokens = DataService.GetTokens(player) -- the balances after the charge and the substitute tokens
+			reply.Gems = type(DataService.GetGems) == "function" and DataService.GetGems(player) or nil
+			if faults.after then
+				faults.after()
+			end
+			refreshPlayer(player, false)
+		end },
+		{ "team", function()
+			-- the first pet ever joins the active team's slot 1 (a provisional profile got it in its Equipped list)
+			local team, preset = activeTeam(player)
+			if firstPet and team and #team == 0 then
+				DataService.SetTeam(player, preset, { firstPet })
+			end
+		end },
+		{ "sync", function()
+			DataService.Sync(player)
+		end },
+		{ "reply", function()
+			fireClient("RouletteResult", player, reply)
+		end },
+	}
+	for _, pull in ipairs(pulls) do
+		after[#after + 1] = { "rolled", function()
+			PetService.Rolled:Fire(player, pull.PetId) -- a substitute pull fires with its rolled pet (tutorial, Index)
+		end }
+	end
+	for _, pull in ipairs(pulls) do
+		after[#after + 1] = { "announce", function()
+			announcePull(player, PetCatalog.Get(pull.PetId))
+		end }
+	end
+	for _, call in ipairs(after) do
+		local ok, err = pcall(call[2])
+		if not ok then
+			warn("[PetService] after a spin (" .. call[1] .. "): " .. tostring(err))
+		end
+	end
+	return true, reply
 end
 
 -- store (2026-11-04, spec 5.4): the one pet-grant path outside the roulette (see the header). Non-yielding; nothing
@@ -1015,7 +1194,45 @@ function PetService.GrantPet(player, petId, opts)
 	if room <= 0 then
 		return false, "Stack full"
 	end
-	return true, addCopies(player, profile, petId, math.min(count, room), level)
+	-- the roll's own two parts in a row (nothing yields), then the perks / attributes and the Sync
+	local plan = planCopies(profile, petId, math.min(count, room))
+	local newDiscovery, levelNow = writeCopies(player, profile, plan, level, true)
+	refreshPlayer(player, false)
+	DataService.Sync(player)
+	return true, {
+		PetId = petId,
+		Key = petId,
+		Granted = plan.Granted,
+		Count = plan.Count,
+		IsNew = plan.IsNew,
+		NewDiscovery = newDiscovery,
+		Level = levelNow,
+	}
+end
+
+-- Studio and the mock only (RunService:IsStudio(); false elsewhere): seeded generators for tests (anything with
+-- :Float(a, b) and :Int(a, b), e.g. Util.NewRng(seed)); nil keeps the current one.
+function PetService._SetRngForTest(rollRng, stripRng)
+	if not game:GetService("RunService"):IsStudio() then
+		return false
+	end
+	if rollRng ~= nil then
+		RNG.Roll = rollRng
+	end
+	if stripRng ~= nil then
+		RNG.Strip = stripRng
+	end
+	return true
+end
+
+-- Studio and the mock only: fn() runs inside the money step's step 3 (stage "plan", before the charge) or inside its
+-- step-6 refresh pcall (stage "after"); a nil fn clears that stage.
+function PetService._SetFaultForTest(stage, fn)
+	if not game:GetService("RunService"):IsStudio() or (stage ~= "plan" and stage ~= "after") then
+		return false
+	end
+	faults[stage] = type(fn) == "function" and fn or nil
+	return true
 end
 
 ----------------------------------------------------------------------
@@ -1035,15 +1252,22 @@ local function connectRemotes()
 	end
 	remotesConnected = true
 
-	-- BuyRoulette(rouletteId, currency|nil): currency "Tokens" / "Gems" (or nil: the roulette's own), see BuyRoulette
-	buyRemote.OnServerEvent:Connect(function(player, rouletteId, currency)
+	-- BuyRoulette(rouletteId, currency|nil, spins|nil): currency "Tokens" / "Gems" (or nil: the roulette's own), spins
+	-- nil / 1 / 3 (3 never on a gems-only roulette; anything else is dropped silently), see BuyRoulette
+	buyRemote.OnServerEvent:Connect(function(player, rouletteId, currency, spins)
 		if rateLimited(player, "BuyRoulette", REMOTE_COOLDOWN) then
 			return
 		end
 		if type(rouletteId) ~= "string" or #rouletteId > MAX_ID_LENGTH then
 			return
 		end
-		local ok, success, info = pcall(PetService.BuyRoulette, player, rouletteId, currency)
+		if spins ~= nil and spins ~= 1 and spins ~= 3 then
+			return
+		end
+		if spins == 3 and gemsOnlyRoulette(rouletteId) then
+			return
+		end
+		local ok, success, info = pcall(PetService.BuyRoulette, player, rouletteId, currency, spins)
 		if not ok then
 			warn("[PetService] BuyRoulette errored: " .. tostring(success))
 			success, info = false, "Something went wrong, try again"
@@ -1053,13 +1277,12 @@ local function connectRemotes()
 				Ok = false,
 				Reason = tostring(info),
 				RouletteId = rouletteId,
+				Currency = (parseCurrency(currency) == "Gems" or gemsOnlyRoulette(rouletteId)) and "Gems" or "Tokens",
+				Spins = spins or 1,
 				Tokens = DataService.GetTokens(player),
 			}
 			if type(DataService.GetGems) == "function" then
 				answer.Gems = DataService.GetGems(player)
-			end
-			if parseCurrency(currency) == "Gems" or gemsOnlyRoulette(rouletteId) then
-				answer.Currency = "Gems"
 			end
 			fireClient("RouletteResult", player, answer)
 		end
@@ -1197,6 +1420,9 @@ function PetService.Init(lobbyInfo, deps)
 	if not PetCatalog then
 		warn("[PetService] PetCatalog is missing: roulettes and equipping are limited")
 	end
+	-- the money step's generators: engine seeded once (Random.new() without a seed), never sent
+	RNG.Roll = RNG.Roll or Util.NewRng()
+	RNG.Strip = RNG.Strip or Util.NewRng()
 	connectRemotes()
 	connectPlayers()
 	buildPrompts(lobbyInfo)

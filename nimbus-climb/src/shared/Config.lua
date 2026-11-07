@@ -117,7 +117,7 @@ Config.Remotes = {
 	"LeaveParty", -- ()
 	"LeaveMatch", -- ()
 	"RequestProfile", -- ()  asks for a fresh ProfileSync
-	"BuyRoulette", -- (rouletteId:string)
+	"BuyRoulette", -- (rouletteId:string, currency:string|nil, spins:1|3|nil)
 	"EquipPet", -- (petId:string)
 	"UnequipPet", -- (petId:string)
 	"GoToSpot", -- ()

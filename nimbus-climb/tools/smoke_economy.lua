@@ -869,16 +869,60 @@ S.economy = guarded("economy", function()
 	end)
 	T.check(ok and res.IsNew == false and res.Count == 2 and prof.Pets[common] == 2, "pulling the same pet again stacks it (x2, not new)")
 	T.eq(#prof.Equipped, 1, "...and does not equip it again automatically")
-	-- stack cap: refunded / not charged, nothing added
-	prof.Pets[common] = Config.Pets.MaxPerStack
+	-- stack cap (lobby-shop spec 5.1: nothing refuses after the roll): a full pet is re-picked inside its rarity and the
+	-- spin is charged once; only when every pet of that rarity is full the pull pays the rarity's Index Tokens instead
+	local MAX = Config.Pets.MaxPerStack
+	prof.Pets[common] = MAX
+	local otherCommons = {} -- [petId] = the count before (0 = not owned)
+	for _, d in ipairs(PC.RarityPool(cloud.Id, "Common")) do
+		if d.Id ~= common then
+			otherCommons[d.Id] = prof.Pets[d.Id] or 0
+		end
+	end
 	local tokensBefore, spinsBefore = DataS.GetTokens(p), prof.Stats.Spins
+	local capped
 	withRoll(common, function()
-		ok, why = PS.BuyRoulette(p, cloud.Id)
+		ok, capped = PS.BuyRoulette(p, cloud.Id)
 	end)
-	T.eq(ok, false, "a pull that would exceed the stack cap (" .. Config.Pets.MaxPerStack .. ") fails")
-	T.eq(DataS.GetTokens(p), tokensBefore, "...and the price is refunded")
-	T.eq(prof.Pets[common], Config.Pets.MaxPerStack, "...the stack stays at the cap")
-	T.eq(prof.Stats.Spins, spinsBefore, "...and the spin is not counted")
+	T.eq(ok, true, "a pull into a full stack (" .. MAX .. ") is not refused after the roll (re-picked, charged)")
+	T.eq(DataS.GetTokens(p), tokensBefore - cloud.Price, "...the price is charged once")
+	T.eq(prof.Stats.Spins, spinsBefore + 1, "...the spin is counted (Stats.Spins + 1)")
+	T.eq(prof.Pets[common], MAX, "...the full stack stays at the cap")
+	local gained, gainedId = 0, nil
+	for id, n0 in pairs(otherCommons) do
+		local d = (prof.Pets[id] or 0) - n0
+		if d ~= 0 then
+			gained, gainedId = gained + d, id
+		end
+	end
+	local pull1 = type(capped) == "table" and type(capped.Pulls) == "table" and capped.Pulls[1] or nil
+	T.check(gained == 1 and pull1 ~= nil and pull1.PetId == gainedId and capped.PetId == gainedId and pull1.Substitute == nil,
+		"...another Common pet (of RarityPool minus the full one) gained one copy, and the reply names it", tostring(gainedId) .. " +" .. gained .. ", reply " .. tostring(pull1 and pull1.PetId))
+	-- every Common full: the pull keeps its pet and pays the Common Index Tokens after the one charge; no stack grows
+	for id in pairs(otherCommons) do
+		prof.Pets[id] = MAX
+	end
+	tokensBefore, spinsBefore = DataS.GetTokens(p), prof.Stats.Spins
+	withRoll(common, function()
+		ok, capped = PS.BuyRoulette(p, cloud.Id)
+	end)
+	pull1 = type(capped) == "table" and type(capped.Pulls) == "table" and capped.Pulls[1] or nil
+	local commonTokens = Config.Index.Rewards.Common.Tokens
+	T.check(ok == true and pull1 ~= nil and type(pull1.Substitute) == "table" and pull1.Substitute.Tokens == commonTokens and pull1.PetId == common and pull1.Count == MAX,
+		"every Common full: Pulls[1].Substitute.Tokens = " .. commonTokens .. " (the Common Index reward), the rolled pet kept, Count " .. MAX,
+		tostring(pull1 and pull1.Substitute and pull1.Substitute.Tokens))
+	T.eq(DataS.GetTokens(p), tokensBefore - cloud.Price + commonTokens, "...those tokens are added after the one charge")
+	T.eq(prof.Stats.Spins, spinsBefore + 1, "...and the spin is counted")
+	local grew = {}
+	for _, d in ipairs(PC.RarityPool(cloud.Id, "Common")) do
+		if prof.Pets[d.Id] ~= MAX then
+			grew[#grew + 1] = d.Id .. "=" .. tostring(prof.Pets[d.Id])
+		end
+	end
+	T.check(#grew == 0, "...no stack grows", table.concat(grew, ", "))
+	for id, n0 in pairs(otherCommons) do
+		prof.Pets[id] = (n0 > 0) and n0 or nil
+	end
 	prof.Pets[common] = 2
 
 	-- real RNG: many spins, always valid, exact accounting

@@ -23,8 +23,10 @@
 --                     Gems with a valid strip, not enough Gems, the Secret roulette takes Gems only, a forced Secret pull
 --                     (Stormfang: discovered, IsNew, auto-equipped as the first pet), real Secret pulls (Mythic / Secret,
 --                     strip from the Secret pool), a Secret result of a token roulette refused (both currencies, nothing
---                     charged), a gem pull into a full stack costs nothing, junk currencies, in a match, the remote
---                     (2nd argument, rate limit, junk), GemService.Roll
+--                     charged), a gem pull into a full stack re-picks inside its rarity and is charged (every Common full:
+--                     the substitute tokens; lobby-shop: nothing refuses after the roll), junk currencies, in a match, the
+--                     remote (2nd argument, rate limit, junk), GemService.Roll. Gem spins after a join first end the gem
+--                     settle hold (DataService._SettleForTest; p2gems_policy too)
 --   p2gems_altar      (booted) the Storm Altar prompt ("Summon"): opens the Shop on the Secret roulette for an allowed
 --                     account (OpenPanel to that player only, rate-limited, no toast), a side toast for a restricted
 --                     account, the phase 1 "awakens soon" toast while the account is still being checked, forged
@@ -781,6 +783,13 @@ S.p2gems_policy = guarded("p2gems_policy", function()
 		local failing = joinAs("GemPolicyDown", "error")
 		local odd = joinAs("GemPolicyOdd", "nofield")
 		players = { allowed, restricted, failing, odd }
+		-- lobby-shop: gem spins also wait for the gem settle hold after a join; it ends here so every refusal below is the
+		-- policy's own
+		local settled = true
+		for _, p in ipairs(players) do
+			settled = settled and DataS._SettleForTest(p) == true
+		end
+		T.check(settled, "gem policy: (setup) the gem settle hold ends for the four accounts (DataService._SettleForTest)")
 		T.eq(Gs.PolicyState(allowed), "Allowed", "gem policy: ArePaidRandomItemsRestricted = false -> Allowed")
 		T.eq(allowed:GetAttribute(ATTR), false, "gem policy: ...player attribute " .. ATTR .. " = false (the Shop may show gem roulettes)")
 		T.eq(Gs.PolicyState(restricted), "Restricted", "gem policy: ArePaidRandomItemsRestricted = true -> Restricted")
@@ -842,6 +851,7 @@ S.p2gems_policy = guarded("p2gems_policy", function()
 		-- a lookup that is still running
 		local slow = joinAs("GemPolicySlow", "slow", 0.5)
 		players[#players + 1] = slow
+		T.eq(DataS._SettleForTest(slow), true, "gem policy: (setup) the gem settle hold ends for the slow account")
 		setGems(slow, 100)
 		T.eq(Gs.PolicyState(slow), "Checking", "gem policy: while the lookup runs the account is unchecked")
 		local okSlow = PetS.BuyRoulette(slow, cloud.Id, "Gems")
@@ -887,6 +897,7 @@ S.p2gems_roulettes = guarded("p2gems_roulettes", function()
 		local p = joinAs("GemRoller", "allow")
 		players[#players + 1] = p
 		T.eq(Gs.PolicyState(p), "Allowed", "gem roulettes: (precondition) the roller's account may buy random items")
+		T.eq(DataS._SettleForTest(p), true, "gem roulettes: (setup) the gem settle hold ends (lobby-shop: gem spins wait for it after a join)")
 		local prof = profileOf(p)
 		setTokens(p, 0)
 
@@ -999,19 +1010,47 @@ S.p2gems_roulettes = guarded("p2gems_roulettes", function()
 			"gem roulettes: a roulette whose odds cannot be shown is not sold (nothing charged) and the Storm Altar does not offer it", tostring(altarState))
 		T.eq(Gs.SecretRouletteState(p), "Open", "gem roulettes: ...with its odds back the Secret roulette is open again")
 
-		-- a gem pull into a full stack costs nothing
-		local common = Pc.ListByRarity("Common")[1].Id
-		local savedCount = prof.Pets[common]
-		prof.Pets[common] = Config.Pets.MaxPerStack
+		-- a gem pull into a full stack re-picks inside the rarity and is charged (lobby-shop spec 5.1: nothing refuses after
+		-- the roll); with every Common full it pays the Common Index Tokens instead
+		local MAX = Config.Pets.MaxPerStack
+		local commons = Pc.RarityPool("Cloud", "Common")
+		local common = commons[1].Id
+		local saved = {}
+		for _, d in ipairs(commons) do
+			saved[d.Id] = prof.Pets[d.Id] or 0
+		end
+		prof.Pets[common] = MAX
 		Pc.RollPet = function()
 			return common
 		end
-		before = DataS.GetGems(p)
-		local okCap = PetS.BuyRoulette(p, "Cloud", "Gems")
+		advance(0.3)
+		before = wallet(p)
+		local okCap, resCap = PetS.BuyRoulette(p, "Cloud", "Gems")
+		local afterCap = wallet(p)
+		local pullCap = type(resCap) == "table" and type(resCap.Pulls) == "table" and resCap.Pulls[1] or nil
+		local grantedId = pullCap and pullCap.PetId
+		T.check(okCap == true and afterCap.Gems == before.Gems - gemPrice("Cloud") and afterCap.Spins == before.Spins + 1 and prof.Pets[common] == MAX
+			and grantedId ~= common and grantedId ~= nil and (prof.Pets[grantedId] or 0) == saved[grantedId] + 1 and pullCap.Substitute == nil,
+			"gem roulettes: a gem pull into a full stack (" .. MAX .. ") re-picks, charged: " .. tostring(gemPrice("Cloud")) .. " Gems once, Stats.Spins + 1, another Common granted",
+			tostring(type(resCap) == "table" and resCap.Reason or resCap) .. "; " .. tostring(grantedId))
+		for _, d in ipairs(commons) do
+			prof.Pets[d.Id] = MAX
+		end
+		advance(0.3)
+		before = wallet(p)
+		local okSub, resSub = PetS.BuyRoulette(p, "Cloud", "Gems")
+		local afterSub = wallet(p)
+		local pullSub = type(resSub) == "table" and type(resSub.Pulls) == "table" and resSub.Pulls[1] or nil
+		local subTokens = Config.Index.Rewards.Common.Tokens
+		T.check(okSub == true and pullSub ~= nil and type(pullSub.Substitute) == "table" and pullSub.Substitute.Tokens == subTokens and afterSub.Gems == before.Gems - gemPrice("Cloud")
+			and afterSub.Tokens == before.Tokens + subTokens and afterSub.Pets == before.Pets and afterSub.Spins == before.Spins + 1,
+			"gem roulettes: ...with every Common full the gem pull is charged and pays the substitute (" .. subTokens .. " Tokens), no stack grows",
+			tostring(type(resSub) == "table" and resSub.Reason or resSub))
 		Pc.RollPet = originalCatRoll
-		prof.Pets[common] = savedCount
+		for _, d in ipairs(commons) do
+			prof.Pets[d.Id] = (saved[d.Id] > 0) and saved[d.Id] or nil
+		end
 		DataS.MarkDirty(p)
-		T.check(okCap == false and DataS.GetGems(p) == before, "gem roulettes: a gem pull into a full stack (" .. Config.Pets.MaxPerStack .. ") is refused and costs nothing")
 
 		-- the remote: the currency is its 2nd argument, rate limited, junk answered without errors
 		local cloudPrice = gemPrice("Cloud")

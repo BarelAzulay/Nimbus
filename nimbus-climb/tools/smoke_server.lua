@@ -1773,7 +1773,68 @@ local function possiblePets(rouletteId)
 	return list
 end
 
--- ARCHITECTURE_V2.md section 2: RouletteResult { Ok, Reason, RouletteId, PetId, IsNew, Count, Tokens, Strip }
+-- ARCHITECTURE_V2.md section 2: RouletteResult { Ok, Reason, RouletteId, PetId, IsNew, Count, Tokens, Strip }; lobby-shop
+-- (spec 5.1 "The reply"): { Ok = true, RouletteId, Currency, Spins = 1|3, UnitPrice, Price = UnitPrice x Spins, Pulls = {
+-- { PetId, Key, Rarity, IsNew, NewDiscovery, Count, PoolSize, Strip (40, the winner at 34), Pity = true|nil, Substitute =
+-- { Tokens } | nil }... }, pull 1 mirrored at the top level (PetId, Key, IsNew, NewDiscovery, Count, Strip), Tokens, Gems,
+-- SecretPity = { Left = 1..7 } | nil }; a failure { Ok = false, Reason, RouletteId, Currency, Spins, Tokens, Gems }.
+local STRIP_CELLS, STRIP_WIN = 40, 34
+local function pullProblems(PC, rouletteId, pull, j, possible)
+	local p = {}
+	local tag = "Pulls[" .. j .. "]."
+	if type(pull) ~= "table" then
+		return { "Pulls[" .. j .. "] is " .. type(pull) }
+	end
+	local def = PC and isStr(pull.PetId) and PC.Get(pull.PetId) or nil
+	if not isStr(pull.PetId) or (PC and not def) then
+		p[#p + 1] = tag .. "PetId " .. tostring(pull.PetId)
+	end
+	if pull.Key ~= pull.PetId then
+		p[#p + 1] = tag .. "Key " .. tostring(pull.Key) .. " (a roll grants the Normal copy: Key = PetId)"
+	end
+	if def and pull.Rarity ~= def.Rarity then
+		p[#p + 1] = tag .. "Rarity " .. tostring(pull.Rarity) .. " (the pet is " .. tostring(def.Rarity) .. ")"
+	end
+	if not isBool(pull.IsNew) or not isBool(pull.NewDiscovery) or not isNum(pull.Count) or pull.Count < 1 then
+		p[#p + 1] = tag .. "IsNew / NewDiscovery / Count"
+	end
+	if PC and def and type(PC.RarityPool) == "function" and pull.PoolSize ~= #PC.RarityPool(rouletteId, def.Rarity) then
+		p[#p + 1] = tag .. "PoolSize " .. tostring(pull.PoolSize) .. " (not #RarityPool)"
+	end
+	if pull.Pity ~= nil and pull.Pity ~= true then
+		p[#p + 1] = tag .. "Pity " .. tostring(pull.Pity)
+	end
+	if pull.Substitute ~= nil and (type(pull.Substitute) ~= "table" or not isNum(pull.Substitute.Tokens) or pull.Substitute.Tokens < 0) then
+		p[#p + 1] = tag .. "Substitute is not { Tokens = n >= 0 }"
+	end
+	if type(pull.Strip) ~= "table" or #pull.Strip ~= STRIP_CELLS then
+		p[#p + 1] = tag .. "Strip has " .. tostring(type(pull.Strip) == "table" and #pull.Strip or pull.Strip) .. " entries (needs " .. STRIP_CELLS .. ")"
+	else
+		if pull.Strip[STRIP_WIN] ~= pull.PetId then
+			p[#p + 1] = tag .. "Strip[" .. STRIP_WIN .. "] is " .. tostring(pull.Strip[STRIP_WIN]) .. ", not the won pet " .. tostring(pull.PetId)
+		end
+		for i, id in ipairs(pull.Strip) do
+			if possible and not possible[id] then
+				p[#p + 1] = tag .. "Strip[" .. i .. "] = " .. tostring(id) .. " cannot come out of " .. tostring(rouletteId)
+				break
+			end
+		end
+	end
+	return p
+end
+
+local function sameStrip(a, b)
+	if type(a) ~= "table" or type(b) ~= "table" or #a ~= #b then
+		return false
+	end
+	for i = 1, #a do
+		if a[i] ~= b[i] then
+			return false
+		end
+	end
+	return true
+end
+
 function V.rouletteResult(r)
 	local PC = M["shared/PetCatalog"]
 	local p = {}
@@ -1784,29 +1845,51 @@ function V.rouletteResult(r)
 		p[#p + 1] = "Ok is " .. typeof(r.Ok)
 		return p
 	end
-	if r.Ok then
-		if not isStr(r.RouletteId) or not isStr(r.PetId) or not isBool(r.IsNew) or not isNum(r.Count) or r.Count < 1 or not isNum(r.Tokens) or r.Tokens < 0 then
-			p[#p + 1] = "RouletteId / PetId / IsNew / Count / Tokens"
+	if r.Spins ~= 1 and r.Spins ~= 3 then
+		p[#p + 1] = "Spins is " .. tostring(r.Spins) .. " (1 or 3)"
+	end
+	if r.Currency ~= "Tokens" and r.Currency ~= "Gems" then
+		p[#p + 1] = "Currency is " .. tostring(r.Currency)
+	end
+	if not isNum(r.Tokens) or r.Tokens < 0 or (r.Gems ~= nil and (not isNum(r.Gems) or r.Gems < 0)) then
+		p[#p + 1] = "Tokens / Gems balances"
+	end
+	if not isStr(r.RouletteId) then
+		p[#p + 1] = "RouletteId is " .. typeof(r.RouletteId)
+	end
+	if not r.Ok then
+		if not isStr(r.Reason) then
+			p[#p + 1] = "a failed spin needs a Reason string"
 		end
-		if type(r.Strip) ~= "table" or #r.Strip < 34 then
-			p[#p + 1] = "Strip has " .. tostring(type(r.Strip) == "table" and #r.Strip or r.Strip) .. " entries (needs >= 34)"
-		elseif PC and isStr(r.RouletteId) then
-			local possible = {}
-			for _, def in ipairs(possiblePets(r.RouletteId)) do
-				possible[def.Id] = true
-			end
-			if r.Strip[34] ~= r.PetId then
-				p[#p + 1] = "Strip[34] is " .. tostring(r.Strip[34]) .. ", not the won pet " .. tostring(r.PetId)
-			end
-			for i, id in ipairs(r.Strip) do
-				if not possible[id] then
-					p[#p + 1] = "Strip[" .. i .. "] = " .. tostring(id) .. " cannot come out of " .. tostring(r.RouletteId)
-					break
-				end
-			end
+		return p
+	end
+	if not isNum(r.UnitPrice) or r.UnitPrice < 1 or r.Price ~= r.UnitPrice * (isNum(r.Spins) and r.Spins or 0) then
+		p[#p + 1] = "UnitPrice " .. tostring(r.UnitPrice) .. " / Price " .. tostring(r.Price) .. " (Price = UnitPrice x Spins)"
+	end
+	if r.SecretPity ~= nil and (type(r.SecretPity) ~= "table" or not isNum(r.SecretPity.Left) or r.SecretPity.Left < 1 or r.SecretPity.Left > 7) then
+		p[#p + 1] = "SecretPity is not { Left = 1..7 }"
+	end
+	if type(r.Pulls) ~= "table" or #r.Pulls ~= r.Spins then
+		p[#p + 1] = "Pulls has " .. tostring(type(r.Pulls) == "table" and #r.Pulls or r.Pulls) .. " entries (needs Spins = " .. tostring(r.Spins) .. ")"
+		return p
+	end
+	local possible = nil
+	if PC and isStr(r.RouletteId) then
+		possible = {}
+		for _, def in ipairs(possiblePets(r.RouletteId)) do
+			possible[def.Id] = true
 		end
-	elseif not isStr(r.Reason) then
-		p[#p + 1] = "a failed spin needs a Reason string"
+	end
+	for j, pull in ipairs(r.Pulls) do
+		for _, why in ipairs(pullProblems(PC, r.RouletteId, pull, j, possible)) do
+			p[#p + 1] = why
+		end
+	end
+	-- pull 1 mirrored at the top level, for older readers
+	local first = r.Pulls[1]
+	if type(first) == "table" and not (r.PetId == first.PetId and r.Key == first.Key and r.IsNew == first.IsNew and r.NewDiscovery == first.NewDiscovery
+		and r.Count == first.Count and sameStrip(r.Strip, first.Strip)) then
+		p[#p + 1] = "the top level does not mirror Pulls[1] (PetId, Key, IsNew, NewDiscovery, Count, Strip)"
 	end
 	return p
 end
