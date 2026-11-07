@@ -3165,7 +3165,8 @@ end)
 -- fusion[:upgrade|:mix]  gui-redo Task 11: the Fusion Machine window (FusionController, card A) on the picker's collection
 --                       with 3 of the 5 Maple Fox copies on the team and 12,480 Cloud Tokens: upgrade (the default) = the stack of
 --                       Maple Fox copies -> the Golden Maple Fox, the team-copy note; mix = Maple Fox (Body) + Storm Tabby
---                       (Style) -> the NEW HYBRID card. The careui fusion[:mix] scene is replaced.
+--                       (Style) -> the NEW HYBRID card with the move choice "BS" (Task 12: Maple Fox's Flare, Storm Tabby's
+--                       Static Storm; the chips under the slots, the outcome lines). The careui fusion[:mix] scene is replaced.
 SCENARIOS.fusion = function(view)
 	view = tostring(view or ""):lower()
 	local snap = snapshot()
@@ -3198,7 +3199,13 @@ SCENARIOS.fusion = function(view)
 	advance(0.5)
 	local mix = view == "mix"
 	toClient("OpenPanel", "Fusion", { Tab = mix and "Mix" or "Upgrade", Key = "maple_fox", KeyB = mix and "storm_tabby" or nil })
-	advance(3)
+	advance(1)
+	if mix then
+		-- (Task 12) the move choice "BS": Maple Fox's normal attack (Flare), Storm Tabby's special (Static Storm)
+		local FC = req("client/Controllers/FusionController")
+		FC.SetMoves("maple_fox", "storm_tabby")
+	end
+	advance(2)
 end
 -- [gui-redo] end
 

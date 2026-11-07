@@ -8,9 +8,19 @@
 --                                       Station_FusionMachine model it was opened at }
 --   FusionController.Close()            closes our pet picker sheet and the window
 --   FusionController.IsOpen() -> bool,  FusionController.Plan() -> the preview the window shows ({ Ok, Reason, Action, Inputs,
---       ResultKey, ResultName, Rarity, Tier, Elements, Cost = { Currency, Amount }, Notes }),
+--       ResultKey, ResultName, Rarity, Tier, Elements, Cost = { Currency, Amount }, Notes; Mix: Moves, SpecialFrom,
+--       SameElement, MovesText }),
 --   FusionController.Select(keyA, keyB) picks pets like the sheet does (Upgrade: keyA; Mix: Body, Style; nil empties),
 --   FusionController.Fuse() (the FUSE! button), FusionController.Layout() -> "PC" | "Phone" | "Portrait",
+--   FusionController.SetMoves(attackKey, specialKey)   (Task 12) the Mix move choice: each argument must be the Body's or the
+--                                       Style's key (anything else is ignored); attackKey picks the parent of the normal
+--                                       attack (ignored when both parents share an element), specialKey the parent of the
+--                                       special
+--   FusionController.Moves() -> "BB" | "BS" | "SB" | "SS"   letter 1 = the normal attack's parent, letter 2 = the special's
+--                                       (B = Body, S = Style); "BB" = today's hybrid (the Body gives both)
+--   FusionController.MovesText(bodyKey, styleKey, moves) -> { Attack = { Element, Name }, Special = { Kind, Name } } | nil
+--                                       (pure: stage 0's names from the catalogs; nil for a hybrid / unknown / missing pet;
+--                                       junk or nil moves read as "BB")
 --   FusionController.Opened (fires the tab) / Closed (Util.Signal)
 --
 -- How it opens: E at the player's own Fusion Machine (the FusionPrompt HomeBuilder puts on Station_FusionMachine; other
@@ -30,6 +40,17 @@
 --            name; Pills: rarity, "Flame + Storm" in the hybrid's element order, finish), the Note (a reason, when there is
 --            one) and the Info line. Tapping a slot opens the picker (Mix context) with the other slot's species blocked
 --            ("In Body" / "In Style", every finish).
+--            The move choice (gui-redo Task 12, the owner's note): under each slot Chips_Body / Chips_Style hold an Attack
+--            chip (the pet's element attack, "<sword> Flare"; PC adds the element: "... . Flame") over a Special chip ("<star>
+--            Leaf Pounce"; PC adds the kind: "... . Pounce"), stage 0's names. In each pair exactly one chip is lit (attribute
+--            Lit, a gold border and a check badge); a tap on the other parent's chip moves that move to it. The choice
+--            follows the PET: the swap keeps each move with its pet (the letters flip), a new pet in either slot resets it to
+--            "BB". Two parents of one element: both attack chips lit and inactive (one element, no choice). The outcome in
+--            the owner's words, "Normal attack: Flame (Flare)" / "Special: Pounce (Leaf Pounce)": PC = OutcomeAttack and
+--            OutcomeSpecial inside the NEW HYBRID card between its name and its pills; phone = ONE Outcome line under the
+--            slot row (in the Info line's place; the kind words drop first when it is too wide, then it wraps inside its 40
+--            px, never cut) with a reason note in the right column; portrait = the Outcome line above the Note / Info line.
+--            The preview record is built by PetKeys.MixMoves like the server's (Elements order, SpecialFrom).
 --   both     the CostBar (the token icon and the price; PC: "You have 12,480 Cloud Tokens", red when short) and FUSE!
 --            (pulsing when it can fuse), a TipLine (PC on top; the phone's Upgrade at the bottom), the HintLine (3 s:
 --            window-local hints such as why FUSE! is grey, and the server's refusal), the Locked card (no Prestige / no
@@ -37,7 +58,7 @@
 -- No pet picked: opening the Upgrade tab opens the sheet by itself; Mix with an empty slot opens it for the first empty slot
 -- (Body first) and, after a pick, once more for the other one while it is still empty; closing the sheet without a pick ends
 -- that chain; nothing opens by itself when the context has no pet.
--- FUSE sends Remotes.Fusion("Upgrade", key) / ("Mix", body, style); the server checks everything again and answers with
+-- FUSE sends Remotes.Fusion("Upgrade", key) / ("Mix", body, style, moves); the server checks everything again and answers with
 -- Fusion:FireClient("Result", { Ok, Key, Name, Reason... }). On success the inputs fly into the result, a flash and a confetti
 -- burst, the new pet pops in with a NEW! tag, and glowing cubes burst out of the machine's output pod (client-only parts).
 --
@@ -45,8 +66,9 @@
 -- PC layout computed in the design box with the 1080p mock as its largest form; 820 x 330 at scale 1 on an 844 x 390 phone;
 -- one column on a portrait phone; UIScale "Fit") > Panel (UIScale "Pop": the 0.22 s Back-Out open) > Header (Icon, Title,
 -- Tab_Upgrade, Tab_Mix, TokenChip, GemChip, CloseButton), Body (TipLine, Stack > Copy1..3, CopiesText, Slot_Body, Plus,
--- SwapButton, Slot_Style, Arrow, Result, Pills > Pill_*, Note, Info, CostBar > CostLabel / CostIcon / Cost / Have, FuseButton,
--- HintLine, Locked, Flash, New). On a phone or a touch-only device the window hides Roblox's stick and jump
+-- SwapButton, Slot_Style, Chips_Body / Chips_Style > Attack / Special (> Check), Arrow, Result (> ... OutcomeAttack,
+-- OutcomeSpecial), Pills > Pill_*, Note, Info, Outcome, CostBar > CostLabel / CostIcon / Cost / Have, FuseButton, HintLine,
+-- Locked, Flash, New). On a phone or a touch-only device the window hides Roblox's stick and jump
 -- (MenuController.SetTouchHidden("Fusion")) and steps the menu column aside (SetColumnCovered); the cursor is free while it
 -- is shown (client/MouseLock). Pet looks are CloudUI.PetViewport (cached by what they show). Every number comes from the
 -- catalogs and the synced profile; the server decides. Plain Lua 5.1-compatible syntax only. All text goes through Theme roles.
@@ -90,6 +112,7 @@ end
 local PetKeys = safeRequire("PetKeys")
 local PetCatalog = safeRequire("PetCatalog")
 local TycoonCatalog = safeRequire("TycoonCatalog")
+local BattleCatalog = safeRequire("BattleCatalog") -- the move chips' names (ElementAttacks, Specials)
 
 local FusionController = {}
 FusionController.Opened = Util.Signal()
@@ -133,9 +156,19 @@ local K = {
 		CostHMin = 118, CostFull = 760, Bottom = 20, Gap = 14, FuseW = 320, FuseWNarrow = 280, FuseText = 44, HintH = 44, Hint = 20,
 		ResultW = 480, ResultH = 470, StackW = 400, StackH = 340, CopiesH = 36, CopiesText = 26, SlotW = 310, SlotH = 400,
 		Swap = 72, ArrowUp = 140, ArrowMix = 130, PillH = 38, PillText = 20, PillPad = 14, PillGap = 10,
+		-- (Task 12) the move chips under the Mix slots (56 design px tall at every PC size: 44.8 px on screen at the 0.8
+		-- factor), the shorter Mix slots above them, the two outcome lines in the NEW HYBRID card
+		ChipH = 56, ChipGap = 8, ChipTop = 12, ChipPad = 14, ChipText = 22, ChipMin = 18, Badge = 28, BadgeText = 20,
+		MixSlotH = 320, MixSlotMin = 120, OutH = 30, OutHMin = 26, OutText = 22,
 	},
-	PHONE = { Bottom = 48, LineH = 40, Text = 15, PillH = 30, PillPad = 8, PillGap = 6, CostH = 40, FuseH = 60, FuseHMin = 48, HintH = 36 },
+	PHONE = {
+		Bottom = 48, LineH = 40, Text = 15, PillH = 30, PillPad = 8, PillGap = 6, CostH = 40, FuseH = 60, FuseHMin = 48, HintH = 36,
+		ChipH = 44, ChipGap = 4, ChipTop = 4, ChipPad = 8, ChipText = 15, ChipMin = 15, Badge = 20, BadgeText = 15, OutMin = 14,
+	},
 }
+-- the Mix move choice: letter 1 = the parent of the normal attack, letter 2 = the parent of the special (B Body, S Style)
+local MOVES = { BB = true, BS = true, SB = true, SS = true }
+local FLIP = { BB = "SS", SS = "BB", BS = "SB", SB = "BS" } -- the same moves after the swap (Body and Style trade places)
 
 local Colors = Theme.Colors
 local C = {
@@ -172,6 +205,9 @@ local G = {
 	Close = "\226\156\149",
 	Dot = "\194\183",
 	Question = "?",
+	Sword = "\226\154\148", -- the normal attack chip
+	Star = "\226\152\133", -- the special chip
+	Check = "\226\156\148", -- the lit chip's badge
 }
 local NEXT_TIER = { Normal = "Golden", Golden = "Rainbow" }
 local TIER_RANK = { Normal = 1, Golden = 2, Rainbow = 3 }
@@ -182,6 +218,11 @@ local TEXTS = {
 	InfoPC = "Your hybrid gets its own random look. Hybrids are one of a kind and can't be fused again.",
 	InfoPhone = "Body first, then Style. Your hybrid gets its own random look.",
 	LockedSub = "Fuse 3 copies into a Golden or Rainbow pet, or mix two pets into a brand-new hybrid!",
+	-- the outcome of the move choice, in the owner's words
+	OutAttack = "Normal attack: %s (%s)", -- element, attack name
+	OutAttackShort = "Normal attack: %s",
+	OutSpecial = "Special: %s (%s)", -- kind, special name
+	OutSpecialShort = "Special: %s",
 }
 
 ----------------------------------------------------------------------
@@ -197,6 +238,8 @@ local S = {
 	UpKey = nil, -- Upgrade input key
 	MixA = nil, -- Mix: Body
 	MixB = nil, -- Mix: Style
+	Moves = "BB", -- Mix: the move choice (see MOVES); it belongs to the pair in MovesFor
+	MovesFor = {}, -- { body key, style key } the choice was made for (H.syncMoves)
 	Pending = nil, -- { Action, Token, At } while a request waits for the server
 	Animating = false,
 	Token = 0, -- bumps on every open / close (stale delayed callbacks check it)
@@ -217,7 +260,7 @@ local S = {
 	Warned = {},
 	Geo = {}, -- the laid-out boxes paint needs (pills, the note's box, ...)
 }
-local U = { Views = {}, Copies = {}, Slots = {}, PillList = {} }
+local U = { Views = {}, Copies = {}, Slots = {}, PillList = {}, Chips = {} }
 local H = {} -- helpers (one table: the module stays far below Lua's local limit)
 
 local function warnOnce(key, err)
@@ -467,6 +510,57 @@ function H.usageNotes(inputs)
 	return notes, nil
 end
 
+----------------------------------------------------------------------
+-- The Mix move choice (Task 12)
+----------------------------------------------------------------------
+-- the catalog defs of two regular pets (any finish), or nil (a hybrid, an unknown or a missing key)
+function H.mixDefs(bodyKey, styleKey)
+	local pa, pb = H.parse(bodyKey), H.parse(styleKey)
+	if not (pa and pb) or pa.HybridId or pb.HybridId then
+		return nil
+	end
+	local da, db = H.catalogDef(pa.PetId), H.catalogDef(pb.PetId)
+	if not (da and db) then
+		return nil
+	end
+	return da, db
+end
+
+-- The choice belongs to the two pets it was made for: the same pets the other way round (the swap) flip its letters, any
+-- other change of pets (a pick, Select, a fusion, a pet that left) resets it to "BB". Returns the current moves.
+function H.syncMoves()
+	local a, b = S.MixA, S.MixB
+	local was = S.MovesFor
+	if a ~= was[1] or b ~= was[2] then
+		if a ~= nil and b ~= nil and a == was[2] and b == was[1] then
+			S.Moves = FLIP[S.Moves] or "BB"
+		else
+			S.Moves = "BB"
+		end
+		S.MovesFor = { a, b }
+	end
+	if not MOVES[S.Moves] then
+		S.Moves = "BB"
+	end
+	return S.Moves
+end
+
+-- both parents share an element: the hybrid has one element, so the attack is no choice
+function H.sameElement()
+	local da, db = H.mixDefs(S.MixA, S.MixB)
+	return da ~= nil and da.Element ~= nil and da.Element == db.Element
+end
+
+-- a special kind's word ("Pounce", "Storm", ...)
+function H.kindWord(kind)
+	local specials = BattleCatalog and BattleCatalog.Specials
+	local s = type(specials) == "table" and kind ~= nil and specials[kind] or nil
+	if type(s) == "table" and type(s.Name) == "string" then
+		return s.Name
+	end
+	return tostring(kind or "")
+end
+
 -- The preview of the current selection (the same checks the server makes, in the same order).
 function H.computePlan()
 	local plan = { Ok = false, Action = S.Tab, Notes = {} }
@@ -515,6 +609,7 @@ function H.computePlan()
 		end
 	elseif S.Tab == "Mix" then
 		local a, b = S.MixA, S.MixB
+		H.syncMoves() -- (every change of pets is seen, also while a slot is empty)
 		local pa, pb = a and H.parse(a), b and H.parse(b)
 		plan.Inputs = {}
 		if pa then
@@ -551,21 +646,37 @@ function H.computePlan()
 				name = blended
 			end
 		end
-		local elements = {}
-		for _, e in ipairs({ baseA.Element, baseB.Element }) do
-			if type(e) == "string" and e ~= elements[1] then
-				elements[#elements + 1] = e
+		-- the move choice builds the record the way the server does (PetKeys.MixMoves): Elements in the attack parent's
+		-- order, SpecialFrom = "Style" when the Style gives the special
+		local moves = H.syncMoves()
+		local elements, specialFrom
+		if type(PetKeys.MixMoves) == "function" then
+			local okMoves, e, from = pcall(PetKeys.MixMoves, baseA, baseB, moves)
+			if okMoves and type(e) == "table" then
+				elements, specialFrom = e, from
 			end
 		end
-		local record = { Body = pa.PetId, Style = pb.PetId, Tier = tier, Rarity = rarity, Name = name, Elements = elements, Seed = K.PREVIEW_SEED }
+		if not elements then
+			elements = {}
+			for _, e in ipairs({ baseA.Element, baseB.Element }) do
+				if type(e) == "string" and e ~= elements[1] then
+					elements[#elements + 1] = e
+				end
+			end
+		end
+		local record = { Body = pa.PetId, Style = pb.PetId, Tier = tier, Rarity = rarity, Name = name, Elements = elements, Seed = K.PREVIEW_SEED, SpecialFrom = specialFrom }
 		local previewKey = PetKeys.HybridKey("preview", tier)
 		local okDef, def = pcall(PetKeys.DefOf, previewKey, { Hybrids = { preview = record } })
 		plan.ResultDef = okDef and def or nil
-		plan.ResultSig = "mix:" .. pa.PetId .. "+" .. pb.PetId .. "@" .. tostring(tier)
+		plan.ResultSig = "mix:" .. pa.PetId .. "+" .. pb.PetId .. "@" .. tostring(tier) .. "#" .. tostring(elements[1])
 		plan.ResultName = (tier ~= "Normal" and (tier .. " ") or "") .. name
 		plan.Rarity = rarity
 		plan.Tier = tier
 		plan.Elements = elements
+		plan.Moves = moves
+		plan.SpecialFrom = specialFrom
+		plan.SameElement = baseA.Element ~= nil and baseA.Element == baseB.Element
+		plan.MovesText = FusionController.MovesText(a, b, moves)
 		plan.Cost = H.costOf("Mix", rarity, nil)
 		if H.owned(a) < 1 or H.owned(b) < 1 then
 			plan.Reason = "You do not own those pets"
@@ -742,7 +853,7 @@ function H.ensureGui()
 	U.Gui = CloudUI.NewScreenGui("NimbusFusion", K.DISPLAY_ORDER)
 	U.Gui.IgnoreGuiInset = true
 	S.Built = false
-	U.Views, U.Copies, U.Slots, U.PillList = {}, {}, {}, {}
+	U.Views, U.Copies, U.Slots, U.PillList, U.Chips = {}, {}, {}, {}, {}
 	U.Gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
 		if S.Open then
 			safe("relayout", H.layout)
@@ -791,6 +902,32 @@ function H.petCard(parent, name, class, z)
 	item.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = card.Root })
 	item.View = { Art = item.Bob, Z = z + 1 }
 	return item
+end
+
+-- (Task 12) a move chip: its text on the button (inside ChipPad), a border (ChipStroke: gold when lit) and the Check badge
+-- that straddles its top-right corner; side = "Body" | "Style", which = "Attack" | "Special"
+function H.moveChip(parent, side, which)
+	local b = Util.Create("TextButton", {
+		Name = which, AutoButtonColor = false, BorderSizePixel = 0, BackgroundColor3 = C.Well, Text = "", ZIndex = 6, Parent = parent,
+	})
+	Theme.Style(b, "Body", { Size = 18, Stroke = 0.5, StrokeColor = C.Ink, Outline = 1.5, OutlineColor = C.Ink })
+	b.TextXAlignment = Enum.TextXAlignment.Left
+	b.TextTruncate = Enum.TextTruncate.AtEnd
+	Theme.Corner(b, UDim.new(0, 12))
+	local stroke = Theme.Stroke(b, C.WellEdge, 2, 0)
+	stroke.Name = "ChipStroke"
+	local pad = Util.Create("UIPadding", { Name = "ChipPad", Parent = b })
+	local check = label(b, "Check", "Heading", 15, {
+		Text = G.Check, BackgroundTransparency = 0, BackgroundColor3 = C.Gold, TextColor3 = C.Navy, ZIndex = 8, Visible = false,
+		TextTruncate = Enum.TextTruncate.None, TextXAlignment = Enum.TextXAlignment.Center,
+	})
+	Theme.Corner(check, UDim.new(0.5, 0))
+	Theme.Stroke(check, C.Navy, 2, 0)
+	pcall(NeonKit.AttachFx, b)
+	b.Activated:Connect(function()
+		safe("chip", H.onChip, side, which)
+	end)
+	return { Button = b, Stroke = stroke, Pad = pad, Check = check }
 end
 
 function H.build()
@@ -868,11 +1005,23 @@ function H.build()
 	U.Swap.Activated:Connect(function()
 		safe("swap", H.onSwap)
 	end)
+	-- Mix: the move chips under each slot (above the slots' layer, so a lit chip's badge may overlap a slot's edge)
+	for _, side in ipairs({ "Body", "Style" }) do
+		local grp = Util.Create("Frame", { Name = "Chips_" .. side, BackgroundTransparency = 1, BorderSizePixel = 0, Visible = false, ZIndex = 5, Parent = body })
+		U.Chips[side] = { Root = grp, Attack = H.moveChip(grp, side, "Attack"), Special = H.moveChip(grp, side, "Special"), Form = "pc" }
+	end
+	-- the outcome: the phone's one line (the PC's two lines live in the result card, below)
+	U.Outcome = label(body, "Outcome", "Body", 15, {
+		ZIndex = 4, Visible = false, TextColor3 = C.GoldLabel, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.None,
+	})
 	U.Arrow = label(body, "Arrow", "Title", 60, { ZIndex = 4, Text = G.Arrow, TextColor3 = C.Gold, TextScaled = true, TextTruncate = Enum.TextTruncate.None })
 	-- the result: big and glowing
 	U.Result = H.petCard(body, "Result", "Frame", 4)
 	U.Result.PetName.Name = "ResultName"
 	U.Result.Sub.Visible = false
+	for _, name in ipairs({ "OutcomeAttack", "OutcomeSpecial" }) do
+		U[name] = label(U.Result.Card.Body, name, "Body", 22, { ZIndex = 7, Visible = false, TextColor3 = C.GoldLabel })
+	end
 	U.Sparks = {}
 	for i = 1, 4 do
 		U.Sparks[i] = label(U.Result.Card.Body, "Spark" .. i, "Title", 34, { ZIndex = 9, Text = G.Spark, TextColor3 = Color3.fromRGB(255, 248, 208), TextTruncate = Enum.TextTruncate.None, Visible = false })
@@ -1040,12 +1189,13 @@ function H.layoutHeader()
 	U.TokenChip.TextSize, U.GemChip.TextSize = M.ChipText, M.ChipText
 end
 
--- the inside of a pet card (a copy, a slot or the result): pc = the PC proportions at factor k, else the phone's
-function H.layoutCard(item, w, h, pc, k, isResult)
+-- the inside of a pet card (a copy, a slot or the result): pc = the PC proportions at factor k, else the phone's;
+-- artMax (optional) caps the look's size (the shorter Mix slots keep their look clear of the name)
+function H.layoutCard(item, w, h, pc, k, isResult, artMax)
 	if pc then
 		place(item.Label, 0, 12 * k, w, 32 * k)
 		item.Label.TextSize = math.max(18, math.floor(26 * k + 0.5))
-		local a = math.min(w * 0.74, h * 0.6)
+		local a = math.min(w * 0.74, h * 0.6, artMax or math.huge)
 		place(item.Art, (w - a) / 2, 52 * k, a, a)
 		place(item.Placeholder, (w - a) / 2, 52 * k, a, a)
 		item.Placeholder.TextSize = math.min(100, math.max(40, math.floor(a * 0.42)))
@@ -1076,6 +1226,48 @@ function H.layoutCard(item, w, h, pc, k, isResult)
 		item.SubMax = 15
 	end
 	item.W, item.H, item.PC = w, h, pc
+end
+
+-- (Task 12) a slot's two move chips (Attack over Special) at x, y in the body, w wide; form = "pc" | "phone"
+function H.layoutChips(side, x, y, w, form)
+	local M = (form == "pc") and K.PC or K.PHONE
+	local g = U.Chips[side]
+	place(g.Root, x, y, w, 2 * M.ChipH + M.ChipGap)
+	for i, which in ipairs({ "Attack", "Special" }) do
+		local c = g[which]
+		place(c.Button, 0, (i - 1) * (M.ChipH + M.ChipGap), w, M.ChipH)
+		c.Pad.PaddingLeft, c.Pad.PaddingRight = UDim.new(0, M.ChipPad), UDim.new(0, M.ChipPad)
+		-- the badge's centre near the chip's top-right corner (the position is inside the padding: the right edge is w - pad)
+		local bs = M.Badge
+		c.Check.AnchorPoint = Vector2.new(0, 0)
+		c.Check.Position = UDim2.new(1, math.floor(M.ChipPad - bs * 0.75 + 0.5), 0, -math.floor(bs * 0.35 + 0.5))
+		c.Check.Size = UDim2.fromOffset(bs, bs)
+		c.Check.TextSize = M.BadgeText
+	end
+	g.Form, g.W, g.H = form, w, M.ChipH
+end
+
+-- (Task 12) the NEW HYBRID card on PC: the look, the name, the two outcome lines, then the pills; returns the pills' y
+-- inside the card
+function H.layoutResultMix(rw, rh, k)
+	local P = K.PC
+	local item = U.Result
+	local pillH = math.max(30, P.PillH * k)
+	local lineH = math.max(P.OutHMin, P.OutH * k)
+	local pillsY = rh - 14 * k - pillH
+	local specialY = pillsY - 4 * k - lineH
+	local attackY = specialY - lineH
+	local nameH = math.max(28, 44 * k)
+	local nameY = attackY - 2 * k - nameH
+	local a = math.max(40, math.min(rw * 0.74, nameY - 4 - 52 * k))
+	place(item.Art, (rw - a) / 2, 52 * k, a, a)
+	place(item.Placeholder, (rw - a) / 2, 52 * k, a, a)
+	item.Placeholder.TextSize = math.min(100, math.max(40, math.floor(a * 0.42)))
+	place(item.PetName, 6, nameY, rw - 12, nameH)
+	place(U.OutcomeAttack, 10, attackY, rw - 20, lineH)
+	place(U.OutcomeSpecial, 10, specialY, rw - 20, lineH)
+	S.Geo.Outcome = { W = rw - 20, Max = math.max(18, math.floor(P.OutText * k + 0.5)), Min = 18 }
+	return pillsY, pillH
 end
 
 function H.layoutPC(W, B)
@@ -1116,19 +1308,28 @@ function H.layoutPC(W, B)
 	local rw, rh = P.ResultW * k, P.ResultH * k
 	local rx
 	if mix then
-		local sw, sh = P.SlotW * k, P.SlotH * k
-		place(U.Slots.Body.Root, x0, cy - sh / 2, sw, sh)
+		-- (Task 12) each slot over its two move chips (the chips keep their 56 px; the slot gives up the height), the column
+		-- centred on the row like the result
+		local sw = P.SlotW * k
+		local chipsH = P.ChipTop + 2 * P.ChipH + P.ChipGap
+		local sh = math.max(P.MixSlotMin, math.min(P.MixSlotH * k, rowH - chipsH))
+		local top = cy - (sh + chipsH) / 2
+		local sc = top + sh / 2 -- the slots' centre: the plus and the swap button sit on it
+		place(U.Slots.Body.Root, x0, top, sw, sh)
 		local swap = math.max(56, P.Swap * k)
 		local sx = x0 + sw + 22 * k + (P.Swap * k - swap) / 2
-		place(U.Plus, sx, cy - 50 * k - swap / 2, swap, swap)
+		place(U.Plus, sx, sc - 50 * k - swap / 2, swap, swap)
 		U.Plus.TextSize = math.max(28, math.floor(40 * k))
-		place(U.Swap, sx, cy + 46 * k - swap / 2, swap, swap)
+		place(U.Swap, sx, sc + 46 * k - swap / 2, swap, swap)
 		U.Swap.TextSize = math.max(26, math.floor(34 * k))
-		place(U.Slots.Style.Root, x0 + (P.SlotW + 44 + P.Swap) * k, cy - sh / 2, sw, sh)
+		local styleX = x0 + (P.SlotW + 44 + P.Swap) * k
+		place(U.Slots.Style.Root, styleX, top, sw, sh)
 		for _, item in pairs(U.Slots) do
 			item.Sub.Visible = true
-			H.layoutCard(item, sw, sh, true, k, false)
+			H.layoutCard(item, sw, sh, true, k, false, sh - 138 * k - 6)
 		end
+		H.layoutChips("Body", x0, top + sh + P.ChipTop, sw, "pc")
+		H.layoutChips("Style", styleX, top + sh + P.ChipTop, sw, "pc")
 		local ax = x0 + (2 * P.SlotW + 44 + P.Swap + 30) * k
 		place(U.Arrow, ax, cy - P.ArrowMix * k / 2, P.ArrowMix * k, P.ArrowMix * k)
 		rx = ax + (P.ArrowMix + 30) * k
@@ -1149,8 +1350,12 @@ function H.layoutPC(W, B)
 	place(U.Result.Root, rx, ry, rw, rh)
 	H.layoutCard(U.Result, rw, rh, true, k, true)
 	H.layoutSparks(rw, rh, 34 * k)
-	-- the pills inside the result card, under its name
-	S.Geo.Pills = { X = rx + 8, Y = ry + 404 / 470 * rh, W = rw - 16, MaxH = math.max(30, P.PillH * k), H = math.max(30, P.PillH * k),
+	-- the pills inside the result card, under its name (Mix: under the two outcome lines)
+	local pillsY = 404 / 470 * rh
+	if mix then
+		pillsY = H.layoutResultMix(rw, rh, k)
+	end
+	S.Geo.Pills = { X = rx + 8, Y = ry + pillsY, W = rw - 16, MaxH = math.max(30, P.PillH * k), H = math.max(30, P.PillH * k),
 		Text = P.PillText, Min = 18, Pad = P.PillPad, Gap = P.PillGap, Center = true }
 	place(U.Hint, P.Pad + 40, B - P.HintH - 10, W - 2 * P.Pad - 80, P.HintH)
 	U.Hint.TextSize = P.Hint
@@ -1248,30 +1453,34 @@ function H.layoutPhone(W, B)
 	local colX
 	local resW, resH = math.max(136, (mix and 176 or 184) * kx), math.min(206, rowH)
 	if mix then
+		-- (Task 12) each slot over its two move chips; the slot gives up the height the chips need
 		local sw = math.max(100, 130 * kx)
-		local sh = math.min(172, rowH - 12)
+		local sh = math.min(172, rowH - (P.ChipTop + 2 * P.ChipH + P.ChipGap))
 		local swap = 44
 		local x = 14
-		place(U.Slots.Body.Root, x, rowTop + 4, sw, sh)
-		place(U.Swap, x + sw + 8, rowTop + 4 + (sh - swap) / 2, swap, swap)
+		local styleX = x + sw + 16 + swap
+		place(U.Slots.Body.Root, x, rowTop, sw, sh)
+		place(U.Swap, x + sw + 8, rowTop + (sh - swap) / 2, swap, swap)
 		U.Swap.TextSize = 24
 		U.Plus.Visible = false
-		place(U.Slots.Style.Root, x + sw + 16 + swap, rowTop + 4, sw, sh)
+		place(U.Slots.Style.Root, styleX, rowTop, sw, sh)
 		for _, item in pairs(U.Slots) do
 			item.Sub.Visible = true
 			H.layoutCard(item, sw, sh, false, kx, false)
 		end
+		H.layoutChips("Body", x, rowTop + sh + P.ChipTop, sw, "phone")
+		H.layoutChips("Style", styleX, rowTop + sh + P.ChipTop, sw, "phone")
 		local aw = math.max(34, 46 * kx)
 		local ax = x + 2 * sw + 24 + swap
 		local rx = ax + aw + 8
 		place(U.Arrow, ax, rowTop + resH / 2 - aw / 2, aw, aw)
 		place(U.Result.Root, rx, rowTop, resW, resH)
 		colX = rx + resW + 12
-		-- the bottom line: the Info, or the Note in its place when there is a reason
+		-- the bottom line: the Outcome when both pets are picked, else the Info (a reason note goes to the right column)
 		place(U.Info, 14, bottomY, W - 28, P.LineH)
-		place(U.Note, 14, bottomY, W - 28, P.LineH)
+		place(U.Outcome, 14, bottomY, W - 28, P.LineH)
 		S.Geo.Info = { W - 28, P.LineH, P.Text, 15 }
-		S.Geo.Note = { W - 28, P.LineH, P.Text, 15 }
+		S.Geo.Outcome = { W = W - 28, H = P.LineH, Max = P.Text, Min = P.OutMin }
 	else
 		local stW = 190 * kx
 		local copiesH = 22
@@ -1301,6 +1510,11 @@ function H.layoutPhone(W, B)
 	local pillsTop = rowTop + 4
 	if mix then
 		S.Geo.Pills = { X = colX, Y = pillsTop, W = colW, MaxH = costY - 6 - pillsTop, H = P.PillH, Text = P.Text, Min = 15, Pad = P.PillPad, Gap = P.PillGap }
+		-- (Task 12) a reason note sits under one row of pills (H.paint keeps the pills to that row while a note shows)
+		local ny = pillsTop + P.PillH + 6
+		place(U.Note, colX, ny, colW, costY - 6 - ny)
+		S.Geo.Note = { colW, costY - 6 - ny, P.Text, 15 }
+		S.Geo.MixCol = { PillsAll = costY - 6 - pillsTop, PillsNote = P.PillH }
 	else
 		S.Geo.Pills = { X = colX, Y = pillsTop, W = colW, MaxH = P.PillH, H = P.PillH, Text = P.Text, Min = 15, Pad = P.PillPad, Gap = P.PillGap }
 		-- the note between the pills and the cost (it moves up when the pills take one row less)
@@ -1324,12 +1538,16 @@ function H.layoutPortrait(W, B)
 	place(U.CostBar.Root, pad, fuseY, W - 2 * pad - fuseW - 8, fuseH)
 	H.layoutCost(W - 2 * pad - fuseW - 8, fuseH, "portrait")
 	local lineY = fuseY - 8 - P.LineH
-	local pillsY = lineY - 6 - P.PillH
+	-- (Task 12) Mix: the Outcome line above the Note / Info line
+	local outY = lineY - 4 - P.LineH
+	local pillsY = (mix and outY or lineY) - 6 - P.PillH
 	S.Geo.Pills = { X = pad, Y = pillsY, W = W - 2 * pad, MaxH = P.PillH, H = P.PillH, Text = P.Text, Min = 15, Pad = P.PillPad, Gap = P.PillGap, Center = true }
 	place(U.Note, pad, lineY, W - 2 * pad, P.LineH)
 	S.Geo.Note = { W - 2 * pad, P.LineH, P.Text, 15 }
 	place(U.Info, pad, lineY, W - 2 * pad, P.LineH)
 	S.Geo.Info = { W - 2 * pad, P.LineH, P.Text, 15 }
+	place(U.Outcome, pad, outY, W - 2 * pad, P.LineH)
+	S.Geo.Outcome = { W = W - 2 * pad, H = P.LineH, Max = P.Text, Min = P.OutMin }
 	local regionTop, regionBottom = 6, pillsY - 8
 	local arrowH = 32
 	local resW = math.min(W - 2 * pad, 220)
@@ -1337,21 +1555,25 @@ function H.layoutPortrait(W, B)
 	if mix then
 		local swap = 44
 		local sw = math.min(150, (W - 2 * pad - swap - 16) / 2)
-		local flex = regionBottom - regionTop - (4 + arrowH + 4)
+		local chipsH = P.ChipTop + 2 * P.ChipH + P.ChipGap
+		local flex = regionBottom - regionTop - (4 + arrowH + 4) - chipsH
 		local kv = math.min(1, flex / (172 + 206))
 		local sh, rh = 172 * kv, 206 * kv
 		y = regionTop + math.max(0, (flex - sh - rh) / 2)
 		local x0 = (W - (2 * sw + swap + 16)) / 2
+		local styleX = x0 + sw + 16 + swap
 		place(U.Slots.Body.Root, x0, y, sw, sh)
 		place(U.Swap, x0 + sw + 8, y + (sh - swap) / 2, swap, swap)
 		U.Swap.TextSize = 24
 		U.Plus.Visible = false
-		place(U.Slots.Style.Root, x0 + sw + 16 + swap, y, sw, sh)
+		place(U.Slots.Style.Root, styleX, y, sw, sh)
 		for _, item in pairs(U.Slots) do
 			item.Sub.Visible = true
 			H.layoutCard(item, sw, sh, false, 1, false)
 		end
-		y = y + sh + 4
+		H.layoutChips("Body", x0, y + sh + P.ChipTop, sw, "phone")
+		H.layoutChips("Style", styleX, y + sh + P.ChipTop, sw, "phone")
+		y = y + sh + chipsH + 4
 		place(U.Arrow, (W - arrowH) / 2, y, arrowH, arrowH)
 		y = y + arrowH + 4
 		place(U.Result.Root, (W - resW) / 2, y, resW, rh)
@@ -1719,7 +1941,15 @@ function H.paintNotes(plan)
 		U.Note.Visible = first ~= nil
 		H.paintLine(U.Note, S.Geo.Note, first)
 		local phoneLike = S.Mode == "Phone"
-		U.Info.Visible = not (phoneLike and first ~= nil)
+		-- PC: always; a landscape phone: the bottom line is the Outcome's once both pets are picked (the note has its own
+		-- place in the right column); portrait: the Note takes the Info's line
+		local info = true
+		if phoneLike and not S.Portrait then
+			info = plan.MovesText == nil
+		elseif phoneLike then
+			info = first == nil
+		end
+		U.Info.Visible = info
 		H.paintLine(U.Info, S.Geo.Info, { Text = phoneLike and TEXTS.InfoPhone or TEXTS.InfoPC, Short = TEXTS.InfoPhone, Color = C.Muted })
 	else
 		U.Note.Visible = true
@@ -1790,6 +2020,116 @@ function H.paintFuse(plan)
 	end
 end
 
+-- (Task 12) the first text (and size) that fits one line of `width`; else the texts word-wrapped inside `height`
+function H.fitWrap(lbl, texts, width, height, maxSize, minSize)
+	for _, t in ipairs(texts) do
+		local size = maxSize
+		while size >= minSize do
+			if H.boxW(t, size, lbl.Font) <= width then
+				lbl.Text, lbl.TextSize, lbl.TextWrapped = t, size, false
+				return t
+			end
+			size = size - 1
+		end
+	end
+	return H.fitLines(lbl, texts, width, height, maxSize, minSize)
+end
+
+-- a move chip's look: lit = a gold border, a warm fill, white text and the check; off = lit but not tappable (equal elements)
+function H.paintChip(g, c, texts, lit, off)
+	local M = (g.Form == "pc") and K.PC or K.PHONE
+	local b = c.Button
+	b:SetAttribute("Lit", lit)
+	b:SetAttribute("Disabled", off)
+	b.Active = not off
+	b.BackgroundColor3 = lit and Color3.fromRGB(86, 64, 20) or C.Well
+	b.BackgroundTransparency = off and 0.3 or 0
+	b.TextColor3 = lit and C.White or C.Muted
+	c.Stroke.Color = lit and C.Gold or C.WellEdge
+	c.Stroke.Thickness = lit and 3 or 2
+	c.Stroke.Transparency = off and 0.35 or 0
+	c.Check.Visible = lit
+	local w, h = (g.W or 0) - 2 * M.ChipPad, g.H or M.ChipH
+	if g.Form == "pc" then
+		-- PC: one line (the kind / element word drops before anything wraps)
+		H.fitWrap(b, texts, w, h, M.ChipText, M.ChipMin)
+		return
+	end
+	-- phone: the glyph stays; a long name wraps to a second line before the glyph is dropped
+	for _, t in ipairs(texts) do
+		if H.boxW(t, M.ChipText, b.Font) <= w then
+			b.Text, b.TextSize, b.TextWrapped = t, M.ChipText, false
+			return
+		end
+		if H.rows(t, M.ChipText, b.Font, w) * M.ChipText * 1.2 <= h + 0.5 then
+			b.Text, b.TextSize, b.TextWrapped = t, M.ChipText, true
+			return
+		end
+	end
+	H.fitLines(b, texts, w, h, M.ChipText, M.ChipMin)
+end
+
+-- the move chips and the outcome (Mix with two regular pets; hidden otherwise)
+function H.paintMoves(plan)
+	local mt = (S.Tab == "Mix") and plan.MovesText or nil
+	local pc = S.Mode ~= "Phone"
+	for _, side in ipairs({ "Body", "Style" }) do
+		U.Chips[side].Root.Visible = mt ~= nil
+	end
+	U.OutcomeAttack.Visible = mt ~= nil and pc
+	U.OutcomeSpecial.Visible = mt ~= nil and pc
+	U.Outcome.Visible = mt ~= nil and not pc
+	if not mt then
+		return
+	end
+	local moves = plan.Moves or "BB"
+	local same = plan.SameElement == true
+	for _, side in ipairs({ "Body", "Style" }) do
+		local letter = (side == "Body") and "B" or "S"
+		local own = FusionController.MovesText(S.MixA, S.MixB, letter .. letter)
+		local g = U.Chips[side]
+		if own then
+			local a, s = own.Attack, own.Special
+			local attackTexts, specialTexts
+			if g.Form == "pc" then
+				attackTexts = { G.Sword .. " " .. a.Name .. " " .. G.Dot .. " " .. a.Element, G.Sword .. " " .. a.Name, a.Name }
+				specialTexts = { G.Star .. " " .. s.Name .. " " .. G.Dot .. " " .. H.kindWord(s.Kind), G.Star .. " " .. s.Name, s.Name }
+			else
+				attackTexts = { G.Sword .. " " .. a.Name, a.Name }
+				specialTexts = { G.Star .. " " .. s.Name, s.Name }
+			end
+			H.paintChip(g, g.Attack, attackTexts, same or string.sub(moves, 1, 1) == letter, same)
+			H.paintChip(g, g.Special, specialTexts, string.sub(moves, 2, 2) == letter, false)
+		end
+	end
+	local a, s = mt.Attack, mt.Special
+	local fullA = string.format(TEXTS.OutAttack, a.Element, a.Name)
+	local shortA = string.format(TEXTS.OutAttackShort, a.Name)
+	local fullS = string.format(TEXTS.OutSpecial, H.kindWord(s.Kind), s.Name)
+	local shortS = string.format(TEXTS.OutSpecialShort, s.Name)
+	local geo = S.Geo.Outcome
+	if not geo then
+		return
+	end
+	if pc then
+		H.fit(U.OutcomeAttack, { fullA, shortA }, geo.W, geo.Max, geo.Min)
+		H.fit(U.OutcomeSpecial, { fullS, shortS }, geo.W, geo.Max, geo.Min)
+	else
+		-- one line; when it is too wide the kind words drop first, then the short text wraps inside the line's height
+		-- (never cut: the label does not truncate)
+		local sep = " " .. G.Dot .. " "
+		local short = shortA .. sep .. shortS
+		local lbl = U.Outcome
+		for _, t in ipairs({ fullA .. sep .. fullS, short }) do
+			if H.boxW(t, geo.Max, lbl.Font) <= geo.W then
+				lbl.Text, lbl.TextSize, lbl.TextWrapped = t, geo.Max, false
+				return
+			end
+		end
+		H.fitLines(lbl, { short }, geo.W, geo.H, geo.Max, geo.Min)
+	end
+end
+
 function H.paint(plan)
 	local mix = S.Tab == "Mix"
 	if mix then
@@ -1798,6 +2138,12 @@ function H.paint(plan)
 	else
 		H.paintStack(plan)
 	end
+	-- (Task 12) a landscape phone's Mix: while a note shows, the pills keep to one row above it
+	local col = S.Geo.MixCol
+	if col and S.Geo.Pills then
+		S.Geo.Pills.MaxH = (mix and H.noteLines(plan)[1] ~= nil) and col.PillsNote or col.PillsAll
+	end
+	H.paintMoves(plan)
 	H.paintResult(plan)
 	H.paintPills(plan)
 	H.paintNotes(plan)
@@ -1989,6 +2335,22 @@ function H.onSwap()
 	H.refresh()
 end
 
+-- (Task 12) a move chip tapped: that slot's pet gives that move (a lit chip, or an attack with one element, changes nothing)
+function H.onChip(side, which)
+	if not S.Open or S.Pending or S.Animating or S.Tab ~= "Mix" then
+		return
+	end
+	local key = (side == "Body") and S.MixA or S.MixB
+	if not key then
+		return
+	end
+	if which == "Attack" then
+		FusionController.SetMoves(key, nil)
+	else
+		FusionController.SetMoves(nil, key)
+	end
+end
+
 function H.setTab(tab)
 	if tab ~= "Upgrade" and tab ~= "Mix" then
 		return
@@ -2099,6 +2461,10 @@ function H.playFusion(resultKey, rarity)
 	local color = rarity and H.rarityColor(rarity) or C.Violet
 	local rp, rs = U.Result.Root.Position, U.Result.Root.Size
 	local centre = Vector2.new(rp.X.Offset + rs.X.Offset / 2, rp.Y.Offset + rs.Y.Offset / 2)
+	-- the move chips go with their pets (the next paint brings them back for the next pair)
+	for _, g in pairs(U.Chips) do
+		g.Root.Visible = false
+	end
 	-- 1) the inputs fly into the result, spinning and shrinking
 	for _, f in ipairs(H.flyers()) do
 		local root = f.Item.Root
@@ -2333,6 +2699,57 @@ function FusionController.Select(keyA, keyB)
 	end
 end
 
+-- (Task 12) the move choice
+function FusionController.Moves()
+	return H.syncMoves()
+end
+
+function FusionController.SetMoves(attackKey, specialKey)
+	local moves = H.syncMoves()
+	local a, b = S.MixA, S.MixB
+	local function letter(key)
+		if type(key) ~= "string" then
+			return nil
+		elseif key == a then
+			return "B"
+		elseif key == b then
+			return "S"
+		end
+		return nil
+	end
+	local l1, l2 = letter(attackKey), letter(specialKey)
+	if l1 and H.sameElement() then
+		l1 = nil -- one element: the attack is no choice
+	end
+	local new = (l1 or string.sub(moves, 1, 1)) .. (l2 or string.sub(moves, 2, 2))
+	if new ~= S.Moves and MOVES[new] then
+		S.Moves = new
+		if S.Built and S.Open and not S.Animating then
+			safe("refresh", H.refresh)
+		end
+	end
+end
+
+function FusionController.MovesText(bodyKey, styleKey, moves)
+	local body, style = H.mixDefs(bodyKey, styleKey)
+	if not body then
+		return nil
+	end
+	if not MOVES[moves] then
+		moves = "BB"
+	end
+	local attackDef = (string.sub(moves, 1, 1) == "S") and style or body
+	local specialDef = (string.sub(moves, 2, 2) == "S") and style or body
+	local element = tostring(attackDef.Element or "")
+	local attacks = BattleCatalog and BattleCatalog.ElementAttacks
+	local attack = type(attacks) == "table" and attacks[element] or nil
+	local special = type(specialDef.Special) == "table" and specialDef.Special or {}
+	return {
+		Attack = { Element = element, Name = (type(attack) == "table" and type(attack.Name) == "string") and attack.Name or element },
+		Special = { Kind = special.Kind, Name = tostring(special.Name or "Special") },
+	}
+end
+
 function FusionController.Fuse()
 	if not S.Open or S.Pending or S.Animating then
 		return false
@@ -2356,7 +2773,7 @@ function FusionController.Fuse()
 	if plan.Action == "Upgrade" then
 		remote:FireServer("Upgrade", S.UpKey)
 	else
-		remote:FireServer("Mix", S.MixA, S.MixB)
+		remote:FireServer("Mix", S.MixA, S.MixB, FusionController.Moves())
 	end
 	-- the inputs glow while the machine works
 	for _, f in ipairs(H.flyers()) do

@@ -22,9 +22,24 @@
 --                           too; a resize while open (1920x1080 -> 844x390 -> 1920x1080, the sheet up) passes each time
 --   client_fusion_portrait  (phone world, 390x844 touch) Layout() "Portrait": the Stack and the slots above the Result, the
 --                           two slots side by side, RedoGeom.check passes on both tabs
+--   client_fusion_moves     (Task 12; 1920x1080, then 844x390 touch) the Mix move chips: under each slot an Attack chip
+--                           ("<sword> Flare", PC "... . Flame") and a Special chip ("<star> Leaf Pounce", PC "... . Pounce"),
+--                           exactly one lit (attribute Lit, the check badge) in each pair; the default "BB" (the Body gives
+--                           both = today's hybrid); a tap on the other parent's chip moves that move ("BS", "SS"); the
+--                           preview record follows (SpecialFrom, the Elements order in the pills); FUSE sends
+--                           Fusion("Mix", body, style, moves); the swap keeps each move with its pet (the letters flip);
+--                           a new pet (the sheet or Select) resets to "BB"; SetMoves ignores keys that are not in a slot;
+--                           equal elements: both attack chips lit and inactive, the special still choosable; the pure
+--                           MovesText(body, style, moves) (stage 0's names); the outcome: PC OutcomeAttack "Normal attack:
+--                           Flame (Flare)" + OutcomeSpecial "Special: Pounce (Leaf Pounce)" inside the NEW HYBRID card
+--                           between its name and its pills; phone ONE Outcome line under the slot row ("... . Special:
+--                           ..."), the kind words dropping first and then a wrap when it is too wide, never cut (a long
+--                           special such as "Wish Upon the Stars", 844x390 and 667x375); the Info line when a slot is
+--                           empty; a reason note in the phone's right column; RedoGeom at both sizes
 -- Fixture: Maple Fox x5 (three in the team) + a Golden copy, Storm Tabby, Pebble Pup x4, Honey Bunny x2, an evolved Aurora
--- Fox and a hybrid; Prestige 1 with the Fusion Machine; 50,000 Cloud Tokens. Every scenario puts the profile and the
--- attributes it found back. Deterministic: mock clock only. Plain Lua 5.1 syntax only.
+-- Fox and a hybrid (client_fusion_moves adds an Ember Phoenix: a second Flame pet); Prestige 1 with the Fusion Machine;
+-- 50,000 Cloud Tokens. Every scenario puts the profile and the attributes it found back. Deterministic: mock clock only.
+-- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
 local guarded = SmokeCommon.guarded
@@ -55,7 +70,11 @@ local function clientScenarios()
 	}
 	local TEAM = { "maple_fox", "maple_fox", "maple_fox" }
 	local UP_NAMES = { "Stack", "CopiesText", "Arrow", "Result", "CostBar", "FuseButton", "Note", "Tab_Upgrade", "Tab_Mix", "CloseButton" }
-	local MIX_NAMES = { "Slot_Body", "SwapButton", "Slot_Style", "Arrow", "Result", "CostBar", "FuseButton", "Info", "Tab_Upgrade", "Tab_Mix", "CloseButton" }
+	-- (Task 12) the move chips sit under the slots; on a landscape phone the outcome line takes the Info line's place
+	local MIX_NAMES = { "Slot_Body", "Chips_Body", "SwapButton", "Slot_Style", "Chips_Style", "Arrow", "Result", "CostBar", "FuseButton", "Info", "Tab_Upgrade", "Tab_Mix", "CloseButton" }
+	local MIX_PHONE = { "Slot_Body", "Chips_Body", "SwapButton", "Slot_Style", "Chips_Style", "Arrow", "Result", "CostBar", "FuseButton", "Outcome", "Tab_Upgrade", "Tab_Mix", "CloseButton" }
+	local MIX_PORTRAIT = { "Slot_Body", "Chips_Body", "SwapButton", "Slot_Style", "Chips_Style", "Arrow", "Result", "CostBar", "FuseButton", "Outcome", "Info", "Tab_Upgrade", "Tab_Mix", "CloseButton" }
+	local SWORD, STAR = "\226\154\148", "\226\152\133"
 
 	function H.req(path)
 		local root, rest = path:match("^(%a+)/(.+)$")
@@ -143,12 +162,63 @@ local function clientScenarios()
 		return KC.serverCalls("Fusion", mark)
 	end
 
-	-- a ProfileSync snapshot of the fixture. opts: NoPets, Locked (Prestige 0), Team (the active preset; default TEAM)
+	-- (Task 12) the move chips: H.chip("Body" | "Style", "Attack" | "Special")
+	function H.chip(side, which)
+		local grp = H.find("Chips_" .. side)
+		return grp and RedoGeom.find(grp, which)
+	end
+	function H.lit(c)
+		return c ~= nil and c:GetAttribute("Lit") == true
+	end
+	-- the four chips' lit flags as "BA BS SA SS" letters: e.g. "1100" = the Body's two lit
+	function H.lits()
+		local out = ""
+		for _, side in ipairs({ "Body", "Style" }) do
+			for _, which in ipairs({ "Attack", "Special" }) do
+				out = out .. (H.lit(H.chip(side, which)) and "1" or "0")
+			end
+		end
+		return out
+	end
+	-- every lit chip shows its check badge, no unlit one does
+	function H.checksMatch()
+		for _, side in ipairs({ "Body", "Style" }) do
+			for _, which in ipairs({ "Attack", "Special" }) do
+				local c = H.chip(side, which)
+				local badge = c and RedoGeom.find(c, "Check")
+				if not c or H.shown(badge) ~= H.lit(c) then
+					return false
+				end
+			end
+		end
+		return true
+	end
+	function H.boxIn(a, b)
+		local ap, as, bp, bs = a.AbsolutePosition, a.AbsoluteSize, b.AbsolutePosition, b.AbsoluteSize
+		return ap.X >= bp.X - 0.5 and ap.Y >= bp.Y - 0.5 and ap.X + as.X <= bp.X + bs.X + 0.5 and ap.Y + as.Y <= bp.Y + bs.Y + 0.5
+	end
+	function H.bottom(o)
+		return o.AbsolutePosition.Y + o.AbsoluteSize.Y
+	end
+	-- the fixture plus opts.Extra ({ key, level, copies, evo })
+	function H.fixture(opts)
+		local list = {}
+		for _, f in ipairs(FIX) do
+			list[#list + 1] = f
+		end
+		for _, f in ipairs(opts.Extra or {}) do
+			list[#list + 1] = f
+		end
+		return list
+	end
+
+	-- a ProfileSync snapshot of the fixture. opts: NoPets, Locked (Prestige 0), Team (the active preset; default TEAM),
+	-- Extra (more pets: { key, level, copies, evo })
 	function H.snapshot(opts)
 		opts = opts or {}
 		local pets, tiers, levels, growth, discovered = {}, {}, {}, {}, {}
 		if not opts.NoPets then
-			for _, f in ipairs(FIX) do
+			for _, f in ipairs(H.fixture(opts)) do
 				local key, level, copies, evo = f[1], f[2], f[3], f[4]
 				local base, tier = key:match("^(.-)@(%a+)$")
 				if tier then
@@ -260,7 +330,7 @@ local function clientScenarios()
 	end
 	-- the texts every layout must fit with Roblox's real font widths
 	function H.fitsAll(label, tab)
-		local names = { "CopiesText", "Note", "ResultName", "Cost", "Have", "FuseButton", "Tab_Upgrade", "Tab_Mix", "TipLine", "Info", "Label" }
+		local names = { "CopiesText", "Note", "ResultName", "Cost", "Have", "FuseButton", "Tab_Upgrade", "Tab_Mix", "TipLine", "Info", "Label", "Outcome", "OutcomeAttack", "OutcomeSpecial" }
 		local bad = {}
 		for _, name in ipairs(names) do
 			local o = H.find(name)
@@ -268,6 +338,17 @@ local function clientScenarios()
 				local ok, detail = RedoGeom.fits(o)
 				if not ok then
 					bad[#bad + 1] = detail
+				end
+			end
+		end
+		for _, side in ipairs({ "Body", "Style" }) do
+			for _, which in ipairs({ "Attack", "Special" }) do
+				local c = H.chip(side, which)
+				if c and H.shown(c) and c.Text ~= "" then
+					local ok, detail = RedoGeom.fits(c)
+					if not ok then
+						bad[#bad + 1] = detail
+					end
 				end
 			end
 		end
@@ -509,7 +590,7 @@ local function clientScenarios()
 						local l = label .. " " .. tab
 						H.openTab(FC, PP, tab)
 						local win = H.win()
-						RedoGeom.check(win, l, { NoOverlap = (tab == "Mix") and MIX_NAMES or UP_NAMES })
+						RedoGeom.check(win, l, { NoOverlap = (tab == "Mix") and (sz[3] and MIX_PHONE or MIX_NAMES) or UP_NAMES })
 						H.fitsAll(l, tab)
 						if sz[3] then
 							T.eq(FC.Layout(), "Phone", l .. ": Layout() == 'Phone'")
@@ -547,7 +628,7 @@ local function clientScenarios()
 				RedoGeom.check(H.win(), "fusion resize 1920x1080", { NoOverlap = MIX_NAMES })
 				Mock.SetViewport(844, 390)
 				KC.advance(0.6)
-				RedoGeom.check(H.win(), "fusion resize -> 844x390", { NoOverlap = MIX_NAMES })
+				RedoGeom.check(H.win(), "fusion resize -> 844x390", { NoOverlap = MIX_PHONE })
 				RedoGeom.check(H.sheetWin(), "fusion resize -> 844x390 (sheet)", {})
 				T.eq(FC.Layout(), "Phone", "fusion resize: Phone at 844x390")
 				Mock.SetViewport(1920, 1080)
@@ -571,7 +652,7 @@ local function clientScenarios()
 			T.check(stack and result and stack.AbsolutePosition.Y + stack.AbsoluteSize.Y <= result.AbsolutePosition.Y + 0.5, label .. ": the Stack sits above the Result",
 				RedoGeom.desc(stack) .. " / " .. RedoGeom.desc(result))
 			H.openTab(FC, PP, "Mix")
-			RedoGeom.check(H.win(), label .. " Mix", { NoOverlap = MIX_NAMES })
+			RedoGeom.check(H.win(), label .. " Mix", { NoOverlap = MIX_PORTRAIT })
 			H.fitsAll(label .. " Mix", "Mix")
 			local body, style = H.find("Slot_Body"), H.find("Slot_Style")
 			result = H.find("Result")
@@ -586,6 +667,276 @@ local function clientScenarios()
 			FC.Select(nil)
 			KC.advance(0.3)
 			RedoGeom.check(H.win(), label .. " (empty Upgrade)", { NoOverlap = UP_NAMES })
+		end)
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- (Task 12) the Mix move chips and the outcome lines
+	S.client_fusion_moves = guarded("client_fusion_moves", function()
+		local function mtText(mt)
+			if type(mt) ~= "table" then
+				return tostring(mt)
+			end
+			local a, s = mt.Attack or {}, mt.Special or {}
+			return fmt("%s/%s + %s/%s", tostring(a.Element), tostring(a.Name), tostring(s.Kind), tostring(s.Name))
+		end
+		local function lastMix(mark)
+			local calls = H.calls(mark)
+			return #calls, calls[1] and calls[1].args or {}
+		end
+		RedoGeom.at(1920, 1080, false, "fusion moves pc", function()
+			H.with("client_fusion_moves", { Extra = { { "ember_phoenix", 30, 1 } } }, function(FC, PP)
+				if not T.check(type(FC.SetMoves) == "function" and type(FC.Moves) == "function" and type(FC.MovesText) == "function",
+					"fusion moves: FusionController.SetMoves / Moves / MovesText exist") then
+					return
+				end
+				-- MovesText (pure): letter 1 = the attack's parent, letter 2 = the special's; stage 0's names
+				T.eq(mtText(FC.MovesText("maple_fox", "storm_tabby", "SB")), "Storm/Bolt + Pounce/Leaf Pounce", "fusion moves: MovesText(maple, tabby, 'SB')")
+				T.eq(mtText(FC.MovesText("maple_fox", "storm_tabby", "BS")), "Flame/Flare + Storm/Static Storm", "fusion moves: MovesText(maple, tabby, 'BS')")
+				T.eq(mtText(FC.MovesText("maple_fox", "storm_tabby", "XX")), "Flame/Flare + Pounce/Leaf Pounce", "fusion moves: MovesText: junk moves read as 'BB'")
+				T.eq(mtText(FC.MovesText("maple_fox", "storm_tabby")), "Flame/Flare + Pounce/Leaf Pounce", "fusion moves: MovesText: nil moves read as 'BB'")
+				T.eq(mtText(FC.MovesText("maple_fox@Golden", "storm_tabby", "SS")), "Storm/Bolt + Storm/Static Storm", "fusion moves: MovesText reads a finish key's species")
+				T.check(FC.MovesText("hyb:hc1", "storm_tabby", "BB") == nil and FC.MovesText(nil, "storm_tabby", "BB") == nil and FC.MovesText("maple_fox", "no_such_pet", "BB") == nil,
+					"fusion moves: MovesText is nil for a hybrid, a missing or an unknown pet")
+
+				-- Body Maple Fox + Style Storm Tabby: the default, both from the Body
+				H.openTab(FC, PP, "Mix")
+				T.eq(FC.Moves(), "BB", "fusion moves: the default is 'BB' (the Body gives both = today's hybrid)")
+				local cb, cs = H.find("Chips_Body"), H.find("Chips_Style")
+				T.check(H.shown(cb) and H.shown(cs), "fusion moves: Chips_Body and Chips_Style are shown")
+				for _, side in ipairs({ "Body", "Style" }) do
+					local slot, chips = H.find("Slot_" .. side), H.find("Chips_" .. side)
+					T.check(slot and chips and chips.AbsolutePosition.Y >= H.bottom(slot) - 0.5 and math.abs(chips.AbsolutePosition.X - slot.AbsolutePosition.X) <= 1
+						and math.abs(chips.AbsoluteSize.X - slot.AbsoluteSize.X) <= 1, "fusion moves: Chips_" .. side .. " sit under their slot, as wide as it",
+						RedoGeom.desc(slot) .. " / " .. RedoGeom.desc(chips))
+					local a, s = H.chip(side, "Attack"), H.chip(side, "Special")
+					T.check(a and s and a:IsA("GuiButton") and s:IsA("GuiButton") and s.AbsolutePosition.Y >= H.bottom(a) - 0.5, "fusion moves: ...an Attack chip over a Special chip (" .. side .. ")")
+				end
+				T.eq(H.lits(), "1100", "fusion moves: 'BB': the Body's two chips are lit, the Style's are not")
+				T.check(H.checksMatch(), "fusion moves: ...every lit chip (and only those) shows its check")
+				T.eq(H.text(H.chip("Body", "Attack")), SWORD .. " Flare " .. DOT .. " Flame", "fusion moves: PC Body attack chip '<sword> Flare . Flame'")
+				T.eq(H.text(H.chip("Body", "Special")), STAR .. " Leaf Pounce " .. DOT .. " Pounce", "fusion moves: PC Body special chip '<star> Leaf Pounce . Pounce'")
+				T.eq(H.text(H.chip("Style", "Attack")), SWORD .. " Bolt " .. DOT .. " Storm", "fusion moves: PC Style attack chip '<sword> Bolt . Storm'")
+				T.eq(H.text(H.chip("Style", "Special")), STAR .. " Static Storm " .. DOT .. " Storm", "fusion moves: PC Style special chip '<star> Static Storm . Storm'")
+				local result = H.find("Result")
+				local oa, os2 = RedoGeom.find(result, "OutcomeAttack"), RedoGeom.find(result, "OutcomeSpecial")
+				T.check(H.shown(oa) and H.shown(os2), "fusion moves: PC: OutcomeAttack and OutcomeSpecial inside the NEW HYBRID card")
+				T.eq(H.text(oa), "Normal attack: Flame (Flare)", "fusion moves: PC OutcomeAttack")
+				T.eq(H.text(os2), "Special: Pounce (Leaf Pounce)", "fusion moves: PC OutcomeSpecial")
+				T.check(not H.shown(H.find("Outcome")), "fusion moves: PC: no phone Outcome line")
+
+				-- a tap on the Style's special chip moves the special
+				H.click(H.chip("Style", "Special"))
+				T.eq(FC.Moves(), "BS", "fusion moves: tapping the Style's special chip -> 'BS'")
+				T.eq(H.lits(), "1001", "fusion moves: ...the Body's attack and the Style's special are lit")
+				T.check(H.checksMatch(), "fusion moves: ...the checks follow")
+				T.eq(H.text(os2), "Special: Storm (Static Storm)", "fusion moves: ...the special line reads Static Storm")
+				T.eq(H.text(oa), "Normal attack: Flame (Flare)", "fusion moves: ...the attack line stays")
+				local plan = FC.Plan()
+				T.check(plan and plan.SpecialFrom == "Style" and plan.ResultDef and plan.ResultDef.Special and plan.ResultDef.Special.Name == "Static Storm",
+					"fusion moves: ...the preview record takes the Style's special (SpecialFrom 'Style')", plan and tostring(plan.SpecialFrom))
+				-- and the attack
+				H.click(H.chip("Style", "Attack"))
+				T.eq(FC.Moves(), "SS", "fusion moves: tapping the Style's attack chip -> 'SS'")
+				T.eq(H.lits(), "0011", "fusion moves: ...the Style's two chips are lit")
+				T.eq(H.text(oa), "Normal attack: Storm (Bolt)", "fusion moves: ...the attack line reads Storm (Bolt)")
+				T.eq(H.pills().Pill_Elements, "Storm + Flame", "fusion moves: ...the pills show the record's element order 'Storm + Flame'")
+				plan = FC.Plan()
+				T.check(plan and plan.Elements and plan.Elements[1] == "Storm" and plan.Elements[2] == "Flame" and plan.ResultDef and plan.ResultDef.Element == "Storm",
+					"fusion moves: ...the preview hybrid's first element is Storm")
+				H.click(H.chip("Style", "Attack"))
+				T.eq(FC.Moves(), "SS", "fusion moves: tapping a lit chip changes nothing")
+
+				-- FUSE sends the moves
+				local mark = #Mock.RemoteLog
+				H.click(H.find("FuseButton"))
+				local n, args = lastMix(mark)
+				T.check(n == 1 and args[1] == "Mix" and args[2] == "maple_fox" and args[3] == "storm_tabby" and args[4] == "SS",
+					"fusion moves: FUSE! sends exactly one Fusion('Mix', maple, tabby, 'SS')", n .. " calls, moves " .. tostring(args[4]))
+				KC.toClient("Fusion", "Result", { Ok = false, Reason = "x", Quiet = true })
+				KC.advance(0.3)
+
+				-- the swap keeps each move with its pet
+				H.click(H.find("SwapButton"))
+				T.eq(H.t("PetName", H.find("Slot_Body")), "Storm Tabby", "fusion moves: (swap) Storm Tabby is the Body now")
+				T.eq(FC.Moves(), "BB", "fusion moves: swap: 'SS' -> 'BB' (both moves stay with Storm Tabby, now the Body)")
+				T.eq(H.lits(), "1100", "fusion moves: ...the chips lit under the new Body")
+				T.eq(H.text(H.chip("Body", "Attack")), SWORD .. " Bolt " .. DOT .. " Storm", "fusion moves: ...the Body's chips are Storm Tabby's")
+				T.eq(H.text(oa), "Normal attack: Storm (Bolt)", "fusion moves: ...the attack line is unchanged")
+				T.eq(H.text(os2), "Special: Storm (Static Storm)", "fusion moves: ...the special line is unchanged")
+				FC.SetMoves("aurora_fox", "pebble_pup")
+				FC.SetMoves(5, {})
+				KC.advance(0.2)
+				T.eq(FC.Moves(), "BB", "fusion moves: SetMoves with owned keys that are in no slot (or non-keys) changes nothing")
+				FC.SetMoves(nil, "maple_fox")
+				KC.advance(0.2)
+				T.eq(FC.Moves(), "BS", "fusion moves: SetMoves(nil, the Style key) -> 'BS'")
+				H.click(H.find("SwapButton"))
+				T.eq(FC.Moves(), "SB", "fusion moves: swap flips 'BS' -> 'SB' (Storm Tabby's attack, Maple Fox's special)")
+				T.eq(H.lits(), "0110", "fusion moves: ...lit: the Body's special, the Style's attack")
+				T.eq(H.text(oa), "Normal attack: Storm (Bolt)", "fusion moves: ...attack Storm (Bolt)")
+				T.eq(H.text(os2), "Special: Pounce (Leaf Pounce)", "fusion moves: ...special Pounce (Leaf Pounce)")
+				FC.SetMoves("aurora_fox", 5)
+				KC.advance(0.2)
+				T.eq(FC.Moves(), "SB", "fusion moves: SetMoves ignores a key that is in no slot and a non-key")
+				FC.SetMoves("maple_fox", "storm_tabby")
+				KC.advance(0.2)
+				T.eq(FC.Moves(), "BS", "fusion moves: SetMoves(body key, style key) -> 'BS'")
+				FC.SetMoves("storm_tabby", "maple_fox")
+				KC.advance(0.2)
+				mark = #Mock.RemoteLog
+				H.click(H.find("FuseButton"))
+				n, args = lastMix(mark)
+				T.check(n == 1 and args[4] == "SB", "fusion moves: FUSE! sends 'SB'", n .. " calls, moves " .. tostring(args[4]))
+				KC.toClient("Fusion", "Result", { Ok = false, Reason = "x", Quiet = true })
+				KC.advance(0.3)
+
+				-- a new pet in either slot resets the choice
+				H.click(H.find("Slot_Style"))
+				T.check(PP.IsOpen() and PP.Pick("pebble_pup"), "fusion moves: (pick Pebble Pup as the Style)")
+				KC.advance(0.4)
+				T.eq(FC.Moves(), "BB", "fusion moves: a new Style pet resets to 'BB'")
+				T.eq(H.text(H.chip("Style", "Attack")), SWORD .. " Quake " .. DOT .. " Earth", "fusion moves: ...the Style's chips are Pebble Pup's")
+				FC.SetMoves("pebble_pup", "pebble_pup")
+				KC.advance(0.2)
+				T.eq(FC.Moves(), "SS", "fusion moves: (SS)")
+				FC.Select("maple_fox", "storm_tabby")
+				KC.advance(0.3)
+				T.eq(FC.Moves(), "BB", "fusion moves: new pets through Select reset to 'BB'")
+
+				-- equal elements: one element, the attack is no choice
+				FC.Select("maple_fox", "ember_phoenix")
+				KC.advance(0.3)
+				local ab, as2 = H.chip("Body", "Attack"), H.chip("Style", "Attack")
+				T.check(H.lit(ab) and H.lit(as2) and ab.Active == false and as2.Active == false and H.disabled(ab) and H.disabled(as2),
+					"fusion moves: two Flame pets: both attack chips lit and inactive")
+				H.click(as2)
+				FC.SetMoves("ember_phoenix", nil)
+				KC.advance(0.2)
+				T.eq(FC.Moves(), "BB", "fusion moves: ...tapping one (or SetMoves) changes nothing")
+				T.eq(H.pills().Pill_Elements, "Flame", "fusion moves: ...the pills show the one element")
+				T.eq(H.text(oa), "Normal attack: Flame (Flare)", "fusion moves: ...attack Flame (Flare)")
+				local ss = H.chip("Style", "Special")
+				T.check(ss and ss.Active ~= false and not H.disabled(ss), "fusion moves: ...the special chips stay tappable")
+				H.click(ss)
+				T.eq(FC.Moves(), "BS", "fusion moves: ...and the special still moves ('BS')")
+				T.eq(H.text(os2), "Special: Blast (Phoenix Flare)", "fusion moves: ...special Blast (Phoenix Flare)")
+
+				-- the geometry at 1920x1080
+				FC.Select("maple_fox", "storm_tabby")
+				KC.advance(0.3)
+				RedoGeom.check(H.win(), "fusion moves 1920x1080", { NoOverlap = MIX_NAMES })
+				H.fitsAll("fusion moves 1920x1080", "Mix")
+				local rname, pills = H.find("ResultName"), H.find("Pills")
+				T.check(H.boxIn(oa, result) and H.boxIn(os2, result), "fusion moves: PC: the outcome lines lie inside the NEW HYBRID card", RedoGeom.desc(oa) .. " / " .. RedoGeom.desc(result))
+				T.check(rname and pills and oa.AbsolutePosition.Y >= H.bottom(rname) - 0.5 and os2.AbsolutePosition.Y >= H.bottom(oa) - 0.5 and H.bottom(os2) <= pills.AbsolutePosition.Y + 0.5,
+					"fusion moves: PC: name, then the two lines, then the pills (top to bottom, no overlap)",
+					RedoGeom.desc(rname) .. " / " .. RedoGeom.desc(oa) .. " / " .. RedoGeom.desc(os2) .. " / " .. RedoGeom.desc(pills))
+				T.check(oa.TextSize >= 18 and os2.TextSize >= 18, "fusion moves: PC: the lines are >= 18 design px")
+			end)
+		end)
+
+		RedoGeom.at(844, 390, true, "fusion moves phone", function()
+			H.with("client_fusion_moves phone", nil, function(FC, PP)
+				if type(FC.Moves) ~= "function" then
+					T.fail("fusion moves phone: no FusionController.Moves")
+					return
+				end
+				H.openTab(FC, PP, "Mix")
+				local win = H.win()
+				local out = H.find("Outcome")
+				T.check(H.shown(out), "fusion moves phone: the one Outcome line is shown")
+				T.eq(H.text(out), "Normal attack: Flame (Flare) " .. DOT .. " Special: Pounce (Leaf Pounce)", "fusion moves phone: the Outcome line reads both moves")
+				T.check(not H.shown(H.find("OutcomeAttack")) and not H.shown(H.find("OutcomeSpecial")), "fusion moves phone: no outcome lines in the 176 px card")
+				T.check(not H.shown(H.find("Info")), "fusion moves phone: the Outcome takes the Info line's place")
+				if out and win then
+					local p, s = out.AbsolutePosition, out.AbsoluteSize
+					local wp = win.AbsolutePosition
+					local slot = H.find("Chips_Body")
+					T.check(math.abs(p.X - (wp.X + 14)) <= 1 and math.abs(s.X - 792) <= 1 and math.abs(s.Y - 40) <= 1 and slot and p.Y >= H.bottom(slot) - 0.5,
+						"fusion moves phone: the line is 792 x 40 at x 14, under the slot row", RedoGeom.desc(out))
+					T.check(out.TextSize >= 15, "fusion moves phone: ...at >= 15 px", tostring(out.TextSize))
+				end
+				for _, side in ipairs({ "Body", "Style" }) do
+					for _, which in ipairs({ "Attack", "Special" }) do
+						local c = H.chip(side, which)
+						local sz = c and c.AbsoluteSize
+						T.check(sz and math.abs(sz.X - 130) <= 1 and math.abs(sz.Y - 44) <= 1, "fusion moves phone: " .. side .. " " .. which .. " chip is 130 x 44", c and RedoGeom.desc(c) or "nil")
+					end
+				end
+				T.eq(H.text(H.chip("Body", "Attack")), SWORD .. " Flare", "fusion moves phone: the attack chip '<sword> Flare'")
+				T.eq(H.text(H.chip("Body", "Special")), STAR .. " Leaf Pounce", "fusion moves phone: the special chip '<star> Leaf Pounce'")
+				local styleSpecial = H.chip("Style", "Special")
+				T.eq(H.text(styleSpecial), STAR .. " Static Storm", "fusion moves phone: every chip keeps its glyph ('<star> Static Storm', wrapped when it must)")
+				local okFit, fitDetail = RedoGeom.fits(styleSpecial)
+				T.check(okFit, "fusion moves phone: ...and fits its 130 x 44", fitDetail)
+				RedoGeom.check(win, "fusion moves 844x390", { NoOverlap = { "Slot_Body", "Chips_Body", "SwapButton", "Slot_Style", "Chips_Style", "Arrow", "Result", "Outcome", "CostBar", "FuseButton" } })
+				H.fitsAll("fusion moves 844x390", "Mix")
+				-- a tap on a phone
+				H.click(H.chip("Style", "Special"))
+				T.eq(FC.Moves(), "BS", "fusion moves phone: tapping the Style's special chip -> 'BS'")
+				T.eq(H.text(out), "Normal attack: Flame (Flare) " .. DOT .. " Special: Storm (Static Storm)", "fusion moves phone: ...the line follows")
+				local mark = #Mock.RemoteLog
+				H.click(H.find("FuseButton"))
+				local n, args = lastMix(mark)
+				T.check(n == 1 and args[4] == "BS", "fusion moves phone: FUSE! sends 'BS'", n .. " calls")
+				KC.toClient("Fusion", "Result", { Ok = false, Reason = "x", Quiet = true })
+				KC.advance(0.3)
+
+				-- long specials: the line never cuts (the kind words drop first, then it wraps)
+				local Cat = H.req("shared/PetCatalog")
+				local special = Cat and Cat.Get("storm_tabby") and Cat.Get("storm_tabby").Special
+				local oldName = special and special.Name
+				local okLong, errLong = pcall(function()
+					special.Name = "Wish Upon the Stars"
+					FC.Select("maple_fox", "storm_tabby")
+					KC.advance(0.3)
+					T.eq(FC.Moves(), "BS", "fusion moves phone: (same pets: the choice stays)")
+					T.eq(H.text(out), "Normal attack: Flame (Flare) " .. DOT .. " Special: Storm (Wish Upon the Stars)", "fusion moves phone: 'Wish Upon the Stars' still fits whole")
+					local ok, detail = RedoGeom.fits(out)
+					T.check(ok and out.TextFits ~= false, "fusion moves phone: ...and fits its box", detail)
+					local c = H.chip("Style", "Special")
+					ok, detail = RedoGeom.fits(c)
+					T.check(ok and c.Text:find("Wish", 1, true) ~= nil, "fusion moves phone: ...its chip fits too (wrapped inside 130 x 44)", detail)
+					special.Name = "Wish Upon the Stars of the Far Northern Winter Sky"
+					FC.Select("maple_fox", "storm_tabby")
+					KC.advance(0.3)
+					local short = "Normal attack: Flare " .. DOT .. " Special: Wish Upon the Stars of the Far Northern Winter Sky"
+					T.eq(H.text(out), short, "fusion moves phone: too wide: the kind words drop first")
+					ok, detail = RedoGeom.fits(out)
+					T.check(ok and out.TextWrapped == false, "fusion moves phone: ...one line that fits (no wrap while the short text fits)", detail)
+					Mock.SetViewport(667, 375)
+					KC.advance(0.6)
+					T.eq(H.text(out), short, "fusion moves 667x375: the short text")
+					ok, detail = RedoGeom.fits(out)
+					T.check(ok and out.TextWrapped == true and out.TextTruncate == Enum.TextTruncate.None, "fusion moves 667x375: ...wraps to two lines inside the 40 px, never cut", detail)
+					Mock.SetViewport(844, 390)
+					KC.advance(0.6)
+				end)
+				if special then
+					special.Name = oldName
+				end
+				if not okLong then
+					T.fail("fusion moves phone: long names: error", tostring(errLong))
+				end
+				FC.Select("maple_fox", "storm_tabby")
+				KC.advance(0.3)
+
+				-- a reason goes to the right column; the outcome keeps its line
+				LocalPlayer:SetAttribute(H.config().Attr.Tokens, 10)
+				FC.Select("maple_fox", "storm_tabby")
+				KC.advance(0.3)
+				local note = H.find("Note")
+				T.check(H.shown(note) and H.text(note):find("Not enough", 1, true) ~= nil and H.shown(out), "fusion moves phone: short of tokens: the Note says so and the Outcome stays", H.text(note))
+				RedoGeom.check(win, "fusion moves 844x390 (note)", { NoOverlap = { "Slot_Body", "Chips_Body", "SwapButton", "Slot_Style", "Chips_Style", "Arrow", "Result", "Pills", "Note", "Outcome", "CostBar", "FuseButton" } })
+				H.fitsAll("fusion moves 844x390 (note)", "Mix")
+				LocalPlayer:SetAttribute(H.config().Attr.Tokens, 50000)
+				-- an empty slot: no chips, no outcome, the Info line back
+				FC.Select("maple_fox", nil)
+				KC.advance(0.3)
+				T.check(not H.shown(H.find("Chips_Body")) and not H.shown(H.find("Chips_Style")) and not H.shown(out) and H.shown(H.find("Info")),
+					"fusion moves phone: one slot empty: no chips, no Outcome, the Info line")
+			end)
 		end)
 	end)
 
