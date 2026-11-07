@@ -1,10 +1,14 @@
 -- smoke_bug2_lobby.lua: bug batch 2, lane lobby (player reports #4, #7). Loaded by tools/smoke.py in the server world and
 -- the client world:
---   bug2lobby_altarportal (server, #4 "add also a small portal from storm altar to lobby") the Storm Altar has a small
---                         return portal (Model ReturnPortal: a navy collidable pad, 8 cyan Neon ring segments, the
---                         ReturnPrompt anchor = StormAltar.GetReturnPad()) beside the landing: 4-10 studs from
---                         GetLanding, off the landing lane, inside the walkable top, outside the stone ring, flush on
---                         the deck with nothing solid over it; GateService's PlazaGatePrompt on it ("Travel" / "Plaza",
+--   bug2lobby_altarportal (server, #4 "add also a small portal from storm altar to lobby") the Storm Altar has a
+--                         return portal (Model ReturnPortal: a navy collidable pad, the ReturnPrompt anchor =
+--                         StormAltar.GetReturnPad(); lobby shop Task 13, spec 5.11 c: over the pad a standing ring in
+--                         the Return-gate green, Model Ring = 13 green Neon segments on two stone feet, never colliding
+--                         or touching, instead of 8 flush cyan segments) beside the landing: 4-10 studs from GetLanding,
+--                         off the landing lane, inside the walkable top, outside the stone ring, flush on the deck with
+--                         nothing collidable but the pads over it; every ReturnPortal part (rotated bounds) and the
+--                         portal_ring mesh's 9 x 9.5 x 3 bounds at the Ring's pivot >= 4.25 studs off the bridge's centre
+--                         line, within the deck (r 23) and outside the landing box; GateService's PlazaGatePrompt on it ("Travel" / "Plaza",
 --                         E, range 8, no OpenPanel); GateService.Use(player, "Plaza") lands on LobbyInfo.Gates.Altar.
 --                         ReturnCFrame (18 studs in front of the Altar gate, >= 14 studs from its PromptPart so the
 --                         12-stud Altar prompt does not show on arrival, 3 studs over the Altar gate's pad top (lobby
@@ -121,21 +125,30 @@ local function serverScenarios()
 		local A = SA.GetCFrame()
 		local landing = SA.GetLanding()
 		T.check(portal and portal.Name == "ReturnPortal" and portal:IsA("Model"), "bug2 altar portal: it is Model ReturnPortal", portal and portal:GetFullName() or "")
-		-- the look: a navy pad (collidable, flush), a ring of 8 cyan Neon segments
-		local padParts, ring, ringCyan = {}, 0, 0
+		-- the look: a navy pad (collidable, flush); lobby shop Task 13: over it the standing ring in the Return-gate green
+		-- (Model Ring: its Part fallback 13 green Neon segments on two stone feet), not one of its parts colliding or touching
+		local padParts, ring, ringGreen, ringSolid = {}, 0, 0, {}
+		local ringModel = portal:FindFirstChild("Ring")
+		T.check(ringModel ~= nil and ringModel:IsA("Model"), "bug2 altar portal: the standing ring is Model ReturnPortal.Ring")
 		for _, d in ipairs(portal:GetDescendants()) do
 			if d:IsA("BasePart") then
 				if d.Name == "Pad" then
 					padParts[#padParts + 1] = d
-				elseif d.Name == "Ring" then
-					ring = ring + 1
-					if d.Material == Enum.Material.Neon and d.Color.B > 0.8 and d.Color.G > 0.6 and d.Color.R < 0.4 then
-						ringCyan = ringCyan + 1
+				elseif ringModel and d:IsDescendantOf(ringModel) then
+					if d.Name == "RingSegment" then
+						ring = ring + 1
+						-- rgb(96,190,140): green over blue over red
+						if d.Material == Enum.Material.Neon and d.Color.G > 0.7 and d.Color.G > d.Color.B and d.Color.B > d.Color.R then
+							ringGreen = ringGreen + 1
+						end
 					end
-					T.check(not d.CanCollide, "bug2 altar portal: ring segment does not collide")
+					if d.CanCollide or d.CanTouch then
+						ringSolid[#ringSolid + 1] = d.Name
+					end
 				end
 			end
 		end
+		T.check(#ringSolid == 0, "bug2 altar portal: no part of the ring collides or touches", table.concat(ringSolid, ", "))
 		T.check(#padParts >= 1, "bug2 altar portal: a Pad part")
 		local navy, collide, flush = true, true, true
 		for _, p in ipairs(padParts) do
@@ -146,8 +159,8 @@ local function serverScenarios()
 		end
 		T.check(navy, "bug2 altar portal: the pad is navy SmoothPlastic")
 		T.check(collide and flush, "bug2 altar portal: the pad collides and its top is 0.2 studs over the deck (walked over, never in the way)")
-		T.eq(ring, 8, "bug2 altar portal: 8 ring segments")
-		T.eq(ringCyan, 8, "bug2 altar portal: ...all cyan Neon")
+		T.eq(ring, 13, "bug2 altar portal: 13 ring segments (the standing ring's Part fallback)")
+		T.eq(ringGreen, 13, "bug2 altar portal: ...all green Neon (the Return-gate green)")
 		-- placement: beside the landing, on the walkable top, outside the stone ring, off the landing lane
 		local c = pad.Position
 		local dl = hdist(c, landing.Position)
@@ -158,14 +171,55 @@ local function serverScenarios()
 		local rel = Vector3.new(c.X - A.Position.X, 0, c.Z - A.Position.Z)
 		local lateral = abs(rel.X * -axis.Z + rel.Z * axis.X)
 		T.check(lateral - 2.2 >= 2.5, "bug2 altar portal: clear of the landing lane (pad edge >= 2.5 studs off the bridge's centre line)", fmt("pad centre %.1f studs off the line", lateral))
+		-- lobby shop Task 13 (the footprint checks of altar_portal_glow): every ReturnPortal part's rotated bounds and the
+		-- portal_ring mesh's bounds at the Ring's pivot (the dress origin) stay >= 4.25 studs off the bridge's centre line,
+		-- within the deck (r 23) and outside the landing box (2.5 studs wide on the line: past its corners)
+		local function corners(cf, size, out)
+			local h = size / 2
+			for _, sx in ipairs({ -1, 1 }) do
+				for _, sy in ipairs({ -1, 1 }) do
+					for _, sz in ipairs({ -1, 1 }) do
+						out[#out + 1] = (cf * CFrame.new(sx * h.X, sy * h.Y, sz * h.Z)).Position
+					end
+				end
+			end
+			return out
+		end
+		local function footprint(label, points)
+			local lat, reach, toLand = math.huge, 0, math.huge
+			for _, p in ipairs(points) do
+				local r = Vector3.new(p.X - A.Position.X, 0, p.Z - A.Position.Z)
+				lat = min(lat, abs(r.X * -axis.Z + r.Z * axis.X))
+				reach = max(reach, hdist(p, A.Position))
+				toLand = min(toLand, hdist(p, landing.Position))
+			end
+			T.check(#points > 0 and lat >= 4.25 and reach <= 23 and toLand >= 1.25 * sqrt(2) + 0.01,
+				"bug2 altar portal: " .. label .. " >= 4.25 studs off the bridge's centre line, within the deck (r 23) and outside the landing box",
+				fmt("%d points: %.2f off the line, reach %.2f, %.2f from the landing", #points, lat, reach, toLand))
+		end
+		local partPts = {}
+		for _, d in ipairs(portal:GetDescendants()) do
+			if d:IsA("BasePart") then
+				corners(d.CFrame, d.Size, partPts)
+			end
+		end
+		footprint("every ReturnPortal part (rotated bounds) is", partPts)
+		local ML = requireAt("shared/MeshLibrary")
+		local man = ML and ML.Manifest("portal_ring")
+		local lo, hi = man and man.Bounds and man.Bounds.Min, man and man.Bounds and man.Bounds.Max
+		if T.check(ringModel ~= nil and type(lo) == "table" and type(hi) == "table", "bug2 altar portal: (setup) the Ring model and the portal_ring manifest's bounds") then
+			local vlo, vhi = Vector3.new(lo[1], lo[2], lo[3]), Vector3.new(hi[1], hi[2], hi[3])
+			footprint("the portal_ring mesh's bounds at the Ring's pivot are", corners(ringModel:GetPivot() * CFrame.new((vlo + vhi) / 2), vhi - vlo, {}))
+		end
 		local params = RaycastParams.new()
 		params.FilterType = Enum.RaycastFilterType.Exclude
 		params.FilterDescendantsInstances = { portal }
 		params.RespectCanCollide = true
 		local hit = workspace:Raycast(Vector3.new(c.X, A.Position.Y + 1, c.Z), Vector3.new(0, -4, 0), params)
 		T.check(hit ~= nil and abs(hit.Position.Y - A.Position.Y) < 0.6 and hit.Instance:IsDescendantOf(SA.GetModel()), "bug2 altar portal: the island deck is right under the pad", hit and (hit.Instance:GetFullName() .. fmt(" at %+.2f", hit.Position.Y - A.Position.Y)) or "nothing")
-		local over = solidIn(CFrame.new(c.X, A.Position.Y + 3.3, c.Z), Vector3.new(4, 6, 4), portal)
-		T.check(#over == 0, "bug2 altar portal: nothing solid stands on the pad (6 studs up)", names(over))
+		-- (lobby shop Task 13: the portal's own parts are no longer skipped: the standing ring never collides)
+		local over = solidIn(CFrame.new(c.X, A.Position.Y + 3.3, c.Z), Vector3.new(4, 6, 4), nil)
+		T.check(#over == 0, "bug2 altar portal: nothing solid stands on the pad (6 studs up; the ring over it never collides)", names(over))
 		local atLanding = solidIn(CFrame.new(landing.Position.X, A.Position.Y + 2.8, landing.Position.Z), Vector3.new(2.5, 5, 2.5), nil)
 		T.check(#atLanding == 0, "bug2 altar portal: the landing spot stays clear", names(atLanding))
 		-- the prompt

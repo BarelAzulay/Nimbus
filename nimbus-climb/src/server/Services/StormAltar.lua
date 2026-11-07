@@ -48,15 +48,27 @@
 --              Roulette is not available there; while the gem system is missing or still checking the account the
 --              phase 1 side toast "The Storm Altar awakens soon: summon Secret pets with Gems!" is sent (toasts:
 --              Notify, rate-limited per player).
---   Return     bug batch 2 #4: Model ReturnPortal, a small navy pad (an octagon 4 studs across, 0.2 high, flush on the
---              deck) with a ring of cyan Neon segments, RETURN_AHEAD studs out along the bridge bearing and RETURN_SIDE
---              to its side: beside the landing, clear of the arrival spot, the bridge lane and the walk to the dais.
---              Only the pad collides. Its "ReturnPrompt" anchor carries GateService's prompt (no panel).
---   Lights     a few soft electric-blue PointLights with small ranges (portal, head crystal, gate).
+--   Glow       lobby-shop (spec 5.11 b): Model PortalGlow beside the untouched Portal model (its prop_altar_portal
+--              LayoutSig still matches): a crystal-cyan Neon GlowDisc (a 16-gon inside the rim, union radius <= 6.0,
+--              its top 0.06 over the old disc top) with a lighter GlowHeart, GlowRing (16 cyan Neon segments on a ring of
+--              centre radius 6.0, 0.35 over the disc top, pivot = the disc centre on the disc top: the layout of the
+--              Blender key portal_altar_ring, whose Part fallback it is) tagged Config.Tags.Spin (SpinSeconds 6: the
+--              client turns it), rising sparkles, a PointLight 1.5 / 24 and a sky beam (a Beam from 0.5 to 160 studs
+--              up, FaceCamera, no texture, cyan to white, fading with height) so the altar is found from the plaza.
+--   Return     bug batch 2 #4, lobby-shop (spec 5.11 c): Model ReturnPortal, RETURN_AHEAD studs out along the bridge
+--              bearing and RETURN_SIDE to its side, facing the walk from the dais: beside the landing, clear of the
+--              arrival spot, the 8-stud bridge lane and the island's rim clouds. Two flat navy Pad octagons (4 studs across, 0.2 high: the only colliding parts)
+--              and a standing ring in the Return-gate green (Model Ring, Blender key portal_ring with its plinth top
+--              0.05 under the octagons' top; its Part fallback: 13 green Neon segments on a ring 4.5 up over the pad and
+--              two stone feet), never colliding or touching. "To the Plaza" on the mesh's SignFace (a SurfaceGui at 50
+--              px per stud on a SignFace part) once the ring is dressed, else a pixel BillboardGui over the ring. Its
+--              "ReturnPrompt" anchor carries GateService's prompt (no panel) and a PointLight 1.3 / 14.
+--   Lights     a few soft electric-blue PointLights with small ranges (portal, glow, return ring, head crystal, gate).
 -- No AltarSite: a free spot between the plaza and the plot ring road is searched (away from lobby parts, NPC spots
 -- and the spawn), and the dock is found by raycasting for the street. Collision only on walkable parts (island
--- top and billows, dais stones, rim, disc, bridge, steps, gate) plus the invisible showcase collider. Part budget
--- <= ~450 without the showcase pet. Plain Lua 5.1-compatible syntax only.
+-- top and billows, dais stones, rim, disc, bridge, steps, gate, the return pads) plus the invisible showcase
+-- collider. Part budget <= 500 without the showcase pet (tools/contract.json stormAltar). Plain Lua 5.1-compatible
+-- syntax only.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -86,6 +98,7 @@ end
 local Voxel = optional("Voxel")
 local PetBuilder = optional("PetBuilder")
 local PetCatalog = optional("PetCatalog")
+local WorldStyle = optional("WorldStyle")
 
 local StormAltar = {}
 StormAltar.Used = Util.Signal()
@@ -117,8 +130,29 @@ local RAMP_LEVEL = 5 -- studs of level deck over the island edge before the ramp
 local GAP_HALF = 26 -- degrees kept free of rim billows around the bridge
 local MAX_PARTS = 500
 -- bug batch 2 #4: the return portal's centre in the bridge frame (studs out along the bridge bearing from the altar
--- centre, studs to the side); the stone ring ends at 13.8, the landing arrives at ~17 on the centre line
-local RETURN_AHEAD, RETURN_SIDE, RETURN_PAD = 17, 5.5, 4
+-- centre, studs to the side); the stone ring ends at 13.8, the landing arrives at ~17 on the centre line. lobby-shop
+-- (spec 5.11 c): the standing ring (9 x 9.5 x 3) needs room the old pad did not. Beside the landing the island's rim
+-- clouds rise from ~11 studs off the centre line (the bridge gap is only ~26 degrees wide), so a ring facing the altar
+-- (the spec's side 9) would stand in a billow. It stands at 16.5 / 8 instead and faces the walk from the dais
+-- (RETURN_FACE: the centre line 14 studs out, just past the stone ring): its opening and sign turn to the path, its
+-- bounds stay >= 5 studs off the centre line, inside the deck (r <= 22.8) and clear of the clouds and the stones.
+local RETURN_AHEAD, RETURN_SIDE, RETURN_FACE, RETURN_PAD = 16.5, 8, 14, 4
+-- lobby-shop (spec 5.11): the portal glow and the standing return ring
+local PORTAL = {
+	DiscTop = 0.1 + 0.2 / 2 + 3 * 0.004 + 0.06, -- the glow disc's top: 0.06 over the old DiscHeart's highest layer
+	GlowSide = 8.4, -- the glow disc's squares (16-gon union radius 0.707 x 8.4 = 5.94 <= 6.0: inside the rim)
+	HeartSide = 4.4,
+	RingR = 6.0, -- the summon ring (Blender portal_altar_ring shares it): centre radius, height over the disc top, count
+	RingUp = 0.35,
+	RingN = 16,
+	SpinSeconds = 6,
+	BeamTop = 160, -- the sky beam's top (studs over the disc)
+	ReturnUp = 4.5, -- the return ring's Part fallback: the opening's centre over the deck, its radius and count
+	ReturnR = 3.9,
+	ReturnN = 13,
+	MeshDrop = 0.85, -- the portal_ring mesh pivot under the deck: its plinth top (1.0 up) ends 0.05 under the octagons
+	SignFace = Vector3.new(0, 8.25, -1.25), -- the portal_ring manifest's SignFace attachment (the navy board's front)
+}
 -- the entrance gate's poster (World text rule: a SurfaceGui at 50 px per stud, titles >= 1 stud, lines >= 0.6 stud)
 local POSTER_PPS = 50
 local PANEL_W, PANEL_H = 12, 6.4 -- studs = 600 x 320 px
@@ -160,6 +194,9 @@ local C = {
 	DiscInner = rgb(33, 42, 84),
 	-- crystals and glow
 	CrystalCore = rgb(63, 200, 255),
+	GlowHeart = rgb(186, 236, 255), -- lobby-shop (spec 5.11 b): the summon glow's lighter heart
+	-- lobby-shop (spec 5.11 c): the return ring in the Arena Return-gate green
+	ReturnGreen = (WorldStyle and WorldStyle.Palette and WorldStyle.Palette.Accent and WorldStyle.Palette.Accent.Green) or rgb(96, 190, 140),
 	CrystalGlass = rgb(70, 172, 252),
 	Rune = rgb(64, 150, 236),
 	Electric = rgb(70, 170, 255),
@@ -838,6 +875,69 @@ local function buildPortal(parent, A)
 	return m
 end
 
+-- lobby-shop (spec 5.11 b): the summon portal lights up. A sibling of the Portal model (which stays as it is, so its
+-- prop_altar_portal LayoutSig still matches): a cyan Neon disc just over the old one with a lighter heart, the spinning
+-- ring of 16 Neon segments around the rim (the Part fallback of Blender portal_altar_ring), sparkles, a light and a
+-- sky beam. Nothing here collides (players stand on the old disc).
+local function buildPortalGlow(parent, A)
+	local m = newModel(parent, "PortalGlow")
+	local top, h = PORTAL.DiscTop, 0.1
+	local glow = { Material = MAT.Neon, Shadow = false }
+	-- four turned squares whose highest layer tops out at DiscTop (polygon16 lifts each layer 0.004)
+	polygon16(m, "GlowDisc", A * CFrame.new(0, top - h / 2 - 3 * 0.004, 0), PORTAL.GlowSide, h, C.CrystalCore, glow)
+	for k = 0, 1 do
+		local cf = A * CFrame.new(0, top + 0.016 + k * 0.004 - h / 2, 0) * CFrame.Angles(0, math.rad(11.25 + k * 45), 0)
+		block(m, "GlowHeart", cf, Vector3.new(PORTAL.HeartSide, h, PORTAL.HeartSide), C.GlowHeart, glow)
+	end
+	-- the ring: pivot = the disc centre on the disc top (what the client turns it about and the mesh is placed on)
+	local pivot = A * CFrame.new(0, top, 0)
+	local ring = newModel(m, "GlowRing")
+	local seg = Vector3.new(2 * PORTAL.RingR * math.tan(math.rad(180 / PORTAL.RingN)) + 0.08, 0.5, 0.3)
+	for i = 0, PORTAL.RingN - 1 do
+		local cf = pivot * CFrame.Angles(0, math.rad(i * 360 / PORTAL.RingN), 0) * CFrame.new(0, PORTAL.RingUp, -PORTAL.RingR)
+		block(ring, "GlowSegment", cf, seg, C.CrystalCore, glow)
+	end
+	ring.WorldPivot = pivot
+	ring:SetAttribute("SpinSeconds", PORTAL.SpinSeconds)
+	if type(Config.Tags) == "table" and type(Config.Tags.Spin) == "string" then
+		CollectionService:AddTag(ring, Config.Tags.Spin)
+	end
+	Mesh.tag(ring, "portal_altar_ring", pivot)
+	-- one invisible anchor: the light, the sparkles and the sky beam (cyan at the disc, white and fading at the top)
+	local core = invisible(m, "GlowCore", pivot)
+	local light = pointLight(core, 1.5, 24)
+	light.Name = "PortalGlowLight"
+	light.Color = C.CrystalCore
+	local rise = Instance.new("Attachment")
+	rise.Name = "GlowSparkles"
+	rise.CFrame = CFrame.new(0, 0.3, 0)
+	rise.Parent = core
+	sparkles(rise, 5, 3, 0.5)
+	local base = Instance.new("Attachment")
+	base.Name = "BeamBase"
+	base.CFrame = CFrame.new(0, 0.5, 0)
+	base.Parent = core
+	local sky = Instance.new("Attachment")
+	sky.Name = "BeamTop"
+	sky.CFrame = CFrame.new(0, PORTAL.BeamTop, 0)
+	sky.Parent = core
+	local beam = Instance.new("Beam")
+	beam.Name = "SkyBeam"
+	beam.Attachment0 = base
+	beam.Attachment1 = sky
+	beam.FaceCamera = true
+	beam.Texture = ""
+	beam.Segments = 1
+	beam.Color = ColorSequence.new(C.CrystalCore, C.White)
+	beam.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(1, 1) })
+	beam.Width0 = 3
+	beam.Width1 = 1
+	beam.LightEmission = 1
+	beam.LightInfluence = 0
+	beam.Parent = core
+	return m
+end
+
 ----------------------------------------------------------------------
 -- Bridge: island -> dock, deck at the island height over the junction rail, steps down onto the street
 ----------------------------------------------------------------------
@@ -1364,31 +1464,78 @@ local function onAltarUsed(player)
 	StormAltar.Used:Fire(player)
 end
 
--- bug batch 2 #4 (the player: "add also a small portal from storm altar to lobby"): the small return portal beside the
--- landing. gapDeg = the bridge bearing (altar-local degrees). The pad is a navy octagon (two turned squares) flush on
--- the deck with a darker heart and a ring of eight cyan Neon segments; only the pad collides (0.2 high: walked over,
--- never in the way). Returns the invisible prompt anchor (GateService adds the prompt). Part style like the dais; a
--- Blender mesh for it is wave 3 art.
+-- lobby-shop (spec 5.11 c): "To the Plaza" on the return ring (World text rule). Dressed with the portal_ring mesh: a
+-- SurfaceGui at 50 px per stud (0.6-stud letters, all the 4 x 1 navy board takes) on an invisible SignFace part whose
+-- front face sits 0.02 proud of the mesh's SignFace attachment; the Part fallback: a pixel BillboardGui over the ring.
+local function plazaSign(parent, anchor, origin, dressed)
+	if dressed then
+		local face = block(parent, "SignFace", origin * CFrame.new(PORTAL.SignFace) * CFrame.new(0, 0, -0.02 + 0.05), Vector3.new(4.5, 1, 0.1), C.Navy, { Transparency = 1, Shadow = false })
+		local board = Instance.new("SurfaceGui")
+		board.Name = "PlazaSign"
+		board.Face = Enum.NormalId.Front
+		board.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+		board.PixelsPerStud = POSTER_PPS
+		board.LightInfluence = 0
+		board.Adornee = face
+		label(board, "To the Plaza", "Title", { Name = "Text", Size = 30 }, 3)
+		board.Parent = face
+		return board
+	end
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "PlazaSign"
+	gui.Size = UDim2.fromOffset(200, 50)
+	gui.StudsOffsetWorldSpace = Vector3.new(0, 7.2, 0) -- 9.7 over the deck: above the ring's top (8.6)
+	gui.AlwaysOnTop = false
+	gui.LightInfluence = 0
+	gui.MaxDistance = 60
+	gui.Adornee = anchor
+	local plate = frame(gui, "Plate", UDim2.fromScale(0, 0), UDim2.fromScale(1, 1), C.White)
+	plate.BackgroundTransparency = 0.04
+	corner(plate, 0.4, true)
+	stroke(plate, C.ReturnGreen, 3)
+	gradient(plate, rgb(52, 72, 120), rgb(24, 34, 70))
+	label(plate, "To the Plaza", "Title", { Name = "Text", Size = 26, Box = UDim2.new(1, -16, 1, -8) }, 2.5)
+	gui.Parent = anchor
+	return gui
+end
+
+-- bug batch 2 #4 (the player: "add also a small portal from storm altar to lobby"): the return portal beside the
+-- landing. gapDeg = the bridge bearing (altar-local degrees). The floor is a navy octagon (two turned squares, the only
+-- colliding parts: 0.2 high, walked over, never in the way) with a darker heart. lobby-shop (spec 5.11 c): over it
+-- stands a ring in the Return-gate green facing the path (Model Ring: Blender key portal_ring, sunk MeshDrop under
+-- the deck; its Part fallback 13 Neon segments on two stone feet), nothing of it colliding or touching. Returns the
+-- invisible prompt anchor (GateService adds the prompt).
 local function buildReturnPortal(parent, A, gapDeg)
 	local m = newModel(parent, "ReturnPortal")
 	local spot = (polarCF(A, gapDeg, RETURN_AHEAD) * CFrame.new(RETURN_SIDE, 0, 0)).Position
-	local cf = flatLook(spot, A.Position) -- flat on the walking surface, facing the altar
+	-- flat on the walking surface, facing the walk from the dais (the bridge's centre line RETURN_FACE studs out)
+	local cf = flatLook(spot, polarCF(A, gapDeg, RETURN_FACE).Position)
 	local size = Vector3.new(RETURN_PAD / 1.0824, 0.2, RETURN_PAD / 1.0824) -- the octagon's corners are RETURN_PAD apart
 	block(m, "Pad", cf * CFrame.new(0, 0.1, 0), size, C.Disc, { Collide = true, Shadow = false })
 	block(m, "Pad", cf * CFrame.new(0, 0.1, 0) * CFrame.Angles(0, math.rad(45), 0), size, C.Disc, { Collide = true, Shadow = false })
 	block(m, "Heart", cf * CFrame.new(0, 0.205, 0) * CFrame.Angles(0, math.rad(22.5), 0), Vector3.new(1.9, 0.02, 1.9), C.DiscInner, { Shadow = false })
-	local rr = RETURN_PAD / 2 - 0.45 -- the ring's centre radius
-	local seg = 2 * rr * math.tan(math.rad(22.5)) + 0.08
-	for i = 0, 7 do
-		local a = math.rad(i * 45 + 22.5)
-		block(m, "Ring", cf * CFrame.Angles(0, a, 0) * CFrame.new(0, 0.26, -rr), Vector3.new(seg, 0.12, 0.26), C.CrystalCore, { Material = MAT.Neon, Shadow = false })
+	-- the standing ring's Part fallback: segments round the opening's centre in the ring's plane (cf's XY plane)
+	local ring = newModel(m, "Ring")
+	local n, rr = PORTAL.ReturnN, PORTAL.ReturnR
+	local seg = Vector3.new(2 * rr * math.tan(math.rad(180 / n)) + 0.08, 0.45, 0.5)
+	local mid = cf * CFrame.new(0, PORTAL.ReturnUp, 0)
+	for k = 0, n - 1 do
+		block(ring, "RingSegment", mid * CFrame.Angles(0, 0, -math.rad(k * 360 / n)) * CFrame.new(0, rr, 0), seg, C.ReturnGreen, { Material = MAT.Neon, Shadow = false })
 	end
+	-- two stone feet under the ring's sides, outside the 4x6x4 box over the pad (inner faces 2.9 studs out)
+	for _, s in ipairs({ -1, 1 }) do
+		block(ring, "PortalFoot", cf * CFrame.new(s * 3.5, 1.3, 0), Vector3.new(1.2, 2.6, 1.2), C.StoneB, { Shadow = false })
+	end
+	local origin = cf * CFrame.new(0, -PORTAL.MeshDrop, 0)
+	ring.WorldPivot = origin
+	local dressed = Mesh.tag(ring, "portal_ring", origin, { Primary = C.ReturnGreen })
 	local anchor = invisible(m, "ReturnPrompt", cf * CFrame.new(0, 2.5, 0), Vector3.new(2, 2, 2))
+	plazaSign(m, anchor, origin, dressed)
 	local glow = Instance.new("PointLight")
-	glow.Name = "ReturnGlow"
+	glow.Name = "ReturnLight"
 	glow.Color = C.CrystalCore
-	glow.Brightness = 0.8
-	glow.Range = 7
+	glow.Brightness = 1.3
+	glow.Range = 14
 	glow.Shadows = false
 	glow.Parent = anchor
 	local rise = Instance.new("Attachment")
@@ -1493,6 +1640,9 @@ function StormAltar.Build(lobbyInfo)
 	end)
 	section("portal", function()
 		buildPortal(model, A)
+	end)
+	section("portal glow", function()
+		buildPortalGlow(model, A)
 	end)
 	local headTip = 0
 	section("crystals", function()

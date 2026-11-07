@@ -14,7 +14,8 @@
 --                   one Model StormAltar (a rebuild replaces it on the same site), StormfangShowcase (tag
 --                   NC_Showcase, attribute PetId, PetBuilder High), StormAltarSign ("STORM ALTAR" + the player's
 --                   art, the only asset id; World text rule: a pixel-sized title tag, 40-60 px/stud signs, with
---                   small sign letters reported as a warning), <= 450 parts without the showcase, no overlap with
+--                   small sign letters reported as a warning), <= 500 parts without the showcase (contract
+--                   stormAltar; lobby shop Task 13: PortalGlow and the standing return ring counted in), no overlap with
 --                   the portals, roulette machines, NPC spots / NPC pets, the spawn or the home plots (oriented part
 --                   boxes, separating-axis test), a walkable path from the island over the bridge down onto the
 --                   street (a step-by-step ray walk: no gaps, no walls, small steps), and the "Storm Altar"
@@ -731,10 +732,15 @@ local function serverScenarios()
 			end
 		end
 
-		-- part budget (the showcase pet excluded)
+		-- part budget (the showcase pet excluded). Lobby shop Task 13 (spec 5.11): the summon glow (PortalGlow) and the
+		-- standing return ring (ReturnPortal) are part of the altar and of its budget
 		local parts = countParts(altar, showcase)
+		local glowModel, returnModel = altar:FindFirstChild("PortalGlow"), altar:FindFirstChild("ReturnPortal")
+		T.check(glowModel ~= nil and returnModel ~= nil and countParts(glowModel) > 0 and countParts(returnModel) > 0,
+			"Storm Altar: the summon glow (PortalGlow) and the standing return ring (ReturnPortal) are in the counted altar")
 		T.check(parts <= CONTRACT.v3.partBudget.stormAltar and parts >= 30, "Storm Altar: at most " .. CONTRACT.v3.partBudget.stormAltar .. " parts without the showcase pet", parts .. " parts")
-		T.info("*Storm Altar: " .. parts .. " parts + showcase " .. (showcase and countParts(showcase) or 0) .. " parts, " .. Mock.CountDescendants(altar) .. " instances")
+		T.info("*Storm Altar: " .. parts .. " parts (PortalGlow " .. (glowModel and countParts(glowModel) or 0) .. ", ReturnPortal " .. (returnModel and countParts(returnModel) or 0)
+			.. ") + showcase " .. (showcase and countParts(showcase) or 0) .. " parts, " .. Mock.CountDescendants(altar) .. " instances")
 
 		-- the sign and the only asset id
 		local sign = altar:FindFirstChild("StormAltarSign", true)

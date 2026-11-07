@@ -1375,7 +1375,8 @@ local function serverScenarios()
 	-- lights. The lamps SkyController drives (Config.Sky.Lamps.Names) stay inside art rule 7 (warm lanterns <= 1.5,
 	-- range <= 16, no shadows) at their built value; nothing else in the lobby outshines the Gate Court's pinned P4 gate
 	-- light (28 / 1.3); no spot or surface lights. The list (grouped) and every light, beam and big Neon part within 40
-	-- studs of Sparky Fox go to the log: the list Studio checks against the owner's screenshot.
+	-- studs of Sparky Fox go to the log: the list Studio checks against the owner's screenshot. Lobby shop Task 13: the
+	-- Storm Altar's summon glow (1.5 / 24) and return ring (1.3 / 14, no ReturnGlow) lights are named in the rule.
 	------------------------------------------------------------------------------------------------
 	S.bb6_lobby_lights = guarded("bb6_lobby_lights", function()
 		if not K.needBoot() then
@@ -1417,6 +1418,26 @@ local function serverScenarios()
 		lamps:report(lampCount .. " lamps")
 		others:report()
 		T.eq(spots, 0, "no SpotLight or SurfaceLight in the lobby")
+		-- lobby shop Task 13 (spec 5.11 b, c): the Storm Altar's new lights are in this census and within the rule: the
+		-- summon glow's one PointLight 1.5 / 24 and the return ring's one PointLight 1.3 / 14 on ReturnPrompt (ReturnGlow gone)
+		local altar = lobby:FindFirstChild("StormAltar", true)
+		local function lightsUnder(root, direct)
+			local out = {}
+			for _, d in ipairs(root and (direct and root:GetChildren() or root:GetDescendants()) or {}) do
+				if d:IsA("Light") then
+					out[#out + 1] = d
+				end
+			end
+			return out
+		end
+		local glowLights = lightsUnder(altar and altar:FindFirstChild("PortalGlow"), false)
+		local returnPortal = altar and altar:FindFirstChild("ReturnPortal")
+		local returnLights = lightsUnder(returnPortal and returnPortal:FindFirstChild("ReturnPrompt"), true)
+		local g, r = glowLights[1], returnLights[1]
+		T.check(#glowLights == 1 and g:IsA("PointLight") and abs(g.Brightness - 1.5) < 1e-6 and g.Range == 24 and not g.Shadows and not Lamps.Names[g.Parent.Name],
+			"the Storm Altar's summon glow: one PointLight 1.5 / 24 (within the 1.5 / 28 rule, not a lamp)", #glowLights .. " lights")
+		T.check(#returnLights == 1 and r:IsA("PointLight") and abs(r.Brightness - 1.3) < 1e-6 and r.Range == 14 and not r.Shadows and returnPortal:FindFirstChild("ReturnGlow", true) == nil,
+			"the Storm Altar's return ring: one PointLight 1.3 / 14 on ReturnPrompt (ReturnGlow 0.8 / 7 gone)", #returnLights .. " lights")
 		table.sort(order)
 		local parts = {}
 		for _, key in ipairs(order) do

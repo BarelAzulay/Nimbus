@@ -19,7 +19,9 @@
 --                             controllers show them (their UIScale included); the Phase 4 pet cards (PetCard, in the
 --                             PlayerGui): own and another player's follower cards and a ready card with its EVOLVE! pill,
 --                             "Lv" >= 22 px with a stroke, every text on a compact solid plate.
--- The Storm Altar (another engineer's file, audited by smoke_storm.lua) and transient damage numbers are reported only.
+-- The Storm Altar (another engineer's file, audited by smoke_storm.lua) and transient damage numbers are reported only,
+-- except the altar's "To the Plaza" sign (lobby shop Task 13): the tag rule on the Part fallback, the 0.6-stud line
+-- floor on the dressed ring's one-line plaque.
 -- The mock has no Players:GetUserThumbnailAsync: this file adds a faithful stub (yields, returns content + isReady,
 -- errors for user ids listed in THUMB.fail) when it loads, before the boot.
 -- Plain Lua 5.1 syntax only.
@@ -752,6 +754,29 @@ local function serverScenarios()
 			joinRec and table.concat(joinRec.problems, "; ") or "not in the census")
 		T.check(guideRec ~= nil and #guideRec.problems == 0 and guideRec.texts >= 9, "polish worldtext: the Egg Guide board (header, line, seven egg names) is in the census and keeps the sign rule",
 			guideRec and (guideRec.texts .. " texts; " .. table.concat(guideRec.problems, "; ")) or "not in the census")
+		-- lobby shop Task 13 (spec 5.11 c): the Storm Altar is exempt above, but its "To the Plaza" sign keeps the rule. On the
+		-- Part fallback it is a tag (the full tag rule); on the dressed portal_ring mesh a one-line plaque on the 4 x 1-stud
+		-- navy board, so only its lines' 0.6-stud floor applies there (the 0.95-stud title floor does not fit the board)
+		local SAlt = mod("StormAltar")
+		local rpad = SAlt and type(SAlt.GetReturnPad) == "function" and SAlt.GetReturnPad()
+		local rportal = rpad and rpad.Parent
+		local plaza = nil
+		for _, d in ipairs(rportal and rportal:GetDescendants() or {}) do
+			if (d:IsA("BillboardGui") or d:IsA("SurfaceGui")) and d.Name == "PlazaSign" then
+				plaza = d
+			end
+		end
+		if T.check(plaza ~= nil and census.seen[plaza] == true, "polish worldtext: the Storm Altar's 'To the Plaza' sign (ReturnPortal PlazaSign) is in the census") then
+			local prec = auditGui(plaza)
+			local probs = {}
+			for _, msg in ipairs(prec.problems) do
+				if not (plaza:IsA("SurfaceGui") and msg:find("biggest letters", 1, true)) then
+					probs[#probs + 1] = msg
+				end
+			end
+			T.check(prec.texts == 1 and prec.strings[1] == "To the Plaza" and #probs == 0 and (plaza:IsA("BillboardGui") or (prec.minStuds or 0) >= INFO_STUDS - 0.001),
+				"polish worldtext: ...it reads 'To the Plaza' and keeps the World text rule (" .. plaza.ClassName .. ")", table.concat(probs, "; "))
+		end
 		holder:Destroy()
 		advance(0.2)
 		K.flushErrors("polish worldtext")
