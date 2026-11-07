@@ -1438,6 +1438,13 @@ local function serverScenarios()
 			"the Storm Altar's summon glow: one PointLight 1.5 / 24 (within the 1.5 / 28 rule, not a lamp)", #glowLights .. " lights")
 		T.check(#returnLights == 1 and r:IsA("PointLight") and abs(r.Brightness - 1.3) < 1e-6 and r.Range == 14 and not r.Shadows and returnPortal:FindFirstChild("ReturnGlow", true) == nil,
 			"the Storm Altar's return ring: one PointLight 1.3 / 14 on ReturnPrompt (ReturnGlow 0.8 / 7 gone)", #returnLights .. " lights")
+		-- lobby shop Task 26 (spec 16.5 "The world eggs"): the Egg Guide's one shelf glow is in this census, within the rule
+		local guide = lobby:FindFirstChild("EggGuide", true)
+		local shelfLights = lightsUnder(guide, false)
+		local sg = shelfLights[1]
+		T.check(#shelfLights == 1 and sg:IsA("PointLight") and sg.Name == "EggShelfGlow" and abs(sg.Brightness - 1.0) < 1e-6 and sg.Range == 10 and not sg.Shadows
+			and not Lamps.Names[sg.Parent.Name], "the Egg Guide's shelf: one PointLight EggShelfGlow 1.0 / 10 (within the 1.5 / 28 rule, not a lamp)",
+			#shelfLights .. " lights" .. (sg and (" " .. sg:GetFullName()) or ""))
 		table.sort(order)
 		local parts = {}
 		for _, key in ipairs(order) do

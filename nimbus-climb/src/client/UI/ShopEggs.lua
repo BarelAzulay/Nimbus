@@ -33,6 +33,16 @@
 --                                    (Loading); the balance under the price (Short: the price kept, drawn red, the
 --                                    button still taps and EggStage toasts); else Ready
 --   ShopEggs.HeroPulse(page) -> the UIScale "Pulse" of the hero's Spin (ShopController's shine pulses it, High only)
+--   ShopEggs.Fx(page) -> { Pool, Egg }   (Task 26, spec 16.5 "Where the VFX show") the page's HatchFx pool (16 sparks,
+--                                    in the hero card) and the Secret hero's big "HeroEgg" (EggArt Full, built Still). On
+--                                    PC / Compact the egg stands between the machine and the texts (150 tall at x 198,
+--                                    the texts from x 360; shrunk: 124 at x 170, the texts from x 305); a phone or
+--                                    portrait card has no room for it (hidden). While the page shows on High graphics the
+--                                    egg wears its VFX, the pool keeps its 2 orbiting star sparks and every machine's
+--                                    Glass sweeps a slow sheen (its UIGradient "GlassSheen"); hidden (another tab, the
+--                                    Shop closed, the egg stage over it), on Low or on a phone everything stops: no
+--                                    tween, no Heartbeat. It follows the page's and its ancestors' Visible, the
+--                                    ScreenGui's Enabled and the Gfx setting.
 --   ShopEggs.Metrics                 the K table (sizes, texts; MEASURE: a text-width hook for the offline renderer)
 -- Buttons: Spin = EggStage.Request(id, "Tokens", 1), Spin3 = (id, "Tokens", 3), SpinGems = (id, "Gems", 1), the Secret
 -- card's Spin = ("Secret", "Gems", 1). A spin button holds Word ("SPIN" / "x3", or the state: "Locked", "Loading..."),
@@ -56,6 +66,8 @@ local GemIcon = require(UI:WaitForChild("GemIcon"))
 local CloudUI = require(UI:WaitForChild("CloudUI"))
 local EggArt = require(UI:WaitForChild("EggArt"))
 local EggStage = require(UI:WaitForChild("EggStage"))
+local HatchFx = require(UI:WaitForChild("HatchFx"))
+local TweenService = game:GetService("TweenService")
 local State = require(UI.Parent:WaitForChild("State"))
 
 local ShopEggs = {}
@@ -68,6 +80,10 @@ local SECRET_DEF = type(Config.Gems) == "table" and Config.Gems.SecretRoulette o
 local K = {
 	SECRET = (type(SECRET_DEF) == "table" and SECRET_DEF.Id) or "Secret",
 	MACHINES = { "Cloud", "Storm", "Sky", "Celestial" },
+	-- the hero's big egg (Task 26): its height and x by plan, where the texts start, and the page's spark pool
+	HERO_EGG = { Ref = { 150, 198, 360 }, Shrunk = { 124, 170, 305 }, Sparks = 16 },
+	-- each machine dome's glass sheen (High, while the page shows): a lighter band sweeping across every ~6 s
+	GLASS_SHEEN = TweenInfo.new(1.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, false, 4.4),
 	HERO = rgb(138, 92, 255),
 	HERO_MACHINE = rgb(90, 75, 208),
 	CHIP = rgb(59, 42, 138),
@@ -319,7 +335,22 @@ function H.machine(parent, id, color, secret)
 		egg.Position = UDim2.fromScale((cx - ew / 2 - D[1]) / D[3], (cy - eh / 2 - D[2]) / D[4])
 		egg.Size = UDim2.fromScale(ew / D[3], eh / D[4])
 	end
-	H.part(m, root, B, "Glass", D[1], D[2], D[3], D[4], secret and K.HERO or rgb(191, 230, 255), 0.5, 5, { BackgroundTransparency = 0.84 })
+	local glass = H.part(m, root, B, "Glass", D[1], D[2], D[3], D[4], secret and K.HERO or rgb(191, 230, 255), 0.5, 5, { BackgroundTransparency = 0 })
+	-- (Task 26) the glass's see-through 0.84 lives in its gradient, with a lighter band parked off the glass (Offset -1):
+	-- the page sweeps it across while it shows on High
+	m.Sheen = Util.Create("UIGradient", {
+		Name = "GlassSheen",
+		Rotation = 30,
+		Offset = Vector2.new(-1, 0),
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.84),
+			NumberSequenceKeypoint.new(0.4, 0.84),
+			NumberSequenceKeypoint.new(0.5, 0.5),
+			NumberSequenceKeypoint.new(0.6, 0.84),
+			NumberSequenceKeypoint.new(1, 0.84),
+		}),
+		Parent = glass,
+	})
 	H.part(m, root, B, "Shine", 54, 28, 44, 9, WHITE, 0.5, nil, { BackgroundTransparency = 0.25, Rotation = -32 })
 	H.part(m, root, B, "Cap", 82, 2, 36, 18, Theme.Lighten(color, 0.2), 0.35, 4)
 	return m
@@ -441,6 +472,8 @@ function H.buildHero(P, parent)
 	t.Pulse = Util.Create("UIScale", { Name = "Pulse", Scale = 1, Parent = t.Holder })
 	t.Spin = H.spinButton(P, t.Holder, "Spin", "Pink", "SPIN", "Gems", K.SECRET, 1)
 	t.Hint = label("Hint", b, K.TEXT.HeroHint, "Body", 18, { TextColor3 = K.LINE })
+	-- (Task 26) the big Secret egg in front of the machine's right side, still until the page shows (ShopEggs.Fx)
+	t.Egg = EggArt.New(b, "Secret", K.HERO_EGG.Ref[1], { Name = "HeroEgg", Form = "Full", Still = true, ZIndex = 3 })
 	return t
 end
 
@@ -522,8 +555,115 @@ function ShopEggs.Build(page, ctx)
 	P.Scroll:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
 		ShopEggs._SyncFade(page)
 	end)
+	-- (Task 26) the page-owned spark pool in the hero card: the big egg's orbiting star sparks, stopped while hidden
+	P.Pool = HatchFx.Pool(P.Hero.Card.Body, K.HERO_EGG.Sparks)
+	P.Pool:SetRunning(false)
+	P.Pool:Ambient(P.Hero.Egg, "Secret")
+	P.FxConns = {}
+	H.wireFx(P)
+	page.AncestryChanged:Connect(function()
+		H.wireFx(P)
+		H.syncFx(P)
+	end)
+	local settings = UI.Parent:FindFirstChild("ClientSettings")
+	local okCS, CS = false, nil
+	if settings and settings:IsA("ModuleScript") then
+		okCS, CS = pcall(require, settings)
+	end
+	if okCS and type(CS) == "table" and CS.Changed then
+		CS.Changed:Connect(function(key)
+			if key == "Gfx" then
+				task.defer(H.syncFx, P) -- (after GraphicsQuality has applied the new setting)
+			end
+		end)
+	end
 	ShopEggs.Refresh(page)
+	H.syncFx(P)
 	return P
+end
+
+----------------------------------------------------------------------
+-- the page's VFX (Task 26)
+----------------------------------------------------------------------
+-- the graphics setting (client/GraphicsQuality's Effective(), asked on every call); High when the module is not there
+function H.high()
+	if H.GQ == nil then
+		H.GQ = false
+		local module = UI.Parent:FindFirstChild("GraphicsQuality")
+		if module and module:IsA("ModuleScript") then
+			local ok, mod = pcall(require, module)
+			if ok and type(mod) == "table" then
+				H.GQ = mod
+			end
+		end
+	end
+	if not H.GQ then
+		return true
+	end
+	local ok, mode = pcall(H.GQ.Effective)
+	return not ok or mode ~= "Low"
+end
+
+-- the page shows: it and every GuiObject above it Visible, its ScreenGui Enabled, in a PlayerGui
+function H.shown(page)
+	local cur = page
+	while cur do
+		if cur:IsA("GuiObject") then
+			if not cur.Visible then
+				return false
+			end
+		elseif cur:IsA("LayerCollector") then
+			if not cur.Enabled then
+				return false
+			end
+		elseif cur:IsA("PlayerGui") then
+			return true
+		end
+		cur = cur.Parent
+	end
+	return false
+end
+
+-- (re)connects the Visible / Enabled listeners on the page and its ancestors
+function H.wireFx(P)
+	for _, c in ipairs(P.FxConns) do
+		c:Disconnect()
+	end
+	P.FxConns = {}
+	local cur = P.Page
+	while cur and cur ~= game do
+		local prop = (cur:IsA("GuiObject") and "Visible") or (cur:IsA("LayerCollector") and "Enabled") or nil
+		if prop then
+			P.FxConns[#P.FxConns + 1] = cur:GetPropertyChangedSignal(prop):Connect(function()
+				H.syncFx(P)
+			end)
+		end
+		cur = cur.Parent
+	end
+end
+
+function H.syncFx(P)
+	local egg = P.Hero.Egg
+	local on = H.shown(P.Page) and egg.Visible and H.high()
+	EggArt.SetVfx(egg, on)
+	P.Pool:SetRunning(on)
+	for _, t in ipairs(H.all(P)) do
+		local sheen = t.Machine.Sheen
+		if on and not t.GlassTween then
+			sheen.Offset = Vector2.new(-1, 0)
+			t.GlassTween = TweenService:Create(sheen, K.GLASS_SHEEN, { Offset = Vector2.new(1, 0) })
+			t.GlassTween:Play()
+		elseif not on and t.GlassTween then
+			t.GlassTween:Cancel()
+			t.GlassTween = nil
+			sheen.Offset = Vector2.new(-1, 0)
+		end
+	end
+end
+
+function ShopEggs.Fx(page)
+	local P = PAGES[page or CUR.Page]
+	return P and { Pool = P.Pool, Egg = P.Hero.Egg } or nil
 end
 
 ----------------------------------------------------------------------
@@ -531,24 +671,34 @@ end
 ----------------------------------------------------------------------
 -- the hero's odds line on PC: each row Egg 40 + the rarity + the percent (24 px), then "gems only"
 function L.heroOddsPC(t, w)
+	-- (Task 26: the big egg moved the texts right) the gap between the rows narrows from 24 to 12 before "gems only"
+	-- is left out for want of room
+	local widths, total = {}, 0
+	for i, row in ipairs(t.Rows) do
+		local ww = H.textW(row.Word.Text, 24, row.Word.Font) + 2
+		local pw = H.textW(row.Pct.Text, 24, row.Pct.Font) + 2
+		widths[i] = { ww, pw }
+		total = total + math.floor(EggArt.Metrics.WIDTH * 40 + 0.5) + 8 + ww + 8 + pw
+	end
+	t.GemsOnly.TextSize = 24
+	local gw = H.textW(t.GemsOnly.Text, 24, t.GemsOnly.Font) + 2
+	local gap = (total + 24 * #t.Rows + gw <= w) and 24 or 12
 	local x = 0
-	for _, row in ipairs(t.Rows) do
+	for i, row in ipairs(t.Rows) do
 		local ew = H.sizeEgg(row.Egg, 40)
 		place(row.Egg, 0, 0, ew, 40)
 		row.Word.Visible = true
 		row.Word.TextSize = 24
 		row.Pct.TextSize = 24
-		local ww = H.textW(row.Word.Text, 24, row.Word.Font) + 2
-		local pw = H.textW(row.Pct.Text, 24, row.Pct.Font) + 2
+		local ww, pw = widths[i][1], widths[i][2]
 		place(row.Word, ew + 8, 0, ww, 40)
 		place(row.Pct, ew + 8 + ww + 8, 0, pw, 40)
 		row.Pct.TextXAlignment = LEFT
 		local rw = ew + 8 + ww + 8 + pw
 		place(row.Root, x, 0, rw, 40)
-		x = x + rw + 24
+		x = x + rw + gap
 	end
-	t.GemsOnly.Visible = true
-	t.GemsOnly.TextSize = 24
+	t.GemsOnly.Visible = gw <= w - x
 	place(t.GemsOnly, x, 0, math.max(0, w - x), 40)
 end
 
@@ -558,7 +708,13 @@ function L.heroPC(t, w, M)
 	local artH = math.floor(art * 1.15)
 	place(t.Machine.Root, 26, ref and 10 or 8, art, artH)
 	H.sizeMachine(t.Machine, art)
-	local x = art + 50
+	-- (Task 26) the big egg between the machine and the texts, centred in the card's height
+	local ep = ref and K.HERO_EGG.Ref or K.HERO_EGG.Shrunk
+	local ew = math.floor(EggArt.Metrics.WIDTH * ep[1] + 0.5)
+	EggArt.Resize(t.Egg, ep[1])
+	place(t.Egg, ep[2], (M.Hero - ep[1]) / 2, ew, ep[1])
+	t.Egg.Visible = true
+	local x = ep[3]
 	local tw = w - x - 340
 	t.Title.Text = t.Name
 	t.Title.TextSize = 46
@@ -688,6 +844,7 @@ function L.heroPhone(t, w, th)
 	place(t.Title, 6, 6, w - 12, 30)
 	place(t.Machine.Root, 8, 40, 64, 74)
 	H.sizeMachine(t.Machine, 64)
+	t.Egg.Visible = false -- (Task 26: no room on the phone card)
 	t.GemsOnly.Visible = false
 	L.phoneOdds(t, 80, 40, w - 88)
 	local chipY = th - pad - 94
@@ -769,6 +926,7 @@ function L.heroPortrait(t, w, h)
 	place(t.Title, 8, 8, w - 16, 30)
 	place(t.Machine.Root, 8, 44, 64, 74)
 	H.sizeMachine(t.Machine, 64)
+	t.Egg.Visible = false -- (Task 26: no room on the portrait card)
 	t.GemsOnly.Visible = false
 	L.portraitOdds(t, 80, 46, w - 88)
 	place(t.Pity, 80, 84, w - 88, 32)
@@ -868,6 +1026,7 @@ function ShopEggs.Layout(page, box, mode)
 	-- (a layout can change the short texts: the states and the chip follow it)
 	ShopEggs.Refresh(page, true)
 	ShopEggs._SyncFade(page)
+	H.syncFx(P)
 end
 
 ----------------------------------------------------------------------

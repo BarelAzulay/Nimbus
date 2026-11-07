@@ -1742,7 +1742,8 @@ src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientS
              panels); UI/PetCard (the cards above pets); UI/PetBits (what the windows showing a pet share); UI/TeamFaces
              (the three faces + Edit team on every battle panel); UI/PetPicker (the one full-screen pet picker sheet
              of the Training Place and the Fusion Machine: search, sorts, filters, big cards); UI/GemIcon (the drawn
-             cut gem every gem amount shows); UI/EggArt (the seven eggs drawn from frames); UI/EggStage (the egg stage:
+             cut gem every gem amount shows); UI/EggArt (the seven eggs drawn from frames, painted, with their rarity
+             VFX); UI/HatchFx (the pooled GUI sparkles and twinkling stars); UI/EggStage (the egg stage:
              the one roulette request path and the egg-opening cutscene); UI/ShopEggs (the Shop's Eggs tab: the Secret
              Roulette hero and the four machine cards, odds on every card); UI/ShopGems (the Shop's Gems tab: gem packs
              with honest ribbons, the gem XP Potion, token packs); Controllers:

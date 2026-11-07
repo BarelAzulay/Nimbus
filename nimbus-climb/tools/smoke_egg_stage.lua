@@ -1,15 +1,27 @@
 -- smoke_egg_stage.lua: lobby-shop Task 20 (spec 16.4 "The egg-opening cutscene", 5.5 "The egg stage", 16.5's EggArt API):
 -- the plain egg stage core (client/UI/EggStage) and the frame eggs (client/UI/EggArt). Loaded by tools/smoke.py in the
 -- CLIENT and PHONE worlds (Tasks 22 / 26 / 27 extend this file):
---   client_egg_art         (client, 1920x1080)
+--   client_egg_art         (client, 1920x1080; Task 20, rewritten in Task 26 for spec 16.5's forms and paint)
 --     the seven eggs at 30 / 64 / 104 / 160 / 380 px: a Frame "Egg_<Rarity>" (0.8 x size wide, size tall) with a round
---       UICorner, the top-to-bottom tone UIGradient "Tone" (EggArt.Tones), the navy UIStroke "Outline" rgb(11,16,48) at
---       size / 20 (>= 2 px, whole), a white "Highlight"; attribute Form Simple (< 48) / Medium (48-140) / Full (> 140) and
---       the instance caps 8 / 14 / 28; opts Name / ZIndex / Form
+--       UICorner, the top-to-bottom tone UIGradient "Tone" (EggArt.Tones first and last, <= 20 keypoints), the navy
+--       UIStroke "Outline" rgb(11,16,48) at size / 20 (>= 2 px, whole), a white "Highlight"; attribute Form Simple (< 48) /
+--       Medium (48-140) / Full (> 140) and the instance caps 8 / 14 / 28; the attribute Motifs: Simple keeps the first
+--       motif of EggArt.Paint, Medium the first two as they fit, Full every one; Medium adds the Rim light, Full the Rim,
+--       the Specular dot, the contact Shadow, the Sheen and (Epic and up) the Light layer; every paint frame inside the
+--       egg's outline; opts Name / ZIndex / Form, and Rim = false + Budget = 9 (the strip's cells, spec 16.4's 14 per cell)
 --     EggArt.Glow (0 / 0 / 0.22 / 0.34 / 0.58 / 0.66 / 0.78), EggArt.Tones (the rarity colour 38% toward white / 28% toward
---       black; Secret rgb(74,68,104) / rgb(18,16,28)), EggArt.Paint -> a table (empty until Task 26)
---     EggArt.Halves -> two CanvasGroups covering the egg's height (top half, bottom half); SetRarity re-skins in place (the
---       instance count kept, the tones and the name follow)
+--       black; Secret rgb(74,68,104) / rgb(18,16,28)), EggArt.Paint = spec 16.5's table as { Kind, Count } in order
+--     EggArt.Halves -> two CanvasGroups covering the egg's height (top half, bottom half), painted, no sheen / shadow /
+--       tween; SetRarity re-paints in place across all seven (no orphan: the count of a new egg of that rarity, <= 28 at
+--       Full); Resize(egg, size) moves the size, the outline and every inner stroke
+--   client_egg_vfx         (client, 1920x1080 and 844x390; Task 26) Vfx = true adds nothing on Common / Uncommon and 1..8
+--       instances, <= 3 tweens on Rare .. Secret (Epic 2, Legendary 2 with the turning Rays, Mythic 1, Secret 3 with its
+--       Aura); a Full egg's Sheen sweeps every ~4 s on High; Low graphics: no VFX, no sheen; SetVfx(egg, false) makes an
+--       egg still; destroying a Vfx egg stops its tweens; HatchFx: a 16-pool's Burst never lights more than 16 sparks,
+--       one Heartbeat while any lives, halved on Low; Ambient sparkles around an egg (Mythic <= 6, none on Low), returned
+--       when the egg goes or the pool stops; Stars(parent, 14) twinkle and stop on Destroy; the Shop's Eggs page: the
+--       Secret hero's big HeroEgg (Full, VFX), its page-owned pool (<= 16 live, no Heartbeat while the page is hidden,
+--       the Shop closed or on Low; none on a phone), the five domes' glass sheen; census: no old gem glyph
 --   client_egg_stage       (client, 1920x1080, the stage alone: EggStage.Show / the _Answer listener body; Task 22 wires Init
 --                          into ShopController)
 --     a Cloud x1 Epic result: the seven phases in order, Reveal at 5.75 +- 0.1 s; CrackWord "EPIC EGG!", the reveal Word
@@ -244,22 +256,115 @@ function G.glyphs(root)
 end
 
 ----------------------------------------------------------------------------------------------------
--- client_egg_art
+-- client_egg_art (Task 20; rewritten in Task 26: the three forms and the paint of spec 16.5)
 ----------------------------------------------------------------------------------------------------
-S.client_egg_art = guarded("client_egg_art", function()
-	local KC = G.KC()
-	local Config = KC.env()
-	local EA = G.req("client/UI/EggArt")
-	if not T.check(type(EA) == "table" and type(EA.New) == "function" and type(EA.SetRarity) == "function" and type(EA.Halves) == "function"
-		and type(EA.Glow) == "function" and type(EA.Tones) == "function" and type(EA.Paint) == "function",
-		"egg art: client/UI/EggArt loads (New, SetRarity, Halves, Glow, Tones, Paint)") then
-		return
+-- spec 16.5's table as motif kinds, in order (Secret lists its stars first: the Simple rule keeps them; the two rune
+-- lines ride in the shell's tone in every form)
+local PAINT = {
+	Common = { "Spots", "Dots", "Shine" },
+	Uncommon = { "ZigzagBand", "Spots", "Dots" },
+	Rare = { "Bands", "Dots" },
+	Epic = { "StarBand", "Trim", "Stars", "Dots" },
+	Legendary = { "Crown", "Trim", "Gems", "Swags" },
+	Mythic = { "WaveBands", "Ribbon", "Swirls", "Stars" },
+	Secret = { "Stars", "Runes", "Cracks", "Dots" },
+}
+local LIGHT_FROM = { Epic = true, Legendary = true, Mythic = true, Secret = true }
+
+-- a frame's outline in screen px: a round frame (UICorner >= half its short side) by 16 samples of its capsule, any
+-- other by its four corners; turned by its Rotation about its centre
+function G.outlinePoints(o)
+	local p, s = o.AbsolutePosition, o.AbsoluteSize
+	local cx, cy = p.X + s.X / 2, p.Y + s.Y / 2
+	local corner = o:FindFirstChildOfClass("UICorner")
+	local short = math.min(s.X, s.Y)
+	local round = corner ~= nil and (corner.CornerRadius.Scale >= 0.5 or corner.CornerRadius.Offset >= short / 2)
+	local pts = {}
+	if round then
+		local r = short / 2
+		local hx, hy = s.X / 2 - r, s.Y / 2 - r
+		for i = 0, 15 do
+			local a = i * math.pi / 8
+			local ux, uy = math.cos(a), math.sin(a)
+			pts[#pts + 1] = { (ux >= 0 and hx or -hx) + r * ux, (uy >= 0 and hy or -hy) + r * uy }
+		end
+	else
+		pts = { { -s.X / 2, -s.Y / 2 }, { s.X / 2, -s.Y / 2 }, { s.X / 2, s.Y / 2 }, { -s.X / 2, s.Y / 2 } }
 	end
-	local oldVp = { Mock.Viewport.X, Mock.Viewport.Y }
-	Mock.SetViewport(1920, 1080)
-	G.advance(0.2)
+	local th = math.rad(tonumber(o.Rotation) or 0)
+	local c, sn = math.cos(th), math.sin(th)
+	local out = {}
+	for i, q in ipairs(pts) do
+		out[i] = { cx + q[1] * c - q[2] * sn, cy + q[1] * sn + q[2] * c }
+	end
+	return out
+end
+-- is the screen point inside the egg body's capsule (its box, corners half its width), grown by `grow` px
+function G.inCapsule(egg, x, y, grow)
+	local p, s = egg.AbsolutePosition, egg.AbsoluteSize
+	local r = math.min(s.X, s.Y) / 2
+	local yc = math.max(p.Y + r, math.min(p.Y + s.Y - r, y))
+	local dx, dy = x - (p.X + s.X / 2), y - yc
+	return dx * dx + dy * dy <= (r + grow) * (r + grow)
+end
+-- the paint frames of an egg poking out of its body (the contact Shadow sits under the egg by design; the VFX frames
+-- stand around it): -> { "Name", ... }
+function G.strays(egg)
+	local out = {}
+	local outside = { Shadow = true, Halo = true, Aura = true, Rays = true }
+	for _, d in ipairs(egg:GetDescendants()) do
+		local skip = false
+		local cur = d
+		while cur and cur ~= egg do
+			if outside[cur.Name] then
+				skip = true
+			end
+			cur = cur.Parent
+		end
+		if d:IsA("GuiObject") and not skip then
+			for _, q in ipairs(G.outlinePoints(d)) do
+				if not G.inCapsule(egg, q[1], q[2], 0.75) then
+					out[#out + 1] = d.Name
+					break
+				end
+			end
+		end
+	end
+	return out
+end
+function G.count(inst)
+	return inst and (#inst:GetDescendants() + 1) or 0
+end
+-- the playing tweens whose instance is `root` or under it
+function G.tweensUnder(root)
+	local n = 0
+	for tw in pairs(Mock.ActiveTweens) do
+		local ok, inside = pcall(function()
+			local inst = tw.Instance
+			return tw.PlaybackState == Enum.PlaybackState.Playing and inst ~= nil and (inst == root or inst:IsDescendantOf(root))
+		end)
+		if ok and inside then
+			n = n + 1
+		end
+	end
+	return n
+end
+function G.tweenList(root)
+	local out = {}
+	for tw in pairs(Mock.ActiveTweens) do
+		local ok, inside = pcall(function()
+			local inst = tw.Instance
+			return tw.PlaybackState == Enum.PlaybackState.Playing and inst ~= nil and (inst == root or inst:IsDescendantOf(root))
+		end)
+		if ok and inside then
+			out[#out + 1] = tw
+		end
+	end
+	return out
+end
+function G.eggBoard(name)
 	local gui = Instance.new("ScreenGui")
-	gui.Name = "SmokeEggs"
+	gui.Name = name
 	gui.ResetOnSpawn = false
 	gui.IgnoreGuiInset = true
 	gui.Parent = G.pg()
@@ -268,9 +373,25 @@ S.client_egg_art = guarded("client_egg_art", function()
 	root.BackgroundTransparency = 1
 	root.Size = UDim2.fromScale(1, 1)
 	root.Parent = gui
+	return gui, root
+end
+
+S.client_egg_art = guarded("client_egg_art", function()
+	local KC = G.KC()
+	local Config = KC.env()
+	local EA = G.req("client/UI/EggArt")
+	if not T.check(type(EA) == "table" and type(EA.New) == "function" and type(EA.SetRarity) == "function" and type(EA.Halves) == "function"
+		and type(EA.Glow) == "function" and type(EA.Tones) == "function" and type(EA.Paint) == "function" and type(EA.Resize) == "function",
+		"egg art: client/UI/EggArt loads (New, SetRarity, Halves, Glow, Tones, Paint, Resize)") then
+		return
+	end
+	local oldVp = { Mock.Viewport.X, Mock.Viewport.Y }
+	Mock.SetViewport(1920, 1080)
+	G.advance(0.2)
+	local gui, root = G.eggBoard("SmokeEggs")
 	local WHITE, BLACK = Color3.new(1, 1, 1), Color3.new(0, 0, 0)
 
-	-- Glow and Tones
+	-- Glow, Tones and Paint (spec 16.5's table)
 	for _, rarity in ipairs(RARITIES) do
 		T.check(abs((EA.Glow(rarity) or -1) - GLOW[rarity]) < 1e-9, "egg art: Glow(" .. rarity .. ") = " .. GLOW[rarity], tostring(EA.Glow(rarity)))
 		local top, bottom = EA.Tones(rarity)
@@ -280,16 +401,29 @@ S.client_egg_art = guarded("client_egg_art", function()
 		else
 			T.check(G.same(top, c:Lerp(WHITE, 0.38)) and G.same(bottom, c:Lerp(BLACK, 0.28)), "egg art: Tones(" .. rarity .. ") = the colour 38% toward white / 28% toward black")
 		end
-		T.check(type(EA.Paint(rarity)) == "table", "egg art: Paint(" .. rarity .. ") is a table (the motif list; empty until Task 26)")
+		local paint = EA.Paint(rarity)
+		local kinds, counts = {}, true
+		for i, m in ipairs(type(paint) == "table" and paint or {}) do
+			kinds[i] = tostring(m.Kind)
+			counts = counts and type(m.Count) == "number" and m.Count >= 1 and m.Count == math.floor(m.Count)
+		end
+		T.eq(table.concat(kinds, ","), table.concat(PAINT[rarity], ","), "egg art: Paint(" .. rarity .. ") lists spec 16.5's motifs in order")
+		T.check(counts and #kinds > 0, "egg art: ...each with a whole Count >= 1 (" .. rarity .. ")")
 	end
 
-	-- the seven eggs at five sizes
+	-- the seven eggs at five sizes: the base, the form by size, the caps, the motifs each form keeps, the layers
 	local CAP = { Simple = 8, Medium = 14, Full = 28 }
 	local bad = T.tally("egg art: every egg at 30 / 64 / 104 / 160 / 380 px is the oval body with its tone, outline and highlight", 4)
 	local caps = T.tally("egg art: the instance caps 8 / 14 / 28 by form", 4)
+	local motifs = T.tally("egg art: Simple keeps the first motif, Medium the first two (as they fit), Full every motif (attribute Motifs)", 4)
+	local layers = T.tally("egg art: Medium adds the Rim light; Full the Rim, the Specular dot, the contact Shadow and the Sheen; the Light layer at Full from Epic up", 4)
+	local inside = T.tally("egg art: every paint frame stays inside the egg's outline (no stray frame)", 4)
+	local tones = T.tally("egg art: the Tone gradient holds <= 20 keypoints (Roblox's limit)", 4)
 	for _, rarity in ipairs(RARITIES) do
+		local all = table.concat(PAINT[rarity], ",")
 		for _, size in ipairs({ 30, 64, 104, 160, 380 }) do
 			local egg = EA.New(root, rarity, size)
+			egg.Position = UDim2.fromOffset(500, 300)
 			local label = rarity .. " " .. size
 			local form = size < 48 and "Simple" or (size <= 140 and "Medium" or "Full")
 			local ok = egg ~= nil and egg:IsA("Frame") and egg.Name == "Egg_" .. rarity and egg.Parent == root
@@ -300,6 +434,7 @@ S.client_egg_art = guarded("client_egg_art", function()
 			local top, bottom = EA.Tones(rarity)
 			local kps = tone and tone:IsA("UIGradient") and tone.Color.Keypoints or {}
 			ok = ok and #kps >= 2 and G.same(kps[1].Value, top) and G.same(kps[#kps].Value, bottom) and tone.Rotation == 90
+			tones:case(#kps <= 20, label .. ": " .. #kps .. " keypoints")
 			local outline = egg and egg:FindFirstChild("Outline")
 			local th = outline and outline:IsA("UIStroke") and outline.Thickness or -1
 			ok = ok and G.rgb(outline and outline.Color, 11, 16, 48) and th == math.max(2, math.floor(size / 20 + 0.5)) and th == math.floor(th)
@@ -307,27 +442,104 @@ S.client_egg_art = guarded("client_egg_art", function()
 			ok = ok and hl ~= nil and hl:IsA("Frame") and G.rgb(hl.BackgroundColor3, 255, 255, 255)
 			ok = ok and egg:GetAttribute("Form") == form and egg:GetAttribute("Rarity") == rarity
 			bad:case(ok, label .. (egg and fmt(" (%s, %dx%d, outline %s, form %s)", egg.Name, egg.Size.X.Offset, egg.Size.Y.Offset, tostring(th), tostring(egg:GetAttribute("Form"))) or " (nil)"))
-			if egg then
-				local n = #egg:GetDescendants() + 1
-				caps:case(n <= CAP[form], fmt("%s: %d instances (%s cap %d)", label, n, form, CAP[form]))
+			local n = G.count(egg)
+			caps:case(n <= CAP[form], fmt("%s: %d instances (%s cap %d)", label, n, form, CAP[form]))
+			local got = tostring(egg:GetAttribute("Motifs"))
+			if form == "Simple" then
+				motifs:case(got == PAINT[rarity][1], label .. ": " .. got)
+			elseif form == "Medium" then
+				local two = PAINT[rarity][1] .. "," .. tostring(PAINT[rarity][2])
+				motifs:case(got == PAINT[rarity][1] or got == two, label .. ": " .. got)
+			else
+				motifs:case(got == all, label .. ": " .. got)
 			end
+			local has = function(name)
+				return egg:FindFirstChild(name) ~= nil
+			end
+			local okL = true
+			if form == "Simple" then
+				okL = not has("Rim") and not has("Specular") and not has("Shadow") and not has("Sheen") and not has("Light")
+			elseif form == "Medium" then
+				okL = has("Rim") and not has("Specular") and not has("Shadow") and not has("Sheen") and not has("Light")
+			else
+				okL = has("Rim") and has("Specular") and has("Shadow") and has("Sheen") and (has("Light") == (LIGHT_FROM[rarity] == true))
+			end
+			layers:case(okL, label)
+			local strays = G.strays(egg)
+			inside:case(#strays == 0, label .. ": " .. table.concat(strays, ", "))
+			egg:Destroy()
 		end
 	end
 	bad:report()
 	caps:report()
+	motifs:report()
+	layers:report()
+	inside:report()
+	tones:report()
 	local named = EA.New(root, "Rare", 104, { Name = "Egg1", ZIndex = 6, Form = "Simple" })
-	T.check(named.Name == "Egg1" and named.ZIndex == 6 and named:GetAttribute("Form") == "Simple", "egg art: opts Name, ZIndex and Form")
+	T.check(named.Name == "Egg1" and named.ZIndex == 6 and named:GetAttribute("Form") == "Simple" and G.count(named) <= 8, "egg art: opts Name, ZIndex and Form (a forced Simple keeps its cap)")
+	-- the strip's cells (spec 16.4: <= 14 instances per cell): Rim = false and Budget = 9 keep a Medium egg lean
+	local lean = T.tally("egg art: opts Rim = false, Budget = 9 (the strip's cells): no Rim, <= 9 instances, the main motif first", 4)
+	for _, rarity in ipairs(RARITIES) do
+		for _, size in ipairs({ 48, 104, 160 }) do
+			local e = EA.New(root, rarity, size, { Form = "Medium", Rim = false, Budget = 9 })
+			local got = tostring(e:GetAttribute("Motifs"))
+			lean:case(e:FindFirstChild("Rim") == nil and G.count(e) <= 9 and string.sub(got, 1, #PAINT[rarity][1]) == PAINT[rarity][1],
+				fmt("%s %d: %d instances, %s", rarity, size, G.count(e), got))
+			e:Destroy()
+		end
+	end
+	lean:report()
 
-	-- SetRarity: re-skins in place
+	-- SetRarity: re-paints in place, no orphan (the same instance count as a new egg of that rarity), both ways round
 	local egg = EA.New(root, "Common", 104)
-	local before = #egg:GetDescendants()
 	EA.SetRarity(egg, "Mythic")
 	local top, bottom = EA.Tones("Mythic")
 	local kps = egg:FindFirstChild("Tone").Color.Keypoints
-	T.check(#egg:GetDescendants() == before and egg.Name == "Egg_Mythic" and egg:GetAttribute("Rarity") == "Mythic" and G.same(kps[1].Value, top) and G.same(kps[#kps].Value, bottom),
-		"egg art: SetRarity re-skins in place (same instance count, the Mythic tones, the name and attribute follow)", fmt("%d -> %d, %s", before, #egg:GetDescendants(), egg.Name))
+	local fresh = EA.New(root, "Mythic", 104)
+	T.check(G.count(egg) == G.count(fresh) and egg.Name == "Egg_Mythic" and egg:GetAttribute("Rarity") == "Mythic" and G.same(kps[1].Value, top) and G.same(kps[#kps].Value, bottom),
+		"egg art: SetRarity re-skins in place (the Mythic tones, the name and attribute follow; the count of a new Mythic egg)", fmt("%d vs %d, %s", G.count(egg), G.count(fresh), egg.Name))
+	fresh:Destroy()
 	EA.SetRarity(named, "Epic")
 	T.check(named.Name == "Egg1" and named:GetAttribute("Rarity") == "Epic", "egg art: SetRarity keeps a custom name")
+	local big = EA.New(root, "Common", 380)
+	local orphan = T.tally("egg art: SetRarity across all seven on a Full egg keeps it within 28 instances with no orphan (as a new egg of each rarity)", 4)
+	local order = {}
+	for _, r in ipairs(RARITIES) do
+		order[#order + 1] = r
+	end
+	for i = #RARITIES, 1, -1 do
+		order[#order + 1] = RARITIES[i]
+	end
+	for _, r in ipairs(order) do
+		EA.SetRarity(big, r)
+		local f = EA.New(root, r, 380)
+		orphan:case(G.count(big) == G.count(f) and G.count(big) <= 28 and big:GetAttribute("Motifs") == table.concat(PAINT[r], ",") and #G.strays(big) == 0,
+			fmt("%s: %d (new %d), %s", r, G.count(big), G.count(f), tostring(big:GetAttribute("Motifs"))))
+		f:Destroy()
+	end
+	orphan:report()
+
+	-- Resize (EggStage / ShopEggs resize their eggs): the size, the outline and every stroke inside follow
+	local rz = EA.New(root, "Rare", 380)
+	local function strokes(e)
+		local out = {}
+		for _, d in ipairs(e:GetDescendants()) do
+			if d:IsA("UIStroke") and d.Name ~= "Outline" then
+				out[#out + 1] = d.Thickness
+			end
+		end
+		return out
+	end
+	local before = strokes(rz)
+	EA.Resize(rz, 190)
+	local after = strokes(rz)
+	local okR = #before > 0 and #before == #after
+	for i = 1, #before do
+		okR = okR and abs(after[i] - math.max(1, before[i] / 2)) <= 1
+	end
+	T.check(rz.Size.X.Offset == 152 and rz.Size.Y.Offset == 190 and rz:FindFirstChild("Outline").Thickness == 10 and rz:GetAttribute("Size") == 190 and okR,
+		"egg art: Resize(egg, 190) sets the size, the outline (10) and halves every inner stroke", fmt("%dx%d, strokes %s -> %s", rz.Size.X.Offset, rz.Size.Y.Offset, table.concat(before, "/"), table.concat(after, "/")))
 
 	-- Halves
 	local holder = Instance.new("Frame")
@@ -347,6 +559,9 @@ S.client_egg_art = guarded("client_egg_art", function()
 		T.check(eggTop ~= nil and eggBot ~= nil and eggTop:GetAttribute("Rarity") == "Legendary" and eggBot:GetAttribute("Rarity") == "Legendary"
 			and abs(eggBot.AbsolutePosition.Y - 200) < 0.6 and abs(eggTop.AbsolutePosition.Y - 200) < 0.6,
 			"egg art: each half draws the whole egg, clipped (the bottom half's egg sits at the egg's top)")
+		T.check(eggTop ~= nil and eggTop:GetAttribute("Motifs") == table.concat(PAINT.Legendary, ",") and eggTop:FindFirstChild("Sheen") == nil and eggTop:FindFirstChild("Shadow") == nil
+			and G.tweensUnder(holder) == 0, "egg art: the halves are painted (every motif) with no sheen, no shadow and no tween (they fly apart in 0.35 s)",
+			eggTop and tostring(eggTop:GetAttribute("Motifs")) .. ", " .. G.tweensUnder(holder) .. " tweens" or "")
 	end
 
 	gui:Destroy()
@@ -1325,6 +1540,314 @@ S.client_egg_stage_wiring = guarded("client_egg_stage_wiring", function()
 	Mock.SetViewport(oldVp[1], oldVp[2])
 	G.advance(0.6)
 	KC.flushErrors("client_egg_stage_wiring")
+end)
+
+----------------------------------------------------------------------------------------------------
+-- client_egg_vfx (Task 26, spec 16.5 "Where the VFX show" and the VFX column)
+----------------------------------------------------------------------------------------------------
+S.client_egg_vfx = guarded("client_egg_vfx", function()
+	local KC = G.KC()
+	local Config = KC.env()
+	local EA = G.req("client/UI/EggArt")
+	local FX = G.req("client/UI/HatchFx")
+	local GQ = G.req("client/GraphicsQuality")
+	local SE = G.req("client/UI/ShopEggs")
+	local Shop = G.req("client/Controllers/ShopController")
+	local MC = KC.M.MenuController or G.req("client/Controllers/MenuController")
+	if not T.check(type(EA) == "table" and type(EA.SetVfx) == "function" and type(FX) == "table" and type(FX.Pool) == "function"
+		and type(FX.Stars) == "function" and type(FX.Stats) == "function" and type(GQ) == "table" and type(SE) == "table" and type(SE.Fx) == "function"
+		and type(Shop) == "table", "egg vfx: EggArt (SetVfx), client/UI/HatchFx (Pool, Stars, Stats), GraphicsQuality, ShopEggs (Fx) and ShopController load") then
+		return
+	end
+	local oldVp = { Mock.Viewport.X, Mock.Viewport.Y }
+	local oldEff = GQ.Effective
+	local mode = "High"
+	GQ.Effective = function()
+		return mode
+	end
+	local keep = {}
+	for _, name in ipairs({ Config.Attr.Tokens, Config.Attr.Gems, "PaidRandomItemsRestricted", "GemsSettled", "SecretPityLeft" }) do
+		keep[name] = LocalPlayer:GetAttribute(name)
+	end
+	Mock.SetViewport(1920, 1080)
+	G.advance(0.2)
+	local hb0 = (FX.Stats().Heartbeats or 0)
+	local gui, root = G.eggBoard("SmokeEggVfx")
+	local okRun, errRun = pcall(function()
+		------------------------------------------------------------------ an egg's VFX: Rare and up, <= 8 instances, <= 3 tweens
+		local adds = T.tally("egg vfx: Vfx = true adds nothing on Common / Uncommon; on Rare .. Secret 1..8 instances and <= 3 tweens (Full 380 and Medium 104)", 4)
+		for _, rarity in ipairs(RARITIES) do
+			for _, size in ipairs({ 380, 104 }) do
+				local plain = EA.New(root, rarity, size)
+				local vfx = EA.New(root, rarity, size, { Vfx = true })
+				G.advance(0.1)
+				local extra = G.count(vfx) - G.count(plain)
+				local tw = G.tweensUnder(vfx) - G.tweensUnder(plain)
+				local low = rarity == "Common" or rarity == "Uncommon"
+				local ok
+				if low then
+					ok = extra == 0 and tw == 0 and vfx:GetAttribute("Vfx") ~= true
+				else
+					ok = extra >= 1 and extra <= 8 and tw >= 0 and tw <= 3 and vfx:GetAttribute("Vfx") == true and vfx:FindFirstChild("Halo") ~= nil
+				end
+				adds:case(ok, fmt("%s %d: +%d instances, +%d tweens", rarity, size, extra, tw))
+				plain:Destroy()
+				vfx:Destroy()
+			end
+		end
+		adds:report()
+		-- the named effects: Epic flickers and twinkles, Legendary's rays turn, Mythic's ribbon drifts, Secret pulses and twinkles
+		local want = { Epic = 2, Legendary = 2, Mythic = 1, Secret = 3 }
+		for rarity, n in pairs(want) do
+			local plain = EA.New(root, rarity, 380)
+			local vfx = EA.New(root, rarity, 380, { Vfx = true })
+			G.advance(0.1)
+			T.eq(G.tweensUnder(vfx) - G.tweensUnder(plain), n, "egg vfx: a Full " .. rarity .. " egg's VFX plays " .. n .. " endless tweens")
+			plain:Destroy()
+			vfx:Destroy()
+		end
+		local leg = EA.New(root, "Legendary", 380, { Vfx = true })
+		local rays = leg:FindFirstChild("Rays")
+		local rayTw = nil
+		for _, tw in ipairs(G.tweenList(leg)) do
+			if tw.Instance == rays then
+				rayTw = tw
+			end
+		end
+		T.check(rays ~= nil and rayTw ~= nil and rayTw.TweenInfo.RepeatCount == -1 and (Mock.TweenGoals(rayTw).Rotation or 0) >= 360,
+			"egg vfx: Legendary's soft rays turn behind the egg (an endless Rotation tween on Rays)")
+		leg:Destroy()
+		local sec = EA.New(root, "Secret", 380, { Vfx = true })
+		T.check(sec:FindFirstChild("Aura") ~= nil and sec:FindFirstChild("Halo") ~= nil, "egg vfx: Secret has its violet Halo and the dark violet Aura ring")
+		sec:Destroy()
+
+		------------------------------------------------------------------ the sheen (Full, High only), Low graphics
+		local full = EA.New(root, "Epic", 380)
+		local sheenTw = nil
+		for _, tw in ipairs(G.tweenList(full)) do
+			if tw.Instance and tw.Instance.Parent and tw.Instance.Parent.Name == "Sheen" then
+				sheenTw = tw
+			end
+		end
+		local info = sheenTw and sheenTw.TweenInfo
+		T.check(info ~= nil and info.RepeatCount == -1 and info.Time + info.DelayTime >= 3.5 and info.Time + info.DelayTime <= 4.5 and G.tweensUnder(full) == 1,
+			"egg vfx: a Full egg's Sheen sweeps every ~4 s on High (one endless tween; nothing else without Vfx)",
+			info and fmt("%.2f + %.2f, %d tweens", info.Time, info.DelayTime, G.tweensUnder(full)) or "no sheen tween")
+		full:Destroy()
+		mode = "Low"
+		local lowOk = T.tally("egg vfx: Low graphics: Vfx = true adds nothing and no sheen plays (Full 380)", 4)
+		for _, rarity in ipairs(RARITIES) do
+			local plain = EA.New(root, rarity, 380)
+			local vfx = EA.New(root, rarity, 380, { Vfx = true })
+			G.advance(0.1)
+			lowOk:case(G.count(vfx) == G.count(plain) and G.tweensUnder(vfx) == 0 and G.tweensUnder(plain) == 0 and vfx:GetAttribute("Vfx") ~= true,
+				fmt("%s: %d vs %d instances, %d tweens", rarity, G.count(vfx), G.count(plain), G.tweensUnder(vfx)))
+			plain:Destroy()
+			vfx:Destroy()
+		end
+		lowOk:report()
+		mode = "High"
+
+		------------------------------------------------------------------ SetVfx off, destroy: the tweens stop
+		local m = EA.New(root, "Mythic", 380)
+		local n0 = G.count(m)
+		EA.SetVfx(m, true)
+		G.advance(0.1)
+		local list = G.tweenList(m)
+		T.check(G.count(m) > n0 and #list >= 2, "egg vfx: SetVfx(egg, true) adds the VFX to a built egg", fmt("%d -> %d, %d tweens", n0, G.count(m), #list))
+		EA.SetVfx(m, false)
+		G.advance(0.1)
+		local stillOn = 0
+		for _, tw in ipairs(list) do
+			if tw.PlaybackState == Enum.PlaybackState.Playing then
+				stillOn = stillOn + 1
+			end
+		end
+		T.check(G.count(m) == n0 and stillOn == 0 and G.tweensUnder(m) == 0, "egg vfx: SetVfx(egg, false) makes the egg still: the VFX gone (the count back), every tween stopped (the sheen too)",
+			fmt("%d (was %d), %d tweens on", G.count(m), n0, stillOn))
+		local still = EA.New(root, "Rare", 380, { Still = true })
+		G.advance(0.1)
+		T.check(G.tweensUnder(still) == 0, "egg vfx: opts.Still builds a Full egg with no tween (the Shop's hero egg waits for its page to show)")
+		still:Destroy()
+		EA.SetVfx(m, true)
+		G.advance(0.1)
+		list = G.tweenList(m)
+		m:Destroy()
+		G.advance(0.1)
+		local live = 0
+		for _, tw in ipairs(list) do
+			if tw.PlaybackState == Enum.PlaybackState.Playing then
+				live = live + 1
+			end
+		end
+		T.check(#list >= 2 and live == 0, "egg vfx: destroying a Vfx egg stops every tween it played (the sheen too)", fmt("%d tweens, %d still playing", #list, live))
+
+		------------------------------------------------------------------ HatchFx: the pool, the ambient sparkles, the stars
+		local holder = Instance.new("Frame")
+		holder.Name = "FxHolder"
+		holder.BackgroundTransparency = 1
+		holder.Position = UDim2.fromOffset(200, 120)
+		holder.Size = UDim2.fromOffset(700, 700)
+		holder.Parent = root
+		local pool = FX.Pool(holder, 16)
+		local spawned = pool:Burst(Vector2.new(350, 350), "Epic", 28)
+		G.advance(1 / 30)
+		local st = FX.Stats()
+		T.check(pool:Live() == 16 and spawned == 16 and st.Heartbeats == hb0 + 1 and st.Pooled >= 16, "egg vfx: a 16-pool's Burst of 28 lights 16 sparks under one Heartbeat",
+			fmt("live %d, spawned %s, hb %d, pooled %d", pool:Live(), tostring(spawned), st.Heartbeats, st.Pooled))
+		local most = 0
+		for _ = 1, 30 do
+			G.advance(0.1)
+			most = math.max(most, pool:Live())
+		end
+		T.check(most <= 16 and pool:Live() == 0 and FX.Stats().Heartbeats == hb0, "egg vfx: the sparks fade, return to the pool and the Heartbeat disconnects",
+			fmt("most %d, live %d, hb %d", most, pool:Live(), FX.Stats().Heartbeats))
+		mode = "Low"
+		pool:Burst(Vector2.new(350, 350), "Rare", 8)
+		G.advance(1 / 30)
+		T.eq(pool:Live(), 4, "egg vfx: Low graphics halves a burst (8 -> 4)")
+		G.advance(3)
+		local amb = EA.New(holder, "Mythic", 160, { Vfx = true })
+		amb.Position = UDim2.fromOffset(286, 270)
+		pool:Ambient(amb, "Mythic")
+		G.advance(2)
+		T.check(pool:Live() == 0 and FX.Stats().Heartbeats == hb0, "egg vfx: Low graphics: no ambient sparkles, no Heartbeat", fmt("live %d", pool:Live()))
+		mode = "High"
+		pool:SetRunning(false)
+		pool:SetRunning(true)
+		local peak = 0
+		for _ = 1, 30 do
+			G.advance(0.1)
+			peak = math.max(peak, pool:Live())
+		end
+		T.check(peak >= 1 and peak <= 6 and pool:Live() >= 1 and FX.Stats().Heartbeats == hb0 + 1, "egg vfx: Ambient keeps Mythic's 6 pastel sparkles (at most) drifting around the egg on High",
+			fmt("peak %d, live %d", peak, pool:Live()))
+		local near = true
+		for _, d in ipairs(holder:GetDescendants()) do
+			if d:IsA("GuiObject") and d.Visible and d.Parent and d.Parent.Name == "Sparks" then
+				local c = d.AbsolutePosition + d.AbsoluteSize / 2
+				local e = amb.AbsolutePosition + amb.AbsoluteSize / 2
+				if (c - e).Magnitude > 160 then
+					near = false
+				end
+			end
+		end
+		T.check(near, "egg vfx: ...within one egg height of the egg's centre")
+		pool:SetRunning(false)
+		G.advance(0.1)
+		T.check(pool:Live() == 0 and FX.Stats().Heartbeats == hb0, "egg vfx: SetRunning(false) returns every spark and drops the Heartbeat", fmt("live %d, hb %d", pool:Live(), FX.Stats().Heartbeats))
+		pool:SetRunning(true)
+		G.advance(1.5)
+		local before = pool:Live()
+		amb:Destroy()
+		G.advance(0.2)
+		T.check(before >= 1 and pool:Live() == 0 and FX.Stats().Heartbeats == hb0, "egg vfx: destroying the egg returns its sparks and stops the Heartbeat", fmt("%d -> %d live", before, pool:Live()))
+		pool:Destroy()
+		T.check(holder:FindFirstChild("Sparks") == nil and FX.Stats().Heartbeats == hb0, "egg vfx: pool:Destroy() removes its frames")
+		local stars = FX.Stars(holder, 14)
+		G.advance(0.2)
+		local starFrames = 0
+		for _, d in ipairs(stars.Frame:GetChildren()) do
+			if d:IsA("GuiObject") then
+				starFrames = starFrames + 1
+			end
+		end
+		T.check(starFrames == 14 and G.tweensUnder(stars.Frame) == 14 and FX.Stats().Tweens >= 14, "egg vfx: Stars(parent, 14) -> 14 star frames, each twinkling (14 tweens)",
+			fmt("%d frames, %d tweens", starFrames, G.tweensUnder(stars.Frame)))
+		local starList = G.tweenList(stars.Frame)
+		stars.Destroy()
+		G.advance(0.1)
+		local on = 0
+		for _, tw in ipairs(starList) do
+			if tw.PlaybackState == Enum.PlaybackState.Playing then
+				on = on + 1
+			end
+		end
+		T.check(on == 0 and holder:FindFirstChild("Stars") == nil, "egg vfx: the stars' Destroy stops their tweens and removes them")
+
+		------------------------------------------------------------------ the Shop page (spec 16.5: the Secret hero's big egg, the page's pool)
+		LocalPlayer:SetAttribute(Config.Attr.Tokens, 50000)
+		LocalPlayer:SetAttribute(Config.Attr.Gems, 5000)
+		LocalPlayer:SetAttribute("PaidRandomItemsRestricted", false)
+		LocalPlayer:SetAttribute("GemsSettled", true)
+		LocalPlayer:SetAttribute("SecretPityLeft", 4)
+		if MC and MC.Close then
+			MC.Close()
+		end
+		Shop.Open({ Tab = "Eggs" })
+		G.advance(1)
+		local shopGui = G.pg():FindFirstChild("NimbusShop")
+		local page = shopGui and shopGui:FindFirstChild("Page_Eggs", true)
+		local fx = page and SE.Fx(page)
+		local hero = page and page:FindFirstChild("ShopCard_Secret", true)
+		local egg = hero and hero:FindFirstChild("HeroEgg", true)
+		if T.check(fx ~= nil and fx.Pool ~= nil and egg ~= nil and fx.Egg == egg, "egg vfx: the Eggs page owns a HatchFx pool and the hero card's HeroEgg") then
+			T.check(G.shown(egg) and egg:GetAttribute("Rarity") == "Secret" and egg:GetAttribute("Form") == "Full" and egg:GetAttribute("Vfx") == true and egg:FindFirstChild("Aura") ~= nil,
+				"egg vfx: the Secret hero's big egg: Full, with its VFX, shown on PC", fmt("%s %s %s", tostring(egg:GetAttribute("Form")), tostring(egg:GetAttribute("Vfx")), tostring(G.shown(egg))))
+			local most2 = 0
+			for _ = 1, 30 do
+				G.advance(0.1)
+				most2 = math.max(most2, fx.Pool:Live())
+			end
+			T.check(most2 >= 1 and most2 <= 16 and FX.Stats().Heartbeats == hb0 + 1, "egg vfx: the page's pool keeps the hero egg's sparkles (never over 16) under one Heartbeat while the page shows",
+				fmt("most %d, hb %d", most2, FX.Stats().Heartbeats))
+			local domes = 0
+			for _, d in ipairs(page:GetDescendants()) do
+				if d.Name == "GlassSheen" and d:IsA("UIGradient") and G.tweensUnder(d) == 1 then
+					domes = domes + 1
+				end
+			end
+			T.eq(domes, 5, "egg vfx: every machine dome's glass carries a slow sheen while the page shows (High)")
+			Shop.Open({ Tab = "Gems" })
+			G.advance(0.3)
+			T.check(fx.Pool:Live() == 0 and FX.Stats().Heartbeats == hb0 and G.tweensUnder(page) == 0, "egg vfx: on another tab the page's pool stops (no live spark, no Heartbeat) and its tweens stop",
+				fmt("live %d, hb %d, tweens %d", fx.Pool:Live(), FX.Stats().Heartbeats, G.tweensUnder(page)))
+			Shop.Open({ Tab = "Eggs" })
+			G.advance(2)
+			T.check(fx.Pool:Live() >= 1 and FX.Stats().Heartbeats == hb0 + 1, "egg vfx: back on Eggs the sparkles come back")
+			Shop.Close()
+			G.advance(0.3)
+			T.check(fx.Pool:Live() == 0 and FX.Stats().Heartbeats == hb0 and G.tweensUnder(shopGui) == 0, "egg vfx: the Shop closed: no spark, no Heartbeat, no tween under NimbusShop",
+				fmt("live %d, hb %d, tweens %d", fx.Pool:Live(), FX.Stats().Heartbeats, G.tweensUnder(shopGui)))
+			mode = "Low"
+			Shop.Open({ Tab = "Eggs" })
+			G.advance(2)
+			T.check(fx.Pool:Live() == 0 and FX.Stats().Heartbeats == hb0 and egg:GetAttribute("Vfx") ~= true and G.tweensUnder(shopGui) == 0,
+				"egg vfx: Low graphics: the page shows no sparkle, no VFX, no tween", fmt("live %d, tweens %d", fx.Pool:Live(), G.tweensUnder(shopGui)))
+			Shop.Close()
+			mode = "High"
+			G.advance(0.3)
+			Mock.SetViewport(844, 390)
+			G.advance(0.6)
+			Shop.Open({ Tab = "Eggs" })
+			G.advance(1)
+			T.check(not G.shown(egg) and fx.Pool:Live() == 0 and FX.Stats().Heartbeats == hb0, "egg vfx: phone: the hero card has no room for the big egg (hidden, no sparkle)")
+			Shop.Close()
+			Mock.SetViewport(1920, 1080)
+			G.advance(0.6)
+		end
+		-- census: the old gem glyph nowhere in the Shop or on the egg boards
+		Shop.Open({ Tab = "Eggs" })
+		G.advance(0.5)
+		local glyphs = G.glyphs(shopGui)
+		for _, n in ipairs(G.glyphs(gui)) do
+			glyphs[#glyphs + 1] = n
+		end
+		T.check(#glyphs == 0, "egg vfx: census: no old gem glyph (\\226\\151\\134) in the Shop or on the egg boards", table.concat(glyphs, ", "))
+		Shop.Close()
+	end)
+	GQ.Effective = oldEff
+	pcall(function()
+		Shop.Close()
+	end)
+	gui:Destroy()
+	for name, v in pairs(keep) do
+		LocalPlayer:SetAttribute(name, v)
+	end
+	Mock.SetViewport(oldVp[1], oldVp[2])
+	G.advance(0.6)
+	T.check(okRun, "egg vfx: the scenario body ran", tostring(errRun))
+	KC.flushErrors("client_egg_vfx")
 end)
 
 return S

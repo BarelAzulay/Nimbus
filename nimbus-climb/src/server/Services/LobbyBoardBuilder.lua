@@ -18,6 +18,14 @@
 --         rarity colour, SmoothPlastic, not colliding; the Secret egg dark with its violet tint. Each egg is tagged
 --         Config.Tags.Spin with SpinSeconds 14, BobStuds 0.12, BobSeconds 3.2 (lobby shop 16.5, Task 25: a slow display
 --         turntable; the client's LobbyFxController turns and bobs it about its pivot, the server never animates).
+--         The shelf VFX (lobby shop 16.5 "The world eggs", Task 26), one set per egg at an Attachment "Center" in the egg's
+--         middle (the Part fallback and a dressed mesh alike: dressing only hides the Part, the Attachment stays): a
+--         ParticleEmitter "Sparkle" on the Rare and up eggs (the built-in sparkle texture; Rate Rare 1 / Epic 2 /
+--         Legendary 3 / Mythic 4 / Secret 5; the rarity colour, Secret the egg's violet glow; LightEmission 0.5;
+--         Lifetime 1.2-2; Speed 0.3-0.8; ZOffset 1.4 so the sparks draw in front of the shell they start in), tagged
+--         WorldStyle.Tags.Detail so the Low graphics setting parks them. No part is added.
+--       * EggShelfGlow (Task 26): one PointLight 1.0 / 10, no shadows, on an Attachment 1.5 studs over the shelf's top
+--         centre (inside the lobby light rule: a non-lamp light <= 1.5 / 28).
 --       * PromptPart (lobby shop 16.3, Task 23): an invisible, non-colliding 5 x 4 x 3 part at cf * (0, 2, -5.6), just in
 --         front of the shelf (the old item stall's prompt spot). Returned second: LobbyBuilder hands it on as
 --         LobbyInfo.Shop.Counter.PromptPart and PetService puts the walk-up ShopPrompt on it.
@@ -35,12 +43,13 @@
 --
 --   H = { noticeBoard, surfaceGui, signPanel, signText, box, Mesh, C, MAT, LAWN, plazaSpot, faceCentre } (LobbyBuilder's
 --   layout field L.H, built once per Build)
--- No light, no prompt (only the Egg Guide's PromptPart for PetService's), no animation (the server never animates). Plain
--- Lua 5.1 syntax only.
+-- No other light (only the shelf's EggShelfGlow), no prompt (only the Egg Guide's PromptPart for PetService's), no
+-- animation (the server never animates; the sparkles are a ParticleEmitter). Plain Lua 5.1 syntax only.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local WorldStyle = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("WorldStyle"))
 
 local LobbyBoardBuilder = {}
 
@@ -66,6 +75,13 @@ local SECRET = {
 	Body = Color3.fromRGB(40, 40, 52), -- Config.Rarities Secret
 	Tint = Color3.fromRGB(138, 92, 255), -- the Secret egg's violet glow (spec 5.6)
 	Text = Color3.fromRGB(178, 150, 255), -- its name on the navy board
+}
+-- the shelf VFX (spec 16.5 "The world eggs"): the sparkle per egg from Rare up and the shelf's one light
+local SHELF_FX = {
+	Rate = { Rare = 1, Epic = 2, Legendary = 3, Mythic = 4, Secret = 5 },
+	Texture = "rbxasset://textures/particles/sparkles_main.dds", -- the built-in sparkle (nothing to upload)
+	Detail = (WorldStyle.Tags and WorldStyle.Tags.Detail) or "NC_Detail",
+	Glow = { Name = "EggShelfGlow", Brightness = 1.0, Range = 10, Lift = 1.5, Color = Color3.fromRGB(255, 238, 206) },
 }
 local PX = { Title = 52, Info = 30 } -- px at 50 px per stud: 1.04 stud / 0.6 stud (the World text rule)
 -- the leaderboard board: where it stands (polar degrees, radius, plazaSpot clearance; spec 5.10 checked the clearance
@@ -107,6 +123,45 @@ end
 -- 550 x 400 px canvas (11 x 8 studs): a 1.04-stud header, the 0.6-stud line (wrapped), then the names in two columns
 -- (0.6 stud). The bottom fifth stays empty: the eggs on the shelf (3.8 studs tall) stand in front of it, and every
 -- letter starts above 3.9 studs, so it shows over the eggs from a standing player's eye.
+-- the sparkle of one shelf egg (Rare and up) at an Attachment Center in its middle; nothing below Rare
+local function eggSparkle(egg, id)
+	local rate = SHELF_FX.Rate[id]
+	if not rate then
+		return nil
+	end
+	local center = Instance.new("Attachment")
+	center.Name = "Center"
+	center.Parent = egg
+	local color = (id == "Secret") and SECRET.Tint or rarityColor(id)
+	local pe = Instance.new("ParticleEmitter")
+	pe.Name = "Sparkle"
+	pe.Texture = SHELF_FX.Texture
+	pe.Rate = rate
+	pe.Color = ColorSequence.new(color)
+	pe.LightEmission = 0.5
+	pe.LightInfluence = 0
+	pe.Lifetime = NumberRange.new(1.2, 2)
+	pe.Speed = NumberRange.new(0.3, 0.8)
+	pe.SpreadAngle = Vector2.new(180, 180)
+	pe.Acceleration = Vector3.new(0, 0.35, 0)
+	pe.ZOffset = 1.4
+	pe.Rotation = NumberRange.new(0, 360)
+	pe.RotSpeed = NumberRange.new(-40, 40)
+	pe.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0),
+		NumberSequenceKeypoint.new(0.3, 0.32),
+		NumberSequenceKeypoint.new(1, 0),
+	})
+	pe.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.6),
+		NumberSequenceKeypoint.new(0.3, 0.1),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	pe.Parent = center
+	CollectionService:AddTag(pe, SHELF_FX.Detail)
+	return pe
+end
+
 local function guideSign(face, order, H)
 	local gui = H.surfaceGui(face, Enum.NormalId.Front)
 	local panel = H.signPanel(gui)
@@ -134,7 +189,19 @@ function LobbyBoardBuilder.EggGuide(parent, cf, H)
 	guideSign(face, order, H)
 	-- the shelf: its bottom on the board's ground (the lawn), the part over the court's stone just sinks into it
 	local shelfCF = cf * CFrame.new(0, SHELF.Size.Y / 2, SHELF.Z)
-	H.box(model, "EggShelf", shelfCF, SHELF.Size, H.C.StoneLight, { Collide = true, Material = H.MAT.SmoothPlastic })
+	local shelf = H.box(model, "EggShelf", shelfCF, SHELF.Size, H.C.StoneLight, { Collide = true, Material = H.MAT.SmoothPlastic })
+	-- the shelf's one soft glow (Task 26): an Attachment over its top centre, so no part is added
+	local glowAt = Instance.new("Attachment")
+	glowAt.Name = SHELF_FX.Glow.Name
+	glowAt.CFrame = CFrame.new(0, SHELF.Size.Y / 2 + SHELF_FX.Glow.Lift, 0)
+	glowAt.Parent = shelf
+	local glow = Instance.new("PointLight")
+	glow.Name = SHELF_FX.Glow.Name
+	glow.Brightness = SHELF_FX.Glow.Brightness
+	glow.Range = SHELF_FX.Glow.Range
+	glow.Color = SHELF_FX.Glow.Color
+	glow.Shadows = false
+	glow.Parent = glowAt
 	for i, id in ipairs(order) do
 		-- the reader faces the board's front (-Z): their left is +X, so the first egg stands at +X
 		local eggCF = cf * CFrame.new((#order + 1 - 2 * i) * EGG.Step / 2, SHELF.Size.Y, SHELF.Z)
@@ -147,6 +214,7 @@ function LobbyBoardBuilder.EggGuide(parent, cf, H)
 		shape.MeshType = Enum.MeshType.Sphere -- the ellipsoid of the block's size
 		shape.Parent = egg
 		H.Mesh.tag(egg, EGG_KEYS[id], eggCF)
+		eggSparkle(egg, id)
 		-- the turntable (Task 25): attributes first, then the tag, so a client that sees the tag reads them
 		egg:SetAttribute("SpinSeconds", EGG.SpinSeconds)
 		egg:SetAttribute("BobStuds", EGG.BobStuds)

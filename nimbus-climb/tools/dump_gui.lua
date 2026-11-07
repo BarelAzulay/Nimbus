@@ -50,8 +50,10 @@
 --   titles[:<studs>]      lobby-shop Task 19: the three title tags (rainbow TOP 10, gold TOP 100, CREATOR with the VIP crown)
 --                         over sketched characters seen from <studs> away (default 14), a name stand-in at the anchor
 --                         ([lobby-shop] block)
---   eggs                  lobby-shop Task 20: the seven GUI eggs (EggArt, plain base) at 30 / 64 / 104 / 160 / 380 px and a
---                         Halves pair ([lobby-shop] block)
+--   eggs[:simple]         lobby-shop Tasks 20 / 26: the seven painted GUI eggs (EggArt) at 30 / 64 / 104 px, 160 px Full
+--                         with their VFX and 380 px Full; eggs:simple = the small forms the Shop and the strip use (Simple
+--                         28 / 34 / 40, the strip's lean Medium in a cell with its rarity ring, Medium 104) and a Halves
+--                         pair ([lobby-shop] block)
 --   hatch[:<view>]        lobby-shop Task 20: the egg stage core (EggStage, plain visuals) stepped to one moment: strip,
 --                         strip3, crack, reveal (default), reveal3, secret ([lobby-shop] block)
 --   lobbyboard[:2|:3]     lobby-shop Task 24: the lobby board's SurfaceGui (LeaderboardController) with ten fake rows on page
@@ -3434,52 +3436,93 @@ scenario("titles", function(studs)
 	advance(0.1)
 end)
 
--- eggs                  lobby-shop Task 20 (spec 16.5 API, 5.6): the seven GUI eggs (client/UI/EggArt, the plain base: the
---                       oval, the tone gradient, the outline, the highlight; the paint comes in Task 26), no game HUD. One
---                       column per rarity with the egg at 30 / 64 / 104 px, then 160 px, then three 380 px eggs (Common,
---                       Legendary, Secret) and an Epic EggArt.Halves pair pulled apart. A board designed at 1700 x 930 px,
---                       scaled to fit under the top bar (the outlines are Border strokes, size / 20 outside each box: the
---                       spacing leaves room for them).
-scenario("eggs", function()
+-- eggs[:simple]         lobby-shop Tasks 20 / 26 (spec 16.5 "Painted eggs", 5.6): the seven GUI eggs (client/UI/EggArt), no
+--                       game HUD, on a board scaled to fit under the top bar (the outlines are Border strokes, size / 20
+--                       outside each box: the spacing leaves room for them).
+--                       eggs: one column per rarity: the egg at 30 / 64 / 104 px (Simple, Medium, Medium), then 160 px Full
+--                       with its VFX (High graphics: the halo, Legendary's rays, Secret's aura; the endless tweens stand
+--                       at their start), then 380 px Full without VFX (the paint at full detail, beside the Blender
+--                       renders of tools/render_model.py meshkey:egg_<rarity>).
+--                       eggs:simple: the small forms: Simple 28 (a Shop odds row), 34 (a machine dome), 40 (the hero's odds
+--                       line); the strip's lean Medium (Rim = false, Budget = 9) at 64 in a cell whose stroke is the
+--                       rarity ring from Rare up; Medium 104 with its rim light; and an Epic EggArt.Halves pair pulled
+--                       apart.
+scenario("eggs", function(view)
 	local EggArt = req("client/UI/EggArt")
 	local Theme = req("shared/Theme")
+	local simple = tostring(view or ""):lower() == "simple"
 	NK.hideGame()
 	local _, root = NK.newGui("EggGallery")
 	local vp = Mock.Viewport
-	local fit = min(1, (vp.X - 32) / 1700, (vp.Y - 134) / 930) -- (the gallery's ScreenGui sits under the 58 px top bar)
+	local W, Hh = 2510, simple and 760 or 1060
+	local fit = min(1, (vp.X - 32) / W, (vp.Y - 134) / Hh) -- (the gallery's ScreenGui sits under the 58 px top bar)
 	local board = make("Frame", {
-		Name = "Board", Position = UDim2.fromOffset(16, 66), Size = UDim2.fromOffset(1700, 930),
+		Name = "Board", Position = UDim2.fromOffset(16, 66), Size = UDim2.fromOffset(W, Hh),
 		BackgroundColor3 = Theme.Colors.PanelBottom, BackgroundTransparency = 0.1, BorderSizePixel = 0,
 	}, root)
 	corner(board, 0, 16)
 	make("UIScale", { Scale = fit }, board)
-	label(board, "The seven eggs: EggArt (plain base, Task 20)", 26, { Position = UDim2.fromOffset(24, 10), Size = UDim2.fromOffset(900, 34), TextXAlignment = Enum.TextXAlignment.Left })
-	for i, rarity in ipairs(Config.Eggs.Order) do
-		local x = 30 + (i - 1) * 236
-		local cx = x
-		for _, size in ipairs({ 30, 64, 104 }) do
-			local egg = EggArt.New(board, rarity, size)
-			egg.Position = UDim2.fromOffset(cx, 170 - size)
-			cx = cx + floor(0.8 * size + 0.5) + 16
+	local title = simple and "The seven eggs, small: Simple 28 / 34 / 40, the strip's lean Medium in its cell, Medium 104 (Task 26)"
+		or "The seven painted eggs: 30 / 64 / 104, 160 Full with VFX, 380 Full (EggArt, Task 26)"
+	label(board, title, 26, { Position = UDim2.fromOffset(24, 10), Size = UDim2.fromOffset(1800, 34), TextXAlignment = Enum.TextXAlignment.Left })
+	local function rarityColor(rarity)
+		if rarity == "Secret" then
+			return Color3.fromRGB(180, 150, 255)
 		end
-		local big = EggArt.New(board, rarity, 160)
-		big.Position = UDim2.fromOffset(x + 40, 196)
-		label(board, rarity, 20, { Position = UDim2.fromOffset(x, 372), Size = UDim2.fromOffset(210, 26), TextXAlignment = Enum.TextXAlignment.Center })
+		for _, r in ipairs(Config.Rarities) do
+			if r.Id == rarity then
+				return r.Color
+			end
+		end
+		return Color3.new(1, 1, 1)
 	end
-	local x = 40
-	for _, rarity in ipairs({ "Common", "Legendary", "Secret" }) do
-		local egg = EggArt.New(board, rarity, 380)
-		egg.Position = UDim2.fromOffset(x, 440)
-		label(board, rarity .. " 380 px", 20, { Position = UDim2.fromOffset(x, 848), Size = UDim2.fromOffset(304, 26), TextXAlignment = Enum.TextXAlignment.Center })
-		x = x + 370
+	for i, rarity in ipairs(Config.Eggs.Order) do
+		local x = 34 + (i - 1) * 352 -- (a 380 egg is 304 wide plus a 19 px outline each side)
+		if simple then
+			local cx = x
+			for _, size in ipairs({ 28, 34, 40 }) do
+				local egg = EggArt.New(board, rarity, size)
+				egg.Position = UDim2.fromOffset(cx, 120 - size)
+				cx = cx + floor(0.8 * size + 0.5) + 18
+			end
+			-- the strip's cell (EggStage's look: 12 px corners, the stroke = the rarity ring from Rare up)
+			local cell = make("Frame", {
+				Name = "Cell_" .. rarity, Position = UDim2.fromOffset(x, 160), Size = UDim2.fromOffset(104, 120),
+				BackgroundColor3 = Color3.fromRGB(28, 34, 74), BackgroundTransparency = 0.15, BorderSizePixel = 0,
+			}, board)
+			corner(cell, 0, 12)
+			local ring = EggArt.Glow(rarity) > 0
+			make("UIStroke", { Color = ring and rarityColor(rarity) or Theme.Colors.WellEdge, Thickness = 3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, cell)
+			local lean = EggArt.New(cell, rarity, 64, { Form = "Medium", Rim = false, Budget = 9, ZIndex = 3 })
+			lean.Position = UDim2.fromOffset(52 - 26, 14)
+			label(cell, rarity, 16, { Position = UDim2.fromOffset(0, 86), Size = UDim2.fromOffset(104, 24), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = rarityColor(rarity) })
+			local med = EggArt.New(board, rarity, 104)
+			med.Position = UDim2.fromOffset(x + 140, 168)
+			label(board, rarity, 20, { Position = UDim2.fromOffset(x, 300), Size = UDim2.fromOffset(280, 26), TextXAlignment = Enum.TextXAlignment.Center })
+		else
+			local cx = x + 24
+			for _, size in ipairs({ 30, 64, 104 }) do
+				local egg = EggArt.New(board, rarity, size)
+				egg.Position = UDim2.fromOffset(cx, 170 - size)
+				cx = cx + floor(0.8 * size + 0.5) + 16
+			end
+			local mid = EggArt.New(board, rarity, 160, { Vfx = true })
+			mid.Position = UDim2.fromOffset(x + 88, 230)
+			label(board, rarity, 20, { Position = UDim2.fromOffset(x, 418), Size = UDim2.fromOffset(304, 26), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = rarityColor(rarity) })
+			local big = EggArt.New(board, rarity, 380)
+			big.Position = UDim2.fromOffset(x, 520)
+			label(board, rarity .. " 380 px", 20, { Position = UDim2.fromOffset(x, 940), Size = UDim2.fromOffset(304, 26), TextXAlignment = Enum.TextXAlignment.Center })
+		end
 	end
-	local holder = make("Frame", { Name = "HalvesHolder", BackgroundTransparency = 1, Position = UDim2.fromOffset(x + 20, 440), Size = UDim2.fromOffset(304, 380) }, board)
-	local top, bottom = EggArt.Halves(holder, "Epic", 380)
-	top.Position = UDim2.fromOffset(-24, -12)
-	top.Rotation = -14
-	bottom.Position = UDim2.fromOffset(0, 232)
-	label(board, "Epic halves", 20, { Position = UDim2.fromOffset(x + 20, 884), Size = UDim2.fromOffset(304, 26), TextXAlignment = Enum.TextXAlignment.Center })
-	note(fmt("eggs: board scale %.2f", fit))
+	if simple then
+		local holder = make("Frame", { Name = "HalvesHolder", BackgroundTransparency = 1, Position = UDim2.fromOffset(40, 380), Size = UDim2.fromOffset(240, 300) }, board)
+		local top, bottom = EggArt.Halves(holder, "Epic", 300)
+		top.Position = UDim2.fromOffset(-20, -10)
+		top.Rotation = -14
+		bottom.Position = UDim2.fromOffset(0, 184)
+		label(board, "Epic halves (painted, no sheen / shadow)", 20, { Position = UDim2.fromOffset(300, 520), Size = UDim2.fromOffset(600, 26), TextXAlignment = Enum.TextXAlignment.Left })
+	end
+	note(fmt("eggs%s: board scale %.2f", simple and ":simple" or "", fit))
 	advance(0.1)
 end)
 

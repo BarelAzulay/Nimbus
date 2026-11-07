@@ -13,8 +13,9 @@
 --                                    Kind "pull" (lobby-shop spec 5.5, the server's Legendary+ hatch line
 --                                    "<Name> hatched a <Rarity> <Pet>!") is a system chat line instead:
 --                                    TextChatService.TextChannels.RBXSystem:DisplaySystemMessage, rich text
---                                    escaped, the rarity word in its Config.Rarities colour; no channel (the
---                                    legacy chat, not replicated yet) or an error -> a "good" toast.
+--                                    escaped, the rarity word in its Config.Rarities colour (Config.Eggs.ChatColors
+--                                    overrides one: Secret's near-black is #B496FF on the dark chat, spec 16.5);
+--                                    no channel (the legacy chat, not replicated yet) or an error -> a "good" toast.
 --   MatchResult(result)           -> compact result card on the right edge (about 45% down): VICTORY!/DEFEAT in
 --                                    the Title font with a gradient, difficulty + stars, time, tokens, bonus,
 --                                    a small member list and a "Back to lobby in Ns" line. It closes when the
@@ -1280,9 +1281,12 @@ local function pullToChat(text)
 		at, from = e, e + 1
 	end
 	local word = at and string.match(line, "^(%a+)", at + 1)
+	-- Config.Eggs.ChatColors overrides a rarity colour that reads badly on the dark chat (Secret's near-black; Task 26)
+	local chat = type(Config.Eggs) == "table" and type(Config.Eggs.ChatColors) == "table" and Config.Eggs.ChatColors or {}
 	for _, rarity in ipairs(Config.Rarities) do
-		if word and rarity.Id == word and typeof(rarity.Color) == "Color3" then
-			line = string.sub(line, 1, at) .. '<font color="' .. hex(rarity.Color) .. '">' .. word .. "</font>" .. string.sub(line, at + 1 + #word)
+		local color = word and rarity.Id == word and (typeof(chat[word]) == "Color3" and chat[word] or rarity.Color)
+		if typeof(color) == "Color3" then
+			line = string.sub(line, 1, at) .. '<font color="' .. hex(color) .. '">' .. word .. "</font>" .. string.sub(line, at + 1 + #word)
 			break
 		end
 	end

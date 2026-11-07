@@ -476,6 +476,12 @@ Config.Eggs = {
 		Mythic = "Aurora Egg",
 		Secret = "Starry Night Egg",
 	},
+	-- (lobby-shop Task 26, spec 16.5 "Chat colour") the rarity word's colour in the Legendary-and-up chat line where
+	-- Config.Rarities' colour reads badly on Roblox's dark chat: Secret's near-black becomes the Starry Night star violet
+	-- (#B496FF). The chat line only: Config.Rarities stays.
+	ChatColors = {
+		Secret = Color3.fromRGB(180, 150, 255),
+	},
 }
 
 -- v3: new-player tutorial guided by Nimbus, the Cloudy Dragon (steps live in shared/TutorialSteps.lua).

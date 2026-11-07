@@ -72,6 +72,12 @@
 --                      ShopPrompt, on the new part (PetService.Init with the new LobbyInfo, as a rebuild does); the forced
 --                      fallback shop's own Counter carries it; the arch sign reads "eggs & gems"; the four machine prompts
 --                      unchanged; the booted lobby's prompts are put back at the end
+--   egg_shelf_fx       the shelf's VFX (spec 16.5 "The world eggs", Task 26): Rare .. Secret eggs each hold one sparkle
+--                      ParticleEmitter (Rate 1 / 2 / 3 / 4 / 5, the rarity colour, Secret the egg's violet; LightEmission
+--                      0.5, Lifetime 1.2-2, Speed 0.3-0.8; tagged NC_Detail; on an Attachment Center at the egg's
+--                      middle, so the Part fallback and a dressed mesh share it), Common and Uncommon none; one PointLight
+--                      EggShelfGlow 1.0 / 10 at the shelf's centre; every lobby light within the light rule; no part
+--                      added to the Egg Guide; the trove <= 60 parts; the same on a rebuilt lobby
 -- Rebuilds follow smoke_p6_lobby.lua: the booted lobby is set aside (renamed) and put back, the hooks (_Kit,
 -- _ForceShopFallback), Config.Trove.GroupId, the Meadow stats and the fixture holders restored in every path.
 -- Deterministic: mock clock only. Plain Lua 5.1 syntax only.
@@ -1885,6 +1891,127 @@ S.shop_prompt = guarded("shop_prompt", function()
 		allowed[#allowed + 1] = w
 	end
 	K.flushWarnings("shop_prompt", allowed)
+end)
+
+----------------------------------------------------------------------------------------------------
+-- egg_shelf_fx (Task 26, spec 16.5 "The world eggs"): the shelf's sparkles and its one glow
+----------------------------------------------------------------------------------------------------
+local SHELF_FX = {
+	Rate = { Rare = 1, Epic = 2, Legendary = 3, Mythic = 4, Secret = 5 },
+	SecretColor = Color3.fromRGB(138, 92, 255), -- Secret's own colour is near black: its egg's violet glow (spec 5.6)
+	Detail = "NC_Detail",
+}
+
+local function checkShelfFx(label, guide, Config)
+	local bad, emitters = {}, 0
+	for _, r in ipairs(Config.Eggs.Order) do
+		local egg = guide:FindFirstChild("Egg_" .. r)
+		local list = {}
+		for _, d in ipairs(egg and egg:GetDescendants() or {}) do
+			if d:IsA("ParticleEmitter") then
+				list[#list + 1] = d
+			end
+		end
+		emitters = emitters + #list
+		local rate = SHELF_FX.Rate[r]
+		if not egg then
+			bad[#bad + 1] = r .. " missing"
+		elseif not rate then
+			if #list ~= 0 then
+				bad[#bad + 1] = r .. fmt(" has %d emitters (none below Rare)", #list)
+			end
+		elseif #list ~= 1 then
+			bad[#bad + 1] = r .. fmt(" has %d emitters (want 1)", #list)
+		else
+			local pe = list[1]
+			local want = SHELF_FX.SecretColor
+			for _, rd in ipairs(Config.Rarities) do
+				if rd.Id == r and r ~= "Secret" then
+					want = rd.Color
+				end
+			end
+			local kp = pe.Color.Keypoints
+			local att = pe.Parent
+			if pe.Rate ~= rate then
+				bad[#bad + 1] = r .. " Rate " .. tostring(pe.Rate)
+			end
+			if not (sameColor(kp[1].Value, want) and sameColor(kp[#kp].Value, want)) then
+				bad[#bad + 1] = r .. " colour " .. tostring(kp[1].Value)
+			end
+			if math.abs(pe.LightEmission - 0.5) > 1e-6 or math.abs(pe.Lifetime.Min - 1.2) > 1e-6 or math.abs(pe.Lifetime.Max - 2) > 1e-6
+				or math.abs(pe.Speed.Min - 0.3) > 1e-6 or math.abs(pe.Speed.Max - 0.8) > 1e-6 then
+				bad[#bad + 1] = r .. " LightEmission / Lifetime / Speed"
+			end
+			if not CS:HasTag(pe, SHELF_FX.Detail) then
+				bad[#bad + 1] = r .. " not tagged NC_Detail (Low graphics would not park it)"
+			end
+			if not (att and att:IsA("Attachment") and att.Name == "Center" and att.Parent == egg and near(att.WorldPosition, egg.Position, 0.05)) then
+				bad[#bad + 1] = r .. " not on an Attachment Center at the egg's middle"
+			end
+			if (pe.Texture or "") ~= "" and string.find(pe.Texture, "rbxassetid", 1, true) then
+				bad[#bad + 1] = r .. " has an uploaded texture"
+			end
+		end
+	end
+	T.check(#bad == 0 and emitters == 5, label .. ": Rare .. Secret eggs each hold one sparkle ParticleEmitter (Rate 1 / 2 / 3 / 4 / 5, the rarity colour (Secret violet), LightEmission 0.5, Lifetime 1.2-2, Speed 0.3-0.8, tagged NC_Detail) on an Attachment Center at the egg's middle; Common and Uncommon none",
+		table.concat(bad, "; "))
+	local lights = {}
+	for _, d in ipairs(guide:GetDescendants()) do
+		if d:IsA("Light") then
+			lights[#lights + 1] = d
+		end
+	end
+	local shelf = guide:FindFirstChild("EggShelf")
+	local g = lights[1]
+	local at = g and g.Parent and (g.Parent:IsA("Attachment") and g.Parent.WorldPosition or (g.Parent:IsA("BasePart") and g.Parent.Position)) or nil
+	T.check(#lights == 1 and g:IsA("PointLight") and g.Name == "EggShelfGlow" and math.abs(g.Brightness - 1.0) < 1e-6 and g.Range == 10 and not g.Shadows
+		and shelf ~= nil and at ~= nil and hdist(at, shelf.Position) <= 0.05 and at.Y >= shelf.Position.Y,
+		label .. ": one PointLight EggShelfGlow 1.0 / 10 (no shadows) at the shelf's centre, on or over it", #lights .. " lights" .. (g and (" " .. g:GetFullName()) or ""))
+	-- no part added: the sparkles and the glow ride on Attachments
+	local board = guide:FindFirstChild("EggGuideBoard")
+	local want = (board and countParts(board) or 0) + 1 + #Config.Eggs.Order + 1
+	T.eq(countParts(guide), want, label .. ": the Egg Guide adds no part (board + shelf + seven eggs + PromptPart)")
+end
+
+S.egg_shelf_fx = guarded("egg_shelf_fx", function()
+	if not K.needBoot() then
+		return
+	end
+	local Config = K.config()
+	local info = K.W.lobbyInfo
+	local lobby = workspace:FindFirstChild("NimbusLobby")
+	local shopFolder = lobby and lobby:FindFirstChild("Shop")
+	local guide = shopFolder and shopFolder:FindFirstChild("EggGuide")
+	if not T.check(guide ~= nil and type(info) == "table", "egg shelf fx: (precondition) the booted lobby's EggGuide") then
+		return
+	end
+	checkShelfFx("egg shelf fx", guide, Config)
+	-- every lobby light within the light rule (lamps <= 1.2 / 16, others <= 1.5 / 28, no spot / surface lights)
+	local Lamps = Config.Sky.Lamps
+	local bright, spots = {}, 0
+	for _, d in ipairs(lobby:GetDescendants()) do
+		if d:IsA("SpotLight") or d:IsA("SurfaceLight") then
+			spots = spots + 1
+		elseif d:IsA("PointLight") then
+			local lamp = d.Parent and Lamps.Names[d.Parent.Name]
+			local ok = lamp and (d.Brightness <= 1.2 + 1e-6 and d.Range <= 16 and not d.Shadows) or (not lamp and d.Brightness <= 1.5 + 1e-6 and d.Range <= 28)
+			if not ok then
+				bright[#bright + 1] = d:GetFullName()
+			end
+		end
+	end
+	T.check(#bright == 0 and spots == 0, "egg shelf fx: every lobby light within the light rule", table.concat(bright, ", "))
+	local stall = info.Shop and info.Shop.ItemShop
+	T.check(stall ~= nil and stall.Model ~= nil and countParts(stall.Model) <= 60, "egg shelf fx: the trove stays <= 60 parts", stall and stall.Model and tostring(countParts(stall.Model)) or "no trove")
+	-- the same set on a rebuilt lobby (a dev reset), and on the eggs' dressed meshes (the emitters stay on the Part)
+	rebuild("egg shelf fx rebuild", function() end, function(built)
+		local g2 = built.Folder:FindFirstChild("EggGuide", true)
+		if T.check(g2 ~= nil, "egg shelf fx rebuild: the rebuilt lobby has its EggGuide") then
+			checkShelfFx("egg shelf fx rebuild", g2, Config)
+		end
+	end)
+	K.flushErrors("egg_shelf_fx")
+	K.flushWarnings("egg_shelf_fx", ALLOWED_WARNINGS)
 end)
 
 return S

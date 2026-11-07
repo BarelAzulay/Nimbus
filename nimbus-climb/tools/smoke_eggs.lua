@@ -1606,10 +1606,34 @@ local function clientScenarios()
 			"notify pull: a Mythic line keeps ' (+2 more)' and colours 'Mythic' (#EE628C)", tostring(got))
 		T.check(type(got) == "string" and string.find(got, "A&lt;b&gt;&amp;c hatched a ", 1, true) == 1, "notify pull: ...'<', '>' and '&' of the text are escaped for rich text", tostring(got))
 
+		-- lobby-shop Task 26 (spec 16.5 "Chat colour"): Secret's near-black reads badly on the dark chat, so the chat line
+		-- colours its word with Config.Eggs.ChatColors.Secret = rgb(180,150,255); Config.Rarities stays as it is
+		local Config = KC.env()
+		local cc = type(Config.Eggs) == "table" and type(Config.Eggs.ChatColors) == "table" and Config.Eggs.ChatColors.Secret
+		local sr = nil
+		for _, r in ipairs(Config.Rarities) do
+			if r.Id == "Secret" then
+				sr = r.Color
+			end
+		end
+		T.check(typeof(cc) == "Color3" and math.abs(cc.R * 255 - 180) < 1 and math.abs(cc.G * 255 - 150) < 1 and math.abs(cc.B * 255 - 255) < 1
+			and typeof(sr) == "Color3" and math.abs(sr.R * 255 - 40) < 1 and math.abs(sr.B * 255 - 52) < 1,
+			"notify pull: Config.Eggs.ChatColors.Secret = rgb(180,150,255); Config.Rarities' Secret stays rgb(40,40,52)")
+		KC.toClient("Notify", "Bo hatched a Secret Void Dragon!", "pull", 4)
+		KC.advance(0.5)
+		got = Mock.SystemMessages[n0 + 3]
+		T.check(type(got) == "string" and string.find(got, '<font color="#B496FF">Secret</font>', 1, true) ~= nil and string.find(got, "Void Dragon!", 1, true) ~= nil,
+			"notify pull: a Secret pull's chat line colours 'Secret' rgb(180,150,255) (#B496FF), readable on the dark chat", tostring(got))
+		KC.toClient("Notify", "Cy hatched a Legendary Sun Fox!", "pull", 4)
+		KC.advance(0.5)
+		got = Mock.SystemMessages[n0 + 4]
+		T.check(type(got) == "string" and string.find(got, '<font color="#F2B644">Legendary</font>', 1, true) ~= nil,
+			"notify pull: ...a Legendary keeps its Config.Rarities colour (#F2B644)", tostring(got))
+
 		-- other kinds still toast and never reach the chat
 		KC.toClient("Notify", "Plain toast here", "good", 3)
 		KC.advance(0.5)
-		T.check(#Mock.SystemMessages == n0 + 2 and KC.findText("plain toast here") ~= nil, "notify pull: kind 'good' stays a toast, no system message")
+		T.check(#Mock.SystemMessages == n0 + 4 and KC.findText("plain toast here") ~= nil, "notify pull: kind 'good' stays a toast, no system message")
 		KC.advance(4)
 
 		-- no channel (the legacy chat, or not replicated yet): today's toast with the text

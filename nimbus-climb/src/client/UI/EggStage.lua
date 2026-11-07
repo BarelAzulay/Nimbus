@@ -29,7 +29,8 @@
 -- ScrollingFrame: it clips) > Cell1..12, Pointer; Hero > Pedestal1..3, Backlight1..3, Egg1..3, Halves1..3, CrackWord;
 -- Burst > Shock, Rays, Sparks; Reveal > Col1..3 > Banner (Word), Shell, Pet, Name, New, Note, EvolvedRibbon; BottomBar >
 -- Skip, FastHatch, SpinAgain, Done; then Stage > Flash. Strip cells are recycled (at most 12 per strip): a cell re-skins
--- its egg with EggArt.SetRarity when it wraps. Attributes for tests: Strip<j>.Landed, Egg<j>.State (Rise / Crack / Burst
+-- its egg with EggArt.SetRarity when it wraps (Task 26: lean Medium eggs, Rim = false and Budget = 9; Rare and up wear a
+-- rarity ring on the cell's stroke; only the landed cell's egg gets its VFX). Attributes for tests: Strip<j>.Landed, Egg<j>.State (Rise / Crack / Burst
 -- / Open).
 --
 -- Never breaks the player (16.4): it writes nothing to the Camera or the Humanoid and plays on through a death or a
@@ -351,14 +352,9 @@ function H.place(o, x, y, w, h)
 	end
 end
 
+-- (Task 26) EggArt.Resize: the size, the outline and every painted stroke (ring dots, swirls, the VFX rings) follow
 function H.sizeEgg(egg, size)
-	size = math.max(8, math.floor(size + 0.5))
-	egg.Size = UDim2.fromOffset(math.floor(EggArt.Metrics.WIDTH * size + 0.5), size)
-	local outline = egg:FindFirstChild("Outline")
-	if outline then
-		outline.Thickness = math.max(2, math.floor(size / 20 + 0.5))
-	end
-	egg:SetAttribute("Size", size)
+	EggArt.Resize(egg, size)
 end
 
 function H.insets()
@@ -889,7 +885,9 @@ function B.cells(roll, j)
 		local f = H.frame(st.Track, "Cell" .. slot, { Size = UDim2.fromOffset(g.CellW, g.CellH), BackgroundColor3 = K.CELL, BackgroundTransparency = 0.15, Visible = false, ZIndex = 2 })
 		H.corner(f, 12)
 		local stroke = H.stroke(f, Theme.Colors.WellEdge, 3)
-		local egg = EggArt.New(f, "Common", g.Egg, { Form = g.Egg < 48 and "Simple" or "Medium", ZIndex = 3 })
+		-- (Task 26) a lean egg: no rim light and <= 9 instances (spec 16.4: <= 14 per cell, the cell's frame, corner, stroke
+		-- and word included)
+		local egg = EggArt.New(f, "Common", g.Egg, { Form = g.Egg < 48 and "Simple" or "Medium", ZIndex = 3, Rim = false, Budget = 9 })
 		egg.AnchorPoint = Vector2.new(0.5, 0)
 		local word = nil
 		if g.Word then
@@ -1266,9 +1264,17 @@ function R.cells(roll, j, c)
 						cell.Word.TextColor3 = H.color(rarity)
 					end
 					local landed = st.Landed and i == K.WIN
-					cell.Stroke.Color = landed and H.color(rarities[i]) or Theme.Colors.WellEdge
+					-- (Task 26, spec 16.5) Rare and up wear a static rarity ring (the cell's own stroke: no instance); the
+					-- landed cell's is 5 thick and its egg gets its VFX, the others dim once the strip has landed
+					local ring = rarity and EggArt.Glow(rarity) > 0
+					local edge = (landed or ring) and H.color(rarity) or Theme.Colors.WellEdge
+					cell.Stroke.Color = (ring and st.Landed and not landed) and edge:Lerp(Theme.Colors.WellEdge, 0.55) or edge
 					cell.Stroke.Thickness = landed and 5 or 3
 					cell.Frame.BackgroundTransparency = (st.Landed and not landed) and 0.6 or 0.15
+					if (cell.Vfx == true) ~= (landed and rarity ~= nil and rarity ~= false) then
+						cell.Vfx = landed and rarity ~= nil and rarity ~= false
+						EggArt.SetVfx(cell.Egg, cell.Vfx)
+					end
 				end
 				cell.Frame.Position = UDim2.fromOffset(x, (g.H - g.CellH) / 2)
 				cell.Frame.Visible = true
