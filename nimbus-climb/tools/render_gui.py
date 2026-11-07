@@ -79,7 +79,9 @@ SCENARIOS = ["gallery", "lobby", "title", "match", "match:hit", "countdown", "pa
              # Training Place's mats row; (Task 9) the Gifts window: ready, locked; (Task 10) the Play time tab (gift boxes);
              # (Task 11) the Fusion Machine window: fusion = fusion:upgrade (the stack of copies), fusion:mix (the two slots)
              "picker:train", "picker:upgrade", "picker:mix", "train:mats", "daily", "daily:locked", "daily:play",
-             "fusion:upgrade"]
+             "fusion:upgrade",
+             # lobby-shop (Task 15): the drawn cut gem (GemIcon) at every size, the piles, the chips, the HUD coin
+             "gems", "gems:store"]
 
 # ---------------------------------------------------------------------------------------------------
 # Lua world (booted the way tools/smoke.py boots its client world)

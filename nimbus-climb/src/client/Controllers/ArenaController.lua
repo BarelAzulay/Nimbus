@@ -159,7 +159,7 @@ local G = {
 	Swords = "\226\154\148",
 	Trophy = "\240\159\143\134",
 	Cloud = "\226\152\129",
-	Gem = (Theme.Currency and Theme.Currency.Gems and Theme.Currency.Gems.Glyph) or "\226\151\134",
+	-- (no gem glyph: lobby-shop Task 15, spec 5.7: text-only lines say "gems" in words)
 	Lock = "\240\159\148\146",
 	Check = "\226\156\147",
 	Crown = "\240\159\145\145",
@@ -1884,7 +1884,7 @@ local function buildArena()
 		local share = math.floor((tonumber(tier.MinShare) or 0) * 100 + 0.5)
 		local text = (share > 0 and (share .. "%+ damage: ") or "Any damage: ") .. G.Cloud .. " " .. commas(tier.Tokens or 0)
 		if (tonumber(tier.Gems) or 0) > 0 then
-			text = text .. ", " .. math.floor((tonumber(tier.GemChance) or 0) * 100 + 0.5) .. "% for " .. G.Gem .. " " .. commas(tier.Gems)
+			text = text .. ", " .. math.floor((tonumber(tier.GemChance) or 0) * 100 + 0.5) .. "% for " .. commas(tier.Gems) .. " gems"
 		end
 		makeText(row, "Text", text, "Body", 19, WHITE, {
 			Size = UDim2.new(1, -96, 0, 0),

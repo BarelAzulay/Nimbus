@@ -94,6 +94,7 @@ local Client = script.Parent.Parent
 local UI = Client:WaitForChild("UI")
 local CloudUI = require(UI:WaitForChild("CloudUI"))
 local NeonKit = require(UI:WaitForChild("NeonKit"))
+local GemIcon = require(UI:WaitForChild("GemIcon"))
 local PetPicker = require(UI:WaitForChild("PetPicker"))
 local State = require(Client:WaitForChild("State"))
 
@@ -193,7 +194,7 @@ local C = {
 	},
 }
 local TOKEN_INFO = Theme.Currency and Theme.Currency.Tokens or { Glyph = "\226\152\129", Color = C.Gold }
-local GEM_INFO = Theme.Currency and Theme.Currency.Gems or { Glyph = "\226\151\134", Color = Colors.Gem }
+local GEM_INFO = Theme.Currency and Theme.Currency.Gems or { Color = Colors.Gem } -- (drawn: GemIcon, never a glyph)
 
 -- glyphs as UTF-8 byte escapes (the source stays plain ASCII)
 local G = {
@@ -970,6 +971,10 @@ function H.build()
 	end)
 	U.TokenChip = H.chip("TokenChip", TOKEN_INFO.Color or C.Gold)
 	U.GemChip = H.chip("GemChip", GEM_INFO.Color or Colors.Gem or C.White)
+	-- lobby-shop Task 15 (spec 5.7): the gem balance is the drawn gem + the number (GemIcon.Amount), the chip sized to it
+	U.GemAmount = GemIcon.Amount(U.GemChip, 0, { TextSize = 22, Color = GEM_INFO.Color or Colors.Gem, ZIndex = 6 })
+	U.GemAmount.AnchorPoint = Vector2.new(0.5, 0.5)
+	U.GemAmount.Position = UDim2.fromScale(0.5, 0.5)
 	U.Close = CloudUI.Button({
 		Name = "CloseButton", Text = G.Close, Style = "Red", Size = UDim2.fromOffset(44, 44), TextSize = 22, ZIndex = 5,
 		Callback = function()
@@ -1138,7 +1143,8 @@ function H.layoutHeader()
 	local upW = math.max(M.TabUpW, H.boxW("UPGRADE", M.TabText, font) + 2 * M.TabPad)
 	local mixW = math.max(M.TabMixW, H.boxW("MIX", M.TabText, font) + 2 * M.TabPad)
 	local tokW = H.boxW(U.TokenChip.Text, M.ChipText, U.TokenChip.Font) + 2 * M.ChipPad
-	local gemW = H.boxW(U.GemChip.Text, M.ChipText, U.GemChip.Font) + 2 * M.ChipPad
+	GemIcon.SetAmount(U.GemAmount, nil, { TextSize = M.ChipText }) -- (re-measures: the gem + the number)
+	local gemW = U.GemAmount.Size.X.Offset + 2 * M.ChipPad
 	local titleX = M.HeadPad + M.Icon + 8
 	local titles = (S.Mode == "Phone") and { "Fusion" } or { "Fusion Machine", "Fusion" }
 	local showGem, showTok = S.Mode ~= "Phone", true
@@ -1657,7 +1663,7 @@ end
 
 function H.paintHeader()
 	U.TokenChip.Text = tostring(TOKEN_INFO.Glyph) .. " " .. H.short(H.balance("Tokens"))
-	U.GemChip.Text = tostring(GEM_INFO.Glyph) .. " " .. H.short(H.balance("Gems"))
+	GemIcon.SetAmount(U.GemAmount, H.short(H.balance("Gems")))
 	for _, spec in ipairs({ { U.TabUp, "Upgrade" }, { U.TabMix, "Mix" } }) do
 		local b, on = spec[1], S.Tab == spec[2]
 		b.TextColor3 = on and C.White or C.Muted

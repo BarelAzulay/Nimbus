@@ -206,7 +206,7 @@ local G = {
 	Check = "\226\156\147",
 	Lock = "\240\159\148\146",
 	Cloud = "\226\152\129",
-	Gem = (Theme.Currency and Theme.Currency.Gems and Theme.Currency.Gems.Glyph) or "\226\151\134",
+	-- (no gem glyph: lobby-shop Task 15, spec 5.7: the loot / end lines say "gems" in words)
 	Skull = "\240\159\146\128",
 	Dot = "\194\183",
 	Cross = "\226\156\149",
@@ -1643,7 +1643,7 @@ function R.lootText()
 	local t = S.Totals
 	local parts = { "$" .. H.commas(t.Cash), G.Cloud .. " " .. H.commas(t.Tokens), "+" .. H.commas(t.Xp) .. " XP" }
 	if (tonumber(t.Gems) or 0) > 0 then
-		parts[#parts + 1] = G.Gem .. " " .. H.commas(t.Gems)
+		parts[#parts + 1] = H.commas(t.Gems) .. " gems"
 	end
 	return table.concat(parts, "   ")
 end
@@ -1930,13 +1930,13 @@ function R.fillEnd()
 	local t = type(e.Totals) == "table" and e.Totals or S.Totals
 	local parts = { "$" .. H.commas(t.Cash), G.Cloud .. " " .. H.commas(t.Tokens), "+" .. H.commas(t.Xp) .. " XP" }
 	if (tonumber(t.Gems) or 0) > 0 then
-		parts[#parts + 1] = G.Gem .. " " .. H.commas(t.Gems)
+		parts[#parts + 1] = H.commas(t.Gems) .. " gems"
 	end
 	U.EndTotals.Text = table.concat(parts, "   ")
 	local first = type(e.FirstClear) == "table" and e.FirstClear or nil
 	U.EndFirst.Visible = first ~= nil
 	if first then
-		U.EndFirst.Text = G.Star .. " First clear! +" .. H.commas(first.Tokens or 0) .. " " .. G.Cloud .. "  +" .. H.commas(first.Gems or 0) .. " " .. G.Gem
+		U.EndFirst.Text = G.Star .. " First clear! +" .. H.commas(first.Tokens or 0) .. " " .. G.Cloud .. "  +" .. H.commas(first.Gems or 0) .. " gems"
 	end
 	local lines = {}
 	if tonumber(e.Unlocked) then

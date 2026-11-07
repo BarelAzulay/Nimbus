@@ -52,7 +52,9 @@
 -- Sounds: StorePop on a card tap (Click until AudioIds has it), StoreBuy on a purchase toast (Reward): the Store's
 -- "Thank you! ..." (StoreService.Thank) and the gem pack's "+550 Gems! Thank you for your support!" (GemService).
 -- Art: the store_* render of spec 9 (TextureIds[ART_KEYS key], an ImageLabel "Image" in the Art box) when it has an id,
--- else the item's glyph; High swaps a pet card's art for the turning viewport.
+-- else the item's glyph; High swaps a pet card's art for the turning viewport. Gems (lobby-shop Task 15, spec 5.7) are
+-- drawn, never a glyph: a gem pack's art is a GemIcon.Pile of 1 / 2 / 4 / 6 gems by pack order and the Gems balance pill
+-- holds a GemIcon, both in their Glyph label (no text) and rebuilt only when the layout changes their size.
 -- Plain Lua 5.1-compatible syntax only. All text goes through Theme roles; no asset ids (TextureIds numbers only).
 
 local Players = game:GetService("Players")
@@ -74,6 +76,7 @@ local StoreCatalog = require(Shared:WaitForChild("StoreCatalog"))
 local Client = script.Parent.Parent
 local CloudUI = require(Client:WaitForChild("UI"):WaitForChild("CloudUI"))
 local NeonKit = require(Client:WaitForChild("UI"):WaitForChild("NeonKit"))
+local GemIcon = require(Client:WaitForChild("UI"):WaitForChild("GemIcon"))
 local State = require(Client:WaitForChild("State"))
 local SoundFx = require(Client:WaitForChild("SoundFx"))
 
@@ -102,6 +105,7 @@ local K = {
 	MATCH_HINT = "The Store is closed during a match.",
 	SOON = "The Store opens soon!",
 	SCROLLBAR = 6,
+	GEM_PILES = { 1, 2, 4, 6 }, -- lobby-shop Task 15: the gems in each gem pack's art pile, by pack order
 	-- design px per layout (spec 8 "Store")
 	PHONE = {
 		Title = 44, TitleText = 24, PillW = 72, PillH = 28, PillText = 16, Close = 44,
@@ -572,7 +576,8 @@ function H.build()
 	for _, id in ipairs(CURRENCY_ORDER) do
 		local cur = Theme.Currency[id]
 		local pill = NeonKit.Card({ Name = "Balance_" .. id, Color = cur.Color, Corner = 12, Glow = false, Floor = false, Sheen = false, Parent = bar })
-		local glyph = label("Glyph", pill.Body, cur.Glyph, "Display", 16, { TextColor3 = cur.Color })
+		-- (Gems: no glyph text, the drawn cut gem is put in by H.gemArt on each layout: lobby-shop Task 15)
+		local glyph = label("Glyph", pill.Body, id == "Gems" and "" or cur.Glyph, "Display", 16, { TextColor3 = cur.Color })
 		local value = label("Text", pill.Body, "0", "Display", 16, { TextXAlignment = Enum.TextXAlignment.Left })
 		U.Pills[id] = { Root = pill.Root, Glyph = glyph, Text = value }
 	end
@@ -770,10 +775,35 @@ function H.buildCard(item, page, isHero)
 	return entry
 end
 
+-- lobby-shop Task 15 (spec 5.7): a GemIcon (count nil) or a GemIcon.Pile of `count` gems centred in `host` (a Glyph label
+-- with no text: the balance pill's, a gem pack's art), rebuilt only when its size changes (layouts run on every resize)
+function H.gemArt(host, px, count)
+	px = math.max(8, math.floor(px + 0.5))
+	if host:GetAttribute("GemPx") == px then
+		return
+	end
+	host:SetAttribute("GemPx", px)
+	for _, child in ipairs(host:GetChildren()) do
+		if child.Name == "GemIcon" or child.Name == "GemPile" then
+			child:Destroy()
+		end
+	end
+	local art = count and GemIcon.Pile(host, px, count) or GemIcon.New(host, px)
+	art.AnchorPoint = Vector2.new(0.5, 0.5)
+	art.Position = UDim2.fromScale(0.5, 0.5)
+end
+
+-- a gem pack's pile: K.GEM_PILES gems by pack order (the pitch's packTile)
+function H.packArt(entry, art)
+	if entry.Item.Gem then
+		H.gemArt(entry.Glyph, art * 0.86, K.GEM_PILES[tonumber(entry.Item.Index) or 0] or 6)
+	end
+end
+
 function H.artGlyph(item)
 	local G = NeonKit.Glyphs
 	if item.Gem then
-		return Theme.Currency.Gems.Glyph
+		return "" -- (the pile: H.packArt)
 	end
 	local g = type(item.Grants) == "table" and item.Grants or {}
 	if item.Key == "VIP" then
@@ -854,6 +884,7 @@ function H.layoutCard(entry, w, h, M)
 	local art = math.max(40, math.min(M.Art, h - 2 * pad, math.floor(w * 0.3)))
 	place(entry.Art, pad, math.floor((h - art) / 2), art, art)
 	entry.Glyph.TextSize = math.min(100, math.max(20, math.floor(art * 0.5))) -- Roblox caps TextSize at 100
+	H.packArt(entry, art)
 	local buyW, buyH = math.min(M.BuyW, math.floor(w * 0.3)), M.BuyH
 	local rightX = w - pad - buyW
 	local buyY = h - pad - buyH
@@ -931,6 +962,7 @@ function H.layoutCardPortrait(entry, w, M)
 	end
 	place(entry.Art, pad, pad, art, art)
 	entry.Glyph.TextSize = math.min(100, math.max(20, math.floor(art * 0.5)))
+	H.packArt(entry, art)
 	local rowY = math.max(y, pad + art) + 6
 	local buyX = w - pad - M.BuyW
 	place(entry.BuyHolder, buyX, rowY, M.BuyW, M.BuyH)
@@ -962,6 +994,9 @@ function H.layoutPortrait(W, Hh, M)
 		place(pill.Text, M.PillText + 10, 0, pw - M.PillText - 14, M.PillH)
 		pill.Glyph.TextSize = M.PillText
 		pill.Text.TextSize = M.PillText
+		if id == "Gems" then
+			H.gemArt(pill.Glyph, M.PillText + 4)
+		end
 	end
 	-- the tabs: rows of TabsPerRow (hidden ones leave no hole), the icon over the label
 	local shown = {}
@@ -1052,6 +1087,9 @@ function H.layout()
 		place(pill.Text, M.PillText + 10, 0, M.PillW - M.PillText - 14, M.PillH)
 		pill.Glyph.TextSize = M.PillText
 		pill.Text.TextSize = M.PillText
+		if CURRENCY_ORDER[i] == "Gems" then
+			H.gemArt(pill.Glyph, M.PillText + 4)
+		end
 		x = x - 6
 	end
 	-- tabs (hidden ones leave no hole)

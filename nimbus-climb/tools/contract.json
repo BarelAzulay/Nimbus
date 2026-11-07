@@ -487,6 +487,15 @@
         "Ensure"
       ]
     },
+    "client/UI/GemIcon": {
+      "functions": [
+        "New",
+        "Pile",
+        "Amount",
+        "SetAmount",
+        "Driver"
+      ]
+    },
     "client/UI/PetPicker": {
       "optional": true,
       "functions": [

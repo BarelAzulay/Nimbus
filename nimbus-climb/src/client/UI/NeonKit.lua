@@ -6,7 +6,8 @@
 --   NeonKit.Card(props)   -> { Root, Body, Stroke, Glow, Floor, SetColor(color), SetGlow(on) }
 --   NeonKit.Tile(props)   -> { Root, Card, Orb, Icon, Label, SetBadge(on), SetColor(color), SetLabel(text), SetIcon(id) }
 --   NeonKit.Orb(parent, color, size)  -> Frame (a glossy disc; centred in its parent unless moved)
---   NeonKit.Icon(parent, id, size)    -> TextLabel (emoji glyph) | ImageLabel (when Config.Icons[id] = "rbxassetid://n")
+--   NeonKit.Icon(parent, id, size)    -> TextLabel (emoji glyph) | ImageLabel (when Config.Icons[id] = "rbxassetid://n");
+--                                        "Gems": a TextLabel with no text hosting a client/UI/GemIcon (the cut gem)
 --   NeonKit.Pill(props)   -> { Root, Card, Coin, Glyph, Text, SetText(text), SetColor(color) }
 --   NeonKit.Button(props) -> TextButton (Variant "Primary" | "Outline"; hover 1.04 / press 0.95; Disabled attribute)
 --   NeonKit.SideRect(prefW, prefH, minW, minH) -> { x, y, w, h, scale, mode = "Side" | "Sheet", designW, designH }
@@ -30,6 +31,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
+local GemIcon = require(script.Parent:WaitForChild("GemIcon"))
 
 local NeonKit = {}
 
@@ -89,7 +91,7 @@ NeonKit.Glyphs = {
 	Battle = "\226\154\148\239\184\143",
 	Cash = "$",
 	Tokens = "\226\152\129", -- cloud
-	Gems = "\226\151\134", -- diamond
+	-- (Gems has no glyph: lobby-shop Task 15, NeonKit.Icon draws a GemIcon for it)
 	Close = "\226\156\149", -- multiplication x
 	Lock = "\240\159\148\146",
 	Play = "\226\150\182",
@@ -413,11 +415,27 @@ end
 
 -- An icon: the emoji glyph of `id` (NeonKit.Glyphs[id], or `id` itself when it is not a known id) as a TextLabel of
 -- `size` px, or an ImageLabel once Config.Icons[id] holds an asset id. Centred in its parent unless moved.
+-- "Gems" (lobby-shop Task 15, spec 5.7): a TextLabel with empty Text hosting a GemIcon of `size` px (so callers that set
+-- Text properties on the icon stay safe).
 function NeonKit.Icon(parent, id, size)
 	local px = tonumber(size) or 32
 	local image = iconImage(id)
 	local icon
-	if image then
+	if not image and id == "Gems" then
+		icon = Theme.Label("", "Display", {
+			Size = px,
+			Stroke = 1,
+			Props = {
+				Name = "Icon",
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.5, 0.5),
+				Size = UDim2.fromOffset(px * 1.25, px * 1.25),
+			},
+		})
+		local gem = GemIcon.New(icon, px)
+		gem.AnchorPoint = Vector2.new(0.5, 0.5)
+		gem.Position = UDim2.fromScale(0.5, 0.5)
+	elseif image then
 		icon = Util.Create("ImageLabel", {
 			Name = "Icon",
 			BackgroundTransparency = 1,

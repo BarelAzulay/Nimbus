@@ -1528,7 +1528,33 @@ local function buildCurrencyRow(parent, entry)
 	fade.Transparency = NumberSequence.new(1, 0.72)
 	fade.Parent = lip
 
-	local coin = newCoin(row, "Coin", K.COIN, color, glow, def.Glyph or "?", 30)
+	local coin, setGem
+	if entry.Id == "Gems" then
+		-- lobby-shop Task 15 (spec 5.7): the gem coin is the navy panel fill with a cyan neon ring and the drawn cut gem
+		-- (client/UI/GemIcon) at coin size, so a cyan gem never sits on a cyan badge; setRowGeometry rebuilds the gem
+		-- whenever the coin changes size
+		local fill, ring
+		coin, fill, ring = newBadge(row, "Coin", K.COIN, color, glow)
+		fill.Color = ColorSequence.new(VS.PanelTop, VS.PanelBottom)
+		ring.Color = color
+		ring.Thickness = 2.5
+		local gloss = coin:FindFirstChild("Shine")
+		if gloss then
+			gloss.BackgroundTransparency = 0.88
+		end
+		setGem = function(px)
+			local old = coin:FindFirstChild("GemIcon")
+			if old then
+				old:Destroy()
+			end
+			local gem = require(Client:WaitForChild("UI"):WaitForChild("GemIcon")).New(coin, px, { ZIndex = 2 })
+			gem.AnchorPoint = Vector2.new(0.5, 0.5)
+			gem.Position = UDim2.fromScale(0.5, 0.5)
+		end
+		setGem(K.COIN)
+	else
+		coin = newCoin(row, "Coin", K.COIN, color, glow, def.Glyph or "?", 30)
+	end
 	coin.AnchorPoint = Vector2.new(0, 0.5)
 	coin.Position = UDim2.new(0, 0, 0.5, 0)
 	coin.ZIndex = 3
@@ -1542,7 +1568,7 @@ local function buildCurrencyRow(parent, entry)
 
 	local c = {
 		Id = entry.Id, Def = def, Attr = entry.Attr, Always = entry.Always == true,
-		Row = row, Body = body, Shine = shine, Lip = lip, Coin = coin, CoinGlyph = coin:FindFirstChild("Glyph"),
+		Row = row, Body = body, Shine = shine, Lip = lip, Coin = coin, CoinGlyph = coin:FindFirstChild("Glyph"), SetGem = setGem,
 		Neon = neon, Stroke = bodyStroke,
 		Amount = amount, AmountScale = newScale(amount, 1), CoinScale = newScale(coin, 1),
 		Target = 0, Display = 0, Shown = nil, Seen = false, Available = false, ChipShown = false,
@@ -1593,6 +1619,9 @@ local function setRowGeometry(c, compact)
 	c.Coin.Size = UDim2.fromOffset(coinSize, coinSize)
 	if c.CoinGlyph then
 		c.CoinGlyph.TextSize = strip and 19 or (compact and 24 or 30)
+	end
+	if c.SetGem then
+		c.SetGem(coinSize)
 	end
 	if c.Chip then
 		c.Chip.Size = strip and UDim2.fromOffset(K.STRIP_CHIP_W, K.STRIP_CHIP_H) or UDim2.fromOffset(K.CHIP_W, 32)

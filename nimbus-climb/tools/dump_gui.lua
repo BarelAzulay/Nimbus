@@ -40,6 +40,8 @@
 --   train[:<key>]         the Training Place window (default: the pet that is training, with its timer and Stop);
 --                         train:mats = gui-redo Task 8's mats row (see the [gui-redo] block)
 --   daily[:locked|:play]  gui-redo Tasks 9-10: the Gifts window (see the [gui-redo] block)
+--   gems[:store]          lobby-shop Task 15: the drawn cut gem at every size, piles, chips, the HUD coin; store = the Store's
+--                         Currency tab with the gem pack piles ([lobby-shop] block)
 --   evolve                the EVOLVE confirm over the Pets window
 --   ring[:<view>]         Phase 4 (ArenaController's Champion Ring window): OpenPanel("Ring") with a ring record
 --                         (Best 24); view new (no record yet) | record (default)
@@ -2335,7 +2337,20 @@ function NK.gallery()
 	local r1 = row("Pills", 1, 52)
 	NeonKit.Pill({ Name = "Pill_Cash", Text = "12.4K", Glyph = "$", Color = "Green", Size = 200, LayoutOrder = 1, Parent = r1 })
 	NeonKit.Pill({ Name = "Pill_Tokens", Text = "1,250", Glyph = "\226\152\129", Color = "Gold", Size = 200, LayoutOrder = 2, Parent = r1 })
-	NeonKit.Pill({ Name = "Pill_Gems", Text = "85", Glyph = "\226\151\134", Color = "Cyan", Size = 200, LayoutOrder = 3, Parent = r1 })
+	-- (lobby-shop Task 15: the gem pill's coin holds the drawn cut gem on the navy badge with a cyan ring, like the HUD's)
+	local gemPill = NeonKit.Pill({ Name = "Pill_Gems", Text = "85", Glyph = " ", Color = "Cyan", Size = 200, LayoutOrder = 3, Parent = r1 })
+	gemPill.Glyph.Text = ""
+	local coinGrad = gemPill.Coin:FindFirstChildOfClass("UIGradient")
+	if coinGrad then
+		coinGrad.Color = ColorSequence.new(Theme.Colors.PanelTop, Theme.Colors.PanelBottom)
+	end
+	local coinRing = gemPill.Coin:FindFirstChildOfClass("UIStroke")
+	if coinRing then
+		coinRing.Color = Theme.Currency.Gems.Color
+	end
+	local pillGem = req("client/UI/GemIcon").New(gemPill.Coin, gemPill.Coin.Size.X.Offset)
+	pillGem.AnchorPoint = Vector2.new(0.5, 0.5)
+	pillGem.Position = UDim2.fromScale(0.5, 0.5)
 	local r2 = row("NeonButtons", 2, 66)
 	NeonKit.Button({ Name = "Play", Text = "\226\150\182  PLAY", Color = "Green", Size = UDim2.fromOffset(240, 64), TextSize = 30, LayoutOrder = 1, Parent = r2 })
 	NeonKit.Button({ Name = "Settings", Text = "SETTINGS", Variant = "Outline", Color = "Blue", Size = UDim2.fromOffset(220, 52), LayoutOrder = 2, Parent = r2 })
@@ -3208,6 +3223,102 @@ SCENARIOS.fusion = function(view)
 	advance(2)
 end
 -- [gui-redo] end
+
+-- [lobby-shop] begin
+-- gems                  lobby-shop Task 15 (spec 5.7, pitch gemlook A): the drawn cut gem (client/UI/GemIcon) over the lobby
+--                       HUD (its Gems coin: the navy badge with the cyan ring, top right): icons at 16 / 20 / 24 / 32 / 96 px
+--                       (the simple form under 28 px), the 96 px one again mid-shine, piles of 1 / 2 / 4 / 6, amount chips at
+--                       20 / 24 px (and an 8-digit balance), NeonKit.Icon("Gems") on an orb. A still frame: the other icons
+--                       are made without the shine.
+-- gems:store            the Robux Store on its Currency tab with the gem packs created: each pack's art is a GemIcon.Pile
+--                       (1 / 2 / 4 / 6 by pack order) and the Gems balance pill holds a GemIcon
+scenario("gems", function(view)
+	LocalPlayer:SetAttribute(Config.Attr.Cash, 12400)
+	LocalPlayer:SetAttribute(Config.Attr.Gems, 1250)
+	advance(0.6)
+	if tostring(view or ""):lower() == "store" then
+		for i, p in ipairs(Config.Gems.Products) do
+			p.Id = 7100 + i
+		end
+		req("client/Controllers/StoreController").Open({ Tab = "Currency" })
+		advance(1.5)
+		return
+	end
+	local GemIcon = req("client/UI/GemIcon")
+	local NeonKit = req("client/UI/NeonKit")
+	local Theme = req("shared/Theme")
+	local _, root = NK.newGui("GemGallery")
+	local vp = Mock.Viewport
+	-- designed at 1000 x 560 px, scaled to fit under the top bar and left of the HUD's currency strips
+	local fit = math.min(1.25, (vp.X - 230) / 1000, (vp.Y - 76) / 560)
+	local board = make("Frame", {
+		Name = "Board", Position = UDim2.fromOffset(16, 66), Size = UDim2.fromOffset(1000, 560),
+		BackgroundColor3 = Theme.Colors.PanelBottom, BackgroundTransparency = 0.1, BorderSizePixel = 0,
+	}, root)
+	corner(board, 0, 16)
+	make("UIScale", { Scale = fit }, board)
+	local function caption(text, x, y, w)
+		label(board, text, 18, { Position = UDim2.fromOffset(x, y), Size = UDim2.fromOffset(w or 90, 24), TextXAlignment = Enum.TextXAlignment.Center })
+	end
+	label(board, "Gems are drawn: GemIcon", 26, { Position = UDim2.fromOffset(24, 10), Size = UDim2.fromOffset(600, 34), TextXAlignment = Enum.TextXAlignment.Left })
+	-- the sizes, bottoms on one line
+	local x = 30
+	for _, size in ipairs({ 16, 20, 24, 32, 96 }) do
+		local icon = GemIcon.New(board, size, { Shine = false })
+		icon.Position = UDim2.fromOffset(x + (90 - size) / 2, 160 - size)
+		caption(size .. " px", x, 166)
+		x = x + 100
+	end
+	local shiny = GemIcon.New(board, 96)
+	shiny.Position = UDim2.fromOffset(x + 10, 64)
+	caption("shine", x, 166, 116)
+	local bar = shiny:FindFirstChild("ShineBar", true)
+	if bar then
+		bar.Visible = true
+		local sweep = bar:FindFirstChild("Sweep")
+		if sweep then
+			sweep.Offset = Vector2.new(0, 0)
+		end
+	end
+	-- the piles (the Store's gem packs: 1 / 2 / 4 / 6 by pack order)
+	x = 30
+	for _, n in ipairs({ 1, 2, 4, 6 }) do
+		local pile = GemIcon.Pile(board, 120, n)
+		pile.Position = UDim2.fromOffset(x, 206)
+		for _, d in ipairs(pile:GetDescendants()) do
+			if d.Name == "ShineBar" then
+				d:Destroy()
+			end
+		end
+		caption("pile " .. n, x + 15, 330)
+		x = x + 150
+	end
+	-- the chips: an amount at 20 and 24 px on a navy chip, an 8-digit balance, the NeonKit icon on an orb
+	x = 30
+	for i, spec in ipairs({ { 20, 1250 }, { 24, 1250 }, { 24, 12345678 } }) do
+		local chip = make("Frame", { Name = "Chip" .. i, Position = UDim2.fromOffset(x, 390), Size = UDim2.fromOffset(100, spec[1] + 18),
+			BackgroundColor3 = Theme.Colors.PanelInk, BackgroundTransparency = 0.2, BorderSizePixel = 0 }, board)
+		corner(chip, 0.5, 0)
+		make("UIStroke", { Color = Theme.Currency.Gems.Color, Thickness = 2, Transparency = 0.2 }, chip)
+		local amount = GemIcon.Amount(chip, spec[2], { TextSize = spec[1], Color = Theme.Currency.Gems.Color })
+		amount.AnchorPoint = Vector2.new(0.5, 0.5)
+		amount.Position = UDim2.fromScale(0.5, 0.5)
+		chip.Size = UDim2.fromOffset(amount.Size.X.Offset + 28, spec[1] + 18)
+		caption("chip " .. spec[1] .. " px", x, 400 + spec[1] + 18, amount.Size.X.Offset + 28)
+		x = x + amount.Size.X.Offset + 60
+	end
+	local orbHolder = make("Frame", { Name = "OrbHolder", Position = UDim2.fromOffset(x + 10, 380), Size = UDim2.fromOffset(72, 72), BackgroundTransparency = 1 }, board)
+	NeonKit.Orb(orbHolder, "Cyan", 68)
+	NeonKit.Icon(orbHolder, "Gems", 40)
+	caption("NeonKit.Icon", x - 10, 456, 112)
+	advance(0.2)
+	for _, d in ipairs(board:GetDescendants()) do
+		if d.Name == "ShineBar" and d ~= bar then
+			d.Visible = false
+		end
+	end
+end)
+-- [lobby-shop] end
 
 local function boot(width, height, touch, keepTitle)
 	Config = req("shared/Config")
