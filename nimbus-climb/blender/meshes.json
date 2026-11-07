@@ -3656,16 +3656,16 @@
   },
   "egg_epic": {
    "class": "lobby",
-   "contentHash": "5fac4dfdd2eb16ae70a86696747243d6",
+   "contentHash": "5f5a8b06f84287e356670468f9bf0f3e",
    "description": "Epic rarity egg (lobby-shop egglook A, painted, owner: more detail + VFX): a deep violet star band between two raised gold Neon trims (GlowTrim), white Neon 4-point stars (GlowStar), white / gold dots; Neon parts named Glow* are the VFX hooks; pivot bottom centre, attachment Center",
    "displayName": "NC Egg Epic",
    "fbx": "blender/out/egg_epic.fbx",
-   "fbxSha256": "74f9b6f84eabed7ffe150788a3b61874759ce1cce49b4d0177c976cba2d1f463",
+   "fbxSha256": "afc3617794fc7fb9dfa1dc0579f16b6b22eda831fe6129a42e601f494facb175",
    "manifest": "src/shared/MeshManifests/egg_epic.lua",
-   "maxTrianglesPerMesh": 2480,
+   "maxTrianglesPerMesh": 2528,
    "parts": 3,
-   "structureHash": "60be73a4b0880cee8cec004f1ff12565",
-   "tris": 3436
+   "structureHash": "bdf85192baaa3ae86ea5a3d6eb4924e5",
+   "tris": 3732
   },
   "egg_legendary": {
    "class": "lobby",
@@ -3682,16 +3682,16 @@
   },
   "egg_mythic": {
    "class": "lobby",
-   "contentHash": "8a7ca6604e9c140dddf7e090e0b24fe4",
+   "contentHash": "69602cfdb53bcc865f9f1d7a936f1685",
    "description": "Mythic rarity egg (lobby-shop egglook A, painted, owner: more detail + VFX): flowing gradient bands (violet / plum foot, blush / pale cap), a Neon violet wave ribbon (GlowWave), eight teal Neon fiddlehead swirls (GlowSwirl), sparkles (GlowStar); Neon parts named Glow* are the VFX hooks; pivot bottom centre, attachment Center",
    "displayName": "NC Egg Mythic",
    "fbx": "blender/out/egg_mythic.fbx",
-   "fbxSha256": "b1f7110841565b39d7a2ee68a35c612f006587dd1d25c56539d2a463fcf7875a",
+   "fbxSha256": "d9e18de82140c8a6cce4b59a3fc07bd8452a100306e580d4573cea184d7cc1a0",
    "manifest": "src/shared/MeshManifests/egg_mythic.lua",
-   "maxTrianglesPerMesh": 2722,
+   "maxTrianglesPerMesh": 2808,
    "parts": 4,
-   "structureHash": "ef90ebd7de08f2ace7ce2d2cf1cd490c",
-   "tris": 3632
+   "structureHash": "6ec8d716ed6d44aedd40d12ba9e5ea8e",
+   "tris": 3714
   },
   "egg_rare": {
    "class": "lobby",
@@ -3708,16 +3708,16 @@
   },
   "egg_secret": {
    "class": "lobby",
-   "contentHash": "e974c420ef5411afa05f98310fc1c5d9",
+   "contentHash": "a867c887936c9c6315fa6ef8ddba47c2",
    "description": "Secret rarity egg (lobby-shop egglook A, painted, owner: more detail + VFX): night shell with a violet dusk, violet Neon cracks from the tip (GlowCrack) into a ring of magenta Neon runes (GlowRune), white Neon stars (GlowStar), pin-prick stars; Neon parts named Glow* are the VFX hooks; pivot bottom centre, attachment Center",
    "displayName": "NC Egg Secret",
    "fbx": "blender/out/egg_secret.fbx",
-   "fbxSha256": "cc6002c0e84950e4ebd1f2b69cf8e29edd72d68f40b05f4e343e1b9b49133a25",
+   "fbxSha256": "26feee6047cfde3d2dbfd2ed6bf8b3d1dd6ceacc60c3dd291874b05ec172521c",
    "manifest": "src/shared/MeshManifests/egg_secret.lua",
-   "maxTrianglesPerMesh": 2386,
+   "maxTrianglesPerMesh": 2426,
    "parts": 4,
-   "structureHash": "566f39853134e5bc146fb840fb968fc7",
-   "tris": 3498
+   "structureHash": "78def9b13bf900f66465e76432c3b06a",
+   "tris": 3530
   },
   "egg_uncommon": {
    "class": "lobby",

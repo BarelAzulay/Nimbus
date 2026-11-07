@@ -26,7 +26,9 @@ into one Fixed part per grid, Neon only for glows.  Nothing here needs a texture
                                      lines + eight 5 x 7 rune marks), white Neon stars (GlowStar), pin-prick stars
                         Neon from Epic up, each Neon detail its own part named Glow<What> (the game attaches its VFX,
                         lights and particles to parts whose name starts with "Glow"); raised details stand one cell
-                        proud of the shell.  0.1-stud cells (EGG_K 10: the hatch cutscene shows the egg big).  Pivot =
+                        proud of the shell.  Every star is the GUI eggs' twinkle (Egg.star): one-cell arms round a
+                        small heart, centred on a cell so its arms match (Task 28's inspection: boundary-centred stars
+                        read as crosses).  0.1-stud cells (EGG_K 10: the hatch cutscene shows the egg big).  Pivot =
                         bottom centre (it stands), front -Z.  Attachment Center (the middle, for spins and wobbles).
   * "lobby_gem"         gem_world[_low]: a cut gem, 6 studs across the girdle: octagonal crown (8 facets + table) and
                         pavilion (8 facets split into kite halves) in the GUI gem's three tones (light rgb(186,236,255),
@@ -227,14 +229,29 @@ class Egg:
         return out
 
     def star(self, phi0, y0, s):
-        """a twinkle star of half-size s drawn for 0.1-stud cells: a diamond heart and four arms that taper from
-        ~2.5 cells wide to 1 - 2 at the tips (the side arms a little shorter), so it reads as a star, not a dot"""
-        u, v = self.local(phi0, y0)
-        au, av = np.abs(u), np.abs(v)
-        heart = au + av <= 0.56 * s
-        up = (av <= s) & (au <= np.maximum(0.06, 0.12 * (1 - av / s)))
-        side = (au <= 0.8 * s) & (av <= np.maximum(0.06, 0.12 * (1 - au / (0.8 * s))))
-        return heart | up | side
+        """a twinkle star of half-size s, the GUI eggs' twinkle (UI/EggArt): four arms one cell wide out to the tips
+        round a small diamond heart.  s 0.35 -> a 7 x 7 sparkle (rows 1 1 3 7 3 1 1), s 0.25 -> a 5 x 5 plus,
+        s 0.16 -> a 3 x 3 plus.  Its middle sits on a cell centre and it is measured flat on the surface (the tangent
+        plane at the middle), so on the four axis faces every row and column is an odd number of cells and opposite
+        arms match.  (Task 28: centred on a cell boundary, the old star came out as two-cell bars with one arm longer,
+        which read as a cross, not a star.)"""
+        vs, o = self.vs, self.S.origin
+        tx, tz = math.cos(phi0), math.sin(phi0)                     # round the egg, in x / z
+        yc = o[1] + (math.floor((y0 - o[1]) / vs) + 0.5) * vs       # the middle row's centre
+        p = self.surf(phi0, yc)
+        cx, cz = float(p[0]), float(p[2])
+        if abs(tx) >= abs(tz):                                      # x runs along the surface: an x cell centre
+            cx = o[0] + (math.floor((cx - o[0]) / vs) + 0.5) * vs
+        else:
+            cz = o[2] + (math.floor((cz - o[2]) / vs) + 0.5) * vs
+        u = (self.X - cx) * tx + (self.Z - cz) * tz
+        au, av = np.abs(u), np.abs(self.Y - yc)
+        hw = 0.5 * vs * max(abs(tx), abs(tz))                       # half a cell along the surface: one-cell arms
+        near = (np.abs(wrap(self.phi - phi0)) < math.pi / 2) & (self.rr >= egg_r(self.Y) - 2 * vs)   # the outer skin
+        across = (av < 0.5 * vs) & (au <= s)
+        down = (au < hw) & (av <= s)
+        heart = au + av <= 0.6 * s
+        return near & (across | down | heart)
 
     def glow(self, key, rgb, mask, raised=True):
         """a Neon detail: its own part named `key` (the game's VFX hook), raised one cell or inlaid flush"""
@@ -308,12 +325,13 @@ def _egg_rare(E, S):
 
 def _egg_epic(E, S):
     """a deep violet star band between two raised gold Neon trims, white Neon 4-point stars (big / small) in it,
-    white dots above and gold dots below"""
-    S.put("EpiBand", E.inside & E.rows(1.0, 12))
-    E.glow("GlowTrim", EGG_NEON["epic"]["GlowTrim"], E.rows(1.0, 2) | E.rows(2.0, 2))
+    white dots above and gold dots below.  The band holds nine free rows between the trims (y 1.1 - 2.0) and the
+    stars stand on its middle row (y 1.55): a 7-row big star keeps one violet row clear above and below"""
+    S.put("EpiBand", E.inside & E.rows(0.9, 13))
+    E.glow("GlowTrim", EGG_NEON["epic"]["GlowTrim"], E.rows(0.9, 2) | E.rows(2.0, 2))
     stars = np.zeros(E.X.shape, bool)
     for k in range(4):
-        stars |= E.star(k * TAU / 4, 1.6, 0.4) | E.star(k * TAU / 4 + TAU / 8, 1.6, 0.22)
+        stars |= E.star(k * TAU / 4, 1.55, 0.35) | E.star(k * TAU / 4 + TAU / 8, 1.55, 0.25)
     E.glow("GlowStar", EGG_NEON["epic"]["GlowStar"], stars)
     for k in range(6):
         S.put("EpiDot", E.inside & E.spot(mid(k, 6), 2.5, 0.1), only="EpiShell")
@@ -384,7 +402,9 @@ def _egg_mythic(E, S):
     E.glow("GlowSwirl", neon["GlowSwirl"], sw & ~(np.abs(E.Y - rib(E.phi)) < 0.09))
     st = np.zeros(E.X.shape, bool)
     for k in range(4):
-        st |= E.star(k * TAU / 4 + 0.3, 2.42, 0.2)
+        # on the axis faces between the swirl columns, at two heights (two on the blush, two on the pale cap), so no two
+        # side by side read as a pair of eyes from above
+        st |= E.star(k * TAU / 4, (2.25, 2.45)[k % 2], 0.25)
     E.glow("GlowStar", neon["GlowStar"], st)
 
 
@@ -438,7 +458,8 @@ def _egg_secret(E, S):
     E.glow("GlowCrack", neon["GlowCrack"], cr, raised=False)
     st = np.zeros(E.X.shape, bool)
     for k in range(4):
-        st |= E.star(k * TAU / 4, 2.42, 0.22)
+        # between the cracks at two heights: the same height on both sides of a crack read as two eyes and a nose
+        st |= E.star(k * TAU / 4, (2.55, 2.35)[k % 2], 0.25)
     for k in range(3):
         st |= E.star(k * TAU / 3 + 0.5 + TAU / 6, 0.56, 0.16)
     E.glow("GlowStar", neon["GlowStar"], st)
