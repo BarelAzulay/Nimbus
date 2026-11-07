@@ -63,7 +63,8 @@
 -- GemService.RollPet); its Quote is taken first, then the shared roll charges the Gems (DataService.SpendGems) and
 -- grants in one non-yielding step. A gem roll without GemService, for a restricted (or not yet checked) account or
 -- for a roulette without a gem price is refused before anything is charged. Secret pets only ever come out of a
--- roulette with AllowSecret = true: a Secret result of any other roulette is refused (nothing charged). The
+-- roulette with AllowSecret = true (the Secret Roulette, and Celestial's 2% row since lobby-shop 16.1, token or gem
+-- paid; only the Secret Roulette counts the pity): a Secret result of any other roulette is refused (nothing charged). The
 -- BuyRoulette remote takes the optional currency as its second argument; RouletteResult gains Currency, Price, Gems.
 --
 -- The money step (lobby-shop spec 5.1 / 7): BuyRoulette(player, rouletteId, currency, spins) is ONE non-yielding step
@@ -164,7 +165,7 @@ local ANNOUNCE_GAP = 10 -- seconds: at most one announcement per player in this 
 local MAX_ID_LENGTH = 48
 local PROMPT_NAME = "RoulettePrompt"
 local HYBRID_ATTR = "EquippedHybrids" -- not in Config.Attr (lead-owned): the looks of equipped hybrids, see the header
-local SECRET_RARITY = "Secret" -- Secret pets come only from a roulette with AllowSecret = true (Phase 2 gems)
+local SECRET_RARITY = "Secret" -- Secret pets come only from a roulette with AllowSecret = true (Secret, Celestial)
 local MAX_CURRENCY_LENGTH = 16
 
 ----------------------------------------------------------------------

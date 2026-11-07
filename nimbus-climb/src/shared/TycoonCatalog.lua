@@ -239,8 +239,8 @@ TycoonCatalog.Fusion = {
 		Rare = { Tokens = 1000 },
 		Epic = { Tokens = 2500 },
 		Legendary = { Tokens = 6000 },
-		Mythic = { Gems = 60 },
-		Secret = { Gems = 150 },
+		Mythic = { Gems = 40 }, -- lobby-shop 16.1 (the owner's prices)
+		Secret = { Gems = 100 },
 	},
 }
 -- Fusion.ByRarity[rarity] = { Golden = cost, Rainbow = cost, Mix = cost } (also reachable as Fusion[rarity])

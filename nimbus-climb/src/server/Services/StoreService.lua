@@ -21,9 +21,13 @@
 -- * StoreRequest ("Buy", key): a live player, a string key, 1 request/s, refused in a match ("The Store is closed
 --   during a match"), for an Id 0 item (preview or not), a bought Once pack or an owned pass ("You already have
 --   that!"), a Once pack while the save loads or is provisional ("Your save is still loading": GetStore answers nil,
---   undecidable); else PromptPurchase -> PromptGamePassPurchase / PromptProductPurchase. A prompt never grants (Z1).
+--   undecidable), a Product that grants Tokens (Tokens1..3, the Pro Pack; lobby-shop 16.1: a token spin can give a
+--   Secret) unless GemService.PolicyState is "Allowed" ("Token packs are not available on your account" when Restricted,
+--   else "Checking your account, try again in a moment" and the policy lookup is kicked; checked before the 1 s prompt
+--   cooldown); else PromptPurchase -> PromptGamePassPurchase / PromptProductPurchase. A prompt never grants (Z1), and
+--   the lock never touches the grant path: a paid receipt is always granted.
 -- * StoreRequest ("GemBuy", key) (lobby shop 2026-11-07, docs/superpowers/specs/2026-11-07-lobby-shop-design.md 5.8 / 7):
---   BuyWithGems sells a Config.Store.GemItems item (the 30-minute XP Potion for 75 gems). "Buy" and "GemBuy" share the
+--   BuyWithGems sells a Config.Store.GemItems item (the 30-minute XP Potion for 100 gems). "Buy" and "GemBuy" share the
 --   one 1 s gap; any other action, or a key that is not a string, is dropped before it (no answer). Checks, in order: a
 --   live player and a gem item (else false, no toast); in a match; the save loading or provisional ("Your save is still
 --   loading"); not GemsSettled ("Your data is still loading": the server-hop guard); the PetXp2x pass "Owned" ("You
@@ -38,7 +42,7 @@
 --   (may yield once: a task.spawn), never on a timer.
 --
 -- Public API
---   StoreService.Init(deps)                       deps = { DataService, PetService, DevService? }
+--   StoreService.Init(deps)                       deps = { DataService, PetService, DevService? } (GemService: a lazy require)
 --   StoreService.ApplyGrant(player, item, purchaseId) -> ok, granted | reason    (non-yielding)
 --   StoreService.Thank(player, item, granted, purchaseId)   the thank-you toast + Purchased, once
 --   StoreService.PromptPurchase(player, key) -> ok, reason
@@ -92,6 +96,9 @@ local TEXT = {
 	Full = "Your potion time is full",
 	Poor = "Not enough gems",
 	PotionGot = "XP Potion: +%d minutes",
+	-- lobby-shop 16.1: the token-grant lock (a token spin can give a Secret now)
+	TokensLocked = "Token packs are not available on your account",
+	TokensChecking = "Checking your account, try again in a moment",
 }
 
 local S = {
@@ -504,6 +511,38 @@ end
 ----------------------------------------------------------------------
 -- The prompt (never a grant: Z1)
 ----------------------------------------------------------------------
+
+-- lobby-shop 16.1: why a Product that grants Cloud Tokens (Tokens1..3, the Pro Pack) cannot be prompted for this
+-- account, or nil. Only GemService.PolicyState "Allowed" opens it (a token spin can give a Secret now: a paid random
+-- item); no GemService, an error or any other answer is unknown ("Checking", fail closed) and kicks the policy lookup
+-- (GemService.SecretRouletteState asks again when the answer is still unknown). The grant path never reads this.
+local function tokenLock(player, item)
+	local grants = item.Kind == "Product" and type(item.Grants) == "table" and item.Grants or nil
+	local tokens = grants and wholeNumber(grants.Tokens) or nil
+	if not tokens or tokens <= 0 then
+		return nil
+	end
+	local inst = script.Parent:FindFirstChild("GemService") -- a lazy require: GemService requires nothing of ours at load
+	local okReq, gems = false, nil
+	if inst then
+		okReq, gems = pcall(require, inst)
+	end
+	gems = okReq and type(gems) == "table" and gems or nil
+	local okState, state = false, nil
+	if gems and type(gems.PolicyState) == "function" then
+		okState, state = pcall(gems.PolicyState, player)
+	end
+	if okState and state == "Allowed" then
+		return nil
+	elseif okState and state == "Restricted" then
+		return TEXT.TokensLocked
+	end
+	if gems and type(gems.SecretRouletteState) == "function" then
+		pcall(gems.SecretRouletteState, player)
+	end
+	return TEXT.TokensChecking
+end
+
 function StoreService.PromptPurchase(player, key)
 	if not isPlayer(player) then
 		return false, "Player unavailable"
@@ -535,6 +574,10 @@ function StoreService.PromptPurchase(player, key)
 		if type(store.Bought) == "table" and store.Bought[key] ~= nil then
 			return false, TEXT.Have -- Z6: a bought item is never prompted
 		end
+	end
+	local locked = tokenLock(player, item) -- before the cooldown: a refused token pack takes no prompt slot
+	if locked then
+		return false, locked
 	end
 	local now = os.clock()
 	local last = S.PromptAt[player]

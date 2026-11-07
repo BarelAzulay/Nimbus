@@ -197,8 +197,8 @@ Pet Garden, food is berries now, and the Trials made way for the Dungeon (see
 - **Prestige.** At Home Level 40 with the Sky Castle you can start over for a star, Gems, and from the first star
   on the **Fusion Machine** (Golden and Rainbow pets, one-of-a-kind hybrids).
 - **Gems.** The premium currency: earned by prestiging and bought with Robux (once the owner has created the gem
-  packs), spent on cheap roulette spins and on the gems-only **Secret Roulette** at the Storm Altar, the only way
-  to get Secret pets like Stormfang.
+  packs), spent on roulette spins and on the gems-only **Secret Roulette** at the Storm Altar, the surest way to
+  get Secret pets like Stormfang (the Celestial Roulette also has a rare 2 % Secret egg).
 - **And around it:** a second tutorial chapter with Nimbus, new NPC tips, a **Home** window, a Gems tab in the
   Shop, a Fusions tab in the Pet Index, Cash and Gems on the HUD, and +Cash / +Gems developer tools for testing.
 
@@ -218,7 +218,8 @@ Pet Garden, food is berries now, and the Trials made way for the Dungeon (see
   eyes, neon claws and a cyan forehead gem, riding a little storm cloud, is the game's signature **Secret pet**.
   It prowls on the **Storm Altar**, a dark storm-cloud island at the edge of the village with a ring of
   glowing crystals (cross its bridge from the street and press **E** at the altar). Since phase 2 the altar is
-  the gems-only **Secret Roulette** where Secret pets are summoned with Gems.
+  the gems-only **Secret Roulette** where Secret pets are summoned with Gems (and since the lobby shop the Celestial
+  Roulette hatches them at 2 % too).
 - **Pet elements.** Every pet now has one of eight elements (see [Elements](#elements)), shown as a coloured
   badge in the Pet Index, the Pets window and the roulette odds list.
 - **The Pet Index.** A collection book of every pet: undiscovered pets are black `???` silhouettes; complete a
@@ -786,8 +787,8 @@ machine's level 2 and 3 take 10 % and 20 % off the token costs:
 | Rare | 750 | 2,250 | 1,000 |
 | Epic | 1,800 | 5,400 | 2,500 |
 | Legendary | 4,500 | 13,500 | 6,000 |
-| Mythic | 10,000 | 30,000 | **60 Gems** |
-| Secret | 25,000 | 75,000 | **150 Gems** |
+| Mythic | 10,000 | 30,000 | **40 Gems** |
+| Secret | 25,000 | 75,000 | **100 Gems** |
 
 A Mix pays for the higher rarity of its two pets. The Pet Index has a **Fusions** tile that lists your Golden,
 Rainbow and hybrid pets.
@@ -810,17 +811,24 @@ pad.
 pill's **Shop**; the Cloud Shop's Gems tab has a **Robux Store** button that leads there; once the owner has created
 them, see below). You spend them on:
 
-- **Roulette spins**, a cheaper premium way to roll, with the same odds as with tokens: Cloud 5, Storm 20,
-  Sky 75 and Celestial 300 Gems a spin.
+- **Roulette spins**, a premium way to roll, with the same odds as with tokens: Cloud 20, Storm 40, Sky 60 and
+  Celestial 180 Gems a spin.
 - **The Secret Roulette** at the **Storm Altar** (press **E** at the altar, or find it in the Shop's Gems tab):
-  1,500 Gems a spin, **Mythic 85 %, Secret 15 %**. It is the only place the four roulette Secret pets come from
-  (Stormfang, Eclipse Dragon, Obsidian Phoenix, Phantom Kitsune). The three Boss Raid pets (Magma Cub and Hydralotl,
-  Mythic with Secret-grade stats, and the Secret Rime Wyrmling) are in no roulette at all: they only drop in Boss Raids.
-- **Fusion Mixes** with Mythic or Secret pets.
+  500 Gems a spin, **Mythic 60 %, Secret 40 %**, and the 7th spin in a row without a Secret always gives one (about
+  1,215 Gems per Secret pet on average). It is the surest place for the four roulette Secret pets (Stormfang, Eclipse
+  Dragon, Obsidian Phoenix, Phantom Kitsune); the **Celestial Roulette** also hatches them at **2 %** a spin, with
+  Cloud Tokens or Gems (that luck never counts toward the altar's 7th-spin promise). The three Boss Raid pets (Magma
+  Cub and Hydralotl, Mythic with Secret-grade stats, and the Secret Rime Wyrmling) are in no roulette at all: they
+  only drop in Boss Raids.
+- **Fusion Mixes** with Mythic (40 Gems) or Secret (100 Gems) pets.
+- **The XP Potion (30 min)** in the Store's Boosts tab: 100 Gems.
 
 The odds of every roulette are always one tap away (the odds list). Where Roblox does not allow paid random items
 for an account, the gem-priced roulettes and the Secret Roulette are hidden for that player and the altar says
-it is not available on their account; Gem packs and everything else still work.
+it is not available on their account, and the Robux packs that give Cloud Tokens (the three Token packs and the Pro
+Pack) are not sold to them ("Token packs are not available on your account"; while Roblox has not answered yet:
+"Checking your account, try again in a moment"), because a token spin can now give a Secret. A purchase that was
+already paid is always granted. Gem packs and everything else still work.
 
 ### The Store: the owner's setup
 
@@ -846,10 +854,13 @@ says "The Store opens soon!".
    | `PetXp2x` | x2 Pet XP | Pass | 450 | x2 Pet XP forever |
    | `XpPotion1` | XP Potion (1 h) | Product | 49 | 1 h x2 Pet XP |
    | `XpPotion3` | XP Potion (3 h) | Product | 99 | 3 h x2 Pet XP |
-   | `Tokens1` | 500 Cloud Tokens | Product | 49 | 500 Cloud Tokens |
-   | `Tokens2` | 2,500 Cloud Tokens | Product | 149 | 2,500 Cloud Tokens |
-   | `Tokens3` | 10,000 Cloud Tokens | Product | 399 | 10,000 Cloud Tokens |
-   | Gem packs | Pouch / Bag / Chest / Vault of Gems | Product | your price | 100 / 550 / 1,200 / 6,500 Gems |
+   | `Tokens1` | 1,500 Cloud Tokens | Product | 49 | 1,500 Cloud Tokens |
+   | `Tokens2` | 7,500 Cloud Tokens | Product | 149 | 7,500 Cloud Tokens |
+   | `Tokens3` | 30,000 Cloud Tokens | Product | 399 | 30,000 Cloud Tokens |
+   | Gem packs | Pouch / Bag / Chest / Vault of Gems | Product | 49 / 149 / 399 / 999 (`Robux` in `Config.Gems.Products`) | 200 / 670 / 1,950 / 5,300 Gems |
+
+   The Token packs and the Pro Pack (everything that gives Cloud Tokens) are only offered to accounts that Roblox
+   allows paid random items (see [Gems](#gems-and-the-secret-roulette)).
 
 3. Copy each item's **ID** (the Passes list and the Developer Products list show it) and paste it into
    `src/shared/Config.lua`: a pass or a Store product into the `Id` of its entry in `Config.Store.Items` (found by
@@ -880,16 +891,17 @@ and rewards nothing (Roblox cannot check a like).
 
 The four Gem packs are Developer Products like the rest of the Store (they show in its **Currency** tab). Until a pack
 has a real id it stays hidden (id `0` means "not created yet"). Paste the ids into `Config.Gems.Products` in
-`src/shared/Config.lua`, one per pack. `Gems` is how many Gems the game grants for that product (the Robux price is
-only set on the Creator Hub), `Name` is what the Store shows:
+`src/shared/Config.lua`, one per pack. `Gems` is how many Gems the game grants for that product, `Name` is what the
+Store shows and `Robux` is the suggested price (only a suggestion for you and the sims: the price you set on the
+Creator Hub is what players pay):
 
 ```lua
 Config.Gems = {
     Products = {
-        { Id = 1234567890, Gems = 100, Name = "Pouch of Gems" },  -- your real product ids here
-        { Id = 1234567891, Gems = 550, Name = "Bag of Gems" },
-        { Id = 1234567892, Gems = 1200, Name = "Chest of Gems" },
-        { Id = 1234567893, Gems = 6500, Name = "Vault of Gems" },
+        { Id = 1234567890, Gems = 200, Name = "Pouch of Gems", Robux = 49 },  -- your real product ids here
+        { Id = 1234567891, Gems = 670, Name = "Bag of Gems", Robux = 149 },
+        { Id = 1234567892, Gems = 1950, Name = "Chest of Gems", Robux = 399 },
+        { Id = 1234567893, Gems = 5300, Name = "Vault of Gems", Robux = 999 },
     },
     -- (the rest of Config.Gems stays as it is)
 ```
@@ -1304,15 +1316,17 @@ press **Shop** in the top-left pill and open the Store's **Roulettes** tab, pick
 
 | Roulette | Price | Odds per spin (pets inside a rarity are equally likely) |
 |---|---|---|
-| **Cloud** | 50 tokens (or 5 Gems) | Common 60 %, Uncommon 28 %, Rare 10 %, Epic 2 % |
-| **Storm** | 250 tokens (or 20 Gems) | Uncommon 35 %, Rare 40 %, Epic 20 %, Legendary 5 % |
-| **Sky** | 1,000 tokens (or 75 Gems) | Rare 35 %, Epic 45 %, Legendary 17 %, Mythic 3 % |
-| **Celestial** | 5,000 tokens (or 300 Gems) | Epic 45 %, Legendary 40 %, Mythic 15 % |
-| **Secret** (Storm Altar) | 1,500 Gems only | Mythic 85 %, Secret 15 % |
+| **Cloud** | 50 tokens (or 20 Gems) | Common 60 %, Uncommon 28 %, Rare 10 %, Epic 2 % |
+| **Storm** | 250 tokens (or 40 Gems) | Uncommon 35 %, Rare 40 %, Epic 20 %, Legendary 5 % |
+| **Sky** | 1,000 tokens (or 60 Gems) | Rare 35 %, Epic 45 %, Legendary 17 %, Mythic 3 % |
+| **Celestial** | 5,000 tokens (or 180 Gems) | Epic 43 %, Legendary 40 %, Mythic 15 %, Secret 2 % |
+| **Secret** (Storm Altar) | 500 Gems only | Mythic 60 %, Secret 40 % |
 
-Secret pets are in none of the token roulettes: Stormfang and the other three roulette Secrets come from the
-gems-only Secret Roulette at the Storm Altar (see [Gems](#gems-and-the-secret-roulette)), and the three Boss Raid
-pets only drop in Boss Raids, so a roulette's Mythics are Cloudy Dragon and Starlight Unicorn.
+Stormfang and the other three roulette Secrets come from the gems-only Secret Roulette at the Storm Altar (the 7th
+spin in a row without a Secret gives one, see [Gems](#gems-and-the-secret-roulette)) and, at 2 % a spin, from the
+Celestial Roulette (tokens or Gems; it never counts toward the altar's 7th spin). The other token roulettes have no
+Secrets, and the three Boss Raid pets only drop in Boss Raids, so a roulette's Mythics are Cloudy Dragon and Starlight
+Unicorn.
 
 Put up to **3** pets in your team from the Pets window (a pet in training cannot join). Each pet has one or two perks:
 **Max Health**, **Cloud Tokens** (more tokens per pickup), **Stamina Regen** and **Checkpoint Heal**. Perks add up,
@@ -1600,7 +1614,7 @@ Things only you can do, by hand, once. Steps 3 and 4 are optional; everything wo
    `"Technology": "ShadowMap"` (fast on phones too). Players can also pick Graphics: **Low** in SETTINGS.
 6. **Gems and the Store for Robux:** create.roblox.com -> your experience -> Monetization -> **Developer
    Products** -> Create (one per pack: a name and the Robux price) -> copy each Product ID into
-   `Config.Gems.Products` (`{ Id = ..., Gems = 100, Name = "Pouch of Gems" }`); the passes, packs, potions and Token
+   `Config.Gems.Products` (`{ Id = ..., Gems = 200, Name = "Pouch of Gems" }`); the passes, packs, potions and Token
    packs go into `Config.Store.Items` and the group into `Config.Trove.GroupId`; until then they stay hidden (see
    [The Store: the owner's setup](#the-store-the-owners-setup)).
 7. **After any change:** Studio -> Play (F5) once, then View -> **Output**: no red line starting with `[Config]` or
@@ -1720,13 +1734,15 @@ src/server   Main.server.lua; Services: Lighting, LobbyBuilder, StormAltar, Play
              stands locked on the Ring / PvP podium), Sky (the living sky: the clock attributes, the raid skies,
              /sky), Store (the Robux Store: every paid grant, the pass cache, StorePreview), Multipliers (the x2
              Cash / Pet XP factors at the five earning sites), Daily (the daily streak and play-time gifts), Trove
-             (the Sky Trove's group join reward)
+             (the Sky Trove's group join reward), Leaderboard (the global leaderboard: Trophies, Pets found, Ring
+             best, with the this-server fallback), LobbyBoardBuilder (the leaderboard board on the lobby's south lawn)
 src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientSettings; SoundFx; GraphicsQuality;
              PortalVortex (the swirling vortex inside every gate hoop); MouseLock (the Mouse lock option);
              LightingStack (lighting looks, e.g. the Dungeon); UI/CloudUI; UI/NeonKit (the neon cards, tiles and side
              panels); UI/PetCard (the cards above pets); UI/PetBits (what the windows showing a pet share); UI/TeamFaces
              (the three faces + Edit team on every battle panel); UI/PetPicker (the one full-screen pet picker sheet
-             of the Training Place and the Fusion Machine: search, sorts, filters, big cards); Controllers:
+             of the Training Place and the Fusion Machine: search, sorts, filters, big cards); UI/GemIcon (the drawn
+             cut gem every gem amount shows); Controllers:
              Movement, MainMenu (main menu + settings), Hud, DamageFx, Notify, Menu, Pets (the Pets window), Pet, TokenFx, Index, Tutorial, Npc, SkyDragon, Showcase, Dev, DevPetShow
              (pet showcase, /fx attack preview), EvolutionFx (evolution animation, the dungeon enemies' arrival),
              AttackFx (plays the pet attack effects: Blender cores, flipbook particles, beams, trails and lights,

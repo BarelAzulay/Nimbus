@@ -172,7 +172,8 @@ local function catalogV3(PC, Config, rank)
 		T.check(type(dragon.Special) == "table" and dragon.Special.Name == "Cloud Breath" and dragon.Special.Kind == "Beam", "the Cloudy Dragon's special is 'Cloud Breath' (Kind Beam)", type(dragon.Special) == "table" and (tostring(dragon.Special.Name) .. " / " .. tostring(dragon.Special.Kind)) or "")
 	end
 
-	-- Secret pets: glowing, never rollable from any current roulette, stronger than the best Mythic
+	-- Secret pets: glowing, never rollable from a token roulette without AllowSecret (lobby-shop Task 16: Celestial's 2%
+	-- Secret row is the one that has it), stronger than the best Mythic
 	local secrets = PC.ListByRarity(SECRET)
 	local bestMythic = 0
 	for _, def in ipairs(PC.ListByRarity("Mythic")) do
@@ -185,11 +186,13 @@ local function catalogV3(PC, Config, rank)
 	secretTally:report()
 	local rollable = {}
 	for _, r in ipairs(Config.Roulettes) do
-		for _, o in ipairs(PC.GetOdds(r.Id)) do
-			rollable[o.PetId] = r.Id
-		end
-		for _, def in ipairs(PC.PossiblePets(r.Id)) do
-			rollable[def.Id] = rollable[def.Id] or r.Id
+		if r.AllowSecret ~= true then
+			for _, o in ipairs(PC.GetOdds(r.Id)) do
+				rollable[o.PetId] = r.Id
+			end
+			for _, def in ipairs(PC.PossiblePets(r.Id)) do
+				rollable[def.Id] = rollable[def.Id] or r.Id
+			end
 		end
 	end
 	local leaked = {}
@@ -198,21 +201,27 @@ local function catalogV3(PC, Config, rank)
 			leaked[#leaked + 1] = def.Id .. " (" .. rollable[def.Id] .. ")"
 		end
 	end
-	T.check(#leaked == 0, "no current roulette can roll a Secret pet (they come from the phase-2 gems-only roulette)", table.concat(leaked, ", "))
+	T.check(#leaked == 0, "no token roulette without AllowSecret can roll a Secret pet (they come from the gems-only roulette and Celestial's 2% row)", table.concat(leaked, ", "))
 	local Util = M["shared/Util"]
 	local rng = Util and Util.NewRng and Util.NewRng(31337)
 	if rng then
-		local secretRolls = 0
+		local secretRolls, plain, badAllowed = 0, 0, {}
 		for _, r in ipairs(Config.Roulettes) do
 			for _ = 1, 400 do
 				local id = PC.RollPet(r.Id, rng)
 				local def = id and PC.Get(id)
-				if def and def.Rarity == SECRET then
-					secretRolls = secretRolls + 1
+				if r.AllowSecret ~= true then
+					plain = plain + 1
+					if def and def.Rarity == SECRET then
+						secretRolls = secretRolls + 1
+					end
+				elseif def and def.Rarity == SECRET and (def.EventOnly == true or def.ExclusiveTo ~= nil or not PC.IsRollable(def.Id)) then
+					badAllowed[#badAllowed + 1] = r.Id .. ":" .. def.Id
 				end
 			end
 		end
-		T.eq(secretRolls, 0, "1600 RollPet calls over every roulette never return a Secret pet")
+		T.eq(secretRolls, 0, plain .. " RollPet calls over the roulettes without AllowSecret never return a Secret pet")
+		T.check(#badAllowed == 0, "...and a roulette with AllowSecret only rolls rollable Secret pets (never EventOnly or exclusive)", table.concat(badAllowed, ", "))
 	end
 
 	-- GetStats(petId, level) = base * RarityScale[StatRarity or rarity] * (1 + 0.1 * (level - 1))

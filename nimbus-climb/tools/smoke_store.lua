@@ -27,7 +27,13 @@
 --                        multiplied pinned exactly
 --   store_remote         (server world, booted; W2-money) StoreRequest: junk, the 1 req/s limit, in a match, hidden / owned /
 --                        bought keys, one prompt per created key, the StorePreview attribute; lobby-shop Task 7: an unknown
---                        action is still dropped silently, "GemBuy" (a Config.Store.GemItems key) is now answered
+--                        action is still dropped silently, "GemBuy" (a Config.Store.GemItems key) is now answered; Task 16:
+--                        the prompted product is XpPotion1 (the token packs are policy-locked) and the gem price is Config's
+--   store_token_lock     (server world, booted; lobby-shop Task 16, spec 16.1) Tokens1..3 and the Pro Pack are prompted only
+--                        when GemService.PolicyState is "Allowed" (Restricted: "Token packs are not available on your
+--                        account"; unknown / no answer / an error: "Checking your account, try again in a moment"), before
+--                        the prompt cooldown; Starter, VIP, XpPotion1 and the gem packs always; a paid Tokens1 receipt of a
+--                        restricted account is still granted
 --   client_store_bigrect (client world) NeonKit.BigRect answers PetsController's H.rect numbers (820x330 Phone on 844x390,
 --                        1260x900 PC on 1920x1080) and the new glyph ids exist
 -- White-box: the doubles are written straight onto the service / player (props, never methods). Plain Lua 5.1 syntax only.
@@ -135,7 +141,7 @@ local function serverScenarios()
 		for _, it in ipairs(Config.Store.Items) do byKey[it.Key] = it end
 		T.check(byKey.Starter.Once == true and byKey.Starter.Hero == true and byKey.Starter.Grants.Pets.storm_tabby.Level == 5 and byKey.Starter.Grants.Cash == 1000 and byKey.Starter.Grants.Boost.XpPotion == 3600 and byKey.Starter.Robux == 99, "store config: Starter = Storm Tabby L5 + $1,000 + 1 h potion, Once, Hero, 99 R$")
 		T.check(byKey.Pro.Grants.Pets.crown_phoenix.Level == 10 and byKey.Pro.Grants.Tokens == 5000 and byKey.Pro.Grants.Perks[1] == "ProXp" and byKey.Pro.Robux == 799, "store config: Pro = Crown Phoenix L10 + 5,000 Tokens + ProXp, 799 R$")
-		T.check(byKey.VIP.Kind == "Pass" and byKey.VIP.Hero == true and byKey.Cash2x.Robux == 399 and byKey.PetXp2x.Robux == 450 and byKey.XpPotion3.Grants.Boost.XpPotion == 10800 and byKey.Tokens3.Grants.Tokens == 10000, "store config: passes and potions as the spec table")
+		T.check(byKey.VIP.Kind == "Pass" and byKey.VIP.Hero == true and byKey.Cash2x.Robux == 399 and byKey.PetXp2x.Robux == 450 and byKey.XpPotion3.Grants.Boost.XpPotion == 10800 and byKey.Tokens3.Grants.Tokens == 30000 and byKey.Tokens3.Name == "30,000 Cloud Tokens", "store config: passes and potions as the spec table (Tokens3 = 30,000 since lobby-shop Task 16)")
 		T.check(byKey.Cash1.Enabled == false and byKey.Cash2.Enabled == false and byKey.Cash3.Enabled == false and byKey.Cash3.Grants.Cash > byKey.Cash2.Grants.Cash and byKey.Cash2.Grants.Cash > byKey.Cash1.Grants.Cash and byKey.Cash1.Line ~= nil, "store config: the three Cash packs exist, Enabled = false, with their Prestige line (13b.1)")
 		for _, it in ipairs(Config.Store.Items) do T.eq(it.Id, 0, "store config: " .. it.Key .. " ships with Id 0") end
 		T.check(Config.Daily.ReadySeconds == 72000 and Config.Daily.KeepSeconds == 172800 and Config.Daily.PipDelaySeconds == 20 and Config.Daily.FutureClockSlack == 300 and #Config.Daily.Days == 7 and Config.Daily.Days[7].Pet == "week_wisp" and Config.Daily.Days[7].Else.Gems == 40 and Config.Daily.Days[1].Cash.Minutes == 2 and Config.Daily.Days[1].Cash.Min == 400, "store config: Config.Daily streak numbers")
@@ -208,16 +214,16 @@ local function serverScenarios()
 		T.check(#SC.Tabs == #Config.Store.Tabs and SC.Tabs[1] == "Packs" and SC.Tabs[5] == "Roulettes" and SC.Tabs ~= Config.Store.Tabs, "store catalog: Tabs is a copy of Config.Store.Tabs")
 		local list = SC.List()
 		T.eq(#list, 10 + #Config.Gems.Products, "store catalog: List = the 10 enabled items + the gem packs (Cash packs Enabled = false left out)")
-		T.check(list[1].Key == "Starter" and list[10].Key == "Tokens3" and list[11].Key == "Gems1" and list[11].Kind == "Product" and list[11].Tab == "Currency" and list[11].Index == 1 and list[11].Name == "Pouch of Gems" and list[11].Grants.Gems == 100 and list[11].Gem == true, "store catalog: Config order, then the gem packs as Currency products")
+		T.check(list[1].Key == "Starter" and list[10].Key == "Tokens3" and list[11].Key == "Gems1" and list[11].Kind == "Product" and list[11].Tab == "Currency" and list[11].Index == 1 and list[11].Name == "Pouch of Gems" and list[11].Grants.Gems == 200 and list[11].Robux == 49 and list[11].Gem == true, "store catalog: Config order, then the gem packs as Currency products (Pouch 200 gems, 49 R$ since lobby-shop Task 16)")
 		T.check(list[1].Created == false and list[1].Robux == 99 and list[1].Id == 0 and list[1].Once == true and list[1].Hero == true and SC.Created(list[1]) == false, "store catalog: a List item is a cleaned copy (Id 0, Created false, Robux, Once, Hero)")
-		T.check(SC.Item("Cash1") == nil and SC.Item("Starter").Grants.Cash == 1000 and SC.Item("Gems2").Grants.Gems == 550 and SC.Item("Gems2").Hero == true and SC.Item("Gems1").Hero ~= true, "store catalog: Item by key; the Bag is the Currency hero")
+		T.check(SC.Item("Cash1") == nil and SC.Item("Starter").Grants.Cash == 1000 and SC.Item("Gems2").Grants.Gems == 670 and SC.Item("Gems2").Hero == true and SC.Item("Gems1").Hero ~= true, "store catalog: Item by key; the Bag is the Currency hero")
 		T.check(SC.Item("nope") == nil and SC.Item(nil) == nil and SC.Item(5) == nil, "store catalog: Item answers nil for junk keys")
 		T.check(SC.ProductById(0) == nil and SC.PassById(0) == nil and SC.ProductById(nil) == nil and SC.ProductById("1") == nil and SC.PassById(-1) == nil, "store catalog: Id 0 (and junk) resolves to nothing on both sides")
 		T.check(SC.Perk("CashX2").Cash == 2 and SC.Perk("Vip").DailyMult == 2 and SC.Perk("Nope") == nil and SC.Perk(nil) == nil, "store catalog: Perk reads Config.Store.Perks")
 		local pro, gems = Config.Store.Items[2], Config.Gems.Products[3]
 		local savedPro, savedGems = pro.Id, gems.Id
 		pro.Id, gems.Id = 4411, 4412
-		T.check(SC.ProductById(4411).Key == "Pro" and SC.ProductById(4412).Gem == true and SC.ProductById(4412).Grants.Gems == 1200 and SC.PassById(4411) == nil, "store catalog: a product id resolves (a gem pack too), never as a pass")
+		T.check(SC.ProductById(4411).Key == "Pro" and SC.ProductById(4412).Gem == true and SC.ProductById(4412).Grants.Gems == 1950 and SC.PassById(4411) == nil, "store catalog: a product id resolves (a gem pack too), never as a pass")
 		T.check(SC.Item("Pro").Created == true and SC.Created(SC.Item("Pro")) == true and SC.Item("Gems3").Created == true, "store catalog: Created follows the Id")
 		Config.Store.Items[3].Id = 4413
 		T.check(SC.PassById(4413).Key == "VIP" and SC.ProductById(4413) == nil, "store catalog: a pass id resolves, never as a product")
@@ -229,7 +235,7 @@ local function serverScenarios()
 		T.check(#lines == 3 and lines[1] == "1x Crown Phoenix (Lv 10)" and lines[2] == "5,000 Cloud Tokens", "store catalog: the Pro's pet and Tokens lines", table.concat(lines, " | "))
 		T.eq(lines[3], "x1.5 Pet XP in Dungeons and raids", "store catalog: the Pro perk line")
 		T.check(SC.GrantLines(SC.Item("XpPotion3").Grants)[1] == "3 h x2 Pet XP" and SC.GrantLines({ Boost = { XpPotion = 1500 } })[1] == "25 min x2 Pet XP", "store catalog: potion lines (3 h, 25 min)")
-		T.check(SC.GrantLines(SC.Item("Gems2").Grants)[1] == "550 Gems" and SC.GrantLines(SC.Item("VIP").Grants)[1] == "VIP: x2 daily Cash and Tokens, [VIP] in chat" and SC.GrantLines(SC.Item("Cash2x").Grants)[1] == "x2 Cash forever" and SC.GrantLines(SC.Item("PetXp2x").Grants)[1] == "x2 Pet XP forever", "store catalog: the Gems and perk lines")
+		T.check(SC.GrantLines(SC.Item("Gems2").Grants)[1] == "670 Gems" and SC.GrantLines(SC.Item("VIP").Grants)[1] == "VIP: x2 daily Cash and Tokens, [VIP] in chat" and SC.GrantLines(SC.Item("Cash2x").Grants)[1] == "x2 Cash forever" and SC.GrantLines(SC.Item("PetXp2x").Grants)[1] == "x2 Pet XP forever", "store catalog: the Gems and perk lines")
 		T.check(SC.GrantLines({ Pets = { storm_tabby = { Count = 2 } } })[1] == "2x Storm Tabby" and #SC.GrantLines(nil) == 0 and #SC.GrantLines({}) == 0, "store catalog: no (Lv n) without a Level; junk grants = no lines")
 		-- Validate refusals: a deep copy of Config.Store.Items mutated, then restored; each a false with a problem naming the key
 		local function deepCopy(t)
@@ -523,16 +529,17 @@ local function serverScenarios()
 			setId("XpPotion1", 6002)
 			setId("Tokens1", 6003)
 			setId("Pro", 6004)
+			local TOK = itemOf("Tokens1").Grants.Tokens -- the Tokens1 pack (1,500 since lobby-shop Task 16; was 500)
 			local p = join("Router", newUserId())
 			players[#players + 1] = p
 			T.check(loaded(p), "store router: (precondition) the buyer's profile is loaded")
 			local cash0, tok0 = DS().GetCash(p), DS().GetTokens(p)
 			T.eq(run(receipt(p, 6003, "r-tok-1")), GRANTED, "store router: a Tokens pack is granted")
-			T.eq(DS().GetTokens(p), tok0 + 500, "store router: +500 Tokens")
-			T.check(purchasesOf("r-tok-1") == 1 and purchased[1] and purchased[1].Player == p and purchased[1].Key == "Tokens1" and type(purchased[1].Granted) == "table" and purchased[1].Granted.Tokens == 500,
+			T.eq(DS().GetTokens(p), tok0 + TOK, "store router: +" .. TOK .. " Tokens")
+			T.check(purchasesOf("r-tok-1") == 1 and purchased[1] and purchased[1].Player == p and purchased[1].Key == "Tokens1" and type(purchased[1].Granted) == "table" and purchased[1].Granted.Tokens == TOK,
 				"store router: Purchased fired once (player, key, granted, purchaseId)")
 			T.eq(run(receipt(p, 6003, "r-tok-1")), GRANTED, "store router: the same purchase id again grants nothing more")
-			T.eq(DS().GetTokens(p), tok0 + 500, "store router: ...still +500")
+			T.eq(DS().GetTokens(p), tok0 + TOK, "store router: ...still +" .. TOK)
 			T.eq(purchasesOf("r-tok-1"), 1, "store router: ...and Purchased stays at one")
 			local tPot = os.time()
 			local a, b = spawnCall(cb, receipt(p, 6002, "r-pot-1")), spawnCall(cb, receipt(p, 6002, "r-pot-1"))
@@ -558,7 +565,7 @@ local function serverScenarios()
 			T.eq(run({ PlayerId = p.UserId, ProductId = 6003 }), NOT_YET, "store router: a malformed receipt stays pending")
 
 			-- a rejoin (spec 11 / Z14): the save fails, the grant waits in the live profile, the player leaves (the orphan
-			-- retry saves it), rejoins the same server, and Roblox's retry grants nothing more: +500 ONCE for that id
+			-- retry saves it), rejoins the same server, and Roblox's retry grants nothing more: +TOK ONCE for that id
 			Mock.Options.Studio = false
 			local tokR = DS().GetTokens(p)
 			DSt.Fail = true
@@ -571,18 +578,18 @@ local function serverScenarios()
 			players[#players + 1] = p
 			T.check(loaded(p), "store router: (rejoin) the profile loads again")
 			T.eq(run(receipt(p, 6003, "r-rejoin")), GRANTED, "store router: (rejoin) Roblox's retry answers PurchaseGranted")
-			T.eq(DS().GetTokens(p), tokR + 500, "store router: (rejoin) +500 Tokens ONCE for that id across the failed save and the rejoin")
+			T.eq(DS().GetTokens(p), tokR + TOK, "store router: (rejoin) +" .. TOK .. " Tokens ONCE for that id across the failed save and the rejoin")
 			T.eq(run(receipt(p, 6003, "r-rejoin")), GRANTED, "store router: (rejoin) a repeat grants nothing more")
-			T.eq(DS().GetTokens(p), tokR + 500, "store router: (rejoin) ...still +500")
+			T.eq(DS().GetTokens(p), tokR + TOK, "store router: (rejoin) ...still +" .. TOK)
 
 			-- a failed save on a live server: NotProcessedYet, then the retry GRANTED once (Purchased after the save that lands)
 			DSt.Fail = true
 			local tokF = DS().GetTokens(p)
 			T.eq(run(receipt(p, 6003, "r-fail-1")), NOT_YET, "store router: (live) a failed save answers NotProcessedYet")
-			T.check(DS().GetTokens(p) == tokF + 500 and purchasesOf("r-fail-1") == 0, "store router: (live) ...the Tokens wait in the session, Purchased not yet")
+			T.check(DS().GetTokens(p) == tokF + TOK and purchasesOf("r-fail-1") == 0, "store router: (live) ...the Tokens wait in the session, Purchased not yet")
 			DSt.Fail = saved.Fail
 			T.eq(run(receipt(p, 6003, "r-fail-1")), GRANTED, "store router: (live) the retry saves and answers PurchaseGranted")
-			T.check(DS().GetTokens(p) == tokF + 500 and purchasesOf("r-fail-1") == 1, "store router: (live) ...granted once, Purchased once after the save that landed")
+			T.check(DS().GetTokens(p) == tokF + TOK and purchasesOf("r-fail-1") == 1, "store router: (live) ...granted once, Purchased once after the save that landed")
 			Mock.Options.Studio = true
 			DSt.Fail = true
 			T.eq(run(receipt(p, 6003, "r-studio")), GRANTED, "store router: (Studio) a failed save still answers PurchaseGranted")
@@ -609,13 +616,13 @@ local function serverScenarios()
 			local tokP = DS().GetTokens(prov)
 			T.eq(run(receipt(prov, 6003, "r-prov")), GRANTED, "store router: after the recovery the purchase is granted")
 			T.eq(run(receipt(prov, 6003, "r-prov")), GRANTED, "store router: ...(a retry)")
-			T.eq(DS().GetTokens(prov), tokP + 500, "store router: ...exactly once")
+			T.eq(DS().GetTokens(prov), tokP + TOK, "store router: ...exactly once")
 
 			-- Review Focus 1: a late receipt in a match is granted (StoreRequest is refused, ProcessReceipt never checks InMatch)
 			p:SetAttribute(Config.Attr.InMatch, true)
 			local tokM = DS().GetTokens(p)
 			T.eq(run(receipt(p, 6003, "r-tok-match")), GRANTED, "store router: a late receipt in a match is granted (Review Focus 1)")
-			T.eq(DS().GetTokens(p), tokM + 500, "store router: ...+500")
+			T.eq(DS().GetTokens(p), tokM + TOK, "store router: ...+" .. TOK)
 			p:SetAttribute(Config.Attr.InMatch, nil)
 
 			-- Z7: a Pro pack on a full Crown Phoenix stack pays the Index Legendary Tokens instead, never pends
@@ -1019,17 +1026,21 @@ local function serverScenarios()
 			T.check(#prompts == 0 and #Mock.Errors == errs0, "store remote: junk on StoreRequest prompts nothing and raises nothing", tostring(#prompts) .. " prompts, " .. tostring(#Mock.Errors - errs0) .. " errors")
 			T.eq(#K.remotesFor("Notify", p.UserId, markJunk), 0, "store remote: ...an unknown action (Sell) and a GemBuy without a string key are dropped silently (no toast)")
 			-- lobby-shop Task 7: "GemBuy" is now answered (StoreService.BuyWithGems; junk above never used the 1 s gap)
-			T.check(DS()._SettleForTest(p) == true and DS().AddGems(p, 75) == true, "store remote: (setup) settled, +75 gems")
+			-- lobby-shop Task 16: the gem potion's price comes from Config (100 gems; was a literal 75)
+			local potionGems = Config.Store.GemItems[1].Gems
+			T.check(DS()._SettleForTest(p) == true and DS().AddGems(p, potionGems) == true, "store remote: (setup) settled, +" .. potionGems .. " gems")
 			local gemsBefore = DS().GetGems(p)
 			local markGem = K.logSize()
 			send("GemBuy", "XpPotionGems")
 			K.advance(0.2)
-			T.check(toastCount(p, "XP Potion: +30 minutes", markGem) == 1 and DS().GetGems(p) == gemsBefore - 75 and #prompts == 0,
-				"store remote: GemBuy (a Config.Store.GemItems key) is answered: the XP Potion for 75 gems, no prompt", toastsSince(p, markGem))
-			setId("Tokens1", 6103)
+			T.check(toastCount(p, "XP Potion: +30 minutes", markGem) == 1 and DS().GetGems(p) == gemsBefore - potionGems and #prompts == 0,
+				"store remote: GemBuy (a Config.Store.GemItems key) is answered: the XP Potion for " .. potionGems .. " gems, no prompt", toastsSince(p, markGem))
+			-- lobby-shop Task 16: the prompted product is XpPotion1 (a token pack is now policy-locked: the mock's policy
+			-- answer stays unknown, store_token_lock covers that lock)
+			setId("XpPotion1", 6103)
 			K.advance(1.1)
 			for _ = 1, 10 do
-				send("Buy", "Tokens1")
+				send("Buy", "XpPotion1")
 				K.advance(0.09)
 			end
 			K.advance(0.2)
@@ -1038,7 +1049,7 @@ local function serverScenarios()
 			K.advance(1.1)
 			p:SetAttribute(Config.Attr.InMatch, true)
 			local mark = K.logSize()
-			send("Buy", "Tokens1")
+			send("Buy", "XpPotion1")
 			K.advance(0.2)
 			T.check(#prompts == n and toastCount(p, "The Store is closed during a match", mark) == 1, "store remote: in a match: the toast, no prompt", toastsSince(p, mark))
 			p:SetAttribute(Config.Attr.InMatch, nil)
@@ -1069,7 +1080,7 @@ local function serverScenarios()
 			K.advance(0.2)
 			T.check(#prompts == n + 1 and prompts[n + 1].Kind == "Pass" and prompts[n + 1].Id == 7102 and prompts[n + 1].Player == p, "store remote: a created pass key: PromptGamePassPurchase once", tostring(#prompts - n))
 			K.advance(1.1)
-			send("Buy", "Tokens1")
+			send("Buy", "XpPotion1")
 			K.advance(0.2)
 			T.check(#prompts == n + 2 and prompts[n + 2].Kind == "Product" and prompts[n + 2].Id == 6103 and prompts[n + 2].Player == p, "store remote: a created product: PromptProductPurchase once", tostring(#prompts - n))
 			T.eq(DS().GetTokens(p), tok0, "store remote: prompting grants nothing (Z1: only ProcessReceipt grants)")
@@ -1106,6 +1117,156 @@ local function serverScenarios()
 		MPS.UserOwnsGamePassAsync = nil
 		Mock.Options.Studio = saved.Studio
 		restoreIds(saved.Ids)
+		leaveAll(players)
+		if not okRun then
+			error(errRun, 0)
+		end
+	end)
+
+	-- lobby-shop Task 16 (spec 16.1, closing 13 call 8): the Robux products that grant Cloud Tokens (Tokens1..3 and the Pro
+	-- Pack: every Product with Grants.Tokens > 0) are never prompted for an account whose GemService.PolicyState is not
+	-- "Allowed" (a token spin can give a Secret now); the other products are untouched; a paid receipt is always granted
+	S.store_token_lock = guarded("store_token_lock", function()
+		if not K.needBoot() then
+			return
+		end
+		local Config = K.config()
+		local Store, Gems = SS(), GS()
+		local folder = K.remoteFolder()
+		local remote = folder and folder:FindFirstChild("StoreRequest")
+		if not T.check(type(Store) == "table" and type(Store.PromptPurchase) == "function" and type(Gems) == "table" and type(Gems.PolicyState) == "function" and remote ~= nil,
+			"store token lock: StoreService.PromptPurchase, GemService.PolicyState and the StoreRequest remote exist") then
+			return
+		end
+		local RESTRICTED = "Token packs are not available on your account"
+		local CHECKING = "Checking your account, try again in a moment"
+		local LOCKED = { "Tokens1", "Tokens2", "Tokens3", "Pro" }
+		local OPEN = { "Starter", "VIP", "XpPotion1", "Gems1", "Gems2", "Gems3", "Gems4" }
+		local IDS = { Tokens1 = 6401, Tokens2 = 6402, Tokens3 = 6403, Pro = 6404, Starter = 6405, VIP = 7401, XpPotion1 = 6406, Gems1 = 6411, Gems2 = 6412, Gems3 = 6413, Gems4 = 6414 }
+		local saved = { Ids = savedIds(), GemIds = {}, PolicyState = Gems.PolicyState }
+		for i, p in ipairs(Config.Gems.Products) do
+			saved.GemIds[i] = p.Id
+		end
+		local players = {}
+		local prompts = {} -- { Kind, Player, Id }
+		MPS.PromptGamePassPurchase = function(_, player, id)
+			prompts[#prompts + 1] = { Kind = "Pass", Player = player, Id = id }
+		end
+		MPS.PromptProductPurchase = function(_, player, id)
+			prompts[#prompts + 1] = { Kind = "Product", Player = player, Id = id }
+		end
+		MPS.UserOwnsGamePassAsync = function()
+			return false
+		end
+		local mode = "Restricted" -- what the GemService.PolicyState stub answers ("Restricted" | "Checking" | "Allowed" | nil | "error")
+		Gems.PolicyState = function()
+			if mode == "error" then
+				error("smoke: PolicyState failed")
+			end
+			return mode
+		end
+		local okRun, errRun = pcall(function()
+			local errs0 = #Mock.Errors
+			for key, id in pairs(IDS) do
+				local gi = tonumber(string.match(key, "^Gems(%d)$"))
+				if gi then
+					Config.Gems.Products[gi].Id = id
+				else
+					setId(key, id)
+				end
+			end
+			local Cat = K.M["shared/StoreCatalog"] or requireAt("shared/StoreCatalog")
+			local tokensOf = T.tally("store token lock: (precondition) Tokens1..3 and Pro grant Tokens; Starter, VIP, XpPotion1 and the gem packs grant none")
+			for _, key in ipairs(LOCKED) do
+				local it = Cat.Item(key)
+				tokensOf:case(it ~= nil and it.Created == true and type(it.Grants) == "table" and (it.Grants.Tokens or 0) > 0, key)
+			end
+			for _, key in ipairs(OPEN) do
+				local it = Cat.Item(key)
+				tokensOf:case(it ~= nil and it.Created == true and type(it.Grants) == "table" and it.Grants.Tokens == nil, key)
+			end
+			tokensOf:report()
+			local p = join("TokenLock", newUserId())
+			players[#players + 1] = p
+			T.check(loaded(p), "store token lock: (precondition) loaded")
+			local function promptsFor(id)
+				local n = 0
+				for _, e in ipairs(prompts) do
+					if e.Player == p and e.Id == id then
+						n = n + 1
+					end
+				end
+				return n
+			end
+			-- one PromptPurchase per key, 1.1 s apart (the 1 s prompt cooldown): { key = { ok, why, prompted } }
+			local function tryAll(keys)
+				local out = {}
+				for _, key in ipairs(keys) do
+					K.advance(1.1)
+					local before = promptsFor(IDS[key])
+					local ok, why = Store.PromptPurchase(p, key)
+					out[key] = { ok = ok, why = why, prompted = promptsFor(IDS[key]) - before }
+				end
+				return out
+			end
+			local function show(r)
+				return tostring(r.ok) .. " / " .. tostring(r.why) .. " / " .. r.prompted .. " prompts"
+			end
+			for _, case in ipairs({ { "Restricted", RESTRICTED }, { "Checking", CHECKING }, { nil, CHECKING }, { "error", CHECKING } }) do
+				mode = case[1]
+				local label = tostring(case[1] or "no answer")
+				local got = tryAll(LOCKED)
+				local refused = T.tally("store token lock: PolicyState " .. label .. ": Tokens1 / 2 / 3 and Pro are refused '" .. case[2] .. "' with no prompt")
+				for _, key in ipairs(LOCKED) do
+					refused:case(got[key].ok == false and got[key].why == case[2] and got[key].prompted == 0, key .. ": " .. show(got[key]))
+				end
+				refused:report()
+				local open = tryAll(OPEN)
+				local fine = T.tally("store token lock: PolicyState " .. label .. ": Starter, VIP, XpPotion1 and the gem packs are prompted once each")
+				for _, key in ipairs(OPEN) do
+					fine:case(open[key].ok == true and open[key].prompted == 1, key .. ": " .. show(open[key]))
+				end
+				fine:report()
+			end
+			-- the remote: a restricted account's StoreRequest("Buy", "Tokens1") toasts the text (bad), prompts nothing
+			mode = "Restricted"
+			for _, key in ipairs(LOCKED) do
+				K.advance(1.1)
+				local mark, before = K.logSize(), promptsFor(IDS[key])
+				Mock.FromClient(remote, p, "Buy", key)
+				K.advance(0.2)
+				T.check(promptsFor(IDS[key]) == before and toastCount(p, RESTRICTED, mark) == 1, "store token lock: StoreRequest('Buy', '" .. key .. "') of a restricted account: the toast '" .. RESTRICTED .. "', no prompt",
+					toastsSince(p, mark))
+			end
+			-- a refused token pack does not take the prompt cooldown: an open product right after it is prompted
+			K.advance(1.1)
+			local okT = Store.PromptPurchase(p, "Tokens1")
+			local okS = Store.PromptPurchase(p, "Starter")
+			T.check(okT == false and okS == true, "store token lock: a refused token pack leaves the 1 s prompt cooldown alone (the Starter right after it is prompted)", tostring(okT) .. " / " .. tostring(okS))
+			-- Allowed: one prompt each
+			mode = "Allowed"
+			local got = tryAll(LOCKED)
+			local allowed = T.tally("store token lock: PolicyState Allowed: Tokens1 / 2 / 3 and Pro are prompted once each")
+			for _, key in ipairs(LOCKED) do
+				allowed:case(got[key].ok == true and got[key].prompted == 1, key .. ": " .. show(got[key]))
+			end
+			allowed:report()
+			-- a paid Tokens1 receipt of a restricted account is still granted (a paid receipt is never refused)
+			mode = "Restricted"
+			local cb = type(MPS.ProcessReceipt) == "function" and MPS.ProcessReceipt or Gems.ProcessReceipt
+			local tok0 = DS().GetTokens(p)
+			T.eq(runReceipt(cb, receipt(p, IDS.Tokens1, "lock-tok-1")), Enum.ProductPurchaseDecision.PurchaseGranted, "store token lock: a paid Tokens1 receipt for a restricted account answers PurchaseGranted")
+			T.eq(DS().GetTokens(p), tok0 + itemOf("Tokens1").Grants.Tokens, "store token lock: ...and grants its " .. tostring(itemOf("Tokens1").Grants.Tokens) .. " Cloud Tokens")
+			T.eq(#Mock.Errors, errs0, "store token lock: nothing raised")
+		end)
+		Gems.PolicyState = saved.PolicyState
+		MPS.PromptGamePassPurchase = nil
+		MPS.PromptProductPurchase = nil
+		MPS.UserOwnsGamePassAsync = nil
+		restoreIds(saved.Ids)
+		for i, p in ipairs(Config.Gems.Products) do
+			p.Id = saved.GemIds[i] or 0
+		end
 		leaveAll(players)
 		if not okRun then
 			error(errRun, 0)

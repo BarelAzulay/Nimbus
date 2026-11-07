@@ -33,8 +33,9 @@
 --   and the player attribute PaidRandomItemsRestricted (true while restricted or unknown) tells the client to hide them.
 --   Buying Gems themselves stays possible (a fixed amount is not a random item); Cloud Token roulettes are untouched.
 -- * Gem roulettes: every token roulette with a price in Config.Gems.RouletteGemPrices (the same odds as with Cloud
---   Tokens) and the gems-only Secret roulette (Config.Gems.SecretRoulette, AllowSecret = true: the ONLY source of
---   Secret pets) at the Storm Altar. PetService.BuyRoulette(player, rouletteId, "Gems") charges and grants atomically;
+--   Tokens) and the gems-only Secret roulette (Config.Gems.SecretRoulette, AllowSecret = true) at the Storm Altar. Secret
+--   pets come from the Secret roulette and from Celestial's 2% Secret row (its AllowSecret, lobby-shop 16.1: token and gem
+--   rolls alike; Quote hands AllowSecret on). PetService.BuyRoulette(player, rouletteId, "Gems") charges and grants atomically;
 --   this module quotes the price and checks the policy. Odds are always available: GetOdds / GetRarityOdds give the
 --   exact numbers the roll uses, and a roulette whose odds cannot be listed is not sold.
 --

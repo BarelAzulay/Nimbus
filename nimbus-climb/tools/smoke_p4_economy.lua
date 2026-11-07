@@ -981,14 +981,16 @@ local function simChecks(TC, PC, Config)
 		"economy: sim EVOLUTION_LEVELS / EVOLUTION_BONUS == PetCatalog ({20, 50}, {1.5, 1.875})")
 	T.check(listEq(get("EVOLVE_TWICE"), twice), "economy: sim EVOLVE_TWICE == PetCatalog.MaxEvolution(rarity) == 2", show(sim.EVOLVE_TWICE) .. " vs " .. show(twice))
 	T.check(PC.LevelBonus == 0.1, "economy: the sim's level factor (1 + 0.1 x (level - 1) x bonus) == PetCatalog.LevelBonus")
+	-- lobby-shop Task 16 (spec 16.1): seven columns, Common .. Secret (Celestial's 2% Secret row makes the four Secret
+	-- pets rollable; the sim's PET_ROLLABLE / ODDS_ grew a Secret column)
 	local rollable, econ = {}, {}
-	for i = 1, 6 do
+	for i = 1, #RARITY_ORDER do
 		rollable[i], econ[i] = 0, 0
 	end
 	for _, def in ipairs(PC.Pets) do
 		-- store (2026-11-04): the exclusive pets (Week Wisp, Crown Phoenix) are in no roulette (PC.IsRollable false)
 		if not def.EventOnly and not PC.IsExclusive(def.Id) then
-			for i = 1, 6 do
+			for i = 1, #RARITY_ORDER do
 				if RARITY_ORDER[i] == def.Rarity then
 					rollable[i] = rollable[i] + 1
 					if def.Role == "Economy" then
@@ -1000,15 +1002,47 @@ local function simChecks(TC, PC, Config)
 	end
 	T.check(listEq(get("PET_ROLLABLE"), rollable) and listEq(get("PET_ECON_ROLLABLE"), econ),
 		"economy: sim PET_ROLLABLE / PET_ECON_ROLLABLE == rollable (Economy) pets per rarity in PetCatalog", show(rollable) .. " / " .. show(econ))
-	local oddsT = T.tally("economy: sim ODDS_<roulette> == Config.Roulettes odds (Common .. Mythic)")
+	local oddsT = T.tally("economy: sim ODDS_<roulette> == Config.Roulettes odds (Common .. Secret)")
 	for _, roulette in ipairs(Config.Roulettes) do
 		local got = {}
-		for i = 1, 6 do
+		for i = 1, #RARITY_ORDER do
 			got[i] = roulette.Odds[RARITY_ORDER[i]] or 0
 		end
 		oddsT:case(listEq(get("ODDS_" .. roulette.Id), got), roulette.Id .. ": sim " .. show(sim["ODDS_" .. roulette.Id]) .. " vs " .. show(got))
 	end
 	oddsT:report()
+	-- lobby-shop Task 16 (spec 16.1, the owner's prices): the sim's gem / token price constants == Config / TycoonCatalog
+	local G = Config.Gems
+	local spins, packs, robux, tokenPacks, potion = {}, {}, {}, {}, nil
+	for i, id in ipairs({ "Cloud", "Storm", "Sky", "Celestial" }) do
+		spins[i] = G.RouletteGemPrices[id]
+	end
+	for i, p in ipairs(G.Products) do
+		packs[i], robux[i] = p.Gems, p.Robux
+	end
+	for i, key in ipairs({ "Tokens1", "Tokens2", "Tokens3" }) do
+		for _, it in ipairs(Config.Store.Items) do
+			if it.Key == key then
+				tokenPacks[i] = it.Grants.Tokens
+			end
+		end
+	end
+	for _, it in ipairs(Config.Store.GemItems or {}) do
+		if it.Key == "XpPotionGems" then
+			potion = it.Gems
+		end
+	end
+	local mix = { TC.Fusion.Mix.Mythic.Gems, TC.Fusion.Mix.Secret.Gems }
+	local gemT = T.tally("economy: the sim's GEM_SPIN / GEM_SECRET / SECRET_PITY / GEM_MIX / GEM_POTION / GEM_PACKS / PACK_ROBUX / TOKEN_PACKS == Config / TycoonCatalog")
+	gemT:case(listEq(get("GEM_SPIN"), spins), "GEM_SPIN: sim " .. show(sim.GEM_SPIN) .. " vs " .. show(spins))
+	gemT:case(near(get("GEM_SECRET"), G.SecretRoulette.GemPrice), "GEM_SECRET: sim " .. tostring(sim.GEM_SECRET) .. " vs " .. tostring(G.SecretRoulette.GemPrice))
+	gemT:case(near(get("SECRET_PITY"), G.SecretRoulette.PityAt), "SECRET_PITY: sim " .. tostring(sim.SECRET_PITY) .. " vs " .. tostring(G.SecretRoulette.PityAt))
+	gemT:case(listEq(get("GEM_MIX"), mix), "GEM_MIX: sim " .. show(sim.GEM_MIX) .. " vs " .. show(mix))
+	gemT:case(near(get("GEM_POTION"), potion), "GEM_POTION: sim " .. tostring(sim.GEM_POTION) .. " vs " .. tostring(potion))
+	gemT:case(listEq(get("GEM_PACKS"), packs), "GEM_PACKS: sim " .. show(sim.GEM_PACKS) .. " vs " .. show(packs))
+	gemT:case(listEq(get("PACK_ROBUX"), robux), "PACK_ROBUX: sim " .. show(sim.PACK_ROBUX) .. " vs " .. show(robux))
+	gemT:case(listEq(get("TOKEN_PACKS"), tokenPacks), "TOKEN_PACKS: sim " .. show(sim.TOKEN_PACKS) .. " vs " .. show(tokenPacks))
+	gemT:report()
 	local unchecked = {}
 	for _, name in ipairs(order) do
 		if not used[name] then

@@ -400,7 +400,7 @@ Config.Rarities = {
 	{ Id = "Epic", Order = 4, Color = Color3.fromRGB(176, 108, 232) },
 	{ Id = "Legendary", Order = 5, Color = Color3.fromRGB(242, 182, 68) },
 	{ Id = "Mythic", Order = 6, Color = Color3.fromRGB(238, 98, 140) },
-	{ Id = "Secret", Order = 7, Color = Color3.fromRGB(40, 40, 52) }, -- v3: gems-only Secret roulette (phase 2)
+	{ Id = "Secret", Order = 7, Color = Color3.fromRGB(40, 40, 52) }, -- the gems-only Secret Roulette and Celestial's 2% (lobby-shop 16.1)
 }
 
 Config.Pets = {
@@ -411,7 +411,8 @@ Config.Pets = {
 	PerkCaps = { MaxHealth = 0.5, TokenBonus = 1.0, StaminaRegen = 0.6, CheckpointHeal = 1.0 },
 }
 
--- Cost in cloud tokens. Odds are relative weights per rarity (pets inside a rarity are equally likely).
+-- Cost in cloud tokens. Odds are relative weights per rarity (pets inside a rarity are equally likely). A Secret row
+-- counts only with AllowSecret = true (PetCatalog drops it otherwise; PetService refuses a Secret pet before the charge).
 Config.Roulettes = {
 	{
 		Id = "Cloud",
@@ -439,7 +440,9 @@ Config.Roulettes = {
 		DisplayName = "Celestial Roulette",
 		Price = 5000,
 		Color = Color3.fromRGB(236, 120, 170),
-		Odds = { Epic = 45, Legendary = 40, Mythic = 15 },
+		-- AllowSecret: a 2% Secret egg, token and gem rolls (lobby-shop 16.1; the pity stays the Secret Roulette's)
+		AllowSecret = true,
+		Odds = { Epic = 43, Legendary = 40, Mythic = 15, Secret = 2 },
 	},
 }
 
@@ -519,21 +522,23 @@ Config.Elements = {
 -- Phase 2: Gems (premium currency bought with Robux). The owner creates Developer Products on the Creator Hub and
 -- pastes their ids here; id 0 means "not created yet" and the product is hidden.
 Config.Gems = {
+	-- lobby-shop 16.1 (the owner's prices): Robux = the suggested Creator Hub price (for the owner and the sims; never
+	-- shown in the game)
 	Products = {
-		{ Id = 0, Gems = 100, Name = "Pouch of Gems" },
-		{ Id = 0, Gems = 550, Name = "Bag of Gems" },
-		{ Id = 0, Gems = 1200, Name = "Chest of Gems" },
-		{ Id = 0, Gems = 6500, Name = "Vault of Gems" },
+		{ Id = 0, Gems = 200, Name = "Pouch of Gems", Robux = 49 },
+		{ Id = 0, Gems = 670, Name = "Bag of Gems", Robux = 149 },
+		{ Id = 0, Gems = 1950, Name = "Chest of Gems", Robux = 399 },
+		{ Id = 0, Gems = 5300, Name = "Vault of Gems", Robux = 999 },
 	},
-	-- Gem prices for the token roulettes (a cheaper premium way to roll); the Secret roulette is gems only.
-	RouletteGemPrices = { Cloud = 5, Storm = 20, Sky = 75, Celestial = 300 },
+	-- Gem prices for the token roulettes (a premium way to roll); the Secret Roulette is gems only.
+	RouletteGemPrices = { Cloud = 20, Storm = 40, Sky = 60, Celestial = 180 },
 	SecretRoulette = {
 		Id = "Secret",
 		DisplayName = "Secret Roulette",
-		GemPrice = 1500,
+		GemPrice = 500,
 		Color = Color3.fromRGB(70, 90, 200),
 		AllowSecret = true,
-		Odds = { Mythic = 85, Secret = 15 },
+		Odds = { Mythic = 60, Secret = 40 },
 		-- lobby shop (spec 5.2, the Secret pity): the PityAt-th spin in a row without a Secret gives a Secret (the count
 		-- lives in the save, Pity.Secret; PetService forces that spin's rarity, the strip still shows the odds above)
 		PityAt = 7,
@@ -576,9 +581,11 @@ Config.Store = {
 		{ Key = "PetXp2x", Kind = "Pass", Tab = "Passes", Id = 0, Robux = 450, Name = "x2 Pet XP", Grants = { Perks = { "XpX2" } } },
 		{ Key = "XpPotion1", Kind = "Product", Tab = "Boosts", Id = 0, Robux = 49, Name = "XP Potion (1 h)", Grants = { Boost = { XpPotion = 3600 } } },
 		{ Key = "XpPotion3", Kind = "Product", Tab = "Boosts", Id = 0, Robux = 99, Name = "XP Potion (3 h)", Grants = { Boost = { XpPotion = 10800 } } },
-		{ Key = "Tokens1", Kind = "Product", Tab = "Currency", Id = 0, Robux = 49, Name = "500 Cloud Tokens", Grants = { Tokens = 500 } },
-		{ Key = "Tokens2", Kind = "Product", Tab = "Currency", Id = 0, Robux = 149, Name = "2,500 Cloud Tokens", Grants = { Tokens = 2500 } },
-		{ Key = "Tokens3", Kind = "Product", Tab = "Currency", Id = 0, Robux = 399, Name = "10,000 Cloud Tokens", Grants = { Tokens = 10000 } },
+		-- lobby-shop 16.1: a Product that grants Tokens (these three and the Pro Pack) is prompted only for an account whose
+		-- GemService.PolicyState is "Allowed" (a token spin can give a Secret); a paid receipt is always granted
+		{ Key = "Tokens1", Kind = "Product", Tab = "Currency", Id = 0, Robux = 49, Name = "1,500 Cloud Tokens", Grants = { Tokens = 1500 } },
+		{ Key = "Tokens2", Kind = "Product", Tab = "Currency", Id = 0, Robux = 149, Name = "7,500 Cloud Tokens", Grants = { Tokens = 7500 } },
+		{ Key = "Tokens3", Kind = "Product", Tab = "Currency", Id = 0, Robux = 399, Name = "30,000 Cloud Tokens", Grants = { Tokens = 30000 } },
 		-- Cash packs: NOT on sale (13b.1: a kid who Prestiges five minutes after buying loses it). Kept with Enabled = false so
 		-- the data is ready if the owner turns them on (Q5). Amounts = 20 min / 1 h / 3 h of the median minute-60 income of
 		-- tools/sim_tycoon.py --quiet (146 Cash/s on 2026-11-04), rounded to two figures.
@@ -594,7 +601,7 @@ Config.Store = {
 	-- a gem item sells potion time only (StoreCatalog.Validate), refused while the x2 Pet XP pass is Owned or Checking and
 	-- past Potion.CapSeconds; restricted accounts may buy it (it is not random)
 	GemItems = {
-		{ Key = "XpPotionGems", Gems = 75, Name = "XP Potion (30 min)", Grants = { Boost = { XpPotion = 1800 } } },
+		{ Key = "XpPotionGems", Gems = 100, Name = "XP Potion (30 min)", Grants = { Boost = { XpPotion = 1800 } } },
 	},
 }
 

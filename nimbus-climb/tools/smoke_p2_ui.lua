@@ -950,8 +950,13 @@ local function clientScenarios()
 		local chances = secret and find(secret, "Chances")
 		local mythic = chances and find(chances, "Chance_Mythic")
 		local secretChance = chances and find(chances, "Chance_Secret")
-		T.check(mythic and secretChance and mythic.Text:find("85%", 1, true) and secretChance.Text:find("15%", 1, true),
-			"p2ui shop: the Secret roulette shows its odds (Mythic 85%, Secret 15%)")
+		-- lobby-shop Task 16 (spec 16.1): the odds come from Config.Gems.SecretRoulette (Mythic 60 / Secret 40; was 85 / 15)
+		local srOdds = Config.Gems.SecretRoulette.Odds
+		local srTotal = (srOdds.Mythic or 0) + (srOdds.Secret or 0)
+		local wantM = tostring(math.floor(srOdds.Mythic / srTotal * 100 + 0.5)) .. "%"
+		local wantS = tostring(math.floor(srOdds.Secret / srTotal * 100 + 0.5)) .. "%"
+		T.check(mythic and secretChance and mythic.Text:find(wantM, 1, true) and secretChance.Text:find(wantS, 1, true),
+			"p2ui shop: the Secret roulette shows its odds (Mythic " .. wantM .. ", Secret " .. wantS .. ")", mythic and secretChance and (mythic.Text .. " / " .. secretChance.Text) or "no chance labels")
 		mark = #Mock.RemoteLog
 		Mock.Click(find(secret, "Spin"))
 		advance(0.3)

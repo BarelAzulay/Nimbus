@@ -111,8 +111,9 @@
 --             Helper: PetCatalog.IsExclusive(id) -> bool (false for unknown ids).
 --
 -- Secret pets (Rarity "Secret") come only from a roulette that sets `AllowSecret = true`: the gems-only Secret
--- Roulette (Config.Gems.SecretRoulette). No token roulette does, so RollPet / GetOdds / PossiblePets offer them only
--- for "Secret", and IsRollable (which loops Config.Roulettes) answers false for them.
+-- Roulette (Config.Gems.SecretRoulette) and, since lobby-shop 16.1, the Celestial Roulette's 2% Secret row. Every other
+-- roulette drops a Secret row (rarityAllowed); IsRollable (which loops Config.Roulettes) answers true for the rollable
+-- Secret pets through Celestial (never an EventOnly or ExclusiveTo one).
 --
 -- Perk strength scales with rarity (Common ~2-4%, Mythic ~10-25%, Secret a step above Mythic). Pets never touch
 -- run speed or jump power, so the course physics guarantees keep holding.
@@ -822,7 +823,7 @@ local function findRoulette(rouletteId)
 	return nil
 end
 
--- Secret pets only come from a roulette that opts in with AllowSecret = true (phase 2's gems-only roulette).
+-- Secret pets only come from a roulette that opts in with AllowSecret = true (the Secret Roulette, Celestial: 16.1).
 local function rarityAllowed(roulette, rarityId)
 	if rarityId == SECRET then
 		return roulette.AllowSecret == true
@@ -978,7 +979,7 @@ function PetCatalog.PossiblePets(rouletteId)
 	return out
 end
 
--- Extra: true when at least one current roulette can roll this pet (Secret pets: false until phase 2).
+-- Extra: true when at least one token roulette can roll this pet (Secret pets: through Celestial's AllowSecret row).
 function PetCatalog.IsRollable(petId)
 	local def = PetCatalog.Get(petId)
 	if not def or def.EventOnly == true or def.ExclusiveTo ~= nil then

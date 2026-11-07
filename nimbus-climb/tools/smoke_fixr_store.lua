@@ -7,7 +7,8 @@
 --                                  DataStore) and while the profile is provisional (an outage), bought or not, by
 --                                  PromptPurchase and by a hand-sent StoreRequest; a consumable is still prompted (its
 --                                  receipt waits for the recovery, Z13); after the recovery the bought Starter answers "You
---                                  already have that!" and the unbought Pro is prompted
+--                                  already have that!" and the unbought Pro is prompted (lobby-shop Task 16: with
+--                                  GemService.PolicyState stubbed "Allowed", since Tokens1 / Pro are policy-locked)
 --   fixr_store_bought_attr         Multipliers' StoreBought attribute: absent while the save loads and while provisional (a
 --                                  Refresh too), the csv after the recovery (ProfileRebased), "" on a loaded empty record,
 --                                  and back to absent when GetStore answers nil again (a DataService.GetStore double)
@@ -166,7 +167,16 @@ S.fixr_store_prompt_provisional = guarded("fixr_store_prompt_provisional", funct
 		return
 	end
 	local DSt = Mock.DataStore
-	local saved = { Ids = savedIds(), Fail = DSt.Fail, Latency = DSt.Latency }
+	local Gems = requireAt("server/Services/GemService")
+	local saved = { Ids = savedIds(), Fail = DSt.Fail, Latency = DSt.Latency, PolicyState = Gems and Gems.PolicyState }
+	-- lobby-shop Task 16 (spec 16.1): Tokens1 and the Pro Pack grant Cloud Tokens, so StoreService prompts them only for
+	-- an account whose GemService.PolicyState is "Allowed" (the mock's policy answer stays unknown); this scenario is about
+	-- the Once guard and the provisional save, so the policy answer is stubbed "Allowed" here (store_token_lock covers it)
+	if Gems then
+		Gems.PolicyState = function()
+			return "Allowed"
+		end
+	end
 	local players, prompts = {}, {}
 	MPS.PromptProductPurchase = function(_, player, id)
 		prompts[#prompts + 1] = { Kind = "Product", Player = player, Id = id }
@@ -243,6 +253,9 @@ S.fixr_store_prompt_provisional = guarded("fixr_store_prompt_provisional", funct
 	end)
 	MPS.PromptProductPurchase = nil
 	MPS.PromptGamePassPurchase = nil
+	if Gems then
+		Gems.PolicyState = saved.PolicyState
+	end
 	DSt.Latency = saved.Latency
 	DSt.Fail = saved.Fail
 	restoreIds(saved.Ids)

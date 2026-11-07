@@ -205,8 +205,8 @@ local function serverScenarios()
 	end
 
 	-- a stand-in for PetService's roll generator (PetService._SetRngForTest): call n of :Float lands at fracs[n] of its range
-	-- (`default` once the list ran out), :Int always on its low end. The Secret Roulette (Mythic 85 / Secret 15): 0.3 is a
-	-- Mythic, 0.95 a Secret
+	-- (`default` once the list ran out), :Int always on its low end. The Secret Roulette (Mythic 60 / Secret 40 since Task
+	-- 16): 0.3 is a Mythic (band 0 .. 0.6), 0.95 a Secret (band 0.6 .. 1)
 	local MYTHIC, SECRET = 0.3, 0.95
 	local function stubRng(fracs, default)
 		local rng = { n = 0 }
@@ -892,9 +892,11 @@ local function serverScenarios()
 					local uidB = newUserId()
 					local b = join("SettleGemBuy", uidB)
 					players[#players + 1] = b
-					D.AddGems(b, 75)
+					-- lobby-shop Task 16: the gem potion's price from Config (100 gems; was a literal 75)
+					local potionGems = K.config().Store.GemItems[1].Gems
+					D.AddGems(b, potionGems)
 					local gemsB, endsB = D.GetGems(b), Store.BoostEnds(b, "XpPotion")
-					T.check(D.GemsSettled(b) == false and gemsB >= 75, "gem settle gem buy: (precondition) not settled right after the join, 75 gems or more", tostring(gemsB))
+					T.check(D.GemsSettled(b) == false and gemsB >= potionGems, "gem settle gem buy: (precondition) not settled right after the join, " .. potionGems .. " gems or more", tostring(gemsB))
 					local markB = K.logSize()
 					Mock.FromClient(storeRemote, b, "GemBuy", "XpPotionGems")
 					advance(0.2)
@@ -911,8 +913,8 @@ local function serverScenarios()
 						tostring(D.GetGems(b)) .. " gems, ends " .. tostring(Store.BoostEnds(b, "XpPotion")))
 					T.eq(D._SettleForTest(b), true, "gem settle gem buy: (setup) _SettleForTest(p)")
 					local okB2 = Store.BuyWithGems(b, "XpPotionGems")
-					T.check(okB2 == true and D.GetGems(b) == gemsB - 75 and Store.BoostEnds(b, "XpPotion") == os.time() + 1800,
-						"gem settle gem buy: ...after the settle the potion sells (75 gems, 30 minutes; the settle was the only hold)", tostring(D.GetGems(b)) .. " gems")
+					T.check(okB2 == true and D.GetGems(b) == gemsB - potionGems and Store.BoostEnds(b, "XpPotion") == os.time() + 1800,
+						"gem settle gem buy: ...after the settle the potion sells (" .. potionGems .. " gems, 30 minutes; the settle was the only hold)", tostring(D.GetGems(b)) .. " gems")
 					leave(b)
 				end
 			end)

@@ -4,9 +4,9 @@
 --   p2gems_odds       (pure) the GemService API; Config.Gems (gem packs: product id 0 = hidden; gem prices of the
 --                     token roulettes; the gems-only Secret roulette); gem roulette definitions (copies); odds that sum
 --                     to 100% and equal the token roulettes' (PetCatalog.GetOdds) or Config.Gems.SecretRoulette's
---                     shares; Secret pets only from the Secret roulette (thousands of rolls of every token roulette with
---                     both roll functions never give one; the Secret roulette gives only Mythic / Secret pets, at its
---                     odds, and every Secret pet can come out)
+--                     shares; Secret pets only from a roulette with AllowSecret (thousands of rolls of every token roulette
+--                     without it, both roll functions, never give one; Celestial's 2% row since Task 16 at its odds; the
+--                     Secret roulette gives only Mythic / Secret pets, at its odds, and every Secret pet can come out)
 --   p2gems_receipts   (booted) MarketplaceService.ProcessReceipt is GemService's; with pasted product ids a purchase
 --                     grants its Gems ONCE, saved with the receipt before PurchaseGranted: a second call, two calls at
 --                     once, a rejoin and an 80-character purchase id grant nothing more; NotProcessedYet (nothing
@@ -352,8 +352,10 @@ S.p2gems_odds = guarded("p2gems_odds", function()
 		local def = Gs.GetRoulette(r.Id)
 		if price ~= nil then
 			priced = priced + 1
-			T.check(def ~= nil and def.GemPrice == price and def.GemsOnly == false and def.AllowSecret == false and Gs.RoulettePrice(r.Id) == price and def.DisplayName == r.DisplayName,
-				"gems: the " .. r.Id .. " roulette also costs " .. tostring(price) .. " Gems (Config.Gems.RouletteGemPrices), no Secret pets")
+			-- Task 16 (spec 16.1): AllowSecret follows the token roulette's own flag (Celestial: true, the 2% Secret row)
+			local allow = r.AllowSecret == true
+			T.check(def ~= nil and def.GemPrice == price and def.GemsOnly == false and def.AllowSecret == allow and Gs.RoulettePrice(r.Id) == price and def.DisplayName == r.DisplayName,
+				"gems: the " .. r.Id .. " roulette also costs " .. tostring(price) .. " Gems (Config.Gems.RouletteGemPrices), " .. (allow and "Secret pets allowed (AllowSecret)" or "no Secret pets"))
 		else
 			T.check(def == nil and Gs.RoulettePrice(r.Id) == nil, "gems: the " .. r.Id .. " roulette has no gem price")
 		end
@@ -408,24 +410,36 @@ S.p2gems_odds = guarded("p2gems_odds", function()
 			rarityOk = false
 		end
 	end
-	T.check(rarityOk and #Gs.GetRarityOdds(sr.Id) >= 1, "gems: the Secret roulette's rarity shares are Config.Gems.SecretRoulette.Odds (Mythic 85 / Secret 15 -> 85% / 15%)")
+	T.check(rarityOk and #Gs.GetRarityOdds(sr.Id) >= 1, "gems: the Secret roulette's rarity shares are Config.Gems.SecretRoulette.Odds (Mythic 60 / Secret 40 -> 60% / 40% since Task 16)")
 
-	-- Secret pets only from the Secret roulette
+	-- Secret pets only from a roulette with AllowSecret (the Secret roulette and, since Task 16, Celestial's 2% row)
 	local secretPets = Pc.ListByRarity(SECRET)
 	if not T.check(#secretPets >= 3, "gems: (precondition) the catalog has Secret pets") then
 		return
 	end
-	local inPools = {}
+	local inPools, missing = {}, {}
 	for _, r in ipairs(Config.Roulettes) do
 		for _, list in ipairs({ Pc.PossiblePets(r.Id), Gs.PossiblePets(r.Id) }) do
+			local listed = {}
 			for _, def in ipairs(list) do
 				if def.Rarity == SECRET then
-					inPools[#inPools + 1] = r.Id .. ":" .. def.Id
+					listed[def.Id] = true
+					if r.AllowSecret ~= true then
+						inPools[#inPools + 1] = r.Id .. ":" .. def.Id
+					end
+				end
+			end
+			if r.AllowSecret == true then
+				for _, def in ipairs(secretPets) do
+					if not listed[def.Id] then
+						missing[#missing + 1] = r.Id .. ":" .. def.Id
+					end
 				end
 			end
 		end
 	end
-	T.check(#inPools == 0, "gems: no token roulette lists a Secret pet (PetCatalog and GemService pools)", table.concat(inPools, ", "))
+	T.check(#inPools == 0, "gems: no token roulette without AllowSecret lists a Secret pet (PetCatalog and GemService pools)", table.concat(inPools, ", "))
+	T.check(#missing == 0, "gems: a token roulette with AllowSecret (Celestial, Task 16) lists every rollable Secret pet in both pools", table.concat(missing, ", "))
 	local pool, poolRarities = {}, {}
 	for _, def in ipairs(Gs.PossiblePets(sr.Id)) do
 		pool[def.Id] = true
@@ -445,16 +459,31 @@ S.p2gems_odds = guarded("p2gems_odds", function()
 
 	local Util = requireAt("shared/Util")
 	local rng = Util.NewRng(424242)
-	local leaks = T.tally("gems: Secret pets only from the Secret roulette: 1500 rolls x 2 roll functions of every token roulette never give one")
+	-- Task 16: a roulette with AllowSecret (Celestial) gives Secrets at its odds instead: its share over the 3,000 rolls
+	-- stays inside 0.9 .. 3.1% (its Secret weight is 2%; about 4 sigma either way)
+	local leaks = T.tally("gems: Secret pets only where AllowSecret: 1500 rolls x 2 roll functions of every token roulette without it never give one; with it (Celestial) at 0.9 .. 3.1%")
 	for _, r in ipairs(Config.Roulettes) do
-		local found = nil
+		local found, nSecret = nil, 0
 		for _ = 1, 1500 do
 			local a, b = Pc.RollPet(r.Id, rng), Gs.RollPet(r.Id, rng)
-			if isSecretPet(a) or isSecretPet(b) or a == nil or b == nil then
+			if a == nil or b == nil then
 				found = tostring(a) .. " / " .. tostring(b)
 			end
+			for _, id in ipairs({ a, b }) do
+				if isSecretPet(id) then
+					nSecret = nSecret + 1
+					if r.AllowSecret ~= true then
+						found = tostring(a) .. " / " .. tostring(b)
+					end
+				end
+			end
 		end
-		leaks:case(found == nil, r.Id .. ": " .. tostring(found))
+		local share = nSecret / 3000
+		if r.AllowSecret == true then
+			leaks:case(found == nil and share >= 0.009 and share <= 0.031, string.format("%s: Secret share %.4f, %s", r.Id, share, tostring(found)))
+		else
+			leaks:case(found == nil, r.Id .. ": " .. tostring(found))
+		end
 	end
 	leaks:report()
 	local rolls, secrets, wrong, seen = 6000, 0, 0, {}
@@ -926,7 +955,7 @@ S.p2gems_roulettes = guarded("p2gems_roulettes", function()
 
 		-- every priced token roulette
 		setGems(p, 20000)
-		local cases = T.tally("gem roulettes: every token roulette with a gem price charges exactly that many Gems (no tokens), grants one non-Secret pet of its pool, answers Currency / Price / Gems")
+		local cases = T.tally("gem roulettes: every token roulette with a gem price charges exactly that many Gems (no tokens), grants one pet of its pool (a Secret only with AllowSecret), answers Currency / Price / Gems")
 		for _, r in ipairs(Config.Roulettes) do
 			local price = gemPrice(r.Id)
 			if price then
@@ -936,7 +965,8 @@ S.p2gems_roulettes = guarded("p2gems_roulettes", function()
 				local after = wallet(p)
 				local problems = resultProblems(res, r.Id)
 				local good = okR == true and #problems == 0 and after.Gems == before.Gems - price and after.Tokens == before.Tokens and after.Pets == before.Pets + 1
-					and after.Spins == before.Spins + 1 and res.Currency == "Gems" and res.Price == price and res.Gems == after.Gems and not isSecretPet(res.PetId)
+					and after.Spins == before.Spins + 1 and res.Currency == "Gems" and res.Price == price and res.Gems == after.Gems
+					and (r.AllowSecret == true or not isSecretPet(res.PetId)) -- Task 16: Celestial (AllowSecret) may hatch a Secret
 				cases:case(good, r.Id .. ": " .. table.concat(problems, ", ") .. " gems " .. before.Gems .. " -> " .. after.Gems)
 			end
 		end

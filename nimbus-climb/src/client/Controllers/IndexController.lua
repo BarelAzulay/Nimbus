@@ -1797,7 +1797,7 @@ function renderDetail()
 	else
 		local where = sourcesText(def)
 		if def.Rarity == "Secret" then
-			U.Info.Text = "A Secret pet. It will be summoned at the Storm Altar with Gems."
+			U.Info.Text = "A Secret pet. Summon it at the Storm Altar, or hatch it from the Celestial Roulette."
 		elseif where then
 			U.Info.Text = "Not discovered yet. Found in: " .. where .. "."
 		else

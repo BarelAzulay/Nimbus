@@ -300,16 +300,27 @@ local function serverScenarios()
 			local ok, valid, problems = pcall(PC.Validate)
 			T.check(ok and valid == true, "PetCatalog.Validate() passes with Stormfang and the elements", ok and table.concat(type(problems) == "table" and problems or {}, "; ") or tostring(valid))
 		end
-		-- Secret pets come from the phase-2 gems-only roulette: no current roulette offers Stormfang
-		local offeredBy = {}
+		-- Secret pets come from the gems-only Secret roulette and (lobby-shop Task 16, spec 16.1) Celestial's 2% Secret row:
+		-- only a token roulette with AllowSecret offers Stormfang, at its Secret share split over the rollable Secret pets
+		local offeredBy, wrong = {}, {}
 		for _, r in ipairs(Config.Roulettes) do
+			local secretShare = 0
+			for _, row in ipairs(PC.GetRarityOdds(r.Id)) do
+				if row.Rarity == SECRET then
+					secretShare = row.Chance / math.max(1, row.Count or #PC.RarityPool(r.Id, SECRET))
+				end
+			end
 			for _, o in ipairs(PC.GetOdds(r.Id)) do
 				if o.PetId == SPEC.petId then
 					offeredBy[#offeredBy + 1] = r.Id
+					if r.AllowSecret ~= true or math.abs(o.Chance - secretShare) > 1e-12 then
+						wrong[#wrong + 1] = r.Id .. string.format(" %.4f vs %.4f", o.Chance, secretShare)
+					end
 				end
 			end
 		end
-		T.check(#offeredBy == 0 and (type(PC.IsRollable) ~= "function" or PC.IsRollable(SPEC.petId) == false), "Stormfang: no current roulette offers it (the Secret roulette comes in phase 2)", table.concat(offeredBy, ", "))
+		T.check(#offeredBy >= 1 and #wrong == 0 and (type(PC.IsRollable) ~= "function" or PC.IsRollable(SPEC.petId) == true),
+			"Stormfang: only a token roulette with AllowSecret (Celestial) offers it, at its Secret share per Secret pet; IsRollable true", table.concat(offeredBy, ", ") .. " | " .. table.concat(wrong, ", "))
 		local secrets = PC.ListByRarity(SECRET)
 		T.check(secrets[1] == def, "Stormfang: listed first among the Secret pets", secrets[1] and secrets[1].Id or "none")
 		local leads = false

@@ -6,8 +6,9 @@
 --                   RarityPool keep RollPet's exact draws (10,000 seeds per roulette: RollPet == RollFromRarity(RollRarity)
 --                   == an inline copy of the old algorithm), the rarity shares hold, the pools never hold an EventOnly or
 --                   ExclusiveTo pet; GemService.RollPet's ForceRarity (always that rarity, the rng left where an unforced
---                   roll leaves it); PetCatalog and GemService answer the Secret Roulette with one table (Mythic 85 / Secret
---                   15); Util.NewRng() without a seed calls Random.new() with no argument
+--                   roll leaves it); PetCatalog and GemService answer the Secret Roulette with one table (Mythic 60 / Secret
+--                   40 since Task 16; Celestial ends with Secret 2%); Util.NewRng() without a seed calls Random.new() with no
+--                   argument
 --   egg_spin_x1     (server, booted; Task 4) the reply of one spin (Pulls[1] with every field, the mirrored top level,
 --                   PoolSize, the 40-cell strip with the winner at 34), one charge, Stats.Spins + 1, one Rolled; the
 --                   AllowSecret guard (a Secret pet out of a token roulette refuses the whole request, an x3 too, before
@@ -22,9 +23,9 @@
 --                   Common at 99 -> each Common pull pays the Common Index Tokens (Substitute), every spin is charged and
 --                   the Common share holds; one Common at 99 -> that pet is re-picked away, never granted; the Secret
 --                   Roulette with both Mythics at 99 -> Mythic pulls pay the Mythic Index Tokens and the natural Secret
---                   share stays at 15%; Task 5: the pity forces pulls (each a Secret), GetPity's Spins grows by every
---                   spin (substitutes included), every reply carries SecretPity.Left, and the share over all pulls is
---                   near 15% / (1 - 0.85^7) = 22.1% (the pity working)
+--                   share stays at its odds (40% since Task 16); Task 5: the pity forces pulls (each a Secret), GetPity's
+--                   Spins grows by every spin (substitutes included), every reply carries SecretPity.Left, and the share
+--                   over all pulls is near 40% / (1 - 0.60^7) = 41.2% (the pity working)
 --   egg_strip       (server, booted; Task 4) the strips come from their own generator (a fixed roll generator leaves them
 --                   free), the three strips of an x3 differ, every filler is a pet that roulette can roll
 --   egg_announce    (server, booted; Task 6) one chat line per request, Legendary and up (spec 5.5): an Epic pull is not
@@ -35,6 +36,11 @@
 --                   Legendary requests in 10 s reach a witness as at most 2 lines; a held line of a player who left is
 --                   dropped
 --   egg_spin_x1 also checks (Task 6) that an Epic pull sends no "pull" Notify and a Legendary sends one
+--   celestial_secret (server, booted; Task 16, spec 16.1) Celestial's 2% Secret row (AllowSecret): the data (Secret 0.02
+--                   last, the four rollable Secret pets, 20,000 seeded rolls at 2% +- 0.3); steered to the Secret band a
+--                   token x1, a token x3 and a gem x1 each grant Secret pets, charge once, leave Pity.Secret alone and send
+--                   one chat line; a Secret roll is granted by Celestial and refused by Cloud / Storm / Sky before the
+--                   charge; every Secret full -> the Secret Index tokens as the substitute
 --   client_notify_pull (client; Task 6) Notify kind "pull" -> a system chat line in TextChatService's RBXSystem channel
 --                   (the rarity word in its Config.Rarities colour, rich text escaped), no toast; without the channel ->
 --                   today's toast with the text
@@ -188,8 +194,13 @@ local function serverScenarios()
 			end
 		end
 		T.check(same, "eggs: PetCatalog.GetRarityOdds(\"Secret\") equals GemService.GetRarityOdds(\"Secret\") row for row (Rarity, Chance, Count)", fmt("%d / %d rows", #pr, #gr))
-		T.check(#pr == 2 and pr[1].Rarity == "Mythic" and abs(pr[1].Chance - 0.85) < 1e-12 and pr[2].Rarity == SECRET and abs(pr[2].Chance - 0.15) < 1e-12,
-			"eggs: the Secret Roulette's odds are Mythic 85% / Secret 15%", pr[1] and fmt("%s %.4f", tostring(pr[1].Rarity), pr[1].Chance) or "no rows")
+		-- Task 16 (spec 16.1, the owner's odds): Mythic 60 / Secret 40 (was 85 / 15)
+		T.check(#pr == 2 and pr[1].Rarity == "Mythic" and abs(pr[1].Chance - 0.60) < 1e-12 and pr[2].Rarity == SECRET and abs(pr[2].Chance - 0.40) < 1e-12,
+			"eggs: the Secret Roulette's odds are Mythic 60% / Secret 40%", pr[1] and fmt("%s %.4f", tostring(pr[1].Rarity), pr[1].Chance) or "no rows")
+		local cr = PC.GetRarityOdds("Celestial")
+		local crLast = cr[#cr]
+		T.check(crLast ~= nil and crLast.Rarity == SECRET and abs(crLast.Chance - 0.02) < 1e-12, "eggs: the Celestial Roulette's last odds row is Secret 2% (AllowSecret, Task 16)",
+			crLast and fmt("%s %.4f", tostring(crLast.Rarity), crLast.Chance) or "no rows")
 		T.eq(idsOf(PC.PossiblePets(SECRET)), idsOf(GS.PossiblePets(SECRET)), "eggs: PossiblePets(\"Secret\") lists the same pets in PetCatalog and GemService")
 		local po, go = PC.GetOdds(SECRET), GS.GetOdds(SECRET)
 		local sameOdds = #po == #go and #po > 0
@@ -1045,7 +1056,7 @@ local function serverScenarios()
 			T.check(abs(n2 / SPINS2 - commonShare) <= 0.035, "egg full stack: ...the Common share is unchanged (within about 3 sigma at n = 2,000: 3.5 points)", fmt("%.4f", n2 / SPINS2))
 
 			-- the Secret Roulette with both Mythics at 99: Mythic pulls pay the Mythic Index Tokens; the natural Secret share
-			-- stays at 15% (only pulls without Pity count: a forced pity pull is not a natural one)
+			-- stays at its odds (40% since Task 16; only pulls without Pity count: a forced pity pull is not a natural one)
 			local sr = Config.Gems.SecretRoulette
 			local mythics = PC.RarityPool(sr.Id, "Mythic")
 			local fullM = {}
@@ -1118,7 +1129,7 @@ local function serverScenarios()
 			T.check(natural > 0 and abs(secretNatural / natural - want) <= 0.03, "egg full stack Secret: ...the natural Secret share (pulls without Pity) stays within 3 points of " .. fmt("%.0f%%", want * 100),
 				fmt("%d of %d natural pulls (%.4f)", secretNatural, natural, natural > 0 and secretNatural / natural or 0))
 			-- Task 5: the pity forces a Secret after every PityAt - 1 dry spins, so over every pull the long-run share is
-			-- want / (1 - (1 - want)^PityAt) (22.1% at 15% and 7): that is the pity working, not a failure
+			-- want / (1 - (1 - want)^PityAt) (41.2% at 40% and 7, Task 16): that is the pity working, not a failure
 			T.check(forced > 0 and #badForced == 0, "egg full stack Secret: ...the pity forced pulls (Pity == true) and every forced pull is a Secret",
 				forced .. " forced; " .. table.concat(badForced, " | "))
 			local pity1 = type(D.GetPity) == "function" and D.GetPity(p) or nil
@@ -1390,6 +1401,161 @@ local function serverScenarios()
 		end
 		K.flushErrors("egg_announce")
 		K.flushWarnings("egg_announce", ALLOWED_WARNINGS)
+	end)
+
+	------------------------------------------------------------------------------------------------------------------
+	-- celestial_secret (lobby-shop Task 16, spec 16.1): the Celestial Roulette's 2% Secret row (AllowSecret), token and
+	-- gem rolls; the pity stays the Secret Roulette's alone
+	------------------------------------------------------------------------------------------------------------------
+	S.celestial_secret = guarded("celestial_secret", function()
+		if not K.needBoot() then
+			return
+		end
+		local Config, PS, D, PC = B.mods()
+		local Util = req("shared/Util")
+		local MAX = Config.Pets.MaxPerStack
+		local cel = B.roulette("Celestial")
+		local players = {}
+		local origRoll = PC.RollPet
+		local okRun, errRun = pcall(function()
+			if not T.check(cel ~= nil and type(PS._SetRngForTest) == "function" and type(D.GetPity) == "function", "celestial secret: the Celestial roulette, PetService._SetRngForTest and DataService.GetPity exist") then
+				return
+			end
+			-- the data: the Celestial row lists Secret at 2% and the four rollable Secret pets
+			T.check(cel.AllowSecret == true, "celestial secret: Config.Roulettes Celestial has AllowSecret = true", tostring(cel.AllowSecret))
+			local rows = PC.GetRarityOdds(cel.Id)
+			local last = rows[#rows]
+			T.check(last ~= nil and last.Rarity == SECRET and abs(last.Chance - 0.02) < 1e-12, "celestial secret: PetCatalog.GetRarityOdds(\"Celestial\") ends with Secret 0.02",
+				last and fmt("%s %.4f", tostring(last.Rarity), last.Chance) or "no rows")
+			local possible = {}
+			for _, def in ipairs(PC.PossiblePets(cel.Id)) do
+				possible[type(def) == "table" and def.Id or tostring(def)] = true
+			end
+			local four = T.tally("celestial secret: PossiblePets(\"Celestial\") lists the four rollable Secret pets (PetCatalog.IsRollable true)")
+			for _, id in ipairs({ "stormfang", "eclipse_dragon", "obsidian_phoenix", "phantom_kitsune" }) do
+				four:case(possible[id] == true and PC.IsRollable(id) == true, id)
+			end
+			four:report()
+			T.check(possible.rime_wyrmling == nil, "celestial secret: ...never the EventOnly Secret (rime_wyrmling)")
+			local nSecret, N = 0, 20000
+			for s = 1, N do
+				local id = origRoll(cel.Id, Util.NewRng(s))
+				local def = id and PC.Get(id)
+				if def and def.Rarity == SECRET then
+					nSecret = nSecret + 1
+				end
+			end
+			T.check(abs(nSecret / N - 0.02) <= 0.003, "celestial secret: 20,000 seeded PetCatalog.RollPet(\"Celestial\") give Secret 2% +- 0.3 points", fmt("%d (%.4f)", nSecret, nSecret / N))
+
+			-- the booted spins, steered to Celestial's Secret band
+			B.installPolicy()
+			local p = B.join("CelSecret")
+			players[1] = p
+			local witness = B.join("CelWitness")
+			players[2] = witness
+			T.eq(D._SettleForTest(p), true, "celestial secret: (setup) the gem settle hold ends")
+			local prof = D.GetProfile(p)
+			local gemPrice = Config.Gems.RouletteGemPrices and Config.Gems.RouletteGemPrices[cel.Id]
+			local band = nil
+			local acc = 0
+			for _, row in ipairs(rows) do
+				if row.Rarity == SECRET then
+					band = acc + row.Chance / 2
+				end
+				acc = acc + row.Chance
+			end
+			if not T.check(band ~= nil and type(gemPrice) == "number", "celestial secret: (setup) Celestial has a Secret band and a gem price", tostring(band) .. " / " .. tostring(gemPrice)) then
+				return
+			end
+			-- one request: { ok, res, why, before, after, pity0, pity1, lines }
+			local function spin(currency, spins)
+				K.advance(11) -- past the 10 s announcement gap of the last request
+				B.give(p, 3 * cel.Price, 3 * gemPrice)
+				PS._SetRngForTest(B.steer({ band }), Util.NewRng(4401))
+				local out = { before = B.wallet(p), pity0 = D.GetPity(p) }
+				local mark = K.logSize()
+				local ok, res = PS.BuyRoulette(p, cel.Id, currency, spins)
+				K.advance(0.5)
+				out.ok, out.res, out.why = ok, res, type(res) == "table" and tostring(res.Reason) or tostring(res)
+				out.after, out.pity1, out.lines = B.wallet(p), D.GetPity(p), B.pullLines(witness, mark)
+				return out
+			end
+			local function pullsSecret(res, n)
+				if type(res) ~= "table" or type(res.Pulls) ~= "table" or #res.Pulls ~= n then
+					return false
+				end
+				for _, pull in ipairs(res.Pulls) do
+					if pull.Rarity ~= SECRET or pull.Pity ~= nil then
+						return false
+					end
+				end
+				return true
+			end
+			local function samePity(a, b)
+				return type(a) == "table" and type(b) == "table" and a.Spins == b.Spins and a.Hit == b.Hit
+			end
+			for _, case in ipairs({ { "token x1", nil, 1 }, { "token x3", nil, 3 }, { "gem x1", "Gems", 1 } }) do
+				local label, currency, n = case[1], case[2], case[3]
+				local r = spin(currency, n > 1 and n or nil)
+				T.check(r.ok == true and r.why ~= JAMMED and pullsSecret(r.res, n), "celestial secret: a steered Celestial " .. label .. " grants " .. n .. " Secret pet(s) (never 'The roulette jammed')", r.why)
+				local spent = currency == "Gems" and (r.before.Gems - r.after.Gems) or (r.before.Tokens - r.after.Tokens)
+				local price = (currency == "Gems" and gemPrice or cel.Price) * n
+				T.check(spent == price and r.after.Spins == r.before.Spins + n and r.after.Pets == r.before.Pets + n, "celestial secret: ..." .. label .. ": one charge of " .. price .. (currency == "Gems" and " gems" or " tokens") .. ", " .. n .. " pet(s)",
+					B.show(r.before) .. " -> " .. B.show(r.after))
+				T.check(samePity(r.pity0, r.pity1) and type(r.res) == "table" and r.res.SecretPity == nil, "celestial secret: ..." .. label .. ": Pity.Secret unchanged, no SecretPity in the reply",
+					tostring(r.pity0 and r.pity0.Spins) .. " -> " .. tostring(r.pity1 and r.pity1.Spins))
+				T.check(#r.lines == 1 and string.find(r.lines[1], SECRET, 1, true) ~= nil, "celestial secret: ..." .. label .. ": the witness gets one 'pull' chat line naming the Secret", table.concat(r.lines, " | "))
+				B.trimStacks(prof, 1)
+			end
+
+			-- a Secret roll: Celestial grants it; Cloud, Storm and Sky refuse before the charge
+			local secretPet = PC.ListByRarity(SECRET)[1].Id
+			PC.RollPet = function()
+				return secretPet
+			end
+			K.advance(11)
+			B.give(p, cel.Price, nil)
+			local before, pity0 = B.wallet(p), D.GetPity(p)
+			local okC, resC = PS.BuyRoulette(p, cel.Id)
+			K.advance(0.3)
+			T.check(okC == true and type(resC) == "table" and resC.PetId == secretPet and samePity(pity0, D.GetPity(p)) and B.wallet(p).Tokens == before.Tokens - cel.Price,
+				"celestial secret: a Secret pet rolled by Celestial is granted (charged once, Pity.Secret unchanged)", type(resC) == "table" and tostring(resC.Reason or resC.PetId) or tostring(resC))
+			B.trimStacks(prof, 1)
+			for _, id in ipairs({ "Cloud", "Storm", "Sky" }) do
+				local r = B.roulette(id)
+				K.advance(1)
+				B.give(p, r.Price, nil)
+				before = B.wallet(p)
+				local okR, whyR = PS.BuyRoulette(p, id)
+				K.advance(0.3)
+				T.check(okR == false and whyR == JAMMED and B.same(before, B.wallet(p)) and (prof.Pets[secretPet] or 0) <= 1,
+					"celestial secret: a Secret pet rolled by " .. id .. " is refused 'The roulette jammed, try again' before the charge", tostring(whyR) .. "; " .. B.show(B.wallet(p)))
+			end
+			PC.RollPet = origRoll
+
+			-- all four Secret pets full: the Celestial Secret pull pays the Secret Index tokens, charged once
+			for _, def in ipairs(PC.RarityPool(cel.Id, SECRET)) do
+				prof.Pets[def.Id] = MAX
+			end
+			D.MarkDirty(p)
+			local secretTokens = Config.Index.Rewards.Secret.Tokens
+			local r = spin(nil, nil)
+			local pull = type(r.res) == "table" and type(r.res.Pulls) == "table" and r.res.Pulls[1] or nil
+			T.check(r.ok == true and pull ~= nil and pull.Rarity == SECRET and type(pull.Substitute) == "table" and pull.Substitute.Tokens == secretTokens,
+				"celestial secret: every Secret pet full: the Secret pull pays Substitute.Tokens = Config.Index.Rewards.Secret.Tokens (" .. secretTokens .. ")", r.why)
+			T.check(r.after.Tokens == r.before.Tokens - cel.Price + secretTokens and r.after.Gems == r.before.Gems, "celestial secret: ...charged once (" .. cel.Price .. " tokens), the substitute added after",
+				B.show(r.before) .. " -> " .. B.show(r.after))
+			T.check(samePity(r.pity0, r.pity1), "celestial secret: ...Pity.Secret unchanged")
+		end)
+		PC.RollPet = origRoll
+		pcall(PS._SetRngForTest, Util.NewRng(), Util.NewRng())
+		B.removePolicy()
+		B.leave(players)
+		if not okRun then
+			error(errRun, 0)
+		end
+		K.flushErrors("celestial_secret")
+		K.flushWarnings("celestial_secret", ALLOWED_WARNINGS)
 	end)
 
 	return S

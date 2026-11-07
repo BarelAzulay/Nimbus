@@ -31,6 +31,13 @@ HOW TO RUN (from the repo root; Python 3.8+, no packages needed for the simulati
     python3 tools/sim_tycoon.py --check          compare the constants below with src/shared/TycoonCatalog.lua (tables,
                                                  AvailablePads with stars, SignedPads, FoldLegacy, BasketCap,
                                                  FeedBerries, income) and run its Validate() (needs `pip install lupa`)
+    python3 tools/sim_tycoon.py --gems           [lobby-shop] what gems are worth (spec 2026-11-07 16.1): free gems a day of a
+                                                 player who never prestiges and of one in the prestige phase (Config /
+                                                 BattleCatalog / the simulated runs), days (hours) per gem spin (printed,
+                                                 never a stop), gems per Secret pet, Celestial's 2% Secret, the gem packs
+                                                 with their bonus, the Chest line, Robux per spin in gems and in Tokens;
+                                                 checks gems per Secret pet, rising packs, the Chest line and PACK_ROBUX
+                                                 against Config (needs lupa)
     python3 tools/sim_tycoon.py --migrate5       300 Phase 4 homes (tools/fixtures/sim_tycoon_phase4.py, frozen) folded
                                                  by FoldLegacy: Home Level never down, food, dead ends, pad-time ratios
     python3 tools/sim_tycoon.py --plan plan.png  draw the yard layout of TycoonCatalog.lua from above (lupa + Pillow)
@@ -143,12 +150,12 @@ ROLE_MULT = [1.6, 1]  # PetCatalog.RoleMult Economy, Combat
 EVOLUTION_LEVELS = [20, 50]  # PetCatalog.EvolutionLevels
 EVOLUTION_BONUS = [1.5, 1.875]  # PetCatalog.EvolutionBonus[1], [2]: an evolution multiplies the LEVEL BONUS
 EVOLVE_TWICE = [0, 0, 0, 1, 1, 1, 1]  # PetCatalog.MaxEvolution(rarity) == 2 (Epic and rarer)
-PET_ROLLABLE = [6, 6, 5, 3, 4, 2]  # rollable pets per rarity, Common .. Mythic (Secret pets are not in these roulettes)
-PET_ECON_ROLLABLE = [3, 3, 3, 1, 2, 1]  # ...of which Economy pets (the rest are Combat)
-ODDS_Cloud = [60, 28, 10, 2, 0, 0]  # Config.Roulettes weights, Common .. Mythic
-ODDS_Storm = [0, 35, 40, 20, 5, 0]
-ODDS_Sky = [0, 0, 35, 45, 17, 3]
-ODDS_Celestial = [0, 0, 0, 45, 40, 15]
+PET_ROLLABLE = [6, 6, 5, 3, 4, 2, 4]  # rollable pets per rarity, Common .. Secret (the four Secrets: Celestial's 2% row)
+PET_ECON_ROLLABLE = [3, 3, 3, 1, 2, 1, 1]  # ...of which Economy pets (the rest are Combat; Phantom Kitsune the one Economy Secret)
+ODDS_Cloud = [60, 28, 10, 2, 0, 0, 0]  # Config.Roulettes weights, Common .. Secret
+ODDS_Storm = [0, 35, 40, 20, 5, 0, 0]
+ODDS_Sky = [0, 0, 35, 45, 17, 3, 0]
+ODDS_Celestial = [0, 0, 0, 43, 40, 15, 2]
 BERRY = [0.25, 30]  # Berries.Share (berries per $1 of Cloud Cash), Berries.BasketMinutes (the basket holds 30 min of berries)
 BERRY_BASKET_MIN = 500  # Berries.BasketMin
 BERRY_LEGACY_FOOD = [200, 1200, 6400]  # Berries.LegacyFood Snack, Meal, Feast (the P5Home step converts old food once)
@@ -158,6 +165,15 @@ LEGACY_PLANT_FOOD_Press2 = [19, 24, 32, 42, 53, 69, 91, 118, 153, 199]
 LEGACY_PLANT_FOOD_Press3 = [49, 63, 82, 107, 140, 180, 235, 302, 396, 518]
 LEGACY_PLANT_FOOD_Press4 = [127, 164, 215, 278, 360, 468, 612, 792, 1030, 1339]
 DECOR_CREDIT_MAX = 18  # Home.DecorCredit 0..18
+# [lobby-shop] gems: the owner's prices (docs/superpowers/specs/2026-11-07-lobby-shop-design.md 16.1, gemprice A with changes)
+GEM_SPIN = [20, 40, 60, 180]  # Config.Gems.RouletteGemPrices Cloud, Storm, Sky, Celestial
+GEM_SECRET = 500  # Config.Gems.SecretRoulette.GemPrice
+SECRET_PITY = 7  # Config.Gems.SecretRoulette.PityAt: the 7th Secret Roulette spin in a row without a Secret gives one
+GEM_MIX = [40, 100]  # TycoonCatalog.Fusion.Mix Mythic / Secret Gems
+GEM_POTION = 100  # Config.Store.GemItems XpPotionGems Gems (a 30-minute XP Potion)
+GEM_PACKS = [200, 670, 1950, 5300]  # Config.Gems.Products Gems (Pouch, Bag, Chest, Vault)
+PACK_ROBUX = [49, 149, 399, 999]  # Config.Gems.Products Robux (the suggested Creator Hub prices)
+TOKEN_PACKS = [1500, 7500, 30000]  # Config.Store.Items Tokens1 / Tokens2 / Tokens3 Grants.Tokens
 # ==== END SIM CONSTANTS ====
 
 STATION_ORDER = [
@@ -219,6 +235,16 @@ ROLLS = [(0, "Cloud"), (0, "Cloud"), (12, "Cloud"), (25, "Cloud"), (40, "Cloud")
          (95, "Storm"), (115, "Cloud"), (135, "Storm"), (160, "Storm"), (190, "Sky"), (220, "Storm"), (250, "Sky"),
          (280, "Storm"), (320, "Sky"), (360, "Storm"), (400, "Sky"), (440, "Storm"), (480, "Sky"), (540, "Sky"),
          (600, "Celestial"), (660, "Sky"), (720, "Celestial")]
+# [lobby-shop] --gems: the free-gem player model (assumptions, not catalog data; spec 2026-11-07 5.3). Generous on purpose for a
+# player who never prestiges, so a missed balance rule is not the model's fault:
+GEM_PLAYERS = [("casual", 30), ("regular", 90)]  # play minutes a day (the pitch research: casual 30 min, regular 1.5 h)
+GEM_RAID = (0.25, "High")  # every Raid.RewardMinutes of play a WON raid, Gold medal (damage share 0.25) at the High fight tier
+GEM_DUNGEON = (10, 3)  # a dungeon run every 10 minutes of play (the --dungeon 0.1 kid) on floor 3, the first whose boss chest holds Gems
+GEM_STREAK_KEPT = True  # the 7-day streak never breaks; the Week Wisp cell's Else (Gems) is not counted (it pays only with a full stack)
+GEM_PRESTIGE_SEED = 3  # the prestiging player: this seed's first 10 runs (run_report's "Later runs"), prestige Gems of runs 2-10
+GEM_DAY_CASUAL = 20  # ASSUMPTION, printed only: the pitch research's free gems a day of a casual player (30 min a day)
+GEM_DAY_REGULAR = 58  # ASSUMPTION, printed only: the pitch research's free gems a day of a regular player (1.5 h a day)
+# (spec 16.1: the owner's numbers are final; days per Secret spin are printed by --gems, never a stop)
 
 # ---- targets (ARCHITECTURE_V3.md "Phase 4 build contract" 3.12 / 8.3) ----
 TARGETS = dict(
@@ -1055,9 +1081,10 @@ warn = function() end
 """
 
 
-def load_catalog(with_pets=False):
-    """(runtime, TycoonCatalog[, PetCatalog, Config]) loaded with lupa. with_pets also loads PetCatalog, which
-    TycoonCatalog then resolves through Shared:FindFirstChild("PetCatalog") like in the game."""
+def load_catalog(with_pets=False, with_battle=False):
+    """(runtime, TycoonCatalog[, PetCatalog, Config[, BattleCatalog]]) loaded with lupa. with_pets also loads PetCatalog, which
+    TycoonCatalog then resolves through Shared:FindFirstChild("PetCatalog") like in the game; with_battle (needs with_pets)
+    also loads BattleCatalog ([lobby-shop] --gems: the raid medals, the dungeon chest and first clears)."""
     runtime = None
     for name in ("lupa.luajit21", "lupa.luajit20", "lupa.lua51", "lupa"):  # Lua 5.1 semantics first, like smoke.py
         try:
@@ -1075,6 +1102,7 @@ def load_catalog(with_pets=False):
     g.CONFIG_SRC = open(os.path.join(shared, "Config.lua"), encoding="utf-8").read()
     g.CATALOG_SRC = open(os.path.join(shared, "TycoonCatalog.lua"), encoding="utf-8").read()
     g.PETS_SRC = open(os.path.join(shared, "PetCatalog.lua"), encoding="utf-8").read() if with_pets else ""
+    g.BATTLE_SRC = open(os.path.join(shared, "BattleCatalog.lua"), encoding="utf-8").read() if with_battle else ""
     rt.execute(r"""
       local load_ = loadstring or load
       -- Config.Audio reads shared/AudioIds; the economy reads no sound: an empty table keeps every sound silent here
@@ -1097,9 +1125,15 @@ def load_catalog(with_pets=False):
       end
       CATALOG = assert(load_(CATALOG_SRC, "=TycoonCatalog"))()
       loaded.TycoonCatalog = CATALOG
+      if BATTLE_SRC ~= "" then
+        loaded.BattleCatalog = assert(load_(BATTLE_SRC, "=BattleCatalog"))()
+      end
       PETS = loaded.PetCatalog
+      BATTLE = loaded.BattleCatalog
       CONFIG = Config
     """)
+    if with_battle:
+        return rt, g.CATALOG, g.PETS, g.CONFIG, g.BATTLE
     if with_pets:
         return rt, g.CATALOG, g.PETS, g.CONFIG
     return rt, g.CATALOG
@@ -1356,6 +1390,22 @@ def run_check():
     unlock_s = daily_cfg.UnlockSeconds if daily_cfg is not None else None
     if not isinstance(unlock_s, (int, float)) or unlock_s / 60.0 != DAILY_UNLOCK_MIN:
         problems.append("Config.Daily.UnlockSeconds / 60: sim DAILY_UNLOCK_MIN %r, Config %r" % (DAILY_UNLOCK_MIN, None if unlock_s is None else unlock_s / 60.0))
+    # [lobby-shop] the owner's gem prices, the gem packs and the token packs (spec 2026-11-07 16.1); GEM_DAY_* are assumptions
+    gp = gem_prices_of(cat, config)
+    for name in ("GEM_SPIN", "GEM_SECRET", "SECRET_PITY", "GEM_MIX", "GEM_POTION", "GEM_PACKS", "PACK_ROBUX", "TOKEN_PACKS"):
+        same(name, globals()[name], gp[name])
+    # [lobby-shop] the roll's seven odds columns (Common .. Secret; Celestial's 2% Secret row, spec 16.1) and the rollable
+    # pets per rarity (PetCatalog.IsRollable: a Secret pet counts once a roulette with AllowSecret has a Secret row)
+    for r in lua_list(config.Roulettes):
+        same("ODDS_" + r.Id, globals().get("ODDS_" + r.Id), [r.Odds[x] or 0 for x in RARITIES])
+    rollable, econ = [0] * len(RARITIES), [0] * len(RARITIES)
+    for d in lua_list(pc.Pets):
+        if d.Rarity in RARITIES and pc.IsRollable(d.Id):
+            ri = RARITIES.index(d.Rarity)
+            rollable[ri] += 1
+            econ[ri] += 1 if d.Role == "Economy" else 0
+    same("PET_ROLLABLE", PET_ROLLABLE, rollable)
+    same("PET_ECON_ROLLABLE", PET_ECON_ROLLABLE, econ)
     if problems:
         print("sim_tycoon --check: %d difference(s)" % len(problems))
         for pr in problems:
@@ -1367,8 +1417,187 @@ def run_check():
           "DecorCredit / LegacyMagnet), FoodOf, GardenSlots, IncomePerSecond, PileSeconds, ScoopRadius, OfflineEarnings "
           "and StationsAfterPrestige match the sim on 400 random homes; FoldLegacy matches on 300 Phase 4 homes and is "
           "idempotent; FeedXp / FeedBerries / TrainCost / TrainSeconds / BasketCap match; Validate() passes; "
-          "Config.Daily.UnlockSeconds / 60 = DAILY_UNLOCK_MIN" % len(order))
+          "Config.Daily.UnlockSeconds / 60 = DAILY_UNLOCK_MIN; the gem prices, gem packs (with Robux) and token packs "
+          "match Config / TycoonCatalog; ODDS_<roulette> (7 columns) and PET_ROLLABLE / PET_ECON_ROLLABLE match Config / "
+          "PetCatalog" % len(order))
     return 0
+
+
+# ------------------------------------------------------------------------------------------------
+# --gems: [lobby-shop] what gems are worth (docs/superpowers/specs/2026-11-07-lobby-shop-design.md 16.1, the owner's prices)
+# ------------------------------------------------------------------------------------------------
+def store_item(config, key):
+    for it in lua_list(config.Store.Items):
+        if it.Key == key:
+            return it
+    return None
+
+
+def gem_prices_of(cat, config):
+    """The game's values of the sim's gem constants (None where the game has none), keyed by the constant's name."""
+    g = config.Gems
+    roulettes = [r.Id for r in lua_list(config.Roulettes)]
+    products = lua_list(g.Products)
+    potion = [it.Gems for it in lua_list(config.Store.GemItems or rt_empty()) if it.Key == "XpPotionGems"]
+    tokens = []
+    for key in ("Tokens1", "Tokens2", "Tokens3"):
+        it = store_item(config, key)
+        tokens.append(it.Grants.Tokens if it is not None and it.Grants is not None else None)
+    mix = cat.Fusion.Mix
+    return {
+        "GEM_SPIN": [g.RouletteGemPrices[r] for r in roulettes],
+        "GEM_SECRET": g.SecretRoulette.GemPrice,
+        "SECRET_PITY": g.SecretRoulette.PityAt,
+        "GEM_MIX": [mix.Mythic.Gems, mix.Secret.Gems],
+        "GEM_POTION": potion[0] if potion else None,
+        "GEM_PACKS": [p.Gems for p in products],
+        "PACK_ROBUX": [p.Robux for p in products],
+        "TOKEN_PACKS": tokens,
+    }
+
+
+def rt_empty():
+    """A stand-in for a missing Lua list (lua_list of {} is [])."""
+    return {1: None}
+
+
+def gem_income(config, battle, minutes):
+    """Free gems of a player who plays `minutes` a day and never prestiges, from Config and BattleCatalog, with the
+    GEM_* player model: ([(source, gems a day, how)], [(source, one-time gems, how)])."""
+    rows, once = [], []
+    days = lua_list(config.Daily.Days)
+    streak = sum(c.Gems for c in days if c.Gems is not None)  # a Pet cell's Else pays only with a full stack: not counted
+    rows.append(("daily streak", streak / float(len(days)) if GEM_STREAK_KEPT else 0.0,
+                 "%d gems every %d kept days (Config.Daily.Days Gems cells)" % (streak, len(days))))
+    tiers = [t for t in lua_list(config.Daily.Play.Tiers) if t.Gems is not None]
+    got = sum(t.Gems for t in tiers if t.Min <= minutes)
+    rows.append(("play-time gifts", float(got), "the Gems tiers at %s play minutes reached at %d min" % (
+        " / ".join(str(t.Min) for t in tiers), minutes)))
+    share, tier_id = GEM_RAID
+    medal = battle.RaidTier(share, True, tier_id)
+    wins = minutes // battle.Raid.RewardMinutes
+    per_win = medal.Gems * medal.GemChance
+    rows.append(("raids (the arena boss)", wins * per_win, "%d won raids a day (one paid win per %d min), %s medal at %s: %d gems x %.3f" % (
+        wins, battle.Raid.RewardMinutes, medal.Id, medal.FightTier, medal.Gems, medal.GemChance)))
+    every, floor_ = GEM_DUNGEON
+    seeds = 4000
+    chest = 0.0
+    for seed in range(1, seeds + 1):
+        c = battle.DungeonChest(floor_, seed)
+        if c.Kind == "Gems":
+            chest += c.Amount
+    chest /= seeds
+    runs = minutes / float(every)
+    rows.append(("dungeon boss chests", runs * chest, "%.0f runs a day on floor %d, %.3f gems a chest (DungeonChest over %d seeds)" % (
+        runs, floor_, chest, seeds)))
+    first = [battle.DungeonFirstClear(f).Gems for f in range(1, len(lua_list(battle.Dungeon.FirstClearGems)) + 1)]
+    once.append(("dungeon first clears", sum(first), "floors 1-%d (BattleCatalog.DungeonFirstClear)" % len(first)))
+    index = sum((config.Index.Rewards[r].Gems or 0) for r in RARITIES if config.Index.Rewards[r] is not None)
+    once.append(("Pet Index groups", index, "Config.Index.Rewards Gems (the groups pay Tokens)"))
+    return rows, once
+
+
+def secret_pet_gems(config):
+    """Gems per Secret pet on average with the pity: GEM_SECRET x E[spins], E = sum_{k<PITY} (1 - p)^k."""
+    odds = config.Gems.SecretRoulette.Odds
+    total = sum(v for _, v in odds.items())
+    p = odds["Secret"] / float(total)
+    return GEM_SECRET * sum((1 - p) ** k for k in range(SECRET_PITY)), p
+
+
+def run_gems():
+    rt, cat, pc, config, battle = load_catalog(with_pets=True, with_battle=True)
+    failures = []
+
+    def check(ok, text):
+        print("  [%s] %s" % ("ok" if ok else "MISSED", text))
+        if not ok:
+            failures.append(text)
+
+    roulettes = [(r.Id, r.Price) for r in lua_list(config.Roulettes)]
+    prices = [("%s spin" % rid, GEM_SPIN[i]) for i, (rid, _) in enumerate(roulettes)]
+    prices += [("Secret spin", GEM_SECRET), ("XP Potion 30 min", GEM_POTION), ("Mythic Mix", GEM_MIX[0]), ("Secret Mix", GEM_MIX[1])]
+    print("What gems are worth (gem prices: spins %s, Secret %s with the pity at the %dth spin, Mix %s, XP Potion %d)" % (
+        " / ".join(money(p) for p in GEM_SPIN), money(GEM_SECRET), SECRET_PITY, " / ".join(str(m) for m in GEM_MIX), GEM_POTION))
+    print("  the pitch research's assumptions (not compared): casual %d gems a day, regular %d a day" % (GEM_DAY_CASUAL, GEM_DAY_REGULAR))
+    day = {}
+    for who, minutes in GEM_PLAYERS:
+        rows, once = gem_income(config, battle, minutes)
+        day[who] = sum(r[1] for r in rows)
+        print("\nA %s player who never prestiges (%d min a day): %.1f gems a day" % (who, minutes, day[who]))
+        for name, gems, how in rows:
+            print("    %-24s %6.2f a day   %s" % (name, gems, how))
+        for name, gems, how in once:
+            print("    %-24s %6d once    %s" % (name, gems, how))
+        print("    days per: " + ", ".join("%s %.1f" % (n, p / day[who]) if day[who] > 0 else "%s never" % n for n, p in prices))
+        one_time = sum(g for _, g, _ in once)
+        if day[who] > 0:
+            print("    the first Secret spin with every one-time gem: day %.1f" % (max(0, GEM_SECRET - one_time) / day[who]))
+    # the prestiging player: the regular's free gems per hour + the prestige Gems of runs 2-10 (simulated)
+    long = simulate(seed=GEM_PRESTIGE_SEED, runs=10, max_minutes=3000)
+    runs = [long.ms["run%d" % i] / 3600.0 for i in range(1, 11) if "run%d" % i in long.ms]
+    later_h = sum(runs[1:])
+    later_gems = sum(gem_reward(i) for i in range(2, len(runs) + 1))
+    p_per_h = later_gems / later_h if later_h > 0 else 0.0
+    reg_minutes = dict(GEM_PLAYERS)["regular"]
+    free_per_h = day["regular"] / (reg_minutes / 60.0)
+    per_h = p_per_h + free_per_h
+    print("\nA regular player in the prestige phase (seed %d, runs 2-%d: %s gems in %.1f h = %.0f prestige gems an hour, + %.1f free gems an hour): %.0f gems an hour" % (
+        GEM_PRESTIGE_SEED, len(runs), money(later_gems), later_h, p_per_h, free_per_h, per_h))
+    print("    first prestige after %.1f h of play (+%d gems)" % (runs[0] if runs else 0, gem_reward(1)))
+    print("    hours of play per: " + ", ".join("%s %.1f" % (n, p / per_h) for n, p in prices))
+    print("    at %d min a day: a Secret spin every %.1f days" % (reg_minutes, GEM_SECRET / per_h / (reg_minutes / 60.0)))
+    # the Secret pet, the packs, Robux per spin
+    per_pet, p = secret_pet_gems(config)
+    print("\nGems per Secret pet on average: %s (Secret %.0f%% a spin, the %dth spin without one gives one; %.2f spins)" % (
+        "{:,.1f}".format(per_pet), p * 100, SECRET_PITY, per_pet / GEM_SECRET))
+    names = [pr.Name for pr in lua_list(config.Gems.Products)]
+    print("\nGem packs (gems per Robux, bonus over the first pack):")
+    gpr = [g / float(r) for g, r in zip(GEM_PACKS, PACK_ROBUX)]
+    for i, (g, r) in enumerate(zip(GEM_PACKS, PACK_ROBUX)):
+        print("    %-14s %6s gems  %4d R$  %.2f gems / R$  %+.0f%%" % (names[i] if i < len(names) else "?", money(g), r, gpr[i], (gpr[i] / gpr[0] - 1) * 100))
+    tok_robux = [store_item(config, k).Robux for k in ("Tokens1", "Tokens2", "Tokens3")]
+    tpr = [t / float(r) for t, r in zip(TOKEN_PACKS, tok_robux)]
+    print("Robux per spin (gems at the %s R$ gem packs; Tokens at the %s R$ token packs of %s Tokens):" % (
+        " / ".join(str(r) for r in PACK_ROBUX), " / ".join(str(r) for r in tok_robux), " / ".join(money(t) for t in TOKEN_PACKS)))
+    for i, (rid, token_price) in enumerate(roulettes):
+        print("    %-10s gems %4d -> %s R$   Tokens %5s -> %s R$" % (
+            rid, GEM_SPIN[i], " / ".join("%.2f" % (GEM_SPIN[i] / x) for x in gpr), money(token_price),
+            " / ".join("%.2f" % (token_price / x) for x in tpr)))
+    print("    %-10s gems %4d -> %s R$   (gems only)" % ("Secret", GEM_SECRET, " / ".join("%.1f" % (GEM_SECRET / x) for x in gpr)))
+    # Celestial's 2% Secret row (spec 16.1): the token player's long shot beside the altar's gem path
+    cel = None
+    for r in lua_list(config.Roulettes):
+        if r.Id == "Celestial":
+            cel = r
+    cel_total = sum(v for _, v in cel.Odds.items()) if cel is not None else 0
+    cel_p = (cel.Odds["Secret"] or 0) / float(cel_total) if cel_total else 0.0
+    if cel_p > 0:
+        print("A Secret pet from the Celestial Roulette (Secret %.0f%% a spin): about %s gems or %s tokens on average, against %s gems at the altar" % (
+            cel_p * 100, money(GEM_SPIN[3] / cel_p), money(cel.Price / cel_p), money(per_pet)))
+    else:
+        print("The Celestial Roulette has no Secret row (Config.Roulettes Celestial Odds.Secret)")
+    # the Gems hero's line (spec 16.1): the Chest (the 399 R$ pack) in Secret spins, then Celestial spins with the rest
+    chest = GEM_PACKS[PACK_ROBUX.index(399)] if 399 in PACK_ROBUX else 0
+    n_secret = chest // GEM_SECRET
+    n_cel = (chest - n_secret * GEM_SECRET) // GEM_SPIN[3]
+    print("Chest: %s gems buys %d Secret spins + %d Celestial spins" % (money(chest), n_secret, n_cel))
+
+    print("\nChecks:")
+    d = GEM_SECRET / day["regular"] if day["regular"] > 0 else float("inf")
+    print("  [info] a regular player who never prestiges reaches a Secret spin every %.1f days (%.1f gems a day; printed, not checked: the owner's numbers are final)" % (
+        d, day["regular"]))
+    want = GEM_SECRET * (1 - (1 - p) ** SECRET_PITY) / p
+    check(abs(per_pet - want) <= 1e-6 and abs(per_pet - 1215) <= 1, "gems per Secret pet = %d x (1 - %.2f^%d) / %.2f = %.1f (1,215 +- 1)" % (
+        GEM_SECRET, 1 - p, SECRET_PITY, p, per_pet))
+    check(all(gpr[i] < gpr[i + 1] for i in range(len(gpr) - 1)), "pack gems per Robux strictly rising (%s)" % " < ".join("%.2f" % x for x in gpr))
+    check(chest > 0 and n_secret == 3 and n_cel == 2 and n_secret == chest // GEM_SECRET and n_cel == (chest - 3 * GEM_SECRET) // GEM_SPIN[3],
+          "the Chest line: %s gems = %d Secret spins (floor(%s / %s)) + %d Celestial spins (floor((%s - 3 x %s) / %s)); 3 + 2 expected" % (
+              money(chest), n_secret, money(chest), money(GEM_SECRET), n_cel, money(chest), money(GEM_SECRET), money(GEM_SPIN[3])))
+    cfg_robux = [pr.Robux for pr in lua_list(config.Gems.Products)]
+    check(cfg_robux == PACK_ROBUX, "PACK_ROBUX equal to the Config.Gems.Products Robux fields (sim %r, Config %r)" % (PACK_ROBUX, cfg_robux))
+    print("\n%s" % ("ALL GEM CHECKS OK" if not failures else "%d GEM CHECK(S) MISSED" % len(failures)))
+    return 0 if not failures else 1
 
 
 # ------------------------------------------------------------------------------------------------
@@ -1631,9 +1860,12 @@ def main():
     ap.add_argument("--migrate5", nargs="?", const=300, type=int, metavar="N",
                     help="Phase 4 homes on their first Phase 5 login: TycoonCatalog.FoldLegacy (default 300)")
     ap.add_argument("--plan", metavar="PNG", help="draw the yard layout of TycoonCatalog.lua")
+    ap.add_argument("--gems", action="store_true", help="[lobby-shop] what gems are worth: free gems a day, days per spin, packs, Robux per spin; the balance checks (lupa)")
     args = ap.parse_args()
     if args.check:
         return run_check()
+    if args.gems:
+        return run_gems()
     if args.migrate5:
         return run_migrate5(args.migrate5)
     if args.plan:

@@ -13,8 +13,8 @@
 --                                        { Key, Kind, Tab, Id (whole, >= 0), Robux, Name, Grants (by reference), Once,
 --                                        Hero, Line, Created = Id > 0 }, in Config order, then one item per
 --                                        Config.Gems.Products entry: { Key = "Gems<i>", Kind = "Product", Tab = "Currency",
---                                        Id, Name, Grants = { Gems }, Gem = true, Index = i, Hero = (i == 2: the Bag is
---                                        the Currency hero), Created }
+--                                        Id, Robux (the suggested price, lobby-shop 16.1), Name, Grants = { Gems }, Gem =
+--                                        true, Index = i, Hero = (i == 2: the Bag is the Currency hero), Created }
 --   StoreCatalog.Item(key) -> item | nil        a List item by Key (an Enabled = false entry answers nil)
 --   StoreCatalog.ProductById(id) -> item | nil  Kind "Product" with Id == id > 0, the first match; the gem packs included;
 --                                        a disabled entry still resolves (a paid receipt is never eaten; it is only
@@ -143,6 +143,7 @@ local function gemItem(index, product)
 		Kind = "Product",
 		Tab = "Currency",
 		Id = id,
+		Robux = product.Robux,
 		Name = product.Name,
 		Grants = { Gems = product.Gems },
 		Gem = true,
