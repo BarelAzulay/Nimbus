@@ -55,7 +55,9 @@
 --   Phase 5 (6.1): GateSites = { Obby, Dungeon, Ring, Arena, Altar } ground CFrames of the gate centres
 --                              (LookVector = towards the plaza centre); RingSite = GateSites.Ring; DungeonSite =
 --                              GateSites.Dungeon; GatesFolder = workspace.NimbusLobby.Gates; Gates = { Obby, Altar
---                              = { Model, Pad, PromptPart } } (GateService / PortalService put the prompts on them).
+--                              = { Model, Pad, PromptPart } } (GateService / PortalService put the prompts on them);
+--                              Gates.Altar.ReturnCFrame = the way back's arrival (lobby shop 5.11 a: on the front half
+--                              of the Altar gate's pad, 3 studs over its top; the pad is no trigger).
 --                              NimbusLobby.PartCount is written by Main after the last gate builder, not here.
 -- SpotInfo also carries PlotCFrame (centre of the flat yard surface, LookVector = towards the gate),
 -- PlotSize (= Config.Lobby.PlotSize), GateCFrame (gate, on the ground) and Accent (the plot colour).
@@ -3095,9 +3097,11 @@ end
 ----------------------------------------------------------------------
 local Gates = {}
 
+-- lobby shop (spec 5.11 a): the Altar gate has the Obby's pad (decoration and the way back's landing spot; GateService's
+-- "Travel" prompt stays the only way in), a Pill and a brighter vortex (VortexBoost: a model attribute PortalVortex reads)
 Gates.Info = {
 	Obby = { Title = "Sky Obby", Info = "Climb the clouds", Pad = true },
-	Altar = { Title = "Storm Altar", Info = "The secret roulette", Pad = false },
+	Altar = { Title = "Storm Altar", Info = "Secret pets", Pad = true, Pill = "Secret Roulette", VortexBoost = 1.4 },
 }
 Gates.Built = { "Obby", "Altar" } -- the lobby's own gates, in Build order (Phase 6: no Home gate)
 
@@ -3140,8 +3144,12 @@ function Gates.Fallback(parent, site, id, info, color)
 	local plate = tagPlate(gui, color, 190, Enum.FillDirection.Vertical, 2)
 	tagText(plate, "Title", info.Title, "Heading", 28, rgb(255, 255, 255), 1)
 	tagText(plate, "Info", info.Info, "Body", 20, C.TextDim, 2)
-	local pill = tagPill(plate, "Pill", "", "Label", 18, color:Lerp(C.Ink, 0.55), 3)
-	pill.Visible = false
+	-- the Pill shows info.Pill (the Altar's "Secret Roulette"); hidden while empty, as BuildGate's
+	local pill = tagPill(plate, "Pill", info.Pill or "", "Label", 18, color:Lerp(C.Ink, 0.55), 3)
+	pill.Visible = (info.Pill or "") ~= ""
+	if type(info.VortexBoost) == "number" then
+		model:SetAttribute("VortexBoost", info.VortexBoost)
+	end
 	model.PrimaryPart = lintel
 	return model, pad, prompt
 end
@@ -3160,6 +3168,8 @@ function Gates.BuildOne(parent, site, id)
 			Glyph = spec.Glyph,
 			Pad = info.Pad,
 			Name = "Portal_" .. id,
+			Pill = info.Pill,
+			VortexBoost = info.VortexBoost,
 		})
 		if not ok then
 			warn("[LobbyBuilder] gate " .. id .. " failed: " .. tostring(model))
@@ -3173,6 +3183,22 @@ function Gates.BuildOne(parent, site, id)
 		model, pad, prompt = Gates.Fallback(parent, site, id, info, gateAccent(spec.Accent))
 	end
 	return { Model = model, Pad = pad, PromptPart = prompt, Site = site }
+end
+
+-- lobby shop (5.11 a): the highest top of a gate's pad (the Pad part and the PadTile* inlay / rim tiles on it, up to 0.68
+-- over the ground on a BuildGate pad), or nil when the gate has no "Pad" (a Step)
+function Gates.PadTop(gate)
+	local pad = type(gate) == "table" and gate.Pad or nil
+	if typeof(pad) ~= "Instance" or not pad:IsA("BasePart") or pad.Name ~= "Pad" then
+		return nil
+	end
+	local top = pad.Position.Y + pad.Size.Y / 2
+	for _, d in ipairs(gate.Model and gate.Model:GetChildren() or {}) do
+		if d:IsA("BasePart") and string.sub(d.Name, 1, 7) == "PadTile" then
+			top = math.max(top, d.Position.Y + d.Size.Y / 2)
+		end
+	end
+	return top
 end
 
 -- The Obby portal's PortalInfo: the gate + the PortalService zone on its pad (14 x 6 x 14, floor flush with the pad,
@@ -5356,12 +5382,14 @@ function LobbyBuilder.Build()
 		gateInfo[id] = { Model = g.Model, Pad = g.Pad, PromptPart = g.PromptPart }
 	end
 	-- bug batch 2 #4: where the Storm Altar's return portal (GateService gate "Plaza") lands: on the plaza 18 studs in
-	-- front of the Altar gate (~15.2 from its PromptAnchor at 2.8 out, well clear of the 12-stud prompt), 3 studs up,
-	-- looking at the plaza
+	-- front of the Altar gate (~15.2 from its PromptAnchor at 2.8 out, well clear of the 12-stud prompt), looking at the
+	-- plaza; lobby shop (5.11 a): that is the front half of the gate's pad (14 studs out, 14 deep), so it lands 3 studs
+	-- over the pad top (its highest part), 3 studs over the ground without a pad
 	local altarGate = sites.Altar
 	if gateInfo.Altar and typeof(altarGate) == "CFrame" then
-		local front = altarGate.Position + altarGate.LookVector * 18
-		gateInfo.Altar.ReturnCFrame = CFrame.lookAt(front + Vector3.new(0, 3, 0), front + altarGate.LookVector * 30 + Vector3.new(0, 3, 0))
+		local lift = (Gates.PadTop(gates.Altar) or altarGate.Position.Y) - altarGate.Position.Y + 3
+		local front = altarGate.Position + altarGate.LookVector * 18 + Vector3.new(0, lift, 0)
+		gateInfo.Altar.ReturnCFrame = CFrame.lookAt(front, front + altarGate.LookVector * 12)
 	end
 	return {
 		Folder = root,

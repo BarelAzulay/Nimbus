@@ -13,7 +13,11 @@
 --                      Glow / Swirl / Gem parts, the GateLight and the Sparkles (values change over mock time and stay in
 --                      range), never moves, resizes or creates a part, skips Neon parts MeshLibrary hides for a mesh,
 --                      animates at most MAX_ACTIVE gates and none beyond RANGE studs, is static on Low graphics (every
---                      value back to the built one), and forgets a removed gate after restoring nothing it should not
+--                      value back to the built one), and forgets a removed gate after restoring nothing it should not;
+--                      lobby shop (Task 12): a gate's VortexBoost attribute (the Altar's 1.4) lifts its vortex tint toward
+--                      white and its glow (texture BRIGHTNESS x 1.4; fallback LightEmission x 1.4 capped at 1, beam / streak
+--                      / backdrop colours lifted), so the Altar reads brighter than the Obby gate at the same distance; no
+--                      boost = today's numbers; the swirl's built value does not change
 -- Deterministic: no RNG; the time is the mock clock; every gate is destroyed and the quality mode restored at the end.
 
 local T = SmokeCommon.T
@@ -399,6 +403,86 @@ S.client_p6portalfx = guarded("client_p6portalfx", function()
 		T.check(crackleSeen, "a lightning crackle flickers on the rim within 3 s (seeded)")
 		local ar = Fx.Gate(arch)
 		T.check(ar and ar.Vortex and ar.Vortex.Arch and ar.Swirl[1].Part.Transparency < 1, "the crowned arch keeps its swirl as backdrop behind a round vortex")
+	end
+
+	------------------------------------------------------------------------------------------------
+	-- lobby shop (Task 12, spec 5.11 a): the Altar gate's VortexBoost 1.4 lifts its vortex tint 0.4 toward white and its
+	-- glow by 1.4, so the Altar reads brighter than the Obby gate at the same distance; no boost = today's numbers; the
+	-- swirl's built value does not change
+	------------------------------------------------------------------------------------------------
+	do
+		local WHITE = Color3.new(1, 1, 1)
+		local function lum(c)
+			return 0.2126 * c.R + 0.7152 * c.G + 0.0722 * c.B
+		end
+		local function closeColor(a, b)
+			return typeof(a) == "Color3" and typeof(b) == "Color3" and math.abs(a.R - b.R) < 1e-4 and math.abs(a.G - b.G) < 1e-4 and math.abs(a.B - b.B) < 1e-4
+		end
+		local function firstColor(seq)
+			return seq and seq.Keypoints and seq.Keypoints[1] and seq.Keypoints[1].Value
+		end
+		local function spec(id, x, z, color, glyph, extra)
+			local sp = { Id = id, Title = id, Info = "", Color = color, Glyph = glyph, Pad = true }
+			for k, v in pairs(extra or {}) do
+				sp[k] = v
+			end
+			return WS.BuildGate(holder, CFrame.new(x, 0, z), sp)
+		end
+		-- mirror places about the camera's x (each pair at the same distance, ~95 and ~121 studs, inside RANGE)
+		local boosted = spec("FxBoostCyan", -80, 0, "Cyan", "bolt", { VortexBoost = 1.4 })
+		local plain = spec("FxPlainCyan", 80, 0, "Cyan", "bolt")
+		local altarG = spec("FxAltar", -80, 40, "Cyan", "bolt", { Pill = "Secret Roulette", VortexBoost = 1.4 })
+		local obbyG = spec("FxObby", 80, 40, "Blue", "cloud", { Stars = 3 })
+		Mock.Advance(0.7)
+		local rB, rP, rA, rO = Fx.Gate(boosted), Fx.Gate(plain), Fx.Gate(altarG), Fx.Gate(obbyG)
+		local vB, vP, vA, vO = rB and rB.Vortex, rP and rP.Vortex, rA and rA.Vortex, rO and rO.Vortex
+		if T.check(vB and vP and vA and vO and vB.Shown and vP.Shown and vA.Shown and vO.Shown and vB.Mode == "Texture",
+			"boost (texture): the four gates at mirrored distances all show a textured vortex") then
+			local Bk = V.K.BRIGHTNESS
+			T.check(vB.Boost == 1.4 and vP.Boost == 1 and vA.Boost == 1.4 and vO.Boost == 1 and (rh.Vortex == nil or rh.Vortex.Boost == 1),
+				"boost: v.Boost = the gate's VortexBoost attribute (1.4), 1 without it", fmt("%s / %s", tostring(vB.Boost), tostring(vP.Boost)))
+			T.check(vP.Front.Brightness == Bk and vP.Back.Brightness == Bk and math.abs(vB.Front.Brightness - Bk * 1.4) < 1e-6 and math.abs(vB.Back.Brightness - Bk * 1.4) < 1e-6,
+				"boost (texture): VortexBoost 1.4 glows at BRIGHTNESS x 1.4, no boost keeps today's BRIGHTNESS", fmt("%.2f vs %.2f", vB.Front.Brightness, vP.Front.Brightness))
+			local lifted, bad = 0, {}
+			for i, e in ipairs(vB.Layers) do
+				local base = vP.Layers[i] and vP.Layers[i].Label.ImageColor3
+				if base and closeColor(e.Label.ImageColor3, base:Lerp(WHITE, 0.4)) then
+					lifted = lifted + 1
+				else
+					bad[#bad + 1] = e.Spec.Name
+				end
+			end
+			T.check(lifted == #vB.Layers and lifted > 0, "boost (texture): every layer's tint is the unboosted tint lifted 0.4 toward white", table.concat(bad, ", "))
+			T.check(vA.Front.Brightness > vO.Front.Brightness and lum(vA.Tint.deep) > lum(vO.Tint.deep) and lum(vA.Tint.arm) > lum(vO.Tint.arm),
+				"boost (texture): the Altar gate's vortex reads brighter than the Obby gate's at the same distance (glow, deep and arm tints)")
+		end
+		-- the effects-only fallback: beam / streak colours lifted the same, LightEmission x 1.4 capped at 1, the swirl backdrop
+		Fx.SetTextureIds({})
+		Mock.Advance(0.7)
+		vB, vP, vA, vO = rB and rB.Vortex, rP and rP.Vortex, rA and rA.Vortex, rO and rO.Vortex
+		if T.check(vB and vP and vA and vO and vB.Mode == "Fallback" and vP.Mode == "Fallback" and vB.Shown, "boost (fallback): the four gates show the fallback vortex") then
+			local armB, armP, fineB, fineP = vB.Beams[1], vP.Beams[1], vB.Beams[V.K.ARMS + 1], vP.Beams[V.K.ARMS + 1]
+			T.check(math.abs(armP.LightEmission - 0.7) < 1e-6 and math.abs(armB.LightEmission - 0.98) < 1e-6 and fineP.LightEmission == 1 and fineB.LightEmission == 1
+				and vB.Streaks.LightEmission == 1 and vB.Crackle.LightEmission == 1,
+				"boost (fallback): the arm beams' LightEmission 0.7 x 1.4 = 0.98, the fine beams, streaks and crackles capped at 1",
+				fmt("arm %.3f / %.3f, fine %.3f", armB.LightEmission, armP.LightEmission, fineB.LightEmission))
+			T.check(closeColor(firstColor(armB.Color), firstColor(armP.Color) and firstColor(armP.Color):Lerp(WHITE, 0.4))
+				and closeColor(firstColor(vB.Streaks.Color), firstColor(vP.Streaks.Color) and firstColor(vP.Streaks.Color):Lerp(WHITE, 0.4)),
+				"boost (fallback): the beam and streak colours are lifted 0.4 toward white")
+			local lookB, lookP = V.SwirlLook(vB), V.SwirlLook(vP)
+			T.check(closeColor(lookB.Color, lookP.Color:Lerp(WHITE, 0.4)) and lookB.Transparency == lookP.Transparency and closeColor(rB.Swirl[1].Part.Color, lookB.Color),
+				"boost (fallback): SwirlLook's deep backdrop colour is lifted the same, at the same transparency")
+			T.check(lum(V.SwirlLook(vA).Color) > lum(V.SwirlLook(vO).Color) and vA.Beams[1].LightEmission > vO.Beams[1].LightEmission,
+				"boost (fallback): the Altar gate's vortex reads brighter than the Obby gate's (backdrop, arm glow)")
+		end
+		T.check(rB and rP and rB.Swirl[1] and rP.Swirl[1] and rB.Swirl[1].BaseT == rP.Swirl[1].BaseT and math.abs(rB.Swirl[1].BaseT - 0.62) < 1e-6
+			and rB.Swirl[1].Base == rP.Swirl[1].Base, "boost: the swirl's built value (Transparency 0.62, the gate colour) is the same with the boost")
+		Fx.SetTextureIds(fake)
+		for _, m in ipairs({ boosted, plain, altarG, obbyG }) do
+			m:Destroy()
+		end
+		Mock.Advance(0.7)
+		T.check(Fx.Gate(boosted) == nil and rh.Vortex ~= nil and rh.Vortex.Mode == "Texture", "boost: the four test gates are forgotten, the hoop shows its textured vortex again")
 	end
 
 	-- Low graphics: a still vortex, the ring, gems and light at their built values

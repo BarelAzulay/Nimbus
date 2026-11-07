@@ -1021,7 +1021,8 @@ local function serverScenarios()
 	end)
 
 	------------------------------------------------------------------------------------------------
-	-- p5world_gates (6.2, Y12): GateService's Altar prompt (Phase 6: no Home gate), Portal_Arena and the Return gate
+	-- p5world_gates (6.2, Y12): GateService's Altar prompt (Phase 6: no Home gate), the two lobby gates' pads (lobby shop
+	-- Task 12: the Altar has the Obby's pad now), Portal_Arena and the Return gate
 	------------------------------------------------------------------------------------------------
 	S.p5world_gates = guarded("p5world_gates", function()
 		if not K.needBoot() then
@@ -1056,6 +1057,29 @@ local function serverScenarios()
 			T.eq(ap.HoldDuration, 0, "AltarGatePrompt: HoldDuration 0")
 		end
 		T.check(ap and ap.ActionText == "Travel" and ap.ObjectText == "Storm Altar", "AltarGatePrompt: 'Travel' / 'Storm Altar'")
+		-- lobby shop (Task 12, spec 5.11 a): both lobby gates stand behind a pad now (the Altar's was a 10 x 0.3 x 6 step):
+		-- a walkable 14 x 0.6 x 14 Pad 14 studs in front with a Neon inlay and two lanterns; no prompt on the pad itself
+		for _, id in ipairs({ "Obby", "Altar" }) do
+			local g = info.Gates and info.Gates[id]
+			local site = info.GateSites and info.GateSites[id]
+			local pad = g and g.Pad
+			local label = "pad checks " .. id
+			if T.check(typeof(pad) == "Instance" and pad.Name == "Pad" and pad.Size == Vector3.new(14, 0.6, 14) and pad.CanCollide and typeof(site) == "CFrame",
+				label .. ": LobbyInfo.Gates." .. id .. ".Pad is a walkable 14 x 0.6 x 14 Pad", typeof(pad) == "Instance" and (pad.Name .. " " .. tostring(pad.Size)) or "no pad") then
+				local l = site:PointToObjectSpace(pad.Position)
+				T.check(math.abs(l.X) < 1e-3 and math.abs(l.Z + 14) < 1e-3 and math.abs(l.Y - 0.3) < 1e-3, label .. ": ...14 studs in front of the gate, on the ground", tostring(l))
+				local inlay, lanterns = 0, 0
+				for _, d in ipairs(g.Model:GetChildren()) do
+					if d.Name == "PadTileGlow" and d.Material == Enum.Material.Neon then
+						inlay = inlay + 1
+					elseif d.Name == "LanternGlow" then
+						lanterns = lanterns + 1
+					end
+				end
+				T.check(inlay >= 1 and lanterns == 2, label .. ": ...with a Neon inlay and two lanterns", inlay .. " inlay, " .. lanterns .. " lanterns")
+				T.check(pad:FindFirstChildWhichIsA("ProximityPrompt", true) == nil, label .. ": ...and no prompt on the pad (the gate's PromptPart has the only one)")
+			end
+		end
 		local players = K.freshPlayers(2, "Gate")
 		local a, b = players[1], players[2]
 		local function atGate(p, id)

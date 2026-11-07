@@ -7,7 +7,8 @@
 --                         the deck with nothing solid over it; GateService's PlazaGatePrompt on it ("Travel" / "Plaza",
 --                         E, range 8, no OpenPanel); GateService.Use(player, "Plaza") lands on LobbyInfo.Gates.Altar.
 --                         ReturnCFrame (18 studs in front of the Altar gate, >= 14 studs from its PromptPart so the
---                         12-stud Altar prompt does not show on arrival, on the plaza ground, nothing solid there),
+--                         12-stud Altar prompt does not show on arrival, 3 studs over the Altar gate's pad top (lobby
+--                         shop Task 12: the arrival lands on the pad), nothing solid in a 5x5x5 box just above it),
 --                         fires Teleported (player, "Plaza") once; refused in a battle / dungeon run (InBattle "D7"),
 --                         a match, far away (> 8 + 4), inside the 1.5 s cooldown; the prompt itself works (Mock.Trigger);
 --                         a rebuilt altar is re-bound at once (StormAltar.Built: a fresh prompt on the new pad); a seated
@@ -185,10 +186,26 @@ local function serverScenarios()
 				T.check(dPP >= 14, "bug2 altar portal: ...the arrival is >= 14 studs from the Altar gate's PromptPart (its 12-stud prompt stays hidden)", fmt("%.2f studs", dPP))
 			end
 			T.check(ret.LookVector:Dot(site.LookVector) > 0.95, "bug2 altar portal: ...looking at the plaza")
+			-- lobby shop (Task 12, spec 5.11 a): the arrival lands on the Altar gate's pad, so "3 studs over the ground" is
+			-- over the pad top (its highest part: the 0.6 Pad and the tiles up to 0.68) and the 5x5x5 box sits above it
+			local gate = info.Gates.Altar
+			local apad = gate.Pad
+			local padTop = nil
+			if typeof(apad) == "Instance" and apad.Name == "Pad" and gate.Model then
+				padTop = apad.Position.Y + apad.Size.Y / 2
+				for _, d in ipairs(gate.Model:GetChildren()) do
+					if d:IsA("BasePart") and string.sub(d.Name, 1, 7) == "PadTile" then
+						padTop = max(padTop, d.Position.Y + d.Size.Y / 2)
+					end
+				end
+			end
 			local okR, hitR = K.groundBelow(ret.Position, 8)
-			T.check(okR and abs(hitR.Position.Y - (ret.Position.Y - 3)) < 0.6, "bug2 altar portal: ...3 studs over the plaza ground", okR and fmt("ground %.2f, arrival %.2f", hitR.Position.Y, ret.Position.Y) or "no ground")
-			local there = solidIn(ret * CFrame.new(0, 0, 0), Vector3.new(5, 5, 5), nil)
-			T.check(#there == 0, "bug2 altar portal: ...nothing solid at the arrival (2.5 studs around: no lamp, bench or prop)", names(there))
+			T.check(padTop ~= nil and okR and hitR.Instance == apad and abs(ret.Position.Y - 3 - padTop) < 0.1,
+				"bug2 altar portal: ...3 studs over the Altar gate's pad top (the pad is the ground under it)",
+				okR and fmt("ground %s at %.2f, pad top %s, arrival %.2f", hitR.Instance:GetFullName(), hitR.Position.Y, tostring(padTop), ret.Position.Y) or "no ground")
+			local boxY = (padTop or ret.Position.Y - 3) + 0.05 + 2.5
+			local there = solidIn(CFrame.new(ret.Position.X, boxY, ret.Position.Z), Vector3.new(5, 5, 5), nil)
+			T.check(#there == 0, "bug2 altar portal: ...nothing solid at the arrival (a 5x5x5 box just above the pad top: no lamp, bench or prop)", names(there))
 		end
 		-- the teleport
 		local fired = {}

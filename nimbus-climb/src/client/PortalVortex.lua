@@ -26,6 +26,10 @@
 --                                       its centre) and dims (0 = as built, 1 = gone); writes only on a (quantised) change
 -- A caller without Swirl parts (the per-player home portal, HomePortalFx) passes rec.Fixed = { Center = CFrame, Radius,
 -- Speed } instead: the vortex floats at Center (its front = -Z), Radius studs across, turning Speed x as fast.
+-- Boost (lobby shop 5.11 a): Build reads rec.Model's "VortexBoost" attribute (WorldStyle.BuildGate writes it; the Storm
+-- Altar gate's 1.4): v.Boost = max(1, it or 1). Above 1 every tint is lifted toward white by Boost - 1 (SwirlLook's deep
+-- backdrop too) and the glow by Boost (Texture: SurfaceGui Brightness = BRIGHTNESS x Boost; Fallback: every LightEmission
+-- x Boost, capped at 1). Boost 1 gives the plain numbers exactly.
 
 local PortalVortex = {}
 
@@ -95,9 +99,11 @@ local function vivid(color)
 	return Color3.fromHSV(h, math.max(sat, 0.72), math.max(val, 0.92))
 end
 
-local function tints(color)
+-- boost (lobby shop 5.11 a: the gate's VortexBoost, >= 1): above 1 every tint is lifted toward white by boost - 1, so the
+-- deep backdrop SwirlLook hands out is lifted too; boost 1 = the plain tints
+local function tints(color, boost)
 	local c = vivid(color)
-	return {
+	local t = {
 		deep = c:Lerp(BLACK, 0.42),
 		core = c:Lerp(BLACK, 0.78),
 		arm = c:Lerp(WHITE, 0.22),
@@ -105,6 +111,13 @@ local function tints(color)
 		spark = c:Lerp(WHITE, 0.88),
 		rim = c:Lerp(WHITE, 0.62),
 	}
+	if type(boost) == "number" and boost > 1 then
+		local k = math.min(1, boost - 1)
+		for name, col in pairs(t) do
+			t[name] = col:Lerp(WHITE, k)
+		end
+	end
+	return t
 end
 
 function PortalVortex.Mode(ids)
@@ -198,14 +211,14 @@ local function label(gui, spec, id, tint)
 	}, gui)
 end
 
-local function surface(part, face, name)
+local function surface(part, face, name, boost)
 	local gui = make("SurfaceGui", {
 		Name = name,
 		Face = face,
 		SizingMode = Enum.SurfaceGuiSizingMode.FixedSize,
 		CanvasSize = Vector2.new(K.CANVAS, K.CANVAS),
 		LightInfluence = 0,
-		Brightness = K.BRIGHTNESS,
+		Brightness = K.BRIGHTNESS * boost, -- the gate's VortexBoost (1 = today's glow)
 		AlwaysOnTop = false,
 		ClipsDescendants = true,
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
@@ -216,8 +229,8 @@ local function surface(part, face, name)
 end
 
 local function buildTexture(v, ids, tint)
-	v.Front = surface(v.Plane, Enum.NormalId.Front, "VortexFront")
-	v.Back = surface(v.Plane, Enum.NormalId.Back, "VortexBack")
+	v.Front = surface(v.Plane, Enum.NormalId.Front, "VortexFront", v.Boost)
+	v.Back = surface(v.Plane, Enum.NormalId.Back, "VortexBack", v.Boost)
 	v.Layers, v.BackLayers, v.Crackles = {}, {}, {}
 	for _, spec in ipairs(LAYERS) do
 		local entry = { Spec = spec, Label = label(v.Front, spec, ids[spec.Key], tint[spec.Tint]), Base = spec.T or 0 }
@@ -285,6 +298,10 @@ end
 
 local function buildFallback(v, tint, folder)
 	local radius = v.Radius
+	-- the gate's VortexBoost scales every LightEmission, capped at 1 (boost 1 = today's 0.7 / 1)
+	local function glow(e)
+		return math.min(1, e * v.Boost)
+	end
 	v.SpinA = plane(folder, "VortexArms", v.Center, radius)
 	v.SpinB = plane(folder, "VortexFine", v.Center, radius)
 	v.Beams = {}
@@ -301,7 +318,7 @@ local function buildFallback(v, tint, folder)
 		NumberSequenceKeypoint.new(1, 0.9),
 	})
 	for i = 1, K.ARMS do
-		keep(arm(v.SpinA, i, K.ARMS, radius, K.ARM_SWEEP, radius * 0.19, 0.12, armColor, armT, 0.7, "Arm"))
+		keep(arm(v.SpinA, i, K.ARMS, radius, K.ARM_SWEEP, radius * 0.19, 0.12, armColor, armT, glow(0.7), "Arm"))
 	end
 	local fineColor = ColorSequence.new(tint.fine, tint.spark)
 	local fineT = NumberSequence.new({
@@ -310,7 +327,7 @@ local function buildFallback(v, tint, folder)
 		NumberSequenceKeypoint.new(1, 0.95),
 	})
 	for i = 1, K.FINE do
-		keep(arm(v.SpinB, i, K.FINE, radius, K.FINE_SWEEP, radius * 0.06, 0.03, fineColor, fineT, 1, "Fine"))
+		keep(arm(v.SpinB, i, K.FINE, radius, K.FINE_SWEEP, radius * 0.06, 0.03, fineColor, fineT, glow(1), "Fine"))
 	end
 	-- light streaks pulled to the centre
 	local streaks = make("ParticleEmitter", {
@@ -325,7 +342,7 @@ local function buildFallback(v, tint, folder)
 			NumberSequenceKeypoint.new(0.25, 0.15),
 			NumberSequenceKeypoint.new(1, 1),
 		}),
-		LightEmission = 1,
+		LightEmission = glow(1),
 		LightInfluence = 0,
 		EmissionDirection = Enum.NormalId.Front,
 		Enabled = false,
@@ -349,7 +366,7 @@ local function buildFallback(v, tint, folder)
 		Color = ColorSequence.new(WHITE, tint.rim),
 		Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(1, 1) }),
 		Rotation = NumberRange.new(0, 360),
-		LightEmission = 1,
+		LightEmission = glow(1),
 		LightInfluence = 0,
 		EmissionDirection = Enum.NormalId.Front,
 		Enabled = false,
@@ -369,8 +386,13 @@ end
 function PortalVortex.Build(rec, folder, ids, color, seed)
 	local mode = PortalVortex.Mode(ids)
 	local layout = PortalVortex.Layout(rec, mode)
-	local tint = tints(color)
+	-- lobby shop (5.11 a): the gate model's VortexBoost (the Altar's 1.4; none = 1)
+	local model = rec.Model
+	local boost = tonumber(typeof(model) == "Instance" and model:GetAttribute("VortexBoost") or nil)
+	boost = (boost and boost > 1) and boost or 1 -- math.max(1, attribute or 1), a NaN or junk value reads as 1
+	local tint = tints(color, boost)
 	local v = {
+		Boost = boost,
 		Mode = mode,
 		Center = layout.Center,
 		Radius = layout.Radius,

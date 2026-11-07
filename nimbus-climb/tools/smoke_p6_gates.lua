@@ -11,6 +11,8 @@
 --                    BuildGate gate is dressed: the stone / frame / trim / crest voxels go transparent locally, the
 --                    Neon glow / swirl / gems / star gems, the pad and a torch added after the tag stay visible, the
 --                    mesh sits on the site (Trim part centre = site * manifest centre) in the gate colour
+--                    lobby shop (Task 12): the Altar row is the game's Altar spec (Pad = true, Pill "Secret Roulette",
+--                    VortexBoost 1.4): its pad and lanterns stay kept parts, the model carries the VortexBoost attribute
 -- Deterministic: fixed specs and sites, sorted names.
 
 local T = SmokeCommon.T
@@ -29,7 +31,7 @@ local SPECS = {
 	{ Id = "Dungeon", Color = "Purple", Glyph = "torch", Pad = true, Key = "gate_dungeon" },
 	{ Id = "Ring", Color = "Gold", Glyph = "crown", Pad = true, Key = "gate_ring" },
 	{ Id = "Arena", Color = "Red", Glyph = "swords", Pad = false, Key = "gate_arena" },
-	{ Id = "Altar", Color = "Cyan", Glyph = "bolt", Pad = false, Key = "gate_altar" },
+	{ Id = "Altar", Color = "Cyan", Glyph = "bolt", Pad = true, Pill = "Secret Roulette", VortexBoost = 1.4, Key = "gate_altar" }, -- lobby shop (5.11 a)
 	{ Id = "Return", Color = "Green", Glyph = "house", Pad = false, Key = "gate_home" },
 	{ Id = "Home", Color = "Yellow", Glyph = "house", Pad = false, Key = "gate_home" },
 	{ Id = "HoopCrown", Color = "Pink", Glyph = "crown", Shape = "Hoop", Pad = false, Key = "gate_obby" },
@@ -70,7 +72,8 @@ local function siteOf(i)
 end
 
 local function build(WS, folder, i, sp)
-	return WS.BuildGate(folder, siteOf(i), { Id = sp.Id, Title = sp.Id, Info = "", Color = sp.Color, Glyph = sp.Glyph, Pad = sp.Pad, Stars = sp.Stars, Shape = sp.Shape, Name = "Portal_" .. sp.Id })
+	return WS.BuildGate(folder, siteOf(i), { Id = sp.Id, Title = sp.Id, Info = "", Color = sp.Color, Glyph = sp.Glyph, Pad = sp.Pad, Stars = sp.Stars, Shape = sp.Shape, Name = "Portal_" .. sp.Id,
+		Pill = sp.Pill, VortexBoost = sp.VortexBoost })
 end
 
 -- an untagged WorldStyle: a copy next to copies of Voxel and Theme, with no MeshLibrary beside it
@@ -170,6 +173,9 @@ S.p6gates_server = guarded("p6gates_server", function()
 				if sp.Glyph == "cloud" then
 					T.eq(model:GetAttribute("ML_Stars"), sp.Stars, label .. ": ML_Stars = the lit stars")
 				end
+				-- lobby shop (5.11 a): the Altar row is the game's spec (Pad, Pill, VortexBoost); the boost is a model
+				-- attribute the client vortex reads, the other gates have none
+				T.eq(model:GetAttribute("VortexBoost"), sp.VortexBoost, label .. ": VortexBoost attribute = the spec's (" .. tostring(sp.VortexBoost) .. ")")
 				-- the mesh origin = the site: pivot (GlowCore) * offset
 				local core = model:FindFirstChild("GlowCore")
 				T.check(core ~= nil and model.PrimaryPart == core, label .. ": GlowCore is the PrimaryPart")
@@ -207,7 +213,8 @@ S.p6gates_server = guarded("p6gates_server", function()
 				end
 				T.check(hidden > 0, label .. ": the mesh replaces some voxels (" .. hidden .. ")")
 				if WS0 then
-					local plain = WS0.BuildGate(folder, siteOf(i) * CFrame.new(0, 0, 200), { Id = sp.Id, Title = sp.Id, Info = "", Color = sp.Color, Glyph = sp.Glyph, Pad = sp.Pad, Stars = sp.Stars, Shape = sp.Shape, Name = "Plain_" .. sp.Id })
+					local plain = WS0.BuildGate(folder, siteOf(i) * CFrame.new(0, 0, 200), { Id = sp.Id, Title = sp.Id, Info = "", Color = sp.Color, Glyph = sp.Glyph, Pad = sp.Pad, Stars = sp.Stars, Shape = sp.Shape, Name = "Plain_" .. sp.Id,
+							Pill = sp.Pill, VortexBoost = sp.VortexBoost })
 					T.check(plain:GetAttribute("ML_DressKey") == nil, label .. ": the copy without MeshLibrary does not tag")
 					T.eq(#partsOf(model), #partsOf(plain), label .. ": part count unchanged by the tag")
 					T.check(signature(model) == signature(plain), label .. ": same instances (names, classes) as the untagged gate")

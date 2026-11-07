@@ -25,7 +25,10 @@
 --                Stars = 0..5 (the "cloud" star crest, default 5), Accent = Color3 (the crowned arch's glow),
 --                Scale = 0.3..1 (default 1; bug batch 6: the arena's Return gate is 0.6): a smaller gate, every part's size and
 --                offset from the site, GateLight's Range, the sparkles and the tag's lift times Scale, the tag's pixel size kept;
---                attributes GateScale and ML_Scale (the Blender mesh and the vortex dress at that size) }
+--                attributes GateScale and ML_Scale (the Blender mesh and the vortex dress at that size),
+--                VortexBoost = number (optional, lobby shop 5.11 a): written as the model attribute VortexBoost, which
+--                client/PortalVortex reads to lift that gate's vortex toward white and its glow (the Altar's 1.4); the
+--                swirl itself is built as always }
 --       Shape by glyph: "crown" = the P4 Champion Ring crowned square arch (gold trim, violet glow, crown baked into
 --       the voxels); every other glyph = the round hoop: a stone base, two stone pillars with coloured caps and a
 --       glowing dot, a chunky pixel ring whose outer band is the gate colour around a white cloud frame, an inner Neon
@@ -917,6 +920,9 @@ function WorldStyle.BuildGate(parent, siteCFrame, spec)
 	model:SetAttribute("GateId", id)
 	model:SetAttribute("Glyph", glyph)
 	model:SetAttribute("GateShape", shape)
+	if type(spec.VortexBoost) == "number" then
+		model:SetAttribute("VortexBoost", spec.VortexBoost) -- lobby shop (5.11 a): the client vortex reads it (the Altar's 1.4)
+	end
 
 	-- the arch glows violet under its gold trim (P4 Champion Ring); the hoop glows in its own colour
 	local glow = color

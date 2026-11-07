@@ -17,6 +17,14 @@
 --                      where MeshLibrary.Status(key) ~= "missing" (in --mesh the scenario gives the egg keys fixture
 --                      holders, so the check runs there); the rarity board's subtitle; no "plaza decor skipped" warn in
 --                      any build; every lobby light within the light rule
+--   altar_gate         the Storm Altar gate on the plaza (5.11 (a)): LobbyInfo.Gates.Altar.Pad is a walkable 14 x 0.6 x 14
+--                      Pad 14 studs in front with the Obby pad's inlay / rim / lantern parts (same names and counts); the
+--                      tag reads "Storm Altar" / "Secret pets" with the Pill "Secret Roulette"; VortexBoost 1.4 on the
+--                      model (none on the Obby gate); ReturnCFrame 14..21 studs along the LookVector, 3 +- 0.1 over the pad
+--                      top (its highest part), looking out; nothing else solid on the pad; standing on it for 3 s
+--                      teleports nobody; Portal_Altar keeps ML_DressKey gate_altar; a rebuild with WorldStyle.BuildGate
+--                      failing takes Gates.Fallback, whose Altar gate has the pad, the Pill text, the attribute and the
+--                      same ReturnCFrame rule
 -- Rebuilds follow smoke_p6_lobby.lua: the booted lobby is set aside (renamed) and put back, the hooks (_Kit,
 -- _ForceShopFallback), Config.Trove.GroupId, the Meadow stats and the fixture holders restored in every path.
 -- Deterministic: mock clock only. Plain Lua 5.1 syntax only.
@@ -625,6 +633,159 @@ S.lobby_trove_plaza = guarded("lobby_trove_plaza", function()
 	T.check(okRun, "trove done: the scenario body ran", tostring(errRun))
 	K.flushErrors("lobby_trove_plaza")
 	K.flushWarnings("lobby_trove_plaza", ALLOWED_WARNINGS)
+end)
+
+----------------------------------------------------------------------------------------------------
+-- altar_gate (Task 12, spec 5.11 (a)): the Storm Altar gate on the plaza
+----------------------------------------------------------------------------------------------------
+local ALTAR = { Title = "Storm Altar", Info = "Secret pets", Pill = "Secret Roulette", Boost = 1.4 }
+local GATE_FALLBACK_MARK = "forced gate fallback (altar_gate)"
+
+-- the highest top of a gate's pad: the Pad part and every PadTile* part of the gate model
+local function padTopOf(model, pad)
+	local top = pad.Position.Y + pad.Size.Y / 2
+	for _, d in ipairs(model:GetChildren()) do
+		if d:IsA("BasePart") and string.sub(d.Name, 1, 7) == "PadTile" then
+			top = math.max(top, d.Position.Y + d.Size.Y / 2)
+		end
+	end
+	return top
+end
+
+-- "Name xN" of a gate's pad kit (its PadTile* inlay / rim tiles and Lantern* parts), sorted
+local function padKit(model)
+	local n = {}
+	for _, d in ipairs(model:GetChildren()) do
+		local head = string.sub(d.Name, 1, 7)
+		if d:IsA("BasePart") and (head == "PadTile" or head == "Lantern") then
+			n[d.Name] = (n[d.Name] or 0) + 1
+		end
+	end
+	local out = {}
+	for name, c in pairs(n) do
+		out[#out + 1] = name .. " x" .. c
+	end
+	table.sort(out)
+	return table.concat(out, ", ")
+end
+
+local function gateTag(model)
+	local tag = model:FindFirstChild("GateTag", true)
+	local plate = tag and tag:FindFirstChild("Plate")
+	local pill = plate and plate:FindFirstChild("Pill")
+	local pillLabel = pill and (pill:FindFirstChild("Label") or pill:FindFirstChild("PillLabel"))
+	return plate and plate:FindFirstChild("Title"), plate and plate:FindFirstChild("Info"), pill, pillLabel
+end
+
+-- the checks of one built Altar gate (the booted WorldStyle gate or the forced Gates.Fallback one)
+local function checkAltarGate(label, gate, site)
+	local model, pad = gate and gate.Model, gate and gate.Pad
+	if not T.check(model ~= nil and typeof(site) == "CFrame", label .. ": LobbyInfo.Gates.Altar.Model and GateSites.Altar") then
+		return nil
+	end
+	-- the tag (checked before the pad, so a missing pad still shows every other miss)
+	local title, infoL, pill, pillLabel = gateTag(model)
+	T.check(title ~= nil and title.Text == ALTAR.Title and infoL ~= nil and infoL.Text == ALTAR.Info and infoL.Visible ~= false,
+		label .. ": the tag reads '" .. ALTAR.Title .. "' / '" .. ALTAR.Info .. "'", tostring(title and title.Text) .. " / " .. tostring(infoL and infoL.Text))
+	T.check(pill ~= nil and pill.Visible == true and pillLabel ~= nil and pillLabel.Text == ALTAR.Pill,
+		label .. ": ...and shows the Pill '" .. ALTAR.Pill .. "'", pillLabel and (pillLabel.Text .. (pill.Visible and "" or " (hidden)")) or "no pill")
+	T.eq(model:GetAttribute("VortexBoost"), ALTAR.Boost, label .. ": the gate model carries VortexBoost 1.4")
+	-- the pad
+	local okPad = pad ~= nil and pad:IsA("BasePart") and pad.Name == "Pad" and pad:IsDescendantOf(model)
+	if not T.check(okPad and near(pad.Size, Vector3.new(14, 0.6, 14), 0.01) and pad.CanCollide,
+		label .. ": LobbyInfo.Gates.Altar.Pad is the gate's walkable 14 x 0.6 x 14 Pad", pad and (pad.Name .. " " .. tostring(pad.Size)) or "no pad") then
+		return nil
+	end
+	local l = site:PointToObjectSpace(pad.Position)
+	T.check(math.abs(l.X) < 0.05 and math.abs(l.Z + 14) < 0.05 and math.abs(l.Y - 0.3) < 0.05,
+		label .. ": ...lying 14 studs in front of the gate (toward the plaza), on the ground", tostring(l))
+	-- the way back lands on the pad's front half, 3 studs over the pad top, looking out along the gate's LookVector
+	local ret = gate.ReturnCFrame
+	local top = padTopOf(model, pad)
+	if T.check(typeof(ret) == "CFrame", label .. ": LobbyInfo.Gates.Altar.ReturnCFrame") then
+		local rel = ret.Position - site.Position
+		local along, side = rel:Dot(site.LookVector), math.abs(rel:Dot(site.RightVector))
+		T.check(along >= 14 and along <= 21 and side <= 0.5, label .. ": ...14..21 studs along the gate's LookVector (the pad's front half)", fmt("along %.2f, side %.2f", along, side))
+		T.check(math.abs(ret.Position.Y - top - 3) <= 0.1, label .. ": ...3 studs (+-0.1) over the pad top (its highest part)", fmt("%.3f over", ret.Position.Y - top))
+		T.check(ret.LookVector:Dot(site.LookVector) > 0.99, label .. ": ...looking out along the gate's LookVector (at the plaza)")
+	end
+	return model, pad, top
+end
+
+S.altar_gate = guarded("altar_gate", function()
+	if not K.needBoot() then
+		return
+	end
+	local info = K.W.lobbyInfo
+	local gates = type(info) == "table" and info.Gates or {}
+	local site = info and info.GateSites and info.GateSites.Altar
+	local model, pad, top = checkAltarGate("altar gate", gates.Altar, site)
+	local obby = gates.Obby and gates.Obby.Model
+	T.check(obby ~= nil and obby:GetAttribute("VortexBoost") == nil, "altar gate: the Obby gate has no VortexBoost (only the Altar's vortex is boosted)")
+	if model and obby then
+		local kit = padKit(model)
+		T.check(kit ~= "" and kit == padKit(obby) and string.find(kit, "PadTileGlow", 1, true) ~= nil and string.find(kit, "LanternGlow x2", 1, true) ~= nil,
+			"altar gate: the pad has the Obby pad's Neon inlay, rim tiles and two lanterns (same names and counts)", kit .. " vs " .. padKit(obby))
+		T.eq(model:GetAttribute("ML_DressKey"), "gate_altar", "altar gate: the gate_altar mesh target keeps its ML_DressKey")
+	end
+	if model and pad then
+		-- nothing else solid stands on the pad (6 studs up)
+		local box = site * CFrame.new(0, top - site.Position.Y + 3.05, -14)
+		local solid = {}
+		for _, p in ipairs(workspace:GetPartBoundsInBox(box, Vector3.new(14, 6, 14))) do
+			if p.CanCollide and not p:IsDescendantOf(model) then
+				local char = false
+				for _, pl in ipairs(game:GetService("Players"):GetPlayers()) do
+					if pl.Character and p:IsDescendantOf(pl.Character) then
+						char = true
+					end
+				end
+				if not char then
+					solid[#solid + 1] = p:GetFullName()
+				end
+			end
+		end
+		T.check(#solid == 0, "altar gate: nothing else solid stands on the pad (6 studs up)", table.concat(solid, ", "))
+		-- the pad is a landing spot, not a trigger: GateService's Travel prompt stays the only way in
+		local GS = K.mod("GateService")
+		local fired = {}
+		local conn = GS and GS.Teleported and GS.Teleported:Connect(function(_, id)
+			fired[#fired + 1] = tostring(id)
+		end)
+		local players = K.freshPlayers(1, "AltarPad")
+		local p = players[1]
+		local spot = (site * CFrame.new(0, 0, -14)).Position
+		Mock.Teleport(p, CFrame.new(spot.X, top + 3, spot.Z))
+		K.advance(3)
+		local root = K.root(p)
+		T.check(conn ~= nil and #fired == 0 and root ~= nil and hdist(root.Position, spot) < 1,
+			"altar gate: standing on the pad for 3 s teleports nobody", table.concat(fired, ", ") .. (root and fmt(" (%.2f studs off)", hdist(root.Position, spot)) or ""))
+		if conn then
+			conn:Disconnect()
+		end
+		K.removePlayers(players)
+	end
+
+	------------------------------------------------------------------ the forced Gates.Fallback gate
+	local WS = req("shared/WorldStyle")
+	local realBuildGate = WS and WS.BuildGate
+	rebuild("altar gate fallback", function(undo)
+		WS.BuildGate = function()
+			error(GATE_FALLBACK_MARK)
+		end
+		undo[#undo + 1] = function()
+			WS.BuildGate = realBuildGate
+		end
+	end, function(built)
+		local g = built.Gates and built.Gates.Altar
+		local m = g and g.Model
+		T.check(m ~= nil and m:FindFirstChild("Column") ~= nil and m:FindFirstChild("GlowCore") == nil,
+			"altar gate fallback: WorldStyle.BuildGate failing builds the Altar gate with Gates.Fallback (columns, no voxel core)")
+		checkAltarGate("altar gate fallback", g, built.GateSites and built.GateSites.Altar)
+	end)
+	T.check(WS ~= nil and WS.BuildGate == realBuildGate, "altar gate: WorldStyle.BuildGate is back after the forced fallback")
+	K.flushErrors("altar_gate")
+	K.flushWarnings("altar_gate", { "[DataService]", "[MeshLibrary]", GATE_FALLBACK_MARK })
 end)
 
 return S
