@@ -713,7 +713,7 @@
    "type": "prop",
    "prop": "lobby_egg",
    "budget": "egg",
-   "description": "Common rarity egg (lobby-shop egglook C, sky weather): grey shell, a big white cloud + a small one; picture front and back, raised, dark outline; pivot bottom centre, attachment Center",
+   "description": "Common rarity egg (lobby-shop egglook A, painted, owner: more detail + VFX): simple spots: darker slate spots in three sizes + little white dots; Neon parts named Glow* are the VFX hooks; pivot bottom centre, attachment Center",
    "args": {
     "rarity": "common"
    }
@@ -723,7 +723,7 @@
    "type": "prop",
    "prop": "lobby_egg",
    "budget": "egg",
-   "description": "Uncommon rarity egg (lobby-shop egglook C, sky weather): green shell, a white breeze swirl with a gust tail and a lime leaf; picture front and back, raised, dark outline; pivot bottom centre, attachment Center",
+   "description": "Uncommon rarity egg (lobby-shop egglook A, painted, owner: more detail + VFX): a cream zigzag band with a dark green outline, lime spots in its bays, white dots; Neon parts named Glow* are the VFX hooks; pivot bottom centre, attachment Center",
    "args": {
     "rarity": "uncommon"
    }
@@ -733,7 +733,7 @@
    "type": "prop",
    "prop": "lobby_egg",
    "budget": "egg",
-   "description": "Rare rarity egg (lobby-shop egglook C, sky weather): blue shell, three pale raindrops with white highlights; picture front and back, raised, dark outline; pivot bottom centre, attachment Center",
+   "description": "Rare rarity egg (lobby-shop egglook A, painted, owner: more detail + VFX): two white bands edged in navy, ringed white dots between them, pale dots above and below; Neon parts named Glow* are the VFX hooks; pivot bottom centre, attachment Center",
    "args": {
     "rarity": "rare"
    }
@@ -743,7 +743,7 @@
    "type": "prop",
    "prop": "lobby_egg",
    "budget": "egg",
-   "description": "Epic rarity egg (lobby-shop egglook C, sky weather): purple shell, a gold Neon lightning bolt; picture front and back, raised, dark outline; pivot bottom centre, attachment Center",
+   "description": "Epic rarity egg (lobby-shop egglook A, painted, owner: more detail + VFX): a deep violet star band between two raised gold Neon trims (GlowTrim), white Neon 4-point stars (GlowStar), white / gold dots; Neon parts named Glow* are the VFX hooks; pivot bottom centre, attachment Center",
    "args": {
     "rarity": "epic"
    }
@@ -753,7 +753,7 @@
    "type": "prop",
    "prop": "lobby_egg",
    "budget": "egg",
-   "description": "Legendary rarity egg (lobby-shop egglook C, sky weather): gold shell, a sun: warm yellow Neon disc + orange rays; picture front and back, raised, dark outline; pivot bottom centre, attachment Center",
+   "description": "Legendary rarity egg (lobby-shop egglook A, painted, owner: more detail + VFX): a white-gold crown with eight points against a crimson velvet ring, Neon gold trim + point balls (GlowCrown), ruby / sapphire Neon gems (GlowRuby, GlowSapphire), cream filigree swags with pearls; Neon parts named Glow* are the VFX hooks; pivot bottom centre, attachment Center",
    "args": {
     "rarity": "legendary"
    }
@@ -763,7 +763,7 @@
    "type": "prop",
    "prop": "lobby_egg",
    "budget": "egg",
-   "description": "Mythic rarity egg (lobby-shop egglook C, sky weather): pink shell, three wavy Neon aurora bands (teal / green / violet) right round the egg; picture front and back, raised, dark outline; pivot bottom centre, attachment Center",
+   "description": "Mythic rarity egg (lobby-shop egglook A, painted, owner: more detail + VFX): flowing gradient bands (violet / plum foot, blush / pale cap), a Neon violet wave ribbon (GlowWave), eight teal Neon fiddlehead swirls (GlowSwirl), sparkles (GlowStar); Neon parts named Glow* are the VFX hooks; pivot bottom centre, attachment Center",
    "args": {
     "rarity": "mythic"
    }
@@ -773,7 +773,7 @@
    "type": "prop",
    "prop": "lobby_egg",
    "budget": "egg",
-   "description": "Secret rarity egg (lobby-shop egglook C, sky weather): near-black night shell with a violet horizon, a Neon crescent moon and 4-point stars; picture front and back, raised, dark outline; pivot bottom centre, attachment Center",
+   "description": "Secret rarity egg (lobby-shop egglook A, painted, owner: more detail + VFX): night shell with a violet dusk, violet Neon cracks from the tip (GlowCrack) into a ring of magenta Neon runes (GlowRune), white Neon stars (GlowStar), pin-prick stars; Neon parts named Glow* are the VFX hooks; pivot bottom centre, attachment Center",
    "args": {
     "rarity": "secret"
    }

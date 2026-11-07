@@ -1,22 +1,32 @@
-"""Lobby-shop art (mission lobby-shop 2026-11-07, pitch cards egglook C / gemlook A / portal C; catalog
+"""Lobby-shop art (mission lobby-shop 2026-11-07, pitch cards egglook A / gemlook A / portal C; catalog
 blender/catalog/lobby.json): the seven rarity eggs the roulettes now roll, the world gem over the Storm Altar, and the
 standing return-portal ring on the altar island.  Same fine-voxel family as the rest of the lobby (props/lobby.py
 Sculpt, props/lobby_trove.py cell-exact masks): SmoothPlastic with baked light / dark shading, constant colours baked
 into one Fixed part per grid, Neon only for glows.  Nothing here needs a texture or an upload to read.
 
   * "lobby_egg"         egg_<rarity> (common, uncommon, rare, epic, legendary, mythic, secret): ONE egg shape
-                        (2.2 x 3 x 2.2 studs, wider below the middle, pointed top) with seven paint sets of sky-weather
-                        pictures, drawn BIG on the front and again on the back (each reads the right way round from
-                        its side), raised one voxel and ringed by a dark outline so they read at 30 px:
-                          common     grey shell (Pet Index 168,178,194), a big white cloud + a small one
-                          uncommon   green shell, a white breeze swirl with a gust tail and a lime leaf
-                          rare       blue shell, three pale raindrops with white highlights
-                          epic       purple shell, a gold lightning bolt (Neon)
-                          legendary  gold shell, a sun: warm yellow Neon disc + orange rays
-                          mythic     pink shell, three wavy aurora bands right round the egg (Neon teal / green / violet)
-                          secret     near-black night shell with a violet horizon at the bottom, a crescent moon and
-                                     4-point stars (Neon), pin-prick stars
-                        The glow grows with rarity: no Neon up to Rare, the picture is Neon from Epic up.  Pivot =
+                        (2.2 x 3 x 2.2 studs, wider below the middle, pointed top), PAINTED (owner pick egglook A, "more
+                        coolness and details"): patterns that wrap right round the egg and grow richer with rarity, the
+                        shell = the Config.Rarities colour, a cartoon shine (the shell's light tone) upper left on the
+                        front and the back:
+                          common     simple spots: darker grey spots in three sizes + little white dots
+                          uncommon   a cream zigzag band with a dark green outline, lime spots in its bays, white dots
+                          rare       two white bands edged in navy, ringed white dots between them, pale dots
+                          epic       a deep violet star band between two raised gold Neon trims (GlowTrim), white Neon
+                                     4-point stars in it (GlowStar), white dots above, gold dots below
+                          legendary  a white-gold crown (band + eight points, deep amber outline) against a crimson
+                                     velvet ring, a Neon gold trim under it and a Neon ball on every point (GlowCrown),
+                                     ruby / sapphire Neon gems in the band (GlowRuby, GlowSapphire) with amber studs
+                                     between, cream filigree swags under the cap with pearls at their joins
+                          mythic     flowing gradient bands (violet / plum foot, blush / pale cap, wavy edges), a Neon
+                                     violet wave ribbon (GlowWave), eight teal Neon fiddlehead swirls springing up and
+                                     down off it (GlowSwirl), sparkles (GlowStar)
+                          secret     night shell with a violet dusk at the foot, violet Neon cracks running down from the
+                                     tip (GlowCrack, inlaid) into a ring of magenta Neon runes (GlowRune, inlaid: two
+                                     lines + eight 5 x 7 rune marks), white Neon stars (GlowStar), pin-prick stars
+                        Neon from Epic up, each Neon detail its own part named Glow<What> (the game attaches its VFX,
+                        lights and particles to parts whose name starts with "Glow"); raised details stand one cell
+                        proud of the shell.  0.1-stud cells (EGG_K 10: the hatch cutscene shows the egg big).  Pivot =
                         bottom centre (it stands), front -Z.  Attachment Center (the middle, for spins and wobbles).
   * "lobby_gem"         gem_world[_low]: a cut gem, 6 studs across the girdle: octagonal crown (8 facets + table) and
                         pavilion (8 facets split into kite halves) in the GUI gem's three tones (light rgb(186,236,255),
@@ -43,18 +53,22 @@ from props.lobby import finish, hsh
 from props.lobby_trove import TroveSculpt
 
 SPAL = {
-    # eggs (shells = Config.Rarities colours; Light / Dark = the shell's own tones)
-    "ComShell": (168, 178, 194), "ComShellLight": (196, 204, 218), "ComEdge": (92, 104, 128),
-    "ComCloud": (250, 251, 255), "ComCloudShade": (222, 230, 244),
-    "UncShell": (104, 196, 128), "UncShellLight": (140, 216, 156), "UncEdge": (38, 110, 66),
-    "UncSwirl": (240, 255, 244), "UncLeaf": (196, 240, 92), "UncVein": (88, 150, 52),
-    "RarShell": (88, 158, 232), "RarShellLight": (128, 186, 244), "RarEdge": (30, 74, 152),
-    "RarDrop": (214, 240, 255), "RarShine": (255, 255, 255),
-    "EpiShell": (176, 108, 232), "EpiShellLight": (202, 146, 244), "EpiEdge": (76, 34, 128),
-    "LegShell": (242, 182, 68), "LegShellLight": (250, 210, 112), "LegEdge": (150, 84, 22), "LegRay": (240, 112, 44),
-    "MytShell": (238, 98, 140), "MytShellLight": (248, 142, 176), "MytEdge": (150, 40, 88),
-    "SecShell": (40, 40, 52), "SecShellLight": (58, 56, 82), "SecDusk": (64, 44, 120), "SecViolet": (104, 60, 196),
-    "SecEdge": (18, 16, 30), "SecDot": (226, 222, 255),
+    # eggs (shells = Config.Rarities colours; ShellLight = the shell's shine tone)
+    "ComShell": (168, 178, 194), "ComShellLight": (204, 211, 224), "ComSpot": (104, 114, 138),
+    "ComDot": (246, 248, 252),
+    "UncShell": (104, 196, 128), "UncShellLight": (150, 222, 164), "UncEdge": (38, 110, 66),
+    "UncZig": (246, 252, 230), "UncSpot": (204, 244, 96), "UncDot": (246, 255, 248),
+    "RarShell": (88, 158, 232), "RarShellLight": (140, 194, 248), "RarEdge": (28, 64, 140),
+    "RarBand": (244, 250, 255), "RarDot": (178, 222, 255),
+    "EpiShell": (176, 108, 232), "EpiShellLight": (208, 156, 246), "EpiBand": (84, 40, 146),
+    "EpiDot": (248, 240, 255), "EpiGold": (240, 192, 84),
+    "LegShell": (242, 182, 68), "LegShellLight": (252, 214, 122), "LegEdge": (172, 90, 18),
+    "LegCream": (255, 242, 200), "LegFili": (196, 112, 28),
+    "LegCrown": (255, 228, 138), "LegVelvet": (168, 30, 62), "LegPearl": (255, 253, 244),
+    "MytShell": (238, 98, 140), "MytShellLight": (250, 150, 182), "MytBlush": (246, 140, 178),
+    "MytPale": (252, 196, 220), "MytPlum": (200, 74, 176), "MytViolet": (138, 78, 222),
+    "SecShell": (40, 40, 52), "SecShellLight": (60, 58, 84), "SecDusk": (60, 42, 116), "SecViolet": (98, 56, 188),
+    "SecDot": (226, 222, 255),
     # gem
     "GemGlow": (186, 236, 255), "GemMid": (84, 196, 246), "GemDeep": (40, 136, 214), "GemEdge": (26, 84, 168),
     "GemNavy": (24, 46, 112),
@@ -63,9 +77,6 @@ SPAL = {
     "StoneLight": (112, 115, 126), "Bevel": (163, 166, 174), "Crystal": (70, 172, 252), "SignNavy": (24, 34, 78),
 }
 NEONS = {
-    "EpiBolt": (250, 214, 92), "LegSun": (255, 212, 72),
-    "MytTeal": (56, 222, 204), "MytGreen": (150, 250, 150), "MytViolet": (124, 84, 255),
-    "SecMoon": (255, 238, 160), "SecStar": (255, 250, 222),
     "GemGlint": (255, 255, 255), "CrystalCore": (63, 200, 255),
 }
 RETURN_GREEN = (96, 190, 140)    # WorldStyle Green: the arena's Return gate
@@ -143,6 +154,9 @@ def outline(fn, U, V, d):
 
 # ---------------------------------------------------------------------------------------------- eggs
 EGG_H, EGG_A, EGG_TILT = 3.0, 1.1, 0.14
+EGG_K = 10.0                     # 0.1-stud cells: 30 rows tall (the hatch cutscene shows the egg big)
+TAU = 2 * math.pi
+GOLDEN = math.pi * (3 - math.sqrt(5))
 
 
 def egg_r(Y, grow=0.0):
@@ -150,205 +164,323 @@ def egg_r(Y, grow=0.0):
     return EGG_A * np.sqrt(np.clip(1 - t * t, 0, None)) * (1 - EGG_TILT * t) + grow
 
 
-def _cloud(U, V):
-    # a flat-bottomed cloud with three clear puffs (the middle one tallest) and a small cloud above-left
-    base = poly(U, V, [(-0.70, 0.98), (0.70, 0.98), (0.70, 1.34), (-0.70, 1.34)])
-    ends = disc(U, V, -0.70, 1.16, 0.18) | disc(U, V, 0.70, 1.16, 0.18)
-    main = base | ends | disc(U, V, -0.48, 1.34, 0.32) | disc(U, V, 0.0, 1.56, 0.44) | disc(U, V, 0.50, 1.38, 0.32)
-    main &= V >= 0.98
-    small = (disc(U, V, -0.56, 2.30, 0.16) | disc(U, V, -0.33, 2.40, 0.21) | disc(U, V, -0.10, 2.30, 0.15)) & (V >= 2.18)
-    return main | small
+def wrap(a):
+    return (a + math.pi) % TAU - math.pi
 
 
-def _gust(x0, x1, y, cx, cy, r, a0, a1):
-    """the wind icon's stroke: a straight line from (x0, y) to (x1, y) that ends in a curl (an arc round (cx, cy)
-    from angle a0 to a1, degrees)"""
-    pts = [(x0, y), (x1, y)]
-    for i in range(1, 25):
-        a = math.radians(a0 + (a1 - a0) * i / 24)
-        pts.append((cx + r * math.cos(a), cy + r * math.sin(a)))
-    return pts
+def tooth(phi, n):
+    """a triangle wave round the egg with n teeth: 0 in a tooth's middle (phi = (k + 1/2) * TAU / n), 1 between
+    two teeth (phi = k * TAU / n)"""
+    return 2 * np.abs((phi * n / TAU) % 1.0 - 0.5)
 
 
-# two gusts: the upper one curls up and back over itself, the lower one curls down
-GUSTS = (_gust(-0.78, 0.28, 2.02, 0.28, 2.30, 0.28, -90, 160),
-         _gust(-0.86, 0.42, 1.52, 0.42, 1.25, 0.27, 90, -120))
+def mid(k, n):
+    """the angle of tooth k's middle"""
+    return (k + 0.5) * TAU / n
 
 
-def _breeze(U, V):
-    out = np.zeros(np.broadcast(U, V).shape, bool)
-    for g in GUSTS:
-        out |= stroke(U, V, g, 0.13)
+class Egg:
+    """surface coordinates on one egg grid: phi = the angle round the egg (0 = the front, -Z; + towards +X, which is
+    the viewer's left from the front), Y = height; local(phi0, y0) = a picture plane (u, v) in studs on the surface"""
+
+    def __init__(self, S):
+        self.S, self.vs = S, S.vs
+        X, Y, Z = np.broadcast_arrays(S.X, S.Y, S.Z)
+        self.X, self.Y, self.Z = X, Y, Z
+        self.oy = float(S.origin[1])
+        self.rr = np.sqrt(X * X + Z * Z)
+        self.phi = np.arctan2(X, -Z)
+        self.inside = self.rr <= egg_r(Y)
+        # one cell proud of the shell: raised details (Neon) stand on this layer
+        self.proud = (self.rr <= egg_r(Y, S.vs)) & (Y > S.vs) & (Y < EGG_H - S.vs)
+
+    def surf(self, phi0, y0):
+        r = float(egg_r(y0))
+        return np.array([r * math.sin(phi0), y0, -r * math.cos(phi0)])
+
+    def local(self, phi0, y0):
+        return wrap(self.phi - phi0) * float(egg_r(y0)), self.Y - y0
+
+    def spot(self, phi0, y0, r):
+        """a round spot of radius r on the shell at (phi0, y0) (a ball round the surface point)"""
+        p = self.surf(phi0, y0)
+        return (self.X - p[0]) ** 2 + (self.Y - p[1]) ** 2 + (self.Z - p[2]) ** 2 <= r * r
+
+    def rows(self, y0, n):
+        """exactly n cell rows starting at the cell boundary nearest y0"""
+        b = self.oy + round((y0 - self.oy) / self.vs) * self.vs
+        return (self.Y > b) & (self.Y < b + (n - 0.01) * self.vs + 0.01 * self.vs)
+
+    def ring(self, y, half):
+        return np.abs(self.Y - y) < half
+
+    def line(self, pts, w):
+        """within w of the surface polyline through the (phi, y) points (3D segments between surface points)"""
+        out = np.zeros(self.X.shape, bool)
+        P = [self.surf(p, y) for p, y in pts]
+        for a, b in zip(P[:-1], P[1:]):
+            d = b - a
+            L2 = float(d @ d) or 1e-9
+            t = np.clip(((self.X - a[0]) * d[0] + (self.Y - a[1]) * d[1] + (self.Z - a[2]) * d[2]) / L2, 0, 1)
+            out |= ((self.X - a[0] - t * d[0]) ** 2 + (self.Y - a[1] - t * d[1]) ** 2
+                    + (self.Z - a[2] - t * d[2]) ** 2) <= w * w
+        return out
+
+    def star(self, phi0, y0, s):
+        """a twinkle star of half-size s drawn for 0.1-stud cells: a diamond heart and four arms that taper from
+        ~2.5 cells wide to 1 - 2 at the tips (the side arms a little shorter), so it reads as a star, not a dot"""
+        u, v = self.local(phi0, y0)
+        au, av = np.abs(u), np.abs(v)
+        heart = au + av <= 0.56 * s
+        up = (av <= s) & (au <= np.maximum(0.06, 0.12 * (1 - av / s)))
+        side = (au <= 0.8 * s) & (av <= np.maximum(0.06, 0.12 * (1 - au / (0.8 * s))))
+        return heart | up | side
+
+    def glow(self, key, rgb, mask, raised=True):
+        """a Neon detail: its own part named `key` (the game's VFX hook), raised one cell or inlaid flush"""
+        self.S.neon[key] = ["rgb"] + list(rgb)
+        self.S.put(key, mask & (self.proud if raised else self.inside))
+
+
+SHINE_AT = ((0.6, 2.2), (math.pi + 0.6, 2.2))      # the cartoon shine: upper left from the front and from the back
+
+
+def _shine(E, S, light, shells):
+    """a leaning oval of the shell's light tone, top tipped outwards (like a lit ball), on the front and the back"""
+    a = math.radians(24)
+    for ph, y0 in SHINE_AT:
+        u, v = E.local(ph, y0)
+        x = u * math.cos(a) - v * math.sin(a)
+        y = u * math.sin(a) + v * math.cos(a)
+        S.put(light, E.inside & ((x / 0.17) ** 2 + (y / 0.32) ** 2 <= 1), only=shells)
+
+
+def _clear_of_shine(ph, y, d=0.5):
+    return all(abs(wrap(ph - p0)) * 1.1 > d or abs(y - y0) > d for p0, y0 in SHINE_AT)
+
+
+def _spiral(n, y0, y1, sizes, shift=0.0):
+    """n (phi, y, r) spots on a golden-angle spiral from y0 up to y1 (sizes cycle), the ones on the shine left out"""
+    out = []
+    for i in range(n):
+        yy = y0 + (i + 0.5) / n * (y1 - y0)
+        pp = wrap(i * GOLDEN + shift)
+        if _clear_of_shine(pp, yy):
+            out.append((pp, yy, sizes[i % len(sizes)]))
     return out
 
 
-def _leaf_frame(U, V):
-    # the leaf: a lens 1 stud long tilted 20 degrees, at the lower left
-    a = math.radians(20)
-    du, dv = U + 0.45, V - 0.80
-    x = du * math.cos(a) + dv * math.sin(a)
-    y = -du * math.sin(a) + dv * math.cos(a)
-    return x, y
+def _egg_common(E, S):
+    """simple spots: darker slate spots in three sizes and little white dots"""
+    for ph, y, r in _spiral(13, 0.35, 2.75, (0.32, 0.22, 0.26), shift=1.3):
+        S.put("ComSpot", E.inside & E.spot(ph, y, r))
+    for ph, y, r in _spiral(10, 0.5, 2.6, (0.11,), shift=2.1):
+        S.put("ComDot", E.inside & E.spot(ph, y, r), only="ComShell")
 
 
-def _leaf(U, V):
-    x, y = _leaf_frame(U, V)
-    return (np.abs(x) <= 0.5) & (np.abs(y) <= 0.27 * np.sqrt(np.clip(1 - (x / 0.5) ** 2, 0, None)) + 0.02)
+def _egg_uncommon(E, S):
+    """a cream zigzag band right round the middle with a dark green outline, lime spots in its bays, white dots"""
+    vs = E.vs
+    c = 1.36 + 0.21 * (1 - 2 * tooth(E.phi, 8))      # tooth middles up (1.57), between teeth down (1.15)
+    d = np.abs(E.Y - c)
+    S.put("UncEdge", E.inside & (d <= 0.17 + 1.5 * vs))
+    S.put("UncZig", E.inside & (d <= 0.17))
+    for k in range(8):
+        S.put("UncSpot", E.inside & E.spot(k * TAU / 8, 1.86, 0.16))          # above the band's low points
+        S.put("UncSpot", E.inside & E.spot(mid(k, 8), 0.96, 0.16))            # below its high points
+        S.put("UncDot", E.inside & E.spot(mid(k, 8), 2.4, 0.09), only="UncShell")
+        S.put("UncDot", E.inside & E.spot(k * TAU / 8, 0.5, 0.09), only="UncShell")
 
 
-def _leaf_vein(U, V):
-    x, y = _leaf_frame(U, V)
-    return (np.abs(y) <= 0.05) & (x > -0.42) & (x < 0.36)
+def _egg_rare(E, S):
+    """two white bands edged in navy, a row of big ringed white dots between them and pale dots above and below"""
+    vs = E.vs
+    for y in (0.98, 1.92):
+        S.put("RarEdge", E.inside & E.ring(y, 0.12 + 1.4 * vs))
+        S.put("RarBand", E.inside & E.ring(y, 0.12))
+    for k in range(8):
+        S.put("RarEdge", E.inside & E.spot(k * TAU / 8, 1.45, 0.17 + vs))
+        S.put("RarBand", E.inside & E.spot(k * TAU / 8, 1.45, 0.17))
+        S.put("RarDot", E.inside & E.spot(mid(k, 8), 1.45, 0.09))
+        S.put("RarDot", E.inside & E.spot(mid(k, 8), 2.42, 0.1), only="RarShell")
+        S.put("RarDot", E.inside & E.spot(k * TAU / 8, 0.5, 0.1), only="RarShell")
 
 
-def _uncommon(U, V):
-    return _breeze(U, V) | _leaf(U, V)
+def _egg_epic(E, S):
+    """a deep violet star band between two raised gold Neon trims, white Neon 4-point stars (big / small) in it,
+    white dots above and gold dots below"""
+    S.put("EpiBand", E.inside & E.rows(1.0, 12))
+    E.glow("GlowTrim", EGG_NEON["epic"]["GlowTrim"], E.rows(1.0, 2) | E.rows(2.0, 2))
+    stars = np.zeros(E.X.shape, bool)
+    for k in range(4):
+        stars |= E.star(k * TAU / 4, 1.6, 0.4) | E.star(k * TAU / 4 + TAU / 8, 1.6, 0.22)
+    E.glow("GlowStar", EGG_NEON["epic"]["GlowStar"], stars)
+    for k in range(6):
+        S.put("EpiDot", E.inside & E.spot(mid(k, 6), 2.5, 0.1), only="EpiShell")
+        S.put("EpiGold", E.inside & E.spot(k * TAU / 6, 0.6, 0.11), only="EpiShell")
 
 
-def _drop(U, V, cu, cv, r):
-    body = disc(U, V, cu, cv, r)
-    h = (V - cv) / (1.9 * r)
-    tip = (V >= cv) & (h <= 1) & (np.abs(U - cu) <= r * np.clip(1 - h, 0, 1) ** 1.25)
-    return body | tip
+def _egg_legendary(E, S):
+    """a Faberge crown band: a white-gold crown (band + eight tall points, outlined in deep amber) standing against
+    a crimson velvet ring, a raised Neon gold trim under it and a Neon gold ball on every point (GlowCrown), raised
+    ruby / sapphire Neon gems set in the band with amber filigree studs between, cream filigree swags hanging under
+    the cap with pearls at their joins"""
+    vs = E.vs
+    spike = 0.62 * (1 - tooth(E.phi, 8))                           # straight-sided crown points
+    zone = E.inside & (E.Y > 0.8) & (E.Y < 2.1)
+    S.put("LegVelvet", zone)
+    S.put("LegEdge", zone & (E.Y <= 1.45 + 1.6 * vs + spike))
+    S.put("LegEdge", E.inside & E.rows(2.1, 1))
+    S.put("LegCrown", zone & (E.Y <= 1.45 + spike))
+    neon = EGG_NEON["legendary"]
+    balls = np.zeros(E.X.shape, bool)
+    for k in range(8):
+        balls |= E.spot(mid(k, 8), 2.16, 0.15)
+    E.glow("GlowCrown", neon["GlowCrown"], E.rows(0.8, 2) | balls)
+    gems = {"GlowRuby": np.zeros(E.X.shape, bool), "GlowSapphire": np.zeros(E.X.shape, bool)}
+    for k in range(8):
+        gems["GlowRuby" if k % 2 == 0 else "GlowSapphire"] |= E.spot(mid(k, 8), 1.24, 0.2)
+        S.put("LegFili", E.inside & E.spot(k * TAU / 8, 1.22, 0.08), only="LegCrown")
+    for key in ("GlowRuby", "GlowSapphire"):
+        E.glow(key, neon[key], gems[key])
+    # swags: eight festoons hanging between the points' columns under the cap, a pearl at every join
+    frac = (E.phi * 8 / TAU + 0.5) % 1.0                           # 0 at a point's column
+    S.put("LegCream", E.inside & (np.abs(E.Y - (2.5 - 0.14 * np.sin(math.pi * frac))) < 0.055), only="LegShell")
+    for k in range(8):
+        S.put("LegPearl", E.inside & E.spot(mid(k, 8), 2.5, 0.09))
 
 
-DROPS = ((0.02, 1.18, 0.46), (-0.50, 2.00, 0.26), (0.52, 2.08, 0.27))
+def _tendril(u, v, hand, up, w):
+    """a fiddlehead curl springing from (0, 0): a stem that rises and curls over in 0.8 of a turn, tightening"""
+    cx, cy = 0.2, 0.28
+    a0 = math.atan2(-cy, -cx)
+    r0 = math.hypot(cx, cy)
+    pts = []
+    for i in range(33):
+        s = i / 32
+        a = a0 - s * 1.6 * math.pi                                  # clockwise: up the left, over the top
+        r = r0 + (0.06 - r0) * s
+        pts.append((hand * (cx + r * math.cos(a)), up * (cy + r * math.sin(a))))
+    return stroke(u, v, pts, w)
 
 
-def _rain(U, V):
-    out = np.zeros(np.broadcast(U, V).shape, bool)
-    for d in DROPS:
-        out |= _drop(U, V, *d)
-    return out
+def _egg_mythic(E, S):
+    """flowing gradient bands (violet / plum at the foot, blush / pale at the cap, wavy edges), a raised lavender
+    Neon wave ribbon round the middle, teal Neon fiddlehead swirls springing up and down off it, white Neon
+    sparkles on the cap"""
+    w = lambda ph: 0.08 * np.sin(3 * E.phi + ph)                     # noqa: E731
+    S.put("MytBlush", E.inside & (E.Y > 2.08 + w(0.0)))
+    S.put("MytPale", E.inside & (E.Y > 2.45 + w(1.2)))
+    S.put("MytPlum", E.inside & (E.Y < 0.95 + w(2.2)))
+    S.put("MytViolet", E.inside & (E.Y < 0.6 + w(3.4)))
+    neon = EGG_NEON["mythic"]
+    rib = lambda ph: 1.36 + 0.1 * np.sin(2 * ph)                     # noqa: E731
+    E.glow("GlowWave", neon["GlowWave"], np.abs(E.Y - rib(E.phi)) < 0.09)
+    sw = np.zeros(E.X.shape, bool)
+    for k in range(8):
+        ph = k * TAU / 8 + TAU / 16
+        u, v = E.local(ph, float(rib(ph)))
+        sw |= _tendril(u, v, 1 if k % 4 < 2 else -1, 1 if k % 2 == 0 else -1, 0.06)
+    E.glow("GlowSwirl", neon["GlowSwirl"], sw & ~(np.abs(E.Y - rib(E.phi)) < 0.09))
+    st = np.zeros(E.X.shape, bool)
+    for k in range(4):
+        st |= E.star(k * TAU / 4 + 0.3, 2.42, 0.2)
+    E.glow("GlowStar", neon["GlowStar"], st)
 
 
-def _rain_shine(U, V):
-    out = np.zeros(np.broadcast(U, V).shape, bool)
-    for (cu, cv, r) in DROPS:
-        out |= disc(U, V, cu - 0.4 * r, cv - 0.05 * r, 0.3 * r)
-    return out
+RUNES = (  # 5 x 7 rune marks, rows top -> bottom (Algiz, Tiwaz, Othala, Dagaz, Ingwaz, Sowilo-ish, Fehu, Hagalaz)
+    ("1.1.1", "1.1.1", ".111.", "..1..", "..1..", "..1..", "..1.."),
+    ("..1..", ".111.", "1.1.1", "..1..", "..1..", "..1..", "..1.."),
+    ("..1..", ".1.1.", "1...1", ".1.1.", "..1..", ".1.1.", "1...1"),
+    ("1...1", "11.11", "1.1.1", "1.1.1", "1.1.1", "11.11", "1...1"),
+    (".....", "..1..", ".1.1.", "1...1", ".1.1.", "..1..", "....."),
+    ("...1.", "..1..", ".1...", "..1..", "...1.", "..1..", ".1..."),
+    ("1....", "1..1.", "1.1..", "11..1", "1..1.", "1.1..", "1...."),
+    ("1...1", "1...1", "11..1", "1.1.1", "1..11", "1...1", "1...1"),
+)
+CRACKS = ((0.0, 0.16, -0.06, 0.18, 0.02), (0.0, -0.14, 0.1, -0.16, 0.04),
+          (0.0, 0.12, -0.12, 0.1, -0.03), (0.0, -0.1, 0.16, -0.08, 0.05))                # phi wiggles down a crack
+CRACK_Y = (2.96, 2.7, 2.48, 2.26, 2.0)
 
 
-BOLT = [(-0.06, 2.66), (0.62, 2.66), (0.16, 1.86), (0.62, 1.86), (-0.42, 0.38), (-0.06, 1.46), (-0.52, 1.46)]
-
-
-def _bolt(U, V):
-    return poly(U, V, BOLT)
-
-
-SUN_C, SUN_R = (0.0, 1.52), 0.44
-
-
-def _sun_rays(U, V):
-    du, dv = U - SUN_C[0], V - SUN_C[1]
-    rho = np.sqrt(du * du + dv * dv)
-    ang = np.arctan2(dv, du)
-    k = np.round(ang / (math.pi / 4)) * (math.pi / 4)        # 8 rays
-    off = np.abs(ang - k)
-    half = 0.21 * (1 - (rho - 0.56) / 0.44)                  # each ray tapers from 0.21 rad to a point
-    return (rho >= 0.56) & (rho <= 1.0) & (off <= np.clip(half, 0, None) + 0.05)
-
-
-def _sun_disc(U, V):
-    return disc(U, V, SUN_C[0], SUN_C[1], SUN_R)
-
-
-def _sun(U, V):
-    return _sun_rays(U, V) | _sun_disc(U, V)
-
-
-def _moon(U, V):
-    return disc(U, V, -0.14, 1.68, 0.58) & ~disc(U, V, 0.14, 1.88, 0.48)
-
-
-STARS = ((0.56, 1.10, 0.30), (0.50, 2.34, 0.25), (-0.56, 0.72, 0.19), (-0.52, 2.62, 0.15))
-DOTS = ((0.08, 0.62), (0.78, 1.66), (-0.82, 1.18), (0.12, 2.68), (-0.28, 2.32), (0.86, 0.72))
-
-
-def _stars(U, V):
-    out = np.zeros(np.broadcast(U, V).shape, bool)
-    for s in STARS:
-        out |= star4(U, V, *s)
-    return out
-
-
-def _night(U, V):
-    return _moon(U, V) | _stars(U, V)
+def _egg_secret(E, S):
+    """night shell with a violet dusk at the foot (wavy edges), glowing violet Neon cracks running down from the tip
+    into a ring of magenta Neon runes round the middle, short cracks rising from the foot, raised white Neon 4-point
+    stars and pin-prick stars"""
+    vs = E.vs
+    S.put("SecDusk", E.inside & (E.Y < 0.72 + 0.07 * np.sin(3 * E.phi)))
+    S.put("SecViolet", E.inside & (E.Y < 0.4 + 0.06 * np.sin(3 * E.phi + 1.0)))
+    neon = EGG_NEON["secret"]
+    # the rune ring: two one-row lines and eight 5 x 7 runes between them (one gap row each side), inlaid
+    runes = E.rows(0.9, 1) | E.rows(1.9, 1)
+    row = np.floor((E.Y - 1.1) / vs + 1e-6).astype(int)              # 0 = the runes' bottom row (y 1.1 - 1.2)
+    for k, glyph in enumerate(RUNES):
+        u, _ = E.local(k * TAU / 8, 1.45)
+        col = np.floor(u / vs + 3.0).astype(int)        # columns on cell boundaries, not centres
+        for r in range(7):
+            for c in range(5):
+                if glyph[6 - r][c] == "1":
+                    runes |= (row == r) & (col == c)
+    E.glow("GlowRune", neon["GlowRune"], runes, raised=False)
+    # the cracks: from the tip (where four meet in a glowing spot) down to the upper rune line, each with a branch;
+    # three short ones rise from the foot to the lower line
+    cr = E.spot(0.0, 2.985, 0.16)
+    for k, wig in enumerate(CRACKS):
+        p0 = k * TAU / 4 + TAU / 8
+        pts = [(p0 + dp, y) for dp, y in zip(wig, CRACK_Y)]
+        cr |= E.line(pts, 0.085)
+        bp, by = pts[2]
+        sgn = 1 if k % 2 else -1
+        cr |= E.line([(bp, by), (bp + 0.18 * sgn, by - 0.1), (bp + 0.28 * sgn, by - 0.2)], 0.065)
+    for k in range(3):
+        p0 = k * TAU / 3 + 0.5
+        cr |= E.line([(p0, 0.22), (p0 + 0.12, 0.45), (p0 - 0.05, 0.66), (p0 + 0.06, 0.88)], 0.075)
+    E.glow("GlowCrack", neon["GlowCrack"], cr, raised=False)
+    st = np.zeros(E.X.shape, bool)
+    for k in range(4):
+        st |= E.star(k * TAU / 4, 2.42, 0.22)
+    for k in range(3):
+        st |= E.star(k * TAU / 3 + 0.5 + TAU / 6, 0.56, 0.16)
+    E.glow("GlowStar", neon["GlowStar"], st)
+    for ph, y, r in _spiral(12, 2.1, 2.8, (0.07,), shift=0.9) + _spiral(6, 0.3, 0.8, (0.07,), shift=2.3):
+        S.put("SecDot", E.inside & E.spot(ph, y, r), only=("SecShell", "SecDusk", "SecViolet"))
 
 
 EGGS = {
-    # rarity: (shell, light, edge, picture fn, [(key, fn, neon?)] painted in order on the raised picture)
-    "common": ("ComShell", "ComShellLight", "ComEdge", _cloud,
-               [("ComCloud", _cloud, False)]),
-    "uncommon": ("UncShell", "UncShellLight", "UncEdge", _uncommon,
-                 [("UncSwirl", _breeze, False), ("UncLeaf", _leaf, False), ("UncVein", _leaf_vein, False)]),
-    "rare": ("RarShell", "RarShellLight", "RarEdge", _rain,
-             [("RarDrop", _rain, False), ("RarShine", _rain_shine, False)]),
-    "epic": ("EpiShell", "EpiShellLight", "EpiEdge", _bolt,
-             [("EpiBolt", _bolt, True)]),
-    "legendary": ("LegShell", "LegShellLight", "LegEdge", _sun,
-                  [("LegRay", _sun_rays, False), ("LegSun", _sun_disc, True)]),
-    "mythic": ("MytShell", "MytShellLight", "MytEdge", None, None),
-    "secret": ("SecShell", "SecShellLight", "SecEdge", _night,
-               [("SecMoon", _moon, True), ("SecStar", _stars, True)]),
+    # rarity: (shell, shine, painter)
+    "common": ("ComShell", "ComShellLight", _egg_common),
+    "uncommon": ("UncShell", "UncShellLight", _egg_uncommon),
+    "rare": ("RarShell", "RarShellLight", _egg_rare),
+    "epic": ("EpiShell", "EpiShellLight", _egg_epic),
+    "legendary": ("LegShell", "LegShellLight", _egg_legendary),
+    "mythic": ("MytShell", "MytShellLight", _egg_mythic),
+    "secret": ("SecShell", "SecShellLight", _egg_secret),
 }
-AURORA = (("MytTeal", 0.98, 0.0), ("MytGreen", 1.52, 1.3), ("MytViolet", 2.06, 2.4))   # key, height, wave phase
+# Neon details per egg: part name -> colour (the part names are the game's VFX hooks: every Neon part starts "Glow")
+EGG_NEON = {
+    "epic": {"GlowTrim": (255, 206, 72), "GlowStar": (255, 248, 220)},
+    "legendary": {"GlowCrown": (255, 222, 96), "GlowRuby": (255, 52, 96), "GlowSapphire": (52, 150, 255)},
+    "mythic": {"GlowWave": (156, 92, 255), "GlowSwirl": (60, 236, 212), "GlowStar": (255, 246, 252)},
+    "secret": {"GlowCrack": (150, 70, 255), "GlowRune": (226, 82, 255), "GlowStar": (255, 248, 220)},
+}
 
 
 @prop("lobby_egg")
 def lobby_egg(entry, kit):
     a = entry.get("args") or {}
     rarity = a["rarity"]
-    shell, light, edge, pic, layers = EGGS[rarity]
-    K = float(a.get("K", 8.0))
+    shell, light, paint = EGGS[rarity]
+    K = float(a.get("K", EGG_K))
     S = ShopSculpt(kit, K, 1.75, origin=(0.0, EGG_H / 2, 0.0), name="egg")
-    vs = S.vs
-    X, Y, Z = S.X, S.Y, S.Z
-    rr = np.sqrt(X * X + Z * Z)
-    inside = rr <= egg_r(Y)
-    raised = (rr <= egg_r(Y, vs)) & (Y > vs) & (Y < EGG_H - vs)
-    S.put(shell, inside)
-    # a soft sheen: the shell's light tone on the upper third, dithered into the base at its edge
-    t = (Y - EGG_H / 2) / (EGG_H / 2)
-    dith = ((np.floor(X / vs) + np.floor(Y / vs) + np.floor(Z / vs)) % 2 == 0)
-    S.put(light, inside & ((t > 0.62) | ((t > 0.5) & dith)))
-    front = (Z < 0) & (np.abs(Z) >= 0.55 * rr)
-    back = (Z > 0) & (np.abs(Z) >= 0.55 * rr)
-    Y2 = Y + 0 * X                                               # (n, n, 1) picture-plane arrays
-    Uf, Ub = -X + 0 * Y, X + 0 * Y
-    od = 1.25 * vs                                               # outline width
-    if rarity == "mythic":
-        # aurora bands right round the egg: v wave around the angle; outlines between and round them
-        phi = np.arctan2(X, -Z)
-        for key, h, ph in AURORA:
-            c = h + 0.16 * np.sin(2 * phi + ph)
-            band = np.abs(Y - c) <= 0.18
-            ring = (np.abs(Y - c) > 0.18) & (np.abs(Y - c) <= 0.18 + od)
-            S.put(edge, inside & ring, only=(shell, light))
-            S.glow(key, raised & band)
-    else:
-        for side, U in ((front, Uf), (back, Ub)):
-            S.put(edge, inside & side & outline(pic, U, Y2, od), only=(shell, light))
-            for key, fn, neon in layers:
-                m = raised & side & fn(U, Y2)
-                if neon:
-                    S.glow(key, m)
-                else:
-                    S.put(key, m)
-            if rarity == "common":
-                # the cloud's underside a touch darker (it reads as a puff, not a sticker)
-                S.put("ComCloudShade", raised & side & _cloud(U, Y2) & ~_cloud(U, Y2 - 2 * vs), only="ComCloud")
-            if rarity == "secret":
-                for (du, dv) in DOTS:
-                    S.put("SecDot", inside & side & (np.abs(U - du) < vs) & (np.abs(Y2 - dv) < vs), only=(shell, light))
-    if rarity == "secret":
-        # the violet glow: a night horizon at the bottom (dusk dithered into the shell)
-        S.put("SecDusk", inside & ((t < -0.38) | ((t < -0.26) & dith)), only=(shell, light))
-        S.put("SecViolet", inside & ((t < -0.66) | ((t < -0.55) & dith)), only=(shell, light, "SecDusk"))
-    m = kit.model(entry["key"], "prop", vs=vs, K=K)
+    E = Egg(S)
+    S.put(shell, E.inside)
+    paint(E, S)
+    _shine(E, S, light, (shell,))
+    m = kit.model(entry["key"], "prop", vs=S.vs, K=K)
     S.mesh_at(m, "Egg", {})
-    finish(m, {"source": "designed (lobby-shop pitch egglook C): the %s rarity egg, sky-weather picture" % rarity,
-               "pivot": "bottom centre, front -Z", "rarity": rarity})
+    finish(m, {"source": "designed (lobby-shop pitch egglook A, owner: more detail + VFX): the %s rarity painted egg"
+               % rarity, "pivot": "bottom centre, front -Z", "rarity": rarity,
+               "glowParts": sorted(EGG_NEON.get(rarity, {}))})
     m.attachments = {"Center": {"pos": [0.0, EGG_H / 2, 0.0], "rot": np.eye(3).tolist()}}
     return m
 

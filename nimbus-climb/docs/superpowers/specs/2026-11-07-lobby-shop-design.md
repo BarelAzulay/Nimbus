@@ -1210,3 +1210,663 @@ were taken in a different form than the finding proposed, or one of two conflict
 - **Token packs resized** to 2,500 / 8,000 / 25,000 Cloud Tokens (49 / 149 / 399 R$), so Robux buys about as many spins in tokens as in gems (the 399 R$ pack = 5 Celestial spins vs 6 by gems). Names follow the amounts. The `--gems` report still prints Robux per spin for both.
 - **Session lock** for saves: not in this build (morning question). The 15 s gem settle hold stays.
 - Prestige gems: unchanged; gem prices B stay; the `--gems` report is the evidence.
+
+## 16 Owner's pitch answers (2026-11-07, these override sections 4-15 where they differ)
+
+The owner answered the pitch (https://claude.ai/artifact/1pvnd9iMLwbbDvjdR2hUju) and a follow-up Q&A on 2026-11-07. Their words
+and choices are final. This section designs every change against the code as built (lobby-shop 1e733f7: Tasks 1-7 and 9-15
+committed; Task 8, the gem prices B, stopped at its pre-flight and never landed, so Config, TycoonCatalog, StoreCatalog, the sim
+and README still hold the pre-build prices). Where this section and sections 4-15 disagree, this section wins.
+
+| Card | Owner's pick | Replaces | Built and now reworked |
+|---|---|---|---|
+| shop | **A**: one Shop window, left tab rail Eggs / Gems / Packs / Passes / Boosts, Secret Roulette hero, the Robux Store merged in and restyled; plus "add the shop gui back to the shop in the game (the one we closed)" = a walk-up prompt at the lobby shop | 5.4, 5.8 (B and the separate Store) | nothing built yet (B's Tasks 16-19 were not started) |
+| eggs | A, plus "make the eggs look cool clean with vfx and make a cutscene for the egg opening ... clean and astonishing" | 5.5 (the stage becomes a cutscene, 16.4) | nothing built |
+| egglook | **A** painted, plus "more coolness and details, make the eggs look cool with vfx" | 5.6 (sky-weather C) | the seven Blender eggs (spec commit 2762949, C paint): rebuilt with the same keys |
+| gemlook | A | - | GemIcon (Task 15) kept as built |
+| gemprice | **A with changes** (note + Q&A) | 5.3, 15 (token packs), the 5.2 cost line | Task 7's potion price (75 -> 100) |
+| chest | **C**: west lawn between the two west benches by the Guide board, 165 deg, r 50 | 5.9 position | Task 10's spot (43 deg, r 56) |
+| board | A (built) + titles | 5.10 gains 16.6 | - |
+| portal | C (built) | - | - |
+
+Non-goals of section 2 that the owner overrode: the Secret Roulette's odds change (Mythic 60 / Secret 40), the Celestial
+Roulette's odds change (a 2% Secret, Epic 45 -> 43), and gem prices move in both directions. Everything else in section 2 holds
+(no uploads, the server decides every roll, odds before paying, Skip from the first frame, no near-miss tricks).
+
+### 16.1 Prices and odds
+
+**The numbers** (owner's note: "the first roulette costs 3 gems its too cheap ... lower the secret roulette to 500 gems, make it
+40% secret roll and 60% mythic roll"; Q&A: gem spins 20 / 40 / 60 / 180, "add a low chance for getting secret from celestial
+(2%)"; the rest is the pitch's option A):
+
+| What | Where | Built today | New |
+|---|---|---|---|
+| Gem spin Cloud / Storm / Sky / Celestial | `Config.Gems.RouletteGemPrices` | 5 / 20 / 75 / 300 | **20 / 40 / 60 / 180** |
+| Secret Roulette price | `Config.Gems.SecretRoulette.GemPrice` | 1,500 | **500** |
+| Secret Roulette odds | `Config.Gems.SecretRoulette.Odds` | Mythic 85 / Secret 15 | **Mythic 60 / Secret 40** |
+| Secret pity | `SecretRoulette.PityAt` | 7 | 7 (kept; at 40% it fires after six dry spins, 0.6^6 = 4.7% of the time) |
+| Celestial odds (token AND gem rolls) | `Config.Roulettes[4]` | Epic 45 / Legendary 40 / Mythic 15 | **Epic 43 / Legendary 40 / Mythic 15 / Secret 2**, `AllowSecret = true` |
+| Cloud / Storm / Sky odds, every token price | `Config.Roulettes` | - | unchanged (the "machine levels") |
+| Mix Mythic / Secret (gems) | `TycoonCatalog.Fusion.Mix` | 60 / 150 | **40 / 100** |
+| XP Potion 30 min (gems) | `Config.Store.GemItems[1].Gems` | 75 | **100** |
+| Gem packs Pouch / Bag / Chest / Vault | `Config.Gems.Products` | 100 / 550 / 1,200 / 6,500, no Robux field | **200 / 670 / 1,950 / 5,300**, new field `Robux = 49 / 149 / 399 / 999` (suggestions; `Id` stays 0) |
+| Token packs Tokens1 / 2 / 3 | `Config.Store.Items` | 500 / 2,500 / 10,000 at 49 / 149 / 399 R$ | **1,500 / 7,500 / 30,000** (x3), names "1,500 Cloud Tokens" / "7,500 Cloud Tokens" / "30,000 Cloud Tokens", Robux kept |
+| Free gem income, every token amount but the packs | everywhere | - | unchanged |
+
+**Celestial's Secret and the guard.** Today a Secret pet rolled by a roulette without `AllowSecret` refuses the request before
+the charge (`PetService` pull step, `ctx.AllowSecret`, "The roulette jammed, try again"). The guard already reads the roulette's
+own flag: the token path takes `AllowSecret` from the `Config.Roulettes` row (`PetService` `roulette.AllowSecret == true`) and
+the gem path from `GemService.Quote` (`def.AllowSecret`, copied from the same row by `GemService.GetRoulette`). PetCatalog's
+`rarityAllowed` drops a Secret row unless the roulette sets `AllowSecret`. So the whole change is data: Celestial gets
+`AllowSecret = true` and `Secret = 2`, and with no code change Celestial's Secret pulls are granted (token and gem, x1 and x3)
+while Cloud, Storm and Sky still refuse a Secret before the charge. Consequences, each checked by a test:
+- `PetCatalog.GetRarityOdds("Celestial")` gains a Secret row (Chance 0.02); `PossiblePets("Celestial")` lists the four
+  rollable Secret pets; `PetCatalog.IsRollable(secretPetId)` becomes true for them (it loops `Config.Roulettes`), so the
+  PetCatalog header and any test that pins "Secret pets are never rollable" are rewritten.
+- A Celestial Secret pull does not touch the Secret Roulette's pity (`Pity.Secret` counts that roulette's spins only, 5.2);
+  `Stats.Spins`, the strip (drawn from `StripRng` with the same odds, so a Secret egg shows in about 2% of Celestial cells), the
+  substitute (`Config.Index.Rewards.Secret.Tokens` 10,000 when all four Secret pets are full) and the Legendary-and-up chat line
+  work as for any pull.
+- The PolicyService lock on spins is unchanged: Celestial's gem spin is a gem-priced random item (locked for restricted accounts),
+  its token spin stays open.
+- **Tokens bought with Robux (review 2026-11-07, closing 13 call 8 now that a token spin can give a Secret).** Tokens bought with
+  Robux would make token spins paid random items for an account that `ArePaidRandomItemsRestricted` covers. So the Robux products
+  that grant Tokens (`Tokens1..3`, and the Pro Pack, whose `Grants.Tokens` is 5,000) are not sold to an account whose
+  `GemService.PolicyState(player)` is not `"Allowed"`: `StoreService.PromptPurchase` refuses them before the prompt with "Token
+  packs are not available on your account" (Restricted) or "Checking your account, try again in a moment" (still unknown; it
+  kicks the policy check as `GemService.Quote` does). Earned tokens still spin for everyone. A paid receipt that still arrives
+  (a prompt shown before the answer) is granted as always: a paid receipt is never refused. The Shop shows those cards locked
+  with the same text (the Gems tab's `TokenPack_1..3`, the Packs tab's `Card_Pro`) while `PaidRandomItemsRestricted` is not
+  `false`. Gem packs, passes, potions and the other packs are unchanged.
+- Texts that say "Secret pets come only from the Storm Altar": `IndexController` (the undiscovered Secret pet's line becomes
+  "A Secret pet. Summon it at the Storm Altar, or hatch it from the Celestial Roulette."), the PetCatalog / PetService / GemService
+  headers, README (the gem section and the roulette table). `NpcDialog`'s Stormfang line stays true (it names the altar as one
+  source) and is not changed.
+
+**The Secret Roulette at 500.** Same code as built (5.1, 5.2); only Config moves. Gems per Secret pet with the pity:
+`500 * (1 - 0.6^7) / 0.4` = **1,215** (2.43 spins on average; was 4,529 under B). Long-run Secret share with the pity:
+`0.4 / (1 - 0.6^7)` = **41.15%** (natural pulls 40%). The phone chip, the reply's `SecretPity.Left`, the forced pull and the
+settle hold are unchanged.
+
+**The packs, honest and computed.** Gems per Robux 4.08 / 4.50 / 4.89 / 5.31, so the ribbons (computed from the prices shown,
+never typed) read **"+10%" / "+20%" / "+30%"** (whole percent of the gain over the Pouch, rounded half up; no ribbon when the
+gain is zero or less). "BEST VALUE" is computed too (review 2026-11-07): the pack with the most gems per Robux among the prices
+shown, ties going to the bigger pack (`ShopGems.BestValue`), today the Vault; with the Vault at 1,999 R$ (2.65 gems per R$) it
+moves to the Chest (4.89) and the Vault shows neither a ribbon nor BEST VALUE. A live `PriceInRobux` that differs from Config
+moves it the same way. The Gems hero's line is computed too: `n = floor(Chest / SecretPrice)`, `m = floor((Chest - n * SecretPrice) /
+CelestialGemPrice)` -> **"Chest: 1,950 gems buys 3 Secret spins + 2 Celestial spins"** (the B line "1,500 = 1 Secret + 2
+Celestial" is gone). Token packs get the computed "BEST VALUE" (most tokens per Robux among the prices shown: today the 30,000
+pack) and no % ribbon (my call: their gain over the first pack,
++64% / +146%, would dwarf the gem ribbons and read as a trick).
+
+**Files.** `Config.lua` (the table above; the Celestial row's comment: "AllowSecret: a 2% Secret egg, token and gem rolls";
+`Gems.Products` gains `Robux`; the `Store.Tabs` change is 16.3's); `TycoonCatalog.lua` (`Fusion.Mix`); `StoreCatalog.lua`
+(`gemItem` copies `Robux`, header); headers of `PetCatalog`, `PetService`, `GemService`; `IndexController` (one string);
+`README.md` (the gem section, the product table, the roulette table: `smoke_p2_final` compares them with Config);
+`StoreService.lua` (`PromptPurchase`: the token-grant lock above, reading `GemService.PolicyState`; at most one new top-level
+local); no `PetService` / `GemService` code change. `tools/sim_tycoon.py`: the saved Task 8 Step 1 work
+(`.superpowers/lobby-shop/evidence/task8/sim_tycoon_gems_step1.patch`, applies cleanly to this tree: checked 2026-11-07) with the
+new numbers: `GEM_SPIN = [20, 40, 60, 180]`, `GEM_SECRET = 500`, `SECRET_PITY = 7`, `GEM_MIX = [40, 100]`, `GEM_POTION = 100`,
+`GEM_PACKS = [200, 670, 1950, 5300]`, `PACK_ROBUX = [49, 149, 399, 999]`, `TOKEN_PACKS = [1500, 7500, 30000]`; the odds
+columns `ODDS_Cloud .. ODDS_Celestial` and `PET_ROLLABLE` grow from 6 to 7 entries (Common .. Secret; `ODDS_Celestial = [0, 0,
+0, 43, 40, 15, 2]`, `PET_ROLLABLE = [6, 6, 5, 3, 4, 2, 4]`), and so does `PET_ECON_ROLLABLE` (`roll()` reads it at the same
+index: **`[3, 3, 3, 1, 2, 1, 1]`**, Phantom Kitsune being the one Economy pet among the four rollable Secret pets; left at 6 the
+first Celestial Secret in the sim raises IndexError), the sim's roll uses all seven and `--check` compares all seven with
+Config. `smoke_p4_economy.lua` `p2_economy` builds its expected rollable / Economy counts and its `ODDS_<roulette>` rows with
+three `for i = 1, 6` loops: they become `for i = 1, #RARITY_ORDER` (7), or the 7-entry sim lists fail `listEq` (review
+2026-11-07). The `--gems` checks become: gems per Secret pet = `GEM_SECRET * (1 - (1 - p)^PITY) / p` with `p` from Config (1,215 +-1);
+pack gems per Robux strictly rising; the Chest line's spins (3 Secret + 2 Celestial) equal the hero's computed numbers;
+`PACK_ROBUX` equals the Config `Robux` fields. The days-per-Secret-spin check (12-25 days) is **removed** (the owner's numbers are
+final): the report prints it and the build never stops on it.
+
+**Expected `--gems` numbers** (the saved report's income model: casual 8.3 gems a day, regular 27.4 a day, both never
+prestiging; a prestiging regular 101 gems an hour; the build re-runs and pastes the real ones into the ledger):
+
+| | Cloud 20 | Storm 40 | Sky 60 | Celestial 180 | Secret 500 | Potion 100 |
+|---|---|---|---|---|---|---|
+| regular, days | 0.7 | 1.5 | 2.2 | 6.6 | **18.2** (first one on day 12.6 with the 156 one-time dungeon gems) | 3.6 |
+| casual, days | 2.4 | 4.8 | 7.2 | 21.7 | **60.2** (first on day 41.4) | 12.0 |
+| prestiging, hours of play | 0.2 | 0.4 | 0.6 | 1.8 | **5.0** (every 3.3 days at 90 min a day) | 1.0 |
+
+Robux per spin at the 49 / 149 / 399 / 999 R$ packs: Cloud gems 4.90 / 4.45 / 4.09 / 3.77 vs Tokens 1.63 / 0.99 / 0.67; Storm
+9.80 / 8.90 / 8.18 / 7.54 vs 8.17 / 4.97 / 3.33; Sky 14.70 / 13.34 / 12.28 / 11.31 vs 32.67 / 19.87 / 13.30; Celestial 44.10 /
+40.03 / 36.83 / 33.93 vs 163.3 / 99.3 / 66.5; Secret 122.5 / 111.2 / 102.3 / 94.2 (gems only). A Secret pet costs about 1,215
+gems at the altar against about 9,000 gems (or 250,000 tokens) at Celestial's 2%, so the altar stays the gem path and Celestial
+is the token player's long shot. Reported, not changed: tokens now buy Cloud and Storm spins for fewer Robux than gems do.
+
+**Tests** (built ones rewritten under their names; nothing deleted): `gem_prices` (new, `smoke_gem_prices.lua`: every number
+above read from Config / TycoonCatalog / StoreCatalog, `GemService.Quote` 20 / 40 / 60 / 180 / 500, Mix 40 / 100, the potion
+100); `celestial_secret` (new, `smoke_eggs.lua`: Celestial's Secret pull granted for tokens and gems, x1 and x3, never refused;
+Cloud / Storm / Sky still refuse; the pity untouched; 20,000 seeded `RollPet("Celestial")` give Secret 2% +-0.3 points);
+`store_token_lock` (new, `smoke_store.lua`: with `Id > 0` set on the items in the test, a Restricted account's `StoreRequest("Buy",
+...)` for `Tokens1..3` and `Pro` is refused before any prompt with its text, an unknown account gets the Checking text, an Allowed
+account is prompted; gem packs, passes, potions and `Starter` are unaffected; a paid `Tokens1` receipt for a Restricted account is
+still granted); rewritten:
+`egg_roll_pure` (Secret Roulette rows 0.60 / 0.40, Celestial with its Secret row), `egg_full_stack` (natural Secret share 40% +-3,
+all pulls 41.2% +-3), `secret_pity` (the forced-strip filler share 40% +-3; every steering stub re-checked against 60 / 40),
+`gem_settle` part 3 (the price read from Config), `gem_potion_buy` (100 gems; the "one gem short" case at 99),
+`p2gems_roulettes` (a token roulette's `AllowSecret` equals its Config row; the guard test stays on Cloud),
+`p2gems_odds` (the leak test: no Secret from Cloud / Storm / Sky over 1,500 rolls x 2 roll functions; Celestial inside 0.9-3.1%),
+`store_catalog` / `store_config` (token amounts and names, the gem items' `Robux`), `p2_economy` (the sim names, its loops over
+all seven rarities),
+`p2final_docs` (README), `catalog` / `config_shape` (any pin of "no Secret in token roulettes" or `IsRollable` false for Secret
+pets), the `p2flow_*` price lines.
+
+### 16.2 The Sky Trove at spot C
+
+`LobbyBuilder`'s `G.Trove = { Angle = 43, R = 56, Clear = 6.5 }` becomes **`{ Angle = 165, R = 50, Clear = 6.5 }`** (plaza-local
+x -48.30, z 12.94), still placed once per Build by `plazaSpot` before `buildPlaza` (so its reservation comes first) and faced to
+the plaza centre with `faceCentre` (front toward the spawn court). Checked against the code's own placements (no adjustment
+needed; the spot is the owner's exactly):
+
+| Neighbour (code) | Where | Distance | plazaSpot needs |
+|---|---|---|---|
+| Guide board (`buildBoards`, `L.MidAngle + 58`) | 148 deg r 48 | 14.62 | 12.5 |
+| Bench (`benchTpl` list) | 130 deg r 44 / 200 deg r 44 | 28.84 / 28.84 (it stands exactly between the two west benches) | 10 |
+| NPC spot (`npcPlan`) | 160 deg r 70 | 20.66 | 11.5 |
+| Flower beds | 150 / 190 deg r 81 | 35.2 / 41.5 | 10.5 |
+| West walk (`L.CrossAngles`, 180 deg, half 5) | centre line | 12.94 | 11.5 |
+| Spawn court (`G.CourtR` 34, reserved 36) | origin | 50 | 42.5 |
+| Trees, lamps, the How to play board, gate sight lines (gates span 53.75 .. 126.25 deg) | - | > 28 | - |
+
+The chest body's nearest corner is 2.8 studs off the west walk. The sign post stays at local x -6.2 (the walk side: open lawn; at
++6.2 it would stand 2.8 studs past the Guide board's edge, in its frame): its footing ends 1.0 stud off the walk's border. The
+Join sign (`JoinAnchor` / `JoinBillboard`, `NC_Bob`, hidden for `TroveGroupDone`), the prompt, the `fallbackShop` trove (built at
+the same `L.TroveCF`) and `LobbyInfo.Shop.ItemShop` are unchanged. The Egg Guide stays on the shop island. From the spawn (looking
+along +Z) the chest is about 75 degrees to the right, beside the Guide board; a player turning toward the gates' right side sees
+it. Tests: `lobby_trove_plaza` and `trove_build` rewritten to 165 deg r 50 (+-0.5), no "plaza decor skipped" warn, the sign post
+footing >= 0.5 stud off every path cell, every neighbour distance above; the render `t17_trove_west.png` beside the Guide board
+and the two benches.
+
+### 16.3 The Shop (A): one window
+
+**Who owns it.** `src/client/Controllers/StoreController.lua` is moved with `git mv` to
+**`src/client/Controllers/ShopController.lua`** and becomes the one Shop window (it already has the left tab column, the BigRect
+window, the portrait layout, the Esc / gamepad B binding, the product price reader and the pack cards). A new thin
+**`StoreController.lua`** (about 40 lines, no window of its own) stays for old callers and tests: `Init` (nothing),
+`Open(args)` -> `ShopController.Open(args)` (its tab mapped below), `Close`, `IsOpen`, `Layout` ("Compact" reads "PC", "Portrait"
+reads "Phone"), `Portrait`, `Cards`, `Palette`, `RobuxGlyph`, all delegated. The Eggs and Gems pages are new modules so the
+window file stays under its local cap: **`src/client/UI/ShopEggs.lua`** (`Build(page, ctx)`, `Layout(page, box, mode)`,
+`Refresh(page)`, `Focus(rouletteId)`, `CardState(rouletteId)`) and **`src/client/UI/ShopGems.lua`** (`Build`, `Layout`,
+`Refresh`, `PackRibbons(packs)`, `BestValue(packs) -> index | nil`, `ChestLine()`, `PotionState()`). Packs, Passes and Boosts keep the Store's card code as it is,
+inside ShopController. The B design's separate `ShopController` / Cloud Shop window (5.4) is not built.
+
+**Tabs and items.** `Config.Store.Tabs = { "Eggs", "Gems", "Packs", "Passes", "Boosts" }` (was Packs, Passes, Boosts, Currency,
+Roulettes). The Currency tab folds into Gems: `Tokens1..3` and the disabled `Cash1..3` move to `Tab = "Gems"`; StoreCatalog's gem
+products answer `Tab = "Gems"`; `GEM_HERO_INDEX` 2 -> 3 (the Chest is the Gems hero, as the A mock); `Validate`'s "the Currency
+Cash packs carry Line" reads "the Cash packs". `ShopController.NormalizeTab(tab)`: `"egg*"`, `"roul*"`, `"Roulette"`,
+`"Roulettes"`, `"Items"`, `"Shop"` -> Eggs; `"gem*"`, `"Currency"`, `"Tokens"` -> Gems; Packs / Passes / Boosts as they are
+(any case); anything else -> nil (then the last tab of this session, first time Eggs).
+
+**Window** (the A mock `shopA(m, tab)`; design px). ScreenGui **`NimbusShop`** (DisplayOrder 19, `IgnoreGuiInset = true`,
+`ResetOnSpawn = false`) > **`ShopWindow`** (UIScale `Fit`), `NeonKit.BigRect` with `RECT = { H0 = 390, W0 = 820, Y0 = 330,
+H1 = 1080, W1 = 1540, Y1 = 910 }`, `MARGIN 12`, `PHONE_W 900`, `SHORT 560`, `PC_MIN_H 600`, `PC_MAX_W 0.81`.
+- `Header` (PC 76 / phone 50): `Icon` (egg glyph, PC 42 / phone 28) + `Title` "Shop" (PC 34 px, 200 wide / phone 20 px, 130
+  wide), `Balance_Gems` (`GemIcon.Amount`; PC 140 wide 22 px / phone 96 wide 15 px), `Balance_Tokens` (token icon + number;
+  PC 190 / phone 128), `CloseButton` (red X, PC 56 / phone 44). Balances use `Theme.ShortNumber` from 1e6. The header gradient
+  is the A accent rgb(90,168,232). The Store's Cash pill goes (no Cash item is on sale).
+- `Rail` (PC 224 wide at x 18; "Compact" 112 wide; phone 104 wide at x 8): `Tab_Eggs` (egg glyph `NeonKit.Glyphs.Eggs =
+  "\240\159\165\154"`), `Tab_Gems` (a GemIcon), `RobuxDivider` (PC: Robux glyph 24 + "Robux items" 18 px, 224 x 40; phone and
+  Compact: a 2 px divider line), `Tab_Packs`, `Tab_Passes`, `Tab_Boosts` (their Store glyphs). PC tab 224 x 80 (icon 40 +
+  label 26 px) at y `16 + i * 92` (+44 from Packs on); Compact 112 x 80 (icon 32 over label 18 px); phone 104 x 48 (icon 24 +
+  label 15 px) at y `6 + i * 54` (5 tabs end at 270 of the 280 body at 844x390); with a body under 276 px (667x375: 265;
+  740x360 and 640x360: 250) the phone tabs are 104 x 44 at y `4 + i * 49` (they end at 244; review 2026-11-07: the 54 px
+  step ran `Tab_Boosts` past the window and, at 640x360, off the screen). Selected: the bright fill and a gold stroke (attribute
+  `Selected`). `Tab_Packs` shows a small gold `Dot` while the Starter Pack is on sale (created, or `StorePreview`) and not
+  bought (`StoreBought` lacks it). PC rail bottom (Eggs tab only): `FastHatch` toggle 224 x 52 ("Fast hatch" 20 px,
+  `ClientSettings` `FastHatch`).
+- `Body` > `Page_Eggs`, `Page_Gems`, `Page_Packs`, `Page_Passes`, `Page_Boosts` (one shown). Content box: PC x 262, width 1240
+  (window 1540); Compact x 128; phone x 120, width = window - 128; portrait below.
+
+| Screen | Window | Mode | Notes |
+|---|---|---|---|
+| 1920x1080 | 1540x910 | PC 1 | rail 224, content 1240; body 834: the reference layout (it ends at 826) |
+| 2560x1440 | 1540x910 at 1.25 | PC | |
+| 1366x768 | 1383x810 design (0.8) | Compact | content 1231; body 734: hero 200 + cards 516 (fit rule), still short (752), so the page scrolls vertically |
+| 1280x720 | 1296x759 design (0.8) | Compact | content 1144, cards 274 wide; body 683: shrunk and scrolls vertically |
+| 844x390 | 820x330 | Phone | body 280; tabs 48 tall; cards 266 tall |
+| 667x375 | 643x315 | Phone | body 265; tabs 44 tall; cards 253 tall |
+| 740x360 / 640x360 | 716x300 / 616x300 | Phone | body 250; tabs 44 tall; cards 238 tall (art shrinks first) |
+| 360x640 / 390x844 | 336x536 / 366x705 | Portrait | two header rows, the rail as a row |
+
+(Review 2026-11-07: the 1366x768 and 1280x720 rows were recomputed from `NeonKit.BigRect` with this RECT, inset 58: 910 and 876
+were wrong.) Fit rules: PC/Compact with a body under 826 px (the reference layout's bottom: cards at y 276 + 550; the 842 first
+written here would have shrunk the 834 px body at 1920x1080): the Secret hero shrinks to 200 tall (machine art 160) and the
+cards' machine art 130 -> 100 (card 550 -> 516); still short: the page scrolls vertically and every card is reachable by
+scrolling. Phone: every card and tile of the sideways rows (Eggs and Gems) is `min(266, body - 12)` tall. Compact when the PC design width is under 1,400. Four
+machine cards share the content width (`(contentW - 48) / 4`); under 250 px the card row scrolls sideways. Phone: the card row
+always scrolls sideways (a 48 px right fade while more is to the right). Portrait: header row 1 (icon, "Shop", X) and row 2 (both
+balances), the rail as one row of five 64 x 56 tabs (icon 22 over label 15 px), the body a vertical list.
+
+**Eggs tab** (`Page_Eggs`, ShopEggs; the A mock's Eggs frame; every PC text >= 18 px, every phone text >= 15 px):
+- `ShopCard_Secret` (attribute `Hero = true`), PC 1240 x 240 at (0, 16), framed rgb(138,92,255): `Machine` (the Secret dome art,
+  190 x 218, its eggs Mythic and Secret), `Title` "Secret Roulette" 46 px, `OddsLine` with `Odds_Mythic` and `Odds_Secret` (each an
+  `Egg` 40 px + `Pct` 24 px; values from `PetCatalog.GetRarityOdds("Secret")`, never typed) + "gems only" 24 px, `PityChip`
+  400 x 48 rgb(59,42,138) "Secret for sure in N more spins" (N = `SecretPityLeft`; N = 1 "Secret for sure on the next spin";
+  "Loading..." without `GemsSettled` / the attribute), `Spin` 290 x 100 ("SPIN" + GemIcon 44 + "500", 34 px; a gentle pulse,
+  UIScale 1 -> 1.04 every 2.5 s, High graphics only), `Hint` 18 px "Also at the Storm Altar". Phone: the first card of the
+  sideways row, 200 x 266 (name "Secret" 17 px, art 64, two odds columns of egg 30 + % 15, `Spin` 44 tall 16 px, `PityChip`
+  "Secret in N" 44 tall). Portrait: full width x 200 on top.
+- `Cards` (ScrollingFrame) > `ShopCard_Cloud`, `ShopCard_Storm`, `ShopCard_Sky`, `ShopCard_Celestial`, PC 298 x 550 at
+  (i * 314, 276) (the mock's `machCard` with `{ art = 130, rh = 40, sb = 64, sm = 48 }`): `NamePlate` 54 tall 24 px, `Machine`
+  130 x 150 at y 76 (the dome with seven eggs of that machine's mix), `Odds` > `Odds_<Rarity>` rows 40 tall from y 234 (`Egg`
+  28 px, `Word` 20 px in the rarity colour, `Pct` 22 px right; Celestial now has four rows, the fourth Secret 2%), `Spin` 64 tall
+  at y 400 ("SPIN" + token icon + price, 23 px), `Spin3` and `SpinGems` 48 tall at y 476 (half width: "x3" + token icon + 3x price
+  18 px; GemIcon + gem price 18 px), `Hint` 18 px at y 526 "Gems: same odds", `NoOdds` "Odds unavailable" (buttons inactive) when
+  `GetRarityOdds` is empty. Phone 166 x 266 at `x = 208 + i * 174` after the Secret card: name plate 6..36 (17 px, no "Roulette"),
+  art 40..92, one odds column per rarity (at most four, egg 30 px over % 15 px), `Spin` 150..194 (44 tall, 16 px), `Spin3` /
+  `SpinGems` 200..244 (44 tall; `Spin3` reads "x3" + token icon + `Theme.ShortNumber(3 * price)`, so a tap that charges three
+  times always shows the total). Portrait: full-width cards 250 tall (art 64 left, the odds as a 2 x 2 grid of egg 30 + % 15).
+- Buttons call `EggStage.Request`: `Spin` -> `(id, "Tokens", 1)` (Secret `("Secret", "Gems", 1)`), `Spin3` -> `(id, "Tokens", 3)`,
+  `SpinGems` -> `(id, "Gems", 1)`. Card states exactly as 5.4 "States on a card" (Short: price kept, amount red, today's "not
+  enough" toast; Locked: the gem button and the whole Secret card show the PolicyService lock with today's text; Loading: no
+  `GemsSettled`; Pending: `EggStage.IsPending()` dims every spin button; NoOdds). The Secret card stays x1 only (13 call 2).
+- `ShopController.Open({ RouletteId = id })` opens Eggs, scrolls that card fully into view (centred when the row scrolls) and
+  outlines it gold for 2.6 s (the machine prompts and the altar's Summon); `Currency` alone never switches tabs.
+
+**Gems tab** (`Page_Gems`, ShopGems; the A mock's Gems frame; vertical scroll on PC, sideways on phone):
+- `GemHero` 1240 x 240 at (0, 16): `Pile` (6 gems, 200 px), `Title` "Gems" 46 px, `Line1` "Spin the Secret Roulette and every
+  machine with gems." 24 px, `Line2` = `ShopGems.ChestLine()` 24 px rgb(255,243,176), `Buy` 290 x 100 = the Chest pack's buy.
+- `GemPack_1..4` 298 x 380 at (i * 314, 276): `Pile` 1 / 2 / 4 / 6 gems (140 px), `Amount` 44 px ("200" ... "5,300"), `Name` 21 px
+  (the Config name as it is), `Ribbon` ("+10%" / "+20%" / "+30%", `PackRibbons`), `Best` "BEST VALUE" (on the pack
+  `BestValue` names: today pack 4), `Buy` 68 tall:
+  `Id > 0` -> the live `PriceInRobux` and one `StoreRequest("Buy", "Gems" .. i)` per tap (the server prompts, never the client);
+  `Id == 0` -> the Config `Robux` on an inactive "Coming soon" button ("PREVIEW" under `StorePreview`).
+- `GemPotion` 1240 x 130 at (0, 676): `Icon` 96, `Title` "XP Potion \194\183 30 minutes" 32 px, `Text` "Your team earns double pet XP.
+  Not random, so every account can buy it." 22 px, `Buy` 270 x 78 GemIcon + "100"; `PotionState()` labels as 5.4 (Owned "You have
+  x2 Pet XP", Checking "Checking your passes...", Full "Potion time is full", Loading "Loading...", Short: the amount red); only
+  "Ready" sends `StoreRequest("GemBuy", "XpPotionGems")`.
+- `TokensTitle` "Cloud Tokens" 26 px at y 826 and `TokenPack_1..3` 408 x 220 at (i * 416, 870): `Art` (token icons 1 / 3 / 6),
+  `Amount` 40 px, `Name` 20 px (Config), `Best` (computed the same way: today pack 3), `Buy` 64 tall (same Id / preview rules,
+  `StoreRequest("Buy", "Tokens" .. i)`); while `PaidRandomItemsRestricted` is not `false` the three token packs show the lock
+  of 16.1 ("Token packs are not available on your account", or "Checking your account..." while unknown) on an inactive `Buy`
+  and send nothing (the Packs tab's `Card_Pro` the same).
+- Phone: one sideways row of 166 x 266 tiles: the four gem packs, the potion ("XP Potion" 17 px, "30 min \194\183 x2 pet XP" 15 px),
+  the three token packs; the hero is not drawn on a phone (its Chest is pack 3). Portrait: the vertical list (hero on top).
+
+**Packs, Passes, Boosts.** The Store's pages, cards and rules move over unchanged in content and naming (`Page_<tab>`,
+`Card_<key>` with `Paint`, `Art`, `Name`, `GetsYou`, `Line1..n`, `Status`, `PricePill`, `Buy`; the palettes, hero choice, card
+states, price reader, shine, sounds, `StoreRequest("Buy", key)` with its 1 s gap). Restyled into the Shop: they sit in the Shop's
+content box (x 262, width 1240 on PC; the hero 1240 x 250, cards 1240 x 150 rows, gap 12), under the Shop's header and rail, with
+the A card frame (3 px navy outline, 14 px corners). Nothing a test reads inside a card changes name.
+
+**Hooks and every opener.**
+- `MenuController`: `P5.openStore(args)` -> `ShopController.Open(args)`; `onOpenPanel` `"shop"` -> `ShopController.Open(args)`
+  (the whole args table) and `"store"` -> the same; the old Cloud Shop window, the odds popup, the roulette stage and the client
+  odds copy are removed (the B plan's Task 17 removal list, which still matches the code: `secretRoulette`, `findRoulette`,
+  `possiblePetsOf` if only the shop used them, `gemsOnlyBuckets`, `oddsOf`, `P2.gemAmount`, `openOdds` / `closeOdds` / `Odds` /
+  `K.Odds`, `buildRouletteCard`, `buildShop` and its Gems page, `focusCard`, `beginStage` / `closeStage` / `skipSpin` /
+  `requestSpin` / `onRouletteResult` / `Spin` and its `connectRemotes` hook, `Warm.Roulette`, `MenuController.IsPrewarmed`,
+  `K.Shop`, `createWindow({ Id = "Shop", ... })`); added `P5.shop()` / `P5.hatch()` (lazy requires), `P5.openShop(args)`,
+  `P5.closeShop()`, `P5.shopOpen()`, `P5.hatchShowing()`, `P5.closeHatch()`; `closeEverything` closes both, the Shop first, then
+  the stage (16.4 "Never breaks the player"); `openWindow`,
+  `P5.openPets`, the Index open refuse while `P5.hatchShowing()`; `MenuController.IsOpen()` ORs in the Shop and the stage;
+  `handleBack` loses its stage / odds branches; its own windows close on `WindowOpened("Shop")` (the list `Pets` / `Store` /
+  `Daily` / `Trove` gains `Shop`). MenuController drops under 160 locals.
+- `WindowOpened`: the Shop fires `"Shop"` on every open (the tutorial's `ShopOpened` listens). While MenuController still owns
+  the old Cloud Shop (the step between the Store merge and the Eggs tab, plan Task 21), the merged window fires `"Store"` as the
+  Store does today, its first tab is Packs and its Eggs tab hops to `MenuController.Open("Shop", { Tab = "Roulettes" })`; the
+  Eggs tab task (plan Task 22) switches it to `"Shop"`, the real page and Eggs as the first tab.
+- Touch, column and cursor: `MenuController.SetTouchHidden("Shop", on)` and `SetColumnCovered(windowLeft, "Shop")` (were
+  `"Store"`); `MouseLock.WatchVisible("Shop", ShopWindow)` frees the cursor while the window shows; `MouseLock`'s `WATCHERS`
+  replaces the `NimbusMenu` stage / odds entry with `NimbusHatch = watchOverlays({ "Stage" })`.
+- Esc / gamepad B: the Store's own binding moves over as `K.BACK_ACTION = "NimbusShopBack"` (`High.Value`, bound only while open,
+  always `Sink`); B does nothing for the Shop while `EggStage.IsShowing()` (the stage's `"NimbusHatchBack"` sits at
+  `High.Value + 1`, so ContextActionService gives it the press). **Esc has one owner** (review 2026-11-07: two
+  `UserInputService.InputBegan` handlers run in no guaranteed order, so on the reveal the stage could close, show the Shop
+  again, and the Shop's handler then close the Shop too): ShopController's one Esc handler (connected once in `Init`) calls
+  `EggStage.Back()` while `EggStage.IsShowing()` (skip before the reveal, DONE on it; whether the Shop is open or not) and
+  stops there; otherwise it closes the Shop when open. EggStage keeps no `UserInputService` Esc handler of its own (the stage
+  first, as `MenuController.handleBack` does today).
+- Openers: the top bar's `PillButton_Shop` (`StoreController.Open()` -> the Shop on the last tab of this session, first time
+  Eggs; a second tap closes it); `PetsController`'s `OpenShop` button (`menu.Open("Shop", {})` -> Eggs); the four machine prompts
+  (`OpenPanel("Shop", { Tab = "Roulette", RouletteId })` -> Eggs with that card focused); the altar's Summon (`OpenPanel("Shop",
+  { RouletteId = "Secret", Currency = "Gems" })` -> Eggs with `ShopCard_Secret` focused); the new walk-up prompt (below); a
+  server `OpenPanel("Store", args)` -> the Shop on the mapped tab. Daily, Trove and the HUD open nothing in the Store today (checked:
+  no caller); they keep closing on any other `WindowOpened` id.
+- Tutorial: `TutorialController` is unchanged. The "shop" step keeps its world arrow (the roulette machines, `Target.Kind =
+  "Shop"`) and completes on `WindowOpened("Shop")` through `WINDOW_EVENTS`, whichever opener was used (the top bar's
+  `PillButton_Shop` included). Review 2026-11-07: the first draft gave `HOOK_FOR` a `ShopOpened = "Shop"` entry so the pill
+  would glow, but `HOOK_FOR` only picks the click hook, `findMenuButton` searches only `MenuButton_<id>` / `Menu_<id>`, and the
+  ring and arrow show only for a `Menu` target, which would replace the world arrow (a step has one target). So no button map
+  and no glowing pill in this build.
+
+**The walk-up prompt** ("the one we closed"). History: the shop island's item stall had a `ProximityPrompt` "Open" / "Item Shop"
+(`ItemService`, `ItemShopPrompt`, `MaxActivationDistance 12`, on the stall's `PromptPart` at `cf * CFrame.new(0, 2, -4.6)`)
+until a165c65 boarded the stall up ("Closed", no prompt); 1610c40 put the Sky Trove in its place at `at(-21, -8)` and Task 10 the
+Egg Guide (board, shelf, seven eggs). The prompt comes back at that same spot, now opening the Shop:
+- `LobbyBoardBuilder.EggGuide` adds an invisible, non-colliding `PromptPart` (5 x 4 x 3) at `cf * CFrame.new(0, 2, -5.6)` (just in
+  front of the shelf) and returns it; `buildShop` returns `Shop.Counter = { PromptPart, Center, Model }` (the Egg Guide model);
+  `fallbackShop` gives its own `Counter` PromptPart beside the fallback machines. `LobbyInfo.Shop.Roulettes` and `.ItemShop`
+  keep their shapes.
+- `PetService.buildPrompts` (it already owns the shop's prompts) adds `ShopPrompt`: `ActionText "Open"`, `ObjectText "Shop"`,
+  `HoldDuration 0`, `MaxActivationDistance 10`, `RequiresLineOfSight false` on `Shop.Counter.PromptPart`; on Triggered: a live
+  player, not `InMatch`, `rateLimited(player, "Prompt_Shop", PROMPT_COOLDOWN)`, then `OpenPanel("Shop", { Tab = "Eggs" })`.
+  Rebuilt with the machine prompts; a missing part warns once. No new top-level local (PetService stays 80).
+- The machines' prompts stay "Open" / "<machine name>" (range 12). Roblox's default `Exclusivity` (`OnePerButton`) shows only the
+  nearest E prompt, so the Celestial machine beside the Egg Guide never doubles up.
+- The arch sign's caption "pets & items" (there are no items) becomes "eggs & gems".
+- I did not rebuild the stall: its uploaded mesh (`prop_item_stall`) paints heal / shield / feather goods that left the game, and
+  the Egg Guide (the eggs on display, the board naming them) is the honest counter for an egg shop.
+
+### 16.4 The egg-opening cutscene
+
+**GUI, not the world camera.** The cutscene is a full-screen ScreenGui (`NimbusHatch`, DisplayOrder 25, `IgnoreGuiInset =
+true`, `ResetOnSpawn = false`). The eggs are painted GUI eggs (16.5), the pet is `CloudUI.PetViewport` (as today), the effects are
+GUI frames, tweens and a pooled GUI spark system, plus a client-only `BlurEffect` (`Lighting.NimbusHatchBlur`) and a cool tint
+pushed through `LightingStack` (preset `"Hatch"`, its `ColorCorrection` group; no ColorCorrectionEffect of our own) that dim the
+world behind.
+Why: (1) the player can open the Shop anywhere (the top bar, the altar, a home), so a world-camera shot would have no fixed set and
+would fight the camera scripts, MouseLock and the dash; the cutscene never writes `Camera` (type, subject, CFrame, FieldOfView) or
+the Humanoid, so nothing can be left broken after; (2) other players see nothing and nothing replicates; (3) phones: GUI frames are
+cheap, `ParticleEmitter`s and `Beam`s do not render inside a `ViewportFrame` anyway, and no new texture or upload is needed; (4)
+memory: a bounded instance budget (below), everything pooled and destroyed on close. The "camera move" is staged inside the GUI: a
+`UIScale` push-in on the hero (1.00 -> 1.06 during the shakes, back to 1.00 on the burst).
+
+**Storyboard A "Pedestal"** (the default; times normal / Fast hatch; Skip, from the first frame, starts the reveal on the next
+frame: see Skip below):
+
+| # | Phase (`EggStage.Phase()`) | Normal | Fast | What happens |
+|---|---|---|---|---|
+| 0 | `Intro` | 0.35 | 0.15 | The world dims: `Dim` (navy) 0 -> 0.55, the Lighting blur 0 -> 14 and a cool tint (Brightness -0.08, Saturation -0.25 against the current `LightingStack.Value`s, pushed as the preset `"Hatch"`; High graphics only: `GraphicsQuality` has only Low and High), four edge `Vignette` frames fade in, the machine's name slides down (`Title`), the bottom bar (Skip, Fast hatch) is there from frame 1 |
+| 1 | `Strip` | 3.00 | 0.80 | The server's 40-cell strip of eggs scrolls on a glass `Track` with today's ease (`Curve 2.8`), soft speed streaks at full speed, `SpinTick` per passing cell (throttled to 12 a second), and stops with cell 34 under the gold `Pointer` |
+| 2 | `Land` | 0.35 | 0.12 | The pointer bounces, the landed cell rings in its rarity colour, the other cells dim to 40%, `SpinLand` |
+| 3 | `Rise` | 0.50 | 0.20 | The landed egg lifts out of the strip and grows (cell egg -> 380 px) onto a cloud-stone `Pedestal` in a `Spot` light cone; the strip slides away; the rarity `Backlight` disc fades in (its strength = the egg's glow) |
+| 4 | `Crack` | 1.20 | 0.40 | "EPIC EGG!" (`CrackWord`, rarity word + " EGG!", 80 px); two shakes (rotation +-6 then +-10 degrees with a squash; one on Fast hatch); glowing `Cracks` grow at each shake (1 -> 3 -> 5 zigzag segments in the rarity colour), thin `Leaks` of light from the cracks lengthen, small sparks pop at each shake, the push-in |
+| 5 | `Burst` | 0.35 | 0.25 | The halves fly apart (the top spins up-left, the bottom settles as the shell at the pedestal), a `Shock` ring expands 0 -> 900 px and fades, `Rays` (16) flash in and start turning, the rarity spark burst (counts below), a white micro-flash (Common-Epic, 0.12 s at 0.6) or the gold `Flash` (Legendary and up, rgb(242,182,68), 0.25 s in / 0.6 s out), `Shatter` |
+| 6 | `Reveal` | stays | stays | The pet pops (UIScale 0 -> 1.15 -> 1, 0.35 s, Back ease) and turns gently on the pedestal (the PetViewport bob); the rarity `Banner` slides in (the word "EPIC!" 84 px on a ribbon); name 54 px + "NEW!"; the note (5.5 texts, " \194\183 guaranteed" for a pity Secret); `SpinAgain` / `Done`; Legendary and up keep slow gold rays; Mythic and Secret add falling confetti for 1.5 s; Secret a starry backdrop (14 twinkling stars) and a violet aura |
+
+Reveal at **5.75 s** (normal) / **1.92 s** (Fast hatch) after `Show`. The chat line for Legendary and up is the server's (Task 6,
+unchanged). Skip (the `Skip` chip, a tap anywhere outside the buttons, Esc, gamepad B) at any time before the reveal: sounds stop
+and `Phase()` is `"Reveal"` on the next frame (the reveal starts at once); the burst's last 0.25 s (the shock ring, the rays, the
+sparks, and the gold `Flash` exactly once for Legendary and up; no white micro-flash) plays as an overlay over the reveal's first
+0.25 s; no delay, no hidden period. (Review 2026-11-07: this one rule replaces "the tail plays, then the reveal", which plan Tasks
+20 and 27 contradicted.)
+
+**x3.** Three strips stacked (as 5.5's x3 strips), landing 0.25 s apart (Fast 0.12 s); `Rise` brings the three landed eggs to
+three pedestals (left, centre, right; 220 px each, phone 96); the eggs **crack in pull order** (1, 2, 3; the server's order, never
+re-sorted), each `Crack` 0.9 s (Fast 0.4) + `Burst` 0.35 s (Fast 0.25), started 0.6 s apart (Fast 0.25); the reveal shows three
+columns (5.5's sizes) with one `SpinAgain` (x3) and `Done`. Reveal at **7.15 s** normal / **2.66 s** Fast. The gold flash and the
+loudest reveal sound follow the best pull, played on that pull's burst.
+
+**Layouts.** 5.5's screen rule stands (the design canvas at the windows' factor, three anchors, the middle shrinks to 0.6, text
+never shrinks, the x3 widths, portrait rows, the test sizes 640x360, 667x375, 844x390, 360x640, 390x844, 1280x720, 1366x768,
+1920x1080). New sizes: PC pedestal 420 x 90 under the 380 px hero egg (egg centre y 470, pedestal top y 700), spot cone 520 wide;
+phone hero egg 200 px, pedestal 220 x 48, spot 280 wide; the crack word PC 80 px / phone 40 px.
+
+**Fit on every screen (review 2026-11-07).** 5.5's middle shrink (down to 0.6) also takes the crack egg and the pedestal, on
+every layout; text never shrinks. A pedestal is always 1.1 x its egg wide and 0.24 x its egg tall (x1: PC 420 x 90, phone
+220 x 48; x3: PC 242 x 53, phone 106 x 23), so it shrinks with the egg. Why: on a phone 5.5's frame leaves 242 px between the
+title band (ends at y 92) and the bottom bar (starts at y 334) at 844x390, and 212 px at 640x360, while the full crack stack is
+288 px (word 40 + egg 200 + pedestal 48); at 0.6 it is 189 (egg 120, pedestal 132 x 29). On the phone reveal the pet does not
+stand on the full pedestal (a 48 px block under 5.5's pet at y 104-274 would cover the name at 276 and the note at 308): it
+stands on a thin lip, 0.7 x the pet's width and 12 px tall, drawn behind the pet's feet with its bottom 8 px above the pet
+frame's bottom, so it never reaches the name. The phone `Banner` is the reveal's title band: 44 px tall, its top 2 px under the
+58 px inset, the word 40 px inside it (5.5's y 62), as wide as the word + 40 (at least 160); the x3 phone column banners are 28
+px tall (word 22 px). The reveal's middle (pet, lip, name, note) is centred between the Banner's bottom and the bottom bar and
+shrinks as 5.5 says (phone pet at least 110 px). On PC the full pedestal stays under the pet (top y 700) and clears the name at
+y 806.
+
+**VFX and budget** (all GUI unless named; every number a cap, checked by `EggStage.Stats()`):
+
+| Effect | Built from | Cost |
+|---|---|---|
+| World dim | `Dim` Frame + 4 `Vignette` Frames with UIGradients; `Lighting.NimbusHatchBlur` (BlurEffect, Size 14: the only new Lighting instance) + the tint as `LightingStack.Push("Hatch", { ColorCorrection = { Brightness, Saturation } }, 0.35)`, popped by teardown (review 2026-11-07: LightingStack is the only client writer of Lighting and finds its target with `FindFirstChildOfClass("ColorCorrectionEffect")`, so a second ColorCorrectionEffect could become its target and be destroyed with its values) | 1 Lighting effect + 1 LightingStack preset, High only; tweened in / out |
+| Strip | at most 12 recycled `Cell` frames per strip (a cell re-skins its egg with `EggArt.SetRarity` when it wraps: no instance churn), medium-form eggs | <= 12 x 3 cells, <= 14 instances per cell |
+| Spot, Backlight, Pedestal | 1 Frame + UIGradient; 4 stacked round Frames; ~8 Frames (stone top, gold inlay, 3 cloud puffs) | static, tweened alpha |
+| Shake, push-in | Rotation / UIScale tweens on the hero | <= 3 live tweens |
+| Cracks, Leaks | <= 6 thin rotated Frames + UIGradient glow; <= 5 tapered Frames | per egg |
+| Halves | `EggArt.Halves`: two CanvasGroups (rotated paint clips correctly), alive from `Crack` to `Done` | 2 per egg |
+| Shock | 1 round Frame + 6 px UIStroke, one tween | 1 |
+| Rays | 1 Frame of 16 thin wedges, an endless Rotation tween (12 s a turn; engine side, no Lua per frame) | 1 tween |
+| Sparks / confetti | a pool of 64 small Frames (4-point stars and squares in the rarity colours); ONE Heartbeat moves the live ones (velocity, gravity, fade) and disconnects when none is live | burst counts: Common 12, Uncommon 16, Rare 20, Epic 28, Legendary 40, Mythic 48, Secret 48; confetti 24 (Mythic, Secret); Low graphics halves every count |
+| Stars (Secret) | 14 star Frames, looping alpha tweens with offsets | 14 tweens |
+| Flash, Banner, pet pop | 1 Frame; ribbon + word; the PetViewport's UIScale | tweens |
+
+Totals: at most 450 GUI instances for an x1 roll and 750 for an x3, at most 24 live tweens plus the Secret stars, at most one
+Heartbeat connection, one Lighting effect plus the `"Hatch"` LightingStack preset, one PetViewport per pull. Low graphics: no blur,
+no tint, half the sparks, the rays static, no speed streaks.
+
+**Never breaks the player.** The cutscene writes nothing to the Camera or the Humanoid and does not need the character: it plays
+on through a death or a respawn to its reveal (the GUI is `ResetOnSpawn = false`; review 2026-11-07: on PC and gamepad the
+character can still walk under the dim, and a fall off an island edge must not cut a paid reveal short). On open it calls
+`MenuController.SetTouchHidden("Hatch", true)` and the cursor is freed by `MouseLock`'s `NimbusHatch` watcher; every exit (`Done`,
+`Back` on the reveal, `Close`, a match start, `MenuController.Close()`, a phase error caught by the phase runner's pcall) runs one
+`teardown(reason)`: the blur destroyed (only ours, by name), the `"Hatch"` LightingStack preset popped, the spark Heartbeat
+disconnected, the pool and the tweens stopped and destroyed, `SetTouchHidden("Hatch", false)`, then `Closed:Fire(reason)` with
+`reason` = `"Done"` (DONE, a tap, Esc or B on the reveal), `"Error"` (a caught phase error), `"Match"` or `"Close"`
+(`EggStage.Close()` from anyone else, `MenuController.Close()` included). **The Shop window comes back only after `"Done"` or
+`"Error"`, and only while ShopController is still open and the player is not `InMatch`** (ShopController's `Closed` handler checks
+all three; review 2026-11-07). A match start or `MenuController.Close()` leaves the Shop closed: the Shop closes itself on
+`InMatch` (whichever handler runs first, the `InMatch` check holds), and `closeEverything` closes the Shop first, then the
+stage. So the Shop never comes back over a match, and its `SetTouchHidden("Shop", true)` never hides a phone's thumbstick in a
+match. A test records Camera `CameraType` / `CameraSubject` / `FieldOfView`, the Humanoid's `WalkSpeed` / `JumpPower`, the
+MouseLock state and `GuiService.TouchControlsEnabled` before a roll and checks them equal after `Done`, after a mid-roll match
+start, after `MenuController.Close()` and after an injected phase error; `ShopWindow` is visible after `Done` and after the error,
+and hidden with `ShopController.IsOpen() == false` after the match start and after `MenuController.Close()`; a character removed
+mid-`Strip` (a new one added) still reaches the reveal.
+
+**Sounds.** Existing `AudioIds` keys only (no uploads; new crack / whoosh sounds are later Suno / ElevenLabs work, the owner's
+audio rule): `SpinStart`, `SpinTick`, `SpinLand`, `Shatter`, the `Reveal*` map; `opts.Scale = 0.6` below Legendary, 1 from
+Legendary (5.5).
+
+**Storyboard options** (only if the main session publishes a storyboard pitch before plan Task 27; every option keeps the
+phases, timings, Skip, x3 order, VFX budget and reveal above; only `Rise` differs): **A "Pedestal"** (above, my pick: the
+calmest read on a phone, the egg never leaves the frame); **B "Sky drop"**: the landed egg shoots up out of frame and drops back
+through a cloud layer onto a cloud pedestal with a dust puff and a small screen bump (adds 0.2 s to `Rise`); **C "Machine"**: the
+strip runs inside the machine's glass dome art, the machine shakes and drops the egg down a chute onto the pedestal (the dome art
+at 520 px on PC; heavier on phones). Gemini could not be asked (the API answered 402, credits depleted); the main session can run
+the creative check through gemini.google.com before Task 27.
+
+**Files.** `src/client/UI/EggStage.lua` (the phases, the request path, the layout) and a new `src/client/UI/HatchFx.lua`
+(the effects, so EggStage stays under its local cap and the Shop page can share the spark pool): `HatchFx.Pool(parent, n) ->
+pool` (`pool:Burst(at, rarity, count)`, `pool:Confetti(n)`, `pool:Live()`, `pool:Destroy()`), `HatchFx.Rays(parent, rarity)`,
+`HatchFx.Shock(parent, rarity)`, `HatchFx.Cracks(egg, rarity, step)`, `HatchFx.Leaks(egg, rarity, step)`, `HatchFx.Stars(parent,
+n)`, `HatchFx.Dim(on)` (the `NimbusHatchBlur` effect, ours by name, and the `"Hatch"` LightingStack preset; High only),
+`HatchFx.Stats() -> { Live, Pooled, Tweens, Heartbeats }`.
+
+**API** (built in plan Task 20 with plain visuals, dressed in Task 27): `EggStage.Init()`, `Show(result) -> boolean`,
+`Request(rouletteId, currency, spins) -> boolean` (the only `BuyRoulette` sender: `FIRE_GAP` 0.3 s, the pending flag,
+`WAIT_TIMEOUT` 7 s), `IsPending()`, `IsShowing()`, `Phase() -> "Intro" | "Strip" | "Land" | "Rise" | "Crack" | "Burst" | "Reveal"
+| nil`, `Skip()`, `Back()` (Esc's one path, called by ShopController: skip before the reveal, DONE on it), `Done()`, `Close()`
+(toasts the pulls not shown yet), `Timings(fast, spins) -> { Intro, Strip, Land, Rise, Crack, Burst, Stagger, RevealAt }`,
+`NoteText(pull, rarity)`, `Layout() -> "PC" | "Phone" | "Portrait"`, `IsPrewarmed(petId)`, `Stats() -> { Instances, Tweens,
+Sparks, Effects, Heartbeats }` (`Effects` counts the blur and the `"Hatch"` preset); signals `Pending`, `Answered(result)`,
+`Opened`, `Closed(reason)`.
+Instances: `NimbusHatch` > `Stage` > `Dim`, `Vignette`, `Flash`, `Content` (the laid-out area under the 58 px inset) > `Title`,
+`Strips` > `Strip1..3` > `Track` > `Cell1..12`, `Pointer`; `Hero` > `Spot`, `Pedestal1..3`, `Backlight1..3`, `Egg1..3`, `CrackWord`;
+`Burst` > `Shock`, `Rays`, `Sparks`; `Reveal` > `Col1..3` > `Banner` (`Word`), `Shell`, `Pet`, `Name`, `New`, `Note`,
+`EvolvedRibbon`; `BottomBar` > `Skip`, `FastHatch`, `SpinAgain`, `Done`. Everything else in 5.5 (the queue, waits, old-shape
+results, a pull without a `Strip` starting at `Rise`, the evolved reveal, SPIN AGAIN as a new paid request, the match-start toast,
+Esc / B priorities, Fast hatch as a saved setting) stands.
+
+### 16.5 Painted eggs (egglook A, more detail, with VFX)
+
+**One paint, world and GUI.** When this section was written, the working tree already held an uncommitted Blender rebuild of
+the seven world eggs for this card (`blender/kit/props/lobby_shop.py`, prop `lobby_egg`, docstring "PAINTED (owner pick egglook
+A, 'more coolness and details')", plus `blender/catalog/lobby.json`, `blender/meshes.json` and the seven `egg_*` manifests). Its
+paint (below) is the design: the GUI eggs paint the same motifs, so the shelf eggs, the Shop and the cutscene show one egg per
+rarity. It elaborates the pitch's `eggPattern("A")` (spots; zigzag band; white bands; a star band with gold; a cream band;
+wavy bands; stars). The egg names stay (`Config.Eggs.Names`: Cloud Puff, Breeze, Raindrop, Thunder, Sunburst, Aurora, Starry
+Night) so the Egg Guide board (Task 10) and every name keep working; renaming them to fit the new paint is an owner question
+(16.8).
+
+**One shape, three forms** (`src/client/UI/EggArt.lua`; API: `EggArt.New(parent, rarity, size, opts) -> Frame "Egg_<Rarity>"`
+with `opts = { Form = "Auto" | "Simple" | "Medium" | "Full", Vfx = bool, ZIndex, Name }`, `EggArt.SetRarity(egg, rarity)`
+(re-skins in place), `EggArt.Halves(parent, rarity, size) -> top, bottom`, `EggArt.Glow(rarity)` (5.6's numbers: 0 / 0 / 0.22 /
+0.34 / 0.58 / 0.66 / 0.78), `EggArt.Tones(rarity)` (5.6's), `EggArt.Paint(rarity) -> { { Kind, ... }... }` (the motif list as
+data, for tests). The oval body (UICorner 0.5, width 0.8 x height), the top-to-bottom tone gradient, the navy outline
+rgb(11,16,48) at `size / 20` (at least 2 px, whole), and:
+- **Simple** (under 48 px: the shop's odds rows, the machine domes, phone odds): body, outline, the glossy highlight, the
+  rarity's main motif only (<= 8 instances).
+- **Medium** (48-140 px: strip cells, x3 hero eggs on a phone): + a rim light (a slightly smaller oval with a transparency
+  gradient), the main and second motif (<= 14 instances).
+- **Full** (over 140 px: the stage's hero egg, the Secret hero card's big egg, `dump_gui eggs`): every layer below, a specular dot,
+  a soft contact shadow ellipse under the egg, and a sheen band (UIGradient) that sweeps every ~4 s on High (<= 28 instances).
+
+| Egg | Body (tones from `Config.Rarities`) | Paint at Full (Simple keeps the first motif) | VFX (`Vfx = true`, Rare and up) |
+|---|---|---|---|
+| Common, Cloud Puff | the Common colour | darker grey spots in three sizes, little white dots, the cartoon shine upper left | none (on the stage: a white dust puff at the burst) |
+| Uncommon, Breeze | the Uncommon colour | a cream zigzag band with a dark green outline, lime spots in its bays, white dots | none; a slow sheen on Full |
+| Rare, Raindrop | the Rare colour | two white bands edged in navy, ringed white dots between them, pale dots | glow 0.22; 3 drifting sparkles |
+| Epic, Thunder | the Epic colour | a deep violet star band between two gold trims, white 4-point stars in it, white dots above, gold dots below | glow 0.34; the gold trims flicker every ~3 s; the stars twinkle |
+| Legendary, Sunburst | the Legendary colour | a white-gold crown (band + eight points, deep amber outline) on a crimson ring, a gold trim under it with a gold ball on every point, ruby and sapphire gems in the band with amber studs between, cream swags with pearls under the cap | glow 0.58; slow-turning soft rays behind; the gems glint; 4 gold sparkles |
+| Mythic, Aurora | the Mythic colour | flowing gradient bands (violet / plum foot, blush / pale cap, wavy edges), a violet wave ribbon, eight teal swirls springing off it, sparkles | glow 0.66; the ribbon's gradient drifts (an endless Offset tween); 6 pastel sparkles |
+| Secret, Starry Night | rgb(74,68,104) -> rgb(18,16,28), a violet dusk at the foot | violet cracks running down from the tip into a ring of magenta runes (two lines + eight rune marks), white 4-point stars, pin-prick stars | glow 0.78 violet; the cracks and runes pulse; the stars twinkle (alpha tweens, offset); 2 orbiting star sparkles; a dark violet aura ring |
+
+Simple keeps one motif: Common the spots, Uncommon the zigzag band, Rare the two bands, Epic the star band (no stars), Legendary
+the crown band, Mythic the wave bands, Secret the stars and the rune ring's two lines. From Epic up the details the mesh makes
+Neon (`Glow<What>` parts: trims, stars, crown balls, gems, the ribbon, swirls, cracks, runes) get a soft light layer in the GUI
+too (a lighter copy behind them with a transparency gradient).
+
+**Where the VFX show.** The Shop: the Secret hero's big egg (Full, Vfx) and each card's machine dome (a slow glass sheen); odds-row
+and dome eggs are Simple with no VFX (20+ eggs on screen). The strip: Medium eggs with a static rarity ring for Rare and up; only
+the landed cell gets its VFX. The cutscene's hero egg: Full, Vfx, plus 16.4's effects. The sparkles are GUI frames from the
+stage's pool (on the Shop page: a page-owned pool of 16, stopped while the page is hidden). Budget: an egg's VFX adds at most 8
+instances and 3 tweens; no Heartbeat outside the spark pool.
+
+**The world eggs** (the Egg Guide's shelf, Task 10). Blender `blender/kit/props/lobby_shop.py` prop `lobby_egg`, the painted
+rebuild above (in the working tree, uncommitted, when this was written; review 2026-11-07: the main session commits those 12
+files on their own before plan Task 16, so lanes and Task 26 see them and no other commit sweeps them in; plan Task 28 inspects
+and fixes): same keys
+`egg_common` .. `egg_secret`, the shape and pivot unchanged (2.2 x 3 x 2.2 studs, bottom centre, attachment `Center`), 0.1-stud
+cells, baked SmoothPlastic shading, Neon only in `Glow<What>` parts from Epic up; rendered beside a 5-stud player before it counts;
+manifests regenerated, no ids (the Part fallback ellipsoids stay until the owner uploads). Server-side shelf VFX in
+`LobbyBoardBuilder.EggGuide`, one set per egg at its `Center` (the Part fallback and a dressed mesh alike; nothing is added per
+`Glow` part, so the count stays bounded): a `ParticleEmitter` sparkle on the Rare and up eggs (built-in texture; Rate
+Rare 1, Epic 2, Legendary 3, Mythic 4, Secret 5; the rarity colour; LightEmission 0.5; Lifetime 1.2-2; Speed 0.3-0.8; tagged
+`DETAIL_TAG` so Low graphics parks them), one `PointLight` `EggShelfGlow` 1.0 / 10 at the shelf centre (inside the lobby light
+rule), and each egg tagged `NC_Spin` (`SpinSeconds 14`, `BobStuds 0.12`, `BobSeconds 3.2`: a slow display turntable; the
+LobbyFx heartbeat moves it).
+
+**Chat colour.** The Legendary-and-up chat line colours the rarity word with `Config.Rarities` (Task 6); Secret's near-black reads
+badly on Roblox's dark chat (the morning question from Task 6). `Config.Eggs.ChatColors = { Secret = Color3.fromRGB(180, 150,
+255) }` (the Starry Night star violet) overrides it in `NotifyController` for the chat line only; `Config.Rarities` stays.
+
+### 16.6 Titles (the owner's board note)
+
+"top 100 players in the game gets a golden title, top 10 gets rainbow fade title, make it be seen also in the players server list
+and as the player name in the game. Creator gets a "Creator" name title in the game above the name which is only my account." Q&A:
+the ranking is the **Trophies** global rank only; shown as a title above the head (gold for ranks 11-100, a rainbow colour fade for
+1-10) plus a plain-text **"Rank"** column in the Roblox player list.
+
+**Config.** `Config.Attr.Title = "Title"` (`"Creator"` | `"Top10"` | `"Top100"`, absent otherwise) and `Config.Attr.TitleRank =
+"TitleRank"` (1..100, absent outside the top 100 read); `Config.Leaderboard.RankTitles = { Stat = "Trophies", Rainbow = 10, Gold =
+100, Column = "Rank", ColumnText = { Creator = "Creator", Top10 = "Top 10", Top100 = "Top 100" }, Tag = { Creator = "CREATOR",
+Top10 = "TOP 10", Top100 = "TOP 100" } }` (`Gold <= ReadSize` checked by `config_shape`).
+
+**Server (inside `LeaderboardService`, which already holds the Trophies top-100 page; no new service, no `Main.server` local).**
+- Rank: the player's index in `S.Pages.Trophies.Entries` while that page is good (a good Trophies page is enough; the other stats'
+  pages and the board's Scope do not matter). In the "Server" scope before the first good page, or with no store (Studio without
+  API access), nobody has a rank. A player outside the 100 read has no rank.
+- Creator: **`DevService.IsOwner(player) -> true | false | nil`** (new public wrapper of DevService's `isOwner`: `game.CreatorType
+  == User` and `UserId == game.CreatorId`, or for a group game `GetRankInGroup(CreatorId) == 255` under pcall; nil when the group
+  call failed, so `isGroupOwner` returns nil instead of false on an error; `DevService.IsAllowed` keeps answering a boolean). Never
+  `Config.Dev.Admins`, never Studio's `AllowInStudio`, never a hard-coded id. Asked once per join in a task (`S.Owner[player]`);
+  a nil answer is asked again at the next Trophies refresh.
+- Kind: Creator wins (the owner in the top 10 shows "CREATOR"; `TitleRank` is still set); else rank <= 10 -> `Top10`; rank <= 100
+  -> `Top100`; else none.
+- `LeaderboardService.TitleOf(player) -> kind | nil, rank | nil` (read only: for tests and later readers).
+- `applyTitle(player)` writes only on change: the two attributes and `leaderstats.Rank.Value` = `ColumnText[kind]` or `""`. Called
+  on `Players.PlayerAdded` (titles need no profile: the rank is the store's, the Creator the game's), after the owner answer, and
+  for every player after each good Trophies read (the RefreshSeconds 240 cycle); `S.Titles[player]` dropped on leave.
+- `leaderstats`: only `PlayerService` creates `leaderstats` and its values: `Rank` (a StringValue, `""`) right after `Tokens`,
+  synchronously in `setupPlayer` as today, so the list shows Tokens then Rank and still sorts by Tokens. LeaderboardService never
+  creates `leaderstats` or `Rank` (review 2026-11-07: its `PlayerAdded` handler is connected first, `Main.server` inits it before
+  PlayerService, and handler order is not guaranteed, so creating them there could put Rank first and sort the list by it):
+  while `leaderstats.Rank` is missing, `applyTitle` sets the two attributes and writes Rank from a task that waits for it
+  (`WaitForChild`, 10 s), or at its next pass. Roblox's list cannot colour text: the column is plain text.
+- Security: attributes and the StringValue are written by the server only; the client sends nothing; the rank comes only from the
+  OrderedDataStore page the server reads.
+
+**Client** (new `src/client/Controllers/TitleController.lua`, booted after `VipController`):
+- Per player: the `Title` / `TitleRank` attributes, `CharacterAdded`, `InBattle`; a BillboardGui **`TitleTag`** on the head
+  (`Adornee` = Head, `Size` 240 x 36 px offset, 240 x 74 with the crown slot below (a constant on-screen size), `MaxDistance 90`,
+  `AlwaysOnTop false`, `LightInfluence 0`) > `Plate` (navy at 0.35, round corners, 2 px stroke, width from the measured text) >
+  `Label` (Theme Display font, 22 px, white, a 2 px navy UIStroke) > `Fill` (UIGradient). **Its height above the name is set in
+  pixels, not studs** (review 2026-11-07: the tag, the VIP crown and Roblox's own name are all constant-pixel billboards, so a
+  gap in studs shrinks on screen with distance; at the default 70 degree field of view a stud is about 278 / d px on an 844x390
+  phone, so a 1.1-stud gap is smaller than the plate and the crown past about 9 studs): `StudsOffset (0, 2.0, 0)` (about where
+  Roblox's name is anchored above the head) and `SizeOffset (0, 0.5 + 26 / H)` (H = the billboard's px height), so the plate's
+  bottom stays 26 px above that point at any distance (Roblox's name is about 20 px tall); the exact stud anchor is a Studio
+  check.
+  - Top10: "TOP 10 \194\183 #3" with a **rainbow fade**: `Fill.Color` = seven hues (red, orange, yellow, green, cyan, blue,
+    violet) twice across 0..1, and an endless TweenService tween of `Fill.Offset` (0, 0) -> (-0.5, 0) over 2.4 s, Linear, repeat
+    -1. A UIGradient does not wrap (past its last key it holds the last colour), so the `Label` is **twice the measured text
+    width with `TextXAlignment Left`** (the Plate keeps the text width): the text always sits in the half that maps to one full
+    period of the two-period sequence, and the half that holds the clamped violet has no text, so the loop is seamless (review
+    2026-11-07: with a text-wide Label the right half went solid violet at the end of each loop, then snapped back).
+    Engine-side: no Lua runs per frame; at most one tween per Top-10 tag (at most ten in any server). Low graphics: the tween is
+    paused (a still rainbow).
+  - Top100: "TOP 100", a static gold gradient (rgb(255,236,150) -> rgb(242,182,68) -> rgb(196,128,32), Rotation 90).
+  - Creator: "CREATOR", a static cyan -> violet gradient (rgb(120,220,255) -> rgb(160,120,255)), 24 px.
+- Hidden while that player is `InBattle` (the battle scene); shown in the lobby, matches and homes. The local player sees their
+  own tag in third person (the pride of it) and not in first person: a 4 Hz check of the camera's distance to the head (< 2 studs
+  hides it) for the local player only.
+- `VipController`: when a player has a `Title`, it shows no `VipCrown` billboard of its own; it calls
+  `TitleController.SetCrown(player, on)` with its usual rule (VIP, Graphics High, not InBattle / InMatch), and the TitleTag draws
+  the crown glyph as `Crown` (34 x 34 px, centred, 4 px above the Plate) inside the same billboard (then 240 x 74 px), so crown
+  and plate keep a 4 px gap at every distance (review 2026-11-07: replaces "the crown moves up to 3.7 studs", a stud gap that
+  slid into the tag). Without a Title the crown is as today (its own billboard at 2.4 studs). It listens to `Title` too.
+- Budget: one BillboardGui and five instances per titled player (six with the crown), no Heartbeat, no per-frame Lua.
+
+**Tests.** `lb_titles` (server; a 100-entry mock Trophies store): rank 3 -> `Title "Top10"`, `TitleRank 3`, `leaderstats.Rank
+"Top 10"`; rank 57 -> `Top100` / 57 / "Top 100"; outside the 100 -> none / ""; the owner (`game.CreatorType` User, `CreatorId` =
+their id) -> "Creator" even at rank 3 (`TitleRank` 3 kept); an Admin who is not the owner -> no Creator; a group game with
+`GetRankInGroup` 255 -> Creator, an erroring `GetRankInGroup` -> none, asked again at the next refresh, then Creator; the "Server"
+scope (no store) -> no Top titles, Creator still; the next read moves rank 3 to 12 -> `Top100`; no attribute write without a
+change; `leaderstats` children Tokens then Rank, also when LeaderboardService's `PlayerAdded` handler runs before
+PlayerService's (Rank then gets its text once it exists). `client_titles`: the tag per kind with its text, the rainbow tween
+running (`Fill.Offset` changes over 1 s) for Top10 only, the gold and Creator gradients static; the Top10 `Label` twice the text
+width, left-aligned, in a Plate of the text width; the tag removed when the attribute clears; hidden while `InBattle`; the local
+player's tag hidden with the camera at the head and shown at 12 studs; Low graphics -> the tween paused; `SizeOffset.Y == 0.5 +
+26 / H`; a titled VIP: `Crown` inside the TitleTag 4 px above the Plate and no `VipCrown` billboard on that head; an untitled
+VIP: the `VipCrown` at 2.4 studs; text >= 20 px. `dump_gui` scene `titles` (the three tags on dummy characters) at 844x390 and
+1920x1080, and `titles:10`, `titles:30`, `titles:60` at 844x390 (the name stand-in, the tag and the crown placed where they
+project from that many studs, 70 degree field of view, as the `portal` scene's distance mode does): no overlap at any of them.
+
+### 16.7 Data, save and security
+
+Nothing new is stored: the titles are attributes and a leaderstats StringValue; the prices and odds are Config; the Shop and the
+cutscene are client UI; the trove moves in the world only. The money rules of section 7 hold unchanged (the Secret guard now
+allows Celestial through Config); the one added sales rule is 16.1's: token-granting Robux products are not prompted for an
+account that is not PolicyService-"Allowed" (paid receipts are still always granted). `DevService.IsOwner` is the only new
+server entry point and is not reachable from a client.
+
+### 16.8 Calls I made (for the owner to check)
+
+1. Token packs live in the Gems tab (A has no Currency tab); they get "BEST VALUE" on the biggest pack but no % ribbon.
+2. The top bar's Shop opens the last tab of this session, first time Eggs; the Packs tab shows a gold dot while the Starter Pack is
+   on sale and unbought.
+3. Creator beats a Top 10 title for the owner (one title line); the player list says "Creator".
+4. Titles show everywhere but battles; the local player sees their own title in third person only.
+5. A Celestial Secret does not count for (or reset) the Secret Roulette's pity.
+6. The walk-up prompt is restored at the old stall spot (now the Egg Guide), range 10, "Open" / "Shop"; the stall itself stays gone.
+7. The cutscene is GUI-only with a client-side world blur and a LightingStack tint; the camera and the character are never
+   touched, and it plays on to the reveal through a death or a respawn (only a match start, `MenuController.Close()`, DONE or an
+   error end it). The Shop comes back after it only after DONE or an error, never over a match.
+8. x3 eggs crack in the server's pull order (no build-up re-sort).
+9. Fast hatch sits at the rail's bottom on the PC Eggs tab and in the cutscene's bottom bar (the phone rail has no room).
+10. The arch caption "pets & items" becomes "eggs & gems".
+11. Secret's chat-line colour becomes the Starry Night violet (Task 6's morning question).
+12. The GUI eggs paint the motifs of the painted Blender rebuild already in the working tree (16.5), not the sky-weather pictures;
+    the egg names stay.
+13. (Review 2026-11-07, 13 call 8 closed) The Robux products that grant Cloud Tokens (`Tokens1..3`, the Pro Pack) are not sold to
+    accounts PolicyService restricts from paid random items (or while that answer is unknown), since a token spin can now give a
+    Secret; earned tokens still spin for everyone; paid receipts are always granted.
+14. (Review 2026-11-07) "BEST VALUE" is computed from the prices shown (most gems or tokens per Robux, ties to the bigger pack),
+    like the % ribbons; the top bar's Shop pill does not glow during the tutorial's shop step (the world arrow does that job).
+
+**Questions for the morning** (my recommendation first):
+- Tokens now buy Cloud and Storm spins for fewer Robux than gems do (Cloud 1.63 vs 4.90 R$ at the 49 R$ packs), while gems win on
+  Sky, Celestial and the Secret Roulette. Keep (the owner's numbers), or nudge the Cloud / Storm gem spins? Recommended: keep and
+  watch the first week's purchases.
+- Restricted accounts and token packs (13 call 8, back on the list with higher stakes: Celestial's 2% Secret is on token rolls).
+  Keep the token-granting products (Tokens1..3, Pro Pack) off sale for restricted accounts (call 13), or sell them and lock token
+  spins for those accounts instead? Recommended: keep them off sale (earned tokens keep every machine open to every account).
+- A cutscene storyboard pitch (A Pedestal / B Sky drop / C Machine) before Task 27? Recommended: build A unless the owner asks.
+- New crack / whoosh sounds for the cutscene from Suno / ElevenLabs (the owner's audio rule)? Recommended: yes, as a later audio pass.
+- Rename the eggs to fit the painted motifs (Thunder has no lightning now, Sunburst wears a crown)? Recommended: keep the names
+  for this branch; a rename is one Config table and the Egg Guide board.
+- After the owner uploads the egg meshes, show the real 3D egg (a ViewportFrame) in the cutscene's Rise and Crack? Recommended:
+  later; `Glow` parts read flat in a ViewportFrame, so the GUI glow layers would stay on top.
