@@ -1178,12 +1178,17 @@ S.client_replay = guarded("client_replay", function()
 	toClient("MatchState", nil)
 	toClient("PartyState", nil)
 	-- roulette results queue up on the client and a reveal card stays up until the player dismisses it: Esc closes the
-	-- stage (which starts the next queued result), then the open window. Dismiss until nothing is left.
+	-- stage (which starts the next queued result), then the open window. Dismiss until nothing is left. (lobby-shop Task 22:
+	-- every result plays through EggStage, whose NimbusHatch > Stage lives while a roll shows; Esc skips, then DONE)
+	local function hatchStage()
+		local hatch = gui():FindFirstChild("NimbusHatch")
+		return hatch and hatch:FindFirstChild("Stage")
+	end
 	local idle = 0
 	for _ = 1, 150 do
 		Mock.FireSignal(game:GetService("UserInputService"), "InputBegan", Mock.NewInput("Escape", "Keyboard", "Begin"), false)
 		advance(0.4)
-		if gui():FindFirstChild("RouletteStage", true) then
+		if hatchStage() then
 			idle = 0
 		else
 			idle = idle + 1
@@ -1192,7 +1197,7 @@ S.client_replay = guarded("client_replay", function()
 			end
 		end
 	end
-	T.check(gui():FindFirstChild("RouletteStage", true) == nil, "every queued roulette result can be dismissed with Esc", "a RouletteStage is still on screen after 150 presses")
+	T.check(hatchStage() == nil, "every queued roulette result can be dismissed with Esc", "a NimbusHatch.Stage is still on screen after 150 presses")
 	smallProfile()
 	advance(2.0)
 	T.check(maxGui < baselineGui + 4000, "the GUI stays small during a long session (toasts / floats are cleaned up)", "peak " .. maxGui .. " objects, " .. baselineGui .. " before (" .. baselineBreakdown .. ")")

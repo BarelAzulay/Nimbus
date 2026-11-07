@@ -1,27 +1,30 @@
 -- MenuController (client, v3 + Phase 2): the left menu of icon tiles and every window the player opens.
 --
 --   MenuController.Init()
---   MenuController.Open(panelId, args)   -- "Pets" | "Index" | "Shop" | "Stats" | "Home" | "Settings" (what OpenPanel does;
---                                           args: Tab, RouletteId, Currency = "Gems", Action, Key, Preset, Pick, ReturnTo).
+--   MenuController.Open(panelId, args)   -- "Pets" | "Index" | "Shop" | "Store" | "Stats" | "Home" | "Settings" (what
+--                                           OpenPanel does; args: Tab, RouletteId, Currency = "Gems", Action, Key, Preset,
+--                                           Pick, ReturnTo). lobby-shop Task 22: "Shop" and "Store" open ShopController's
+--                                           one Shop window (ShopController.Open(args); refused while the egg stage shows).
 --                                           Team balance: "Pets", "Team" and "Inventory" open PetsController's window
 --                                           (args go to PetsController.Open).
 --                                           Phase 4: "Pets" with Action = "Feed" | "Garden", "Feed", "Train" and "Evolve"
 --                                           go to CareController (the Food Machine list, the garden picker, the Training
 --                                           Place window, the EVOLVE moment); Action = "Evolve" with a Key (the floating
 --                                           card's EVOLVE! pill) opens the Pets window on that pet with the EVOLVE confirm
---   MenuController.Close()               -- closes whatever window / overlay is open
+--   MenuController.Close()               -- closes whatever window / overlay is open: the Shop first, then the egg stage
+--                                           (EggStage.Close: one "You hatched: ..." toast for the pulls not shown), then
+--                                           the menu window, the Pets window and the Pet Index
 --   MenuController.OpenSettings()        -- HUD cleanup: MainMenuController's settings panel (the top-left pill's gear,
 --                                           TopBarController; a hint until that panel exists)
 --   MenuController.OpenTeam(preset)      -- the Pets window showing that team
 --   MenuController.WindowOpened          -- Util.Signal, Fire(windowId) whenever a window opens:
---                                           "Pets" (fired by PetsController), "Store" (StoreController), "Daily"
---                                           (DailyController), "Trove" (TroveController), "Shop", "Stats", "Home" or
---                                           "Index" (the tutorial listens); this controller closes its own windows, the
---                                           Pet Index and the Pets window on "Pets", "Store", "Daily" and "Trove"
---                                           (store W1: those four never overlap)
+--                                           "Pets" (fired by PetsController), "Shop" (ShopController, lobby-shop Task 22;
+--                                           "Store" from an old build), "Daily" (DailyController), "Trove"
+--                                           (TroveController), "Stats", "Home" or "Index" (the tutorial listens); this
+--                                           controller closes its own windows, the Pet Index and the Pets window on
+--                                           "Pets", "Shop", "Store", "Daily" and "Trove" (store W1: those never overlap)
 --   Extra: MenuController.GetButton(id) -> the MenuButton_<id> tile (or nil; "Home" is the Spot tile)
---          MenuController.IsOpen() -> true while a window (the Pets window too), the odds popup or the roulette stage is up
---          MenuController.IsPrewarmed(petId) -> true once that pet was pre-sculpted for the roulette strip
+--          MenuController.IsOpen() -> true while a menu window, the Pets window, the Shop or the egg stage is up
 --          MenuController.OpenFeed(key) -> the Food Machine list (CareController) with that pet copy first
 --          MenuController.Hint(text, kind) -> the side hint (CareController's local refusals use it)
 --          MenuController.SetColumnHidden(hidden) -> hides / shows the menu tiles (BattleController: the team cards
@@ -47,9 +50,9 @@
 --     the session; the tab repeats a tile's red dot while folded; a tutorial step pointing at a tile unfolds it). On
 --     short screens (landscape / portrait phones) the tiles wrap into two slim columns so they stay >= 44 px.
 --   * Windows (CloudUI.Panel, centred because the player asked for them, nudged right only when the menu
---     column would cover them): Shop (tabs Roulettes + Gems, odds popup), Stats and Home (team balance: the Pets window
---     is PetsController's, shared bits in UI/PetBits). An old Tab = "Items" lands on Roulettes. The
---     Pet Index is IndexController's window: the Index tile and
+--     column would cover them): Stats and Home (team balance: the Pets window is PetsController's, shared bits in
+--     UI/PetBits; lobby-shop Task 22: the Cloud Shop, its odds popup and its roulette stage left for ShopController's
+--     Eggs tab, client/UI/ShopEggs, and client/UI/EggStage). The Pet Index is IndexController's window: the Index tile and
 --     OpenPanel("Index") open it. One window at a time; Esc / gamepad B / the red X / the tile again / a click
 --     outside closes it. Gamepad B is bound (ContextActionService, High priority, sunk) only while something is open,
 --     so it does not also fire MovementController's dash.
@@ -65,23 +68,12 @@
 --     does now -> next ("+7 -> +9 food", "Feeds fill 30% -> 35% of a bar", "2 pets train at once"), the next price
 --     and Build / Upgrade (or why it is locked: "Reach Home Level 10", "Needs the Villa", "Unlocks at Prestige 1").
 --     Everything is re-checked by the server (HomeAction "Upgrade" / "Prestige" / "GoHome").
---   * Shop Gems tab (store W1): one "Robux Store" button (the gem packs live in StoreController's Currency tab:
---     P5.openStore({ Tab = "Currency" })), the gems-only Secret Roulette and every roulette with a gem price,
---     each with its odds popup (always shown); hidden with a note while the PaidRandomItemsRestricted attribute
---     is true. A gem spin sends BuyRoulette(id, "Gems").
---   * Roulette stage: a scrolling strip of pet viewports that eases to the server result (RouletteResult),
---     then a reveal card with a rarity glow, a NEW! flag and a Put in team button (a landscape card on short screens).
 --   * v3 readability rule: everything is designed in 1080p pixels (body 18-19, captions >= 18, buttons 20+,
 --     titles 28-34) under ONE UIScale per window = min(screen factor clamp(viewportY / 1080, 0.8, 1.25), fit).
 --     Window sizes adapt between a minimum and a preferred design size and their columns scroll, so phones
 --     keep the 0.8 scale instead of shrinking the text.
 --   * Every window re-renders from State.Changed (and when the token count or the InMatch attribute
---     changes). Pet slots are kept per pet id and updated in place, so nothing is rebuilt or leaked; the
---     pet viewports of the odds popup and the roulette strip are attached under a per-frame
---     TIME budget (K.BUILD_BUDGET, at least one per frame), so neither a big collection nor a fresh client's
---     first-time pet sculpts hitch. The strip cells and odds tiles use PetBuilder's Low detail (the reveal card
---     stays High), and the roulette pools are sculpted ahead of time (one pet per frame) when the Shop opens and
---     when a spin is requested, so the spin itself only clones.
+--     changes). Pet slots are kept per pet id and updated in place, so nothing is rebuilt or leaked.
 --   * Touch screens: the menu column never reaches Roblox's thumbstick (bottom-left); in landscape it sits in the
 --     band between the top margin and the stick (two slim columns of four on a phone, labels >= 14 px). "Touch" is a
 --     touch-only device OR any screen where PlayerModule's TouchGui shows a thumbstick (Studio's device emulator and
@@ -89,17 +81,13 @@
 --     Once the stick has been seen the touch layout stays for the session (respawn, the Esc menu and a hybrid's
 --     mouse / touch switches hide the stick for a moment; the column must not snap back and forth).
 --
--- Remotes used: OpenPanel, RouletteResult (in); BuyRoulette, EquipPet, UnequipPet, GoToSpot, HomeAction,
--- PetCare (out). Each remote action is sent at most every K.FIRE_GAP seconds (the server rate-limits as well).
+-- Remotes used: OpenPanel (in); EquipPet, UnequipPet, GoToSpot, HomeAction, PetCare (out). Each remote action is sent at most every K.FIRE_GAP seconds (the server rate-limits as well).
 -- Plain Lua 5.1-compatible syntax only. All text goes through Theme roles.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local ContextActionService = game:GetService("ContextActionService")
-local TweenService = game:GetService("TweenService")
-local Debris = game:GetService("Debris")
 local TextService = game:GetService("TextService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -158,7 +146,6 @@ local function optionalShared(name)
 	return nil
 end
 
-local PetKeys = optionalShared("PetKeys")
 local TycoonCatalog = optionalShared("TycoonCatalog")
 
 local MenuController = {}
@@ -180,14 +167,6 @@ local K = {
 	SHORT = 560, -- windows lower than this (design px) use their compact layout
 	FIRE_GAP = 0.3, -- client-side spacing between two sends of the same remote
 	HINT_SECONDS = 2.8,
-	WAIT_TIMEOUT = 7, -- seconds to wait for a RouletteResult
-	-- pet viewports (odds popup, roulette strip) are built under a TIME budget per frame: the first
-	-- build of a frame always runs, more only while the frame has spent < BUILD_BUDGET s building, at most BUILD_MAX
-	-- (a first-time High sculpt costs tens of ms, a cached clone a few: a count budget hitches on fresh clients)
-	BUILD_BUDGET = 0.004,
-	BUILD_MAX = 3,
-	STRIP_DETAIL = "Low", -- roulette strip cells: small, static, moving fast (the reveal card keeps High)
-	ODDS_DETAIL = "Low", -- 88 px odds tiles
 	-- Roblox's touch thumbstick (bottom-left), gui px above the bottom edge: classic 70 px stick at 20 px on small
 	-- screens (the dynamic stick's idle ring, ThumbstickStart, reaches 93: 74 px centred 56 px up) and 120 px at
 	-- 0.75 * 120 on large ones (ThumbstickStart 148 px centred 112 px up: 186)
@@ -208,19 +187,15 @@ local K = {
 	SMALL_LABEL_SPARE = 6, -- a SmallGrid row is its tile + this (the label sits on the tile's bottom edge)
 	SMALL_COL_GAP = 22, -- SmallGrid: wider gap between the two columns, so neighbouring labels never run together
 	BACK_ACTION = "NimbusMenuBack", -- ContextActionService action that owns gamepad B while something is closable
-	CARD_H = 474, -- roulette card
-	CARD_H_SHORT = 216,
-	SHOP_COMPACT = 650, -- Shop windows lower than this (design px) use the compact cards
 }
 
--- Preferred / minimum design sizes of each window (W x H), the reveal card, the spin stage and its strip.
--- Phase 5 (6.6, the window rule): windows dock RIGHT on landscape screens (NeonKit.SideRect, <= 0.44 W) and are a
--- bottom sheet on portrait ones (the top 44% stays clear); no backdrop dims the game. Odds is a small centred confirm.
+-- Preferred design sizes of each window (W x H). Phase 5 (6.6, the window rule): windows dock RIGHT on landscape
+-- screens (NeonKit.SideRect, <= 0.44 W) and are a bottom sheet on portrait ones (the top 44% stays clear); no backdrop
+-- dims the game. (lobby-shop Task 22: the Cloud Shop, its odds popup and its roulette stage left for ShopController,
+-- client/UI/ShopEggs and client/UI/EggStage.)
 K.WIN = {
-	Shop = { 820, 900 },
 	Stats = { 640, 760 },
 	Home = { 820, 900 },
-	Odds = { 700, 640, 520, 380 },
 }
 -- Portrait screens (a phone held upright): a window may get as narrow as TALL_MIN_W design px (and as tall as
 -- TALL_MAX_H) so its text keeps the readability scale instead of shrinking to fit 800 px; windows narrower than
@@ -234,14 +209,9 @@ K.HOME_LEFT_W_NARROW = 300
 K.STATION_ROW_H = 96
 K.STATION_ROW_H_TALL = 132
 K.LIVE_GAP = 0.25 -- seconds between two live refreshes of the Home window (collector / income tick every second)
-K.GEM_ROW_H = 120
 K.INFO_CHARS = 34 -- a station row's "now -> next" line longer than this shows "Next: ..." only
 K.CONFIRM_W = 560 -- the prestige confirmation
 K.CONFIRM_H = 356
-K.RESTRICTED_ATTR = "PaidRandomItemsRestricted" -- GemService: true while gem roulettes are not allowed / unknown
-K.REVEAL = { TallW = 452, TallH = 640, WideW = 790, WideH = 372 } -- TallW: a 390 px phone keeps the 0.8 scale (18 px pills stay >= 14 px)
-K.STAGE = { W = 920, H = 380 }
-K.STRIP = { Cell = 150, W = 860, H = 190, Target = 34, MinCells = 42, Seconds = 5.6, Curve = 2.8 }
 
 local Colors = Theme.Colors
 local WHITE = Colors.White
@@ -324,10 +294,6 @@ local openId = nil -- id of the window that is currently open
 local Net = { Warned = {}, Cache = {}, Last = {} } -- warnOnce keys, remote cache, last send per remote
 local touchDevice = false
 
-local Spin = { Waiting = false, WaitToken = 0, Queue = {}, Stage = nil, Last = nil }
--- per-frame build budget + roulette pool pre-sculpting (functions defined with the helpers below)
-local Warm = { Queue = {}, Seen = {}, Done = {}, Running = false, Module = nil, Tried = false }
-local Odds = { Gui = nil, Token = 0, Slots = {}, Holder = nil, Fit = nil }
 local Badge = { LastPetTotal = nil }
 local Back = { Bound = false, Busy = false, Swallowed = false } -- gamepad B binding state (see syncBackBinding)
 local Index = { Module = nil, Tried = false } -- IndexController (loaded lazily, optional)
@@ -341,38 +307,12 @@ local P5 = { Kit = require(Client:WaitForChild("UI"):WaitForChild("NeonKit")) }
 local PetBits = require(Client:WaitForChild("UI"):WaitForChild("PetBits"))
 -- forward declarations
 local openWindow, closeWindow, toggleWindow, refreshOpenWindow, updateMenuActive
-local requestSpin, closeStage, skipSpin, closeOdds, openOdds, showHint, handleBack, beginStage
+local showHint, handleBack
 local syncBackBinding, closeIndex, relayoutMenu, refreshHomeLive
 
 ----------------------------------------------------------------------
 -- Small helpers
 ----------------------------------------------------------------------
--- (audio wave 2) client/SoundFx, lazy (the roulette strip's SpinStart / SpinTick / SpinLand and the reveal card's
--- RevealCommon / RevealRare / RevealLegendary); false = unavailable. A missing id is silent
--- (one local table: this file sits near Luau's 200-locals limit)
-local Sfx = {
-	Mod = nil,
-	-- the reveal card's sound by the pet's rarity: Common / Uncommon -> RevealCommon, Rare / Epic -> RevealRare,
-	-- Legendary / Mythic / Secret -> RevealLegendary
-	Reveal = {
-		Common = "RevealCommon", Uncommon = "RevealCommon", Rare = "RevealRare", Epic = "RevealRare",
-		Legendary = "RevealLegendary", Mythic = "RevealLegendary", Secret = "RevealLegendary",
-	},
-}
-function Sfx.Play(name)
-	if Sfx.Mod == nil then
-		local module = Client:FindFirstChild("SoundFx")
-		local ok, mod = false, nil
-		if module then
-			ok, mod = pcall(require, module)
-		end
-		Sfx.Mod = (ok and type(mod) == "table" and type(mod.Play) == "function") and mod or false
-	end
-	if Sfx.Mod then
-		pcall(Sfx.Mod.Play, name)
-	end
-end
-
 local function warnOnce(key, err)
 	if not Net.Warned[key] then
 		Net.Warned[key] = true
@@ -386,101 +326,6 @@ local function safe(key, fn, ...)
 		warnOnce(key, err)
 	end
 	return ok
-end
-
--- Per-frame build budget for pet viewports: the first build of a frame always runs, the next ones only while the
--- frame has spent less than K.BUILD_BUDGET seconds and at most K.BUILD_MAX builds. Callers add 1 to Count per build.
-function Warm.Budget()
-	return { Start = os.clock(), Count = 0 }
-end
-
-function Warm.Allows(budget)
-	return budget.Count < K.BUILD_MAX and (budget.Count == 0 or os.clock() - budget.Start < K.BUILD_BUDGET)
-end
-
--- shared/PetBuilder, loaded lazily (the pre-sculpting below is optional: nil when it cannot load)
-function Warm.Builder()
-	if not Warm.Tried then
-		Warm.Tried = true
-		local ok, result = pcall(function()
-			return require(Shared:WaitForChild("PetBuilder", 5))
-		end)
-		if ok and type(result) == "table" then
-			Warm.Module = result
-		end
-	end
-	return Warm.Module
-end
-
--- Pre-sculpts pets at the strip's detail, a few per frame (time budget), so a roulette spin only clones cached
--- templates instead of sculpting on the frame a cell scrolls into view. `front` puts them first in the queue.
--- Paused while the roulette stage runs (its cells attach under their own budget).
-function Warm.Pets(defs, front)
-	if type(defs) ~= "table" or not Warm.Builder() then
-		return
-	end
-	local fresh = {}
-	for _, def in ipairs(defs) do
-		local id = type(def) == "table" and def.Id or nil
-		if type(id) == "string" and not Warm.Seen[id] then
-			Warm.Seen[id] = true
-			fresh[#fresh + 1] = def
-		end
-	end
-	for i, def in ipairs(fresh) do
-		if front then
-			table.insert(Warm.Queue, i, def)
-		else
-			Warm.Queue[#Warm.Queue + 1] = def
-		end
-	end
-	if Warm.Running or #Warm.Queue == 0 then
-		return
-	end
-	Warm.Running = true
-	task.spawn(function()
-		task.wait() -- never in the frame that opens the Shop (it builds the window)
-		while #Warm.Queue > 0 do
-			if Spin.Stage then
-				task.wait(0.25)
-			else
-				local budget = Warm.Budget()
-				while #Warm.Queue > 0 and Warm.Allows(budget) do
-					local def = table.remove(Warm.Queue, 1)
-					local ok, model = pcall(Warm.Module.Build, def, { Detail = K.STRIP_DETAIL, Scale = 1 })
-					if ok and typeof(model) == "Instance" then
-						model:Destroy()
-						Warm.Done[def.Id] = true
-					end
-					budget.Count = budget.Count + 1
-				end
-				task.wait()
-			end
-		end
-		Warm.Running = false
-	end)
-end
-
--- the possible pets of one roulette (pre-sculpted when the Shop opens and when that roulette is requested)
-function Warm.Roulette(rouletteId, front)
-	if type(rouletteId) ~= "string" then
-		return
-	end
-	if Warm.PossiblePets then
-		-- (possiblePetsOf, set below: it also knows the gems-only Secret roulette)
-		local ok, defs = pcall(Warm.PossiblePets, rouletteId)
-		if ok then
-			Warm.Pets(defs, front)
-		end
-		return
-	end
-	if type(PetCatalog.PossiblePets) ~= "function" then
-		return
-	end
-	local ok, defs = pcall(PetCatalog.PossiblePets, rouletteId)
-	if ok then
-		Warm.Pets(defs, front)
-	end
 end
 
 local function makeFrame(parent, name, props)
@@ -586,27 +431,6 @@ local function makeInset(parent, name, props)
 	return inset
 end
 
-local function rarityOf(def)
-	return CloudUI.RarityColor(def and def.Rarity)
-end
-
--- A rarity colour that still reads on dark panels (the Secret rarity is near-black).
-local function rarityText(def)
-	if def and def.Rarity == "Secret" then
-		return Color3.fromRGB(196, 168, 255)
-	end
-	return Theme.Lighten(rarityOf(def), 0.3)
-end
-
-local function rarityOrder(rarityId)
-	for _, r in ipairs(Config.Rarities) do
-		if r.Id == rarityId then
-			return r.Order
-		end
-	end
-	return 1
-end
-
 local function commas(n)
 	return Util.Commas(tonumber(n) or 0)
 end
@@ -617,173 +441,6 @@ end
 
 local function inMatch()
 	return LocalPlayer ~= nil and LocalPlayer:GetAttribute(Config.Attr.InMatch) == true
-end
-
--- Config.Gems.SecretRoulette (the gems-only roulette at the Storm Altar) or nil
-local function secretRoulette()
-	local gems = Config.Gems
-	local s = type(gems) == "table" and gems.SecretRoulette or nil
-	if type(s) == "table" and type(s.Id) == "string" and s.Id ~= "" then
-		return s
-	end
-	return nil
-end
-
--- A token roulette (Config.Roulettes) or the gems-only Secret roulette (GemsOnly = true, no token Price).
-local function findRoulette(id)
-	for _, r in ipairs(Config.Roulettes) do
-		if r.Id == id then
-			return r
-		end
-	end
-	local s = secretRoulette()
-	if s and s.Id == id then
-		return {
-			Id = s.Id,
-			DisplayName = s.DisplayName or s.Id,
-			Color = s.Color or Color3.fromRGB(70, 90, 200),
-			Odds = type(s.Odds) == "table" and s.Odds or {},
-			GemPrice = s.GemPrice,
-			AllowSecret = s.AllowSecret == true,
-			GemsOnly = true,
-		}
-	end
-	return nil
-end
-
--- the gem price of a roulette (Config.Gems.RouletteGemPrices, the Secret roulette's GemPrice) or nil
-local function gemPriceOf(rouletteId)
-	local gems = Config.Gems
-	local prices = type(gems) == "table" and gems.RouletteGemPrices or nil
-	local price = type(prices) == "table" and tonumber(prices[rouletteId]) or nil
-	if not price then
-		local s = secretRoulette()
-		if s and s.Id == rouletteId then
-			price = tonumber(s.GemPrice)
-		end
-	end
-	if price and price >= 1 then
-		return math.floor(price)
-	end
-	return nil
-end
-
--- The rarity buckets of a gems-only roulette, the way GemService rolls them (rarity order, weight > 0, rarities
--- without pets skipped, Secret only with AllowSecret): { {Rarity, Weight, Pets} }, total weight.
-local function gemsOnlyBuckets(roulette)
-	local out, total = {}, 0
-	if type(roulette) ~= "table" or type(roulette.Odds) ~= "table" or type(PetCatalog.ListByRarity) ~= "function" then
-		return out, 0
-	end
-	local rarities = {}
-	for _, r in ipairs(Config.Rarities) do
-		rarities[#rarities + 1] = r
-	end
-	table.sort(rarities, function(a, b)
-		return (a.Order or 0) < (b.Order or 0)
-	end)
-	for _, r in ipairs(rarities) do
-		local w = tonumber(roulette.Odds[r.Id])
-		if w and w > 0 and (r.Id ~= "Secret" or roulette.AllowSecret == true) then
-			local ok, pets = pcall(PetCatalog.ListByRarity, r.Id)
-			if ok and type(pets) == "table" and #pets > 0 then
-				out[#out + 1] = { Rarity = r.Id, Weight = w, Pets = pets }
-				total = total + w
-			end
-		end
-	end
-	return out, total
-end
-
--- the pets a roulette can give (PetDefs)
-local function possiblePetsOf(rouletteId)
-	local roulette = findRoulette(rouletteId)
-	if roulette and roulette.GemsOnly then
-		local out = {}
-		for _, bucket in ipairs((gemsOnlyBuckets(roulette))) do
-			for _, def in ipairs(bucket.Pets) do
-				out[#out + 1] = def
-			end
-		end
-		return out
-	end
-	if type(PetCatalog.PossiblePets) == "function" then
-		local ok, defs = pcall(PetCatalog.PossiblePets, rouletteId)
-		if ok and type(defs) == "table" then
-			return defs
-		end
-	end
-	return {}
-end
-
--- { {PetId, Rarity, Chance} } of a roulette (PetCatalog.GetOdds; the gems-only one mirrors GemService.GetOdds)
-local function oddsOf(rouletteId)
-	local roulette = findRoulette(rouletteId)
-	if roulette and roulette.GemsOnly then
-		local out = {}
-		local buckets, total = gemsOnlyBuckets(roulette)
-		if total > 0 then
-			for _, bucket in ipairs(buckets) do
-				local each = (bucket.Weight / total) / #bucket.Pets
-				for _, def in ipairs(bucket.Pets) do
-					out[#out + 1] = { PetId = def.Id, Rarity = bucket.Rarity, Chance = each }
-				end
-			end
-		end
-		return out
-	end
-	local ok, list = pcall(PetCatalog.GetOdds, rouletteId)
-	if ok and type(list) == "table" then
-		return list
-	end
-	return {}
-end
-
-Warm.PossiblePets = possiblePetsOf
-
--- "Open" (gem roulettes allowed), "Restricted" (PolicyService said no, or still checking) or "Unavailable" (no
--- gem system on this server: GemService never set the attribute)
-local function gemRoulettesState()
-	local value = LocalPlayer and LocalPlayer:GetAttribute(K.RESTRICTED_ATTR)
-	if value == false then
-		return "Open"
-	elseif value == true then
-		return "Restricted"
-	end
-	return "Unavailable"
-end
-
--- "+12% Max Health" lines of a pet, in catalog order.
-local function perkLines(def)
-	local lines = {}
-	if type(def) ~= "table" or type(def.Perks) ~= "table" then
-		return lines
-	end
-	local order = PetCatalog.PerkOrder or { "MaxHealth", "TokenBonus", "StaminaRegen", "CheckpointHeal" }
-	for _, key in ipairs(order) do
-		local value = def.Perks[key]
-		if type(value) == "number" and value ~= 0 then
-			table.insert(lines, PetCatalog.PerkLabel(key, value))
-		end
-	end
-	return lines
-end
-
-local function percentText(chance)
-	local pct = (tonumber(chance) or 0) * 100
-	local text
-	if pct >= 10 then
-		text = string.format("%.1f", pct)
-	elseif pct >= 1 then
-		text = string.format("%.2f", pct)
-	else
-		text = string.format("%.3f", pct)
-	end
-	if text:find(".", 1, true) then
-		text = text:gsub("0+$", "")
-		text = text:gsub("%.$", "")
-	end
-	return text .. "%"
 end
 
 local function starText(count)
@@ -827,71 +484,6 @@ local function catalogTotal()
 		end
 	end
 	return #(PetCatalog.Pets or {})
-end
-
-local elementsOf = PetBits.elementsOf
-
--- CloudUI slots carry small count / key / marker texts (16-17 design px); at the phone scale (0.8) they
--- would render under 14 px, so the slots this menu makes get a size that stays readable.
-local function readableSlot(slot)
-	if not slot or not slot.Root then
-		return slot
-	end
-	local count = slot.Root:FindFirstChild("Count", true)
-	if count and count:IsA("TextLabel") and count.TextSize < 19 then
-		count.TextSize = 19
-		count.Size = UDim2.new(count.Size.X.Scale, count.Size.X.Offset, 0, 22)
-	end
-	for _, name in ipairs({ "Key", "Mark" }) do
-		local label = slot.Root:FindFirstChild(name, true)
-		if label and label:IsA("TextLabel") and label.TextSize < 18 then
-			label.TextSize = 18
-			local chip = label.Parent
-			if chip and chip:IsA("GuiObject") and chip.Size.X.Offset < 28 then
-				chip.Size = UDim2.fromOffset(28, 28)
-			end
-		end
-	end
-	return slot
-end
-
--- CloudUI.Pill with a text size that stays >= 14 px at the phone scale (0.8).
-local function readablePill(text, kind, parent)
-	local pill = CloudUI.Pill(text, kind, parent)
-	if pill then
-		pill.TextSize = math.max(pill.TextSize, 18)
-	end
-	return pill
-end
-
--- Coloured pill with the element name (no asset ids).
-local function elementPill(parent, element, textSize, layoutOrder)
-	local info = Config.Elements and Config.Elements.Info and Config.Elements.Info[element]
-	local color = info and info.Color or Colors.PanelLight
-	local dark = Theme.Darken(color, 0.62)
-	local size = textSize or 17
-	local pill = Theme.Label(element, "Heading", {
-		Size = size,
-		Color = WHITE,
-		Stroke = 0.1,
-		StrokeColor = dark,
-		Outline = 1.5,
-		OutlineColor = dark,
-		Props = {
-			Name = "Element_" .. element,
-			BackgroundTransparency = 0,
-			BackgroundColor3 = color,
-			AutomaticSize = Enum.AutomaticSize.X,
-			Size = UDim2.fromOffset(0, size + 9),
-			LayoutOrder = layoutOrder or 0,
-		},
-	})
-	round(pill)
-	stroke(pill, NAVY, 2, 0)
-	Theme.Gradient(pill, Color3.fromRGB(255, 255, 255), Color3.fromRGB(196, 204, 226), 90)
-	pad(pill, 9, 0, 9, 1)
-	pill.Parent = parent
-	return pill
 end
 
 -- A solid coloured pill (tier / hybrid badges, "MAX", locks): white text with a dark outline of its own colour.
@@ -955,20 +547,6 @@ function P2.cashBalance()
 		end
 	end
 	return 0
-end
-
-function P2.gemBalance()
-	if type(State.Gems) == "function" then
-		local ok, value = pcall(State.Gems)
-		if ok and type(value) == "number" then
-			return value
-		end
-	end
-	return 0
-end
-
-function P2.gemAmount(n)
-	return G.Gem .. " " .. commas(n)
 end
 
 function P2.stationDef(id)
@@ -1103,22 +681,6 @@ local function columnRight()
 		return column.AbsolutePosition.X + column.AbsoluteSize.X
 	end
 	return 0
-end
-
--- Phase 5 (6.6): a small centred confirm (the odds popup): { w, h, scale, x, y } (x, y = centre in gui px). It covers
--- at most 30% of the screen while its text keeps the 0.8 readability scale; where that cannot hold (phones) it becomes a
--- window-rule panel instead (docked right / a bottom sheet: NeonKit.SideRect). (Replaces Phase 4's fitBox.)
-local function confirmBox(prefW, prefH, minW, minH)
-	local area = guiSize()
-	local factor = screenFactor()
-	local w = Util.Clamp(math.floor((area.X * 0.7) / factor), minW, prefW)
-	local h = Util.Clamp(math.floor((area.Y - 2 * K.MARGIN - 58) / factor), minH, prefH)
-	local scale = math.min(factor, math.sqrt(0.3 * area.X * area.Y / (w * h)))
-	if scale < 0.8 - 1e-3 then
-		local r = P5.Kit.SideRect(prefW, prefH)
-		return { w = math.floor(r.designW), h = math.floor(r.designH), scale = r.scale, x = math.floor(r.x + r.w / 2 + 0.5), y = math.floor(r.y + r.h / 2 - P5.inset() + 0.5) }
-	end
-	return { w = w, h = h, scale = scale, x = math.floor(area.X / 2 + 0.5), y = math.floor(area.Y / 2 + 0.5) }
 end
 
 ----------------------------------------------------------------------
@@ -1300,67 +862,76 @@ function P5.closePets()
 	end
 end
 
+-- an optional module, required on first use (cached in P5[field]; false = unavailable): folder:FindFirstChild(name)
+function P5.lazy(field, folder, name)
+	if P5[field] == nil then
+		P5[field] = false
+		local module = folder and folder:FindFirstChild(name)
+		local ok, mod = pcall(function()
+			return module and require(module)
+		end)
+		if ok and type(mod) == "table" and type(mod.Open or mod.Request) == "function" then
+			P5[field] = mod
+		end
+	end
+	return P5[field] or nil
+end
+
+-- lobby-shop Task 22: the one Shop window (ShopController; the StoreController forwarder when a build lacks it) and the
+-- egg stage (client/UI/EggStage) it plays every spin through. The ONE path of OpenPanel("Shop") / OpenPanel("Store")
+-- (onOpenPanel); neither listens to OpenPanel itself.
+function P5.shop()
+	return P5.lazy("Shop", script.Parent, "ShopController") or P5.lazy("ShopForwarder", script.Parent, "StoreController")
+end
+
+function P5.hatch()
+	return P5.lazy("Hatch", Client:FindFirstChild("UI"), "EggStage")
+end
+
+function P5.shopOpen()
+	local shop = P5.shop()
+	return shop ~= nil and type(shop.IsOpen) == "function" and shop.IsOpen() == true
+end
+
+function P5.hatchShowing()
+	local hatch = P5.hatch()
+	return hatch ~= nil and type(hatch.IsShowing) == "function" and hatch.IsShowing() == true
+end
+
+-- refused while the egg stage shows (ShopController.Open refuses it too) and in a match (the Shop's own hint)
+function P5.openShop(args)
+	local shop = P5.shop()
+	if shop and not P5.hatchShowing() then
+		safe("shop open", shop.Open, args)
+	end
+end
+P5.openStore = P5.openShop
+
+function P5.closeShop()
+	if P5.shopOpen() then
+		safe("shop close", P5.shop().Close)
+	end
+end
+
+-- the stage closes from here only through closeEverything (MenuController.Close, a match start): it toasts the pulls
+-- not shown yet ("You hatched: ...")
+function P5.closeHatch()
+	local hatch = P5.hatch()
+	if hatch and type(hatch.Close) == "function" then
+		safe("hatch close", hatch.Close)
+	end
+end
+
 function P5.openPets(args)
 	local pets = P5.pets()
-	if pets and not Spin.Stage then
+	if pets and not P5.hatchShowing() then
 		safe("pets open", pets.Open, args)
 	end
 end
 
--- store W1: the Robux Store window is StoreController's (optional, required on use). The ONE path of OpenPanel("Store")
--- (onOpenPanel's store branch) and the Gems tab's Robux Store button; StoreController never listens to OpenPanel itself.
-function P5.store()
-	if P5.Store == nil then
-		P5.Store = false
-		-- lobby-shop Task 21: the one Shop window (ShopController; the StoreController forwarder when a build lacks it)
-		local module = script.Parent:FindFirstChild("ShopController") or script.Parent:FindFirstChild("StoreController")
-		local ok, mod = pcall(function()
-			return module and require(module)
-		end)
-		if ok and type(mod) == "table" and type(mod.Open) == "function" then
-			P5.Store = mod
-		end
-	end
-	return P5.Store or nil
-end
-
-function P5.openStore(args)
-	local store = P5.store()
-	if store and not Spin.Stage then
-		safe("store open", store.Open, args)
-	end
-end
-
-function P5.closeStore()
-	local store = P5.store()
-	if store and type(store.IsOpen) == "function" and store.IsOpen() then
-		safe("store close", store.Close)
-	end
-end
-
-local function normalizeTab(windowId, tab)
-	if type(tab) ~= "string" then
-		return nil
-	end
-	local t = tab:lower()
-	if t:find("roul", 1, true) then
-		return "Roulettes"
-		elseif t:find("item", 1, true) then
-		-- HUD cleanup: the Items tabs are gone; an old link lands on the window's first tab
-		if windowId == "Shop" then
-			return "Roulettes"
-		end
-	elseif t:find("gem", 1, true) then
-		if windowId == "Shop" then
-			return "Gems"
-		end
-	end
-	return nil
-end
-
 function openWindow(id, args)
 	local win = windows[id]
-	if not win or Spin.Stage then
+	if not win or P5.hatchShowing() then
 		return
 	end
 	args = type(args) == "table" and args or {}
@@ -1388,16 +959,6 @@ function openWindow(id, args)
 	updateMenuActive()
 	if not wasShown then
 		MenuController.WindowOpened:Fire(id)
-		if id == "Shop" then
-			-- sculpt the likely roulette pools ahead of the spin (the last one spun, then the cheapest)
-			if Spin.Last then
-				Warm.Roulette(Spin.Last)
-			end
-			local first = type(Config.Roulettes) == "table" and Config.Roulettes[1] or nil
-			if type(first) == "table" then
-				Warm.Roulette(first.Id)
-			end
-		end
 	end
 end
 
@@ -1416,9 +977,6 @@ function closeWindow(id, instant)
 	if win.OnClose then
 		safe("close " .. id, win.OnClose)
 	end
-	if id == "Shop" then
-		closeOdds()
-	end
 	if instant then
 		-- another window takes over right away
 		win.Holder.Visible = false
@@ -1433,49 +991,37 @@ function closeWindow(id, instant)
 	updateMenuActive()
 end
 
--- Button behaviour: open, or close when this exact view is already showing.
+-- Button behaviour: open, or close when it is already showing.
 function toggleWindow(id, args)
 	local win = windows[id]
 	if not win then
 		return
 	end
-	local wantTab = args and normalizeTab(id, args.Tab) or nil
-	if win.Shown and (wantTab == nil or win.Tab == wantTab) then
+	if win.Shown then
 		closeWindow(id)
 	else
 		openWindow(id, args)
 	end
 end
 
-local function closeEverything()
-	Spin.Queue = {} -- pets from queued results are already in the collection, just skip their shows
-	if Spin.Stage then
-		closeStage()
+-- MenuController.Close / a match start / Settings: the Shop first (so it never comes back over the game when the stage
+-- closes), then the egg stage (one "You hatched: ..." toast for the pulls not shown), then everything else. A match
+-- start (forMatch) leaves the stage to its own InMatch listener (EggStage closes with the reason "Match", same toast).
+local function closeEverything(forMatch)
+	P5.closeShop()
+	if not forMatch then
+		P5.closeHatch()
 	end
-	closeOdds()
 	if openId then
 		closeWindow(openId)
 	end
 	P5.closePets()
-	P5.closeStore()
 	closeIndex()
 end
 
--- Esc / gamepad B: close the topmost thing. Returns true when something was closed.
--- (The Pet Index handles Esc / B itself.)
+-- Esc / gamepad B: close the open menu window. Returns true when something was closed.
+-- (The Pet Index, the Shop and the egg stage handle Esc / B themselves: the stage's one Esc path is the Shop's.)
 function handleBack()
-	if Spin.Stage then
-		if Spin.Stage.Phase == "reveal" then
-			closeStage()
-		else
-			skipSpin()
-		end
-		return true
-	end
-	if Odds.Gui then
-		closeOdds()
-		return true
-	end
 	if openId then
 		closeWindow(openId)
 		return true
@@ -1512,10 +1058,9 @@ local function onBackAction(_name, inputState)
 	return Enum.ContextActionResult.Pass
 end
 
--- Binds B while a window, the odds popup or the roulette stage is open and unbinds it when none is.
--- Called after every change of openId / Odds.Gui / Spin.Stage.
+-- Binds B while a menu window is open and unbinds it when none is. Called after every change of openId.
 function syncBackBinding()
-	local wanted = openId ~= nil or Odds.Gui ~= nil or Spin.Stage ~= nil
+	local wanted = openId ~= nil
 	if wanted == Back.Bound then
 		return
 	end
@@ -1561,10 +1106,9 @@ local function openIndex(groupId)
 		showHint("The Pet Index is getting ready. Try again soon!", "info")
 		return
 	end
-	if Spin.Stage then
+	if P5.hatchShowing() then
 		return
 	end
-	closeOdds()
 	if openId then
 		closeWindow(openId, true)
 	end
@@ -1578,14 +1122,6 @@ local function menuActionIndex()
 	else
 		openIndex(nil)
 	end
-end
-
-local function menuActionShop()
-	if inMatch() then
-		showHint("The shop is closed during a match.", "info")
-		return
-	end
-	toggleWindow("Shop")
 end
 
 -- The Home tile (id "Spot"): the Home window. Phase 6: also before a home is claimed; then its Claim a home hero
@@ -2090,15 +1626,6 @@ function relayoutMenu()
 			layoutWindow(win)
 		end
 	end
-	if Odds.Holder and Odds.Fit then
-		local box = confirmBox(K.WIN.Odds[1], K.WIN.Odds[2], K.WIN.Odds[3], K.WIN.Odds[4])
-		Odds.Holder.Size = UDim2.fromOffset(box.w, box.h)
-		Odds.Holder.Position = UDim2.fromOffset(box.x, box.y)
-		Odds.Fit.Scale = box.scale
-	end
-	if Spin.Stage and Spin.Stage.Relayout then
-		Spin.Stage.Relayout()
-	end
 end
 
 local function setActive(id, on)
@@ -2121,16 +1648,14 @@ function updateMenuActive()
 	local petsUp = P5.petsOpen()
 	setActive("Pets", petsUp)
 	setActive("Index", indexOpen())
-	setActive("Shop", windows.Shop ~= nil and windows.Shop.Shown)
 	setActive("Stats", windows.Stats ~= nil and windows.Stats.Shown)
 
 	setActive("Spot", windows.Home ~= nil and windows.Home.Shown)
 	if petsUp and Entries.Pets then
 		Entries.Pets.SetBadge(false)
 	end
-	-- the Spot and Shop tiles are greyed out in matches
+	-- the Spot tile is greyed out in matches
 	setDisabled("Spot", inMatch())
-	setDisabled("Shop", inMatch())
 end
 
 -- Red dot on the Index tile while a completed group's reward waits.
@@ -2142,895 +1667,6 @@ local function refreshIndexBadge()
 	end
 	local ok, count = pcall(index.ClaimableCount)
 	entry.SetBadge(ok and type(count) == "number" and count > 0)
-end
-
-----------------------------------------------------------------------
--- Odds popup (opened from a roulette card; pets grouped by rarity with their exact chances)
-----------------------------------------------------------------------
-function closeOdds()
-	Odds.Token = Odds.Token + 1
-	for _, slot in ipairs(Odds.Slots) do
-		pcall(slot.Destroy)
-	end
-	Odds.Slots = {}
-	if Odds.Gui then
-		Odds.Gui:Destroy()
-		Odds.Gui = nil
-	end
-	Odds.Holder = nil
-	Odds.Fit = nil
-	syncBackBinding()
-end
-
-function openOdds(rouletteId)
-	local roulette = findRoulette(rouletteId)
-	if not roulette or not gui then
-		return
-	end
-	closeOdds()
-	Odds.Token = Odds.Token + 1
-	local mine = Odds.Token
-
-	local root = makeFrame(gui, "OddsPopup", { Size = UDim2.new(1, 0, 1, 0), ZIndex = 8 })
-	Odds.Gui = root
-	syncBackBinding()
-	-- (Phase 5: no dimming backdrop; the X, Esc / B or another window close it)
-	local box = confirmBox(K.WIN.Odds[1], K.WIN.Odds[2], K.WIN.Odds[3], K.WIN.Odds[4])
-	local holder = makeFrame(root, "Holder", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromOffset(box.x, box.y),
-		Size = UDim2.fromOffset(box.w, box.h),
-		ZIndex = 2,
-	})
-	Odds.Holder = holder
-	Odds.Fit = Util.Create("UIScale", { Name = "Fit", Scale = box.scale, Parent = holder })
-	local panel = CloudUI.Panel({
-		Name = "OddsPanel",
-		Title = roulette.DisplayName .. " Odds",
-		Closable = true,
-		Accent = roulette.Color,
-		Size = UDim2.new(1, 0, 1, 0),
-		Position = UDim2.new(0.5, 0, 0.5, 0),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		OnClose = function()
-			closeOdds()
-		end,
-		Parent = holder,
-	})
-	local pop = Util.Create("UIScale", { Name = "Pop", Scale = 0.88, Parent = panel.Root })
-	tween(pop, 0.2, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-
-	local scroll = scroller(panel.Content, "OddsList", {
-		Position = UDim2.fromOffset(8, 8),
-		Size = UDim2.new(1, -16, 1, -16),
-	})
-	pad(scroll, 6, 4, 14, 8)
-	listLayout(scroll, Enum.FillDirection.Vertical, 10)
-	makeText(scroll, "Note", "Chance per spin. Pets of the same rarity share that rarity's chance equally.", "Body", 18, MUTED, {
-		Size = UDim2.new(1, -8, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		TextWrapped = true,
-		LayoutOrder = 0,
-	})
-
-	-- group the exact odds by rarity
-	local groups = {}
-	local byRarity = {}
-	for _, entry in ipairs(oddsOf(rouletteId)) do
-		local group = byRarity[entry.Rarity]
-		if not group then
-			group = { Rarity = entry.Rarity, Total = 0, Entries = {} }
-			byRarity[entry.Rarity] = group
-			table.insert(groups, group)
-		end
-		group.Total = group.Total + entry.Chance
-		table.insert(group.Entries, entry)
-	end
-	table.sort(groups, function(a, b)
-		return rarityOrder(a.Rarity) > rarityOrder(b.Rarity)
-	end)
-	local hasElements = false
-	for _, def in ipairs(PetCatalog.Pets or {}) do
-		if #elementsOf(def) > 0 then
-			hasElements = true
-			break
-		end
-	end
-	local cellH = hasElements and 156 or 128
-
-	-- built under the per-frame time budget (Low detail tiles) so opening the popup never hitches
-	task.spawn(function()
-		local budget = Warm.Budget()
-		for index, group in ipairs(groups) do
-			if Odds.Token ~= mine then
-				return
-			end
-			local color = CloudUI.RarityColor(group.Rarity)
-			local header = makeFrame(scroll, "Header_" .. group.Rarity, {
-				Size = UDim2.new(1, -8, 0, 44),
-				BackgroundTransparency = 0,
-				BackgroundColor3 = Theme.Darken(color, 0.35),
-				LayoutOrder = index * 2 - 1,
-			})
-			corner(header, 10)
-			stroke(header, NAVY, 3, 0)
-			makeText(header, "Rarity", group.Rarity, "Title", 24, rarityText({ Rarity = group.Rarity }), {
-				Position = UDim2.fromOffset(14, 0),
-				Size = UDim2.new(0.5, 0, 1, 0),
-				TextXAlignment = Enum.TextXAlignment.Left,
-			})
-			makeText(header, "Chance", percentText(group.Total) .. "  total", "Heading", 19, WHITE, {
-				AnchorPoint = Vector2.new(1, 0),
-				Position = UDim2.new(1, -14, 0, 0),
-				Size = UDim2.new(0.5, 0, 1, 0),
-				TextXAlignment = Enum.TextXAlignment.Right,
-			})
-
-			local cells = makeFrame(scroll, "Cells_" .. group.Rarity, {
-				Size = UDim2.new(1, -8, 0, 0),
-				AutomaticSize = Enum.AutomaticSize.Y,
-				LayoutOrder = index * 2,
-			})
-			Util.Create("UIGridLayout", {
-				CellSize = UDim2.fromOffset(110, cellH),
-				CellPadding = UDim2.fromOffset(8, 8),
-				SortOrder = Enum.SortOrder.LayoutOrder,
-				Parent = cells,
-			})
-			for cellIndex, entry in ipairs(group.Entries) do
-				if Odds.Token ~= mine then
-					return
-				end
-				if not Warm.Allows(budget) then
-					task.wait()
-					if Odds.Token ~= mine then
-						return
-					end
-					budget = Warm.Budget()
-				end
-				local def = PetCatalog.Get(entry.PetId)
-				local cell = makeFrame(cells, "Cell_" .. tostring(entry.PetId), { LayoutOrder = cellIndex })
-				if def then
-					local slot = readableSlot(CloudUI.Slot({
-						Name = "OddsPet",
-						Size = UDim2.fromOffset(88, 88),
-						AnchorPoint = Vector2.new(0.5, 0),
-						Position = UDim2.new(0.5, 0, 0, 2),
-						Parent = cell,
-					}))
-					slot.SetContent({ Pet = def, Detail = K.ODDS_DETAIL, RarityColor = color, Name = def.Name, Blurb = def.Blurb })
-					table.insert(Odds.Slots, slot)
-					local elements = elementsOf(def)
-					if #elements > 0 then
-						local row = makeFrame(cell, "Elements", {
-							AnchorPoint = Vector2.new(0.5, 1),
-							Position = UDim2.new(0.5, 0, 1, -30),
-							Size = UDim2.new(1, 0, 0, 24),
-						})
-						listLayout(row, Enum.FillDirection.Horizontal, 3, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
-						for i, element in ipairs(elements) do
-							elementPill(row, element, 18, i)
-						end
-					end
-				end
-				makeText(cell, "Percent", percentText(entry.Chance), "Heading", 19, WHITE, {
-					AnchorPoint = Vector2.new(0.5, 1),
-					Position = UDim2.new(0.5, 0, 1, -2),
-					Size = UDim2.new(1, 0, 0, 24),
-				})
-				budget.Count = budget.Count + 1
-			end
-		end
-	end)
-end
-
-----------------------------------------------------------------------
--- Shop window: tabs Roulettes + Gems (HUD cleanup: the Items tab is gone)
-----------------------------------------------------------------------
-local function bestRarityOf(roulette)
-	local bestId, bestOrder = nil, 0
-	for _, r in ipairs(Config.Rarities) do
-		local weight = roulette.Odds[r.Id]
-		if type(weight) == "number" and weight > 0 and r.Order > bestOrder then
-			bestId, bestOrder = r.Id, r.Order
-		end
-	end
-	return bestId
-end
-
-local function buildRouletteCard(shop, parent, roulette, index)
-	local color = roulette.Color
-	local card = makeFrame(parent, "Roulette_" .. roulette.Id, {
-		Size = UDim2.new(0.25, -9, 1, 0),
-		BackgroundColor3 = WHITE,
-		BackgroundTransparency = 0,
-		LayoutOrder = index,
-	})
-	corner(card, 16)
-	local cardStroke = stroke(card, NAVY, 4, 0)
-	Theme.Gradient(card, Theme.Darken(color, 0.28), Theme.Darken(color, 0.7), 90)
-
-	-- name banner
-	local banner = makeFrame(card, "Banner", {
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 10),
-		Size = UDim2.new(1, -18, 0, 54),
-		BackgroundTransparency = 0,
-		BackgroundColor3 = Theme.Lighten(color, 0.1),
-	})
-	corner(banner, 12)
-	stroke(banner, NAVY, 3, 0)
-	local bannerText = makeText(banner, "Name", roulette.DisplayName, "Title", 24, WHITE, {
-		Position = UDim2.fromOffset(8, 0),
-		Size = UDim2.new(1, -16, 1, 0),
-		TextScaled = true,
-		TextWrapped = true,
-		TextStrokeColor3 = Theme.Darken(color, 0.65),
-	})
-	Util.Create("UITextSizeConstraint", { MaxTextSize = 24, MinTextSize = 18, Parent = bannerText })
-
-	-- the roulette "machine": glossy dome on a base
-	local base = makeFrame(card, "Base", {
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 176),
-		Size = UDim2.fromOffset(150, 18),
-		BackgroundTransparency = 0,
-		BackgroundColor3 = Theme.Darken(color, 0.55),
-	})
-	corner(base, 9)
-	stroke(base, NAVY, 3, 0)
-	local dome = makeFrame(card, "Dome", {
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 72),
-		Size = UDim2.fromOffset(120, 120),
-		BackgroundTransparency = 0,
-		BackgroundColor3 = WHITE,
-	})
-	round(dome)
-	stroke(dome, NAVY, 4, 0)
-	Theme.Gradient(dome, Theme.Lighten(color, 0.5), Theme.Darken(color, 0.08), 90)
-	local shine = makeFrame(dome, "Shine", {
-		Position = UDim2.fromScale(0.16, 0.1),
-		Size = UDim2.fromScale(0.36, 0.2),
-		BackgroundTransparency = 0.6,
-		BackgroundColor3 = WHITE,
-		Rotation = -28,
-	})
-	round(shine)
-	local mark = makeText(dome, "Mark", "?", "Title", 64, WHITE, {
-		Size = UDim2.new(1, 0, 1, 0),
-		ZIndex = 3,
-		TextStrokeTransparency = 0,
-		TextStrokeColor3 = Theme.Darken(color, 0.65),
-	})
-	table.insert(
-		shop.Bobs,
-		TweenService:Create(
-			mark,
-			TweenInfo.new(1.3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-			{ Position = UDim2.new(0, 0, 0, -7) }
-		)
-	)
-
-	local price = makeText(card, "Price", cloudAmount(roulette.Price), "Display", 34, Colors.Token, {
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 200),
-		Size = UDim2.new(1, -12, 0, 40),
-	})
-	local best = bestRarityOf(roulette)
-	local bestLabel = nil
-	if best then
-		bestLabel = makeText(card, "Best", "Up to " .. best, "Heading", 19, rarityText({ Rarity = best }), {
-			AnchorPoint = Vector2.new(0.5, 0),
-			Position = UDim2.new(0.5, 0, 0, 242),
-			Size = UDim2.new(1, -12, 0, 24),
-			TextScaled = true,
-		})
-		Util.Create("UITextSizeConstraint", { MaxTextSize = 19, MinTextSize = 18, Parent = bestLabel })
-	end
-	local dots = makeFrame(card, "RarityDots", {
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 272),
-		Size = UDim2.new(1, -12, 0, 18),
-	})
-	listLayout(dots, Enum.FillDirection.Horizontal, 6, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
-	for _, r in ipairs(Config.Rarities) do
-		local weight = roulette.Odds[r.Id]
-		if type(weight) == "number" and weight > 0 then
-			local dot = makeFrame(dots, "Dot_" .. r.Id, {
-				Size = UDim2.fromOffset(16, 16),
-				BackgroundTransparency = 0,
-				BackgroundColor3 = r.Color,
-				LayoutOrder = r.Order,
-			})
-			round(dot)
-			stroke(dot, NAVY, 2, 0)
-		end
-	end
-
-	local oddsButton = CloudUI.Button({
-		Name = "Odds",
-		Text = "Odds",
-		Style = "Blue",
-		Size = UDim2.fromOffset(136, 46),
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 298),
-		TextSize = 21,
-		Callback = function()
-			openOdds(roulette.Id)
-		end,
-		Parent = card,
-	})
-	local spinButton = CloudUI.Button({
-		Name = "Spin",
-		Text = "Spin",
-		Style = "Green",
-		Size = UDim2.new(1, -36, 0, 62),
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 352),
-		TextSize = 30,
-		Callback = function()
-			requestSpin(roulette.Id)
-		end,
-		Parent = card,
-	})
-	Util.Create("UISizeConstraint", { MaxSize = Vector2.new(190, 62), Parent = spinButton })
-	local hint = makeText(card, "Hint", "", "Heading", 18, MUTED, {
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 420),
-		Size = UDim2.new(1, -20, 0, 48),
-		TextWrapped = true,
-		TextYAlignment = Enum.TextYAlignment.Top,
-	})
-	Util.Create("UITextSizeConstraint", { MaxTextSize = 18, MinTextSize = 18, Parent = hint })
-	return {
-		Roulette = roulette,
-		Root = card,
-		Stroke = cardStroke,
-		Spin = spinButton,
-		Hint = hint,
-		Parts = {
-			Banner = banner,
-			Base = base,
-			Dome = dome,
-			Mark = mark,
-			Price = price,
-			Best = bestLabel,
-			Dots = dots,
-			Odds = oddsButton,
-			Spin = spinButton,
-			Hint = hint,
-		},
-	}
-end
-
--- Sets AnchorPoint / Position / Size (and the optional text alignment) of one card part.
-local function place(inst, anchorX, anchorY, position, size, align)
-	if not inst then
-		return
-	end
-	inst.AnchorPoint = Vector2.new(anchorX, anchorY)
-	inst.Position = position
-	inst.Size = size
-	if align and (inst:IsA("TextLabel") or inst:IsA("TextButton")) then
-		inst.TextXAlignment = align
-	end
-end
-
--- Roulette card: the tall machine card, or a compact one (short windows: landscape phones) that keeps the
--- Spin button in view without scrolling.
-local function layoutRouletteCard(card, compact)
-	local P = card.Parts
-	local left, centre = Enum.TextXAlignment.Left, Enum.TextXAlignment.Center
-	if compact then
-		place(P.Banner, 0.5, 0, UDim2.new(0.5, 0, 0, 8), UDim2.new(1, -16, 0, 42))
-		place(P.Dome, 0, 0, UDim2.fromOffset(12, 54), UDim2.fromOffset(66, 66))
-		place(P.Base, 0, 0, UDim2.fromOffset(6, 110), UDim2.fromOffset(78, 12))
-		place(P.Price, 0, 0, UDim2.fromOffset(88, 56), UDim2.new(1, -96, 0, 36), left)
-		place(P.Best, 0, 0, UDim2.fromOffset(88, 94), UDim2.new(1, -96, 0, 22), left)
-		place(P.Odds, 0, 0, UDim2.fromOffset(10, 130), UDim2.fromOffset(92, 48))
-		place(P.Spin, 1, 0, UDim2.new(1, -10, 0, 130), UDim2.new(1, -122, 0, 48))
-		place(P.Hint, 0.5, 0, UDim2.new(0.5, 0, 0, 182), UDim2.new(1, -16, 0, 30))
-		P.Hint.TextScaled = true -- one or two short lines must fit the compact card
-		P.Mark.TextSize = 40
-		-- the narrow compact card names the best rarity alone ("Legendary"), readable at 18 design px
-		local best = card.Roulette and bestRarityOf(card.Roulette)
-		if P.Best and best then
-			P.Best.Text = best
-		end
-	else
-		place(P.Banner, 0.5, 0, UDim2.new(0.5, 0, 0, 10), UDim2.new(1, -18, 0, 54))
-		place(P.Dome, 0.5, 0, UDim2.new(0.5, 0, 0, 72), UDim2.fromOffset(120, 120))
-		place(P.Base, 0.5, 0, UDim2.new(0.5, 0, 0, 176), UDim2.fromOffset(150, 18))
-		place(P.Price, 0.5, 0, UDim2.new(0.5, 0, 0, 200), UDim2.new(1, -12, 0, 40), centre)
-		place(P.Best, 0.5, 0, UDim2.new(0.5, 0, 0, 242), UDim2.new(1, -12, 0, 24), centre)
-		place(P.Odds, 0.5, 0, UDim2.new(0.5, 0, 0, 298), UDim2.fromOffset(136, 46))
-		place(P.Spin, 0.5, 0, UDim2.new(0.5, 0, 0, 352), UDim2.new(1, -36, 0, 62))
-		place(P.Hint, 0.5, 0, UDim2.new(0.5, 0, 0, 420), UDim2.new(1, -20, 0, 48))
-		P.Hint.TextScaled = false
-		P.Mark.TextSize = 64
-		local best = card.Roulette and bestRarityOf(card.Roulette)
-		if P.Best and best then
-			P.Best.Text = "Up to " .. best
-		end
-	end
-	P.Dots.Visible = not compact
-end
-
-local function buildShop(win)
-	local content = win.Panel.Content
-	local shop = { Cards = {}, Bobs = {} }
-	local W = {}
-
-	local tabs = CloudUI.Tabs({
-		Name = "ShopTabs",
-		Parent = content,
-		Position = UDim2.fromOffset(12, 10),
-		Size = UDim2.new(1, -24, 1, -20),
-		BarHeight = 50,
-		TextSize = 22,
-		OnSelect = function(name)
-			win.Tab = name
-			updateMenuActive()
-			if win.Refresh and win.Built then
-				safe("shop tab", win.Refresh)
-			end
-		end,
-	})
-	win.Tabs = tabs
-
-	-- token balance (Gems on the Gems tab), right of the tab strip
-	local balance = makeFrame(content, "Balance", {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -16, 0, 12),
-		Size = UDim2.fromOffset(230, 44),
-		BackgroundColor3 = Colors.Panel,
-		BackgroundTransparency = 0.05,
-		ZIndex = 8,
-	})
-	round(balance)
-	stroke(balance, NAVY, 3, 0)
-	W.Balance = makeText(balance, "Amount", "", "Display", 26, Colors.Token, {
-		Position = UDim2.fromOffset(8, 0),
-		Size = UDim2.new(1, -16, 1, 0),
-		TextScaled = true,
-		ZIndex = 9,
-	})
-	Util.Create("UITextSizeConstraint", { MaxTextSize = 26, MinTextSize = 18, Parent = W.Balance })
-
-	local function buildRoulettePage(page)
-		local scroll = scroller(page, "Cards", { Size = UDim2.new(1, 0, 1, 0) })
-		pad(scroll, 2, 2, 12, 6)
-		local row = makeFrame(scroll, "Row", { Size = UDim2.new(1, 0, 0, K.CARD_H) })
-		W.RouletteRow = row
-		W.RouletteLayout = listLayout(row, Enum.FillDirection.Horizontal, 12, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Top)
-		for index, roulette in ipairs(Config.Roulettes) do
-			shop.Cards[roulette.Id] = buildRouletteCard(shop, row, roulette, index)
-		end
-	end
-
-	local function refreshRouletteCards()
-		local tokens = State.Tokens()
-		local match = inMatch()
-		for _, card in pairs(shop.Cards) do
-			local short = card.Roulette.Price - tokens
-			local label, hint, disabled = "Spin", "Hatches a random winged pet.", false
-			local hintColor = MUTED
-			if match then
-				disabled = true
-				hint = "The shop is closed during matches."
-			elseif Spin.Waiting then
-				disabled = true
-				label = "..."
-				hint = "Spinning up..."
-			elseif Spin.Stage then
-				disabled = true
-				hint = ""
-			elseif short > 0 then
-				disabled = true
-				hint = "Need " .. commas(short) .. " " .. G.Cloud .. " more"
-				hintColor = Theme.Lighten(BAD, 0.35)
-			end
-			card.Spin.Text = label
-			CloudUI.SetDisabled(card.Spin, disabled)
-			card.Hint.Text = hint
-			card.Hint.TextColor3 = hintColor
-		end
-	end
-
-	------------------------------------------------------------------
-	-- Gems page (Phase 2; store W1): the Robux Store button, the Secret roulette, roulettes priced in Gems
-	------------------------------------------------------------------
-	shop.GemCards = {} -- rouletteId -> { Roulette, Root, Stroke, Spin, Odds, Hint, Price, Parts }
-	local G2 = {} -- widgets of the Gems page
-
-	local function sectionTitle(parent, name, text, order)
-		local header = makeFrame(parent, name, {
-			Size = UDim2.new(1, 0, 0, 36),
-			LayoutOrder = order,
-		})
-		makeText(header, "Title", text, "Title", 26, WHITE, {
-			Position = UDim2.fromOffset(4, 0),
-			Size = UDim2.new(1, -8, 1, 0),
-			TextXAlignment = Enum.TextXAlignment.Left,
-		})
-		return header
-	end
-
-	local function gemDome(parent, color, size)
-		local dome = makeFrame(parent, "Dome", {
-			Size = UDim2.fromOffset(size, size),
-			BackgroundTransparency = 0,
-			BackgroundColor3 = WHITE,
-		})
-		round(dome)
-		stroke(dome, NAVY, 3, 0)
-		Theme.Gradient(dome, Theme.Lighten(color, 0.5), Theme.Darken(color, 0.1), 90)
-		local shine = makeFrame(dome, "Shine", {
-			Position = UDim2.fromScale(0.16, 0.1),
-			Size = UDim2.fromScale(0.36, 0.2),
-			BackgroundTransparency = 0.6,
-			BackgroundColor3 = WHITE,
-			Rotation = -28,
-		})
-		round(shine)
-		return dome
-	end
-
-	-- a roulette priced in Gems: the Secret one (big storm card) or a token roulette (row)
-	local function buildGemRoulette(parent, roulette, order, big)
-		local color = roulette.Color or C2.Secret
-		local card = makeFrame(parent, "GemRoulette_" .. roulette.Id, {
-			Size = UDim2.new(1, 0, 0, big and 214 or K.GEM_ROW_H),
-			BackgroundColor3 = WHITE,
-			BackgroundTransparency = 0,
-			LayoutOrder = order,
-		})
-		corner(card, 16)
-		local cardStroke = stroke(card, big and Color3.fromRGB(63, 200, 255) or NAVY, big and 4 or 3, 0)
-		if big then
-			Theme.Gradient(card, Color3.fromRGB(58, 70, 140), Color3.fromRGB(20, 24, 56), 90)
-		else
-			Theme.Gradient(card, Theme.Darken(color, 0.3), Theme.Darken(color, 0.68), 90)
-		end
-		local P = {}
-		local domeSize = big and 116 or 80
-		P.Dome = gemDome(card, color, domeSize)
-		P.Dome.AnchorPoint = Vector2.new(0, 0.5)
-		P.Dome.Position = UDim2.new(0, 14, 0.5, 0)
-		P.Mark = makeText(P.Dome, "Mark", big and G.Storm or "?", "Title", big and 56 or 40, WHITE, {
-			Size = UDim2.new(1, 0, 1, 0),
-			ZIndex = 3,
-		})
-		local textX = domeSize + 30
-		P.Name = makeText(card, "Name", roulette.DisplayName or roulette.Id, "Title", big and 30 or 24, WHITE, {
-			Position = UDim2.fromOffset(textX, big and 12 or 10),
-			Size = UDim2.new(1, -(textX + 330), 0, big and 38 or 30),
-			TextXAlignment = Enum.TextXAlignment.Left,
-			TextScaled = true,
-		})
-		Util.Create("UITextSizeConstraint", { MaxTextSize = big and 30 or 24, MinTextSize = 18, Parent = P.Name })
-		local blurbText
-		if big then
-			blurbText = "The only way to summon Secret pets like Stormfang!"
-		else
-			local best = bestRarityOf(roulette)
-			blurbText = best and ("Up to " .. best .. ", the same odds as with Cloud Tokens") or "The same odds as with Cloud Tokens"
-		end
-		P.Blurb = makeText(card, "Blurb", blurbText, "Body", 19, MUTED, {
-			Position = UDim2.fromOffset(textX, big and 52 or 42),
-			Size = UDim2.new(1, -(textX + 330), 0, big and 50 or 26),
-			TextWrapped = true,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			TextYAlignment = Enum.TextYAlignment.Top,
-		})
-		-- the rarity chances (always shown), as coloured chips
-		P.Chances = makeFrame(card, "Chances", {
-			Position = UDim2.fromOffset(textX, big and 106 or 72),
-			Size = UDim2.new(1, -(textX + 330), 0, 30),
-			AutomaticSize = Enum.AutomaticSize.Y,
-		})
-		local chanceLayout = listLayout(P.Chances, Enum.FillDirection.Horizontal, 6, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
-		chanceLayout.Wraps = true
-		local total = 0
-		for _, w in pairs(roulette.Odds or {}) do
-			total = total + (tonumber(w) or 0)
-		end
-		local chipOrder = 0
-		for _, r in ipairs(Config.Rarities) do
-			local w = tonumber((roulette.Odds or {})[r.Id])
-			if w and w > 0 and total > 0 and (big or rarityOrder(r.Id) >= 3) then
-				chipOrder = chipOrder + 1
-				local chipColor = r.Id == "Secret" and C2.Hybrid or r.Color
-				colorPill(P.Chances, "Chance_" .. r.Id, r.Id .. " " .. percentText(w / total), chipColor, 18, chipOrder)
-			end
-		end
-		-- price + buttons (right)
-		P.Right = makeFrame(card, "Buy", {
-			AnchorPoint = Vector2.new(1, 0.5),
-			Position = UDim2.new(1, -14, 0.5, 0),
-			Size = UDim2.fromOffset(310, big and 170 or 96),
-		})
-		P.Price = makeText(P.Right, "Price", P2.gemAmount(gemPriceOf(roulette.Id) or 0), "Display", big and 32 or 28, Theme.Lighten(C2.Gem, 0.2), {
-			Size = UDim2.new(1, 0, 0, big and 40 or 34),
-			TextXAlignment = Enum.TextXAlignment.Right,
-		})
-		local buttons = makeFrame(P.Right, "Buttons", {
-			AnchorPoint = Vector2.new(1, 0),
-			Position = UDim2.new(1, 0, 0, big and 48 or 40),
-			Size = UDim2.new(1, 0, 0, 54),
-		})
-		listLayout(buttons, Enum.FillDirection.Horizontal, 10, Enum.HorizontalAlignment.Right, Enum.VerticalAlignment.Center)
-		P.Odds = CloudUI.Button({
-			Name = "Odds",
-			Text = "Odds",
-			Style = "Blue",
-			Size = UDim2.fromOffset(112, 48),
-			TextSize = 21,
-			LayoutOrder = 1,
-			Callback = function()
-				openOdds(roulette.Id)
-			end,
-			Parent = buttons,
-		})
-		P.Spin = CloudUI.Button({
-			Name = "Spin",
-			Text = "Spin",
-			Style = big and "Gold" or "Green",
-			Size = UDim2.fromOffset(big and 170 or 150, 54),
-			TextSize = 26,
-			LayoutOrder = 2,
-			Callback = function()
-				requestSpin(roulette.Id, "Gems")
-			end,
-			Parent = buttons,
-		})
-		P.Buttons = buttons
-		P.Hint = makeText(P.Right, "Hint", "", "Heading", 18, MUTED, {
-			AnchorPoint = Vector2.new(1, 1),
-			Position = UDim2.new(1, 0, 1, 0),
-			Size = UDim2.new(1, 0, 0, big and 56 or 0),
-			TextWrapped = true,
-			TextXAlignment = Enum.TextXAlignment.Right,
-			Visible = big,
-		})
-		local entry = { Roulette = roulette, Root = card, Stroke = cardStroke, Spin = P.Spin, Hint = P.Hint, Price = P.Price, Parts = P, Big = big }
-		shop.GemCards[roulette.Id] = entry
-		return entry
-	end
-
-	local function buildGemsPage(page)
-		local scroll = scroller(page, "Gems", { Size = UDim2.new(1, 0, 1, 0) })
-		pad(scroll, 2, 2, 14, 8)
-		listLayout(scroll, Enum.FillDirection.Vertical, 10)
-		G2.Scroll = scroll
-
-		-- gem packs
-		sectionTitle(scroll, "PacksTitle", G.Gem .. " Gem packs", 1)
-		-- store W1: the gem packs are the Robux Store's Currency tab now (spec 5.1); one button leads there
-		CloudUI.Button({
-			Name = "RobuxStore",
-			Text = "Robux Store",
-			Style = "Gold",
-			Size = UDim2.fromOffset(260, 56),
-			TextSize = 24,
-			LayoutOrder = 2,
-			Callback = function()
-				P5.openStore({ Tab = "Currency" })
-			end,
-			Parent = scroll,
-		})
-
-		-- the Secret roulette (gems only) and the token roulettes priced in Gems
-		G2.Roulettes = {}
-		local secret = secretRoulette() and findRoulette(secretRoulette().Id) or nil
-		local order = 3
-		G2.SecretTitle = sectionTitle(scroll, "SecretTitle", G.Storm .. " Storm Altar", order)
-		G2.Roulettes[#G2.Roulettes + 1] = G2.SecretTitle
-		if secret and gemPriceOf(secret.Id) then
-			order = order + 1
-			G2.Roulettes[#G2.Roulettes + 1] = buildGemRoulette(scroll, secret, order, true).Root
-		end
-		order = order + 1
-		local rouletteTitle = sectionTitle(scroll, "GemRoulettesTitle", "Roulettes for Gems", order)
-		G2.Roulettes[#G2.Roulettes + 1] = rouletteTitle
-		for _, roulette in ipairs(Config.Roulettes) do
-			if gemPriceOf(roulette.Id) then
-				order = order + 1
-				G2.Roulettes[#G2.Roulettes + 1] = buildGemRoulette(scroll, roulette, order, false).Root
-			end
-		end
-		-- the policy notice (shown instead of the roulettes while they are not allowed)
-		G2.Notice = makeInset(scroll, "GemNotice", { Size = UDim2.new(1, 0, 0, 84), LayoutOrder = 4, Visible = false })
-		G2.NoticeText = makeText(G2.Notice, "Text", "", "Heading", 19, C2.Lock, {
-			Position = UDim2.fromOffset(16, 0),
-			Size = UDim2.new(1, -32, 1, 0),
-			TextWrapped = true,
-			TextXAlignment = Enum.TextXAlignment.Left,
-		})
-		makeText(scroll, "Tip", "Every roulette shows its exact odds (Odds button). Gems are bought with Robux and never expire.", "Body", 18, MUTED, {
-			Size = UDim2.new(1, 0, 0, 0),
-			AutomaticSize = Enum.AutomaticSize.Y,
-			TextWrapped = true,
-			LayoutOrder = 100,
-		})
-	end
-
-	local function refreshGemsPage()
-		local gems = P2.gemBalance()
-		local state = gemRoulettesState()
-		local match = inMatch()
-		local open = state == "Open"
-		for _, inst in ipairs(G2.Roulettes or {}) do
-			inst.Visible = open
-		end
-		if G2.Notice then
-			G2.Notice.Visible = not open
-			if state == "Restricted" then
-				G2.NoticeText.Text = G.Lock .. "  Gem roulettes are not available on this account right now. Gem packs and Cloud Token roulettes still work."
-			else
-				G2.NoticeText.Text = G.Storm .. "  Gem roulettes and the Secret Roulette open soon at the Storm Altar!"
-			end
-		end
-		for _, card in pairs(shop.GemCards) do
-			local price = gemPriceOf(card.Roulette.Id) or 0
-			card.Price.Text = P2.gemAmount(price)
-			local label, hint, disabled = "Spin", "", false
-			local hintColor = MUTED
-			if match then
-				disabled = true
-				hint = "The shop is closed during matches."
-			elseif Spin.Waiting then
-				disabled = true
-				label = "..."
-				hint = "Spinning up..."
-			elseif Spin.Stage then
-				disabled = true
-			elseif gems < price then
-				disabled = true
-				hint = "Need " .. P2.gemAmount(price - gems) .. " more"
-				hintColor = Theme.Lighten(BAD, 0.35)
-			elseif card.Big then
-				hint = "Every spin: Mythic or Secret!"
-			end
-			card.Spin.Text = label
-			CloudUI.SetDisabled(card.Spin, disabled or not open)
-			card.Hint.Text = hint
-			card.Hint.TextColor3 = hintColor
-			card.Price.TextColor3 = gems < price and Theme.Lighten(BAD, 0.35) or Theme.Lighten(C2.Gem, 0.2)
-		end
-	end
-
-	-- wide: the roulette text left of the buttons; tall (portrait): the price and buttons under the text
-	local function layoutGemsPage(_w, tall)
-		for _, card in pairs(shop.GemCards) do
-			local P = card.Parts
-			local big = card.Big
-			local domeSize = big and 116 or 80
-			if tall then
-				local textX = (big and 96 or 74) + 22
-				P.Dome.Size = UDim2.fromOffset(big and 96 or 74, big and 96 or 74)
-				P.Dome.AnchorPoint = Vector2.new(0, 0)
-				P.Dome.Position = UDim2.fromOffset(12, 12)
-				P.Name.Position = UDim2.fromOffset(textX, 12)
-				P.Name.Size = UDim2.new(1, -(textX + 12), 0, 32)
-				P.Blurb.Position = UDim2.fromOffset(textX, 46)
-				P.Blurb.Size = UDim2.new(1, -(textX + 12), 0, big and 50 or 48)
-				P.Chances.Position = UDim2.fromOffset(12, big and 120 or 128)
-				P.Chances.Size = UDim2.new(1, -24, 0, 30)
-				P.Right.AnchorPoint = Vector2.new(0.5, 1)
-				P.Right.Position = UDim2.new(0.5, 0, 1, -10)
-				P.Right.Size = UDim2.new(1, -24, 0, big and 156 or 96)
-				P.Hint.Size = UDim2.new(1, 0, 0, big and 48 or 0)
-				card.Root.Size = UDim2.new(1, 0, 0, big and 350 or 270)
-			else
-				local textX = domeSize + 30
-				P.Dome.Size = UDim2.fromOffset(domeSize, domeSize)
-				P.Dome.AnchorPoint = Vector2.new(0, 0.5)
-				P.Dome.Position = UDim2.new(0, 14, 0.5, 0)
-				P.Name.Position = UDim2.fromOffset(textX, big and 12 or 10)
-				P.Name.Size = UDim2.new(1, -(textX + 330), 0, big and 38 or 30)
-				P.Blurb.Position = UDim2.fromOffset(textX, big and 52 or 42)
-				P.Blurb.Size = UDim2.new(1, -(textX + 330), 0, big and 50 or 26)
-				P.Chances.Position = UDim2.fromOffset(textX, big and 106 or 72)
-				P.Chances.Size = UDim2.new(1, -(textX + 330), 0, 30)
-				P.Right.AnchorPoint = Vector2.new(1, 0.5)
-				P.Right.Position = UDim2.new(1, -14, 0.5, 0)
-				P.Right.Size = UDim2.fromOffset(310, big and 170 or 96)
-				P.Hint.Size = UDim2.new(1, 0, 0, big and 56 or 0)
-				card.Root.Size = UDim2.new(1, 0, 0, big and 214 or K.GEM_ROW_H)
-			end
-		end
-	end
-
-	tabs.Add("Roulettes", buildRoulettePage)
-	tabs.Add("Gems", buildGemsPage)
-
-	-- gold outline on the roulette the player walked up to (OpenPanel passes RouletteId)
-	local function focusCard(rouletteId)
-		local card = shop.Cards[rouletteId] or shop.GemCards[rouletteId]
-		if not card then
-			return
-		end
-		card.Stroke.Color = GOLD
-		card.Stroke.Thickness = 7
-		task.delay(2.6, function()
-			if card.Root.Parent then
-				card.Stroke.Color = NAVY
-				card.Stroke.Thickness = 4
-			end
-		end)
-	end
-
-	win.Refresh = function()
-		if win.Tab == "Gems" then
-			W.Balance.Text = P2.gemAmount(P2.gemBalance())
-			W.Balance.TextColor3 = Theme.Lighten(C2.Gem, 0.2)
-		else
-			W.Balance.Text = cloudAmount(State.Tokens())
-			W.Balance.TextColor3 = Colors.Token
-		end
-		refreshRouletteCards()
-		refreshGemsPage()
-	end
-	-- compact cards when the tall ones would not fit the page (landscape phones); one card per row on portrait
-	-- screens (the tall layout), with the balance pill above the tabs
-	win.OnLayout = function(w, h, _narrow, _short, tall)
-		local compact = h < K.SHOP_COMPACT or tall == true
-		for _, card in pairs(shop.Cards) do
-			layoutRouletteCard(card, compact)
-		end
-		local function stack(row, layout, cards, cardH, count, wideSize)
-			if not row or not layout then
-				return
-			end
-			if tall then
-				layout.FillDirection = Enum.FillDirection.Vertical
-				for _, card in pairs(cards) do
-					card.Root.Size = UDim2.new(1, 0, 0, cardH)
-				end
-				row.Size = UDim2.new(1, 0, 0, count * cardH + math.max(0, count - 1) * 12)
-			else
-				layout.FillDirection = Enum.FillDirection.Horizontal
-				for _, card in pairs(cards) do
-					card.Root.Size = wideSize
-				end
-				row.Size = UDim2.new(1, 0, 0, cardH)
-			end
-		end
-		local roulettes = 0
-		for _ in pairs(shop.Cards) do
-			roulettes = roulettes + 1
-		end
-		stack(W.RouletteRow, W.RouletteLayout, shop.Cards, compact and K.CARD_H_SHORT or K.CARD_H, roulettes, UDim2.new(0.25, -9, 1, 0))
-		tabs.Root.Position = UDim2.fromOffset(12, tall and 62 or 10)
-		tabs.Root.Size = UDim2.new(1, -24, 1, tall and -72 or -20)
-		layoutGemsPage(w, tall == true)
-	end
-	win.OnOpen = function(args)
-		local tab = normalizeTab("Shop", args.Tab)
-		local target = type(args.RouletteId) == "string" and findRoulette(args.RouletteId) or nil
-		if not tab and (args.Currency == "Gems" or (target and target.GemsOnly)) then
-			tab = "Gems"
-		end
-		if not tab and type(args.RouletteId) == "string" then
-			tab = "Roulettes"
-		end
-		if tab then
-			tabs.Select(tab)
-		end
-		if type(args.RouletteId) == "string" then
-			focusCard(args.RouletteId)
-		end
-		for _, bob in ipairs(shop.Bobs) do
-			bob:Play()
-		end
-	end
-	win.OnClose = function()
-		for _, bob in ipairs(shop.Bobs) do
-			bob:Cancel()
-		end
-	end
 end
 
 ----------------------------------------------------------------------
@@ -4627,806 +3263,6 @@ do
 end
 
 ----------------------------------------------------------------------
--- Roulette flow: BuyRoulette -> RouletteResult -> scrolling strip -> reveal card
-----------------------------------------------------------------------
-local function refreshShopWindow()
-	refreshWindow(windows.Shop)
-end
-
--- currency: nil / "Tokens" (the roulette's Cloud Token price) or "Gems" (Config.Gems; the gems-only Secret roulette
--- is always paid in Gems). The server checks the price, the balance and the paid-random-items policy again.
-function requestSpin(rouletteId, currency)
-	if Spin.Waiting or Spin.Stage then
-		return
-	end
-	local roulette = findRoulette(rouletteId)
-	if not roulette then
-		return
-	end
-	if inMatch() then
-		showHint("The shop is closed during a match.", "info")
-		return
-	end
-	if roulette.GemsOnly then
-		currency = "Gems"
-	end
-	if currency == "Gems" then
-		local price = gemPriceOf(rouletteId)
-		if not price then
-			return
-		end
-		if gemRoulettesState() ~= "Open" then
-			showHint("Gem roulettes are not available on this account right now.", "info")
-			return
-		end
-		if P2.gemBalance() < price then
-			showHint("You need " .. P2.gemAmount(price) .. " Gems for that roulette.", "bad")
-			return
-		end
-		if not fire("BuyRoulette", rouletteId, "Gems") then
-			return
-		end
-	else
-		currency = "Tokens"
-		if State.Tokens() < roulette.Price then
-			showHint("You need " .. cloudAmount(roulette.Price) .. " for that roulette.", "bad")
-			return
-		end
-		if not fire("BuyRoulette", rouletteId) then
-			return
-		end
-	end
-	-- the answer takes a round trip: use it to sculpt this pool first
-	Spin.Last = rouletteId
-	Spin.LastCurrency = currency
-	Warm.Roulette(rouletteId, true)
-	Spin.Waiting = true
-	Spin.WaitToken = Spin.WaitToken + 1
-	local mine = Spin.WaitToken
-	refreshShopWindow()
-	task.delay(K.WAIT_TIMEOUT, function()
-		if Spin.Waiting and Spin.WaitToken == mine then
-			Spin.Waiting = false
-			refreshShopWindow()
-			showHint("The roulette did not answer. Try again.", "bad")
-		end
-	end)
-end
-
--- Confetti squares flying out of `centre` (a UDim2 inside `parent`).
-local function burst(parent, color, amount, centre)
-	local rng = Random.new()
-	for i = 1, amount do
-		local size = rng:NextInteger(8, 15)
-		local pick = i % 3
-		local pieceColor = Theme.Lighten(color, 0.5)
-		if pick == 0 then
-			pieceColor = GOLD
-		elseif pick == 1 then
-			pieceColor = color
-		end
-		local piece = makeFrame(parent, "Confetti", {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = centre,
-			Size = UDim2.fromOffset(size, size),
-			BackgroundTransparency = 0,
-			BackgroundColor3 = pieceColor,
-			Rotation = rng:NextInteger(0, 90),
-			ZIndex = 10,
-		})
-		if i % 2 == 0 then
-			round(piece)
-		else
-			corner(piece, 2)
-		end
-		local angle = rng:NextNumber(0, math.pi * 2)
-		local distance = rng:NextNumber(80, 230)
-		local target = UDim2.new(
-			centre.X.Scale,
-			centre.X.Offset + math.cos(angle) * distance,
-			centre.Y.Scale,
-			centre.Y.Offset + math.sin(angle) * distance * 0.8 - 24
-		)
-		local seconds = rng:NextNumber(0.7, 1.2)
-		tween(piece, seconds, { Position = target, Rotation = piece.Rotation + rng:NextInteger(-220, 220) })
-		tween(piece, seconds, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-		Debris:AddItem(piece, seconds + 0.1)
-	end
-end
-
--- Closes the stage (strip or reveal card) and starts the next queued result, if any.
-function closeStage()
-	local stage = Spin.Stage
-	if not stage then
-		return
-	end
-	Spin.Stage = nil
-	syncBackBinding()
-	stage.Phase = "closed"
-	if stage.Conn then
-		stage.Conn:Disconnect()
-		stage.Conn = nil
-	end
-	for _, cell in pairs(stage.Cells) do
-		if cell.Viewport then
-			pcall(cell.Viewport.Destroy)
-		end
-	end
-	stage.Cells = {}
-	if stage.RevealViewport then
-		pcall(stage.RevealViewport.Destroy)
-		stage.RevealViewport = nil
-	end
-	if stage.Root then
-		stage.Root:Destroy()
-		stage.Root = nil
-	end
-	refreshShopWindow()
-	local nextResult = table.remove(Spin.Queue, 1)
-	if nextResult then
-		task.delay(0.15, function()
-			if not Spin.Stage then
-				beginStage(nextResult)
-			end
-		end)
-	end
-end
-
-function skipSpin()
-	local stage = Spin.Stage
-	if stage and stage.Phase ~= "reveal" then
-		stage.Skip = true
-	end
-end
-
--- Reveal card layout: tall (portrait card) when the screen has the height, else a landscape card.
-local function revealLayout()
-	local factor = screenFactor()
-	local area = guiSize()
-	local tall = (area.Y - 2 * K.MARGIN) / factor >= K.REVEAL.TallH + 28
-	if tall then
-		return {
-			Wide = false,
-			W = K.REVEAL.TallW,
-			H = K.REVEAL.TallH,
-			View = UDim2.new(0.5, 0, 0, 150),
-			ViewSize = 260,
-			Name = { UDim2.fromOffset(0, 292), UDim2.new(1, 0, 0, 40), Enum.TextXAlignment.Center },
-			Meta = { UDim2.fromOffset(0, 338), UDim2.new(1, 0, 0, 30), Enum.HorizontalAlignment.Center },
-			Perks = { UDim2.fromOffset(16, 378), UDim2.new(1, -32, 0, 72), Enum.TextXAlignment.Center },
-			Buttons = { UDim2.fromOffset(0, 462), UDim2.new(1, 0, 0, 60), Enum.HorizontalAlignment.Center },
-		}
-	end
-	return {
-		Wide = true,
-		W = K.REVEAL.WideW,
-		H = K.REVEAL.WideH,
-		View = UDim2.new(0, 170, 0.5, 0),
-		ViewSize = 240,
-		Name = { UDim2.fromOffset(340, 14), UDim2.new(1, -356, 0, 42), Enum.TextXAlignment.Left },
-		Meta = { UDim2.fromOffset(340, 62), UDim2.new(1, -356, 0, 30), Enum.HorizontalAlignment.Left },
-		Perks = { UDim2.fromOffset(340, 100), UDim2.new(1, -356, 0, 84), Enum.TextXAlignment.Left },
-		Buttons = { UDim2.fromOffset(340, 196), UDim2.new(1, -356, 0, 60), Enum.HorizontalAlignment.Left },
-	}
-end
-
-local function fitStage(w, h)
-	local area = guiSize()
-	local factor = screenFactor()
-	return Util.Clamp(math.min(factor, (area.X - 2 * K.MARGIN) / w, (area.Y - 2 * K.MARGIN) / h), 0.3, 1.25)
-end
-
-function beginStage(result)
-	local def = PetCatalog.Get(result.PetId)
-	if not def or not gui then
-		showHint("A new pet joined your collection!", "good")
-		return
-	end
-	local roulette = findRoulette(result.RouletteId)
-	local rarityColor = rarityOf(def)
-	local accent = roulette and roulette.Color or rarityColor
-	local stage = { Phase = "spin", Def = def, Result = result, Cells = {}, Elapsed = 0, X = 0, Tick = 0 }
-	-- what paid this spin (RouletteResult.Currency; a gems-only roulette is always Gems)
-	stage.Currency = (result.Currency == "Gems" or (roulette and roulette.GemsOnly)) and "Gems" or "Tokens"
-	Spin.Stage = stage
-	syncBackBinding()
-	closeOdds()
-	closeIndex()
-	refreshShopWindow()
-
-	local root = makeFrame(gui, "RouletteStage", { Size = UDim2.new(1, 0, 1, 0), ZIndex = 20 })
-	stage.Root = root
-	local dim = Util.Create("TextButton", {
-		Name = "Dim",
-		AutoButtonColor = false,
-		Text = "",
-		BorderSizePixel = 0,
-		BackgroundColor3 = Color3.fromRGB(8, 12, 32),
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 1, 0),
-		Parent = root,
-	})
-	tween(dim, 0.25, { BackgroundTransparency = 0.3 })
-
-	stage.Relayout = function()
-		if stage.StripFit then
-			stage.StripFit.Scale = fitStage(K.STAGE.W, K.STAGE.H)
-		end
-		if stage.RevealFit and stage.RevealSize then
-			stage.RevealFit.Scale = fitStage(stage.RevealSize[1], stage.RevealSize[2])
-		end
-	end
-
-	------------------------------------------------------------------
-	-- the strip: server-provided list, repaired where it is invalid, with the winner at K.STRIP.Target
-	------------------------------------------------------------------
-	local pool = {}
-	if roulette then
-		pool = possiblePetsOf(roulette.Id)
-	end
-	if #pool == 0 then
-		pool = PetCatalog.Pets or {}
-	end
-	local rng = Random.new()
-	local function randomPetId()
-		if #pool == 0 then
-			return def.Id
-		end
-		return pool[rng:NextInteger(1, #pool)].Id
-	end
-	local raw = type(result.Strip) == "table" and result.Strip or {}
-	local strip = {}
-	for i = 1, math.max(#raw, K.STRIP.MinCells) do
-		local id = raw[i]
-		if type(id) ~= "string" or not PetCatalog.Get(id) then
-			id = randomPetId()
-		end
-		strip[i] = id
-	end
-	local target = K.STRIP.Target
-	strip[target] = def.Id
-	local cellW = K.STRIP.Cell
-	local startX = 0
-	local endX = (target - 1) * cellW + cellW / 2 - K.STRIP.W / 2 + rng:NextNumber(-cellW * 0.26, cellW * 0.26)
-
-	local stripHolder = makeFrame(root, "StripHolder", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0.5, 0, 0.5, 6),
-		Size = UDim2.fromOffset(K.STAGE.W, K.STAGE.H),
-		ZIndex = 2,
-	})
-	stage.StripFit = Util.Create("UIScale", { Name = "Fit", Scale = fitStage(K.STAGE.W, K.STAGE.H), Parent = stripHolder })
-	local stripPanel = CloudUI.Panel({
-		Name = "StripPanel",
-		Title = roulette and roulette.DisplayName or "Roulette",
-		Closable = false,
-		Accent = accent,
-		Size = UDim2.new(1, 0, 1, 0),
-		Position = UDim2.new(0.5, 0, 0.5, 0),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Parent = stripHolder,
-	})
-	local stripPop = Util.Create("UIScale", { Name = "Pop", Scale = 0.8, Parent = stripPanel.Root })
-	tween(stripPop, 0.32, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-	local sc = stripPanel.Content
-
-	local pointer = makeText(sc, "Pointer", G.Down, "Title", 36, GOLD, {
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 0),
-		Size = UDim2.fromOffset(50, 40),
-		ZIndex = 7,
-	})
-	local clip = makeFrame(sc, "StripClip", {
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 40),
-		Size = UDim2.fromOffset(K.STRIP.W, K.STRIP.H),
-		BackgroundTransparency = 0.35,
-		BackgroundColor3 = Color3.fromRGB(14, 22, 58),
-		ClipsDescendants = true,
-		ZIndex = 2,
-	})
-	corner(clip, 14)
-	stroke(clip, WELL_EDGE, 3, 0)
-	local band = makeFrame(clip, "Band", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0.5, 0, 0.5, 0),
-		Size = UDim2.fromOffset(cellW, K.STRIP.H - 6),
-		BackgroundTransparency = 0.88,
-		BackgroundColor3 = GOLD,
-		ZIndex = 5,
-	})
-	corner(band, 14)
-	stroke(band, GOLD, 3, 0)
-	for i = 1, 2 do
-		local name = "FadeRight"
-		local sequence = NumberSequence.new(1, 0)
-		if i == 1 then
-			name = "FadeLeft"
-			sequence = NumberSequence.new(0, 1)
-		end
-		local fade = makeFrame(clip, name, {
-			AnchorPoint = Vector2.new(i - 1, 0),
-			Position = UDim2.new(i - 1, 0, 0, 0),
-			Size = UDim2.new(0, 110, 1, 0),
-			BackgroundTransparency = 0,
-			BackgroundColor3 = Color3.fromRGB(14, 22, 58),
-			ZIndex = 6,
-		})
-		Util.Create("UIGradient", { Transparency = sequence, Parent = fade })
-	end
-	local status = makeText(sc, "Status", "Spinning...", "Heading", 22, MUTED, {
-		Position = UDim2.fromOffset(18, 242),
-		Size = UDim2.new(1, -170, 0, 40),
-		TextXAlignment = Enum.TextXAlignment.Left,
-	})
-	CloudUI.Button({
-		Name = "Skip",
-		Text = "Skip",
-		Style = "Blue",
-		Size = UDim2.fromOffset(126, 46),
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -12, 0, 240),
-		TextSize = 21,
-		Callback = function()
-			skipSpin()
-		end,
-		Parent = sc,
-	})
-
-	-- cells are created only while they are near the window (one viewport per visible pet). A cell's frame
-	-- (rarity colours) appears at once; its pet viewport (PetBuilder Low: small, static, moving fast) is attached
-	-- under the per-frame time budget, so a pet that was never sculpted on this client cannot stall the strip.
-	local cells = stage.Cells
-	local function destroyCell(index)
-		local cell = cells[index]
-		if cell then
-			cells[index] = nil
-			if cell.Viewport then
-				pcall(cell.Viewport.Destroy)
-			end
-			cell.Frame:Destroy()
-		end
-	end
-	local function attachViewport(cell)
-		if cell.Viewport then
-			return
-		end
-		cell.Viewport = CloudUI.PetViewport(cell.Frame, cell.Def, UDim2.new(1, -8, 1, -24), {
-			Position = UDim2.new(0.5, 0, 0, 4),
-			AnchorPoint = Vector2.new(0.5, 0),
-			Animate = false,
-			Spin = "sway",
-			Detail = K.STRIP_DETAIL,
-			ZIndex = 2,
-		})
-	end
-	local function makeCell(index)
-		local cellDef = PetCatalog.Get(strip[index])
-		local color = rarityOf(cellDef)
-		local frame = makeFrame(clip, "Cell" .. index, {
-			Size = UDim2.fromOffset(cellW - 10, K.STRIP.H - 18),
-			BackgroundTransparency = 0,
-			BackgroundColor3 = WHITE,
-			ZIndex = 2,
-		})
-		corner(frame, 14)
-		local frameStroke = stroke(frame, color, 3, 0)
-		Theme.Gradient(frame, Colors.Mist, Colors.MistDeep:Lerp(color, 0.5), 90)
-		local tag = makeFrame(frame, "RarityBar", {
-			AnchorPoint = Vector2.new(0.5, 1),
-			Position = UDim2.new(0.5, 0, 1, -6),
-			Size = UDim2.new(1, -24, 0, 10),
-			BackgroundTransparency = 0,
-			BackgroundColor3 = color,
-		})
-		round(tag)
-		local cell = { Frame = frame, Viewport = nil, Stroke = frameStroke, Def = cellDef }
-		cells[index] = cell
-		return cell
-	end
-	local function layoutCells(x)
-		local first = math.max(1, math.floor(x / cellW))
-		local last = math.min(#strip, math.floor((x + K.STRIP.W) / cellW) + 2)
-		for index = first, last do
-			local cell = cells[index] or makeCell(index)
-			cell.Frame.Position = UDim2.fromOffset(math.floor((index - 1) * cellW - x + 5 + 0.5), 9)
-		end
-		for index in pairs(cells) do
-			if index < first or index > last then
-				destroyCell(index)
-			end
-		end
-		-- pet viewports, nearest to the pointer first, under the frame's build budget
-		local budget = Warm.Budget()
-		local centre = (x + K.STRIP.W / 2) / cellW + 0.5
-		while Warm.Allows(budget) do
-			local best, bestD = nil, math.huge
-			for index, cell in pairs(cells) do
-				if not cell.Viewport then
-					local d = math.abs(index - centre)
-					if d < bestD then
-						best, bestD = cell, d
-					end
-				end
-			end
-			if not best then
-				break
-			end
-			attachViewport(best)
-			budget.Count = budget.Count + 1
-		end
-	end
-	layoutCells(startX)
-
-	------------------------------------------------------------------
-	-- reveal card
-	------------------------------------------------------------------
-	local function updateReveal()
-		if stage.Phase ~= "reveal" or not stage.EquipBtn then
-			return
-		end
-		local equipped = State.EquippedCount(def.Id)
-		local owned = State.OwnedCount(def.Id)
-		local total = #State.Get().Equipped
-		if equipped > 0 and equipped >= owned then
-			stage.EquipBtn.Text = "In your team"
-			CloudUI.SetDisabled(stage.EquipBtn, true)
-		elseif total >= Config.Pets.MaxEquipped then
-			stage.EquipBtn.Text = "Team full"
-			CloudUI.SetDisabled(stage.EquipBtn, true)
-		else
-			stage.EquipBtn.Text = "Put in team"
-			CloudUI.SetDisabled(stage.EquipBtn, false)
-		end
-		if stage.AgainBtn and roulette then
-			if stage.Currency == "Gems" then
-				local price = gemPriceOf(roulette.Id) or 0
-				stage.AgainBtn.Text = "Again " .. P2.gemAmount(price)
-				CloudUI.SetDisabled(stage.AgainBtn, P2.gemBalance() < price or inMatch() or gemRoulettesState() ~= "Open")
-			else
-				stage.AgainBtn.Text = "Again " .. cloudAmount(roulette.Price)
-				CloudUI.SetDisabled(stage.AgainBtn, State.Tokens() < roulette.Price or inMatch())
-			end
-		end
-	end
-	stage.UpdateReveal = updateReveal
-
-	local function showReveal()
-		stage.Phase = "reveal"
-		Sfx.Play(Sfx.Reveal[tostring(def.Rarity)] or "RevealCommon")
-		for index in pairs(cells) do
-			destroyCell(index)
-		end
-		stripHolder:Destroy()
-		stage.StripFit = nil
-
-		local flash = makeFrame(root, "Flash", {
-			Size = UDim2.new(1, 0, 1, 0),
-			BackgroundTransparency = 0.45,
-			BackgroundColor3 = Theme.Lighten(rarityColor, 0.6),
-			ZIndex = 9,
-		})
-		tween(flash, 0.55, { BackgroundTransparency = 1 })
-		Debris:AddItem(flash, 0.7)
-
-		local L = revealLayout()
-		stage.RevealSize = { L.W, L.H }
-		local holder = makeFrame(root, "RevealHolder", {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.new(0.5, 0, 0.5, 6),
-			Size = UDim2.fromOffset(L.W, L.H),
-			ZIndex = 2,
-		})
-		stage.RevealFit = Util.Create("UIScale", { Name = "Fit", Scale = fitStage(L.W, L.H), Parent = holder })
-		local panel = CloudUI.Panel({
-			Name = "RevealPanel",
-			Title = string.upper(def.Rarity),
-			Closable = true,
-			Accent = def.Rarity == "Secret" and PURPLE or rarityColor,
-			Size = UDim2.new(1, 0, 1, 0),
-			Position = UDim2.new(0.5, 0, 0.5, 0),
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			OnClose = function()
-				closeStage()
-			end,
-			Parent = holder,
-		})
-		local pop = Util.Create("UIScale", { Name = "Pop", Scale = 0.5, Parent = panel.Root })
-		tween(pop, 0.5, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-		local c = panel.Content
-		local order = rarityOrder(def.Rarity)
-		local glowColor = def.Rarity == "Secret" and PURPLE or rarityColor
-
-		-- slowly turning rays + soft glow discs behind the pet (stronger for rarer pets), clipped to the card
-		local fxLayer = makeFrame(c, "RevealFx", {
-			Size = UDim2.new(1, 0, 1, 0),
-			ClipsDescendants = true,
-			ZIndex = 1,
-		})
-		local raySize = L.ViewSize + 80
-		local rays = makeFrame(fxLayer, "Rays", {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = L.View,
-			Size = UDim2.fromOffset(raySize, raySize),
-			ZIndex = 1,
-		})
-		stage.Rays = rays
-		local rayCount = 3 + order
-		for i = 1, rayCount do
-			local ray = makeFrame(rays, "Ray" .. i, {
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.new(0.5, 0, 0.5, 0),
-				Size = UDim2.new(0, 22, 1, 0),
-				Rotation = (i - 1) * 180 / rayCount,
-				BackgroundTransparency = 0.78 - order * 0.015,
-				BackgroundColor3 = Theme.Lighten(glowColor, 0.4),
-				ZIndex = 1,
-			})
-			Util.Create("UIGradient", {
-				Rotation = 90,
-				Transparency = NumberSequence.new({
-					NumberSequenceKeypoint.new(0, 1),
-					NumberSequenceKeypoint.new(0.5, 0),
-					NumberSequenceKeypoint.new(1, 1),
-				}),
-				Parent = ray,
-			})
-		end
-		for i, disc in ipairs({ { 1.0, 0.86 }, { 0.78, 0.8 }, { 0.58, 0.72 } }) do
-			local glow = makeFrame(fxLayer, "Glow" .. i, {
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = L.View,
-				Size = UDim2.fromOffset(L.ViewSize * disc[1], L.ViewSize * disc[1]),
-				BackgroundTransparency = disc[2],
-				BackgroundColor3 = Theme.Lighten(glowColor, 0.3),
-				ZIndex = 1,
-			})
-			round(glow)
-		end
-
-		-- Phase 5 (3.7): a new copy shares its key's stored stage: an evolved key reveals its evolved form (Low) and a
-		-- gold "Evolved" ribbon
-		local rolledKey = (type(result.Key) == "string" and result.Key) or def.Id
-		local evoStage = P2.stage(rolledKey)
-		stage.RevealViewport = CloudUI.PetViewport(c, def, UDim2.fromOffset(L.ViewSize, L.ViewSize), {
-			Position = L.View,
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Spin = "spin",
-			Excited = 1,
-			Flap = 1.5,
-			ZIndex = 3,
-			Evolved = evoStage >= 1 and evoStage or nil,
-			Detail = evoStage >= 1 and "Low" or nil,
-		})
-		if evoStage >= 1 then
-			local ribbon = makeFrame(c, "EvolvedRibbon", {
-				AnchorPoint = Vector2.new(1, 0),
-				Position = UDim2.new(1, -10, 0, 14),
-				Size = UDim2.fromOffset(evoStage >= 2 and 150 or 120, 36),
-				Rotation = 8,
-				BackgroundTransparency = 0,
-				BackgroundColor3 = GOLD,
-				ZIndex = 6,
-			})
-			corner(ribbon, 10)
-			stroke(ribbon, NAVY, 3, 0)
-			Theme.Gradient(ribbon, Theme.Lighten(GOLD, 0.3), Theme.Darken(GOLD, 0.12), 90)
-			makeText(ribbon, "Text", string.rep(G.Star, math.min(2, evoStage)) .. (evoStage >= 2 and " Evolved II" or " Evolved"), "Button", 20, WHITE, {
-				Size = UDim2.new(1, 0, 1, 0),
-				ZIndex = 7,
-			})
-		end
-
-		-- NEW! flag (or the stack size for a duplicate)
-		local isNew = result.IsNew == true
-		local flag = makeFrame(c, "Flag", {
-			Position = UDim2.fromOffset(10, 14),
-			Size = UDim2.fromOffset(104, 40),
-			Rotation = -10,
-			BackgroundTransparency = 0,
-			BackgroundColor3 = isNew and GOLD or BUTTONS.Blue,
-			ZIndex = 6,
-		})
-		corner(flag, 10)
-		stroke(flag, NAVY, 3, 0)
-		local flagText = "NEW!"
-		if not isNew then
-			flagText = "x" .. tostring(math.floor(tonumber(result.Count) or State.OwnedCount(def.Id)))
-		end
-		makeText(flag, "Text", flagText, "Accent", 26, WHITE, {
-			Size = UDim2.new(1, 0, 1, 0),
-			ZIndex = 7,
-			TextStrokeColor3 = Theme.Darken(isNew and GOLD or BUTTONS.Blue, 0.65),
-		})
-
-		local nameLabel = makeText(c, "Name", def.Name, "Title", 34, rarityText(def), {
-			Position = L.Name[1],
-			Size = L.Name[2],
-			TextXAlignment = L.Name[3],
-			TextScaled = true,
-			ZIndex = 4,
-		})
-		Util.Create("UITextSizeConstraint", { MaxTextSize = 34, MinTextSize = 20, Parent = nameLabel })
-		local meta = makeFrame(c, "Meta", { Position = L.Meta[1], Size = L.Meta[2], ZIndex = 4 })
-		listLayout(meta, Enum.FillDirection.Horizontal, 8, L.Meta[3], Enum.VerticalAlignment.Center)
-		local pill = readablePill(def.Rarity, rarityColor, meta)
-		pill.LayoutOrder = 1
-		for i, element in ipairs(elementsOf(def)) do
-			elementPill(meta, element, 18, 1 + i)
-		end
-		makeText(meta, "Owned", "You own x" .. tostring(math.floor(tonumber(result.Count) or State.OwnedCount(def.Id))), "Heading", 19, MUTED, {
-			AutomaticSize = Enum.AutomaticSize.X,
-			Size = UDim2.fromOffset(0, 26),
-			LayoutOrder = 10,
-			ZIndex = 4,
-		})
-		local lines = perkLines(def)
-		local perkText = "No perks"
-		if #lines > 0 then
-			perkText = table.concat(lines, "\n")
-		end
-		makeText(c, "Perks", perkText, "Heading", 19, Theme.Lighten(GOOD, 0.3), {
-			Position = L.Perks[1],
-			Size = L.Perks[2],
-			TextXAlignment = L.Perks[3],
-			TextWrapped = true,
-			TextYAlignment = Enum.TextYAlignment.Top,
-			ZIndex = 4,
-		})
-
-		local buttons = makeFrame(c, "Buttons", { Position = L.Buttons[1], Size = L.Buttons[2], ZIndex = 4 })
-		listLayout(buttons, Enum.FillDirection.Horizontal, 12, L.Buttons[3], Enum.VerticalAlignment.Center)
-		stage.EquipBtn = CloudUI.Button({
-			Name = "Equip",
-			Text = "Put in team",
-			Style = "Green",
-			Size = UDim2.fromOffset(172, 58),
-			TextSize = 26,
-			LayoutOrder = 1,
-			Callback = function()
-				fire("EquipPet", def.Id)
-			end,
-			Parent = buttons,
-		})
-		if roulette then
-			stage.AgainBtn = CloudUI.Button({
-				Name = "Again",
-				Text = "Again",
-				Style = "Gold",
-				Size = UDim2.fromOffset(204, 58),
-				TextSize = 22,
-				LayoutOrder = 2,
-				Callback = function()
-					local rouletteId = roulette.Id
-					local currency = stage.Currency
-					closeStage()
-					task.defer(requestSpin, rouletteId, currency)
-				end,
-				Parent = buttons,
-			})
-		end
-		updateReveal()
-
-		-- confetti: more for rarer pets
-		local amounts = { 10, 14, 20, 28, 36, 46, 56 }
-		local amount = amounts[Util.Clamp(order, 1, #amounts)]
-		task.delay(0.2, function()
-			if Spin.Stage == stage and stage.Phase == "reveal" then
-				burst(c, glowColor, amount, L.View)
-			end
-		end)
-		if order >= 5 then
-			task.delay(0.65, function()
-				if Spin.Stage == stage and stage.Phase == "reveal" then
-					burst(c, glowColor, amount, L.View)
-				end
-			end)
-		end
-	end
-
-	------------------------------------------------------------------
-	-- animation loop (client-only UI motion)
-	------------------------------------------------------------------
-	local function land()
-		stage.Phase = "land"
-		stage.LandedAt = os.clock()
-		Sfx.Play("SpinLand")
-		local winner = cells[target]
-		if winner then
-			attachViewport(winner) -- (normally attached long before it lands)
-			winner.Stroke.Color = GOLD
-			winner.Stroke.Thickness = 5
-			winner.Frame.ZIndex = 4
-			local grow = Util.Create("UIScale", { Scale = 1, Parent = winner.Frame })
-			tween(grow, 0.35, { Scale = 1.1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-			if winner.Viewport then
-				winner.Viewport.SetAnimated(true)
-				winner.Viewport.SetExcited(1)
-			end
-		end
-		status.Text = def.Rarity .. "!"
-		status.TextColor3 = rarityText(def)
-		band.BackgroundTransparency = 0.7
-		pointer.Rotation = 0
-	end
-
-	local function step(dt)
-		if stage.Phase == "spin" then
-			if stage.Skip then
-				stage.Elapsed = K.STRIP.Seconds
-			end
-			stage.Elapsed = stage.Elapsed + dt
-			local t = Util.Clamp(stage.Elapsed / K.STRIP.Seconds, 0, 1)
-			local p = 1 - (1 - t) ^ K.STRIP.Curve
-			stage.X = startX + (endX - startX) * p
-			layoutCells(stage.X)
-			local tick = math.floor((stage.X + K.STRIP.W / 2) / cellW)
-			if tick ~= stage.Tick then
-				if stage.Tick ~= nil and not stage.Skip then
-					Sfx.Play("SpinTick") -- a cell passes the pointer (a skip's jump stays silent: SpinLand follows)
-				end
-				stage.Tick = tick
-				pointer.Rotation = 16
-			end
-			pointer.Rotation = pointer.Rotation * math.max(0, 1 - dt * 11)
-			if t >= 1 then
-				land()
-			end
-		elseif stage.Phase == "land" then
-			if stage.Skip or os.clock() - stage.LandedAt > 0.95 then
-				showReveal()
-			end
-		elseif stage.Phase == "reveal" then
-			if stage.Rays then
-				stage.Rays.Rotation = (stage.Rays.Rotation + dt * 22) % 360
-			end
-		end
-	end
-
-	Sfx.Play("SpinStart")
-	stage.Conn = RunService.RenderStepped:Connect(function(dt)
-		if Spin.Stage ~= stage then
-			return
-		end
-		local ok, err = pcall(step, dt)
-		if not ok then
-			warnOnce("stage", err)
-			if stage.Phase == "reveal" or stage.Failed then
-				closeStage()
-			else
-				stage.Failed = true
-				if not pcall(showReveal) then
-					closeStage()
-				end
-			end
-		end
-	end)
-end
-
-local function onRouletteResult(result)
-	Spin.Waiting = false
-	Spin.WaitToken = Spin.WaitToken + 1
-	if type(result) ~= "table" then
-		refreshShopWindow()
-		return
-	end
-	if result.Ok == false or type(result.PetId) ~= "string" then
-		local reason = "The spin failed."
-		if type(result.Reason) == "string" and result.Reason ~= "" then
-			reason = result.Reason
-		end
-		showHint(reason, "bad")
-		refreshShopWindow()
-		return
-	end
-	if Spin.Stage then
-		table.insert(Spin.Queue, result)
-	else
-		beginStage(result)
-	end
-end
-
-----------------------------------------------------------------------
 -- Wiring
 ----------------------------------------------------------------------
 -- OpenPanel(panelId, args): the server opens windows (roulette / item shop prompts, the tutorial).
@@ -5463,13 +3299,8 @@ local function onOpenPanel(panelId, args, fromRemote)
 		args = { Key = args.Key }
 		key = "pets"
 	end
-	if key == "shop" then
-		if inMatch() then
-			return
-		end
-		openWindow("Shop", args)
-	elseif key == "store" then
-		P5.openStore(args) -- store W1: the Robux Store window (refused in a match by StoreController itself)
+	if key == "shop" or key == "store" then
+		P5.openShop(args) -- lobby-shop Task 22: the one Shop window (refused in a match by ShopController itself)
 	elseif key == "pets" or key == "inventory" or key == "items" or key == "team" or key == "teams" then
 		P5.openPets(args) -- team balance: the one Pets window (the Team and Items tabs are gone)
 	elseif key == "home" or key == "spot" then
@@ -5503,16 +3334,10 @@ local function onStateChanged()
 	for _, win in pairs(windows) do
 		refreshWindow(win)
 	end
-	if Spin.Stage and Spin.Stage.UpdateReveal then
-		safe("reveal", Spin.Stage.UpdateReveal)
-	end
 end
 
 local function onTokensChanged()
 	refreshOpenWindow()
-	if Spin.Stage and Spin.Stage.UpdateReveal then
-		safe("reveal", Spin.Stage.UpdateReveal)
-	end
 end
 
 -- the claimed plot changed (claimed / released): the Home window follows (Phase 6: without a home it shows Claim a home)
@@ -5529,7 +3354,7 @@ end
 
 local function onMatchFlagChanged()
 	if inMatch() then
-		closeEverything()
+		closeEverything(true)
 	end
 	updateMenuActive()
 	refreshOpenWindow()
@@ -5552,14 +3377,7 @@ local function connectRemotes()
 	else
 		warn("[MenuController] OpenPanel remote is unavailable: " .. tostring(openRemote))
 	end
-	local okSpin, spinRemote = pcall(Remotes.Get, "RouletteResult")
-	if okSpin and spinRemote then
-		spinRemote.OnClientEvent:Connect(function(result)
-			safe("RouletteResult", onRouletteResult, result)
-		end)
-	else
-		warn("[MenuController] RouletteResult remote is unavailable: " .. tostring(spinRemote))
-	end
+	-- (lobby-shop Task 22: RouletteResult is EggStage's; ShopController calls EggStage.Init)
 end
 
 -- The Pet Index lives in IndexController: keep one window at a time, light the Index tile and relay
@@ -5575,7 +3393,6 @@ local function connectIndex()
 				closeWindow(openId, true)
 			end
 			P5.closePets()
-			closeOdds()
 			updateMenuActive()
 			MenuController.WindowOpened:Fire("Index")
 		end)
@@ -5632,10 +3449,10 @@ function MenuController.Hint(text, kind)
 	end
 end
 
--- true while a window, the odds popup or the roulette stage covers the screen (the tutorial folds its card and
--- hides its menu pointer meanwhile)
+-- true while a menu window, the Pets window, the Shop or the egg stage covers the screen (the tutorial folds its card
+-- and hides its menu pointer meanwhile)
 function MenuController.IsOpen()
-	return openId ~= nil or Odds.Gui ~= nil or Spin.Stage ~= nil or P5.petsOpen()
+	return openId ~= nil or P5.petsOpen() or P5.shopOpen() or P5.hatchShowing()
 end
 
 -- Phase 3 (BattleController): hides the menu tiles while the battle team cards use the left edge of a landscape
@@ -5719,11 +3536,6 @@ function MenuController.ResetStickSeen()
 	end
 end
 
--- Debug helper (smoke tests): true once `petId` was pre-sculpted at the roulette strip's detail.
-function MenuController.IsPrewarmed(petId)
-	return Warm.Done[petId] == true
-end
-
 function MenuController.Init()
 	if initialized then
 		return
@@ -5737,7 +3549,6 @@ function MenuController.Init()
 
 	buildHint()
 	buildColumn()
-	createWindow({ Id = "Shop", Title = "Cloud Shop", Category = "Shop", Build = buildShop, Tall = true })
 	createWindow({ Id = "Stats", Title = "Stats", Category = "Stats", Build = buildStats, Tall = true })
 	createWindow({ Id = "Home", Title = "My Home", Category = "Home", Build = buildHome, Tall = true })
 	relayoutMenu()
@@ -5755,7 +3566,7 @@ function MenuController.Init()
 	LocalPlayer:GetAttributeChangedSignal(Config.Attr.InMatch):Connect(function()
 		safe("InMatch", onMatchFlagChanged)
 	end)
-	-- Phase 2: Cash / Gems balances (prices turn red / green), the gem roulette policy, the claimed plot
+	-- Phase 2: Cash / Gems balances (prices turn red / green), the claimed plot
 	if type(State.BerriesChanged) == "table" and type(State.BerriesChanged.Connect) == "function" then
 		State.BerriesChanged:Connect(function()
 			safe("berries", refreshHomeLive)
@@ -5769,9 +3580,6 @@ function MenuController.Init()
 			end)
 		end
 	end
-	LocalPlayer:GetAttributeChangedSignal(K.RESTRICTED_ATTR):Connect(function()
-		safe("policy", refreshShopWindow)
-	end)
 	LocalPlayer:GetAttributeChangedSignal(Config.Attr.SpotIndex):Connect(function()
 		safe("SpotIndex", onSpotChanged)
 	end)
@@ -5787,10 +3595,10 @@ function MenuController.Init()
 
 	safe("connect index", connectIndex)
 	-- the Pets window (PetsController) opened: one window at a time; its tile glows while it is up. Store W1 (spec 8):
-	-- the Store, the Gifts window and the Sky Trove close the menu's windows the same way, and the Pets window too
+	-- the Shop (lobby-shop Task 22: "Shop"; "Store" from an old build), the Gifts window and the Sky Trove close the
+	-- menu's windows the same way, and the Pets window too
 	MenuController.WindowOpened:Connect(function(id)
-		if id == "Pets" or id == "Store" or id == "Daily" or id == "Trove" then
-			closeOdds()
+		if id == "Pets" or id == "Shop" or id == "Store" or id == "Daily" or id == "Trove" then
 			if openId then
 				closeWindow(openId, true)
 			end

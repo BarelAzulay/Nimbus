@@ -629,6 +629,23 @@ local function windowOf(name)
 	return menu and menu:FindFirstChild(name)
 end
 
+-- lobby-shop Task 22: the Shop (Eggs + Gems + ...) is ShopController's NimbusShop.ShopWindow, not a menu window
+local function shopWindow()
+	local shop = gui():FindFirstChild("NimbusShop")
+	return shop and shop:FindFirstChild("ShopWindow")
+end
+
+local function shopShown()
+	local win = shopWindow()
+	return win ~= nil and isShown(win)
+end
+
+-- the egg stage (client/UI/EggStage) every spin plays through (lobby-shop Task 20)
+local function eggStage()
+	local ok, mod = pcall(require, Mock.GetPath(ROOTS["client"] .. "/UI/EggStage"))
+	return ok and type(mod) == "table" and mod or nil
+end
+
 local function visibleWindows()
 	local out = {}
 	local menu = gui():FindFirstChild("NimbusMenu")
@@ -1137,13 +1154,13 @@ S.client_menu = guarded("client_menu", function()
 		end
 	end
 
-	-- one window at a time + Esc + toggle
+	-- one window at a time + Esc + toggle (lobby-shop Task 22: the Shop is ShopController's NimbusShop.ShopWindow)
 	clickEntry("Shop")
-	T.eq(table.concat(visibleWindows(), ","), "Window_Shop", "opening the Shop closes the Pets window (one window at a time)")
+	T.check(shopShown() and #visibleWindows() == 0, "opening the Shop closes the Pets window (one window at a time)", "shop " .. tostring(shopShown()) .. ", menu windows " .. table.concat(visibleWindows(), ","))
 	T.check(inv ~= nil and not inv.Visible, "...which is really gone")
 	press("Escape")
 	advance(0.5)
-	T.eq(#visibleWindows(), 0, "Esc closes the open window")
+	T.check(#visibleWindows() == 0 and not shopShown(), "Esc closes the open window", "shop " .. tostring(shopShown()))
 	clickEntry("Stats")
 	T.eq(table.concat(visibleWindows(), ","), "Window_Stats", "the Stats button opens the Stats window")
 	clickEntry("Stats")
@@ -1201,19 +1218,24 @@ S.client_menu = guarded("client_menu", function()
 		T.eq(#visibleWindows(), 0, "...and closes the window")
 	end
 
-	-- Shop: roulettes
-	clickEntry("Shop")
-	local shop = windowOf("Window_Shop")
-	if shop and shop.Visible then
-		T.check(findText("cloud shop", shop) ~= nil, "the Shop window is titled 'Cloud Shop'")
+	-- Shop: the Eggs tab (lobby-shop Task 22: the Cloud Shop left MenuController; the four machine cards and the Secret
+	-- Roulette hero live on ShopController's Page_Eggs, odds on every card, every spin through the egg stage)
+	Menu.Open("Shop", { Tab = "Eggs" })
+	advance(0.5)
+	local SC = M.ShopController
+	local shop = shopWindow()
+	if T.check(shopShown() and SC ~= nil and SC.Tab() == "Eggs", "the Shop opens on its Eggs tab (NimbusShop.ShopWindow, ShopController.Tab() == 'Eggs')", "shown " .. tostring(shopShown()) .. ", tab " .. tostring(SC and SC.Tab())) then
+		local eggs = descendantNamed(shop, "Page_Eggs")
+		T.check(eggs ~= nil and eggs.Visible and findText("shop", shop) ~= nil, "the Shop window is titled 'Shop' and shows Page_Eggs")
 		do
 			local small, measured = KC.smallTexts(15)
 			T.check(#small == 0 and measured > 0, "Shop window: every text on screen is readable (>= 15 px at 1920x1080)", #small .. " of " .. measured .. " too small: " .. table.concat(small, "; ", 1, math.min(#small, 6)))
 		end
-		T.check(findText("☁ 600", shop) ~= nil or findText("600", shop) ~= nil, "...and shows the token balance", allShownText())
+		local balance = descendantNamed(shop, "Balance_Tokens")
+		T.check(balance ~= nil and hasNumber(balance, 600), "...and shows the token balance (Balance_Tokens)", allShownText())
 		local cards = {}
 		for _, r in ipairs(Config.Roulettes) do
-			cards[r.Id] = descendantNamed(shop, "Roulette_" .. r.Id)
+			cards[r.Id] = eggs and descendantNamed(eggs, "ShopCard_" .. r.Id)
 			T.check(cards[r.Id] ~= nil, "a card for the " .. r.DisplayName)
 			if cards[r.Id] then
 				T.check(findText(r.DisplayName:lower(), cards[r.Id]) ~= nil and hasNumber(cards[r.Id], r.Price), r.Id .. ": name and price (" .. r.Price .. ")")
@@ -1229,63 +1251,52 @@ S.client_menu = guarded("client_menu", function()
 		T.check(order, "...in price order from left to right")
 		local cloudSpin = cards.Cloud and descendantNamed(cards.Cloud, "Spin")
 		local celestialSpin = cards.Celestial and descendantNamed(cards.Celestial, "Spin")
+		local celestialPrice = celestialSpin and descendantNamed(celestialSpin, "Price")
 		T.check(cloudSpin and cloudSpin:GetAttribute("Disabled") ~= true and cloudSpin.Active ~= false, "Spin is enabled when the player can pay (600 >= 50)")
-		T.check(celestialSpin and (celestialSpin:GetAttribute("Disabled") == true or celestialSpin.Active == false), "...and disabled when tokens are short (600 < 5000)")
+		T.check(celestialPrice ~= nil and celestialPrice.TextColor3 == Color3.fromRGB(255, 92, 92), "...and shows its price in red when tokens are short (600 < 5000; the server decides, the stage explains)", celestialPrice and tostring(celestialPrice.TextColor3) or "no price")
 		local m0 = #serverCalls("BuyRoulette")
 		if celestialSpin then
 			Mock.Click(celestialSpin)
 			advance(0.3)
 		end
-		T.eq(#serverCalls("BuyRoulette"), m0, "clicking a disabled Spin sends nothing")
+		T.eq(#serverCalls("BuyRoulette"), m0, "clicking a short Spin sends nothing (EggStage.Request refuses with a toast)")
+		advance(0.5)
 		if cloudSpin then
 			Mock.Click(cloudSpin)
 			advance(0.3)
 		end
 		local buy = callsAfter("BuyRoulette", m0)
-		T.check(#buy == 1 and buy[1].args[1] == "Cloud", "clicking Spin fires Remotes.BuyRoulette(rouletteId)", #buy .. " calls")
-		-- odds popup
-		local odds = cards.Sky and descendantNamed(cards.Sky, "Odds")
-		if T.check(odds ~= nil, "each card has an Odds button") then
-			Mock.Click(odds)
-			advance(0.5)
-			local popup = menu:FindFirstChild("OddsPopup")
-			T.check(popup ~= nil and popup.Visible, "the Odds button opens a popup")
-			local list = PetCatalog.GetOdds("Sky")
-			local percentOk, sum, missing = 0, 0, 0
-			for _, o in ipairs(list) do
-				local cell = popup and descendantNamed(popup, "Cell_" .. o.PetId)
-				local label = cell and descendantNamed(cell, "Percent")
-				local shown = label and tonumber((tostring(label.Text):gsub("%%", "")))
-				if shown == nil then
-					missing = missing + 1
-				elseif abs(shown - o.Chance * 100) <= 0.06 then
+		T.check(#buy == 1 and buy[1].args[1] == "Cloud" and buy[1].args[2] == "Tokens" and buy[1].args[3] == 1, "clicking Spin fires Remotes.BuyRoulette(rouletteId, 'Tokens', 1)", #buy .. " calls" .. (buy[1] and (": " .. tostring(buy[1].args[1]) .. ", " .. tostring(buy[1].args[2]) .. ", " .. tostring(buy[1].args[3])) or ""))
+		toClient("RouletteResult", { Ok = false, Reason = "The smoke test answers no" }) -- (ends the pending spin)
+		advance(0.3)
+		-- odds on every card (the Odds popup is gone): one Odds_<Rarity> row per PetCatalog.GetRarityOdds entry
+		local list = PetCatalog.GetRarityOdds("Sky")
+		local rows = cards.Sky and descendantNamed(cards.Sky, "Odds")
+		local percentOk, missing, totals = 0, 0, 0
+		for _, o in ipairs(list) do
+			local row = rows and rows:FindFirstChild("Odds_" .. o.Rarity)
+			local label = row and row:FindFirstChild("Pct")
+			local shown = label and isShown(label) and tonumber((tostring(label.Text):gsub("%%", "")))
+			if not shown then
+				missing = missing + 1
+			else
+				totals = totals + shown
+				if abs(shown - o.Chance * 100) <= 0.06 then
 					percentOk = percentOk + 1
 				end
-				sum = sum + o.Chance * 100
 			end
-			T.check(missing == 0 and percentOk == #list, "...with every possible pet and its chance in percent (PetCatalog.GetOdds)", missing .. " pets missing, " .. percentOk .. " of " .. #list .. " chances right")
-			-- v3 (ARCHITECTURE_V3.md section 11): every pet of the odds list wears its element badge
-			if #list > 0 and petElements(PetCatalog, PetCatalog.Get(list[1].PetId))[1] then
-				local badges = T.tally("...and every pet of the odds list shows its element badge (Config.Elements.Info colour)")
-				for _, o in ipairs(list) do
-					local cell = popup and descendantNamed(popup, "Cell_" .. o.PetId)
-					local element = petElements(PetCatalog, PetCatalog.Get(o.PetId))[1]
-					badges:case(element ~= nil and elementBadge(cell, element) ~= nil, o.PetId .. ": " .. tostring(element) .. (cell and "" or " (no cell)"))
-				end
-				badges:report()
-			end
-			local totals = 0
-			for _, d in ipairs(popup and popup:GetDescendants() or {}) do
-				if d.Name == "Chance" and d:IsA("TextLabel") then
-					totals = totals + (tonumber((tostring(d.Text):match("^([%d%.]+)%%"))) or 0)
-				end
-			end
-			T.check(abs(totals - 100) < 0.6, "...and the rarity totals add up to 100%", fmt(totals, 2))
-			press("Escape")
-			advance(0.5)
 		end
+		T.check(#list > 0 and missing == 0 and percentOk == #list, "each card shows every rarity and its chance in percent (PetCatalog.GetRarityOdds)", missing .. " rows missing, " .. percentOk .. " of " .. #list .. " chances right")
+		local marks = T.tally("...and every rarity row shows its egg and the rarity's name")
+		for _, o in ipairs(list) do
+			local row = rows and rows:FindFirstChild("Odds_" .. o.Rarity)
+			local word = row and row:FindFirstChild("Word")
+			marks:case(row ~= nil and row:FindFirstChild("Egg") ~= nil and word ~= nil and word.Text == o.Rarity, o.Rarity .. (row and "" or " (no row)"))
+		end
+		marks:report()
+		T.check(abs(totals - 100) < 0.6, "...and the rarity totals add up to 100%", fmt(totals, 2))
 		-- HUD cleanup: no Items tab (the obby items are gone)
-		T.check(descendantNamed(shop, "Tab_Items") == nil and descendantNamed(shop, "Tab_Gems") ~= nil, "the Shop tabs are Roulettes and Gems (no Items tab)")
+		T.check(descendantNamed(shop, "Tab_Items") == nil and descendantNamed(shop, "Tab_Eggs") ~= nil and descendantNamed(shop, "Tab_Gems") ~= nil, "the Shop tabs start Eggs and Gems (no Items tab)")
 	end
 	press("Escape")
 	advance(0.5)
@@ -1293,25 +1304,26 @@ S.client_menu = guarded("client_menu", function()
 	-- OpenPanel remote
 	toClient("OpenPanel", "Shop", { Tab = "Roulette", RouletteId = "Storm" })
 	advance(0.6)
-	T.eq(table.concat(visibleWindows(), ","), "Window_Shop", "OpenPanel('Shop', { Tab = 'Roulette' }) opens the Shop")
-	local page = windowOf("Window_Shop") and descendantNamed(windowOf("Window_Shop"), "Page_Roulettes")
-	T.check(page ~= nil and page.Visible, "...on the Roulettes tab")
+	T.check(shopShown() and #visibleWindows() == 0, "OpenPanel('Shop', { Tab = 'Roulette' }) opens the Shop", "shown " .. tostring(shopShown()))
+	local page = shopWindow() and descendantNamed(shopWindow(), "Page_Eggs")
+	local storm = page and descendantNamed(page, "ShopCard_Storm")
+	T.check(page ~= nil and page.Visible and SC and SC.Tab() == "Eggs" and storm ~= nil and storm:GetAttribute("Focused") == true, "...on the Eggs tab, the Storm card focused")
 	toClient("OpenPanel", "Shop", { Tab = "Gems" })
 	advance(0.6)
-	local gemsPage = windowOf("Window_Shop") and descendantNamed(windowOf("Window_Shop"), "Page_Gems")
-	T.check(gemsPage ~= nil and gemsPage.Visible, "OpenPanel('Shop', { Tab = 'Gems' }) shows the Gems tab")
+	local gemsPage = shopWindow() and descendantNamed(shopWindow(), "Page_Gems")
+	T.check(gemsPage ~= nil and gemsPage.Visible and SC and SC.Tab() == "Gems", "OpenPanel('Shop', { Tab = 'Gems' }) shows the Gems tab")
 	press("Escape")
 	advance(0.5)
 	toClient("OpenPanel", "NoSuchPanel", nil)
 	toClient("OpenPanel", 5, 5)
 	advance(0.3)
-	T.eq(#visibleWindows(), 0, "OpenPanel with an unknown panel id is ignored")
+	T.check(#visibleWindows() == 0 and not shopShown(), "OpenPanel with an unknown panel id is ignored")
 	-- during a match no shop window
 	LocalPlayer:SetAttribute("InMatch", true)
 	advance(0.3)
 	toClient("OpenPanel", "Shop", { Tab = "Roulettes" })
 	advance(0.6)
-	T.eq(#visibleWindows(), 0, "OpenPanel('Shop') is ignored during a match")
+	T.check(#visibleWindows() == 0 and not shopShown(), "OpenPanel('Shop') is ignored during a match")
 	LocalPlayer:SetAttribute("InMatch", false)
 	clickEntry("Stats")
 	T.eq(#visibleWindows(), 1, "a window is open...")
@@ -1321,7 +1333,8 @@ S.client_menu = guarded("client_menu", function()
 	LocalPlayer:SetAttribute("InMatch", false)
 	advance(0.3)
 
-	-- roulette result: spin strip, reveal card
+	-- roulette result: the egg stage (lobby-shop Task 20/22: NimbusHatch, recycled strip cells, SPIN AGAIN + DONE)
+	local ES = eggStage()
 	local rid = "Cloud"
 	local possible = PetCatalog.PossiblePets(rid)
 	local strip = {}
@@ -1330,7 +1343,6 @@ S.client_menu = guarded("client_menu", function()
 	end
 	local winner = possible[1].Id
 	strip[34] = winner
-	local guiBefore = countGui()
 	toClient("RouletteResult", { Ok = true, RouletteId = rid, PetId = winner, IsNew = true, Count = 1, Tokens = 550, Strip = strip })
 	advance(0.8)
 	local peakViewports = 0
@@ -1348,23 +1360,22 @@ S.client_menu = guarded("client_menu", function()
 	T.check(findText(winnerDef.Name:lower()) ~= nil, "the roulette reveal names the won pet", allShownText())
 	T.check(findText("new!") ~= nil or findText("new") ~= nil, "...and flags it NEW!", allShownText())
 	T.check(peakViewports <= 40, "the spin strip never builds all 40 viewports at once", "peak " .. peakViewports .. " viewports")
-	local revealEquip
+	-- spec 11: "Put in team" left the reveal (the pitch shows SPIN AGAIN and DONE); DONE ends the stage, sends nothing
+	local hatch = gui():FindFirstChild("NimbusHatch")
+	local done = hatch and descendantNamed(hatch, "Done")
+	local putInTeam
 	for _, d in ipairs(gui():GetDescendants()) do
 		if d:IsA("TextButton") and d.Text == "Put in team" and d.Name == "Equip" and isShown(d) then
-			revealEquip = d
+			putInTeam = d
 		end
 	end
-	if T.check(revealEquip ~= nil, "the reveal card offers a Put in team button") then
+	if T.check(done ~= nil and isShown(done) and putInTeam == nil, "the reveal card offers DONE and no Put in team button (spec 11)", "DONE " .. tostring(done ~= nil and isShown(done)) .. ", Put in team " .. tostring(putInTeam ~= nil)) then
 		local e0 = #serverCalls("EquipPet")
-		Mock.Click(revealEquip)
-		advance(0.3)
+		Mock.Click(done)
+		advance(0.6)
 		local calls = callsAfter("EquipPet", e0)
-		T.check(#calls == 1 and calls[1].args[1] == winner, "...which fires Remotes.EquipPet(won pet)", #calls .. " calls")
+		T.check(#calls == 0 and ES ~= nil and not ES.IsShowing(), "...DONE closes the stage and sends no EquipPet", #calls .. " calls, showing " .. tostring(ES and ES.IsShowing()))
 	end
-	press("Escape")
-	advance(0.6)
-	press("Escape")
-	advance(0.6)
 	-- failures and junk never raise
 	toClient("RouletteResult", { Ok = false, Reason = "Not enough cloud tokens", RouletteId = rid, Tokens = 10 })
 	toClient("RouletteResult", { Ok = true, RouletteId = rid, PetId = winner, IsNew = false, Count = 3, Tokens = 5 })
@@ -1375,6 +1386,10 @@ S.client_menu = guarded("client_menu", function()
 	advance(0.6)
 	press("Escape")
 	advance(0.6)
+	if ES and ES.IsShowing() then
+		ES.Close()
+		advance(0.6)
+	end
 	T.check(true, "failed, short and malformed RouletteResults do not raise")
 
 	-- rebuilds from State without leaks

@@ -9,7 +9,8 @@
 --                      MouseBehavior untouched; a ProfileSync carrying Settings.MouseLock = true turns it on (rejoin data); LockCenter only while enabled with no hold, ONE
 --                      binding "NimbusMouseLock" at RenderPriority.Camera + 1, nothing written per frame while unlocked;
 --                      Hold / Release are counted per reason, releasing an unknown reason is harmless; every NeonKit.Dock
---                      window (menu Pets / Index, Care, Fusion, Arena, Dungeon, Obby, Settings) frees the cursor while open
+--                      window (menu Pets / Index, Care, Fusion, Arena, Dungeon, Obby, Settings), the Shop and the egg stage
+--                      (lobby-shop Task 22: their own holds) free the cursor while open
 --                      and closing it locks again; the main menu (Open .. PLAY), the loading screen, the result card, the
 --                      tutorial card and a focused TextBox hold; the Settings window toggles it live (the lock engages when
 --                      the window closes); the L key toggles the setting (not while typing); a touch-only device is a no-op
@@ -282,6 +283,14 @@ local function clientScenarios()
 				end, inGui("NimbusDungeon", "Window_Dungeon") },
 				{ "obby", function() H.mod("ObbyController").Open() end, inGui("NimbusObby", "Window_Obby") },
 				{ "settings", function() H.mod("MainMenuController").OpenSettings() end, function() return (H.mod("MainMenuController").Window()) end },
+				-- lobby-shop Task 22: the Shop (ShopController's NimbusShop, MouseLock.WatchVisible("Shop")) and the egg stage
+				-- (EggStage's NimbusHatch > Stage, MouseLock's watchOverlays) free the cursor too: { row, open, holder, hold key prefix }
+				{ "shop", function() H.mod("MenuController").Open("Shop", { Tab = "Eggs" }) end, inGui("NimbusShop", "ShopWindow"), "Shop" },
+				{ "hatch", function()
+					local PetCatalog = require(Mock.GetPath(ROOTS["shared"] .. "/PetCatalog"))
+					local pet = PetCatalog.PossiblePets("Cloud")[1]
+					KC.toClient("RouletteResult", { Ok = true, RouletteId = "Cloud", PetId = pet and pet.Id, IsNew = false, Count = 2 })
+				end, inGui("NimbusHatch", "Stage"), "auto:NimbusHatch" },
 			}
 			for _, w in ipairs(WINDOWS) do
 				closeAll()
@@ -292,12 +301,13 @@ local function clientScenarios()
 				if T.check(okOpen and holder ~= nil and holder.Visible, "dgfix mouse " .. w[1] .. ": the window opens", tostring(errOpen)) then
 					T.check(not ML.IsLocked() and UIS.MouseBehavior == DEF and Mock.RenderSteps[ML.BIND] == nil, "dgfix mouse " .. w[1] .. ": the open docked window frees the cursor", H.holdText(ML))
 					local found = false
+					local prefix = w[4] or ("Dock:" .. holder.Name)
 					for key in pairs(ML.Holds()) do
-						if key:find("Dock:" .. holder.Name, 1, true) == 1 then
+						if key:find(prefix, 1, true) == 1 then
 							found = true
 						end
 					end
-					T.check(found, "dgfix mouse " .. w[1] .. ": the hold is the window's NeonKit.Dock hold", H.holdText(ML))
+					T.check(found, "dgfix mouse " .. w[1] .. ": the hold is the window's " .. (w[4] and ("own hold (" .. w[4] .. ")") or "NeonKit.Dock hold"), H.holdText(ML))
 				end
 				closeAll()
 				H.advance(0.6)

@@ -13,8 +13,8 @@
 --                        toast; a provisional (outage) load pays nothing until the recovery, which pays once and saves
 --                        once; two servers refunding one save pay once (the twin merge); ProfileSync has no Items key
 --   client_huditems_gone (client, 1920x1080) no NimbusHotbar, State has no Items / ItemCount (a stray Items key in a
---                        sync is dropped), the Pets window tabs are Pets + Team, the Shop tabs are Roulettes + Gems, an
---                        OpenPanel with Tab "Items" lands on Roulettes / Pets, the HP card sits above the hotbar's old
+--                        sync is dropped), the Pets window tabs are Pets + Team, the Shop tabs start Eggs + Gems (lobby-shop
+--                        Task 22: NimbusShop), an OpenPanel with Tab "Items" lands on Eggs / Pets, the HP card sits above the hotbar's old
 --                        footprint, keys 1-4 do nothing
 -- Deterministic: mock clock only. Plain Lua 5.1 syntax only.
 
@@ -350,13 +350,17 @@ local function clientScenarios()
 			"huditems client: the Pets window has no tabs at all")
 		MC.Open("Shop", {})
 		KC.advance(0.5)
-		local shop = H.menu() and H.menu():FindFirstChild("Window_Shop")
-		T.check(shop ~= nil and H.find(shop, "Tab_Items") == nil and H.find(shop, "Page_Items") == nil and H.find(shop, "Tab_Roulettes") ~= nil and H.find(shop, "Tab_Gems") ~= nil,
-			"huditems client: the Shop tabs are Roulettes + Gems")
+		-- lobby-shop Task 22: the Shop is ShopController's NimbusShop.ShopWindow (Eggs first; the Cloud Shop left the menu)
+		local shopGui = H.pg():FindFirstChild("NimbusShop")
+		local shop = shopGui and shopGui:FindFirstChild("ShopWindow")
+		T.check(shop ~= nil and H.find(shop, "Tab_Items") == nil and H.find(shop, "Page_Items") == nil and H.find(shop, "Tab_Eggs") ~= nil and H.find(shop, "Tab_Gems") ~= nil,
+			"huditems client: the Shop tabs start Eggs + Gems (no Items tab)")
+		pcall(MC.Close)
+		KC.advance(0.5)
 		KC.toClient("OpenPanel", "Shop", { Tab = "Items" })
 		KC.advance(0.5)
-		local pr = H.find(shop, "Page_Roulettes")
-		T.check(pr ~= nil and pr.Visible and KC.isShown(shop), "huditems client: OpenPanel('Shop', { Tab = 'Items' }) lands on Roulettes")
+		local pr = H.find(shop, "Page_Eggs")
+		T.check(pr ~= nil and pr.Visible and KC.isShown(shop), "huditems client: OpenPanel('Shop', { Tab = 'Items' }) lands on Eggs")
 		KC.toClient("OpenPanel", "Inventory", { Tab = "Items" })
 		KC.advance(0.5)
 		T.check(KC.isShown(inv), "huditems client: OpenPanel('Inventory', { Tab = 'Items' }) lands on the Pets window")

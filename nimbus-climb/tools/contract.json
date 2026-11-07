@@ -508,6 +508,16 @@
         "PotionState"
       ]
     },
+    "client/UI/ShopEggs": {
+      "optional": true,
+      "functions": [
+        "Build",
+        "Layout",
+        "Refresh",
+        "Focus",
+        "CardState"
+      ]
+    },
     "client/UI/PetPicker": {
       "optional": true,
       "functions": [

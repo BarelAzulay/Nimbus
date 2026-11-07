@@ -17,7 +17,7 @@
 --   client_p2visual (client) HomeFx shows the sign of one of the local player's LOCKED pads only up close (6 studs; the
 --                   next affordable unlocked pads keep their signs from afar), roaming Garden pets at 0.85 like Training pets; the Fusion
 --                   window's locked card is opaque with a teaser line, a Mix pick mark sits in the tile's top-left
---                   corner clear of the pet; the Shop's Secret roulette hint is the short one-liner
+--                   corner clear of the pet; the Shop's Secret Roulette hero hint (Eggs tab) is the short one-liner
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -694,16 +694,15 @@ local function clientScenarios()
 			LocalPlayer:SetAttribute("Gems", 99999)
 			toClient("ProfileSync", snapshot(1, 1))
 			advance(0.3)
-			MC.Open("Shop", { Tab = "Gems" })
+			-- lobby-shop Task 22: the Secret Roulette is the Eggs tab's hero (NimbusShop ShopCard_Secret), always shown (a
+			-- restricted account sees its Lock line instead of the pity chip); its hint is one short line
+			MC.Open("Shop", { Tab = "Eggs" })
 			advance(0.8)
-			local card = pg() and find(pg(), "GemRoulette_Secret")
+			local shopGui = pg() and pg():FindFirstChild("NimbusShop")
+			local card = shopGui and find(shopGui, "ShopCard_Secret")
 			local hint = card and find(card, "Hint", "TextLabel")
-			if card and card.Visible and hint then
-				T.check(hint.Text == "" or (#hint.Text <= 32 and hint.Text:find("Mythic or Secret", 1, true) ~= nil) or hint.Text:find("closed", 1, true) ~= nil or hint.Text:find("Need", 1, true) ~= nil,
-					"Shop Gems tab: the Secret roulette's hint is the short one-liner (no orphan word on a second line)", hint.Text)
-			else
-				T.info("Shop Gems tab: the Secret roulette card is not shown here (policy / config), hint check skipped")
-			end
+			T.check(card ~= nil and card.Visible and hint ~= nil and hint.Text ~= "" and #hint.Text <= 32 and hint.TextWrapped ~= true,
+				"Shop Eggs tab: the Secret Roulette hero's hint is the short one-liner (no orphan word on a second line)", hint and hint.Text or "no hint")
 			if type(MC.Close) == "function" then
 				MC.Close()
 			end

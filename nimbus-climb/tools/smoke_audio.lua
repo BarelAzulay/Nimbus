@@ -1325,7 +1325,8 @@ S.client_audio_sites = guarded("client_audio_sites", function()
 			T.check(#playsOf(log, "Reward", f) == 1 and #playsOf(log, "TutorialStep", f) == 0, "audio sites: the tutorial's finale plays Reward")
 			KC.advance(8)
 		end
-		-- the roulette: SpinStart, a SpinTick per cell, SpinLand, the reveal by rarity
+		-- the roulette (lobby-shop Task 22: every spin plays through EggStage): SpinStart after the intro, a SpinTick per
+		-- cell, SpinLand, the egg's Shatter, then the reveal by rarity
 		local PC = moduleAt(ROOTS.shared .. "/PetCatalog")
 		local possible = PC and type(PC.PossiblePets) == "function" and PC.PossiblePets("Cloud") or {}
 		if T.check(#possible > 0, "audio sites: the Cloud roulette's pets") then
@@ -1338,7 +1339,7 @@ S.client_audio_sites = guarded("client_audio_sites", function()
 			freshGaps(SF)
 			f = #log
 			KC.toClient("RouletteResult", { Ok = true, RouletteId = "Cloud", PetId = winner.Id, IsNew = true, Count = 1, Tokens = 550, Strip = strip })
-			KC.advance(0.2)
+			KC.advance(1.0) -- (EggStage plays SpinStart when its 0.35 s intro ends)
 			local started = #playsOf(log, "SpinStart", f)
 			KC.advance(10)
 			local want = ({ Common = "RevealCommon", Uncommon = "RevealCommon", Rare = "RevealRare", Epic = "RevealRare", Legendary = "RevealLegendary",
@@ -1347,6 +1348,7 @@ S.client_audio_sites = guarded("client_audio_sites", function()
 			T.check(started == 1, "audio sites: a roulette spin plays SpinStart once", tostring(started))
 			T.check(ticks >= 8, "audio sites: the strip ticks as cells pass the pointer (SpinTick)", ticks .. " ticks")
 			T.eq(#playsOf(log, "SpinLand", f), 1, "audio sites: the strip's landing plays SpinLand once")
+			T.eq(#playsOf(log, "Shatter", f), 1, "audio sites: the egg's burst plays Shatter once (EggStage)")
 			T.check(#playsOf(log, want or "?", f) == 1 and #playsOf(log, "^Reveal", f, true) == 1,
 				"audio sites: the reveal card plays " .. tostring(want) .. " for a " .. tostring(winner.Rarity) .. " pet")
 			pressKey("Escape")

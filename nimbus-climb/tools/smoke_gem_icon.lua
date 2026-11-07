@@ -8,7 +8,8 @@
 --     Pile 1 / 2 / 3 / 4 / 6 -> that many GemIcon children at the pitch's PILE offsets; Amount(1250).Value = "1,250",
 --       SetAmount re-measures; NeonKit.Icon("Gems") = a TextLabel "Icon" with no text hosting a GemIcon
 --     the HUD Gems coin holds a GemIcon at coin size, its badge is the navy panel fill with a cyan UIStroke ring
---     census: the HUD, the Shop (Gems tab; the Store's Currency tab before lobby-shop Task 21), Daily, Arena (Raid), the
+--     census: the HUD, the Shop (Gems tab; the Store's Currency tab before lobby-shop Task 21; the Eggs tab and the egg
+--       stage's gem reveal since Task 22), Daily, Arena (Raid), the
 --       Dungeon window, Pets, Index, the Care feed list,
 --       Train, the pet picker, the Trove panel and Fusion (Upgrade and Mix): no shown TextLabel / TextButton text holds the
 --       glyph; and no client source (MenuController's old shop aside: Tasks 16-18 replace it) spells the glyph or
@@ -353,6 +354,8 @@ S.client_gem_icon = guarded("client_gem_icon", function()
 	for i, p in ipairs(Config.Gems.Products) do
 		savedProducts[i] = p.Id
 	end
+	local restrictedBefore = LocalPlayer:GetAttribute("PaidRandomItemsRestricted")
+	local settledBefore = LocalPlayer:GetAttribute(Config.Attr.GemsSettled or "GemsSettled")
 	local census = {
 		{ "the HUD", function() end },
 		{ "the Shop (Gems tab)", function()
@@ -361,6 +364,19 @@ S.client_gem_icon = guarded("client_gem_icon", function()
 				p.Id = 7100 + i
 			end
 			G.ctrl("ShopController").Open({ Tab = "Gems" })
+		end },
+		{ "the Shop (Eggs tab)", function()
+			-- (lobby-shop Task 22: the Secret Roulette hero and every machine card's Gems button draw the GemIcon)
+			LocalPlayer:SetAttribute("PaidRandomItemsRestricted", false)
+			LocalPlayer:SetAttribute(Config.Attr.GemsSettled or "GemsSettled", true)
+			G.ctrl("ShopController").Open({ Tab = "Eggs" })
+		end },
+		{ "the egg stage (a gem spin's reveal)", function()
+			-- (lobby-shop Task 22: every spin plays through EggStage; a gem spin's SPIN AGAIN carries the gem price)
+			local PetCatalog = G.req("shared/PetCatalog")
+			local pet = PetCatalog.ListByRarity("Mythic")[1]
+			KC.toClient("RouletteResult", { Ok = true, RouletteId = "Secret", Currency = "Gems", Spins = 1, PetId = pet and pet.Id, IsNew = false, Count = 2 })
+			G.advance(7)
 		end },
 		{ "Daily", function()
 			KC.toClient("DailyState", G.dailyPayload())
@@ -425,6 +441,8 @@ S.client_gem_icon = guarded("client_gem_icon", function()
 	for i, p in ipairs(Config.Gems.Products) do
 		p.Id = savedProducts[i] or 0
 	end
+	LocalPlayer:SetAttribute("PaidRandomItemsRestricted", restrictedBefore)
+	LocalPlayer:SetAttribute(Config.Attr.GemsSettled or "GemsSettled", settledBefore)
 	-- the client sources (MenuController's old shop aside) never spell the glyph or the theme's gem glyph
 	local spelled = {}
 	local clientRoot = Mock.GetPath(ROOTS["client"])

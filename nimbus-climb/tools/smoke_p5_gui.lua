@@ -5,8 +5,8 @@
 --   client_p5neon       Card stroke + Glow, Tile fonts + stroke, SideRect == the prototype at 4 sizes
 --   client_p5stamina    150 stamina, runs ~10.7 s, refills <= 3.5 s, 4 dashes, 4 ticks
 --   client_p5hud_pills  the HUD pills (Cash / Gems / Tokens / Berries) in the Neon style
---   client_p5gui_cover  for every scene of COVER (menu:*, feed, garden, train, ring, arena:*, dungeon, obby, settings) at
---                       1920x1080, 1280x720, 390x844 and 844x390: union <= 60% of the screen, landscape left edge
+--   client_p5gui_cover  for every scene of COVER (menu:*, shop, feed, garden, train, ring, arena:*, dungeon, obby,
+--                       settings) at 1920x1080, 1280x720, 390x844 and 844x390: union <= 60% of the screen, landscape left edge
 --                       >= 0.5 W, portrait top >= 0.44 H, no `Backdrop`, smallest text >= the floor (the coverage.py port)
 -- Wave 2 (neonkit): the scenarios are live; the HUD and the reference docked panel are the kit's own cover scenes.
 -- Plain Lua 5.1 syntax only.
@@ -271,7 +271,8 @@ COVER[#COVER + 1] = {
 		return g and g:FindFirstChild("LossCard", true)
 	end,
 }
-for _, spec in ipairs({ { "menu:Home", "Home", "Home" }, { "menu:Shop", "Shop", "Shop" }, { "menu:Stats", "Stats", "Stats" } }) do
+-- lobby-shop Task 22: the Shop left the menu (it is ShopController's NimbusShop, the "shop" scene below)
+for _, spec in ipairs({ { "menu:Home", "Home", "Home" }, { "menu:Stats", "Stats", "Stats" } }) do
 	COVER[#COVER + 1] = {
 		Scene = spec[1],
 		Open = function()
@@ -284,6 +285,24 @@ for _, spec in ipairs({ { "menu:Home", "Home", "Home" }, { "menu:Shop", "Shop", 
 		end,
 	}
 end
+-- lobby-shop Tasks 21/22: the Shop (Eggs tab first) is one big centred window (ShopController's NimbusShop.ShopWindow,
+-- NeonKit.BigRect with spec 16.3's RECT H0 390 / W0 820 .. H1 1080 / W1 1660, MARGIN 12) like the Pets window and the
+-- Training Place: it sits in the middle and may cover up to 88% (measured 70.9% at 1920x1080, 74.1% at 1280x720, 84.9%
+-- at 844x390 and 86.3% at 390x844, where the BigRect fills the phone's width less the 12 px margins)
+COVER[#COVER + 1] = {
+	Scene = "shop",
+	MaxCover = 88,
+	Centered = true,
+	Open = function()
+		CUI.profile()
+		pcall(CUI.menu().Open, "Shop", { Tab = "Eggs" })
+	end,
+	Close = CUI.closeAll,
+	Window = function()
+		local g = NK.pg():FindFirstChild("NimbusShop")
+		return g and g:FindFirstChild("ShopWindow")
+	end,
+}
 for _, spec in ipairs({ { "feed", "Feed" }, { "garden", "Garden" } }) do
 	COVER[#COVER + 1] = {
 		Scene = spec[1],

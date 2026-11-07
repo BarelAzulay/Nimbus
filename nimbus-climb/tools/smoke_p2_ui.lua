@@ -28,8 +28,9 @@
 --                       Upgrade / Collect / Go home / a confirmed Prestige send HomeAction, locked stations show why;
 --                       Pets: per-copy slots with tier / hybrid chips and levels, the Feed picker (Feed / Cook ->
 --                       PetCare), Place in Garden / Leave Garden (HomeAction GardenSet), Train in Gym (PetCare GymSet);
---                       Shop Gems tab: the Secret roulette with its odds, a gem spin sends BuyRoulette(id, "Gems"), the
---                       paid-random-items policy hides gem roulettes; the Index Fusions tab lists the fused copies and
+--                       the Shop's Eggs tab (lobby-shop Task 22, NimbusShop): the Secret Roulette hero (ShopCard_Secret)
+--                       with its odds, a gem spin sends BuyRoulette(id, "Gems"), every machine card has a Gems button,
+--                       the paid-random-items policy locks the gem buttons; the Index Fusions tab lists the fused copies and
 --                       is not a reward group; every text of these windows is >= 18 design px; no script errors
 --   client_p2ui_mobile  (phone 390x844) the same windows keep every text >= 14 px on screen
 -- Plain Lua 5.1 syntax only.
@@ -939,17 +940,22 @@ local function clientScenarios()
 		local small = smallTexts(inv, 18)
 		T.check(#small == 0, "p2ui pets: every text of the Pets window is >= 18 design px", table.concat(small, ", "))
 
-		-- Shop Gems tab
+		-- Shop: the gem spins (lobby-shop Task 22: the Secret Roulette is the Eggs tab's hero ShopCard_Secret and every machine
+		-- card has its own Gems button, in ShopController's NimbusShop; the Gems tab sells gem packs now)
 		LocalPlayer:SetAttribute("PaidRandomItemsRestricted", false)
-		MC.Open("Shop", { Tab = "Gems" })
+		local settledBefore = LocalPlayer:GetAttribute(Config.Attr.GemsSettled or "GemsSettled")
+		LocalPlayer:SetAttribute(Config.Attr.GemsSettled or "GemsSettled", true)
+		MC.Open("Shop", { Tab = "Eggs" })
 		advance(0.6)
-		local shop = menu:FindFirstChild("Window_Shop")
-		local page = find(shop, "Page_Gems")
-		local secret = page and find(page, "GemRoulette_Secret")
-		T.check(page and page.Visible and secret and secret.Visible, "p2ui shop: OpenPanel('Shop', {Tab = 'Gems'}) shows the Gems tab with the Secret roulette")
-		local chances = secret and find(secret, "Chances")
-		local mythic = chances and find(chances, "Chance_Mythic")
-		local secretChance = chances and find(chances, "Chance_Secret")
+		local shopGui = pg():FindFirstChild("NimbusShop")
+		local shop = shopGui and shopGui:FindFirstChild("ShopWindow")
+		local page = shop and find(shop, "Page_Eggs")
+		local secret = page and find(page, "ShopCard_Secret")
+		T.check(page and page.Visible and secret and shown(secret), "p2ui shop: OpenPanel('Shop', {Tab = 'Eggs'}) shows the Eggs tab with the Secret Roulette hero (ShopCard_Secret)")
+		local mythic = secret and find(secret, "Odds_Mythic")
+		local secretChance = secret and find(secret, "Odds_Secret")
+		mythic = mythic and find(mythic, "Pct")
+		secretChance = secretChance and find(secretChance, "Pct")
 		-- lobby-shop Task 16 (spec 16.1): the odds come from Config.Gems.SecretRoulette (Mythic 60 / Secret 40; was 85 / 15)
 		local srOdds = Config.Gems.SecretRoulette.Odds
 		local srTotal = (srOdds.Mythic or 0) + (srOdds.Secret or 0)
@@ -958,29 +964,36 @@ local function clientScenarios()
 		T.check(mythic and secretChance and mythic.Text:find(wantM, 1, true) and secretChance.Text:find(wantS, 1, true),
 			"p2ui shop: the Secret roulette shows its odds (Mythic " .. wantM .. ", Secret " .. wantS .. ")", mythic and secretChance and (mythic.Text .. " / " .. secretChance.Text) or "no chance labels")
 		mark = #Mock.RemoteLog
-		Mock.Click(find(secret, "Spin"))
+		local secretSpin = secret and find(secret, "Spin")
+		if secretSpin then
+			Mock.Click(secretSpin)
+		end
 		advance(0.3)
 		local br = calls("BuyRoulette", mark)
-		T.check(#br == 1 and br[1].args[1] == "Secret" and br[1].args[2] == "Gems", "p2ui shop: a gem spin sends BuyRoulette('Secret', 'Gems')")
+		T.check(#br == 1 and br[1].args[1] == "Secret" and br[1].args[2] == "Gems", "p2ui shop: a gem spin sends BuyRoulette('Secret', 'Gems')", #br .. " calls")
 		toClient("RouletteResult", { Ok = false, Reason = "test" })
 		advance(0.3)
-		local cloudGem = find(page, "GemRoulette_Cloud")
-		T.check(cloudGem ~= nil, "p2ui shop: token roulettes with a gem price are offered for Gems too")
+		local cloudCard = page and find(page, "ShopCard_Cloud")
+		local cloudGem = cloudCard and find(cloudCard, "SpinGems")
+		T.check(cloudGem ~= nil and shown(cloudGem) and not disabled(cloudGem), "p2ui shop: token roulettes with a gem price are offered for Gems too (the card's Gems button)")
 		LocalPlayer:SetAttribute("PaidRandomItemsRestricted", true)
 		advance(0.3)
-		local notice = find(page, "GemNotice")
-		T.check(not secret.Visible and notice and notice.Visible, "p2ui shop: where paid random items are restricted the gem roulettes hide behind a notice")
+		local lock = secret and find(secret, "Lock")
+		local word = cloudGem and find(cloudGem, "Word")
+		T.check(secretSpin and disabled(secretSpin) and disabled(cloudGem) and word and word.Text == "Locked" and lock and shown(lock),
+			"p2ui shop: where paid random items are restricted the gem spins lock (Locked, disabled) and the hero says why", (word and word.Text or "no word") .. " / " .. (lock and lock.Text or "no lock"))
 		LocalPlayer:SetAttribute("PaidRandomItemsRestricted", false)
 		advance(0.2)
 		small = smallTexts(page, 18)
-		T.check(#small == 0, "p2ui shop: every text of the Gems tab is >= 18 design px", table.concat(small, ", "))
+		T.check(#small == 0, "p2ui shop: every text of the Eggs tab is >= 18 design px", table.concat(small, ", "))
 		MC.Close()
 		advance(0.3)
 		MC.Open("Shop", { RouletteId = "Secret" })
 		advance(0.5)
-		T.check(page.Visible, "p2ui shop: OpenPanel('Shop', {RouletteId = 'Secret'}) (the Storm Altar) opens the Gems tab")
+		T.check(page and page.Visible and secret and secret:GetAttribute("Focused") == true, "p2ui shop: OpenPanel('Shop', {RouletteId = 'Secret'}) (the Storm Altar) opens the Eggs tab on the Secret hero")
 		MC.Close()
 		advance(0.3)
+		LocalPlayer:SetAttribute(Config.Attr.GemsSettled or "GemsSettled", settledBefore)
 
 		-- Index Fusions tab
 		if T.check(IC ~= nil and type(IC.Open) == "function", "p2ui index: IndexController loads") then
@@ -1065,9 +1078,13 @@ local function clientScenarios()
 			advance(0.3)
 		end
 		LocalPlayer:SetAttribute("PaidRandomItemsRestricted", false)
-		MC.Open("Shop", { Tab = "Gems" })
+		MC.Open("Shop", { Tab = "Eggs" }) -- lobby-shop Task 22: the gem spins live on the Shop's Eggs tab (NimbusShop)
 		advance(0.8)
-		check("the Gems tab", menu:FindFirstChild("Window_Shop"))
+		local shopGui = pg():FindFirstChild("NimbusShop")
+		local eggs = shopGui and find(shopGui, "Page_Eggs")
+		if T.check(eggs ~= nil and shown(eggs), "p2ui phone: the Shop opens on its Eggs tab") then
+			check("the Eggs tab", eggs)
+		end
 		MC.Close()
 		advance(0.3)
 		if IC and IC.Open then

@@ -754,7 +754,7 @@ local function clientScenarios()
 				for _, tabName in ipairs(Config.Store.Tabs) do
 					local tb = win:FindFirstChild("Tab_" .. tabName, true)
 					local page = win:FindFirstChild("Page_" .. tabName, true)
-					-- (Eggs hops to the Cloud Shop; the Gems page holds tiles, checked by client_shop_portrait)
+					-- (the Eggs and Gems pages hold their own cards / tiles, checked by client_shop_portrait)
 					if tabName ~= "Eggs" and tabName ~= "Gems" and tb and H.shownIn(tb) and page then
 						Mock.Click(tb)
 						KC.advance(0.3)

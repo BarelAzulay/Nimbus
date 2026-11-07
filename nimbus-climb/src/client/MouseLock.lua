@@ -21,8 +21,9 @@
 -- Automatic holds: every NeonKit.Dock window while shown, the main menu (MainMenuController), the loading screen
 -- (PlayerGui.NimbusLoading while it exists), NotifyController's result card (NimbusNotify attribute ResultCardLeft > 0),
 -- the tutorial card (NimbusTutorial.TutorialPanel + its Main card shown; the folded bubble does not hold), a focused
--- TextBox (chat) and (bug batch 2 #21) the overlays that are not docked windows: MenuController's RouletteStage and
--- OddsPopup (NimbusMenu) and the NPC dialog card (NimbusNpcDialog.NpcDialog). BattleController holds for its result
+-- TextBox (chat) and (bug batch 2 #21) the overlays that are not docked windows: the egg stage (lobby-shop Task 22:
+-- NimbusHatch.Stage, client/UI/EggStage) and the NPC dialog card (NimbusNpcDialog.NpcDialog); the Shop window holds
+-- through ShopController's WatchVisible("Shop", ShopWindow). BattleController holds for its result
 -- card / LEAVE confirm itself (pcall'd require).
 -- Plain Lua 5.1-compatible syntax only; task.* only.
 
@@ -402,8 +403,8 @@ local function watchTutorial(gui)
 end
 
 -- overlays that are not NeonKit.Dock windows (bug batch 2 #21, the lock is on by default now): one hold under
--- "auto:<gui name>" while any of the named DIRECT children of the gui is Visible (they come and go: MenuController
--- builds the roulette stage / odds popup per show and destroys them after)
+-- "auto:<gui name>" while any of the named DIRECT children of the gui is Visible (they come and go: EggStage builds
+-- NimbusHatch per show and destroys it after)
 local function watchOverlays(names)
 	local wanted = {}
 	for _, name in ipairs(names) do
@@ -449,8 +450,8 @@ local WATCHERS = {
 	NimbusLoading = watchLoading,
 	NimbusNotify = watchNotify,
 	NimbusTutorial = watchTutorial,
-	-- MenuController's full-screen roulette stage (the reveal's buttons) and the odds popup (inside NimbusMenu, not docked)
-	NimbusMenu = watchOverlays({ "RouletteStage", "OddsPopup" }),
+	-- the egg stage (lobby-shop Task 22, client/UI/EggStage: Skip, SPIN AGAIN, DONE), full screen and not docked
+	NimbusHatch = watchOverlays({ "Stage" }),
 	-- NpcController's dialog card (Next / Close buttons), like the tutorial card
 	NimbusNpcDialog = watchOverlays({ "NpcDialog" }),
 }

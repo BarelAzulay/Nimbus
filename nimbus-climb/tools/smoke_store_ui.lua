@@ -3,12 +3,13 @@
 -- (lobby-shop Task 21: the Store is the one Shop window now, ShopController behind the StoreController forwarder; these
 -- scenarios keep their names and pin the Store's rules inside it: NimbusShop / ShopWindow, five rail tabs always shown.)
 --   client_store_window  (1920x1080) the pill opens the Shop (NimbusShop, order 19), not the Cloud Shop; 1540x910;
---                        WindowOpened("Store"); every Id 0 = the five tabs + "The Shop opens soon!" on Packs; created
---                        Robux items = cards (a token pack is a Gems-tab tile); the Starter hero; "..." until
---                        GetProductInfo answers (the retry after 10 s), then the Robux glyph (or R$) + 99; literal Gets-you
---                        lines; Buy -> StoreRequest("Buy", key), never a prompt; Tab_Eggs -> the Cloud Shop; its Gems tab
---                        has one Robux Store button (no pack cards) -> the Shop's Gems tab; ShopOpened only from the Cloud
---                        Shop; refused in a match
+--                        WindowOpened("Shop") (lobby-shop Task 22); the session's last tab (Eggs the first time); every
+--                        Id 0 = the five tabs + "The Shop opens soon!" on Packs; created Robux items = cards (a token pack
+--                        is a Gems-tab tile); the Starter hero; "..." until GetProductInfo answers (the retry after 10 s),
+--                        then the Robux glyph (or R$) + 99; literal Gets-you lines; Buy -> StoreRequest("Buy", key), never
+--                        a prompt; Tab_Eggs is the Shop's own page (Task 22: the Cloud Shop left the menu);
+--                        OpenPanel("Store", { Tab = "Currency" }) -> the Gems tab and the tutorial's ShopOpened once;
+--                        refused in a match
 --   client_store_states  Owned / Claimed / HaveIt (x2 Pet XP forever, a full potion bank) / Active ("58 m left") / Preview
 --                        (StorePreview: Id 0 renders, PREVIEW disabled, prompts nothing; without the flag it hides)
 --   client_store_shine   High: the hero's HeroSpin gradient turns, the Starter card turns its pet in a viewport; Low:
@@ -322,10 +323,16 @@ local function clientScenarios()
 		local saved = H.begin()
 		Mock.SetViewport(1920, 1080)
 		KC.advance(0.5)
+		local Shop = H.ctrl("ShopController")
+		local lastTab = Shop and type(Shop.Tab) == "function" and Shop.Tab() or nil
 		H.pressPill("Shop")
 		local gui = H.pg():FindFirstChild("NimbusShop")
-		T.check(SC.IsOpen() and gui ~= nil and gui.DisplayOrder == 19 and gui.IgnoreGuiInset == true and not MC.IsOpen(),
-			"store window: the pill opens the Shop (NimbusShop, order 19), not the Cloud Shop", tostring(SC.IsOpen()) .. " / menu " .. tostring(MC.IsOpen()))
+		-- lobby-shop Task 22: the Cloud Shop left MenuController (no Window_Shop); MenuController.IsOpen() is true while the
+		-- Shop shows (the menu's windows and the tutorial treat it as an open window)
+		local menuGui = H.pg():FindFirstChild("NimbusMenu")
+		local cloud = menuGui and menuGui:FindFirstChild("Window_Shop")
+		T.check(SC.IsOpen() and gui ~= nil and gui.DisplayOrder == 19 and gui.IgnoreGuiInset == true and cloud == nil and MC.IsOpen(),
+			"store window: the pill opens the Shop (NimbusShop, order 19), not the Cloud Shop", tostring(SC.IsOpen()) .. " / menu " .. tostring(MC.IsOpen()) .. " / Window_Shop " .. tostring(cloud ~= nil))
 		local win = H.win()
 		if not T.check(win ~= nil, "store window: the ShopWindow frame exists") then
 			H.finish(saved)
@@ -333,9 +340,12 @@ local function clientScenarios()
 		end
 		T.check(H.near(win.AbsoluteSize.X, 1540) and H.near(win.AbsoluteSize.Y, 910) and SC.Layout() == "PC", "store window: 1540x910 at 1080p (PC)",
 			fmt("%.0fx%.0f %s", win.AbsoluteSize.X, win.AbsoluteSize.Y, tostring(SC.Layout())))
-		T.eq(H.last(saved.Opened), "Store", "store window: fires MenuController.WindowOpened(\"Store\")")
-		T.check(H.bodyText(win):find("The Shop opens soon!", 1, true) ~= nil and H.tabCount(win) == 5 and H.activeTab(win) == "Packs",
-			"store window: the five rail tabs always show; with every Id 0 and no preview the Packs page says the Shop opens soon", H.tabCount(win) .. " tabs: " .. H.bodyText(win))
+		T.eq(H.last(saved.Opened), "Shop", "store window: fires MenuController.WindowOpened(\"Shop\") (lobby-shop Task 22; \"Store\" before)")
+		T.check(H.tabCount(win) == 5 and H.activeTab(win) == (lastTab or "Eggs"), "store window: the five rail tabs always show; the pill opens the session's last tab (Eggs the first time)",
+			H.tabCount(win) .. " tabs, on " .. tostring(H.activeTab(win)) .. ", last " .. tostring(lastTab))
+		H.tapTab(win, "Packs")
+		T.check(H.bodyText(win):find("The Shop opens soon!", 1, true) ~= nil and H.activeTab(win) == "Packs",
+			"store window: with every Id 0 and no preview the Packs page says the Shop opens soon", H.bodyText(win))
 		H.setId("Starter", 5001)
 		H.setId("VIP", 5002)
 		H.setId("Tokens1", 5003)
@@ -366,14 +376,18 @@ local function clientScenarios()
 			"store window: Buy -> StoreRequest(\"Buy\", key); the client never prompts", #sent .. " sends, " .. saved.Prompts .. " prompts")
 		H.tapBuy(win, "Starter")
 		T.eq(#KC.serverCalls("StoreRequest", mark), 1, "store window: a second Buy inside 1 s sends nothing")
+		local opens = H.count(saved.Opened, "Shop")
 		H.tapTab(win, "Eggs")
-		T.check(not SC.IsOpen() and MC.IsOpen() and H.last(saved.Opened) == "Shop", "store window: the Eggs tab closes the Shop and opens the Cloud Shop (lobby-shop Task 21 step)",
-			tostring(SC.IsOpen()) .. " / " .. tostring(H.last(saved.Opened)))
+		local eggs = win:FindFirstChild("Page_Eggs", true)
+		T.check(SC.IsOpen() and H.activeTab(win) == "Eggs" and eggs ~= nil and eggs.Visible and H.count(saved.Opened, "Shop") == opens,
+			"store window: the Eggs tab is the Shop's own page (lobby-shop Task 22: no hop to a Cloud Shop, no second WindowOpened)",
+			tostring(SC.IsOpen()) .. " / " .. tostring(H.activeTab(win)) .. " / " .. (H.count(saved.Opened, "Shop") - opens) .. " more opens")
 		local menu = H.pg():FindFirstChild("NimbusMenu")
-		local getGems = menu and menu:FindFirstChild("RobuxStore", true)
-		T.check(getGems ~= nil and menu:FindFirstChild("Pack_1", true) == nil and menu:FindFirstChild("PacksSoon", true) == nil,
-			"store window: the Gems tab has the Robux Store button and no pack cards")
-		-- the tutorial's shop step waits for ShopOpened: only the Cloud Shop sends it
+		T.check(menu == nil or (menu:FindFirstChild("RobuxStore", true) == nil and menu:FindFirstChild("Window_Shop", true) == nil),
+			"store window: the menu holds no Cloud Shop any more (no Window_Shop, no Robux Store button)")
+		SC.Close()
+		KC.advance(0.3)
+		-- the tutorial's shop step waits for ShopOpened: the one Shop window sends it (WindowOpened "Shop")
 		local tutSaved = TC and type(TC.GetState) == "function" and TC.GetState() or nil
 		local index = nil
 		for i, st in ipairs(Steps and Steps.Steps or {}) do
@@ -391,17 +405,16 @@ local function clientScenarios()
 			KC.advance(0.8)
 		end
 		local tutMark = #Mock.RemoteLog
-		if getGems then
-			Mock.Click(getGems)
-		end
+		KC.toClient("OpenPanel", "Store", { Tab = "Currency" }) -- (the old Robux Store button's path)
 		KC.advance(0.5)
-		T.check(SC.IsOpen() and H.activeTab(win) == "Gems" and not MC.IsOpen(), "store window: Robux Store ({ Tab = \"Currency\" }) -> the Shop's Gems tab",
-			tostring(SC.IsOpen()) .. " / " .. tostring(H.activeTab(win)) .. " / menu " .. tostring(MC.IsOpen()))
-		T.eq(H.calls("TutorialEvent", tutMark, "ShopOpened"), 0, "store window: opening the Store never sends ShopOpened")
+		T.check(SC.IsOpen() and H.activeTab(win) == "Gems", "store window: Robux Store ({ Tab = \"Currency\" }) -> the Shop's Gems tab",
+			tostring(SC.IsOpen()) .. " / " .. tostring(H.activeTab(win)))
+		T.check(H.calls("TutorialEvent", tutMark, "ShopOpened") == 1 and index ~= nil, "store window: opening the one Shop window sends the tutorial's ShopOpened once (WindowOpened \"Shop\", lobby-shop Task 22)",
+			H.calls("TutorialEvent", tutMark, "ShopOpened") .. " sent")
 		MC.Open("Shop")
 		KC.advance(0.6)
-		T.check(H.calls("TutorialEvent", tutMark, "ShopOpened") == (index and 1 or 0) and index ~= nil and not SC.IsOpen(),
-			"store window: the Cloud Shop still sends ShopOpened and closes the Store", H.calls("TutorialEvent", tutMark, "ShopOpened") .. " sent")
+		T.check(H.calls("TutorialEvent", tutMark, "ShopOpened") == 1 and SC.IsOpen(),
+			"store window: MenuController.Open(\"Shop\") keeps the one Shop window (no second ShopOpened while it is open)", H.calls("TutorialEvent", tutMark, "ShopOpened") .. " sent")
 		if tutSaved then
 			KC.toClient("TutorialState", tutSaved)
 		else
@@ -583,8 +596,9 @@ local function clientScenarios()
 			end
 		end
 		local win = H.win()
-		T.check(SC.IsOpen() and win ~= nil and H.activeTab(win) == "Passes" and H.count(saved.Opened, "Store", from) == 1 and guis == 1,
-			"store bridge: OpenPanel(\"Store\", { Tab = \"Passes\" }) opens on Passes once", fmt("%s tab %s, %d opens, %d guis", tostring(SC.IsOpen()), tostring(win and H.activeTab(win)), H.count(saved.Opened, "Store", from), guis))
+		-- lobby-shop Task 22: the one Shop window fires WindowOpened("Shop") (the tutorial's ShopOpened)
+		T.check(SC.IsOpen() and win ~= nil and H.activeTab(win) == "Passes" and H.count(saved.Opened, "Shop", from) == 1 and guis == 1,
+			"store bridge: OpenPanel(\"Store\", { Tab = \"Passes\" }) opens on Passes once", fmt("%s tab %s, %d opens, %d guis", tostring(SC.IsOpen()), tostring(win and H.activeTab(win)), H.count(saved.Opened, "Shop", from), guis))
 		H.pressPill("Shop")
 		T.check(not SC.IsOpen() and not MC.IsOpen(), "store bridge: a second pill tap closes the Store")
 		H.pressPill("Shop")

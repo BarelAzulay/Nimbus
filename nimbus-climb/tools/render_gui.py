@@ -63,7 +63,7 @@ except Exception:  # pragma: no cover
 
 GRID_SIZES = [(1920, 1080), (1280, 720), (390, 844), (844, 390)]
 SCENARIOS = ["gallery", "lobby", "title", "match", "match:hit", "countdown", "party", "results", "pets", "pets:phone", "pets:pick", "pets:sheet", "loss", "loss:dungeon", "loss:phone",
-             "menu:Index", "menu:Shop", "menu:Stats", "tutorial", "npc", "dev", "toasts", "portal", "portal:Saint:4",
+             "menu:Index", "menu:Stats", "tutorial", "npc", "dev", "toasts", "portal", "portal:Saint:4",
              # Phase 4 (careui): the Home window, the Food Machine list, the garden picker, the Training Place, the EVOLVE
              # confirm, the Champion Ring window and the floating pet cards
              "home", "home:coins", "feed", "garden", "train", "evolve", "ring", "ring:new", "petcards",
@@ -83,10 +83,10 @@ SCENARIOS = ["gallery", "lobby", "title", "match", "match:hit", "countdown", "pa
              # lobby-shop (Task 15): the drawn cut gem (GemIcon) at every size, the piles, the chips, the HUD coin;
              # (Task 19) the three title tags over sketched characters, as they project from 14 / 10 / 30 / 60 studs;
              # (Task 20) the seven GUI eggs (EggArt) and the egg stage core (EggStage) at six moments of a roll;
-             # (Task 21) the one Shop window on each of its own tabs
+             # (Tasks 21/22) the one Shop window on each of its own tabs (Eggs first), and the Eggs tab restricted
              "gems", "gems:store", "titles", "titles:10", "titles:30", "titles:60",
              "eggs", "hatch:strip", "hatch:strip3", "hatch:crack", "hatch:reveal", "hatch:reveal3", "hatch:secret",
-             "shop", "shop:Gems", "shop:Packs", "shop:Passes", "shop:Boosts"]
+             "shop", "shop:restricted", "shop:Gems", "shop:Packs", "shop:Passes", "shop:Boosts"]
 
 # ---------------------------------------------------------------------------------------------------
 # Lua world (booted the way tools/smoke.py boots its client world)
@@ -1414,7 +1414,7 @@ def main():
 
     if args.list:
         print("scenarios: " + ", ".join(SCENARIOS))
-        print("(menu:<Window>[:<Tab>] also takes a tab or an Index group, e.g. menu:Shop:Items, menu:Index:Mythic;"
+        print("(menu:<Window>[:<Tab>] also takes a tab or an Index group, e.g. menu:Index:Mythic; shop:<tab>;"
               " tutorial:<step>, npc:<n>)")
         return 0
     if not args.scenario:

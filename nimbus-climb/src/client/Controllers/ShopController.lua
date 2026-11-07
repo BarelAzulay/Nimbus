@@ -1,14 +1,17 @@
--- ShopController (client; lobby-shop Task 21, docs/superpowers/specs/2026-11-07-lobby-shop-design.md 16.3 "Who owns it" /
--- "Tabs and items" / "Window" / "Packs, Passes, Boosts" / "Hooks"; moved with git mv from StoreController, store W1 Task 7
--- of docs/superpowers/specs/2026-11-04-shop-retention-design.md 5.1 / 8 / 13b): the ONE Shop window. A left tab rail
--- (Eggs, Gems, then the Robux items Packs, Passes, Boosts), the Store's pack cards restyled into its content box, and the
--- Gems page (client/UI/ShopGems). client/Controllers/StoreController is a thin forwarder kept for old callers.
+-- ShopController (client; lobby-shop Tasks 21-22, docs/superpowers/specs/2026-11-07-lobby-shop-design.md 16.3 "Who owns
+-- it" / "Tabs and items" / "Window" / "Eggs tab" / "Packs, Passes, Boosts" / "Hooks"; moved with git mv from
+-- StoreController, store W1 Task 7 of docs/superpowers/specs/2026-11-04-shop-retention-design.md 5.1 / 8 / 13b): the ONE
+-- Shop window. A left tab rail (Eggs, Gems, then the Robux items Packs, Passes, Boosts), the Eggs page (client/UI/ShopEggs:
+-- the Secret Roulette hero and the four machine cards, every spin through client/UI/EggStage), the Gems page
+-- (client/UI/ShopGems) and the Store's pack cards restyled into its content box. client/Controllers/StoreController is a
+-- thin forwarder kept for old callers. (Task 22: the old Cloud Shop and its stage left MenuController.)
 --
---   ShopController.Init()
---   ShopController.Open(args)       args = { Tab = any alias NormalizeTab knows } | nil. Refused while InMatch (the side hint
---                                   "The Store is closed during a match."). No tab: the last tab of this session (the first
---                                   time Packs: the Task 21 step). Eggs (Task 21 step): the Shop closes and the old Cloud Shop
---                                   opens (MenuController.Open("Shop", { Tab = "Roulettes" })) -> false
+--   ShopController.Init()           also EggStage.Init() (the RouletteResult listener)
+--   ShopController.Open(args)       args = { Tab = any alias NormalizeTab knows, RouletteId, Currency } | nil. Refused while
+--                                   InMatch (the side hint "The Store is closed during a match.") and while the egg stage
+--                                   shows -> false. No tab: the last tab of this session (the first time Eggs). RouletteId:
+--                                   the Eggs tab, that card scrolled into view and outlined gold for 2.6 s
+--                                   (ShopEggs.Focus); Currency alone never switches the tab
 --   ShopController.Close()
 --   ShopController.IsOpen() -> bool
 --   ShopController.NormalizeTab(tab) -> "Eggs" | "Gems" | "Packs" | "Passes" | "Boosts" | nil   "egg*", "roul*", "Items",
@@ -21,19 +24,26 @@
 --   ShopController.RobuxGlyph() -> "\238\128\130" (U+E002) or "R$" when the font lacks it
 --   ShopController._S                the state table (tests: _S.Tab = nil is a fresh session)
 --
--- Who opens it: the top bar's PillButton_Shop and a server OpenPanel("Store", args) through MenuController's P5.openStore
--- (and the forwarder). The Task 21 step (spec 16.3 "WindowOpened"): while MenuController still owns the old Cloud Shop the
--- Shop fires MenuController.WindowOpened("Store") on every open, as the Store did; it closes on any other WindowOpened id,
--- on Esc / gamepad B ("NimbusShopBack", High, bound only while open, always Sink) / its X, on InMatch and on
--- MenuController.Close(). MouseLock.WatchVisible("Shop", ShopWindow) frees the cursor while it shows; on a phone or a
--- touch-only device MenuController.SetTouchHidden("Shop", true) and SetColumnCovered(windowLeft, "Shop").
+-- Who opens it: the top bar's PillButton_Shop and a server OpenPanel("Shop" | "Store", args) through MenuController's
+-- P5.openShop (and the forwarder). It fires MenuController.WindowOpened("Shop") on every open (spec 16.3 "WindowOpened";
+-- the tutorial's ShopOpened); it closes on any other WindowOpened id, on Esc / gamepad B ("NimbusShopBack", High, bound
+-- only while open, always Sink) / its X, on InMatch and on MenuController.Close(). MouseLock.WatchVisible("Shop",
+-- ShopWindow) frees the cursor while it shows; on a phone or a touch-only device MenuController.SetTouchHidden("Shop",
+-- true) and SetColumnCovered(windowLeft, "Shop").
+-- The egg stage (Task 22): ShopWindow hides while EggStage shows (Opened) and comes back on Closed("Done" | "Error") while
+-- the Shop is still open and not InMatch; any other Closed reason ("Match" | "Close") closes a still-open Shop. ONE Esc
+-- handler: while the stage shows it calls EggStage.Back() (skip, then DONE) and stops there; else it closes the Shop.
+-- While the stage shows B does nothing here (NimbusHatchBack, High + 1, is the stage's). The Eggs page repaints on
+-- EggStage.Pending / Answered and once more WAIT_TIMEOUT after a Pending (the stage's timeout fires no signal).
+-- The rail's FastHatch toggle (PC / Compact, Eggs only, under the tabs): ClientSettings.Set("FastHatch", not on).
 --
 -- Screen: ScreenGui "NimbusShop" (DisplayOrder 19, IgnoreGuiInset, ResetOnSpawn false) > Frame "ShopWindow" (UIScale
 -- "Fit"; NeonKit.BigRect with RECT 820x330 at 390 px -> 1540x910 at 1080 px, PC_MAX_W 0.81) > Panel (the frame),
 -- Header (Icon, Title "Shop", Balance_Gems (a GemIcon.Amount), Balance_Tokens, CloseButton; balances Theme.ShortNumber
 -- from 1e6), Rail (Tab_Eggs, Tab_Gems, RobuxDivider, Tab_Packs, Tab_Passes, Tab_Boosts: Icon + Label, attribute Selected;
--- Tab_Packs.Dot while the Starter Pack is on sale and unbought) and Body (the content box) > Page_Gems (ShopGems),
--- Page_Packs / Page_Passes / Page_Boosts (ScrollingFrames of Card_<key>) and Soon ("The Shop opens soon!" on an empty page).
+-- Tab_Packs.Dot while the Starter Pack is on sale and unbought; FastHatch) and Body (the content box) > Page_Eggs
+-- (ShopEggs), Page_Gems (ShopGems), Page_Packs / Page_Passes / Page_Boosts (ScrollingFrames of Card_<key>) and Soon ("The
+-- Shop opens soon!" on an empty card page).
 --   PC: header 76, rail 224 at x 18 (tabs 224 x 80 at y 16 + i * 92, +44 from Packs; the divider "Robux items"), content
 --     x 262, width = window - 300 (1240). Compact: the rail 112 at x 8 (icon over label), content x 128, width window - 152.
 --   Phone: header 50, rail 104 at x 8 (tabs 104 x 48 at 6 + i * 54 with a 280 px body; 104 x 44 at 4 + i * 49 under 276),
@@ -78,8 +88,11 @@ local CloudUI = require(Client:WaitForChild("UI"):WaitForChild("CloudUI"))
 local NeonKit = require(Client:WaitForChild("UI"):WaitForChild("NeonKit"))
 local GemIcon = require(Client:WaitForChild("UI"):WaitForChild("GemIcon"))
 local ShopGems = require(Client:WaitForChild("UI"):WaitForChild("ShopGems"))
+local ShopEggs = require(Client:WaitForChild("UI"):WaitForChild("ShopEggs"))
+local EggStage = require(Client:WaitForChild("UI"):WaitForChild("EggStage"))
 local State = require(Client:WaitForChild("State"))
 local SoundFx = require(Client:WaitForChild("SoundFx"))
+local ClientSettings = require(Client:WaitForChild("ClientSettings"))
 
 local ShopController = {}
 
@@ -100,6 +113,10 @@ local K = {
 	BUY_GAP = 1, -- seconds between two Buy sends
 	TICK = 1, -- seconds between two refreshes while open (the potion's time left)
 	BACK_ACTION = "NimbusShopBack",
+	-- the rail's Fast hatch toggle (Eggs only): PC 224 x 52 ("Fast hatch" 20 px, the switch right), Compact 112 wide (the
+	-- switch over the label, >= 44 px at the 0.8 scale)
+	FAST = { PC = { W = 224, H = 52, Text = 20, SwitchW = 56, SwitchH = 30 }, Compact = { W = 112, H = 64, Text = 18, SwitchW = 48, SwitchH = 24 } },
+	HATCH_WAIT = ((EggStage.Metrics and EggStage.Metrics.WAIT_TIMEOUT) or 7) + 0.1, -- an unanswered spin gives up: repaint
 	SPIN_SECONDS = 8, -- the hero gradient's turn
 	SHEEN_MIN = 6,
 	SHEEN_MAX = 9,
@@ -652,10 +669,39 @@ function H.build()
 	U.DivGlyph = label("Glyph", U.Divider, robuxGlyph(), "Display", 24, { TextColor3 = rgb(120, 230, 140), TextTruncate = Enum.TextTruncate.None })
 	U.DivLabel = label("Label", U.Divider, "Robux items", "Body", 18, { TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = MUTED })
 	U.DivLine = frame("Line", U.Divider, { BackgroundTransparency = 0.4, BackgroundColor3 = MUTED })
+	-- the Fast hatch toggle (Eggs only): a TextButton with its Label and a Switch (Knob); attribute On
+	local fast = Instance.new("TextButton")
+	fast.Name = "FastHatch"
+	fast.Text = ""
+	fast.AutoButtonColor = false
+	fast.BorderSizePixel = 0
+	fast.BackgroundColor3 = Colors.PanelInk or K.NAVY
+	fast.BackgroundTransparency = 0.15
+	fast.Visible = false
+	Theme.Corner(fast, UDim.new(0, 12))
+	Theme.Stroke(fast, Theme.NeonColor("Green"), 2, 0.3)
+	U.FastLabel = label("Label", fast, "Fast hatch", "Button", 20, { TextXAlignment = Enum.TextXAlignment.Left })
+	U.FastSwitch = frame("Switch", fast, { BackgroundTransparency = 0, BackgroundColor3 = MUTED })
+	Theme.Corner(U.FastSwitch, UDim.new(0.5, 0))
+	Theme.Stroke(U.FastSwitch, K.NAVY, 2, 0)
+	U.FastKnob = frame("Knob", U.FastSwitch, { BackgroundTransparency = 0, BackgroundColor3 = WHITE })
+	Theme.Corner(U.FastKnob, UDim.new(0.5, 0))
+	fast.Parent = rail
+	fast.Activated:Connect(function()
+		safe("fast hatch", H.toggleFast)
+	end)
+	U.Fast = fast
 
-	-- the body (the content box): the Gems page and the card pages
+	-- the body (the content box): the Eggs page, the Gems page and the card pages
 	local body = frame("Body", holder, { ClipsDescendants = true })
 	U.Body = body
+	local eggsPage = frame("Page_Eggs", body, { Visible = false })
+	U.EggsPage = eggsPage
+	ShopEggs.Build(eggsPage, {
+		Tap = function()
+			sfx("StorePop", "Click")
+		end,
+	})
 	local gemsPage = frame("Page_Gems", body, { Visible = false })
 	U.GemsPage = gemsPage
 	ShopGems.Build(gemsPage, {
@@ -1076,6 +1122,7 @@ function H.layoutRail(W, Hh, R)
 		end
 		U.Divider.Visible = false
 		place(U.Dot, R.TabW - 15, 3, 12, 12)
+		H.layoutFast(nil)
 		return R.Header + 4 + R.TabH
 	end
 	local bodyH = Hh - R.Header
@@ -1119,7 +1166,51 @@ function H.layoutRail(W, Hh, R)
 		U.DivGlyph.Visible, U.DivLabel.Visible, U.DivLine.Visible = false, false, true
 	end
 	place(U.Dot, R.RailW - 20, 6, 14, 14)
+	H.layoutFast(layout ~= "Phone" and { R = R, BodyH = bodyH } or nil)
 	return R.Header
+end
+
+-- the Fast hatch toggle at the rail's bottom (PC / Compact; nil = none on this layout); shown on the Eggs tab only
+function H.layoutFast(at)
+	U.FastAt = at
+	if not at then
+		U.Fast.Visible = false
+		return
+	end
+	local F = K.FAST[S.Layout] or K.FAST.PC
+	local R = at.R
+	place(U.Fast, R.RailX, at.BodyH - F.H - 16, F.W, F.H)
+	U.FastLabel.TextSize = F.Text
+	if S.Layout == "Compact" then
+		place(U.FastSwitch, (F.W - F.SwitchW) / 2, 6, F.SwitchW, F.SwitchH)
+		place(U.FastLabel, 2, F.SwitchH + 8, F.W - 4, F.H - F.SwitchH - 10)
+		U.FastLabel.TextXAlignment = Enum.TextXAlignment.Center
+	else
+		place(U.FastLabel, 14, 0, F.W - F.SwitchW - 28, F.H)
+		place(U.FastSwitch, F.W - F.SwitchW - 12, (F.H - F.SwitchH) / 2, F.SwitchW, F.SwitchH)
+		U.FastLabel.TextXAlignment = Enum.TextXAlignment.Left
+	end
+	H.paintFast()
+end
+
+function H.paintFast()
+	local on = false
+	pcall(function()
+		on = ClientSettings.Get("FastHatch") == true
+	end)
+	U.Fast:SetAttribute("On", on)
+	U.Fast.Visible = U.FastAt ~= nil and S.Tab == "Eggs"
+	local F = K.FAST[S.Layout] or K.FAST.PC
+	local k = F.SwitchH - 6
+	place(U.FastKnob, on and (F.SwitchW - k - 3) or 3, 3, k, k)
+	U.FastSwitch.BackgroundColor3 = on and Theme.NeonColor("Green") or MUTED
+end
+
+function H.toggleFast()
+	sfx("StorePop", "Click")
+	local on = ClientSettings.Get("FastHatch") == true
+	ClientSettings.Set("FastHatch", not on) -- (one SettingsSet 0.4 s later; Changed repaints)
+	H.paintFast()
 end
 
 function H.layoutCardPages(cw, ch)
@@ -1186,6 +1277,8 @@ function H.layout()
 	H.layoutCardPages(bw, bh)
 	safe("gems layout", ShopGems.Layout, U.GemsPage, { W = bw, H = bh }, S.Layout)
 	place(U.GemsPage, 0, 0, bw, bh)
+	place(U.EggsPage, 0, 0, bw, bh)
+	safe("eggs layout", ShopEggs.Layout, U.EggsPage, { W = bw, H = bh }, S.Layout)
 	H.coverColumn()
 end
 
@@ -1241,12 +1334,14 @@ function H.paintCards()
 	local starter = S.ByKey.Starter
 	U.Dot.Visible = starter ~= nil and (starter.Created or H.preview()) and H.boughtKnown() and not csvSet(H.attr("StoreBought")).Starter
 	safe("gems refresh", ShopGems.Refresh, U.GemsPage)
+	safe("eggs refresh", ShopEggs.Refresh, U.EggsPage)
+	H.paintFast()
 end
 
 function H.selectTab(tab)
 	tab = ShopController.NormalizeTab(tab)
-	if tab == nil or tab == "Eggs" then
-		tab = S.Tab or "Packs"
+	if tab == nil then
+		tab = S.Tab or "Eggs"
 	end
 	S.Tab = tab
 	for name, t in pairs(U.Tabs) do
@@ -1260,7 +1355,9 @@ function H.selectTab(tab)
 		page.Visible = name == tab
 	end
 	U.GemsPage.Visible = tab == "Gems"
-	U.Soon.Visible = tab ~= "Gems" and #H.tabItems(tab) == 0
+	U.EggsPage.Visible = tab == "Eggs"
+	U.Soon.Visible = tab ~= "Gems" and tab ~= "Eggs" and #H.tabItems(tab) == 0
+	H.paintFast()
 end
 
 -- re-reads the shown set (rebuilds on a change), the states, the prices and the layout
@@ -1339,21 +1436,8 @@ function H.gemBuy()
 	end
 end
 
--- the Task 21 step: the Eggs tab is still MenuController's Cloud Shop
-function H.hopEggs()
-	local menu = H.controller("MenuController")
-	if menu and type(menu.Open) == "function" then
-		safe("eggs", menu.Open, "Shop", { Tab = "Roulettes" })
-	end
-end
-
 function H.tapTab(tab)
 	sfx("StorePop", "Click")
-	if tab == "Eggs" then
-		ShopController.Close()
-		H.hopEggs()
-		return
-	end
 	H.selectTab(tab)
 	H.shineOff()
 	if S.Open then
@@ -1380,6 +1464,18 @@ function H.heroEntry()
 		end
 	end
 	return nil
+end
+
+-- one 1 -> 1.04 -> 1 pulse of a UIScale (0.3 s each way)
+function H.pulse(scale)
+	local info = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, 0, true)
+	local ok, tween = pcall(function()
+		return game:GetService("TweenService"):Create(scale, info, { Scale = K.PULSE_SCALE })
+	end)
+	if ok and tween then
+		tween:Play()
+		H.track(tween)
+	end
 end
 
 function H.shineOn()
@@ -1445,17 +1541,24 @@ function H.shineOn()
 					if not (S.Open and S.Token == mine and S.Shine == shine) or hero.Pulse.Parent == nil then
 						break
 					end
-					local info = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, 0, true)
-					local ok, tween = pcall(function()
-						return game:GetService("TweenService"):Create(hero.Pulse, info, { Scale = K.PULSE_SCALE })
-					end)
-					if ok and tween then
-						tween:Play()
-						H.track(tween)
-					end
+					H.pulse(hero.Pulse)
 				end
 			end)
 		end
+	end
+	-- the Eggs tab: the Secret card's SPIN pulses the same way (spec 16.3, High only)
+	local eggPulse = (high and S.Tab == "Eggs") and ShopEggs.HeroPulse(U.EggsPage) or nil
+	if eggPulse then
+		local mine = S.Token
+		task.spawn(function()
+			while S.Open and S.Token == mine and S.Shine == shine do
+				task.wait(K.PULSE_EVERY)
+				if not (S.Open and S.Token == mine and S.Shine == shine) or eggPulse.Parent == nil then
+					break
+				end
+				H.pulse(eggPulse)
+			end
+		end)
 	end
 	if high then
 		-- the pet cards turn their pet (CloudUI.PetViewport) instead of the glyph
@@ -1503,6 +1606,10 @@ function H.shineOff()
 	for _, entry in pairs(U.Cards) do
 		entry.Pulse.Scale = 1
 	end
+	local eggPulse = ShopEggs.HeroPulse(U.EggsPage)
+	if eggPulse then
+		eggPulse.Scale = 1
+	end
 end
 
 ----------------------------------------------------------------------
@@ -1545,7 +1652,8 @@ function H.syncBack()
 		S.BackBound = true
 		pcall(function()
 			ContextActionService:BindActionAtPriority(K.BACK_ACTION, function(_, inputState)
-				if inputState == Enum.UserInputState.Begin then
+				-- (while the egg stage shows B is its own: NimbusHatchBack at High + 1)
+				if inputState == Enum.UserInputState.Begin and not EggStage.IsShowing() then
 					safe("back", ShopController.Close)
 				end
 				return Enum.ContextActionResult.Sink
@@ -1645,11 +1753,13 @@ function ShopController.Open(args)
 		H.hint(K.MATCH_HINT)
 		return false
 	end
+	if EggStage.IsShowing() then
+		return false -- (the stage covers the screen: DONE brings the Shop back)
+	end
 	local tab = ShopController.NormalizeTab(args.Tab)
-	if tab == "Eggs" then
-		ShopController.Close()
-		H.hopEggs()
-		return false
+	local focus = type(args.RouletteId) == "string" and args.RouletteId or nil
+	if focus then
+		tab = "Eggs"
 	end
 	H.build()
 	local wasOpen = S.Open
@@ -1664,6 +1774,9 @@ function ShopController.Open(args)
 	U.Holder.Visible = true
 	H.layout()
 	H.syncBack()
+	if focus then
+		safe("focus", ShopEggs.Focus, U.EggsPage, focus)
+	end
 	if not wasOpen then
 		H.shineOn()
 		local mine = S.Token
@@ -1675,11 +1788,11 @@ function ShopController.Open(args)
 				end
 			end
 		end)
-		-- the Task 21 step: "Store", as the Store did (Task 22 switches it to "Shop")
+		-- spec 16.3 "WindowOpened": "Shop" (the tutorial's ShopOpened; the menu's windows close on it)
 		local menu = H.controller("MenuController")
 		if menu and menu.WindowOpened then
 			safe("window opened", function()
-				menu.WindowOpened:Fire("Store")
+				menu.WindowOpened:Fire("Shop")
 			end)
 		end
 	else
@@ -1724,7 +1837,7 @@ function ShopController.Init()
 			safe("balances", H.paintCards)
 		end
 	end)
-	for _, name in ipairs({ "OwnedPasses", "StoreBought", "XpBoostEnds", "StorePreview", "GemsSettled", "XpPassState", K.RESTRICTED_ATTR }) do
+	for _, name in ipairs({ "OwnedPasses", "StoreBought", "XpBoostEnds", "StorePreview", "GemsSettled", "XpPassState", K.RESTRICTED_ATTR, "SecretPityLeft" }) do
 		LocalPlayer:GetAttributeChangedSignal(Config.Attr[name] or name):Connect(function()
 			if S.Open then
 				safe("refresh", H.refresh)
@@ -1743,8 +1856,15 @@ function ShopController.Init()
 			ShopController.Close()
 		end
 	end)
+	-- the ONE Esc handler (EggStage has none): while the stage shows, its Back (skip, then DONE) and nothing more; else
+	-- Esc closes the open Shop
 	UserInputService.InputBegan:Connect(function(input)
-		if S.Open and input.KeyCode == Enum.KeyCode.Escape then
+		if input.KeyCode ~= Enum.KeyCode.Escape then
+			return
+		end
+		if EggStage.IsShowing() then
+			safe("hatch back", EggStage.Back)
+		elseif S.Open then
 			ShopController.Close()
 		end
 	end)
@@ -1752,11 +1872,50 @@ function ShopController.Init()
 	local menu = H.controller("MenuController")
 	if menu and menu.WindowOpened then
 		menu.WindowOpened:Connect(function(id)
-			if id ~= "Store" and S.Open then
+			if id ~= "Shop" and S.Open then
 				ShopController.Close()
 			end
 		end)
 	end
+	-- the egg stage (Task 22): the window steps aside while it shows and comes back after DONE (or a phase error) while
+	-- the Shop is still open and not in a match; a match start or MenuController.Close() ends both
+	EggStage.Init()
+	EggStage.Opened:Connect(function()
+		if S.Open and U.Holder then
+			U.Holder.Visible = false
+			H.shineOff()
+			H.coverColumn()
+		end
+	end)
+	EggStage.Closed:Connect(function(reason)
+		if not S.Open then
+			return
+		end
+		if (reason == "Done" or reason == "Error") and not H.inMatch() then
+			if U.Holder then
+				U.Holder.Visible = true
+			end
+			safe("hatch back refresh", H.refresh)
+			H.shineOn()
+		else
+			ShopController.Close()
+		end
+	end)
+	local function repaint()
+		if S.Open then
+			safe("eggs repaint", H.paintCards)
+		end
+	end
+	EggStage.Pending:Connect(function()
+		repaint()
+		task.delay(K.HATCH_WAIT, repaint) -- (the stage's 7 s timeout fires no signal)
+	end)
+	EggStage.Answered:Connect(repaint)
+	ClientSettings.Changed:Connect(function(key)
+		if key == "FastHatch" and U.Fast then
+			H.paintFast()
+		end
+	end)
 	-- the server's thank-you toast for a granted purchase plays the coin clatter
 	task.spawn(function()
 		local remote = H.remote("Notify")

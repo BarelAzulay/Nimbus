@@ -7,11 +7,13 @@
 --                               twice in a frame, welded parts follow the root, a pet whose Animate keeps failing gets
 --                               its animated parts welded too (nothing trails behind), and pet models are built under
 --                               a time budget (expensive first-time sculpts: one per frame)
---   client_release_roulette     MenuController: opening the Shop pre-sculpts the cheapest roulette's pets at the strip's
---                               Low detail (a few per frame), the spin strip's cells use Low detail and attach their
---                               viewports under the time budget (never 8 sculpts in the RouletteResult frame), the reveal
---                               card stays High, the odds popup uses Low tiles, and the odds / Inventory / Index loops
---                               build at most one expensive pet per frame (at most K.BUILD_MAX cheap clones)
+--   client_release_roulette     lobby-shop Task 22 (the Cloud Shop left MenuController; every spin plays through
+--                               EggStage's NimbusHatch): opening the Shop builds no pet model (the Eggs tab draws eggs and
+--                               shows the odds as rows on the cards: the Odds popup is gone), the spin strip is eggs (no
+--                               pet viewport, at most 12 cells a strip), the won pet is warmed during the strip one
+--                               expensive build per frame (EggStage.IsPrewarmed), the reveal card stays High, and the
+--                               Inventory / Index loops build at most one expensive pet per frame (at most K.BUILD_MAX
+--                               cheap clones)
 --   client_release_touch_mobile (phone world, touch) the menu column never covers Roblox's thumbstick (844x390,
 --                               667x375, 740x360, 932x430, 1024x768, 1180x820, 1366x1024) and keeps readable labels;
 --                               the tutorial bubble / card never covers the HP + stamina card during the portal wait and
@@ -376,113 +378,109 @@ S.client_release_roulette = guarded("client_release_roulette", function()
 	local Config = KC().env()
 	local MC = KC().M.MenuController
 	local PetCatalog = req("PetCatalog")
-	local budget = CONTRACT.v3 and CONTRACT.v3.partBudget or { petLow = 120 }
+	local okStage, ES = pcall(reqClient, "UI/EggStage")
+	ES = okStage and type(ES) == "table" and ES or nil
 	if not T.check(MC ~= nil, "release roulette: MenuController loaded") then
 		return
 	end
-	T.check(type(MC.IsPrewarmed) == "function" and type(MC.IsOpen) == "function", "release roulette: MenuController.IsPrewarmed / IsOpen exist")
+	T.check(ES ~= nil and type(ES.IsPrewarmed) == "function" and type(MC.IsOpen) == "function", "release roulette: EggStage.IsPrewarmed / MenuController.IsOpen exist")
 	local function isOpen()
 		if type(MC.IsOpen) ~= "function" then
 			return nil
 		end
 		return MC.IsOpen()
 	end
+	local function shopShown()
+		local win = path(playerGui(), "NimbusShop.ShopWindow")
+		return win ~= nil and KC().isShown(win)
+	end
 	resetMenus()
 	LocalPlayer:SetAttribute("InMatch", false)
 	LocalPlayer:SetAttribute("CloudTokens", 5000)
 	advance(0.3)
 
-	-- 1. opening the Shop pre-sculpts the cheapest roulette's pets at Low, a few per frame
+	-- 1. opening the Shop builds no pet model (lobby-shop Task 22: the Eggs tab draws eggs; the won pet warms during the strip)
 	local cheapest = Config.Roulettes[1].Id
 	local pool = PetCatalog.PossiblePets(cheapest)
 	local warm = measureBuilds(0, function()
 		KC().toClient("OpenPanel", "Shop", nil)
 		advance(3)
 	end)
-	local missing = {}
-	for _, def in ipairs(pool) do
-		if not (type(MC.IsPrewarmed) == "function" and MC.IsPrewarmed(def.Id)) then
-			missing[#missing + 1] = def.Id
-		end
-	end
-	T.check(#pool > 0 and #missing == 0, "release roulette: opening the Shop pre-sculpts every pet of the " .. cheapest .. " roulette",
-		#missing .. " of " .. #pool .. " missing: " .. table.concat(missing, ", ", 1, min(#missing, 5)))
-	local notLow = 0
-	for _, c in ipairs(warm.Calls) do
-		if c.Detail ~= "Low" then
-			notLow = notLow + 1
-		end
-	end
-	T.check(warm.MaxPerFrame <= 3 and notLow == 0, "release roulette: ...at the strip's Low detail, a few per frame (at most 3)",
-		fmt("%d builds (%d not Low), at most %d in a frame", warm.Total, notLow, warm.MaxPerFrame))
+	T.check(shopShown() and warm.Total == 0, "release roulette: opening the Shop builds no pet model (the Eggs tab draws eggs)",
+		fmt("shown %s, %d builds, at most %d in a frame", tostring(shopShown()), warm.Total, warm.MaxPerFrame))
 
-	-- 2. the odds popup: Low tiles, one expensive build per frame
-	local shop = path(playerGui(), "NimbusMenu.Window_Shop")
-	local card = shop and shop:FindFirstChild("Roulette_" .. cheapest, true)
-	local oddsButton = card and card:FindFirstChild("Odds", true)
-	if T.check(oddsButton ~= nil and oddsButton:IsA("GuiButton"), "release roulette: the " .. cheapest .. " card has an Odds button") then
-		local odds = measureBuilds(0.03, function()
-			Mock.Click(oddsButton)
-			advance(2.5)
-		end)
-		T.check(odds.Total > 0 and odds.MaxPerFrame == 1, "release roulette: the odds popup builds one expensive pet per frame",
-			fmt("%d builds, at most %d in a frame", odds.Total, odds.MaxPerFrame))
-		local menu = path(playerGui(), "NimbusMenu")
-		local highs, lows = 0, 0
-		for _, m in ipairs(viewportModels(menu)) do
-			if m:FindFirstAncestor("OddsPanel") then
-				if m:GetAttribute("PB_Detail") == "Low" then
-					lows = lows + 1
-				else
-					highs = highs + 1
-				end
-			end
+	-- 2. the odds are rows on every card (the Odds popup is gone): no pet viewport on the card
+	local shop = path(playerGui(), "NimbusShop.ShopWindow")
+	local card = shop and shop:FindFirstChild("ShopCard_" .. cheapest, true)
+	local rows = card and card:FindFirstChild("Odds", true)
+	local rowCount = 0
+	for _, c in ipairs(rows and rows:GetChildren() or {}) do
+		if c.Name:find("^Odds_") then
+			rowCount = rowCount + 1
 		end
-		T.check(lows > 0 and highs == 0, "release roulette: the odds tiles use PetBuilder's Low detail", fmt("%d Low, %d High", lows, highs))
-		T.check(isOpen() == true, "release roulette: MenuController.IsOpen() is true while the odds popup is up")
 	end
+	T.check(rowCount == #PetCatalog.GetRarityOdds(cheapest) and rowCount > 0 and #viewportModels(card) == 0, "release roulette: the " .. cheapest .. " card shows its odds rows and no pet viewport (the Odds popup is gone)",
+		fmt("%d rows, %d viewports", rowCount, card and #viewportModels(card) or -1))
+	T.check(isOpen() == true, "release roulette: MenuController.IsOpen() is true while the Shop is up")
 	resetMenus()
 	local stillOpen = {}
 	for _, c in ipairs(path(playerGui(), "NimbusMenu"):GetChildren()) do
-		if c:IsA("GuiObject") and c.Visible and (c.Name:find("^Window_") or c.Name == "OddsPopup" or c.Name == "RouletteStage") then
+		if c:IsA("GuiObject") and c.Visible and c.Name:find("^Window_") then
 			stillOpen[#stillOpen + 1] = c.Name
 		end
 	end
+	if shopShown() then
+		stillOpen[#stillOpen + 1] = "NimbusShop"
+	end
+	if ES and ES.IsShowing() then
+		stillOpen[#stillOpen + 1] = "NimbusHatch"
+	end
 	T.check(isOpen() == false, "release roulette: ...and false once everything is closed", table.concat(stillOpen, ", "))
 
-	-- 3. the spin: Low strip cells attached under the budget, the reveal card High
+	-- 3. the spin (EggStage, NimbusHatch): eggs on the strip, the won pet warmed one build per frame, the reveal card High
+	local winner = pool[1].Id
+	for _, def in ipairs(pool) do
+		if ES and not ES.IsPrewarmed(def.Id) then
+			winner = def.Id -- (a pet no earlier scenario warmed)
+			break
+		end
+	end
 	local strip = {}
 	for i = 1, 42 do
 		strip[i] = pool[(i * 7) % #pool + 1].Id
 	end
-	local winner = pool[1].Id
 	strip[34] = winner
 	local spin = measureBuilds(0.03, function()
 		KC().toClient("RouletteResult", { Ok = true, RouletteId = cheapest, PetId = winner, IsNew = false, Count = 2, Tokens = 4950, Strip = strip })
 		advance(1.0)
 	end)
-	T.check(spin.Total > 0 and spin.MaxPerFrame == 1, "release roulette: the spin strip attaches one expensive pet viewport per frame (was 8 in the RouletteResult frame)",
-		fmt("%d builds, at most %d in a frame", spin.Total, spin.MaxPerFrame))
-	local stage = path(playerGui(), "NimbusMenu.RouletteStage")
-	local cellModels, lowCells = 0, 0
-	if T.check(stage ~= nil, "release roulette: the roulette stage is up") then
-		for _, m in ipairs(viewportModels(stage)) do
-			if m:FindFirstAncestor("StripClip") then
-				cellModels = cellModels + 1
-				local parts = Mock.CountDescendants(m, "BasePart")
-				if m:GetAttribute("PB_Detail") == "Low" and parts <= budget.petLow then
-					lowCells = lowCells + 1
+	T.check(spin.Total > 0 and spin.MaxPerFrame == 1 and ES ~= nil and ES.IsPrewarmed(winner), "release roulette: the spin warms the won pet one expensive build per frame (EggStage.IsPrewarmed; was 8 in the RouletteResult frame)",
+		fmt("%d builds, at most %d in a frame, warmed %s", spin.Total, spin.MaxPerFrame, tostring(ES and ES.IsPrewarmed(winner))))
+	local stage = path(playerGui(), "NimbusHatch.Stage")
+	if T.check(stage ~= nil and ES ~= nil and ES.IsShowing(), "release roulette: the roulette stage is up (NimbusHatch.Stage)") then
+		local strips = stage:FindFirstChild("Strips", true)
+		local most = 0
+		for _, track in ipairs(strips and strips:GetDescendants() or {}) do
+			if track.Name == "Track" then
+				local cells = 0
+				for _, c in ipairs(track:GetChildren()) do
+					if c.Name:find("^Cell") then
+						cells = cells + 1
+					end
 				end
+				most = max(most, cells)
 			end
 		end
-		T.check(cellModels > 0 and lowCells == cellModels, "release roulette: the strip cells use Low detail (<= " .. budget.petLow .. " parts)", fmt("%d of %d cells", lowCells, cellModels))
+		T.check(strips ~= nil and most > 0 and most <= 12 and #viewportModels(strips) == 0, "release roulette: the strip cells are eggs (no pet viewport, at most 12 cells a strip)",
+			fmt("%d cells at most, %d pet viewports", most, strips and #viewportModels(strips) or -1))
 		T.check(isOpen() == true, "release roulette: MenuController.IsOpen() is true during the spin")
 	end
 	advance(8)
-	stage = path(playerGui(), "NimbusMenu.RouletteStage")
+	stage = path(playerGui(), "NimbusHatch.Stage")
+	local reveal = stage and stage:FindFirstChild("Reveal", true)
 	local revealHigh = false
-	for _, m in ipairs(stage and viewportModels(stage) or {}) do
-		if not m:FindFirstAncestor("StripClip") and m:GetAttribute("PB_Detail") == "High" then
+	for _, m in ipairs(reveal and viewportModels(reveal) or {}) do
+		if m:GetAttribute("PB_Detail") == "High" then
 			revealHigh = true
 		end
 	end

@@ -1,17 +1,24 @@
--- smoke_shop_ui.lua: lobby-shop Task 21 (spec 16.3 "Who owns it", "Tabs and items", "Window", "Gems tab", "Packs, Passes,
--- Boosts", "Hooks" (the Task 21 step); 16.1 ribbons, BEST VALUE, the Chest line, the token-grant lock): the Shop window A
--- (client/Controllers/ShopController, moved from StoreController) and its Gems page (client/UI/ShopGems). Loaded by
--- tools/smoke.py in the CLIENT and PHONE worlds (Tasks 22 / 23 extend this file):
+-- smoke_shop_ui.lua: lobby-shop Tasks 21-22 (spec 16.3 "Who owns it", "Tabs and items", "Window", "Eggs tab", "Gems tab",
+-- "Packs, Passes, Boosts", "Hooks and every opener"; 16.1 ribbons, BEST VALUE, the Chest line, the token-grant lock): the
+-- Shop window A (client/Controllers/ShopController, moved from StoreController), its Eggs page (client/UI/ShopEggs) and its
+-- Gems page (client/UI/ShopGems). Loaded by tools/smoke.py in the CLIENT and PHONE worlds (Task 23 extends this file):
 --   client_shop_window   (1920x1080) NimbusShop (order 19, IgnoreGuiInset, not reset on spawn) > ShopWindow = NeonKit.BigRect
 --                        1540x910; the rail's five tabs in order at x 18, y 16 + i * 92 (+44 from Tab_Packs) under the
 --                        header, 224 x 80, the RobuxDivider between Gems and Packs; the header (Title "Shop", Balance_Gems
 --                        a GemIcon.Amount, Balance_Tokens, CloseButton, no Cash pill); NormalizeTab for every alias; Open
---                        { Tab = "Currency" } -> Gems, { Tab = "Passes" } -> Passes; the first open shows Packs, a re-open the
---                        last tab; Packs / Passes / Boosts hold every StoreCatalog card of their tab inside the content box
---                        (x 262, width 1240); Tab_Packs.Dot while the Starter Pack is on sale and unbought; Tab_Eggs hops to
---                        MenuController's Cloud Shop; WindowOpened("Store") once per open; SetTouchHidden("Shop", true) on a
---                        touch device; the cursor free with mouse lock on; Esc closes; NimbusShopBack only while open,
---                        above NimbusDash, B closes and returns Sink
+--                        { Tab = "Currency" } -> Gems, { Tab = "Passes" } -> Passes; the first open shows Eggs (Task 22), a
+--                        re-open the last tab; Packs / Passes / Boosts hold every StoreCatalog card of their tab inside the
+--                        content box (x 262, width 1240); Tab_Packs.Dot while the Starter Pack is on sale and unbought;
+--                        Tab_Eggs is the real Eggs page (Task 22); WindowOpened("Shop") once per open; SetTouchHidden("Shop",
+--                        true) on a touch device; the cursor free with mouse lock on; Esc closes; NimbusShopBack only while
+--                        open, above NimbusDash, B closes and returns Sink
+--   client_shop_eggs     (1920x1080, Task 22) ShopCard_Secret (the hero: 1240 x 240 at (0, 16), "Secret Roulette", its odds
+--                        = GetRarityOdds("Secret"), the PityChip from SecretPityLeft, SPIN + GemIcon + 500, the hint); the
+--                        four machine cards at (i * 314, 276) 298 x 550 with their Odds_* rows = GetRarityOdds(id), Spin /
+--                        Spin3 / SpinGems prices; NoOdds; every button's BuyRoulette through EggStage.Request; Pending /
+--                        failure / Short / Locked / Loading states; Open({ RouletteId }) focus; Currency alone keeps the
+--                        tab; texts >= 18 px; the rail's Fast hatch; MenuController.IsOpen(); closes on MenuController.Close()
+--                        and InMatch; WindowOpened("Shop") once per open; the tutorial card folds
 --   client_shop_gems     (1920x1080, 1280x720, 844x390, 390x844) the gem packs and names from Config; the ribbons and BEST
 --                        VALUE computed from the prices shown (Config Robux, a changed Robux, a live PriceInRobux); Id 0 =
 --                        the Config Robux on an inactive button with "Coming soon" ("PREVIEW" under StorePreview); a created
@@ -21,12 +28,16 @@
 --                        eight tiles with its Fade; the portrait list; no gem glyph text
 --   client_shop_sizes    (1280x720, 1366x768, 1920x1080, 2560x1440) ShopWindow = NeonKit.BigRect (design 1296 x 759,
 --                        1383 x 810, 1540 x 910, 1540 x 910 at 1.25); the Compact rail at the first two, PC at the others;
---                        every card of Gems, Packs, Passes and Boosts reachable inside Body by scrolling
+--                        every card of Eggs, Gems, Packs, Passes and Boosts reachable inside Body by scrolling; the Eggs
+--                        page's fit rule (Task 22: the reference layout at 1920x1080, the shrunk one scrolling vertically at
+--                        1280x720 / 1366x768)
 --   client_shop_mobile   (phone world: 844x390, 740x360, 667x375, 640x360) ShopWindow = BigRect; rail 104 wide; tabs by body
 --                        (104 x 48 at 6 + i * 54 with a 280 body, 104 x 44 at 4 + i * 49 under 276); RedoGeom.check on every
---                        tab; big balances (Review Focus 6); resize while open (Review Focus 1)
+--                        tab; the Eggs row (Task 22: the Secret card 200 wide, then four 166 wide at 208 + i * 174, every
+--                        card min(266, body - 12) tall, Spin3's short total, odds eggs >= 30 px); big balances (Review
+--                        Focus 6); resize while open (Review Focus 1)
 --   client_shop_portrait (phone world: 390x844, 360x640) two header rows, the rail as one row of five 64 x 56 tabs, a
---                        vertical list on every tab, RedoGeom.check
+--                        vertical list on every tab (Eggs: full-width cards, the odds a 2 x 2 grid), RedoGeom.check
 -- Every scenario puts back the Config ids / prices it touched, the attributes, the MarketplaceService doubles and the
 -- viewport. Deterministic: mock clock only. Plain Lua 5.1 syntax only.
 
@@ -44,7 +55,10 @@ local CHECKING = "Checking your account..."
 local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local ATTRS = { "InMatch", "OwnedPasses", "StoreBought", "XpBoostEnds", "StorePreview", "PaidRandomItemsRestricted", "GemsSettled",
-	"XpPassState", "Gems", "CloudTokens" }
+	"XpPassState", "Gems", "CloudTokens", "SecretPityLeft" }
+local MACHINES = { "Cloud", "Storm", "Sky", "Celestial" }
+local EGG_LOCK = "Gem roulettes are not available on this account right now."
+local EGG_CHECKING = "Checking your account..."
 
 local G = {}
 function G.KC()
@@ -193,26 +207,32 @@ function G.scaleOf(o)
 	end
 	return s
 end
--- scrolls o's nearest ScrollingFrame (clamped to its canvas, like Roblox) until o's top-left is in view; true when o then
--- lies inside `within`
+-- scrolls every ScrollingFrame between o and `within` (the inner one first; clamped to its canvas, like Roblox) until o's
+-- top-left is in view; true when o then lies inside `within` (Task 22: the Eggs page's card row scrolls inside its page)
 function G.reach(o, within)
+	local list = {}
 	local sc = o.Parent
-	while sc and not sc:IsA("ScrollingFrame") and sc ~= within do
+	while sc and sc ~= within do
+		if sc:IsA("ScrollingFrame") then
+			list[#list + 1] = sc
+		end
 		sc = sc.Parent
 	end
-	if sc and sc:IsA("ScrollingFrame") then
-		local b, s, cp = G.box(o), G.box(sc), sc.CanvasPosition
-		local k = G.scaleOf(sc)
-		local maxX = math.max(0, sc.CanvasSize.X.Offset * k - s.w)
-		local maxY = math.max(0, sc.CanvasSize.Y.Offset * k - s.h)
+	for _, s0 in ipairs(list) do
+		local b, s, cp = G.box(o), G.box(s0), s0.CanvasPosition
+		local k = G.scaleOf(s0)
+		local maxX = math.max(0, s0.CanvasSize.X.Offset * k - s.w)
+		local maxY = math.max(0, s0.CanvasSize.Y.Offset * k - s.h)
 		local x = math.max(0, math.min(maxX, b.x - s.x + cp.X - 2))
 		local y = math.max(0, math.min(maxY, b.y - s.y + cp.Y - 2))
-		sc.CanvasPosition = Vector2.new(x, y)
+		s0.CanvasPosition = Vector2.new(x, y)
 		G.advance(0.05)
 	end
 	local ok = G.inside(G.box(o), G.box(within), 1.5)
-	if sc and sc:IsA("ScrollingFrame") then
-		sc.CanvasPosition = Vector2.new(0, 0)
+	for _, s0 in ipairs(list) do
+		s0.CanvasPosition = Vector2.new(0, 0)
+	end
+	if #list > 0 then
 		G.advance(0.05)
 	end
 	return ok
@@ -222,11 +242,80 @@ function G.pageItems(page)
 	local out = {}
 	for _, d in ipairs(page and page:GetDescendants() or {}) do
 		local n = d.Name
-		if d:IsA("GuiObject") and (n:match("^Card_") or n:match("^GemPack_%d$") or n:match("^TokenPack_%d$") or n == "GemPotion" or n == "GemHero") and G.shown(d) then
+		if d:IsA("GuiObject") and (n:match("^Card_") or n:match("^ShopCard_") or n:match("^GemPack_%d$") or n:match("^TokenPack_%d$") or n == "GemPotion" or n == "GemHero") and G.shown(d) then
 			out[#out + 1] = d
 		end
 	end
 	return out
+end
+
+-- the egg stage closed and no request pending (a scenario never inherits another's spin)
+function G.calmStage()
+	local ES = G.req("client/UI/EggStage")
+	if ES and type(ES.Close) == "function" then
+		pcall(ES.Close)
+		if type(ES._S) == "table" then
+			ES._S.Pending = false
+			ES._S.PendToken = (ES._S.PendToken or 0) + 1
+			ES._S.LastFire = -10
+		end
+	end
+end
+-- the Eggs page's cards
+function G.eggCard(id)
+	return G.find(G.win(), "ShopCard_" .. id)
+end
+function G.eggBtn(id, name)
+	local card = G.eggCard(id)
+	return card and card:FindFirstChild(name, true) or nil
+end
+-- a spin button's price text (its "Price" label)
+function G.priceOf(b)
+	local p = b and b:FindFirstChild("Price", true)
+	return p and tostring(p.Text) or nil
+end
+-- "60%" style: the whole percent, else one decimal
+function G.pct(chance)
+	local v = chance * 100
+	if math.abs(v - math.floor(v + 0.5)) < 1e-6 then
+		return tostring(math.floor(v + 0.5)) .. "%"
+	end
+	return fmt("%.1f%%", v)
+end
+-- the card's Odds_<Rarity> rows in order: { "Common 60%", ... } (row name, its Pct text)
+function G.oddsRows(card)
+	local rows = {}
+	for _, d in ipairs(card and card:GetDescendants() or {}) do
+		local r = d.Name:match("^Odds_(%a+)$")
+		if r and d:IsA("GuiObject") and G.shown(d) then
+			local pct = d:FindFirstChild("Pct", true)
+			rows[#rows + 1] = { Rarity = r, Pct = pct and tostring(pct.Text) or "?", Order = d.LayoutOrder, X = d.AbsolutePosition.X, Y = d.AbsolutePosition.Y, Row = d }
+		end
+	end
+	table.sort(rows, function(a, b)
+		if a.Order ~= b.Order then
+			return a.Order < b.Order
+		end
+		if math.abs(a.Y - b.Y) > 0.5 then
+			return a.Y < b.Y
+		end
+		return a.X < b.X
+	end)
+	return rows
+end
+function G.wantRows(PC, id)
+	local out = {}
+	for _, e in ipairs(PC.GetRarityOdds(id)) do
+		out[#out + 1] = e.Rarity .. " " .. G.pct(e.Chance)
+	end
+	return table.concat(out, ", ")
+end
+function G.gotRows(card)
+	local out = {}
+	for _, r in ipairs(G.oddsRows(card)) do
+		out[#out + 1] = r.Rarity .. " " .. r.Pct
+	end
+	return table.concat(out, ", ")
 end
 
 function G.begin()
@@ -275,6 +364,7 @@ function G.begin()
 	if MC and MC.Close then
 		MC.Close()
 	end
+	G.calmStage()
 	saved.Opened = {}
 	if MC and MC.WindowOpened then
 		saved.Conn = MC.WindowOpened:Connect(function(id)
@@ -295,6 +385,7 @@ function G.finish(saved)
 	if MC and MC.Close then
 		MC.Close()
 	end
+	G.calmStage()
 	for _, it in ipairs(Config.Store.Items) do
 		it.Id = saved.Ids[it.Key] or 0
 	end
@@ -379,8 +470,9 @@ S.client_shop_window = guarded("client_shop_window", function()
 	local wb = G.box(win)
 	T.check(G.near(wb.w, 1540) and G.near(wb.h, 910) and G.near(wb.x, r.x) and G.near(wb.y, r.y) and Shop.Layout() == "PC",
 		"shop window: ShopWindow 1540 x 910 at NeonKit.BigRect's place (PC)", fmt("%s; rect %.0f,%.0f", G.d(win), r.x, r.y))
-	T.eq(Shop.Tab(), "Packs", "shop window: the first open shows Packs (the Task 21 step)")
-	T.eq(G.count(saved.Opened, "Store", from), 1, "shop window: WindowOpened fired 'Store' once for the open")
+	T.eq(Shop.Tab(), "Eggs", "shop window: the first open shows Eggs (Task 22)")
+	T.eq(G.count(saved.Opened, "Shop", from), 1, "shop window: WindowOpened fired 'Shop' once for the open")
+	T.eq(G.count(saved.Opened, "Store", from), 0, "shop window: ...and never 'Store'")
 	-- the rail
 	local body = G.body()
 	local rail = win:FindFirstChild("Rail")
@@ -440,10 +532,10 @@ S.client_shop_window = guarded("client_shop_window", function()
 	Shop.Open()
 	G.advance(0.4)
 	T.eq(Shop.Tab(), "Passes", "shop window: a re-open shows the last tab")
-	T.eq(G.count(saved.Opened, "Store", from), 1, "shop window: ...and fires WindowOpened('Store') once")
+	T.eq(G.count(saved.Opened, "Shop", from), 1, "shop window: ...and fires WindowOpened('Shop') once")
 	Shop.Open()
 	G.advance(0.2)
-	T.eq(G.count(saved.Opened, "Store", from), 1, "shop window: Open() on the open Shop fires nothing more")
+	T.eq(G.count(saved.Opened, "Shop", from), 1, "shop window: Open() on the open Shop fires nothing more")
 	-- every created card of Packs / Passes / Boosts in its page, inside the content box
 	Shop.Close()
 	G.createAll()
@@ -488,18 +580,21 @@ S.client_shop_window = guarded("client_shop_window", function()
 	T.check(dot ~= nil and G.shown(dot), "shop window: ...and shows under StorePreview")
 	G.setAttr("StorePreview", nil)
 	G.advance(1.2)
-	-- Tab_Eggs hops to the Cloud Shop (the old one still lives in MenuController)
+	-- Tab_Eggs is the real page (Task 22): the Shop stays open, Page_Eggs shows, MenuController has no Cloud Shop any more
 	from = #saved.Opened
 	G.tapTab("Eggs")
 	G.advance(0.4)
-	T.check(not Shop.IsOpen() and MC.IsOpen() and saved.Opened[#saved.Opened] == "Shop", "shop window: Tab_Eggs closes the Shop and opens MenuController's Cloud Shop",
-		tostring(Shop.IsOpen()) .. " / " .. tostring(saved.Opened[#saved.Opened]))
-	MC.Close()
+	local pe = body:FindFirstChild("Page_Eggs")
+	local menuGui = G.pg():FindFirstChild("NimbusMenu")
+	T.check(Shop.IsOpen() and Shop.Tab() == "Eggs" and G.shown(pe) and not G.shown(body:FindFirstChild("Page_Packs")) and #saved.Opened == from,
+		"shop window: Tab_Eggs shows the Shop's own Eggs page (the Shop stays open, nothing else opens)", tostring(Shop.IsOpen()) .. " / " .. tostring(Shop.Tab()))
+	T.check(menuGui == nil or menuGui:FindFirstChild("Window_Shop") == nil, "shop window: MenuController has no Window_Shop any more")
+	Shop.Close()
 	G.advance(0.4)
 	Shop.Open({ Tab = "Roulettes" })
 	G.advance(0.4)
-	T.check(not Shop.IsOpen() and MC.IsOpen(), "shop window: Open({ Tab = 'Roulettes' }) hops the same way")
-	MC.Close()
+	T.check(Shop.IsOpen() and Shop.Tab() == "Eggs" and G.shown(pe), "shop window: Open({ Tab = 'Roulettes' }) opens the Shop on Eggs")
+	Shop.Close()
 	G.advance(0.4)
 	-- touch: SetTouchHidden("Shop", true) while open, false after
 	local realHide = MC.SetTouchHidden
@@ -570,6 +665,356 @@ S.client_shop_window = guarded("client_shop_window", function()
 	G.setAttr("InMatch", false)
 	G.finish(saved)
 	KC.flushErrors("client_shop_window")
+end)
+
+----------------------------------------------------------------------------------------------------
+-- client_shop_eggs (Task 22)
+----------------------------------------------------------------------------------------------------
+local function commas(n)
+	local s = tostring(math.floor(n))
+	local out = s:reverse():gsub("(%d%d%d)", "%1,"):reverse()
+	return (out:gsub("^,", ""))
+end
+
+S.client_shop_eggs = guarded("client_shop_eggs", function()
+	local KC = G.KC()
+	local Config = KC.env()
+	local Shop = G.req("client/Controllers/ShopController")
+	local SE = G.req("client/UI/ShopEggs")
+	local ES = G.req("client/UI/EggStage")
+	local PC = G.req("shared/PetCatalog")
+	local CS = G.req("client/ClientSettings")
+	local MC = G.req("client/Controllers/MenuController")
+	local okApi = type(Shop) == "table" and type(SE) == "table" and type(ES) == "table" and type(PC) == "table" and type(CS) == "table" and type(MC) == "table"
+	for _, fn in ipairs({ "Build", "Layout", "Refresh", "Focus", "CardState" }) do
+		okApi = okApi and type(SE[fn]) == "function"
+	end
+	if not T.check(okApi, "shop eggs: client/UI/ShopEggs loads with its API (Build, Layout, Refresh, Focus, CardState)") then
+		return
+	end
+	local saved = G.begin()
+	G.setAttr("Gems", 5000)
+	G.setAttr("CloudTokens", 50000)
+	G.setAttr("SecretPityLeft", 3)
+	CS.Set("FastHatch", false)
+	Mock.SetViewport(1920, 1080)
+	G.advance(0.8)
+	local hints = {}
+	local realHint = MC.Hint
+	MC.Hint = function(text)
+		hints[#hints + 1] = tostring(text)
+	end
+	local realOdds = PC.GetRarityOdds
+	local roulettes = {}
+	for _, r in ipairs(Config.Roulettes) do
+		roulettes[r.Id] = r
+	end
+	local gemPrices = Config.Gems.RouletteGemPrices
+	local function buys(mark)
+		local out = {}
+		for _, e in ipairs(KC.serverCalls("BuyRoulette", mark)) do
+			out[#out + 1] = tostring(e.args[1]) .. "/" .. tostring(e.args[2]) .. "/" .. tostring(e.args[3])
+		end
+		return out
+	end
+	local function clearPending(reason)
+		KC.toClient("RouletteResult", { Ok = false, Reason = reason or "Probe reason", RouletteId = "Cloud", Currency = "Tokens", Spins = 1 })
+		G.advance(0.4)
+	end
+	local ok, err = pcall(function()
+		local from = #saved.Opened
+		if type(Shop._S) == "table" then
+			Shop._S.Tab = nil
+		end
+		Shop.Open()
+		G.advance(0.6)
+		T.check(Shop.IsOpen() and Shop.Tab() == "Eggs", "shop eggs: a fresh session's first open shows Eggs", tostring(Shop.Tab()))
+		T.eq(G.count(saved.Opened, "Shop", from), 1, "shop eggs: WindowOpened fired 'Shop' once for the open")
+		local body = G.body()
+		local page = body and body:FindFirstChild("Page_Eggs")
+		T.check(G.shown(page), "shop eggs: Page_Eggs shows")
+
+		-- the Secret hero
+		local hero = G.eggCard("Secret")
+		local hb = hero and G.rel(hero, body)
+		T.check(hero ~= nil and G.shown(hero) and hero:GetAttribute("Hero") == true and G.near(hb.x, 0) and G.near(hb.y, 16) and G.near(hb.w, 1240) and G.near(hb.h, 240),
+			"shop eggs: ShopCard_Secret (attribute Hero) is 1240 x 240 at (0, 16) of the content box", hero and G.d(hero) or "missing")
+		T.eq(G.text(hero, "Title"), "Secret Roulette", "shop eggs: the hero reads 'Secret Roulette'")
+		T.eq(G.gotRows(hero), G.wantRows(PC, "Secret"), "shop eggs: the hero's odds = PetCatalog.GetRarityOdds('Secret'), in order")
+		T.eq(G.gotRows(hero), "Mythic 60%, Secret 40%", "shop eggs: ...Mythic 60%, Secret 40%")
+		T.eq(G.text(hero, "PityChip"), "Secret for sure in 3 more spins", "shop eggs: PityChip for SecretPityLeft 3")
+		G.setAttr("SecretPityLeft", 1)
+		G.advance(0.3)
+		T.eq(G.text(hero, "PityChip"), "Secret for sure on the next spin", "shop eggs: PityChip for SecretPityLeft 1")
+		G.setAttr("SecretPityLeft", nil)
+		G.advance(0.3)
+		T.eq(G.text(hero, "PityChip"), "Loading...", "shop eggs: PityChip without SecretPityLeft reads 'Loading...'")
+		G.setAttr("SecretPityLeft", 3)
+		G.advance(0.3)
+		local hs = G.eggBtn("Secret", "Spin")
+		T.check(hs ~= nil and hs:FindFirstChild("GemIcon", true) ~= nil and G.priceOf(hs) == commas(Config.Gems.SecretRoulette.GemPrice) and G.priceOf(hs) == "500" and not G.disabled(hs),
+			"shop eggs: the hero's Spin is a GemIcon + '500'", hs and tostring(G.priceOf(hs)) or "no button")
+		T.eq(G.text(hero, "Hint"), "Also at the Storm Altar", "shop eggs: the hero's hint")
+		T.check(G.eggBtn("Secret", "Spin3") == nil and G.eggBtn("Secret", "SpinGems") == nil, "shop eggs: the Secret card is x1 only")
+
+		-- the four machine cards
+		local bad = {}
+		for i, id in ipairs(MACHINES) do
+			local card = G.eggCard(id)
+			local b = card and G.rel(card, body)
+			if not (card and G.shown(card) and G.near(b.x, (i - 1) * 314) and G.near(b.y, 276) and G.near(b.w, 298) and G.near(b.h, 550)) then
+				bad[#bad + 1] = id .. ": " .. (b and fmt("%.0f,%.0f %.0fx%.0f", b.x, b.y, b.w, b.h) or "missing")
+			end
+		end
+		T.check(#bad == 0, "shop eggs: the four cards at (i * 314, 276) of the content box, 298 x 550", table.concat(bad, "; "))
+		local rows, prices = {}, {}
+		for _, id in ipairs(MACHINES) do
+			local card = G.eggCard(id)
+			if G.gotRows(card) ~= G.wantRows(PC, id) then
+				rows[#rows + 1] = id .. ": " .. G.gotRows(card) .. " (want " .. G.wantRows(PC, id) .. ")"
+			end
+			local r = roulettes[id]
+			local spin, s3, sg = G.eggBtn(id, "Spin"), G.eggBtn(id, "Spin3"), G.eggBtn(id, "SpinGems")
+			local want = { commas(r.Price), commas(3 * r.Price), tostring(gemPrices[id]) }
+			local got = { G.priceOf(spin), G.priceOf(s3), G.priceOf(sg) }
+			if got[1] ~= want[1] or got[2] ~= want[2] or got[3] ~= want[3] or not (spin and spin:FindFirstChild("TokenIcon", true)) or not (s3 and s3:FindFirstChild("TokenIcon", true))
+				or not (sg and sg:FindFirstChild("GemIcon", true)) then
+				prices[#prices + 1] = fmt("%s: %s / %s / %s (want %s / %s / %s)", id, tostring(got[1]), tostring(got[2]), tostring(got[3]), want[1], want[2], want[3])
+			end
+		end
+		T.check(#rows == 0, "shop eggs: every card's Odds_* rows = GetRarityOdds(id), in order and value", table.concat(rows, "; "))
+		T.check(G.gotRows(G.eggCard("Celestial")):match("Secret 2%%$") ~= nil and #G.oddsRows(G.eggCard("Celestial")) == 4, "shop eggs: Celestial has four rows, the last Secret 2%",
+			G.gotRows(G.eggCard("Celestial")))
+		T.check(#prices == 0, "shop eggs: Spin = token icon + the price, Spin3 = token icon + 3x, SpinGems = GemIcon + 20 / 40 / 60 / 180", table.concat(prices, "; "))
+		T.check(G.eggBtn("Cloud", "Spin3") and tostring(G.texts(G.eggBtn("Cloud", "Spin3"))):find("x3", 1, true) ~= nil, "shop eggs: Spin3 reads 'x3'")
+		local hints1 = {}
+		for _, id in ipairs(MACHINES) do
+			hints1[#hints1 + 1] = tostring(G.text(G.eggCard(id), "Hint"))
+		end
+		T.eq(table.concat(hints1, " | "), "Gems: same odds | Gems: same odds | Gems: same odds | Gems: same odds", "shop eggs: every machine card's hint reads 'Gems: same odds'")
+
+		-- a card without odds cannot spin
+		PC.GetRarityOdds = function(id)
+			if id == "Storm" then
+				return {}
+			end
+			return realOdds(id)
+		end
+		G.advance(1.2)
+		local storm = G.eggCard("Storm")
+		local stB = { G.eggBtn("Storm", "Spin"), G.eggBtn("Storm", "Spin3"), G.eggBtn("Storm", "SpinGems") }
+		T.check(G.text(storm, "NoOdds") == "Odds unavailable" and G.disabled(stB[1]) and G.disabled(stB[2]) and G.disabled(stB[3]) and SE.CardState("Storm") == "NoOdds",
+			"shop eggs: GetRarityOdds('Storm') empty -> 'Odds unavailable', its buttons inactive, CardState NoOdds", tostring(G.text(storm, "NoOdds")) .. " / " .. tostring(SE.CardState("Storm")))
+		local m0 = #Mock.RemoteLog
+		G.tap(stB[1])
+		T.eq(#buys(m0), 0, "shop eggs: ...and a tap sends nothing")
+		PC.GetRarityOdds = realOdds
+		G.advance(1.2)
+		T.check(not G.shown(storm:FindFirstChild("NoOdds", true)) and #G.oddsRows(storm) == 4 and not G.disabled(G.eggBtn("Storm", "Spin")) and SE.CardState("Storm") == "Ready",
+			"shop eggs: ...and the odds come back with the catalog")
+
+		-- every button sends its BuyRoulette once through EggStage.Request; pending dims everything; a failure re-enables
+		local cases = {
+			{ "Cloud", "Spin", "Cloud/Tokens/1" }, { "Cloud", "Spin3", "Cloud/Tokens/3" }, { "Celestial", "SpinGems", "Celestial/Gems/1" }, { "Secret", "Spin", "Secret/Gems/1" },
+		}
+		for n, c in ipairs(cases) do
+			local mark = #Mock.RemoteLog
+			local btn = G.eggBtn(c[1], c[2])
+			G.tap(btn)
+			local sent = buys(mark)
+			T.check(#sent == 1 and sent[1] == c[3], "shop eggs: " .. c[1] .. " " .. c[2] .. " -> one BuyRoulette(" .. c[3]:gsub("/", ", ") .. ")", table.concat(sent, "; "))
+			if n == 1 then
+				local states, lit = {}, {}
+				for _, id in ipairs({ "Secret", "Cloud", "Storm", "Sky", "Celestial" }) do
+					states[#states + 1] = tostring(SE.CardState(id))
+					for _, name in ipairs({ "Spin", "Spin3", "SpinGems" }) do
+						local b = G.eggBtn(id, name)
+						if b and not G.disabled(b) then
+							lit[#lit + 1] = id .. "." .. name
+						end
+					end
+				end
+				T.eq(table.concat(states, " "), "Pending Pending Pending Pending Pending", "shop eggs: while pending every CardState is Pending")
+				T.check(#lit == 0, "shop eggs: ...and every spin button is dimmed", table.concat(lit, ", "))
+				G.tap(G.eggBtn("Storm", "Spin"))
+				T.eq(#buys(mark), 1, "shop eggs: ...a second tap while pending sends nothing")
+				local h0 = #hints
+				clearPending("You need more Cloud Tokens.")
+				local states2 = {}
+				for _, id in ipairs({ "Secret", "Cloud", "Storm", "Sky", "Celestial" }) do
+					states2[#states2 + 1] = tostring(SE.CardState(id))
+				end
+				T.check(table.concat(states2, " ") == "Ready Ready Ready Ready Ready" and not G.disabled(G.eggBtn("Cloud", "Spin")) and #hints == h0 + 1 and hints[#hints] == "You need more Cloud Tokens.",
+					"shop eggs: a failure answer re-enables every card at once, with one toast of the reason", table.concat(states2, " ") .. " / " .. tostring(hints[#hints]))
+			else
+				clearPending()
+			end
+			G.advance(0.4)
+		end
+		T.eq(saved.Prompts, 0, "shop eggs: the client never prompts a purchase")
+
+		-- Short: the price kept, the amount red, a tap toasts "not enough" and sends nothing
+		G.setAttr("CloudTokens", 4000)
+		G.advance(1.2)
+		local cel = G.eggBtn("Celestial", "Spin")
+		local celPrice = cel and cel:FindFirstChild("Price", true)
+		T.check(SE.CardState("Celestial") == "Short" and G.priceOf(cel) == "5,000" and celPrice and celPrice.TextColor3.R > 0.8 and celPrice.TextColor3.G < 0.5 and not G.disabled(cel),
+			"shop eggs: Short (4,000 tokens, Celestial 5,000): the price kept, drawn red, the button still taps", tostring(SE.CardState("Celestial")) .. " / " .. tostring(G.priceOf(cel)))
+		T.eq(SE.CardState("Cloud"), "Ready", "shop eggs: ...while Cloud (50) stays Ready")
+		local mS, hS = #Mock.RemoteLog, #hints
+		G.tap(cel)
+		T.check(#buys(mS) == 0 and #hints == hS + 1 and hints[#hints]:find("You need", 1, true) ~= nil, "shop eggs: a Short tap shows the 'not enough' toast and sends nothing", tostring(hints[#hints]))
+		G.setAttr("CloudTokens", 50000)
+		G.advance(1.2)
+
+		-- Locked (restricted / unknown): the gem buttons and the whole Secret card
+		local function lockCase(value, text, tag)
+			G.setAttr("PaidRandomItemsRestricted", value)
+			G.advance(1.2)
+			local lockedGems = {}
+			for _, id in ipairs(MACHINES) do
+				local sg = G.eggBtn(id, "SpinGems")
+				if not (sg and G.disabled(sg) and tostring(G.texts(sg)):find("Locked", 1, true)) or SE.CardState(id, "SpinGems") ~= "Locked" then
+					lockedGems[#lockedGems + 1] = id .. ": " .. (sg and G.texts(sg) or "none") .. " " .. tostring(SE.CardState(id, "SpinGems"))
+				end
+			end
+			T.check(#lockedGems == 0, "shop eggs: " .. tag .. ": every SpinGems reads 'Locked', inactive (CardState Locked)", table.concat(lockedGems, "; "))
+			local hsp = G.eggBtn("Secret", "Spin")
+			T.check(G.disabled(hsp) and SE.CardState("Secret") == "Locked" and G.texts(G.eggCard("Secret")):find(text, 1, true) ~= nil,
+				"shop eggs: " .. tag .. ": the Secret card shows '" .. text .. "' and its Spin is inactive", G.texts(G.eggCard("Secret")))
+			T.check(not G.disabled(G.eggBtn("Cloud", "Spin")) and not G.disabled(G.eggBtn("Sky", "Spin3")) and SE.CardState("Cloud") == "Ready", "shop eggs: " .. tag .. ": the token spins stay open")
+			local mL = #Mock.RemoteLog
+			G.tap(hsp)
+			G.tap(G.eggBtn("Cloud", "SpinGems"))
+			T.eq(#buys(mL), 0, "shop eggs: " .. tag .. ": a tap on a locked gem button sends nothing")
+		end
+		lockCase(true, EGG_LOCK, "restricted")
+		lockCase(nil, EGG_CHECKING, "unknown")
+		G.setAttr("PaidRandomItemsRestricted", false)
+		G.advance(1.2)
+
+		-- Loading (no GemsSettled): the gem buttons and the Secret card
+		G.setAttr("GemsSettled", nil)
+		G.advance(1.2)
+		local loading = {}
+		for _, id in ipairs(MACHINES) do
+			local sg = G.eggBtn(id, "SpinGems")
+			if not (sg and G.disabled(sg) and tostring(G.texts(sg)):find("Loading...", 1, true)) then
+				loading[#loading + 1] = id .. ": " .. (sg and G.texts(sg) or "none")
+			end
+		end
+		T.check(#loading == 0, "shop eggs: no GemsSettled: every SpinGems reads 'Loading...', inactive", table.concat(loading, "; "))
+		T.check(SE.CardState("Secret") == "Loading" and G.disabled(G.eggBtn("Secret", "Spin")) and G.texts(G.eggBtn("Secret", "Spin")):find("Loading...", 1, true) ~= nil
+			and G.text(hero, "PityChip") == "Loading...", "shop eggs: ...the Secret card reads 'Loading...' (its Spin and its chip)", G.texts(G.eggCard("Secret")))
+		T.check(not G.disabled(G.eggBtn("Cloud", "Spin")), "shop eggs: ...the token spins are not held")
+		G.setAttr("GemsSettled", true)
+		G.advance(1.2)
+
+		-- Open({ RouletteId }) focuses the card: inside the window, outlined for 2.6 s; Currency alone keeps the tab
+		Shop.Open({ Tab = "Packs" })
+		G.advance(0.4)
+		Shop.Open({ RouletteId = "Secret", Currency = "Gems" })
+		G.advance(0.3)
+		T.check(Shop.Tab() == "Eggs" and hero:GetAttribute("Focused") == true and G.inside(G.box(hero), G.box(G.win()), 1), "shop eggs: Open({ RouletteId = 'Secret', Currency = 'Gems' }) -> Eggs, ShopCard_Secret inside the window and outlined",
+			tostring(Shop.Tab()) .. " / " .. tostring(hero:GetAttribute("Focused")))
+		G.advance(2.5)
+		T.check(hero:GetAttribute("Focused") ~= true, "shop eggs: ...the outline is gone after 2.6 s")
+		Shop.Open({ RouletteId = "Celestial" })
+		G.advance(0.3)
+		local celCard = G.eggCard("Celestial")
+		T.check(celCard:GetAttribute("Focused") == true and G.inside(G.box(celCard), G.box(G.body()), 1), "shop eggs: Open({ RouletteId = 'Celestial' }) outlines the Celestial card, fully inside the body")
+		G.advance(2.8)
+		Shop.Open({ Tab = "Packs" })
+		G.advance(0.3)
+		Shop.Open({ Currency = "Gems" })
+		G.advance(0.3)
+		T.eq(Shop.Tab(), "Packs", "shop eggs: { Currency = 'Gems' } alone keeps the tab")
+		Shop.Open({ Tab = "Eggs" })
+		G.advance(0.4)
+
+		-- every text >= 18 px, every target >= 44 px, inside the screen
+		RedoGeom.check(G.win(), "shop eggs 1920x1080", { MinText = 18, MinTarget = 44, NoOverlap = G.noOverlapNames() })
+		T.eq(#G.glyphs(G.gui()), 0, "shop eggs: no gem glyph text in NimbusShop")
+
+		-- the rail's Fast hatch (PC, Eggs only)
+		local fast = G.find(G.win():FindFirstChild("Rail"), "FastHatch")
+		local fb = fast and G.rel(fast, G.win())
+		T.check(fast ~= nil and G.shown(fast) and G.near(fb.x, 18) and G.near(fb.w, 224) and G.near(fb.h, 52), "shop eggs: the rail's FastHatch toggle (224 x 52 at x 18) shows on Eggs", fast and G.d(fast) or "none")
+		local c0 = #KC.serverCalls("SettingsSet")
+		G.tap(fast)
+		T.eq(#KC.serverCalls("SettingsSet") - c0, 0, "shop eggs: the toggle sends nothing at once")
+		G.advance(0.4)
+		local sets = KC.serverCalls("SettingsSet")
+		T.check(#sets - c0 == 1 and sets[#sets].args[1] == "FastHatch" and sets[#sets].args[2] == true and CS.Get("FastHatch") == true and fast:GetAttribute("On") == true,
+			"shop eggs: ...then one SettingsSet('FastHatch', true) 0.4 s later", (#sets - c0) .. " calls")
+		G.tapTab("Gems")
+		T.check(not G.shown(fast), "shop eggs: the toggle is not on the Gems tab")
+		G.tapTab("Eggs")
+		CS.Set("FastHatch", false)
+		G.advance(0.6)
+
+		-- MenuController.IsOpen(): the Shop and the stage; MenuController.Close() and InMatch close it
+		T.check(MC.IsOpen() == true, "shop eggs: MenuController.IsOpen() is true while the Shop is open")
+		KC.toClient("RouletteResult", { Ok = true, RouletteId = "Cloud", Currency = "Tokens", Spins = 1, PetId = PC.RarityPool("Cloud", "Common")[1].Id, IsNew = false, Count = 2,
+			Pulls = { { PetId = PC.RarityPool("Cloud", "Common")[1].Id, Rarity = "Common", IsNew = false, Count = 2, PoolSize = 1 } } })
+		G.advance(0.3)
+		T.check(ES.IsShowing() and MC.IsOpen() == true, "shop eggs: ...and while the egg stage shows")
+		ES.Close()
+		G.advance(0.3)
+		MC.Close()
+		G.advance(0.3)
+		T.check(not Shop.IsOpen() and MC.IsOpen() == false, "shop eggs: MenuController.Close() closes the Shop")
+		Shop.Open()
+		G.advance(0.3)
+		G.setAttr("InMatch", true)
+		G.advance(0.3)
+		T.check(not Shop.IsOpen(), "shop eggs: InMatch closes the Shop")
+		G.setAttr("InMatch", false)
+		G.advance(0.4)
+
+		-- the tutorial card folds while the Shop is open
+		local TC = G.req("client/Controllers/TutorialController")
+		local Steps = G.req("shared/TutorialSteps")
+		local index = nil
+		for i, st in ipairs(Steps and Steps.Steps or {}) do
+			if st.Id == "shop" then
+				index = i
+			end
+		end
+		if T.check(TC ~= nil and index ~= nil, "shop eggs: (setup) the tutorial's shop step exists") then
+			local tutSaved = type(TC.GetState) == "function" and TC.GetState() or nil
+			local step = Steps.Steps[index]
+			KC.toClient("TutorialState", {
+				Step = index, Total = #Steps.Steps, Id = step.Id, Title = step.Title, Text = tostring(step.Text), Target = step.Target,
+				CompleteOn = step.CompleteOn, Hint = step.Hint, Button = step.Button, AlsoNext = step.AlsoNext == true,
+				Chapter = step.Chapter, Done = false, Completed = false, Skipped = false, Reward = 0,
+			})
+			G.advance(2.5) -- (the card's first show waits TutorialController's FIRST_SHOW_DELAY, 1.2 s)
+			local tut = G.pg():FindFirstChild("NimbusTutorial")
+			local main = tut and G.find(tut, "Main")
+			local before = main ~= nil and G.shown(main)
+			Shop.Open()
+			G.advance(0.8)
+			local during = main ~= nil and G.shown(main)
+			T.check(before and not during, "shop eggs: the tutorial card folds while the Shop is open", "before " .. tostring(before) .. ", during " .. tostring(during))
+			Shop.Close()
+			G.advance(0.6)
+			if tutSaved then
+				KC.toClient("TutorialState", tutSaved)
+			else
+				KC.toClient("TutorialState", { Done = true, Step = #Steps.Steps, Total = #Steps.Steps })
+			end
+			G.advance(0.6)
+		end
+	end)
+	if not ok then
+		T.fail("shop eggs: scenario error", tostring(err))
+	end
+	PC.GetRarityOdds = realOdds
+	MC.Hint = realHint
+	CS.Set("FastHatch", false)
+	G.finish(saved)
+	KC.flushErrors("client_shop_eggs")
 end)
 
 ----------------------------------------------------------------------------------------------------
@@ -909,8 +1354,26 @@ S.client_shop_sizes = guarded("client_shop_sizes", function()
 			T.check(tab ~= nil and G.near(G.rel(tab, win).w, 224) and icon and lbl and G.box(icon).x + G.box(icon).w <= G.box(lbl).x + 1,
 				label .. ": the PC rail: 224 wide, the icon left of the label", tab and G.d(tab) or "no tab")
 		end
+		-- the Eggs page's fit rule (Task 22): the reference layout while the body holds 826 px, else the shrunk one, scrolling
+		Shop.Open({ Tab = "Eggs" })
+		G.advance(0.3)
+		local eggsPage = G.body():FindFirstChild("Page_Eggs")
+		local eggScroll = eggsPage and G.find(eggsPage, "Scroll")
+		local hero, cloud = G.eggCard("Secret"), G.eggCard("Cloud")
+		if T.check(hero ~= nil and cloud ~= nil and eggScroll ~= nil and eggScroll:IsA("ScrollingFrame"), label .. ": Eggs: the hero, the cards and the page's Scroll exist") then
+			local bodyH = G.rel(G.body(), win).h
+			local heroH, cardH = G.rel(hero, win).h, G.rel(cloud, win).h
+			local canvasH = eggScroll.CanvasSize.Y.Offset
+			if sz[5] == "PC" then
+				T.check(G.near(heroH, 240) and G.near(cardH, 550) and canvasH <= bodyH + 0.5 and G.near(G.rel(cloud, G.body()).y, 276),
+					label .. ": Eggs: the reference layout (hero 240, cards 550 at y 276), no vertical scroll", fmt("hero %.0f, card %.0f, canvas %.0f, body %.0f", heroH, cardH, canvasH, bodyH))
+			else
+				T.check(G.near(heroH, 200) and G.near(cardH, 516) and canvasH > bodyH + 0.5,
+					label .. ": Eggs: the shrunk layout (hero 200, cards 516) and the page scrolls vertically", fmt("hero %.0f, card %.0f, canvas %.0f, body %.0f", heroH, cardH, canvasH, bodyH))
+			end
+		end
 		local unreached, count = {}, 0
-		for _, page in ipairs({ "Gems", "Packs", "Passes", "Boosts" }) do
+		for _, page in ipairs({ "Eggs", "Gems", "Packs", "Passes", "Boosts" }) do
 			Shop.Open({ Tab = page })
 			G.advance(0.3)
 			local p = G.body():FindFirstChild("Page_" .. page)
@@ -921,7 +1384,12 @@ S.client_shop_sizes = guarded("client_shop_sizes", function()
 				end
 			end
 		end
-		T.check(count >= 16 and #unreached == 0, label .. ": every card on Gems, Packs, Passes and Boosts is reachable inside Body", count .. " cards; " .. table.concat(unreached, "; "))
+		T.check(count >= 21 and #unreached == 0, label .. ": every card on Eggs, Gems, Packs, Passes and Boosts is reachable inside Body", count .. " cards; " .. table.concat(unreached, "; "))
+		Shop.Open({ Tab = "Eggs" })
+		G.advance(0.3)
+		RedoGeom.check(win, label .. " Eggs", { MinText = 14, MinTarget = 44, NoOverlap = G.noOverlapNames() })
+		Shop.Open({ Tab = "Boosts" })
+		G.advance(0.3)
 		RedoGeom.check(win, label, { MinText = 14, MinTarget = 44, NoOverlap = G.noOverlapNames() })
 		Shop.Close()
 		G.advance(0.3)
@@ -968,10 +1436,57 @@ S.client_shop_mobile = guarded("client_shop_mobile", function()
 			T.check(#bad == 0, fmt("%s: body %.0f: tabs 104 x %d at x 8, y %d + i * %d", label, bodyH, tabH, y0, step), table.concat(bad, "; "))
 			local boosts = rail and rail:FindFirstChild("Tab_Boosts")
 			T.check(boosts ~= nil and G.inside(G.box(boosts), G.box(win), 0.5) and G.box(boosts).y + G.box(boosts).h <= sz[2] + 0.5, label .. ": Tab_Boosts inside the window and the screen", boosts and G.d(boosts) or "none")
-			for _, tab in ipairs({ "Gems", "Packs", "Passes", "Boosts" }) do
+			for _, tab in ipairs({ "Eggs", "Gems", "Packs", "Passes", "Boosts" }) do
 				Shop.Open({ Tab = tab })
 				G.advance(0.3)
 				RedoGeom.check(win, label .. " " .. tab, { MinText = 15, MinTarget = 44, NoOverlap = G.noOverlapNames() })
+			end
+			-- the Eggs row (Task 22): the Secret card 200 wide first, then four cards 166 wide at x = 208 + i * 174, every card
+			-- min(266, body - 12) tall; Spin3's short total; every odds egg >= 30 px
+			Shop.Open({ Tab = "Eggs" })
+			G.advance(0.3)
+			local th = math.min(266, bodyH - 12)
+			local row = {}
+			local hero = G.eggCard("Secret")
+			local hb = hero and G.rel(hero, body)
+			if not (hb and G.near(hb.x, 0) and G.near(hb.w, 200) and G.near(hb.h, th)) then
+				row[#row + 1] = "Secret " .. (hb and fmt("%.0f,%.0f %.0fx%.0f", hb.x, hb.y, hb.w, hb.h) or "missing")
+			end
+			local y0 = hb and hb.y
+			local shortTotals, smallEggs = {}, {}
+			local wantShort = { Cloud = "150", Storm = "750", Sky = "3,000", Celestial = "15K" }
+			for i, id in ipairs(MACHINES) do
+				local card = G.eggCard(id)
+				local b = card and G.rel(card, body)
+				if not (b and G.near(b.x, 208 + (i - 1) * 174) and G.near(b.w, 166) and G.near(b.h, th) and (y0 == nil or G.near(b.y, y0))) then
+					row[#row + 1] = id .. " " .. (b and fmt("%.0f,%.0f %.0fx%.0f", b.x, b.y, b.w, b.h) or "missing")
+				end
+				local s3 = G.eggBtn(id, "Spin3")
+				local txt = s3 and G.texts(s3) or ""
+				if not (txt:find("x3", 1, true) and G.priceOf(s3) == wantShort[id] and s3:FindFirstChild("TokenIcon", true)) then
+					shortTotals[#shortTotals + 1] = id .. ": " .. txt
+				end
+			end
+			for _, id in ipairs({ "Secret", "Cloud", "Storm", "Sky", "Celestial" }) do
+				for _, r in ipairs(G.oddsRows(G.eggCard(id))) do
+					local egg = r.Row:FindFirstChild("Egg", true)
+					if not (egg and egg.AbsoluteSize.Y >= 30 - 0.5) then
+						smallEggs[#smallEggs + 1] = id .. "." .. r.Rarity .. " " .. (egg and fmt("%.1f", egg.AbsoluteSize.Y) or "no egg")
+					end
+				end
+			end
+			T.check(#row == 0, fmt("%s: Eggs: the Secret card 200 wide, then four cards 166 wide at x = 208 + i * 174, all %d tall", label, th), table.concat(row, "; "))
+			T.check(#shortTotals == 0, label .. ": Eggs: Spin3 reads 'x3' + token icon + Theme.ShortNumber(3 * price) (150, 750, 3,000, 15K)", table.concat(shortTotals, "; "))
+			T.check(#smallEggs == 0, label .. ": Eggs: every odds egg is at least 30 px", table.concat(smallEggs, "; "))
+			if sz[1] == 844 then
+				local fade = G.find(G.find(body, "Page_Eggs"), "Fade")
+				T.check(fade ~= nil and G.shown(fade), label .. ": Eggs: the right Fade shows while more of the row is to the right", fade and G.d(fade) or "none")
+				Shop.Open({ RouletteId = "Celestial" })
+				G.advance(0.3)
+				local cel = G.eggCard("Celestial")
+				T.check(cel ~= nil and cel:GetAttribute("Focused") == true and G.inside(G.box(cel), G.box(body), 1), label .. ": Eggs: Open({ RouletteId = 'Celestial' }) scrolls the card fully into view, outlined",
+					cel and G.d(cel) or "none")
+				G.advance(2.8)
 			end
 			-- big balances (Review Focus 6)
 			G.setAttr("Gems", 12345678)
@@ -1040,7 +1555,62 @@ S.client_shop_portrait = guarded("client_shop_portrait", function()
 				y = y or (b and b.y)
 			end
 			T.check(#bad == 0, label .. ": the rail is one row of five 64 x 56 tabs", table.concat(bad, "; "))
-			for _, tab in ipairs({ "Gems", "Packs", "Passes", "Boosts" }) do
+			-- the Eggs list (Task 22): full-width cards (the Secret card 200 tall on top, the machines 250), the odds a 2 x 2 grid
+			Shop.Open({ Tab = "Eggs" })
+			G.advance(0.3)
+			local listBad = {}
+			local bw = G.rel(G.body(), G.body()).w
+			local lastY = -1
+			for _, id in ipairs({ "Secret", "Cloud", "Storm", "Sky", "Celestial" }) do
+				local card = G.eggCard(id)
+				local b = card and G.rel(card, G.body())
+				local wantH = id == "Secret" and 200 or 250
+				if not (b and b.y > lastY and b.w >= bw - 16 and G.near(b.h, wantH)) then
+					listBad[#listBad + 1] = id .. " " .. (b and fmt("%.0f,%.0f %.0fx%.0f", b.x, b.y, b.w, b.h) or "missing")
+				end
+				lastY = b and b.y or lastY
+			end
+			T.check(#listBad == 0, label .. ": Eggs: full-width cards in a vertical list (Secret 200 tall first, the machines 250)", table.concat(listBad, "; "))
+			local grid = G.oddsRows(G.eggCard("Cloud"))
+			local xs, ys = {}, {}
+			for _, r in ipairs(grid) do
+				xs[math.floor(r.X + 0.5)] = true
+				ys[math.floor(r.Y + 0.5)] = true
+			end
+			local nx, ny = 0, 0
+			for _ in pairs(xs) do
+				nx = nx + 1
+			end
+			for _ in pairs(ys) do
+				ny = ny + 1
+			end
+			T.check(#grid == 4 and nx == 2 and ny == 2, label .. ": Eggs: Cloud's four odds as a 2 x 2 grid", #grid .. " rows, " .. nx .. " columns x " .. ny .. " rows")
+			-- spec 16.3: each portrait odds cell is the egg 30 + the percent 15 (no rarity word: it would not fit the cell)
+			local cellBad = {}
+			for _, id in ipairs({ "Secret", "Cloud", "Storm", "Sky", "Celestial" }) do
+				for _, r in ipairs(G.oddsRows(G.eggCard(id))) do
+					local egg, word, pct = r.Row:FindFirstChild("Egg"), r.Row:FindFirstChild("Word"), r.Row:FindFirstChild("Pct")
+					local eb, pb, cb = egg and G.rel(egg, r.Row), pct and G.rel(pct, r.Row), G.rel(r.Row, r.Row)
+					if not (egg and pct and G.near(eb.h, 30) and pct.TextSize == 15 and not G.shown(word) and pb.x >= eb.x + eb.w - 1 and pb.x + pb.w <= cb.w + 1) then
+						cellBad[#cellBad + 1] = id .. "/" .. r.Rarity .. (word and G.shown(word) and " (word shown)" or "")
+					end
+				end
+			end
+			T.check(#cellBad == 0, label .. ": Eggs: every odds cell is the egg 30 + the percent 15, no rarity word", table.concat(cellBad, ", "))
+			-- the PityChip keeps to one line: "Secret for sure in N more spins" while it fits the chip, else "Secret in N"
+			G.setAttr("GemsSettled", true)
+			G.setAttr("PaidRandomItemsRestricted", false)
+			G.setAttr("SecretPityLeft", 23)
+			G.advance(0.3)
+			local chip = G.eggCard("Secret") and G.eggCard("Secret"):FindFirstChild("PityChip", true)
+			local chipText = chip and tostring(chip.Text) or ""
+			local chipW = chip and chip.Size.X.Offset or 0
+			local Text = game:GetService("TextService")
+			local need = chip and Text:GetTextSize(chipText, chip.TextSize, chip.Font, Vector2.new(10000, 1000)).X + 16 or math.huge
+			local longFits = chip and Text:GetTextSize("Secret for sure in 23 more spins", chip.TextSize, chip.Font, Vector2.new(10000, 1000)).X + 16 <= chipW
+			T.check(chip ~= nil and G.shown(chip) and need <= chipW and chipText == (longFits and "Secret for sure in 23 more spins" or "Secret in 23"),
+				label .. ": Eggs: the PityChip reads the long line when it fits its " .. chipW .. " px, else 'Secret in 23'", chipText .. " (" .. tostring(need) .. " px)")
+			for _, tab in ipairs({ "Eggs", "Gems", "Packs", "Passes", "Boosts" }) do
 				Shop.Open({ Tab = tab })
 				G.advance(0.3)
 				local page = G.body():FindFirstChild("Page_" .. tab)

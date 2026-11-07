@@ -14,7 +14,8 @@
 --                          into ShopController)
 --     a Cloud x1 Epic result: the seven phases in order, Reveal at 5.75 +- 0.1 s; CrackWord "EPIC EGG!", the reveal Word
 --       "EPIC!", the notes (new / not new / substitute / pity), New; Skip shown on the first frame and Skip() at t = 0 ->
---       Reveal on the next frame; Back() and gamepad B skip, then are DONE; an Esc InputBegan changes nothing; the
+--       Reveal on the next frame; Back() and gamepad B skip, then are DONE; an Esc InputBegan acts once, through the one
+--       Esc handler (Task 22: ShopController's, calling EggStage.Back; EggStage has none of its own); the
 --       character removed mid-Strip; Fast hatch (the toggle -> one SettingsSet 0.4 s later, Reveal 1.92 / 2.66); x3
 --       (7.15 s, strips landing 0.25 s apart, cracks in pull order 0.6 s apart, three columns); evolved keys; old-shape
 --       results and pulls without a Strip (start at Rise); the request path (FIRE_GAP, the pending flag, a failure, the 7 s
@@ -25,6 +26,13 @@
 --       390x844, 1280x720, 1366x768 (RedoGeom.check with the per-phase NoOverlap lists of plan Task 20), the phone fit
 --       numbers (the crack stack, the reveal lip, the 44 px Banner), the x3 pets inside the screen, the bottom bar above
 --       the bottom inset, and the resize mid-roll (Review Focus 1)
+--   client_egg_stage_wiring (client, 1920x1080, Task 22): the Shop's Eggs tab drives the stage: a card tap sends BuyRoulette,
+--       the success plays the stage over a hidden ShopWindow (the Shop stays open), DONE brings it back; the mouse-lock
+--       hold under auto:NimbusHatch; Stats / Pets / Store / Index / ShopController.Open refused while the stage shows; ONE
+--       Esc handler (the Shop's, through EggStage.Back): skip, then DONE; B through NimbusHatchBack; SPIN AGAIN + a card tap
+--       within 0.3 s = one request; a match start / MenuController.Close() during the roll (one toast, the Shop closed);
+--       a late answer after closing the Shop; close while pending by the X / Esc / B / InMatch (Review Focus 2): the cards
+--       stay Pending until a success plays, a failure or the 7 s timeout re-enables them
 -- Deterministic: mock clock only. SoundFx.Play and MenuController.Hint are spied and put back; the viewport, the Fast hatch
 -- setting and the attributes are put back. Plain Lua 5.1 syntax only.
 
@@ -575,10 +583,22 @@ S.client_egg_stage = guarded("client_egg_stage", function()
 		T.check(lastClosed() == "Done" and not ES.IsShowing(), "egg stage: ...and B on the reveal is DONE")
 		ES.Show(G.result("Cloud", "Tokens", { G.pull(PC, "Cloud", epic) }))
 		G.advance(0.8)
+		-- (Task 22: EggStage still has no Esc handler of its own; ShopController's one handler calls EggStage.Back)
 		local UIS = game:GetService("UserInputService")
+		local backs, realBack = 0, ES.Back
+		ES.Back = function(...)
+			backs = backs + 1
+			return realBack(...)
+		end
 		Mock.FireSignal(UIS, "InputBegan", Mock.NewInput("Escape", "Keyboard", "Begin"), false)
 		G.advance(STEP)
-		T.check(ES.IsShowing() and ES.Phase() == "Strip", "egg stage: an Esc InputBegan with only the stage alive changes nothing (no Esc handler in EggStage)", tostring(ES.Phase()))
+		ES.Back = realBack
+		T.check(ES.IsShowing() and ES.Phase() == "Reveal" and backs == 1, "egg stage: an Esc InputBegan acts once, through the one Esc handler (EggStage.Back): the strip skips",
+			tostring(ES.Phase()) .. ", " .. backs .. " Back calls")
+		ES.Done()
+		G.advance(STEP)
+		ES.Show(G.result("Cloud", "Tokens", { G.pull(PC, "Cloud", epic) }))
+		G.advance(0.8)
 		local h0 = #hints
 		ES.Close()
 		G.advance(STEP)
@@ -812,9 +832,21 @@ S.client_egg_stage = guarded("client_egg_stage", function()
 			error("injected phase error")
 		end
 		local he = #hints
+		local o0 = #Mock.Output
 		ES.Show(G.result("Cloud", "Tokens", { G.pull(PC, "Cloud", epic) }))
 		G.run(ES, 7)
 		EA.Halves = realHalves
+		-- (the planted fault's one warning belongs to this check: counted, then dropped, so client_final's warn audit sees
+		-- only real ones; the smoke_dev.lua pattern)
+		local planted = 0
+		for i = #Mock.Output, o0 + 1, -1 do
+			local o = Mock.Output[i]
+			if o.kind == "warn" and tostring(o.text):find("injected phase error", 1, true) then
+				planted = planted + 1
+				table.remove(Mock.Output, i)
+			end
+		end
+		T.eq(planted, 1, "egg stage: the phase error is reported once (warn)")
 		T.check(not ES.IsShowing() and lastClosed() == "Error", "egg stage: a phase error ends the stage through teardown (Closed 'Error')", tostring(lastClosed()))
 		T.check(#hints == he + 1 and hints[#hints] == "You hatched: " .. epic.Name, "egg stage: ...and toasts the pull", tostring(hints[#hints]))
 		G.zeroStats(ES, "egg stage after a phase error")
@@ -984,6 +1016,315 @@ S.client_egg_stage_mobile = guarded("client_egg_stage_mobile", function()
 	CS.Set("FastHatch", false)
 	G.advance(0.6)
 	KC.flushErrors("client_egg_stage_mobile")
+end)
+
+----------------------------------------------------------------------------------------------------
+-- client_egg_stage_wiring (Task 22: the Shop and the stage live together)
+----------------------------------------------------------------------------------------------------
+S.client_egg_stage_wiring = guarded("client_egg_stage_wiring", function()
+	local KC = G.KC()
+	local Config = KC.env()
+	local ES = G.req("client/UI/EggStage")
+	local SE = G.req("client/UI/ShopEggs")
+	local Shop = G.req("client/Controllers/ShopController")
+	local PC = G.req("shared/PetCatalog")
+	local CS = G.req("client/ClientSettings")
+	local ML = G.req("client/MouseLock")
+	local MC = KC.M.MenuController or G.req("client/Controllers/MenuController")
+	if not T.check(type(ES) == "table" and type(SE) == "table" and type(Shop) == "table" and type(MC) == "table" and type(PC) == "table",
+		"egg wiring: EggStage, ShopEggs, ShopController and MenuController load") then
+		return
+	end
+	local UIS = game:GetService("UserInputService")
+	local IN_MATCH = Config.Attr.InMatch
+	local oldVp = { Mock.Viewport.X, Mock.Viewport.Y }
+	local keep = {}
+	for _, name in ipairs({ Config.Attr.Tokens, Config.Attr.Gems, "PaidRandomItemsRestricted", "GemsSettled", "SecretPityLeft" }) do
+		keep[name] = LocalPlayer:GetAttribute(name)
+	end
+	Mock.SetViewport(1920, 1080)
+	LocalPlayer:SetAttribute(Config.Attr.Tokens, 50000)
+	LocalPlayer:SetAttribute(Config.Attr.Gems, 5000)
+	LocalPlayer:SetAttribute("PaidRandomItemsRestricted", false)
+	LocalPlayer:SetAttribute("GemsSettled", true)
+	LocalPlayer:SetAttribute("SecretPityLeft", 4)
+	CS.Set("FastHatch", false)
+	Shop.Close()
+	MC.Close()
+	if ES.IsShowing() then
+		ES.Close()
+	end
+	if type(ES._S) == "table" then
+		ES._S.Pending = false
+		ES._S.PendToken = (ES._S.PendToken or 0) + 1
+		ES._S.LastFire = -10
+	end
+	G.advance(0.6)
+	local epic = PC.RarityPool("Cloud", "Epic")[1]
+	local rare = PC.RarityPool("Cloud", "Rare")[1]
+	local hints = {}
+	local realHint = MC.Hint
+	MC.Hint = function(text)
+		hints[#hints + 1] = tostring(text)
+	end
+	local backs = 0
+	local realBack = ES.Back
+	ES.Back = function(...)
+		backs = backs + 1
+		return realBack(...)
+	end
+	local closed = {}
+	local conn = ES.Closed:Connect(function(reason)
+		closed[#closed + 1] = reason
+	end)
+	local function win()
+		local pg = G.pg()
+		local gui = pg and pg:FindFirstChild("NimbusShop")
+		return gui and gui:FindFirstChild("ShopWindow") or nil
+	end
+	local function spinBtn(id, name)
+		local w = win()
+		local card = w and RedoGeom.find(w, "ShopCard_" .. id)
+		return card and card:FindFirstChild(name or "Spin", true) or nil
+	end
+	local function buys(mark)
+		return #KC.serverCalls("BuyRoulette", mark)
+	end
+	local function esc()
+		Mock.FireSignal(UIS, "InputBegan", Mock.NewInput("Escape", "Keyboard", "Begin"), false)
+		G.advance(STEP)
+	end
+	local function answer(pulls)
+		KC.toClient("RouletteResult", G.result("Cloud", "Tokens", pulls or { G.pull(PC, "Cloud", epic) }))
+		G.advance(STEP)
+	end
+	local function fail(reason)
+		KC.toClient("RouletteResult", { Ok = false, Reason = reason or "Probe reason", RouletteId = "Cloud", Currency = "Tokens", Spins = 1 })
+		G.advance(STEP)
+	end
+	local function states()
+		local out = {}
+		for _, id in ipairs({ "Secret", "Cloud", "Storm", "Sky", "Celestial" }) do
+			out[#out + 1] = tostring(SE.CardState(id))
+		end
+		return table.concat(out, " ")
+	end
+	local snap0 = G.snapshot()
+	local ok, err = pcall(function()
+		------------------------------------------------------------------ a card tap plays the stage over a hidden Shop; DONE brings it back
+		Shop.Open({ Tab = "Eggs" })
+		G.advance(0.5)
+		local mark = #Mock.RemoteLog
+		Mock.Click(spinBtn("Cloud"))
+		G.advance(STEP)
+		local sent = KC.serverCalls("BuyRoulette", mark)
+		T.check(#sent == 1 and sent[1].args[1] == "Cloud" and sent[1].args[2] == "Tokens" and sent[1].args[3] == 1, "egg wiring: a card tap sends BuyRoulette('Cloud', 'Tokens', 1)")
+		answer()
+		T.check(ES.IsShowing() and Shop.IsOpen() and not G.shown(win()), "egg wiring: a success RouletteResult plays the stage and hides ShopWindow (the Shop stays open)",
+			tostring(ES.IsShowing()) .. " / open " .. tostring(Shop.IsOpen()) .. " / shown " .. tostring(G.shown(win())))
+		-- the cursor: free over the reveal with mouse lock on
+		local mlWas = ML and ML.IsEnabled() or false
+		if ML then
+			pcall(ML.Start)
+			ML.SetEnabled(true)
+			G.advance(0.2)
+			T.check(not ML.IsLocked() and ML.Holds()["auto:NimbusHatch"] ~= nil, "egg wiring: with mouse lock on the cursor is free while the stage shows (a hold under auto:NimbusHatch)")
+			T.check(ML.Holds()["auto:NimbusMenu"] == nil, "egg wiring: ...and nothing in NimbusMenu holds it (the old roulette stage is gone)")
+		end
+		-- the stage refuses every other window
+		MC.Open("Stats")
+		G.advance(0.3)
+		local menu = G.pg():FindFirstChild("NimbusMenu")
+		local stats = menu and menu:FindFirstChild("Window_Stats")
+		T.check(not (stats and G.shown(stats)), "egg wiring: Stats refuses to open while the stage shows")
+		MC.Open("Pets", {})
+		G.advance(0.3)
+		local PCtl = KC.M.PetsController or G.req("client/Controllers/PetsController")
+		T.check(not (PCtl and PCtl.IsOpen()), "egg wiring: the Pets window refuses to open while the stage shows")
+		MC.Open("Store", { Tab = "Passes" })
+		G.advance(0.3)
+		T.check(Shop.Tab() == "Eggs" and not G.shown(win()), "egg wiring: OpenPanel Store refuses while the stage shows (the Shop stays hidden on Eggs)", tostring(Shop.Tab()))
+		T.check(Shop.Open({ Tab = "Gems" }) == false and not G.shown(win()), "egg wiring: ShopController.Open refuses while the stage shows")
+		MC.Open("Index")
+		G.advance(0.3)
+		local IC = KC.M.IndexController or G.req("client/Controllers/IndexController")
+		T.check(not (IC and type(IC.IsOpen) == "function" and IC.IsOpen()), "egg wiring: the Index refuses to open while the stage shows")
+		-- Esc during the strip skips, Esc on the reveal is DONE: one handler (the Shop's, through EggStage.Back)
+		G.advance(0.8)
+		T.eq(ES.Phase(), "Strip", "egg wiring: the strip runs")
+		backs = 0
+		esc()
+		T.check(ES.Phase() == "Reveal" and backs == 1, "egg wiring: Esc during the strip skips (one EggStage.Back)", tostring(ES.Phase()) .. ", backs " .. backs)
+		G.advance(0.6)
+		esc()
+		T.check(not ES.IsShowing() and closed[#closed] == "Done" and backs == 2 and Shop.IsOpen() and G.shown(win()),
+			"egg wiring: Esc on the reveal is DONE, and the Shop is then open and shown (exactly one Esc handler acted)", tostring(closed[#closed]) .. ", backs " .. backs .. ", shown " .. tostring(G.shown(win())))
+		if ML then
+			G.advance(0.2)
+			T.check(not ML.IsLocked() and ML.Holds()["auto:NimbusHatch"] == nil, "egg wiring: ...the cursor is free over the Shop (the stage's hold is released)")
+			ML.SetEnabled(mlWas)
+			G.advance(0.2)
+		end
+		------------------------------------------------------------------ B: skip, then DONE; the Shop stays open
+		G.advance(0.4)
+		Mock.Click(spinBtn("Cloud"))
+		G.advance(STEP)
+		answer()
+		G.advance(0.8)
+		Mock.TriggerAction("NimbusHatchBack", "Begin")
+		G.advance(STEP)
+		T.eq(ES.Phase(), "Reveal", "egg wiring: B during the strip skips")
+		G.advance(0.6)
+		local res = Mock.TriggerAction("NimbusHatchBack", "Begin")
+		G.advance(STEP)
+		T.check(res == Enum.ContextActionResult.Sink and not ES.IsShowing() and Shop.IsOpen() and G.shown(win()), "egg wiring: B on the reveal is DONE through NimbusHatchBack and the Shop stays open")
+		------------------------------------------------------------------ SPIN AGAIN and a card tap within 0.3 s: one request
+		G.advance(0.4)
+		Mock.Click(spinBtn("Cloud"))
+		G.advance(STEP)
+		answer()
+		ES.Skip()
+		G.advance(0.6)
+		local mA = #Mock.RemoteLog
+		local again = G.bar("SpinAgain")
+		Mock.Click(again)
+		ES.Done()
+		G.advance(STEP)
+		T.check(G.shown(win()), "egg wiring: (setup) DONE after SPIN AGAIN shows the Shop")
+		Mock.Click(spinBtn("Cloud"))
+		G.advance(STEP)
+		T.eq(buys(mA), 1, "egg wiring: SPIN AGAIN and a card tap within 0.3 s send one request")
+		fail()
+		G.advance(0.4)
+		------------------------------------------------------------------ a match start during the roll
+		Mock.Click(spinBtn("Cloud"))
+		G.advance(STEP)
+		answer({ G.pull(PC, "Cloud", epic), G.pull(PC, "Cloud", rare), G.pull(PC, "Cloud", epic) })
+		G.advance(1)
+		local hm = #hints
+		LocalPlayer:SetAttribute(IN_MATCH, true)
+		G.advance(0.2)
+		local toasts = 0
+		for k = hm + 1, #hints do
+			if hints[k]:find("You hatched: ", 1, true) == 1 then
+				toasts = toasts + 1
+			end
+		end
+		T.check(not ES.IsShowing() and toasts == 1 and hints[#hints] == "You hatched: " .. epic.Name .. ", " .. rare.Name .. ", " .. epic.Name,
+			"egg wiring: a match start closes the stage and one toast lists the pulls not shown", tostring(hints[#hints]))
+		T.check(not Shop.IsOpen() and not G.shown(win()), "egg wiring: ...ShopWindow stays hidden and the Shop is closed (never shown over the match)")
+		LocalPlayer:SetAttribute(IN_MATCH, nil)
+		G.advance(0.4)
+		T.check(not Shop.IsOpen() and not G.shown(win()), "egg wiring: ...and the match ending does not bring it back")
+		------------------------------------------------------------------ MenuController.Close() during the roll
+		Shop.Open({ Tab = "Eggs" })
+		G.advance(0.5)
+		Mock.Click(spinBtn("Cloud"))
+		G.advance(STEP)
+		answer()
+		G.advance(1)
+		local hc = #hints
+		MC.Close()
+		G.advance(0.2)
+		T.check(not ES.IsShowing() and closed[#closed] == "Close" and #hints == hc + 1 and hints[#hints] == "You hatched: " .. epic.Name,
+			"egg wiring: MenuController.Close() during the roll closes the stage with one toast", tostring(hints[#hints]))
+		T.check(not Shop.IsOpen() and not G.shown(win()), "egg wiring: ...and the Shop is closed")
+		------------------------------------------------------------------ a late answer after closing the Shop: Esc still skips / DONEs, opens nothing
+		Shop.Open({ Tab = "Eggs" })
+		G.advance(0.5)
+		Mock.Click(spinBtn("Cloud"))
+		G.advance(STEP)
+		Shop.Close()
+		G.advance(0.3)
+		answer()
+		G.advance(0.8)
+		T.check(ES.IsShowing() and not Shop.IsOpen(), "egg wiring: a late answer plays the stage with the Shop closed")
+		esc()
+		T.eq(ES.Phase(), "Reveal", "egg wiring: ...Esc skips")
+		G.advance(0.6)
+		esc()
+		T.check(not ES.IsShowing() and not Shop.IsOpen() and not G.shown(win()), "egg wiring: ...Esc on the reveal is DONE and opens nothing")
+		------------------------------------------------------------------ close while pending (Review Focus 2), once per way of closing
+		local ways = {
+			{ "the X", function()
+				local w = win()
+				Mock.Click(w and RedoGeom.find(w, "CloseButton"))
+				G.advance(0.3)
+			end, "success" },
+			{ "Esc", function()
+				esc()
+				G.advance(0.3)
+			end, "failure" },
+			{ "B (NimbusShopBack)", function()
+				Mock.TriggerAction("NimbusShopBack", "Begin")
+				G.advance(0.3)
+			end, "timeout" },
+			{ "InMatch set then cleared", function()
+				LocalPlayer:SetAttribute(IN_MATCH, true)
+				G.advance(0.3)
+				LocalPlayer:SetAttribute(IN_MATCH, nil)
+				G.advance(0.3)
+			end, "success" },
+		}
+		for _, way in ipairs(ways) do
+			local tag = "egg wiring: close while pending by " .. way[1]
+			G.advance(0.4)
+			Shop.Open({ Tab = "Eggs" })
+			G.advance(0.4)
+			local mP = #Mock.RemoteLog
+			Mock.Click(spinBtn("Cloud"))
+			G.advance(STEP)
+			T.check(buys(mP) == 1 and ES.IsPending(), tag .. ": (setup) the tap is pending")
+			way[2]()
+			T.check(not Shop.IsOpen(), tag .. ": the Shop closed")
+			Shop.Open({ Tab = "Eggs" })
+			G.advance(0.4)
+			local lit = 0
+			for _, id in ipairs({ "Secret", "Cloud", "Storm", "Sky", "Celestial" }) do
+				for _, name in ipairs({ "Spin", "Spin3", "SpinGems" }) do
+					local b = spinBtn(id, name)
+					if b and b:GetAttribute("Disabled") ~= true and b.Active ~= false then
+						lit = lit + 1
+					end
+				end
+			end
+			T.check(states() == "Pending Pending Pending Pending Pending" and lit == 0, tag .. ": reopened, the cards stay Pending", states() .. ", " .. lit .. " lit")
+			if way[3] == "success" then
+				answer()
+				T.check(ES.IsShowing() and not G.shown(win()), tag .. ": a success then plays")
+				ES.Close()
+				G.advance(0.3)
+			elseif way[3] == "failure" then
+				fail("Probe failure")
+				T.check(states() == "Ready Ready Ready Ready Ready" and hints[#hints] == "Probe failure", tag .. ": a failure re-enables them", states())
+			else
+				G.advance(6.6)
+				T.eq(states(), "Ready Ready Ready Ready Ready", tag .. ": no answer re-enables them at 7 s")
+			end
+			Shop.Close()
+			G.advance(0.3)
+		end
+		local same, why = G.sameSnapshot(snap0, G.snapshot())
+		T.check(same, "egg wiring: the Camera, the Humanoid and the touch controls are as they were", why)
+	end)
+	if not ok then
+		T.fail("egg wiring: scenario error", tostring(err))
+	end
+	conn:Disconnect()
+	ES.Back = realBack
+	MC.Hint = realHint
+	if ES.IsShowing() then
+		ES.Close()
+	end
+	Shop.Close()
+	LocalPlayer:SetAttribute(IN_MATCH, nil)
+	for name, v in pairs(keep) do
+		LocalPlayer:SetAttribute(name, v)
+	end
+	CS.Set("FastHatch", false)
+	Mock.SetViewport(oldVp[1], oldVp[2])
+	G.advance(0.6)
+	KC.flushErrors("client_egg_stage_wiring")
 end)
 
 return S

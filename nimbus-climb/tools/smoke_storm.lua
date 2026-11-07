@@ -22,8 +22,9 @@
 --                   ProximityPrompt (reachable from the deck) sends the side toast (Notify) to that player only,
 --                   rate-limited per player, ignoring forged triggers
 --   client_storm    (client) element pills (Element_<E>, coloured from Config.Elements.Info, readable) on every
---                   DISCOVERED card of every Index group and never on a ??? card, on every pet of every roulette's
---                   odds list and in the Pets panel detail; the Index art banner (Config.Art.StormfangImage) only for
+--                   DISCOVERED card of every Index group and never on a ??? card and in the Pets panel detail; every
+--                   roulette's Shop card (lobby-shop Task 22: OpenPanel focuses it) shows its odds by rarity (the Odds
+--                   popup with per-pet pills is gone); the Index art banner (Config.Art.StormfangImage) only for
 --                   a discovered Stormfang; no other asset id on screen; the altar toast is a side toast (never
 --                   centred); ShowcaseController hovers / pulses a tagged showcase, puts it back when the tag goes
 --                   and cleans up when the showcase is destroyed
@@ -1171,10 +1172,14 @@ local function clientScenarios()
 		end
 		return out
 	end
+	-- lobby-shop Task 22: the Shop is ShopController's NimbusShop.ShopWindow (the Cloud Shop left MenuController)
+	local function shopWindow()
+		local shop = gui():FindFirstChild("NimbusShop")
+		return shop and shop:FindFirstChild("ShopWindow")
+	end
 	local function closeAll(Index)
-		local popup = menuGui() and menuGui():FindFirstChild("OddsPopup")
 		for _ = 1, 3 do
-			if (popup and popup.Visible) or #visibleWindows() > 0 or (Index and Index.IsOpen and Index.IsOpen()) then
+			if shown(shopWindow()) or #visibleWindows() > 0 or (Index and Index.IsOpen and Index.IsOpen()) then
 				press("Escape")
 				advance(0.4)
 			end
@@ -1296,37 +1301,47 @@ local function clientScenarios()
 		advance(0.5)
 	end
 
-	-- the odds list of every roulette: every pet wears its element pill
+	-- the odds of every roulette (lobby-shop Task 22: the Odds popup is gone; the Shop's Eggs tab shows each machine's
+	-- odds by rarity on its own card and OpenPanel("Shop", { RouletteId }) focuses that card; the per-pet element pills
+	-- live on the Pet Index cards checked above and in the Pets panel below)
 	local function oddsChecks(Config, PC)
-		local badges = T.tally("storm odds: every pet of every roulette's odds list shows its element pill (Config.Elements.Info colour, >= 15 px)")
-		local opened = 0
+		local rows = T.tally("storm odds: OpenPanel('Shop', { RouletteId }) focuses every roulette's card (the Secret hero too), which shows every rarity of PetCatalog.GetRarityOdds with its chance")
+		local ids = {}
 		for _, r in ipairs(Config.Roulettes) do
-			toClient("OpenPanel", "Shop", { Tab = "Roulette", RouletteId = r.Id })
+			ids[#ids + 1] = r.Id
+		end
+		local secret = type(Config.Gems) == "table" and type(Config.Gems.SecretRoulette) == "table" and Config.Gems.SecretRoulette.Id or nil
+		if secret then
+			ids[#ids + 1] = secret
+		end
+		local opened = 0
+		for _, id in ipairs(ids) do
+			toClient("OpenPanel", "Shop", { Tab = "Roulette", RouletteId = id })
 			advance(0.7)
-			local shop = menuGui() and menuGui():FindFirstChild("Window_Shop")
-			local card = shop and named(shop, "Roulette_" .. r.Id)
-			local odds = card and named(card, "Odds")
-			if not odds then
-				badges:case(false, r.Id .. ": no Odds button on the roulette card")
+			local win = shopWindow()
+			local card = win and named(win, "ShopCard_" .. id)
+			if not shown(card) then
+				rows:case(false, id .. ": no shown ShopCard_" .. id .. " in NimbusShop.ShopWindow")
+			elseif card:GetAttribute("Focused") ~= true then
+				rows:case(false, id .. ": OpenPanel did not focus the card")
 			else
-				Mock.Click(odds)
-				advance(0.6)
-				local popup = menuGui():FindFirstChild("OddsPopup")
-				if not shown(popup) then
-					badges:case(false, r.Id .. ": the Odds button opened no OddsPopup")
-				else
-					opened = opened + 1
-					for _, o in ipairs(PC.GetOdds(r.Id)) do
-						local cell = named(popup, "Cell_" .. o.PetId)
-						local element = PC.GetElements(o.PetId)[1]
-						local p, problem = pillOf(cell, element or "?", Config)
-						badges:case(p ~= nil, r.Id .. "/" .. o.PetId .. " (" .. tostring(element) .. "): " .. tostring(problem))
-					end
+				opened = opened + 1
+				local list = PC.GetRarityOdds(id)
+				if #list == 0 then
+					rows:case(false, id .. ": PetCatalog.GetRarityOdds is empty")
+				end
+				for _, o in ipairs(list) do
+					local row = named(card, "Odds_" .. tostring(o.Rarity))
+					local word = row and row:FindFirstChild("Word")
+					local pct = row and row:FindFirstChild("Pct")
+					local v = pct and tonumber((tostring(pct.Text):gsub("%%", "")))
+					rows:case(shown(word) and word.Text == o.Rarity and shown(pct) and v ~= nil and math.abs(v - o.Chance * 100) <= 0.06,
+						id .. "/" .. tostring(o.Rarity) .. ": " .. (row and (tostring(word and word.Text) .. " " .. tostring(pct and pct.Text)) or "no row"))
 				end
 			end
 			closeAll(nil)
 		end
-		badges:report(opened .. " odds lists")
+		rows:report(opened .. " cards")
 	end
 
 	-- the Pets panel: the selected pet's element pill

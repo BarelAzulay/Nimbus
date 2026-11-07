@@ -276,7 +276,6 @@ local function clientScenarios()
 		local State = moduleAt("client", "State")
 		T.check(State.PetStage(P.E1) == 1 and State.PetStage(P.L2) == 2 and State.PetStage(P.C) == 0 and State.BestStage(P.L2) == 2,
 			"p5looks: State.PetStage / BestStage read the stored stages (1, 2, 0)")
-		local menu = pg():FindFirstChild("NimbusMenu")
 		-- the Pets grid + detail
 		MC.Open("Pets", { Key = P.L2 })
 		advance(2.5)
@@ -351,12 +350,13 @@ local function clientScenarios()
 		end
 		T.check(lowAt(evolvedModel(petCard, 1), 1) and evolvedModel(petCard, 2) == nil, "p5looks train: ...and a stage-1 pet at stage 1 once selected (the other parked)")
 		closeAll()
-		-- the roulette reveal of an evolved key: its stage + the gold ribbon
+		-- the roulette reveal of an evolved key: its stage + the gold ribbon (lobby-shop Task 22: the old-shape result plays
+		-- through EggStage, whose reveal lives in NimbusHatch)
 		toClient("RouletteResult", { Ok = true, PetId = P.E1, IsNew = false, Count = 2 })
 		local ribbon = nil
 		for _ = 1, 30 do
 			advance(0.5)
-			ribbon = find(menu, "EvolvedRibbon")
+			ribbon = find(pg():FindFirstChild("NimbusHatch"), "EvolvedRibbon")
 			if ribbon then
 				break
 			end

@@ -20,7 +20,7 @@
 --                         TutorialEvent("Next")
 --   client_bug2tut_mouse  (client, #21) a profile without Settings.MouseLock enables the lock; the Settings row reads
 --                         "Mouse lock (recommended)" with ON selected; overlays that are not docked windows hold the
---                         cursor while shown: MenuController's RouletteStage / OddsPopup (NimbusMenu) and the NPC dialog
+--                         cursor while shown: the egg stage (NimbusHatch.Stage, lobby-shop Task 22) and the NPC dialog
 --                         card (NimbusNpcDialog.NpcDialog); the first lock of a session that lasts 0.5 s shows a
 --                         "press L to free the cursor" pill (NimbusMouseLockHint) for 6 s, once, gone at once on a hold
 -- Deterministic: mock clock only, no RNG; the setting, the device flags and the cursor are restored at the end.
@@ -484,22 +484,32 @@ local function clientScenarios()
 			local function holds(key)
 				return ML.Holds()[key] or 0
 			end
-			local menu = H.pg():FindFirstChild("NimbusMenu")
-			if T.check(menu ~= nil, "bug2 mouse: NimbusMenu exists") then
-				for _, name in ipairs({ "RouletteStage", "OddsPopup" }) do
-					local f = Instance.new("Frame")
-					f.Name = name
-					f.Size = UDim2.fromScale(1, 1)
-					f.BackgroundTransparency = 1
-					f.Parent = menu
-					T.eq(holds("auto:NimbusMenu"), 1, "bug2 mouse: MenuController's " .. name .. " holds the cursor while shown")
-					f.Visible = false
-					T.eq(holds("auto:NimbusMenu"), 0, "bug2 mouse: ..." .. name .. " hidden: released")
-					f.Visible = true
-					T.eq(holds("auto:NimbusMenu"), 1, "bug2 mouse: ...shown again: held")
-					f:Destroy()
-					T.eq(holds("auto:NimbusMenu"), 0, "bug2 mouse: ..." .. name .. " destroyed: released")
-				end
+			-- lobby-shop Task 22: the roulette stage and the Odds popup left MenuController; the egg stage
+			-- (client/UI/EggStage) builds a NimbusHatch ScreenGui per show (> Stage) and destroys it after
+			local hatch = H.pg():FindFirstChild("NimbusHatch")
+			local fakeHatch = nil
+			if not hatch then
+				fakeHatch = Instance.new("ScreenGui")
+				fakeHatch.Name = "NimbusHatch"
+				fakeHatch.Parent = H.pg()
+				hatch = fakeHatch
+			end
+			for _, name in ipairs({ "Stage" }) do
+				local f = Instance.new("Frame")
+				f.Name = name
+				f.Size = UDim2.fromScale(1, 1)
+				f.BackgroundTransparency = 1
+				f.Parent = hatch
+				T.eq(holds("auto:NimbusHatch"), 1, "bug2 mouse: the egg stage's " .. name .. " (NimbusHatch) holds the cursor while shown")
+				f.Visible = false
+				T.eq(holds("auto:NimbusHatch"), 0, "bug2 mouse: ..." .. name .. " hidden: released")
+				f.Visible = true
+				T.eq(holds("auto:NimbusHatch"), 1, "bug2 mouse: ...shown again: held")
+				f:Destroy()
+				T.eq(holds("auto:NimbusHatch"), 0, "bug2 mouse: ..." .. name .. " destroyed: released")
+			end
+			if fakeHatch then
+				fakeHatch:Destroy()
 			end
 			local npcGui = H.pg():FindFirstChild("NimbusNpcDialog")
 			local fake = nil

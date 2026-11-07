@@ -24,9 +24,10 @@
 --   countdown             the pre-match countdown inside the match panel
 --   party                 the portal party panel with its countdown
 --   results               the victory results card
---   menu:<Window>[:<Tab>[:<Action>[:<Key>]]] Index / Shop / Stats through the OpenPanel remote
---                         (Tab = window tab, or the Index group, e.g. menu:Index:Mythic, menu:Shop:Gems; Action / Key
---                         are passed along; with an Action or Key the Phase 4 care profile below is synced first)
+--   menu:<Window>[:<Tab>[:<Action>[:<Key>]]] Index / Stats through the OpenPanel remote
+--                         (Tab = window tab, or the Index group, e.g. menu:Index:Mythic; Action / Key are passed along;
+--                         with an Action or Key the Phase 4 care profile below is synced first; the Shop left the menu in
+--                         lobby-shop Task 22: shop[:<tab>])
 --   pets[:phone|:pick|:sheet|:<key>]  team balance: the Pets window (PetsController) with the care profile; phone = at
 --                         844x390, pick = pick mode on slot 2, sheet = at 844x390 with a pet's sheet open, <key> = on that pet
 --   loss[:ring|:dungeon|:phone]  team balance: LossScreen after a lost run; phone = at 844x390
@@ -42,8 +43,9 @@
 --   daily[:locked|:play]  gui-redo Tasks 9-10: the Gifts window (see the [gui-redo] block)
 --   gems[:store]          lobby-shop Task 15: the drawn cut gem at every size, piles, chips, the HUD coin; store = the Shop's
 --                         Gems tab with the gem pack piles ([lobby-shop] block)
---   shop[:<tab>]          lobby-shop Task 21: the one Shop window (ShopController) on Gems / Packs (default) / Passes /
---                         Boosts, every item created, live prices answered; store[:<tab>] the same through the
+--   shop[:<tab>]          lobby-shop Tasks 21/22: the one Shop window (ShopController) on Eggs (default) / Gems / Packs /
+--                         Passes / Boosts, every item created, live prices answered; shop:restricted = the Eggs tab for an
+--                         account where paid random items are restricted; store[:<tab>] the same through the
 --                         StoreController forwarder ([lobby-shop] block)
 --   titles[:<studs>]      lobby-shop Task 19: the three title tags (rainbow TOP 10, gold TOP 100, CREATOR with the VIP crown)
 --                         over sketched characters seen from <studs> away (default 14), a name stand-in at the anchor
@@ -954,7 +956,11 @@ end)
 local careProfile -- (Phase 4, defined below)
 scenario("menu", function(window, tab, action, key)
 	if not window or window == "" then
-		fail("usage: menu:<Index|Shop|Stats>[:<Tab>[:<Action>[:<Key>]]]")
+		fail("usage: menu:<Index|Stats>[:<Tab>[:<Action>[:<Key>]]]")
+	end
+	local lower = tostring(window):lower()
+	if lower == "shop" or lower == "store" then
+		fail("menu:Shop is gone (lobby-shop Task 22: the Shop left the menu): use shop[:<tab>] or shop:restricted")
 	end
 	local args = nil
 	if (tab and tab ~= "") or (action and action ~= "") or (key and key ~= "") then
@@ -3556,10 +3562,12 @@ scenario("hatch", function(view)
 	note(fmt("hatch:%s at %.2f s: phase %s, layout %s, %d instances", view, os.clock() - t0, tostring(ES.Phase()), tostring(ES.Layout()), ES.Stats().Instances))
 end)
 
--- shop[:<tab>]          lobby-shop Task 21 (spec 16.3): the one Shop window (client/Controllers/ShopController) on its tab
---                       (Gems, Packs (default), Passes, Boosts): every Store item and gem pack created, the live prices answered
---                       (Config Robux), an allowed account (PaidRandomItemsRestricted false), a few gems and tokens, the
---                       Starter Pack unbought (Tab_Packs' dot)
+-- shop[:<tab>]          lobby-shop Tasks 21/22 (spec 16.3): the one Shop window (client/Controllers/ShopController) on its
+--                       tab (Eggs (default), Gems, Packs, Passes, Boosts): every Store item and gem pack created, the live
+--                       prices answered (Config Robux), an allowed account (PaidRandomItemsRestricted false), gems settled,
+--                       23 spins to the Secret pity, a few gems and tokens, the Starter Pack unbought (Tab_Packs' dot)
+-- shop:restricted       the Eggs tab for an account where paid random items are restricted (the gem spins read Locked, the
+--                       hero's Lock line replaces the pity chip)
 -- store[:<tab>]         the same, opened through the StoreController forwarder (old callers; "Currency" -> the Gems tab)
 local function shopScene(tab, via)
 	for i, it in ipairs(Config.Store.Items) do
@@ -3584,14 +3592,29 @@ local function shopScene(tab, via)
 	end
 	LocalPlayer:SetAttribute(Config.Attr.Gems, 1250)
 	LocalPlayer:SetAttribute(Config.Attr.Tokens, 12480)
-	LocalPlayer:SetAttribute("PaidRandomItemsRestricted", false)
+	local restricted = tostring(tab or ""):lower() == "restricted"
+	if restricted then
+		tab = "Eggs"
+	end
+	LocalPlayer:SetAttribute("PaidRandomItemsRestricted", restricted)
 	LocalPlayer:SetAttribute("GemsSettled", true)
+	LocalPlayer:SetAttribute(Config.Attr.SecretPityLeft or "SecretPityLeft", 23)
 	LocalPlayer:SetAttribute("XpPassState", "NotOwned")
 	LocalPlayer:SetAttribute("StoreBought", "")
 	LocalPlayer:SetAttribute("OwnedPasses", "")
 	advance(0.6)
+	-- the Eggs tab measures its hero odds rows and spin buttons with TextService:GetTextSize (the mock's is a flat 0.5 em
+	-- per character): its Metrics.MEASURE hook gets the renderer's font metrics instead (Mock.TextExtent, see installMetrics)
+	local SE = req("client/UI/ShopEggs")
+	if SE and SE.Metrics then
+		local probe = Instance.new("TextLabel")
+		SE.Metrics.MEASURE = function(text, size, font)
+			probe.Text, probe.TextSize, probe.Font = text, size, font
+			return (Mock.TextExtent(probe))
+		end
+	end
 	local Shop = req("client/Controllers/ShopController")
-	req("client/Controllers/" .. (via or "ShopController")).Open({ Tab = tab or "Packs" })
+	req("client/Controllers/" .. (via or "ShopController")).Open({ Tab = tab or "Eggs" })
 	advance(1.5)
 	note(fmt("shop:%s layout %s", tostring(Shop.Tab()), tostring(Shop.Layout())))
 end
