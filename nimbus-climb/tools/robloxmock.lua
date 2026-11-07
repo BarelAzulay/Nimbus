@@ -6173,6 +6173,16 @@ defclass("Tween", "Instance", {
 		end,
 	},
 })
+-- [lobby-shop, Task 19] the goals a tween was made with (a copy): an endless tween (RepeatCount -1) never applies its
+-- goal in the mock, so a test reads it here
+function Mock.TweenGoals(tween)
+	local st = tween and tween[STATE]
+	local out = {}
+	for prop, goal in pairs((st and st.goals) or {}) do
+		out[prop] = goal
+	end
+	return out
+end
 local TWEENABLE = { number = true, Vector3 = true, Vector2 = true, CFrame = true, Color3 = true, UDim2 = true, UDim = true, Rect = true, boolean = true }
 service("TweenService", {
 	methods = {

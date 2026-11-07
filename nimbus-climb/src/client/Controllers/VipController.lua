@@ -11,6 +11,12 @@
 --   on every VIP character while Graphics is High; disabled while that player is InBattle / InMatch; every player's
 --   OwnedPasses / InBattle / InMatch attributes and CharacterAdded are watched, and a 1 s sweep follows the graphics
 --   level; the crown and the connections go when the player leaves.
+-- Titled players (lobby-shop Task 19, spec 16.6): while a player has a Title (Top10 / Top100 / Creator) and the
+--   TitleController is in the build, that player has no VipCrown billboard of its own: the same rule (VIP, Graphics High,
+--   not InBattle / InMatch) goes to TitleController.SetCrown(player, on), which draws the crown inside the TitleTag 4 px
+--   above the plate (a pixel gap that never closes far away). The Title attribute is watched too, so the crown moves
+--   between the two the moment a title comes or goes.
+--   VipController.TitleHost(player) -> the TitleController module while the player has a valid Title, else nil
 -- Plain Lua 5.1-compatible syntax only. All text goes through Theme roles.
 
 local Players = game:GetService("Players")
@@ -109,6 +115,25 @@ local function crownOf(character)
 	return character and character:FindFirstChild(K.CROWN, true) or nil
 end
 
+-- the TitleController (required once, lazily: no top-level local) while this player has a valid Title; nil without a
+-- Title or when the build has no TitleController (the crown is then this controller's own billboard, as before)
+function VipController.TitleHost(player)
+	local kind = player:GetAttribute(Config.Attr.Title or "Title")
+	local rt = Config.Leaderboard and Config.Leaderboard.RankTitles
+	if type(kind) ~= "string" or not (rt and rt.Tag and rt.Tag[kind]) then
+		return nil
+	end
+	if VipController._titles == nil then
+		local module = script.Parent and script.Parent:FindFirstChild("TitleController")
+		local ok, mod = false, nil
+		if module then
+			ok, mod = pcall(require, module)
+		end
+		VipController._titles = (ok and type(mod) == "table" and type(mod.SetCrown) == "function") and mod or false
+	end
+	return VipController._titles or nil
+end
+
 local function wantsCrown(player)
 	if not VipController.IsVip(player) or GraphicsQuality.Effective() == "Low" then
 		return false
@@ -140,6 +165,15 @@ local function refresh(player)
 	local head = character and (character:FindFirstChild("Head") or character:FindFirstChild("HumanoidRootPart"))
 	local crown = crownOf(character)
 	local want = head ~= nil and wantsCrown(player)
+	local titles = VipController.TitleHost(player)
+	if titles then
+		-- a titled player: the crown is drawn inside the TitleTag (lobby-shop Task 19)
+		if crown then
+			crown:Destroy()
+		end
+		titles.SetCrown(player, want)
+		return
+	end
 	if want and not crown then
 		crown = makeCrown(head)
 	end
@@ -173,7 +207,7 @@ local function watch(player)
 	local conns = {}
 	Watch[player] = conns
 	local attr = Config.Attr
-	for _, name in ipairs({ attr.OwnedPasses or "OwnedPasses", attr.InMatch, attr.InBattle or "InBattle" }) do
+	for _, name in ipairs({ attr.OwnedPasses or "OwnedPasses", attr.InMatch, attr.InBattle or "InBattle", attr.Title or "Title" }) do
 		conns[#conns + 1] = player:GetAttributeChangedSignal(name):Connect(function()
 			safe("refresh", refresh, player)
 		end)

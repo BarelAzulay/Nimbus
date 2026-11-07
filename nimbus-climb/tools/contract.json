@@ -1312,6 +1312,15 @@
           "IsVip"
         ]
       }
+    },
+    "client/Controllers/TitleController": {
+      "optional": true,
+      "_comment": "lobby-shop Task 19 (spec 16.6): the rank and Creator titles above the head; the crown inside a titled tag",
+      "functions": [
+        "Init",
+        "TagOf",
+        "SetCrown"
+      ]
     }
   },
   "scripts": [

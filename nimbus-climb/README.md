@@ -1762,7 +1762,8 @@ src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientS
              Cheer up!), TopBar (the top-left Shop / Travel / Settings pill; Travel opens the portal to the lobby), Sky (the
              living sky on this client: the cycle and the raid skies as the LightingStack base, the night battle lift,
              the lobby lamps dim by day and warm at night, fireflies), Store (the Robux Store window), Daily (the Gifts button and window),
-             BoostBadge (the x2 chips under the strips), Vip (the VIP chat tag and lobby crown), Trove (the Sky Trove
+             BoostBadge (the x2 chips under the strips), Vip (the VIP chat tag and lobby crown), Title (the TOP 10 /
+             TOP 100 / CREATOR title above the head; a titled VIP's crown sits inside it), Trove (the Sky Trove
              panel, the lid and coins)
 ```
 

@@ -42,6 +42,9 @@
 --   daily[:locked|:play]  gui-redo Tasks 9-10: the Gifts window (see the [gui-redo] block)
 --   gems[:store]          lobby-shop Task 15: the drawn cut gem at every size, piles, chips, the HUD coin; store = the Store's
 --                         Currency tab with the gem pack piles ([lobby-shop] block)
+--   titles[:<studs>]      lobby-shop Task 19: the three title tags (rainbow TOP 10, gold TOP 100, CREATOR with the VIP crown)
+--                         over sketched characters seen from <studs> away (default 14), a name stand-in at the anchor
+--                         ([lobby-shop] block)
 --   evolve                the EVOLVE confirm over the Pets window
 --   ring[:<view>]         Phase 4 (ArenaController's Champion Ring window): OpenPanel("Ring") with a ring record
 --                         (Best 24); view new (no record yet) | record (default)
@@ -3317,6 +3320,101 @@ scenario("gems", function(view)
 			d.Visible = false
 		end
 	end
+end)
+
+-- titles[:<studs>]      lobby-shop Task 19 (spec 16.6): the rank / Creator titles above the head, no game HUD. Three dummy
+--                       players ("TOP 10 \194\183 #3", TOP 100, and CREATOR wearing the VIP pass, so the crown sits inside the
+--                       tag) get their TitleTags from the real TitleController; each tag is mirrored flat into the
+--                       WorldMirror at its own pixel size, placed where it projects above a sketched character seen from
+--                       <studs> away (default 14; 70 degree vertical field of view, the camera level with the head), with
+--                       a 20 px name stand-in centred on the tag's anchor (StudsOffset 2.0 above the head: about where
+--                       Roblox draws the name; the exact anchor is a Studio check). The notes give, per tag, the px gaps
+--                       name -> plate and plate -> crown, which stay the same at every distance (pixel offsets). The
+--                       mirrored plate is re-fitted with the renderer's font metrics (the mock's GetTextSize is 0.5 em
+--                       per character). The renderer's FredokaOne stand-in (Arial Rounded) has no middle dot glyph.
+local TT = { FOV_HALF_TAN = math.tan(math.rad(35)) }
+-- a front-view character sketch (studs, y up from the head's centre), like the mock's R15 rig
+function TT.figure(parent, cx, headY, pps)
+	local skin, shirt, dark = Color3.fromRGB(245, 205, 160), Color3.fromRGB(70, 120, 210), Color3.fromRGB(40, 50, 90)
+	for _, p in ipairs({
+		{ "Head", 1.2, 1.2, 0, 0, skin }, { "UpperTorso", 2, 1.6, 0, -1.4, shirt }, { "LowerTorso", 2, 0.4, 0, -2.5, dark },
+		{ "LeftArm", 1, 1.6, -1.5, -1.2, skin }, { "RightArm", 1, 1.6, 1.5, -1.2, skin },
+		{ "LeftLeg", 1, 1.9, -0.5, -3.95, dark }, { "RightLeg", 1, 1.9, 0.5, -3.95, dark },
+	}) do
+		make("Frame", {
+			Name = "Sketch" .. p[1], BackgroundColor3 = p[6], BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromOffset(cx + p[4] * pps, headY - p[5] * pps), Size = UDim2.fromOffset(max(1, p[2] * pps), max(1, p[3] * pps)),
+		}, parent)
+	end
+end
+scenario("titles", function(studs)
+	local d = max(4, tonumber(studs) or 14)
+	local TC = req("client/Controllers/TitleController", true)
+	NK.hideGame()
+	local who = { { "SkyRunner", 990001, "Top10", 3 }, { "CloudHopper", 990002, "Top100", 57 }, { "GameCreator", 990003, "Creator", 1, true } }
+	local players = {}
+	for i, w in ipairs(who) do
+		players[i] = Mock.AddPlayer(w[1], w[2])
+	end
+	advance(0.5)
+	for i, w in ipairs(who) do
+		players[i]:SetAttribute(Config.Attr.TitleRank, w[4])
+		if w[5] then
+			players[i]:SetAttribute(Config.Attr.OwnedPasses or "OwnedPasses", "VIP")
+		end
+		players[i]:SetAttribute(Config.Attr.Title, w[3])
+	end
+	advance(1.2)
+	local screen = make("ScreenGui", { Name = "WorldMirror", IgnoreGuiInset = true, ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling })
+	local vp = Mock.Viewport
+	local pps = vp.Y / (2 * TT.FOV_HALF_TAN * d)
+	local headY = min(max(vp.Y * 0.5, 2 * pps + 180), vp.Y - 4 - 4.9 * pps)
+	label(screen, fmt("Titles from %d studs: %.1f px per stud (70 degree field of view)", d, pps), 18, {
+		Name = "Caption", Position = UDim2.fromOffset(24, 44), Size = UDim2.fromOffset(vp.X - 48, 24),
+		TextXAlignment = Enum.TextXAlignment.Left, TextStrokeTransparency = 0.2, TextStrokeColor3 = NAVY,
+	})
+	for i, p in ipairs(players) do
+		local cx = floor(vp.X * i / 4)
+		TT.figure(screen, cx, headY, pps)
+		local tag = TC and TC.TagOf(p)
+		local anchorY = headY - (tag and tag.StudsOffset.Y or 2.0) * pps
+		label(screen, p.DisplayName, 18, {
+			Name = "NameStandIn", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(cx, anchorY), Size = UDim2.fromOffset(200, 20),
+			TextStrokeTransparency = 0.3, TextStrokeColor3 = NAVY,
+		})
+		if tag then
+			local w, h = tag.Size.X.Offset, tag.Size.Y.Offset
+			local top = anchorY - tag.SizeOffset.Y * h - h / 2
+			local cell = make("Frame", { Name = "TitleTag", BackgroundTransparency = 1, Position = UDim2.fromOffset(cx - w / 2, top), Size = UDim2.fromOffset(w, h) }, screen)
+			for _, c in ipairs(tag:GetChildren()) do
+				if c:IsA("GuiObject") then
+					c:Clone().Parent = cell
+				end
+			end
+			-- the mock's TextService:GetTextSize is a flat 0.5 em per character, Roblox's measures the font: the mirrored
+			-- plate is re-fitted with the renderer's metrics (Mock.TextExtent) by the controller's own rule (the text + 2 x
+			-- PAD, the Top10 Label twice the text, left-aligned)
+			local mPlate = cell:FindFirstChild("Plate")
+			local mLabel = mPlate and mPlate:FindFirstChild("Label")
+			if mLabel then
+				local tw = ceil((Mock.TextExtent(mLabel)))
+				local pw = min(w, tw + 2 * ((TC.K and TC.K.PAD) or 12))
+				mPlate.Size = UDim2.fromOffset(pw, mPlate.Size.Y.Offset)
+				mLabel.Position = UDim2.fromOffset(floor((pw - tw) / 2), 0)
+				mLabel.Size = UDim2.new(0, (who[i][3] == "Top10") and 2 * tw or tw, 1, 0)
+			end
+			local plate, crown = tag:FindFirstChild("Plate"), tag:FindFirstChild("Crown")
+			local plateTop = top + plate.AbsolutePosition.Y
+			local gapName = (anchorY - 10) - (plateTop + plate.AbsoluteSize.Y)
+			local gapCrown = crown and (plateTop - (top + crown.AbsolutePosition.Y + crown.AbsoluteSize.Y)) or nil
+			note(fmt("%s from %d studs: name -> plate %.1f px%s", tostring(tag:FindFirstChild("Label", true).Text), d, gapName,
+				gapCrown and fmt(", plate -> crown %.1f px", gapCrown) or ""))
+		else
+			note("no TitleTag for " .. p.Name)
+		end
+	end
+	screen.Parent = LocalPlayer:WaitForChild("PlayerGui")
+	advance(0.1)
 end)
 -- [lobby-shop] end
 
