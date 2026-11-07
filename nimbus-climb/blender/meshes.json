@@ -11948,6 +11948,19 @@
    "structureHash": "763277d0543b02334fafc1bbac20f80b",
    "tris": 918
   },
+  "prop_board_lb": {
+   "class": "lobby",
+   "contentHash": "fdc61ae15c60884269b1c0476e9210e4",
+   "description": "Global leaderboard board on the south lawn (lobby-shop spec 5.10; dresses LobbyBoardBuilder's LobbyLeaderboard, Keep Face): a plank frame round an exact 16 x 13 opening (the navy Face stays a Part for the PlayerGui SurfaceGui), a plank back with two battens and a centre batten, brass corner caps, two planed timber posts on cream stone feet (wear: damp band, chipped corner, crack, moss), a stepped rose shingle roof with rafter tails and brass ridge caps, a gold trophy cup on the ridge; no light, no Neon; pivot ground centre, front -Z, attachment FaceCenter (0, 9.5, -0.2)",
+   "displayName": "NC Prop Board Lb",
+   "fbx": "blender/out/prop_board_lb.fbx",
+   "fbxSha256": "1077752a2409cad74c6e8735ab68aaacfd6785b4d533ecf21a29ef12638ff119",
+   "manifest": "src/shared/MeshManifests/prop_board_lb.lua",
+   "maxTrianglesPerMesh": 3700,
+   "parts": 1,
+   "structureHash": "bfaa70b2f47ccf3d17d89d6c0f2349cd",
+   "tris": 3700
+  },
   "prop_board_s": {
    "class": "lobby",
    "contentHash": "b60768f6ac79f4347bb45e5ecbf51cf6",

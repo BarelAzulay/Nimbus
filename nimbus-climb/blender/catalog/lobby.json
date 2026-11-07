@@ -809,6 +809,13 @@
    "prop": "lobby_altar_ring",
    "budget": "portal",
    "description": "Storm Altar summon ring (lobby-shop portal C, spec 5.11 b; dresses StormAltar PortalGlow.GlowRing, which turns): 16 crystal-cyan Neon bars (GlowBar) with pale Neon ridges (GlowBarHeart) and chamfered ends, each in a straight charcoal stone collar (light lip, rounded corners, worn cells, a mason's tick), even 0.2-stud joints; bars on r 5.65, stone inside r 6.0 (clear of the Portal rim at 6.1); 11.8 x 0.8 x 11.8, pivot = the disc centre on the glow disc's top, attachment Center"
+  },
+  {
+   "key": "prop_board_lb",
+   "type": "prop",
+   "prop": "lobby_board_lb",
+   "budget": "propBig",
+   "description": "Global leaderboard board on the south lawn (lobby-shop spec 5.10; dresses LobbyBoardBuilder's LobbyLeaderboard, Keep Face): a plank frame round an exact 16 x 13 opening (the navy Face stays a Part for the PlayerGui SurfaceGui), a plank back with two battens and a centre batten, brass corner caps, two planed timber posts on cream stone feet (wear: damp band, chipped corner, crack, moss), a stepped rose shingle roof with rafter tails and brass ridge caps, a gold trophy cup on the ridge; no light, no Neon; pivot ground centre, front -Z, attachment FaceCenter (0, 9.5, -0.2)"
   }
  ],
  "sets": [],
@@ -1057,6 +1064,11 @@
   {
    "name": "lobby_portal_altar_ring",
    "body": "portal_altar_ring",
+   "res": 420
+  },
+  {
+   "name": "lobby_prop_board_lb",
+   "body": "prop_board_lb",
    "res": 420
   }
  ]

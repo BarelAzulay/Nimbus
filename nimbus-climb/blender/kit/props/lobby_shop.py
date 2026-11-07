@@ -58,6 +58,24 @@ into one Fixed part per grid, Neon only for glows.  Nothing here needs a texture
                         pivot (into the old disc under the glow disc), so nothing floats.  11.8 x 0.8 x 11.8 studs,
                         0.1-stud cells.  Pivot = the disc centre on the glow disc's top (GlowRing's pivot; it turns
                         about +Y), front -Z.  Attachment Center (the pivot).
+  * "lobby_board_lb"    prop_board_lb: the global leaderboard's board on the south lawn (LobbyBoardBuilder.Leaderboard,
+                        spec 5.10 "World"), put up by the same carpenters as the plaza's notice boards (props/lobby.py
+                        lobby_board) and dressed up a little for the champions.  Everything round the game's Face part
+                        (16 x 13, centred 9.5 up, front z -0.2; NOT in the mesh: the PlayerGui SurfaceGui adorns it): the
+                        opening is exactly 16 x 13.  A 0.6-stud plank frame (rails top and bottom, stiles between, a tone
+                        per bar, grain, flush nails, a dark inner edge round the navy face) one cell proud of the Face, a
+                        plank back of 1.2-stud boards with two battens and a centre batten (an H), brass corner caps
+                        (rivets) over the four joints front and back; two planed timber posts (seam, grain, iron bolts
+                        at the rails, a damp dark band at the foot) on cream stone feet (planed top, a chipped corner, a
+                        hairline crack, a ground stain and moss on the shady back); a small stepped rose shingle roof
+                        (staggered shingles in three tones, notched eaves, a plank soffit with rafter tails, a ridge
+                        with brass end caps) and a gold trophy cup (1.4 tall) standing on the ridge.  No light, no Neon
+                        (spec 5.10).  0.2-stud cells on a grid whose cell faces fall on every 0.2, so the opening and
+                        the frame land on the Part build exactly; where a Part size is not a whole number of cells the
+                        mesh takes the nearest cells round it (posts 1.2 deep for the Part's 1, feet 1.8 wide for 1.6,
+                        eaves 9.4 for 9.3; the hidden Parts still collide), and the feet sink 0.2 into the lawn.  About
+                        19.6 x 19.2 x 2.4 studs.  Pivot = ground centre, front -Z.  Attachment FaceCenter = the Face's
+                        front centre (0, 9.5, -0.2).
 
 Deterministic (hash picks only, no RNG state).
 """
@@ -92,6 +110,15 @@ SPAL = {
     # portal (StormAltar.lua C: charcoal stone, crystals, sign navy)
     "StoneDeep": (42, 44, 51), "Stone": (75, 77, 87), "StoneB": (66, 68, 78), "StoneC": (84, 87, 98),
     "StoneLight": (112, 115, 126), "Bevel": (163, 166, 174), "Crystal": (70, 172, 252), "SignNavy": (24, 34, 78),
+    # leaderboard board (the lobby's own tones: props/lobby.py PAL planks / cream stone / rose roofs, props/lobby_trove.py
+    # TPAL brass; Bd* so the charcoal altar Stone above keeps its name)
+    "BdPlank": (196, 146, 98), "BdPlankLight": (214, 166, 114), "BdPlankWarm": (204, 150, 96),
+    "BdPlankDark": (152, 108, 72), "BdPlankWet": (118, 84, 58), "BdSeam": (128, 90, 60), "BdGrain": (178, 130, 86),
+    "BdStone": (208, 202, 190), "BdStoneLight": (226, 221, 209), "BdStoneDark": (172, 164, 154),
+    "BdStoneEdge": (146, 138, 132), "BdMoss": (86, 160, 76), "BdMossLight": (112, 182, 88),
+    "BdRose": (234, 120, 146), "BdRoseDark": (206, 96, 124), "BdRoseLight": (244, 150, 172),
+    "BdBrass": (236, 186, 80), "BdBrassDark": (200, 148, 60), "BdBrassLight": (252, 220, 132), "BdIron": (64, 70, 92),
+    "BdGold": (244, 198, 84), "BdGoldLight": (255, 226, 140), "BdGoldDark": (206, 154, 62),
 }
 NEONS = {
     "GemGlint": (255, 255, 255), "CrystalCore": (63, 200, 255),
@@ -737,4 +764,207 @@ def lobby_altar_ring(entry, kit):
     finish(m, {"source": "designed (lobby-shop pitch portal C, spec 5.11 b): the summon ring that turns on the Storm "
                "Altar's portal disc", "pivot": "the disc centre on the glow disc's top (GlowRing's pivot); turns about +Y"})
     m.attachments = {"Center": {"pos": [0.0, 0.0, 0.0], "rot": np.eye(3).tolist()}}
+    return m
+
+
+# ---------------------------------------------------------------------------------------------- leaderboard board
+# Studs from the pivot (the ground centre, front -Z), LobbyBoardBuilder.Leaderboard's layout.  0.2-stud cells; the grid's
+# origin (0, 9, 0) puts a cell face on every multiple of 0.2 (x, y and z), so B() boxes land on exact cell faces.
+BRD_K = 5.0
+BRD_OPEN = (8.0, 3.0, 16.0)               # the opening = the game's Face (16 x 13 centred 9.5 up): half width, bottom, top
+BRD_RIM = 0.6                             # the frame round it
+BRD_FRAME_Z = (-0.4, 0.2)                 # the frame: its front one cell proud of the Face's front (-0.2), back = the Face's
+BRD_BACK_Z = (0.2, 0.6)                   # the plank back (its battens stand one cell behind it)
+BRD_POST = (8.4, 9.4, 0.6, 0.8, 16.8)     # |x| from / to, half depth, foot (on the stone), top (inside the soffit)
+BRD_FOOT = (8.0, 9.8, 0.8, -0.2, 0.8)     # |x| from / to, half depth, bottom (sunk into the lawn), top
+BRD_ROOF = (16.6, 16.8, 17.0, 17.2, 17.6)  # soffit bottom (the frame's top), course A, course B, ridge, ridge top
+BRD_EAVE = 9.4                            # the roof's half width (the Part roof 9.3)
+BRD_BOARD = 1.2                           # the back boards' width (14 between the posts)
+BRD_TONES = ("BdPlank", "BdPlankLight", "BdPlankWarm", "BdPlank")
+BRD_ROSES = ("BdRose", "BdRose", "BdRoseDark", "BdRose", "BdRoseLight")
+
+
+def _chash(a, b, seed):
+    """a 0..1 hash per (a, b) integer cell index (numpy arrays; deterministic)"""
+    h = (np.asarray(a, np.int64) * 73856093) ^ (np.asarray(b, np.int64) * 19349663) ^ (seed * 83492791)
+    h = ((h ^ (h >> 13)) & 0xFFFFFFFF) * 1274126177
+    h = (h ^ (h >> 16)) & 0xFFFFFFFF
+    return (h & 0xFFFF) / 65535.0
+
+
+@prop("lobby_board_lb")
+def lobby_board_lb(entry, kit):
+    S = ShopSculpt(kit, BRD_K, 10.0, origin=(0.0, 9.0, 0.0), name="boardlb")
+    vs = S.vs
+    X, Y, Z = S.X, S.Y, S.Z
+    ax, az = np.abs(X), np.abs(Z)
+    IX, IY, IZ = (np.floor(A / vs + 1e-6).astype(np.int64) for A in (X, Y, Z))
+    ow, ob, ot = BRD_OPEN
+    rim = BRD_RIM
+    fz0, fz1 = BRD_FRAME_Z
+    bz0, bz1 = BRD_BACK_Z
+    px0, px1, pd, py0, py1 = BRD_POST
+    kx0, kx1, kd, ky0, ky1 = BRD_FOOT
+    r0, rA, rB, rR, rT = BRD_ROOF
+    pxc = (px0 + px1) / 2                                                    # 8.9: the post's middle
+
+    # ------------------------------------------------------------------ the stone feet
+    foot = (ax > kx0) & (ax < kx1) & (az < kd) & (Y > ky0) & (Y < ky1)
+    edge_ring = (ax < kx0 + vs) | (ax > kx1 - vs) | (az > kd - vs)
+    S.put("BdStoneDark", foot)
+    S.cut(foot & (Y > ky1 - vs) & edge_ring)                                 # the top course planed off round the edge
+    S.put("BdStone", foot & (Y > ky1 - vs) & ~edge_ring)
+    S.put("BdStoneLight", foot & (Y > ky1 - 2 * vs) & (Y < ky1 - vs) & edge_ring)   # the ledge that leaves
+    # the ground stain: a ragged damp band round the bottom (the part above the lawn), moss on the shady back
+    col = _chash(IX, IZ, 3)
+    S.put("BdStoneEdge", foot & (Y < 0.1 + 0.3 * col) & edge_ring)
+    # moss grows in clumps (2 x 2 cell patches), on the shady back and round the post's foot, rarely in front
+    clump = _chash(IX // 2, IY // 2, 5)
+    S.put("BdMoss", foot & (Z > kd - vs) & (Y < 0.6) & (clump < 0.55))
+    S.put("BdMossLight", foot & (Z > kd - vs) & (_chash(IX, IY, 11) > 0.75), only="BdMoss")
+    for s in (-1, 1):
+        top = (X * s > kx0) & (X * s < kx1) & (Y > ky1 - 2 * vs) & (Y < ky1) & (az < kd)
+        near = (X * s > px0 - 2 * vs) & (X * s < px1 + 2 * vs)
+        S.put("BdMoss", top & near & (_chash(IX // 2, IZ // 2, 13 + s) < np.where(Z > 0, 0.6, 0.12)),
+              only=("BdStone", "BdStoneLight"))
+        # a chipped top corner, away from the post
+        cx = s * (kx1 - 0.2 if hsh(s, 17) < 0.5 else kx0 + 0.2)
+        cz = (kd - 0.2) * (1 if hsh(s, 19) < 0.5 else -1)
+        S.cut(foot & (np.abs(X - cx) < 0.25) & (np.abs(Z - cz) < 0.25) & (Y > ky1 - 0.4))
+    # a hairline crack down the front of the +X foot
+    for j, dx in enumerate((0, 1, 1, 2, 1)):
+        S.put("BdStoneEdge", S.cell(8.7 + dx * vs, ky1 - (j + 0.5) * vs, -kd + vs / 2),
+              only=("BdStoneDark", "BdStoneLight"))
+
+    # ------------------------------------------------------------------ the posts
+    post = (ax > px0) & (ax < px1) & (az < pd) & (Y > py0) & (Y < py1)
+    S.put("BdPlankDark", post)
+    S.cut(post & ((ax < px0 + vs) | (ax > px1 - vs)) & (az > pd - vs))      # planed long edges
+    skin_f = post & (az > pd - vs)                                           # the front and back faces' cells
+    S.put("BdSeam", skin_f & (np.abs(ax - pxc) < 0.05))                      # the two-piece timber's joint
+    for s in (-1, 1):
+        for face in range(3):                                                # front, back, the outer side
+            for k in range(2):
+                y0 = 3.0 + hsh(s, face, k, 23) * 10.5
+                ln = 1.4 + hsh(s, face, k, 29) * 2.4
+                if face < 2:
+                    cxs = pxc + (0.2 if hsh(s, face, k, 31) < 0.5 else -0.2)
+                    run = (Z * (1 if face else -1) > pd - vs) & (np.abs(ax - cxs) < 0.05)
+                else:
+                    czs = (-0.3, -0.1, 0.1, 0.3)[int(hsh(s, k, 37) * 3.999)]
+                    run = (ax > px1 - vs) & (np.abs(Z - czs) < 0.05)
+                S.put("BdGrain", post & (X * s > 0) & run & (Y > y0) & (Y < y0 + ln), only="BdPlankDark")
+    # the damp dark band at the foot, ragged
+    S.put("BdPlankWet", post & (Y < py0 + 0.4 + 0.5 * _chash(IX, IZ, 41)))
+    # iron bolts through the posts at the rails (front and back), flush heads
+    rail_mid = (ob - rim / 2, ot + rim / 2)                                  # the rails' middle cell rows (2.7, 16.3)
+    for s in (-1, 1):
+        for yb in rail_mid:
+            for zb in (-pd + vs / 2, pd - vs / 2):
+                S.put("BdIron", S.cell(s * pxc, yb, zb))
+
+    # ------------------------------------------------------------------ the frame (round the opening) and the back
+    outer = (ax < ow + rim) & (Y > ob - rim) & (Y < ot + rim)
+    opening = (ax < ow) & (Y > ob) & (Y < ot)
+    frame = outer & ~opening & (Z > fz0) & (Z < fz1)
+    rails = frame & ((Y < ob) | (Y > ot))                                    # top and bottom, full width
+    S.put("BdPlank", frame)
+    for i, bar in enumerate((rails & (Y < ob), rails & (Y > ot), frame & ~rails & (X < 0), frame & ~rails & (X > 0))):
+        S.put(BRD_TONES[int(hsh(i, 43) * 3.999)], bar)
+        # one grain streak on its front
+        front = bar & (Z < fz0 + vs)
+        if i < 2:
+            gx = -6.0 + hsh(i, 47) * 9.0
+            gy = rail_mid[i] + vs * (1 if hsh(i, 51) < 0.5 else -1)          # beside the nail row
+            S.put("BdGrain", front & (np.abs(Y - gy) < 0.05) & (X > gx) & (X < gx + 2.2 + 1.6 * hsh(i, 53)))
+        else:
+            gy = 4.5 + hsh(i, 59) * 7.0
+            S.put("BdGrain", front & (np.abs(ax - (ow + 2.5 * vs)) < 0.05) & (Y > gy)
+                  & (Y < gy + 2.6 + 1.4 * hsh(i, 61)))
+    # the dark inner edge round the navy face
+    S.put("BdPlankDark", frame & (ax < ow + vs) & (Y > ob - vs) & (Y < ot + vs))
+    # flush nails along the rails and the stiles
+    for xn in (1.1, 3.1, 5.1, 7.1):
+        for s in (-1, 1):
+            for yn in rail_mid:
+                S.put("BdIron", S.cell(s * xn, yn, fz0 + vs / 2))
+    for yn in (6.1, 9.5, 12.9):
+        for s in (-1, 1):
+            S.put("BdIron", S.cell(s * (ow + rim / 2), yn, fz0 + vs / 2))
+    # the plank back: 1.2-stud boards (14 between the posts), a tone each, a seam at each board's edge, a grain streak
+    back = outer & (Z > bz0) & (Z < bz1)
+    bi = np.floor((X + (px0 - vs / 2)) / BRD_BOARD).astype(np.int64)       # board 0 starts at the -X post's face
+    S.put("BdPlank", back)
+    for k in range(-1, 15):
+        board = back & (bi == k)
+        S.put(BRD_TONES[int(hsh(k, 67) * 3.999)], board)
+        x0 = -px0 + k * BRD_BOARD
+        S.put("BdSeam", board & (X < x0 + vs) & (Z > bz1 - vs))
+        gy = ob + 0.5 + hsh(k, 71) * 8.0
+        gx = x0 + (2 + int(hsh(k, 73) * 2.999)) * vs + vs / 2
+        S.put("BdGrain", board & (Z > bz1 - vs) & (np.abs(X - gx) < 0.05) & (Y > gy)
+              & (Y < gy + 2.0 + 2.0 * hsh(k, 79)))
+    # two battens across the back between the posts and a straight one up the middle between them (an H: a diagonal
+    # brace stair-steps on 0.2-stud cells and cost ~700 tris), nailed to every other board
+    bat = (ax < px0) & (Z > bz1) & (Z < bz1 + vs)
+    battens = bat & (((Y > 4.4) & (Y < 5.2)) | ((Y > 13.8) & (Y < 14.6)))
+    S.put("BdPlankWarm", bat & (ax < 0.4) & (Y > 5.2) & (Y < 13.8))
+    S.put("BdPlank", battens)
+    for k in range(0, 14, 2):
+        xn = -px0 + k * BRD_BOARD + 0.7
+        for yn in (4.9, 14.1):
+            S.put("BdIron", S.cell(xn, yn, bz1 + vs / 2))
+    # brass corner caps over the four joints, front (one cell proud of the frame) and back (on the plank back)
+    for s in (-1, 1):
+        for yc0, yc1 in ((ob - rim, ob + 0.2), (ot - 0.2, ot + rim)):
+            sq = (X * s > ow - 0.2) & (X * s < ow + rim) & (Y > yc0) & (Y < yc1) & ~opening
+            S.put("BdBrass", sq & (Z > fz0 - vs) & (Z < fz0))
+            S.put("BdBrass", (X * s > px0 - 0.8) & (X * s < px0) & (Y > yc0) & (Y < yc1) & (Z > bz1) & (Z < bz1 + vs))
+            yr = rail_mid[0] if yc0 < ob else rail_mid[1]
+            S.put("BdBrassLight", S.cell(s * (ow + rim / 2), yr, fz0 - vs / 2))
+            S.put("BdBrassLight", S.cell(s * (px0 - 0.3), yr, bz1 + vs / 2))
+
+    # ------------------------------------------------------------------ the roof
+    S.put("BdPlankDark", (ax < BRD_EAVE) & (Y > r0) & (Y < rA) & (az < 1.2))                     # the soffit
+    for k in range(-5, 6):                                                                     # rafter tails
+        S.put("BdPlankDark", (np.abs(X - k * 1.6) < 0.2) & (Y > r0 - vs) & (Y < r0) & (az > 0.8) & (az < 1.2))
+    courseA = (ax < BRD_EAVE) & (Y > rA) & (Y < rB) & (az < 1.2)
+    courseB = (ax < BRD_EAVE) & (Y > rB) & (Y < rR) & (az < 0.8)
+    for ci, (course, off) in enumerate(((courseA, 0.0), (courseB, 0.4))):
+        si = np.floor((X + BRD_EAVE + off) / 0.8 + 1e-6).astype(np.int64)                     # shingles 0.8 wide, staggered
+        for side in (-1, 1):
+            half = course & (Z * side > 0)
+            for k in range(-1, 26):
+                S.put(BRD_ROSES[int(hsh(ci, side, k, 83) * 4.999)], half & (si == k))
+        if ci == 0:
+            # notched eaves: a cell cut at every shingle joint on the front and back edges
+            joint = np.mod(X + BRD_EAVE, 0.8) < vs                                              # the cell after a joint
+            S.cut(course & (az > 1.2 - vs) & joint & (ax < BRD_EAVE - vs))
+    ridge = (ax < 9.0) & (Y > rR) & (Y < rT) & (az < 0.4)
+    S.put("BdRose", ridge)
+    S.put("BdRoseDark", ridge & (Y > rT - vs) & (az < 0.2))
+    S.put("BdRoseDark", ridge & (Y < rR + vs) & (az > 0.2))
+    S.put("BdBrass", ridge & (ax > 8.6))                                                       # brass end caps
+    S.put("BdBrassLight", ridge & (ax > 8.6) & (Y > rT - vs))
+    # the trophy cup on the ridge's middle (the board's sign from across the plaza), 7 rows (1.4 studs) of 0.2: a base,
+    # a stem, a knot, a bowl flaring out over three rows, a hollow rim, and a loop handle each side
+    row = lambda r: (Y > rT + r * vs) & (Y < rT + (r + 1) * vs)                                # noqa: E731
+    cup = ((row(0) & (ax < 0.6) & (az < 0.4)) | (row(1) & (ax < 0.2) & (az < 0.2)) | (row(2) & (ax < 0.4) & (az < 0.2))
+           | (row(3) & (ax < 0.4) & (az < 0.4)) | (row(4) & (ax < 0.6) & (az < 0.4))
+           | ((row(5) | row(6)) & (ax < 0.8) & (az < 0.4)))
+    S.put("BdGold", cup)
+    S.put("BdGoldDark", cup & (row(0) | row(1)))
+    S.put("BdGoldLight", cup & row(6))
+    S.cut(row(6) & (ax < 0.6) & (az < 0.2))                                                   # the hollow
+    S.put("BdGoldDark", cup & row(5) & (ax < 0.6) & (az < 0.2))                               # the shade inside it
+    S.put("BdGoldLight", cup & (row(4) | row(5)) & (np.abs(X - 0.3) < 0.05) & (az > 0.2))     # the shine (the viewer's left)
+    ear = (az < 0.2) & ((row(5) & (ax > 0.8) & (ax < 1.2)) | (row(4) & (ax > 1.0) & (ax < 1.2))
+                        | (row(3) & (ax > 0.4) & (ax < 1.2)))
+    S.put("BdGold", ear)
+
+    m = kit.model(entry["key"], "prop", vs=vs, K=BRD_K)
+    S.mesh_at(m, "Board", {})
+    finish(m, {"source": "designed (lobby-shop spec 5.10 'World', pitch board A): the global leaderboard's board",
+               "pivot": "ground centre, front -Z", "opening": [2 * ow, ot - ob]})
+    m.attachments = {"FaceCenter": {"pos": [0.0, (ob + ot) / 2, -0.2], "rot": np.eye(3).tolist()}}
     return m

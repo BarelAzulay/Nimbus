@@ -20,7 +20,7 @@
 --                refresh every 30 s, zero writes and no reads
 --   lb_world     (Task 11, spec 5.10 "World") the LobbyLeaderboard board on the south lawn: exactly one, in the Plaza
 --                folder, its pivot (the ground centre) at polar 295 degrees r 48 from Config.Lobby.Origin (+-0.5) on the
---                lawn, facing the plaza centre; the board layout Task 23's prop_board_lb mesh shares: Face 16 x 13 (+-0.01)
+--                lawn, facing the plaza centre; the board layout Task 30's prop_board_lb mesh shares: Face 16 x 13 (+-0.01)
 --                9.5 studs up (navy SmoothPlastic, not colliding, queryable so the client SurfaceGui's tabs take taps), two
 --                colliding 1 x 17 x 1 posts at local x +-8.9, a 0.6-stud frame around the face (four bars, their area
 --                exactly the ring), the 18.6 x 0.6 x 2.4 roof at y 16.9 with a ridge on it, no light; distances: fountain
@@ -29,7 +29,11 @@
 --                0.25 stud margin); no "plaza decor skipped" / "leaderboard board failed" warn; the dress request read from
 --                a rebuild with LobbyBuilder._Kit: one prop_board_lb record on the model at its pivot, Keep = { "Face" };
 --                ML_DressKey only where MeshLibrary.Status("prop_board_lb") ~= "missing" (in --mesh the scenario gives the
---                key a fixture holder, as lobby_trove_plaza does for the eggs, so the check runs there)
+--                key a fixture holder, as lobby_trove_plaza does for the eggs, so the check runs there); the prop_board_lb
+--                manifest (Task 30) against the booted board: attachment FaceCenter at (0, 9.5, -0.2), its bounds cover
+--                the hidden Part build (every part but the Face, 0.3 slack), reach at most 0.6 past it across / in depth
+--                and 1.4 over the ridge (the trophy cup), its foot seated on the lawn (sunk <= 0.25), one Fixed SmoothPlastic part (no
+--                Neon), <= 4,000 tris (propBig)
 --   lb_titles    (Task 18, spec 16.6 "Server" / "Tests", server half; Review Focus 5) Config.Attr.Title / TitleRank and
 --                Config.Leaderboard.RankTitles; a no-store copy ("Server" scope): a player ranked first in this server gets no
 --                Top title, the owner still gets Creator; the booted service over a 100-entry Trophies store: rank 3 ->
@@ -1157,6 +1161,73 @@ local function checkBoard(label, board, info, root)
 		label, hdist(p, fountain), npcMin, mins.Bench, mins.FlowerBed, spawn and hdist(p, spawn) or -1, seen, nearestName, nearest))
 end
 
+-- the prop_board_lb manifest (Task 30) against a built board: the mesh a client dresses LobbyLeaderboard with. Dressing
+-- hides the Part build locally but it still collides, and the Face stays (Keep, the SurfaceGui), so the mesh stands where
+-- those Parts stand: it covers every hidden Part (WB.Cover slack: no invisible wall), reaches at most WB.Reach past them
+-- across and in depth (nothing shows where a player walks through it), its top at most WB.Crest over the ridge (the
+-- trophy crest), its feet seated on the lawn (sunk at most WB.Sink); one baked Fixed part, no Neon (the board has no light
+-- and no glow, spec 5.10), within the propBig budget. The 16 x 13 opening itself is a voxel fact the manifest does not
+-- carry: Task 30 checks it on the built mesh (evidence/blender/t30).
+WB.Cover, WB.Reach, WB.Crest, WB.Sink, WB.Tris = 0.3, 0.6, 1.4, 0.25, 4000
+
+local function checkBoardMesh(label, board, ML)
+	local man = ML and ML.Manifest(WB.Key)
+	local b = man and man.Bounds
+	local lo, hi = b and (b.Min or b.min), b and (b.Max or b.max)
+	if not T.check(type(lo) == "table" and type(hi) == "table", label .. ": the prop_board_lb manifest exists (Task 30) with its bounds") then
+		return
+	end
+	local att = man.Attachments and man.Attachments.FaceCenter
+	local fp = att and (att.Pos or att.pos)
+	T.check(type(fp) == "table" and math.abs(fp[1]) < 0.01 and math.abs(fp[2] - 9.5) < 0.01 and math.abs(fp[3] + 0.2) < 0.01,
+		label .. ": ...attachment FaceCenter at (0, 9.5, -0.2), the Face's front centre", type(fp) == "table" and table.concat(fp, ", ") or "none")
+	-- the hidden Part build's envelope (every part but the Face) in the board's pivot space
+	local cf = board:GetPivot()
+	local elo, ehi = { math.huge, math.huge, math.huge }, { -math.huge, -math.huge, -math.huge }
+	for _, d in ipairs(board:GetDescendants()) do
+		if d:IsA("BasePart") and d.Name ~= "Face" then
+			local h = d.Size / 2
+			for _, sx in ipairs({ -1, 1 }) do
+				for _, sy in ipairs({ -1, 1 }) do
+					for _, sz in ipairs({ -1, 1 }) do
+						local q = cf:PointToObjectSpace(d.CFrame * Vector3.new(sx * h.X, sy * h.Y, sz * h.Z))
+						local v = { q.X, q.Y, q.Z }
+						for i = 1, 3 do
+							elo[i], ehi[i] = math.min(elo[i], v[i]), math.max(ehi[i], v[i])
+						end
+					end
+				end
+			end
+		end
+	end
+	local function box(a, z)
+		return string.format("x %.2f..%.2f y %.2f..%.2f z %.2f..%.2f", a[1], z[1], a[2], z[2], a[3], z[3])
+	end
+	local covers = true
+	for i = 1, 3 do
+		covers = covers and lo[i] <= elo[i] + WB.Cover and hi[i] >= ehi[i] - WB.Cover
+	end
+	T.check(covers, label .. ": ...it covers the hidden Part build (every part but the Face, " .. WB.Cover .. " stud slack): no invisible wall",
+		"mesh " .. box(lo, hi) .. "; parts " .. box(elo, ehi))
+	T.check(lo[1] >= elo[1] - WB.Reach and hi[1] <= ehi[1] + WB.Reach and lo[3] >= elo[3] - WB.Reach and hi[3] <= ehi[3] + WB.Reach
+		and hi[2] <= ehi[2] + WB.Crest, label .. ": ...and reaches at most " .. WB.Reach .. " stud past it across and in depth, " .. WB.Crest .. " over the ridge",
+		"mesh " .. box(lo, hi) .. "; parts " .. box(elo, ehi))
+	T.check(lo[2] <= 0.01 and lo[2] >= -WB.Sink, label .. ": ...seated on the lawn (its foot at the pivot, sunk at most " .. WB.Sink .. ")", string.format("foot %.3f", lo[2]))
+	local fixed, bad = 0, {}
+	for _, p in ipairs(man.Parts or {}) do
+		local name, mat = tostring(p.name or p.Name), p.material or p.Material
+		if name == "Fixed" and mat == "SmoothPlastic" then
+			fixed = fixed + 1
+		else
+			bad[#bad + 1] = name .. " " .. tostring(mat)
+		end
+	end
+	T.check(fixed == 1 and #bad == 0, label .. ": ...one baked Fixed SmoothPlastic part, no Neon (no light, no glow)", fixed .. " Fixed; " .. table.concat(bad, ", "))
+	local raw = man.Raw or {}
+	local tris = tonumber(raw.Tris or raw.tris)
+	T.check(tris ~= nil and tris <= WB.Tris, label .. ": ...within the propBig budget (<= " .. WB.Tris .. " tris)", tostring(tris))
+end
+
 S.lb_world = guarded("lb_world", function()
 	if not K.needBoot() then
 		return
@@ -1176,6 +1247,7 @@ S.lb_world = guarded("lb_world", function()
 	T.eq(#boards, 1, "lb world: exactly one LobbyLeaderboard in the booted lobby")
 	if boards[1] then
 		checkBoard("lb world", boards[1], info, lobby)
+		checkBoardMesh("lb board mesh", boards[1], ML)
 	end
 	local warned = badWarns(0)
 	T.check(#warned == 0, "lb world: no 'plaza decor skipped' / 'leaderboard board failed' warn in the build log", table.concat(warned, " | "))
