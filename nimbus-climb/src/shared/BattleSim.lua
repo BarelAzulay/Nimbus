@@ -1401,8 +1401,9 @@ function BattleSim:Describe()
 	}
 end
 
--- the fighter's current legal speeds (walk, run) with Haste / Slow applied
-local function legalSpeeds(self, team)
+-- the fighter's current legal speeds (walk, run) with Haste / Slow applied; trainer = the speeds sent to the player's
+-- character (SpeedOf / TeamOf / the Speed event), which a raid floors at the normal walk / run (the pet keeps its own)
+local function legalSpeeds(self, team, trainer)
 	local f = team.fighter
 	if not f then
 		return 0, 0
@@ -1414,7 +1415,15 @@ local function legalSpeeds(self, team)
 	if self.t < f.slowUntil then
 		mult = mult * f.slowMult
 	end
-	return num(f.walk, 12) * mult, num(f.run, 15.6) * mult
+	local walk, run = num(f.walk, 12), num(f.run, 15.6)
+	if trainer and self.mode == "Raid" then
+		-- bug batch 6 (owner, Studio): a raider moves at least at the normal walk / run, so the fight area's countdown can be beaten
+		-- (the pet engages on its own and keeps its own speed: the raid's balance does not move)
+		local F = catalog() and catalog().Fighter or {}
+		walk = max(walk, num(F.RaidWalkMin, 16))
+		run = max(run, num(F.RaidRunMin, 27))
+	end
+	return walk * mult, run * mult
 end
 
 function BattleSim:SpeedOf(owner)
@@ -1422,7 +1431,7 @@ function BattleSim:SpeedOf(owner)
 	if not team or not team.fighter then
 		return nil
 	end
-	local walk, run = legalSpeeds(self, team)
+	local walk, run = legalSpeeds(self, team, true)
 	return { Walk = walk, Run = run }
 end
 
@@ -1442,7 +1451,7 @@ function BattleSim:TeamOf(owner)
 			buffs[u.slot] = max(0, u.buffReadyAt - t)
 		end
 	end
-	local walk, run = legalSpeeds(self, team)
+	local walk, run = legalSpeeds(self, team, true)
 	return {
 		Owner = team.owner,
 		Side = team.side,
@@ -4081,7 +4090,7 @@ local function checkSpeeds(self, team, events)
 	if not team.player or not team.fighter or team.left then
 		return
 	end
-	local walk, run = legalSpeeds(self, team)
+	local walk, run = legalSpeeds(self, team, true)
 	walk, run = r1(walk), r1(run)
 	if team.lastWalk ~= walk or team.lastRun ~= run then
 		team.lastWalk, team.lastRun = walk, run

@@ -354,6 +354,10 @@ BattleCatalog.Fighter = {
 	WalkMin = 12,
 	WalkMax = 20,
 	RunMult = 1.3, -- run = walk x RunMult (15.6 .. 26 studs/s; the obby run is 27)
+	-- bug batch 6 (owner, Studio): in boss raids the trainer moves at least at the normal walk / run (Config.Physics 16 / 27), so a
+	-- raider warned out of the fight area can make it back; Haste / Slow still multiply it (BattleSim legalSpeeds)
+	RaidWalkMin = 16,
+	RaidRunMin = 27,
 	MoveSlack = 1.25, -- the server fighter's cap OVER THE LEGAL RUN SPEED (latency + a cheat margin)
 	Leash = 10, -- a gap > Leash for LeashSeconds between the character and the server fighter = out (BattleService)
 	LeashSeconds = 3,

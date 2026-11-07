@@ -943,26 +943,18 @@ S.p5svc_position = scenario("p5svc_position", function()
 	end
 	local def2 = PC().Get(STRONG[2])
 	local w2, run2 = F.SpeedsOf(bc.UnitStats(def2, 10, "Normal").MoveSpeed)
+	w2, run2 = math.max(w2, F.RaidWalkMin), math.max(run2, F.RaidRunMin) -- (bug batch 6: a raid floors them at the normal walk / run)
 	T.check(okR and okSw == true and swapEv and speedEv and math.abs(speedEv.walk - w2) < 0.1 and math.abs(speedEv.run - run2) < 0.1,
 		"p5 pos: a Swap relays a Speed event with the incoming pet's legal speeds", speedEv and string.format("%.1f / %.1f vs %.1f / %.1f", speedEv.walk, speedEv.run, w2, run2) or "no Speed event")
 	local m4 = K.logSize()
 	Mock.Teleport(r1, info.Floor.CFrame * CFrame.new(0, 3, -44 - 6 - 40)) -- the far rim, well inside InArena's disc (the fighter is clamped to the floor)
-	local removedAt = nil
-	local t1 = Mock.Clock.now
-	for _ = 1, 60 do
-		advance(0.1)
-		local e = lastMsg(r1, "End", m4)
-		if e then
-			removedAt = Mock.Clock.now - t1
-			break
-		end
-	end
+	-- (bug batch 6: a raid has no leash any more; the fight area's countdown is its presence rule and a raider walks at the
+	-- normal speed, faster than a slow pet in FOLLOW. Was: removed after LeashSeconds with "ran off")
+	advance(F.LeashSeconds + 1.6)
 	local e1 = lastMsg(r1, "End", m4)
 	local st = bs.GetRaidStatus().Fights.Starter
-	-- (wave 6: the FOLLOW leash counts from the teleport's first tick, no engage to drop first: -0.4 s tick slack)
-	T.check(e1 and e1.Outcome == "Left" and removedAt and removedAt >= F.LeashSeconds - 0.4 and removedAt <= F.LeashSeconds + 1.6 and st and st.Players == 1 and bs.IsInBattle(r2)
-		and r1:GetAttribute("InBattle") == nil and toasted(r1, "ran off", m4),
-		"p5 pos: a raider leashed out is removed from the raid (End Outcome Left, the others fight on)", string.format("after %.1f s, players %s", removedAt or -1, st and tostring(st.Players) or "nil"))
+	T.check(e1 == nil and st and st.Players == 2 and bs.IsInBattle(r1) and bs.IsInBattle(r2) and not toasted(r1, "ran off", m4),
+		"p5 pos: a raider far from their pet past the old leash time is still in the raid (no leash in raids)", string.format("End %s, players %s", e1 and tostring(e1.Reason) or "none", st and tostring(st.Players) or "nil"))
 	bs.EndRaids("Ended")
 	advance(0.3)
 
@@ -1418,7 +1410,7 @@ S.p5svc_raid = scenario("p5svc_raid", function()
 	-- a leaver (arena) is removed; a disconnect too
 	local m3 = K.logSize()
 	toLobby(raiders[8])
-	advance(4.5) -- (bug batch 6: 0.5 s out, the warning, its 3-2-1, one 0.5 s monitor tick; was 1.5)
+	advance(6.5) -- (bug batch 6: 0.5 s out, the warning, its 5 s countdown, one 0.5 s monitor tick; was 1.5)
 	local e8 = lastMsg(raiders[8], "End", m3)
 	Mock.RemovePlayer(raiders[7])
 	advance(0.5)

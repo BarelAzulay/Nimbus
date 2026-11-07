@@ -42,7 +42,7 @@
 --   "End"      { BattleId, Mode, Result, Rewards, Outcome, Won, Spectator, Reason } (Rewards.Dungeon = true + Extra in
 --              the dungeon: no result card for a cleared room, DungeonController shows the loot)
 --   "Area"     (bug batch 6, boss raids) { BattleId, Out, Left }: Out = true: I am out of the fight area, the server takes me out of
---              the raid Left (3) s later unless I step back in (AreaWarn's banner counts it down); Out = false: back in (the banner
+--              the raid Left (5) s later unless I step back in (AreaWarn's banner counts it down); Out = false: back in (the banner
 --              goes). Only for the drawn battle; the End and the HUD's closing take the banner away too.
 --
 -- Drawing (kept from Phases 3-4; the Phase 5 lines marked *)

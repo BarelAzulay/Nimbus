@@ -23,7 +23,7 @@
 --                             LEAVE for a raid spectator; clear of RETREAT, Cheer up!, SWITCH TARGET, the boss bar and the vitals card at
 --                             1920x1080 / 1280x720 / 390x844 / 844x390, the armed text fits the button
 --   client_bb6_raid_leave_mobile (phone world) the same layout on the touch phone (390x844, 844x390, 740x360, 667x375)
---   client_bb6_area_banner    (Task A2) BattleState "Area" { Out = true, Left = 3 }: Root.AreaWarn "Back to the fight! 3" counts 3, 2, 1
+--   client_bb6_area_banner    (Task A2) BattleState "Area" { Out = true, Left = 5 }: Root.AreaWarn "Back to the fight! 5" counts 5 .. 1
 --                             on the client and holds 1; Out = false, the End or another battle's id: hidden / ignored; junk is
 --                             harmless; >= 14 px, in the top band and clear of the HUD at 1920x1080 / 1280x720 / 390x844 / 844x390
 -- Plain Lua 5.1 syntax only.
@@ -926,14 +926,14 @@ S.client_bb6_area_banner = guarded("client_bb6_area_banner", function()
 	d.start()
 	advance(0.3)
 	T.check(not bannerShown(), "bb6 area banner: no banner in a raid by itself")
-	areaMsg(d, { Out = true, Left = 3 })
+	areaMsg(d, { Out = true, Left = 5 })
 	local bn = at("Root.AreaWarn")
-	T.check(bn and shown(bn) and bn.Text == "Back to the fight! 3", "bb6 area banner: the server's warning shows 'Back to the fight! 3'", bn and bn.Text or "missing")
+	T.check(bn and shown(bn) and bn.Text == "Back to the fight! 5", "bb6 area banner: the server's warning shows 'Back to the fight! 5'", bn and bn.Text or "missing")
 	local sub = bn and bn:FindFirstChild("Sub")
 	T.check(sub and shown(sub) and tostring(sub.Text):find("leave the raid") ~= nil, "bb6 area banner: ...and says what staying out does ('Or you leave the raid.')", sub and sub.Text or "no Sub line")
 	advance(1.05)
-	T.check(bn and bn.Text == "Back to the fight! 2", "bb6 area banner: it counts down on the client (3, 2, 1)", bn and bn.Text or "")
-	advance(1.0)
+	T.check(bn and bn.Text == "Back to the fight! 4", "bb6 area banner: it counts down on the client (5, 4, 3, 2, 1)", bn and bn.Text or "")
+	advance(3.0)
 	T.check(bn and bn.Text == "Back to the fight! 1", "bb6 area banner: ...1", bn and bn.Text or "")
 	advance(1.5)
 	T.check(bn and shown(bn) and bn.Text == "Back to the fight! 1", "bb6 area banner: it stays at 1 until the server decides (never 0)", bn and bn.Text or "")
