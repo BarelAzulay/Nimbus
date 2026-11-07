@@ -4,7 +4,7 @@
 --
 -- Boot order (Phase 5, ARCHITECTURE_V3.md "Phase 5 build contract" 10.1):
 --   Remotes -> Lighting -> Lobby -> Storm Altar -> Arena -> Dungeon world (DungeonBuilder.Build -> NimbusLobby.PartCount)
---   -> Damage -> Token -> Data (autosave / BindToClose)
+--   -> Damage -> Token -> Data (autosave / BindToClose) -> Leaderboard (lobby shop: the global board, before profiles load)
 --   -> Pet / Spot services (they subscribe to profile events; HUD cleanup: the obby items and ItemService are gone)
 --   -> Player service (this is what starts loading profiles, so it comes after the subscribers)
 --   -> Match -> Portals -> Gates -> Index / Npc -> Tutorial -> Tycoon / PetCare / Fusion / Gem
@@ -251,6 +251,7 @@ local StoreService = loadOptionalService("StoreService") -- receipts' one grant 
 local Multipliers = loadOptionalService("Multipliers") -- x2 Cash / x2 Pet XP at the five earning sites (Init deps only)
 local DailyService = loadOptionalService("DailyService") -- the streak and play-time gifts
 local TroveService = loadOptionalService("TroveService") -- the lobby chest's once-per-account group reward
+local LeaderboardService = loadOptionalService("LeaderboardService") -- lobby shop: the global leaderboard (Trophies, Pets found, Ring best)
 -- Phase 3 services (ARCHITECTURE_V3.md "Phase 3 build contract")
 local ArenaBuilder = loadOptionalService("ArenaBuilder")
 local BattleService = loadOptionalService("BattleService")
@@ -296,6 +297,8 @@ call("DamageService.Init", DamageService, "Init")
 call("TokenService.Init", TokenService, "Init")
 call("DataService.StartAutosave", DataService, "StartAutosave")
 call("DataService.BindToClose", DataService, "BindToClose")
+-- lobby shop (spec 5.10): the global leaderboard listens to ProfileLoaded, so it starts before PlayerService loads profiles
+if LeaderboardService then call("LeaderboardService.Init", LeaderboardService, "Init", { DataService = DataService }) end
 
 ----------------------------------------------------------------------
 -- 3. Economy + spots (subscribe to profile events BEFORE PlayerService starts loading profiles)

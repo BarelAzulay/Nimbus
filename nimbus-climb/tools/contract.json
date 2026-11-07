@@ -1201,6 +1201,16 @@
         ]
       }
     },
+    "server/Services/LeaderboardService": {
+      "_comment": "lobby shop (2026-11-07) Task 9: the global leaderboard (spec 5.10 with section 15: Trophies, Pets found, Ring best), OrderedDataStore writes / reads, the this-server fallback, LeaderboardState",
+      "optional": true,
+      "functions": [
+        "Init",
+        "ValueOf",
+        "State",
+        "Scope"
+      ]
+    },
     "server/Services/TroveService": {
       "optional": true,
       "pending": {

@@ -151,6 +151,7 @@ Config.Remotes = {
 	"DailyState", -- server -> client (state:table)  the streak, the resolved cells, the play clock and its tiers, Play.Active
 	"TroveRequest", -- (action:string)  "Joined": the client's PromptJoinAsync answered Joined / AlreadyMember (TroveService checks once per visit)
 	"TroveState", -- server -> client (state:table)  the asks' states (Open / Done / Checked / Unavailable) and the reward
+	"LeaderboardState", -- server -> client (state:table)
 }
 
 ----------------------------------------------------------------------
@@ -645,6 +646,34 @@ Config.Trove = {
 		{ Id = "Group", Reward = { Cash = 2000, Tokens = 200 } },
 		{ Id = "Like" },
 	},
+}
+
+-- The global leaderboard (lobby shop, spec 5.10 with section 15: the third page is Ring best, no Climb wins page):
+-- LeaderboardService keeps one OrderedDataStore per page (Stores) and sends LeaderboardState; the lobby board shows Top
+-- rows per page and turns a page every TurnSeconds. Writes: SeedDelay s after a load (a value above 0), then a sweep every
+-- SweepSeconds writes a changed value at most once per WriteEvery per stat, a leave writes what changed; never below the
+-- request budget's BudgetFloor.Write, never in Studio unless WriteInStudio. Reads: GetSortedAsync(false, ReadSize) every
+-- RefreshSeconds per stat, a failure retries after RetrySeconds (the last repeats). Before the first good pages, with no
+-- store, or after failures before them: this server's live values, rebuilt every FallbackRefresh s. PollSeconds: the
+-- own-value poll. Values are whole numbers 0 .. MaxValue.
+Config.Leaderboard = {
+	Stores = { Trophies = "NimbusClimb_LB_Trophies_v1", Pets = "NimbusClimb_LB_Pets_v1", Ring = "NimbusClimb_LB_Ring_v1" },
+	Pages = { "Trophies", "Pets", "Ring" },
+	Labels = { Trophies = "Trophies", Pets = "Pets found", Ring = "Ring best" },
+	Titles = { Trophies = "TOP TROPHIES", Pets = "TOP PETS FOUND", Ring = "TOP RING ROUND" },
+	Top = 10,
+	ReadSize = 100,
+	RefreshSeconds = 240,
+	WriteEvery = 120,
+	SweepSeconds = 60,
+	SeedDelay = 30,
+	RetrySeconds = { 30, 60, 120, 240 },
+	BudgetFloor = { Write = 20, Read = 2 },
+	TurnSeconds = 15,
+	FallbackRefresh = 30,
+	PollSeconds = 5,
+	MaxValue = 1e12,
+	WriteInStudio = false,
 }
 
 -- Developer tools (owner only). The game's owner (and the extra UserIds in Admins, and everyone while testing in

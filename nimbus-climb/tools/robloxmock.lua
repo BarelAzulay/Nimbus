@@ -1661,6 +1661,8 @@ end
 CLOSED_ENUMS.AssetFetchStatus = CLOSED_ENUMS.AssetFetchStatus or "Success Failure None Loading TimedOut"
 -- [store, W0] GroupService:PromptJoinAsync's answer (TroveController reads it): a closed list, so a typo fails here
 CLOSED_ENUMS.GroupMembershipStatus = CLOSED_ENUMS.GroupMembershipStatus or "None Joined JoinRequestPending AlreadyMember"
+-- [lobby-shop, Task 9] DataStoreService:GetRequestBudgetForRequestType's argument (LeaderboardService's budget floors)
+CLOSED_ENUMS.DataStoreRequestType = CLOSED_ENUMS.DataStoreRequestType or "GetAsync SetIncrementAsync UpdateAsync GetSortedAsync SetIncrementSortedAsync OnUpdate ListAsync GetVersionAsync RemoveVersionAsync"
 
 local enumTypes = {}
 local function getEnumType(name)
@@ -5850,9 +5852,18 @@ service("Players", {
 			end
 			Mock.UnbanLog[#Mock.UnbanLog + 1] = config
 		end,
+		-- [lobby-shop, Task 9] a player in the server, else the Mock.Users username; an unknown id errors (as Roblox's
+		-- lookup of a user that does not exist does)
 		GetNameFromUserIdAsync = function(self, id)
 			local p = self:GetPlayerByUserId(id)
-			return p and p.Name or "Player"
+			if p then
+				return p.Name
+			end
+			local u = rawtype(Mock.Users) == "table" and Mock.Users[id] or nil
+			if u and u.Username then
+				return u.Username
+			end
+			error("Players:GetNameFromUserIdAsync() failed: unknown user id " .. tostring(id) .. " (mock)", 2)
 		end,
 	},
 	init = function(inst)
@@ -6200,7 +6211,11 @@ service("TweenService", {
 })
 
 -- DataStores -------------------------------------------------------------------------------------------
-Mock.DataStore = { Data = {}, Fail = false, Unavailable = false, Latency = 0, Calls = 0, Writes = 0 }
+-- [lobby-shop, Task 9] Budget = { [Enum.DataStoreRequestType name] = n } (unset: 100); Sorted = { [OrderedDataStore name] =
+-- { [key] = whole number } }; SortedLog = every OrderedDataStore SetAsync / GetSortedAsync call { Op = "Set" | "Get", Store,
+-- Key, Value, Time (= workspace:GetServerTimeNow()), Ok }; FailOnly = a call name ("GetSortedAsync", "GetAsync", ...): while
+-- set, Fail fails only that call (Unavailable still fails every call)
+Mock.DataStore = { Data = {}, Fail = false, Unavailable = false, Latency = 0, Calls = 0, Writes = 0, Budget = {}, Sorted = {}, SortedLog = {}, FailOnly = nil }
 local function storableCopy(v, depth)
 	local t = rawtype(v)
 	if t == "number" or t == "string" or t == "boolean" or v == nil then
@@ -6230,7 +6245,7 @@ local function dsGate(name)
 	if cfg.Latency > 0 and not isMainThread() then
 		task.wait(cfg.Latency)
 	end
-	if cfg.Unavailable or cfg.Fail then
+	if cfg.Unavailable or (cfg.Fail and (cfg.FailOnly == nil or cfg.FailOnly == name)) then
 		if cfg.FailCount and cfg.FailCount > 0 then
 			cfg.FailCount = cfg.FailCount - 1
 			if cfg.FailCount == 0 then
@@ -6283,6 +6298,108 @@ function DSm.RemoveAsync(self, key)
 	Mock.DataStore.Data[full] = nil
 	return old
 end
+-- [lobby-shop, Task 9] OrderedDataStore (the leaderboard): whole-number values per key in Mock.DataStore.Sorted[name];
+-- GetSortedAsync(ascending, pageSize) answers a DataStorePages (GetCurrentPage -> { { key, value }... }, IsFinished,
+-- AdvanceToNextPageAsync); every SetAsync / GetSortedAsync goes through dsGate and is logged in Mock.DataStore.SortedLog.
+local ODSmt, ODSm = {}, {}
+regType(ODSmt, "OrderedDataStore")
+ODSmt.__index = function(_, k)
+	if ODSm[k] then
+		return ODSm[k]
+	end
+	error(tostring(k) .. " is not a valid member of OrderedDataStore", 2)
+end
+local function sortedOf(name)
+	local all = Mock.DataStore.Sorted
+	if rawtype(all) ~= "table" then
+		all = {}
+		Mock.DataStore.Sorted = all
+	end
+	all[name] = all[name] or {}
+	return all[name]
+end
+local function sortedLog(op, name, key, value)
+	local log = Mock.DataStore.SortedLog
+	if rawtype(log) ~= "table" then
+		log = {}
+		Mock.DataStore.SortedLog = log
+	end
+	local e = { Op = op, Store = name, Key = key, Value = value, Time = EPOCH + Clock.now, Ok = false }
+	log[#log + 1] = e
+	return e
+end
+local function wholeNumber(v)
+	return rawtype(v) == "number" and v == v and v ~= huge and v ~= -huge and v == floor(v)
+end
+function ODSm.SetAsync(self, key, value)
+	local e = sortedLog("Set", self._name, tostring(key), value)
+	dsGate("SetAsync")
+	if not wholeNumber(value) then
+		error("SetAsync on an OrderedDataStore needs a whole number value, got " .. tostring(value), 2)
+	end
+	Mock.DataStore.Writes = Mock.DataStore.Writes + 1
+	sortedOf(self._name)[tostring(key)] = value
+	e.Ok = true
+	return "version"
+end
+function ODSm.GetAsync(self, key)
+	dsGate("GetAsync")
+	return sortedOf(self._name)[tostring(key)]
+end
+function ODSm.RemoveAsync(self, key)
+	dsGate("RemoveAsync")
+	local data = sortedOf(self._name)
+	local old = data[tostring(key)]
+	data[tostring(key)] = nil
+	return old
+end
+local Pagesmt, Pagesm = {}, {}
+regType(Pagesmt, "DataStorePages")
+Pagesmt.__index = function(self, k)
+	if k == "IsFinished" then
+		return rawget(self, "_at") + rawget(self, "_size") > #rawget(self, "_rows")
+	end
+	if Pagesm[k] then
+		return Pagesm[k]
+	end
+	error(tostring(k) .. " is not a valid member of DataStorePages", 2)
+end
+function Pagesm.GetCurrentPage(self)
+	local out = {}
+	for i = self._at, mmin(#self._rows, self._at + self._size - 1) do
+		out[#out + 1] = { key = self._rows[i].key, value = self._rows[i].value }
+	end
+	return out
+end
+function Pagesm.AdvanceToNextPageAsync(self)
+	dsGate("AdvanceToNextPageAsync")
+	self._at = self._at + self._size
+end
+function ODSm.GetSortedAsync(self, ascending, pageSize)
+	local e = sortedLog("Get", self._name, nil, nil)
+	if rawtype(ascending) ~= "boolean" then
+		error("invalid argument #1 to 'GetSortedAsync' (boolean expected)", 2)
+	end
+	if not wholeNumber(pageSize) or pageSize < 1 or pageSize > 100 then
+		error("invalid argument #2 to 'GetSortedAsync' (page size 1 to 100 expected)", 2)
+	end
+	dsGate("GetSortedAsync")
+	local rows = {}
+	for k, v in pairs(sortedOf(self._name)) do
+		rows[#rows + 1] = { key = k, value = v }
+	end
+	tsort(rows, function(a, b)
+		if a.value ~= b.value then
+			if ascending then
+				return a.value < b.value
+			end
+			return a.value > b.value
+		end
+		return a.key < b.key
+	end)
+	e.Ok = true
+	return setmetatable({ _rows = rows, _at = 1, _size = pageSize }, Pagesmt)
+end
 service("DataStoreService", {
 	methods = {
 		GetDataStore = function(self, name, scope)
@@ -6293,6 +6410,22 @@ service("DataStoreService", {
 				error("502: API Services rejected request with error. Studio access to APIs is not allowed (mock)", 0)
 			end
 			return setmetatable({ _name = name }, DSmt)
+		end,
+		-- [lobby-shop, Task 9] the leaderboard's stores and the request budget
+		GetOrderedDataStore = function(self, name, scope)
+			if rawtype(name) ~= "string" or name == "" then
+				error("invalid argument #1 to 'GetOrderedDataStore' (non-empty string expected)", 2)
+			end
+			if Mock.DataStore.Unavailable then
+				error("502: API Services rejected request with error. Studio access to APIs is not allowed (mock)", 0)
+			end
+			return setmetatable({ _name = name }, ODSmt)
+		end,
+		GetRequestBudgetForRequestType = function(self, requestType)
+			if typeof(requestType) ~= "EnumItem" or requestType.EnumType ~= Enum.DataStoreRequestType then
+				error("invalid argument #1 to 'GetRequestBudgetForRequestType' (Enum.DataStoreRequestType expected)", 2)
+			end
+			return (Mock.DataStore.Budget or {})[requestType.Name] or 100
 		end,
 	},
 })
@@ -6515,6 +6648,36 @@ service("MarketplaceService", {
 	events = { "PromptGamePassPurchaseFinished", "PromptProductPurchaseFinished" },
 })
 service("GroupService", { props = { PromptJoinAsync = T.any(function() return Enum.GroupMembershipStatus.None end) } })
+-- [lobby-shop, Task 9] UserService (the leaderboard's names): GetUserInfosByUserIdsAsync(ids) answers { Id, Username,
+-- DisplayName, HasVerifiedBadge } for the ids found in Mock.Users ([userId] = { Username, DisplayName }), errors while
+-- Mock.UserServiceFail; Mock.UserServiceCalls counts the calls (failed ones too).
+Mock.Users = Mock.Users or {}
+Mock.UserServiceFail = false
+Mock.UserServiceCalls = 0
+service("UserService", {
+	methods = {
+		GetUserInfosByUserIdsAsync = function(self, ids)
+			Mock.UserServiceCalls = Mock.UserServiceCalls + 1
+			if rawtype(ids) ~= "table" or #ids > 200 then
+				error("invalid argument #1 to 'GetUserInfosByUserIdsAsync' (an array of up to 200 user ids expected)", 2)
+			end
+			if Mock.UserServiceFail then
+				error("UserService:GetUserInfosByUserIdsAsync() failed: HTTP 503 (mock)", 2)
+			end
+			local out = {}
+			for _, id in ipairs(ids) do
+				if rawtype(id) ~= "number" then
+					error("invalid argument #1 to 'GetUserInfosByUserIdsAsync' (user ids must be numbers)", 2)
+				end
+				local u = Mock.Users[id]
+				if u then
+					out[#out + 1] = { Id = id, Username = u.Username, DisplayName = u.DisplayName or u.Username, HasVerifiedBadge = false }
+				end
+			end
+			return out
+		end,
+	},
+})
 for _, n in ipairs({ "TeleportService", "PhysicsService", "PathfindingService", "ContentProvider", "Stats", "SocialService", "BadgeService", "MessagingService", "MemoryStoreService", "AssetService", "InsertService", "LocalizationService", "VRService", "HapticService", "TestService", "VoiceChatService", "AvatarEditorService", "UserService", "PolicyService", "NotificationService", "AnalyticsService", "GamepadService", "MaterialService", "LogService", "CoreGui", "Selection", "StudioService", "ScriptContext", "NetworkClient", "UGCValidationService", "RbxAnalyticsService", "ChangeHistoryService", "CaptureService", "DraggerService", "AvatarChatService", "AdService" }) do
 	if not Classes[n] then
 		service(n, { generic = true })
