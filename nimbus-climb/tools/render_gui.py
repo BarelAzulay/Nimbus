@@ -76,8 +76,10 @@ SCENARIOS = ["gallery", "lobby", "title", "match", "match:hit", "countdown", "pa
              "dungeon", "dungeon:lobby", "dungeon:party", "dungeon:leader", "dungeon:countdown", "dungeon:run", "dungeon:loot",
              "dungeon:treasure", "dungeon:end", "dungeon:wipe", "obby", "obby:party", "obby:toast", "portal:Obby",
              # gui-redo (Task 6): the shared pet picker sheet in its Train, Upgrade and Mix contexts; (Task 8) the
-             # Training Place's mats row; (Task 9) the Gifts window: ready, locked; (Task 10) the Play time tab (gift boxes)
-             "picker:train", "picker:upgrade", "picker:mix", "train:mats", "daily", "daily:locked", "daily:play"]
+             # Training Place's mats row; (Task 9) the Gifts window: ready, locked; (Task 10) the Play time tab (gift boxes);
+             # (Task 11) the Fusion Machine window: fusion = fusion:upgrade (the stack of copies), fusion:mix (the two slots)
+             "picker:train", "picker:upgrade", "picker:mix", "train:mats", "daily", "daily:locked", "daily:play",
+             "fusion:upgrade"]
 
 # ---------------------------------------------------------------------------------------------------
 # Lua world (booted the way tools/smoke.py boots its client world)
@@ -1380,7 +1382,7 @@ def main():
                     "battle[:<mode>[:<phase>]] (battle:ring:<fight|next|result|record><round>, battle:duel:overtime, "
                     "battle:<fighter|raid|duel|spectate|dungeon>), arena[:<view>] (arena:practice, arena:dungeon[:<view>]), "
                     "dungeon:<lobby|party|leader|countdown|run|loot|treasure|end|wipe>, obby[:party|toast], portal:Obby, "
-                    "picker[:train|upgrade|mix], train:mats, "
+                    "picker[:train|upgrade|mix], train:mats, daily[:locked|play], fusion[:upgrade|mix], "
                     "or a dump .json")
     ap.add_argument("-o", "--out", help="output PNG (default: gui_<scenario>_<W>x<H>.png in the current directory)")
     ap.add_argument("--size", type=parse_size, default=(1920, 1080), help="screen size WxH (default 1920x1080)")

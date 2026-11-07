@@ -3162,6 +3162,44 @@ scenario("daily", function(view)
 	DC.Open({ Tab = view == "play" and "Play" or "Daily" })
 	advance(1.5)
 end)
+-- fusion[:upgrade|:mix]  gui-redo Task 11: the Fusion Machine window (FusionController, card A) on the picker's collection
+--                       with 3 of the 5 Maple Fox copies on the team and 12,480 Cloud Tokens: upgrade (the default) = the stack of
+--                       Maple Fox copies -> the Golden Maple Fox, the team-copy note; mix = Maple Fox (Body) + Storm Tabby
+--                       (Style) -> the NEW HYBRID card. The careui fusion[:mix] scene is replaced.
+SCENARIOS.fusion = function(view)
+	view = tostring(view or ""):lower()
+	local snap = snapshot()
+	local pets, tiers, levels, hybrids = {}, {}, {}, {}
+	for _, f in ipairs(PICKDUMP.FIX) do
+		local key, level, copies = f[1], f[2], f[3]
+		local base, tier = key:match("^(.-)@(%a+)$")
+		if key:sub(1, 4) == "hyb:" then
+			hybrids[key:sub(5)] = { Body = "maple_fox", Style = "storm_tabby", Elements = { "Flame", "Storm" }, Name = "Foxby", Rarity = "Rare", Tier = "Normal", Seed = 7 }
+		elseif tier then
+			tiers[base] = tiers[base] or {}
+			tiers[base][tier] = copies
+			snap.Discovered[base] = true
+		else
+			pets[key] = copies
+			snap.Discovered[key] = true
+		end
+		levels[key] = { Level = level, Xp = 5 }
+	end
+	snap.Pets, snap.Tiers, snap.Hybrids, snap.PetLevels = pets, tiers, hybrids, levels
+	snap.PetGrowth = { aurora_fox = { Evo = 1 }, ember_phoenix = { Evo = 1 } }
+	-- (three Maple Fox copies on the team: fusing 3 of the 5 leaves 2, so 1 team copy is taken off first)
+	snap.Equipped = { "maple_fox", "maple_fox", "maple_fox" }
+	snap.Teams = { Presets = { { "maple_fox", "maple_fox", "maple_fox" }, {}, {} }, Active = 1, Slots = 3 }
+	snap.Home = { Level = 21, Prestige = 1, Stations = { Garden = 3, FusionMachine = 1 }, Garden = {}, Gym = {} }
+	snap.Cash, snap.Gems, snap.Tokens = 48250, 85, 12480
+	LocalPlayer:SetAttribute(Config.Attr.Tokens, 12480)
+	LocalPlayer:SetAttribute(Config.Attr.Gems, 85)
+	toClient("ProfileSync", snap)
+	advance(0.5)
+	local mix = view == "mix"
+	toClient("OpenPanel", "Fusion", { Tab = mix and "Mix" or "Upgrade", Key = "maple_fox", KeyB = mix and "storm_tabby" or nil })
+	advance(3)
+end
 -- [gui-redo] end
 
 local function boot(width, height, touch, keepTitle)

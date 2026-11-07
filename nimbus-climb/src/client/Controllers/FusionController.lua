@@ -1,40 +1,55 @@
--- FusionController (client, Phase 2): the Fusion Machine window (ARCHITECTURE_V3.md section 11 and the
--- FusionService / FusionController paragraph of the "Phase 2 build contract").
+-- FusionController (client): the Fusion Machine window. Phase 2 (ARCHITECTURE_V3.md section 11 and the FusionService /
+-- FusionController paragraph of the "Phase 2 build contract"); redrawn as card A of the window redo (gui-redo Task 11:
+-- docs/superpowers/specs/2026-11-06-window-redo-design.md 5.1 and 5.6; plan docs/superpowers/plans/2026-11-06-window-redo.md).
 --
 --   FusionController.Init()
 --   FusionController.Open(tab, args)   tab = "Upgrade" | "Mix" | nil (the last one); args (optional) =
---                                       { Key = key (Upgrade input / first Mix pet), KeyB = key (second Mix pet) }
---   FusionController.Close()
---   Extras: FusionController.IsOpen() -> bool, FusionController.Plan() -> the preview the window shows
---           ({ Ok, Reason, Action, Inputs, ResultKey, ResultName, Rarity, Tier, Cost = {Currency, Amount}, Notes }),
---           FusionController.Select(keyA, keyB) (picks pets like clicks do), FusionController.Fuse() (the FUSE
---           button), FusionController.Opened / Closed (Util.Signal)
+--                                       { Key = key (the Upgrade pet / the Body), KeyB = key (the Style), Machine = the
+--                                       Station_FusionMachine model it was opened at }
+--   FusionController.Close()            closes our pet picker sheet and the window
+--   FusionController.IsOpen() -> bool,  FusionController.Plan() -> the preview the window shows ({ Ok, Reason, Action, Inputs,
+--       ResultKey, ResultName, Rarity, Tier, Elements, Cost = { Currency, Amount }, Notes }),
+--   FusionController.Select(keyA, keyB) picks pets like the sheet does (Upgrade: keyA; Mix: Body, Style; nil empties),
+--   FusionController.Fuse() (the FUSE! button), FusionController.Layout() -> "PC" | "Phone" | "Portrait",
+--   FusionController.Opened (fires the tab) / Closed (Util.Signal)
 --
--- How it opens: E at the player's own Fusion Machine (the FusionPrompt HomeBuilder puts on Station_FusionMachine;
--- other players' prompts are disabled locally by HomeFx and ignored here), or OpenPanel("Fusion", {Tab =, Key =})
--- from the server / other windows. One window at a time: opening it closes the menu windows, and a menu window or the
--- Pet Index opening closes it. Esc, gamepad B, the red X or a click outside close it; so does walking away from the
--- machine (when it was opened there) and entering a match.
+-- How it opens: E at the player's own Fusion Machine (the FusionPrompt HomeBuilder puts on Station_FusionMachine; other
+-- players' prompts are disabled locally by HomeFx and ignored here), or OpenPanel("Fusion", { Tab, Key, KeyB }) from the
+-- server / other windows. One window at a time: opening it closes the menu windows, the Pet Index and the Gifts window
+-- (CareController closes Feed / Garden / the Training Place on our Opened); a menu window or the Pet Index opening closes
+-- it. Esc / gamepad B close our sheet first, then the window; the red X, walking away from the machine (when it was opened
+-- there) and entering a match close it.
 --
--- Layout (CloudUI panel, violet like the machine):
---   top     two tabs, UPGRADE and MIX, and the player's Cloud Tokens / Gems
---   left    "Your pets": a grid of pet tiles (ViewportFrame, name, "x3" copies, a gold star when equipped).
---           UPGRADE lists every regular pet that can still go up a finish (3 copies needed, the others dimmed);
---           MIX lists every regular pet (hybrids are one of a kind and cannot be fused again).
---   right   the preview: UPGRADE = the input (x3) -> the next finish (Golden / Rainbow) in a big ViewportFrame with
---           its x1.5 / x2.5 bonus; MIX = Body + Style -> a preview of the hybrid (PetKeys.DefOf of a stand-in
---           record: the real one gets its own random look seed), its blended name, rarity, elements, tier.
---           Then the notes (copies that are equipped / working at home are taken off first; why a fusion is not
---           possible), the cost (TycoonCatalog.FusionCost with the machine's discount; red when short) and FUSE.
--- FUSE sends Remotes.Fusion("Upgrade", key) / ("Mix", keyA, keyB); the server checks everything again and answers
--- with Fusion:FireClient("Result", {Ok, Key, Name, Reason...}). On success a short fusion animation plays: the inputs
--- fly into the centre, a flash and a confetti burst, the new pet pops in with a NEW! ribbon, and a burst of glowing
--- cubes leaves the machine's output pod (client-only parts, gone after a second).
--- Readability rule: designed in 1080p pixels (body 18-19, captions 18, buttons 22, titles 28-34) under ONE
--- UIScale = min(screen factor, fit); the window adapts between 800x456 and 1080x700 design pixels so landscape
--- phones keep >= 14 px text; every text has a stroke and sits on a solid panel. Pet viewports are attached under a
--- per-frame time budget (cached Low clones in the grid, High in the preview), all on CloudUI's one update loop.
--- Plain Lua 5.1-compatible syntax only. All text goes through Theme roles.
+-- Card A (the owner's pick): a violet header (the crystal, "Fusion Machine", the UPGRADE / MIX tabs, the Cloud Token and
+-- Gem chips, the red X) over a navy body:
+--   UPGRADE  Stack: three fanned copies ("COPIES", the pet, "Uncommon . Flame"; a copy you do not have is an empty card),
+--            CopiesText "x5 owned . uses 3", the Arrow, the big glowing Result (GOLDEN: gold + sparks; RAINBOW: a shimmering
+--            edge) with its Pills ("Uncommon", "x1.5 power"), the Note (why it cannot fuse, the copies taken off the team /
+--            Garden first, or what the fusion does). Tapping the Stack opens the shared pet picker (Upgrade context).
+--   MIX      Slot_Body, the SwapButton, Slot_Style, the Arrow, the NEW HYBRID card (violet glow, the pet bobbing, the blended
+--            name; Pills: rarity, "Flame + Storm" in the hybrid's element order, finish), the Note (a reason, when there is
+--            one) and the Info line. Tapping a slot opens the picker (Mix context) with the other slot's species blocked
+--            ("In Body" / "In Style", every finish).
+--   both     the CostBar (the token icon and the price; PC: "You have 12,480 Cloud Tokens", red when short) and FUSE!
+--            (pulsing when it can fuse), a TipLine (PC on top; the phone's Upgrade at the bottom), the HintLine (3 s:
+--            window-local hints such as why FUSE! is grey, and the server's refusal), the Locked card (no Prestige / no
+--            machine yet).
+-- No pet picked: opening the Upgrade tab opens the sheet by itself; Mix with an empty slot opens it for the first empty slot
+-- (Body first) and, after a pick, once more for the other one while it is still empty; closing the sheet without a pick ends
+-- that chain; nothing opens by itself when the context has no pet.
+-- FUSE sends Remotes.Fusion("Upgrade", key) / ("Mix", body, style); the server checks everything again and answers with
+-- Fusion:FireClient("Result", { Ok, Key, Name, Reason... }). On success the inputs fly into the result, a flash and a confetti
+-- burst, the new pet pops in with a NEW! tag, and glowing cubes burst out of the machine's output pod (client-only parts).
+--
+-- Screen: ScreenGui NimbusFusion (DisplayOrder 22, IgnoreGuiInset) > Window_Fusion (NeonKit.BigRect: 1440 x 880 at 1080p, the
+-- PC layout computed in the design box with the 1080p mock as its largest form; 820 x 330 at scale 1 on an 844 x 390 phone;
+-- one column on a portrait phone; UIScale "Fit") > Panel (UIScale "Pop": the 0.22 s Back-Out open) > Header (Icon, Title,
+-- Tab_Upgrade, Tab_Mix, TokenChip, GemChip, CloseButton), Body (TipLine, Stack > Copy1..3, CopiesText, Slot_Body, Plus,
+-- SwapButton, Slot_Style, Arrow, Result, Pills > Pill_*, Note, Info, CostBar > CostLabel / CostIcon / Cost / Have, FuseButton,
+-- HintLine, Locked, Flash, New). On a phone or a touch-only device the window hides Roblox's stick and jump
+-- (MenuController.SetTouchHidden("Fusion")) and steps the menu column aside (SetColumnCovered); the cursor is free while it
+-- is shown (client/MouseLock). Pet looks are CloudUI.PetViewport (cached by what they show). Every number comes from the
+-- catalogs and the synced profile; the server decides. Plain Lua 5.1-compatible syntax only. All text goes through Theme roles.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -43,6 +58,8 @@ local UserInputService = game:GetService("UserInputService")
 local ContextActionService = game:GetService("ContextActionService")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local CollectionService = game:GetService("CollectionService")
+local TweenService = game:GetService("TweenService")
+local TextService = game:GetService("TextService")
 local Debris = game:GetService("Debris")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -52,7 +69,10 @@ local Util = require(Shared:WaitForChild("Util"))
 local Remotes = require(Shared:WaitForChild("Remotes"))
 
 local Client = script.Parent.Parent
-local CloudUI = require(Client:WaitForChild("UI"):WaitForChild("CloudUI"))
+local UI = Client:WaitForChild("UI")
+local CloudUI = require(UI:WaitForChild("CloudUI"))
+local NeonKit = require(UI:WaitForChild("NeonKit"))
+local PetPicker = require(UI:WaitForChild("PetPicker"))
 local State = require(Client:WaitForChild("State"))
 
 local function safeRequire(name)
@@ -76,94 +96,99 @@ FusionController.Opened = Util.Signal()
 FusionController.Closed = Util.Signal()
 
 ----------------------------------------------------------------------
--- Tunables (design pixels of a 1080p screen)
+-- Tunables (design px; PC = the 1080p mock, Phone = screen px)
 ----------------------------------------------------------------------
 local K = {
-	PREF_W = 760, -- Phase 5 (6.6): docked right / a bottom sheet (NeonKit.Dock), 760 x 860 design px
-	PREF_H = 860,
-	MIN_W = 800,
-	MIN_H = 390,
+	DISPLAY_ORDER = 22, -- above NimbusMenu (20) and the Pet Index (21); under the Training Place (23) and the sheet (24)
+	RECT = { H0 = 390, W0 = 820, Y0 = 330, H1 = 1080, W1 = 1440, Y1 = 880 },
 	MARGIN = 12,
-	SHORT = 560, -- below this design height the compact layout is used (landscape phones)
-	TOP_H = 54,
-	TOP_H_SHORT = 44,
-	-- portrait phones: the preview on top, the picker below (used when less than TALL_W design px are free)
-	TALL_W = 800, -- (every docked Fusion window is one column: the preview on top, the picker below)
-	PREF_W_TALL = 560,
-	MIN_W_TALL = 360,
-	PREF_H_TALL = 1000,
-	MIN_H_TALL = 600,
-	PREVIEW_TALL_H = 440,
-	RESULT_TALL = 124,
-	INPUT_TALL = 82,
-	PICKER_W = 520,
-	PICKER_W_NARROW = 396,
-	NARROW = 960,
-	GAP = 12,
-	TILE_W = 112,
-	TILE_H = 162,
-	TILE_W_SHORT = 104,
-	TILE_H_SHORT = 122,
-	TILE_GAP = 10,
-	RESULT = 176,
-	RESULT_SHORT = 92,
-	INPUT = 108,
-	INPUT_SHORT = 68,
-	RESULT_MIN = 72, -- the smallest result card a cramped portrait preview shrinks to
-	RESULT_FULL_MIN = 100, -- the full preview (title + pills) shrinks its cards down to this before it goes compact
-	RESULT_SIDE = 84, -- landscape phones: the cards beside the name column
-	INPUT_SIDE = 60,
-	NOTE_MIN = 24, -- one line of notes (18 px text) under the name / pills
-	TILE_BUDGET = 0.004, -- seconds of pet viewport building per frame (at least one per frame)
-	TILES_MAX = 3,
+	PHONE_W = 900,
+	SHORT = 560,
+	PC_MIN_H = 600,
+	PC_MAX_W = 0.76,
 	FUSE_TIMEOUT = 6, -- seconds the FUSE button waits for the server before it resets
 	MACHINE_RANGE = 24, -- studs: the window closes when the player walks this far from the machine it opened at
 	NEAR_RANGE = 30, -- studs: FUSE needs the player this close to their machine (the server allows a little more)
 	BACK_ACTION = "NimbusFusionBack",
-	DISPLAY_ORDER = 22, -- above NimbusMenu (20) and the Pet Index (21)
 	PREVIEW_SEED = 4242, -- look seed of the Mix preview (the real hybrid draws its own)
+	HINT_SECONDS = 3,
+	SERVER_HINT_SECONDS = 4,
+	OPEN_FROM = 0.86,
+	OPEN_TIME = 0.22,
+	-- the text width a box must allow: TextService's, never less than this many em per character (the fonts' real widths)
+	EM = { GothamBlack = 0.68, GothamBold = 0.66, BuilderSansBold = 0.58, BuilderSans = 0.56, FredokaOne = 0.62 },
+	HEAD = {
+		PC = {
+			Header = 76, HeadPad = 24, Icon = 52, IconText = 36, TitleText = 34, TitleMin = 24, Close = 56, TabH = 56, TabText = 26,
+			TabPad = 26, TabGap = 10, TabUpW = 220, TabMixW = 160, ChipH = 48, ChipText = 22, ChipPad = 16, ChipGap = 12, Gap = 16,
+		},
+		PHONE = {
+			Header = 50, HeadPad = 10, Icon = 30, IconText = 22, TitleText = 20, TitleMin = 16, Close = 44, TabH = 44, TabText = 17,
+			TabPad = 14, TabGap = 6, TabUpW = 130, TabMixW = 84, ChipH = 38, ChipText = 15, ChipPad = 10, ChipGap = 8, Gap = 8,
+		},
+	},
+	-- PC (the 1080p mock's numbers: k = 1)
+	PC = {
+		Pad = 40, Text = 60, TipH = 36, TipText = 22, TipMinBody = 700, LineH = 34, LineText = 22, LineMin = 18, CostH = 150,
+		CostHMin = 118, CostFull = 760, Bottom = 20, Gap = 14, FuseW = 320, FuseWNarrow = 280, FuseText = 44, HintH = 44, Hint = 20,
+		ResultW = 480, ResultH = 470, StackW = 400, StackH = 340, CopiesH = 36, CopiesText = 26, SlotW = 310, SlotH = 400,
+		Swap = 72, ArrowUp = 140, ArrowMix = 130, PillH = 38, PillText = 20, PillPad = 14, PillGap = 10,
+	},
+	PHONE = { Bottom = 48, LineH = 40, Text = 15, PillH = 30, PillPad = 8, PillGap = 6, CostH = 40, FuseH = 60, FuseHMin = 48, HintH = 36 },
 }
 
 local Colors = Theme.Colors
-local WHITE = Colors.White
-local NAVY = Colors.Navy or Colors.Ink
-local MUTED = Colors.Muted or Colors.CloudShade
-local GOLD = Colors.Gold or Colors.Token
-local INK = Colors.TextStroke or Colors.Ink
-local GOOD = Colors.Good
-local BAD = Colors.Bad
-local ACCENT = Color3.fromRGB(150, 104, 230) -- the machine's violet (title bar, tabs)
-local INSET = Color3.fromRGB(20, 26, 66)
-local TILE_FACE = Color3.fromRGB(58, 70, 136)
-local TILE_SELECTED = Color3.fromRGB(110, 92, 196)
-local WARN = Color3.fromRGB(255, 214, 110)
-local TOKEN_INFO = Theme.Currency and Theme.Currency.Tokens or { Glyph = "\226\152\129", Color = GOLD }
-local GEM_INFO = Theme.Currency and Theme.Currency.Gems or { Glyph = "\226\151\134", Color = Colors.Gem }
-local TIER_COLORS = {
-	Normal = Color3.fromRGB(150, 164, 196),
-	Golden = Color3.fromRGB(240, 186, 60),
-	Rainbow = Color3.fromRGB(214, 120, 230),
+local C = {
+	White = Colors.White,
+	Ink = Colors.TextStroke or Colors.Ink,
+	Navy = Color3.fromRGB(11, 16, 48),
+	Well = Color3.fromRGB(20, 26, 64),
+	WellEdge = Color3.fromRGB(70, 84, 150),
+	Muted = Color3.fromRGB(170, 180, 214),
+	Gold = Color3.fromRGB(255, 211, 77),
+	GoldLabel = Color3.fromRGB(255, 243, 176),
+	Good = Colors.Good or Color3.fromRGB(120, 230, 120),
+	Bad = Color3.fromRGB(255, 110, 110),
+	Warn = Color3.fromRGB(255, 214, 110),
+	Violet = Color3.fromRGB(155, 107, 255), -- the machine's violet (header, the NEW HYBRID card)
+	Blue = Color3.fromRGB(74, 91, 184),
+	Tier = {
+		Normal = Color3.fromRGB(74, 80, 112),
+		Golden = Color3.fromRGB(255, 196, 64),
+		Rainbow = Color3.fromRGB(255, 112, 200),
+	},
 }
+local TOKEN_INFO = Theme.Currency and Theme.Currency.Tokens or { Glyph = "\226\152\129", Color = C.Gold }
+local GEM_INFO = Theme.Currency and Theme.Currency.Gems or { Glyph = "\226\151\134", Color = Colors.Gem }
+
+-- glyphs as UTF-8 byte escapes (the source stays plain ASCII)
 local G = {
 	Crystal = "\240\159\148\174",
-	Up = "\226\172\134",
-	Dna = "\240\159\167\172",
 	Arrow = "\226\150\182",
 	Plus = "+",
-	Star = "\226\152\133",
-	Sparkle = "\226\156\168",
-	Lock = "\240\159\148\146",
 	Swap = "\226\135\132",
+	Spark = "\226\156\166",
+	Lock = "\240\159\148\146",
+	Close = "\226\156\149",
+	Dot = "\194\183",
+	Question = "?",
 }
 local NEXT_TIER = { Normal = "Golden", Golden = "Rainbow" }
 local TIER_RANK = { Normal = 1, Golden = 2, Rainbow = 3 }
+local TEXTS = {
+	TipUpgrade = "Pick a pet with %d copies. Golden gives x1.5 power, Rainbow x2.5.",
+	TipMix = "Tap a slot to pick a pet: Body first, then Style.",
+	TipPhone = "Tap the copies to pick another pet. %d copies make 1 Golden; %d Golden make 1 Rainbow.",
+	InfoPC = "Your hybrid gets its own random look. Hybrids are one of a kind and can't be fused again.",
+	InfoPhone = "Body first, then Style. Your hybrid gets its own random look.",
+	LockedSub = "Fuse 3 copies into a Golden or Rainbow pet, or mix two pets into a brand-new hybrid!",
+}
 
 ----------------------------------------------------------------------
 -- Module state
 ----------------------------------------------------------------------
 local initialized = false
 local LocalPlayer = nil
-local warned = {}
 
 local S = {
 	Open = false,
@@ -176,26 +201,28 @@ local S = {
 	Animating = false,
 	Token = 0, -- bumps on every open / close (stale delayed callbacks check it)
 	AtMachine = nil, -- the machine model the window was opened at (nil when opened from elsewhere)
-	Tiles = {}, -- [key] = tile
-	Queue = {}, -- tiles waiting for their viewport
-	BackBound = false,
-	Short = false,
-	Narrow = false,
-	Tall = false,
+	MachineNear = true,
 	Plan = nil,
-	ResultSig = nil, -- what the result viewport shows (rebuilt only when it changes)
-	InputSig = nil,
 	FuseToken = 0,
+	Mode = "PC",
+	Portrait = false,
+	Rect = nil,
+	Sheet = false, -- our picker sheet is up
+	SheetToken = 0,
+	HintToken = 0,
+	TouchOff = false,
+	BackBound = false,
+	RefreshPending = false,
+	Fx = {},
+	Warned = {},
+	Geo = {}, -- the laid-out boxes paint needs (pills, the note's box, ...)
 }
+local U = { Views = {}, Copies = {}, Slots = {}, PillList = {} }
+local H = {} -- helpers (one table: the module stays far below Lua's local limit)
 
-local U = {} -- ui references
-
-----------------------------------------------------------------------
--- Helpers
-----------------------------------------------------------------------
 local function warnOnce(key, err)
-	if not warned[key] then
-		warned[key] = true
+	if not S.Warned[key] then
+		S.Warned[key] = true
 		warn("[FusionController] " .. tostring(key) .. ": " .. tostring(err))
 	end
 end
@@ -205,106 +232,48 @@ local function safe(key, fn, ...)
 	if not ok then
 		warnOnce(key, err)
 	end
-	return ok
+	return ok, err
 end
 
-local function makeFrame(parent, name, props)
-	local p = props or {}
-	p.Name = name
-	if p.BackgroundTransparency == nil then
-		p.BackgroundTransparency = 1
+local function place(inst, x, y, w, h)
+	inst.AnchorPoint = Vector2.new(0, 0)
+	inst.Position = UDim2.fromOffset(math.floor(x + 0.5), math.floor(y + 0.5))
+	inst.Size = UDim2.fromOffset(math.max(0, math.floor(w + 0.5)), math.max(0, math.floor(h + 0.5)))
+end
+
+local function label(parent, name, role, size, props)
+	local l = Theme.Label("", role, { Size = size, Stroke = 0.25, StrokeColor = C.Ink, Outline = 1.5, OutlineColor = C.Ink })
+	l.Name = name
+	l.BackgroundTransparency = 1
+	l.BorderSizePixel = 0
+	l.TextTruncate = Enum.TextTruncate.AtEnd
+	for k, v in pairs(props or {}) do
+		l[k] = v
 	end
-	p.BorderSizePixel = 0
-	p.Parent = parent
-	return Util.Create("Frame", p)
-end
-
--- Theme-styled TextLabel with a readable stroke + glyph outline.
-local function makeText(parent, name, text, role, size, color, props)
-	local p = { Name = name }
-	if props then
-		for key, value in pairs(props) do
-			p[key] = value
-		end
-	end
-	local label = Theme.Label(tostring(text), role, {
-		Size = size,
-		Color = color or WHITE,
-		Stroke = 0.25,
-		StrokeColor = INK,
-		Outline = 1.5,
-		OutlineColor = INK,
-		Props = p,
-	})
-	label.Parent = parent
-	return label
-end
-
-local function corner(parent, radius)
-	return Theme.Corner(parent, UDim.new(0, radius or 12))
-end
-
-local function round(parent)
-	return Theme.Corner(parent, UDim.new(0.5, 0))
-end
-
-local function stroke(parent, color, thickness, transparency)
-	return Theme.Stroke(parent, color or NAVY, thickness or 3, transparency or 0)
-end
-
-local function pad(parent, left, top, right, bottom)
-	return Util.Create("UIPadding", {
-		PaddingLeft = UDim.new(0, left or 0),
-		PaddingTop = UDim.new(0, top or 0),
-		PaddingRight = UDim.new(0, right or 0),
-		PaddingBottom = UDim.new(0, bottom or 0),
-		Parent = parent,
-	})
-end
-
-local function tween(inst, seconds, goal, style, direction)
-	return Util.Tween(inst, seconds, goal, style, direction)
-end
-
-local function inset(parent, name, props)
-	local p = props or {}
-	p.BackgroundColor3 = INSET
-	p.BackgroundTransparency = 0.38
-	local frame = makeFrame(parent, name, p)
-	corner(frame, 12)
-	stroke(frame, Colors.WellEdge or NAVY, 3, 0.15)
-	return frame
-end
-
-local function commas(n)
-	return Util.Commas(math.max(0, math.floor(tonumber(n) or 0)))
-end
-
-local function rarityAccent(rarityId)
-	if rarityId == "Secret" then
-		return Color3.fromRGB(150, 110, 232)
-	end
-	return CloudUI.RarityColor(rarityId)
-end
-
-local function pill(parent, name, text, color, layoutOrder)
-	local label = makeText(parent, name, text, "Label", 18, WHITE, {
-		AutomaticSize = Enum.AutomaticSize.X,
-		Size = UDim2.fromOffset(0, 30),
-		BackgroundTransparency = 0,
-		BackgroundColor3 = Theme.Darken(color, 0.25),
-		LayoutOrder = layoutOrder or 0,
-	})
-	round(label)
-	stroke(label, NAVY, 2, 0)
-	pad(label, 12, 0, 12, 1)
-	return label
+	l.Parent = parent
+	return l
 end
 
 ----------------------------------------------------------------------
 -- Pets, rules and costs (a mirror of FusionService: the server decides)
 ----------------------------------------------------------------------
-local function parse(key)
+function H.controller(name)
+	local module = script.Parent:FindFirstChild(name)
+	if not module then
+		return nil
+	end
+	local ok, mod = pcall(require, module)
+	if ok and type(mod) == "table" then
+		return mod
+	end
+	return nil
+end
+
+function H.inMatch()
+	return LocalPlayer ~= nil and LocalPlayer:GetAttribute(Config.Attr.InMatch) == true
+end
+
+function H.parse(key)
 	if not PetKeys or type(key) ~= "string" then
 		return nil
 	end
@@ -315,7 +284,7 @@ local function parse(key)
 	return nil
 end
 
-local function defOf(key)
+function H.def(key)
 	local ok, def = pcall(State.DefOf, key)
 	if ok and type(def) == "table" then
 		return def
@@ -329,7 +298,7 @@ local function defOf(key)
 	return nil
 end
 
-local function catalogDef(petId)
+function H.catalogDef(petId)
 	if PetCatalog and type(PetCatalog.Get) == "function" and type(petId) == "string" then
 		local ok, def = pcall(PetCatalog.Get, petId)
 		if ok and type(def) == "table" then
@@ -339,14 +308,14 @@ local function catalogDef(petId)
 	return nil
 end
 
-local function nameOf(def, key)
+function H.nameOf(def, key)
 	if type(def) == "table" then
 		return tostring(def.DisplayName or def.Name or key)
 	end
 	return tostring(key)
 end
 
-local function owned(key)
+function H.owned(key)
 	local ok, n = pcall(State.OwnedCount, key)
 	if ok and type(n) == "number" then
 		return n
@@ -354,7 +323,7 @@ local function owned(key)
 	return 0
 end
 
-local function equippedCount(key)
+function H.equipped(key)
 	local ok, n = pcall(State.EquippedCount, key)
 	if ok and type(n) == "number" then
 		return n
@@ -362,7 +331,15 @@ local function equippedCount(key)
 	return 0
 end
 
-local function homeOf()
+function H.stage(key)
+	if type(key) ~= "string" or type(State.PetStage) ~= "function" then
+		return 0
+	end
+	local ok, n = pcall(State.PetStage, key)
+	return (ok and tonumber(n)) or 0
+end
+
+function H.home()
 	local ok, home = pcall(State.Home)
 	if ok and type(home) == "table" then
 		return home
@@ -370,7 +347,7 @@ local function homeOf()
 	return { Level = 0, Prestige = 0, Stations = {}, Garden = {}, Gym = {} }
 end
 
-local function balance(currency)
+function H.balance(currency)
 	if currency == "Gems" then
 		local ok, n = pcall(State.Gems)
 		return (ok and type(n) == "number") and n or 0
@@ -379,7 +356,7 @@ local function balance(currency)
 	return (ok and type(n) == "number") and n or 0
 end
 
-local function copiesNeeded()
+function H.copies()
 	local f = TycoonCatalog and TycoonCatalog.Fusion
 	local n = type(f) == "table" and tonumber(rawget(f, "Copies")) or nil
 	if n and n >= 2 then
@@ -388,36 +365,35 @@ local function copiesNeeded()
 	return 3
 end
 
-local function unlockStars()
+function H.unlockStars()
 	local p = TycoonCatalog and TycoonCatalog.Prestige
 	local n = type(p) == "table" and tonumber(p.FusionUnlock) or nil
 	return n and math.floor(n) or 1
 end
 
-local function machineLevel()
-	local stations = homeOf().Stations
+function H.machineLevel()
+	local stations = H.home().Stations
 	local lv = type(stations) == "table" and tonumber(stations.FusionMachine) or nil
 	return lv and math.floor(lv) or 0
 end
 
 -- ok, reason
-local function unlocked()
-	local home = homeOf()
-	local stars = tonumber(home.Prestige) or 0
-	if stars < unlockStars() then
-		return false, G.Lock .. " The Fusion Machine unlocks at Prestige " .. unlockStars()
+function H.unlocked()
+	local stars = tonumber(H.home().Prestige) or 0
+	if stars < H.unlockStars() then
+		return false, G.Lock .. " The Fusion Machine unlocks at Prestige " .. H.unlockStars()
 	end
-	if machineLevel() < 1 then
+	if H.machineLevel() < 1 then
 		return false, G.Lock .. " Build the Fusion Machine at your home first"
 	end
 	return true
 end
 
-local function costOf(action, rarity, tier)
+function H.costOf(action, rarity, tier)
 	if not TycoonCatalog or type(TycoonCatalog.FusionCost) ~= "function" then
 		return nil
 	end
-	local ok, cost = pcall(TycoonCatalog.FusionCost, action, rarity, tier, machineLevel())
+	local ok, cost = pcall(TycoonCatalog.FusionCost, action, rarity, tier, H.machineLevel())
 	if not ok or type(cost) ~= "table" then
 		return nil
 	end
@@ -430,7 +406,7 @@ local function costOf(action, rarity, tier)
 	return nil
 end
 
-local function rarityOrder(rarityId)
+function H.rarityOrder(rarityId)
 	for _, r in ipairs(Config.Rarities or {}) do
 		if r.Id == rarityId then
 			return r.Order or 0
@@ -439,29 +415,37 @@ local function rarityOrder(rarityId)
 	return 0
 end
 
--- What taking these copies frees: notes for the player, and whether it would leave nothing equipped.
-local function usageNotes(inputs)
+function H.rarityColor(rarityId)
+	if rarityId == "Secret" then
+		return Color3.fromRGB(150, 110, 232)
+	end
+	local ok, c = pcall(CloudUI.RarityColor, rarityId)
+	return (ok and typeof(c) == "Color3") and c or C.WellEdge
+end
+
+function H.commas(n)
+	return Util.Commas(math.max(0, math.floor(tonumber(n) or 0)))
+end
+
+-- What taking these copies frees: notes for the player (each with a Short form), and whether it would leave no team.
+function H.usageNotes(inputs)
 	local snap = State.Get()
 	local equippedTotal = type(snap.Equipped) == "table" and #snap.Equipped or 0
-	local home = homeOf()
+	local home = H.home()
 	local dropped, placedOff = 0, 0
 	for _, input in ipairs(inputs) do
-		local left = owned(input.Key) - input.Count
-		dropped = dropped + math.max(0, equippedCount(input.Key) - left)
+		local left = H.owned(input.Key) - input.Count
+		dropped = dropped + math.max(0, H.equipped(input.Key) - left)
 		local placed = 0
-		for _, k in pairs(type(home.Garden) == "table" and home.Garden or {}) do
-			if k == input.Key then
-				placed = placed + 1
-			end
-		end
-		for _, k in pairs(type(home.Gym) == "table" and home.Gym or {}) do
-			if k == input.Key then
-				placed = placed + 1
+		for _, map in ipairs({ home.Garden, home.Gym }) do
+			for _, k in pairs(type(map) == "table" and map or {}) do
+				if k == input.Key then
+					placed = placed + 1
+				end
 			end
 		end
 		placedOff = placedOff + math.max(0, placed - left)
 	end
-	-- every note has a Short form for the one-line layouts (landscape phones)
 	local notes = {}
 	if equippedTotal > 0 and dropped >= equippedTotal then
 		return notes, "Those are your only team pets: put another pet in your team first", "Put another pet in your team first"
@@ -470,23 +454,23 @@ local function usageNotes(inputs)
 		notes[#notes + 1] = {
 			Text = dropped .. " team cop" .. (dropped == 1 and "y is" or "ies are") .. " taken off first; the new pet takes the slot",
 			Short = "Takes " .. dropped .. " cop" .. (dropped == 1 and "y" or "ies") .. " off your team",
-			Color = WARN,
+			Color = C.Warn,
 		}
 	end
 	if placedOff > 0 then
 		notes[#notes + 1] = {
 			Text = placedOff .. " cop" .. (placedOff == 1 and "y leaves" or "ies leave") .. " the Garden / Gym first; the new pet takes over",
 			Short = placedOff .. " cop" .. (placedOff == 1 and "y leaves" or "ies leave") .. " the Garden / Gym first",
-			Color = WARN,
+			Color = C.Warn,
 		}
 	end
 	return notes, nil
 end
 
 -- The preview of the current selection (the same checks the server makes, in the same order).
-local function computePlan()
+function H.computePlan()
 	local plan = { Ok = false, Action = S.Tab, Notes = {} }
-	local okUnlock, why = unlocked()
+	local okUnlock, why = H.unlocked()
 	if not okUnlock then
 		plan.Reason = why
 		plan.Locked = true
@@ -498,16 +482,16 @@ local function computePlan()
 	end
 	if S.Tab == "Upgrade" then
 		local key = S.UpKey
-		local parsed = key and parse(key)
+		local parsed = key and H.parse(key)
 		if not parsed then
-			plan.Reason = "Pick a pet with " .. copiesNeeded() .. " copies"
+			plan.Reason = "Pick a pet with " .. H.copies() .. " copies"
 			plan.Empty = true
 			return plan
 		end
-		local def = defOf(key)
-		local base = catalogDef(parsed.PetId)
+		local def = H.def(key)
+		local base = H.catalogDef(parsed.PetId)
 		local nextTier = NEXT_TIER[parsed.Tier]
-		plan.Inputs = { { Key = key, Count = copiesNeeded() } }
+		plan.Inputs = { { Key = key, Count = H.copies() } }
 		plan.InputDef = def
 		if parsed.HybridId or not base then
 			plan.Reason = "Hybrids are one of a kind: they cannot be upgraded"
@@ -521,16 +505,17 @@ local function computePlan()
 		plan.Rarity = base.Rarity
 		plan.ResultKey = PetKeys.Make(parsed.PetId, nextTier)
 		plan.ResultDef = plan.ResultKey and PetKeys.DefOf(plan.ResultKey) or nil
-		plan.ResultName = nameOf(plan.ResultDef, plan.ResultKey)
-		plan.Cost = costOf("Upgrade", base.Rarity, nextTier)
-		local have = owned(key)
-		if have < copiesNeeded() then
-			plan.Reason = "You need " .. copiesNeeded() .. " copies of " .. nameOf(def, key) .. " (you have " .. have .. ")"
+		plan.ResultName = H.nameOf(plan.ResultDef, plan.ResultKey)
+		plan.Cost = H.costOf("Upgrade", base.Rarity, nextTier)
+		local have = H.owned(key)
+		if have < H.copies() then
+			plan.Reason = "You need " .. H.copies() .. " copies of " .. H.nameOf(def, key) .. " (you have " .. have .. ")"
+			plan.ReasonShort = "You need " .. H.copies() .. " copies (you have " .. have .. ")"
 			return plan
 		end
 	elseif S.Tab == "Mix" then
 		local a, b = S.MixA, S.MixB
-		local pa, pb = a and parse(a), b and parse(b)
+		local pa, pb = a and H.parse(a), b and H.parse(b)
 		plan.Inputs = {}
 		if pa then
 			plan.Inputs[#plan.Inputs + 1] = { Key = a, Count = 1 }
@@ -545,18 +530,19 @@ local function computePlan()
 		end
 		if pa.HybridId or pb.HybridId then
 			plan.Reason = "Hybrids cannot be mixed again: pick two regular pets"
+			plan.ReasonShort = "Hybrids cannot be mixed again"
 			return plan
 		end
 		if pa.PetId == pb.PetId then
 			plan.Reason = "Pick two different pets to mix"
 			return plan
 		end
-		local baseA, baseB = catalogDef(pa.PetId), catalogDef(pb.PetId)
+		local baseA, baseB = H.catalogDef(pa.PetId), H.catalogDef(pb.PetId)
 		if not baseA or not baseB then
 			plan.Reason = "Unknown pet"
 			return plan
 		end
-		local rarity = (rarityOrder(baseB.Rarity) > rarityOrder(baseA.Rarity)) and baseB.Rarity or baseA.Rarity
+		local rarity = (H.rarityOrder(baseB.Rarity) > H.rarityOrder(baseA.Rarity)) and baseB.Rarity or baseA.Rarity
 		local tier = ((TIER_RANK[pb.Tier] or 1) < (TIER_RANK[pa.Tier] or 1)) and pb.Tier or pa.Tier
 		local name = "Hybrid"
 		if type(PetKeys.BlendName) == "function" then
@@ -575,12 +561,13 @@ local function computePlan()
 		local previewKey = PetKeys.HybridKey("preview", tier)
 		local okDef, def = pcall(PetKeys.DefOf, previewKey, { Hybrids = { preview = record } })
 		plan.ResultDef = okDef and def or nil
+		plan.ResultSig = "mix:" .. pa.PetId .. "+" .. pb.PetId .. "@" .. tostring(tier)
 		plan.ResultName = (tier ~= "Normal" and (tier .. " ") or "") .. name
 		plan.Rarity = rarity
 		plan.Tier = tier
 		plan.Elements = elements
-		plan.Cost = costOf("Mix", rarity, nil)
-		if owned(a) < 1 or owned(b) < 1 then
+		plan.Cost = H.costOf("Mix", rarity, nil)
+		if H.owned(a) < 1 or H.owned(b) < 1 then
 			plan.Reason = "You do not own those pets"
 			return plan
 		end
@@ -592,22 +579,21 @@ local function computePlan()
 		plan.Reason = "These pets cannot be fused"
 		return plan
 	end
-	local notes, rule, ruleShort = usageNotes(plan.Inputs)
+	local notes, rule, ruleShort = H.usageNotes(plan.Inputs)
 	plan.Notes = notes
 	if rule then
 		plan.Reason = rule
 		plan.ReasonShort = ruleShort
 		return plan
 	end
-	local have = balance(plan.Cost.Currency)
+	local have = H.balance(plan.Cost.Currency)
 	plan.CanAfford = have >= plan.Cost.Amount
 	if not plan.CanAfford then
-		plan.Reason = "Not enough " .. ((plan.Cost.Currency == "Gems") and "Gems" or "Cloud Tokens") .. " (you have " .. commas(have) .. ")"
-		-- (the compact layouts: the red cost line already says how much, the HUD shows the balance)
+		plan.Reason = "Not enough " .. ((plan.Cost.Currency == "Gems") and "Gems" or "Cloud Tokens") .. " (you have " .. H.commas(have) .. ")"
 		plan.ReasonShort = "Not enough " .. ((plan.Cost.Currency == "Gems") and "Gems" or "Cloud Tokens")
 		return plan
 	end
-	if State.Get() and LocalPlayer and LocalPlayer:GetAttribute(Config.Attr.InMatch) == true then
+	if H.inMatch() then
 		plan.Reason = "Fusion is closed during a match"
 		return plan
 	end
@@ -618,7 +604,7 @@ end
 ----------------------------------------------------------------------
 -- The machine in the world (the player's own Station_FusionMachine)
 ----------------------------------------------------------------------
-local function myMachine()
+function H.myMachine()
 	local uid = LocalPlayer and LocalPlayer.UserId
 	if not uid then
 		return nil
@@ -634,13 +620,9 @@ local function myMachine()
 	return nil
 end
 
-local function rootPart()
+function H.distanceTo(model)
 	local character = LocalPlayer and LocalPlayer.Character
-	return character and character:FindFirstChild("HumanoidRootPart") or nil
-end
-
-local function distanceTo(model)
-	local root = rootPart()
+	local root = character and character:FindFirstChild("HumanoidRootPart") or nil
 	if not root or not model or not model.Parent then
 		return math.huge
 	end
@@ -654,7 +636,7 @@ local function distanceTo(model)
 end
 
 -- the output pod (where the FusionPrompt rides), or the model's pivot
-local function outputPoint(model)
+function H.outputPoint(model)
 	if not model then
 		return nil
 	end
@@ -673,1091 +655,1532 @@ local function outputPoint(model)
 end
 
 ----------------------------------------------------------------------
--- Layout (readability rule + fit)
+-- Text fit (TextService, never narrower than the font's real widths allow)
 ----------------------------------------------------------------------
-local function guiSize()
-	local size = U.Gui and U.Gui.AbsoluteSize or Vector2.new(1280, 720)
-	if size.X < 2 or size.Y < 2 then
-		return Vector2.new(1280, 720)
+function H.width(text, size, font)
+	local ok, v = pcall(function()
+		return TextService:GetTextSize(text, size, font, Vector2.new(4096, 1024))
+	end)
+	if ok and typeof(v) == "Vector2" then
+		return v.X
 	end
-	return size
+	return #tostring(text) * size * 0.5
 end
 
-local function viewportHeight()
-	local camera = workspace.CurrentCamera
-	local vp = camera and camera.ViewportSize
-	if vp and vp.Y > 2 then
-		return vp.Y
+function H.boxW(text, size, font)
+	local plain = tostring(text):gsub("<[^>]*>", "")
+	local n = 0
+	for _ in plain:gmatch("[%z\1-\127\194-\244][\128-\191]*") do
+		n = n + 1
 	end
-	return guiSize().Y
+	local name = (typeof(font) == "EnumItem" and font.Name) or tostring(font)
+	return math.max(H.width(plain, size, font), n * size * (K.EM[name] or 0.66))
 end
 
--- Phase 5 (6.6): NeonKit.Dock keeps the window docked right / a bottom sheet; returns its design size and "tall"
--- (one column)
-local function fitWindow()
-	if not U.Dock then
-		U.Kit = U.Kit or require(script.Parent.Parent:WaitForChild("UI"):WaitForChild("NeonKit"))
-		U.Dock = U.Kit.Dock(U.Holder, U.Fit, K.PREF_W, K.PREF_H)
+-- the first text that fits `width` at a size from maxSize down to minSize; the last text at minSize when none does
+function H.fit(lbl, texts, width, maxSize, minSize)
+	for _, t in ipairs(texts) do
+		local size = maxSize
+		while size >= minSize do
+			if H.boxW(t, size, lbl.Font) <= width then
+				lbl.Text, lbl.TextSize = t, size
+				return t
+			end
+			size = size - 1
+		end
 	end
-	U.Dock.Refresh()
-	local r = U.Dock.Rect
-	local w, h = math.floor(r.designW + 0.5), math.floor(r.designH + 0.5)
-	return w, h, w < K.TALL_W, r
+	lbl.Text, lbl.TextSize = texts[#texts], minSize
+	return texts[#texts]
 end
 
-local layoutPreview -- defined below
+-- the rows `text` word-wraps into at `width` (math.huge when one word is wider)
+function H.rows(text, size, font, width)
+	local rows, cur = 0, 0
+	local space = H.boxW(" ", size, font)
+	for word in string.gmatch(tostring(text), "%S+") do
+		local w = H.boxW(word, size, font)
+		if w > width then
+			return math.huge
+		end
+		if cur > 0 and cur + space + w <= width then
+			cur = cur + space + w
+		else
+			rows = rows + 1
+			cur = w
+		end
+	end
+	return math.max(rows, 1)
+end
 
-local function relayout()
+-- the first text (and size) whose wrapped rows fit `width` x `height`; wraps only when one line is not enough
+function H.fitLines(lbl, texts, width, height, maxSize, minSize)
+	for _, t in ipairs(texts) do
+		local size = maxSize
+		while size >= minSize do
+			local rows = H.rows(t, size, lbl.Font, width)
+			if rows * size * 1.2 <= height + 0.5 then
+				lbl.Text, lbl.TextSize, lbl.TextWrapped = t, size, rows > 1
+				return t
+			end
+			size = size - 1
+		end
+	end
+	lbl.Text, lbl.TextSize, lbl.TextWrapped = texts[#texts], minSize, true
+	return texts[#texts]
+end
+
+----------------------------------------------------------------------
+-- Build
+----------------------------------------------------------------------
+function H.ensureGui()
+	if U.Gui and U.Gui.Parent then
+		return true
+	end
+	if not (LocalPlayer and LocalPlayer:FindFirstChildOfClass("PlayerGui")) then
+		return false
+	end
+	U.Gui = CloudUI.NewScreenGui("NimbusFusion", K.DISPLAY_ORDER)
+	U.Gui.IgnoreGuiInset = true
+	S.Built = false
+	U.Views, U.Copies, U.Slots, U.PillList = {}, {}, {}, {}
+	U.Gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		if S.Open then
+			safe("relayout", H.layout)
+		end
+	end)
+	return true
+end
+
+-- a tab: its fill is a sibling frame under the (transparent) button, so the fill's gradient never tints the text
+function H.tabButton(name, text)
+	local fill = Util.Create("Frame", { Name = name .. "Fill", BorderSizePixel = 0, BackgroundColor3 = C.White, ZIndex = 5, Parent = U.Header })
+	Theme.Corner(fill, UDim.new(0, 12))
+	Util.Create("UIStroke", { Name = "TabStroke", ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Thickness = 2, Color = C.White, Parent = fill })
+	Util.Create("UIGradient", { Name = "TabFill", Rotation = 90, Parent = fill })
+	local b = Util.Create("TextButton", { Name = name, AutoButtonColor = false, BorderSizePixel = 0, BackgroundTransparency = 1, Text = text, ZIndex = 6, Parent = U.Header })
+	Theme.Style(b, "Button", { Size = 26, Stroke = 0.6, Outline = 1.5 })
+	return b
+end
+
+-- a dark pill with a light edge (the balance chips)
+function H.chip(name, color)
+	local c = label(U.Header, name, "Display", 22, {
+		TextColor3 = color, BackgroundTransparency = 0.35, BackgroundColor3 = C.Ink, ZIndex = 5, TextTruncate = Enum.TextTruncate.None,
+	})
+	Theme.Corner(c, UDim.new(0.5, 0))
+	Theme.Stroke(c, C.White, 2, 0.75)
+	return c
+end
+
+-- a pet card: the label on top, the look, the name, a sub line, a placeholder glyph and a dim cover
+function H.petCard(parent, name, class, z)
+	local card = NeonKit.Card({ Name = name, Class = class, Color = C.WellEdge, Corner = 18, Floor = true, ZIndex = z, Parent = parent })
+	local body = card.Body
+	local item = { Card = card, Root = card.Root }
+	item.Label = label(body, "Label", "Heading", 26, { ZIndex = z + 3, TextTruncate = Enum.TextTruncate.None })
+	item.Art = Util.Create("Frame", { Name = "Art", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = z + 1, Parent = body })
+	item.Bob = Util.Create("Frame", { Name = "Bob", BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), ZIndex = z + 1, Parent = item.Art })
+	item.Placeholder = label(body, "Placeholder", "Title", 60, { ZIndex = z + 2, TextColor3 = C.Muted, TextTruncate = Enum.TextTruncate.None })
+	item.PetName = label(body, "PetName", "Heading", 28, { ZIndex = z + 3 })
+	item.Sub = label(body, "Sub", "Body", 20, { ZIndex = z + 3, TextColor3 = C.Muted })
+	item.Dim = Util.Create("Frame", {
+		Name = "Dim", BackgroundColor3 = Color3.fromRGB(8, 10, 28), BackgroundTransparency = 0.45, BorderSizePixel = 0, Visible = false,
+		Size = UDim2.fromScale(1, 1), ZIndex = z + 4, Parent = body,
+	})
+	Theme.Corner(item.Dim, UDim.new(0, 18))
+	item.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = card.Root })
+	item.View = { Art = item.Bob, Z = z + 1 }
+	return item
+end
+
+function H.build()
+	if S.Built then
+		return
+	end
+	S.Built = true
+	local holder = Util.Create("Frame", { Name = "Window_Fusion", BackgroundTransparency = 1, BorderSizePixel = 0, Active = true, Visible = false, ZIndex = 2, Parent = U.Gui })
+	U.Holder = holder
+	U.Fit = Util.Create("UIScale", { Name = "Fit", Scale = 1, Parent = holder })
+	local panel = Util.Create("Frame", {
+		Name = "Panel", BackgroundColor3 = C.Navy, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(1, 1), ZIndex = 2, Parent = holder,
+	})
+	Theme.Corner(panel, UDim.new(0, 18))
+	Theme.Stroke(panel, C.Violet, 3, 0)
+	U.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = panel })
+	-- header: the violet strip, square at the bottom
+	local header = Util.Create("Frame", { Name = "Header", BackgroundColor3 = C.White, BorderSizePixel = 0, ZIndex = 3, Parent = panel })
+	Theme.Corner(header, UDim.new(0, 18))
+	Theme.Gradient(header, Theme.Lighten(C.Violet, 0.12), Theme.Darken(C.Violet, 0.28), 90)
+	U.Header = header
+	U.HeaderFoot = Util.Create("Frame", { Name = "HeaderFoot", BackgroundColor3 = C.White, BorderSizePixel = 0, ZIndex = 3, Parent = header })
+	Theme.Gradient(U.HeaderFoot, Theme.Lighten(C.Violet, 0.12):Lerp(Theme.Darken(C.Violet, 0.28), 0.76), Theme.Darken(C.Violet, 0.28), 90)
+	U.Icon = label(header, "Icon", "Title", 36, { ZIndex = 4, Text = G.Crystal, TextTruncate = Enum.TextTruncate.None })
+	U.Title = label(header, "Title", "Title", 34, { ZIndex = 4, Text = "Fusion Machine", TextXAlignment = Enum.TextXAlignment.Left })
+	U.TabUp = H.tabButton("Tab_Upgrade", "UPGRADE")
+	U.TabMix = H.tabButton("Tab_Mix", "MIX")
+	U.TabUp.Activated:Connect(function()
+		safe("tab", H.setTab, "Upgrade")
+	end)
+	U.TabMix.Activated:Connect(function()
+		safe("tab", H.setTab, "Mix")
+	end)
+	U.TokenChip = H.chip("TokenChip", TOKEN_INFO.Color or C.Gold)
+	U.GemChip = H.chip("GemChip", GEM_INFO.Color or Colors.Gem or C.White)
+	U.Close = CloudUI.Button({
+		Name = "CloseButton", Text = G.Close, Style = "Red", Size = UDim2.fromOffset(44, 44), TextSize = 22, ZIndex = 5,
+		Callback = function()
+			FusionController.Close()
+		end,
+		Parent = header,
+	})
+	-- body
+	local body = Util.Create("Frame", { Name = "Body", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 2, Parent = panel })
+	U.Body = body
+	U.Tip = label(body, "TipLine", "Body", 22, { ZIndex = 3, TextColor3 = C.Muted, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.None })
+	-- Upgrade: the fanned stack of copies (one button) and its count
+	U.Stack = Util.Create("TextButton", { Name = "Stack", Text = "", AutoButtonColor = false, BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 3, Parent = body })
+	pcall(NeonKit.AttachFx, U.Stack)
+	U.Stack.Activated:Connect(function()
+		safe("stack", H.tapSheet, "Upgrade")
+	end)
+	for i = 1, 3 do
+		local item = H.petCard(U.Stack, "Copy" .. i, "Frame", 3 + i * 6)
+		U.Copies[i] = item
+	end
+	U.CopiesText = label(body, "CopiesText", "Heading", 26, { ZIndex = 4 })
+	-- Mix: the two slots, the plus and the swap button
+	for _, slot in ipairs({ { "Body", "BODY" }, { "Style", "STYLE" } }) do
+		local item = H.petCard(body, "Slot_" .. slot[1], "TextButton", 4)
+		item.Label.Text = slot[2]
+		pcall(NeonKit.AttachFx, item.Root)
+		item.Root.Activated:Connect(function()
+			safe("slot", H.tapSheet, slot[1])
+		end)
+		U.Slots[slot[1]] = item
+	end
+	U.Plus = label(body, "Plus", "Title", 40, { ZIndex = 4, Text = G.Plus, TextTruncate = Enum.TextTruncate.None })
+	U.Swap = NeonKit.Button({ Name = "SwapButton", Text = G.Swap, Color = C.Blue, Size = UDim2.fromOffset(72, 72), TextSize = 34, ZIndex = 5, Parent = body })
+	local swapPad = U.Swap:FindFirstChildOfClass("UIPadding")
+	if swapPad then
+		swapPad.PaddingLeft, swapPad.PaddingRight = UDim.new(0, 0), UDim.new(0, 0)
+	end
+	U.Swap.Activated:Connect(function()
+		safe("swap", H.onSwap)
+	end)
+	U.Arrow = label(body, "Arrow", "Title", 60, { ZIndex = 4, Text = G.Arrow, TextColor3 = C.Gold, TextScaled = true, TextTruncate = Enum.TextTruncate.None })
+	-- the result: big and glowing
+	U.Result = H.petCard(body, "Result", "Frame", 4)
+	U.Result.PetName.Name = "ResultName"
+	U.Result.Sub.Visible = false
+	U.Sparks = {}
+	for i = 1, 4 do
+		U.Sparks[i] = label(U.Result.Card.Body, "Spark" .. i, "Title", 34, { ZIndex = 9, Text = G.Spark, TextColor3 = Color3.fromRGB(255, 248, 208), TextTruncate = Enum.TextTruncate.None, Visible = false })
+	end
+	U.Shimmer = Util.Create("UIGradient", {
+		Name = "Shimmer", Enabled = false, Rotation = 0, Parent = U.Result.Card.Stroke,
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 92, 120)),
+			ColorSequenceKeypoint.new(0.25, Color3.fromRGB(255, 211, 77)),
+			ColorSequenceKeypoint.new(0.5, Color3.fromRGB(72, 224, 120)),
+			ColorSequenceKeypoint.new(0.75, Color3.fromRGB(64, 170, 255)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(176, 104, 255)),
+		}),
+	})
+	U.Pills = Util.Create("Frame", { Name = "Pills", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 10, Parent = body })
+	U.Note = label(body, "Note", "Body", 22, { ZIndex = 4, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.None })
+	U.Info = label(body, "Info", "Body", 22, { ZIndex = 4, TextColor3 = C.Muted, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.None })
+	-- the cost and FUSE!
+	local cost = NeonKit.Card({ Name = "CostBar", Color = C.Blue, Corner = 18, Floor = false, Glow = false, ZIndex = 3, Parent = body })
+	U.CostBar = cost
+	U.CostLabel = label(cost.Body, "CostLabel", "Heading", 30, { ZIndex = 5, Text = "Cost", TextColor3 = C.Muted, TextXAlignment = Enum.TextXAlignment.Left })
+	U.CostIcon = Util.Create("Frame", { Name = "CostIcon", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 5, Parent = cost.Body })
+	U.Cost = label(cost.Body, "Cost", "Display", 44, { ZIndex = 5, TextColor3 = C.Gold, TextXAlignment = Enum.TextXAlignment.Left })
+	U.Have = label(cost.Body, "Have", "Body", 22, { ZIndex = 5, TextColor3 = C.Muted, TextXAlignment = Enum.TextXAlignment.Left })
+	U.Fuse = NeonKit.Button({ Name = "FuseButton", Text = "FUSE!", Color = "Green", Size = UDim2.fromOffset(320, 92), TextSize = 44, ZIndex = 5, Parent = body })
+	U.Fuse.Activated:Connect(function()
+		safe("fuse", H.onFuseTap)
+	end)
+	U.Hint = label(body, "HintLine", "Heading", 20, {
+		ZIndex = 30, Visible = false, BackgroundTransparency = 0.12, BackgroundColor3 = Color3.fromRGB(8, 10, 28), TextWrapped = true,
+	})
+	Theme.Corner(U.Hint, UDim.new(0, 10))
+	-- the fusion animation's flash and NEW! tag
+	U.Flash = Util.Create("Frame", { Name = "Flash", BackgroundTransparency = 1, BackgroundColor3 = C.White, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Visible = false, ZIndex = 25, Parent = body })
+	Theme.Corner(U.Flash, UDim.new(0.5, 0))
+	U.NewTag = label(body, "New", "Title", 26, {
+		ZIndex = 26, Visible = false, Text = "NEW!", BackgroundTransparency = 0, BackgroundColor3 = Color3.fromRGB(232, 84, 120), TextTruncate = Enum.TextTruncate.None,
+	})
+	Theme.Corner(U.NewTag, UDim.new(0, 10))
+	Theme.Stroke(U.NewTag, C.Navy, 3, 0)
+	-- the locked card (no Prestige / no machine yet): opaque, nothing of the window shows through
+	U.Locked = Util.Create("Frame", { Name = "Locked", BackgroundTransparency = 0, BackgroundColor3 = C.White, BorderSizePixel = 0, Visible = false, ZIndex = 20, Parent = body })
+	Theme.Corner(U.Locked, UDim.new(0, 18))
+	Theme.Gradient(U.Locked, Color3.fromRGB(58, 46, 120), Color3.fromRGB(18, 22, 56), 90)
+	U.LockedIcon = label(U.Locked, "Icon", "Title", 64, { ZIndex = 21, Text = G.Crystal, TextTruncate = Enum.TextTruncate.None })
+	U.LockedText = label(U.Locked, "Text", "Heading", 24, { ZIndex = 21, TextWrapped = true, TextTruncate = Enum.TextTruncate.None })
+	U.LockedSub = label(U.Locked, "Sub", "Body", 20, { ZIndex = 21, Text = TEXTS.LockedSub, TextWrapped = true, TextColor3 = Color3.fromRGB(196, 186, 240), TextTruncate = Enum.TextTruncate.None })
+	-- the cursor is free while the window is shown (client/MouseLock, as the docked windows)
+	local mouseLock = Client:FindFirstChild("MouseLock")
+	local okLock, lock = pcall(function()
+		return mouseLock and require(mouseLock)
+	end)
+	if okLock and type(lock) == "table" and type(lock.WatchVisible) == "function" then
+		safe("mouse lock", lock.WatchVisible, "Dock:" .. holder.Name, holder)
+	end
+end
+
+----------------------------------------------------------------------
+-- Layout
+----------------------------------------------------------------------
+function H.layout()
 	if not S.Built then
 		return
 	end
-	local w, h, tall = fitWindow()
-	S.Tall = tall
-	local short = h < K.SHORT
-	S.Short = short
-	S.Narrow = w < K.NARROW
-	local pickerW = S.Narrow and K.PICKER_W_NARROW or K.PICKER_W
-	local topH = short and K.TOP_H_SHORT or K.TOP_H
-	U.Top.Size = UDim2.new(1, -20, 0, topH)
-	U.Top.Position = UDim2.fromOffset(10, short and 6 or 10)
-	local tabW = short and 176 or 196
-	if tall then
-		tabW = math.floor((w - 20 - 30) / 2)
+	local r = NeonKit.BigRect(K)
+	S.Rect, S.Mode = r, r.mode
+	S.Portrait = r.mode == "Phone" and r.portrait == true
+	local W = math.floor(r.w / r.scale + 0.5)
+	local Hh = math.floor(r.h / r.scale + 0.5)
+	place(U.Holder, r.x, r.y, W, Hh)
+	U.Fit.Scale = r.scale
+	S.W, S.H = W, Hh
+	local M = (S.Mode == "Phone") and K.HEAD.PHONE or K.HEAD.PC
+	local B = Hh - M.Header
+	place(U.Body, 0, M.Header, W, B)
+	S.Geo = {}
+	local mix = S.Tab == "Mix"
+	for _, o in ipairs({ U.Stack, U.CopiesText }) do
+		o.Visible = not mix
 	end
-	for i, name in ipairs({ "Upgrade", "Mix" }) do
-		local tab = U.Tabs[name]
-		tab.Size = UDim2.fromOffset(tabW, short and 42 or 50)
-		tab.Position = UDim2.fromOffset((i - 1) * (tabW + 10), short and 1 or 2)
-		tab.TextSize = short and 22 or 24
+	for _, o in ipairs({ U.Slots.Body.Root, U.Slots.Style.Root, U.Swap, U.Plus, U.Info }) do
+		o.Visible = mix
 	end
-	-- (the tall layout has no room for the balance chips: the cost line turns red and says what is missing)
-	U.Chips.Visible = not tall
-	U.Chips.Size = UDim2.new(0, 360, 0, short and 40 or 44)
-	U.Chips.Position = UDim2.new(1, 0, 0, short and 2 or 5)
-	for _, chip in ipairs({ U.TokenChip, U.GemChip }) do
-		chip.Size = UDim2.fromOffset(0, short and 40 or 44)
-		chip.TextSize = short and 22 or 24
-	end
-	U.Body.Position = UDim2.fromOffset(10, topH + (short and 12 or 16))
-	U.Body.Size = UDim2.new(1, -20, 1, -(topH + (short and 18 or 26)))
-	if tall then
-		-- (a short sheet gives the preview a bit more than half its body)
-		local previewH = math.min(K.PREVIEW_TALL_H, math.floor((h - 90) * 0.58))
-		S.PreviewH = previewH
-		U.Preview.Position = UDim2.new(0, 0, 0, 0)
-		U.Preview.Size = UDim2.new(1, 0, 0, previewH)
-		U.Picker.Position = UDim2.new(0, 0, 0, previewH + K.GAP)
-		U.Picker.Size = UDim2.new(1, 0, 1, -(previewH + K.GAP))
+	if S.Mode ~= "Phone" then
+		H.layoutPC(W, B)
+	elseif S.Portrait then
+		H.layoutPortrait(W, B)
 	else
-		S.PreviewH = nil
-		U.Picker.Position = UDim2.new(0, 0, 0, 0)
-		U.Picker.Size = UDim2.new(0, pickerW, 1, 0)
-		U.Preview.Position = UDim2.new(0, pickerW + K.GAP, 0, 0)
-		U.Preview.Size = UDim2.new(1, -(pickerW + K.GAP), 1, 0)
+		H.layoutPhone(W, B)
 	end
-	U.PickerTitle.Size = UDim2.new(0.45, 0, 0, short and 28 or 32)
-	U.PickerTitle.Position = UDim2.fromOffset(14, short and 4 or 8)
-	U.PickerHint.Position = UDim2.new(1, -14, 0, short and 4 or 10)
-	U.Grid.Position = UDim2.fromOffset(8, short and 36 or 46)
-	U.Grid.Size = UDim2.new(1, -16, 1, -(short and 42 or 54))
-	U.GridLayout.CellSize = UDim2.fromOffset(short and K.TILE_W_SHORT or K.TILE_W, short and K.TILE_H_SHORT or K.TILE_H)
-	for _, tile in pairs(S.Tiles) do
-		tile.Mode = nil
-	end
-	layoutPreview()
+	place(U.Locked, 0, 0, W, B)
+	H.layoutLocked(W, B)
+	H.refresh()
+	H.coverColumn()
 end
 
-----------------------------------------------------------------------
--- Back button (gamepad B) while the window is open
-----------------------------------------------------------------------
-local function onBackAction(_name, inputState)
-	if inputState == Enum.UserInputState.Begin and S.Open then
-		FusionController.Close()
-		return Enum.ContextActionResult.Sink
+function H.layoutHeader()
+	local M = (S.Mode == "Phone") and K.HEAD.PHONE or K.HEAD.PC
+	local W = S.W or 0
+	place(U.Header, 0, 0, W, M.Header)
+	place(U.HeaderFoot, 0, M.Header - 18, W, 18)
+	place(U.Icon, M.HeadPad, (M.Header - M.Icon) / 2, M.Icon, M.Icon)
+	U.Icon.TextSize = M.IconText
+	place(U.Close, W - M.HeadPad - M.Close, (M.Header - M.Close) / 2, M.Close, M.Close)
+	U.Close.TextSize = math.floor(M.Close * 0.5)
+	local right = W - M.HeadPad - M.Close - M.Gap
+	local font = U.TabUp.Font
+	local upW = math.max(M.TabUpW, H.boxW("UPGRADE", M.TabText, font) + 2 * M.TabPad)
+	local mixW = math.max(M.TabMixW, H.boxW("MIX", M.TabText, font) + 2 * M.TabPad)
+	local tokW = H.boxW(U.TokenChip.Text, M.ChipText, U.TokenChip.Font) + 2 * M.ChipPad
+	local gemW = H.boxW(U.GemChip.Text, M.ChipText, U.GemChip.Font) + 2 * M.ChipPad
+	local titleX = M.HeadPad + M.Icon + 8
+	local titles = (S.Mode == "Phone") and { "Fusion" } or { "Fusion Machine", "Fusion" }
+	local showGem, showTok = S.Mode ~= "Phone", true
+	local function chipsW()
+		return (showTok and tokW or 0) + ((showTok and showGem) and (M.ChipGap + gemW) or 0)
 	end
-	return Enum.ContextActionResult.Pass
-end
-
-local function syncBackBinding()
-	if S.Open == S.BackBound then
-		return
+	local function titleRoom()
+		return right - chipsW() - M.Gap - (upW + M.TabGap + mixW) - M.Gap - titleX
 	end
-	S.BackBound = S.Open
-	if S.Open then
-		local ok, err = pcall(function()
-			ContextActionService:BindActionAtPriority(K.BACK_ACTION, onBackAction, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.ButtonB)
-		end)
-		if not ok then
-			warnOnce("bind back", err)
-		end
-	else
-		task.defer(function()
-			if not S.BackBound then
-				pcall(function()
-					ContextActionService:UnbindAction(K.BACK_ACTION)
-				end)
-			end
-		end)
+	local minTitle = H.boxW(titles[#titles], M.TitleMin, U.Title.Font)
+	if titleRoom() < minTitle and showGem then
+		showGem = false
 	end
-end
-
-----------------------------------------------------------------------
--- Pet tiles (left)
-----------------------------------------------------------------------
-local refresh -- defined below
-
--- keys the current tab lists, in display order
-local function pickerKeys()
-	local ok, keys = pcall(State.Keys)
-	if not ok or type(keys) ~= "table" then
-		keys = {}
+	local tabsX = titleX
+	U.Title.Visible = titleRoom() >= minTitle
+	if U.Title.Visible then
+		local room = titleRoom()
+		local t = H.fit(U.Title, titles, room, M.TitleText, M.TitleMin)
+		local tw = math.min(room, H.boxW(t, U.Title.TextSize, U.Title.Font) + 4)
+		place(U.Title, titleX, 0, tw, M.Header)
+		tabsX = titleX + tw + M.Gap
 	end
-	local out = {}
-	local need = copiesNeeded()
-	for i, key in ipairs(keys) do
-		local parsed = parse(key)
-		if parsed and not parsed.HybridId then
-			if S.Tab == "Mix" or NEXT_TIER[parsed.Tier] then
-				out[#out + 1] = { Key = key, Order = i, Ready = owned(key) >= need }
-			end
+	if tabsX + upW + M.TabGap + mixW + M.Gap > right - chipsW() then
+		showGem = false
+	end
+	if tabsX + upW + M.TabGap + mixW + M.Gap > right - chipsW() then
+		showTok = false
+	end
+	if tabsX + upW + M.TabGap + mixW > right + M.Gap then
+		upW = H.boxW("UPGRADE", M.TabText, font) + 2 * M.TabPad * 0.5
+		mixW = H.boxW("MIX", M.TabText, font) + 2 * M.TabPad * 0.5
+	end
+	local ty = (M.Header - M.TabH) / 2
+	for _, spec in ipairs({ { U.TabUp, tabsX, upW }, { U.TabMix, tabsX + upW + M.TabGap, mixW } }) do
+		local b = spec[1]
+		place(b, spec[2], ty, spec[3], M.TabH)
+		b.TextSize = M.TabText
+		local fill = U.Header:FindFirstChild(b.Name .. "Fill")
+		if fill then
+			place(fill, spec[2], ty, spec[3], M.TabH)
 		end
 	end
-	if S.Tab == "Upgrade" then
-		table.sort(out, function(a, b)
-			if a.Ready ~= b.Ready then
-				return a.Ready
-			end
-			return a.Order < b.Order
-		end)
+	U.TokenChip.Visible, U.GemChip.Visible = showTok, showTok and showGem
+	local cy = (M.Header - M.ChipH) / 2
+	local x = right
+	if showTok and showGem then
+		x = x - gemW
+		place(U.GemChip, x, cy, gemW, M.ChipH)
+		x = x - M.ChipGap
 	end
-	return out
+	if showTok then
+		place(U.TokenChip, x - tokW, cy, tokW, M.ChipH)
+	end
+	U.TokenChip.TextSize, U.GemChip.TextSize = M.ChipText, M.ChipText
 end
 
-local function destroyTileViewport(tile)
-	if tile.Viewport then
-		pcall(tile.Viewport.Destroy)
-		tile.Viewport = nil
-	end
-end
-
-local function buildTileViewport(tile)
-	if tile.Viewport or not tile.Button.Parent then
-		return
-	end
-	local def = defOf(tile.Key)
-	if not def then
-		return
-	end
-	-- Phase 5 (3.7): the copy's stored stage (evolved = Low)
-	local stage = (type(State.PetStage) == "function" and tonumber(State.PetStage(tile.Key))) or 0
-	tile.Stage = stage
-	tile.Viewport = CloudUI.PetViewport(tile.View, def, UDim2.new(1, 0, 1, 0), { Detail = "Low", Spin = "sway", Evolved = stage >= 1 and stage or nil })
-end
-
-local function onTileClicked(key)
-	if S.Pending or S.Animating then
-		return
-	end
-	if S.Tab == "Upgrade" then
-		S.UpKey = (S.UpKey == key) and nil or key
-	else
-		if S.MixA == key then
-			S.MixA = nil
-		elseif S.MixB == key then
-			S.MixB = nil
-		elseif not S.MixA then
-			S.MixA = key
-		elseif not S.MixB then
-			S.MixB = key
+-- the inside of a pet card (a copy, a slot or the result): pc = the PC proportions at factor k, else the phone's
+function H.layoutCard(item, w, h, pc, k, isResult)
+	if pc then
+		place(item.Label, 0, 12 * k, w, 32 * k)
+		item.Label.TextSize = math.max(18, math.floor(26 * k + 0.5))
+		local a = math.min(w * 0.74, h * 0.6)
+		place(item.Art, (w - a) / 2, 52 * k, a, a)
+		place(item.Placeholder, (w - a) / 2, 52 * k, a, a)
+		item.Placeholder.TextSize = math.min(100, math.max(40, math.floor(a * 0.42)))
+		if isResult then
+			place(item.PetName, 6, 346 / 470 * h, w - 12, 44 * k)
 		else
-			S.MixB = key
+			place(item.PetName, 6, h - 86 * k, w - 12, 44 * k)
 		end
+		place(item.Sub, 6, h - 44 * k, w - 12, 30 * k)
+		item.NameMax = math.max(20, math.floor((isResult and 40 or 28) * k + 0.5))
+		item.NameMin = 18
+		item.Sub.TextSize = 18
+		item.SubMax = math.max(18, math.floor(20 * k + 0.5))
+	else
+		place(item.Label, 0, 4, w, 20)
+		item.Label.TextSize = 15
+		local nameH = isResult and 26 or 22
+		local subH = (item.Sub.Visible and not isResult) and 20 or 0
+		local a = math.max(24, math.min(w * 0.74, h - 26 - nameH - subH - 6))
+		place(item.Art, (w - a) / 2, 26, a, a)
+		place(item.Placeholder, (w - a) / 2, 26, a, a)
+		item.Placeholder.TextSize = math.min(100, math.max(30, math.floor(a * 0.42)))
+		place(item.PetName, 4, h - nameH - subH - 4, w - 8, nameH)
+		place(item.Sub, 4, h - subH - 2, w - 8, subH)
+		item.NameMax = isResult and 20 or 15
+		item.NameMin = 15
+		item.Sub.TextSize = 15
+		item.SubMax = 15
 	end
-	refresh()
+	item.W, item.H, item.PC = w, h, pc
 end
 
-local function newTile(key)
-	local tile = { Key = key }
-	local button = Util.Create("TextButton", {
-		Name = "Tile",
-		AutoButtonColor = false,
-		Text = "",
-		BorderSizePixel = 0,
-		BackgroundColor3 = TILE_FACE,
-		Parent = U.Grid,
-	})
-	corner(button, 12)
-	tile.Stroke = stroke(button, NAVY, 3, 0)
-	Theme.Gradient(button, Color3.fromRGB(255, 255, 255), Color3.fromRGB(196, 204, 230), 90)
-	tile.Button = button
-	tile.View = makeFrame(button, "View", {
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 6),
-		Size = UDim2.new(1, -16, 0, 92),
-	})
-	tile.Name = makeText(button, "PetName", "", "Label", 18, WHITE, {
-		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, -6),
-		Size = UDim2.new(1, -10, 0, 44),
-		TextWrapped = true,
-		TextYAlignment = Enum.TextYAlignment.Center,
-		TextTruncate = Enum.TextTruncate.AtEnd,
-	})
-	tile.Count = makeText(button, "Count", "x1", "Heading", 18, WHITE, {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -5, 0, 5),
-		Size = UDim2.fromOffset(46, 26),
-		BackgroundTransparency = 0,
-		BackgroundColor3 = Color3.fromRGB(30, 40, 90),
-		ZIndex = 3,
-	})
-	round(tile.Count)
-	stroke(tile.Count, NAVY, 2, 0)
-	tile.Equipped = makeText(button, "Equipped", G.Star, "Heading", 18, GOLD, {
-		Position = UDim2.fromOffset(5, 5),
-		Size = UDim2.fromOffset(26, 26),
-		BackgroundTransparency = 0,
-		BackgroundColor3 = Color3.fromRGB(30, 40, 90),
-		ZIndex = 3,
-		Visible = false,
-	})
-	round(tile.Equipped)
-	-- the Mix pick order (1 = Body, 2 = Style) sits in the top-left corner, clear of the pet's face
-	tile.Mark = makeText(button, "Mark", "", "Title", 20, WHITE, {
-		Position = UDim2.fromOffset(4, 4),
-		Size = UDim2.fromOffset(30, 30),
-		BackgroundTransparency = 0,
-		BackgroundColor3 = ACCENT,
-		ZIndex = 4,
-		Visible = false,
-	})
-	round(tile.Mark)
-	stroke(tile.Mark, NAVY, 2, 0)
-	tile.Dim = makeFrame(button, "Dim", {
-		Size = UDim2.new(1, 0, 1, 0),
-		BackgroundTransparency = 0.5,
-		BackgroundColor3 = Color3.fromRGB(10, 14, 36),
-		ZIndex = 2,
-		Visible = false,
-	})
-	corner(tile.Dim, 12)
-	button.Activated:Connect(function()
-		safe("tile", onTileClicked, key)
+function H.layoutPC(W, B)
+	local P = K.PC
+	local mix = S.Tab == "Mix"
+	local tip = B >= P.TipMinBody
+	U.Tip.Visible = tip
+	place(U.Tip, P.Text, 14, W - 2 * P.Text, P.TipH)
+	S.Geo.Tip = { W - 2 * P.Text, P.TipH, P.TipText, 18 }
+	local cbh = (B >= P.CostFull) and P.CostH or P.CostHMin
+	local costY = B - P.Bottom - cbh
+	local fuseW = (W >= 1300) and P.FuseW or P.FuseWNarrow
+	local fuseH = (cbh >= P.CostH) and 92 or 88
+	place(U.Fuse, W - P.Pad - fuseW, costY + (cbh - fuseH) / 2, fuseW, fuseH)
+	U.Fuse.TextSize = (cbh >= P.CostH) and P.FuseText or 40
+	place(U.CostBar.Root, P.Pad, costY, W - 2 * P.Pad - fuseW - 24, cbh)
+	H.layoutCost(W - 2 * P.Pad - fuseW - 24, cbh, "pc")
+	local lineY = costY - P.Gap - P.LineH
+	local rowBottom
+	if mix then
+		place(U.Info, P.Text, lineY, W - 2 * P.Text, P.LineH)
+		place(U.Note, P.Text, lineY - P.LineH - 6, W - 2 * P.Text, P.LineH)
+		rowBottom = lineY - P.LineH - 6 - 10
+	else
+		place(U.Note, P.Text, lineY, W - 2 * P.Text, P.LineH)
+		rowBottom = lineY - 10
+	end
+	S.Geo.Note = { W - 2 * P.Text, P.LineH, P.LineText, P.LineMin }
+	S.Geo.Info = { W - 2 * P.Text, P.LineH, P.LineText, P.LineMin }
+	local rowTop = tip and P.Text or P.Gap
+	local rowH = rowBottom - rowTop
+	local cy = rowTop + rowH / 2
+	local needW = mix and (P.SlotW + 22 + P.Swap + 22 + P.SlotW + 30 + P.ArrowMix + 30 + P.ResultW)
+		or (P.StackW + 60 + P.ArrowUp + 60 + P.ResultW)
+	local k = math.min(1, rowH / P.ResultH, (W - 2 * P.Pad) / needW)
+	S.K = k
+	local x0 = (W - needW * k) / 2
+	local rw, rh = P.ResultW * k, P.ResultH * k
+	local rx
+	if mix then
+		local sw, sh = P.SlotW * k, P.SlotH * k
+		place(U.Slots.Body.Root, x0, cy - sh / 2, sw, sh)
+		local swap = math.max(56, P.Swap * k)
+		local sx = x0 + sw + 22 * k + (P.Swap * k - swap) / 2
+		place(U.Plus, sx, cy - 50 * k - swap / 2, swap, swap)
+		U.Plus.TextSize = math.max(28, math.floor(40 * k))
+		place(U.Swap, sx, cy + 46 * k - swap / 2, swap, swap)
+		U.Swap.TextSize = math.max(26, math.floor(34 * k))
+		place(U.Slots.Style.Root, x0 + (P.SlotW + 44 + P.Swap) * k, cy - sh / 2, sw, sh)
+		for _, item in pairs(U.Slots) do
+			item.Sub.Visible = true
+			H.layoutCard(item, sw, sh, true, k, false)
+		end
+		local ax = x0 + (2 * P.SlotW + 44 + P.Swap + 30) * k
+		place(U.Arrow, ax, cy - P.ArrowMix * k / 2, P.ArrowMix * k, P.ArrowMix * k)
+		rx = ax + (P.ArrowMix + 30) * k
+	else
+		local stW, stH = P.StackW * k, P.StackH * k
+		local colH = stH + P.Gap * k + P.CopiesH * k
+		local top = cy - colH / 2
+		place(U.Stack, x0, top, stW, stH)
+		H.layoutStack(stW, stH, true, k)
+		place(U.CopiesText, x0, top + stH + P.Gap * k, stW, P.CopiesH * k)
+		U.CopiesText.TextSize = math.max(20, math.floor(P.CopiesText * k + 0.5))
+		local ax = x0 + (P.StackW + 60) * k
+		place(U.Arrow, ax, cy - P.ArrowUp * k / 2, P.ArrowUp * k, P.ArrowUp * k)
+		rx = ax + (P.ArrowUp + 60) * k
+	end
+	U.Arrow.Rotation = 0
+	local ry = cy - rh / 2
+	place(U.Result.Root, rx, ry, rw, rh)
+	H.layoutCard(U.Result, rw, rh, true, k, true)
+	H.layoutSparks(rw, rh, 34 * k)
+	-- the pills inside the result card, under its name
+	S.Geo.Pills = { X = rx + 8, Y = ry + 404 / 470 * rh, W = rw - 16, MaxH = math.max(30, P.PillH * k), H = math.max(30, P.PillH * k),
+		Text = P.PillText, Min = 18, Pad = P.PillPad, Gap = P.PillGap, Center = true }
+	place(U.Hint, P.Pad + 40, B - P.HintH - 10, W - 2 * P.Pad - 80, P.HintH)
+	U.Hint.TextSize = P.Hint
+end
+
+-- the three fanned copies inside the Stack button
+function H.layoutStack(w, h, pc, k)
+	local cw, ch, offs
+	if pc then
+		cw, ch = 240 * k, 320 * k
+		offs = { { 14 * k, 18 * k, -7 }, { 74 * k, 8 * k, -1 }, { 134 * k, 0, 5 } }
+	else
+		cw = math.min(116 * k, w * 0.6)
+		ch = math.min(156, h - 8)
+		local step = math.max(0, (w - cw - 6) / 2)
+		offs = { { 2, 8, -7 }, { 2 + step, 4, -1 }, { 2 + 2 * step, 0, 5 } }
+	end
+	for i, item in ipairs(U.Copies) do
+		local o = offs[i]
+		local hh = (i == 3) and ch or (ch - (pc and 12 * k or 6))
+		place(item.Root, o[1], o[2], cw, hh)
+		item.Root.Rotation = o[3]
+		item.Sub.Visible = pc and i == 3
+		H.layoutCard(item, cw, hh, pc, k, false)
+		item.Label.Visible = i == 3
+		item.PetName.Visible = i == 3
+	end
+end
+
+function H.layoutSparks(w, h, size)
+	local spots = { { 0.12, 0.18 }, { 0.84, 0.14 }, { 0.78, 0.62 }, { 0.16, 0.58 } }
+	for i, spark in ipairs(U.Sparks) do
+		place(spark, w * spots[i][1] - size / 2, h * spots[i][2] - size / 2, size, size)
+		spark.TextSize = math.max(16, math.floor(size))
+	end
+end
+
+-- the cost bar's inside: pc (the 1080p bar, or its 118 tall form), phone (one 40 px row), portrait (two rows)
+function H.layoutCost(w, h, form)
+	local hasLabel = form == "pc"
+	U.CostLabel.Visible = hasLabel
+	U.Have.Visible = form ~= "phone"
+	if form == "pc" then
+		local full = h >= K.PC.CostH
+		local pad = full and 40 or 24
+		local rowY, rowH = full and 22 or 12, full and 56 or 48
+		place(U.CostLabel, pad, rowY, full and 110 or 90, rowH)
+		U.CostLabel.TextSize = full and 30 or 26
+		local ix = pad + (full and 110 or 96)
+		local icon = full and 56 or 48
+		place(U.CostIcon, ix, rowY, icon, icon)
+		S.Geo.IconPx = full and 44 or 38
+		place(U.Cost, ix + icon + 10, rowY, math.max(40, w - ix - icon - 10 - pad), rowH)
+		U.Cost.TextSize = full and 44 or 40
+		place(U.Have, pad, full and 88 or 70, w - 2 * pad, full and 34 or 32)
+		S.Geo.Have = { w - 2 * pad, full and 34 or 32, full and 22 or 20, 18 }
+	elseif form == "portrait" then
+		place(U.CostIcon, 8, 3, 28, 28)
+		S.Geo.IconPx = 24
+		place(U.Cost, 40, 0, w - 48, 32)
+		U.Cost.TextSize = 22
+		place(U.Have, 8, 32, w - 16, 22)
+		S.Geo.Have = { w - 16, 22, 15, 14 }
+	else
+		place(U.CostIcon, 6, (h - 30) / 2, 30, 30)
+		S.Geo.IconPx = 26
+		place(U.Cost, 42, 0, w - 48, h)
+		U.Cost.TextSize = 24
+	end
+end
+
+function H.layoutLocked(W, B)
+	local phone = S.Mode == "Phone"
+	local icon = phone and 64 or 90
+	place(U.LockedIcon, (W - icon) / 2, B * 0.42 - icon, icon, icon)
+	U.LockedIcon.TextSize = phone and 46 or 64
+	local tw = math.min(W - 60, 900)
+	place(U.LockedText, (W - tw) / 2, B * 0.46, tw, phone and 44 or 64)
+	U.LockedText.TextSize = phone and 18 or 24
+	place(U.LockedSub, (W - tw) / 2, B * 0.46 + (phone and 52 or 76), tw, phone and 40 or 56)
+	U.LockedSub.TextSize = phone and 15 or 20
+end
+
+function H.layoutPhone(W, B)
+	local P = K.PHONE
+	local mix = S.Tab == "Mix"
+	local bottomY = B - P.Bottom
+	local rowTop, rowBottom = 4, bottomY - 8
+	local rowH = rowBottom - rowTop
+	local kx = math.min(1, (W - 24) / 796)
+	S.K = kx
+	U.Tip.Visible = not mix
+	place(U.Tip, 14, bottomY, W - 28, P.LineH)
+	S.Geo.Tip = { W - 28, P.LineH, P.Text, 15 }
+	local colX
+	local resW, resH = math.max(136, (mix and 176 or 184) * kx), math.min(206, rowH)
+	if mix then
+		local sw = math.max(100, 130 * kx)
+		local sh = math.min(172, rowH - 12)
+		local swap = 44
+		local x = 14
+		place(U.Slots.Body.Root, x, rowTop + 4, sw, sh)
+		place(U.Swap, x + sw + 8, rowTop + 4 + (sh - swap) / 2, swap, swap)
+		U.Swap.TextSize = 24
+		U.Plus.Visible = false
+		place(U.Slots.Style.Root, x + sw + 16 + swap, rowTop + 4, sw, sh)
+		for _, item in pairs(U.Slots) do
+			item.Sub.Visible = true
+			H.layoutCard(item, sw, sh, false, kx, false)
+		end
+		local aw = math.max(34, 46 * kx)
+		local ax = x + 2 * sw + 24 + swap
+		local rx = ax + aw + 8
+		place(U.Arrow, ax, rowTop + resH / 2 - aw / 2, aw, aw)
+		place(U.Result.Root, rx, rowTop, resW, resH)
+		colX = rx + resW + 12
+		-- the bottom line: the Info, or the Note in its place when there is a reason
+		place(U.Info, 14, bottomY, W - 28, P.LineH)
+		place(U.Note, 14, bottomY, W - 28, P.LineH)
+		S.Geo.Info = { W - 28, P.LineH, P.Text, 15 }
+		S.Geo.Note = { W - 28, P.LineH, P.Text, 15 }
+	else
+		local stW = 190 * kx
+		local copiesH = 22
+		local stH = rowH - copiesH - 8
+		place(U.Stack, 14, rowTop + 2, stW, stH)
+		H.layoutStack(stW, stH, false, kx)
+		place(U.CopiesText, 14, rowTop + 2 + stH + 4, stW + 30, copiesH)
+		U.CopiesText.TextSize = 15
+		local aw = math.max(34, 50 * kx)
+		local ax = 14 + stW + 8
+		local rx = ax + aw + 8
+		place(U.Arrow, ax, rowTop + resH / 2 - aw / 2, aw, aw)
+		place(U.Result.Root, rx, rowTop, resW, resH)
+		colX = rx + resW + 14
+	end
+	U.Arrow.Rotation = 0
+	H.layoutCard(U.Result, resW, resH, false, kx, true)
+	H.layoutSparks(resW, resH, 16)
+	local colW = W - 12 - colX
+	local fuseH = (rowH >= 200) and P.FuseH or P.FuseHMin
+	local fuseY = rowBottom - fuseH
+	place(U.Fuse, colX, fuseY, colW, fuseH)
+	U.Fuse.TextSize = (fuseH >= P.FuseH) and 26 or 22
+	local costY = fuseY - 8 - P.CostH
+	place(U.CostBar.Root, colX, costY, colW, P.CostH)
+	H.layoutCost(colW, P.CostH, "phone")
+	local pillsTop = rowTop + 4
+	if mix then
+		S.Geo.Pills = { X = colX, Y = pillsTop, W = colW, MaxH = costY - 6 - pillsTop, H = P.PillH, Text = P.Text, Min = 15, Pad = P.PillPad, Gap = P.PillGap }
+	else
+		S.Geo.Pills = { X = colX, Y = pillsTop, W = colW, MaxH = P.PillH, H = P.PillH, Text = P.Text, Min = 15, Pad = P.PillPad, Gap = P.PillGap }
+		-- the note between the pills and the cost (it moves up when the pills take one row less)
+		local ny = pillsTop + P.PillH + 6
+		place(U.Note, colX, ny, colW, costY - 6 - ny)
+		S.Geo.Note = { colW, costY - 6 - ny, P.Text, 15 }
+	end
+	place(U.Hint, 24, B - P.HintH - 6, W - 48, P.HintH)
+	U.Hint.TextSize = 15
+end
+
+function H.layoutPortrait(W, B)
+	local P = K.PHONE
+	local mix = S.Tab == "Mix"
+	local pad = 12
+	U.Tip.Visible = false
+	local fuseW, fuseH = 150, 56
+	local fuseY = B - 8 - fuseH
+	place(U.Fuse, W - pad - fuseW, fuseY, fuseW, fuseH)
+	U.Fuse.TextSize = 24
+	place(U.CostBar.Root, pad, fuseY, W - 2 * pad - fuseW - 8, fuseH)
+	H.layoutCost(W - 2 * pad - fuseW - 8, fuseH, "portrait")
+	local lineY = fuseY - 8 - P.LineH
+	local pillsY = lineY - 6 - P.PillH
+	S.Geo.Pills = { X = pad, Y = pillsY, W = W - 2 * pad, MaxH = P.PillH, H = P.PillH, Text = P.Text, Min = 15, Pad = P.PillPad, Gap = P.PillGap, Center = true }
+	place(U.Note, pad, lineY, W - 2 * pad, P.LineH)
+	S.Geo.Note = { W - 2 * pad, P.LineH, P.Text, 15 }
+	place(U.Info, pad, lineY, W - 2 * pad, P.LineH)
+	S.Geo.Info = { W - 2 * pad, P.LineH, P.Text, 15 }
+	local regionTop, regionBottom = 6, pillsY - 8
+	local arrowH = 32
+	local resW = math.min(W - 2 * pad, 220)
+	local y
+	if mix then
+		local swap = 44
+		local sw = math.min(150, (W - 2 * pad - swap - 16) / 2)
+		local flex = regionBottom - regionTop - (4 + arrowH + 4)
+		local kv = math.min(1, flex / (172 + 206))
+		local sh, rh = 172 * kv, 206 * kv
+		y = regionTop + math.max(0, (flex - sh - rh) / 2)
+		local x0 = (W - (2 * sw + swap + 16)) / 2
+		place(U.Slots.Body.Root, x0, y, sw, sh)
+		place(U.Swap, x0 + sw + 8, y + (sh - swap) / 2, swap, swap)
+		U.Swap.TextSize = 24
+		U.Plus.Visible = false
+		place(U.Slots.Style.Root, x0 + sw + 16 + swap, y, sw, sh)
+		for _, item in pairs(U.Slots) do
+			item.Sub.Visible = true
+			H.layoutCard(item, sw, sh, false, 1, false)
+		end
+		y = y + sh + 4
+		place(U.Arrow, (W - arrowH) / 2, y, arrowH, arrowH)
+		y = y + arrowH + 4
+		place(U.Result.Root, (W - resW) / 2, y, resW, rh)
+		H.layoutCard(U.Result, resW, rh, false, 1, true)
+		H.layoutSparks(resW, rh, 16)
+	else
+		local copiesH = 22
+		local flex = regionBottom - regionTop - (4 + copiesH + 4 + arrowH + 4)
+		local kv = math.min(1, flex / (160 + 206))
+		local stH, rh = 160 * kv, 206 * kv
+		local stW = 190 * math.max(0.7, kv)
+		y = regionTop + math.max(0, (flex - stH - rh) / 2)
+		place(U.Stack, (W - stW) / 2, y, stW, stH)
+		H.layoutStack(stW, stH, false, math.max(0.7, kv))
+		y = y + stH + 4
+		place(U.CopiesText, pad, y, W - 2 * pad, copiesH)
+		U.CopiesText.TextSize = 15
+		y = y + copiesH + 4
+		place(U.Arrow, (W - arrowH) / 2, y, arrowH, arrowH)
+		y = y + arrowH + 4
+		place(U.Result.Root, (W - resW) / 2, y, resW, rh)
+		H.layoutCard(U.Result, resW, rh, false, 1, true)
+		H.layoutSparks(resW, rh, 16)
+	end
+	U.Arrow.Rotation = 90
+	place(U.Hint, pad + 6, B - 44, W - 2 * pad - 12, 38)
+	U.Hint.TextSize = 15
+end
+
+----------------------------------------------------------------------
+-- Paint
+----------------------------------------------------------------------
+function H.refresh()
+	if not S.Built then
+		return
+	end
+	-- drop selections the player no longer owns (fused away, traded...)
+	if S.UpKey and H.owned(S.UpKey) < 1 then
+		S.UpKey = nil
+	end
+	if S.MixA and H.owned(S.MixA) < 1 then
+		S.MixA = nil
+	end
+	if S.MixB and H.owned(S.MixB) < 1 then
+		S.MixB = nil
+	end
+	local machine = S.AtMachine or H.myMachine()
+	S.MachineNear = machine == nil or H.distanceTo(machine) <= K.NEAR_RANGE
+	local plan = H.computePlan()
+	S.Plan = plan
+	H.paintHeader()
+	H.paint(plan)
+end
+
+function H.refreshSoon()
+	if S.RefreshPending then
+		return
+	end
+	S.RefreshPending = true
+	task.defer(function()
+		S.RefreshPending = false
+		if S.Open and not S.Animating then
+			safe("refresh", H.refresh)
+		end
 	end)
-	S.Tiles[key] = tile
-	S.Queue[#S.Queue + 1] = tile
-	return tile
 end
 
-local function paintTile(tile, order, ready)
-	local def = defOf(tile.Key)
-	local mode = S.Short and "Short" or "Wide"
-	if tile.Mode ~= mode then
-		tile.Mode = mode
-		tile.View.Size = UDim2.new(1, -16, 0, S.Short and 64 or 92)
-		tile.Name.Size = UDim2.new(1, -10, 0, S.Short and 26 or 44)
-		tile.Name.TextWrapped = not S.Short
-		tile.Name.Position = UDim2.new(0.5, 0, 1, S.Short and -4 or -6)
+function H.short(n)
+	n = math.max(0, math.floor(tonumber(n) or 0))
+	if n < 1000000 then
+		return H.commas(n)
 	end
-	tile.Button.LayoutOrder = order
-	tile.Name.Text = nameOf(def, tile.Key)
-	local n = owned(tile.Key)
-	tile.Count.Text = "x" .. n
-	local need = copiesNeeded()
-	if S.Tab == "Upgrade" then
-		tile.Count.BackgroundColor3 = (n >= need) and Theme.Darken(GOOD, 0.35) or Color3.fromRGB(30, 40, 90)
-		tile.Dim.Visible = n < need
-	else
-		tile.Count.BackgroundColor3 = Color3.fromRGB(30, 40, 90)
-		tile.Dim.Visible = false
-	end
-	tile.Equipped.Visible = equippedCount(tile.Key) > 0
-	local selected = false
-	local mark = nil
-	if S.Tab == "Upgrade" then
-		selected = S.UpKey == tile.Key
-	else
-		if S.MixA == tile.Key then
-			selected, mark = true, "1"
-		elseif S.MixB == tile.Key then
-			selected, mark = true, "2"
-		end
-	end
-	tile.Button.BackgroundColor3 = selected and TILE_SELECTED or TILE_FACE
-	tile.Stroke.Color = selected and GOLD or NAVY
-	tile.Stroke.Thickness = selected and 4 or 3
-	tile.Mark.Visible = mark ~= nil
-	tile.Mark.Text = mark or ""
-	-- the equipped star moves down a row while the pick mark holds the corner
-	tile.Equipped.Position = UDim2.fromOffset(mark and 6 or 5, mark and 38 or 5)
-	local rarity = type(def) == "table" and def.Rarity or nil
-	if not selected and rarity then
-		tile.Stroke.Color = Theme.Darken(rarityAccent(rarity), 0.35)
-	end
+	return Theme.ShortNumber(n)
 end
 
-local function refreshTiles()
-	local list = pickerKeys()
-	local wanted = {}
-	for i, entry in ipairs(list) do
-		wanted[entry.Key] = true
-		local tile = S.Tiles[entry.Key] or newTile(entry.Key)
-		-- a copy that evolved meanwhile rebuilds its viewport (the per-frame builder picks it up again)
-		if tile.Viewport and tile.Stage ~= ((type(State.PetStage) == "function" and tonumber(State.PetStage(entry.Key))) or 0) then
-			destroyTileViewport(tile)
+function H.paintHeader()
+	U.TokenChip.Text = tostring(TOKEN_INFO.Glyph) .. " " .. H.short(H.balance("Tokens"))
+	U.GemChip.Text = tostring(GEM_INFO.Glyph) .. " " .. H.short(H.balance("Gems"))
+	for _, spec in ipairs({ { U.TabUp, "Upgrade" }, { U.TabMix, "Mix" } }) do
+		local b, on = spec[1], S.Tab == spec[2]
+		b.TextColor3 = on and C.White or C.Muted
+		b:SetAttribute("Selected", on)
+		local fill = U.Header:FindFirstChild(b.Name .. "Fill")
+		if fill then
+			fill.BackgroundColor3 = on and C.White or C.Ink
+			fill.BackgroundTransparency = on and 0 or 0.55
+			local grad = fill:FindFirstChild("TabFill")
+			if grad then
+				grad.Color = on and ColorSequence.new(Theme.Lighten(C.Violet, 0.55), Theme.Darken(C.Violet, 0.05)) or ColorSequence.new(C.White, C.White)
+			end
+			local st = fill:FindFirstChild("TabStroke")
+			if st then
+				st.Color = on and C.Ink or C.White
+				st.Transparency = on and 0 or 0.8
+			end
 		end
-		paintTile(tile, i, entry.Ready)
 	end
-	for key, tile in pairs(S.Tiles) do
-		if not wanted[key] then
-			destroyTileViewport(tile)
-			tile.Button:Destroy()
-			S.Tiles[key] = nil
-		end
-	end
-	U.Empty.Visible = #list == 0
-	if S.Tab == "Upgrade" then
-		U.Empty.Text = "No pets to upgrade yet. Roll more copies at the roulettes!"
-		U.PickerHint.Text = "Pick a pet with " .. copiesNeeded() .. " copies"
-	else
-		U.Empty.Text = "You need at least two different pets to mix."
-		U.PickerHint.Text = "Pick two different pets"
-	end
+	H.layoutHeader()
 end
 
--- pet viewports under a per-frame time budget
-local function fillViewports()
-	if #S.Queue == 0 then
-		return
-	end
-	local started = os.clock()
-	local built = 0
-	while #S.Queue > 0 and built < K.TILES_MAX do
-		local tile = table.remove(S.Queue, 1)
-		if tile.Button.Parent then
-			safe("viewport", buildTileViewport, tile)
-			built = built + 1
-		end
-		if os.clock() - started > K.TILE_BUDGET then
-			break
-		end
-	end
-end
-
-----------------------------------------------------------------------
--- Preview (right)
-----------------------------------------------------------------------
-local function slotFrame(parent, name, size)
-	local holder = makeFrame(parent, name, {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Size = UDim2.fromOffset(size, size),
-		BackgroundTransparency = 0,
-		BackgroundColor3 = Color3.fromRGB(44, 54, 116),
-		ZIndex = 3,
-	})
-	corner(holder, 14)
-	local s = stroke(holder, NAVY, 3, 0)
-	Theme.Gradient(holder, Color3.fromRGB(255, 255, 255), Color3.fromRGB(176, 186, 220), 90)
-	local view = makeFrame(holder, "View", { Size = UDim2.new(1, -8, 1, -8), Position = UDim2.fromOffset(4, 4), ZIndex = 4 })
-	local q = makeText(holder, "Placeholder", "?", "Title", 40, MUTED, {
-		Size = UDim2.new(1, 0, 1, 0),
-		TextTransparency = 0.2,
-		ZIndex = 4,
-	})
-	local scale = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = holder })
-	return { Frame = holder, View = view, Stroke = s, Placeholder = q, Scale = scale, Viewport = nil, Def = nil }
-end
-
-local function setSlotPet(slot, def, detail, stage)
+-- one pet look (cached by what it shows)
+function H.setView(rec, def, sig, stage, detail)
 	stage = math.floor(tonumber(stage) or 0)
-	if slot.Def == def and slot.Viewport and slot.Stage == stage then
+	local want = def and (tostring(sig) .. "#" .. stage .. "#" .. tostring(detail)) or nil
+	if rec.Sig == want then
 		return
 	end
-	slot.Stage = stage
-	if slot.Viewport then
-		pcall(slot.Viewport.Destroy)
-		slot.Viewport = nil
+	rec.Sig = want
+	if rec.Handle then
+		pcall(rec.Handle.Destroy)
+		rec.Handle = nil
 	end
-	slot.Def = def
-	slot.Placeholder.Visible = def == nil
 	if def then
-		local ok, handle = pcall(CloudUI.PetViewport, slot.View, def, UDim2.new(1, 0, 1, 0), {
+		local ok, handle = pcall(CloudUI.PetViewport, rec.Art, def, UDim2.fromScale(1, 1), {
 			Detail = stage >= 1 and "Low" or (detail or "High"),
-			Evolved = stage >= 1 and stage or nil, -- Phase 5 (3.7)
+			Evolved = stage >= 1 and stage or nil,
 			Spin = "spin",
-			ZIndex = 4,
+			ZIndex = rec.Z,
 		})
 		if ok then
-			slot.Viewport = handle
+			rec.Handle = handle
 		end
 	end
 end
 
-layoutPreview = function()
-	if not U.Preview then
-		return
+-- the name of a pet on a card: the whole name, else the last word
+function H.cardName(item, text, color)
+	item.PetName.TextColor3 = color or C.White
+	local last = tostring(text):match("(%S+)%s*$") or tostring(text)
+	H.fit(item.PetName, { text, last }, item.PetName.Size.X.Offset, item.NameMax or 28, item.NameMin or 15)
+end
+
+function H.subOf(def, pc)
+	if type(def) ~= "table" then
+		return ""
 	end
-	local short = S.Short
-	local tall = S.Tall
-	local mix = S.Tab == "Mix"
-	local result = short and K.RESULT_SHORT or K.RESULT
-	local input = short and K.INPUT_SHORT or K.INPUT
-	if tall and not short then
-		result, input = K.RESULT_TALL, K.INPUT_TALL
+	local element = def.Element or (type(def.Elements) == "table" and def.Elements[1]) or ""
+	if pc then
+		return tostring(def.Rarity or "") .. " " .. G.Dot .. " " .. tostring(element)
 	end
-	local bottomH = short and 52 or 64
-	-- the room above the cost / FUSE row (design px; only the one-column window knows its preview height)
-	local avail = S.PreviewH and (S.PreviewH - bottomH - (short and 6 or 12) - 4) or nil
-	-- landscape phones (a short one-column sheet): the cards on the left, the name and the one-line note beside them
-	local side = short and tall and avail ~= nil
-	-- portrait phones: when the full stack (title, big cards, name, pills, one line of notes) does not fit above the
-	-- FUSE row, the title steps aside (the tab says it) and the cards shrink until a line of notes fits again
-	local tight = false
-	local pills = not short
-	local block = 78 -- name 36 + 2, pills 32 + 8
-	if tall and not short and avail then
-		local fitFull = avail - (54 + 26 + 2 + block + K.NOTE_MIN)
-		if fitFull < result and fitFull >= K.RESULT_FULL_MIN then
-			-- (a little short: slightly smaller cards keep the full stack)
-			result = fitFull
-			input = math.floor(result * K.INPUT_TALL / K.RESULT_TALL + 0.5)
-		elseif fitFull < result then
-			tight = true
-			block = 66 -- name 30 + 2, pills 30 + 4
-			local extra = mix and 26 or 8
-			local fit = avail - 4 - extra - 2 - block - K.NOTE_MIN
-			if fit < K.RESULT_MIN then
-				-- not even the smallest cards leave room: the pills go, the name keeps its line
-				pills = false
-				block = 32
-				fit = avail - 4 - extra - 2 - block - K.NOTE_MIN
+	return tostring(element)
+end
+
+function H.paintCard(item, key, labelText)
+	local def = key and H.def(key) or nil
+	item.Label.Text = labelText or item.Label.Text
+	item.Card.SetColor(def and H.rarityColor(def.Rarity) or C.WellEdge)
+	item.Placeholder.Text = G.Plus
+	item.Placeholder.Visible = def == nil
+	if def then
+		H.cardName(item, H.nameOf(def, key))
+		H.fit(item.Sub, { H.subOf(def, item.PC), H.subOf(def, false) }, item.Sub.Size.X.Offset, item.SubMax or 18, item.PC and 18 or 15)
+		item.Sub.TextColor3 = C.Muted
+	else
+		H.cardName(item, "Pick a pet", C.Muted)
+		item.Sub.Text = ""
+	end
+	H.setView(item.View, def, key, key and H.stage(key) or 0, "High")
+end
+
+function H.paintStack(plan)
+	local key = S.UpKey
+	local def = key and H.def(key) or nil
+	local have = key and H.owned(key) or 0
+	for i, item in ipairs(U.Copies) do
+		-- the front card always shows the pet; the back ones only the copies you have
+		local shows = def ~= nil and (i == 3 or have >= 4 - i)
+		item.Card.SetColor(def and H.rarityColor(def.Rarity) or C.WellEdge)
+		item.Label.Text = "COPIES"
+		item.Placeholder.Text = (i == 3) and G.Plus or G.Question
+		item.Placeholder.Visible = not shows
+		item.Dim.Visible = i ~= 3 and not shows
+		if i == 3 then
+			if def then
+				H.cardName(item, H.nameOf(def, key))
+				H.fit(item.Sub, { H.subOf(def, true) }, item.Sub.Size.X.Offset, item.SubMax or 18, 18)
+			else
+				H.cardName(item, "Pick a pet", C.Muted)
+				item.Sub.Text = ""
 			end
-			result = math.max(K.RESULT_MIN, math.min(K.RESULT_TALL, fit))
-			input = math.floor(result * K.INPUT_TALL / K.RESULT_TALL + 0.5)
 		end
+		H.setView(item.View, shows and def or nil, key, H.stage(key), (i == 3) and "High" or "Low")
 	end
-	if side then
-		result, input = K.RESULT_SIDE, K.INPUT_SIDE
-		if mix then
-			-- (two cards side by side: a little smaller, so the name column keeps its width)
-			result, input = result - 4, input - 6
-		end
-	end
-	S.PreviewMode = side and "Side" or (tight and "Tight" or (short and "Short" or "Full"))
-	local compactRow = short or tight
-	U.PreviewTitle.Visible = not compactRow
-	local rowY = compactRow and 4 or (tall and 54 or 66)
-	local rowH = result + ((mix or not compactRow) and 26 or 8)
-	-- where the inputs, the arrow and the result sit (fractions of the slot row)
-	local xIn, xArrow, xRes = 0.25, 0.53, 0.76
-	U.SlotRow.Position = UDim2.new(0, 0, 0, rowY)
-	U.SlotRow.Size = UDim2.new(1, 0, 0, rowH)
-	local rowW = 0
-	if side then
-		-- the slot row only as wide as its cards (design px), the rest is the name column
-		local mid, arrowX, resX
-		if mix then
-			local gap = input * 0.62
-			mid = 10 + input / 2 + gap
-			arrowX = mid + gap + input / 2 + 16
-		else
-			mid = 6 + input / 2 + 11 -- (the fanned stack spreads 8 px and tilts a little)
-			arrowX = mid + input / 2 + 26
-		end
-		resX = arrowX + 18 + result / 2
-		rowW = math.floor(resX + result / 2 + 4)
-		xIn, xArrow, xRes = mid / rowW, arrowX / rowW, resX / rowW
-		U.SlotRow.Size = UDim2.new(0, rowW, 0, rowH)
-	end
-	local cy = result / 2 + 4
-	U.ResultSlot.Frame.Size = UDim2.fromOffset(result, result)
-	U.ResultSlot.Frame.Position = UDim2.new(xRes, 0, 0, cy)
-	U.Arrow.Position = UDim2.new(xArrow, 0, 0, cy)
-	for _, slot in ipairs(U.InSlots) do
-		slot.Frame.Size = UDim2.fromOffset(input, input)
-	end
-	if not mix then
-		-- three copies fanned out like a stack of cards
-		local fan = compactRow and (side and 8 or 10) or 16
-		U.InSlots[1].Frame.Position = UDim2.new(xIn, -fan, 0, cy - fan * 0.75)
-		U.InSlots[2].Frame.Position = UDim2.new(xIn, 0, 0, cy)
-		U.InSlots[3].Frame.Position = UDim2.new(xIn, fan, 0, cy + fan * 0.75)
-		U.InSlots[1].Frame.Rotation = -6
-		U.InSlots[3].Frame.Rotation = 6
-		U.InSlots[2].Frame.Rotation = 0
-		U.InSlots[1].Frame.Visible = true
-		U.InSlots[3].Frame.Visible = true
-		U.Plus.Visible = false
-		U.CaptionA.Visible = false
-		U.CaptionB.Visible = false
-		U.Swap.Visible = false
+	if def then
+		U.CopiesText.Text = "x" .. have .. " owned " .. G.Dot .. " uses " .. H.copies()
+		U.CopiesText.TextColor3 = (have >= H.copies()) and C.White or C.Warn
 	else
-		local gap = input * 0.62
-		U.InSlots[1].Frame.Position = UDim2.new(xIn, -gap, 0, cy)
-		U.InSlots[2].Frame.Position = UDim2.new(xIn, gap, 0, cy)
-		U.InSlots[1].Frame.Rotation = 0
-		U.InSlots[2].Frame.Rotation = 0
-		U.InSlots[3].Frame.Visible = false
-		U.InSlots[1].Frame.Visible = true
-		U.CaptionA.Visible = true
-		U.CaptionB.Visible = true
-		-- ("Body" / "Style" under small cards: a caption no wider than its card's column)
-		local capW = math.min(110, input + 12)
-		U.CaptionA.Size = UDim2.fromOffset(capW, 24)
-		U.CaptionB.Size = UDim2.fromOffset(capW, 24)
-		U.CaptionA.Position = UDim2.new(xIn, -gap, 0, cy + input / 2 + 2)
-		U.CaptionB.Position = UDim2.new(xIn, gap, 0, cy + input / 2 + 2)
-		local swap = S.MixA ~= nil and S.MixB ~= nil
-		U.Swap.Visible = swap
-		if compactRow then
-			-- no room above the cards: the swap button takes the plus sign's place between them
-			U.Plus.Visible = not swap
-			U.Swap.Position = UDim2.new(xIn, 0, 0, cy + 18)
-		else
-			U.Plus.Visible = true
-			U.Swap.Position = UDim2.new(xIn, 0, 0, cy - input / 2 - 2)
-		end
-		U.Plus.Position = UDim2.new(xIn, 0, 0, cy)
+		U.CopiesText.Text = "Tap to pick a pet"
+		U.CopiesText.TextColor3 = C.Muted
 	end
-	local y = rowY + rowH + 2
-	-- (in the side column the name is the first line of the details list, the note stacks right under it)
-	U.ResultName.Parent = side and U.Details or U.Preview
-	U.ResultName.LayoutOrder = 0
-	if side then
-		-- a column right of the cards: the name (one line, cut with "...") over the note
-		U.Pills.Visible = false
-		U.ResultName.Position = UDim2.new(0, 0, 0, 0)
-		U.ResultName.Size = UDim2.new(1, 0, 0, 26)
-		U.ResultName.TextSize = 20
-		U.Details.Position = UDim2.new(0, rowW + 4, 0, 6)
-		U.Details.Size = UDim2.new(1, -(rowW + 18), 0, math.max(0, avail - 6))
-	elseif short or not pills then
-		-- no room for the pills: the name (in its rarity colour) and a summary line instead
-		U.ResultName.Position = UDim2.new(0, 14, 0, y)
-		U.ResultName.Size = UDim2.new(1, -28, 0, 30)
-		U.ResultName.TextSize = 24
-		U.Pills.Visible = false
-		y = y + 32
+	H.fit(U.CopiesText, { U.CopiesText.Text }, U.CopiesText.Size.X.Offset, U.CopiesText.TextSize, S.Mode == "Phone" and 15 or 18)
+end
+
+function H.paintResult(plan)
+	local item = U.Result
+	local mix = S.Tab == "Mix"
+	local tier = plan.Tier
+	local color
+	if mix then
+		color = C.Violet
+		H.fit(item.Label, { "NEW HYBRID", "NEW" }, item.Label.Size.X.Offset - 8, item.Label.TextSize, S.Mode == "Phone" and 15 or 18)
+		item.Label.TextColor3 = C.Gold
 	else
-		U.Pills.Visible = true
-		U.ResultName.Position = UDim2.new(0, 14, 0, y)
-		U.ResultName.Size = UDim2.new(1, -28, 0, tight and 30 or 36)
-		U.ResultName.TextSize = tight and 24 or 28
-		y = y + (tight and 32 or 38)
-		U.Pills.Position = UDim2.new(0, 14, 0, y)
-		U.Pills.Size = UDim2.new(1, -28, 0, tight and 30 or 32)
-		U.PillsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
-		y = y + (tight and 34 or 40)
+		color = (tier and C.Tier[tier]) or C.WellEdge
+		item.Label.Text = tier and string.upper(tier) or "NEXT FINISH"
+		item.Label.TextColor3 = (tier == "Golden") and C.GoldLabel or C.White
 	end
-	local compact = short or S.Tall
-	U.Bottom.Size = UDim2.new(1, -28, 0, bottomH)
-	U.Bottom.Position = UDim2.new(0, 14, 1, short and -6 or -12)
-	U.Cost.TextSize = compact and 24 or 28
-	U.FuseButton.Size = UDim2.fromOffset(compact and 170 or 214, short and 48 or 58)
-	U.FuseButton.TextSize = compact and 24 or 28
-	-- on a phone Roblox's jump button covers the bottom-right corner: FUSE goes to the left and the cost follows it
-	-- (left-aligned right after the button), so the corner under the jump button stays empty
-	local leftFuse = short and UserInputService.TouchEnabled
-	S.CostOnly = leftFuse -- the cost shows without its "Cost:" label there (shorter, clear of the jump button)
-	local fuseW = compact and 170 or 214
-	U.FuseButton.AnchorPoint = leftFuse and Vector2.new(0, 0.5) or Vector2.new(1, 0.5)
-	U.FuseButton.Position = leftFuse and UDim2.new(0, 0, 0.5, 0) or UDim2.new(1, 0, 0.5, 0)
-	U.Cost.AnchorPoint = Vector2.new(0, 0.5)
-	U.Cost.Position = leftFuse and UDim2.new(0, fuseW + 14, 0.5, 0) or UDim2.new(0, 0, 0.5, 0)
-	U.Cost.TextXAlignment = Enum.TextXAlignment.Left
-	U.Cost.Size = UDim2.new(1, -(fuseW + 14), 0, 40)
-	-- a note with room for one line only stays on one line ("..." when long; the compact layouts use the notes'
-	-- short forms), so it is never cut through the middle; the side column wraps it under the name
-	local oneLine = not side and (short or tight or (avail ~= nil and avail - y < 2 * K.NOTE_MIN))
-	U.Info.TextWrapped = not oneLine
-	U.Info.TextTruncate = oneLine and Enum.TextTruncate.AtEnd or Enum.TextTruncate.None
-	if not side then
-		U.Details.Position = UDim2.new(0, 14, 0, y)
-		U.Details.Size = UDim2.new(1, -28, 0, math.max(0, avail and (avail - y) or 0))
-		if not avail then
-			U.Details.Size = UDim2.new(1, -28, 1, -(y + bottomH + (short and 8 or 20)))
+	item.Card.SetColor(color)
+	U.Shimmer.Enabled = (not mix) and tier == "Rainbow"
+	for _, spark in ipairs(U.Sparks) do
+		spark.Visible = (not mix) and plan.ResultDef ~= nil and (tier == "Golden" or tier == "Rainbow")
+	end
+	item.Placeholder.Text = G.Question
+	item.Placeholder.Visible = plan.ResultDef == nil
+	if plan.ResultDef then
+		H.cardName(item, plan.ResultName or H.nameOf(plan.ResultDef), C.White)
+	else
+		H.cardName(item, mix and "Pick two pets" or "Pick a pet", C.Muted)
+	end
+	if not S.Animating then
+		local keep = 0
+		if not mix and plan.ResultKey then
+			keep = math.max(H.stage(S.UpKey), H.stage(plan.ResultKey))
 		end
-	end
-	U.ServerNote.Position = UDim2.new(0, 14, 1, -(bottomH + (short and 10 or 18)))
-	-- the locked card: a smaller crystal and no teaser line on short screens
-	if U.LockedSub then
-		U.LockedSub.Visible = not short
-		U.LockedIcon.Size = short and UDim2.fromOffset(64, 64) or UDim2.fromOffset(90, 90)
-		U.LockedIcon.TextSize = short and 46 or 64
-		U.LockedIcon.Position = UDim2.new(0.5, 0, short and 0.42 or 0.4, 0)
-		U.LockedText.Position = UDim2.new(0.5, 0, short and 0.46 or 0.43, 0)
-		U.LockedSub.Position = UDim2.new(0.5, 0, 0.43, 70)
+		H.setView(item.View, plan.ResultDef, plan.ResultSig or plan.ResultKey, keep, "High")
 	end
 end
 
-local function setNotes(plan)
-	for _, child in ipairs(U.Details:GetChildren()) do
-		if child:IsA("TextLabel") and child ~= U.Info and child ~= U.ResultName then
-			child:Destroy()
+function H.tierWord(mult)
+	if mult == math.floor(mult) then
+		return "x" .. tostring(math.floor(mult)) .. " power"
+	end
+	return "x" .. string.format("%.1f", mult) .. " power"
+end
+
+-- the pills: { { Name, Text, Color } } laid in rows inside S.Geo.Pills (centred on PC); a pill that does not fit is left out
+function H.paintPills(plan)
+	local list = {}
+	if plan.ResultDef then
+		if plan.Rarity then
+			list[#list + 1] = { "Pill_Rarity", tostring(plan.Rarity), Theme.Darken(H.rarityColor(plan.Rarity), 0.35) }
+		end
+		if S.Tab == "Upgrade" and plan.Tier then
+			local mult = (PetKeys and PetKeys.TierMultiplier and PetKeys.TierMultiplier[plan.Tier]) or 1
+			list[#list + 1] = { "Pill_Power", H.tierWord(mult), Theme.Darken(C.Tier.Golden, 0.45) }
+		elseif S.Tab == "Mix" then
+			local elements = plan.Elements or {}
+			if #elements > 0 then
+				local info = Config.Elements and Config.Elements.Info and Config.Elements.Info[elements[1]]
+				list[#list + 1] = { "Pill_Elements", table.concat(elements, " + "), Theme.Darken(info and info.Color or C.Warn, 0.4) }
+			end
+			list[#list + 1] = { "Pill_Tier", tostring(plan.Tier or "Normal"), Theme.Darken(C.Tier[plan.Tier or "Normal"] or C.Tier.Normal, 0.3) }
 		end
 	end
-	U.Info.Visible = true
-	S.NotesToken = (S.NotesToken or 0) + 1
-	local mine = S.NotesToken
-	local order = 1
-	local function add(text, color)
-		order = order + 1
-		makeText(U.Details, "Note" .. order, text, "Body", 18, color or MUTED, {
-			Size = UDim2.new(1, 0, 0, 0),
-			AutomaticSize = Enum.AutomaticSize.Y,
-			TextWrapped = true,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			LayoutOrder = order,
-		})
+	local geo = S.Geo.Pills
+	local used = {}
+	if geo then
+		local size = geo.Text
+		local rows, row, rowW = {}, {}, 0
+		local function widthOf(text, s)
+			return math.ceil(H.boxW(text, s, Theme.Fonts.Heading) + 2 * geo.Pad)
+		end
+		-- PC: one row; the text steps down to its floor before a pill drops
+		if geo.Center and geo.MaxH < 2 * geo.H then
+			local total
+			repeat
+				total = 0
+				for i, p in ipairs(list) do
+					total = total + widthOf(p[2], size) + (i > 1 and geo.Gap or 0)
+				end
+				if total > geo.W and size > geo.Min then
+					size = size - 1
+				end
+			until total <= geo.W or size <= geo.Min
+		end
+		for _, p in ipairs(list) do
+			local w = math.min(widthOf(p[2], size), geo.W)
+			if #row > 0 and rowW + geo.Gap + w > geo.W then
+				rows[#rows + 1] = { Items = row, W = rowW }
+				row, rowW = {}, 0
+			end
+			row[#row + 1] = { P = p, W = w }
+			rowW = rowW + (#row > 1 and geo.Gap or 0) + w
+		end
+		if #row > 0 then
+			rows[#rows + 1] = { Items = row, W = rowW }
+		end
+		local y = geo.Y
+		for _, r in ipairs(rows) do
+			if y - geo.Y + geo.H > geo.MaxH + 0.5 then
+				break
+			end
+			local x = geo.Center and (geo.X + (geo.W - r.W) / 2) or geo.X
+			for _, it in ipairs(r.Items) do
+				local pill = U.PillList[it.P[1]]
+				if not pill then
+					pill = label(U.Pills, it.P[1], "Heading", 20, { ZIndex = 11, BackgroundTransparency = 0, TextTruncate = Enum.TextTruncate.None })
+					Theme.Corner(pill, UDim.new(0.5, 0))
+					Theme.Stroke(pill, C.Navy, 2, 0)
+					U.PillList[it.P[1]] = pill
+				end
+				pill.Text = it.P[2]
+				pill.TextSize = size
+				pill.BackgroundColor3 = it.P[3]
+				place(pill, x - geo.X, y - geo.Y, it.W, geo.H)
+				used[it.P[1]] = true
+				x = x + it.W + geo.Gap
+			end
+			y = y + geo.H + geo.Gap
+		end
+		place(U.Pills, geo.X, geo.Y, geo.W, math.max(geo.H, y - geo.Y - geo.Gap))
 	end
+	for name, pill in pairs(U.PillList) do
+		pill.Visible = used[name] == true
+	end
+	return used
+end
+
+-- the note's lines, most important first: the reason, the copies taken off, the machine too far
+function H.noteLines(plan)
 	local lines = {}
-	if plan.Reason and not plan.Empty then
-		lines[#lines + 1] = { Text = plan.Reason, Short = plan.ReasonShort, Color = BAD }
+	if plan.Reason and not plan.Empty and not plan.Locked then
+		lines[#lines + 1] = { Text = plan.Reason, Short = plan.ReasonShort, Color = C.Bad }
 	end
 	for _, note in ipairs(plan.Notes or {}) do
 		lines[#lines + 1] = note
 	end
 	if plan.Ok and not S.MachineNear then
-		lines[#lines + 1] = { Text = "Walk up to your Fusion Machine to fuse", Color = WARN }
+		lines[#lines + 1] = { Text = "Walk up to your Fusion Machine to fuse", Short = "Walk up to your machine", Color = C.Warn }
 	end
-	if S.Short or (S.Tall and #lines > 0) then
-		-- one line only: the most important note replaces the summary / explanation
-		local first = lines[1]
-		if first then
-			U.Info.Text = ((S.Short or S.PreviewMode == "Tight") and first.Short) or first.Text
-			U.Info.TextColor3 = first.Color or MUTED
-		end
+	return lines
+end
+
+function H.explain(plan)
+	if plan.Tier == "Golden" then
+		return { Text = H.copies() .. " copies become 1 Golden copy: x1.5 power and a gold shine.", Short = H.copies() .. " copies make 1 Golden: x1.5 power", Color = C.Muted }
+	elseif plan.Tier == "Rainbow" then
+		return { Text = H.copies() .. " Golden copies become 1 Rainbow copy: x2.5 power and a rainbow shimmer.", Short = H.copies() .. " Golden make 1 Rainbow: x2.5 power", Color = C.Muted }
+	end
+	return { Text = "Pick a pet with " .. H.copies() .. " copies to fuse it into its next finish.", Short = "Pick a pet with " .. H.copies() .. " copies", Color = C.Muted }
+end
+
+function H.paintLine(lbl, geo, line)
+	if not (geo and line) then
+		lbl.Text = ""
 		return
 	end
-	for _, line in ipairs(lines) do
-		add(line.Text, line.Color)
+	lbl.TextColor3 = line.Color or C.Muted
+	local texts = { line.Text }
+	if line.Short and line.Short ~= line.Text then
+		texts[2] = line.Short
 	end
-	-- when the explanation and the notes do not both fit (smaller screens, long names), the notes win: the general
-	-- explanation steps aside instead of a warning being clipped at the bottom
-	if #lines > 0 then
-		local function fit()
-			-- (a newer refresh owns the details now; the one-line layouts never hide their only line)
-			if S.NotesToken ~= mine or S.Short or S.Tall or not U.Details or not U.Info.Parent then
-				return
-			end
-			U.Info.Visible = true
-			-- the stacked height of the lines (their absolute sizes plus the list padding)
-			local scale = (U.Fit and U.Fit.Scale) or 1
-			local used, n = 0, 0
-			for _, child in ipairs(U.Details:GetChildren()) do
-				if child:IsA("GuiObject") and child.Visible then
-					used = used + child.AbsoluteSize.Y
-					n = n + 1
-				end
-			end
-			used = used + math.max(0, n - 1) * 6 * scale
-			local room = U.Details.AbsoluteSize.Y
-			if room > 0 and used > room + 1 then
-				U.Info.Visible = false
-			end
+	H.fitLines(lbl, texts, geo[1], geo[2], geo[3], geo[4])
+end
+
+function H.paintNotes(plan)
+	local mix = S.Tab == "Mix"
+	local lines = H.noteLines(plan)
+	local first = lines[1]
+	if first and lines[2] and S.Mode ~= "Phone" then
+		-- (PC: two notes share the line when they fit)
+		first = { Text = first.Text .. "  " .. lines[2].Text, Short = first.Text, Color = first.Color }
+	end
+	if mix then
+		U.Note.Visible = first ~= nil
+		H.paintLine(U.Note, S.Geo.Note, first)
+		local phoneLike = S.Mode == "Phone"
+		U.Info.Visible = not (phoneLike and first ~= nil)
+		H.paintLine(U.Info, S.Geo.Info, { Text = phoneLike and TEXTS.InfoPhone or TEXTS.InfoPC, Short = TEXTS.InfoPhone, Color = C.Muted })
+	else
+		U.Note.Visible = true
+		H.paintLine(U.Note, S.Geo.Note, first or H.explain(plan))
+	end
+	if U.Tip.Visible then
+		local tip
+		if S.Mode ~= "Phone" then
+			tip = mix and TEXTS.TipMix or string.format(TEXTS.TipUpgrade, H.copies())
+		else
+			tip = string.format(TEXTS.TipPhone, H.copies(), H.copies())
 		end
-		fit()
-		task.defer(fit)
+		H.paintLine(U.Tip, S.Geo.Tip, { Text = tip, Color = C.Muted })
 	end
 end
 
-local function renderPills(plan)
-	for _, child in ipairs(U.Pills:GetChildren()) do
-		if child:IsA("TextLabel") then
-			child:Destroy()
+function H.paintCost(plan)
+	local cost = plan.Cost
+	local currency = cost and cost.Currency or "Tokens"
+	local info = (currency == "Gems") and GEM_INFO or TOKEN_INFO
+	if U.IconCurrency ~= currency or U.IconPx ~= S.Geo.IconPx then
+		U.IconCurrency, U.IconPx = currency, S.Geo.IconPx
+		for _, c in ipairs(U.CostIcon:GetChildren()) do
+			c:Destroy()
+		end
+		local ok, icon = pcall(NeonKit.Icon, U.CostIcon, currency, S.Geo.IconPx or 40)
+		if ok and icon then
+			icon.ZIndex = 6
 		end
 	end
-	if not plan.ResultDef then
-		return
+	if cost then
+		U.Cost.Text = H.commas(cost.Amount)
+		U.Cost.TextColor3 = (plan.CanAfford == false) and C.Bad or (info.Color or C.Gold)
+	else
+		U.Cost.Text = "-"
+		U.Cost.TextColor3 = C.Muted
 	end
-	if plan.Rarity then
-		pill(U.Pills, "Rarity", tostring(plan.Rarity), rarityAccent(plan.Rarity), 1)
+	local have = H.balance(currency)
+	local word = (currency == "Gems") and "Gems" or "Cloud Tokens"
+	local short = cost and have < cost.Amount
+	U.Have.TextColor3 = short and C.Bad or C.Muted
+	local geo = S.Geo.Have
+	if geo and U.Have.Visible then
+		H.fit(U.Have, { "You have " .. H.commas(have) .. " " .. word, "You have " .. H.short(have) }, geo[1], geo[3], geo[4])
 	end
-	if plan.Tier and plan.Tier ~= "Normal" then
-		pill(U.Pills, "Tier", plan.Tier, TIER_COLORS[plan.Tier] or ACCENT, 2)
-	end
-	local elements = plan.Elements
-	if not elements and type(plan.ResultDef) == "table" then
-		elements = plan.ResultDef.Elements or { plan.ResultDef.Element }
-	end
-	for i, e in ipairs(elements or {}) do
-		local info = Config.Elements and Config.Elements.Info and Config.Elements.Info[e]
-		if info then
-			pill(U.Pills, "Element" .. i, e, info.Color, 2 + i)
+end
+
+function H.canFuse(plan)
+	return plan.Ok == true and S.MachineNear and not S.Pending and not S.Animating
+end
+
+function H.paintFuse(plan)
+	local can = H.canFuse(plan)
+	U.Fuse:SetAttribute("Disabled", not can)
+	U.Fuse.Text = S.Pending and "Fusing..." or "FUSE!"
+	U.Swap:SetAttribute("Disabled", not (S.MixA and S.MixB) or S.Pending ~= nil or S.Animating)
+	local glow = U.Fuse:FindFirstChild("Glow")
+	local gs = glow and glow:FindFirstChild("GlowStroke")
+	if gs then
+		if can and not S.Fx.Fuse then
+			S.Fx.Fuse = TweenService:Create(gs, TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Transparency = 0.15 })
+			S.Fx.Fuse:Play()
+		elseif not can and S.Fx.Fuse then
+			S.Fx.Fuse:Cancel()
+			S.Fx.Fuse = nil
+			gs.Transparency = NeonKit.Metrics.GlowTransparency
 		end
 	end
 end
 
--- "Legendary  Frost + Flame" (the compact layout shows this line instead of the pills)
-local function summaryText(plan)
-	local parts = {}
-	if plan.Rarity then
-		parts[#parts + 1] = tostring(plan.Rarity)
-	end
-	if plan.Tier and plan.Tier ~= "Normal" then
-		parts[#parts + 1] = plan.Tier
-	end
-	local elements = plan.Elements
-	if not elements and type(plan.ResultDef) == "table" then
-		elements = plan.ResultDef.Elements or { plan.ResultDef.Element }
-	end
-	if elements and #elements > 0 then
-		parts[#parts + 1] = table.concat(elements, " + ")
-	end
-	return table.concat(parts, "  |  ")
-end
-
-local function infoText(plan)
-	-- (the compact previews have one line here: the pills' summary when they are hidden, else a short hint)
-	if S.Short or S.PreviewMode == "Tight" then
-		if plan.ResultDef and not U.Pills.Visible then
-			return summaryText(plan)
-		end
-		return (S.Tab == "Upgrade") and "3 copies fuse into the next finish" or "Two different pets make a new hybrid"
-	end
-	if S.Tab == "Upgrade" then
-		if plan.Tier == "Golden" then
-			return "3 copies become 1 Golden copy: stats and perks x1.5 and a gold shine."
-		elseif plan.Tier == "Rainbow" then
-			return "3 Golden copies become 1 Rainbow copy: stats and perks x2.5 and a rainbow shimmer."
-		end
-		return "3 copies of a pet fuse into its next finish: Golden (x1.5), then Rainbow (x2.5)."
-	end
-	if plan.ResultDef then
-		return "Body gives the shape, Style the colours and wings. Stats: average x1.2. Every hybrid is unique!"
-	end
-	return "Mix two different pets into a brand-new hybrid with both elements."
-end
-
-local function renderPreview(plan)
-	U.PreviewTitle.Text = (S.Tab == "Upgrade") and (G.Up .. " Upgrade") or (G.Dna .. " Mix")
-	-- inputs
-	local inputs = {}
-	if S.Tab == "Upgrade" then
-		local def = S.UpKey and defOf(S.UpKey) or nil
-		local have = S.UpKey and owned(S.UpKey) or 0
-		for i = 1, 3 do
-			inputs[i] = (def and i <= math.max(1, math.min(have, 3))) and def or nil
-		end
-		U.InCount.Visible = def ~= nil
-		U.InCount.Text = math.min(have, copiesNeeded()) .. "/" .. copiesNeeded()
-		U.InCount.BackgroundColor3 = (have >= copiesNeeded()) and Theme.Darken(GOOD, 0.3) or Theme.Darken(BAD, 0.2)
+function H.paint(plan)
+	local mix = S.Tab == "Mix"
+	if mix then
+		H.paintCard(U.Slots.Body, S.MixA, "BODY")
+		H.paintCard(U.Slots.Style, S.MixB, "STYLE")
 	else
-		inputs[1] = S.MixA and defOf(S.MixA) or nil
-		inputs[2] = S.MixB and defOf(S.MixB) or nil
-		U.InCount.Visible = false
+		H.paintStack(plan)
 	end
-	local function stageOf(key)
-		return (key and type(State.PetStage) == "function" and tonumber(State.PetStage(key))) or 0
-	end
-	local inStage = {}
-	if S.Tab == "Upgrade" then
-		inStage = { stageOf(S.UpKey), stageOf(S.UpKey), stageOf(S.UpKey) }
-	else
-		inStage = { stageOf(S.MixA), stageOf(S.MixB) }
-	end
-	for i, slot in ipairs(U.InSlots) do
-		setSlotPet(slot, inputs[i], (S.Tab == "Upgrade" and i ~= 2) and "Low" or "High", inStage[i])
-	end
-	-- result: the stage the fusion keeps (an Upgrade carries the copy's stage; a new Mix starts plain)
-	if not S.Animating then
-		local keep = 0
-		if S.Tab == "Upgrade" and plan.ResultKey then
-			keep = math.max(stageOf(S.UpKey), stageOf(plan.ResultKey))
-		end
-		setSlotPet(U.ResultSlot, plan.ResultDef, "High", keep)
-		U.ResultSlot.Stroke.Color = plan.Rarity and rarityAccent(plan.Rarity) or NAVY
-	end
-	U.ResultName.Text = plan.ResultName or ((S.Tab == "Upgrade") and "Pick a pet" or "Pick two pets")
-	U.ResultName.TextColor3 = plan.ResultDef and ((S.Short or not U.Pills.Visible) and plan.Rarity and Theme.Lighten(rarityAccent(plan.Rarity), 0.35) or WHITE) or MUTED
-	renderPills(plan)
-	U.Info.Text = infoText(plan)
-	U.Info.TextColor3 = MUTED
-	setNotes(plan)
-	-- cost
-	if plan.Cost then
-		local info = (plan.Cost.Currency == "Gems") and GEM_INFO or TOKEN_INFO
-		U.Cost.Text = (S.CostOnly and "" or "Cost: ") .. tostring(info.Glyph) .. " " .. commas(plan.Cost.Amount)
-		U.Cost.TextColor3 = (plan.CanAfford == false) and BAD or (info.Color or GOLD)
-	else
-		U.Cost.Text = "Cost: -"
-		U.Cost.TextColor3 = MUTED
-	end
-	local can = plan.Ok and S.MachineNear and not S.Pending and not S.Animating
-	CloudUI.SetDisabled(U.FuseButton, not can)
-	if S.Pending then
-		U.FuseButton.Text = "Fusing..."
-	else
-		U.FuseButton.Text = G.Sparkle .. " FUSE"
-	end
+	H.paintResult(plan)
+	H.paintPills(plan)
+	H.paintNotes(plan)
+	H.paintCost(plan)
+	H.paintFuse(plan)
 	U.Locked.Visible = plan.Locked == true
 	if plan.Locked then
 		U.LockedText.Text = plan.Reason or ""
 	end
 end
 
-local function renderTop()
-	U.TokenChip.Text = tostring(TOKEN_INFO.Glyph) .. " " .. Theme.ShortNumber(balance("Tokens"))
-	U.GemChip.Text = tostring(GEM_INFO.Glyph) .. " " .. Theme.ShortNumber(balance("Gems"))
-	for name, button in pairs(U.Tabs) do
-		local on = name == S.Tab
-		CloudUI.SetStyle(button, on and "Pink" or "Blue")
-		local scale = button:FindFirstChild("TabScale")
-		if scale then
-			scale.Scale = on and 1 or 0.94
+-- the result's glow pulse and bob while the window is open (one tween each)
+function H.startFx()
+	H.stopFx()
+	local gs = U.Result.Card.GlowStroke
+	if gs then
+		S.Fx.Glow = TweenService:Create(gs, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Transparency = 0.2 })
+		S.Fx.Glow:Play()
+	end
+	U.Result.Bob.Position = UDim2.fromOffset(0, -4)
+	S.Fx.Bob = TweenService:Create(U.Result.Bob, TweenInfo.new(1.1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Position = UDim2.fromOffset(0, 4) })
+	S.Fx.Bob:Play()
+	U.Shimmer.Rotation = 0
+	S.Fx.Shimmer = TweenService:Create(U.Shimmer, TweenInfo.new(2.4, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1), { Rotation = 360 })
+	S.Fx.Shimmer:Play()
+end
+
+function H.stopFx()
+	for key, tw in pairs(S.Fx) do
+		pcall(function()
+			tw:Cancel()
+		end)
+		S.Fx[key] = nil
+	end
+end
+
+----------------------------------------------------------------------
+-- The picker sheet (UI/PetPicker: Upgrade / Mix contexts)
+----------------------------------------------------------------------
+-- every owned key of `key`'s species (any finish) -> word
+function H.speciesBlocked(key, word)
+	local parsed = key and H.parse(key)
+	if not parsed or not parsed.PetId then
+		return nil
+	end
+	local ok, keys = pcall(State.Keys)
+	local out = {}
+	for _, k in ipairs((ok and type(keys) == "table") and keys or {}) do
+		local p = H.parse(k)
+		if p and p.PetId == parsed.PetId and not p.HybridId then
+			out[k] = word
+		end
+	end
+	return out
+end
+
+-- which = "Upgrade" | "Body" | "Style"; chain = after a pick, open the other Mix slot's sheet once when it is still empty
+function H.openSheet(which, chain)
+	if not S.Open or H.inMatch() or S.Pending or S.Animating or not H.unlocked() then
+		return false
+	end
+	local ctx = (which == "Upgrade") and "Upgrade" or "Mix"
+	local okEntries, entries = pcall(PetPicker.Entries, ctx)
+	if not okEntries or type(entries) ~= "table" or #entries == 0 then
+		return false
+	end
+	S.SheetToken = S.SheetToken + 1
+	local mine = S.SheetToken
+	local spec = { Context = ctx }
+	if which == "Upgrade" then
+		spec.Title, spec.Selected = "Pick a pet to upgrade", S.UpKey
+	elseif which == "Body" then
+		spec.Title, spec.Selected = "Pick the Body pet", S.MixA
+		spec.Blocked = H.speciesBlocked(S.MixB, "In Style")
+	else
+		spec.Title, spec.Selected = "Pick the Style pet", S.MixB
+		spec.Blocked = H.speciesBlocked(S.MixA, "In Body")
+	end
+	spec.OnPick = function(key)
+		if S.Open then
+			H.onPick(which, key, chain)
+		end
+	end
+	spec.OnClose = function()
+		if S.SheetToken == mine then
+			S.Sheet = false
+			H.syncBack()
+		end
+	end
+	local ok = PetPicker.Open(spec)
+	S.Sheet = ok == true
+	H.syncBack()
+	return S.Sheet
+end
+
+function H.closeSheet()
+	if S.Sheet then
+		S.Sheet = false
+		S.SheetToken = S.SheetToken + 1
+		safe("sheet close", PetPicker.Close)
+	end
+end
+
+function H.onPick(which, key, chain)
+	if which == "Upgrade" then
+		S.UpKey = key
+	elseif which == "Body" then
+		S.MixA = key
+	else
+		S.MixB = key
+	end
+	safe("refresh", H.refresh)
+	if chain and which ~= "Upgrade" then
+		local other = (which == "Body") and "Style" or "Body"
+		if (other == "Body" and not S.MixA) or (other == "Style" and not S.MixB) then
+			H.openSheet(other, false)
 		end
 	end
 end
 
-refresh = function()
-	if not S.Built then
+-- a tap on the Stack (Upgrade) or a slot (Body / Style)
+function H.tapSheet(which)
+	if S.Pending or S.Animating then
 		return
 	end
-	-- drop selections the player no longer owns (fused away, traded...)
-	if S.UpKey and owned(S.UpKey) < 1 then
-		S.UpKey = nil
+	H.openSheet(which, which ~= "Upgrade")
+end
+
+-- no pet picked: the sheet opens by itself (Upgrade; Mix: the first empty slot, Body first)
+function H.autoSheet()
+	if not S.Open or S.Sheet or PetPicker.IsOpen() or S.Pending or S.Animating then
+		return
 	end
-	if S.MixA and owned(S.MixA) < 1 then
-		S.MixA = nil
+	if S.Tab == "Upgrade" then
+		if not S.UpKey then
+			H.openSheet("Upgrade", false)
+		end
+	elseif not S.MixA then
+		H.openSheet("Body", true)
+	elseif not S.MixB then
+		H.openSheet("Style", true)
 	end
-	if S.MixB and owned(S.MixB) < 1 then
-		S.MixB = nil
+end
+
+----------------------------------------------------------------------
+-- Buttons
+----------------------------------------------------------------------
+function H.hint(text, seconds)
+	if not (U.Hint and S.Open) then
+		return
 	end
-	local machine = S.AtMachine or myMachine()
-	S.MachineNear = machine ~= nil and distanceTo(machine) <= K.NEAR_RANGE
-	if not machine and not myMachine() then
-		-- no machine in the world to stand at (homes not built yet): the server decides
-		S.MachineNear = true
+	S.HintToken = S.HintToken + 1
+	local mine = S.HintToken
+	U.Hint.Text = tostring(text)
+	U.Hint.Visible = true
+	task.delay(seconds or K.HINT_SECONDS, function()
+		if S.HintToken == mine and U.Hint then
+			U.Hint.Visible = false
+		end
+	end)
+end
+
+function H.onFuseTap()
+	if not S.Open or S.Pending or S.Animating then
+		return
 	end
-	renderTop()
-	refreshTiles()
-	layoutPreview()
-	local plan = computePlan()
-	S.Plan = plan
-	renderPreview(plan)
+	local plan = S.Plan or H.computePlan()
+	if H.canFuse(plan) then
+		FusionController.Fuse()
+		return
+	end
+	local lines = H.noteLines(plan)
+	if lines[1] then
+		H.hint(lines[1].Text)
+	elseif plan.Empty or plan.Reason then
+		H.hint(plan.Reason or "Pick a pet first")
+	end
+end
+
+function H.onSwap()
+	if S.Pending or S.Animating or not S.Open then
+		return
+	end
+	if not (S.MixA and S.MixB) then
+		H.hint("Pick both pets first")
+		return
+	end
+	S.MixA, S.MixB = S.MixB, S.MixA
+	H.refresh()
+end
+
+function H.setTab(tab)
+	if tab ~= "Upgrade" and tab ~= "Mix" then
+		return
+	end
+	if S.Pending or S.Animating then
+		return
+	end
+	local changed = S.Tab ~= tab
+	S.Tab = tab
+	if changed then
+		H.closeSheet()
+		H.layout()
+	end
+	H.autoSheet()
 end
 
 ----------------------------------------------------------------------
 -- Fusing + the fusion animation
 ----------------------------------------------------------------------
-local function burst(parent, color, amount, centre)
+function H.burst(parent, color, amount, centre)
 	local rng = Random.new()
 	for i = 1, amount do
 		local size = rng:NextInteger(9, 16)
 		local pieceColor = color
 		if i % 3 == 0 then
-			pieceColor = GOLD
+			pieceColor = C.Gold
 		elseif i % 3 == 1 then
 			pieceColor = Theme.Lighten(color, 0.5)
 		end
-		local piece = makeFrame(parent, "Confetti", {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = centre,
-			Size = UDim2.fromOffset(size, size),
-			BackgroundTransparency = 0,
-			BackgroundColor3 = pieceColor,
-			Rotation = rng:NextInteger(0, 90),
-			ZIndex = 12,
+		local piece = Util.Create("Frame", {
+			Name = "Confetti", AnchorPoint = Vector2.new(0.5, 0.5), Position = centre, Size = UDim2.fromOffset(size, size), BackgroundTransparency = 0,
+			BackgroundColor3 = pieceColor, BorderSizePixel = 0, Rotation = rng:NextInteger(0, 90), ZIndex = 24, Parent = parent,
 		})
-		corner(piece, 2)
+		Theme.Corner(piece, UDim.new(0, 2))
 		local angle = rng:NextNumber(0, math.pi * 2)
 		local distance = rng:NextNumber(70, 190)
 		local target = UDim2.new(centre.X.Scale, centre.X.Offset + math.cos(angle) * distance, centre.Y.Scale, centre.Y.Offset + math.sin(angle) * distance * 0.7 - 20)
 		local seconds = rng:NextNumber(0.6, 1.1)
-		tween(piece, seconds, { Position = target, Rotation = piece.Rotation + rng:NextInteger(-200, 200) })
-		tween(piece, seconds, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		Util.Tween(piece, seconds, { Position = target, Rotation = piece.Rotation + rng:NextInteger(-200, 200) })
+		Util.Tween(piece, seconds, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 		Debris:AddItem(piece, seconds + 0.1)
 	end
 end
 
 -- glowing cubes bursting out of the machine's output pod (client-only parts)
-local function machineBurst(color)
-	local machine = S.AtMachine or myMachine()
-	local at = outputPoint(machine)
+function H.machineBurst(color)
+	local at = H.outputPoint(S.AtMachine or H.myMachine())
 	if not at then
 		return
 	end
 	local folder = workspace:FindFirstChild("ClientFx") or workspace
 	local rng = Random.new()
-	for i = 1, 10 do
-		local part = Instance.new("Part")
-		part.Name = "FusionSpark"
-		part.Anchored = true
-		part.CanCollide = false
-		part.CanTouch = false
-		part.CanQuery = false
-		part.CastShadow = false
-		part.Material = Enum.Material.Neon
-		part.Color = (i % 3 == 0) and GOLD or ((i % 3 == 1) and color or Theme.Lighten(color, 0.5))
-		part.Size = Vector3.new(0.4, 0.4, 0.4)
-		part.CFrame = CFrame.new(at)
-		part.Parent = folder
-		local dir = Vector3.new(rng:NextNumber(-1, 1), rng:NextNumber(0.6, 1.6), rng:NextNumber(-1, 1)).Unit
-		tween(part, 0.8, { CFrame = CFrame.new(at + dir * rng:NextNumber(3, 6)) * CFrame.Angles(rng:NextNumber(0, 3), rng:NextNumber(0, 3), 0), Transparency = 1, Size = Vector3.new(0.1, 0.1, 0.1) })
-		Debris:AddItem(part, 0.9)
+	local function part(name, size, partColor)
+		local p = Instance.new("Part")
+		p.Name = name
+		p.Anchored = true
+		p.CanCollide = false
+		p.CanTouch = false
+		p.CanQuery = false
+		p.CastShadow = false
+		p.Material = Enum.Material.Neon
+		p.Color = partColor
+		p.Size = size
+		p.CFrame = CFrame.new(at)
+		p.Parent = folder
+		return p
 	end
-	local flash = Instance.new("Part")
-	flash.Name = "FusionFlash"
-	flash.Anchored = true
-	flash.CanCollide = false
-	flash.CanTouch = false
-	flash.CanQuery = false
-	flash.CastShadow = false
+	for i = 1, 10 do
+		local p = part("FusionSpark", Vector3.new(0.4, 0.4, 0.4), (i % 3 == 0) and C.Gold or ((i % 3 == 1) and color or Theme.Lighten(color, 0.5)))
+		local dir = Vector3.new(rng:NextNumber(-1, 1), rng:NextNumber(0.6, 1.6), rng:NextNumber(-1, 1)).Unit
+		Util.Tween(p, 0.8, { CFrame = CFrame.new(at + dir * rng:NextNumber(3, 6)) * CFrame.Angles(rng:NextNumber(0, 3), rng:NextNumber(0, 3), 0), Transparency = 1, Size = Vector3.new(0.1, 0.1, 0.1) })
+		Debris:AddItem(p, 0.9)
+	end
+	local flash = part("FusionFlash", Vector3.new(1, 1, 1), Theme.Lighten(color, 0.4))
 	flash.Shape = Enum.PartType.Ball
-	flash.Material = Enum.Material.Neon
-	flash.Color = Theme.Lighten(color, 0.4)
-	flash.Size = Vector3.new(1, 1, 1)
 	flash.Transparency = 0.2
-	flash.CFrame = CFrame.new(at)
-	flash.Parent = folder
 	local light = Instance.new("PointLight")
 	light.Color = color
 	light.Range = 14
 	light.Brightness = 2
 	light.Parent = flash
-	tween(flash, 0.5, { Size = Vector3.new(5, 5, 5), Transparency = 1 })
-	tween(light, 0.5, { Brightness = 0 })
+	Util.Tween(flash, 0.5, { Size = Vector3.new(5, 5, 5), Transparency = 1 })
+	Util.Tween(light, 0.5, { Brightness = 0 })
 	Debris:AddItem(flash, 0.6)
 end
 
-local function slotCentre(slot)
-	return slot.Frame.Position
-end
-
-local function playFusion(resultKey, rarity)
-	S.Animating = true
-	local mine = S.Token
-	local color = rarity and rarityAccent(rarity) or ACCENT
-	local target = slotCentre(U.ResultSlot)
-	-- 1) the inputs fly into the machine (the result slot), spinning and shrinking
-	local starts = {}
-	for i, slot in ipairs(U.InSlots) do
-		if slot.Frame.Visible then
-			starts[i] = { Position = slot.Frame.Position, Rotation = slot.Frame.Rotation }
-			tween(slot.Frame, 0.45, { Position = target, Rotation = slot.Frame.Rotation + 180 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-			tween(slot.Scale, 0.45, { Scale = 0.2 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+-- the flyers of the current tab (the stack's copies or the two slots), in body px
+function H.flyers()
+	local out = {}
+	if S.Tab == "Mix" then
+		for _, item in ipairs({ U.Slots.Body, U.Slots.Style }) do
+			out[#out + 1] = { Item = item, Off = Vector2.new(0, 0) }
+		end
+	else
+		local o = U.Stack.Position
+		for i, item in ipairs(U.Copies) do
+			if not item.Dim.Visible or i == 3 then
+				out[#out + 1] = { Item = item, Off = Vector2.new(o.X.Offset, o.Y.Offset) }
+			end
 		end
 	end
-	tween(U.ResultSlot.Scale, 0.45, { Scale = 0.7 })
+	return out
+end
+
+function H.playFusion(resultKey, rarity)
+	S.Animating = true
+	local mine = S.Token
+	local color = rarity and H.rarityColor(rarity) or C.Violet
+	local rp, rs = U.Result.Root.Position, U.Result.Root.Size
+	local centre = Vector2.new(rp.X.Offset + rs.X.Offset / 2, rp.Y.Offset + rs.Y.Offset / 2)
+	-- 1) the inputs fly into the result, spinning and shrinking
+	for _, f in ipairs(H.flyers()) do
+		local root = f.Item.Root
+		local size = root.Size
+		local target = centre - f.Off - Vector2.new(size.X.Offset / 2, size.Y.Offset / 2)
+		Util.Tween(root, 0.45, { Position = UDim2.fromOffset(target.X, target.Y), Rotation = root.Rotation + 180 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		Util.Tween(f.Item.Pop, 0.45, { Scale = 0.2 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	end
+	Util.Tween(U.Result.Pop, 0.45, { Scale = 0.7 })
 	task.delay(0.45, function()
 		if S.Token ~= mine then
 			return
 		end
 		-- 2) a flash and a burst
-		U.Flash.Position = target
+		local at = UDim2.fromOffset(centre.X, centre.Y)
+		U.Flash.Position = at
 		U.Flash.Size = UDim2.fromOffset(40, 40)
 		U.Flash.BackgroundTransparency = 0.1
 		U.Flash.BackgroundColor3 = Theme.Lighten(color, 0.6)
 		U.Flash.Visible = true
-		tween(U.Flash, 0.35, { Size = UDim2.fromOffset(300, 300), BackgroundTransparency = 1 })
-		burst(U.SlotRow, color, 26, target)
-		safe("machine fx", machineBurst, color)
-		for i, slot in ipairs(U.InSlots) do
-			if starts[i] then
-				slot.Frame.Visible = false
-			end
+		Util.Tween(U.Flash, 0.35, { Size = UDim2.fromOffset(300, 300), BackgroundTransparency = 1 })
+		H.burst(U.Body, color, 26, at)
+		safe("machine fx", H.machineBurst, color)
+		for _, f in ipairs(H.flyers()) do
+			f.Item.Root.Visible = false
 		end
 		-- 3) the new pet pops in
-		local def = defOf(resultKey)
+		local def = H.def(resultKey)
 		if def then
-			setSlotPet(U.ResultSlot, def, "High", (type(State.PetStage) == "function" and tonumber(State.PetStage(resultKey))) or 0)
+			H.setView(U.Result.View, def, resultKey, H.stage(resultKey), "High")
+			H.cardName(U.Result, H.nameOf(def, resultKey), C.White)
+			U.Result.Placeholder.Visible = false
 		end
-		U.ResultSlot.Scale.Scale = 0.4
-		tween(U.ResultSlot.Scale, 0.35, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-		U.ResultSlot.Stroke.Color = color
+		U.Result.Pop.Scale = 0.4
+		Util.Tween(U.Result.Pop, 0.35, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+		U.Result.Card.SetColor(color)
 		U.NewTag.Visible = true
 		U.NewTag.Rotation = -8
-		U.NewTag.Position = UDim2.new(target.X.Scale, target.X.Offset + 50, 0, target.Y.Offset - 70)
-		if def then
-			U.ResultName.Text = nameOf(def, resultKey)
-		end
+		local tagW, tagH = 92, 38
+		place(U.NewTag, rp.X.Offset + rs.X.Offset - tagW + 10, rp.Y.Offset - 10, tagW, tagH)
 		task.delay(1.6, function()
 			if S.Token ~= mine then
 				return
 			end
 			-- 4) back to picking
-			for i, slot in ipairs(U.InSlots) do
-				if starts[i] then
-					slot.Frame.Position = starts[i].Position
-					slot.Frame.Rotation = starts[i].Rotation
-					slot.Scale.Scale = 1
-					slot.Frame.Visible = true
-				end
-			end
-			U.Flash.Visible = false
-			U.NewTag.Visible = false
-			S.Animating = false
-			refresh()
+			H.resetAnimation()
+			H.layout()
 		end)
 	end)
 end
 
-local function resetAnimation()
+function H.resetAnimation()
 	S.Animating = false
 	if not S.Built then
 		return
 	end
-	for _, slot in ipairs(U.InSlots) do
-		slot.Scale.Scale = 1
+	for _, item in ipairs(U.Copies) do
+		item.Pop.Scale = 1
+		item.Root.Visible = true
 	end
-	U.ResultSlot.Scale.Scale = 1
+	for _, item in pairs(U.Slots) do
+		item.Pop.Scale = 1
+		item.Root.Visible = true
+	end
+	U.Result.Pop.Scale = 1
 	U.Flash.Visible = false
 	U.NewTag.Visible = false
 end
 
-local fusionRemote = nil
-local function getRemote()
-	if fusionRemote then
-		return fusionRemote
+function H.remote()
+	if S.Remote then
+		return S.Remote
 	end
 	local folder = ReplicatedStorage:FindFirstChild("Remotes")
 	local remote = folder and folder:FindFirstChild("Fusion")
 	if remote and remote:IsA("RemoteEvent") then
-		fusionRemote = remote
+		S.Remote = remote
 	end
-	return fusionRemote
+	return S.Remote
 end
 
-function FusionController.Fuse()
-	if not S.Open or S.Pending or S.Animating then
-		return false
-	end
-	local plan = computePlan()
-	S.Plan = plan
-	if not plan.Ok or not S.MachineNear then
-		refresh()
-		return false
-	end
-	local remote = getRemote()
-	if not remote then
-		warnOnce("remote", "the Fusion remote is missing")
-		return false
-	end
-	S.FuseToken = S.FuseToken + 1
-	local token = S.FuseToken
-	S.Pending = { Action = plan.Action, Token = token, At = os.clock(), Inputs = plan.Inputs }
-	if plan.Action == "Upgrade" then
-		remote:FireServer("Upgrade", S.UpKey)
-	else
-		remote:FireServer("Mix", S.MixA, S.MixB)
-	end
-	-- the inputs glow while the machine works
-	for _, slot in ipairs(U.InSlots) do
-		if slot.Frame.Visible then
-			slot.Stroke.Color = GOLD
-		end
-	end
-	refresh()
-	task.delay(K.FUSE_TIMEOUT, function()
-		if S.Pending and S.Pending.Token == token then
-			S.Pending = nil
-			refresh()
-		end
-	end)
-	return true
-end
-
-local function onResult(payload)
+function H.onResult(payload)
 	if type(payload) ~= "table" then
 		return
 	end
@@ -1769,7 +2192,7 @@ local function onResult(payload)
 			return
 		end
 		-- the inputs are gone: start the next pick from the new pet when it can go on
-		local parsed = parse(key)
+		local parsed = H.parse(key)
 		if S.Tab == "Upgrade" then
 			S.UpKey = (parsed and NEXT_TIER[parsed.Tier]) and key or nil
 		else
@@ -1777,17 +2200,17 @@ local function onResult(payload)
 		end
 		local function play()
 			if S.Open and S.Built then
-				playFusion(key, payload.Rarity)
+				H.playFusion(key, payload.Rarity)
 			end
 		end
-		if defOf(key) then
+		if H.def(key) then
 			play()
 		else
 			-- the profile snapshot with the new pet may land a moment after the answer
 			local conn
 			local done = false
 			conn = State.Changed:Connect(function()
-				if not done and defOf(key) then
+				if not done and H.def(key) then
 					done = true
 					conn:Disconnect()
 					play()
@@ -1801,389 +2224,76 @@ local function onResult(payload)
 				end
 			end)
 		end
-	else
-		if pending and S.Built then
-			if not payload.Quiet then
-				local reason = type(payload.Reason) == "string" and payload.Reason or "That fusion did not work"
-				U.ServerNote.Text = reason
-				U.ServerNote.Visible = true
-				local mine = S.Token
-				task.delay(4, function()
-					if S.Token == mine and U.ServerNote then
-						U.ServerNote.Visible = false
-					end
-				end)
-			end
-			refresh()
+	elseif pending and S.Built then
+		if not payload.Quiet then
+			H.hint(type(payload.Reason) == "string" and payload.Reason or "That fusion did not work", K.SERVER_HINT_SECONDS)
 		end
+		H.refresh()
 	end
 end
 
 ----------------------------------------------------------------------
--- Window
+-- One window at a time, the touch controls, the menu column, Esc / B
 ----------------------------------------------------------------------
-local function setTab(tab)
-	if tab ~= "Upgrade" and tab ~= "Mix" then
+function H.closeOthers()
+	for _, name in ipairs({ "MenuController", "IndexController", "DailyController" }) do
+		local mod = H.controller(name)
+		if mod and type(mod.Close) == "function" then
+			safe("close " .. name, mod.Close)
+		end
+	end
+	if PetPicker.IsOpen() and not S.Sheet then
+		safe("close sheet", PetPicker.Close) -- another window's sheet
+	end
+end
+
+function H.syncTouch()
+	local touchOnly = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+	local want = S.Open and (S.Mode == "Phone" or touchOnly)
+	if want == S.TouchOff then
 		return
 	end
-	if S.Tab ~= tab then
-		S.Tab = tab
-		resetAnimation()
-		if U.Grid then
-			U.Grid.CanvasPosition = Vector2.new(0, 0)
-		end
+	S.TouchOff = want
+	local menu = H.controller("MenuController")
+	if menu and type(menu.SetTouchHidden) == "function" then
+		safe("touch", menu.SetTouchHidden, "Fusion", want)
 	end
-	refresh()
 end
 
-local function buildTop(content)
-	local top = makeFrame(content, "Top", {
-		Position = UDim2.fromOffset(10, 10),
-		Size = UDim2.new(1, -20, 0, K.TOP_H),
-	})
-	U.Top = top
-	U.Tabs = {}
-	local x = 0
-	for _, spec in ipairs({ { "Upgrade", G.Up .. " UPGRADE" }, { "Mix", G.Dna .. " MIX" } }) do
-		local name = spec[1]
-		local button = CloudUI.Button({
-			Name = "Tab_" .. name,
-			Text = spec[2],
-			Style = "Blue",
-			Size = UDim2.fromOffset(196, 50),
-			Position = UDim2.fromOffset(x, 2),
-			TextSize = 24,
-			Callback = function()
-				safe("tab", setTab, name)
-			end,
-			Parent = top,
-		})
-		Util.Create("UIScale", { Name = "TabScale", Scale = 1, Parent = button })
-		U.Tabs[name] = button
-		x = x + 208
+function H.coverColumn()
+	local menu = H.controller("MenuController")
+	if menu and type(menu.SetColumnCovered) == "function" then
+		safe("cover", menu.SetColumnCovered, (S.Open and S.Rect) and S.Rect.x or nil, "Fusion")
 	end
-	local function chip(name, color)
-		local label = makeText(top, name, "", "Display", 24, color, {
-			AutomaticSize = Enum.AutomaticSize.X,
-			Size = UDim2.fromOffset(0, 44),
-			BackgroundTransparency = 0,
-			BackgroundColor3 = Color3.fromRGB(26, 34, 78),
-			LayoutOrder = 1,
-		})
-		round(label)
-		stroke(label, NAVY, 3, 0)
-		pad(label, 16, 0, 16, 2)
-		return label
-	end
-	local chips = makeFrame(top, "Chips", {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, 0, 0, 5),
-		Size = UDim2.new(0, 360, 0, 44),
-	})
-	Util.Create("UIListLayout", {
-		FillDirection = Enum.FillDirection.Horizontal,
-		HorizontalAlignment = Enum.HorizontalAlignment.Right,
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = UDim.new(0, 8),
-		Parent = chips,
-	})
-	U.Chips = chips
-	U.TokenChip = chip("Tokens", TOKEN_INFO.Color or GOLD)
-	U.TokenChip.Parent = chips
-	U.TokenChip.LayoutOrder = 1
-	U.GemChip = chip("Gems", GEM_INFO.Color or Colors.Gem)
-	U.GemChip.Parent = chips
-	U.GemChip.LayoutOrder = 2
+	H.syncTouch()
 end
 
-local function buildPicker(body)
-	local picker = inset(body, "Picker", { Size = UDim2.new(0, K.PICKER_W, 1, 0) })
-	U.Picker = picker
-	U.PickerTitle = makeText(picker, "Title", "Your pets", "Heading", 24, WHITE, {
-		Position = UDim2.fromOffset(14, 8),
-		Size = UDim2.new(0.45, 0, 0, 32),
-		TextXAlignment = Enum.TextXAlignment.Left,
-	})
-	U.PickerHint = makeText(picker, "Hint", "", "Body", 18, MUTED, {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -14, 0, 10),
-		Size = UDim2.new(0.58, 0, 0, 30),
-		TextXAlignment = Enum.TextXAlignment.Right,
-		TextTruncate = Enum.TextTruncate.AtEnd,
-	})
-	local grid = Util.Create("ScrollingFrame", {
-		Name = "Grid",
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Position = UDim2.fromOffset(8, 46),
-		Size = UDim2.new(1, -16, 1, -54),
-		CanvasSize = UDim2.new(0, 0, 0, 0),
-		AutomaticCanvasSize = Enum.AutomaticSize.Y,
-		ScrollingDirection = Enum.ScrollingDirection.Y,
-		ScrollBarThickness = 10,
-		ScrollBarImageColor3 = Colors.FrameTop or Colors.Cloud,
-		ScrollBarImageTransparency = 0.1,
-		Parent = picker,
-	})
-	pad(grid, 4, 4, 14, 8)
-	U.Grid = grid
-	U.GridLayout = Util.Create("UIGridLayout", {
-		CellSize = UDim2.fromOffset(K.TILE_W, K.TILE_H),
-		CellPadding = UDim2.fromOffset(K.TILE_GAP, K.TILE_GAP),
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		HorizontalAlignment = Enum.HorizontalAlignment.Left,
-		Parent = grid,
-	})
-	U.Empty = makeText(picker, "Empty", "", "Body", 19, MUTED, {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0.5, 0, 0.5, 0),
-		Size = UDim2.new(1, -60, 0, 80),
-		TextWrapped = true,
-		Visible = false,
-	})
+-- Esc / B: our sheet first, then the window
+function H.back()
+	if S.Sheet and PetPicker.IsOpen() then
+		H.closeSheet()
+	elseif S.Open then
+		FusionController.Close()
+	end
 end
 
-local function buildPreview(body)
-	local preview = inset(body, "Preview", {
-		Position = UDim2.new(0, K.PICKER_W + K.GAP, 0, 0),
-		Size = UDim2.new(1, -(K.PICKER_W + K.GAP), 1, 0),
-	})
-	U.Preview = preview
-	U.PreviewTitle = makeText(preview, "Title", "", "Title", 30, WHITE, {
-		Position = UDim2.fromOffset(14, 8),
-		Size = UDim2.new(1, -28, 0, 40),
-		TextXAlignment = Enum.TextXAlignment.Left,
-	})
-	U.SlotRow = makeFrame(preview, "Slots", { Size = UDim2.new(1, 0, 0, 190), ZIndex = 3 })
-	U.InSlots = {}
-	for i = 1, 3 do
-		U.InSlots[i] = slotFrame(U.SlotRow, "Input" .. i, K.INPUT)
-	end
-	-- the middle card of the Upgrade stack sits on top
-	U.InSlots[2].Frame.ZIndex = 5
-	U.InCount = makeText(U.InSlots[2].Frame, "Copies", "0/3", "Heading", 20, WHITE, {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0.5, 0, 1, 0),
-		Size = UDim2.fromOffset(64, 30),
-		BackgroundTransparency = 0,
-		BackgroundColor3 = Color3.fromRGB(30, 40, 90),
-		ZIndex = 8,
-		Visible = false,
-	})
-	round(U.InCount)
-	stroke(U.InCount, NAVY, 2, 0)
-	U.Plus = makeText(U.SlotRow, "Plus", G.Plus, "Title", 40, WHITE, {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Size = UDim2.fromOffset(40, 40),
-		ZIndex = 6,
-	})
-	U.CaptionA = makeText(U.SlotRow, "Body", "Body", "Heading", 18, MUTED, {
-		AnchorPoint = Vector2.new(0.5, 0),
-		Size = UDim2.fromOffset(110, 24),
-	})
-	U.CaptionB = makeText(U.SlotRow, "Style", "Style", "Heading", 18, MUTED, {
-		AnchorPoint = Vector2.new(0.5, 0),
-		Size = UDim2.fromOffset(110, 24),
-	})
-	U.Swap = CloudUI.Button({
-		Name = "Swap",
-		Text = G.Swap,
-		Style = "Blue",
-		TextSize = 22,
-		Size = UDim2.fromOffset(44, 36),
-		AnchorPoint = Vector2.new(0.5, 1),
-		ZIndex = 7,
-		Callback = function()
-			if not S.Pending and not S.Animating then
-				S.MixA, S.MixB = S.MixB, S.MixA
-				safe("swap", refresh)
-			end
-		end,
-		Parent = U.SlotRow,
-	})
-	local swapPad = U.Swap:FindFirstChildOfClass("UIPadding")
-	if swapPad then
-		swapPad.PaddingLeft = UDim.new(0, 0)
-		swapPad.PaddingRight = UDim.new(0, 0)
-	end
-	U.Arrow = makeText(U.SlotRow, "Arrow", G.Arrow, "Title", 36, GOLD, {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Size = UDim2.fromOffset(44, 44),
-		ZIndex = 4,
-	})
-	U.ResultSlot = slotFrame(U.SlotRow, "Result", K.RESULT)
-	U.ResultSlot.Frame.ZIndex = 6
-	U.Flash = makeFrame(U.SlotRow, "Flash", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		BackgroundTransparency = 1,
-		BackgroundColor3 = WHITE,
-		ZIndex = 11,
-		Visible = false,
-	})
-	round(U.Flash)
-	U.NewTag = makeText(U.SlotRow, "New", "NEW!", "Title", 26, WHITE, {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Size = UDim2.fromOffset(92, 38),
-		BackgroundTransparency = 0,
-		BackgroundColor3 = Color3.fromRGB(232, 84, 120),
-		ZIndex = 13,
-		Visible = false,
-	})
-	corner(U.NewTag, 10)
-	stroke(U.NewTag, NAVY, 3, 0)
-
-	U.ResultName = makeText(preview, "ResultName", "", "Title", 28, WHITE, {
-		Size = UDim2.new(1, -28, 0, 36),
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextTruncate = Enum.TextTruncate.AtEnd,
-	})
-	U.Pills = makeFrame(preview, "Pills", { Size = UDim2.new(1, -28, 0, 32) })
-	U.PillsLayout = Util.Create("UIListLayout", {
-		FillDirection = Enum.FillDirection.Horizontal,
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = UDim.new(0, 8),
-		VerticalAlignment = Enum.VerticalAlignment.Center,
-		Parent = U.Pills,
-	})
-	-- the explanation and the notes share one list, so they never overlap
-	U.Details = makeFrame(preview, "Details", { Size = UDim2.new(1, -28, 0, 100), ClipsDescendants = true })
-	Util.Create("UIListLayout", {
-		FillDirection = Enum.FillDirection.Vertical,
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = UDim.new(0, 6),
-		Parent = U.Details,
-	})
-	U.Info = makeText(U.Details, "Info", "", "Body", 18, MUTED, {
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		TextWrapped = true,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextYAlignment = Enum.TextYAlignment.Top,
-		LayoutOrder = 1,
-	})
-	-- the cost and the FUSE button along the bottom
-	local bottom = makeFrame(preview, "Bottom", {
-		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 14, 1, -12),
-		Size = UDim2.new(1, -28, 0, 64),
-	})
-	U.Bottom = bottom
-	U.Cost = makeText(bottom, "Cost", "Cost: -", "Display", 28, GOLD, {
-		AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(0, 0, 0.5, 0),
-		Size = UDim2.new(1, -230, 0, 40),
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextTruncate = Enum.TextTruncate.AtEnd,
-	})
-	U.FuseButton = CloudUI.Button({
-		Name = "Fuse",
-		Text = G.Sparkle .. " FUSE",
-		Style = "Green",
-		TextSize = 28,
-		Size = UDim2.fromOffset(214, 62),
-		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, 0, 0.5, 0),
-		Callback = function()
-			safe("fuse", FusionController.Fuse)
-		end,
-		Parent = bottom,
-	})
-	U.ServerNote = makeText(preview, "ServerNote", "", "Body", 18, BAD, {
-		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 14, 1, -82),
-		Size = UDim2.new(1, -28, 0, 26),
-		BackgroundTransparency = 0,
-		BackgroundColor3 = Color3.fromRGB(40, 20, 50),
-		TextWrapped = true,
-		Visible = false,
-		ZIndex = 6,
-	})
-	corner(U.ServerNote, 8)
-
-	-- locked overlay (no Prestige / no machine yet): an opaque card (nothing of the preview shows through it) with the
-	-- crystal, the reason and a line about what the machine will do
-	U.Locked = makeFrame(preview, "Locked", {
-		Size = UDim2.new(1, 0, 1, 0),
-		BackgroundTransparency = 0,
-		BackgroundColor3 = WHITE, -- the gradient below colours it
-		ZIndex = 20,
-		Visible = false,
-	})
-	corner(U.Locked, 12)
-	Theme.Gradient(U.Locked, Color3.fromRGB(58, 46, 120), Color3.fromRGB(18, 22, 56), 90)
-	U.LockedIcon = makeText(U.Locked, "Icon", G.Crystal, "Title", 64, WHITE, {
-		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 0.45, 0),
-		Size = UDim2.fromOffset(90, 90),
-		ZIndex = 21,
-	})
-	U.LockedText = makeText(U.Locked, "Text", "", "Heading", 24, WHITE, {
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0.48, 0),
-		Size = UDim2.new(1, -60, 0, 64),
-		TextWrapped = true,
-		ZIndex = 21,
-	})
-	U.LockedSub = makeText(U.Locked, "Sub", "Fuse 3 copies into a Golden or Rainbow pet, or mix two pets into a brand-new hybrid!",
-		"Body", 19, Color3.fromRGB(196, 186, 240), {
-			AnchorPoint = Vector2.new(0.5, 0),
-			Position = UDim2.new(0.5, 0, 0.48, 70),
-			Size = UDim2.new(1, -60, 0, 52),
-			TextWrapped = true,
-			ZIndex = 21,
-		})
-end
-
-local function buildWindow()
-	if S.Built then
-		return true
-	end
-	local holder = makeFrame(U.Gui, "Window_Fusion", {
-		Size = UDim2.fromOffset(K.PREF_W, K.PREF_H),
-		Visible = false,
-		ZIndex = 3,
-	})
-	U.Holder = holder
-	U.Fit = Util.Create("UIScale", { Name = "Fit", Scale = 1, Parent = holder })
-	local panel = CloudUI.Panel({
-		Name = "FusionPanel",
-		Title = G.Crystal .. " Fusion Machine",
-		Closable = true,
-		Category = "Fusion",
-		Size = UDim2.new(1, 0, 1, 0),
-		Position = UDim2.new(0.5, 0, 0.5, 0),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		OnClose = function()
-			FusionController.Close()
-		end,
-		Parent = holder,
-	})
-	U.Panel = panel
-	U.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = panel.Root })
-	local content = panel.Content
-	buildTop(content)
-	U.Body = makeFrame(content, "Body", {
-		Position = UDim2.fromOffset(10, K.TOP_H + 16),
-		Size = UDim2.new(1, -20, 1, -(K.TOP_H + 26)),
-	})
-	buildPicker(U.Body)
-	buildPreview(U.Body)
-	S.Built = true
-	relayout()
-	return true
-end
-
--- the menu windows and the Pet Index share the screen: one window at a time
-local function closeOthers()
-	local controllers = script.Parent
-	for _, name in ipairs({ "MenuController", "IndexController" }) do
-		local module = controllers:FindFirstChild(name)
-		if module then
-			local ok, mod = pcall(require, module)
-			if ok and type(mod) == "table" and type(mod.Close) == "function" then
-				pcall(mod.Close)
-			end
-		end
+function H.syncBack()
+	local want = S.Open
+	if want and not S.BackBound then
+		S.BackBound = true
+		pcall(function()
+			ContextActionService:BindActionAtPriority(K.BACK_ACTION, function(_, inputState)
+				if inputState == Enum.UserInputState.Begin then
+					safe("back", H.back)
+				end
+				return Enum.ContextActionResult.Sink
+			end, false, Enum.ContextActionPriority.High.Value + 1, Enum.KeyCode.ButtonB)
+		end)
+	elseif not want and S.BackBound then
+		S.BackBound = false
+		pcall(function()
+			ContextActionService:UnbindAction(K.BACK_ACTION)
+		end)
 	end
 end
 
@@ -2198,32 +2308,83 @@ function FusionController.Plan()
 	return S.Plan
 end
 
+function FusionController.Layout()
+	local mode, portrait
+	if S.Open and S.Rect then
+		mode, portrait = S.Mode, S.Portrait
+	else
+		local r = NeonKit.BigRect(K)
+		mode, portrait = r.mode, r.mode == "Phone" and r.portrait == true
+	end
+	if portrait then
+		return "Portrait"
+	end
+	return mode
+end
+
 function FusionController.Select(keyA, keyB)
 	if S.Tab == "Upgrade" then
 		S.UpKey = keyA
 	else
 		S.MixA, S.MixB = keyA, keyB
 	end
-	if S.Built then
-		refresh()
+	if S.Built and S.Open then
+		safe("refresh", H.refresh)
 	end
+end
+
+function FusionController.Fuse()
+	if not S.Open or S.Pending or S.Animating then
+		return false
+	end
+	local plan = H.computePlan()
+	S.Plan = plan
+	local machine = S.AtMachine or H.myMachine()
+	S.MachineNear = machine == nil or H.distanceTo(machine) <= K.NEAR_RANGE
+	if not plan.Ok or not S.MachineNear then
+		H.refresh()
+		return false
+	end
+	local remote = H.remote()
+	if not remote then
+		warnOnce("remote", "the Fusion remote is missing")
+		return false
+	end
+	S.FuseToken = S.FuseToken + 1
+	local token = S.FuseToken
+	S.Pending = { Action = plan.Action, Token = token, At = os.clock(), Inputs = plan.Inputs }
+	if plan.Action == "Upgrade" then
+		remote:FireServer("Upgrade", S.UpKey)
+	else
+		remote:FireServer("Mix", S.MixA, S.MixB)
+	end
+	-- the inputs glow while the machine works
+	for _, f in ipairs(H.flyers()) do
+		f.Item.Card.SetColor(C.Gold)
+	end
+	H.paintFuse(plan)
+	task.delay(K.FUSE_TIMEOUT, function()
+		if S.Pending and S.Pending.Token == token then
+			S.Pending = nil
+			if S.Open then
+				H.refresh()
+			end
+		end
+	end)
+	return true
 end
 
 function FusionController.Open(tab, args)
 	if not initialized then
 		FusionController.Init()
 	end
-	if not U.Gui then
+	if H.inMatch() or not H.ensureGui() then
 		return
 	end
-	if LocalPlayer and LocalPlayer:GetAttribute(Config.Attr.InMatch) == true then
-		return
-	end
-	if not buildWindow() then
-		return
-	end
+	H.build()
 	args = type(args) == "table" and args or {}
-	if tab == "Upgrade" or tab == "Mix" then
+	if (tab == "Upgrade" or tab == "Mix") and tab ~= S.Tab then
+		H.closeSheet()
 		S.Tab = tab
 	end
 	if type(args.Key) == "string" then
@@ -2241,24 +2402,29 @@ function FusionController.Open(tab, args)
 	end
 	local wasOpen = S.Open
 	if not wasOpen then
-		closeOthers()
+		H.closeOthers()
 	end
 	S.Open = true
-	S.Token = S.Token + 1
-	syncBackBinding()
-	relayout()
-	U.Holder.Visible = true
 	if not wasOpen then
-		U.Pop.Scale = 0.86
-		tween(U.Pop, 0.22, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+		S.Token = S.Token + 1
 	end
-	safe("refresh", refresh)
+	U.Holder.Visible = true
+	H.layout()
+	H.syncBack()
 	if not wasOpen then
+		U.Pop.Scale = K.OPEN_FROM
+		Util.Tween(U.Pop, K.OPEN_TIME, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+		H.startFx()
 		FusionController.Opened:Fire(S.Tab)
+	end
+	-- no pet picked: the sheet opens by itself (after Opened: the windows that close on it are gone)
+	if S.Open then
+		H.autoSheet()
 	end
 end
 
 function FusionController.Close()
+	H.closeSheet()
 	if not S.Open then
 		return
 	end
@@ -2266,9 +2432,17 @@ function FusionController.Close()
 	S.Token = S.Token + 1
 	local mine = S.Token
 	S.AtMachine = nil
-	resetAnimation()
-	syncBackBinding()
-	tween(U.Pop, 0.12, { Scale = 0.9 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	S.HintToken = S.HintToken + 1
+	if U.Hint then
+		U.Hint.Visible = false
+	end
+	H.resetAnimation()
+	H.stopFx()
+	H.syncBack()
+	H.coverColumn()
+	if U.Pop then
+		Util.Tween(U.Pop, 0.12, { Scale = 0.9 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	end
 	task.delay(0.13, function()
 		if S.Token == mine and not S.Open and U.Holder then
 			U.Holder.Visible = false
@@ -2280,7 +2454,7 @@ end
 ----------------------------------------------------------------------
 -- Init
 ----------------------------------------------------------------------
-local function onPromptTriggered(prompt)
+function H.onPrompt(prompt)
 	if typeof(prompt) ~= "Instance" or prompt.Name ~= "FusionPrompt" then
 		return
 	end
@@ -2288,19 +2462,13 @@ local function onPromptTriggered(prompt)
 	if owner ~= nil and LocalPlayer and owner ~= LocalPlayer.UserId then
 		return -- someone else's machine (its prompt is disabled locally anyway)
 	end
-	local model = prompt:FindFirstAncestor("Station_FusionMachine")
-	FusionController.Open(nil, { Machine = model })
+	FusionController.Open(nil, { Machine = prompt:FindFirstAncestor("Station_FusionMachine") })
 end
 
-local function connectOthers()
-	local controllers = script.Parent
+function H.connectOthers()
 	local function hook(name, signalName)
-		local module = controllers:FindFirstChild(name)
-		if not module then
-			return
-		end
-		local ok, mod = pcall(require, module)
-		local signal = ok and type(mod) == "table" and mod[signalName]
+		local mod = H.controller(name)
+		local signal = mod and mod[signalName]
 		if type(signal) == "table" and type(signal.Connect) == "function" then
 			signal:Connect(function()
 				FusionController.Close()
@@ -2311,6 +2479,29 @@ local function connectOthers()
 	hook("IndexController", "Opened")
 end
 
+-- 4 times a second while open: the walk-away close and the near check
+function H.beat()
+	if not S.Open then
+		return
+	end
+	local now = os.clock()
+	if now < (S.CheckAt or 0) then
+		return
+	end
+	S.CheckAt = now + 0.25
+	if S.AtMachine and H.distanceTo(S.AtMachine) > K.MACHINE_RANGE then
+		FusionController.Close()
+		return
+	end
+	if S.Pending == nil and not S.Animating then
+		local machine = S.AtMachine or H.myMachine()
+		local near = machine == nil or H.distanceTo(machine) <= K.NEAR_RANGE
+		if near ~= S.MachineNear then
+			safe("near", H.refresh)
+		end
+	end
+end
+
 function FusionController.Init()
 	if initialized then
 		return
@@ -2318,18 +2509,10 @@ function FusionController.Init()
 	initialized = true
 	LocalPlayer = Players.LocalPlayer
 	pcall(State.Init)
-
-	local gui = CloudUI.NewScreenGui("NimbusFusion", K.DISPLAY_ORDER)
-	U.Gui = gui
-	gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
-		if S.Built then
-			safe("relayout", relayout)
-		end
-	end)
-
+	H.ensureGui()
 	State.Changed:Connect(function()
 		if S.Open and not S.Animating then
-			safe("State.Changed", refresh)
+			H.refreshSoon()
 		end
 	end)
 	for _, signalName in ipairs({ "TokensChanged", "GemsChanged" }) do
@@ -2337,28 +2520,26 @@ function FusionController.Init()
 		if type(signal) == "table" and type(signal.Connect) == "function" then
 			signal:Connect(function()
 				if S.Open and not S.Animating then
-					safe("balance", refresh)
+					H.refreshSoon()
 				end
 			end)
 		end
 	end
 	if LocalPlayer then
 		LocalPlayer:GetAttributeChangedSignal(Config.Attr.InMatch):Connect(function()
-			if LocalPlayer:GetAttribute(Config.Attr.InMatch) == true then
+			if H.inMatch() then
 				FusionController.Close()
 			end
 		end)
 	end
-
 	UserInputService.InputBegan:Connect(function(input)
 		if S.Open and input.KeyCode == Enum.KeyCode.Escape then
-			FusionController.Close()
+			safe("back", H.back)
 		end
 	end)
 	ProximityPromptService.PromptTriggered:Connect(function(prompt)
-		safe("prompt", onPromptTriggered, prompt)
+		safe("prompt", H.onPrompt, prompt)
 	end)
-
 	task.spawn(function()
 		local okOpen, openRemote = pcall(Remotes.Get, "OpenPanel")
 		if okOpen and openRemote then
@@ -2371,42 +2552,20 @@ function FusionController.Init()
 		end
 		local okFusion, remote = pcall(Remotes.Get, "Fusion")
 		if okFusion and remote then
-			fusionRemote = remote
+			S.Remote = remote
 			remote.OnClientEvent:Connect(function(kind, payload)
 				if kind == "Result" then
-					safe("result", onResult, payload)
+					safe("result", H.onResult, payload)
 				end
 			end)
 		end
 	end)
 	task.defer(function()
-		safe("hooks", connectOthers)
+		safe("hooks", H.connectOthers)
 	end)
-
-	-- one light loop: pet viewports under a time budget, and the walk-away check (4 times a second)
-	local checkAt = 0
 	RunService.Heartbeat:Connect(function()
-		if not S.Open then
-			return
-		end
-		fillViewports()
-		local now = os.clock()
-		if now < checkAt then
-			return
-		end
-		checkAt = now + 0.25
-		if S.AtMachine then
-			if distanceTo(S.AtMachine) > K.MACHINE_RANGE then
-				FusionController.Close()
-				return
-			end
-		end
-		if S.Pending == nil and not S.Animating then
-			local machine = S.AtMachine or myMachine()
-			local near = machine == nil or distanceTo(machine) <= K.NEAR_RANGE
-			if near ~= S.MachineNear then
-				safe("near", refresh)
-			end
+		if S.Open then
+			H.beat()
 		end
 	end)
 end

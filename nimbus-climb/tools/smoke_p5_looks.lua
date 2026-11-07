@@ -308,12 +308,26 @@ local function clientScenarios()
 		local tile = tw and find(tw, "Card_" .. P.E1)
 		T.check(lowAt(evolvedModel(tile, 1), 1), "p5looks team: ...and its card")
 		closeAll()
-		-- the Fusion tiles
+		-- the Fusion pet picker (gui-redo Task 11: the left grid is gone; the shared picker sheet lists the pets)
 		if FC and FC.Open then
 			FC.Open("Upgrade", {})
-			advance(2.5)
+			advance(0.4)
 			local fg = pg():FindFirstChild("NimbusFusion")
-			T.check(evolvedModel(fg, 1) ~= nil and evolvedModel(fg, 2) ~= nil, "p5looks fusion: the picker tiles draw the copies' stages (1 and 2)")
+			local sheet = pg():FindFirstChild("NimbusPetPicker")
+			local function sheetShown()
+				local w = sheet and sheet:FindFirstChild("Window_PetPicker")
+				return w ~= nil and shown(w)
+			end
+			if not sheetShown() and FC.Select then
+				-- (a pet still picked from an earlier scene: empty the stack, then tap it)
+				FC.Select(nil)
+				Mock.Click(find(fg, "Stack"))
+			end
+			advance(2.5)
+			sheet = pg():FindFirstChild("NimbusPetPicker")
+			local c1, c2 = sheet and find(sheet, "Card_" .. P.E1), sheet and find(sheet, "Card_" .. P.L2)
+			T.check(sheetShown() and evolvedModel(c1, 1) ~= nil and evolvedModel(c2, 2) ~= nil,
+				"p5looks fusion: the pet picker's cards draw the copies' stages (1 and 2)")
 			closeAll()
 		end
 		-- the care rows (Food Machine, garden picker)

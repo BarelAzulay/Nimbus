@@ -659,29 +659,27 @@ local function clientScenarios()
 				FC.Select("pip_penguin", "honey_bunny")
 			end
 			advance(0.6)
-			local marks = {}
-			for _, d in ipairs(window and window:GetDescendants() or {}) do
-				if d.Name == "Mark" and d:IsA("TextLabel") and d.Visible then
-					marks[#marks + 1] = d
+			-- gui-redo Task 11: the pick marks of the old grid are gone; each Mix slot says what it is ("BODY" / "STYLE") on
+			-- its top edge, above the pet's art (never over it)
+			local slotsOk, why = true, {}
+			for _, spec in ipairs({ { "Slot_Body", "BODY" }, { "Slot_Style", "STYLE" } }) do
+				local slot = window and find(window, spec[1])
+				local lab = slot and find(slot, "Label")
+				local art = slot and find(slot, "Art")
+				if not (slot and slot.Visible and lab and lab.Visible and lab.Text == spec[2] and art) then
+					slotsOk = false
+					why[#why + 1] = spec[1] .. ": no " .. spec[2] .. " label"
+				else
+					local lp, ls, sp = lab.AbsolutePosition, lab.AbsoluteSize, slot.AbsolutePosition
+					local onTop = lp.Y - sp.Y <= 16
+					local clear = lp.Y + ls.Y <= art.AbsolutePosition.Y + 1
+					if not (onTop and clear) then
+						slotsOk = false
+						why[#why + 1] = string.format("%s: label y %d..%d, slot top %d, art top %d", spec[1], lp.Y, lp.Y + ls.Y, sp.Y, art.AbsolutePosition.Y)
+					end
 				end
 			end
-			local cornerOk = #marks >= 1
-			for _, mark in ipairs(marks) do
-				local tile = mark.Parent
-				local view = tile and tile:FindFirstChild("View")
-				local mp, ms = mark.AbsolutePosition, mark.AbsoluteSize
-				local tp = tile.AbsolutePosition
-				local inCorner = mp.X - tp.X <= 12 and mp.Y - tp.Y <= 12
-				local clear = true
-				if view then
-					local c = view.AbsolutePosition + view.AbsoluteSize / 2
-					clear = not (c.X >= mp.X and c.X <= mp.X + ms.X and c.Y >= mp.Y and c.Y <= mp.Y + ms.Y)
-				end
-				if not (inCorner and clear) then
-					cornerOk = false
-				end
-			end
-			T.check(cornerOk, "Fusion window: the Mix pick marks (1 = Body, 2 = Style) sit in the tile's top-left corner, clear of the pet", #marks .. " marks")
+			T.check(slotsOk, "Fusion window: the Mix slots say BODY / STYLE on their top edge, clear of the pet", table.concat(why, "; "))
 			FC.Close()
 			advance(0.3)
 		else

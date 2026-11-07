@@ -336,12 +336,24 @@ COVER[#COVER + 1] = {
 		return g and g:FindFirstChild("Window_Index")
 	end,
 }
+-- gui-redo Task 11: the Fusion Machine is one big centred window too (FusionController, NeonKit.BigRect 1440 x 880): it may
+-- cover up to 85% and sits in the middle
 COVER[#COVER + 1] = {
 	Scene = "fusion",
+	MaxCover = 85,
+	Centered = true,
 	Open = function()
 		CUI.profile()
+		-- a pet of the profile (without a Key the pet picker sheet would open over the window)
+		local key = nil
+		for _, def in ipairs(NK.req("shared/PetCatalog").Pets) do
+			if not def.EventOnly and def.Rarity ~= "Secret" then
+				key = def.Id
+				break
+			end
+		end
 		local f = (NK.KC().M and NK.KC().M.FusionController) or NK.req("client/Controllers/FusionController")
-		pcall(f.Open, "Upgrade", {})
+		pcall(f.Open, "Upgrade", { Key = key })
 	end,
 	Close = CUI.closeAll,
 	Window = function()
