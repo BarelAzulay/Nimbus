@@ -140,8 +140,15 @@ function Util.Tween(instance, seconds, goal, style, direction)
 end
 
 -- Deterministic RNG wrapper. rng:Float(a,b) rng:Int(a,b) rng:Chance(p) rng:Pick(list)
+-- seed == nil (lobby-shop spec 5.1): Random.new() with NO argument, seeded by the engine (never the clock, a user id or
+-- a counter), for the server's pull and strip generators.
 function Util.NewRng(seed)
-	local random = Random.new(seed)
+	local random
+	if seed == nil then
+		random = Random.new()
+	else
+		random = Random.new(seed)
+	end
 	local rng = {}
 	function rng:Float(a, b)
 		return random:NextNumber(a, b)

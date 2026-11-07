@@ -443,6 +443,22 @@ Config.Index = {
 	},
 }
 
+-- lobby-shop (spec 5.1): every roulette spin hatches an egg. An egg IS a rarity: the egg of the rarity the roll gave
+-- (no egg item, no egg inventory, nothing saved). Order = Config.Rarities by Order; Names = the egg's name on the stage
+-- and the cards (UI/EggArt draws it).
+Config.Eggs = {
+	Order = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Secret" },
+	Names = {
+		Common = "Cloud Puff Egg",
+		Uncommon = "Breeze Egg",
+		Rare = "Raindrop Egg",
+		Epic = "Thunder Egg",
+		Legendary = "Sunburst Egg",
+		Mythic = "Aurora Egg",
+		Secret = "Starry Night Egg",
+	},
+}
+
 -- v3: new-player tutorial guided by Nimbus, the Cloudy Dragon (steps live in shared/TutorialSteps.lua).
 Config.Tutorial = {
 	GiftTokens = 50, -- granted once at the "spin your first roulette" step so a new player can afford it

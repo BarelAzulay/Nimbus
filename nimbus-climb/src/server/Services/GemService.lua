@@ -53,9 +53,12 @@
 --   GemService.Quote(player, id) -> ok, {RouletteId, DisplayName, Price, AllowSecret, GemsOnly, Roll} | reason
 --                                    (never yields; Roll = nil for token roulettes: PetCatalog.RollPet rolls them)
 --   GemService.Roll(player, id) -> ok, result|reason    a gem-paid spin = PetService.BuyRoulette(player, id, "Gems")
---   GemService.RollPet(id, rng) -> petId | nil      token roulettes: PetCatalog.RollPet; gems-only: the same rules
+--   GemService.RollPet(id, rng, opts?) -> petId | nil   every roulette (the Secret Roulette too): PetCatalog.RollPet;
+--                                    opts.ForceRarity (the pity, server only): the Float draw is thrown away, then
+--                                    PetCatalog.RollFromRarity(id, ForceRarity, rng) (the rng position of an unforced roll)
 --   GemService.GetOdds(id) -> {{PetId, Rarity, Chance}...}, GetRarityOdds(id) -> {{Rarity, Chance, Count}...},
---   GemService.PossiblePets(id) -> {PetDef...}               (the shapes PetCatalog uses)
+--   GemService.PossiblePets(id) -> {PetDef...}               PetCatalog's own tables for both kinds (lobby-shop spec
+--                                                            5.1: one odds source; PetCatalog knows the Secret Roulette)
 --   GemService.GemsPurchased   Util.Signal Fire(player, gems, productId, purchaseId) once a purchase is granted for good
 --                              (saved; in Studio also unsaved), once per purchase
 --   GemService.ProfileWaitSeconds = 12                       how long ProcessReceipt waits for a loading profile
@@ -81,7 +84,6 @@ GemService.ProfileWaitSeconds = 12
 local RESTRICTED_ATTR = "PaidRandomItemsRestricted" -- player attribute: true = hide / refuse gem-priced roulettes
 local PURCHASE_REMOTE = "BuyGems" -- (ref) connected only once Config.Remotes lists it
 
-local SECRET_RARITY = "Secret"
 local PROMPT_COOLDOWN = 1 -- seconds between two purchase prompts of one player
 local REMOTE_COOLDOWN = 0.5
 local PROFILE_POLL = 0.5 -- ProcessReceipt: seconds between two looks at a loading profile
@@ -508,54 +510,12 @@ function GemService.RoulettePrice(rouletteId)
 	return def and def.GemPrice or nil
 end
 
-local sortedRarities = nil
-local function rarityOrder()
-	if not sortedRarities then
-		sortedRarities = {}
-		for _, r in ipairs(Config.Rarities) do
-			sortedRarities[#sortedRarities + 1] = r
-		end
-		table.sort(sortedRarities, function(a, b)
-			return (a.Order or 0) < (b.Order or 0)
-		end)
-	end
-	return sortedRarities
-end
-
-local function petsOfRarity(rarityId)
-	local catalog = getCatalog()
-	if not catalog or type(catalog.ListByRarity) ~= "function" then
+-- Calls PetCatalog[fnName](rouletteId); returns the table or {}. lobby-shop (spec 5.1): PetCatalog is the one odds
+-- source for every roulette, the gems-only Secret Roulette included (its findRoulette knows Config.Gems.SecretRoulette).
+local function fromCatalog(fnName, rouletteId)
+	if type(rouletteId) ~= "string" then
 		return {}
 	end
-	local ok, list = pcall(catalog.ListByRarity, rarityId)
-	if ok and type(list) == "table" then
-		return list
-	end
-	return {}
-end
-
--- Rarity buckets a gems-only roulette can produce (PetCatalog's rules: rarity order, weight > 0, rarities without
--- pets skipped, Secret only with AllowSecret = true) -> { {Rarity, Weight, Pets} }, total weight.
-local function oddsEntries(src)
-	local entries, total = {}, 0
-	if type(src) ~= "table" or type(src.Odds) ~= "table" then
-		return entries, 0
-	end
-	for _, r in ipairs(rarityOrder()) do
-		local w = src.Odds[r.Id]
-		if isFinite(w) and w > 0 and (r.Id ~= SECRET_RARITY or src.AllowSecret == true) then
-			local pets = petsOfRarity(r.Id)
-			if #pets > 0 then
-				entries[#entries + 1] = { Rarity = r.Id, Weight = w, Pets = pets }
-				total = total + w
-			end
-		end
-	end
-	return entries, total
-end
-
--- Calls PetCatalog[fnName](rouletteId) for a token roulette; returns the table or {}.
-local function fromCatalog(fnName, rouletteId)
 	local catalog = getCatalog()
 	if not catalog or type(catalog[fnName]) ~= "function" then
 		return {}
@@ -567,108 +527,44 @@ local function fromCatalog(fnName, rouletteId)
 	return {}
 end
 
--- rng: anything with :Float(a, b) and :Int(a, b) (Util.NewRng); math.random without one.
-function GemService.RollPet(rouletteId, rng)
+-- rng: anything with :Float(a, b) and :Int(a, b) (Util.NewRng); math.random without one. Every roulette rolls through
+-- PetCatalog.RollPet. opts.ForceRarity (the Secret pity, spec 5.2; server code only, never a remote value): the
+-- rarity draw still happens and is thrown away, then the pet comes from PetCatalog.RollFromRarity(id, ForceRarity, rng),
+-- so the rng ends where an unforced roll leaves it. nil when that rarity is not one of the roulette's rows.
+function GemService.RollPet(rouletteId, rng, opts)
 	if type(rouletteId) ~= "string" then
 		return nil
 	end
-	if tokenRoulette(rouletteId) then
-		local catalog = getCatalog()
-		if catalog and type(catalog.RollPet) == "function" then
-			return catalog.RollPet(rouletteId, rng)
-		end
+	local catalog = getCatalog()
+	if not catalog or type(catalog.RollPet) ~= "function" then
 		return nil
 	end
-	local entries, total = oddsEntries(gemsOnlySource(rouletteId))
-	if #entries == 0 or total <= 0 then
+	local force = type(opts) == "table" and opts.ForceRarity or nil
+	if force == nil then
+		return catalog.RollPet(rouletteId, rng)
+	end
+	if type(force) ~= "string" or type(catalog.RollFromRarity) ~= "function" then
 		return nil
 	end
-	local r
 	if type(rng) == "table" and type(rng.Float) == "function" then
-		r = rng:Float(0, total)
+		rng:Float(0, 1)
 	else
-		r = math.random() * total
+		math.random()
 	end
-	local picked = entries[#entries] -- also covers r landing on the very end
-	local acc = 0
-	for _, e in ipairs(entries) do
-		acc = acc + e.Weight
-		if r < acc then
-			picked = e
-			break
-		end
-	end
-	local pets = picked.Pets
-	local idx
-	if type(rng) == "table" and type(rng.Int) == "function" then
-		idx = rng:Int(1, #pets)
-	else
-		idx = math.random(1, #pets)
-	end
-	idx = math.floor(tonumber(idx) or 1)
-	if idx < 1 then
-		idx = 1
-	elseif idx > #pets then
-		idx = #pets
-	end
-	return pets[idx].Id
+	return catalog.RollFromRarity(rouletteId, force, rng)
 end
 
--- Exact per-pet chances: the rarity's share split evenly between its pets (what RollPet does).
+-- Exact per-pet chances (PetCatalog.GetOdds): the rarity's share split evenly between its pets (what RollPet does).
 function GemService.GetOdds(rouletteId)
-	if type(rouletteId) ~= "string" then
-		return {}
-	end
-	if tokenRoulette(rouletteId) then
-		return fromCatalog("GetOdds", rouletteId)
-	end
-	local out = {}
-	local entries, total = oddsEntries(gemsOnlySource(rouletteId))
-	if total <= 0 then
-		return out
-	end
-	for _, e in ipairs(entries) do
-		local each = (e.Weight / total) / #e.Pets
-		for _, def in ipairs(e.Pets) do
-			out[#out + 1] = { PetId = def.Id, Rarity = e.Rarity, Chance = each }
-		end
-	end
-	return out
+	return fromCatalog("GetOdds", rouletteId)
 end
 
 function GemService.GetRarityOdds(rouletteId)
-	if type(rouletteId) ~= "string" then
-		return {}
-	end
-	if tokenRoulette(rouletteId) then
-		return fromCatalog("GetRarityOdds", rouletteId)
-	end
-	local out = {}
-	local entries, total = oddsEntries(gemsOnlySource(rouletteId))
-	if total <= 0 then
-		return out
-	end
-	for _, e in ipairs(entries) do
-		out[#out + 1] = { Rarity = e.Rarity, Chance = e.Weight / total, Count = #e.Pets }
-	end
-	return out
+	return fromCatalog("GetRarityOdds", rouletteId)
 end
 
 function GemService.PossiblePets(rouletteId)
-	if type(rouletteId) ~= "string" then
-		return {}
-	end
-	if tokenRoulette(rouletteId) then
-		return fromCatalog("PossiblePets", rouletteId)
-	end
-	local out = {}
-	local entries = oddsEntries(gemsOnlySource(rouletteId))
-	for _, e in ipairs(entries) do
-		for _, def in ipairs(e.Pets) do
-			out[#out + 1] = def
-		end
-	end
-	return out
+	return fromCatalog("PossiblePets", rouletteId)
 end
 
 -- The price and roll of a gem-paid spin, after the policy check. Never yields (PetService calls it right before its

@@ -11,8 +11,18 @@
 --   PetCatalog.ListByRarity(rarityId)     -> { PetDef... } (same order as Pets)
 --   PetCatalog.GetRarity(rarityId)        -> { Id, Order, Color }|nil          (from Config.Rarities)
 --   PetCatalog.RollPet(rouletteId, rng)   -> petId|nil   weighted rarity (Roulette.Odds), then uniform pet
+--                                            = RollFromRarity(id, RollRarity(id, rng), rng): the same draws, same order
 --   PetCatalog.GetOdds(rouletteId)        -> { { PetId, Rarity, Chance }... }  Chance sums to 1
 --   PetCatalog.PossiblePets(rouletteId)   -> { PetDef... }
+--   lobby-shop (spec 5.1, eggs: a roll picks a rarity = an egg, then a pet of it):
+--   PetCatalog.RollRarity(rouletteId, rng)          -> rarityId|nil  the one rng:Float(0, total) draw over the odds rows
+--   PetCatalog.RollFromRarity(rouletteId, rarity, rng) -> petId|nil  the one rng:Int(1, #pool) draw over RarityPool;
+--                                            nil when that rarity is not one of the roulette's odds rows
+--   PetCatalog.RarityPool(rouletteId, rarity) -> { PetDef... }  that row's pool (ListByRarity: never EventOnly or
+--                                            ExclusiveTo), a fresh list; {} when not a row
+--   Every roulette function (the three above, RollPet, GetOdds, GetRarityOdds, PossiblePets) also answers for the
+--   gems-only Secret Roulette (Config.Gems.SecretRoulette, AllowSecret = true): findRoulette falls back to it when no
+--   token roulette has that id. One odds source for the server (GemService delegates here) and the client.
 --   PetCatalog.PerkLabel(perkType, value) -> "+12% Max Health"
 --   PetCatalog.SumPerks(petIds)           -> { MaxHealth, TokenBonus, StaminaRegen, CheckpointHeal } (capped)
 --   v3:
@@ -100,8 +110,9 @@
 --             with EventOnly (Validate). Still a full catalog pet: Pets, Get, ById and TotalCount list it.
 --             Helper: PetCatalog.IsExclusive(id) -> bool (false for unknown ids).
 --
--- Secret pets (Rarity "Secret") come only from a roulette that sets `AllowSecret = true` (the gems-only Secret
--- roulette of phase 2). No current roulette does, so RollPet / GetOdds / PossiblePets never offer them.
+-- Secret pets (Rarity "Secret") come only from a roulette that sets `AllowSecret = true`: the gems-only Secret
+-- Roulette (Config.Gems.SecretRoulette). No token roulette does, so RollPet / GetOdds / PossiblePets offer them only
+-- for "Secret", and IsRollable (which loops Config.Roulettes) answers false for them.
 --
 -- Perk strength scales with rarity (Common ~2-4%, Mythic ~10-25%, Secret a step above Mythic). Pets never touch
 -- run speed or jump power, so the course physics guarantees keep holding.
@@ -794,11 +805,19 @@ end
 -- Roulettes
 ----------------------------------------------------------------------
 
+-- Every roulette the catalog answers for: the token roulettes (Config.Roulettes), then the gems-only Secret Roulette
+-- (Config.Gems.SecretRoulette, AllowSecret = true). lobby-shop (spec 5.1): one odds source on the server and the
+-- client, so the Secret card and GemService read this table. IsRollable still loops Config.Roulettes only.
 local function findRoulette(rouletteId)
 	for _, r in ipairs(Config.Roulettes) do
 		if r.Id == rouletteId then
 			return r
 		end
+	end
+	local gems = Config.Gems
+	local secret = type(gems) == "table" and gems.SecretRoulette or nil
+	if type(secret) == "table" and secret.Id ~= nil and secret.Id == rouletteId then
+		return secret
 	end
 	return nil
 end
@@ -835,8 +854,24 @@ local function oddsEntries(rouletteId)
 	return entries, total
 end
 
--- rng: anything with :Float(a, b) and :Int(a, b) (Util.NewRng). Falls back to math.random without one.
-function PetCatalog.RollPet(rouletteId, rng)
+-- The odds row of one rarity of a roulette ({ Rarity, Weight, Pets }), or nil when that rarity is not one of its rows.
+local function rowOf(rouletteId, rarityId)
+	local entries = oddsEntries(rouletteId)
+	if not entries or type(rarityId) ~= "string" then
+		return nil
+	end
+	for _, e in ipairs(entries) do
+		if e.Rarity == rarityId then
+			return e
+		end
+	end
+	return nil
+end
+
+-- lobby-shop (spec 5.1): the roll in two halves that keep RollPet's draws in the same order, so a seed gives the same
+-- pet as before. rng: anything with :Float(a, b) and :Int(a, b) (Util.NewRng); math.random without one.
+-- RollRarity: the one rng:Float(0, total) draw over the odds rows -> rarityId | nil.
+function PetCatalog.RollRarity(rouletteId, rng)
 	local entries, total = oddsEntries(rouletteId)
 	if not entries then
 		return nil
@@ -856,19 +891,48 @@ function PetCatalog.RollPet(rouletteId, rng)
 			break
 		end
 	end
-	local pets = picked.Pets
+	return picked.Rarity
+end
+
+-- RollFromRarity: the one rng:Int(1, #pool) draw over that rarity's pool (RarityPool) -> petId | nil (nil when the
+-- rarity is not one of the roulette's odds rows).
+function PetCatalog.RollFromRarity(rouletteId, rarityId, rng)
+	local row = rowOf(rouletteId, rarityId)
+	if not row then
+		return nil
+	end
+	local pets = row.Pets
 	local idx
 	if type(rng) == "table" and rng.Int then
 		idx = rng:Int(1, #pets)
 	else
 		idx = math.random(1, #pets)
 	end
+	idx = math.floor(tonumber(idx) or 1)
 	if idx < 1 then
 		idx = 1
 	elseif idx > #pets then
 		idx = #pets
 	end
 	return pets[idx].Id
+end
+
+-- RarityPool: the pool RollFromRarity draws from (poolByRarity: never an EventOnly or ExclusiveTo pet), a fresh list;
+-- {} when the rarity is not one of the roulette's rows.
+function PetCatalog.RarityPool(rouletteId, rarityId)
+	local out = {}
+	local row = rowOf(rouletteId, rarityId)
+	if row then
+		for i, def in ipairs(row.Pets) do
+			out[i] = def
+		end
+	end
+	return out
+end
+
+-- Weighted rarity (Roulette.Odds), then a uniform pet of that rarity: RollFromRarity(id, RollRarity(id, rng), rng).
+function PetCatalog.RollPet(rouletteId, rng)
+	return PetCatalog.RollFromRarity(rouletteId, PetCatalog.RollRarity(rouletteId, rng), rng)
 end
 
 -- Exact per-pet chances: rarity share (weight / total) split evenly between that rarity's pets.
