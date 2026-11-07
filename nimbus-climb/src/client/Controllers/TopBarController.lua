@@ -10,9 +10,10 @@
 --   * Frame "Pill": one rounded navy pill inside Roblox's top-bar band (y 0 .. GuiService:GetGuiInset().Y), right of
 --     Roblox's own buttons: GuiService.TopbarInset.Min.X + 8 (read under pcall; K.FALLBACK_LEFT 212 while it is not
 --     available) and left of TopbarInset.Max.X (else K.RIGHT_RESERVE px off the right edge: the "..." button).
---     TextButtons PillButton_Shop (store W1: StoreController.Open(), the Robux Store window; in a match the side hint "The
---     Store is closed during a match."; a second tap closes the open Store; the Cloud Shop is the Store's Roulettes tab,
---     the roulette machines and MenuController.Open("Shop")), PillButton_Travel and PillButton_Settings
+--     TextButtons PillButton_Shop (lobby shop 16.3, Task 23: ShopController.Open() with no tab, the one Shop window on
+--     the last tab of this session, the first time Eggs; a second tap closes the open Shop; in a match the side hint "The
+--     Store is closed during a match."; the StoreController forwarder or MenuController.Open("Shop") when a build lacks
+--     ShopController), PillButton_Travel and PillButton_Settings
 --     (MenuController.OpenSettings: MainMenuController's settings panel). Icon + label; icons only on phones (the
 --     smaller screen side <= K.SMALL_PHONE) or when the labels do not fit; squeezed to K.MIN_BTN_W when even that
 --     does not fit (a tooltip names an icon-only button).
@@ -284,15 +285,22 @@ end
 ----------------------------------------------------------------------
 -- Actions
 ----------------------------------------------------------------------
--- the Robux Store window (StoreController, store W1; required on use: it is optional and boots after this controller)
+-- the one Shop window (lobby shop 16.3: ShopController; the StoreController forwarder in a build without it). Required
+-- on use: both are optional and boot after this controller.
 local function store()
-	local inst = script.Parent:FindFirstChild("StoreController")
-	local ok, mod = pcall(function()
-		return inst and require(inst)
-	end)
-	return ok and type(mod) == "table" and type(mod.Open) == "function" and mod or nil
+	for _, name in ipairs({ "ShopController", "StoreController" }) do
+		local inst = script.Parent:FindFirstChild(name)
+		local ok, mod = pcall(function()
+			return inst and require(inst)
+		end)
+		if ok and type(mod) == "table" and type(mod.Open) == "function" then
+			return mod
+		end
+	end
+	return nil
 end
 
+-- no tab: the Shop opens on the last tab of this session (the first time Eggs); a second tap closes it
 local function onShop()
 	local mc = menu()
 	if LocalPlayer:GetAttribute(Config.Attr.InMatch) == true then
@@ -304,7 +312,7 @@ local function onShop()
 	local sc = store()
 	if not sc then
 		if mc then
-			mc.Open("Shop") -- (a build without the Store: the Cloud Shop, as before)
+			mc.Open("Shop") -- (a build without either: MenuController's own path)
 		end
 		return
 	end

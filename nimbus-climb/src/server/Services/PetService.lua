@@ -1,6 +1,13 @@
 -- PetService: pet ownership, roulette purchases, equipping and pet perks (ARCHITECTURE_V2.md s.2).
 --
---   PetService.Init(lobbyInfo, deps)         deps = { DataService = }
+--   PetService.Init(lobbyInfo, deps)         deps = { DataService = }. Builds the lobby prompts (again on a second call,
+--                                            e.g. a rebuilt lobby: the old ones are destroyed first): one RoulettePrompt
+--                                            per machine ("Open" / its name, range 12) -> OpenPanel("Shop", { Tab =
+--                                            "Roulette", RouletteId }); lobby shop 16.3 (Task 23): the walk-up ShopPrompt
+--                                            ("Open" / "Shop", range 10, HoldDuration 0, no line of sight) on
+--                                            lobbyInfo.Shop.Counter.PromptPart (the Egg Guide) -> OpenPanel("Shop", { Tab =
+--                                            "Eggs" }) after a live-player, not-InMatch, PROMPT_COOLDOWN check; no part ->
+--                                            one warn, no prompt
 --   PetService.BuyRoulette(player, rouletteId, currency|nil, spins|nil) -> ok, reply|reason
 --                                            currency: nil = the roulette's own ("Tokens"; the gems-only Secret
 --                                            roulette: "Gems"), "Tokens" or "Gems" (also { Currency = ... });
@@ -1464,7 +1471,7 @@ local function connectRemotes()
 end
 
 ----------------------------------------------------------------------
--- Roulette machines in the lobby: one ProximityPrompt each
+-- Roulette machines in the lobby: one ProximityPrompt each; the walk-up ShopPrompt on the Egg Guide (lobby shop 16.3)
 ----------------------------------------------------------------------
 
 local function buildPrompts(lobbyInfo)
@@ -1517,6 +1524,36 @@ local function buildPrompts(lobbyInfo)
 			warn("[PetService] no PromptPart for roulette " .. tostring(roulette.Id))
 		end
 	end
+
+	-- lobby shop 16.3 (Task 23): the walk-up Shop prompt on the Egg Guide (Shop.Counter.PromptPart). The server only asks
+	-- the client to open a window: a live player, not in a match, rate-limited per player.
+	local counter = type(shop.Counter) == "table" and shop.Counter.PromptPart or nil
+	if not (counter and typeof(counter) == "Instance" and counter:IsA("BasePart")) then
+		warn("[PetService] no Shop.Counter.PromptPart: no walk-up ShopPrompt (the machines' prompts still open the Shop)")
+		return
+	end
+	local old = counter:FindFirstChild("ShopPrompt")
+	if old then
+		old:Destroy()
+	end
+	local shopPrompt = Instance.new("ProximityPrompt")
+	shopPrompt.Name = "ShopPrompt"
+	shopPrompt.ActionText = "Open"
+	shopPrompt.ObjectText = "Shop"
+	shopPrompt.HoldDuration = 0
+	shopPrompt.MaxActivationDistance = 10
+	shopPrompt.RequiresLineOfSight = false
+	shopPrompt.Parent = counter
+	table.insert(promptObjects, shopPrompt)
+	shopPrompt.Triggered:Connect(function(player)
+		if not isLivePlayer(player) or player:GetAttribute(Config.Attr.InMatch) == true then
+			return
+		end
+		if rateLimited(player, "Prompt_Shop", PROMPT_COOLDOWN) then
+			return
+		end
+		fireClient("OpenPanel", player, "Shop", { Tab = "Eggs" })
+	end)
 end
 
 ----------------------------------------------------------------------

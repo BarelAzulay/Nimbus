@@ -1052,7 +1052,8 @@ function H.build()
 		Callback = function()
 			local menu = H.controller("MenuController")
 			if menu then
-				safe("shop", menu.Open, "Shop", {})
+				-- lobby shop 16.3 (Task 23): the Shop's Eggs tab (a bare open would show the session's last tab)
+				safe("shop", menu.Open, "Shop", { Tab = "Eggs" })
 			end
 		end,
 		Parent = U.Empty,

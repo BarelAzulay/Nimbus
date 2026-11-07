@@ -1,5 +1,5 @@
--- smoke_lobby_shop_world.lua: the lobby-shop world (docs/superpowers/specs/2026-11-07-lobby-shop-design.md 5.9 / 5.6 / 5.11;
--- plan docs/superpowers/plans/2026-11-07-lobby-shop.md Tasks 10 / 12 / 13 / 14). Server world only (booted):
+-- smoke_lobby_shop_world.lua: the lobby-shop world (docs/superpowers/specs/2026-11-07-lobby-shop-design.md 5.9 / 5.6 / 5.11 /
+-- 16.3; plan docs/superpowers/plans/2026-11-07-lobby-shop.md Tasks 10 / 12 / 13 / 14 / 17 / 23). Server world only (booted):
 --   lobby_trove_plaza  the Sky Trove on the plaza lawn at spot C (spec 16.2, Task 17): its centre at polar 165 degrees r 50
 --                      from Config.Lobby.Origin (+-0.5), facing the plaza centre, <= 60 parts, the sign post at local x
 --                      -6.2 (the walk side), the PromptPart in front, LobbyInfo.Shop.ItemShop = { PromptPart, Center,
@@ -14,7 +14,8 @@
 --                      the centre; one
 --                      SkyTrove in a lobby either way; the TroveGroupDone attribute (a stored claim after the load and after
 --                      a provisional load's recovery, at the claim, never for a player without the claim); the Egg Guide
---                      at the trove's old spot (at(-21, -8)): the 11 x 8 board reads "Every egg hatches a random pet of
+--                      at the trove's old spot (at(-21, -8)), its children the board, the shelf, the seven eggs and (Task
+--                      23) the invisible, non-colliding PromptPart: the 11 x 8 board reads "Every egg hatches a random pet of
 --                      its rarity" and names the seven eggs in rarity colours in Config.Eggs.Order, no text behind the
 --                      eggs; the stone shelf 3 studs in front (the plan's 4 touched the Celestial machine) with the seven
 --                      eggs (2.25 x 3 x 2.5 ellipsoids, 2.5 studs apart, left to right as the reader sees them) at least
@@ -61,6 +62,15 @@
 --                      part, clear of every other altar part while it turns and bobs; one cyan PointLight 1.0 / 12; the altar
 --                      <= 500 parts with its lights in the rule; a rebuild with StormAltar._Kit: one gem_world request on
 --                      WorldGem at the gem CFrame, ML_DressKey only where the key is not missing (--mesh: a fixture holder)
+--   shop_prompt        the walk-up Shop prompt (spec 16.3, Task 23): the Egg Guide's PromptPart (invisible, not colliding,
+--                      5 x 4 x 3) at the board's cf * (0, 2, -5.6) (+-0.1); LobbyInfo.Shop.Counter = { PromptPart, Center,
+--                      Model = the EggGuide } (Roulettes / ItemShop unchanged); one ShopPrompt on it ("Open" / "Shop",
+--                      HoldDuration 0, range 10, no line of sight), the only one in the workspace; a trigger fires one
+--                      OpenPanel("Shop", { Tab = "Eggs" }) to that player, a second within PROMPT_COOLDOWN none, InMatch
+--                      none, junk triggers nothing; no Counter -> no prompt and one warn; the lobby rebuilt -> exactly one
+--                      ShopPrompt, on the new part (PetService.Init with the new LobbyInfo, as a rebuild does); the forced
+--                      fallback shop's own Counter carries it; the arch sign reads "eggs & gems"; the four machine prompts
+--                      unchanged; the booted lobby's prompts are put back at the end
 -- Rebuilds follow smoke_p6_lobby.lua: the booted lobby is set aside (renamed) and put back, the hooks (_Kit,
 -- _ForceShopFallback), Config.Trove.GroupId, the Meadow stats and the fixture holders restored in every path.
 -- Deterministic: mock clock only. Plain Lua 5.1 syntax only.
@@ -365,6 +375,19 @@ local function checkEggGuide(label, lobby, Config)
 	T.check(near(guide:GetPivot().Position, gcf.Position), label .. ": the Egg Guide stands at the trove's old spot (at(-21, -8), on the lawn)",
 		fmt("%.2f off", (guide:GetPivot().Position - gcf.Position).Magnitude))
 	T.check(guide:GetPivot().LookVector:Dot(gcf.LookVector) > 0.999, label .. ": ...facing the shop's centre")
+	-- its children: the board, the shelf, the seven eggs and (Task 23, spec 16.3) the walk-up prompt's invisible PromptPart
+	local kids, wantKids = {}, { "EggGuideBoard", "EggShelf", "PromptPart" }
+	for _, r in ipairs(Config.Eggs.Order) do
+		wantKids[#wantKids + 1] = "Egg_" .. r
+	end
+	for _, ch in ipairs(guide:GetChildren()) do
+		kids[#kids + 1] = ch.Name
+	end
+	table.sort(kids)
+	table.sort(wantKids)
+	T.eq(table.concat(kids, ","), table.concat(wantKids, ","), label .. ": the Egg Guide holds the board, the shelf, the seven eggs and the PromptPart")
+	local pp = guide:FindFirstChild("PromptPart")
+	T.check(pp ~= nil and pp:IsA("BasePart") and pp.Transparency >= 0.99 and pp.CanCollide == false, label .. ": ...the PromptPart is invisible and not colliding")
 	-- the board
 	local board = guide:FindFirstChild("EggGuideBoard")
 	local face = board and board:FindFirstChild("Face")
@@ -1642,6 +1665,213 @@ S.altar_world_gem = guarded("altar_world_gem", function()
 		"world gem: the hook and the holder are gone and the altar is rebuilt as normal (the return prompt re-bound)")
 	K.flushErrors("altar_world_gem")
 	K.flushWarnings("altar_world_gem", WGEM.Allowed)
+end)
+
+----------------------------------------------------------------------------------------------------
+-- shop_prompt (Task 23, spec 16.3 "The walk-up prompt"): the Egg Guide's PromptPart and PetService's ShopPrompt
+----------------------------------------------------------------------------------------------------
+local SHOP = {
+	Name = "ShopPrompt", Range = 10, Offset = Vector3.new(0, 2, -5.6), Size = Vector3.new(5, 4, 3), Caption = "eggs & gems",
+	Missing = "[PetService] no Shop.Counter.PromptPart",
+}
+
+-- every ProximityPrompt called `name` under root
+local function promptsNamed(root, name)
+	local out = {}
+	for _, d in ipairs(root and root:GetDescendants() or {}) do
+		if d:IsA("ProximityPrompt") and d.Name == name then
+			out[#out + 1] = d
+		end
+	end
+	return out
+end
+
+-- the one ShopPrompt on `part` with the spec's properties -> the prompt | nil
+local function checkShopPrompt(label, part)
+	local list = promptsNamed(part, SHOP.Name)
+	local pr = list[1]
+	T.check(#list == 1 and pr.Parent == part and pr.ActionText == "Open" and pr.ObjectText == "Shop" and pr.HoldDuration == 0
+		and pr.MaxActivationDistance == SHOP.Range and pr.RequiresLineOfSight == false,
+		label .. ": one ShopPrompt on the PromptPart ('Open' / 'Shop', HoldDuration 0, MaxActivationDistance 10, RequiresLineOfSight false)",
+		pr and fmt("%d prompts: '%s' / '%s', hold %s, range %s, los %s", #list, tostring(pr.ActionText), tostring(pr.ObjectText), tostring(pr.HoldDuration),
+			tostring(pr.MaxActivationDistance), tostring(pr.RequiresLineOfSight)) or (#list .. " prompts"))
+	return pr
+end
+
+-- the walk-up part itself: invisible, not colliding, 5 x 4 x 3
+local function checkCounterPart(label, part)
+	return T.check(part ~= nil and typeof(part) == "Instance" and part:IsA("BasePart") and part.Transparency >= 0.99 and part.CanCollide == false
+		and near(part.Size, SHOP.Size, 0.01), label .. ": the Counter's PromptPart is an invisible, non-colliding 5 x 4 x 3 part",
+		part and typeof(part) == "Instance" and part:IsA("BasePart") and fmt("transparency %.2f, collide %s, size %s", part.Transparency, tostring(part.CanCollide), tostring(part.Size)) or "none")
+end
+
+-- the four machine prompts as before: one RoulettePrompt each, 'Open' / the machine's name, range 12, instant
+local function checkMachinePrompts(label, shopInfo, Config)
+	local bad = {}
+	for _, rl in ipairs(Config.Roulettes) do
+		local m = type(shopInfo) == "table" and type(shopInfo.Roulettes) == "table" and shopInfo.Roulettes[rl.Id]
+		local list = promptsNamed(m and m.PromptPart, "RoulettePrompt")
+		local pr = list[1]
+		if not (#list == 1 and pr.ActionText == "Open" and pr.ObjectText == rl.DisplayName and pr.MaxActivationDistance == 12 and pr.HoldDuration == 0 and pr.RequiresLineOfSight == false) then
+			bad[#bad + 1] = rl.Id .. " (" .. #list .. ")"
+		end
+	end
+	T.check(#bad == 0, label .. ": the four machine prompts are unchanged (one RoulettePrompt each: 'Open' / the machine's name, range 12)", table.concat(bad, ", "))
+end
+
+S.shop_prompt = guarded("shop_prompt", function()
+	if not K.needBoot() then
+		return
+	end
+	local Config = K.config()
+	local info = K.W.lobbyInfo
+	local lobby = workspace:FindFirstChild("NimbusLobby")
+	local PS = K.mod("PetService")
+	local shopFolder = lobby and lobby:FindFirstChild("Shop")
+	local guide = shopFolder and shopFolder:FindFirstChild("EggGuide")
+	local part = guide and guide:FindFirstChild("PromptPart")
+	if not T.check(type(info) == "table" and type(info.Shop) == "table" and PS ~= nil and type(PS.Init) == "function" and part ~= nil,
+		"shop prompt: (precondition) LobbyInfo.Shop, PetService and the Egg Guide's PromptPart") then
+		K.flushErrors("shop_prompt")
+		K.flushWarnings("shop_prompt", ALLOWED_WARNINGS)
+		return
+	end
+
+	------------------------------------------------------------------ the part, LobbyInfo.Shop.Counter, the prompt
+	checkCounterPart("shop prompt", part)
+	local want = guideFrame() * CFrame.new(SHOP.Offset)
+	T.check(near(part.Position, want.Position, 0.1) and part.CFrame.LookVector:Dot(want.LookVector) > 0.999,
+		"shop prompt: the PromptPart stands at the Egg Guide's cf * (0, 2, -5.6), in front of the shelf (+-0.1)", fmt("%.3f off", (part.Position - want.Position).Magnitude))
+	local counter = info.Shop.Counter
+	T.check(type(counter) == "table" and counter.PromptPart == part and counter.Model == guide and typeof(counter.Center) == "Vector3",
+		"shop prompt: LobbyInfo.Shop.Counter = { PromptPart = the Egg Guide's part, Center, Model = the EggGuide }")
+	local stall = info.Shop.ItemShop
+	T.check(type(info.Shop.Roulettes) == "table" and type(stall) == "table" and stall.PromptPart ~= nil and stall.Model ~= nil and stall.Lid ~= nil,
+		"shop prompt: LobbyInfo.Shop.Roulettes and .ItemShop keep their shapes")
+	local prompt = checkShopPrompt("shop prompt", part)
+	T.eq(#promptsNamed(workspace, SHOP.Name), 1, "shop prompt: exactly one ShopPrompt in the workspace")
+	checkMachinePrompts("shop prompt", info.Shop, Config)
+	local arch = shopFolder:FindFirstChild("ShopArch")
+	local sign = arch and arch:FindFirstChild("ShopSign")
+	local subs = {}
+	for _, d in ipairs(sign and sign:GetDescendants() or {}) do
+		if d:IsA("TextLabel") and d.Name == "Sub" then
+			subs[#subs + 1] = tostring(d.Text)
+		end
+	end
+	T.check(#subs == 2 and subs[1] == SHOP.Caption and subs[2] == SHOP.Caption, "shop prompt: the arch sign's caption reads '" .. SHOP.Caption .. "' on both faces", table.concat(subs, " / "))
+
+	------------------------------------------------------------------ triggers, the cooldown, InMatch, junk
+	local players = {}
+	local function opens(p, mark)
+		return K.remotesFor("OpenPanel", p.UserId, mark)
+	end
+	local okRun, errRun = pcall(function()
+		local a = Mock.AddPlayer("ShopPromptA", 987301)
+		local b = Mock.AddPlayer("ShopPromptB", 987302)
+		players = { a, b }
+		K.advance(1)
+		if not prompt then
+			return
+		end
+		local mark = K.logSize()
+		Mock.Trigger(prompt, a)
+		K.advance(0.1)
+		local first = opens(a, mark)
+		local args = first[1] and first[1].args
+		local keys = 0
+		for _ in pairs(type(args) == "table" and type(args[2]) == "table" and args[2] or {}) do
+			keys = keys + 1
+		end
+		T.check(#first == 1 and first[1].kind ~= "all" and args[1] == "Shop" and type(args[2]) == "table" and args[2].Tab == "Eggs" and keys == 1,
+			"shop prompt: a trigger fires one OpenPanel('Shop', { Tab = 'Eggs' }) to that player only", #first .. " OpenPanel")
+		T.eq(#opens(b, mark), 0, "shop prompt: ...nobody else's Shop opens")
+		Mock.Trigger(prompt, a)
+		K.advance(0.1)
+		T.eq(#opens(a, mark), 1, "shop prompt: a second trigger within PROMPT_COOLDOWN (0.5 s) fires none")
+		K.advance(0.6)
+		Mock.Trigger(prompt, a)
+		K.advance(0.1)
+		T.eq(#opens(a, mark), 2, "shop prompt: ...and one again after the cooldown")
+		b:SetAttribute(Config.Attr.InMatch, true)
+		Mock.Trigger(prompt, b)
+		K.advance(0.1)
+		T.eq(#opens(b, mark), 0, "shop prompt: InMatch -> none")
+		b:SetAttribute(Config.Attr.InMatch, nil)
+		K.advance(0.6)
+		local mark2, errs = K.logSize(), #Mock.Errors
+		Mock.FireSignal(prompt, "Triggered", nil)
+		Mock.FireSignal(prompt, "Triggered", a.Name)
+		Mock.FireSignal(prompt, "Triggered", workspace)
+		K.advance(0.2)
+		T.check(#K.remotesFor("OpenPanel", nil, mark2) == 0 and #Mock.Errors == errs, "shop prompt: a trigger without a live player opens nothing and raises nothing")
+
+		-------------------------------------------------------------- a missing part warns once
+		local cursor = #Mock.Output
+		PS.Init({ Shop = { Roulettes = info.Shop.Roulettes, ItemShop = info.Shop.ItemShop } })
+		local warned = 0
+		for i = cursor + 1, #Mock.Output do
+			if Mock.Output[i].kind == "warn" and string.find(tostring(Mock.Output[i].text), SHOP.Missing, 1, true) then
+				warned = warned + 1
+			end
+		end
+		T.check(warned == 1 and #promptsNamed(workspace, SHOP.Name) == 0, "shop prompt: no Shop.Counter -> no ShopPrompt and one warn", warned .. " warns")
+
+		-------------------------------------------------------------- lobby rebuilt (Review Focus 4)
+		rebuild("shop prompt rebuild", function() end, function(built)
+			local c2 = built.Shop and built.Shop.Counter
+			local p2 = type(c2) == "table" and c2.PromptPart or nil
+			T.check(p2 ~= nil and p2 ~= part and p2:IsDescendantOf(built.Folder) and c2.Model ~= nil and c2.Model.Name == "EggGuide" and typeof(c2.Center) == "Vector3",
+				"shop prompt rebuild: the new lobby's Counter has its own PromptPart on its own EggGuide")
+			PS.Init(built)
+			local all = promptsNamed(workspace, SHOP.Name)
+			T.check(#all == 1 and all[1].Parent == p2, "shop prompt rebuild: lobby rebuilt -> exactly one ShopPrompt, on the new part", #all .. " ShopPrompts")
+			local pr2 = checkShopPrompt("shop prompt rebuild", p2)
+			checkMachinePrompts("shop prompt rebuild", built.Shop, Config)
+			if pr2 then
+				K.advance(0.6)
+				local mk = K.logSize()
+				Mock.Trigger(pr2, a)
+				K.advance(0.1)
+				T.eq(#opens(a, mk), 1, "shop prompt rebuild: the new prompt opens the Shop")
+			end
+		end)
+
+		-------------------------------------------------------------- the forced fallback shop
+		rebuild("shop prompt fallback", function(_, LB)
+			LB._ForceShopFallback = true
+		end, function(built)
+			local c2 = built.Shop and built.Shop.Counter
+			local p2 = type(c2) == "table" and c2.PromptPart or nil
+			local fb = built.Folder:FindFirstChild("ShopFallback")
+			T.check(fb ~= nil and p2 ~= nil and p2:IsDescendantOf(fb) and c2.Model ~= nil and c2.Model:IsDescendantOf(fb) and typeof(c2.Center) == "Vector3",
+				"shop prompt fallback: the fallback shop gives its own Counter { PromptPart, Center, Model }")
+			checkCounterPart("shop prompt fallback", p2)
+			PS.Init(built)
+			local all = promptsNamed(workspace, SHOP.Name)
+			T.check(#all == 1 and all[1].Parent == p2, "shop prompt fallback: exactly one ShopPrompt, on the fallback counter", #all .. " ShopPrompts")
+			checkShopPrompt("shop prompt fallback", p2)
+			checkMachinePrompts("shop prompt fallback", built.Shop, Config)
+		end)
+	end)
+	-- the booted lobby's prompts back
+	pcall(PS.Init, info)
+	local back = promptsNamed(workspace, SHOP.Name)
+	T.check(#back == 1 and back[1].Parent == part, "shop prompt: the booted Egg Guide has its one ShopPrompt back", #back .. " ShopPrompts")
+	checkMachinePrompts("shop prompt (back)", info.Shop, Config)
+	for _, p in ipairs(players) do
+		if p.Parent then
+			Mock.RemovePlayer(p)
+		end
+	end
+	K.advance(1)
+	T.check(okRun, "shop prompt: the scenario body ran", tostring(errRun))
+	K.flushErrors("shop_prompt")
+	local allowed = { SHOP.Missing }
+	for _, w in ipairs(ALLOWED_WARNINGS) do
+		allowed[#allowed + 1] = w
+	end
+	K.flushWarnings("shop_prompt", allowed)
 end)
 
 return S

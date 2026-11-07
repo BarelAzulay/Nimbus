@@ -1,4 +1,4 @@
--- smoke_shop_ui.lua: lobby-shop Tasks 21-22 (spec 16.3 "Who owns it", "Tabs and items", "Window", "Eggs tab", "Gems tab",
+-- smoke_shop_ui.lua: lobby-shop Tasks 21-23 (spec 16.3 "Who owns it", "Tabs and items", "Window", "Eggs tab", "Gems tab",
 -- "Packs, Passes, Boosts", "Hooks and every opener"; 16.1 ribbons, BEST VALUE, the Chest line, the token-grant lock): the
 -- Shop window A (client/Controllers/ShopController, moved from StoreController), its Eggs page (client/UI/ShopEggs) and its
 -- Gems page (client/UI/ShopGems). Loaded by tools/smoke.py in the CLIENT and PHONE worlds (Task 23 extends this file):
@@ -38,6 +38,12 @@
 --                        Focus 6); resize while open (Review Focus 1)
 --   client_shop_portrait (phone world: 390x844, 360x640) two header rows, the rail as one row of five 64 x 56 tabs, a
 --                        vertical list on every tab (Eggs: full-width cards, the odds a 2 x 2 grid), RedoGeom.check
+--   client_shop_openers  (1920x1080, Task 23: spec 16.3 "Openers", "Tutorial") a server OpenPanel("Shop", { Tab = "Eggs" })
+--                        -> Eggs; { Tab = "Roulette", RouletteId = "Storm" } -> ShopCard_Storm focused; { RouletteId =
+--                        "Secret", Currency = "Gems" } -> ShopCard_Secret focused; OpenPanel("Store", { Tab = "Passes" }) ->
+--                        Passes; PillButton_Shop: the first press of a session -> Eggs, then the last tab, a press while
+--                        open closes it; PetsController's OpenShop -> Eggs; with the tutorial's shop step active the pill and
+--                        OpenPanel("Shop", ...) each complete ShopOpened once, the world arrow unchanged, no ring on the pill
 -- Every scenario puts back the Config ids / prices it touched, the attributes, the MarketplaceService doubles and the
 -- viewport. Deterministic: mock clock only. Plain Lua 5.1 syntax only.
 
@@ -1634,6 +1640,168 @@ S.client_shop_portrait = guarded("client_shop_portrait", function()
 	end
 	G.finish(saved)
 	KC.flushErrors("client_shop_portrait")
+end)
+
+----------------------------------------------------------------------------------------------------
+-- client_shop_openers (Task 23, spec 16.3 "Openers", "Tutorial")
+----------------------------------------------------------------------------------------------------
+-- a press on the top bar's pill button (NimbusTopBar.PillButton_<name>)
+function G.pill(name)
+	local bar = G.pg():FindFirstChild("NimbusTopBar")
+	local button = bar and bar:FindFirstChild("PillButton_" .. name, true)
+	if button then
+		Mock.Click(button)
+	end
+	G.advance(0.4)
+	return button ~= nil
+end
+-- the tutorial's menu ring is shown (NimbusTutorialPointer.Ring) / its world guide is out (workspace.ClientFx.TutorialGuide)
+function G.tutRing()
+	local ptr = G.pg():FindFirstChild("NimbusTutorialPointer")
+	local ring = ptr and ptr:FindFirstChild("Ring")
+	return ring ~= nil and ring.Visible == true and G.shown(ring)
+end
+function G.tutGuide()
+	local fx = workspace:FindFirstChild("ClientFx")
+	return fx ~= nil and fx:FindFirstChild("TutorialGuide") ~= nil
+end
+
+S.client_shop_openers = guarded("client_shop_openers", function()
+	local KC = G.KC()
+	local Shop = G.req("client/Controllers/ShopController")
+	local MC = G.req("client/Controllers/MenuController")
+	if not T.check(Shop ~= nil and MC ~= nil and type(Shop.Open) == "function" and type(MC.Open) == "function", "shop openers: ShopController and MenuController load") then
+		return
+	end
+	local saved = G.begin()
+	Mock.SetViewport(1920, 1080)
+	G.advance(0.5)
+	local ok, err = pcall(function()
+		-- a server OpenPanel (the walk-up prompt, a machine's prompt, the altar's Summon, an old Store caller)
+		Shop.Open({ Tab = "Gems" })
+		G.advance(0.3)
+		Shop.Close()
+		G.advance(0.3)
+		KC.toClient("OpenPanel", "Shop", { Tab = "Eggs" })
+		G.advance(0.4)
+		T.check(Shop.IsOpen() and Shop.Tab() == "Eggs" and G.shown(G.find(G.win(), "Page_Eggs")), "shop openers: OpenPanel('Shop', { Tab = 'Eggs' }) (the walk-up prompt) -> the Shop on Eggs",
+			tostring(Shop.IsOpen()) .. " / " .. tostring(Shop.Tab()))
+		G.tapTab("Gems")
+		KC.toClient("OpenPanel", "Shop", { Tab = "Roulette", RouletteId = "Storm" })
+		G.advance(0.3)
+		local storm = G.eggCard("Storm")
+		T.check(Shop.Tab() == "Eggs" and storm ~= nil and storm:GetAttribute("Focused") == true, "shop openers: OpenPanel('Shop', { Tab = 'Roulette', RouletteId = 'Storm' }) -> Eggs with ShopCard_Storm focused",
+			tostring(Shop.Tab()) .. " / " .. tostring(storm and storm:GetAttribute("Focused")))
+		G.advance(2.8)
+		G.tapTab("Packs")
+		KC.toClient("OpenPanel", "Shop", { RouletteId = "Secret", Currency = "Gems" })
+		G.advance(0.3)
+		local hero = G.eggCard("Secret")
+		T.check(Shop.Tab() == "Eggs" and hero ~= nil and hero:GetAttribute("Focused") == true, "shop openers: OpenPanel('Shop', { RouletteId = 'Secret', Currency = 'Gems' }) (the altar's Summon) -> ShopCard_Secret focused",
+			tostring(Shop.Tab()) .. " / " .. tostring(hero and hero:GetAttribute("Focused")))
+		G.advance(2.8)
+		KC.toClient("OpenPanel", "Store", { Tab = "Passes" })
+		G.advance(0.3)
+		T.check(Shop.IsOpen() and Shop.Tab() == "Passes" and G.shown(G.find(G.win(), "Page_Passes")), "shop openers: OpenPanel('Store', { Tab = 'Passes' }) -> the Shop on Passes",
+			tostring(Shop.IsOpen()) .. " / " .. tostring(Shop.Tab()))
+		Shop.Close()
+		G.advance(0.4)
+
+		-- the top bar's Shop: the last tab of this session (the first time Eggs); a second press closes it
+		if type(Shop._S) == "table" then
+			Shop._S.Tab = nil -- (a fresh session)
+		end
+		T.check(G.pill("Shop") and Shop.IsOpen() and Shop.Tab() == "Eggs", "shop openers: PillButton_Shop's first press of a session -> the Shop on Eggs", tostring(Shop.Tab()))
+		G.tapTab("Gems")
+		G.tap(G.find(G.win(), "CloseButton"))
+		G.advance(0.3)
+		T.check(not Shop.IsOpen(), "shop openers: (setup) the X closes the Shop")
+		G.pill("Shop")
+		T.check(Shop.IsOpen() and Shop.Tab() == "Gems", "shop openers: ...the next press -> the last tab (Gems)", tostring(Shop.Tab()))
+		G.pill("Shop")
+		T.check(not Shop.IsOpen(), "shop openers: ...a press while it is open closes it")
+
+		-- the Pets window's Open Shop button (no pets yet) -> Eggs, not the last tab
+		MC.Open("Pets")
+		G.advance(0.6)
+		local openShop = nil
+		for _, d in ipairs(G.pg():GetDescendants()) do
+			if d.Name == "OpenShop" and (d:IsA("TextButton") or d:IsA("ImageButton")) then
+				openShop = d
+			end
+		end
+		if T.check(openShop ~= nil, "shop openers: (setup) the Pets window's OpenShop button exists") then
+			Mock.Click(openShop)
+			G.advance(0.5)
+			T.check(Shop.IsOpen() and Shop.Tab() == "Eggs", "shop openers: PetsController's OpenShop -> the Shop on Eggs (the last tab was Gems)", tostring(Shop.IsOpen()) .. " / " .. tostring(Shop.Tab()))
+		end
+		Shop.Close()
+		MC.Close()
+		G.advance(0.4)
+
+		-- the tutorial's shop step: any opener completes ShopOpened once (WINDOW_EVENTS); its world arrow stays, no ring on the pill
+		local TC = G.req("client/Controllers/TutorialController")
+		local Steps = G.req("shared/TutorialSteps")
+		local index = nil
+		for i, st in ipairs(Steps and Steps.Steps or {}) do
+			if st.Id == "shop" then
+				index = i
+			end
+		end
+		if T.check(TC ~= nil and index ~= nil, "shop openers: (setup) the tutorial's shop step exists") then
+			local tutSaved = type(TC.GetState) == "function" and TC.GetState() or nil
+			local step = Steps.Steps[index]
+			T.check(type(step.Target) == "table" and step.Target.Kind ~= "Menu" and step.CompleteOn == "ShopOpened", "shop openers: the shop step has a world target and waits for ShopOpened",
+				tostring(step.Target and step.Target.Kind) .. " / " .. tostring(step.CompleteOn))
+			-- the step's own target, plus the server's Position (the controller's fallback: this world has no NimbusLobby)
+			local target = {}
+			for k, v in pairs(step.Target or {}) do
+				target[k] = v
+			end
+			local Config = KC.env()
+			target.Position = target.Position or (Config.Lobby.Origin + Config.Lobby.ShopOffset)
+			KC.toClient("TutorialState", {
+				Step = index, Total = #Steps.Steps, Id = step.Id, Title = step.Title, Text = tostring(step.Text), Target = target,
+				CompleteOn = step.CompleteOn, Hint = step.Hint, Button = step.Button, AlsoNext = step.AlsoNext == true,
+				Chapter = step.Chapter, Done = false, Completed = false, Skipped = false, Reward = 0,
+			})
+			G.advance(2.5)
+			local guide0, ring0 = G.tutGuide(), G.tutRing()
+			T.check(guide0 and not ring0, "shop openers: (setup) the shop step shows its world arrow (workspace.ClientFx.TutorialGuide), no menu ring",
+				"guide " .. tostring(guide0) .. ", ring " .. tostring(ring0))
+			local mark = #Mock.RemoteLog
+			G.pill("Shop")
+			G.advance(0.4)
+			T.check(Shop.IsOpen() and G.calls("TutorialEvent", mark, "ShopOpened") == 1, "shop openers: with the shop step active, PillButton_Shop completes ShopOpened once",
+				G.calls("TutorialEvent", mark, "ShopOpened") .. " sent")
+			local ringOpen = G.tutRing()
+			Shop.Close()
+			G.advance(0.8)
+			T.check(not ringOpen and not G.tutRing() and G.tutGuide() == guide0, "shop openers: ...no ring shows on the pill, and the step keeps its world arrow",
+				"ring while open " .. tostring(ringOpen) .. ", guide after " .. tostring(G.tutGuide()))
+			mark = #Mock.RemoteLog
+			KC.toClient("OpenPanel", "Shop", { Tab = "Roulette", RouletteId = "Cloud" })
+			G.advance(0.6)
+			T.check(Shop.IsOpen() and G.calls("TutorialEvent", mark, "ShopOpened") == 1, "shop openers: ...and OpenPanel('Shop', ...) completes it once too",
+				G.calls("TutorialEvent", mark, "ShopOpened") .. " sent")
+			ringOpen = G.tutRing()
+			Shop.Close()
+			G.advance(0.8)
+			T.check(not ringOpen and not G.tutRing() and G.tutGuide() == guide0, "shop openers: ...still no ring, the world arrow unchanged")
+			G.advance(0.4)
+			if tutSaved then
+				KC.toClient("TutorialState", tutSaved)
+			else
+				KC.toClient("TutorialState", { Done = true, Step = #Steps.Steps, Total = #Steps.Steps })
+			end
+			G.advance(0.6)
+		end
+	end)
+	if not ok then
+		T.fail("shop openers: scenario error", tostring(err))
+	end
+	G.finish(saved)
+	KC.flushErrors("client_shop_openers")
 end)
 
 return S

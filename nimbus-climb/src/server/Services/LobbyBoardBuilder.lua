@@ -2,7 +2,7 @@
 -- lobby's newer boards, drawn with LobbyBuilder's own helpers (passed in as H), so they look exactly like the other notice
 -- boards and add only one local to LobbyBuilder's near-full main chunk.
 --
---   LobbyBoardBuilder.EggGuide(parent, cf, H) -> Model "EggGuide"
+--   LobbyBoardBuilder.EggGuide(parent, cf, H) -> Model "EggGuide", PromptPart
 --     cf = the board's ground CFrame (front -Z, towards the reader; WorldPivot = cf). Built at the Sky Trove's old spot on
 --     the shop island (the trove moved to the plaza lawn):
 --       * EggGuideBoard: an 11 x 8 notice board (H.noticeBoard tags it prop_board_s, its Face stays) whose SurfaceGui
@@ -16,6 +16,9 @@
 --         bottom centre (the Blender pivot). Until a key has an id the egg is its Part fallback: a 2.25 x 3 x 2.5
 --         ellipsoid (a block with a Sphere SpecialMesh, CourseBuilder's way: a Roblox Ball part is always round) in the
 --         rarity colour, SmoothPlastic, not colliding; the Secret egg dark with its violet tint.
+--       * PromptPart (lobby shop 16.3, Task 23): an invisible, non-colliding 5 x 4 x 3 part at cf * (0, 2, -5.6), just in
+--         front of the shelf (the old item stall's prompt spot). Returned second: LobbyBuilder hands it on as
+--         LobbyInfo.Shop.Counter.PromptPart and PetService puts the walk-up ShopPrompt on it.
 --   LobbyBoardBuilder.Leaderboard(parent, L, H) -> Model "LobbyLeaderboard" | nil
 --     The global leaderboard's board on the south lawn (spec 5.10 "World"): placed with H.plazaSpot at polar 295 degrees,
 --     r 48, clearance 9 (nil when the spot is not free: plazaSpot has warned "plaza decor skipped"), on the lawn layer,
@@ -30,7 +33,8 @@
 --
 --   H = { noticeBoard, surfaceGui, signPanel, signText, box, Mesh, C, MAT, LAWN, plazaSpot, faceCentre } (LobbyBuilder's
 --   layout field L.H, built once per Build)
--- No light, no prompt, no animation (the server never animates). Plain Lua 5.1 syntax only.
+-- No light, no prompt (only the Egg Guide's PromptPart for PetService's), no animation (the server never animates). Plain
+-- Lua 5.1 syntax only.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
@@ -51,6 +55,8 @@ local EGG = { Size = Vector3.new(2.25, 3, 2.5), Step = 2.5 } -- the Blender egg'
 -- the stone shelf and its centre's distance in front of the board: 3 studs (not 4) and 17.6 wide (the eggs need 17.25), so
 -- at the trove's old spot its end keeps 0.8 stud from the Celestial machine's base (at 4 / 18 it touched it)
 local SHELF = { Size = Vector3.new(17.6, 0.8, 2.6), Z = -3 }
+-- the walk-up Shop prompt's part (lobby shop 16.3: the old item stall's prompt spot, 1 stud further out for the shelf)
+local COUNTER = { Offset = CFrame.new(0, 2, -5.6), Size = Vector3.new(5, 4, 3) }
 local SECRET = {
 	Body = Color3.fromRGB(40, 40, 52), -- Config.Rarities Secret
 	Tint = Color3.fromRGB(138, 92, 255), -- the Secret egg's violet glow (spec 5.6)
@@ -137,8 +143,10 @@ function LobbyBoardBuilder.EggGuide(parent, cf, H)
 		shape.Parent = egg
 		H.Mesh.tag(egg, EGG_KEYS[id], eggCF)
 	end
+	-- the walk-up Shop prompt's part (spec 16.3): invisible, not colliding, just in front of the shelf
+	local prompt = H.box(model, "PromptPart", cf * COUNTER.Offset, COUNTER.Size, H.C.Cloud, { Transparency = 1, Shadow = false })
 	model.WorldPivot = cf
-	return model
+	return model, prompt
 end
 
 function LobbyBoardBuilder.Leaderboard(parent, L, H)

@@ -3,8 +3,9 @@
 --   huditems_gone        (server, booted) shared/ItemCatalog and server/Services/ItemService are gone, no BuyItem /
 --                        UseItem remotes and no Config.Items; the item stall keeps its sculpt but has no prompt, is
 --                        boarded up (Model Boards: two planks beside the mesh-tagged Stall model) and its sign says
---                        Closed; the roulette prompts and the Trove's are the only prompts of the shop (counted by name:
---                        the lobby shop moved the trove to the plaza lawn); no NPC line names an item or
+--                        Closed; the roulette prompts, the Trove's and the Egg Guide's walk-up ShopPrompt (lobby-shop
+--                        Task 23) are the only prompts of the shop (counted by name: the lobby shop moved the trove to
+--                        the plaza lawn; no ItemShopPrompt); no NPC line names an item or
 --                        the hotbar (<= 125 bytes, 3-5 lines), the Movement Trainer's keywords name the checkpoint
 --   huditems_refund      (server, booted; DataStore mock seeded with v2 saves) the one-time B3ItemsRefund: 30 / 45 / 150
 --                        Tokens per heal_cloud / shield_bubble / phoenix_feather, counts clamped to 5, unknown ids pay 0,
@@ -104,9 +105,11 @@ local function serverScenarios()
 		local title = find(stall.Model, "Title")
 		T.check(title ~= nil and title:IsA("TextLabel") and title.Text == "SKY TROVE", "huditems: ...the lid plate reads SKY TROVE", title and title.Text)
 		-- lobby shop (spec 5.9): the trove stands on the plaza lawn now (still in the Shop folder, off the island), so the
-		-- shop prompts are counted by name: one RoulettePrompt per machine, the one TrovePrompt, nothing else
+		-- shop prompts are counted by name: one RoulettePrompt per machine, the one TrovePrompt and (lobby shop 16.3, Task
+		-- 23) the walk-up ShopPrompt on the Egg Guide's PromptPart, nothing else (no ItemShopPrompt: the stall stays gone)
 		local shopFolder = workspace.NimbusLobby:FindFirstChild("Shop")
-		local machines, troves, strays = 0, 0, {}
+		local guide = shopFolder and shopFolder:FindFirstChild("EggGuide")
+		local machines, troves, walkups, strays = 0, 0, 0, {}
 		for _, d in ipairs(shopFolder and shopFolder:GetDescendants() or {}) do
 			if d:IsA("ProximityPrompt") then
 				local owner = d.Parent and d.Parent.Parent
@@ -114,14 +117,16 @@ local function serverScenarios()
 					machines = machines + 1
 				elseif d.Name == "TrovePrompt" and d:IsDescendantOf(stall.Model) then
 					troves = troves + 1
+				elseif d.Name == "ShopPrompt" and guide and d.Parent and d.Parent.Name == "PromptPart" and d.Parent.Parent == guide then
+					walkups = walkups + 1
 				else
 					strays[#strays + 1] = d:GetFullName()
 				end
 			end
 		end
-		T.check(machines == #Config.Roulettes and troves == 1 and #strays == 0,
-			"huditems: the roulette prompts (one RoulettePrompt per machine) and the Trove's TrovePrompt are the only shop prompts",
-			fmt("%d machine prompts, %d trove prompts, strays: %s", machines, troves, table.concat(strays, ", ")))
+		T.check(machines == #Config.Roulettes and troves == 1 and walkups == 1 and #strays == 0,
+			"huditems: the roulette prompts (one RoulettePrompt per machine), the Trove's TrovePrompt and the Egg Guide's walk-up ShopPrompt are the only shop prompts (no ItemShopPrompt)",
+			fmt("%d machine prompts, %d trove prompts, %d walk-up prompts, strays: %s", machines, troves, walkups, table.concat(strays, ", ")))
 
 		local NpcDialog = req("shared/NpcDialog")
 		if T.check(NpcDialog and type(NpcDialog.Npcs) == "table", "huditems: NpcDialog loads") then

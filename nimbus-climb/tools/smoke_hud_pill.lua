@@ -7,7 +7,8 @@
 --   client_hudpill     (client, 1920x1080) the NimbusTopBar ScreenGui (IgnoreGuiInset, order 21) and its Pill in Roblox's
 --                      top-bar band right of Roblox's buttons (GuiService.TopbarInset.Min.X + 8, fallback 212) and left
 --                      of its right-side buttons; PillButton_Shop / Travel / Settings; PillRight / PillBottom; Shop opens
---                      the Robux Store (store W1; not the Cloud Shop) and is refused in a match with the hint; Settings opens MainMenuController's
+--                      the one Shop window (lobby-shop Tasks 21 / 23: NimbusShop, not the Cloud Shop), a second press
+--                      closes it, and it is refused in a match with the hint; Settings opens MainMenuController's
 --                      panel; a tap on Travel fires QuickTravel("Plaza") once with no drop-down and no fade; Travel
 --                      hides in a battle and a match, and shows on the Arena island and at home; the menu column keeps
 --                      Pets, Index, Home, Stats (no gear, Team or Items tile)
@@ -228,6 +229,9 @@ local function clientScenarios()
 			"hudpill: Shop opens the Shop window (NimbusShop, lobby-shop Task 21), not the Cloud Shop")
 		Mock.Click(H.button(pill, "Shop"))
 		KC.advance(0.3)
+		-- lobby-shop Task 23: the pill toggles the one Shop window (a second press closes it)
+		storeWin = H.pg():FindFirstChild("NimbusShop") and H.pg().NimbusShop:FindFirstChild("ShopWindow", true)
+		T.check(not (storeWin and H.shown(storeWin)), "hudpill: a second press on Shop closes the Shop window (the pill toggles it)")
 		LocalPlayer:SetAttribute(Config.Attr.InMatch, true)
 		KC.advance(0.1)
 		Mock.Click(H.button(pill, "Shop"))

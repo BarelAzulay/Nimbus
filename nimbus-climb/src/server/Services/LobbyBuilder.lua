@@ -43,7 +43,10 @@
 --
 -- LobbyBuilder.Build() -> LobbyInfo (ARCHITECTURE.md / _V2 / _V3 contract):
 --   Folder, SpawnCFrame, Portals = { Obby = PortalInfo (+ Model, PromptPart) } (Phase 5: the one Sky Obby portal),
---   Spots[i] = SpotInfo, Shop = { Roulettes[id], ItemShop = { PromptPart, Center, Model, Lid } } (ItemShop = the Sky Trove),
+--   Spots[i] = SpotInfo, Shop = { Roulettes[id], ItemShop = { PromptPart, Center, Model, Lid } (ItemShop = the Sky Trove),
+--                              Counter = { PromptPart, Center, Model } | nil } (lobby shop 16.3: the walk-up Shop prompt's
+--                              part, the Egg Guide's (Model = the EggGuide); the fallback shop's own ShopCounter; nil only
+--                              when the Egg Guide failed),
 --   NpcSpots = { CFrame x6 }   ground-level CFrames on the plaza lawn beside the walkways, LookVector = towards
 --                              the walkway / court, each with ~5 studs of free space for an NPC pedestal
 --   AltarSite = CFrame | nil   reserved, empty spot inside the ring for the Storm Altar island (faces the plaza)
@@ -74,8 +77,8 @@
 -- Part budget: the lobby with all six gates <= 8000 parts after the greedy voxel merge (10.3). Repeated decor (trees, lamps, benches, flower beds,
 -- the whole plot with its island, fence and gate, cloud puffs, sky clouds) is sculpted once and :Clone()d.
 -- No external assets: Parts, built-in particle textures and Theme-styled GUI text. Deterministic (seeded).
--- ProximityPrompts are NOT created here: PetService attaches them to the PromptParts (the item stall's PromptPart
--- stays for the LobbyInfo shape and gets none since the HUD cleanup). The one exception
+-- ProximityPrompts are NOT created here: PetService attaches them to the PromptParts (the machines' and, lobby shop
+-- 16.3, the walk-up ShopPrompt on Shop.Counter.PromptPart; TroveService the Sky Trove's). The one exception
 -- (bug batch 2 #7): every bench's "Sit" prompts, handled here (Benches).
 --
 -- Robustness: gates, spots, the shop machines and the item stall are what other services depend on. Each
@@ -3759,9 +3762,14 @@ local function buildShop(root, L)
 	-- plaza's reservations); it stays in this folder, so a failed shop build takes it along and the fallback builds the
 	-- only trove.
 	local guidePos = at(-21, -8) - Vector3.new(0, LAWN, 0) -- on the lawn layer
-	local okGuide, errGuide = pcall(LobbyBoardBuilder.EggGuide, f, flatLook(guidePos, S - Vector3.new(0, LAWN, 0)), L.H)
+	local okGuide, guide, guidePart = pcall(LobbyBoardBuilder.EggGuide, f, flatLook(guidePos, S - Vector3.new(0, LAWN, 0)), L.H)
+	-- lobby shop 16.3 (Task 23): the walk-up Shop prompt's counter is the Egg Guide (PetService puts ShopPrompt on its part;
+	-- without it PetService warns and the machines' prompts still open the Shop)
+	local counter = nil
 	if not okGuide then
-		warn("[LobbyBuilder] egg guide failed: " .. tostring(errGuide))
+		warn("[LobbyBuilder] egg guide failed: " .. tostring(guide))
+	elseif guidePart then
+		counter = { PromptPart = guidePart, Center = guidePart.Position, Model = guide }
 	end
 	local okStall, stall = pcall(buildTrove, f, L.TroveCF)
 	if not okStall then
@@ -3793,7 +3801,7 @@ local function buildShop(root, L)
 			local gui = surfaceGui(sign, face)
 			local panel = signPanel(gui, C.TextGold)
 			signText(panel, "CLOUD SHOP", "Title", 80, C.Gold, "Name", 0.03, 0.05, 0.94, 0.56)
-			signText(panel, "pets & items", "Body", 34, C.Text, "Sub", 0.04, 0.62, 0.92, 0.3)
+			signText(panel, "eggs & gems", "Body", 34, C.Text, "Sub", 0.04, 0.62, 0.92, 0.3) -- lobby shop 16.3: no items any more
 			gui.Parent = sign
 		end
 		local lampTpl = Props.Lamp()
@@ -3824,7 +3832,7 @@ local function buildShop(root, L)
 	if not okDecor then
 		warn("[LobbyBuilder] shop decor failed: " .. tostring(errDecor))
 	end
-	return { Roulettes = roulettes, ItemShop = stall }
+	return { Roulettes = roulettes, ItemShop = stall, Counter = counter }
 end
 
 -- Last-resort shop: plain machines and the Trove's counter with their PromptParts, so pets stay purchasable.
@@ -3844,7 +3852,12 @@ local function fallbackShop(root, L)
 	end
 	-- lobby shop (spec 5.9): the fallback trove at the plaza spot too, so there is only ever one trove, on the plaza
 	local stall = fallbackTrove(f, L.TroveCF or flatLook(S + Vector3.new(0, 0, 12), S))
-	return { Roulettes = roulettes, ItemShop = stall }
+	-- lobby shop 16.3 (Task 23): a plain counter at the end of the machines' row carries the walk-up Shop prompt's part
+	local counterCF = flatLook(S + Vector3.new((count + 1) / 2 * 12, 0, -12), S)
+	local counter = newModel(f, "ShopCounter")
+	local desk = box(counter, "Counter", counterCF * CFrame.new(0, 1.7, 0), Vector3.new(6, 3.4, 3.2), C.Plank, { Collide = true })
+	local promptPart = box(counter, "PromptPart", counterCF * CFrame.new(0, 2, -5.6), Vector3.new(5, 4, 3), C.Cloud, { Transparency = 1, Shadow = false })
+	return { Roulettes = roulettes, ItemShop = stall, Counter = { PromptPart = promptPart, Center = desk.Position, Model = counter } }
 end
 
 ----------------------------------------------------------------------
