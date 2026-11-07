@@ -1768,8 +1768,9 @@ src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientS
              Gems and the Robux items), Store (a forwarder to Shop kept for old callers), Daily (the Gifts button and window),
              BoostBadge (the x2 chips under the strips), Vip (the VIP chat tag and lobby crown), Title (the TOP 10 /
              TOP 100 / CREATOR title above the head; a titled VIP's crown sits inside it), Leaderboard (the lobby
-             board's face: the global top 10 on three tappable pages, the You row), Trove (the Sky Trove
-             panel, the lid and coins)
+             board's face: the global top 10 on three tappable pages, the You row), LobbyFx (one heartbeat turns the
+             world gem, the altar's glow ring and the Egg Guide's shelf eggs, bobs the Join sign, and hides that sign once
+             you claimed the group reward), Trove (the Sky Trove panel, the lid and coins)
 ```
 
 The **server is authoritative** (health, tokens, Cash, Gems, berries, pets, items, checkpoints, matches, home

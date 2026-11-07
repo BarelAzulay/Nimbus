@@ -23,6 +23,7 @@ local CONTROLLER_NAMES = {
 	"ShopController", -- lobby-shop Task 21: the one Shop window (tab rail: Eggs, Gems, Packs, Passes, Boosts)
 	"StoreController", -- the forwarder kept for old callers (everything goes to ShopController)
 	"LeaderboardController", -- lobby-shop Task 24: the lobby board's top 10 (a PlayerGui SurfaceGui on its Face, tappable pages)
+	"LobbyFxController", -- lobby-shop Task 25: one heartbeat turns / bobs the NC_Spin / NC_Bob targets, hides the Join sign once claimed
 	"DailyController", -- the Gifts button, its pip and the streak / play-time window
 	"BoostBadgeController", -- the boost chips (XP potion, passes) under the currency pills
 	"VipController", -- the VIP chat tag and the lobby crown
@@ -78,7 +79,7 @@ local OPTIONAL = { PetsController = true, SkyDragonController = true, IndexContr
 	MeadowFx = true, RingCrowdFx = true, DungeonFx = true,
 	RingAmbience = true,
 	ShopController = true, StoreController = true, DailyController = true, BoostBadgeController = true, VipController = true, TroveController = true,
-	TitleController = true, LeaderboardController = true }
+	TitleController = true, LeaderboardController = true, LobbyFxController = true }
 
 local client = script.Parent
 task.spawn(function() local okMesh, MeshLibrary = pcall(function() return require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("MeshLibrary", 30)) end) if okMesh and type(MeshLibrary) == "table" then MeshLibrary.Start() end end) -- Phase 6: Blender meshes

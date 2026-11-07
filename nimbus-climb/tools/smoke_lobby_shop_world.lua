@@ -1,5 +1,5 @@
 -- smoke_lobby_shop_world.lua: the lobby-shop world (docs/superpowers/specs/2026-11-07-lobby-shop-design.md 5.9 / 5.6 / 5.11 /
--- 16.3; plan docs/superpowers/plans/2026-11-07-lobby-shop.md Tasks 10 / 12 / 13 / 14 / 17 / 23). Server world only (booted):
+-- 16.3 / 16.5; plan docs/superpowers/plans/2026-11-07-lobby-shop.md Tasks 10 / 12 / 13 / 14 / 17 / 23 / 25). Server world only (booted):
 --   lobby_trove_plaza  the Sky Trove on the plaza lawn at spot C (spec 16.2, Task 17): its centre at polar 165 degrees r 50
 --                      from Config.Lobby.Origin (+-0.5), facing the plaza centre, <= 60 parts, the sign post at local x
 --                      -6.2 (the walk side), the PromptPart in front, LobbyInfo.Shop.ItemShop = { PromptPart, Center,
@@ -18,7 +18,8 @@
 --                      23) the invisible, non-colliding PromptPart: the 11 x 8 board reads "Every egg hatches a random pet of
 --                      its rarity" and names the seven eggs in rarity colours in Config.Eggs.Order, no text behind the
 --                      eggs; the stone shelf 3 studs in front (the plan's 4 touched the Celestial machine) with the seven
---                      eggs (2.25 x 3 x 2.5 ellipsoids, 2.5 studs apart, left to right as the reader sees them) at least
+--                      eggs (2.25 x 3 x 2.5 ellipsoids, 2.5 studs apart, left to right as the reader sees them; Task 25:
+--                      each tagged NC_Spin with SpinSeconds 14, BobStuds 0.12, BobSeconds 3.2, the shelf turntable) at least
 --                      3 studs from every roulette prompt and clear of every other shop prop; the dress requests name
 --                      egg_common .. egg_secret on the Egg_<Rarity> parts at the egg's bottom centre; ML_DressKey only
 --                      where MeshLibrary.Status(key) ~= "missing" (in --mesh the scenario gives the egg keys fixture
@@ -499,6 +500,18 @@ local function checkEggGuide(label, lobby, Config)
 	end
 	T.check(#bad == 0 and #eggs == 7, label .. ": seven Egg_<Rarity> eggs, 2.25 x 3 x 2.5 ellipsoids in SmoothPlastic and the rarity colour (Secret dark violet), standing on the shelf 2.5 studs apart",
 		table.concat(bad, "; "))
+	-- Task 25 (spec 16.5): a slow display turntable; the client's LobbyFx heartbeat turns and bobs each egg (the server never
+	-- animates)
+	local still = {}
+	for _, r in ipairs(Config.Eggs.Order) do
+		local egg = guide:FindFirstChild("Egg_" .. r)
+		if not (egg and CS:HasTag(egg, Config.Tags.Spin) and egg:GetAttribute("SpinSeconds") == 14 and egg:GetAttribute("BobStuds") == 0.12
+			and egg:GetAttribute("BobSeconds") == 3.2) then
+			still[#still + 1] = r .. (egg and fmt(" (%s %s / %s / %s)", tostring(CS:HasTag(egg, Config.Tags.Spin)), tostring(egg:GetAttribute("SpinSeconds")),
+				tostring(egg:GetAttribute("BobStuds")), tostring(egg:GetAttribute("BobSeconds"))) or " missing")
+		end
+	end
+	T.check(#still == 0, label .. ": every egg is tagged NC_Spin with SpinSeconds 14, BobStuds 0.12, BobSeconds 3.2 (the shelf turntable)", table.concat(still, "; "))
 	table.sort(eggs, function(a, b)
 		return a.D < b.D
 	end)

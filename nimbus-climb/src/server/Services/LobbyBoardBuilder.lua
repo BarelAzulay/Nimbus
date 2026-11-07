@@ -15,7 +15,9 @@
 --         reader sees them (the reader's left is the board's +X), each Mesh.tag'ged with its egg_<rarity> key at the egg's
 --         bottom centre (the Blender pivot). Until a key has an id the egg is its Part fallback: a 2.25 x 3 x 2.5
 --         ellipsoid (a block with a Sphere SpecialMesh, CourseBuilder's way: a Roblox Ball part is always round) in the
---         rarity colour, SmoothPlastic, not colliding; the Secret egg dark with its violet tint.
+--         rarity colour, SmoothPlastic, not colliding; the Secret egg dark with its violet tint. Each egg is tagged
+--         Config.Tags.Spin with SpinSeconds 14, BobStuds 0.12, BobSeconds 3.2 (lobby shop 16.5, Task 25: a slow display
+--         turntable; the client's LobbyFxController turns and bobs it about its pivot, the server never animates).
 --       * PromptPart (lobby shop 16.3, Task 23): an invisible, non-colliding 5 x 4 x 3 part at cf * (0, 2, -5.6), just in
 --         front of the shelf (the old item stall's prompt spot). Returned second: LobbyBuilder hands it on as
 --         LobbyInfo.Shop.Counter.PromptPart and PetService puts the walk-up ShopPrompt on it.
@@ -37,6 +39,7 @@
 -- Lua 5.1 syntax only.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CollectionService = game:GetService("CollectionService")
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 
 local LobbyBoardBuilder = {}
@@ -51,7 +54,9 @@ local EGG_KEYS = {
 	Mythic = "egg_mythic",
 	Secret = "egg_secret",
 }
-local EGG = { Size = Vector3.new(2.25, 3, 2.5), Step = 2.5 } -- the Blender egg's size (studs), the gap between centres
+-- the Blender egg's size (studs), the gap between centres, and the shelf turntable the client plays (spec 16.5: one turn in
+-- SpinSeconds, a BobStuds bob over BobSeconds)
+local EGG = { Size = Vector3.new(2.25, 3, 2.5), Step = 2.5, SpinSeconds = 14, BobStuds = 0.12, BobSeconds = 3.2 }
 -- the stone shelf and its centre's distance in front of the board: 3 studs (not 4) and 17.6 wide (the eggs need 17.25), so
 -- at the trove's old spot its end keeps 0.8 stud from the Celestial machine's base (at 4 / 18 it touched it)
 local SHELF = { Size = Vector3.new(17.6, 0.8, 2.6), Z = -3 }
@@ -142,6 +147,13 @@ function LobbyBoardBuilder.EggGuide(parent, cf, H)
 		shape.MeshType = Enum.MeshType.Sphere -- the ellipsoid of the block's size
 		shape.Parent = egg
 		H.Mesh.tag(egg, EGG_KEYS[id], eggCF)
+		-- the turntable (Task 25): attributes first, then the tag, so a client that sees the tag reads them
+		egg:SetAttribute("SpinSeconds", EGG.SpinSeconds)
+		egg:SetAttribute("BobStuds", EGG.BobStuds)
+		egg:SetAttribute("BobSeconds", EGG.BobSeconds)
+		if type(Config.Tags) == "table" and type(Config.Tags.Spin) == "string" then
+			CollectionService:AddTag(egg, Config.Tags.Spin)
+		end
 	end
 	-- the walk-up Shop prompt's part (spec 16.3): invisible, not colliding, just in front of the shelf
 	local prompt = H.box(model, "PromptPart", cf * COUNTER.Offset, COUNTER.Size, H.C.Cloud, { Transparency = 1, Shadow = false })
