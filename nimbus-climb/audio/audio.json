@@ -354,6 +354,72 @@
       "sha256": "927ea93da323329ea43df57d66b05d031b3c8888d062c13d76d027787e3ac5e1",
       "slot": "Sfx",
       "looped": false
+    },
+    "EggStripTick": {
+      "file": "audio/EggStripTick.ogg",
+      "sha256": "6cba145c1a6ffe41add70e1d488e82246ab577ea432c06979ecc81159c6d07be",
+      "slot": "Sfx",
+      "looped": false
+    },
+    "EggStripLand": {
+      "file": "audio/EggStripLand.ogg",
+      "sha256": "e9abb1ddd77e8858cbbfd40f8109ba6e433f289e92a01badc05501c85067fee0",
+      "slot": "Sfx",
+      "looped": false
+    },
+    "EggRise": {
+      "file": "audio/EggRise.ogg",
+      "sha256": "4b40c685e7dbcdffbed1ac7ae001922f04f0d3ecd7344799256ea48ccf394526",
+      "slot": "Sfx",
+      "looped": false
+    },
+    "EggShake": {
+      "file": "audio/EggShake.ogg",
+      "sha256": "60cdc498c8249e0a26cca7e965abbdfa7ffcf8bada301c4991abf1d5b4bcf490",
+      "slot": "Sfx",
+      "looped": false
+    },
+    "EggCrack": {
+      "file": "audio/EggCrack.ogg",
+      "sha256": "ba257db05fd45d5fb32f6b88fa46f19097673686f20316597ceac77457ac4ccc",
+      "slot": "Sfx",
+      "looped": false
+    },
+    "EggBurst": {
+      "file": "audio/EggBurst.ogg",
+      "sha256": "ccdce3272267c917b57f63298b08b01206f2258b3e7a143926833764b6aaf8e7",
+      "slot": "Sfx",
+      "looped": false
+    },
+    "EggCloudRing": {
+      "file": "audio/EggCloudRing.ogg",
+      "sha256": "b8ea6a6d2564d36fe76a3feeb7562bb717b6ae89ac4d7bd40732d673f1068301",
+      "slot": "Sfx",
+      "looped": false
+    },
+    "EggRevealCommon": {
+      "file": "audio/EggRevealCommon.ogg",
+      "sha256": "363b6f0ee60c021a84e9762d474168286bba19c56f041decc19b7b11261514b7",
+      "slot": "Sfx",
+      "looped": false
+    },
+    "EggRevealEpic": {
+      "file": "audio/EggRevealEpic.ogg",
+      "sha256": "04bdccb2c501ca0c379ce0d6b4f774f74ab3c18f56ff38301e33a26b42166657",
+      "slot": "Sfx",
+      "looped": false
+    },
+    "EggRevealLegend": {
+      "file": "audio/EggRevealLegend.ogg",
+      "sha256": "9b7a7877c4669ea147668d2a3ad9b79399f6ffc8ae4ba7687db56a75e0f0974c",
+      "slot": "Sfx",
+      "looped": false
+    },
+    "EggRevealSecret": {
+      "file": "audio/EggRevealSecret.ogg",
+      "sha256": "729f652a5e1cf8a5c0b9f3e4be9662419a7910cc7caf0c4121bea767b1966ae0",
+      "slot": "Sfx",
+      "looped": false
     }
   }
 }
