@@ -94,6 +94,8 @@ Config.Attr = {
 	StoreBought = "StoreBought", -- csv of the Once pack keys bought, e.g. "Starter" ("" when none)
 	XpBoostEnds = "XpBoostEnds", -- unix seconds the XP potion bank ends; 0 = no potion running
 	StorePreview = "StorePreview", -- bool: Studio or an allowed dev sees every Store item, Id 0 included (PREVIEW buttons prompt nothing)
+	-- lobby shop (docs/superpowers/specs/2026-11-07-lobby-shop-design.md 5.2): DataService writes it, the client only reads it
+	GemsSettled = "GemsSettled", -- true once the gem settle hold ended for this load (absent before, never written false)
 }
 
 Config.Remotes = {
@@ -522,6 +524,9 @@ Config.Gems = {
 		AllowSecret = true,
 		Odds = { Mythic = 85, Secret = 15 },
 	},
+	-- lobby shop (spec 5.2, the server-hop guard): gem-priced actions wait this many seconds after a load AND for one fresh
+	-- read of the stored record (DataService.GemsSettled); with no DataStore the hold ends at this time with no read
+	SettleSeconds = 15,
 }
 
 -- The Robux Store (docs/superpowers/specs/2026-11-04-shop-retention-design.md 5.1; store W0): every Robux item of the

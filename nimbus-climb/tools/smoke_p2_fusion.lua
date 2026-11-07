@@ -699,7 +699,11 @@ local function serverScenarios()
 		ok, key = F.Mix(p, "maple_fox@Golden", "mallow_kitten@Golden")
 		T.check(ok and Keys.TierOf(key) == "Golden" and count(p, key) == 1, "fusion: Golden + Golden -> a Golden hybrid", tostring(key))
 
-		-- Mythic / Secret inputs cost Gems
+		-- Mythic / Secret inputs cost Gems (lobby shop, spec 5.2: a gem fusion waits for the settle read after the join;
+		-- the player joined a moment ago, so the test settles it now)
+		if type(DataS._SettleForTest) == "function" then
+			T.eq(DataS._SettleForTest(p), true, "fusion: (setup) the gem settle hold ends (DataService._SettleForTest)")
+		end
 		give(p, "cloudy_dragon", 1)
 		give(p, "pebble_pup", 1)
 		local t1, g1 = DataS.GetTokens(p), DataS.GetGems(p)

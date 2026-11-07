@@ -268,6 +268,11 @@ S.fixr_data_wrongclock_day = guarded("fixr_data_wrongclock_day", function()
 		A.Load(p)
 		B.Load(p) -- both copies loaded before any claim
 		advance(0.2)
+		-- lobby shop (spec 5.2): B's one settle read after its load lands now, before A's claim, so B's copy stays stale (left
+		-- to itself it would run 15 s after the load, inside the 30 s below, and bring A's claim into B before B claims)
+		if type(B._SettleForTest) == "function" then
+			T.eq(B._SettleForTest(p), true, "wrong clock: (setup) B's settle read lands before A's claim (B's copy stays stale)")
+		end
 		local tokens0 = (stored(uid) or {}).Tokens or 0
 		local tFast = os.time() + 600
 		T.check(tFast > os.time() + SLACK, "wrong clock: (precondition) 600 s ahead is past FutureClockSlack (" .. SLACK .. " s)")
@@ -501,6 +506,11 @@ S.fixr_data_daily_stamp = guarded("fixr_data_daily_stamp", function()
 		T.eq(D.Save(p), true, "daily stamp: (setup) the first save")
 		B.Load(p) -- B loaded before A's claim
 		advance(0.2)
+		-- lobby shop (spec 5.2): B's one settle read after its load lands now, before A's claim, so B's copy stays stale (left
+		-- to itself it would run 15 s after the load, inside the hour below, and bring A's claim into B before B claims)
+		if type(B._SettleForTest) == "function" then
+			T.eq(B._SettleForTest(p), true, "daily stamp: (setup) B's settle read lands before A's claim (B's copy stays stale)")
+		end
 		local tokens0 = (stored(uid) or {}).Tokens or 0
 		local tA = os.time()
 		T.check(claimDay(D, p, 1, tA, 50) and D.Save(p) == true, "daily stamp: A claims day 1 at tA and saves")

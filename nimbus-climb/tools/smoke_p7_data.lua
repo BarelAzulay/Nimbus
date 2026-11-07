@@ -380,6 +380,11 @@ S.p7data_daily_merge = guarded("p7data_daily_merge", function()
 		D.AddTokens(p, 1)
 		T.eq(D.Save(p), true, "p7 daily merge: (setup) the first save")
 		B.Load(p) -- B loaded before A's claim
+		-- lobby shop (spec 5.2): B's one settle read after its load lands now, before A's claim, so B's copy stays stale (left
+		-- to itself it would run 15 s after the load, inside the hour below, and bring A's claim into B before B claims)
+		if type(B._SettleForTest) == "function" then
+			T.eq(B._SettleForTest(p), true, "p7 daily merge: (setup) B's settle read lands before A's claim (B's copy stays stale)")
+		end
 		local tokens0 = (stored(uid) or {}).Tokens or 0
 		local tA = os.time()
 		T.check(claim(D, p, 1, tA, 50) and D.Save(p) == true, "p7 daily merge: A claims day 1 (Streak 1, LastClaimAt tA, 50 Tokens) and saves")

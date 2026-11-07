@@ -687,6 +687,11 @@ S.daily_two_servers = guarded("daily_two_servers", function()
 		T.eq(D.Save(p), true, "daily two servers: (setup) the first save")
 		B.Load(p)
 		advance(0.5)
+		-- lobby shop (spec 5.2): B's one settle read after its load lands now, before A's claim, so B's copy stays stale (left
+		-- to itself it would run 15 s after the load, inside the hour below, and bring A's claim into B before B claims)
+		if type(B._SettleForTest) == "function" then
+			T.eq(B._SettleForTest(p), true, "daily two servers: (setup) B's settle read lands before A's claim (B's copy stays stale)")
+		end
 		local cash0 = (stored(uid) or {}).Cash or 0
 		local tA = claim(p, true)
 		local dA = D.GetDaily(p)

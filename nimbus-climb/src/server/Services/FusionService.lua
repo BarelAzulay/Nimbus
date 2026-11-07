@@ -41,6 +41,9 @@
 -- * Atomic: every check runs first; then the inputs are removed, the result added and the price paid in ONE
 --   non-yielding step (anything unexpected restores the pets and nothing is charged). Then PetService.Refresh
 --   republishes the equipped attributes / perks and the profile is synced.
+-- * Lobby shop (docs/superpowers/specs/2026-11-07-lobby-shop-design.md 5.2, the gem settle hold): a gem-priced fusion
+--   (a Mythic / Secret Mix) is refused "Your data is still loading" (Preview too) until DataService.GemsSettled answers
+--   true for this load; token fusions are not held.
 -- * Remote Fusion(action, a, b, moves): "Upgrade" (key; a 4th argument is ignored), "Mix" (keyA, keyB, moves). Types,
 --   lengths and keys are validated, then a Mix's moves (PetKeys.ValidMoves) before anything else is read: junk answers
 --   { Ok = false, Reason = "Pick the moves again" } with a toast; a per-player cooldown plus a burst budget rate-limit
@@ -766,6 +769,11 @@ local function buildPlan(player, action, a, b, moves)
 	plan.Freed = freed
 	local currency, price = currencyOf(plan.Cost)
 	plan.Currency, plan.Price = currency, price
+	-- lobby shop (spec 5.2, the gem settle hold): a gem fusion waits for this server's settle read after the load (a
+	-- server hop must not spend gems the old server already spent); fails closed when the check itself errors
+	if currency == "Gems" and dataService and type(dataService.GemsSettled) == "function" and select(2, dsCall("GemsSettled", player)) ~= true then
+		return false, "Your data is still loading"
+	end
 	if balanceOf(player, currency) < price then
 		if currency == "Gems" then
 			return false, "Not enough Gems: this fusion costs " .. priceText(plan.Cost)

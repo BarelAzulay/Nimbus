@@ -415,6 +415,27 @@
 --                                       below the live Hit, then Hit <= Spins; MarkDirty + SyncSoon; false until loaded
 --                                       and while provisional
 --     ResetFields gained Pity; Settings gained FastHatch (SetSetting takes booleans only; the snapshot carries it).
+--     GemsSettled(player) -> bool       the gem settle hold (spec 5.2, the server-hop guard; there is no session lock): false
+--                                       from every load of a Player (a quick rejoin too) until Config.Gems.SettleSeconds
+--                                       (15) have passed AND one settle read came back: a fresh read of the stored record
+--                                       under the entry lock (P7.settleRead). Quiet (the record equals the Base: no other
+--                                       server wrote) -> nothing happens (no rebase, no announce, no snapshot); changed ->
+--                                       what recover does (rebase + announceRebase -> ProfileRebased). A failed read retries
+--                                       every P7.SETTLE_RETRY (5) s; no usable store -> settled at 15 s with no read. A
+--                                       provisional load starts no read of its own: its recovery read counts when it lands
+--                                       15 s or more after the load (else the normal read runs at 15 s); marked settled
+--                                       after recover / announceRebase returned, so ProfileRebased listeners see false.
+--                                       Once settled: the player attribute Config.Attr.GemsSettled = true (never written
+--                                       false, absent before) and Settled:Fire(player), once per load. The state lives on
+--                                       the cache entry (SettleGen, SettleFrom, GemsSettled, SettleLoopGen), never stored.
+--                                       Gem-priced actions refuse "Your data is still loading" while it is false
+--                                       (FusionService's gem fusions now; the gem spins, the Secret Roulette and GemBuy in
+--                                       later steps). Not closed by it: an old server's save that lands after the settle
+--                                       read (a failed save retried as an orphan); the full fix is a session claim.
+--     _SettleForTest(player) -> ok      Studio and the mock only (RunService:IsStudio()): the settle read now and the hold
+--                                       ends at once (no 15 s wait); false with no entry, not loaded, provisional, a failed
+--                                       read, or outside Studio
+--     Settled                           Util.Signal (exists at module load) Fire(player) when a load's hold ended
 --
 -- Plain Lua 5.1-compatible syntax only.
 
@@ -441,6 +462,8 @@ DataService.TeamsChanged = Util.Signal()
 -- Phase 4: fired right after the ProfileLoaded / ProfileRebased that ran a one-time migration on the profile:
 -- (player, name, info) with name "P4" and the info table of MigratedNow (see the header). Exists at module load.
 DataService.Migrated = Util.Signal()
+-- Lobby shop (spec 5.2): fired once per load when the gem settle hold ended (GemsSettled turned true): (player).
+DataService.Settled = Util.Signal()
 
 local PROFILE_VERSION = 2
 local RETRY_DELAY = 1.5 -- seconds between the two attempts of a read/write
@@ -853,6 +876,7 @@ local P7 = {
 	DAILY_NUMBERS = { "Streak", "Paid", "Weeks" }, -- whole numbers 0..MAX_STREAK
 	DAILY_CLOCKS = { "LastClaimAt", "PlayStart", "ClampFrom", "ClampAt" }, -- Unix seconds, 0 = never
 	MAX_PITY = 1000000000, -- lobby shop: Pity.Secret.Spins / Hit are whole numbers 0..MAX_PITY (anything else reads 0)
+	SETTLE_RETRY = 5, -- lobby shop: seconds between two tries of a failed settle read (the gem settle hold, spec 5.2)
 }
 
 -- The Dungeon record: Best = the highest floor cleared (0 = none), Cleared = { [floor] = true } in the live profile
@@ -4502,6 +4526,139 @@ local function announceRebase(userId, entry)
 	P6.announce(player, refund)
 end
 
+----------------------------------------------------------------------
+-- The gem settle hold (lobby shop, spec 5.2: the server-hop guard)
+----------------------------------------------------------------------
+-- There is no session lock: a new server loads with a plain read while the old server's leave save may still be on its
+-- way. So gem-priced actions wait until this server has settled: Config.Gems.SettleSeconds after the load AND one settle
+-- read (a fresh read of the stored record, rebased onto the live profile when another server wrote) came back. The
+-- state lives on the cache entry only (never stored): SettleGen (one per load of a Player), SettleFrom (os.clock() of
+-- that load), GemsSettled, SettleLoopGen (the load whose settle loop runs).
+
+function P7.settleSeconds()
+	local gems = Config.Gems
+	local n = type(gems) == "table" and tonumber(gems.SettleSeconds) or nil
+	if n and n == n and n >= 0 and n < math.huge then
+		return n
+	end
+	return 15
+end
+
+-- The settle read; the caller holds the entry lock. Quiet case (no other server wrote: the stored record equals the
+-- Base): nothing changes (no rebase, no announce, so no snapshot, migrations or ProfileRebased / TeamsChanged listeners
+-- run again). Changed case: what recover does (rebase + announceRebase -> ProfileRebased). true once the read came back.
+function P7.settleRead(entry, userId)
+	local fetched, stored, migrated, _, moved = fetchProfile(userId)
+	if not fetched then
+		return false
+	end
+	local newBase = newProfile()
+	if stored and not migrated then
+		newBase = stored
+	end
+	if profilesEqual(newBase, entry.Base) then
+		return true
+	end
+	entry.GardenMoved = moved -- bug batch 2 #18 (announced by announceRebase)
+	rebase(entry, entry.Base, stored or newProfile(), newBase)
+	announceRebase(userId, entry)
+	return true
+end
+
+-- One settle attempt: true when the hold may end (the read came back, or there is no store to read: Studio without API
+-- access, the store disabled). Takes and releases the entry lock (the scheduleRecovery shape).
+function P7.settleNow(entry, userId)
+	if not getStore() then
+		return true
+	end
+	if not acquire(entry) then
+		return false
+	end
+	local ok, result = pcall(P7.settleRead, entry, userId)
+	entry.Saving = false
+	if not ok then
+		warn("[DataService] settle read errored: " .. tostring(result))
+		return false
+	end
+	return result == true
+end
+
+-- Ends the hold of load `gen`: GemsSettled = true, the player attribute (never written false) and Settled, once.
+function P7.markSettled(entry, userId, gen)
+	if cache[userId] ~= entry or entry.SettleGen ~= gen or entry.GemsSettled == true then
+		return false
+	end
+	entry.GemsSettled = true
+	local player = Players:GetPlayerByUserId(userId)
+	if player then
+		local attr = (Config.Attr and Config.Attr.GemsSettled) or "GemsSettled"
+		pcall(function()
+			player:SetAttribute(attr, true)
+		end)
+		DataService.Settled:Fire(player)
+	end
+	return true
+end
+
+-- true while load `gen` still waits for its settle read (the player is here, the entry is real and not settled).
+function P7.settling(entry, userId, gen)
+	return cache[userId] == entry
+		and entry.SettleGen == gen
+		and entry.GemsSettled ~= true
+		and entry.Loaded == true
+		and not isProvisional(entry)
+		and not shuttingDown
+		and Players:GetPlayerByUserId(userId) ~= nil
+end
+
+-- The settle loop of load `gen`: waits until SettleSeconds after the load, then reads (a failed read retries every
+-- P7.SETTLE_RETRY seconds) until it came back or the load is over.
+function P7.settleLoop(entry, userId, gen)
+	if entry.SettleLoopGen == gen then
+		return
+	end
+	entry.SettleLoopGen = gen
+	task.spawn(function()
+		local left = (entry.SettleFrom or os.clock()) + P7.settleSeconds() - os.clock()
+		if left > 0 then
+			task.wait(left)
+		end
+		while P7.settling(entry, userId, gen) do
+			if P7.settleNow(entry, userId) then
+				P7.markSettled(entry, userId, gen)
+				break
+			end
+			task.wait(P7.SETTLE_RETRY)
+		end
+	end)
+end
+
+-- A new load of a Player (DataService.Load, a quick rejoin included: another server may have written meanwhile): the
+-- hold starts again. A provisional load starts no settle read of its own (its recovery read counts, P7.recovered).
+function P7.newSettle(entry, userId)
+	entry.SettleGen = (entry.SettleGen or 0) + 1
+	entry.SettleFrom = os.clock()
+	entry.GemsSettled = false
+	if not isProvisional(entry) then
+		P7.settleLoop(entry, userId, entry.SettleGen)
+	end
+end
+
+-- A provisional load just recovered (recover; announceRebase has returned, so the ProfileRebased listeners saw the hold).
+-- A recovery read at least SettleSeconds after the load counts as the settle read; a sooner one leaves the normal settle
+-- read to run once SettleSeconds have passed.
+function P7.recovered(entry, userId)
+	local gen = entry.SettleGen
+	if gen == nil or entry.GemsSettled == true then
+		return
+	end
+	if os.clock() - (entry.SettleFrom or 0) >= P7.settleSeconds() then
+		P7.markSettled(entry, userId, gen)
+	else
+		P7.settleLoop(entry, userId, gen)
+	end
+end
+
 -- Re-reads the store for an entry whose load failed and merges the session on top of it.
 -- Caller holds the entry lock. Returns true on success.
 local function recover(entry, userId)
@@ -4518,6 +4675,7 @@ local function recover(entry, userId)
 	rebase(entry, entry.Base, source, newBase)
 	entry.LoadFailed = false
 	announceRebase(userId, entry)
+	P7.recovered(entry, userId) -- lobby shop: the gem settle hold (after the announce: its listeners see the hold)
 	return true
 end
 
@@ -4849,6 +5007,7 @@ function DataService.Load(player)
 		fallback.Loaded = true
 		fallback.LoadFailed = true
 		scheduleRecovery(player.UserId) -- provisional until the real save is read (see the header)
+		P7.newSettle(fallback, player.UserId) -- lobby shop: the gem settle hold waits for that recovery read
 		P5.markProfileLoaded(player)
 		return fallback.Profile
 	end
@@ -4857,6 +5016,9 @@ function DataService.Load(player)
 	if didLoad or entry.Owner ~= player then
 		entry.Owner = player
 		entry.Orphan = false -- the (re)joined player owns the entry again; the orphan retry loop stands down
+		-- lobby shop (spec 5.2): the gem settle hold of this load (a quick rejoin too: another server may have written while
+		-- the player was away); started before ProfileLoaded, so its listeners see GemsSettled == false
+		P7.newSettle(entry, player.UserId)
 		pushAll(player, entry.Profile)
 		if entry.LoadFailed then
 			scheduleRecovery(player.UserId)
@@ -6465,6 +6627,39 @@ function DataService.SetPity(player, spins, hit)
 		DataService.SyncSoon(player)
 	end
 	return true
+end
+
+-- Lobby shop (spec 5.2, the gem settle hold): true only when the profile is loaded, not provisional, and this load's
+-- hold ended (Config.Gems.SettleSeconds passed AND one settle read came back, or _SettleForTest marked it). Gem-priced
+-- actions refuse "Your data is still loading" while it is false.
+function DataService.GemsSettled(player)
+	local entry = P3.realEntry(player)
+	return entry ~= nil and entry.GemsSettled == true
+end
+
+-- Studio and the mock only (RunService:IsStudio(); false elsewhere): the settle read now (the quiet or the changed case)
+-- and the hold ends at once, skipping the SettleSeconds wait (the attribute, Settled). false with no entry, not loaded,
+-- provisional, or a failed read. Tests call it before a gem action right after a join.
+function DataService._SettleForTest(player)
+	if not IS_STUDIO or not player then
+		return false
+	end
+	local entry = P3.realEntry(player)
+	if not entry then
+		return false
+	end
+	if entry.GemsSettled == true then
+		return true
+	end
+	if entry.SettleGen == nil then
+		entry.SettleGen, entry.SettleFrom = 1, os.clock() -- an entry no Load started a hold for (defensive)
+	end
+	local gen = entry.SettleGen
+	if not P7.settleNow(entry, player.UserId) then
+		return false
+	end
+	P7.markSettled(entry, player.UserId, gen)
+	return P3.realEntry(player) == entry and entry.GemsSettled == true
 end
 
 -- true / false once the profile is loaded and not provisional (nil before: not decidable).

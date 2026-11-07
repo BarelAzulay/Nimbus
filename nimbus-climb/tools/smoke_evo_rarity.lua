@@ -480,6 +480,10 @@ S.evo_rarity_saves = guarded("evo_rarity_saves", function()
 		PK.Add(prof, "pip_penguin", 1)
 		DataS.MarkDirty(p)
 		DataS.AddGems(p, TC.FusionCost("Mix", "Mythic", nil, 1).Gems)
+		-- lobby shop (spec 5.2): a gem Mix waits for the settle read after the join; the veteran joined a moment ago
+		if type(DataS._SettleForTest) == "function" then
+			T.eq(DataS._SettleForTest(veteran), true, "evo saves: (setup) the gem settle hold ends (DataService._SettleForTest)")
+		end
 		local okMix, key = Fusion.Mix(p, "magma_cub", "pip_penguin")
 		if T.check(okMix == true, "evo saves: Fusion.Mix of a raid pet works", tostring(key)) then
 			local hdef = PK.DefOf(key, prof)
