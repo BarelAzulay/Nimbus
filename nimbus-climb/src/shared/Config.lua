@@ -988,7 +988,8 @@ Config.Sky = {
 --                   hits Hit<Element>, Crit, KO (4 files in rotation: Variants.KO), Dash, Parry, PortalEnter /
 --                   PortalArrive, StationBuild, HouseTier, DialogOpen / DialogBlip / DialogNext, TutorialStep, the
 --                   roulette's SpinStart / SpinTick / SpinLand, RevealCommon / RevealRare / RevealLegendary and the NPC
---                   voices Npc<Name>Greet / Hmm / Pleased (NpcController)
+--                   voices Npc<Name>Greet / Hmm / Pleased (NpcController); the egg cutscene's Egg<...> keys (lobby-shop
+--                   Task 27: wired before their upload, each plays Fallback[key] until its AudioIds id exists)
 --   Ambient[name]   positional loops (SoundFx.Positional): the Champion Ring's CrowdCheer (Sfx setting) and DrumLoop
 --                   (Music setting) at the ring pocket's crowd stand (client/Controllers/RingAmbience); the lobby
 --                   fountain's water (Fountain = key FountainLoop: no approved take yet, so silent until one is)
@@ -1011,6 +1012,10 @@ local AUDIO_WAVE2 = {
 	"RevealCommon", "RevealRare", "RevealLegendary",
 	-- store (2026-11-04): a card tap, a purchase landing, the Trove's lid, the week's pet
 	"StorePop", "StoreBuy", "TroveOpen", "DailyWeek",
+	-- the egg cutscene (lobby-shop Task 27; the owner's picks of 2026-11-07, files on branch egg-sounds, not uploaded yet):
+	-- silent until AudioIds has the key; EggStage plays Fallback[key] in its place meanwhile (below)
+	"EggStripTick", "EggStripLand", "EggRise", "EggShake", "EggCrack", "EggBurst", "EggCloudRing",
+	"EggRevealCommon", "EggRevealEpic", "EggRevealLegend", "EggRevealSecret",
 }
 -- the NPC voices (wordless, one voice per NPC): Npc<Name><Kind>, <Name> = the NpcDialog Id in CamelCase
 local AUDIO_NPCS = { "SparkyFox", "CaptainPenguin", "GrannyOwl", "CoachCorgi", "MayorPanda", "ProfessorAxolotl" }
@@ -1079,12 +1084,31 @@ Config.Audio = {
 		StoreBuy = 0.8,
 		TroveOpen = 0.8,
 		DailyWeek = 0.8,
+		-- the egg cutscene (lobby-shop Task 27): each beside the sound it replaces (every take levelled to -18 dBFS RMS)
+		EggStripTick = 0.4,
+		EggStripLand = 0.75,
+		EggRise = 0.65,
+		EggShake = 0.7,
+		EggCrack = 0.75,
+		EggBurst = 0.85,
+		EggCloudRing = 0.6,
+		EggRevealCommon = 0.7,
+		EggRevealEpic = 0.75,
+		EggRevealLegend = 0.8,
+		EggRevealSecret = 0.85,
 		-- (the NPC voices: 0.6 each, set below)
 	},
 	-- the frequent / quiet keys that may sit at or under the music (every other effect sits above it)
 	UnderMusic = {
 		HitFlame = true, HitFrost = true, HitShadow = true, HitWater = true, HitEarth = true, HitStorm = true,
-		HitNature = true, HitCelestial = true, SpinTick = true, DialogBlip = true, DialogNext = true,
+		HitNature = true, HitCelestial = true, SpinTick = true, DialogBlip = true, DialogNext = true, EggStripTick = true,
+	},
+	-- a key that has no id yet plays this one in its place (false: silent until its id exists); read by its caller
+	-- (EggStage), never by SoundFx.Play: the egg cutscene keeps today's roulette sounds until the owner's are uploaded
+	Fallback = {
+		EggStripTick = "SpinTick", EggStripLand = "SpinLand", EggRise = false, EggShake = false, EggCrack = false, EggBurst = "Shatter",
+		EggCloudRing = false, EggRevealCommon = "RevealCommon", EggRevealEpic = "RevealRare", EggRevealLegend = "RevealLegendary",
+		EggRevealSecret = "RevealLegendary",
 	},
 	-- PlaybackSpeed range of a one-shot (not listed: 0.95-1.05). Tuned motifs (the reveals) never shift
 	Pitch = {
@@ -1117,6 +1141,17 @@ Config.Audio = {
 		RevealCommon = { 1, 1 },
 		RevealRare = { 1, 1 },
 		RevealLegendary = { 1, 1 },
+		EggStripTick = { 0.98, 1.02 },
+		EggStripLand = { 1, 1 },
+		EggRise = { 1, 1 },
+		EggShake = { 0.96, 1.04 },
+		EggCrack = { 0.97, 1.03 },
+		EggBurst = { 1, 1 },
+		EggCloudRing = { 1, 1 },
+		EggRevealCommon = { 1, 1 },
+		EggRevealEpic = { 1, 1 },
+		EggRevealLegend = { 1, 1 },
+		EggRevealSecret = { 1, 1 },
 	},
 	-- seconds a key waits before it plays again (a raid lands 20+ hits a second; the typewriter 50 letters a second)
 	MinGap = {
@@ -1125,6 +1160,7 @@ Config.Audio = {
 		Crit = 0.15,
 		KO = 0.25, -- (the whole rotation: Variants share their name's gap)
 		SpinTick = 0.025,
+		EggStripTick = 0.025,
 		DialogBlip = 0.045,
 		Error = 1.0,
 		StationBuild = 0.15, -- (a bought station and the next pad pop together: one pop)

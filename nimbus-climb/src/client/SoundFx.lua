@@ -47,7 +47,10 @@ local NAMES = { "Click", "Confirm", "Error", "Reward", "Whoosh", "Inhale", "Shat
 	"DialogOpen", "DialogBlip", "DialogNext", "TutorialStep", "SpinStart", "SpinTick", "SpinLand",
 	"RevealCommon", "RevealRare", "RevealLegendary",
 	-- store (2026-11-04): silent until AudioIds has the key; StorePop / StoreBuy callers fall back to Click / Reward
-	"StorePop", "StoreBuy", "TroveOpen", "DailyWeek" }
+	"StorePop", "StoreBuy", "TroveOpen", "DailyWeek",
+	-- the egg cutscene (lobby-shop Task 27): silent until AudioIds has the key; EggStage plays Config.Audio.Fallback meanwhile
+	"EggStripTick", "EggStripLand", "EggRise", "EggShake", "EggCrack", "EggBurst", "EggCloudRing",
+	"EggRevealCommon", "EggRevealEpic", "EggRevealLegend", "EggRevealSecret" }
 do
 	-- the NPC voices (Config.Audio.Keys.Sfx Npc<Name><Kind>), sorted
 	local keys = type(Config.Audio) == "table" and type(Config.Audio.Keys) == "table" and Config.Audio.Keys.Sfx or {}

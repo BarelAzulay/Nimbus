@@ -55,7 +55,9 @@
 --                         28 / 34 / 40, the strip's lean Medium in a cell with its rarity ring, Medium 104) and a Halves
 --                         pair ([lobby-shop] block)
 --   hatch[:<view>]        lobby-shop Task 20: the egg stage core (EggStage, plain visuals) stepped to one moment: strip,
---                         strip3, crack, reveal (default), reveal3, secret ([lobby-shop] block)
+--                         strip3, crack, reveal (default), reveal3, secret ([lobby-shop] block); Task 27: hatch:<rarity>@<s>
+--                         = a forced x1 pull of that rarity at <s> seconds (e.g. hatch:epic@3.9)
+--   hatch3[:<s>]          lobby-shop Task 27: a Storm x3 (Rare, Legendary, then Common or Epic) at <s> seconds (default 7.3)
 --   lobbyboard[:2|:3]     lobby-shop Task 24: the lobby board's SurfaceGui (LeaderboardController) with ten fake rows on page
 --                         1 Trophies (default), 2 Pets found or 3 Ring best, mirrored flat: fitted to the screen and as it
 --                         looks from 20 studs ([lobby-shop] block)
@@ -3551,7 +3553,30 @@ function HATCH.pull(PC, rid, def, opts)
 		PoolSize = #PC.RarityPool(rid, def.Rarity), Pity = opts.Pity, Strip = HATCH.strip(PC, rid, def.Id),
 	}
 end
+-- (Task 27) hatch:<rarity>@<seconds> = a forced x1 pull of that rarity (common .. secret; Cloud for Common .. Epic, Storm
+-- for Legendary, Secret Roulette for Mythic / Secret) stepped to that time; hatch3:<seconds> = a Storm x3 (Rare, Legendary,
+-- then Common, or Epic where the Storm pool has no Common) at that time. The views above stay as aliases
+HATCH.Rids = { common = "Cloud", uncommon = "Cloud", rare = "Cloud", epic = "Cloud", legendary = "Storm", mythic = "Secret", secret = "Secret" }
+function HATCH.forced(PC, rarity)
+	local key = tostring(rarity):lower()
+	local rid = HATCH.Rids[key]
+	if not rid then
+		return nil
+	end
+	local name = key:sub(1, 1):upper() .. key:sub(2)
+	local def = PC.RarityPool(rid, name)[1]
+	if not def then
+		return nil
+	end
+	return rid, (rid == "Secret") and "Gems" or "Tokens", { HATCH.pull(PC, rid, def, { Pity = name == "Secret" or nil }) }
+end
+scenario("hatch3", function(arg)
+	return HATCH.scene("x3@" .. tostring(arg or "7.3"))
+end)
 scenario("hatch", function(view)
+	return HATCH.scene(view)
+end)
+function HATCH.scene(view)
 	view = tostring(view or "reveal"):lower()
 	local at = HATCH.At[view] or HATCH.At.reveal
 	local PC = req("shared/PetCatalog")
@@ -3559,6 +3584,10 @@ scenario("hatch", function(view)
 	local CS = req("client/ClientSettings")
 	local epic, rare = PC.RarityPool("Cloud", "Epic")[1], PC.RarityPool("Cloud", "Rare")[1]
 	local leg = PC.RarityPool("Storm", "Legendary")[1]
+	local forcedRarity, forcedAt = view:match("^(%w+)@([%d%.]+)$")
+	if forcedAt then
+		at = tonumber(forcedAt) or at
+	end
 	-- the profile: tokens and gems for SPIN AGAIN, gem roulettes allowed, the Epic pet evolved (stage 1) for x3's ribbon
 	local snap = snapshot()
 	snap.Tokens, snap.Gems = 50000, 5000
@@ -3581,7 +3610,20 @@ scenario("hatch", function(view)
 		return (Mock.TextExtent(probe))
 	end
 	local rid, currency, pulls = "Cloud", "Tokens", nil
-	if view == "strip3" or view == "reveal3" then
+	if forcedRarity == "x3" then
+		local storm = function(r)
+			return PC.RarityPool("Storm", r)[1]
+		end
+		rid = "Storm"
+		pulls = { HATCH.pull(PC, rid, storm("Rare") or rare), HATCH.pull(PC, rid, leg), HATCH.pull(PC, rid, storm("Common") or epic) }
+	elseif forcedRarity then
+		local frid, fcur, fpulls = HATCH.forced(PC, forcedRarity)
+		if not frid then
+			note("hatch: no pool for the rarity " .. tostring(forcedRarity))
+			return
+		end
+		rid, currency, pulls = frid, fcur, fpulls
+	elseif view == "strip3" or view == "reveal3" then
 		local storm = function(def)
 			return def and PC.RarityPool("Storm", def.Rarity)[1] or nil
 		end
@@ -3606,7 +3648,7 @@ scenario("hatch", function(view)
 		advance(1 / 30)
 	end
 	note(fmt("hatch:%s at %.2f s: phase %s, layout %s, %d instances", view, os.clock() - t0, tostring(ES.Phase()), tostring(ES.Layout()), ES.Stats().Instances))
-end)
+end
 
 -- shop[:<tab>]          lobby-shop Tasks 21/22 (spec 16.3): the one Shop window (client/Controllers/ShopController) on its
 --                       tab (Eggs (default), Gems, Packs, Passes, Boosts): every Store item and gem pack created, the live

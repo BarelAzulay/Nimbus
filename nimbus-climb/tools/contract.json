@@ -1396,11 +1396,17 @@
     },
     "client/UI/HatchFx": {
       "optional": true,
-      "_comment": "lobby-shop Task 26 (spec 16.5): the pooled GUI sparkles (bursts, drifts round an egg) and the twinkling stars",
+      "_comment": "lobby-shop Task 26 (spec 16.5): the pooled GUI sparkles (bursts, drifts round an egg) and the twinkling stars; Task 27 (spec 16.4): the cutscene's rays, shock ring, cloud ring, cracks, light leaks and the world dim",
       "functions": [
         "Pool",
         "Stars",
-        "Stats"
+        "Stats",
+        "Rays",
+        "Shock",
+        "CloudRing",
+        "Cracks",
+        "Leaks",
+        "Dim"
       ]
     },
     "client/UI/EggStage": {

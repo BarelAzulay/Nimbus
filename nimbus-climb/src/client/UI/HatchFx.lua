@@ -1,25 +1,54 @@
--- HatchFx (client UI; lobby-shop Task 26, docs/superpowers/specs/2026-11-07-lobby-shop-design.md 16.5 "Where the VFX
--- show" and 16.4): the GUI sparkles, pooled. A pool owns at most n spark frames (made only when first needed, reused
--- after) and one Heartbeat that runs only while a spark lives; nothing else in the egg VFX runs per frame.
+-- HatchFx (client UI; lobby-shop Tasks 26 / 27, docs/superpowers/specs/2026-11-07-lobby-shop-design.md 16.5 "Where the
+-- VFX show" and 16.4 "VFX and budget"): the egg cutscene's effects, all GUI frames, tweens and one pooled spark system,
+-- plus the one Lighting effect of the cutscene. A pool owns at most n spark frames (made only when first needed, reused
+-- after) and one Heartbeat that runs only while a spark lives, unless its owner drives it (Drive: the egg stage steps
+-- it from its own phase Heartbeat, so the cutscene has exactly one); nothing else here runs per frame.
 --
---   HatchFx.Pool(parent, n) -> pool   a holder Frame "Sparks" over the parent (n defaults to 16)
---     pool:Burst(at, rarity, count) -> spawned   sparks flying out of `at` (a Vector2 in the parent's px) and fading in
---       0.55-0.9 s; never more than n live at once; halved on Low graphics
+--   HatchFx.Pool(parent, n [, z]) -> pool   a holder Frame "Sparks" over the parent (n defaults to 16)
+--     pool:Burst(at, rarity, count [, opts]) -> spawned   sparks flying out of `at` (a Vector2 in the parent's px) and
+--       fading in 0.55-0.9 s (opts.Life / opts.Speed / opts.Px ranges override: the shakes' small pops); never more
+--       than n live at once; halved on Low graphics
+--     pool:Confetti(n, rarity) -> spawned   n squares falling from the holder's top for 1.5 s, turning and swaying (the
+--       Mythic / Secret reveal); halved on Low graphics; frames named "Confetti" while they fall
 --     pool:Ambient(target, rarity [, count, mode])   sparkles round a GuiObject (an egg): Rare 3, Legendary 4, Mythic 6
 --       drifting up and fading (mode "Drift"), Secret 2 orbiting star sparks ("Orbit"); none below Rare (Epic: 3) and
 --       none on Low. They last until the target is destroyed, SetRunning(false) or Destroy
 --     pool:SetRunning(on)   off: every spark back in the pool, the Heartbeat off (the ambient waits); on: it resumes
+--     pool:Drive()   the owner calls pool:Step(dt) from its own Heartbeat; the pool never connects one
 --     pool:Live() -> the sparks alive now;  pool:Destroy()   the frames and the Heartbeat gone
+--   HatchFx.Rays(parent, rarity [, opts]) -> rays   a CanvasGroup "Rays" of 16 thin wedges (8 bars through the centre,
+--     clear in the middle): rays:Place(x, y, d), rays:Flash(alpha, seconds) (fade in, then rest at `alpha`),
+--     rays:Spin(on) (an endless Rotation tween, 12 s a turn; still on Low), rays:Hide(), rays:Destroy()
+--   HatchFx.Shock(parent, rarity [, opts]) -> shock   a round Frame "Shock" with a 6 px UIStroke: shock:Play(x, y, d,
+--     seconds, color) grows it 0 -> d while its stroke fades, then hides it; shock:Hide(), shock:Destroy()
+--   HatchFx.Cracks(egg, rarity, step) -> Frame "Cracks" on the egg: 6 thin rotated glowing frames (Seg1..5 of the
+--     zigzag, step 1, 3 or 5 of them shown, and a Branch at 5) in shares of the egg, so they follow its size, shakes and
+--     scale
+--   HatchFx.Leaks(egg, rarity, step) -> Frame "Leaks" on the egg: up to 5 tapered beams of light (Leak1..5) from the
+--     crack's corners, as many and as long as the step
+--   HatchFx.CloudRing(parent, color [, opts]) -> ring   (the owner's pick: Gemini's cloud ring) a CanvasGroup
+--     "CloudRing" of 10 round cloud puffs with a UIScale "Swell": ring:Place(x, y, d), ring:Show(seconds), ring:Spin(on)
+--     (an endless Rotation tween, 24 s a turn; still on Low), ring:Pulse(color, seconds) (tinted the rarity colour at
+--     once, swells sharply to 1.45 and fades: the burst), ring:Hide(), ring:Destroy()
 --   HatchFx.Stars(parent, n) -> { Frame, Destroy }   a Frame "Stars" with n small stars, each twinkling (an endless,
 --     offset alpha tween); Destroy stops the tweens and removes the frame
---   HatchFx.Stats() -> { Live, Pooled, Tweens, Heartbeats }   (tests) every pool's live sparks and frames, the star
---     tweens playing, the pools whose Heartbeat is connected
+--   HatchFx.Dim(on [, seconds]) -> effects   High graphics only: on = the client-only Lighting.NimbusHatchBlur
+--     (BlurEffect, ours by name, 0 -> 14) and the cool tint pushed as the LightingStack preset "Hatch" (Brightness
+--     -0.08, Saturation -0.25 against LightingStack.Value without "Hatch"; no ColorCorrectionEffect of our own: the
+--     LightingStack is the only client writer of Lighting); off = the blur destroyed and the preset popped. -> how many
+--     of the two are on now
+--   HatchFx.Stats() -> { Live, Pooled, Tweens, Heartbeats, Effects }   (tests) every pool's live sparks and frames, the
+--     tweens playing that HatchFx made (stars, rays, rings, shocks, the blur), the pools whose Heartbeat is connected
+--     and the Lighting effects on (Dim)
+--   opts.Track (Rays / Shock / CloudRing): a weak-keyed table that also gets every tween the handle plays (the egg
+--     stage counts and cancels them with its own)
 --
 -- Positions: the holder's local px are the screen px divided by the UIScale(s) above it (UIScale shrinks the design
 -- canvas on a phone). Plain Lua 5.1-compatible syntax only.
 
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
+local Lighting = game:GetService("Lighting")
 
 local HatchFx = {}
 
@@ -43,11 +72,33 @@ local K = {
 		Mythic = { Color3.fromRGB(255, 200, 230), Color3.fromRGB(200, 240, 255), Color3.fromRGB(222, 202, 255), Color3.fromRGB(200, 255, 232) },
 		Secret = { Color3.fromRGB(255, 248, 220), Color3.fromRGB(196, 170, 255) },
 	},
+	CONFETTI_LIFE = 1.5,
+	CONFETTI_FALL = { 150, 260 }, -- px / s
+	CONFETTI = {
+		Mythic = { Color3.fromRGB(255, 176, 214), Color3.fromRGB(170, 232, 255), Color3.fromRGB(214, 190, 255), Color3.fromRGB(176, 255, 220), Color3.fromRGB(255, 236, 160) },
+		Secret = { Color3.fromRGB(180, 150, 255), Color3.fromRGB(255, 214, 110), Color3.fromRGB(255, 248, 230), Color3.fromRGB(120, 92, 220) },
+	},
+	RAY_TURN = 12, -- s a turn
+	RING_TURN = 24,
+	RING_PUFFS = 10,
+	RING_REST = 0.2, -- the ring's transparency at rest
+	RING_TINT = Color3.fromRGB(226, 234, 255),
+	SWELL = 1.45,
+	BLUR = 14,
+	TINT = { Brightness = -0.08, Saturation = -0.25 },
+	-- the crack's zigzag (shares of the egg's width / height, the pitch's points) and which segments each step shows
+	ZIG = { { 0.12, 0.58 }, { 0.24, 0.66 }, { 0.34, 0.55 }, { 0.45, 0.67 }, { 0.55, 0.56 }, { 0.66, 0.66 }, { 0.76, 0.55 }, { 0.88, 0.62 } },
+	SEGS = { [1] = { 4 }, [3] = { 3, 4, 5 }, [5] = { 2, 3, 4, 5, 6 } },
+	BRANCH = { 0.45, 0.67, 0.42, 0.8 },
+	CRACK_W = 0.028, -- a segment's thickness, a share of the egg's height
 }
 HatchFx.Metrics = K
 
--- every pool (weak keys) and every star tween playing (weak keys)
-local R = { Pools = setmetatable({}, { __mode = "k" }), Stars = setmetatable({}, { __mode = "k" }), GQ = nil, Rng = Random.new(26) }
+-- every pool (weak keys), every tween HatchFx plays (weak keys: the stars, the handles' tweens) and the Dim state
+local R = {
+	Pools = setmetatable({}, { __mode = "k" }), Stars = setmetatable({}, { __mode = "k" }), GQ = nil, Rng = Random.new(26),
+	Blur = nil, BlurTween = nil, Pushed = false, LS = nil,
+}
 
 local function high()
 	if R.GQ == nil then
@@ -70,6 +121,39 @@ end
 
 local function between(range)
 	return range[1] + (range[2] - range[1]) * R.Rng:NextNumber()
+end
+
+-- one tween HatchFx plays: counted by Stats (and by opts.Track's owner)
+local function play(inst, info, goals, track)
+	local tw = TweenService:Create(inst, info, goals)
+	R.Stars[tw] = true
+	if type(track) == "table" then
+		track[tw] = true
+	end
+	tw:Play()
+	return tw
+end
+
+local function cancel(tw)
+	if tw then
+		pcall(function()
+			tw:Cancel()
+		end)
+		R.Stars[tw] = nil
+	end
+end
+
+local function lighter(color, k)
+	return color:Lerp(Color3.new(1, 1, 1), k)
+end
+
+local function new(class, props, parent)
+	local o = Instance.new(class)
+	for k, v in pairs(props) do
+		o[k] = v
+	end
+	o.Parent = parent
+	return o
 end
 
 local function colorOf(rarity, i)
@@ -120,8 +204,10 @@ function Pool:_spawn(rec)
 	end
 	rec.F = f
 	rec.Age = 0
+	f.Name = rec.Name or "Spark"
+	f.Rotation = rec.Rot or 45
 	f.BackgroundColor3 = rec.Color
-	f.Size = UDim2.fromOffset(rec.Px, rec.Px)
+	f.Size = UDim2.fromOffset(rec.Px, rec.Py or rec.Px)
 	f.BackgroundTransparency = 1
 	f.Position = UDim2.fromOffset(rec.X, rec.Y)
 	f.Visible = true
@@ -138,13 +224,14 @@ function Pool:_free(i)
 	end
 	if rec.F and rec.F.Parent then
 		rec.F.Visible = false
+		rec.F.Name = "Spark"
 		self.Free[#self.Free + 1] = rec.F
 	end
 end
 
--- connects the Heartbeat when something should run, drops it when nothing does
+-- connects the Heartbeat when something should run, drops it when nothing does (never for a driven pool)
 function Pool:_sync()
-	local want = self.Running and self.Holder ~= nil and (#self.List > 0 or (next(self.Amb) ~= nil and high()))
+	local want = not self.Manual and self.Running and self.Holder ~= nil and (#self.List > 0 or (next(self.Amb) ~= nil and high()))
 	if want and not self.Conn then
 		self.Conn = RunService.Heartbeat:Connect(function(dt)
 			self:_step(dt)
@@ -218,6 +305,16 @@ function Pool:_step(dt)
 					f.BackgroundTransparency = 1 - 0.85 * math.max(0, fade)
 				end
 			end
+		elseif not gone and rec.Name == "Confetti" then
+			-- confetti: falling, swaying, turning; it fades over its last 0.35 s
+			rec.Vy = rec.Vy + K.FALL * 0.5 * dt
+			rec.X = rec.X + (rec.Vx + math.sin(rec.Age * rec.Sway + rec.Phase) * 40) * dt
+			rec.Y = rec.Y + rec.Vy * dt
+			rec.Rot = rec.Rot + rec.Spin * dt
+			f.Position = UDim2.fromOffset(rec.X, rec.Y)
+			f.Rotation = rec.Rot
+			local left = rec.Life - rec.Age
+			f.BackgroundTransparency = (left < 0.35) and (1 - left / 0.35 * 0.9) or 0.1
 		elseif not gone then
 			-- a burst spark: out, slowing, falling a little, fading
 			rec.Vx = rec.Vx * math.max(0, 1 - K.DRAG * dt)
@@ -233,26 +330,28 @@ function Pool:_step(dt)
 	self:_sync()
 end
 
-function Pool:Burst(at, rarity, count)
+function Pool:Burst(at, rarity, count, opts)
 	if not self.Holder or not self.Running then
 		return 0
 	end
+	opts = type(opts) == "table" and opts or {}
 	count = math.max(0, math.floor(tonumber(count) or 0))
 	if not high() then
 		count = math.floor(count / 2)
 	end
+	local px = opts.Px or { 6, 10 }
 	local spawned = 0
 	for i = 1, count do
 		local ang = R.Rng:NextNumber() * 2 * math.pi
-		local speed = between(K.BURST_SPEED)
+		local speed = between(opts.Speed or K.BURST_SPEED)
 		local rec = {
 			Color = colorOf(rarity, i),
 			X = at.X,
 			Y = at.Y,
 			Vx = math.cos(ang) * speed,
 			Vy = math.sin(ang) * speed,
-			Px = 6 + math.floor(R.Rng:NextNumber() * 5),
-			Life = between(K.BURST_LIFE),
+			Px = math.floor(between(px) + 0.5),
+			Life = between(opts.Life or K.BURST_LIFE),
 		}
 		if not self:_spawn(rec) then
 			break
@@ -261,6 +360,60 @@ function Pool:Burst(at, rarity, count)
 	end
 	self:_sync()
 	return spawned
+end
+
+-- confetti from the holder's top edge, across its width (Mythic / Secret)
+function Pool:Confetti(n, rarity)
+	if not self.Holder or not self.Running then
+		return 0
+	end
+	n = math.max(0, math.floor(tonumber(n) or 0))
+	if not high() then
+		n = math.floor(n / 2)
+	end
+	local scale = scaleOf(self.Holder)
+	local w = self.Holder.AbsoluteSize.X / scale
+	local list = K.CONFETTI[rarity] or K.COLORS[rarity] or K.COLORS.Common
+	local spawned = 0
+	for i = 1, n do
+		local size = 8 + math.floor(R.Rng:NextNumber() * 6)
+		local rec = {
+			Name = "Confetti",
+			Color = list[(i - 1) % #list + 1],
+			X = w * (0.06 + 0.88 * ((i * 0.618034) % 1)),
+			Y = -12 - R.Rng:NextNumber() * 60,
+			Vx = (R.Rng:NextNumber() - 0.5) * 40,
+			Vy = between(K.CONFETTI_FALL),
+			Px = size,
+			Py = math.floor(size * 0.6 + 0.5),
+			Rot = R.Rng:NextNumber() * 360,
+			Spin = (R.Rng:NextNumber() - 0.5) * 540,
+			Sway = 2 + R.Rng:NextNumber() * 3,
+			Phase = R.Rng:NextNumber() * 6.28,
+			Life = K.CONFETTI_LIFE,
+		}
+		if not self:_spawn(rec) then
+			break
+		end
+		spawned = spawned + 1
+	end
+	self:_sync()
+	return spawned
+end
+
+-- the owner steps this pool from its own Heartbeat (Step); the pool never connects one
+function Pool:Drive()
+	self.Manual = true
+	if self.Conn then
+		self.Conn:Disconnect()
+		self.Conn = nil
+	end
+end
+
+function Pool:Step(dt)
+	if self.Holder and self.Running and (#self.List > 0 or next(self.Amb) ~= nil) then
+		self:_step(dt)
+	end
 end
 
 function Pool:Ambient(target, rarity, count, mode)
@@ -413,6 +566,368 @@ function HatchFx.Stars(parent, n)
 	return { Frame = holder, Destroy = destroy }
 end
 
+----------------------------------------------------------------------------------------------------
+-- the burst's rays, the shock ring, the cloud ring (handles); the cracks and leaks on an egg
+----------------------------------------------------------------------------------------------------
+-- an object a handle places by its centre and diameter (in the parent's px)
+local function placeAt(o, x, y, d)
+	o.Position = UDim2.fromOffset(x, y)
+	o.Size = UDim2.fromOffset(math.max(0, d), math.max(0, d))
+end
+
+local Handle = {}
+Handle.__index = Handle
+
+function Handle:Place(x, y, d)
+	if self.Frame and self.Frame.Parent then
+		placeAt(self.Frame, x, y, d)
+	end
+end
+
+function Handle:_play(key, inst, info, goals)
+	cancel(self.Tw[key])
+	self.Tw[key] = (inst and inst.Parent) and play(inst, info, goals, self.Track) or nil
+	return self.Tw[key]
+end
+
+function Handle:Spin(on)
+	if on and high() and self.Frame and self.Frame.Parent then
+		if not (self.Tw.Spin and self.Tw.Spin.PlaybackState == Enum.PlaybackState.Playing) then
+			self.Frame.Rotation = self.Frame.Rotation % 360
+			local from = self.Frame.Rotation
+			self:_play("Spin", self.Frame, TweenInfo.new(self.Turn, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1), { Rotation = from + 360 })
+		end
+	else
+		cancel(self.Tw.Spin)
+		self.Tw.Spin = nil
+	end
+end
+
+function Handle:Hide()
+	for key, tw in pairs(self.Tw) do
+		cancel(tw)
+		self.Tw[key] = nil
+	end
+	if self.Frame and self.Frame.Parent then
+		self.Frame.Visible = false
+	end
+end
+
+function Handle:Destroy()
+	self:Hide()
+	if self.Frame then
+		self.Frame:Destroy()
+		self.Frame = nil
+	end
+end
+
+local function handle(frame, turn, opts)
+	return setmetatable({ Frame = frame, Tw = {}, Turn = turn or 12, Track = type(opts) == "table" and opts.Track or nil }, Handle)
+end
+
+-- the light colour of a rarity's effects (Legendary and up: gold)
+local function rayColor(rarity)
+	local gold = { Legendary = true, Mythic = true, Secret = true }
+	if gold[rarity] then
+		return Color3.fromRGB(255, 214, 120)
+	end
+	-- the tier's own pale tone (the last spark colour: Epic's lilac, not its gold trim)
+	local list = K.COLORS[rarity] or K.COLORS.Common
+	return lighter(list[#list], 0.1)
+end
+
+function HatchFx.Rays(parent, rarity, opts)
+	opts = type(opts) == "table" and opts or {}
+	local holder = new("CanvasGroup", {
+		Name = "Rays", BackgroundTransparency = 1, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), GroupTransparency = 1,
+		Visible = false, ZIndex = opts.ZIndex or 1,
+	}, parent)
+	local color = rayColor(rarity)
+	-- each bar is two opposite rays: clear at the centre (the egg / pet reads through), bright mid-way, gone at the ends
+	local fade = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.16, 0.55), NumberSequenceKeypoint.new(0.36, 0.2),
+		NumberSequenceKeypoint.new(0.47, 1), NumberSequenceKeypoint.new(0.53, 1), NumberSequenceKeypoint.new(0.64, 0.2),
+		NumberSequenceKeypoint.new(0.84, 0.55), NumberSequenceKeypoint.new(1, 1),
+	})
+	for i = 1, 8 do
+		local bar = new("Frame", {
+			Name = "Ray" .. i, BorderSizePixel = 0, BackgroundColor3 = color, BackgroundTransparency = 0, AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1, (i % 2 == 0) and 0.022 or 0.034), Rotation = (i - 1) * 22.5,
+			ZIndex = holder.ZIndex,
+		}, holder)
+		new("UIGradient", { Name = "Fade", Transparency = fade }, bar)
+	end
+	local h = handle(holder, K.RAY_TURN, opts)
+	function h:Flash(alpha, seconds)
+		local f = self.Frame
+		if not f or not f.Parent then
+			return
+		end
+		f.Visible = true
+		f.GroupTransparency = math.min(f.GroupTransparency, 1)
+		self:_play("Fade", f, TweenInfo.new(math.max(0.01, seconds or 0.12), Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { GroupTransparency = alpha or 0.35 })
+	end
+	function h:Recolor(r)
+		local c = rayColor(r)
+		for _, bar in ipairs(self.Frame and self.Frame:GetChildren() or {}) do
+			if bar:IsA("Frame") then
+				bar.BackgroundColor3 = c
+			end
+		end
+	end
+	return h
+end
+
+function HatchFx.Shock(parent, rarity, opts)
+	opts = type(opts) == "table" and opts or {}
+	local ring = new("Frame", {
+		Name = "Shock", BackgroundTransparency = 1, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Visible = false, ZIndex = opts.ZIndex or 3,
+	}, parent)
+	new("UICorner", { CornerRadius = UDim.new(0.5, 0) }, ring)
+	local stroke = new("UIStroke", { Color = lighter(colorOf(rarity, 1), 0.1), Thickness = 6, Transparency = 0 }, ring)
+	local h = handle(ring, 12, opts)
+	h.Stroke = stroke
+	h.Token = 0
+	function h:Play(x, y, d, seconds, color)
+		local f = self.Frame
+		if not f or not f.Parent then
+			return
+		end
+		self.Token = self.Token + 1
+		local mine = self.Token
+		seconds = math.max(0.05, seconds or 0.35)
+		placeAt(f, x, y, 0)
+		f.Visible = true
+		self.Stroke.Color = color or self.Stroke.Color
+		self.Stroke.Transparency = 0
+		local out = TweenInfo.new(seconds, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		self:_play("Grow", f, out, { Size = UDim2.fromOffset(d, d) })
+		self:_play("Fade", self.Stroke, out, { Transparency = 1 })
+		task.delay(seconds, function()
+			if self.Token == mine and self.Frame and self.Frame.Parent then
+				self.Frame.Visible = false
+			end
+		end)
+	end
+	return h
+end
+
+function HatchFx.CloudRing(parent, color, opts)
+	opts = type(opts) == "table" and opts or {}
+	local ring = new("CanvasGroup", {
+		Name = "CloudRing", BackgroundTransparency = 1, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), GroupTransparency = 1,
+		GroupColor3 = K.RING_TINT, Visible = false, ZIndex = opts.ZIndex or 1,
+	}, parent)
+	local swell = new("UIScale", { Name = "Swell", Scale = 1 }, ring)
+	-- the puffs: white (GroupColor3 tints them), on a circle 0.36 of the ring's size out, a little uneven so it reads as
+	-- cloud, not a gear
+	for i = 1, K.RING_PUFFS do
+		local a = (i - 1) / K.RING_PUFFS * 2 * math.pi
+		local s = 0.2 + 0.05 * ((i * 0.618034) % 1)
+		local r = 0.36 + 0.03 * (((i + 3) * 0.381966) % 1)
+		local puff = new("Frame", {
+			Name = "Puff" .. i, BorderSizePixel = 0, BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = (i % 3 == 0) and 0.25 or 0.08,
+			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5 + math.cos(a) * r, 0.5 + math.sin(a) * r), Size = UDim2.fromScale(s, s),
+			ZIndex = ring.ZIndex,
+		}, ring)
+		new("UICorner", { CornerRadius = UDim.new(0.5, 0) }, puff)
+	end
+	local h = handle(ring, K.RING_TURN, opts)
+	h.Swell = swell
+	h.Color = color
+	function h:Show(seconds)
+		local f = self.Frame
+		if not f or not f.Parent then
+			return
+		end
+		f.Visible = true
+		self.Swell.Scale = 1
+		f.GroupColor3 = K.RING_TINT:Lerp(self.Color or K.RING_TINT, 0.12)
+		self:_play("Fade", f, TweenInfo.new(math.max(0.01, seconds or 0.3), Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { GroupTransparency = K.RING_REST })
+	end
+	function h:Pulse(c, seconds)
+		local f = self.Frame
+		if not f or not f.Parent then
+			return
+		end
+		seconds = math.max(0.05, seconds or 0.35)
+		f.Visible = true
+		f.GroupColor3 = c or self.Color or K.RING_TINT
+		f.GroupTransparency = 0
+		self:_play("Swell", self.Swell, TweenInfo.new(math.min(0.2, seconds), Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = K.SWELL })
+		self:_play("Fade", f, TweenInfo.new(seconds, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { GroupTransparency = 1 })
+	end
+	return h
+end
+
+-- a thin glowing segment from (x1, y1) to (x2, y2), shares of the egg (the egg is 0.8 x as wide as it is tall)
+local function segment(parent, name, x1, y1, x2, y2, color, z, k)
+	local dx, dy = (x2 - x1), (y2 - y1) / 0.8 -- in egg widths
+	local len = math.sqrt(dx * dx + dy * dy)
+	local seg = new("Frame", {
+		Name = name, BorderSizePixel = 0, BackgroundColor3 = color, BackgroundTransparency = 0, AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale((x1 + x2) / 2, (y1 + y2) / 2), Size = UDim2.fromScale(len + (k or K.CRACK_W), k or K.CRACK_W),
+		Rotation = math.deg(math.atan2(dy, dx)), Visible = false, ZIndex = z,
+	}, parent)
+	return seg
+end
+
+local function eggLayer(egg, name, z)
+	local holder = egg:FindFirstChild(name)
+	if not holder then
+		holder = new("Frame", { Name = name, BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), ZIndex = z }, egg)
+	end
+	return holder
+end
+
+function HatchFx.Cracks(egg, rarity, step)
+	if typeof(egg) ~= "Instance" then
+		return nil
+	end
+	local z = egg.ZIndex + 8
+	local holder = egg:FindFirstChild("Cracks")
+	if not holder then
+		holder = eggLayer(egg, "Cracks", z)
+		local glow = lighter(colorOf(rarity, 1), 0.35)
+		-- a white core with the rarity's light on both edges
+		local across = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.7), NumberSequenceKeypoint.new(0.5, 0), NumberSequenceKeypoint.new(1, 0.7) })
+		local core = ColorSequence.new({ ColorSequenceKeypoint.new(0, glow), ColorSequenceKeypoint.new(0.5, Color3.new(1, 1, 1)), ColorSequenceKeypoint.new(1, glow) })
+		for i = 1, 5 do
+			local a, b = K.ZIG[i + 1], K.ZIG[i + 2]
+			local seg = segment(holder, "Seg" .. i, a[1], a[2], b[1], b[2], Color3.new(1, 1, 1), z)
+			new("UIGradient", { Name = "Glow", Rotation = 90, Transparency = across, Color = core }, seg)
+		end
+		local br = K.BRANCH
+		local seg = segment(holder, "Branch", br[1], br[2], br[3], br[4], Color3.new(1, 1, 1), z, K.CRACK_W * 0.8)
+		new("UIGradient", { Name = "Glow", Rotation = 90, Transparency = across, Color = core }, seg)
+	end
+	step = math.max(0, math.floor(tonumber(step) or 0))
+	local show = {}
+	for _, i in ipairs(K.SEGS[step >= 5 and 5 or (step >= 3 and 3 or (step >= 1 and 1 or 0))] or {}) do
+		show[i - 1] = true -- (K.SEGS names zigzag segments 2..6; Seg1..5 are segments 2..6)
+	end
+	for i = 1, 5 do
+		local seg = holder:FindFirstChild("Seg" .. i)
+		if seg then
+			seg.Visible = show[i] == true
+		end
+	end
+	local branch = holder:FindFirstChild("Branch")
+	if branch then
+		branch.Visible = step >= 5
+	end
+	holder:SetAttribute("Step", step)
+	return holder
+end
+
+function HatchFx.Leaks(egg, rarity, step)
+	if typeof(egg) ~= "Instance" then
+		return nil
+	end
+	local z = egg.ZIndex + 7
+	local holder = egg:FindFirstChild("Leaks")
+	if not holder then
+		holder = eggLayer(egg, "Leaks", z)
+		local glow = lighter(colorOf(rarity, 1), 0.45)
+		for i = 1, 5 do
+			local beam = new("Frame", {
+				Name = "Leak" .. i, BorderSizePixel = 0, BackgroundColor3 = glow, BackgroundTransparency = 0.15, AnchorPoint = Vector2.new(0.5, 0.5),
+				Visible = false, ZIndex = z,
+			}, holder)
+			new("UIGradient", { Name = "Taper", Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(1, 1) }) }, beam)
+		end
+	end
+	step = math.max(0, math.floor(tonumber(step) or 0))
+	local n = math.min(5, step)
+	local len = 0.08 + 0.035 * step -- egg heights
+	for i = 1, 5 do
+		local beam = holder:FindFirstChild("Leak" .. i)
+		if beam then
+			local p = K.ZIG[i + 2]
+			beam.Visible = i <= n
+			if i <= n then
+				-- up from a high corner, down from a low one, fanned a little
+				local up = p[2] < 0.61
+				local ang = (up and -90 or 90) + ((i % 3) - 1) * 22
+				local rad = math.rad(ang)
+				-- the centre half-way out (x in egg widths: a height is 1 / 0.8 widths); local +X points outward, so the
+				-- taper (clear at X = 1) fades toward the tip
+				beam.Position = UDim2.fromScale(p[1] + math.cos(rad) * len / 0.8 / 2, p[2] + math.sin(rad) * len / 2)
+				beam.Size = UDim2.fromScale(len / 0.8, 0.05)
+				beam.Rotation = ang
+			end
+		end
+	end
+	holder:SetAttribute("Step", step)
+	return holder
+end
+
+----------------------------------------------------------------------------------------------------
+-- the world dim: the one Lighting effect and the "Hatch" LightingStack preset (High only)
+----------------------------------------------------------------------------------------------------
+local function lightingStack()
+	if R.LS == nil then
+		R.LS = false
+		local client = script.Parent and script.Parent.Parent
+		local module = client and client:FindFirstChild("LightingStack")
+		if module and module:IsA("ModuleScript") then
+			local ok, mod = pcall(require, module)
+			if ok and type(mod) == "table" then
+				R.LS = mod
+			end
+		end
+	end
+	return R.LS or nil
+end
+
+local function effectsOn()
+	local n = 0
+	if R.Blur and R.Blur.Parent then
+		n = n + 1
+	end
+	if R.Pushed then
+		n = n + 1
+	end
+	return n
+end
+
+function HatchFx.Dim(on, seconds)
+	seconds = math.max(0.01, tonumber(seconds) or 0.35)
+	local ls = lightingStack()
+	if on and high() then
+		if not (R.Blur and R.Blur.Parent) then
+			local old = Lighting:FindFirstChild("NimbusHatchBlur")
+			if old and old:IsA("BlurEffect") then
+				old:Destroy()
+			end
+			R.Blur = new("BlurEffect", { Name = "NimbusHatchBlur", Size = 0 }, Lighting)
+		end
+		cancel(R.BlurTween)
+		R.BlurTween = play(R.Blur, TweenInfo.new(seconds, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = K.BLUR })
+		if ls and not R.Pushed then
+			-- the tint against the look under it (LightingStack presets set absolute values)
+			local b = ls.Value("ColorCorrection", "Brightness", "Hatch")
+			local s = ls.Value("ColorCorrection", "Saturation", "Hatch")
+			if type(b) == "number" and type(s) == "number" then
+				local ok = pcall(ls.Push, "Hatch", { ColorCorrection = { Brightness = b + K.TINT.Brightness, Saturation = s + K.TINT.Saturation } }, seconds)
+				R.Pushed = ok
+			end
+		end
+	elseif not on then
+		cancel(R.BlurTween)
+		R.BlurTween = nil
+		if R.Blur then
+			R.Blur:Destroy()
+			R.Blur = nil
+		end
+		if R.Pushed and ls then
+			pcall(ls.Pop, "Hatch", seconds)
+		end
+		R.Pushed = false
+	end
+	return effectsOn()
+end
+
 function HatchFx.Stats()
 	local live, pooled, beats, tweens = 0, 0, 0, 0
 	for pool in pairs(R.Pools) do
@@ -427,7 +942,7 @@ function HatchFx.Stats()
 			tweens = tweens + 1
 		end
 	end
-	return { Live = live, Pooled = pooled, Tweens = tweens, Heartbeats = beats }
+	return { Live = live, Pooled = pooled, Tweens = tweens, Heartbeats = beats, Effects = effectsOn() }
 end
 
 return HatchFx

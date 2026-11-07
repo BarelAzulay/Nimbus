@@ -85,9 +85,11 @@ SCENARIOS = ["gallery", "lobby", "title", "match", "match:hit", "countdown", "pa
              # (Task 20) the seven GUI eggs (EggArt) and the egg stage core (EggStage) at six moments of a roll;
              # (Task 26) the painted eggs with their VFX, and their small forms (eggs:simple);
              # (Tasks 21/22) the one Shop window on each of its own tabs (Eggs first), and the Eggs tab restricted;
-             # (Task 24) the lobby board's SurfaceGui on its three pages, fitted to the screen and from 20 studs
+             # (Task 24) the lobby board's SurfaceGui on its three pages, fitted to the screen and from 20 studs;
+             # (Task 27) the dressed cutscene: hatch:<rarity>@<s> (a forced x1 pull at <s> s) and hatch3:<s> (x3)
              "gems", "gems:store", "titles", "titles:10", "titles:30", "titles:60",
              "eggs", "eggs:simple", "hatch:strip", "hatch:strip3", "hatch:crack", "hatch:reveal", "hatch:reveal3", "hatch:secret",
+             "hatch:epic@3.9", "hatch:legendary@5.3", "hatch:secret@5.9", "hatch3:6.0",
              "shop", "shop:restricted", "shop:Gems", "shop:Packs", "shop:Passes", "shop:Boosts",
              "lobbyboard", "lobbyboard:2", "lobbyboard:3"]
 
@@ -1394,6 +1396,7 @@ def main():
                     "dungeon:<lobby|party|leader|countdown|run|loot|treasure|end|wipe>, obby[:party|toast], portal:Obby, "
                     "picker[:train|upgrade|mix], train:mats, daily[:locked|play], fusion[:upgrade|mix], "
                     "gems[:store], titles[:<studs>], eggs[:simple], hatch[:strip|strip3|crack|reveal|reveal3|secret], "
+                    "hatch:<rarity>@<seconds> (e.g. hatch:epic@3.9), hatch3:<seconds>, "
                     "shop[:<tab>], lobbyboard[:2|:3], or a dump .json")
     ap.add_argument("-o", "--out", help="output PNG (default: gui_<scenario>_<W>x<H>.png in the current directory)")
     ap.add_argument("--size", type=parse_size, default=(1920, 1080), help="screen size WxH (default 1920x1080)")

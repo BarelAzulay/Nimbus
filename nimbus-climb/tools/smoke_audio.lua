@@ -49,7 +49,10 @@ table.sort(AUDIO_KEYS)
 -- uploaded to audio/audio.json, NOT wired yet (move a key up into AUDIO_KEYS when it is wired): none today
 local WAVE2_KEYS = {}
 -- wired in Config.Audio.Keys before any take exists (no file in audio.json, no AudioIds id: silent until one is approved)
-local PENDING_KEYS = { "FountainLoop", "StorePop", "StoreBuy", "TroveOpen", "DailyWeek" } -- store (2026-11-04): the four Store keys
+local PENDING_KEYS = { "FountainLoop", "StorePop", "StoreBuy", "TroveOpen", "DailyWeek", -- store (2026-11-04): the four Store keys
+	-- lobby-shop Task 27 (spec 16.4): the egg cutscene's own sounds (the egg-sounds takes; until an id lands each falls back
+	-- through Config.Audio.Fallback to today's sound or silence). Move them up into AUDIO_KEYS once audio.json has them
+	"EggStripTick", "EggStripLand", "EggRise", "EggShake", "EggCrack", "EggBurst", "EggCloudRing", "EggRevealCommon", "EggRevealEpic", "EggRevealLegend", "EggRevealSecret" }
 local MANIFEST_KEYS = {}
 for _, list in ipairs({ AUDIO_KEYS, WAVE2_KEYS }) do
 	for _, key in ipairs(list) do
@@ -394,8 +397,8 @@ S.client_audio_keys = guarded("client_audio_keys", function()
 		underList[#underList + 1] = key
 	end
 	table.sort(underList)
-	T.eq(table.concat(underList, " "), "DialogBlip DialogNext HitCelestial HitEarth HitFlame HitFrost HitNature HitShadow HitStorm HitWater SpinTick",
-		"audio volumes: UnderMusic = the frequent quiet keys only (the 8 element hits, SpinTick, DialogBlip, DialogNext)")
+	T.eq(table.concat(underList, " "), "DialogBlip DialogNext EggStripTick HitCelestial HitEarth HitFlame HitFrost HitNature HitShadow HitStorm HitWater SpinTick",
+		"audio volumes: UnderMusic = the frequent quiet keys only (the 8 element hits, SpinTick, EggStripTick, DialogBlip, DialogNext)")
 	local musicMin = 1
 	for _, key in pairs(A.Keys.Music) do
 		musicMin = math.min(musicMin, V[key] or 1)
@@ -1325,8 +1328,9 @@ S.client_audio_sites = guarded("client_audio_sites", function()
 			T.check(#playsOf(log, "Reward", f) == 1 and #playsOf(log, "TutorialStep", f) == 0, "audio sites: the tutorial's finale plays Reward")
 			KC.advance(8)
 		end
-		-- the roulette (lobby-shop Task 22: every spin plays through EggStage): SpinStart after the intro, a SpinTick per
-		-- cell, SpinLand, the egg's Shatter, then the reveal by rarity
+		-- the roulette (lobby-shop Task 22: every spin plays through EggStage): SpinStart after the intro, then (Task 27,
+		-- every id given here) the cutscene's own keys: an EggStripTick per cell, EggStripLand, the egg's EggBurst, then the
+		-- reveal by rarity (EggReveal*); none of today's Reveal* (their fallbacks, client_hatch_cutscene)
 		local PC = moduleAt(ROOTS.shared .. "/PetCatalog")
 		local possible = PC and type(PC.PossiblePets) == "function" and PC.PossiblePets("Cloud") or {}
 		if T.check(#possible > 0, "audio sites: the Cloud roulette's pets") then
@@ -1342,15 +1346,15 @@ S.client_audio_sites = guarded("client_audio_sites", function()
 			KC.advance(1.0) -- (EggStage plays SpinStart when its 0.35 s intro ends)
 			local started = #playsOf(log, "SpinStart", f)
 			KC.advance(10)
-			local want = ({ Common = "RevealCommon", Uncommon = "RevealCommon", Rare = "RevealRare", Epic = "RevealRare", Legendary = "RevealLegendary",
-				Mythic = "RevealLegendary", Secret = "RevealLegendary" })[winner.Rarity]
-			local ticks = #playsOf(log, "SpinTick", f)
+			local want = ({ Common = "EggRevealCommon", Uncommon = "EggRevealCommon", Rare = "EggRevealEpic", Epic = "EggRevealEpic", Legendary = "EggRevealLegend",
+				Mythic = "EggRevealLegend", Secret = "EggRevealSecret" })[winner.Rarity]
+			local ticks = #playsOf(log, "EggStripTick", f)
 			T.check(started == 1, "audio sites: a roulette spin plays SpinStart once", tostring(started))
-			T.check(ticks >= 8, "audio sites: the strip ticks as cells pass the pointer (SpinTick)", ticks .. " ticks")
-			T.eq(#playsOf(log, "SpinLand", f), 1, "audio sites: the strip's landing plays SpinLand once")
-			T.eq(#playsOf(log, "Shatter", f), 1, "audio sites: the egg's burst plays Shatter once (EggStage)")
-			T.check(#playsOf(log, want or "?", f) == 1 and #playsOf(log, "^Reveal", f, true) == 1,
-				"audio sites: the reveal card plays " .. tostring(want) .. " for a " .. tostring(winner.Rarity) .. " pet")
+			T.check(ticks >= 8, "audio sites: the strip ticks as cells pass the pointer (EggStripTick)", ticks .. " ticks")
+			T.eq(#playsOf(log, "EggStripLand", f), 1, "audio sites: the strip's landing plays EggStripLand once")
+			T.eq(#playsOf(log, "EggBurst", f), 1, "audio sites: the egg's burst plays EggBurst once (EggStage)")
+			T.check(#playsOf(log, want or "?", f) == 1 and #playsOf(log, "^EggReveal", f, true) == 1 and #playsOf(log, "^Reveal", f, true) == 0,
+				"audio sites: the reveal card plays " .. tostring(want) .. " for a " .. tostring(winner.Rarity) .. " pet (and no Reveal* of today)")
 			pressKey("Escape")
 			KC.advance(0.6)
 			pressKey("Escape")

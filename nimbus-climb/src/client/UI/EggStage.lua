@@ -1,7 +1,15 @@
--- EggStage (client UI; lobby-shop Task 20, docs/superpowers/specs/2026-11-07-lobby-shop-design.md 16.4 "The egg-opening
--- cutscene" and 5.5 "The egg stage"): the stage core every roulette spin plays through. The one BuyRoulette request path,
--- the RouletteResult listener and its queue, and the seven phases with their final names and timings, drawn with plain
--- visuals (the painted eggs come in Task 26, the dressed cutscene in Task 27; ShopController calls Init in Task 22).
+-- EggStage (client UI; lobby-shop Tasks 20 / 27, docs/superpowers/specs/2026-11-07-lobby-shop-design.md 16.4 "The
+-- egg-opening cutscene" and 5.5 "The egg stage"): the stage every roulette spin plays through. The one BuyRoulette request
+-- path, the RouletteResult listener and its queue, and the seven phases dressed as storyboard A "Pedestal" (the owner's
+-- pick, .superpowers/lobby-shop/pitch/CUTSCENE_PICK.md, with Gemini's cloud ring): the world dims (a navy Dim, four
+-- vignette edges, HatchFx.Dim's blur and "Hatch" tint on High), the machine's name slides down, the server's strip
+-- scrolls with speed streaks, the landed egg rises out of it onto a cloud-stone pedestal in a spot light with its rarity
+-- backlight and a turning cloud ring, cracks glow and light leaks as it shakes (the push-in: its UIScale to 1.06), then
+-- bursts (halves, the shock ring, the rays, the sparks, the ring's swell in the rarity colour, a white or gold flash) and
+-- the pet pops on the pedestal under its banner (Legendary and up keep slow gold rays, Mythic / Secret confetti, Secret
+-- a starry backdrop and a violet aura). The effects are client/UI/HatchFx; ShopController calls Init (Task 22).
+-- Sounds: the owner's egg keys (Config.Audio Egg*), each playing Config.Audio.Fallback (today's roulette sounds, or
+-- nothing) while its id is 0.
 --
 --   EggStage.Init()                        connects the RouletteResult listener (once)
 --   EggStage.Show(result) -> bool          plays a RouletteResult (new shape with Pulls, or the old top-level shape); a
@@ -19,19 +27,25 @@
 --   EggStage.NoteText(pull, rarity) -> the reveal's note; EggStage.Layout() -> "PC" | "Phone" | "Portrait"
 --   EggStage.IsPrewarmed(petId) -> true once that pet's model was built for the reveal (warmed during the strip)
 --   EggStage.Stats() -> { Instances, Tweens, Sparks, Effects, Heartbeats }  this module's GUI instances (a ViewportFrame
---                                          counts as one), playing tweens and Heartbeats; Sparks / Effects are Task 27's
+--                                          counts as one), playing tweens (its own and its HatchFx handles'), live sparks,
+--                                          Lighting effects (the blur and the "Hatch" preset) and Heartbeats (one: the
+--                                          phase runner also steps the spark pool)
 --   signals Pending(rouletteId, currency, spins), Answered(result), Opened(), Closed(reason)
 --   EggStage._Answer(result)               the RouletteResult listener's body (tests call it while MenuController's old
 --                                          stage still listens to the remote, until Task 22)
+--   EggStage._InjectPhaseError = "<Phase>" a test-only hook (nil by default): the phase runner raises an error when the
+--                                          roll reaches that phase; every teardown resets it
 --
 -- Instances: NimbusHatch (DisplayOrder 25, IgnoreGuiInset, ResetOnSpawn false) > Stage > Dim (the tap-anywhere button),
--- Vignette, Content (the area under the top bar, UIScale "Fit") > Title, Strips > Strip1..3 > Track (a non-scrolling
--- ScrollingFrame: it clips) > Cell1..12, Pointer; Hero > Pedestal1..3, Backlight1..3, Egg1..3, Halves1..3, CrackWord;
--- Burst > Shock, Rays, Sparks; Reveal > Col1..3 > Banner (Word), Shell, Pet, Name, New, Note, EvolvedRibbon; BottomBar >
--- Skip, FastHatch, SpinAgain, Done; then Stage > Flash. Strip cells are recycled (at most 12 per strip): a cell re-skins
--- its egg with EggArt.SetRarity when it wraps (Task 26: lean Medium eggs, Rim = false and Budget = 9; Rare and up wear a
--- rarity ring on the cell's stroke; only the landed cell's egg gets its VFX). Attributes for tests: Strip<j>.Landed, Egg<j>.State (Rise / Crack / Burst
--- / Open).
+-- Vignette, (Stars: the Secret backdrop), Content (the area under the top bar, UIScale "Fit") > Title, Strips > Strip1..3
+-- > Track (a non-scrolling ScrollingFrame: it clips) > Cell1..12, Streaks (High), Pointer; Hero > Spot, Rays, CloudRing1..3,
+-- Backlight1..3, Pedestal1..3, Egg1..3 (> Cracks, Leaks), Halves1..3, CrackWord; Burst > Shock, Sparks (the pool of 64);
+-- Reveal > Col1..3 > Banner (Word), Aura (Secret), Shell, Pet, Name, New, Note, EvolvedRibbon; BottomBar > Skip,
+-- FastHatch, SpinAgain, Done; then Stage > Flash. (The Rays live in Hero, not Burst: a GUI frame's children cannot sit
+-- between another frame's, and the rays belong behind the egg, the pedestal and the pet.) Strip cells are recycled (at
+-- most 12 per strip): a cell re-skins its egg with EggArt.SetRarity when it wraps (Task 26: lean Medium eggs, Rim = false
+-- and Budget = 9; Rare and up wear a rarity ring on the cell's stroke; only the landed cell's egg gets its VFX).
+-- Attributes for tests: Strip<j>.Landed, Egg<j>.State (Rise / Crack / Burst / Open), Burst.Sparks (the last burst's count).
 --
 -- Never breaks the player (16.4): it writes nothing to the Camera or the Humanoid and plays on through a death or a
 -- respawn; one teardown(reason) ends every exit ("Done" | "Error" | "Match" | "Close") and fires Closed(reason) last.
@@ -56,6 +70,7 @@ local Remotes = require(Shared:WaitForChild("Remotes"))
 local UIFolder = script.Parent
 local ClientFolder = UIFolder.Parent
 local EggArt = require(UIFolder:WaitForChild("EggArt"))
+local HatchFx = require(UIFolder:WaitForChild("HatchFx"))
 local GemIcon = require(UIFolder:WaitForChild("GemIcon"))
 local CloudUI = require(UIFolder:WaitForChild("CloudUI"))
 local NeonKit = require(UIFolder:WaitForChild("NeonKit"))
@@ -97,9 +112,36 @@ local K = {
 	SECRET_TEXT = Color3.fromRGB(180, 150, 255), -- Secret's own colour is near black: the readable violet on navy
 	SECRET_ID = (Config.Gems and Config.Gems.SecretRoulette and Config.Gems.SecretRoulette.Id) or "Secret",
 	RESTRICTED_ATTR = "PaidRandomItemsRestricted",
-	REVEAL_SOUND = { Common = "RevealCommon", Uncommon = "RevealCommon", Rare = "RevealRare", Epic = "RevealRare", Legendary = "RevealLegendary", Mythic = "RevealLegendary", Secret = "RevealLegendary" },
+	-- the owner's egg sounds (Config.Audio: each plays Config.Audio.Fallback while its id is 0)
+	SOUND = { Tick = "EggStripTick", Land = "EggStripLand", Rise = "EggRise", Shake = "EggShake", Crack = "EggCrack", Burst = "EggBurst", Ring = "EggCloudRing" },
+	REVEAL_SOUND = { Common = "EggRevealCommon", Uncommon = "EggRevealCommon", Rare = "EggRevealEpic", Epic = "EggRevealEpic", Legendary = "EggRevealLegend", Mythic = "EggRevealLegend", Secret = "EggRevealSecret" },
 	LOUD_FROM = 5, -- Config.Rarities Order: Legendary and up play at Scale 1, the rest at 0.6
 	QUIET = 0.6,
+	-- (Task 27) the dressed cutscene (spec 16.4 "VFX and budget")
+	SPARKS = { Common = 12, Uncommon = 16, Rare = 20, Epic = 28, Legendary = 40, Mythic = 48, Secret = 48 },
+	CONFETTI = 24,
+	STARS = 14,
+	POOL = 64,
+	PUSH = 1.06, -- the push-in: the hero egg's UIScale over the shakes (it grows on its foot, so it never meets the pedestal)
+	SQUASH = 0.05, -- a shake squashes the egg this much (wider and lower, never taller)
+	SHOCK = 900 / 380, -- the shock ring's last diameter, in egg heights (900 px over the 380 px PC egg)
+	RAYS = 2.4, -- the rays' diameter, in egg heights (on the reveal 2.2 pet sizes)
+	RING = 1.3, -- the cloud ring's diameter, in egg heights
+	SPOT = 520 / 380, -- the spot cone's width, in egg heights
+	SHAKE_SPARKS = 4,
+	SHAKE_SPARK = { Life = { 0.25, 0.4 }, Speed = { 90, 170 }, Px = { 4, 7 } },
+	GOLD_IN = 0.25, -- the gold flash: from 0.8 (a kick on the burst frame) to 0.5 in 0.25 s, out to clear in 0.6 s (half
+	GOLD_FROM = 0.8, -- strong at most: the reveal's banner and name read through it)
+	GOLD_PEAK = 0.5,
+	GOLD_OUT = 0.6,
+	WHITE_FLASH = { 0.4, 0.12 }, -- the micro-flash: transparency 0.4 (0.6 strong) for 0.12 s
+	TAIL = 0.25, -- Skip's burst tail over the reveal's start
+	PED = {
+		StoneTop = Color3.fromRGB(214, 222, 240), StoneFoot = Color3.fromRGB(112, 124, 160), Top = Color3.fromRGB(241, 245, 255),
+		Gold = Color3.fromRGB(242, 193, 78), Puff = Color3.fromRGB(227, 236, 251),
+	},
+	SPOT_COLOR = Color3.fromRGB(255, 246, 222),
+	AURA = Color3.fromRGB(150, 110, 255),
 	-- the shop's window rule (spec 5.4) decides Phone vs PC
 	RECT = { RECT = { H0 = 390, W0 = 820, Y0 = 330, H1 = 1080, W1 = 1660, Y1 = 900 }, MARGIN = 12, PHONE_W = 900, SHORT = 560, PC_MIN_H = 600, PC_MAX_W = 0.87 },
 	TEXT = {
@@ -141,10 +183,14 @@ local S = {
 	Gui = nil, Stage = nil, Content = nil, Fit = nil, Dim = nil, Flash = nil, Vignette = nil,
 	Roll = nil, Queue = {}, Lay = nil, Conns = {}, Beat = nil, Bound = false, Inited = false,
 	Pending = false, PendToken = 0, PendFrom = nil, LastFire = -10,
-	Warm = {}, Warned = {}, Menu = nil, Sfx = nil, Builder = nil,
+	Warm = {}, Warned = {}, Menu = nil, Sfx = nil, Builder = nil, GQ = nil, Stars = nil, Dimmed = false,
 }
+-- the tweens of the phases (cancelled at the reveal) and of the overlay (the flash, the shock, the rays: they play on
+-- over the reveal's start); both weak-keyed, both counted by Stats and cancelled by every teardown
 S.Tweens = setmetatable({}, { __mode = "k" })
+S.Overlay = setmetatable({}, { __mode = "k" })
 EggStage._S = S
+EggStage._InjectPhaseError = nil
 
 local H = {} -- helpers
 local L = {} -- layout
@@ -195,15 +241,52 @@ function H.toast(text)
 	end
 end
 
+-- one sound of the roll: an egg key without an id yet plays Config.Audio.Fallback[key] in its place (or nothing); the
+-- Sound is remembered so a skip (and an exit before the reveal) can stop it
 function H.sfx(name, scale)
 	local sf = H.lazy("Sfx", ClientFolder, "SoundFx")
-	if sf and type(sf.Play) == "function" then
-		local ok, snd = pcall(sf.Play, name, { Scale = scale })
-		if ok then
-			return snd
+	if not sf or type(sf.Play) ~= "function" then
+		return nil
+	end
+	local fallback = type(Config.Audio) == "table" and type(Config.Audio.Fallback) == "table" and Config.Audio.Fallback or {}
+	if fallback[name] ~= nil then
+		local okId, id = pcall(sf.Id, "Sfx", name)
+		if not (okId and id) then
+			name = fallback[name]
+			if not name then
+				return nil
+			end
 		end
 	end
+	local ok, snd = pcall(sf.Play, name, { Scale = scale })
+	if ok and typeof(snd) == "Instance" then
+		if S.Roll then
+			S.Roll.Sounds[snd] = true
+		end
+		return snd
+	end
 	return nil
+end
+
+function H.stopSounds(roll)
+	for snd in pairs(roll and roll.Sounds or {}) do
+		pcall(function()
+			snd:Stop()
+		end)
+	end
+	if roll then
+		roll.Sounds = {}
+	end
+end
+
+-- High graphics (GraphicsQuality has Low and High): the blur, the tint, the turning rays and ring, the speed streaks
+function H.high()
+	local gq = H.lazy("GQ", ClientFolder, "GraphicsQuality")
+	if not gq or type(gq.Effective) ~= "function" then
+		return true
+	end
+	local ok, mode = pcall(gq.Effective)
+	return not ok or mode ~= "Low"
 end
 
 function H.order(rarity)
@@ -294,23 +377,30 @@ function H.textW(text, size, role)
 	return #tostring(text) * size * 0.6
 end
 
-function H.tween(inst, seconds, goals, style, direction)
+function H.tween(inst, seconds, goals, style, direction, overlay)
 	if not inst or not inst.Parent then
 		return nil
 	end
 	local info = TweenInfo.new(math.max(0.01, seconds), style or Enum.EasingStyle.Quad, direction or Enum.EasingDirection.Out)
 	local tw = TweenService:Create(inst, info, goals)
-	S.Tweens[tw] = true
+	if overlay then
+		S.Overlay[tw] = true
+	else
+		S.Tweens[tw] = true
+	end
 	tw:Play()
 	return tw
 end
 
-function H.cancelTweens()
-	for tw in pairs(S.Tweens) do
-		pcall(function()
-			tw:Cancel()
-		end)
-		S.Tweens[tw] = nil
+-- the phases' tweens; with all = true the overlay's too (a resize, an exit)
+function H.cancelTweens(all)
+	for _, set in ipairs(all and { S.Tweens, S.Overlay } or { S.Tweens }) do
+		for tw in pairs(set) do
+			pcall(function()
+				tw:Cancel()
+			end)
+			set[tw] = nil
+		end
 	end
 end
 
@@ -531,6 +621,7 @@ function H.makeRoll(result)
 	local roll = {
 		Result = result, Pulls = pulls, N = #pulls, Roulette = roulette, Currency = currency, HasStrip = hasStrip, Fast = fast, Best = best,
 		T = EggStage.Timings(fast, #pulls > 1 and 3 or 1), Strips = {}, Eggs = {}, Cols = {}, Views = {}, UI = {}, Phase = "Intro",
+		Sounds = {}, Hi = H.high(),
 	}
 	roll.Sched = R.schedule(roll)
 	return roll
@@ -676,17 +767,18 @@ function L.compute(n, roll)
 	for j = 1, (x3 and 3 or 1) do
 		lay.Strip.Y[j] = y0 + (j - 1) * (spec.H + (spec.Gap or 0)) * s
 	end
-	-- the crack: the word, the egg, its pedestal (1.1 x / 0.24 x the egg), centred in the middle
+	-- the crack: the word, the egg, its pedestal (1.1 x / 0.24 x the egg), centred in the middle. The gap above the egg
+	-- keeps the room of its outline (a Border stroke, size / 20 outside its box) and of the push-in (Task 27: the egg grows
+	-- to K.PUSH on its foot during the shakes), so the word stays clear at the push-in's peak
 	local crack = x3 and P.Crack3 or P.Crack1
 	local colW = x3 and math.min(P.Col3, (cw - 24) / 3) or cw
-	-- (gap: the egg's outline is a Border stroke, size / 20 thick outside its box: the word stays clear of it)
-	local gap = math.max(2, math.floor(crack.Egg / 20 + 0.5)) + 4
-	local sE = Util.Clamp((avail - crack.Word - gap) / (1.24 * crack.Egg), 0.6, 1)
+	local sE = Util.Clamp((avail - crack.Word - 6) / ((1.24 + (K.PUSH - 1) + 0.05) * crack.Egg), 0.6, 1)
 	local E = crack.Egg * sE
 	if x3 then
 		E = math.min(E, (colW - 8) / 1.1)
 	end
 	E = math.floor(E)
+	local gap = math.max(2, math.floor(E / 20 + 0.5)) + 4 + math.ceil((K.PUSH - 1) * E)
 	local stackH = crack.Word + gap + E * 1.24
 	local cTop = midTop + (avail - stackH) / 2
 	lay.Crack = { E = E, WordY = cTop, WordH = crack.Word, EggY = cTop + crack.Word + gap, PedW = 1.1 * E, PedH = 0.24 * E, Cx = {} }
@@ -842,14 +934,15 @@ function B.roll(roll)
 	roll.UI.Hero = H.frame(c, "Hero", { Size = UDim2.fromScale(1, 1), ZIndex = 2 })
 	local burst = H.frame(c, "Burst", { Size = UDim2.fromScale(1, 1), ZIndex = 3 })
 	roll.UI.Burst = burst
-	local shock = H.frame(burst, "Shock", { AnchorPoint = Vector2.new(0.5, 0.5), Visible = false, ZIndex = 3 })
-	H.corner(shock, 0.5)
-	roll.UI.ShockStroke = H.stroke(shock, K.WHITE, 6)
-	roll.UI.Shock = shock
-	H.frame(burst, "Rays", { Size = UDim2.fromScale(1, 1), Visible = false })
-	H.frame(burst, "Sparks", { Size = UDim2.fromScale(1, 1) })
+	-- (Task 27) the effects: the shock ring and the spark pool over the hero, the rays behind it (in Hero); the overlay
+	-- tweens play on over the reveal's start. The pool is stepped by the phase runner (one Heartbeat in all)
+	local best = roll.Pulls[roll.Best].Rarity
+	roll.Shock = HatchFx.Shock(burst, best, { ZIndex = 3, Track = S.Overlay })
+	roll.Rays = HatchFx.Rays(roll.UI.Hero, best, { ZIndex = 2, Track = S.Overlay })
+	roll.Pool = HatchFx.Pool(burst, K.POOL, 4)
+	roll.Pool:Drive()
 	roll.UI.Reveal = H.frame(c, "Reveal", { Size = UDim2.fromScale(1, 1), ZIndex = 4, Visible = false })
-	roll.UI.Crack = H.label(roll.UI.Hero, "CrackWord", "", "Title", S.Lay.Crack.WordH, { ZIndex = 4, Visible = false, TextXAlignment = Enum.TextXAlignment.Center })
+	roll.UI.Crack = H.label(roll.UI.Hero, "CrackWord", "", "Title", S.Lay.Crack.WordH, { ZIndex = 8, Visible = false, TextXAlignment = Enum.TextXAlignment.Center })
 	if roll.HasStrip then
 		for j = 1, roll.N do
 			B.strip(roll, j)
@@ -869,6 +962,17 @@ function B.strip(roll, j)
 	H.stroke(st.Track, Theme.Colors.WellEdge, 3)
 	st.Pointer = H.frame(st.Frame, "Pointer", { AnchorPoint = Vector2.new(0.5, 0), BackgroundColor3 = K.GOLD, BackgroundTransparency = 0, ZIndex = 3 })
 	H.corner(st.Pointer, 3)
+	if roll.Hi then
+		-- (Task 27) soft speed streaks over the glass at full speed (High only; placed each frame inside the track)
+		st.Streaks = H.frame(st.Frame, "Streaks", { Size = UDim2.fromScale(1, 1), ZIndex = 2 })
+		st.StreakBars = {}
+		local fade = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.25), NumberSequenceKeypoint.new(1, 1) })
+		for i = 1, 4 do
+			local bar = H.frame(st.Streaks, "Streak" .. i, { BackgroundColor3 = K.WHITE, BackgroundTransparency = 1, ZIndex = 2 })
+			Util.Create("UIGradient", { Transparency = fade, Parent = bar })
+			st.StreakBars[i] = bar
+		end
+	end
 	roll.Strips[j] = st
 end
 
@@ -970,9 +1074,16 @@ function B.cols(roll)
 		H.corner(banner, 14)
 		H.stroke(banner, color, 3)
 		H.label(banner, "Word", string.upper(pull.Rarity) .. "!", "Title", 22, { Size = UDim2.fromScale(1, 1), ZIndex = 6, TextColor3 = color })
+		if pull.Rarity == "Secret" then
+			-- (Task 27) Secret's violet aura: a soft ring behind the pet, inside its frame
+			local aura = H.frame(col, "Aura", { AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = K.AURA, BackgroundTransparency = 0.8, ZIndex = 4 })
+			H.corner(aura, 0.5)
+			Util.Create("UIStroke", { Color = K.AURA, Thickness = 3, Transparency = 0.6, Parent = aura })
+			Util.Create("UIGradient", { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(0.5, 0.9), NumberSequenceKeypoint.new(1, 0.2) }), Rotation = 90, Parent = aura })
+		end
 		local shell = H.frame(col, "Shell", { ZIndex = 4 })
 		local pet = H.frame(col, "Pet", { ZIndex = 5 })
-		local pop = Util.Create("UIScale", { Name = "Pop", Scale = 0.3, Parent = pet })
+		local pop = Util.Create("UIScale", { Name = "Pop", Scale = 0, Parent = pet })
 		local stage = 0
 		local okStage, st = pcall(PetBits.stage, pull.Key)
 		if okStage and type(st) == "number" then
@@ -1035,14 +1146,27 @@ end
 
 function H.applyHero(roll, lay)
 	local cr = lay.Crack
+	if roll.Spot then
+		-- one light cone from above the word onto the pedestal(s)
+		local w = K.SPOT * cr.E + (roll.N > 1 and (cr.Cx[3] - cr.Cx[1]) or 0)
+		w = math.min(w, lay.W - 8)
+		local y = math.max(0, cr.WordY - 0.2 * cr.E)
+		H.place(roll.Spot, lay.W / 2 - w / 2, y, w, cr.EggY + cr.E + 0.6 * cr.PedH - y)
+		roll.Spot.Visible = not roll.Revealed
+	end
 	for j, e in pairs(roll.Eggs) do
 		local cx = cr.Cx[j]
 		local eggY = cr.EggY
 		if e.Egg and e.Egg.Parent then
+			-- the egg stands on its foot (AnchorPoint 0.5, 1): the push-in grows it upward, never into the pedestal
 			H.sizeEgg(e.Egg, cr.E)
-			e.Egg.Position = UDim2.fromOffset(cx, eggY + cr.E / 2)
+			e.Egg.Position = UDim2.fromOffset(cx, eggY + cr.E)
 			e.Pop.Scale = 1
+			e.Egg.Rotation = 0
 			e.Egg.Visible = e.State == "Rise" or e.State == "Crack"
+		end
+		if e.Ring then
+			e.Ring:Place(cx, eggY + cr.E / 2, K.RING * cr.E)
 		end
 		if e.Back then
 			local d = 0.96 * cr.E
@@ -1061,20 +1185,54 @@ function H.applyHero(roll, lay)
 			if roll.Revealed and lay.Cols[j] then
 				local p = lay.Cols[j].Ped -- (in Content's space: Hero fills Content)
 				H.place(e.Ped, p.X, p.Y, p.W, p.H)
+				H.pedLook(e.Ped, p.H < 20)
 			else
 				H.place(e.Ped, cx - cr.PedW / 2, eggY + cr.E, cr.PedW, cr.PedH)
+				H.pedLook(e.Ped, false)
 			end
 		end
 	end
+	H.placeWord(roll, lay)
+	-- the rays: round the last egg that burst, or behind the best pet on the reveal
+	if roll.Rays then
+		local at = roll.RaysAt
+		if roll.Revealed then
+			local g = lay.Cols[roll.Best]
+			if g then
+				roll.Rays:Place(g.X + g.Pet.X + g.Pet.S / 2, g.Y + g.Pet.Y + g.Pet.S / 2, 2.2 * g.Pet.S)
+			end
+		elseif at then
+			roll.Rays:Place(cr.Cx[at], cr.EggY + cr.E / 2, K.RAYS * cr.E)
+		end
+	end
+end
+
+-- the crack word, centred over the hero, as wide as its text
+function H.placeWord(roll, lay)
 	local word = roll.UI.Crack
-	if word then
+	if word and lay then
+		local cr = lay.Crack
 		word.TextSize = cr.WordH
 		local w = math.min(lay.W - 24, H.textW(word.Text, cr.WordH, "Title") + 40)
 		H.place(word, (lay.W - w) / 2, cr.WordY, w, cr.WordH)
 	end
-	local shock = roll.UI.Shock
-	if shock and shock.Visible and not roll.ShockLive then
-		shock.Visible = false
+end
+
+-- the pedestal's look: the cloud-stone drum (Top, Body, the gold Inlay, three cloud puffs), or only its top as the thin
+-- lip a phone's reveal pet stands on
+function H.pedLook(ped, lip)
+	if ped:GetAttribute("Lip") == lip then
+		return
+	end
+	ped:SetAttribute("Lip", lip)
+	for _, c in ipairs(ped:GetChildren()) do
+		if c:IsA("GuiObject") and c.Name ~= "Top" then
+			c.Visible = not lip
+		end
+	end
+	local top = ped:FindFirstChild("Top")
+	if top then
+		top.Size = lip and UDim2.fromScale(1, 1) or UDim2.fromScale(1, 0.44)
 	end
 end
 
@@ -1097,6 +1255,11 @@ function H.applyReveal(roll, lay)
 			end
 			H.place(c.Pet, g.Pet.X + g.Pet.S / 2, g.Pet.Y + g.Pet.S / 2, g.Pet.S, g.Pet.S)
 			c.Pet.AnchorPoint = Vector2.new(0.5, 0.5)
+			local aura = c.Root:FindFirstChild("Aura")
+			if aura then
+				-- a soft halo just inside the pet's frame (clear of the shell and the pedestal under it)
+				H.place(aura, g.Pet.X + g.Pet.S / 2, g.Pet.Y + g.Pet.S * 0.47, g.Pet.S * 0.86, g.Pet.S * 0.86)
+			end
 			local sh = g.Shell
 			local shellX, shellY = sh.X, sh.Y
 			H.place(c.Shell, shellX, shellY, sh.W, sh.H)
@@ -1293,7 +1456,7 @@ function R.land(roll, j)
 	st.Landed = true
 	st.Frame:SetAttribute("Landed", true)
 	local rarity = roll.Pulls[j].Rarity
-	H.sfx("SpinLand", H.scaleFor(rarity))
+	H.sfx(K.SOUND.Land, H.scaleFor(rarity))
 	for _, cell in pairs(st.Cells) do
 		cell.Index = nil -- re-skin with the landed look on the next layout
 	end
@@ -1306,6 +1469,22 @@ function R.land(roll, j)
 	end
 end
 
+-- the speed streaks: as bright as the strip is fast (the ease's slope), sliding left, always inside the track
+function R.streaks(st, t, p)
+	local g = st.Geo
+	if not st.StreakBars or not g then
+		return
+	end
+	local a = Util.Clamp(((1 - p) ^ (K.CURVE - 1) - 0.3) / 0.7, 0, 1)
+	local bw = g.W * 0.32
+	for i, bar in ipairs(st.StreakBars) do
+		local u = (i * 0.29 + t * 2.4) % 1
+		bar.Position = UDim2.fromOffset((g.W - bw) * (1 - u), g.H * (0.14 + 0.18 * i))
+		bar.Size = UDim2.fromOffset(bw, math.max(2, math.floor(3 * g.S + 0.5)))
+		bar.BackgroundTransparency = 1 - 0.55 * a
+	end
+end
+
 function R.strips(roll, t)
 	local s = roll.Sched
 	for j, st in pairs(roll.Strips) do
@@ -1313,11 +1492,12 @@ function R.strips(roll, t)
 		local p = Util.Clamp((t - s.IntroEnd) / dur, 0, 1)
 		local c = K.START_CELL + (K.WIN - 0.5 - K.START_CELL) * (1 - (1 - p) ^ K.CURVE)
 		R.cells(roll, j, c)
+		R.streaks(st, t, p)
 		local cell = math.floor(c)
 		if st.Tick ~= cell then
 			if st.Tick ~= nil and j == 1 and p < 1 and os.clock() - (roll.LastTick or -1) >= 1 / K.TICKS_PER_S then
 				roll.LastTick = os.clock()
-				H.sfx("SpinTick", K.QUIET)
+				H.sfx(K.SOUND.Tick, K.QUIET)
 			end
 			st.Tick = cell
 		end
@@ -1327,45 +1507,160 @@ function R.strips(roll, t)
 	end
 end
 
--- the eggs lift out of the strip and grow onto their pedestals
-function R.rise(roll)
+-- the cloud-stone pedestal (spec 16.4 "Spot, Backlight, Pedestal"; the pitch's drawing): a stone drum with a gold
+-- inlay, three cloud puffs at its foot and a pale top ringed in the rarity colour, every part inside its box (shares
+-- of it, so it follows the box from 420 x 90 down to a phone's 12 px lip)
+function B.pedestal(hero, j, rarity)
+	local P = K.PED
+	local ped = H.frame(hero, "Pedestal" .. j, { ZIndex = 5 })
+	local body = H.frame(ped, "Body", { Position = UDim2.fromScale(0.07, 0.2), Size = UDim2.fromScale(0.86, 0.62), BackgroundColor3 = K.WHITE, BackgroundTransparency = 0, ZIndex = 5 })
+	H.corner(body, 0.35)
+	Util.Create("UIGradient", { Rotation = 90, Color = ColorSequence.new(P.StoneTop, P.StoneFoot), Parent = body })
+	H.stroke(body, K.INK, 2)
+	H.frame(ped, "Inlay", { Position = UDim2.fromScale(0.075, 0.5), Size = UDim2.fromScale(0.85, 0.08), BackgroundColor3 = P.Gold, BackgroundTransparency = 0, ZIndex = 6 })
+	for i, p in ipairs({ { 0.0, 0.6, 0.34, 0.4 }, { 0.33, 0.64, 0.34, 0.36 }, { 0.66, 0.6, 0.34, 0.4 } }) do
+		local puff = H.frame(ped, "Puff" .. i, { Position = UDim2.fromScale(p[1], p[2]), Size = UDim2.fromScale(p[3], p[4]), BackgroundColor3 = P.Puff, BackgroundTransparency = 0, ZIndex = 7 })
+		H.corner(puff, 0.5)
+		H.stroke(puff, K.INK, 2)
+	end
+	local top = H.frame(ped, "Top", { Size = UDim2.fromScale(1, 0.44), BackgroundColor3 = P.Top, BackgroundTransparency = 0, ZIndex = 8 })
+	H.corner(top, 0.5)
+	H.stroke(top, K.INK, 2)
+	local ring = H.frame(top, "Ring", { Position = UDim2.fromScale(0.09, 0.2), Size = UDim2.fromScale(0.82, 0.6), ZIndex = 9 })
+	H.corner(ring, 0.5)
+	H.stroke(ring, H.color(rarity), 2)
+	return ped
+end
+
+-- the rarity backlight: four stacked round glows, as strong as the egg's glow (none for Common / Uncommon)
+function B.backlight(hero, j, rarity)
+	local glow = EggArt.Glow(rarity)
+	local back = H.frame(hero, "Backlight" .. j, { Visible = glow > 0, ZIndex = 4 })
+	local discs = {}
+	for i, s in ipairs({ 1, 0.78, 0.58, 0.4 }) do
+		local disc = H.frame(back, "Glow" .. i, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(s, s), BackgroundColor3 = H.color(rarity), BackgroundTransparency = 1, ZIndex = 4 })
+		disc:SetAttribute("Alpha", 1 - glow * ({ 0.22, 0.32, 0.45, 0.62 })[i])
+		H.corner(disc, 0.5)
+		discs[i] = disc
+	end
+	return back, discs
+end
+
+-- the backdrop of the rise at rest (after a resize cancelled its tweens): the spot, the glows, the rings
+function H.settleHero(roll)
+	if roll.Spot and not roll.Revealed then
+		roll.Spot.BackgroundTransparency = 0
+	end
+	for _, e in pairs(roll.Eggs) do
+		for _, disc in ipairs(e.Back and e.Back:GetChildren() or {}) do
+			if disc:IsA("Frame") then
+				disc.BackgroundTransparency = disc:GetAttribute("Alpha") or 1
+			end
+		end
+		if e.Ring and (e.State == "Rise" or e.State == "Crack") then
+			e.Ring:Show(0.01)
+			e.Ring:Spin(true)
+		end
+	end
+end
+
+-- the eggs lift out of the strip and grow onto their pedestals in a spot light, their backlight and cloud ring fading in
+-- behind them. quick (a skip before the rise): only the pedestals the reveal stands on
+function R.rise(roll, quick)
 	roll.HeroBuilt = true
 	local cr = S.Lay.Crack
 	local hero = roll.UI.Hero
+	if not quick then
+		roll.Spot = H.frame(hero, "Spot", { BackgroundColor3 = K.SPOT_COLOR, BackgroundTransparency = 1, ZIndex = 1 })
+		H.corner(roll.Spot, 0.5)
+		Util.Create("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.45, 0.84), NumberSequenceKeypoint.new(1, 0.6) }), Parent = roll.Spot })
+	end
 	for j, pull in ipairs(roll.Pulls) do
 		local e = { State = "Rise" }
-		local glow = EggArt.Glow(pull.Rarity)
-		e.Back = H.frame(hero, "Backlight" .. j, { BackgroundColor3 = H.color(pull.Rarity), BackgroundTransparency = 1, Visible = glow > 0, ZIndex = 1 })
-		H.corner(e.Back, 0.5)
-		e.Ped = H.frame(hero, "Pedestal" .. j, { BackgroundColor3 = Color3.fromRGB(196, 206, 228), BackgroundTransparency = 0, ZIndex = 2 })
-		H.corner(e.Ped, 10)
-		H.stroke(e.Ped, K.INK, 3)
-		Util.Create("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(236, 240, 250), Color3.fromRGB(140, 152, 184)), Parent = e.Ped })
-		e.Egg = EggArt.New(hero, pull.Rarity, cr.E, { Name = "Egg" .. j, ZIndex = 3 })
-		e.Egg.AnchorPoint = Vector2.new(0.5, 0.5)
-		e.Egg:SetAttribute("State", "Rise")
-		e.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = e.Egg })
+		e.Back, e.Glows = B.backlight(hero, j, pull.Rarity)
+		e.Ped = B.pedestal(hero, j, pull.Rarity)
+		if not quick then
+			e.Ring = HatchFx.CloudRing(hero, H.color(pull.Rarity), { ZIndex = 3, Track = S.Tweens })
+			e.Ring.Frame.Name = "CloudRing" .. j
+			-- the hero egg: Full with its rarity VFX (spec 16.5 "Where the VFX show"); its drifting sparkles come from the pool
+			e.Egg = EggArt.New(hero, pull.Rarity, cr.E, { Name = "Egg" .. j, ZIndex = 6, Vfx = true })
+			e.Egg.AnchorPoint = Vector2.new(0.5, 1)
+			e.Egg:SetAttribute("State", "Rise")
+			e.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = e.Egg })
+			roll.Pool:Ambient(e.Egg, pull.Rarity)
+		end
 		roll.Eggs[j] = e
 	end
 	H.applyHero(roll, S.Lay)
-	-- the grow: from the landed cell (or the middle) to the pedestal
+	if quick then
+		return
+	end
+	-- the grow: from the landed cell (or the middle) to the pedestal; the backdrop fades in. Driven a frame at a time by
+	-- R.riseStep from the one Heartbeat (x3 would need ~25 tweens for it; the budget is 24 in all)
 	local g = S.Lay.Strip
 	for j, e in pairs(roll.Eggs) do
-		local final = e.Egg.Position
 		local st = roll.Strips[j]
+		e.RiseTo, e.PedTo = e.Egg.Position, e.Ped.Position
 		if st and st.Geo then
-			e.Egg.Position = UDim2.fromOffset(g.X + g.W / 2, g.Y[j] + g.H / 2)
-			e.Pop.Scale = math.max(0.1, g.Egg / math.max(1, cr.E))
+			e.RiseFrom = UDim2.fromOffset(g.X + g.W / 2, g.Y[j] + g.H / 2 + g.Egg / 2)
+			e.PopFrom = math.max(0.1, g.Egg / math.max(1, cr.E))
 		else
-			e.Pop.Scale = 0.4
+			e.RiseFrom, e.PopFrom = e.RiseTo, 0.4
 		end
-		H.tween(e.Egg, roll.T.Rise, { Position = final })
-		H.tween(e.Pop, roll.T.Rise, { Scale = 1 }, Enum.EasingStyle.Back)
-		if e.Back.Visible then
-			H.tween(e.Back, roll.T.Rise, { BackgroundTransparency = 1 - 0.8 * EggArt.Glow(roll.Pulls[j].Rarity) })
+		e.PedFrom = e.PedTo + UDim2.fromOffset(0, 0.12 * cr.E)
+		e.Ring:Show(roll.T.Rise)
+		e.Ring:Spin(true)
+	end
+	-- the landed strips only need the cells on show while they slide away (the rest go: x3 stays inside 750 instances)
+	for _, st in pairs(roll.Strips) do
+		for slot, cell in pairs(st.Cells) do
+			if not cell.Frame.Visible then
+				cell.Frame:Destroy()
+				st.Cells[slot] = nil
+			end
+		end
+		if st.Streaks then
+			st.Streaks:Destroy()
+			st.Streaks, st.StreakBars = nil, nil
 		end
 	end
-	H.tween(roll.UI.Strips, roll.T.Rise, { Position = UDim2.fromOffset(0, 40) })
+	roll.Rising = true -- (R.advance steps it from this frame)
+	H.sfx(K.SOUND.Rise, H.scaleFor(roll.Pulls[roll.Best].Rarity))
+end
+
+-- one frame of the rise (u: 0 -> 1 over the Rise phase): the eggs ease up and grow (Back), the pedestals settle, the
+-- spot and the glows fade in, the strips slide away down off the screen
+function R.riseStep(roll, t)
+	if not roll.Rising then
+		return
+	end
+	local s = roll.Sched
+	local u = Util.Clamp((t - s.LandEnd) / math.max(0.01, s.RiseEnd - s.LandEnd), 0, 1)
+	local quad = 1 - (1 - u) * (1 - u)
+	local back = 1 + 2.70158 * (u - 1) ^ 3 + 1.70158 * (u - 1) ^ 2
+	if roll.Spot then
+		roll.Spot.BackgroundTransparency = 1 - u
+	end
+	for _, e in pairs(roll.Eggs) do
+		if e.Egg and e.RiseTo then
+			e.Egg.Position = e.RiseFrom:Lerp(e.RiseTo, quad)
+			e.Pop.Scale = e.PopFrom + (1 - e.PopFrom) * back
+			e.Ped.Position = e.PedFrom:Lerp(e.PedTo, back)
+		end
+		if e.Glows and e.Back.Visible then
+			for _, disc in ipairs(e.Glows) do
+				disc.BackgroundTransparency = 1 + (disc:GetAttribute("Alpha") - 1) * u
+			end
+		end
+	end
+	if roll.UI.Strips and S.Lay then
+		-- the strips slide away: down and off the screen, slow then fast (the egg has left them by then)
+		local top = S.Lay.Strip and S.Lay.Strip.Y and S.Lay.Strip.Y[1] or 0
+		roll.UI.Strips.Position = UDim2.fromOffset(0, (S.Lay.H - top) * u * u)
+	end
+	if u >= 1 then
+		roll.Rising = false
+	end
 end
 
 function R.dropStrips(roll)
@@ -1382,7 +1677,7 @@ function B.halves(roll, j)
 	local e = roll.Eggs[j]
 	local cr = S.Lay.Crack
 	local w = math.floor(EggArt.Metrics.WIDTH * cr.E + 0.5)
-	local holder = H.frame(roll.UI.Hero, "Halves" .. j, { Visible = false, ZIndex = 3 })
+	local holder = H.frame(roll.UI.Hero, "Halves" .. j, { Visible = false, ZIndex = 6 })
 	H.place(holder, cr.Cx[j] - w / 2, cr.EggY, w, cr.E)
 	e.Holder, e.HolderSize = holder, cr.E
 	e.Top, e.Bottom = EggArt.Halves(holder, roll.Pulls[j].Rarity, cr.E)
@@ -1393,26 +1688,70 @@ function R.crack(roll, j)
 	e.State = "Crack"
 	e.Egg:SetAttribute("State", "Crack")
 	local rarity = roll.Pulls[j].Rarity
-	local word = roll.UI.Crack
-	word.Text = string.upper(rarity) .. " EGG!"
-	word.TextColor3 = H.color(rarity)
-	word.Visible = true
-	H.applyHero(roll, S.Lay)
+	R.word(roll)
 	B.halves(roll, j)
+	-- the first crack and its light; the push-in over the shakes (the egg grows on its foot to K.PUSH)
+	e.Step, e.Shook = 1, 0
+	HatchFx.Cracks(e.Egg, rarity, 1)
+	HatchFx.Leaks(e.Egg, rarity, 1)
+	H.tween(e.Pop, roll.T.Crack * 0.9, { Scale = K.PUSH }, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+	H.sfx(K.SOUND.Crack, H.scaleFor(rarity))
 end
 
--- the shakes: two (one on Fast hatch), +-6 then +-10 degrees
+-- the crack word names the egg that bursts next: x3's eggs crack 0.6 s apart and overlap, so it is the earliest one
+-- still cracking (after the last burst it keeps the last word until the reveal hides it)
+function R.word(roll)
+	local word = roll.UI.Crack
+	for j = 1, roll.N do
+		local e = roll.Eggs[j]
+		if word and e and e.State == "Crack" then
+			local rarity = roll.Pulls[j].Rarity
+			local text = string.upper(rarity) .. " EGG!"
+			if word.Text ~= text or not word.Visible then
+				word.Text = text
+				word.TextColor3 = H.color(rarity)
+				word.Visible = true
+				H.placeWord(roll, S.Lay)
+			end
+			return
+		end
+	end
+end
+
+-- the shakes: two (one on Fast hatch), +-6 then +-10 degrees with a squash (wider and lower: never taller, so the
+-- push-in's room above the egg holds); at each the cracks grow (1 -> 3 -> 5), the light leaks lengthen, small sparks pop
 function R.shake(roll, j, u)
 	local e = roll.Eggs[j]
 	local C = roll.T.Crack
-	local rot = 0
-	for _, w in ipairs(roll.Fast and K.SHAKE_FAST or K.SHAKE) do
+	local rot, squash = 0, 0
+	local windows = roll.Fast and K.SHAKE_FAST or K.SHAKE
+	for k, w in ipairs(windows) do
 		local a, b = w[1] * C, w[2] * C
 		if u >= a and u <= b then
-			rot = w[3] * math.sin((u - a) / (b - a) * math.pi * 6)
+			local s = (u - a) / (b - a)
+			rot = w[3] * math.sin(s * math.pi * 6)
+			squash = math.sin(s * math.pi)
+		end
+		if u >= a and e.Shook < k then
+			e.Shook = k
+			R.shakeStart(roll, j, (k == #windows) and 5 or 3)
 		end
 	end
 	e.Egg.Rotation = rot
+	local E = S.Lay.Crack.E
+	local w0 = math.floor(EggArt.Metrics.WIDTH * E + 0.5)
+	e.Egg.Size = UDim2.fromOffset(w0 * (1 + K.SQUASH * squash), E * (1 - K.SQUASH * squash))
+end
+
+function R.shakeStart(roll, j, step)
+	local e = roll.Eggs[j]
+	local rarity = roll.Pulls[j].Rarity
+	local cr = S.Lay.Crack
+	e.Step = step
+	HatchFx.Cracks(e.Egg, rarity, step)
+	HatchFx.Leaks(e.Egg, rarity, step)
+	roll.Pool:Burst(Vector2.new(cr.Cx[j], cr.EggY + 0.6 * cr.E), rarity, K.SHAKE_SPARKS, K.SHAKE_SPARK)
+	H.sfx(K.SOUND.Shake, H.scaleFor(rarity))
 end
 
 function R.burst(roll, j)
@@ -1421,56 +1760,89 @@ function R.burst(roll, j)
 	e.Egg:SetAttribute("State", "Burst")
 	e.Egg.Visible = false
 	e.Egg.Rotation = 0
+	roll.Pool:StopAmbient(e.Egg)
+	EggArt.SetVfx(e.Egg, false) -- (hidden from here: its sheen and VFX stop)
 	local pull = roll.Pulls[j]
+	local rarity = pull.Rarity
+	local color = H.color(rarity)
 	local cr = S.Lay.Crack
 	local T = roll.T
+	local cx, cy = cr.Cx[j], cr.EggY + cr.E / 2
+	-- the halves fly apart: the top spins up-left and fades, the bottom settles as the shell on the pedestal
 	if e.Holder and e.Top and e.Bottom then
 		e.Holder.Visible = true
 		H.tween(e.Top, T.Burst, { Position = UDim2.fromOffset(-0.25 * cr.E, -0.45 * cr.E), Rotation = -35, GroupTransparency = 1 })
 		H.tween(e.Bottom, T.Burst, { Position = UDim2.fromOffset(0, cr.E / 2 + 0.04 * cr.E) })
 	end
-	local shock = roll.UI.Shock
-	shock.Position = UDim2.fromOffset(cr.Cx[j], cr.EggY + cr.E / 2)
-	shock.Size = UDim2.fromOffset(0, 0)
-	shock.Visible = true
-	roll.UI.ShockStroke.Color = H.color(pull.Rarity)
-	roll.UI.ShockStroke.Transparency = 0
-	roll.ShockLive = true
-	H.tween(shock, T.Burst, { Size = UDim2.fromOffset(1.6 * cr.E, 1.6 * cr.E) })
-	H.tween(roll.UI.ShockStroke, T.Burst, { Transparency = 1 })
-	local mine = roll
-	task.delay(T.Burst, function()
-		if S.Roll == mine and mine.UI.Shock then
-			mine.ShockLive = false
-			mine.UI.Shock.Visible = false
+	-- the shock ring, the rays flashing in and turning, the cloud ring's swell in the rarity colour, the sparks
+	roll.Shock:Play(cx, cy, K.SHOCK * cr.E, T.Burst, color:Lerp(K.WHITE, 0.2))
+	roll.RaysAt = j
+	roll.Rays:Recolor(rarity)
+	roll.Rays:Place(cx, cy, K.RAYS * cr.E)
+	roll.Rays:Flash(0.3, 0.12)
+	roll.Rays:Spin(true)
+	if e.Ring then
+		e.Ring:Spin(false)
+		e.Ring:Pulse(color, T.Burst)
+	end
+	local n = roll.Pool:Burst(Vector2.new(cx, cy), rarity, K.SPARKS[rarity] or 12)
+	roll.UI.Burst:SetAttribute("Sparks", n)
+	H.sfx(K.SOUND.Burst, H.scaleFor(rarity))
+	H.sfx(K.SOUND.Ring, H.scaleFor(rarity))
+	R.word(roll) -- (x3: the word moves on to the next egg still cracking)
+	if j == roll.Best then
+		-- x3: the loudest reveal sound and the gold flash follow the best pull, on its burst (spec 16.4 "x3")
+		if roll.N > 1 then
+			R.revealSound(roll)
 		end
-	end)
-	H.sfx("Shatter", H.scaleFor(pull.Rarity))
-	if j == roll.Best and H.order(pull.Rarity) >= K.LOUD_FROM then
-		R.flash(roll, true)
+		R.flash(roll, H.order(rarity) >= K.LOUD_FROM)
 	else
 		R.flash(roll, false)
 	end
 end
 
--- the plain flash: white (0.12 s at 0.6) or, once per roll for the best pull from Legendary, gold (0.25 in / 0.6 out)
-function R.flash(roll, gold)
+-- the reveal sound of the best pull, once per roll
+function R.revealSound(roll)
+	if roll.RevealSoundDone then
+		return
+	end
+	roll.RevealSoundDone = true
+	local best = roll.Pulls[roll.Best]
+	H.sfx(K.REVEAL_SOUND[best.Rarity] or K.REVEAL_SOUND.Common, H.scaleFor(best.Rarity))
+end
+
+-- the flash: white (0.12 s at 0.6 strong) or, once per roll for the best pull from Legendary, gold (a kick at 0.2
+-- strong, up to 0.5 in 0.25 s, 0.6 s out); white = false skips the white one (Skip's burst tail). Overlay tweens: they play on over the reveal's start
+function R.flash(roll, gold, white)
 	if gold and roll.GoldDone then
 		gold = false
 	end
 	local f = S.Flash
-	if not f then
+	if not f or (not gold and white == false) then
 		return
 	end
+	-- one flash at a time: a new one ends the one before (its tween and its pending fade-out)
+	if S.FlashTw then
+		pcall(function()
+			S.FlashTw:Cancel()
+		end)
+	end
+	S.FlashToken = (S.FlashToken or 0) + 1
+	local token = S.FlashToken
 	if gold then
 		roll.GoldDone = true
 		f.BackgroundColor3 = K.GOLD
-		f.BackgroundTransparency = 0.35
-		H.tween(f, 0.6, { BackgroundTransparency = 1 })
+		f.BackgroundTransparency = K.GOLD_FROM
+		S.FlashTw = H.tween(f, K.GOLD_IN, { BackgroundTransparency = K.GOLD_PEAK }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, true)
+		task.delay(K.GOLD_IN, function()
+			if S.FlashToken == token and S.Flash == f and f.Parent then
+				S.FlashTw = H.tween(f, K.GOLD_OUT, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In, true)
+			end
+		end)
 	else
 		f.BackgroundColor3 = K.WHITE
-		f.BackgroundTransparency = 0.6
-		H.tween(f, 0.12, { BackgroundTransparency = 1 })
+		f.BackgroundTransparency = K.WHITE_FLASH[1]
+		S.FlashTw = H.tween(f, K.WHITE_FLASH[2], { BackgroundTransparency = 1 }, nil, nil, true)
 	end
 end
 
@@ -1478,18 +1850,16 @@ function R.reveal(roll, skipped)
 	roll.Revealed = true
 	roll.RevealedAt = os.clock()
 	roll.Phase = "Reveal"
-	if roll.StartSound then
-		pcall(function()
-			roll.StartSound:Stop()
-		end)
-		roll.StartSound = nil
+	if skipped then
+		H.stopSounds(roll) -- (Skip: every sound of the roll so far stops)
 	end
 	R.dropStrips(roll)
 	if not roll.HeroBuilt then
-		R.rise(roll)
+		R.rise(roll, true)
 	end
 	for _, e in pairs(roll.Eggs) do
 		if e.Egg then
+			roll.Pool:StopAmbient(e.Egg)
 			e.Egg:Destroy()
 			e.Egg = nil
 		end
@@ -1500,27 +1870,63 @@ function R.reveal(roll, skipped)
 		if e.Back then
 			e.Back.Visible = false
 		end
+		if e.Ring then
+			e.Ring:Destroy()
+			e.Ring = nil
+		end
 		e.State = "Open"
 	end
-	roll.UI.Crack.Visible = false
-	roll.ShockLive = false
-	roll.UI.Shock.Visible = false
-	H.cancelTweens()
-	H.settleBackdrop()
-	if skipped then
-		-- the burst's last 0.25 s as an overlay over the reveal's start (the plain core: a short fade; gold once for Legendary+)
-		local best = roll.Pulls[roll.Best]
-		R.flash(roll, H.order(best.Rarity) >= K.LOUD_FROM)
-		if not roll.GoldDone or H.order(best.Rarity) < K.LOUD_FROM then
-			S.Flash.BackgroundTransparency = 0.5
-			H.tween(S.Flash, 0.25, { BackgroundTransparency = 1 })
-		end
+	if roll.Spot then
+		roll.Spot.Visible = false
 	end
+	roll.UI.Crack.Visible = false
+	H.cancelTweens()
+	H.settleBackdrop(true)
 	B.cols(roll)
 	roll.UI.Reveal.Visible = true
 	H.apply()
+	local best = roll.Pulls[roll.Best]
+	local loud = H.order(best.Rarity) >= K.LOUD_FROM
+	local g = S.Lay.Cols[roll.Best]
+	local px, py, ps = 0, 0, 0
+	if g then
+		px, py, ps = g.X + g.Pet.X + g.Pet.S / 2, g.Y + g.Pet.Y + g.Pet.S / 2, g.Pet.S
+	end
+	if skipped then
+		-- the burst's last 0.25 s over the reveal's start (spec 16.4 "Skip"): the shock ring, the rays, the sparks and,
+		-- from Legendary, the gold Flash once; no white micro-flash
+		roll.Shock:Play(px, py, 1.6 * ps, K.TAIL, H.color(best.Rarity):Lerp(K.WHITE, 0.2))
+		roll.Rays:Recolor(best.Rarity)
+		if roll.Rays.Frame then
+			roll.Rays.Frame.Visible = true
+			roll.Rays.Frame.GroupTransparency = 0.3
+		end
+		roll.Pool:Burst(Vector2.new(px, py), best.Rarity, K.SPARKS[best.Rarity] or 12)
+		R.flash(roll, loud, false)
+	end
+	-- Legendary and up keep slow gold rays behind the best pet; the others' rays fade with the burst's tail
+	if loud then
+		roll.Rays:Recolor(best.Rarity) -- (x3: the last burst may have been a lesser egg's)
+		roll.Rays:Flash(0.45, 0.2)
+		roll.Rays:Spin(true)
+	elseif roll.Rays.Frame and roll.Rays.Frame.Visible then
+		roll.Rays:Flash(1, K.TAIL)
+		local rays, mine = roll.Rays, roll
+		task.delay(K.TAIL + 0.02, function()
+			if S.Roll == mine then
+				rays:Hide()
+			end
+		end)
+	end
+	-- the pets pop (0 -> past 1 -> 1, Back), the banners slide in
 	for _, c in pairs(roll.Cols) do
 		H.tween(c.Pop, 0.35, { Scale = 1 }, Enum.EasingStyle.Back)
+		local banner = c.Root:FindFirstChild("Banner")
+		if banner then
+			local at = banner.Position
+			banner.Position = at + UDim2.fromOffset(0, -24)
+			H.tween(banner, 0.3, { Position = at }, Enum.EasingStyle.Back)
+		end
 	end
 	local mine = roll
 	task.delay(0.36, function()
@@ -1528,8 +1934,29 @@ function R.reveal(roll, skipped)
 			mine.PopDone = true
 		end
 	end)
-	local best = roll.Pulls[roll.Best]
-	H.sfx(K.REVEAL_SOUND[best.Rarity] or "RevealCommon", H.scaleFor(best.Rarity))
+	-- Mythic and Secret: confetti for 1.5 s (as soon as the pool has room for all of it); Secret: the starry backdrop
+	if best.Rarity == "Mythic" or best.Rarity == "Secret" then
+		roll.ConfettiWanted = best.Rarity
+		R.confetti(roll)
+	end
+	if best.Rarity == "Secret" and S.Stage and not S.Stars then
+		S.Stars = HatchFx.Stars(S.Stage, K.STARS)
+		S.Stars.Frame.ZIndex = 2
+	end
+	R.revealSound(roll)
+end
+
+-- the confetti falls once the pool can hold all of it (the burst's sparks go back first)
+function R.confetti(roll)
+	local want = roll.ConfettiWanted
+	if not want or not roll.Pool then
+		return
+	end
+	local n = H.high() and K.CONFETTI or math.floor(K.CONFETTI / 2)
+	if roll.Pool:Live() + n <= K.POOL then
+		roll.ConfettiWanted = nil
+		roll.Pool:Confetti(K.CONFETTI, want)
+	end
 end
 
 function R.advance(roll)
@@ -1539,6 +1966,7 @@ function R.advance(roll)
 		if roll.AgainClock % 8 == 0 then
 			H.refreshAgain()
 		end
+		R.confetti(roll)
 		return
 	end
 	if roll.SkipWanted then
@@ -1549,7 +1977,7 @@ function R.advance(roll)
 	if roll.HasStrip and next(roll.Strips) ~= nil then
 		if not roll.StartPlayed and t >= s.IntroEnd then
 			roll.StartPlayed = true
-			roll.StartSound = H.sfx("SpinStart", K.QUIET)
+			H.sfx("SpinStart", K.QUIET)
 		end
 		R.strips(roll, t)
 	end
@@ -1557,6 +1985,7 @@ function R.advance(roll)
 	if t >= s.LandEnd and not roll.HeroBuilt then
 		R.rise(roll)
 	end
+	R.riseStep(roll, t)
 	if t >= s.RiseEnd and next(roll.Strips) ~= nil then
 		R.dropStrips(roll)
 	end
@@ -1586,6 +2015,9 @@ function R.advance(roll)
 		return
 	end
 	roll.Phase = R.phaseAt(roll, t)
+	if EggStage._InjectPhaseError ~= nil and roll.Phase == EggStage._InjectPhaseError then
+		error("injected phase error (" .. tostring(roll.Phase) .. ")")
+	end
 end
 
 -- builds one pulled pet's model ahead of the reveal (one a frame, while the strip runs)
@@ -1607,7 +2039,8 @@ function R.warmOne(roll)
 	end
 end
 
-function R.step()
+-- the one Heartbeat: the phases, then the spark pool (driven from here: no Heartbeat of its own)
+function R.step(dt)
 	local roll = S.Roll
 	if not roll then
 		return
@@ -1616,6 +2049,10 @@ function R.step()
 	if not ok and S.Roll == roll then
 		H.warnOnce("phase", err)
 		H.teardown("Error")
+		return
+	end
+	if S.Roll == roll and roll.Pool then
+		pcall(roll.Pool.Step, roll.Pool, tonumber(dt) or (1 / 60))
 	end
 end
 
@@ -1680,6 +2117,9 @@ function H.startRoll(roll)
 	local final = title.Position
 	title.Position = final + UDim2.fromOffset(0, -20)
 	H.tween(title, roll.T.Intro, { Position = final })
+	-- the world behind: the blur and the cool tint (High only; one effect + the "Hatch" preset, ours)
+	S.Dimmed = true
+	pcall(HatchFx.Dim, true, roll.T.Intro)
 end
 
 function H.finishRoll()
@@ -1687,17 +2127,30 @@ function H.finishRoll()
 	S.Roll = nil
 	if roll then
 		roll.Dead = true
-		if roll.StartSound then
-			pcall(function()
-				roll.StartSound:Stop()
-			end)
-		end
 		for _, v in ipairs(roll.Views) do
 			pcall(v.Destroy)
 		end
 		roll.Views = {}
+		for _, key in ipairs({ "Rays", "Shock", "Pool" }) do
+			local fx = roll[key]
+			if fx then
+				pcall(fx.Destroy, fx)
+			end
+		end
+		for _, e in pairs(roll.Eggs) do
+			if e.Ring then
+				pcall(e.Ring.Destroy, e.Ring)
+			end
+		end
+		roll.Sounds = {}
 	end
-	H.cancelTweens()
+	if S.Stars then
+		pcall(S.Stars.Destroy)
+		S.Stars = nil
+	end
+	H.cancelTweens(true)
+	S.FlashTw = nil
+	S.FlashToken = (S.FlashToken or 0) + 1
 	if S.Content then
 		for _, child in ipairs(S.Content:GetChildren()) do
 			if child ~= S.Fit then
@@ -1738,8 +2191,14 @@ function H.teardown(reason)
 		if #names > 0 then
 			H.toast(K.TEXT.Hatched .. table.concat(names, ", "))
 		end
+		H.stopSounds(roll) -- (DONE lets the reveal's sound ring out; every other exit stops the roll's sounds)
 	end
+	EggStage._InjectPhaseError = nil
 	H.finishRoll()
+	if S.Dimmed then
+		S.Dimmed = false
+		pcall(HatchFx.Dim, false, 0.35)
+	end
 	if S.Beat then
 		S.Beat:Disconnect()
 		S.Beat = nil
@@ -1767,8 +2226,9 @@ function H.teardown(reason)
 	pcall(EggStage.Closed.Fire, EggStage.Closed, reason)
 end
 
--- the backdrop at rest (after its tweens were cancelled): the dim, the vignette edges, no flash
-function H.settleBackdrop()
+-- the backdrop at rest (after its tweens were cancelled): the dim, the vignette edges, no flash (keepFlash: the
+-- reveal's start, where the burst's flash plays on)
+function H.settleBackdrop(keepFlash)
 	if S.Dim then
 		S.Dim.BackgroundTransparency = K.DIM
 	end
@@ -1779,7 +2239,7 @@ function H.settleBackdrop()
 			end
 		end
 	end
-	if S.Flash then
+	if S.Flash and not keepFlash then
 		S.Flash.BackgroundTransparency = 1
 	end
 end
@@ -1789,7 +2249,8 @@ function H.relayout()
 	if not roll or not S.Content then
 		return
 	end
-	H.cancelTweens()
+	H.cancelTweens(true)
+	S.FlashToken = (S.FlashToken or 0) + 1
 	S.Lay = L.compute(roll.N, roll)
 	H.settleBackdrop()
 	if roll.UI.Strips then
@@ -1797,9 +2258,35 @@ function H.relayout()
 	end
 	for _, c in pairs(roll.Cols) do
 		c.Pop.Scale = 1
+		local banner = c.Root:FindFirstChild("Banner")
+		if banner then
+			banner.Position = UDim2.fromOffset(0, 0) -- (H.apply places it)
+		end
 	end
 	roll.PopDone = roll.Revealed
+	-- a resize mid-rise ends the rise where it was going (H.apply puts the eggs and pedestals at their new places)
+	roll.Rising = false
+	for _, e in pairs(roll.Eggs) do
+		if e.Pop and e.State == "Rise" then
+			e.Pop.Scale = 1
+		end
+	end
 	H.apply()
+	H.settleHero(roll)
+	-- the overlay at rest: the shock gone, the rays shown only where they stay (Legendary and up on the reveal) or while a
+	-- burst's tail would still play (they go with the next burst or the reveal)
+	if roll.Shock then
+		roll.Shock:Hide()
+	end
+	if roll.Rays and roll.Rays.Frame then
+		if roll.Revealed and H.order(roll.Pulls[roll.Best].Rarity) >= K.LOUD_FROM then
+			roll.Rays.Frame.Visible = true
+			roll.Rays.Frame.GroupTransparency = 0.45
+			roll.Rays:Spin(true)
+		else
+			roll.Rays:Hide()
+		end
+	end
 end
 
 -- a tap anywhere outside the buttons, or the Skip chip: skip before the reveal, close on it (after TAP_GUARD)
@@ -2048,15 +2535,27 @@ function EggStage.Stats()
 		end
 	end
 	local tweens = 0
-	for tw in pairs(S.Tweens) do
-		local ok, playing = pcall(function()
-			return tw.PlaybackState == Enum.PlaybackState.Playing
-		end)
-		if ok and playing then
-			tweens = tweens + 1
+	for _, set in ipairs({ S.Tweens, S.Overlay }) do
+		for tw in pairs(set) do
+			local ok, playing = pcall(function()
+				return tw.PlaybackState == Enum.PlaybackState.Playing
+			end)
+			if ok and playing then
+				tweens = tweens + 1
+			end
 		end
 	end
-	return { Instances = n, Tweens = tweens, Sparks = 0, Effects = 0, Heartbeats = S.Beat and 1 or 0 }
+	local sparks = 0
+	if S.Roll and S.Roll.Pool then
+		local ok, live = pcall(S.Roll.Pool.Live, S.Roll.Pool)
+		sparks = ok and tonumber(live) or 0
+	end
+	local effects = 0
+	if S.Gui and S.Gui.Parent then
+		local ok, fx = pcall(HatchFx.Stats)
+		effects = ok and type(fx) == "table" and tonumber(fx.Effects) or 0
+	end
+	return { Instances = n, Tweens = tweens, Sparks = sparks, Effects = effects, Heartbeats = S.Beat and 1 or 0 }
 end
 
 return EggStage

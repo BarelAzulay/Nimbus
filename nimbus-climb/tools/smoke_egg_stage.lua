@@ -37,7 +37,9 @@
 --   client_egg_stage_mobile (phone world): x1 and x3, during Crack and on the reveal, at 640x360, 667x375, 844x390, 360x640,
 --       390x844, 1280x720, 1366x768 (RedoGeom.check with the per-phase NoOverlap lists of plan Task 20), the phone fit
 --       numbers (the crack stack, the reveal lip, the 44 px Banner), the x3 pets inside the screen, the bottom bar above
---       the bottom inset, and the resize mid-roll (Review Focus 1)
+--       the bottom inset, and the resize mid-roll (Review Focus 1: during Strip, during Crack (Task 27: the dressed hero
+--       refits, the pedestals 1.1 x / 0.24 x their eggs) and on the reveal); the crack eggs measured by their laid-out size
+--       (the Size attribute times Fit: the squash and the push-in change their boxes)
 --   client_egg_stage_wiring (client, 1920x1080, Task 22): the Shop's Eggs tab drives the stage: a card tap sends BuyRoulette,
 --       the success plays the stage over a hidden ShopWindow (the Shop stays open), DONE brings it back; the mouse-lock
 --       hold under auto:NimbusHatch; Stats / Pets / Store / Index / ShopController.Open refused while the stage shows; ONE
@@ -45,6 +47,15 @@
 --       within 0.3 s = one request; a match start / MenuController.Close() during the roll (one toast, the Shop closed);
 --       a late answer after closing the Shop; close while pending by the X / Esc / B / InMatch (Review Focus 2): the cards
 --       stay Pending until a success plays, a failure or the 7 s timeout re-enables them
+--   client_hatch_cutscene  (client, 1920x1080, Task 27: storyboard A "Pedestal", the owner's pick with Gemini's cloud ring)
+--       per phase: Intro (the Dim, the vignette, Lighting.NimbusHatchBlur 14 and the "Hatch" tint -0.08 / -0.25 through the
+--       LightingStack, no colour correction added), Strip (speed streaks), Rise (Spot, Pedestal1, Backlight1, CloudRing1,
+--       the 380 px Full egg), Crack (CrackWord, the shakes, Cracks 1 -> 3 -> 5, Leaks, the push-in <= 1.06), Burst (Shock,
+--       Rays, 28 sparks for an Epic, the ring's swell and colour, the white micro-flash), Reveal (the Word, the pet's pop);
+--       Low graphics; Legendary's one gold Flash and its rays; Mythic / Secret confetti; Secret's stars and aura; x3 in
+--       pull order with one gold Flash on the best pull's burst; Skip's burst tail; the budgets at every frame; the egg
+--       sound keys (today's sounds while their ids are 0, the owner's once given; a skip stops them); never breaks the
+--       player (DONE, a match start mid-Crack, an injected phase error, MenuController.Close(), a respawn) with the Shop
 -- Deterministic: mock clock only. SoundFx.Play and MenuController.Hint are spied and put back; the viewport, the Fast hatch
 -- setting and the attributes are put back. Plain Lua 5.1 syntax only.
 
@@ -220,6 +231,13 @@ function G.hero(name)
 	local content = G.content()
 	local hero = content and content:FindFirstChild("Hero")
 	return hero and hero:FindFirstChild(name) or nil
+end
+-- (Task 27) a crack egg's laid-out height on screen: its Size attribute times the stage's Fit (its box changes during the
+-- shakes' squash and the push-in, so the layout checks read the egg it was laid out as)
+function G.eggH(egg)
+	local content = G.content()
+	local fit = content and content:FindFirstChild("Fit")
+	return (egg:GetAttribute("Size") or egg.AbsoluteSize.Y) * (fit and fit.Scale or 1)
 end
 function G.zeroStats(ES, label)
 	local st = ES.Stats()
@@ -1072,8 +1090,8 @@ S.client_egg_stage = guarded("client_egg_stage", function()
 		G.until_(t0p, 4.6)
 		RedoGeom.check(G.content(), "egg stage 1920x1080 x1 crack", { MinText = 18, NoOverlap = { "CrackWord", "Egg1", "Pedestal1", "Skip", "FastHatch" }, Skip = { Rays = true, Flash = true, Vignette = true } })
 		local egg1, ped1 = G.hero("Egg1"), G.hero("Pedestal1")
-		T.check(egg1 and ped1 and abs(egg1.AbsoluteSize.Y - 380) <= 1 and abs(ped1.AbsoluteSize.X - 418) <= 1.5 and abs(ped1.AbsoluteSize.Y - 91.2) <= 1.5,
-			"egg stage: PC crack egg 380 px on a 418 x 91 pedestal (1.1 x / 0.24 x)", egg1 and fmt("%d, %dx%d", egg1.AbsoluteSize.Y, ped1.AbsoluteSize.X, ped1.AbsoluteSize.Y) or "missing")
+		T.check(egg1 and ped1 and abs(G.eggH(egg1) - 380) <= 1 and abs(ped1.AbsoluteSize.X - 418) <= 1.5 and abs(ped1.AbsoluteSize.Y - 91.2) <= 1.5,
+			"egg stage: PC crack egg 380 px on a 418 x 91 pedestal (1.1 x / 0.24 x)", egg1 and fmt("%d, %dx%d", G.eggH(egg1), ped1.AbsoluteSize.X, ped1.AbsoluteSize.Y) or "missing")
 		ES.Close()
 		G.advance(0.2)
 	end)
@@ -1144,11 +1162,12 @@ S.client_egg_stage_mobile = guarded("client_egg_stage_mobile", function()
 			local egg, ped, cw, title = G.hero("Egg1"), G.hero("Pedestal1"), G.hero("CrackWord"), G.content() and G.content():FindFirstChild("Title")
 			if egg and ped then
 				local e, p = G.box(egg), G.box(ped)
-				T.check(abs(p.w - 1.1 * e.h) <= 1.5 and abs(p.h - 0.24 * e.h) <= 1.5 and abs(p.y - (e.y + e.h)) <= 0.6, label .. " x1: the pedestal is 1.1 x / 0.24 x its egg, under it",
-					fmt("egg %.1f, pedestal %.1fx%.1f at %.1f (egg bottom %.1f)", e.h, p.w, p.h, p.y, e.y + e.h))
+				local eh = G.eggH(egg)
+				T.check(abs(p.w - 1.1 * eh) <= 1.5 and abs(p.h - 0.24 * eh) <= 1.5 and abs(p.y - (e.y + e.h)) <= 0.6, label .. " x1: the pedestal is 1.1 x / 0.24 x its egg, under it",
+					fmt("egg %.1f, pedestal %.1fx%.1f at %.1f (egg bottom %.1f)", eh, p.w, p.h, p.y, e.y + e.h))
 				if phone and w > h then
 					local bar = G.content():FindFirstChild("BottomBar")
-					T.check(e.h >= 120 - 0.6 and e.h <= 200 + 0.6, label .. " x1: the phone crack egg is 120 .. 200 px", fmt("%.1f", e.h))
+					T.check(eh >= 120 - 0.6 and eh <= 200 + 0.6, label .. " x1: the phone crack egg is 120 .. 200 px", fmt("%.1f", eh))
 					local tb = title and G.box(title)
 					T.check(tb ~= nil and cw ~= nil and G.box(cw).y >= tb.y + tb.h - 0.6 and p.y + p.h <= G.box(bar).y + 0.6 and tb.y + tb.h <= 92 + 0.6,
 						label .. " x1: the crack stack (word 40 + egg + pedestal) fits between the title band (ends by y 92) and the bottom bar",
@@ -1181,7 +1200,7 @@ S.client_egg_stage_mobile = guarded("client_egg_stage_mobile", function()
 			local ratios = true
 			for j = 1, 3 do
 				local e, p = G.hero("Egg" .. j), G.hero("Pedestal" .. j)
-				if not (e and p and abs(p.AbsoluteSize.X - 1.1 * e.AbsoluteSize.Y) <= 1.5 and abs(p.AbsoluteSize.Y - 0.24 * e.AbsoluteSize.Y) <= 1.5) then
+				if not (e and p and abs(p.AbsoluteSize.X - 1.1 * G.eggH(e)) <= 1.5 and abs(p.AbsoluteSize.Y - 0.24 * G.eggH(e)) <= 1.5) then
 					ratios = false
 				end
 			end
@@ -1213,6 +1232,21 @@ S.client_egg_stage_mobile = guarded("client_egg_stage_mobile", function()
 		Mock.SetViewport(390, 844)
 		G.advance(0.1)
 		RedoGeom.check(G.content(), "egg stage resize: 390x844 during Strip", { MinText = 15, NoOverlap = { "Skip", "FastHatch" }, Skip = SKIP })
+		-- (Task 27) and back to 844x390 during Crack (fast: the cracks start at 1.51 s): the dressed hero refits at once
+		G.until_(t0, 1.6)
+		T.eq(ES.Phase(), "Crack", "egg stage resize: cracking at 1.6 s (fast)")
+		Mock.SetViewport(844, 390)
+		G.advance(0.05)
+		RedoGeom.check(G.content(), "egg stage resize: 844x390 during Crack", { MinText = 15, NoOverlap = { "CrackWord", "Egg1", "Egg2", "Egg3", "Pedestal1", "Pedestal2", "Pedestal3", "Skip", "FastHatch" },
+			Skip = { Rays = true, Flash = true, Vignette = true, Sparks = true, Shock = true } })
+		local refit = true
+		for j = 1, 3 do
+			local e, p = G.hero("Egg" .. j), G.hero("Pedestal" .. j)
+			if not (e and p and abs(p.AbsoluteSize.X - 1.1 * G.eggH(e)) <= 1.5 and abs(p.AbsoluteSize.Y - 0.24 * G.eggH(e)) <= 1.5) then
+				refit = false
+			end
+		end
+		T.check(refit, "egg stage resize: during Crack every pedestal is again 1.1 x / 0.24 x its refitted egg")
 		G.until_(t0, 3.2)
 		T.eq(ES.Phase(), "Reveal", "egg stage resize: the roll reaches the reveal")
 		Mock.SetViewport(1920, 1080)
@@ -1848,6 +1882,711 @@ S.client_egg_vfx = guarded("client_egg_vfx", function()
 	G.advance(0.6)
 	T.check(okRun, "egg vfx: the scenario body ran", tostring(errRun))
 	KC.flushErrors("client_egg_vfx")
+end)
+
+----------------------------------------------------------------------------------------------------
+-- client_hatch_cutscene (Task 27, spec 16.4 storyboard A "Pedestal" + the owner's pick: Gemini's cloud ring; the egg
+-- sound keys of .superpowers/lobby-shop/pitch/CUTSCENE_PICK.md)
+----------------------------------------------------------------------------------------------------
+-- the egg sound keys and today's sound each falls back to while its id is 0 (false: silent until its id exists)
+local EGG_SOUNDS = {
+	EggStripTick = "SpinTick", EggStripLand = "SpinLand", EggRise = false, EggShake = false, EggCrack = false, EggBurst = "Shatter",
+	EggCloudRing = false, EggRevealCommon = "RevealCommon", EggRevealEpic = "RevealRare", EggRevealLegend = "RevealLegendary",
+	EggRevealSecret = "RevealLegendary",
+}
+local SPARKS = { Common = 12, Uncommon = 16, Rare = 20, Epic = 28, Legendary = 40, Mythic = 48, Secret = 48 }
+S.client_hatch_cutscene = guarded("client_hatch_cutscene", function()
+	local KC = G.KC()
+	local Config = KC.env()
+	local ES = G.req("client/UI/EggStage")
+	local FX = G.req("client/UI/HatchFx")
+	local GQ = G.req("client/GraphicsQuality")
+	local LS = G.req("client/LightingStack")
+	local SF = G.req("client/SoundFx")
+	local CS = G.req("client/ClientSettings")
+	local ML = G.req("client/MouseLock")
+	local PC = G.req("shared/PetCatalog")
+	local Shop = G.req("client/Controllers/ShopController")
+	local MC = KC.M.MenuController or G.req("client/Controllers/MenuController")
+	local okFx = type(FX) == "table"
+	for _, fn in ipairs({ "Pool", "Rays", "Shock", "Cracks", "Leaks", "Stars", "Dim", "CloudRing", "Stats" }) do
+		okFx = okFx and type(FX[fn]) == "function"
+	end
+	if not T.check(okFx, "hatch cutscene: client/UI/HatchFx has Pool, Rays, Shock, Cracks, Leaks, Stars, Dim, CloudRing and Stats (spec 16.4 + the cloud ring)") then
+		return
+	end
+	if not T.check(type(ES) == "table" and type(GQ) == "table" and type(LS) == "table" and type(SF) == "table" and type(Shop) == "table" and type(MC) == "table",
+		"hatch cutscene: EggStage, GraphicsQuality, LightingStack, SoundFx, ShopController and MenuController load") then
+		return
+	end
+	local Lighting = game:GetService("Lighting")
+	local GuiService = game:GetService("GuiService")
+	local IN_MATCH = Config.Attr.InMatch
+	local oldVp = { Mock.Viewport.X, Mock.Viewport.Y }
+	local keep = {}
+	for _, name in ipairs({ Config.Attr.Tokens, Config.Attr.Gems, "PaidRandomItemsRestricted", "GemsSettled", "SecretPityLeft" }) do
+		keep[name] = LocalPlayer:GetAttribute(name)
+	end
+	Mock.SetViewport(1920, 1080)
+	LocalPlayer:SetAttribute(Config.Attr.Tokens, 50000)
+	LocalPlayer:SetAttribute(Config.Attr.Gems, 5000)
+	LocalPlayer:SetAttribute("PaidRandomItemsRestricted", false)
+	LocalPlayer:SetAttribute("GemsSettled", true)
+	LocalPlayer:SetAttribute("SecretPityLeft", 4)
+	CS.Set("FastHatch", false)
+	Shop.Close()
+	if ES.IsShowing() then
+		ES.Close()
+	end
+	G.advance(0.6)
+	-- graphics: High unless a step says Low
+	local oldEff = GQ.Effective
+	local mode = "High"
+	GQ.Effective = function()
+		return mode
+	end
+	-- the world's colour correction (LightingStack's "ColorCorrection" target): one exists before the roll
+	local cc = Lighting:FindFirstChildOfClass("ColorCorrectionEffect")
+	local madeCC = false
+	if not cc then
+		cc = Instance.new("ColorCorrectionEffect")
+		cc.Name = "SmokeHatchCC"
+		cc.Brightness, cc.Saturation = 0.02, 0.1
+		cc.Parent = Lighting
+		madeCC = true
+	end
+	local function ccCount()
+		local n = 0
+		for _, c in ipairs(Lighting:GetChildren()) do
+			if c:IsA("ColorCorrectionEffect") then
+				n = n + 1
+			end
+		end
+		return n
+	end
+	-- sounds: spied (name, scale), each play answered with a real Sound that plays until stopped
+	local sounds = {}
+	local realPlay = SF.Play
+	local box = Instance.new("Folder")
+	box.Name = "SmokeHatchSounds"
+	box.Parent = game:GetService("SoundService")
+	SF.Play = function(name, opts)
+		local s = Instance.new("Sound")
+		s.Name = tostring(name)
+		s.Parent = box
+		s:Play()
+		sounds[#sounds + 1] = { name = name, scale = opts and opts.Scale, sound = s }
+		return s
+	end
+	local function soundsFrom(i)
+		local out = {}
+		for k = i + 1, #sounds do
+			out[#out + 1] = sounds[k]
+		end
+		return out
+	end
+	local function count(list, name, scale)
+		local n = 0
+		for _, s in ipairs(list) do
+			if s.name == name and (scale == nil or (s.scale ~= nil and abs(s.scale - scale) < 1e-9)) then
+				n = n + 1
+			end
+		end
+		return n
+	end
+	local closed = {}
+	local closedConn = ES.Closed:Connect(function(reason)
+		closed[#closed + 1] = reason
+	end)
+	local function lastOf(list)
+		return list[#list]
+	end
+	local hb0 = FX.Stats().Heartbeats or 0
+	local live0 = FX.Stats().Live or 0
+	local pick = function(rid, rarity)
+		return PC.RarityPool(rid, rarity)[1]
+	end
+	local epic, rare, common = pick("Cloud", "Epic"), pick("Cloud", "Rare"), pick("Cloud", "Common")
+	local leg, myth, secret = pick("Storm", "Legendary"), pick("Secret", "Mythic"), pick("Secret", "Secret")
+	if not T.check(epic and rare and common and leg and myth and secret, "hatch cutscene: a Common, Rare, Epic, Legendary, Mythic and Secret pet to roll") then
+		return
+	end
+	local function stageChild(name)
+		local gui = G.gui()
+		local stage = gui and gui:FindFirstChild("Stage")
+		return stage and stage:FindFirstChild(name) or nil
+	end
+	local function flashKind()
+		local f = stageChild("Flash")
+		if not f or not G.shown(f) or f.BackgroundTransparency >= 0.97 then
+			return nil
+		end
+		return G.rgb(f.BackgroundColor3, 242, 182, 68) and "gold" or "white"
+	end
+	local function segs(egg)
+		local holder = egg and egg:FindFirstChild("Cracks")
+		local n = 0
+		for _, c in ipairs(holder and holder:GetChildren() or {}) do
+			if c.Name:match("^Seg%d+$") and c.Visible then
+				n = n + 1
+			end
+		end
+		return n
+	end
+	local function hasHatch()
+		for _, id in ipairs(LS.Ids()) do
+			if id == "Hatch" then
+				return true
+			end
+		end
+		return false
+	end
+	local function blur()
+		return Lighting:FindFirstChild("NimbusHatchBlur")
+	end
+	local function burstFrame()
+		local c = G.content()
+		return c and c:FindFirstChild("Burst") or nil
+	end
+	local function confetti()
+		local n = 0
+		local b = burstFrame()
+		for _, d in ipairs(b and b:GetDescendants() or {}) do
+			if d.Name == "Confetti" and d:IsA("GuiObject") and d.Visible then
+				n = n + 1
+			end
+		end
+		return n
+	end
+	local function spinning(inst)
+		for _, tw in ipairs(inst and G.tweenList(inst) or {}) do
+			if tw.Instance == inst and tw.TweenInfo.RepeatCount == -1 and (Mock.TweenGoals(tw).Rotation or 0) >= 360 then
+				return true
+			end
+		end
+		return false
+	end
+	-- the budgets at one moment (spec 16.4: x1 450 / x3 750 instances, 24 tweens + the Secret stars, 1 Heartbeat, 1 Lighting
+	-- effect + the "Hatch" preset); -> a failure text or nil
+	local function overBudget(cap, stars)
+		local st, fx = ES.Stats(), FX.Stats()
+		local gui = G.gui()
+		local tw = gui and G.tweensUnder(gui) or 0
+		local bad = {}
+		if (st.Instances or 0) > cap then
+			bad[#bad + 1] = "instances " .. st.Instances
+		end
+		if tw > 24 + (stars or 0) or (st.Tweens or 0) > 24 + (stars or 0) then
+			bad[#bad + 1] = fmt("tweens %d (stage %d)", tw, st.Tweens or 0)
+		end
+		if (st.Heartbeats or 0) > 1 or (fx.Heartbeats or 0) > hb0 then
+			bad[#bad + 1] = fmt("heartbeats %d / fx %d", st.Heartbeats or 0, fx.Heartbeats or 0)
+		end
+		if (st.Effects or 0) > 2 or ccCount() ~= 1 then
+			bad[#bad + 1] = fmt("effects %d, colour corrections %d", st.Effects or 0, ccCount())
+		end
+		if (st.Sparks or 0) > 64 then
+			bad[#bad + 1] = "sparks " .. st.Sparks
+		end
+		return #bad > 0 and table.concat(bad, ", ") or nil
+	end
+	local function afterDone(label, b0, s0)
+		G.advance(0.45)
+		G.zeroStats(ES, label)
+		local fx = FX.Stats()
+		T.check(blur() == nil and not hasHatch() and ccCount() == 1, label .. ": no NimbusHatchBlur in Lighting, \"Hatch\" gone from the LightingStack, no colour correction added")
+		T.check(abs(cc.Brightness - b0) < 1e-3 and abs(cc.Saturation - s0) < 1e-3, label .. ": the colour correction is back to its values before the roll",
+			fmt("%.3f / %.3f (was %.3f / %.3f)", cc.Brightness, cc.Saturation, b0, s0))
+		T.check((fx.Live or 0) == live0 and (fx.Heartbeats or 0) == hb0, label .. ": every spark back, no live Heartbeat", fmt("live %d, hb %d", fx.Live or 0, fx.Heartbeats or 0))
+	end
+	-- plays a roll to `untilT` s, sampling every frame: -> rec
+	local function watch(result, untilT, cap, stars, onStep)
+		local rec = { at = {}, order = {}, over = nil, gold = {}, white = {}, flashPrev = nil }
+		ES.Show(result)
+		local t0 = os.clock()
+		rec.t0 = t0
+		while os.clock() - t0 < untilT - 1e-6 do
+			local t = os.clock() - t0
+			local ph = ES.Phase()
+			if ph and rec.at[ph] == nil then
+				rec.at[ph] = t
+				rec.order[#rec.order + 1] = ph
+			end
+			local kind = flashKind()
+			if kind and kind ~= rec.flashPrev then
+				local list = kind == "gold" and rec.gold or rec.white
+				list[#list + 1] = t
+			end
+			rec.flashPrev = kind
+			if ph and not rec.over then
+				local o = overBudget(cap, stars)
+				if o then
+					rec.over = fmt("%s at %.2f s (%s)", o, t, ph)
+				end
+			end
+			if onStep then
+				onStep(t, ph, rec)
+			end
+			G.advance(STEP)
+		end
+		return rec
+	end
+	local function result(rid, currency, defs)
+		local pulls = {}
+		for i, def in ipairs(defs) do
+			pulls[i] = G.pull(PC, rid, def)
+		end
+		return G.result(rid, currency, pulls)
+	end
+	local ok, err = pcall(function()
+		------------------------------------------------------------------ x1 Epic, High: the seven phases dressed
+		local b0, s0 = cc.Brightness, cc.Saturation
+		local cc0 = ccCount()
+		local s1 = #sounds
+		local seen = { dimStart = nil, intro = false, rise = false, cracks = {}, rot = false, push = 1, word = nil, leaks = 0, ring = false }
+		local burstAt, burstChecked = nil, false
+		local rec = watch(result("Cloud", "Tokens", { epic }), 6.6, 450, 0, function(t, ph)
+			local hero = function(name)
+				return G.hero(name)
+			end
+			if seen.dimStart == nil then
+				local dim = stageChild("Dim")
+				seen.dimStart = dim and dim.BackgroundTransparency or -1
+			end
+			if not seen.intro and t >= 0.5 then
+				seen.intro = true
+				local dim, b = stageChild("Dim"), blur()
+				T.check(dim ~= nil and seen.dimStart > 0.9 and abs(dim.BackgroundTransparency - 0.45) < 0.02, "hatch cutscene: Intro: the navy Dim fades in (0 -> 0.55)",
+					fmt("%.2f -> %.2f", seen.dimStart, dim and dim.BackgroundTransparency or -1))
+				T.check(b ~= nil and b:IsA("BlurEffect") and abs(b.Size - 14) < 0.01, "hatch cutscene: Intro: Lighting.NimbusHatchBlur reaches Size 14", b and tostring(b.Size) or "no blur")
+				T.check(hasHatch() and ccCount() == cc0, "hatch cutscene: Intro: the \"Hatch\" LightingStack preset is pushed and Lighting holds exactly the colour corrections it held before (none added)")
+				T.check(abs(cc.Brightness - (b0 - 0.08)) < 0.005 and abs(cc.Saturation - (s0 - 0.25)) < 0.005, "hatch cutscene: Intro: the tint reaches Brightness -0.08 / Saturation -0.25 under the values before the roll",
+					fmt("%.3f / %.3f (from %.3f / %.3f)", cc.Brightness, cc.Saturation, b0, s0))
+				local vig = stageChild("Vignette")
+				local edges = 0
+				for _, e in ipairs(vig and vig:GetChildren() or {}) do
+					if e:IsA("Frame") and e.BackgroundTransparency < 0.5 then
+						edges = edges + 1
+					end
+				end
+				T.eq(edges, 4, "hatch cutscene: Intro: the four Vignette edges have faded in")
+				local strip = G.content() and G.content():FindFirstChild("Strip1", true)
+				T.check(strip ~= nil and strip:FindFirstChild("Streaks") ~= nil, "hatch cutscene: Strip: soft speed streaks over the track (High)")
+			end
+			local egg = hero("Egg1")
+			if ph == "Rise" or (ph == "Crack" and not seen.rise) then
+				if ph == "Crack" and not seen.rise then
+					seen.rise = true
+					T.check(G.shown(hero("Spot")) and G.shown(hero("Pedestal1")) and G.shown(hero("Backlight1")), "hatch cutscene: Rise: the Spot cone, Pedestal1 and the rarity Backlight1 are shown")
+					T.check(egg ~= nil and egg:GetAttribute("Size") == 380 and egg:GetAttribute("Form") == "Full" and egg:GetAttribute("Vfx") == true,
+						"hatch cutscene: Rise: Egg1 is the 380 px Full egg with its VFX", egg and fmt("%s %s %s", tostring(egg:GetAttribute("Size")), tostring(egg:GetAttribute("Form")), tostring(egg:GetAttribute("Vfx"))) or "no egg")
+					local ring = hero("CloudRing1")
+					seen.ring = ring ~= nil and G.shown(ring) and ring:IsA("CanvasGroup") and spinning(ring)
+					T.check(seen.ring, "hatch cutscene: Rise: the rotating cloud ring (CloudRing1, one CanvasGroup) stands behind the pedestal (the owner's pick: Gemini's ring)")
+					local ped = hero("Pedestal1")
+					local inside = ped ~= nil
+					for _, d in ipairs(ped and ped:GetDescendants() or {}) do
+						if d:IsA("GuiObject") then
+							local a, p = G.box(d), G.box(ped)
+							if a.x < p.x - 0.6 or a.y < p.y - 0.6 or a.x + a.w > p.x + p.w + 0.6 or a.y + a.h > p.y + p.h + 0.6 then
+								inside = false
+							end
+						end
+					end
+					T.check(inside and ped:FindFirstChild("Top") ~= nil and ped:FindFirstChild("Inlay") ~= nil, "hatch cutscene: the cloud-stone pedestal (Top, gold Inlay, puffs) is drawn inside its own box")
+				end
+			end
+			if ph == "Crack" and egg then
+				local n = segs(egg)
+				if n > 0 and seen.cracks[#seen.cracks] ~= n then
+					seen.cracks[#seen.cracks + 1] = n
+				end
+				if abs(egg.Rotation) > 0.5 then
+					seen.rot = true
+				end
+				local pop = egg:FindFirstChild("Pop")
+				if pop then
+					seen.push = math.max(seen.push, pop.Scale)
+				end
+				local lk = egg:FindFirstChild("Leaks")
+				if lk then
+					local m = 0
+					for _, c in ipairs(lk:GetChildren()) do
+						if c.Visible and c.Name:match("^Leak%d+$") then
+							m = m + 1
+						end
+					end
+					seen.leaks = math.max(seen.leaks, m)
+				end
+				local cw = hero("CrackWord")
+				if seen.word == nil and cw and G.shown(cw) then
+					seen.word = cw.Text
+				end
+			end
+			local burst = burstFrame()
+			local shock = burst and burst:FindFirstChild("Shock")
+			if egg and egg:GetAttribute("State") == "Burst" and burstAt == nil then
+				burstAt = t
+				seen.shock0 = shock and shock.AbsoluteSize.X or -1
+				seen.sparks = burst and burst:GetAttribute("Sparks")
+				seen.live = ES.Stats().Sparks
+				seen.rays = G.shown(hero("Rays"))
+				local ring = hero("CloudRing1")
+				local swell = ring and ring:FindFirstChildOfClass("UIScale")
+				seen.ringColor = ring and ring.GroupColor3
+				seen.swellGoal = 1
+				for _, tw in ipairs(ring and G.tweenList(ring) or {}) do
+					if tw.Instance == swell then
+						seen.swellGoal = Mock.TweenGoals(tw).Scale or 1
+					end
+				end
+			end
+			if burstAt and not burstChecked and t >= burstAt + 0.15 then
+				burstChecked = true
+				-- (the mock's tweens jump to their goals when they end: the Size tween's goal is the ring it grows to)
+				local grow = shock and shock.AbsoluteSize.X or -1
+				for _, tw in ipairs(shock and G.tweenList(shock) or {}) do
+					local goal = tw.Instance == shock and Mock.TweenGoals(tw).Size
+					if goal then
+						grow = math.max(grow, goal.X.Offset)
+					end
+				end
+				seen.shock1 = grow
+			end
+		end)
+		T.eq(table.concat(rec.order, " "), "Intro Strip Land Rise Crack Burst Reveal", "hatch cutscene: x1 Epic runs the seven phases")
+		T.check(rec.at.Reveal and abs(rec.at.Reveal - 5.75) <= 0.1, "hatch cutscene: x1 Reveal at 5.75 +- 0.1 s", tostring(rec.at.Reveal))
+		T.eq(seen.word, "EPIC EGG!", "hatch cutscene: Crack: CrackWord reads 'EPIC EGG!'")
+		T.check(seen.rot, "hatch cutscene: Crack: Egg1.Rotation leaves 0 during the shakes")
+		T.eq(table.concat(seen.cracks, " "), "1 3 5", "hatch cutscene: Crack: the glowing Cracks grow 1 -> 3 -> 5 segments")
+		T.check(seen.leaks >= 3 and seen.leaks <= 5, "hatch cutscene: Crack: thin Leaks of light lengthen from the cracks (<= 5)", tostring(seen.leaks))
+		T.check(seen.push > 1.01 and seen.push <= 1.06 + 1e-6, "hatch cutscene: Crack: the push-in (the hero egg's UIScale) peaks above 1 and at most 1.06", fmt("%.4f", seen.push))
+		T.check(burstAt ~= nil and seen.shock1 ~= nil and seen.shock1 > seen.shock0, "hatch cutscene: Burst: the Shock ring grows", fmt("%s -> %s", tostring(seen.shock0), tostring(seen.shock1)))
+		T.check(seen.rays == true, "hatch cutscene: Burst: the Rays flash in")
+		T.check(seen.sparks == SPARKS.Epic and (seen.live or 0) >= SPARKS.Epic, "hatch cutscene: Burst: 28 sparks for an Epic", fmt("burst %s, live %s", tostring(seen.sparks), tostring(seen.live)))
+		T.check(G.same(seen.ringColor, G.rarityColor(Config, "Epic")) and seen.swellGoal >= 1.3, "hatch cutscene: Burst: the cloud ring swells sharply and pulses in the rarity colour",
+			fmt("goal %.2f", seen.swellGoal or -1))
+		T.check(#rec.white >= 1 and #rec.gold == 0, "hatch cutscene: Burst: the white micro-flash, no gold Flash for an Epic", fmt("white %d, gold %d", #rec.white, #rec.gold))
+		T.check(rec.over == nil, "hatch cutscene: x1 Epic within the budgets at every phase (450 instances, 24 tweens, 1 Heartbeat, blur + preset)", tostring(rec.over))
+		local word, pet = G.colPart(1, "Word"), G.colPart(1, "Pet")
+		local pop = pet and pet:FindFirstChild("Pop")
+		T.eq(word and word.Text, "EPIC!", "hatch cutscene: Reveal: the Banner's Word reads 'EPIC!'")
+		T.check(pop ~= nil and abs(pop.Scale - 1) < 1e-6, "hatch cutscene: Reveal: the pet's pop UIScale ends at 1", pop and tostring(pop.Scale) or "no Pop")
+		T.check(not G.shown(G.hero("Rays")), "hatch cutscene: Reveal: an Epic keeps no rays (only Legendary and up)")
+		local list = soundsFrom(s1)
+		T.check(count(list, "SpinStart", 0.6) == 1 and count(list, "SpinTick") >= 8 and count(list, "SpinLand", 0.6) == 1 and count(list, "Shatter", 0.6) == 1 and count(list, "RevealRare", 0.6) == 1,
+			"hatch cutscene: with no egg ids the roll plays today's sounds (SpinStart, SpinTick, SpinLand, Shatter, RevealRare at 0.6)")
+		local eggKeys = 0
+		for _, s in ipairs(list) do
+			if EGG_SOUNDS[s.name] ~= nil then
+				eggKeys = eggKeys + 1
+			end
+		end
+		T.eq(eggKeys, 0, "hatch cutscene: ...and no egg key plays while its id is 0")
+		ES.Done()
+		afterDone("hatch cutscene after DONE", b0, s0)
+
+		------------------------------------------------------------------ Low graphics: no blur, no tint, half the sparks, static rays, no streaks
+		mode = "Low"
+		local lowSeen = {}
+		watch(result("Cloud", "Tokens", { epic }), 6.0, 450, 0, function(t, ph)
+			if t >= 0.5 and lowSeen.blur == nil then
+				lowSeen.blur = blur() ~= nil or hasHatch()
+				local strip = G.content() and G.content():FindFirstChild("Strip1", true)
+				lowSeen.streaks = strip ~= nil and strip:FindFirstChild("Streaks") ~= nil
+			end
+			local egg = G.hero("Egg1")
+			if egg and egg:GetAttribute("State") == "Burst" and lowSeen.sparks == nil then
+				lowSeen.sparks = burstFrame() and burstFrame():GetAttribute("Sparks")
+				lowSeen.spin = spinning(G.hero("Rays"))
+			end
+		end)
+		T.check(lowSeen.blur == false and lowSeen.streaks == false, "hatch cutscene: Low graphics: no blur, no \"Hatch\" tint, no speed streaks")
+		T.check(lowSeen.sparks == SPARKS.Epic / 2 and lowSeen.spin == false, "hatch cutscene: Low graphics: half the sparks (14) and the rays stay still", fmt("%s sparks, spin %s", tostring(lowSeen.sparks), tostring(lowSeen.spin)))
+		ES.Done()
+		afterDone("hatch cutscene after a Low DONE", b0, s0)
+		mode = "High"
+
+		------------------------------------------------------------------ Legendary x1: the gold Flash once; the rays stay
+		local sL = #sounds
+		local recL = watch(result("Storm", "Tokens", { leg }), 6.8, 450, 0)
+		T.check(#rec.gold == 0 and #recL.gold == 1 and recL.at.Burst and abs(recL.gold[1] - recL.at.Burst) <= 0.1, "hatch cutscene: Legendary: the gold Flash plays once, on the burst",
+			fmt("%d gold flashes at %s (burst %s)", #recL.gold, tostring(recL.gold[1]), tostring(recL.at.Burst)))
+		T.check(G.shown(G.hero("Rays")) and spinning(G.hero("Rays")), "hatch cutscene: Legendary: slow gold rays stay turning on the reveal")
+		T.check(count(soundsFrom(sL), "RevealLegendary", 1) == 1, "hatch cutscene: Legendary: its reveal sound at full volume")
+		T.check(recL.over == nil, "hatch cutscene: Legendary within the budgets", tostring(recL.over))
+		ES.Done()
+		afterDone("hatch cutscene after the Legendary DONE", b0, s0)
+
+		------------------------------------------------------------------ Mythic and Secret: confetti; Secret: the starry backdrop
+		for _, case in ipairs({ { myth, "Mythic", 0 }, { secret, "Secret", 14 } }) do
+			local most = 0
+			local recM = watch(result("Secret", "Gems", { case[1] }), 8.0, 450, case[3], function(t, ph)
+				if ph == "Reveal" then
+					most = math.max(most, confetti())
+				end
+			end)
+			T.check(most == 24, "hatch cutscene: " .. case[2] .. ": 24 confetti fall on the reveal", tostring(most))
+			T.check(recM.over == nil, "hatch cutscene: " .. case[2] .. " within the budgets (stars counted apart)", tostring(recM.over))
+			if case[2] == "Secret" then
+				local backdrop = stageChild("Stars") or (G.gui() and G.gui():FindFirstChild("Stars", true))
+				local stars = 0
+				for _, c in ipairs(backdrop and backdrop:GetChildren() or {}) do
+					if c:IsA("GuiObject") then
+						stars = stars + 1
+					end
+				end
+				T.check(stars == 14 and FX.Stats().Tweens >= 14, "hatch cutscene: Secret: a starry backdrop of 14 twinkling stars", fmt("%d stars, %d tweens", stars, FX.Stats().Tweens))
+				T.check(G.colPart(1, "Aura") ~= nil and G.shown(G.colPart(1, "Aura")), "hatch cutscene: Secret: a violet aura behind the pet")
+			end
+			ES.Done()
+			afterDone("hatch cutscene after the " .. case[2] .. " DONE", b0, s0)
+		end
+
+		------------------------------------------------------------------ x3 Rare, Legendary, Common: pull order, one gold Flash on Egg2's burst
+		local bursts = {}
+		local rec3 = watch(result("Storm", "Tokens", { rare, leg, common }), 7.6, 750, 0, function(t)
+			for j = 1, 3 do
+				local egg = G.hero("Egg" .. j)
+				if egg and egg:GetAttribute("State") == "Burst" and bursts[j] == nil then
+					bursts[j] = t
+				end
+			end
+		end)
+		T.check(bursts[1] and bursts[2] and bursts[3] and abs(bursts[2] - bursts[1] - 0.6) <= 0.07 and abs(bursts[3] - bursts[1] - 1.2) <= 0.07,
+			"hatch cutscene: x3: Egg1 bursts first, Egg2 0.6 s later, Egg3 1.2 s later (pull order)", fmt("%s %s %s", tostring(bursts[1]), tostring(bursts[2]), tostring(bursts[3])))
+		T.check(#rec3.gold == 1 and bursts[2] and abs(rec3.gold[1] - bursts[2]) <= 0.1, "hatch cutscene: x3: the gold Flash once, on Egg2's burst (the Legendary)",
+			fmt("%d at %s", #rec3.gold, tostring(rec3.gold[1])))
+		T.check(rec3.at.Reveal and abs(rec3.at.Reveal - 7.15) <= 0.1, "hatch cutscene: x3 Reveal at 7.15 +- 0.1 s", tostring(rec3.at.Reveal))
+		T.check(rec3.over == nil, "hatch cutscene: x3 within the budgets at every phase (750 instances)", tostring(rec3.over))
+		ES.Done()
+		afterDone("hatch cutscene after the x3 DONE", b0, s0)
+		CS.Set("FastHatch", true)
+		G.advance(0.5)
+		local recF = watch(result("Storm", "Tokens", { rare, leg, common }), 3.2, 750, 0)
+		T.check(recF.at.Reveal and abs(recF.at.Reveal - 2.66) <= 0.1, "hatch cutscene: x3 Fast hatch Reveal at 2.66 +- 0.1 s", tostring(recF.at.Reveal))
+		ES.Done()
+		G.advance(0.5)
+		CS.Set("FastHatch", false)
+		G.advance(0.5)
+
+		------------------------------------------------------------------ Skip (one rule): the reveal next frame, the burst tail over its start
+		for _, case in ipairs({ { leg, "Storm", "Legendary", 1 }, { epic, "Cloud", "Epic", 0 } }) do
+			ES.Show(result(case[2], "Tokens", { case[1] }))
+			G.advance(0.1)
+			T.eq(ES.Phase(), "Intro", "hatch cutscene: Skip " .. case[3] .. ": (setup) the intro plays")
+			ES.Skip()
+			G.advance(STEP)
+			T.eq(ES.Phase(), "Reveal", "hatch cutscene: Skip " .. case[3] .. " during Intro -> Reveal on the next frame")
+			local gold, white, prev = 0, 0, nil
+			local shock, rays = false, false
+			for _ = 1, 9 do
+				local kind = flashKind()
+				if kind and kind ~= prev then
+					if kind == "gold" then
+						gold = gold + 1
+					else
+						white = white + 1
+					end
+				end
+				prev = kind
+				local b = burstFrame()
+				shock = shock or (b ~= nil and G.shown(b:FindFirstChild("Shock")))
+				rays = rays or G.shown(G.hero("Rays"))
+				G.advance(STEP)
+			end
+			T.check(gold == case[4] and white == 0, "hatch cutscene: Skip " .. case[3] .. ": the burst tail shows the gold Flash " .. (case[4] == 1 and "exactly once" or "not at all") .. " and no white micro-flash",
+				fmt("gold %d, white %d", gold, white))
+			T.check(shock and rays, "hatch cutscene: Skip " .. case[3] .. ": the burst tail's shock ring and rays play over the reveal's start")
+			ES.Done()
+			G.advance(0.5)
+		end
+		-- sounds stop: a skip mid-Crack with every egg id given (the strip's, the rise's, the shakes' and the crack's sounds)
+		local ids = {}
+		local n = 0
+		for key in pairs(EGG_SOUNDS) do
+			n = n + 1
+			ids[key] = Config.Audio.Sfx[key]
+			Config.Audio.Sfx[key] = 7100000 + n
+		end
+		local t0k = os.clock()
+		local k0 = #sounds
+		ES.Show(result("Cloud", "Tokens", { epic }))
+		G.until_(t0k, 4.9)
+		T.eq(ES.Phase(), "Crack", "hatch cutscene: (setup) cracking at 4.9 s")
+		local before = soundsFrom(k0)
+		ES.Skip()
+		G.advance(STEP)
+		local still = {}
+		for _, s in ipairs(before) do
+			if s.sound.IsPlaying then
+				still[#still + 1] = s.name
+			end
+		end
+		T.check(#before >= 3 and #still == 0 and ES.Phase() == "Reveal", "hatch cutscene: Skip: every sound of the roll so far stops", #before .. " played, still: " .. table.concat(still, " "))
+		ES.Done()
+		G.advance(0.5)
+		------------------------------------------------------------------ the owner's egg sounds (ids given): they replace today's
+		local k1 = #sounds
+		watch(result("Cloud", "Tokens", { epic }), 6.2, 450, 0)
+		local eg = soundsFrom(k1)
+		T.check(count(eg, "SpinStart", 0.6) == 1 and count(eg, "EggStripTick", 0.6) >= 8 and count(eg, "EggStripLand", 0.6) == 1 and count(eg, "EggRise", 0.6) == 1
+			and count(eg, "EggShake", 0.6) == 2 and count(eg, "EggCrack", 0.6) == 1 and count(eg, "EggBurst", 0.6) == 1 and count(eg, "EggCloudRing", 0.6) == 1
+			and count(eg, "EggRevealEpic", 0.6) == 1,
+			"hatch cutscene: with the egg ids an Epic plays SpinStart, EggStripTick, EggStripLand, EggRise, EggShake x2, EggCrack, EggBurst, EggCloudRing, EggRevealEpic (all at 0.6)",
+			fmt("tick %d land %d rise %d shake %d crack %d burst %d ring %d reveal %d", count(eg, "EggStripTick"), count(eg, "EggStripLand"), count(eg, "EggRise"), count(eg, "EggShake"),
+				count(eg, "EggCrack"), count(eg, "EggBurst"), count(eg, "EggCloudRing"), count(eg, "EggRevealEpic")))
+		T.check(count(eg, "SpinTick") + count(eg, "SpinLand") + count(eg, "Shatter") + count(eg, "RevealRare") == 0, "hatch cutscene: ...and none of today's SpinTick / SpinLand / Shatter / RevealRare")
+		ES.Done()
+		G.advance(0.5)
+		local k2 = #sounds
+		ES.Show(result("Secret", "Gems", { secret }))
+		ES.Skip()
+		G.advance(0.3)
+		T.eq(count(soundsFrom(k2), "EggRevealSecret", 1), 1, "hatch cutscene: a Secret reveal plays EggRevealSecret at full volume")
+		ES.Done()
+		G.advance(0.5)
+		local k3 = #sounds
+		ES.Show(result("Storm", "Tokens", { leg }))
+		ES.Skip()
+		G.advance(0.3)
+		T.eq(count(soundsFrom(k3), "EggRevealLegend", 1), 1, "hatch cutscene: a Legendary reveal plays EggRevealLegend at full volume")
+		ES.Done()
+		G.advance(0.5)
+		for key in pairs(EGG_SOUNDS) do
+			Config.Audio.Sfx[key] = ids[key]
+		end
+
+		------------------------------------------------------------------ never breaks the player (Review Focus 3), on a touch device with the Shop open
+		RedoGeom.at(1920, 1080, true, "hatch cutscene never breaks", function()
+			local UIS = game:GetService("UserInputService")
+			local function snap()
+				local s = G.snapshot()
+				s[7] = ML and ML.IsLocked() or false
+				s[8] = ML and ML.IsEnabled() or false
+				return s
+			end
+			-- skip6: the touch controls (field 6) are checked apart where the exit closes the Shop (they come back then)
+			local function same(a, b, skip6)
+				for i = 1, 8 do
+					if a[i] ~= b[i] and not (skip6 and i == 6) then
+						return false, "field " .. i .. ": " .. tostring(a[i]) .. " -> " .. tostring(b[i])
+					end
+				end
+				return true, ""
+			end
+			local function win()
+				local gui = G.pg():FindFirstChild("NimbusShop")
+				return gui and gui:FindFirstChild("ShopWindow") or nil
+			end
+			local function lightingClean(label)
+				G.advance(0.45)
+				T.check(blur() == nil and not hasHatch() and ccCount() == 1 and abs(cc.Brightness - b0) < 1e-3 and abs(cc.Saturation - s0) < 1e-3,
+					label .. ": Lighting as it began (no NimbusHatchBlur, no \"Hatch\" preset, the colour correction back)")
+				G.zeroStats(ES, label)
+			end
+			local function openShop()
+				Shop.Open({ Tab = "Eggs" })
+				G.advance(0.5)
+				return Shop.IsOpen() and G.shown(win())
+			end
+			T.check(UIS.TouchEnabled == true, "hatch cutscene never breaks: (setup) a touch device")
+			-- DONE
+			T.check(openShop(), "hatch cutscene never breaks: (setup) the Shop is open")
+			local base = snap()
+			ES.Show(result("Cloud", "Tokens", { epic }))
+			G.advance(0.5)
+			T.check(GuiService.TouchControlsEnabled == false and not G.shown(win()), "hatch cutscene never breaks: the stage hides the touch controls and the Shop window while it plays")
+			ES.Skip()
+			G.advance(0.6)
+			ES.Done()
+			G.advance(STEP)
+			local okD, whyD = same(base, snap())
+			T.check(okD, "hatch cutscene never breaks: after DONE the Camera, the Humanoid, the mouse lock and the touch controls are as before", whyD)
+			T.check(Shop.IsOpen() and G.shown(win()), "hatch cutscene never breaks: ...and ShopWindow is visible again")
+			lightingClean("hatch cutscene never breaks after DONE")
+			-- a match start mid-Crack
+			local t0 = os.clock()
+			ES.Show(result("Cloud", "Tokens", { epic }))
+			G.until_(t0, 4.6)
+			T.eq(ES.Phase(), "Crack", "hatch cutscene never breaks: (setup) mid-Crack")
+			LocalPlayer:SetAttribute(IN_MATCH, true)
+			G.advance(0.2)
+			local okM, whyM = same(base, snap(), true)
+			T.check(lastOf(closed) == "Match" and okM, "hatch cutscene never breaks: a match start mid-Crack (Closed 'Match'): everything as before", whyM)
+			T.check(not Shop.IsOpen() and not G.shown(win()) and GuiService.TouchControlsEnabled == true, "hatch cutscene never breaks: ...the Shop stays closed and the touch controls are back")
+			LocalPlayer:SetAttribute(IN_MATCH, nil)
+			lightingClean("hatch cutscene never breaks after the match start")
+			-- an injected phase error (the test-only hook, nil by default)
+			T.check(ES._InjectPhaseError == nil, "hatch cutscene never breaks: EggStage._InjectPhaseError is nil by default")
+			T.check(openShop(), "hatch cutscene never breaks: (setup) the Shop open again")
+			local o0 = #Mock.Output
+			ES._InjectPhaseError = "Crack"
+			ES.Show(result("Cloud", "Tokens", { epic }))
+			G.advance(5.0)
+			local planted = 0
+			for i = #Mock.Output, o0 + 1, -1 do
+				local o = Mock.Output[i]
+				if o.kind == "warn" and tostring(o.text):find("injected phase error", 1, true) then
+					planted = planted + 1
+					table.remove(Mock.Output, i)
+				end
+			end
+			local okE, whyE = same(base, snap())
+			T.check(planted == 1 and lastOf(closed) == "Error" and not ES.IsShowing() and okE, "hatch cutscene never breaks: an injected Crack error ends through teardown (Closed 'Error', one warn): everything as before",
+				planted .. " warns, " .. tostring(lastOf(closed)) .. " " .. whyE)
+			T.check(ES._InjectPhaseError == nil, "hatch cutscene never breaks: ...and the hook is reset")
+			T.check(Shop.IsOpen() and G.shown(win()), "hatch cutscene never breaks: ...ShopWindow is visible again after the error")
+			lightingClean("hatch cutscene never breaks after the error")
+			-- MenuController.Close() mid-roll
+			ES.Show(result("Cloud", "Tokens", { epic }))
+			G.advance(1.0)
+			MC.Close()
+			G.advance(0.2)
+			local okC, whyC = same(base, snap(), true)
+			T.check(lastOf(closed) == "Close" and okC, "hatch cutscene never breaks: MenuController.Close() mid-roll (Closed 'Close'): everything as before", whyC)
+			T.check(not Shop.IsOpen() and not G.shown(win()) and GuiService.TouchControlsEnabled == true, "hatch cutscene never breaks: ...the Shop closed and the touch controls back")
+			lightingClean("hatch cutscene never breaks after MenuController.Close()")
+			-- the character removed mid-Strip (the Shop is closed now: the base again, as it stands)
+			local baseR = snap()
+			ES.Show(result("Cloud", "Tokens", { epic }))
+			G.advance(1.2)
+			Mock.Respawn(LocalPlayer)
+			local runR = G.run(ES, 6)
+			T.check(runR.at.Reveal ~= nil, "hatch cutscene never breaks: the character removed mid-Strip (a new one added): the stage reaches the reveal")
+			G.advance(0.6)
+			ES.Done()
+			G.advance(STEP)
+			local okR, whyR = same(baseR, snap())
+			T.check(okR, "hatch cutscene never breaks: ...and after DONE everything matches (the new Humanoid's walk and jump)", whyR)
+			lightingClean("hatch cutscene never breaks after the respawn")
+		end)
+	end)
+	if not ok then
+		T.fail("hatch cutscene: scenario error", tostring(err))
+	end
+	ES._InjectPhaseError = nil
+	if ES.IsShowing() then
+		ES.Close()
+	end
+	pcall(function()
+		Shop.Close()
+	end)
+	closedConn:Disconnect()
+	SF.Play = realPlay
+	GQ.Effective = oldEff
+	box:Destroy()
+	if madeCC then
+		cc:Destroy()
+	end
+	LocalPlayer:SetAttribute(IN_MATCH, nil)
+	for name, v in pairs(keep) do
+		LocalPlayer:SetAttribute(name, v)
+	end
+	CS.Set("FastHatch", false)
+	Mock.SetViewport(oldVp[1], oldVp[2])
+	G.advance(0.6)
+	KC.flushErrors("client_hatch_cutscene")
 end)
 
 return S
