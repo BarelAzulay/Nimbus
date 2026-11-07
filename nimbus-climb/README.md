@@ -1767,7 +1767,8 @@ src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientS
              the lobby lamps dim by day and warm at night, fireflies), Shop (the one Shop window: a tab rail over Eggs,
              Gems and the Robux items), Store (a forwarder to Shop kept for old callers), Daily (the Gifts button and window),
              BoostBadge (the x2 chips under the strips), Vip (the VIP chat tag and lobby crown), Title (the TOP 10 /
-             TOP 100 / CREATOR title above the head; a titled VIP's crown sits inside it), Trove (the Sky Trove
+             TOP 100 / CREATOR title above the head; a titled VIP's crown sits inside it), Leaderboard (the lobby
+             board's face: the global top 10 on three tappable pages, the You row), Trove (the Sky Trove
              panel, the lid and coins)
 ```
 

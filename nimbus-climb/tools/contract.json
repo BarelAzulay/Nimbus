@@ -1360,6 +1360,16 @@
         "SetCrown"
       ]
     },
+    "client/Controllers/LeaderboardController": {
+      "optional": true,
+      "_comment": "lobby-shop Task 24 (spec 5.10 'Client', pages per section 15): the lobby board's SurfaceGui (PlayerGui, adorned to LobbyLeaderboard.Face): the global top 10, three tappable pages that turn every 15 s",
+      "functions": [
+        "Init",
+        "Page",
+        "SetPage",
+        "State"
+      ]
+    },
     "client/UI/EggArt": {
       "optional": true,
       "_comment": "lobby-shop Task 20 (spec 16.5 / 5.6): the eggs drawn from frames (one shape, three forms; the paint comes in Task 26)",

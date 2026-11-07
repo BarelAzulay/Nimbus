@@ -54,6 +54,9 @@
 --                         Halves pair ([lobby-shop] block)
 --   hatch[:<view>]        lobby-shop Task 20: the egg stage core (EggStage, plain visuals) stepped to one moment: strip,
 --                         strip3, crack, reveal (default), reveal3, secret ([lobby-shop] block)
+--   lobbyboard[:2|:3]     lobby-shop Task 24: the lobby board's SurfaceGui (LeaderboardController) with ten fake rows on page
+--                         1 Trophies (default), 2 Pets found or 3 Ring best, mirrored flat: fitted to the screen and as it
+--                         looks from 20 studs ([lobby-shop] block)
 --   evolve                the EVOLVE confirm over the Pets window
 --   ring[:<view>]         Phase 4 (ArenaController's Champion Ring window): OpenPanel("Ring") with a ring record
 --                         (Best 24); view new (no record yet) | record (default)
@@ -3623,6 +3626,73 @@ scenario("shop", function(tab)
 end)
 scenario("store", function(tab)
 	shopScene(tab, "StoreController")
+end)
+
+-- lobbyboard[:2|:3]     lobby-shop Task 24 (spec 5.10 "Client", section 15 pages): the lobby board's SurfaceGui
+--                       (client/Controllers/LeaderboardController) on page 1 Trophies (default), 2 Pets found or 3 Ring best,
+--                       no game HUD. A stand-in board (the LobbyLeaderboard model's 16 x 13 Face; only the face matters
+--                       here) gets the real controller's SurfaceGui; a LeaderboardState with ten fake rows per page (the
+--                       pitch mock-up's names), You = #37 on Trophies, the refresh 3:12 away. The canvas is mirrored flat
+--                       into the WorldMirror twice: fitted to the screen (1:1 when it fits) and as it looks face-on from 20
+--                       studs (70 degree vertical field of view). The mirrored rows keep the controller's truncation.
+local LBD = {
+	NAMES = { "CloudHopper22", "MiaSkye", "xXStormFangXx", "PebblePup_99", "NimbusNinja", "LunaLeaf", "sky_rider07", "BiscuitBear", "ZoomyFoxx", "AuroraAce" },
+	VALUES = { Trophies = { 4812, 4390, 4105, 3880, 3512, 3307, 3010, 2894, 2760, 2655 }, Pets = { 34, 33, 33, 32, 31, 30, 29, 29, 28, 27 }, Ring = { 31, 28, 26, 24, 24, 22, 21, 19, 18, 17 } },
+	YOU = { Trophies = { Rank = 37, Value = 1240 }, Pets = { Rank = 5, Value = 31 }, Ring = { Value = 9 } },
+}
+scenario("lobbyboard", function(page)
+	local LC = req("client/Controllers/LeaderboardController")
+	NK.hideGame()
+	local model = make("Model", { Name = "LobbyLeaderboard" })
+	make("Part", { Name = "Face", Size = Vector3.new(16, 13, 0.4), Anchored = true, CanCollide = false, CFrame = CFrame.new(20, 9.5, -43.5) }, model)
+	model.Parent = workspace
+	advance(0.3)
+	local now = workspace:GetServerTimeNow()
+	local state = { Stats = {}, Scope = "Global", NextAt = now + 192, UpdatedAt = now }
+	for k, stat in ipairs(Config.Leaderboard.Pages) do
+		local top = {}
+		for i = 1, 10 do
+			local j = (i + (k - 1) * 3 - 1) % 10 + 1 -- each page its own order
+			top[i] = { UserId = 980000 + j, Name = LBD.NAMES[j], Value = (LBD.VALUES[stat] or LBD.VALUES.Trophies)[i] }
+		end
+		state.Stats[stat] = { Top = top, You = LBD.YOU[stat] or {} }
+	end
+	toClient("LeaderboardState", state)
+	advance(0.2)
+	local stat = Config.Leaderboard.Pages[tonumber(page) or 1] or Config.Leaderboard.Pages[1]
+	LC.SetPage(stat)
+	advance(0.6) -- the headshots (deferred) and one footer tick
+	local gui = LC._S and LC._S.Gui
+	if not gui then
+		note("lobbyboard: the controller built no SurfaceGui")
+		return
+	end
+	local screen = make("ScreenGui", { Name = "WorldMirror", IgnoreGuiInset = true, ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling })
+	local vp = Mock.Viewport
+	local W, H = gui.CanvasSize.X, gui.CanvasSize.Y
+	local fit = min(1, (vp.X - 48) / W, (vp.Y - 112) / H)
+	local far = onScreenScale(gui, 20)
+	local x = 24
+	for _, view in ipairs({ { fit, fmt("%s canvas %dx%d (x%.2f)", stat, W, H, fit) }, { far, fmt("from 20 studs (x%.2f)", far) } }) do
+		local s, cap = view[1], view[2]
+		local cell = make("Frame", { Name = "LobbyBoard", BackgroundTransparency = 1, Position = UDim2.fromOffset(x, 104), Size = UDim2.fromOffset(W * s, H * s) }, screen)
+		for _, c in ipairs(gui:GetChildren()) do
+			if c:IsA("GuiObject") then
+				c:Clone().Parent = cell
+			end
+		end
+		if math.abs(s - 1) > 1e-3 then
+			deepScale(cell, s)
+		end
+		label(screen, cap, 18, {
+			Name = "Caption", Position = UDim2.fromOffset(x, 74), Size = UDim2.fromOffset(max(utf8len(cap) * 10 + 12, W * s), 24),
+			TextXAlignment = Enum.TextXAlignment.Left, TextStrokeTransparency = 0.2, TextStrokeColor3 = NAVY,
+		})
+		x = x + W * s + 36
+	end
+	screen.Parent = LocalPlayer:WaitForChild("PlayerGui")
+	advance(0.1)
+	note(fmt("lobbyboard:%s fit x%.2f, from 20 studs x%.2f (smallest text %.1f px)", stat, fit, far, 30 * far))
 end)
 -- [lobby-shop] end
 

@@ -4751,6 +4751,7 @@ defclass("SurfaceGui", "LayerCollector", {
 		Adornee = T.inst(), AlwaysOnTop = T.bool(false), Active = T.bool(true), Brightness = T.num(1), CanvasSize = T.v2(800, 600),
 		ClipsDescendants = T.bool(true), Face = T.enum("NormalId", "Front"), LightInfluence = T.num(1), PixelsPerStud = T.num(50),
 		SizingMode = T.enum("SurfaceGuiSizingMode", "FixedSize"), ToolPunchThroughDistance = T.num(0), ZOffset = T.num(0),
+		MaxDistance = T.num(0), -- [lobby-shop, Task 24] studs from the camera it still draws at (0 = no limit)
 	},
 })
 defclass("GuiObject", "GuiBase2d", {
@@ -5872,6 +5873,24 @@ service("Players", {
 				return u.Username
 			end
 			error("Players:GetNameFromUserIdAsync() failed: unknown user id " .. tostring(id) .. " (mock)", 2)
+		end,
+		-- [lobby-shop, Task 24] a user's thumbnail (the lobby board's headshots): a content string and isReady (true).
+		-- Mock.ThumbnailCalls[userId] counts the calls (a test may reset it to {}); an id that is not a positive whole
+		-- number errors, and so does every call while Mock.ThumbnailFail is set (a web call that failed)
+		GetUserThumbnailAsync = function(self, userId, thumbType, thumbSize)
+			if rawtype(Mock.ThumbnailCalls) ~= "table" then
+				Mock.ThumbnailCalls = {}
+			end
+			Mock.ThumbnailCalls[userId] = (Mock.ThumbnailCalls[userId] or 0) + 1
+			if Mock.ThumbnailFail then
+				error("Players:GetUserThumbnailAsync() failed (mock)", 2)
+			end
+			if type(userId) ~= "number" or userId <= 0 or userId ~= math.floor(userId) then
+				error("Players:GetUserThumbnailAsync() failed: invalid user id " .. tostring(userId) .. " (mock)", 2)
+			end
+			local kind = thumbType and tostring(thumbType.Name) or "HeadShot"
+			local px = tonumber(tostring(thumbSize and thumbSize.Name or "Size48x48"):match("(%d+)x")) or 48
+			return "rbxthumb://type=" .. ((kind == "HeadShot") and "AvatarHeadShot" or kind) .. "&id=" .. tostring(userId) .. "&w=" .. px .. "&h=" .. px, true
 		end,
 	},
 	init = function(inst)
