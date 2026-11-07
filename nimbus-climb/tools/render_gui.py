@@ -82,9 +82,11 @@ SCENARIOS = ["gallery", "lobby", "title", "match", "match:hit", "countdown", "pa
              "fusion:upgrade",
              # lobby-shop (Task 15): the drawn cut gem (GemIcon) at every size, the piles, the chips, the HUD coin;
              # (Task 19) the three title tags over sketched characters, as they project from 14 / 10 / 30 / 60 studs;
-             # (Task 20) the seven GUI eggs (EggArt) and the egg stage core (EggStage) at six moments of a roll
+             # (Task 20) the seven GUI eggs (EggArt) and the egg stage core (EggStage) at six moments of a roll;
+             # (Task 21) the one Shop window on each of its own tabs
              "gems", "gems:store", "titles", "titles:10", "titles:30", "titles:60",
-             "eggs", "hatch:strip", "hatch:strip3", "hatch:crack", "hatch:reveal", "hatch:reveal3", "hatch:secret"]
+             "eggs", "hatch:strip", "hatch:strip3", "hatch:crack", "hatch:reveal", "hatch:reveal3", "hatch:secret",
+             "shop", "shop:Gems", "shop:Packs", "shop:Passes", "shop:Boosts"]
 
 # ---------------------------------------------------------------------------------------------------
 # Lua world (booted the way tools/smoke.py boots its client world)

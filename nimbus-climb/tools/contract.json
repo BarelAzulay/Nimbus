@@ -496,6 +496,18 @@
         "Driver"
       ]
     },
+    "client/UI/ShopGems": {
+      "optional": true,
+      "functions": [
+        "Build",
+        "Layout",
+        "Refresh",
+        "PackRibbons",
+        "BestValue",
+        "ChestLine",
+        "PotionState"
+      ]
+    },
     "client/UI/PetPicker": {
       "optional": true,
       "functions": [
@@ -1252,6 +1264,22 @@
           "Claimed"
         ]
       }
+    },
+    "client/Controllers/ShopController": {
+      "optional": true,
+      "functions": [
+        "Init",
+        "Open",
+        "Close",
+        "IsOpen",
+        "NormalizeTab",
+        "Tab",
+        "Layout",
+        "Portrait",
+        "Cards",
+        "Palette",
+        "RobuxGlyph"
+      ]
     },
     "client/Controllers/StoreController": {
       "optional": true,

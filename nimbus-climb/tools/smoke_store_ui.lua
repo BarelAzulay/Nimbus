@@ -1,19 +1,22 @@
 -- smoke_store_ui.lua: the Robux Store window (store plan Task 7, W1-store-ui; docs/superpowers/specs/2026-11-04-shop-retention-design.md
 -- 5.1 / 8 / 13b). Loaded by tools/smoke.py in the client and phone worlds only (client_files):
---   client_store_window  (1920x1080) the pill opens the Store (NimbusStore, order 19), not the Cloud Shop; 1260x900;
---                        WindowOpened("Store"); every Id 0 = only Roulettes + "The Store opens soon!"; created items =
---                        cards and tabs; the Starter hero; "..." until GetProductInfo answers (the retry after 10 s), then
---                        the Robux glyph (or R$) + 99; literal Gets-you lines; Buy -> StoreRequest("Buy", key), never a
---                        prompt; Roulettes -> the Cloud Shop; its Gems tab has one Robux Store button (no pack cards) ->
---                        the Currency tab; ShopOpened only from the Cloud Shop; refused in a match
+-- (lobby-shop Task 21: the Store is the one Shop window now, ShopController behind the StoreController forwarder; these
+-- scenarios keep their names and pin the Store's rules inside it: NimbusShop / ShopWindow, five rail tabs always shown.)
+--   client_store_window  (1920x1080) the pill opens the Shop (NimbusShop, order 19), not the Cloud Shop; 1540x910;
+--                        WindowOpened("Store"); every Id 0 = the five tabs + "The Shop opens soon!" on Packs; created
+--                        Robux items = cards (a token pack is a Gems-tab tile); the Starter hero; "..." until
+--                        GetProductInfo answers (the retry after 10 s), then the Robux glyph (or R$) + 99; literal Gets-you
+--                        lines; Buy -> StoreRequest("Buy", key), never a prompt; Tab_Eggs -> the Cloud Shop; its Gems tab
+--                        has one Robux Store button (no pack cards) -> the Shop's Gems tab; ShopOpened only from the Cloud
+--                        Shop; refused in a match
 --   client_store_states  Owned / Claimed / HaveIt (x2 Pet XP forever, a full potion bank) / Active ("58 m left") / Preview
 --                        (StorePreview: Id 0 renders, PREVIEW disabled, prompts nothing; without the flag it hides)
 --   client_store_shine   High: the hero's HeroSpin gradient turns, the Starter card turns its pet in a viewport; Low:
---                        static, no viewport, no tween; no tween under NimbusStore after Close; sounds StorePop (Click)
+--                        static, no viewport, no tween; no tween under NimbusShop after Close; sounds StorePop (Click)
 --                        on a card tap, StoreBuy (Reward) on the "Thank you" toast
 --   client_store_bridge  OpenPanel("Store", { Tab = "Passes" }) opens once on Passes; a second pill tap, Esc and
 --                        MenuController.Close() close it; the top bar still answers; Store / Pets / menu windows never overlap
---   client_store_mobile  (phone world, 844x390) 820x330 at scale 1, texts >= 15 px, tabs 92x42, Buy 150x48, touch
+--   client_store_mobile  (phone world, 844x390) 820x330 at scale 1, texts >= 15 px, tabs 104x48, Buy 150x48, touch
 --                        controls off while open and back after, the Store adds no text to the middle of the screen
 -- Every scenario restores the Config ids, the attributes, the doubles and the swapped functions it touched.
 -- Deterministic: mock clock only. Plain Lua 5.1 syntax only.
@@ -84,8 +87,8 @@ local function clientScenarios()
 		return (hint and hint.Visible and text) and tostring(text.Text) or ""
 	end
 	function H.win()
-		local gui = H.pg():FindFirstChild("NimbusStore")
-		return gui and gui:FindFirstChild("StoreWindow", true)
+		local gui = H.pg():FindFirstChild("NimbusShop")
+		return gui and gui:FindFirstChild("ShopWindow", true)
 	end
 	function H.pressPill(name)
 		local bar = H.pg():FindFirstChild("NimbusTopBar")
@@ -189,9 +192,9 @@ local function clientScenarios()
 		end
 		return n
 	end
-	-- live tweens whose target is under the NimbusStore gui
+	-- live tweens whose target is under the NimbusShop gui
 	function H.storeTweens()
-		local gui = H.pg():FindFirstChild("NimbusStore")
+		local gui = H.pg():FindFirstChild("NimbusShop")
 		local n = 0
 		for tw in pairs(Mock.ActiveTweens) do
 			local ok, target = pcall(function()
@@ -217,10 +220,11 @@ local function clientScenarios()
 		for i, p in ipairs(Config.Gems.Products) do
 			saved.Gems[i] = p.Id
 		end
-		for _, name in ipairs({ "InMatch", "OwnedPasses", "StoreBought", "XpBoostEnds", "StorePreview" }) do
+		for _, name in ipairs({ "InMatch", "OwnedPasses", "StoreBought", "XpBoostEnds", "StorePreview", "PaidRandomItemsRestricted" }) do
 			saved.Attrs[name] = LocalPlayer:GetAttribute(name)
 		end
 		H.setAttr("InMatch", false)
+		H.setAttr("PaidRandomItemsRestricted", false) -- (lobby-shop 16.1: the token packs are buyable on an allowed account)
 		H.setAttr("OwnedPasses", "")
 		H.setAttr("StoreBought", "")
 		H.setAttr("XpBoostEnds", 0)
@@ -245,6 +249,11 @@ local function clientScenarios()
 		end
 		if MC then
 			MC.Close()
+		end
+		-- a fresh session: the Shop's first open shows Packs (lobby-shop Task 21)
+		local Shop = H.ctrl("ShopController")
+		if Shop and type(Shop._S) == "table" then
+			Shop._S.Tab = nil
 		end
 		saved.Opened = {}
 		if MC and MC.WindowOpened then
@@ -274,7 +283,7 @@ local function clientScenarios()
 		for name, v in pairs(saved.Attrs) do
 			H.setAttr(name, v)
 		end
-		for _, name in ipairs({ "InMatch", "OwnedPasses", "StoreBought", "XpBoostEnds", "StorePreview" }) do
+		for _, name in ipairs({ "InMatch", "OwnedPasses", "StoreBought", "XpBoostEnds", "StorePreview", "PaidRandomItemsRestricted" }) do
 			if saved.Attrs[name] == nil then
 				H.setAttr(name, nil)
 			end
@@ -314,19 +323,19 @@ local function clientScenarios()
 		Mock.SetViewport(1920, 1080)
 		KC.advance(0.5)
 		H.pressPill("Shop")
-		local gui = H.pg():FindFirstChild("NimbusStore")
+		local gui = H.pg():FindFirstChild("NimbusShop")
 		T.check(SC.IsOpen() and gui ~= nil and gui.DisplayOrder == 19 and gui.IgnoreGuiInset == true and not MC.IsOpen(),
-			"store window: the pill opens the Store (NimbusStore, order 19), not the Cloud Shop", tostring(SC.IsOpen()) .. " / menu " .. tostring(MC.IsOpen()))
+			"store window: the pill opens the Shop (NimbusShop, order 19), not the Cloud Shop", tostring(SC.IsOpen()) .. " / menu " .. tostring(MC.IsOpen()))
 		local win = H.win()
-		if not T.check(win ~= nil, "store window: the StoreWindow frame exists") then
+		if not T.check(win ~= nil, "store window: the ShopWindow frame exists") then
 			H.finish(saved)
 			return
 		end
-		T.check(H.near(win.AbsoluteSize.X, 1260) and H.near(win.AbsoluteSize.Y, 900) and SC.Layout() == "PC", "store window: 1260x900 at 1080p (PC)",
+		T.check(H.near(win.AbsoluteSize.X, 1540) and H.near(win.AbsoluteSize.Y, 910) and SC.Layout() == "PC", "store window: 1540x910 at 1080p (PC)",
 			fmt("%.0fx%.0f %s", win.AbsoluteSize.X, win.AbsoluteSize.Y, tostring(SC.Layout())))
 		T.eq(H.last(saved.Opened), "Store", "store window: fires MenuController.WindowOpened(\"Store\")")
-		T.check(H.bodyText(win):find("The Store opens soon!", 1, true) ~= nil and H.tabCount(win) == 1,
-			"store window: with every Id 0 and no preview only Roulettes shows and the body says it opens soon", H.tabCount(win) .. " tabs: " .. H.bodyText(win))
+		T.check(H.bodyText(win):find("The Shop opens soon!", 1, true) ~= nil and H.tabCount(win) == 5 and H.activeTab(win) == "Packs",
+			"store window: the five rail tabs always show; with every Id 0 and no preview the Packs page says the Shop opens soon", H.tabCount(win) .. " tabs: " .. H.bodyText(win))
 		H.setId("Starter", 5001)
 		H.setId("VIP", 5002)
 		H.setId("Tokens1", 5003)
@@ -334,10 +343,11 @@ local function clientScenarios()
 		KC.advance(0.2)
 		H.pressPill("Shop")
 		local cards = SC.Cards()
-		T.check(H.tabCount(win) == 4 and H.cardCount(win) == 3 and cards.Starter ~= nil and cards.Starter.State == "Buy" and cards.Starter.Tab == "Packs",
-			"store window: card count = created items (Packs, Passes, Currency + Roulettes)", H.tabCount(win) .. " tabs, " .. H.cardCount(win) .. " cards")
+		T.check(H.tabCount(win) == 5 and H.cardCount(win) == 2 and cards.Starter ~= nil and cards.Starter.State == "Buy" and cards.Starter.Tab == "Packs"
+			and cards.Tokens1 ~= nil and cards.Tokens1.Tab == "Gems" and win:FindFirstChild("TokenPack_1", true) ~= nil,
+			"store window: card count = created Robux items (Packs, Passes); the token pack is a Gems-tab tile", H.tabCount(win) .. " tabs, " .. H.cardCount(win) .. " cards")
 		T.eq(H.heroKey(win), "Starter", "store window: the hero is the Starter while unbought and created")
-		T.eq(H.activeTab(win), "Packs", "store window: it opens on the hero's tab")
+		T.eq(H.activeTab(win), "Packs", "store window: it re-opens on the last tab (Packs, the first open's)")
 		T.eq(cards.Starter and cards.Starter.Price, "...", "store window: \"...\" until the price arrives")
 		MPS.GetProductInfo = function(_, id)
 			return { PriceInRobux = (id == 5001) and 99 or 399 }
@@ -356,8 +366,8 @@ local function clientScenarios()
 			"store window: Buy -> StoreRequest(\"Buy\", key); the client never prompts", #sent .. " sends, " .. saved.Prompts .. " prompts")
 		H.tapBuy(win, "Starter")
 		T.eq(#KC.serverCalls("StoreRequest", mark), 1, "store window: a second Buy inside 1 s sends nothing")
-		H.tapTab(win, "Roulettes")
-		T.check(not SC.IsOpen() and MC.IsOpen() and H.last(saved.Opened) == "Shop", "store window: Roulettes closes the Store and opens the Cloud Shop",
+		H.tapTab(win, "Eggs")
+		T.check(not SC.IsOpen() and MC.IsOpen() and H.last(saved.Opened) == "Shop", "store window: the Eggs tab closes the Shop and opens the Cloud Shop (lobby-shop Task 21 step)",
 			tostring(SC.IsOpen()) .. " / " .. tostring(H.last(saved.Opened)))
 		local menu = H.pg():FindFirstChild("NimbusMenu")
 		local getGems = menu and menu:FindFirstChild("RobuxStore", true)
@@ -385,7 +395,7 @@ local function clientScenarios()
 			Mock.Click(getGems)
 		end
 		KC.advance(0.5)
-		T.check(SC.IsOpen() and H.activeTab(win) == "Currency" and not MC.IsOpen(), "store window: Robux Store -> the Currency tab",
+		T.check(SC.IsOpen() and H.activeTab(win) == "Gems" and not MC.IsOpen(), "store window: Robux Store ({ Tab = \"Currency\" }) -> the Shop's Gems tab",
 			tostring(SC.IsOpen()) .. " / " .. tostring(H.activeTab(win)) .. " / menu " .. tostring(MC.IsOpen()))
 		T.eq(H.calls("TutorialEvent", tutMark, "ShopOpened"), 0, "store window: opening the Store never sends ShopOpened")
 		MC.Open("Shop")
@@ -440,6 +450,8 @@ local function clientScenarios()
 		H.setId("XpPotion1", 5004)
 		H.setId("PetXp2x", 5005)
 		open()
+		SC.Open({ Tab = "Passes" }) -- (the Shop opens on its last tab: the hero shows on its own tab, VIP's Passes)
+		KC.advance(0.4)
 		local win = H.win()
 		local c = SC.Cards()
 		T.check(c.VIP and c.VIP.State == "Owned" and c.Starter and c.Starter.State == "Claimed" and c.XpPotion1 and c.XpPotion1.State == "HaveIt" and H.heroKey(win) == "VIP",
@@ -499,7 +511,7 @@ local function clientScenarios()
 		GQ.Effective = function()
 			return "High"
 		end
-		SC.Open()
+		SC.Open({ Tab = "Packs" })
 		KC.advance(0.5)
 		local win = H.win()
 		local hero = H.card(win, "Starter")
@@ -513,7 +525,7 @@ local function clientScenarios()
 		T.check(hero ~= nil and hero:FindFirstChild("Sheen", true) ~= nil and hero:FindFirstChild("Pulse", true) ~= nil, "store shine: High: the sheen and the Buy pulse are there")
 		SC.Close()
 		KC.advance(0.5)
-		T.eq(H.storeTweens(), 0, "store shine: no tween under NimbusStore after Close")
+		T.eq(H.storeTweens(), 0, "store shine: no tween under NimbusShop after Close")
 		T.check(hero:FindFirstChild("HeroSpin", true) == nil and hero:FindFirstChildWhichIsA("ViewportFrame", true) == nil, "store shine: the shine is torn down on close")
 		GQ.Effective = function()
 			return "Low"
@@ -566,7 +578,7 @@ local function clientScenarios()
 		KC.advance(0.5)
 		local guis = 0
 		for _, g in ipairs(H.pg():GetChildren()) do
-			if g.Name == "NimbusStore" then
+			if g.Name == "NimbusShop" then
 				guis = guis + 1
 			end
 		end
@@ -645,14 +657,14 @@ local function clientScenarios()
 		local small = {}
 		if KC.smallTexts then
 			for _, line in ipairs(KC.smallTexts(15)) do
-				if line:find("NimbusStore", 1, true) then
+				if line:find("NimbusShop", 1, true) then
 					small[#small + 1] = line
 				end
 			end
 		end
-		T.check(KC.smallTexts ~= nil and #small == 0, "store mobile: every Store text is >= 15 px", table.concat(small, "; ", 1, math.min(#small, 5)))
+		T.check(KC.smallTexts ~= nil and #small == 0, "store mobile: every Shop text is >= 15 px", table.concat(small, "; ", 1, math.min(#small, 5)))
 		local tab = win:FindFirstChild("Tab_Packs", true)
-		T.check(tab ~= nil and H.near(tab.AbsoluteSize.X, 92) and H.near(tab.AbsoluteSize.Y, 42), "store mobile: tabs 92x42",
+		T.check(tab ~= nil and H.near(tab.AbsoluteSize.X, 104) and H.near(tab.AbsoluteSize.Y, 48), "store mobile: rail tabs 104x48 (the 280 px body at 844x390, lobby-shop 16.3)",
 			tab and fmt("%.0fx%.0f", tab.AbsoluteSize.X, tab.AbsoluteSize.Y) or "none")
 		local buy = H.buyButton(win, "Starter")
 		T.check(buy ~= nil and H.near(buy.AbsoluteSize.X, 150) and H.near(buy.AbsoluteSize.Y, 48), "store mobile: Buy 150x48",
@@ -664,7 +676,7 @@ local function clientScenarios()
 		-- (the window itself fills a phone: what is pinned is that the Store announces nothing else in the middle)
 		local extra = {}
 		for _, e in ipairs(KC.centredTexts(tol)) do
-			if not before[e.path] and not e.path:find("NimbusStore", 1, true) then
+			if not before[e.path] and not e.path:find("NimbusShop", 1, true) then
 				extra[#extra + 1] = e.path .. " '" .. e.text .. "'"
 			end
 		end
@@ -674,7 +686,7 @@ local function clientScenarios()
 		T.eq(GuiService.TouchControlsEnabled, true, "store mobile: ...and they come back after Close")
 		local left = {}
 		for _, e in ipairs(KC.centredTexts(tol)) do
-			if e.path:find("NimbusStore", 1, true) then
+			if e.path:find("NimbusShop", 1, true) then
 				left[#left + 1] = e.path
 			end
 		end

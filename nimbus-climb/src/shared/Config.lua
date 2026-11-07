@@ -563,7 +563,8 @@ Config.Store = {
 		CapSeconds = 7 * 86400, -- an XP potion bank past this only dims the card (a paid receipt is never refused: it still extends)
 		WarnSeconds = 300, -- the boost chip warns this close to the potion's end
 	},
-	Tabs = { "Packs", "Passes", "Boosts", "Currency", "Roulettes" }, -- the window's tab order; Roulettes hops to the Cloud Shop
+	-- lobby-shop 16.3: the Shop window's rail, in order (the Currency tab folded into Gems; Eggs is the old Roulettes tab)
+	Tabs = { "Eggs", "Gems", "Packs", "Passes", "Boosts" },
 	-- what each perk name does (Multipliers reads these; a pass or a Once pack lists the names it grants)
 	Perks = {
 		CashX2 = { Cash = 2 }, -- x2 Cash at the scoop, the Ring and the Dungeon (bank, piles and berries stay base)
@@ -586,17 +587,17 @@ Config.Store = {
 		{ Key = "XpPotion3", Kind = "Product", Tab = "Boosts", Id = 0, Robux = 99, Name = "XP Potion (3 h)", Grants = { Boost = { XpPotion = 10800 } } },
 		-- lobby-shop 16.1: a Product that grants Tokens (these three and the Pro Pack) is prompted only for an account whose
 		-- GemService.PolicyState is "Allowed" (a token spin can give a Secret); a paid receipt is always granted
-		{ Key = "Tokens1", Kind = "Product", Tab = "Currency", Id = 0, Robux = 49, Name = "1,500 Cloud Tokens", Grants = { Tokens = 1500 } },
-		{ Key = "Tokens2", Kind = "Product", Tab = "Currency", Id = 0, Robux = 149, Name = "7,500 Cloud Tokens", Grants = { Tokens = 7500 } },
-		{ Key = "Tokens3", Kind = "Product", Tab = "Currency", Id = 0, Robux = 399, Name = "30,000 Cloud Tokens", Grants = { Tokens = 30000 } },
+		{ Key = "Tokens1", Kind = "Product", Tab = "Gems", Id = 0, Robux = 49, Name = "1,500 Cloud Tokens", Grants = { Tokens = 1500 } },
+		{ Key = "Tokens2", Kind = "Product", Tab = "Gems", Id = 0, Robux = 149, Name = "7,500 Cloud Tokens", Grants = { Tokens = 7500 } },
+		{ Key = "Tokens3", Kind = "Product", Tab = "Gems", Id = 0, Robux = 399, Name = "30,000 Cloud Tokens", Grants = { Tokens = 30000 } },
 		-- Cash packs: NOT on sale (13b.1: a kid who Prestiges five minutes after buying loses it). Kept with Enabled = false so
 		-- the data is ready if the owner turns them on (Q5). Amounts = 20 min / 1 h / 3 h of the median minute-60 income of
 		-- tools/sim_tycoon.py --quiet (146 Cash/s on 2026-11-04), rounded to two figures.
-		{ Key = "Cash1", Kind = "Product", Tab = "Currency", Id = 0, Robux = 49, Name = "Cash (20 min)", Enabled = false,
+		{ Key = "Cash1", Kind = "Product", Tab = "Gems", Id = 0, Robux = 49, Name = "Cash (20 min)", Enabled = false,
 			Grants = { Cash = 180000 }, Line = "Cash resets when you Prestige, so spend it!" },
-		{ Key = "Cash2", Kind = "Product", Tab = "Currency", Id = 0, Robux = 149, Name = "Cash (1 h)", Enabled = false,
+		{ Key = "Cash2", Kind = "Product", Tab = "Gems", Id = 0, Robux = 149, Name = "Cash (1 h)", Enabled = false,
 			Grants = { Cash = 530000 }, Line = "Cash resets when you Prestige, so spend it!" },
-		{ Key = "Cash3", Kind = "Product", Tab = "Currency", Id = 0, Robux = 399, Name = "Cash (3 h)", Enabled = false,
+		{ Key = "Cash3", Kind = "Product", Tab = "Gems", Id = 0, Robux = 399, Name = "Cash (3 h)", Enabled = false,
 			Grants = { Cash = 1600000 }, Line = "Cash resets when you Prestige, so spend it!" },
 	},
 	-- lobby shop (docs/superpowers/specs/2026-11-07-lobby-shop-design.md 5.3 / 5.8): items bought with gems, not Robux, through

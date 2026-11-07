@@ -1,20 +1,20 @@
 -- StoreCatalog: the Robux Store's catalog (docs/superpowers/specs/2026-11-04-shop-retention-design.md 5.1 / 5.4; the
 -- store plan, Task 4): the ONE product / pass lookup over Config.Store.Items AND Config.Gems.Products, the "Gets you:"
 -- lines of a grant, and Validate. Pure data + logic: no Instances, safe on server and client (GemService routes every
--- receipt through ProductById -> StoreService.ApplyGrant; StoreController draws List). Config.Store.Items,
+-- receipt through ProductById -> StoreService.ApplyGrant; ShopController draws List). Config.Store.Items,
 -- Config.Gems.Products and Config.Store.GemItems (the items bought with gems, lobby shop 2026-11-07: GemItems / GemItem,
 -- StoreService.BuyWithGems) are read on EVERY call (the owner pastes ids; tests change them). PetCatalog is required lazily
 -- (only Validate and GrantLines touch it), so List / Item / ProductById / PassById stay cheap on the client and in the
 -- sims. Plain Lua 5.1-compatible syntax only.
 --
 -- API
---   StoreCatalog.Tabs                    a copy of Config.Store.Tabs (Packs, Passes, Boosts, Currency, Roulettes)
+--   StoreCatalog.Tabs                    a copy of Config.Store.Tabs (lobby-shop 16.3: Eggs, Gems, Packs, Passes, Boosts)
 --   StoreCatalog.List() -> { item... }   every Config.Store.Items entry with Enabled ~= false as a cleaned copy
 --                                        { Key, Kind, Tab, Id (whole, >= 0), Robux, Name, Grants (by reference), Once,
 --                                        Hero, Line, Created = Id > 0 }, in Config order, then one item per
---                                        Config.Gems.Products entry: { Key = "Gems<i>", Kind = "Product", Tab = "Currency",
+--                                        Config.Gems.Products entry: { Key = "Gems<i>", Kind = "Product", Tab = "Gems",
 --                                        Id, Robux (the suggested price, lobby-shop 16.1), Name, Grants = { Gems }, Gem =
---                                        true, Index = i, Hero = (i == 2: the Bag is the Currency hero), Created }
+--                                        true, Index = i, Hero = (i == 3: the Chest is the Gems hero, lobby-shop 16.3), Created }
 --   StoreCatalog.Item(key) -> item | nil        a List item by Key (an Enabled = false entry answers nil)
 --   StoreCatalog.ProductById(id) -> item | nil  Kind "Product" with Id == id > 0, the first match; the gem packs included;
 --                                        a disabled entry still resolves (a paid receipt is never eaten; it is only
@@ -37,7 +37,7 @@
 --                                        1..1e9, Tokens 1..1e7, Gems 1..1e7, Boost.XpPotion 60..Potion.CapSeconds; every
 --                                        Pets key a PetCatalog id with Count 1..MaxPerStack and Level 1..MaxPetLevel();
 --                                        every Perks name in Config.Store.Perks; Robux a whole number >= 0 when present;
---                                        at most one Hero per tab among the Config items; the Currency Cash packs carry Line;
+--                                        at most one Hero per tab among the Config items; the Cash packs carry Line;
 --                                        every GemItems entry: a Key unique among them AND the Store items, Gems a whole
 --                                        number 1..1e7, a Name, Grants = { Boost = { XpPotion = 60..Potion.CapSeconds } } only
 
@@ -55,7 +55,7 @@ local PERK_LINES = {
 local LIMITS = { Cash = 1e9, Tokens = 1e7, Gems = 1e7 } -- the largest whole grant of each currency
 local MIN_POTION_SECONDS = 60
 local GRANT_KEYS = { Pets = true, Cash = true, Tokens = true, Gems = true, Boost = true, Perks = true }
-local GEM_HERO_INDEX = 2 -- the Bag of Gems is the Currency tab's hero (spec 5.1)
+local GEM_HERO_INDEX = 3 -- lobby-shop 16.3: the Chest of Gems is the Gems tab's hero (the A mock)
 
 ----------------------------------------------------------------------
 -- helpers
@@ -141,7 +141,7 @@ local function gemItem(index, product)
 	return {
 		Key = "Gems" .. tostring(index),
 		Kind = "Product",
-		Tab = "Currency",
+		Tab = "Gems",
 		Id = id,
 		Robux = product.Robux,
 		Name = product.Name,
@@ -431,7 +431,8 @@ function StoreCatalog.Validate()
 					end
 				end
 			end
-			if it.Kind == "Product" and it.Tab == "Currency" and g.Cash ~= nil and type(it.Line) ~= "string" then
+			-- (a Cash pack: a Product whose only grant is Cash, whatever its tab: lobby-shop 16.3 folded the Currency tab)
+			if it.Kind == "Product" and g.Cash ~= nil and next(g, next(g)) == nil and type(it.Line) ~= "string" then
 				bad(label .. ": a Cash pack carries its Prestige Line")
 			end
 		end

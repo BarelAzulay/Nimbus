@@ -1312,7 +1312,8 @@ end
 function P5.store()
 	if P5.Store == nil then
 		P5.Store = false
-		local module = script.Parent:FindFirstChild("StoreController")
+		-- lobby-shop Task 21: the one Shop window (ShopController; the StoreController forwarder when a build lacks it)
+		local module = script.Parent:FindFirstChild("ShopController") or script.Parent:FindFirstChild("StoreController")
 		local ok, mod = pcall(function()
 			return module and require(module)
 		end)

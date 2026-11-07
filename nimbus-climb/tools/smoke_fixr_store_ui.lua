@@ -16,6 +16,9 @@
 --                                 the window, every tab on screen >= 44 px with its label fitting, every card full width
 --                                 with every text fitting its box (real font widths: TextService measures them for the
 --                                 scenario) inside the card, Buy >= 44 px; 844x390 is the landscape layout again
+-- (lobby-shop Task 21: the Store is the one Shop window, NimbusShop / ShopWindow, behind the StoreController forwarder; the
+-- gem and token packs are Gems-tab tiles, so the card counts are the 7 Packs / Passes / Boosts items, the heroes 2+, and
+-- the portrait header is Header > Title, Balance_Gems, Balance_Tokens, CloseButton.)
 -- Every scenario restores the Config ids, the attributes, TextureIds / Config.Icons and the swapped functions it touched.
 -- Deterministic: mock clock only. Plain Lua 5.1 syntax only.
 
@@ -77,8 +80,8 @@ local function clientScenarios()
 		end
 	end
 	function H.win()
-		local gui = H.pg():FindFirstChild("NimbusStore")
-		return gui and gui:FindFirstChild("StoreWindow", true)
+		local gui = H.pg():FindFirstChild("NimbusShop")
+		return gui and gui:FindFirstChild("ShopWindow", true)
 	end
 	function H.card(win, key)
 		return win and win:FindFirstChild("Card_" .. key, true)
@@ -205,7 +208,7 @@ local function clientScenarios()
 	end
 
 	-- every scenario starts from the same place and puts everything back (the smoke_store_ui.lua H.begin / H.finish shape)
-	local ATTRS = { "InMatch", "OwnedPasses", "StoreBought", "XpBoostEnds", "StorePreview" }
+	local ATTRS = { "InMatch", "OwnedPasses", "StoreBought", "XpBoostEnds", "StorePreview", "PaidRandomItemsRestricted" }
 	function H.begin()
 		local Config = KC.env()
 		local saved = { Ids = {}, Gems = {}, Attrs = {}, Viewport = { Mock.Viewport.X, Mock.Viewport.Y } }
@@ -223,6 +226,7 @@ local function clientScenarios()
 		H.setAttr("StoreBought", "")
 		H.setAttr("XpBoostEnds", 0)
 		H.setAttr("StorePreview", nil)
+		H.setAttr("PaidRandomItemsRestricted", false) -- (lobby-shop 16.1: an allowed account)
 		for _, it in ipairs(Config.Store.Items) do
 			it.Id = 0
 		end
@@ -282,10 +286,11 @@ local function clientScenarios()
 			p.Id = 6100 + i
 		end
 	end
-	function H.reopen(SC)
+	-- (the Shop opens on its last tab; `tab` picks one: a tab's hero shows on its own page)
+	function H.reopen(SC, tab)
 		SC.Close()
 		KC.advance(0.2)
-		SC.Open()
+		SC.Open(tab and { Tab = tab } or nil)
 		KC.advance(0.5)
 	end
 
@@ -415,7 +420,8 @@ local function clientScenarios()
 		H.reopen(SC)
 		local win = H.win()
 		local cards = H.cards(win)
-		T.check(#cards >= 12, "store colors: every created pack has a card", #cards .. " cards")
+		-- (lobby-shop Task 21: the gem and token packs are Gems-tab tiles now; the Packs / Passes / Boosts cards are 7)
+		T.check(#cards >= 7, "store colors: every created Robux pack has a card", #cards .. " cards")
 		local missing, dull, pale, unstroked = {}, {}, {}, {}
 		local seenTab, seenAll, clash = {}, {}, {}
 		local byTab = {}
@@ -475,7 +481,7 @@ local function clientScenarios()
 				end
 			end
 		end
-		T.check(heroes >= 3 and #dim == 0, "store colors: each tab's hero is its brightest card with the thickest outline", heroes .. " heroes; " .. table.concat(dim, "; "))
+		T.check(heroes >= 2 and #dim == 0, "store colors: each tab's hero is its brightest card with the thickest outline", heroes .. " heroes; " .. table.concat(dim, "; "))
 		-- a Have-it card greys out (x2 Pet XP owned) and gets its own colours back
 		local before = H.paint(H.card(win, "XpPotion1"))
 		H.setAttr("OwnedPasses", "PetXp2x")
@@ -503,7 +509,7 @@ local function clientScenarios()
 		H.setId("Pro", 5006)
 		H.setId("VIP", 5002)
 		H.setAttr("StoreBought", nil) -- the record is still loading (or provisional): the server writes no StoreBought
-		H.reopen(SC)
+		H.reopen(SC, "Passes")
 		local win = H.win()
 		local c = SC.Cards()
 		local starterBuy, proBuy = H.buyButton(win, "Starter"), H.buyButton(win, "Pro")
@@ -695,15 +701,16 @@ local function clientScenarios()
 				KC.advance(0.5)
 				local tag = "store portrait: 360x640 (" .. pass.Tag .. ")"
 				local win = H.win()
-				local gui = H.pg():FindFirstChild("NimbusStore")
+				local gui = H.pg():FindFirstChild("NimbusShop")
 				local wb = win and H.box(win)
 				T.check(win ~= nil and SC.IsOpen() and SC.Layout() == "Phone" and H.within(wb, H.box(gui)) and (wb.x1 - wb.x0) >= 300,
-					tag .. " (setup) the Store opens inside the screen", win and H.desc(win) or "no window")
-				-- the title bar: the title under no balance pill, the pills and the X inside the window, the X >= 44
-				local bar = win:FindFirstChild("TitleBar", true)
+					tag .. " (setup) the Shop opens inside the screen", win and H.desc(win) or "no window")
+				-- the header: the title under no balance pill, the pills and the X inside the window, the X >= 44 (lobby-shop
+				-- Task 21: Header, CloseButton, two pills: no Cash item is on sale)
+				local bar = win:FindFirstChild("Header", true)
 				local title = bar and bar:FindFirstChild("Title")
 				local clash, outside = {}, {}
-				for _, id in ipairs({ "Tokens", "Cash", "Gems" }) do
+				for _, id in ipairs({ "Tokens", "Gems" }) do
 					local pill = bar and bar:FindFirstChild("Balance_" .. id)
 					if not pill or not H.shownIn(pill) then
 						outside[#outside + 1] = "Balance_" .. id .. " missing"
@@ -719,8 +726,8 @@ local function clientScenarios()
 				T.check(title ~= nil and #clash == 0, tag .. " the title sits under no balance pill", table.concat(clash, "; "))
 				local okTitle, dTitle = H.fits(title)
 				T.check(okTitle, tag .. " ...and its text fits", dTitle)
-				T.check(#outside == 0, tag .. " the three balance pills inside the window", table.concat(outside, "; "))
-				local close = bar and bar:FindFirstChild("Close")
+				T.check(#outside == 0, tag .. " the two balance pills inside the window", table.concat(outside, "; "))
+				local close = bar and bar:FindFirstChild("CloseButton")
 				T.check(close ~= nil and H.within(H.box(close), wb) and close.AbsoluteSize.X >= 43.5 and close.AbsoluteSize.Y >= 43.5, tag .. " the X inside the window, >= 44 px", close and H.desc(close) or "no X")
 				-- the tabs: each inside the window, >= 44 px, its label fits, no two overlap
 				local tabs, badTabs = {}, {}
@@ -747,7 +754,8 @@ local function clientScenarios()
 				for _, tabName in ipairs(Config.Store.Tabs) do
 					local tb = win:FindFirstChild("Tab_" .. tabName, true)
 					local page = win:FindFirstChild("Page_" .. tabName, true)
-					if tabName ~= "Roulettes" and tb and H.shownIn(tb) and page then
+					-- (Eggs hops to the Cloud Shop; the Gems page holds tiles, checked by client_shop_portrait)
+					if tabName ~= "Eggs" and tabName ~= "Gems" and tb and H.shownIn(tb) and page then
 						Mock.Click(tb)
 						KC.advance(0.3)
 						local pb = H.box(page)
@@ -777,9 +785,9 @@ local function clientScenarios()
 						end
 					end
 				end
-				T.check(checked >= 12 and #badCards == 0, tag .. " every card full width, every card text fits its box (real font widths) inside the card, Buy >= 44 px",
+				T.check(checked >= 7 and #badCards == 0, tag .. " every card full width, every card text fits its box (real font widths) inside the card, Buy >= 44 px",
 					checked .. " cards; " .. table.concat(badCards, "; "))
-				local pf = win:FindFirstChild("Pages", true)
+				local pf = win:FindFirstChild("Body", true)
 				T.info("*" .. tag .. ": window " .. H.desc(win) .. ", pages " .. (pf and H.desc(pf) or "?") .. ", cards " .. table.concat(sizes, ", "))
 			end
 			-- back to a landscape phone: the cards go back to one-line texts and the side tab column

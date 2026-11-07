@@ -102,6 +102,7 @@ NeonKit.Glyphs = {
 	Boosts = "\240\159\167\170", -- test tube (the potions)
 	Currency = "\240\159\146\176", -- money bag
 	Roulettes = "\240\159\142\161", -- ferris wheel
+	Eggs = "\240\159\165\154", -- egg (lobby-shop 16.3: the Shop's Eggs tab and its header icon)
 	Gifts = "\240\159\142\129", -- wrapped gift
 	Repair = "\240\159\148\167", -- wrench (the Gifts window's streak repair: a claim that pays nothing)
 	VipCrown = "\240\159\145\145", -- crown

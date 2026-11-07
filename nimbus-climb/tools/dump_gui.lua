@@ -40,8 +40,11 @@
 --   train[:<key>]         the Training Place window (default: the pet that is training, with its timer and Stop);
 --                         train:mats = gui-redo Task 8's mats row (see the [gui-redo] block)
 --   daily[:locked|:play]  gui-redo Tasks 9-10: the Gifts window (see the [gui-redo] block)
---   gems[:store]          lobby-shop Task 15: the drawn cut gem at every size, piles, chips, the HUD coin; store = the Store's
---                         Currency tab with the gem pack piles ([lobby-shop] block)
+--   gems[:store]          lobby-shop Task 15: the drawn cut gem at every size, piles, chips, the HUD coin; store = the Shop's
+--                         Gems tab with the gem pack piles ([lobby-shop] block)
+--   shop[:<tab>]          lobby-shop Task 21: the one Shop window (ShopController) on Gems / Packs (default) / Passes /
+--                         Boosts, every item created, live prices answered; store[:<tab>] the same through the
+--                         StoreController forwarder ([lobby-shop] block)
 --   titles[:<studs>]      lobby-shop Task 19: the three title tags (rainbow TOP 10, gold TOP 100, CREATOR with the VIP crown)
 --                         over sketched characters seen from <studs> away (default 14), a name stand-in at the anchor
 --                         ([lobby-shop] block)
@@ -3237,8 +3240,9 @@ end
 --                       (the simple form under 28 px), the 96 px one again mid-shine, piles of 1 / 2 / 4 / 6, amount chips at
 --                       20 / 24 px (and an 8-digit balance), NeonKit.Icon("Gems") on an orb. A still frame: the other icons
 --                       are made without the shine.
--- gems:store            the Robux Store on its Currency tab with the gem packs created: each pack's art is a GemIcon.Pile
---                       (1 / 2 / 4 / 6 by pack order) and the Gems balance pill holds a GemIcon
+-- gems:store            the Shop on its Gems tab (lobby-shop Task 21; the Store's Currency tab before) with the gem packs
+--                       created: each pack's art is a GemIcon.Pile (1 / 2 / 4 / 6 by pack order) and the Gems balance pill
+--                       holds a GemIcon
 scenario("gems", function(view)
 	LocalPlayer:SetAttribute(Config.Attr.Cash, 12400)
 	LocalPlayer:SetAttribute(Config.Attr.Gems, 1250)
@@ -3247,7 +3251,7 @@ scenario("gems", function(view)
 		for i, p in ipairs(Config.Gems.Products) do
 			p.Id = 7100 + i
 		end
-		req("client/Controllers/StoreController").Open({ Tab = "Currency" })
+		req("client/Controllers/ShopController").Open({ Tab = "Gems" })
 		advance(1.5)
 		return
 	end
@@ -3550,6 +3554,52 @@ scenario("hatch", function(view)
 		advance(1 / 30)
 	end
 	note(fmt("hatch:%s at %.2f s: phase %s, layout %s, %d instances", view, os.clock() - t0, tostring(ES.Phase()), tostring(ES.Layout()), ES.Stats().Instances))
+end)
+
+-- shop[:<tab>]          lobby-shop Task 21 (spec 16.3): the one Shop window (client/Controllers/ShopController) on its tab
+--                       (Gems, Packs (default), Passes, Boosts): every Store item and gem pack created, the live prices answered
+--                       (Config Robux), an allowed account (PaidRandomItemsRestricted false), a few gems and tokens, the
+--                       Starter Pack unbought (Tab_Packs' dot)
+-- store[:<tab>]         the same, opened through the StoreController forwarder (old callers; "Currency" -> the Gems tab)
+local function shopScene(tab, via)
+	for i, it in ipairs(Config.Store.Items) do
+		it.Id = 7000 + i
+	end
+	for i, p in ipairs(Config.Gems.Products) do
+		p.Id = 7100 + i
+	end
+	local MPS = game:GetService("MarketplaceService")
+	MPS.GetProductInfo = function(_, id)
+		for i, it in ipairs(Config.Store.Items) do
+			if id == 7000 + i then
+				return { PriceInRobux = it.Robux or 99 }
+			end
+		end
+		for i, p in ipairs(Config.Gems.Products) do
+			if id == 7100 + i then
+				return { PriceInRobux = p.Robux or 49 }
+			end
+		end
+		return { PriceInRobux = 99 }
+	end
+	LocalPlayer:SetAttribute(Config.Attr.Gems, 1250)
+	LocalPlayer:SetAttribute(Config.Attr.Tokens, 12480)
+	LocalPlayer:SetAttribute("PaidRandomItemsRestricted", false)
+	LocalPlayer:SetAttribute("GemsSettled", true)
+	LocalPlayer:SetAttribute("XpPassState", "NotOwned")
+	LocalPlayer:SetAttribute("StoreBought", "")
+	LocalPlayer:SetAttribute("OwnedPasses", "")
+	advance(0.6)
+	local Shop = req("client/Controllers/ShopController")
+	req("client/Controllers/" .. (via or "ShopController")).Open({ Tab = tab or "Packs" })
+	advance(1.5)
+	note(fmt("shop:%s layout %s", tostring(Shop.Tab()), tostring(Shop.Layout())))
+end
+scenario("shop", function(tab)
+	shopScene(tab, "ShopController")
+end)
+scenario("store", function(tab)
+	shopScene(tab, "StoreController")
 end)
 -- [lobby-shop] end
 

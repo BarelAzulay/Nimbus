@@ -8,7 +8,8 @@
 --     Pile 1 / 2 / 3 / 4 / 6 -> that many GemIcon children at the pitch's PILE offsets; Amount(1250).Value = "1,250",
 --       SetAmount re-measures; NeonKit.Icon("Gems") = a TextLabel "Icon" with no text hosting a GemIcon
 --     the HUD Gems coin holds a GemIcon at coin size, its badge is the navy panel fill with a cyan UIStroke ring
---     census: the HUD, the Store (Currency tab), Daily, Arena (Raid), the Dungeon window, Pets, Index, the Care feed list,
+--     census: the HUD, the Shop (Gems tab; the Store's Currency tab before lobby-shop Task 21), Daily, Arena (Raid), the
+--       Dungeon window, Pets, Index, the Care feed list,
 --       Train, the pet picker, the Trove panel and Fusion (Upgrade and Mix): no shown TextLabel / TextButton text holds the
 --       glyph; and no client source (MenuController's old shop aside: Tasks 16-18 replace it) spells the glyph or
 --       Theme.Currency.Gems.Glyph (the run / end cards of the Dungeon, which the census does not open)
@@ -106,7 +107,7 @@ function G.profile()
 	return ids
 end
 function G.closeAll()
-	for _, name in ipairs({ "MenuController", "CareController", "IndexController", "FusionController", "StoreController", "DailyController",
+	for _, name in ipairs({ "MenuController", "CareController", "IndexController", "FusionController", "ShopController", "DailyController",
 		"ArenaController", "DungeonController", "TroveController", "PetsController" }) do
 		local m = G.ctrl(name)
 		if m and type(m.Close) == "function" then
@@ -354,11 +355,12 @@ S.client_gem_icon = guarded("client_gem_icon", function()
 	end
 	local census = {
 		{ "the HUD", function() end },
-		{ "the Store (Currency tab)", function()
+		{ "the Shop (Gems tab)", function()
+			-- (lobby-shop Task 21: the Store's Currency tab is the one Shop window's Gems tab)
 			for i, p in ipairs(Config.Gems.Products) do
 				p.Id = 7100 + i
 			end
-			G.ctrl("StoreController").Open({ Tab = "Currency" })
+			G.ctrl("ShopController").Open({ Tab = "Gems" })
 		end },
 		{ "Daily", function()
 			KC.toClient("DailyState", G.dailyPayload())

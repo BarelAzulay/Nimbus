@@ -996,8 +996,8 @@ local function clientScenarios()
 			return out
 		end
 		local function storeWin()
-			local gui = H.pg():FindFirstChild("NimbusStore")
-			return gui and gui:FindFirstChild("StoreWindow", true)
+			local gui = H.pg():FindFirstChild("NimbusShop") -- (lobby-shop Task 21: the Store is the Shop window)
+			return gui and gui:FindFirstChild("ShopWindow", true)
 		end
 		local okRun, errRun = pcall(function()
 			H.fire(H.base(H.now()))

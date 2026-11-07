@@ -20,7 +20,8 @@ local CONTROLLER_NAMES = {
 	"PetsController", -- team balance: the Pets window (MenuController delegates to it)
 	"TopBarController", -- HUD cleanup: the top-left pill (Shop / Travel / Settings)
 	-- store (2026-11-04)
-	"StoreController", -- the full-size Robux Store window (packs, passes, potions, Tokens, Gems)
+	"ShopController", -- lobby-shop Task 21: the one Shop window (tab rail: Eggs, Gems, Packs, Passes, Boosts)
+	"StoreController", -- the forwarder kept for old callers (everything goes to ShopController)
 	"DailyController", -- the Gifts button, its pip and the streak / play-time window
 	"BoostBadgeController", -- the boost chips (XP potion, passes) under the currency pills
 	"VipController", -- the VIP chat tag and the lobby crown
@@ -75,7 +76,7 @@ local OPTIONAL = { PetsController = true, SkyDragonController = true, IndexContr
 	MainMenuController = true, DungeonController = true, ObbyController = true, FountainFx = true,
 	MeadowFx = true, RingCrowdFx = true, DungeonFx = true,
 	RingAmbience = true,
-	StoreController = true, DailyController = true, BoostBadgeController = true, VipController = true, TroveController = true,
+	ShopController = true, StoreController = true, DailyController = true, BoostBadgeController = true, VipController = true, TroveController = true,
 	TitleController = true }
 
 local client = script.Parent
