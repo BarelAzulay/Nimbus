@@ -148,7 +148,7 @@ local PORTAL = {
 	SpinSeconds = 6,
 	BeamTop = 160, -- the sky beam's top (studs over the disc)
 	ReturnUp = 4.5, -- the return ring's Part fallback: the opening's centre over the deck, its radius and count
-	ReturnR = 3.9,
+	ReturnR = 3.8, -- (segments 0.7 x 0.7: the ring tops out 8.65 over the deck, the mesh's own top)
 	ReturnN = 13,
 	MeshDrop = 0.85, -- the portal_ring mesh pivot under the deck: its plinth top (1.0 up) ends 0.05 under the octagons
 	SignFace = Vector3.new(0, 8.25, -1.25), -- the portal_ring manifest's SignFace attachment (the navy board's front)
@@ -1517,14 +1517,14 @@ local function buildReturnPortal(parent, A, gapDeg)
 	-- the standing ring's Part fallback: segments round the opening's centre in the ring's plane (cf's XY plane)
 	local ring = newModel(m, "Ring")
 	local n, rr = PORTAL.ReturnN, PORTAL.ReturnR
-	local seg = Vector3.new(2 * rr * math.tan(math.rad(180 / n)) + 0.08, 0.45, 0.5)
+	local seg = Vector3.new(2 * rr * math.tan(math.rad(180 / n)) + 0.08, 0.7, 0.7)
 	local mid = cf * CFrame.new(0, PORTAL.ReturnUp, 0)
 	for k = 0, n - 1 do
 		block(ring, "RingSegment", mid * CFrame.Angles(0, 0, -math.rad(k * 360 / n)) * CFrame.new(0, rr, 0), seg, C.ReturnGreen, { Material = MAT.Neon, Shadow = false })
 	end
 	-- two stone feet under the ring's sides, outside the 4x6x4 box over the pad (inner faces 2.9 studs out)
 	for _, s in ipairs({ -1, 1 }) do
-		block(ring, "PortalFoot", cf * CFrame.new(s * 3.5, 1.3, 0), Vector3.new(1.2, 2.6, 1.2), C.StoneB, { Shadow = false })
+		block(ring, "PortalFoot", cf * CFrame.new(s * 3.5, 1.45, 0), Vector3.new(1.2, 2.9, 1.2), C.StoneB, { Shadow = false })
 	end
 	local origin = cf * CFrame.new(0, -PORTAL.MeshDrop, 0)
 	ring.WorldPivot = origin
