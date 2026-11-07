@@ -1,0 +1,2056 @@
+-- EggStage (client UI; lobby-shop Task 20, docs/superpowers/specs/2026-11-07-lobby-shop-design.md 16.4 "The egg-opening
+-- cutscene" and 5.5 "The egg stage"): the stage core every roulette spin plays through. The one BuyRoulette request path,
+-- the RouletteResult listener and its queue, and the seven phases with their final names and timings, drawn with plain
+-- visuals (the painted eggs come in Task 26, the dressed cutscene in Task 27; ShopController calls Init in Task 22).
+--
+--   EggStage.Init()                        connects the RouletteResult listener (once)
+--   EggStage.Show(result) -> bool          plays a RouletteResult (new shape with Pulls, or the old top-level shape); a
+--                                          result that comes while a roll plays waits in the queue (DONE plays it)
+--   EggStage.Request(rouletteId, currency, spins) -> bool   the only BuyRoulette sender: FIRE_GAP 0.3 s, the pending
+--                                          flag, WAIT_TIMEOUT 7 s (then a toast); a failure answer is one toast
+--   EggStage.IsPending() / IsShowing() / Phase() -> "Intro" | "Strip" | "Land" | "Rise" | "Crack" | "Burst" | "Reveal" | nil
+--   EggStage.Skip()                        before the reveal: the reveal starts on the next frame (sounds stop)
+--   EggStage.Back()                        Esc's one path (ShopController's Esc handler, Task 22): skip before the
+--                                          reveal, DONE on it. EggStage has NO UserInputService handler of its own.
+--   EggStage.Done()                        DONE on the reveal (the next queued result plays in place); a skip before it
+--   EggStage.Close()                       closes from anyone else (MenuController.Close, Task 22); toasts the pulls not
+--                                          shown yet
+--   EggStage.Timings(fast, spins) -> { Intro, Strip, Land, Rise, Crack, Burst, Stagger, LandGap, RevealAt }
+--   EggStage.NoteText(pull, rarity) -> the reveal's note; EggStage.Layout() -> "PC" | "Phone" | "Portrait"
+--   EggStage.IsPrewarmed(petId) -> true once that pet's model was built for the reveal (warmed during the strip)
+--   EggStage.Stats() -> { Instances, Tweens, Sparks, Effects, Heartbeats }  this module's GUI instances (a ViewportFrame
+--                                          counts as one), playing tweens and Heartbeats; Sparks / Effects are Task 27's
+--   signals Pending(rouletteId, currency, spins), Answered(result), Opened(), Closed(reason)
+--   EggStage._Answer(result)               the RouletteResult listener's body (tests call it while MenuController's old
+--                                          stage still listens to the remote, until Task 22)
+--
+-- Instances: NimbusHatch (DisplayOrder 25, IgnoreGuiInset, ResetOnSpawn false) > Stage > Dim (the tap-anywhere button),
+-- Vignette, Content (the area under the top bar, UIScale "Fit") > Title, Strips > Strip1..3 > Track (a non-scrolling
+-- ScrollingFrame: it clips) > Cell1..12, Pointer; Hero > Pedestal1..3, Backlight1..3, Egg1..3, Halves1..3, CrackWord;
+-- Burst > Shock, Rays, Sparks; Reveal > Col1..3 > Banner (Word), Shell, Pet, Name, New, Note, EvolvedRibbon; BottomBar >
+-- Skip, FastHatch, SpinAgain, Done; then Stage > Flash. Strip cells are recycled (at most 12 per strip): a cell re-skins
+-- its egg with EggArt.SetRarity when it wraps. Attributes for tests: Strip<j>.Landed, Egg<j>.State (Rise / Crack / Burst
+-- / Open).
+--
+-- Never breaks the player (16.4): it writes nothing to the Camera or the Humanoid and plays on through a death or a
+-- respawn; one teardown(reason) ends every exit ("Done" | "Error" | "Match" | "Close") and fires Closed(reason) last.
+-- Gamepad B: "NimbusHatchBack" at ContextActionPriority High + 1, bound only while the stage shows, always Sink.
+-- Plain Lua 5.1-compatible syntax only. Text goes through Theme roles.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local ContextActionService = game:GetService("ContextActionService")
+local GuiService = game:GetService("GuiService")
+local TextService = game:GetService("TextService")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared:WaitForChild("Config"))
+local Util = require(Shared:WaitForChild("Util"))
+local Theme = require(Shared:WaitForChild("Theme"))
+local PetCatalog = require(Shared:WaitForChild("PetCatalog"))
+local Remotes = require(Shared:WaitForChild("Remotes"))
+
+local UIFolder = script.Parent
+local ClientFolder = UIFolder.Parent
+local EggArt = require(UIFolder:WaitForChild("EggArt"))
+local GemIcon = require(UIFolder:WaitForChild("GemIcon"))
+local CloudUI = require(UIFolder:WaitForChild("CloudUI"))
+local NeonKit = require(UIFolder:WaitForChild("NeonKit"))
+local PetBits = require(UIFolder:WaitForChild("PetBits"))
+local State = require(ClientFolder:WaitForChild("State"))
+local ClientSettings = require(ClientFolder:WaitForChild("ClientSettings"))
+
+local LocalPlayer = Players.LocalPlayer
+local DOT = "\194\183"
+
+local EggStage = {}
+EggStage.Pending = Util.Signal()
+EggStage.Answered = Util.Signal()
+EggStage.Opened = Util.Signal()
+EggStage.Closed = Util.Signal()
+
+local K = {
+	GUI = "NimbusHatch",
+	ORDER = 25,
+	BACK_ACTION = "NimbusHatchBack",
+	FIRE_GAP = 0.3, -- seconds between two BuyRoulette sends
+	WAIT_TIMEOUT = 7, -- seconds to wait for a RouletteResult
+	TAP_GUARD = 0.5, -- a tap on the reveal closes it only this long after it appeared (the skip tap never also closes it)
+	NEXT_GAP = 0.15,
+	STRIP_LEN = 40,
+	WIN = 34,
+	START_CELL = 4.5, -- the pointer starts over cell 5's centre (cell i spans i-1 .. i)
+	CURVE = 2.8, -- the strip's ease (1 - (1 - t) ^ CURVE), today's
+	TICKS_PER_S = 12,
+	MAX_CELLS = 12,
+	DIM = 0.45, -- the navy dim's final transparency (0.55 strong)
+	VIGNETTE = 0.25, -- the vignette edges' final transparency
+	NAVY = Color3.fromRGB(8, 12, 32),
+	INK = Color3.fromRGB(11, 16, 48),
+	GOLD = Color3.fromRGB(242, 182, 68),
+	WHITE = Color3.new(1, 1, 1),
+	TRACK = Color3.fromRGB(14, 22, 58),
+	CELL = Color3.fromRGB(44, 70, 132),
+	SECRET_TEXT = Color3.fromRGB(180, 150, 255), -- Secret's own colour is near black: the readable violet on navy
+	SECRET_ID = (Config.Gems and Config.Gems.SecretRoulette and Config.Gems.SecretRoulette.Id) or "Secret",
+	RESTRICTED_ATTR = "PaidRandomItemsRestricted",
+	REVEAL_SOUND = { Common = "RevealCommon", Uncommon = "RevealCommon", Rare = "RevealRare", Epic = "RevealRare", Legendary = "RevealLegendary", Mythic = "RevealLegendary", Secret = "RevealLegendary" },
+	LOUD_FROM = 5, -- Config.Rarities Order: Legendary and up play at Scale 1, the rest at 0.6
+	QUIET = 0.6,
+	-- the shop's window rule (spec 5.4) decides Phone vs PC
+	RECT = { RECT = { H0 = 390, W0 = 820, Y0 = 330, H1 = 1080, W1 = 1660, Y1 = 900 }, MARGIN = 12, PHONE_W = 900, SHORT = 560, PC_MIN_H = 600, PC_MAX_W = 0.87 },
+	TEXT = {
+		Match = "The shop is closed during a match.",
+		NoAnswer = "The roulette did not answer. Try again.",
+		Failed = "The spin failed.",
+		Fallback = "A new pet joined your collection!",
+		Policy = "Gem roulettes are not available on this account right now.",
+		Hatched = "You hatched: ",
+	},
+}
+-- design px per layout (spec 5.5 / 16.4); the middle (strip cells, crack eggs, reveal pets) shrinks to 0.6, text never
+K.PC = {
+	TitleY = 34, TitleH = 60, TitleSize = 52, Side = 40,
+	Strip1 = { H = 296, CellW = 230, CellH = 250, Step = 246, Egg = 160, Word = 24 },
+	Strip3 = { H = 230, Gap = 30, CellW = 190, CellH = 210, Step = 206, Egg = 130, Word = 20 },
+	Crack1 = { Egg = 380, Word = 80 }, Crack3 = { Egg = 220, Word = 80 }, Col3 = 520,
+	R1 = { BannerY = 20, BannerH = 104, Word = 84, BannerMin = 320, BannerPad = 80, Gap = 8, Pet = 420, PetMin = 252, Ped = 90 / 420, NameGap = 16, NameH = 60, Name = 54, NoteGap = 4, NoteH = 32, Note = 24, NewW = 120, NewH = 44, New = 26 },
+	R3 = { BannerH = 70, Word = 56, BannerMin = 200, BannerPad = 60, Gap = 12, Pet = 300, PetMin = 180, PedW = 0.8, PedH = 0.18, NameGap = 12, NameH = 44, Name = 36, NoteGap = 4, NoteH = 52, Note = 20, NewW = 96, NewH = 36, New = 22 },
+	Bar = { Gap = 16, Text = 22, Skip = { 440, 300, 60 }, SkipReveal = { 360, 330, 60 }, Fast = { 280, 240, 52 }, Again = { 440, 400, 92 }, Done = { 220, 200, 92 }, Coin = 34, FastText = 22 },
+}
+K.PHONE = {
+	TitleY = 6, TitleH = 28, TitleSize = 28, Side = 10,
+	Strip1 = { H = 170, CellW = 130, CellH = 160, Step = 138, Egg = 104, Word = 16 },
+	Strip3 = { H = 74, Gap = 6, CellW = 76, CellH = 66, Step = 80, Egg = 48 },
+	Crack1 = { Egg = 200, Word = 40 }, Crack3 = { Egg = 96, Word = 40 }, Col3 = 260,
+	R1 = { BannerY = 2, BannerH = 44, Word = 40, BannerMin = 160, BannerPad = 40, Gap = 2, Pet = 170, PetMin = 110, Lip = true, NameGap = 2, NameH = 30, Name = 26, NoteGap = 2, NoteH = 20, NoteH2 = 36, Note = 15, NewW = 70, NewH = 26, New = 15 },
+	R3 = { BannerH = 28, Word = 22, BannerMin = 120, BannerPad = 24, Gap = 2, Pet = 130, PetMin = 78, Lip = true, NameGap = 2, NameH = 22, Name = 18, NoteGap = 2, NoteH = 36, Note = 15, NewW = 56, NewH = 22, New = 15, RowPet = 110, RowMax = 150 },
+	Bar = { Gap = 8, Text = 16, Skip = { 208, 121, 44 }, SkipReveal = { 170, 128, 44 }, Fast = { 150, 135, 44 }, Again = { 220, 200, 44 }, Done = { 120, 110, 44 }, Coin = 20, FastText = 15 },
+}
+K.LIP = { W = 0.7, H = 12, Up = 8 }
+-- the crack's shakes as { from, to (shares of Crack), degrees }: two, one on Fast hatch
+K.SHAKE = { { 0.12, 0.4, 6 }, { 0.55, 0.88, 10 } }
+K.SHAKE_FAST = { { 0.25, 0.75, 10 } }
+EggStage.Metrics = K
+
+-- S: the stage. Roll = the roll playing (or nil); Queue = results waiting for DONE; Lay = the layout of this screen
+local S = {
+	Gui = nil, Stage = nil, Content = nil, Fit = nil, Dim = nil, Flash = nil, Vignette = nil,
+	Roll = nil, Queue = {}, Lay = nil, Conns = {}, Beat = nil, Bound = false, Inited = false,
+	Pending = false, PendToken = 0, PendFrom = nil, LastFire = -10,
+	Warm = {}, Warned = {}, Menu = nil, Sfx = nil, Builder = nil,
+}
+S.Tweens = setmetatable({}, { __mode = "k" })
+EggStage._S = S
+
+local H = {} -- helpers
+local L = {} -- layout
+local B = {} -- builders
+local R = {} -- the phase runner
+
+----------------------------------------------------------------------
+-- small helpers
+----------------------------------------------------------------------
+function H.warnOnce(key, err)
+	local k = tostring(key) .. tostring(err)
+	if not S.Warned[k] then
+		S.Warned[k] = true
+		warn("[EggStage] " .. tostring(key) .. ": " .. tostring(err))
+	end
+end
+
+function H.safe(key, fn, ...)
+	local ok, err = pcall(fn, ...)
+	if not ok then
+		H.warnOnce(key, err)
+	end
+	return ok
+end
+
+function H.lazy(field, folder, name)
+	if S[field] == nil then
+		S[field] = false
+		local module = folder and folder:FindFirstChild(name)
+		if module and module:IsA("ModuleScript") then
+			local ok, mod = pcall(require, module)
+			if ok and type(mod) == "table" then
+				S[field] = mod
+			end
+		end
+	end
+	return S[field] or nil
+end
+
+function H.menu()
+	return H.lazy("Menu", ClientFolder:FindFirstChild("Controllers"), "MenuController")
+end
+
+function H.toast(text)
+	local mc = H.menu()
+	if mc and type(mc.Hint) == "function" then
+		pcall(mc.Hint, text, "info")
+	end
+end
+
+function H.sfx(name, scale)
+	local sf = H.lazy("Sfx", ClientFolder, "SoundFx")
+	if sf and type(sf.Play) == "function" then
+		local ok, snd = pcall(sf.Play, name, { Scale = scale })
+		if ok then
+			return snd
+		end
+	end
+	return nil
+end
+
+function H.order(rarity)
+	for _, r in ipairs(Config.Rarities or {}) do
+		if r.Id == rarity then
+			return r.Order or 1
+		end
+	end
+	return 1
+end
+
+function H.scaleFor(rarity)
+	return H.order(rarity) >= K.LOUD_FROM and 1 or K.QUIET
+end
+
+function H.color(rarity)
+	if rarity == "Secret" then
+		return K.SECRET_TEXT
+	end
+	for _, r in ipairs(Config.Rarities or {}) do
+		if r.Id == rarity then
+			return r.Color
+		end
+	end
+	return K.WHITE
+end
+
+function H.inMatch()
+	return LocalPlayer ~= nil and LocalPlayer:GetAttribute(Config.Attr.InMatch) == true
+end
+
+function H.roulette(id)
+	if type(id) ~= "string" then
+		return nil
+	end
+	for _, r in ipairs(Config.Roulettes or {}) do
+		if r.Id == id then
+			return r
+		end
+	end
+	local s = Config.Gems and Config.Gems.SecretRoulette
+	if s and s.Id == id then
+		return s
+	end
+	return nil
+end
+
+-- the price of one spin in that currency (Config; the server checks it again)
+function H.price(roulette, currency)
+	if not roulette then
+		return 0
+	end
+	if currency == "Gems" then
+		local prices = Config.Gems and Config.Gems.RouletteGemPrices or {}
+		return math.floor(tonumber(prices[roulette.Id]) or tonumber(roulette.GemPrice) or 0)
+	end
+	return math.floor(tonumber(roulette.Price) or 0)
+end
+
+function H.balance(currency)
+	local fn = currency == "Gems" and State.Gems or State.Tokens
+	local ok, n = pcall(fn)
+	return (ok and type(n) == "number") and n or 0
+end
+
+function H.gemsOpen()
+	return LocalPlayer ~= nil and LocalPlayer:GetAttribute(K.RESTRICTED_ATTR) == false
+end
+
+function H.remote(name)
+	local ok, remote = pcall(Remotes.Get, name)
+	return ok and remote or nil
+end
+
+-- the text's width (TextService: the real font). K.MEASURE(text, size, font) replaces it when set: tools/dump_gui.lua's
+-- renders pass the renderer's font metrics (the mock's GetTextSize is a flat 0.5 em per character)
+function H.textW(text, size, role)
+	local font = Theme.Fonts[role] or Theme.Fonts.Body
+	local ok, v = pcall(function()
+		if type(K.MEASURE) == "function" then
+			return Vector2.new(K.MEASURE(text, size, font), size)
+		end
+		return TextService:GetTextSize(text, size, font, Vector2.new(100000, 1000))
+	end)
+	if ok and typeof(v) == "Vector2" and v.X > 0 then
+		return v.X
+	end
+	return #tostring(text) * size * 0.6
+end
+
+function H.tween(inst, seconds, goals, style, direction)
+	if not inst or not inst.Parent then
+		return nil
+	end
+	local info = TweenInfo.new(math.max(0.01, seconds), style or Enum.EasingStyle.Quad, direction or Enum.EasingDirection.Out)
+	local tw = TweenService:Create(inst, info, goals)
+	S.Tweens[tw] = true
+	tw:Play()
+	return tw
+end
+
+function H.cancelTweens()
+	for tw in pairs(S.Tweens) do
+		pcall(function()
+			tw:Cancel()
+		end)
+		S.Tweens[tw] = nil
+	end
+end
+
+function H.frame(parent, name, props)
+	props = props or {}
+	props.Name = name
+	props.BorderSizePixel = 0
+	if props.BackgroundTransparency == nil then
+		props.BackgroundTransparency = 1
+	end
+	props.Parent = parent
+	return Util.Create("Frame", props)
+end
+
+function H.label(parent, name, text, role, size, props)
+	local l = Theme.Label(text, role, { Size = size, Stroke = 0.2, Outline = 2 })
+	l.Name = name
+	for k, v in pairs(props or {}) do
+		l[k] = v
+	end
+	l.Parent = parent
+	return l
+end
+
+function H.corner(parent, r)
+	return Util.Create("UICorner", { CornerRadius = (r and r < 1) and UDim.new(r, 0) or UDim.new(0, r or 12), Parent = parent })
+end
+
+function H.stroke(parent, color, thickness)
+	return Util.Create("UIStroke", { Color = color, Thickness = thickness or 3, Transparency = 0, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = parent })
+end
+
+function H.place(o, x, y, w, h)
+	if o then
+		o.Position = UDim2.fromOffset(x, y)
+		if w then
+			o.Size = UDim2.fromOffset(math.max(0, w), math.max(0, h))
+		end
+	end
+end
+
+function H.sizeEgg(egg, size)
+	size = math.max(8, math.floor(size + 0.5))
+	egg.Size = UDim2.fromOffset(math.floor(EggArt.Metrics.WIDTH * size + 0.5), size)
+	local outline = egg:FindFirstChild("Outline")
+	if outline then
+		outline.Thickness = math.max(2, math.floor(size / 20 + 0.5))
+	end
+	egg:SetAttribute("Size", size)
+end
+
+function H.insets()
+	local top, bottom = 58, 0
+	pcall(function()
+		local tl, br = GuiService:GetGuiInset()
+		top, bottom = tl.Y, br.Y
+	end)
+	return top, bottom
+end
+
+function H.viewport()
+	local cam = workspace.CurrentCamera
+	local v = cam and cam.ViewportSize
+	if v and v.X > 2 and v.Y > 2 then
+		return v.X, v.Y
+	end
+	return 1280, 720
+end
+
+----------------------------------------------------------------------
+-- public pure parts
+----------------------------------------------------------------------
+function EggStage.Timings(fast, spins)
+	local t
+	if fast then
+		t = { Intro = 0.15, Strip = 0.8, Land = 0.12, Rise = 0.2, Crack = 0.4, Burst = 0.25 }
+	else
+		t = { Intro = 0.35, Strip = 3.0, Land = 0.35, Rise = 0.5, Crack = 1.2, Burst = 0.35 }
+	end
+	t.Stagger, t.LandGap = 0, 0
+	local n = 1
+	if (tonumber(spins) or 1) > 1 then
+		n = 3
+		t.Crack = fast and 0.4 or 0.9
+		t.Stagger = fast and 0.25 or 0.6
+		t.LandGap = fast and 0.12 or 0.25
+	end
+	t.RevealAt = t.Intro + t.Strip + (n - 1) * t.LandGap + t.Land + t.Rise + (n - 1) * t.Stagger + t.Crack + t.Burst
+	return t
+end
+
+function EggStage.NoteText(pull, rarity)
+	pull = type(pull) == "table" and pull or {}
+	local def = type(pull.PetId) == "string" and PetCatalog.Get(pull.PetId) or nil
+	rarity = rarity or (def and def.Rarity) or "?"
+	local text
+	local sub = type(pull.Substitute) == "table" and tonumber(pull.Substitute.Tokens) or nil
+	if sub then
+		text = "Stack full: +" .. Util.Commas(sub) .. " Tokens instead"
+	else
+		local tail
+		if pull.IsNew == true then
+			tail = "added to your pets"
+		else
+			local count = tonumber(pull.Count)
+			if not count then
+				local ok, n = pcall(State.OwnedCount, pull.Key or pull.PetId)
+				count = (ok and type(n) == "number") and n or 1
+			end
+			tail = "you have " .. math.floor(count) .. " " .. (def and def.Name or "of them") .. " now"
+		end
+		local n = tonumber(pull.PoolSize)
+		if n and n >= 1 then
+			text = "1 of " .. math.floor(n) .. " " .. rarity .. (n == 1 and " pet " or " pets ") .. DOT .. " " .. tail
+		else
+			text = tail:sub(1, 1):upper() .. tail:sub(2)
+		end
+	end
+	if pull.Pity == true then
+		text = text .. " " .. DOT .. " guaranteed"
+	end
+	return text
+end
+
+function EggStage.Layout()
+	local w, h = H.viewport()
+	local top = H.insets()
+	local ok, rect = pcall(NeonKit.BigRect, K.RECT, { Width = w, Height = h, Inset = top })
+	if h > w then
+		return "Portrait"
+	end
+	if ok and type(rect) == "table" and rect.mode == "Phone" then
+		return "Phone"
+	end
+	return "PC"
+end
+
+----------------------------------------------------------------------
+-- the roll (a normalized result)
+----------------------------------------------------------------------
+function H.stripRarities(strip, rarity)
+	if type(strip) ~= "table" or #strip < K.WIN then
+		return nil
+	end
+	local out = {}
+	for i = 1, K.STRIP_LEN do
+		local def = type(strip[i]) == "string" and PetCatalog.Get(strip[i]) or nil
+		out[i] = (def and EggArt.Glow(def.Rarity) ~= nil and def.Rarity) or false
+	end
+	out[K.WIN] = rarity
+	return out
+end
+
+function R.schedule(roll)
+	local T = roll.T
+	local n = roll.N
+	local s = { IntroEnd = T.Intro, Land = {} }
+	local t = T.Intro
+	if roll.HasStrip then
+		for j = 1, n do
+			s.Land[j] = T.Intro + T.Strip + (j - 1) * T.LandGap
+		end
+		s.StripEnd = s.Land[n]
+		s.LandEnd = s.StripEnd + T.Land
+		t = s.LandEnd
+	else
+		s.StripEnd, s.LandEnd = t, t
+	end
+	s.RiseEnd = t + T.Rise
+	s.CrackAt, s.BurstAt, s.OpenAt = {}, {}, {}
+	for j = 1, n do
+		s.CrackAt[j] = s.RiseEnd + (j - 1) * T.Stagger
+		s.BurstAt[j] = s.CrackAt[j] + T.Crack
+		s.OpenAt[j] = s.BurstAt[j] + T.Burst
+	end
+	s.RevealAt = s.OpenAt[n]
+	return s
+end
+
+function H.makeRoll(result)
+	if type(result) ~= "table" or result.Ok == false then
+		return nil
+	end
+	local src = (type(result.Pulls) == "table" and #result.Pulls > 0) and result.Pulls or { result }
+	local roulette = H.roulette(result.RouletteId)
+	local pulls = {}
+	for i = 1, math.min(3, #src) do
+		local p = src[i]
+		local def = type(p) == "table" and type(p.PetId) == "string" and PetCatalog.Get(p.PetId) or nil
+		if def then
+			local rarity = EggArt.Metrics.GLOW[def.Rarity] and def.Rarity or "Common"
+			local pull = {
+				Def = def, PetId = def.Id, Key = (type(p.Key) == "string" and p.Key ~= "") and p.Key or def.Id, Rarity = rarity,
+				IsNew = p.IsNew == true, Count = tonumber(p.Count), PoolSize = tonumber(p.PoolSize),
+				Pity = (p.Pity == true) or nil, Substitute = type(p.Substitute) == "table" and p.Substitute or nil,
+			}
+			if not pull.PoolSize and roulette then
+				local n = #PetCatalog.RarityPool(roulette.Id, rarity)
+				pull.PoolSize = n > 0 and n or nil
+			end
+			pull.Rarities = H.stripRarities(p.Strip, rarity)
+			pulls[#pulls + 1] = pull
+		end
+	end
+	if #pulls == 0 then
+		return nil
+	end
+	local hasStrip = true
+	local best = 1
+	for j, p in ipairs(pulls) do
+		if not p.Rarities then
+			hasStrip = false
+		end
+		if H.order(p.Rarity) > H.order(pulls[best].Rarity) then
+			best = j
+		end
+	end
+	local currency = (result.Currency == "Gems") and "Gems" or "Tokens"
+	if roulette and roulette.Id == K.SECRET_ID then
+		currency = "Gems"
+	end
+	local fast = ClientSettings.Get("FastHatch") == true
+	local roll = {
+		Result = result, Pulls = pulls, N = #pulls, Roulette = roulette, Currency = currency, HasStrip = hasStrip, Fast = fast, Best = best,
+		T = EggStage.Timings(fast, #pulls > 1 and 3 or 1), Strips = {}, Eggs = {}, Cols = {}, Views = {}, UI = {}, Phase = "Intro",
+	}
+	roll.Sched = R.schedule(roll)
+	return roll
+end
+
+----------------------------------------------------------------------
+-- layout (design px in Content's own space; Content = the screen under the top bar at the UIScale "Fit")
+----------------------------------------------------------------------
+-- the bottom bar: { H, Items = { [name] = { x, y, w, h } } } for the roll (Skip, Fast hatch) or the reveal
+function L.bar(cw, P, portrait, reveal, hasAgain)
+	local spec = P.Bar
+	local gap = spec.Gap
+	local avail = cw - 24
+	local items
+	if reveal then
+		items = { { "Skip", spec.SkipReveal } }
+		if hasAgain then
+			items[#items + 1] = { "SpinAgain", spec.Again }
+		end
+		items[#items + 1] = { "Done", spec.Done }
+		items[#items + 1] = { "FastHatch", spec.Fast }
+	else
+		items = { { "Skip", spec.Skip }, { "FastHatch", spec.Fast } }
+	end
+	local out = { Items = {} }
+	local function sum(list, k)
+		local s = 0
+		for _, it in ipairs(list) do
+			s = s + it[2][k]
+		end
+		return s + gap * (#list - 1)
+	end
+	local function rowH(list)
+		local h = 0
+		for _, it in ipairs(list) do
+			h = math.max(h, it[2][3])
+		end
+		return h
+	end
+	-- one row: widths between min and pref, packed and centred from x0
+	local function packRow(list, y, h)
+		local pref, least = sum(list, 1), sum(list, 2)
+		local k = 1
+		if pref > avail then
+			k = (pref == least) and 0 or math.max(0, (avail - least) / (pref - least))
+		end
+		local total = 0
+		local widths = {}
+		for i, it in ipairs(list) do
+			widths[i] = it[2][2] + (it[2][1] - it[2][2]) * k
+			total = total + widths[i]
+		end
+		total = total + gap * (#list - 1)
+		local x = (cw - total) / 2
+		for i, it in ipairs(list) do
+			out.Items[it[1]] = { x = x, y = y + (h - it[2][3]) / 2, w = widths[i], h = it[2][3] }
+			x = x + widths[i] + gap
+		end
+	end
+	local h = rowH(items)
+	if sum(items, 1) <= avail then
+		-- the anchored row: the roll's Skip centred, the reveal's SPIN AGAIN + DONE centred; Skip left, Fast hatch right
+		local fast = spec.Fast[1]
+		local fastX = cw - 12 - fast
+		local okAnchored
+		if reveal then
+			local mainW = (hasAgain and (spec.Again[1] + gap) or 0) + spec.Done[1]
+			local mainX = (cw - mainW) / 2
+			okAnchored = 12 + spec.SkipReveal[1] + gap <= mainX and mainX + mainW + gap <= fastX
+			if okAnchored then
+				out.Items.Skip = { x = 12, y = (h - spec.SkipReveal[3]) / 2, w = spec.SkipReveal[1], h = spec.SkipReveal[3] }
+				local x = mainX
+				if hasAgain then
+					out.Items.SpinAgain = { x = x, y = (h - spec.Again[3]) / 2, w = spec.Again[1], h = spec.Again[3] }
+					x = x + spec.Again[1] + gap
+				end
+				out.Items.Done = { x = x, y = (h - spec.Done[3]) / 2, w = spec.Done[1], h = spec.Done[3] }
+			end
+		else
+			local skipX = (cw - spec.Skip[1]) / 2
+			okAnchored = skipX + spec.Skip[1] + gap <= fastX
+			if okAnchored then
+				out.Items.Skip = { x = skipX, y = (h - spec.Skip[3]) / 2, w = spec.Skip[1], h = spec.Skip[3] }
+			end
+		end
+		if okAnchored then
+			out.Items.FastHatch = { x = fastX, y = (h - spec.Fast[3]) / 2, w = fast, h = spec.Fast[3] }
+		else
+			packRow(items, 0, h)
+		end
+		out.H = h
+	elseif sum(items, 2) <= avail and not portrait then
+		packRow(items, 0, h)
+		out.H = h
+	else
+		-- two rows: the main controls on top
+		local top, low
+		if reveal then
+			top = {}
+			if hasAgain then
+				top[1] = items[2]
+			end
+			top[#top + 1] = { "Done", spec.Done }
+			low = { { "Skip", spec.SkipReveal }, { "FastHatch", spec.Fast } }
+		else
+			top, low = { items[1] }, { items[2] }
+		end
+		local h1, h2 = rowH(top), rowH(low)
+		packRow(top, 0, h1)
+		packRow(low, h1 + 8, h2)
+		out.H = h1 + 8 + h2
+	end
+	return out
+end
+
+function L.compute(n, roll)
+	local w, h = H.viewport()
+	local top, bottom = H.insets()
+	local mode = EggStage.Layout()
+	local pc = mode == "PC"
+	local P = pc and K.PC or K.PHONE
+	local scale = pc and Theme.ScreenFactor(h) or 1
+	local cw, ch = w / scale, math.max(1, (h - top) / scale)
+	local x3 = n > 1
+	local lay = { Mode = mode, PC = pc, P = P, Scale = scale, W = cw, H = ch, Top = top, N = n, X3 = x3, Portrait = mode == "Portrait" }
+	local bm = (12 + bottom) / scale -- 12 screen px above the bottom inset at every scale
+	local hasAgain = roll ~= nil and roll.Roulette ~= nil
+	lay.BarRoll = L.bar(cw, P, lay.Portrait, false, hasAgain)
+	lay.BarReveal = L.bar(cw, P, lay.Portrait, true, hasAgain)
+	lay.BarRoll.Y = ch - bm - lay.BarRoll.H
+	lay.BarReveal.Y = ch - bm - lay.BarReveal.H
+	lay.Title = { Y = P.TitleY, H = P.TitleH, Size = P.TitleSize }
+	local midTop, midBot = P.TitleY + P.TitleH, lay.BarRoll.Y
+	local avail = midBot - midTop
+	-- strips
+	local spec = x3 and P.Strip3 or P.Strip1
+	local total = x3 and (3 * spec.H + 2 * spec.Gap) or spec.H
+	local s = Util.Clamp(avail / total, 0.6, 1)
+	local step = spec.Step * s
+	local trackW = math.min(cw - 2 * P.Side, 10 * step)
+	local y0 = midTop + (avail - total * s) / 2
+	lay.Strip = { S = s, Step = step, CellW = spec.CellW * s, CellH = spec.CellH * s, Egg = math.floor(spec.Egg * s + 0.5), Word = spec.Word, H = spec.H * s, W = trackW, X = (cw - trackW) / 2, Y = {} }
+	for j = 1, (x3 and 3 or 1) do
+		lay.Strip.Y[j] = y0 + (j - 1) * (spec.H + (spec.Gap or 0)) * s
+	end
+	-- the crack: the word, the egg, its pedestal (1.1 x / 0.24 x the egg), centred in the middle
+	local crack = x3 and P.Crack3 or P.Crack1
+	local colW = x3 and math.min(P.Col3, (cw - 24) / 3) or cw
+	-- (gap: the egg's outline is a Border stroke, size / 20 thick outside its box: the word stays clear of it)
+	local gap = math.max(2, math.floor(crack.Egg / 20 + 0.5)) + 4
+	local sE = Util.Clamp((avail - crack.Word - gap) / (1.24 * crack.Egg), 0.6, 1)
+	local E = crack.Egg * sE
+	if x3 then
+		E = math.min(E, (colW - 8) / 1.1)
+	end
+	E = math.floor(E)
+	local stackH = crack.Word + gap + E * 1.24
+	local cTop = midTop + (avail - stackH) / 2
+	lay.Crack = { E = E, WordY = cTop, WordH = crack.Word, EggY = cTop + crack.Word + gap, PedW = 1.1 * E, PedH = 0.24 * E, Cx = {} }
+	for j = 1, (x3 and 3 or 1) do
+		lay.Crack.Cx[j] = x3 and (cw / 2 + (j - 2) * colW) or cw / 2
+	end
+	-- the reveal
+	if x3 then
+		L.reveal3(lay, P, colW)
+	else
+		L.reveal1(lay, P)
+	end
+	return lay
+end
+
+-- x1 reveal: the Banner as the title band, then pet (+ pedestal or lip), name, note centred above the bottom bar
+function L.reveal1(lay, P)
+	local r = P.R1
+	local cw = lay.W
+	local col = { X = 0, Y = 0, W = cw, H = lay.H }
+	local midTop = r.BannerY + r.BannerH + r.Gap
+	local midBot = lay.BarReveal.Y - r.Gap
+	local noteH = (lay.Portrait and r.NoteH2) or r.NoteH
+	local fixed = r.NameGap + r.NameH + r.NoteGap + noteH
+	local pedK = r.Lip and 0 or r.Ped
+	local pet = math.floor(Util.Clamp((midBot - midTop - fixed) / (1 + pedK), r.PetMin, r.Pet))
+	local stack = pet * (1 + pedK) + fixed
+	local top = midTop + math.max(0, (midBot - midTop - stack) / 2)
+	col.Banner = { Y = r.BannerY, H = r.BannerH, Word = r.Word, Min = r.BannerMin, Pad = r.BannerPad }
+	col.Pet = { X = (cw - pet) / 2, Y = top, S = pet }
+	col.NameY = top + pet * (1 + pedK) + r.NameGap
+	col.NameH, col.NameSize = r.NameH, r.Name
+	col.NoteY, col.NoteH, col.NoteSize = col.NameY + r.NameH + r.NoteGap, noteH, r.Note
+	col.New = { W = r.NewW, H = r.NewH, Size = r.New }
+	if r.Lip then
+		col.Ped = { X = (cw - K.LIP.W * pet) / 2, Y = top + pet - K.LIP.Up - K.LIP.H, W = K.LIP.W * pet, H = K.LIP.H }
+	else
+		col.Ped = { X = (cw - pet) / 2, Y = top + pet, W = pet, H = pet * r.Ped }
+	end
+	col.Shell = L.shell(col.Pet, r.Lip)
+	lay.Cols = { col }
+end
+
+-- the shell (the egg's bottom half) at the pet's feet
+function L.shell(pet, lip)
+	local eggSize = math.floor(pet.S * 0.52)
+	local w = math.floor(EggArt.Metrics.WIDTH * eggSize + 0.5)
+	local bottom = pet.Y + pet.S - (lip and (K.LIP.Up + 4) or 2)
+	return { X = pet.X + (pet.S - w) / 2, Y = bottom - eggSize / 2, W = w, H = eggSize / 2, Egg = eggSize }
+end
+
+-- x3 reveal: three columns (PC / phone landscape) or three rows (portrait)
+function L.reveal3(lay, P, colW)
+	local r = P.R3
+	local cw = lay.W
+	local cols = {}
+	if lay.Portrait then
+		local barY = lay.BarReveal.Y
+		local rowH = math.min(r.RowMax, (barY - 2 - 2 * 8 - 2) / 3)
+		local rowW = cw - 24
+		for j = 1, 3 do
+			local pet = math.min(r.RowPet, rowH - 8)
+			local col = { X = 12, Y = 2 + (j - 1) * (rowH + 8), W = rowW, H = rowH, Row = true }
+			col.Pet = { X = 0, Y = (rowH - pet) / 2, S = pet }
+			local rx = pet + 12
+			local stack = r.BannerH + 4 + r.NameH + 4 + r.NoteH
+			local ty = math.max(0, (rowH - stack) / 2)
+			col.Banner = { X = rx, Y = ty, H = r.BannerH, Word = r.Word, Min = r.BannerMin, Pad = r.BannerPad, MaxW = rowW - rx, Left = true }
+			col.NameX, col.NameW = rx, rowW - rx
+			col.NameY, col.NameH, col.NameSize = ty + r.BannerH + 4, r.NameH, r.Name
+			col.NoteY, col.NoteH, col.NoteSize = col.NameY + r.NameH + 4, r.NoteH, r.Note
+			col.New = { W = r.NewW, H = r.NewH, Size = r.New }
+			col.Ped = { X = col.X + (pet - K.LIP.W * pet) / 2, Y = col.Y + col.Pet.Y + pet - K.LIP.Up - K.LIP.H, W = K.LIP.W * pet, H = K.LIP.H }
+			col.Shell = L.shell(col.Pet, true)
+			cols[j] = col
+		end
+		lay.Cols = cols
+		return
+	end
+	local colY = lay.PC and 20 or 2
+	local colH = lay.BarReveal.Y - (lay.PC and 8 or 2) - colY
+	for j = 1, 3 do
+		local col = { X = cw / 2 - 1.5 * colW + (j - 1) * colW, Y = colY, W = colW, H = colH }
+		local midTop = r.BannerH + r.Gap
+		local fixed = r.NameGap + r.NameH + r.NoteGap + r.NoteH
+		local pedK = r.Lip and 0 or r.PedH
+		local pet = math.floor(Util.Clamp((colH - midTop - fixed) / (1 + pedK), r.PetMin, math.min(r.Pet, colW - 8)))
+		local stack = pet * (1 + pedK) + fixed
+		local top = midTop + math.max(0, (colH - midTop - stack) / 2)
+		col.Banner = { Y = 0, H = r.BannerH, Word = r.Word, Min = r.BannerMin, Pad = r.BannerPad, MaxW = colW - 8 }
+		col.Pet = { X = (colW - pet) / 2, Y = top, S = pet }
+		col.NameY, col.NameH, col.NameSize = top + pet * (1 + pedK) + r.NameGap, r.NameH, r.Name
+		col.NoteY, col.NoteH, col.NoteSize = col.NameY + r.NameH + r.NoteGap, r.NoteH, r.Note
+		col.New = { W = r.NewW, H = r.NewH, Size = r.New }
+		if r.Lip then
+			col.Ped = { X = col.X + (colW - K.LIP.W * pet) / 2, Y = colY + top + pet - K.LIP.Up - K.LIP.H, W = K.LIP.W * pet, H = K.LIP.H }
+		else
+			col.Ped = { X = col.X + (colW - r.PedW * pet) / 2, Y = colY + top + pet, W = r.PedW * pet, H = r.PedH * pet }
+		end
+		col.Shell = L.shell(col.Pet, r.Lip)
+		cols[j] = col
+	end
+	lay.Cols = cols
+end
+
+----------------------------------------------------------------------
+-- building
+----------------------------------------------------------------------
+function B.gui()
+	if S.Gui and S.Gui.Parent then
+		return true
+	end
+	local pg = LocalPlayer and LocalPlayer:FindFirstChildOfClass("PlayerGui")
+	if not pg then
+		return false
+	end
+	local old = pg:FindFirstChild(K.GUI)
+	if old then
+		old:Destroy()
+	end
+	local gui = Util.Create("ScreenGui", { Name = K.GUI, DisplayOrder = K.ORDER, IgnoreGuiInset = true, ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling })
+	local stage = H.frame(gui, "Stage", { Size = UDim2.fromScale(1, 1) })
+	S.Dim = Util.Create("TextButton", {
+		Name = "Dim", Text = "", AutoButtonColor = false, BorderSizePixel = 0, BackgroundColor3 = K.NAVY, BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1), ZIndex = 1, Parent = stage,
+	})
+	S.Dim.Activated:Connect(function()
+		H.safe("tap", H.tap)
+	end)
+	local vig = H.frame(stage, "Vignette", { Size = UDim2.fromScale(1, 1), ZIndex = 2 })
+	for _, e in ipairs({ { "Top", 0, 0, 1, 0.14, 90 }, { "Bottom", 0, 0.86, 1, 0.14, 270 }, { "Left", 0, 0, 0.1, 1, 0 }, { "Right", 0.9, 0, 0.1, 1, 180 } }) do
+		local edge = H.frame(vig, e[1], { Position = UDim2.fromScale(e[2], e[3]), Size = UDim2.fromScale(e[4], e[5]), BackgroundColor3 = K.NAVY, BackgroundTransparency = 1, ZIndex = 2 })
+		Util.Create("UIGradient", { Rotation = e[6], Transparency = NumberSequence.new(0, 1), Parent = edge })
+	end
+	S.Content = H.frame(stage, "Content", { ZIndex = 3 })
+	S.Fit = Util.Create("UIScale", { Name = "Fit", Scale = 1, Parent = S.Content })
+	S.Flash = H.frame(stage, "Flash", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = K.WHITE, BackgroundTransparency = 1, ZIndex = 4 })
+	S.Gui, S.Stage, S.Vignette = gui, stage, vig
+	gui.Parent = pg
+	return true
+end
+
+-- the roll's own content (rebuilt per roll): Title, Strips, Hero, Burst, Reveal, BottomBar
+function B.roll(roll)
+	local c = S.Content
+	local P = S.Lay.P
+	local title = (roll.Roulette and roll.Roulette.DisplayName) or "Hatching"
+	if roll.N > 1 then
+		title = title .. " x3"
+	end
+	roll.UI.Title = H.label(c, "Title", title, "Title", P.TitleSize, { ZIndex = 5, TextXAlignment = Enum.TextXAlignment.Center })
+	roll.UI.Strips = H.frame(c, "Strips", { Size = UDim2.fromScale(1, 1), ZIndex = 1 })
+	roll.UI.Hero = H.frame(c, "Hero", { Size = UDim2.fromScale(1, 1), ZIndex = 2 })
+	local burst = H.frame(c, "Burst", { Size = UDim2.fromScale(1, 1), ZIndex = 3 })
+	roll.UI.Burst = burst
+	local shock = H.frame(burst, "Shock", { AnchorPoint = Vector2.new(0.5, 0.5), Visible = false, ZIndex = 3 })
+	H.corner(shock, 0.5)
+	roll.UI.ShockStroke = H.stroke(shock, K.WHITE, 6)
+	roll.UI.Shock = shock
+	H.frame(burst, "Rays", { Size = UDim2.fromScale(1, 1), Visible = false })
+	H.frame(burst, "Sparks", { Size = UDim2.fromScale(1, 1) })
+	roll.UI.Reveal = H.frame(c, "Reveal", { Size = UDim2.fromScale(1, 1), ZIndex = 4, Visible = false })
+	roll.UI.Crack = H.label(roll.UI.Hero, "CrackWord", "", "Title", S.Lay.Crack.WordH, { ZIndex = 4, Visible = false, TextXAlignment = Enum.TextXAlignment.Center })
+	if roll.HasStrip then
+		for j = 1, roll.N do
+			B.strip(roll, j)
+		end
+	end
+	B.bar(roll)
+end
+
+function B.strip(roll, j)
+	local st = { Cells = {}, Landed = false, Tick = nil }
+	st.Frame = H.frame(roll.UI.Strips, "Strip" .. j, { ZIndex = 1 })
+	st.Track = Util.Create("ScrollingFrame", {
+		Name = "Track", BorderSizePixel = 0, BackgroundColor3 = K.TRACK, BackgroundTransparency = 0.35, ClipsDescendants = true, Active = false,
+		ScrollingEnabled = false, ScrollBarThickness = 0, CanvasSize = UDim2.new(0, 0, 0, 0), Size = UDim2.fromScale(1, 1), ZIndex = 1, Parent = st.Frame,
+	})
+	H.corner(st.Track, 14)
+	H.stroke(st.Track, Theme.Colors.WellEdge, 3)
+	st.Pointer = H.frame(st.Frame, "Pointer", { AnchorPoint = Vector2.new(0.5, 0), BackgroundColor3 = K.GOLD, BackgroundTransparency = 0, ZIndex = 3 })
+	H.corner(st.Pointer, 3)
+	roll.Strips[j] = st
+end
+
+-- (re)builds the 12 recycled cells of a strip at the layout's cell size
+function B.cells(roll, j)
+	local st = roll.Strips[j]
+	local g = S.Lay.Strip
+	for _, cell in pairs(st.Cells) do
+		cell.Frame:Destroy()
+	end
+	st.Cells = {}
+	st.Geo = g
+	for slot = 1, K.MAX_CELLS do
+		local f = H.frame(st.Track, "Cell" .. slot, { Size = UDim2.fromOffset(g.CellW, g.CellH), BackgroundColor3 = K.CELL, BackgroundTransparency = 0.15, Visible = false, ZIndex = 2 })
+		H.corner(f, 12)
+		local stroke = H.stroke(f, Theme.Colors.WellEdge, 3)
+		local egg = EggArt.New(f, "Common", g.Egg, { Form = g.Egg < 48 and "Simple" or "Medium", ZIndex = 3 })
+		egg.AnchorPoint = Vector2.new(0.5, 0)
+		local word = nil
+		if g.Word then
+			egg.Position = UDim2.fromOffset(g.CellW / 2, g.CellH * 0.08)
+			word = H.label(f, "Word", "", "Heading", g.Word, { ZIndex = 3, Position = UDim2.fromOffset(0, g.CellH * 0.08 + g.Egg + 2), Size = UDim2.fromOffset(g.CellW, g.Word + 4) })
+		else
+			egg.Position = UDim2.fromOffset(g.CellW / 2, (g.CellH - g.Egg) / 2)
+		end
+		st.Cells[slot] = { Frame = f, Stroke = stroke, Egg = egg, Word = word, Index = nil }
+	end
+end
+
+function B.bar(roll)
+	local P = S.Lay.P
+	local bar = H.frame(S.Content, "BottomBar", { ZIndex = 6 })
+	roll.UI.Bar = bar
+	roll.UI.Skip = CloudUI.Button({ Name = "Skip", Text = "", Style = "Blue", TextSize = P.Bar.Text, ZIndex = 6, Parent = bar, Callback = function()
+		H.safe("tap", H.tap)
+	end })
+	roll.UI.Done = CloudUI.Button({ Name = "Done", Text = "DONE", Style = "Green", TextSize = P.Bar.Text, ZIndex = 6, Parent = bar, Callback = function()
+		H.safe("done", EggStage.Done)
+	end })
+	local again = CloudUI.Button({ Name = "SpinAgain", Text = "", Style = "Gold", TextSize = P.Bar.Text, ZIndex = 6, Parent = bar, Callback = function()
+		H.safe("again", H.again)
+	end })
+	local row = H.frame(again, "Row", { Size = UDim2.fromScale(1, 1), ZIndex = 7 })
+	Util.Create("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder, Parent = row })
+	local lbl = H.label(row, "Label", "SPIN AGAIN", "Button", P.Bar.Text, { ZIndex = 7, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, P.Bar.Text + 6), LayoutOrder = 1 })
+	local coin = H.frame(row, "Coin", { Size = UDim2.fromOffset(P.Bar.Coin, P.Bar.Coin), LayoutOrder = 2, ZIndex = 7 })
+	if roll.Currency == "Gems" then
+		local gem = GemIcon.New(coin, P.Bar.Coin, { ZIndex = 8 })
+		gem.Position = UDim2.fromOffset(0, 0)
+	else
+		NeonKit.Icon(coin, "Tokens", P.Bar.Coin).ZIndex = 8
+	end
+	local price = H.label(row, "Price", "", "Display", P.Bar.Text, { ZIndex = 7, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, P.Bar.Text + 6), LayoutOrder = 3 })
+	roll.UI.Again, roll.UI.AgainLabel, roll.UI.AgainCoin, roll.UI.AgainPrice = again, lbl, coin, price
+	-- the Fast hatch toggle (ClientSettings FastHatch: the profile, every device)
+	local fast = Util.Create("TextButton", { Name = "FastHatch", Text = "", AutoButtonColor = false, BorderSizePixel = 0, BackgroundColor3 = Theme.Colors.PanelTop, BackgroundTransparency = 0.05, ZIndex = 6, Parent = bar })
+	H.corner(fast, 12)
+	H.stroke(fast, Theme.Colors.PanelLight, 2)
+	local sw = H.frame(fast, "Switch", { AnchorPoint = Vector2.new(0, 0.5), BackgroundTransparency = 0, ZIndex = 7 })
+	H.corner(sw, 0.5)
+	local knob = H.frame(sw, "Knob", { AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = K.WHITE, BackgroundTransparency = 0, ZIndex = 8 })
+	H.corner(knob, 0.5)
+	H.label(fast, "Label", "Fast hatch", "Label", P.Bar.FastText, { ZIndex = 7, TextXAlignment = Enum.TextXAlignment.Left })
+	fast.Activated:Connect(function()
+		H.safe("fast", function()
+			ClientSettings.Set("FastHatch", ClientSettings.Get("FastHatch") ~= true)
+		end)
+	end)
+	roll.UI.Fast = fast
+	H.paintFast(roll)
+end
+
+function H.paintFast(roll)
+	local fast = roll and roll.UI.Fast
+	if not fast then
+		return
+	end
+	local on = ClientSettings.Get("FastHatch") == true
+	local sw = fast:FindFirstChild("Switch")
+	local knob = sw and sw:FindFirstChild("Knob")
+	if sw then
+		sw.BackgroundColor3 = on and Theme.Colors.Good or Theme.Colors.PanelLight
+	end
+	if knob then
+		knob.Position = on and UDim2.new(1, -knob.Size.X.Offset - 3, 0.5, 0) or UDim2.new(0, 3, 0.5, 0)
+	end
+	fast:SetAttribute("On", on)
+end
+
+-- the reveal columns (one per pull, in the server's order)
+function B.cols(roll)
+	local reveal = roll.UI.Reveal
+	for j, pull in ipairs(roll.Pulls) do
+		local col = H.frame(reveal, "Col" .. j, { ZIndex = 4 })
+		local color = H.color(pull.Rarity)
+		local banner = H.frame(col, "Banner", { BackgroundColor3 = Theme.Darken(color, 0.55), BackgroundTransparency = 0.05, ZIndex = 5 })
+		H.corner(banner, 14)
+		H.stroke(banner, color, 3)
+		H.label(banner, "Word", string.upper(pull.Rarity) .. "!", "Title", 22, { Size = UDim2.fromScale(1, 1), ZIndex = 6, TextColor3 = color })
+		local shell = H.frame(col, "Shell", { ZIndex = 4 })
+		local pet = H.frame(col, "Pet", { ZIndex = 5 })
+		local pop = Util.Create("UIScale", { Name = "Pop", Scale = 0.3, Parent = pet })
+		local stage = 0
+		local okStage, st = pcall(PetBits.stage, pull.Key)
+		if okStage and type(st) == "number" then
+			stage = st
+		end
+		local view = CloudUI.PetViewport(pet, pull.Def, UDim2.fromScale(1, 1), {
+			Spin = "spin", Excited = 1, Flap = 1.5, ZIndex = 5, Evolved = stage >= 1 and stage or nil, Detail = stage >= 1 and "Low" or nil,
+		})
+		roll.Views[#roll.Views + 1] = view
+		H.label(col, "Name", pull.Def.Name, "Title", 18, { ZIndex = 5, TextColor3 = color, TextTruncate = Enum.TextTruncate.AtEnd })
+		local new = H.frame(col, "New", { BackgroundColor3 = K.GOLD, BackgroundTransparency = 0, ZIndex = 5, Visible = pull.IsNew })
+		H.corner(new, 8)
+		H.stroke(new, K.INK, 2)
+		H.label(new, "Text", "NEW!", "Button", 15, { Size = UDim2.fromScale(1, 1), ZIndex = 6 })
+		H.label(col, "Note", EggStage.NoteText(pull, pull.Rarity), "Body", 15, { ZIndex = 5, TextWrapped = true, TextColor3 = Theme.Colors.Muted })
+		if stage >= 1 then
+			local ribbon = H.frame(col, "EvolvedRibbon", { BackgroundColor3 = K.GOLD, BackgroundTransparency = 0, Rotation = 8, ZIndex = 6 })
+			H.corner(ribbon, 10)
+			H.stroke(ribbon, K.INK, 2)
+			H.label(ribbon, "Text", stage >= 2 and "Evolved II" or "Evolved", "Button", 15, { Size = UDim2.fromScale(1, 1), ZIndex = 7 })
+		end
+		roll.Cols[j] = { Root = col, Shell = shell, Pet = pet, Pop = pop }
+	end
+end
+
+----------------------------------------------------------------------
+-- applying the layout (snaps: called on build, on the reveal and after a resize)
+----------------------------------------------------------------------
+function H.apply()
+	local roll, lay = S.Roll, S.Lay
+	if not roll or not lay or not S.Content then
+		return
+	end
+	S.Content.Position = UDim2.fromOffset(0, lay.Top)
+	S.Content.Size = UDim2.fromOffset(lay.W, lay.H)
+	S.Fit.Scale = lay.Scale
+	local title = roll.UI.Title
+	if title then
+		H.place(title, 12, lay.Title.Y, lay.W - 24, lay.Title.H)
+		title.TextSize = lay.Title.Size
+		title.Visible = not roll.Revealed
+	end
+	H.applyStrips(roll, lay)
+	H.applyHero(roll, lay)
+	H.applyReveal(roll, lay)
+	H.applyBar(roll, lay)
+end
+
+function H.applyStrips(roll, lay)
+	local g = lay.Strip
+	for j, st in pairs(roll.Strips) do
+		H.place(st.Frame, g.X, g.Y[j], g.W, g.H)
+		H.place(st.Pointer, g.W / 2, 0, math.max(4, 6 * g.S), g.H)
+		if st.Geo ~= g then
+			B.cells(roll, j)
+		end
+		R.cells(roll, j, st.C or K.START_CELL)
+	end
+end
+
+function H.applyHero(roll, lay)
+	local cr = lay.Crack
+	for j, e in pairs(roll.Eggs) do
+		local cx = cr.Cx[j]
+		local eggY = cr.EggY
+		if e.Egg and e.Egg.Parent then
+			H.sizeEgg(e.Egg, cr.E)
+			e.Egg.Position = UDim2.fromOffset(cx, eggY + cr.E / 2)
+			e.Pop.Scale = 1
+			e.Egg.Visible = e.State == "Rise" or e.State == "Crack"
+		end
+		if e.Back then
+			local d = 0.96 * cr.E
+			H.place(e.Back, cx - d / 2, eggY + (cr.E - d) / 2, d, d)
+		end
+		if e.Holder and e.Holder.Parent then
+			if e.State == "Crack" and e.HolderSize ~= cr.E then
+				e.Holder:Destroy()
+				e.Holder = nil
+				B.halves(roll, j)
+			elseif e.State ~= "Crack" and e.HolderSize ~= cr.E then
+				e.Holder.Visible = false
+			end
+		end
+		if e.Ped then
+			if roll.Revealed and lay.Cols[j] then
+				local p = lay.Cols[j].Ped -- (in Content's space: Hero fills Content)
+				H.place(e.Ped, p.X, p.Y, p.W, p.H)
+			else
+				H.place(e.Ped, cx - cr.PedW / 2, eggY + cr.E, cr.PedW, cr.PedH)
+			end
+		end
+	end
+	local word = roll.UI.Crack
+	if word then
+		word.TextSize = cr.WordH
+		local w = math.min(lay.W - 24, H.textW(word.Text, cr.WordH, "Title") + 40)
+		H.place(word, (lay.W - w) / 2, cr.WordY, w, cr.WordH)
+	end
+	local shock = roll.UI.Shock
+	if shock and shock.Visible and not roll.ShockLive then
+		shock.Visible = false
+	end
+end
+
+function H.applyReveal(roll, lay)
+	if not roll.Revealed then
+		return
+	end
+	for j, c in pairs(roll.Cols) do
+		local g = lay.Cols[j]
+		if g then
+			H.place(c.Root, g.X, g.Y, g.W, g.H)
+			local banner = c.Root:FindFirstChild("Banner")
+			local word = banner and banner:FindFirstChild("Word")
+			if word then
+				word.TextSize = g.Banner.Word
+				local bw = math.max(g.Banner.Min, H.textW(word.Text, g.Banner.Word, "Title") + g.Banner.Pad)
+				bw = math.min(bw, g.Banner.MaxW or (g.W - 24))
+				local bx = g.Banner.Left and g.Banner.X or (g.W - bw) / 2
+				H.place(banner, bx, g.Banner.Y, bw, g.Banner.H)
+			end
+			H.place(c.Pet, g.Pet.X + g.Pet.S / 2, g.Pet.Y + g.Pet.S / 2, g.Pet.S, g.Pet.S)
+			c.Pet.AnchorPoint = Vector2.new(0.5, 0.5)
+			local sh = g.Shell
+			local shellX, shellY = sh.X, sh.Y
+			H.place(c.Shell, shellX, shellY, sh.W, sh.H)
+			if c.ShellEgg ~= sh.Egg then
+				c.Shell:ClearAllChildren()
+				local top, bottom = EggArt.Halves(c.Shell, roll.Pulls[j].Rarity, sh.Egg)
+				top:Destroy()
+				bottom.Position = UDim2.fromOffset(0, 0)
+				c.ShellEgg = sh.Egg
+			end
+			-- the name (+ NEW!) row, then the note
+			local name, new, note = c.Root:FindFirstChild("Name"), c.Root:FindFirstChild("New"), c.Root:FindFirstChild("Note")
+			local nx, nw = g.NameX or 12, g.NameW or (g.W - 24)
+			local newW = (new and new.Visible) and (g.New.W + 8) or 0
+			local textW = math.min(nw - newW, H.textW(name.Text, g.NameSize, "Title") + 8)
+			local rowX = g.Row and nx or (nx + (nw - textW - newW) / 2)
+			name.TextSize = g.NameSize
+			H.place(name, rowX, g.NameY, textW, g.NameH)
+			if new then
+				H.place(new, rowX + textW + 8, g.NameY + (g.NameH - g.New.H) / 2, g.New.W, g.New.H)
+				local t = new:FindFirstChild("Text")
+				if t then
+					t.TextSize = g.New.Size
+				end
+			end
+			note.TextSize = g.NoteSize
+			note.TextXAlignment = g.Row and Enum.TextXAlignment.Left or Enum.TextXAlignment.Center
+			H.place(note, nx, g.NoteY, nw, g.NoteH)
+			local ribbon = c.Root:FindFirstChild("EvolvedRibbon")
+			if ribbon then
+				local rw = math.min(g.Pet.S, lay.PC and 150 or 96)
+				local rh = lay.PC and 36 or 24
+				H.place(ribbon, g.Pet.X + g.Pet.S - rw, g.Pet.Y + 0.12 * g.Pet.S, rw, rh) -- inside the pet frame, clear of the banner
+				local t = ribbon:FindFirstChild("Text")
+				if t then
+					t.TextSize = lay.PC and 20 or 15
+				end
+			end
+			c.Pop.Scale = roll.PopDone and 1 or c.Pop.Scale
+		end
+	end
+end
+
+function H.applyBar(roll, lay)
+	local bar = roll.Revealed and lay.BarReveal or lay.BarRoll
+	H.place(roll.UI.Bar, 0, bar.Y, lay.W, bar.H)
+	local P = lay.P
+	local skipText
+	if roll.Revealed then
+		skipText = lay.PC and "Tap anywhere to close" or "Tap to close"
+	else
+		skipText = lay.PC and "Tap anywhere to skip" or "Tap to skip"
+	end
+	roll.UI.Skip.Text = skipText
+	for _, name in ipairs({ "Skip", "FastHatch", "SpinAgain", "Done" }) do
+		local o = roll.UI.Bar:FindFirstChild(name)
+		local it = bar.Items[name]
+		if o then
+			o.Visible = it ~= nil
+			if it then
+				H.place(o, it.x, it.y, it.w, it.h)
+			end
+			if o:IsA("TextButton") and name ~= "FastHatch" and name ~= "SpinAgain" then
+				o.TextSize = P.Bar.Text
+			end
+		end
+	end
+	local fast = roll.UI.Fast
+	local sw, label = fast:FindFirstChild("Switch"), fast:FindFirstChild("Label")
+	local fh = (bar.Items.FastHatch and bar.Items.FastHatch.h) or 44
+	local swW, swH = lay.PC and 52 or 34, lay.PC and 28 or 20
+	H.place(sw, 10, fh / 2, swW, swH)
+	local knob = sw:FindFirstChild("Knob")
+	if knob then
+		knob.Size = UDim2.fromOffset(swH - 6, swH - 6)
+	end
+	label.TextSize = P.Bar.FastText
+	H.place(label, 10 + swW + 8, 0, ((bar.Items.FastHatch and bar.Items.FastHatch.w) or 150) - swW - 26, fh)
+	H.paintFast(roll)
+	H.refreshAgain()
+end
+
+-- SPIN AGAIN: the same roulette, currency and spins; disabled with the reason when it cannot be paid or is locked
+function H.refreshAgain()
+	local roll = S.Roll
+	local btn = roll and roll.UI.Again
+	if not btn or not btn.Parent then
+		return
+	end
+	local roulette = roll.Roulette
+	if not roulette then
+		btn.Visible = false
+		return
+	end
+	local price = H.price(roulette, roll.Currency) * roll.N
+	local reason = nil
+	if H.inMatch() then
+		reason = "Shop closed"
+	elseif roll.Currency == "Gems" and not H.gemsOpen() then
+		reason = "Locked"
+	elseif H.balance(roll.Currency) < price then
+		reason = roll.Currency == "Gems" and "Not enough Gems" or "Not enough Tokens"
+	end
+	roll.UI.AgainLabel.Text = reason or ((roll.N > 1) and "SPIN AGAIN x3" or "SPIN AGAIN")
+	roll.UI.AgainCoin.Visible = reason == nil
+	roll.UI.AgainPrice.Visible = reason == nil
+	roll.UI.AgainPrice.Text = (S.Lay and S.Lay.PC) and Util.Commas(price) or Theme.ShortNumber(price)
+	CloudUI.SetDisabled(btn, reason ~= nil or S.Pending)
+end
+
+----------------------------------------------------------------------
+-- the phase runner (one Heartbeat while the stage shows)
+----------------------------------------------------------------------
+function R.phaseAt(roll, t)
+	local s = roll.Sched
+	if t < s.IntroEnd then
+		return "Intro"
+	elseif roll.HasStrip and t < s.StripEnd then
+		return "Strip"
+	elseif roll.HasStrip and t < s.LandEnd then
+		return "Land"
+	elseif t < s.RiseEnd then
+		return "Rise"
+	elseif t < s.BurstAt[roll.N] then
+		return "Crack"
+	elseif t < s.RevealAt then
+		return "Burst"
+	end
+	return "Reveal"
+end
+
+-- lays the strip's cells out with the pointer over position c (cell i spans i-1 .. i); at most 12 cells intersect
+function R.cells(roll, j, c)
+	local st = roll.Strips[j]
+	local g = st and st.Geo
+	if not g then
+		return
+	end
+	st.C = c
+	local half = g.W / 2
+	local rarities = roll.Pulls[j].Rarities or {}
+	local used = st.Used or {} -- (one table per strip, cleared each frame: no per-frame garbage)
+	st.Used = used
+	for slot in pairs(used) do
+		used[slot] = nil
+	end
+	local first = math.max(1, math.floor(c - half / g.Step) - 1)
+	local last = math.min(K.STRIP_LEN, math.ceil(c + half / g.Step) + 1)
+	for i = first, last do
+		local x = half + (i - 1 - c) * g.Step + (g.Step - g.CellW) / 2
+		if x + g.CellW > 0 and x < g.W then
+			local slot = ((i - 1) % K.MAX_CELLS) + 1
+			local cell = st.Cells[slot]
+			if cell and not used[slot] then
+				used[slot] = true
+				if cell.Index ~= i then
+					cell.Index = i
+					local rarity = rarities[i]
+					cell.Egg.Visible = rarity ~= false and rarity ~= nil
+					if rarity then
+						EggArt.SetRarity(cell.Egg, rarity)
+					end
+					if cell.Word then
+						cell.Word.Text = rarity or ""
+						cell.Word.TextColor3 = H.color(rarity)
+					end
+					local landed = st.Landed and i == K.WIN
+					cell.Stroke.Color = landed and H.color(rarities[i]) or Theme.Colors.WellEdge
+					cell.Stroke.Thickness = landed and 5 or 3
+					cell.Frame.BackgroundTransparency = (st.Landed and not landed) and 0.6 or 0.15
+				end
+				cell.Frame.Position = UDim2.fromOffset(x, (g.H - g.CellH) / 2)
+				cell.Frame.Visible = true
+			end
+		end
+	end
+	for slot, cell in pairs(st.Cells) do
+		if not used[slot] then
+			cell.Frame.Visible = false
+		end
+	end
+end
+
+function R.land(roll, j)
+	local st = roll.Strips[j]
+	st.Landed = true
+	st.Frame:SetAttribute("Landed", true)
+	local rarity = roll.Pulls[j].Rarity
+	H.sfx("SpinLand", H.scaleFor(rarity))
+	for _, cell in pairs(st.Cells) do
+		cell.Index = nil -- re-skin with the landed look on the next layout
+	end
+	R.cells(roll, j, st.C or K.START_CELL)
+	local g = st.Geo
+	if g then
+		local w = math.max(4, 6 * g.S)
+		st.Pointer.Size = UDim2.fromOffset(w * 2, g.H)
+		H.tween(st.Pointer, roll.T.Land, { Size = UDim2.fromOffset(w, g.H) }, Enum.EasingStyle.Back)
+	end
+end
+
+function R.strips(roll, t)
+	local s = roll.Sched
+	for j, st in pairs(roll.Strips) do
+		local dur = math.max(0.01, s.Land[j] - s.IntroEnd)
+		local p = Util.Clamp((t - s.IntroEnd) / dur, 0, 1)
+		local c = K.START_CELL + (K.WIN - 0.5 - K.START_CELL) * (1 - (1 - p) ^ K.CURVE)
+		R.cells(roll, j, c)
+		local cell = math.floor(c)
+		if st.Tick ~= cell then
+			if st.Tick ~= nil and j == 1 and p < 1 and os.clock() - (roll.LastTick or -1) >= 1 / K.TICKS_PER_S then
+				roll.LastTick = os.clock()
+				H.sfx("SpinTick", K.QUIET)
+			end
+			st.Tick = cell
+		end
+		if p >= 1 and not st.Landed then
+			R.land(roll, j)
+		end
+	end
+end
+
+-- the eggs lift out of the strip and grow onto their pedestals
+function R.rise(roll)
+	roll.HeroBuilt = true
+	local cr = S.Lay.Crack
+	local hero = roll.UI.Hero
+	for j, pull in ipairs(roll.Pulls) do
+		local e = { State = "Rise" }
+		local glow = EggArt.Glow(pull.Rarity)
+		e.Back = H.frame(hero, "Backlight" .. j, { BackgroundColor3 = H.color(pull.Rarity), BackgroundTransparency = 1, Visible = glow > 0, ZIndex = 1 })
+		H.corner(e.Back, 0.5)
+		e.Ped = H.frame(hero, "Pedestal" .. j, { BackgroundColor3 = Color3.fromRGB(196, 206, 228), BackgroundTransparency = 0, ZIndex = 2 })
+		H.corner(e.Ped, 10)
+		H.stroke(e.Ped, K.INK, 3)
+		Util.Create("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(236, 240, 250), Color3.fromRGB(140, 152, 184)), Parent = e.Ped })
+		e.Egg = EggArt.New(hero, pull.Rarity, cr.E, { Name = "Egg" .. j, ZIndex = 3 })
+		e.Egg.AnchorPoint = Vector2.new(0.5, 0.5)
+		e.Egg:SetAttribute("State", "Rise")
+		e.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = e.Egg })
+		roll.Eggs[j] = e
+	end
+	H.applyHero(roll, S.Lay)
+	-- the grow: from the landed cell (or the middle) to the pedestal
+	local g = S.Lay.Strip
+	for j, e in pairs(roll.Eggs) do
+		local final = e.Egg.Position
+		local st = roll.Strips[j]
+		if st and st.Geo then
+			e.Egg.Position = UDim2.fromOffset(g.X + g.W / 2, g.Y[j] + g.H / 2)
+			e.Pop.Scale = math.max(0.1, g.Egg / math.max(1, cr.E))
+		else
+			e.Pop.Scale = 0.4
+		end
+		H.tween(e.Egg, roll.T.Rise, { Position = final })
+		H.tween(e.Pop, roll.T.Rise, { Scale = 1 }, Enum.EasingStyle.Back)
+		if e.Back.Visible then
+			H.tween(e.Back, roll.T.Rise, { BackgroundTransparency = 1 - 0.8 * EggArt.Glow(roll.Pulls[j].Rarity) })
+		end
+	end
+	H.tween(roll.UI.Strips, roll.T.Rise, { Position = UDim2.fromOffset(0, 40) })
+end
+
+function R.dropStrips(roll)
+	for _, st in pairs(roll.Strips) do
+		st.Frame:Destroy()
+	end
+	roll.Strips = {}
+	if roll.UI.Strips then
+		roll.UI.Strips.Visible = false
+	end
+end
+
+function B.halves(roll, j)
+	local e = roll.Eggs[j]
+	local cr = S.Lay.Crack
+	local w = math.floor(EggArt.Metrics.WIDTH * cr.E + 0.5)
+	local holder = H.frame(roll.UI.Hero, "Halves" .. j, { Visible = false, ZIndex = 3 })
+	H.place(holder, cr.Cx[j] - w / 2, cr.EggY, w, cr.E)
+	e.Holder, e.HolderSize = holder, cr.E
+	e.Top, e.Bottom = EggArt.Halves(holder, roll.Pulls[j].Rarity, cr.E)
+end
+
+function R.crack(roll, j)
+	local e = roll.Eggs[j]
+	e.State = "Crack"
+	e.Egg:SetAttribute("State", "Crack")
+	local rarity = roll.Pulls[j].Rarity
+	local word = roll.UI.Crack
+	word.Text = string.upper(rarity) .. " EGG!"
+	word.TextColor3 = H.color(rarity)
+	word.Visible = true
+	H.applyHero(roll, S.Lay)
+	B.halves(roll, j)
+end
+
+-- the shakes: two (one on Fast hatch), +-6 then +-10 degrees
+function R.shake(roll, j, u)
+	local e = roll.Eggs[j]
+	local C = roll.T.Crack
+	local rot = 0
+	for _, w in ipairs(roll.Fast and K.SHAKE_FAST or K.SHAKE) do
+		local a, b = w[1] * C, w[2] * C
+		if u >= a and u <= b then
+			rot = w[3] * math.sin((u - a) / (b - a) * math.pi * 6)
+		end
+	end
+	e.Egg.Rotation = rot
+end
+
+function R.burst(roll, j)
+	local e = roll.Eggs[j]
+	e.State = "Burst"
+	e.Egg:SetAttribute("State", "Burst")
+	e.Egg.Visible = false
+	e.Egg.Rotation = 0
+	local pull = roll.Pulls[j]
+	local cr = S.Lay.Crack
+	local T = roll.T
+	if e.Holder and e.Top and e.Bottom then
+		e.Holder.Visible = true
+		H.tween(e.Top, T.Burst, { Position = UDim2.fromOffset(-0.25 * cr.E, -0.45 * cr.E), Rotation = -35, GroupTransparency = 1 })
+		H.tween(e.Bottom, T.Burst, { Position = UDim2.fromOffset(0, cr.E / 2 + 0.04 * cr.E) })
+	end
+	local shock = roll.UI.Shock
+	shock.Position = UDim2.fromOffset(cr.Cx[j], cr.EggY + cr.E / 2)
+	shock.Size = UDim2.fromOffset(0, 0)
+	shock.Visible = true
+	roll.UI.ShockStroke.Color = H.color(pull.Rarity)
+	roll.UI.ShockStroke.Transparency = 0
+	roll.ShockLive = true
+	H.tween(shock, T.Burst, { Size = UDim2.fromOffset(1.6 * cr.E, 1.6 * cr.E) })
+	H.tween(roll.UI.ShockStroke, T.Burst, { Transparency = 1 })
+	local mine = roll
+	task.delay(T.Burst, function()
+		if S.Roll == mine and mine.UI.Shock then
+			mine.ShockLive = false
+			mine.UI.Shock.Visible = false
+		end
+	end)
+	H.sfx("Shatter", H.scaleFor(pull.Rarity))
+	if j == roll.Best and H.order(pull.Rarity) >= K.LOUD_FROM then
+		R.flash(roll, true)
+	else
+		R.flash(roll, false)
+	end
+end
+
+-- the plain flash: white (0.12 s at 0.6) or, once per roll for the best pull from Legendary, gold (0.25 in / 0.6 out)
+function R.flash(roll, gold)
+	if gold and roll.GoldDone then
+		gold = false
+	end
+	local f = S.Flash
+	if not f then
+		return
+	end
+	if gold then
+		roll.GoldDone = true
+		f.BackgroundColor3 = K.GOLD
+		f.BackgroundTransparency = 0.35
+		H.tween(f, 0.6, { BackgroundTransparency = 1 })
+	else
+		f.BackgroundColor3 = K.WHITE
+		f.BackgroundTransparency = 0.6
+		H.tween(f, 0.12, { BackgroundTransparency = 1 })
+	end
+end
+
+function R.reveal(roll, skipped)
+	roll.Revealed = true
+	roll.RevealedAt = os.clock()
+	roll.Phase = "Reveal"
+	if roll.StartSound then
+		pcall(function()
+			roll.StartSound:Stop()
+		end)
+		roll.StartSound = nil
+	end
+	R.dropStrips(roll)
+	if not roll.HeroBuilt then
+		R.rise(roll)
+	end
+	for _, e in pairs(roll.Eggs) do
+		if e.Egg then
+			e.Egg:Destroy()
+			e.Egg = nil
+		end
+		if e.Holder then
+			e.Holder:Destroy()
+			e.Holder = nil
+		end
+		if e.Back then
+			e.Back.Visible = false
+		end
+		e.State = "Open"
+	end
+	roll.UI.Crack.Visible = false
+	roll.ShockLive = false
+	roll.UI.Shock.Visible = false
+	H.cancelTweens()
+	H.settleBackdrop()
+	if skipped then
+		-- the burst's last 0.25 s as an overlay over the reveal's start (the plain core: a short fade; gold once for Legendary+)
+		local best = roll.Pulls[roll.Best]
+		R.flash(roll, H.order(best.Rarity) >= K.LOUD_FROM)
+		if not roll.GoldDone or H.order(best.Rarity) < K.LOUD_FROM then
+			S.Flash.BackgroundTransparency = 0.5
+			H.tween(S.Flash, 0.25, { BackgroundTransparency = 1 })
+		end
+	end
+	B.cols(roll)
+	roll.UI.Reveal.Visible = true
+	H.apply()
+	for _, c in pairs(roll.Cols) do
+		H.tween(c.Pop, 0.35, { Scale = 1 }, Enum.EasingStyle.Back)
+	end
+	local mine = roll
+	task.delay(0.36, function()
+		if S.Roll == mine then
+			mine.PopDone = true
+		end
+	end)
+	local best = roll.Pulls[roll.Best]
+	H.sfx(K.REVEAL_SOUND[best.Rarity] or "RevealCommon", H.scaleFor(best.Rarity))
+end
+
+function R.advance(roll)
+	local t = os.clock() - roll.Start
+	if roll.Revealed then
+		roll.AgainClock = (roll.AgainClock or 0) + 1
+		if roll.AgainClock % 8 == 0 then
+			H.refreshAgain()
+		end
+		return
+	end
+	if roll.SkipWanted then
+		R.reveal(roll, true)
+		return
+	end
+	local s = roll.Sched
+	if roll.HasStrip and next(roll.Strips) ~= nil then
+		if not roll.StartPlayed and t >= s.IntroEnd then
+			roll.StartPlayed = true
+			roll.StartSound = H.sfx("SpinStart", K.QUIET)
+		end
+		R.strips(roll, t)
+	end
+	R.warmOne(roll)
+	if t >= s.LandEnd and not roll.HeroBuilt then
+		R.rise(roll)
+	end
+	if t >= s.RiseEnd and next(roll.Strips) ~= nil then
+		R.dropStrips(roll)
+	end
+	for j = 1, roll.N do
+		local e = roll.Eggs[j]
+		if e then
+			if e.State == "Rise" and t >= s.CrackAt[j] then
+				R.crack(roll, j)
+			end
+			if e.State == "Crack" then
+				if t >= s.BurstAt[j] then
+					R.burst(roll, j)
+				else
+					R.shake(roll, j, t - s.CrackAt[j])
+				end
+			end
+			if e.State == "Burst" and t >= s.OpenAt[j] then
+				e.State = "Open"
+				if e.Egg then
+					e.Egg:SetAttribute("State", "Open")
+				end
+			end
+		end
+	end
+	if t >= s.RevealAt then
+		R.reveal(roll, false)
+		return
+	end
+	roll.Phase = R.phaseAt(roll, t)
+end
+
+-- builds one pulled pet's model ahead of the reveal (one a frame, while the strip runs)
+function R.warmOne(roll)
+	for _, pull in ipairs(roll.Pulls) do
+		if not S.Warm[pull.PetId] then
+			local builder = H.lazy("Builder", Shared, "PetBuilder")
+			if builder and type(builder.Build) == "function" then
+				local ok, model = pcall(builder.Build, pull.Def, { Scale = 1 })
+				if ok and typeof(model) == "Instance" then
+					model:Destroy()
+					S.Warm[pull.PetId] = true
+				else
+					S.Warm[pull.PetId] = false
+				end
+			end
+			return
+		end
+	end
+end
+
+function R.step()
+	local roll = S.Roll
+	if not roll then
+		return
+	end
+	local ok, err = pcall(R.advance, roll)
+	if not ok and S.Roll == roll then
+		H.warnOnce("phase", err)
+		H.teardown("Error")
+	end
+end
+
+----------------------------------------------------------------------
+-- open, rolls, exits
+----------------------------------------------------------------------
+function H.open()
+	if not B.gui() then
+		return false
+	end
+	if not S.Beat then
+		S.Beat = RunService.Heartbeat:Connect(R.step)
+	end
+	S.Conns[#S.Conns + 1] = S.Gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		H.safe("resize", H.relayout)
+	end)
+	S.Conns[#S.Conns + 1] = LocalPlayer:GetAttributeChangedSignal(Config.Attr.InMatch):Connect(function()
+		if H.inMatch() and (S.Roll or S.Gui) then
+			H.teardown("Match")
+		end
+	end)
+	S.Conns[#S.Conns + 1] = ClientSettings.Changed:Connect(function(key)
+		if key == "FastHatch" then
+			H.paintFast(S.Roll)
+		end
+	end)
+	if not S.Bound then
+		S.Bound = true
+		pcall(function()
+			ContextActionService:BindActionAtPriority(K.BACK_ACTION, function(_, inputState)
+				if inputState == Enum.UserInputState.Begin then
+					H.safe("back", EggStage.Back)
+				end
+				return Enum.ContextActionResult.Sink
+			end, false, Enum.ContextActionPriority.High.Value + 1, Enum.KeyCode.ButtonB)
+		end)
+	end
+	local mc = H.menu()
+	if mc and type(mc.SetTouchHidden) == "function" then
+		pcall(mc.SetTouchHidden, "Hatch", true)
+	end
+	return true
+end
+
+function H.startRoll(roll)
+	S.Roll = roll
+	roll.Start = os.clock()
+	roll.Phase = "Intro"
+	S.Lay = L.compute(roll.N, roll)
+	B.roll(roll)
+	H.apply()
+	-- the intro: the dim, the vignette, the title sliding down
+	if S.Dim and S.Dim.BackgroundTransparency > K.DIM then
+		H.tween(S.Dim, roll.T.Intro, { BackgroundTransparency = K.DIM })
+	end
+	for _, edge in ipairs(S.Vignette:GetChildren()) do
+		if edge:IsA("Frame") and edge.BackgroundTransparency > K.VIGNETTE then
+			H.tween(edge, roll.T.Intro, { BackgroundTransparency = K.VIGNETTE })
+		end
+	end
+	local title = roll.UI.Title
+	local final = title.Position
+	title.Position = final + UDim2.fromOffset(0, -20)
+	H.tween(title, roll.T.Intro, { Position = final })
+end
+
+function H.finishRoll()
+	local roll = S.Roll
+	S.Roll = nil
+	if roll then
+		roll.Dead = true
+		if roll.StartSound then
+			pcall(function()
+				roll.StartSound:Stop()
+			end)
+		end
+		for _, v in ipairs(roll.Views) do
+			pcall(v.Destroy)
+		end
+		roll.Views = {}
+	end
+	H.cancelTweens()
+	if S.Content then
+		for _, child in ipairs(S.Content:GetChildren()) do
+			if child ~= S.Fit then
+				child:Destroy()
+			end
+		end
+	end
+	if S.Flash then
+		S.Flash.BackgroundTransparency = 1
+	end
+end
+
+function H.namesOf(roll, out)
+	for _, p in ipairs(roll.Pulls) do
+		out[#out + 1] = p.Def.Name
+	end
+	return out
+end
+
+-- every exit ends here: the pulls not shown yet are toasted, then everything this module made goes, then Closed(reason)
+function H.teardown(reason)
+	local roll = S.Roll
+	if not roll and not S.Gui then
+		return
+	end
+	if reason ~= "Done" then
+		local names = {}
+		if roll and not roll.Revealed then
+			H.namesOf(roll, names)
+		end
+		for _, result in ipairs(S.Queue) do
+			local queued = H.makeRoll(result)
+			if queued then
+				H.namesOf(queued, names)
+			end
+		end
+		S.Queue = {}
+		if #names > 0 then
+			H.toast(K.TEXT.Hatched .. table.concat(names, ", "))
+		end
+	end
+	H.finishRoll()
+	if S.Beat then
+		S.Beat:Disconnect()
+		S.Beat = nil
+	end
+	for _, conn in ipairs(S.Conns) do
+		pcall(function()
+			conn:Disconnect()
+		end)
+	end
+	S.Conns = {}
+	if S.Bound then
+		S.Bound = false
+		pcall(function()
+			ContextActionService:UnbindAction(K.BACK_ACTION)
+		end)
+	end
+	local mc = H.menu()
+	if mc and type(mc.SetTouchHidden) == "function" then
+		pcall(mc.SetTouchHidden, "Hatch", false)
+	end
+	if S.Gui then
+		S.Gui:Destroy()
+	end
+	S.Gui, S.Stage, S.Content, S.Fit, S.Dim, S.Flash, S.Vignette, S.Lay = nil, nil, nil, nil, nil, nil, nil, nil
+	pcall(EggStage.Closed.Fire, EggStage.Closed, reason)
+end
+
+-- the backdrop at rest (after its tweens were cancelled): the dim, the vignette edges, no flash
+function H.settleBackdrop()
+	if S.Dim then
+		S.Dim.BackgroundTransparency = K.DIM
+	end
+	if S.Vignette then
+		for _, edge in ipairs(S.Vignette:GetChildren()) do
+			if edge:IsA("Frame") then
+				edge.BackgroundTransparency = K.VIGNETTE
+			end
+		end
+	end
+	if S.Flash then
+		S.Flash.BackgroundTransparency = 1
+	end
+end
+
+function H.relayout()
+	local roll = S.Roll
+	if not roll or not S.Content then
+		return
+	end
+	H.cancelTweens()
+	S.Lay = L.compute(roll.N, roll)
+	H.settleBackdrop()
+	if roll.UI.Strips then
+		roll.UI.Strips.Position = UDim2.fromOffset(0, 0)
+	end
+	for _, c in pairs(roll.Cols) do
+		c.Pop.Scale = 1
+	end
+	roll.PopDone = roll.Revealed
+	H.apply()
+end
+
+-- a tap anywhere outside the buttons, or the Skip chip: skip before the reveal, close on it (after TAP_GUARD)
+function H.tap()
+	local roll = S.Roll
+	if not roll then
+		return
+	end
+	if roll.Revealed then
+		if os.clock() - (roll.RevealedAt or 0) >= K.TAP_GUARD then
+			EggStage.Done()
+		end
+	else
+		EggStage.Skip()
+	end
+end
+
+function H.again()
+	local roll = S.Roll
+	if not roll or not roll.Revealed or not roll.Roulette then
+		return
+	end
+	if EggStage.Request(roll.Roulette.Id, roll.Currency, roll.N > 1 and 3 or 1) then
+		S.PendFrom = "Again"
+	end
+end
+
+----------------------------------------------------------------------
+-- public API
+----------------------------------------------------------------------
+function EggStage.Init()
+	if S.Inited then
+		return
+	end
+	S.Inited = true
+	local remote = H.remote("RouletteResult")
+	if remote then
+		remote.OnClientEvent:Connect(function(result)
+			H.safe("RouletteResult", EggStage._Answer, result)
+		end)
+	else
+		H.warnOnce("Init", "the RouletteResult remote is unavailable")
+	end
+end
+
+function EggStage.Show(result)
+	local roll = H.makeRoll(result)
+	if not roll then
+		if type(result) == "table" and result.Ok ~= false then
+			H.toast(K.TEXT.Fallback)
+		end
+		return false
+	end
+	if S.Roll then
+		S.Queue[#S.Queue + 1] = result
+		return true
+	end
+	if not H.open() then
+		H.toast(K.TEXT.Hatched .. table.concat(H.namesOf(roll, {}), ", "))
+		return false
+	end
+	H.startRoll(roll)
+	pcall(EggStage.Opened.Fire, EggStage.Opened)
+	return true
+end
+
+function EggStage._Answer(result)
+	local fromAgain = S.PendFrom == "Again"
+	S.Pending = false
+	S.PendToken = S.PendToken + 1
+	S.PendFrom = nil
+	pcall(EggStage.Answered.Fire, EggStage.Answered, result)
+	if type(result) ~= "table" then
+		H.refreshAgain()
+		return
+	end
+	if result.Ok == false then
+		local reason = (type(result.Reason) == "string" and result.Reason ~= "") and result.Reason or K.TEXT.Failed
+		H.toast(reason)
+		H.refreshAgain()
+		return
+	end
+	local roll = S.Roll
+	if roll and roll.Revealed and fromAgain and #S.Queue == 0 then
+		local nextRoll = H.makeRoll(result)
+		if nextRoll then
+			H.finishRoll()
+			H.startRoll(nextRoll)
+			return
+		end
+	end
+	EggStage.Show(result)
+end
+
+function EggStage.Request(rouletteId, currency, spins)
+	if S.Pending then
+		return false
+	end
+	local now = os.clock()
+	if now - S.LastFire < K.FIRE_GAP then
+		return false
+	end
+	local roulette = H.roulette(rouletteId)
+	if not roulette then
+		return false
+	end
+	spins = (spins == 3) and 3 or 1
+	currency = (currency == "Gems" or roulette.Id == K.SECRET_ID) and "Gems" or "Tokens"
+	if roulette.Id == K.SECRET_ID then
+		spins = 1 -- the Secret Roulette is x1 only (spec 13 call 2)
+	end
+	if H.inMatch() then
+		H.toast(K.TEXT.Match)
+		return false
+	end
+	local price = H.price(roulette, currency) * spins
+	if currency == "Gems" and not H.gemsOpen() then
+		H.toast(K.TEXT.Policy)
+		return false
+	end
+	if H.balance(currency) < price then
+		H.toast("You need " .. Util.Commas(price) .. (currency == "Gems" and " Gems" or " Cloud Tokens") .. " for that.")
+		return false
+	end
+	local remote = H.remote("BuyRoulette")
+	if not remote then
+		return false
+	end
+	local ok = pcall(function()
+		remote:FireServer(roulette.Id, currency, spins)
+	end)
+	if not ok then
+		return false
+	end
+	S.LastFire = now
+	S.Pending = true
+	S.PendFrom = nil
+	S.PendToken = S.PendToken + 1
+	local mine = S.PendToken
+	pcall(EggStage.Pending.Fire, EggStage.Pending, roulette.Id, currency, spins)
+	H.refreshAgain()
+	task.delay(K.WAIT_TIMEOUT, function()
+		if S.Pending and S.PendToken == mine then
+			S.Pending = false
+			S.PendFrom = nil
+			H.toast(K.TEXT.NoAnswer)
+			H.refreshAgain()
+		end
+	end)
+	return true
+end
+
+function EggStage.IsPending()
+	return S.Pending == true
+end
+
+function EggStage.IsShowing()
+	return S.Roll ~= nil
+end
+
+function EggStage.Phase()
+	return S.Roll and S.Roll.Phase or nil
+end
+
+function EggStage.Skip()
+	local roll = S.Roll
+	if roll and not roll.Revealed then
+		roll.SkipWanted = true
+	end
+end
+
+function EggStage.Back()
+	local roll = S.Roll
+	if not roll then
+		return
+	end
+	if roll.Revealed then
+		EggStage.Done()
+	else
+		EggStage.Skip()
+	end
+end
+
+function EggStage.Done()
+	local roll = S.Roll
+	if not roll then
+		return
+	end
+	if not roll.Revealed then
+		EggStage.Skip()
+		return
+	end
+	while #S.Queue > 0 do
+		local nextRoll = H.makeRoll(table.remove(S.Queue, 1))
+		if nextRoll then
+			H.finishRoll()
+			H.startRoll(nextRoll)
+			return
+		end
+	end
+	H.teardown("Done")
+end
+
+function EggStage.Close()
+	if S.Roll or S.Gui then
+		H.teardown("Close")
+	elseif #S.Queue > 0 then
+		local names = {}
+		for _, result in ipairs(S.Queue) do
+			local queued = H.makeRoll(result)
+			if queued then
+				H.namesOf(queued, names)
+			end
+		end
+		S.Queue = {}
+		if #names > 0 then
+			H.toast(K.TEXT.Hatched .. table.concat(names, ", "))
+		end
+	end
+end
+
+function EggStage.IsPrewarmed(petId)
+	return S.Warm[petId] == true
+end
+
+function EggStage.Stats()
+	local n = 0
+	if S.Gui and S.Gui.Parent then
+		n = 1
+		local skip = {}
+		for _, d in ipairs(S.Gui:GetDescendants()) do
+			local cur = d.Parent
+			local inside = false
+			while cur and cur ~= S.Gui do
+				if skip[cur] or cur:IsA("ViewportFrame") then
+					inside = true
+					break
+				end
+				cur = cur.Parent
+			end
+			if inside then
+				skip[d] = true
+			else
+				n = n + 1
+			end
+		end
+	end
+	local tweens = 0
+	for tw in pairs(S.Tweens) do
+		local ok, playing = pcall(function()
+			return tw.PlaybackState == Enum.PlaybackState.Playing
+		end)
+		if ok and playing then
+			tweens = tweens + 1
+		end
+	end
+	return { Instances = n, Tweens = tweens, Sparks = 0, Effects = 0, Heartbeats = S.Beat and 1 or 0 }
+end
+
+return EggStage

@@ -1742,7 +1742,8 @@ src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientS
              panels); UI/PetCard (the cards above pets); UI/PetBits (what the windows showing a pet share); UI/TeamFaces
              (the three faces + Edit team on every battle panel); UI/PetPicker (the one full-screen pet picker sheet
              of the Training Place and the Fusion Machine: search, sorts, filters, big cards); UI/GemIcon (the drawn
-             cut gem every gem amount shows); Controllers:
+             cut gem every gem amount shows); UI/EggArt (the seven eggs drawn from frames); UI/EggStage (the egg stage:
+             the one roulette request path and the egg-opening cutscene); Controllers:
              Movement, MainMenu (main menu + settings), Hud, DamageFx, Notify, Menu, Pets (the Pets window), Pet, TokenFx, Index, Tutorial, Npc, SkyDragon, Showcase, Dev, DevPetShow
              (pet showcase, /fx attack preview), EvolutionFx (evolution animation, the dungeon enemies' arrival),
              AttackFx (plays the pet attack effects: Blender cores, flipbook particles, beams, trails and lights,

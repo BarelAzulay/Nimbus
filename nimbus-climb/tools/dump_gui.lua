@@ -45,6 +45,10 @@
 --   titles[:<studs>]      lobby-shop Task 19: the three title tags (rainbow TOP 10, gold TOP 100, CREATOR with the VIP crown)
 --                         over sketched characters seen from <studs> away (default 14), a name stand-in at the anchor
 --                         ([lobby-shop] block)
+--   eggs                  lobby-shop Task 20: the seven GUI eggs (EggArt, plain base) at 30 / 64 / 104 / 160 / 380 px and a
+--                         Halves pair ([lobby-shop] block)
+--   hatch[:<view>]        lobby-shop Task 20: the egg stage core (EggStage, plain visuals) stepped to one moment: strip,
+--                         strip3, crack, reveal (default), reveal3, secret ([lobby-shop] block)
 --   evolve                the EVOLVE confirm over the Pets window
 --   ring[:<view>]         Phase 4 (ArenaController's Champion Ring window): OpenPanel("Ring") with a ring record
 --                         (Best 24); view new (no record yet) | record (default)
@@ -3415,6 +3419,137 @@ scenario("titles", function(studs)
 	end
 	screen.Parent = LocalPlayer:WaitForChild("PlayerGui")
 	advance(0.1)
+end)
+
+-- eggs                  lobby-shop Task 20 (spec 16.5 API, 5.6): the seven GUI eggs (client/UI/EggArt, the plain base: the
+--                       oval, the tone gradient, the outline, the highlight; the paint comes in Task 26), no game HUD. One
+--                       column per rarity with the egg at 30 / 64 / 104 px, then 160 px, then three 380 px eggs (Common,
+--                       Legendary, Secret) and an Epic EggArt.Halves pair pulled apart. A board designed at 1700 x 930 px,
+--                       scaled to fit under the top bar (the outlines are Border strokes, size / 20 outside each box: the
+--                       spacing leaves room for them).
+scenario("eggs", function()
+	local EggArt = req("client/UI/EggArt")
+	local Theme = req("shared/Theme")
+	NK.hideGame()
+	local _, root = NK.newGui("EggGallery")
+	local vp = Mock.Viewport
+	local fit = min(1, (vp.X - 32) / 1700, (vp.Y - 134) / 930) -- (the gallery's ScreenGui sits under the 58 px top bar)
+	local board = make("Frame", {
+		Name = "Board", Position = UDim2.fromOffset(16, 66), Size = UDim2.fromOffset(1700, 930),
+		BackgroundColor3 = Theme.Colors.PanelBottom, BackgroundTransparency = 0.1, BorderSizePixel = 0,
+	}, root)
+	corner(board, 0, 16)
+	make("UIScale", { Scale = fit }, board)
+	label(board, "The seven eggs: EggArt (plain base, Task 20)", 26, { Position = UDim2.fromOffset(24, 10), Size = UDim2.fromOffset(900, 34), TextXAlignment = Enum.TextXAlignment.Left })
+	for i, rarity in ipairs(Config.Eggs.Order) do
+		local x = 30 + (i - 1) * 236
+		local cx = x
+		for _, size in ipairs({ 30, 64, 104 }) do
+			local egg = EggArt.New(board, rarity, size)
+			egg.Position = UDim2.fromOffset(cx, 170 - size)
+			cx = cx + floor(0.8 * size + 0.5) + 16
+		end
+		local big = EggArt.New(board, rarity, 160)
+		big.Position = UDim2.fromOffset(x + 40, 196)
+		label(board, rarity, 20, { Position = UDim2.fromOffset(x, 372), Size = UDim2.fromOffset(210, 26), TextXAlignment = Enum.TextXAlignment.Center })
+	end
+	local x = 40
+	for _, rarity in ipairs({ "Common", "Legendary", "Secret" }) do
+		local egg = EggArt.New(board, rarity, 380)
+		egg.Position = UDim2.fromOffset(x, 440)
+		label(board, rarity .. " 380 px", 20, { Position = UDim2.fromOffset(x, 848), Size = UDim2.fromOffset(304, 26), TextXAlignment = Enum.TextXAlignment.Center })
+		x = x + 370
+	end
+	local holder = make("Frame", { Name = "HalvesHolder", BackgroundTransparency = 1, Position = UDim2.fromOffset(x + 20, 440), Size = UDim2.fromOffset(304, 380) }, board)
+	local top, bottom = EggArt.Halves(holder, "Epic", 380)
+	top.Position = UDim2.fromOffset(-24, -12)
+	top.Rotation = -14
+	bottom.Position = UDim2.fromOffset(0, 232)
+	label(board, "Epic halves", 20, { Position = UDim2.fromOffset(x + 20, 884), Size = UDim2.fromOffset(304, 26), TextXAlignment = Enum.TextXAlignment.Center })
+	note(fmt("eggs: board scale %.2f", fit))
+	advance(0.1)
+end)
+
+-- hatch:<view>          lobby-shop Task 20 (spec 16.4, 5.5): the egg stage core (client/UI/EggStage, plain visuals) over the
+--                       hidden game HUD, stepped to one moment of a roll (Fast hatch off): strip = a Cloud x1 Epic at 1.6 s
+--                       (mid-strip); strip3 = a Storm x3 (Rare, Legendary, Epic) at 1.6 s; crack = the x1 at 4.75 s (mid
+--                       Crack: the word, the egg, the plain pedestal); reveal = the x1 at 6.6 s; reveal3 = the x3 at 7.8 s
+--                       (the Epic evolved: its ribbon); secret = a Secret Roulette x1 (Gems, the pity pull) at 6.6 s
+local HATCH = { At = { strip = 1.6, strip3 = 1.6, crack = 4.75, reveal = 6.6, reveal3 = 7.8, secret = 6.6 } }
+function HATCH.strip(PC, rid, winnerId)
+	local all = {}
+	for _, def in ipairs(PC.PossiblePets(rid)) do
+		all[#all + 1] = def.Id
+	end
+	local ids = {}
+	for i = 1, 40 do
+		ids[i] = all[((i * 7) % #all) + 1]
+	end
+	ids[34] = winnerId
+	return ids
+end
+function HATCH.pull(PC, rid, def, opts)
+	opts = opts or {}
+	return {
+		PetId = def.Id, Key = opts.Key or def.Id, Rarity = def.Rarity, IsNew = opts.IsNew ~= false, Count = opts.Count or 1,
+		PoolSize = #PC.RarityPool(rid, def.Rarity), Pity = opts.Pity, Strip = HATCH.strip(PC, rid, def.Id),
+	}
+end
+scenario("hatch", function(view)
+	view = tostring(view or "reveal"):lower()
+	local at = HATCH.At[view] or HATCH.At.reveal
+	local PC = req("shared/PetCatalog")
+	local ES = req("client/UI/EggStage")
+	local CS = req("client/ClientSettings")
+	local epic, rare = PC.RarityPool("Cloud", "Epic")[1], PC.RarityPool("Cloud", "Rare")[1]
+	local leg = PC.RarityPool("Storm", "Legendary")[1]
+	-- the profile: tokens and gems for SPIN AGAIN, gem roulettes allowed, the Epic pet evolved (stage 1) for x3's ribbon
+	local snap = snapshot()
+	snap.Tokens, snap.Gems = 50000, 5000
+	snap.PetLevels = snap.PetLevels or {}
+	snap.PetGrowth = snap.PetGrowth or {}
+	snap.PetLevels[epic.Id] = { Level = 60, Xp = 0 }
+	snap.PetGrowth[epic.Id] = { Evo = 1 }
+	toClient("ProfileSync", snap)
+	LocalPlayer:SetAttribute(Config.Attr.Tokens, 50000)
+	LocalPlayer:SetAttribute(Config.Attr.Gems, 5000)
+	LocalPlayer:SetAttribute("PaidRandomItemsRestricted", false)
+	CS.Set("FastHatch", false)
+	NK.hideGame()
+	advance(0.5)
+	-- the stage measures its name rows and banners with TextService:GetTextSize (the mock's is a flat 0.5 em per
+	-- character): its K.MEASURE hook gets the renderer's font metrics instead (Mock.TextExtent, see installMetrics)
+	local probe = Instance.new("TextLabel")
+	ES.Metrics.MEASURE = function(text, size, font)
+		probe.Text, probe.TextSize, probe.Font = text, size, font
+		return (Mock.TextExtent(probe))
+	end
+	local rid, currency, pulls = "Cloud", "Tokens", nil
+	if view == "strip3" or view == "reveal3" then
+		local storm = function(def)
+			return def and PC.RarityPool("Storm", def.Rarity)[1] or nil
+		end
+		rid = "Storm"
+		pulls = { HATCH.pull(PC, rid, storm(rare) or rare), HATCH.pull(PC, rid, leg), HATCH.pull(PC, rid, epic, { IsNew = false, Count = 2 }) }
+	elseif view == "secret" then
+		local pool = PC.RarityPool("Secret", "Secret")
+		local def = pool[1] or PC.RarityPool("Secret", "Mythic")[1]
+		rid, currency = "Secret", "Gems"
+		pulls = { HATCH.pull(PC, rid, def, { Pity = true }) }
+	else
+		pulls = { HATCH.pull(PC, rid, epic) }
+	end
+	local p1 = pulls[1]
+	local result = { Ok = true, RouletteId = rid, Currency = currency, Spins = #pulls, Pulls = pulls, PetId = p1.PetId, Key = p1.Key, IsNew = p1.IsNew, Count = p1.Count, Strip = p1.Strip }
+	local t0 = os.clock()
+	if not ES.Show(result) then
+		note("hatch: EggStage.Show refused the result")
+		return
+	end
+	while os.clock() - t0 < at - 1e-6 do
+		advance(1 / 30)
+	end
+	note(fmt("hatch:%s at %.2f s: phase %s, layout %s, %d instances", view, os.clock() - t0, tostring(ES.Phase()), tostring(ES.Layout()), ES.Stats().Instances))
 end)
 -- [lobby-shop] end
 
