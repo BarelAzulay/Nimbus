@@ -179,16 +179,11 @@
       ]
     },
     "server/Services/LobbyBoardBuilder": {
-      "_comment": "lobby shop (2026-11-07) Task 10: the lobby's newer boards drawn with LobbyBuilder's helpers (H): the Egg Guide at the Sky Trove's old spot; Task 11 adds the leaderboard board",
+      "_comment": "lobby shop (2026-11-07) Tasks 10 / 11: the lobby's newer boards drawn with LobbyBuilder's helpers (H = L.H): the Egg Guide at the Sky Trove's old spot, the leaderboard board on the south lawn",
       "functions": [
-        "EggGuide"
-      ],
-      "pending": {
-        "_comment": "lobby shop Task 11: the leaderboard board on the south lawn",
-        "functions": [
-          "Leaderboard"
-        ]
-      }
+        "EggGuide",
+        "Leaderboard"
+      ]
     },
     "server/Services/PlayerService": {
       "functions": [

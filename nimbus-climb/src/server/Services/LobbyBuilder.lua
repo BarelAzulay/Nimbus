@@ -11,7 +11,9 @@
 --                    Court (stone kerbs, lamps every 16 studs, a tall cream welcome arch at r 40 carrying the welcome
 --                    sign), the circle walk (r 100) with clipped hedges and lamps, the east / west walks, the shop
 --                    boardwalk with the fountain roundabout, lawns with trees, benches, flower beds and the six NPC
---                    spots, a kerb along the edge.
+--                    spots, a kerb along the edge; the leaderboard board LobbyLeaderboard on the south lawn (lobby shop,
+--                    spec 5.10: LobbyBoardBuilder.Leaderboard, polar 295 degrees r 48, facing the centre; the client's
+--                    PlayerGui SurfaceGui adorns its Face).
 --   * GATE COURT     (6.1) a sector 48..132 degrees, r 96..146: cream tile rings, a light rim, a raised terrace with
 --                    hedges, a banner behind every gate and two obelisks. Five gates left -> right Obby, Dungeon, Ring,
 --                    Arena, Altar on the arc r Config.Lobby.GateArcRadius, spread evenly over the court's six Phase 5
@@ -86,7 +88,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Theme = require(Shared.Theme)
 local Util = require(Shared.Util)
-local LobbyBoardBuilder = require(script.Parent.LobbyBoardBuilder) -- lobby shop: the Egg Guide (and the leaderboard board)
+local LobbyBoardBuilder = require(script.Parent.LobbyBoardBuilder) -- lobby shop: the Egg Guide and the leaderboard board
 
 local LobbyBuilder = {}
 
@@ -2971,6 +2973,11 @@ local function buildPlazaDecor(f, L)
 		{ "court decor", Court.Decor },
 		{ "avenue", Court.Avenue },
 		{ "boards", buildBoards },
+		-- lobby shop (spec 5.10): the leaderboard board on the south lawn (LobbyBoardBuilder; the client SurfaceGui adorns
+		-- its Face)
+		{ "leaderboard board", function(ff, LL)
+			return LobbyBoardBuilder.Leaderboard(ff, LL, LL.H)
+		end },
 	}) do
 		local ok, err = pcall(part[2], f, L)
 		if not ok then
@@ -3722,11 +3729,7 @@ local function buildShop(root, L)
 	-- plaza's reservations); it stays in this folder, so a failed shop build takes it along and the fallback builds the
 	-- only trove.
 	local guidePos = at(-21, -8) - Vector3.new(0, LAWN, 0) -- on the lawn layer
-	local H = { -- LobbyBoardBuilder draws with these helpers
-		noticeBoard = noticeBoard, surfaceGui = surfaceGui, signPanel = signPanel, signText = signText,
-		box = box, Mesh = Mesh, C = C, MAT = MAT, LAWN = LAWN,
-	}
-	local okGuide, errGuide = pcall(LobbyBoardBuilder.EggGuide, f, flatLook(guidePos, S - Vector3.new(0, LAWN, 0)), H)
+	local okGuide, errGuide = pcall(LobbyBoardBuilder.EggGuide, f, flatLook(guidePos, S - Vector3.new(0, LAWN, 0)), L.H)
 	if not okGuide then
 		warn("[LobbyBuilder] egg guide failed: " .. tostring(errGuide))
 	end
@@ -5219,6 +5222,12 @@ function LobbyBuilder.Build()
 	if not Voxel then
 		warn("[LobbyBuilder] shared/Voxel is missing: building the plain fallback lobby")
 	end
+	-- lobby shop: the helpers LobbyBoardBuilder draws with (the Egg Guide in buildShop, the leaderboard board in
+	-- buildPlazaDecor), one table as a field of the layout (no new local)
+	L.H = {
+		noticeBoard = noticeBoard, surfaceGui = surfaceGui, signPanel = signPanel, signText = signText,
+		box = box, Mesh = Mesh, C = C, MAT = MAT, LAWN = LAWN, plazaSpot = plazaSpot, faceCentre = faceCentre,
+	}
 
 	-- Gameplay-critical objects first (gates, spots, shop); each has a bare-bones fallback.
 	-- The Gate Court (6.1): Obby, Altar here; Ring / Arena (ArenaBuilder) and Dungeon (DungeonBuilder) join the

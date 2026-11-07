@@ -16,9 +16,20 @@
 --         bottom centre (the Blender pivot). Until a key has an id the egg is its Part fallback: a 2.25 x 3 x 2.5
 --         ellipsoid (a block with a Sphere SpecialMesh, CourseBuilder's way: a Roblox Ball part is always round) in the
 --         rarity colour, SmoothPlastic, not colliding; the Secret egg dark with its violet tint.
---   LobbyBoardBuilder.Leaderboard(parent, L, H) -> Model | nil   (Task 11: the leaderboard board on the south lawn)
+--   LobbyBoardBuilder.Leaderboard(parent, L, H) -> Model "LobbyLeaderboard" | nil
+--     The global leaderboard's board on the south lawn (spec 5.10 "World"): placed with H.plazaSpot at polar 295 degrees,
+--     r 48, clearance 9 (nil when the spot is not free: plazaSpot has warned "plaza decor skipped"), on the lawn layer,
+--     facing the plaza centre (H.faceCentre). The layout Task 23's prop_board_lb mesh shares (pivot = the ground centre,
+--     front -Z towards the centre):
+--       * Face: 16 x 13 x 0.4, centred 9.5 up, navy SmoothPlastic, not colliding but queryable: the client's PlayerGui
+--         SurfaceGui (LeaderboardController, 50 px per stud = 800 x 650 px, ten rows at the 0.6-stud floor) adorns it
+--         and its tabs take taps. It stays a Part under the mesh (Mesh.tag keeps "Face").
+--       * two 1 x 17 x 1 timber posts at local x +-8.9 on stone feet, a 0.6-stud frame around the face (four bars) with
+--         a plank back, an 18.6 x 0.6 x 2.4 roof at y 16.9 with a ridge on it.
+--     Mesh.tag(model, "prop_board_lb", cf, nil, { "Face" }); the Part build shows until that key has an id.
 --
---   H = { noticeBoard, surfaceGui, signPanel, signText, box, Mesh, C, MAT, LAWN }
+--   H = { noticeBoard, surfaceGui, signPanel, signText, box, Mesh, C, MAT, LAWN, plazaSpot, faceCentre } (LobbyBuilder's
+--   layout field L.H, built once per Build)
 -- No light, no prompt, no animation (the server never animates). Plain Lua 5.1 syntax only.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -46,6 +57,15 @@ local SECRET = {
 	Text = Color3.fromRGB(178, 150, 255), -- its name on the navy board
 }
 local PX = { Title = 52, Info = 30 } -- px at 50 px per stud: 1.04 stud / 0.6 stud (the World text rule)
+-- the leaderboard board: where it stands (polar degrees, radius, plazaSpot clearance; spec 5.10 checked the clearance
+-- against the fountain, the NPC spots, the benches, the flower beds and the spawn) and its layout (shared with Task 23)
+local BOARD = {
+	Angle = 295, R = 48, Clear = 9,
+	Face = Vector3.new(16, 13, 0.4), FaceY = 9.5,
+	PostX = 8.9, PostH = 17,
+	Rim = 0.6, -- the frame's width around the face
+	Roof = Vector3.new(18.6, 0.6, 2.4), RoofY = 16.9,
+}
 
 local function rarityColor(id)
 	for _, r in ipairs(Config.Rarities) do
@@ -118,6 +138,32 @@ function LobbyBoardBuilder.EggGuide(parent, cf, H)
 		H.Mesh.tag(egg, EGG_KEYS[id], eggCF)
 	end
 	model.WorldPivot = cf
+	return model
+end
+
+function LobbyBoardBuilder.Leaderboard(parent, L, H)
+	local pos = H.plazaSpot(BOARD.Angle, BOARD.R, BOARD.Clear, L)
+	if not pos then
+		return nil -- not free: plazaSpot has warned "plaza decor skipped"
+	end
+	local cf = H.faceCentre(pos - Vector3.new(0, H.LAWN, 0)) -- on the lawn layer, the front (-Z) towards the centre
+	local C, solid = H.C, { Collide = true }
+	local model = Instance.new("Model")
+	model.Name = "LobbyLeaderboard"
+	model.Parent = parent
+	local fw, fh, rim = BOARD.Face.X, BOARD.Face.Y, BOARD.Rim
+	H.box(model, "Face", cf * CFrame.new(0, BOARD.FaceY, 0), BOARD.Face, C.Navy, { Material = H.MAT.SmoothPlastic, Query = true })
+	H.box(model, "Back", cf * CFrame.new(0, BOARD.FaceY, BOARD.Face.Z / 2 + 0.15), Vector3.new(fw + 2 * rim, fh + 2 * rim, 0.3), C.Plank, solid)
+	for _, s in ipairs({ -1, 1 }) do
+		H.box(model, "Frame", cf * CFrame.new(0, BOARD.FaceY + s * (fh + rim) / 2, 0), Vector3.new(fw + 2 * rim, rim, rim), C.Plank, solid)
+		H.box(model, "Frame", cf * CFrame.new(s * (fw + rim) / 2, BOARD.FaceY, 0), Vector3.new(rim, fh, rim), C.Plank, solid)
+		H.box(model, "Post", cf * CFrame.new(s * BOARD.PostX, BOARD.PostH / 2, 0), Vector3.new(1, BOARD.PostH, 1), C.PlankDark, solid)
+		H.box(model, "PostFoot", cf * CFrame.new(s * BOARD.PostX, 0.4, 0), Vector3.new(1.6, 0.8, 1.6), C.StoneDark, solid)
+	end
+	H.box(model, "Roof", cf * CFrame.new(0, BOARD.RoofY, 0), BOARD.Roof, C.PlankDark)
+	H.box(model, "Ridge", cf * CFrame.new(0, BOARD.RoofY + BOARD.Roof.Y / 2 + 0.25, 0), Vector3.new(BOARD.Roof.X - 1.4, 0.5, 1.4), C.Rose)
+	model.WorldPivot = cf -- before the tag: the mesh's offset is measured from the model's pivot
+	H.Mesh.tag(model, "prop_board_lb", cf, nil, { "Face" })
 	return model
 end
 

@@ -18,9 +18,23 @@
 --                "Server", a GetSortedAsync budget under 2 waits 30 s without counting a failure, then "Global"
 --   lb_fallback  no store (a clone Inited with Mock.DataStore.Unavailable = true): Scope "Server", live sorted values, a
 --                refresh every 30 s, zero writes and no reads
+--   lb_world     (Task 11, spec 5.10 "World") the LobbyLeaderboard board on the south lawn: exactly one, in the Plaza
+--                folder, its pivot (the ground centre) at polar 295 degrees r 48 from Config.Lobby.Origin (+-0.5) on the
+--                lawn, facing the plaza centre; the board layout Task 23's prop_board_lb mesh shares: Face 16 x 13 (+-0.01)
+--                9.5 studs up (navy SmoothPlastic, not colliding, queryable so the client SurfaceGui's tabs take taps), two
+--                colliding 1 x 17 x 1 posts at local x +-8.9, a 0.6-stud frame around the face (four bars, their area
+--                exactly the ring), the 18.6 x 0.6 x 2.4 roof at y 16.9 with a ridge on it, no light; distances: fountain
+--                centre >= 24, every LobbyInfo.NpcSpots entry >= 14, every Bench >= 12.5, every FlowerBed >= 13, the spawn
+--                >= 30; nothing else of the lobby standing above the lawn inside the board's footprint (posts, feet, roof;
+--                0.25 stud margin); no "plaza decor skipped" / "leaderboard board failed" warn; the dress request read from
+--                a rebuild with LobbyBuilder._Kit: one prop_board_lb record on the model at its pivot, Keep = { "Face" };
+--                ML_DressKey only where MeshLibrary.Status("prop_board_lb") ~= "missing" (in --mesh the scenario gives the
+--                key a fixture holder, as lobby_trove_plaza does for the eggs, so the check runs there)
 -- White-box: LeaderboardService._S (Recs, Pages, Writes, NoStore), _StopForTest, _CloseForTest; the mock's
 -- Mock.DataStore.Sorted / SortedLog / Budget / FailOnly, Mock.Users / UserServiceFail / UserServiceCalls. Clones follow the
--- polish_data_outage pattern and are stopped and destroyed in every path. Deterministic: mock clock only. Plain Lua 5.1.
+-- polish_data_outage pattern and are stopped and destroyed in every path. lb_world's rebuild follows smoke_p6_lobby.lua /
+-- smoke_lobby_shop_world.lua (the booted lobby set aside and put back; _Kit, the Meadow stats and the fixture holder restored
+-- in every path). Deterministic: mock clock only. Plain Lua 5.1.
 
 local T = SmokeCommon.T
 local guarded = SmokeCommon.guarded
@@ -920,6 +934,296 @@ S.lb_fallback = guarded("lb_fallback", function()
 	end
 	K.flushErrors("lb_fallback")
 	K.flushWarnings("lb_fallback", ALLOWED_WARNINGS)
+end)
+
+----------------------------------------------------------------------------------------------------
+-- lb_world (Task 11): the leaderboard board on the south lawn
+----------------------------------------------------------------------------------------------------
+local MESH_MODE = (os and os.getenv and os.getenv("NC_MESH_FIXTURES") == "1") or false
+-- the spec's board (5.10 "World") and Task 11's layout; FountainD = LobbyBuilder's G.FountainD (the fountain roundabout's
+-- distance from the origin towards the shop)
+local WB = { Key = "prop_board_lb", Angle = 295, R = 48, LAWN = 0.4, FountainD = 66, Navy = Color3.fromRGB(34, 42, 76) }
+
+local function wreq(path)
+	local inst = K.moduleInstance(path)
+	if not inst then
+		return nil
+	end
+	local ok, m = pcall(require, inst)
+	return (ok and type(m) == "table") and m or nil
+end
+
+local function hdist(a, b)
+	local dx, dz = a.X - b.X, a.Z - b.Z
+	return math.sqrt(dx * dx + dz * dz)
+end
+
+local function flatUnit(v)
+	local f = Vector3.new(v.X, 0, v.Z)
+	if f.Magnitude < 1e-6 then
+		return nil
+	end
+	return f.Unit
+end
+
+local function boardsIn(root)
+	local out = {}
+	for _, d in ipairs(root:GetDescendants()) do
+		if d:IsA("Model") and d.Name == "LobbyLeaderboard" then
+			out[#out + 1] = d
+		end
+	end
+	return out
+end
+
+local function badWarns(from)
+	local out = {}
+	for i = (from or 0) + 1, #Mock.Output do
+		local t = tostring(Mock.Output[i].text)
+		if string.find(t, "plaza decor skipped", 1, true) or string.find(t, "leaderboard board failed", 1, true) then
+			out[#out + 1] = t
+		end
+	end
+	return out
+end
+
+-- a part's footprint as an XZ rectangle (lobby parts turn about Y only; a part on its side falls back to a circle)
+local function footprint(p)
+	local r, l = flatUnit(p.CFrame.RightVector), flatUnit(p.CFrame.LookVector)
+	local c = Vector3.new(p.Position.X, 0, p.Position.Z)
+	if not r or not l or math.abs(p.CFrame.UpVector.Y) < 0.99 then
+		local h = math.max(p.Size.X, p.Size.Y, p.Size.Z) / 2
+		return { C = c, A = { Vector3.new(1, 0, 0), Vector3.new(0, 0, 1) }, H = { h, h } }
+	end
+	return { C = c, A = { r, l }, H = { p.Size.X / 2, p.Size.Z / 2 } }
+end
+
+-- the largest gap between two footprints along their four edge normals (> 0: apart; <= 0: they overlap)
+local function rectSeparation(a, b)
+	local best = -math.huge
+	for _, axis in ipairs({ a.A[1], a.A[2], b.A[1], b.A[2] }) do
+		local function radius(rc)
+			return math.abs(rc.A[1]:Dot(axis)) * rc.H[1] + math.abs(rc.A[2]:Dot(axis)) * rc.H[2]
+		end
+		local gap = math.abs((b.C - a.C):Dot(axis)) - radius(a) - radius(b)
+		best = math.max(best, gap)
+	end
+	return best
+end
+
+-- the checks of one built board
+local function checkBoard(label, board, info, root)
+	local Config = K.config()
+	local o = Config.Lobby.Origin
+	local cf = board:GetPivot()
+	local spot = Vector3.new(o.X + math.cos(math.rad(WB.Angle)) * WB.R, o.Y, o.Z + math.sin(math.rad(WB.Angle)) * WB.R)
+	T.check(hdist(cf.Position, spot) <= 0.5, label .. ": the board's pivot stands at polar 295 degrees, r 48 from the origin (+-0.5)",
+		string.format("%.2f off", hdist(cf.Position, spot)))
+	T.check(math.abs(cf.Position.Y - (o.Y - WB.LAWN)) <= 0.05 and cf.UpVector.Y > 0.999, label .. ": the pivot is the ground centre on the plaza lawn (Origin.Y - 0.4), upright",
+		string.format("y %.2f", cf.Position.Y - o.Y))
+	local toC = flatUnit(o - cf.Position)
+	T.check(toC ~= nil and cf.LookVector:Dot(toC) > 0.99, label .. ": the board faces the plaza centre (front -Z)", toC and string.format("dot %.4f", cf.LookVector:Dot(toC)) or "")
+	T.check(board.Parent ~= nil and board.Parent.Name == "Plaza", label .. ": the board stands in the Plaza folder", board.Parent and board.Parent.Name or "nil")
+
+	-- the layout Task 23's mesh shares (pivot = ground centre, front -Z)
+	local face = board:FindFirstChild("Face")
+	if T.check(face ~= nil and face:IsA("BasePart"), label .. ": a Face part") then
+		T.check(math.abs(face.Size.X - 16) <= 0.01 and math.abs(face.Size.Y - 13) <= 0.01, label .. ": Face.Size is 16 x 13 (+-0.01)", tostring(face.Size))
+		local lf = cf:ToObjectSpace(face.CFrame)
+		T.check((lf.Position - Vector3.new(0, 9.5, 0)).Magnitude <= 0.05 and face.CFrame.LookVector:Dot(cf.LookVector) > 0.999,
+			label .. ": the Face's centre is 9.5 studs over the pivot, its Front face toward the plaza", tostring(lf.Position))
+		T.check(face.Material == Enum.Material.SmoothPlastic and math.abs(face.Color.R - WB.Navy.R) < 0.006 and math.abs(face.Color.G - WB.Navy.G) < 0.006
+			and math.abs(face.Color.B - WB.Navy.B) < 0.006 and face.Transparency == 0, label .. ": the Face is navy SmoothPlastic and visible")
+		T.check(face.CanCollide == false and face.CanQuery == true, label .. ": the Face does not collide but stays queryable (the client SurfaceGui's tabs take taps)")
+	end
+	local posts, frames, xs, postsOk = {}, {}, {}, true
+	for _, c in ipairs(board:GetChildren()) do
+		if c:IsA("BasePart") and c.Name == "Post" then
+			posts[#posts + 1] = c
+			local l = cf:PointToObjectSpace(c.Position)
+			xs[#xs + 1] = l.X
+			postsOk = postsOk and (c.Size - Vector3.new(1, 17, 1)).Magnitude <= 0.01 and math.abs(l.Y - 8.5) <= 0.05 and math.abs(l.Z) <= 0.05 and c.CanCollide == true
+		elseif c:IsA("BasePart") and c.Name == "Frame" then
+			frames[#frames + 1] = c
+		end
+	end
+	table.sort(xs)
+	T.check(#posts == 2 and postsOk and math.abs(xs[1] + 8.9) <= 0.05 and math.abs(xs[2] - 8.9) <= 0.05,
+		label .. ": two colliding 1 x 17 x 1 posts at local x -8.9 and +8.9", #posts .. " posts at " .. table.concat(xs, ", "))
+	-- the frame: every bar inside the outer rectangle (x +-8.6, y 2.4 .. 16.6) and outside the face (x +-8, y 3 .. 16),
+	-- their area exactly the ring between the two
+	local area, inRing = 0, true
+	for _, fr in ipairs(frames) do
+		local l = cf:ToObjectSpace(fr.CFrame)
+		local hx, hy = fr.Size.X / 2, fr.Size.Y / 2
+		local x0, x1, y0, y1 = l.X - hx, l.X + hx, l.Y - hy, l.Y + hy
+		area = area + fr.Size.X * fr.Size.Y
+		local outer = x0 >= -8.6 - 0.01 and x1 <= 8.6 + 0.01 and y0 >= 2.4 - 0.01 and y1 <= 16.6 + 0.01
+		local clear = x1 <= -8 + 0.01 or x0 >= 8 - 0.01 or y1 <= 3 + 0.01 or y0 >= 16 - 0.01
+		inRing = inRing and outer and clear and math.abs(l.Z) <= 0.35 and fr.CFrame.LookVector:Dot(cf.LookVector) > 0.999
+	end
+	T.check(#frames == 4 and inRing and math.abs(area - (17.2 * 14.2 - 16 * 13)) <= 0.05,
+		label .. ": a 0.6-stud frame around the face (four bars filling exactly the ring)", string.format("%d bars, area %.2f", #frames, area))
+	local roof, ridge = board:FindFirstChild("Roof"), board:FindFirstChild("Ridge")
+	local lr = roof and roof:IsA("BasePart") and cf:PointToObjectSpace(roof.Position)
+	T.check(lr and (roof.Size - Vector3.new(18.6, 0.6, 2.4)).Magnitude <= 0.01 and math.abs(lr.Y - 16.9) <= 0.05 and math.abs(lr.X) <= 0.05 and math.abs(lr.Z) <= 0.05,
+		label .. ": the roof is 18.6 x 0.6 x 2.4 at y 16.9", roof and tostring(roof.Size) or "no Roof")
+	local lg = ridge and ridge:IsA("BasePart") and cf:PointToObjectSpace(ridge.Position)
+	T.check(lg and roof and math.abs((lg.Y - ridge.Size.Y / 2) - (16.9 + 0.3)) <= 0.05 and ridge.Size.X < roof.Size.X, label .. ": a ridge sits on the roof")
+	local lights, parts = 0, 0
+	for _, d in ipairs(board:GetDescendants()) do
+		if d:IsA("Light") then
+			lights = lights + 1
+		elseif d:IsA("BasePart") then
+			parts = parts + 1
+		end
+	end
+	T.check(lights == 0 and parts <= 16, label .. ": no light, a small Part build (<= 16 parts)", lights .. " lights, " .. parts .. " parts")
+
+	-- distances (spec 5.10: the clearance 9 checked against the fountain, NPC spots, benches, flower beds, the spawn)
+	local p = cf.Position
+	local off = Config.Lobby.ShopOffset
+	local fountain = o + flatUnit(off) * WB.FountainD
+	T.check(hdist(p, fountain) >= 24, label .. ": the fountain's centre is >= 24 studs away", string.format("%.1f", hdist(p, fountain)))
+	local npcMin = math.huge
+	for _, s in ipairs(info.NpcSpots or {}) do
+		npcMin = math.min(npcMin, hdist(p, s.Position))
+	end
+	T.check(#(info.NpcSpots or {}) >= 6 and npcMin >= 14, label .. ": every NPC spot is >= 14 studs away", string.format("%d spots, nearest %.1f", #(info.NpcSpots or {}), npcMin))
+	local mins, counts = { Bench = math.huge, FlowerBed = math.huge }, { Bench = 0, FlowerBed = 0 }
+	for _, d in ipairs(root:GetDescendants()) do
+		if d:IsA("Model") and mins[d.Name] then
+			counts[d.Name] = counts[d.Name] + 1
+			mins[d.Name] = math.min(mins[d.Name], hdist(p, d:GetPivot().Position))
+		end
+	end
+	T.check(counts.Bench >= 4 and mins.Bench >= 12.5, label .. ": every Bench is >= 12.5 studs away", string.format("%d benches, nearest %.1f", counts.Bench, mins.Bench))
+	T.check(counts.FlowerBed >= 1 and mins.FlowerBed >= 13, label .. ": every FlowerBed is >= 13 studs away", string.format("%d beds, nearest %.1f", counts.FlowerBed, mins.FlowerBed))
+	local spawn = info.SpawnCFrame and info.SpawnCFrame.Position
+	T.check(spawn ~= nil and hdist(p, spawn) >= 30, label .. ": the spawn is >= 30 studs away", spawn and string.format("%.1f", hdist(p, spawn)) or "no SpawnCFrame")
+
+	-- nothing else standing above the lawn inside the board's footprint (posts, feet, frame, roof), 0.25 stud margin
+	local mine = {}
+	for _, d in ipairs(board:GetDescendants()) do
+		if d:IsA("BasePart") then
+			mine[#mine + 1] = footprint(d)
+		end
+	end
+	local lawnTop = o.Y - WB.LAWN
+	local hits, seen, nearest, nearestName = {}, 0, math.huge, "-"
+	for _, d in ipairs(root:GetDescendants()) do
+		if d:IsA("BasePart") and not d:IsDescendantOf(board) and d.Transparency < 1 and hdist(d.Position, p) < 40
+			and d.Position.Y + d.Size.Y / 2 > lawnTop + 0.2 and d.Position.Y - d.Size.Y / 2 < cf.Position.Y + 18 then
+			seen = seen + 1
+			local fp = footprint(d)
+			local gap = math.huge
+			for _, m in ipairs(mine) do
+				gap = math.min(gap, rectSeparation(m, fp))
+			end
+			if gap < 0.25 then
+				hits[#hits + 1] = d:GetFullName()
+			end
+			if gap < nearest then
+				nearest, nearestName = gap, d.Name
+			end
+		end
+	end
+	T.check(seen > 0 and #hits == 0, label .. ": nothing else of the lobby stands above the lawn inside the board's footprint (paths, borders, props)", table.concat(hits, ", "))
+	T.info(string.format("*%s: fountain %.1f, NPC spot %.1f, bench %.1f, flower bed %.1f, spawn %.1f studs; %d parts above the lawn within 40 studs, the nearest (%s) %.2f studs off the footprint",
+		label, hdist(p, fountain), npcMin, mins.Bench, mins.FlowerBed, spawn and hdist(p, spawn) or -1, seen, nearestName, nearest))
+end
+
+S.lb_world = guarded("lb_world", function()
+	if not K.needBoot() then
+		return
+	end
+	local info = K.W.lobbyInfo
+	local lobby = workspace:FindFirstChild("NimbusLobby")
+	local LB = wreq("server/Services/LobbyBuilder")
+	local LBB = wreq("server/Services/LobbyBoardBuilder")
+	local ML = wreq("shared/MeshLibrary")
+	if not T.check(info ~= nil and lobby ~= nil and LB ~= nil and ML ~= nil, "lb world: (precondition) the booted lobby, LobbyBuilder and MeshLibrary") then
+		return
+	end
+	T.check(LBB ~= nil and type(LBB.Leaderboard) == "function", "lb world: LobbyBoardBuilder.Leaderboard exists")
+
+	------------------------------------------------------------------ the booted board
+	local boards = boardsIn(lobby)
+	T.eq(#boards, 1, "lb world: exactly one LobbyLeaderboard in the booted lobby")
+	if boards[1] then
+		checkBoard("lb world", boards[1], info, lobby)
+	end
+	local warned = badWarns(0)
+	T.check(#warned == 0, "lb world: no 'plaza decor skipped' / 'leaderboard board failed' warn in the build log", table.concat(warned, " | "))
+
+	------------------------------------------------------------------ rebuild: the dress request
+	local MK = LB._Meadow and LB._Meadow.K
+	local savedStats, savedLast = MK and MK.Stats, MK and MK.Last
+	local undo = {}
+	lobby.Name = "NimbusLobby_LbWorldKeep"
+	local cursor = #Mock.Output
+	local okRun, errRun = pcall(function()
+		LB._Kit = { Targets = {}, Clouds = {} }
+		if MESH_MODE then
+			-- --mesh: a fixture holder for the key in the fixture MeshLibrary's root (Status -> "loading"), removed after
+			local root = game:GetService("ReplicatedStorage"):FindFirstChild("P6PetsMeshLibrary")
+			if T.check(root ~= nil, "lb world (--mesh): the fixture MeshLibrary root exists") then
+				local h = Instance.new("Folder")
+				h.Name = WB.Key
+				h.Parent = root
+				undo[#undo + 1] = function()
+					h:Destroy()
+				end
+			end
+		end
+		local okBuild, built = pcall(LB.Build)
+		if not T.check(okBuild and type(built) == "table" and typeof(built.Folder) == "Instance", "lb world rebuild: LobbyBuilder.Build() ran", tostring(built)) then
+			return
+		end
+		undo[#undo + 1] = function()
+			built.Folder:Destroy()
+		end
+		local list = boardsIn(built.Folder)
+		T.eq(#list, 1, "lb world rebuild: exactly one LobbyLeaderboard")
+		local board = list[1]
+		local recs = {}
+		for _, rec in ipairs(LB._Kit and LB._Kit.Targets or {}) do
+			if rec.Key == WB.Key then
+				recs[#recs + 1] = rec
+			end
+		end
+		local rec = recs[1]
+		local keepFace = false
+		for _, name in ipairs(rec and type(rec.Keep) == "table" and rec.Keep or {}) do
+			keepFace = keepFace or name == "Face"
+		end
+		T.check(#recs == 1 and board ~= nil and rec.Target == board and keepFace, "lb world: one prop_board_lb dress request on the LobbyLeaderboard model, Keep holding 'Face'",
+			#recs .. " records")
+		T.check(rec ~= nil and board ~= nil and typeof(rec.Origin) == "CFrame" and (rec.Origin.Position - board:GetPivot().Position).Magnitude <= 0.01
+			and rec.Origin.LookVector:Dot(board:GetPivot().LookVector) > 0.9999, "lb world: ...its origin is the board's pivot (the ground centre, front -Z)")
+		local okSt, st = pcall(ML.Status, WB.Key)
+		if okSt and st ~= "missing" then
+			T.check(board ~= nil and board:GetAttribute("ML_DressKey") == WB.Key, "lb world: ML_DressKey = prop_board_lb on the model (the key is " .. tostring(st) .. ")")
+		elseif MESH_MODE then
+			T.fail("lb world (--mesh): the fixture holder should make prop_board_lb's status not 'missing'", tostring(st))
+		else
+			T.check(board ~= nil and board:GetAttribute("ML_DressKey") == nil, "lb world: no ML_DressKey while prop_board_lb is missing (the Part build shows; --mesh checks the tag)")
+		end
+		local sk = badWarns(cursor)
+		T.check(#sk == 0, "lb world rebuild: no 'plaza decor skipped' / 'leaderboard board failed' warn", table.concat(sk, " | "))
+	end)
+	for i = #undo, 1, -1 do
+		pcall(undo[i])
+	end
+	LB._Kit = nil
+	if MK then
+		MK.Stats, MK.Last = savedStats, savedLast
+	end
+	lobby.Name = "NimbusLobby"
+	T.check(okRun, "lb world: the rebuild checks ran", tostring(errRun))
+	T.check(LB._Kit == nil and workspace:FindFirstChild("NimbusLobby") == lobby and #boardsIn(lobby) == 1, "lb world: the hook is back to nil and the booted lobby is back")
+	K.flushErrors("lb_world")
+	K.flushWarnings("lb_world", ALLOWED_WARNINGS)
 end)
 
 return S
