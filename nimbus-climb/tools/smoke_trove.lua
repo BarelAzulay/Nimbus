@@ -2,7 +2,8 @@
 -- docs/superpowers/plans/2026-11-04-store.md, Task 6 by W1-lobby), loaded by tools/smoke.py in BOTH worlds (ARGS.context
 -- picks the half):
 --   trove_build          (server world, booted) LobbyInfo.Shop.ItemShop points at the SkyTrove model (PromptPart, Center, Lid),
---                        the boarded-up stall is gone, <= 60 parts, one tagged lid, the service-made prompt, Theme fonts only
+--                        the boarded-up stall is gone, <= 60 parts, one tagged lid, the service-made prompt, Theme fonts only;
+--                        lobby shop (spec 5.9): the chest stands on the plaza lawn (polar 43, r 56), off the shop island
 --   trove_group_once     (server world, booted) the prompt opens the panel, NO IsInGroupAsync before Joined, ONE call, the exact
 --                        grant ($2,000 + 200 Tokens), the ask set; a second Joined grants nothing and makes no call; saved
 --   trove_stale_once     (server world, booted) a false answer: "Rejoin the game" toast, State Checked, a second Joined on the
@@ -185,6 +186,15 @@ local function serverScenarios()
 		T.check(bb ~= nil and bb:IsA("BillboardGui") and bb:IsDescendantOf(stall.Lid), "trove build: the TroveBillboard rides the lid")
 		local front = (stall.PromptPart.Position - stall.Center)
 		T.check(front.Magnitude < 10, "trove build: the PromptPart stands in front of the chest", tostring(front.Magnitude))
+		-- lobby shop (spec 5.9): the chest stands on the plaza lawn (polar 43 degrees, r 56), off the shop island
+		local L = Config.Lobby
+		local o = L.Origin
+		local spot = Vector3.new(o.X + math.cos(math.rad(43)) * 56, 0, o.Z + math.sin(math.rad(43)) * 56)
+		local off = Vector3.new(stall.Center.X - spot.X, 0, stall.Center.Z - spot.Z).Magnitude
+		local shopC = Vector3.new(o.X + L.ShopOffset.X, 0, o.Z + L.ShopOffset.Z)
+		local fromShop = Vector3.new(stall.Center.X - shopC.X, 0, stall.Center.Z - shopC.Z).Magnitude
+		T.check(off <= 0.5 and fromShop > 60, "trove build: the chest stands on the plaza lawn (polar 43, r 56), not on the shop island",
+			string.format("%.2f off the spot, %.1f from the shop's centre", off, fromShop))
 	end)
 
 	S.trove_group_once = guarded("trove_group_once", function()

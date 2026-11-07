@@ -61,6 +61,9 @@ Config.Tags = {
 	GoldenToken = "NC_GoldenToken", -- a CloudToken whose Value is 5 (also carries CloudToken tag)
 	-- store (2026-11-04)
 	TroveLid = "NC_TroveLid", -- the Sky Trove's lid part (TroveController swings it open on the client; no attrs)
+	-- lobby shop (spec 5.12): lobby motion driven by the client (LobbyFxController); the server never animates
+	Spin = "NC_Spin", -- a part turning about its Y axis; attrs SpinSeconds (one turn), BobStuds, BobSeconds (optional bob)
+	Bob = "NC_Bob", -- a part or BillboardGui bobbing up and down; attrs BobStuds (amplitude), BobSeconds (period)
 }
 
 -- Attributes set on Player instances by the server (client HUD reads them).
@@ -100,6 +103,8 @@ Config.Attr = {
 	-- loading, provisional or not settled; the Secret card's chip reads it)
 	XpPassState = "XpPassState", -- StoreService.PassState(player, "PetXp2x"): "Owned" | "NotOwned" | "Checking" | "Unavailable",
 	-- written on every change (the shop's gem potion label reads it; the server never reads it back)
+	TroveGroupDone = "TroveGroupDone", -- true once the saved Sky Trove Group ask is set (TroveService: load, recovery, claim;
+	-- never cleared); the client hides the trove's Join sign for that player only
 }
 
 Config.Remotes = {

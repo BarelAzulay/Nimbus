@@ -3,7 +3,8 @@
 --   huditems_gone        (server, booted) shared/ItemCatalog and server/Services/ItemService are gone, no BuyItem /
 --                        UseItem remotes and no Config.Items; the item stall keeps its sculpt but has no prompt, is
 --                        boarded up (Model Boards: two planks beside the mesh-tagged Stall model) and its sign says
---                        Closed; the roulette prompts are the only prompts of the shop; no NPC line names an item or
+--                        Closed; the roulette prompts and the Trove's are the only prompts of the shop (counted by name:
+--                        the lobby shop moved the trove to the plaza lawn); no NPC line names an item or
 --                        the hotbar (<= 125 bytes, 3-5 lines), the Movement Trainer's keywords name the checkpoint
 --   huditems_refund      (server, booted; DataStore mock seeded with v2 saves) the one-time B3ItemsRefund: 30 / 45 / 150
 --                        Tokens per heal_cloud / shield_bubble / phoenix_feather, counts clamped to 5, unknown ids pay 0,
@@ -102,14 +103,25 @@ local function serverScenarios()
 			"huditems: ...its Lid is a Model carrying the TroveLid tag")
 		local title = find(stall.Model, "Title")
 		T.check(title ~= nil and title:IsA("TextLabel") and title.Text == "SKY TROVE", "huditems: ...the lid plate reads SKY TROVE", title and title.Text)
-		local shopFolder = stall.Model.Parent
-		local shopPrompts = 0
+		-- lobby shop (spec 5.9): the trove stands on the plaza lawn now (still in the Shop folder, off the island), so the
+		-- shop prompts are counted by name: one RoulettePrompt per machine, the one TrovePrompt, nothing else
+		local shopFolder = workspace.NimbusLobby:FindFirstChild("Shop")
+		local machines, troves, strays = 0, 0, {}
 		for _, d in ipairs(shopFolder and shopFolder:GetDescendants() or {}) do
 			if d:IsA("ProximityPrompt") then
-				shopPrompts = shopPrompts + 1
+				local owner = d.Parent and d.Parent.Parent
+				if d.Name == "RoulettePrompt" and owner and string.sub(owner.Name, 1, 9) == "Roulette_" then
+					machines = machines + 1
+				elseif d.Name == "TrovePrompt" and d:IsDescendantOf(stall.Model) then
+					troves = troves + 1
+				else
+					strays[#strays + 1] = d:GetFullName()
+				end
 			end
 		end
-		T.eq(shopPrompts, #Config.Roulettes + 1, "huditems: the roulette prompts and the Trove's are the only shop prompts")
+		T.check(machines == #Config.Roulettes and troves == 1 and #strays == 0,
+			"huditems: the roulette prompts (one RoulettePrompt per machine) and the Trove's TrovePrompt are the only shop prompts",
+			fmt("%d machine prompts, %d trove prompts, strays: %s", machines, troves, table.concat(strays, ", ")))
 
 		local NpcDialog = req("shared/NpcDialog")
 		if T.check(NpcDialog and type(NpcDialog.Npcs) == "table", "huditems: NpcDialog loads") then

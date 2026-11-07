@@ -1,5 +1,5 @@
 -- TroveService (store 2026-11-04; docs/superpowers/specs/2026-11-04-shop-retention-design.md 5.3 / 7 Z10-Z11 / 13b.5): the
--- Sky Trove, the lobby chest in the old item stall's place (LobbyBuilder buildTrove) that pays ONCE PER ACCOUNT for a
+-- Sky Trove, the lobby chest on the plaza lawn (LobbyBuilder buildTrove; lobby shop 5.9) that pays ONCE PER ACCOUNT for a
 -- verified join of the owner's Roblox group (Config.Trove: GroupId, PromptRange, Slack, Cooldown, Asks).
 --
 -- Flow
@@ -23,6 +23,9 @@
 --     both grant end with one grant in the store (DataService's union + twin rule); a failed save keeps grant and bit for
 --     the orphan retry.
 --   * PlayerRemoving clears the visit (a rejoin is a new visit).
+--   * lobby shop (spec 5.9): the player attribute Config.Attr.TroveGroupDone = true once the saved Group ask is set (a
+--     loaded, non-provisional profile): on DataService.ProfileLoaded / ProfileRebased and at the claim; never cleared.
+--     The client hides the chest's Join sign for that player.
 --
 -- Public API
 --   TroveService.Init(lobbyInfo, deps)   deps = { DataService }
@@ -166,6 +169,20 @@ local function troveOf(player)
 		return trove
 	end
 	return nil
+end
+
+-- lobby shop (spec 5.9): the player attribute TroveGroupDone = true once the saved Group ask is set (a loaded,
+-- non-provisional profile: troveOf); set on ProfileLoaded / ProfileRebased and at the claim, never cleared. The client
+-- hides the trove's Join sign for that player only.
+local function markGroupDone(player)
+	local name = Config.Attr and Config.Attr.TroveGroupDone
+	if type(name) ~= "string" or not isLivePlayer(player) then
+		return
+	end
+	local trove = troveOf(player)
+	if trove and trove[GROUP_ASK] == true then
+		player:SetAttribute(name, true)
+	end
 end
 
 local function groupState(player)
@@ -325,6 +342,7 @@ function TroveService.Joined(player)
 	if reward.Tokens > 0 then
 		DS.AddTokens(player, reward.Tokens)
 	end
+	markGroupDone(player)
 	TroveService.Claimed:Fire(player, GROUP_ASK, reward)
 	notify(player, string.format(TEXT.Paid, commas(reward.Cash), commas(reward.Tokens)), "good")
 	return true, sendState(player)
@@ -389,6 +407,21 @@ function TroveService.Init(lobbyInfo, deps)
 		S.LastOpen[player] = nil
 		S.LastRequest[player] = nil
 	end)
+	-- lobby shop (spec 5.9): TroveGroupDone from the save, on every load / recovery, and for players already loaded
+	for _, sigName in ipairs({ "ProfileLoaded", "ProfileRebased" }) do
+		local sig = S.DS and S.DS[sigName]
+		if type(sig) == "table" and type(sig.Connect) == "function" then
+			sig:Connect(function(player)
+				local ok, err = pcall(markGroupDone, player)
+				if not ok then
+					warn("[TroveService] TroveGroupDone failed: " .. tostring(err))
+				end
+			end)
+		end
+	end
+	for _, player in ipairs(Players:GetPlayers()) do
+		pcall(markGroupDone, player)
+	end
 end
 
 return TroveService

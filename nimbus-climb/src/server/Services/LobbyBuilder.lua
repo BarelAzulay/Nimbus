@@ -20,10 +20,13 @@
 --                    player asked; the Home window's Go home portal is the way home). This module builds Obby and Altar
 --                    into the Gates folder; ArenaBuilder adds Ring + Arena, DungeonBuilder the Dungeon gate.
 --   * SHOP ISLAND    at Config.Lobby.ShopOffset: four voxel gacha machines (Model Roulette_<Id>, built in
---                    the roulette colour), the Sky Trove (Model SkyTrove, store 2026-11-04: a brass-banded chest in the
---                    old item stall's place, its Lid a separate Model hinged at the back and resting open 18 degrees,
---                    a sign post, the gap's light; TroveService puts the prompt on its PromptPart), a rarity board, a
---                    token statue and an entrance arch, joined to the plaza by a short stone neck.
+--                    the roulette colour), the Egg Guide (lobby shop: LobbyBoardBuilder.EggGuide, a notice board naming
+--                    the seven eggs over a stone shelf with the seven 3D eggs, in the Sky Trove's old place), a rarity
+--                    board, a token statue and an entrance arch, joined to the plaza by a short stone neck. The Sky Trove
+--                    (Model SkyTrove, store 2026-11-04: a brass-banded chest, its Lid a separate Model hinged at the back
+--                    and resting open 18 degrees, a sign post, the gap's light, the Join sign; TroveService puts the
+--                    prompt on its PromptPart) is built with the shop (its folder) but stands on the plaza lawn (lobby
+--                    shop, spec 5.9: polar G.Trove.Angle, r G.Trove.R, facing the centre).
 --   * HOME PLOTS     Config.Lobby.SpotCount cloud islands on Config.Lobby.SpotRingRadius: a puffy cloud body
 --                    (billows along the sides and back, a hanging cumulus underneath, a soft rim of puffs on the
 --                    outer margins) under a flat PlotSize x PlotSize mowed lawn yard (kept EMPTY for the
@@ -83,6 +86,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Theme = require(Shared.Theme)
 local Util = require(Shared.Util)
+local LobbyBoardBuilder = require(script.Parent.LobbyBoardBuilder) -- lobby shop: the Egg Guide (and the leaderboard board)
 
 local LobbyBuilder = {}
 
@@ -174,6 +178,9 @@ G.SpokeW = 10
 G.GardenR = (PLAZA_R + G.StreetR - G.StreetW / 2) / 2 -- garden island centres, halfway between the plaza and the street (221)
 G.GardenSize = 22 -- garden island radius
 G.ArenaBridgeW = 12 -- Phase 3: the arena bridge (ArenaBuilder) leaves the street through a gap this wide + 1.6
+-- lobby shop (spec 5.9): the Sky Trove on the plaza lawn (polar degrees, radius, plazaSpot clearance): the front-left lawn
+-- seen from the spawn, beside the How to play board (32 degrees, r 48; 12.75 studs apart, 12.5 needed) and the bench
+G.Trove = { Angle = 43, R = 56, Clear = 6.5 }
 
 ----------------------------------------------------------------------
 -- Palette: cheerful but not blinding. Nothing is pure white (cloud tops stay below 249 on red).
@@ -3375,14 +3382,16 @@ local function fallbackMachine(parent, cf, roulette)
 	return { Id = roulette.Id, PromptPart = prompt, Center = cabinet.Position, Model = model }
 end
 
--- The Sky Trove (store 2026-11-04, spec 5.3): a sky-sailor's treasure chest left on the shop lawn where the boarded-up
--- item stall stood. Plank body with two brass bands, gold corners, a lock plate and iron side handles on four feet; the
--- Lid is its own Model hinged at the back edge (PrimaryPart Hinge on the hinge line) and rests OPEN 18 degrees so the
--- gold inside and the warm light show through the gap (TroveController swings it to 70 degrees on the client when a
+-- The Sky Trove (store 2026-11-04, spec 5.3): a sky-sailor's treasure chest, since the lobby shop (spec 5.9) on the
+-- plaza lawn (L.TroveCF; it stood on the shop lawn where the boarded-up item stall had been). Plank body with two brass
+-- bands, gold corners, a lock plate and iron side handles on four feet; the Lid is its own Model hinged at the back
+-- edge (PrimaryPart Hinge on the hinge line) and rests OPEN 18 degrees so the gold inside and the warm light show
+-- through the gap (TroveController swings it to 70 degrees on the client when a
 -- player's prize pays out); a little sign post beside it (the lawn here steps between 0.0 and 0.4 studs, so nothing
 -- lies flat on it). Front (-Z) faces the customer. <= 60 parts; mesh keys prop_trove_body / prop_trove_lid /
 -- prop_trove_sign (the Blender dress comes later: until a key has an id the Parts stay). TroveService puts the
--- ProximityPrompt on PromptPart. -> { PromptPart, Center, Model, Lid }
+-- ProximityPrompt on PromptPart. The Join sign (JoinAnchor + JoinBillboard) floats over it. -> { PromptPart, Center,
+-- Model, Lid }
 local function buildTrove(parent, cf)
 	local REST_DEG = 18 -- the lid's resting angle (TroveController swings it to 70 from here)
 	local model = newModel(parent, "SkyTrove")
@@ -3451,14 +3460,47 @@ local function buildTrove(parent, cf)
 	})
 	CollectionService:AddTag(glow, DETAIL_TAG)
 
-	-- the sign post beside the chest (a painted gold star on a plank board; no words: the lid plate names it)
+	-- the sign post beside the chest (a painted gold star on a plank board; no words: the lid plate names it). lobby shop
+	-- (spec 5.9): mirrored to local x -6.2 (was +6.2), so it does not stand behind the How to play board on the plaza
 	local sign = newModel(model, "Sign")
-	local signCF = cf * CFrame.new(6.2, 0, -1.4)
+	local signCF = cf * CFrame.new(-6.2, 0, -1.4)
 	box(sign, "Footing", signCF * CFrame.new(0, 0.15, 0), Vector3.new(1.2, 0.3, 1.2), C.StoneDark)
 	box(sign, "Post", signCF * CFrame.new(0, 2.2, 0), Vector3.new(0.45, 4.2, 0.45), C.PlankDark, { Collide = true })
 	box(sign, "Board", signCF * CFrame.new(0, 3.7, -0.32), Vector3.new(2.4, 1.3, 0.22), C.Plank)
 	box(sign, "Star", signCF * CFrame.new(0, 3.7, -0.45) * CFrame.Angles(0, 0, math.rad(45)), Vector3.new(0.7, 0.7, 0.08), C.Gold)
 	Mesh.tag(sign, "prop_trove_sign", signCF)
+
+	-- lobby shop (spec 5.9): the Join sign over the chest, a pixel tag like the lid plate on an invisible anchor 10.5 studs
+	-- up. GroupId 0 (no group yet): one line, so no kid is asked to join a group that does not exist; else "Join the
+	-- group!" over the Group ask's reward. Tagged NC_Bob (the client bobs it) and hidden by the client for a player whose
+	-- TroveGroupDone attribute is set.
+	local trove = type(Config.Trove) == "table" and Config.Trove or {}
+	local joinAnchor = anchorPart(model, "JoinAnchor", (cf * CFrame.new(0, 10.5, 0)).Position)
+	local join = newTag(joinAnchor, "JoinBillboard", 360, 110, 0, 60)
+	local joinPlate = tagPlate(join, Theme.Neon and Theme.Neon.Green or C.Gold, 160)
+	if (tonumber(trove.GroupId) or 0) > 0 then
+		tagText(joinPlate, "JoinTitle", "Join the group!", "Title", TAG_NAME, C.TextGold, 1)
+		local reward, bits = nil, {}
+		for _, ask in ipairs(type(trove.Asks) == "table" and trove.Asks or {}) do
+			if type(ask) == "table" and ask.Id == "Group" and type(ask.Reward) == "table" then
+				reward = ask.Reward
+			end
+		end
+		for _, k in ipairs({ "Cash", "Tokens" }) do
+			local n = math.floor(tonumber(reward and reward[k]) or 0)
+			if n > 0 then
+				bits[#bits + 1] = Util.Commas(n) .. " " .. k
+			end
+		end
+		if #bits > 0 then
+			tagText(joinPlate, "JoinReward", table.concat(bits, " + "), "Body", TAG_INFO, C.Text, 2)
+		end
+	else
+		tagText(joinPlate, "JoinSoon", "Group rewards coming soon!", "Heading", 24, C.TextGold, 1)
+	end
+	CollectionService:AddTag(join, Config.Tags.Bob or "NC_Bob")
+	join:SetAttribute("BobStuds", 0.5)
+	join:SetAttribute("BobSeconds", 2.4)
 
 	local prompt = box(model, "PromptPart", cf * CFrame.new(0, 2, -5.4), Vector3.new(5, 4, 3), C.Cloud, { Transparency = 1, Shadow = false })
 	model.PrimaryPart = core
@@ -3489,7 +3531,7 @@ local function buildRarityBoard(parent, cf)
 	local panel = signPanel(gui)
 	local H = 450
 	signText(panel, "WINGED PETS", "Title", 50, C.Gold, "Header", 0.04, 6 / H, 0.92, 54 / H)
-	signText(panel, "Pricier roulette = rarer pets", "Body", SIGN_INFO, C.Text, "Sub", 0.04, 60 / H, 0.92, 34 / H)
+	signText(panel, "Every egg hatches a pet of its rarity", "Body", SIGN_INFO, C.Text, "Sub", 0.04, 60 / H, 0.92, 34 / H) -- lobby shop (5.9)
 	for i, roulette in ipairs(Config.Roulettes) do
 		local top = 102 + (i - 1) * 84
 		local y = top / H
@@ -3675,13 +3717,23 @@ local function buildShop(root, L)
 		roulettes[roulette.Id] = result
 	end
 
-	-- The Sky Trove (left of the entrance, in the old item stall's place) and the rarity board (right), both facing the centre.
-	local stallPos = at(-21, -8) - Vector3.new(0, LAWN, 0) -- on the lawn layer
-	local stallCF = flatLook(stallPos, S - Vector3.new(0, LAWN, 0))
-	local okStall, stall = pcall(buildTrove, f, stallCF)
+	-- The Egg Guide (lobby shop, spec 5.9: left of the entrance, in the Sky Trove's old place) and the rarity board (right),
+	-- both facing the centre. The Sky Trove stands on the plaza lawn at L.TroveCF (worked out once in Build, before the
+	-- plaza's reservations); it stays in this folder, so a failed shop build takes it along and the fallback builds the
+	-- only trove.
+	local guidePos = at(-21, -8) - Vector3.new(0, LAWN, 0) -- on the lawn layer
+	local H = { -- LobbyBoardBuilder draws with these helpers
+		noticeBoard = noticeBoard, surfaceGui = surfaceGui, signPanel = signPanel, signText = signText,
+		box = box, Mesh = Mesh, C = C, MAT = MAT, LAWN = LAWN,
+	}
+	local okGuide, errGuide = pcall(LobbyBoardBuilder.EggGuide, f, flatLook(guidePos, S - Vector3.new(0, LAWN, 0)), H)
+	if not okGuide then
+		warn("[LobbyBuilder] egg guide failed: " .. tostring(errGuide))
+	end
+	local okStall, stall = pcall(buildTrove, f, L.TroveCF)
 	if not okStall then
 		warn("[LobbyBuilder] sky trove failed: " .. tostring(stall))
-		stall = fallbackTrove(f, stallCF)
+		stall = fallbackTrove(f, L.TroveCF)
 	end
 	local okBoard, errBoard = pcall(buildRarityBoard, f, flatLook(at(21, -8) - Vector3.new(0, LAWN, 0), S - Vector3.new(0, LAWN, 0)))
 	if not okBoard then
@@ -3757,8 +3809,8 @@ local function fallbackShop(root, L)
 		local pos = S + Vector3.new((i - (count + 1) / 2) * 12, 0, -12)
 		roulettes[roulette.Id] = fallbackMachine(f, flatLook(pos, S), roulette)
 	end
-	local stallPos = S + Vector3.new(0, 0, 12)
-	local stall = fallbackTrove(f, flatLook(stallPos, S))
+	-- lobby shop (spec 5.9): the fallback trove at the plaza spot too, so there is only ever one trove, on the plaza
+	local stall = fallbackTrove(f, L.TroveCF or flatLook(S + Vector3.new(0, 0, 12), S))
 	return { Roulettes = roulettes, ItemShop = stall }
 end
 
@@ -5207,7 +5259,18 @@ function LobbyBuilder.Build()
 		spots[i] = result
 	end
 
-	local okShop, shop = pcall(buildShop, root, L)
+	-- lobby shop (spec 5.9): the Sky Trove's plaza spot, worked out once per build and before buildPlaza (so its
+	-- reservation comes first); buildShop and fallbackShop both build at L.TroveCF and never ask plazaSpot again (a second
+	-- ask after a failed buildShop had reserved it would find it taken). Not free -> it has warned; forced, so there is
+	-- always one trove.
+	local trovePos = plazaSpot(G.Trove.Angle, G.Trove.R, G.Trove.Clear, L) or plazaSpot(G.Trove.Angle, G.Trove.R, G.Trove.Clear, L, true)
+	L.TroveCF = faceCentre(trovePos - Vector3.new(0, LAWN, 0))
+	local okShop, shop
+	if LobbyBuilder._ForceShopFallback == true and game:GetService("RunService"):IsStudio() then
+		okShop, shop = false, "forced fallback (the Studio hook LobbyBuilder._ForceShopFallback)"
+	else
+		okShop, shop = pcall(buildShop, root, L)
+	end
 	if not okShop then
 		warn("[LobbyBuilder] shop failed: " .. tostring(shop))
 		local broken = root:FindFirstChild("Shop")
@@ -5321,6 +5384,9 @@ end
 -- every voxel cloud spec, then re-voxels a cloud at a finer grain with _CloudGrid. Tests use _Mesh (Signature, tag).
 ----------------------------------------------------------------------
 LobbyBuilder._Kit = nil
+-- lobby shop (spec 5.9): Studio-only test hook (read by Build under RunService:IsStudio() only): true -> Build skips
+-- buildShop and takes the fallbackShop path exactly as if buildShop had errored
+LobbyBuilder._ForceShopFallback = nil
 LobbyBuilder._Mesh = Mesh
 LobbyBuilder._Oasis = OASIS -- bug #13: the fountain layout (tests compare it with the committed meshes)
 LobbyBuilder._Benches = Benches -- bug batch 2 #7: tests call _Benches.sit / .check

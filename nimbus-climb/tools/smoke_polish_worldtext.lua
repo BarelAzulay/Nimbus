@@ -728,7 +728,8 @@ local function serverScenarios()
 			end
 		end
 		T.check(gateCount >= 3, "polish worldtext: the Gate Court gates carry a GateTag each", gateCount .. " gates with a tag")
-		local want = { Nameplate = Config.Lobby.SpotCount, GateTag = math.max(3, gateCount), PriceBillboard = #Config.Roulettes, TroveBillboard = 1, NameTag = 1, SignGui = 5, HintTag = 5 }
+		-- lobby shop (spec 5.9): + the trove's JoinBillboard; the Egg Guide board's SignGui is checked by path below
+		local want = { Nameplate = Config.Lobby.SpotCount, GateTag = math.max(3, gateCount), PriceBillboard = #Config.Roulettes, TroveBillboard = 1, JoinBillboard = 1, NameTag = 1, SignGui = 6, HintTag = 5 }
 		local short = {}
 		for name, n in pairs(want) do
 			if (names[name] or 0) < n then
@@ -737,6 +738,20 @@ local function serverScenarios()
 		end
 		table.sort(short)
 		T.check(#short == 0, "the census covered the lobby, home, NPC, portal and course GUIs", table.concat(short, ", "))
+		-- lobby shop (spec 5.9): the Sky Trove's Join sign and the Egg Guide board are in the census and pass the rule
+		local function recFor(needle)
+			for _, r in ipairs(records) do
+				if r.texts > 0 and string.find(r.path, needle, 1, true) then
+					return r
+				end
+			end
+			return nil
+		end
+		local joinRec, guideRec = recFor("JoinBillboard"), recFor("EggGuideBoard")
+		T.check(joinRec ~= nil and #joinRec.problems == 0, "polish worldtext: the Sky Trove's Join sign is in the census and keeps the World text rule",
+			joinRec and table.concat(joinRec.problems, "; ") or "not in the census")
+		T.check(guideRec ~= nil and #guideRec.problems == 0 and guideRec.texts >= 9, "polish worldtext: the Egg Guide board (header, line, seven egg names) is in the census and keeps the sign rule",
+			guideRec and (guideRec.texts .. " texts; " .. table.concat(guideRec.problems, "; ")) or "not in the census")
 		holder:Destroy()
 		advance(0.2)
 		K.flushErrors("polish worldtext")
