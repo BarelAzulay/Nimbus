@@ -22,6 +22,18 @@
 --   during a match"), for an Id 0 item (preview or not), a bought Once pack or an owned pass ("You already have
 --   that!"), a Once pack while the save loads or is provisional ("Your save is still loading": GetStore answers nil,
 --   undecidable); else PromptPurchase -> PromptGamePassPurchase / PromptProductPurchase. A prompt never grants (Z1).
+-- * StoreRequest ("GemBuy", key) (lobby shop 2026-11-07, docs/superpowers/specs/2026-11-07-lobby-shop-design.md 5.8 / 7):
+--   BuyWithGems sells a Config.Store.GemItems item (the 30-minute XP Potion for 75 gems). "Buy" and "GemBuy" share the
+--   one 1 s gap; any other action, or a key that is not a string, is dropped before it (no answer). Checks, in order: a
+--   live player and a gem item (else false, no toast); in a match; the save loading or provisional ("Your save is still
+--   loading"); not GemsSettled ("Your data is still loading": the server-hop guard); the PetXp2x pass "Owned" ("You
+--   already have x2 Pet XP") or "Checking" ("Checking your passes..."; "NotOwned" / "Unavailable" buy); the potion bank
+--   plus the item's seconds past Config.Store.Potion.CapSeconds ("Your potion time is full"); gems short ("Not enough
+--   gems"). Then ONE non-yielding step: DataService.SpendGems, then DataService.AddBoost (its refusals were all checked
+--   first, so it cannot refuse after the charge); the toast "XP Potion: +30 minutes" and Changed after it (pcall). Every
+--   refusal toasts (bad). Restricted accounts may buy (a potion is not random). No receipt, no purchase id.
+-- * XpPassState: the player attribute = PassState(player, "PetXp2x"), written at the join and on every Changed when it
+--   differs from the last written value (the shop's potion label reads it; never read back).
 -- * StorePreview: written once at the join, true in Studio (RunService:IsStudio()) or for DevService.IsAllowed(player)
 --   (may yield once: a task.spawn), never on a timer.
 --
@@ -30,6 +42,7 @@
 --   StoreService.ApplyGrant(player, item, purchaseId) -> ok, granted | reason    (non-yielding)
 --   StoreService.Thank(player, item, granted, purchaseId)   the thank-you toast + Purchased, once
 --   StoreService.PromptPurchase(player, key) -> ok, reason
+--   StoreService.BuyWithGems(player, key) -> ok, reason     a Config.Store.GemItems key (non-yielding; toasts its answer)
 --   StoreService.Owns(player, key) -> bool                  this server's cache only (Z3)
 --   StoreService.PassState(player, key) -> "Owned" | "NotOwned" | "Checking" | "Unavailable"
 --   StoreService.IsPreview(player) -> bool
@@ -62,6 +75,7 @@ local PASS_RETRY = { 5, 15, 45, 120 } -- seconds before the retries of a failed 
 local PASS_RETRY_LATER = 300 -- ...then every this many seconds
 local PASS_TICK = 1 -- the retry loop looks for due lookups this often
 local THANKS_SECONDS = 5
+local GEM_POTION = { Id = "XpPotion", Pass = "PetXp2x" } -- the boost a gem item sells and the pass that makes it pointless
 local TEXT = {
 	Match = "The Store is closed during a match",
 	Have = "You already have that!",
@@ -71,6 +85,13 @@ local TEXT = {
 	Window = "The purchase window could not open",
 	Loading = "Your save is still loading",
 	StackFull = "Stack full: +%s Tokens instead",
+	-- lobby shop: StoreRequest("GemBuy") -> BuyWithGems
+	Settling = "Your data is still loading",
+	HavePass = "You already have x2 Pet XP",
+	Checking = "Checking your passes...",
+	Full = "Your potion time is full",
+	Poor = "Not enough gems",
+	PotionGot = "XP Potion: +%d minutes",
 }
 
 local S = {
@@ -81,6 +102,7 @@ local S = {
 	Preview = {}, -- [player] = bool (the computed flag; the attribute is only written)
 	PromptAt = {}, -- [player] = os.clock() of the last purchase prompt
 	LastCall = {}, -- [player] = { [key] = os.clock() }
+	PassAttr = {}, -- [player] = the XpPassState value last written (the attribute is never read back)
 	Warned = {}, -- [key] = true: one warning per problem per server
 	Started = false,
 }
@@ -465,6 +487,20 @@ function StoreService.Refresh(player)
 	end
 end
 
+-- The XpPassState attribute (lobby shop: the gem potion label) = PassState(player, "PetXp2x"), written when it differs from
+-- the value last written. Called at the join and on every Changed (every pass answer fires Changed). Never read back.
+local function writePassAttr(player)
+	local attr = attrName("XpPassState")
+	if not attr or not isPlayer(player) then
+		return
+	end
+	local state = StoreService.PassState(player, GEM_POTION.Pass)
+	if S.PassAttr[player] ~= state then
+		S.PassAttr[player] = state
+		player:SetAttribute(attr, state)
+	end
+end
+
 ----------------------------------------------------------------------
 -- The prompt (never a grant: Z1)
 ----------------------------------------------------------------------
@@ -520,11 +556,87 @@ function StoreService.PromptPurchase(player, key)
 	return true
 end
 
+----------------------------------------------------------------------
+-- Gem items (lobby shop 2026-11-07, spec 5.8 / 7): one non-yielding step, every refusal decided before the charge
+----------------------------------------------------------------------
+
+-- Why a gem buy of `price` gems for `seconds` of potion time cannot happen now, or nil. It decides every refusal of the
+-- step in BuyWithGems too: SpendGems (the balance) and AddBoost (loaded, not provisional, a valid id, whole seconds).
+local function gemRefusal(player, price, seconds)
+	local inMatch = attrName("InMatch")
+	if inMatch and player:GetAttribute(inMatch) == true then
+		return TEXT.Match
+	end
+	local DS = S.DS
+	local api = DS and type(DS.GetProfile) == "function" and type(DS.IsProvisional) == "function" and type(DS.GemsSettled) == "function"
+		and type(DS.GetGems) == "function" and type(DS.SpendGems) == "function" and type(DS.AddGems) == "function" and type(DS.AddBoost) == "function"
+	if not api or DS.GetProfile(player) == nil or DS.IsProvisional(player) == true then
+		return TEXT.Loading
+	end
+	if DS.GemsSettled(player) ~= true then
+		return TEXT.Settling -- the server-hop guard (spec 5.2): another server's gem spend may not be in yet
+	end
+	local pass = StoreService.PassState(player, GEM_POTION.Pass)
+	if pass == "Owned" then
+		return TEXT.HavePass -- the potion would add nothing
+	elseif pass == "Checking" then
+		return TEXT.Checking -- a pass owner must not pay for nothing while the lookup runs or fails
+	end
+	local potion = storeConfig().Potion
+	local cap = type(potion) == "table" and wholeNumber(potion.CapSeconds) or 7 * 86400
+	local now = os.time()
+	if math.max(StoreService.BoostEnds(player, GEM_POTION.Id), now) + seconds - now > cap then
+		return TEXT.Full
+	end
+	local gems = DS.GetGems(player)
+	if not isFinite(gems) or gems < price then
+		return TEXT.Poor
+	end
+	return nil
+end
+
+function StoreService.BuyWithGems(player, key)
+	if not isPlayer(player) then
+		return false, "Player unavailable"
+	end
+	local item = StoreCatalog.GemItem(key)
+	local boost = item and type(item.Grants) == "table" and type(item.Grants.Boost) == "table" and item.Grants.Boost or nil
+	local seconds = boost and wholeNumber(boost[GEM_POTION.Id]) or nil
+	local price = item and wholeNumber(item.Gems) or nil
+	if not seconds or seconds < 1 or not price or price < 1 then
+		return false, TEXT.Unknown -- not a gem item: no toast
+	end
+	local reason = gemRefusal(player, price, seconds)
+	if reason then
+		notify(player, reason, "bad", 3)
+		return false, reason
+	end
+	-- the one step (no yield): the charge, then the potion time; gemRefusal decided both, so neither refuses now
+	local DS = S.DS
+	if not DS.SpendGems(player, price) then
+		notify(player, TEXT.Poor, "bad", 3)
+		return false, TEXT.Poor
+	end
+	if not DS.AddBoost(player, GEM_POTION.Id, seconds) then
+		DS.AddGems(player, price) -- unreachable (see gemRefusal); the gems are never kept for nothing
+		warnOnce("gem-boost", "[StoreService] AddBoost refused after the gem charge: the gems were given back")
+		notify(player, TEXT.Loading, "bad", 3)
+		return false, TEXT.Loading
+	end
+	pcall(notify, player, string.format(TEXT.PotionGot, math.floor(seconds / 60)), "good", 3)
+	pcall(StoreService.Changed.Fire, StoreService.Changed, player) -- Multipliers rewrites XpBoostEnds
+	return true
+end
+
 local function onRequest(player, action, key)
-	if not isPlayer(player) or action ~= "Buy" or type(key) ~= "string" then
-		return -- junk: nothing, no answer
+	if not isPlayer(player) or (action ~= "Buy" and action ~= "GemBuy") or type(key) ~= "string" then
+		return -- junk: nothing, no answer, the gap untouched
 	end
 	if rateLimited(player, REQUEST_REMOTE, REQUEST_GAP) then
+		return -- one 1 s gap for "Buy" and "GemBuy" together
+	end
+	if action == "GemBuy" then
+		StoreService.BuyWithGems(player, key) -- it toasts its own answer (an unknown key stays silent)
 		return
 	end
 	local ok, reason = StoreService.PromptPurchase(player, key)
@@ -557,6 +669,7 @@ local function onPlayerAdded(player)
 		return
 	end
 	startPasses(player)
+	writePassAttr(player)
 	task.spawn(setPreview, player)
 end
 
@@ -565,6 +678,7 @@ local function onPlayerRemoving(player)
 	S.Preview[player] = nil
 	S.PromptAt[player] = nil
 	S.LastCall[player] = nil
+	S.PassAttr[player] = nil
 end
 
 local function onPassFinished(player, id, wasPurchased)
@@ -638,6 +752,7 @@ function StoreService.Init(deps)
 	if not okEvent then
 		warn("[StoreService] could not connect PromptGamePassPurchaseFinished: " .. tostring(errEvent))
 	end
+	StoreService.Changed:Connect(writePassAttr) -- every pass answer fires Changed: XpPassState follows PassState
 	Players.PlayerAdded:Connect(onPlayerAdded)
 	Players.PlayerRemoving:Connect(onPlayerRemoving)
 	for _, player in ipairs(Players:GetPlayers()) do

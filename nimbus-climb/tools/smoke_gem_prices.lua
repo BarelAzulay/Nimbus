@@ -1,0 +1,505 @@
+-- smoke_gem_prices.lua: the lobby-shop gem shop (docs/superpowers/specs/2026-11-07-lobby-shop-design.md 5.3, 5.8, 7;
+-- plan docs/superpowers/plans/2026-11-07-lobby-shop.md Task 7; Task 8 adds the gem prices here). Server world only
+-- (booted):
+--   gem_potion_buy  StoreRequest("GemBuy", key) -> StoreService.BuyWithGems(player, key): Config.Store.GemItems (the one
+--                   XP Potion for 75 gems), StoreCatalog.GemItems / GemItem (copies) and Validate over them; a buy spends
+--                   75 gems and adds 1,800 s of potion time (max(BoostEnds, now) + 1800, stacking), one good toast "XP
+--                   Potion: +30 minutes", StoreService.Changed once, XpBoostEnds follows; each refusal toasts its text
+--                   (bad) and leaves gems and BoostEnds unchanged: in a match, the save loading, provisional, not settled,
+--                   the x2 Pet XP pass Owned / Checking, the potion bank full (the 7-day cap, with its exact edge), 74
+--                   gems; the pass NotOwned / Unavailable and a restricted account (PolicyService) buy; the shared 1 s gap
+--                   of "Buy" and "GemBuy" (both orders); junk actions / keys dropped silently (and never use the gap);
+--                   the XpPassState attribute equals StoreService.PassState(player, "PetXp2x") after every pass change
+-- White-box: the booted helpers of smoke_store.lua (join / setId / savedIds / restoreIds / toasts); the MarketplaceService
+-- and PolicyService doubles are props (nil restores them). Deterministic: mock clock only. Plain Lua 5.1 syntax only.
+
+local T = SmokeCommon.T
+local guarded = SmokeCommon.guarded
+local CONTEXT = (ARGS and ARGS.context) or "server"
+
+local S = {}
+if CONTEXT ~= "server" then
+	return S
+end
+
+local K = _G.K
+local MPS = game:GetService("MarketplaceService")
+local KEY = "XpPotionGems"
+local POTION = "XpPotion"
+local PASS = "PetXp2x"
+local PASS_ID = 7203
+local TOKENS_ID = 6203
+-- the mock has no asset store: MeshLibrary's lazy loads (the dungeon kit) warn whenever the clock runs, in any scenario
+local ALLOWED_WARNINGS = { "[DataService]", "[StoreService] UserOwnsGamePassAsync failed", "[MeshLibrary]" }
+local TEXT = {
+	Got = "XP Potion: +30 minutes",
+	Match = "The Store is closed during a match",
+	Loading = "Your save is still loading",
+	Settling = "Your data is still loading",
+	Have = "You already have x2 Pet XP",
+	Checking = "Checking your passes...",
+	Full = "Your potion time is full",
+	Poor = "Not enough gems",
+}
+
+----------------------------------------------------------------------------------------------------
+-- helpers (the smoke_store.lua shapes)
+----------------------------------------------------------------------------------------------------
+local function requireAt(key)
+	local inst = K.moduleInstance(key)
+	if not inst then
+		return nil
+	end
+	local ok, result = pcall(require, inst)
+	if ok and type(result) == "table" then
+		return result
+	end
+	return nil
+end
+local function DS()
+	return K.mod("DataService")
+end
+local function SS()
+	return requireAt("server/Services/StoreService")
+end
+local function GS()
+	return requireAt("server/Services/GemService")
+end
+local userSeq = 0
+local function newUserId()
+	userSeq = userSeq + 1
+	return 994400 + userSeq
+end
+local function join(prefix, uid)
+	local p = Mock.AddPlayer(prefix .. tostring(uid % 1000), uid)
+	K.advance(1.2)
+	return p
+end
+local function leave(p)
+	if p and p.Parent then
+		Mock.RemovePlayer(p)
+	end
+	K.advance(0.8)
+end
+local function loaded(p)
+	return K.waitFor(function()
+		return DS().GetProfile(p) ~= nil and DS().IsProvisional(p) ~= true
+	end, 10)
+end
+local function itemOf(key)
+	for _, it in ipairs(K.config().Store.Items) do
+		if it.Key == key then
+			return it
+		end
+	end
+	return nil
+end
+local function setId(key, id)
+	local it = itemOf(key)
+	if it then
+		it.Id = id
+	end
+end
+local function savedIds()
+	local out = {}
+	for _, it in ipairs(K.config().Store.Items) do
+		out[it.Key] = it.Id
+	end
+	return out
+end
+local function restoreIds(saved)
+	for _, it in ipairs(K.config().Store.Items) do
+		it.Id = saved[it.Key] or 0
+	end
+end
+-- the Notify toasts p got since `mark`: { { text, kind }... }
+local function toasts(p, mark)
+	local out = {}
+	for _, e in ipairs(K.remotesFor("Notify", p.UserId, mark or 0)) do
+		out[#out + 1] = { text = tostring(e.args[1]), kind = e.args[2] }
+	end
+	return out
+end
+local function toastText(p, mark)
+	local out = {}
+	for _, t in ipairs(toasts(p, mark)) do
+		out[#out + 1] = t.text .. " (" .. tostring(t.kind) .. ")"
+	end
+	return #out == 0 and "no toast" or table.concat(out, " | ")
+end
+-- exactly one toast since mark, with this text and kind
+local function oneToast(p, text, kind, mark)
+	local list = toasts(p, mark)
+	return #list == 1 and list[1].text == text and list[1].kind == kind
+end
+-- counts signal:Fire(player) for one player until stop()
+local function countFires(signal, player)
+	local box = { n = 0 }
+	local conn = signal:Connect(function(who)
+		if who == player then
+			box.n = box.n + 1
+		end
+	end)
+	box.stop = function()
+		if conn and conn.Disconnect then
+			conn:Disconnect()
+		end
+	end
+	return box
+end
+local function deepCopy(t)
+	if type(t) ~= "table" then
+		return t
+	end
+	local out = {}
+	for k, v in pairs(t) do
+		out[k] = deepCopy(v)
+	end
+	return out
+end
+local function count(map)
+	local n = 0
+	for _ in pairs(type(map) == "table" and map or {}) do
+		n = n + 1
+	end
+	return n
+end
+
+----------------------------------------------------------------------------------------------------
+-- gem_potion_buy
+----------------------------------------------------------------------------------------------------
+S.gem_potion_buy = guarded("gem_potion_buy", function()
+	if not K.needBoot() then
+		return
+	end
+	local Config = K.config()
+	local D, Store, SC = DS(), SS(), requireAt("shared/StoreCatalog")
+
+	------------------------------------------------------------------------------------------------
+	-- part 1: the data (Config.Store.GemItems, Config.Attr.XpPassState) and StoreCatalog over it
+	------------------------------------------------------------------------------------------------
+	local items = Config.Store.GemItems
+	local first = type(items) == "table" and items[1] or nil
+	T.check(type(items) == "table" and #items == 1 and type(first) == "table" and first.Key == KEY and first.Gems == 75 and first.Name == "XP Potion (30 min)"
+		and type(first.Grants) == "table" and count(first.Grants) == 1 and type(first.Grants.Boost) == "table" and count(first.Grants.Boost) == 1 and first.Grants.Boost.XpPotion == 1800 and count(first) == 4,
+		"gem potion config: Config.Store.GemItems = { { Key = 'XpPotionGems', Gems = 75, Name = 'XP Potion (30 min)', Grants = { Boost = { XpPotion = 1800 } } } }")
+	T.eq(Config.Attr.XpPassState, "XpPassState", "gem potion config: Config.Attr.XpPassState = 'XpPassState'")
+	local catalogOk = T.check(type(SC) == "table" and type(SC.GemItems) == "function" and type(SC.GemItem) == "function", "gem potion catalog: StoreCatalog.GemItems / GemItem exist")
+	if catalogOk and first then
+		local list = SC.GemItems()
+		local it = list[1]
+		T.check(#list == 1 and type(it) == "table" and it.Key == KEY and it.Gems == 75 and it.Name == "XP Potion (30 min)" and it.Grants.Boost.XpPotion == 1800, "gem potion catalog: GemItems() lists the potion { Key, Gems, Name, Grants }")
+		T.check(it ~= first and it.Grants ~= first.Grants and it.Grants.Boost ~= first.Grants.Boost, "gem potion catalog: ...as a copy (its Grants too)")
+		it.Gems, it.Grants.Boost.XpPotion = 1, 60
+		T.check(first.Gems == 75 and first.Grants.Boost.XpPotion == 1800, "gem potion catalog: ...changing the copy leaves Config alone")
+		local one = SC.GemItem(KEY)
+		T.check(type(one) == "table" and one.Key == KEY and one.Gems == 75 and one ~= first and one.Grants ~= first.Grants, "gem potion catalog: GemItem(key) answers a copy")
+		T.check(SC.GemItem("Nope") == nil and SC.GemItem(nil) == nil and SC.GemItem(5) == nil and SC.GemItem("Tokens1") == nil, "gem potion catalog: GemItem answers nil for an unknown key, junk, or a Robux item's key")
+		T.eq(SC.Item(KEY), nil, "gem potion catalog: Item(key) never answers a gem item (it is not a Robux item)")
+		T.check(select(1, SC.Validate()) == true, "gem potion catalog: Validate passes on the shipped Config", table.concat(select(2, SC.Validate()) or {}, "; "))
+		-- Validate refusals: a deep copy of Config.Store.GemItems mutated, then restored; each a false naming the key
+		local function refused(label, key, mutate)
+			local saved = Config.Store.GemItems
+			Config.Store.GemItems = deepCopy(saved)
+			mutate(Config.Store.GemItems)
+			local ok, problems = SC.Validate()
+			Config.Store.GemItems = saved
+			local named = false
+			for _, pr in ipairs(problems or {}) do
+				if string.find(pr, key, 1, true) then
+					named = true
+				end
+			end
+			T.check(ok == false and named, "gem potion catalog: Validate refuses " .. label .. " (naming " .. key .. ")", table.concat(problems or {}, "; "))
+		end
+		refused("Gems 0", KEY, function(c) c[1].Gems = 0 end)
+		refused("fractional Gems", KEY, function(c) c[1].Gems = 7.5 end)
+		refused("an empty Name", KEY, function(c) c[1].Name = "" end)
+		refused("a Cash grant", KEY, function(c) c[1].Grants.Cash = 5 end)
+		refused("a boost other than XpPotion", KEY, function(c) c[1].Grants.Boost.Speed = 60 end)
+		refused("a potion past CapSeconds", KEY, function(c) c[1].Grants.Boost.XpPotion = Config.Store.Potion.CapSeconds + 1 end)
+		refused("a potion under 60 s", KEY, function(c) c[1].Grants.Boost.XpPotion = 30 end)
+		refused("a duplicate Key", KEY, function(c) c[2] = deepCopy(c[1]) end)
+		refused("a Key a Robux item uses", "Tokens1", function(c) c[1].Key = "Tokens1" end)
+		refused("an empty Key", "gem item 1", function(c) c[1].Key = "" end)
+	end
+
+	------------------------------------------------------------------------------------------------
+	-- part 2: the buys (booted)
+	------------------------------------------------------------------------------------------------
+	local folder = K.remoteFolder()
+	local remote = folder and folder:FindFirstChild("StoreRequest")
+	if not T.check(type(Store) == "table" and type(Store.BuyWithGems) == "function" and remote ~= nil and type(D._SettleForTest) == "function",
+		"gem potion: StoreService.BuyWithGems, the StoreRequest remote and DataService._SettleForTest exist") then
+		return
+	end
+	local ATTR = Config.Attr.XpPassState or "XpPassState"
+	local ENDS_ATTR = Config.Attr.XpBoostEnds
+	local CAP = Config.Store.Potion.CapSeconds
+	local DSt = Mock.DataStore
+	local PolS = game:GetService("PolicyService")
+	local saved = { Ids = savedIds(), Fail = DSt.Fail, Latency = DSt.Latency }
+	local players, boxes = {}, {}
+	local modes = {} -- [uid] = true (owns PetXp2x) | false | "error"
+	local prompts = 0
+	MPS.UserOwnsGamePassAsync = function(_, uid, id)
+		if modes[uid] == "error" then
+			error("HTTP 503 (smoke: pass lookup outage)")
+		end
+		return modes[uid] == true and id == PASS_ID
+	end
+	MPS.PromptProductPurchase = function()
+		prompts = prompts + 1
+	end
+	MPS.PromptGamePassPurchase = function()
+		prompts = prompts + 1
+	end
+	-- every account in this scenario is a restricted account (no paid random items): the potion is not random, it sells
+	PolS.GetPolicyInfoForPlayerAsync = function()
+		return { ArePaidRandomItemsRestricted = true, IsPaidItemTradingAllowed = false }
+	end
+	local okRun, errRun = pcall(function()
+		local errs0 = #Mock.Errors
+		local function track(p)
+			players[#players + 1] = p
+			return p
+		end
+		local function setGems(p, n)
+			D.SpendGems(p, D.GetGems(p))
+			if n > 0 then
+				D.AddGems(p, n)
+			end
+			return D.GetGems(p) == n
+		end
+		local function ends(p)
+			return Store.BoostEnds(p, POTION)
+		end
+		local function passAttrOk(p, want, label)
+			T.check(p:GetAttribute(ATTR) == want and Store.PassState(p, PASS) == want, "gem potion pass attr: " .. label .. ": XpPassState = PassState = '" .. want .. "'",
+				"attribute " .. tostring(p:GetAttribute(ATTR)) .. ", PassState " .. tostring(Store.PassState(p, PASS)))
+		end
+		-- a refusal: false + the text, one bad toast with it, gems and BoostEnds unchanged
+		local function refusedWith(p, text, label)
+			local gems0, ends0, mark = D.GetGems(p), ends(p), K.logSize()
+			local ok, why = Store.BuyWithGems(p, KEY)
+			K.advance(0.2)
+			T.check(ok == false and why == text, "gem potion refused: " .. label .. " -> '" .. text .. "'", tostring(ok) .. " / " .. tostring(why))
+			T.check(oneToast(p, text, "bad", mark), "gem potion refused: " .. label .. ": one bad toast with the text", toastText(p, mark))
+			T.check(D.GetGems(p) == gems0 and ends(p) == ends0, "gem potion refused: " .. label .. ": gems and BoostEnds unchanged",
+				tostring(gems0) .. " -> " .. tostring(D.GetGems(p)) .. " gems, " .. tostring(ends0) .. " -> " .. tostring(ends(p)))
+		end
+		-- a buy: true, one good toast, -75 gems, max(BoostEnds, now) + 1800, Changed once, XpBoostEnds follows
+		local function boughtOne(p, label, viaRemote)
+			local gems0, ends0, now, mark = D.GetGems(p), ends(p), os.time(), K.logSize()
+			local fires = countFires(Store.Changed, p)
+			boxes[#boxes + 1] = fires
+			local ok, why = true, nil
+			if viaRemote then
+				Mock.FromClient(remote, p, "GemBuy", KEY)
+			else
+				ok, why = Store.BuyWithGems(p, KEY)
+			end
+			K.advance(0.2)
+			fires.stop()
+			T.check(ok == true, "gem potion buy: " .. label .. ": BuyWithGems answers true", tostring(why))
+			T.check(D.GetGems(p) == gems0 - 75, "gem potion buy: " .. label .. ": 75 gems spent", tostring(gems0) .. " -> " .. tostring(D.GetGems(p)))
+			T.check(ends(p) == math.max(ends0, now) + 1800, "gem potion buy: " .. label .. ": BoostEnds = max(BoostEnds, now) + 1,800 s",
+				tostring(ends0) .. " -> " .. tostring(ends(p)) .. " (now " .. now .. ")")
+			T.check(oneToast(p, TEXT.Got, "good", mark), "gem potion buy: " .. label .. ": one good toast '" .. TEXT.Got .. "'", toastText(p, mark))
+			T.eq(fires.n, 1, "gem potion buy: " .. label .. ": StoreService.Changed fired once")
+			T.eq(p:GetAttribute(ENDS_ATTR), ends(p), "gem potion buy: " .. label .. ": XpBoostEnds updated")
+		end
+
+		-- the pass is Unavailable (Id 0, as shipped): the potion sells
+		setId(PASS, 0)
+		local u = track(join("PotionUnavail", newUserId()))
+		T.check(loaded(u) and D._SettleForTest(u) == true and setGems(u, 75), "gem potion: (setup) a loaded, settled player with 75 gems")
+		passAttrOk(u, "Unavailable", "the pass has no Id")
+		boughtOne(u, "pass Unavailable", false)
+		leave(u)
+
+		setId(PASS, PASS_ID)
+		setId("Tokens1", TOKENS_ID)
+		-- a: NotOwned, the restricted main buyer
+		local uidA = newUserId()
+		modes[uidA] = false
+		local a = track(join("PotionBuyer", uidA))
+		T.check(loaded(a) and D._SettleForTest(a) == true and setGems(a, 1000), "gem potion: (setup) the main buyer is loaded, settled, 1,000 gems")
+		local Gems = GS()
+		T.check(Gems and Gems.IsRestricted(a) == true and Gems.PolicyState(a) == "Restricted", "gem potion: (precondition) the main buyer is a restricted account (PolicyService double)",
+			tostring(Gems and Gems.PolicyState(a)))
+		passAttrOk(a, "NotOwned", "a false lookup")
+		K.advance(1.1)
+		boughtOne(a, "the remote, a restricted account, pass NotOwned", true)
+		T.eq(prompts, 0, "gem potion buy: ...a GemBuy prompts nothing")
+		boughtOne(a, "a second potion stacks on the first", false)
+
+		-- refusals of the main buyer, in the order of the checks
+		a:SetAttribute(Config.Attr.InMatch, true)
+		refusedWith(a, TEXT.Match, "in a match")
+		a:SetAttribute(Config.Attr.InMatch, nil)
+		T.check(setGems(a, 74), "gem potion: (setup) 74 gems")
+		refusedWith(a, TEXT.Poor, "74 gems")
+		T.check(setGems(a, 1000), "gem potion: (setup) 1,000 gems again")
+		local target = os.time() + CAP - 1000
+		local okFill = D.AddBoost(a, POTION, target - math.max(ends(a), os.time()))
+		T.check(okFill == true and ends(a) == target, "gem potion: (setup) the potion bank ends at now + 7 d - 1,000 s", tostring(ends(a) - os.time()))
+		refusedWith(a, TEXT.Full, "the bank full (now + 7 d - 1,000 s)")
+
+		-- the pass bought in this session: Owned
+		Mock.FireSignal(MPS, "PromptGamePassPurchaseFinished", a, PASS_ID, true)
+		K.advance(0.2)
+		passAttrOk(a, "Owned", "PromptGamePassPurchaseFinished")
+		refusedWith(a, TEXT.Have, "pass Owned")
+
+		-- e: the cap's edge: a bank of 7 d - 1,800 s takes one more potion (exactly 7 d), then refuses
+		local uidE = newUserId()
+		modes[uidE] = false
+		local e = track(join("PotionEdge", uidE))
+		T.check(loaded(e) and D._SettleForTest(e) == true and setGems(e, 300), "gem potion: (setup) the edge player is loaded, settled, 300 gems")
+		T.check(D.AddBoost(e, POTION, CAP - 1800) == true and ends(e) == os.time() + CAP - 1800, "gem potion: (setup) a bank of 7 d - 1,800 s")
+		boughtOne(e, "a bank of 7 d - 1,800 s (exactly 7 d after)", false)
+		T.eq(ends(e) - os.time(), CAP, "gem potion buy: ...the bank is exactly 7 d")
+		refusedWith(e, TEXT.Full, "a bank of exactly 7 d")
+
+		-- c: the pass lookup fails (Checking), then a retry answers false (NotOwned)
+		local uidC = newUserId()
+		modes[uidC] = "error"
+		local c = track(join("PotionCheck", uidC))
+		T.check(loaded(c) and D._SettleForTest(c) == true and setGems(c, 75), "gem potion: (setup) the Checking player is loaded, settled, 75 gems")
+		passAttrOk(c, "Checking", "a failing lookup")
+		refusedWith(c, TEXT.Checking, "pass Checking")
+		modes[uidC] = false
+		K.advance(5.5)
+		passAttrOk(c, "NotOwned", "the retry 5 s later answers false")
+		boughtOne(c, "pass NotOwned after the retry", false)
+		-- o: the engine says the pass is owned at the join
+		local uidO = newUserId()
+		modes[uidO] = true
+		local o = track(join("PotionOwner", uidO))
+		T.check(loaded(o) and D._SettleForTest(o) == true and setGems(o, 75), "gem potion: (setup) the pass owner is loaded, settled, 75 gems")
+		passAttrOk(o, "Owned", "a true lookup at the join")
+		refusedWith(o, TEXT.Have, "pass Owned at the join")
+
+		-- n: not settled (no _SettleForTest, a few seconds after the join)
+		local uidN = newUserId()
+		modes[uidN] = false
+		local n = track(join("PotionNotSettled", uidN))
+		T.check(loaded(n) and D.GemsSettled(n) == false and setGems(n, 75), "gem potion: (setup) a loaded player, not settled yet, 75 gems")
+		refusedWith(n, TEXT.Settling, "not settled")
+
+		-- l: the save still loading (a slow store)
+		DSt.Latency = 2
+		local uidL = newUserId()
+		modes[uidL] = false
+		local l = track(Mock.AddPlayer("PotionLoading" .. tostring(uidL % 1000), uidL))
+		K.advance(0.5)
+		T.eq(D.GetProfile(l), nil, "gem potion: (precondition) the save is still loading")
+		refusedWith(l, TEXT.Loading, "the save loading")
+		DSt.Latency = saved.Latency
+		T.check(loaded(l), "gem potion: (setup) the slow load lands")
+
+		-- v: provisional (a load during an outage)
+		DSt.Fail = true
+		local uidV = newUserId()
+		modes[uidV] = false
+		local v = track(join("PotionProv", uidV))
+		local isProv = K.waitFor(function()
+			return D.IsProvisional(v) == true
+		end, 10)
+		if T.check(isProv, "gem potion: (precondition) a load during an outage leaves a provisional profile") then
+			D.AddGems(v, 75)
+			refusedWith(v, TEXT.Loading, "provisional")
+		end
+		DSt.Fail = saved.Fail
+		K.waitFor(function()
+			return D.IsProvisional(v) ~= true
+		end, 60)
+
+		------------------------------------------------------------------------------------------------
+		-- the remote: junk dropped silently, the shared 1 s gap of "Buy" and "GemBuy"
+		------------------------------------------------------------------------------------------------
+		local uidR = newUserId()
+		modes[uidR] = false
+		local r = track(join("PotionRemote", uidR))
+		T.check(loaded(r) and D._SettleForTest(r) == true and setGems(r, 1000), "gem potion remote: (setup) loaded, settled, 1,000 gems")
+		K.advance(1.1)
+		local function send(...)
+			Mock.FromClient(remote, r, ...)
+		end
+		local gems0, ends0, mark, prompts0 = D.GetGems(r), ends(r), K.logSize(), prompts
+		send("GemBuy", 5)
+		send("GemBuy")
+		send("GemBuy", {})
+		send("Sell", "x")
+		send("Sell", KEY)
+		send(nil, KEY)
+		K.advance(0.2)
+		T.check(#toasts(r, mark) == 0 and D.GetGems(r) == gems0 and ends(r) == ends0 and prompts == prompts0 and #Mock.Errors == errs0,
+			"gem potion remote: junk (GemBuy 5 / nil / {}, Sell x, Sell <key>, nil <key>) is dropped silently: no toast, nothing spent, nothing raised", toastText(r, mark))
+		mark = K.logSize()
+		send("GemBuy", KEY)
+		K.advance(0.2)
+		T.check(D.GetGems(r) == gems0 - 75 and oneToast(r, TEXT.Got, "good", mark), "gem potion remote: ...and junk never uses the 1 s gap: a GemBuy right after it buys", toastText(r, mark))
+		-- GemBuy then Buy 0.5 s apart: the Buy is dropped; a Buy a second later prompts
+		K.advance(0.3)
+		mark = K.logSize()
+		send("Buy", "Tokens1")
+		K.advance(0.2)
+		T.check(prompts == prompts0 and #toasts(r, mark) == 0, "gem potion remote: GemBuy then Buy 0.5 s later: the Buy is dropped (one 1 s gap for both)", tostring(prompts - prompts0) .. " prompts")
+		K.advance(1.1)
+		send("Buy", "Tokens1")
+		K.advance(0.2)
+		T.eq(prompts, prompts0 + 1, "gem potion remote: ...a Buy a second later prompts")
+		-- Buy then GemBuy 0.5 s apart: the GemBuy is dropped; a GemBuy a second later buys
+		K.advance(0.3)
+		local gems1, ends1 = D.GetGems(r), ends(r)
+		mark = K.logSize()
+		send("GemBuy", KEY)
+		K.advance(0.2)
+		T.check(D.GetGems(r) == gems1 and ends(r) == ends1 and #toasts(r, mark) == 0, "gem potion remote: Buy then GemBuy 0.5 s later: the GemBuy is dropped (nothing spent, no toast)", toastText(r, mark))
+		K.advance(1.1)
+		mark = K.logSize()
+		send("GemBuy", KEY)
+		K.advance(0.2)
+		T.check(D.GetGems(r) == gems1 - 75 and ends(r) == ends1 + 1800 and oneToast(r, TEXT.Got, "good", mark), "gem potion remote: ...a GemBuy a second later buys", toastText(r, mark))
+		-- an unknown gem key and the public function's junk: false, silent
+		K.advance(1.1)
+		mark = K.logSize()
+		send("GemBuy", "Nope")
+		K.advance(0.2)
+		T.check(#toasts(r, mark) == 0 and D.GetGems(r) == gems1 - 75, "gem potion remote: GemBuy with an unknown key: silent, nothing spent", toastText(r, mark))
+		local okNil = Store.BuyWithGems(nil, KEY)
+		local okNope = Store.BuyWithGems(r, "Nope")
+		local okNum = Store.BuyWithGems(r, 5)
+		local okRobux = Store.BuyWithGems(r, "Tokens1")
+		K.advance(0.2)
+		T.check(okNil == false and okNope == false and okNum == false and okRobux == false and #toasts(r, mark) == 0 and D.GetGems(r) == gems1 - 75,
+			"gem potion: BuyWithGems(nil / unknown key / 5 / a Robux item's key) -> false, silent, nothing spent", toastText(r, mark))
+		T.eq(prompts, prompts0 + 1, "gem potion: no gem buy ever prompts a Robux purchase")
+		T.eq(#Mock.Errors, errs0, "gem potion: nothing raised")
+	end)
+	for _, box in ipairs(boxes) do
+		box.stop()
+	end
+	MPS.UserOwnsGamePassAsync = nil
+	MPS.PromptProductPurchase = nil
+	MPS.PromptGamePassPurchase = nil
+	PolS.GetPolicyInfoForPlayerAsync = nil
+	DSt.Fail = saved.Fail
+	DSt.Latency = saved.Latency
+	restoreIds(saved.Ids)
+	for _, p in ipairs(players) do
+		if p.Parent then
+			Mock.RemovePlayer(p)
+		end
+	end
+	K.advance(0.8)
+	if not okRun then
+		error(errRun, 0)
+	end
+	K.flushErrors("gem_potion_buy")
+	K.flushWarnings("gem_potion_buy", ALLOWED_WARNINGS)
+end)
+
+return S

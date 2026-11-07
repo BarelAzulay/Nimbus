@@ -26,7 +26,8 @@
 --                        and the Dungeon; x2 Pet XP by pass or potion (never x4), ProXp x1.5 in PvE only; the sites NOT
 --                        multiplied pinned exactly
 --   store_remote         (server world, booted; W2-money) StoreRequest: junk, the 1 req/s limit, in a match, hidden / owned /
---                        bought keys, one prompt per created key, the StorePreview attribute
+--                        bought keys, one prompt per created key, the StorePreview attribute; lobby-shop Task 7: an unknown
+--                        action is still dropped silently, "GemBuy" (a Config.Store.GemItems key) is now answered
 --   client_store_bigrect (client world) NeonKit.BigRect answers PetsController's H.rect numbers (820x330 Phone on 844x390,
 --                        1260x900 PC on 1920x1080) and the new glyph ids exist
 -- White-box: the doubles are written straight onto the service / player (props, never methods). Plain Lua 5.1 syntax only.
@@ -1004,6 +1005,7 @@ local function serverScenarios()
 			local function send(...)
 				Mock.FromClient(remote, p, ...)
 			end
+			local markJunk = K.logSize()
 			send(nil)
 			send(5)
 			send({})
@@ -1011,8 +1013,19 @@ local function serverScenarios()
 			send("Buy", 5)
 			send("Buy", {})
 			send("Sell", "Tokens1")
+			send("GemBuy", 5)
+			send("GemBuy", {})
 			K.advance(0.3)
 			T.check(#prompts == 0 and #Mock.Errors == errs0, "store remote: junk on StoreRequest prompts nothing and raises nothing", tostring(#prompts) .. " prompts, " .. tostring(#Mock.Errors - errs0) .. " errors")
+			T.eq(#K.remotesFor("Notify", p.UserId, markJunk), 0, "store remote: ...an unknown action (Sell) and a GemBuy without a string key are dropped silently (no toast)")
+			-- lobby-shop Task 7: "GemBuy" is now answered (StoreService.BuyWithGems; junk above never used the 1 s gap)
+			T.check(DS()._SettleForTest(p) == true and DS().AddGems(p, 75) == true, "store remote: (setup) settled, +75 gems")
+			local gemsBefore = DS().GetGems(p)
+			local markGem = K.logSize()
+			send("GemBuy", "XpPotionGems")
+			K.advance(0.2)
+			T.check(toastCount(p, "XP Potion: +30 minutes", markGem) == 1 and DS().GetGems(p) == gemsBefore - 75 and #prompts == 0,
+				"store remote: GemBuy (a Config.Store.GemItems key) is answered: the XP Potion for 75 gems, no prompt", toastsSince(p, markGem))
 			setId("Tokens1", 6103)
 			K.advance(1.1)
 			for _ = 1, 10 do

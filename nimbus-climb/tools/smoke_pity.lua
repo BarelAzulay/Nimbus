@@ -23,7 +23,9 @@
 --                             part 3 (Task 5): the hop with the pity: the old server spent the gems on a forced Secret and
 --                             its leave save lands 8 s after this server's load (which read Since 6): the Secret Roulette and
 --                             gem spins are refused until settled, then this server shows the old server's gems and Since 0
---                             (SecretPityLeft 7) and its next Secret spin is not forced
+--                             (SecretPityLeft 7) and its next Secret spin is not forced;
+--                             part 4 (Task 7): StoreRequest("GemBuy") before the settle toasts "Your data is still loading"
+--                             and BuyWithGems refuses it (nothing spent, no potion time); after the settle it sells
 --   secret_pity               (server, booted; Task 5) the Secret pity in PetService's money step (spec 5.2): six dry spins
 --                             count the attribute SecretPityLeft and SecretPity.Left 6 .. 1, the 7th is a forced Secret
 --                             (Pity = true) and the count restarts at 7; a natural Secret restarts it; refused spins (gems
@@ -879,6 +881,40 @@ local function serverScenarios()
 				T.check(leftOf(rN) == 6 and h:GetAttribute(PITY_ATTR) == 6, "gem settle pity hop: ...and the count goes on from 7 (SecretPity.Left 6, attribute 6)",
 					tostring(leftOf(rN)) .. " / " .. tostring(h:GetAttribute(PITY_ATTR)))
 				leave(h)
+
+				------------------------------------------------------------------------------------------------
+				-- part 4 (Task 7): the gem XP Potion (StoreRequest "GemBuy") waits for the settle too
+				------------------------------------------------------------------------------------------------
+				local Store = reqModule("server/Services/StoreService")
+				local folder = K.remoteFolder and K.remoteFolder()
+				local storeRemote = folder and folder:FindFirstChild("StoreRequest")
+				if T.check(Store ~= nil and type(Store.BuyWithGems) == "function" and storeRemote ~= nil, "gem settle gem buy: StoreService.BuyWithGems and the StoreRequest remote exist") then
+					local uidB = newUserId()
+					local b = join("SettleGemBuy", uidB)
+					players[#players + 1] = b
+					D.AddGems(b, 75)
+					local gemsB, endsB = D.GetGems(b), Store.BoostEnds(b, "XpPotion")
+					T.check(D.GemsSettled(b) == false and gemsB >= 75, "gem settle gem buy: (precondition) not settled right after the join, 75 gems or more", tostring(gemsB))
+					local markB = K.logSize()
+					Mock.FromClient(storeRemote, b, "GemBuy", "XpPotionGems")
+					advance(0.2)
+					local saidB = 0
+					for _, e in ipairs(K.remotesFor("Notify", uidB, markB)) do
+						if e.args[1] == "Your data is still loading" and e.args[2] == "bad" then
+							saidB = saidB + 1
+						end
+					end
+					T.eq(saidB, 1, "gem settle gem buy: before the settle a GemBuy request toasts 'Your data is still loading'")
+					local okB, whyB = Store.BuyWithGems(b, "XpPotionGems")
+					T.check(okB == false and whyB == "Your data is still loading", "gem settle gem buy: ...BuyWithGems answers false, 'Your data is still loading'", tostring(okB) .. " / " .. tostring(whyB))
+					T.check(D.GetGems(b) == gemsB and Store.BoostEnds(b, "XpPotion") == endsB, "gem settle gem buy: ...nothing spent, no potion time",
+						tostring(D.GetGems(b)) .. " gems, ends " .. tostring(Store.BoostEnds(b, "XpPotion")))
+					T.eq(D._SettleForTest(b), true, "gem settle gem buy: (setup) _SettleForTest(p)")
+					local okB2 = Store.BuyWithGems(b, "XpPotionGems")
+					T.check(okB2 == true and D.GetGems(b) == gemsB - 75 and Store.BoostEnds(b, "XpPotion") == os.time() + 1800,
+						"gem settle gem buy: ...after the settle the potion sells (75 gems, 30 minutes; the settle was the only hold)", tostring(D.GetGems(b)) .. " gems")
+					leave(b)
+				end
 			end)
 			PolS.GetPolicyInfoForPlayerAsync = nil
 			if not okSpin then

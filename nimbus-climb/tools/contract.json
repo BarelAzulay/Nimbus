@@ -1142,7 +1142,9 @@
           "Validate",
           "GrantLines",
           "Created",
-          "Perk"
+          "Perk",
+          "GemItems",
+          "GemItem"
         ]
       }
     },
@@ -1158,7 +1160,8 @@
           "PassState",
           "IsPreview",
           "BoostEnds",
-          "Refresh"
+          "Refresh",
+          "BuyWithGems"
         ],
         "signals": [
           "Purchased",

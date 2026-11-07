@@ -98,6 +98,8 @@ Config.Attr = {
 	GemsSettled = "GemsSettled", -- true once the gem settle hold ended for this load (absent before, never written false)
 	SecretPityLeft = "SecretPityLeft", -- 1..PityAt: Secret Roulette spins left until a sure Secret (PetService; absent while
 	-- loading, provisional or not settled; the Secret card's chip reads it)
+	XpPassState = "XpPassState", -- StoreService.PassState(player, "PetXp2x"): "Owned" | "NotOwned" | "Checking" | "Unavailable",
+	-- written on every change (the shop's gem potion label reads it; the server never reads it back)
 }
 
 Config.Remotes = {
@@ -143,7 +145,8 @@ Config.Remotes = {
 	"MenuPlay", -- ()  the main menu's PLAY: the server spawns the character (PlayerService.SpawnPlayer; first per session, 1/s)
 	"QuickTravel", -- (dest:string) "Plaza"  the pill's Travel button: opens the home portal to the lobby (GateService.Travel)
 	-- store (2026-11-04; docs/superpowers/specs/2026-11-04-shop-retention-design.md): the Store, the daily gifts, the Sky Trove
-	"StoreRequest", -- (action:string, key:string)  "Buy" (a Config.Store.Items key): the server prompts the pass / product; the client never prompts
+	"StoreRequest", -- (action:string, key:string)  "Buy" (a Config.Store.Items key) / "GemBuy" (a Config.Store.GemItems key)
+	--   Buy: the server prompts the pass / product (the client never prompts); GemBuy: StoreService.BuyWithGems spends the gems
 	"DailyRequest", -- (action:string, tier:number|nil)  "Claim" (the streak gift) / "ClaimPlay" (tier) / "ClaimPlayAll" (every Ready play tier, one toast) (DailyService)
 	"DailyState", -- server -> client (state:table)  the streak, the resolved cells, the play clock and its tiers, Play.Active
 	"TroveRequest", -- (action:string)  "Joined": the client's PromptJoinAsync answered Joined / AlreadyMember (TroveService checks once per visit)
@@ -579,6 +582,13 @@ Config.Store = {
 			Grants = { Cash = 530000 }, Line = "Cash resets when you Prestige, so spend it!" },
 		{ Key = "Cash3", Kind = "Product", Tab = "Currency", Id = 0, Robux = 399, Name = "Cash (3 h)", Enabled = false,
 			Grants = { Cash = 1600000 }, Line = "Cash resets when you Prestige, so spend it!" },
+	},
+	-- lobby shop (docs/superpowers/specs/2026-11-07-lobby-shop-design.md 5.3 / 5.8): items bought with gems, not Robux, through
+	-- StoreRequest("GemBuy", key) -> StoreService.BuyWithGems. { Key, Gems, Name, Grants = { Boost = { XpPotion = seconds } } }:
+	-- a gem item sells potion time only (StoreCatalog.Validate), refused while the x2 Pet XP pass is Owned or Checking and
+	-- past Potion.CapSeconds; restricted accounts may buy it (it is not random)
+	GemItems = {
+		{ Key = "XpPotionGems", Gems = 75, Name = "XP Potion (30 min)", Grants = { Boost = { XpPotion = 1800 } } },
 	},
 }
 
