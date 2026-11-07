@@ -20,7 +20,8 @@
 --                             session's Z8 clamp lets it claim 20 h after the join (less than 20 h after F), its final
 --                             save fails (an orphan); another server loads the stale F and pays the same day; the
 --                             orphan retry lands last: the day is paid ONCE (the clamp claim is no exception to the
---                             twin rule: its grant records the stamp it built on, Prev = F)
+--                             twin rule: its grant records the stamp it built on, Prev = F); since gui-redo Task 4 the
+--                             claim first gets the play-day's 10-minute unlock (UnlockSeconds) at its own second
 --   fixr_data_revert_twin     (re-review round 3, findings 1 / 4) a save that never moved its pair (a play-time tick, a
 --                             noted Z8 first sight) lands late, after another server's claim replaced a stamp F that was
 --                             30 h / 3 days ahead: the claim stays in the store (F never comes back), so a third
@@ -595,6 +596,14 @@ S.fixr_data_clamp_twin = guarded("fixr_data_clamp_twin", function()
 		-- 20 h after the join B pays day 3 (less than 20 h after F); then its saves fail and the player leaves
 		advance(READY + 2)
 		local gemsB = D.GetGems(p)
+		-- gui-redo Task 4: the streak claim needs the play-day's UnlockSeconds (10 min of play); a play-day started at this
+		-- second keeps the claim's own now as the step-back moment
+		D.MutateDaily(p, function(dd)
+			dd.PlayStart = os.time()
+			dd.PlaySec = tonumber(daily.UnlockSeconds) or 0
+			dd.PlayClaimed = {}
+			return true
+		end)
 		local tB = os.time()
 		local ok, info = DV.Claim(p)
 		T.check(ok == true and type(info) == "table" and info.Streak == 3 and D.GetGems(p) == gemsB + 10 and tB - F < READY,

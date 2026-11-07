@@ -13,10 +13,11 @@
 --                            Coins $/s; Put here -> HomeAction GardenSet {Slot, Key}; a training pet and a pet whose only
 --                            copy is placed are disabled; Take out on a filled place -> GardenSet {Slot}; E on an own
 --                            GardenSpotPrompt opens it for that Slot, someone else's prompt does nothing
---   client_p4careui_train    the Training Place window (OpenPanel("Train")): four skills with rank bars, the next rank's
---                            cost / time (TrainCost / TrainSeconds), Train asks first then sends PetCare("Train", key, stat);
---                            the training pet shows its timer, its skills are disabled and Stop asks first ("You get the
---                            Cash back, no rank") then sends PetCare("TrainStop", key); full spots disable Train; rank 10
+--   client_p4careui_train    the Training Place window (OpenPanel("Train"); gui-redo Task 7: TrainController's NimbusTrain /
+--                            Window_Train, its own Confirm): four skill cards with rank bars, the next rank's cost / time
+--                            (TrainCost / TrainSeconds), TRAIN asks first then sends PetCare("Train", key, stat); the training
+--                            pet's card shows its timer and STOP, its other skills are disabled, STOP asks first ("You get
+--                            the Cash back, no rank") then sends PetCare("TrainStop", key); full spots disable Train; rank 10
 --                            shows MAX
 --   client_p4careui_evolve   the EVOLVE moment (OpenPanel("Evolve", {Key, Stage})): every window closes, the follower is
 --                            parked (PetController.PlayEvolution), EvolutionFx plays on two clones 5-6.5 studs in front of
@@ -570,62 +571,76 @@ end)
 ----------------------------------------------------------------------------------------------------
 -- the Training Place window
 ----------------------------------------------------------------------------------------------------
+-- gui-redo Task 7: the Training Place is TrainController's own window (NimbusTrain / Window_Train, its own confirm in
+-- NimbusTrain); CareController forwards OpenPanel("Train") to it. The same checks on the new window.
+local function trainGui()
+	return pg():FindFirstChild("NimbusTrain")
+end
+
+local function trainWin()
+	local g = trainGui()
+	return g and g:FindFirstChild("Window_Train")
+end
+
 S.client_p4careui_train = guarded("client_p4careui_train", function()
 	local C = ready()
 	if not C then
+		return
+	end
+	local TCtl = (KC and KC.M and KC.M.TrainController) or moduleAt("client", "Controllers/TrainController")
+	if not T.check(type(TCtl) == "table" and type(TCtl.Select) == "function", "careui train: client/Controllers/TrainController.lua loads") then
 		return
 	end
 	local errors0 = #Mock.Errors
 	sync({ Gym = 2 })
 	toClient("OpenPanel", "Train", {})
 	advance(0.6)
-	local win = careWin()
-	T.check(C.Mode() == "Train" and win and win.Visible, "careui train: OpenPanel('Train') (the TrainPrompt) opens the Training Place window")
+	local win = trainWin()
+	T.check(C.Mode() == "Train" and win and shown(win), "careui train: OpenPanel('Train') (the TrainPrompt) opens the Training Place window")
 	local skills = {}
 	for _, id in ipairs({ "Speed", "Physique", "Ability", "Defense" }) do
 		skills[#skills + 1] = win and find(win, "Skill_" .. id) and id or nil
 	end
 	T.eq(table.concat(skills, ","), "Speed,Physique,Ability,Defense", "careui train: the four skills (Attack Speed, Physique, Ability, Defense)")
 	T.check(find(find(win, "Skill_Speed"), "Name").Text == "Attack Speed", "careui train: Speed is labelled 'Attack Speed'")
-	-- the pet in training is selected first: its timer, Stop
-	local timer = find(win, "TrainTimer")
-	local timerText = timer and find(timer, "Text")
-	T.check(timer and shown(timer) and timerText and timerText.Text:find("Rank 2: 2:", 1, true) and timerText.Text:find("left", 1, true),
-		"careui train: the pet in training shows its timer ('Physique Rank 2: 2:10 left')", timerText and timerText.Text or "")
-	T.check(disabled(find(find(win, "Skill_Speed"), "Train")) and find(find(win, "Skill_Physique"), "Train").Text == "Training",
-		"careui train: a training pet cannot start another skill")
+	-- the pet in training is selected first: its timer on its skill card, STOP
+	T.eq(TCtl.Key(), P.TRAIN, "careui train: the pet in training is selected first")
+	local physTime = find(find(win, "Skill_Physique"), "Time")
+	T.check(physTime and shown(physTime) and physTime.Text:find("Rank 2 ", 1, true) and physTime.Text:find("2:", 1, true) and physTime.Text:find("left", 1, true),
+		"careui train: the pet in training shows its timer ('Rank 2 - 2:10 left')", physTime and physTime.Text or "")
+	T.check(disabled(find(find(win, "Skill_Speed"), "Action")) and find(find(win, "Skill_Physique"), "Action").Text == "STOP",
+		"careui train: a training pet cannot start another skill (STOP on its own)")
 	local mark = #Mock.RemoteLog
-	Mock.Click(find(win, "StopTraining"))
+	Mock.Click(find(find(win, "Skill_Physique"), "Action"))
 	advance(0.4)
-	local confirm = careGui():FindFirstChild("CareConfirm")
-	T.check(confirm.Visible and find(confirm, "Text").Text:find("You get the Cash back, no rank", 1, true) and #calls("PetCare", mark) == 0,
+	local confirm = trainGui():FindFirstChild("Confirm")
+	T.check(confirm and confirm.Visible and find(confirm, "Text").Text:find("You get the Cash back, no rank", 1, true) and #calls("PetCare", mark) == 0,
 		"careui train: Stop asks first ('You get the Cash back, no rank')")
-	Mock.Click(find(confirm, "ConfirmYes"))
+	Mock.Click(find(confirm, "Yes"))
 	advance(0.3)
 	local pc = calls("PetCare", mark)
 	T.check(#pc == 1 and pc[1].args[1] == "TrainStop" and pc[1].args[2] == P.TRAIN, "careui train: ...then sends PetCare('TrainStop', key)")
 	-- another pet: costs and times from the catalog, Train asks first
-	local rowF = find(win, "Train_" .. P.FOLLOW)
-	Mock.Click(rowF)
+	TCtl.Select(P.FOLLOW)
 	advance(0.4)
 	local defF = PetCatalog.Get(P.FOLLOW)
 	local phys = find(win, "Skill_Physique")
-	local want = "Rank 4: " .. TC.FormatCash(TC.TrainCost(defF, 4)) .. ", " .. floor(TC.TrainSeconds(4) / 60) .. " min"
-	T.eq(find(phys, "Cost").Text, want, "careui train: the next rank's cost and time (TrainCost / TrainSeconds; Rank 4 takes 4 minutes)")
-	T.check(find(phys, "Rank").Text == "Rank 3/10", "careui train: the rank bar shows the pet's rank")
+	T.eq(find(phys, "Cost").Text, "$" .. Util.Commas(TC.TrainCost(defF, 4)), "careui train: the next rank's cost (TrainCost)")
+	T.eq(find(phys, "Time").Text, floor(TC.TrainSeconds(4) / 60) .. " min", "careui train: ...and time (TrainSeconds; Rank 4 takes 4 minutes)")
+	T.check(find(phys, "Rank").Text == "Rank 3 / 10", "careui train: the rank shows the pet's rank")
 	local lit = 0
 	for i = 1, 10 do
-		local pip = find(find(phys, "RankBar"), "Pip" .. i)
-		if pip and pip.BackgroundColor3 ~= Color3.fromRGB(14, 20, 52) then
+		local seg = find(find(phys, "Bar"), "Seg" .. i)
+		if seg and seg:GetAttribute("Lit") == true then
 			lit = lit + 1
 		end
 	end
-	T.eq(lit, 3, "careui train: three of the ten pips are lit")
+	T.eq(lit, 3, "careui train: three of the ten bar segments are lit")
 	mark = #Mock.RemoteLog
-	Mock.Click(find(phys, "Train"))
+	Mock.Click(find(phys, "Action"))
 	advance(0.4)
 	T.check(confirm.Visible and find(confirm, "Title").Text:find("Physique", 1, true) and #calls("PetCare", mark) == 0, "careui train: Train asks first")
-	Mock.Click(find(confirm, "ConfirmYes"))
+	Mock.Click(find(confirm, "Yes"))
 	advance(0.3)
 	pc = calls("PetCare", mark)
 	T.check(#pc == 1 and pc[1].args[1] == "Train" and pc[1].args[2] == P.FOLLOW and pc[1].args[3] == "Physique", "careui train: ...then sends PetCare('Train', key, 'Physique')")
@@ -634,15 +649,17 @@ S.client_p4careui_train = guarded("client_p4careui_train", function()
 	toClient("OpenPanel", "Train", { Key = P.FOLLOW })
 	advance(0.5)
 	phys = find(win, "Skill_Physique")
-	T.check(disabled(find(phys, "Train")) and find(win, "Spots").Text:find("1 / 1", 1, true), "careui train: full spots disable Train", find(win, "Spots").Text)
+	local chip = find(win, "SpotsChip")
+	T.check(disabled(find(phys, "Action")) and phys:GetAttribute("State") == "Full" and chip and chip.Text:find("1 / 1", 1, true),
+		"careui train: full spots disable Train", chip and chip.Text or "")
 	-- rank 10
 	sync({ Speed10 = true })
 	toClient("OpenPanel", "Train", { Key = P.MAX })
 	advance(0.5)
 	local speed = find(win, "Skill_Speed")
-	T.check(find(speed, "Max").Visible and not find(speed, "Train").Visible, "careui train: rank 10 shows MAX")
+	T.check(find(speed, "MaxTag").Visible and not find(speed, "Action").Visible, "careui train: rank 10 shows MAX")
 	closeAll()
-	local mine = errorsSince(errors0, { "CareController" })
+	local mine = errorsSince(errors0, { "CareController", "TrainController" })
 	T.check(#mine == 0, "careui train: no script errors", table.concat(mine, " | "))
 end)
 
@@ -849,7 +866,9 @@ local function eachWindow(fn)
 		{ "the Training Place", function()
 			toClient("OpenPanel", "Train", {})
 		end, function()
-			return careWin()
+			-- gui-redo Task 7: TrainController's own window
+			local g = pg():FindFirstChild("NimbusTrain")
+			return g and g:FindFirstChild("Window_Train")
 		end },
 		{ "the EVOLVE confirm", function()
 			C.ConfirmEvolve(P.READY)

@@ -125,7 +125,7 @@ Config.Remotes = {
 	-- Phase 2 (ARCHITECTURE_V3.md "Phase 2 build contract")
 	"HomeAction", -- (action:string, arg:any)  Upgrade / GardenSet / Collect / Prestige / GoHome (Phase 4: GoHome opens the home portal)
 	"PetCare", -- (action:string, a:any, b:any)  Phase 5: Feed (key) spends berries; Evolve (key) / Train (key, stat) / TrainStop (key); Cook / GymSet are retired (one toast)
-	"Fusion", -- (action:string, a:any, b:any)  Upgrade / Mix
+	"Fusion", -- (action:string, a:any, b:any, moves:string|nil)  Upgrade / Mix (moves "BB" | "BS" | "SB" | "SS"; nil = "BB")
 	-- Phase 3 (ARCHITECTURE_V3.md "Phase 3 build contract")
 	"BattleState", -- server -> client (kind:string, payload:table)  Start / Snapshot / Events / End
 	"BattleCommand", -- (action:string, a:any, b:any)  Phase 5: Attack / Element / Special / Dash / Target / Buff / Swap / Cheer / Retreat / Engage (boss raids) / Forfeit
@@ -140,7 +140,7 @@ Config.Remotes = {
 	"QuickTravel", -- (dest:string) "Plaza"  the pill's Travel button: opens the home portal to the lobby (GateService.Travel)
 	-- store (2026-11-04; docs/superpowers/specs/2026-11-04-shop-retention-design.md): the Store, the daily gifts, the Sky Trove
 	"StoreRequest", -- (action:string, key:string)  "Buy" (a Config.Store.Items key): the server prompts the pass / product; the client never prompts
-	"DailyRequest", -- (action:string, tier:number|nil)  "Claim" (the streak gift) / "ClaimPlay" (tier) (DailyService)
+	"DailyRequest", -- (action:string, tier:number|nil)  "Claim" (the streak gift) / "ClaimPlay" (tier) / "ClaimPlayAll" (every Ready play tier, one toast) (DailyService)
 	"DailyState", -- server -> client (state:table)  the streak, the resolved cells, the play clock and its tiers, Play.Active
 	"TroveRequest", -- (action:string)  "Joined": the client's PromptJoinAsync answered Joined / AlreadyMember (TroveService checks once per visit)
 	"TroveState", -- server -> client (state:table)  the asks' states (Open / Done / Checked / Unavailable) and the reward
@@ -565,6 +565,7 @@ Config.Daily = {
 	KeepSeconds = 48 * 3600, -- claimed within this of the last claim the streak is kept; later it steps back a day per missed day
 	PipDelaySeconds = 20, -- the Gifts button's pip waits this long after the join (nothing is announced on join)
 	FutureClockSlack = 300, -- a stored LastClaimAt further in the future than this is a wrong clock: counted as the now of its first sight on this server's clock (noted in Daily.ClampFrom / ClampAt / ClampJob, reused only on that server; LastClaimAt never written), refused once
+	UnlockSeconds = 600, -- a streak claim needs this many counted play seconds of the current play-day (0 = off: no lock, no hold)
 	-- the seven cells: cell ((Streak - 1) % 7) + 1 of the new Streak; re-earned, never re-paid (Paid = the highest Streak paid)
 	Days = {
 		{ Cash = { Minutes = 2, Min = 400 } },

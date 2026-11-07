@@ -1083,21 +1083,34 @@ local function clientScenarios()
 		local want = TCat.FusionCost("Upgrade", "Common", "Golden", 1).Tokens
 		T.check(type(plan) == "table" and plan.Ok == true and plan.ResultKey == "pebble_pup@Golden" and plan.Cost and plan.Cost.Currency == "Tokens" and plan.Cost.Amount == want,
 			"fusion window: the Upgrade preview mirrors the server (result key, Token cost)", plan and (tostring(plan.ResultKey) .. " " .. tostring(plan.Cost and plan.Cost.Amount) .. " " .. tostring(plan.Reason)) or "no plan")
-		-- the tiles: no hybrids, no Rainbow, the copies counted
+		-- gui-redo Task 11: the left grid is gone; tapping the stack of copies opens the shared pet picker (Upgrade context),
+		-- which lists the regular pets (no hybrids)
 		local g = fusionGui()
-		local tiles = {}
-		for _, d in ipairs(g:GetDescendants()) do
-			if d.Name == "Tile" and d:IsA("TextButton") then
-				local name = d:FindFirstChild("PetName")
-				tiles[#tiles + 1] = name and name.Text or "?"
+		local PP = moduleAt("client", "UI/PetPicker")
+		local stack = find(g, "Stack")
+		if stack then
+			Mock.Click(stack)
+		end
+		advance(0.3)
+		local listed = (PP and PP.IsOpen() and PP.Shown()) or {}
+		local hybrids = {}
+		for _, key in ipairs(listed) do
+			local parsed = Keys.Parse(key)
+			if not parsed or parsed.HybridId then
+				hybrids[#hybrids + 1] = key
 			end
 		end
-		local joined = table.concat(tiles, "|")
-		T.check(#tiles >= 4 and not joined:find("Pengnix", 1, true), "fusion window: the picker lists the regular pets (no hybrids)", joined)
+		T.check(#listed >= 4 and #hybrids == 0, "fusion window: tapping the stack opens the pet picker with the regular pets (no hybrids)",
+			table.concat(listed, "|") .. " / hybrids: " .. table.concat(hybrids, "|"))
+		if PP and PP.IsOpen() then
+			PP.Close()
+		end
+		advance(0.2)
+		T.check(windowShown() and not (PP and PP.IsOpen()), "fusion window: ...closing the picker leaves the window open")
 
 		-- FUSE sends the remote
 		local mark = #Mock.RemoteLog
-		local fuse = find(g, "Fuse")
+		local fuse = find(g, "FuseButton")
 		T.check(fuse ~= nil and fuse:IsA("TextButton") and fuse:GetAttribute("Disabled") ~= true, "fusion window: FUSE is enabled for a valid fusion")
 		if fuse then
 			Mock.Click(fuse)
@@ -1130,8 +1143,8 @@ local function clientScenarios()
 		T.eq(#KC.serverCalls("Fusion", mark), 1, "fusion window: FUSE for the Golden fox sends a request")
 		KC.toClient("Fusion", "Result", { Ok = false, Action = "Upgrade", Reason = "Not enough Cloud Tokens" })
 		advance(0.2)
-		local note = find(g, "ServerNote")
-		T.check(note ~= nil and note.Visible and note.Text == "Not enough Cloud Tokens", "fusion window: a refused fusion shows the server's reason", note and note.Text or "")
+		local note = find(g, "HintLine")
+		T.check(note ~= nil and note.Visible and note.Text == "Not enough Cloud Tokens", "fusion window: a refused fusion shows the server's reason (the hint line)", note and note.Text or "")
 
 		-- Mix tab: the blended name, the higher rarity, both elements, the cost
 		FC.Open("Mix", { Key = "pip_penguin", KeyB = "ember_phoenix" })
@@ -1172,8 +1185,9 @@ local function clientScenarios()
 		end
 		T.check(#small == 0, "fusion window: every text is at least 18 design px (readability rule, under one UIScale)", table.concat(small, ", "))
 
-		-- wave 5 (client-ux-1): on phones the preview never stacks the name, the pills or the note on the cost / FUSE row,
-		-- and FUSE (left on a touch phone) never covers the cards or the "3/3" badge; checked at 4 sizes, both tabs
+		-- gui-redo Task 11 (was wave 5, client-ux-1): the result's name, its pills, the note and the Info line never sit on the
+		-- cost bar or FUSE!, the note never sits on the cards, and everything stays inside the window; 4 sizes, both tabs, with
+		-- the red "not enough" line on screen
 		do
 			local UIS = game:GetService("UserInputService")
 			local old = { Mock.Viewport.X, Mock.Viewport.Y, UIS.TouchEnabled, UIS.KeyboardEnabled, UIS.MouseEnabled }
@@ -1196,7 +1210,9 @@ local function clientScenarios()
 				end
 				return true
 			end
+			KC.toClient("ProfileSync", snapshot()) -- (the pets of both tabs owned, a free team slot)
 			LocalPlayer:SetAttribute(Config.Attr.Tokens, 10) -- (too poor: the red reason line is on screen too)
+			advance(0.3)
 			local bad = {}
 			for _, size in ipairs({ { 1920, 1080, false }, { 1280, 720, false }, { 390, 844, true }, { 844, 390, true } }) do
 				UIS.TouchEnabled, UIS.KeyboardEnabled, UIS.MouseEnabled = size[3], not size[3], not size[3]
@@ -1205,62 +1221,71 @@ local function clientScenarios()
 				for _, tab in ipairs({ { "Upgrade", { Key = "pebble_pup" } }, { "Mix", { Key = "pip_penguin", KeyB = "ember_phoenix" } } }) do
 					FC.Open(tab[1], tab[2])
 					advance(0.4)
-					local preview = find(g, "Preview")
-					local bottom = preview and preview:FindFirstChild("Bottom")
+					local window = g:FindFirstChild("Window_Fusion")
 					local label = size[1] .. "x" .. size[2] .. " " .. tab[1]
-					if not (preview and bottom) then
-						bad[#bad + 1] = label .. ": no Preview / Bottom"
+					if not (window and window.Visible) then
+						bad[#bad + 1] = label .. ": no Window_Fusion"
 					else
-						local pr = rect(preview)
-						local upper = {} -- what sits above the cost / FUSE row
-						for _, name in ipairs({ "ResultName", "Pills", "Info", "Copies", "Input1", "Input2", "Input3", "Result", "Body", "Style" }) do
-							local o = find(preview, name)
-							if o and o:IsA("GuiObject") and shownIn(o, preview) and o.AbsoluteSize.X > 2 and o.AbsoluteSize.Y > 2 and (not o:IsA("TextLabel") or o.Text ~= "") then
-								upper[#upper + 1] = { name, o }
-							end
-						end
-						local lower = {}
-						for _, name in ipairs({ "Fuse", "Cost" }) do
-							local o = bottom:FindFirstChild(name)
-							if o and o.Visible then
-								lower[#lower + 1] = { name, o }
-							end
-						end
-						for _, u in ipairs(upper) do
-							local ur = rect(u[2])
-							if u[1] == "Info" then
-								-- (the note shows through its clipping Details frame: it must fit there, not be cut)
-								local dr = rect(u[2].Parent)
-								if ur.y1 > dr.y1 + 1 then
-									bad[#bad + 1] = label .. ": the note is cut off (" .. rtext(ur) .. " in " .. rtext(dr) .. ") '" .. u[2].Text .. "'"
+						local wr = rect(window)
+						local function pick(names)
+							local out = {}
+							for _, name in ipairs(names) do
+								local o = find(window, name)
+								if o and o:IsA("GuiObject") and shownIn(o, window) and o.AbsoluteSize.X > 2 and o.AbsoluteSize.Y > 2
+									and (not (o:IsA("TextLabel") or o:IsA("TextButton")) or o.Text ~= "") then
+									out[#out + 1] = { name, o }
 								end
-								ur.y1 = math.min(ur.y1, dr.y1)
 							end
-							if ur.y1 > pr.y1 + 1 or ur.x1 > pr.x1 + 1 or ur.x0 < pr.x0 - 1 or ur.y0 < pr.y0 - 1 then
-								bad[#bad + 1] = label .. ": " .. u[1] .. " outside the preview " .. rtext(ur)
+							return out
+						end
+						local texts = pick({ "ResultName", "Note", "Info", "CopiesText", "Pill_Rarity", "Pill_Power", "Pill_Elements", "Pill_Tier" })
+						local cards = pick({ "Stack", "Slot_Body", "Slot_Style", "Result" })
+						local lower = pick({ "CostBar", "FuseButton" })
+						if #lower < 2 then
+							bad[#bad + 1] = label .. ": the cost bar or FUSE! is missing"
+						end
+						local note = nil
+						for _, t in ipairs(texts) do
+							if t[1] == "Note" then
+								note = t[2]
 							end
+						end
+						if not (note and note.Text:find("Not enough", 1, true)) then
+							bad[#bad + 1] = label .. ": the red reason is not on screen (" .. tostring(note and note.Text) .. ")"
+						end
+						for _, list in ipairs({ texts, cards, lower }) do
+							for _, u in ipairs(list) do
+								local ur = rect(u[2])
+								if ur.x0 < wr.x0 - 1 or ur.y0 < wr.y0 - 1 or ur.x1 > wr.x1 + 1 or ur.y1 > wr.y1 + 1 then
+									bad[#bad + 1] = label .. ": " .. u[1] .. " outside the window " .. rtext(ur)
+								end
+							end
+						end
+						for _, u in ipairs(texts) do
 							for _, l in ipairs(lower) do
-								if ur.y1 > ur.y0 + 1 and overlap(ur, rect(l[2])) then
-									bad[#bad + 1] = label .. ": " .. u[1] .. " " .. rtext(ur) .. " under " .. l[1] .. " " .. rtext(rect(l[2]))
+								if overlap(rect(u[2]), rect(l[2])) then
+									bad[#bad + 1] = label .. ": " .. u[1] .. " " .. rtext(rect(u[2])) .. " under " .. l[1] .. " " .. rtext(rect(l[2]))
+								end
+							end
+							if u[1] == "Note" or u[1] == "Info" or u[1] == "CopiesText" then
+								for _, c in ipairs(cards) do
+									if overlap(rect(u[2]), rect(c[2])) then
+										bad[#bad + 1] = label .. ": " .. u[1] .. " over the card " .. c[1]
+									end
 								end
 							end
 						end
-						-- the name and the pills / note never sit on the cards either
-						for _, a in ipairs({ "ResultName", "Pills", "Info" }) do
-							for _, u in ipairs(upper) do
-								if u[1] == a then
-									for _, c in ipairs(upper) do
-										if (c[1] == "Result" or c[1]:find("^Input") or c[1] == "Copies") and overlap(rect(u[2]), rect(c[2])) then
-											bad[#bad + 1] = label .. ": " .. a .. " over the card " .. c[1]
-										end
-									end
+						for _, c in ipairs(cards) do
+							for _, l in ipairs(lower) do
+								if overlap(rect(c[2]), rect(l[2])) then
+									bad[#bad + 1] = label .. ": the card " .. c[1] .. " under " .. l[1]
 								end
 							end
 						end
 					end
 				end
 			end
-			T.check(#bad == 0, "fusion window: at 1920x1080 / 1280x720 / 390x844 / 844x390 the preview's name, pills and note stay clear of the cost / FUSE row and the cards",
+			T.check(#bad == 0, "fusion window: at 1920x1080 / 1280x720 / 390x844 / 844x390 the result's name, pills, the note and the cards stay clear of the cost bar / FUSE! and inside the window",
 				table.concat(bad, "; ", 1, math.min(#bad, 5)))
 			UIS.TouchEnabled, UIS.KeyboardEnabled, UIS.MouseEnabled = old[3], old[4], old[5]
 			Mock.SetViewport(old[1], old[2])

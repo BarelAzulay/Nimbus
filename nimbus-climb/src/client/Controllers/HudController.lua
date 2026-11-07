@@ -4,6 +4,8 @@
 --   HudController.GetLayout() -> { TopLeftRight, TopLeftBottom, TopRightBottom, BottomLeftTop, Scale, CurrencyMode,
 --                                  Vitals = { X, Y, W, H } | nil }   (wave 6: the vitals card's gui-area rect; the battle
 --                                  HUD's Cheer up! button sits right above it)
+--   HudController.SetVitalsHidden(who, on)   (gui-redo) a window that would cover only part of the vitals card hides it
+--                                  while open (the Gifts window, `who` = "Daily"); back when the last one lets go
 --
 -- One ScreenGui "NimbusHud" (display order 10, IgnoreGuiInset = false, built by CloudUI.NewScreenGui).
 -- Nothing the game announces is ever drawn in the middle of the screen. The layout map:
@@ -243,6 +245,7 @@ local Cur = {} -- currency rows by id: { Def, Attr, Row, Amount, AmountScale, Co
 local S = {
 	match = nil, party = nil, downed = false, currencyMode = "TopRight", panelW = K.PANEL_W,
 	yieldToResult = false, -- a narrow screen with the result card open: the match panel steps away
+	vitalsOwners = {}, -- [window name] = true while that window wants the vitals card hidden (SetVitalsHidden)
 }
 local H = { -- health
 	Char = nil, Humanoid = nil, Conns = {},
@@ -1408,6 +1411,7 @@ local function buildVitals(holder)
 		Size = UDim2.fromOffset(K.VITALS_W, K.VITALS_H),
 	})
 	addViewportScale(root)
+	root.Visible = next(S.vitalsOwners) == nil -- (a window that asked it to step aside: HudController.SetVitalsHidden)
 	UI.Vitals = root
 	-- the layout owns the root's position; the damage shake nudges this full-size body instead
 	local body = newFrame(root, "Body", { Size = UDim2.fromScale(1, 1) })
@@ -2947,6 +2951,17 @@ end
 ----------------------------------------------------------------------
 -- Public API
 ----------------------------------------------------------------------
+-- gui-redo review fix: a window that reaches over the vitals card without covering all of it (the Gifts window on PC: its
+-- bottom edge cut the card in half at 1080p) hides the card while it is open. `who` names the window, `on` = true while
+-- it wants the card gone; the card comes back when the last window lets go. The layout and its published edges stay as
+-- they are (nothing else moves).
+function HudController.SetVitalsHidden(who, on)
+	S.vitalsOwners[type(who) == "string" and who or "?"] = (on == true) or nil
+	if UI.Vitals then
+		UI.Vitals.Visible = next(S.vitalsOwners) == nil
+	end
+end
+
 -- Where the HUD currently is (gui-area pixels of an IgnoreGuiInset = false ScreenGui; 0 = nothing there).
 function HudController.GetLayout()
 	return {

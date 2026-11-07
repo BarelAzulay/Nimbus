@@ -308,22 +308,49 @@ local function clientScenarios()
 		local tile = tw and find(tw, "Card_" .. P.E1)
 		T.check(lowAt(evolvedModel(tile, 1), 1), "p5looks team: ...and its card")
 		closeAll()
-		-- the Fusion tiles
+		-- the Fusion pet picker (gui-redo Task 11: the left grid is gone; the shared picker sheet lists the pets)
 		if FC and FC.Open then
 			FC.Open("Upgrade", {})
-			advance(2.5)
+			advance(0.4)
 			local fg = pg():FindFirstChild("NimbusFusion")
-			T.check(evolvedModel(fg, 1) ~= nil and evolvedModel(fg, 2) ~= nil, "p5looks fusion: the picker tiles draw the copies' stages (1 and 2)")
+			local sheet = pg():FindFirstChild("NimbusPetPicker")
+			local function sheetShown()
+				local w = sheet and sheet:FindFirstChild("Window_PetPicker")
+				return w ~= nil and shown(w)
+			end
+			if not sheetShown() and FC.Select then
+				-- (a pet still picked from an earlier scene: empty the stack, then tap it)
+				FC.Select(nil)
+				Mock.Click(find(fg, "Stack"))
+			end
+			advance(2.5)
+			sheet = pg():FindFirstChild("NimbusPetPicker")
+			local c1, c2 = sheet and find(sheet, "Card_" .. P.E1), sheet and find(sheet, "Card_" .. P.L2)
+			T.check(sheetShown() and evolvedModel(c1, 1) ~= nil and evolvedModel(c2, 2) ~= nil,
+				"p5looks fusion: the pet picker's cards draw the copies' stages (1 and 2)")
 			closeAll()
 		end
-		-- the care rows (Food Machine, garden picker, Training Place)
-		for _, mode in ipairs({ "Feed", "Garden", "Train" }) do
+		-- the care rows (Food Machine, garden picker)
+		for _, mode in ipairs({ "Feed", "Garden" }) do
 			CC.Open(mode, { Slot = 3 })
 			advance(2.5)
 			local cw = pg():FindFirstChild("NimbusCare")
 			T.check(lowAt(evolvedModel(cw, 1), 1) and lowAt(evolvedModel(cw, 2), 2), "p5looks care: the " .. mode .. " rows draw the evolved pets at Low")
 			closeAll()
 		end
+		-- the Training Place (gui-redo Task 7: TrainController's window): the big pet card draws the selected pet's stage
+		local TCtl = (KC and KC.M and KC.M.TrainController) or moduleAt("client", "Controllers/TrainController")
+		CC.Open("Train", { Key = P.L2 })
+		advance(2.5)
+		local tg = pg():FindFirstChild("NimbusTrain")
+		local petCard = tg and find(tg, "PetCard")
+		T.check(lowAt(evolvedModel(petCard, 2), 2), "p5looks train: the big pet card draws the selected stage-2 pet at Low")
+		if TCtl and TCtl.Select then
+			TCtl.Select(P.E1)
+			advance(1.5)
+		end
+		T.check(lowAt(evolvedModel(petCard, 1), 1) and evolvedModel(petCard, 2) == nil, "p5looks train: ...and a stage-1 pet at stage 1 once selected (the other parked)")
+		closeAll()
 		-- the roulette reveal of an evolved key: its stage + the gold ribbon
 		toClient("RouletteResult", { Ok = true, PetId = P.E1, IsNew = false, Count = 2 })
 		local ribbon = nil

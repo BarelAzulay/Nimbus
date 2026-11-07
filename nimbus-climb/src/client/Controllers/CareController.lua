@@ -1,4 +1,6 @@
 -- CareController (client, Phase 4): the pet-care windows of ARCHITECTURE_V3.md "Phase 4 build contract" 3.4-3.7.
+-- gui-redo Task 7: the Training Place window lives in TrainController; this module forwards Train to it and keeps every
+-- wire the Care window had (see "Train" below), so no other controller changes.
 --
 --   CareController.Init()
 --   CareController.Open(panelId, args)   panelId = "Feed" | "Garden" | "Train" | "Evolve"
@@ -11,25 +13,29 @@
 --               -> PetCare("Feed", key, nil | {Count = n}); HomeAction("Upgrade", "Kitchen")
 --       Garden  the garden picker for one place (args.Slot): every pet copy (any role) with its coins per second;
 --               "Put here" -> HomeAction("GardenSet", {Slot, Key}); "Take out" -> HomeAction("GardenSet", {Slot})
---       Train   the Training Place window (args.Key = the pet to select): the pets on the left, the four skills
---               (Attack Speed / Physique / Ability / Defense) of the selected pet on the right with a rank bar, the
---               next rank's cost and time (TycoonCatalog.TrainCost / TrainSeconds) and Train; a training pet shows
---               its timer and Stop. Train and Stop ask first. -> PetCare("Train", key, stat) / PetCare("TrainStop", key)
+--       Train   (also "Training") forwards to TrainController.Open(args) and returns its answer: the Training Place
+--               window (client/Controllers/TrainController.lua; args.Key / args.ReturnTo as before). While it is up,
+--               Mode() is "Train" and IsOpen() is true; Opened:Fire("Train") / Closed:Fire() come from it through
+--               NotifyTrain; Close() and the drop of the way back (another window, a match) close it too; opening Feed
+--               or Garden closes it first.
 --       Evolve  the evolution moment (the server's OpenPanel("Evolve", {Key, Stage}) after PetCare("Evolve")): every
 --               window closes, PetController.PlayEvolution parks the follower of that key, EvolutionFx plays on two
 --               fresh PetBuilder clones 5.5 studs in front of the player (with confetti), then the evolved clone
 --               flies home as the follower (release(position)) and goes away
---       args.ReturnTo (team balance, Feed / Garden / Train): the Pets window's own Open args; closing this window goes back
+--       args.ReturnTo (team balance, Feed / Garden): the Pets window's own Open args; closing this window goes back
 --               to it (same pet), unless another window or a match took over
---   CareController.Close()               closes the window and any confirm
---   CareController.IsOpen() -> true while a care window or a confirm is up
+--   CareController.Close()               closes the Training window (TrainController.Close), then this window and any confirm
+--   CareController.CloseOwn()            closes only Feed / Garden (and the confirm), never forwards, never goes back to the
+--                                        Pets window (the Training window opening calls it)
+--   CareController.NotifyTrain(open)     TrainController's open / close: Opened:Fire("Train") / Closed:Fire()
+--   CareController.IsOpen() -> true while a care window, a confirm or the Training window is up
 --   Extras: CareController.Mode() -> "Feed" | "Garden" | "Train" | nil, CareController.ConfirmEvolve(key) (the EVOLVE
 --           confirm, used by the Pets window too), CareController.FeedPlan(key, count) -> { Count, Price, Xp, Free,
 --           Food, Levels } (what a request would do; the server decides), CareController.Evolving() -> plays running,
 --           CareController.Opened / Closed (Util.Signal; Opened fires the mode)
 --
 -- How the windows open: the server's OpenPanel("Pets", {Action = "Feed"}) (FeedPrompt on the Food Machine) and
--- OpenPanel("Train") (TrainPrompt) arrive here; MenuController forwards OpenPanel("Pets", {Action = "Feed" | "Garden"})
+-- OpenPanel("Train") (TrainPrompt, forwarded) arrive here; MenuController forwards OpenPanel("Pets", {Action = "Feed" | "Garden"})
 -- calls made on the client; E on an own GardenSpotPrompt opens the picker for its Slot. One window at a time: opening
 -- one closes the menu windows, the Pet Index and the Fusion Machine; those opening close it. Esc, the red X or a click
 -- outside close it, so does entering a match.
@@ -96,10 +102,6 @@ local K = {
 	TOP_H = 46,
 	FOOT_H = 108,
 	FOOT_H_SHORT = 74,
-	TRAIN_LIST_W = 360,
-	TRAIN_ROW_H = 84,
-	SKILL_H = 104,
-	SKILL_H_SHORT = 88,
 	CONFIRM_W = 560,
 	CONFIRM_H = 286,
 	BUILD_BUDGET = 0.004, -- seconds of pet viewport building per frame (at least one per frame)
@@ -133,7 +135,6 @@ local LOCK = Color3.fromRGB(255, 206, 120)
 local ACCENTS = {
 	Feed = Color3.fromRGB(240, 150, 80),
 	Garden = Color3.fromRGB(110, 190, 90),
-	Train = Color3.fromRGB(228, 104, 96),
 }
 local ROLE_COLORS = { Economy = Color3.fromRGB(96, 196, 108), Combat = Color3.fromRGB(228, 104, 96) }
 
@@ -153,7 +154,6 @@ local G = {
 local TITLES = {
 	Feed = G.Food .. " Food Machine",
 	Garden = G.Seedling .. " Pet Garden",
-	Train = G.Muscle .. " Training Place",
 }
 
 local SKILLS = (BattleCatalog and type(BattleCatalog.TrainingSkills) == "table" and #BattleCatalog.TrainingSkills == 4)
@@ -172,12 +172,11 @@ local LocalPlayer = nil
 local initialized = false
 local S = {
 	Open = false, -- a window is shown
-	Mode = nil, -- "Feed" | "Garden" | "Train"
+	Mode = nil, -- "Feed" | "Garden" (the Training window is TrainController's)
 	Token = 0,
 	Built = false,
 	Focus = nil, -- Feed: the pet to show first
 	Slot = nil, -- Garden: the place the picker fills
-	TrainKey = nil, -- Train: the selected pet
 	Short = false,
 	Tall = false,
 	Stacked = false,
@@ -188,7 +187,7 @@ local S = {
 	Filling = false,
 	RefreshPending = false,
 }
-local U = { Rows = {}, GardenRows = {}, TrainRows = {}, Skills = {} } -- ui references
+local U = { Rows = {}, GardenRows = {} } -- ui references
 local H = {} -- helpers (one table: the module stays far below Lua's local limit)
 
 local function warnOnce(key, err)
@@ -548,14 +547,6 @@ function H.clock(seconds)
 	return string.format("%d:%02d", math.floor(seconds / 60), seconds % 60)
 end
 
-function H.minutes(seconds)
-	local m = math.floor((tonumber(seconds) or 0) / 60 + 0.5)
-	if m < 1 then
-		return math.max(1, math.floor(seconds or 0)) .. " s"
-	end
-	return m .. " min"
-end
-
 function H.rarityOrder(rarityId)
 	for _, r in ipairs(Config.Rarities or {}) do
 		if r.Id == rarityId then
@@ -760,7 +751,7 @@ function H.viewportHeight()
 	return H.guiSize().Y
 end
 
--- the small centred confirm (Train / Stop / EVOLVE): its preferred size at the screen factor, shrunk to fit
+-- the small centred confirm (EVOLVE): its preferred size at the screen factor, shrunk to fit
 function H.confirmFit(prefW, prefH, minW, minH)
 	local area = H.guiSize()
 	local factor = Theme.ScreenFactor(H.viewportHeight())
@@ -916,114 +907,7 @@ function H.buildGardenPage(body)
 	H.list(U.GardenList, Enum.FillDirection.Vertical, 8)
 end
 
-function H.buildTrainPage(body)
-	local page = H.frame(body, "TrainPage", { Size = UDim2.new(1, 0, 1, 0), Visible = false })
-	U.TrainPage = page
-	U.TrainList = H.scroller(page, "TrainList", { Size = UDim2.new(0, K.TRAIN_LIST_W, 1, 0) })
-	H.pad(U.TrainList, 2, 2, 12, 6)
-	H.list(U.TrainList, Enum.FillDirection.Vertical, 6)
-	local right = H.inset(page, "Skills", {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, 0, 0, 0),
-		Size = UDim2.new(1, -(K.TRAIN_LIST_W + 12), 1, 0),
-	})
-	U.TrainRight = right
-	U.TrainName = H.text(right, "TrainName", "", "Title", 26, WHITE, {
-		Position = UDim2.fromOffset(14, 8),
-		Size = UDim2.new(1, -28, 0, 32),
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextTruncate = Enum.TextTruncate.AtEnd,
-	})
-	U.TrainSpots = H.text(right, "Spots", "", "Heading", 18, MUTED, {
-		Position = UDim2.fromOffset(14, 42),
-		Size = UDim2.new(1, -28, 0, 24),
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextTruncate = Enum.TextTruncate.AtEnd,
-	})
-	-- the running job: a purple timer bar + Stop
-	local timer = H.frame(right, "TimerRow", { Position = UDim2.fromOffset(14, 72), Size = UDim2.new(1, -28, 0, 50), Visible = false })
-	U.TimerRow = timer
-	U.TrainTimer = CloudUI.Bar({
-		Name = "TrainTimer",
-		AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(0, 0, 0.5, 0),
-		Size = UDim2.new(1, -150, 0, 34),
-		Height = 34,
-		TextSize = 19,
-		Color = PURPLE,
-		Parent = timer,
-	})
-	U.StopTraining = H.button(timer, "StopTraining", "Stop", "Pink", UDim2.fromOffset(136, 48), 21, function()
-		H.askStop(S.TrainKey)
-	end)
-	U.StopTraining.AnchorPoint = Vector2.new(1, 0.5)
-	U.StopTraining.Position = UDim2.new(1, 0, 0.5, 0)
-	local skills = H.scroller(right, "SkillList", { Position = UDim2.fromOffset(8, 128), Size = UDim2.new(1, -16, 1, -136) })
-	U.SkillList = skills
-	H.pad(skills, 4, 2, 12, 6)
-	H.list(skills, Enum.FillDirection.Vertical, 8)
-	for i, skill in ipairs(SKILLS) do
-		local row = { Id = skill.Id, Pips = {} }
-		local f = H.inset(skills, "Skill_" .. skill.Id, { Size = UDim2.new(1, 0, 0, K.SKILL_H), LayoutOrder = i })
-		row.Frame = f
-		row.Name = H.text(f, "Name", skill.Name, "Title", 22, WHITE, {
-			Position = UDim2.fromOffset(12, 6),
-			Size = UDim2.new(1, -250, 0, 28),
-			TextXAlignment = Enum.TextXAlignment.Left,
-		})
-		row.Rank = H.text(f, "Rank", "Rank 0/10", "Heading", 19, GOLD, {
-			Position = UDim2.fromOffset(12, 36),
-			Size = UDim2.fromOffset(120, 24),
-			TextXAlignment = Enum.TextXAlignment.Left,
-		})
-		local pips = H.frame(f, "RankBar", { Position = UDim2.fromOffset(136, 40), Size = UDim2.fromOffset(200, 16) })
-		row.PipRow = pips
-		H.list(pips, Enum.FillDirection.Horizontal, 3, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
-		for p = 1, 10 do
-			local pip = H.frame(pips, "Pip" .. p, {
-				Size = UDim2.fromOffset(16, 14),
-				BackgroundTransparency = 0,
-				BackgroundColor3 = Color3.fromRGB(14, 20, 52),
-				LayoutOrder = p,
-			})
-			H.corner(pip, 3)
-			H.stroke(pip, NAVY, 1.5, 0)
-			row.Pips[p] = pip
-		end
-		row.What = H.text(f, "What", skill.Text, "Body", 18, MUTED, {
-			Position = UDim2.fromOffset(12, 64),
-			Size = UDim2.new(1, -250, 0, 26),
-			TextXAlignment = Enum.TextXAlignment.Left,
-			TextTruncate = Enum.TextTruncate.AtEnd,
-		})
-		row.Cost = H.text(f, "Cost", "", "Heading", 18, CASH, {
-			AnchorPoint = Vector2.new(1, 0),
-			Position = UDim2.new(1, -12, 0, 8),
-			Size = UDim2.fromOffset(224, 26),
-			TextXAlignment = Enum.TextXAlignment.Right,
-			TextTruncate = Enum.TextTruncate.AtEnd,
-		})
-		row.Button = H.button(f, "Train", "Train", "Green", UDim2.fromOffset(150, 50), 21, function()
-			H.askTrain(S.TrainKey, skill.Id)
-		end)
-		row.Button.AnchorPoint = Vector2.new(1, 1)
-		row.Button.Position = UDim2.new(1, -12, 1, -8)
-		row.Max = H.pill(f, "Max", "MAX", GOLD, 20, 1)
-		row.Max.AnchorPoint = Vector2.new(1, 1)
-		row.Max.Position = UDim2.new(1, -12, 1, -14)
-		row.Max.Visible = false
-		U.Skills[skill.Id] = row
-	end
-	U.TrainEmpty = H.text(right, "Empty", "", "Body", 20, MUTED, {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0.5, 0, 0.5, 0),
-		Size = UDim2.new(1, -60, 0, 90),
-		TextWrapped = true,
-		Visible = false,
-	})
-end
-
--- the confirm (Evolve / Train / Stop): its own holder above the window, so it also works over the Pets panel
+-- the confirm (Evolve): its own holder above the window, so it also works over the Pets panel
 function H.buildConfirm()
 	local holder = H.frame(U.Gui, "CareConfirm", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -1165,7 +1049,6 @@ function H.buildWindow()
 	})
 	H.buildFeedPage(U.Body)
 	H.buildGardenPage(U.Body)
-	H.buildTrainPage(U.Body)
 	S.Built = true
 	H.relayout()
 	return true
@@ -1439,57 +1322,6 @@ function H.paintGardenRow(row, home)
 	return (here or training or free <= 0) and 1 or 0
 end
 
-function H.newTrainRow(key, def)
-	local row = { Key = key, Def = def }
-	local f = Util.Create("TextButton", {
-		Name = "Train_" .. key,
-		AutoButtonColor = false,
-		Text = "",
-		BorderSizePixel = 0,
-		BackgroundColor3 = INSET,
-		BackgroundTransparency = 0.42,
-		Size = UDim2.new(1, 0, 0, K.TRAIN_ROW_H),
-		Parent = U.TrainList,
-	})
-	H.corner(f, 12)
-	row.Edge = H.stroke(f, WELL_EDGE, 3, 0.15)
-	row.Frame = f
-	f.Activated:Connect(function()
-		S.TrainKey = key
-		H.refresh()
-	end)
-	local disc, holder = H.petDisc(f, def, 64)
-	disc.Position = UDim2.fromOffset(8, 10)
-	row.Disc = disc
-	row.ViewHolder = holder
-	row.Name = H.text(f, "Name", "", "Title", 21, H.rarityText(def), {
-		Position = UDim2.fromOffset(82, 6),
-		Size = UDim2.new(1, -90, 0, 28),
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextTruncate = Enum.TextTruncate.AtEnd,
-	})
-	row.Level = H.text(f, "Level", "", "Heading", 18, WHITE, {
-		Position = UDim2.fromOffset(82, 34),
-		Size = UDim2.new(1, -90, 0, 22),
-		TextXAlignment = Enum.TextXAlignment.Left,
-	})
-	row.Where = H.text(f, "Where", "", "Heading", 18, MUTED, {
-		Position = UDim2.fromOffset(82, 56),
-		Size = UDim2.new(1, -90, 0, 22),
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextTruncate = Enum.TextTruncate.AtEnd,
-	})
-	return row
-end
-
-function H.paintTrainRow(row, home)
-	H.paintHead(row, row.Key, row.Def, home)
-	local selected = row.Key == S.TrainKey
-	row.Edge.Color = selected and GOLD or WELL_EDGE
-	row.Edge.Transparency = selected and 0 or 0.15
-	row.Frame.BackgroundTransparency = selected and 0.2 or 0.42
-end
-
 ----------------------------------------------------------------------
 -- refresh
 ----------------------------------------------------------------------
@@ -1702,148 +1534,6 @@ function H.refreshGarden(home)
 	U.Info.Text = "Every pet can work here: it eats at the Food Bowl and poops Cloud Cash!"
 end
 
-function H.refreshTrain(home, cash)
-	-- the pets in training first (their timers), then the followers, then the rest (rarest first)
-	local keys = H.ownedKeys()
-	local rank = {}
-	local equipped = {}
-	for _, k in ipairs(H.equippedList()) do
-		equipped[k] = true
-	end
-	for i, k in ipairs(keys) do
-		rank[k] = (H.job(k) and 0 or (equipped[k] and 1000 or 2000)) + i
-	end
-	table.sort(keys, function(a, b)
-		return rank[a] < rank[b]
-	end)
-	H.syncRows(U.TrainRows, keys, H.newTrainRow)
-	local valid = false
-	for _, k in ipairs(keys) do
-		if k == S.TrainKey then
-			valid = true
-		end
-	end
-	if not valid then
-		S.TrainKey = keys[1]
-		-- prefer a pet that is training (its timer), else the first follower
-		for _, k in ipairs(keys) do
-			if H.job(k) then
-				S.TrainKey = k
-				break
-			end
-		end
-	end
-	for _, row in pairs(U.TrainRows) do
-		H.paintTrainRow(row, home)
-	end
-	local level = H.station(home, "Gym")
-	local slots = H.call(TycoonCatalog, "TrainingSlots", home) or 0
-	local busyCount = 0
-	for _, k in ipairs(keys) do
-		if H.job(k) then
-			busyCount = busyCount + 1
-		end
-	end
-	-- (a job can also belong to a pet copy no longer in the list: count the growth map)
-	local okMap, map = pcall(State.PetGrowthMap)
-	if okMap and type(map) == "table" then
-		local n = 0
-		for _, e in pairs(map) do
-			if type(e) == "table" and type(e.Job) == "table" then
-				n = n + 1
-			end
-		end
-		busyCount = math.max(busyCount, n)
-	end
-	local key = S.TrainKey
-	local def = key and H.def(key)
-	local hasPet = def ~= nil
-	U.TrainEmpty.Visible = not hasPet
-	U.TrainEmpty.Text = "No pets yet! Spin a roulette in the Shop to hatch one."
-	U.TrainName.Visible = hasPet
-	U.TrainSpots.Visible = hasPet
-	U.SkillList.Visible = hasPet
-	if level < 1 then
-		U.Info.Text = "Build the Training Place at home first. Training makes pets tougher in battles!"
-	else
-		U.Info.Text = "Train a skill: Rank 3 takes 3 minutes. Training pets rest at home until they're done!"
-	end
-	if not hasPet then
-		U.TimerRow.Visible = false
-		return
-	end
-	local stage = H.stage(key)
-	local lv = H.level(key)
-	U.TrainName.Text = H.name(key, def) .. "  " .. G.Bullet .. "  Lv " .. lv .. " / " .. H.cap(def, key) .. (stage > 0 and ("  " .. H.stars(stage)) or "")
-	U.TrainName.TextColor3 = H.rarityText(def)
-	if level < 1 then
-		U.TrainSpots.Text = G.Lock .. " No Training Place yet"
-	else
-		U.TrainSpots.Text = "Training spots: " .. busyCount .. " / " .. slots .. " in use"
-	end
-	local job = H.job(key)
-	U.TimerRow.Visible = job ~= nil
-	local g = H.growth(key)
-	if job then
-		local total = tonumber(H.call(TycoonCatalog, "TrainSeconds", job.Rank)) or 60
-		local left = math.max(0, (tonumber(job.Ends) or 0) - H.now())
-		U.TrainTimer.SetFraction(total > 0 and math.min(1, 1 - left / total) or 1)
-		if S.Tall then
-			U.TrainTimer.SetText("Rank " .. tostring(job.Rank) .. ": " .. H.clock(left) .. " left")
-		else
-			U.TrainTimer.SetText(H.skillName(job.Stat) .. " Rank " .. tostring(job.Rank) .. ": " .. H.clock(left) .. " left")
-		end
-	end
-	local top = S.Short and 44 or 72
-	U.TimerRow.Position = UDim2.fromOffset(14, top)
-	if job then
-		top = top + 56
-	end
-	U.SkillList.Position = UDim2.fromOffset(8, top + 2)
-	U.SkillList.Size = UDim2.new(1, -16, 1, -(top + 10))
-	CloudUI.SetDisabled(U.StopTraining, H.inMatch())
-	U.TrainSpots.Visible = not S.Short
-	local maxRank = (TycoonCatalog and TycoonCatalog.Training and TycoonCatalog.Training.MaxRank) or 10
-	for _, skill in ipairs(SKILLS) do
-		local row = U.Skills[skill.Id]
-		local rank = math.max(0, math.floor(tonumber(g[skill.Id]) or 0))
-		row.Rank.Text = "Rank " .. rank .. "/" .. maxRank
-		for p, pip in ipairs(row.Pips) do
-			if p <= rank then
-				pip.BackgroundColor3 = Theme.Lighten(ACCENTS.Train, 0.25)
-			elseif job and job.Stat == skill.Id and p == rank + 1 then
-				pip.BackgroundColor3 = PURPLE
-			else
-				pip.BackgroundColor3 = Color3.fromRGB(14, 20, 52)
-			end
-		end
-		local maxed = rank >= maxRank
-		row.Max.Visible = maxed
-		row.Button.Visible = not maxed
-		if maxed then
-			row.Cost.Text = ""
-		else
-			local cost = H.call(TycoonCatalog, "TrainCost", def, rank + 1) or 0
-			local seconds = H.call(TycoonCatalog, "TrainSeconds", rank + 1) or 60
-			row.Cost.Text = "Rank " .. (rank + 1) .. ": " .. H.money(cost) .. ", " .. H.minutes(seconds)
-			row.Cost.TextColor3 = cash < cost and Theme.Lighten(BAD, 0.35) or CASH
-			row.Price = cost
-			local reason = nil
-			if job then
-				reason = "busy"
-			elseif level < 1 then
-				reason = "no station"
-			elseif busyCount >= slots then
-				reason = "full"
-			elseif cash < cost then
-				reason = "cash"
-			end
-			row.Button.Text = (job and job.Stat == skill.Id) and "Training" or "Train"
-			CloudUI.SetDisabled(row.Button, reason ~= nil or H.inMatch())
-		end
-	end
-end
-
 function H.refresh()
 	if not S.Built then
 		return
@@ -1860,13 +1550,10 @@ function H.refresh()
 	U.BasketRate.Visible = feedMode
 	U.FeedPage.Visible = S.Mode == "Feed"
 	U.GardenPage.Visible = S.Mode == "Garden"
-	U.TrainPage.Visible = S.Mode == "Train"
 	if S.Mode == "Feed" then
 		H.refreshFeed(home, cash)
 	elseif S.Mode == "Garden" then
 		H.refreshGarden(home)
-	elseif S.Mode == "Train" then
-		H.refreshTrain(home, cash)
 	end
 end
 
@@ -1897,8 +1584,6 @@ function H.relayout()
 	-- "short" (landscape phones): compact rows; "tall" (a narrow window with height): the one-column layouts
 	local short = h < K.SHORT
 	local tall = (not short) and w < K.TALL_W
-	-- every docked Care window is narrow: the Training Place and the garden picker are one column at every size
-	local oneCol = tall or short
 	local stacked = tall or (w - 48) < K.WIDE
 	local changed = short ~= S.Short or stacked ~= S.Stacked or tall ~= S.Tall
 	S.Short, S.Stacked, S.Tall = short, stacked, tall
@@ -1937,39 +1622,6 @@ function H.relayout()
 		U.Upgrade.AnchorPoint = Vector2.new(1, 0.5)
 		U.Upgrade.Position = UDim2.new(1, -12, 0.5, 0)
 		U.Upgrade.Size = UDim2.fromOffset(short and 150 or 190, short and 48 or 54)
-	end
-	-- train: one column (the pets on top)
-	if oneCol then
-		U.TrainList.Size = UDim2.new(1, 0, 0.36, -6)
-		U.TrainRight.AnchorPoint = Vector2.new(0, 1)
-		U.TrainRight.Position = UDim2.new(0, 0, 1, 0)
-		U.TrainRight.Size = UDim2.new(1, 0, 0.64, -6)
-	else
-		local listW = (w < 900) and math.min(300, math.floor(w * 0.4)) or K.TRAIN_LIST_W
-		U.TrainList.Size = UDim2.new(0, listW, 1, 0)
-		U.TrainRight.AnchorPoint = Vector2.new(1, 0)
-		U.TrainRight.Position = UDim2.new(1, 0, 0, 0)
-		U.TrainRight.Size = UDim2.new(1, -(listW + 12), 1, 0)
-	end
-	local skillH = short and K.SKILL_H_SHORT or K.SKILL_H
-	for _, row in pairs(U.Skills) do
-		row.Frame.Size = UDim2.new(1, 0, 0, tall and (skillH + 40) or skillH)
-		if tall then
-			row.Cost.AnchorPoint = Vector2.new(0, 1)
-			row.Cost.Position = UDim2.new(0, 12, 1, -14)
-			row.Cost.TextXAlignment = Enum.TextXAlignment.Left
-			row.Name.Size = UDim2.new(1, -24, 0, 28)
-			row.What.Size = UDim2.new(1, -24, 0, 26)
-			row.Button.Size = UDim2.fromOffset(130, 46)
-		else
-			row.Cost.AnchorPoint = Vector2.new(1, 0)
-			row.Cost.Position = UDim2.new(1, -12, 0, 8)
-			row.Cost.TextXAlignment = Enum.TextXAlignment.Right
-			row.Name.Size = UDim2.new(1, -250, 0, 28)
-			row.What.Size = UDim2.new(1, -250, 0, 26)
-			row.Button.Size = UDim2.fromOffset(150, short and 44 or 50)
-		end
-		row.What.Visible = not short or tall
 	end
 	-- the garden header
 	U.GardenHead.Size = UDim2.new(1, 0, 0, tall and 118 or 72)
@@ -2072,59 +1724,6 @@ function H.closeConfirm()
 	H.syncBack()
 end
 
-function H.askTrain(key, stat)
-	local def = key and H.def(key)
-	if not def then
-		return
-	end
-	if H.inMatch() then
-		return
-	end
-	local g = H.growth(key)
-	local rank = math.max(0, math.floor(tonumber(g[stat]) or 0)) + 1
-	local cost = H.call(TycoonCatalog, "TrainCost", def, rank) or 0
-	local seconds = H.call(TycoonCatalog, "TrainSeconds", rank) or 60
-	local name = H.name(key, def)
-	H.showConfirm({
-		Kind = "Train",
-		Title = G.Muscle .. " Train " .. H.skillName(stat) .. "?",
-		Text = name .. " goes to Rank " .. rank .. " " .. H.skillName(stat) .. " for " .. H.money(cost) .. ". It takes "
-			.. H.minutes(seconds) .. ". " .. name .. " rests at home until it's done, then comes back by itself.",
-		YesText = "Train " .. H.money(cost),
-		Style = "Green",
-		Color = Theme.Lighten(GOOD, 0.2),
-		Yes = function()
-			H.fire("train", "PetCare", "Train", key, stat)
-		end,
-	})
-end
-
--- the Cash a Stop gives back: the job's Paid (0 after a Prestige)
-function H.paidOf(key)
-	local job = H.job(key)
-	return type(job) == "table" and tonumber(job.Paid) or 0
-end
-
-function H.askStop(key)
-	local def = key and H.def(key)
-	if not def or not H.job(key) then
-		return
-	end
-	H.showConfirm({
-		Kind = "Stop",
-		Title = "Stop training?",
-		Text = (H.paidOf(key) > 0 and "You get the Cash back, no rank. " or "No rank and no Cash back (it was paid before your Prestige). ")
-			.. H.name(key, def) .. " comes back to you right away.",
-		YesText = "Stop training",
-		NoText = "Keep training",
-		Style = "Pink",
-		Color = Color3.fromRGB(255, 160, 200),
-		Yes = function()
-			H.fire("trainstop", "PetCare", "TrainStop", key)
-		end,
-	})
-end
-
 ----------------------------------------------------------------------
 -- the evolution moment (contract 3.6)
 ----------------------------------------------------------------------
@@ -2194,6 +1793,19 @@ function H.dropReturn()
 	S.ReturnTo = nil
 	S.BackTo = nil
 	S.EvoBack = nil
+	local train = H.controller("TrainController")
+	if train and type(train.DropReturn) == "function" then
+		safe("training drop return", train.DropReturn)
+	end
+end
+
+-- the Training window (TrainController) while it is up, else nil
+function H.trainOpen()
+	local train = H.controller("TrainController")
+	if train and type(train.IsOpen) == "function" and train.IsOpen() then
+		return train
+	end
+	return nil
 end
 
 -- what an Evolve's cinematic closes and brings back after it: the Pets window when a panel waits behind it (Ring, Dungeon,
@@ -2369,11 +1981,23 @@ function H.closeOthers()
 end
 
 function CareController.IsOpen()
-	return S.Open or S.Confirm ~= nil
+	return S.Open or S.Confirm ~= nil or H.trainOpen() ~= nil
 end
 
 function CareController.Mode()
-	return S.Open and S.Mode or nil
+	if S.Open then
+		return S.Mode
+	end
+	return H.trainOpen() and "Train" or nil
+end
+
+-- TrainController's window opened (true) / closed (false): the signals the Care window always fired for Train
+function CareController.NotifyTrain(open)
+	if open then
+		CareController.Opened:Fire("Train")
+	else
+		CareController.Closed:Fire()
+	end
 end
 
 function CareController.Evolving()
@@ -2447,9 +2071,24 @@ function CareController.Open(panelId, args)
 		local ok, played = safe("evolve", H.playEvolution, args.Key, args.Stage)
 		return ok and played == true
 	end
-	local mode = (id == "feed" and "Feed") or (id == "garden" and "Garden") or ((id == "train" or id == "training") and "Train") or nil
+	if id == "train" or id == "training" then
+		-- the Training Place window is TrainController's (gui-redo Task 7)
+		local train = H.controller("TrainController")
+		if not (train and type(train.Open) == "function") then
+			return false
+		end
+		local ok, opened = safe("open training", train.Open, args)
+		return ok and opened == true
+	end
+	local mode = (id == "feed" and "Feed") or (id == "garden" and "Garden") or nil
 	if not mode then
 		return false
+	end
+	-- the Training window gives way (no way back to the Pets window from it: this window takes over)
+	local train = H.trainOpen()
+	if train then
+		safe("training drop return", train.DropReturn)
+		safe("close training", train.Close)
 	end
 	if H.inMatch() then
 		return false
@@ -2473,10 +2112,6 @@ function CareController.Open(panelId, args)
 				end
 			end
 			S.Slot = S.Slot or 1
-		end
-	elseif mode == "Train" then
-		if type(args.Key) == "string" then
-			S.TrainKey = args.Key
 		end
 	end
 	local wasOpen = S.Open
@@ -2511,7 +2146,7 @@ function CareController.Open(panelId, args)
 	task.spawn(function()
 		while S.Open and S.Token == mine do
 			task.wait(K.TICK)
-			if S.Open and S.Token == mine and (S.Mode == "Train" or S.Mode == "Feed" or S.Mode == "Garden") then
+			if S.Open and S.Token == mine and (S.Mode == "Feed" or S.Mode == "Garden") then
 				safe("tick", H.refresh)
 			end
 		end
@@ -2520,7 +2155,8 @@ function CareController.Open(panelId, args)
 	return true
 end
 
-function CareController.Close()
+-- Feed / Garden (and the confirm)
+function H.closeOwn()
 	if S.Confirm then
 		H.closeConfirm()
 	end
@@ -2555,6 +2191,23 @@ function CareController.Close()
 			end
 		end)
 	end
+end
+
+function CareController.Close()
+	-- the Training window first (before the "nothing open" return below): every caller that closes the Care window today
+	-- (Arena, Dungeon, Obby, RaidGate, the window hooks, a match) closes Training too
+	local train = H.controller("TrainController")
+	if train and type(train.Close) == "function" then
+		safe("close training", train.Close)
+	end
+	H.closeOwn()
+end
+
+-- only Feed / Garden: the Training window opening closes it this way (no forwarding, no way back to the Pets window)
+function CareController.CloseOwn()
+	S.ReturnTo = nil
+	S.BackTo = nil
+	H.closeOwn()
 end
 
 ----------------------------------------------------------------------

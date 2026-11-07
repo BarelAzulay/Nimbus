@@ -64,9 +64,38 @@
 --     sends too (the pip shake).
 --   * ClaimPlay(tier): PlaySec >= Tiers[tier].Min x 60 and not yet claimed: the flag and the grant in one step
 --     ({ Kind = "Play", Tier }), paid right after; two servers at one PlayStart pay once (the (PlayStart, tier) merge).
+--   * ClaimPlayAll (gui-redo 5.4, the gift boxes' CLAIM ALL): every Ready tier in tier order through ClaimPlay's own
+--     quiet step (claimTier: each tier its own MutateDaily flag + grant, paid right after it; nothing yields), then ONE
+--     toast and ONE payload; Claimed fires once per tier. A Ready tier that would pay nothing now (Resolve: a full Berry
+--     Basket, Amount 0) is skipped and stays Ready for its own box (review fix: a bulk claim never spends it for
+--     nothing). Toast: one tier = ClaimPlay's text; several = each pay text
+--     without its "!", joined with ", ", then ": n gifts!" ("+$2,160 Cash, +10 Gems: 2 gifts!"), or "n gifts claimed!"
+--     when that would pass 60 characters. None Ready: "No gifts ready yet!" ("Your Berry Basket is full!" when only a
+--     full Basket's tier is Ready). The same refusals as ClaimPlay (loaded, a play-day that is over); the merge pays
+--     each (PlayStart, tier) once, as for ClaimPlay.
 --
--- Remote DailyRequest(action, tier): "Claim" (no second argument) / "ClaimPlay" (a whole 1..7). isPlayer, one request
--- per second per action, type checks, refused InMatch with a toast; junk is dropped without an answer (Z12).
+-- The 10-minute unlock and the hold (gui-redo, docs/superpowers/specs/2026-11-06-window-redo-design.md 5.3)
+--   * Every streak claim (a paid day, the Week Wisp, the first ever, a VIP's, the repair) needs Config.Daily.UnlockSeconds
+--     (600) counted play seconds of the current play-day: the play clock above (PlaySec on a live PlayStart; a play-day
+--     not started or over counts 0; its AFK rule; its 20 h reset restarts the count; a provisional profile never ticks).
+--     Claim order: loaded -> not ready (the texts above) -> LOCKED: refused, nothing written, "Play 6 more min to unlock
+--     today's gift!" / "Play 6 more min to repair your streak!" (a claim that would only repair; minutes = ceil(left / 60))
+--     -> VIP "Checking" -> the step-back -> commit and pay. Play tiers and the Trove are not affected. 0 = the rule off.
+--   * The hold: the step-back gap is measured at keepAt, never later than now (keepOf, shared by State and Claim): from =
+--     min(the live PlayStart, now - this session's held seconds for this stamp), keepAt = min(now, max(from, last +
+--     ReadySeconds)). The held seconds (holds[player] = { Last = the stamp, Sec }, in memory only, dropped on leave and by
+--     a claim) grow by TickSeconds on each COUNTING tick that finds the gift due and still locked (PlaySec after any reset,
+--     before the tick's add, < UnlockSeconds); a changed stamp (a claim, a rebase, another server's claim) starts them at
+--     0. So playing toward the unlock never counts as time away, even across a play-day reset or a hop (the stored
+--     PlayStart). UnlockSeconds 0: keepAt = now (today's step-backs exactly).
+--   * State uses keepAt for the missed streak, Repair, Cell and Today; StaleAt: held by PlayStart -> its play-day's end
+--     (PlayStart + DaySeconds); held by the session's seconds -> today's rule at keepAt + Sec; else today's rule at now.
+--   * Payload: Unlock = { Need = UnlockSeconds, Left = max(0, Need - live PlaySec) } (Loading: Left = Need). The tick sends
+--     a payload when the live PlaySec crosses UnlockSeconds (before < Need <= after), so CLAIM shows on time.
+--
+-- Remote DailyRequest(action, tier): "Claim" (no second argument) / "ClaimPlay" (a whole 1..7) / "ClaimPlayAll" (no
+-- second argument). isPlayer, one request per second per action (each action its own gap), type checks, refused InMatch
+-- with a toast; junk (any third argument too) is dropped without an answer and spends no gap (Z12).
 -- ProfileLoaded / ProfileRebased -> Send(player) (a Loading payload while provisional), NO Notify on load: nothing is
 -- announced on join (the client's pip waits PipDelaySeconds). The tick re-sends a payload whose StaleAt has passed;
 -- StoreService.Changed re-sends it when the VIP answer differs from the last payload's Vip.
@@ -78,10 +107,13 @@
 --   DailyService.Send(player)            fires DailyState(State(player)) to that client
 --   DailyService.Claim(player) -> ok, { Cell, Streak, Grant, StepBack } | reason
 --   DailyService.ClaimPlay(player, tier) -> ok, { Tier, Grant } | reason
+--   DailyService.ClaimPlayAll(player) -> ok, { Tiers = { tier... }, Grants = { grant | false... } } | reason
+--                                        (Grants[i] belongs to Tiers[i]; a tier that would pay nothing is not claimed)
 --   DailyService.Tick()                  one play-time tick over every player
 --   DailyService.Claimed                 Util.Signal Fire(player, "Day" | "Play", cellOrTier, grant)
 --   DailyService._deps()                 test-only: the live deps table (a test swaps deps.StoreService for a double)
 --   DailyService._tickAt()               test-only: os.clock() of the last loop tick
+--   DailyService._holds(player)          test-only: this session's held seconds { Last, Sec } | nil (the hold)
 --
 -- Plain Lua 5.1-compatible syntax only. Nothing here yields between a check and its write.
 
@@ -115,7 +147,13 @@ local TEXT = {
 	NotYet = "Play %d more minutes!",
 	DayOver = "That play day is over!",
 	Unavailable = "Player unavailable",
+	Locked = "Play %d more min to unlock today's gift!", -- a ready streak claim before UnlockSeconds of play (gui-redo 5.3)
+	LockedRepair = "Play %d more min to repair your streak!", -- ...when that claim would only repair
+	NoneReady = "No gifts ready yet!", -- ClaimPlayAll with no Ready tier (gui-redo 5.4)
+	Gifts = "%s: %d gifts!", -- ClaimPlayAll, several tiers: the joined pay texts
+	GiftsShort = "%d gifts claimed!", -- ...when the joined text would pass GIFTS_MAX characters
 }
+local GIFTS_MAX = 60
 
 local deps = {}
 local active = {} -- [player] = { On = bool, LastRemote = os.clock() | nil }
@@ -124,6 +162,7 @@ local lastRequest = {} -- [player] = { [action] = os.clock() }
 local stepBacks = {} -- [player] = the last claim's step-back, sent once
 local clamps = {} -- [player] = { From = the stored future LastClaimAt, At = the now of its first sight } (Z8)
 local sent = {} -- [player] = { Vip = the last payload's Vip, StaleAt = its StaleAt } (the re-sends)
+local holds = {} -- [player] = { Last = the stamp, Sec = counting seconds while it was due and locked } (the hold, 5.3)
 local started = false
 local tickAt = -1
 
@@ -395,6 +434,54 @@ local function dayOver(d, now)
 	return start > 0 and now >= start + num(playCfg().DaySeconds, 72000)
 end
 
+-- the counted play seconds a streak claim needs on the current play-day (5.3); 0 = the rule is off (no lock, no hold)
+local function unlockNeed()
+	return whole(cfg().UnlockSeconds)
+end
+
+-- the counted play seconds of the LIVE play-day: PlaySec when it started and is not over, else 0
+local function livePlaySec(d, now)
+	if num(d.PlayStart, 0) > 0 and not dayOver(d, now) then
+		return whole(d.PlaySec)
+	end
+	return 0
+end
+
+-- The hold (5.3): the moment a claim's step-back gap is measured at -> keepAt, source ("PlayStart" | "Held" | nil), the held
+-- seconds. from = min(the live PlayStart, now - this session's held seconds for this stamp); keepAt = min(now, max(from,
+-- last + ReadySeconds)); now with no source when nothing holds it, the rule is off or there is no claim yet.
+local function keepOf(player, d, last, now)
+	if unlockNeed() <= 0 or last <= 0 then
+		return now, nil, 0
+	end
+	local from, source = nil, nil
+	if num(d.PlayStart, 0) > 0 and not dayOver(d, now) then
+		from, source = num(d.PlayStart, 0), "PlayStart"
+	end
+	local h = holds[player]
+	local sec = (h and h.Last == last) and num(h.Sec, 0) or 0
+	if sec > 0 and (from == nil or now - sec < from) then
+		from, source = now - sec, "Held"
+	end
+	if from == nil then
+		return now, nil, sec
+	end
+	local at = math.max(from, last + num(cfg().ReadySeconds, 72000))
+	if at >= now then
+		return now, nil, sec
+	end
+	return at, source, sec
+end
+
+-- today's StaleAt rule at the moment t for the stamp `last`: the keep deadline passing (KeepUntil + 1), then each further
+-- missed day
+local function staleRule(t, last, keep)
+	if t - last > keep then
+		return last + keep + 86400 * (math.floor((t - last - keep) / 86400) + 1)
+	end
+	return last + keep + 1
+end
+
 -- this server's game.JobId (the clock a Z8 first sight was read on; "" in Studio or when unreadable)
 local function jobId()
 	local ok, id = pcall(function()
@@ -517,24 +604,34 @@ function DailyService.State(player)
 	local ready = num(C.ReadySeconds, 72000)
 	local keep = num(C.KeepSeconds, 172800)
 	local vip = ownsVip(player)
+	-- the hold (5.3): the gap is measured at keepAt, as Claim measures it, so the window never promises what the claim
+	-- will not do
+	local keepAt, source, held = now, nil, 0
+	if not loading then
+		keepAt, source, held = keepOf(player, d, last, now)
+	end
 	-- the streak the claim will build on: a step-back due (Claim's rule; never for a VIP) lowers it first. The claim
 	-- re-earns a paid day whenever that streak + 1 <= Paid (Claim's pays = streak > Paid): a repair, so Today moves to
 	-- the repair cell and no gift is promised. Every claim: the step-back one, the kept ones that climb back to Paid,
 	-- a VIP's while Paid > Streak (re-review 1 and 2)
 	local streak = d.Streak
-	local missed = not loading and not vip and last > 0 and now - last > keep
+	local missed = not loading and not vip and last > 0 and keepAt - last > keep
 	if missed then
-		streak = math.max(0, d.Streak - (1 + math.floor((now - last - keep) / 86400)))
+		streak = math.max(0, d.Streak - (1 + math.floor((keepAt - last - keep) / 86400)))
 	end
 	local repair = (not loading) and streak + 1 <= d.Paid
 	-- StaleAt: when this view changes with no claim: the keep deadline passing (Claim's strict '>'), then each further
-	-- missed day while the streak can still fall; 0 = never (loading, a VIP, no claim yet, a streak already at 0)
+	-- missed day while the streak can still fall; 0 = never (loading, a VIP, no claim yet, a streak already at 0). Held by
+	-- the live PlayStart the view can only change when that play-day ends; held by the session's seconds, today's rule at
+	-- keepAt shifted by them (the moment now - Sec passes the next boundary if the player stood still from now on)
 	local staleAt = 0
 	if not loading and not vip and last > 0 and streak > 0 then
-		if missed then
-			staleAt = last + keep + 86400 * (math.floor((now - last - keep) / 86400) + 1)
+		if source == "PlayStart" then
+			staleAt = d.PlayStart + num(P.DaySeconds, 72000)
+		elseif source == "Held" then
+			staleAt = staleRule(keepAt, last, keep) + held
 		else
-			staleAt = last + keep + 1
+			staleAt = staleRule(now, last, keep)
 		end
 	end
 	local cell = (streak % WEEK) + 1
@@ -565,6 +662,7 @@ function DailyService.State(player)
 	local a = active[player]
 	local stepBack = stepBacks[player] or 0
 	stepBacks[player] = nil
+	local need = unlockNeed()
 	return {
 		Loading = loading or nil,
 		Streak = d.Streak,
@@ -578,6 +676,8 @@ function DailyService.State(player)
 		ServerNow = now,
 		Vip = vip,
 		StepBack = stepBack,
+		-- the 10-minute unlock (5.3): Left 0 = a ready claim may go; Need 0 = the rule is off
+		Unlock = { Need = need, Left = loading and need or math.max(0, need - livePlaySec(d, now)) },
 		Days = days,
 		Play = {
 			Seconds = d.PlaySec,
@@ -623,12 +723,19 @@ function DailyService.Claim(player)
 		-- not ready means no step-back is due (gap < ReadySeconds < KeepSeconds): the claim builds on d.Streak
 		return false, nextText(ready - (now - last), num(d.Streak, 0) + 1 <= num(d.Paid, 0))
 	end
-	local gap = now - last
+	-- the hold (5.3): the gap is measured at keepAt (never later than now), as State shows it
+	local gap = keepOf(player, d, last, now) - last
 	local stepBack = 0
 	if last > 0 and gap > keep then
 		stepBack = 1 + math.floor((gap - keep) / 86400)
 	end
 	local vip = ownsVip(player)
+	-- locked (5.3): a ready claim waits for UnlockSeconds of the live play-day; refused, nothing written
+	local left = unlockNeed() - livePlaySec(d, now)
+	if left > 0 then
+		local repair = math.max(0, num(d.Streak, 0) - (vip and 0 or stepBack)) + 1 <= num(d.Paid, 0)
+		return false, string.format(repair and TEXT.LockedRepair or TEXT.Locked, math.ceil(left / 60))
+	end
 	if stepBack > 0 and not vip and vipState(player) == "Checking" then
 		return false, TEXT.Checking
 	end
@@ -672,12 +779,41 @@ function DailyService.Claim(player)
 	if stepBack > 0 then
 		stepBacks[player] = stepBack
 	end
+	holds[player] = nil -- the held seconds belonged to the stamp this claim replaces
 	if text then
 		notify(player, text, "good")
 	end
 	DailyService.Claimed:Fire(player, "Day", cell, grant)
 	DailyService.Send(player)
 	return true, { Cell = cell, Streak = streak, Grant = grant, StepBack = stepBack }
+end
+
+-- One play tier's claim, QUIET (ClaimPlay and ClaimPlayAll share it): `d` is the loaded record of a play-day that is not
+-- over. PlaySec >= the tier's minutes and not yet claimed: the flag and the grant in one MutateDaily step, paid right after
+-- (nothing yields between). Answers true, grant | nil, pay's text | nil, or false, reason. The caller toasts, fires
+-- Claimed and sends.
+local function claimTier(player, d, tier)
+	local t = playCfg().Tiers[tier]
+	local need = num(t.Min, 0) * 60
+	if d.PlayClaimed[tier] == true then
+		return false, TEXT.Already
+	end
+	if d.PlaySec < need then
+		return false, string.format(TEXT.NotYet, math.ceil((need - d.PlaySec) / 60))
+	end
+	local r = DailyService.Resolve(player, t, false)
+	local grant = grantOf(r, "Play", tier)
+	local ok = deps.DataService.MutateDaily(player, function(live)
+		if type(live.PlayClaimed) ~= "table" then
+			live.PlayClaimed = {}
+		end
+		live.PlayClaimed[tier] = true
+		return true
+	end, grant)
+	if not ok then
+		return false, TEXT.Loading
+	end
+	return true, grant, pay(player, r)
 end
 
 function DailyService.ClaimPlay(player, tier)
@@ -692,36 +828,83 @@ function DailyService.ClaimPlay(player, tier)
 	if not DS or not d then
 		return false, TEXT.Loading
 	end
-	local t = playCfg().Tiers[tier]
-	local need = num(t.Min, 0) * 60
 	if dayOver(d, os.time()) then
 		return false, TEXT.DayOver
 	end
-	if d.PlayClaimed[tier] == true then
-		return false, TEXT.Already
-	end
-	if d.PlaySec < need then
-		return false, string.format(TEXT.NotYet, math.ceil((need - d.PlaySec) / 60))
-	end
-	local r = DailyService.Resolve(player, t, false)
-	local grant = grantOf(r, "Play", tier)
-	local ok = DS.MutateDaily(player, function(live)
-		if type(live.PlayClaimed) ~= "table" then
-			live.PlayClaimed = {}
-		end
-		live.PlayClaimed[tier] = true
-		return true
-	end, grant)
+	local ok, grant, head = claimTier(player, d, tier)
 	if not ok then
-		return false, TEXT.Loading
+		return false, grant
 	end
-	local head = pay(player, r)
 	if head then
-		notify(player, string.format(TEXT.Play, head, num(t.Min, 0)), "good")
+		notify(player, string.format(TEXT.Play, head, num(playCfg().Tiers[tier].Min, 0)), "good")
 	end
 	DailyService.Claimed:Fire(player, "Play", tier, grant)
 	DailyService.Send(player)
 	return true, { Tier = tier, Grant = grant }
+end
+
+-- Claim All (5.4): every Ready tier in tier order through claimTier, then ONE toast and ONE payload (header)
+function DailyService.ClaimPlayAll(player)
+	if not isLivePlayer(player) then
+		return false, TEXT.Unavailable
+	end
+	local d = dailyOf(player)
+	if not deps.DataService or not d then
+		return false, TEXT.Loading
+	end
+	if dayOver(d, os.time()) then
+		return false, TEXT.DayOver
+	end
+	local list = type(playCfg().Tiers) == "table" and playCfg().Tiers or {}
+	local tiers, grants, heads = {}, {}, {}
+	local refusal = TEXT.NoneReady
+	for tier, t in ipairs(list) do
+		if d.PlayClaimed[tier] ~= true and d.PlaySec >= num(t.Min, 0) * 60 then
+			local r = DailyService.Resolve(player, t, false)
+			if not grantOf(r, "Play", tier) then
+				-- (review fix) a tier that would pay nothing now (a full Berry Basket) stays Ready for its own box: a bulk
+				-- claim never flags it claimed for nothing, nor counts it as a gift
+				if r.Kind == "Berries" then
+					refusal = TEXT.Full
+				end
+			else
+				local ok, grant, head = claimTier(player, d, tier)
+				if not ok then
+					refusal = grant -- the record went away mid-way (nothing yields: only a removed profile); keep what committed
+					break
+				end
+				tiers[#tiers + 1] = tier
+				grants[#tiers] = grant or false
+				if head then
+					heads[#heads + 1] = head
+				end
+			end
+		end
+	end
+	if #tiers == 0 then
+		return false, refusal
+	end
+	local text
+	if #tiers == 1 then
+		text = heads[1] and string.format(TEXT.Play, heads[1], num(list[tiers[1]].Min, 0)) or nil
+	else
+		local parts = {}
+		for i, head in ipairs(heads) do
+			parts[i] = (string.gsub(head, "!$", ""))
+		end
+		text = string.format(TEXT.Gifts, table.concat(parts, ", "), #tiers)
+		if #heads == 0 or #text > GIFTS_MAX then
+			text = string.format(TEXT.GiftsShort, #tiers)
+		end
+	end
+	if text then
+		notify(player, text, "good")
+	end
+	for i, tier in ipairs(tiers) do
+		DailyService.Claimed:Fire(player, "Play", tier, grants[i] or nil)
+	end
+	DailyService.Send(player)
+	return true, { Tiers = tiers, Grants = grants }
 end
 
 ----------------------------------------------------------------------
@@ -759,6 +942,11 @@ local function tickPlayer(player, P, now, clock)
 		local readyBefore = readyCount(d, tiers)
 		local reset = false
 		local daySeconds = num(P.DaySeconds, 72000)
+		local need = unlockNeed()
+		-- the stamp the hold counts for: this session's (Z8) stamp, read BEFORE the step (lastClaimOf may write the first
+		-- sight itself)
+		local stamp = (on and need > 0) and lastClaimOf(player, d, now) or 0
+		local counted = nil -- the play-day's seconds after any reset, before this tick's add
 		local ok = DS.MutateDaily(player, function(live)
 			local start = num(live.PlayStart, 0)
 			if (on and start == 0) or (start > 0 and now >= start + daySeconds) then
@@ -767,6 +955,7 @@ local function tickPlayer(player, P, now, clock)
 				live.PlayClaimed = {}
 				reset = true
 			end
+			counted = num(live.PlaySec, 0)
 			if on then
 				live.PlaySec = math.min(num(P.MaxDaySeconds, 36000), num(live.PlaySec, 0) + num(P.TickSeconds, 10))
 			end
@@ -776,6 +965,21 @@ local function tickPlayer(player, P, now, clock)
 			local after = dailyOf(player)
 			if reset or (after and readyCount(after, tiers) > readyBefore) then
 				send = true
+			end
+			if on and need > 0 and counted ~= nil and counted < need then
+				-- the hold (5.3): a counting tick while the streak gift is due and still locked
+				if stamp > 0 and now >= stamp + num(cfg().ReadySeconds, 72000) then
+					local h = holds[player]
+					if not h or h.Last ~= stamp then
+						h = { Last = stamp, Sec = 0 }
+						holds[player] = h
+					end
+					h.Sec = h.Sec + num(P.TickSeconds, 10)
+				end
+				-- the unlock crossing (before < Need <= after): CLAIM shows on time
+				if after and num(after.PlaySec, 0) >= need then
+					send = true
+				end
 			end
 		end
 	end
@@ -814,7 +1018,7 @@ local function onRequest(player, action, tier, extra)
 	if not isLivePlayer(player) or extra ~= nil then
 		return
 	end
-	if action == "Claim" then
+	if action == "Claim" or action == "ClaimPlayAll" then
 		if tier ~= nil then
 			return -- junk
 		end
@@ -835,6 +1039,8 @@ local function onRequest(player, action, tier, extra)
 	local ok, success, info
 	if action == "Claim" then
 		ok, success, info = pcall(DailyService.Claim, player)
+	elseif action == "ClaimPlayAll" then
+		ok, success, info = pcall(DailyService.ClaimPlayAll, player)
 	else
 		ok, success, info = pcall(DailyService.ClaimPlay, player, tier)
 	end
@@ -911,6 +1117,7 @@ function DailyService.Init(given)
 		stepBacks[player] = nil
 		clamps[player] = nil
 		sent[player] = nil
+		holds[player] = nil
 	end)
 	task.spawn(function()
 		while true do
@@ -930,6 +1137,10 @@ end
 
 function DailyService._tickAt()
 	return tickAt
+end
+
+function DailyService._holds(player)
+	return holds[player]
 end
 
 return DailyService

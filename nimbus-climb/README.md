@@ -655,13 +655,24 @@ Lance...). The SPECIAL and ELEMENT buttons, the Pets window and the Pet Index sh
 stuns, roots, slows and burns: against a boss such a twist deals a bonus hit instead.
 
 **Evolved pets look evolved everywhere:** following you, roaming your garden, on the Pet Podium, in the Pets window,
-the Pet Index (your best stage), the Pets window, the Fusion window, the Food Machine and Training lists, the roulette
-reveal, the Champion Ring window and in every battle (your fighter and your helpers' pictures).
+the Pet Index (your best stage), the Pets window, the Fusion window, the Food Machine list, the Training Place window
+and the pet picker, the roulette reveal, the Champion Ring window and in every battle (your fighter and your helpers' pictures).
 
 ### The Training Place
 
 The **Training Place** (the old Gym) teaches pets battle skills. Press **E** at it (*Train pets*) or press **Train**
 in the Pets window, pick a pet and one of four skills:
+
+- **The window:** the pet big on the left, the four skills as cards on the right (rank bar, what the next rank gives,
+  cost, time and **TRAIN**). A skill in training turns purple with its timer and **STOP**. The **‹ ›** arrows step to
+  your next pet (training pets first, then your team, then the rest); **Change pet** opens the pet picker.
+- **The training spots:** a row along the top shows every spot of your Training Place: each pet in training on its
+  own spot with its timer (tap it to see that pet), **+ Add a pet** on a free spot, and the locked spots with the
+  Training Place level that opens them. The chip in the header says how many are in use ("Training spots: 2 / 3 in
+  use").
+- **The pet picker:** one full-screen sheet with big cards (look, name, level, evolution stars, rarity), a search box,
+  sorts and filters. It opens by itself when no pet is picked. The Fusion Machine uses the same picker.
+
 
 | Skill | Each rank | At rank 10 |
 |---|---|---|
@@ -748,10 +759,20 @@ climb). It has two tabs:
 - **UPGRADE:** 3 copies of the same pet and tier make 1 of the next tier: Normal -> **Golden** (x1.5 stats and
   perks, a gold shimmer) -> **Rainbow** (x2.5, an animated rainbow shimmer). The new copy keeps the level of its
   inputs.
-- **MIX:** two different pets make a brand-new, one-of-a-kind **hybrid**: the body (species and special attack) of
-  the first, the colours, wings and accessory of the second, the elements of both, the higher of the two
-  rarities, stats = their average x1.2, and a blended name (Penguin + Phoenix -> "Pengnix"). Hybrids cannot be
-  mixed again or upgraded.
+- **MIX:** two different pets make a brand-new, one-of-a-kind **hybrid**: the body (species) of the first, the
+  colours, wings and accessory of the second, the elements of both, the higher of the two rarities, stats = their
+  average x1.2, and a blended name (Penguin + Phoenix -> "Pengnix"). Hybrids cannot be mixed again or upgraded.
+- **You pick the moves:** under each pet sit two chips, its normal attack (its element attack, for example Flame's
+  *Flare*) and its special (for example *Leaf Pounce*). Tap a chip to take that move from that pet. The pet that gives
+  the normal attack also gives the hybrid its first element (its aura colour and bench buff). The window shows the
+  result ("Normal attack: Flame (Flare) · Special: Pounce (Leaf Pounce)"). Without a choice both come from the first
+  pet, and hybrids made before this keep the moves they had.
+
+The window works like this: **UPGRADE** shows your copies on the left, an arrow and the new pet big and glowing on
+the right, the cost and one **FUSE!** button; tap the copies to pick another pet. **MIX** shows the two slots (Body
+and Style, with a swap button), the new hybrid and **FUSE!**; tap a slot to pick its pet. Both open the same pet
+picker as the Training Place, and it opens by itself when a slot is empty. The picker marks pets that cannot be used
+(a pet in training, or a pet of the species already in the other slot).
 
 Copies that are in your team or in the Garden are taken off first and the result takes over their place (the machine
 refuses only when the inputs are your only team pets); a pet in training cannot be fused. Fusing keeps your
@@ -895,16 +916,24 @@ x2 Pet XP when your pets feed and fight. While a pass or a potion is on, small c
 
 ### Daily gifts
 
-The round **Gifts** button left of the currency strips (a red dot = a gift is waiting) opens two tabs:
+The round **Gifts** button left of the currency strips (a red dot = a gift is waiting) opens the big Gifts window with
+two tabs:
 
 - **Daily:** a new gift every 20 hours; claim it within 48 hours of the last one to keep your streak. Seven gifts make
   a week (Cash, Tokens, Gems, more Cash, more Tokens, more Gems), and day 7 of every kept week is a **Week Wisp**, an
   Epic pet you can only get here (40 Gems instead when your Week Wisp stack is full). Missing a day steps your streak
   back one day for each missed day, never to zero at once, and a gift you already got is not paid again on the way
-  back up ("Streak repaired!"). VIP players never step back and get x2 Cash and Tokens on these gifts.
+  back up ("Streak repaired!"). VIP players never step back and get x2 Cash and Tokens on these gifts. The seven days
+  are big tiles in a row: today raised and glowing gold, the days you got with a tick, day 7 twice as wide with the
+  Week Wisp, and one big **CLAIM!** under them.
+- **10 minutes of play first:** each new play-day, the daily gift unlocks only after **10 minutes of play** that day.
+  It counts like the play-time clock (standing still pauses it), and the CLAIM button counts down ("Unlocks after 10
+  min of play", "6 min to go"). The streak repair and VIP players wait too. If you start playing before your streak
+  would run out, it is kept, even when the 10 minutes end after that.
 - **Play time:** gifts for 10, 20, 30, 60, 90, 120 and 180 minutes of play in a day (Cash, Tokens, Gems and a full Berry
-  Basket). Only active play counts: when you stand still for 3 minutes the clock pauses ("Paused: move around to keep
-  counting!"). A play-day lasts 20 hours from its first minute; gifts you did not claim by then are gone.
+  Basket), shown as gift boxes, each with its own countdown. **CLAIM ALL** takes every ready gift at once. Only active
+  play counts: when you stand still for 3 minutes the clock pauses ("Paused: move around to keep counting!"). A
+  play-day lasts 20 hours from its first minute; gifts you did not claim by then are gone.
 
 Every amount is shown as a number before you claim it.
 
@@ -1696,12 +1725,14 @@ src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientS
              PortalVortex (the swirling vortex inside every gate hoop); MouseLock (the Mouse lock option);
              LightingStack (lighting looks, e.g. the Dungeon); UI/CloudUI; UI/NeonKit (the neon cards, tiles and side
              panels); UI/PetCard (the cards above pets); UI/PetBits (what the windows showing a pet share); UI/TeamFaces
-             (the three faces + Edit team on every battle panel); Controllers:
+             (the three faces + Edit team on every battle panel); UI/PetPicker (the one full-screen pet picker sheet
+             of the Training Place and the Fusion Machine: search, sorts, filters, big cards); Controllers:
              Movement, MainMenu (main menu + settings), Hud, DamageFx, Notify, Menu, Pets (the Pets window), Pet, TokenFx, Index, Tutorial, Npc, SkyDragon, Showcase, Dev, DevPetShow
              (pet showcase, /fx attack preview), EvolutionFx (evolution animation, the dungeon enemies' arrival),
              AttackFx (plays the pet attack effects: Blender cores, flipbook particles, beams, trails and lights,
-             pooled, within a budget, plus the battle poses; BattleController plays it first, cubes as the fallback), Care (Food Machine, Garden, training and EVOLVE
-             windows), HomeFx (roaming pets, Cloud Cash, berries), HomePortalFx (the home portal), Fusion, Battle,
+             pooled, within a budget, plus the battle poses; BattleController plays it first, cubes as the fallback), Care (Food Machine, Garden and EVOLVE
+             windows; it forwards Train), Train (the Training Place window: the big pet, the four skill cards, the
+             training spots row), HomeFx (roaming pets, Cloud Cash, berries), HomePortalFx (the home portal), Fusion, Battle,
              Arena, RaidGate (the idle boss on the colosseum floor, the boss gate's tag, the dare panel), Dungeon (the Dungeon window and run), LossScreen (the result screen of a lost run), Obby (the level picker), PortalFx (the gates' soft
              animation: a light running round the ring, the swirl breathing, gems twinkling), FountainFx (the lobby
              fountain's paper-boat drift + an optional water loop), MeadowFx (grows the lobby's wind-blown grass and

@@ -37,7 +37,9 @@
 --   feed                  Phase 4 (CareController): the Food Machine list (garden pets first, leftovers, a pet ready to
 --                         EVOLVE, a level-100 pet, the machine footer)
 --   garden[:<slot>]       the garden picker for place <slot> (default 3: an empty place)
---   train[:<key>]         the Training Place window (default: the pet that is training, with its timer and Stop)
+--   train[:<key>]         the Training Place window (default: the pet that is training, with its timer and Stop);
+--                         train:mats = gui-redo Task 8's mats row (see the [gui-redo] block)
+--   daily[:locked|:play]  gui-redo Tasks 9-10: the Gifts window (see the [gui-redo] block)
 --   evolve                the EVOLVE confirm over the Pets window
 --   ring[:<view>]         Phase 4 (ArenaController's Champion Ring window): OpenPanel("Ring") with a ring record
 --                         (Best 24); view new (no record yet) | record (default)
@@ -3042,6 +3044,170 @@ end)
 -- [owner: tutorial] begin
 -- (tutorial panel + pointer scenes for chapters 2-4)
 -- [owner: tutorial] end
+
+-- [gui-redo] begin
+-- picker[:train|:upgrade|:mix]  gui-redo Task 6: the shared pet picker sheet (client/UI/PetPicker) over the lobby with a
+--                       24-pet collection (the mock's pets and more, a hybrid, a Golden and a Rainbow copy, copies 5 / 4 /
+--                       3 / 2 / 1, a 3-pet team): train = Train context, one pet in training (its live chip), the second
+--                       team pet selected; upgrade = Upgrade context, Maple Fox (x5) selected, the 1-2 copy cards dimmed, the
+--                       training pet blocked; mix = Mix context for the Style slot with Maple Fox in the Body slot, so every
+--                       Maple Fox finish is blocked ("In Body")
+local PICKDUMP = {
+	FIX = {
+		{ "storm_tabby", 22, 1 }, { "aurora_fox", 34, 1, 1 }, { "ember_phoenix", 41, 1, 1 }, { "maple_fox", 12, 5 },
+		{ "maple_fox@Rainbow", 3, 1 }, { "pebble_pup", 8, 4 }, { "honey_bunny", 20, 3 }, { "mochi_slime", 15, 2 },
+		{ "bubble_axolotl", 6, 2 }, { "pip_penguin", 5, 2 }, { "stormfang", 11, 1 }, { "twilight_dragon", 33, 1 },
+		{ "moonlit_owl", 27, 1 }, { "candy_unicorn", 25, 1 }, { "cherry_panda", 18, 1 }, { "biscuit_bear", 14, 1 },
+		{ "hyb:h1", 13, 1 }, { "sleepy_owl", 9, 1 }, { "sleepy_owl@Golden", 10, 1 }, { "bamboo_panda", 19, 1 },
+		{ "blossom_bunny", 21, 1 }, { "frostling_penguin", 23, 1 }, { "sunbeam_bear", 30, 1 }, { "cloudy_dragon", 28, 1 },
+	},
+}
+function PICKDUMP.profile()
+	local snap = snapshot()
+	local pets, tiers, levels, growth, hybrids = {}, {}, {}, {}, {}
+	for _, f in ipairs(PICKDUMP.FIX) do
+		local key, level, copies, evo = f[1], f[2], f[3], f[4]
+		local base, tier = key:match("^(.-)@(%a+)$")
+		if key:sub(1, 4) == "hyb:" then
+			hybrids[key:sub(5)] = { Body = "maple_fox", Style = "storm_tabby", Elements = { "Flame", "Storm" }, Name = "Foxby", Rarity = "Rare", Tier = "Normal", Seed = 7 }
+		elseif tier then
+			tiers[base] = tiers[base] or {}
+			tiers[base][tier] = copies
+			snap.Discovered[base] = true
+		else
+			pets[key] = copies
+			snap.Discovered[key] = true
+		end
+		levels[key] = { Level = level, Xp = 5 }
+		if evo then
+			growth[key] = { Evo = evo }
+		end
+	end
+	growth.storm_tabby = { Job = { Stat = "Speed", Ends = os.time() + 190, Rank = 5, Slot = 1, From = "Follow", Paid = 26250 } }
+	snap.Pets, snap.Tiers, snap.Hybrids, snap.PetLevels, snap.PetGrowth = pets, tiers, hybrids, levels, growth
+	snap.Equipped = { "aurora_fox", "ember_phoenix" }
+	snap.Teams = { Presets = { { "aurora_fox", "ember_phoenix", "storm_tabby" }, {}, {} }, Active = 1, Slots = 3, Busy = { storm_tabby = "Training" } }
+	snap.Home = { Level = 21, Prestige = 1, Stations = { Garden = 3, FusionMachine = 1 }, Garden = {}, Gym = {} }
+	snap.Cash, snap.Gems = 48250, 85
+	toClient("ProfileSync", snap)
+	advance(0.5)
+end
+scenario("picker", function(view)
+	PICKDUMP.profile()
+	local PP = req("client/UI/PetPicker")
+	if view == "upgrade" then
+		PP.Open({ Context = "Upgrade", Title = "Pick a pet to upgrade", Selected = "maple_fox" })
+	elseif view == "mix" then
+		PP.Open({ Context = "Mix", Title = "Pick the Style pet", Blocked = { maple_fox = "In Body", ["maple_fox@Rainbow"] = "In Body" } })
+	else
+		PP.Open({ Context = "Train", Title = "Pick a pet to train", Selected = "ember_phoenix" })
+	end
+	advance(2.5)
+end)
+-- train:mats            gui-redo Task 8: the Training Place's mats row on the careui profile with a Lv 3 place (the
+--                       Manor): the Rare training on mat 1, the Epic picked and waiting on mat 2 ("Pick a skill below"),
+--                       mat 3 "+ Add a pet", mat 4 locked, and the Legend training on mat 5, a mat a Prestige closed (its
+--                       lock badge). train[:<key>] stays the careui scene.
+local trainScene = SCENARIOS.train
+SCENARIOS.train = function(key, ...)
+	if key ~= "mats" then
+		return trainScene(key, ...)
+	end
+	local ids, snap = CAREUI.profile()
+	snap.Home.Stations.Gym = 3
+	snap.Home.Stations.House = 3
+	local legend = snap.PetGrowth[ids.Legend]
+	legend.Job = { Stat = "Defense", Ends = os.time() + 250, Rank = (legend.Defense or 0) + 1, Slot = 5, From = "Follow", Paid = 4800 }
+	toClient("ProfileSync", snap)
+	advance(0.5)
+	toClient("OpenPanel", "Train", { Key = ids.Epic })
+	advance(3)
+end
+-- daily[:locked|:play]  gui-redo Task 9: the Gifts window (DailyController, card A) with a VIP player on Week 2 Day 3
+--                       (Streak 9, days 1-2 claimed, today's $1,450 ready: CLAIM!); locked = the same day held by the
+--                       10-minute rule with 6 min to go; play = the Play time tab (Task 10, card B's gift boxes: 47 min
+--                       played and paused, tiers 1-2 claimed, the 30 min gift ready, CLAIM ALL (1))
+local function dailyPayload(view)
+	local now = workspace:GetServerTimeNow()
+	local days = {
+		{ Kind = "Cash", Amount = 400, Claimed = true, Today = false },
+		{ Kind = "Tokens", Amount = 50, Claimed = true, Today = false },
+		{ Kind = "Cash", Amount = 1450, Claimed = false, Today = true },
+		{ Kind = "Cash", Amount = 1000, Claimed = false, Today = false },
+		{ Kind = "Tokens", Amount = 250, Claimed = false, Today = false },
+		{ Kind = "Gems", Amount = 25, Claimed = false, Today = false },
+		{ Kind = "Pet", PetId = "week_wisp", Claimed = false, Today = false },
+	}
+	local tiers = {
+		{ Min = 10, Kind = "Cash", Amount = 200, Claimed = true, Ready = false },
+		{ Min = 20, Kind = "Tokens", Amount = 40, Claimed = true, Ready = false },
+		{ Min = 30, Kind = "Cash", Amount = 600, Claimed = false, Ready = true },
+		{ Min = 60, Kind = "Gems", Amount = 10, Claimed = false, Ready = false },
+		{ Min = 90, Kind = "Tokens", Amount = 150, Claimed = false, Ready = false },
+		{ Min = 120, Kind = "Berries", Claimed = false, Ready = false },
+		{ Min = 180, Kind = "Gems", Amount = 25, Claimed = false, Ready = false },
+	}
+	return {
+		Loading = false, Streak = 9, Paid = 9, Weeks = 1, Pet = true, ReadyAt = now - 1, KeepUntil = now + 28 * 3600, StaleAt = 0,
+		Cell = 3, Repair = false, Vip = true, StepBack = 0, Days = days, ServerNow = now,
+		Unlock = { Need = 600, Left = view == "locked" and 330 or 0 },
+		Play = { Seconds = (view == "play" and 47 or 36) * 60, DayEnds = now + 5 * 3600 + 600, Active = view ~= "play", Tiers = tiers },
+	}
+end
+scenario("daily", function(view)
+	view = tostring(view or ""):lower()
+	toClient("DailyState", dailyPayload(view))
+	advance(0.5)
+	local DC = req("client/Controllers/DailyController")
+	DC.Open({ Tab = view == "play" and "Play" or "Daily" })
+	advance(1.5)
+end)
+-- fusion[:upgrade|:mix]  gui-redo Task 11: the Fusion Machine window (FusionController, card A) on the picker's collection
+--                       with 3 of the 5 Maple Fox copies on the team and 12,480 Cloud Tokens: upgrade (the default) = the stack of
+--                       Maple Fox copies -> the Golden Maple Fox, the team-copy note; mix = Maple Fox (Body) + Storm Tabby
+--                       (Style) -> the NEW HYBRID card with the move choice "BS" (Task 12: Maple Fox's Flare, Storm Tabby's
+--                       Static Storm; the chips under the slots, the outcome lines). The careui fusion[:mix] scene is replaced.
+SCENARIOS.fusion = function(view)
+	view = tostring(view or ""):lower()
+	local snap = snapshot()
+	local pets, tiers, levels, hybrids = {}, {}, {}, {}
+	for _, f in ipairs(PICKDUMP.FIX) do
+		local key, level, copies = f[1], f[2], f[3]
+		local base, tier = key:match("^(.-)@(%a+)$")
+		if key:sub(1, 4) == "hyb:" then
+			hybrids[key:sub(5)] = { Body = "maple_fox", Style = "storm_tabby", Elements = { "Flame", "Storm" }, Name = "Foxby", Rarity = "Rare", Tier = "Normal", Seed = 7 }
+		elseif tier then
+			tiers[base] = tiers[base] or {}
+			tiers[base][tier] = copies
+			snap.Discovered[base] = true
+		else
+			pets[key] = copies
+			snap.Discovered[key] = true
+		end
+		levels[key] = { Level = level, Xp = 5 }
+	end
+	snap.Pets, snap.Tiers, snap.Hybrids, snap.PetLevels = pets, tiers, hybrids, levels
+	snap.PetGrowth = { aurora_fox = { Evo = 1 }, ember_phoenix = { Evo = 1 } }
+	-- (three Maple Fox copies on the team: fusing 3 of the 5 leaves 2, so 1 team copy is taken off first)
+	snap.Equipped = { "maple_fox", "maple_fox", "maple_fox" }
+	snap.Teams = { Presets = { { "maple_fox", "maple_fox", "maple_fox" }, {}, {} }, Active = 1, Slots = 3 }
+	snap.Home = { Level = 21, Prestige = 1, Stations = { Garden = 3, FusionMachine = 1 }, Garden = {}, Gym = {} }
+	snap.Cash, snap.Gems, snap.Tokens = 48250, 85, 12480
+	LocalPlayer:SetAttribute(Config.Attr.Tokens, 12480)
+	LocalPlayer:SetAttribute(Config.Attr.Gems, 85)
+	toClient("ProfileSync", snap)
+	advance(0.5)
+	local mix = view == "mix"
+	toClient("OpenPanel", "Fusion", { Tab = mix and "Mix" or "Upgrade", Key = "maple_fox", KeyB = mix and "storm_tabby" or nil })
+	advance(1)
+	if mix then
+		-- (Task 12) the move choice "BS": Maple Fox's normal attack (Flare), Storm Tabby's special (Static Storm)
+		local FC = req("client/Controllers/FusionController")
+		FC.SetMoves("maple_fox", "storm_tabby")
+	end
+	advance(2)
+end
+-- [gui-redo] end
 
 local function boot(width, height, touch, keepTitle)
 	Config = req("shared/Config")

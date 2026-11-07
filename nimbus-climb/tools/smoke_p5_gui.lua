@@ -284,7 +284,7 @@ for _, spec in ipairs({ { "menu:Home", "Home", "Home" }, { "menu:Shop", "Shop", 
 		end,
 	}
 end
-for _, spec in ipairs({ { "feed", "Feed" }, { "garden", "Garden" }, { "train", "Train" } }) do
+for _, spec in ipairs({ { "feed", "Feed" }, { "garden", "Garden" } }) do
 	COVER[#COVER + 1] = {
 		Scene = spec[1],
 		Open = function()
@@ -299,6 +299,31 @@ for _, spec in ipairs({ { "feed", "Feed" }, { "garden", "Garden" }, { "train", "
 		end,
 	}
 end
+-- gui-redo Task 7: the Training Place is one big centred window (TrainController, NeonKit.BigRect 1440 x 840), like the
+-- Pets window: it may cover up to 85% and sits in the middle
+COVER[#COVER + 1] = {
+	Scene = "train",
+	MaxCover = 85,
+	Centered = true,
+	Open = function()
+		CUI.profile()
+		-- a pet of the profile (nobody trains there: without a Key the pet picker sheet would open over the window)
+		local key = nil
+		for _, def in ipairs(NK.req("shared/PetCatalog").Pets) do
+			if not def.EventOnly and def.Rarity ~= "Secret" then
+				key = def.Id
+				break
+			end
+		end
+		local care = (NK.KC().M and NK.KC().M.CareController) or NK.req("client/Controllers/CareController")
+		pcall(care.Open, "Train", { Key = key })
+	end,
+	Close = CUI.closeAll,
+	Window = function()
+		local g = NK.pg():FindFirstChild("NimbusTrain")
+		return g and g:FindFirstChild("Window_Train")
+	end,
+}
 COVER[#COVER + 1] = {
 	Scene = "menu:Index",
 	Open = function()
@@ -311,12 +336,24 @@ COVER[#COVER + 1] = {
 		return g and g:FindFirstChild("Window_Index")
 	end,
 }
+-- gui-redo Task 11: the Fusion Machine is one big centred window too (FusionController, NeonKit.BigRect 1440 x 880): it may
+-- cover up to 85% and sits in the middle
 COVER[#COVER + 1] = {
 	Scene = "fusion",
+	MaxCover = 85,
+	Centered = true,
 	Open = function()
 		CUI.profile()
+		-- a pet of the profile (without a Key the pet picker sheet would open over the window)
+		local key = nil
+		for _, def in ipairs(NK.req("shared/PetCatalog").Pets) do
+			if not def.EventOnly and def.Rarity ~= "Secret" then
+				key = def.Id
+				break
+			end
+		end
 		local f = (NK.KC().M and NK.KC().M.FusionController) or NK.req("client/Controllers/FusionController")
-		pcall(f.Open, "Upgrade", {})
+		pcall(f.Open, "Upgrade", { Key = key })
 	end,
 	Close = CUI.closeAll,
 	Window = function()

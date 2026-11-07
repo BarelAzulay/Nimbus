@@ -65,8 +65,11 @@
 -- Perk plumbing:
 --   * attribute EquippedPets (csv of keys)   -> every client draws that player's followers
 --   * attribute EquippedHybrids              -> the looks of the equipped hybrids (other clients cannot see the
---                                               owner's profile): "uid=Body/Style/Tier/Rarity[/Seed];..." -- set
---                                               BEFORE EquippedPets, only once a player ever equips a hybrid
+--                                               owner's profile): "uid=Body/Style/Tier/Rarity[/Seed[/Elements]];..."
+--                                               -- set BEFORE EquippedPets, only once a player ever equips a hybrid.
+--                                               Field 6 (gui-redo) = the record's Elements joined by "+" in their
+--                                               order (the chosen first element first; field 5 "" without a Seed);
+--                                               left out when the record has none (today's 4 / 5 fields)
 --   * attribute PerkStaminaRegen         -> MovementController scales its stamina regen
 --   * MaxHealth                          -> PlayerService (Main hands it GetPerks and calls RefreshMaxHealth
 --                                           when PerksChanged fires), so this module never touches Humanoids
@@ -282,7 +285,10 @@ local function ownedCount(profile, key)
 	return 0
 end
 
--- "uid=Body/Style/Tier/Rarity[/Seed];..." for the equipped hybrids (what other clients need to draw them)
+-- "uid=Body/Style/Tier/Rarity[/Seed[/Elements]];..." for the equipped hybrids (what other clients need to draw them).
+-- gui-redo Task 3: field 6 = the record's Elements in their order joined by "+" (Elements[1] = the parent that gives the
+-- normal attack), so other clients' stand-in defs lead with the same element; field 5 is "" when there is no Seed but
+-- there are Elements (field 6 keeps its place). Only plain names are written; a record with none keeps today's value.
 local function hybridLooks(profile)
 	local parts, seen = {}, {}
 	local hybrids = type(profile.Hybrids) == "table" and profile.Hybrids or {}
@@ -295,6 +301,16 @@ local function hybridLooks(profile)
 			local fields = { rec.Body, rec.Style, parsed.Tier, type(rec.Rarity) == "string" and rec.Rarity or "" }
 			if type(rec.Seed) == "number" and rec.Seed == rec.Seed then
 				fields[5] = tostring(math.floor(rec.Seed))
+			end
+			local elements = {}
+			for _, e in ipairs(type(rec.Elements) == "table" and rec.Elements or {}) do
+				if type(e) == "string" and string.find(e, "^[%w_]+$") then
+					elements[#elements + 1] = e
+				end
+			end
+			if #elements > 0 then
+				fields[5] = fields[5] or ""
+				fields[6] = table.concat(elements, "+")
 			end
 			local text = uid .. "=" .. table.concat(fields, "/")
 			if not string.find(text, "[,;]") then

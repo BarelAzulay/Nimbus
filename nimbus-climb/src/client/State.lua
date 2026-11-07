@@ -60,7 +60,8 @@
 --     Stats = { Matches, Wins, TokensEarned, Spins, BestTimes = {[diffId]=sec} }, SpotIndex, Perks = {...},
 --     Discovered = {[petId]=true}, IndexClaimed = {[groupId]=true}, Tutorial = { Step, Done, Gifted },
 --     Cash, Gems, Home = {...}, Food = {[foodId]=count}, Tiers = {[petId]={Golden, Rainbow}},
---     Hybrids = {[uid]={Body, Style, Elements, Name, Rarity, Tier}}, PetLevels = {[key]={Level, Xp}},
+--     Hybrids = {[uid]={Body, Style, Elements, Name, Rarity, Tier, Seed?, SpecialFrom?}}, PetLevels = {[key]={Level, Xp}},
+--              (gui-redo: Elements in order; SpecialFrom = "Style" kept, anything else dropped = the Body's special)
 --     Teams = {...}, Battle = {...},   (Phase 3; TrialCleared arrives as a dense array of booleans)
 --     PetGrowth = {[key]={Evo?, Speed?, Physique?, Ability?, Defense?, Job?}}, Ring = { Best, Runs } }   (Phase 4)
 -- Whatever arrives is sanitised here, so UI code can index it without nil/type checks. The server sends Garden /
@@ -431,6 +432,11 @@ local function cleanHybrids(raw)
 			end
 			if type(rec.Seed) == "number" and rec.Seed == rec.Seed then
 				clean.Seed = rec.Seed
+			end
+			-- gui-redo: the Style gives the special (exactly "Style"; anything else = the Body), so State.DefOf gives the
+			-- server's def (the Pets window's Special line, the form names, the Training / Fusion cards)
+			if rec.SpecialFrom == "Style" then
+				clean.SpecialFrom = "Style"
 			end
 			out[uid] = clean
 		end

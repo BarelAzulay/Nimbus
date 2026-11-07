@@ -424,7 +424,8 @@
     },
     "client/Controllers/HudController": {
       "functions": [
-        "Init"
+        "Init",
+        "SetVitalsHidden"
       ]
     },
     "client/Controllers/DamageFx": {
@@ -470,6 +471,16 @@
         "Entries",
         "Power",
         "Ensure"
+      ]
+    },
+    "client/UI/PetPicker": {
+      "optional": true,
+      "functions": [
+        "Open",
+        "Close",
+        "IsOpen",
+        "Entries",
+        "Sorted"
       ]
     },
     "client/Controllers/TopBarController": {
@@ -787,6 +798,15 @@
       ]
     },
     "client/Controllers/CareController": {
+      "optional": true,
+      "functions": [
+        "Init",
+        "Open",
+        "Close",
+        "IsOpen"
+      ]
+    },
+    "client/Controllers/TrainController": {
       "optional": true,
       "functions": [
         "Init",
@@ -1155,12 +1175,13 @@
     "server/Services/DailyService": {
       "optional": true,
       "pending": {
-        "_comment": "store (2026-11-04) W2-daily Task 10: the streak and play-time gifts",
+        "_comment": "store (2026-11-04) W2-daily Task 10: the streak and play-time gifts; gui-redo Task 5: ClaimPlayAll (every Ready play tier, one toast)",
         "functions": [
           "Init",
           "State",
           "Claim",
           "ClaimPlay",
+          "ClaimPlayAll",
           "Resolve",
           "Send",
           "Tick"

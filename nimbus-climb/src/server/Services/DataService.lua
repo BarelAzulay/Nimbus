@@ -16,7 +16,9 @@
 --              CollectorCash, LastSeen,
 --              LegacySlots = n | nil, LegacyPrices = true | nil },     -- Phase 4 (veterans, see below)
 --     Food = {[foodId]=count}, PetLevels = {[key]={Level, Xp}}, Tiers = {[petId]={Golden=n, Rainbow=n}},
---     Hybrids = {[uid]={Body, Style, Elements, Name, Rarity, Tier}}, GemReceipts = {[purchaseId]=os.time()},
+--     Hybrids = {[uid]={Body, Style, Elements, Name, Rarity, Tier, Seed?, SpecialFrom?}}, GemReceipts = {[purchaseId]=os.time()},
+--              (gui-redo: Elements in order, [1] = the normal attack's parent; SpecialFrom = "Style" | absent = the Body
+--              gives the special; anything else is dropped by cleanHybrid. No migration: old records read as today)
 --     -- Phase 3
 --     Teams = { Presets = { [1..3] = {key, key, key, key?} }, Active = 1..3 },
 --     Battle = { Trophies, TrialBest, TrialCleared = {[level]=true}, Raids, RaidBestDamage, PvPWins, PvPLosses,
@@ -1311,8 +1313,10 @@ local function cleanTiers(raw)
 	return out
 end
 
--- One fused hybrid record { Body, Style, Elements, Name?, Rarity?, Tier } (+ up to 8 extra scalar fields the fusion
--- code may keep, e.g. a look seed), or nil. Lenient on purpose: the store keeps what the game made.
+-- One fused hybrid record { Body, Style, Elements, Name?, Rarity?, Tier, SpecialFrom? } (+ up to 8 extra scalar fields the
+-- fusion code may keep, e.g. a look seed), or nil. Lenient on purpose: the store keeps what the game made. Elements keep
+-- their order (Elements[1] = the normal attack's parent). SpecialFrom (gui-redo) is a known field, kept only when it is
+-- exactly "Style" (anything else = the Body, dropped) and never counted as an extra.
 local function cleanHybrid(raw)
 	if type(raw) ~= "table" or not validKey(raw.Body) or not validKey(raw.Style) then
 		return nil
@@ -1320,6 +1324,9 @@ local function cleanHybrid(raw)
 	local rec = { Body = raw.Body, Style = raw.Style, Elements = {}, Tier = "Normal" }
 	if VALID_TIER[raw.Tier] then
 		rec.Tier = raw.Tier
+	end
+	if raw.SpecialFrom == "Style" then
+		rec.SpecialFrom = "Style"
 	end
 	local seen = {}
 	for _, e in ipairs(tableOr(raw.Elements)) do
@@ -1336,7 +1343,7 @@ local function cleanHybrid(raw)
 	end
 	local extras = 0
 	for k, v in pairs(raw) do
-		if rec[k] == nil and k ~= "Name" and k ~= "Rarity" and type(k) == "string" and #k <= 24 and extras < 8 then
+		if rec[k] == nil and k ~= "Name" and k ~= "Rarity" and k ~= "SpecialFrom" and type(k) == "string" and #k <= 24 and extras < 8 then
 			if isFinite(v) or type(v) == "boolean" or (type(v) == "string" and #v <= 64) then
 				rec[k] = v
 				extras = extras + 1

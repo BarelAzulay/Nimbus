@@ -37,6 +37,8 @@
 --   fixr_daily_stamp_race     the claim's now and its grant's At are ONE stamp: a wall-clock second ticking inside
 --                             Claim no longer lets a dropped claim's pair replace the stored one (the section 6 merge;
 --                             needs DataService.MutateDaily's `now` argument)
+-- Since gui-redo Task 4 (the 10-minute unlock, smoke_redo_daily.lua) every streak claim here first gets the play-day's
+-- UnlockSeconds through unlock(p, true) (claim() does it; the direct DailyService.Claim of fixr_daily_stamp_race too).
 -- White-box: the booted helpers of smoke_daily.lua ("server B" = a second DataService copy against the same mock store).
 -- The mock's os.time() is floor(EPOCH + clock): a claim is fired FIRST and the clock advanced AFTER. Plain Lua 5.1 syntax.
 
@@ -105,8 +107,33 @@ local function request(p, ...)
 	Mock.FromClient(remote("DailyRequest"), p, ...)
 end
 
--- fires DailyRequest "Claim" FIRST (at the current os.time(), returned) and lets the 1 req/s window pass AFTER
+-- [gui-redo, Task 4] the 10-minute unlock: a streak claim needs Config.Daily.UnlockSeconds counted play seconds of the live
+-- play-day. unlock(p, fresh) gives the record that many: `fresh` starts the play-day at this second, so the hold's keepAt is
+-- the claim's now exactly and every 20 h / 48 h boundary reads as before; without it a live play-day is kept and topped up.
+-- Nothing while the profile is not loaded or provisional (the claim is refused before the lock there).
+local function unlock(p, fresh)
+	if DS().GetDaily(p) == nil then
+		return false
+	end
+	local need = tonumber(config().Daily.UnlockSeconds) or 0
+	local day = config().Daily.Play.DaySeconds
+	return DS().MutateDaily(p, function(d)
+		local now = os.time()
+		local start = tonumber(d.PlayStart) or 0
+		if fresh or start <= 0 or now >= start + day then
+			d.PlayStart = now
+			d.PlaySec = 0
+			d.PlayClaimed = {}
+		end
+		d.PlaySec = math.max(tonumber(d.PlaySec) or 0, need)
+		return true
+	end)
+end
+
+-- fires DailyRequest "Claim" FIRST (at the current os.time(), returned) and lets the 1 req/s window pass AFTER; the play-day
+-- is unlocked (fresh) right before: every claim here is a streak-boundary claim
 local function claim(p)
+	unlock(p, true)
 	local t = os.time()
 	request(p, "Claim")
 	advance(1.05)
@@ -372,6 +399,7 @@ S.fixr_daily_stamp_race = guarded("fixr_daily_stamp_race", function()
 		T.check(type(rec.Daily) == "table" and rec.Daily.LastClaimAt == tB and rec.Cash == cash0 + 400, "fixr daily stamp race: (setup) the store holds (tB, 1) and +$400")
 		-- A's DailyService still sees no claim: it pays day 1, and the wall clock ticks one second inside Claim (between
 		-- its now and the MutateDaily commit; Resolve runs there)
+		unlock(p, true) -- the 10-minute unlock (gui-redo Task 4) before the direct claim
 		local bumped = false
 		DV.Resolve = function(...)
 			local r = origResolve(...)

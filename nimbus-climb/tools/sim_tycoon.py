@@ -23,7 +23,8 @@ HOW TO RUN (from the repo root; Python 3.8+, no packages needed for the simulati
     python3 tools/sim_tycoon.py --xp-mult 2      the x2 Pet XP pass / an XP potion: the feed XP x2 (battle XP is
                                                  sim_battle.lua's xpmult=N; the balance matrix runs both)
     python3 tools/sim_tycoon.py --daily          the daily gift ladders of Config.Daily on the sim clock: the day-1 streak
-                                                 cell at minute 0, the play tiers at 10/20/30/60/90/120/180 min
+                                                 cell at minute 10 (it unlocks after Config.Daily.UnlockSeconds of play,
+                                                 DAILY_UNLOCK_MIN), the play tiers at 10/20/30/60/90/120/180 min
     python3 tools/sim_tycoon.py --daily --vip    VIP doubles the Cash / Tokens streak cells of that ladder
     python3 tools/sim_tycoon.py --grant 2000@3,200   a one-time grant (the Sky Trove): $2,000 and 200 Tokens at minute 3;
                                                  the Tokens buy Cloud spins at 50 (repeatable)
@@ -193,10 +194,11 @@ DUNGEON_RUNS = 0.0  # dungeon runs per minute of play (--dungeon 0.1: a run ever
 # every knob reads these module constants unless simulate() gets the keyword; main() sets them from the flags
 CASH_MULT = 1.0  # --cash-mult: the x2 Cash pass scales the wallet credit at the scoop, the Ring Cash and the Dungeon Cash
 XP_MULT = 1.0  # --xp-mult: the x2 Pet XP pass / potion scales the feed XP (the only XP this sim pays)
-DAILY = False  # --daily: the Config.Daily ladders paid on the sim clock (DAILY_STREAK at minute 0, DAILY_TIERS)
+DAILY = False  # --daily: the Config.Daily ladders paid on the sim clock (DAILY_STREAK at minute DAILY_UNLOCK_MIN, DAILY_TIERS)
 VIP = False  # --vip: doubles the Cash / Tokens STREAK cells (Config.Store.Perks.Vip.DailyMult; never Gems or the play tiers)
 GRANT = []  # --grant CASH@MIN,TOKENS: (cash, minute, tokens) each; the Tokens buy Cloud spins at 50 (GRANT_SPIN_TOKENS)
 DAILY_STREAK = (120, 400)  # Config.Daily.Days[1]: Cash = max(Min 400, income/s x 2 min)
+DAILY_UNLOCK_MIN = 10  # Config.Daily.UnlockSeconds / 60: the streak cell pays at this play minute (gui-redo: the 10-minute unlock; --check compares)
 # Config.Daily.Play.Tiers by minute: ("Cash", seconds of income, Min) | ("Tokens", n) | ("Gems", n) | ("Berries",) = the basket cap
 DAILY_TIERS = {10: ("Cash", 60, 200), 20: ("Tokens", 40), 30: ("Cash", 180, 600), 60: ("Gems", 10), 90: ("Tokens", 150),
                120: ("Berries",), 180: ("Gems", 25)}
@@ -692,7 +694,7 @@ def simulate(seed=1, runs=3, mode="random", max_minutes=900, ring=None, feed_sha
         if (daily or grant) and t % 60 == 0:
             minute = t // 60
             if daily:
-                if minute == 0:
+                if minute == DAILY_UNLOCK_MIN:  # the streak cell unlocks after UnlockSeconds of play (gui-redo 5.3)
                     g = max(DAILY_STREAK[1], inc * DAILY_STREAK[0]) * (2 if vip else 1)
                     cash += g
                     res.daily_cash += g
@@ -1349,6 +1351,11 @@ def run_check():
     if not ok:
         for pr in lua_list(probs):
             problems.append("Validate: " + pr)
+    # [gui-redo] --daily pays the streak cell at the play minute the 10-minute unlock opens it
+    daily_cfg = config.Daily
+    unlock_s = daily_cfg.UnlockSeconds if daily_cfg is not None else None
+    if not isinstance(unlock_s, (int, float)) or unlock_s / 60.0 != DAILY_UNLOCK_MIN:
+        problems.append("Config.Daily.UnlockSeconds / 60: sim DAILY_UNLOCK_MIN %r, Config %r" % (DAILY_UNLOCK_MIN, None if unlock_s is None else unlock_s / 60.0))
     if problems:
         print("sim_tycoon --check: %d difference(s)" % len(problems))
         for pr in problems:
@@ -1359,7 +1366,8 @@ def run_check():
           "EvolutionBonus); AvailablePads (with star prices and LegacyPrices), SignedPads, PriceAt, HomeLevelOf (with "
           "DecorCredit / LegacyMagnet), FoodOf, GardenSlots, IncomePerSecond, PileSeconds, ScoopRadius, OfflineEarnings "
           "and StationsAfterPrestige match the sim on 400 random homes; FoldLegacy matches on 300 Phase 4 homes and is "
-          "idempotent; FeedXp / FeedBerries / TrainCost / TrainSeconds / BasketCap match; Validate() passes" % len(order))
+          "idempotent; FeedXp / FeedBerries / TrainCost / TrainSeconds / BasketCap match; Validate() passes; "
+          "Config.Daily.UnlockSeconds / 60 = DAILY_UNLOCK_MIN" % len(order))
     return 0
 
 
@@ -1614,7 +1622,7 @@ def main():
     ap.add_argument("--dungeon", type=float, default=DUNGEON_RUNS, help="dungeon runs per minute of play (0.1 = one every 10 min; default 0)")
     ap.add_argument("--cash-mult", type=float, default=CASH_MULT, help="[store] the x2 Cash pass: the Cash credited at the scoop, the Ring and the Dungeon (default 1)")
     ap.add_argument("--xp-mult", type=float, default=XP_MULT, help="[store] the x2 Pet XP pass / potion: the feed XP (default 1; battle XP is sim_battle.lua xpmult=N)")
-    ap.add_argument("--daily", action="store_true", help="[store] pay the Config.Daily ladders on the sim clock (day-1 streak cell at 0 min, play tiers at 10..180 min)")
+    ap.add_argument("--daily", action="store_true", help="[store] pay the Config.Daily ladders on the sim clock (day-1 streak cell at DAILY_UNLOCK_MIN = 10 min, after the 10-minute unlock; play tiers at 10..180 min)")
     ap.add_argument("--vip", action="store_true", help="[store] VIP: doubles the Cash / Tokens streak cells of --daily")
     ap.add_argument("--grant", action="append", default=[], metavar="CASH@MIN,TOKENS",
                     help="[store] a one-time grant, e.g. the Sky Trove 2000@3,200 (Cash and Tokens at that minute; Tokens = Cloud spins at 50); repeatable")

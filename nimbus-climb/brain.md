@@ -23,3 +23,9 @@ Read with [`ABSOLUTE_RULES.md`](ABSOLUTE_RULES.md) before working.
   job runs easy / medium / high / xhigh / ultracode. Ultracode is a way of running a job (several workflows, adversarial
   verification, completeness critics, loop until dry), not an effort value; it is kept for saves / money / security / releases.
 - 2026-11-01: the router is a program too (owner's rule): `tools/pick_model.py` holds that table as data and is asked before each stage of a build; `tools/test_pick_model.py` keeps its floors.
+- 2026-11-07: the window redo (branch `gui-redo`, spec `docs/superpowers/specs/2026-11-06-window-redo-design.md`, the owner's approved pitch):
+  Daily, Play time, Training Place and Fusion redrawn, one shared full-screen pet picker for Training and Fusion, and three
+  rule changes from the owner's notes: the daily gift unlocks after 10 minutes of counted play each play-day
+  (`Config.Daily.UnlockSeconds`, a hold so no streak day is lost), several pets in training shown on a mats row, and Mix lets
+  the player choose which parent gives the normal attack and which the special (hybrid field `SpecialFrom`; old hybrids
+  unchanged). Details in `BUILD_STATE.md`.
