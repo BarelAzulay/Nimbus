@@ -105,6 +105,9 @@ Config.Attr = {
 	-- written on every change (the shop's gem potion label reads it; the server never reads it back)
 	TroveGroupDone = "TroveGroupDone", -- true once the saved Sky Trove Group ask is set (TroveService: load, recovery, claim;
 	-- never cleared); the client hides the trove's Join sign for that player only
+	-- titles (spec 16.6): LeaderboardService writes them (only the server), the client's title tag reads them
+	Title = "Title", -- "Creator" | "Top10" | "Top100", absent otherwise (Config.Leaderboard.RankTitles)
+	TitleRank = "TitleRank", -- the Trophies rank 1..100 while the player is in the top 100 read, absent otherwise
 }
 
 Config.Remotes = {
@@ -686,6 +689,18 @@ Config.Leaderboard = {
 	PollSeconds = 5,
 	MaxValue = 1e12,
 	WriteInStudio = false,
+	-- Titles (spec 16.6): the global rank in Stat (index in the good top-ReadSize page; Gold <= ReadSize) gives Top10 up to
+	-- Rainbow and Top100 up to Gold; the game's owner (DevService.IsOwner) gets Creator, which wins over a rank. Column = the
+	-- leaderstats StringValue PlayerService makes after Tokens; ColumnText its plain text per kind ("" for none); Tag = the
+	-- text of the tag above the head.
+	RankTitles = {
+		Stat = "Trophies",
+		Rainbow = 10,
+		Gold = 100,
+		Column = "Rank",
+		ColumnText = { Creator = "Creator", Top10 = "Top 10", Top100 = "Top 100" },
+		Tag = { Creator = "CREATOR", Top10 = "TOP 10", Top100 = "TOP 100" },
+	},
 }
 
 -- Developer tools (owner only). The game's owner (and the extra UserIds in Admins, and everyone while testing in

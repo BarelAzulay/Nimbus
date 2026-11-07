@@ -30,8 +30,22 @@
 --                a rebuild with LobbyBuilder._Kit: one prop_board_lb record on the model at its pivot, Keep = { "Face" };
 --                ML_DressKey only where MeshLibrary.Status("prop_board_lb") ~= "missing" (in --mesh the scenario gives the
 --                key a fixture holder, as lobby_trove_plaza does for the eggs, so the check runs there)
--- White-box: LeaderboardService._S (Recs, Pages, Writes, NoStore), _StopForTest, _CloseForTest; the mock's
--- Mock.DataStore.Sorted / SortedLog / Budget / FailOnly, Mock.Users / UserServiceFail / UserServiceCalls. Clones follow the
+--   lb_titles    (Task 18, spec 16.6 "Server" / "Tests", server half; Review Focus 5) Config.Attr.Title / TitleRank and
+--                Config.Leaderboard.RankTitles; a no-store copy ("Server" scope): a player ranked first in this server gets no
+--                Top title, the owner still gets Creator; the booted service over a 100-entry Trophies store: rank 3 ->
+--                Top10 / 3 / "Top 10", rank 57 -> Top100 / 57 / "Top 100", outside -> none / ""; leaderstats children Tokens
+--                then Rank (a StringValue); the owner of a User game -> Creator at once, and at rank 3 with TitleRank 3; an
+--                Admin who is not the owner -> no Creator (Top10 at rank 5); the next read moves rank 3 to 12 -> Top100, a
+--                read with nothing changed writes nothing (S.TitleWrites, AttributeChanged, Rank.Changed), the read after
+--                that drops the player out -> none; Rank missing: the attributes at once, the text at the next pass after
+--                the 10 s wait; a group game: GetRankInGroup 255 -> Creator, erroring -> none (IsOwner nil, IsAllowed
+--                still false, a boolean), not asked again before the next Trophies refresh, then Creator; LeaderboardService's
+--                join handler run by hand before PlayerService's makes no leaderstats, the children are still Tokens then
+--                Rank and Rank holds the title's text; a player leaving while a Trophies read is in flight -> no error,
+--                S.Titles / S.Owner dropped
+-- White-box: LeaderboardService._S (Recs, Pages, Writes, NoStore, Titles, Owner, TitleWrites), _StopForTest, _CloseForTest,
+-- _JoinForTest; the mock's Mock.DataStore.Sorted / SortedLog / Budget / FailOnly, Mock.Users / UserServiceFail /
+-- UserServiceCalls, Mock.GroupRanks / GroupRankFail, Mock._onJoin; game.CreatorType / CreatorId. Clones follow the
 -- polish_data_outage pattern and are stopped and destroyed in every path. lb_world's rebuild follows smoke_p6_lobby.lua /
 -- smoke_lobby_shop_world.lua (the booted lobby set aside and put back; _Kit, the Meadow stats and the fixture holder restored
 -- in every path). Deterministic: mock clock only. Plain Lua 5.1.
@@ -48,6 +62,15 @@ end
 local K = _G.K
 local ALLOWED_WARNINGS = { "[DataService]", "[MeshLibrary]" }
 local STORES = { Trophies = "NimbusClimb_LB_Trophies_v1", Pets = "NimbusClimb_LB_Pets_v1", Ring = "NimbusClimb_LB_Ring_v1" }
+-- [Task 18] spec 16.6 "Config"
+local RANK_TITLES = {
+	Stat = "Trophies",
+	Rainbow = 10,
+	Gold = 100,
+	Column = "Rank",
+	ColumnText = { Creator = "Creator", Top10 = "Top 10", Top100 = "Top 100" },
+	Tag = { Creator = "CREATOR", Top10 = "TOP 10", Top100 = "TOP 100" },
+}
 local EXPECTED_CFG = {
 	Stores = { Trophies = "NimbusClimb_LB_Trophies_v1", Pets = "NimbusClimb_LB_Pets_v1", Ring = "NimbusClimb_LB_Ring_v1" },
 	Pages = { "Trophies", "Pets", "Ring" },
@@ -66,6 +89,7 @@ local EXPECTED_CFG = {
 	PollSeconds = 5,
 	MaxValue = 1e12,
 	WriteInStudio = false,
+	RankTitles = RANK_TITLES, -- [Task 18] the titles (lb_titles checks them)
 }
 
 ----------------------------------------------------------------------------------------------------
@@ -343,7 +367,7 @@ S.lb_write = guarded("lb_write", function()
 	end
 	local Config = K.config()
 	local cfg = Config.Leaderboard
-	T.check(deepEq(cfg, EXPECTED_CFG), "lb config: Config.Leaderboard is the plan's table (Ring best, no Wins)", cfgDiff(cfg, EXPECTED_CFG))
+	T.check(deepEq(cfg, EXPECTED_CFG), "lb config: Config.Leaderboard is the plan's table (Ring best, no Wins, Task 18's RankTitles)", cfgDiff(cfg, EXPECTED_CFG))
 	local iTrove, iLb = indexOf(Config.Remotes, "TroveState"), indexOf(Config.Remotes, "LeaderboardState")
 	T.check(iTrove ~= nil and iLb == iTrove + 1 and iLb == #Config.Remotes, "lb config: remote LeaderboardState is appended right after TroveState",
 		tostring(iTrove) .. " / " .. tostring(iLb) .. " of " .. #Config.Remotes)
@@ -1224,6 +1248,310 @@ S.lb_world = guarded("lb_world", function()
 	T.check(LB._Kit == nil and workspace:FindFirstChild("NimbusLobby") == lobby and #boardsIn(lobby) == 1, "lb world: the hook is back to nil and the booted lobby is back")
 	K.flushErrors("lb_world")
 	K.flushWarnings("lb_world", ALLOWED_WARNINGS)
+end)
+
+----------------------------------------------------------------------------------------------------
+-- lb_titles (Task 18): the Trophies rank titles and the owner's Creator title, written by the server
+----------------------------------------------------------------------------------------------------
+local function attrTitle(p)
+	return p:GetAttribute("Title"), p:GetAttribute("TitleRank")
+end
+local function rankValue(p)
+	local ls = p:FindFirstChild("leaderstats")
+	return ls and ls:FindFirstChild("Rank") or nil
+end
+local function rankText(p)
+	local v = rankValue(p)
+	return v and v.Value or nil
+end
+local function statNames(p)
+	local ls = p:FindFirstChild("leaderstats")
+	if not ls then
+		return "no leaderstats"
+	end
+	local out = {}
+	for _, ch in ipairs(ls:GetChildren()) do
+		out[#out + 1] = ch.Name
+	end
+	return table.concat(out, ",")
+end
+-- "Top10/3/Top 10": the two attributes and the Rank text of a player
+local function titleText(p)
+	local kind, rank = attrTitle(p)
+	return tostring(kind) .. "/" .. tostring(rank) .. "/" .. tostring(rankText(p))
+end
+-- a 100-entry Trophies store: at[rank] = userId, every other row a stranger (70000 + rank)
+local function fillTrophies(at)
+	local store = {}
+	for i = 1, 100 do
+		store[tostring(at[i] or (70000 + i))] = 2010 - 10 * i
+	end
+	Mock.DataStore.Sorted[STORES.Trophies] = store
+end
+-- the booted service's next Trophies read, now (true once it landed)
+local function readTrophiesNow(LB)
+	local page = LB._S.Pages.Trophies
+	K.waitFor(function()
+		return page.Reading ~= true
+	end, 10)
+	page.DueAt = serverNow()
+	K.advance(1.5)
+	return page.Good == true and page.Reading ~= true
+end
+
+S.lb_titles = guarded("lb_titles", function()
+	if not K.needBoot() then
+		return
+	end
+	local Config = K.config()
+	local cfg = Config.Leaderboard
+	local LB, D, Dev = LBmod(), DS(), K.mod("DevService")
+	T.check(Config.Attr.Title == "Title" and Config.Attr.TitleRank == "TitleRank", "titles config: Config.Attr.Title = 'Title', Config.Attr.TitleRank = 'TitleRank'",
+		tostring(Config.Attr.Title) .. " / " .. tostring(Config.Attr.TitleRank))
+	local rt = type(cfg) == "table" and cfg.RankTitles or nil
+	T.check(deepEq(rt, RANK_TITLES), "titles config: Config.Leaderboard.RankTitles is spec 16.6's table",
+		type(rt) == "table" and cfgDiff(rt, RANK_TITLES) or ("RankTitles is " .. type(rt)))
+	if not T.check(type(LB) == "table" and type(LB.TitleOf) == "function" and type(LB._JoinForTest) == "function" and type(LB._S) == "table"
+		and type(LB._S.Titles) == "table" and type(LB._S.Owner) == "table" and type(LB._S.TitleWrites) == "number"
+		and type(Dev) == "table" and type(Dev.IsOwner) == "function" and type(cfg) == "table",
+		"titles: LeaderboardService.TitleOf / _JoinForTest / _S.Titles / _S.Owner / _S.TitleWrites and DevService.IsOwner exist") then
+		return
+	end
+	local Dst = DSt()
+	local saved = {
+		CreatorType = game.CreatorType, CreatorId = game.CreatorId, Admins = Config.Dev.Admins, Studio = Mock.Options.Studio,
+		GroupRanks = Mock.GroupRanks, GroupRankFail = Mock.GroupRankFail, Trophies = Dst.Sorted[STORES.Trophies], Latency = Dst.Latency,
+		Unavailable = Dst.Unavailable, OnJoin = Mock._onJoin,
+	}
+	local players, clone, conns = {}, nil, {}
+	local function track(p)
+		players[#players + 1] = p
+		return p
+	end
+	local okRun, errRun = pcall(function()
+		local errs0 = #Mock.Errors
+		------------------------------------------------------------------------------------------------
+		-- part 1: no store (the "Server" scope): no Top titles, Creator still
+		------------------------------------------------------------------------------------------------
+		local ownerId = newUserId()
+		game.CreatorType = Enum.CreatorType.User
+		game.CreatorId = ownerId
+		Dst.Unavailable = true
+		clone = newClone("LeaderboardServiceSmokeTitles")
+		local okInit = clone ~= nil and clone.mod ~= nil and pcall(clone.mod.Init, { DataService = D, DevService = Dev })
+		Dst.Unavailable = saved.Unavailable
+		if T.check(okInit and clone.mod._S.NoStore == true and clone.mod.Scope() == "Server", "titles no store: (setup) a copy with no OrderedDataStore, Scope Server") then
+			local C = clone.mod
+			local q = track(join("LbTitleQ", newUserId()))
+			local so = track(join("LbTitleOwnerS", ownerId))
+			T.check(loaded(q) and D.AddTrophies(q, 500) == true, "titles no store: (setup) Q is loaded with 500 trophies")
+			K.advance(cfg.FallbackRefresh + 1.5)
+			local qRank = C.State(q).Stats.Trophies.You.Rank
+			local kq, rq = C.TitleOf(q)
+			T.check(qRank ~= nil and kq == nil and rq == nil and titleText(q) == "nil/nil/", "titles no store: a player ranked in this server's list (Server scope) gets no Top title",
+				"server rank " .. tostring(qRank) .. ", TitleOf " .. tostring(kq) .. "/" .. tostring(rq) .. ", " .. titleText(q))
+			local ko, ro = C.TitleOf(so)
+			T.check(ko == "Creator" and ro == nil and titleText(so) == "Creator/nil/Creator", "titles no store: the owner still gets Creator (no TitleRank)",
+				tostring(ko) .. "/" .. tostring(ro) .. ", " .. titleText(so))
+			Mock.RemovePlayer(q)
+			Mock.RemovePlayer(so)
+		end
+		dropClone(clone)
+		clone = nil
+		K.advance(1)
+
+		------------------------------------------------------------------------------------------------
+		-- part 2: the booted service over a 100-entry Trophies store: ranks 3 / 57 / outside
+		------------------------------------------------------------------------------------------------
+		local a = track(join("LbTitleA", newUserId()))
+		local b = track(join("LbTitleB", newUserId()))
+		local c = track(join("LbTitleC", newUserId()))
+		T.check(titleText(a) == "nil/nil/" and titleText(b) == "nil/nil/", "titles: (setup) before the read none of them has a title", titleText(a) .. ", " .. titleText(b))
+		fillTrophies({ [3] = a.UserId, [57] = b.UserId })
+		T.check(readTrophiesNow(LB), "titles: (setup) the booted service read the 100-entry Trophies store")
+		T.eq(titleText(a), "Top10/3/Top 10", "titles: rank 3 -> Title Top10, TitleRank 3, leaderstats.Rank 'Top 10'")
+		T.eq(titleText(b), "Top100/57/Top 100", "titles: rank 57 -> Top100 / 57 / 'Top 100'")
+		T.eq(titleText(c), "nil/nil/", "titles: outside the 100 -> no title, no TitleRank, Rank ''")
+		local ka, ra = LB.TitleOf(a)
+		local kc, rc = LB.TitleOf(c)
+		T.check(ka == "Top10" and ra == 3 and kc == nil and rc == nil, "titles: TitleOf answers the kind and the rank (Top10 / 3; nil / nil)",
+			tostring(ka) .. "/" .. tostring(ra) .. "; " .. tostring(kc) .. "/" .. tostring(rc))
+		local rv = rankValue(a)
+		T.check(statNames(a) == "Tokens,Rank" and rv ~= nil and rv:IsA("StringValue"), "titles: leaderstats holds Tokens then Rank (a StringValue)", statNames(a))
+
+		------------------------------------------------------------------------------------------------
+		-- part 3: the owner of a User game, an Admin who is not the owner, ranks moving, writes only on change
+		------------------------------------------------------------------------------------------------
+		local adminId = newUserId()
+		Config.Dev.Admins = { adminId }
+		local o = track(join("LbTitleOwner", ownerId))
+		local d = track(join("LbTitleAdmin", adminId))
+		T.eq(titleText(o), "Creator/nil/Creator", "titles: the owner of a User game (UserId == CreatorId) gets Creator at join")
+		local isO, isD, allowD = Dev.IsOwner(o), Dev.IsOwner(d), Dev.IsAllowed(d)
+		T.check(isO == true and isD == false and allowD == true, "titles: DevService.IsOwner: the owner true, an Admin false (IsAllowed still lets the Admin use the tools)",
+			tostring(isO) .. " / " .. tostring(isD) .. " / " .. tostring(allowD))
+		T.eq(titleText(d), "nil/nil/", "titles: an Admin who is not the owner gets no Creator")
+		local count = {} -- [player] = Title / TitleRank attribute changes + Rank.Changed
+		local function watch(p)
+			count[p] = 0
+			conns[#conns + 1] = p.AttributeChanged:Connect(function(name)
+				if name == "Title" or name == "TitleRank" then
+					count[p] = count[p] + 1
+				end
+			end)
+			local v = rankValue(p)
+			if v then
+				conns[#conns + 1] = v.Changed:Connect(function()
+					count[p] = count[p] + 1
+				end)
+			end
+		end
+		for _, p in ipairs({ a, b, c, o, d }) do
+			watch(p)
+		end
+		local function counts()
+			return string.format("A %d, B %d, C %d, owner %d, Admin %d", count[a], count[b], count[c], count[o], count[d])
+		end
+		fillTrophies({ [3] = ownerId, [5] = adminId, [12] = a.UserId, [57] = b.UserId })
+		T.check(readTrophiesNow(LB), "titles: (setup) the next read")
+		T.eq(titleText(o), "Creator/3/Creator", "titles: the owner at rank 3 stays Creator, with TitleRank 3")
+		T.eq(titleText(a), "Top100/12/Top 100", "titles: the next read moves rank 3 to 12 -> Top100 / 12 / 'Top 100'")
+		T.eq(titleText(d), "Top10/5/Top 10", "titles: the Admin at rank 5 -> Top10, not Creator")
+		T.check(count[b] == 0 and count[c] == 0, "titles: no attribute or Rank write for the players whose title did not change (B at 57, C outside)", counts())
+		T.check(count[o] == 1 and count[a] == 3 and count[d] == 3, "titles: ...and only the changed values written (owner: TitleRank; A, Admin: Title, TitleRank, Rank)", counts())
+		local w0 = LB._S.TitleWrites
+		local before = {}
+		for p, n in pairs(count) do
+			before[p] = n
+		end
+		T.check(readTrophiesNow(LB), "titles: (setup) a read with nothing changed")
+		local same = true
+		for p, n in pairs(count) do
+			same = same and n == before[p]
+		end
+		T.check(LB._S.TitleWrites == w0 and same, "titles: a read with nothing changed writes nothing (S.TitleWrites, AttributeChanged, Rank.Changed)",
+			"TitleWrites +" .. tostring(LB._S.TitleWrites - w0) .. "; " .. counts())
+		fillTrophies({ [3] = ownerId, [5] = adminId, [57] = b.UserId })
+		T.check(readTrophiesNow(LB), "titles: (setup) the read after that")
+		T.eq(titleText(a), "nil/nil/", "titles: ...then A drops out of the 100 (3 -> 12 -> out) -> no title, Rank ''")
+
+		-- Rank missing: the attributes at once, the text at the next pass after the 10 s wait
+		local cls, crank = c:FindFirstChild("leaderstats"), rankValue(c)
+		if T.check(cls ~= nil and crank ~= nil, "titles: (setup) C has leaderstats.Rank") then
+			crank.Parent = nil
+			fillTrophies({ [3] = ownerId, [5] = adminId, [20] = c.UserId, [57] = b.UserId })
+			readTrophiesNow(LB)
+			local k1, r1 = attrTitle(c)
+			T.check(k1 == "Top100" and r1 == 20 and rankValue(c) == nil, "titles: with leaderstats.Rank missing the attributes are written at once (Top100 / 20)",
+				tostring(k1) .. "/" .. tostring(r1))
+			K.advance(11)
+			crank.Parent = cls
+			T.eq(crank.Value, "", "titles: ...the task waiting for Rank gives up after 10 s (a Rank put back later is not written by it)")
+			readTrophiesNow(LB)
+			T.eq(titleText(c), "Top100/20/Top 100", "titles: ...and the next pass writes the text")
+			T.eq(statNames(c), "Tokens,Rank", "titles: ...LeaderboardService made no Rank of its own meanwhile")
+		end
+
+		------------------------------------------------------------------------------------------------
+		-- part 4: a group game
+		------------------------------------------------------------------------------------------------
+		local G = 424242
+		local gId = newUserId()
+		Mock.GroupRanks = { [gId] = 255 }
+		Mock.GroupRankFail = true
+		game.CreatorType = Enum.CreatorType.Group
+		game.CreatorId = G
+		local g = track(join("LbTitleGroup", gId))
+		T.check(not pcall(function()
+			return g:GetRankInGroup(G)
+		end), "titles mock: Player:GetRankInGroup errors while Mock.GroupRankFail")
+		T.eq(titleText(g), "nil/nil/", "titles: a group game whose GetRankInGroup errors -> no title (and no error)")
+		local isG = Dev.IsOwner(g)
+		T.check(isG == nil, "titles: DevService.IsOwner answers nil when the group call failed", tostring(isG))
+		Mock.Options.Studio = false
+		local allowedG = Dev.IsAllowed(g)
+		Mock.Options.Studio = saved.Studio
+		T.check(allowedG == false, "titles: DevService.IsAllowed still answers a boolean (false) when the group call errors", tostring(allowedG) .. " (" .. type(allowedG) .. ")")
+		Mock.GroupRankFail = false
+		local rg, rc0 = g:GetRankInGroup(G), c:GetRankInGroup(G)
+		T.check(rg == 255 and rc0 == 0, "titles mock: GetRankInGroup answers Mock.GroupRanks[userId], else 0", tostring(rg) .. " / " .. tostring(rc0))
+		K.advance(10)
+		T.eq(g:GetAttribute("Title"), nil, "titles: a failed owner answer is not asked again before the next Trophies refresh")
+		T.check(readTrophiesNow(LB), "titles: (setup) the next Trophies refresh")
+		T.eq(titleText(g), "Creator/nil/Creator", "titles: ...asked again at the next Trophies refresh -> Creator (group rank 255)")
+
+		------------------------------------------------------------------------------------------------
+		-- part 5: LeaderboardService's join handler run before PlayerService's
+		------------------------------------------------------------------------------------------------
+		game.CreatorType = Enum.CreatorType.User
+		game.CreatorId = ownerId
+		local eId = newUserId()
+		fillTrophies({ [3] = ownerId, [5] = adminId, [8] = eId, [20] = c.UserId, [57] = b.UserId })
+		T.check(readTrophiesNow(LB), "titles order: (setup) the store ranks the next player 8th")
+		local atHand = "not run"
+		local prevJoin = Mock._onJoin
+		Mock._onJoin = function(p)
+			if prevJoin then
+				prevJoin(p)
+			end
+			if p.UserId == eId then
+				local okJ, errJ = pcall(LB._JoinForTest, p)
+				atHand = (not okJ and ("error " .. tostring(errJ))) or (p:FindFirstChild("leaderstats") and "made leaderstats") or "none"
+			end
+		end
+		local e = track(Mock.AddPlayer("LbTitleEarly" .. tostring(eId % 1000), eId))
+		Mock._onJoin = prevJoin
+		T.eq(atHand, "none", "titles order: LeaderboardService's join handler, run by hand before PlayerService's, makes no leaderstats")
+		local ke, re = attrTitle(e)
+		T.check(ke == "Top10" and re == 8, "titles order: ...it sets the attributes at once (Top10 / 8)", tostring(ke) .. "/" .. tostring(re))
+		K.advance(1.2)
+		T.eq(statNames(e), "Tokens,Rank", "titles order: ...leaderstats still holds Tokens then Rank")
+		T.eq(rankText(e), "Top 10", "titles order: ...and Rank holds the title's text once PlayerService made it")
+
+		------------------------------------------------------------------------------------------------
+		-- part 6: a player leaving while a Trophies read is in flight (Review Focus 5)
+		------------------------------------------------------------------------------------------------
+		Dst.Latency = 2
+		local page = LB._S.Pages.Trophies
+		page.DueAt = serverNow()
+		K.advance(1.1)
+		T.check(page.Reading == true, "titles churn: (setup) a Trophies read is in flight (the store takes 2 s)")
+		Mock.RemovePlayer(b)
+		K.advance(3)
+		Dst.Latency = saved.Latency
+		T.check(page.Reading ~= true and LB._S.Titles[b] == nil and LB._S.Owner[b] == nil,
+			"titles churn: a player leaving while a Trophies read is in flight: S.Titles / S.Owner dropped and not made again by the refresh")
+		T.check(LB._S.Titles[a] ~= nil and LB._S.Titles[o] ~= nil, "titles churn: ...the players still here keep their records")
+		T.eq(#Mock.Errors, errs0, "titles: nothing raised")
+	end)
+	for _, conn in ipairs(conns) do
+		pcall(function()
+			conn:Disconnect()
+		end)
+	end
+	dropClone(clone)
+	Mock._onJoin = saved.OnJoin
+	game.CreatorType = saved.CreatorType
+	game.CreatorId = saved.CreatorId
+	Config.Dev.Admins = saved.Admins
+	Mock.Options.Studio = saved.Studio
+	Mock.GroupRanks = saved.GroupRanks
+	Mock.GroupRankFail = saved.GroupRankFail
+	Dst.Latency = saved.Latency
+	Dst.Unavailable = saved.Unavailable
+	Dst.Sorted[STORES.Trophies] = saved.Trophies
+	for _, p in ipairs(players) do
+		if p.Parent then
+			Mock.RemovePlayer(p)
+		end
+	end
+	K.advance(1)
+	pcall(readTrophiesNow, LB) -- the booted page back from the restored store
+	if not okRun then
+		error(errRun, 0)
+	end
+	K.flushErrors("lb_titles")
+	K.flushWarnings("lb_titles", ALLOWED_WARNINGS)
 end)
 
 return S

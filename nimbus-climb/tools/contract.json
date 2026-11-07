@@ -1218,13 +1218,24 @@
       }
     },
     "server/Services/LeaderboardService": {
-      "_comment": "lobby shop (2026-11-07) Task 9: the global leaderboard (spec 5.10 with section 15: Trophies, Pets found, Ring best), OrderedDataStore writes / reads, the this-server fallback, LeaderboardState",
+      "_comment": "lobby shop (2026-11-07) Task 9: the global leaderboard (spec 5.10 with section 15: Trophies, Pets found, Ring best), OrderedDataStore writes / reads, the this-server fallback, LeaderboardState; Task 18: TitleOf (the rank titles, spec 16.6)",
       "optional": true,
       "functions": [
         "Init",
         "ValueOf",
         "State",
-        "Scope"
+        "Scope",
+        "TitleOf"
+      ]
+    },
+    "server/Services/DevService": {
+      "_comment": "owner-only developer tools (Config.Dev); lobby shop (2026-11-07) Task 18 adds IsOwner (the game's owner only: the Creator title, spec 16.6)",
+      "optional": true,
+      "functions": [
+        "Init",
+        "IsAllowed",
+        "Run",
+        "IsOwner"
       ]
     },
     "server/Services/TroveService": {

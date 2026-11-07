@@ -26,14 +26,28 @@
 -- and when the player's own values change (DataService has no signal for them: a PollSeconds poll of the live values).
 -- NextAt / UpdatedAt are workspace:GetServerTimeNow() times (the client counts down on the same clock).
 --
+-- Titles (spec 16.6, Config.Leaderboard.RankTitles): only this service writes them, only from what the server read. The
+-- rank is the player's index in the good page of RankTitles.Stat (Trophies), up to Gold; none before the first good page,
+-- with no store, or outside the read (the other pages and the board's Scope do not matter). Creator: DevService.IsOwner
+-- (the game's creator or the owning group's owner; never Config.Dev.Admins or Studio), asked once per join in a task;
+-- a nil answer (the group call failed) is asked again at the next title refresh. Kind: Creator wins (TitleRank still set),
+-- else rank <= Rainbow -> "Top10", rank <= Gold -> "Top100". applyTitle writes only what changed: the attributes
+-- Config.Attr.Title / TitleRank and leaderstats.<Column>.Value = ColumnText[kind] or "". PlayerService makes leaderstats
+-- and its values (Tokens, then Rank); this service never does: while the Rank value is missing one task waits for it
+-- (RANK_WAIT s), else the next pass writes it. Passes: Players.PlayerAdded (titles need no profile), the owner's answer,
+-- every player after each good read of the title stat, and (with no store, so no reads) each "Server" rebuild. A leave
+-- drops the player's entries; each refresh also drops the entries of players no longer in the server.
+--
 -- Public API
---   LeaderboardService.Init(deps)            deps = { DataService }
+--   LeaderboardService.Init(deps)            deps = { DataService, DevService }
+--   LeaderboardService.TitleOf(player) -> kind ("Creator" | "Top10" | "Top100") | nil, rank (1..Gold) | nil  (read only)
 --   LeaderboardService.ValueOf(player, stat) -> whole number | nil
 --   LeaderboardService.State(player) -> { Stats = { [stat] = { Top = { { UserId, Name, Value }... <= Top },
 --                                                              You = { Rank = n | nil, Value = n | nil } } },
 --                                         Scope = "Global" | "Server", NextAt, UpdatedAt }
 --   LeaderboardService.Scope() -> "Global" | "Server"
 --   LeaderboardService._S, _StopForTest(), _CloseForTest()   (smoke tests: a stopped copy drops its connections and loops)
+--   LeaderboardService._JoinForTest(player)  (smoke lb_titles: the titles' PlayerAdded handler, run by hand)
 --
 -- Plain Lua 5.1-compatible syntax only.
 
@@ -54,9 +68,11 @@ local LeaderboardService = {}
 local TICK = 1 -- seconds between two passes of the scheduler (reads, the Server refresh, seeds, sweeps)
 local BOOT_GAP = 3 -- seconds between the boot reads of two stats (the first BOOT_GAP s after Init)
 local CLOSE_SECONDS = 5 -- BindToClose waits at most this long for its writes
+local RANK_WAIT = 10 -- seconds a title waits for PlayerService's leaderstats.Rank before the next pass takes over
 
 local S = {
 	DS = nil,
+	Dev = nil, -- DevService (IsOwner: the Creator title)
 	Started = false,
 	Stopped = false,
 	Closing = false,
@@ -70,6 +86,9 @@ local S = {
 	SweepDueAt = 0,
 	InFlight = 0, -- write batches still running
 	Writes = 0, -- SetAsync calls made (tests)
+	Titles = {}, -- [player] = { Kind, Rank, Waiting }: the title last written (Waiting: a task waits for leaderstats.Rank)
+	Owner = {}, -- [player] = true | false (DevService.IsOwner's answer) | "asking"; absent: not asked yet, or it failed
+	TitleWrites = 0, -- title attribute / Rank writes made (tests)
 	Conns = {},
 }
 LeaderboardService._S = S
@@ -371,6 +390,142 @@ local function resolveNames(entries)
 	end
 end
 
+----------------------------------------------------------------------
+-- titles (spec 16.6)
+----------------------------------------------------------------------
+local function titleCfg()
+	local t = cfg().RankTitles
+	return type(t) == "table" and t or {}
+end
+
+-- the player's index in the good page of the title stat (1 .. Gold), or nil (no good page yet, no store, outside)
+local function titleRank(player)
+	local tc = titleCfg()
+	local page = S.Pages[tc.Stat or "Trophies"]
+	if S.NoStore or not page or not page.Good or type(page.Entries) ~= "table" then
+		return nil
+	end
+	local gold = tonumber(tc.Gold) or 100
+	for i, e in ipairs(page.Entries) do
+		if i > gold then
+			return nil
+		end
+		if e.UserId == player.UserId then
+			return i
+		end
+	end
+	return nil
+end
+
+-- kind ("Creator" | "Top10" | "Top100" | nil), rank: Creator wins over a rank (the rank is still given)
+local function titleKind(player)
+	local rank = titleRank(player)
+	if S.Owner[player] == true then
+		return "Creator", rank
+	end
+	if rank then
+		return (rank <= (tonumber(titleCfg().Rainbow) or 10)) and "Top10" or "Top100", rank
+	end
+	return nil, nil
+end
+
+-- One player's title, written only where it changed: the two attributes and leaderstats.<Column>'s text. PlayerService
+-- makes leaderstats and the Rank value; while it is missing one task waits RANK_WAIT s for it, else the next pass writes.
+local function applyTitle(player)
+	if S.Stopped or not isPlayer(player) or player.Parent ~= Players then
+		return
+	end
+	local rec = S.Titles[player]
+	if not rec then
+		rec = { Kind = nil, Rank = nil, Waiting = false }
+		S.Titles[player] = rec
+	end
+	local tc = titleCfg()
+	local kind, rank = titleKind(player)
+	rec.Kind, rec.Rank = kind, rank
+	local attr = type(Config.Attr) == "table" and Config.Attr or {}
+	local titleAttr, rankAttr = attr.Title or "Title", attr.TitleRank or "TitleRank"
+	if player:GetAttribute(titleAttr) ~= kind then
+		player:SetAttribute(titleAttr, kind)
+		S.TitleWrites = S.TitleWrites + 1
+	end
+	if player:GetAttribute(rankAttr) ~= rank then
+		player:SetAttribute(rankAttr, rank)
+		S.TitleWrites = S.TitleWrites + 1
+	end
+	local text = kind and type(tc.ColumnText) == "table" and tc.ColumnText[kind] or ""
+	local column = tc.Column or "Rank"
+	local folder = player:FindFirstChild("leaderstats")
+	local value = folder and folder:FindFirstChild(column)
+	if value and value:IsA("StringValue") then
+		if value.Value ~= text then
+			value.Value = text
+			S.TitleWrites = S.TitleWrites + 1
+		end
+	elseif not value and not rec.Waiting then
+		rec.Waiting = true
+		task.spawn(function()
+			local t0 = now()
+			local ok, found = pcall(function()
+				local stats = player:WaitForChild("leaderstats", RANK_WAIT)
+				local left = RANK_WAIT - (now() - t0)
+				return stats and left > 0 and stats:WaitForChild(column, left) or nil
+			end)
+			rec.Waiting = false
+			if ok and found and S.Titles[player] == rec then
+				applyTitle(player)
+			end
+		end)
+	end
+end
+
+-- DevService.IsOwner, asked once per join in its own task (a group game's rank is a web call); a nil answer (the call
+-- failed) is asked again at the next title refresh
+local function askOwner(player)
+	local dev = S.Dev
+	if S.Owner[player] ~= nil or type(dev) ~= "table" or type(dev.IsOwner) ~= "function" then
+		return
+	end
+	S.Owner[player] = "asking"
+	task.spawn(function()
+		local ok, answer = pcall(dev.IsOwner, player)
+		if S.Owner[player] ~= "asking" then
+			return -- the player left meanwhile (their entry was dropped)
+		end
+		if ok and type(answer) == "boolean" and player.Parent == Players then
+			S.Owner[player] = answer
+		else
+			S.Owner[player] = nil
+		end
+		applyTitle(player)
+	end)
+end
+
+-- After each good read of the title stat (and with no store at each "Server" rebuild): drops the entries of players who
+-- left, asks the owner again where the last answer failed, writes every player's title.
+local function refreshTitles()
+	for _, map in ipairs({ S.Titles, S.Owner }) do
+		for player in pairs(map) do
+			if not isPlayer(player) or player.Parent ~= Players then
+				map[player] = nil
+			end
+		end
+	end
+	for _, player in ipairs(Players:GetPlayers()) do
+		askOwner(player)
+		applyTitle(player)
+	end
+end
+
+-- Players.PlayerAdded (and the players already here at Init)
+local function onTitleJoin(player)
+	if S.Stopped or not isPlayer(player) then
+		return
+	end
+	askOwner(player)
+	applyTitle(player)
+end
+
 local function readStat(stat)
 	local page = S.Pages[stat]
 	if budget("GetSortedAsync") < floorOf("Read", 2) then
@@ -393,6 +548,12 @@ local function readStat(stat)
 		page.UpdatedAt = now()
 		page.DueAt = page.UpdatedAt + num("RefreshSeconds", 240)
 		page.Reading = false
+		if stat == (titleCfg().Stat or "Trophies") then
+			local okTitles, errTitles = pcall(refreshTitles)
+			if not okTitles then
+				warn("[LeaderboardService] titles failed: " .. tostring(errTitles))
+			end
+		end
 		sendAll()
 	else
 		page.Fails = page.Fails + 1
@@ -432,6 +593,9 @@ local function step()
 	end
 	if LeaderboardService.Scope() == "Server" and t >= S.FallbackDueAt then
 		rebuildServer()
+		if S.NoStore then
+			refreshTitles() -- no reads without a store: an owner answer that failed is asked again here
+		end
 		sendAll()
 	end
 	if writesAllowed() and not S.Closing then
@@ -465,6 +629,8 @@ local function poll()
 end
 
 local function onLeave(player)
+	S.Titles[player] = nil
+	S.Owner[player] = nil -- an owner ask still running sees its entry gone and stops
 	local rec = S.Recs[player]
 	if not rec then
 		return
@@ -556,9 +722,19 @@ function LeaderboardService.State(player)
 	return out
 end
 
+-- the title as last written: kind ("Creator" | "Top10" | "Top100" | nil), rank (1..Gold | nil); read only
+function LeaderboardService.TitleOf(player)
+	local rec = S.Titles[player]
+	if not rec then
+		return nil, nil
+	end
+	return rec.Kind, rec.Rank
+end
+
 function LeaderboardService.Init(deps)
 	deps = type(deps) == "table" and deps or {}
 	S.DS = deps.DataService or S.DS
+	S.Dev = deps.DevService or S.Dev
 	if S.Started then
 		return
 	end
@@ -594,10 +770,12 @@ function LeaderboardService.Init(deps)
 		end)
 	end
 	S.Conns[#S.Conns + 1] = Players.PlayerRemoving:Connect(onLeave)
+	S.Conns[#S.Conns + 1] = Players.PlayerAdded:Connect(onTitleJoin)
 	for _, player in ipairs(Players:GetPlayers()) do
 		if profileOf(player) and track(player) then
 			send(player)
 		end
+		onTitleJoin(player)
 	end
 	pcall(function()
 		game:BindToClose(close)
@@ -640,6 +818,11 @@ end
 -- tests: what BindToClose runs
 function LeaderboardService._CloseForTest()
 	close()
+end
+
+-- tests: the titles' PlayerAdded handler, run by hand (lb_titles runs it before PlayerService's handler)
+function LeaderboardService._JoinForTest(player)
+	onTitleJoin(player)
 end
 
 return LeaderboardService

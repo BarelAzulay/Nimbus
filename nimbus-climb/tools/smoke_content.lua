@@ -1000,6 +1000,13 @@ S.config_shape = guarded("config_shape", function()
 	T.check(chartOk, "Config.Elements.Strong is the wheel (each beats the next) plus the Celestial <-> Shadow pair")
 	T.check(E.StrongMultiplier == CONTRACT.v3.elements.strong and E.WeakMultiplier == CONTRACT.v3.elements.weak, "element damage: strong x" .. CONTRACT.v3.elements.strong .. ", weak x" .. CONTRACT.v3.elements.weak)
 	T.eq(Config.Art.StormfangImage, CONTRACT.v3.artImage, "Config.Art.StormfangImage is the player's uploaded Stormfang sheet")
+	-- [lobby-shop, Task 18] spec 16.6 "Config": a title rank always lies inside the leaderboard's read (Gold <= ReadSize)
+	local lbc = Config.Leaderboard
+	local rankTitles = type(lbc) == "table" and lbc.RankTitles or nil
+	T.check(type(rankTitles) == "table" and type(rankTitles.Rainbow) == "number" and type(rankTitles.Gold) == "number" and type(lbc.ReadSize) == "number"
+		and rankTitles.Rainbow >= 1 and rankTitles.Rainbow < rankTitles.Gold and rankTitles.Gold <= lbc.ReadSize,
+		"Config.Leaderboard.RankTitles: 1 <= Rainbow < Gold <= ReadSize (every title rank is inside the 100 read)",
+		type(rankTitles) == "table" and (tostring(rankTitles.Rainbow) .. " / " .. tostring(rankTitles.Gold) .. " / " .. tostring(lbc.ReadSize)) or "no RankTitles")
 	flushErrors("config_shape")
 end)
 

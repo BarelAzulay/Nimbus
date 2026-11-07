@@ -297,8 +297,9 @@ call("DamageService.Init", DamageService, "Init")
 call("TokenService.Init", TokenService, "Init")
 call("DataService.StartAutosave", DataService, "StartAutosave")
 call("DataService.BindToClose", DataService, "BindToClose")
--- lobby shop (spec 5.10): the global leaderboard listens to ProfileLoaded, so it starts before PlayerService loads profiles
-if LeaderboardService then call("LeaderboardService.Init", LeaderboardService, "Init", { DataService = DataService }) end
+-- lobby shop (spec 5.10): the global leaderboard listens to ProfileLoaded, so it starts before PlayerService loads profiles;
+-- spec 16.6: it writes the rank titles, and DevService.IsOwner (needs no DevService.Init) decides the Creator title
+if LeaderboardService then call("LeaderboardService.Init", LeaderboardService, "Init", { DataService = DataService, DevService = DevService }) end
 
 ----------------------------------------------------------------------
 -- 3. Economy + spots (subscribe to profile events BEFORE PlayerService starts loading profiles)

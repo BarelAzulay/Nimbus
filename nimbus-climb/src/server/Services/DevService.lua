@@ -8,6 +8,10 @@
 --                                                  ProfileRebased refreshes its attributes; PetService.Refresh after
 --                                                  /petlevel republishes EquippedInfo)
 --   DevService.IsAllowed(player) -> bool           may yield ONCE per player for a group-owned game (group rank)
+--   DevService.IsOwner(player) -> true | false | nil   the game's owner only (no Admins, no Studio rule): nil while a
+--                                                  group game's rank could not be read (asked again next time); may
+--                                                  yield like IsAllowed (lobby shop spec 16.6: LeaderboardService's
+--                                                  Creator title; not reachable from a client)
 --   DevService.Run(player, command, arg, source) -> ok, message
 --                                                  the ONE entry point of the DevCommand remote and of chat:
 --                                                  rate limit, permission check, validation, then the command
@@ -394,8 +398,8 @@ end
 -- Who may use the tools
 ----------------------------------------------------------------------
 
--- Owner of a group-owned game: rank 255 in that group. GetRankInGroup is a web call, so it runs in a pcall and
--- only a real answer is cached (a failure is tried again on the next command).
+-- Owner of a group-owned game: rank 255 in that group -> true | false | nil. GetRankInGroup is a web call, so it runs in
+-- a pcall and only a real answer is cached; a failure answers nil (unknown: tried again on the next command or ask).
 local function isGroupOwner(player, groupId)
 	if type(groupId) ~= "number" or groupId <= 0 then
 		return false
@@ -409,7 +413,7 @@ local function isGroupOwner(player, groupId)
 	end)
 	if not ok then
 		print(TAG .. "could not read the group rank of " .. who(player) .. ": " .. tostring(rank))
-		return false
+		return nil
 	end
 	local owner = rank == GROUP_OWNER_RANK
 	if player.Parent == Players then
@@ -459,6 +463,15 @@ function DevService.IsAllowed(player)
 	end
 	if isAdmin(player, dev.Admins) then
 		return true
+	end
+	return isOwner(player) == true -- a group rank that could not be read (nil) is "not allowed" for now
+end
+
+-- The game's owner only (lobby shop spec 16.6, the Creator title): a User game's creator, or rank 255 in the group that
+-- owns a group game. Never Config.Dev.Admins, never Studio's AllowInStudio, works with the tools switched off.
+function DevService.IsOwner(player)
+	if not isLivePlayer(player) then
+		return false
 	end
 	return isOwner(player)
 end

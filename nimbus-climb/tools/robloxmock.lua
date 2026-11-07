@@ -5243,8 +5243,16 @@ defclass("Player", "Instance", {
 		IsInGroup = function()
 			return false
 		end,
-		GetRankInGroup = function()
-			return 0
+		-- [lobby-shop, Task 18] Mock.GroupRanks[userId] (any group) or 0; errors while Mock.GroupRankFail (a web call that
+		-- failed); Mock.GroupRankCalls counts the calls. Tests may still replace this method outright (smoke_dev).
+		GetRankInGroup = function(self)
+			Mock.GroupRankCalls = (Mock.GroupRankCalls or 0) + 1
+			if Mock.GroupRankFail then
+				error("Player:GetRankInGroup() failed: HTTP 503 (Mock.GroupRankFail)", 2)
+			end
+			local ranks = Mock.GroupRanks
+			local rank = rawtype(ranks) == "table" and ranks[self[STATE].props.UserId] or nil
+			return rawtype(rank) == "number" and rank or 0
 		end,
 		GetRoleInGroup = function()
 			return "Guest"
@@ -6654,6 +6662,10 @@ service("GroupService", { props = { PromptJoinAsync = T.any(function() return En
 Mock.Users = Mock.Users or {}
 Mock.UserServiceFail = false
 Mock.UserServiceCalls = 0
+-- [lobby-shop, Task 18] Player:GetRankInGroup's doubles (the owner check of a group game): [userId] = rank
+Mock.GroupRanks = Mock.GroupRanks or {}
+Mock.GroupRankFail = false
+Mock.GroupRankCalls = 0
 service("UserService", {
 	methods = {
 		GetUserInfosByUserIdsAsync = function(self, ids)

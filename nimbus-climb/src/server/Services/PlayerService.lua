@@ -1,6 +1,8 @@
 -- PlayerService: per-player lifecycle, spawn placement, humanoid setup, leaderstats, lobby rules.
 --
--- * PlayerAdded: attributes, leaderstats, saved profile (via DataService).
+-- * PlayerAdded: attributes, leaderstats, saved profile (via DataService). PlayerService is the only maker of
+--   leaderstats and its values: Tokens (an IntValue), then Rank (a StringValue, "" until LeaderboardService writes the
+--   player's title text; lobby shop spec 16.6), both made synchronously before the data load.
 -- * CharacterAdded: perk-aware humanoid stats, placement, brief spawn i-frames.
 --     placement order: spawn provider (match checkpoint) -> own spot (lobby respawns only)
 --                      -> scattered plaza spawn (first spawn, or no spot).
@@ -496,6 +498,16 @@ local function setupPlayer(player)
 		tokensValue.Name = "Tokens"
 		tokensValue.Value = 0
 		tokensValue.Parent = stats
+	end
+	-- leaderstats.Rank (lobby shop spec 16.6): the title as plain text ("" without one), right after Tokens so the player
+	-- list still sorts by Tokens. Made here only; LeaderboardService writes its text.
+	local titles = type(Config.Leaderboard) == "table" and Config.Leaderboard.RankTitles
+	local rankName = type(titles) == "table" and type(titles.Column) == "string" and titles.Column or "Rank"
+	if not stats:FindFirstChild(rankName) then
+		local rankValue = Instance.new("StringValue")
+		rankValue.Name = rankName
+		rankValue.Value = ""
+		rankValue.Parent = stats
 	end
 
 	table.insert(
