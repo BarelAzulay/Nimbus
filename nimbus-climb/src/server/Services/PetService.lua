@@ -89,8 +89,16 @@
 --      Stats.Spins += spins, the Secret pity (DataService.SetPity), MarkDirty;
 --   6. after the step, each in its own pcall (a failure is logged and never undoes the grant): refreshPlayer, the
 --      SecretPityLeft attribute (a Secret Roulette spin), the first pet ever into the active team (SetTeam), one Sync,
---      the RouletteResult reply, Rolled:Fire per pull (a substitute fires with its rolled pet), the announcement (per
---      pull, Rare and up, until lobby-shop Task 6).
+--      the RouletteResult reply, Rolled:Fire per pull (a substitute fires with its rolled pet), the announcement (one
+--      per request, see below).
+-- The announcement (spec 5.5): one server chat line per request, for Legendary and up only (ANNOUNCE_ORDER): the best
+-- pull of the request (the highest rarity, the first on ties; a substitute counts with its rolled pet) is named, N = its
+-- other Legendary-or-better pulls: "<DisplayName> hatched a <Rarity> <Pet name>!" plus " (+N more)" when N > 0, as
+-- Notify kind "pull" (the client shows it as a system chat line). The other players get it at once, the puller after
+-- ANNOUNCE_DELAY (his reveal plays first). At most one line per player every ANNOUNCE_GAP: a request inside the gap
+-- is held and every held request goes out as ONE line when the gap ends (the best held pull named, (+N more) counting
+-- every other held Legendary-or-better pull), so an x3 spender cannot flood the chat. A held line of a player who
+-- leaves is dropped. The text is built here from the DisplayName and the catalog name only.
 -- The Secret pity (spec 5.2): Config.Gems.SecretRoulette.PityAt (7) = the 7th Secret Roulette spin in a row without a
 -- Secret is a Secret. The count is the save's Pity.Secret = { Spins, Hit } (Since = max(0, Spins - Hit)): a spin is
 -- forced when Since >= PityAt - 1; every spin adds 1 to Spins (a substitute too); a Secret pull (natural, forced or a
@@ -152,6 +160,7 @@ local WIN_INDEX = 34
 local REMOTE_COOLDOWN = 0.25 -- seconds per player per remote
 local PROMPT_COOLDOWN = 0.5
 local ANNOUNCE_DELAY = 5 -- seconds before the puller sees their own server-wide announcement
+local ANNOUNCE_GAP = 10 -- seconds: at most one announcement per player in this time (later requests are held, then sent as one)
 local MAX_ID_LENGTH = 48
 local PROMPT_NAME = "RoulettePrompt"
 local HYBRID_ATTR = "EquippedHybrids" -- not in Config.Attr (lead-owned): the looks of equipped hybrids, see the header
@@ -211,9 +220,10 @@ local rarityOrder = {} -- [rarityId] = Order
 for _, entry in ipairs(Config.Rarities) do
 	rarityOrder[entry.Id] = entry.Order
 end
-local ANNOUNCE_ORDER = rarityOrder.Rare or 3
+local ANNOUNCE_ORDER = rarityOrder.Legendary or 5 -- lobby-shop spec 5.5: Legendary, Mythic and Secret pulls are announced
 
 local perkState = {} -- [player] = { Perks = {...} }
+local announceHold = {} -- [player] = { At = os.clock() of the last line, Held = { Def, Order, More } | nil }: announcePulls
 local lastCall = {} -- [player] = { [key] = os.clock() }
 local infoState = {} -- [player] = { At = os.clock() of the last EquippedInfo write, Pending = true while a deferred write waits }
 local INFO_GAP = 0.5 -- EquippedInfo is written at most this often per player (level-up bursts coalesce)
@@ -821,22 +831,65 @@ local function buildStrip(rouletteId, resultId, roll)
 	return strip
 end
 
--- Tells the server about a rare pull. Everybody else sees it at once; the puller sees it after
--- the reveal animation so it does not spoil the result.
-local function announcePull(player, def)
-	local order = rarityOrder[def.Rarity] or 0
-	if order < ANNOUNCE_ORDER then
-		return
-	end
-	local text = player.DisplayName .. " pulled " .. def.Name .. "!"
-	for _, other in ipairs(Players:GetPlayers()) do
-		if other ~= player then
-			notify(other, text, "good", 4)
+-- The announcement of one request (see the header, spec 5.5): its best Legendary-or-better pull named, the others
+-- counted. Everybody else sees the line at once; the puller after the reveal so it does not spoil the result. A request
+-- inside the player's ANNOUNCE_GAP joins the held line, sent once when the gap ends. Runs after the money step.
+local function announcePulls(player, pulls)
+	local best, bestOrder, count = nil, 0, 0
+	for _, pull in ipairs(pulls) do
+		local def = PetCatalog.Get(pull.PetId)
+		local order = def and rarityOrder[def.Rarity] or 0
+		if order >= ANNOUNCE_ORDER then
+			count = count + 1
+			if order > bestOrder then -- strictly higher: ties keep the first
+				best, bestOrder = def, order
+			end
 		end
 	end
-	task.delay(ANNOUNCE_DELAY, function()
-		if player.Parent then
-			notify(player, text, "good", 4)
+	if not best then
+		return
+	end
+	local state = announceHold[player]
+	if not state then
+		state = {}
+		announceHold[player] = state
+	end
+	local held = state.Held
+	if held then
+		if bestOrder > held.Order then -- the held pull came first: it keeps a tie
+			held.Def, held.Order = best, bestOrder
+		end
+		held.More = held.More + count
+		return
+	end
+	local function send(def, more)
+		state.At = os.clock()
+		local text = player.DisplayName .. " hatched a " .. def.Rarity .. " " .. def.Name .. "!"
+		if more > 0 then
+			text = text .. " (+" .. more .. " more)"
+		end
+		for _, other in ipairs(Players:GetPlayers()) do
+			if other ~= player then
+				notify(other, text, "pull", 4)
+			end
+		end
+		task.delay(ANNOUNCE_DELAY, function()
+			if player.Parent then
+				notify(player, text, "pull", 4)
+			end
+		end)
+	end
+	local gapLeft = state.At and state.At + ANNOUNCE_GAP - os.clock() or 0
+	if gapLeft <= 0 then
+		send(best, count - 1)
+		return
+	end
+	state.Held = { Def = best, Order = bestOrder, More = count - 1 }
+	task.delay(gapLeft, function()
+		local line = state.Held
+		state.Held = nil
+		if line and announceHold[player] == state and isLivePlayer(player) then -- dropped when he left meanwhile
+			send(line.Def, line.More)
 		end
 	end)
 end
@@ -1246,11 +1299,9 @@ function PetService.BuyRoulette(player, rouletteId, currency, spins)
 			PetService.Rolled:Fire(player, pull.PetId) -- a substitute pull fires with its rolled pet (tutorial, Index)
 		end }
 	end
-	for _, pull in ipairs(pulls) do
-		after[#after + 1] = { "announce", function()
-			announcePull(player, PetCatalog.Get(pull.PetId))
-		end }
-	end
+	after[#after + 1] = { "announce", function()
+		announcePulls(player, pulls) -- one line per request, Legendary and up (spec 5.5)
+	end }
 	for _, call in ipairs(after) do
 		local ok, err = pcall(call[2])
 		if not ok then
@@ -1509,6 +1560,7 @@ local function connectPlayers()
 		perkState[player] = nil
 		lastCall[player] = nil
 		infoState[player] = nil
+		announceHold[player] = nil -- a held announcement of his is dropped (its timer finds no state)
 	end)
 end
 

@@ -10,6 +10,11 @@
 --                                    bar + icon by kind (info|good|bad|token). Identical toasts that are still
 --                                    showing are merged into "text x2". A toast the column has no room for
 --                                    (a short landscape phone fits one) waits and shows once room frees up.
+--                                    Kind "pull" (lobby-shop spec 5.5, the server's Legendary+ hatch line
+--                                    "<Name> hatched a <Rarity> <Pet>!") is a system chat line instead:
+--                                    TextChatService.TextChannels.RBXSystem:DisplaySystemMessage, rich text
+--                                    escaped, the rarity word in its Config.Rarities colour; no channel (the
+--                                    legacy chat, not replicated yet) or an error -> a "good" toast.
 --   MatchResult(result)           -> compact result card on the right edge (about 45% down): VICTORY!/DEFEAT in
 --                                    the Title font with a gradient, difficulty + stars, time, tokens, bonus,
 --                                    a small member list and a "Back to lobby in Ns" line. It closes when the
@@ -1257,7 +1262,42 @@ end
 ----------------------------------------------------------------------
 -- Remote handlers + wiring
 ----------------------------------------------------------------------
+-- Kind "pull": the line into the system chat (RBXSystem), the rarity word after the last " hatched a " coloured by
+-- Config.Rarities. Answers true when it went to the chat; never yields (FindFirstChild, no WaitForChild).
+local function pullToChat(text)
+	local channels = game:GetService("TextChatService"):FindFirstChild("TextChannels")
+	local channel = channels and channels:FindFirstChild("RBXSystem")
+	if not (channel and channel:IsA("TextChannel")) then
+		return false
+	end
+	local line = text:gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;")
+	local at, from = nil, 1
+	while true do -- the last " hatched a " (a display name could hold the words too)
+		local s, e = string.find(line, " hatched a ", from, true)
+		if not s then
+			break
+		end
+		at, from = e, e + 1
+	end
+	local word = at and string.match(line, "^(%a+)", at + 1)
+	for _, rarity in ipairs(Config.Rarities) do
+		if word and rarity.Id == word and typeof(rarity.Color) == "Color3" then
+			line = string.sub(line, 1, at) .. '<font color="' .. hex(rarity.Color) .. '">' .. word .. "</font>" .. string.sub(line, at + 1 + #word)
+			break
+		end
+	end
+	channel:DisplaySystemMessage(line)
+	return true
+end
+
 local function onNotify(text, kind, duration)
+	if kind == "pull" then
+		local ok, shown = pcall(pullToChat, tostring(text))
+		if ok and shown then
+			return
+		end
+		kind = "good" -- no chat channel (or it failed): today's toast
+	end
 	addToast(text, kind, duration)
 end
 

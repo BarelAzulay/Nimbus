@@ -951,26 +951,58 @@ S.economy = guarded("economy", function()
 	end
 	T.check(total == 2 + 40, "every pull ended up in Profile.Pets", total .. " pets owned")
 
-	-- rare pulls are announced to the others
+	-- Legendary-and-up pulls are announced to the others as one chat line per request (lobby-shop spec 5.5: Notify kind
+	-- "pull", "<DisplayName> hatched a <Rarity> <Pet>!", at most one line per player every 10 s)
 	local witness = freshPlayers(1, "Witness")[1]
-	local rare = petOfRarity("Rare", 1)
-	mark = logSize()
-	setTokens(p, 1000)
-	withRoll(rare, function()
-		PS.BuyRoulette(p, cloud.Id)
+	local function pullLines(who, from)
+		local out = {}
+		for _, e in ipairs(remotesFor("Notify", who.UserId, from)) do
+			if e.args[2] == "pull" then
+				out[#out + 1] = tostring(e.args[1])
+			end
+		end
+		return out
+	end
+	local legendary = petOfRarity("Legendary", 1)
+	local def = PC.Get(legendary)
+	local hatchLine = p.DisplayName .. " hatched a Legendary " .. def.Name .. "!"
+	local legendRoulette = nil -- a roulette that can drop a Legendary (its strips must hold pets it can roll)
+	for _, r in ipairs(Config.Roulettes) do
+		if not legendRoulette and (tonumber(r.Odds.Legendary) or 0) > 0 then
+			legendRoulette = r
+		end
+	end
+	local mark0 = logSize()
+	mark = mark0
+	setTokens(p, 5 * legendRoulette.Price)
+	withRoll(legendary, function()
+		PS.BuyRoulette(p, legendRoulette.Id)
 	end)
 	advance(0.3)
-	local def = PC.Get(rare)
-	T.check(notified(witness, "pulled", "good", mark) and notified(witness, def.Name, "good", mark), "a Rare+ pull is announced to everyone else ('<Name> pulled <Pet>!')")
-	T.check(not notified(p, "pulled", nil, mark), "...but the puller sees it only after the reveal")
+	local seen = pullLines(witness, mark)
+	T.check(#seen == 1 and seen[1] == hatchLine, "a Legendary pull is announced to everyone else as one line kind 'pull' ('" .. hatchLine .. "')", table.concat(seen, " | "))
+	T.eq(#pullLines(p, mark), 0, "...but the puller sees it only after the reveal")
 	advance(5.5)
-	T.check(notified(p, "pulled", "good", mark), "...the puller gets it ~5 s later")
+	seen = pullLines(p, mark)
+	T.check(#seen == 1 and seen[1] == hatchLine, "...the puller gets the same line ~5 s later", table.concat(seen, " | "))
 	mark = logSize()
-	withRoll(common, function()
+	withRoll(petOfRarity("Rare", 1), function()
 		PS.BuyRoulette(p, cloud.Id)
 	end)
 	advance(6)
-	T.check(not notified(witness, "pulled", nil, mark), "a Common pull is not announced")
+	T.eq(#pullLines(witness, mark), 0, "a Rare pull is not announced any more (Legendary and up only)")
+	-- the 10 s gap after the first line has ended (5.8 + 6 s): an x3 of three Legendary pulls is ONE line
+	mark = logSize()
+	withRoll(legendary, function()
+		PS.BuyRoulette(p, legendRoulette.Id, nil, 3)
+	end)
+	advance(0.3)
+	seen = pullLines(witness, mark)
+	T.check(#seen == 1 and seen[1] == hatchLine .. " (+2 more)", "an x3 of three Legendary pulls is announced once per request: '... (+2 more)'", table.concat(seen, " | "))
+	advance(5.5)
+	seen = pullLines(p, mark)
+	T.check(#seen == 1 and seen[1] == hatchLine .. " (+2 more)", "...and the puller's delayed copy is that one line too", table.concat(seen, " | "))
+	T.check(not notified(witness, "pulled", nil, mark0) and not notified(p, "pulled", nil, mark0), "the old '<Name> pulled <Pet>!' wording is gone")
 	removePlayers({ witness })
 
 	-- equip / unequip rules (team balance: Equip fills the active team, a key once)

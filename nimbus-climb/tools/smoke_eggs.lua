@@ -1,6 +1,6 @@
 -- smoke_eggs.lua: the lobby-shop egg rolls (docs/superpowers/specs/2026-11-07-lobby-shop-design.md 5.1; plan
 -- docs/superpowers/plans/2026-11-07-lobby-shop.md Tasks 1 / 4 / 6). Loaded by tools/smoke.py; ARGS.context picks the
--- half (like smoke_storm.lua; only the server half has scenarios so far):
+-- half (like smoke_storm.lua):
 --   egg_roll_pure   (server, pure) eggs are rarities (Config.Eggs: the seven names in Config.Rarities order); one odds
 --                   source for every roulette, the Secret Roulette included: PetCatalog.RollRarity / RollFromRarity /
 --                   RarityPool keep RollPet's exact draws (10,000 seeds per roulette: RollPet == RollFromRarity(RollRarity)
@@ -27,6 +27,17 @@
 --                   near 15% / (1 - 0.85^7) = 22.1% (the pity working)
 --   egg_strip       (server, booted; Task 4) the strips come from their own generator (a fixed roll generator leaves them
 --                   free), the three strips of an x3 differ, every filler is a pet that roulette can roll
+--   egg_announce    (server, booted; Task 6) one chat line per request, Legendary and up (spec 5.5): an Epic pull is not
+--                   announced; a Legendary sends Notify kind "pull" "<DisplayName> hatched a Legendary <pet>!" to the
+--                   others at once and to the puller after 5 s; an x3 names its best pull (the first on ties) with
+--                   " (+N more)"; at most one line per player every 10 s: requests inside the gap are held and go out as
+--                   one line when it ends (the best held pull named, (+N more) counting every other held one); five x3
+--                   Legendary requests in 10 s reach a witness as at most 2 lines; a held line of a player who left is
+--                   dropped
+--   egg_spin_x1 also checks (Task 6) that an Epic pull sends no "pull" Notify and a Legendary sends one
+--   client_notify_pull (client; Task 6) Notify kind "pull" -> a system chat line in TextChatService's RBXSystem channel
+--                   (the rarity word in its Config.Rarities colour, rich text escaped), no toast; without the channel ->
+--                   today's toast with the text
 -- The booted bulk runs (thousands of requests) check every reply here with K.V.rouletteResult and keep their
 -- RouletteResult / ProfileSync / announcement traffic out of the shared logs (memory; see bulkSpins).
 -- Plain Lua 5.1 syntax only.
@@ -418,7 +429,9 @@ local function serverScenarios()
 
 	-- Bulk spins: fn(flush) runs with the replication recorder off (no client replay of thousands of spins) and p's
 	-- spin traffic is dropped from Mock.RemoteLog at every flush() and at the end (each reply is checked by the caller).
-	-- The 5 s delayed announcements are let out before the recorder comes back.
+	-- The announcements are let out before the recorder comes back: a bulk run takes no time, so its first request sends
+	-- a line and every later one is held until the 10 s gap ends (Task 6), and the puller's copy follows 5 s later:
+	-- 10 + 5 + 1 = 16 s.
 	function B.bulkSpins(p, fn)
 		local mark = #Mock.RemoteLog
 		local recorder = Mock._onRemote
@@ -426,7 +439,7 @@ local function serverScenarios()
 		local ok, err = pcall(fn, function()
 			B.dropTraffic(p, mark)
 		end)
-		K.advance(6)
+		K.advance(16)
 		Mock._onRemote = recorder
 		B.dropTraffic(p, mark)
 		if not ok then
@@ -477,6 +490,60 @@ local function serverScenarios()
 		return out
 	end
 
+	-- Task 6: a roll generator that lands each Float draw on the given fraction of its range (in order; the last one
+	-- repeats) and each Int draw on the given index (clamped; 1 when none is given). Steers PetService's RNG.Roll.
+	function B.steer(fracs, ints)
+		local fi, ii = 0, 0
+		local rng = {}
+		function rng:Float(a, b)
+			fi = fi + 1
+			return a + (b - a) * fracs[math.min(fi, #fracs)]
+		end
+		function rng:Int(a, b)
+			ii = ii + 1
+			local v = (ints and ints[math.min(ii, #ints)]) or a
+			return math.max(a, math.min(b, v))
+		end
+		return rng
+	end
+
+	-- the middle of `rarity`'s band in a roulette's one Float draw, as a fraction of the range (PetCatalog.GetRarityOdds
+	-- rows are RollRarity's rows in the same order)
+	function B.band(PC, id, rarity)
+		local acc = 0
+		for _, row in ipairs(PC.GetRarityOdds(id)) do
+			if row.Rarity == rarity then
+				return acc + row.Chance / 2
+			end
+			acc = acc + row.Chance
+		end
+		error("no " .. tostring(rarity) .. " row in roulette " .. tostring(id), 0)
+	end
+
+	-- the texts of the Notify kind "pull" lines sent to `who` after log index `mark`, in order (and their durations)
+	function B.pullLines(who, mark)
+		local out, durations = {}, {}
+		for _, e in ipairs(K.remotesFor("Notify", who.UserId, mark)) do
+			if e.args[2] == "pull" then
+				out[#out + 1] = tostring(e.args[1])
+				durations[#durations + 1] = e.args[3]
+			end
+		end
+		return out, durations
+	end
+
+	-- every Notify after `mark` (to anyone) that is an announcement: kind "pull", or the new or the old wording
+	function B.announcements(mark)
+		local n = 0
+		for _, e in ipairs(K.remotesFor("Notify", nil, mark)) do
+			local text = tostring(e.args[1])
+			if e.args[2] == "pull" or string.find(text, " hatched a ", 1, true) or string.find(text, " pulled ", 1, true) then
+				n = n + 1
+			end
+		end
+		return n
+	end
+
 	local function sameList(a, b)
 		if type(a) ~= "table" or type(b) ~= "table" or #a ~= #b then
 			return false
@@ -497,6 +564,7 @@ local function serverScenarios()
 			return
 		end
 		local Config, PS, D, PC = B.mods()
+		local Util = req("shared/Util")
 		local players = {}
 		local origRoll = PC.RollPet
 		local okRun, errRun = pcall(function()
@@ -571,8 +639,32 @@ local function serverScenarios()
 			T.check(ok3 == false and why3 == JAMMED and B.same(before, B.wallet(p)) and rolled.n == 0,
 				"egg x1: a Cloud x3 whose 2nd pull is a Secret pet is refused whole (nothing charged, no pet, no Rolled)", tostring(why3) .. "; " .. B.show(B.wallet(p)))
 			T.eq(calls, 2, "egg x1: ...refused at the roll (no third pull, no strip drawn)")
+
+			-- Task 6: only Legendary and up are announced (spec 9: an Epic pull sends no "pull" Notify, a Legendary does)
+			local witness = B.join("EggOneWit")
+			players[2] = witness
+			local storm = B.roulette("Storm")
+			B.give(p, 5 * storm.Price, nil)
+			PS._SetRngForTest(B.steer({ B.band(PC, storm.Id, "Epic") }), nil)
+			mark = K.logSize()
+			local okE, resE = PS.BuyRoulette(p, storm.Id)
+			K.advance(6)
+			local pullE = okE == true and type(resE) == "table" and type(resE.Pulls) == "table" and resE.Pulls[1] or nil
+			T.check(pullE ~= nil and pullE.Rarity == "Epic", "egg x1: the steered Storm spin is an Epic", tostring(pullE and pullE.Rarity))
+			T.check(#B.pullLines(witness, mark) == 0 and #B.pullLines(p, mark) == 0 and B.announcements(mark) == 0,
+				"egg x1: an Epic pull sends no 'pull' Notify (nor any announcement) to the witness or the puller in 6 s", B.announcements(mark) .. " announcements")
+			PS._SetRngForTest(B.steer({ B.band(PC, storm.Id, "Legendary") }), nil)
+			mark = K.logSize()
+			local okL, resL = PS.BuyRoulette(p, storm.Id)
+			K.advance(6)
+			local pullL = okL == true and type(resL) == "table" and type(resL.Pulls) == "table" and resL.Pulls[1] or nil
+			T.check(pullL ~= nil and pullL.Rarity == "Legendary", "egg x1: the steered Storm spin is a Legendary", tostring(pullL and pullL.Rarity))
+			local wL, pL = B.pullLines(witness, mark), B.pullLines(p, mark)
+			T.check(#wL == 1 and #pL == 1 and wL[1] == pL[1], "egg x1: a Legendary pull sends one 'pull' Notify to the witness and the same one to the puller",
+				#wL .. " / " .. #pL .. ": " .. table.concat(wL, " | "))
 		end)
 		PC.RollPet = origRoll
+		pcall(PS._SetRngForTest, Util.NewRng(), Util.NewRng())
 		B.removePolicy()
 		B.leave(players)
 		if not okRun then
@@ -1127,10 +1219,257 @@ local function serverScenarios()
 		K.flushWarnings("egg_strip", ALLOWED_WARNINGS)
 	end)
 
+	------------------------------------------------------------------------------------------------------------------
+	-- egg_announce (Task 6): one chat line per request, Legendary and up, at most one per player every 10 s
+	------------------------------------------------------------------------------------------------------------------
+	S.egg_announce = guarded("egg_announce", function()
+		if not K.needBoot() then
+			return
+		end
+		local Config, PS, D, PC = B.mods()
+		local Util = req("shared/Util")
+		local GAP, DELAY = 10, 5 -- PetService ANNOUNCE_GAP / ANNOUNCE_DELAY (spec 5.5)
+		local players = {}
+		local okRun, errRun = pcall(function()
+			B.installPolicy()
+			local p = B.join("EggAnn")
+			local witness = B.join("EggWit")
+			players = { p, witness }
+			local storm, sky = B.roulette("Storm"), B.roulette("Sky")
+			-- one steered request of `who`; checks the pulls came out as asked (the test's own precondition)
+			local function spin(who, id, rarities, spins, ints)
+				local fracs = {}
+				for j, r in ipairs(rarities) do
+					fracs[j] = B.band(PC, id, r)
+				end
+				B.give(who, 3 * 1000 * #rarities + D.GetTokens(who), nil)
+				PS._SetRngForTest(B.steer(fracs, ints), nil)
+				local ok, res = PS.BuyRoulette(who, id, "Tokens", spins)
+				local got = {}
+				for j, pull in ipairs(ok == true and type(res) == "table" and type(res.Pulls) == "table" and res.Pulls or {}) do
+					got[j] = tostring(pull.Rarity)
+				end
+				T.check(ok == true and table.concat(got, ",") == table.concat(rarities, ","), "egg announce: the steered " .. id .. " request gives " .. table.concat(rarities, ", "),
+					table.concat(got, ",") .. " " .. tostring((not ok) and res or ""))
+				return type(res) == "table" and res or { Pulls = {} }
+			end
+			local function line(who, res, j, rarity, more)
+				local pull = res.Pulls[j]
+				local def = pull and PC.Get(pull.PetId)
+				local text = who.DisplayName .. " hatched a " .. rarity .. " " .. tostring(def and def.Name) .. "!"
+				if more > 0 then
+					text = text .. " (+" .. more .. " more)"
+				end
+				return text
+			end
+
+			-- an Epic pull: not announced, to anyone
+			local mark = K.logSize()
+			spin(p, storm.Id, { "Epic" })
+			K.advance(DELAY + 1)
+			T.eq(B.announcements(mark), 0, "egg announce: an Epic pull sends no 'pull' Notify (nor any announcement) to anyone, the puller included")
+
+			-- a Legendary: the witness at once, the puller after 5 s and not before
+			mark = K.logSize()
+			local rL = spin(p, storm.Id, { "Legendary" })
+			local wantL = line(p, rL, 1, "Legendary", 0)
+			K.advance(0.2)
+			local w, dur = B.pullLines(witness, mark)
+			T.check(#w == 1 and w[1] == wantL, "egg announce: a Legendary -> the witness gets one Notify kind 'pull' '" .. wantL .. "' at once", table.concat(w, " | "))
+			T.eq(dur[1], 4, "egg announce: ...shown for 4 s")
+			T.eq(#B.pullLines(p, mark), 0, "egg announce: ...the puller gets nothing at once")
+			K.advance(DELAY - 0.6)
+			T.eq(#B.pullLines(p, mark), 0, "egg announce: ...nor at 4.6 s (his reveal still plays)")
+			K.advance(0.8)
+			local mine = B.pullLines(p, mark)
+			T.check(#mine == 1 and mine[1] == wantL, "egg announce: ...the puller gets the same line after 5 s", table.concat(mine, " | "))
+			T.eq(#B.pullLines(witness, mark), 1, "egg announce: ...and the witness still has exactly one")
+			K.advance(GAP - DELAY + 0.5) -- the 10 s gap ends
+
+			-- an x3: one line, the best pull named, the other Legendary-or-better pulls counted
+			mark = K.logSize()
+			local r3 = spin(p, sky.Id, { "Legendary", "Mythic", "Epic" }, 3)
+			local want3 = line(p, r3, 2, "Mythic", 1)
+			K.advance(0.2)
+			w = B.pullLines(witness, mark)
+			T.check(#w == 1 and w[1] == want3, "egg announce: an x3 Legendary + Mythic + Epic -> one line naming the Mythic with ' (+1 more)'", table.concat(w, " | "))
+			K.advance(GAP + 0.5)
+			mine = B.pullLines(p, mark)
+			T.check(#B.pullLines(witness, mark) == 1 and #mine == 1 and mine[1] == want3, "egg announce: ...one line in all (the puller's copy is the same line)", table.concat(mine, " | "))
+
+			-- ties go to the first pull
+			local legendaryPool = 0
+			for _, row in ipairs(PC.GetRarityOdds(sky.Id)) do
+				if row.Rarity == "Legendary" then
+					legendaryPool = row.Count
+				end
+			end
+			mark = K.logSize()
+			local rT = spin(p, sky.Id, { "Legendary", "Legendary", "Epic" }, 3, { 1, 2, 1 })
+			local wantT = line(p, rT, 1, "Legendary", 1)
+			K.advance(0.2)
+			w = B.pullLines(witness, mark)
+			T.check(#w == 1 and w[1] == wantT, "egg announce: two Legendary pulls in one x3 -> the first one is named (ties go to the first), ' (+1 more)'", table.concat(w, " | "))
+			T.check(legendaryPool < 2 or (rT.Pulls[1] and rT.Pulls[2] and rT.Pulls[1].PetId ~= rT.Pulls[2].PetId), "egg announce: ...(the two Legendary pulls are different pets)")
+			K.advance(GAP + 0.5)
+
+			-- two Legendary requests 2 s apart: the second is held and arrives as one line when the gap ends
+			mark = K.logSize()
+			local rA = spin(p, storm.Id, { "Legendary" })
+			local wantA = line(p, rA, 1, "Legendary", 0)
+			K.advance(2)
+			local rB = spin(p, storm.Id, { "Legendary" }, 1, { 2 })
+			local wantB = line(p, rB, 1, "Legendary", 0)
+			K.advance(0.2)
+			w = B.pullLines(witness, mark)
+			T.check(#w == 1 and w[1] == wantA, "egg announce: two Legendary requests 2 s apart -> the first line at once, the second held", table.concat(w, " | "))
+			K.advance(GAP - 2.2 - 0.4)
+			T.eq(#B.pullLines(witness, mark), 1, "egg announce: ...nothing more before the 10 s gap ends (9.6 s)")
+			K.advance(0.8)
+			w = B.pullLines(witness, mark)
+			T.check(#w == 2 and w[2] == wantB, "egg announce: ...the held request arrives as one line when the gap ends (10.4 s)", table.concat(w, " | "))
+			K.advance(DELAY + 0.5)
+			mine = B.pullLines(p, mark)
+			T.check(#mine == 2 and mine[1] == wantA and mine[2] == wantB, "egg announce: ...the puller gets both, each 5 s after the others", table.concat(mine, " | "))
+			K.advance(GAP)
+
+			-- several requests held in one gap: one line, the best held pull named (the first on ties), every other held
+			-- Legendary-or-better pull counted
+			mark = K.logSize()
+			local rC = spin(p, storm.Id, { "Legendary" })
+			local wantC = line(p, rC, 1, "Legendary", 0)
+			K.advance(1)
+			spin(p, sky.Id, { "Legendary", "Epic", "Legendary" }, 3)
+			K.advance(1)
+			local rE = spin(p, sky.Id, { "Mythic" })
+			K.advance(1)
+			spin(p, sky.Id, { "Mythic" }, 1, { 2 })
+			K.advance(GAP - 3 + 0.4)
+			local wantHeld = line(p, rE, 1, "Mythic", 3)
+			w = B.pullLines(witness, mark)
+			T.check(#w == 2 and w[1] == wantC and w[2] == wantHeld,
+				"egg announce: requests held in one gap go out as one line: the best held pull named (the first Mythic), ' (+3 more)' for the other three held",
+				table.concat(w, " | "))
+			K.advance(DELAY + GAP + 0.5)
+
+			-- five x3 Legendary requests within 10 s: at most 2 lines reach the witness in those 10 s
+			mark = K.logSize()
+			local five = {}
+			for i = 1, 5 do
+				five[i] = spin(p, sky.Id, { "Legendary", "Legendary", "Legendary" }, 3)
+				K.advance(i < 5 and 2 or 1.5)
+			end
+			w = B.pullLines(witness, mark)
+			T.check(#w >= 1 and #w <= 2, "egg announce: five x3 Legendary requests within 10 s -> at most 2 lines reach the witness in those 10 s", #w .. " lines: " .. table.concat(w, " | "))
+			T.check(w[1] == line(p, five[1], 1, "Legendary", 2), "egg announce: ...the first names its first pull with ' (+2 more)'", tostring(w[1]))
+			K.advance(1)
+			w = B.pullLines(witness, mark)
+			T.check(#w == 2 and w[2] == line(p, five[2], 1, "Legendary", 11),
+				"egg announce: ...the four held x3 requests arrive as one line when the gap ends (the first held pull named, ' (+11 more)')", table.concat(w, " | "))
+			K.advance(DELAY + GAP + 0.5)
+
+			-- a held line of a player who leaves is dropped (nothing announced for him after he left, no error)
+			local q = B.join("EggLeaver")
+			players[3] = q
+			mark = K.logSize()
+			local rQ = spin(q, storm.Id, { "Legendary" })
+			K.advance(2)
+			spin(q, storm.Id, { "Legendary" })
+			K.advance(1)
+			Mock.RemovePlayer(q)
+			K.advance(GAP + DELAY)
+			w = B.pullLines(witness, mark)
+			T.check(#w == 1 and w[1] == line(q, rQ, 1, "Legendary", 0), "egg announce: a player who leaves while a line is held: only his first line went out (the held one is dropped)",
+				table.concat(w, " | "))
+		end)
+		pcall(PS._SetRngForTest, Util.NewRng(), Util.NewRng())
+		B.removePolicy()
+		B.leave(players)
+		if not okRun then
+			error(errRun, 0)
+		end
+		K.flushErrors("egg_announce")
+		K.flushWarnings("egg_announce", ALLOWED_WARNINGS)
+	end)
+
+	return S
+end
+
+----------------------------------------------------------------------------------------------------
+-- client half
+----------------------------------------------------------------------------------------------------
+local function clientScenarios()
+	local S = {}
+	local KC = _G.KC
+
+	-- shown labels whose text is exactly `text`
+	local function shownExactly(text)
+		local n = 0
+		for _, d in ipairs(KC.texts(nil, true)) do
+			if tostring(d.Text) == text then
+				n = n + 1
+			end
+		end
+		return n
+	end
+
+	S.client_notify_pull = guarded("client_notify_pull", function()
+		local TCS = game:GetService("TextChatService")
+		local channels = TCS:FindFirstChild("TextChannels")
+		T.check(channels ~= nil and channels:FindFirstChild("RBXSystem") ~= nil and channels.RBXSystem:IsA("TextChannel"),
+			"notify pull: the mock has TextChatService.TextChannels.RBXSystem (a TextChannel)")
+		Mock.SystemMessages = Mock.SystemMessages or {}
+		KC.advance(6) -- earlier toasts leave
+		local n0 = #Mock.SystemMessages
+		local text = "Ann hatched a Legendary Sun Fox!"
+		KC.toClient("Notify", text, "pull", 4)
+		KC.advance(0.5)
+		local got = Mock.SystemMessages[n0 + 1]
+		T.check(#Mock.SystemMessages == n0 + 1 and type(got) == "string" and string.find(got, '<font color="#F2B644">Legendary</font>', 1, true) ~= nil,
+			"notify pull: kind 'pull' -> one RBXSystem system message with the rarity word in its colour (<font color=\"#F2B644\">Legendary</font>)",
+			tostring(got) .. " (" .. (#Mock.SystemMessages - n0) .. " messages)")
+		T.check(type(got) == "string" and string.find(got, "Ann hatched a ", 1, true) == 1 and string.find(got, " Sun Fox!", 1, true) ~= nil,
+			"notify pull: ...the rest of the line unchanged", tostring(got))
+		T.check(KC.findText("sun fox") == nil, "notify pull: ...and no toast", KC.allShownText())
+
+		-- the best of an x3 with (+N more), a Mythic in its colour, rich text in the name escaped
+		KC.toClient("Notify", "A<b>&c hatched a Mythic Aurora Fox! (+2 more)", "pull", 4)
+		KC.advance(0.5)
+		got = Mock.SystemMessages[n0 + 2]
+		T.check(type(got) == "string" and string.find(got, '<font color="#EE628C">Mythic</font>', 1, true) ~= nil and string.find(got, "(+2 more)", 1, true) ~= nil,
+			"notify pull: a Mythic line keeps ' (+2 more)' and colours 'Mythic' (#EE628C)", tostring(got))
+		T.check(type(got) == "string" and string.find(got, "A&lt;b&gt;&amp;c hatched a ", 1, true) == 1, "notify pull: ...'<', '>' and '&' of the text are escaped for rich text", tostring(got))
+
+		-- other kinds still toast and never reach the chat
+		KC.toClient("Notify", "Plain toast here", "good", 3)
+		KC.advance(0.5)
+		T.check(#Mock.SystemMessages == n0 + 2 and KC.findText("plain toast here") ~= nil, "notify pull: kind 'good' stays a toast, no system message")
+		KC.advance(4)
+
+		-- no channel (the legacy chat, or not replicated yet): today's toast with the text
+		if channels then
+			channels.Parent = nil
+		end
+		local okRun, errRun = pcall(function()
+			local n1 = #Mock.SystemMessages
+			KC.toClient("Notify", text, "pull", 4)
+			KC.advance(0.5)
+			T.check(#Mock.SystemMessages == n1 and shownExactly(text) == 1, "notify pull: without TextChannels -> one toast with the text, no system message", KC.allShownText())
+			KC.advance(5)
+		end)
+		if channels then
+			channels.Parent = TCS
+		end
+		if not okRun then
+			error(errRun, 0)
+		end
+		KC.flushErrors("client_notify_pull")
+	end)
+
 	return S
 end
 
 if CONTEXT == "server" then
 	return serverScenarios()
 end
-return {}
+return clientScenarios()

@@ -5906,6 +5906,26 @@ end
 -- TextChatService: the default chat of new places (no TextChatCommand class here: commands that need one are skipped)
 -- OnIncomingMessage [store, W0]: the client's chat callback (VipController's gold [VIP] prefix); a plain assignable prop here
 service("TextChatService", { props = { ChatVersion = T.enum("ChatVersion", "TextChatService"), CreateDefaultCommands = T.bool(true), CreateDefaultTextChannels = T.bool(true), OnIncomingMessage = T.any(nil) }, events = { "SendingMessage", "MessageReceived" } })
+-- TextChannel [lobby-shop, Task 6]: CreateDefaultTextChannels makes TextChatService.TextChannels (a Folder) with
+-- RBXGeneral and RBXSystem; Mock.Boot builds them in the client world. DisplaySystemMessage(text) (client only, as in
+-- Roblox) appends the text to Mock.SystemMessages, where tests read the system chat lines.
+Mock.SystemMessages = {}
+defclass("TextChannel", "Instance", {
+	creatable = true,
+	events = { "MessageReceived" },
+	methods = {
+		DisplaySystemMessage = function(self, text, metadata)
+			if Mock.Context ~= "client" then
+				error("DisplaySystemMessage can only be called from the client", 2)
+			end
+			if rawtype(text) ~= "string" then
+				error("invalid argument #1 to 'DisplaySystemMessage' (string expected, got " .. typeof(text) .. ")", 2)
+			end
+			Mock.SystemMessages[#Mock.SystemMessages + 1] = text
+			return nil
+		end,
+	},
+})
 service("StarterPlayer", { props = { CharacterWalkSpeed = T.num(16), CharacterJumpPower = T.num(50), CharacterJumpHeight = T.num(7.2), CharacterUseJumpPower = T.bool(false), CharacterMaxHealth = T.num(100), CameraMaxZoomDistance = T.num(128), CameraMinZoomDistance = T.num(0.5), AutoJumpEnabled = T.bool(true) } })
 service("StarterGui", {
 	props = { ScreenOrientation = T.any(nil), ShowDevelopmentGui = T.bool(true), ResetPlayerGuiOnSpawn = T.bool(true) },
@@ -6726,6 +6746,16 @@ function Mock.Boot(ctx, opts)
 		uis.MouseEnabled = false
 	end
 	if ctx == "client" then
+		-- the default text channels (TextChatService.CreateDefaultTextChannels) the client sees [lobby-shop, Task 6]
+		local tcs = game_:GetService("TextChatService")
+		local channels = makeInstance("Folder")
+		channels[STATE].name = "TextChannels"
+		setParentRaw(channels, channels[STATE], tcs)
+		for _, channelName in ipairs({ "RBXGeneral", "RBXSystem" }) do
+			local channel = makeInstance("TextChannel")
+			channel[STATE].name = channelName
+			setParentRaw(channel, channel[STATE], channels)
+		end
 		local lp = Mock.AddPlayer(opts.localName or "Tester", opts.localUserId or 1, { local_ = true })
 		Mock.LocalPlayer = lp
 	end

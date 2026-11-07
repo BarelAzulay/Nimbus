@@ -227,7 +227,7 @@ local function serverScenarios()
 		local recorder = Mock._onRemote
 		Mock._onRemote = nil
 		local ok, err = pcall(fn)
-		advance(6) -- the delayed announcements go out before the recorder comes back
+		advance(16) -- the announcements go out before the recorder comes back: the held line at the 10 s gap's end (lobby-shop Task 6) + the puller's 5 s copy
 		Mock._onRemote = recorder
 		local keep = mark
 		for i = mark + 1, #log do

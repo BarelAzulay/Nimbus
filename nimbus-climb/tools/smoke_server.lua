@@ -1926,7 +1926,7 @@ function V.tutorialState(st)
 	return p
 end
 
-local NOTIFY_KINDS = { info = true, good = true, bad = true, token = true }
+local NOTIFY_KINDS = { info = true, good = true, bad = true, token = true, pull = true } -- pull: lobby-shop Task 6, the Legendary+ chat line
 function V.entry(e, Config)
 	local a = e.args
 	local out = {}
