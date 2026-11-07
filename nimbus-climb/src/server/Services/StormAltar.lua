@@ -63,7 +63,14 @@
 --              two stone feet), never colliding or touching. "To the Plaza" on the mesh's SignFace (a SurfaceGui at 50
 --              px per stud on a SignFace part) once the ring is dressed, else a pixel BillboardGui over the ring. Its
 --              "ReturnPrompt" anchor carries GateService's prompt (no panel) and a PointLight 1.3 / 14.
---   Lights     a few soft electric-blue PointLights with small ranges (portal, glow, return ring, head crystal, gate).
+--   Gem        lobby-shop (spec 5.7): Model WorldGem, "gems are spent here": a cut gem (Blender key gem_world, pivot the
+--              girdle centre) floating 3 studs over the deck (the clear air under its lowest corner) beside the walk
+--              from the landing to the summon portal, 15 studs out along the bridge and 7.5 to the side away from the
+--              return ring: clear of the crystals, stones and rim clouds, >= 6 studs from every prompt, outside the
+--              8-stud bridge lane. Part fallback Gem: one 4x4x4 Glass cube in rgb(84,196,246) turned 45 degrees on X and
+--              Z, non-colliding, with a cyan PointLight 1.0 / 12. Tagged Config.Tags.Spin (SpinSeconds 8, BobStuds 0.6,
+--              BobSeconds 3): the client turns and bobs it.
+--   Lights     a few soft electric-blue PointLights with small ranges (portal, glow, return ring, gem, head crystal, gate).
 -- No AltarSite: a free spot between the plaza and the plot ring road is searched (away from lobby parts, NPC spots
 -- and the spawn), and the dock is found by raycasting for the street. Collision only on walkable parts (island
 -- top and billows, dais stones, rim, disc, bridge, steps, gate, the return pads) plus the invisible showcase
@@ -153,6 +160,19 @@ local PORTAL = {
 	MeshDrop = 0.85, -- the portal_ring mesh pivot under the deck: its plinth top (1.0 up) ends 0.05 under the octagons
 	SignFace = Vector3.new(0, 8.25, -1.25), -- the portal_ring manifest's SignFace attachment (the navy board's front)
 }
+-- lobby-shop (spec 5.7): the world gem, in the bridge frame like the return portal. The plan's spot (halfway along the
+-- walk, 8.5 out, 7 to the side) is inside the medium crystal on the stone ring, so it floats over the open deck between
+-- the ring and the landing (15 out) on the side away from the return ring, 7.5 to the side: the 6-stud mesh's bounds
+-- and the turning 4-stud cube (3.41 studs from its axis) both stay outside the 8-stud bridge lane.
+local GEM = {
+	Ahead = 15,
+	Side = 7.5,
+	Gap = 3, -- clear air from the deck to the turned cube's lowest corner (its centre then ~6.4 over the deck)
+	Size = 4, -- the Part fallback: one Glass cube turned 45 degrees on X and Z
+	SpinSeconds = 8,
+	BobStuds = 0.6,
+	BobSeconds = 3,
+}
 -- the entrance gate's poster (World text rule: a SurfaceGui at 50 px per stud, titles >= 1 stud, lines >= 0.6 stud)
 local POSTER_PPS = 50
 local PANEL_W, PANEL_H = 12, 6.4 -- studs = 600 x 320 px
@@ -195,6 +215,7 @@ local C = {
 	-- crystals and glow
 	CrystalCore = rgb(63, 200, 255),
 	GlowHeart = rgb(186, 236, 255), -- lobby-shop (spec 5.11 b): the summon glow's lighter heart
+	Gem = rgb(84, 196, 246), -- lobby-shop (spec 5.7): the GUI gem's mid tone (Theme.Currency.Gems), the world gem
 	-- lobby-shop (spec 5.11 c): the return ring in the Arena Return-gate green
 	ReturnGreen = (WorldStyle and WorldStyle.Palette and WorldStyle.Palette.Accent and WorldStyle.Palette.Accent.Green) or rgb(96, 190, 140),
 	CrystalGlass = rgb(70, 172, 252),
@@ -1546,6 +1567,32 @@ local function buildReturnPortal(parent, A, gapDeg)
 	return anchor
 end
 
+-- lobby-shop (spec 5.7): the world gem marks "gems are spent here". It floats GEM.Gap studs over the deck beside the walk
+-- from the landing to the summon portal, on the side away from the return ring, clear of the crystals, the stones, the
+-- rim clouds and both prompts. Blender key gem_world (pivot = the girdle centre = gemCF, upright); its Part fallback is
+-- one 4x4x4 Glass cube turned 45 degrees on X and Z, so it still reads as a gem. Tagged Config.Tags.Spin: the client
+-- turns and bobs it about gemCF (the server never animates). Nothing collides; a soft cyan light (1.0 / 12) sits in it.
+local function buildWorldGem(parent, A, gapDeg)
+	local m = newModel(parent, "WorldGem")
+	local turn = CFrame.Angles(math.rad(45), 0, math.rad(45))
+	local half = (math.abs(turn.RightVector.Y) + math.abs(turn.UpVector.Y) + math.abs(turn.LookVector.Y)) * GEM.Size / 2
+	local side = RETURN_SIDE >= 0 and -GEM.Side or GEM.Side
+	local gemCF = polarCF(A, gapDeg, GEM.Ahead, GEM.Gap + half) * CFrame.new(side, 0, 0)
+	local gem = block(m, "Gem", gemCF * turn, Vector3.new(GEM.Size, GEM.Size, GEM.Size), C.Gem, { Material = MAT.Glass, Transparency = 0.15 })
+	local light = pointLight(gem, 1, 12)
+	light.Name = "GemLight"
+	light.Color = C.Gem
+	m.WorldPivot = gemCF
+	m:SetAttribute("SpinSeconds", GEM.SpinSeconds)
+	m:SetAttribute("BobStuds", GEM.BobStuds)
+	m:SetAttribute("BobSeconds", GEM.BobSeconds)
+	if type(Config.Tags) == "table" and type(Config.Tags.Spin) == "string" then
+		CollectionService:AddTag(m, Config.Tags.Spin)
+	end
+	Mesh.tag(m, "gem_world", gemCF)
+	return m
+end
+
 local function buildPrompt(parent, A)
 	local part = invisible(parent, "AltarPrompt", A * CFrame.new(0, 2.4, 0))
 	local prompt = Instance.new("ProximityPrompt")
@@ -1671,6 +1718,9 @@ function StormAltar.Build(lobbyInfo)
 	local padAnchor = nil
 	section("return portal", function()
 		padAnchor = buildReturnPortal(model, A, gapDeg)
+	end)
+	section("world gem", function()
+		buildWorldGem(model, A, gapDeg)
 	end)
 	section("lights", function()
 		-- the head crystal glows softly onto the stones and the cloud

@@ -46,6 +46,15 @@
 --                      top, the portal_ring request on ReturnPortal.Ring (origin Y = the octagons' top - 1.05, the ring's
 --                      facing, Look.Primary the Return green), the mesh-side sign (a SurfaceGui at 50 px per stud on a
 --                      SignFace part at the manifest's SignFace), ML_DressKey only where the key is not missing
+--   altar_world_gem    the world gem (5.7): Model WorldGem whose one Part fallback Gem is a 4x4x4 Glass block in
+--                      rgb(84,196,246) turned 45 degrees on X and Z (anchored, no collide / touch), the model's pivot upright
+--                      at its centre, NC_Spin with SpinSeconds 8 / BobStuds 0.6 / BobSeconds 3; the cube's lowest corner 3
+--                      +-0.2 studs over the deck top below it; 15 studs out along the bridge and 7.5 to the side away from the
+--                      return ring (the plan's halfway point is inside the medium crystal on the stone ring), outside the
+--                      8-stud bridge lane (rotated, turning, and the gem_world mesh's bounds), >= 6 studs from every prompt
+--                      part, clear of every other altar part while it turns and bobs; one cyan PointLight 1.0 / 12; the altar
+--                      <= 500 parts with its lights in the rule; a rebuild with StormAltar._Kit: one gem_world request on
+--                      WorldGem at the gem CFrame, ML_DressKey only where the key is not missing (--mesh: a fixture holder)
 -- Rebuilds follow smoke_p6_lobby.lua: the booted lobby is set aside (renamed) and put back, the hooks (_Kit,
 -- _ForceShopFallback), Config.Trove.GroupId, the Meadow stats and the fixture holders restored in every path.
 -- Deterministic: mock clock only. Plain Lua 5.1 syntax only.
@@ -1324,6 +1333,226 @@ S.altar_portal_glow = guarded("altar_portal_glow", function()
 		"altar portal glow: the hooks are back and the altar is rebuilt as normal (the return prompt re-bound)")
 	K.flushErrors("altar_portal_glow")
 	K.flushWarnings("altar_portal_glow", GLOW.Allowed)
+end)
+
+----------------------------------------------------------------------------------------------------
+-- altar_world_gem (Task 14, spec 5.7 "World gem"): the spinning world gem on the altar deck
+----------------------------------------------------------------------------------------------------
+local WGEM = {
+	Color = Color3.fromRGB(84, 196, 246), -- the GUI gem's mid tone (Theme.Currency.Gems)
+	Size = Vector3.new(4, 4, 4),
+	Turn = CFrame.Angles(math.rad(45), 0, math.rad(45)), -- the Part fallback turned 45 degrees on X and Z
+	Gap = 3, -- the clear gap from the deck top to the turned cube's lowest corner
+	-- the spot in the bridge frame (from the altar centre towards the landing): 15 studs out (on the open deck between
+	-- the stone ring and the landing; the plan's halfway point, 8.5 out, is inside the medium crystal on the ring) and
+	-- 7.5 studs to the side away from the return ring (the plan's 7 puts the 6-stud mesh's bounds exactly on the
+	-- 4-stud half lane, and the turning cube 0.41 into it)
+	Ahead = 15,
+	Side = 7.5,
+	Lane = 4, -- the 8-stud bridge lane's half width
+	Sphere = 2 * math.sqrt(3), -- the 4-stud cube's half diagonal: covers the cube (and the 6-stud mesh) at any turn
+	Bob = 0.6, -- BobStuds: the client moves it +-0.6 from its built pivot
+	Margin = 0.25, -- the least gap from the gem's sweep to any other altar part
+	PromptMin = 6,
+	Allowed = { "[DataService]", "[MeshLibrary]" },
+}
+
+-- point to oriented box distance
+local function pointToBox(p, part)
+	local l = part.CFrame:PointToObjectSpace(p)
+	local h = part.Size / 2
+	local dx = math.max(math.abs(l.X) - h.X, 0)
+	local dy = math.max(math.abs(l.Y) - h.Y, 0)
+	local dz = math.max(math.abs(l.Z) - h.Z, 0)
+	return math.sqrt(dx * dx + dy * dy + dz * dz)
+end
+
+-- the checks of one built world gem; returns the WorldGem model and its Gem part
+local function checkWorldGem(label, SA, altar, A, landing, Config, ML)
+	local model = altar:FindFirstChild("WorldGem")
+	if not T.check(model ~= nil and model:IsA("Model") and model.Parent == altar, label .. ": Model WorldGem stands on the altar") then
+		return nil
+	end
+	local parts = partsUnder(model)
+	local gem = model:FindFirstChild("Gem")
+	if not T.check(#parts == 1 and gem ~= nil and gem:IsA("BasePart"), label .. ": its Part fallback is one part, Gem", #parts .. " parts") then
+		return model
+	end
+	T.check(near(gem.Size, WGEM.Size, 0.001) and gem.Material == Enum.Material.Glass and sameColor(gem.Color, WGEM.Color),
+		label .. ": Gem is a 4x4x4 Glass block in the gem colour rgb(84,196,246)", tostring(gem.Size) .. " " .. tostring(gem.Material))
+	T.check(gem.Anchored and not gem.CanCollide and not gem.CanTouch, label .. ": ...anchored, CanCollide and CanTouch false",
+		fmt("Anchored %s, CanCollide %s, CanTouch %s", tostring(gem.Anchored), tostring(gem.CanCollide), tostring(gem.CanTouch)))
+	-- the pivot: upright at the gem's centre (what the client spins and bobs it about, and where the mesh goes)
+	local pivot = model:GetPivot()
+	T.check(near(pivot.Position, gem.Position, 0.01) and pivot.UpVector.Y > 0.9999, label .. ": ...the model's pivot is upright at the gem's centre")
+	local rel = pivot:ToObjectSpace(gem.CFrame)
+	local turnOk = true
+	for _, pair in ipairs({ { rel.RightVector, WGEM.Turn.RightVector }, { rel.UpVector, WGEM.Turn.UpVector }, { rel.LookVector, WGEM.Turn.LookVector } }) do
+		turnOk = turnOk and (pair[1] - pair[2]).Magnitude <= 0.001
+	end
+	T.check(turnOk, label .. ": ...turned 45 degrees on X and Z (so it reads as a gem)")
+	-- the spin tag and its three attributes
+	T.check(CS:HasTag(model, Config.Tags.Spin) and model:GetAttribute("SpinSeconds") == 8 and model:GetAttribute("BobStuds") == WGEM.Bob and model:GetAttribute("BobSeconds") == 3,
+		label .. ": WorldGem is tagged NC_Spin with SpinSeconds 8, BobStuds 0.6, BobSeconds 3 (the client turns and bobs it)",
+		fmt("%s / %s / %s", tostring(model:GetAttribute("SpinSeconds")), tostring(model:GetAttribute("BobStuds")), tostring(model:GetAttribute("BobSeconds"))))
+	-- 3 studs of clear air between the deck top below it and the cube's lowest corner
+	local corners8 = boxCorners(gem.CFrame, gem.Size)
+	local low, sweep = math.huge, 0
+	for _, c in ipairs(corners8) do
+		low = math.min(low, c.Y)
+		sweep = math.max(sweep, hdist(c, gem.Position))
+	end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { model }
+	local hit = workspace:Raycast(gem.Position, Vector3.new(0, -40, 0), params)
+	local island = altar:FindFirstChild("Island")
+	if T.check(hit ~= nil and island ~= nil and hit.Instance:IsDescendantOf(island), label .. ": the deck (the island's walking top) is right below the gem",
+		hit and hit.Instance:GetFullName() or "no hit") then
+		T.check(math.abs(low - hit.Position.Y - WGEM.Gap) <= 0.2, label .. ": ...the gem floats 3 studs over the deck top below it (its lowest corner, +-0.2)",
+			fmt("lowest corner %.3f over the deck top, centre %.3f", low - hit.Position.Y, gem.Position.Y - hit.Position.Y))
+	end
+	-- its spot: beside the walk from the landing to the summon portal, on the side away from the return ring
+	local axis = flat(landing - A.Position).Unit
+	local bf = CFrame.lookAt(A.Position, A.Position + axis)
+	local g = bf:PointToObjectSpace(gem.Position)
+	local pad = SA.GetReturnPad()
+	local padX = pad and bf:PointToObjectSpace(pad.Position).X or 1
+	local side = padX >= 0 and -1 or 1
+	T.check(math.abs(g.X - side * WGEM.Side) <= 0.01 and math.abs(-g.Z - WGEM.Ahead) <= 0.01,
+		label .. ": ...15 studs out along the bridge and 7.5 to the side away from the return ring (beside the walk to the summon portal)",
+		fmt("lateral %.2f (return ring %.2f), out %.2f (landing %.2f)", g.X, padX, -g.Z, bf:PointToObjectSpace(landing).Z * -1))
+	-- outside the 8-stud bridge lane: the cube's rotated bounds, the cube turning, and the gem_world mesh's bounds
+	local lat = math.huge
+	for _, c in ipairs(corners8) do
+		lat = math.min(lat, math.abs(bf:PointToObjectSpace(c).X))
+	end
+	T.check(lat >= WGEM.Lane and math.abs(g.X) - sweep >= WGEM.Lane, label .. ": ...outside the 8-stud bridge lane (the rotated cube, and the cube while it turns)",
+		fmt("corners %.2f off the line, turning %.2f", lat, math.abs(g.X) - sweep))
+	laneCheck(label .. ": the gem_world mesh's bounds (6 x 4.5 x 6) at the gem are", meshCorners(ML, "gem_world", pivot), A, landing)
+	-- at least 6 studs from every ProximityPrompt part (the AltarPrompt, the ReturnPrompt that carries the plaza-gate prompt)
+	local prompts, closest, names = 0, math.huge, {}
+	for _, d in ipairs(workspace:GetDescendants()) do
+		if d:IsA("ProximityPrompt") then
+			local host = d.Parent
+			if host and host:IsA("Attachment") then
+				host = host.Parent
+			end
+			if host and host:IsA("BasePart") and hdist(host.Position, A.Position) <= 60 then
+				prompts = prompts + 1
+				names[#names + 1] = host.Name
+				closest = math.min(closest, hdist(host.Position, gem.Position))
+			end
+		end
+	end
+	T.check(prompts >= 2 and closest >= WGEM.PromptMin, label .. ": ...at least 6 studs from every ProximityPrompt part",
+		fmt("%d prompt parts (%s), nearest %.2f studs", prompts, table.concat(names, ", "), closest))
+	-- clear of every other altar part while it turns and bobs (a sphere of the cube's half diagonal, +-0.6)
+	local worst, who = math.huge, "-"
+	for _, d in ipairs(partsUnder(altar)) do
+		if not d:IsDescendantOf(model) and d.Transparency < 0.99 then
+			for k = -3, 3 do
+				local dd = pointToBox(gem.Position + Vector3.new(0, k * WGEM.Bob / 3, 0), d)
+				if dd < worst then
+					worst, who = dd, d:GetFullName()
+				end
+			end
+		end
+	end
+	T.check(worst - WGEM.Sphere >= WGEM.Margin, label .. ": ...clear of every other altar part while it turns and bobs (crystals, stones, rim clouds, the return ring)",
+		fmt("%.2f studs of air (nearest %s)", worst - WGEM.Sphere, who))
+	T.info(fmt("*%s: centre %.2f over the deck, lane %.2f (turning %.2f), nearest prompt %.2f, %.2f studs of air to %s", label, gem.Position.Y - A.Position.Y,
+		lat, math.abs(g.X) - sweep, closest, worst - WGEM.Sphere, who))
+	-- one cyan PointLight 1.0 / 12
+	local lights = {}
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("Light") then
+			lights[#lights + 1] = d
+		end
+	end
+	local l = lights[1]
+	T.check(#lights == 1 and l:IsA("PointLight") and math.abs(l.Brightness - 1) < 1e-6 and l.Range == 12 and l.Shadows == false and sameColor(l.Color, WGEM.Color),
+		label .. ": one cyan PointLight 1.0 / 12 (no shadows)", #lights .. " lights" .. (l and fmt(", %s / %s", tostring(l.Brightness), tostring(l.Range)) or ""))
+	return model, gem
+end
+
+S.altar_world_gem = guarded("altar_world_gem", function()
+	if not K.needBoot() then
+		return
+	end
+	local Config = K.config()
+	local SA, ML = req("server/Services/StormAltar"), req("shared/MeshLibrary")
+	local info = K.W.lobbyInfo
+	local altar = SA and SA.GetModel()
+	if not T.check(altar ~= nil and ML ~= nil and type(info) == "table" and typeof(SA.GetLanding()) == "CFrame" and type(Config.Tags) == "table" and type(Config.Tags.Spin) == "string",
+		"world gem: StormAltar (built at boot), MeshLibrary, LobbyInfo and Config.Tags.Spin") then
+		return
+	end
+
+	------------------------------------------------------------------ the booted altar
+	checkWorldGem("world gem", SA, altar, SA.GetCFrame(), SA.GetLanding().Position, Config, ML)
+	checkAltarBudget("world gem", altar)
+
+	------------------------------------------------------------------ rebuild: the dress request
+	local undo = {}
+	local okRun, errRun = pcall(function()
+		SA._Kit = { Targets = {} }
+		if MESH_MODE then
+			-- --mesh: a fixture holder for gem_world in the fixture MeshLibrary's root (Status -> "loading"), removed after
+			local root = RS:FindFirstChild("P6PetsMeshLibrary")
+			if T.check(root ~= nil, "world gem (--mesh): the fixture MeshLibrary root exists") then
+				local h = Instance.new("Folder")
+				h.Name = "gem_world"
+				h.Parent = root
+				undo[#undo + 1] = function()
+					h:Destroy()
+				end
+			end
+		end
+		local okB, A2 = pcall(SA.Build, info)
+		K.advance(0.3)
+		local altar2 = SA.GetModel()
+		if not T.check(okB and typeof(A2) == "CFrame" and altar2 ~= nil and altar2 ~= altar, "world gem rebuild: StormAltar.Build ran with the kit hook", tostring(A2)) then
+			return
+		end
+		local model2, gem2 = checkWorldGem("world gem (rebuilt)", SA, altar2, A2, SA.GetLanding().Position, Config, ML)
+		checkAltarBudget("world gem (rebuilt)", altar2)
+		local recs = {}
+		for _, rec in ipairs(SA._Kit and SA._Kit.Targets or {}) do
+			if rec.Key == "gem_world" then
+				recs[#recs + 1] = rec
+			end
+		end
+		local rec = recs[1]
+		T.check(#recs == 1 and model2 ~= nil and gem2 ~= nil and rec.Target == model2 and typeof(rec.Origin) == "CFrame" and near(rec.Origin.Position, gem2.Position, 0.01)
+			and rec.Origin.UpVector.Y > 0.9999 and near(rec.Origin.Position, model2:GetPivot().Position, 0.01),
+			"world gem: one gem_world dress request on WorldGem, its origin the gem CFrame (upright at the gem's centre, the model's pivot)", #recs .. " records")
+		local okSt, st = pcall(ML.Status, "gem_world")
+		if okSt and st ~= "missing" then
+			local off = model2 and cfFromString(model2:GetAttribute("ML_Offset"))
+			T.check(model2 ~= nil and model2:GetAttribute("ML_DressKey") == "gem_world" and off ~= nil and rec ~= nil and near((model2:GetPivot() * off).Position, rec.Origin.Position, 0.01),
+				"world gem: ML_DressKey = gem_world (the key is " .. tostring(st) .. "), the mesh placed at the gem")
+		elseif MESH_MODE then
+			T.fail("world gem (--mesh): the fixture holder should make gem_world's status not 'missing'", tostring(st))
+		else
+			T.check(model2 ~= nil and model2:GetAttribute("ML_DressKey") == nil, "world gem: no ML_DressKey while gem_world is missing (the Part fallback shows)")
+		end
+	end)
+	for i = #undo, 1, -1 do
+		pcall(undo[i])
+	end
+	SA._Kit = nil
+	-- the normal altar back (no hook, no holder): the return prompt binds to its new pad
+	local okBack = pcall(SA.Build, info)
+	K.advance(0.3)
+	local pad = SA.GetReturnPad()
+	local root = RS:FindFirstChild("P6PetsMeshLibrary")
+	local holderGone = root == nil or root:FindFirstChild("gem_world") == nil
+	T.check(okRun, "world gem: the rebuild checks ran", tostring(errRun))
+	T.check(okBack and SA._Kit == nil and holderGone and pad ~= nil and pad:FindFirstChild("PlazaGatePrompt") ~= nil,
+		"world gem: the hook and the holder are gone and the altar is rebuilt as normal (the return prompt re-bound)")
+	K.flushErrors("altar_world_gem")
+	K.flushWarnings("altar_world_gem", WGEM.Allowed)
 end)
 
 return S
