@@ -22,7 +22,9 @@
 --                   Common at 99 -> each Common pull pays the Common Index Tokens (Substitute), every spin is charged and
 --                   the Common share holds; one Common at 99 -> that pet is re-picked away, never granted; the Secret
 --                   Roulette with both Mythics at 99 -> Mythic pulls pay the Mythic Index Tokens and the natural Secret
---                   share stays at 15%
+--                   share stays at 15%; Task 5: the pity forces pulls (each a Secret), GetPity's Spins grows by every
+--                   spin (substitutes included), every reply carries SecretPity.Left, and the share over all pulls is
+--                   near 15% / (1 - 0.85^7) = 22.1% (the pity working)
 --   egg_strip       (server, booted; Task 4) the strips come from their own generator (a fixed roll generator leaves them
 --                   free), the three strips of an x3 differ, every filler is a pet that roulette can roll
 -- The booted bulk runs (thousands of requests) check every reply here with K.V.rouletteResult and keep their
@@ -963,10 +965,14 @@ local function serverScenarios()
 			local mythicTokens = Config.Index.Rewards.Mythic.Tokens
 			local SPINS3 = 2000
 			local natural, secretNatural, badMythic, notOk3, badGems = 0, 0, {}, 0, 0
+			-- Task 5 (the pity): every pull's Secret count, the forced pulls (each must be a Secret pet, or a Secret
+			-- substitute when every Secret is full) and the replies without SecretPity.Left
+			local allSecret, forced, badForced, noLeft = 0, 0, {}, 0
 			local srTotal = 0
 			for _, w in pairs(sr.Odds) do
 				srTotal = srTotal + w
 			end
+			local pity0 = type(D.GetPity) == "function" and D.GetPity(p) or nil
 			local tokens0, expect = D.GetTokens(p), 0
 			B.bulkSpins(p, function(flush)
 				for i = 1, SPINS3 do
@@ -984,6 +990,17 @@ local function serverScenarios()
 							if pull.Rarity == "Secret" then
 								secretNatural = secretNatural + 1
 							end
+						else
+							forced = forced + 1
+							if pull.Rarity ~= "Secret" and #badForced < 3 then
+								badForced[#badForced + 1] = fmt("spin %d: %s (%s)", i, tostring(pull.PetId), tostring(pull.Rarity))
+							end
+						end
+						if pull.Rarity == "Secret" then
+							allSecret = allSecret + 1
+						end
+						if not (type(r.SecretPity) == "table" and type(r.SecretPity.Left) == "number") then
+							noLeft = noLeft + 1
 						end
 						if pull.Rarity == "Mythic" then
 							if not (type(pull.Substitute) == "table" and pull.Substitute.Tokens == mythicTokens) and #badMythic < 3 then
@@ -1008,6 +1025,19 @@ local function serverScenarios()
 			local want = (sr.Odds.Secret or 0) / srTotal
 			T.check(natural > 0 and abs(secretNatural / natural - want) <= 0.03, "egg full stack Secret: ...the natural Secret share (pulls without Pity) stays within 3 points of " .. fmt("%.0f%%", want * 100),
 				fmt("%d of %d natural pulls (%.4f)", secretNatural, natural, natural > 0 and secretNatural / natural or 0))
+			-- Task 5: the pity forces a Secret after every PityAt - 1 dry spins, so over every pull the long-run share is
+			-- want / (1 - (1 - want)^PityAt) (22.1% at 15% and 7): that is the pity working, not a failure
+			T.check(forced > 0 and #badForced == 0, "egg full stack Secret: ...the pity forced pulls (Pity == true) and every forced pull is a Secret",
+				forced .. " forced; " .. table.concat(badForced, " | "))
+			local pity1 = type(D.GetPity) == "function" and D.GetPity(p) or nil
+			T.check(type(pity0) == "table" and type(pity1) == "table" and pity1.Spins == pity0.Spins + SPINS3,
+				"egg full stack Secret: ...GetPity(p).Spins grew by exactly " .. SPINS3 .. " (substitute pulls count)",
+				tostring(type(pity0) == "table" and pity0.Spins) .. " -> " .. tostring(type(pity1) == "table" and pity1.Spins))
+			T.eq(noLeft, 0, "egg full stack Secret: ...every Secret Roulette reply carries SecretPity.Left")
+			local at = tonumber(sr.PityAt) or 7
+			local wantAll = want / (1 - (1 - want) ^ at)
+			T.check(abs(allSecret / SPINS3 - wantAll) <= 0.03, "egg full stack Secret: ...the Secret share over all pulls is near " .. fmt("%.1f%%", wantAll * 100) .. " (within 3 points; the pity working)",
+				fmt("%d of %d (%.4f)", allSecret, SPINS3, allSecret / SPINS3))
 		end)
 		pcall(PS._SetRngForTest, Util.NewRng(), Util.NewRng())
 		B.removePolicy()

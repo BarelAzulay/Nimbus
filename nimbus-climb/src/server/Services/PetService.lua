@@ -69,25 +69,36 @@
 -- The money step (lobby-shop spec 5.1 / 7): BuyRoulette(player, rouletteId, currency, spins) is ONE non-yielding step
 -- (no task.wait, DataStore or remote call) that never refuses after the roll:
 --   1. the checks, in order, with today's texts: a live player, a known roulette, the currency ("Unknown currency"),
---      the spins count ("Bad spins"), not in a match, the profile loaded ("Your data is still loading"), a gem-priced
---      spin only once DataService.GemsSettled (the server-hop settle hold, same text), GemService.Quote (the
+--      the spins count ("Bad spins"), not in a match, the profile loaded ("Your data is still loading"), the Secret
+--      Roulette's pity read (DataService.GetPity; provisional or no answer -> "Your data is still loading"), a
+--      gem-priced spin only once DataService.GemsSettled (the server-hop settle hold, same text), GemService.Quote (the
 --      PolicyService lock, unchanged), the balance against Price = UnitPrice x spins (computed once, both currencies);
 --   2. the pulls, from RNG.Roll in order (roll(id, RNG.Roll): PetCatalog.RollPet, or the quote's GemService.RollPet
---      for the Secret Roulette). A pull's rarity is its rolled pet's and never changes. A pet the player cannot hold
+--      for the Secret Roulette; the pity's forced pull is roll(id, RNG.Roll, { ForceRarity = "Secret" }), Pity = true,
+--      and must come back a Secret). A pull's rarity is its rolled pet's and never changes. A pet the player cannot hold
 --      another copy of (owned + earlier pulls of this request >= MaxPerStack) is re-picked uniformly with RNG.Roll from
 --      PetCatalog.RarityPool(id, rarity) minus the full pets; only when every pet of that rarity is full the pull keeps
 --      its pet and becomes a Substitute of that rarity's Config.Index.Rewards Tokens (Count = the full stack). The kept
 --      exception: a Secret pet out of a roulette without AllowSecret refuses the whole request "The roulette jammed, try
 --      again" (an impossible roll, before the charge);
 --   3. everything that can fail, before the charge, in a pcall: the grant plans (planCopies: IsNew, NewDiscovery,
---      Count), PoolSize, the strips (buildStrip, RNG.Strip), the reply table; an error answers "The roulette jammed, try
---      again" with nothing charged;
+--      Count), PoolSize, the strips (buildStrip, RNG.Strip), the Secret pity's new numbers, the reply table; an error
+--      answers "The roulette jammed, try again" with nothing charged;
 --   4. one charge (SpendTokens / SpendGems of Price);
 --   5. plain writes: writeCopies per pull in order (the Pets counts, Discovered), AddTokens per substitute,
---      Stats.Spins += spins, MarkDirty;
---   6. after the step, each in its own pcall (a failure is logged and never undoes the grant): refreshPlayer, the first
---      pet ever into the active team (SetTeam), one Sync, the RouletteResult reply, Rolled:Fire per pull (a substitute
---      fires with its rolled pet), the announcement (per pull, Rare and up, until lobby-shop Task 6).
+--      Stats.Spins += spins, the Secret pity (DataService.SetPity), MarkDirty;
+--   6. after the step, each in its own pcall (a failure is logged and never undoes the grant): refreshPlayer, the
+--      SecretPityLeft attribute (a Secret Roulette spin), the first pet ever into the active team (SetTeam), one Sync,
+--      the RouletteResult reply, Rolled:Fire per pull (a substitute fires with its rolled pet), the announcement (per
+--      pull, Rare and up, until lobby-shop Task 6).
+-- The Secret pity (spec 5.2): Config.Gems.SecretRoulette.PityAt (7) = the 7th Secret Roulette spin in a row without a
+-- Secret is a Secret. The count is the save's Pity.Secret = { Spins, Hit } (Since = max(0, Spins - Hit)): a spin is
+-- forced when Since >= PityAt - 1; every spin adds 1 to Spins (a substitute too); a Secret pull (natural, forced or a
+-- substitute) sets Hit = Spins. Read in step 1, computed in step 3, written in step 5 in the same profile write as the
+-- spend and the pet. The strip of a forced pull is drawn as always (the plain roll from RNG.Strip): it shows the odds.
+-- Attribute SecretPityLeft (Config.Attr) = clamp(PityAt - Since, 1, PityAt), written by refreshPityAttr on
+-- ProfileLoaded, ProfileRebased, DataService.Settled and after each Secret spin; absent while loading, provisional or
+-- not settled (DataService.GemsSettled false).
 -- Every accepted request is charged once and gets all its pulls; a refused request writes nothing. x3 costs exactly 3 x
 -- x1. The two generators (RNG.Roll for the pulls, RNG.Strip for the strips) are made once at Init with Util.NewRng()
 -- (Random.new() without a seed: engine seeded, never the clock, the user id or Stats.Spins, never sent), so the pulls
@@ -96,7 +107,8 @@
 --   { Ok = true, RouletteId, Currency, Spins, UnitPrice, Price = UnitPrice x Spins,
 --     Pulls = { { PetId, Key, Rarity, IsNew, NewDiscovery, Count, PoolSize, Strip = { petId x 40, the winner at 34 },
 --                 Pity = true|nil, Substitute = { Tokens } | nil }... },
---     PetId, Key, IsNew, NewDiscovery, Count, Strip (pull 1 mirrored for older readers), Tokens, Gems (after the step) }
+--     PetId, Key, IsNew, NewDiscovery, Count, Strip (pull 1 mirrored for older readers), Tokens, Gems (after the step),
+--     SecretPity = { Left = 1..PityAt } (the Secret Roulette only; the same clamped number as the attribute) }
 --   The remote's failure answer: { Ok = false, Reason, RouletteId, Currency, Spins, Tokens, Gems }.
 -- The BuyRoulette remote (rouletteId, currency, spins): the 0.25 s cooldown first, then rouletteId a string <= 48 and
 -- spins nil / 1 / 3 (3 never on a gems-only roulette); anything else is dropped silently.
@@ -756,6 +768,40 @@ end
 -- Public API: roulette
 ----------------------------------------------------------------------
 
+-- The Secret pity (lobby-shop spec 5.2) of a { Spins, Hit } record -> PityAt (Config.Gems.SecretRoulette.PityAt, 7),
+-- Since = max(0, Spins - Hit), Left = clamp(PityAt - Since, 1, PityAt). The clamp matters: two servers adding spins after
+-- the same hit can merge Since above PityAt - 1; a Since of 8 shows 1 (and forces the next spin), never "in -1".
+local function pityNumbers(pity)
+	local cfg = type(Config.Gems) == "table" and Config.Gems.SecretRoulette or nil
+	local at = type(cfg) == "table" and tonumber(cfg.PityAt) or nil
+	if not at or at ~= at or at < 1 or at > 1000 or at ~= math.floor(at) then
+		at = 7
+	end
+	local since = math.max(0, pity.Spins - pity.Hit)
+	return at, since, math.max(1, math.min(at, at - since))
+end
+
+-- The attribute SecretPityLeft (Config.Attr; spec 5.2): Left of the saved pity once this load's gem settle hold ended;
+-- absent while loading, provisional or not settled (DataService.GemsSettled false: a recovery's ProfileRebased fires
+-- before the hold ends, so DataService.Settled is what first sets it for a stand-in). Runs on ProfileLoaded,
+-- ProfileRebased and Settled and after each Secret Roulette spin; written only when it changed.
+local function refreshPityAttr(player)
+	if not isLivePlayer(player) then
+		return
+	end
+	local attr = Config.Attr.SecretPityLeft or "SecretPityLeft"
+	local left = nil
+	local settled = type(DataService.GemsSettled) == "function" and DataService.GemsSettled(player) == true
+	local pity = settled and type(DataService.GetPity) == "function" and DataService.GetPity(player) or nil
+	if type(pity) == "table" and type(pity.Spins) == "number" and type(pity.Hit) == "number" then
+		local _, _, n = pityNumbers(pity)
+		left = n
+	end
+	if player:GetAttribute(attr) ~= left then
+		player:SetAttribute(attr, left)
+	end
+end
+
 -- Cosmetic strip: STRIP_LENGTH pet ids drawn like real rolls (so it shows realistic rarities), with the real result at
 -- WIN_INDEX. `roll` = the roulette's roll (PetCatalog.RollPet when nil), always the plain call roll(id, RNG.Strip):
 -- never RNG.Roll and never forced, so a strip says nothing about the roll generator and a forced pull's strip shows the
@@ -856,8 +902,10 @@ local function writeCopies(player, profile, plan, level, withTeam)
 end
 
 -- Step 2 of the money step (see the header): `spins` pulls from RNG.Roll in order, a full stack re-picked inside its
--- rarity or turned into a Substitute, the AllowSecret guard. ctx = { Id, Roll, AllowSecret }.
--- -> { { PetId, Rarity, Substitute = { Tokens } | nil }... } | nil, reason (nothing written either way)
+-- rarity or turned into a Substitute, the AllowSecret guard; the Secret pity's forced pull (ctx.Pity.Forced, pull 1:
+-- roll(id, RNG.Roll, { ForceRarity = "Secret" }), which must come back a Secret like any roll must come back a pet).
+-- ctx = { Id, Roll, AllowSecret, Pity }.
+-- -> { { PetId, Rarity, Pity = true | nil, Substitute = { Tokens } | nil }... } | nil, reason (nothing written either way)
 local function rollPulls(profile, ctx, spins)
 	RNG.Roll = RNG.Roll or Util.NewRng()
 	local pulls, taken = {}, {}
@@ -865,16 +913,22 @@ local function rollPulls(profile, ctx, spins)
 		return (profile.Pets[petId] or 0) + (taken[petId] or 0) >= Config.Pets.MaxPerStack
 	end
 	for j = 1, spins do
-		local ok, petId = pcall(ctx.Roll, ctx.Id, RNG.Roll)
+		local forced = j == 1 and type(ctx.Pity) == "table" and ctx.Pity.Forced == true
+		local ok, petId
+		if forced then
+			ok, petId = pcall(ctx.Roll, ctx.Id, RNG.Roll, { ForceRarity = SECRET_RARITY })
+		else
+			ok, petId = pcall(ctx.Roll, ctx.Id, RNG.Roll)
+		end
 		local def = ok and type(petId) == "string" and PetCatalog.Get(petId) or nil
-		if not def then
+		if not def or (forced and def.Rarity ~= SECRET_RARITY) then
 			return nil, "The roulette jammed, try again"
 		end
 		if def.Rarity == SECRET_RARITY and ctx.AllowSecret ~= true then
 			-- Secret pets only come from a roulette with AllowSecret: never from any other one, whatever it rolled
 			return nil, "The roulette jammed, try again"
 		end
-		local pull = { PetId = petId, Rarity = def.Rarity }
+		local pull = { PetId = petId, Rarity = def.Rarity, Pity = forced or nil }
 		if isFull(petId) then
 			local open = {}
 			for _, other in ipairs(PetCatalog.RarityPool(ctx.Id, def.Rarity)) do
@@ -898,8 +952,10 @@ local function rollPulls(profile, ctx, spins)
 	return pulls
 end
 
--- Step 3 (the caller runs it in a pcall; nothing written): each pull's grant plan, PoolSize and strip, and the reply
--- (header). ctx = { Id, Currency, UnitPrice, Price, Roll }. -> reply, plans ([j] = planCopies' plan; nil for a substitute)
+-- Step 3 (the caller runs it in a pcall; nothing written): each pull's grant plan, PoolSize and strip, the Secret pity's
+-- new numbers (ctx.NewPity = { Spins, Hit }: Spins + 1 per pull, Hit = that Spins after a Secret pull, a substitute
+-- included; reply.SecretPity = { Left }) and the reply (header). ctx = { Id, Currency, UnitPrice, Price, Roll, Pity }.
+-- -> reply, plans ([j] = planCopies' plan; nil for a substitute)
 local function planSpin(profile, ctx, pulls)
 	if faults.plan then
 		faults.plan()
@@ -930,7 +986,7 @@ local function planSpin(profile, ctx, pulls)
 		out[j] = item
 	end
 	local first = out[1]
-	return {
+	local reply = {
 		Ok = true,
 		RouletteId = ctx.Id,
 		Currency = ctx.Currency,
@@ -944,7 +1000,23 @@ local function planSpin(profile, ctx, pulls)
 		NewDiscovery = first.NewDiscovery,
 		Count = first.Count,
 		Strip = first.Strip,
-	}, plans
+	}
+	if type(ctx.Pity) == "table" then
+		local spins, hit = ctx.Pity.Spins, ctx.Pity.Hit
+		for _, item in ipairs(out) do
+			spins = spins + 1
+			if item.Rarity == SECRET_RARITY then
+				hit = spins
+			end
+		end
+		if spins > 1e9 then
+			error("the Secret pity count is out of range") -- SetPity would refuse it after the charge: refuse it here
+		end
+		ctx.NewPity = { Spins = spins, Hit = hit }
+		local _, _, left = pityNumbers(ctx.NewPity)
+		reply.SecretPity = { Left = left }
+	end
+	return reply, plans
 end
 
 -- The optional currency of a spin: nil (the roulette's own), "Tokens" or "Gems" (any case; also { Currency = ... }).
@@ -1057,12 +1129,32 @@ function PetService.BuyRoulette(player, rouletteId, currency, spins)
 	if not profile then
 		return false, "Your data is still loading"
 	end
+	-- the Secret pity (spec 5.2) reads the saved record: the Secret Roulette is refused while provisional or when GetPity
+	-- cannot answer (fails closed); a pull is forced once Since >= PityAt - 1. Token roulettes never touch it.
+	local pity = nil
+	local secretDef = type(Config.Gems) == "table" and Config.Gems.SecretRoulette or nil
+	if gemsOnly and type(secretDef) == "table" and rouletteId == secretDef.Id then
+		local okPity, read = pcall(function()
+			if type(DataService.IsProvisional) == "function" and DataService.IsProvisional(player) == true then
+				return nil
+			end
+			return DataService.GetPity(player)
+		end)
+		local s = okPity and type(read) == "table" and tonumber(read.Spins) or nil
+		local h = okPity and type(read) == "table" and tonumber(read.Hit) or nil
+		if not s or not h or s ~= math.floor(s) or h ~= math.floor(h) or h < 0 or h > s or s > 1e9 then
+			return false, "Your data is still loading"
+		end
+		local at, since = pityNumbers({ Spins = s, Hit = h })
+		pity = { Spins = s, Hit = h, Forced = since >= at - 1 }
+	end
 	local ctx = {
 		Id = rouletteId,
 		Currency = paidWith or "Tokens",
 		Roll = PetCatalog.RollPet, -- read now: tests that replace RollPet still steer the pulls
 		AllowSecret = roulette ~= nil and roulette.AllowSecret == true,
 		UnitPrice = roulette and roulette.Price,
+		Pity = pity, -- the Secret Roulette only: { Spins, Hit, Forced } read above
 	}
 	if ctx.Currency == "Gems" then
 		local okQuote, reason = gemQuote(player, ctx)
@@ -1114,6 +1206,10 @@ function PetService.BuyRoulette(player, rouletteId, currency, spins)
 		end
 	end
 	profile.Stats.Spins = profile.Stats.Spins + spins
+	if ctx.NewPity and not DataService.SetPity(player, ctx.NewPity.Spins, ctx.NewPity.Hit) then
+		-- cannot happen: GetPity answered in step 1 and step 3 checked the numbers; logged, never undoes the grant
+		warn("[PetService] SetPity refused the Secret pity numbers after the charge")
+	end
 	DataService.MarkDirty(player)
 
 	-- step 6: after the step, each in its own pcall (a failure is logged and never undoes the grant)
@@ -1125,6 +1221,11 @@ function PetService.BuyRoulette(player, rouletteId, currency, spins)
 				faults.after()
 			end
 			refreshPlayer(player, false)
+		end },
+		{ "pity", function()
+			if ctx.Pity then
+				refreshPityAttr(player) -- the attribute follows the new count at once (the reply carries the same Left)
+			end
 		end },
 		{ "team", function()
 			-- the first pet ever joins the active team's slot 1 (a provisional profile got it in its Equipped list)
@@ -1384,10 +1485,17 @@ local function connectPlayers()
 
 	DataService.ProfileLoaded:Connect(function(player)
 		onProfileReady(player)
+		pcall(refreshPityAttr, player)
 	end)
 	DataService.ProfileRebased:Connect(function(player)
 		onProfileReady(player)
+		pcall(refreshPityAttr, player) -- another server's Secret spins arrive here (a recovery: still not settled)
 	end)
+	if type(DataService.Settled) == "table" and type(DataService.Settled.Connect) == "function" then
+		DataService.Settled:Connect(function(player)
+			pcall(refreshPityAttr, player) -- the gem settle hold ended: the first SecretPityLeft of this load
+		end)
+	end
 	DataService.TeamsChanged:Connect(function(player)
 		refreshPlayer(player, false) -- the followers are the active team: every team change republishes them
 	end)

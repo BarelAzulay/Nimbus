@@ -96,6 +96,8 @@ Config.Attr = {
 	StorePreview = "StorePreview", -- bool: Studio or an allowed dev sees every Store item, Id 0 included (PREVIEW buttons prompt nothing)
 	-- lobby shop (docs/superpowers/specs/2026-11-07-lobby-shop-design.md 5.2): DataService writes it, the client only reads it
 	GemsSettled = "GemsSettled", -- true once the gem settle hold ended for this load (absent before, never written false)
+	SecretPityLeft = "SecretPityLeft", -- 1..PityAt: Secret Roulette spins left until a sure Secret (PetService; absent while
+	-- loading, provisional or not settled; the Secret card's chip reads it)
 }
 
 Config.Remotes = {
@@ -523,6 +525,9 @@ Config.Gems = {
 		Color = Color3.fromRGB(70, 90, 200),
 		AllowSecret = true,
 		Odds = { Mythic = 85, Secret = 15 },
+		-- lobby shop (spec 5.2, the Secret pity): the PityAt-th spin in a row without a Secret gives a Secret (the count
+		-- lives in the save, Pity.Secret; PetService forces that spin's rarity, the strip still shows the odds above)
+		PityAt = 7,
 	},
 	-- lobby shop (spec 5.2, the server-hop guard): gem-priced actions wait this many seconds after a load AND for one fresh
 	-- read of the stored record (DataService.GemsSettled); with no DataStore the hold ends at this time with no read

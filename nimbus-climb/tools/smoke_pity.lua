@@ -19,7 +19,18 @@
 --                             still see false); a failed read retries every 5 s; with no store it is settled at 15 s with
 --                             no read; a provisional load waits for its recovery read (>= 20 s), which counts as the
 --                             settle read; _SettleForTest settles at once; a gem Mix waits for the settle, a token Mix not;
---                             part 2 (Task 4): a gem x1 / x3 spin waits for the settle (nothing charged), a token spin not
+--                             part 2 (Task 4): a gem x1 / x3 spin waits for the settle (nothing charged), a token spin not;
+--                             part 3 (Task 5): the hop with the pity: the old server spent the gems on a forced Secret and
+--                             its leave save lands 8 s after this server's load (which read Since 6): the Secret Roulette and
+--                             gem spins are refused until settled, then this server shows the old server's gems and Since 0
+--                             (SecretPityLeft 7) and its next Secret spin is not forced
+--   secret_pity               (server, booted; Task 5) the Secret pity in PetService's money step (spec 5.2): six dry spins
+--                             count the attribute SecretPityLeft and SecretPity.Left 6 .. 1, the 7th is a forced Secret
+--                             (Pity = true) and the count restarts at 7; a natural Secret restarts it; refused spins (gems
+--                             short, provisional, GetPity nil) and token spins leave it alone; a stand-in join gets the
+--                             attribute only once its recovery read settled it; another server's +3 Spins arrive by a rebase
+--                             (a merged Since of 8 shows 1 and forces the next spin); substitute pulls count; a forced pull's
+--                             strip shows the normal odds; a failed save keeps gems, pet and count together
 --   client_fasthatch_setting  (client) ClientSettings knows FastHatch (default false, booleans only, the 0.4 s debounce,
 --                             one SettingsSet) and State.Settings() follows the snapshot's Settings.FastHatch
 -- White-box: the booted helpers of smoke_server.lua; "server B" is a second copy of DataService against the same mock
@@ -180,6 +191,82 @@ local function serverScenarios()
 			return dropHooks(marks)
 		end
 		return module, clone, release
+	end
+
+	local function reqModule(path)
+		local inst = K.moduleInstance(path)
+		local okReq, m = false, nil
+		if inst then
+			okReq, m = pcall(require, inst)
+		end
+		return okReq and type(m) == "table" and m or nil
+	end
+
+	-- a stand-in for PetService's roll generator (PetService._SetRngForTest): call n of :Float lands at fracs[n] of its range
+	-- (`default` once the list ran out), :Int always on its low end. The Secret Roulette (Mythic 85 / Secret 15): 0.3 is a
+	-- Mythic, 0.95 a Secret
+	local MYTHIC, SECRET = 0.3, 0.95
+	local function stubRng(fracs, default)
+		local rng = { n = 0 }
+		function rng:Float(a, b)
+			self.n = self.n + 1
+			local f = (fracs and fracs[self.n]) or default
+			return a + (b - a) * f
+		end
+		function rng:Int(a)
+			return a
+		end
+		return rng
+	end
+
+	-- many spins of one player: fn() runs with the replication recorder off, then p's RouletteResult / ProfileSync / Notify
+	-- entries (and every announcement naming p) are dropped from Mock.RemoteLog (memory; the smoke_eggs.lua bulkSpins shape)
+	local function quietly(p, fn)
+		local log = Mock.RemoteLog
+		local mark = #log
+		local recorder = Mock._onRemote
+		Mock._onRemote = nil
+		local ok, err = pcall(fn)
+		advance(6) -- the delayed announcements go out before the recorder comes back
+		Mock._onRemote = recorder
+		local keep = mark
+		for i = mark + 1, #log do
+			local e = log[i]
+			local mine = e.userId == p.UserId and (e.remote == "RouletteResult" or e.remote == "ProfileSync" or e.remote == "Notify")
+			local text = e.remote == "Notify" and type(e.args) == "table" and e.args[1] or nil
+			local about = type(text) == "string" and string.find(text, p.DisplayName, 1, true) == 1
+			if not (mine or about) then
+				keep = keep + 1
+				log[keep] = e
+			end
+		end
+		for i = #log, keep + 1, -1 do
+			log[i] = nil
+		end
+		if not ok then
+			error(err, 0)
+		end
+	end
+
+	-- the PolicyService double that allows paid random items (gem spins); off() removes it
+	local function allowPolicy()
+		local PolS = game:GetService("PolicyService")
+		PolS.GetPolicyInfoForPlayerAsync = function()
+			return { ArePaidRandomItemsRestricted = false, IsPaidItemTradingAllowed = true }
+		end
+		return function()
+			PolS.GetPolicyInfoForPlayerAsync = nil
+		end
+	end
+
+	-- the first pull of a BuyRoulette answer, or nil
+	local function pullOf(ok, r)
+		return ok == true and type(r) == "table" and type(r.Pulls) == "table" and r.Pulls[1] or nil
+	end
+
+	-- SecretPity.Left of a BuyRoulette answer, or nil
+	local function leftOf(r)
+		return type(r) == "table" and type(r.SecretPity) == "table" and r.SecretPity.Left or nil
 	end
 
 	-- counts signal:Fire(player) calls for one player until the returned stop() is called
@@ -732,6 +819,66 @@ local function serverScenarios()
 				local okG = PetS.BuyRoulette(g, "Cloud", "Gems")
 				T.check(okG == true and D.GetGems(g) == g0 - cloudGems, "gem settle spin: ...after the settle the gem spin is granted (the settle was the only hold)", tostring(D.GetGems(g)))
 				leave(g)
+
+				------------------------------------------------------------------------------------------------
+				-- part 3 (Task 5): the hop with the pity. The old server (B) spent the Secret Roulette's price on a forced
+				-- Secret (the money step's plain writes: the spend, the Secret pet, Pity { 7, 7 }); its leave save lands 8 s
+				-- after this server's load, which read the old record (Since 6: without the hold this server would force a
+				-- second Secret, paid with the same gems)
+				------------------------------------------------------------------------------------------------
+				local Util = reqModule("shared/Util")
+				local PC = reqModule("shared/PetCatalog")
+				local sr = Config.Gems.SecretRoulette
+				local price = sr.GemPrice
+				local PITY_ATTR = Config.Attr.SecretPityLeft or "SecretPityLeft"
+				local secretPet = PC.RarityPool(sr.Id, "Secret")[1].Id
+				local uidH = newUserId()
+				DSt.Data[storeKey(uidH)] = oldRecord({ Gems = price + 10, Pity = { Secret = { Spins = 6, Hit = 0 } } })
+				local tH = os.clock()
+				local h = Mock.AddPlayer("SettlePity" .. tostring(uidH % 1000), uidH)
+				players[#players + 1] = h
+				B.Load(h) -- the old server still holds h (a hop: its leave save is not in yet)
+				advance(1.2)
+				T.check(D.GetGems(h) == price + 10 and pityIs(D.GetPity(h), 6, 0), "gem settle pity hop: (setup) this server read the old record: " .. (price + 10) .. " Gems, Since 6",
+					tostring(D.GetGems(h)) .. " gems, " .. show(D.GetPity(h)))
+				local profB = B.GetProfile(h)
+				T.check(B.SpendGems(h, price) == true and B.SetPity(h, 7, 7) == true, "gem settle pity hop: the old server's forced Secret: " .. price .. " Gems spent, Pity { 7, 7 }")
+				profB.Pets[secretPet] = (profB.Pets[secretPet] or 0) + 1
+				B.MarkDirty(h)
+				D.AddTokens(h, Config.Roulettes[1].Price)
+				local function walletH()
+					local prof = D.GetProfile(h)
+					return D.GetTokens(h) .. "/" .. D.GetGems(h) .. "/" .. count(prof and prof.Pets) .. "/" .. tostring(prof and prof.Stats.Spins) .. "/" .. show(D.GetPity(h))
+				end
+				local w0 = walletH()
+				local okS1, whyS1 = PetS.BuyRoulette(h, sr.Id)
+				local okS2, whyS2 = PetS.BuyRoulette(h, "Cloud", "Gems")
+				T.check(okS1 == false and whyS1 == "Your data is still loading" and okS2 == false and whyS2 == "Your data is still loading",
+					"gem settle pity hop: before the settle the Secret Roulette and a gem spin are refused 'Your data is still loading'", tostring(whyS1) .. " / " .. tostring(whyS2))
+				T.eq(walletH(), w0, "gem settle pity hop: ...nothing charged, granted or counted (tokens / gems / pets / spins / pity)")
+				T.eq(h:GetAttribute(PITY_ATTR), nil, "gem settle pity hop: ...and SecretPityLeft is absent while not settled")
+				advanceTo(tH + 8)
+				T.eq(B.Save(h), true, "gem settle pity hop: 8 s after the load the old server's leave save lands")
+				local okTok = PetS.BuyRoulette(h, "Cloud")
+				T.eq(okTok, true, "gem settle pity hop: ...a token spin is never held")
+				advanceTo(tH + 15.5)
+				T.eq(D.GemsSettled(h), true, "gem settle pity hop: settled after the 15 s settle read")
+				T.check(D.GetGems(h) == 10 and pityIs(D.GetPity(h), 7, 7) and (D.GetProfile(h).Pets[secretPet] or 0) == 1,
+					"gem settle pity hop: ...this server now shows the old server's 10 Gems, its Secret pet and Pity { 7, 7 } (Since 0)",
+					tostring(D.GetGems(h)) .. " gems, " .. show(D.GetPity(h)) .. ", pet " .. tostring(D.GetProfile(h).Pets[secretPet]))
+				T.eq(h:GetAttribute(PITY_ATTR), 7, "gem settle pity hop: ...SecretPityLeft = 7")
+				local okPoor, whyPoor = PetS.BuyRoulette(h, sr.Id)
+				T.check(okPoor == false and whyPoor == "Not enough Gems", "gem settle pity hop: ...the spent gems are gone: a Secret spin with 10 Gems is refused 'Not enough Gems'", tostring(whyPoor))
+				D.AddGems(h, price)
+				PetS._SetRngForTest(stubRng(nil, MYTHIC), nil)
+				local okN, rN = PetS.BuyRoulette(h, sr.Id)
+				pcall(PetS._SetRngForTest, Util.NewRng(), nil)
+				local pullN = pullOf(okN, rN)
+				T.check(pullN ~= nil and pullN.Pity ~= true and pullN.Rarity == "Mythic", "gem settle pity hop: ...its next Secret spin is not forced (a Mythic, no Pity)",
+					tostring(pullN and pullN.Rarity) .. ", Pity " .. tostring(pullN and pullN.Pity) .. ", " .. tostring(not okN and rN or ""))
+				T.check(leftOf(rN) == 6 and h:GetAttribute(PITY_ATTR) == 6, "gem settle pity hop: ...and the count goes on from 7 (SecretPity.Left 6, attribute 6)",
+					tostring(leftOf(rN)) .. " / " .. tostring(h:GetAttribute(PITY_ATTR)))
+				leave(h)
 			end)
 			PolS.GetPolicyInfoForPlayerAsync = nil
 			if not okSpin then
@@ -755,6 +902,323 @@ local function serverScenarios()
 		end
 		K.flushErrors("gem_settle")
 		K.flushWarnings("gem_settle", ALLOWED_WARNINGS)
+	end)
+
+	S.secret_pity = guarded("secret_pity", function()
+		if not K.needBoot() then
+			return
+		end
+		local D = DS()
+		local DSt = Mock.DataStore
+		local Config = config()
+		local PetS = mod("PetService")
+		local PC = reqModule("shared/PetCatalog")
+		local Util = reqModule("shared/Util")
+		local sr = Config.Gems.SecretRoulette
+		local ATTR = Config.Attr.SecretPityLeft or "SecretPityLeft"
+		T.eq(sr.PityAt, 7, "secret pity: Config.Gems.SecretRoulette.PityAt = 7")
+		T.eq(Config.Attr.SecretPityLeft, "SecretPityLeft", "secret pity: Config.Attr.SecretPityLeft = 'SecretPityLeft'")
+		if not T.check(PetS and type(PetS.BuyRoulette) == "function" and type(PetS._SetRngForTest) == "function" and PC and Util and type(D.GetPity) == "function"
+			and type(D._SettleForTest) == "function", "secret pity: PetService, PetCatalog, Util and DataService's pity and settle hooks load") then
+			return
+		end
+		local B, cloneB, releaseB = secondServer("DataServicePityRun")
+		if not T.check(B ~= nil and type(B.Load) == "function", "secret pity: a second copy of DataService loads as 'server B'", tostring(cloneB)) then
+			return
+		end
+		local policyOff = allowPolicy()
+		local price = sr.GemPrice
+		local mythicTokens = Config.Index.Rewards.Mythic.Tokens
+		local secretIds = {}
+		for _, d in ipairs(PC.RarityPool(sr.Id, "Secret")) do
+			secretIds[d.Id] = true
+		end
+		local srTotal = 0
+		for _, w in pairs(sr.Odds) do
+			srTotal = srTotal + w
+		end
+		local players = {}
+		local function advanceTo(t)
+			local left = t - os.clock()
+			if left > 0 then
+				advance(left)
+			end
+		end
+		local function joinSettled(prefix, uid)
+			local p = join(prefix, uid or newUserId())
+			players[#players + 1] = p
+			T.eq(D._SettleForTest(p), true, "secret pity: (setup) " .. prefix .. "'s gem settle hold ends")
+			advance(0.1)
+			return p
+		end
+		local function wallet(p)
+			local prof = D.GetProfile(p)
+			return D.GetTokens(p) .. "/" .. D.GetGems(p) .. "/" .. count(prof and prof.Pets) .. "/" .. tostring(prof and prof.Stats.Spins)
+		end
+		local okRun, errRun = pcall(function()
+			------------------------------------------------------------------------------------------------
+			-- six dry spins, then the forced Secret
+			------------------------------------------------------------------------------------------------
+			local p = join("PityRun", newUserId())
+			players[#players + 1] = p
+			T.eq(p:GetAttribute(ATTR), nil, "secret pity: right after the join (not settled) SecretPityLeft is absent")
+			T.eq(D._SettleForTest(p), true, "secret pity: (setup) the gem settle hold ends")
+			advance(0.1)
+			T.eq(p:GetAttribute(ATTR), 7, "secret pity: once settled SecretPityLeft = 7 (a record with no Pity: Since 0)")
+			PetS._SetRngForTest(stubRng(nil, MYTHIC), Util.NewRng(4401))
+			D.AddGems(p, 7 * price)
+			local gems0 = D.GetGems(p)
+			local seen, bad = {}, {}
+			for i = 1, 7 do
+				local ok, r = PetS.BuyRoulette(p, sr.Id)
+				local pull = pullOf(ok, r)
+				seen[i] = { Rarity = pull and pull.Rarity, Pity = pull and pull.Pity, Left = leftOf(r), Attr = p:GetAttribute(ATTR), Why = (not ok) and tostring(r) or nil }
+				local vp = type(r) == "table" and K.V.rouletteResult(r) or { tostring(r) }
+				if #vp > 0 then
+					bad[#bad + 1] = i .. ": " .. table.concat(vp, ", ")
+				end
+			end
+			local function said(s)
+				return tostring(s.Rarity) .. "/Pity " .. tostring(s.Pity) .. "/Left " .. tostring(s.Left) .. "/attr " .. tostring(s.Attr) .. (s.Why and ("/" .. s.Why) or "")
+			end
+			local dry, dryText = true, {}
+			for i = 1, 6 do
+				local s = seen[i]
+				dryText[i] = said(s)
+				dry = dry and s.Rarity == "Mythic" and s.Pity == nil and s.Left == 7 - i and s.Attr == 7 - i
+			end
+			T.check(dry, "secret pity: spins 1-6 land on Mythic (no Pity); SecretPityLeft and SecretPity.Left count 6, 5, 4, 3, 2, 1", table.concat(dryText, " | "))
+			T.check(seen[7].Rarity == "Secret" and seen[7].Pity == true, "secret pity: spin 7 is a Secret with Pulls[1].Pity == true (forced by the pity)", said(seen[7]))
+			T.check(seen[7].Left == 7 and seen[7].Attr == 7, "secret pity: ...SecretPity.Left == 7 and the attribute back to 7", said(seen[7]))
+			T.check(pityIs(D.GetPity(p), 7, 7), "secret pity: ...GetPity = { Spins = 7, Hit = 7 }", show(D.GetPity(p)))
+			T.eq(D.GetGems(p), gems0 - 7 * price, "secret pity: the seven spins were charged " .. price .. " Gems each")
+			T.check(#bad == 0, "secret pity: every reply passes V.rouletteResult", table.concat(bad, " | "))
+
+			------------------------------------------------------------------------------------------------
+			-- a natural Secret on spin 3; refused spins and token spins leave the count alone; a Since of 8 forces;
+			-- substitute pulls count
+			------------------------------------------------------------------------------------------------
+			local q = joinSettled("PityNatural")
+			PetS._SetRngForTest(stubRng({ MYTHIC, MYTHIC, SECRET }, MYTHIC), nil)
+			D.AddGems(q, 3 * price)
+			local last, lastOk
+			for _ = 1, 3 do
+				lastOk, last = PetS.BuyRoulette(q, sr.Id)
+			end
+			local pull3 = pullOf(lastOk, last)
+			T.check(pull3 ~= nil and pull3.Rarity == "Secret" and pull3.Pity == nil, "secret pity: a natural Secret on spin 3 (no Pity flag)",
+				tostring(pull3 and pull3.Rarity) .. ", Pity " .. tostring(pull3 and pull3.Pity))
+			T.check(pityIs(D.GetPity(q), 3, 3), "secret pity: ...Hit == 3 (the count restarts)", show(D.GetPity(q)))
+			T.check(leftOf(last) == 7 and q:GetAttribute(ATTR) == 7, "secret pity: ...SecretPity.Left 7 and the attribute 7", tostring(leftOf(last)) .. " / " .. tostring(q:GetAttribute(ATTR)))
+
+			D.SpendGems(q, D.GetGems(q))
+			D.AddGems(q, price - 1)
+			local w1, pity1 = wallet(q), show(D.GetPity(q))
+			local okShort, whyShort = PetS.BuyRoulette(q, sr.Id)
+			T.check(okShort == false and whyShort == "Not enough Gems", "secret pity refused: a spin one Gem short is refused 'Not enough Gems'", tostring(whyShort))
+			T.check(wallet(q) == w1 and show(D.GetPity(q)) == pity1 and q:GetAttribute(ATTR) == 7, "secret pity refused: ...GetPity, the wallet and the attribute unchanged",
+				show(D.GetPity(q)) .. ", attr " .. tostring(q:GetAttribute(ATTR)))
+
+			D.AddTokens(q, Config.Roulettes[1].Price)
+			local okTok = PetS.BuyRoulette(q, "Cloud")
+			T.check(okTok == true and pityIs(D.GetPity(q), 3, 3) and q:GetAttribute(ATTR) == 7, "secret pity: a token spin leaves Pity alone", show(D.GetPity(q)))
+
+			D.AddGems(q, 1)
+			local origGet = D.GetPity
+			D.GetPity = function()
+				return nil
+			end
+			local w2 = wallet(q)
+			local okCall, okNil, whyNil = pcall(PetS.BuyRoulette, q, sr.Id)
+			D.GetPity = origGet
+			T.check(okCall == true and okNil == false and whyNil == "Your data is still loading",
+				"secret pity refused: with GetPity stubbed to answer nil the Secret Roulette is refused 'Your data is still loading'", tostring(okCall) .. " " .. tostring(okNil) .. " " .. tostring(whyNil))
+			T.check(wallet(q) == w2 and pityIs(D.GetPity(q), 3, 3), "secret pity refused: ...nothing charged or counted", wallet(q) .. " vs " .. w2)
+
+			local cur = D.GetPity(q)
+			T.eq(D.SetPity(q, cur.Spins + 8, cur.Hit), true, "secret pity: (setup) SetPity to a Since of 8 (Spins + 8, the live Hit)")
+			local okF, rF = PetS.BuyRoulette(q, sr.Id)
+			local pullF = pullOf(okF, rF)
+			T.check(pullF ~= nil and pullF.Pity == true and secretIds[pullF.PetId] == true, "secret pity: ...a Since of 8 forces the next spin (a Secret with Pity)",
+				tostring(pullF and pullF.PetId) .. ", Pity " .. tostring(pullF and pullF.Pity) .. ", " .. tostring((not okF) and rF or ""))
+			T.check(pityIs(D.GetPity(q), cur.Spins + 9, cur.Spins + 9) and leftOf(rF) == 7 and q:GetAttribute(ATTR) == 7, "secret pity: ...and the count restarts (Hit = Spins, Left 7, attribute 7)",
+				show(D.GetPity(q)) .. ", Left " .. tostring(leftOf(rF)))
+
+			local profQ = D.GetProfile(q)
+			for _, d in ipairs(PC.RarityPool(sr.Id, "Mythic")) do
+				profQ.Pets[d.Id] = Config.Pets.MaxPerStack
+			end
+			D.MarkDirty(q)
+			D.AddGems(q, price)
+			local before = D.GetPity(q)
+			local okSub, rSub = PetS.BuyRoulette(q, sr.Id)
+			local pullS = pullOf(okSub, rSub)
+			T.check(pullS ~= nil and pullS.Rarity == "Mythic" and type(pullS.Substitute) == "table" and pullS.Substitute.Tokens == mythicTokens,
+				"secret pity: both Mythics at " .. Config.Pets.MaxPerStack .. ": a Mythic pull pays " .. mythicTokens .. " tokens instead", tostring(pullS and pullS.PetId))
+			T.check(pityIs(D.GetPity(q), before.Spins + 1, before.Hit) and leftOf(rSub) == 6 and q:GetAttribute(ATTR) == 6, "secret pity: ...the substitute pull still counts (Spins + 1, Left 6)",
+				show(D.GetPity(q)) .. ", Left " .. tostring(leftOf(rSub)))
+
+			------------------------------------------------------------------------------------------------
+			-- a stand-in join: no attribute until its recovery read settled it; then another server's +3 Spins arrive
+			-- through a rebase (Since 5 + 3 = 8 shows 1) and force the next spin
+			------------------------------------------------------------------------------------------------
+			local uidV = newUserId()
+			DSt.Data[storeKey(uidV)] = oldRecord({ Gems = 2 * price, Pity = { Secret = { Spins = 5, Hit = 0 } } })
+			local rebasedV = countUid(D.ProfileRebased, uidV, function(who)
+				return tostring(who:GetAttribute(ATTR))
+			end)
+			local settledV = countUid(D.Settled, uidV)
+			DSt.Fail = true
+			local t5 = os.clock()
+			local v = Mock.AddPlayer("PityStandIn" .. tostring(uidV % 1000), uidV)
+			players[#players + 1] = v
+			advance(4)
+			if T.check(D.GetProfile(v) ~= nil and provisional(D, v), "secret pity stand-in: (precondition) the load failed while the store is reachable") then
+				T.eq(v:GetAttribute(ATTR), nil, "secret pity stand-in: a stand-in (provisional) join has no SecretPityLeft")
+				D.AddGems(v, price)
+				local wv = wallet(v)
+				local okP, whyP = PetS.BuyRoulette(v, sr.Id)
+				T.check(okP == false and whyP == "Your data is still loading" and wallet(v) == wv, "secret pity stand-in: a Secret spin while provisional is refused 'Your data is still loading', nothing charged",
+					tostring(whyP) .. "; " .. wallet(v))
+				advanceTo(t5 + 20)
+				DSt.Fail = false
+				T.check(K.waitFor(function()
+					return not provisional(D, v)
+				end, 40), "secret pity stand-in: (the recovery reads the real save)")
+				advance(0.5)
+				T.check(rebasedV.n >= 1 and rebasedV.saw == "nil", "secret pity stand-in: inside the recovery's ProfileRebased SecretPityLeft is still absent (not settled yet)",
+					rebasedV.n .. " fires, saw " .. tostring(rebasedV.saw))
+				T.check(settledV.n == 1 and D.GemsSettled(v) == true, "secret pity stand-in: ...the recovery read counted as the settle read (Settled fired once)", tostring(settledV.n))
+				T.eq(v:GetAttribute(ATTR), 2, "secret pity stand-in: ...after the settle SecretPityLeft = 2 (the stored Since 5)")
+
+				D.AddTokens(v, 1)
+				T.eq(D.Save(v), true, "secret pity rebase: (setup) this server saves the recovered record")
+				B.Load(v)
+				advance(0.2)
+				T.check(pityIs(B.GetPity(v), 5, 0), "secret pity rebase: (setup) server B loaded { 5, 0 }", show(B.GetPity(v)))
+				T.check(B.SetPity(v, 8, 0) == true and B.Save(v) == true, "secret pity rebase: server B spins three times without a Secret ({ 8, 0 }) and saves")
+				local rebased2 = countUid(D.ProfileRebased, uidV)
+				D.AddTokens(v, 1)
+				T.eq(D.Save(v), true, "secret pity rebase: this server saves and finds B's write")
+				advance(0.3)
+				rebased2.stop()
+				T.check(rebased2.n >= 1 and pityIs(D.GetPity(v), 8, 0), "secret pity rebase: ...the rebase brought B's +3 Spins in (ProfileRebased fired, GetPity { 8, 0 })",
+					rebased2.n .. " fires, " .. show(D.GetPity(v)))
+				T.eq(v:GetAttribute(ATTR), 1, "secret pity rebase: ...SecretPityLeft follows the rebase: a merged Since of 8 shows 1 (clamped)")
+				PetS._SetRngForTest(stubRng(nil, MYTHIC), nil)
+				local okV, rV = PetS.BuyRoulette(v, sr.Id)
+				local pullV = pullOf(okV, rV)
+				T.check(pullV ~= nil and pullV.Pity == true and secretIds[pullV.PetId] == true, "secret pity rebase: ...and the next spin is forced (a Secret with Pity)",
+					tostring(pullV and pullV.PetId) .. ", " .. tostring((not okV) and rV or ""))
+				T.check(pityIs(D.GetPity(v), 9, 9) and v:GetAttribute(ATTR) == 7, "secret pity rebase: ...the count restarts at 7", show(D.GetPity(v)) .. ", attr " .. tostring(v:GetAttribute(ATTR)))
+			end
+			DSt.Fail = false
+			rebasedV.stop()
+			settledV.stop()
+
+			------------------------------------------------------------------------------------------------
+			-- a forced pull's strip shows the normal odds: the roll generator fixed, every spin forced (Since 6)
+			------------------------------------------------------------------------------------------------
+			local x = joinSettled("PityStrip")
+			local profX = D.GetProfile(x)
+			PetS._SetRngForTest(stubRng(nil, MYTHIC), Util.NewRng(4402))
+			local N, cells, secretCells, notForced, firstBad = 200, 0, 0, 0, nil
+			quietly(x, function()
+				for i = 1, N do
+					if i % 50 == 1 then
+						for id in pairs(secretIds) do
+							if (profX.Pets[id] or 0) > 1 then
+								profX.Pets[id] = 1
+							end
+						end
+						D.AddGems(x, 50 * price)
+					end
+					local now = D.GetPity(x)
+					D.SetPity(x, now.Spins + 6, now.Hit)
+					local ok, r = PetS.BuyRoulette(x, sr.Id)
+					local pull = pullOf(ok, r)
+					if not (pull and pull.Pity == true and secretIds[pull.PetId]) then
+						notForced = notForced + 1
+						firstBad = firstBad or (i .. ": " .. tostring(pull and pull.PetId) .. " Pity " .. tostring(pull and pull.Pity) .. " " .. tostring((not ok) and r or ""))
+					end
+					if pull and type(pull.Strip) == "table" then
+						for k, id in ipairs(pull.Strip) do
+							if k ~= 34 then
+								cells = cells + 1
+								if secretIds[id] then
+									secretCells = secretCells + 1
+								end
+							end
+						end
+					end
+				end
+			end)
+			local want = sr.Odds.Secret / srTotal
+			T.check(notForced == 0, "secret pity strip: each of " .. N .. " spins at Since 6 is a forced Secret (Pity == true)", notForced .. " not forced, first " .. tostring(firstBad))
+			T.check(cells == N * 39 and math.abs(secretCells / math.max(1, cells) - want) <= 0.03,
+				"secret pity strip: ...yet the 39 filler cells of each strip show the normal odds (Secret share within 3 points of " .. string.format("%.0f%%", want * 100) .. ", not near 100%)",
+				string.format("%d of %d cells (%.4f)", secretCells, cells, secretCells / math.max(1, cells)))
+
+			------------------------------------------------------------------------------------------------
+			-- a failed save keeps the spend, the pet and the count together
+			------------------------------------------------------------------------------------------------
+			local uidY = newUserId()
+			local y = joinSettled("PityFail", uidY)
+			D.SpendGems(y, D.GetGems(y))
+			D.AddGems(y, price)
+			D.SetPity(y, 6, 0)
+			T.eq(D.Save(y), true, "secret pity failed save: (setup) saved with Since 6 and " .. price .. " Gems")
+			PetS._SetRngForTest(stubRng(nil, MYTHIC), nil)
+			local okY, rY = PetS.BuyRoulette(y, sr.Id)
+			local pullY = pullOf(okY, rY)
+			local petY = pullY and pullY.PetId or "?"
+			T.check(pullY ~= nil and pullY.Pity == true and secretIds[petY] == true, "secret pity failed save: (setup) a forced Secret", tostring(petY))
+			local function phase(rec)
+				if type(rec) ~= "table" then
+					return "none"
+				end
+				local gems = rec.Gems or 0
+				local pets = type(rec.Pets) == "table" and rec.Pets[petY] or 0
+				local s = type(rec.Pity) == "table" and type(rec.Pity.Secret) == "table" and rec.Pity.Secret or {}
+				if gems == price and pets == 0 and s.Spins == 6 and s.Hit == 0 then
+					return "before"
+				elseif gems == 0 and pets == 1 and s.Spins == 7 and s.Hit == 7 then
+					return "after"
+				end
+				return "mixed: gems " .. tostring(gems) .. ", pet " .. tostring(pets) .. ", pity " .. tostring(s.Spins) .. "/" .. tostring(s.Hit)
+			end
+			DSt.Fail = true
+			leave(y)
+			advance(3)
+			T.eq(phase(stored(uidY)), "before", "secret pity failed save: the leave save failed: the store holds gems, pet and Pity all from before the spin")
+			DSt.Fail = false
+			T.check(K.waitFor(function()
+				return phase(stored(uidY)) ~= "before"
+			end, 60), "secret pity failed save: (the orphan retry lands once the store is back)")
+			T.eq(phase(stored(uidY)), "after", "secret pity failed save: ...then all from after it, never mixed")
+			local y2 = join("PityFail", uidY)
+			players[#players + 1] = y2
+			B.Load(y2)
+			advance(0.2)
+			T.check(B.GetGems(y2) == 0 and (B.GetProfile(y2).Pets[petY] or 0) == 1 and pityIs(B.GetPity(y2), 7, 7),
+				"secret pity failed save: ...a fresh load (server B) shows the spend, the Secret pet and Pity { 7, 7 } together",
+				tostring(B.GetGems(y2)) .. " gems, pet " .. tostring(B.GetProfile(y2) and B.GetProfile(y2).Pets[petY]) .. ", " .. show(B.GetPity(y2)))
+		end)
+		pcall(PetS._SetRngForTest, Util.NewRng(), Util.NewRng())
+		policyOff()
+		DSt.Fail = false
+		for _, p in ipairs(players) do
+			if p.Parent then
+				Mock.RemovePlayer(p)
+			end
+		end
+		advance(12)
+		T.check(releaseB() == true, "secret pity: server B's hooks are dropped with it")
+		if not okRun then
+			error(errRun, 0)
+		end
+		K.flushErrors("secret_pity")
+		K.flushWarnings("secret_pity", ALLOWED_WARNINGS)
 	end)
 
 	return S
