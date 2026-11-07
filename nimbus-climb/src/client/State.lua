@@ -41,7 +41,8 @@
 --   Phase 5 (ARCHITECTURE_V3.md "Phase 5 build contract" 9.1 / 3.7 / 4.8):
 --   State.Dungeon() -> { Best = 0..100, Cleared = {[floor]=true}, Runs, Clears }   (Cleared arrives as a dense array)
 --   State.Berries() -> whole berries (reads the Berries attribute, falls back to the snapshot)
---   State.Settings() -> { Music 0..10, Sfx 0..10, Gfx "Auto"|"Low"|"High", Shake, SeenNotes }  (per-key defaults)
+--   State.Settings() -> { Music 0..10, Sfx 0..10, Gfx "Auto"|"Low"|"High", Shake, SeenNotes, MouseLock, FastHatch }
+--                       (per-key defaults)
 --   State.SettingsChanged        Util.Signal; Fire(settings) after a ProfileSync that changed a setting
 --   State.PetStage(key) -> 0..2  the stored evolution stage that counts (PetCatalog.EvolutionStage(def, level, Evo))
 --   State.BestStage(petId) -> 0..2   the highest stage over the owned keys of that base pet (tier copies too)
@@ -337,9 +338,10 @@ local function cleanDungeon(raw)
 end
 
 -- Phase 5: the settings with per-key defaults (7.2); a malformed value falls back to its default.
-local SETTING_KEYS = { "Music", "Sfx", "Gfx", "Shake", "SeenNotes", "MouseLock" }
--- (bug batch 2 #21: MouseLock defaults to ON, like DataService; a synced false stays false)
-local SETTING_DEFAULTS = { Music = 6, Sfx = 8, Gfx = "Auto", Shake = true, SeenNotes = 0, MouseLock = true }
+local SETTING_KEYS = { "Music", "Sfx", "Gfx", "Shake", "SeenNotes", "MouseLock", "FastHatch" }
+-- (bug batch 2 #21: MouseLock defaults to ON, like DataService; a synced false stays false. Lobby shop 5.5: FastHatch,
+-- default off)
+local SETTING_DEFAULTS = { Music = 6, Sfx = 8, Gfx = "Auto", Shake = true, SeenNotes = 0, MouseLock = true, FastHatch = false }
 local GFX_LEVELS = { Auto = true, Low = true, High = true }
 
 local function newSettings()
@@ -369,6 +371,9 @@ local function cleanSettings(raw)
 	end
 	if type(raw.MouseLock) == "boolean" then
 		s.MouseLock = raw.MouseLock
+	end
+	if type(raw.FastHatch) == "boolean" then
+		s.FastHatch = raw.FastHatch
 	end
 	local notes = raw.SeenNotes
 	if type(notes) == "number" and notes == notes and notes >= 0 and notes <= 1000 and notes == math.floor(notes) then

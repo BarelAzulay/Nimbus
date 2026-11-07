@@ -217,6 +217,8 @@
         "SetEvolution",
         "GetRing",
         "MutateRing",
+        "GetPity",
+        "SetPity",
         "IsMigrated",
         "MarkMigrated",
         "MigratedNow",

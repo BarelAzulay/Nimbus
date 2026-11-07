@@ -36,8 +36,9 @@
 --     -- a Phase 4 server still running during the rollout writes them back untouched through keepForeign)
 --     Dungeon = { Best = 0..100, Cleared = {[floor]=true} (a dense boolean array in the store), Runs, Clears },
 --     Berries = whole number >= 0 (left out while 0),
---     Settings = { Music 0..10, Sfx 0..10, Gfx "Auto"|"Low"|"High", Shake bool, SeenNotes 0..1000, MouseLock bool }
---       (left out while default),
+--     Settings = { Music 0..10, Sfx 0..10, Gfx "Auto"|"Low"|"High", Shake bool, SeenNotes 0..1000, MouseLock bool,
+--       FastHatch bool }  (left out while default; FastHatch, lobby shop, is written only when true, so a stored
+--       Settings table of an older build never gains FastHatch = false),
 --     Home.DecorCredit = 1..18 | nil, Home.LegacyMagnet = 1..5 | nil, Home.LegacyMagnetStar = the Prestige it was folded at,
 --     -- Store build (spec docs/superpowers/specs/2026-11-04-shop-retention-design.md section 6; new TOP-LEVEL fields
 --     -- again, foreign to every older server; helper table P7)
@@ -49,7 +50,15 @@
 --       DailyService's Z8 first sight of a wrong-clock LastClaimAt (the stamp it was seen against, the now of that first
 --       sight, the game.JobId of the server whose clock read it: re-review 3), left out of the store while 0; the Daily
 --       left out while all zero; wiped by the dev reset)
---     Trove = {[askId]=true}   -- the Sky Trove asks paid (left out while empty; wiped by the dev reset) }
+--     Trove = {[askId]=true}   -- the Sky Trove asks paid (left out while empty; wiped by the dev reset)
+--     -- Lobby shop (spec docs/superpowers/specs/2026-11-07-lobby-shop-design.md 5.2 / 6; a new TOP-LEVEL field, foreign to
+--     -- every older server; helpers in P7)
+--     Pity = { Secret = { Spins, Hit } }   -- the Secret Roulette pity: Spins = its spins ever, Hit = the Spins value
+--       right after its last Secret (Since = Spins - Hit); whole numbers 0..1e9 (anything else 0), Hit <= Spins (else
+--       Hit = Spins); left out of the store while 0 / 0 (old records have none: no migration, no retroactive count);
+--       never in the ProfileSync snapshot (the attribute and the RouletteResult reply carry it) }
+--   Lobby shop rules: Pity.Secret.Spins merges as a +/- delta (like Ring.Runs), Hit as the higher value (like Ring.Best),
+--   then Hit <= Spins; ResetFields (the dev reset) writes the session's record over the stored one.
 --   Store build rules (P7): Bought / Passes merge as a union (the earlier time wins), a potion end per id as the later
 --   end MINUS the seconds of this session's receipt grants the store already holds (the twin rule, before the max);
 --   Daily: the pair (LastClaimAt, Streak) travels together and the higher LastClaimAt wins it, EXCEPT that a session
@@ -362,12 +371,13 @@
 --     LegacyPrices? } (slot maps encoded like the store), Food, Tiers, Hybrids, PetLevels + Phase 3: Teams { Presets,
 --     Active, Slots, Busy } (pruned), Battle { Trophies, TrialBest, TrialCleared = {bool...} (index = level), Raids,
 --     RaidBestDamage, PvPWins, PvPLosses, EventPets = {[petId]=true} } + Phase 4: PetGrowth { [key] = { Evo?, Speed?,
---     Physique?, Ability?, Defense?, Job? } } (zero numbers left out: the client fills them), Ring { Best, Runs }.
+--     Physique?, Ability?, Defense?, Job? } } (zero numbers left out: the client fills them), Ring { Best, Runs }
+--     + Phase 5: Dungeon, Berries, Settings (every key, FastHatch included); never Pity.
 --     Plain tables, never shared with the live profile.
 --   Extras (used by PetService / IndexService / DevService / GemService, harmless otherwise): Release(player), Init(),
 --     ComputePerks(equippedKeys, profile|nil), IsDiscovered(player, petId), IsProvisional(player),
 --     ResetFields(player, { Discovered, IndexClaimed, Tutorial, BestTimes, Home, Tiers, Hybrids, PetLevels, Teams,
---     Battle, PetGrowth, Ring, Migrations = true })
+--     Battle, PetGrowth, Ring, Migrations, Dungeon, Daily, Trove, Pity = true })
 --     -> ok (the session's CURRENT values of those fields replace the stored ones at the next successful save),
 --     HasReceipt(player, purchaseId) -> bool | nil, MarkReceipt(player, purchaseId, gems?) -> true (new: grant now) |
 --     false (already processed: grant nothing) | nil (not decidable now: profile not loaded or provisional -> answer
@@ -398,6 +408,13 @@
 --     MarkTrove(player, askId, grant) -> ok   Trove[askId] = true + the grant record; false when set, until loaded,
 --                                       while provisional
 --     ResetFields gained Daily and Trove (the dev reset); Store is not resettable.
+--   Lobby shop (spec 5.2; helpers in P7; nothing here yields):
+--     GetPity(player) -> { Spins, Hit } | nil       a copy of Pity.Secret; nil until loaded and while provisional
+--     SetPity(player, spins, hit) -> ok  a plain write on the real entry (no callback form: the pity is never refused
+--                                       after the charge): whole numbers 0..1e9 or false (nothing written); Hit never
+--                                       below the live Hit, then Hit <= Spins; MarkDirty + SyncSoon; false until loaded
+--                                       and while provisional
+--     ResetFields gained Pity; Settings gained FastHatch (SetSetting takes booleans only; the snapshot carries it).
 --
 -- Plain Lua 5.1-compatible syntax only.
 
@@ -457,6 +474,7 @@ local OVERWRITABLE = {
 	Dungeon = true, -- Phase 5: Best max / Cleared union would bring a reset record back
 	Daily = true, Trove = true, -- Store build: the pair / Play group maxima and the ask union would bring them back; Store
 	-- stays out (Robux: bought packs and potion ends are never reset)
+	Pity = true, -- lobby shop: Pity.Secret.Hit merges as the max and would come back
 }
 -- Stored keys this version owns. Anything else in a stored profile belongs to a newer phase and is written back
 -- untouched by every save (see keepForeign).
@@ -467,6 +485,7 @@ local KNOWN_TOP = {
 	PetGrowth = true, Ring = true, Migrations = true, -- Phase 4
 	Dungeon = true, Berries = true, Settings = true, -- Phase 5
 	Store = true, Daily = true, Trove = true, -- Store build
+	Pity = true, -- lobby shop (without it keepForeign would copy the stored Pity back over every save: a frozen count)
 	UpdatedAt = true,
 }
 local KNOWN_HOME = {
@@ -793,13 +812,15 @@ local P5 = {
 	LEGACY_FOOD = { Snack = 200, Meal = 1200, Feast = 6400 }, -- berries per old food when TycoonCatalog.Berries.LegacyFood is missing
 	MAX_BERRIES = 1000000000, -- sanity cap (whole berries)
 	BERRIES_GAP = 0.5, -- seconds: the Berries attribute is written at most twice a second (trailing write; 10.2 m6)
-	SETTING_KEYS = { "Music", "Sfx", "Gfx", "Shake", "SeenNotes", "MouseLock" },
+	SETTING_KEYS = { "Music", "Sfx", "Gfx", "Shake", "SeenNotes", "MouseLock", "FastHatch" },
+	-- (lobby shop, spec 5.5: FastHatch, the egg stage's short roll; default off; toStored writes it only when true, so a
+	-- record that already stores its Settings never gains FastHatch = false on its next save)
 	-- 7.2 (+ MouseLock: dungeon-fixes 6). Bug batch 2 #21: MouseLock defaults to ON (a new profile, or a stored Settings
 	-- table without the key). A stored false is NOT always a choice: since the option landed the store writes the whole
 	-- Settings table (MouseLock = false, the old default) as soon as any one setting is non-default, so the one-time
 	-- P5MouseLock step (P5.migrateMouseLock) turns the lock on ONCE for a profile without that marker. A player who sets
 	-- MouseLock (SetSetting: the L key or the Settings row) marks it too, so a false chosen after this release stays false.
-	SETTING_DEFAULTS = { Music = 6, Sfx = 8, Gfx = "Auto", Shake = true, SeenNotes = 0, MouseLock = true },
+	SETTING_DEFAULTS = { Music = 6, Sfx = 8, Gfx = "Auto", Shake = true, SeenNotes = 0, MouseLock = true, FastHatch = false },
 	GFX = { Auto = true, Low = true, High = true },
 	MAX_VOLUME = 10, -- Music / Sfx 0..10
 	MAX_NOTES = 1000, -- SeenNotes 0..1000 (UpdateNotes.Latest is a small version number)
@@ -831,6 +852,7 @@ local P7 = {
 	STORE_MAPS = { "Bought", "Passes", "Boosts" },
 	DAILY_NUMBERS = { "Streak", "Paid", "Weeks" }, -- whole numbers 0..MAX_STREAK
 	DAILY_CLOCKS = { "LastClaimAt", "PlayStart", "ClampFrom", "ClampAt" }, -- Unix seconds, 0 = never
+	MAX_PITY = 1000000000, -- lobby shop: Pity.Secret.Spins / Hit are whole numbers 0..MAX_PITY (anything else reads 0)
 }
 
 -- The Dungeon record: Best = the highest floor cleared (0 = none), Cleared = { [floor] = true } in the live profile
@@ -983,7 +1005,7 @@ function P5.settingValue(key, value)
 		if type(value) == "string" and P5.GFX[value] then
 			return value
 		end
-	elseif key == "Shake" or key == "MouseLock" then
+	elseif key == "Shake" or key == "MouseLock" or key == "FastHatch" then
 		if type(value) == "boolean" then
 			return value
 		end
@@ -1087,6 +1109,8 @@ local function newProfile()
 		Store = P7.newStore(),
 		Daily = P7.newDaily(),
 		Trove = {},
+		-- lobby shop (spec 5.2): the Secret pity record, the zero record by default
+		Pity = P7.cleanPity(nil),
 	}
 end
 
@@ -2640,6 +2664,67 @@ function P7.applyStore(out, ds, drop)
 	end
 end
 
+-- Lobby shop (spec 5.2 / 6): the Secret pity record Pity = { Secret = { Spins, Hit } }. Spins = Secret Roulette spins
+-- ever, Hit = the Spins value right after the last Secret from that roulette (Since = Spins - Hit). Helpers are fields of
+-- P7 (no new column-0 local). One number of the record: a whole number 0..MAX_PITY, anything else 0.
+function P7.pityNumber(n)
+	if isFinite(n) and n >= 0 and n <= P7.MAX_PITY and n == math.floor(n) then
+		return n
+	end
+	return 0
+end
+
+-- Untrusted Pity -> { Secret = { Spins, Hit } } (whole numbers 0..MAX_PITY, anything else 0; Hit <= Spins, else Hit =
+-- Spins). nil / junk gives the zero record (an old profile has no Pity: 7 spins left).
+function P7.cleanPity(raw)
+	local secret = tableOr(tableOr(raw).Secret)
+	local spins, hit = P7.pityNumber(secret.Spins), P7.pityNumber(secret.Hit)
+	if hit > spins then
+		hit = spins
+	end
+	return { Secret = { Spins = spins, Hit = hit } }
+end
+
+-- true for the zero record (left out of the store)
+function P7.isDefaultPity(pity)
+	return pity.Secret.Spins == 0 and pity.Secret.Hit == 0
+end
+
+-- The Secret counter's delta (both clean), or nil: Spins as a +/- delta (like Ring.Runs), Hit as a candidate when it
+-- rose (like Ring.Best).
+function P7.diffPity(live, base)
+	local l, b = live.Secret, base.Secret
+	local d, any = { Spins = nil, Hit = nil }, false
+	if l.Spins ~= b.Spins then
+		d.Spins = l.Spins - b.Spins
+		any = true
+	end
+	if l.Hit > b.Hit then
+		d.Hit = l.Hit
+		any = true
+	end
+	if not any then
+		return nil
+	end
+	return d
+end
+
+-- Merges a diffPity delta into out.Pity: Spins add up (never below 0), the higher Hit wins, then Hit <= Spins. Two
+-- servers that each counted spins after the same hit can push Since above PityAt - 1: the reader clamps (5.2).
+function P7.applyPity(out, dp)
+	if not dp then
+		return
+	end
+	local secret = out.Pity.Secret
+	if isFinite(dp.Spins) then
+		secret.Spins = sanitize(secret.Spins + dp.Spins)
+	end
+	if isFinite(dp.Hit) and dp.Hit > secret.Hit then
+		secret.Hit = sanitize(dp.Hit)
+	end
+	out.Pity = P7.cleanPity(out.Pity)
+end
+
 local function copyProfile(p)
 	local out = newProfile()
 	out.Tokens = p.Tokens
@@ -2677,6 +2762,7 @@ local function copyProfile(p)
 	out.Store = P7.cleanStore(p.Store)
 	out.Daily = P7.cleanDaily(p.Daily)
 	out.Trove = P7.cleanTrove(p.Trove)
+	out.Pity = P7.cleanPity(p.Pity) -- lobby shop
 	-- Phase 3 (the copies, the Home and its prestige are final above: the presets are pruned against them)
 	out.Teams = P3.cleanTeams(p.Teams)
 	P3.prune(out, out.Teams)
@@ -2755,6 +2841,7 @@ local function normalizeProfile(raw, info)
 	p.Store = P7.cleanStore(raw.Store)
 	p.Daily = P7.cleanDaily(raw.Daily)
 	p.Trove = P7.cleanTrove(raw.Trove)
+	p.Pity = P7.cleanPity(raw.Pity) -- lobby shop (absent in older saves: the zero record)
 	normalizeEquipped(p)
 	-- v3 fields (absent in v2 saves: the defaults from newProfile stay)
 	p.Discovered = cleanSet(raw.Discovered)
@@ -2831,6 +2918,8 @@ local function profilesEqual(a, b)
 		and deepEqual(a.Store, b.Store)
 		and deepEqual(a.Daily, b.Daily)
 		and mapsEqual(a.Trove, b.Trove)
+		-- lobby shop (without it a save that found another server's spins would keep the stale live count)
+		and deepEqual(a.Pity, b.Pity)
 end
 
 ----------------------------------------------------------------------
@@ -2957,6 +3046,10 @@ local function overwriteValues(live, overwrite)
 	end
 	if overwrite.Trove then
 		out.Trove = P7.cleanTrove(live.Trove)
+	end
+	-- lobby shop (the dev reset: the max Hit would bring the record back)
+	if overwrite.Pity then
+		out.Pity = P7.cleanPity(live.Pity)
 	end
 	if next(out) == nil then
 		return nil
@@ -3192,6 +3285,8 @@ local function diffProfiles(live, base, overwrite, opts)
 		ReceiptGrants = {},
 		DailyClaims = P7.pendingClaims(opts.DailyClaims, P7.cleanDaily(base.Daily)),
 		TroveGrants = {},
+		-- lobby shop: the Secret pity counter (Spins delta, Hit candidate; nil when unchanged)
+		Pity = P7.diffPity(P7.cleanPity(live.Pity), P7.cleanPity(base.Pity)),
 	}
 	if not d.StandIn and liveStars > baseStars then
 		d.StarGems = starRewards(baseStars, liveStars)
@@ -3276,6 +3371,8 @@ local function isEmptyDelta(d)
 		and d.Daily == nil
 		and next(d.Trove) == nil
 		and #d.DailyClaims == 0
+		-- lobby shop (a pity-only change must save)
+		and d.Pity == nil
 end
 
 local function applyCounts(target, deltas, maxCount)
@@ -3423,6 +3520,9 @@ local function applyDelta(stored, d)
 		end
 		if o.Trove then
 			out.Trove = P7.cleanTrove(o.Trove)
+		end
+		if o.Pity then
+			out.Pity = P7.cleanPity(o.Pity) -- lobby shop (the dev reset)
 		end
 	end
 	-- HUD cleanup: the session's own item refund is left out when the store already holds another server's (the
@@ -3593,6 +3693,10 @@ local function applyDelta(stored, d)
 	if type(d.Settings) == "table" then
 		out.Settings = P5.cleanSettings(d.Settings)
 	end
+	-- lobby shop: the Secret pity counter (Spins delta, Hit max; an overwritten record already is the session's whole value)
+	if not (o and o.Pity) then
+		P7.applyPity(out, d.Pity)
+	end
 	-- last: the owned copies (Pets, Tiers, Hybrids), the Home and the growth map (the training lock) are final now
 	discoverOwned(out)
 	P3.prune(out, out.Teams)
@@ -3677,6 +3781,9 @@ local function toStored(p)
 	end
 	if not P5.isDefaultSettings(p.Settings) then
 		rec.Settings = copyMap(p.Settings)
+		if rec.Settings.FastHatch ~= true then
+			rec.Settings.FastHatch = nil -- lobby shop: stored only when true (missing = false; old records stay as they were)
+		end
 	end
 	-- Store build: left out while default / empty (PlayClaimed as a dense boolean array)
 	if not P7.isDefaultStore(p.Store) then
@@ -3687,6 +3794,10 @@ local function toStored(p)
 	end
 	if next(p.Trove) ~= nil then
 		rec.Trove = copyMap(p.Trove)
+	end
+	-- lobby shop: left out while 0 / 0 (an old record stays as it was until the first Secret Roulette spin)
+	if not P7.isDefaultPity(p.Pity) then
+		rec.Pity = { Secret = { Spins = p.Pity.Secret.Spins, Hit = p.Pity.Secret.Hit } }
 	end
 	return rec
 end
@@ -3805,6 +3916,8 @@ local function replaceContents(target, src)
 	refill(ensureTable(target, "Store"), src.Store)
 	refill(ensureTable(target, "Daily"), src.Daily)
 	refill(ensureTable(target, "Trove"), src.Trove)
+	-- lobby shop (in place too: a rebase must bring another server's spins into the live count)
+	refill(ensureTable(target, "Pity"), src.Pity)
 end
 
 -- Prunes the LIVE presets in place (keys no longer owned: fused away, released; a junk structure is repaired too) and
@@ -4930,7 +5043,8 @@ function DataService.SetTutorial(player, tutorial)
 end
 
 -- Extra (developer tools only): the session's CURRENT values of the named fields (Discovered, IndexClaimed,
--- Tutorial, BestTimes, Home, Tiers, Hybrids, PetLevels, Teams, Battle, PetGrowth, Ring, Migrations; fields =
+-- Tutorial, BestTimes, Home, Tiers, Hybrids, PetLevels, Teams, Battle, PetGrowth, Ring, Migrations, Dungeon, Daily,
+-- Trove, Pity (lobby shop: its Hit merges as the max); fields =
 -- { Discovered = true, ... }) replace the stored ones at the next successful save instead of being merged (those
 -- merges only ever grow, or a higher stored prestige would win the Home back, or the battle record's cleared trials /
 -- event pets / best values would come back, or the Phase 4 evolution stages / training ranks / ring record would keep
@@ -6308,6 +6422,51 @@ function DataService.MutateRing(player, fn)
 	return true
 end
 
+-- Lobby shop (spec 5.2): the live Secret pity record { Spins, Hit } of a profile (repaired in place when another module
+-- dropped the field).
+function P7.livePity(profile)
+	return ensureTable(ensureTable(profile, "Pity"), "Secret")
+end
+
+-- A copy of the Secret pity record { Spins, Hit }, or nil until loaded and while provisional (a stand-in record must
+-- never force a Secret). Since = Spins - Hit.
+function DataService.GetPity(player)
+	local entry = P3.realEntry(player)
+	if not entry then
+		return nil
+	end
+	local secret = P7.cleanPity(entry.Profile.Pity).Secret
+	return { Spins = secret.Spins, Hit = secret.Hit }
+end
+
+-- A plain write of the Secret pity record on the real entry: whole numbers 0..1e9 (anything else: false, nothing
+-- written), Hit never below the live Hit, then Hit <= Spins. false with no player, until loaded and while provisional.
+-- MarkDirty + SyncSoon. There is no callback form: the caller (PetService's money step) read GetPity in the same
+-- non-yielding step and checked everything before the charge, so this write never refuses after it (spec 5.2).
+function DataService.SetPity(player, spins, hit)
+	if not player or P7.pityNumber(spins) ~= spins or P7.pityNumber(hit) ~= hit then
+		return false
+	end
+	local entry = P3.realEntry(player)
+	if not entry then
+		return false
+	end
+	local live = P7.livePity(entry.Profile)
+	local before = P7.cleanPity(entry.Profile.Pity).Secret
+	if hit < before.Hit then
+		hit = before.Hit
+	end
+	if hit > spins then
+		hit = spins
+	end
+	live.Spins, live.Hit = spins, hit
+	if spins ~= before.Spins or hit ~= before.Hit then
+		entry.Dirty = true
+		DataService.SyncSoon(player)
+	end
+	return true
+end
+
 -- true / false once the profile is loaded and not provisional (nil before: not decidable).
 function DataService.IsMigrated(player, name)
 	local entry = P3.realEntry(player)
@@ -6790,7 +6949,8 @@ function DataService.SpendBerries(player, n)
 	return true
 end
 
--- { Music, Sfx, Gfx, Shake, SeenNotes, MouseLock } (a clean copy with per-key defaults; the defaults before the load).
+-- { Music, Sfx, Gfx, Shake, SeenNotes, MouseLock, FastHatch } (a clean copy with per-key defaults; the defaults before
+-- the load).
 function DataService.GetSettings(player)
 	local entry = player and cache[player.UserId]
 	if not entry then
@@ -6799,7 +6959,8 @@ function DataService.GetSettings(player)
 	return P5.cleanSettings(entry.Profile.Settings)
 end
 
--- Stores one setting: key one of P5.SETTING_KEYS, value of its type and range (7.2; SeenNotes never goes down). Allowed
+-- Stores one setting: key one of P5.SETTING_KEYS, value of its type and range (7.2; SeenNotes never goes down; FastHatch
+-- a boolean, lobby shop 5.5). Allowed
 -- while provisional (the live session's settings win the merge). Not synced: the client applied it already. -> ok
 function DataService.SetSetting(player, key, value)
 	if not player or type(key) ~= "string" or P5.SETTING_DEFAULTS[key] == nil then

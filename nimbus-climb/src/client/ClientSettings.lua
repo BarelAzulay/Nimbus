@@ -1,11 +1,12 @@
 -- ClientSettings: the player's settings on the client (ARCHITECTURE_V3.md "Phase 5 build contract" 7.2 / 7.3).
--- The saved values live in the profile (DataService, `Settings = { Music, Sfx, Gfx, Shake, SeenNotes, MouseLock }`) and
+-- The saved values live in the profile (DataService, `Settings = { Music, Sfx, Gfx, Shake, SeenNotes, MouseLock,
+-- FastHatch }`; FastHatch = the egg stage's short roll, lobby shop 5.5, default off) and
 -- arrive through ProfileSync (State.Settings(); a key State does not know yet, like MouseLock, is read from the raw
 -- ProfileSync payload, see rawSync); a change made here is applied locally AT ONCE (Changed fires) and sent to
 -- the server with the remote SettingsSet(key, value) after a 0.4 s debounce (one send per key per burst of changes).
 --
 --   ClientSettings.Get(key)          -> the value (a local change first, then the synced profile, then the default)
---   ClientSettings.All()             -> { Music, Sfx, Gfx, Shake, SeenNotes, MouseLock } (a copy)
+--   ClientSettings.All()             -> { Music, Sfx, Gfx, Shake, SeenNotes, MouseLock, FastHatch } (a copy)
 --   ClientSettings.Set(key, value)   -> bool  cleaned + clamped like the server does; false for junk / no change
 --   ClientSettings.Changed           Util.Signal (key, value); fires on a local Set and when a sync changes a key
 --   ClientSettings.Clean(key, value) -> value | nil   (the client copy of the server's validation)
@@ -21,8 +22,8 @@ local Remotes = require(Shared:WaitForChild("Remotes"))
 
 local ClientSettings = {}
 
-ClientSettings.KEYS = { "Music", "Sfx", "Gfx", "Shake", "SeenNotes", "MouseLock" }
-ClientSettings.DEFAULTS = { Music = 6, Sfx = 8, Gfx = "Auto", Shake = true, SeenNotes = 0, MouseLock = true }
+ClientSettings.KEYS = { "Music", "Sfx", "Gfx", "Shake", "SeenNotes", "MouseLock", "FastHatch" }
+ClientSettings.DEFAULTS = { Music = 6, Sfx = 8, Gfx = "Auto", Shake = true, SeenNotes = 0, MouseLock = true, FastHatch = false }
 ClientSettings.GFX = { "Auto", "Low", "High" }
 ClientSettings.DEBOUNCE = 0.4
 ClientSettings.Changed = Util.Signal()
@@ -38,7 +39,7 @@ local St = {
 }
 ClientSettings._St = St
 
--- the server's rules (DataService.SetSetting): Music / Sfx whole 0..10, Gfx one of 3, Shake / MouseLock boolean,
+-- the server's rules (DataService.SetSetting): Music / Sfx whole 0..10, Gfx one of 3, Shake / MouseLock / FastHatch boolean,
 -- SeenNotes whole 0..1000. Numbers are rounded and clamped here (a slider never sends 7.5); NaN / inf and wrong types give nil.
 function ClientSettings.Clean(key, value)
 	if key == "Music" or key == "Sfx" then
@@ -58,7 +59,7 @@ function ClientSettings.Clean(key, value)
 			end
 		end
 		return nil
-	elseif key == "Shake" or key == "MouseLock" then
+	elseif key == "Shake" or key == "MouseLock" or key == "FastHatch" then
 		if type(value) == "boolean" then
 			return value
 		end

@@ -135,7 +135,7 @@ Config.Remotes = {
 	"DungeonRequest", -- (action:string, a:any, b:any)  Open / Create (floor) / Join (leaderUserId) / Leave / Ready (bool) / SetFloor (floor) / Start / Solo (floor) / Quit / Chest / Kick (userId)
 	"DungeonState", -- server -> client (kind:string, payload:table)  Lobby / Run / Loot / Chest / End (<= 1 KB, <= 1/s per client)
 	"ObbyPick", -- (levelId:string)  pick an obby level at the Obby gate (PortalService.PickLevel; unlocked levels only)
-	"SettingsSet", -- (key:string, value:any)  Music / Sfx 0..10, Gfx "Auto"|"Low"|"High", Shake / MouseLock bool, SeenNotes int (DataService)
+	"SettingsSet", -- (key:string, value:any)  Music / Sfx 0..10, Gfx "Auto"|"Low"|"High", Shake / MouseLock / FastHatch bool, SeenNotes int (DataService)
 	"MenuPlay", -- ()  the main menu's PLAY: the server spawns the character (PlayerService.SpawnPlayer; first per session, 1/s)
 	"QuickTravel", -- (dest:string) "Plaza"  the pill's Travel button: opens the home portal to the lobby (GateService.Travel)
 	-- store (2026-11-04; docs/superpowers/specs/2026-11-04-shop-retention-design.md): the Store, the daily gifts, the Sky Trove
