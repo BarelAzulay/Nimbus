@@ -66,10 +66,13 @@
 --     ({ Kind = "Play", Tier }), paid right after; two servers at one PlayStart pay once (the (PlayStart, tier) merge).
 --   * ClaimPlayAll (gui-redo 5.4, the gift boxes' CLAIM ALL): every Ready tier in tier order through ClaimPlay's own
 --     quiet step (claimTier: each tier its own MutateDaily flag + grant, paid right after it; nothing yields), then ONE
---     toast and ONE payload; Claimed fires once per tier. Toast: one tier = ClaimPlay's text; several = each pay text
+--     toast and ONE payload; Claimed fires once per tier. A Ready tier that would pay nothing now (Resolve: a full Berry
+--     Basket, Amount 0) is skipped and stays Ready for its own box (review fix: a bulk claim never spends it for
+--     nothing). Toast: one tier = ClaimPlay's text; several = each pay text
 --     without its "!", joined with ", ", then ": n gifts!" ("+$2,160 Cash, +10 Gems: 2 gifts!"), or "n gifts claimed!"
---     when that would pass 60 characters. None Ready: "No gifts ready yet!". The same refusals as ClaimPlay (loaded, a
---     play-day that is over); the merge pays each (PlayStart, tier) once, as for ClaimPlay.
+--     when that would pass 60 characters. None Ready: "No gifts ready yet!" ("Your Berry Basket is full!" when only a
+--     full Basket's tier is Ready). The same refusals as ClaimPlay (loaded, a play-day that is over); the merge pays
+--     each (PlayStart, tier) once, as for ClaimPlay.
 --
 -- The 10-minute unlock and the hold (gui-redo, docs/superpowers/specs/2026-11-06-window-redo-design.md 5.3)
 --   * Every streak claim (a paid day, the Week Wisp, the first ever, a VIP's, the repair) needs Config.Daily.UnlockSeconds
@@ -105,7 +108,7 @@
 --   DailyService.Claim(player) -> ok, { Cell, Streak, Grant, StepBack } | reason
 --   DailyService.ClaimPlay(player, tier) -> ok, { Tier, Grant } | reason
 --   DailyService.ClaimPlayAll(player) -> ok, { Tiers = { tier... }, Grants = { grant | false... } } | reason
---                                        (Grants[i] belongs to Tiers[i]; false = that tier paid nothing: a full Basket)
+--                                        (Grants[i] belongs to Tiers[i]; a tier that would pay nothing is not claimed)
 --   DailyService.Tick()                  one play-time tick over every player
 --   DailyService.Claimed                 Util.Signal Fire(player, "Day" | "Play", cellOrTier, grant)
 --   DailyService._deps()                 test-only: the live deps table (a test swaps deps.StoreService for a double)
@@ -857,15 +860,24 @@ function DailyService.ClaimPlayAll(player)
 	local refusal = TEXT.NoneReady
 	for tier, t in ipairs(list) do
 		if d.PlayClaimed[tier] ~= true and d.PlaySec >= num(t.Min, 0) * 60 then
-			local ok, grant, head = claimTier(player, d, tier)
-			if not ok then
-				refusal = grant -- the record went away mid-way (nothing yields: only a removed profile); keep what committed
-				break
-			end
-			tiers[#tiers + 1] = tier
-			grants[#tiers] = grant or false
-			if head then
-				heads[#heads + 1] = head
+			local r = DailyService.Resolve(player, t, false)
+			if not grantOf(r, "Play", tier) then
+				-- (review fix) a tier that would pay nothing now (a full Berry Basket) stays Ready for its own box: a bulk
+				-- claim never flags it claimed for nothing, nor counts it as a gift
+				if r.Kind == "Berries" then
+					refusal = TEXT.Full
+				end
+			else
+				local ok, grant, head = claimTier(player, d, tier)
+				if not ok then
+					refusal = grant -- the record went away mid-way (nothing yields: only a removed profile); keep what committed
+					break
+				end
+				tiers[#tiers + 1] = tier
+				grants[#tiers] = grant or false
+				if head then
+					heads[#heads + 1] = head
+				end
 			end
 		end
 	end

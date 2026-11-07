@@ -14,7 +14,8 @@
 --                          the Pets window's Train button opens it on that pet and X goes back (ReturnTo); another window
 --                          (WindowOpened "Store") drops the way back; Care.Mode() / IsOpen() while up; Care.Open("Feed")
 --                          closes it; the confirm is a higher sibling of the window; Esc closes the confirm, then the sheet,
---                          then the window; CareController.Close() with the sheet up closes both
+--                          then the window; CareController.Close() with the sheet up closes both; review fix: an Escape that
+--                          only ends typing in a TextBox (focused, or let go just before) closes nothing
 --   client_train_empty     no job: the sheet opens by itself; X on it leaves the empty window (Key() nil, "Pick a pet", every
 --                          skill "NoPet" with an inactive "Pick a pet first" button, no cost or time); Step(1) / Step(-1)
 --                          from empty pick the ends of the default order; a tapped disabled button says why on the
@@ -25,14 +26,16 @@
 --                          overlap); 844x390: an 820x330 box at
 --                          y 59, Layout() "Phone", Roblox's touch controls gone while open and back after; a resize while
 --                          open (1920x1080 -> 844x390 -> 1920x1080) passes each time; the empty state and the TRAIN confirm
---                          pass too
+--                          pass too; review fix: on the touch sizes a short-Cash TRAIN keeps its price in red inside the
+--                          greyed button
 --   client_train_portrait  (phone world, 390x844 touch) one column: the pet above the skills, RedoGeom.check passes (the
 --                          window, its TRAIN confirm and the empty state); Task 8: the five mats in their band, apart
 --   client_train_mats      (Task 8; 1920x1080, then 844x390 touch) the mats row: the pure TrainController.Mats(home,
 --                          growthMap, selectedKey) (a job on its Slot, the pending pet on the first free open mat, "+ Add a
 --                          pet", locked mats with their unlock level; a job with no Slot / a second job on a taken slot on
 --                          the next free mat; a job on a closed mat keeps it with a lock badge; a full place has no pending
---                          mat; no Training Place: five locked mats); the window: Mat1..Mat5 with State / Key / LockBadge,
+--                          mat; review fix: only slots - jobs empty open mats are free, the rest 'InUse' ("Spot in use",
+--                          a HintLine reason, no sheet); no Training Place: five locked mats); the window: Mat1..Mat5 with State / Key / LockBadge,
 --                          their texts, a job mat's live timer, tapping a job mat selects that pet (its skill turns
 --                          "Training"), "+ Add a pet" opens the sheet, a locked mat only says how to open it on the HintLine
 --                          (with the house that allows that level when the house caps it); a job ending, a Training Place
@@ -142,6 +145,28 @@ local function clientScenarios()
 	function H.esc()
 		Mock.FireSignal(game:GetService("UserInputService"), "InputBegan", Mock.NewInput("Escape", "Keyboard", "Begin"), false)
 		KC.advance(0.3)
+	end
+	-- (review fix) Escape while a TextBox has focus (the sheet's search, the chat): Roblox lets go of the box and InputBegan
+	-- arrives processed. how = "release" (the box let go just before InputBegan) | "focused" (GetFocusedTextBox() still
+	-- returns the box while InputBegan runs)
+	function H.escTyping(box, how)
+		local UIS = game:GetService("UserInputService")
+		local methods = Mock.Classes.UserInputService.methods
+		local old = methods.GetFocusedTextBox
+		if how == "focused" then
+			methods.GetFocusedTextBox = function()
+				return box
+			end
+		else
+			Mock.FireSignal(UIS, "TextBoxFocused", box)
+			Mock.FireSignal(UIS, "TextBoxFocusReleased", box)
+		end
+		local ok, err = pcall(Mock.FireSignal, UIS, "InputBegan", Mock.NewInput("Escape", "Keyboard", "Begin"), true)
+		methods.GetFocusedTextBox = old
+		KC.advance(0.3)
+		if not ok then
+			error(err, 0)
+		end
 	end
 	function H.disabled(b)
 		return b ~= nil and b:GetAttribute("Disabled") == true
@@ -552,6 +577,25 @@ local function clientScenarios()
 				T.check(not PP.IsOpen() and TC.IsOpen() and TC.Key() == "maple_fox", "train wiring: Esc closes the sheet next (the pet stays)")
 				H.esc()
 				T.check(not TC.IsOpen(), "train wiring: then the window")
+				-- (review fix) Escape that only ends typing in a TextBox closes nothing (the search stays, so does the sheet)
+				TC.Open({ Key = "maple_fox" })
+				KC.advance(0.4)
+				H.click(H.find("ChangeButton"))
+				local search = RedoGeom.find(H.sheetWin(), "Search")
+				T.check(PP.IsOpen() and search ~= nil, "train wiring: (typing) the sheet and its Search box are up")
+				H.escTyping(search, "release")
+				T.check(PP.IsOpen() and TC.IsOpen(), "train wiring: Escape that lets go of the Search box (released just before) closes nothing")
+				H.escTyping(search, "focused")
+				T.check(PP.IsOpen() and TC.IsOpen(), "train wiring: ...nor while a TextBox still has focus")
+				H.esc()
+				T.check(not PP.IsOpen() and TC.IsOpen(), "train wiring: ...the next Escape closes the sheet as before")
+				H.click(H.part("Speed", "Action"))
+				T.check(H.shown(H.confirm()), "train wiring: (typing) the confirm is up")
+				H.escTyping(search, "focused")
+				T.check(H.shown(H.confirm()) and TC.IsOpen(), "train wiring: ...Escape while typing in the chat keeps the confirm")
+				H.esc()
+				T.check(not H.shown(H.confirm()) and TC.IsOpen(), "train wiring: ...a plain Escape closes it")
+				H.closeAll()
 				-- the gamepad B does the same
 				TC.Open({ Key = "maple_fox" })
 				KC.advance(0.4)
@@ -658,6 +702,25 @@ local function clientScenarios()
 					H.click(H.part("Speed", "Action"))
 					RedoGeom.check(H.confirm(), label .. " (confirm)", { NoOverlap = { "Title", "Text", "Yes", "No" } })
 					H.click(H.find("No", H.confirm()))
+					if sz[3] then
+						-- (review fix, spec 5.5) cash short on the small cards: TRAIN greyed with the price in red INSIDE it
+						H.setCash(100)
+						KC.advance(0.6)
+						local b = H.part("Speed", "Action")
+						local txt = H.text(b)
+						local red = '<font color="#ff6e6e">$'
+						T.check(TC.SkillState("Speed") == "Short" and H.disabled(b) and b.RichText == true and txt:find("TRAIN", 1, true) == 1,
+							label .. ": (phone) cash short: TRAIN greyed out", txt)
+						T.check(txt:find("$", 1, true) == nil or txt:find(red, 1, true) ~= nil, label .. ": ...its price in red (C.Bad)", txt)
+						if sz[1] == 844 then
+							T.check(txt:find(red, 1, true) ~= nil, label .. ": ...the price fits in the button at 844x390", txt)
+						end
+						RedoGeom.check(win, label .. " (cash short)", { NoOverlap = NAMES })
+						H.setCash(250000)
+						KC.advance(0.6)
+						txt = H.text(H.part("Speed", "Action"))
+						T.check(txt:find("<font", 1, true) == nil and txt:find("TRAIN", 1, true) == 1, label .. ": ...affordable again: no red price", txt)
+					end
 					if sz[1] == 844 then
 						local p, s = win.AbsolutePosition, win.AbsoluteSize
 						T.check(math.abs(p.X - 12) <= 1 and math.abs(p.Y - 59) <= 1 and math.abs(s.X - 820) <= 1 and math.abs(s.Y - 330) <= 1,
@@ -861,13 +924,25 @@ local function clientScenarios()
 				T.check(states(m) == "Job,Job,Job,Locked,Locked" and m[1].Key == "b" and m[2].Key == "a" and not m[1].LockBadge,
 					"train mats pure: ...the next free OPEN mat, wrapping round (no lock badge)", states(m) .. " " .. keys(m))
 				m = TC.Mats(home(3), { a = job(5) }, nil)
-				T.check(states(m) == "Add,Add,Add,Locked,Job" and m[5].Key == "a" and m[5].LockBadge == true and m[5].Unlock == 5,
-					"train mats pure: a job on Slot 5 with slots 3 -> mat 5 'Job' with LockBadge", states(m) .. " " .. keys(m))
+				T.check(states(m) == "Add,Add,InUse,Locked,Job" and m[5].Key == "a" and m[5].LockBadge == true and m[5].Unlock == 5,
+					"train mats pure: a job on Slot 5 with slots 3 -> mat 5 'Job' with LockBadge; it uses one of the 3 spots, so mat 3 is 'InUse'", states(m) .. " " .. keys(m))
+				T.check(m[3].Key == nil and m[3].Job == nil and m[3].LockBadge == false, "train mats pure: ...an 'InUse' mat holds no pet and no badge", keys(m))
 				m = TC.Mats(home(3), { a = job(1), b = job(2), c = job(3) }, "d")
 				T.eq(states(m), "Job,Job,Job,Locked,Locked", "train mats pure: every spot in use: no pending mat")
 				m = TC.Mats(home(2), { a = job(1), b = job(3) }, "d")
-				T.check(states(m) == "Job,Add,Job,Locked,Locked" and m[3].LockBadge == true,
-					"train mats pure: slots 2, a job on closed mat 3: two jobs fill the place, so mat 2 is 'Add', not pending", states(m))
+				T.check(states(m) == "Job,InUse,Job,Locked,Locked" and m[3].LockBadge == true and m[2].Key == nil,
+					"train mats pure: slots 2, a job on closed mat 3: two jobs fill the place, so mat 2 is 'InUse' (no '+ Add a pet', no pending)", states(m))
+				-- (review fix) the free spots are slots - jobs, never the empty open mats: the row never offers more than the chip
+				m = TC.Mats(home(3), { a = job(1), z = job(5) }, "c")
+				T.check(states(m) == "Job,Pending,InUse,Locked,Job" and m[2].Key == "c",
+					"train mats pure: slots 3, jobs on mat 1 and closed mat 5, a pet picked: one free spot -> mat 2 'Pending', mat 3 'InUse'", states(m) .. " " .. keys(m))
+				m = TC.Mats(home(3), { a = job(1), z = job(5) }, nil)
+				T.eq(states(m), "Job,Add,InUse,Locked,Job", "train mats pure: ...no pet picked: mat 2 '+ Add a pet', mat 3 'InUse'")
+				m = TC.Mats(home(2), { a = job(3), b = job(4), c = job(5) }, "d")
+				T.check(states(m) == "InUse,InUse,Job,Job,Job" and m[3].LockBadge and m[4].LockBadge and m[5].LockBadge,
+					"train mats pure: slots 2 (a Prestige), three jobs on closed mats 3-5: both open mats 'InUse', no pending", states(m) .. " " .. keys(m))
+				m = TC.Mats(home(5), { a = job(2) }, nil)
+				T.eq(states(m), "Add,Job,Add,Add,Add", "train mats pure: no job on a closed mat: every empty open mat stays '+ Add a pet'")
 				m = TC.Mats({ Stations = {} }, {}, "d")
 				T.check(states(m) == "Locked,Locked,Locked,Locked,Locked" and m[1].Unlock == 1 and m[5].Unlock == 5,
 					"train mats pure: no Training Place: five locked mats (Lv 1..5)", states(m))
@@ -982,8 +1057,19 @@ local function clientScenarios()
 						end
 					end
 					T.check(badgeShown, label .. ": ...the lock badge is drawn")
-					T.eq(H.matStates(), "Job,Add,Job,Locked,Locked", label .. ": ...two jobs fill 2 spots: no pending mat")
+					T.eq(H.matStates(), "Job,InUse,Job,Locked,Locked", label .. ": ...two jobs fill 2 spots: no pending mat, mat 2 'InUse' (no '+ Add a pet')")
 					T.eq(H.text(H.find("SpotsChip")), pc and "Training spots: 2 / 2 in use" or "2 / 2 spots", label .. ": ...the chip reads 2 / 2")
+					local t2u = H.matText(2)
+					T.check(H.has(t2u:lower(), "in use") and not H.has(t2u, "Add"), label .. ": ...the 'InUse' mat reads 'In use', never 'Add a pet'", t2u)
+					if pc then
+						T.check(H.has(t2u, "Spot in use"), label .. ": (PC) ...'Spot in use'", t2u)
+					end
+					mark = #Mock.RemoteLog
+					H.click(H.mat(2))
+					T.check(not PP.IsOpen() and #KC.serverCalls("PetCare", mark) == 0 and not H.shown(H.confirm()),
+						label .. ": tapping the 'InUse' mat opens no sheet (every spot is taken)")
+					T.eq(H.text(H.find("HintLine")), "In use by a pet on a closed spot. Free again when that pet is done.",
+						label .. ": ...the HintLine says why")
 					H.matsApart(label .. " (lock badge)")
 					-- no Training Place: five locked mats, the build text in the body
 					H.feed({ Gym = 0, Job = false })

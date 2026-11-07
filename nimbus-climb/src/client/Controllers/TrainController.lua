@@ -15,20 +15,22 @@
 --   TrainController.DropReturn()   another window, a match or a battle took over: closing does not go back to the Pets window
 --   TrainController.Layout()       -> "PC" | "Phone" | "Portrait"
 --   TrainController.SkillState(stat) -> "Ready" | "Training" | "Busy" | "Full" | "Short" | "Max" | "Match" | "NoPet" | "NoPlace"
---   TrainController.Mats(home, growthMap, selectedKey) -> { [1..5] = { State = "Job" | "Pending" | "Add" | "Locked",
---       Key = key | nil, Job = job | nil, Unlock = level | nil, LockBadge = boolean } }   (Task 8; pure: reads only its
---       arguments and the catalogs). Five mats always; TycoonCatalog.TrainingSlots(home) of them are open. Mat i shows the
---       job whose Job.Slot == i (two on one slot: the sooner done keeps it); a job with no Slot, or the second on a taken
---       slot, goes on the next free open mat (wrapping round), else the next free mat of all five; a job on a mat above the
---       open count keeps that mat with LockBadge = true (a Prestige closed it; running jobs survive). The first open mat
---       with no job holds the selected pet ("Pending") when it is not training and the place is not full (jobs < slots,
---       the server's own count); the other open mats are "Add"; the rest "Locked" with Unlock = the Training Place level
---       that opens them. Display only: the server still picks the mat.
+--   TrainController.Mats(home, growthMap, selectedKey) -> { [1..5] = { State = "Job" | "Pending" | "Add" | "InUse" |
+--       "Locked", Key = key | nil, Job = job | nil, Unlock = level | nil, LockBadge = boolean } }   (Task 8; pure: reads
+--       only its arguments and the catalogs). Five mats always; TycoonCatalog.TrainingSlots(home) of them are open. Mat i
+--       shows the job whose Job.Slot == i (two on one slot: the sooner done keeps it); a job with no Slot, or the second on
+--       a taken slot, goes on the next free open mat (wrapping round), else the next free mat of all five; a job on a mat
+--       above the open count keeps that mat with LockBadge = true (a Prestige closed it; running jobs survive). The free
+--       spots are slots - jobs (the server's own count, every job): only that many open mats with no job are free, the
+--       first holding the selected pet ("Pending") when it is not training, the others "Add"; the remaining open mats
+--       with no job are "InUse" (a job on a closed mat holds their spot: the row never offers more room than the chip);
+--       the rest "Locked" with Unlock = the Training Place level that opens them. Display only: the server picks the mat.
 --
 -- The mats row (Task 8, spec 5.5 "The mats row"): Mats > Mat1..Mat5 (TextButtons; attributes State, Key, LockBadge,
 -- Selected). Job: the pet's face, its name, PC "Physique . Rank 5", a purple timer bar with "3:10 left"; tap = select that
 -- pet. Pending: gold glow, the face, "Pick a skill below" (phone "Pick a skill"); tap = the sheet. Add: dashed, "+ Add a
--- pet"; tap = the sheet. Locked: a lock, "Training Place Lv i" (phone "Lv i"); tap = the HintLine says which level opens
+-- pet"; tap = the sheet. InUse: an hourglass, "Spot in use" (phone "In use"); tap = the HintLine says a pet on a closed
+-- spot holds it. Locked: a lock, "Training Place Lv i" (phone "Lv i"); tap = the HintLine says which level opens
 -- it, and the house that allows that level when today's house caps the station (the Home window's "Needs the ..." rule).
 -- With no Training Place the five mats are locked and the skills' place says how to build it.
 --
@@ -96,6 +98,7 @@ local K = {
 	TICK = 0.5, -- seconds between two refreshes while open (the timers)
 	FIRE_GAP = 0.3, -- client-side spacing between two sends of the same action
 	HINT_SECONDS = 3,
+	TYPED_GAP = 0.1, -- seconds after a TextBox let go in which an Escape only ended the typing (H.typing)
 	OPEN_FROM = 0.86,
 	OPEN_TIME = 0.22,
 	VIEW_CACHE = 6, -- pet viewports kept (the shown one + parked ones)
@@ -182,6 +185,7 @@ local G = {
 	Dot = "\194\183",
 	Plus = "+",
 	Lock = "\240\159\148\146",
+	Wait = "\226\143\179", -- an hourglass: an open mat whose spot a job on a closed mat holds ("InUse")
 	Icons = {
 		Speed = "\226\154\161",
 		Physique = "\226\157\164\239\184\143",
@@ -220,6 +224,7 @@ local TEXTS = {
 	BuildMat = "Build the Training Place at home to open this spot.",
 	OpenMat = "Upgrade your Training Place to Lv %d to open this spot.",
 	NeedsHouse = " Needs the %s.",
+	InUseMat = "In use by a pet on a closed spot. Free again when that pet is done.",
 }
 
 ----------------------------------------------------------------------
@@ -251,6 +256,7 @@ local S = {
 	RefreshPending = false,
 	Warned = {},
 	FitSigs = setmetatable({}, { __mode = "k" }), -- the mats' last text fits per label
+	TypedAt = -1, -- os.clock() when a TextBox last let go of focus (H.typing)
 }
 local U = { Skills = {}, Views = {}, MatList = {}, MatViews = {} }
 local H = {} -- helpers (one table: the module stays far below Lua's local limit)
@@ -339,6 +345,14 @@ end
 -- the card's exact cost ("$26,250")
 function H.commas(n)
 	return "$" .. Util.Commas(math.max(0, math.floor(tonumber(n) or 0)))
+end
+
+-- a Color3 as RichText's "rrggbb"
+function H.hex(c)
+	local function byte(v)
+		return math.max(0, math.min(255, math.floor(v * 255 + 0.5)))
+	end
+	return string.format("%02x%02x%02x", byte(c.R), byte(c.G), byte(c.B))
 end
 
 function H.def(key)
@@ -531,16 +545,26 @@ function H.mats(home, growthMap, selectedKey)
 			put(at, j)
 		end
 	end
-	-- the pending pet: selected, not training, and the place not full (the server counts every job)
-	if type(selectedKey) == "string" and #jobs < slots then
+	-- the free spots are slots - jobs (the server counts every job, also one on a closed mat): only that many empty open
+	-- mats offer "+ Add a pet"; the others are "InUse" (a job on a closed mat holds their spot), so the row never shows
+	-- more room than the chip (review fix)
+	local free = math.max(0, slots - #jobs)
+	local first = nil
+	for i = 1, slots do
+		if mats[i].Key == nil then
+			if free > 0 then
+				free = free - 1
+				first = first or i
+			else
+				mats[i].State = "InUse"
+			end
+		end
+	end
+	-- the pending pet: selected, not training, on the first free mat (none when the place is full)
+	if type(selectedKey) == "string" and first then
 		local e = type(growthMap) == "table" and growthMap[selectedKey] or nil
 		if not (type(e) == "table" and type(e.Job) == "table") then
-			for i = 1, slots do
-				if mats[i].Key == nil then
-					mats[i].State, mats[i].Key = "Pending", selectedKey
-					break
-				end
-			end
+			mats[first].State, mats[first].Key = "Pending", selectedKey
 		end
 	end
 	return mats
@@ -825,6 +849,7 @@ function H.newSkill(skill)
 	item.Cost = label(body, "Cost", "Display", 26, { ZIndex = 5, TextColor3 = C.Good, TextXAlignment = Enum.TextXAlignment.Left })
 	item.Time = label(body, "Time", "Body", 20, { ZIndex = 5, TextColor3 = C.Muted, TextXAlignment = Enum.TextXAlignment.Left })
 	item.Action = NeonKit.Button({ Name = "Action", Text = "TRAIN", Color = "Green", Size = UDim2.fromOffset(200, 64), TextSize = 24, ZIndex = 6, Parent = body })
+	item.Action.RichText = true -- (the small cards' "TRAIN $26,250" shows a short price in red: H.paintSkill)
 	-- (not the Button's Callback: a disabled button still says why, on the HintLine)
 	item.Action.Activated:Connect(function()
 		H.onAction(id)
@@ -1607,21 +1632,22 @@ function H.paintMatPC(m, st, spec, mm, w, h, name, lastWord, face, badgeW, left,
 		place(m.Line1, pad, top + mm.Plus + 4, w - 2 * pad, 30)
 		H.fitMat(m.Line1, { "Add a pet", "Add" }, w - 2 * pad - 2, mm.Name, mm.NameMin)
 	else
-		-- locked
+		-- locked (the lock and its level) / in use (an hourglass: a job on a closed mat holds this spot)
 		local lv = spec.Unlock or m.Index
+		local inUse = st == "InUse"
 		local block = mm.Lock + 8 + mm.LineH
 		local top = math.floor((h - block) / 2)
 		m.Big.Visible = true
 		m.Big.Font = U.Title.Font
 		m.Big.TextXAlignment = Enum.TextXAlignment.Center
 		m.Big.TextSize = mm.Lock
-		m.Big.Text = G.Lock
+		m.Big.Text = inUse and G.Wait or G.Lock
 		place(m.Big, 0, top, w, mm.Lock + 4)
 		m.Line2.Visible = true
 		m.Line2.TextXAlignment = Enum.TextXAlignment.Center
 		m.Line2.TextColor3 = C.Muted
 		place(m.Line2, pad, top + mm.Lock + 8, w - 2 * pad, mm.LineH)
-		H.fitMat(m.Line2, { "Training Place Lv " .. lv, "Lv " .. lv }, w - 2 * pad - 2, mm.Line, mm.LineMin)
+		H.fitMat(m.Line2, inUse and { "Spot in use", "In use" } or { "Training Place Lv " .. lv, "Lv " .. lv }, w - 2 * pad - 2, mm.Line, mm.LineMin)
 	end
 end
 
@@ -1653,12 +1679,15 @@ function H.paintMatPhone(m, st, spec, mm, w, h, name, lastWord, face, badgeW, le
 			H.fitMat(m.Line2, { "Pick a skill", "Pick" }, tw - 2, mm.Text, mm.Text)
 		end
 	else
-		-- "+ Add a pet" / the lock and its level, one centred line
+		-- "+ Add a pet" / "In use" / the lock and its level, one centred line
 		m.Line1.Visible = true
 		m.Line1.TextXAlignment = Enum.TextXAlignment.Center
 		place(m.Line1, pad, 0, w - 2 * pad, h)
 		if st == "Add" then
 			H.fitMat(m.Line1, { G.Plus .. " Add a pet", G.Plus .. " Add" }, w - 2 * pad - 2, mm.Text, mm.Text)
+		elseif st == "InUse" then
+			m.Line1.TextColor3 = C.Muted
+			H.fitMat(m.Line1, { G.Wait .. " In use", "In use" }, w - 2 * pad - 2, mm.Text, mm.Text)
 		else
 			m.Line1.TextColor3 = C.Muted
 			H.fitMat(m.Line1, { G.Lock .. " Lv " .. (spec.Unlock or m.Index) }, w - 2 * pad - 2, mm.Text, mm.Text)
@@ -1690,10 +1719,13 @@ function H.paintMatMini(m, st, spec, mm, w, h, face, left)
 		m.Big.TextXAlignment = Enum.TextXAlignment.Center
 		local size = st == "Add" and mm.Plus or mm.Lock
 		m.Big.TextSize = size
-		m.Big.Text = st == "Add" and G.Plus or G.Lock
+		m.Big.Text = (st == "Add" and G.Plus) or (st == "InUse" and G.Wait) or G.Lock
 		place(m.Big, 0, math.max(2, math.floor((lineY - size) / 2)), w, size + 4)
 		if st == "Add" then
 			text = { "Add" }
+		elseif st == "InUse" then
+			m.Line2.TextColor3 = C.Muted
+			text = { "In use" }
 		else
 			m.Line2.TextColor3 = C.Muted
 			text = { "Lv " .. (spec.Unlock or m.Index) }
@@ -1779,6 +1811,9 @@ function H.onMat(i)
 		else
 			H.openSheet()
 		end
+	elseif spec.State == "InUse" then
+		-- every spot is taken (a job on a closed mat holds this one): the sheet would only offer "Spots full"
+		H.hint(TEXTS.InUseMat)
 	else
 		H.hint(H.lockHint(spec.Unlock or i))
 	end
@@ -1887,7 +1922,11 @@ function H.paintSkill(item)
 	if not maxed then
 		local text, colorName, disabled = "TRAIN", "Green", false
 		if st == "Ready" or st == "Short" then
-			text = small and ("TRAIN " .. H.commas(cost)) or "TRAIN"
+			if small then
+				-- cash short: the price inside the greyed button in red, as the full card's Cost line (spec 5.5)
+				local price = H.commas(cost)
+				text = "TRAIN " .. (st == "Short" and ('<font color="#' .. H.hex(C.Bad) .. '">' .. price .. "</font>") or price)
+			end
 			disabled = st == "Short"
 		elseif st == "Training" then
 			text, colorName = "STOP", "Pink"
@@ -1908,7 +1947,8 @@ function H.paintSkill(item)
 		if item.Action:GetAttribute("Disabled") ~= disabled then
 			item.Action:SetAttribute("Disabled", disabled)
 		end
-		H.fit(item.Action, { text, (text:gsub(" %$.*$", "")) }, item.Action.Size.X.Offset - 22, m.BtnText or 22, m.BtnMin or 18)
+		-- (the fallback drops the price, plain or in its red font tag: "TRAIN")
+		H.fit(item.Action, { text, (text:gsub(" %$.*$", ""):gsub(" <font.*$", "")) }, item.Action.Size.X.Offset - 22, m.BtnText or 22, m.BtnMin or 18)
 	end
 end
 
@@ -2335,6 +2375,13 @@ function TrainController.Close()
 	end
 end
 
+-- Escape that only ends typing (a focused TextBox: the sheet's search, the chat) goes back nowhere. Roblox lets go of the
+-- box as it handles that Escape, so a box let go this very moment counts too. (Not InputBegan's gameProcessed: Roblox's
+-- own menu binds Escape, so a plain Escape can arrive processed as well, and the window would stop closing on Esc.)
+function H.typing()
+	return UserInputService:GetFocusedTextBox() ~= nil or os.clock() - S.TypedAt < K.TYPED_GAP
+end
+
 function TrainController.Init()
 	if initialized then
 		return
@@ -2366,8 +2413,11 @@ function TrainController.Init()
 			end
 		end)
 	end
+	UserInputService.TextBoxFocusReleased:Connect(function()
+		S.TypedAt = os.clock()
+	end)
 	UserInputService.InputBegan:Connect(function(input)
-		if input.KeyCode == Enum.KeyCode.Escape and (S.Open or S.Confirm) then
+		if input.KeyCode == Enum.KeyCode.Escape and (S.Open or S.Confirm) and not H.typing() then
 			safe("back", H.back)
 		end
 	end)

@@ -573,6 +573,22 @@ reset during the 10 minutes and the locked line says when the day resets (5.3); 
 confirm layer and its empty state (5.5); window-local hints inside the window (5.1); the phone's Fusion outcome line (5.6); the
 picker's PC chips row at 1440 px (5.2); the touch paused texts (5.1, 5.3, 5.4).
 
+Code review fixes (2026-11-07, after the build's gate on 91cc9ba):
+- 5.5 mats row: the free spots are `TrainingSlots(home)` minus the jobs (the server's count, a job on a closed mat included).
+  Only that many open mats with no job are free (the pending pet, "+ Add a pet"); the other open mats with no job read
+  "Spot in use" (phone "In use", an hourglass) and their tap says "In use by a pet on a closed spot. Free again when that pet
+  is done." on the HintLine, so the row never offers more room than the chip.
+- 5.5 skill cards: on the small cards (phone, tight, row) a short Cash TRAIN keeps the price inside the greyed button, in red.
+- 5.6: a pick list with nothing in it (no pets; only hybrids or Rainbow pets for Upgrade; no regular pet for Mix) says why
+  on the HintLine instead of doing nothing, from the slot / Stack tap and from the auto-open.
+- 5.3: the HUD's vitals card hides while the Gifts window is open (`HudController.SetVitalsHidden("Daily", on)`): at 1080p
+  the window's bottom edge cut the card in half.
+- 5.4 Claim All skips a Ready tier that would pay nothing now (a full Berry Basket, Amount 0): it stays Ready for its own box,
+  which reads "Basket is full"; CLAIM ALL's count leaves it out; only that tier Ready: "Your Berry Basket is full!".
+- 5.1 Esc: Escape that only ends typing in a TextBox (the sheet's search, the chat) closes nothing in the Training and Fusion
+  windows (a focused box, or one let go within 0.1 s). Not InputBegan's gameProcessed: Roblox's menu binds Escape itself, so
+  a plain Escape may arrive processed too and the windows would stop closing on Esc.
+
 Gemini was not asked: its API answered 402 (prepayment credits depleted) during this step, and the web fallback was not driven from
 inside the workflow. Calls 1-3 are the ones worth a Gemini check before the build starts.
 

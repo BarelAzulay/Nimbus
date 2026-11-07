@@ -13,7 +13,9 @@
 --                           and the NEW HYBRID card shows the blended name, "Flame + Storm", the rarity and the finish;
 --                           closing a chained sheet without a pick ends the chain; a slot tap opens its sheet; the swap
 --                           button swaps the pets; the tabs switch; Esc with the sheet up closes only the sheet, then the
---                           window; Close() closes the sheet too; NimbusFusion ignores the gui inset
+--                           window; Close() closes the sheet too; NimbusFusion ignores the gui inset; review fixes: an Escape
+--                           that only ends typing in the Search box closes nothing; an empty pick list (no pets, only a
+--                           Rainbow pet + a hybrid, only a hybrid) says why on the HintLine from the auto-open and the taps
 --   client_fusion_layouts   Upgrade and Mix at 844x390 (touch), 1280x720, 1366x768, 1920x1080 (+ 1280x640, 667x375 touch):
 --                           RedoGeom.check (text >= 14 px, targets >= 44 px, on the screen under the top bar, the named
 --                           controls never overlap) and the main texts fit their boxes with the real font widths;
@@ -128,6 +130,28 @@ local function clientScenarios()
 		Mock.FireSignal(game:GetService("UserInputService"), "InputBegan", Mock.NewInput("Escape", "Keyboard", "Begin"), false)
 		KC.advance(0.3)
 	end
+	-- (review fix) Escape while a TextBox has focus (the sheet's search, the chat): Roblox lets go of the box and InputBegan
+	-- arrives processed. how = "release" (the box let go just before InputBegan) | "focused" (GetFocusedTextBox() still
+	-- returns the box while InputBegan runs)
+	function H.escTyping(box, how)
+		local UIS = game:GetService("UserInputService")
+		local methods = Mock.Classes.UserInputService.methods
+		local old = methods.GetFocusedTextBox
+		if how == "focused" then
+			methods.GetFocusedTextBox = function()
+				return box
+			end
+		else
+			Mock.FireSignal(UIS, "TextBoxFocused", box)
+			Mock.FireSignal(UIS, "TextBoxFocusReleased", box)
+		end
+		local ok, err = pcall(Mock.FireSignal, UIS, "InputBegan", Mock.NewInput("Escape", "Keyboard", "Begin"), true)
+		methods.GetFocusedTextBox = old
+		KC.advance(0.3)
+		if not ok then
+			error(err, 0)
+		end
+	end
 	function H.disabled(b)
 		return b ~= nil and b:GetAttribute("Disabled") == true
 	end
@@ -200,10 +224,10 @@ local function clientScenarios()
 	function H.bottom(o)
 		return o.AbsolutePosition.Y + o.AbsoluteSize.Y
 	end
-	-- the fixture plus opts.Extra ({ key, level, copies, evo })
+	-- the fixture plus opts.Extra ({ key, level, copies, evo }); opts.Only replaces the fixture's pets (the hybrid stays)
 	function H.fixture(opts)
 		local list = {}
-		for _, f in ipairs(FIX) do
+		for _, f in ipairs(opts.Only or FIX) do
 			list[#list + 1] = f
 		end
 		for _, f in ipairs(opts.Extra or {}) do
@@ -522,6 +546,13 @@ local function clientScenarios()
 				T.check(PP.IsOpen() and H.sheetTitle() == "Pick the Style pet" and H.card("storm_tabby") and H.card("storm_tabby"):GetAttribute("Blocked") == "In Body",
 					"fusion ui: tapping Slot_Style opens its sheet with the Body's species blocked", H.sheetTitle())
 				T.check(H.card("maple_fox") and H.card("maple_fox"):GetAttribute("Selected") == true, "fusion ui: ...the slot's pet selected")
+				-- (review fix) Escape that only ends typing in the Search box (or the chat) closes nothing
+				local search = RedoGeom.find(H.sheetWin(), "Search")
+				T.check(search ~= nil, "fusion ui: (typing) the sheet's Search box")
+				H.escTyping(search, "release")
+				T.check(PP.IsOpen() and FC.IsOpen(), "fusion ui: Escape that lets go of the Search box (released just before) closes nothing")
+				H.escTyping(search, "focused")
+				T.check(PP.IsOpen() and FC.IsOpen(), "fusion ui: ...nor while a TextBox still has focus")
 				-- Esc: the sheet first, then the window
 				H.esc()
 				T.check(not PP.IsOpen() and FC.IsOpen(), "fusion ui: Esc with the sheet up closes only the sheet")
@@ -573,6 +604,43 @@ local function clientScenarios()
 				FC.Open("Upgrade", {})
 				KC.advance(0.4)
 				T.check(FC.IsOpen() and not PP.IsOpen(), "fusion ui: no pets: the sheet does not open by itself")
+				-- (review fix) an empty pick list says why on the HintLine instead of doing nothing
+				local NO_PETS = "No pets yet! Spin a roulette in the Shop to hatch one."
+				local NO_UPGRADE = "Nothing to upgrade yet. Hybrids and Rainbow pets can't go higher."
+				local NO_MIX = "You need regular pets to mix. Hybrids can't be mixed again."
+				local hint = H.find("HintLine")
+				T.check(hint and H.shown(hint) and hint.Text == NO_PETS, "fusion ui: no pets: the HintLine says how to get one", H.text(hint))
+				FC.Close()
+				KC.advance(4)
+				-- only a Rainbow pet and a hybrid: nothing can go up a finish
+				H.feed({ Only = { { "maple_fox@Rainbow", 20, 1 } }, Team = {} })
+				FC.Select(nil, nil)
+				FC.Open("Upgrade", {})
+				KC.advance(0.4)
+				hint = H.find("HintLine")
+				T.check(FC.IsOpen() and not PP.IsOpen() and hint and H.shown(hint) and hint.Text == NO_UPGRADE,
+					"fusion ui: only a Rainbow pet and a hybrid: Upgrade's sheet does not open; the HintLine says why", H.text(hint))
+				KC.advance(4)
+				T.check(not H.shown(hint), "fusion ui: ...(the hint goes after a few seconds)")
+				H.click(H.find("Stack"))
+				T.check(not PP.IsOpen() and H.shown(hint) and hint.Text == NO_UPGRADE, "fusion ui: ...tapping the Stack says it again", H.text(hint))
+				H.click(H.find("Tab_Mix"))
+				T.check(PP.IsOpen() and H.sheetTitle() == "Pick the Body pet", "fusion ui: ...Mix still has the Rainbow pet to pick", H.sheetTitle())
+				PP.Close()
+				KC.advance(0.3)
+				FC.Close()
+				KC.advance(4)
+				-- only the hybrid: nothing to mix either
+				H.feed({ Only = {}, Team = {} })
+				FC.Select(nil, nil)
+				FC.Open("Mix", {})
+				KC.advance(0.4)
+				hint = H.find("HintLine")
+				T.check(FC.IsOpen() and not PP.IsOpen() and hint and H.shown(hint) and hint.Text == NO_MIX,
+					"fusion ui: only a hybrid: Mix's sheet does not open; the HintLine says why", H.text(hint))
+				KC.advance(4)
+				H.click(H.find("Slot_Style"))
+				T.check(not PP.IsOpen() and H.shown(hint) and hint.Text == NO_MIX, "fusion ui: ...tapping a slot says it again", H.text(hint))
 			end)
 		end)
 	end)

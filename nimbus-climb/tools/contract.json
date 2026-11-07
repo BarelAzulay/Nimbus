@@ -424,7 +424,8 @@
     },
     "client/Controllers/HudController": {
       "functions": [
-        "Init"
+        "Init",
+        "SetVitalsHidden"
       ]
     },
     "client/Controllers/DamageFx": {

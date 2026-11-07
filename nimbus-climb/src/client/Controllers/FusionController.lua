@@ -136,6 +136,7 @@ local K = {
 	PREVIEW_SEED = 4242, -- look seed of the Mix preview (the real hybrid draws its own)
 	HINT_SECONDS = 3,
 	SERVER_HINT_SECONDS = 4,
+	TYPED_GAP = 0.1, -- seconds after a TextBox let go in which an Escape only ended the typing (H.typing)
 	OPEN_FROM = 0.86,
 	OPEN_TIME = 0.22,
 	-- the text width a box must allow: TextService's, never less than this many em per character (the fonts' real widths)
@@ -218,6 +219,10 @@ local TEXTS = {
 	InfoPC = "Your hybrid gets its own random look. Hybrids are one of a kind and can't be fused again.",
 	InfoPhone = "Body first, then Style. Your hybrid gets its own random look.",
 	LockedSub = "Fuse 3 copies into a Golden or Rainbow pet, or mix two pets into a brand-new hybrid!",
+	-- the HintLine when the picker would have nothing to show (review fix)
+	EmptyNoPets = "No pets yet! Spin a roulette in the Shop to hatch one.",
+	EmptyUpgrade = "Nothing to upgrade yet. Hybrids and Rainbow pets can't go higher.",
+	EmptyMix = "You need regular pets to mix. Hybrids can't be mixed again.",
 	-- the outcome of the move choice, in the owner's words
 	OutAttack = "Normal attack: %s (%s)", -- element, attack name
 	OutAttackShort = "Normal attack: %s",
@@ -256,6 +261,7 @@ local S = {
 	TouchOff = false,
 	BackBound = false,
 	RefreshPending = false,
+	TypedAt = -1, -- os.clock() when a TextBox last let go of focus (H.typing)
 	Fx = {},
 	Warned = {},
 	Geo = {}, -- the laid-out boxes paint needs (pills, the note's box, ...)
@@ -2200,6 +2206,15 @@ function H.speciesBlocked(key, word)
 	return out
 end
 
+-- why the picker has nothing for this context ("Upgrade" | "Mix"): no pets at all, or only hybrids / Rainbow pets
+function H.emptyText(ctx)
+	local ok, keys = pcall(State.Keys)
+	if not (ok and type(keys) == "table" and #keys > 0) then
+		return TEXTS.EmptyNoPets
+	end
+	return ctx == "Upgrade" and TEXTS.EmptyUpgrade or TEXTS.EmptyMix
+end
+
 -- which = "Upgrade" | "Body" | "Style"; chain = after a pick, open the other Mix slot's sheet once when it is still empty
 function H.openSheet(which, chain)
 	if not S.Open or H.inMatch() or S.Pending or S.Animating or not H.unlocked() then
@@ -2207,7 +2222,12 @@ function H.openSheet(which, chain)
 	end
 	local ctx = (which == "Upgrade") and "Upgrade" or "Mix"
 	local okEntries, entries = pcall(PetPicker.Entries, ctx)
-	if not okEntries or type(entries) ~= "table" or #entries == 0 then
+	if not okEntries or type(entries) ~= "table" then
+		return false
+	end
+	if #entries == 0 then
+		-- nothing this tab can take: say why on the HintLine instead of doing nothing (review fix)
+		H.hint(H.emptyText(ctx))
 		return false
 	end
 	S.SheetToken = S.SheetToken + 1
@@ -2304,6 +2324,13 @@ function H.hint(text, seconds)
 			U.Hint.Visible = false
 		end
 	end)
+end
+
+-- Escape that only ends typing (a focused TextBox: the sheet's search, the chat) goes back nowhere. Roblox lets go of the
+-- box as it handles that Escape, so a box let go this very moment counts too. (Not InputBegan's gameProcessed: Roblox's
+-- own menu binds Escape, so a plain Escape can arrive processed as well, and the window would stop closing on Esc.)
+function H.typing()
+	return UserInputService:GetFocusedTextBox() ~= nil or os.clock() - S.TypedAt < K.TYPED_GAP
 end
 
 function H.onFuseTap()
@@ -2949,8 +2976,11 @@ function FusionController.Init()
 			end
 		end)
 	end
+	UserInputService.TextBoxFocusReleased:Connect(function()
+		S.TypedAt = os.clock()
+	end)
 	UserInputService.InputBegan:Connect(function(input)
-		if S.Open and input.KeyCode == Enum.KeyCode.Escape then
+		if S.Open and input.KeyCode == Enum.KeyCode.Escape and not H.typing() then
 			safe("back", H.back)
 		end
 	end)

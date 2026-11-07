@@ -26,7 +26,9 @@
 --                      Claimed fired per tier; again -> "No gifts ready yet!"; one Ready tier -> ClaimPlay's own text and
 --                      the { Tiers, Grants } answer; junk arguments dropped without an answer (and never spend the gap); a
 --                      second request inside 1 s dropped (ClaimPlay keeps its own gap); InMatch refused; a play-day that is
---                      over refused; all 7 at once -> "7 gifts claimed!"; two servers at one PlayStart pay each tier once
+--                      over refused; all 7 at once -> "7 gifts claimed!"; review fix: a full Berry Basket's tier is left
+--                      Ready (not claimed for nothing, not in the toast), alone -> "Your Berry Basket is full!", claimed
+--                      once there is room; two servers at one PlayStart pay each tier once
 -- White-box: the booted helpers of smoke_daily.lua. The mock's os.time() is floor(EPOCH + clock); alignTicks lands 5 s after a
 -- loop tick, so every tick() (10 s) holds exactly one tick. Plain Lua 5.1 syntax only.
 
@@ -830,7 +832,10 @@ S.daily_claim_all = guarded("daily_claim_all", function()
 		d = DS().GetDaily(p)
 		okPay, payText = movedBy(p, before, {})
 		T.check(d.PlayClaimed[1] ~= true and okPay and toastTexts(p, mark) == "That play day is over!", "daily claim all: a play-day that is over -> 'That play day is over!', nothing paid", claimedText(d) .. " toasts: " .. toastTexts(p, mark))
-		-- all 7 at once: the short toast
+		-- all 7 at once: the short toast (tier 6 filled the Basket above: spend a little so it pays again)
+		if D.Resolve(p, tiers[6], false).Amount < 1 then
+			DS().SpendBerries(p, 10)
+		end
 		alignTicks()
 		setDaily(p, { PlayStart = os.time(), PlaySec = 180 * 60, PlayClaimed = {} })
 		want = {}
@@ -853,6 +858,55 @@ S.daily_claim_all = guarded("daily_claim_all", function()
 		T.check(all and okPay and #fired == fired0 + 7, "daily claim all: 180 min -> all 7 tiers claimed and paid once, Claimed fired 7 times", claimedText(d) .. " " .. payText .. " fired +" .. tostring(#fired - fired0))
 		T.check(#K.remotesFor("Notify", p.UserId, mark) == 1 and text == "7 gifts claimed!" and #text <= 90 and #states(p, mark) == 1,
 			"daily claim all: ...one toast '7 gifts claimed!' (the joined text would pass 60 characters; <= 90) and one payload", text .. " (" .. #text .. " chars), payloads " .. #states(p, mark))
+		-- (review fix) a full Berry Basket: tier 6 resolves to 0 Berries and would pay nothing. CLAIM ALL leaves it Ready for
+		-- its own box (claimed later, when there is room), never flags it claimed for nothing nor counts it as a gift
+		alignTicks()
+		setDaily(p, { PlayStart = os.time(), PlaySec = 125 * 60, PlayClaimed = { true, true, true, true } })
+		local room = D.Resolve(p, tiers[6], false).Amount
+		if room > 0 then
+			DS().AddBerries(p, room)
+		end
+		local r6full = D.Resolve(p, tiers[6], false)
+		T.check(tiers[6].Berries == "Basket" and r6full.Kind == "Berries" and r6full.Amount == 0, "daily claim all: (setup) the Berry Basket is full: tier 6 resolves to 0",
+			tostring(r6full.Kind) .. " " .. tostring(r6full.Amount))
+		local r5b = D.Resolve(p, tiers[5], false)
+		local five = string.format("%s %d min played", headOf(r5b), tiers[5].Min)
+		before = balances(p)
+		fired0 = #fired
+		mark = K.logSize()
+		request(p, "ClaimPlayAll")
+		advance(1.05)
+		d = DS().GetDaily(p)
+		okPay, payText = movedBy(p, before, { [r5b.Kind] = r5b.Amount })
+		T.check(d.PlayClaimed[5] == true and d.PlayClaimed[6] ~= true and okPay and #fired == fired0 + 1,
+			"daily claim all: tiers 5 and 6 Ready, the Basket full -> tier 5 claimed and paid, tier 6 left Ready (not claimed for nothing)", claimedText(d) .. " " .. payText)
+		T.check(toastTexts(p, mark) == five, "daily claim all: ...the toast is tier 5's alone ('" .. five .. "'): no 'Basket is full', no '2 gifts'", toastTexts(p, mark))
+		local st6 = D.State(p)
+		T.check(st6 and st6.Play.Tiers[6].Ready == true and st6.Play.Tiers[6].Amount == 0, "daily claim all: ...the payload keeps tier 6 Ready with Amount 0")
+		-- only the full Basket left: refused with the full text, nothing claimed or paid
+		advance(1.1)
+		before = balances(p)
+		mark = K.logSize()
+		request(p, "ClaimPlayAll")
+		advance(1.05)
+		d = DS().GetDaily(p)
+		okPay, payText = movedBy(p, before, {})
+		T.check(d.PlayClaimed[6] ~= true and okPay and toastTexts(p, mark) == "Your Berry Basket is full!",
+			"daily claim all: only the full Basket Ready -> 'Your Berry Basket is full!', nothing claimed", claimedText(d) .. " " .. payText .. " toasts: " .. toastTexts(p, mark))
+		local okAll, why = D.ClaimPlayAll(p)
+		T.check(okAll == false and why == "Your Berry Basket is full!", "daily claim all: ...the direct API answers false, 'Your Berry Basket is full!'", tostring(okAll) .. " " .. tostring(why))
+		-- berries spent: the Basket has room, so CLAIM ALL takes tier 6 and fills it
+		T.check(DS().SpendBerries(p, 5) == true, "daily claim all: (setup) spend 5 berries")
+		local r6room = D.Resolve(p, tiers[6], false)
+		advance(1.1)
+		before = balances(p)
+		mark = K.logSize()
+		request(p, "ClaimPlayAll")
+		advance(1.05)
+		d = DS().GetDaily(p)
+		okPay, payText = movedBy(p, before, { Berries = r6room.Amount })
+		T.check(r6room.Amount == 5 and d.PlayClaimed[6] == true and okPay, "daily claim all: ...5 berries spent -> CLAIM ALL claims tier 6 and refills the 5",
+			tostring(r6room.Amount) .. " " .. claimedText(d) .. " " .. payText)
 	end)
 	conn:Disconnect()
 	if p and p.Parent then

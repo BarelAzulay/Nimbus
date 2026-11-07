@@ -25,7 +25,8 @@
 --                          DailyWindow (texts >= 14 px, targets >= 44 px, on the screen under the top bar, the named
 --                          controls never overlap) for the ready, locked, wait and repair views and the Play tab; 844x390:
 --                          an 820 x 330 box at 12,59 (centred), Layout() "Phone", Roblox's touch controls gone while it is
---                          open and back after; a resize while open (1920x1080 -> 844x390 -> 1920x1080) passes each time
+--                          open and back after; review fix: the HUD's vitals card hidden while the window is open (both
+--                          tabs) and back after; a resize while open (1920x1080 -> 844x390 -> 1920x1080) passes each time
 --   client_daily_portrait  (phone world, 390x844 touch; and 360x640) Layout() "Portrait", the day tiles four per row (Day 7
 --                          the double tile of row 2), RedoGeom.check passes for the ready, locked and wait views and the
 --                          Play tab
@@ -38,7 +39,8 @@
 --                          pulsing, its gift bobbing), Tier4's clock "13:00" counting down on the window's tick, frozen
 --                          while paused (the gold paused header; on touch "Paused: close this and move around!"), held
 --                          at "0:01", CLAIM ALL (n) sending one DailyRequest("ClaimPlayAll") (none within 1 s), a box's
---                          CLAIM sending ClaimPlay(i), CLAIM ALL greyed out at 0 in the same place and size
+--                          CLAIM sending ClaimPlay(i), CLAIM ALL greyed out at 0 in the same place and size; review fix: a
+--                          full Berry Basket (Amount 0) reads "Basket is full", keeps its CLAIM and is left out of CLAIM ALL
 --   client_play_layouts    844x390 (touch), 1280x720, 1366x768, 1920x1080 (+ 667x375 touch): RedoGeom.check of the
 --                          window on the Play tab (the named controls never overlap), with 3 ready and paused; every
 --                          text fits with the real font widths; phone: seven boxes in one row (104 x 204 on 844x390,
@@ -148,6 +150,11 @@ local function clientScenarios()
 	end
 	function H.disabled(b)
 		return b ~= nil and (b:GetAttribute("Disabled") == true or b.Active == false)
+	end
+	-- the HUD's vitals card (NimbusHud > BottomLeft > Vitals)
+	function H.vitals()
+		local hud = H.pg():FindFirstChild("NimbusHud")
+		return hud and RedoGeom.find(hud, "Vitals") or nil
 	end
 	-- the Week bar's segment states "Claimed,Claimed,Today,Open,..."
 	function H.segs()
@@ -542,6 +549,21 @@ local function clientScenarios()
 						KC.advance(0.4)
 						T.check(GuiService.TouchControlsEnabled == touchBefore, label .. ": ...and come back after")
 					end
+					-- (review fix) the HUD's vitals card steps aside while the window is open: at 1080p the window's bottom edge
+					-- cut the card in half, at 1280x720 its glow showed under the edge
+					DC.Close()
+					KC.advance(0.3)
+					local vitals = H.vitals()
+					T.check(vitals ~= nil and vitals.Visible == true, label .. ": (setup) the HUD's vitals card is shown with the window closed",
+						vitals and tostring(vitals.Visible) or "no vitals card")
+					H.open(DC, "Daily")
+					T.check(vitals ~= nil and vitals.Visible == false, label .. ": the HUD's vitals card is hidden while the window is open")
+					DC.Open({ Tab = "Play" })
+					KC.advance(0.3)
+					T.check(vitals ~= nil and vitals.Visible == false, label .. ": ...on the Play time page too")
+					DC.Close()
+					KC.advance(0.3)
+					T.check(vitals ~= nil and vitals.Visible == true, label .. ": ...and back when it closes")
 				end)
 			end)
 		end
@@ -790,6 +812,25 @@ local function clientScenarios()
 					three.Play.Tiers[4].Ready, three.Play.Tiers[5].Ready = true, true
 					H.fire(three)
 					T.eq(all.Text, "CLAIM ALL (3)", label .. ": three ready -> CLAIM ALL (3)")
+					-- (review fix) a full Berry Basket (the server resolves the tier to Amount 0) pays nothing: its box says so
+					-- and CLAIM ALL leaves it for its own CLAIM
+					local full = H.play(H.now())
+					full.Play.Seconds = 125 * 60
+					full.Play.Tiers[4].Claimed, full.Play.Tiers[5].Claimed = true, true
+					full.Play.Tiers[6].Ready, full.Play.Tiers[6].Amount = true, 0
+					H.fire(full)
+					local reward6 = H.text(H.part(6, "Reward"))
+					T.check(all.Text == "CLAIM ALL (1)" and H.slot(6) == "Claim", label .. ": a full Basket (Amount 0): CLAIM ALL (1) counts tier 3 only; the box keeps its CLAIM",
+						all.Text .. " / " .. H.slot(6))
+					T.check(reward6:find("full", 1, true) ~= nil and reward6:find("Full Berry", 1, true) == nil, label .. ": ...the box says the Basket is full", reward6)
+					full.Play.Tiers[3].Claimed, full.Play.Tiers[3].Ready = true, false
+					H.fire(full)
+					T.check(all.Text == "CLAIM ALL (0)" and H.disabled(all), label .. ": ...with only that box ready: CLAIM ALL (0), greyed out", all.Text)
+					full.Play.Tiers[6].Amount = 12
+					H.fire(full)
+					reward6 = H.text(H.part(6, "Reward"))
+					T.check(all.Text == "CLAIM ALL (1)" and reward6:find("full", 1, true) == nil and reward6:find("Basket", 1, true) ~= nil,
+						label .. ": ...room in the Basket again: counted, and the box reads the Berry Basket", all.Text .. " / " .. reward6)
 					-- none ready: greyed out, the same place and size, sends nothing
 					KC.advance(1.1)
 					H.fire(H.base(H.now()))

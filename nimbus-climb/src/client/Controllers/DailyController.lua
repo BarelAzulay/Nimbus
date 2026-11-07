@@ -57,7 +57,8 @@
 --     "DailyWindow" (navy, gold edge, UIScale "Pop" for the 0.22 s Back-Out open) > "TitleBar" (gold: Tab_Daily "Daily",
 --     Tab_Play "Play time", the red CloseButton: 56 px PC / 44 px phone, header 76 / 50) and "Body" > DailyPage, PlayPage,
 --     Fx. While open on a phone (or a touch-only device) Roblox's stick and jump are hidden (MenuController.
---     SetTouchHidden("Daily", on)) and the menu tiles step aside (MenuController.SetColumnCovered(windowLeft, "Daily")).
+--     SetTouchHidden("Daily", on)), the menu tiles step aside (MenuController.SetColumnCovered(windowLeft, "Daily")) and
+--     the HUD's vitals card hides (HudController.SetVitalsHidden("Daily", on): the window's edge would cut it on PC).
 --   * DailyPage (card A): Header "Day 3 of 7 . Week 2" (the middle dot), StreakChip "Streak: 9 days" (phone "Streak: 9";
 --     hidden at 0), VipChip "VIP x2" (VIP only); Cells > Cell1..7 glossy tiles (NeonKit cards, DAY_COLORS; Day "Day n" or
 --     "TODAY" while today's gift is due, Art (glyph or the Week Wisp's PetViewport), Amount, Dim, Check: a big tick on a
@@ -73,7 +74,8 @@
 --   * PlayPage (card B, gui-redo Task 10, spec 5.4): PlayHeader "47 min played today . Resets in 5h" (phone / portrait "47
 --     min today . Resets in 5h"; the minutes are live: Play.Seconds + the time since ServerNow while Active), or Neon.Gold
 --     "Paused: move around to keep counting!" while Play.Active == false (a touch-only device: "Paused: close this and
---     move around!", the stick is hidden while the window is open). ClaimAll "CLAIM ALL (n)" (n = the Ready tiers; PC
+--     move around!", the stick is hidden while the window is open). ClaimAll "CLAIM ALL (n)" (n = the Ready tiers that
+--     pay something now: a full Berry Basket, Amount 0, is left to its own box, which reads "Basket is full"; PC
 --     252 x 60, phone 166 x 44 at the top right, portrait centred under the header): DailyRequest("ClaimPlayAll"), greyed
 --     out at 0 in the same place. Tiers > Tier1..7 gift boxes (NeonKit cards in TIER_COLORS; attributes State = "Ready" |
 --     "Claimed" | "Locked", Pulsing): Time "10 min" on top, Gift (an Orb in the tier's colour under the "Gifts" icon;
@@ -285,6 +287,7 @@ local S = {
 	BackBound = false,
 	Hidden = true,
 	TouchOff = false,
+	VitalsOff = false, -- the HUD's vitals card is hidden for this window (H.coverColumn)
 }
 local warned = {}
 
@@ -396,14 +399,26 @@ local function cellAmounts(entry)
 	return { commas(entry.Amount), short(entry.Amount) }
 end
 
+-- a play tier whose claim would pay nothing now: the server resolved it to Amount 0 (a full Berry Basket) or "None".
+-- CLAIM ALL leaves it out (DailyService.ClaimPlayAll skips it too); its own box still claims it
+local function paysNothing(tier)
+	if tier.Kind == "None" then
+		return true
+	end
+	local amount = tonumber(tier.Amount)
+	return tier.Kind ~= "Pet" and amount ~= nil and amount < 1
+end
+
 -- the words of a play tier's reward, the longest form first ("+$200", "+40 Tokens", "Full Berry Basket" / "Berry Basket"
--- / "Full Basket")
+-- / "Full Basket"; a full Basket, Amount 0: "Basket is full" / "Basket full")
 local function tierRewards(tier)
 	local kind = tier.Kind
 	if kind == "Cash" then
 		return { "+$" .. commas(tier.Amount), "+$" .. short(tier.Amount) }
 	elseif kind == "Tokens" or kind == "Gems" then
 		return { "+" .. commas(tier.Amount) .. " " .. kind, "+" .. short(tier.Amount) .. " " .. kind, "+" .. short(tier.Amount) }
+	elseif kind == "Berries" and paysNothing(tier) then
+		return { "Basket is full", "Basket full" }
 	elseif kind == "Berries" then
 		return { "Full Berry Basket", "Berry Basket", "Full Basket" }
 	elseif kind == "Pet" then
@@ -565,14 +580,14 @@ function H.liveSeconds(st, at)
 	return seconds
 end
 
--- the play tiers a CLAIM ALL would claim now
+-- the play tiers a CLAIM ALL would claim now (not one that would pay nothing: the server leaves it for its own box)
 function H.readyCount(st)
 	if type(st) ~= "table" or st.Loading == true then
 		return 0
 	end
 	local n = 0
 	for _, t in ipairs(tiers(st)) do
-		if type(t) == "table" and t.Ready == true and t.Claimed ~= true then
+		if type(t) == "table" and t.Ready == true and t.Claimed ~= true and not paysNothing(t) then
 			n = n + 1
 		end
 	end
@@ -1280,8 +1295,8 @@ function H.layoutTier(cell, bw, bh, M)
 	cell.GiftKey, cell.ClockKey = nil, nil
 end
 
--- the menu tiles (NimbusMenu draws above this window) step aside while the open window reaches over them, and on a
--- phone (or a touch-only device) Roblox's stick and jump go while it is open
+-- the menu tiles (NimbusMenu draws above this window) step aside while the open window reaches over them, on a
+-- phone (or a touch-only device) Roblox's stick and jump go while it is open, and the HUD's vitals card hides
 function H.coverColumn()
 	local menu = controller("MenuController")
 	if menu and type(menu.SetColumnCovered) == "function" then
@@ -1292,6 +1307,16 @@ function H.coverColumn()
 		S.TouchOff = want
 		if menu and type(menu.SetTouchHidden) == "function" then
 			safe("touch", menu.SetTouchHidden, "Daily", want)
+		end
+	end
+	-- (review fix) the HUD's vitals card steps aside while the window is open: its bottom edge would cut the card (at
+	-- 1080p the window covered its top half, at 1280x720 the card's glow showed under the edge)
+	local vitalsOff = S.Open == true
+	if vitalsOff ~= S.VitalsOff then
+		S.VitalsOff = vitalsOff
+		local hud = controller("HudController")
+		if hud and type(hud.SetVitalsHidden) == "function" then
+			safe("vitals", hud.SetVitalsHidden, "Daily", vitalsOff)
 		end
 	end
 end
