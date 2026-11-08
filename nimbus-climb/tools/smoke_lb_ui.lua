@@ -1,6 +1,7 @@
 -- smoke_lb_ui.lua: lobby-shop Task 24 (spec 5.10 "Client", pages per section 15: Trophies / Pets found / Ring best): the lobby
 -- board's SurfaceGui (client/Controllers/LeaderboardController). Loaded by tools/smoke.py in the CLIENT world:
 --   client_leaderboard   (client, 1920x1080)
+--     starts from a cold controller (G.cold through LeaderboardController._S: earlier client scenarios leave it warm)
 --     an untagged stand-in board -> nothing (review round 1: the board is found by its Face's Config.Tags.LeaderboardFace)
 --     a stand-in board (Model LobbyLeaderboard > Part Face 16 x 13 x 0.4, tagged; the client world has no lobby) -> a SurfaceGui
 --       LobbyLeaderboard in PlayerGui adorned to that Face: Face Front, PixelsPerStud 50 (800 x 650 px), MaxDistance 80,
@@ -64,6 +65,35 @@ function G.board(x, untagged)
 	face.Parent = model
 	model.Parent = workspace
 	return model, face
+end
+-- a cold controller, as in a fresh session. In the whole suite earlier client scenarios leave it warm: client_replay
+-- replays the server run's LeaderboardState broadcasts (State set, an empty page), and client_pets' Storm Altar showcase
+-- (smoke_client_v2.lua) builds a whole lobby, board included, whose SurfaceGui stays in the PlayerGui after that lobby is
+-- destroyed (by design: a rebuilt board re-adorns the same gui). Through the controller's _S test hook: the gui destroyed,
+-- the face, state, page and headshot cache dropped. Returns the tagged Faces still in the workspace (there should be none)
+function G.cold(LC)
+	local st = LC._S
+	if type(st) ~= "table" then
+		return nil
+	end
+	for _, g in ipairs(G.guis()) do
+		g:Destroy()
+	end
+	if st.Gui then
+		pcall(function()
+			st.Gui:Destroy()
+		end)
+	end
+	st.Gui, st.Face, st.Ui, st.State, st.Page, st.Icon = nil, nil, nil, nil, nil, nil
+	st.Heads, st.HeadCount, st.TurnAt = {}, 0, 0
+	local Config = _G.KC.env()
+	local left = 0
+	for _, f in ipairs(game:GetService("CollectionService"):GetTagged((Config.Tags and Config.Tags.LeaderboardFace) or "NC_LeaderboardFace")) do
+		if f:IsDescendantOf(workspace) then
+			left = left + 1
+		end
+	end
+	return left
 end
 -- every SurfaceGui named LobbyLeaderboard in the PlayerGui
 function G.guis()
@@ -160,6 +190,10 @@ S.client_leaderboard = guarded("client_leaderboard", function()
 	local LB = Config.Leaderboard
 	local PAGES = LB.Pages
 	if not T.check(type(PAGES) == "table" and #PAGES == 3 and PAGES[1] == "Trophies" and PAGES[2] == "Pets" and PAGES[3] == "Ring", "leaderboard: Config pages Trophies / Pets / Ring (section 15)") then
+		return
+	end
+	local left = G.cold(LC)
+	if not T.check(left == 0, "leaderboard: (setup) a cold controller (_S) and no tagged board left in the workspace by an earlier scenario", tostring(left)) then
 		return
 	end
 	Mock.ThumbnailCalls = {}

@@ -22,8 +22,9 @@
 -- The Storm Altar (another engineer's file, audited by smoke_storm.lua) and transient damage numbers are reported only,
 -- except the altar's "To the Plaza" sign (lobby shop Task 13): the tag rule on the Part fallback, the 0.6-stud line
 -- floor on the dressed ring's one-line plaque.
--- The mock has no Players:GetUserThumbnailAsync: this file adds a faithful stub (yields, returns content + isReady,
--- errors for user ids listed in THUMB.fail) when it loads, before the boot.
+-- Players:GetUserThumbnailAsync is the mock's (lobby-shop Task 24: content + isReady, Mock.ThumbnailCalls counts the
+-- calls, Mock.ThumbnailFail fails them); this file reads those counters as deltas (it used to add its own stub, which
+-- stopped being installed once the mock had the method).
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -349,20 +350,17 @@ end
 local function serverScenarios()
 	local S = {}
 
-	-- Players:GetUserThumbnailAsync stub (the real one yields for a web request and returns content, isReady)
-	local THUMB = { calls = {}, fail = {} }
-	local playersClass = Mock.Classes and Mock.Classes.Players
-	if playersClass and playersClass.methods and not playersClass.methods.GetUserThumbnailAsync then
-		playersClass.methods.GetUserThumbnailAsync = function(self, userId, thumbType, thumbSize)
-			THUMB.calls[userId] = (THUMB.calls[userId] or 0) + 1
-			if type(task) == "table" and task.wait then
-				task.wait(0.2)
-			end
-			if THUMB.fail[userId] then
-				error("HTTP 500 (Internal Server Error)", 2)
-			end
-			return "rbx" .. "thumb://type=AvatarHeadShot&id=" .. tostring(userId) .. "&w=150&h=150", true
-		end
+	-- Players:GetUserThumbnailAsync is the mock's own since lobby-shop Task 24 (content + isReady; Mock.ThumbnailCalls[userId]
+	-- counts the calls, every call fails while Mock.ThumbnailFail is set). This file's older stub was installed only on a
+	-- mock without the method, so once the mock had one the stub's counters stayed empty: the counts are read from the
+	-- mock now, as deltas (other scenarios share Mock.ThumbnailCalls)
+	local THUMB = {}
+	function THUMB.has()
+		local playersClass = Mock.Classes and Mock.Classes.Players
+		return playersClass ~= nil and playersClass.methods ~= nil and playersClass.methods.GetUserThumbnailAsync ~= nil
+	end
+	function THUMB.calls(userId)
+		return (type(Mock.ThumbnailCalls) == "table" and Mock.ThumbnailCalls[userId]) or 0
 	end
 	local function thumbContent(userId)
 		return "rbx" .. "thumb://type=AvatarHeadShot&id=" .. tostring(userId) .. "&w=150&h=150"
@@ -529,6 +527,8 @@ local function serverScenarios()
 		-- an owner: name, "Home Level <n>", the headshot (fetched once), the podium tag
 		local p = K.freshPlayers(1, "Wt")[1]
 		advance(1.0)
+		T.check(THUMB.has(), "the mock has Players:GetUserThumbnailAsync (precondition)")
+		local thumbBase = THUMB.calls(p.UserId)
 		local spot = claimHome(p)
 		if T.check(spot ~= nil, "a player claims a home with E at its gate (precondition)") then
 			advance(1.5)
@@ -537,13 +537,13 @@ local function serverScenarios()
 			local state, image, disc = avatarState(spot)
 			T.check(state == "headshot" and image == thumbContent(p.UserId), "the avatar disc shows the owner's headshot (Players:GetUserThumbnailAsync)", state .. " '" .. image .. "'")
 			T.check(disc ~= nil and disc.BackgroundColor3 == disc:GetAttribute("OwnedColor"), "...on the plot's owned colour")
-			T.eq(THUMB.calls[p.UserId], 1, "the headshot is requested once")
+			T.eq(THUMB.calls(p.UserId) - thumbBase, 1, "the headshot is requested once")
 			for _ = 1, 3 do
 				DataS.AddTokens(p, 1)
 				SS.Refresh(p)
 				advance(1.1)
 			end
-			T.eq(THUMB.calls[p.UserId], 1, "...not again on every nameplate refresh")
+			T.eq(THUMB.calls(p.UserId) - thumbBase, 1, "...not again on every nameplate refresh")
 
 			-- the podium tag of the best pet (the highest rarity the owner has)
 			local PC = mod("PetCatalog")
@@ -608,19 +608,29 @@ local function serverScenarios()
 			advance(0.6)
 			local spot2 = SS.GetSpot(again)
 			local state3 = spot2 and avatarState(spot2) or "none"
-			T.check(state3 == "headshot" and THUMB.calls[userId] == 1, "a returning player gets the cached headshot without a new request", state3 .. ", " .. tostring(THUMB.calls[userId]) .. " requests")
+			local asked = THUMB.calls(userId) - thumbBase
+			T.check(state3 == "headshot" and asked == 1, "a returning player gets the cached headshot without a new request", state3 .. ", " .. tostring(asked) .. " requests")
 			K.removePlayers({ again })
 		end
 
-		-- a failing thumbnail request (Studio test players, web outage): the silhouette stays
-		THUMB.fail[977001] = true
+		-- a failing thumbnail request (Studio test players, web outage): the silhouette stays. Every mock call fails while
+		-- Mock.ThumbnailFail is set; nobody else claims a home meanwhile
 		local q = K.joinPlayer("WtNoThumb", 977001)
 		advance(1.0)
-		claimHome(q)
-		advance(0.6)
-		local qs = SS.GetSpot(q)
-		local stateQ = qs and avatarState(qs) or "none"
-		T.check(stateQ == "silhouette", "a failed headshot request leaves the silhouette built from frames", stateQ)
+		local qBase = THUMB.calls(977001)
+		Mock.ThumbnailFail = true
+		local okQ, errQ = pcall(function()
+			claimHome(q)
+			advance(0.6)
+			local qs = SS.GetSpot(q)
+			local stateQ = qs and avatarState(qs) or "none"
+			T.check(stateQ == "silhouette" and THUMB.calls(977001) - qBase >= 1, "a failed headshot request leaves the silhouette built from frames",
+				stateQ .. ", " .. tostring(THUMB.calls(977001) - qBase) .. " requests")
+		end)
+		Mock.ThumbnailFail = nil
+		if not okQ then
+			T.fail("the failed headshot step errored", tostring(errQ))
+		end
 		K.removePlayers({ q })
 		K.flushErrors("polish worldtext (nameplates)")
 
