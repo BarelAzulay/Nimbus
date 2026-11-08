@@ -33,10 +33,14 @@
 --       results and pulls without a Strip (start at Rise); the request path (FIRE_GAP, the pending flag, a failure, the 7 s
 --       timeout, a late success, the queue, SPIN AGAIN, Init's listener); the sounds; <= 12 Cell frames per strip; the
 --       instance caps 450 / 750; Stats() zero after every exit (Done, Close, a match start, a phase error); the Camera, the
---       Humanoid and the touch controls as they were; no gem glyph in NimbusHatch
+--       Humanoid and the touch controls as they were; no gem glyph in NimbusHatch; (review round 2) a double tap and a 2 s
+--       mash on the Skip chip / SPIN AGAIN / the Dim / DONE send nothing and never close the reveal (SPIN AGAIN and DONE
+--       disabled until 0.8 s into the reveal and 0.5 s after the last tap), a Dim tap 0.6 s in does not close, the armed
+--       SPIN AGAIN sends one request, the armed DONE closes; the roll's Skip chip never under SPIN AGAIN / DONE at 1920x1080
 --   client_egg_stage_mobile (phone world): x1 and x3, during Crack and on the reveal, at 640x360, 667x375, 844x390, 360x640,
 --       390x844, 1280x720, 1366x768 (RedoGeom.check with the per-phase NoOverlap lists of plan Task 20), the phone fit
---       numbers (the crack stack, the reveal lip, the 44 px Banner), the x3 pets inside the screen, the bottom bar above
+--       numbers (the crack stack, the reveal lip, the 44 px Banner), the x3 pets inside the screen, (review round 2) the
+--       roll's Skip chip never under the reveal's SPIN AGAIN or DONE (x1 and x3, every size), the bottom bar above
 --       the bottom inset, and the resize mid-roll (Review Focus 1: during Strip, during Crack (Task 27: the dressed hero
 --       refits, the pedestals 1.1 x / 0.24 x their eggs) and on the reveal); the crack eggs measured by their laid-out size
 --       (the Size attribute times Fit: the squash and the push-in change their boxes)
@@ -1161,8 +1165,9 @@ S.client_egg_stage = guarded("client_egg_stage", function()
 		ES.Skip()
 		G.advance(0.4)
 		T.eq((G.colPart(1, "Name") or {}).Text, rare.Name, "egg stage: ...the queued pull is revealed")
-		-- SPIN AGAIN: a new paid request through Request; the reveal stays up until the answer
-		G.advance(0.4)
+		-- SPIN AGAIN: a new paid request through Request; the reveal stays up until the answer (review round 2: it arms 0.8 s
+		-- into the reveal, so this tap comes 0.9 s in)
+		G.advance(0.5)
 		local b1 = #KC.serverCalls("BuyRoulette")
 		local againBtn = G.bar("SpinAgain")
 		T.check(againBtn ~= nil and againBtn.Active ~= false and againBtn:GetAttribute("Disabled") ~= true, "egg stage: SPIN AGAIN is enabled (tokens enough)")
@@ -1229,6 +1234,82 @@ S.client_egg_stage = guarded("client_egg_stage", function()
 			end
 		end
 		T.eq(probes, 1, "egg stage: Init connects the RouletteResult listener once (Init twice, one toast)")
+
+		------------------------------------------------------------------ (review round 2) the skip finger and the reveal's buttons
+		-- a double tap (or a mash) on the Skip chip never spends a spin and never closes the reveal: SPIN AGAIN, DONE and a
+		-- tap's close arm 0.8 s after the reveal appeared and 0.5 s after the last tap on the stage (each tap restarts the
+		-- wait), shown disabled until then; the roll's Skip chip never sits under SPIN AGAIN or DONE
+		do
+			local function click(b)
+				if b and b.Parent then
+					Mock.Click(b)
+				end
+			end
+			local function off(b)
+				return b ~= nil and (b:GetAttribute("Disabled") == true or b.Active == false)
+			end
+			local b2, c2 = #KC.serverCalls("BuyRoulette"), #closed
+			ES.Show(G.result("Cloud", "Tokens", { G.pull(PC, "Cloud", epic) }))
+			G.advance(1.0)
+			local skipBtn = G.bar("Skip")
+			local rollSkip = skipBtn and G.shown(skipBtn) and G.box(skipBtn) or nil
+			click(skipBtn) -- tap 1: skip
+			G.advance(STEP)
+			T.eq(ES.Phase(), "Reveal", "egg stage: (round 2) a tap on the Skip chip skips to the reveal")
+			local againB, doneB = G.bar("SpinAgain"), G.bar("Done")
+			local under = {}
+			for _, b in ipairs({ againB, doneB }) do
+				if rollSkip and b and G.shown(b) and G.intersects(rollSkip, G.box(b)) then
+					under[#under + 1] = b.Name
+				end
+			end
+			T.check(rollSkip ~= nil and #under == 0, "egg stage 1920x1080: the roll's Skip chip never sits under SPIN AGAIN or DONE",
+				rollSkip and fmt("Skip %.0f..%.0f under %s", rollSkip.x, rollSkip.x + rollSkip.w, table.concat(under, ", ")) or "no Skip chip")
+			T.check(off(againB) and off(doneB), "egg stage: (round 2) SPIN AGAIN and DONE show disabled as the reveal appears",
+				fmt("again off %s, done off %s", tostring(off(againB)), tostring(off(doneB))))
+			-- tap 2 on SPIN AGAIN 0.15 s after the skip, then a 2 s mash on SPIN AGAIN, the Dim and DONE
+			G.advance(0.15)
+			click(againB)
+			local dim = G.gui() and G.gui():FindFirstChild("Stage") and G.gui().Stage:FindFirstChild("Dim")
+			for k = 1, 14 do
+				G.advance(0.15)
+				click(({ againB, dim, doneB })[k % 3 + 1])
+			end
+			G.advance(STEP)
+			T.eq(#KC.serverCalls("BuyRoulette") - b2, 0, "egg stage: (round 2) a double tap and a 2 s mash on SPIN AGAIN / the Dim / DONE send no BuyRoulette")
+			T.check(ES.IsShowing() and ES.Phase() == "Reveal" and #closed == c2, "egg stage: (round 2) ...and never close the reveal", tostring(ES.Phase()) .. ", closed " .. (#closed - c2))
+			T.check(off(againB) and off(doneB), "egg stage: (round 2) ...SPIN AGAIN and DONE stay disabled while the taps go on")
+			G.advance(0.55)
+			T.check(not off(againB) and not off(doneB), "egg stage: (round 2) 0.5 s after the last tap SPIN AGAIN and DONE arm",
+				fmt("again off %s, done off %s", tostring(off(againB)), tostring(off(doneB))))
+			click(againB)
+			T.eq(#KC.serverCalls("BuyRoulette") - b2, 1, "egg stage: (round 2) ...then one SPIN AGAIN tap sends one BuyRoulette")
+			ES._Answer(G.result("Cloud", "Tokens", { G.pull(PC, "Cloud", epic) }))
+			-- a quiet reveal: a Dim tap 0.6 s in (past the old 0.5 s guard) does not close it, one 0.6 s later does
+			ES.Skip()
+			G.advance(STEP)
+			T.eq(ES.Phase(), "Reveal", "egg stage: (round 2) (setup) the next roll skipped to its reveal")
+			G.advance(0.6)
+			dim = G.gui() and G.gui().Stage:FindFirstChild("Dim")
+			click(dim)
+			G.advance(STEP)
+			T.check(ES.IsShowing() and #closed == c2, "egg stage: (round 2) a Dim tap 0.6 s into the reveal does not close it (0.8 s)")
+			G.advance(0.6)
+			click(dim)
+			G.advance(STEP)
+			T.check(not ES.IsShowing() and lastClosed() == "Done", "egg stage: (round 2) ...a tap once armed closes it (Closed 'Done')", tostring(lastClosed()))
+			-- DONE once armed closes; B one frame into the reveal is still DONE (a key, never a tap on a paid button: spec 5.5)
+			ES.Show(G.result("Cloud", "Tokens", { G.pull(PC, "Cloud", epic) }))
+			ES.Skip()
+			G.advance(1.0)
+			doneB = G.bar("Done")
+			T.check(not off(doneB), "egg stage: (round 2) DONE is armed 1 s into an untouched reveal")
+			click(doneB)
+			G.advance(STEP)
+			T.check(not ES.IsShowing() and lastClosed() == "Done", "egg stage: (round 2) ...and closes it", tostring(lastClosed()))
+			T.eq(#KC.serverCalls("BuyRoulette") - b2, 1, "egg stage: (round 2) no other BuyRoulette was sent")
+			G.advance(0.4)
+		end
 
 		------------------------------------------------------------------ a match start; Close mid-Crack; a phase error
 		local beforeM = G.snapshot()
@@ -1352,6 +1433,26 @@ S.client_egg_stage_mobile = guarded("client_egg_stage_mobile", function()
 			end
 		end
 	end
+	-- (review round 2) the roll's Skip chip (read during the roll) never sits under the reveal's SPIN AGAIN or DONE: the finger
+	-- that skipped rests on "Tap to close" or the Dim, never on a paid button
+	local function skipBox()
+		local b = G.bar("Skip")
+		return b and G.shown(b) and G.box(b) or nil
+	end
+	local function skipClear(label, rollSkip)
+		local under = {}
+		for _, name in ipairs({ "SpinAgain", "Done" }) do
+			local b = G.bar(name)
+			if not (b and G.shown(b)) then
+				under[#under + 1] = name .. " missing"
+			elseif rollSkip and G.intersects(rollSkip, G.box(b)) then
+				local bb = G.box(b)
+				under[#under + 1] = fmt("%s %.0f..%.0f", name, bb.x, bb.x + bb.w)
+			end
+		end
+		T.check(rollSkip ~= nil and #under == 0, label .. ": the roll's Skip chip never sits under SPIN AGAIN or DONE",
+			rollSkip and fmt("Skip %.0f..%.0f x %.0f..%.0f; %s", rollSkip.x, rollSkip.x + rollSkip.w, rollSkip.y, rollSkip.y + rollSkip.h, table.concat(under, ", ")) or "no Skip chip during the roll")
+	end
 	local SIZES = {
 		{ 640, 360, true }, { 667, 375, true }, { 844, 390, true }, { 360, 640, true }, { 390, 844, true }, { 1280, 720, false }, { 1366, 768, false },
 	}
@@ -1365,6 +1466,7 @@ S.client_egg_stage_mobile = guarded("client_egg_stage_mobile", function()
 			ES.Show(x1())
 			G.until_(t0, 1.45)
 			T.eq(ES.Phase(), "Crack", label .. " x1: cracking at 1.45 s (fast)")
+			local rollSkip1 = skipBox()
 			RedoGeom.check(G.content(), label .. " x1 crack", { MinText = minText, NoOverlap = { "CrackWord", "Egg1", "Pedestal1", "Skip", "FastHatch" }, Skip = SKIP })
 			local egg, ped, cw, title = G.hero("Egg1"), G.hero("Pedestal1"), G.hero("CrackWord"), G.content() and G.content():FindFirstChild("Title")
 			if egg and ped then
@@ -1385,6 +1487,7 @@ S.client_egg_stage_mobile = guarded("client_egg_stage_mobile", function()
 			T.eq(ES.Phase(), "Reveal", label .. " x1: the reveal")
 			RedoGeom.check(G.content(), label .. " x1 reveal", { MinText = minText, NoOverlap = { "Banner", "Pedestal1", "Name", "Note", "SpinAgain", "Done", "Skip", "FastHatch" }, Skip = SKIP })
 			bottomOk(label .. " x1 reveal", h)
+			skipClear(label .. " x1", rollSkip1)
 			if phone then
 				local banner, petF, lip = G.colPart(1, "Banner"), G.colPart(1, "Pet"), G.hero("Pedestal1")
 				T.check(banner ~= nil and abs(banner.AbsoluteSize.Y - 44) <= 0.6 and abs(banner.AbsolutePosition.Y - 60) <= 0.6, label .. " x1: the phone Banner is 44 tall, its top 2 px under the 58 px inset",
@@ -1403,6 +1506,7 @@ S.client_egg_stage_mobile = guarded("client_egg_stage_mobile", function()
 			ES.Show(x3())
 			G.until_(t0, 1.56)
 			T.eq(ES.Phase(), "Crack", label .. " x3: cracking at 1.56 s (fast)")
+			local rollSkip3 = skipBox()
 			RedoGeom.check(G.content(), label .. " x3 crack", { MinText = minText, NoOverlap = { "CrackWord", "Egg1", "Egg2", "Egg3", "Pedestal1", "Pedestal2", "Pedestal3", "Skip", "FastHatch" }, Skip = SKIP })
 			local ratios = true
 			for j = 1, 3 do
@@ -1416,6 +1520,7 @@ S.client_egg_stage_mobile = guarded("client_egg_stage_mobile", function()
 			T.eq(ES.Phase(), "Reveal", label .. " x3: the reveal")
 			RedoGeom.check(G.content(), label .. " x3 reveal", { MinText = minText, NoOverlap = BAR, Skip = SKIP })
 			bottomOk(label .. " x3 reveal", h)
+			skipClear(label .. " x3", rollSkip3)
 			for j = 1, 3 do
 				local col = G.colPart(j)
 				RedoGeom.check(col, label .. " x3 column " .. j, { MinText = minText, NoOverlap = { "Banner", "Name", "Note" }, Skip = SKIP })
@@ -1640,10 +1745,11 @@ S.client_egg_stage_wiring = guarded("client_egg_stage_wiring", function()
 		G.advance(STEP)
 		answer()
 		ES.Skip()
-		G.advance(0.6)
+		G.advance(0.9) -- (review round 2: SPIN AGAIN arms 0.8 s into the reveal)
 		local mA = #Mock.RemoteLog
 		local again = G.bar("SpinAgain")
 		Mock.Click(again)
+		T.eq(buys(mA), 1, "egg wiring: (setup) the armed SPIN AGAIN sends its request")
 		ES.Done()
 		G.advance(STEP)
 		T.check(G.shown(win()), "egg wiring: (setup) DONE after SPIN AGAIN shows the Shop")

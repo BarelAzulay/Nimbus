@@ -23,6 +23,11 @@
 --   EggStage.Done()                        DONE on the reveal (the next queued result plays in place); a skip before it
 --   EggStage.Close()                       closes from anyone else (MenuController.Close, Task 22); toasts the pulls not
 --                                          shown yet
+--   (review round 2) taps = the Dim, the Skip chip, SPIN AGAIN, DONE. Before the reveal a tap skips at once; on it, SPIN
+--   AGAIN, DONE and a tap's close act only once armed: ARM_AFTER 0.8 s after the reveal appeared and ARM_QUIET 0.5 s after
+--   the last tap (each tap restarts the wait, so a mash never buys a spin); the two buttons show disabled until then. The
+--   roll's Skip chip and Fast hatch sit on the reveal's chip row (L.rollBar), never under SPIN AGAIN or DONE. Esc / B
+--   (Back) stay DONE at once on the reveal (keys never land on a paid button); Done() and Skip() are the API (no wait).
 --   EggStage.Timings(fast, spins) -> { Intro, Strip, Land, Rise, Crack, Burst, Stagger, LandGap, RevealAt }
 --   EggStage.NoteText(pull, rarity) -> the reveal's note; EggStage.Layout() -> "PC" | "Phone" | "Portrait"
 --   EggStage.IsPrewarmed(petId) -> true once that pet's model was built for the reveal (warmed during the strip)
@@ -95,7 +100,10 @@ local K = {
 	BACK_ACTION = "NimbusHatchBack",
 	FIRE_GAP = 0.3, -- seconds between two BuyRoulette sends
 	WAIT_TIMEOUT = 7, -- seconds to wait for a RouletteResult
-	TAP_GUARD = 0.5, -- a tap on the reveal closes it only this long after it appeared (the skip tap never also closes it)
+	-- (review round 2) SPIN AGAIN, DONE and a tap's close arm ARM_AFTER after the reveal appeared AND ARM_QUIET after the
+	-- last tap on the stage (each tap restarts the wait): a double tap or a mash on the Skip chip never spends a spin
+	ARM_AFTER = 0.8,
+	ARM_QUIET = 0.5,
 	NEXT_GAP = 0.15,
 	STRIP_LEN = 40,
 	WIN = 34,
@@ -187,7 +195,7 @@ EggStage.Metrics = K
 local S = {
 	Gui = nil, Stage = nil, Content = nil, Fit = nil, Dim = nil, Flash = nil, Vignette = nil,
 	Roll = nil, Queue = {}, Lay = nil, Conns = {}, Beat = nil, Bound = false, Inited = false,
-	Pending = false, PendToken = 0, PendFrom = nil, LastFire = -10,
+	Pending = false, PendToken = 0, PendFrom = nil, LastFire = -10, LastTap = -10,
 	Warm = {}, Warned = {}, Menu = nil, Sfx = nil, Builder = nil, GQ = nil, Stars = nil, Dimmed = false,
 }
 -- the tweens of the phases (cancelled at the reveal) and of the overlay (the flash, the shock, the rays: they play on
@@ -742,6 +750,25 @@ function L.bar(cw, P, portrait, reveal, hasAgain)
 	return out
 end
 
+-- (review round 2) the roll's bar is the reveal's chip row: the Skip chip and the Fast hatch toggle sit exactly where the
+-- reveal puts "Tap to close" and its Fast hatch (one row, bottom-anchored like the reveal's), so the finger that skipped
+-- rests on the close chip or the Dim as the reveal appears, never on SPIN AGAIN or DONE (which also arm late: H.armed).
+-- The owner's pitch drew the roll's SKIP in a bottom corner, clear of the centred SPIN AGAIN + DONE.
+function L.rollBar(rev)
+	local s, f = rev.Items.Skip, rev.Items.FastHatch
+	if not (s and f) then
+		return nil
+	end
+	local h = math.max(s.h, f.h)
+	return {
+		H = h,
+		Items = {
+			Skip = { x = s.x, y = (h - s.h) / 2, w = s.w, h = s.h },
+			FastHatch = { x = f.x, y = (h - f.h) / 2, w = f.w, h = f.h },
+		},
+	}
+end
+
 function L.compute(n, roll)
 	local w, h = H.viewport()
 	local top, bottom = H.insets()
@@ -754,8 +781,8 @@ function L.compute(n, roll)
 	local lay = { Mode = mode, PC = pc, P = P, Scale = scale, W = cw, H = ch, Top = top, N = n, X3 = x3, Portrait = mode == "Portrait" }
 	local bm = (12 + bottom) / scale -- 12 screen px above the bottom inset at every scale
 	local hasAgain = roll ~= nil and roll.Roulette ~= nil
-	lay.BarRoll = L.bar(cw, P, lay.Portrait, false, hasAgain)
 	lay.BarReveal = L.bar(cw, P, lay.Portrait, true, hasAgain)
+	lay.BarRoll = L.rollBar(lay.BarReveal) or L.bar(cw, P, lay.Portrait, false, hasAgain)
 	lay.BarRoll.Y = ch - bm - lay.BarRoll.H
 	lay.BarReveal.Y = ch - bm - lay.BarReveal.H
 	lay.Title = { Y = P.TitleY, H = P.TitleH, Size = P.TitleSize }
@@ -1016,12 +1043,16 @@ function B.bar(roll)
 	roll.UI.Skip = CloudUI.Button({ Name = "Skip", Text = "", Style = "Blue", TextSize = P.Bar.Text, ZIndex = 6, Parent = bar, Callback = function()
 		H.safe("tap", H.tap)
 	end })
-	roll.UI.Done = CloudUI.Button({ Name = "Done", Text = "DONE", Style = "Green", TextSize = P.Bar.Text, ZIndex = 6, Parent = bar, Callback = function()
-		H.safe("done", EggStage.Done)
-	end })
-	local again = CloudUI.Button({ Name = "SpinAgain", Text = "", Style = "Gold", TextSize = P.Bar.Text, ZIndex = 6, Parent = bar, Callback = function()
-		H.safe("again", H.again)
-	end })
+	-- (review round 2) DONE and SPIN AGAIN read Activated themselves (no CloudUI Callback, which drops a disabled button's
+	-- taps): a tap on them while they are not armed still counts as a tap and restarts the wait (H.press)
+	roll.UI.Done = CloudUI.Button({ Name = "Done", Text = "DONE", Style = "Green", TextSize = P.Bar.Text, ZIndex = 6, Parent = bar })
+	roll.UI.Done.Activated:Connect(function()
+		H.safe("done", H.doneTap)
+	end)
+	local again = CloudUI.Button({ Name = "SpinAgain", Text = "", Style = "Gold", TextSize = P.Bar.Text, ZIndex = 6, Parent = bar })
+	again.Activated:Connect(function()
+		H.safe("again", H.againTap)
+	end)
 	local row = H.frame(again, "Row", { Size = UDim2.fromScale(1, 1), ZIndex = 7 })
 	Util.Create("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder, Parent = row })
 	local lbl = H.label(row, "Label", "SPIN AGAIN", "Button", P.Bar.Text, { ZIndex = 7, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, P.Bar.Text + 6), LayoutOrder = 1 })
@@ -1347,10 +1378,20 @@ function H.applyBar(roll, lay)
 	H.refreshAgain()
 end
 
--- SPIN AGAIN: the same roulette, currency and spins; disabled with the reason when it cannot be paid or is locked
+-- SPIN AGAIN: the same roulette, currency and spins; disabled with the reason when it cannot be paid or is locked, and
+-- (review round 2) SPIN AGAIN and DONE both disabled until the reveal is armed (H.armed: the label and price stay)
 function H.refreshAgain()
 	local roll = S.Roll
-	local btn = roll and roll.UI.Again
+	if not roll then
+		return
+	end
+	local armed = H.armed()
+	roll.Armed = armed
+	local done = roll.UI.Done
+	if done and done.Parent then
+		CloudUI.SetDisabled(done, not armed)
+	end
+	local btn = roll.UI.Again
 	if not btn or not btn.Parent then
 		return
 	end
@@ -1372,7 +1413,7 @@ function H.refreshAgain()
 	roll.UI.AgainCoin.Visible = reason == nil
 	roll.UI.AgainPrice.Visible = reason == nil
 	roll.UI.AgainPrice.Text = (S.Lay and S.Lay.PC) and Util.Commas(price) or Theme.ShortNumber(price)
-	CloudUI.SetDisabled(btn, reason ~= nil or S.Pending)
+	CloudUI.SetDisabled(btn, reason ~= nil or S.Pending or not armed)
 end
 
 ----------------------------------------------------------------------
@@ -1973,7 +2014,8 @@ function R.advance(roll)
 	local t = os.clock() - roll.Start
 	if roll.Revealed then
 		roll.AgainClock = (roll.AgainClock or 0) + 1
-		if roll.AgainClock % 8 == 0 then
+		-- (every 8 heartbeats for the balance and the policy; on the frame the reveal arms or a tap disarms it)
+		if roll.AgainClock % 8 == 0 or H.armed() ~= roll.Armed then
 			H.refreshAgain()
 		end
 		R.confetti(roll)
@@ -2304,18 +2346,53 @@ function H.relayout()
 	end
 end
 
--- a tap anywhere outside the buttons, or the Skip chip: skip before the reveal, close on it (after TAP_GUARD)
+-- (review round 2) the reveal is armed ARM_AFTER after it appeared and ARM_QUIET after the last tap on the stage
+function H.armed()
+	local roll = S.Roll
+	if not (roll and roll.Revealed and roll.RevealedAt) then
+		return false
+	end
+	local now = os.clock()
+	return now - roll.RevealedAt >= K.ARM_AFTER and now - S.LastTap >= K.ARM_QUIET
+end
+
+-- one tap on the stage (the Dim, the Skip chip, SPIN AGAIN or DONE; Esc and B are keys, not taps): returns whether the
+-- reveal was armed before it, then restarts the wait, so a mash never arms SPIN AGAIN
+function H.press()
+	local armed = H.armed()
+	S.LastTap = os.clock()
+	return armed
+end
+
+-- a tap anywhere outside the buttons, or the Skip chip: skip before the reveal (at once, spec 16.4), close it once armed
 function H.tap()
 	local roll = S.Roll
 	if not roll then
 		return
 	end
+	local armed = H.press()
 	if roll.Revealed then
-		if os.clock() - (roll.RevealedAt or 0) >= K.TAP_GUARD then
+		if armed then
 			EggStage.Done()
 		end
 	else
 		EggStage.Skip()
+	end
+end
+
+-- DONE: closes the reveal (or plays the next queued result) once armed
+function H.doneTap()
+	if H.press() then
+		EggStage.Done()
+	end
+end
+
+-- SPIN AGAIN: a new paid request once armed, and only while it shows enabled (no reason, not pending)
+function H.againTap()
+	local roll = S.Roll
+	local btn = roll and roll.UI.Again
+	if H.press() and btn and btn:GetAttribute("Disabled") ~= true then
+		H.again()
 	end
 end
 

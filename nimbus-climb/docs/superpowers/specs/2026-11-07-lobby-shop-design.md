@@ -1918,3 +1918,23 @@ These override the text above where they differ.
   traded between accounts across servers (16.8 question); the save session lock (section 15) with its concrete case: a forced
   Secret spent on server A whose leave save fails and lands as an orphan after server B settled lets B sell a second forced
   Secret for the same 500 gems.
+
+### 16.10 Review round 2 (2026-11-08, sleep mode: decided by the main session's build agent, checked against the code)
+
+These override the text above where they differ.
+- **The skip finger never buys a spin.** The roll's Skip chip sat centred in the bottom bar, and the reveal's SPIN AGAIN + DONE
+  are centred on the same row, so a double tap on "Tap to skip" landed on SPIN AGAIN one frame after the reveal appeared
+  (844x390: Skip 318..526, SPIN AGAIN 248..468, DONE 476..596; also 640x360, 667x375, 1280x720, 1366x768, 1920x1080 and
+  360x640 portrait, where the roll bar wrapped Skip onto the reveal's button row). Mashing looped skip, SPIN AGAIN, skip: one
+  paid spin about every 0.5 s.
+- **Arming.** On the reveal, SPIN AGAIN, DONE and a tap's close (the Dim, "Tap to close") act only once the reveal is armed:
+  `ARM_AFTER` 0.8 s after it appeared AND `ARM_QUIET` 0.5 s after the last tap on the stage (the Dim, the Skip chip, SPIN AGAIN,
+  DONE); every tap restarts the wait, so a mash never arms the paid button. SPIN AGAIN and DONE show disabled until then (their
+  label and price stay). This replaces the old 0.5 s tap guard. A skip before the reveal is still at once (5.5 "no delay").
+- **The bar.** The roll's Skip chip and Fast hatch toggle sit exactly on the reveal's chip row ("Tap to close" and its Fast
+  hatch; `EggStage` `L.rollBar`): PC 360x60 at the bottom left, phone 170x44 at the bottom left (packed narrower on 640 / 667
+  px), portrait the reveal's lower row. "Tap to skip" becomes "Tap to close" in the same spot, never SPIN AGAIN or DONE. The
+  reveal's centred SPIN AGAIN + DONE row (the pitch) is unchanged, and the pitch drew the roll's SKIP in a bottom corner too.
+  The Skip chip is narrower than 5.5's 440x60 / 208x44 (still a 44 px target, text unchanged).
+- **Not changed:** Esc and gamepad B (`EggStage.Back`) stay DONE at once on the reveal (5.5): keys never land on a paid button.
+  `EggStage.Done()` / `Skip()` stay the API without a wait.
