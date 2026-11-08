@@ -2018,6 +2018,9 @@ by hopping servers, and a 0-trophy loser loses nothing. The design:
 - **0 Trophies.** `b.TrophiesAtStart` keeps both totals at the start; a winner whose opponent held 0 Trophies gets no Trophies
   (`rw.NoTrophies = true`, toast "Victory! Your opponent had no trophies to win. +N tokens"); the win's tokens and XP, PvPWins
   and the loser's side are unchanged. Taken at the start so the order the two sides are paid in cannot matter.
+  Consequence for the owner to know: every account starts at 0 and duels are the only source of Trophies, so two brand-new
+  players never earn Trophies from each other; new Trophies enter only when someone beats a player who already has some
+  (live saves from before this build seed it). Left open: a softer rule (fewer Trophies, not none) if that feels wrong.
 - Tests: `p3bs_pair_hop` (three duels, both saves hold them, a real leave / rejoin with the server's list cleared: the 4th is
   trophy-free; one save alone holds it; 30 minutes on the Unix clock later the pair earns again; the 32-entry cap and junk) and
   `p3bs_zero_trophy` (a full win over a 0-trophy player pays tokens and XP, no Trophies). The duel tests that expected
