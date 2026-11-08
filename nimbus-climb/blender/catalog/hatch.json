@@ -1,7 +1,7 @@
 {
  "class": "hatch",
  "owner": "lobby-shop (egg-3d, owner pick 2026-11-08 '3D egg + 3D crack')",
- "doc": "docs/superpowers/specs/2026-11-07-lobby-shop-design.md 16.13. GUI-only keys of the egg-hatch cutscene (shown in a ViewportFrame, never placed in the world, so mesh_budget's world scenes leave them out): egg_<rarity>_top / egg_<rarity>_bot = the painted egg_<rarity> (kit/props/lobby_shop.py lobby_egg) split along one jagged crack into a hollow cap and cup, pivot = the whole egg's bottom centre (the halves line up with egg_<rarity> exactly), attachments Center (the half's middle) and Seam (the crack's mean height).",
+ "doc": "docs/superpowers/specs/2026-11-07-lobby-shop-design.md 16.14. GUI-only keys of the egg-hatch cutscene (shown in a ViewportFrame, never placed in the world, so mesh_budget's world scenes leave them out): egg_<rarity>_top / egg_<rarity>_bot = the painted egg_<rarity> (kit/props/lobby_shop.py lobby_egg) split along one jagged crack into a hollow cap and cup, pivot = the whole egg's bottom centre (the halves line up with egg_<rarity> exactly), attachments Center (the half's middle) and Seam (the crack's mean height).",
  "budgets": {
   "egg": {
    "tris": 4000,

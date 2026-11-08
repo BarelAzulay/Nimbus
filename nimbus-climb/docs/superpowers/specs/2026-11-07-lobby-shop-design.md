@@ -1968,3 +1968,42 @@ the advance table of `RedoGeom.realWidth`): the smoke mock's flat 0.5 em per cha
   inside it with the real widths (`ShopEggs.Metrics.MEASURE` = `RedoGeom.realWidth`); `client_egg_stage_mobile`: a Sky x3 with
   two NEW long names and a duplicate at all seven sizes, every name and note fitting, NEW! clear of the name, note, banner and
   ribbon, SPIN AGAIN's row 4 px clear each side; `client_load`: the player list enabled, a re-enabled health bar turned off.
+
+### 16.14 3D eggs (2026-11-08, owner's pick "3D egg + 3D crack", branch `egg-3d`)
+
+- **What.** In the cutscene's pedestal phases (Rise, the shakes of Crack) the x1 egg is the real Blender egg in a
+  ViewportFrame (`client/UI/Egg3D`), the same dressed mesh the lobby shelf shows: `MeshLibrary.Assemble({ Root = false,
+  Parts = { { Key = "egg_<rarity>" } } }, {}, { At = CFrame.new() })`, the call `MeshLibrary.Dress` makes (no fork). It is
+  lit per rarity (the frame's `Ambient`, `LightColor` x 0.55 from the upper left in front, warm for Legendary, cool violet
+  for Secret), comes up turned -28 degrees, turns slowly (one turn in 9 s, a Linear endless tween) and eases to a stop
+  (Quad Out) when the crack starts; the shakes rock it about its middle in 3D (the same angles as the 2D shake, plus a
+  0.06-stud dip in place of the 2D squash). The backlight, aura, cloud ring, rarity VFX, glowing cracks and leaks stay
+  2D and sit around or over the frame (the cracks and leaks turn with the rock). The egg's 2D paint is hidden while the
+  3D egg shows (`EggArt.SetPaintShown(egg, false)`: no body fill, no outline, no sheen; the halo, rays, shadow, cracks and
+  leaks stay). The pedestal stays the empty layout frame of a5a38ac: nothing is drawn under the egg or the pet.
+- **The crack.** When both halves' meshes are usable, the Burst swaps the whole egg for the 3D halves in the same frame
+  (moved into `Halves<j>`), both at the egg's pose: the cap flies up and to the screen's left, turning about its own middle
+  and tumbling its hollow towards the camera, solid for the first quarter of the burst and fading over the tail; the cup
+  rocks on its foot and settles. One `NumberValue` "Fly" is tweened 0 -> 1 (Quart Out, the burst's 0.35 s) and its Changed
+  moves both halves (two PivotTo, no allocation per frame beyond the CFrames). The flash plays over it as before.
+- **Keys.** 14 new GUI-only meshes, catalog class `hatch` (`blender/catalog/hatch.json`, prop `lobby_egg_half`):
+  `egg_<rarity>_top` / `egg_<rarity>_bot` for the seven rarities, cut from the shelf egg's own voxels along one jagged
+  eight-tip crack at 1.66 studs, each closed on its cut face by a lighter inner shell (the shell lightened 60 % towards
+  cream, lavender for Secret; the inside deeper). The pivot is the whole egg's (bottom centre), so the two halves put
+  together are the egg. 2,716 - 3,728 tris each (budget 4,000 / 6 parts); not placed in any world scene (mesh_budget's
+  world views do not count them). Their ids are 0 until the owner's keyed upload.
+- **Fallbacks (today's 2D EggArt, unchanged).** The whole egg's id is 0 or not loaded here (`MeshLibrary.IsReady`), Low
+  graphics (`GraphicsQuality.Effective() ~= "High"`), Assemble fails, or the phone limit is reached -> the 2D egg. The
+  halves' ids are 0 (or either fails to assemble at the burst) -> the 3D egg is removed at the burst and today's 2D halves
+  open under the flash. Skip, Fast hatch, SPIN AGAIN / DONE and closing all destroy the frame with its tweens and
+  connections (`Egg3D.Live()` back to 0).
+- **Limits.** At most one ViewportFrame egg on phones (`Egg3D.Limit(true) = 1`), two elsewhere (the cutscene's x1 egg and
+  the Shop's hero egg). x3 rolls and the strip's cells keep the 2D eggs (three or more ViewportFrames would cost too much
+  on phones). The Shop's Eggs page shows the Secret egg in 3D in its hero card on PC and tablets (a 1.15-egg frame, one
+  turn in 16 s) while the page shows; a phone's hero card has no egg (as before), so no frame. The hero's frame is
+  destroyed when the Shop hides, before the cutscene's egg rises.
+- **Not checked yet.** How the ViewportFrame's light and the Neon glow parts look in Studio (the offline renders are a
+  Blender approximation of the frame's camera and light), until the 14 halves and the egg ids are uploaded.
+- **Tests.** `client_egg3d` (the view, keys, light, turn and rock math, the split and the flight driven by hand, the cutscene
+  with stubbed ids: 3D egg at Rise, halves at Burst, removed at Reveal / Skip / close; halves-0, id 0, Low and failed
+  Assemble fallbacks; x3 2D; the Shop hero) and `client_egg3d_phone` (one frame at most, a second refused, freed on close).
