@@ -90,6 +90,116 @@
       "structureHash": null,
       "uploadedAt": "2026-10-28T04:33:23Z"
     },
+    "EggBurst": {
+      "assetId": 123404935354802,
+      "contentHash": "ccdce3272267c917b57f63298b08b01206f2258b3e7a143926833764b6aaf8e7",
+      "fileSha256": "ccdce3272267c917b57f63298b08b01206f2258b3e7a143926833764b6aaf8e7",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-07T14:21:52.298Z",
+      "revisionId": "1",
+      "structureHash": null,
+      "uploadedAt": "2026-11-07T14:21:53Z"
+    },
+    "EggCloudRing": {
+      "assetId": 125362586638786,
+      "contentHash": "b8ea6a6d2564d36fe76a3feeb7562bb717b6ae89ac4d7bd40732d673f1068301",
+      "fileSha256": "b8ea6a6d2564d36fe76a3feeb7562bb717b6ae89ac4d7bd40732d673f1068301",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-07T14:21:54.923Z",
+      "revisionId": "1",
+      "structureHash": null,
+      "uploadedAt": "2026-11-07T14:21:55Z"
+    },
+    "EggCrack": {
+      "assetId": 89585558866824,
+      "contentHash": "ba257db05fd45d5fb32f6b88fa46f19097673686f20316597ceac77457ac4ccc",
+      "fileSha256": "ba257db05fd45d5fb32f6b88fa46f19097673686f20316597ceac77457ac4ccc",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-07T14:21:57.466Z",
+      "revisionId": "1",
+      "structureHash": null,
+      "uploadedAt": "2026-11-07T14:21:58Z"
+    },
+    "EggRevealCommon": {
+      "assetId": 134524457450475,
+      "contentHash": "363b6f0ee60c021a84e9762d474168286bba19c56f041decc19b7b11261514b7",
+      "fileSha256": "363b6f0ee60c021a84e9762d474168286bba19c56f041decc19b7b11261514b7",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-07T14:22:00.121Z",
+      "revisionId": "1",
+      "structureHash": null,
+      "uploadedAt": "2026-11-07T14:22:01Z"
+    },
+    "EggRevealEpic": {
+      "assetId": 75122939663544,
+      "contentHash": "04bdccb2c501ca0c379ce0d6b4f774f74ab3c18f56ff38301e33a26b42166657",
+      "fileSha256": "04bdccb2c501ca0c379ce0d6b4f774f74ab3c18f56ff38301e33a26b42166657",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-07T14:22:02.759Z",
+      "revisionId": "1",
+      "structureHash": null,
+      "uploadedAt": "2026-11-07T14:22:04Z"
+    },
+    "EggRevealLegend": {
+      "assetId": 84014794809234,
+      "contentHash": "9b7a7877c4669ea147668d2a3ad9b79399f6ffc8ae4ba7687db56a75e0f0974c",
+      "fileSha256": "9b7a7877c4669ea147668d2a3ad9b79399f6ffc8ae4ba7687db56a75e0f0974c",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-07T14:22:06.010Z",
+      "revisionId": "1",
+      "structureHash": null,
+      "uploadedAt": "2026-11-07T14:22:07Z"
+    },
+    "EggRevealSecret": {
+      "assetId": 102455897920071,
+      "contentHash": "729f652a5e1cf8a5c0b9f3e4be9662419a7910cc7caf0c4121bea767b1966ae0",
+      "fileSha256": "729f652a5e1cf8a5c0b9f3e4be9662419a7910cc7caf0c4121bea767b1966ae0",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-07T14:22:08.821Z",
+      "revisionId": "1",
+      "structureHash": null,
+      "uploadedAt": "2026-11-07T14:22:09Z"
+    },
+    "EggRise": {
+      "assetId": 88216459014770,
+      "contentHash": "4b40c685e7dbcdffbed1ac7ae001922f04f0d3ecd7344799256ea48ccf394526",
+      "fileSha256": "4b40c685e7dbcdffbed1ac7ae001922f04f0d3ecd7344799256ea48ccf394526",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-07T14:22:11.574Z",
+      "revisionId": "1",
+      "structureHash": null,
+      "uploadedAt": "2026-11-07T14:22:12Z"
+    },
+    "EggShake": {
+      "assetId": 109993671590876,
+      "contentHash": "60cdc498c8249e0a26cca7e965abbdfa7ffcf8bada301c4991abf1d5b4bcf490",
+      "fileSha256": "60cdc498c8249e0a26cca7e965abbdfa7ffcf8bada301c4991abf1d5b4bcf490",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-07T14:22:14.490Z",
+      "revisionId": "1",
+      "structureHash": null,
+      "uploadedAt": "2026-11-07T14:22:15Z"
+    },
+    "EggStripLand": {
+      "assetId": 112997931688824,
+      "contentHash": "e9abb1ddd77e8858cbbfd40f8109ba6e433f289e92a01badc05501c85067fee0",
+      "fileSha256": "e9abb1ddd77e8858cbbfd40f8109ba6e433f289e92a01badc05501c85067fee0",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-07T14:22:16.863Z",
+      "revisionId": "1",
+      "structureHash": null,
+      "uploadedAt": "2026-11-07T14:22:18Z"
+    },
+    "EggStripTick": {
+      "assetId": 136163816765576,
+      "contentHash": "6cba145c1a6ffe41add70e1d488e82246ab577ea432c06979ecc81159c6d07be",
+      "fileSha256": "6cba145c1a6ffe41add70e1d488e82246ab577ea432c06979ecc81159c6d07be",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-07T14:22:19.780Z",
+      "revisionId": "1",
+      "structureHash": null,
+      "uploadedAt": "2026-11-07T14:22:20Z"
+    },
     "Error": {
       "assetId": 132903472054298,
       "contentHash": "aa33bd57b3c657302286ff106560dee92b8de3d4c219e539fdb70b7541905182",
