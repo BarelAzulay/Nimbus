@@ -1,0 +1,240 @@
+{
+ "class": "hatch",
+ "owner": "lobby-shop (egg-3d, owner pick 2026-11-08 '3D egg + 3D crack')",
+ "doc": "docs/superpowers/specs/2026-11-07-lobby-shop-design.md 16.13. GUI-only keys of the egg-hatch cutscene (shown in a ViewportFrame, never placed in the world, so mesh_budget's world scenes leave them out): egg_<rarity>_top / egg_<rarity>_bot = the painted egg_<rarity> (kit/props/lobby_shop.py lobby_egg) split along one jagged crack into a hollow cap and cup, pivot = the whole egg's bottom centre (the halves line up with egg_<rarity> exactly), attachments Center (the half's middle) and Seam (the crack's mean height).",
+ "budgets": {
+  "egg": {
+   "tris": 4000,
+   "parts": 6
+  }
+ },
+ "keys": [
+  {
+   "key": "egg_common_top",
+   "type": "prop",
+   "prop": "lobby_egg_half",
+   "budget": "egg",
+   "description": "Common rarity egg, the top cap (hatch cutscene crack, owner pick 3D egg + 3D crack): the painted egg_common split along a jagged cartoon crack, hollow, the cut rim and the inside a lighter inner shell tone; pivot = the whole egg's bottom centre, so it lines up with egg_common exactly; attachments Center (this half's middle) and Seam",
+   "args": {
+    "rarity": "common",
+    "half": "top"
+   }
+  },
+  {
+   "key": "egg_common_bot",
+   "type": "prop",
+   "prop": "lobby_egg_half",
+   "budget": "egg",
+   "description": "Common rarity egg, the bottom cup (hatch cutscene crack, owner pick 3D egg + 3D crack): the painted egg_common split along a jagged cartoon crack, hollow, the cut rim and the inside a lighter inner shell tone; pivot = the whole egg's bottom centre, so it lines up with egg_common exactly; attachments Center (this half's middle) and Seam",
+   "args": {
+    "rarity": "common",
+    "half": "bot"
+   }
+  },
+  {
+   "key": "egg_uncommon_top",
+   "type": "prop",
+   "prop": "lobby_egg_half",
+   "budget": "egg",
+   "description": "Uncommon rarity egg, the top cap (hatch cutscene crack, owner pick 3D egg + 3D crack): the painted egg_uncommon split along a jagged cartoon crack, hollow, the cut rim and the inside a lighter inner shell tone; pivot = the whole egg's bottom centre, so it lines up with egg_uncommon exactly; attachments Center (this half's middle) and Seam",
+   "args": {
+    "rarity": "uncommon",
+    "half": "top"
+   }
+  },
+  {
+   "key": "egg_uncommon_bot",
+   "type": "prop",
+   "prop": "lobby_egg_half",
+   "budget": "egg",
+   "description": "Uncommon rarity egg, the bottom cup (hatch cutscene crack, owner pick 3D egg + 3D crack): the painted egg_uncommon split along a jagged cartoon crack, hollow, the cut rim and the inside a lighter inner shell tone; pivot = the whole egg's bottom centre, so it lines up with egg_uncommon exactly; attachments Center (this half's middle) and Seam",
+   "args": {
+    "rarity": "uncommon",
+    "half": "bot"
+   }
+  },
+  {
+   "key": "egg_rare_top",
+   "type": "prop",
+   "prop": "lobby_egg_half",
+   "budget": "egg",
+   "description": "Rare rarity egg, the top cap (hatch cutscene crack, owner pick 3D egg + 3D crack): the painted egg_rare split along a jagged cartoon crack, hollow, the cut rim and the inside a lighter inner shell tone; pivot = the whole egg's bottom centre, so it lines up with egg_rare exactly; attachments Center (this half's middle) and Seam",
+   "args": {
+    "rarity": "rare",
+    "half": "top"
+   }
+  },
+  {
+   "key": "egg_rare_bot",
+   "type": "prop",
+   "prop": "lobby_egg_half",
+   "budget": "egg",
+   "description": "Rare rarity egg, the bottom cup (hatch cutscene crack, owner pick 3D egg + 3D crack): the painted egg_rare split along a jagged cartoon crack, hollow, the cut rim and the inside a lighter inner shell tone; pivot = the whole egg's bottom centre, so it lines up with egg_rare exactly; attachments Center (this half's middle) and Seam",
+   "args": {
+    "rarity": "rare",
+    "half": "bot"
+   }
+  },
+  {
+   "key": "egg_epic_top",
+   "type": "prop",
+   "prop": "lobby_egg_half",
+   "budget": "egg",
+   "description": "Epic rarity egg, the top cap (hatch cutscene crack, owner pick 3D egg + 3D crack): the painted egg_epic split along a jagged cartoon crack, hollow, the cut rim and the inside a lighter inner shell tone; pivot = the whole egg's bottom centre, so it lines up with egg_epic exactly; attachments Center (this half's middle) and Seam",
+   "args": {
+    "rarity": "epic",
+    "half": "top"
+   }
+  },
+  {
+   "key": "egg_epic_bot",
+   "type": "prop",
+   "prop": "lobby_egg_half",
+   "budget": "egg",
+   "description": "Epic rarity egg, the bottom cup (hatch cutscene crack, owner pick 3D egg + 3D crack): the painted egg_epic split along a jagged cartoon crack, hollow, the cut rim and the inside a lighter inner shell tone; pivot = the whole egg's bottom centre, so it lines up with egg_epic exactly; attachments Center (this half's middle) and Seam",
+   "args": {
+    "rarity": "epic",
+    "half": "bot"
+   }
+  },
+  {
+   "key": "egg_legendary_top",
+   "type": "prop",
+   "prop": "lobby_egg_half",
+   "budget": "egg",
+   "description": "Legendary rarity egg, the top cap (hatch cutscene crack, owner pick 3D egg + 3D crack): the painted egg_legendary split along a jagged cartoon crack, hollow, the cut rim and the inside a lighter inner shell tone; pivot = the whole egg's bottom centre, so it lines up with egg_legendary exactly; attachments Center (this half's middle) and Seam",
+   "args": {
+    "rarity": "legendary",
+    "half": "top"
+   }
+  },
+  {
+   "key": "egg_legendary_bot",
+   "type": "prop",
+   "prop": "lobby_egg_half",
+   "budget": "egg",
+   "description": "Legendary rarity egg, the bottom cup (hatch cutscene crack, owner pick 3D egg + 3D crack): the painted egg_legendary split along a jagged cartoon crack, hollow, the cut rim and the inside a lighter inner shell tone; pivot = the whole egg's bottom centre, so it lines up with egg_legendary exactly; attachments Center (this half's middle) and Seam",
+   "args": {
+    "rarity": "legendary",
+    "half": "bot"
+   }
+  },
+  {
+   "key": "egg_mythic_top",
+   "type": "prop",
+   "prop": "lobby_egg_half",
+   "budget": "egg",
+   "description": "Mythic rarity egg, the top cap (hatch cutscene crack, owner pick 3D egg + 3D crack): the painted egg_mythic split along a jagged cartoon crack, hollow, the cut rim and the inside a lighter inner shell tone; pivot = the whole egg's bottom centre, so it lines up with egg_mythic exactly; attachments Center (this half's middle) and Seam",
+   "args": {
+    "rarity": "mythic",
+    "half": "top"
+   }
+  },
+  {
+   "key": "egg_mythic_bot",
+   "type": "prop",
+   "prop": "lobby_egg_half",
+   "budget": "egg",
+   "description": "Mythic rarity egg, the bottom cup (hatch cutscene crack, owner pick 3D egg + 3D crack): the painted egg_mythic split along a jagged cartoon crack, hollow, the cut rim and the inside a lighter inner shell tone; pivot = the whole egg's bottom centre, so it lines up with egg_mythic exactly; attachments Center (this half's middle) and Seam",
+   "args": {
+    "rarity": "mythic",
+    "half": "bot"
+   }
+  },
+  {
+   "key": "egg_secret_top",
+   "type": "prop",
+   "prop": "lobby_egg_half",
+   "budget": "egg",
+   "description": "Secret rarity egg, the top cap (hatch cutscene crack, owner pick 3D egg + 3D crack): the painted egg_secret split along a jagged cartoon crack, hollow, the cut rim and the inside a lighter inner shell tone; pivot = the whole egg's bottom centre, so it lines up with egg_secret exactly; attachments Center (this half's middle) and Seam",
+   "args": {
+    "rarity": "secret",
+    "half": "top"
+   }
+  },
+  {
+   "key": "egg_secret_bot",
+   "type": "prop",
+   "prop": "lobby_egg_half",
+   "budget": "egg",
+   "description": "Secret rarity egg, the bottom cup (hatch cutscene crack, owner pick 3D egg + 3D crack): the painted egg_secret split along a jagged cartoon crack, hollow, the cut rim and the inside a lighter inner shell tone; pivot = the whole egg's bottom centre, so it lines up with egg_secret exactly; attachments Center (this half's middle) and Seam",
+   "args": {
+    "rarity": "secret",
+    "half": "bot"
+   }
+  }
+ ],
+ "sets": [],
+ "previews": [
+  {
+   "name": "lobby_egg_common_top",
+   "body": "egg_common_top",
+   "res": 420
+  },
+  {
+   "name": "lobby_egg_common_bot",
+   "body": "egg_common_bot",
+   "res": 420
+  },
+  {
+   "name": "lobby_egg_uncommon_top",
+   "body": "egg_uncommon_top",
+   "res": 420
+  },
+  {
+   "name": "lobby_egg_uncommon_bot",
+   "body": "egg_uncommon_bot",
+   "res": 420
+  },
+  {
+   "name": "lobby_egg_rare_top",
+   "body": "egg_rare_top",
+   "res": 420
+  },
+  {
+   "name": "lobby_egg_rare_bot",
+   "body": "egg_rare_bot",
+   "res": 420
+  },
+  {
+   "name": "lobby_egg_epic_top",
+   "body": "egg_epic_top",
+   "res": 420
+  },
+  {
+   "name": "lobby_egg_epic_bot",
+   "body": "egg_epic_bot",
+   "res": 420
+  },
+  {
+   "name": "lobby_egg_legendary_top",
+   "body": "egg_legendary_top",
+   "res": 420
+  },
+  {
+   "name": "lobby_egg_legendary_bot",
+   "body": "egg_legendary_bot",
+   "res": 420
+  },
+  {
+   "name": "lobby_egg_mythic_top",
+   "body": "egg_mythic_top",
+   "res": 420
+  },
+  {
+   "name": "lobby_egg_mythic_bot",
+   "body": "egg_mythic_bot",
+   "res": 420
+  },
+  {
+   "name": "lobby_egg_secret_top",
+   "body": "egg_secret_top",
+   "res": 420
+  },
+  {
+   "name": "lobby_egg_secret_bot",
+   "body": "egg_secret_bot",
+   "res": 420
+  }
+ ]
+}

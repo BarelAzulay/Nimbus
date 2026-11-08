@@ -549,6 +549,106 @@ def lobby_egg(entry, kit):
     return m
 
 
+# ---------------------------------------------------------------------------------------------- egg halves
+# The hatch cutscene's crack (owner pick 2026-11-08 "3D egg + 3D crack"): the same painted egg split along one jagged
+# cartoon crack into a top cap and a bottom cup.  Both halves come from the very grid of lobby_egg (same K, origin and
+# paint), so together they ARE the whole egg cell for cell, and their pivot is the whole egg's (bottom centre): placed
+# at the same CFrame they line up exactly; the GUI swaps them in at the crack and tweens them apart.
+# The halves are hollow (a real shell, EGG_WALL thick), so the cup shows its inside when the cap flies off; every face
+# the split opens (the cut rim and the cavity) is the lighter inner shell tone, the outer skin keeps its paint.
+EGG_SEAM = 1.66                  # the crack's mean height (a little above the middle: a cup and a cap)
+EGG_WALL = 0.2                   # the shell thickness of the halves (2 cells)
+# the zig-zag: (phi of a tip in tooth widths, height above / below the seam).  Eight bold tips round the egg, a little
+# uneven, a deep V right on the front (phi 0) so the crack reads straight away
+CRACK_TIPS = ((0.0, -0.3), (1.06, 0.24), (1.97, -0.22), (3.04, 0.29), (3.95, -0.25),
+              (5.02, 0.22), (6.05, -0.28), (6.97, 0.26))
+
+
+def crack_y(phi):
+    """the crack's height at the angle phi round the egg (piecewise linear through CRACK_TIPS, periodic)"""
+    n = len(CRACK_TIPS)
+    xp = np.array([t * TAU / n for t, _ in CRACK_TIPS])
+    fp = np.array([EGG_SEAM + d for _, d in CRACK_TIPS])
+    return np.interp(np.asarray(phi) % TAU, xp, fp, period=TAU)
+
+
+def _inner_tones(shell):
+    """(rim, cavity) colours of a shell: its inside, lighter (towards a warm white), the cavity a touch deeper"""
+    s = np.array(SPAL[shell], float)
+    # towards a warm white; the night shell towards lavender (its inside stays in the Starry Night mood, not grey)
+    target = (206.0, 192.0, 250.0) if shell == "SecShell" else (255.0, 250.0, 238.0)
+    rim = s + (np.array(target) - s) * 0.6
+    cav = rim * 0.9
+    return tuple(int(round(v)) for v in rim), tuple(int(round(v)) for v in cav)
+
+
+def _neighbours(mask):
+    """cells with a 6-neighbour in mask"""
+    out = np.zeros_like(mask)
+    for ax in range(3):
+        for d in (1, -1):
+            out |= np.roll(mask, d, axis=ax)
+    return out
+
+
+@prop("lobby_egg_half")
+def lobby_egg_half(entry, kit):
+    a = entry.get("args") or {}
+    rarity, half = a["rarity"], a["half"]
+    if half not in ("top", "bot"):
+        raise ValueError("lobby_egg_half: half must be top or bot, not %r" % half)
+    shell, light, paint = EGGS[rarity]
+    K = float(a.get("K", EGG_K))
+    S = ShopSculpt(kit, K, 1.75, origin=(0.0, EGG_H / 2, 0.0), name="egg")
+    E = Egg(S)
+    S.put(shell, E.inside)
+    paint(E, S)
+    _shine(E, S, light, (shell,))
+    L = S.g.L
+    solid = L != 0
+    above = np.broadcast_to(E.Y > crack_y(E.phi), L.shape)
+    # the hollow: the shell eroded by EGG_WALL in every direction (26-neighbour steps), so the wall is never thinner
+    # than two cells, also where the floor meets the wall (a radial cut left a 1-cell rim there that kept its paint)
+    cavity = np.broadcast_to(E.inside, L.shape).copy()
+    for _ in range(int(round(EGG_WALL / S.vs))):
+        core = cavity.copy()
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for dz in (-1, 0, 1):
+                    if dx or dy or dz:
+                        core &= np.roll(cavity, (dx, dy, dz), axis=(0, 1, 2))
+        cavity = core
+    # raised details (Neon trims, stars) stop one cell short of the crack on both halves, so the cut edge is the
+    # clean shell and no half-star hangs off a rim (the first render: star stubs read as debris on the rim)
+    raised = np.broadcast_to(~E.inside, L.shape) & solid
+    near_crack = np.broadcast_to(np.abs(E.Y - crack_y(E.phi)) < 1.5 * S.vs, L.shape)
+    keep = solid & (above if half == "top" else ~above) & ~cavity & ~(raised & near_crack)
+    air = ~solid | (raised & near_crack)                     # the outside (the painted skin faces it)
+    gone = solid & ~keep & ~air                              # the other half and the hollow: faces open onto these
+    rim_key, cav_key = shell + "Rim", shell + "Cavity"
+    SPAL[rim_key], SPAL[cav_key] = _inner_tones(shell)
+    open_to_gone = keep & _neighbours(gone) & ~_neighbours(air)
+    cav_wall = open_to_gone & _neighbours(cavity & solid)
+    L[~keep] = 0
+    S.put(cav_key, cav_wall)
+    S.put(rim_key, open_to_gone & ~cav_wall)
+    m = kit.model(entry["key"], "prop", vs=S.vs, K=K)
+    S.mesh_at(m, "Egg", {})
+    finish(m, {"source": "designed (lobby-shop, owner pick 3D egg + 3D crack): the %s half of the %s painted egg, split "
+               "along a jagged crack, hollow, the inner shell lighter" % (half, rarity),
+               "pivot": "bottom centre of the WHOLE egg (the halves line up with egg_%s exactly), front -Z" % rarity,
+               "rarity": rarity, "half": half, "glowParts": sorted(k for k in EGG_NEON.get(rarity, {}) if k in m.objects)})
+    zs = np.nonzero(keep.any(axis=(0, 2)))[0]
+    oy, vs = float(S.origin[1]), S.vs
+    h = S.g.half
+    y0, y1 = oy + (zs.min() - h) * vs, oy + (zs.max() - h + 1) * vs
+    m.attachments = {
+        "Center": {"pos": [0.0, round((y0 + y1) / 2, 4), 0.0], "rot": np.eye(3).tolist()},   # this half's middle: spins
+        "Seam": {"pos": [0.0, EGG_SEAM, 0.0], "rot": np.eye(3).tolist()},                     # the crack's mean height
+    }
+    return m
+
+
 # ---------------------------------------------------------------------------------------------- gem
 GEM_R, GEM_G, GEM_TOP, GEM_RT, GEM_CULET = 3.0, 0.25, 1.55, 1.75, -3.05
 

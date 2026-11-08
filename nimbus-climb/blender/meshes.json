@@ -3654,6 +3654,32 @@
    "structureHash": "f532fa49115b50edd8223fa45b41b1cc",
    "tris": 2968
   },
+  "egg_common_bot": {
+   "class": "hatch",
+   "contentHash": "150b07ba13cd62872494dc679b0b879b",
+   "description": "Common rarity egg, the bottom cup (hatch cutscene crack, owner pick 3D egg + 3D crack): the painted egg_common split along a jagged cartoon crack, hollow, the cut rim and the inside a lighter inner shell tone; pivot = the whole egg's bottom centre, so it lines up with egg_common exactly; attachments Center (this half's middle) and Seam",
+   "displayName": "NC Egg Common Bot",
+   "fbx": "blender/out/egg_common_bot.fbx",
+   "fbxSha256": "058f9bb01edd0def8c5cf736ecf0436ae43fdaf36402f04502115c26fa2a2034",
+   "manifest": "src/shared/MeshManifests/egg_common_bot.lua",
+   "maxTrianglesPerMesh": 3248,
+   "parts": 1,
+   "structureHash": "66d89695055b6b8d6c1a47f82818c654",
+   "tris": 3248
+  },
+  "egg_common_top": {
+   "class": "hatch",
+   "contentHash": "2325f69adbfe3c9d73927a15670acda9",
+   "description": "Common rarity egg, the top cap (hatch cutscene crack, owner pick 3D egg + 3D crack): the painted egg_common split along a jagged cartoon crack, hollow, the cut rim and the inside a lighter inner shell tone; pivot = the whole egg's bottom centre, so it lines up with egg_common exactly; attachments Center (this half's middle) and Seam",
+   "displayName": "NC Egg Common Top",
+   "fbx": "blender/out/egg_common_top.fbx",
+   "fbxSha256": "6aebf9a4bfd671ad3b8da80f376feb5848a6e1a143f60dd00265621f45878e22",
+   "manifest": "src/shared/MeshManifests/egg_common_top.lua",
+   "maxTrianglesPerMesh": 2762,
+   "parts": 1,
+   "structureHash": "f368ec3fd7bc5a3244cac3534f69d31d",
+   "tris": 2762
+  },
   "egg_epic": {
    "class": "lobby",
    "contentHash": "5f5a8b06f84287e356670468f9bf0f3e",
@@ -3666,6 +3692,32 @@
    "parts": 3,
    "structureHash": "bdf85192baaa3ae86ea5a3d6eb4924e5",
    "tris": 3732
+  },
+  "egg_epic_bot": {
+   "class": "hatch",
+   "contentHash": "e91f4f4e1ebd4ea5200f09057d3e50a5",
+   "description": "Epic rarity egg, the bottom cup (hatch cutscene crack, owner pick 3D egg + 3D crack): the painted egg_epic split along a jagged cartoon crack, hollow, the cut rim and the inside a lighter inner shell tone; pivot = the whole egg's bottom centre, so it lines up with egg_epic exactly; attachments Center (this half's middle) and Seam",
+   "displayName": "NC Egg Epic Bot",
+   "fbx": "blender/out/egg_epic_bot.fbx",
+   "fbxSha256": "36cc787609510db28a422983c83aac01be2527968bcf00c7756f1002ecdb605b",
+   "manifest": "src/shared/MeshManifests/egg_epic_bot.lua",
+   "maxTrianglesPerMesh": 3010,
+   "parts": 3,
+   "structureHash": "99784b82017af17f22bfc35a57102acf",
+   "tris": 3728
+  },
+  "egg_epic_top": {
+   "class": "hatch",
+   "contentHash": "e164c1b61b622b0017535ba8eec6760d",
+   "description": "Epic rarity egg, the top cap (hatch cutscene crack, owner pick 3D egg + 3D crack): the painted egg_epic split along a jagged cartoon crack, hollow, the cut rim and the inside a lighter inner shell tone; pivot = the whole egg's bottom centre, so it lines up with egg_epic exactly; attachments Center (this half's middle) and Seam",
+   "displayName": "NC Egg Epic Top",
+   "fbx": "blender/out/egg_epic_top.fbx",
+   "fbxSha256": "d0ef11dc6ea020c6fffeef26eb269566662df6d3f0b8681b3e7fc15a0f0810d5",
+   "manifest": "src/shared/MeshManifests/egg_epic_top.lua",
+   "maxTrianglesPerMesh": 2406,
+   "parts": 3,
+   "structureHash": "112db612ade7b1c0731df266bd7c3b4c",
+   "tris": 2932
   },
   "egg_legendary": {
    "class": "lobby",
@@ -3680,6 +3732,32 @@
    "structureHash": "951d8f80b7dc176f2c7d11a32b396380",
    "tris": 3370
   },
+  "egg_legendary_bot": {
+   "class": "hatch",
+   "contentHash": "d27d52d9a3b697440959c83bac5c3887",
+   "description": "Legendary rarity egg, the bottom cup (hatch cutscene crack, owner pick 3D egg + 3D crack): the painted egg_legendary split along a jagged cartoon crack, hollow, the cut rim and the inside a lighter inner shell tone; pivot = the whole egg's bottom centre, so it lines up with egg_legendary exactly; attachments Center (this half's middle) and Seam",
+   "displayName": "NC Egg Legendary Bot",
+   "fbx": "blender/out/egg_legendary_bot.fbx",
+   "fbxSha256": "46332a5d93145c9cd9be5b56de0965346d969f59214cb9df076344f50f94b3d4",
+   "manifest": "src/shared/MeshManifests/egg_legendary_bot.lua",
+   "maxTrianglesPerMesh": 2886,
+   "parts": 4,
+   "structureHash": "40524664d023b7bb862551f71edf862b",
+   "tris": 3388
+  },
+  "egg_legendary_top": {
+   "class": "hatch",
+   "contentHash": "24e629e94e74e99f5a1b52632d852a1c",
+   "description": "Legendary rarity egg, the top cap (hatch cutscene crack, owner pick 3D egg + 3D crack): the painted egg_legendary split along a jagged cartoon crack, hollow, the cut rim and the inside a lighter inner shell tone; pivot = the whole egg's bottom centre, so it lines up with egg_legendary exactly; attachments Center (this half's middle) and Seam",
+   "displayName": "NC Egg Legendary Top",
+   "fbx": "blender/out/egg_legendary_top.fbx",
+   "fbxSha256": "f0350e867f2130554265f4e20e6523e6f886932dedc6200a6547287237d8c37d",
+   "manifest": "src/shared/MeshManifests/egg_legendary_top.lua",
+   "maxTrianglesPerMesh": 2804,
+   "parts": 2,
+   "structureHash": "7bd35dbecb98d0f8def42dff36f65ea5",
+   "tris": 2996
+  },
   "egg_mythic": {
    "class": "lobby",
    "contentHash": "69602cfdb53bcc865f9f1d7a936f1685",
@@ -3692,6 +3770,32 @@
    "parts": 4,
    "structureHash": "6ec8d716ed6d44aedd40d12ba9e5ea8e",
    "tris": 3714
+  },
+  "egg_mythic_bot": {
+   "class": "hatch",
+   "contentHash": "74e363656c63195118258dd77fc43fdc",
+   "description": "Mythic rarity egg, the bottom cup (hatch cutscene crack, owner pick 3D egg + 3D crack): the painted egg_mythic split along a jagged cartoon crack, hollow, the cut rim and the inside a lighter inner shell tone; pivot = the whole egg's bottom centre, so it lines up with egg_mythic exactly; attachments Center (this half's middle) and Seam",
+   "displayName": "NC Egg Mythic Bot",
+   "fbx": "blender/out/egg_mythic_bot.fbx",
+   "fbxSha256": "e1a5c466cd022cbd6f6ece9768bfdad161ec007224c0876002133183c3860ab0",
+   "manifest": "src/shared/MeshManifests/egg_mythic_bot.lua",
+   "maxTrianglesPerMesh": 3028,
+   "parts": 3,
+   "structureHash": "a3145d1c0c503dfff67a9f99337727b0",
+   "tris": 3668
+  },
+  "egg_mythic_top": {
+   "class": "hatch",
+   "contentHash": "980d5d7c443ef65d397f5ae81700cd6c",
+   "description": "Mythic rarity egg, the top cap (hatch cutscene crack, owner pick 3D egg + 3D crack): the painted egg_mythic split along a jagged cartoon crack, hollow, the cut rim and the inside a lighter inner shell tone; pivot = the whole egg's bottom centre, so it lines up with egg_mythic exactly; attachments Center (this half's middle) and Seam",
+   "displayName": "NC Egg Mythic Top",
+   "fbx": "blender/out/egg_mythic_top.fbx",
+   "fbxSha256": "0cc11eb86e365a6179633989070eed72123a8cfca075dde08918024f057198c0",
+   "manifest": "src/shared/MeshManifests/egg_mythic_top.lua",
+   "maxTrianglesPerMesh": 2682,
+   "parts": 4,
+   "structureHash": "88370c045bfbfbea4865fb70e9735ba4",
+   "tris": 3026
   },
   "egg_rare": {
    "class": "lobby",
@@ -3706,6 +3810,32 @@
    "structureHash": "f532fa49115b50edd8223fa45b41b1cc",
    "tris": 3300
   },
+  "egg_rare_bot": {
+   "class": "hatch",
+   "contentHash": "8ef8af9591051d9ca4a1c0a034907aba",
+   "description": "Rare rarity egg, the bottom cup (hatch cutscene crack, owner pick 3D egg + 3D crack): the painted egg_rare split along a jagged cartoon crack, hollow, the cut rim and the inside a lighter inner shell tone; pivot = the whole egg's bottom centre, so it lines up with egg_rare exactly; attachments Center (this half's middle) and Seam",
+   "displayName": "NC Egg Rare Bot",
+   "fbx": "blender/out/egg_rare_bot.fbx",
+   "fbxSha256": "1c727e5587ad26d12d8db012f551e479eb8ba2c97a449ed08064f5e752fb87ab",
+   "manifest": "src/shared/MeshManifests/egg_rare_bot.lua",
+   "maxTrianglesPerMesh": 3414,
+   "parts": 1,
+   "structureHash": "66d89695055b6b8d6c1a47f82818c654",
+   "tris": 3414
+  },
+  "egg_rare_top": {
+   "class": "hatch",
+   "contentHash": "e57ea955ad14766dcdbcc0a0c4d7bd83",
+   "description": "Rare rarity egg, the top cap (hatch cutscene crack, owner pick 3D egg + 3D crack): the painted egg_rare split along a jagged cartoon crack, hollow, the cut rim and the inside a lighter inner shell tone; pivot = the whole egg's bottom centre, so it lines up with egg_rare exactly; attachments Center (this half's middle) and Seam",
+   "displayName": "NC Egg Rare Top",
+   "fbx": "blender/out/egg_rare_top.fbx",
+   "fbxSha256": "c6e196f391513df782e8d283fb09b42e0513b33138d7185f7ec92ce107aac707",
+   "manifest": "src/shared/MeshManifests/egg_rare_top.lua",
+   "maxTrianglesPerMesh": 2716,
+   "parts": 1,
+   "structureHash": "f368ec3fd7bc5a3244cac3534f69d31d",
+   "tris": 2716
+  },
   "egg_secret": {
    "class": "lobby",
    "contentHash": "a867c887936c9c6315fa6ef8ddba47c2",
@@ -3719,6 +3849,32 @@
    "structureHash": "78def9b13bf900f66465e76432c3b06a",
    "tris": 3530
   },
+  "egg_secret_bot": {
+   "class": "hatch",
+   "contentHash": "2710ccc8c53ebc2a00898cb8177ae328",
+   "description": "Secret rarity egg, the bottom cup (hatch cutscene crack, owner pick 3D egg + 3D crack): the painted egg_secret split along a jagged cartoon crack, hollow, the cut rim and the inside a lighter inner shell tone; pivot = the whole egg's bottom centre, so it lines up with egg_secret exactly; attachments Center (this half's middle) and Seam",
+   "displayName": "NC Egg Secret Bot",
+   "fbx": "blender/out/egg_secret_bot.fbx",
+   "fbxSha256": "53c491b7f6c1b5cea4bd4b217e7c8be7ca6715bcbe93ff2ea216096fcda39bbd",
+   "manifest": "src/shared/MeshManifests/egg_secret_bot.lua",
+   "maxTrianglesPerMesh": 2950,
+   "parts": 4,
+   "structureHash": "4f51bf7776adec460e1968debc659ff1",
+   "tris": 3468
+  },
+  "egg_secret_top": {
+   "class": "hatch",
+   "contentHash": "9a7582a8131cf658b71e14904bbea1bf",
+   "description": "Secret rarity egg, the top cap (hatch cutscene crack, owner pick 3D egg + 3D crack): the painted egg_secret split along a jagged cartoon crack, hollow, the cut rim and the inside a lighter inner shell tone; pivot = the whole egg's bottom centre, so it lines up with egg_secret exactly; attachments Center (this half's middle) and Seam",
+   "displayName": "NC Egg Secret Top",
+   "fbx": "blender/out/egg_secret_top.fbx",
+   "fbxSha256": "d626ef92236086b410a0f4f0ed762c6d439363ee60a019578442208790f767e3",
+   "manifest": "src/shared/MeshManifests/egg_secret_top.lua",
+   "maxTrianglesPerMesh": 2420,
+   "parts": 4,
+   "structureHash": "a27d3284da31f807f23c251b28b9d811",
+   "tris": 3078
+  },
   "egg_uncommon": {
    "class": "lobby",
    "contentHash": "16744894dd73d89a49a98b18053956a5",
@@ -3731,6 +3887,32 @@
    "parts": 1,
    "structureHash": "f532fa49115b50edd8223fa45b41b1cc",
    "tris": 3282
+  },
+  "egg_uncommon_bot": {
+   "class": "hatch",
+   "contentHash": "c58d6e11662fd4da50b503d98156f92e",
+   "description": "Uncommon rarity egg, the bottom cup (hatch cutscene crack, owner pick 3D egg + 3D crack): the painted egg_uncommon split along a jagged cartoon crack, hollow, the cut rim and the inside a lighter inner shell tone; pivot = the whole egg's bottom centre, so it lines up with egg_uncommon exactly; attachments Center (this half's middle) and Seam",
+   "displayName": "NC Egg Uncommon Bot",
+   "fbx": "blender/out/egg_uncommon_bot.fbx",
+   "fbxSha256": "8fafad57d3419d1d28107a5fcd30217b858dbf0b0a85b73fd4d93823274b8470",
+   "manifest": "src/shared/MeshManifests/egg_uncommon_bot.lua",
+   "maxTrianglesPerMesh": 3486,
+   "parts": 1,
+   "structureHash": "66d89695055b6b8d6c1a47f82818c654",
+   "tris": 3486
+  },
+  "egg_uncommon_top": {
+   "class": "hatch",
+   "contentHash": "b7a6f3b09c5e1a4d498f56b45611758e",
+   "description": "Uncommon rarity egg, the top cap (hatch cutscene crack, owner pick 3D egg + 3D crack): the painted egg_uncommon split along a jagged cartoon crack, hollow, the cut rim and the inside a lighter inner shell tone; pivot = the whole egg's bottom centre, so it lines up with egg_uncommon exactly; attachments Center (this half's middle) and Seam",
+   "displayName": "NC Egg Uncommon Top",
+   "fbx": "blender/out/egg_uncommon_top.fbx",
+   "fbxSha256": "919c647c9b22644911f0416879311896d44ce0039bdf4c5fb6507815435c8c99",
+   "manifest": "src/shared/MeshManifests/egg_uncommon_top.lua",
+   "maxTrianglesPerMesh": 2788,
+   "parts": 1,
+   "structureHash": "f368ec3fd7bc5a3244cac3534f69d31d",
+   "tris": 2788
   },
   "evo1_aurora_fox": {
    "class": "evolved",
