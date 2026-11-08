@@ -2803,6 +2803,76 @@
       "structureHash": "e854ff47c66151347048f40758ab45c0",
       "uploadedAt": "2026-10-29T11:50:07Z"
     },
+    "egg_common": {
+      "assetId": 78538500532278,
+      "contentHash": "7517456a51a8a7a3eb9c80839af86426",
+      "fileSha256": "2e2e0d06945cc6c1458f415ef0f7b4370c52f088089bcdf2f7893d2750e0f975",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-08T18:26:10.127Z",
+      "revisionId": "1",
+      "structureHash": "f532fa49115b50edd8223fa45b41b1cc",
+      "uploadedAt": "2026-11-08T18:26:14Z"
+    },
+    "egg_epic": {
+      "assetId": 74186767040931,
+      "contentHash": "5f5a8b06f84287e356670468f9bf0f3e",
+      "fileSha256": "afc3617794fc7fb9dfa1dc0579f16b6b22eda831fe6129a42e601f494facb175",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-08T18:26:19.672Z",
+      "revisionId": "1",
+      "structureHash": "bdf85192baaa3ae86ea5a3d6eb4924e5",
+      "uploadedAt": "2026-11-08T18:26:20Z"
+    },
+    "egg_legendary": {
+      "assetId": 126386382226831,
+      "contentHash": "642aa2c0209cd46981c889c5e19c4681",
+      "fileSha256": "51aa9ed159ca69013be724e4bb6e11b79c9a345a1edbff2bfb227857c8e6aaac",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-08T18:26:30.084Z",
+      "revisionId": "1",
+      "structureHash": "951d8f80b7dc176f2c7d11a32b396380",
+      "uploadedAt": "2026-11-08T18:26:32Z"
+    },
+    "egg_mythic": {
+      "assetId": 90441463974691,
+      "contentHash": "69602cfdb53bcc865f9f1d7a936f1685",
+      "fileSha256": "d9e18de82140c8a6cce4b59a3fc07bd8452a100306e580d4573cea184d7cc1a0",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-08T18:26:38.040Z",
+      "revisionId": "1",
+      "structureHash": "6ec8d716ed6d44aedd40d12ba9e5ea8e",
+      "uploadedAt": "2026-11-08T18:26:40Z"
+    },
+    "egg_rare": {
+      "assetId": 121794153612488,
+      "contentHash": "1a0c2877ad8a4a2844607e4aa1554b29",
+      "fileSha256": "f2fa5aa1f872676fd3b15a8a8112e4fd5237bfa7662292ca9cf258bd2b179df3",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-08T18:26:46.357Z",
+      "revisionId": "1",
+      "structureHash": "f532fa49115b50edd8223fa45b41b1cc",
+      "uploadedAt": "2026-11-08T18:26:51Z"
+    },
+    "egg_secret": {
+      "assetId": 86389479224270,
+      "contentHash": "a867c887936c9c6315fa6ef8ddba47c2",
+      "fileSha256": "26feee6047cfde3d2dbfd2ed6bf8b3d1dd6ceacc60c3dd291874b05ec172521c",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-08T18:26:58.120Z",
+      "revisionId": "1",
+      "structureHash": "78def9b13bf900f66465e76432c3b06a",
+      "uploadedAt": "2026-11-08T18:27:03Z"
+    },
+    "egg_uncommon": {
+      "assetId": 140061890535185,
+      "contentHash": "16744894dd73d89a49a98b18053956a5",
+      "fileSha256": "f7bc7048a0750a0f7b52e6771f776d39be966d8f922745d0f020766958265c67",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-08T18:27:10.753Z",
+      "revisionId": "1",
+      "structureHash": "f532fa49115b50edd8223fa45b41b1cc",
+      "uploadedAt": "2026-11-08T18:27:14Z"
+    },
     "evo1_aurora_fox": {
       "assetId": 87772383693151,
       "contentHash": "1eae1b6228d009e325a929d90a746cae",
@@ -6748,6 +6818,26 @@
       "structureHash": "6f4fae5fefe6bf14640e7d157360e050",
       "uploadedAt": "2026-10-23T18:22:50Z"
     },
+    "gem_world": {
+      "assetId": 126235744705967,
+      "contentHash": "335a9189cdbef19822da194327110fb6",
+      "fileSha256": "df8274e20d0e69b170874bbb0441e616a402c39a8b9bf510e72f707c35fa00aa",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-08T18:27:19.246Z",
+      "revisionId": "1",
+      "structureHash": "6ddc9d9c71bc302bcba95bba37c1005e",
+      "uploadedAt": "2026-11-08T18:27:20Z"
+    },
+    "gem_world_low": {
+      "assetId": 115333125721733,
+      "contentHash": "d2335cdeec1b1fde66f2cac476341c32",
+      "fileSha256": "ed5079d33c98d39aaf6aeff7e2507e25c5b1cc650db69282b9c5c4ac45379e63",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-08T18:27:27.305Z",
+      "revisionId": "1",
+      "structureHash": "c43ef500b5953c493361cedb07fc4af0",
+      "uploadedAt": "2026-11-08T18:27:31Z"
+    },
     "home_arena_1": {
       "assetId": 138088594623572,
       "contentHash": "46bc9778c7b16f06a8056449fe90e476",
@@ -9268,6 +9358,26 @@
       "structureHash": "71804cf90a7a495f898c74ac7d46b6fb",
       "uploadedAt": "2026-10-21T09:30:11Z"
     },
+    "portal_altar_ring": {
+      "assetId": 93592436462057,
+      "contentHash": "906012de4510bd3198b8f1bfe77dd2a9",
+      "fileSha256": "f998b703d95f2961f3dab75633829afa07736856d429f629024b847d608bb577",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-08T18:27:37.641Z",
+      "revisionId": "1",
+      "structureHash": "f1abef8cf1c0926e905d3f1b799cc922",
+      "uploadedAt": "2026-11-08T18:27:41Z"
+    },
+    "portal_ring": {
+      "assetId": 112447278894665,
+      "contentHash": "f6e4fd7e3bfc96e0c128ec78270f6e73",
+      "fileSha256": "f8df4c4f684bb45488fa88a881139306f2d565051ec00e2fbe7bf0b149de5c11",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-08T18:27:49.383Z",
+      "revisionId": "1",
+      "structureHash": "fc03fa6c92f580c815cbff78cde91c7e",
+      "uploadedAt": "2026-11-08T18:27:52Z"
+    },
     "prop_altar_crystals": {
       "assetId": 73251915899511,
       "contentHash": "181f973c2187caf251311aa4fce383cb",
@@ -9337,6 +9447,16 @@
       "revisionId": "1",
       "structureHash": "763277d0543b02334fafc1bbac20f80b",
       "uploadedAt": "2026-10-23T18:55:28Z"
+    },
+    "prop_board_lb": {
+      "assetId": 106672749565297,
+      "contentHash": "fdc61ae15c60884269b1c0476e9210e4",
+      "fileSha256": "1077752a2409cad74c6e8735ab68aaacfd6785b4d533ecf21a29ef12638ff119",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-08T18:27:59.436Z",
+      "revisionId": "1",
+      "structureHash": "bfaa70b2f47ccf3d17d89d6c0f2349cd",
+      "uploadedAt": "2026-11-08T18:28:03Z"
     },
     "prop_board_s": {
       "assetId": 72741145857444,
