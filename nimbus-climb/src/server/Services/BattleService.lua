@@ -70,7 +70,7 @@
 --   Queue(player) / Unqueue(player) -> ok, reason,
 --   Command(player, action, arg) -> ok, reason, extra (what BattleCommand does), Forfeit(player) -> ok,
 --   SetDoubleRewards(active, seconds|nil) (EventService may push the Double Rewards hour; it is also read from
---   EventService itself), IsDoubleRewards(), SetArena(arenaInfo, arenaBuilder), GetNetStats(), EstimateBytes(value),
+--   EventService itself), IsDoubleRewards(), ZeroTrophyPrize(trophies, share?) -> n (16.13, pure), SetArena(arenaInfo, arenaBuilder), GetNetStats(), EstimateBytes(value),
 --   ListBattles() -> { summary... }, signals BattleStarted(battleId, info) and RaidJoined(player, battleId, tierId),
 --   flag BattleService.PayRaidRewards (default true: this service pays the raid tiers; see "Rewards"),
 --   Shutdown() (what game:BindToClose runs; tests call it: every running battle ends void with Reason "Shutdown", new
@@ -215,8 +215,9 @@
 --   * Duel rewards are gated against farming (payDuel): withheld for a forfeit before FORFEIT_MIN_SECONDS and for a loser
 --     who dealt no damage; the same two players earn from at most PAIR_LIMIT duels per PAIR_WINDOW seconds, across servers
 --     (lobby-shop 16.12: each counted duel start is also saved on both players' Battle.Duels and the limit reads the
---     highest of this server's list and the two saves); a winner gets no Trophies (tokens and XP stay) when the loser
---     held 0 Trophies at the start (16.12); a practice duel (Duel.PowerGap) pays nothing and counts for nothing.
+--     highest of this server's list and the two saves); a winner gets the smaller prize ZeroTrophyPrize (floor(
+--     Config.Battle.ZeroTrophyShare x the win), at least 1; tokens and XP stay; Rewards.NewOpponent = true) when the loser
+--     held 0 Trophies at the start (16.13, was none in 16.12); a practice duel (Duel.PowerGap) pays nothing and counts for nothing.
 --   * A raid player who presses LEAVE (BattleController's, the Ring's button: BattleCommand "Forfeit", or the "LeaveRaid" request), stays
 --     out of the fight area through the warning's 3-2-1 (never while dead), leaves the game or is leashed is removed from the raid
 --     (no reward, said in the toast and on the result card; no rejoin of that
@@ -321,7 +322,7 @@ do
 end
 
 ----------------------------------------------------------------------
--- Tunables (Config.Battle does not exist: local constants, listed as a deviation)
+-- Tunables (local constants, listed as a deviation; Config.Battle holds only the owner's ZeroTrophyShare, 16.13)
 ----------------------------------------------------------------------
 local C = {
 	ATTR_IN_BATTLE = (type(Config.Attr) == "table" and Config.Attr.InBattle) or "InBattle", -- C11: Config.Attr.InBattle, own string as the fallback
@@ -1233,6 +1234,23 @@ local function eventService()
 	return St.eventService or nil
 end
 
+-- lobby-shop 16.13 (the owner's answer, 2026-11-08): the Trophies a duel win pays when the opponent held 0 Trophies at
+-- the start: floor(share x trophies), at least 1. share = the argument, else Config.Battle.ZeroTrophyShare; a share
+-- outside (0, 1] (junk, NaN) is 0.25. A prize of 0 or less (not a win) comes back unchanged. Pure, never yields.
+local ZERO_TROPHY_SHARE = 0.25
+function BattleService.ZeroTrophyPrize(trophies, share)
+	if not finite(trophies) or trophies <= 0 then
+		return trophies
+	end
+	if share == nil then
+		share = type(Config.Battle) == "table" and Config.Battle.ZeroTrophyShare or nil
+	end
+	if not finite(share) or share <= 0 or share > 1 then
+		share = ZERO_TROPHY_SHARE
+	end
+	return max(1, floor(trophies * share))
+end
+
 function BattleService.IsDoubleRewards()
 	local pushed = St.double
 	if pushed then
@@ -1481,18 +1499,18 @@ local function payDuel(b, part, res)
 	elseif rewarded and not won then
 		trophies, tokens, xp = tonumber(T.Loss) or 0, tonumber(tokensT.Loss) or 0, tonumber(xpT.Loss) or 0
 	end
-	-- lobby-shop 16.12: no Trophies for beating a player who had none when the duel started (an empty account cannot
-	-- feed a farmer); the win's tokens and XP stay
-	local noTrophies = false
+	-- lobby-shop 16.13 (was 16.12's "none"): beating a player who had no Trophies when the duel started pays the smaller
+	-- prize, BattleService.ZeroTrophyPrize (an empty account feeds a farmer only a little); the win's tokens and XP stay
+	local newOpponent = false
 	if won and trophies > 0 and type(b.TrophiesAtStart) == "table" then
 		for _, other in ipairs(b.PartList) do
 			local had = other ~= part and b.TrophiesAtStart[other.UserId] or nil
 			if finite(had) and had <= 0 then
-				noTrophies = true
+				newOpponent = true
 			end
 		end
-		if noTrophies then
-			trophies = 0
+		if newOpponent then
+			trophies = BattleService.ZeroTrophyPrize(trophies)
 		end
 	end
 	local double = tokens > 0 and BattleService.IsDoubleRewards()
@@ -1525,7 +1543,7 @@ local function payDuel(b, part, res)
 	rw.Early = (won and res.Forfeit == true and short) or nil
 	rw.Practice = b.Practice or nil
 	rw.Unpaid = (won and not rewarded) or (won and stomp) or nil
-	rw.NoTrophies = noTrophies or nil
+	rw.NewOpponent = newOpponent or nil
 	local text
 	if b.Practice then
 		text = (won and "Practice duel won!" or (draw and "Practice duel: a draw." or "Practice duel lost.")) .. " No rewards for practice."
@@ -1535,8 +1553,8 @@ local function payDuel(b, part, res)
 		text = "Your opponent never fought back: the win counts, no rewards."
 	elseif won and not rewarded then
 		text = "Victory! You two dueled a lot lately: no rewards this time."
-	elseif won and noTrophies then
-		text = "Victory! Your opponent had no trophies to win. +" .. tokens .. " tokens"
+	elseif won and newOpponent then
+		text = "Victory! Your opponent was new: smaller trophy prize. +" .. trophies .. " trophies, +" .. tokens .. " tokens"
 	elseif won then
 		text = "Victory! +" .. trophies .. " trophies, +" .. tokens .. " tokens"
 	elseif draw then

@@ -1527,8 +1527,8 @@ S.p3flow_duels = scenario("p3flow_duels", function()
 	T.check(la and type(la.Sent) == "table" and la.Sent.ToUserId == bo.UserId and type(la.Queue) == "table" and la.Queue.Queued == false,
 		"flow duels: Ava's 'Lobby' shows the challenge she sent (Sent { ToUserId, ToName, ExpiresIn }, Queue { Queued, Waiting })")
 	T.check((toasted(bo, "challenges you", mark)), "flow duels: Bo gets a side toast")
-	-- (lobby-shop 16.12: no Trophies for beating a 0-trophy player, so both start this duel with -Trophies.Loss: the
-	-- loser ends at 0 again)
+	-- (lobby-shop 16.13: beating a 0-trophy player pays only the smaller prize, so both start this duel with
+	-- -Trophies.Loss for the full Trophies.Win: the loser ends at 0 again)
 	local START = -TR.Loss
 	data.AddTrophies(ava, START)
 	data.AddTrophies(bo, START)
@@ -1620,7 +1620,7 @@ S.p3flow_duels = scenario("p3flow_duels", function()
 	grant(eli, TEAMS.Eli, 5)
 	request(dee, "TeamSet", 1, TEAMS.Dee)
 	request(eli, "TeamSet", 1, TEAMS.Eli)
-	data.AddTrophies(dee, -TR.Loss) -- (16.12: each holds trophies, so a win over the other pays them)
+	data.AddTrophies(dee, -TR.Loss) -- (16.13: each holds trophies, so a win over the other pays the full prize)
 	data.AddTrophies(eli, -TR.Loss)
 	toArena(dee, 8, 8)
 	toArena(eli, -8, 8)

@@ -814,6 +814,7 @@
         "EndRaids",
         "RaidTierFor",
         "RaidRewardStatus",
+        "ZeroTrophyPrize",
         "_ClearPairsForTest"
       ],
       "signals": [

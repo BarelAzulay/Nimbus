@@ -2021,7 +2021,27 @@ by hopping servers, and a 0-trophy loser loses nothing. The design:
   Consequence for the owner to know: every account starts at 0 and duels are the only source of Trophies, so two brand-new
   players never earn Trophies from each other; new Trophies enter only when someone beats a player who already has some
   (live saves from before this build seed it). Left open: a softer rule (fewer Trophies, not none) if that feels wrong.
+  **Replaced by 16.13** (the owner picked the softer rule: a quarter of the win, at least 1).
 - Tests: `p3bs_pair_hop` (three duels, both saves hold them, a real leave / rejoin with the server's list cleared: the 4th is
   trophy-free; one save alone holds it; 30 minutes on the Unix clock later the pair earns again; the 32-entry cap and junk) and
   `p3bs_zero_trophy` (a full win over a 0-trophy player pays tokens and XP, no Trophies). The duel tests that expected
   Trophies.Win from a brand-new opponent give both duellists trophies first.
+
+### 16.13 The owner's follow-ups of 2026-11-08 (0-Trophy opponents, the restricted first pet)
+
+These override 16.12 where they differ (its "0 Trophies" bullet and its tutorial consequence).
+
+**A win over a 0-Trophy opponent pays a smaller prize, not none.** The cross-server pair limit of 16.12 stays exactly as it is.
+- `BattleService.ZeroTrophyPrize(trophies, share?)` = max(1, floor(share x trophies)); share = `Config.Battle.ZeroTrophyShare`
+  (0.25, the owner's quarter; a share outside (0, 1] or junk reads 0.25); a prize of 0 or less comes back unchanged. Pure.
+- `payDuel`: when the loser held 0 Trophies at the start (`b.TrophiesAtStart`, as in 16.12) the winner's Trophies.Win (20)
+  becomes ZeroTrophyPrize(20) = 5; tokens and XP of the win stay in full; `rw.NewOpponent = true` (replaces 16.12's
+  `rw.NoTrophies`, which no client read). The toast: "Victory! Your opponent was new: smaller trophy prize. +5 trophies, +N
+  tokens". Every other win, the loser's side, the pair limit, practice duels and early forfeits are unchanged.
+- Consequence: two brand-new players now seed Trophies slowly (5 per win, at most 3 rewarded duels per pair per 30 minutes,
+  and the loser stays at 0, so the winner keeps getting the smaller prize from that pair).
+- `Config.Battle` is new (it held nothing before; BattleService's other tunables stay local constants).
+- Tests: `p3bs_zero_trophy` (red on the 16.12 code first): the Config factor, the pure rule (20 -> 5, 21 -> 5, 3 -> 1, 1 -> 1,
+  0 -> 0, share 0.1 / 0.01 / 1, junk shares -> 0.25), a full win over a 0-Trophy player pays 5 Trophies + the full tokens and XP
+  with NewOpponent and the new toast; the same pair after the loser holds 50 Trophies pays the normal +20 and the normal toast.
+  README's fair-play line says a quarter (+5 instead of +20).

@@ -153,6 +153,16 @@ local function toasted(p, pattern, fromIndex)
 	return false
 end
 
+-- toasted with a plain (non-pattern) search: texts that hold "+" or "."
+local function toastedPlain(p, text, fromIndex)
+	for _, shown in ipairs(toasts(p, fromIndex)) do
+		if shown:find(text, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
 local function watchEnded()
 	local list = {}
 	local conn = BS().BattleEnded:Connect(function(id, result)
@@ -858,7 +868,8 @@ S.p3bs_pair_hop = scenario("p3bs_pair_hop", function()
 end)
 
 ----------------------------------------------------------------------------------------------------
--- scenario: lobby-shop 16.12, no Trophies for beating a player who has none
+-- scenario: lobby-shop 16.12 / 16.13, a smaller Trophy prize for beating a player who has none
+-- (the owner's answer of 2026-11-08: floor(Config.Battle.ZeroTrophyShare x the normal win), at least 1)
 ----------------------------------------------------------------------------------------------------
 S.p3bs_zero_trophy = scenario("p3bs_zero_trophy", function()
 	if not ready("p3bs_zero_trophy") then
@@ -866,20 +877,19 @@ S.p3bs_zero_trophy = scenario("p3bs_zero_trophy", function()
 	end
 	quietReplication()
 	local bs, data, bc = BS(), DS(), BC()
+	local Config = req("shared/Config")
 	local TR = bc.Trophies
 	local w = watchEnded()
 	local a = newPlayer("ZeroA", STRONG, 10)
 	local z = newPlayer("ZeroZ", MID, 10)
-	local okRun, errRun = pcall(function()
-		data.AddTrophies(a, 100)
-		T.eq(record(z).Trophies or 0, 0, "zero trophy: (setup) the opponent has 0 Trophies")
+	-- one full duel a vs z: both fight 16 s (z deals damage), then z forfeits (a full win). Returns r, rwA, tokens gained, mark
+	local function fullWin(label)
 		toArena(a, 3, 0)
 		toArena(z, -3, 0)
-		-- both fight 16 s (z deals damage), then z forfeits: normally a full win
 		local m = K.logSize()
 		local ok, id = bs.StartDuel(a, z)
-		if not T.check(ok == true, "zero trophy: the duel starts", tostring(id)) then
-			return
+		if not T.check(ok == true, "zero trophy: " .. label .. ": the duel starts", tostring(id)) then
+			return nil
 		end
 		advance(0.3)
 		drvPlay({ drvTracker(a, m), drvTracker(z, m) }, 16, function()
@@ -891,16 +901,53 @@ S.p3bs_zero_trophy = scenario("p3bs_zero_trophy", function()
 			advance(0.5)
 		end
 		local r = w.find(id)
-		local rwA = r and r.Rewards[a.UserId]
+		advance(5) -- the ring's cooldown before the next duel
+		return r, r and r.Rewards[a.UserId], tokens(a) - ta, m
+	end
+	local okRun, errRun = pcall(function()
+		-- the factor lives in Config, and the prize rule itself (pure)
+		local share = type(Config.Battle) == "table" and Config.Battle.ZeroTrophyShare or nil
+		T.check(share == 0.25, "zero trophy: Config.Battle.ZeroTrophyShare = 0.25", tostring(share))
+		local prize = bs.ZeroTrophyPrize
+		if T.check(type(prize) == "function", "zero trophy: BattleService.ZeroTrophyPrize exists") then
+			local rule = T.tally("zero trophy: ZeroTrophyPrize = floor(share x the normal win), at least 1; nothing stays nothing")
+			for _, c in ipairs({ { 20, 0.25, 5 }, { 21, 0.25, 5 }, { 3, 0.25, 1 }, { 1, 0.25, 1 }, { 0, 0.25, 0 }, { -10, 0.25, -10 }, { 20, 0.1, 2 }, { 20, 0.01, 1 }, { 20, 1, 20 } }) do
+				local got = prize(c[1], c[2])
+				rule:case(got == c[3], c[1] .. " x " .. c[2] .. " -> " .. tostring(got) .. " (want " .. c[3] .. ")")
+			end
+			for _, junk in ipairs({ "x", -1, 0, 2, 0 / 0, math.huge }) do
+				local got = prize(20, junk)
+				rule:case(got == 5, "junk share " .. tostring(junk) .. " -> " .. tostring(got) .. " (the 0.25 default)")
+			end
+			rule:case(prize(20) == math.max(1, math.floor(20 * share)), "no share argument reads Config (" .. tostring(prize(20)) .. ")")
+			rule:report()
+		end
+
+		data.AddTrophies(a, 100)
+		T.eq(record(z).Trophies or 0, 0, "zero trophy: (setup) the opponent has 0 Trophies")
+		local small = math.max(1, math.floor(TR.Win * 0.25))
+		local r, rwA, gained, m = fullWin("vs a new player")
 		if T.check(r ~= nil and contains(r.Winners, a.UserId), "zero trophy: a wins against the 0-trophy player", r and tostring(r.Reason) or "no end") then
-			T.check(rwA and rwA.Trophies == 0 and record(a).Trophies == 100 and rwA.NoTrophies == true, "zero trophy: ...and gets no Trophies (NoTrophies on the reward)",
+			T.check(rwA and rwA.Trophies == small and record(a).Trophies == 100 + small and rwA.NewOpponent == true and rwA.NoTrophies == nil,
+				"zero trophy: ...and gets the smaller prize: floor(1/4 x " .. TR.Win .. ") = " .. small .. " Trophies (NewOpponent on the reward)",
 				rwA and (tostring(rwA.Trophies) .. " / total " .. tostring(record(a).Trophies)) or "none")
-			T.check(rwA and rwA.Tokens == TR.Tokens.Win * doubled(rwA) and rwA.Xp == TR.Xp.Win and tokens(a) - ta == rwA.Tokens,
-				"zero trophy: ...the win's tokens and XP are still paid", rwA and (rwA.Tokens .. " / " .. rwA.Xp) or "none")
-			T.check(toasted(a, "no trophies to win", m), "zero trophy: ...and the toast says why", table.concat(toasts(a, m), " | "))
+			T.check(rwA and rwA.Tokens == TR.Tokens.Win * doubled(rwA) and rwA.Xp == TR.Xp.Win and gained == rwA.Tokens,
+				"zero trophy: ...the win's tokens and XP are paid in full", rwA and (rwA.Tokens .. " / " .. rwA.Xp) or "none")
+			T.check(toasted(a, "Your opponent was new: smaller trophy prize", m) and toastedPlain(a, "+" .. small .. " trophies", m) and not toasted(a, "no trophies to win", m),
+				"zero trophy: ...and the toast says so ('Victory! Your opponent was new: smaller trophy prize. +" .. small .. " trophies')", table.concat(toasts(a, m), " | "))
 			local rwZ = r.Rewards[z.UserId]
 			T.check(rwZ and (rwZ.Trophies or 0) == 0 and (record(z).Trophies or 0) == 0, "zero trophy: the loser's trophies never go below 0",
 				rwZ and tostring(rwZ.Trophies) or "none")
+		end
+		-- a normal opponent (one who holds Trophies) is unchanged: the full win
+		data.AddTrophies(z, 50)
+		local before = record(a).Trophies
+		local r2, rw2, _, m2 = fullWin("vs a player with Trophies")
+		if T.check(r2 ~= nil and contains(r2.Winners, a.UserId), "zero trophy: a beats the opponent who now holds 50 Trophies", r2 and tostring(r2.Reason) or "no end") then
+			T.check(rw2 and rw2.Trophies == TR.Win and record(a).Trophies == before + TR.Win and rw2.NewOpponent == nil,
+				"zero trophy: ...the normal win: +" .. TR.Win .. " Trophies, no NewOpponent", rw2 and (tostring(rw2.Trophies) .. " / total " .. tostring(record(a).Trophies)) or "none")
+			T.check(toastedPlain(a, "Victory! +" .. TR.Win .. " trophies", m2) and not toasted(a, "smaller trophy prize", m2),
+				"zero trophy: ...with the normal toast", table.concat(toasts(a, m2), " | "))
 		end
 		K.flushErrors("zero trophy")
 	end)

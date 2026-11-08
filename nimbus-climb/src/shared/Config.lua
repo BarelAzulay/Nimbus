@@ -495,6 +495,13 @@ Config.Tutorial = {
 	FinishReward = { Tokens = 100 },
 }
 
+-- Pet battles (most duel tunables are BattleService locals; this table holds the ones the owner sets).
+Config.Battle = {
+	-- lobby-shop 16.13 (the owner's answer, 2026-11-08): a duel won over a player who held 0 Trophies at the start pays
+	-- floor(this x the normal win) Trophies, at least 1 (BattleService.ZeroTrophyPrize); tokens and XP stay in full
+	ZeroTrophyShare = 0.25,
+}
+
 -- v3: pet roles and battle/economy stats (values live per pet in PetCatalog; phases 2 and 3 use them).
 Config.PetStats = {
 	Roles = { "Economy", "Combat" },
