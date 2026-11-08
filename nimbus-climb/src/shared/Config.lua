@@ -64,6 +64,7 @@ Config.Tags = {
 	-- lobby shop (spec 5.12): lobby motion driven by the client (LobbyFxController); the server never animates
 	Spin = "NC_Spin", -- a part turning about its Y axis; attrs SpinSeconds (one turn), BobStuds, BobSeconds (optional bob)
 	Bob = "NC_Bob", -- a part or BillboardGui bobbing up and down; attrs BobStuds (amplitude), BobSeconds (period)
+	LeaderboardFace = "NC_LeaderboardFace", -- (lobby shop, review round 1) the lobby board's Face: LeaderboardController adorns it
 }
 
 -- Attributes set on Player instances by the server (client HUD reads them).
@@ -482,6 +483,10 @@ Config.Eggs = {
 	ChatColors = {
 		Secret = Color3.fromRGB(180, 150, 255),
 	},
+	-- (lobby-shop review round 1, the payback rule) a full-stack pull of a token roulette pays its rarity's
+	-- Config.Index.Rewards Tokens, at most floor(that roulette's token Price x SubstituteShare): a spin never pays back its
+	-- price (PetService.SubstituteTokens; under 1, else 0.5)
+	SubstituteShare = 0.5,
 }
 
 -- v3: new-player tutorial guided by Nimbus, the Cloudy Dragon (steps live in shared/TutorialSteps.lua).

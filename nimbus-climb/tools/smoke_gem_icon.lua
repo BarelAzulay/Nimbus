@@ -212,7 +212,9 @@ S.client_gem_icon = guarded("client_gem_icon", function()
 		if icon then
 			T.eq(icon:GetAttribute("Simple"), simple, label .. ": attribute Simple (true under 28 px)")
 			T.eq(icon:GetAttribute("Shine"), size >= 20, label .. ": attribute Shine (>= 20 px, Gfx High)")
-			local facet, star = icon:FindFirstChild("Facet", true), icon:FindFirstChild("Star", true)
+			-- (review round 1) the star is "Glint": a test lookup of "Star" made tools/mesh_names.py count the Blender palette
+			-- key Star as looked up by name and broke the kit selftest for six evolved-pet manifests
+			local facet, star = icon:FindFirstChild("Facet", true), icon:FindFirstChild("Glint", true)
 			if simple then
 				T.check(facet == nil and star == nil, label .. ": the simple form has no facet and no star")
 			else

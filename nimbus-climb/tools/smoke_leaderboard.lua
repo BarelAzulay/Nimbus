@@ -532,6 +532,41 @@ S.lb_write = guarded("lb_write", function()
 		T.eq(anySet, 0, "lb write: WriteInStudio = false in Studio: zero SetAsync calls (a seed and a change due)")
 		cfg.WriteInStudio = true
 
+		-- (review round 1) a developer account in a live server (DevService.IsAllowed: its tools grant pets, gems and what
+		-- they buy) is never written to the global stores; the player beside it is; its own value still reads
+		local devUid, plainUid = newUserId(), newUserId()
+		local savedDev = { Studio = Mock.Options.Studio, Admins = Config.Dev.Admins, Enabled = Config.Dev.Enabled }
+		local okDev, errDev = pcall(function()
+			Mock.Options.Studio = false
+			Config.Dev.Enabled = true
+			Config.Dev.Admins = { devUid }
+			local markDev = logMark()
+			local dv = track(join("LbWriteDev", devUid))
+			local pl = track(join("LbWritePlain", plainUid))
+			if not T.check(loaded(dv) and loaded(pl), "lb dev: (setup) a developer and a player loaded in a live server") then
+				return
+			end
+			D.AddTrophies(dv, 40)
+			D.AddTrophies(pl, 30)
+			for _, id in ipairs(freshPetIds(dv, 4)) do
+				D.MarkDiscovered(dv, id)
+			end
+			K.advance(cfg.SeedDelay + cfg.SweepSeconds + 2)
+			T.eq(#setsFor(devUid, nil, markDev), 0, "lb dev: a developer account (DevService.IsAllowed) is never written to the global stores (past the seed and a sweep)")
+			local pT = setsFor(plainUid, STORES.Trophies, markDev)
+			T.check(#pT == 1 and pT[1].Value == 30, "lb dev: ...the player beside it is written (Trophies 30)", setsText(pT))
+			T.eq(LB.ValueOf(dv, "Trophies"), 40, "lb dev: ...the developer's own value still reads (the You row, the Server scope)")
+			Mock.RemovePlayer(dv)
+			K.advance(1)
+			T.eq(#setsFor(devUid, nil, markDev), 0, "lb dev: ...nor written at the leave")
+		end)
+		Mock.Options.Studio = savedDev.Studio
+		Config.Dev.Admins = savedDev.Admins
+		Config.Dev.Enabled = savedDev.Enabled
+		if not okDev then
+			error(errDev, 0)
+		end
+
 		-- BindToClose: writes what changed, stops waiting after 5 s (a clone, so the booted service keeps running)
 		clone = newClone("LeaderboardServiceSmokeClose")
 		if T.check(clone ~= nil and clone.mod ~= nil and type(clone.mod._CloseForTest) == "function" and type(clone.mod._StopForTest) == "function",
@@ -1063,6 +1098,9 @@ local function checkBoard(label, board, info, root)
 		T.check(face.Material == Enum.Material.SmoothPlastic and math.abs(face.Color.R - WB.Navy.R) < 0.006 and math.abs(face.Color.G - WB.Navy.G) < 0.006
 			and math.abs(face.Color.B - WB.Navy.B) < 0.006 and face.Transparency == 0, label .. ": the Face is navy SmoothPlastic and visible")
 		T.check(face.CanCollide == false and face.CanQuery == true, label .. ": the Face does not collide but stays queryable (the client SurfaceGui's tabs take taps)")
+		-- (review round 1) the client finds the board by this tag (CollectionService), not a workspace-wide DescendantAdded
+		local tagName = K.config().Tags and K.config().Tags.LeaderboardFace
+		T.check(type(tagName) == "string" and face:HasTag(tagName), label .. ": the Face carries Config.Tags.LeaderboardFace ('NC_LeaderboardFace')", tostring(tagName))
 	end
 	local posts, frames, xs, postsOk = {}, {}, {}, true
 	for _, c in ipairs(board:GetChildren()) do

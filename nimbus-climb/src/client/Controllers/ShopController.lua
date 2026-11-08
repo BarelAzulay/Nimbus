@@ -23,6 +23,8 @@
 --   ShopController.Palette(key) -> { Top, Bottom, Edge } | nil    a pack's own colours (tests, ShopGems)
 --   ShopController.RobuxGlyph() -> "\238\128\130" (U+E002) or "R$" when the font lacks it
 --   ShopController._S                the state table (tests: _S.Tab = nil is a fresh session)
+--   signal ShopController.Toggled(open)  fired once per open (true) and per close (false); DailyController hides the
+--                                    HUD Gifts button while the Shop is open (review round 1: it sat over the header)
 --
 -- Who opens it: the top bar's PillButton_Shop and a server OpenPanel("Shop" | "Store", args) through MenuController's
 -- P5.openShop (and the forwarder). It fires MenuController.WindowOpened("Shop") on every open (spec 16.3 "WindowOpened";
@@ -95,6 +97,7 @@ local SoundFx = require(Client:WaitForChild("SoundFx"))
 local ClientSettings = require(Client:WaitForChild("ClientSettings"))
 
 local ShopController = {}
+ShopController.Toggled = Util.Signal()
 
 local function rgb(r, g, b)
 	return Color3.fromRGB(r, g, b)
@@ -1478,6 +1481,13 @@ function H.pulse(scale)
 	end
 end
 
+-- true while the Secret card's SPIN can be tapped (ShopEggs.CardState not Locked / Loading / Pending / NoOdds)
+function H.eggPulseOn()
+	local secret = type(Config.Gems) == "table" and type(Config.Gems.SecretRoulette) == "table" and Config.Gems.SecretRoulette.Id or "Secret"
+	local ok, st = pcall(ShopEggs.CardState, secret, "Spin")
+	return ok and st ~= "Locked" and st ~= "Loading" and st ~= "Pending" and st ~= "NoOdds"
+end
+
 function H.shineOn()
 	if S.Shine or not S.Open then
 		return
@@ -1546,7 +1556,9 @@ function H.shineOn()
 			end)
 		end
 	end
-	-- the Eggs tab: the Secret card's SPIN pulses the same way (spec 16.3, High only)
+	-- the Eggs tab: the Secret card's SPIN pulses the same way (spec 16.3, High only), and only while that button can be
+	-- tapped (review round 1: never while it is Locked, Loading, Pending or without odds; checked on every beat, so the
+	-- pulse starts by itself when the gem settle hold ends; the scale rests at 1 meanwhile)
 	local eggPulse = (high and S.Tab == "Eggs") and ShopEggs.HeroPulse(U.EggsPage) or nil
 	if eggPulse then
 		local mine = S.Token
@@ -1556,7 +1568,11 @@ function H.shineOn()
 				if not (S.Open and S.Token == mine and S.Shine == shine) or eggPulse.Parent == nil then
 					break
 				end
-				H.pulse(eggPulse)
+				if H.eggPulseOn() then
+					H.pulse(eggPulse)
+				else
+					eggPulse.Scale = 1
+				end
 			end
 		end)
 	end
@@ -1795,6 +1811,9 @@ function ShopController.Open(args)
 				menu.WindowOpened:Fire("Shop")
 			end)
 		end
+		safe("toggled", function()
+			ShopController.Toggled:Fire(true)
+		end)
 	else
 		H.shineOff()
 		H.shineOn()
@@ -1814,6 +1833,9 @@ function ShopController.Close()
 	end
 	H.syncBack()
 	H.coverColumn()
+	safe("toggled", function()
+		ShopController.Toggled:Fire(false)
+	end)
 end
 
 function ShopController.Init()

@@ -3729,7 +3729,9 @@ scenario("lobbyboard", function(page)
 	local LC = req("client/Controllers/LeaderboardController")
 	NK.hideGame()
 	local model = make("Model", { Name = "LobbyLeaderboard" })
-	make("Part", { Name = "Face", Size = Vector3.new(16, 13, 0.4), Anchored = true, CanCollide = false, CFrame = CFrame.new(20, 9.5, -43.5) }, model)
+	local lbFace = make("Part", { Name = "Face", Size = Vector3.new(16, 13, 0.4), Anchored = true, CanCollide = false, CFrame = CFrame.new(20, 9.5, -43.5) }, model)
+	-- (lobby-shop review round 1) the controller finds the board by this tag, like LobbyBoardBuilder's Face
+	game:GetService("CollectionService"):AddTag(lbFace, (Config.Tags and Config.Tags.LeaderboardFace) or "NC_LeaderboardFace")
 	model.Parent = workspace
 	advance(0.3)
 	local now = workspace:GetServerTimeNow()

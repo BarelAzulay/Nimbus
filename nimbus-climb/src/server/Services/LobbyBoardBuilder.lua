@@ -240,7 +240,10 @@ function LobbyBoardBuilder.Leaderboard(parent, L, H)
 	model.Name = "LobbyLeaderboard"
 	model.Parent = parent
 	local fw, fh, rim = BOARD.Face.X, BOARD.Face.Y, BOARD.Rim
-	H.box(model, "Face", cf * CFrame.new(0, BOARD.FaceY, 0), BOARD.Face, C.Navy, { Material = H.MAT.SmoothPlastic, Query = true })
+	local face = H.box(model, "Face", cf * CFrame.new(0, BOARD.FaceY, 0), BOARD.Face, C.Navy, { Material = H.MAT.SmoothPlastic, Query = true })
+	if face and type(Config.Tags) == "table" and type(Config.Tags.LeaderboardFace) == "string" then
+		CollectionService:AddTag(face, Config.Tags.LeaderboardFace) -- (review round 1) how LeaderboardController finds it
+	end
 	H.box(model, "Back", cf * CFrame.new(0, BOARD.FaceY, BOARD.Face.Z / 2 + 0.15), Vector3.new(fw + 2 * rim, fh + 2 * rim, 0.3), C.Plank, solid)
 	for _, s in ipairs({ -1, 1 }) do
 		H.box(model, "Frame", cf * CFrame.new(0, BOARD.FaceY + s * (fh + rim) / 2, 0), Vector3.new(fw + 2 * rim, rim, rim), C.Plank, solid)

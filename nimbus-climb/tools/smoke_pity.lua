@@ -16,7 +16,9 @@
 --                             passed AND one settle read came back (attribute GemsSettled = true and Settled fired once
 --                             then); a quiet read changes nothing (no rebase, no TeamsChanged, no snapshot); another
 --                             server's save during the hold arrives through a rebase (ProfileRebased once, its listeners
---                             still see false); a failed read retries every 5 s; with no store it is settled at 15 s with
+--                             still see false); a failed read backs off (one GetAsync per attempt, then 5, 10, 20 s ...
+--                             + up to 25%; review round 1); a GetAsync budget under 10 postpones it 5 s without counting a
+--                             failure; with no store it is settled at 15 s with
 --                             no read; a provisional load waits for its recovery read (>= 20 s), which counts as the
 --                             settle read; _SettleForTest settles at once; a gem Mix waits for the settle, a token Mix not;
 --                             part 2 (Task 4): a gem x1 / x3 spin waits for the settle (nothing charged), a token spin not;
@@ -354,6 +356,30 @@ local function serverScenarios()
 			T.eq(D.Save(back), true, "pity save: the reset saves")
 			T.check(type(stored(uid)) == "table" and stored(uid).Pity == nil, "pity save: after the reset the stored record has no Pity", show(stored(uid) and stored(uid).Pity))
 			T.check(pityIs(D.GetPity(back), 0, 0), "pity save: ...and the live record is { 0, 0 }", show(D.GetPity(back)))
+
+			-- (review round 1) the developer /reset clears the pity itself (spec 5.2 / 6): the live record { 0, 0 } and, written
+			-- over the store at the next save, no stored Pity (its Hit merges as a maximum and would come back otherwise)
+			local Dev = require(K.moduleInstance("server/Services/DevService"))
+			local cfg = config()
+			local savedDev = { Studio = Mock.Options.Studio, Admins = cfg.Dev.Admins, Enabled = cfg.Dev.Enabled }
+			local okDev, errDev = pcall(function()
+				Mock.Options.Studio = false
+				cfg.Dev.Enabled = true
+				cfg.Dev.Admins = { uid }
+				T.check(D.SetPity(back, 5, 3) == true and D.Save(back) == true and storedPityIs(uid, 5, 3), "pity dev reset: (setup) { 5, 3 } set and stored")
+				advance(0.6)
+				local okReset, msg = Dev.Run(back, "reset", nil, "smoke")
+				T.check(okReset == true, "pity dev reset: /reset runs for a developer in the live game", tostring(msg))
+				T.check(pityIs(D.GetPity(back), 0, 0), "pity dev reset: ...the live pity is { 0, 0 } (7 spins to the next forced Secret)", show(D.GetPity(back)))
+				T.eq(D.Save(back), true, "pity dev reset: the save after the reset lands")
+				T.check(type(stored(uid)) == "table" and stored(uid).Pity == nil, "pity dev reset: ...and the stored record has no Pity (written over the Hit maximum)", show(stored(uid) and stored(uid).Pity))
+			end)
+			Mock.Options.Studio = savedDev.Studio
+			cfg.Dev.Admins = savedDev.Admins
+			cfg.Dev.Enabled = savedDev.Enabled
+			if not okDev then
+				error(errDev, 0)
+			end
 			leave(back)
 
 			-- two servers on one store, both loaded at { 2, 0 }: Spins travel as a delta, Hit as the max
@@ -676,7 +702,8 @@ local function serverScenarios()
 			end
 
 			------------------------------------------------------------------------------------------------
-			-- a failing settle read retries every 5 s
+			-- a failing settle read backs off (review round 1; it was a fixed 5 s retry for as long as the player stayed):
+			-- one GetAsync per attempt (no 1.5 s retry under the lock), then 5, 10, 20 s ... each + up to 25%
 			------------------------------------------------------------------------------------------------
 			local uidR = newUserId()
 			local firesR = counter(D.Settled, uidR)
@@ -685,14 +712,32 @@ local function serverScenarios()
 			players[#players + 1] = r
 			advanceTo(t3 + 14.5)
 			DSt.Fail = true
-			advanceTo(t3 + 20)
-			T.check(D.GemsSettled(r) == false and r:GetAttribute(ATTR) == nil and firesR.n == 0, "gem settle fail: a settle read that fails (Mock.DataStore.Fail) leaves the player not settled", settledText(D, r))
+			advanceTo(t3 + 24)
+			T.check(D.GemsSettled(r) == false and r:GetAttribute(ATTR) == nil and firesR.n == 0, "gem settle fail: settle reads that fail (Mock.DataStore.Fail, at 15 s and 20 - 21.25 s) leave the player not settled", settledText(D, r))
 			DSt.Fail = false
-			advanceTo(t3 + 21)
-			T.eq(D.GemsSettled(r), false, "gem settle fail: ...the retry waits 5 s after the failed read (not yet at 21 s)")
-			advanceTo(t3 + 22.5)
-			T.check(D.GemsSettled(r) == true and r:GetAttribute(ATTR) == true and firesR.n == 1, "gem settle fail: ...retried 5 s later: settled once Fail is cleared", settledText(D, r) .. ", fires " .. firesR.n)
+			advanceTo(t3 + 29.5)
+			T.eq(D.GemsSettled(r), false, "gem settle fail: ...the retries back off: after two failures the next read waits 10 s (+ up to 2.5) (not yet at 29.5 s; a fixed 5 s retry settled at 28 s)")
+			advanceTo(t3 + 34)
+			T.check(D.GemsSettled(r) == true and r:GetAttribute(ATTR) == true and firesR.n == 1, "gem settle fail: ...the backed-off read (30 - 33.75 s) settles once Fail is cleared", settledText(D, r) .. ", fires " .. firesR.n)
 			leave(r)
+
+			-- a GetAsync request budget under the floor (10) postpones the settle read by 5 s without counting a failure (the
+			-- LeaderboardService rule: no back-off for a postponement)
+			local uidB = newUserId()
+			local firesB = counter(D.Settled, uidB)
+			DSt.Budget = DSt.Budget or {}
+			local savedBudget = DSt.Budget.GetAsync
+			local t4 = os.clock()
+			local bq = Mock.AddPlayer("SettleBudget" .. tostring(uidB % 1000), uidB)
+			players[#players + 1] = bq
+			advanceTo(t4 + 10)
+			DSt.Budget.GetAsync = 3
+			advanceTo(t4 + 19.5)
+			T.check(D.GemsSettled(bq) == false and firesB.n == 0, "gem settle budget: a GetAsync budget of 3 (< 10) postpones the settle read: not settled at 19.5 s", settledText(D, bq))
+			DSt.Budget.GetAsync = savedBudget
+			advanceTo(t4 + 22)
+			T.check(D.GemsSettled(bq) == true and firesB.n == 1, "gem settle budget: ...the budget back: the next attempt (20 - 21.25 s) reads and settles (a postponement is not a failure: no 10 s back-off)", settledText(D, bq))
+			leave(bq)
 
 			------------------------------------------------------------------------------------------------
 			-- a failed (provisional) load: no settle read of its own; a recovery read 15 s or more after the load counts as
@@ -925,6 +970,9 @@ local function serverScenarios()
 		end)
 		DSt.Fail = false
 		DSt.Unavailable = false
+		if type(DSt.Budget) == "table" then
+			DSt.Budget.GetAsync = nil -- (the budget case sets it; unset is the mock's 100)
+		end
 		for _, box in ipairs(counters) do
 			box.stop()
 		end

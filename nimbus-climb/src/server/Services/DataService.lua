@@ -420,8 +420,10 @@
 --                                       (15) have passed AND one settle read came back: a fresh read of the stored record
 --                                       under the entry lock (P7.settleRead). Quiet (the record equals the Base: no other
 --                                       server wrote) -> nothing happens (no rebase, no announce, no snapshot); changed ->
---                                       what recover does (rebase + announceRebase -> ProfileRebased). A failed read retries
---                                       every P7.SETTLE_RETRY (5) s; no usable store -> settled at 15 s with no read. A
+--                                       what recover does (rebase + announceRebase -> ProfileRebased). One GetAsync per
+--                                       attempt; a failed read retries after 5, 10, 20, 40, then every 60 s (P7.SETTLE_*,
+--                                       each + up to 25% at random); a GetAsync budget under 10 postpones an attempt 5 s
+--                                       without counting a failure; no usable store -> settled at 15 s with no read. A
 --                                       provisional load starts no read of its own: its recovery read counts when it lands
 --                                       15 s or more after the load (else the normal read runs at 15 s); marked settled
 --                                       after recover / announceRebase returned, so ProfileRebased listeners see false.
@@ -876,7 +878,13 @@ local P7 = {
 	DAILY_NUMBERS = { "Streak", "Paid", "Weeks" }, -- whole numbers 0..MAX_STREAK
 	DAILY_CLOCKS = { "LastClaimAt", "PlayStart", "ClampFrom", "ClampAt" }, -- Unix seconds, 0 = never
 	MAX_PITY = 1000000000, -- lobby shop: Pity.Secret.Spins / Hit are whole numbers 0..MAX_PITY (anything else reads 0)
-	SETTLE_RETRY = 5, -- lobby shop: seconds between two tries of a failed settle read (the gem settle hold, spec 5.2)
+	SETTLE_RETRY = 5, -- lobby shop: seconds before the first retry of a failed settle read (the gem settle hold, spec 5.2)
+	-- (review round 1) the settle retries back off: 5, 10, 20, 40 s, capped at SETTLE_RETRY_MAX, each plus up to
+	-- SETTLE_JITTER of itself at random (a wave of joiners spreads out); a GetAsync request budget under SETTLE_BUDGET
+	-- postpones an attempt by SETTLE_RETRY without counting a failure (the LeaderboardService rule)
+	SETTLE_RETRY_MAX = 60,
+	SETTLE_JITTER = 0.25,
+	SETTLE_BUDGET = 10,
 }
 
 -- The Dungeon record: Best = the highest floor cleared (0 = none), Cleared = { [floor] = true } in the live profile
@@ -4355,9 +4363,11 @@ local function getLegacyStore()
 	return legacyStore
 end
 
--- GetAsync with one retry. Returns ok:boolean, value.
-local function readKey(dataStore, key)
-	for attempt = 1, 2 do
+-- GetAsync with one retry (`attempts` 2 by default; the gem settle read passes 1: its loop is the retry, so the entry
+-- lock is never held across RETRY_DELAY). Returns ok:boolean, value.
+local function readKey(dataStore, key, attempts)
+	local tries = attempts or 2
+	for attempt = 1, tries do
 		local ok, result = pcall(function()
 			return dataStore:GetAsync(key)
 		end)
@@ -4365,7 +4375,7 @@ local function readKey(dataStore, key)
 			return true, result
 		end
 		noteFailure("load", result)
-		if storeDisabled or attempt == 2 then
+		if storeDisabled or attempt >= tries then
 			break
 		end
 		task.wait(RETRY_DELAY)
@@ -4376,13 +4386,13 @@ end
 -- Reads a player's stored profile.
 -- Returns ok, profile|nil, migrated. ok=false means "could not read" (nothing may be assumed).
 -- profile == nil with ok=true means a brand-new player. migrated=true means the profile was built
--- from a v1 save and the v2 key does not exist yet.
-local function fetchProfile(userId)
+-- from a v1 save and the v2 key does not exist yet. `attempts`: readKey's (nil = 2).
+local function fetchProfile(userId, attempts)
 	local s = getStore()
 	if not s then
 		return false, nil, false
 	end
-	local ok, raw = readKey(s, keyFor(userId))
+	local ok, raw = readKey(s, keyFor(userId), attempts)
 	if not ok then
 		return false, nil, false
 	end
@@ -4396,7 +4406,7 @@ local function fetchProfile(userId)
 	-- Nothing in v2: look for a v1 save to migrate.
 	local legacy = getLegacyStore()
 	if legacy then
-		local okLegacy, old = readKey(legacy, keyFor(userId))
+		local okLegacy, old = readKey(legacy, keyFor(userId), attempts)
 		if not okLegacy then
 			return false, nil, false
 		end
@@ -4548,7 +4558,7 @@ end
 -- Base): nothing changes (no rebase, no announce, so no snapshot, migrations or ProfileRebased / TeamsChanged listeners
 -- run again). Changed case: what recover does (rebase + announceRebase -> ProfileRebased). true once the read came back.
 function P7.settleRead(entry, userId)
-	local fetched, stored, migrated, _, moved = fetchProfile(userId)
+	local fetched, stored, migrated, _, moved = fetchProfile(userId, 1) -- one GetAsync: the settle loop is the retry
 	if not fetched then
 		return false
 	end
@@ -4565,11 +4575,23 @@ function P7.settleRead(entry, userId)
 	return true
 end
 
+-- true when this server's GetAsync request budget is under P7.SETTLE_BUDGET (an unanswered budget call counts as enough)
+function P7.readBudgetLow()
+	local ok, n = pcall(function()
+		return DataStoreService:GetRequestBudgetForRequestType(Enum.DataStoreRequestType.GetAsync)
+	end)
+	return ok and type(n) == "number" and n < P7.SETTLE_BUDGET
+end
+
 -- One settle attempt: true when the hold may end (the read came back, or there is no store to read: Studio without API
--- access, the store disabled). Takes and releases the entry lock (the scheduleRecovery shape).
+-- access, the store disabled); false when the read failed; nil when it was postponed (the GetAsync budget is low: not a
+-- failure). Takes and releases the entry lock (the scheduleRecovery shape).
 function P7.settleNow(entry, userId)
 	if not getStore() then
 		return true
+	end
+	if P7.readBudgetLow() then
+		return nil
 	end
 	if not acquire(entry) then
 		return false
@@ -4611,8 +4633,9 @@ function P7.settling(entry, userId, gen)
 		and Players:GetPlayerByUserId(userId) ~= nil
 end
 
--- The settle loop of load `gen`: waits until SettleSeconds after the load, then reads (a failed read retries every
--- P7.SETTLE_RETRY seconds) until it came back or the load is over.
+-- The settle loop of load `gen`: waits until SettleSeconds after the load, then reads until it came back or the load is
+-- over. A failed read backs off (P7.SETTLE_RETRY doubled per failure up to P7.SETTLE_RETRY_MAX); a postponed one (a low
+-- GetAsync budget) waits P7.SETTLE_RETRY and counts nothing; every wait gets up to P7.SETTLE_JITTER of itself more.
 function P7.settleLoop(entry, userId, gen)
 	if entry.SettleLoopGen == gen then
 		return
@@ -4623,12 +4646,19 @@ function P7.settleLoop(entry, userId, gen)
 		if left > 0 then
 			task.wait(left)
 		end
+		local fails = 0
 		while P7.settling(entry, userId, gen) do
-			if P7.settleNow(entry, userId) then
+			local done = P7.settleNow(entry, userId)
+			if done == true then
 				P7.markSettled(entry, userId, gen)
 				break
 			end
-			task.wait(P7.SETTLE_RETRY)
+			local delay = P7.SETTLE_RETRY
+			if done == false then
+				fails = fails + 1
+				delay = math.min(P7.SETTLE_RETRY * 2 ^ (fails - 1), P7.SETTLE_RETRY_MAX)
+			end
+			task.wait(delay * (1 + math.random() * P7.SETTLE_JITTER))
 		end
 	end)
 end

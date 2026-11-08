@@ -1079,6 +1079,31 @@ S.client_egg_stage = guarded("client_egg_stage", function()
 		T.check(ES.IsPrewarmed(epic.Id) == true, "egg stage: IsPrewarmed(petId) after its roll")
 		ES.Done()
 		G.advance(0.2)
+		-- (review round 1) a pet whose build fails is tried once per session (not every frame), and the pulls after it
+		-- still warm during the strip
+		do
+			local realBuilder, realWarm = ES._S.Builder, ES._S.Warm
+			local calls = {}
+			ES._S.Builder = {
+				Build = function(def)
+					local id = type(def) == "table" and def.Id or "?"
+					calls[id] = (calls[id] or 0) + 1
+					if id == epic.Id then
+						error("planted build failure")
+					end
+					return Instance.new("Model")
+				end,
+			}
+			ES._S.Warm = {}
+			ES.Show(G.result("Cloud", "Tokens", { G.pull(PC, "Cloud", epic), G.pull(PC, "Cloud", rare), G.pull(PC, "Cloud", epic) }))
+			local runW = G.run(ES, 8.5) -- (x3 RevealAt 7.15)
+			T.check(runW.at.Reveal ~= nil and (calls[epic.Id] or 0) == 1 and (calls[rare.Id] or 0) == 1 and ES.IsPrewarmed(rare.Id) == true and ES.IsPrewarmed(epic.Id) == false,
+				"egg stage: a pet whose build fails is built once (not every frame) and the next pull still warms",
+				fmt("epic builds %d, rare builds %d, rare warm %s, reveal %s", calls[epic.Id] or 0, calls[rare.Id] or 0, tostring(ES.IsPrewarmed(rare.Id)), tostring(runW.at.Reveal)))
+			ES.Done()
+			G.advance(0.2)
+			ES._S.Builder, ES._S.Warm = realBuilder, realWarm
+		end
 
 		------------------------------------------------------------------ old-shape results; a pull without a Strip
 		ES.Show({ Ok = true, PetId = epic.Id, IsNew = false, Count = 2 })
@@ -1115,8 +1140,11 @@ S.client_egg_stage = guarded("client_egg_stage", function()
 		local h2 = #hints
 		T.check(ES.Request("Cloud", "Tokens", 1) == true and #KC.serverCalls("BuyRoulette") - b0 == 2, "egg stage: ...and sends after 0.3 s")
 		G.advance(7.2)
-		T.check(ES.IsPending() == false and #hints == h2 + 1 and hints[#hints] == "The roulette did not answer. Try again.", "egg stage: 7 s without an answer -> not pending, one toast",
-			tostring(hints[#hints]))
+		-- (review round 1) the request almost always reached the server, so the toast never asks for a retry (a second tap
+		-- would be a second paid spin)
+		T.check(ES.IsPending() == false and #hints == h2 + 1 and hints[#hints] == "Still waiting for the roulette. Your spin will hatch as soon as it arrives.",
+			"egg stage: 7 s without an answer -> not pending, one toast that does not ask to try again", tostring(hints[#hints]))
+		T.check(not tostring(hints[#hints]):lower():find("try again", 1, true), "egg stage: ...the timeout toast never says 'try again'")
 		ES._Answer(G.result("Cloud", "Tokens", { G.pull(PC, "Cloud", epic) }))
 		T.check(ES.IsShowing(), "egg stage: a success after the timeout still plays")
 		-- the queue: a result during a roll waits for DONE
@@ -1147,6 +1175,45 @@ S.client_egg_stage = guarded("client_egg_stage", function()
 		local c1 = #closed
 		ES._Answer(G.result("Cloud", "Tokens", { G.pull(PC, "Cloud", epic) }))
 		T.check(ES.Phase() == "Intro" and #closed == c1 and not ES.IsPending(), "egg stage: SPIN AGAIN's answer plays the next roll in place")
+		-- (review round 1) SPIN AGAIN's disabled states (spec 5.5): the reason replaces the label, the price hides, the
+		-- button is off; it comes back by itself (refreshAgain every 8 heartbeats)
+		local function againState()
+			local btn = G.bar("SpinAgain")
+			local row = btn and btn:FindFirstChild("Row")
+			local lbl, price = row and row:FindFirstChild("Label"), row and row:FindFirstChild("Price")
+			return {
+				Text = lbl and tostring(lbl.Text) or "?",
+				Price = price ~= nil and G.shown(price),
+				Off = btn ~= nil and (btn:GetAttribute("Disabled") == true or btn.Active == false),
+			}
+		end
+		ES.Skip()
+		G.advance(0.6)
+		LocalPlayer:SetAttribute(Config.Attr.Tokens, 10)
+		G.advance(0.4)
+		local stShort = againState()
+		T.check(stShort.Text == "Not enough Tokens" and not stShort.Price and stShort.Off, "egg stage: SPIN AGAIN with too few tokens reads 'Not enough Tokens', hides its price and is off",
+			fmt("'%s', price %s, off %s", stShort.Text, tostring(stShort.Price), tostring(stShort.Off)))
+		LocalPlayer:SetAttribute(Config.Attr.Tokens, 50000)
+		G.advance(0.4)
+		local stBack = againState()
+		T.check(stBack.Text == "SPIN AGAIN" and stBack.Price and not stBack.Off, "egg stage: ...enough tokens again: 'SPIN AGAIN', its price shown, on again",
+			fmt("'%s', price %s, off %s", stBack.Text, tostring(stBack.Price), tostring(stBack.Off)))
+		ES.Done()
+		G.advance(0.2)
+		ES._Answer(G.result("Cloud", "Gems", { G.pull(PC, "Cloud", epic) }))
+		ES.Skip()
+		G.advance(0.6)
+		LocalPlayer:SetAttribute("PaidRandomItemsRestricted", true)
+		G.advance(0.4)
+		local stLock = againState()
+		T.check(stLock.Text == "Locked" and not stLock.Price and stLock.Off, "egg stage: a gem SPIN AGAIN while paid random items are restricted reads 'Locked', no price, off",
+			fmt("'%s', price %s, off %s", stLock.Text, tostring(stLock.Price), tostring(stLock.Off)))
+		LocalPlayer:SetAttribute("PaidRandomItemsRestricted", false)
+		G.advance(0.4)
+		local stOpen = againState()
+		T.check(stOpen.Text == "SPIN AGAIN" and stOpen.Price and not stOpen.Off, "egg stage: ...the policy answered false: 'SPIN AGAIN', its price shown, on again",
+			fmt("'%s', price %s, off %s", stOpen.Text, tostring(stOpen.Price), tostring(stOpen.Off)))
 		ES.Close()
 		G.advance(0.2)
 		-- Init: the RouletteResult listener (a failure probe: MenuController's old stage never opens on a failure)
@@ -2418,6 +2485,9 @@ S.client_hatch_cutscene = guarded("client_hatch_cutscene", function()
 		local list = soundsFrom(s1)
 		T.check(count(list, "SpinStart", 0.6) == 1 and count(list, "SpinTick") >= 8 and count(list, "SpinLand", 0.6) == 1 and count(list, "Shatter", 0.6) == 1 and count(list, "RevealRare", 0.6) == 1,
 			"hatch cutscene: with no egg ids the roll plays today's sounds (SpinStart, SpinTick, SpinLand, Shatter, RevealRare at 0.6)")
+		-- (review round 1) the tick is throttled to 12 a second (spec 16.4): at most ceil(12 x Strip) + 1 over the strip
+		local tickCap = math.ceil(12 * ES.Timings(false, 1).Strip) + 1
+		T.check(count(list, "SpinTick") <= tickCap, "hatch cutscene: ...at most " .. tickCap .. " ticks over the 3 s strip (12 a second)", tostring(count(list, "SpinTick")))
 		local eggKeys = 0
 		for _, s in ipairs(list) do
 			if EGG_SOUNDS[s.name] ~= nil then
@@ -2580,6 +2650,8 @@ S.client_hatch_cutscene = guarded("client_hatch_cutscene", function()
 			fmt("tick %d land %d rise %d shake %d crack %d burst %d ring %d reveal %d", count(eg, "EggStripTick"), count(eg, "EggStripLand"), count(eg, "EggRise"), count(eg, "EggShake"),
 				count(eg, "EggCrack"), count(eg, "EggBurst"), count(eg, "EggCloudRing"), count(eg, "EggRevealEpic")))
 		T.check(count(eg, "SpinTick") + count(eg, "SpinLand") + count(eg, "Shatter") + count(eg, "RevealRare") == 0, "hatch cutscene: ...and none of today's SpinTick / SpinLand / Shatter / RevealRare")
+		local egCap = math.ceil(12 * ES.Timings(false, 1).Strip) + 1
+		T.check(count(eg, "EggStripTick") <= egCap, "hatch cutscene: ...at most " .. egCap .. " EggStripTick over the 3 s strip (12 a second, review round 1)", tostring(count(eg, "EggStripTick")))
 		ES.Done()
 		G.advance(0.5)
 		local k2 = #sounds
@@ -2681,6 +2753,37 @@ S.client_hatch_cutscene = guarded("client_hatch_cutscene", function()
 			T.check(ES._InjectPhaseError == nil, "hatch cutscene never breaks: ...and the hook is reset")
 			T.check(Shop.IsOpen() and G.shown(win()), "hatch cutscene never breaks: ...ShopWindow is visible again after the error")
 			lightingClean("hatch cutscene never breaks after the error")
+			-- (review round 1) an error inside the reveal's own build (the hook "Reveal" raises there): the pulls were never
+			-- shown, so teardown toasts them ("a paid x3 is never lost from view", spec 5.5)
+			local hintsR, realHintR = {}, MC.Hint
+			MC.Hint = function(text)
+				hintsR[#hintsR + 1] = tostring(text)
+			end
+			local o1 = #Mock.Output
+			ES._InjectPhaseError = "Reveal"
+			ES.Show(result("Cloud", "Tokens", { epic, rare, common }))
+			ES.Skip()
+			G.advance(0.4)
+			MC.Hint = realHintR
+			local plantedR = 0
+			for i = #Mock.Output, o1 + 1, -1 do
+				local o = Mock.Output[i]
+				if o.kind == "warn" and tostring(o.text):find("injected phase error", 1, true) then
+					plantedR = plantedR + 1
+					table.remove(Mock.Output, i)
+				end
+			end
+			local toasted = nil
+			for _, h in ipairs(hintsR) do
+				if h:find("You hatched: ", 1, true) and h:find(epic.Name, 1, true) and h:find(rare.Name, 1, true) then
+					toasted = h
+				end
+			end
+			T.check(plantedR == 1 and lastOf(closed) == "Error" and not ES.IsShowing() and toasted ~= nil,
+				"hatch cutscene never breaks: an error inside an x3 reveal's build ends through teardown (Closed 'Error') and toasts the pulls ('You hatched: ...')",
+				plantedR .. " warns, " .. tostring(lastOf(closed)) .. ", toasts: " .. table.concat(hintsR, " | "))
+			T.check(ES._InjectPhaseError == nil, "hatch cutscene never breaks: ...and the hook is reset after the reveal error")
+			lightingClean("hatch cutscene never breaks after the reveal error")
 			-- MenuController.Close() mid-roll
 			ES.Show(result("Cloud", "Tokens", { epic }))
 			G.advance(1.0)

@@ -7,7 +7,8 @@
 -- provisional (a stand-in value is never written or shown). The store key is tostring(UserId).
 --
 -- Writes (OrderedDataStore:SetAsync, pcall): only from a loaded, non-provisional profile; none without a store, none while
--- RunService:IsStudio() and WriteInStudio is false. A player's first write SeedDelay s after the load, only for a value
+-- RunService:IsStudio() and WriteInStudio is false; none for a developer account in a live server (DevService.IsAllowed,
+-- asked once per track: its tools grant pets and gems; review round 1). A player's first write SeedDelay s after the load, only for a value
 -- above 0; then a sweep every SweepSeconds writes a changed value, at most once per WriteEvery per stat; a leave writes once
 -- what changed in this session; BindToClose writes what changed and waits at most CLOSE_SECONDS. Every write first needs the
 -- SetIncrementSortedAsync request budget at BudgetFloor.Write or more, else it waits for the next sweep.
@@ -72,7 +73,7 @@ local RANK_WAIT = 10 -- seconds a title waits for PlayerService's leaderstats.Ra
 
 local S = {
 	DS = nil,
-	Dev = nil, -- DevService (IsOwner: the Creator title)
+	Dev = nil, -- DevService (IsOwner: the Creator title; IsAllowed: no global writes for a developer account)
 	Started = false,
 	Stopped = false,
 	Closing = false,
@@ -80,7 +81,7 @@ local S = {
 	Stores = {}, -- [stat] = OrderedDataStore
 	Pages = {}, -- [stat] = { Entries = { { UserId, Value }... } | nil, Good, Fails, DueAt, UpdatedAt, Reading }
 	Names = {}, -- [userId] = name (cached for the server's life)
-	Recs = {}, -- [player] = { LoadedAt, SeedAt, Seeded, Base = {}, Written = {}, LastWrite = {}, Pending = {}, Sig }
+	Recs = {}, -- [player] = { LoadedAt, SeedAt, Seeded, Base = {}, Written = {}, LastWrite = {}, Pending = {}, Sig, Dev }
 	Server = { At = 0, Rows = {} }, -- the "Server" scope: Rows[stat] = sorted { { UserId, Name, Value }... }
 	FallbackDueAt = 0,
 	SweepDueAt = 0,
@@ -280,6 +281,9 @@ end
 -- honours WriteEvery; kind "leave" (a leave, BindToClose) writes what changed since the load or the last write.
 local function owed(player, rec, kind, t)
 	local out = {}
+	if rec.Dev ~= false then
+		return out -- a developer account, or its answer not in yet (see track)
+	end
 	for _, stat in ipairs(stats()) do
 		local v = LeaderboardService.ValueOf(player, stat)
 		local last = rec.Written[stat]
@@ -570,9 +574,20 @@ local function track(player)
 		return S.Recs[player]
 	end
 	local t = now()
-	local rec = { LoadedAt = t, SeedAt = t + num("SeedDelay", 30), Seeded = false, Base = {}, Written = {}, LastWrite = {}, Pending = {}, Sig = nil }
+	local rec = { LoadedAt = t, SeedAt = t + num("SeedDelay", 30), Seeded = false, Base = {}, Written = {}, LastWrite = {}, Pending = {}, Sig = nil, Dev = false }
 	for _, stat in ipairs(stats()) do
 		rec.Base[stat] = LeaderboardService.ValueOf(player, stat)
+	end
+	-- (review round 1) a developer account in a live server (DevService.IsAllowed: its tools grant pets, gems and anything
+	-- they buy) is never written to the global stores; asked once in its own task (a group game's rank is a web call), and
+	-- the record owes nothing until the answer is in. Studio keeps the rule off (its AllowInStudio makes everyone a dev).
+	local dev = S.Dev
+	if not RunService:IsStudio() and type(dev) == "table" and type(dev.IsAllowed) == "function" then
+		rec.Dev = "asking"
+		task.spawn(function()
+			local ok, answer = pcall(dev.IsAllowed, player)
+			rec.Dev = ok and answer == true
+		end)
 	end
 	S.Recs[player] = rec
 	S.Names[player.UserId] = displayName(player)

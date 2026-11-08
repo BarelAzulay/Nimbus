@@ -1071,7 +1071,14 @@ S.p2gems_roulettes = guarded("p2gems_roulettes", function()
 		local okSub, resSub = PetS.BuyRoulette(p, "Cloud", "Gems")
 		local afterSub = wallet(p)
 		local pullSub = type(resSub) == "table" and type(resSub.Pulls) == "table" and resSub.Pulls[1] or nil
-		local subTokens = Config.Index.Rewards.Common.Tokens
+		-- (lobby-shop review round 1) the Common Index reward capped at half the Cloud token price, whichever currency paid
+		local cloudRow = nil
+		for _, row in ipairs(Config.Roulettes) do
+			if row.Id == "Cloud" then
+				cloudRow = row
+			end
+		end
+		local subTokens = math.min(Config.Index.Rewards.Common.Tokens, math.floor((cloudRow and cloudRow.Price or 0) * 0.5))
 		T.check(okSub == true and pullSub ~= nil and type(pullSub.Substitute) == "table" and pullSub.Substitute.Tokens == subTokens and afterSub.Gems == before.Gems - gemPrice("Cloud")
 			and afterSub.Tokens == before.Tokens + subTokens and afterSub.Pets == before.Pets and afterSub.Spins == before.Spins + 1,
 			"gem roulettes: ...with every Common full the gem pull is charged and pays the substitute (" .. subTokens .. " Tokens), no stack grows",

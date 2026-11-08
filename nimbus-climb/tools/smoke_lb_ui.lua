@@ -1,7 +1,8 @@
 -- smoke_lb_ui.lua: lobby-shop Task 24 (spec 5.10 "Client", pages per section 15: Trophies / Pets found / Ring best): the lobby
 -- board's SurfaceGui (client/Controllers/LeaderboardController). Loaded by tools/smoke.py in the CLIENT world:
 --   client_leaderboard   (client, 1920x1080)
---     a stand-in board (Model LobbyLeaderboard > Part Face 16 x 13 x 0.4; the client world has no lobby) -> a SurfaceGui
+--     an untagged stand-in board -> nothing (review round 1: the board is found by its Face's Config.Tags.LeaderboardFace)
+--     a stand-in board (Model LobbyLeaderboard > Part Face 16 x 13 x 0.4, tagged; the client world has no lobby) -> a SurfaceGui
 --       LobbyLeaderboard in PlayerGui adorned to that Face: Face Front, PixelsPerStud 50 (800 x 650 px), MaxDistance 80,
 --       ResetOnSpawn false, LightInfluence 0 > Board > Title, Tabs > Tab_<stat> per Config.Leaderboard.Pages (their Labels),
 --       Scope, Rows > Row1..10 (Rank, Head 34 px ImageLabel, Name, Value), YouRow, Footer, Status
@@ -45,8 +46,9 @@ end
 function G.rgb(c, r, g, b)
 	return c ~= nil and abs(c.R * 255 - r) < 1.5 and abs(c.G * 255 - g) < 1.5 and abs(c.B * 255 - b) < 1.5
 end
--- a stand-in for LobbyBoardBuilder's board: the model and its 16 x 13 x 0.4 Face (front -Z), at x
-function G.board(x)
+-- a stand-in for LobbyBoardBuilder's board: the model and its 16 x 13 x 0.4 Face (front -Z), at x; the Face tagged
+-- Config.Tags.LeaderboardFace like the builder's (review round 1: the controller finds it by that tag), unless `untagged`
+function G.board(x, untagged)
 	local model = Instance.new("Model")
 	model.Name = "LobbyLeaderboard"
 	local face = Instance.new("Part")
@@ -55,6 +57,10 @@ function G.board(x)
 	face.Anchored = true
 	face.CanCollide = false
 	face.CFrame = CFrame.new(x or 20, 9.5, -43.5)
+	if not untagged then
+		local Config = _G.KC.env()
+		game:GetService("CollectionService"):AddTag(face, (Config.Tags and Config.Tags.LeaderboardFace) or "NC_LeaderboardFace")
+	end
 	face.Parent = model
 	model.Parent = workspace
 	return model, face
@@ -164,6 +170,11 @@ S.client_leaderboard = guarded("client_leaderboard", function()
 		T.check(LC.State() == nil, "leaderboard: State() is nil before any LeaderboardState")
 
 		------------------------------------------------------------------ the SurfaceGui on the board's Face
+		-- (review round 1) found by the Face's tag through CollectionService, not by name through workspace.DescendantAdded
+		local plain = G.board(12, true)
+		boards[#boards + 1] = plain
+		KC.advance(0.6)
+		T.eq(#G.guis(), 0, "leaderboard: an untagged stand-in board is not adopted (the board is found by Config.Tags.LeaderboardFace)")
 		local model, face = G.board(20)
 		boards[#boards + 1] = model
 		KC.advance(0.6)

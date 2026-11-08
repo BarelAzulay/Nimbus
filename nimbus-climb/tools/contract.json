@@ -226,6 +226,8 @@
         "MutateRing",
         "GetPity",
         "SetPity",
+        "GemsSettled",
+        "_SettleForTest",
         "IsMigrated",
         "MarkMigrated",
         "MigratedNow",
@@ -246,7 +248,8 @@
       ],
       "signals": [
         "ProfileLoaded",
-        "Migrated"
+        "Migrated",
+        "Settled"
       ],
       "pending": {
         "_comment": "store (2026-11-04) W1-data Task 5: the Store / Daily / Trove fields (helper table P7)",
@@ -330,6 +333,7 @@
       "functions": [
         "Init",
         "BuyRoulette",
+        "SubstituteTokens",
         "_SetRngForTest",
         "_SetFaultForTest",
         "Equip",
@@ -1290,6 +1294,9 @@
         "Cards",
         "Palette",
         "RobuxGlyph"
+      ],
+      "signals": [
+        "Toggled"
       ]
     },
     "client/Controllers/StoreController": {

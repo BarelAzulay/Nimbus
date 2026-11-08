@@ -86,7 +86,9 @@
 --      and must come back a Secret). A pull's rarity is its rolled pet's and never changes. A pet the player cannot hold
 --      another copy of (owned + earlier pulls of this request >= MaxPerStack) is re-picked uniformly with RNG.Roll from
 --      PetCatalog.RarityPool(id, rarity) minus the full pets; only when every pet of that rarity is full the pull keeps
---      its pet and becomes a Substitute of that rarity's Config.Index.Rewards Tokens (Count = the full stack). The kept
+--      its pet and becomes a Substitute of PetService.SubstituteTokens(id, rarity) (Count = the full stack): that
+--      rarity's Config.Index.Rewards Tokens, at most half the token roulette's Price (review round 1: never a token
+--      source; the gems-only Secret Roulette pays the reward). The kept
 --      exception: a Secret pet out of a roulette without AllowSecret refuses the whole request "The roulette jammed, try
 --      again" (an impossible roll, before the charge);
 --   3. everything that can fail, before the charge, in a pcall: the grant plans (planCopies: IsNew, NewDiscovery,
@@ -1001,8 +1003,7 @@ local function rollPulls(profile, ctx, spins)
 				local k = tonumber(RNG.Roll:Int(1, #open)) or 1
 				pull.PetId = open[math.max(1, math.min(#open, math.floor(k)))]
 			else
-				local reward = type(Config.Index) == "table" and type(Config.Index.Rewards) == "table" and Config.Index.Rewards[def.Rarity]
-				pull.Substitute = { Tokens = type(reward) == "table" and tonumber(reward.Tokens) or 0 }
+				pull.Substitute = { Tokens = PetService.SubstituteTokens(ctx.Id, def.Rarity) }
 			end
 		end
 		if not pull.Substitute then
@@ -1147,6 +1148,26 @@ local function gemQuote(player, ctx)
 	ctx.Roll = type(quote.Roll) == "function" and quote.Roll or ctx.Roll
 	ctx.AllowSecret = quote.AllowSecret == true
 	return true
+end
+
+-- The tokens a full-stack pull pays instead of its pet (lobby-shop review round 1, the payback rule): the rarity's
+-- Config.Index.Rewards Tokens, at most floor(the roulette's token Price x Config.Eggs.SubstituteShare (0.5)) for a token
+-- roulette, whichever currency paid, so a pull never pays back its own price and full stacks are never a token source (pets
+-- cannot be sold and there is no pet cap). A gems-only roulette (the Secret Roulette) has no token price: the reward.
+function PetService.SubstituteTokens(rouletteId, rarity)
+	local rewards = type(Config.Index) == "table" and Config.Index.Rewards or nil
+	local reward = type(rewards) == "table" and rewards[rarity] or nil
+	local tokens = math.max(0, math.floor(type(reward) == "table" and tonumber(reward.Tokens) or 0))
+	local roulette = type(rouletteId) == "string" and roulettes[rouletteId] or nil
+	local price = roulette and tonumber(roulette.Price) or nil
+	if price and price > 0 then
+		local share = type(Config.Eggs) == "table" and tonumber(Config.Eggs.SubstituteShare) or nil
+		if not share or share ~= share or share < 0 or share >= 1 then
+			share = 0.5
+		end
+		tokens = math.min(tokens, math.floor(price * share))
+	end
+	return tokens
 end
 
 -- The money step (see the header). Never yields; nothing refuses after the roll.

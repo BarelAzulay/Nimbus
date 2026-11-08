@@ -670,6 +670,10 @@ local function cmdReset(player, profile)
 	local ring = tableField(profile, "Ring")
 	wipe(ring)
 	ring.Best, ring.Runs = 0, 0
+	-- lobby shop (spec 5.2 / 6; review round 1): the Secret Roulette pity starts over (7 spins to the next forced Secret)
+	local pity = tableField(profile, "Pity")
+	wipe(pity)
+	pity.Secret = { Spins = 0, Hit = 0 }
 	-- Phase 5: the Dungeon record starts over and the berries go (Settings stay: they are not progress)
 	local dungeon = tableField(profile, "Dungeon")
 	wipe(dungeon)
@@ -744,6 +748,8 @@ local function cmdReset(player, profile)
 		-- Store build: the Daily pair / Play group merge as maxima and the Trove asks as a union (Store is kept)
 		Daily = true,
 		Trove = true,
+		-- lobby shop: Pity.Secret.Hit merges as the maximum and would come back
+		Pity = true,
 	})
 	if rewound then
 		rewindTutorial(player, profile, reload, true)

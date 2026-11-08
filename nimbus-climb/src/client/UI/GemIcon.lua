@@ -16,7 +16,8 @@
 -- ("Clip") that cuts its top tip flat: the table, the crown and the pavilion of a cut gem. Three cyan-blue tones (light
 -- Theme.Currency.Gems.Glow rgb(186,236,255), mid Theme.Currency.Gems.Color rgb(84,196,246), dark rgb(40,120,200)) through
 -- the Body's UIGradient "Tone" and an inner facet diamond ("Facet"), a navy outline (UIStroke "Outline" rgb(11,16,48),
--- size / 16 thick) with a navy bar on the cut ("Cut"), and a small white four-point star on the upper left ("Star").
+-- size / 16 thick) with a navy bar on the cut ("Cut"), and a small white four-point star on the upper left ("Glint";
+-- review round 1: not "Star", a palette key the Blender kit bakes into evolved pets, which a lookup by name would unbake).
 -- Under 28 px the simple form: the silhouette, two tones (light crown, mid pavilion), a navy outline of at least 2 px
 -- snapped to whole pixels, no facet and no star (at 19-24 px those blur into each other).
 -- Shine (Review Focus 5): a thin white bar ("ShineBar", a second diamond with a moving UIGradient band) sweeps across the
@@ -266,7 +267,7 @@ function GemIcon.New(parent, size, opts)
 	}, root)
 	if not simple then
 		-- the white four-point star on the upper left (in the crown)
-		local star = box("Star", {
+		local star = box("Glint", {
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromOffset(cx - 0.4 * d, cutY + 0.28 * d),
 			Size = UDim2.fromOffset(0.22 * s, 0.22 * s),

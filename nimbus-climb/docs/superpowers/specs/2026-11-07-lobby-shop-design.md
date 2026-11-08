@@ -1265,8 +1265,8 @@ while Cloud, Storm and Sky still refuse a Secret before the charge. Consequences
   PetCatalog header and any test that pins "Secret pets are never rollable" are rewritten.
 - A Celestial Secret pull does not touch the Secret Roulette's pity (`Pity.Secret` counts that roulette's spins only, 5.2);
   `Stats.Spins`, the strip (drawn from `StripRng` with the same odds, so a Secret egg shows in about 2% of Celestial cells), the
-  substitute (`Config.Index.Rewards.Secret.Tokens` 10,000 when all four Secret pets are full) and the Legendary-and-up chat line
-  work as for any pull.
+  substitute (when all four Secret pets are full: `Config.Index.Rewards.Secret.Tokens` capped at half Celestial's token price,
+  2,500; review round 1, 16.9) and the Legendary-and-up chat line work as for any pull.
 - The PolicyService lock on spins is unchanged: Celestial's gem spin is a gem-priced random item (locked for restricted accounts),
   its token spin stays open.
 - **Tokens bought with Robux (review 2026-11-07, closing 13 call 8 now that a token spin can give a Secret).** Tokens bought with
@@ -1277,7 +1277,10 @@ while Cloud, Storm and Sky still refuse a Secret before the charge. Consequences
   kicks the policy check as `GemService.Quote` does). Earned tokens still spin for everyone. A paid receipt that still arrives
   (a prompt shown before the answer) is granted as always: a paid receipt is never refused. The Shop shows those cards locked
   with the same text (the Gems tab's `TokenPack_1..3`, the Packs tab's `Card_Pro`) while `PaidRandomItemsRestricted` is not
-  `false`. Gem packs, passes, potions and the other packs are unchanged.
+  `false`. Gem packs, passes, potions and the other packs are unchanged. (Review round 1, 16.9: this lock covers the server's
+  prompt only. A client can open the purchase prompt itself with `MarketplaceService:PromptProductPurchase`, and that paid
+  receipt is granted like any other, so a restricted account can still turn Robux into token spins. Closing it needs a rule at
+  the spin, the owner's call in the 16.8 morning question.)
 - Texts that say "Secret pets come only from the Storm Altar": `IndexController` (the undiscovered Secret pet's line becomes
   "A Secret pet. Summon it at the Storm Altar, or hatch it from the Celestial Roulette."), the PetCatalog / PetService / GemService
   headers, README (the gem section and the roulette table). `NpcDialog`'s Stormfang line stays true (it names the altar as one
@@ -1864,9 +1867,54 @@ server entry point and is not reachable from a client.
 - Restricted accounts and token packs (13 call 8, back on the list with higher stakes: Celestial's 2% Secret is on token rolls).
   Keep the token-granting products (Tokens1..3, Pro Pack) off sale for restricted accounts (call 13), or sell them and lock token
   spins for those accounts instead? Recommended: keep them off sale (earned tokens keep every machine open to every account).
+  Review round 1 adds: the off-sale lock covers the server's prompt only; an exploit can open the prompt from the client
+  (`PromptProductPurchase` with the product id from Config) and the paid receipt is granted, so a restricted account can still
+  buy token spins (and a 2% Celestial Secret). To close that: refuse token-paid spins for `PolicyState` "Restricted" accounts,
+  or record Robux-granted tokens on such accounts and refuse spins that would spend them. Recommended: refuse token-paid spins
+  for "Restricted" accounts only (simple, server-side; earned-token spins then close for them too, which the owner should OK).
+- Trophies feed the global board and the TOP 10 / TOP 100 titles (review round 1). BattleService's anti-farm limit (3 rewarded
+  duels per pair per 30 min) lives in one server's memory, and a loser at 0 trophies loses nothing, so two accounts can trade
+  wins across server hops to climb the board. Make the pair limit hold across servers (a MemoryStore sorted map, or recent
+  opponents in the Battle record) and pay less for beating a 0-trophy opponent, or base the titles on a stat that cannot be
+  traded? Recommended: the cross-server pair limit plus no trophies for beating a 0-trophy player, as its own small build
+  before the board goes live.
 - A cutscene storyboard pitch (A Pedestal / B Sky drop / C Machine) before Task 27? Recommended: build A unless the owner asks.
 - New crack / whoosh sounds for the cutscene from Suno / ElevenLabs (the owner's audio rule)? Recommended: yes, as a later audio pass.
 - Rename the eggs to fit the painted motifs (Thunder has no lightning now, Sunburst wears a crown)? Recommended: keep the names
   for this branch; a rename is one Config table and the Egg Guide board.
 - After the owner uploads the egg meshes, show the real 3D egg (a ViewportFrame) in the cutscene's Rise and Crack? Recommended:
   later; `Glow` parts read flat in a ViewportFrame, so the GUI glow layers would stay on top.
+
+### 16.9 Review round 1 (2026-11-08, sleep mode: decided by the main session's build agent, checked against the code)
+
+These override the text above where they differ.
+- **The payback rule.** A full-stack pull pays `PetService.SubstituteTokens(roulette, rarity)`: the rarity's
+  `Config.Index.Rewards` Tokens, at most `floor(token Price x Config.Eggs.SubstituteShare)` (0.5) for a token roulette, whichever
+  currency paid (Cloud 25, Storm 125, Sky 500, Celestial 2,500). Before this, once a player's low stacks were full, a token spin
+  paid back more than it cost (a Storm x3 returned up to 4,120 tokens for 750), an endless token source. The gems-only Secret
+  Roulette has no token price and keeps the rewards (Mythic 5,000, Secret 10,000); gems cannot be bought with tokens, so that
+  is no loop.
+- **The roulette timeout toast** no longer asks for a retry ("Still waiting for the roulette. Your spin will hatch as soon as it
+  arrives."): a request that left the client is almost always charged, and a second tap was a second paid spin. WAIT_TIMEOUT stays
+  7 s (5.5); a request id the server echoes is left for later.
+- **The cutscene's reveal** marks itself built last (`roll.RevealBuilt`); an error inside it toasts the pulls like any exit before
+  the reveal. A pet whose prewarm build fails is not built again that session, and the pulls after it still warm.
+- **The Secret SPIN's pulse** runs only while that button can be tapped (not Locked, Loading, Pending or without odds).
+- **The HUD Gifts button** hides while the Shop is open (`ShopController.Toggled`): it sat over the Shop header's token balance
+  and the X at 844x390 and 1366x768.
+- **The gem settle read** is one GetAsync per attempt (never held across the 1.5 s retry under the lock), backs off 5, 10, 20,
+  40, then 60 s, each plus up to 25% at random, and a GetAsync budget under 10 postpones it 5 s without counting a failure. The
+  first read stays at 15 s (no extra jitter there: it would move the hold).
+- **The dev /reset** clears `Pity` (live and written over the store).
+- **Developer accounts** (`DevService.IsAllowed` in a live server) are never written to the global leaderboard stores: their tools
+  grant pets and gems and whatever those buy. Their own values still show in the You row and the Server scope.
+- **The board** is found by the tag `Config.Tags.LeaderboardFace` on its Face (CollectionService), not a handler on every
+  instance added to the workspace.
+- **GemIcon's star** is the child "Glint" (a test lookup of "Star" made the Blender kit treat that palette key as looked up by
+  name and broke its selftest for six evolved-pet manifests).
+- Tooling: `run_checks.sh` runs `mesh_keys.py --check`; the Task 31 gate list adds `blender/kit/selftest.py`; the contract lists
+  `DataService.GemsSettled` / `_SettleForTest` / `Settled`, `PetService.SubstituteTokens`, `ShopController.Toggled`.
+- Left open, with the owner: the token-pack lock covers the server's prompt only (16.1 note, 16.8 question); Trophies can be
+  traded between accounts across servers (16.8 question); the save session lock (section 15) with its concrete case: a forced
+  Secret spent on server A whose leave save fails and lands as an orphan after server B settled lets B sell a second forced
+  Secret for the same 500 gems.

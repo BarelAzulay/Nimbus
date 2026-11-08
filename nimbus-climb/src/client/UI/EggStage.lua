@@ -34,7 +34,9 @@
 --   EggStage._Answer(result)               the RouletteResult listener's body (tests call it while MenuController's old
 --                                          stage still listens to the remote, until Task 22)
 --   EggStage._InjectPhaseError = "<Phase>" a test-only hook (nil by default): the phase runner raises an error when the
---                                          roll reaches that phase; every teardown resets it
+--                                          roll reaches that phase ("Reveal": inside the reveal's build, after its
+--                                          columns); every teardown resets it. An exit before the reveal was fully built
+--                                          (roll.RevealBuilt, set last) toasts the roll's pulls
 --
 -- Instances: NimbusHatch (DisplayOrder 25, IgnoreGuiInset, ResetOnSpawn false) > Stage > Dim (the tap-anywhere button),
 -- Vignette, (Stars: the Secret backdrop), Content (the area under the top bar, UIScale "Fit") > Title, Strips > Strip1..3
@@ -147,7 +149,8 @@ local K = {
 	RECT = { RECT = { H0 = 390, W0 = 820, Y0 = 330, H1 = 1080, W1 = 1660, Y1 = 900 }, MARGIN = 12, PHONE_W = 900, SHORT = 560, PC_MIN_H = 600, PC_MAX_W = 0.87 },
 	TEXT = {
 		Match = "The shop is closed during a match.",
-		NoAnswer = "The roulette did not answer. Try again.",
+		-- (review round 1) a BuyRoulette that left the client is almost always charged: never ask for a retry
+		NoAnswer = "Still waiting for the roulette. Your spin will hatch as soon as it arrives.",
 		Failed = "The spin failed.",
 		Fallback = "A new pet joined your collection!",
 		Policy = "Gem roulettes are not available on this account right now.",
@@ -1885,6 +1888,9 @@ function R.reveal(roll, skipped)
 	H.cancelTweens()
 	H.settleBackdrop(true)
 	B.cols(roll)
+	if EggStage._InjectPhaseError == "Reveal" then
+		error("injected phase error (Reveal)") -- the test hook: an error inside the reveal's own build
+	end
 	roll.UI.Reveal.Visible = true
 	H.apply()
 	local best = roll.Pulls[roll.Best]
@@ -1946,6 +1952,8 @@ function R.reveal(roll, skipped)
 		S.Stars.Frame.ZIndex = 2
 	end
 	R.revealSound(roll)
+	-- (review round 1) set last: an error anywhere above leaves it nil, and teardown("Error") toasts the pulls then
+	roll.RevealBuilt = true
 end
 
 -- the confetti falls once the pool can hold all of it (the burst's sparks go back first)
@@ -2022,19 +2030,23 @@ function R.advance(roll)
 	end
 end
 
--- builds one pulled pet's model ahead of the reveal (one a frame, while the strip runs)
+-- builds one pulled pet's model ahead of the reveal (one build a frame, while the strip runs). S.Warm[petId]: true =
+-- built, false = its build failed (never tried again this session: review round 1, a failing build ran every frame and
+-- kept the later pulls cold), nil = not tried yet
 function R.warmOne(roll)
+	local builder = nil
 	for _, pull in ipairs(roll.Pulls) do
-		if not S.Warm[pull.PetId] then
-			local builder = H.lazy("Builder", Shared, "PetBuilder")
-			if builder and type(builder.Build) == "function" then
-				local ok, model = pcall(builder.Build, pull.Def, { Scale = 1 })
-				if ok and typeof(model) == "Instance" then
-					model:Destroy()
-					S.Warm[pull.PetId] = true
-				else
-					S.Warm[pull.PetId] = false
-				end
+		if S.Warm[pull.PetId] == nil then
+			builder = builder or H.lazy("Builder", Shared, "PetBuilder")
+			if not (builder and type(builder.Build) == "function") then
+				return -- no builder (yet): nothing is marked, the next frame asks again
+			end
+			local ok, model = pcall(builder.Build, pull.Def, { Scale = 1 })
+			if ok and typeof(model) == "Instance" then
+				model:Destroy()
+				S.Warm[pull.PetId] = true
+			else
+				S.Warm[pull.PetId] = false
 			end
 			return
 		end
@@ -2180,7 +2192,8 @@ function H.teardown(reason)
 	end
 	if reason ~= "Done" then
 		local names = {}
-		if roll and not roll.Revealed then
+		-- the roll's pulls unless its reveal was fully built (an error inside R.reveal leaves RevealBuilt nil)
+		if roll and (not roll.Revealed or not roll.RevealBuilt) then
 			H.namesOf(roll, names)
 		end
 		for _, result in ipairs(S.Queue) do

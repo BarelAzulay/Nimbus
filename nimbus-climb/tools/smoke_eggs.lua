@@ -20,8 +20,11 @@
 --                   lock; the 0.25 s cooldown counts one request; a fault after the charge keeps the grant, a fault in
 --                   the plan step charges nothing
 --   egg_full_stack  (server, booted; Task 4) a full stack never refuses after the roll and is never a free reroll: every
---                   Common at 99 -> each Common pull pays the Common Index Tokens (Substitute), every spin is charged and
---                   the Common share holds; one Common at 99 -> that pet is re-picked away, never granted; the Secret
+--                   Common at 99 -> each Common pull pays PetService.SubstituteTokens (review round 1: the Index tokens,
+--                   at most half the token roulette's price: Cloud Common 25; every token roulette's expected payback with
+--                   every rarity full stays under its price; the gems-only Secret Roulette keeps the Index rewards), every
+--                   spin is charged and the Common share holds; every Storm pet at 99 -> no token x3 spin pays back its
+--                   price; one Common at 99 -> that pet is re-picked away, never granted; the Secret
 --                   Roulette with both Mythics at 99 -> Mythic pulls pay the Mythic Index Tokens and the natural Secret
 --                   share stays at its odds (40% since Task 16); Task 5: the pity forces pulls (each a Secret), GetPity's
 --                   Spins grows by every spin (substitutes included), every reply carries SecretPity.Left, and the share
@@ -40,7 +43,8 @@
 --                   last, the four rollable Secret pets, 20,000 seeded rolls at 2% +- 0.3); steered to the Secret band a
 --                   token x1, a token x3 and a gem x1 each grant Secret pets, charge once, leave Pity.Secret alone and send
 --                   one chat line; a Secret roll is granted by Celestial and refused by Cloud / Storm / Sky before the
---                   charge; every Secret full -> the Secret Index tokens as the substitute
+--                   charge; every Secret full -> the substitute: the Secret Index tokens capped at half Celestial's price
+--                   (2,500; review round 1)
 --   client_notify_pull (client; Task 6) Notify kind "pull" -> a system chat line in TextChatService's RBXSystem channel
 --                   (the rarity word in its Config.Rarities colour, rich text escaped), no toast; without the channel ->
 --                   today's toast with the text
@@ -949,7 +953,26 @@ local function serverScenarios()
 			local prof = D.GetProfile(p)
 			local cloud = B.roulette("Cloud")
 			local commons = PC.RarityPool("Cloud", "Common")
-			local commonTokens = Config.Index.Rewards.Common.Tokens
+			-- review round 1 (the payback rule): a full stack pays its rarity's Index tokens, at most half the roulette's
+			-- token Price (Cloud: min(Common 50, floor(50 x 0.5)) = 25), so full stacks are never a token source
+			local subFn = type(PS.SubstituteTokens) == "function" and PS.SubstituteTokens or nil
+			local commonTokens = subFn and subFn("Cloud", "Common") or nil
+			T.eq(commonTokens, math.min(Config.Index.Rewards.Common.Tokens, math.floor(cloud.Price * 0.5)),
+				"egg full stack: PetService.SubstituteTokens('Cloud', 'Common') = min(the Common Index reward, half the Cloud price) = 25")
+			local payback = T.tally("egg full stack: every token roulette with every rarity full: each substitute <= floor(Price / 2) and the expected payback of a spin < its Price")
+			for _, row in ipairs(Config.Roulettes) do
+				local expected, worst = 0, 0
+				for _, e in ipairs(PC.GetRarityOdds(row.Id)) do
+					local sub = subFn and subFn(row.Id, e.Rarity) or math.huge
+					worst = math.max(worst, sub)
+					expected = expected + e.Chance * sub
+				end
+				payback:case(worst <= math.floor(row.Price / 2) and expected < row.Price, fmt("%s: worst %s, expected %.1f for a price of %d", row.Id, tostring(worst), expected, row.Price))
+			end
+			payback:report()
+			local srSub = Config.Gems.SecretRoulette
+			T.check(subFn ~= nil and subFn(srSub.Id, "Mythic") == Config.Index.Rewards.Mythic.Tokens and subFn(srSub.Id, "Secret") == Config.Index.Rewards.Secret.Tokens,
+				"egg full stack: the gems-only Secret Roulette (no token price) keeps the Index rewards (Mythic 5,000, Secret 10,000)")
 			local cloudTotal = 0
 			for _, w in pairs(cloud.Odds) do
 				cloudTotal = cloudTotal + w
@@ -1004,7 +1027,7 @@ local function serverScenarios()
 				end
 			end)
 			T.eq(notOk, 0, "egg full stack: every Common at " .. MAX .. ": all " .. SPINS .. " Cloud spins answered Ok (a full stack never refuses after the roll)")
-			T.check(#badSub == 0, "egg full stack: ...each Common pull pays Substitute.Tokens = " .. commonTokens .. " (the Common Index reward) with Count " .. MAX, table.concat(badSub, " | "))
+			T.check(#badSub == 0, "egg full stack: ...each Common pull pays Substitute.Tokens = " .. tostring(commonTokens) .. " (SubstituteTokens: half the Cloud price) with Count " .. MAX, table.concat(badSub, " | "))
 			T.eq(badCharge, 0, "egg full stack: ...every spin was charged (each chunk: 200 x price spent, the substitute tokens added after the charge)")
 			T.eq(prof.Stats.Spins, spins0 + SPINS, "egg full stack: ...Stats.Spins counts every spin")
 			T.check(#badReply == 0, "egg full stack: ...the replies pass V.rouletteResult", table.concat(badReply, " | "))
@@ -1141,6 +1164,43 @@ local function serverScenarios()
 			local wantAll = want / (1 - (1 - want) ^ at)
 			T.check(abs(allSecret / SPINS3 - wantAll) <= 0.03, "egg full stack Secret: ...the Secret share over all pulls is near " .. fmt("%.1f%%", wantAll * 100) .. " (within 3 points; the pity working)",
 				fmt("%d of %d (%.4f)", allSecret, SPINS3, allSecret / SPINS3))
+
+			-- review round 1 (the payback rule, booted): every Storm pet at 99, 60 token x3 spins: every pull is a substitute
+			-- and no spin pays back its 3 x 250 tokens (at most 3 x 125), so a scripted SPIN AGAIN loop only loses tokens
+			local storm = B.roulette("Storm")
+			for _, def in ipairs(PC.PossiblePets("Storm")) do
+				prof.Pets[def.Id] = MAX
+			end
+			D.MarkDirty(p)
+			local SPINS4 = 60
+			local notOk4, notSub, gainers, most = 0, 0, 0, 0
+			B.bulkSpins(p, function(flush)
+				for i = 1, SPINS4 do
+					B.give(p, storm.Price * 3, nil)
+					local okI, r = PS.BuyRoulette(p, "Storm", "Tokens", 3)
+					if okI ~= true or type(r) ~= "table" or type(r.Pulls) ~= "table" then
+						notOk4 = notOk4 + 1
+					else
+						local back = D.GetTokens(p)
+						most = math.max(most, back)
+						if back >= storm.Price * 3 then
+							gainers = gainers + 1
+						end
+						for _, pull in ipairs(r.Pulls) do
+							if type(pull.Substitute) ~= "table" then
+								notSub = notSub + 1
+							end
+						end
+					end
+					if i % 20 == 0 then
+						flush()
+					end
+				end
+			end)
+			T.eq(notOk4, 0, "egg full stack payback: every Storm pet full: all " .. SPINS4 .. " token x3 spins answered Ok")
+			T.eq(notSub, 0, "egg full stack payback: ...every pull is a substitute")
+			T.check(gainers == 0 and most <= 3 * math.floor(storm.Price / 2), "egg full stack payback: ...no x3 spin pays back its " .. (storm.Price * 3) .. " tokens (the most back: 3 x " .. math.floor(storm.Price / 2) .. ")",
+				fmt("%d of %d spins paid back their price; most back %d", gainers, SPINS4, most))
 		end)
 		pcall(PS._SetRngForTest, Util.NewRng(), Util.NewRng())
 		B.removePolicy()
@@ -1533,16 +1593,17 @@ local function serverScenarios()
 			end
 			PC.RollPet = origRoll
 
-			-- all four Secret pets full: the Celestial Secret pull pays the Secret Index tokens, charged once
+			-- all four Secret pets full: the Celestial Secret pull pays the Secret Index tokens capped at half Celestial's
+			-- token price (review round 1: min(10,000, floor(5,000 x 0.5)) = 2,500), charged once
 			for _, def in ipairs(PC.RarityPool(cel.Id, SECRET)) do
 				prof.Pets[def.Id] = MAX
 			end
 			D.MarkDirty(p)
-			local secretTokens = Config.Index.Rewards.Secret.Tokens
+			local secretTokens = math.min(Config.Index.Rewards.Secret.Tokens, math.floor(cel.Price * 0.5))
 			local r = spin(nil, nil)
 			local pull = type(r.res) == "table" and type(r.res.Pulls) == "table" and r.res.Pulls[1] or nil
 			T.check(r.ok == true and pull ~= nil and pull.Rarity == SECRET and type(pull.Substitute) == "table" and pull.Substitute.Tokens == secretTokens,
-				"celestial secret: every Secret pet full: the Secret pull pays Substitute.Tokens = Config.Index.Rewards.Secret.Tokens (" .. secretTokens .. ")", r.why)
+				"celestial secret: every Secret pet full: the Secret pull pays Substitute.Tokens = min(the Secret Index reward, half Celestial's price) (" .. secretTokens .. ")", r.why)
 			T.check(r.after.Tokens == r.before.Tokens - cel.Price + secretTokens and r.after.Gems == r.before.Gems, "celestial secret: ...charged once (" .. cel.Price .. " tokens), the substitute added after",
 				B.show(r.before) .. " -> " .. B.show(r.after))
 			T.check(samePity(r.pity0, r.pity1), "celestial secret: ...Pity.Secret unchanged")

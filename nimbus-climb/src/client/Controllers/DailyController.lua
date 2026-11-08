@@ -711,6 +711,17 @@ function H.paintRing()
 	U.Ring.Visible = not S.Hidden and type(st) == "table" and st.Loading ~= true and #tiers(st) > 0
 end
 
+-- (lobby-shop review round 1) the Shop window (NimbusShop, the same DisplayOrder 19, Shop A's wide rect) covers the
+-- button's corner: the button, its ring and its pip hide while the Shop is open (ShopController.Toggled re-lays it out)
+function H.shopUp()
+	local shop = controller("ShopController")
+	if type(shop) ~= "table" or type(shop.IsOpen) ~= "function" then
+		return false
+	end
+	local ok, open = pcall(shop.IsOpen)
+	return ok and open == true
+end
+
 function H.layoutButton()
 	if not U.Button then
 		return
@@ -718,7 +729,7 @@ function H.layoutButton()
 	local size = H.buttonSize()
 	local hud = H.hud()
 	local left = tonumber(hud and hud:GetAttribute("TopRightLeft")) or 0
-	S.Hidden = left <= 0 or hiddenByPlay()
+	S.Hidden = left <= 0 or hiddenByPlay() or H.shopUp()
 	local x = math.floor(left - K.GAP - size + 0.5)
 	U.Button.Size = UDim2.fromOffset(size, size)
 	U.Button.Position = UDim2.fromOffset(x + S.ShakeX, K.TOP)
@@ -1999,6 +2010,13 @@ function DailyController.Init()
 			if id ~= "Daily" and S.Open then
 				DailyController.Close()
 			end
+		end)
+	end
+	-- the Shop's open / close (review round 1): the button steps aside while the Shop is up
+	local shop = controller("ShopController")
+	if type(shop) == "table" and type(shop.Toggled) == "table" and type(shop.Toggled.Connect) == "function" then
+		shop.Toggled:Connect(function()
+			safe("shop", H.layoutButton)
 		end)
 	end
 	safe("layout", H.layoutButton)

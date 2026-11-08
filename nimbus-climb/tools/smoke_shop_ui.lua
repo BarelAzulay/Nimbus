@@ -438,6 +438,33 @@ end
 function G.noOverlapNames()
 	return { "Tab_Eggs", "Tab_Gems", "Tab_Packs", "Tab_Passes", "Tab_Boosts", "Balance_Gems", "Balance_Tokens", "CloseButton" }
 end
+-- (review round 1) across ScreenGuis: the HUD Gifts button (NimbusDaily, the same DisplayOrder 19) is shown with the Shop
+-- closed, hidden while it is open (it sat over Balance_Tokens / the X), and back after Close
+function G.giftsCheck(Shop, tag)
+	local daily = G.pg():FindFirstChild("NimbusDaily")
+	local gifts = daily and daily:FindFirstChild("GiftsButton", true)
+	Shop.Close()
+	G.advance(0.4)
+	local before = gifts ~= nil and G.shown(gifts)
+	Shop.Open({ Tab = "Gems" })
+	G.advance(0.4)
+	local during = gifts ~= nil and G.shown(gifts)
+	local over = {}
+	if during then
+		for _, name in ipairs({ "Balance_Tokens", "Balance_Gems", "CloseButton" }) do
+			local o = G.find(G.win(), name)
+			local a, b = o and G.box(o), G.box(gifts)
+			if a and G.shown(o) and a.x < b.x + b.w and b.x < a.x + a.w and a.y < b.y + b.h and b.y < a.y + a.h then
+				over[#over + 1] = name
+			end
+		end
+	end
+	Shop.Close()
+	G.advance(0.4)
+	local after = gifts ~= nil and G.shown(gifts)
+	T.check(before and not during and after, tag .. ": the HUD Gifts button hides while the Shop is open and is back after Close",
+		fmt("before %s, during %s (over %s), after %s", tostring(before), tostring(during), table.concat(over, ", "), tostring(after)))
+end
 
 ----------------------------------------------------------------------------------------------------
 -- client_shop_window
@@ -479,6 +506,15 @@ S.client_shop_window = guarded("client_shop_window", function()
 	T.eq(Shop.Tab(), "Eggs", "shop window: the first open shows Eggs (Task 22)")
 	T.eq(G.count(saved.Opened, "Shop", from), 1, "shop window: WindowOpened fired 'Shop' once for the open")
 	T.eq(G.count(saved.Opened, "Store", from), 0, "shop window: ...and never 'Store'")
+	G.giftsCheck(Shop, "shop window 1920x1080")
+	Mock.SetViewport(1366, 768)
+	G.advance(0.4)
+	G.giftsCheck(Shop, "shop window 1366x768")
+	Mock.SetViewport(1920, 1080)
+	G.advance(0.4)
+	Shop.Open({ Tab = "Eggs" })
+	G.advance(0.5)
+	gui, win = G.gui(), G.win()
 	-- the rail
 	local body = G.body()
 	local rail = win:FindFirstChild("Rail")
@@ -915,6 +951,66 @@ S.client_shop_eggs = guarded("client_shop_eggs", function()
 		T.check(not G.disabled(G.eggBtn("Cloud", "Spin")), "shop eggs: ...the token spins are not held")
 		G.setAttr("GemsSettled", true)
 		G.advance(1.2)
+
+		-- (review round 1, spec 16.3) the Secret SPIN's pulse: a tween toward Scale 1.04 every 2.5 s on High while that button
+		-- can be tapped; never while it is Locked or Loading (the scale rests at 1); none on Low; Scale 1 after Close
+		local GQ = G.req("client/GraphicsQuality")
+		local realEffective = GQ and GQ.Effective
+		local function pulseScale()
+			return SE.HeroPulse(page) or SE.HeroPulse()
+		end
+		local function pulsesWithin(seconds)
+			local frames, t = 0, 0
+			local target = pulseScale()
+			while t < seconds - 1e-6 do
+				G.advance(0.05)
+				t = t + 0.05
+				for tw in pairs(Mock.ActiveTweens) do
+					local goal = Mock.TweenGoals(tw).Scale
+					if target ~= nil and tw.Instance == target and type(goal) == "number" and abs(goal - 1.04) < 1e-6 then
+						frames = frames + 1
+						break
+					end
+				end
+			end
+			return frames
+		end
+		local function reopen()
+			Shop.Close()
+			G.advance(0.3)
+			Shop.Open({ Tab = "Eggs" })
+			G.advance(0.3)
+		end
+		reopen()
+		T.check(pulseScale() ~= nil and SE.CardState("Secret") == "Ready" and pulsesWithin(3) > 0, "shop eggs pulse: High, the Secret SPIN ready: it pulses toward Scale 1.04 within 3 s")
+		G.setAttr("PaidRandomItemsRestricted", true)
+		G.advance(0.8)
+		local lockedFrames = pulsesWithin(3)
+		T.check(lockedFrames == 0 and pulseScale().Scale == 1, "shop eggs pulse: ...never while the Secret SPIN is Locked (Scale rests at 1)", lockedFrames .. " frames, Scale " .. tostring(pulseScale().Scale))
+		G.setAttr("PaidRandomItemsRestricted", false)
+		G.setAttr("GemsSettled", nil)
+		G.advance(0.8)
+		local loadingFrames = pulsesWithin(3)
+		T.check(loadingFrames == 0 and pulseScale().Scale == 1, "shop eggs pulse: ...never while it reads Loading...", loadingFrames .. " frames")
+		G.setAttr("GemsSettled", true)
+		G.advance(0.3)
+		T.check(pulsesWithin(3) > 0, "shop eggs pulse: ...and it starts again by itself once the hold ends")
+		if GQ then
+			GQ.Effective = function()
+				return "Low"
+			end
+			reopen()
+			local lowFrames = pulsesWithin(3)
+			T.check(lowFrames == 0 and pulseScale().Scale == 1, "shop eggs pulse: Low graphics: no pulse", lowFrames .. " frames")
+			GQ.Effective = realEffective
+		end
+		reopen()
+		G.advance(2.6)
+		Shop.Close()
+		G.advance(0.4)
+		T.check(pulseScale().Scale == 1, "shop eggs pulse: after Close the Secret SPIN's scale is 1", tostring(pulseScale().Scale))
+		Shop.Open({ Tab = "Eggs" })
+		G.advance(0.6)
 
 		-- Open({ RouletteId }) focuses the card: inside the window, outlined for 2.6 s; Currency alone keeps the tab
 		Shop.Open({ Tab = "Packs" })
@@ -1420,6 +1516,9 @@ S.client_shop_mobile = guarded("client_shop_mobile", function()
 	for _, sz in ipairs(SIZES) do
 		local label = fmt("shop phone %dx%d", sz[1], sz[2])
 		RedoGeom.at(sz[1], sz[2], true, label, function()
+			if sz[1] == 844 then
+				G.giftsCheck(Shop, label) -- (review round 1: the Gifts button covered Balance_Tokens here)
+			end
 			Shop.Open({ Tab = "Gems" })
 			G.advance(0.6)
 			local win = G.win()

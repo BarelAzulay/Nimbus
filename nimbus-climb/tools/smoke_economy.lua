@@ -907,9 +907,10 @@ S.economy = guarded("economy", function()
 		ok, capped = PS.BuyRoulette(p, cloud.Id)
 	end)
 	pull1 = type(capped) == "table" and type(capped.Pulls) == "table" and capped.Pulls[1] or nil
-	local commonTokens = Config.Index.Rewards.Common.Tokens
+	-- (lobby-shop review round 1) the substitute is the Index reward capped at half the token roulette's price
+	local commonTokens = math.min(Config.Index.Rewards.Common.Tokens, math.floor(cloud.Price * 0.5))
 	T.check(ok == true and pull1 ~= nil and type(pull1.Substitute) == "table" and pull1.Substitute.Tokens == commonTokens and pull1.PetId == common and pull1.Count == MAX,
-		"every Common full: Pulls[1].Substitute.Tokens = " .. commonTokens .. " (the Common Index reward), the rolled pet kept, Count " .. MAX,
+		"every Common full: Pulls[1].Substitute.Tokens = " .. commonTokens .. " (the Common Index reward capped at half the Cloud price), the rolled pet kept, Count " .. MAX,
 		tostring(pull1 and pull1.Substitute and pull1.Substitute.Tokens))
 	T.eq(DataS.GetTokens(p), tokensBefore - cloud.Price + commonTokens, "...those tokens are added after the one charge")
 	T.eq(prof.Stats.Spins, spinsBefore + 1, "...and the spin is counted")

@@ -6,9 +6,10 @@
 --   LeaderboardController.State() -> payload | nil   the last LeaderboardState (nil before the first)
 --
 -- A SurfaceGui "LobbyLeaderboard" in the PlayerGui (so its tabs take taps) adorned to the Face of the workspace model
--- LobbyLeaderboard (server/Services/LobbyBoardBuilder; found by name: at Init, and whenever a Face or a board arrives
--- through workspace.DescendantAdded, so a rebuilt or streamed-in board re-adorns the same SurfaceGui; the newest board
--- wins). It is built when the first board is found, so a world without the board gets no SurfaceGui. Face Front,
+-- LobbyLeaderboard (server/Services/LobbyBoardBuilder tags that Face Config.Tags.LeaderboardFace; found through
+-- CollectionService: at Init and whenever a tagged Face arrives, so a rebuilt or streamed-in board re-adorns the same
+-- SurfaceGui; the newest board wins; review round 1: no handler on every instance added to the workspace). It is built
+-- when the first board is found, so a world without the board gets no SurfaceGui. Face Front,
 -- PixelsPerStud 50: the 16 x 13 stud face is an 800 x 650 px canvas (CanvasSize says the same for tools; Roblox ignores
 -- it under PixelsPerStud), MaxDistance 80, ResetOnSpawn false, LightInfluence 0. Layout (the pitch mock-up boardA):
 --   Board > IconL / IconR (the page's glyph), Title (50 px, Config.Leaderboard.Titles[stat]), Tabs > Tab_<stat> (one
@@ -19,7 +20,8 @@
 --   ("Loading scores..." before the first state / "No scores yet. Be the first!" for an empty page).
 -- Every text is at least 30 px (0.6 stud: the project's world-text floor); values have commas, Theme.ShortNumber from 1e6.
 -- The page turns by itself every Config.Leaderboard.TurnSeconds; a tap (SetPage) restarts that count. One 4 Hz task
--- turns the page, counts the footer down and drops a Face that left the workspace (no Heartbeat).
+-- turns the page, counts the footer down and drops a Face that left the workspace for any tagged one still there (no
+-- Heartbeat).
 -- Headshots: Players:GetUserThumbnailAsync(id, HeadShot, Size48x48) in a deferred pcall'd task, cached per user for the
 -- session (a failed one stays blank: the round placeholder shows). The client sends nothing.
 -- Plain Lua 5.1-compatible syntax only. All text goes through Theme roles.
@@ -390,15 +392,20 @@ local function adopt(face)
 	S.Gui.Adornee = face
 end
 
--- workspace.DescendantAdded: a board (model) or its Face arriving (a rebuild, streaming); the newest board wins
-local function onAdded(inst)
-	local name = inst.Name
-	if name == "Face" then
-		if inst:IsA("BasePart") and inst:FindFirstAncestor(K.MODEL) then
-			adopt(inst)
+-- the board's Face carries Config.Tags.LeaderboardFace (LobbyBoardBuilder; review round 1: a CollectionService tag, not
+-- a handler on every instance added to the workspace): a tagged Face arriving (a rebuild, streaming) is adopted, the
+-- newest board wins; a Face that left is replaced by any tagged Face still in the workspace (the tick)
+local function faceTag()
+	return type(Config.Tags) == "table" and Config.Tags.LeaderboardFace or "NC_LeaderboardFace"
+end
+
+local function adoptAnyTagged()
+	local tagged = game:GetService("CollectionService"):GetTagged(faceTag())
+	for i = #tagged, 1, -1 do
+		if valid(tagged[i]) and tagged[i]:IsA("BasePart") then
+			adopt(tagged[i])
+			return
 		end
-	elseif name == K.MODEL then
-		adopt(inst:FindFirstChild("Face", true))
 	end
 end
 
@@ -408,6 +415,7 @@ local function tick()
 		if S.Gui then
 			S.Gui.Adornee = nil
 		end
+		safe("find", adoptAnyTagged)
 	end
 	if S.Gui and not S.Gui.Parent then
 		S.Gui.Parent = LocalPlayer:FindFirstChildOfClass("PlayerGui")
@@ -464,15 +472,10 @@ function LeaderboardController.Init()
 	S.Started = true
 	S.Page = pages()[1]
 	S.TurnAt = os.clock() + turnSeconds()
-	Workspace.DescendantAdded:Connect(function(inst)
-		safe("added", onAdded, inst)
+	game:GetService("CollectionService"):GetInstanceAddedSignal(faceTag()):Connect(function(inst)
+		safe("added", adopt, inst)
 	end)
-	safe("find", function()
-		local model = Workspace:FindFirstChild(K.MODEL, true)
-		if model then
-			adopt(model:FindFirstChild("Face", true))
-		end
-	end)
+	safe("find", adoptAnyTagged)
 	task.spawn(function()
 		local ok, remote = pcall(Remotes.Get, "LeaderboardState")
 		if ok and remote then

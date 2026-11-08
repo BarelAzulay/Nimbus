@@ -437,7 +437,8 @@ exits 1 when a built key bakes one. The kit uses the same list.
 **Key contract:** `python3 tools/mesh_keys.py` lists every complete literal key in a `Mesh.tag(<target>, "<key>"` call
 in `src` and whether it has a manifest; `--check` exits 1 when a tagged key has no `src/shared/MeshManifests/<key>.lua`
 or a key the lobby-shop build made (`BUILD_KEYS`; `gem_world_low` reserved) is named nowhere in `src`. Prefixes joined
-with `..`, variables and comments are skipped. `tools/test_mesh_keys.py` tests the scanner offline.
+with `..`, variables and comments are skipped. `tools/test_mesh_keys.py` tests the scanner offline; `run_checks.sh`
+runs both (the unit tests and `mesh_keys.py --check`).
 
 **Look at a mesh** (no Studio; the manifest's boxes coloured like the game colours them):
 ```sh
