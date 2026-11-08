@@ -729,6 +729,10 @@ S.client_egg_stage = guarded("client_egg_stage", function()
 		T.eq(ES.Layout(), "PC", "egg stage: Layout() at 1920x1080 is PC")
 		T.eq(ES.NoteText({ PoolSize = 3, IsNew = true, PetId = epic.Id }, "Epic"), "1 of 3 Epic pets " .. DOT .. " added to your pets", "egg stage: NoteText for a new pet")
 		T.eq(ES.NoteText({ PoolSize = 3, IsNew = false, Count = 2, PetId = epic.Id }, "Epic"), "1 of 3 Epic pets " .. DOT .. " you have 2 " .. epic.Name .. " now", "egg stage: NoteText names the pet when it is not new")
+		-- (review round 3) an x3 column's note leaves the name out: it sits right above the note, and the 18 px phone column wrapped
+		-- "... you have 12 Candy Unicorn now" to three lines in its 36 px box
+		T.eq(ES.NoteText({ PoolSize = 3, IsNew = false, Count = 12, PetId = epic.Id }, "Epic", true), "1 of 3 Epic pets " .. DOT .. " you have 12 now", "egg stage: NoteText(pull, rarity, true) (x3) leaves the pet's name out")
+		T.eq(ES.NoteText({ PoolSize = 3, IsNew = true, PetId = epic.Id }, "Epic", true), "1 of 3 Epic pets " .. DOT .. " added to your pets", "egg stage: NoteText(..., true) for a new pet is unchanged")
 		T.eq(ES.NoteText({ PoolSize = 3, IsNew = false, Count = 99, PetId = epic.Id, Substitute = { Tokens = 800 } }, "Epic"), "Stack full: +800 Tokens instead", "egg stage: NoteText for a substitute")
 		local pityNote = ES.NoteText({ PoolSize = 4, IsNew = true, PetId = epic.Id, Pity = true }, "Secret")
 		T.check(pityNote:sub(-#(" " .. DOT .. " guaranteed")) == " " .. DOT .. " guaranteed", "egg stage: a pity pull's note ends ' \194\183 guaranteed'", pityNote)
@@ -1415,6 +1419,78 @@ S.client_egg_stage_mobile = guarded("client_egg_stage_mobile", function()
 	local function x3()
 		return G.result("Storm", "Tokens", { G.pull(PC, "Storm", rare), G.pull(PC, "Storm", leg), G.pull(PC, "Storm", epic) })
 	end
+	-- (review round 3) an x3 reveal laid out with Roblox's real font widths: RedoGeom.realWidth (Montserrat Black for the
+	-- GothamBlack roles, Fredoka One, Builder Sans) through EggStage.Metrics.MEASURE, the hook the live game leaves to TextService.
+	-- The mock's flat 0.5 em hid it: two NEW pets with the longest names (Frostling Penguin 175 px, Starlight Unicorn 167 px at
+	-- 18 px) were cut beside NEW!, a duplicate's note ("... you have 12 Twilight Dragon now") wrapped to three lines in 36 px,
+	-- and Sky's SPIN AGAIN x3 + coin + "3,000" filled the gold button edge to edge at 640x360
+	local longNames = { PC.Get("frostling_penguin"), PC.Get("starlight_unicorn"), PC.Get("twilight_dragon") }
+	local function realX3(label)
+		if not T.check(longNames[1] and longNames[2] and longNames[3], label .. " real x3: the catalog has Frostling Penguin, Starlight Unicorn, Twilight Dragon") then
+			return
+		end
+		local savedMeasure = ES.Metrics.MEASURE
+		local savedTokens = LocalPlayer:GetAttribute("CloudTokens")
+		ES.Metrics.MEASURE = function(text, size, font)
+			return RedoGeom.realWidth(text, size, font)
+		end
+		LocalPlayer:SetAttribute("CloudTokens", 100000)
+		local ok, err = pcall(function()
+			local t0 = os.clock()
+			ES.Show(G.result("Sky", "Tokens", { G.pull(PC, "Sky", longNames[1]), G.pull(PC, "Sky", longNames[2]), G.pull(PC, "Sky", longNames[3], { IsNew = false, Count = 12 }) }))
+			G.until_(t0, 3.2)
+			if not T.eq(ES.Phase(), "Reveal", label .. " real x3: the reveal") then
+				return
+			end
+			local bad = {}
+			for j = 1, 3 do
+				local col = G.colPart(j)
+				local nm, note, new = col and col:FindFirstChild("Name"), col and col:FindFirstChild("Note"), col and col:FindFirstChild("New")
+				local okName, dName = RedoGeom.fits(nm)
+				if not okName then
+					bad[#bad + 1] = "col " .. j .. " name " .. tostring(dName)
+				end
+				local okNote, dNote = RedoGeom.fits(note)
+				if not okNote then
+					bad[#bad + 1] = "col " .. j .. " note " .. tostring(dNote)
+				end
+				if j <= 2 then
+					if not (new and G.shown(new)) then
+						bad[#bad + 1] = "col " .. j .. " no NEW!"
+					else
+						local nb = G.box(new)
+						for _, other in ipairs({ "Name", "Note", "Banner", "EvolvedRibbon" }) do
+							local o = col:FindFirstChild(other)
+							if o and G.shown(o) and G.intersects(nb, G.box(o)) then
+								bad[#bad + 1] = "col " .. j .. " NEW! meets " .. other
+							end
+						end
+						local cb = G.box(col)
+						if nb.x < cb.x - 0.6 or nb.x + nb.w > cb.x + cb.w + 0.6 then
+							bad[#bad + 1] = fmt("col %d NEW! %.0f..%.0f outside the column %.0f..%.0f", j, nb.x, nb.x + nb.w, cb.x, cb.x + cb.w)
+						end
+					end
+				end
+			end
+			T.check(#bad == 0, label .. " real x3: with the real font widths every name and note fits; NEW! shows, clear of the name, note, banner and ribbon", table.concat(bad, "; "))
+			local again = G.bar("SpinAgain")
+			local row = again and again:FindFirstChild("Row")
+			local lbl, coin, price = row and row:FindFirstChild("Label"), row and row:FindFirstChild("Coin"), row and row:FindFirstChild("Price")
+			if T.check(lbl and coin and price and G.shown(price) and tostring(lbl.Text):find("x3", 1, true) ~= nil, label .. " real x3: SPIN AGAIN x3 shows its label, coin and price", lbl and tostring(lbl.Text) or "no row") then
+				local bw = again.Size.X.Offset
+				local need = RedoGeom.realWidth(lbl.Text, lbl.TextSize, lbl.Font) + coin.Size.X.Offset + RedoGeom.realWidth(price.Text, price.TextSize, price.Font) + 12
+				T.check(need + 8 <= bw + 0.5, label .. " real x3: SPIN AGAIN x3 + coin + price fits its button with 4 px clear each side (real font widths)",
+					fmt("'%s' + '%s' = %.1f px in %.1f", tostring(lbl.Text), tostring(price.Text), need, bw))
+			end
+		end)
+		ES.Metrics.MEASURE = savedMeasure
+		LocalPlayer:SetAttribute("CloudTokens", savedTokens)
+		T.check(ok, label .. " real x3: ran without an error", tostring(err))
+		if ES.IsShowing() then
+			ES.Done()
+		end
+		G.advance(0.2)
+	end
 	local function bottomOk(label, h)
 		local bar = G.content() and G.content():FindFirstChild("BottomBar")
 		local inset = 0
@@ -1533,6 +1609,7 @@ S.client_egg_stage_mobile = guarded("client_egg_stage_mobile", function()
 			end
 			ES.Done()
 			G.advance(0.2)
+			realX3(label)
 		end)
 	end
 	-- resize mid-roll (Review Focus 1): an x3 started at 844x390, turned to 390x844 during Strip and to 1920x1080 on the reveal

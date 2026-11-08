@@ -383,6 +383,17 @@ S.client_load = guarded("client_load", function()
 		end
 	end
 	T.eq(Mock.CoreGui.Health, false, "the default Roblox health bar is disabled (retried after early failures)")
+	-- (lobby-shop review round 3, spec 16.6: the owner's "make it be seen also in the players server list") Roblox's player
+	-- list stays on, so its Rank column (leaderstats.Rank: Top 10 / Top 100 / Creator) can be opened; the health bar stays off
+	do
+		local SG = game:GetService("StarterGui")
+		T.check(Mock.CoreGui.PlayerList ~= false and SG:GetCoreGuiEnabled(Enum.CoreGuiType.PlayerList) == true, "Roblox's player list stays enabled after HudController.Init (the Rank column is seen)", tostring(Mock.CoreGui.PlayerList))
+		SG:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, true)
+		SG:SetCoreGuiEnabled(Enum.CoreGuiType.Health, true)
+		advance(0.1)
+		T.check(SG:GetCoreGuiEnabled(Enum.CoreGuiType.PlayerList) == true, "...and a re-enable of the player list is left alone", tostring(Mock.CoreGui.PlayerList))
+		T.eq(Mock.CoreGui.Health, false, "...while a re-enabled health bar is turned off again")
+	end
 	T.eq(LocalPlayer.CameraMaxZoomDistance, 40, "LocalPlayer.CameraMaxZoomDistance = 40")
 	local stamina = LocalPlayer:GetAttribute("Stamina")
 	T.check(type(stamina) == "number" and stamina >= 0 and stamina <= Config.Physics.MaxStamina, "the Stamina attribute is mirrored (0..MaxStamina)", tostring(stamina))

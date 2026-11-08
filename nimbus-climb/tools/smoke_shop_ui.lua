@@ -280,6 +280,53 @@ function G.priceOf(b)
 	local p = b and b:FindFirstChild("Price", true)
 	return p and tostring(p.Text) or nil
 end
+-- (review round 3) every spin button's row (Word, the currency icon, Price) inside its button with Roblox's real font widths:
+-- RedoGeom.realWidth (Montserrat Black for the GothamBlack Button role) through ShopEggs.Metrics.MEASURE, the hook the live game
+-- leaves to TextService. The mock's flat 0.5 em hid Sky's phone x3 "3,000" running ~11 px past its 74 px button onto the gem
+-- button. -> { problems }, the number of prices checked. The page is repainted with the mock's measure again afterwards.
+function G.spinRowsReal()
+	local SE = G.req("client/UI/ShopEggs")
+	local page = G.body() and G.body():FindFirstChild("Page_Eggs")
+	if not (type(SE) == "table" and type(SE.Metrics) == "table" and page) then
+		return { "no ShopEggs / Page_Eggs" }, 0
+	end
+	local saved = SE.Metrics.MEASURE
+	SE.Metrics.MEASURE = function(text, size, font)
+		return RedoGeom.realWidth(text, size, font)
+	end
+	local bad, prices = {}, 0
+	local ok, err = pcall(function()
+		SE.Refresh(page)
+		for _, id in ipairs({ "Secret", "Cloud", "Storm", "Sky", "Celestial" }) do
+			for _, name in ipairs({ "Spin", "Spin3", "SpinGems" }) do
+				local b = G.eggBtn(id, name)
+				if b then
+					local bw = G.rel(b, b).w
+					for _, part in ipairs({ "Word", "TokenIcon", "GemIcon", "Price" }) do
+						local o = b:FindFirstChild(part)
+						if o and o.Visible then
+							prices = prices + (part == "Price" and 1 or 0)
+							local r = G.rel(o, b)
+							if r.x < -0.5 or r.x + r.w > bw + 0.5 then
+								bad[#bad + 1] = fmt("%s.%s.%s '%s' %.1f..%.1f of %.0f", id, name, part, o:IsA("TextLabel") and tostring(o.Text) or "", r.x, r.x + r.w, bw)
+							end
+						end
+					end
+				end
+			end
+		end
+	end)
+	SE.Metrics.MEASURE = saved
+	pcall(SE.Refresh, page)
+	if not ok then
+		bad[#bad + 1] = "error: " .. tostring(err)
+	end
+	return bad, prices
+end
+function G.spinRowsCheck(label)
+	local bad, prices = G.spinRowsReal()
+	T.check(#bad == 0 and prices >= 13, label .. ": Eggs: every spin button's word + currency icon + price lies inside it with the real font widths (" .. prices .. " prices)", table.concat(bad, "; "))
+end
 -- "60%" style: the whole percent, else one decimal
 function G.pct(chance)
 	local v = chance * 100
@@ -1474,6 +1521,7 @@ S.client_shop_sizes = guarded("client_shop_sizes", function()
 					label .. ": Eggs: the shrunk layout (hero 200, cards 516) and the page scrolls vertically", fmt("hero %.0f, card %.0f, canvas %.0f, body %.0f", heroH, cardH, canvasH, bodyH))
 			end
 		end
+		G.spinRowsCheck(label)
 		local unreached, count = {}, 0
 		for _, page in ipairs({ "Eggs", "Gems", "Packs", "Passes", "Boosts" }) do
 			Shop.Open({ Tab = page })
@@ -1559,7 +1607,9 @@ S.client_shop_mobile = guarded("client_shop_mobile", function()
 			end
 			local y0 = hb and hb.y
 			local shortTotals, smallEggs = {}, {}
-			local wantShort = { Cloud = "150", Storm = "750", Sky = "3,000", Celestial = "15K" }
+			-- (review round 3) the phone's x3 total is Theme.ShortNumber(3 * price, 1000): "3K", not "3,000", which ran past the
+			-- 74 px button in Roblox's Montserrat Black
+			local wantShort = { Cloud = "150", Storm = "750", Sky = "3K", Celestial = "15K" }
 			for i, id in ipairs(MACHINES) do
 				local card = G.eggCard(id)
 				local b = card and G.rel(card, body)
@@ -1581,7 +1631,8 @@ S.client_shop_mobile = guarded("client_shop_mobile", function()
 				end
 			end
 			T.check(#row == 0, fmt("%s: Eggs: the Secret card 200 wide, then four cards 166 wide at x = 208 + i * 174, all %d tall", label, th), table.concat(row, "; "))
-			T.check(#shortTotals == 0, label .. ": Eggs: Spin3 reads 'x3' + token icon + Theme.ShortNumber(3 * price) (150, 750, 3,000, 15K)", table.concat(shortTotals, "; "))
+			T.check(#shortTotals == 0, label .. ": Eggs: Spin3 reads 'x3' + token icon + Theme.ShortNumber(3 * price, 1000) (150, 750, 3K, 15K)", table.concat(shortTotals, "; "))
+			G.spinRowsCheck(label)
 			T.check(#smallEggs == 0, label .. ": Eggs: every odds egg is at least 30 px", table.concat(smallEggs, "; "))
 			if sz[1] == 844 then
 				local fade = G.find(G.find(body, "Page_Eggs"), "Fade")
@@ -1676,6 +1727,7 @@ S.client_shop_portrait = guarded("client_shop_portrait", function()
 				lastY = b and b.y or lastY
 			end
 			T.check(#listBad == 0, label .. ": Eggs: full-width cards in a vertical list (Secret 200 tall first, the machines 250)", table.concat(listBad, "; "))
+			G.spinRowsCheck(label)
 			local grid = G.oddsRows(G.eggCard("Cloud"))
 			local xs, ys = {}, {}
 			for _, r in ipairs(grid) do

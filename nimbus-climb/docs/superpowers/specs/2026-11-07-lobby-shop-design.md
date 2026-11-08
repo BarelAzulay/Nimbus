@@ -1938,3 +1938,33 @@ These override the text above where they differ.
   The Skip chip is narrower than 5.5's 440x60 / 208x44 (still a 44 px target, text unchanged).
 - **Not changed:** Esc and gamepad B (`EggStage.Back`) stay DONE at once on the reveal (5.5): keys never land on a paid button.
   `EggStage.Done()` / `Skip()` stay the API without a wait.
+
+### 16.11 Review round 3 (2026-11-08, sleep mode: decided by the main session's build agent, checked against the code)
+
+These override the text above where they differ. Measured with Roblox's real fonts (GothamBlack is drawn as Montserrat Black;
+the advance table of `RedoGeom.realWidth`): the smoke mock's flat 0.5 em per character had hidden all of it.
+- **Prices fit their buttons.** The phone's 74 px x3 button showed Sky's "3,000": "x3" + token + "3,000" at 15 px is 83 px, so the
+  price ran about 11 px onto the gem button. The phone's x3 total is now `Theme.ShortNumber(3 x price, 1000)` (150, 750, **3K**,
+  15K). Every spin button (any layout) whose row is wider than the button even at the 2 px gap takes that short form
+  (`ShopEggs` `H.arrange`, measured by TextService live; a PC card at its 250 px minimum held "15,000" 2 px short). The text
+  never steps under the 15 px phone floor.
+- **SPIN AGAIN** measures its row (label + coin + price + the two 6 px gaps) and keeps 16 px of the button free
+  (`EggStage` `K.AGAIN_SLACK`), else the price takes the short form from 1,000 up: at 640x360 "SPIN AGAIN x3" + coin + "3,000"
+  (202 px) filled the 204 px button edge to edge, now "3K"; at 844x390 (220 px) "3,000" stays.
+- **NEW! on an x3 phone / portrait column** is a chip on the pet frame's top-left corner (56 x 22, tilted -8 degrees, the
+  EvolvedRibbon's mirror; 10 px under the ribbon when both show). Beside the 18 px name it left the name column - 24 - 64 px
+  (117 at 640x360, 126 at 667x375, 172 at 844x390, 150 in 360x640 rows) and cut most Legendary to Secret names. The name now
+  has the whole row (181 px or more; the longest catalog name, Frostling Penguin, is 175 px). PC keeps the pitch's row (NEW!
+  beside a 36 px name, 392 px for it).
+- **An x3 column's note** leaves the pet's name out for a duplicate ("1 of 4 Legendary pets · you have 12 now";
+  `EggStage.NoteText(pull, rarity, true)`): the name sits right above, and the long form wrapped to three lines in the phone's
+  36 px note box. The x1 note keeps the name.
+- **Roblox's player list is on again.** `HudController` hid it (with the health bar) since 2026-10-08 because the `leaderstats`
+  Tokens column sat over the top-right token strip; that hid the Rank column 16.6 asks for ("make it be seen also in the players
+  server list"). Only the health bar is hidden now. Open, with the owner: on PC Roblox may open the list over the HUD's
+  top-right currency strips and the toasts under them until the player presses Tab (a phone opens it only from the top bar);
+  the strips are not moved in this round, and how the two sit together is a Studio check.
+- **Tests.** `client_shop_mobile` / `client_shop_portrait` / `client_shop_sizes`: every spin button's word, icon and price
+  inside it with the real widths (`ShopEggs.Metrics.MEASURE` = `RedoGeom.realWidth`); `client_egg_stage_mobile`: a Sky x3 with
+  two NEW long names and a duplicate at all seven sizes, every name and note fitting, NEW! clear of the name, note, banner and
+  ribbon, SPIN AGAIN's row 4 px clear each side; `client_load`: the player list enabled, a re-enabled health bar turned off.

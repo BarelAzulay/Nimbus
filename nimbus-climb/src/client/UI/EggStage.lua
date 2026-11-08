@@ -29,7 +29,8 @@
 --   roll's Skip chip and Fast hatch sit on the reveal's chip row (L.rollBar), never under SPIN AGAIN or DONE. Esc / B
 --   (Back) stay DONE at once on the reveal (keys never land on a paid button); Done() and Skip() are the API (no wait).
 --   EggStage.Timings(fast, spins) -> { Intro, Strip, Land, Rise, Crack, Burst, Stagger, LandGap, RevealAt }
---   EggStage.NoteText(pull, rarity) -> the reveal's note; EggStage.Layout() -> "PC" | "Phone" | "Portrait"
+--   EggStage.NoteText(pull, rarity, brief) -> the reveal's note (brief: an x3 column's, without the pet's name);
+--   EggStage.Layout() -> "PC" | "Phone" | "Portrait"
 --   EggStage.IsPrewarmed(petId) -> true once that pet's model was built for the reveal (warmed during the strip)
 --   EggStage.Stats() -> { Instances, Tweens, Sparks, Effects, Heartbeats }  this module's GUI instances (a ViewportFrame
 --                                          counts as one), playing tweens (its own and its HatchFx handles'), live sparks,
@@ -47,7 +48,8 @@
 -- Vignette, (Stars: the Secret backdrop), Content (the area under the top bar, UIScale "Fit") > Title, Strips > Strip1..3
 -- > Track (a non-scrolling ScrollingFrame: it clips) > Cell1..12, Streaks (High), Pointer; Hero > Spot, Rays, CloudRing1..3,
 -- Backlight1..3, Pedestal1..3, Egg1..3 (> Cracks, Leaks), Halves1..3, CrackWord; Burst > Shock, Sparks (the pool of 64);
--- Reveal > Col1..3 > Banner (Word), Aura (Secret), Shell, Pet, Name, New, Note, EvolvedRibbon; BottomBar > Skip,
+-- Reveal > Col1..3 > Banner (Word), Aura (Secret), Shell, Pet, Name, New (beside the name; an x3 phone / portrait column
+-- puts it on the pet frame's top-left corner, under an EvolvedRibbon when there is one), Note, EvolvedRibbon; BottomBar > Skip,
 -- FastHatch, SpinAgain, Done; then Stage > Flash. (The Rays live in Hero, not Burst: a GUI frame's children cannot sit
 -- between another frame's, and the rays belong behind the egg, the pedestal and the pet.) Strip cells are recycled (at
 -- most 12 per strip): a cell re-skins its egg with EggArt.SetRarity when it wraps (Task 26: lean Medium eggs, Rim = false
@@ -104,6 +106,9 @@ local K = {
 	-- last tap on the stage (each tap restarts the wait): a double tap or a mash on the Skip chip never spends a spin
 	ARM_AFTER = 0.8,
 	ARM_QUIET = 0.5,
+	-- (review round 3) SPIN AGAIN's row (label + coin + price + its two 6 px gaps) keeps this much of the button free (8 px a
+	-- side, clear of the rounded gold border), else the price takes its short form from 1,000 up ("3K")
+	AGAIN_SLACK = 16,
 	NEXT_GAP = 0.15,
 	STRIP_LEN = 40,
 	WIN = 34,
@@ -500,7 +505,9 @@ function EggStage.Timings(fast, spins)
 	return t
 end
 
-function EggStage.NoteText(pull, rarity)
+-- brief (an x3 column, review round 3): a duplicate's note leaves the pet's name out ("you have 12 now"); the name sits right
+-- above it, and on a phone the long form wrapped to three lines in the column's 36 px box
+function EggStage.NoteText(pull, rarity, brief)
 	pull = type(pull) == "table" and pull or {}
 	local def = type(pull.PetId) == "string" and PetCatalog.Get(pull.PetId) or nil
 	rarity = rarity or (def and def.Rarity) or "?"
@@ -518,7 +525,8 @@ function EggStage.NoteText(pull, rarity)
 				local ok, n = pcall(State.OwnedCount, pull.Key or pull.PetId)
 				count = (ok and type(n) == "number") and n or 1
 			end
-			tail = "you have " .. math.floor(count) .. " " .. (def and def.Name or "of them") .. " now"
+			local what = brief and "" or (" " .. (def and def.Name or "of them"))
+			tail = "you have " .. math.floor(count) .. what .. " now"
 		end
 		local n = tonumber(pull.PoolSize)
 		if n and n >= 1 then
@@ -882,7 +890,7 @@ function L.reveal3(lay, P, colW)
 			col.NameX, col.NameW = rx, rowW - rx
 			col.NameY, col.NameH, col.NameSize = ty + r.BannerH + 4, r.NameH, r.Name
 			col.NoteY, col.NoteH, col.NoteSize = col.NameY + r.NameH + 4, r.NoteH, r.Note
-			col.New = { W = r.NewW, H = r.NewH, Size = r.New }
+			col.New = { W = r.NewW, H = r.NewH, Size = r.New, Corner = true }
 			col.Ped = { X = col.X + (pet - K.LIP.W * pet) / 2, Y = col.Y + col.Pet.Y + pet - K.LIP.Up - K.LIP.H, W = K.LIP.W * pet, H = K.LIP.H }
 			col.Shell = L.shell(col.Pet, true)
 			cols[j] = col
@@ -904,7 +912,9 @@ function L.reveal3(lay, P, colW)
 		col.Pet = { X = (colW - pet) / 2, Y = top, S = pet }
 		col.NameY, col.NameH, col.NameSize = top + pet * (1 + pedK) + r.NameGap, r.NameH, r.Name
 		col.NoteY, col.NoteH, col.NoteSize = col.NameY + r.NameH + r.NoteGap, r.NoteH, r.Note
-		col.New = { W = r.NewW, H = r.NewH, Size = r.New }
+		-- (review round 3) on a phone NEW! leaves the 18 px name's row for the pet frame's corner: beside it the name had
+		-- column - 24 - 64 px (117 at 640x360, 172 at 844x390) and Legendary to Secret names were cut. PC keeps the pitch's row
+		col.New = { W = r.NewW, H = r.NewH, Size = r.New, Corner = not lay.PC }
 		if r.Lip then
 			col.Ped = { X = col.X + (colW - K.LIP.W * pet) / 2, Y = colY + top + pet - K.LIP.Up - K.LIP.H, W = K.LIP.W * pet, H = K.LIP.H }
 		else
@@ -1103,6 +1113,7 @@ end
 -- the reveal columns (one per pull, in the server's order)
 function B.cols(roll)
 	local reveal = roll.UI.Reveal
+	local brief = #roll.Pulls > 1 -- (review round 3) an x3 column's note leaves the name out: it sits right above
 	for j, pull in ipairs(roll.Pulls) do
 		local col = H.frame(reveal, "Col" .. j, { ZIndex = 4 })
 		local color = H.color(pull.Rarity)
@@ -1130,11 +1141,12 @@ function B.cols(roll)
 		})
 		roll.Views[#roll.Views + 1] = view
 		H.label(col, "Name", pull.Def.Name, "Title", 18, { ZIndex = 5, TextColor3 = color, TextTruncate = Enum.TextTruncate.AtEnd })
-		local new = H.frame(col, "New", { BackgroundColor3 = K.GOLD, BackgroundTransparency = 0, ZIndex = 5, Visible = pull.IsNew })
+		-- (ZIndex 6 / 7 like the EvolvedRibbon: on a phone's x3 it sits on the pet frame's corner, over the pet's view)
+		local new = H.frame(col, "New", { BackgroundColor3 = K.GOLD, BackgroundTransparency = 0, ZIndex = 6, Visible = pull.IsNew })
 		H.corner(new, 8)
 		H.stroke(new, K.INK, 2)
-		H.label(new, "Text", "NEW!", "Button", 15, { Size = UDim2.fromScale(1, 1), ZIndex = 6 })
-		H.label(col, "Note", EggStage.NoteText(pull, pull.Rarity), "Body", 15, { ZIndex = 5, TextWrapped = true, TextColor3 = Theme.Colors.Muted })
+		H.label(new, "Text", "NEW!", "Button", 15, { Size = UDim2.fromScale(1, 1), ZIndex = 7 })
+		H.label(col, "Note", EggStage.NoteText(pull, pull.Rarity, brief), "Body", 15, { ZIndex = 5, TextWrapped = true, TextColor3 = Theme.Colors.Muted })
 		if stage >= 1 then
 			local ribbon = H.frame(col, "EvolvedRibbon", { BackgroundColor3 = K.GOLD, BackgroundTransparency = 0, Rotation = 8, ZIndex = 6 })
 			H.corner(ribbon, 10)
@@ -1308,14 +1320,28 @@ function H.applyReveal(roll, lay)
 			end
 			-- the name (+ NEW!) row, then the note
 			local name, new, note = c.Root:FindFirstChild("Name"), c.Root:FindFirstChild("New"), c.Root:FindFirstChild("Note")
+			local ribbon = c.Root:FindFirstChild("EvolvedRibbon")
+			local rw = math.min(g.Pet.S, lay.PC and 150 or 96)
+			local rh = lay.PC and 36 or 24
 			local nx, nw = g.NameX or 12, g.NameW or (g.W - 24)
-			local newW = (new and new.Visible) and (g.New.W + 8) or 0
+			local corner = g.New.Corner == true
+			local newW = (new and new.Visible and not corner) and (g.New.W + 8) or 0
 			local textW = math.min(nw - newW, H.textW(name.Text, g.NameSize, "Title") + 8)
 			local rowX = g.Row and nx or (nx + (nw - textW - newW) / 2)
 			name.TextSize = g.NameSize
 			H.place(name, rowX, g.NameY, textW, g.NameH)
 			if new then
-				H.place(new, rowX + textW + 8, g.NameY + (g.NameH - g.New.H) / 2, g.New.W, g.New.H)
+				if corner then
+					-- (review round 3) the pet frame's top-left corner, the EvolvedRibbon's mirror (tilted the other way), under the
+					-- ribbon when both show (a narrow pet's ribbon spans the whole frame; 10 px apart so the two tilts stay clear);
+					-- the name keeps its whole row
+					local ny = g.Pet.Y + 0.12 * g.Pet.S + (ribbon and (rh + 10) or 0)
+					H.place(new, g.Pet.X, ny, g.New.W, g.New.H)
+					new.Rotation = -8
+				else
+					H.place(new, rowX + textW + 8, g.NameY + (g.NameH - g.New.H) / 2, g.New.W, g.New.H)
+					new.Rotation = 0
+				end
 				local t = new:FindFirstChild("Text")
 				if t then
 					t.TextSize = g.New.Size
@@ -1324,10 +1350,7 @@ function H.applyReveal(roll, lay)
 			note.TextSize = g.NoteSize
 			note.TextXAlignment = g.Row and Enum.TextXAlignment.Left or Enum.TextXAlignment.Center
 			H.place(note, nx, g.NoteY, nw, g.NoteH)
-			local ribbon = c.Root:FindFirstChild("EvolvedRibbon")
 			if ribbon then
-				local rw = math.min(g.Pet.S, lay.PC and 150 or 96)
-				local rh = lay.PC and 36 or 24
 				H.place(ribbon, g.Pet.X + g.Pet.S - rw, g.Pet.Y + 0.12 * g.Pet.S, rw, rh) -- inside the pet frame, clear of the banner
 				local t = ribbon:FindFirstChild("Text")
 				if t then
@@ -1409,10 +1432,20 @@ function H.refreshAgain()
 	elseif H.balance(roll.Currency) < price then
 		reason = roll.Currency == "Gems" and "Not enough Gems" or "Not enough Tokens"
 	end
-	roll.UI.AgainLabel.Text = reason or ((roll.N > 1) and "SPIN AGAIN x3" or "SPIN AGAIN")
+	local lbl = roll.UI.AgainLabel
+	lbl.Text = reason or ((roll.N > 1) and "SPIN AGAIN x3" or "SPIN AGAIN")
 	roll.UI.AgainCoin.Visible = reason == nil
 	roll.UI.AgainPrice.Visible = reason == nil
-	roll.UI.AgainPrice.Text = (S.Lay and S.Lay.PC) and Util.Commas(price) or Theme.ShortNumber(price)
+	local priceText = (S.Lay and S.Lay.PC) and Util.Commas(price) or Theme.ShortNumber(price)
+	if reason == nil then
+		-- (review round 3) measured with the real fonts (TextService): "SPIN AGAIN x3" + coin + "3,000" filled the 204 px button
+		-- of a 640x360 phone edge to edge, so a row that would not keep AGAIN_SLACK free takes the short price ("3K")
+		local need = H.textW(lbl.Text, lbl.TextSize, "Button") + roll.UI.AgainCoin.Size.X.Offset + H.textW(priceText, roll.UI.AgainPrice.TextSize, "Display") + 12 + K.AGAIN_SLACK
+		if need > btn.Size.X.Offset then
+			priceText = Theme.ShortNumber(price, 1000)
+		end
+	end
+	roll.UI.AgainPrice.Text = priceText
 	CloudUI.SetDisabled(btn, reason ~= nil or S.Pending or not armed)
 end
 

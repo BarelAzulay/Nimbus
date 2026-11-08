@@ -1035,9 +1035,12 @@ local function panelMetrics(touch)
 end
 
 ----------------------------------------------------------------------
--- Default CoreGui (health bar + player list)
+-- Default CoreGui (the health bar)
 ----------------------------------------------------------------------
-local HIDDEN_CORE = { Enum.CoreGuiType.Health, Enum.CoreGuiType.PlayerList }
+-- (lobby-shop review round 3) Roblox's player list stays on: spec 16.6, the owner's "make it be seen also in the players
+-- server list", is its Rank column (leaderstats.Rank: Top 10 / Top 100 / Creator). It was hidden since 2026-10-08 because the
+-- Tokens column sat over our top-right token strip; the strips stay where they are (an open owner question, spec 16.11).
+local HIDDEN_CORE = { Enum.CoreGuiType.Health }
 
 -- Separate pcalls so a failure on one does not skip the other.
 local function hideDefaultCoreGui()
@@ -1064,7 +1067,7 @@ local function disableDefaultHealth()
 	end)
 	pcall(function()
 		track(StarterGui.CoreGuiChangedSignal:Connect(function(coreType, enabled)
-			if enabled and (coreType == Enum.CoreGuiType.Health or coreType == Enum.CoreGuiType.PlayerList) then
+			if enabled and coreType == Enum.CoreGuiType.Health then
 				pcall(function()
 					StarterGui:SetCoreGuiEnabled(coreType, false)
 				end)

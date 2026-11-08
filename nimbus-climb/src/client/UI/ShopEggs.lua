@@ -46,7 +46,8 @@
 --   ShopEggs.Metrics                 the K table (sizes, texts; MEASURE: a text-width hook for the offline renderer)
 -- Buttons: Spin = EggStage.Request(id, "Tokens", 1), Spin3 = (id, "Tokens", 3), SpinGems = (id, "Gems", 1), the Secret
 -- card's Spin = ("Secret", "Gems", 1). A spin button holds Word ("SPIN" / "x3", or the state: "Locked", "Loading..."),
--- the currency icon (TokenIcon: the Cloud Token glyph; GemIcon: the drawn gem) and Price. The machines are frames placed
+-- the currency icon (TokenIcon: the Cloud Token glyph; GemIcon: the drawn gem) and Price ("3,000"; the phone's x3 total
+-- Theme.ShortNumber(n, 1000) = "3K"; any row wider than its button takes that short form too). The machines are frames placed
 -- by scale (the pitch's 200 x 230 drawing: base, panel, neck, the glass dome with seven EggArt eggs, the cap).
 -- Every PC text >= 18 px, every phone text >= 15 px. Plain Lua 5.1-compatible syntax only; no asset ids.
 
@@ -413,27 +414,42 @@ function H.arrange(p, w, h, size, iconPx)
 	end
 	p.Word.TextSize = size
 	p.Price.TextSize = size
+	if p.PriceFull then
+		p.Price.Text = p.PriceFull
+	end
 	local stateOnly = p.StateText ~= nil
 	p.Word.Visible = p.Word.Text ~= ""
 	p.Icon.Visible = not stateOnly
 	p.Price.Visible = not stateOnly
 	local items = {}
+	local priceItem = nil
 	if p.Word.Visible then
 		items[#items + 1] = { p.Word, H.textW(p.Word.Text, size, p.Word.Font), true }
 	end
 	if not stateOnly then
 		items[#items + 1] = { p.Icon, iconPx, false }
-		items[#items + 1] = { p.Price, H.textW(p.Price.Text, size, p.Price.Font), true }
+		priceItem = { p.Price, H.textW(p.Price.Text, size, p.Price.Font), true }
+		items[#items + 1] = priceItem
+	end
+	local function rowW(gap)
+		local total = 0
+		for _, it in ipairs(items) do
+			total = total + it[2]
+		end
+		return total + gap * (#items - 1)
+	end
+	-- (review round 3) a row wider than its button even at the 2 px gap takes the short price from 1,000 up ("3K"): Roblox draws
+	-- GothamBlack as the wide Montserrat Black, and the row would run past the button onto its neighbour (the size never steps
+	-- under the 15 px phone floor)
+	if priceItem and p.PriceShort and p.Price.Text ~= p.PriceShort and rowW(2) > w - 4 then
+		p.Price.Text = p.PriceShort
+		priceItem[2] = H.textW(p.PriceShort, size, p.Price.Font)
 	end
 	local gap = math.max(3, math.floor(size * 0.3))
-	local total = 0
-	for _, it in ipairs(items) do
-		total = total + it[2]
-	end
-	if total + gap * (#items - 1) > w - 8 then
+	if rowW(gap) > w - 8 then
 		gap = 2
 	end
-	total = total + gap * (#items - 1)
+	local total = rowW(gap)
 	local x = math.max(2, (w - total) / 2)
 	for _, it in ipairs(items) do
 		if it[3] then
@@ -1057,9 +1073,14 @@ function ShopEggs.CardState(id, button)
 	return "Ready"
 end
 
-function H.paintButton(p, id, name, priceText, short)
+-- amount: the price as a number; compact = the short form from 1,000 up at once (the phone's x3), else with separators
+-- ("3,000"), H.arrange falling back to the short form ("3K") only when the row does not fit its button
+function H.paintButton(p, id, name, amount, short, compact)
 	local st = ShopEggs.CardState(id, name)
-	p.Price.Text = priceText
+	amount = tonumber(amount) or 0
+	p.PriceShort = Theme.ShortNumber(amount, 1000)
+	p.PriceFull = compact and p.PriceShort or Util.Commas(amount)
+	p.Price.Text = p.PriceFull
 	p.Price.TextColor3 = st == "Short" and K.RED or WHITE
 	local stateText = nil
 	if st == "Locked" then
@@ -1112,14 +1133,15 @@ function ShopEggs.Refresh(page, fromLayout)
 		t.Odds.Visible = t.HasOdds == true
 		t.NoOdds.Visible = t.HasOdds ~= true
 		local unit = H.price(t.Id, "Tokens")
-		H.paintButton(t.Spin, t.Id, "Spin", Util.Commas(unit), short)
-		H.paintButton(t.Spin3, t.Id, "Spin3", short and Theme.ShortNumber(3 * unit) or Util.Commas(3 * unit), short)
-		H.paintButton(t.SpinGems, t.Id, "SpinGems", Util.Commas(H.price(t.Id, "Gems")), short)
+		H.paintButton(t.Spin, t.Id, "Spin", unit, short)
+		-- (review round 3) the phone's 74 px x3 button: the short total from 1,000 up ("3K"; "3,000" ran onto the gem button)
+		H.paintButton(t.Spin3, t.Id, "Spin3", 3 * unit, short, short)
+		H.paintButton(t.SpinGems, t.Id, "SpinGems", H.price(t.Id, "Gems"), short)
 	end
 	local h = P.Hero
 	h.Odds.Visible = h.HasOdds == true
 	h.NoOdds.Visible = h.HasOdds ~= true
-	H.paintButton(h.Spin, K.SECRET, "Spin", Util.Commas(H.price(K.SECRET, "Gems")), short)
+	H.paintButton(h.Spin, K.SECRET, "Spin", H.price(K.SECRET, "Gems"), short)
 	local restricted = attr("PaidRandomItemsRestricted")
 	local locked = restricted ~= false
 	local brief = P.Mode == "Phone" or P.Mode == "Portrait"

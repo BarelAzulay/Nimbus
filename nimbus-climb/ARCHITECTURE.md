@@ -441,7 +441,8 @@ A single ScreenGui "NimbusHud" (`ResetOnSpawn = false`, `IgnoreGuiInset = true`)
 health bar and the default player list (the `leaderstats` panel would overlap the token counter):
 `StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Health, false)` and `(Enum.CoreGuiType.PlayerList, false)`, each in its
 own pcall inside a retry loop, and re-applied whenever `StarterGui.CoreGuiChangedSignal` re-enables either one (the
-default backpack/emotes stay untouched). Elements (all fonts through Theme):
+default backpack/emotes stay untouched). (Lobby shop, 2026-11-08: the player list is on again, for the owner's Rank
+column, `docs/superpowers/specs/2026-11-07-lobby-shop-design.md` 16.6 / 16.11; only the health bar is hidden.) Elements (all fonts through Theme):
 * **Health bar** bottom-left: rounded panel, animated fill (tween on `Humanoid.HealthChanged`),
   colour via `Theme.HealthColor`, heart icon (a "♥" TextLabel, no images), text "78 / 100"
   (`Theme "Display"`), a lagging "damage trail" bar, low-health pulse (<30%). When `Downed` attr is
