@@ -1989,7 +1989,7 @@ the spin is the lock now:
 - Consequence for the owner to know: a restricted account can no longer hatch from any roulette (gem spins were already
   closed), so the tutorial's "Your First Pet" step (Rolled) cannot be completed there; such a player can skip the tutorial and
   still gets pets from the daily gifts and the other free grants. Left open as a follow-up (a free, non-paid first spin, or the
-  step skipped for restricted accounts) for the owner to decide.
+  step skipped for restricted accounts) for the owner to decide. **Answered in 16.13**: the step gives a fixed starter pet.
 - Tests: the smoke mock's PolicyService now answers "allowed" by default like Roblox does for an ordinary account (a double
   replaces it; nil brings it back; false = no API at all). `egg_spin_x3` (restricted: x1 / x3 / every machine refused with the
   text, nothing charged, the remote's answer; unknown: refused, then allowed once PolicyService answers), `p2gems_policy`
@@ -2045,3 +2045,33 @@ These override 16.12 where they differ (its "0 Trophies" bullet and its tutorial
   0 -> 0, share 0.1 / 0.01 / 1, junk shares -> 0.25), a full win over a 0-Trophy player pays 5 Trophies + the full tokens and XP
   with NewOpponent and the new toast; the same pair after the loser holds 50 Trophies pays the normal +20 and the normal toast.
   README's fair-play line says a quarter (+5 instead of +20).
+
+**Restricted accounts get a fixed starter pet at "Your First Pet".** 16.12 closed every roulette for an account PolicyService
+restricts from paid random items, so the tutorial's step 4 (`spin`, CompleteOn "Rolled") could not be finished there. Now:
+- The pet: `Config.Tutorial.RestrictedStarterPet = "pebble_pup"` (Pebble Pup): a Common of the Cloud Roulette, the machine
+  the step points at, the first Common of the catalog and an Economy pet (a small token bonus), which suits the next
+  chapter (the Pet Garden makes money). Not random: the same pet for every such account.
+- `TutorialService` (`restrictedStarter`, read by the "Rolled" check that the 2 Hz poll and every nudge run): only when
+  `GemService.PolicyState(player)` is "Restricted". "Allowed" spins as before (nothing changes); "Checking" (unknown) waits:
+  nothing is granted and the step stays until the answer comes (GemService's own retries, or a refused spin's re-ask).
+- Once per save: the grant is the save's Trove ask `TutorialStarter` (`DataService.MarkTrove` with the grant record
+  `{ Pets = { pebble_pup = 1 } }`) followed, in the same non-yielding step, by `PetService.GrantPet(player, id, { Count = 1 })`
+  (the Store's pet path: discovered, auto-equipped as the first pet, no spin counted, Rolled not fired). The ask and the
+  pet ride one save; the Trove merge (union + the twin rule, built for the Sky Trove) keeps ONE pet in the store when two
+  servers both grant. A save that already holds the ask (the step again, a rejoin, a later server) completes the step with
+  nothing granted. A save not readable yet (loading, provisional) waits. A full stack of that pet marks the ask with no pet.
+  No new saved field (Trove existed); `ResetFields` (the dev reset) wipes Trove with the Tutorial, so a developer replay
+  can get it again.
+- Nothing a client sends reaches it: the TutorialEvent remote never completes a "Rolled" step, and the grant is decided
+  from the server's policy answer and the save alone.
+- The client: no new UI. The step ends as a spin's would without the egg: the toast "Nimbus hatched a Pebble Pup just for
+  you: your very first pet buddy!", the pet joins the team and follows, and the next TutorialState ("Pick a Buddy") is sent.
+  The gift step's 50 tokens are still paid to everyone (unchanged; they stay in the balance).
+- A nested nudge (GrantPet's team change fires TeamsChanged, which settles the tutorial again from inside the grant) is kept
+  from completing the step twice by a busy flag on the track.
+- Tests: `tut_starter_restricted` (red first): the config pet is a Cloud Common; a restricted account on the step gets
+  exactly one Pebble Pup (no spin counted, discovered, in the team, one toast, the next step sent, the ask saved); the step
+  again, and after a leave and rejoin: no second pet, the step completes; an allowed account gets nothing whatever
+  TutorialEvent it sends and its real spin completes the step (no ask written); an unknown policy waits, then the
+  "Restricted" answer grants once. `tut_starter_two_servers`: server A grants while the store fails, server B (read the
+  store before A's save) grants and saves, A's orphan retry lands: the store holds one Pebble Pup and the ask.

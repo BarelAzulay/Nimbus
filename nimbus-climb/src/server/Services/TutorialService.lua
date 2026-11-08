@@ -47,7 +47,11 @@
 --   RingWon       BattleService.BattleEnded with Mode "Ring" and Won, or DataService.GetRing(player).Best >= 1
 --   PortalUsed    TycoonService.PortalUsed while the step runs (the player walked through their home portal)
 --   NearSpot      2 Hz poll: the character within 14 studs (horizontally) of SpotService.GetSpot(player).Center
---   Rolled        PetService.Rolled (backup: Profile.Stats.Spins grew since the step began)
+--   Rolled        PetService.Rolled (backup: Profile.Stats.Spins grew since the step began); lobby-shop 16.13: an account
+--                 PolicyService restricts from paid random items (GemService.PolicyState "Restricted"; it cannot spin) gets
+--                 ONE fixed starter pet (Config.Tutorial.RestrictedStarterPet) instead, once per save (the save's Trove ask
+--                 "TutorialStarter" + PetService.GrantPet in one step; see restrictedStarter), and the step completes;
+--                 "Checking" (unknown) waits; "Allowed" spins as before
 --   Equipped      the equipped list changed to a non-empty one (PetService.PerksChanged / attribute EquippedPets),
 --                 or the client reports "PetsOpened" while a pet is equipped
 --   MatchStarted  / MatchEnded: the player attribute InMatch turning true / false
@@ -208,6 +212,8 @@ local arenaInfo = nil
 -- Phase 5 (the Dungeon step): every use is guarded
 local DungeonService = nil
 local dungeonInfo = nil
+-- lobby-shop 16.13 (the restricted starter): GemService.PolicyState, PetCatalog names; every use is guarded
+local Starter = { GemService = nil, PetCatalog = nil, ASK = "TutorialStarter" }
 
 local function hasSignal(module, name)
 	return type(module) == "table" and type(module[name]) == "table" and type(module[name].Connect) == "function"
@@ -1582,6 +1588,66 @@ local function nearSpot(player)
 	return flat <= NEAR_SPOT_RADIUS and math.abs(offset.Y) <= NEAR_SPOT_HEIGHT
 end
 
+-- lobby-shop 16.13 (the owner's answer, 2026-11-08): an account PolicyService RESTRICTS from paid random items cannot spin
+-- any roulette (16.12), so on a "Rolled" step it gets ONE fixed starter pet (Config.Tutorial.RestrictedStarterPet) instead
+-- and the step completes. Returns true when the step may complete this way:
+--   * only GemService.PolicyState "Restricted" (an "Allowed" account spins as before; "Checking" = unknown waits: nothing
+--     granted, the step stays; GemService's own retries bring the answer);
+--   * once per save: the grant is the save's Trove ask "TutorialStarter" (DataService.MarkTrove) with its grant record
+--     { Pets = { [id] = 1 } }, written in the same non-yielding step as PetService.GrantPet. The ask travels with the pet in
+--     one save, and the Trove merge (a union + the twin rule) keeps ONE pet in the store when two servers both grant; a
+--     save that already holds the ask (a repeat, a rejoin, a later server) completes the step with no pet;
+--   * a save not readable (loading, provisional: GetTrove nil) waits; a full stack of that pet marks the ask without a pet.
+-- Server-decided only: no remote reaches this (the TutorialEvent remote never completes a "Rolled" step).
+local function restrictedStarter(player, track)
+	if track.StarterBusy then
+		return false -- the grant below is running (a nested nudge)
+	end
+	local gems = Starter.GemService
+	if not hasFunction(gems, "PolicyState") or gems.PolicyState(player) ~= "Restricted" then
+		return false
+	end
+	if not hasFunction(DataService, "GetTrove") or not hasFunction(DataService, "MarkTrove") or not hasFunction(DataService, "GetProfile") then
+		return false
+	end
+	local okTrove, trove = pcall(DataService.GetTrove, player)
+	if not okTrove or type(trove) ~= "table" then
+		return false -- the save is not readable yet: wait
+	end
+	if trove[Starter.ASK] == true then
+		return true -- this save got its starter already: the step completes, nothing more
+	end
+	local petId = type(Config.Tutorial) == "table" and Config.Tutorial.RestrictedStarterPet or nil
+	local catalog = Starter.PetCatalog
+	local def = type(petId) == "string" and catalog and hasFunction(catalog, "Get") and catalog.Get(petId) or nil
+	if not def or not hasFunction(PetService, "GrantPet") then
+		return false
+	end
+	local okProfile, profile = pcall(DataService.GetProfile, player)
+	if not okProfile or type(profile) ~= "table" or type(profile.Pets) ~= "table" then
+		return false
+	end
+	local cap = (type(Config.Pets) == "table" and tonumber(Config.Pets.MaxPerStack)) or 99
+	local room = (tonumber(profile.Pets[petId]) or 0) < cap
+	local okMark, marked = pcall(DataService.MarkTrove, player, Starter.ASK, room and { Pets = { [petId] = 1 } } or nil)
+	if not okMark or marked ~= true then
+		return false
+	end
+	if room then
+		-- GrantPet puts the first pet into the team, whose TeamsChanged nudges this tutorial again from inside the call: the
+		-- busy flag keeps that nested settle from completing the step a second time (only this caller completes it)
+		track.StarterBusy = true
+		local okGrant, granted, result = pcall(PetService.GrantPet, player, petId, { Count = 1 })
+		track.StarterBusy = nil
+		if okGrant and granted == true then
+			notify(player, "Nimbus hatched a " .. tostring(def.Name or petId) .. " just for you: your very first pet buddy!", "good", 6)
+		else
+			warn("[TutorialService] the restricted starter " .. petId .. " was not granted: " .. tostring(okGrant and result or granted))
+		end
+	end
+	return true
+end
+
 -- Level-based completion checks (state the server can see right now).
 local function satisfied(player, track, step)
 	local kind = step.CompleteOn
@@ -1592,7 +1658,8 @@ local function satisfied(player, track, step)
 	elseif kind == "NearSpot" then
 		return not inMatch(player) and nearSpot(player)
 	elseif kind == "Rolled" then
-		return spinsOf(player) > (track.SpinsBase or math.huge)
+		-- a spin; or, for an account restricted from paid random items only, its one starter pet (16.13)
+		return spinsOf(player) > (track.SpinsBase or math.huge) or restrictedStarter(player, track)
 	elseif kind == "Claimed" then
 		return getSpot(player) ~= nil
 	elseif kind == "Built" then
@@ -2041,6 +2108,9 @@ function TutorialService.Init(lobbyInfo, deps)
 	-- Phase 5 (the Dungeon step; Main passes DungeonBuilder.Build's info and the module table, its Init runs later)
 	DungeonService = deps.DungeonService or loadModule(services, "DungeonService")
 	dungeonInfo = type(deps.DungeonInfo) == "table" and deps.DungeonInfo or nil
+	-- lobby-shop 16.13 (the restricted starter)
+	Starter.GemService = deps.GemService or loadModule(services, "GemService")
+	Starter.PetCatalog = loadModule(Shared, "PetCatalog")
 
 	buildSteps()
 	if #steps == 0 then

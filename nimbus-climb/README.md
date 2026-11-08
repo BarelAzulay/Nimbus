@@ -885,7 +885,9 @@ Pack) are not sold to them ("Token packs are not available on your account"; whi
 still open such a prompt by other means, token spins themselves are closed for those accounts too: every token SPIN /
 x3 button reads **Locked** and the server answers "Token spins are not available on your account" (while Roblox has
 not answered yet: "Checking your account, try again in a moment"). A purchase that was already paid is always granted.
-Gem packs and everything else still work.
+Gem packs and everything else still work. Because such a player cannot spin, the tutorial's **Your First Pet** step gives
+them one **Pebble Pup** from Nimbus instead (once per account; it waits while Roblox has not answered yet), and the
+tutorial carries on.
 
 ### The Store: the owner's setup
 

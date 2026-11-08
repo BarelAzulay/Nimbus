@@ -54,7 +54,8 @@
 --       DailyService's Z8 first sight of a wrong-clock LastClaimAt (the stamp it was seen against, the now of that first
 --       sight, the game.JobId of the server whose clock read it: re-review 3), left out of the store while 0; the Daily
 --       left out while all zero; wiped by the dev reset)
---     Trove = {[askId]=true}   -- the Sky Trove asks paid (left out while empty; wiped by the dev reset)
+--     Trove = {[askId]=true}   -- the Sky Trove asks paid (left out while empty; wiped by the dev reset); lobby-shop 16.13:
+--       also the one-time ask "TutorialStarter" (TutorialService: the restricted account's starter pet, grant { Pets })
 --     -- Lobby shop (spec docs/superpowers/specs/2026-11-07-lobby-shop-design.md 5.2 / 6; a new TOP-LEVEL field, foreign to
 --     -- every older server; helpers in P7)
 --     Pity = { Secret = { Spins, Hit } }   -- the Secret Roulette pity: Spins = its spins ever, Hit = the Spins value

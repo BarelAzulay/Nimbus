@@ -493,6 +493,10 @@ Config.Eggs = {
 Config.Tutorial = {
 	GiftTokens = 50, -- granted once at the "spin your first roulette" step so a new player can afford it
 	FinishReward = { Tokens = 100 },
+	-- lobby-shop 16.13 (the owner's answer, 2026-11-08): an account PolicyService restricts from paid random items cannot
+	-- spin, so the "Your First Pet" step gives it this ONE fixed Common pet of the Cloud Roulette instead, once per save
+	-- (TutorialService; everyone else spins as before)
+	RestrictedStarterPet = "pebble_pup",
 }
 
 -- Pet battles (most duel tunables are BattleService locals; this table holds the ones the owner sets).
