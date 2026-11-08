@@ -48,7 +48,7 @@ local NAMES = { "Click", "Confirm", "Error", "Reward", "Whoosh", "Inhale", "Shat
 	"RevealCommon", "RevealRare", "RevealLegendary",
 	-- store (2026-11-04): silent until AudioIds has the key; StorePop / StoreBuy callers fall back to Click / Reward
 	"StorePop", "StoreBuy", "TroveOpen", "DailyWeek",
-	-- the egg cutscene (lobby-shop Task 27): silent until AudioIds has the key; EggStage plays Config.Audio.Fallback meanwhile
+	-- the egg cutscene (lobby-shop Task 27, uploaded 2026-11-07): a key with id 0 is silent; EggStage plays Config.Audio.Fallback then
 	"EggStripTick", "EggStripLand", "EggRise", "EggShake", "EggCrack", "EggBurst", "EggCloudRing",
 	"EggRevealCommon", "EggRevealEpic", "EggRevealLegend", "EggRevealSecret" }
 do

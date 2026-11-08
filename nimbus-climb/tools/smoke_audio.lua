@@ -3,8 +3,8 @@
 --   audio_ring_pocket   (server, booted) the real Champion Ring pocket (ArenaBuilder.BuildPocket(i, "Ring")) has the
 --                       child model "Crowd" RingAmbience hangs the crowd + drums on; the fighter's pad is inside the
 --                       crowd's hearing range (CrowdCheer Max), the next pocket's crowd far outside it
---   client_audio_keys   Config.Audio.Keys = exactly the 59 keys of audio/audio.json (12 originals + 47 of wave 2) + the
---                       pending FountainLoop (one each); Config.Audio holds exactly the AudioIds that exist; a Config
+--   client_audio_keys   Config.Audio.Keys = exactly the 70 keys of audio/audio.json (12 originals + 47 of wave 2 + the 11
+--                       egg sounds) + the pending FountainLoop / Store keys (one each); Config.Audio holds exactly the AudioIds that exist; a Config
 --                       copy beside a FAKE AudioIds maps every key to its number, leaves out a missing / junk one; one
 --                       place for slot volumes (every key; music under every SFX but the UnderMusic hits / ticks, which
 --                       sit at or under it; the ring's crowd + drums under the music) + the positional ranges;
@@ -44,15 +44,16 @@ local AUDIO_KEYS = { "Click", "Confirm", "CrowdCheer", "DrumLoop", "Error", "Inh
 	"RevealLegendary", "RevealRare", "SpinLand", "SpinStart", "SpinTick", "StationBuild", "TutorialStep",
 	"NpcCaptainPenguinGreet", "NpcCaptainPenguinHmm", "NpcCaptainPenguinPleased", "NpcCoachCorgiGreet", "NpcCoachCorgiHmm", "NpcCoachCorgiPleased",
 	"NpcGrannyOwlGreet", "NpcGrannyOwlHmm", "NpcGrannyOwlPleased", "NpcMayorPandaGreet", "NpcMayorPandaHmm", "NpcMayorPandaPleased",
-	"NpcProfessorAxolotlGreet", "NpcProfessorAxolotlHmm", "NpcProfessorAxolotlPleased", "NpcSparkyFoxGreet", "NpcSparkyFoxHmm", "NpcSparkyFoxPleased" }
+	"NpcProfessorAxolotlGreet", "NpcProfessorAxolotlHmm", "NpcProfessorAxolotlPleased", "NpcSparkyFoxGreet", "NpcSparkyFoxHmm", "NpcSparkyFoxPleased",
+	-- lobby-shop Task 27 (spec 16.4): the egg cutscene's own sounds, the owner's egg-sounds takes (uploaded and approved
+	-- 2026-11-07, branch egg-sounds); an id of 0 still falls back through Config.Audio.Fallback (client_hatch_cutscene)
+	"EggStripTick", "EggStripLand", "EggRise", "EggShake", "EggCrack", "EggBurst", "EggCloudRing", "EggRevealCommon", "EggRevealEpic", "EggRevealLegend", "EggRevealSecret" }
 table.sort(AUDIO_KEYS)
+local N_AUDIO = #AUDIO_KEYS -- 70: 12 originals + 47 of wave 2 + the 11 egg sounds
 -- uploaded to audio/audio.json, NOT wired yet (move a key up into AUDIO_KEYS when it is wired): none today
 local WAVE2_KEYS = {}
 -- wired in Config.Audio.Keys before any take exists (no file in audio.json, no AudioIds id: silent until one is approved)
-local PENDING_KEYS = { "FountainLoop", "StorePop", "StoreBuy", "TroveOpen", "DailyWeek", -- store (2026-11-04): the four Store keys
-	-- lobby-shop Task 27 (spec 16.4): the egg cutscene's own sounds (the egg-sounds takes; until an id lands each falls back
-	-- through Config.Audio.Fallback to today's sound or silence). Move them up into AUDIO_KEYS once audio.json has them
-	"EggStripTick", "EggStripLand", "EggRise", "EggShake", "EggCrack", "EggBurst", "EggCloudRing", "EggRevealCommon", "EggRevealEpic", "EggRevealLegend", "EggRevealSecret" }
+local PENDING_KEYS = { "FountainLoop", "StorePop", "StoreBuy", "TroveOpen", "DailyWeek" } -- store (2026-11-04): the four Store keys
 local MANIFEST_KEYS = {}
 for _, list in ipairs({ AUDIO_KEYS, WAVE2_KEYS }) do
 	for _, key in ipairs(list) do
@@ -290,8 +291,8 @@ S.client_audio_keys = guarded("client_audio_keys", function()
 		end
 	end
 	table.sort(ckeys)
-	T.eq(table.concat(mkeys, " "), table.concat(MANIFEST_KEYS, " "), "audio keys: audio/audio.json lists the 59 sounds (12 originals + the 47 of wave 2)")
-	T.check(table.concat(ckeys, " ") == table.concat(CONFIG_KEYS, " ") and #dup == 0, "audio keys: Config.Audio.Keys maps exactly the 59 AudioIds keys (+ FountainLoop, no take yet), each once",
+	T.eq(table.concat(mkeys, " "), table.concat(MANIFEST_KEYS, " "), "audio keys: audio/audio.json lists the " .. N_AUDIO .. " sounds (12 originals + the 47 of wave 2 + the 11 egg sounds)")
+	T.check(table.concat(ckeys, " ") == table.concat(CONFIG_KEYS, " ") and #dup == 0, "audio keys: Config.Audio.Keys maps exactly the " .. N_AUDIO .. " AudioIds keys (+ the pending FountainLoop and Store keys, no take yet), each once",
 		table.concat(ckeys, " ") .. " dup: " .. table.concat(dup, " "))
 	T.eq(A.Keys.Sfx.Inhale, "Inhale", "audio keys: Sfx.Inhale = AudioIds.Inhale")
 	T.eq(A.Keys.Sfx.Shatter, "Shatter", "audio keys: Sfx.Shatter = AudioIds.Shatter")

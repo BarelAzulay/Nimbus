@@ -122,6 +122,38 @@ Upload: one `--audio` run creates the 29 wave-2 effects + these 18 voices = 47 (
 Roblox counts audio uploads per account per month (100 with ID verification, which the owner has): 12 used this month,
 this batch adds 47 (59 of 100). If the 29 were already uploaded, the run creates only the 18 voices.
 
+## Egg cutscene sounds (lobby shop, final files, 2026-11-07)
+
+Made for the egg-opening cutscene (branch `lobby-shop`, spec section 16.4, storyboard A "Pedestal") and picked by the
+owner on the egg sounds page (2026-11-07; the first two Secret takes were rejected as "depressive", take 4 of the royal
+redo was picked). All original, ElevenLabs sound effects (Creator plan), the wave-2 chain plus a -12 LUFS loudness
+ceiling. 11 one-shots, slot `Sfx`, not looped. Prompts, measurements and rejected attempts:
+`.superpowers/lobby-shop/sounds/prompts.md` (the Nimbus folder, outside the repo). Uploaded on branch `egg-sounds`
+(e564ac8) and approved by Roblox moderation (5a65b4c); merged into `lobby-shop` at bc9d0db.
+
+| Key | File | Source take | Length | Ch | Where it plays (`client/UI/EggStage.lua`) |
+|---|---|---|---|---|---|
+| EggStripTick | EggStripTick.ogg | EggStripTick take 2 (one click cut from the take) | 0.09 s | mono | each strip cell passing the pointer (always at Scale 0.6) |
+| EggStripLand | EggStripLand.ogg | EggStripLand take 1 | 0.59 s | mono | the strip lands on the egg |
+| EggRise | EggRise.ogg | EggRise take 2 | 0.82 s | mono | the landed egg rises onto the pedestal |
+| EggShake | EggShake.ogg | EggShake take 1 | 0.23 s | st | each shake of the cracking egg |
+| EggCrack | EggCrack.ogg | EggCrack take 1 | 0.49 s | st | the egg starts to crack |
+| EggBurst | EggBurst.ogg | EggBurst take 1 | 0.90 s | st | the egg bursts open |
+| EggCloudRing | EggCloudRing.ogg | EggCloudRing take 2 | 1.53 s | st | the cloud ring swells on the burst |
+| EggRevealCommon | EggRevealCommon.ogg | EggRevealCommon take 1 | 1.33 s | mono | the reveal: Common, Uncommon, Rare |
+| EggRevealEpic | EggRevealEpic.ogg | EggRevealEpic take 1 | 1.13 s | st | the reveal: Epic |
+| EggRevealLegend | EggRevealLegend.ogg | EggRevealLegend take 1 | 2.21 s | st | the reveal: Legendary, Mythic |
+| EggRevealSecret | EggRevealSecret.ogg | EggRevealSecret take 4 (the royal redo) | 2.47 s | st | the reveal: Secret |
+
+Below Legendary every cutscene sound plays at `Scale = 0.6`; from Legendary the land, rise, shake, crack, burst, ring
+and reveal play at 1 (the strip's `SpinStart` and ticks stay at 0.6, so nothing tells the rarity before the landing).
+An x3 roll plays one reveal sound, the best pull's. A Skip stops every sound of the roll. A key whose id is 0 plays
+`Config.Audio.Fallback[key]` in its place: EggStripTick -> SpinTick, EggStripLand -> SpinLand, EggBurst -> Shatter,
+EggRevealCommon -> RevealCommon, EggRevealEpic -> RevealRare, EggRevealLegend / EggRevealSecret -> RevealLegendary;
+EggRise, EggShake, EggCrack and EggCloudRing stay silent.
+
+`audio.json` now lists 70 sounds (12 originals + 47 of wave 2 + these 11).
+
 ## Wiring (branch audio-wire, 2026-10-30)
 
 Every wave-2 key and NPC voice is in `Config.Audio.Keys.Sfx` under its own name (the voices are built from 6 NPCs x
@@ -210,6 +242,17 @@ Volume is x the player's Sfx setting / 10 (DrumLoop follows Music). Pitch is the
 | RevealCommon | 0.7 | 1.0 | |
 | RevealRare | 0.75 | 1.0 | |
 | RevealLegendary | 0.8 | 1.0 | |
+| EggStripTick | 0.4 | 0.98-1.02 | 0.025 |
+| EggStripLand | 0.75 | 1.0 | |
+| EggRise | 0.65 | 1.0 | |
+| EggShake | 0.7 | 0.96-1.04 | |
+| EggCrack | 0.75 | 0.97-1.03 | |
+| EggBurst | 0.85 | 1.0 | |
+| EggCloudRing | 0.6 | 1.0 | |
+| EggRevealCommon | 0.7 | 1.0 | |
+| EggRevealEpic | 0.75 | 1.0 | |
+| EggRevealLegend | 0.8 | 1.0 | |
+| EggRevealSecret | 0.85 | 1.0 | |
 | Npc\<Name\>\<Kind\> (18) | 0.6 | 0.98-1.02 | (per-NPC Voice.Gap 1.5) |
 | Error | 0.7 | 0.95-1.05 | 1.0 |
 | FountainLoop (Ambient) | 0.45 | | |
@@ -218,9 +261,12 @@ Caps: at most 8 plays of the `Hit*` keys together per 0.25 s (a crowded raid). V
 a random file that has an id, never the one played last (a missing id drops out of the rotation).
 
 **UnderMusic exemption.** The smoke test's rule "every sound effect sits above the music" (music max 0.5) does not
-apply to the frequent / quiet keys listed in `Config.Audio.UnderMusic`: the eight `Hit*`, `SpinTick`, `DialogBlip` and
-`DialogNext`. They come many per second (or under a typewriter), so they sit at or under the music on purpose. Every
+apply to the frequent / quiet keys listed in `Config.Audio.UnderMusic`: the eight `Hit*`, `SpinTick`, `EggStripTick`,
+`DialogBlip` and `DialogNext`. They come many per second (or under a typewriter), so they sit at or under the music on purpose. Every
 other effect must still be louder than the music.
 
 Tests: `tools/smoke_audio.lua` (`client_audio_keys` / `_silent` / `_charge` / `_music` / `_ring` / `_mechanics` /
-`_battle` / `_sites` / `_npc`; every key in `AUDIO_KEYS`, `PENDING_KEYS = { FountainLoop }`).
+`_battle` / `_sites` / `_npc`; every key in `AUDIO_KEYS` (the 70 of `audio.json`), `PENDING_KEYS = { FountainLoop,
+StorePop, StoreBuy, TroveOpen, DailyWeek }`, wired with no take yet). The egg cutscene's sounds: `tools/smoke_egg_stage.lua`
+(`client_egg_stage`: the uploaded ids at their slot volumes, the reveal sound per rarity, and the id-0 fallback with the
+egg ids zeroed for the test; `client_hatch_cutscene`: the same fallback, the egg keys per phase, a skip stops them).

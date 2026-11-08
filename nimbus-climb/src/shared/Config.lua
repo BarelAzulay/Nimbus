@@ -989,7 +989,7 @@ Config.Sky = {
 --                   PortalArrive, StationBuild, HouseTier, DialogOpen / DialogBlip / DialogNext, TutorialStep, the
 --                   roulette's SpinStart / SpinTick / SpinLand, RevealCommon / RevealRare / RevealLegendary and the NPC
 --                   voices Npc<Name>Greet / Hmm / Pleased (NpcController); the egg cutscene's Egg<...> keys (lobby-shop
---                   Task 27: wired before their upload, each plays Fallback[key] until its AudioIds id exists)
+--                   Task 27: uploaded 2026-11-07; a key whose id is 0 plays Fallback[key] in its place)
 --   Ambient[name]   positional loops (SoundFx.Positional): the Champion Ring's CrowdCheer (Sfx setting) and DrumLoop
 --                   (Music setting) at the ring pocket's crowd stand (client/Controllers/RingAmbience); the lobby
 --                   fountain's water (Fountain = key FountainLoop: no approved take yet, so silent until one is)
@@ -1012,8 +1012,8 @@ local AUDIO_WAVE2 = {
 	"RevealCommon", "RevealRare", "RevealLegendary",
 	-- store (2026-11-04): a card tap, a purchase landing, the Trove's lid, the week's pet
 	"StorePop", "StoreBuy", "TroveOpen", "DailyWeek",
-	-- the egg cutscene (lobby-shop Task 27; the owner's picks of 2026-11-07, files on branch egg-sounds, not uploaded yet):
-	-- silent until AudioIds has the key; EggStage plays Fallback[key] in its place meanwhile (below)
+	-- the egg cutscene (lobby-shop Task 27; the owner's picks of 2026-11-07, uploaded and approved, branch egg-sounds):
+	-- a key whose AudioIds id is 0 is silent; EggStage plays Fallback[key] in its place then (below)
 	"EggStripTick", "EggStripLand", "EggRise", "EggShake", "EggCrack", "EggBurst", "EggCloudRing",
 	"EggRevealCommon", "EggRevealEpic", "EggRevealLegend", "EggRevealSecret",
 }
@@ -1104,7 +1104,7 @@ Config.Audio = {
 		HitNature = true, HitCelestial = true, SpinTick = true, DialogBlip = true, DialogNext = true, EggStripTick = true,
 	},
 	-- a key that has no id yet plays this one in its place (false: silent until its id exists); read by its caller
-	-- (EggStage), never by SoundFx.Play: the egg cutscene keeps today's roulette sounds until the owner's are uploaded
+	-- (EggStage), never by SoundFx.Play: an egg key without its id plays today's roulette sound (a safety net now)
 	Fallback = {
 		EggStripTick = "SpinTick", EggStripLand = "SpinLand", EggRise = false, EggShake = false, EggCrack = false, EggBurst = "Shatter",
 		EggCloudRing = false, EggRevealCommon = "RevealCommon", EggRevealEpic = "RevealRare", EggRevealLegend = "RevealLegendary",

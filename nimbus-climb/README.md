@@ -1713,7 +1713,7 @@ Things only you can do, by hand, once. Steps 3 and 4 are optional; everything wo
    Until all six are set the game shows the built-in fallback sky (a pink-lavender haze, a Roblox cloud layer tinted
    pink and 3000 stars: no seams, a little flatter than the painted sky), and Output shows a yellow
    `[LightingService]` line naming the missing face. Left and right look swapped? Swap the `Lf` and `Rt` ids.
-3. **Music and sounds:** the game has its own original audio in `audio/` (59 files, see `audio/README.md`). The
+3. **Music and sounds:** the game has its own original audio in `audio/` (70 files, see `audio/README.md`). The
    upload session puts them on Roblox with `python3 tools/upload_assets.py --audio` (a dry run) and then
    `python3 tools/upload_assets.py --upload --audio`, which writes `src/shared/AudioIds.lua`; `Config.Audio` reads
    it (`Config.Audio.Music.Lobby` / `Battle` / `Dungeon`, `Config.Audio.Sfx` (`Click`, `Confirm`, `Error`, `Reward`,
@@ -1722,8 +1722,8 @@ Things only you can do, by hand, once. Steps 3 and 4 are optional; everything wo
    `Parry`, `PortalEnter`, `PortalArrive`, `StationBuild`, `HouseTier`, `DialogOpen`, `DialogBlip`, `DialogNext`,
    `TutorialStep`, the roulette's `SpinStart`, `SpinTick`, `SpinLand`, `RevealCommon`, `RevealRare`,
    `RevealLegendary`, the egg-opening cutscene's `EggStripTick`, `EggStripLand`, `EggRise`, `EggShake`, `EggCrack`,
-   `EggBurst`, `EggCloudRing`, `EggRevealCommon`, `EggRevealEpic`, `EggRevealLegend`, `EggRevealSecret` (made, not
-   uploaded yet: until a key has its id the cutscene plays the sound named in `Config.Audio.Fallback` in its place, or
+   `EggBurst`, `EggCloudRing`, `EggRevealCommon`, `EggRevealEpic`, `EggRevealLegend`, `EggRevealSecret` (uploaded and
+   approved 2026-11-07; a key whose id is 0 plays the sound named in `Config.Audio.Fallback` in its place, or
    nothing), the Store's `StorePop`, `StoreBuy`, the daily gifts' `DailyWeek`, the Sky Trove's `TroveOpen`, and the wordless NPC voices `NpcSparkyFoxGreet`, `NpcSparkyFoxHmm`, `NpcSparkyFoxPleased`,
    `NpcCaptainPenguinGreet`, `NpcCaptainPenguinHmm`, `NpcCaptainPenguinPleased`, `NpcGrannyOwlGreet`,
    `NpcGrannyOwlHmm`, `NpcGrannyOwlPleased`, `NpcCoachCorgiGreet`, `NpcCoachCorgiHmm`, `NpcCoachCorgiPleased`,

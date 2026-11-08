@@ -114,7 +114,8 @@ local K = {
 	RESTRICTED_ATTR = "PaidRandomItemsRestricted",
 	-- the owner's egg sounds (Config.Audio: each plays Config.Audio.Fallback while its id is 0)
 	SOUND = { Tick = "EggStripTick", Land = "EggStripLand", Rise = "EggRise", Shake = "EggShake", Crack = "EggCrack", Burst = "EggBurst", Ring = "EggCloudRing" },
-	REVEAL_SOUND = { Common = "EggRevealCommon", Uncommon = "EggRevealCommon", Rare = "EggRevealEpic", Epic = "EggRevealEpic", Legendary = "EggRevealLegend", Mythic = "EggRevealLegend", Secret = "EggRevealSecret" },
+	-- the owner's picks page: EggRevealCommon is "Common to Rare", EggRevealLegend Legendary / Mythic
+	REVEAL_SOUND = { Common = "EggRevealCommon", Uncommon = "EggRevealCommon", Rare = "EggRevealCommon", Epic = "EggRevealEpic", Legendary = "EggRevealLegend", Mythic = "EggRevealLegend", Secret = "EggRevealSecret" },
 	LOUD_FROM = 5, -- Config.Rarities Order: Legendary and up play at Scale 1, the rest at 0.6
 	QUIET = 0.6,
 	-- (Task 27) the dressed cutscene (spec 16.4 "VFX and budget")

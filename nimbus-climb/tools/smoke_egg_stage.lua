@@ -591,6 +591,27 @@ end)
 ----------------------------------------------------------------------------------------------------
 -- client_egg_stage
 ----------------------------------------------------------------------------------------------------
+-- the egg sound keys (uploaded and approved 2026-11-07: shared/AudioIds has an id for each) and today's sound each falls
+-- back to while its id is 0 (false: silent then); Config.Audio.Fallback holds the same map
+local EGG_SOUNDS = {
+	EggStripTick = "SpinTick", EggStripLand = "SpinLand", EggRise = false, EggShake = false, EggCrack = false, EggBurst = "Shatter",
+	EggCloudRing = false, EggRevealCommon = "RevealCommon", EggRevealEpic = "RevealRare", EggRevealLegend = "RevealLegendary",
+	EggRevealSecret = "RevealLegendary",
+}
+-- the id-0 world for a test: every egg id in Config.Audio.Sfx set to 0 (the real ids saved); -> the function that puts
+-- them back
+local function zeroEggIds(Config)
+	local saved = {}
+	for key in pairs(EGG_SOUNDS) do
+		saved[key] = Config.Audio.Sfx[key]
+		Config.Audio.Sfx[key] = 0
+	end
+	return function()
+		for key in pairs(EGG_SOUNDS) do
+			Config.Audio.Sfx[key] = saved[key]
+		end
+	end
+end
 S.client_egg_stage = guarded("client_egg_stage", function()
 	local KC = G.KC()
 	local Config = KC.env()
@@ -643,7 +664,16 @@ S.client_egg_stage = guarded("client_egg_stage", function()
 	local sounds = {}
 	local realPlay = SF.Play
 	SF.Play = function(name, opts)
-		sounds[#sounds + 1] = { name = name, scale = opts and opts.Scale }
+		local rec = { name = name, scale = opts and opts.Scale }
+		sounds[#sounds + 1] = rec
+		-- the egg keys play for real (SoundFx's pool), so the test reads each Sound's id and volume
+		if EGG_SOUNDS[name] ~= nil then
+			local okP, snd = pcall(realPlay, name, opts)
+			if okP and typeof(snd) == "Instance" then
+				rec.id, rec.volume = snd.SoundId, snd.Volume
+				return snd
+			end
+		end
 		return nil
 	end
 	local hints = {}
@@ -745,9 +775,48 @@ S.client_egg_stage = guarded("client_egg_stage", function()
 		T.check(ES.Stats().Instances <= 450, "egg stage: x1 reveal within 450 instances", tostring(ES.Stats().Instances))
 		RedoGeom.check(G.content(), "egg stage 1920x1080 x1 reveal", { MinText = 18, NoOverlap = { "Banner", "Pedestal1", "Name", "Note", "SpinAgain", "Done", "Skip", "FastHatch" }, Skip = { Rays = true, Flash = true, Vignette = true } })
 		local epicSounds = soundsFrom(s0)
-		for _, name in ipairs({ "SpinStart", "SpinTick", "SpinLand", "Shatter", "RevealRare" }) do
+		-- the uploaded egg sounds (AudioIds has every egg id): they play, today's roulette sounds do not
+		local noId = {}
+		for key in pairs(EGG_SOUNDS) do
+			local id = Config.Audio.Sfx[key]
+			if not (type(id) == "number" and id > 0) then
+				noId[#noId + 1] = key
+			end
+		end
+		table.sort(noId)
+		T.check(#noId == 0, "egg stage: Config.Audio.Sfx has an id for each of the 11 egg sounds (uploaded 2026-11-07)", table.concat(noId, " "))
+		local EPIC_PLAYS = { "SpinStart", "EggStripTick", "EggStripLand", "EggRise", "EggShake", "EggCrack", "EggBurst", "EggCloudRing", "EggRevealEpic" }
+		for _, name in ipairs(EPIC_PLAYS) do
 			T.check(hasSound(epicSounds, name, 0.6), "egg stage: an Epic roll plays " .. name .. " at Scale 0.6")
 		end
+		local old = {}
+		for _, name in ipairs({ "SpinTick", "SpinLand", "Shatter", "RevealCommon", "RevealRare", "RevealLegendary" }) do
+			if hasSound(epicSounds, name) then
+				old[#old + 1] = name
+			end
+		end
+		T.check(#old == 0, "egg stage: ...and none of the fallback sounds while the egg ids exist", table.concat(old, " "))
+		-- each egg key's Sound: its AudioIds id, at Config.Audio.Volume[key] x 0.6 x the Sfx setting
+		local sfxVol = SF.Volume("Sfx")
+		local real, wrong = {}, {}
+		for _, s in ipairs(epicSounds) do
+			if s.volume ~= nil then
+				real[s.name] = true
+				local want = math.min(1, (Config.Audio.Volume[s.name] or -1) * 0.6 * sfxVol)
+				local wantId = "rbxassetid://" .. fmt("%d", Config.Audio.Sfx[s.name] or 0)
+				if s.id ~= wantId or abs(s.volume - want) > 1e-6 then
+					wrong[#wrong + 1] = fmt("%s %s %.4f (want %s %.4f)", s.name, tostring(s.id), s.volume, wantId, want)
+				end
+			end
+		end
+		local unplayed = {}
+		for i = 2, #EPIC_PLAYS do
+			if not real[EPIC_PLAYS[i]] then
+				unplayed[#unplayed + 1] = EPIC_PLAYS[i]
+			end
+		end
+		T.check(sfxVol > 0 and #unplayed == 0 and #wrong == 0, "egg stage: each egg Sound carries its uploaded id at its Config.Audio.Volume x Scale 0.6 x the Sfx setting",
+			fmt("sfx %.2f; no Sound: %s; wrong: %s", sfxVol, table.concat(unplayed, " "), table.concat(wrong, ", ")))
 		local loud = 0
 		for _, s in ipairs(epicSounds) do
 			if s.scale == nil or s.scale > 0.6 then
@@ -920,11 +989,11 @@ S.client_egg_stage = guarded("client_egg_stage", function()
 		local rev3 = 0
 		local list3 = soundsFrom(s3)
 		for _, s in ipairs(list3) do
-			if s.name:match("^Reveal") then
+			if s.name:match("^Reveal") or s.name:match("^EggReveal") then
 				rev3 = rev3 + 1
 			end
 		end
-		T.check(rev3 == 1 and hasSound(list3, "RevealLegendary", 1), "egg stage: x3 plays one reveal sound, the best pull's (RevealLegendary at 1)")
+		T.check(rev3 == 1 and hasSound(list3, "EggRevealLegend", 1), "egg stage: x3 plays one reveal sound, the best pull's (EggRevealLegend at 1)", tostring(rev3))
 		T.check(ES.Stats().Instances <= 750, "egg stage: x3 reveal within 750 instances", tostring(ES.Stats().Instances))
 		ES.Done()
 		G.advance(0.3)
@@ -935,10 +1004,73 @@ S.client_egg_stage = guarded("client_egg_stage", function()
 		ES.Show(G.result("Storm", "Tokens", { G.pull(PC, "Storm", leg) }))
 		G.run(ES, 7)
 		local listL = soundsFrom(sL)
-		T.check(hasSound(listL, "RevealLegendary", 1), "egg stage: a Legendary roll plays RevealLegendary at Scale 1")
+		T.check(hasSound(listL, "EggRevealLegend", 1), "egg stage: a Legendary roll plays EggRevealLegend at Scale 1")
 		T.check(hasSound(listL, "SpinStart", 0.6) and not hasSound(listL, "SpinStart", 1), "egg stage: ...but the strip's start stays at 0.6 (no tell before the landing)")
 		ES.Done()
 		G.advance(0.2)
+
+		------------------------------------------------------------------ the reveal sound per rarity (the owner's picks page)
+		local REVEAL_MAP = {
+			{ "Cloud", "Common", "Tokens", "EggRevealCommon", 0.6 }, { "Cloud", "Uncommon", "Tokens", "EggRevealCommon", 0.6 },
+			{ "Cloud", "Rare", "Tokens", "EggRevealCommon", 0.6 }, { "Cloud", "Epic", "Tokens", "EggRevealEpic", 0.6 },
+			{ "Storm", "Legendary", "Tokens", "EggRevealLegend", 1 }, { "Secret", "Mythic", "Gems", "EggRevealLegend", 1 },
+			{ "Secret", "Secret", "Gems", "EggRevealSecret", 1 },
+		}
+		local mapWrong, mapRun = {}, 0
+		for _, m in ipairs(REVEAL_MAP) do
+			local def = PC.RarityPool(m[1], m[2])[1]
+			if def then
+				mapRun = mapRun + 1
+				local sm = #sounds
+				ES.Show(G.result(m[1], m[3], { G.pull(PC, m[1], def) }))
+				ES.Skip()
+				G.advance(0.3)
+				local got = {}
+				for _, s in ipairs(soundsFrom(sm)) do
+					if s.name:match("Reveal") then
+						got[#got + 1] = fmt("%s@%s", s.name, tostring(s.scale))
+					end
+				end
+				if #got ~= 1 or got[1] ~= fmt("%s@%s", m[4], tostring(m[5])) then
+					mapWrong[#mapWrong + 1] = m[2] .. ": " .. table.concat(got, " ")
+				end
+				ES.Done()
+				G.advance(0.2)
+			end
+		end
+		T.check(mapRun == #REVEAL_MAP and #mapWrong == 0, "egg stage: reveal sounds: Common / Uncommon / Rare EggRevealCommon, Epic EggRevealEpic (0.6); Legendary / Mythic EggRevealLegend, Secret EggRevealSecret (1)",
+			fmt("%d of %d rarities run; %s", mapRun, #REVEAL_MAP, table.concat(mapWrong, "; ")))
+
+		------------------------------------------------------------------ the id-0 fallback (the egg ids zeroed in this test, put back after): today's sounds
+		local restoreIds = zeroEggIds(Config)
+		local okFb, errFb = pcall(function()
+			local sF = #sounds
+			ES.Show(G.result("Cloud", "Tokens", { G.pull(PC, "Cloud", epic) }))
+			G.run(ES, 7)
+			local listF = soundsFrom(sF)
+			for _, name in ipairs({ "SpinStart", "SpinTick", "SpinLand", "Shatter", "RevealRare" }) do
+				T.check(hasSound(listF, name, 0.6), "egg stage: egg ids at 0 -> an Epic roll plays today's " .. name .. " at Scale 0.6")
+			end
+			local eggPlayed = {}
+			for _, s in ipairs(listF) do
+				if EGG_SOUNDS[s.name] ~= nil then
+					eggPlayed[#eggPlayed + 1] = s.name
+				end
+			end
+			T.check(#eggPlayed == 0, "egg stage: egg ids at 0 -> no egg key reaches SoundFx (EggRise / EggShake / EggCrack / EggCloudRing stay silent)", table.concat(eggPlayed, " "))
+			ES.Done()
+			G.advance(0.2)
+			local sF2 = #sounds
+			ES.Show(G.result("Storm", "Tokens", { G.pull(PC, "Storm", leg) }))
+			ES.Skip()
+			G.advance(0.3)
+			T.check(hasSound(soundsFrom(sF2), "RevealLegendary", 1), "egg stage: egg ids at 0 -> a Legendary reveal plays today's RevealLegendary at Scale 1")
+			ES.Done()
+			G.advance(0.2)
+		end)
+		restoreIds()
+		T.check(okFb, "egg stage: the id-0 fallback step ran", tostring(errFb))
+		T.check(type(Config.Audio.Sfx.EggRevealSecret) == "number" and Config.Audio.Sfx.EggRevealSecret > 0, "egg stage: the real egg ids are back after the fallback step")
 		quickReveal(G.result("Cloud", "Tokens", { G.pull(PC, "Cloud", epic, { Key = epic.Id }) }), "evolved")
 		local ribbon = G.colPart(1, "EvolvedRibbon")
 		T.check(G.shown(ribbon), "egg stage: an evolved key gets the EvolvedRibbon on the x1 reveal")
@@ -1896,12 +2028,7 @@ end)
 -- client_hatch_cutscene (Task 27, spec 16.4 storyboard A "Pedestal" + the owner's pick: Gemini's cloud ring; the egg
 -- sound keys of .superpowers/lobby-shop/pitch/CUTSCENE_PICK.md)
 ----------------------------------------------------------------------------------------------------
--- the egg sound keys and today's sound each falls back to while its id is 0 (false: silent until its id exists)
-local EGG_SOUNDS = {
-	EggStripTick = "SpinTick", EggStripLand = "SpinLand", EggRise = false, EggShake = false, EggCrack = false, EggBurst = "Shatter",
-	EggCloudRing = false, EggRevealCommon = "RevealCommon", EggRevealEpic = "RevealRare", EggRevealLegend = "RevealLegendary",
-	EggRevealSecret = "RevealLegendary",
-}
+-- (EGG_SOUNDS and zeroEggIds: above client_egg_stage)
 local SPARKS = { Common = 12, Uncommon = 16, Rare = 20, Epic = 28, Legendary = 40, Mythic = 48, Secret = 48 }
 S.client_hatch_cutscene = guarded("client_hatch_cutscene", function()
 	local KC = G.KC()
@@ -2146,10 +2273,17 @@ S.client_hatch_cutscene = guarded("client_hatch_cutscene", function()
 		end
 		return G.result(rid, currency, pulls)
 	end
+	-- the real egg ids, put back after the scenario whatever happens (steps zero them or give fake ones)
+	local realEggIds = {}
+	for key in pairs(EGG_SOUNDS) do
+		realEggIds[key] = Config.Audio.Sfx[key]
+	end
 	local ok, err = pcall(function()
 		------------------------------------------------------------------ x1 Epic, High: the seven phases dressed
 		local b0, s0 = cc.Brightness, cc.Saturation
 		local cc0 = ccCount()
+		-- the id-0 world for this first roll (the egg ids are uploaded; zeroed here, put back after the roll): today's sounds
+		local restoreIds = zeroEggIds(Config)
 		local s1 = #sounds
 		local seen = { dimStart = nil, intro = false, rise = false, cracks = {}, rot = false, push = 1, word = nil, leaks = 0, ring = false }
 		local burstAt, burstChecked = nil, false
@@ -2292,6 +2426,7 @@ S.client_hatch_cutscene = guarded("client_hatch_cutscene", function()
 		end
 		T.eq(eggKeys, 0, "hatch cutscene: ...and no egg key plays while its id is 0")
 		ES.Done()
+		restoreIds()
 		afterDone("hatch cutscene after DONE", b0, s0)
 
 		------------------------------------------------------------------ Low graphics: no blur, no tint, half the sparks, static rays, no streaks
@@ -2321,7 +2456,7 @@ S.client_hatch_cutscene = guarded("client_hatch_cutscene", function()
 		T.check(#rec.gold == 0 and #recL.gold == 1 and recL.at.Burst and abs(recL.gold[1] - recL.at.Burst) <= 0.1, "hatch cutscene: Legendary: the gold Flash plays once, on the burst",
 			fmt("%d gold flashes at %s (burst %s)", #recL.gold, tostring(recL.gold[1]), tostring(recL.at.Burst)))
 		T.check(G.shown(G.hero("Rays")) and spinning(G.hero("Rays")), "hatch cutscene: Legendary: slow gold rays stay turning on the reveal")
-		T.check(count(soundsFrom(sL), "RevealLegendary", 1) == 1, "hatch cutscene: Legendary: its reveal sound at full volume")
+		T.check(count(soundsFrom(sL), "EggRevealLegend", 1) == 1, "hatch cutscene: Legendary: its reveal sound (EggRevealLegend, the uploaded id) at full volume")
 		T.check(recL.over == nil, "hatch cutscene: Legendary within the budgets", tostring(recL.over))
 		ES.Done()
 		afterDone("hatch cutscene after the Legendary DONE", b0, s0)
@@ -2572,6 +2707,9 @@ S.client_hatch_cutscene = guarded("client_hatch_cutscene", function()
 	end)
 	if not ok then
 		T.fail("hatch cutscene: scenario error", tostring(err))
+	end
+	for key in pairs(EGG_SOUNDS) do
+		Config.Audio.Sfx[key] = realEggIds[key]
 	end
 	ES._InjectPhaseError = nil
 	if ES.IsShowing() then
