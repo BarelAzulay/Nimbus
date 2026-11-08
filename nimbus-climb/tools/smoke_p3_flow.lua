@@ -1527,6 +1527,11 @@ S.p3flow_duels = scenario("p3flow_duels", function()
 	T.check(la and type(la.Sent) == "table" and la.Sent.ToUserId == bo.UserId and type(la.Queue) == "table" and la.Queue.Queued == false,
 		"flow duels: Ava's 'Lobby' shows the challenge she sent (Sent { ToUserId, ToName, ExpiresIn }, Queue { Queued, Waiting })")
 	T.check((toasted(bo, "challenges you", mark)), "flow duels: Bo gets a side toast")
+	-- (lobby-shop 16.12: no Trophies for beating a 0-trophy player, so both start this duel with -Trophies.Loss: the
+	-- loser ends at 0 again)
+	local START = -TR.Loss
+	data.AddTrophies(ava, START)
+	data.AddTrophies(bo, START)
 	local recA0, recB0 = record(ava), record(bo)
 	local ta0, tb0 = tokens(ava), tokens(bo)
 	local xpA0, xpB0 = xpOf(ava, data.ActiveTeamKeys(ava)), xpOf(bo, data.ActiveTeamKeys(bo))
@@ -1569,8 +1574,8 @@ S.p3flow_duels = scenario("p3flow_duels", function()
 		local recL0 = winner == ava and recB0 or recA0
 		T.check(rwW and rwW.Trophies == TR.Win and rwW.Tokens == TR.Tokens.Win * doubled(rwW) and rwW.Xp == TR.Xp.Win,
 			"flow duels: the winner (" .. winner.Name .. ") gets Trophies.Win, Tokens.Win, Xp.Win", rwW and plain(rwW) or "none")
-		T.check(rwL and rwL.Trophies == 0 and rwL.Tokens == TR.Tokens.Loss * doubled(rwL) and rwL.Xp == TR.Xp.Loss,
-			"flow duels: the loser gets Tokens.Loss and Xp.Loss; trophies stay at 0 (never below)", rwL and plain(rwL) or "none")
+		T.check(rwL and rwL.Trophies == TR.Loss and rwL.Tokens == TR.Tokens.Loss * doubled(rwL) and rwL.Xp == TR.Xp.Loss,
+			"flow duels: the loser gets Tokens.Loss, Xp.Loss and Trophies.Loss (down to 0)", rwL and plain(rwL) or "none")
 		local dW = tokens(winner) - (winner == ava and ta0 or tb0)
 		local dL = tokens(loser) - (winner == ava and tb0 or ta0)
 		T.check(dW == rwW.Tokens and dL == rwL.Tokens, "flow duels: token balances moved by exactly the rewards (once)", dW .. " / " .. dL)
@@ -1592,16 +1597,16 @@ S.p3flow_duels = scenario("p3flow_duels", function()
 				row = e
 			end
 		end
-		T.check(row and row.Trophies == TR.Win and row.Name == winner.DisplayName, "flow duels: ArenaState.Leaderboard shows the winner with " .. TR.Win .. " trophies",
+		T.check(row and row.Trophies == START + TR.Win and row.Name == winner.DisplayName, "flow duels: ArenaState.Leaderboard shows the winner with " .. (START + TR.Win) .. " trophies",
 			st and plain(st.Leaderboard) or "no state")
 		local board = false
 		local lbInfo = info.Leaderboard
 		for _, rrow in ipairs(lbInfo and lbInfo.Rows or {}) do
-			if rrow.Frame.Visible and tostring(rrow.Name.Text) == winner.DisplayName and tostring(rrow.Trophies.Text):find(tostring(TR.Win), 1, true) then
+			if rrow.Frame.Visible and tostring(rrow.Name.Text) == winner.DisplayName and tostring(rrow.Trophies.Text):find(tostring(START + TR.Win), 1, true) then
 				board = true
 			end
 		end
-		T.check(board, "flow duels: ...and the trophy board in the arena lists " .. winner.Name .. " (" .. TR.Win .. ")")
+		T.check(board, "flow duels: ...and the trophy board in the arena lists " .. winner.Name .. " (" .. (START + TR.Win) .. ")")
 	end
 	T.eq(F.w.count(id), 1, "flow duels: BattleEnded fired once for the duel")
 	local endH = lastMsg(hal, "End", m2)
@@ -1615,6 +1620,8 @@ S.p3flow_duels = scenario("p3flow_duels", function()
 	grant(eli, TEAMS.Eli, 5)
 	request(dee, "TeamSet", 1, TEAMS.Dee)
 	request(eli, "TeamSet", 1, TEAMS.Eli)
+	data.AddTrophies(dee, -TR.Loss) -- (16.12: each holds trophies, so a win over the other pays them)
+	data.AddTrophies(eli, -TR.Loss)
 	toArena(dee, 8, 8)
 	toArena(eli, -8, 8)
 	toLobby(ava)
@@ -1660,7 +1667,7 @@ S.p3flow_duels = scenario("p3flow_duels", function()
 		return dee:GetAttribute("InBattle") ~= nil
 	end, 4)
 	local qid2 = dee:GetAttribute("InBattle")
-	T.check(type(qid2) == "string" and qid2 ~= qid and eli:GetAttribute("InBattle") == qid2, "flow queue: queued again (20 vs 0 trophies) they are paired at once")
+	T.check(type(qid2) == "string" and qid2 ~= qid and eli:GetAttribute("InBattle") == qid2, "flow queue: queued again (30 vs 0 trophies) they are paired at once")
 	drvPlay({ drvTracker(dee, mq2), drvTracker(eli, mq2) }, 16.5, function()
 		return F.w.find(qid2) ~= nil
 	end, { every = 8 })

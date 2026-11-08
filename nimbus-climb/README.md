@@ -881,8 +881,11 @@ are printed on its card in the Shop's Eggs tab, so you see them before you pay. 
 items for an account, the gem spin buttons and the Secret Roulette read **Locked** for that player and the altar says
 it is not available on their account, and the Robux packs that give Cloud Tokens (the three Token packs and the Pro
 Pack) are not sold to them ("Token packs are not available on your account"; while Roblox has not answered yet:
-"Checking your account, try again in a moment"), because a token spin can now give a Secret. A purchase that was
-already paid is always granted. Gem packs and everything else still work.
+"Checking your account, try again in a moment"), because a token spin can now give a Secret. Since a player could
+still open such a prompt by other means, token spins themselves are closed for those accounts too: every token SPIN /
+x3 button reads **Locked** and the server answers "Token spins are not available on your account" (while Roblox has
+not answered yet: "Checking your account, try again in a moment"). A purchase that was already paid is always granted.
+Gem packs and everything else still work.
 
 ### The Store: the owner's setup
 
@@ -1277,7 +1280,9 @@ Duel other players on the two **duel rings** in front of the colosseum. Both of 
 
   Trophies never drop below 0. Leaving the arena or the game during a duel counts as a loss.
   When both players leave together, or the server shuts down, the duel does not count for anyone.
-- **Fair play:** the same two players earn rewards from at most **3 duels every 30 minutes**; a win by a forfeit in
+- **Fair play:** the same two players earn rewards from at most **3 duels every 30 minutes**, on any server (the duels
+  are kept in both players' saves, so hopping servers does not reset it); beating a player who has **0 trophies** pays
+  no trophies (the tokens and XP of the win still come); a win by a forfeit in
   the first **15 seconds**, or against a team that never dealt any damage, pays nothing. When one team is more than
   **2 times** stronger than the other (team power), the duel is a **practice duel**: a side toast says so, and
   nobody wins or loses trophies, tokens or XP. Practice duels are great for trying things out with a friend.

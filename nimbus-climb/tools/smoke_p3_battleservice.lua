@@ -600,7 +600,9 @@ S.p3bs_duel = scenario("p3bs_duel", function()
 	lb = lastMsg(b, "Lobby", m3)
 	T.check(lb and #lb.Invites == 0 and toasted(a, "expired", m3) and bs.ReplyChallenge(b, a.UserId, true) == false,
 		"p3 duel: an invite expires after 30 s (cleared, the challenger is told, accepting it is refused)")
-	-- a challenge back is a yes
+	-- a challenge back is a yes (lobby-shop 16.12: both hold trophies, or the winner of a 0-trophy player gets none)
+	data.AddTrophies(a, 50)
+	data.AddTrophies(b, 50)
 	local recA0, recB0 = record(a), record(b)
 	local ta0, tb0 = tokens(a), tokens(b)
 	local m4 = K.logSize()
@@ -651,12 +653,13 @@ S.p3bs_duel = scenario("p3bs_duel", function()
 		local rwW, rwL = r.Rewards[winner.UserId], r.Rewards[loser.UserId]
 		T.check(rwW and rwW.Trophies == TR.Win and rwW.Tokens == TR.Tokens.Win * doubled(rwW) and rwW.Xp == TR.Xp.Win,
 			"p3 duel: the winner gets Trophies.Win, Tokens.Win and Xp.Win", rwW and (rwW.Trophies .. " / " .. rwW.Tokens .. " / " .. rwW.Xp) or "none")
-		T.check(rwL and rwL.Tokens == TR.Tokens.Loss * doubled(rwL) and rwL.Xp == TR.Xp.Loss and rwL.Trophies == 0,
-			"p3 duel: the loser gets Tokens.Loss and Xp.Loss; trophies never go below 0", rwL and (rwL.Trophies .. " / " .. rwL.Tokens) or "none")
+		T.check(rwL and rwL.Tokens == TR.Tokens.Loss * doubled(rwL) and rwL.Xp == TR.Xp.Loss and rwL.Trophies == TR.Loss,
+			"p3 duel: the loser gets Tokens.Loss, Xp.Loss and Trophies.Loss", rwL and (rwL.Trophies .. " / " .. rwL.Tokens) or "none")
 		local recW0 = winner == a and recA0 or recB0
 		local recL0 = winner == a and recB0 or recA0
-		T.check(record(winner).PvPWins == (recW0.PvPWins or 0) + 1 and record(loser).PvPLosses == (recL0.PvPLosses or 0) + 1 and record(winner).Trophies == TR.Win,
-			"p3 duel: PvPWins / PvPLosses and the trophy total moved once")
+		T.check(record(winner).PvPWins == (recW0.PvPWins or 0) + 1 and record(loser).PvPLosses == (recL0.PvPLosses or 0) + 1 and record(winner).Trophies == recW0.Trophies + TR.Win
+			and record(loser).Trophies == recL0.Trophies + TR.Loss,
+			"p3 duel: PvPWins / PvPLosses and the trophy totals moved once")
 		local dW = tokens(winner) - (winner == a and ta0 or tb0)
 		local dL = tokens(loser) - (winner == a and tb0 or ta0)
 		T.check(dW == TR.Tokens.Win * doubled(rwW) and dL == TR.Tokens.Loss * doubled(rwL), "p3 duel: token balances moved by exactly the rewards", dW .. " / " .. dL)
@@ -741,6 +744,171 @@ S.p3bs_duel = scenario("p3bs_duel", function()
 	w.stop()
 	cleanup({ a, c, far })
 	loudReplication()
+end)
+
+----------------------------------------------------------------------------------------------------
+-- scenario: lobby-shop 16.12, Trophies cannot be farmed across servers
+----------------------------------------------------------------------------------------------------
+S.p3bs_pair_hop = scenario("p3bs_pair_hop", function()
+	if not ready("p3bs_pair_hop") then
+		return
+	end
+	quietReplication()
+	local bs, data, bc = BS(), DS(), BC()
+	local TR = bc.Trophies
+	local w = watchEnded()
+	local players = {}
+	local okRun, errRun = pcall(function()
+		if not T.check(type(data.DuelsWith) == "function" and type(data.RecordDuel) == "function" and type(bs._ClearPairsForTest) == "function",
+			"pair hop: DataService.DuelsWith / RecordDuel and BattleService._ClearPairsForTest exist") then
+			return
+		end
+		local a = newPlayer("HopA", STRONG, 10)
+		local b = newPlayer("HopB", MID, 10)
+		players = { a, b }
+		local aId, bId = a.UserId, b.UserId
+		data.AddTrophies(a, 100)
+		data.AddTrophies(b, 100)
+		local fresh = data.GetBattle(a)
+		T.check(type(fresh) == "table" and type(fresh.Duels) == "table" and #fresh.Duels == 0, "pair hop: a save without the record reads Battle.Duels = {} (the migration-safe default)")
+		toArena(a, 3, 0)
+		toArena(b, -3, 0)
+		-- three real duels (each quit at once: the pair counts at the start, like the in-server limit)
+		for i = 1, 3 do
+			local m = K.logSize()
+			local ok, id = bs.StartDuel(a, b)
+			T.check(ok == true and not toasted(a, "no trophies", m), "pair hop: duel " .. i .. " of a and b starts with rewards", tostring(id))
+			advance(0.3)
+			bs.Forfeit(b)
+			advance(4.5)
+			toArena(a, 3, 0)
+			toArena(b, -3, 0)
+		end
+		local since = os.time() - 1800
+		T.check(data.DuelsWith(a, bId, since) == 3 and data.DuelsWith(b, aId, since) == 3, "pair hop: both saves hold the three duels with the other (DuelsWith 3 / 3)",
+			tostring(data.DuelsWith(a, bId, since)) .. " / " .. tostring(data.DuelsWith(b, aId, since)))
+		-- a server hop: both leave (the saves carry the record), this server forgets its pair list, both join again
+		K.removePlayers({ a, b })
+		advance(13)
+		local stA = storedBattle(aId)
+		T.check(type(stA) == "table" and type(stA.Duels) == "table" and #stA.Duels == 3, "pair hop: the stored Battle record holds the duels (Battle.Duels, 3 entries)",
+			stA and tostring(stA.Duels and #stA.Duels) or "nothing stored")
+		bs._ClearPairsForTest()
+		a = Mock.AddPlayer("HopA2", aId)
+		b = Mock.AddPlayer("HopB2", bId)
+		players = { a, b }
+		advance(1.0)
+		data.SetTeam(a, 1, STRONG)
+		data.SetTeam(b, 1, MID)
+		toArena(a, 3, 0)
+		toArena(b, -3, 0)
+		local m4 = K.logSize()
+		local ok4, id4 = bs.StartDuel(a, b)
+		T.check(ok4 == true and toasted(a, "no trophies", m4) and toasted(b, "no trophies", m4),
+			"pair hop: after the hop the 4th duel within 30 min is trophy-free (the limit read from the saves)", tostring(id4))
+		advance(0.3)
+		bs.Forfeit(b)
+		advance(4.5)
+		-- one side's save is enough (the other's record lost): b's record alone still holds the limit
+		toArena(a, 3, 0)
+		toArena(b, -3, 0)
+		bs._ClearPairsForTest()
+		data.MutateBattle(a, function(rec)
+			rec.Duels = {}
+		end)
+		local m5 = K.logSize()
+		local ok5 = bs.StartDuel(a, b)
+		T.check(ok5 == true and toasted(a, "no trophies", m5), "pair hop: ...even when only one of the two saves remembers the pair")
+		advance(0.3)
+		bs.Forfeit(b)
+		advance(4.5)
+		-- 30 minutes later (the Unix clock moved on) the pair is rewarded again
+		bs._ClearPairsForTest()
+		local base = os.time()
+		bs.Debug = { RaidNow = function()
+			return base + 1801
+		end }
+		toArena(a, 3, 0)
+		toArena(b, -3, 0)
+		local m6 = K.logSize()
+		local ok6 = bs.StartDuel(a, b)
+		T.check(ok6 == true and not toasted(a, "no trophies", m6), "pair hop: 30 min after the last duels the pair earns again")
+		advance(0.3)
+		bs.Forfeit(b)
+		advance(4.5)
+		bs.Debug = nil
+		-- the record is bounded: at most 32 entries, the newest kept, junk dropped
+		for i = 1, 40 do
+			data.RecordDuel(a, 7000000 + i, base + 2000 + i) -- (after the duel stamped base + 1801 above)
+		end
+		data.RecordDuel(a, -5, base)
+		data.RecordDuel(a, 0 / 0, base)
+		data.RecordDuel(a, 7100000, 0 / 0)
+		local rec = data.GetBattle(a)
+		local newest = rec and rec.Duels and rec.Duels[1]
+		T.check(rec and #rec.Duels == 32 and newest and newest.U == 7000040 and newest.T == base + 2040 and rec.Duels[32].U == 7000009, "pair hop: Battle.Duels keeps the newest 32 entries (junk ids / times dropped)",
+			rec and (#rec.Duels .. " entries, newest " .. tostring(newest and newest.U)) or "no record")
+		K.flushErrors("pair hop")
+	end)
+	w.stop()
+	cleanup(players)
+	if not okRun then
+		error(errRun, 0)
+	end
+end)
+
+----------------------------------------------------------------------------------------------------
+-- scenario: lobby-shop 16.12, no Trophies for beating a player who has none
+----------------------------------------------------------------------------------------------------
+S.p3bs_zero_trophy = scenario("p3bs_zero_trophy", function()
+	if not ready("p3bs_zero_trophy") then
+		return
+	end
+	quietReplication()
+	local bs, data, bc = BS(), DS(), BC()
+	local TR = bc.Trophies
+	local w = watchEnded()
+	local a = newPlayer("ZeroA", STRONG, 10)
+	local z = newPlayer("ZeroZ", MID, 10)
+	local okRun, errRun = pcall(function()
+		data.AddTrophies(a, 100)
+		T.eq(record(z).Trophies or 0, 0, "zero trophy: (setup) the opponent has 0 Trophies")
+		toArena(a, 3, 0)
+		toArena(z, -3, 0)
+		-- both fight 16 s (z deals damage), then z forfeits: normally a full win
+		local m = K.logSize()
+		local ok, id = bs.StartDuel(a, z)
+		if not T.check(ok == true, "zero trophy: the duel starts", tostring(id)) then
+			return
+		end
+		advance(0.3)
+		drvPlay({ drvTracker(a, m), drvTracker(z, m) }, 16, function()
+			return w.find(id) ~= nil
+		end, { every = 6 })
+		local ta = tokens(a)
+		if not w.find(id) then
+			bs.Forfeit(z)
+			advance(0.5)
+		end
+		local r = w.find(id)
+		local rwA = r and r.Rewards[a.UserId]
+		if T.check(r ~= nil and contains(r.Winners, a.UserId), "zero trophy: a wins against the 0-trophy player", r and tostring(r.Reason) or "no end") then
+			T.check(rwA and rwA.Trophies == 0 and record(a).Trophies == 100 and rwA.NoTrophies == true, "zero trophy: ...and gets no Trophies (NoTrophies on the reward)",
+				rwA and (tostring(rwA.Trophies) .. " / total " .. tostring(record(a).Trophies)) or "none")
+			T.check(rwA and rwA.Tokens == TR.Tokens.Win * doubled(rwA) and rwA.Xp == TR.Xp.Win and tokens(a) - ta == rwA.Tokens,
+				"zero trophy: ...the win's tokens and XP are still paid", rwA and (rwA.Tokens .. " / " .. rwA.Xp) or "none")
+			T.check(toasted(a, "no trophies to win", m), "zero trophy: ...and the toast says why", table.concat(toasts(a, m), " | "))
+			local rwZ = r.Rewards[z.UserId]
+			T.check(rwZ and (rwZ.Trophies or 0) == 0 and (record(z).Trophies or 0) == 0, "zero trophy: the loser's trophies never go below 0",
+				rwZ and tostring(rwZ.Trophies) or "none")
+		end
+		K.flushErrors("zero trophy")
+	end)
+	w.stop()
+	cleanup({ a, z })
+	if not okRun then
+		error(errRun, 0)
+	end
 end)
 
 ----------------------------------------------------------------------------------------------------

@@ -228,6 +228,8 @@
         "SetPity",
         "GemsSettled",
         "_SettleForTest",
+        "DuelsWith",
+        "RecordDuel",
         "IsMigrated",
         "MarkMigrated",
         "MigratedNow",
@@ -811,7 +813,8 @@
         "SetRaidBoss",
         "EndRaids",
         "RaidTierFor",
-        "RaidRewardStatus"
+        "RaidRewardStatus",
+        "_ClearPairsForTest"
       ],
       "signals": [
         "BattleEnded",

@@ -22,8 +22,12 @@
 --     -- Phase 3
 --     Teams = { Presets = { [1..3] = {key, key, key, key?} }, Active = 1..3 },
 --     Battle = { Trophies, TrialBest, TrialCleared = {[level]=true}, Raids, RaidBestDamage, PvPWins, PvPLosses,
---                EventPets = {[petId]=true}, RaidRewardAt, RaidLossAt },   -- the raid reward clocks: Unix seconds of the last
+--                EventPets = {[petId]=true}, RaidRewardAt, RaidLossAt,     -- the raid reward clocks: Unix seconds of the last
 --                                                                          -- paid win / loss (0 = never; boss raids 2026-11-01)
+--                Duels = { { U = opponent UserId, T = Unix seconds }... } }  -- lobby-shop 16.12: the counted duels this
+--                player fought (a start with trophies at stake), newest first, at most 32 (the cross-server pair limit); stored only when not empty, never in
+--                the snapshot; merges as a union (a server of an older build still running drops it: the limit then
+--                counts only the newer server's duels for a while)
 --     -- Phase 4 (new TOP-LEVEL fields only: a Phase 3 server still running during the rollout rebuilds Battle,
 --     -- Teams, PetLevels entries and slot values from the keys it knows and would erase anything new inside them;
 --     -- keepForeign writes unknown top-level and Home keys back untouched)
@@ -182,7 +186,8 @@
 --     Teams merge PER PRESET (a preset the session changed replaces the stored one, Active is replaced when the
 --     session changed it; afterwards the presets are pruned against the merged copies); Battle: Trophies / Raids /
 --     PvPWins / PvPLosses travel as +/- deltas (never below 0), TrialBest / RaidBestDamage / RaidRewardAt / RaidLossAt keep the
---     higher value (the reward clocks: the latest paid raid, so the limit survives a server hop),
+--     higher value (the reward clocks: the latest paid raid, so the limit survives a server hop), Duels merges as a union
+--     of { U, T } entries (the newest 32 kept; lobby-shop 16.12),
 --     TrialCleared / EventPets only grow (union). Home: a HIGHER Home.Prestige wins the whole Home (prestige resets the stations, so
 --     the other side's per-station changes are void); at equal prestige the Home merges per key (Level replaced,
 --     LastSeen the later one). When both sides prestiged to that star (two runs from the same reset home), each
@@ -317,6 +322,10 @@
 --                                       change (they merge safely into the real save): any other change rolls the whole
 --                                       call back (-> false). Pay a reward decided inside fn only once this returned true.
 --                                       A change is synced (throttled).
+--     DuelsWith(player, opponentUserId, since) -> n   lobby-shop 16.12: the record's duels with that opponent at Unix
+--                                       second `since` or later (0 until loaded)
+--     RecordDuel(player, opponentUserId, at) -> ok    lobby-shop 16.12: adds { U, T } to Battle.Duels (newest 32 kept,
+--                                       junk refused; also while provisional: it merges as a union). Not synced.
 --     AddTrophies(player, n) -> ok, total            n is rounded to a whole number and may be negative; the total
 --                                       never goes below 0. Works like AddCash (also before the load finished and while
 --                                       provisional: trophies merge as a delta). Synced (throttled).
@@ -799,7 +808,11 @@ local P3 = {
 	COUNTERS = { "Trophies", "Raids", "PvPWins", "PvPLosses" }, -- merge as +/- deltas (never below 0)
 	BESTS = { "TrialBest", "RaidBestDamage", "RaidRewardAt", "RaidLossAt" }, -- merge as the higher value
 	-- what MutateBattle may change while the profile is provisional (these merge safely into the real save)
-	PROVISIONAL_OK = { Trophies = true, Raids = true, PvPWins = true, PvPLosses = true, RaidBestDamage = true, RaidRewardAt = true, RaidLossAt = true },
+	PROVISIONAL_OK = { Trophies = true, Raids = true, PvPWins = true, PvPLosses = true, RaidBestDamage = true, RaidRewardAt = true, RaidLossAt = true, Duels = true },
+	-- lobby-shop 16.12: Battle.Duels = { { U = opponent UserId, T = Unix seconds }... } newest first, at most DUELS_KEEP
+	-- entries (BattleService's cross-server pair limit reads the last PAIR_WINDOW of it); merges as a union
+	DUELS_KEEP = 32,
+	MAX_USER_ID = 1e15,
 	MARK_TEAM = "B4TeamFollow", -- Migrations[name]: the save went through the one-team rule (team balance, P3.teamMigrate)
 	MATCH_LOCKED = "Pets are locked during a match", -- the active team during an obby match (PetService's words)
 }
@@ -1101,6 +1114,7 @@ function P3.newBattle()
 		EventPets = {},
 		RaidRewardAt = 0,
 		RaidLossAt = 0,
+		Duels = {}, -- lobby-shop 16.12
 	}
 end
 
@@ -1916,6 +1930,61 @@ function P3.cleanCleared(raw)
 	return out
 end
 
+-- lobby-shop 16.12: one duel entry { U, T } (U a whole UserId 1..MAX_USER_ID, T whole Unix seconds > 0) or nil
+function P3.duelEntry(e)
+	if type(e) ~= "table" then
+		return nil
+	end
+	local u, t = e.U, e.T
+	if not isFinite(u) or u < 1 or u > P3.MAX_USER_ID or u ~= math.floor(u) or not isFinite(t) or t <= 0 then
+		return nil
+	end
+	t = sanitizeTime(t)
+	if t <= 0 then
+		return nil
+	end
+	return { U = u, T = t }
+end
+
+-- Untrusted Duels -> a list of clean entries, duplicates (same U and T) once, newest first (ties: the higher U first),
+-- at most DUELS_KEEP (the oldest dropped). An old save without the field reads {}.
+function P3.cleanDuels(raw)
+	local out, seen = {}, {}
+	if type(raw) ~= "table" then
+		return out
+	end
+	for _, e in pairs(raw) do
+		local d = P3.duelEntry(e)
+		local key = d and (tostring(d.U) .. ":" .. tostring(d.T))
+		if d and not seen[key] then
+			seen[key] = true
+			out[#out + 1] = d
+		end
+	end
+	table.sort(out, function(x, y)
+		if x.T ~= y.T then
+			return x.T > y.T
+		end
+		return x.U > y.U
+	end)
+	for i = #out, P3.DUELS_KEEP + 1, -1 do
+		out[i] = nil
+	end
+	return out
+end
+
+function P3.duelsEqual(a, b)
+	if #a ~= #b then
+		return false
+	end
+	for i = 1, #a do
+		if a[i].U ~= b[i].U or a[i].T ~= b[i].T then
+			return false
+		end
+	end
+	return true
+end
+
 -- Untrusted Battle -> a clean record: whole numbers >= 0, TrialBest >= the highest cleared level.
 function P3.cleanBattle(raw)
 	local r = tableOr(raw)
@@ -1934,6 +2003,7 @@ function P3.cleanBattle(raw)
 		end
 	end
 	battle.EventPets = cleanSet(r.EventPets)
+	battle.Duels = P3.cleanDuels(r.Duels)
 	return battle
 end
 
@@ -1956,6 +2026,9 @@ function P3.battleChanges(a, b)
 	if not mapsEqual(a.EventPets, b.EventPets) then
 		out.EventPets = true
 	end
+	if not P3.duelsEqual(a.Duels or {}, b.Duels or {}) then
+		out.Duels = true
+	end
 	return out
 end
 
@@ -1974,6 +2047,14 @@ function P3.encodeBattle(battle)
 	for level = 1, top do
 		cleared[level] = battle.TrialCleared[level] == true
 	end
+	-- lobby-shop 16.12: the duel record only when it holds something (an old save stays as it was until a duel)
+	local duels = nil
+	if type(battle.Duels) == "table" and #battle.Duels > 0 then
+		duels = {}
+		for i, e in ipairs(battle.Duels) do
+			duels[i] = { U = e.U, T = e.T }
+		end
+	end
 	return {
 		Trophies = battle.Trophies,
 		TrialBest = battle.TrialBest,
@@ -1985,7 +2066,15 @@ function P3.encodeBattle(battle)
 		EventPets = copyMap(battle.EventPets),
 		RaidRewardAt = battle.RaidRewardAt,
 		RaidLossAt = battle.RaidLossAt,
+		Duels = duels,
 	}
+end
+
+-- the snapshot's Battle (ProfileSync): the stored form without the duel record (opponents' ids stay on the server)
+function P3.syncBattle(raw)
+	local out = P3.encodeBattle(P3.cleanBattle(raw))
+	out.Duels = nil
+	return out
 end
 
 ----------------------------------------------------------------------
@@ -3153,6 +3242,18 @@ function P3.diffBattle(live, base)
 			any = true
 		end
 	end
+	-- lobby-shop 16.12: the duel entries the session added (the record merges as a union, capped by cleanDuels)
+	local had = {}
+	for _, e in ipairs(base.Duels or {}) do
+		had[tostring(e.U) .. ":" .. tostring(e.T)] = true
+	end
+	for _, e in ipairs(live.Duels or {}) do
+		if not had[tostring(e.U) .. ":" .. tostring(e.T)] then
+			d.Duels = d.Duels or {}
+			d.Duels[#d.Duels + 1] = { U = e.U, T = e.T }
+			any = true
+		end
+	end
 	if not any then
 		return nil
 	end
@@ -3178,7 +3279,14 @@ function P3.applyBattle(out, d)
 	for id in pairs(d.EventPets) do
 		battle.EventPets[id] = true
 	end
-	out.Battle = P3.cleanBattle(battle) -- TrialBest >= the highest cleared level
+	if type(d.Duels) == "table" then -- lobby-shop 16.12 (a delta from before it has none)
+		local duels = type(battle.Duels) == "table" and battle.Duels or {}
+		for _, e in ipairs(d.Duels) do
+			duels[#duels + 1] = e
+		end
+		battle.Duels = duels
+	end
+	out.Battle = P3.cleanBattle(battle) -- TrialBest >= the highest cleared level; Duels deduplicated and capped
 end
 
 -- The Home delta, or nil when the session did not change the Home. Whole = the session's complete home (it wins
@@ -4284,7 +4392,7 @@ local function buildSnapshot(profile)
 		PetLevels = copyPetLevels(profile.PetLevels),
 		-- Phase 3 (small: 3 presets of up to 4 keys, a handful of numbers, one boolean per trial level)
 		Teams = P3.teamsSnapshot(profile),
-		Battle = P3.encodeBattle(P3.cleanBattle(profile.Battle)),
+		Battle = P3.syncBattle(profile.Battle), -- (lobby-shop 16.12: without the duel record, server-only)
 		-- Phase 4 (growth entries without their zero numbers; the ring record always whole)
 		PetGrowth = P4.encodeGrowth(P4.cleanGrowth(profile.PetGrowth)),
 		Ring = P4.cleanRing(profile.Ring),
@@ -6350,6 +6458,38 @@ function DataService.MutateBattle(player, fn)
 		entry.Dirty = true
 		DataService.SyncSoon(player)
 	end
+	return true
+end
+
+-- lobby-shop 16.12: how many duels with that opponent the player's record holds at Unix second `since` or later (0
+-- until the profile is loaded; a provisional profile's stand-in record counts too, which is empty or this session's).
+function DataService.DuelsWith(player, opponentUserId, since)
+	local entry = player and cache[player.UserId]
+	if not entry or not entry.Loaded or not isFinite(opponentUserId) or not isFinite(since) then
+		return 0
+	end
+	local n = 0
+	for _, e in ipairs(P3.cleanDuels(entry.Profile.Battle and entry.Profile.Battle.Duels)) do
+		if e.U == opponentUserId and e.T >= since then
+			n = n + 1
+		end
+	end
+	return n
+end
+
+-- lobby-shop 16.12: notes a duel with that opponent at Unix second `at` on the player's record (newest DUELS_KEEP kept;
+-- merges into the store as a union, so it is allowed while provisional too). Never yields. -> ok
+function DataService.RecordDuel(player, opponentUserId, at)
+	local entry = player and cache[player.UserId]
+	local add = P3.duelEntry({ U = opponentUserId, T = at })
+	if not entry or not entry.Loaded or not add then
+		return false
+	end
+	local battle = ensureTable(entry.Profile, "Battle")
+	local list = P3.cleanDuels(battle.Duels)
+	list[#list + 1] = add
+	battle.Duels = P3.cleanDuels(list)
+	entry.Dirty = true -- (no Sync: the snapshot leaves the record out)
 	return true
 end
 

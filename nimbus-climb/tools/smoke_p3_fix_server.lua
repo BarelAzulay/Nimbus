@@ -547,6 +547,7 @@ local function serverScenarios()
 		advance(4.5)
 		-- the same two with real teams: honest, so the pair limit was not spent on the practice duel
 		local other = newPlayer("GapOther", MID, 20)
+		data.AddTrophies(other, 50) -- (lobby-shop 16.12: a win over a 0-trophy player pays no Trophies)
 		toArena(other, 0, 4)
 		local m2 = K.logSize()
 		ok, id = bs.StartDuel(strong, other)

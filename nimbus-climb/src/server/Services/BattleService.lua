@@ -213,8 +213,10 @@
 --     once: the forfeit penalty (BattleCatalog.Trophies.Forfeit, a PvP loss) is written right away (before their profile
 --     is saved on leave); the opponent wins. When BOTH duellists leave together the duel is void: nobody is penalised.
 --   * Duel rewards are gated against farming (payDuel): withheld for a forfeit before FORFEIT_MIN_SECONDS and for a loser
---     who dealt no damage; the same two players earn from at most PAIR_LIMIT duels per PAIR_WINDOW seconds; a practice
---     duel (Duel.PowerGap) pays nothing and counts for nothing.
+--     who dealt no damage; the same two players earn from at most PAIR_LIMIT duels per PAIR_WINDOW seconds, across servers
+--     (lobby-shop 16.12: each counted duel start is also saved on both players' Battle.Duels and the limit reads the
+--     highest of this server's list and the two saves); a winner gets no Trophies (tokens and XP stay) when the loser
+--     held 0 Trophies at the start (16.12); a practice duel (Duel.PowerGap) pays nothing and counts for nothing.
 --   * A raid player who presses LEAVE (BattleController's, the Ring's button: BattleCommand "Forfeit", or the "LeaveRaid" request), stays
 --     out of the fight area through the warning's 3-2-1 (never while dead), leaves the game or is leashed is removed from the raid
 --     (no reward, said in the toast and on the result card; no rejoin of that
@@ -1479,6 +1481,20 @@ local function payDuel(b, part, res)
 	elseif rewarded and not won then
 		trophies, tokens, xp = tonumber(T.Loss) or 0, tonumber(tokensT.Loss) or 0, tonumber(xpT.Loss) or 0
 	end
+	-- lobby-shop 16.12: no Trophies for beating a player who had none when the duel started (an empty account cannot
+	-- feed a farmer); the win's tokens and XP stay
+	local noTrophies = false
+	if won and trophies > 0 and type(b.TrophiesAtStart) == "table" then
+		for _, other in ipairs(b.PartList) do
+			local had = other ~= part and b.TrophiesAtStart[other.UserId] or nil
+			if finite(had) and had <= 0 then
+				noTrophies = true
+			end
+		end
+		if noTrophies then
+			trophies = 0
+		end
+	end
 	local double = tokens > 0 and BattleService.IsDoubleRewards()
 	if double then
 		tokens = floor(tokens * doubleMultiplier() + 0.5)
@@ -1509,6 +1525,7 @@ local function payDuel(b, part, res)
 	rw.Early = (won and res.Forfeit == true and short) or nil
 	rw.Practice = b.Practice or nil
 	rw.Unpaid = (won and not rewarded) or (won and stomp) or nil
+	rw.NoTrophies = noTrophies or nil
 	local text
 	if b.Practice then
 		text = (won and "Practice duel won!" or (draw and "Practice duel: a draw." or "Practice duel lost.")) .. " No rewards for practice."
@@ -1518,6 +1535,8 @@ local function payDuel(b, part, res)
 		text = "Your opponent never fought back: the win counts, no rewards."
 	elseif won and not rewarded then
 		text = "Victory! You two dueled a lot lately: no rewards this time."
+	elseif won and noTrophies then
+		text = "Victory! Your opponent had no trophies to win. +" .. tokens .. " tokens"
 	elseif won then
 		text = "Victory! +" .. trophies .. " trophies, +" .. tokens .. " tokens"
 	elseif draw then
@@ -2481,7 +2500,10 @@ local function pairKey(pa, pb)
 end
 
 -- true while these two players have fought fewer than PAIR_LIMIT trophy duels in the last PAIR_WINDOW seconds
--- (counts this one)
+-- (counts this one). lobby-shop 16.12: the limit holds across servers: every counted duel is also written on BOTH
+-- players' saves (DataService.RecordDuel: Unix seconds, Raid.now), and the count is the highest of this server's list
+-- and each save's duels with the other (DataService.DuelsWith), so a server hop, or one save that lost the record, does
+-- not reset it.
 local function pairAllows(pa, pb)
 	local key = pairKey(pa, pb)
 	local t = now()
@@ -2491,10 +2513,27 @@ local function pairAllows(pa, pb)
 			fresh[#fresh + 1] = at
 		end
 	end
-	local ok = #fresh < C.PAIR_LIMIT
+	local count = #fresh
+	local unix = Raid.now()
+	local DS = dataService()
+	if hasFn(DS, "DuelsWith") then
+		local na = try(DS, "DuelsWith", pa, pb.UserId, unix - C.PAIR_WINDOW + 1)
+		local nb = try(DS, "DuelsWith", pb, pa.UserId, unix - C.PAIR_WINDOW + 1)
+		count = max(count, finite(na) and na or 0, finite(nb) and nb or 0)
+	end
+	local ok = count < C.PAIR_LIMIT
 	fresh[#fresh + 1] = t
 	St.pairs[key] = fresh
+	if hasFn(DS, "RecordDuel") then
+		try(DS, "RecordDuel", pa, pb.UserId, unix)
+		try(DS, "RecordDuel", pb, pa.UserId, unix)
+	end
 	return ok
+end
+
+-- tests: forget this server's pair list (what a server hop does); the saved records stay
+function BattleService._ClearPairsForTest()
+	St.pairs = {}
 end
 
 local function beginBattle(b)
@@ -2566,6 +2605,8 @@ local function startDuel(pa, pb)
 	local powerA, powerB = powerOf(specA), powerOf(specB)
 	b.Practice = max(powerA, powerB) > max(1, min(powerA, powerB)) * C.DUEL_POWER_GAP
 	b.PairOk = b.Practice or pairAllows(pa, pb)
+	-- lobby-shop 16.12: the trophies each side holds at the start (payDuel pays no Trophies for beating a 0-trophy player)
+	b.TrophiesAtStart = { [pa.UserId] = trophiesOf(pa), [pb.UserId] = trophiesOf(pb) }
 	for _, p in ipairs({ pa, pb }) do
 		stopWatching(p, "Joined")
 		removeFromQueue(p, true)

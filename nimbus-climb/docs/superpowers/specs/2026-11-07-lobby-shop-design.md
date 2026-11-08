@@ -1968,3 +1968,57 @@ the advance table of `RedoGeom.realWidth`): the smoke mock's flat 0.5 em per cha
   inside it with the real widths (`ShopEggs.Metrics.MEASURE` = `RedoGeom.realWidth`); `client_egg_stage_mobile`: a Sky x3 with
   two NEW long names and a duplicate at all seven sizes, every name and note fitting, NEW! clear of the name, note, banner and
   ribbon, SPIN AGAIN's row 4 px clear each side; `client_load`: the player list enabled, a re-enabled health bar turned off.
+
+### 16.12 The owner's answers of 2026-11-08 (token spins on restricted accounts, Trophies across servers)
+
+These override the text above where they differ (16.1's token-pack note, 16.7, 16.8 call 13 and its two morning questions).
+
+**Token-paid spins on restricted accounts (the owner's pick A).** The server never opens the token packs' Robux prompt for an
+account PolicyService does not call "Allowed" (16.1), but a client can open it itself and a paid receipt is always granted. So
+the spin is the lock now:
+- `PetService.BuyRoulette` refuses a token-paid spin unless `GemService.TokenSpinLock(player)` is nil, which it is only for
+  PolicyState "Allowed". "Restricted" answers "Token spins are not available on your account"; "Checking" (no answer yet, a
+  failed lookup, no GemService, an error) answers "Checking your account, try again in a moment" and asks PolicyService again,
+  the token lock's fail-closed rule. The check sits before the balance (nothing is charged, nothing rolled) and the remote
+  answers `RouletteResult(Ok = false, Reason)` as for any refusal. Gem spins keep their own lock, unchanged.
+- No new saved field: earned tokens and bought tokens are one balance, so every token spin closes for a restricted account.
+  Receipts are still always granted (the tokens stay in the balance, spendable if the policy answer ever changes).
+- The Shop: every token Spin / x3 button reads "Locked" (the token cards' word) and is inactive while `PaidRandomItemsRestricted`
+  is not false, exactly like the gem buttons; the cutscene's SPIN AGAIN reads "Locked" for a token roll too, and
+  `EggStage.Request` for tokens toasts "Token spins are not available on this account right now." and sends nothing.
+- Consequence for the owner to know: a restricted account can no longer hatch from any roulette (gem spins were already
+  closed), so the tutorial's "Your First Pet" step (Rolled) cannot be completed there; such a player can skip the tutorial and
+  still gets pets from the daily gifts and the other free grants. Left open as a follow-up (a free, non-paid first spin, or the
+  step skipped for restricted accounts) for the owner to decide.
+- Tests: the smoke mock's PolicyService now answers "allowed" by default like Roblox does for an ordinary account (a double
+  replaces it; nil brings it back; false = no API at all). `egg_spin_x3` (restricted: x1 / x3 / every machine refused with the
+  text, nothing charged, the remote's answer; unknown: refused, then allowed once PolicyService answers), `p2gems_policy`
+  (restricted and unchecked accounts refused), `client_shop_eggs` (token buttons Locked for restricted and unknown, taps send
+  nothing), `client_egg_stage` (token SPIN AGAIN Locked, the toast). The Storm Altar's "awakens soon" checks join with no API.
+
+**Trophies across servers (the owner's pick).** BattleService's pair limit (PAIR_LIMIT 3 counted duels per pair per
+PAIR_WINDOW 1,800 s, any outcome, counted at the duel's start) lived in one server's memory, so two accounts could trade wins
+by hopping servers, and a 0-trophy loser loses nothing. The design:
+- **Where the record lives.** On BOTH duellists' saves, `Battle.Duels = { { U = the opponent's UserId, T = Unix seconds }... }`,
+  newest first. Every duel start that counts for the limit (not a practice duel) writes one entry on each side
+  (`DataService.RecordDuel`), also when that start is already past the limit (the in-server list does the same). Recording both
+  sides (not only the winner) keeps the rule exactly the in-server one: a winner-only record would let A and B alternate
+  wins for 3 + 3 rewarded duels per window.
+- **How it is read.** At the start `pairAllows` takes the highest of this server's list, A's entries for B and B's entries for
+  A inside the window (`DataService.DuelsWith(player, opponent, now - 1800 + 1)`); 3 or more makes the duel trophy-free,
+  announced at the start as before. Either save alone holds the limit (one lost save does not reset it). The Unix clock is
+  `Raid.now()` (os.time; tests replace it through `BattleService.Debug.RaidNow`).
+- **Bounds.** At most 32 entries (`P3.DUELS_KEEP`; the oldest dropped), each U a whole UserId 1..1e15 and T whole Unix seconds
+  > 0 (junk dropped, duplicates once): about 1 KB at most. Only the last 30 minutes matter; 32 counted duels in 30 minutes
+  would need about ten other opponents in between to push a pair out, and the other side's record still holds it.
+- **Save rules.** A save without the field reads `{}` (no migration). It is stored only when not empty, never sent in the
+  ProfileSync snapshot (opponent ids stay on the server), merges across servers as a union of entries (then capped), and may
+  change while provisional (a union merges safely). A server of the older build still running during a rollout rebuilds
+  `Battle` without it, so for that window the limit counts only the newer servers' duels.
+- **0 Trophies.** `b.TrophiesAtStart` keeps both totals at the start; a winner whose opponent held 0 Trophies gets no Trophies
+  (`rw.NoTrophies = true`, toast "Victory! Your opponent had no trophies to win. +N tokens"); the win's tokens and XP, PvPWins
+  and the loser's side are unchanged. Taken at the start so the order the two sides are paid in cannot matter.
+- Tests: `p3bs_pair_hop` (three duels, both saves hold them, a real leave / rejoin with the server's list cleared: the 4th is
+  trophy-free; one save alone holds it; 30 minutes on the Unix clock later the pair earns again; the 32-entry cap and junk) and
+  `p3bs_zero_trophy` (a full win over a 0-trophy player pays tokens and XP, no Trophies). The duel tests that expected
+  Trophies.Win from a brand-new opponent give both duellists trophies first.
