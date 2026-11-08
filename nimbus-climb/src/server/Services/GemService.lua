@@ -51,6 +51,7 @@
 --   GemService.IsRestricted(player) -> bool                  true unless the policy said "Allowed"
 --   GemService.SecretRouletteState(player) -> "Open" | "Restricted" | "Checking" | "Unavailable"   (the Storm Altar)
 --   GemService.TokenSpinLock(player) -> nil | reason   nil only when PolicyState is "Allowed" (16.12; never yields)
+--   GemService.Recheck(player) -> state   asks PolicyService again while "Checking" (kickPolicy's 5 s gap; 16.13 review)
 --   GemService.GetRoulette(id) -> {Id, DisplayName, GemPrice, Color, AllowSecret, GemsOnly, Odds} | nil   (a copy)
 --   GemService.ListRoulettes() -> {def...}   token roulettes with a gem price (Config.Roulettes order), then gems-only
 --   GemService.RoulettePrice(id) -> gems | nil
@@ -407,6 +408,20 @@ end
 
 function GemService.IsRestricted(player)
 	return GemService.PolicyState(player) ~= "Allowed"
+end
+
+-- lobby-shop 16.13 review fix 2: asks PolicyService again while this player's answer is still unknown ("Checking"); a
+-- known answer is left alone. kickPolicy's own gap (POLICY_KICK_GAP, 5 s per player) and Busy flag bound it, so callers
+-- (the tutorial's open "Your First Pet" step at 2 Hz, the Shop's prompts) may call it freely. Never yields. -> the state
+function GemService.Recheck(player)
+	if not isPlayer(player) then
+		return "Checking"
+	end
+	local entry = startPolicy(player)
+	if entry.State == "Checking" then
+		kickPolicy(player)
+	end
+	return entry.State
 end
 
 ----------------------------------------------------------------------

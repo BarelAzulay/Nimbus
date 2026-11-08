@@ -2090,3 +2090,23 @@ restricts from paid random items, so the tutorial's step 4 (`spin`, CompleteOn "
   TutorialEvent it sends and its real spin completes the step (no ask written); an unknown policy waits, then the
   "Restricted" answer grants once. `tut_starter_two_servers`: server A grants while the store fails, server B (read the
   store before A's save) grants and saves, A's orphan retry lands: the store holds one Pebble Pup and the ask.
+- **Review fixes (2026-11-08, the main session's decisions).**
+  - *The policy is asked again.* `GemService.Recheck(player)` asks PolicyService again while the answer is "Checking"
+    (kickPolicy's own 5 s gap and busy flag; a known answer is left alone). The open "Your First Pet" step calls it on every
+    check (the 2 Hz poll) while "Checking", and so do the starter checks below; `PetService` calls it when a player opens the
+    Shop's Eggs page through a roulette machine's prompt or the Egg Guide's walk-up ShopPrompt (server-side requests already
+    gated: a live player, not in a match, the prompt cooldown). No new remote: the HUD pill opens the Shop on the client only.
+  - *Skipped tutorials get the starter too.* The same one-time grant runs when a restricted account skips the tutorial
+    (whatever pets it holds, like the step) and, once per session after the load, for a restricted save WITHOUT any pet
+    (no stack, Golden / Rainbow copy or hybrid), unless the tutorial is still running at or before its "Rolled" step (that
+    step gives it with its guidance). Both wait for the policy answer and a readable save; the same `TutorialStarter` ask
+    keeps it to once ever (a later load after the pet was released grants nothing).
+  - *The grant before the record.* `PetService.GrantPet` runs first and `MarkTrove` only once it returned true (both
+    non-yielding, the same step, so the ask and the pet still ride one save and the two-server guarantee holds); a refused
+    grant writes no ask, the step waits and the next check tries again (logged once per player).
+  - Tests: `tut_starter_restricted` (the unknown-policy case now completes with no outside re-ask; a new restricted account
+    early in the tutorial gets nothing on load) and the new `tut_starter_more` (Recheck exists, leaves a known answer alone and
+    keeps the 5 s gap; the ShopPrompt and a RoulettePrompt re-ask for a Checking account; skip -> one pet, once after a rejoin;
+    a skipped save with no pets -> the pet on load, once, and never again after it is released; the same with the answer
+    arriving after the load; a skipped save holding pets and an allowed skipper get nothing; a refused GrantPet writes no
+    ask, then the next try grants), red on the old code first; `tut_starter_two_servers` unchanged and green.

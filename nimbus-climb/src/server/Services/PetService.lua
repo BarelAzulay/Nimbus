@@ -1522,6 +1522,19 @@ end
 -- Roulette machines in the lobby: one ProximityPrompt each; the walk-up ShopPrompt on the Egg Guide (lobby shop 16.3)
 ----------------------------------------------------------------------
 
+-- lobby-shop 16.13 review fix 2: a player opening the Shop's Eggs page (a machine or the Egg Guide; the server-side prompt is
+-- the request, already live-player / InMatch / cooldown checked) whose paid-random-items answer is still unknown gets
+-- PolicyService asked again (GemService.Recheck: its own 5 s gap), so the Locked buttons can open. Guarded, never yields.
+local function recheckPolicy(player)
+	local gems = getGemService()
+	if gems and type(gems.Recheck) == "function" then
+		local ok, err = pcall(gems.Recheck, player)
+		if not ok then
+			warn("[PetService] GemService.Recheck errored: " .. tostring(err))
+		end
+	end
+end
+
 local function buildPrompts(lobbyInfo)
 	for _, prompt in ipairs(promptObjects) do
 		if prompt.Parent then
@@ -1566,6 +1579,7 @@ local function buildPrompts(lobbyInfo)
 				if rateLimited(player, "Prompt_" .. rouletteId, PROMPT_COOLDOWN) then
 					return
 				end
+				recheckPolicy(player)
 				fireClient("OpenPanel", player, "Shop", { Tab = "Roulette", RouletteId = rouletteId })
 			end)
 		else
@@ -1600,6 +1614,7 @@ local function buildPrompts(lobbyInfo)
 		if rateLimited(player, "Prompt_Shop", PROMPT_COOLDOWN) then
 			return
 		end
+		recheckPolicy(player)
 		fireClient("OpenPanel", player, "Shop", { Tab = "Eggs" })
 	end)
 end

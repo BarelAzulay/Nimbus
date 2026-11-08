@@ -162,6 +162,9 @@ local function serverScenarios()
 			local r = join("StarterR", ruid, "restrict")
 			players[#players + 1] = r
 			T.check(loaded(r) and gs.PolicyState(r) == "Restricted", "starter: (setup) the restricted account is loaded and PolicyState says Restricted", tostring(gs.PolicyState(r)))
+			K.advance(1.5)
+			T.check(totalPets(r) == 0 and not hasAsk(r), "starter: a new restricted account early in the tutorial gets nothing on load (the 'Your First Pet' step gives it)",
+				totalPets(r) .. " pets")
 			local pets0, spins0 = totalPets(r), spins(r)
 			local mark = K.logSize()
 			onSpinStep(r)
@@ -230,13 +233,209 @@ local function serverScenarios()
 			T.check(totalPets(u) == 0 and stepId(u) == "spin" and not hasAsk(u), "starter: while the policy is unknown the step waits and grants nothing",
 				totalPets(u) .. " pets / " .. tostring(stepId(u)))
 			installPolicy()
-			K.advance(6) -- past GemService's gap between two on-demand lookups
-			gs.TokenSpinLock(u) -- a refused spin asks PolicyService again (16.12)
-			K.advance(1.5)
+			K.advance(7.5) -- (review fix 2) the open step itself asks PolicyService again (GemService.Recheck, its own 5 s gap)
 			T.check(gs.PolicyState(u) == "Restricted" and petCount(u, PET) == 1 and totalPets(u) == 1 and stepId(u) == "equip" and hasAsk(u),
-				"starter: ...once PolicyService answers 'Restricted' the starter comes (once) and the tutorial carries on",
+				"starter: ...the open step asks PolicyService again by itself; once it answers 'Restricted' the starter comes (once) and the tutorial carries on",
 				tostring(gs.PolicyState(u)) .. " / " .. petCount(u, PET) .. " / " .. tostring(stepId(u)))
 			K.flushErrors("tut_starter_restricted")
+		end)
+		removePolicy()
+		for _, p in ipairs(players) do
+			leave(p)
+		end
+		if not okRun then
+			error(errRun, 0)
+		end
+	end)
+
+	-- the review fixes of 2026-11-08 (findings 2, 3, 4): the policy re-ask (GemService.Recheck from the open step and the
+	-- Shop's walk-up / machine prompts), the same one-time starter on a tutorial skip and on load for a restricted save with
+	-- no pets, and the grant before the record (a refused GrantPet writes no ask)
+	local function promptNamed(name)
+		for _, d in ipairs(workspace:GetDescendants()) do
+			if d:IsA("ProximityPrompt") and d.Name == name then
+				return d
+			end
+		end
+		return nil
+	end
+	local function skippedSave(p)
+		DS().SetTutorial(p, { Step = 1000, Done = true, Gifted = true }) -- (TutorialService's SKIPPED_STEP)
+	end
+
+	S.tut_starter_more = guarded("tut_starter_more", function()
+		if not K.needBoot() then
+			return
+		end
+		local Steps = requireAt("shared/TutorialSteps")
+		local gs = GS()
+		SPIN = Steps and Steps.IndexOf.spin
+		if not T.check(SPIN ~= nil and gs ~= nil and TSv() ~= nil, "starter more: (setup) the spin step, GemService and TutorialService") then
+			return
+		end
+		local players = {}
+		installPolicy()
+		local okRun, errRun = pcall(function()
+			-- finding 2: GemService.Recheck exists and asks again (its own 5 s gap); the Shop prompts ask for a Checking account
+			T.check(type(gs.Recheck) == "function", "starter more: GemService.Recheck exists")
+			PolS.GetPolicyInfoForPlayerAsync = false
+			local v = join("StarterV", newUserId(), "allow")
+			players[#players + 1] = v
+			T.check(loaded(v) and gs.PolicyState(v) == "Checking", "starter more: (setup) an allowed account stuck in Checking", tostring(gs.PolicyState(v)))
+			installPolicy()
+			K.advance(3)
+			T.eq(gs.PolicyState(v), "Checking", "starter more: (baseline) nothing asks again by itself while it is not on the step")
+			local shop = promptNamed("ShopPrompt")
+			if T.check(shop ~= nil, "starter more: (setup) the Egg Guide's ShopPrompt") then
+				Mock.Trigger(shop, v)
+				K.advance(0.5)
+				T.eq(gs.PolicyState(v), "Allowed", "starter more: opening the Shop at the Egg Guide asks PolicyService again (Allowed now)")
+			end
+			PolS.GetPolicyInfoForPlayerAsync = false
+			local w2 = join("StarterW", newUserId(), "allow")
+			players[#players + 1] = w2
+			T.check(loaded(w2) and gs.PolicyState(w2) == "Checking", "starter more: (setup) a second account in Checking", tostring(gs.PolicyState(w2)))
+			installPolicy()
+			K.advance(3)
+			local machine = promptNamed("RoulettePrompt")
+			if T.check(machine ~= nil, "starter more: (setup) a roulette machine's prompt") then
+				Mock.Trigger(machine, w2)
+				K.advance(0.5)
+				T.eq(gs.PolicyState(w2), "Allowed", "starter more: opening a machine's Eggs page asks PolicyService again (Allowed now)")
+			end
+			-- Recheck leaves a known answer alone, and keeps GemService's own gap (5 s) while the lookups fail
+			local calls = 0
+			local x = join("StarterX", newUserId(), "allow")
+			players[#players + 1] = x
+			loaded(x)
+			PolS.GetPolicyInfoForPlayerAsync = function()
+				calls = calls + 1
+				error("PolicyService is down")
+			end
+			if type(gs.Recheck) == "function" then
+				gs.Recheck(x)
+				K.advance(0.2)
+				T.check(calls == 0 and gs.PolicyState(x) == "Allowed", "starter more: Recheck leaves a known answer alone", calls .. " lookups")
+				local y = join("StarterY", newUserId(), "allow") -- its first lookup fails at the join
+				players[#players + 1] = y
+				local afterJoin = calls
+				for _ = 1, 6 do
+					gs.Recheck(y)
+					K.advance(0.3)
+				end
+				T.check(afterJoin >= 1 and calls == afterJoin and gs.PolicyState(y) == "Checking", "starter more: ...and asks at most once per 5 s (6 calls in 1.8 s after a failed lookup: no new lookup)",
+					afterJoin .. " -> " .. calls .. " lookups")
+			end
+			installPolicy()
+
+			-- finding 3a: a restricted account that skips the tutorial early gets the same starter, once
+			local s = join("StarterS", newUserId(), "restrict")
+			players[#players + 1] = s
+			T.check(loaded(s) and gs.PolicyState(s) == "Restricted" and totalPets(s) == 0, "starter more: (setup) a new restricted account, no pets")
+			local mark = K.logSize()
+			local okSkip = TSv().HandleEvent(s, "Skip")
+			K.advance(1.5)
+			T.check(okSkip == true and petCount(s, PET) == 1 and totalPets(s) == 1 and hasAsk(s) and toasts(s, PET_NAME, mark) == 1,
+				"starter more: a restricted account that skips the tutorial gets the one " .. PET_NAME .. " (ask saved, one toast)",
+				tostring(okSkip) .. " / " .. totalPets(s) .. " pets / ask " .. tostring(hasAsk(s)))
+			local suid = s.UserId
+			leave(s)
+			local s2 = join("StarterS", suid, "restrict")
+			players[#players + 1] = s2
+			loaded(s2)
+			K.advance(1.5)
+			T.check(petCount(s2, PET) == 1 and totalPets(s2) == 1, "starter more: ...after a rejoin: still one", totalPets(s2) .. " pets")
+
+			-- finding 3b: a restricted save that skipped before this build, no pets: the starter on load, once
+			local o = join("StarterO", newUserId(), "restrict")
+			players[#players + 1] = o
+			loaded(o)
+			skippedSave(o)
+			local ouid = o.UserId
+			leave(o)
+			local o2 = join("StarterO", ouid, "restrict")
+			players[#players + 1] = o2
+			loaded(o2)
+			K.advance(1.5)
+			T.check(petCount(o2, PET) == 1 and totalPets(o2) == 1 and hasAsk(o2), "starter more: a restricted save that skipped the tutorial before, with no pets, gets the starter on load",
+				totalPets(o2) .. " pets / ask " .. tostring(hasAsk(o2)))
+			leave(o2)
+			local o3 = join("StarterO", ouid, "restrict")
+			players[#players + 1] = o3
+			loaded(o3)
+			K.advance(1.5)
+			T.check(petCount(o3, PET) == 1 and totalPets(o3) == 1, "starter more: ...and only once (the next load)", totalPets(o3) .. " pets")
+			-- even with the pet released: the ask holds it to once ever
+			local prof = DS().GetProfile(o3)
+			prof.Pets[PET] = nil
+			DS().MarkDirty(o3)
+			leave(o3)
+			local o4 = join("StarterO", ouid, "restrict")
+			players[#players + 1] = o4
+			loaded(o4)
+			K.advance(1.5)
+			T.check(totalPets(o4) == 0 and hasAsk(o4), "starter more: ...a later load with no pets (released) grants nothing (once ever)", totalPets(o4) .. " pets")
+
+			-- finding 3c: the same, with the policy answer arriving after the load
+			local q = join("StarterQ", newUserId(), "restrict")
+			players[#players + 1] = q
+			loaded(q)
+			skippedSave(q)
+			local quid = q.UserId
+			leave(q)
+			PolS.GetPolicyInfoForPlayerAsync = false
+			local q2 = join("StarterQ", quid, "restrict")
+			players[#players + 1] = q2
+			loaded(q2)
+			K.advance(2)
+			T.check(gs.PolicyState(q2) == "Checking" and totalPets(q2) == 0 and not hasAsk(q2), "starter more: while the policy is unknown at load: nothing yet")
+			installPolicy()
+			K.advance(7.5)
+			T.check(gs.PolicyState(q2) == "Restricted" and petCount(q2, PET) == 1 and hasAsk(q2), "starter more: ...asked again, the answer 'Restricted' brings the starter",
+				tostring(gs.PolicyState(q2)) .. " / " .. totalPets(q2) .. " pets")
+
+			-- finding 3d / 3e: a restricted save WITH pets, and an allowed account that skips: nothing
+			local h = join("StarterH", newUserId(), "restrict")
+			players[#players + 1] = h
+			loaded(h)
+			skippedSave(h)
+			DS().GetProfile(h).Pets.mallow_kitten = 1
+			DS().MarkDirty(h)
+			local huid = h.UserId
+			leave(h)
+			local h2 = join("StarterH", huid, "restrict")
+			players[#players + 1] = h2
+			loaded(h2)
+			K.advance(1.5)
+			T.check(petCount(h2, PET) == 0 and not hasAsk(h2), "starter more: a restricted skipped save that holds pets gets nothing on load")
+			local al = join("StarterAl", newUserId(), "allow")
+			players[#players + 1] = al
+			loaded(al)
+			TSv().HandleEvent(al, "Skip")
+			K.advance(1.5)
+			T.check(totalPets(al) == 0 and not hasAsk(al), "starter more: an allowed account that skips gets nothing")
+
+			-- finding 4: a refused GrantPet writes no ask; the step waits and the next try grants once
+			local g = join("StarterG", newUserId(), "restrict")
+			players[#players + 1] = g
+			loaded(g)
+			local ps = PS()
+			local realGrant = ps.GrantPet
+			ps.GrantPet = function()
+				return false, "Your save is still loading"
+			end
+			local okG, errG = pcall(function()
+				onSpinStep(g)
+				K.advance(1.5)
+			end)
+			ps.GrantPet = realGrant
+			T.check(okG, "starter more: (refusal) ran", tostring(errG))
+			T.check(totalPets(g) == 0 and not hasAsk(g) and stepId(g) == "spin", "starter more: a refused GrantPet writes no ask and the step waits",
+				totalPets(g) .. " pets / ask " .. tostring(hasAsk(g)) .. " / " .. tostring(stepId(g)))
+			K.advance(1.5)
+			T.check(petCount(g, PET) == 1 and hasAsk(g) and stepId(g) == "equip", "starter more: ...the next try grants the pet, then the ask, and the step completes",
+				totalPets(g) .. " pets / " .. tostring(stepId(g)))
+			K.flushErrors("tut_starter_more")
 		end)
 		removePolicy()
 		for _, p in ipairs(players) do

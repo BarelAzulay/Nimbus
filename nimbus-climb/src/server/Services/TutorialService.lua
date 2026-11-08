@@ -51,7 +51,9 @@
 --                 PolicyService restricts from paid random items (GemService.PolicyState "Restricted"; it cannot spin) gets
 --                 ONE fixed starter pet (Config.Tutorial.RestrictedStarterPet) instead, once per save (the save's Trove ask
 --                 "TutorialStarter" + PetService.GrantPet in one step; see restrictedStarter), and the step completes;
---                 "Checking" (unknown) waits; "Allowed" spins as before
+--                 "Checking" (unknown) waits and asks PolicyService again (GemService.Recheck); "Allowed" spins as before.
+--                 Review fixes: the grant comes first, the ask only after it succeeded; the same one-time grant also runs
+--                 on a tutorial Skip and after the load for a restricted save without any pet (starterPending)
 --   Equipped      the equipped list changed to a non-empty one (PetService.PerksChanged / attribute EquippedPets),
 --                 or the client reports "PetsOpened" while a pet is equipped
 --   MatchStarted  / MatchEnded: the player attribute InMatch turning true / false
@@ -213,7 +215,14 @@ local arenaInfo = nil
 local DungeonService = nil
 local dungeonInfo = nil
 -- lobby-shop 16.13 (the restricted starter): GemService.PolicyState, PetCatalog names; every use is guarded
-local Starter = { GemService = nil, PetCatalog = nil, ASK = "TutorialStarter" }
+local Starter = {
+	GemService = nil,
+	PetCatalog = nil,
+	ASK = "TutorialStarter",
+	busy = {}, -- [player] = true while GrantPet runs (a nested nudge waits)
+	warned = {}, -- [player] = true once a refused grant was logged
+	pending = {}, -- [player] = { Load = true?, Skip = true? }: review fix 3, the grant outside the step (starterPending)
+}
 
 local function hasSignal(module, name)
 	return type(module) == "table" and type(module[name]) == "table" and type(module[name].Connect) == "function"
@@ -1599,53 +1608,136 @@ end
 --     save that already holds the ask (a repeat, a rejoin, a later server) completes the step with no pet;
 --   * a save not readable (loading, provisional: GetTrove nil) waits; a full stack of that pet marks the ask without a pet.
 -- Server-decided only: no remote reaches this (the TutorialEvent remote never completes a "Rolled" step).
-local function restrictedStarter(player, track)
-	if track.StarterBusy then
-		return false -- the grant below is running (a nested nudge)
+-- Review fixes (2026-11-08): 2. while the answer is "Checking" the step asks PolicyService again (GemService.Recheck, its
+-- own 5 s gap); 3. the same one-time grant also runs on a tutorial skip and on load for a restricted save with no pets
+-- (starterPending); 4. GrantPet runs FIRST and the ask is written only once it returned true (both non-yielding, the same
+-- step, so the ask and the pet still ride one save): a refused grant writes nothing and is tried again.
+
+-- true when the profile holds any pet (a stack, a Golden / Rainbow copy, a hybrid)
+local function ownsAnyPet(profile)
+	for _, field in ipairs({ "Pets", "Hybrids" }) do
+		for _, v in pairs(type(profile[field]) == "table" and profile[field] or {}) do
+			if field == "Hybrids" or (tonumber(v) or 0) > 0 then
+				return true
+			end
+		end
 	end
-	local gems = Starter.GemService
-	if not hasFunction(gems, "PolicyState") or gems.PolicyState(player) ~= "Restricted" then
-		return false
+	for _, t in pairs(type(profile.Tiers) == "table" and profile.Tiers or {}) do
+		if type(t) == "table" and ((tonumber(t.Golden) or 0) > 0 or (tonumber(t.Rainbow) or 0) > 0) then
+			return true
+		end
+	end
+	return false
+end
+
+-- The one-time starter grant. opts.NeedNoPets: only for a save without any pet (the load case). -> "done" (granted now, or
+-- the save holds the ask already), "no" (nothing to do: an allowed account, or pets when NeedNoPets), "wait" (try again:
+-- the policy answer or the save not there yet, a refused grant, a grant already running)
+local function grantStarter(player, opts)
+	if Starter.busy[player] then
+		return "wait" -- the grant below is running (a nested nudge from inside GrantPet)
 	end
 	if not hasFunction(DataService, "GetTrove") or not hasFunction(DataService, "MarkTrove") or not hasFunction(DataService, "GetProfile") then
-		return false
+		return "wait"
+	end
+	local okProfile, profile = pcall(DataService.GetProfile, player)
+	if not okProfile or type(profile) ~= "table" or type(profile.Pets) ~= "table" then
+		return "wait"
+	end
+	if opts.NeedNoPets and ownsAnyPet(profile) then
+		return "no"
+	end
+	local gems = Starter.GemService
+	local state = hasFunction(gems, "PolicyState") and gems.PolicyState(player) or nil
+	if state == "Allowed" then
+		return "no"
+	elseif state ~= "Restricted" then
+		if hasFunction(gems, "Recheck") then
+			pcall(gems.Recheck, player) -- review fix 2 (bounded by GemService's own gap)
+		end
+		return "wait"
 	end
 	local okTrove, trove = pcall(DataService.GetTrove, player)
 	if not okTrove or type(trove) ~= "table" then
-		return false -- the save is not readable yet: wait
+		return "wait" -- the save is not readable yet (loading, provisional)
 	end
 	if trove[Starter.ASK] == true then
-		return true -- this save got its starter already: the step completes, nothing more
+		return "done" -- this save got its starter already: nothing more
 	end
 	local petId = type(Config.Tutorial) == "table" and Config.Tutorial.RestrictedStarterPet or nil
 	local catalog = Starter.PetCatalog
 	local def = type(petId) == "string" and catalog and hasFunction(catalog, "Get") and catalog.Get(petId) or nil
 	if not def or not hasFunction(PetService, "GrantPet") then
-		return false
-	end
-	local okProfile, profile = pcall(DataService.GetProfile, player)
-	if not okProfile or type(profile) ~= "table" or type(profile.Pets) ~= "table" then
-		return false
+		return "wait"
 	end
 	local cap = (type(Config.Pets) == "table" and tonumber(Config.Pets.MaxPerStack)) or 99
-	local room = (tonumber(profile.Pets[petId]) or 0) < cap
-	local okMark, marked = pcall(DataService.MarkTrove, player, Starter.ASK, room and { Pets = { [petId] = 1 } } or nil)
-	if not okMark or marked ~= true then
-		return false
+	if (tonumber(profile.Pets[petId]) or 0) >= cap then
+		-- a full stack: the ask is marked with no pet (nothing to grant)
+		local okMark, marked = pcall(DataService.MarkTrove, player, Starter.ASK, nil)
+		return (okMark and marked == true) and "done" or "wait"
 	end
-	if room then
-		-- GrantPet puts the first pet into the team, whose TeamsChanged nudges this tutorial again from inside the call: the
-		-- busy flag keeps that nested settle from completing the step a second time (only this caller completes it)
-		track.StarterBusy = true
-		local okGrant, granted, result = pcall(PetService.GrantPet, player, petId, { Count = 1 })
-		track.StarterBusy = nil
-		if okGrant and granted == true then
-			notify(player, "Nimbus hatched a " .. tostring(def.Name or petId) .. " just for you: your very first pet buddy!", "good", 6)
-		else
-			warn("[TutorialService] the restricted starter " .. petId .. " was not granted: " .. tostring(okGrant and result or granted))
+	-- GrantPet puts the first pet into the team, whose TeamsChanged nudges this tutorial again from inside the call: the
+	-- busy flag keeps that nested settle from granting or completing a second time (only this caller completes it)
+	Starter.busy[player] = true
+	local okGrant, granted, result = pcall(PetService.GrantPet, player, petId, { Count = 1 })
+	Starter.busy[player] = nil
+	if not (okGrant and granted == true) then
+		if not Starter.warned[player] then
+			Starter.warned[player] = true
+			warn("[TutorialService] the restricted starter " .. petId .. " was not granted (tried again later): " .. tostring(okGrant and result or granted))
+		end
+		return "wait"
+	end
+	-- the same non-yielding step as the grant: the ask with its grant record (the Trove merge keeps ONE pet across servers)
+	local okMark, marked = pcall(DataService.MarkTrove, player, Starter.ASK, { Pets = { [petId] = 1 } })
+	if not okMark or marked ~= true then
+		warn("[TutorialService] the restricted starter was granted but its ask was not written: " .. tostring(okMark and marked or "error"))
+	end
+	notify(player, "Nimbus hatched a " .. tostring(def.Name or petId) .. " just for you: your very first pet buddy!", "good", 6)
+	return "done"
+end
+
+-- the "Rolled" check's part (only "done" completes the step; "Allowed" accounts spin as before)
+local function restrictedStarter(player, _track)
+	return grantStarter(player, {}) == "done"
+end
+
+-- the index of the first "Rolled" step (nil when there is none)
+local function rolledStepIndex()
+	for index, step in ipairs(steps) do
+		if step.CompleteOn == "Rolled" then
+			return index
 		end
 	end
-	return true
+	return nil
+end
+
+-- Review fix 3 (the main session's decision): a restricted account that skipped the tutorial (now, or before this
+-- build) never reaches "Your First Pet" and can never hatch, so the same one-time grant also runs
+--   * on a tutorial skip (Starter.pending[player].Skip; whatever pets it holds, like the step), and
+--   * once per session after the load for a save WITHOUT any pet (Load), unless the tutorial is still running at or before
+--     its "Rolled" step (that step gives the starter with its guidance).
+-- Both wait for the policy answer (asking again while "Checking") and a readable save; the "TutorialStarter" ask keeps it
+-- to once ever. Run from the 2 Hz poll and right after a skip.
+local function starterPending(player, track)
+	local want = Starter.pending[player]
+	if not want then
+		return
+	end
+	if not want.Skip then
+		local rolled = rolledStepIndex()
+		if not track.Done and rolled and track.Step <= rolled then
+			Starter.pending[player] = nil
+			return
+		end
+	end
+	local ok, result = pcall(grantStarter, player, { NeedNoPets = not want.Skip })
+	if not ok then
+		warn("[TutorialService] the restricted starter check failed: " .. tostring(result))
+		Starter.pending[player] = nil
+	elseif result ~= "wait" then
+		Starter.pending[player] = nil
+	end
 end
 
 -- Level-based completion checks (state the server can see right now).
@@ -1782,6 +1874,10 @@ local function loadPlayer(player)
 	end
 	local track = newTrack(stored)
 	tracks[player] = track
+	-- review fix 3: the restricted starter for a save with no pets, once the policy answer is in (the poll runs it)
+	local want = Starter.pending[player] or {}
+	want.Load = true
+	Starter.pending[player] = want
 	if not track.Done then
 		enterStep(player, track)
 	end
@@ -1894,6 +1990,9 @@ local function onPlayerRemoving(player)
 	tracks[player] = nil
 	lastEvent[player] = nil
 	lastSync[player] = nil
+	Starter.pending[player] = nil
+	Starter.busy[player] = nil
+	Starter.warned[player] = nil
 end
 
 ----------------------------------------------------------------------
@@ -1923,6 +2022,11 @@ function TutorialService.HandleEvent(player, eventName)
 	end
 	if eventName == "Skip" then
 		finish(player, track, true)
+		-- review fix 3: a restricted account that skips gets the one-time starter (now, or once the policy answer is in)
+		local want = Starter.pending[player] or {}
+		want.Skip = true
+		Starter.pending[player] = want
+		starterPending(player, track)
 		return true
 	end
 	local completes = EVENT_COMPLETES[eventName]
@@ -2023,6 +2127,7 @@ local function pollPlayer(player, dt)
 		loadPlayer(player)
 		return
 	end
+	starterPending(player, track) -- review fix 3 (also after the tutorial ended)
 	local step = currentStep(track)
 	if not step then
 		return

@@ -886,8 +886,9 @@ still open such a prompt by other means, token spins themselves are closed for t
 x3 button reads **Locked** and the server answers "Token spins are not available on your account" (while Roblox has
 not answered yet: "Checking your account, try again in a moment"). A purchase that was already paid is always granted.
 Gem packs and everything else still work. Because such a player cannot spin, the tutorial's **Your First Pet** step gives
-them one **Pebble Pup** from Nimbus instead (once per account; it waits while Roblox has not answered yet), and the
-tutorial carries on.
+them one **Pebble Pup** from Nimbus instead (once per account; it waits while Roblox has not answered yet, and the game
+asks Roblox again), and the tutorial carries on. Such a player who skips the tutorial, or who skipped it earlier and has
+no pet at all, gets the same Pebble Pup (still once per account).
 
 ### The Store: the owner's setup
 
