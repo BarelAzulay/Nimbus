@@ -2585,7 +2585,13 @@ S.client_hatch_cutscene = guarded("client_hatch_cutscene", function()
 							end
 						end
 					end
-					T.check(inside and ped:FindFirstChild("Top") ~= nil and ped:FindFirstChild("Inlay") ~= nil, "hatch cutscene: the cloud-stone pedestal (Top, gold Inlay, puffs) is drawn inside its own box")
+					local drawn = false
+						for _, d in ipairs(ped and ped:GetDescendants() or {}) do
+							if d:IsA("GuiObject") then
+								drawn = true
+							end
+						end
+						T.check(inside and not drawn and ped.BackgroundTransparency == 1, "hatch cutscene: Pedestal1 is an empty layout box: no drum, puffs or bars drawn under the pet (owner 2026-11-08)")
 				end
 			end
 			if ph == "Crack" and egg then

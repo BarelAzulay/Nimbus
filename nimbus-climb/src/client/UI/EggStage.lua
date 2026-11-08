@@ -1586,29 +1586,11 @@ function R.strips(roll, t)
 	end
 end
 
--- the cloud-stone pedestal (spec 16.4 "Spot, Backlight, Pedestal"; the pitch's drawing): a stone drum with a gold
--- inlay, three cloud puffs at its foot and a pale top ringed in the rarity colour, every part inside its box (shares
--- of it, so it follows the box from 420 x 90 down to a phone's 12 px lip)
-function B.pedestal(hero, j, rarity)
-	local P = K.PED
-	local ped = H.frame(hero, "Pedestal" .. j, { ZIndex = 5 })
-	local body = H.frame(ped, "Body", { Position = UDim2.fromScale(0.07, 0.2), Size = UDim2.fromScale(0.86, 0.62), BackgroundColor3 = K.WHITE, BackgroundTransparency = 0, ZIndex = 5 })
-	H.corner(body, 0.35)
-	Util.Create("UIGradient", { Rotation = 90, Color = ColorSequence.new(P.StoneTop, P.StoneFoot), Parent = body })
-	H.stroke(body, K.INK, 2)
-	H.frame(ped, "Inlay", { Position = UDim2.fromScale(0.075, 0.5), Size = UDim2.fromScale(0.85, 0.08), BackgroundColor3 = P.Gold, BackgroundTransparency = 0, ZIndex = 6 })
-	for i, p in ipairs({ { 0.0, 0.6, 0.34, 0.4 }, { 0.33, 0.64, 0.34, 0.36 }, { 0.66, 0.6, 0.34, 0.4 } }) do
-		local puff = H.frame(ped, "Puff" .. i, { Position = UDim2.fromScale(p[1], p[2]), Size = UDim2.fromScale(p[3], p[4]), BackgroundColor3 = P.Puff, BackgroundTransparency = 0, ZIndex = 7 })
-		H.corner(puff, 0.5)
-		H.stroke(puff, K.INK, 2)
-	end
-	local top = H.frame(ped, "Top", { Size = UDim2.fromScale(1, 0.44), BackgroundColor3 = P.Top, BackgroundTransparency = 0, ZIndex = 8 })
-	H.corner(top, 0.5)
-	H.stroke(top, K.INK, 2)
-	local ring = H.frame(top, "Ring", { Position = UDim2.fromScale(0.09, 0.2), Size = UDim2.fromScale(0.82, 0.6), ZIndex = 9 })
-	H.corner(ring, 0.5)
-	H.stroke(ring, H.color(rarity), 2)
-	return ped
+-- the pedestal's box (spec 16.4 "Spot, Backlight, Pedestal"): an empty layout anchor only. The owner (2026-11-08)
+-- asked to remove the drawn cloud-stone drum ("the useless bars below the pet"), so nothing is drawn in it; the egg,
+-- the halves and the pet still stand on its box from 420 x 90 down to a phone's 12 px lip.
+function B.pedestal(hero, j, _rarity)
+	return H.frame(hero, "Pedestal" .. j, { ZIndex = 5 })
 end
 
 -- the rarity backlight: four stacked round glows, as strong as the egg's glow (none for Common / Uncommon)
