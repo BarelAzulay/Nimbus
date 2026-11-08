@@ -128,9 +128,11 @@ def test_cli_exit_codes():
 
 
 def test_constants():
-    want = ["egg_common", "egg_uncommon", "egg_rare", "egg_epic", "egg_legendary", "egg_mythic", "egg_secret",
-            "gem_world", "portal_ring", "portal_altar_ring", "prop_board_lb"]
-    check(list(MK.BUILD_KEYS) == want, "BUILD_KEYS are the plan's eleven keys", MK.BUILD_KEYS)
+    rar = ["common", "uncommon", "rare", "epic", "legendary", "mythic", "secret"]
+    want = ["egg_" + r for r in rar] + ["gem_world", "portal_ring", "portal_altar_ring", "prop_board_lb"]
+    # (egg-3d) the 14 halves of the hatch cutscene's crack (catalog hatch: GUI-only, named by client/UI/Egg3D)
+    want += ["egg_%s_%s" % (r, h) for r in rar for h in ("top", "bot")]
+    check(list(MK.BUILD_KEYS) == want, "BUILD_KEYS are the plan's eleven keys + egg-3d's fourteen halves", MK.BUILD_KEYS)
     check(list(MK.RESERVED) == ["gem_world_low"], "RESERVED is gem_world_low", MK.RESERVED)
 
 
