@@ -10,6 +10,11 @@
 -- a starry backdrop and a violet aura). The effects are client/UI/HatchFx; ShopController calls Init (Task 22).
 -- Sounds: the owner's egg keys (Config.Audio Egg*), each playing Config.Audio.Fallback (today's roulette sounds, or
 -- nothing) while its id is 0.
+-- (egg-3d, spec 16.14) an x1 roll's hero egg is the real Blender egg (client/UI/Egg3D: a ViewportFrame "Egg3D" in the
+-- Egg1 frame, attribute Egg3D = its key) when its key is usable here on High graphics: it turns slowly over the rise,
+-- settles as it cracks, rocks in 3D with the shakes and, when its two halves' keys are usable too, splits into them at
+-- the burst (the frame moves into Halves1, attribute Split3D) and they fly apart; else today's 2D halves. No id, Low
+-- graphics, a phone with a 3D egg already showing or a failed Assemble: today's 2D egg exactly. x3 keeps 2D eggs.
 --
 --   EggStage.Init()                        connects the RouletteResult listener (once)
 --   EggStage.Show(result) -> bool          plays a RouletteResult (new shape with Pulls, or the old top-level shape); a
@@ -79,6 +84,7 @@ local Remotes = require(Shared:WaitForChild("Remotes"))
 local UIFolder = script.Parent
 local ClientFolder = UIFolder.Parent
 local EggArt = require(UIFolder:WaitForChild("EggArt"))
+local Egg3D = require(UIFolder:WaitForChild("Egg3D"))
 local HatchFx = require(UIFolder:WaitForChild("HatchFx"))
 local GemIcon = require(UIFolder:WaitForChild("GemIcon"))
 local CloudUI = require(UIFolder:WaitForChild("CloudUI"))
@@ -194,6 +200,10 @@ K.LIP = { W = 0.7, H = 12, Up = 8 }
 -- the crack's shakes as { from, to (shares of Crack), degrees }: two, one on Fast hatch
 K.SHAKE = { { 0.12, 0.4, 6 }, { 0.55, 0.88, 10 } }
 K.SHAKE_FAST = { { 0.25, 0.75, 10 } }
+-- (egg-3d, spec 16.14) the 3D hero egg: its start angle (degrees: a three-quarter look that turns towards the front), a
+-- slow turn (seconds a turn) over the rise, settling over this share of the crack; a shake's dip (studs at full squash);
+-- the egg layers that turn with its rock on screen
+K.EGG3D = { Turn = -28, Spin = 9, Settle = 0.3, Dip = 0.06, Turns = { "Cracks", "Leaks" } }
 EggStage.Metrics = K
 
 -- S: the stage. Roll = the roll playing (or nil); Queue = results waiting for DONE; Lay = the layout of this screen
@@ -1649,6 +1659,7 @@ function R.rise(roll, quick)
 			e.Egg:SetAttribute("State", "Rise")
 			e.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = e.Egg })
 			roll.Pool:Ambient(e.Egg, pull.Rarity)
+			B.egg3d(roll, e, pull.Rarity)
 		end
 		roll.Eggs[j] = e
 	end
@@ -1734,6 +1745,22 @@ function R.dropStrips(roll)
 	end
 end
 
+-- (egg-3d, spec 16.14) the real Blender egg in a ViewportFrame inside the hero egg's frame (x1 only: the x3 roll and the
+-- strip cells keep their 2D eggs; at most one ViewportFrame egg on a phone). It takes the frame's place, size, rise and
+-- push-in; the 2D paint hides, the backlight, ring, cracks, leaks, sparks and Rays / Aura stay round it. No id for the
+-- key, Low graphics, the phone limit or a failed Assemble: nothing changes (today's 2D egg).
+function B.egg3d(roll, e, rarity)
+	if roll.N ~= 1 or not e.Egg then
+		return
+	end
+	local view = Egg3D.New(e.Egg, rarity, { Phone = EggStage.Layout() ~= "PC", ZIndex = e.Egg.ZIndex + 2, Turn = K.EGG3D.Turn, Spin = K.EGG3D.Spin })
+	if view then
+		EggArt.SetPaintShown(e.Egg, false)
+		e.Egg:SetAttribute("Egg3D", view.Key)
+		e.V3 = view
+	end
+end
+
 function B.halves(roll, j)
 	local e = roll.Eggs[j]
 	local cr = S.Lay.Crack
@@ -1741,7 +1768,13 @@ function B.halves(roll, j)
 	local holder = H.frame(roll.UI.Hero, "Halves" .. j, { Visible = false, ZIndex = 6 })
 	H.place(holder, cr.Cx[j] - w / 2, cr.EggY, w, cr.E)
 	e.Holder, e.HolderSize = holder, cr.E
-	e.Top, e.Bottom = EggArt.Halves(holder, roll.Pulls[j].Rarity, cr.E)
+	-- (egg-3d) a 3D egg whose two Blender halves are usable here splits into them at the burst (the ViewportFrame moves
+	-- into this holder); otherwise today's 2D halves, under the same flash
+	e.Split3D = e.V3 ~= nil and e.V3:CanSplit() or false
+	holder:SetAttribute("Split3D", e.Split3D)
+	if not e.Split3D then
+		e.Top, e.Bottom = EggArt.Halves(holder, roll.Pulls[j].Rarity, cr.E)
+	end
 end
 
 function R.crack(roll, j)
@@ -1756,6 +1789,10 @@ function R.crack(roll, j)
 	HatchFx.Cracks(e.Egg, rarity, 1)
 	HatchFx.Leaks(e.Egg, rarity, 1)
 	H.tween(e.Pop, roll.T.Crack * 0.9, { Scale = K.PUSH }, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+	if e.V3 then
+		-- the turn eases to a stop as the first crack glows (the cracks are drawn on the screen: the egg holds under them)
+		e.V3:Settle(roll.T.Crack * K.EGG3D.Settle)
+	end
 	H.sfx(K.SOUND.Crack, H.scaleFor(rarity))
 end
 
@@ -1798,9 +1835,23 @@ function R.shake(roll, j, u)
 			R.shakeStart(roll, j, (k == #windows) and 5 or 3)
 		end
 	end
-	e.Egg.Rotation = rot
 	local E = S.Lay.Crack.E
 	local w0 = math.floor(EggArt.Metrics.WIDTH * E + 0.5)
+	if e.V3 then
+		-- (egg-3d) the 3D egg rocks about its middle in 3D and dips; the cracks and leaks turn with it on screen (the frame
+		-- itself stays square to the screen and unsquashed: the ViewportFrame's camera keeps its framing)
+		e.Egg.Rotation = 0
+		e.V3:Pose(rot, -K.EGG3D.Dip * squash)
+		for _, name in ipairs(K.EGG3D.Turns) do
+			local layer = e.Egg:FindFirstChild(name)
+			if layer then
+				layer.Rotation = rot
+			end
+		end
+		e.Egg.Size = UDim2.fromOffset(w0, E)
+		return
+	end
+	e.Egg.Rotation = rot
 	e.Egg.Size = UDim2.fromOffset(w0 * (1 + K.SQUASH * squash), E * (1 - K.SQUASH * squash))
 end
 
@@ -1829,6 +1880,23 @@ function R.burst(roll, j)
 	local cr = S.Lay.Crack
 	local T = roll.T
 	local cx, cy = cr.Cx[j], cr.EggY + cr.E / 2
+	-- (egg-3d) the 3D egg splits into its two Blender halves at the exact pose it cracked in and they fly apart (the
+	-- ViewportFrame moves into the halves' holder, the hidden hero frame's box); a split that fails falls back to the 2D
+	-- halves under the same flash
+	if e.Split3D and e.V3 and e.Holder then
+		e.V3.Frame.Parent = e.Holder
+		e.Holder.Visible = true
+		if not (e.V3:Split() and e.V3:Fly(T.Burst)) then
+			e.V3:Destroy()
+			e.V3 = nil
+			e.Split3D = false
+			e.Holder:SetAttribute("Split3D", false)
+			e.Top, e.Bottom = EggArt.Halves(e.Holder, rarity, e.HolderSize or cr.E)
+		end
+	elseif e.V3 then
+		e.V3:Destroy() -- (its halves have no ids: today's 2D halves take over under the flash)
+		e.V3 = nil
+	end
 	-- the halves fly apart: the top spins up-left and fades, the bottom settles as the shell on the pedestal
 	if e.Holder and e.Top and e.Bottom then
 		e.Holder.Visible = true
@@ -1919,6 +1987,10 @@ function R.reveal(roll, skipped)
 		R.rise(roll, true)
 	end
 	for _, e in pairs(roll.Eggs) do
+		if e.V3 then
+			e.V3:Destroy()
+			e.V3 = nil
+		end
 		if e.Egg then
 			roll.Pool:StopAmbient(e.Egg)
 			e.Egg:Destroy()
@@ -2211,6 +2283,10 @@ function H.finishRoll()
 		for _, e in pairs(roll.Eggs) do
 			if e.Ring then
 				pcall(e.Ring.Destroy, e.Ring)
+			end
+			if e.V3 then
+				pcall(e.V3.Destroy, e.V3)
+				e.V3 = nil
 			end
 		end
 		roll.Sounds = {}

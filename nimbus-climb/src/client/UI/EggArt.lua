@@ -14,6 +14,8 @@
 --   EggArt.SetVfx(egg, on)  on (High graphics only): a Full egg's sheen plays and, from Rare up, the rarity VFX are added;
 --     off (or Low): the VFX removed and the sheen parked, so the egg is still (nothing plays)
 --   EggArt.Resize(egg, size)  the size, the outline and every stroke inside (each stroke keeps its share of the size)
+--   EggArt.SetPaintShown(egg, shown)  (egg-3d) false: the painted egg hides (a client/UI/Egg3D egg stands in the frame),
+--     its Shadow, Rays, Aura and whatever others put in it (Egg3D, Cracks, Leaks) stay; true: painted again
 --   EggArt.Halves(parent, rarity, size) -> top, bottom   two CanvasGroups "HalfTop" / "HalfBottom" (the egg's width x half
 --     its height, at y 0 and y size / 2 in the parent), each drawing the whole painted egg (no sheen, no shadow, no
 --     tween: they fly apart in 0.35 s) clipped to its half
@@ -566,7 +568,7 @@ end
 function M.startSheen(egg, st)
 	local sheen = egg:FindFirstChild("Sheen")
 	local grad = sheen and sheen:FindFirstChild("Sweep")
-	if st.Sheen or not grad or not high() then
+	if st.Sheen or not grad or not high() or st.Hidden then
 		return
 	end
 	grad.Offset = Vector2.new(-1, 0)
@@ -621,6 +623,7 @@ function M.addVfx(egg, st)
 	halo.Position = UDim2.fromScale(0.5, 0.5)
 	halo.Size = UDim2.new(1, 2 * o, 1, 2 * o)
 	halo:SetAttribute("PadOutline", true)
+	halo.Visible = not st.Hidden -- (a 3D egg stands in this frame: the 2D oval's ring would float off its outline)
 	M.corner(halo)
 	M.stroke(halo, glowColor(r), K.HALO_K, size, 1 - 0.85 * glow)
 	made[#made + 1] = halo
@@ -806,6 +809,48 @@ function EggArt.SetVfx(egg, on)
 		end
 		M.stopSheen(egg, st)
 	end
+end
+
+-- (egg-3d, spec 16.14) a 3D egg (client/UI/Egg3D) shows in this frame: shown = false hides the painted 2D egg (the body's
+-- background, the Outline, the paint, the light layers, the sheen and the Halo ring) and keeps what stands around it (the
+-- contact Shadow, Legendary's turning Rays, Secret's Aura) and what others put in it (Egg3D, HatchFx's Cracks / Leaks);
+-- shown = true paints it again. The frame keeps its size, attributes and VFX tweens, so every caller works unchanged.
+local AROUND = { Shadow = true, Rays = true, Aura = true, Egg3D = true, Cracks = true, Leaks = true }
+function EggArt.SetPaintShown(egg, shown)
+	local st = typeof(egg) == "Instance" and ST[egg] or nil
+	if not st then
+		return
+	end
+	st.Hidden = not shown
+	egg.BackgroundTransparency = shown and 0 or 1
+	local outline = egg:FindFirstChild("Outline")
+	if outline then
+		outline.Enabled = shown and true or false
+	end
+	for _, c in ipairs(egg:GetChildren()) do
+		if c:IsA("GuiObject") and not AROUND[c.Name] then
+			if shown then
+				local was = c:GetAttribute("EA_Vis")
+				if was ~= nil then
+					c.Visible = was
+					c:SetAttribute("EA_Vis", nil)
+				end
+			else
+				if c:GetAttribute("EA_Vis") == nil then
+					c:SetAttribute("EA_Vis", c.Visible)
+				end
+				c.Visible = false
+			end
+		end
+	end
+	if shown then
+		if st.VfxOn then
+			M.startSheen(egg, st)
+		end
+	else
+		M.stopSheen(egg, st)
+	end
+	egg:SetAttribute("Painted", shown and true or false)
 end
 
 function EggArt.Resize(egg, size)

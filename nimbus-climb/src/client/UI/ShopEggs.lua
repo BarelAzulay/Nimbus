@@ -42,7 +42,11 @@
 --                                    Glass sweeps a slow sheen (its UIGradient "GlassSheen"); hidden (another tab, the
 --                                    Shop closed, the egg stage over it), on Low or on a phone everything stops: no
 --                                    tween, no Heartbeat. It follows the page's and its ancestors' Visible, the
---                                    ScreenGui's Enabled and the Gfx setting.
+--                                    ScreenGui's Enabled and the Gfx setting. (egg-3d, spec 16.14) While it shows,
+--                                    egg_secret's id is usable here and High: the real Blender egg turns slowly in a
+--                                    ViewportFrame "Egg3D" inside HeroEgg (client/UI/Egg3D; the 2D paint hides, its
+--                                    sparks and Aura stay); hidden it is destroyed and the 2D egg painted again
+--                                    (ShopEggs.Fx(page).Egg3D = the view or nil)
 --   ShopEggs.Metrics                 the K table (sizes, texts; MEASURE: a text-width hook for the offline renderer)
 -- Buttons: Spin = EggStage.Request(id, "Tokens", 1), Spin3 = (id, "Tokens", 3), SpinGems = (id, "Gems", 1), the Secret
 -- card's Spin = ("Secret", "Gems", 1). A spin button holds Word ("SPIN" / "x3", or the state: "Locked", "Loading..."),
@@ -66,6 +70,7 @@ local NeonKit = require(UI:WaitForChild("NeonKit"))
 local GemIcon = require(UI:WaitForChild("GemIcon"))
 local CloudUI = require(UI:WaitForChild("CloudUI"))
 local EggArt = require(UI:WaitForChild("EggArt"))
+local Egg3D = require(UI:WaitForChild("Egg3D"))
 local EggStage = require(UI:WaitForChild("EggStage"))
 local HatchFx = require(UI:WaitForChild("HatchFx"))
 local TweenService = game:GetService("TweenService")
@@ -82,7 +87,7 @@ local K = {
 	SECRET = (type(SECRET_DEF) == "table" and SECRET_DEF.Id) or "Secret",
 	MACHINES = { "Cloud", "Storm", "Sky", "Celestial" },
 	-- the hero's big egg (Task 26): its height and x by plan, where the texts start, and the page's spark pool
-	HERO_EGG = { Ref = { 150, 198, 360 }, Shrunk = { 124, 170, 305 }, Sparks = 16 },
+	HERO_EGG = { Ref = { 150, 198, 360 }, Shrunk = { 124, 170, 305 }, Sparks = 16, Spin3D = 16, View3D = 1.15 }, -- (egg-3d: the 3D egg turns once in 16 s in a frame 1.15 egg heights tall)
 	-- each machine dome's glass sheen (High, while the page shows): a lighter band sweeping across every ~6 s
 	GLASS_SHEEN = TweenInfo.new(1.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, false, 4.4),
 	HERO = rgb(138, 92, 255),
@@ -593,6 +598,12 @@ function ShopEggs.Build(page, ctx)
 			end
 		end)
 	end
+	-- (egg-3d) the hero's real egg appears once egg_secret has loaded on this device, also with the page already open
+	P.MeshConn = Egg3D.Watch(function(key)
+		if key == Egg3D.KEYS.Secret.Whole then
+			task.defer(H.syncFx, P)
+		end
+	end)
 	ShopEggs.Refresh(page)
 	H.syncFx(P)
 	return P
@@ -662,6 +673,7 @@ function H.syncFx(P)
 	local egg = P.Hero.Egg
 	local on = H.shown(P.Page) and egg.Visible and H.high()
 	EggArt.SetVfx(egg, on)
+	H.sync3d(P, on)
 	P.Pool:SetRunning(on)
 	for _, t in ipairs(H.all(P)) do
 		local sheen = t.Machine.Sheen
@@ -677,9 +689,30 @@ function H.syncFx(P)
 	end
 end
 
+-- (egg-3d) the hero's real egg: made while the page shows (Egg3D decides: the id, High, the phone limit), destroyed when
+-- it hides, so nothing turns behind a closed Shop or the egg stage
+function H.sync3d(P, on)
+	local egg = P.Hero.Egg
+	if P.Egg3 and P.Egg3.Dead then
+		P.Egg3 = nil
+		EggArt.SetPaintShown(egg, true)
+	end
+	if on and not P.Egg3 then
+		local view = Egg3D.New(egg, "Secret", { Phone = P.Mode ~= "PC", ZIndex = egg.ZIndex + 2, Spin = K.HERO_EGG.Spin3D, Turn = -20, View = K.HERO_EGG.View3D })
+		if view then
+			P.Egg3 = view
+			EggArt.SetPaintShown(egg, false)
+		end
+	elseif not on and P.Egg3 then
+		P.Egg3:Destroy()
+		P.Egg3 = nil
+		EggArt.SetPaintShown(egg, true)
+	end
+end
+
 function ShopEggs.Fx(page)
 	local P = PAGES[page or CUR.Page]
-	return P and { Pool = P.Pool, Egg = P.Hero.Egg } or nil
+	return P and { Pool = P.Pool, Egg = P.Hero.Egg, Egg3D = (P.Egg3 and not P.Egg3.Dead) and P.Egg3 or nil } or nil
 end
 
 ----------------------------------------------------------------------
