@@ -2813,6 +2813,26 @@
       "structureHash": "f532fa49115b50edd8223fa45b41b1cc",
       "uploadedAt": "2026-11-08T18:26:14Z"
     },
+    "egg_common_bot": {
+      "assetId": 135630044012489,
+      "contentHash": "150b07ba13cd62872494dc679b0b879b",
+      "fileSha256": "058f9bb01edd0def8c5cf736ecf0436ae43fdaf36402f04502115c26fa2a2034",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-08T19:56:55.536Z",
+      "revisionId": "1",
+      "structureHash": "66d89695055b6b8d6c1a47f82818c654",
+      "uploadedAt": "2026-11-08T19:56:59Z"
+    },
+    "egg_common_top": {
+      "assetId": 129296295206652,
+      "contentHash": "2325f69adbfe3c9d73927a15670acda9",
+      "fileSha256": "6aebf9a4bfd671ad3b8da80f376feb5848a6e1a143f60dd00265621f45878e22",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-08T19:57:15.613Z",
+      "revisionId": "1",
+      "structureHash": "f368ec3fd7bc5a3244cac3534f69d31d",
+      "uploadedAt": "2026-11-08T19:57:17Z"
+    },
     "egg_epic": {
       "assetId": 74186767040931,
       "contentHash": "5f5a8b06f84287e356670468f9bf0f3e",
@@ -2822,6 +2842,26 @@
       "revisionId": "1",
       "structureHash": "bdf85192baaa3ae86ea5a3d6eb4924e5",
       "uploadedAt": "2026-11-08T18:26:20Z"
+    },
+    "egg_epic_bot": {
+      "assetId": 77165790234316,
+      "contentHash": "e91f4f4e1ebd4ea5200f09057d3e50a5",
+      "fileSha256": "36cc787609510db28a422983c83aac01be2527968bcf00c7756f1002ecdb605b",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-08T19:57:29.728Z",
+      "revisionId": "1",
+      "structureHash": "99784b82017af17f22bfc35a57102acf",
+      "uploadedAt": "2026-11-08T19:57:35Z"
+    },
+    "egg_epic_top": {
+      "assetId": 105624672573934,
+      "contentHash": "e164c1b61b622b0017535ba8eec6760d",
+      "fileSha256": "d0ef11dc6ea020c6fffeef26eb269566662df6d3f0b8681b3e7fc15a0f0810d5",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-08T19:57:43.635Z",
+      "revisionId": "1",
+      "structureHash": "112db612ade7b1c0731df266bd7c3b4c",
+      "uploadedAt": "2026-11-08T19:57:48Z"
     },
     "egg_legendary": {
       "assetId": 126386382226831,
@@ -2833,6 +2873,26 @@
       "structureHash": "951d8f80b7dc176f2c7d11a32b396380",
       "uploadedAt": "2026-11-08T18:26:32Z"
     },
+    "egg_legendary_bot": {
+      "assetId": 126082576324766,
+      "contentHash": "d27d52d9a3b697440959c83bac5c3887",
+      "fileSha256": "46332a5d93145c9cd9be5b56de0965346d969f59214cb9df076344f50f94b3d4",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-08T19:57:56.384Z",
+      "revisionId": "1",
+      "structureHash": "40524664d023b7bb862551f71edf862b",
+      "uploadedAt": "2026-11-08T19:58:00Z"
+    },
+    "egg_legendary_top": {
+      "assetId": 102988594664307,
+      "contentHash": "24e629e94e74e99f5a1b52632d852a1c",
+      "fileSha256": "f0350e867f2130554265f4e20e6523e6f886932dedc6200a6547287237d8c37d",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-08T19:58:09.511Z",
+      "revisionId": "1",
+      "structureHash": "7bd35dbecb98d0f8def42dff36f65ea5",
+      "uploadedAt": "2026-11-08T19:58:13Z"
+    },
     "egg_mythic": {
       "assetId": 90441463974691,
       "contentHash": "69602cfdb53bcc865f9f1d7a936f1685",
@@ -2842,6 +2902,26 @@
       "revisionId": "1",
       "structureHash": "6ec8d716ed6d44aedd40d12ba9e5ea8e",
       "uploadedAt": "2026-11-08T18:26:40Z"
+    },
+    "egg_mythic_bot": {
+      "assetId": 123813024030932,
+      "contentHash": "74e363656c63195118258dd77fc43fdc",
+      "fileSha256": "e1a5c466cd022cbd6f6ece9768bfdad161ec007224c0876002133183c3860ab0",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-08T19:58:23.685Z",
+      "revisionId": "1",
+      "structureHash": "a3145d1c0c503dfff67a9f99337727b0",
+      "uploadedAt": "2026-11-08T19:58:27Z"
+    },
+    "egg_mythic_top": {
+      "assetId": 134388858042681,
+      "contentHash": "980d5d7c443ef65d397f5ae81700cd6c",
+      "fileSha256": "0cc11eb86e365a6179633989070eed72123a8cfca075dde08918024f057198c0",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-08T19:58:36.478Z",
+      "revisionId": "1",
+      "structureHash": "88370c045bfbfbea4865fb70e9735ba4",
+      "uploadedAt": "2026-11-08T19:58:38Z"
     },
     "egg_rare": {
       "assetId": 121794153612488,
@@ -2853,6 +2933,26 @@
       "structureHash": "f532fa49115b50edd8223fa45b41b1cc",
       "uploadedAt": "2026-11-08T18:26:51Z"
     },
+    "egg_rare_bot": {
+      "assetId": 124772403603358,
+      "contentHash": "8ef8af9591051d9ca4a1c0a034907aba",
+      "fileSha256": "1c727e5587ad26d12d8db012f551e479eb8ba2c97a449ed08064f5e752fb87ab",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-08T19:58:50.506Z",
+      "revisionId": "1",
+      "structureHash": "66d89695055b6b8d6c1a47f82818c654",
+      "uploadedAt": "2026-11-08T19:58:57Z"
+    },
+    "egg_rare_top": {
+      "assetId": 93830830314871,
+      "contentHash": "e57ea955ad14766dcdbcc0a0c4d7bd83",
+      "fileSha256": "c6e196f391513df782e8d283fb09b42e0513b33138d7185f7ec92ce107aac707",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-08T19:59:15.114Z",
+      "revisionId": "1",
+      "structureHash": "f368ec3fd7bc5a3244cac3534f69d31d",
+      "uploadedAt": "2026-11-08T19:59:16Z"
+    },
     "egg_secret": {
       "assetId": 86389479224270,
       "contentHash": "a867c887936c9c6315fa6ef8ddba47c2",
@@ -2863,6 +2963,26 @@
       "structureHash": "78def9b13bf900f66465e76432c3b06a",
       "uploadedAt": "2026-11-08T18:27:03Z"
     },
+    "egg_secret_bot": {
+      "assetId": 135060262475786,
+      "contentHash": "2710ccc8c53ebc2a00898cb8177ae328",
+      "fileSha256": "53c491b7f6c1b5cea4bd4b217e7c8be7ca6715bcbe93ff2ea216096fcda39bbd",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-08T19:59:26.207Z",
+      "revisionId": "1",
+      "structureHash": "4f51bf7776adec460e1968debc659ff1",
+      "uploadedAt": "2026-11-08T19:59:29Z"
+    },
+    "egg_secret_top": {
+      "assetId": 106629544724504,
+      "contentHash": "9a7582a8131cf658b71e14904bbea1bf",
+      "fileSha256": "d626ef92236086b410a0f4f0ed762c6d439363ee60a019578442208790f767e3",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-08T19:59:39.932Z",
+      "revisionId": "1",
+      "structureHash": "a27d3284da31f807f23c251b28b9d811",
+      "uploadedAt": "2026-11-08T19:59:40Z"
+    },
     "egg_uncommon": {
       "assetId": 140061890535185,
       "contentHash": "16744894dd73d89a49a98b18053956a5",
@@ -2872,6 +2992,26 @@
       "revisionId": "1",
       "structureHash": "f532fa49115b50edd8223fa45b41b1cc",
       "uploadedAt": "2026-11-08T18:27:14Z"
+    },
+    "egg_uncommon_bot": {
+      "assetId": 95919082190990,
+      "contentHash": "c58d6e11662fd4da50b503d98156f92e",
+      "fileSha256": "8fafad57d3419d1d28107a5fcd30217b858dbf0b0a85b73fd4d93823274b8470",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-08T19:59:49.004Z",
+      "revisionId": "1",
+      "structureHash": "66d89695055b6b8d6c1a47f82818c654",
+      "uploadedAt": "2026-11-08T19:59:51Z"
+    },
+    "egg_uncommon_top": {
+      "assetId": 139705008551136,
+      "contentHash": "b7a6f3b09c5e1a4d498f56b45611758e",
+      "fileSha256": "919c647c9b22644911f0416879311896d44ce0039bdf4c5fb6507815435c8c99",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-08T20:00:00.327Z",
+      "revisionId": "1",
+      "structureHash": "f368ec3fd7bc5a3244cac3534f69d31d",
+      "uploadedAt": "2026-11-08T20:00:02Z"
     },
     "evo1_aurora_fox": {
       "assetId": 87772383693151,
