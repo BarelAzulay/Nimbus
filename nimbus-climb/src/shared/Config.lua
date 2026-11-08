@@ -501,8 +501,9 @@ Config.Tutorial = {
 
 -- Pet battles (most duel tunables are BattleService locals; this table holds the ones the owner sets).
 Config.Battle = {
-	-- lobby-shop 16.13 (the owner's answer, 2026-11-08): a duel won over a player who held 0 Trophies at the start pays
-	-- floor(this x the normal win) Trophies, at least 1 (BattleService.ZeroTrophyPrize); tokens and XP stay in full
+	-- lobby-shop 16.13 (the owner's answer, 2026-11-08): a duel won over a player who held fewer Trophies at the start than
+	-- a loss takes (below |BattleCatalog.Trophies.Loss| = 10, 0 included; the review fix) pays floor(this x the normal win)
+	-- Trophies, at least 1 (BattleService.ZeroTrophyPrize / LowTrophyOpponent); tokens and XP stay in full
 	ZeroTrophyShare = 0.25,
 }
 

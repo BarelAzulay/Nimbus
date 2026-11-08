@@ -25,7 +25,7 @@
 --                EventPets = {[petId]=true}, RaidRewardAt, RaidLossAt,     -- the raid reward clocks: Unix seconds of the last
 --                                                                          -- paid win / loss (0 = never; boss raids 2026-11-01)
 --                Duels = { { U = opponent UserId, T = Unix seconds }... } }  -- lobby-shop 16.12: the counted duels this
---                player fought (a start with trophies at stake), newest first, at most 32 (the cross-server pair limit); stored only when not empty, never in
+--                player fought (a start with trophies at stake), newest first, every entry of the last 30 min + at most 32 older, 64 in all (the cross-server pair limit); stored only when not empty, never in
 --                the snapshot; merges as a union (a server of an older build still running drops it: the limit then
 --                counts only the newer server's duels for a while)
 --     -- Phase 4 (new TOP-LEVEL fields only: a Phase 3 server still running during the rollout rebuilds Battle,
@@ -188,7 +188,7 @@
 --     session changed it; afterwards the presets are pruned against the merged copies); Battle: Trophies / Raids /
 --     PvPWins / PvPLosses travel as +/- deltas (never below 0), TrialBest / RaidBestDamage / RaidRewardAt / RaidLossAt keep the
 --     higher value (the reward clocks: the latest paid raid, so the limit survives a server hop), Duels merges as a union
---     of { U, T } entries (the newest 32 kept; lobby-shop 16.12),
+--     of { U, T } entries (the last 30 min + the newest 32 older kept, 64 at most; lobby-shop 16.12 / 16.13 review),
 --     TrialCleared / EventPets only grow (union). Home: a HIGHER Home.Prestige wins the whole Home (prestige resets the stations, so
 --     the other side's per-station changes are void); at equal prestige the Home merges per key (Level replaced,
 --     LastSeen the later one). When both sides prestiged to that star (two runs from the same reset home), each
@@ -325,7 +325,7 @@
 --                                       A change is synced (throttled).
 --     DuelsWith(player, opponentUserId, since) -> n   lobby-shop 16.12: the record's duels with that opponent at Unix
 --                                       second `since` or later (0 until loaded)
---     RecordDuel(player, opponentUserId, at) -> ok    lobby-shop 16.12: adds { U, T } to Battle.Duels (newest 32 kept,
+--     RecordDuel(player, opponentUserId, at) -> ok    lobby-shop 16.12: adds { U, T } to Battle.Duels (window + 32 older kept,
 --                                       junk refused; also while provisional: it merges as a union). Not synced.
 --     AddTrophies(player, n) -> ok, total            n is rounded to a whole number and may be negative; the total
 --                                       never goes below 0. Works like AddCash (also before the load finished and while
@@ -810,9 +810,12 @@ local P3 = {
 	BESTS = { "TrialBest", "RaidBestDamage", "RaidRewardAt", "RaidLossAt" }, -- merge as the higher value
 	-- what MutateBattle may change while the profile is provisional (these merge safely into the real save)
 	PROVISIONAL_OK = { Trophies = true, Raids = true, PvPWins = true, PvPLosses = true, RaidBestDamage = true, RaidRewardAt = true, RaidLossAt = true, Duels = true },
-	-- lobby-shop 16.12: Battle.Duels = { { U = opponent UserId, T = Unix seconds }... } newest first, at most DUELS_KEEP
-	-- entries (BattleService's cross-server pair limit reads the last PAIR_WINDOW of it); merges as a union
+	-- lobby-shop 16.12: Battle.Duels = { { U = opponent UserId, T = Unix seconds }... } newest first (BattleService's
+	-- cross-server pair limit reads the last PAIR_WINDOW of it); merges as a union. 16.13 review fix 6: every entry of the
+	-- last DUELS_WINDOW seconds (BattleService's PAIR_WINDOW) is kept, plus at most DUELS_KEEP older ones, DUELS_MAX in all
 	DUELS_KEEP = 32,
+	DUELS_WINDOW = 1800,
+	DUELS_MAX = 64,
 	MAX_USER_ID = 1e15,
 	MARK_TEAM = "B4TeamFollow", -- Migrations[name]: the save went through the one-team rule (team balance, P3.teamMigrate)
 	MATCH_LOCKED = "Pets are locked during a match", -- the active team during an obby match (PetService's words)
@@ -1948,7 +1951,9 @@ function P3.duelEntry(e)
 end
 
 -- Untrusted Duels -> a list of clean entries, duplicates (same U and T) once, newest first (ties: the higher U first),
--- at most DUELS_KEEP (the oldest dropped). An old save without the field reads {}.
+-- bounded (lobby-shop 16.13 review fix 6): every entry inside the pair window (T >= os.time() - DUELS_WINDOW) is kept,
+-- plus at most DUELS_KEEP older ones, and never more than DUELS_MAX in all (the oldest dropped), so a burst of duels with
+-- other opponents cannot push a pair's recent duels out. An old save without the field reads {}.
 function P3.cleanDuels(raw)
 	local out, seen = {}, {}
 	if type(raw) ~= "table" then
@@ -1968,10 +1973,20 @@ function P3.cleanDuels(raw)
 		end
 		return x.U > y.U
 	end)
-	for i = #out, P3.DUELS_KEEP + 1, -1 do
-		out[i] = nil
+	local since = os.time() - P3.DUELS_WINDOW
+	local kept, older = {}, 0
+	for _, d in ipairs(out) do
+		if #kept >= P3.DUELS_MAX then
+			break
+		end
+		if d.T >= since then
+			kept[#kept + 1] = d
+		elseif older < P3.DUELS_KEEP then
+			older = older + 1
+			kept[#kept + 1] = d
+		end
 	end
-	return out
+	return kept
 end
 
 function P3.duelsEqual(a, b)
@@ -6478,7 +6493,7 @@ function DataService.DuelsWith(player, opponentUserId, since)
 	return n
 end
 
--- lobby-shop 16.12: notes a duel with that opponent at Unix second `at` on the player's record (newest DUELS_KEEP kept;
+-- lobby-shop 16.12: notes a duel with that opponent at Unix second `at` on the player's record (the window + DUELS_KEEP older kept;
 -- merges into the store as a union, so it is allowed while provisional too). Never yields. -> ok
 function DataService.RecordDuel(player, opponentUserId, at)
 	local entry = player and cache[player.UserId]

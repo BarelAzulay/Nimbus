@@ -815,6 +815,7 @@
         "RaidTierFor",
         "RaidRewardStatus",
         "ZeroTrophyPrize",
+        "LowTrophyOpponent",
         "_ClearPairsForTest"
       ],
       "signals": [

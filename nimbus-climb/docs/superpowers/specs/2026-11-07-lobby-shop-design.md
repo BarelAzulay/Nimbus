@@ -2045,6 +2045,21 @@ These override 16.12 where they differ (its "0 Trophies" bullet and its tutorial
   0 -> 0, share 0.1 / 0.01 / 1, junk shares -> 0.25), a full win over a 0-Trophy player pays 5 Trophies + the full tokens and XP
   with NewOpponent and the new toast; the same pair after the loser holds 50 Trophies pays the normal +20 and the normal toast.
   README's fair-play line says a quarter (+5 instead of +20).
+- **Review fixes (2026-11-08, the main session's decisions).**
+  - *Low, not only 0.* A loss never takes a player below 0, so an alt holding a few Trophies (say 5) lost only those 5 while
+    feeding the full +20. The smaller prize now applies when the loser's Trophies at the start are below what a normal loss
+    takes: `BattleService.LowTrophyOpponent(trophies)` = a known total < max(1, |`BattleCatalog.Trophies.Loss`|) (10 today):
+    0, 5, 9 -> the smaller prize; 10, 50 -> the full win. `rw.LowTrophyOpponent = true` (replaces `rw.NewOpponent`, server
+    only), toast "Victory! Low-trophy opponent: smaller trophy prize. +5 trophies, +N tokens".
+  - *Unknown is not 0.* `b.TrophiesAtStart` holds nil for a record that cannot be read at the start (not loaded,
+    provisional); nil is never low, so the winner is not cut for the server's blind spot.
+  - *The duel record cannot be flushed.* `Battle.Duels` keeps every entry of the last 30 minutes (`P3.DUELS_WINDOW` 1,800 s
+    on `os.time()`), plus at most 32 older ones (`P3.DUELS_KEEP`), never more than 64 in all (`P3.DUELS_MAX`, about 2 KB);
+    before, ~30 duels with other opponents inside the window could push a pair's recent entries out of the 32.
+  - Tests: `p3bs_zero_trophy` (the pure rule incl. 0 / 5 / 9 / 10 / 50 / nil / NaN / a string; full duels against 0, 5
+    (smaller prize, the loser ends at 0) and 50 Trophies (full); an opponent whose record reads nil at the start while really
+    holding 40: full +20) and `p3bs_pair_hop` (41 entries in the window incl. the pair's under 40 newer ones all kept + 23
+    older = 64; 5 in the window + the newest 32 older; 70 in the window -> the newest 64), red on the old code first.
 
 **Restricted accounts get a fixed starter pet at "Your First Pet".** 16.12 closed every roulette for an account PolicyService
 restricts from paid random items, so the tutorial's step 4 (`spin`, CompleteOn "Rolled") could not be finished there. Now:

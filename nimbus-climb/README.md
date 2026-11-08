@@ -1283,8 +1283,8 @@ Duel other players on the two **duel rings** in front of the colosseum. Both of 
   Trophies never drop below 0. Leaving the arena or the game during a duel counts as a loss.
   When both players leave together, or the server shuts down, the duel does not count for anyone.
 - **Fair play:** the same two players earn rewards from at most **3 duels every 30 minutes**, on any server (the duels
-  are kept in both players' saves, so hopping servers does not reset it); beating a player who has **0 trophies** pays
-  a quarter of the trophies (+5 instead of +20; the tokens and XP of the win come in full); a win by a forfeit in
+  are kept in both players' saves, so hopping servers does not reset it); beating a player who has **fewer than 10 trophies**
+  (less than a loss takes, 0 included) pays a quarter of the trophies (+5 instead of +20; the tokens and XP of the win come in full); a win by a forfeit in
   the first **15 seconds**, or against a team that never dealt any damage, pays nothing. When one team is more than
   **2 times** stronger than the other (team power), the duel is a **practice duel**: a side toast says so, and
   nobody wins or loses trophies, tokens or XP. Practice duels are great for trying things out with a friend.

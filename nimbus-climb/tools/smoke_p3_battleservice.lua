@@ -847,17 +847,67 @@ S.p3bs_pair_hop = scenario("p3bs_pair_hop", function()
 		bs.Forfeit(b)
 		advance(4.5)
 		bs.Debug = nil
-		-- the record is bounded: at most 32 entries, the newest kept, junk dropped
+		-- the record is bounded (review fix 6): every entry inside the 30-minute window is kept, plus at most 32 older ones,
+		-- and never more than 64 in all (the newest first); junk dropped. ~30 other duels in the window cannot flush a pair.
+		data.MutateBattle(a, function(r)
+			r.Duels = {}
+		end)
+		local now = os.time()
+		data.RecordDuel(a, bId, now - 1500) -- the pair, inside the window
 		for i = 1, 40 do
-			data.RecordDuel(a, 7000000 + i, base + 2000 + i) -- (after the duel stamped base + 1801 above)
+			data.RecordDuel(a, 7000000 + i, now - 3000 - i) -- older than the window
 		end
-		data.RecordDuel(a, -5, base)
-		data.RecordDuel(a, 0 / 0, base)
-		data.RecordDuel(a, 7100000, 0 / 0)
+		for i = 1, 40 do
+			data.RecordDuel(a, 7100000 + i, now - 1000 + i) -- other opponents inside the window, all newer than the pair's entry
+		end
+		data.RecordDuel(a, -5, now)
+		data.RecordDuel(a, 0 / 0, now)
+		data.RecordDuel(a, 7200000, 0 / 0)
 		local rec = data.GetBattle(a)
-		local newest = rec and rec.Duels and rec.Duels[1]
-		T.check(rec and #rec.Duels == 32 and newest and newest.U == 7000040 and newest.T == base + 2040 and rec.Duels[32].U == 7000009, "pair hop: Battle.Duels keeps the newest 32 entries (junk ids / times dropped)",
-			rec and (#rec.Duels .. " entries, newest " .. tostring(newest and newest.U)) or "no record")
+		local list = rec and rec.Duels or {}
+		local young, old, oldest = 0, 0, nil
+		for _, e in ipairs(list) do
+			if e.T >= now - 1800 then
+				young = young + 1
+			else
+				old = old + 1
+				oldest = e
+			end
+		end
+		T.check(young == 41 and old == 23 and #list == 64 and list[1].U == 7100040 and data.DuelsWith(a, bId, now - 1799) == 1,
+			"pair hop: Battle.Duels keeps all 41 entries of the window (the pair's too, under 40 newer ones) and fills up to 64 with the newest older ones; junk dropped",
+			#list .. " entries: " .. young .. " in the window, " .. old .. " older; pair count " .. tostring(data.DuelsWith(a, bId, now - 1799)))
+		-- fewer in the window: up to 32 older ones join them
+		data.MutateBattle(a, function(r)
+			r.Duels = {}
+		end)
+		for i = 1, 40 do
+			data.RecordDuel(a, 7000000 + i, now - 3000 - i)
+		end
+		for i = 1, 5 do
+			data.RecordDuel(a, 7100000 + i, now - 100 + i)
+		end
+		rec = data.GetBattle(a)
+		list = rec and rec.Duels or {}
+		young, old, oldest = 0, 0, nil
+		for _, e in ipairs(list) do
+			if e.T >= now - 1800 then
+				young = young + 1
+			else
+				old = old + 1
+				oldest = e
+			end
+		end
+		T.check(#list == 37 and young == 5 and old == 32 and oldest and oldest.U == 7000032, "pair hop: ...5 in the window + the newest 32 older ones (37)",
+			#list .. " entries, oldest kept " .. tostring(oldest and oldest.U))
+		-- a flood inside the window: the hard limit of 64 (the newest kept)
+		for i = 1, 70 do
+			data.RecordDuel(a, 7300000 + i, now - 90 + i) -- (newer than every entry above)
+		end
+		rec = data.GetBattle(a)
+		list = rec and rec.Duels or {}
+		T.check(#list == 64 and list[1].U == 7300070 and list[64].U == 7300007, "pair hop: ...never more than 64 entries (70 in the window: the newest 64)",
+			#list .. " entries, last " .. tostring(list[64] and list[64].U))
 		K.flushErrors("pair hop")
 	end)
 	w.stop()
@@ -922,32 +972,100 @@ S.p3bs_zero_trophy = scenario("p3bs_zero_trophy", function()
 			rule:case(prize(20) == math.max(1, math.floor(20 * share)), "no share argument reads Config (" .. tostring(prize(20)) .. ")")
 			rule:report()
 		end
+		-- review fix 1: "low" = fewer Trophies at the start than a normal loss takes (|Trophies.Loss| = 10), not only 0;
+		-- review fix 5: an unknown total (nil, junk) is never "low"
+		local lossAmount = math.abs(TR.Loss)
+		local low = bs.LowTrophyOpponent
+		if T.check(type(low) == "function", "zero trophy: BattleService.LowTrophyOpponent exists") then
+			local rule = T.tally("zero trophy: LowTrophyOpponent(trophies at the start) = a known total below |Trophies.Loss| (" .. lossAmount .. ")")
+			for _, c in ipairs({ { 0, true }, { 5, true }, { 9, true }, { lossAmount - 1, true }, { lossAmount, false }, { 10, false }, { 50, false }, { nil, false }, { 0 / 0, false }, { "3", false }, { math.huge, false }, { -1, true } }) do
+				local got = low(c[1])
+				rule:case(got == c[2], tostring(c[1]) .. " -> " .. tostring(got) .. " (want " .. tostring(c[2]) .. ")")
+			end
+			rule:report()
+		end
+		local LOW_TOAST = "Victory! Low-trophy opponent: smaller trophy prize."
 
 		data.AddTrophies(a, 100)
 		T.eq(record(z).Trophies or 0, 0, "zero trophy: (setup) the opponent has 0 Trophies")
 		local small = math.max(1, math.floor(TR.Win * 0.25))
 		local r, rwA, gained, m = fullWin("vs a new player")
 		if T.check(r ~= nil and contains(r.Winners, a.UserId), "zero trophy: a wins against the 0-trophy player", r and tostring(r.Reason) or "no end") then
-			T.check(rwA and rwA.Trophies == small and record(a).Trophies == 100 + small and rwA.NewOpponent == true and rwA.NoTrophies == nil,
-				"zero trophy: ...and gets the smaller prize: floor(1/4 x " .. TR.Win .. ") = " .. small .. " Trophies (NewOpponent on the reward)",
+			T.check(rwA and rwA.Trophies == small and record(a).Trophies == 100 + small and rwA.LowTrophyOpponent == true and rwA.NewOpponent == nil and rwA.NoTrophies == nil,
+				"zero trophy: ...and gets the smaller prize: floor(1/4 x " .. TR.Win .. ") = " .. small .. " Trophies (LowTrophyOpponent on the reward)",
 				rwA and (tostring(rwA.Trophies) .. " / total " .. tostring(record(a).Trophies)) or "none")
 			T.check(rwA and rwA.Tokens == TR.Tokens.Win * doubled(rwA) and rwA.Xp == TR.Xp.Win and gained == rwA.Tokens,
 				"zero trophy: ...the win's tokens and XP are paid in full", rwA and (rwA.Tokens .. " / " .. rwA.Xp) or "none")
-			T.check(toasted(a, "Your opponent was new: smaller trophy prize", m) and toastedPlain(a, "+" .. small .. " trophies", m) and not toasted(a, "no trophies to win", m),
-				"zero trophy: ...and the toast says so ('Victory! Your opponent was new: smaller trophy prize. +" .. small .. " trophies')", table.concat(toasts(a, m), " | "))
+			T.check(toastedPlain(a, LOW_TOAST .. " +" .. small .. " trophies", m) and not toasted(a, "no trophies to win", m) and not toasted(a, "was new", m),
+				"zero trophy: ...and the toast says so ('" .. LOW_TOAST .. " +" .. small .. " trophies')", table.concat(toasts(a, m), " | "))
 			local rwZ = r.Rewards[z.UserId]
 			T.check(rwZ and (rwZ.Trophies or 0) == 0 and (record(z).Trophies or 0) == 0, "zero trophy: the loser's trophies never go below 0",
 				rwZ and tostring(rwZ.Trophies) or "none")
+		end
+		-- review fix 1: an alt holding a few Trophies (5, less than the 10 a loss takes) is no full prize either
+		data.AddTrophies(z, 5)
+		T.eq(record(z).Trophies, 5, "zero trophy: (setup) the opponent now holds 5 Trophies")
+		local beforeLow = record(a).Trophies
+		local rL, rwL, _, mL = fullWin("vs a player with 5 Trophies")
+		if T.check(rL ~= nil and contains(rL.Winners, a.UserId), "zero trophy: a beats the opponent who holds 5 Trophies", rL and tostring(rL.Reason) or "no end") then
+			T.check(rwL and rwL.Trophies == small and record(a).Trophies == beforeLow + small and rwL.LowTrophyOpponent == true,
+				"zero trophy: ...the smaller prize too (+" .. small .. ", not +" .. TR.Win .. ": 5 is below the " .. lossAmount .. " a loss takes)",
+				rwL and (tostring(rwL.Trophies) .. " / total " .. tostring(record(a).Trophies)) or "none")
+			T.check(toastedPlain(a, LOW_TOAST, mL), "zero trophy: ...with the low-trophy toast", table.concat(toasts(a, mL), " | "))
+			T.eq(record(z).Trophies or 0, 0, "zero trophy: ...the loser drops to 0 (never below)")
 		end
 		-- a normal opponent (one who holds Trophies) is unchanged: the full win
 		data.AddTrophies(z, 50)
 		local before = record(a).Trophies
 		local r2, rw2, _, m2 = fullWin("vs a player with Trophies")
 		if T.check(r2 ~= nil and contains(r2.Winners, a.UserId), "zero trophy: a beats the opponent who now holds 50 Trophies", r2 and tostring(r2.Reason) or "no end") then
-			T.check(rw2 and rw2.Trophies == TR.Win and record(a).Trophies == before + TR.Win and rw2.NewOpponent == nil,
-				"zero trophy: ...the normal win: +" .. TR.Win .. " Trophies, no NewOpponent", rw2 and (tostring(rw2.Trophies) .. " / total " .. tostring(record(a).Trophies)) or "none")
+			T.check(rw2 and rw2.Trophies == TR.Win and record(a).Trophies == before + TR.Win and rw2.LowTrophyOpponent == nil,
+				"zero trophy: ...the normal win: +" .. TR.Win .. " Trophies, no LowTrophyOpponent", rw2 and (tostring(rw2.Trophies) .. " / total " .. tostring(record(a).Trophies)) or "none")
 			T.check(toastedPlain(a, "Victory! +" .. TR.Win .. " trophies", m2) and not toasted(a, "smaller trophy prize", m2),
 				"zero trophy: ...with the normal toast", table.concat(toasts(a, m2), " | "))
+		end
+		-- review fix 5: an opponent whose record cannot be read at the start (a provisional save: GetBattle nil) is not
+		-- treated as 0: the winner gets the full prize (z really holds 40 here)
+		bs._ClearPairsForTest()
+		for _, p in ipairs({ a, z }) do
+			data.MutateBattle(p, function(rec)
+				rec.Duels = {}
+			end)
+		end
+		T.check((record(z).Trophies or 0) >= lossAmount, "zero trophy: (setup) the opponent holds " .. tostring(record(z).Trophies) .. " Trophies")
+		local realGetBattle = data.GetBattle
+		local zId = z.UserId
+		data.GetBattle = function(p, ...)
+			if p == z or (type(p) == "userdata" or type(p) == "table") and p.UserId == zId then
+				return nil
+			end
+			return realGetBattle(p, ...)
+		end
+		local okU, rU, rwU, _, mU = pcall(function()
+			toArena(a, 3, 0)
+			toArena(z, -3, 0)
+			local m = K.logSize()
+			local ok, id = bs.StartDuel(a, z)
+			data.GetBattle = realGetBattle -- only the start reads the unknown record
+			if not T.check(ok == true, "zero trophy: unknown record: the duel starts", tostring(id)) then
+				return nil
+			end
+			advance(0.3)
+			drvPlay({ drvTracker(a, m), drvTracker(z, m) }, 16, function()
+				return w.find(id) ~= nil
+			end, { every = 6 })
+			if not w.find(id) then
+				bs.Forfeit(z)
+				advance(0.5)
+			end
+			local res = w.find(id)
+			advance(5)
+			return res, res and res.Rewards[a.UserId], nil, m
+		end)
+		data.GetBattle = realGetBattle
+		if T.check(okU, "zero trophy: unknown record: ran", tostring(rU)) and T.check(rU ~= nil and contains(rU.Winners, a.UserId), "zero trophy: a beats the opponent whose record was unknown at the start") then
+			T.check(rwU and rwU.Trophies == TR.Win and rwU.LowTrophyOpponent == nil and not toasted(a, "smaller trophy prize", mU),
+				"zero trophy: ...an unknown total is not 0: the full +" .. TR.Win .. " (no smaller prize)", rwU and tostring(rwU.Trophies) or "none")
 		end
 		K.flushErrors("zero trophy")
 	end)
