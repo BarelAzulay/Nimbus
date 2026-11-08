@@ -80,7 +80,9 @@
 --      the spins count ("Bad spins"), not in a match, the profile loaded ("Your data is still loading"), the Secret
 --      Roulette's pity read (DataService.GetPity; provisional or no answer -> "Your data is still loading"), a
 --      gem-priced spin only once DataService.GemsSettled (the server-hop settle hold, same text), GemService.Quote (the
---      PolicyService lock, unchanged), the balance against Price = UnitPrice x spins (computed once, both currencies);
+--      PolicyService lock, unchanged), a token-paid spin only for a PolicyService-"Allowed" account (16.12:
+--      GemService.TokenSpinLock; "Token spins are not available on your account", or the checking text while unknown),
+--      the balance against Price = UnitPrice x spins (computed once, both currencies);
 --   2. the pulls, from RNG.Roll in order (roll(id, RNG.Roll): PetCatalog.RollPet, or the quote's GemService.RollPet
 --      for the Secret Roulette; the pity's forced pull is roll(id, RNG.Roll, { ForceRarity = "Secret" }), Pity = true,
 --      and must come back a Secret). A pull's rarity is its rolled pet's and never changes. A pet the player cannot hold
@@ -1150,6 +1152,26 @@ local function gemQuote(player, ctx)
 	return true
 end
 
+-- The token part of step 1 (lobby-shop 16.12, the owner's pick A): GemService.TokenSpinLock, nil only for a
+-- PolicyService-"Allowed" account. No GemService, a missing function, an error or an odd answer is unknown: refused with
+-- the checking text (fails closed, like StoreService's token lock). -> nil | reason
+local function tokenSpinLock(player)
+	local checking = "Checking your account, try again in a moment"
+	local gems = getGemService()
+	if not gems or type(gems.TokenSpinLock) ~= "function" then
+		return checking
+	end
+	local ok, reason = pcall(gems.TokenSpinLock, player)
+	if not ok then
+		warn("[PetService] GemService.TokenSpinLock errored: " .. tostring(reason))
+		return checking
+	end
+	if reason == nil or type(reason) == "string" then
+		return reason
+	end
+	return checking
+end
+
 -- The tokens a full-stack pull pays instead of its pet (lobby-shop review round 1, the payback rule): the rarity's
 -- Config.Index.Rewards Tokens, at most floor(the roulette's token Price x Config.Eggs.SubstituteShare (0.5)) for a token
 -- roulette, whichever currency paid, so a pull never pays back its own price and full stacks are never a token source (pets
@@ -1242,6 +1264,11 @@ function PetService.BuyRoulette(player, rouletteId, currency, spins)
 		local okQuote, reason = gemQuote(player, ctx)
 		if not okQuote then
 			return false, reason
+		end
+	else
+		local lock = tokenSpinLock(player) -- 16.12: before the balance, so a restricted account is told why
+		if lock then
+			return false, lock
 		end
 	end
 	ctx.Price = ctx.UnitPrice * spins -- computed once: the balance check and the charge use it

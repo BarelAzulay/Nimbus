@@ -28,8 +28,9 @@
 --                                    it gold for 2.6 s (attribute Focused)
 --   ShopEggs.CardState(rouletteId, button) -> "NoOdds" | "Pending" | "Locked" | "Loading" | "Short" | "Ready"
 --                                    button = "Spin" (default) | "Spin3" | "SpinGems". In that order: no odds; a request
---                                    pending (EggStage.IsPending: every button); a gem button (SpinGems, every Secret
---                                    button) while PaidRandomItemsRestricted is not false (Locked) or before GemsSettled
+--                                    pending (EggStage.IsPending: every button); every button while
+--                                    PaidRandomItemsRestricted is not false (Locked; token spins too since lobby-shop
+--                                    16.12); a gem button (SpinGems, every Secret button) before GemsSettled
 --                                    (Loading); the balance under the price (Short: the price kept, drawn red, the
 --                                    button still taps and EggStage toasts); else Ready
 --   ShopEggs.HeroPulse(page) -> the UIScale "Pulse" of the hero's Spin (ShopController's shine pulses it, High only)
@@ -1057,13 +1058,12 @@ function ShopEggs.CardState(id, button)
 		return "Pending"
 	end
 	local gems = id == K.SECRET or button == "SpinGems"
-	if gems then
-		if attr("PaidRandomItemsRestricted") ~= false then
-			return "Locked"
-		end
-		if attr("GemsSettled") ~= true then
-			return "Loading"
-		end
+	-- (lobby-shop 16.12, the owner's pick A: the token spins lock too, as the server refuses them while not "Allowed")
+	if attr("PaidRandomItemsRestricted") ~= false then
+		return "Locked"
+	end
+	if gems and attr("GemsSettled") ~= true then
+		return "Loading"
 	end
 	local currency = gems and "Gems" or "Tokens"
 	local price = H.price(id, currency) * ((button == "Spin3" and not gems) and 3 or 1)

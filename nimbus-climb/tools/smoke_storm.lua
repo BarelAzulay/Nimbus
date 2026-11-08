@@ -939,6 +939,10 @@ local function serverScenarios()
 				local d = (anchor.Position - (deckStart + Vector3.new(0, 2.5, 0))).Magnitude
 				T.check(d <= prompt.MaxActivationDistance, "Storm Altar: the prompt is in reach from the island deck by the bridge", fmt(d, 1) .. " studs, MaxActivationDistance " .. tostring(prompt.MaxActivationDistance))
 			end
+			-- (the "awakens soon" toast is for accounts still being checked: the mock's PolicyService answers "allowed" by
+			-- default since lobby-shop 16.12, so these visitors join with no PolicyService API at all)
+			local PolS = game:GetService("PolicyService")
+			PolS.GetPolicyInfoForPlayerAsync = false
 			local a = Mock.AddPlayer("StormVisitorA", 976101)
 			local b = Mock.AddPlayer("StormVisitorB", 976102)
 			advance(0.8)
@@ -992,6 +996,7 @@ local function serverScenarios()
 			end
 			T.check(stray == 0 and #Mock.Errors == errorsBefore, "Storm Altar: forged prompt triggers (nil, a string, a non-player) send nothing and raise nothing", stray .. " toasts, " .. (#Mock.Errors - errorsBefore) .. " errors")
 			K.removePlayers({ a, b })
+			PolS.GetPolicyInfoForPlayerAsync = nil
 		end
 
 		-- the server never animates the altar (the client hovers the showcase)

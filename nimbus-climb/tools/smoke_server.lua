@@ -1155,6 +1155,10 @@ local function stormAltarChecks(info, folder)
 		end
 	end
 	if T.check(prompt ~= nil, "the altar has a 'Storm Altar' ProximityPrompt") then
+		-- (the phase 1 toast is for an account still being checked: the mock's PolicyService answers "allowed" by
+		-- default since lobby-shop 16.12, so this visitor joins with no PolicyService API at all)
+		local PolS = game:GetService("PolicyService")
+		PolS.GetPolicyInfoForPlayerAsync = false
 		local p = Mock.AddPlayer("AltarVisitor", 975002)
 		advance(0.6)
 		local mark = #Mock.RemoteLog
@@ -1162,6 +1166,7 @@ local function stormAltarChecks(info, folder)
 		advance(0.3)
 		T.check(notifiedSince(p, "awakens soon", mark) ~= nil, "triggering it shows the side toast 'The Storm Altar awakens soon ...' (phase 1)")
 		Mock.RemovePlayer(p)
+		PolS.GetPolicyInfoForPlayerAsync = nil
 		advance(0.5)
 	end
 end

@@ -17,7 +17,7 @@
 --                     created packs by index or product id only, a 1 s cooldown, never in a match, never raises
 --   p2gems_policy     (booted) PolicyService.GetPolicyInfoForPlayerAsync -> PolicyState + the player attribute
 --                     PaidRandomItemsRestricted; restricted, failing, odd and still-running lookups: no gem roll at
---                     all (API and remote, nothing charged), token roulettes stay open; a failed lookup is retried and
+--                     all (API and remote, nothing charged), no token roulette either (lobby-shop 16.12); a failed lookup is retried and
 --                     then allows; no PolicyService answer at all = never allowed
 --   p2gems_roulettes  (booted) every gem price charged exactly (Gems, not tokens), RouletteResult Currency / Price /
 --                     Gems with a valid strip, not enough Gems, the Secret roulette takes Gems only, a forced Secret pull
@@ -863,9 +863,14 @@ S.p2gems_policy = guarded("p2gems_policy", function()
 		T.eq(DataS.GetGems(restricted), 5000, "gem policy: ...and charges nothing")
 
 		local cloud = Config.Roulettes[1]
-		local okTok = PetS.BuyRoulette(restricted, cloud.Id)
-		T.check(okTok == true and DataS.GetTokens(restricted) == 1000 - cloud.Price and DataS.GetGems(restricted) == 5000,
-			"gem policy: token roulettes stay open to a restricted account (Cloud Tokens are earned, not bought)")
+		-- lobby-shop 16.12 (the owner's pick A): token-paid spins close for a restricted account too (a client can open the
+		-- token packs' Robux prompt itself and the receipt is always granted); an unchecked account is told to try again
+		local okTok, whyTok = PetS.BuyRoulette(restricted, cloud.Id)
+		T.check(okTok == false and whyTok == "Token spins are not available on your account" and DataS.GetTokens(restricted) == 1000 and DataS.GetGems(restricted) == 5000,
+			"gem policy: token roulettes are refused for a restricted account too (16.12), nothing charged", tostring(whyTok))
+		local okTokF, whyTokF = PetS.BuyRoulette(failing, cloud.Id)
+		T.check(okTokF == false and tostring(whyTokF):lower():find("try again", 1, true) ~= nil and DataS.GetTokens(failing) == 1000,
+			"gem policy: ...and for an unchecked account ('try again in a moment'), nothing charged", tostring(whyTokF))
 
 		-- the failing lookup is retried with a backoff, then the account is allowed
 		policyModes[failing.UserId] = "allow"
@@ -890,8 +895,9 @@ S.p2gems_policy = guarded("p2gems_policy", function()
 		end, 10)
 		T.eq(Gs.PolicyState(slow), "Allowed", "gem policy: ...until the answer arrives")
 
-		-- no PolicyService answer at all: never allowed
+		-- no PolicyService answer at all: never allowed (false = no API: the mock answers "allowed" by default, 16.12)
 		removeDoubles()
+		PolS.GetPolicyInfoForPlayerAsync = false
 		local blind = joinAs("GemPolicyBlind", nil)
 		players[#players + 1] = blind
 		advance(5)

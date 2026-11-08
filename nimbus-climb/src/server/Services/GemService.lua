@@ -31,7 +31,9 @@
 --   ArePaidRandomItemsRestricted. Until the answer is known, or when it is true (or missing), the player counts as
 --   restricted: every gem-priced roulette (token roulettes paid with Gems, the gems-only Secret roulette) is refused,
 --   and the player attribute PaidRandomItemsRestricted (true while restricted or unknown) tells the client to hide them.
---   Buying Gems themselves stays possible (a fixed amount is not a random item); Cloud Token roulettes are untouched.
+--   Buying Gems themselves stays possible (a fixed amount is not a random item). lobby-shop 16.12 (the owner's pick A,
+--   2026-11-08): token-paid roulette spins follow the same answer (TokenSpinLock: only "Allowed" spins with tokens), since
+--   a client can open the token packs' Robux prompt itself and a paid receipt is always granted.
 -- * Gem roulettes: every token roulette with a price in Config.Gems.RouletteGemPrices (the same odds as with Cloud
 --   Tokens) and the gems-only Secret roulette (Config.Gems.SecretRoulette, AllowSecret = true) at the Storm Altar. Secret
 --   pets come from the Secret roulette and from Celestial's 2% Secret row (its AllowSecret, lobby-shop 16.1: token and gem
@@ -48,6 +50,7 @@
 --   GemService.PolicyState(player) -> "Allowed" | "Restricted" | "Checking"
 --   GemService.IsRestricted(player) -> bool                  true unless the policy said "Allowed"
 --   GemService.SecretRouletteState(player) -> "Open" | "Restricted" | "Checking" | "Unavailable"   (the Storm Altar)
+--   GemService.TokenSpinLock(player) -> nil | reason   nil only when PolicyState is "Allowed" (16.12; never yields)
 --   GemService.GetRoulette(id) -> {Id, DisplayName, GemPrice, Color, AllowSecret, GemsOnly, Odds} | nil   (a copy)
 --   GemService.ListRoulettes() -> {def...}   token roulettes with a gem price (Config.Roulettes order), then gems-only
 --   GemService.RoulettePrice(id) -> gems | nil
@@ -84,6 +87,8 @@ GemService.ProfileWaitSeconds = 12
 -- Names that are not in Config (lead-owned): local constants, listed as deviations.
 local RESTRICTED_ATTR = "PaidRandomItemsRestricted" -- player attribute: true = hide / refuse gem-priced roulettes
 local PURCHASE_REMOTE = "BuyGems" -- (ref) connected only once Config.Remotes lists it
+local TOKEN_SPIN_LOCK = "Token spins are not available on your account" -- lobby-shop 16.12: TokenSpinLock's "Restricted" text
+local POLICY_CHECKING = "Checking your account, try again in a moment" -- the policy answer is still unknown (Quote's text too)
 
 local PROMPT_COOLDOWN = 1 -- seconds between two purchase prompts of one player
 local REMOTE_COOLDOWN = 0.5
@@ -580,7 +585,7 @@ function GemService.Quote(player, rouletteId)
 		return false, "Gem roulettes are not available on your account"
 	elseif state ~= "Allowed" then
 		kickPolicy(player)
-		return false, "Checking your account, try again in a moment"
+		return false, POLICY_CHECKING
 	end
 	-- odds are always shown: a roulette whose odds cannot be listed is not sold
 	if #GemService.GetOdds(def.Id) == 0 then
@@ -603,6 +608,22 @@ function GemService.Roll(player, rouletteId)
 		return false, "Pets are unavailable right now"
 	end
 	return pets.BuyRoulette(player, rouletteId, "Gems")
+end
+
+-- lobby-shop 16.12 (the owner's pick A, 2026-11-08): why a token-paid roulette spin is refused for this account, or nil.
+-- The token packs' Robux prompt is never opened by the server for an account that is not "Allowed" (StoreService's
+-- tokenLock), but a client can open it itself and a paid receipt is always granted, so the spin is the lock: only
+-- PolicyState "Allowed" spins with tokens; "Restricted" gets TOKEN_SPIN_LOCK; anything else is still unknown (fail closed,
+-- the token lock's rule) and asks PolicyService again (kickPolicy). Never yields; no saved field.
+function GemService.TokenSpinLock(player)
+	local state = GemService.PolicyState(player)
+	if state == "Allowed" then
+		return nil
+	elseif state == "Restricted" then
+		return TOKEN_SPIN_LOCK
+	end
+	kickPolicy(player)
+	return POLICY_CHECKING
 end
 
 -- What the Storm Altar's prompt does for this player: open the Secret roulette, explain the restriction, or (gem

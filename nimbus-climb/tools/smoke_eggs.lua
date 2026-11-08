@@ -867,8 +867,39 @@ local function serverScenarios()
 			local okL, whyL = PS.BuyRoulette(locked, "Sky", "Gems", 3)
 			T.check(okL == false and whyL == "Gem roulettes are not available on your account" and B.same(before, B.wallet(locked)),
 				"egg x3: gems x3 for a restricted account: GemService's text, nothing charged", tostring(whyL))
-			local okLT = PS.BuyRoulette(locked, "Cloud", nil, 3)
-			T.check(okLT == true and B.wallet(locked).Tokens == 1000 - 3 * cloud.Price, "egg x3: ...token x3 stays open to that account")
+			-- (lobby-shop 16.12, the owner's pick A 2026-11-08) token-paid spins are refused for a restricted account too: a
+			-- client can open the token packs' Robux prompt itself and the receipt is always granted, so the spin is the lock
+			local TOKEN_LOCK, CHECKING = "Token spins are not available on your account", "Checking your account, try again in a moment"
+			local tokTally = T.tally("egg x3: token spins for a restricted account are refused with '" .. TOKEN_LOCK .. "', nothing charged (x1, x3, every machine)")
+			for _, case in ipairs({ { "Cloud", nil, 3 }, { "Cloud", nil, 1 }, { "Cloud", "Tokens", 1 }, { "Storm", "Tokens", 3 }, { "Celestial", "Tokens", 1 } }) do
+				local b = B.wallet(locked)
+				local okT, whyT = PS.BuyRoulette(locked, case[1], case[2], case[3])
+				tokTally:case(okT == false and whyT == TOKEN_LOCK and B.same(b, B.wallet(locked)), tostring(case[1]) .. " x" .. tostring(case[3]) .. ": " .. tostring(whyT))
+			end
+			tokTally:report()
+			K.advance(0.4)
+			before = B.wallet(locked)
+			mark = K.logSize()
+			B.fire(locked, "Cloud", nil, 1)
+			K.advance(0.3)
+			local sentL = B.results(locked, mark)
+			T.check(#sentL == 1 and type(sentL[1]) == "table" and sentL[1].Ok == false and sentL[1].Reason == TOKEN_LOCK and B.same(before, B.wallet(locked)),
+				"egg x3 remote: a restricted account's token spin through the remote: Ok = false with that reason, nothing charged", #sentL .. " replies; " .. B.show(B.wallet(locked)))
+			-- an account whose policy answer is still unknown follows the token lock's rule: refused (fail closed) with the
+			-- checking text, and the refusal asks PolicyService again, so the spin opens once the answer is "Allowed"
+			PolS.GetPolicyInfoForPlayerAsync = false -- (the mock: no PolicyService API at all, so no answer ever comes)
+			local unknown = B.join("EggUnknown")
+			players[3] = unknown
+			B.give(unknown, 1000, 0)
+			before = B.wallet(unknown)
+			local okU, whyU = PS.BuyRoulette(unknown, "Cloud", nil, 1)
+			T.check(okU == false and whyU == CHECKING and B.same(before, B.wallet(unknown)), "egg x3: a token spin while the policy answer is unknown: '" .. CHECKING .. "', nothing charged", tostring(whyU))
+			B.installPolicy()
+			K.advance(6) -- past GemService's 5 s gap between two on-demand lookups
+			PS.BuyRoulette(unknown, "Cloud", nil, 1) -- refused once more: this refusal asks PolicyService again
+			K.advance(1)
+			local okU2 = PS.BuyRoulette(unknown, "Cloud", nil, 1)
+			T.check(okU2 == true and B.wallet(unknown).Tokens == 1000 - cloud.Price, "egg x3: ...once PolicyService answers 'Allowed' the token spin goes through", B.show(B.wallet(unknown)))
 
 			-- the 0.25 s cooldown counts one request
 			B.give(p, 1000, 0)

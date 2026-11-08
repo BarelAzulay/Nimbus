@@ -1156,6 +1156,7 @@
         "PolicyState",
         "IsRestricted",
         "SecretRouletteState",
+        "TokenSpinLock",
         "GetRoulette",
         "ListRoulettes",
         "RoulettePrice",
