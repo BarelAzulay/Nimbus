@@ -5,13 +5,14 @@
         floating cell, the glass counted at the fine grid) and the egg spots (EGG_SPOTS in
         blender/kit/props/lobby_machine.py): every scaled egg inside the glass (no point in a glass cell or outside the
         globe), on the floor or resting on the eggs below (gap), no egg sunk into another by more than a sliver
-        (depth), off the seat ring, the chase egg's face visible from the front, how full the globe reads. No bpy.
+        (depth), off the seat ring, the chase egg's face visible from the front (>= CHASE_FLOOR), how full the globe
+        reads (>= FILL_FLOOR eggs + cloud bed, >= EGG_FILL_FLOOR eggs alone). No bpy.
     %USERPROFILE%\\.bpyenv\\Scripts\\python.exe blender/pitches/shop_area_globe.py --render <out_dir>
         [--shots hero,row,detail,plaza,side] [--scale 100]
         EEVEE renders (rcommon.py, the pitch's rig): the four roulettes built through the kit (props.REGISTRY
         "lobby_roulette_globe" with each roulette's look), the REAL painted lobby_egg models placed at the manifest's
         Egg<i> attachments at Meta.eggScale / chaseScale in LobbyMachineBuilder's rarity order (shop-area polish: the
-        chase egg on the full egg_<rarity> key, K 10, the pile on egg_<rarity>_low, K 4), a 5-stud player for scale,
+        chase egg on the full egg_<rarity> key, K 10, the pile on egg_<rarity>_pile, K 4), a 5-stud player for scale,
         the glass at the game's Transparency 0.80 in GLASS_RGB.
     <python> blender/pitches/shop_area_globe.py --settle N --scale s --chase c
         drops N eggs into the globe (the same solid / graze rules as --check) and prints EGG_SPOTS rows.
@@ -250,7 +251,7 @@ def settle(n_pile=16, scale=None, chase_scale=None, verbose=True):
     chase = None
     for y, x, z in front:
         f = (np.array([x, y, z]), R, chase_scale)
-        if chase_visible(f, placed) >= 0.9:
+        if chase_visible(f, placed) >= CHASE_FLOOR:
             chase = ((round(float(x), 3), round(float(y), 3), round(float(z), 3)), yaw, tx, tz, "CHASE_SCALE")
             break
     if chase is None:
@@ -290,6 +291,14 @@ def fill_report(frames, solid=None):
             bed |= (solid.hit(P) & (r2 < (LM.GLOBE_R[1] - 0.2) ** 2) & (P[:, 1] > LM.FLOOR_Y)).reshape(gx.shape)
     d = float(disc.sum())
     return float((eggs & disc).sum()) / d, float(((eggs | bed) & disc).sum()) / d
+
+
+# the pinned floors (review round 2: the measured fill was only printed, so a re-settle or a bed change could drop the
+# globe back towards the ~25 % the owner saw and --check stay green). The owner asked "about 60 %" full; spec 16.17
+# "Polish" measured 51 % eggs / 62 % with the cloud bed and the chase egg 90 % seen (settle() keeps it >= 90 %)
+FILL_FLOOR = 0.55       # eggs + cloud bed, the front view of the glass's inner disc over the collar
+EGG_FILL_FLOOR = 0.50   # eggs alone: the bed may not stand in for the eggs
+CHASE_FLOOR = 0.90      # the chase egg's front-facing surface with a clear line to an eye 14 studs out
 
 
 def check_eggs(verbose=True):
@@ -359,12 +368,19 @@ def check_eggs(verbose=True):
     report["fill"], report["fillBed"] = eggs_only, with_bed
     top_front = max(float(w[:, 1].max()) for w, f in zip(worlds, frames) if f[0][2] < 0.0)
     if verbose:
-        print("eggs %d   chase egg front visible %.0f %%   the globe (front view) %.0f %% eggs, %.0f %% eggs + cloud bed   "
-              "the front half's top egg at y %.2f" % (n, vis * 100, eggs_only * 100, with_bed * 100, top_front))
-    if vis < 0.85:
-        report["problems"].append("the chase egg is hidden from the front (%.0f %% clear)" % (vis * 100))
-    if with_bed < 0.5:
-        report["problems"].append("the globe reads only %.0f %% full from the front (eggs + bed; >= 50 %% wanted)" % (with_bed * 100))
+        print("eggs %d   chase egg front visible %.1f %% (floor %.0f)   the globe (front view) %.1f %% eggs (floor %.0f), "
+              "%.1f %% eggs + cloud bed (floor %.0f)   the front half's top egg at y %.2f"
+              % (n, vis * 100, CHASE_FLOOR * 100, eggs_only * 100, EGG_FILL_FLOOR * 100, with_bed * 100,
+                 FILL_FLOOR * 100, top_front))
+    if vis < CHASE_FLOOR:
+        report["problems"].append("the chase egg is hidden from the front (%.1f %% clear; >= %.0f %% wanted)"
+                                  % (vis * 100, CHASE_FLOOR * 100))
+    if with_bed < FILL_FLOOR:
+        report["problems"].append("the globe reads only %.1f %% full from the front (eggs + bed; >= %.0f %% wanted)"
+                                  % (with_bed * 100, FILL_FLOOR * 100))
+    if eggs_only < EGG_FILL_FLOOR:
+        report["problems"].append("the eggs cover only %.1f %% of the globe from the front (>= %.0f %% wanted)"
+                                  % (eggs_only * 100, EGG_FILL_FLOOR * 100))
     return report
 
 
@@ -440,13 +456,13 @@ def check():
 # ---------------------------------------------------------------------------------------------- renders (bpy)
 def add_eggs(m, roulette, neon=True):
     """copy the real painted eggs into model m at the Egg<i> attachments (scaled about the pivot): the chase egg Egg1 the
-    full egg_<rarity> (lobby_egg, K 10), the pile the low eggs egg_<rarity>_low (K 4, Neon baked flat) as the game
+    full egg_<rarity> (lobby_egg, K 10), the pile the low-poly eggs egg_<rarity>_pile (K 4, Neon baked flat) as the game
     tags them (polish 2026-11-09)"""
     seq = rarities(roulette["Odds"], len(LM.EGG_SPOTS))
     cache = {}
     for i, ((p, R, s), rar) in enumerate(zip(spot_frames(), seq)):
         low = i > 0
-        key = rar.lower() + ("_low" if low else "")
+        key = rar.lower() + ("_pile" if low else "")
         if key not in cache:
             args = {"rarity": rar.lower(), "low": True} if low else {"rarity": rar.lower()}
             cache[key] = props.REGISTRY["lobby_egg"]({"key": "egg_" + key, "args": args}, KITOBJ)

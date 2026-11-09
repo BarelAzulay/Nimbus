@@ -6,7 +6,7 @@
 --   LobbyMachineBuilder.GLOBE = { Key = "prop_roulette_globe", Count = 18, Chase = 1, Scale = 0.5, ChaseScale = 0.54,
 --                                 EggSize = Vector3.new(2.25, 3, 2.5) }   (polish 2026-11-09: was 12 at 0.42 / 0.44)
 --   LobbyMachineBuilder.SECRET_EMBLEM = white-gold 255,240,200: the Celestial machine's star (its top rarity is Secret)
---   LobbyMachineBuilder.EggKey(rarity, pile) -> "egg_<rarity>" (the chase egg) | "egg_<rarity>_low" (pile) | nil
+--   LobbyMachineBuilder.EggKey(rarity, pile) -> "egg_<rarity>" (the chase egg) | "egg_<rarity>_pile" (pile) | nil
 --   LobbyMachineBuilder.Rarities(roulette, count) -> { rarity id }
 --     Pure (no Instances). [1] = the roulette's top rarity (the last of its odds > 0 in Config.Rarities order: the chase
 --     egg), [2..count] = the pile of its lower rarities by weight: n_r = max(1, floor((count - 1) * w_r / sum + 0.5)),
@@ -24,9 +24,10 @@
 --     collide / touch / query) standing on the pivot; the Model's WorldPivot = cf * the attachment, its attribute
 --     ML_Scale = Scale (ChaseScale on GlobeEgg1: MeshLibrary.Dress assembles the mesh at that size about the pivot), then
 --     H.Mesh.tag(model, EggKey(rarity, i ~= 1), pivot): the chase egg on the uploaded egg_<rarity>, the pile on
---     egg_<rarity>_low (polish 2026-11-09, review round 2's perf finding: the full keys would put 68 x ~3.4k tris in the
---     shop); ML_DressKey only where that key is not missing, so until the low eggs are uploaded the pile shows its Part
---     spheres. GlobeEgg2..18 are tagged H.Detail (NC_Detail: the Low graphics setting parks the pile; the chase egg always
+--     egg_<rarity>_pile (polish 2026-11-09, review round 2's perf finding: the full keys would put 68 x ~3.4k tris in the
+--     shop; named "_pile", not "_low": MeshLibrary.LowKey reads "<key>_low" as key's LOD twin, and the one-part pile egg
+--     is not the full egg's layout); ML_DressKey only where that key is not missing, so until the pile eggs are
+--     uploaded the pile shows its Part spheres. GlobeEgg2..18 are tagged H.Detail (NC_Detail: the Low graphics setting parks the pile; the chase egg always
 --     shows); nothing is tagged Spin (a still pile). A manifest that is missing, or lacks an Egg<i> attachment, warns once
 --     per manifest ("[LobbyMachineBuilder] prop_roulette_globe: no Egg<i> attachment" / "...: no manifest") and returns
 --     nil: the machine stands without its eggs.
@@ -56,7 +57,8 @@ LobbyMachineBuilder.GLOBE = GLOBE
 LobbyMachineBuilder.SECRET_EMBLEM = Color3.fromRGB(255, 240, 200)
 
 -- the egg mesh keys, literal: the chase egg wears the full uploaded egg (LobbyBoardBuilder EGG_KEYS, ~3-3.7k tris); the
--- pile wears the low egg (polish: egg_<rarity>_low, a few hundred tris, one part; 68 full eggs would be ~230k tris).
+-- pile wears the low-poly pile egg (polish: egg_<rarity>_pile, a few hundred tris, one part; 68 full eggs would be
+-- ~230k tris; never "_low", the LOD-twin name MeshLibrary.LowKey pairs with the full egg).
 -- With no id for a key its egg stays the rarity-tinted Part sphere (Mesh.tag leaves it undressed)
 local EGG_KEYS = {
 	Common = "egg_common",
@@ -67,19 +69,19 @@ local EGG_KEYS = {
 	Mythic = "egg_mythic",
 	Secret = "egg_secret",
 }
-local LOW_KEYS = {
-	Common = "egg_common_low",
-	Uncommon = "egg_uncommon_low",
-	Rare = "egg_rare_low",
-	Epic = "egg_epic_low",
-	Legendary = "egg_legendary_low",
-	Mythic = "egg_mythic_low",
-	Secret = "egg_secret_low",
+local PILE_KEYS = {
+	Common = "egg_common_pile",
+	Uncommon = "egg_uncommon_pile",
+	Rare = "egg_rare_pile",
+	Epic = "egg_epic_pile",
+	Legendary = "egg_legendary_pile",
+	Mythic = "egg_mythic_pile",
+	Secret = "egg_secret_pile",
 }
 
--- the dress key of an egg of `rarity`: the pile's low egg when `pile`, else the full egg (nil for an unknown rarity)
+-- the dress key of an egg of `rarity`: the pile egg when `pile`, else the full egg (nil for an unknown rarity)
 function LobbyMachineBuilder.EggKey(rarity, pile)
-	return (pile and LOW_KEYS or EGG_KEYS)[rarity]
+	return (pile and PILE_KEYS or EGG_KEYS)[rarity]
 end
 -- the Secret egg's Part colour: its near-black body with the violet glow (LobbyBoardBuilder SECRET, the shelf egg's)
 local SECRET_EGG = Color3.fromRGB(40, 40, 52):Lerp(Color3.fromRGB(138, 92, 255), 0.18)

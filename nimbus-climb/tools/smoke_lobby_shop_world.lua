@@ -85,7 +85,7 @@
 --                      sequences, top first) / GlobeEggs / EggKey / SECRET_EMBLEM; the prop_roulette_globe manifest
 --                      (Egg1..Egg18, Meta.eggScale 0.5 / chaseScale 0.54, inside 9 x 14.5 x 7, <= 4000 tris, the eight
 --                      parts, glass 0.80, every egg's middle inside the glass, pivots >= 0.9 apart, the chase egg in
---                      front; shop-area polish: 18 eggs, the pile on the low egg_<rarity>_low keys, the chase egg on
+--                      front; shop-area polish: 18 eggs, the pile on the low-poly egg_<rarity>_pile keys, the chase egg on
 --                      the full key); the default run (no globe id) = today's machine,
 --                      the uploaded prop_roulette cabinet (review round 1: ML_DressKey prop_roulette in the roulette colour
 --                      with f17dc0d's look; --mesh, whose fixture has no prop_roulette id: the Part build), no GlobeEggs, no
@@ -93,7 +93,7 @@
 --                      Look.Secondary = its top rarity's) and after it one prop_roulette request, the price card / DomeGlow /
 --                      PromptPart unchanged; dressed (--mesh: fixture holders; default: the tag forced) -> no prop_roulette
 --                      request, GlobeEggs of eighteen egg Models
---                      at the attachments (ML_Scale, NC_Detail on 2..18, Egg1 egg_<rarity>, the pile egg_<rarity>_low, in
+--                      at the attachments (ML_Scale, NC_Detail on 2..18, Egg1 egg_<rarity>, the pile egg_<rarity>_pile, in
 --                      order); a manifest
 --                      without Egg7 -> one warn, no GlobeEggs, the machines stand
 --   shop_egg_row       the egg row under WINGED PETS (shop-area T2, spec 16.17.2): no EggGuide anywhere, one Model EggRow
@@ -2424,7 +2424,7 @@ end)
 -- shop_globe (shop-area T1, spec 16.17.1): the Gumball Globe key prop_roulette_globe and its in-globe eggs
 ----------------------------------------------------------------------------------------------------
 -- polish 2026-11-09: 18 eggs (the 12 read ~25 % full) at 0.5 / the chase egg 0.54; the pile on the low keys
--- egg_<rarity>_low (a few hundred tris each), only the chase egg on the full egg_<rarity>; Secret's star white-gold
+-- egg_<rarity>_pile (a few hundred tris each), only the chase egg on the full egg_<rarity>; Secret's star white-gold
 local GLOBE = {
 	Key = "prop_roulette_globe", Count = 18, Scale = 0.5, ChaseScale = 0.54, EggSize = Vector3.new(2.25, 3, 2.5),
 	OldKey = "prop_roulette", -- review round 1: the uploaded cabinet every Machine wears while the globe has no id
@@ -2437,7 +2437,9 @@ local GLOBE = {
 		Sky = "Mythic Rare Epic Legendary Rare Epic Legendary Rare Epic Legendary Rare Epic Rare Epic Rare Epic Epic Epic",
 		Celestial = "Secret Epic Legendary Mythic Epic Legendary Mythic Epic Legendary Mythic Epic Legendary Epic Legendary Epic Legendary Epic Legendary",
 	},
-	LowKey = "_low", -- the pile's dress key suffix (Egg2..Egg18); Egg1 (the chase egg) keeps the full key
+	-- the pile's dress key suffix (Egg2..Egg18); Egg1 (the chase egg) keeps the full key. Review round 2: "_pile", never
+	-- "_low": MeshLibrary.LowKey("egg_<rarity>") reads "egg_<rarity>_low" as the full egg's LOD twin (SetLod "Low")
+	PileKey = "_pile",
 	SecretEmblem = Color3.fromRGB(255, 240, 200), -- polish: white-gold (the chat violet 180,150,255 twinned Cloud's Epic)
 	SecretEgg = Color3.fromRGB(40, 40, 52):Lerp(Color3.fromRGB(138, 92, 255), 0.18), -- the shelf egg's Part colour
 	NoEgg7 = "[LobbyMachineBuilder] prop_roulette_globe: no Egg7 attachment",
@@ -2615,13 +2617,14 @@ S.shop_globe = guarded("shop_globe", function()
 		local okK, full, low = pcall(function()
 			return LMB.EggKey(id, false), LMB.EggKey(id, true)
 		end)
-		if okK and full == want and low == want .. GLOBE.LowKey then
+		if okK and full == want and low == want .. GLOBE.PileKey and low ~= full .. "_low" then
 			lowKeys = lowKeys + 1
 		else
 			badLow[#badLow + 1] = id .. " " .. tostring(full) .. " / " .. tostring(low)
 		end
 	end
-	T.check(type(LMB.EggKey) == "function" and lowKeys == #Config.Rarities, "globe: LobbyMachineBuilder.EggKey(rarity, pile) = egg_<rarity> for the chase egg, egg_<rarity>_low for the pile",
+	T.check(type(LMB.EggKey) == "function" and lowKeys == #Config.Rarities,
+		"globe: LobbyMachineBuilder.EggKey(rarity, pile) = egg_<rarity> for the chase egg, egg_<rarity>_pile for the pile (never egg_<rarity>_low: MeshLibrary.LowKey's LOD-twin name)",
 		table.concat(badLow, "; "))
 	T.check(typeof(LMB.SECRET_EMBLEM) == "Color3" and sameColor(LMB.SECRET_EMBLEM, GLOBE.SecretEmblem), "globe: LobbyMachineBuilder.SECRET_EMBLEM is white-gold 255,240,200",
 		tostring(LMB.SECRET_EMBLEM))
@@ -2778,7 +2781,7 @@ S.shop_globe = guarded("shop_globe", function()
 			local keys = { GLOBE.Key }
 			for _, k in pairs(EGG_KEYS) do
 				keys[#keys + 1] = k
-				keys[#keys + 1] = k .. GLOBE.LowKey -- polish: the pile's low eggs
+				keys[#keys + 1] = k .. GLOBE.PileKey -- polish: the pile eggs
 			end
 			T.check(fixtureHolders(keys, undo) > 0, "globe (--mesh): the fixture MeshLibrary root exists")
 		elseif M and realTag then
@@ -2840,8 +2843,8 @@ S.shop_globe = guarded("shop_globe", function()
 					local part = em and em:FindFirstChild("Egg")
 					local mesh = part and part:FindFirstChildOfClass("SpecialMesh")
 					local rarity = seq[i]
-					-- (polish) the chase egg on the full key, the pile on the low eggs
-					local key = rarity and ("egg_" .. string.lower(rarity) .. ((i == 1) and "" or GLOBE.LowKey))
+					-- (polish) the chase egg on the full key, the pile on the pile eggs
+					local key = rarity and ("egg_" .. string.lower(rarity) .. ((i == 1) and "" or GLOBE.PileKey))
 					local colour = (rarity == "Secret") and GLOBE.SecretEgg or rarityColour(Config, rarity)
 					if not (em and em:IsA("Model") and part and part:IsA("BasePart")) then
 						bad[#bad + 1] = fmt("%s GlobeEgg%d missing", r.Id, i)
@@ -2905,14 +2908,14 @@ S.shop_globe = guarded("shop_globe", function()
 				end
 			end
 		end
-		T.check(#bad == 0, "globe dressed: each Roulette_<Id> holds a GlobeEggs Model (beside Machine) of GlobeEgg1..18 at the manifest's Egg<i> attachments, one Sphere Part 'Egg' each (2.25 x 3 x 2.5 x 0.5, Egg1 x 0.54, standing on its pivot, anchored, no collide / touch / query, the rarity colour, Secret dark violet), ML_Scale, NC_Detail on 2..18 only, no Spin, one request at the pivot in the Rarities order: Egg1 egg_<rarity>, the pile egg_<rarity>_low",
+		T.check(#bad == 0, "globe dressed: each Roulette_<Id> holds a GlobeEggs Model (beside Machine) of GlobeEgg1..18 at the manifest's Egg<i> attachments, one Sphere Part 'Egg' each (2.25 x 3 x 2.5 x 0.5, Egg1 x 0.54, standing on its pivot, anchored, no collide / touch / query, the rarity colour, Secret dark violet), ML_Scale, NC_Detail on 2..18 only, no Spin, one request at the pivot in the Rarities order: Egg1 egg_<rarity>, the pile egg_<rarity>_pile",
 			table.concat(bad, "; "))
 		if MESH_MODE then
-			T.check(#dressBad == 0, "globe dressed (--mesh): Machine tagged prop_roulette_globe (ML_Primary / ML_Secondary), every GlobeEgg ML_DressKey egg_<rarity> (Egg1) / egg_<rarity>_low (the pile)", table.concat(dressBad, "; "))
+			T.check(#dressBad == 0, "globe dressed (--mesh): Machine tagged prop_roulette_globe (ML_Primary / ML_Secondary), every GlobeEgg ML_DressKey egg_<rarity> (Egg1) / egg_<rarity>_pile (the pile)", table.concat(dressBad, "; "))
 		else
 			T.check(#dressBad == 0, "globe dressed: ML_DressKey on the eggs whose key is not missing (the chase egg's uploaded egg_<rarity>), none where it is missing (--mesh checks every one)", table.concat(dressBad, "; "))
 			-- (polish) the low keys have no id in this build: every pile egg is its rarity-tinted Part sphere
-			T.eq(pileFallback, #Config.Roulettes * (GLOBE.Count - 1), "globe dressed: until egg_<rarity>_low is uploaded every pile egg (4 x 17) stays the rarity-tinted Part sphere, undressed")
+			T.eq(pileFallback, #Config.Roulettes * (GLOBE.Count - 1), "globe dressed: until egg_<rarity>_pile is uploaded every pile egg (4 x 17) stays the rarity-tinted Part sphere, undressed")
 		end
 		T.eq(warnsSince(cursor, "[LobbyMachineBuilder]"), 0, "globe dressed: no [LobbyMachineBuilder] warn")
 	end)

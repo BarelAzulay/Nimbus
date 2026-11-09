@@ -256,7 +256,7 @@ class Egg:
 
     def rows(self, y0, n):
         """exactly n cell rows starting at the cell boundary nearest y0 (n counts the 0.1-stud rows of EGG_K: on a
-        coarser grid, egg_<rarity>_low, the same height in its own rows, at least one; at EGG_K exactly n)"""
+        coarser grid, egg_<rarity>_pile, the same height in its own rows, at least one; at EGG_K exactly n)"""
         if self.vs != 1.0 / EGG_K:
             n = max(1, int(round(n * (1.0 / EGG_K) / self.vs)))
         b = self.oy + round((y0 - self.oy) / self.vs) * self.vs
@@ -483,7 +483,7 @@ def _egg_secret(E, S):
     # the rune ring: two one-row lines and eight 5 x 7 runes between them (one gap row each side), inlaid
     runes = E.rows(0.9, 1) | E.rows(1.9, 1)
     if getattr(E, "low", False):
-        # egg_secret_low: a 5 x 7 rune is 1.25 x 1.75 studs on 0.25 cells; eight marks (a 2 x 3-cell bar each) instead
+        # egg_secret_pile: a 5 x 7 rune is 1.25 x 1.75 studs on 0.25 cells; eight marks (a 2 x 3-cell bar each) instead
         for k in range(8):
             u, v = E.local(k * TAU / 8, 1.45)
             runes |= (np.abs(u) < 0.13) & (np.abs(v) < 0.3)
@@ -540,7 +540,7 @@ EGG_NEON = {
 }
 
 
-EGG_LOW_K = 4.0                  # egg_<rarity>_low: 0.25-stud cells (12 rows tall)
+EGG_LOW_K = 4.0                  # egg_<rarity>_pile: 0.25-stud cells (12 rows tall)
 
 
 @prop("lobby_egg")
@@ -557,7 +557,7 @@ def lobby_egg(entry, kit):
     paint(E, S)
     _shine(E, S, light, (shell,))
     if low:
-        # egg_<rarity>_low (shop-area polish 2026-11-09: the Gumball Globe's pile, 1.1 x 1.5 studs in the glass): the
+        # egg_<rarity>_pile (shop-area polish 2026-11-09: the Gumball Globe's pile, 1.1 x 1.5 studs in the glass): the
         # same egg and paint on 0.25-stud cells, the Neon details baked as plain colours into the one Fixed part (no
         # Glow* part, no VFX hook: a still pile; one MeshPart per egg instead of up to four)
         for k in list(S.neon):

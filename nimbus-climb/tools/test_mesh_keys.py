@@ -134,10 +134,19 @@ def test_constants():
     want += ["egg_%s_%s" % (r, h) for r in rar for h in ("top", "bot")]
     # (shop-area 16.17.1) the Gumball Globe roulette machine (named by server/Services/LobbyMachineBuilder)
     want += ["prop_roulette_globe"]
-    # (shop-area polish) the globe pile's seven low eggs (named by server/Services/LobbyMachineBuilder LOW_KEYS)
-    want += ["egg_%s_low" % r for r in rar]
-    check(list(MK.BUILD_KEYS) == want, "BUILD_KEYS are the plan's eleven keys + egg-3d's fourteen halves + the shop-area globe + its seven low eggs", MK.BUILD_KEYS)
+    # (shop-area polish) the globe pile's seven low-poly eggs (named by server/Services/LobbyMachineBuilder PILE_KEYS);
+    # review round 2: "_pile", not "_low": MeshLibrary.LowKey reads "<key>_low" as that key's LOD twin
+    want += ["egg_%s_pile" % r for r in rar]
+    check(list(MK.BUILD_KEYS) == want, "BUILD_KEYS are the plan's eleven keys + egg-3d's fourteen halves + the shop-area globe + its seven pile eggs", MK.BUILD_KEYS)
     check(list(MK.RESERVED) == ["gem_world_low"], "RESERVED is gem_world_low", MK.RESERVED)
+
+
+def test_no_false_lod_twin():
+    # MeshLibrary.LowKey(key) / dump_model / mesh_budget --lod read "<key>_low" as key's LOD twin (SetLod "Low" rebuilds
+    # the target from it): a build key of another layout must not take that name (review round 2: the pile eggs)
+    keys = set(MK.BUILD_KEYS)
+    twins = sorted(k for k in keys if k.endswith("_low") and k[:-4] in keys)
+    check(not twins, "no build key is named <another build key>_low (that is the LOD-twin name)", twins)
 
 
 def main():

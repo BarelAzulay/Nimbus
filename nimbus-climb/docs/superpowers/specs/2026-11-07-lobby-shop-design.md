@@ -2425,30 +2425,34 @@ tested in T1-T3 and round 1; the code holds each number (named in brackets).
 
 **Polish (2026-11-09, after the owner's look at the build; where this differs from the text and "As built" above, this
 wins).**
-- **The globe** (`lobby_machine.py`): **3,912 tris / 8 parts**, 9 x 14.25 x 7, one piece. **18 eggs** (`Egg1..Egg18`,
+- **The globe** (`lobby_machine.py`): **3,924 tris / 8 parts** (3,912 before review round 2's finial), 9 x 14.25 x 7, one piece. **18 eggs** (`Egg1..Egg18`,
   `Meta.eggScale 0.5`, `Meta.chaseScale 0.54`; `EGG_SPOTS` dropped into the glass by `shop_area_globe.py --settle 18 --scale
   0.5 --chase 0.54`, the same solid / graze rules as `--check`): a natural pile on a **cloud bed** (`CUSHION`, four stacked
   `Cloud` cylinders from the collar lip to y 9.3, the eggs rest on it, `BED_CLEAR` 0.3), the chase egg `Egg1` at
   `(0, 9.758, -1.2)` on top at the front (90 % of its face seen from the front); the globe reads **51 % full of eggs, 62 %
-  with the bed** (`--check`'s fill). `LobbyMachineBuilder.GLOBE` = `{ Count 18, Scale 0.5, ChaseScale 0.54 }`;
+  with the bed** (`--check`'s fill; review round 2 pins the floors in `shop_area_globe.py`: `FILL_FLOOR` 55 % eggs + bed,
+  `EGG_FILL_FLOOR` 50 % eggs alone, `CHASE_FLOOR` 90 % of the chase egg seen, each a `--check` problem when missed). `LobbyMachineBuilder.GLOBE` = `{ Count 18, Scale 0.5, ChaseScale 0.54 }`;
   `Rarities(roulette, 18)`: Cloud Epic + `C U R C U R C U C U C U C C C C C` (10 / 5 / 2), Storm Legendary + 6 / 7 / 4 (U / R /
   E), Sky Mythic + 6 / 8 / 3 (R / E / L), Celestial Secret + 7 / 7 / 3 (E / L / M); `NC_Detail` on `GlobeEgg2..18`.
   **Glass** rgb **212,234,255** at Transparency **0.80** (`GLASS_RGB`, `GLASS_T`; a faint cool tint; the tried highlight
   glint was dropped: at 0.5-stud cells it drew a white stepped blob). **Finial**: the winged cloud is replaced by a
-  **sunburst** on the lid (`SUN`: seven tapered rays, the long ones `Gold`, the short `GoldLight`, the sun disc on the
-  `Bulb` Neon; one face-connected island, top 14.25). **Side panels**: one bigger egg per panel (`SIDE_EGG`: 1.4 x 2.0,
+  **sunburst** on the lid. Review round 2 (the first, seven thin rays round a 0.62-stud sun, read as a cream crown from the
+  plaza): a rising sun, `SUN` = the `Bulb` Neon half disc r 0.75 in a one-cell `GoldDark` rim, five `Gold` rays at 14 / 50 / 90 /
+  130 / 166 degrees, each a wedge from a 0.8-stud base at the rim to a pointed tip on the 3.1 x 1.5 ellipse (never thinner than
+  the stroke whose cells still touch by a face); one face-connected island, top 14.25 (the price tag stands at 14.2). **Side panels**: one bigger egg per panel (`SIDE_EGG`: 1.4 x 2.0,
   narrower at the top) in `BodyDark` with a `Cream` band, inside the gold frame.
-- **Low pile eggs** (perf): seven new keys **`egg_<rarity>_low`** (catalog budget `eggLow` 800 tris / 1 part; prop
+- **Low pile eggs** (perf): seven new keys **`egg_<rarity>_pile`** (review round 2: first named `egg_<rarity>_low`, the
+  project's LOD-twin suffix: `MeshLibrary.LowKey("egg_epic")` would have paired the one-part pile egg with the full egg) (catalog budget `eggLow` 800 tris / 1 part; prop
   `lobby_egg` with `args.low`: K 4 instead of 10, the paint read kept, the neon keys baked flat into the one part, the
   Secret's glyphs as 8 rune marks): common 524, uncommon 592, rare 488, epic 736, legendary 584, mythic 744, secret 612
-  tris, 1 part each. `LobbyMachineBuilder.EggKey(rarity, pile)`: the pile (`GlobeEgg2..18`) tags `egg_<rarity>_low`, only the
+  tris, 1 part each. `LobbyMachineBuilder.EggKey(rarity, pile)`: the pile (`GlobeEgg2..18`) tags `egg_<rarity>_pile`, only the
   chase egg the full `egg_<rarity>`; with no id the pile egg stays its Part sphere. The full eggs and their 14 hatch halves
   are byte-identical. **Budget** (`tools/mesh_budget.py --scene docs/phase6/review/lobby/scene_shop_globe.json`, the shop
-  with the globe dressed + 16 players x 3 pets): **255,526 tris** (the shop's keys 103,972: 4 globes 15,648 / 32 parts, 4
-  chase eggs 14,346 / 15, the 68 pile eggs 41,128 / 68, the shelf's 7 eggs, floor, cloud, arch, board), against **445,430**
+  with the globe dressed + 16 players x 3 pets): **255,574 tris** (the shop's keys 104,020: 4 globes 15,696 / 32 parts, 4
+  chase eggs 14,346 / 15, the 68 pile eggs 41,128 / 68, the shelf's 7 eggs, floor, cloud, arch, board), against **445,478**
   if the pile used the full keys. Parts 1,649 (the old 400 line; every scene is over it, the pets alone are 1,506). The
   proposed batch line: `mesh_budget.py` lists 702 / 700 because it counts `prop_roulette` and `prop_roulette_globe` both;
-  only one dresses at a time (694 effective). The low keys need an upload with the globe.
+  only one dresses at a time (694 effective). The pile keys need an upload with the globe.
 - **Emblem**: Celestial's Secret emblem is **white-gold 255,240,200** (`LobbyMachineBuilder.SECRET_EMBLEM`; the chat
   violet 180,150,255 twinned Cloud's Epic violet).
 - **The egg row**: the WINGED PETS board and its row moved to **`at(23, -10)`** (was `at(21, -8)`): every egg >= 2 studs from

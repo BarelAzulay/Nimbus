@@ -30,9 +30,9 @@ BUILD_KEYS = ("egg_common", "egg_uncommon", "egg_rare", "egg_epic", "egg_legenda
               "egg_secret_top", "egg_secret_bot",
               # (shop-area 16.17.1) the Gumball Globe roulette machine (named by src/server/Services/LobbyMachineBuilder.lua)
               "prop_roulette_globe",
-              # (shop-area polish) the globe pile's low eggs (named by LobbyMachineBuilder LOW_KEYS)
-              "egg_common_low", "egg_uncommon_low", "egg_rare_low", "egg_epic_low", "egg_legendary_low", "egg_mythic_low",
-              "egg_secret_low")
+              # (shop-area polish) the globe pile's low-poly eggs (named by LobbyMachineBuilder PILE_KEYS; "_pile", not the LOD-twin "_low")
+              "egg_common_pile", "egg_uncommon_pile", "egg_rare_pile", "egg_epic_pile", "egg_legendary_pile", "egg_mythic_pile",
+              "egg_secret_pile")
 RESERVED = ("gem_world_low",)  # made with gem_world for small gem drops; nothing tags it yet
 
 _NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")

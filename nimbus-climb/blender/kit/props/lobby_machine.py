@@ -19,13 +19,13 @@ design.md 16.17.1; the owner's pick, ported from the pitch's scripts/machines.py
                             access door on the back with hinges and a lock.  On top a gold neck, collar and floor with a
                             cloud bed (CUSHION) the eggs rest on, a gold seat ring holding a clear glass globe (0.5-stud
                             cells as the old dome, GLASS_RGB at Transparency 0.80), a gold lid and the sunburst finial
-                            (SUN: seven tapered rays, long Gold / short GoldLight, the Bulb sun disc).  ONE
+                            (SUN: a rising sun, the Bulb half disc in a GoldDark rim, five pointed Gold rays).  ONE
                             face-connected piece with the glass (shop_area_globe.py --check).  Nothing above y 14.25; the
                             9 x 7 footprint (the puffs and the feet stay inside it: the shop's egg row comes close to the
                             Cloud machine's side).
                             The eggs are NOT in the mesh: eighteen attachments Egg1..Egg18 (EGG_SPOTS; pivot = the egg's
                             bottom centre in machine studs, rot = its turn) where LobbyMachineBuilder.GlobeEggs places
-                            the game's eggs (ML_Scale Meta.eggScale 0.5, the pile on the low egg_<rarity>_low keys; the
+                            the game's eggs (ML_Scale Meta.eggScale 0.5, the pile on the low-poly egg_<rarity>_pile keys; the
                             chase egg Egg1 at Meta.chaseScale 0.54 on the full egg_<rarity>, on top at the front): a
                             natural pile settled by shop_area_globe.py --settle.
                             Parts (8): Body (Primary), BodyLight (lighten Primary 0.3), BodyDark (darken Primary 0.3),
@@ -426,41 +426,49 @@ def _cushion(S):
 
 # The finial (polish 2026-11-09: round 1's swept three-feather wings read as "messy bits" from the plaza, and a flat
 # winged cloud at 0.25-stud cells came out as blocky horns): a SUNBURST, ONE silhouette facing the customer, the deco
-# topper of an old shop machine.  A fan of nine pointed rays over the half circle (long Gold rays, short GoldLight ones
-# between) round a warm Neon sun at the hub (the marquee Bulb colour), standing on the gold collar.  The fan is a plate
-# two cells thick (z -0.25 .. 0.25); the rays' tips stop under y 14.25 (top <= 14.4); every ray touches the sun: one
-# face-connected piece.  SUN: the hub (y), the long / short ray reach (studs, the width x Stretch), the rays' taper at
-# their sides (a pointed tip), the half thickness, the sun's radius.
-SUN = {"Hub": 12.75, "Reach": (2.4, 1.5), "Rays": (8.0, 34.0, 62.0, 90.0, 118.0, 146.0, 172.0), "Long": (1, 3, 5),
-       "Short": 0.75, "Base": 0.3, "Tip": 0.2, "Half": 0.25, "Sun": 0.62}
+# topper of an old shop machine.  Review round 2: the first sunburst (seven thin rays, a 0.62 sun) read as a cream crown
+# with a white block from the plaza, so: a rising sun, a half disc on the lid (the warm Neon Bulb, the marquee colour)
+# inside a one-cell GoldDark rim that keeps it round against the rays, and FIVE Gold rays, each a triangle from a wide
+# base at the rim to a pointed tip (never thinner than the stroke whose cells still touch by a face, so no tip floats),
+# the tips on the flat ellipse Reach (the price tag stands at 14.2 over the machine: the rays fan out sideways, the
+# middle one stays short).  The fan is a plate two cells thick (z -0.25 .. 0.25); nothing above y 14.25; every ray
+# touches the rim: one face-connected piece.  SUN: the hub (y), the tips' ellipse (studs, x / y), the rays' angles
+# (degrees from +x), the half width at the base / tip, the plate's half thickness, the sun's radius, the rim's width.
+SUN = {"Hub": 12.75, "Reach": (3.1, 1.5), "Rays": (14.0, 50.0, 90.0, 130.0, 166.0), "Base": 0.4, "Tip": 0.0,
+       "Half": 0.25, "Sun": 0.75, "Rim": 0.25}
 
 
 def sunburst(S):
-    """-> (long rays, short rays, sun) masks of the finial (picture plane: u = x, v = y - hub).  Each ray a tapered
-    stroke from the hub to its tip on the ellipse Reach (long rays) or Short x Reach (the short ones between)"""
+    """-> (rays, sun, rim) masks of the finial (picture plane: u = x, v = y - hub).  Each ray a straight wedge from the
+    hub to its tip on the ellipse Reach, its half width tapering from Base at the rim to Tip at the tip"""
     U, V = S.X, S.Y - SUN["Hub"]
     plate = (np.abs(S.Z) < SUN["Half"]) & (V > -0.01) & (S.Y < 14.25)
-    sun = plate & ((U ** 2 + V ** 2) <= SUN["Sun"] ** 2)
-    rays = [np.zeros(np.broadcast(U, V, S.Z).shape, bool), np.zeros(np.broadcast(U, V, S.Z).shape, bool)]
+    r2 = U ** 2 + V ** 2
+    r0 = SUN["Sun"] + SUN["Rim"]
+    sun = plate & (r2 <= SUN["Sun"] ** 2)
+    rim = plate & (r2 <= r0 ** 2) & ~sun
+    rays = np.zeros(np.broadcast(U, V, S.Z).shape, bool)
     rx, ry = SUN["Reach"]
-    for i, a in enumerate(SUN["Rays"]):
-        f = 1.0 if i in SUN["Long"] else SUN["Short"]
-        tx, ty = rx * f * math.cos(math.radians(a)), ry * f * math.sin(math.radians(a))
-        L2 = tx * tx + ty * ty
-        t = np.clip((U * tx + V * ty) / L2, 0.0, 1.0)
-        d = np.sqrt((U - t * tx) ** 2 + (V - t * ty) ** 2)
-        w = SUN["Base"] * (1 - t) + SUN["Tip"] * t
-        rays[0 if i in SUN["Long"] else 1] |= plate & (d <= w) & ((U * tx + V * ty) / L2 <= 1.0)
+    for a in SUN["Rays"]:
+        tx, ty = rx * math.cos(math.radians(a)), ry * math.sin(math.radians(a))
+        L = math.hypot(tx, ty)
+        ux, uy = tx / L, ty / L
+        s = U * ux + V * uy                                   # along the ray, from the hub
+        d = np.abs(U * uy - V * ux)                           # across it
+        t = np.clip((s - r0) / (L - r0), 0.0, 1.0)
+        thin = 0.5 * S.vs * (abs(ux) + abs(uy)) + 0.01        # the thinnest stroke still face-connected this way
+        w = np.maximum(SUN["Base"] * (1 - t) + SUN["Tip"] * t, thin)
+        rays |= plate & (d <= w) & (s >= 0.0) & (s <= L)
     shape = S.g.L.shape
-    return (np.broadcast_to(rays[0] & ~sun, shape), np.broadcast_to(rays[1] & ~sun & ~rays[0], shape),
-            np.broadcast_to(sun, shape))
+    disc = sun | rim
+    return np.broadcast_to(rays & ~disc, shape), np.broadcast_to(sun, shape), np.broadcast_to(rim, shape)
 
 
 def _finial(S):
-    """the sunburst finial: a gold collar, the ray fan, the Neon sun at its hub"""
-    long_rays, short_rays, sun = sunburst(S)
-    S.put("Gold", long_rays)
-    S.put("GoldLight", short_rays)
+    """the sunburst finial: five Gold rays, the GoldDark rim, the Neon sun at its hub"""
+    rays, sun, rim = sunburst(S)
+    S.put("Gold", rays)
+    S.put("GoldDark", rim)
     S.put("Bulb", sun)
 
 def design_globe(S, G):

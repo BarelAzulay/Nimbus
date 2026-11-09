@@ -790,84 +790,84 @@
    }
   },
   {
-   "key": "egg_common_low",
+   "key": "egg_common_pile",
    "type": "prop",
    "prop": "lobby_egg",
    "lod": "Low",
    "budget": "eggLow",
-   "description": "Common rarity egg, low (shop-area polish: the Gumball Globe's pile, shown at 0.5 scale): egg_common's shape and paint (simple spots) on 0.25-stud cells, its Neon baked flat into one part; pivot bottom centre, attachment Center",
+   "description": "Common rarity pile egg, low-poly (shop-area polish: the Gumball Globe's pile, shown at 0.5 scale; named _pile, not _low: it is no LOD twin of egg_common): egg_common's shape and paint (simple spots) on 0.25-stud cells, its Neon baked flat into one part; pivot bottom centre, attachment Center",
    "args": {
     "rarity": "common",
     "low": true
    }
   },
   {
-   "key": "egg_uncommon_low",
+   "key": "egg_uncommon_pile",
    "type": "prop",
    "prop": "lobby_egg",
    "lod": "Low",
    "budget": "eggLow",
-   "description": "Uncommon rarity egg, low (shop-area polish: the Gumball Globe's pile, shown at 0.5 scale): egg_uncommon's shape and paint (the cream zigzag band) on 0.25-stud cells, its Neon baked flat into one part; pivot bottom centre, attachment Center",
+   "description": "Uncommon rarity pile egg, low-poly (shop-area polish: the Gumball Globe's pile, shown at 0.5 scale; named _pile, not _low: it is no LOD twin of egg_uncommon): egg_uncommon's shape and paint (the cream zigzag band) on 0.25-stud cells, its Neon baked flat into one part; pivot bottom centre, attachment Center",
    "args": {
     "rarity": "uncommon",
     "low": true
    }
   },
   {
-   "key": "egg_rare_low",
+   "key": "egg_rare_pile",
    "type": "prop",
    "prop": "lobby_egg",
    "lod": "Low",
    "budget": "eggLow",
-   "description": "Rare rarity egg, low (shop-area polish: the Gumball Globe's pile, shown at 0.5 scale): egg_rare's shape and paint (two white bands, ringed dots) on 0.25-stud cells, its Neon baked flat into one part; pivot bottom centre, attachment Center",
+   "description": "Rare rarity pile egg, low-poly (shop-area polish: the Gumball Globe's pile, shown at 0.5 scale; named _pile, not _low: it is no LOD twin of egg_rare): egg_rare's shape and paint (two white bands, ringed dots) on 0.25-stud cells, its Neon baked flat into one part; pivot bottom centre, attachment Center",
    "args": {
     "rarity": "rare",
     "low": true
    }
   },
   {
-   "key": "egg_epic_low",
+   "key": "egg_epic_pile",
    "type": "prop",
    "prop": "lobby_egg",
    "lod": "Low",
    "budget": "eggLow",
-   "description": "Epic rarity egg, low (shop-area polish: the Gumball Globe's pile, shown at 0.5 scale): egg_epic's shape and paint (the violet star band between gold trims) on 0.25-stud cells, its Neon baked flat into one part; pivot bottom centre, attachment Center",
+   "description": "Epic rarity pile egg, low-poly (shop-area polish: the Gumball Globe's pile, shown at 0.5 scale; named _pile, not _low: it is no LOD twin of egg_epic): egg_epic's shape and paint (the violet star band between gold trims) on 0.25-stud cells, its Neon baked flat into one part; pivot bottom centre, attachment Center",
    "args": {
     "rarity": "epic",
     "low": true
    }
   },
   {
-   "key": "egg_legendary_low",
+   "key": "egg_legendary_pile",
    "type": "prop",
    "prop": "lobby_egg",
    "lod": "Low",
    "budget": "eggLow",
-   "description": "Legendary rarity egg, low (shop-area polish: the Gumball Globe's pile, shown at 0.5 scale): egg_legendary's shape and paint (the white-gold crown, ruby / sapphire gems) on 0.25-stud cells, its Neon baked flat into one part; pivot bottom centre, attachment Center",
+   "description": "Legendary rarity pile egg, low-poly (shop-area polish: the Gumball Globe's pile, shown at 0.5 scale; named _pile, not _low: it is no LOD twin of egg_legendary): egg_legendary's shape and paint (the white-gold crown, ruby / sapphire gems) on 0.25-stud cells, its Neon baked flat into one part; pivot bottom centre, attachment Center",
    "args": {
     "rarity": "legendary",
     "low": true
    }
   },
   {
-   "key": "egg_mythic_low",
+   "key": "egg_mythic_pile",
    "type": "prop",
    "prop": "lobby_egg",
    "lod": "Low",
    "budget": "eggLow",
-   "description": "Mythic rarity egg, low (shop-area polish: the Gumball Globe's pile, shown at 0.5 scale): egg_mythic's shape and paint (gradient bands, the wave ribbon and swirls) on 0.25-stud cells, its Neon baked flat into one part; pivot bottom centre, attachment Center",
+   "description": "Mythic rarity pile egg, low-poly (shop-area polish: the Gumball Globe's pile, shown at 0.5 scale; named _pile, not _low: it is no LOD twin of egg_mythic): egg_mythic's shape and paint (gradient bands, the wave ribbon and swirls) on 0.25-stud cells, its Neon baked flat into one part; pivot bottom centre, attachment Center",
    "args": {
     "rarity": "mythic",
     "low": true
    }
   },
   {
-   "key": "egg_secret_low",
+   "key": "egg_secret_pile",
    "type": "prop",
    "prop": "lobby_egg",
    "lod": "Low",
    "budget": "eggLow",
-   "description": "Secret rarity egg, low (shop-area polish: the Gumball Globe's pile, shown at 0.5 scale): egg_secret's shape and paint (night shell, violet cracks, the magenta rune ring (eight marks)) on 0.25-stud cells, its Neon baked flat into one part; pivot bottom centre, attachment Center",
+   "description": "Secret rarity pile egg, low-poly (shop-area polish: the Gumball Globe's pile, shown at 0.5 scale; named _pile, not _low: it is no LOD twin of egg_secret): egg_secret's shape and paint (night shell, violet cracks, the magenta rune ring (eight marks)) on 0.25-stud cells, its Neon baked flat into one part; pivot bottom centre, attachment Center",
    "args": {
     "rarity": "secret",
     "low": true

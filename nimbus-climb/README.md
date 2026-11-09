@@ -1869,7 +1869,7 @@ src/server   Main.server.lua; Services: Lighting, LobbyBuilder, StormAltar, Play
              (the Sky Trove's group join reward), Leaderboard (the global leaderboard: Trophies, Pets found, Ring
              best, with the this-server fallback), LobbyBoardBuilder (the leaderboard board on the lobby's south lawn),
              LobbyMachineBuilder (the shop's Gumball Globe machines: 18 eggs piled in a dressed globe's glass,
-             the chase egg on the full egg mesh, the pile on the light egg_<rarity>_low meshes)
+             the chase egg on the full egg mesh, the pile on the light egg_<rarity>_pile meshes)
 src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientSettings; SoundFx; GraphicsQuality;
              PortalVortex (the swirling vortex inside every gate hoop); MouseLock (the Mouse lock option);
              LightingStack (lighting looks, e.g. the Dungeon); UI/CloudUI; UI/NeonKit (the neon cards, tiles and side

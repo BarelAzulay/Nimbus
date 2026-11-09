@@ -26,7 +26,7 @@
 --                    prop_roulette_globe, Primary = the roulette colour, Secondary = its top rarity's (Secret: the
 --                    white-gold 255,240,200 since the polish), and only when that tag dresses
 --                    LobbyMachineBuilder.GlobeEggs piles eighteen eggs in the glass beside it (the chase egg on
---                    egg_<rarity>, the pile on egg_<rarity>_low); with no globe id the Machine is tagged with today's uploaded cabinet
+--                    egg_<rarity>, the pile on egg_<rarity>_pile); with no globe id the Machine is tagged with today's uploaded cabinet
 --                    prop_roulette instead, the Part build only where that is missing too), the WINGED PETS
 --                    rarity board with the seven-egg row in front of it (shop-area 16.17.2: LobbyBoardBuilder.EggRow, a
 --                    stone shelf with the seven 3D eggs and a rarity label strip, the walk-up Shop prompt's part; the board's
