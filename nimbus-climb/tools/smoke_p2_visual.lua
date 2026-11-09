@@ -695,14 +695,24 @@ local function clientScenarios()
 			toClient("ProfileSync", snapshot(1, 1))
 			advance(0.3)
 			-- lobby-shop Task 22: the Secret Roulette is the Eggs tab's hero (NimbusShop ShopCard_Secret), always shown (a
-			-- restricted account sees its Lock line instead of the pity chip); its hint is one short line
+			-- restricted account sees its Lock line instead of the pity chip); its hint is one line. shop-area 16.17.3
+			-- (rewritten): the hint reads "Secret rolls happen at the Storm Altar" (38 characters; was the 23-character "Also
+			-- at the Storm Altar", hence the old <= 32 rule): one line inside its box (no wrap, no orphan word)
 			MC.Open("Shop", { Tab = "Eggs" })
 			advance(0.8)
 			local shopGui = pg() and pg():FindFirstChild("NimbusShop")
 			local card = shopGui and find(shopGui, "ShopCard_Secret")
 			local hint = card and find(card, "Hint", "TextLabel")
-			T.check(card ~= nil and card.Visible and hint ~= nil and hint.Text ~= "" and #hint.Text <= 32 and hint.TextWrapped ~= true,
-				"Shop Eggs tab: the Secret Roulette hero's hint is the short one-liner (no orphan word on a second line)", hint and hint.Text or "no hint")
+			local fits, why = false, "no hint"
+			if hint and _G.RedoGeom and type(_G.RedoGeom.fits) == "function" then
+				fits, why = _G.RedoGeom.fits(hint)
+			elseif hint then
+				local w = game:GetService("TextService"):GetTextSize(hint.Text, hint.TextSize, hint.Font, Vector2.new(10000, 1000)).X
+				fits, why = w <= hint.AbsoluteSize.X + 0.5, string.format("%.0f px in %.0f", w, hint.AbsoluteSize.X)
+			end
+			T.check(card ~= nil and card.Visible and hint ~= nil and hint.Text == "Secret rolls happen at the Storm Altar" and hint.TextWrapped ~= true and fits,
+				"Shop Eggs tab: the Secret Roulette hero's hint 'Secret rolls happen at the Storm Altar' is one line inside its box (no orphan word on a second line)",
+				(hint and hint.Text or "no hint") .. "; " .. tostring(why))
 			if type(MC.Close) == "function" then
 				MC.Close()
 			end

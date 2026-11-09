@@ -38,7 +38,8 @@
 --   client_fasthatch_setting  (client) ClientSettings knows FastHatch (default false, booleans only, the 0.4 s debounce,
 --                             one SettingsSet) and State.Settings() follows the snapshot's Settings.FastHatch
 -- White-box: the booted helpers of smoke_server.lua; "server B" is a second copy of DataService against the same mock
--- store (the smoke_p7_data.lua secondServer shape). Deterministic: mock clock only. Plain Lua 5.1 syntax only.
+-- store (the smoke_p7_data.lua secondServer shape). shop-area 16.17.3: every server-side player stands on the Storm
+-- Altar's deck (the Secret roll happens there only). Deterministic: mock clock only. Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
 local guarded = SmokeCommon.guarded
@@ -63,9 +64,24 @@ local function serverScenarios()
 		return 987300 + userSeq
 	end
 
+	-- shop-area 16.17.3: the Secret roll happens at the Storm Altar only (PetService's distance rule on the player's own
+	-- character), so every player of this file stands on the altar deck (8 studs out from the dais) from the join on
+	local function onDeck(p)
+		local inst = K.moduleInstance("server/Services/StormAltar")
+		local okSA, SA = false, nil
+		if inst then
+			okSA, SA = pcall(require, inst)
+		end
+		local A = okSA and type(SA) == "table" and SA.GetCFrame() or nil
+		if typeof(A) == "CFrame" and p and p.Parent then
+			Mock.Teleport(p, A * CFrame.new(0, 3, -8))
+		end
+	end
+
 	local function join(prefix, uid)
 		local p = Mock.AddPlayer(prefix .. tostring(uid % 1000), uid)
 		advance(1.2)
+		onDeck(p)
 		return p
 	end
 
@@ -886,6 +902,7 @@ local function serverScenarios()
 				players[#players + 1] = h
 				B.Load(h) -- the old server still holds h (a hop: its leave save is not in yet)
 				advance(1.2)
+				onDeck(h)
 				T.check(D.GetGems(h) == price + 10 and pityIs(D.GetPity(h), 6, 0), "gem settle pity hop: (setup) this server read the old record: " .. (price + 10) .. " Gems, Since 6",
 					tostring(D.GetGems(h)) .. " gems, " .. show(D.GetPity(h)))
 				local profB = B.GetProfile(h)
@@ -1159,6 +1176,7 @@ local function serverScenarios()
 			local v = Mock.AddPlayer("PityStandIn" .. tostring(uidV % 1000), uidV)
 			players[#players + 1] = v
 			advance(4)
+			onDeck(v)
 			if T.check(D.GetProfile(v) ~= nil and provisional(D, v), "secret pity stand-in: (precondition) the load failed while the store is reachable") then
 				T.eq(v:GetAttribute(ATTR), nil, "secret pity stand-in: a stand-in (provisional) join has no SecretPityLeft")
 				D.AddGems(v, price)

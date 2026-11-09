@@ -8,11 +8,15 @@
 --                                      and PortalService.Init)
 --   GateService.Teleported             Util.Signal; Fire(player, "Altar" | "Plaza") once per accepted teleport
 --   GateService.Use(player, gateId)    the handler behind the prompt (tests call it); -> ok, reason
---   GateService.Travel(player, dest)   the top-left pill's Travel button (Remotes.QuickTravel(dest), client -> server) -> ok,
---                                      reason. dest "Plaza" is the only destination (anything else: "junk"). It opens the home
---                                      portal with the lobby as its destination (TycoonService.OpenLobbyPortal: the refusals
---                                      and their toasts, the 3 s cooldown shared with Go home and the replacing of an open
---                                      portal are that portal's); nothing moves until the owner walks in.
+--   GateService.Travel(player, dest)   Remotes.QuickTravel(dest), client -> server -> ok, reason. dest "Plaza" (the top-left
+--                                      pill's Travel button) opens the home portal with the lobby as its destination
+--                                      (TycoonService.OpenLobbyPortal: the refusals and their toasts, the 3 s cooldown shared
+--                                      with Go home and the replacing of an open portal are that portal's); nothing moves
+--                                      until the owner walks in. dest "Altar" (shop-area 16.17.3: the Shop's Secret card
+--                                      TRAVEL) runs the Altar gate prompt's checks without its distance ("dead" / "match" /
+--                                      "battle" / "locked" / "cooldown", the gates' shared 1.5 s cooldown) and puts the
+--                                      character on StormAltar.GetLanding() ("failed" without one), Teleported "Altar".
+--                                      Anything else: "junk".
 --   GateService.ToLobby(player)        the Lobby portal's landing: the lobby spawn (PlayerService.GetLobbySpawnCFrame()), fires
 --                                      Teleported(player, "Plaza") -> moved
 --
@@ -194,10 +198,16 @@ function GateService.Use(player, gateId)
 	return true
 end
 
--- The pill's Travel button: the home portal, leading to the lobby. -> ok, reason
+-- The QuickTravel remote. "Plaza" (the pill's Travel button): the home portal, leading to the lobby. "Altar" (shop-area
+-- 16.17.3, the Shop's Secret card TRAVEL): the Altar gate prompt's checks without its distance (a live root, not InMatch,
+-- not in a battle, not locked on a portal pad, the gates' shared cooldown), then straight to StormAltar.GetLanding() and
+-- Teleported(player, "Altar"). Anything else: "junk". -> ok, reason
 function GateService.Travel(player, dest)
 	if typeof(player) ~= "Instance" or not player:IsA("Player") or player.Parent == nil then
 		return false, "junk"
+	end
+	if dest == "Altar" then
+		return GateService._toAltar(player)
 	end
 	if dest ~= "Plaza" then
 		return false, "junk"
@@ -207,6 +217,40 @@ function GateService.Travel(player, dest)
 		return false, "failed"
 	end
 	return tycoon.OpenLobbyPortal(player)
+end
+
+-- Travel(player, "Altar"): every refusal moves nothing; the cooldown is the gate prompts' (S.lastUse, COOLDOWN)
+function GateService._toAltar(player)
+	if not aliveRoot(player) then
+		return false, "dead"
+	end
+	if inMatch(player) then
+		return false, "match"
+	end
+	if inBattle(player) then
+		notify(player, "Finish your battle first!", "bad")
+		return false, "battle"
+	end
+	if isLocked(player) then
+		return false, "locked"
+	end
+	local now = os.clock()
+	local last = S.lastUse[player]
+	if last and now - last < COOLDOWN then
+		return false, "cooldown"
+	end
+	S.lastUse[player] = now
+	local altar = S.deps.StormAltar
+	local cf = nil
+	if hasFn(altar, "GetLanding") then
+		local ok, result = pcall(altar.GetLanding)
+		cf = ok and result or nil
+	end
+	if typeof(cf) ~= "CFrame" or not placeCharacter(player, cf) then
+		return false, "failed"
+	end
+	GateService.Teleported:Fire(player, "Altar")
+	return true
 end
 
 -- A Lobby portal's landing: the lobby spawn. -> moved

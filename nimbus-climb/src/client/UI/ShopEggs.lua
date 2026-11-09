@@ -6,7 +6,8 @@
 --   ShopEggs.Build(page, ctx)        page = the Page_Eggs Frame. In it: a ScrollingFrame "Scroll" holding ShopCard_Secret
 --                                    (the hero, attribute Hero = true) and the ScrollingFrame "Cards" (ShopCard_Cloud /
 --                                    _Storm / _Sky / _Celestial), and the phone's right "Fade" (48 px while more of the
---                                    row is to the right). ctx = { Tap() } (the click sound) | nil
+--                                    row is to the right). ctx = { Tap() (the click sound), Close() (shop-area: TRAVEL
+--                                    closes the Shop) } | nil
 --   ShopEggs.Layout(page, box, mode) box = { W, H } (the content box, design px); mode:
 --                                    "PC" / "Compact": the hero 240 tall at (0, 16) (the machine 190 x 218 at (26, 10),
 --                                      "Secret Roulette" 46 px at (240, 22), the odds line at (240, 84), the PityChip
@@ -17,6 +18,7 @@
 --                                      shrinks it (the hero 200 with a 160 machine, the cards 516 at y 236 with a 100
 --                                      machine) and the page scrolls; Compact / shrunk second-row buttons are 56 tall
 --                                      (>= 44 px at the 0.8 scale)
+--                                    (shop-area: the hint on one line from w - 380 (8 px clear of the chips) to w - 10)
 --                                    "Phone": one sideways row: the Secret card 200 wide, then the four cards 166 wide at
 --                                      x = 208 + i * 174, every card min(266, H - 12) tall (the art shrinks first)
 --                                    "Portrait": a vertical list of full-width cards (Secret 200 tall, the machines 250;
@@ -26,12 +28,23 @@
 --                                    states, the PityChip, the lock texts
 --   ShopEggs.Focus(page, rouletteId) -> bool   scrolls that card into view (centred when its row scrolls) and outlines
 --                                    it gold for 2.6 s (attribute Focused)
---   ShopEggs.CardState(rouletteId, button) -> "NoOdds" | "Pending" | "Locked" | "Loading" | "Short" | "Ready"
+--   ShopEggs.CardState(rouletteId, button) -> "NoOdds" | "Pending" | "Locked" | "Altar" | "Loading" | "Short" | "Ready"
 --                                    button = "Spin" (default) | "Spin3" | "SpinGems". In that order: no odds; a request
 --                                    pending (EggStage.IsPending: every button); a gem button (SpinGems, every Secret
---                                    button) while PaidRandomItemsRestricted is not false (Locked) or before GemsSettled
---                                    (Loading); the balance under the price (Short: the price kept, drawn red, the
---                                    button still taps and EggStage toasts); else Ready
+--                                    button) while PaidRandomItemsRestricted is not false (Locked); the Secret card away
+--                                    from the Storm Altar (Altar, shop-area 16.17.3: ShopEggs.AtAltar() false); a gem
+--                                    button before GemsSettled (Loading); the balance under the price (Short: the price
+--                                    kept, drawn red, the button still taps and EggStage toasts); else Ready
+--   ShopEggs.AtAltar() -> bool       (shop-area 16.17.3) the Secret roll can be bought from here: ShopEggs._AtAltar when a
+--                                    test set it (true / false); else the Shop was opened by the altar's prompt
+--                                    (SetFromAltar, until Close); else Config.AtAltar(the character's HumanoidRootPart,
+--                                    no slack: the server allows AltarRangeSlack more). Away from it the Secret card greys
+--                                    under "Dim" (K.NAVY at K.DIM), the "AltarChip" ("Available at the Storm Altar";
+--                                    phone / portrait "At the Storm Altar") takes the PityChip's box and a blue "Travel"
+--                                    (the compass glyph + "TRAVEL") takes SPIN's: a tap sends QuickTravel("Altar") at most
+--                                    once per K.TRAVEL_GAP and closes the Shop (ctx.Close). A restricted account keeps the
+--                                    Locked card (no chip, no TRAVEL); the page repaints on the Shop's 1 s tick
+--   ShopEggs.SetFromAltar(on)        ShopController.Open's FromAltar (the altar prompt), cleared by Close
 --   ShopEggs.HeroPulse(page) -> the UIScale "Pulse" of the hero's Spin (ShopController's shine pulses it, High only)
 --   ShopEggs.Fx(page) -> { Pool, Egg }   (Task 26, spec 16.5 "Where the VFX show") the page's HatchFx pool (16 sparks,
 --                                    in the hero card) and the Secret hero's big "HeroEgg" (EggArt Full, built Still). On
@@ -64,6 +77,7 @@ local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
 local PetCatalog = require(Shared:WaitForChild("PetCatalog"))
+local Remotes = require(Shared:WaitForChild("Remotes"))
 
 local UI = script.Parent
 local NeonKit = require(UI:WaitForChild("NeonKit"))
@@ -119,9 +133,20 @@ local K = {
 		Locked = "Locked",
 		NoOdds = "Odds unavailable",
 		Hint = "Gems: same odds",
-		HeroHint = "Also at the Storm Altar",
+		-- shop-area (spec 16.17.3): the Secret roll happens at the Storm Altar only (was "Also at the Storm Altar")
+		HeroHint = "Secret rolls happen at the Storm Altar",
+		AltarLock = "Available at the Storm Altar",
+		AltarLockShort = "At the Storm Altar",
+		Travel = "TRAVEL",
 		GemsOnly = "gems only",
 	},
+	-- shop-area (spec 16.17.3): the Altar state. TRAVEL fires QuickTravel("Altar") at most once per TRAVEL_GAP; the Dim
+	-- (K.NAVY at DIM) greys the hero over its art and the page's sparks (HatchFx.Pool's holder, ZIndex 20) and under the
+	-- chips, the spin holder and the hint (Z_OVER)
+	TRAVEL_GAP = 0.4,
+	DIM = 0.35,
+	Z_DIM = 21,
+	Z_OVER = 22,
 	-- the PC plans (REF while the body holds FIT_H, SHRUNK under it)
 	REF = { Ref = true, Hero = 240, HeroArt = 190, CardsY = 276, Card = 550, Art = 130, RowsY = 234, SpinY = 400, Row2Y = 476 },
 	SHRUNK = { Ref = false, Hero = 200, HeroArt = 160, CardsY = 236, Card = 516, Art = 100, RowsY = 198, SpinY = 362, Row2Y = 436 },
@@ -151,6 +176,10 @@ local PAGES = setmetatable({}, { __mode = "k" }) -- page -> its widgets
 local CUR = setmetatable({}, { __mode = "v" }) -- CUR.Page: the page built last (Focus without a page)
 local H = {} -- helpers
 local L = {} -- layouts
+-- shop-area (spec 16.17.3): From = the Shop was opened by the Storm Altar's prompt (ShopController.Open's FromAltar, cleared
+-- on Close); LastTravel = os.clock() of the last QuickTravel("Altar") sent
+local ALTAR = { From = false, LastTravel = -math.huge }
+ShopEggs._AtAltar = nil -- tests: true / false overrides ShopEggs.AtAltar(); nil = the real reading
 
 ----------------------------------------------------------------------
 -- helpers
@@ -489,13 +518,71 @@ function H.buildHero(P, parent)
 	t.Lock = label("Lock", b, "", "Body", 20, {
 		Visible = false, TextWrapped = true, TextTruncate = Enum.TextTruncate.None, TextColor3 = K.LINE, TextXAlignment = LEFT,
 	})
-	t.Holder = frame("SpinHolder", b)
+	t.Holder = frame("SpinHolder", b, { ZIndex = K.Z_OVER })
 	t.Pulse = Util.Create("UIScale", { Name = "Pulse", Scale = 1, Parent = t.Holder })
 	t.Spin = H.spinButton(P, t.Holder, "Spin", "Pink", "SPIN", "Gems", K.SECRET, 1)
-	t.Hint = label("Hint", b, K.TEXT.HeroHint, "Body", 18, { TextColor3 = K.LINE })
+	t.Hint = label("Hint", b, K.TEXT.HeroHint, "Body", 18, { TextColor3 = K.LINE, ZIndex = K.Z_OVER })
 	-- (Task 26) the big Secret egg in front of the machine's right side, still until the page shows (ShopEggs.Fx)
 	t.Egg = EggArt.New(b, "Secret", K.HERO_EGG.Ref[1], { Name = "HeroEgg", Form = "Full", Still = true, ZIndex = 3 })
+	-- shop-area (spec 16.17.3): away from the Storm Altar the card greys under Dim (over the art, the egg and its sparks),
+	-- AltarChip takes the PityChip's box and TRAVEL takes SPIN's in the same holder (over the Dim with the hint)
+	t.Dim = frame("Dim", b, { BackgroundTransparency = K.DIM, BackgroundColor3 = K.NAVY, Size = UDim2.fromScale(1, 1), ZIndex = K.Z_DIM, Visible = false })
+	Theme.Corner(t.Dim, UDim.new(0, NeonKit.Metrics.Corner or 14))
+	t.AltarChip = label("AltarChip", b, K.TEXT.AltarLock, "Heading", 22, { BackgroundTransparency = 0, BackgroundColor3 = K.CHIP, ZIndex = K.Z_OVER, Visible = false })
+	Theme.Corner(t.AltarChip, UDim.new(0, 12))
+	Theme.Stroke(t.AltarChip, K.HERO, 2, 0.2)
+	t.Travel = H.travelButton(P, t.Holder)
 	return t
+end
+
+-- the hero's TRAVEL: a blue CloudUI.Button (Style attribute "Blue") holding the compass glyph ("Icon") and "TRAVEL"
+-- ("Word"); no price: the trip is free
+function H.travelButton(P, parent)
+	local tr = {}
+	tr.Button = CloudUI.Button({
+		Name = "Travel",
+		Text = "",
+		Style = "Blue",
+		Size = UDim2.fromOffset(290, 100),
+		TextSize = 22,
+		Callback = function()
+			H.travel(P)
+		end,
+		Parent = parent,
+	})
+	CloudUI.SetStyle(tr.Button, "Blue")
+	tr.Button.Visible = false
+	tr.Icon = label("Icon", tr.Button, NeonKit.Glyphs.Travel, "Display", 44, { TextTruncate = Enum.TextTruncate.None })
+	tr.Word = label("Word", tr.Button, K.TEXT.Travel, "Button", 34, { TextTruncate = Enum.TextTruncate.None, TextXAlignment = LEFT })
+	return tr
+end
+
+-- TRAVEL's row (w x h, text `size`, glyph `iconPx`), centred by the measured width; the word's box runs to the button's
+-- edge, so a face wider than the measure never clips it
+function H.arrangeTravel(tr, w, h, size, iconPx)
+	place(tr.Button, 0, 0, w, h)
+	tr.Icon.TextSize = iconPx
+	tr.Word.TextSize = size
+	local gap = math.max(3, math.floor(size * 0.3))
+	local ww = H.textW(tr.Word.Text, size, tr.Word.Font) + 2
+	local x = math.max(4, math.floor((w - (iconPx + gap + ww)) / 2))
+	place(tr.Icon, x, (h - iconPx) / 2, iconPx, iconPx)
+	local wx = x + iconPx + gap
+	place(tr.Word, wx, 0, math.max(0, w - 4 - wx), h)
+end
+
+-- a TRAVEL tap: only while the page shows, at most once per K.TRAVEL_GAP; QuickTravel("Altar") (the server checks the
+-- trip: GateService.Travel), then the Shop closes
+function H.travel(P)
+	if not H.shown(P.Page) or os.clock() - ALTAR.LastTravel < K.TRAVEL_GAP then
+		return
+	end
+	ALTAR.LastTravel = os.clock()
+	H.call(P, "Tap")
+	pcall(function()
+		Remotes.Get("QuickTravel"):FireServer("Altar")
+	end)
+	H.call(P, "Close")
 end
 
 function H.buildCard(P, parent, id)
@@ -552,6 +639,11 @@ function H.all(P)
 end
 
 function H.tap(P, id, currency, spins)
+	-- (shop-area 16.17.3) the Secret SPIN sends nothing away from the Storm Altar (it is hidden there; the server refuses too)
+	if id == K.SECRET and not ShopEggs.AtAltar() then
+		ShopEggs.Refresh(P.Page)
+		return
+	end
 	H.call(P, "Tap")
 	EggStage.Request(id, currency, spins)
 	ShopEggs.Refresh(P.Page)
@@ -776,14 +868,22 @@ function L.heroPC(t, w, M)
 	local cy = ref and 132 or 124
 	place(t.Pity, x, cy, math.min(400, tw), 48)
 	t.Pity.TextSize = 22
+	-- (shop-area) the altar chip in the pity chip's place, as wide as its long line needs (400 at least)
+	t.AltarChip.TextSize = 22
+	local chipW = math.min(tw, math.max(400, H.textW(K.TEXT.AltarLock, 22, t.AltarChip.Font) + 32))
+	place(t.AltarChip, x, cy, chipW, 48)
 	place(t.Lock, x, cy, tw, 48)
 	t.Lock.TextSize = 20
 	place(t.Holder, w - 320, ref and 66 or 46, 290, 100)
 	place(t.Spin.Button, 0, 0, 290, 100)
 	H.arrange(t.Spin, 290, 100, 34, 44)
+	H.arrangeTravel(t.Travel, 290, 100, 34, 44)
 	t.Hint.Visible = true
 	t.Hint.TextSize = 18
-	place(t.Hint, w - 320, ref and 172 or 152, 290, 28)
+	-- (shop-area) "Secret rolls happen at the Storm Altar" is ~322 px at 18 (a bolder face runs ~350): one line from
+	-- w - 380 to 10 px short of the card's edge, starting 8 px clear of the chips when they reach that far
+	local hintL = math.max(w - 380, x + chipW + 8)
+	place(t.Hint, hintL, ref and 172 or 152, w - 10 - hintL, 28)
 end
 
 function L.cardPC(t, w, M, tall)
@@ -899,11 +999,14 @@ function L.heroPhone(t, w, th)
 	local chipY = th - pad - 94
 	place(t.Pity, 6, chipY, w - 12, 44)
 	t.Pity.TextSize = 15
+	place(t.AltarChip, 6, chipY, w - 12, 44)
+	t.AltarChip.TextSize = 15
 	place(t.Lock, 6, chipY, w - 12, 44)
 	t.Lock.TextSize = 15
 	place(t.Holder, 6, th - pad - 44, w - 12, 44)
 	place(t.Spin.Button, 0, 0, w - 12, 44)
 	H.arrange(t.Spin, w - 12, 44, 16, 18)
+	H.arrangeTravel(t.Travel, w - 12, 44, 16, 18)
 	t.Hint.Visible = false
 end
 
@@ -980,6 +1083,8 @@ function L.heroPortrait(t, w, h)
 	L.portraitOdds(t, 80, 46, w - 88)
 	place(t.Pity, 80, 84, w - 88, 32)
 	t.Pity.TextSize = 15
+	place(t.AltarChip, 80, 84, w - 88, 32)
+	t.AltarChip.TextSize = 15
 	place(t.Lock, 80, 80, w - 88, 40)
 	t.Lock.TextSize = 15
 	t.Hint.Visible = true
@@ -988,6 +1093,7 @@ function L.heroPortrait(t, w, h)
 	place(t.Holder, 8, h - 52, w - 16, 44)
 	place(t.Spin.Button, 0, 0, w - 16, 44)
 	H.arrange(t.Spin, w - 16, 44, 18, 20)
+	H.arrangeTravel(t.Travel, w - 16, 44, 18, 20)
 end
 
 function L.cardPortrait(t, w, h)
@@ -1081,6 +1187,28 @@ end
 ----------------------------------------------------------------------
 -- Refresh
 ----------------------------------------------------------------------
+-- shop-area (spec 16.17.3): the Secret roll is bought at the Storm Altar only (PetService.BuyRoulette checks the distance;
+-- this only picks the card's look)
+function ShopEggs.AtAltar()
+	if ShopEggs._AtAltar ~= nil then
+		return ShopEggs._AtAltar == true
+	end
+	if ALTAR.From then
+		return true
+	end
+	local ok, at = pcall(function()
+		local player = Players.LocalPlayer
+		local char = player and player.Character
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		return root ~= nil and root:IsA("BasePart") and Config.AtAltar(root.Position, 0)
+	end)
+	return ok and at == true
+end
+
+function ShopEggs.SetFromAltar(on)
+	ALTAR.From = on == true
+end
+
 function ShopEggs.CardState(id, button)
 	button = button or "Spin"
 	if #H.odds(id) == 0 then
@@ -1093,6 +1221,9 @@ function ShopEggs.CardState(id, button)
 	if gems then
 		if attr("PaidRandomItemsRestricted") ~= false then
 			return "Locked"
+		end
+		if id == K.SECRET and not ShopEggs.AtAltar() then
+			return "Altar"
 		end
 		if attr("GemsSettled") ~= true then
 			return "Loading"
@@ -1123,7 +1254,7 @@ function H.paintButton(p, id, name, amount, short, compact)
 	end
 	p.StateText = stateText
 	p.Word.Text = stateText or p.BaseWord
-	local off = st == "NoOdds" or st == "Pending" or st == "Locked" or st == "Loading"
+	local off = st == "NoOdds" or st == "Pending" or st == "Locked" or st == "Altar" or st == "Loading"
 	if (p.Button:GetAttribute("Disabled") == true) ~= off then
 		CloudUI.SetDisabled(p.Button, off) -- (only on a change: a repaint tweens the face)
 	end
@@ -1178,8 +1309,18 @@ function ShopEggs.Refresh(page, fromLayout)
 	local restricted = attr("PaidRandomItemsRestricted")
 	local locked = restricted ~= false
 	local brief = P.Mode == "Phone" or P.Mode == "Portrait"
+	-- (shop-area 16.17.3) away from the Storm Altar: the Dim, the altar chip and TRAVEL (Locked keeps its own card)
+	local altar = not locked and not ShopEggs.AtAltar()
 	h.Lock.Visible = locked
-	h.Pity.Visible = not locked
+	h.Pity.Visible = not locked and not altar
+	h.Dim.Visible = altar
+	h.AltarChip.Visible = altar
+	h.AltarChip.Text = brief and K.TEXT.AltarLockShort or K.TEXT.AltarLock
+	h.Travel.Button.Visible = altar
+	h.Spin.Button.Visible = not altar
+	if altar then
+		h.Pulse.Scale = 1
+	end
 	if locked then
 		if restricted == true then
 			h.Lock.Text = brief and K.TEXT.LockShort or K.TEXT.Lock

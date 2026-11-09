@@ -13,7 +13,9 @@
 --                                            currency: nil = the roulette's own ("Tokens"; the gems-only Secret
 --                                            roulette: "Gems"), "Tokens" or "Gems" (also { Currency = ... });
 --                                            spins: nil = 1, only 1 or 3 (never 3 on a gems-only roulette): anything
---                                            else answers "Bad spins". See "The money step" below.
+--                                            else answers "Bad spins". A gems-only (Secret) spin away from the Storm
+--                                            Altar answers "Secret rolls happen at the Storm Altar" (shop-area 16.17.3).
+--                                            See "The money step" below.
 --   PetService._SetRngForTest(rollRng, stripRng)   Studio / the mock only: seeded generators (nil keeps the current)
 --   PetService._SetFaultForTest(stage, fn)         Studio / the mock only: fn() runs inside step 3 ("plan") or inside
 --                                            the step-6 refresh pcall ("after"); nil fn clears it
@@ -78,7 +80,9 @@
 -- The money step (lobby-shop spec 5.1 / 7): BuyRoulette(player, rouletteId, currency, spins) is ONE non-yielding step
 -- (no task.wait, DataStore or remote call) that never refuses after the roll:
 --   1. the checks, in order, with today's texts: a live player, a known roulette, the currency ("Unknown currency"),
---      the spins count ("Bad spins"), not in a match, the profile loaded ("Your data is still loading"), the Secret
+--      the spins count ("Bad spins"), shop-area 16.17.3: a gems-only (Secret) spin only at the Storm Altar (the player's
+--      own HumanoidRootPart, Config.AtAltar + AltarRangeSlack; no root / no altar attribute fails closed; "Secret rolls
+--      happen at the Storm Altar"; the client's FromAltar is never read), not in a match, the profile loaded ("Your data is still loading"), the Secret
 --      Roulette's pity read (DataService.GetPity; provisional or no answer -> "Your data is still loading"), a
 --      gem-priced spin only once DataService.GemsSettled (the server-hop settle hold, same text), GemService.Quote (the
 --      PolicyService lock, unchanged), the balance against Price = UnitPrice x spins (computed once, both currencies);
@@ -1106,6 +1110,23 @@ local function parseCurrency(currency)
 	return false
 end
 
+-- shop-area (spec 16.17.3): the Secret roll's place rule. True when the player's own HumanoidRootPart stands at the Storm
+-- Altar (Config.AtAltar with Config.Gems.SecretRoulette.AltarRangeSlack); no character, no root, no altar attribute or an
+-- error: false.
+local ALTAR_REASON = "Secret rolls happen at the Storm Altar"
+local function atAltar(player)
+	local ok, at = pcall(function()
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		if not root or not root:IsA("BasePart") or type(Config.AtAltar) ~= "function" then
+			return false
+		end
+		local def = type(Config.Gems) == "table" and Config.Gems.SecretRoulette or nil
+		return Config.AtAltar(root.Position, type(def) == "table" and def.AltarRangeSlack or nil) == true
+	end)
+	return ok and at == true
+end
+
 -- A gems-only roulette (the Secret roulette at the Storm Altar) by id, or nil. GemService knows them.
 local function gemsOnlyRoulette(rouletteId)
 	local gems = getGemService()
@@ -1201,6 +1222,12 @@ function PetService.BuyRoulette(player, rouletteId, currency, spins)
 	end
 	if (spins ~= 1 and spins ~= 3) or (spins == 3 and gemsOnly) then
 		return false, "Bad spins"
+	end
+	-- shop-area (spec 16.17.3): the Secret roll happens at the Storm Altar only. The server reads the player's own
+	-- character (never a client flag): a HumanoidRootPart within Config.AtAltar's range + AltarRangeSlack, else refused
+	-- before the pity read and any quote (nothing charged). No root, no altar attribute or junk: refused (fails closed).
+	if gemsOnly and not atAltar(player) then
+		return false, ALTAR_REASON
 	end
 	if inMatch(player) then
 		return false, "The shop is closed during a match"

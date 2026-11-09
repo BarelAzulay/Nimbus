@@ -11,7 +11,10 @@
 --                                   InMatch (the side hint "The Store is closed during a match.") and while the egg stage
 --                                   shows -> false. No tab: the last tab of this session (the first time Eggs). RouletteId:
 --                                   the Eggs tab, that card scrolled into view and outlined gold for 2.6 s
---                                   (ShopEggs.Focus); Currency alone never switches the tab
+--                                   (ShopEggs.Focus); Currency alone never switches the tab. FromAltar = true (shop-area
+--                                   16.17.3: the Storm Altar's prompt): the Secret card reads "at the altar" until Close
+--                                   (ShopEggs.SetFromAltar; a later Open while open keeps it; the server checks the distance
+--                                   again on every spin)
 --   ShopController.Close()
 --   ShopController.IsOpen() -> bool
 --   ShopController.NormalizeTab(tab) -> "Eggs" | "Gems" | "Packs" | "Passes" | "Boosts" | nil   "egg*", "roul*", "Items",
@@ -703,6 +706,10 @@ function H.build()
 	ShopEggs.Build(eggsPage, {
 		Tap = function()
 			sfx("StorePop", "Click")
+		end,
+		-- (shop-area 16.17.3) the Secret card's TRAVEL closes the Shop once it has asked for the trip
+		Close = function()
+			ShopController.Close()
 		end,
 	})
 	local gemsPage = frame("Page_Gems", body, { Visible = false })
@@ -1481,11 +1488,12 @@ function H.pulse(scale)
 	end
 end
 
--- true while the Secret card's SPIN can be tapped (ShopEggs.CardState not Locked / Loading / Pending / NoOdds)
+-- true while the Secret card's SPIN can be tapped (ShopEggs.CardState not Locked / Altar / Loading / Pending / NoOdds;
+-- shop-area 16.17.3: away from the Storm Altar SPIN is hidden under TRAVEL, so nothing pulses)
 function H.eggPulseOn()
 	local secret = type(Config.Gems) == "table" and type(Config.Gems.SecretRoulette) == "table" and Config.Gems.SecretRoulette.Id or "Secret"
 	local ok, st = pcall(ShopEggs.CardState, secret, "Spin")
-	return ok and st ~= "Locked" and st ~= "Loading" and st ~= "Pending" and st ~= "NoOdds"
+	return ok and st ~= "Locked" and st ~= "Altar" and st ~= "Loading" and st ~= "Pending" and st ~= "NoOdds"
 end
 
 function H.shineOn()
@@ -1779,6 +1787,10 @@ function ShopController.Open(args)
 	end
 	H.build()
 	local wasOpen = S.Open
+	-- (shop-area 16.17.3) the altar prompt's open unlocks the Secret card until Close; a plain first open clears it
+	if args.FromAltar == true or not wasOpen then
+		safe("altar", ShopEggs.SetFromAltar, args.FromAltar == true)
+	end
 	S.Open = true
 	if not wasOpen then
 		S.Token = S.Token + 1
@@ -1827,6 +1839,7 @@ function ShopController.Close()
 	end
 	S.Open = false
 	S.Token = S.Token + 1
+	safe("altar", ShopEggs.SetFromAltar, false)
 	H.shineOff()
 	if U.Holder then
 		U.Holder.Visible = false

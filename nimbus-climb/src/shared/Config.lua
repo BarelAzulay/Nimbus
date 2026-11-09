@@ -152,7 +152,7 @@ Config.Remotes = {
 	"ObbyPick", -- (levelId:string)  pick an obby level at the Obby gate (PortalService.PickLevel; unlocked levels only)
 	"SettingsSet", -- (key:string, value:any)  Music / Sfx 0..10, Gfx "Auto"|"Low"|"High", Shake / MouseLock / FastHatch bool, SeenNotes int (DataService)
 	"MenuPlay", -- ()  the main menu's PLAY: the server spawns the character (PlayerService.SpawnPlayer; first per session, 1/s)
-	"QuickTravel", -- (dest:string) "Plaza"  the pill's Travel button: opens the home portal to the lobby (GateService.Travel)
+	"QuickTravel", -- (dest:string) "Plaza" | "Altar"  "Plaza": the pill's Travel button, opens the home portal to the lobby; "Altar" (shop-area 16.17.3): the Shop's Secret card TRAVEL, straight to the Storm Altar's landing (GateService.Travel)
 	-- store (2026-11-04; docs/superpowers/specs/2026-11-04-shop-retention-design.md): the Store, the daily gifts, the Sky Trove
 	"StoreRequest", -- (action:string, key:string)  "Buy" (a Config.Store.Items key) / "GemBuy" (a Config.Store.GemItems key)
 	--   Buy: the server prompts the pass / product (the client never prompts); GemBuy: StoreService.BuyWithGems spends the gems
@@ -226,6 +226,38 @@ function Config.InLobbyZone(pos)
 		end
 	end
 	return true
+end
+
+-- shop-area (spec 16.17.3): true when a position is at the Storm Altar, where the Secret roll happens: within
+-- Config.Gems.SecretRoulette.AltarRange (+ slack, a number >= 0; anything else counts as 0) studs horizontally of the
+-- island's site (the Workspace attribute Config.Lobby.ZoneAltarAttr, written by StormAltar.Build, replicated) and within
+-- AltarBand studs of its height. No attribute, junk or a non-finite position: false (fails closed). Server (PetService's
+-- rule, with AltarRangeSlack) and client (the Shop's Secret card, no slack) alike.
+function Config.AtAltar(pos, slack)
+	if typeof(pos) ~= "Vector3" then
+		return false
+	end
+	local x, y, z = pos.X, pos.Y, pos.Z
+	if x ~= x or y ~= y or z ~= z or math.abs(x) == math.huge or math.abs(y) == math.huge or math.abs(z) == math.huge then
+		return false
+	end
+	local site = workspace:GetAttribute(Config.Lobby.ZoneAltarAttr)
+	if typeof(site) ~= "Vector3" then
+		return false
+	end
+	local def = type(Config.Gems) == "table" and Config.Gems.SecretRoulette or nil
+	local range = type(def) == "table" and tonumber(def.AltarRange) or nil
+	local band = type(def) == "table" and tonumber(def.AltarBand) or nil
+	if not range or not band then
+		return false
+	end
+	local extra = tonumber(slack) or 0
+	if extra ~= extra or extra < 0 or extra == math.huge then
+		extra = 0
+	end
+	local reach = range + extra
+	local dx, dz = x - site.X, z - site.Z
+	return dx * dx + dz * dz <= reach * reach and math.abs(y - site.Y) <= band
 end
 
 ----------------------------------------------------------------------
@@ -556,6 +588,12 @@ Config.Gems = {
 		-- lobby shop (spec 5.2, the Secret pity): the PityAt-th spin in a row without a Secret gives a Secret (the count
 		-- lives in the save, Pity.Secret; PetService forces that spin's rarity, the strip still shows the odds above)
 		PityAt = 7,
+		-- shop-area (spec 16.17.3): the Secret roll happens at the Storm Altar only (Config.AtAltar). Studs, horizontal, from
+		-- the island's site (the deck r 23, the landing ~17-21, the bridge's first 13 studs); the server's slack for a player
+		-- walking off while the reply travels; studs of height either way
+		AltarRange = 36,
+		AltarRangeSlack = 10,
+		AltarBand = 24,
 	},
 	-- lobby shop (spec 5.2, the server-hop guard): gem-priced actions wait this many seconds after a load AND for one fresh
 	-- read of the stored record (DataService.GemsSettled); with no DataStore the hold ends at this time with no read

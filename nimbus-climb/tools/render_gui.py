@@ -93,6 +93,8 @@ SCENARIOS = ["gallery", "lobby", "title", "match", "match:hit", "countdown", "pa
              "eggs", "eggs:simple", "hatch:strip", "hatch:strip3", "hatch:crack", "hatch:reveal", "hatch:reveal3", "hatch:secret",
              "hatch:epic@3.9", "hatch:legendary@5.3", "hatch:secret@5.9", "hatch3:6.0",
              "shop", "shop:restricted", "shop:Gems", "shop:Packs", "shop:Passes", "shop:Boosts",
+             # (shop-area T3) the Secret card away from the Storm Altar (greyed, AltarChip, TRAVEL) and at it
+             "shop_secret_locked", "shop_secret_altar",
              "lobbyboard", "lobbyboard:2", "lobbyboard:3"]
 
 # ---------------------------------------------------------------------------------------------------

@@ -41,9 +41,11 @@
 --              "Secret pets" and "Awakens soon" in 0.64-stud letters: readable from ~30 studs), low walls between
 --              the bridge and the pillars, and a pixel-sized "STORM ALTAR" / "Secret pets" title tag above the
 --              altar, readable from the plaza.
---   Prompt     ProximityPrompt "Storm Altar" (ActionText "Summon"). Phase 2 (gems): it opens the Shop on the
+--   Prompt     ProximityPrompt "Storm Altar" (ActionText "Secret Roll", shop-area 16.17.3: the Secret roll happens here
+--              only; was "Summon"). Phase 2 (gems): it opens the Shop on the
 --              gems-only Secret roulette (OpenPanel("Shop", { RouletteId = Config.Gems.SecretRoulette.Id,
---              Currency = "Gems" }), rate-limited per player) when GemService.SecretRouletteState says "Open";
+--              Currency = "Gems", FromAltar = true }), rate-limited per player; FromAltar only unlocks the client's card,
+--              PetService checks the distance itself) when GemService.SecretRouletteState says "Open";
 --              an account where PolicyService restricts paid random items gets a side toast that the Secret
 --              Roulette is not available there; while the gem system is missing or still checking the account the
 --              phase 1 side toast "The Storm Altar awakens soon: summon Secret pets with Gems!" is sent (toasts:
@@ -68,9 +70,10 @@
 --              VortexMeshOffset (the mesh's PortalCenter), sized VortexRadius / VortexMeshRadius, coloured VortexColor
 --              (the ring's green).
 --   Gem        lobby-shop (spec 5.7): Model WorldGem, "gems are spent here": a cut gem (Blender key gem_world, pivot the
---              girdle centre) floating 3 studs over the deck (the clear air under its lowest corner) beside the walk
---              from the landing to the summon portal, 15 studs out along the bridge and 7.5 to the side away from the
---              return ring: clear of the crystals, stones and rim clouds, >= 6 studs from every prompt, outside the
+--              girdle centre). shop-area (spec 16.17.4, spot 2 "Side crystal"): its centre 15 studs over the deck
+--              straight above the medium crystal on the side away from the return ring (ahead 8.0 / side -9.2 in the
+--              bridge frame at the default bearing), facing the walk, >= 2 studs of air over the crystal's tip: off the
+--              deck where players stand, in view on arrival, >= 12 studs from both prompts, outside the
 --              8-stud bridge lane. Part fallback Gem: one 4x4x4 Glass cube in rgb(84,196,246) turned 45 degrees on X and
 --              Z, non-colliding, with a cyan PointLight 1.0 / 12. Tagged Config.Tags.Spin (SpinSeconds 8, BobStuds 0.6,
 --              BobSeconds 3): the client turns and bobs it.
@@ -170,14 +173,18 @@ local PORTAL = {
 	VortexR = 3.3,
 	VortexMeshR = 2.25,
 }
--- lobby-shop (spec 5.7): the world gem, in the bridge frame like the return portal. The plan's spot (halfway along the
--- walk, 8.5 out, 7 to the side) is inside the medium crystal on the stone ring, so it floats over the open deck between
--- the ring and the landing (15 out) on the side away from the return ring, 7.5 to the side: the 6-stud mesh's bounds
--- and the turning 4-stud cube (3.41 studs from its axis) both stay outside the 8-stud bridge lane.
+-- lobby-shop (spec 5.7): the world gem. shop-area (spec 16.17.4, spot 2 "Side crystal"; the owner: "move it to other
+-- location not where the players might stand"): no longer over the open deck beside the walk (15 out / 7.5 side, 3 studs
+-- up) but Up studs over the deck straight above the medium crystal (CRYSTALS[HEAD +- CrystalStep] on the stone ring's
+-- centre radius RING_C) on the side away from the return ring: at the default bearing 180 ring index 8, ahead 8.0 / side
+-- -9.2 in the bridge frame. The crystal's tip is ~9.05 over the deck, so the turned cube's lowest corner (15 - 3.41)
+-- clears it by ~2.5 (TipClear 2; ~1.9 at the bob's bottom, BobClear 1.4); 9.2 off the bridge's centre line (the lane 4
+-- + the turning cube 3.46); >= 12 studs from both prompts; straight below it the stone ring and the crystal, no deck.
 local GEM = {
-	Ahead = 15,
-	Side = 7.5,
-	Gap = 3, -- clear air from the deck to the turned cube's lowest corner (its centre then ~6.4 over the deck)
+	Up = 15, -- the gem's centre over the deck
+	CrystalStep = 3, -- the medium crystals are HEAD - 3 and HEAD + 3
+	TipClear = 2, -- the turned cube's lowest corner over the crystal's tip (the numbers above; tools/smoke checks it)
+	BobClear = 1.4, -- ...at the bob's bottom
 	Size = 4, -- the Part fallback: one Glass cube turned 45 degrees on X and Z
 	SpinSeconds = 8,
 	BobStuds = 0.6,
@@ -1463,7 +1470,9 @@ local function secretState(player)
 	return "Unavailable"
 end
 
--- Opens the Shop on the gems-only Secret roulette (no Tab: the Shop picks the tab that holds that roulette).
+-- Opens the Shop on the gems-only Secret roulette (no Tab: the Shop picks the tab that holds that roulette). shop-area
+-- (spec 16.17.3): FromAltar = true unlocks the Shop's Secret card on the client; the server never reads it
+-- (PetService.BuyRoulette checks the player's own character against Config.AtAltar).
 local function openSecretRoulette(player)
 	local now = os.clock()
 	local last = lastOpen[player]
@@ -1473,7 +1482,7 @@ local function openSecretRoulette(player)
 	lastOpen[player] = now
 	local ok, remote = pcall(Remotes.Get, "OpenPanel")
 	if ok and remote and player.Parent then
-		remote:FireClient(player, "Shop", { RouletteId = SECRET_ROULETTE_ID, Currency = "Gems" })
+		remote:FireClient(player, "Shop", { RouletteId = SECRET_ROULETTE_ID, Currency = "Gems", FromAltar = true })
 	end
 end
 
@@ -1590,17 +1599,27 @@ local function buildReturnPortal(parent, A, gapDeg)
 	return anchor
 end
 
--- lobby-shop (spec 5.7): the world gem marks "gems are spent here". It floats GEM.Gap studs over the deck beside the walk
--- from the landing to the summon portal, on the side away from the return ring, clear of the crystals, the stones, the
--- rim clouds and both prompts. Blender key gem_world (pivot = the girdle centre = gemCF, upright); its Part fallback is
--- one 4x4x4 Glass cube turned 45 degrees on X and Z, so it still reads as a gem. Tagged Config.Tags.Spin: the client
--- turns and bobs it about gemCF (the server never animates). Nothing collides; a soft cyan light (1.0 / 12) sits in it.
+-- lobby-shop (spec 5.7): the world gem marks "gems are spent here". shop-area (spec 16.17.4, spot 2): it floats GEM.Up
+-- studs over the deck straight above the medium crystal on the side away from the return ring (of HEAD +- CrystalStep, the
+-- one lying furthest that way in the bridge frame: ring index 8 at the default bearing 180), facing the walk (the bridge's
+-- centre line 12 studs out), clear of the crystal's tip, the stones, the rim clouds and both prompts; nobody stands under
+-- it. Blender key gem_world (pivot = the girdle centre = gemCF, upright); its Part fallback is one 4x4x4 Glass cube
+-- turned 45 degrees on X and Z, so it still reads as a gem. Tagged Config.Tags.Spin: the client turns and bobs it about
+-- gemCF (the server never animates). Nothing collides; a soft cyan light (1.0 / 12) sits in it.
 local function buildWorldGem(parent, A, gapDeg)
 	local m = newModel(parent, "WorldGem")
 	local turn = CFrame.Angles(math.rad(45), 0, math.rad(45))
-	local half = (math.abs(turn.RightVector.Y) + math.abs(turn.UpVector.Y) + math.abs(turn.LookVector.Y)) * GEM.Size / 2
-	local side = RETURN_SIDE >= 0 and -GEM.Side or GEM.Side
-	local gemCF = polarCF(A, gapDeg, GEM.Ahead, GEM.Gap + half) * CFrame.new(side, 0, 0)
+	local side = RETURN_SIDE >= 0 and -1 or 1 -- the return ring stands at +RETURN_SIDE in the bridge frame
+	local bridge = polarCF(A, gapDeg, 0)
+	local step = 360 / RING_N
+	local k, best = HEAD + GEM.CrystalStep, -math.huge
+	for _, key in ipairs({ HEAD - GEM.CrystalStep, HEAD + GEM.CrystalStep }) do
+		local away = bridge:PointToObjectSpace(polarCF(A, key * step, RING_C).Position).X * side
+		if away > best then
+			k, best = key, away
+		end
+	end
+	local gemCF = flatLook(polarCF(A, k * step, RING_C, GEM.Up).Position, polarCF(A, gapDeg, 12).Position)
 	local gem = block(m, "Gem", gemCF * turn, Vector3.new(GEM.Size, GEM.Size, GEM.Size), C.Gem, { Material = MAT.Glass, Transparency = 0.15 })
 	local light = pointLight(gem, 1, 12)
 	light.Name = "GemLight"
@@ -1620,7 +1639,7 @@ local function buildPrompt(parent, A)
 	local part = invisible(parent, "AltarPrompt", A * CFrame.new(0, 2.4, 0))
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = "StormAltarPrompt"
-	prompt.ActionText = "Summon"
+	prompt.ActionText = "Secret Roll" -- shop-area (spec 16.17.3): the Secret roll happens here only (was "Summon")
 	prompt.ObjectText = "Storm Altar"
 	prompt.HoldDuration = 0
 	prompt.MaxActivationDistance = 21

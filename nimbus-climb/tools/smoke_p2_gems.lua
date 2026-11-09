@@ -27,10 +27,19 @@
 --                     the substitute tokens; lobby-shop: nothing refuses after the roll), junk currencies, in a match, the
 --                     remote (2nd argument, rate limit, junk), GemService.Roll. Gem spins after a join first end the gem
 --                     settle hold (DataService._SettleForTest; p2gems_policy too)
---   p2gems_altar      (booted) the Storm Altar prompt ("Summon"): opens the Shop on the Secret roulette for an allowed
---                     account (OpenPanel to that player only, rate-limited, no toast), a side toast for a restricted
---                     account, the phase 1 "awakens soon" toast while the account is still being checked, forged
---                     triggers ignored
+--   p2gems_altar      (booted) the Storm Altar prompt ("Secret Roll", shop-area 16.17.3; was "Summon"): opens the Shop on
+--                     the Secret roulette for an allowed account (OpenPanel to that player only with FromAltar = true,
+--                     rate-limited, no toast), a side toast for a restricted account, the phase 1 "awakens soon" toast
+--                     while the account is still being checked, forged triggers ignored
+--   p2gems_secret_altar (booted, shop-area spec 16.17.3) the Secret roll only at the Storm Altar: Config.Gems.SecretRoulette
+--                     AltarRange 36 / AltarRangeSlack 10 / AltarBand 24 and Config.AtAltar (the edges, junk, no attribute);
+--                     the prompt's OpenPanel carries FromAltar; PetService.BuyRoulette refuses a Secret spin away from the
+--                     altar "Secret rolls happen at the Storm Altar" (API and remote, nothing charged, the pity untouched;
+--                     the junk checks first), accepts it on the deck, inside the slack (45 out) and refuses past it (47
+--                     out), fails closed without the AltarIslandAt attribute or a HumanoidRootPart; token roulettes from the
+--                     plaza untouched; GateService.Travel(p, "Altar") (the QuickTravel remote): to StormAltar.GetLanding()
+--                     with Teleported "Altar", the shared cooldown, refused in a match / a battle / for junk with no move
+-- shop-area 16.17.3: every Secret spin of this file stands the player on the altar deck first (onDeck).
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -100,6 +109,18 @@ end
 local function isSecretPet(petId)
 	local def = PC() and PC().Get(petId)
 	return def ~= nil and def.Rarity == SECRET
+end
+
+-- shop-area 16.17.3: the Secret roll happens at the Storm Altar only (PetService's distance rule on the player's own
+-- character): a test that spins the Secret roulette stands the player on the deck first (8 studs out from the dais)
+local function deckCF()
+	local SA = requireAt("server/Services/StormAltar")
+	local A = SA and SA.GetCFrame()
+	return A and A * CFrame.new(0, 3, -8) or nil
+end
+local function onDeck(p)
+	local cf = deckCF()
+	return cf ~= nil and Mock.Teleport(p, cf) == true
 end
 
 ----------------------------------------------------------------------------------------------------
@@ -927,6 +948,7 @@ S.p2gems_roulettes = guarded("p2gems_roulettes", function()
 		players[#players + 1] = p
 		T.eq(Gs.PolicyState(p), "Allowed", "gem roulettes: (precondition) the roller's account may buy random items")
 		T.eq(DataS._SettleForTest(p), true, "gem roulettes: (setup) the gem settle hold ends (lobby-shop: gem spins wait for it after a join)")
+		T.check(onDeck(p), "gem roulettes: (setup) the roller stands on the Storm Altar's deck (shop-area 16.17.3: Secret spins happen there)")
 		local prof = profileOf(p)
 		setTokens(p, 0)
 
@@ -1149,8 +1171,9 @@ S.p2gems_altar = guarded("p2gems_altar", function()
 	if not T.check(prompt ~= nil, "gem altar: the Storm Altar has its prompt (StormAltarPrompt)") then
 		return
 	end
-	T.check(prompt.ObjectText == "Storm Altar" and prompt.ActionText == "Summon" and prompt.HoldDuration <= 0.5 and prompt.Enabled ~= false,
-		"gem altar: the prompt reads 'Summon' / 'Storm Altar' and is quick to use", tostring(prompt.ActionText))
+	-- shop-area 16.17.3 (rewritten): "Summon" -> "Secret Roll" (the Secret roll happens here only)
+	T.check(prompt.ObjectText == "Storm Altar" and prompt.ActionText == "Secret Roll" and prompt.HoldDuration <= 0.5 and prompt.Enabled ~= false,
+		"gem altar: the prompt reads 'Secret Roll' / 'Storm Altar' and is quick to use", tostring(prompt.ActionText))
 	local players = {}
 	local okRun, errRun = pcall(function()
 		installPolicy("allow")
@@ -1181,7 +1204,10 @@ S.p2gems_altar = guarded("p2gems_altar", function()
 		Mock.Trigger(prompt, a)
 		advance(0.1)
 		local first = opens(a, mark)
-		T.check(#first == 1 and first[1].kind ~= "all", "gem altar: an allowed account's Summon opens the Shop on the Secret roulette (OpenPanel to that player only)", #first .. " OpenPanel")
+		T.check(#first == 1 and first[1].kind ~= "all", "gem altar: an allowed account's Secret Roll opens the Shop on the Secret roulette (OpenPanel to that player only)", #first .. " OpenPanel")
+		local firstArgs = first[1] and first[1].args[2]
+		T.check(type(firstArgs) == "table" and firstArgs.Currency == "Gems" and firstArgs.FromAltar == true,
+			"gem altar: ...with Currency = 'Gems' and FromAltar = true (the card unlocks on the client; the server checks the distance itself)")
 		T.eq(#opens(b, mark) + #opens(c, mark), 0, "gem altar: ...nobody else's Shop opens")
 		T.eq(#toasts(a, mark, "awakens soon"), 0, "gem altar: ...and no 'awakens soon' toast any more")
 		Mock.Trigger(prompt, a)
@@ -1230,6 +1256,269 @@ S.p2gems_altar = guarded("p2gems_altar", function()
 	end
 	K.flushErrors("p2gems_altar")
 	K.flushWarnings("p2gems_altar", ALLOWED_WARNINGS)
+end)
+
+----------------------------------------------------------------------------------------------------
+-- p2gems_secret_altar (booted; shop-area spec 16.17.3): the Secret roll only at the Storm Altar
+----------------------------------------------------------------------------------------------------
+local ALTAR_REASON = "Secret rolls happen at the Storm Altar"
+
+local function pityText(p)
+	local ok, pity = pcall(function()
+		return DS().GetPity(p)
+	end)
+	if not ok or type(pity) ~= "table" then
+		return "none"
+	end
+	return tostring(pity.Spins) .. "/" .. tostring(pity.Hit)
+end
+
+S.p2gems_secret_altar = guarded("p2gems_secret_altar", function()
+	if not K.needBoot() then
+		return
+	end
+	local Gs, DataS, PetS, Config = GS(), DS(), PS(), K.config()
+	local SA = requireAt("server/Services/StormAltar")
+	local GateS = requireAt("server/Services/GateService")
+	local sr = type(Config.Gems) == "table" and Config.Gems.SecretRoulette or {}
+	local attrName = Config.Lobby.ZoneAltarAttr
+	local site = workspace:GetAttribute(attrName)
+	local A = SA and SA.GetCFrame()
+	if not T.check(type(Gs) == "table" and type(SA) == "table" and type(GateS) == "table" and type(GateS.Travel) == "function" and typeof(A) == "CFrame"
+		and typeof(site) == "Vector3" and type(Config.AtAltar) == "function",
+		"secret altar: GemService, StormAltar (built), GateService.Travel, the AltarIslandAt attribute and Config.AtAltar", tostring(Config.AtAltar)) then
+		return
+	end
+	T.check(sr.AltarRange == 36 and sr.AltarRangeSlack == 10 and sr.AltarBand == 24,
+		"secret altar: Config.Gems.SecretRoulette AltarRange 36, AltarRangeSlack 10, AltarBand 24",
+		tostring(sr.AltarRange) .. " / " .. tostring(sr.AltarRangeSlack) .. " / " .. tostring(sr.AltarBand))
+
+	------------------------------------------------------------------ Config.AtAltar: the edges, junk, no attribute
+	local at = Config.AtAltar
+	local edges = T.tally("secret altar: Config.AtAltar(pos, slack): horizontal <= AltarRange + slack and |dy| <= AltarBand around AltarIslandAt; junk is false")
+	for _, c in ipairs({
+		{ A.Position, nil, true, "the dais centre (on the deck)" },
+		{ site + Vector3.new(35.9, 0, 0), nil, true, "35.9 out" },
+		{ site + Vector3.new(0, 0, -36.1), nil, false, "36.1 out" },
+		{ site + Vector3.new(25.4, 0, 25.4), nil, true, "35.9 out on a diagonal" },
+		{ site + Vector3.new(-45.9, 0, 0), 10, true, "45.9 out with slack 10" },
+		{ site + Vector3.new(0, 0, 46.1), 10, false, "46.1 out with slack 10" },
+		{ site + Vector3.new(0, 23.9, 0), nil, true, "23.9 above" },
+		{ site + Vector3.new(0, 24.1, 0), nil, false, "24.1 above" },
+		{ site + Vector3.new(0, -24.1, 0), nil, false, "24.1 below" },
+		{ site + Vector3.new(30, 0, 0), "junk", true, "a junk slack counts as 0 (30 out)" },
+		{ site + Vector3.new(40, 0, 0), -100, false, "a negative slack counts as 0 (40 out)" },
+		{ site + Vector3.new(40, 0, 0), 0 / 0, false, "a NaN slack counts as 0 (40 out)" },
+		{ nil, nil, false, "nil" },
+		{ "here", nil, false, "a string" },
+		{ Vector3.new(0 / 0, site.Y, site.Z), nil, false, "a NaN position" },
+		{ Vector3.new(math.huge, site.Y, site.Z), nil, false, "an infinite position" },
+	}) do
+		local okA, got = pcall(at, c[1], c[2])
+		edges:case(okA and got == c[3], c[4] .. ": " .. tostring(got))
+	end
+	edges:report()
+	workspace:SetAttribute(attrName, nil)
+	local noAttr = at(A.Position)
+	workspace:SetAttribute(attrName, site)
+	T.check(noAttr == false and at(A.Position) == true, "secret altar: without the AltarIslandAt attribute nothing is at the altar (fails closed); with it back, the deck is")
+
+	------------------------------------------------------------------ the prompt
+	local prompt = nil
+	for _, d in ipairs(workspace:GetDescendants()) do
+		if d:IsA("ProximityPrompt") and d.Name == "StormAltarPrompt" then
+			prompt = d
+		end
+	end
+	T.check(prompt ~= nil and prompt.ActionText == "Secret Roll" and prompt.ObjectText == "Storm Altar" and prompt.MaxActivationDistance == 21,
+		"secret altar: the altar's prompt reads 'Secret Roll' / 'Storm Altar', range 21", prompt and (prompt.ActionText .. " / " .. prompt.ObjectText .. " / " .. tostring(prompt.MaxActivationDistance)) or "none")
+
+	local players = {}
+	local conn = nil
+	local okRun, errRun = pcall(function()
+		installPolicy("allow")
+		local p = joinAs("SecretAltar", "allow")
+		local other = joinAs("SecretAltarOther", "allow")
+		players = { p, other }
+		T.eq(DataS._SettleForTest(p), true, "secret altar: (setup) the gem settle hold ends")
+		if prompt then
+			local mark = K.logSize()
+			Mock.Trigger(prompt, p)
+			advance(0.1)
+			local sent = {}
+			for _, e in ipairs(K.remotesFor("OpenPanel", p.UserId, mark)) do
+				if e.args[1] == "Shop" then
+					sent[#sent + 1] = e
+				end
+			end
+			local args = sent[1] and sent[1].args[2]
+			T.check(#sent == 1 and sent[1].kind ~= "all" and type(args) == "table" and args.RouletteId == secretId() and args.Currency == "Gems" and args.FromAltar == true
+				and #K.remotesFor("OpenPanel", other.UserId, mark) == 0,
+				"secret altar: the prompt fires OpenPanel('Shop', { RouletteId = 'Secret', Currency = 'Gems', FromAltar = true }) to that player only", #sent .. " sent")
+		end
+		setGems(p, 5000)
+		setTokens(p, 1000)
+		local root = Mock.GetRoot(p)
+		local spawnCF = root and root.CFrame
+		if not T.check(root ~= nil and not at(root.Position, sr.AltarRangeSlack), "secret altar: (precondition) the player spawns on the plaza, far from the altar", root and tostring(root.Position) or "no root") then
+			return
+		end
+
+		------------------------------------------------------------------ refused away from the altar: the junk checks first, nothing charged
+		local okT, whyT = PetS.BuyRoulette(p, secretId(), "Tokens")
+		local ok3, why3 = PetS.BuyRoulette(p, secretId(), "Gems", 3)
+		T.check(okT == false and tostring(whyT):lower():find("gems only", 1, true) ~= nil and ok3 == false and why3 == "Bad spins",
+			"secret altar: the argument checks come first (Tokens -> 'takes Gems only', x3 -> 'Bad spins')", tostring(whyT) .. " / " .. tostring(why3))
+		local before, pity0 = wallet(p), pityText(p)
+		local okF, whyF = PetS.BuyRoulette(p, secretId(), "Gems")
+		local okN, whyN = PetS.BuyRoulette(p, secretId())
+		T.check(okF == false and whyF == ALTAR_REASON and okN == false and whyN == ALTAR_REASON,
+			"secret altar: from the plaza a Secret spin is refused '" .. ALTAR_REASON .. "' (with and without the currency)", tostring(whyF) .. " / " .. tostring(whyN))
+		T.check(sameWallet(before, wallet(p)) and pityText(p) == pity0, "secret altar: ...nothing charged or granted, the pity untouched", pity0 .. " -> " .. pityText(p))
+		advance(0.4)
+		local mark = K.logSize()
+		Mock.FromClient(remote("BuyRoulette"), p, secretId(), "Gems")
+		advance(0.1)
+		local wins = 0
+		for _, e in ipairs(K.remotesFor("RouletteResult", p.UserId, mark)) do
+			if type(e.args[1]) == "table" and e.args[1].Ok == true then
+				wins = wins + 1
+			end
+		end
+		local ans = K.lastRemote("RouletteResult", p.UserId, mark)
+		local a1 = ans and ans.args[1]
+		T.check(type(a1) == "table" and a1.Ok == false and a1.Reason == ALTAR_REASON and a1.Currency == "Gems" and a1.Gems == 5000 and wins == 0,
+			"secret altar: the BuyRoulette remote answers RouletteResult(Ok = false, Reason = the altar line, Currency = Gems, Gems unchanged)",
+			type(a1) == "table" and (tostring(a1.Reason) .. " / " .. tostring(a1.Currency)) or "no answer")
+		T.check(sameWallet(before, wallet(p)), "secret altar: ...and charges nothing")
+		local cloud = Config.Roulettes[1]
+		local t0, g0 = DataS.GetTokens(p), DataS.GetGems(p)
+		local okC = PetS.BuyRoulette(p, cloud.Id)
+		local okCG = PetS.BuyRoulette(p, cloud.Id, "Gems")
+		T.check(okC == true and okCG == true and DataS.GetTokens(p) == t0 - cloud.Price and DataS.GetGems(p) == g0 - gemPrice(cloud.Id),
+			"secret altar: token roulettes still spin from the plaza (Tokens and Gems)")
+
+		------------------------------------------------------------------ on the deck: accepted; inside the slack yes, past it no
+		T.check(onDeck(p), "secret altar: (setup) the player steps onto the altar deck")
+		local g1, pity1 = DataS.GetGems(p), DataS.GetPity(p)
+		local okD, resD = PetS.BuyRoulette(p, secretId(), "Gems")
+		local pity2 = DataS.GetPity(p)
+		T.check(okD == true and DataS.GetGems(p) == g1 - sr.GemPrice and type(pity1) == "table" and type(pity2) == "table" and pity2.Spins == pity1.Spins + 1,
+			"secret altar: on the deck the same spin is accepted (" .. tostring(sr.GemPrice) .. " Gems, the pity Spins + 1)",
+			type(resD) == "table" and tostring(resD.Reason or resD.PetId) or tostring(resD))
+		Mock.Teleport(p, A * CFrame.new(0, 3, -45))
+		local g2 = DataS.GetGems(p)
+		local ok45, why45 = PetS.BuyRoulette(p, secretId(), "Gems")
+		T.check(ok45 == true and DataS.GetGems(p) == g2 - sr.GemPrice, "secret altar: 45 studs out (walking off while the reply travels) is inside the server's slack: accepted",
+			type(why45) == "table" and "ok" or tostring(why45))
+		Mock.Teleport(p, A * CFrame.new(0, 3, -47))
+		local before47, pity47 = wallet(p), pityText(p)
+		local ok47, why47 = PetS.BuyRoulette(p, secretId(), "Gems")
+		T.check(ok47 == false and why47 == ALTAR_REASON and sameWallet(before47, wallet(p)) and pityText(p) == pity47,
+			"secret altar: walked away (47 studs out): refused with the altar line, nothing charged", tostring(why47))
+
+		------------------------------------------------------------------ fails closed: no attribute, no root
+		onDeck(p)
+		workspace:SetAttribute(attrName, nil)
+		local beforeA = wallet(p)
+		local okNA, whyNA = PetS.BuyRoulette(p, secretId(), "Gems")
+		workspace:SetAttribute(attrName, site)
+		T.check(okNA == false and whyNA == ALTAR_REASON and sameWallet(beforeA, wallet(p)), "secret altar: without the AltarIslandAt attribute even the deck is refused (fails closed), nothing charged", tostring(whyNA))
+		local hrp = Mock.GetRoot(p)
+		if hrp then
+			hrp:Destroy()
+		end
+		local beforeR = wallet(p)
+		local okNR, whyNR = PetS.BuyRoulette(p, secretId(), "Gems")
+		T.check(hrp ~= nil and okNR == false and whyNR == ALTAR_REASON and sameWallet(beforeR, wallet(p)), "secret altar: a character without a HumanoidRootPart is refused, nothing charged", tostring(whyNR))
+		Mock.Respawn(p)
+		advance(1.0)
+
+		------------------------------------------------------------------ GateService.Travel(p, "Altar"): the Shop card's TRAVEL
+		local got = {}
+		conn = GateS.Teleported:Connect(function(who, where)
+			if who == p then
+				got[#got + 1] = where
+			end
+		end)
+		local landing = SA.GetLanding()
+		local function rootPos()
+			local r = Mock.GetRoot(p)
+			return r and r.Position or Vector3.new(0, -1e6, 0)
+		end
+		if spawnCF then
+			Mock.Teleport(p, spawnCF)
+		end
+		advance(1.6)
+		local okTr, whyTr = GateS.Travel(p, "Altar")
+		T.check(okTr == true and typeof(landing) == "CFrame" and (rootPos() - landing.Position).Magnitude <= 1 and got[#got] == "Altar",
+			"secret altar travel: GateService.Travel(p, 'Altar') puts the player on StormAltar.GetLanding() and fires Teleported 'Altar'",
+			tostring(okTr) .. " " .. tostring(whyTr) .. ", " .. tostring((rootPos() - (landing and landing.Position or Vector3.new())).Magnitude))
+		T.check(at(rootPos()) == true, "secret altar travel: ...the landing is at the altar (a Secret spin works there)")
+		local okCd, whyCd = GateS.Travel(p, "Altar")
+		T.check(okCd == false and whyCd == "cooldown", "secret altar travel: a second Travel at once is refused 'cooldown' (the gate's shared cooldown)", tostring(whyCd))
+		-- refusals move nobody
+		if spawnCF then
+			Mock.Teleport(p, spawnCF)
+		end
+		advance(1.6)
+		local n0, here = #got, rootPos()
+		p:SetAttribute(Config.Attr.InMatch, true)
+		local okM, whyM = GateS.Travel(p, "Altar")
+		p:SetAttribute(Config.Attr.InMatch, false)
+		local battleAttr = (Config.Attr and Config.Attr.InBattle) or "InBattle"
+		p:SetAttribute(battleAttr, "B1")
+		local okB, whyB = GateS.Travel(p, "Altar")
+		p:SetAttribute(battleAttr, nil)
+		local junkTally = T.tally("secret altar travel: junk destinations are refused 'junk'")
+		for _, dest in ipairs({ "Nowhere", "altar", 5, true, {} }) do
+			local okJ, whyJ = GateS.Travel(p, dest)
+			junkTally:case(okJ == false and whyJ == "junk", tostring(dest) .. ": " .. tostring(whyJ))
+		end
+		junkTally:report()
+		local okNil, whyNil = GateS.Travel(nil, "Altar")
+		T.check(okM == false and whyM == "match" and okB == false and whyB == "battle" and okNil == false and whyNil == "junk",
+			"secret altar travel: refused in a match ('match'), in a battle ('battle'), for a non-player ('junk')", tostring(whyM) .. " / " .. tostring(whyB) .. " / " .. tostring(whyNil))
+		T.check(#got == n0 and (rootPos() - here).Magnitude < 0.01, "secret altar travel: ...and nothing moved, no Teleported")
+		-- the QuickTravel remote: the same move after the cooldown; a mash moves once; junk raises nothing
+		local QT = remote("QuickTravel")
+		local errs = #Mock.Errors
+		Mock.FromClient(QT, p, "Altar")
+		advance(0.1)
+		T.check(#got == n0 + 1 and got[#got] == "Altar" and typeof(landing) == "CFrame" and (rootPos() - landing.Position).Magnitude <= 1,
+			"secret altar travel: the QuickTravel remote with 'Altar' moves the player the same way", tostring(#got - n0) .. " moves")
+		if spawnCF then
+			Mock.Teleport(p, spawnCF)
+		end
+		local here2 = rootPos()
+		Mock.FromClient(QT, p, "Altar")
+		Mock.FromClient(QT, p, "Altar")
+		for _, junk in ipairs({ 5, {}, "Nowhere" }) do
+			Mock.FromClient(QT, p, junk)
+		end
+		Mock.FromClient(QT, p)
+		advance(0.2)
+		T.check(#got == n0 + 1 and (rootPos() - here2).Magnitude < 0.01 and #Mock.Errors == errs,
+			"secret altar travel: a QuickTravel mash inside the cooldown and junk destinations move nobody and raise nothing", tostring(#got - n0) .. " moves, " .. (#Mock.Errors - errs) .. " errors")
+		local removed = forgetSecretSpins()
+		if removed > 0 then
+			T.info("*secret altar: " .. removed .. " Secret RouletteResults checked here and taken out of the shared logs (PetCatalog does not list the Secret roulette)")
+		end
+	end)
+	if conn then
+		conn:Disconnect()
+	end
+	if workspace:GetAttribute(attrName) == nil then
+		workspace:SetAttribute(attrName, site)
+	end
+	removeDoubles()
+	leaveAll(players)
+	forgetSecretSpins()
+	if not okRun then
+		error(errRun, 0)
+	end
+	K.flushErrors("p2gems_secret_altar")
+	K.flushWarnings("p2gems_secret_altar", ALLOWED_WARNINGS)
 end)
 
 return S

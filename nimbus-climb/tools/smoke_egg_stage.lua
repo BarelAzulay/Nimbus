@@ -1696,6 +1696,9 @@ S.client_egg_stage_wiring = guarded("client_egg_stage_wiring", function()
 	LocalPlayer:SetAttribute("GemsSettled", true)
 	LocalPlayer:SetAttribute("SecretPityLeft", 4)
 	CS.Set("FastHatch", false)
+	-- shop-area 16.17.3: this scenario tests every card as it reads at the Storm Altar (the Secret card "Ready" there)
+	local atAltar0 = SE._AtAltar
+	SE._AtAltar = true
 	Shop.Close()
 	MC.Close()
 	if ES.IsShowing() then
@@ -1970,6 +1973,7 @@ S.client_egg_stage_wiring = guarded("client_egg_stage_wiring", function()
 		LocalPlayer:SetAttribute(name, v)
 	end
 	CS.Set("FastHatch", false)
+	SE._AtAltar = atAltar0
 	Mock.SetViewport(oldVp[1], oldVp[2])
 	G.advance(0.6)
 	KC.flushErrors("client_egg_stage_wiring")

@@ -44,6 +44,14 @@
 --                        Passes; PillButton_Shop: the first press of a session -> Eggs, then the last tab, a press while
 --                        open closes it; PetsController's OpenShop -> Eggs; with the tutorial's shop step active the pill and
 --                        OpenPanel("Shop", ...) each complete ShopOpened once, the world arrow unchanged, no ring on the pill
+--   client_shop_secret_lock (shop-area spec 16.17.3; 1920x1080, 1280x720, 844x390, 640x360, 360x640) the Secret card away
+--                        from the Storm Altar: CardState "Altar", SPIN hidden and a blue TRAVEL (compass glyph, no price) in
+--                        its box, the AltarChip "Available at the Storm Altar" ("At the Storm Altar" on a phone) in the pity
+--                        chip's place, the Dim over the card (under the chip / TRAVEL / hint), the hint "Secret rolls happen at
+--                        the Storm Altar", no pulse; a TRAVEL mash sends one QuickTravel("Altar") and closes the Shop; at the
+--                        altar today's card; FromAltar unlocks until Close; walking to / away from the island follows on the
+--                        next Shop tick; Locked wins, Altar before Loading; RedoGeom on every size
+-- shop-area 16.17.3: G.begin pins ShopEggs._AtAltar = true (the older scenarios test the card as it reads at the altar).
 -- Every scenario puts back the Config ids / prices it touched, the attributes, the MarketplaceService doubles and the
 -- viewport. Deterministic: mock clock only. Plain Lua 5.1 syntax only.
 
@@ -418,6 +426,13 @@ function G.begin()
 		MC.Close()
 	end
 	G.calmStage()
+	-- shop-area 16.17.3: the scenarios written before the Secret roll moved to the Storm Altar test the card as it reads AT
+	-- the altar (SPIN, the pity chip); client_shop_secret_lock sets ShopEggs._AtAltar itself. G.finish puts nil back.
+	local SE = G.req("client/UI/ShopEggs")
+	if SE then
+		saved.AtAltar = SE._AtAltar
+		SE._AtAltar = true
+	end
 	saved.Opened = {}
 	if MC and MC.WindowOpened then
 		saved.Conn = MC.WindowOpened:Connect(function(id)
@@ -439,6 +454,10 @@ function G.finish(saved)
 		MC.Close()
 	end
 	G.calmStage()
+	local SE = G.req("client/UI/ShopEggs")
+	if SE then
+		SE._AtAltar = saved.AtAltar
+	end
 	for _, it in ipairs(Config.Store.Items) do
 		it.Id = saved.Ids[it.Key] or 0
 	end
@@ -843,7 +862,10 @@ S.client_shop_eggs = guarded("client_shop_eggs", function()
 		local hs = G.eggBtn("Secret", "Spin")
 		T.check(hs ~= nil and hs:FindFirstChild("GemIcon", true) ~= nil and G.priceOf(hs) == commas(Config.Gems.SecretRoulette.GemPrice) and G.priceOf(hs) == "500" and not G.disabled(hs),
 			"shop eggs: the hero's Spin is a GemIcon + '500'", hs and tostring(G.priceOf(hs)) or "no button")
-		T.eq(G.text(hero, "Hint"), "Also at the Storm Altar", "shop eggs: the hero's hint")
+		-- shop-area 16.17.3 (rewritten): the hint was "Also at the Storm Altar"; the Secret roll happens there only now
+		T.eq(G.text(hero, "Hint"), "Secret rolls happen at the Storm Altar", "shop eggs: the hero's hint")
+		local hintFits, hintWhy = RedoGeom.fits(G.part(hero, "Hint"))
+		T.check(hintFits, "shop eggs: ...on one line inside its box with the real font widths", hintWhy)
 		T.check(G.eggBtn("Secret", "Spin3") == nil and G.eggBtn("Secret", "SpinGems") == nil, "shop eggs: the Secret card is x1 only")
 
 		-- the four machine cards
@@ -1953,6 +1975,255 @@ S.client_shop_openers = guarded("client_shop_openers", function()
 	end
 	G.finish(saved)
 	KC.flushErrors("client_shop_openers")
+end)
+
+----------------------------------------------------------------------------------------------------
+-- client_shop_secret_lock (shop-area spec 16.17.3): the Secret card away from the Storm Altar
+----------------------------------------------------------------------------------------------------
+local ALTAR = { Lock = "Available at the Storm Altar", Short = "At the Storm Altar", Hint = "Secret rolls happen at the Storm Altar", Word = "TRAVEL" }
+
+-- the hero's widgets: Spin, Travel (the button), AltarChip, PityChip, Dim, Hint, Lock
+function G.heroKit()
+	local hero = G.eggCard("Secret")
+	return {
+		Hero = hero,
+		Spin = G.eggBtn("Secret", "Spin"),
+		Travel = G.eggBtn("Secret", "Travel"),
+		Chip = G.part(hero, "AltarChip"),
+		Pity = G.part(hero, "PityChip"),
+		Dim = G.part(hero, "Dim"),
+		Hint = G.part(hero, "Hint"),
+		Lock = G.part(hero, "Lock"),
+	}
+end
+-- "shown" flags of the altar look in one line (debug detail)
+function G.heroLook(k)
+	local function f(o)
+		return o and (G.shown(o) and "1" or "0") or "-"
+	end
+	return fmt("spin %s travel %s chip %s pity %s dim %s lock %s", f(k.Spin), f(k.Travel), f(k.Chip), f(k.Pity), f(k.Dim), f(k.Lock))
+end
+
+S.client_shop_secret_lock = guarded("client_shop_secret_lock", function()
+	local KC = G.KC()
+	local Config = KC.env()
+	local Shop = G.req("client/Controllers/ShopController")
+	local SE = G.req("client/UI/ShopEggs")
+	local NK = G.req("client/UI/NeonKit")
+	local okApi = type(Shop) == "table" and type(SE) == "table" and type(NK) == "table" and type(SE.AtAltar) == "function" and type(SE.SetFromAltar) == "function"
+		and type(SE.Metrics) == "table" and type(SE.Metrics.TEXT) == "table"
+	if not T.check(okApi, "secret lock: ShopEggs.AtAltar / SetFromAltar and ShopController load") then
+		return
+	end
+	local K = SE.Metrics
+	T.check(K.TEXT.AltarLock == ALTAR.Lock and K.TEXT.AltarLockShort == ALTAR.Short and K.TEXT.HeroHint == ALTAR.Hint and K.TEXT.Travel == ALTAR.Word
+		and K.TRAVEL_GAP == 0.4 and K.DIM == 0.35, "secret lock: ShopEggs.Metrics: the texts, TRAVEL_GAP 0.4, DIM 0.35",
+		fmt("%s / %s / %s / %s / %s / %s", tostring(K.TEXT.AltarLock), tostring(K.TEXT.AltarLockShort), tostring(K.TEXT.HeroHint), tostring(K.TEXT.Travel), tostring(K.TRAVEL_GAP), tostring(K.DIM)))
+	local saved = G.begin()
+	local attrName = Config.Lobby.ZoneAltarAttr
+	local site0 = workspace:GetAttribute(attrName)
+	local char = LocalPlayer.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	local root0 = root and root.CFrame
+	G.setAttr("Gems", 5000)
+	G.setAttr("CloudTokens", 50000)
+	G.setAttr("SecretPityLeft", 3)
+	local function pulseFrames(seconds)
+		local target = SE.HeroPulse()
+		local frames, t = 0, 0
+		while t < seconds - 1e-6 do
+			G.advance(0.05)
+			t = t + 0.05
+			for tw in pairs(Mock.ActiveTweens) do
+				local goal = Mock.TweenGoals(tw).Scale
+				if target ~= nil and tw.Instance == target and type(goal) == "number" and goal > 1.001 then
+					frames = frames + 1
+					break
+				end
+			end
+		end
+		return frames
+	end
+	local function fitsAll(label, list)
+		local bad = {}
+		for _, o in ipairs(list) do
+			if o and G.shown(o) then
+				local okF, why = RedoGeom.fits(o)
+				if not okF then
+					bad[#bad + 1] = why
+				end
+			end
+		end
+		T.check(#bad == 0, label .. ": the lock chip, the hint and TRAVEL fit their boxes with the real font widths", table.concat(bad, "; "))
+	end
+	local ok, err = pcall(function()
+		------------------------------------------------------------------ 1920x1080, away from the altar
+		Mock.SetViewport(1920, 1080)
+		G.advance(0.6)
+		SE._AtAltar = false
+		Shop.Open({ Tab = "Eggs" })
+		G.advance(0.6)
+		T.eq(SE.AtAltar(), false, "secret lock: ShopEggs._AtAltar = false -> AtAltar() false")
+		T.eq(SE.CardState("Secret"), "Altar", "secret lock: away from the altar CardState('Secret') is 'Altar'")
+		local k = G.heroKit()
+		local hb = k.Hero and G.rel(k.Hero, k.Hero)
+		if not T.check(k.Hero and k.Spin and k.Travel and k.Chip and k.Dim and k.Hint, "secret lock: the hero has Spin, Travel, AltarChip, Dim and Hint", G.heroLook(k)) then
+			return
+		end
+		local tb = G.rel(k.Travel, k.Hero)
+		T.check(not G.shown(k.Spin) and G.shown(k.Travel) and G.near(tb.x, hb.w - 320) and G.near(tb.y, 66) and G.near(tb.w, 290) and G.near(tb.h, 100),
+			"secret lock: SPIN hidden; a 290 x 100 TRAVEL button exactly where SPIN sits (w - 320, 66)", G.heroLook(k) .. "; " .. fmt("%.0f,%.0f %.0fx%.0f", tb.x, tb.y, tb.w, tb.h))
+		local icon = k.Travel:FindFirstChild("Icon")
+		T.check(k.Travel:GetAttribute("Style") == "Blue" and G.text(k.Travel, "Word") == ALTAR.Word and icon ~= nil and G.shown(icon) and icon.Text == NK.Glyphs.Travel
+			and k.Travel:FindFirstChild("Price", true) == nil and k.Travel:FindFirstChild("GemIcon", true) == nil and not G.disabled(k.Travel),
+			"secret lock: ...blue (Style 'Blue'), 'TRAVEL' with the compass glyph, no price, active", G.texts(k.Travel))
+		local cb, pb = G.rel(k.Chip, k.Hero), k.Pity and G.rel(k.Pity, k.Hero)
+		T.check(G.shown(k.Chip) and k.Chip.Text == ALTAR.Lock and k.Pity and not G.shown(k.Pity) and G.near(cb.x, 360) and G.near(cb.y, 132) and G.near(cb.h, 48) and cb.w >= 400 - 1
+			and k.Chip.TextSize == 22 and pb and G.near(pb.x, cb.x) and G.near(pb.y, cb.y),
+			"secret lock: AltarChip 'Available at the Storm Altar' in the pity chip's place (360, 132, >= 400 x 48, 22 px), the PityChip hidden", G.heroLook(k) .. "; " .. fmt("%.0f,%.0f %.0fx%.0f", cb.x, cb.y, cb.w, cb.h))
+		local db = G.rel(k.Dim, k.Hero)
+		local egg = G.part(k.Hero, "HeroEgg")
+		local sparks = G.part(k.Hero, "Sparks")
+		local holder = k.Travel.Parent
+		T.check(G.shown(k.Dim) and G.near(db.x, 0) and G.near(db.y, 0) and G.near(db.w, hb.w) and G.near(db.h, hb.h) and abs(k.Dim.BackgroundTransparency - 0.35) < 1e-6
+			and k.Dim.BackgroundTransparency < 1 and k.Dim.Parent == k.Chip.Parent,
+			"secret lock: Dim (K.NAVY at 0.35) covers the card body", fmt("%.0f,%.0f %.0fx%.0f t %.2f", db.x, db.y, db.w, db.h, k.Dim.BackgroundTransparency))
+		T.check(k.Dim.ZIndex > (egg and egg.ZIndex or 0) and k.Dim.ZIndex > (sparks and sparks.ZIndex or 0) and k.Dim.ZIndex < k.Chip.ZIndex and holder and k.Dim.ZIndex < holder.ZIndex and k.Dim.ZIndex < k.Hint.ZIndex,
+			"secret lock: ...over the machine, the big egg and its sparks, under the chip, the TRAVEL button and the hint",
+			fmt("dim %d, egg %s, sparks %s, chip %d, holder %s, hint %d", k.Dim.ZIndex, tostring(egg and egg.ZIndex), tostring(sparks and sparks.ZIndex), k.Chip.ZIndex, tostring(holder and holder.ZIndex), k.Hint.ZIndex))
+		T.eq(G.text(k.Hero, "Hint"), ALTAR.Hint, "secret lock: the hint reads 'Secret rolls happen at the Storm Altar'")
+		fitsAll("secret lock 1920x1080", { k.Chip, k.Hint, k.Travel:FindFirstChild("Word") })
+		local states = {}
+		for _, id in ipairs(MACHINES) do
+			states[#states + 1] = tostring(SE.CardState(id))
+		end
+		T.eq(table.concat(states, " "), "Ready Ready Ready Ready", "secret lock: the four machine cards stay Ready (only the Secret card moved)")
+		local frames = pulseFrames(3)
+		T.check(frames == 0 and SE.HeroPulse() and SE.HeroPulse().Scale == 1, "secret lock: the hero's pulse stays off while Altar (Scale 1 for 3 s)", frames .. " frames")
+		RedoGeom.check(G.win(), "secret lock 1920x1080", { MinText = 18, MinTarget = 44, NoOverlap = G.noOverlapNames() })
+
+		------------------------------------------------------------------ the TRAVEL mash: one QuickTravel("Altar"), the Shop closes
+		local mark = #Mock.RemoteLog
+		Mock.Click(k.Travel)
+		Mock.Click(k.Travel)
+		Mock.Click(k.Travel)
+		G.advance(0.1)
+		local qt = KC.serverCalls("QuickTravel", mark)
+		T.check(#qt == 1 and qt[1].args[1] == "Altar" and not Shop.IsOpen(), "secret lock: three TRAVEL taps within 0.1 s -> exactly one QuickTravel('Altar'), and the Shop closes",
+			#qt .. " sends, open " .. tostring(Shop.IsOpen()))
+		G.advance(0.5)
+		Mock.Click(k.Travel)
+		G.advance(0.1)
+		T.eq(#KC.serverCalls("QuickTravel", mark), 1, "secret lock: ...a TRAVEL tap with the Shop closed sends nothing")
+
+		------------------------------------------------------------------ at the altar: today's card
+		SE._AtAltar = true
+		Shop.Open({ Tab = "Eggs" })
+		G.advance(0.6)
+		k = G.heroKit()
+		T.check(SE.CardState("Secret") == "Ready" and G.shown(k.Spin) and not G.disabled(k.Spin) and not G.shown(k.Travel) and not G.shown(k.Chip) and G.shown(k.Pity) and not G.shown(k.Dim)
+			and G.text(k.Hero, "Hint") == ALTAR.Hint,
+			"secret lock: at the altar the card is Ready: SPIN shown, TRAVEL / AltarChip / Dim hidden, the PityChip back, the same hint", tostring(SE.CardState("Secret")) .. "; " .. G.heroLook(k))
+		T.check(pulseFrames(3) > 0, "secret lock: ...and the hero's SPIN pulses again (High)")
+
+		------------------------------------------------------------------ FromAltar (the altar prompt's OpenPanel) unlocks until Close
+		SE._AtAltar = nil
+		workspace:SetAttribute(attrName, Vector3.new(4000, 300, 4000))
+		Shop.Close()
+		G.advance(0.3)
+		Shop.Open({ RouletteId = "Secret", FromAltar = true })
+		G.advance(0.4)
+		k = G.heroKit()
+		T.check(SE.AtAltar() == true and SE.CardState("Secret") == "Ready" and G.shown(k.Spin) and k.Hero:GetAttribute("Focused") == true,
+			"secret lock: Open({ RouletteId = 'Secret', FromAltar = true }) (the altar's prompt) -> Ready and the Secret card focused, though the character reads far", tostring(SE.CardState("Secret")))
+		Shop.Close()
+		G.advance(0.3)
+		T.eq(SE.AtAltar(), false, "secret lock: ...Close clears FromAltar")
+		Shop.Open({})
+		G.advance(0.4)
+		T.eq(SE.CardState("Secret"), "Altar", "secret lock: ...and the next plain open is locked again")
+		Shop.Close()
+		G.advance(0.3)
+
+		------------------------------------------------------------------ walk to / away from the altar: the card follows on the next tick
+		local site = Vector3.new(600, 300, 40)
+		workspace:SetAttribute(attrName, site)
+		if T.check(root ~= nil, "secret lock: (setup) the local character has a HumanoidRootPart") then
+			Mock.Teleport(LocalPlayer, CFrame.new(site + Vector3.new(0, 3, -80)))
+			Shop.Open({ Tab = "Eggs" })
+			G.advance(0.4)
+			T.eq(SE.CardState("Secret"), "Altar", "secret lock walk: 80 studs from the island: Altar")
+			Mock.Teleport(LocalPlayer, CFrame.new(site + Vector3.new(0, 3, -10)))
+			G.advance(1.1)
+			k = G.heroKit()
+			T.check(SE.CardState("Secret") == "Ready" and G.shown(k.Spin) and not G.shown(k.Travel), "secret lock walk: on the deck the card unlocks on the next Shop tick", tostring(SE.CardState("Secret")) .. "; " .. G.heroLook(k))
+			Mock.Teleport(LocalPlayer, CFrame.new(site + Vector3.new(0, 3, -40)))
+			G.advance(1.1)
+			k = G.heroKit()
+			T.check(SE.CardState("Secret") == "Altar" and not G.shown(k.Spin) and G.shown(k.Travel), "secret lock walk: 40 studs out (no client slack) it locks again on the next tick",
+				tostring(SE.CardState("Secret")) .. "; " .. G.heroLook(k))
+			Shop.Close()
+			G.advance(0.3)
+		end
+
+		------------------------------------------------------------------ Locked wins over Altar; Altar before Loading
+		SE._AtAltar = false
+		G.setAttr("PaidRandomItemsRestricted", true)
+		Shop.Open({ Tab = "Eggs" })
+		G.advance(1.2)
+		k = G.heroKit()
+		T.check(SE.CardState("Secret") == "Locked" and G.shown(k.Lock) and k.Lock.Text == EGG_LOCK and not G.shown(k.Chip) and not G.shown(k.Travel) and G.shown(k.Spin) and G.disabled(k.Spin)
+			and G.text(k.Spin, "Word") == "Locked" and not G.shown(k.Dim),
+			"secret lock: a restricted account: Locked wins (the Lock line, SPIN shown but 'Locked' and inactive; no chip, no TRAVEL, no Dim)", tostring(SE.CardState("Secret")) .. "; " .. G.heroLook(k))
+		G.setAttr("PaidRandomItemsRestricted", false)
+		G.setAttr("GemsSettled", nil)
+		G.advance(1.2)
+		T.eq(SE.CardState("Secret"), "Altar", "secret lock: not settled yet and away from the altar: Altar (before Loading)")
+		SE._AtAltar = true
+		G.advance(1.2)
+		T.eq(SE.CardState("Secret"), "Loading", "secret lock: ...at the altar it reads Loading as before")
+		G.setAttr("GemsSettled", true)
+		G.advance(1.2)
+		Shop.Close()
+		G.advance(0.3)
+
+		------------------------------------------------------------------ 1280x720 (Compact, shrunk), the phones, portrait
+		for _, sz in ipairs({ { 1280, 720, false, 14 }, { 844, 390, true, 15 }, { 640, 360, true, 15 }, { 360, 640, true, 15 } }) do
+			local label = fmt("secret lock %dx%d", sz[1], sz[2])
+			RedoGeom.at(sz[1], sz[2], sz[3], label, function()
+				SE._AtAltar = false
+				Shop.Open({ Tab = "Eggs" })
+				G.advance(0.6)
+				local kk = G.heroKit()
+				local phone = sz[3]
+				local want = phone and ALTAR.Short or ALTAR.Lock
+				local trb = kk.Travel and G.rel(kk.Travel, kk.Travel)
+				local spinAt = kk.Spin and G.rel(kk.Spin, kk.Hero)
+				local travelAt = kk.Travel and G.rel(kk.Travel, kk.Hero)
+				T.check(SE.CardState("Secret") == "Altar" and kk.Chip and G.shown(kk.Chip) and kk.Chip.Text == want and not G.shown(kk.Spin) and kk.Travel and G.shown(kk.Travel) and G.shown(kk.Dim)
+					and spinAt and travelAt and G.near(spinAt.x, travelAt.x) and G.near(spinAt.y, travelAt.y) and G.near(spinAt.w, travelAt.w) and G.near(spinAt.h, travelAt.h),
+					label .. ": the AltarChip reads '" .. want .. "', TRAVEL in SPIN's box, the Dim over the card", G.heroLook(kk))
+				if phone then
+					T.check(trb and G.near(trb.h, 44) and trb.w >= 44, label .. ": TRAVEL is 44 tall and at least 44 wide", trb and fmt("%.0fx%.0f", trb.w, trb.h) or "none")
+				else
+					T.check(kk.Chip.TextSize >= 18 and kk.Hint.TextSize >= 18 and kk.Travel:FindFirstChild("Word").TextSize >= 18, label .. ": PC texts >= 18 design px")
+				end
+				fitsAll(label, { kk.Chip, kk.Hint, kk.Travel and kk.Travel:FindFirstChild("Word") })
+				RedoGeom.check(G.win(), label, { MinText = sz[4], MinTarget = 44, NoOverlap = G.noOverlapNames() })
+				Shop.Close()
+				G.advance(0.3)
+			end)
+		end
+	end)
+	if not ok then
+		T.fail("secret lock: scenario error", tostring(err))
+	end
+	workspace:SetAttribute(attrName, site0)
+	if root and root0 and root.Parent then
+		Mock.Teleport(LocalPlayer, root0)
+	end
+	G.finish(saved)
+	KC.flushErrors("client_shop_secret_lock")
 end)
 
 return S

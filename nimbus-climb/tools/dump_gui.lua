@@ -3717,6 +3717,25 @@ scenario("store", function(tab)
 	shopScene(tab, "StoreController")
 end)
 
+-- shop_secret_locked    shop-area (spec 16.17.3): the Eggs tab as the plaza Shop shows it, away from the Storm Altar
+--                       (ShopEggs._AtAltar = false): the Secret card greyed under its Dim, the AltarChip "Available at the
+--                       Storm Altar" ("At the Storm Altar" on a phone) where the pity chip was, the blue TRAVEL where SPIN was
+-- shop_secret_altar     the same at the altar (ShopEggs._AtAltar = true): SPIN, the pity chip, no Dim
+local function secretShopScene(at)
+	local SE = req("client/UI/ShopEggs")
+	if SE then
+		SE._AtAltar = at
+	end
+	shopScene("Eggs", "ShopController")
+	note(fmt("shop_secret: AtAltar %s, Secret card %s", tostring(SE and SE.AtAltar()), tostring(SE and SE.CardState("Secret"))))
+end
+scenario("shop_secret_locked", function()
+	secretShopScene(false)
+end)
+scenario("shop_secret_altar", function()
+	secretShopScene(true)
+end)
+
 -- lobbyboard[:2|:3]     lobby-shop Task 24 (spec 5.10 "Client", section 15 pages): the lobby board's SurfaceGui
 --                       (client/Controllers/LeaderboardController) on page 1 Trophies (default), 2 Pets found or 3 Ring best,
 --                       no game HUD. A stand-in board (the LobbyLeaderboard model's 16 x 13 Face; only the face matters

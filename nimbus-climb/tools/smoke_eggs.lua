@@ -950,6 +950,10 @@ local function serverScenarios()
 			local p = B.join("EggFull")
 			players[1] = p
 			T.eq(D._SettleForTest(p), true, "egg full stack: (setup) the gem settle hold ends")
+			-- shop-area 16.17.3: the Secret Roulette spins below happen at the Storm Altar only: stand on its deck
+			local SA = req("server/Services/StormAltar")
+			local altarCF = SA and SA.GetCFrame()
+			T.check(typeof(altarCF) == "CFrame" and Mock.Teleport(p, altarCF * CFrame.new(0, 3, -8)) == true, "egg full stack: (setup) the player stands on the Storm Altar's deck")
 			local prof = D.GetProfile(p)
 			local cloud = B.roulette("Cloud")
 			local commons = PC.RarityPool("Cloud", "Common")

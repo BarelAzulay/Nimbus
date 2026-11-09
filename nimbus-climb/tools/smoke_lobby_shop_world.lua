@@ -54,10 +54,12 @@
 --                      SignFace part at the manifest's SignFace), ML_DressKey only where the key is not missing
 --   altar_world_gem    the world gem (5.7): Model WorldGem whose one Part fallback Gem is a 4x4x4 Glass block in
 --                      rgb(84,196,246) turned 45 degrees on X and Z (anchored, no collide / touch), the model's pivot upright
---                      at its centre, NC_Spin with SpinSeconds 8 / BobStuds 0.6 / BobSeconds 3; the cube's lowest corner 3
---                      +-0.2 studs over the deck top below it; 15 studs out along the bridge and 7.5 to the side away from the
---                      return ring (the plan's halfway point is inside the medium crystal on the stone ring), outside the
---                      8-stud bridge lane (rotated, turning, and the gem_world mesh's bounds), >= 6 studs from every prompt
+--                      at its centre, NC_Spin with SpinSeconds 8 / BobStuds 0.6 / BobSeconds 3; shop-area 16.17.4 (spot 2
+--                      "Side crystal"): the centre 15.0 studs over the deck straight above the medium crystal (ring index
+--                      HEAD +- 3 at r 12.2) on the side away from the return ring, the cube's lowest corner >= 2 over the
+--                      crystal's tip (>= 1.4 at the bob's bottom, the gem_world mesh's bounds >= 2), the stone ring / the
+--                      crystal straight below (never open deck), outside the
+--                      8-stud bridge lane (rotated, turning, and the gem_world mesh's bounds), >= 12 studs from every prompt
 --                      part, clear of every other altar part while it turns and bobs; one cyan PointLight 1.0 / 12; the altar
 --                      <= 500 parts with its lights in the rule; a rebuild with StormAltar._Kit: one gem_world request on
 --                      WorldGem at the gem CFrame, ML_DressKey only where the key is not missing (--mesh: a fixture holder)
@@ -1771,20 +1773,38 @@ local WGEM = {
 	Color = Color3.fromRGB(84, 196, 246), -- the GUI gem's mid tone (Theme.Currency.Gems)
 	Size = Vector3.new(4, 4, 4),
 	Turn = CFrame.Angles(math.rad(45), 0, math.rad(45)), -- the Part fallback turned 45 degrees on X and Z
-	Gap = 3, -- the clear gap from the deck top to the turned cube's lowest corner
-	-- the spot in the bridge frame (from the altar centre towards the landing): 15 studs out (on the open deck between
-	-- the stone ring and the landing; the plan's halfway point, 8.5 out, is inside the medium crystal on the ring) and
-	-- 7.5 studs to the side away from the return ring (the plan's 7 puts the 6-stud mesh's bounds exactly on the
-	-- 4-stud half lane, and the turning cube 0.41 into it)
-	Ahead = 15,
-	Side = 7.5,
+	-- shop-area 16.17.4 (spot 2 "Side crystal"; the owner: "move it ... not where the players might stand"): the gem's
+	-- centre 15 studs over the deck straight above the medium crystal (ring index HEAD +- CrystalStep on the stone ring's
+	-- centre radius RingC) on the side away from the return ring. Was: 15 out / 7.5 side, 3 studs over open deck.
+	Up = 15,
+	RingC = 12.2,
+	RingN = 22,
+	Head = 11,
+	CrystalStep = 3,
+	TipClear = 2, -- the turned cube's lowest corner over the crystal's tip
+	BobClear = 1.4, -- ...at the bob's bottom
+	Near = 3, -- "under the gem": a Crystals / Ring part whose box comes within this many studs horizontally
 	Lane = 4, -- the 8-stud bridge lane's half width
 	Sphere = 2 * math.sqrt(3), -- the 4-stud cube's half diagonal: covers the cube (and the 6-stud mesh) at any turn
 	Bob = 0.6, -- BobStuds: the client moves it +-0.6 from its built pivot
 	Margin = 0.25, -- the least gap from the gem's sweep to any other altar part
-	PromptMin = 6,
+	PromptMin = 12, -- (16.17.4: >= 12 studs from both prompt parts; was 6)
 	Allowed = { "[DataService]", "[MeshLibrary]" },
 }
+
+-- the horizontal distance from a point to a part's world bounds (its eight corners' footprint)
+local function flatToBounds(pt, part)
+	local minX, maxX, minZ, maxZ = math.huge, -math.huge, math.huge, -math.huge
+	local top = -math.huge
+	for _, c in ipairs(boxCorners(part.CFrame, part.Size)) do
+		minX, maxX = math.min(minX, c.X), math.max(maxX, c.X)
+		minZ, maxZ = math.min(minZ, c.Z), math.max(maxZ, c.Z)
+		top = math.max(top, c.Y)
+	end
+	local dx = math.max(minX - pt.X, 0, pt.X - maxX)
+	local dz = math.max(minZ - pt.Z, 0, pt.Z - maxZ)
+	return math.sqrt(dx * dx + dz * dz), top
+end
 
 -- point to oriented box distance
 local function pointToBox(p, part)
@@ -1824,33 +1844,60 @@ local function checkWorldGem(label, SA, altar, A, landing, Config, ML)
 	T.check(CS:HasTag(model, Config.Tags.Spin) and model:GetAttribute("SpinSeconds") == 8 and model:GetAttribute("BobStuds") == WGEM.Bob and model:GetAttribute("BobSeconds") == 3,
 		label .. ": WorldGem is tagged NC_Spin with SpinSeconds 8, BobStuds 0.6, BobSeconds 3 (the client turns and bobs it)",
 		fmt("%s / %s / %s", tostring(model:GetAttribute("SpinSeconds")), tostring(model:GetAttribute("BobStuds")), tostring(model:GetAttribute("BobSeconds"))))
-	-- 3 studs of clear air between the deck top below it and the cube's lowest corner
+	-- shop-area 16.17.4 (rewritten): spot 2 "Side crystal". The old checks "3 studs over the deck right below" and "15 out /
+	-- 7.5 to the side" are gone: the gem now stands over the medium crystal on the side away from the return ring
 	local corners8 = boxCorners(gem.CFrame, gem.Size)
 	local low, sweep = math.huge, 0
 	for _, c in ipairs(corners8) do
 		low = math.min(low, c.Y)
 		sweep = math.max(sweep, hdist(c, gem.Position))
 	end
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { model }
-	local hit = workspace:Raycast(gem.Position, Vector3.new(0, -40, 0), params)
-	local island = altar:FindFirstChild("Island")
-	if T.check(hit ~= nil and island ~= nil and hit.Instance:IsDescendantOf(island), label .. ": the deck (the island's walking top) is right below the gem",
-		hit and hit.Instance:GetFullName() or "no hit") then
-		T.check(math.abs(low - hit.Position.Y - WGEM.Gap) <= 0.2, label .. ": ...the gem floats 3 studs over the deck top below it (its lowest corner, +-0.2)",
-			fmt("lowest corner %.3f over the deck top, centre %.3f", low - hit.Position.Y, gem.Position.Y - hit.Position.Y))
-	end
-	-- its spot: beside the walk from the landing to the summon portal, on the side away from the return ring
 	local axis = flat(landing - A.Position).Unit
 	local bf = CFrame.lookAt(A.Position, A.Position + axis)
 	local g = bf:PointToObjectSpace(gem.Position)
 	local pad = SA.GetReturnPad()
 	local padX = pad and bf:PointToObjectSpace(pad.Position).X or 1
 	local side = padX >= 0 and -1 or 1
-	T.check(math.abs(g.X - side * WGEM.Side) <= 0.01 and math.abs(-g.Z - WGEM.Ahead) <= 0.01,
-		label .. ": ...15 studs out along the bridge and 7.5 to the side away from the return ring (beside the walk to the summon portal)",
-		fmt("lateral %.2f (return ring %.2f), out %.2f (landing %.2f)", g.X, padX, -g.Z, bf:PointToObjectSpace(landing).Z * -1))
+	local step = 360 / WGEM.RingN
+	local want, wantK = nil, nil
+	for _, k in ipairs({ WGEM.Head - WGEM.CrystalStep, WGEM.Head + WGEM.CrystalStep }) do
+		local p = (A * CFrame.Angles(0, -math.rad(k * step), 0) * CFrame.new(0, WGEM.Up, -WGEM.RingC)).Position
+		if bf:PointToObjectSpace(p).X * side > 0 then
+			want, wantK = p, k
+		end
+	end
+	T.check(want ~= nil and (gem.Position - want).Magnitude <= 0.05,
+		label .. ": the gem's centre stands 15 over the deck straight above the medium crystal (ring index " .. tostring(wantK) .. ") on the side away from the return ring",
+		fmt("off by %.3f; bridge frame ahead %.2f / side %.2f / up %.2f (return ring side %.2f)", want and (gem.Position - want).Magnitude or -1, -g.Z, g.X, gem.Position.Y - A.Position.Y, padX))
+	T.check(math.abs(gem.Position.Y - A.Position.Y - WGEM.Up) <= 0.05, label .. ": ...its centre 15.0 studs over the deck (+-0.05)", fmt("%.3f", gem.Position.Y - A.Position.Y))
+	-- clear air over the crystal's tip: the highest Crystals / Ring part under the gem (its box within 3 studs horizontally)
+	local tip, tipName = -math.huge, "-"
+	for _, groupName in ipairs({ "Crystals", "Ring" }) do
+		local group = altar:FindFirstChild(groupName)
+		for _, d in ipairs(group and partsUnder(group) or {}) do
+			local dist, top = flatToBounds(gem.Position, d)
+			if dist <= WGEM.Near and top > tip then
+				tip, tipName = top, d:GetFullName()
+			end
+		end
+	end
+	T.check(tip > A.Position.Y and low - tip >= WGEM.TipClear and low - WGEM.Bob - tip >= WGEM.BobClear,
+		label .. ": ...the turned cube's lowest corner clears the crystal's tip by >= 2 (>= 1.4 at the bob's bottom)",
+		fmt("tip %.2f over the deck (%s), lowest corner %.2f: %.2f / %.2f of air", tip - A.Position.Y, tipName, low - A.Position.Y, low - tip, low - WGEM.Bob - tip))
+	local meshLow = math.huge
+	for _, c in ipairs(meshCorners(ML, "gem_world", model:GetPivot())) do
+		meshLow = math.min(meshLow, c.Y)
+	end
+	T.check(meshLow < math.huge and meshLow - tip >= WGEM.TipClear, label .. ": ...the gem_world mesh's bounds clear the tip by >= 2 too",
+		fmt("%.2f of air", meshLow - tip))
+	-- nobody stands under it: straight below is the stone ring / the crystal, never open deck
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { model }
+	local hit = workspace:Raycast(gem.Position, Vector3.new(0, -40, 0), params)
+	local ringM, crystalsM = altar:FindFirstChild("Ring"), altar:FindFirstChild("Crystals")
+	T.check(hit ~= nil and ((ringM and hit.Instance:IsDescendantOf(ringM)) or (crystalsM and hit.Instance:IsDescendantOf(crystalsM))),
+		label .. ": ...straight below the gem is the stone ring / the crystal (never open deck where players stand)", hit and hit.Instance:GetFullName() or "no hit")
 	-- outside the 8-stud bridge lane: the cube's rotated bounds, the cube turning, and the gem_world mesh's bounds
 	local lat = math.huge
 	for _, c in ipairs(corners8) do
@@ -1874,7 +1921,7 @@ local function checkWorldGem(label, SA, altar, A, landing, Config, ML)
 			end
 		end
 	end
-	T.check(prompts >= 2 and closest >= WGEM.PromptMin, label .. ": ...at least 6 studs from every ProximityPrompt part",
+	T.check(prompts >= 2 and closest >= WGEM.PromptMin, label .. ": ...at least 12 studs from every ProximityPrompt part (horizontally)",
 		fmt("%d prompt parts (%s), nearest %.2f studs", prompts, table.concat(names, ", "), closest))
 	-- clear of every other altar part while it turns and bobs (a sphere of the cube's half diagonal, +-0.6)
 	local worst, who = math.huge, "-"
