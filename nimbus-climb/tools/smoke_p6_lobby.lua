@@ -10,7 +10,8 @@
 --                 key is tagged where the kit says (template clones, plots, shop, plaza layers, roads, gardens, sky),
 --                 the LayoutSig of every layout key matches this very build (the kit and the game agree), keep lists
 --                 (podium, sign boards) and looks (obelisk / banner / roulette / flower colours), no tagged subtree
---                 hides another one's parts, the part count is the same as an untagged build (<= 8000), a moved
+--                 hides another one's parts, the part count is the same as an untagged build (<= 8000) but the
+--                 dressed globes' twelve in-globe eggs each (shop-area 16.17.1: prop_roulette_globe), a moved
 --                 part makes a layout key refuse to tag (no stale mesh), and Dress puts the mesh at the Tag origin
 --                 hiding the Parts but not the kept ones
 --     altar       the live Storm Altar's pieces match their committed LayoutSig (read-only: nothing is tagged)
@@ -53,7 +54,8 @@ local ALTAR_KEYS = {
 local PROP_KEYS = {
 	"prop_tree_round", "prop_tree_blossom", "prop_tree_pine", "prop_lamp", "prop_bench", "prop_flowerbed",
 	"prop_oasis_pool", "prop_oasis_islands", "prop_oasis_water", "prop_oasis_boat", "prop_welcome_arch", "prop_obelisk", "prop_banner", "prop_board_s",
-	"prop_board_l", "prop_roulette", "prop_token_statue", "prop_shop_arch", "prop_pond",
+	-- shop-area 16.17.1: the machines tag the Gumball Globe prop_roulette_globe (the old prop_roulette is no longer tagged)
+	"prop_board_l", "prop_roulette_globe", "prop_token_statue", "prop_shop_arch", "prop_pond",
 	"prop_pond_water", "prop_seedsack", -- (bug #12: the meadow_* clumps are not tagged: MeadowFx assembles them on the client)
 }
 
@@ -329,7 +331,15 @@ S.p6lobby_server = guarded("p6lobby_server", function()
 		end
 		local lobby = info.Folder
 		local parts = partsOf(lobby)
-		T.check(parts == defaultParts and parts <= 8000, fmt("p6 lobby fixture: tagging adds no parts (%d tagged build, %d untagged, budget 8000)", parts, defaultParts))
+		-- shop-area 16.17.1: a dressed globe adds its twelve in-globe eggs (one Part each, beside the Machine); nothing else
+		local globeParts = 0
+		for _, d in ipairs(lobby:GetDescendants()) do
+			if d.Name == "GlobeEggs" and d:IsA("Model") then
+				globeParts = globeParts + partsOf(d)
+			end
+		end
+		T.check(globeParts == 12 * #Config.Roulettes and parts == defaultParts + globeParts and parts <= 8000,
+			fmt("p6 lobby fixture: tagging adds no parts but the dressed globes' eggs (%d tagged build = %d untagged + %d globe eggs, budget 8000)", parts, defaultParts, globeParts))
 		local got = tagged(lobby, set)
 		local untagged = {}
 		for _, key in ipairs(LAYOUT_KEYS) do
@@ -345,7 +355,7 @@ S.p6lobby_server = guarded("p6lobby_server", function()
 		T.check(#untagged == 0, "p6 lobby fixture: every lobby key is tagged (the live build matches every LayoutSig)", table.concat(untagged, ", "))
 		local spots = #(info.Spots or {})
 		T.check(got.prop_plot and #got.prop_plot == spots, fmt("p6 lobby fixture: every plot tagged (%d of %d)", got.prop_plot and #got.prop_plot or 0, spots))
-		T.check(got.prop_roulette and #got.prop_roulette == #Config.Roulettes, "p6 lobby fixture: one roulette cabinet per roulette")
+		T.check(got.prop_roulette_globe and #got.prop_roulette_globe == #Config.Roulettes, "p6 lobby fixture: one roulette globe per roulette")
 		T.check(got.prop_lamp and #got.prop_lamp >= 20, fmt("p6 lobby fixture: lamp clones tagged (%d)", got.prop_lamp and #got.prop_lamp or 0))
 
 		-- origins: the plot mesh sits on SpotInfo.PlotCFrame, every Offset parses, the tag look / keep lists
@@ -373,24 +383,25 @@ S.p6lobby_server = guarded("p6lobby_server", function()
 			T.check(t and t:GetAttribute("ML_Keep") == want, "p6 lobby fixture: " .. key .. " keeps " .. want)
 		end
 		local primaries = 0
-		for _, key in ipairs({ "prop_obelisk", "prop_banner", "prop_roulette", "prop_flowerbed" }) do
+		for _, key in ipairs({ "prop_obelisk", "prop_banner", "prop_roulette_globe", "prop_flowerbed" }) do
 			for _, t in ipairs(got[key] or {}) do
 				if typeof(t:GetAttribute("ML_Primary")) == "Color3" then
 					primaries = primaries + 1
 				end
 			end
 		end
-		local want = #(got.prop_obelisk or {}) + #(got.prop_banner or {}) + #(got.prop_roulette or {}) + #(got.prop_flowerbed or {})
+		local want = #(got.prop_obelisk or {}) + #(got.prop_banner or {}) + #(got.prop_roulette_globe or {}) + #(got.prop_flowerbed or {})
 		T.check(primaries == want and want > 0, fmt("p6 lobby fixture: obelisks / banners / roulettes / flower beds carry ML_Primary (%d/%d)", primaries, want))
 		local roulettesOk = true
 		for _, r in ipairs(Config.Roulettes) do
 			local m = lobby:FindFirstChild("Roulette_" .. r.Id, true)
 			local body = m and m:FindFirstChild("Machine")
-			if not (body and body:GetAttribute("ML_DressKey") == "prop_roulette" and body:GetAttribute("ML_Primary") == r.Color) then
+			if not (body and body:GetAttribute("ML_DressKey") == "prop_roulette_globe" and body:GetAttribute("ML_Primary") == r.Color
+				and m:FindFirstChild("GlobeEggs") and not body:FindFirstChild("GlobeEggs", true)) then
 				roulettesOk = false
 			end
 		end
-		T.check(roulettesOk, "p6 lobby fixture: each roulette's Machine is tagged in its own colour (PromptPart / tags stay outside)")
+		T.check(roulettesOk, "p6 lobby fixture: each roulette's Machine is tagged prop_roulette_globe in its own colour, its GlobeEggs beside it (PromptPart / tags stay outside)")
 
 		-- no tagged subtree hides another's parts: a nested tagged piece's parts are all in the outer keep list
 		local clash = {}

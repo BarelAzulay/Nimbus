@@ -82,6 +82,15 @@
 --                      middle, so the Part fallback and a dressed mesh share it), Common and Uncommon none; one PointLight
 --                      EggShelfGlow 1.0 / 10 at the shelf's centre; every lobby light within the light rule; no part
 --                      added to the Egg Guide; the trove <= 60 parts; the same on a rebuilt lobby
+--   shop_globe         the Gumball Globe (shop-area T1, spec 16.17.1): LobbyMachineBuilder.GLOBE / Rarities (the four
+--                      sequences, top first) / GlobeEggs; the prop_roulette_globe manifest (Egg1..Egg12, Meta.eggScale 0.42 /
+--                      chaseScale 0.44, inside 9 x 14.5 x 7, <= 4000 tris, the eight parts, every egg's middle inside the
+--                      glass, pivots >= 0.9 apart, the chase egg in front); the default run (no id) = today's Part machine (no
+--                      ML_DressKey, no GlobeEggs, no warn); one prop_roulette_globe request per Machine (origin, Look.Primary
+--                      = the roulette colour, Look.Secondary = its top rarity's), the price card / DomeGlow / PromptPart
+--                      unchanged; dressed (--mesh: fixture holders; default: the tag forced) -> GlobeEggs of twelve egg Models
+--                      at the attachments (ML_Scale, NC_Detail on 2..12, the egg_<rarity> requests in order); a manifest
+--                      without Egg7 -> one warn, no GlobeEggs, the machines stand
 -- Rebuilds follow smoke_p6_lobby.lua: the booted lobby is set aside (renamed) and put back, the hooks (_Kit,
 -- _ForceShopFallback), Config.Trove.GroupId, the Meadow stats and the fixture holders restored in every path.
 -- Deterministic: mock clock only. Plain Lua 5.1 syntax only.
@@ -2101,6 +2110,469 @@ S.egg_shelf_fx = guarded("egg_shelf_fx", function()
 	end)
 	K.flushErrors("egg_shelf_fx")
 	K.flushWarnings("egg_shelf_fx", ALLOWED_WARNINGS)
+end)
+
+----------------------------------------------------------------------------------------------------
+-- shop_globe (shop-area T1, spec 16.17.1): the Gumball Globe key prop_roulette_globe and its in-globe eggs
+----------------------------------------------------------------------------------------------------
+local GLOBE = {
+	Key = "prop_roulette_globe", Count = 12, Scale = 0.42, ChaseScale = 0.44, EggSize = Vector3.new(2.25, 3, 2.5),
+	Parts = { "Body", "BodyDark", "BodyLight", "Bulb", "Emblem", "Fixed", "Glass", "Glow" },
+	Centre = Vector3.new(0, 9.75, 0), Inner = 2.8, Margin = 0.1, Gap = 0.9, MaxTris = 4000,
+	Footprint = Vector3.new(9, 14.5, 7),
+	Seq = {
+		Cloud = "Epic Common Uncommon Rare Common Uncommon Common Uncommon Common Common Common Common",
+		Storm = "Legendary Uncommon Rare Epic Uncommon Rare Epic Uncommon Rare Uncommon Rare Rare",
+		Sky = "Mythic Rare Epic Legendary Rare Epic Legendary Rare Epic Rare Epic Epic",
+		Celestial = "Secret Epic Legendary Mythic Epic Legendary Mythic Epic Legendary Epic Legendary Epic",
+	},
+	SecretEmblem = Color3.fromRGB(180, 150, 255), -- Config.Eggs.ChatColors.Secret: the readable violet
+	SecretEgg = Color3.fromRGB(40, 40, 52):Lerp(Color3.fromRGB(138, 92, 255), 0.18), -- the shelf egg's Part colour
+	NoEgg7 = "[LobbyMachineBuilder] prop_roulette_globe: no Egg7 attachment",
+	CardH = 7.6,
+}
+GLOBE.Allowed = { "[DataService]", "[MeshLibrary]", GLOBE.NoEgg7 }
+
+local function rarityColour(Config, id)
+	for _, r in ipairs(Config.Rarities) do
+		if r.Id == id then
+			return r.Color
+		end
+	end
+	return nil
+end
+
+-- the emblem colour of a roulette: its top rarity's colour (Secret -> the readable violet)
+local function emblemColour(Config, roulette)
+	local top = nil
+	for _, r in ipairs(Config.Rarities) do
+		if roulette.Odds and (roulette.Odds[r.Id] or 0) > 0 then
+			top = r
+		end
+	end
+	if top and top.Id == "Secret" then
+		return GLOBE.SecretEmblem
+	end
+	return top and top.Color
+end
+
+local function v3of(t)
+	return type(t) == "table" and Vector3.new(tonumber(t[1]) or 0, tonumber(t[2]) or 0, tonumber(t[3]) or 0) or nil
+end
+
+-- an attachment { Pos, Rot } of a manifest -> its CFrame in model space (nil when malformed)
+local function attCF(a)
+	local pos = type(a) == "table" and (a.Pos or a.pos)
+	local rot = type(a) == "table" and (a.Rot or a.rot)
+	if type(pos) ~= "table" or type(rot) ~= "table" or type(rot[1]) ~= "table" or type(rot[2]) ~= "table" or type(rot[3]) ~= "table" then
+		return nil
+	end
+	return CFrame.new(pos[1], pos[2], pos[3], rot[1][1], rot[1][2], rot[1][3], rot[2][1], rot[2][2], rot[2][3], rot[3][1], rot[3][2], rot[3][3])
+end
+
+local function cfNear(a, b, tol)
+	tol = tol or 0.01
+	return near(a.Position, b.Position, tol) and near(a.RightVector, b.RightVector, tol) and near(a.UpVector, b.UpVector, tol)
+		and near(a.LookVector, b.LookVector, tol)
+end
+
+local function warnsSince(cursor, needle)
+	local n = 0
+	for i = (cursor or 0) + 1, #Mock.Output do
+		local o = Mock.Output[i]
+		if o.kind == "warn" and string.find(tostring(o.text), needle, 1, true) then
+			n = n + 1
+		end
+	end
+	return n
+end
+
+-- the manifest of the globe: Egg1..Egg12, the scales, the bounds, the budget, the eight parts, the egg spots in the glass
+local function checkGlobeManifest(ML)
+	local man = ML and ML.Manifest(GLOBE.Key)
+	if not T.check(type(man) == "table" and type(man.Raw) == "table", "globe manifest: MeshLibrary.Manifest('" .. GLOBE.Key .. "') loads (src/shared/MeshManifests)") then
+		return nil
+	end
+	local att, eggs, others = man.Attachments or {}, 0, {}
+	for name in pairs(att) do
+		if string.match(name, "^Egg%d+$") then
+			eggs = eggs + 1
+		else
+			others[#others + 1] = name
+		end
+	end
+	local missing = {}
+	for i = 1, GLOBE.Count do
+		if not attCF(att["Egg" .. i]) then
+			missing[#missing + 1] = "Egg" .. i
+		end
+	end
+	T.check(eggs == GLOBE.Count and #missing == 0 and #others == 0, "globe manifest: exactly twelve attachments Egg1..Egg12, each a Pos + 3 x 3 Rot",
+		fmt("%d Egg attachments, missing %s, others %s", eggs, table.concat(missing, ","), table.concat(others, ",")))
+	local meta = man.Raw.Meta or {}
+	T.check(meta.eggScale == GLOBE.Scale and meta.chaseScale == GLOBE.ChaseScale, "globe manifest: Meta.eggScale 0.42, Meta.chaseScale 0.44",
+		tostring(meta.eggScale) .. " / " .. tostring(meta.chaseScale))
+	local b = man.Bounds or {}
+	local lo, hi, size = v3of(b.Min), v3of(b.Max), v3of(b.Size)
+	T.check(lo ~= nil and hi ~= nil and size ~= nil and size.X <= GLOBE.Footprint.X + 1e-6 and size.Z <= GLOBE.Footprint.Z + 1e-6
+		and hi.Y <= GLOBE.Footprint.Y + 1e-6 and lo.Y >= -1e-6 and math.abs(lo.X + hi.X) <= 0.6 and math.abs(lo.Z + hi.Z) <= 0.6,
+		"globe manifest: inside the 9 x 7 footprint round the pivot, from the ground to y <= 14.5", size and fmt("size %.2f x %.2f x %.2f, min y %.2f, max y %.2f", size.X, size.Y, size.Z, lo.Y, hi.Y) or "no bounds")
+	T.check(type(man.Raw.Tris) == "number" and man.Raw.Tris <= GLOBE.MaxTris, "globe manifest: <= 4000 triangles (propBig)", tostring(man.Raw.Tris))
+	local names, byName = {}, {}
+	for _, p in ipairs(man.Parts) do
+		names[#names + 1] = p.name
+		byName[p.name] = p
+	end
+	table.sort(names)
+	T.eq(table.concat(names, " "), table.concat(GLOBE.Parts, " "), "globe manifest: eight parts Body / BodyDark / BodyLight / Bulb / Emblem / Fixed / Glass / Glow")
+	local em, gl, body = byName.Emblem, byName.Glass, byName.Body
+	T.check(em ~= nil and em.material == "Neon" and type(em.color) == "table" and em.color[1] == "Secondary"
+		and body ~= nil and type(body.color) == "table" and body.color[1] == "Primary"
+		and gl ~= nil and gl.material == "Glass" and math.abs((tonumber(gl.transparency) or 0) - 0.7) < 1e-6,
+		"globe manifest: Body = Primary, Emblem = Neon Secondary, Glass = Glass at Transparency 0.70")
+	-- the egg spots: each scaled egg's middle inside the glass (centre (0, 9.75, 0), r 2.8 - 0.1), pivots >= 0.9 apart
+	local bad, spots = {}, {}
+	for i = 1, GLOBE.Count do
+		local cf = attCF(att["Egg" .. i])
+		if cf then
+			local s = (i == 1) and GLOBE.ChaseScale or GLOBE.Scale
+			local mid = (cf * CFrame.new(0, GLOBE.EggSize.Y * s / 2, 0)).Position
+			if (mid - GLOBE.Centre).Magnitude > GLOBE.Inner - GLOBE.Margin then
+				bad[#bad + 1] = fmt("Egg%d middle %.2f from the centre", i, (mid - GLOBE.Centre).Magnitude)
+			end
+			if cf.UpVector.Y < 0.7 then
+				bad[#bad + 1] = fmt("Egg%d lies over (up %.2f)", i, cf.UpVector.Y)
+			end
+			spots[i] = cf.Position
+		end
+	end
+	for i = 1, GLOBE.Count do
+		for j = i + 1, GLOBE.Count do
+			if spots[i] and spots[j] and (spots[i] - spots[j]).Magnitude < GLOBE.Gap then
+				bad[#bad + 1] = fmt("Egg%d - Egg%d %.2f apart", i, j, (spots[i] - spots[j]).Magnitude)
+			end
+		end
+	end
+	local chase = spots[1]
+	T.check(#bad == 0, "globe manifest: every egg's middle inside the glass by >= 0.1 stud, standing (up > 0.7), the pivots >= 0.9 apart", table.concat(bad, "; "))
+	local front = true
+	for i = 2, GLOBE.Count do
+		if chase and spots[i] and spots[i].Z < chase.Z - 0.05 and math.abs(spots[i].X - chase.X) < 0.9 and spots[i].Y + 1.26 > chase.Y + 0.3 then
+			front = false
+		end
+	end
+	T.check(chase ~= nil and chase.Z < 0 and front, "globe manifest: the chase egg Egg1 stands in the front half with no egg in front of it", chase and tostring(chase) or "no Egg1")
+	return man
+end
+
+S.shop_globe = guarded("shop_globe", function()
+	if not K.needBoot() then
+		return
+	end
+	local Config = K.config()
+	local ML = req("shared/MeshLibrary")
+	local LMB = req("server/Services/LobbyMachineBuilder")
+	local lobby = workspace:FindFirstChild("NimbusLobby")
+	local G = LMB and LMB.GLOBE
+	if not T.check(LMB ~= nil and type(G) == "table" and type(LMB.Rarities) == "function" and type(LMB.GlobeEggs) == "function" and ML ~= nil and lobby ~= nil,
+		"globe: (precondition) the booted lobby, MeshLibrary and server/Services/LobbyMachineBuilder with GLOBE / Rarities / GlobeEggs") then
+		return
+	end
+	T.check(G.Key == GLOBE.Key and G.Count == GLOBE.Count and G.Chase == 1 and G.Scale == GLOBE.Scale and G.ChaseScale == GLOBE.ChaseScale
+		and typeof(G.EggSize) == "Vector3" and near(G.EggSize, GLOBE.EggSize, 1e-6),
+		"globe: GLOBE = { Key prop_roulette_globe, Count 12, Chase 1, Scale 0.42, ChaseScale 0.44, EggSize 2.25 x 3 x 2.5 }")
+
+	------------------------------------------------------------------ Rarities (pure): the four sequences of 16.17.1
+	local byId = {}
+	for _, r in ipairs(Config.Roulettes) do
+		byId[r.Id] = r
+		local want = GLOBE.Seq[r.Id]
+		if want then
+			local okR, seq = pcall(LMB.Rarities, r, GLOBE.Count)
+			T.eq(okR and type(seq) == "table" and table.concat(seq, " ") or tostring(seq), want, "globe: " .. r.Id .. "'s chase egg + pile (Rarities, top first, the pile by weight, interleaved)")
+		end
+	end
+	T.check(byId.Cloud and byId.Storm and byId.Sky and byId.Celestial, "globe: (precondition) the four roulettes Cloud / Storm / Sky / Celestial")
+	local okDuo, duo = pcall(LMB.Rarities, { Id = "Duo", Odds = { Mythic = 60, Secret = 40 } }, GLOBE.Count)
+	T.eq(okDuo and type(duo) == "table" and table.concat(duo, " ") or tostring(duo), "Secret" .. string.rep(" Mythic", 11), "globe: a roulette with two rarities fills the pile with the lower one")
+	local okSolo, solo = pcall(LMB.Rarities, { Id = "Solo", Odds = { Rare = 1 } }, 4)
+	T.eq(okSolo and type(solo) == "table" and table.concat(solo, " ") or tostring(solo), "Rare Rare Rare Rare", "globe: a one-rarity roulette shows that egg everywhere")
+
+	------------------------------------------------------------------ the manifest
+	local man = checkGlobeManifest(ML)
+
+	------------------------------------------------------------------ the default run: no id -> today's Part machine exactly
+	local okSt, st = pcall(ML.Status, GLOBE.Key)
+	T.check(okSt and st == "missing", "globe: MeshLibrary.Status('prop_roulette_globe') is 'missing' (no id in this build)", tostring(st))
+	local shop = lobby:FindFirstChild("Shop")
+	local bootBad = {}
+	for _, r in ipairs(Config.Roulettes) do
+		local m = shop and shop:FindFirstChild("Roulette_" .. r.Id)
+		local body = m and m:FindFirstChild("Machine")
+		if not (m and body) then
+			bootBad[#bootBad + 1] = r.Id .. " (no Machine)"
+		end
+		if body and body:GetAttribute("ML_DressKey") ~= nil then
+			bootBad[#bootBad + 1] = r.Id .. " Machine ML_DressKey " .. tostring(body:GetAttribute("ML_DressKey"))
+		end
+		if m and m:FindFirstChild("GlobeEggs") then
+			bootBad[#bootBad + 1] = r.Id .. " has GlobeEggs"
+		end
+		if m and not (m:FindFirstChild("PromptPart") and m:FindFirstChild("PriceAnchor") and m:FindFirstChild("DomeGlow")) then
+			bootBad[#bootBad + 1] = r.Id .. " lost PromptPart / PriceAnchor / DomeGlow"
+		end
+	end
+	T.check(#bootBad == 0, "globe (default run): every Roulette_<Id> is today's Part machine: Machine without ML_DressKey, no GlobeEggs, PromptPart / PriceAnchor / DomeGlow", table.concat(bootBad, "; "))
+	T.eq(warnsSince(0, "[LobbyMachineBuilder]"), 0, "globe (default run): no [LobbyMachineBuilder] warn in the boot log")
+
+	------------------------------------------------------------------ the dress request (default run: nothing dressed)
+	local _, S0 = shopFrame()
+	local origins = {}
+	rebuild("globe request", function(_, LB)
+		LB._Kit = { Targets = {}, Clouds = {} }
+	end, function(built)
+		local LB = req("server/Services/LobbyBuilder")
+		local recs, old = {}, 0
+		for _, rec in ipairs(LB._Kit and LB._Kit.Targets or {}) do
+			if rec.Key == GLOBE.Key then
+				recs[#recs + 1] = rec
+			elseif rec.Key == "prop_roulette" then
+				old = old + 1
+			end
+		end
+		T.eq(old, 0, "globe: no 'prop_roulette' request any more (the old key is no longer tagged)")
+		local bad = {}
+		local f = built.Folder:FindFirstChild("Shop")
+		for _, r in ipairs(Config.Roulettes) do
+			local m = f and f:FindFirstChild("Roulette_" .. r.Id)
+			local body = m and m:FindFirstChild("Machine")
+			local hit = {}
+			for _, rec in ipairs(recs) do
+				if body and rec.Target == body then
+					hit[#hit + 1] = rec
+				end
+			end
+			local rec = hit[1]
+			if #hit ~= 1 then
+				bad[#bad + 1] = r.Id .. fmt(" (%d requests)", #hit)
+			else
+				local o = rec.Origin
+				local toCentre = flat(S0 - o.Position).Unit
+				if not (typeof(o) == "CFrame" and math.abs(o.Position.Y - Config.Lobby.Origin.Y) <= 0.01 and o.UpVector.Y > 0.9999 and o.LookVector:Dot(toCentre) > 0.9999) then
+					bad[#bad + 1] = r.Id .. " origin not the ground centre facing the shop centre"
+				end
+				local look = rec.Look or {}
+				local wantE = emblemColour(Config, r)
+				if not (typeof(look.Primary) == "Color3" and sameColor(look.Primary, r.Color) and typeof(look.Secondary) == "Color3" and wantE and sameColor(look.Secondary, wantE)) then
+					bad[#bad + 1] = r.Id .. " look " .. tostring(look.Primary) .. " / " .. tostring(look.Secondary)
+				end
+				origins[r.Id] = o
+				local anchor, glow, pp = m:FindFirstChild("PriceAnchor"), m:FindFirstChild("DomeGlow"), m:FindFirstChild("PromptPart")
+				if not (anchor and near(anchor.Position, (o * CFrame.new(0, 14.2 + GLOBE.CardH / 2, 0)).Position, 0.01)
+					and glow and near(glow.Position, (o * CFrame.new(0, 9.5, 0)).Position, 0.01)
+					and pp and cfNear(pp.CFrame, o * CFrame.new(0, 2, -5.4), 0.01) and near(pp.Size, Vector3.new(5, 4, 3), 0.01)) then
+					bad[#bad + 1] = r.Id .. " price card / DomeGlow / PromptPart moved"
+				end
+				if body:GetAttribute("ML_DressKey") ~= nil or m:FindFirstChild("GlobeEggs") then
+					bad[#bad + 1] = r.Id .. " dressed or has GlobeEggs while the key is missing"
+				end
+			end
+		end
+		T.check(#bad == 0 and #recs == #Config.Roulettes, "globe: one prop_roulette_globe request per machine on its Machine, origin = the ground centre facing the shop centre, Look.Primary = the roulette colour, Look.Secondary = its top rarity's colour (Celestial: the Secret violet 180,150,255); the price card at 14.2 + 3.8, DomeGlow at 9.5, PromptPart (0, 2, -5.4) unchanged; nothing dressed",
+			#recs .. " requests; " .. table.concat(bad, "; "))
+	end)
+
+	------------------------------------------------------------------ dressed: GlobeEggs from the manifest's Egg<i> attachments
+	local LB = req("server/Services/LobbyBuilder")
+	local M = LB and LB._Mesh
+	local realTag = M and M.tag
+	local function forceGlobe(undo)
+		if MESH_MODE then
+			-- --mesh: fixture holders (Status -> "loading") for the globe and the seven egg keys, removed after
+			local root = RS:FindFirstChild("P6PetsMeshLibrary")
+			if T.check(root ~= nil, "globe (--mesh): the fixture MeshLibrary root exists") then
+				local keys = { GLOBE.Key }
+				for _, k in pairs(EGG_KEYS) do
+					keys[#keys + 1] = k
+				end
+				for _, k in ipairs(keys) do
+					if not root:FindFirstChild(k) then
+						local h = Instance.new("Folder")
+						h.Name = k
+						h.Parent = root
+						undo[#undo + 1] = function()
+							h:Destroy()
+						end
+					end
+				end
+			end
+		elseif M and realTag then
+			-- the default run has no globe id: the tag's answer is forced to "dressed" (after the real call records the request)
+			M.tag = function(target, key, ...)
+				local r = realTag(target, key, ...)
+				if key == GLOBE.Key then
+					return true
+				end
+				return r
+			end
+			undo[#undo + 1] = function()
+				M.tag = realTag
+			end
+		end
+	end
+	rebuild("globe dressed", function(undo, LB2)
+		LB2._Kit = { Targets = {}, Clouds = {} }
+		forceGlobe(undo)
+	end, function(built, cursor)
+		local LB2 = req("server/Services/LobbyBuilder")
+		local eggRecs = {}
+		for _, rec in ipairs(LB2._Kit and LB2._Kit.Targets or {}) do
+			if typeof(rec.Target) == "Instance" and rec.Target.Name:match("^GlobeEgg%d+$") then
+				eggRecs[rec.Target] = eggRecs[rec.Target] or {}
+				table.insert(eggRecs[rec.Target], rec)
+			end
+		end
+		local f = built.Folder:FindFirstChild("Shop")
+		local bad, dressBad = {}, {}
+		for _, r in ipairs(Config.Roulettes) do
+			local m = f and f:FindFirstChild("Roulette_" .. r.Id)
+			local body = m and m:FindFirstChild("Machine")
+			local ge = m and m:FindFirstChild("GlobeEggs")
+			local o = origins[r.Id]
+			local seq = {}
+			for w in string.gmatch(GLOBE.Seq[r.Id] or "", "%S+") do
+				seq[#seq + 1] = w
+			end
+			if not (ge and ge:IsA("Model") and ge.Parent == m and body and o and man) then
+				bad[#bad + 1] = r.Id .. " (no GlobeEggs Model beside Machine)"
+			else
+				if body:FindFirstChild("GlobeEggs", true) then
+					bad[#bad + 1] = r.Id .. " GlobeEggs inside the dressed Machine"
+				end
+				local kids = ge:GetChildren()
+				if #kids ~= GLOBE.Count then
+					bad[#bad + 1] = r.Id .. fmt(" %d GlobeEgg models", #kids)
+				end
+				for i = 1, GLOBE.Count do
+					local em = ge:FindFirstChild("GlobeEgg" .. i)
+					local s = (i == 1) and GLOBE.ChaseScale or GLOBE.Scale
+					local want = o * attCF(man.Attachments["Egg" .. i])
+					local part = em and em:FindFirstChild("Egg")
+					local mesh = part and part:FindFirstChildOfClass("SpecialMesh")
+					local rarity = seq[i]
+					local key = rarity and ("egg_" .. string.lower(rarity))
+					local colour = (rarity == "Secret") and GLOBE.SecretEgg or rarityColour(Config, rarity)
+					if not (em and em:IsA("Model") and part and part:IsA("BasePart")) then
+						bad[#bad + 1] = fmt("%s GlobeEgg%d missing", r.Id, i)
+					else
+						local nParts = 0
+						for _, d in ipairs(em:GetDescendants()) do
+							if d:IsA("BasePart") then
+								nParts = nParts + 1
+							end
+						end
+						if nParts ~= 1 then
+							bad[#bad + 1] = fmt("%s GlobeEgg%d has %d parts", r.Id, i, nParts)
+						end
+						if not cfNear(em:GetPivot(), want, 0.01) then
+							bad[#bad + 1] = fmt("%s GlobeEgg%d pivot off the Egg%d attachment", r.Id, i, i)
+						end
+						if not (near(part.Size, GLOBE.EggSize * s, 0.005) and mesh and mesh.MeshType == Enum.MeshType.Sphere
+							and near(part.Position, (want * CFrame.new(0, GLOBE.EggSize.Y * s / 2, 0)).Position, 0.01)) then
+							bad[#bad + 1] = fmt("%s GlobeEgg%d Part not the %.2f-scaled Sphere egg standing on its pivot", r.Id, i, s)
+						end
+						if not (part.Anchored and not part.CanCollide and not part.CanTouch and not part.CanQuery) then
+							bad[#bad + 1] = fmt("%s GlobeEgg%d Part not anchored / ghost", r.Id, i)
+						end
+						if not (colour and sameColor(part.Color, colour)) then
+							bad[#bad + 1] = fmt("%s GlobeEgg%d colour %s (want %s's)", r.Id, i, tostring(part.Color), tostring(rarity))
+						end
+						if em:GetAttribute("ML_Scale") ~= s then
+							bad[#bad + 1] = fmt("%s GlobeEgg%d ML_Scale %s", r.Id, i, tostring(em:GetAttribute("ML_Scale")))
+						end
+						if CS:HasTag(em, "NC_Detail") ~= (i ~= 1) then
+							bad[#bad + 1] = fmt("%s GlobeEgg%d NC_Detail %s", r.Id, i, tostring(CS:HasTag(em, "NC_Detail")))
+						end
+						if CS:HasTag(em, Config.Tags.Spin) or CS:HasTag(part, Config.Tags.Spin) then
+							bad[#bad + 1] = fmt("%s GlobeEgg%d tagged Spin", r.Id, i)
+						end
+						local recs = eggRecs[em] or {}
+						if #recs ~= 1 or recs[1].Key ~= key or typeof(recs[1].Origin) ~= "CFrame" or not cfNear(recs[1].Origin, want, 0.01) then
+							bad[#bad + 1] = fmt("%s GlobeEgg%d dress request %s (want one %s at the pivot)", r.Id, i, recs[1] and tostring(recs[1].Key) or "none", tostring(key))
+						end
+						local okE, stE = pcall(ML.Status, key)
+						if okE and stE ~= "missing" then
+							if em:GetAttribute("ML_DressKey") ~= key then
+								dressBad[#dressBad + 1] = fmt("%s GlobeEgg%d ML_DressKey %s", r.Id, i, tostring(em:GetAttribute("ML_DressKey")))
+							end
+						elseif MESH_MODE then
+							dressBad[#dressBad + 1] = fmt("%s GlobeEgg%d: %s still missing under --mesh", r.Id, i, tostring(key))
+						end
+					end
+				end
+				if MESH_MODE then
+					local wantE = emblemColour(Config, r)
+					if not (body:GetAttribute("ML_DressKey") == GLOBE.Key and typeof(body:GetAttribute("ML_Primary")) == "Color3" and sameColor(body:GetAttribute("ML_Primary"), r.Color)
+						and typeof(body:GetAttribute("ML_Secondary")) == "Color3" and wantE and sameColor(body:GetAttribute("ML_Secondary"), wantE)) then
+						dressBad[#dressBad + 1] = r.Id .. " Machine not tagged prop_roulette_globe with ML_Primary / ML_Secondary"
+					end
+				end
+			end
+		end
+		T.check(#bad == 0, "globe dressed: each Roulette_<Id> holds a GlobeEggs Model (beside Machine) of GlobeEgg1..12 at the manifest's Egg<i> attachments, one Sphere Part 'Egg' each (2.25 x 3 x 2.5 x 0.42, Egg1 x 0.44, standing on its pivot, anchored, no collide / touch / query, the rarity colour, Secret dark violet), ML_Scale, NC_Detail on 2..12 only, no Spin, one egg_<rarity> request at the pivot in 16.17.1's order",
+			table.concat(bad, "; "))
+		if MESH_MODE then
+			T.check(#dressBad == 0, "globe dressed (--mesh): Machine tagged prop_roulette_globe (ML_Primary / ML_Secondary), every GlobeEgg ML_DressKey egg_<rarity>", table.concat(dressBad, "; "))
+		else
+			T.check(#dressBad == 0, "globe dressed: ML_DressKey egg_<rarity> on the eggs whose key is not missing (--mesh checks every one)", table.concat(dressBad, "; "))
+		end
+		T.eq(warnsSince(cursor, "[LobbyMachineBuilder]"), 0, "globe dressed: no [LobbyMachineBuilder] warn")
+	end)
+
+	------------------------------------------------------------------ a manifest without Egg7: one warn, no GlobeEggs, the machine stands
+	local copy = nil
+	if man then
+		copy = {}
+		for k, v in pairs(man) do
+			copy[k] = v
+		end
+		copy.Attachments = {}
+		for k, v in pairs(man.Attachments or {}) do
+			if k ~= "Egg7" then
+				copy.Attachments[k] = v
+			end
+		end
+	end
+	rebuild("globe without Egg7", function(undo, LB2)
+		LB2._Kit = { Targets = {}, Clouds = {} }
+		forceGlobe(undo)
+		LMB._Manifest = function()
+			return copy
+		end
+		undo[#undo + 1] = function()
+			LMB._Manifest = nil
+		end
+	end, function(built, cursor)
+		local f = built.Folder:FindFirstChild("Shop")
+		local bad = {}
+		for _, r in ipairs(Config.Roulettes) do
+			local m = f and f:FindFirstChild("Roulette_" .. r.Id)
+			if not (m and m:FindFirstChild("Machine") and m:FindFirstChild("PromptPart") and m:FindFirstChild("PriceAnchor")) then
+				bad[#bad + 1] = r.Id .. " lost Machine / PromptPart / PriceAnchor"
+			elseif m:FindFirstChild("GlobeEggs") then
+				bad[#bad + 1] = r.Id .. " built GlobeEggs"
+			end
+		end
+		T.check(copy ~= nil and #bad == 0, "globe without Egg7: no GlobeEggs anywhere, every machine keeps Machine / PromptPart / PriceAnchor", table.concat(bad, "; "))
+		T.eq(warnsSince(cursor, GLOBE.NoEgg7), 1, "globe without Egg7: exactly one warn '" .. GLOBE.NoEgg7 .. "'")
+		T.check(built.Shop and built.Shop.Roulettes and built.Shop.Roulettes.Cloud and built.Shop.Roulettes.Cloud.PromptPart ~= nil, "globe without Egg7: LobbyInfo.Shop.Roulettes still carry their PromptParts")
+	end)
+
+	local root = RS:FindFirstChild("P6PetsMeshLibrary")
+	T.check(LMB._Manifest == nil and LB and LB._Kit == nil and (M == nil or M.tag == realTag) and (root == nil or root:FindFirstChild(GLOBE.Key) == nil),
+		"globe: the hooks (_Manifest, _Kit, Mesh.tag) and the fixture holders are back")
+	K.flushErrors("shop_globe")
+	K.flushWarnings("shop_globe", GLOBE.Allowed)
 end)
 
 return S

@@ -22,7 +22,10 @@
 --                    player asked; the Home window's Go home portal is the way home). This module builds Obby and Altar
 --                    into the Gates folder; ArenaBuilder adds Ring + Arena, DungeonBuilder the Dungeon gate.
 --   * SHOP ISLAND    at Config.Lobby.ShopOffset: four voxel gacha machines (Model Roulette_<Id>, built in
---                    the roulette colour), the Egg Guide (lobby shop: LobbyBoardBuilder.EggGuide, a notice board naming
+--                    the roulette colour; shop-area spec 16.17.1: the Machine is tagged with the Gumball Globe key
+--                    prop_roulette_globe, Primary = the roulette colour, Secondary = its top rarity's (Secret: the
+--                    chat violet), and only when that tag dresses LobbyMachineBuilder.GlobeEggs piles the twelve real
+--                    eggs in the glass beside it; with no globe id the machine is today's Part machine), the Egg Guide (lobby shop: LobbyBoardBuilder.EggGuide, a notice board naming
 --                    the seven eggs over a stone shelf with the seven 3D eggs, in the Sky Trove's old place), a rarity
 --                    board, a token statue and an entrance arch, joined to the plaza by a short stone neck. The Sky Trove
 --                    (Model SkyTrove, store 2026-11-04: a brass-banded chest, its Lid a separate Model hinged at the back
@@ -95,6 +98,7 @@ local Config = require(Shared.Config)
 local Theme = require(Shared.Theme)
 local Util = require(Shared.Util)
 local LobbyBoardBuilder = require(script.Parent.LobbyBoardBuilder) -- lobby shop: the Egg Guide and the leaderboard board
+local LobbyMachineBuilder = require(script.Parent.LobbyMachineBuilder) -- shop-area 16.17.1: the Gumball Globe's eggs
 
 local LobbyBuilder = {}
 
@@ -3360,7 +3364,8 @@ local function machineBoxes()
 end
 
 -- A gacha roulette machine (Model Roulette_<Id>). `cf` sits on the ground; LookVector = towards the customer.
-local function buildMachine(parent, cf, roulette)
+-- H = L.H (the in-globe eggs draw with it; nil = no eggs).
+local function buildMachine(parent, cf, roulette, H)
 	local model = newModel(parent, "Roulette_" .. roulette.Id)
 	local body = Instance.new("Model")
 	body.Name = "Machine"
@@ -3370,10 +3375,20 @@ local function buildMachine(parent, cf, roulette)
 	Voxel.BuildBoxes(boxes.Fine, { VoxelSize = 0.5, Palette = pal, CFrame = cf * CFrame.new(0, 0.25, 0), Model = body, CanCollide = true, CanQuery = true })
 	Voxel.BuildBoxes(boxes.Dome, { VoxelSize = 1, Palette = pal, CFrame = cf * CFrame.new(0, 0.5, 0), Model = body, CanCollide = true, CanQuery = true })
 	body.Parent = model
-	-- Phase 6: one cabinet design for every roulette (cabinet + knob = the roulette colour, eggs = its top rarity)
+	-- shop-area 16.17.1: the Gumball Globe for every roulette (cabinet = the roulette colour, emblem = its top rarity's;
+	-- Secret's near-black reads as the chat violet). Only a dressed globe gets the real eggs in its glass; with no id
+	-- the tag returns false and this stays today's Part machine.
 	local rarities = oddsRarities(roulette)
 	local top = rarities[#rarities]
-	Mesh.tag(body, "prop_roulette", cf, { Primary = roulette.Color or C.Rose, Secondary = (top and top.Color) or C.Gold })
+	local chat = type(Config.Eggs) == "table" and type(Config.Eggs.ChatColors) == "table" and Config.Eggs.ChatColors or {}
+	local emblem = (top and (chat[top.Id] or top.Color)) or C.Gold
+	local dressed = Mesh.tag(body, LobbyMachineBuilder.GLOBE.Key, cf, { Primary = roulette.Color or C.Rose, Secondary = emblem })
+	if dressed and H then
+		local okEggs, errEggs = pcall(LobbyMachineBuilder.GlobeEggs, model, cf, roulette, H)
+		if not okEggs then
+			warn("[LobbyBuilder] globe eggs " .. tostring(roulette.Id) .. " failed: " .. tostring(errEggs))
+		end
+	end
 	local cabinet = nil
 	for _, d in ipairs(body:GetChildren()) do
 		if d:IsA("BasePart") and d.Name == "Body" and (not cabinet or d.Size.Magnitude > cabinet.Size.Magnitude) then
@@ -3749,7 +3764,7 @@ local function buildShop(root, L)
 		local phi = math.rad((i - (count + 1) / 2) * stepDeg)
 		local pos = at(-math.sin(phi) * arcR, math.cos(phi) * arcR)
 		local cf = flatLook(pos, S)
-		local ok, result = pcall(buildMachine, f, cf, roulette)
+		local ok, result = pcall(buildMachine, f, cf, roulette, L.H)
 		if not ok then
 			warn("[LobbyBuilder] roulette machine " .. tostring(roulette.Id) .. " failed: " .. tostring(result))
 			result = fallbackMachine(f, cf, roulette)
@@ -5270,6 +5285,7 @@ function LobbyBuilder.Build()
 	L.H = {
 		noticeBoard = noticeBoard, surfaceGui = surfaceGui, signPanel = signPanel, signText = signText,
 		box = box, Mesh = Mesh, C = C, MAT = MAT, LAWN = LAWN, plazaSpot = plazaSpot, faceCentre = faceCentre,
+		Detail = DETAIL_TAG, -- shop-area: the in-globe pile eggs (LobbyMachineBuilder.GlobeEggs)
 	}
 
 	-- Gameplay-critical objects first (gates, spots, shop); each has a bare-bones fallback.

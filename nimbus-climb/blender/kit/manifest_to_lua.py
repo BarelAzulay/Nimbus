@@ -78,8 +78,9 @@ def convert(m):
         groups[name] = {k: v for k, v in e.items() if v is not None}
     meta = m.get("meta") or {}
     keep_meta = {}
+    # eggScale / chaseScale: prop_roulette_globe's in-globe egg sizes (LobbyMachineBuilder, spec 16.17.1)
     for k in ("species", "pet", "stage", "grow", "detail", "headroom", "pulseKeys", "rootSize", "style", "side",
-              "accessory", "attach", "class", "lod"):
+              "accessory", "attach", "class", "lod", "eggScale", "chaseScale"):
         if k in meta:
             keep_meta[k] = meta[k]
     return {

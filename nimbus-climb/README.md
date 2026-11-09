@@ -1859,7 +1859,8 @@ src/server   Main.server.lua; Services: Lighting, LobbyBuilder, StormAltar, Play
              /sky), Store (the Robux Store: every paid grant, the pass cache, StorePreview), Multipliers (the x2
              Cash / Pet XP factors at the five earning sites), Daily (the daily streak and play-time gifts), Trove
              (the Sky Trove's group join reward), Leaderboard (the global leaderboard: Trophies, Pets found, Ring
-             best, with the this-server fallback), LobbyBoardBuilder (the leaderboard board on the lobby's south lawn)
+             best, with the this-server fallback), LobbyBoardBuilder (the leaderboard board on the lobby's south lawn),
+             LobbyMachineBuilder (the shop's Gumball Globe machines: the real eggs piled in a dressed globe's glass)
 src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientSettings; SoundFx; GraphicsQuality;
              PortalVortex (the swirling vortex inside every gate hoop); MouseLock (the Mouse lock option);
              LightingStack (lighting looks, e.g. the Dungeon); UI/CloudUI; UI/NeonKit (the neon cards, tiles and side

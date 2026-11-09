@@ -27,7 +27,9 @@ BUILD_KEYS = ("egg_common", "egg_uncommon", "egg_rare", "egg_epic", "egg_legenda
               # (egg-3d) the hatch cutscene's egg halves (catalog hatch; named by src/client/UI/Egg3D.lua)
               "egg_common_top", "egg_common_bot", "egg_uncommon_top", "egg_uncommon_bot", "egg_rare_top", "egg_rare_bot",
               "egg_epic_top", "egg_epic_bot", "egg_legendary_top", "egg_legendary_bot", "egg_mythic_top", "egg_mythic_bot",
-              "egg_secret_top", "egg_secret_bot")
+              "egg_secret_top", "egg_secret_bot",
+              # (shop-area 16.17.1) the Gumball Globe roulette machine (named by src/server/Services/LobbyMachineBuilder.lua)
+              "prop_roulette_globe")
 RESERVED = ("gem_world_low",)  # made with gem_world for small gem drops; nothing tags it yet
 
 _NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")

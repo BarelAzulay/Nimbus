@@ -597,6 +597,13 @@
    "description": "Shop roulette machine (cabinet = roulette colour, eggs = its top rarity)"
   },
   {
+   "key": "prop_roulette_globe",
+   "type": "prop",
+   "prop": "lobby_roulette_globe",
+   "budget": "propBig",
+   "description": "Shop roulette machine A Gumball Globe (spec 16.17): cabinet Primary, emblem Secondary, Egg1..Egg12 attachments for the real egg keys"
+  },
+  {
    "key": "prop_item_stall",
    "type": "prop",
    "prop": "lobby_stall",
@@ -927,6 +934,11 @@
   {
    "name": "lobby_prop_roulette",
    "body": "prop_roulette",
+   "res": 420
+  },
+  {
+   "name": "lobby_prop_roulette_globe",
+   "body": "prop_roulette_globe",
    "res": 420
   },
   {
