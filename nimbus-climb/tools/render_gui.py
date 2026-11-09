@@ -24,7 +24,9 @@ the renderer draws it) and draws the dump with Pillow at --ss supersampling: Scr
 by ZIndex (or globally), rounded corners, UIStrokes (border and text), UIGradients, legacy borders, text with
 stroke, TextScaled + UITextSizeConstraint, wrapping, truncation, rich-text colours, colour emoji, Rotation,
 CanvasGroups, clipping (ClipsDescendants, ScrollingFrames, with scroll bars) and labelled placeholders for
-ImageLabels and ViewportFrames, over a backdrop that resembles the lobby (or --bg grey). Roblox's own top bar
+ImageLabels and ViewportFrames (an ImageLabel of Roblox's built-in rbxasset:// content, e.g. the egg stage plinth's
+textures/whiteCircle.png, is drawn from a local Roblox install when one is found: env NC_RBX_CONTENT or
+%LOCALAPPDATA%/Roblox/Versions/*/content), over a backdrop that resembles the lobby (or --bg grey). Roblox's own top bar
 and, on touch devices, its thumbstick and jump button are sketched as faint ghosts.
 
 Fonts: Roblox fonts are mapped to installed TTF/OTF files (fc-list): a bold rounded sans is preferred for
@@ -712,6 +714,50 @@ def intersect(a, b):
     return r
 
 
+# Roblox's built-in client content (rbxasset://textures/...): drawn from a local Roblox install when one is found (env
+# NC_RBX_CONTENT = a content folder, else the newest %LOCALAPPDATA%/Roblox/Versions/*/content), else the placeholder
+_BUILTIN = {}
+
+
+def builtin_roots():
+    roots = []
+    env = os.environ.get("NC_RBX_CONTENT")
+    if env and os.path.isdir(env):
+        roots.append(env)
+    for base in [os.path.join(os.environ.get("LOCALAPPDATA", ""), "Roblox", "Versions"),
+                 "C:\\Program Files (x86)\\Roblox\\Versions", "C:\\Program Files\\Roblox\\Versions"]:
+        if not os.path.isdir(base):
+            continue
+        found = []
+        for d in os.listdir(base):
+            c = os.path.join(base, d, "content")
+            if os.path.isdir(os.path.join(c, "textures")):
+                found.append((os.path.getmtime(c), c))
+        roots.extend(c for _, c in sorted(found, reverse=True))
+    return roots
+
+
+def builtin_texture(src):
+    """rbxasset://<path> -> an RGBA PIL image of the client's own content file, or None."""
+    m = re.match(r"^rbxasset://(.+)$", str(src or ""))
+    if not m:
+        return None
+    rel = m.group(1)
+    if rel in _BUILTIN:
+        return _BUILTIN[rel]
+    img = None
+    for root in builtin_roots():
+        path = os.path.join(root, *rel.split("/"))
+        if os.path.isfile(path):
+            try:
+                img = Image.open(path).convert("RGBA")
+            except Exception:
+                img = None
+            break
+    _BUILTIN[rel] = img
+    return img
+
+
 def gradient_field(g, rect, px0, py0, pw, ph):
     """UIGradient over rect, sampled on a pw x ph patch at (px0, py0): (rgb 0..255 float [h,w,3], alpha [h,w])."""
     x0, y0, x1, y1 = rect
@@ -900,6 +946,22 @@ class GuiRenderer:
         pw, ph = int(math.ceil(x1)) - px0, int(math.ceil(y1)) - py0
         mask = Image.new("L", (pw, ph), 0)
         rr(ImageDraw.Draw(mask), x0 - px0, y0 - py0, x1 - px0, y1 - py0, r, 255)
+        tex = builtin_texture(im.get("image")) if kind == "Image" else None
+        if tex is not None:
+            # built-in client content: the texture stretched to the box (ScaleType Stretch), x ImageColor3 x a UIGradient,
+            # its alpha x (1 - ImageTransparency), inside the box's corner
+            stretched = tex.resize((pw, ph), Image.LANCZOS)
+            arr = np.asarray(stretched, dtype=np.float32)
+            rgb = arr[..., :3] * tint
+            a = arr[..., 3] * alpha * (np.asarray(mask, dtype=np.float32) / 255.0)
+            grad = n.get("gradient")
+            if grad:
+                grgb, galpha = gradient_field(grad, (x0, y0, x1, y1), px0, py0, pw, ph)
+                rgb = rgb * (grgb / 255.0)
+                a = a * galpha
+            out = np.dstack([np.clip(rgb, 0, 255), np.clip(a, 0, 255)]).astype(np.uint8)
+            self.composite(layer, Image.fromarray(out, "RGBA"), px0, py0, clip)
+            return
         yy, xx = np.mgrid[0:ph, 0:pw].astype(np.float32)
         if kind == "Viewport":
             # a soft blob where the 3D model sits (black for silhouettes: ImageColor3 tints it)

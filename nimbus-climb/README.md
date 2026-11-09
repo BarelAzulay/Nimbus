@@ -45,7 +45,7 @@ built-in sky, stays silent and draws emoji icons.
   token price, one payment). The machines keep their prices and odds, every card shows its odds before you pay, and
   the server decides every egg.
 - **The egg-opening cutscene.** The world dims behind it, the eggs slide past on a strip and stop on yours, the egg
-  rises onto a pedestal, shakes, glows through its cracks and bursts in rays and sparks inside a turning cloud ring,
+  rises onto a glowing plinth, shakes, glows through its cracks and bursts in rays and sparks inside a turning cloud ring,
   then the pet appears with **SPIN AGAIN** and **DONE**. **Skip** works from the very first frame, and **Fast hatch**
   makes the whole thing about three times shorter (saved with your profile). The camera and your character are never
   touched. Legendary and better pulls get one line in the chat for everyone.
@@ -994,7 +994,7 @@ and you have not bought it. The Shop closes with Esc, its X or gamepad B, and it
 
 **Hatching an egg.** A spin hides the Shop and plays the egg-opening cutscene: the world behind it dims (and blurs on
 High graphics), a strip of eggs slides past and stops on yours (the strip comes from the server, nothing is staged to
-look close), the egg rises onto a cloud-stone pedestal, shakes, glows through its cracks and bursts in rays and sparks
+look close), the egg rises onto a lit plinth (a flat disc that takes the rarity's colour), shakes, glows through its cracks and bursts in rays and sparks
 inside a turning cloud ring (a gold flash for Legendary and better), and then the pet appears with its name and rarity,
 **SPIN AGAIN** and **DONE**. **x3** hatches three eggs side by side, cracking in the order the server rolled them. **Skip**
 (or Esc / gamepad B) jumps to the reveal at any moment, from the very first frame. **Fast hatch** (on the Eggs tab's
@@ -1869,7 +1869,9 @@ src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientS
              cut gem every gem amount shows); UI/EggArt (the seven eggs drawn from frames, painted, with their rarity
              VFX); UI/Egg3D (the real Blender egg in a ViewportFrame, and its two halves flying apart at the crack;
              2D EggArt is the fallback); UI/HatchFx (the pooled GUI sparkles and twinkling stars); UI/HatchLook (the
-             roll's dressed pieces: the glossy strip cards, the gold window and its colour tell, the HUD hide); UI/EggStage (the egg stage:
+             roll's dressed pieces: the glossy strip cards, the gold window and its colour tell, the HUD hide, the
+             lit plinth of rarity-tinted ellipses, the rarity word popping letter by letter, the glossy SPIN AGAIN /
+             DONE pills and the Skip / Fast hatch chips, the optional hatch_* images with their frame fallbacks); UI/EggStage (the egg stage:
              the one roulette request path and the egg-opening cutscene); UI/ShopEggs (the Shop's Eggs tab: the Secret
              Roulette hero and the four machine cards, odds on every card); UI/ShopGems (the Shop's Gems tab: gem packs
              with honest ribbons, the gem XP Potion, token packs); Controllers:

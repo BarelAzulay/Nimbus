@@ -15,8 +15,9 @@
 --       >= 1.14 within 0.12 s, rests at 1.09), one shine "Sweep" gone by Land + 0.4, the other cards dimmed; a resize
 --       during Land (the window refits, the pop rests at 1.09, the roll reaches the reveal); the budgets (x1 <= 450, x3
 --       <= 750 instances at every frame of the roll)
---   client_roll_look_open  (client, 1920x1080; Task 2) the opening: the lit plinth in Pedestal1 (Top 0.667 of the box with
---       its Rim, Side, Ring, the soft halo Glow1..2; no drum, no puffs, no bars; the Top's centre line on the egg's foot; the box still
+--   client_roll_look_open  (client, 1920x1080; Task 2) the opening: the lit plinth in Pedestal1 (review round 2: every part a
+--       true ellipse of the built-in disc: Top 0.85 of the box with its Rim disc 3 px larger, Side + Wall + Edge, the inner
+--       Ring under its Cover, the soft halo Glow1..2; 16 instances; no drum, no puffs, no bars; the Top's centre line on the egg's foot; the box still
 --       1.1 x / 0.24 x the egg under it), neutral until the shakes; the rise (the box's UIScale Pop 0.6 -> past 1 -> 1, the
 --       Top fading in from 1); Gemini's tweak from Rare up at the first shake (the plinth's rim / ring / glow, the cloud
 --       ring and faint turning rays in the rarity colour) and nothing of it below Rare until the burst (Common, Uncommon);
@@ -51,11 +52,19 @@
 --   client_roll_look_phone  (phone world; Task 1) 844x390 and 640x360: the x1 cards 130 x 160 with 15 px plate words, the
 --       window's 3 px stroke and 10 px notches, every text >= 15 px and nothing off the screen (RedoGeom.check); the x3 lite
 --       cards (no Shadow, Tint or Plate; <= 16 instances a cell); (Task 2) the phone plinth (1.1 x / 0.24 x the egg, Top
---       0.667, 2 px rim), the sparks capped at 16 (an Epic's 28), the reveal's 12 px lip (the Top only); (Task 3) the x1
+--       0.85, 2 px rim), the sparks capped at 16 (an Epic's 28), the reveal's 12 px lip (the Top and its Rim disc); (Task 3) the x1
 --       landscape reveal side by side (the pet in the left 0.46, the word, name, note and the two 46 px pills in the right
 --       column, the chips on the bottom row, nothing overlapping, 15 px text, one ViewportFrame) at 844x390 and 640x360;
 --       portrait 360x640 (the stack, the word as 40 px letters in the 44 px band); x3 phone words as one TextLabel; a
 --       rotation mid-chain (844x390 -> 390x844 at reveal + 0.15: every letter at 1, the pills in place, the text shown)
+--   Review round 2: (open) the plinth's ellipses, its 16 instances, the cylinder shading; the push-in on High only; the Low
+--       pass (no punch, no push-in; the tell, the land pop and its sweep, the silhouette, the letter pops stay); no sparkle
+--       from the rise to the first shake; the strips above the chips' row over the rise; x3 each strip's own tell colour;
+--       (stage) Uncommon keeps the gold window; the window's 13 and an x1 card's 8 instances; (reveal) a 5-letter word 30,
+--       the two pills 28, the two chips 13; SPIN AGAIN's idle refreshes do nothing (no PillParts / FitPill / SetPillChip
+--       calls), a low balance still shows; the PC Evolved ribbon in the name row after NEW!; (phone) the lip's Rim disc; x3
+--       at 640x360 with the real font widths: NEW! and Evolved apart (bottom-left / top-right corners), the Skip chip's label
+--       fitting, the notes breaking at their dots; a rotation mid-rise drops the lifted strips
 -- Deterministic: mock clock only (a tween applies its goal when it completes). SoundFx.Play is spied (quiet) and put back;
 -- the viewport, the Fast hatch setting and the attributes are put back. Plain Lua 5.1 syntax only.
 
@@ -322,7 +331,9 @@ function G.over(ES, cap)
 	end
 	return #bad > 0 and table.concat(bad, ", ") or nil
 end
--- the plinth's parts in a Pedestal box
+-- the plinth's parts in a Pedestal box. (review round 2) Its parts are ellipses (ImageLabels of the built-in disc): the
+-- rim is the "Rim" disc behind the Top and the inner ring the "Ring" disc under its Cover, read here as snapshots
+-- { Color, Thickness, Transparency, Inst } (a stroke's names: the tests read colours and widths, not the drawing)
 function G.plinth(j)
 	local ped = G.hero("Pedestal" .. (j or 1))
 	local out = { Box = ped }
@@ -330,12 +341,29 @@ function G.plinth(j)
 		out.Top = ped:FindFirstChild("Top")
 		out.Side = ped:FindFirstChild("Side")
 		out.Ring = ped:FindFirstChild("Ring")
+		out.Cover = ped:FindFirstChild("Cover")
+		out.Edge = ped:FindFirstChild("Edge")
+		out.Wall = ped:FindFirstChild("Wall")
 		out.Pop = ped:FindFirstChild("Pop")
-		out.Rim = out.Top and out.Top:FindFirstChildOfClass("UIStroke") or nil
-		out.RingStroke = out.Ring and out.Ring:FindFirstChildOfClass("UIStroke") or nil
+		local rim = ped:FindFirstChild("Rim")
+		out.Rim = rim and { Color = rim.ImageColor3, Thickness = rim:GetAttribute("Thickness"), Transparency = rim.ImageTransparency, Inst = rim } or nil
+		out.RingStroke = out.Ring and { Color = out.Ring.ImageColor3, Transparency = out.Ring.ImageTransparency, Inst = out.Ring } or nil
 		out.Glow1 = ped:FindFirstChild("Glow1")
 	end
 	return out
+end
+-- a plinth part's opacity (0 = opaque) and colour: an ellipse's image, a frame's background
+function G.clear(o)
+	if not o then
+		return -1
+	end
+	return o:IsA("ImageLabel") and o.ImageTransparency or o.BackgroundTransparency
+end
+function G.tint(o)
+	if not o then
+		return nil
+	end
+	return o:IsA("ImageLabel") and o.ImageColor3 or o.BackgroundColor3
 end
 -- (Task 3) the reveal's parts
 function G.col(j)
@@ -866,7 +894,7 @@ S.client_roll_look_open = guarded("client_roll_look_open", function()
 			end
 			local p = G.plinth(1)
 			if p.Box and not rec.first then
-				rec.first = { pop = p.Pop and p.Pop.Scale or -1, top = p.Top and p.Top.BackgroundTransparency or -1, ph = ph }
+				rec.first = { pop = p.Pop and p.Pop.Scale or -1, top = G.clear(p.Top), ph = ph }
 			end
 			if p.Pop and ph == "Rise" then
 				rec.maxPop = math.max(rec.maxPop, p.Pop.Scale)
@@ -884,11 +912,34 @@ S.client_roll_look_open = guarded("client_roll_look_open", function()
 				local eh = egg and (egg:GetAttribute("Size") or 0) * (fit and fit.Scale or 1) or 0
 				local rays = G.hero("Rays")
 				rec.rest = {
-					kids = table.concat(kids, " "), pop = p.Pop and p.Pop.Scale or -1, top = p.Top and p.Top.BackgroundTransparency or -1,
+					kids = table.concat(kids, " "), pop = p.Pop and p.Pop.Scale or -1, top = G.clear(p.Top),
 					topH = (p.Top and box) and p.Top.AbsoluteSize.Y / box.AbsoluteSize.Y or -1,
-					-- (review round 2) the disc's aspect (the mock's platA: rx 150 / ry 30 = 5 : 1) and its instances
+					-- (review round 2) the disc's aspect (the mock's platA: rx 150 / ry 30 = 5 : 1), its instances, and every
+					-- part a true ellipse: an ImageLabel of the built-in disc stretched to its box, no UICorner capsule (the
+					-- capsule plinth with a capsule ring read as a loading bar); the Wall the one frame (the band's straight ends)
 					aspect = (p.Top and p.Top.AbsoluteSize.Y > 0) and p.Top.AbsoluteSize.X / p.Top.AbsoluteSize.Y or -1,
 					parts = box and (G.count(box) - 1) or -1,
+					ellipses = (function()
+						local bad = {}
+						for _, nm in ipairs({ "Top", "Rim", "Side", "Edge", "Ring", "Cover", "Glow1", "Glow2" }) do
+							local o = box and box:FindFirstChild(nm)
+							if not (o and o:IsA("ImageLabel") and o.Image == HL.Metrics.DISC and o.ScaleType == Enum.ScaleType.Stretch and o:FindFirstChildOfClass("UICorner") == nil and o.BackgroundTransparency >= 0.999) then
+								bad[#bad + 1] = nm .. (o and (" " .. o.ClassName) or " missing")
+							end
+						end
+						local wall = box and box:FindFirstChild("Wall")
+						if not (wall and wall:IsA("Frame") and wall:FindFirstChildOfClass("UICorner") == nil) then
+							bad[#bad + 1] = "Wall"
+						end
+						return table.concat(bad, ", ")
+					end)(),
+					-- the Rim disc its Thickness larger than the Top every way, the Cover its ring width smaller than the Ring
+					rimPx = (p.Top and p.Rim) and (p.Rim.Inst.AbsoluteSize.X - p.Top.AbsoluteSize.X) / 2 or -1,
+					coverPx = (p.Ring and p.Cover) and (p.Ring.AbsoluteSize.X - p.Cover.AbsoluteSize.X) / 2 or -1,
+					wallH = (p.Wall and box) and p.Wall.AbsoluteSize.Y / box.AbsoluteSize.Y or -1,
+					-- the outline one width all round: the Wall and the Edge reach as far past the box as the Rim
+					wallPx = (p.Wall and box) and (p.Wall.AbsoluteSize.X - box.AbsoluteSize.X) / 2 or -1,
+					edgePx = (p.Edge and p.Side) and (p.Edge.AbsoluteSize.X - p.Side.AbsoluteSize.X) / 2 or -1,
 					topMid = (p.Top and box) and (p.Top.AbsolutePosition.Y + p.Top.AbsoluteSize.Y / 2) - box.AbsolutePosition.Y or 99,
 					-- (review round 1) the Side's band under the Top, a share of the box (thickness, not a second bar)
 					sideBand = (p.Side and p.Top and box) and ((p.Side.AbsolutePosition.Y + p.Side.AbsoluteSize.Y) - (p.Top.AbsolutePosition.Y + p.Top.AbsoluteSize.Y)) / box.AbsoluteSize.Y or 99,
@@ -905,7 +956,7 @@ S.client_roll_look_open = guarded("client_roll_look_open", function()
 				local title = G.content() and G.content():FindFirstChild("Title")
 				local cw = G.hero("CrackWord")
 				rec.tweak = {
-					rim = p.Rim and p.Rim.Color, ring = p.RingStroke and p.RingStroke.Color, glow = p.Glow1 and p.Glow1.BackgroundColor3, cloud = ring and ring.GroupColor3,
+					rim = p.Rim and p.Rim.Color, ring = p.RingStroke and p.RingStroke.Color, edge = p.Edge and p.Edge.ImageColor3, glow = G.tint(p.Glow1), cloud = ring and ring.GroupColor3,
 					rays = rays ~= nil and rays.Visible, raysA = rays and rays.GroupTransparency or 1, spin = rays ~= nil and G.spinning(rays),
 					-- (review round 1) the title gone once the hero shows (the mock fades it at the rise); the crack word dressed
 					titleGone = title == nil or not G.shown(title) or title.TextTransparency >= 0.99,
@@ -973,19 +1024,38 @@ S.client_roll_look_open = guarded("client_roll_look_open", function()
 		T.check(rec.maxPop > 1.01, "roll look open: the plinth springs past 1 over the rise (Back Out)", fmt("%.3f", rec.maxPop))
 		local r = rec.rest
 		if T.check(r ~= nil, "roll look open: (setup) sampled at the rise's end") then
-			T.eq(r.kids, "Glow1 Glow2 Side Top", "roll look open: Pedestal1 is the flat lit plinth: Top, Side, the soft halo Glow1..2 (no drum, no puffs, no bars; review round 2: no inner ring)")
+			T.eq(r.kids, "Cover Edge Glow1 Glow2 Rim Ring Side Top Wall", "roll look open: Pedestal1 is the flat lit plinth: Top + Rim, Side + Wall + Edge, the inner Ring + Cover, the soft halo Glow1..2 (no drum, no puffs, no bars)")
+			T.check(r.ellipses == "", "roll look open: (review round 2) every plinth part is a true ellipse: an ImageLabel of HatchLook.Metrics.DISC stretched to its box, no capsule (the Wall the one frame)", r.ellipses)
+			local PL = HL.Metrics.PLINTH
+			T.check(abs(r.rimPx - PL.Rim) <= 0.6 and abs(r.wallPx) <= 0.6 and abs(r.edgePx - PL.Edge) <= 0.6 and abs(r.coverPx - PL.Ring) <= 0.6 and abs(r.wallH - PL.Band) <= 0.01,
+				"roll look open: the Rim disc 3 px past the Top, the Wall the box's width and the band's height, the Edge 2 px past the Side, the Ring showing 2 px round its Cover",
+				fmt("rim %.1f, wall %+.1f, edge %.1f, ring %.1f, wall h %.3f", r.rimPx, r.wallPx, r.edgePx, r.coverPx, r.wallH))
 			T.check(abs(r.pop - 1) <= 0.01 and r.top <= 0.01, "roll look open: at the rise's end the plinth rests: Pop 1, Top opaque", fmt("pop %.3f, top %.3f", r.pop, r.top))
 			local sk = r.sideGrad and r.sideGrad.Color.Keypoints or {}
 			local lum = function(c)
 				return c and (c.R + c.G + c.B) or 0
 			end
 			local band = HL.Metrics.PLINTH.Band or -1
-			T.check(abs(r.topH - 0.92) <= 0.01 and abs(r.sideBand - band) <= 0.01 and band > 0 and band <= 0.15 and abs(r.sideW) <= 0.6,
-				"roll look open: the Top is 0.92 of the box tall; the Side is its thickness: the same width, a thin band (<= 0.15 of the box) under it, not a second bar", fmt("top %.3f, band %.3f, width %+.1f px", r.topH, r.sideBand, r.sideW))
-			T.check(abs(r.aspect - 5) <= 0.3, "roll look open: (review round 2) the disc is 5 : 1 like the mock's platA (rx 150 / ry 30), not a 7 : 1 bar", fmt("%.2f : 1", r.aspect))
-			T.eq(r.parts, 14, "roll look open: the plinth is 14 instances (spec 16.15 Budgets: Pop, Top 4, Side 3, two halo discs x 3)")
-			T.check(r.sideGrad ~= nil and r.sideGrad.Rotation == 90 and #sk >= 2 and lum(sk[#sk].Value) < lum(sk[1].Value) - 0.05,
-				"roll look open: ...shaded darker downward (a vertical UIGradient)", r.sideGrad and fmt("rot %s, %s -> %s", tostring(r.sideGrad.Rotation), G.c3(sk[1] and sk[1].Value), G.c3(sk[#sk] and sk[#sk].Value)) or "no gradient")
+			T.check(abs(r.topH - 0.85) <= 0.01 and abs(r.sideBand - band) <= 0.01 and band > 0 and band <= 0.15 and abs(r.topH + band - 1) <= 0.01 and abs(r.sideW) <= 0.6,
+				"roll look open: the Top is 0.85 of the box tall; the Side is its thickness: the same width, a thin band (<= 0.15 of the box) under it, the two inside the box", fmt("top %.3f, band %.3f, width %+.1f px", r.topH, r.sideBand, r.sideW))
+			T.check(r.aspect >= 5 and r.aspect <= 5.6, "roll look open: (review round 2) the disc is about 5 : 1 like the mock's platA (rx 150 / ry 30), not a 7 : 1 bar", fmt("%.2f : 1", r.aspect))
+			T.eq(r.parts, 16, "roll look open: the plinth is 16 instances (spec 16.15 Budgets: Pop, two halo discs x 2, Edge, Side 2, Wall 2, Rim, Top 2, Ring, Cover 2)")
+			-- (review round 2) the band shows under the Top's front edge (from 1 - Band / Top of the Side's height down): lit
+			-- there, darker downward; its middle line (where the ellipse's ends meet the Wall) dark like a cylinder's ends
+			local litAt = 1 - band / (HL.Metrics.PLINTH.Top or 1)
+			local function at(v)
+				local c = sk[1] and sk[1].Value
+				for i = 1, #sk - 1 do
+					if v >= sk[i].Time and v <= sk[i + 1].Time then
+						local k = (sk[i + 1].Time - sk[i].Time) > 0 and (v - sk[i].Time) / (sk[i + 1].Time - sk[i].Time) or 0
+						c = sk[i].Value:Lerp(sk[i + 1].Value, k)
+					end
+				end
+				return c
+			end
+			T.check(r.sideGrad ~= nil and r.sideGrad.Rotation == 90 and #sk >= 2 and lum(at(1)) < lum(at(litAt)) - 0.05 and lum(at(0.5)) < lum(at(litAt)) - 0.05,
+				"roll look open: ...shaded darker downward (a vertical UIGradient: lit at the Top's front edge, dark at the bottom and at the ends' middle line)",
+				r.sideGrad and fmt("rot %s, mid %s, edge %s, bottom %s", tostring(r.sideGrad.Rotation), G.c3(at(0.5)), G.c3(at(litAt)), G.c3(at(1))) or "no gradient")
 			T.check(abs(r.topMid) <= 1.5, "roll look open: the Top's centre line sits on the egg's foot (the box's top): the egg stands in the middle of the disc", fmt("%+.1f px", r.topMid))
 			T.check(abs(r.boxW - 1.1 * r.eh) <= 1.5 and abs(r.boxH - 0.24 * r.eh) <= 1.5 and abs(r.foot) <= 0.6, "roll look open: the box is still 1.1 x / 0.24 x the egg, right under it",
 				fmt("egg %.1f, box %.1f x %.1f, gap %.1f", r.eh, r.boxW, r.boxH, r.foot))
@@ -998,8 +1068,8 @@ S.client_roll_look_open = guarded("client_roll_look_open", function()
 		T.check(rec.stripLow == nil, "roll look open: (review round 2) the strips leave over the rise without crossing the chips' row", tostring(rec.stripLow))
 		local w = rec.tweak
 		if T.check(w ~= nil, "roll look open: (setup) sampled 0.3 s into the first shake") then
-			T.check(G.near(w.rim, HL.Shade(epicC, 0.25)) and w.ring == nil and G.near(w.glow, HL.Shade(epicC, 0.2)),
-				"roll look open: Gemini's tweak (Epic): the plinth's rim and glow turn the rarity colour at the first shake (no inner ring)", fmt("%s / %s / %s", G.c3(w.rim), G.c3(w.ring), G.c3(w.glow)))
+			T.check(G.near(w.rim, HL.Shade(epicC, 0.25)) and G.near(w.ring, HL.Shade(epicC, 0.4)) and G.near(w.edge, HL.Shade(epicC, 0.2)) and G.near(w.glow, HL.Shade(epicC, 0.2)),
+				"roll look open: Gemini's tweak (Epic): the plinth's rim, inner ring, lit lower rim and glow turn the rarity colour at the first shake", fmt("%s / %s / %s / %s", G.c3(w.rim), G.c3(w.ring), G.c3(w.edge), G.c3(w.glow)))
 			T.check(G.near(w.cloud, RING_TINT:Lerp(epicC, 0.5), 2), "roll look open: ...the cloud ring's GroupColor3 too (RING_TINT half way to Epic)", G.c3(w.cloud))
 			T.check(w.rays and w.raysA <= 0.76 and w.spin, "roll look open: ...and the rays come up faint (GroupTransparency 0.75) and turn", fmt("visible %s, %.2f, spin %s", tostring(w.rays), w.raysA, tostring(w.spin)))
 			T.check(w.titleGone, "roll look open: the machine's title is gone once the hero egg shows (the mock fades it at the rise: no two headlines)")
@@ -1022,7 +1092,7 @@ S.client_roll_look_open = guarded("client_roll_look_open", function()
 		T.eq(rec.sparks, 28, "roll look open: 28 sparks for an Epic on PC")
 		T.eq(ES.Phase(), "Reveal", "roll look open: (setup) the reveal")
 		local pr = G.plinth(1)
-		T.check(pr.Top and G.shown(pr.Top) and pr.Top.BackgroundTransparency <= 0.01 and G.near(pr.Rim and pr.Rim.Color, HL.Shade(epicC, 0.25)),
+		T.check(pr.Top and G.shown(pr.Top) and G.clear(pr.Top) <= 0.01 and G.near(pr.Rim and pr.Rim.Color, HL.Shade(epicC, 0.25)),
 			"roll look open: on the reveal the pet stands on the plinth in the rarity colour", G.c3(pr.Rim and pr.Rim.Color))
 		ES.Close()
 		G.advance(0.4)
@@ -1204,7 +1274,7 @@ S.client_roll_look_open = guarded("client_roll_look_open", function()
 		local pz = G.plinth(1)
 		local ring = G.hero("CloudRing1")
 		local rays = G.hero("Rays")
-		T.check(pz.Rim and G.near(pz.Rim.Color, HL.Shade(epicC, 0.25)) and pz.Pop and abs(pz.Pop.Scale - 1) <= 0.01 and pz.Top and pz.Top.BackgroundTransparency <= 0.01,
+		T.check(pz.Rim and G.near(pz.Rim.Color, HL.Shade(epicC, 0.25)) and pz.Pop and abs(pz.Pop.Scale - 1) <= 0.01 and pz.Top and G.clear(pz.Top) <= 0.01,
 			"roll look open: a resize mid-tweak snaps the plinth (rarity rim, Pop 1, opaque)", fmt("%s, pop %s", G.c3(pz.Rim and pz.Rim.Color), tostring(pz.Pop and pz.Pop.Scale)))
 		T.check(ring and G.near(ring.GroupColor3, RING_TINT:Lerp(epicC, 0.5), 2) and rays and rays.Visible and rays.GroupTransparency <= 0.76 and G.spinning(rays),
 			"roll look open: ...the cloud ring keeps the tint and the rays stay faint and turning", fmt("%s, rays %s %.2f", G.c3(ring and ring.GroupColor3), tostring(rays and rays.Visible), rays and rays.GroupTransparency or -1))
@@ -1552,16 +1622,32 @@ S.client_roll_look_reveal = guarded("client_roll_look_reveal", function()
 		T.eq((again and G.count(again) or 0) + (done and G.count(done) or 0), 28, "roll look budget: the two pills are 28 instances (SPIN AGAIN 16 with its price chip and coin icon, DONE 12 with its label outline)")
 		T.eq((skip and G.count(skip) or 0) + (fast and G.count(fast) or 0), 13, "roll look budget: the two chips are 13 instances (Skip 4, Fast hatch 9)")
 		-- (review round 2) SPIN AGAIN's refresh (every 8 heartbeats while the reveal shows) does nothing while nothing changed:
-		-- no PillParts lookups, no measuring, no writes
-		local realParts = HL.PillParts
-		local partsCalls = 0
-		HL.PillParts = function(...)
-			partsCalls = partsCalls + 1
-			return realParts(...)
+		-- no PillParts lookups, no measuring and fitting, no writes
+		local spied, calls = { "PillParts", "FitPill", "SetPillChip" }, {}
+		local real = {}
+		for _, fname in ipairs(spied) do
+			real[fname], calls[fname] = HL[fname], 0
+			HL[fname] = function(...)
+				calls[fname] = calls[fname] + 1
+				return real[fname](...)
+			end
 		end
 		local okSpy, errSpy = pcall(G.advance, 1.0)
-		HL.PillParts = realParts
-		T.check(okSpy and partsCalls == 0, "roll look pills: an idle reveal's SPIN AGAIN refreshes look nothing up (no PillParts calls in 1 s)", okSpy and tostring(partsCalls) or tostring(errSpy))
+		for _, fname in ipairs(spied) do
+			HL[fname] = real[fname]
+		end
+		T.check(okSpy and calls.PillParts == 0 and calls.FitPill == 0 and calls.SetPillChip == 0,
+			"roll look pills: an idle reveal's SPIN AGAIN refreshes do nothing (no PillParts / FitPill / SetPillChip calls in 1 s)",
+			okSpy and fmt("%d / %d / %d", calls.PillParts, calls.FitPill, calls.SetPillChip) or tostring(errSpy))
+		-- ...and a change still shows: too few tokens turns it to "Not enough Tokens" within the next refreshes
+		local tokAttr = env.Config.Attr.Tokens
+		local tokWas = LocalPlayer:GetAttribute(tokAttr)
+		LocalPlayer:SetAttribute(tokAttr, 0)
+		G.advance(0.4)
+		local lblNow = again and again:FindFirstChild("Label", true)
+		T.check(lblNow and lblNow.Text == "Not enough Tokens" and again:GetAttribute("Disabled") == true, "roll look pills: ...a balance too low still shows on SPIN AGAIN (Not enough Tokens, disabled)", lblNow and tostring(lblNow.Text) or "no label")
+		LocalPlayer:SetAttribute(tokAttr, tokWas)
+		G.advance(0.4)
 		T.check(not rec.rays30, "roll look reveal: an Epic's rays are gone by + 0.3 s")
 		T.check(rec.maxInst <= 450, "roll look reveal: x1 Stats().Instances <= 450 at every frame", tostring(rec.maxInst))
 		T.check(overEarly == nil and overLate == nil, "roll look reveal: <= 32 tweens in the reveal's first 0.7 s, <= 24 after, one Heartbeat", tostring(overEarly or overLate))
@@ -1869,8 +1955,8 @@ S.client_roll_look_phone = guarded("client_roll_look_phone", function()
 		local egg = G.hero("Egg1")
 		local eh = egg and (egg:GetAttribute("Size") or 0) or 0
 		if T.check(p.Box and p.Top and p.Side and egg, "roll look phone plinth: Pedestal1 holds the plinth (Top, Side) under Egg1") then
-			T.check(abs(p.Box.AbsoluteSize.X - 1.1 * eh) <= 1.5 and abs(p.Box.AbsoluteSize.Y - 0.24 * eh) <= 1.5 and abs(p.Top.AbsoluteSize.Y / p.Box.AbsoluteSize.Y - 0.92) <= 0.015,
-				"roll look phone plinth: 1.1 x / 0.24 x the egg, the Top 0.92 of it (a 5 : 1 disc)", fmt("egg %d, box %.1f x %.1f, top %.1f", eh, p.Box.AbsoluteSize.X, p.Box.AbsoluteSize.Y, p.Top.AbsoluteSize.Y))
+			T.check(abs(p.Box.AbsoluteSize.X - 1.1 * eh) <= 1.5 and abs(p.Box.AbsoluteSize.Y - 0.24 * eh) <= 1.5 and abs(p.Top.AbsoluteSize.Y / p.Box.AbsoluteSize.Y - 0.85) <= 0.015,
+				"roll look phone plinth: 1.1 x / 0.24 x the egg, the Top 0.85 of it (an ellipse about 5 : 1)", fmt("egg %d, box %.1f x %.1f, top %.1f", eh, p.Box.AbsoluteSize.X, p.Box.AbsoluteSize.Y, p.Top.AbsoluteSize.Y))
 			T.check(p.Rim and p.Rim.Thickness == 2, "roll look phone plinth: a 2 px rim", tostring(p.Rim and p.Rim.Thickness))
 		end
 		-- (review round 1) the title is gone over the hero (it sat 1 px above the crack word on a landscape phone)
@@ -1888,8 +1974,13 @@ S.client_roll_look_phone = guarded("client_roll_look_phone", function()
 		T.eq(sparks, 16, "roll look phone: the burst's sparks are capped at 16 (an Epic's 28)")
 		T.eq(ES.Phase(), "Reveal", "roll look phone: (setup) the reveal")
 		p = G.plinth(1)
-		T.check(p.Top and G.shown(p.Top) and abs(p.Top.AbsoluteSize.Y - 12) <= 0.6 and not G.shown(p.Side) and not G.shown(p.Ring) and not G.shown(p.Glow1),
+		T.check(p.Top and G.shown(p.Top) and abs(p.Top.AbsoluteSize.Y - 12) <= 0.6 and not G.shown(p.Side) and not G.shown(p.Ring) and not G.shown(p.Glow1)
+			and not G.shown(p.Wall) and not G.shown(p.Edge) and not G.shown(p.Cover),
 			"roll look phone: the reveal keeps the 12 px lip (the plinth's Top only)", p.Top and fmt("%.1f px", p.Top.AbsoluteSize.Y) or "no Top")
+		-- (review round 2) ...an ellipse with its rim round it (the Rim disc 2 px past the lip every way)
+		local lipRim = p.Rim and p.Rim.Inst
+		T.check(lipRim and G.shown(lipRim) and p.Top and abs((lipRim.AbsoluteSize.Y - p.Top.AbsoluteSize.Y) / 2 - 2) <= 0.6 and abs((lipRim.AbsoluteSize.X - p.Top.AbsoluteSize.X) / 2 - 2) <= 0.6,
+			"roll look phone: ...the lip's 2 px Rim disc round it", lipRim and fmt("%.1f x %.1f", lipRim.AbsoluteSize.X, lipRim.AbsoluteSize.Y) or "no rim")
 		ES.Close()
 		G.advance(0.4)
 		------------------------------------------------------------------ (Task 3) the x1 landscape reveal side by side

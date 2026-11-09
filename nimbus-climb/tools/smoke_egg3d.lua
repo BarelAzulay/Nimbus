@@ -388,7 +388,7 @@ S.client_egg3d = guarded("client_egg3d", function()
 			end
 		end
 		table.sort(parts)
-		T.check(ped ~= nil and table.concat(parts, " ") == "Glow1 Glow2 Side Top", "egg3d cutscene: the pedestal holds only the flat plinth (Top, Side, its halo; roll-look review round 2: no inner ring): no drum or bars come back", table.concat(parts, " "))
+		T.check(ped ~= nil and table.concat(parts, " ") == "Cover Edge Glow1 Glow2 Rim Ring Side Top Wall", "egg3d cutscene: the pedestal holds only the flat plinth (its ellipses: Top + Rim, Side + Wall + Edge, Ring + Cover, its halo; roll-look review round 2): no drum or bars come back", table.concat(parts, " "))
 		T.eq(E3.Live(), 1, "egg3d cutscene: one ViewportFrame egg")
 		T.check(G.untilPhase(ES, "Crack", 3) ~= nil, "egg3d cutscene: the roll reaches Crack")
 		G.advance(0.45)

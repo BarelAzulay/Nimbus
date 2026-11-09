@@ -15,7 +15,9 @@
 --                                             the rarity "Plate" pill holding the upper-case white "Word", and a
 --                                             "Shadow<slot>" frame BESIDE the cell in its track (+Shadow px below it: a child
 --                                             would draw over the card). card = { Frame, Face, Tint (= Face), Shine, Plate,
---                                             PlateText, Shadow, Rim }. Adds 5 instances to the cell (Lite: 2), +2 beside it
+--                                             PlateText, Shadow, Rim }. Adds 6 instances to the cell (the Face gradient, the
+--                                             Shine, the Plate with its corner, stroke and Word; Lite: 2), +2 beside it
+--                                             (the Shadow and its corner): spec 16.15 "Budgets" (review round 2)
 --   HatchLook.SetCard(card, rarity|false, state)   state "Idle" | "Landed" | "Dim": the face tint, the rim (Rare and up
 --                                             Shade(c, .05) opaque, below Shade(c, -.1) at 0.25; 5 px Landed, else 3), the
 --                                             plate (Shade(c, -.45), its stroke Shade(c, .1)) and its word; Dim: the face at
@@ -64,27 +66,34 @@
 --   (Task 2: the opening)
 --   HatchLook.Plinth(box, rarity, phone, opts) -> plinth   the flat lit disc the hero egg, its halves and the pet stand on,
 --                                             drawn in the existing "Pedestal<j>" layout box (anchored at its top centre:
---                                             the egg's foot): "Top" (a disc 0.667 of the box tall, centred ON the box's
---                                             top edge so the egg stands in its middle; navy gradient 52,72,154 ->
---                                             20,29,82, its UIStroke "Rim" 3 px / phone 2), "Side" (the disc's thickness:
---                                             the Top's shape Metrics.PLINTH.Band = 0.14 of the box lower, so a thin band
---                                             shows under the Top's front edge and thins out round its ends; a vertical
---                                             gradient 38,56,132 darkening to 10,17,52 over that band; review round 1),
---                                             "Ring" (an inner ring on the Top, 0.76 x 0.7 of it, its stroke
---                                             at 0.45), "Glow1..2" (HatchLook.Glow: a soft halo round the disc) and a
---                                             UIScale "Pop" on the box. No drum, no puffs, no bars (a5a38ac). Neutral
---                                             (Shade(Metrics.PLINTH.Neutral, .25) rim, .4 ring, .2 glow) until Tint.
+--                                             the egg's foot), every part an ellipse (review round 2: ImageLabels of the
+--                                             built-in disc Metrics.DISC, tinted; a capsule frame read as a loading bar):
+--                                             "Top" (0.85 of the box tall, centred ON the box's top edge so the egg stands
+--                                             in its middle; navy gradient 52,72,154 -> 20,29,82), "Rim" (the Top's disc
+--                                             3 px / phone 2 larger behind it, attribute Thickness), "Side" (the disc's
+--                                             thickness: the Top's ellipse Metrics.PLINTH.Band = 0.15 of the box lower, a
+--                                             vertical gradient 38,56,132 darkening to 10,17,52 over the band under the
+--                                             Top's front edge, dark along its middle line), "Wall" (the band's straight
+--                                             ends between the two centre lines at the box's ends, dark there), "Edge"
+--                                             (the Side's disc 2 px / phone 1.5 larger behind it at 0.3: the lit lower
+--                                             rim), "Ring" + "Cover" (an inner ring on the Top,
+--                                             0.76 x 0.7 of it at 0.45: a disc under a Cover disc 2 / 1.5 px smaller in the
+--                                             Top's colours over its span), "Glow1..2" (HatchLook.Glow: a soft halo round
+--                                             the disc) and a UIScale "Pop" on the box. Top + Band = the box: no drum, no
+--                                             puffs, no bars (a5a38ac). Neutral (Shade(Metrics.PLINTH.Neutral, .25) rim,
+--                                             .4 ring, .2 edge and glow) until Tint. 17 instances (x3, one halo disc: 14)
 --                                             opts = { Track (the tween set), Glows (1..2, default 2), Ring (false = none) }
 --                                             plinth:SetAlpha(a)        0 = hidden .. 1 = shown (the rise's fade, per frame)
---                                             plinth:Tint(color, s)     rim Shade(c, .25), ring Shade(c, .4), glow Shade(c, .2)
---                                                                       in s seconds (0: at once); remembered for Rest
+--                                             plinth:Tint(color, s)     rim Shade(c, .25), ring Shade(c, .4), edge and glow
+--                                                                       Shade(c, .2) in s seconds (0: at once); remembered
+--                                                                       for Rest
 --                                             plinth:Reset()            neutral again;  plinth:Rest()  Pop 1, shown, colour
 --                                                                       snapped (a resize cancelled the tweens)
 --                                             plinth:FitGlow(share)     the halo at most share x the box wide (the screen's
 --                                                                       edge: a portrait x3's outer columns)
---   HatchLook.PlinthLip(box, lip)             the Top's box: the disc centred on the box's top edge, or (lip = true: a
---                                             phone's reveal) the whole box, the 12 px lip (EggStage's H.pedLook hides
---                                             the other parts)
+--   HatchLook.PlinthLip(box, lip)             the Top's box (and its Rim round it): the disc centred on the box's top
+--                                             edge, or (lip = true: a phone's reveal) the whole box, the 12 px lip
+--                                             (EggStage's H.pedLook hides the other parts)
 --   HatchLook.IMAGES                          the three optional images, TextureIds keys: Rays "hatch_rays" (EggStage passes
 --                                             it to HatchFx.Rays: one ImageLabel fan), Glow "hatch_glow" (HatchLook.Glow: the
 --                                             plinth's and the word's glows; EggStage's backlight), Sparkle "hatch_sparkle"
@@ -133,9 +142,10 @@
 --                                             ZIndex }
 --   HatchLook.PillParts(btn) -> { Shadow, Face, Body, Fill, Edge, Shine, Label, Chip, Coin, Price }
 --   HatchLook.SizePill(btn, textSize, phone, coin)   a layout's text and coin sizes
---   HatchLook.FitPill(btn, labelW, priceW) -> chipW, fits   the price chip's width (80 / phone 66 at the least, its
---                                             content's when the label needs the room) and whether the label fits
---   HatchLook.SetPillChip(btn, w)             the chip w px wide (0: hidden, the label takes the whole pill)
+--   HatchLook.FitPill(btn, labelW, priceW, parts?) -> chipW, fits   the price chip's width (80 / phone 66 at the least,
+--                                             its content's when the label needs the room) and whether the label fits
+--   HatchLook.SetPillChip(btn, w, parts?)     the chip w px wide (0: hidden, the label takes the whole pill). parts: the
+--                                             button's PillParts already looked up (review round 2: no lookups per refresh)
 --   HatchLook.PillIn(parts, k, rise)          the rise: the Face rise x (1 - k) px lower and 1 - k clear, the shadow
 --                                             with it (k = 1: in place)
 --   HatchLook.Chip(parent, opts) -> TextButton   a small chip: a transparent 44 px tap box drawing a "Pill" (36 px, phone
@@ -181,16 +191,23 @@ local K = {
 	POP = { Peak = 1.15, Rest = 1.09, Up = 0.1, Down = 0.15, UpFast = 0.05, DownFast = 0.07 },
 	SWEEP = { Normal = 0.3, Fast = 0.12, Band = 0.45, Rotation = 18 },
 	BOUNCE = 1.08,
-	-- (Task 2) the plinth, in shares of its box (1.1 x / 0.24 x the egg, 16.4): the Top disc Top of the box tall, centred
-	-- on the box's top edge (the egg's foot); the Side the Top's own shape moved Band of the box down (review round 1: the
-	-- disc's thickness, a thin band under the Top that thins out round its ends, shaded darker downward; the third of the
-	-- box it showed before read as a second bar); the halo centred GlowY under the edge (the mock's 16 px under a 60 px
-	-- disc: 0.267 of the Top), 1.6 x the box wide and 1.9 x the Top tall. (review round 2) The Top is 0.92 of the box, so
-	-- the disc is 5 : 1 (1.1 / (0.24 x 0.92)), the mock's platA (rx 150 / ry 30): at 0.667 it was 7 : 1, a long straight
-	-- run that read as a bar; and no inner ring (a capsule inside a capsule read as a second bar: no ellipse primitive
-	-- without an image, so the frame fallback keeps one disc)
+	-- (review round 2) the plinth's ellipses are Roblox's built-in white disc (client content shipped with every client,
+	-- not an upload: tools/check.mjs allows rbxasset://) stretched to each part's box and tinted: a true ellipse. A UICorner
+	-- on a wide frame is a capsule with a long straight run, and the capsule plinth (with a capsule ring inside it) read
+	-- as a loading bar under the pet
+	DISC = "rbxasset://textures/whiteCircle.png",
+	-- (Task 2) the plinth, in shares of its box (1.1 x / 0.24 x the egg, 16.4), the mock's platA: the Top ellipse Top of
+	-- the box tall, centred on the box's top edge (the egg's foot), its Rim a disc Rim px larger behind it; the Side the
+	-- Top's ellipse moved Band of the box down (the disc's thickness: a band under the Top's front edge, shaded darker
+	-- downward) with the Wall (the band's straight ends between the two centre lines: a cylinder's edge, the mock's side)
+	-- and the Edge behind it (Edge px larger, Shade(c, .2) at EdgeA: the mock's lit lower rim); the inner Ring (RingW x
+	-- RingH of the Top, Shade(c, .4) at RingA) drawn as a disc under a Cover disc Ring px smaller that carries the Top's own
+	-- gradient over its span (a stroke on an ellipse); the halo centred GlowY under the edge (the mock's 16 px under a 60 px
+	-- disc), 1.6 x the box wide and 1.9 x the Top tall. Top + Band = 1: the disc stays inside its box (a flat disc, never
+	-- the old drum); 1.1 / (0.24 x 0.85) = a 5.4 : 1 ellipse (the mock's 5 : 1 with a thicker side)
 	PLINTH = {
-		Top = 0.92, Band = 0.14, GlowY = 0.92 * 16 / 60, GlowW = 1.6, GlowH = 1.9 * 0.92, Rim = 3, RimPhone = 2,
+		Top = 0.85, Band = 0.15, GlowY = 0.85 * 16 / 60, GlowW = 1.6, GlowH = 1.9 * 0.85, Rim = 3, RimPhone = 2,
+		RingW = 0.76, RingH = 0.7, RingA = 0.45, Ring = 2, RingPhone = 1.5, Edge = 2, EdgePhone = 1.5, EdgeA = 0.3,
 		TopA = rgb(52, 72, 154), TopB = rgb(20, 29, 82), SideA = rgb(10, 17, 52), SideB = rgb(38, 56, 132),
 		-- the colour the plinth's rim / ring / glow are shaded from before the rarity is shown on it (a soft periwinkle
 		-- of the stage's navy: no rarity, no tease; Common's own grey reads as a white outline here)
@@ -723,12 +740,23 @@ function HatchLook.Glow(parent, color, opts)
 		})
 		self.Alphas[1], self.Shares[1] = K.GLOW.ImageA, { W = 1, H = 1 }
 	else
-		self.Prop, self.ColorProp = "BackgroundTransparency", "BackgroundColor3"
+		-- opts.Ellipse (review round 2: the plinth's halo): each disc is the built-in disc image (an ellipse, the mock's
+		-- elliptical halo; a round frame on a wide box is a capsule that read as a rounded box of light)
+		local ellipse = opts.Ellipse == true
+		self.Prop, self.ColorProp = ellipse and "ImageTransparency" or "BackgroundTransparency", ellipse and "ImageColor3" or "BackgroundColor3"
 		local discs = opts.Discs or K.GLOW.Discs
 		for i = 1, math.max(1, math.min(#discs, opts.Count or #discs)) do
 			local d = discs[i]
-			local f = frame(parent, name .. i, { AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = color, BackgroundTransparency = 0, ZIndex = z })
-			corner(f, 0.5)
+			local f
+			if ellipse then
+				f = Util.Create("ImageLabel", {
+					Name = name .. i, Image = K.DISC, ScaleType = Enum.ScaleType.Stretch, ImageColor3 = color, ImageTransparency = 0, BackgroundTransparency = 1, BorderSizePixel = 0,
+					AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = z, Parent = parent,
+				})
+			else
+				f = frame(parent, name .. i, { AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = color, BackgroundTransparency = 0, ZIndex = z })
+				corner(f, 0.5)
+			end
 			local keys = {}
 			for k, kp in ipairs(d.Fade) do
 				keys[k] = NumberSequenceKeypoint.new(kp[1], kp[2])
@@ -788,6 +816,18 @@ end
 local Plinth = {}
 Plinth.__index = Plinth
 
+-- one ellipse of the plinth: the built-in white disc stretched to its box, tinted by ImageColor3 (and a UIGradient)
+local function disc(parent, name, props)
+	props = props or {}
+	props.Name = name
+	props.Image = K.DISC
+	props.ScaleType = Enum.ScaleType.Stretch
+	props.BackgroundTransparency = 1
+	props.BorderSizePixel = 0
+	props.Parent = parent
+	return Util.Create("ImageLabel", props)
+end
+
 function HatchLook.PlinthLip(box, lip)
 	local top = box and box:FindFirstChild("Top")
 	if not top then
@@ -800,6 +840,13 @@ function HatchLook.PlinthLip(box, lip)
 		top.Position = UDim2.fromScale(0, -K.PLINTH.Top / 2)
 		top.Size = UDim2.fromScale(1, K.PLINTH.Top)
 	end
+	-- the rim: the Top's disc its Thickness px larger every way, behind it (it stays with the lip too)
+	local rim = box:FindFirstChild("Rim")
+	if rim then
+		local r = rim:GetAttribute("Thickness") or 0
+		rim.Position = top.Position + UDim2.fromOffset(-r, -r)
+		rim.Size = top.Size + UDim2.fromOffset(2 * r, 2 * r)
+	end
 end
 
 function HatchLook.Plinth(box, rarity, phone, opts)
@@ -810,22 +857,53 @@ function HatchLook.Plinth(box, rarity, phone, opts)
 	box.AnchorPoint = Vector2.new(0.5, 0) -- (the egg's foot: the pop grows round the disc's middle)
 	box.BackgroundTransparency = 1
 	self.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = box })
-	self.Glow = HatchLook.Glow(box, HatchLook.Shade(P.Neutral, 0.2), { Name = "Glow", Count = opts.Glows, Z = z - 1 })
+	self.Glow = HatchLook.Glow(box, HatchLook.Shade(P.Neutral, 0.2), { Name = "Glow", Count = opts.Glows, Z = z - 1, Ellipse = true })
 	self.Glow:Place(UDim2.fromScale(0.5, P.GlowY), UDim2.fromScale(P.GlowW, P.GlowH))
 	self.GlowW = P.GlowW
-	-- the thickness: the Top's shape Band lower, so only a thin lit-to-dark band shows under the Top's front edge
+	-- the thickness: the Top's ellipse Band lower (a lit-to-dark band shows under the Top's front edge), its straight ends
+	-- (the Wall, between the two centre lines) and the lit lower rim behind it (the Edge). Shaded like a cylinder (the
+	-- mock's side): lit at the front under the Top's edge, darker downward and towards the two ends (the Side shows only
+	-- its lower half: its middle line, where the ends meet the Wall, is dark; the Wall is dark at its ends)
+	-- (the Wall's ends are the box's: the Top's widest points, the Rim overhanging them like the mock's stroke)
+	local sideY = P.Band - P.Top / 2
+	local edge = phone and P.EdgePhone or P.Edge
+	self.Edge = disc(box, "Edge", {
+		Position = UDim2.new(0, -edge, sideY, -edge), Size = UDim2.new(1, 2 * edge, P.Top, 2 * edge), ImageColor3 = HatchLook.Shade(P.Neutral, 0.2), ImageTransparency = P.EdgeA, ZIndex = z,
+	})
 	local lit = 1 - P.Band / P.Top
-	self.Side = frame(box, "Side", { Position = UDim2.fromScale(0, P.Band - P.Top / 2), Size = UDim2.fromScale(1, P.Top), BackgroundColor3 = K.WHITE, BackgroundTransparency = 0, ZIndex = z })
-	corner(self.Side, 0.5)
+	self.Side = disc(box, "Side", { Position = UDim2.fromScale(0, sideY), Size = UDim2.fromScale(1, P.Top), ImageColor3 = K.WHITE, ZIndex = z + 1 })
 	Util.Create("UIGradient", {
 		Rotation = 90,
-		Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, P.SideB), ColorSequenceKeypoint.new(lit, P.SideB), ColorSequenceKeypoint.new(1, P.SideA) }), Parent = self.Side,
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, P.SideA), ColorSequenceKeypoint.new(0.5, P.SideA), ColorSequenceKeypoint.new(lit, P.SideB), ColorSequenceKeypoint.new(1, P.SideA),
+		}),
+		Parent = self.Side,
 	})
-	self.Top = frame(box, "Top", { BackgroundColor3 = K.WHITE, BackgroundTransparency = 0, ZIndex = z + 1 })
-	corner(self.Top, 0.5)
+	self.Wall = frame(box, "Wall", { Size = UDim2.fromScale(1, P.Band), BackgroundColor3 = K.WHITE, BackgroundTransparency = 0, ZIndex = z + 1 })
+	Util.Create("UIGradient", {
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, P.SideA), ColorSequenceKeypoint.new(0.2, P.SideB), ColorSequenceKeypoint.new(0.8, P.SideB), ColorSequenceKeypoint.new(1, P.SideA),
+		}),
+		Parent = self.Wall,
+	})
+	local rim = phone and P.RimPhone or P.Rim
+	self.Rim = disc(box, "Rim", { ImageColor3 = HatchLook.Shade(P.Neutral, 0.25), ZIndex = z + 2 })
+	self.Rim:SetAttribute("Thickness", rim)
+	self.Top = disc(box, "Top", { ImageColor3 = K.WHITE, ZIndex = z + 3 })
 	Util.Create("UIGradient", { Rotation = 90, Color = ColorSequence.new(P.TopA, P.TopB), Parent = self.Top })
-	self.Rim = stroke(self.Top, HatchLook.Shade(P.Neutral, 0.25), phone and P.RimPhone or P.Rim, 0)
-	self.Rim.Name = "Rim"
+	if opts.Ring ~= false then
+		-- the inner ring: a disc in the ring colour under a Cover disc `ring` px smaller in the Top's colours over its span
+		local ring = phone and P.RingPhone or P.Ring
+		local v0, v1 = 0.5 - P.RingH / 2, 0.5 + P.RingH / 2
+		self.Ring = disc(box, "Ring", {
+			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0), Size = UDim2.fromScale(P.RingW, P.RingH * P.Top),
+			ImageColor3 = HatchLook.Shade(P.Neutral, 0.4), ImageTransparency = P.RingA, ZIndex = z + 4,
+		})
+		self.Cover = disc(box, "Cover", {
+			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0), Size = UDim2.new(P.RingW, -2 * ring, P.RingH * P.Top, -2 * ring), ImageColor3 = K.WHITE, ZIndex = z + 5,
+		})
+		Util.Create("UIGradient", { Rotation = 90, Color = ColorSequence.new(P.TopA:Lerp(P.TopB, v0), P.TopA:Lerp(P.TopB, v1)), Parent = self.Cover })
+	end
 	HatchLook.PlinthLip(box, false)
 	return self
 end
@@ -841,21 +919,32 @@ function Plinth:FitGlow(share)
 end
 
 function Plinth:SetAlpha(a)
+	local P = K.PLINTH
 	a = math.max(0, math.min(1, a))
 	self.Alpha = a
-	self.Top.BackgroundTransparency = 1 - a
-	self.Side.BackgroundTransparency = 1 - a
-	self.Rim.Transparency = 1 - a
+	self.Top.ImageTransparency = 1 - a
+	self.Side.ImageTransparency = 1 - a
+	self.Wall.BackgroundTransparency = 1 - a
+	self.Rim.ImageTransparency = 1 - a
+	self.Edge.ImageTransparency = 1 - a * (1 - P.EdgeA)
+	if self.Ring then
+		self.Ring.ImageTransparency = 1 - a * (1 - P.RingA)
+		self.Cover.ImageTransparency = 1 - a
+	end
 	self.Glow:SetAlpha(a)
 end
 
+-- the rarity's (or the neutral) shades: rim Shade(c, .25), inner ring .4, the lit lower rim and the glow .2
 function Plinth:paint(c, seconds)
 	local out = {}
-	local rim = HatchLook.Shade(c, 0.25)
-	if seconds and seconds > 0 then
-		out[#out + 1] = tween(self.Rim, seconds, { Color = rim }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, self.Track)
-	else
-		self.Rim.Color = rim
+	for _, p in ipairs({ { self.Rim, HatchLook.Shade(c, 0.25) }, { self.Ring, HatchLook.Shade(c, 0.4) }, { self.Edge, HatchLook.Shade(c, 0.2) } }) do
+		if p[1] then
+			if seconds and seconds > 0 then
+				out[#out + 1] = tween(p[1], seconds, { ImageColor3 = p[2] }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, self.Track)
+			else
+				p[1].ImageColor3 = p[2]
+			end
+		end
 	end
 	self.Glow:SetColor(HatchLook.Shade(c, 0.2), seconds, self.Track, out)
 	return out
@@ -1208,9 +1297,9 @@ end
 
 -- the chip's width for a price priceW px wide: the mock's 80 / 66 at the least, only its content's when the label needs
 -- the room; fits = the label (labelW px) fits beside it
-function HatchLook.FitPill(btn, labelW, priceW)
+function HatchLook.FitPill(btn, labelW, priceW, parts)
 	local P = K.PILL
-	local p = HatchLook.PillParts(btn)
+	local p = parts or HatchLook.PillParts(btn)
 	local coin = p.Coin and p.Coin.Size.X.Offset or 0
 	local content = 2 * P.ChipPad + coin + P.CoinGap + priceW
 	local least = btn:GetAttribute("Phone") == true and P.ChipWPhone or P.ChipW
@@ -1222,9 +1311,9 @@ function HatchLook.FitPill(btn, labelW, priceW)
 	return math.ceil(w), labelW <= room - w
 end
 
-function HatchLook.SetPillChip(btn, w)
+function HatchLook.SetPillChip(btn, w, parts)
 	local P = K.PILL
-	local p = HatchLook.PillParts(btn)
+	local p = parts or HatchLook.PillParts(btn)
 	if p.Chip then
 		p.Chip.Visible = w > 0
 		p.Chip.Size = UDim2.new(0, math.max(0, w), 1, -P.ChipV)

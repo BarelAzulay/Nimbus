@@ -67,12 +67,15 @@
 -- Instances: NimbusHatch (DisplayOrder 25, IgnoreGuiInset, ResetOnSpawn false) > Stage > Dim (the tap-anywhere button),
 -- Vignette, (Stars: the Secret backdrop), Content (the area under the top bar, UIScale "Fit") > Title,
 -- Strips > Strip1..3 > Track (a non-scrolling ScrollingFrame: it clips) > Cell1..12, Streaks (High), Pointer; Hero (UIScale
--- "Punch") > Spot, Rays, CloudRing1..3, Backlight1..3, Pedestal1..3 (> Top, Side, Ring, Glow1..2 or Glow: the plinth),
+-- "Punch") > Spot, Rays, CloudRing1..3, Backlight1..3, Pedestal1..3 (> Top, Rim, Side, Wall, Edge, Ring, Cover, Glow1..2
+-- or Glow: the plinth's ellipses, HatchLook.Plinth),
 -- Egg1..3 (> Cracks, Leaks), Halves1..3, CrackWord (a HatchLook.Word label: UIGradient + UIStroke); Burst (UIScale "Punch",
 -- following Hero's) > Shock, Sparks (the pool of 64);
 -- Reveal > TextIn (the rise's NumberValue), Col1..3 > Banner (Word: L1..Ln + Glow1..2, attribute Text; an x3 phone
--- column: one TextLabel), Aura (Secret), Pet (> Pop, Shadow, the PetViewport), Name, New (beside the name; an x3 phone / portrait column
--- puts it on the pet frame's top-left corner, under an EvolvedRibbon when there is one), Note, EvolvedRibbon; BottomBar > Skip,
+-- column: one TextLabel), Aura (Secret), Pet (> Pop, Shadow, the PetViewport), Name, New (beside the name; an x3 phone /
+-- portrait column puts it on the pet frame's bottom-left corner), Note (a long one broken at its dots: H.fitNote),
+-- EvolvedRibbon (review round 2: in the name row after NEW! when the name still fits, else PC the model's shoulder, a
+-- phone's x3 / portrait the pet frame's top-right corner); BottomBar > Skip,
 -- FastHatch (the chips), SpinAgain, Done (the pills), PillsIn; then Stage > Flash. (The Rays live in Hero, not Burst: a GUI frame's children cannot sit
 -- between another frame's, and the rays belong behind the egg, the pedestal and the pet.) Strip cells are recycled (at
 -- most 12 per strip): a cell re-skins its egg with EggArt.SetRarity when it wraps (Task 26: lean Medium eggs, Rim = false
@@ -1415,7 +1418,7 @@ function B.cols(roll)
 			end
 		end
 		roll.Cols[j] = {
-			Root = col, Pet = pet, Pop = pop, Banner = banner, Word = word, Name = name, New = new, NewPop = newPop, Note = note, View = vf, Fade = fade, Rest = {},
+			Root = col, Pet = pet, Pop = pop, Banner = banner, Word = word, Name = name, New = new, NewPop = newPop, Note = note, NoteFull = note.Text, View = vf, Fade = fade, Rest = {},
 			Sil = H.order(pull.Rarity) >= K.LOOK.SIL.From,
 		}
 	end
@@ -1430,6 +1433,41 @@ end
 -- the stage's text widths in the Title face (the reveal word's letters)
 function H.titleW(text, size)
 	return H.textW(text, size, "Title")
+end
+
+-- (review round 2) a note too long for one line of its box breaks at its dots (each line whole phrases, the dot at the
+-- break dropped): "1 of 4 Legendary pets" / "added to your pets", never a lone "pets" wrapped onto the second line
+function H.fitNote(text, size, w)
+	text = tostring(text or "")
+	if H.textW(text, size, "Body") <= w then
+		return text
+	end
+	local sep = " " .. DOT .. " "
+	local parts, from = {}, 1
+	while true do
+		local a, b = text:find(sep, from, true)
+		if not a then
+			parts[#parts + 1] = text:sub(from)
+			break
+		end
+		parts[#parts + 1] = text:sub(from, a - 1)
+		from = b + 1
+	end
+	if #parts < 2 then
+		return text
+	end
+	local lines, cur = {}, parts[1]
+	for i = 2, #parts do
+		local try = cur .. sep .. parts[i]
+		if H.textW(try, size, "Body") <= w then
+			cur = try
+		else
+			lines[#lines + 1] = cur
+			cur = parts[i]
+		end
+	end
+	lines[#lines + 1] = cur
+	return table.concat(lines, "\n")
 end
 
 -- (roll-look) the name / NEW! / note at k (0 = 16 px low and clear .. 1 = at their layout places, shown)
@@ -1588,15 +1626,15 @@ function H.placeWord(roll, lay)
 	end
 end
 
--- the pedestal's look: the flat lit plinth (roll-look: Top, Side, Ring, the glow), or only its Top as the thin lip a
--- phone's reveal pet stands on
+-- the pedestal's look: the flat lit plinth (roll-look: the Top ellipse and its Rim, the Side, Wall and Edge, the inner
+-- Ring under its Cover, the glow), or only its Top (with its Rim) as the thin lip a phone's reveal pet stands on
 function H.pedLook(ped, lip)
 	if ped:GetAttribute("Lip") == lip then
 		return
 	end
 	ped:SetAttribute("Lip", lip)
 	for _, c in ipairs(ped:GetChildren()) do
-		if c:IsA("GuiObject") and c.Name ~= "Top" then
+		if c:IsA("GuiObject") and c.Name ~= "Top" and c.Name ~= "Rim" then
 			c.Visible = not lip
 		end
 	end
@@ -1638,22 +1676,39 @@ function H.applyReveal(roll, lay)
 			-- the name (+ NEW!) row, then the note
 			local name, new, note = c.Root:FindFirstChild("Name"), c.Root:FindFirstChild("New"), c.Root:FindFirstChild("Note")
 			local ribbon = c.Root:FindFirstChild("EvolvedRibbon")
-			local rw = math.min(g.Pet.S, lay.PC and 150 or 96)
+			local ribbonText = ribbon and ribbon:FindFirstChild("Text")
+			local ribbonSize = lay.PC and 20 or 15
 			local rh = lay.PC and 36 or 24
 			local nx, nw = g.NameX or 12, g.NameW or (g.W - 24)
 			local corner = g.New.Corner == true
 			local newW = (new and new.Visible and not corner) and (g.New.W + 8) or 0
-			local textW = math.min(nw - newW, H.textW(name.Text, g.NameSize, "Display") + 8)
-			local rowX = g.Row and nx or (nx + (nw - textW - newW) / 2)
+			local nameW = H.textW(name.Text, g.NameSize, "Display") + 8
+			-- (review round 2) the Evolved ribbon: a sticker in the name row after NEW! (name, NEW!, Evolved centred together)
+			-- wherever NEW! sits in that row and the whole name still fits beside them (PC, a landscape phone's x1); else on
+			-- PC the model's shoulder (the frame's corner hung in the empty sky: the model fills only 1 / 1.2 of its frame)
+			-- and on a phone's x3 / portrait a small tag on the pet frame's top-right corner (its text's width, at most 0.75
+			-- of the frame), NEW! on the bottom-left one (never stacked over the pet's head)
+			local rw, ribW, inRow = 0, 0, false
+			if ribbon then
+				local tw = H.textW(ribbonText and ribbonText.Text or "Evolved", ribbonSize, "Button") + (lay.PC and 28 or 14)
+				rw = lay.PC and math.min(150, math.max(tw, 0.36 * g.Pet.S)) or math.min(96, tw)
+				inRow = not corner and nameW + newW + rw + 8 <= nw
+				ribW = inRow and (rw + 8) or 0
+				if not inRow then
+					rw = math.min(rw, (lay.PC and 0.36 or 0.75) * g.Pet.S)
+				end
+			end
+			local textW = math.min(nw - newW - ribW, nameW)
+			local rowX = g.Row and nx or (nx + (nw - textW - newW - ribW) / 2)
 			name.TextSize = g.NameSize
 			H.place(name, rowX, g.NameY, textW, g.NameH)
 			if new then
 				if corner then
-					-- (review round 3) the pet frame's top-left corner, the EvolvedRibbon's mirror (tilted the other way), under the
-					-- ribbon when both show (a narrow pet's ribbon spans the whole frame; 10 px apart so the two tilts stay clear);
-					-- the name keeps its whole row
-					local ny = g.Pet.Y + 0.12 * g.Pet.S + (ribbon and (rh + 10) or 0)
-					H.place(new, g.Pet.X, ny, g.New.W, g.New.H)
+					-- (review round 3) on the pet frame's corner, the name keeps its whole row; (review round 2) the bottom-left
+					-- corner, hanging up to 14 px off the frame into the column (clear of the ribbon on the top-right, and of
+					-- the pet's head: the two stacked over the head covered most of a 110 px pet)
+					local hang = math.min(14, g.Pet.X)
+					H.place(new, g.Pet.X - hang, g.Pet.Y + 0.62 * g.Pet.S, g.New.W, g.New.H)
 					new.Rotation = -8
 				else
 					H.place(new, rowX + textW + 8, g.NameY + (g.NameH - g.New.H) / 2, g.New.W, g.New.H)
@@ -1666,12 +1721,19 @@ function H.applyReveal(roll, lay)
 			end
 			note.TextSize = g.NoteSize
 			note.TextXAlignment = g.Row and Enum.TextXAlignment.Left or Enum.TextXAlignment.Center
+			note.Text = H.fitNote(c.NoteFull or note.Text, g.NoteSize, nw)
 			H.place(note, nx, g.NoteY, nw, g.NoteH)
 			if ribbon then
-				H.place(ribbon, g.Pet.X + g.Pet.S - rw, g.Pet.Y + 0.12 * g.Pet.S, rw, rh) -- inside the pet frame, clear of the banner
-				local t = ribbon:FindFirstChild("Text")
-				if t then
-					t.TextSize = lay.PC and 20 or 15
+				if inRow then
+					H.place(ribbon, rowX + textW + newW + 8, g.NameY + (g.NameH - rh) / 2, rw, rh)
+				elseif lay.PC then
+					-- the model's shoulder (it fills 1 / 1.2 of the frame, centred), not the frame's empty corner
+					H.place(ribbon, g.Pet.X + 0.62 * g.Pet.S, g.Pet.Y + 0.2 * g.Pet.S, rw, rh)
+				else
+					H.place(ribbon, g.Pet.X + g.Pet.S - rw, g.Pet.Y + 0.12 * g.Pet.S, rw, rh) -- inside the pet frame, clear of the banner
+				end
+				if ribbonText then
+					ribbonText.TextSize = ribbonSize
 				end
 			end
 			c.Pop.Scale = roll.PopDone and 1 or c.Pop.Scale
@@ -1689,9 +1751,25 @@ function H.applyBar(roll, lay)
 	H.place(roll.UI.Bar, 0, bar.Y, lay.W, bar.H)
 	local P = lay.P
 	local phone = not lay.PC
-	-- (roll-look) the chips' text with the chevrons, the chips' and pills' sizes of this layout
+	-- (roll-look) the chips' text with the chevrons, the chips' and pills' sizes of this layout; (review round 2) a chip
+	-- packed narrower than its words takes the next shorter form ("Tap to close ››", then "Close ››"), never an ellipsis
 	local verb = roll.Revealed and "close" or "skip"
-	HatchLook.SetChipText(roll.UI.Skip, (lay.PC and "Tap anywhere to " or "Tap to ") .. verb .. " " .. K.LOOK.CHEVRONS)
+	local skipIt = bar.Items.Skip
+	local room = skipIt and (skipIt.w - 2 * HatchLook.Metrics.CHIP.Pad) or math.huge
+	local forms = { "Tap to " .. verb .. " " .. K.LOOK.CHEVRONS, verb:sub(1, 1):upper() .. verb:sub(2) .. " " .. K.LOOK.CHEVRONS }
+	if lay.PC then
+		table.insert(forms, 1, "Tap anywhere to " .. verb .. " " .. K.LOOK.CHEVRONS)
+	end
+	-- (a chip at its preferred width is sized for its full words: only a packed, narrower chip measures)
+	local pref = (roll.Revealed and P.Bar.SkipReveal or P.Bar.Skip)[1]
+	local chipText = forms[#forms]
+	for i, form in ipairs(forms) do
+		if (i == 1 and skipIt and skipIt.w >= pref - 0.5) or H.textW(form, P.Bar.ChipText, "Label") <= room then
+			chipText = form
+			break
+		end
+	end
+	HatchLook.SetChipText(roll.UI.Skip, chipText)
 	HatchLook.SizeChip(roll.UI.Skip, P.Bar.ChipText, phone)
 	HatchLook.SizeChip(roll.UI.Fast, P.Bar.FastText, phone)
 	for _, btn in ipairs(roll.UI.Pills) do
@@ -1710,6 +1788,7 @@ function H.applyBar(roll, lay)
 		end
 	end
 	H.paintFast(roll)
+	roll.AgainKey = nil -- (the sizes above changed: SPIN AGAIN measures and fits its chip again)
 	H.refreshAgain()
 	if roll.PillK then
 		H.pillsIn(roll, roll.PillK)
@@ -1725,28 +1804,38 @@ function H.refreshAgain()
 	end
 	local armed = H.armed()
 	roll.Armed = armed
-	local done = roll.UI.Done
-	if done and done.Parent then
-		CloudUI.SetDisabled(done, not armed)
-	end
 	local btn = roll.UI.Again
-	if not btn or not btn.Parent then
-		return
-	end
 	local roulette = roll.Roulette
-	if not roulette then
-		btn.Visible = false
-		return
-	end
-	local price = H.price(roulette, roll.Currency) * roll.N
+	local price = roulette and H.price(roulette, roll.Currency) * roll.N or 0
 	local reason = nil
-	if H.inMatch() then
+	if not roulette then
+		reason = "none"
+	elseif H.inMatch() then
 		reason = "Shop closed"
 	elseif roll.Currency == "Gems" and not H.gemsOpen() then
 		reason = "Locked"
 	elseif H.balance(roll.Currency) < price then
 		reason = roll.Currency == "Gems" and "Not enough Gems" or "Not enough Tokens"
 	end
+	-- (review round 2) R.advance refreshes every 8 heartbeats for the whole reveal: nothing is looked up, measured or
+	-- written again while what the pills show is the same (H.applyBar clears the key: a layout's sizes changed)
+	local key = table.concat({ tostring(armed), tostring(S.Pending), reason or "", tostring(price) }, "|")
+	if roll.AgainKey == key then
+		return
+	end
+	roll.AgainKey = key
+	local done = roll.UI.Done
+	if done and done.Parent then
+		CloudUI.SetDisabled(done, not armed)
+	end
+	if not btn or not btn.Parent then
+		return
+	end
+	if not roulette then
+		btn.Visible = false
+		return
+	end
+	local parts = roll.UI.PillParts and roll.UI.PillParts[1] or nil
 	local lbl = roll.UI.AgainLabel
 	lbl.Text = reason or ((roll.N > 1) and "SPIN AGAIN x3" or "SPIN AGAIN")
 	local priceText = (S.Lay and S.Lay.PC) and Util.Commas(price) or Theme.ShortNumber(price)
@@ -1756,14 +1845,14 @@ function H.refreshAgain()
 		-- content's width at the least) takes the short price ("3K"); (roll-look) the chip holds the coin and the price
 		local labelW = H.textW(lbl.Text, lbl.TextSize, "Button")
 		local fits
-		chipW, fits = HatchLook.FitPill(btn, labelW, H.textW(priceText, roll.UI.AgainPrice.TextSize, "Display"))
+		chipW, fits = HatchLook.FitPill(btn, labelW, H.textW(priceText, roll.UI.AgainPrice.TextSize, "Display"), parts)
 		if not fits then
 			priceText = Theme.ShortNumber(price, 1000)
-			chipW = HatchLook.FitPill(btn, labelW, H.textW(priceText, roll.UI.AgainPrice.TextSize, "Display"))
+			chipW = HatchLook.FitPill(btn, labelW, H.textW(priceText, roll.UI.AgainPrice.TextSize, "Display"), parts)
 		end
 	end
 	roll.UI.AgainPrice.Text = priceText
-	HatchLook.SetPillChip(btn, chipW) -- (a reason: no chip, the label takes the whole pill)
+	HatchLook.SetPillChip(btn, chipW, parts) -- (a reason: no chip, the label takes the whole pill)
 	CloudUI.SetDisabled(btn, reason ~= nil or S.Pending or not armed)
 end
 

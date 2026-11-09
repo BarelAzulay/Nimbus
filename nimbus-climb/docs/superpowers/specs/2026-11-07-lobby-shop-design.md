@@ -2015,7 +2015,9 @@ The owner: "make it look cool and high quality because right now it looks really
 the animated mock `page.html` section A, functions `cardA`, `sceneA`, `phoneA`, `wordA`, `platA`, `pillBtn`, `chip`, `fastChip`,
 the `@keyframes` at its top): option **A "Showcase"**, every Baseline item, plus **B's colour tell** (Rare and up), **B's
 silhouette** (Legendary and up), **Gemini's shake-colour tweak** (Rare and up) and the **clutter caps** (one shine sweep,
-sparkles only at the burst and the shakes' small pops, the rays dimmed while the reveal text shows). Phases, timings (16.4),
+sparkles only at the burst and the shakes' small pops, the rays dimmed while the reveal text shows; review round 2: so the
+stage's hero egg has no drifting ambient sparks from the pool over the rise and the shakes, 16.5's `Pool:Ambient`, which the
+Shop's Secret hero keeps; the egg's own paint VFX stay). Phases, timings (16.4),
 Skip, Fast hatch, x3, the arming rule, the 11 egg sounds and the 3D egg (16.14) stand; the only timing change is the
 Legendary+ silhouette (+0.3 s to the reveal's text chain). The pedestal's cloud-stone drum and its three puffs stay removed
 (a5a38ac, the owner: "remove the useless bars"): the new plinth below is a flat lit disc, nothing stacked under it.
@@ -2042,12 +2044,15 @@ the rarity colour `c` = `Config.Rarities[].Color` (Secret: `EggStage.Metrics.SEC
 Other tints: card rim `Shade(c, .05)` opaque from Rare up, `Shade(c, -.1)` at transparency 0.25 for Common / Uncommon; card
 tint `c` at transparency 0.5 fading to 1 by 0.75 of the card's height (a vertical UIGradient on a "Tint" frame); rarity
 plate `Shade(c, -.45)` with a `Shade(c, .1)` stroke; plinth rim `Shade(c, .25)`, its inner ring `Shade(c, .4)` at 0.45, its
-glow `Shade(c, .2)`; the word's glow `c` at 0.55; the tell and the tweak tint = `EggStage`'s `H.color(rarity)`. Fixed colours:
+lit lower rim (the "Edge", review round 2) and its glow `Shade(c, .2)` (the Edge at 0.3); the word's glow `c` at 0.55; the
+tell and the tweak tint = `EggStage`'s `H.color(rarity)`. Fixed colours:
 ink rgb(11,16,48); card face rgb(37,51,122) -> rgb(17,25,68) (vertical); card shadow rgb(2,4,14) at 0.45; shine line white at
 0.65; track face rgb(20,31,82) -> rgb(8,13,40) on a rgb(3,5,15) 0.15 outer, stroke rgb(44,63,136) 2 px; gold window
 rgb(255,215,106), its glow stroke rgb(244,196,78) at 0.65, notches rgb(255,215,106) with a rgb(90,54,0) stroke; the window's
 rest gold is `EggStage.Metrics.GOLD` rgb(242,182,68) when no tell plays; plinth top rgb(52,72,154) -> rgb(20,29,82), side
-rgb(10,17,52) / rgb(38,56,132) / rgb(10,17,52) (horizontal); gold pill rgb(255,224,138) -> rgb(246,178,60) at 0.55 ->
+shaded like a cylinder (review round 2): rgb(38,56,132) under the Top's front edge darkening to rgb(10,17,52) at the bottom
+and towards the ends (the Side's vertical gradient, rgb(10,17,52) on its middle line; the Wall rgb(10,17,52) / rgb(38,56,132)
+/ rgb(10,17,52) horizontal); gold pill rgb(255,224,138) -> rgb(246,178,60) at 0.55 ->
 rgb(223,143,38), stroke rgb(107,66,0), text ink rgb(58,34,0); green pill rgb(124,240,162) -> rgb(47,184,102) at 0.55 ->
 rgb(29,138,74), stroke rgb(13,77,42), white text with the ink outline; a disabled pill rgb(120,126,140) -> rgb(84,90,104),
 stroke rgb(60,64,76), text rgb(176,184,206); Skip chip black at 0.55 with rgb(227,233,255) text; Fast hatch chip rgb(11,18,51)
@@ -2061,9 +2066,9 @@ the crack egg and the reveal pet, text never shrinks):
 |---|---|---|
 | Strip card x1 | 230 x 250 (16.4), corner 18, shadow +8 below, shine line 3 px inset 12 / 6 from the top, plate 0.8 w x 30 at 42 above the bottom, word 18 px white (was 24, rarity-coloured) | 130 x 160, corner 12, shadow +5, shine 2, plate 0.8 w x 22, word 15 |
 | Strip card x3 | 190 x 210, lite: face, rim, shine (no shadow, tint or plate) | 76 x 66, lite |
-| Gold window | the landed cell's box + 8 px a side, stroke 4, glow stroke 10 at 0.65, notches 16 px squares at 45 degrees centred on its top and bottom edges | + 6 px, stroke 3, glow 6, notches 10 |
+| Gold window | the landed cell's box + 8 px a side, stroke 4, glow stroke 10 at 0.65, notches 16 px squares at 45 degrees centred on its top and bottom edges | + 6 px, stroke 3, glow 6, notches 10; an x3 phone window has no notches (`H.cardGeo` Notch 0: its three strips sit 6 px apart) |
 | Track ends | two fade frames 0.12 x the track's width at its ends, the track colour -> clear | the same |
-| Hero plinth (the `Pedestal<j>` box: 1.1 x / 0.24 x the egg, 16.4) | x1 420 x 90: "Top" = a capsule 0.667 of the box tall (60) centred on the box's top edge, with the rim; "Side" = the Top's shape moved `HatchLook.Metrics.PLINTH.Band` = 0.14 of the box (13 px) lower, so a thin band shows under the Top's front edge and thins out round its ends (the disc's thickness), a vertical gradient rgb(38,56,132) darkening to rgb(10,17,52) over that band (review round 1: the 0.333 band read as a second bar); "Glow1..2" = two crossed gradient discs (`HatchLook.Glow`) 1.6 x the box wide and 1.9 x the Top tall, centred 16 px under the top (x3: one disc, the budget); the inner "Ring" 0.76 x 0.7 of the Top; x3 242 x 53 the same shares | x1 220 x 48 (Top 32, band 7, glow 352 x 61); x3 106 x 23; the reveal keeps 16.4's 12 px lip = the Top only (`H.pedLook`) |
+| Hero plinth (the `Pedestal<j>` box: 1.1 x / 0.24 x the egg, 16.4) | (review round 2: every part a true ellipse, the mock's `platA`: an ImageLabel of Roblox's built-in disc `HatchLook.Metrics.DISC` = `rbxasset://textures/whiteCircle.png` stretched to its box and tinted (client content, not an upload); the capsule frames with a capsule ring inside read as a loading bar under the pet) x1 420 x 90: "Top" = an ellipse 0.85 of the box tall (77) centred on the box's top edge (a 5.4 : 1 disc, the mock's 5 : 1); "Rim" = the Top's disc 3 px larger behind it (attribute `Thickness`); "Side" = the Top's ellipse moved `HatchLook.Metrics.PLINTH.Band` = 0.15 of the box (13 px) lower (the disc's thickness: the band under the Top's front edge); "Wall" = the band's straight ends, a frame from the Top's centre line to the Side's, the box's width (a cylinder's edge, the mock's side); "Edge" = the Side's disc 2 px larger behind it at 0.3 (the mock's lit lower rim); "Ring" + "Cover" = the inner ring 0.76 x 0.7 of the Top at 0.45, drawn as a disc under a Cover disc 2 px smaller that carries the Top's gradient over its span; "Glow1..2" = two crossed gradient ellipses (`HatchLook.Glow`, `Ellipse`) 1.6 x the box wide and 1.9 x the Top tall, centred 0.227 of the box under the top (x3: one, the budget). Top + Band = the box (a flat disc, never the old drum); x3 242 x 53 the same shares | x1 220 x 48 (Top 41, band 7, rim 2, edge 1.5, ring 1.5, glow 352 x 78); x3 106 x 23; the reveal keeps 16.4's 12 px lip = the Top only with its Rim (`H.pedLook`): a thin ellipse |
 | Reveal pet (review round 1) | no Shell (the pick's Baseline: "No bowl or pills: the pet stands on a platform, and the shell flies away at the burst"): both 2D halves fly off at the burst (the bottom down-right, Rotation 28, fading, the mock's `halfB`); the pet frame comes down until `K.LOOK.PET_FOOT` = 0.9 of it (where `CloudUI.PetViewport` puts the model's feet: the model fills 1 / 1.2 of the frame, centred) is the plinth's centre line (the box's top); a contact "Shadow" inside the pet frame (0.5 x 0.07 of it, black at 0.55, faded at its ends; it pops with the pet) | the lip already sits at the feet line (`K.LIP.Up`): the pet stays, the Shadow as PC |
 | Crack word | 80 px, one label, gradient + outline (review round 1: `HatchLook.Word` without letters, named "CrackWord", white text under the word's gradient, outline 0.06 x size; `Word:SetText` / `Word:SetRarity` as an x3's word moves on) | 40 |
 | Reveal word | x1 84 px letters (R1), x3 56 px letters (R3) | x1 landscape 44 (min 40) letters in the right column; portrait 40 letters in the 44 px band; x3 22 px, one label (no letters) |
@@ -2080,7 +2085,7 @@ the crack egg and the reveal pet, text never shrinks):
 | Colour tell (Rare+) | 0.7 (0.25) before that strip lands | the window's gold, glow and notches tween to `H.color(rarity)` in 0.25 (0.1), Quad Out; Common / Uncommon stay gold (no fake tease); x3: each strip its own pull's colour |
 | Land | the Land phase 0.35 (0.12) | the cells spring back from the overshoot with Back Out (`1 + 2.70158 (k - 1) ^ 3 + 1.70158 (k - 1) ^ 2`, the rise's curve), driven per frame; the landed card's UIScale 1 -> 1.15 in 0.1 Quad Out -> 1.09 in 0.15 Quad InOut; one shine sweep (a white gradient frame, Offset -1 -> 1) in 0.3 (0.12); the other cards dim to 0.6 as today |
 | Rise | 0.5 (0.2) | as 16.4, plus the plinth: UIScale 0.6 -> 1 Back Out and its transparencies from 1 over the whole phase; (review round 1) the machine's title fades out over the first 0.6 of the rise (`K.LOOK.TITLE_OUT`, per frame: the mock's title leaves at the rise; on a landscape phone it sat 1 px above the crack word) and stays gone |
-| Shake tweak (Gemini, Rare+) | the first shake's start, 0.12 x Crack (0.25 x) | the plinth rim and inner ring, the cloud ring's `GroupColor3` and the rays tween to the rarity colour in 0.25 (0.1), Quad Out; the rays come up to `GroupTransparency` 0.75 and start turning; Common / Uncommon: nothing until the burst |
+| Shake tweak (Gemini, Rare+) | the first shake's start, 0.12 x Crack (0.25 x) | the plinth's rim, inner ring, lit lower rim and glow, the cloud ring's `GroupColor3` and the rays tween to the rarity colour in 0.25 (0.1), Quad Out; the rays come up to `GroupTransparency` 0.75 and start turning; Common / Uncommon: nothing until the burst. The push-in (16.4: the egg's UIScale to 1.06 over the Crack) plays on High only (review round 2, the pick's card A: "blur and push-in off on Low") |
 | Burst | 16.4 | plus a punch: a UIScale "Punch" on `Hero` (AnchorPoint 0.5, 0.5), `Burst`'s own UIScale following it (review round 1: no longer on `Stage`, whose punch scaled the title and the chips off the screen's edges), 1 -> 1.05 in 0.08 Quad Out -> 1 in 0.25 Quad InOut (High only; Fast hatch squeezes both into its 0.25 s burst); the sparks capped at 16 on phones |
 | Gold flash with the silhouette (review round 1) | Legendary+ (the rolls that silhouette) | the gold flash is gone by the reveal: from 0.8 up to 0.5 in `min(0.25, time left - 0.15)`, then out in `K.LOOK.GOLD_OUT_SIL` = 0.15 Quad Out (the mock's flash ends before its pet pops); a Skip's tail at the reveal fades straight out from 0.8 in 0.15. Rolls without a silhouette keep 16.4's 0.25 up / 0.6 Quad In out |
 | Reveal, t = 0 | the pet pops as 16.4 (Back, 0.35); SIL = 0 below Legendary, 0.3 from Legendary | Legendary+: the pet's ViewportFrame `ImageColor3` black from the pop, held to 0.3, tweened to white 0.3 -> 0.45 Quad Out |
@@ -2089,11 +2094,20 @@ the crack egg and the reveal pet, text never shrinks):
 | Pills | SIL + 0.4 | slide up 20 px and fade in over 0.3 Quad Out; they arm by 16.4's rule (ARM_AFTER 0.8 from the reveal, ARM_QUIET 0.5) and, review round 1, never before their rise is in place (`roll.ArmAt` = max(ARM_AFTER, SIL + 0.4 + 0.3): 1.0 s from Legendary; and the rise at 1), showing disabled until then |
 | Rays on the reveal | Legendary+ | rest at `GroupTransparency` 0.55 while the text shows (16.4 had 0.45: the clutter cap) |
 
-**Budgets.** 16.4's caps stand and are asserted at every phase: x1 <= 450 instances, x3 <= 750 (today: x1 264 / 242 / 184
-at strip / crack / reveal, x3 reveal 325, phone x1 reveal 170; an x1 card adds <= 7 instances, an x3 lite card <= 2, the
-plinth 9, the window 7, a 5-letter word 18, two pills 16, two chips 12); tweens <= 24 live plus the Secret stars, except the
-reveal's first 0.7 s, where the letter pops may take it to 32; one Heartbeat; one Lighting effect plus the "Hatch" preset.
-An x1 strip cell stays <= 20 instances (16.4 said 14; the card skin is the difference), an x3 cell <= 16.
+**Budgets.** 16.4's caps stand and are asserted at every phase: x1 <= 450 instances, x3 <= 750 (before roll-look: x1 264 /
+242 / 184 at strip / crack / reveal, x3 reveal 325, phone x1 reveal 170). (review round 2) The pieces as built, counted by
+`client_roll_look_stage` / `_open` / `_reveal` so the next budget change is planned from real numbers: an x1 card's skin 8 (6
+in the cell: the Face gradient, the Shine, the Plate with its corner, stroke and Word; 2 beside it: the Shadow and its
+corner), an x3 lite card 2 (the Face gradient, the Shine); the plinth 16 (the box's Pop, two halo ellipses x [ImageLabel,
+UIGradient], Edge, Side + gradient, Wall + gradient, Rim, Top + gradient, Ring, Cover + gradient; x3: one halo, 14); the
+window 13 on the Pointer and beside it (Bounce, Glow 3, Window 3, two notches x [Frame, UIStroke], DimL, DimR); a 5-letter
+word 30 (its Frame, three glow capsules x 3, five letters x [TextLabel, UIGradient, UIStroke, UIScale]); the two pills 28
+(SPIN AGAIN 16 with its price chip and coin icon, DONE 12 with its label outline); the two chips 13 (Skip 4, Fast hatch 9).
+Tweens <= 24 live plus the Secret stars, except the reveal's first 0.7 s, where the letter pops may take it to 32; one
+Heartbeat; one Lighting effect plus the "Hatch" preset. An x1 strip cell stays <= 20 instances (16.4 said 14; the card skin
+is the difference), an x3 cell <= 16. The x3 rise is the tightest frame (three plinths come in while the strips slide away:
+`R.rise` drops the hidden cells, the landed egg, the strips' fades, dims and outer rims first); a resize during it drops the
+lifted strips at once (`H.relayout`, review round 2) instead of rebuilding their cards.
 
 **The HUD hides.** On `H.open()` (after the ScreenGui exists) every `ScreenGui` in PlayerGui that is `Enabled` and not in
 `HatchLook.KEEP = { NimbusHatch, NimbusNotify, NimbusMouseLockHint, CloudUITooltip, NimbusShop, NimbusDev, NimbusMainMenu,
@@ -2112,8 +2126,10 @@ the stage. Roblox's own top bar stays (the 58 px inset); `MenuController.SetTouc
 thumbstick as today.
 
 **Fallbacks.** Low graphics (`GraphicsQuality.Effective() == "Low"`): no blur / tint, half the sparks, static rays and ring,
-no speed streaks (16.4), no punch; the tell, the land pop, the shine, the letter pops and the silhouette stay (one tween
-each). Images: three optional keys `HatchLook.IMAGES = { Rays = "hatch_rays", Glow = "hatch_glow", Sparkle = "hatch_sparkle" }`
+no speed streaks (16.4), no punch, no push-in (review round 2: the pick's card A, "blur and push-in off on Low"); the tell,
+the land pop, the shine, the letter pops and the silhouette stay (one tween each; `client_roll_look_open`'s Low pass checks
+each). The plinth's ellipses are Roblox's built-in disc (`rbxasset://textures/whiteCircle.png`, shipped with every client:
+nothing to upload, no fallback needed). Images: three optional keys `HatchLook.IMAGES = { Rays = "hatch_rays", Glow = "hatch_glow", Sparkle = "hatch_sparkle" }`
 read from `shared/TextureIds` (`HatchLook.Image(key) -> "rbxassetid://" .. id | nil`, the ShopController `store_*` pattern;
 `tools/check.mjs` lists `UI/HatchLook.lua` among the TextureIds joiners). With no id (today: the keys are not in TextureIds,
 nothing is uploaded) the frame fallbacks draw: the rays are `HatchFx.Rays`' 16 wedges, every glow (backlight, plinth glow,
@@ -2123,19 +2139,34 @@ positions and sizes take an ImageLabel with `ImageColor3` = the tint (review rou
 image, the plinth and word glows through `HatchLook.Glow`). The 2D `EggArt` egg stays the hero when the 3D egg
 is not usable (16.14). x3 rolls keep 2D eggs and lite cards; a phone keeps one ViewportFrame at a time.
 
-**What stays 2D** (frames, gradients, strokes): the strip cards and their painted eggs, the gold window, the plinth, the
+**What stays 2D** (frames, gradients, strokes; the plinth's built-in disc images): the strip cards and their painted eggs, the gold window, the plinth, the
 backlight, the cloud ring, the cracks and leaks (over the ViewportFrame), the rays, the shock ring, the sparks, the flash,
 the crack word, the reveal word, the pills and chips. 3D: the x1 hero egg and its halves (16.14, when usable) and the pet
 (`CloudUI.PetViewport`).
 
 **Compatibility.** Instance names tests rely on keep their places: `Pointer` is the gold window's root (children `Glow`,
-`Window`, `NotchTop`, `NotchBottom`), `Pedestal<j>` the plinth's box (children `Top`, `Side`, `Glow1..2` (x3: `Glow1`; with
-a hatch_glow id one `Glow` ImageLabel), `Ring`; the lip rule shows `Top` only), `Banner` the reveal word's box with the `Word`
+`Window`, `NotchTop`, `NotchBottom`), `Pedestal<j>` the plinth's box (children `Top`, `Rim`, `Side`, `Wall`, `Edge`, `Ring`,
+`Cover`, `Glow1..2` (x3: `Glow1`; with a hatch_glow id one `Glow` ImageLabel); review round 2: the rim is the `Rim` disc,
+no UIStroke; the lip rule shows `Top` and its `Rim` only), `Banner` the reveal word's box with the `Word`
 handle inside it (a Frame with the attribute `Text` and children `L1..Ln`; x3 phone: one TextLabel `Word`), `BottomBar` >
 `Skip`, `FastHatch`, `SpinAgain`, `Done` the pills and chips (TextButtons; `CloudUI.SetDisabled` keeps working through the
 `Disabled` attribute). (review round 1) `Col<j>` holds no `Shell`; `Pet` holds its `Pop` UIScale, the contact `Shadow` and
 the PetViewport; `Hero` and `Burst` each hold a UIScale "Punch" (`Stage` none); `CrackWord` is a TextLabel with a UIGradient
 and a UIStroke.
+
+**Reveal stickers, notes and chips (review round 2).** The `EvolvedRibbon` is a sticker in the name row after NEW! (name,
+NEW!, Evolved centred together) wherever NEW! sits in that row and the whole name still fits beside them (PC, a landscape
+phone's x1); otherwise on PC it sits on the model's shoulder (0.62 / 0.2 of the pet frame, at most 0.36 of it wide: the
+frame's top-right corner hung in empty sky, the model fills 1 / 1.2 of its frame), and on a phone's x3 column or portrait row
+it is a small tag on the pet frame's top-right corner (its text's width, at most 96 px and 0.75 of the frame) with NEW! on
+the frame's bottom-left corner (0.62 down, hanging up to 14 px off the frame into the column): never stacked over the
+pet's head. A note too long for one line of its box breaks at its dots, the dot at the break dropped (`H.fitNote`: "1 of 4
+Legendary pets" / "added to your pets", never a lone "pets"). The Skip chip packed narrower than its preferred width takes
+the next shorter form that fits ("Tap anywhere to close ››" on PC, "Tap to close ››", "Close ››"; the roll's "skip" the
+same), never an ellipsis. SPIN AGAIN's refresh (every 8 heartbeats on the reveal) does nothing while the armed state,
+the pending flag, the reason and the price are unchanged (`roll.AgainKey`; `H.applyBar` clears it), and `HatchLook.FitPill`
+/ `SetPillChip` take the cached `PillParts`. The strips slide away over the rise inside `Strips` cut at the bottom bar's top
+line (`ClipsDescendants`, its height shrinking with the slide): they never cross the Skip / Fast hatch chips.
 
 **Tests.** `tools/smoke_roll_look.lua`: `client_roll_look_stage` (the HUD hide and restore on every exit, the cards, the
 window and the tell, the overshoot and the land pop, `HatchLook.Shade`), `client_roll_look_open` (the plinth and its lip,
@@ -2148,6 +2179,11 @@ toasts shown in an Enabled gui (a refused answer, the 7 s "Still waiting"); SPIN
 (x3, Legendary best); `HudKeepOff`; the punch on Hero / Burst with the Skip chip unmoved; the title gone over the hero (PC,
 844x390); the crack word's gradient and outline; the plinth's thin Side band; the three image keys wired (and their
 fallbacks); one Fast hatch pass (the tell 0.25 / 0.1, the land pop and sweep, the tweak at the one shake, the punch, the
-budgets). Evidence: `tools/render_gui.py hatch:<rarity>@<s>` and `hatch3:<s>` at 1920x1080, 1280x720, 844x390 and 360x640,
+budgets). Review round 2 added: every plinth part a true ellipse (the built-in disc, no capsule), its 16 instances, the
+Rim / Wall / Edge / Cover sizes, the cylinder shading; the push-in on High only and the Low pass's tell, land pop, sweep,
+silhouette and letter pops; no sparkle from the rise to the first shake; the strips never below the chips' row over the
+rise; x3 each strip's own tell colour, Uncommon kept gold; the budget counts above; SPIN AGAIN's idle refreshes doing nothing
+(and a low balance still showing); the PC Evolved ribbon in the name row; the x3 640x360 stickers apart, the Skip chip's
+label fitting, the notes breaking at their dots; a rotation mid-rise dropping the lifted strips. Evidence: `tools/render_gui.py hatch:<rarity>@<s>` and `hatch3:<s>` at 1920x1080, 1280x720, 844x390 and 360x640,
 in `.superpowers/lobby-shop/evidence/roll-look/`; (review round 1) `tools/dump_gui.lua` snaps every playing tween to its
 eased in-between value before it dumps (`Mock.SnapTweens`), so a moment mid-tween draws what Roblox would.

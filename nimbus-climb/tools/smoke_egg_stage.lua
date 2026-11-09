@@ -2602,8 +2602,8 @@ S.client_hatch_cutscene = guarded("client_hatch_cutscene", function()
 						flat = a.x >= p.x - 0.6 and a.x + a.w <= p.x + p.w + 0.6 and b.x >= p.x - 0.6 and b.x + b.w <= p.x + p.w + 0.6
 							and math.max(a.y + a.h, b.y + b.h) - math.min(a.y, b.y) <= p.h + 0.6
 					end
-					T.check(ped ~= nil and table.concat(parts, " ") == "Glow1 Glow2 Side Top" and flat and ped.BackgroundTransparency == 1,
-						"hatch cutscene: Pedestal1 holds only the flat lit plinth (Top, Side, its halo; roll-look review round 2: no inner ring): no drum, puffs or bars under the pet (owner 2026-11-08)", table.concat(parts, " "))
+					T.check(ped ~= nil and table.concat(parts, " ") == "Cover Edge Glow1 Glow2 Rim Ring Side Top Wall" and flat and ped.BackgroundTransparency == 1,
+						"hatch cutscene: Pedestal1 holds only the flat lit plinth (its ellipses: Top + Rim, Side + Wall + Edge, Ring + Cover, its halo; roll-look review round 2): no drum, puffs or bars under the pet (owner 2026-11-08)", table.concat(parts, " "))
 				end
 			end
 			if ph == "Crack" and egg then
