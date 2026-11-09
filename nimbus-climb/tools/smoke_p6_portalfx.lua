@@ -21,7 +21,9 @@
 --                      seen colour = tint x Brightness, clamped); no boost = today's numbers; the swirl's built value does
 --                      not change. Spec 16.16: StormAltar's green return ring (no Swirl parts) shows a vortex through the
 --                      Fixed path, centred in the Part ring's opening or, dressed (an ML_Mesh under Ring), the mesh's
---                      PortalCenter, inside the ring, in its green
+--                      PortalCenter, inside the ring, in its green; only the child VortexMeshChild names counts (an
+--                      ML_Mesh under the Pad does not), a moved spot fades the rebuilt vortex in from 0, one rebuild per
+--                      spot change (none per mesh part that arrives later), and on Low the Plaza vortex is shown but still
 -- Deterministic: no RNG; the time is the mock clock; every gate is destroyed and the quality mode restored at the end.
 
 local T = SmokeCommon.T
@@ -589,18 +591,41 @@ S.client_p6portalfx = guarded("client_p6portalfx", function()
 				T.check(green ~= nil and math.abs(v.Color.R - green.R) < 0.01 and math.abs(v.Color.G - green.G) < 0.01 and math.abs(v.Color.B - green.B) < 0.01 and v.Color.G > v.Color.R and v.Color.G > v.Color.B,
 					"altar return ring: ...in the ring's green", tostring(v.Color))
 				-- the dressed ring: the portal_ring mesh (an ML_Mesh under Ring, as MeshLibrary.Dress adds it on the client)
+				T.eq(portal:GetAttribute("VortexMeshChild"), "Ring", "altar return ring: ReturnPortal names the child a mesh may dress (VortexMeshChild = 'Ring')")
 				local pc = okMan and type(man) == "table" and man.Attachments and man.Attachments.PortalCenter and man.Attachments.PortalCenter.Pos
+				-- the gate has been on long enough to be fully faded in
+				Mock.Advance(1)
+				T.check(rec.Fade >= 1, "altar return ring: before the dress the vortex is fully faded in", fmt("fade %.2f", rec.Fade))
+				local built0 = Fx.Stats().Built
+				local vPart = rec.Vortex
+				local function meshPart(parent, name, up)
+					local mp = Instance.new("Part")
+					mp.Name = name
+					mp.Anchored = true
+					mp.CanCollide = false
+					mp.Size = Vector3.new(5.5, 5.5, 1)
+					mp.CFrame = ring:GetPivot() * CFrame.new(0, up, 0)
+					mp.Parent = parent
+					return mp
+				end
 				local mesh = Instance.new("Model")
 				mesh.Name = "ML_Mesh"
 				mesh.Parent = ring
-				local mp = Instance.new("Part")
-				mp.Name = "PortalRim"
-				mp.Anchored = true
-				mp.CanCollide = false
-				mp.Size = Vector3.new(5.5, 5.5, 1)
-				mp.CFrame = ring:GetPivot() * CFrame.new(0, 4.5, 0)
-				mp.Parent = mesh
-				Mock.Advance(0.7)
+				meshPart(mesh, "PortalRim", 4.5)
+				-- review minor 2: the rebuilt vortex fades in (no pop): right after the swap its fade starts near 0, then rises
+				local swapped = Mock.AdvanceUntil(function()
+					return rec.Vortex ~= nil and rec.Vortex ~= vPart
+				end, 1.5)
+				local fade0 = rec.Fade
+				Mock.Advance(0.3)
+				T.check(swapped and fade0 < 0.15 and rec.Fade > fade0, "altar return ring (dressed): the rebuilt vortex fades in from 0 instead of popping",
+					fmt("swapped %s, fade right after %.2f, 0.3 s later %.2f", tostring(swapped), fade0, rec.Fade))
+				-- review minor 4: a dirty storm (mesh parts arriving over several refreshes) rebuilds once per spot change
+				meshPart(mesh, "PortalFeet", 1.5)
+				Mock.Advance(0.6)
+				meshPart(mesh, "PortalCap", 7.5)
+				Mock.Advance(0.6)
+				T.eq(Fx.Stats().Built - built0, 1, "altar return ring (dressed): exactly one rebuild for the dress, none per mesh part that arrives later")
 				local vd = rec.Vortex
 				local want = pc and (ring:GetPivot() * CFrame.new(pc[1], pc[2], pc[3])).Position
 				if T.check(want ~= nil and vd ~= nil and vd.Shown, "altar return ring (dressed): the vortex is rebuilt once the portal_ring mesh dresses the Ring") then
@@ -610,9 +635,61 @@ S.client_p6portalfx = guarded("client_p6portalfx", function()
 					T.check(vd.Radius > 1 and vd.Radius < 2.5, "altar return ring (dressed): ...inside the mesh's Neon rim (radius < 2.5)", fmt("radius %.2f", vd.Radius))
 					T.check(vd.Center.LookVector:Dot(c.LookVector) > 0.999, "altar return ring (dressed): ...facing the same way")
 				end
+				-- review minor 1: without the attribute the client probes "Ring" (the fallback name)
+				portal:SetAttribute("VortexMeshChild", nil)
+				rec.Dirty = true
+				Mock.Advance(0.6)
+				T.check(rec.Vortex ~= nil and want ~= nil and (rec.Vortex.Center.Position - want).Magnitude <= 0.1,
+					"altar return ring (dressed): no VortexMeshChild attribute -> the client still probes the child 'Ring'")
+				portal:SetAttribute("VortexMeshChild", "Ring")
 				mesh:Destroy()
 				Mock.Advance(0.7)
 				T.check(rec.Vortex ~= nil and (rec.Vortex.Center.Position - opening).Magnitude <= 0.1, "altar return ring: the mesh gone, the vortex is back in the Part ring's opening")
+				T.eq(Fx.Stats().Built - built0, 2, "altar return ring: Part -> mesh -> Part rebuilds exactly twice (once per spot change)")
+				-- review minor 1: an ML_Mesh under another child (the Pad) is not the ring's dress: the vortex stays put
+				local pad = portal:FindFirstChild("Pad")
+				local padMesh = Instance.new("Model")
+				padMesh.Name = "ML_Mesh"
+				padMesh.Parent = pad
+				meshPart(padMesh, "PadTop", 0.1)
+				Mock.Advance(0.7)
+				T.check(pad ~= nil and rec.Vortex ~= nil and (rec.Vortex.Center.Position - opening).Magnitude <= 0.1 and Fx.Stats().Built - built0 == 2,
+					"altar return ring: an ML_Mesh under the Pad (not the Ring) does not move or rebuild the vortex",
+					rec.Vortex and fmt("%.3f off, %d rebuilds", (rec.Vortex.Center.Position - opening).Magnitude, Fx.Stats().Built - built0) or "no vortex")
+				padMesh:Destroy()
+				Mock.Advance(0.7)
+				-- review minor 3: Low graphics with the altar built: the Plaza vortex is shown but static
+				if okGQ then
+					Fx.SetTextureIds(fake)
+					GQ.Apply("Low")
+					Mock.Advance(0.7)
+					local vl = rec.Vortex
+					local rot0 = vl and vl.Layers and vl.Layers[3] and vl.Layers[3].Label.Rotation
+					Mock.Advance(1.5)
+					local crackOn = false
+					for _, cr in ipairs(vl and vl.Crackles or {}) do
+						if cr.Label.Visible then
+							crackOn = true
+						end
+					end
+					T.check(vl ~= nil and vl.Mode == "Texture" and vl.Shown and vl.Static and rot0 ~= nil and vl.Layers[3].Label.Rotation == rot0 and not crackOn,
+						"altar return ring, Low graphics (texture): the vortex is shown but still (arms not turning, no crackles)")
+					Fx.SetTextureIds({})
+					Mock.Advance(0.7)
+					local vf2 = rec.Vortex
+					local a0, b0 = vf2 and vf2.SpinA.CFrame, vf2 and vf2.SpinB.CFrame
+					local beam = vf2 and vf2.Beams and vf2.Beams[1]
+					local w0, c0 = beam and beam.Width0, beam and beam.CurveSize0
+					local emitted0 = Mock.Stats_ and Mock.Stats_.particlesEmitted or 0
+					Mock.Advance(1.5)
+					T.check(vf2 ~= nil and vf2.Mode == "Fallback" and vf2.Shown and vf2.Static and beam ~= nil and beam.Enabled and beam.Width0 == w0 and beam.CurveSize0 == c0
+						and vf2.SpinA.CFrame == a0 and vf2.SpinB.CFrame == b0 and not vf2.Streaks.Enabled and not vf2.Crackle.Enabled
+						and (not Mock.Stats_ or Mock.Stats_.particlesEmitted == emitted0),
+						"altar return ring, Low graphics (fallback): shown, beams still, spinners not moving, streaks and crackles off")
+					Fx.SetTextureIds(fake)
+					GQ.Apply("High")
+					Mock.Advance(0.7)
+				end
 			end
 		end
 		if altar then

@@ -1295,6 +1295,9 @@ local function checkReturn(label, SA, altar, A, landing)
 	T.check(type(radius) == "number" and radius > 1 and radius < 3.45 and type(meshR) == "number" and meshR > 1 and meshR < 2.5,
 		label .. ": ...VortexRadius inside the Part ring (< 3.45), VortexMeshRadius inside the mesh's Neon rim (< 2.5)", fmt("%s / %s", tostring(radius), tostring(meshR)))
 	T.check(typeof(color) == "Color3" and sameColor(color, GLOW.Green), label .. ": ...VortexColor = the ring's green rgb(96,190,140)", tostring(color))
+	-- review minor 1: the client probes only the named child for the mesh dress (an ML_Mesh under the Pad never counts)
+	local meshChild = portal:GetAttribute("VortexMeshChild")
+	T.check(meshChild == "Ring" and portal:FindFirstChild("Ring") ~= nil, label .. ": ...VortexMeshChild = 'Ring' (the child the portal_ring mesh dresses)", tostring(meshChild))
 	local ML = req("shared/MeshLibrary")
 	local man = ML and ML.Manifest("portal_ring")
 	local att = man and man.Attachments and man.Attachments.PortalCenter

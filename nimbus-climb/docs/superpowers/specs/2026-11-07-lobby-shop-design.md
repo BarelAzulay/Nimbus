@@ -1995,3 +1995,12 @@ Numbered 16.16 because 16.12-16.15 may exist on other branches. These override t
   inside its segments, in its green, then (an ML_Mesh under Ring) on the mesh's PortalCenter inside the 2.5 rim, then back.
   `altar_portal_glow`: GateId, VortexCenter (place, facing, no collide / query / touch), the radii, the colour and the mesh
   offset against the `portal_ring` manifest, on the booted altar and the forced-dressed rebuild.
+- **Review minors (Fable review of 920d359).** `ReturnPortal` carries `VortexMeshChild = "Ring"` and the client probes only
+  that child for an `ML_Mesh` (missing attribute = "Ring"), so an `ML_Mesh` under the Pad never moves the vortex. A rescan
+  keeps a fixed vortex whose spot and colour did not change (mesh or ring parts streaming in over several refreshes rebuild
+  it once, not per part); a moved spot (Part ring <-> mesh) rebuilds it with `rec.Fade = 0`, so it fades in instead of
+  popping. Tests in `client_p6portalfx`: the Pad's ML_Mesh, the fade from 0 after the swap, exactly one rebuild per spot
+  change across Part -> mesh (parts over three refreshes) -> Part, and Low graphics with the altar built (the Plaza vortex
+  shown but still in both modes: no turning, streaks / crackles off). `altar_portal_glow` checks the attribute.
+- **Part margin.** `StormAltar` measures 494 parts of the 500 budget (493 dressed; `storm_altar` and `altar_portal_glow`), a
+  6-part margin: a longer bridge (more planks) or more return-ring segments would trip `checkAltarBudget`.

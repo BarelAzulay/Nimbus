@@ -64,8 +64,9 @@
 --              px per stud on a SignFace part) once the ring is dressed, else a pixel BillboardGui over the ring. Its
 --              "ReturnPrompt" anchor carries GateService's prompt (no panel) and a PointLight 1.3 / 14. Spec 16.16: a
 --              PortalFx gate (GateId "Plaza") whose client vortex sits on the invisible VortexCenter part (the Part
---              ring's opening) or, once the client dressed the Ring, VortexCenter x VortexMeshOffset (the mesh's
---              PortalCenter), sized VortexRadius / VortexMeshRadius, coloured VortexColor (the ring's green).
+--              ring's opening) or, once the client dressed the Ring (VortexMeshChild = "Ring"), VortexCenter x
+--              VortexMeshOffset (the mesh's PortalCenter), sized VortexRadius / VortexMeshRadius, coloured VortexColor
+--              (the ring's green).
 --   Gem        lobby-shop (spec 5.7): Model WorldGem, "gems are spent here": a cut gem (Blender key gem_world, pivot the
 --              girdle centre) floating 3 studs over the deck (the clear air under its lowest corner) beside the walk
 --              from the landing to the summon portal, 15 studs out along the bridge and 7.5 to the side away from the
@@ -1563,8 +1564,10 @@ local function buildReturnPortal(parent, A, gapDeg)
 	-- client's PortalFxController draws a vortex in the opening. GateId makes it a tracked gate (only PortalFx and
 	-- DungeonController's "Dungeon" lookup read GateId); VortexCenter (invisible, nothing collides, queries or touches)
 	-- is the Part ring's opening, front = the walk. The mesh dress happens on each client (and can fail there), so the
-	-- client picks the mesh's opening (VortexMeshOffset / VortexMeshRadius) only while the Ring holds an ML_Mesh.
+	-- client picks the mesh's opening (VortexMeshOffset / VortexMeshRadius) only while the Ring holds an ML_Mesh
+	-- (VortexMeshChild names that child: an ML_Mesh under any other child, the Pad say, never moves the vortex).
 	m:SetAttribute("GateId", "Plaza")
+	m:SetAttribute("VortexMeshChild", ring.Name)
 	local vc = invisible(m, "VortexCenter", mid, Vector3.new(0.2, 0.2, 0.2))
 	m:SetAttribute("VortexRadius", PORTAL.VortexR)
 	m:SetAttribute("VortexColor", C.ReturnGreen)
