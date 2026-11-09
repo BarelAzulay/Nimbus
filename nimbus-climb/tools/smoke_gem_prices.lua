@@ -17,8 +17,8 @@
 --                   unchanged, gem packs 200 / 670 / 1,950 / 5,300 with Robux 49 / 149 / 399 / 999, token packs 1,500 /
 --                   7,500 / 30,000 with their names, Mix 40 / 100, the potion 100, List() gem items carry Robux), the
 --                   IndexController Secret line; booted, settled, allowed: GemService.Quote 20 / 40 / 60 / 180 / 500 with
---                   each roulette's own AllowSecret, every gem spin charged its price once, a Mythic Mix 40 and a Secret Mix
---                   100 gems, the potion 100
+--                   each roulette's own AllowSecret, every gem spin charged its price once (the Secret Roulette's on the Storm
+--                   Altar's deck, shop-area 16.17.3), a Mythic Mix 40 and a Secret Mix 100 gems, the potion 100
 -- White-box: the booted helpers of smoke_store.lua (join / setId / savedIds / restoreIds / toasts); the MarketplaceService
 -- and PolicyService doubles are props (nil restores them). Deterministic: mock clock only. Plain Lua 5.1 syntax only.
 
@@ -695,9 +695,15 @@ S.gem_prices = guarded("gem_prices", function()
 			quotes:case(ok == true and type(q) == "table" and q.Price == w[2] and q.AllowSecret == w[3], w[1] .. ": " .. tostring(ok) .. " " .. (type(q) == "table" and (tostring(q.Price) .. " AllowSecret " .. tostring(q.AllowSecret)) or tostring(q)))
 		end
 		quotes:report()
-		-- every gem spin is charged its price once
+		-- every gem spin is charged its price once (shop-area 16.17.3: the Secret Roulette spins at the Storm Altar only,
+		-- PetService's distance rule on the player's own character, so that row stands on the altar deck first)
+		local SA = requireAt("server/Services/StormAltar")
+		local altarCF = SA and type(SA.GetCFrame) == "function" and SA.GetCFrame() or nil
 		local charged = T.tally("gem prices: a gem spin of every roulette is charged exactly its price (one charge, no tokens)")
 		for _, w in ipairs(wantQuote) do
+			if w[1] == sr.Id then
+				T.check(typeof(altarCF) == "CFrame" and Mock.Teleport(p, altarCF * CFrame.new(0, 3, -8)) == true, "gem prices: (setup) the player stands on the Storm Altar's deck for the Secret Roulette")
+			end
 			K.advance(0.3)
 			setGems(w[2] + 7)
 			local t0 = D.GetTokens(p)
