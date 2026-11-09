@@ -2076,31 +2076,41 @@ section("move", function()
 		out(fmt("  engaged pet + a trainer running random targets for 40 s: Engage on %d, off %d, engaged %d of 400 steps", ons, offs, engagedSteps))
 		target("an engaged pet ignores the walking character: zero Engage off while the character runs the random pattern next to a targetable dummy", ons == 1 and offs == 0 and engagedSteps >= 399)
 	end
-	-- wave 6: a wandering trainer's raid plays like a standing one's (movement changes nothing; one cell, two seeds)
+	-- wave 6: a wandering trainer's raid plays like a standing one's (movement changes nothing; one settled cell, four
+	-- seeds, compared seed by seed). A movement regression guard, not a balance target: the cell is 8 x SIM.RaidTeams.Starter
+	-- against Shadow Hydra at Starter, which wins every seed in a steady ~205-217 s (12 seeds probed 2026-11-10: per-seed
+	-- wander / stand x0.96-1.03). It was 8 S5 teams against Frost Wyrm Starter, a stochastic cell since that boss's
+	-- 2026-11-10 HpTier change (they win 8 % of 48 seeds), so the outcome pairing was a coin toss there.
 	do
+		local SEEDS = 4
 		local function raid(seed)
 			local teams = {}
 			local policies = {}
-			for i = 1, 8 do -- (spec 2026-11-01: 3-4 teams are a coin flip now, 8 win: the same outcome can be asked of them)
-				teams[i] = team(400 + i, 1, SIM.Stages[5].Pets)
+			for i = 1, 8 do
+				teams[i] = team(400 + i, 1, SIM.RaidTeams.Starter)
 				policies[400 + i] = "player"
 			end
-			return { Mode = "Raid", Boss = "frost_wyrm", RaidTier = "Starter", Seed = seed, Teams = teams }, policies
+			return { Mode = "Raid", Boss = "shadow_hydra", RaidTier = "Starter", Seed = seed, Teams = teams }, policies
 		end
 		local stand, wander = 0, 0
 		local okAll = true
-		for seed = 1, 2 do
+		local worst = 1
+		for seed = 1, SEEDS do
 			local setup, policies = raid(seed)
 			local r1 = SIM.run(setup, policies, { move = "stand" })
 			setup, policies = raid(seed)
 			local r2 = SIM.run(setup, policies, { move = "wander" })
-			stand = stand + (r1 and r1.Duration or 0)
-			wander = wander + (r2 and r2.Duration or 0)
-			okAll = okAll and r1 and r2 and r1.WinnerSide == r2.WinnerSide
+			local d1, d2 = r1 and r1.Duration or 0, r2 and r2.Duration or 0
+			stand = stand + d1
+			wander = wander + d2
+			local ratio = d2 / max(1, d1)
+			if abs(ratio - 1) > abs(worst - 1) then
+				worst = ratio
+			end
+			okAll = okAll and r1 and r2 and r1.WinnerSide == r2.WinnerSide and abs(ratio - 1) <= 0.15
 		end
-		local ratio = wander / max(1, stand)
-		out(fmt("  frost_wyrm M5 8p, 2 seeds: standing trainers %.1f s, wandering trainers %.1f s (x%.2f)", stand / 2, wander / 2, ratio))
-		target("a wandering trainer's raid plays like a standing one's (same outcome, duration within 15%)", okAll and abs(ratio - 1) <= 0.15)
+		out(fmt("  shadow_hydra Starter, 8 x RaidTeams.Starter, %d seeds: standing trainers %.1f s, wandering trainers %.1f s (x%.2f; worst seed x%.3f)", SEEDS, stand / SEEDS, wander / SEEDS, wander / max(1, stand), worst))
+		target("a wandering trainer's raid plays like a standing one's (per seed: same outcome, duration within 15%)", okAll, fmt("worst seed x%.3f", worst))
 	end
 end)
 
