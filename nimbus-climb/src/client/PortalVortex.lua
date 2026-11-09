@@ -24,12 +24,15 @@
 --   PortalVortex.SwirlLook(v) -> { Color, Transparency }   what the gate's old Swirl parts show while the vortex does
 --   PortalVortex.SetLook(v, scale, dim) -> writes   a vortex that grows / shrinks (scale 0..1 of its built size, about
 --                                       its centre) and dims (0 = as built, 1 = gone); writes only on a (quantised) change
--- A caller without Swirl parts (the per-player home portal, HomePortalFx) passes rec.Fixed = { Center = CFrame, Radius,
+-- A caller without Swirl parts (the per-player home portal, HomePortalFx; PortalFxController for a gate with a
+-- VortexCenter part, spec 16.16: the Storm Altar island's return ring) passes rec.Fixed = { Center = CFrame, Radius,
 -- Speed } instead: the vortex floats at Center (its front = -Z), Radius studs across, turning Speed x as fast.
 -- Boost (lobby shop 5.11 a): Build reads rec.Model's "VortexBoost" attribute (WorldStyle.BuildGate writes it; the Storm
--- Altar gate's 1.4): v.Boost = max(1, it or 1). Above 1 every tint is lifted toward white by Boost - 1 (SwirlLook's deep
--- backdrop too) and the glow by Boost (Texture: SurfaceGui Brightness = BRIGHTNESS x Boost; Fallback: every LightEmission
--- x Boost, capped at 1). Boost 1 gives the plain numbers exactly.
+-- Altar gate's 1.4): v.Boost = max(1, it or 1). Above 1 the LIGHT tints (arm, fine, spark, rim) are lifted toward white
+-- by Boost - 1; the deep disc and the core (and so SwirlLook's backdrop) keep the plain tints, and the glow rises by
+-- min(Boost, BOOST_GLOW_CAP) (Texture: SurfaceGui Brightness = BRIGHTNESS x that; Fallback: every LightEmission x that,
+-- capped at 1). Spec 16.16 (owner 2026-11-08): lifting every layer and glowing x 1.4 pushed every channel of every
+-- layer over 1, so the whole vortex rendered as one flat white disc. Boost 1 gives the plain numbers exactly.
 
 local PortalVortex = {}
 
@@ -38,6 +41,7 @@ local K = {
 	CRACKLES = { "vortex_crackle_1", "vortex_crackle_2", "vortex_crackle_3", "vortex_crackle_4" },
 	CANVAS = 512,
 	BRIGHTNESS = 2,
+	BOOST_GLOW_CAP = 1.15, -- a boosted gate glows at most this much more (spec 16.16: x 1.4 washed the vortex out white)
 	RIM_PAD = 0.8, -- studs the disc reaches under the glow ring past the swirl's edge
 	ARMS_SPEED = 26, -- degrees per second (clockwise = inward)
 	FINE_SPEED = 48,
@@ -99,8 +103,9 @@ local function vivid(color)
 	return Color3.fromHSV(h, math.max(sat, 0.72), math.max(val, 0.92))
 end
 
--- boost (lobby shop 5.11 a: the gate's VortexBoost, >= 1): above 1 every tint is lifted toward white by boost - 1, so the
--- deep backdrop SwirlLook hands out is lifted too; boost 1 = the plain tints
+-- boost (lobby shop 5.11 a: the gate's VortexBoost, >= 1): above 1 the light tints are lifted toward white by boost - 1;
+-- deep and core stay as they are (spec 16.16: the dark centre is what makes the swirl read); boost 1 = the plain tints
+local LIFTED = { arm = true, fine = true, spark = true, rim = true }
 local function tints(color, boost)
 	local c = vivid(color)
 	local t = {
@@ -113,8 +118,8 @@ local function tints(color, boost)
 	}
 	if type(boost) == "number" and boost > 1 then
 		local k = math.min(1, boost - 1)
-		for name, col in pairs(t) do
-			t[name] = col:Lerp(WHITE, k)
+		for name in pairs(LIFTED) do
+			t[name] = t[name]:Lerp(WHITE, k)
 		end
 	end
 	return t
@@ -211,14 +216,14 @@ local function label(gui, spec, id, tint)
 	}, gui)
 end
 
-local function surface(part, face, name, boost)
+local function surface(part, face, name, glow)
 	local gui = make("SurfaceGui", {
 		Name = name,
 		Face = face,
 		SizingMode = Enum.SurfaceGuiSizingMode.FixedSize,
 		CanvasSize = Vector2.new(K.CANVAS, K.CANVAS),
 		LightInfluence = 0,
-		Brightness = K.BRIGHTNESS * boost, -- the gate's VortexBoost (1 = today's glow)
+		Brightness = K.BRIGHTNESS * glow, -- the gate's VortexBoost, capped at BOOST_GLOW_CAP (1 = today's glow)
 		AlwaysOnTop = false,
 		ClipsDescendants = true,
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
@@ -229,8 +234,8 @@ local function surface(part, face, name, boost)
 end
 
 local function buildTexture(v, ids, tint)
-	v.Front = surface(v.Plane, Enum.NormalId.Front, "VortexFront", v.Boost)
-	v.Back = surface(v.Plane, Enum.NormalId.Back, "VortexBack", v.Boost)
+	v.Front = surface(v.Plane, Enum.NormalId.Front, "VortexFront", v.Glow)
+	v.Back = surface(v.Plane, Enum.NormalId.Back, "VortexBack", v.Glow)
 	v.Layers, v.BackLayers, v.Crackles = {}, {}, {}
 	for _, spec in ipairs(LAYERS) do
 		local entry = { Spec = spec, Label = label(v.Front, spec, ids[spec.Key], tint[spec.Tint]), Base = spec.T or 0 }
@@ -298,9 +303,9 @@ end
 
 local function buildFallback(v, tint, folder)
 	local radius = v.Radius
-	-- the gate's VortexBoost scales every LightEmission, capped at 1 (boost 1 = today's 0.7 / 1)
+	-- the gate's VortexBoost (capped at BOOST_GLOW_CAP) scales every LightEmission, capped at 1 (boost 1 = today's 0.7 / 1)
 	local function glow(e)
-		return math.min(1, e * v.Boost)
+		return math.min(1, e * v.Glow)
 	end
 	v.SpinA = plane(folder, "VortexArms", v.Center, radius)
 	v.SpinB = plane(folder, "VortexFine", v.Center, radius)
@@ -393,6 +398,7 @@ function PortalVortex.Build(rec, folder, ids, color, seed)
 	local tint = tints(color, boost)
 	local v = {
 		Boost = boost,
+		Glow = math.min(boost, K.BOOST_GLOW_CAP), -- spec 16.16: the boost's glow, capped (boost 1 = 1)
 		Mode = mode,
 		Center = layout.Center,
 		Radius = layout.Radius,

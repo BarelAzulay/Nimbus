@@ -16,6 +16,11 @@
 -- built once per part (no allocation per frame), and a property is written only when its value changes. Low graphics
 -- (GraphicsQuality "Low") = static: everything restored, no updates. Streaming: gates are found by GateId as they
 -- arrive (workspace.DescendantAdded), parts that stream into a gate later rescan it, removed gates are forgotten.
+-- A gate without Swirl parts (spec 16.16: the Storm Altar island's green return ring, StormAltar's ReturnPortal) gets
+-- its vortex through PortalVortex's Fixed path: the model carries a BasePart child VortexCenter (the opening's centre,
+-- front = -Z) and the attributes VortexRadius, VortexColor and, for a ring a Blender mesh may dress, VortexMeshOffset
+-- (a CFrame from VortexCenter to the mesh's opening) + VortexMeshRadius, used while a child of the gate holds an
+-- ML_Mesh (MeshLibrary dressed it on this client; the ML_Mesh arriving or leaving rescans the gate).
 --
 --   PortalFxController.Init()        idempotent (Main.client.lua starts it)
 --   PortalFxController.Stop()        disconnects everything and restores every gate
@@ -253,6 +258,27 @@ local function dropVortex(rec)
 	rec.Vortex = nil
 end
 
+-- spec 16.16: the fixed vortex spot of a gate without Swirl parts (VortexCenter + VortexRadius), or nil. While a child
+-- of the gate is dressed by a Blender mesh on this client (an ML_Mesh under it) the mesh's opening is used instead
+-- (VortexCenter x VortexMeshOffset, VortexMeshRadius), so the vortex sits in the ring the player actually sees.
+local function fixedSpot(model)
+	local radius = tonumber(model:GetAttribute("VortexRadius"))
+	local vc = model:FindFirstChild("VortexCenter")
+	if not radius or radius <= 0 or not (vc and vc:IsA("BasePart")) then
+		return nil
+	end
+	local center = vc.CFrame
+	local offset, meshR = model:GetAttribute("VortexMeshOffset"), tonumber(model:GetAttribute("VortexMeshRadius"))
+	if typeof(offset) == "CFrame" and meshR and meshR > 0 then
+		for _, child in ipairs(model:GetChildren()) do
+			if child:FindFirstChild("ML_Mesh") then
+				return { Center = center * offset, Radius = meshR }
+			end
+		end
+	end
+	return { Center = center, Radius = radius }
+end
+
 -- (re)collects the animated parts of a gate; the gate is restored first so every base value is the built one
 local function scan(rec)
 	restore(rec)
@@ -271,8 +297,14 @@ local function scan(rec)
 		origin = ok and pivot or CFrame.new()
 		origin = origin * CFrame.new(0, 11.5, 0)
 	end
+	rec.Fixed = fixedSpot(model)
+	if rec.Fixed then
+		origin = rec.Fixed.Center
+	end
 	rec.Center = origin.Position
 	rec.Origin = origin
+	local color = model:GetAttribute("VortexColor")
+	rec.Color = typeof(color) == "Color3" and color or nil
 	dropVortex(rec)
 	for _, d in ipairs(model:GetDescendants()) do
 		if d:IsA("BasePart") and d.Material == Enum.Material.Neon and (d.Name == "Glow" or d.Name == "Swirl" or GEM_NAMES[d.Name]) and not skipPart(d, model) then
@@ -314,7 +346,7 @@ local function scan(rec)
 			rec.EmitterBase = (ok and typeof(accel) == "Vector3") and accel or nil
 		end
 	end
-	rec.Parts = #rec.Ring + #rec.Swirl + #rec.Gems
+	rec.Parts = #rec.Ring + #rec.Swirl + #rec.Gems + (rec.Fixed and 1 or 0) -- the fixed vortex counts (it animates)
 	rec.Dirty = false
 end
 
@@ -357,7 +389,7 @@ local function track(model)
 	St.Gates[model] = rec
 	St.Count = St.Count + 1
 	local function dirty(d)
-		if d:IsA("BasePart") or d:IsA("Light") or d:IsA("ParticleEmitter") then
+		if d:IsA("BasePart") or d:IsA("Light") or d:IsA("ParticleEmitter") or d.Name == "ML_Mesh" then
 			rec.Dirty = true
 		end
 	end
@@ -440,8 +472,12 @@ local function applySwirlLook(rec, V)
 	end
 end
 
--- the gate colour: the average of its glow ring (the arch glows violet under gold)
+-- the gate colour: its VortexColor attribute (spec 16.16), else the average of its glow ring (the arch glows violet
+-- under gold)
 local function gateColor(rec)
+	if rec.Color then
+		return rec.Color
+	end
 	local r, g, b, n = 0, 0, 0, 0
 	for _, e in ipairs(rec.Ring) do
 		r, g, b, n = r + e.Base.R, g + e.Base.G, b + e.Base.B, n + 1
@@ -472,7 +508,7 @@ end
 -- the vortex of a gate, built once (lazily, when it first animates) and shown
 local function ensureVortex(rec)
 	local V = vortexModule()
-	if not V or #rec.Swirl == 0 then
+	if not V or (#rec.Swirl == 0 and not rec.Fixed) then
 		return nil
 	end
 	if not rec.Vortex then
