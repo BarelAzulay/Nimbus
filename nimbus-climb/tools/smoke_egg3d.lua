@@ -14,6 +14,11 @@
 --       zero); the Shop hero: the 3D Secret egg while the Eggs page shows, gone (and painted again) when the Shop closes
 --   client_egg3d_phone  (phone world, 844x390) the phone limit: one ViewportFrame egg at a time (a second view is refused
 --       with "limit" while the cutscene's egg lives); the phone's Shop hero has no room (no view)
+--   (egg-cards, spec 16.18: "x3 keeps 2D eggs" replaced) client_egg3d: Limit(false) = 3; an x3 with every key -> Egg1..3
+--       each the ViewportFrame of its own pull (turning), every Halves<j> split in 3D at its own burst, Live 0 at the
+--       reveal, <= 750 instances and 3 egg frames at most every frame; x3 on Low, with one id 0 and with one failed
+--       Assemble -> all three 2D (never a mix). client_egg3d_phone: at 844x390, 640x360 and 360x640 an x3 stays 2D
+--       (3 > the phone's one frame, <= 750 instances), an x1 keeps its one 3D egg
 -- Deterministic: mock clock only. Egg3D._ML / _High and GraphicsQuality.Effective are put back after each scenario.
 -- Plain Lua 5.1 syntax only.
 
@@ -175,6 +180,85 @@ function G.capT(frame)
 	local m = frame and frame:FindFirstChild("EggTop")
 	local p = m and m:FindFirstChild("Fixed")
 	return p and p.Transparency or nil
+end
+
+-- (egg-cards, spec 16.18) the egg ViewportFrames under NimbusHatch now, and the playing tweens on their Turn / Fly values
+function G.eggFrames()
+	local pg = G.pg()
+	local gui = pg and pg:FindFirstChild("NimbusHatch")
+	local n, tweens = 0, 0
+	for _, d in ipairs(gui and gui:GetDescendants() or {}) do
+		if d:IsA("ViewportFrame") and d.Name == "Egg3D" then
+			n = n + 1
+			for _, v in ipairs({ d:FindFirstChild("Turn"), d:FindFirstChild("Fly") }) do
+				if G.tweenOn(v) then
+					tweens = tweens + 1
+				end
+			end
+		end
+	end
+	return n, tweens
+end
+-- plays an x3 roll frame by frame to its reveal and reads the 3D eggs on the way -> a table of findings
+function G.x3run(ES, E3, PC, defs)
+	local out = { rise3d = 0, riseBad = "", spinning = 0, split3d = 0, burst3d = 0, maxInst = 0, maxAt = "", maxFrames = 0, maxViewTweens = 0 }
+	local splitSeen, burstSeen = {}, {}
+	local t0 = os.clock()
+	ES.Show(G.result(PC, "Cloud", defs))
+	local riseRead = false
+	local riseFrames = 0
+	while os.clock() - t0 < 12 do
+		G.advance(STEP)
+		local phase = ES.Phase()
+		local st = ES.Stats()
+		if (st.Instances or 0) > out.maxInst then
+			out.maxInst, out.maxAt = st.Instances, fmt("%s at %.2f s", tostring(phase), os.clock() - t0)
+		end
+		local frames, tw = G.eggFrames()
+		out.maxFrames = math.max(out.maxFrames, frames)
+		out.maxViewTweens = math.max(out.maxViewTweens, tw)
+		if phase == "Rise" then
+			riseFrames = riseFrames + 1
+		end
+		if phase == "Rise" and riseFrames == 3 and not riseRead then
+			riseRead = true
+			out.liveAtRise = E3.Live()
+			for j, def in ipairs(defs) do
+				local ej = G.hero("Egg" .. j)
+				local vj = G.view(ej)
+				local want = "egg_" .. def.Rarity:lower()
+				if vj and ej:GetAttribute("Egg3D") == want and vj:GetAttribute("Key") == want and ej:GetAttribute("Painted") == false then
+					out.rise3d = out.rise3d + 1
+				else
+					out.riseBad = out.riseBad .. fmt("Egg%d %s/%s; ", j, tostring(ej and ej:GetAttribute("Egg3D")), tostring(vj ~= nil))
+				end
+				local spin = vj and G.tweenOn(vj:FindFirstChild("Turn"))
+				if spin and spin.TweenInfo.RepeatCount == -1 then
+					out.spinning = out.spinning + 1
+				end
+			end
+		end
+		for j = 1, #defs do
+			local hj = G.hero("Halves" .. j)
+			if hj and hj:GetAttribute("Split3D") == true and hj:FindFirstChild("HalfTop") == nil and not splitSeen[j] then
+				splitSeen[j] = true
+				out.split3d = out.split3d + 1
+			end
+			local vf = hj and hj:FindFirstChild("Egg3D")
+			if vf and hj.Visible and not burstSeen[j] and vf:GetAttribute("Split") == true and vf:GetAttribute("Flying") == true
+				and vf:FindFirstChild("Egg") == nil and vf:FindFirstChild("EggTop") ~= nil and vf:FindFirstChild("EggBot") ~= nil and G.tweenOn(vf:FindFirstChild("Fly")) ~= nil then
+				burstSeen[j] = true
+				out.burst3d = out.burst3d + 1
+			end
+		end
+		if phase == "Reveal" then
+			G.advance(STEP)
+			out.revealed = true
+			out.liveAtReveal = E3.Live()
+			break
+		end
+	end
+	return out
 end
 
 -- common setup / teardown of both scenarios
@@ -495,18 +579,59 @@ S.client_egg3d = guarded("client_egg3d", function()
 		twoD("egg3d failed Assemble", function()
 			E3._ML = G.stubML(G.allKeys(), { egg_epic = true })
 		end)
-		------------------------------------------------------------------ x3 keeps its 2D eggs
+		------------------------------------------------------------------ (egg-cards, spec 16.18) x3: three 3D hero eggs on High
+		T.eq(E3.Limit(false), 3, "egg3d x3: the PC / tablet limit is three ViewportFrame eggs (the x3's heroes; the Shop's hero is gone by then)")
 		E3._ML = G.stubML(G.allKeys())
-		ES.Show(G.result(PC, "Cloud", { epic, rare, epic }))
-		G.untilPhase(ES, "Crack", 7)
-		G.advance(STEP)
-		local any = false
-		for j = 1, 3 do
-			any = any or G.view(G.hero("Egg" .. j)) ~= nil
-		end
-		T.check(not any and E3.Live() == 0, "egg3d x3: the three eggs stay 2D (no ViewportFrame)")
-		ES.Close()
+		local x3 = { epic, rare, epic }
+		local run = G.x3run(ES, E3, PC, x3)
+		T.check(run.rise3d == 3 and run.liveAtRise == 3, "egg3d x3: Rise: Egg1..3 each hold the ViewportFrame egg of their own pull (attribute Egg3D = egg_<rarity>, the 2D paint hidden), Live 3",
+			fmt("%d of 3 (%s), live %s", run.rise3d, run.riseBad, tostring(run.liveAtRise)))
+		T.check(run.spinning == 3, "egg3d x3: ...each turning over the rise (an endless turn tween)", tostring(run.spinning))
+		T.check(run.split3d == 3, "egg3d x3: Crack: every Halves<j> is set to split in 3D (no 2D halves made)", tostring(run.split3d))
+		T.check(run.burst3d == 3, "egg3d x3: Burst: each egg's frame moves into its shown Halves<j> at its own burst, the whole egg out, EggTop and EggBot flying (the Fly tween)", tostring(run.burst3d))
+		T.check(run.revealed and run.liveAtReveal == 0, "egg3d x3: Reveal: every view destroyed (Live 0)", fmt("revealed %s, live %s", tostring(run.revealed), tostring(run.liveAtReveal)))
+		T.check(run.maxInst <= 750, "egg3d x3: the x3 instance cap (750) holds at every frame of the 3D x3 roll (a ViewportFrame counts as one)", fmt("%d (%s)", run.maxInst, run.maxAt))
+		T.check(run.maxFrames <= 3 and run.maxFrames == 3, "egg3d x3: three egg ViewportFrames at most at once", tostring(run.maxFrames))
+		T.info("egg3d x3 3D peak", fmt("%d instances (%s), %d egg frames, %d view tweens at most", run.maxInst, run.maxAt, run.maxFrames, run.maxViewTweens))
+		G.advance(1)
+		ES.Done()
 		G.advance(0.5)
+		T.check(not ES.IsShowing() and E3.Live() == 0 and ES.Stats().Instances == 0, "egg3d x3: DONE: nothing left")
+		-- never a mix: Low graphics, one id 0, one failed Assemble -> all three 2D
+		local function x3twoD(label, setup)
+			setup()
+			ES.Show(G.result(PC, "Cloud", x3))
+			G.untilPhase(ES, "Crack", 7)
+			G.advance(STEP)
+			local any, painted, halves = false, 0, 0
+			for j = 1, 3 do
+				local ej = G.hero("Egg" .. j)
+				any = any or G.view(ej) ~= nil or (ej and ej:GetAttribute("Egg3D") ~= nil)
+				if ej and ej:GetAttribute("Painted") ~= false and ej.BackgroundTransparency < 0.5 then
+					painted = painted + 1
+				end
+				local hj = G.hero("Halves" .. j)
+				if hj and hj:GetAttribute("Split3D") ~= true and hj:FindFirstChild("HalfTop") then
+					halves = halves + 1
+				end
+			end
+			T.check(not any and E3.Live() == 0 and painted == 3, label .. ": all three hero eggs stay 2D, painted (never a mix), Live 0", fmt("3D %s, painted %d, live %d", tostring(any), painted, E3.Live()))
+			T.check(halves >= 1, label .. ": today's 2D halves at the crack", tostring(halves))
+			ES.Close()
+			G.advance(0.5)
+		end
+		x3twoD("egg3d x3 Low graphics", function()
+			env.mode = "Low"
+		end)
+		env.mode = "High"
+		x3twoD("egg3d x3 egg_rare id 0", function()
+			local keys = G.allKeys()
+			keys.egg_rare = nil
+			E3._ML = G.stubML(keys)
+		end)
+		x3twoD("egg3d x3 egg_rare failed Assemble", function()
+			E3._ML = G.stubML(G.allKeys(), { egg_rare = true })
+		end)
 		------------------------------------------------------------------ the Shop's hero egg
 		Shop.Open({ Tab = "Eggs" })
 		G.advance(1)
@@ -566,6 +691,42 @@ S.client_egg3d_phone = guarded("client_egg3d_phone", function()
 		ES.Close()
 		G.advance(0.5)
 		T.eq(E3.Live(), 0, "egg3d phone: closing frees the slot")
+		------------------------------------------------------------------ (egg-cards, spec 16.18) a phone's x3 stays 2D (3 > its one frame); x1 keeps its 3D egg
+		local rare = PC.RarityPool("Cloud", "Rare")[1]
+		for _, size in ipairs({ { 844, 390 }, { 640, 360 }, { 360, 640 } }) do
+			local label = fmt("egg3d phone %dx%d", size[1], size[2])
+			Mock.SetViewport(size[1], size[2])
+			G.advance(0.3)
+			ES.Show(G.result(PC, "Cloud", { epic, rare, epic }))
+			G.untilPhase(ES, "Rise", 7)
+			G.advance(STEP * 2)
+			local any, painted = false, 0
+			for j = 1, 3 do
+				local ej = G.hero("Egg" .. j)
+				any = any or G.view(ej) ~= nil
+				if ej and ej:GetAttribute("Painted") ~= false then
+					painted = painted + 1
+				end
+			end
+			T.check(ES.Layout() ~= "PC" and not any and painted == 3 and E3.Live() == 0, label .. ": x3: the three hero eggs stay 2D (over the phone's one ViewportFrame)",
+				fmt("layout %s, 3D %s, painted %d, live %d", tostring(ES.Layout()), tostring(any), painted, E3.Live()))
+			local most = 0
+			while ES.Phase() ~= "Reveal" and ES.IsShowing() do
+				most = math.max(most, ES.Stats().Instances or 0)
+				G.advance(STEP)
+			end
+			T.check(most <= 750, label .. ": x3: <= 750 instances to the reveal", tostring(most))
+			ES.Close()
+			G.advance(0.5)
+			ES.Show(G.result(PC, "Cloud", { epic }))
+			G.untilPhase(ES, "Rise", 6)
+			G.advance(STEP * 2)
+			T.check(G.view(G.hero("Egg1")) ~= nil and E3.Live() == 1, label .. ": x1: the one 3D egg (the phone's frame)", tostring(E3.Live()))
+			ES.Close()
+			G.advance(0.5)
+		end
+		Mock.SetViewport(844, 390)
+		G.advance(0.3)
 		if Shop and SE then
 			Shop.Open({ Tab = "Eggs" })
 			G.advance(1)

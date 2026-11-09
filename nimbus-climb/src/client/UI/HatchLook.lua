@@ -101,6 +101,11 @@
 --                                             ray wedges and spark squares, stacked round glows)
 --   HatchLook.Image(key) -> "rbxassetid://<id>" | nil   the key's shared/TextureIds id when it is a number > 0
 --                                             (HatchLook._Textures: a test table in place of the module; false = the module)
+--   HatchLook.EGG_IMAGES[rarity] = "egg_card_<rarity>"   (egg-cards, spec 16.18) the strip cards' egg pictures (Cycles
+--                                             renders of the real Blender eggs, blender/textures/build_egg_cards.py; not
+--                                             uploaded yet); HatchLook.EggImage(rarity) -> "rbxassetid://<id>" | nil;
+--                                             HatchLook.EggImages() -> how many of the seven have an id (0: none made);
+--                                             Metrics.EGG_PIC.Fill = 0.9, the egg's share of its square picture
 --   HatchLook.Glow(parent, color, opts) -> glow   a soft glow: with a hatch_glow id one ImageLabel named opts.Name
 --                                             ("Glow") tinted `color`; without, opts.Count (2) crossed round Frames
 --                                             "<Name>1..n", each with a UIGradient fading it out (a wide one to its sides,
@@ -253,6 +258,9 @@ local K = {
 		H = 36, HPhone = 32, A = 0.55, Ink = rgb(227, 233, 255), Pad = 12, FastBg = rgb(11, 18, 51), FastA = 0.15, FastEdge = rgb(44, 63, 136),
 		Edge = 2, EdgePhone = 1.5, SwitchW = 34, SwitchH = 18, SwitchWPhone = 30, SwitchHPhone = 16, SwitchX = 10, Off = rgb(44, 63, 136),
 	},
+	-- (egg-cards, spec 16.18) the card eggs' pictures (blender/textures/build_egg_cards.py): the egg's projected box is Fill
+	-- of the square picture's height, centred; a cell draws the picture (egg px) / Fill square on the painted egg's box
+	EGG_PIC = { Fill = 0.9 },
 }
 HatchLook.Metrics = K
 
@@ -718,6 +726,29 @@ function HatchLook.Image(key)
 		return "rbxassetid://" .. tostring(id)
 	end
 	return nil
+end
+
+-- (egg-cards, spec 16.18) the strip cards' egg pictures: one TextureIds key per rarity (none uploaded yet: the owner sees
+-- the PNGs first); no id -> nil and the card draws its painted EggArt egg as before
+HatchLook.EGG_IMAGES = {
+	Common = "egg_card_common", Uncommon = "egg_card_uncommon", Rare = "egg_card_rare", Epic = "egg_card_epic",
+	Legendary = "egg_card_legendary", Mythic = "egg_card_mythic", Secret = "egg_card_secret",
+}
+
+function HatchLook.EggImage(rarity)
+	local key = HatchLook.EGG_IMAGES[rarity]
+	return key and HatchLook.Image(key) or nil
+end
+
+-- how many of the seven egg pictures have an id here (0 = none: no picture is made anywhere)
+function HatchLook.EggImages()
+	local n = 0
+	for _, key in pairs(HatchLook.EGG_IMAGES) do
+		if HatchLook.Image(key) then
+			n = n + 1
+		end
+	end
+	return n
 end
 
 ----------------------------------------------------------------------
