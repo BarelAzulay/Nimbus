@@ -36,8 +36,8 @@ built-in sky, stays silent and draws emoji icons.
 
 ## The Shop, eggs and the leaderboard
 
-- **One Shop for everything.** Press **Shop** in the top-left pill, walk up to the **Egg Guide** on the shop island and
-  press **E** ("Open" / "Shop"), or press **E** at a roulette machine (the Shop opens on that machine's card). A tab rail
+- **One Shop for everything.** Press **Shop** in the top-left pill, walk up to the **egg row** under the **WINGED PETS**
+  board on the shop island and press **E** ("Open" / "Shop"), or press **E** at a roulette machine (the Shop opens on that machine's card). A tab rail
   on the left holds **Eggs**, **Gems**, **Packs**, **Passes** and **Boosts**: the old Cloud Shop and the Robux Store
   are one window now (see [The Shop](#the-shop)).
 - **Every spin hatches an egg.** Each rarity is an egg, from the **Cloud Puff Egg** (Common) to the **Starry Night
@@ -53,8 +53,8 @@ built-in sky, stays silent and draws emoji icons.
   card counts down ("Secret for sure in 3 more spins"). The **Celestial Roulette** now hatches a Secret at **2 %** a
   spin too (see [Gems](#gems-and-the-secret-roulette)).
 - **Painted eggs.** Every egg in the windows is painted with its own motifs (a zigzag belt, stars, a crown, runes), with
-  sparkles and a glow from Rare up. The seven eggs on the Egg Guide's shelf are painted Blender models that turn
-  slowly, and the rare ones sparkle.
+  sparkles and a glow from Rare up. The seven eggs on the shelf under the WINGED PETS board are painted Blender models
+  that turn slowly, each with its rarity's name on the shelf below it, and the rare ones sparkle.
 - **Cut gems.** Every Gem in the game's windows is drawn as a cut gem with a shine, and a big gem spins on the Storm
   Altar's deck where Gems are spent.
 - **The owner's gem prices** (Cloud 20, Storm 40, Sky 60, Celestial 180, the Secret Roulette 500) and the **XP Potion
@@ -400,9 +400,10 @@ ends it (it asks first). Your step is saved, so the tutorial continues where you
   "Join the group!" sign bobs over it until you have claimed it (see [The Sky Trove](#the-sky-trove)).
 - **The leaderboard** stands on the south lawn: a wooden board with a little roof that shows the top 10 of all servers
   (see [The leaderboard and titles](#the-leaderboard-and-titles)).
-- **The shop island** (follow the boardwalk, its arch says "eggs & gems"): four roulette machines and, where the old
-  item stall stood, the **Egg Guide**: a board with the seven eggs on a turning shelf. Walk up to it and press **E**
-  ("Open" / "Shop"), or press **E** at a machine: both open the [Shop](#the-shop) on its Eggs tab.
+- **The shop island** (follow the boardwalk, its arch says "eggs & gems"): four roulette machines and the **WINGED PETS**
+  board (what each machine pays) with the seven eggs on a turning shelf in front of it, each egg's rarity written under
+  it. Walk up to the eggs and press **E** ("Open" / "Shop"), or press **E** at a machine: both open the
+  [Shop](#the-shop) on its Eggs tab.
 - **Six NPC pets** stand on the lawns around the plaza. Each one has a name tag; walk up and press **E** to
   talk. They cycle through a few tips each (Next / Close):
 
@@ -973,8 +974,8 @@ middle of the screen, and there are no timers or "only N left" labels.
 ### The Shop
 
 One big window for everything you can buy. Open it with **Shop** in the top-left pill (it opens on the tab you used
-last this session, the Eggs tab the first time; press the pill again to close it), with **E** at the **Egg Guide** on
-the shop island ("Open" / "Shop", the Eggs tab), with **E** at a roulette machine (the Eggs tab, that machine's card
+last this session, the Eggs tab the first time; press the pill again to close it), with **E** at the **egg row** under
+the WINGED PETS board on the shop island ("Open" / "Shop", the Eggs tab), with **E** at a roulette machine (the Eggs tab, that machine's card
 outlined in gold), with **E** at the Storm Altar (the Secret Roulette's card) or with **Open Shop** in the Pets window.
 The header shows your Gems and Cloud Tokens. A **tab rail** on the left (on a portrait phone a row of tabs on top)
 holds **Eggs**, **Gems**, **Packs**, **Passes** and **Boosts**; a gold dot on Packs means the Starter Pack is on sale
@@ -1009,8 +1010,9 @@ violet that reads on the dark chat).
 **The eggs** (one per rarity): Cloud Puff Egg (Common), Breeze Egg (Uncommon), Raindrop Egg (Rare), Thunder Egg
 (Epic), Sunburst Egg (Legendary), Aurora Egg (Mythic) and Starry Night Egg (Secret). Each is painted with its own
 motifs (spots and dots, a zigzag belt, bands, a band of stars, a crown with gems, waves and swirls, stars and runes), and from Rare up it has a
-glow and a few sparkles that grow with the rarity. The same painted eggs, as Blender models, sit on the Egg Guide's
-shelf on the shop island: they turn slowly, the rare ones sparkle, and a soft light shines over the shelf.
+glow and a few sparkles that grow with the rarity. The same painted eggs, as Blender models, sit on the shelf
+under the WINGED PETS board on the shop island: they turn slowly, the rare ones sparkle, a soft light shines over the
+shelf, and the shelf's front names each egg's rarity under it.
 
 **Robux items.** Every card says exactly what you get
 ("Gets you: 1x Storm Tabby (Lv 5), $1,000 Cash, 1 h x2 Pet XP") and shows the price in Robux; Roblox asks you to
@@ -1428,7 +1430,7 @@ outside them: Week Wisp (Epic, the seventh gift of a kept week) and Crown Phoeni
 The Legendaries are Candy Unicorn, Ember Phoenix, Sunbeam Bear and Twilight Dragon. The Mythics are Cloudy Dragon,
 Starlight Unicorn and two Boss Raid pets, Magma Cub and Hydralotl. The Secrets are Stormfang, Eclipse Dragon, Obsidian
 Phoenix, Phantom Kitsune and the third Boss Raid pet, Rime Wyrmling. Press **Shop** in the top-left pill (or **E** at
-the Egg Guide or a machine on the **shop island**), pick a roulette on the Eggs tab and spin once or **x3**. Every spin
+the egg row or a machine on the **shop island**), pick a roulette on the Eggs tab and spin once or **x3**. Every spin
 hatches the egg of the rarity it rolled, and the egg gives a random pet of that rarity (see
 [The Shop](#the-shop)). Duplicates stack (up to 99 per pet).
 
@@ -1899,7 +1901,7 @@ src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientS
              BoostBadge (the x2 chips under the strips), Vip (the VIP chat tag and lobby crown), Title (the TOP 10 /
              TOP 100 / CREATOR title above the head; a titled VIP's crown sits inside it), Leaderboard (the lobby
              board's face: the global top 10 on three tappable pages, the You row), LobbyFx (one heartbeat turns the
-             world gem, the altar's glow ring and the Egg Guide's shelf eggs, bobs the Join sign, and hides that sign once
+             world gem, the altar's glow ring and the egg row's shelf eggs, bobs the Join sign, and hides that sign once
              you claimed the group reward), Trove (the Sky Trove panel, the lid and coins)
 ```
 

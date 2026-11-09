@@ -25,9 +25,11 @@
 --                    the roulette colour; shop-area spec 16.17.1: the Machine is tagged with the Gumball Globe key
 --                    prop_roulette_globe, Primary = the roulette colour, Secondary = its top rarity's (Secret: the
 --                    chat violet), and only when that tag dresses LobbyMachineBuilder.GlobeEggs piles the twelve real
---                    eggs in the glass beside it; with no globe id the machine is today's Part machine), the Egg Guide (lobby shop: LobbyBoardBuilder.EggGuide, a notice board naming
---                    the seven eggs over a stone shelf with the seven 3D eggs, in the Sky Trove's old place), a rarity
---                    board, a token statue and an entrance arch, joined to the plaza by a short stone neck. The Sky Trove
+--                    eggs in the glass beside it; with no globe id the machine is today's Part machine), the WINGED PETS
+--                    rarity board with the seven-egg row in front of it (shop-area 16.17.2: LobbyBoardBuilder.EggRow, a
+--                    stone shelf with the seven 3D eggs and a rarity label strip, the walk-up Shop prompt's part; the board's
+--                    letters end above the eggs), a token statue and an entrance arch, joined to the plaza by a short
+--                    stone neck. The Sky Trove
 --                    (Model SkyTrove, store 2026-11-04: a brass-banded chest, its Lid a separate Model hinged at the back
 --                    and resting open 18 degrees, a sign post, the gap's light, the Join sign; TroveService puts the
 --                    prompt on its PromptPart) is built with the shop (its folder) but stands on the plaza lawn (lobby
@@ -48,8 +50,8 @@
 --   Folder, SpawnCFrame, Portals = { Obby = PortalInfo (+ Model, PromptPart) } (Phase 5: the one Sky Obby portal),
 --   Spots[i] = SpotInfo, Shop = { Roulettes[id], ItemShop = { PromptPart, Center, Model, Lid } (ItemShop = the Sky Trove),
 --                              Counter = { PromptPart, Center, Model } | nil } (lobby shop 16.3: the walk-up Shop prompt's
---                              part, the Egg Guide's (Model = the EggGuide); the fallback shop's own ShopCounter; nil only
---                              when the Egg Guide failed),
+--                              part, shop-area 16.17.2: the egg row's (Model = the EggRow, Center = the WINGED PETS
+--                              board's Face); the fallback shop's own ShopCounter; nil only when the egg row failed),
 --   NpcSpots = { CFrame x6 }   ground-level CFrames on the plaza lawn beside the walkways, LookVector = towards
 --                              the walkway / court, each with ~5 studs of free space for an NPC pedestal
 --   AltarSite = CFrame | nil   reserved, empty spot inside the ring for the Storm Altar island (faces the plaza)
@@ -97,7 +99,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Theme = require(Shared.Theme)
 local Util = require(Shared.Util)
-local LobbyBoardBuilder = require(script.Parent.LobbyBoardBuilder) -- lobby shop: the Egg Guide and the leaderboard board
+local LobbyBoardBuilder = require(script.Parent.LobbyBoardBuilder) -- lobby shop: the egg row and the leaderboard board
 local LobbyMachineBuilder = require(script.Parent.LobbyMachineBuilder) -- shop-area 16.17.1: the Gumball Globe's eggs
 
 local LobbyBuilder = {}
@@ -3577,25 +3579,31 @@ local function fallbackTrove(parent, cf)
 	return { PromptPart = prompt, Center = counter.Position, Model = model, Lid = lid }
 end
 
--- Board that explains the roulettes: price, and which rarities each one can give.
+-- Board that explains the roulettes: price, and which rarities each one can give. Returns its Face and its Model.
+-- shop-area 16.17.2: the seven-egg row (LobbyBoardBuilder.EggRow) stands in front of it, its eggs 3.8 studs tall, so every
+-- letter and pill ends above y 3.9 (<= RB.MaxBottom = (11.4 - 3.9) x 50 px of the 450): one header row (the title left,
+-- the subtitle right in two lines: at 30 px it is 507 px long, measured with Roblox's BuilderSans-Bold, and the 383 px
+-- title leaves it ~280; a box 261 .. 285 px wide breaks it into "Every egg hatches" / "a pet of its rarity"), then the
+-- four roulette rows at RB.Pitch (the fourth row's pills end at 362 px).
 local function buildRarityBoard(parent, cf)
 	-- 700 x 450 px canvas (14 x 9 studs): a 1-stud header, then one row per roulette: the name and the price
 	-- (0.6 stud) over rarity pills that spell out what it can pay (0.6 stud)
-	local face = noticeBoard(parent, cf, 14, 9, "RarityBoard")
+	local RB = { TitleX = 0.025, TitleW = 0.56, SubX = 0.575, SubW = 0.40, SubY = 4, SubH = 62, RowTop = 68, Pitch = 74, Name = 36, PillTop = 38, Pill = 34 }
+	local face, model = noticeBoard(parent, cf, 14, 9, "RarityBoard")
 	local gui = surfaceGui(face, Enum.NormalId.Front)
 	local panel = signPanel(gui)
 	local H = 450
-	signText(panel, "WINGED PETS", "Title", 50, C.Gold, "Header", 0.04, 6 / H, 0.92, 54 / H)
-	signText(panel, "Every egg hatches a pet of its rarity", "Body", SIGN_INFO, C.Text, "Sub", 0.04, 60 / H, 0.92, 34 / H) -- lobby shop (5.9)
+	signText(panel, "WINGED PETS", "Title", 50, C.Gold, "Header", RB.TitleX, 6 / H, RB.TitleW, 54 / H, Enum.TextXAlignment.Left)
+	signText(panel, "Every egg hatches a pet of its rarity", "Body", SIGN_INFO, C.Text, "Sub", RB.SubX, RB.SubY / H, RB.SubW, RB.SubH / H, Enum.TextXAlignment.Right, true) -- lobby shop (5.9)
 	for i, roulette in ipairs(Config.Roulettes) do
-		local top = 102 + (i - 1) * 84
+		local top = RB.RowTop + (i - 1) * RB.Pitch
 		local y = top / H
 		local color = roulette.Color or C.Rose
-		signText(panel, roulette.DisplayName or roulette.Id, "Heading", SIGN_INFO, color:Lerp(C.Text, 0.35), "Name" .. i, 0.04, y, 0.6, 36 / H, Enum.TextXAlignment.Left)
-		signText(panel, priceText(roulette.Price or 0), "Body", SIGN_INFO, C.TextGold, "Price" .. i, 0.6, y, 0.36, 36 / H, Enum.TextXAlignment.Right)
+		signText(panel, roulette.DisplayName or roulette.Id, "Heading", SIGN_INFO, color:Lerp(C.Text, 0.35), "Name" .. i, 0.04, y, 0.6, RB.Name / H, Enum.TextXAlignment.Left)
+		signText(panel, priceText(roulette.Price or 0), "Body", SIGN_INFO, C.TextGold, "Price" .. i, 0.6, y, 0.36, RB.Name / H, Enum.TextXAlignment.Right)
 		local pills = plainFrame(panel, "Rarities" .. i, {
-			Position = UDim2.new(0.04, 0, (top + 38) / H, 0),
-			Size = UDim2.new(0.92, 0, 36 / H, 0),
+			Position = UDim2.new(0.04, 0, (top + RB.PillTop) / H, 0),
+			Size = UDim2.new(0.92, 0, RB.Pill / H, 0),
 		})
 		local layout = listLayout(pills, Enum.FillDirection.Horizontal, 10, Enum.HorizontalAlignment.Left)
 		layout.VerticalAlignment = Enum.VerticalAlignment.Center
@@ -3606,10 +3614,11 @@ local function buildRarityBoard(parent, cf)
 				pad.PaddingTop = UDim.new(0, 0)
 				pad.PaddingBottom = UDim.new(0, 0)
 			end
-			pill.Size = UDim2.fromOffset(0, 34)
+			pill.Size = UDim2.fromOffset(0, RB.Pill)
 		end
 	end
 	gui.Parent = face
+	return face, model
 end
 
 -- A big decorative voxel coin with a cloud emblem on a pedestal (NOT a collectible token).
@@ -3772,28 +3781,28 @@ local function buildShop(root, L)
 		roulettes[roulette.Id] = result
 	end
 
-	-- The Egg Guide (lobby shop, spec 5.9: left of the entrance, in the Sky Trove's old place) and the rarity board (right),
-	-- both facing the centre. The Sky Trove stands on the plaza lawn at L.TroveCF (worked out once in Build, before the
-	-- plaza's reservations); it stays in this folder, so a failed shop build takes it along and the fallback builds the
-	-- only trove.
-	local guidePos = at(-21, -8) - Vector3.new(0, LAWN, 0) -- on the lawn layer
-	local okGuide, guide, guidePart = pcall(LobbyBoardBuilder.EggGuide, f, flatLook(guidePos, S - Vector3.new(0, LAWN, 0)), L.H)
-	-- lobby shop 16.3 (Task 23): the walk-up Shop prompt's counter is the Egg Guide (PetService puts ShopPrompt on its part;
-	-- without it PetService warns and the machines' prompts still open the Shop)
+	-- The WINGED PETS rarity board (lobby shop 5.9: on the lawn at at(21, -8), facing the centre) with the seven-egg row in
+	-- front of it (shop-area 16.17.2: the old guide board's spot at at(-21, -8) is empty lawn now, with its lamp and
+	-- flower bed). The Sky Trove stands on the plaza lawn at L.TroveCF (worked out once in Build, before the plaza's
+	-- reservations); it stays in this folder, so a failed shop build takes it along and the fallback builds the only trove.
+	local boardCF = flatLook(at(21, -8) - Vector3.new(0, LAWN, 0), S - Vector3.new(0, LAWN, 0)) -- on the lawn layer
+	local okBoard, face = pcall(buildRarityBoard, f, boardCF)
+	if not okBoard then
+		warn("[LobbyBuilder] rarity board failed: " .. tostring(face))
+	end
+	-- lobby shop 16.3 (Task 23): the walk-up Shop prompt's counter is the egg row (PetService puts ShopPrompt on its part;
+	-- without it PetService warns and the machines' prompts still open the Shop); Center = the board's Face
 	local counter = nil
-	if not okGuide then
-		warn("[LobbyBuilder] egg guide failed: " .. tostring(guide))
-	elseif guidePart then
-		counter = { PromptPart = guidePart, Center = guidePart.Position, Model = guide }
+	local okRow, row, rowPart = pcall(LobbyBoardBuilder.EggRow, f, boardCF, L.H)
+	if not okRow then
+		warn("[LobbyBuilder] egg row failed: " .. tostring(row))
+	elseif rowPart then
+		counter = { PromptPart = rowPart, Center = (okBoard and typeof(face) == "Instance") and face.Position or rowPart.Position, Model = row }
 	end
 	local okStall, stall = pcall(buildTrove, f, L.TroveCF)
 	if not okStall then
 		warn("[LobbyBuilder] sky trove failed: " .. tostring(stall))
 		stall = fallbackTrove(f, L.TroveCF)
-	end
-	local okBoard, errBoard = pcall(buildRarityBoard, f, flatLook(at(21, -8) - Vector3.new(0, LAWN, 0), S - Vector3.new(0, LAWN, 0)))
-	if not okBoard then
-		warn("[LobbyBuilder] rarity board failed: " .. tostring(errBoard))
 	end
 
 	-- Decor: token statue, entrance arch with the shop sign, lamps, bunting, flower beds, fireflies.
@@ -5280,7 +5289,7 @@ function LobbyBuilder.Build()
 	if not Voxel then
 		warn("[LobbyBuilder] shared/Voxel is missing: building the plain fallback lobby")
 	end
-	-- lobby shop: the helpers LobbyBoardBuilder draws with (the Egg Guide in buildShop, the leaderboard board in
+	-- lobby shop: the helpers LobbyBoardBuilder draws with (the egg row in buildShop, the leaderboard board in
 	-- buildPlazaDecor), one table as a field of the layout (no new local)
 	L.H = {
 		noticeBoard = noticeBoard, surfaceGui = surfaceGui, signPanel = signPanel, signText = signText,

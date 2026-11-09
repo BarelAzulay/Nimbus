@@ -1,18 +1,25 @@
--- LobbyBoardBuilder (lobby shop 2026-11-07, docs/superpowers/specs/2026-11-07-lobby-shop-design.md 5.9 / 5.6 / 5.10): the
--- lobby's newer boards, drawn with LobbyBuilder's own helpers (passed in as H), so they look exactly like the other notice
--- boards and add only one local to LobbyBuilder's near-full main chunk.
+-- LobbyBoardBuilder (lobby shop 2026-11-07, docs/superpowers/specs/2026-11-07-lobby-shop-design.md 5.9 / 5.6 / 5.10;
+-- shop-area 16.17.2): the lobby's newer boards and the shop's egg row, drawn with LobbyBuilder's own helpers (passed in as
+-- H), so they look exactly like the other notice boards and add only one local to LobbyBuilder's near-full main chunk.
 --
---   LobbyBoardBuilder.EggGuide(parent, cf, H) -> Model "EggGuide", PromptPart
---     cf = the board's ground CFrame (front -Z, towards the reader; WorldPivot = cf). Built at the Sky Trove's old spot on
---     the shop island (the trove moved to the plaza lawn):
---       * EggGuideBoard: an 11 x 8 notice board (H.noticeBoard tags it prop_board_s, its Face stays) whose SurfaceGui
---         reads "Every egg hatches a random pet of its rarity" under its header, then names the seven eggs
---         (Config.Eggs.Names) in their rarity colours, left to right and row by row in Config.Eggs.Order (two columns:
---         seven names at the 0.6-stud floor do not fit one row). The Secret egg's name is a light violet (its rarity
---         colour is near-black).
---       * EggShelf: a low stone shelf (17.6 x 0.8 x 2.6) 3 studs in front of the board.
---       * Egg_<Rarity>: the seven 3D eggs standing on the shelf 2.5 studs apart in the same order, left to right as the
---         reader sees them (the reader's left is the board's +X), each Mesh.tag'ged with its egg_<rarity> key at the egg's
+--   LobbyBoardBuilder.EggRow(parent, cf, H) -> Model "EggRow", PromptPart
+--     shop-area 16.17.2 (the owner, 2026-11-08: "the roulettes and eggs are the same thing ... put the eggs preview below
+--     the pets guide"): the seven eggs stand on a shelf in front of the WINGED PETS board (LobbyBuilder.buildRarityBoard;
+--     its letters end above y 3.9, so the eggs never hide them). cf = that board's ground CFrame (front -Z, towards the
+--     reader; WorldPivot = cf). No board of its own:
+--       * EggShelf: a low stone shelf (SHELF: 19.3 x 0.8 x 2.6) 3 studs in front of the board, colliding; the row slides
+--         1.0 stud (the eggs) / 1.35 (the shelf) towards the reader's left, off the Cloud machine (see SHELF).
+--       * RarityStrip: a SurfaceGui on the shelf's Front face at 50 px per stud (965 x 40 px), LightInfluence 0: a Navy
+--         Band over the whole canvas (BackgroundTransparency 0.2) holding seven labels Label_<Rarity> (135 x 40 px, one
+--         under each egg) that name the rarity in its colour (Secret: the light violet, its own colour is near-black) at
+--         30 px = 0.6 stud (the World text rule's line floor; a label strip has no title line) in Theme's Body face with the
+--         INK outline (H.signText), TextScaled off. Measured with Roblox's own BuilderSans-Bold the words are 59 .. 161 px
+--         wide, so two neighbours of the 135 px cells would meet (Common 126 + Uncommon 161): STRIP.Nudge moves the Common
+--         label 22 px out to the shelf's end and the Mythic one 8 px towards Secret, each still under its egg; every gap is
+--         then >= 9 px (the spec's GothamBlack "Heading" face is wider still: Uncommon 185 px, Legendary 175).
+--       * Egg_<Rarity>: the seven 3D eggs standing on the shelf EGG.Step (2.7) studs apart in the same order, left to right
+--         as the reader sees them (the reader's left is the board's +X: egg i at cf * (1.0 + (8 - 2 i) * 1.35, 0.8, -3)), each
+--         Mesh.tag'ged with its egg_<rarity> key at the egg's
 --         bottom centre (the Blender pivot). Until a key has an id the egg is its Part fallback: a 2.25 x 3 x 2.5
 --         ellipsoid (a block with a Sphere SpecialMesh, CourseBuilder's way: a Roblox Ball part is always round) in the
 --         rarity colour, SmoothPlastic, not colliding; the Secret egg dark with its violet tint. Each egg is tagged
@@ -27,8 +34,9 @@
 --       * EggShelfGlow (Task 26): one PointLight 1.0 / 10, no shadows, on an Attachment 1.5 studs over the shelf's top
 --         centre (inside the lobby light rule: a non-lamp light <= 1.5 / 28).
 --       * PromptPart (lobby shop 16.3, Task 23): an invisible, non-colliding 5 x 4 x 3 part at cf * (0, 2, -5.6), just in
---         front of the shelf (the old item stall's prompt spot). Returned second: LobbyBuilder hands it on as
---         LobbyInfo.Shop.Counter.PromptPart and PetService puts the walk-up ShopPrompt on it.
+--         front of the shelf. Returned second: LobbyBuilder hands it on as LobbyInfo.Shop.Counter.PromptPart and
+--         PetService puts the walk-up ShopPrompt on it.
+--     Parts: 9 (the shelf, seven eggs, the PromptPart).
 --   LobbyBoardBuilder.Leaderboard(parent, L, H) -> Model "LobbyLeaderboard" | nil
 --     The global leaderboard's board on the south lawn (spec 5.10 "World"): placed with H.plazaSpot at polar 295 degrees,
 --     r 48, clearance 9 (nil when the spot is not free: plazaSpot has warned "plaza decor skipped"), on the lawn layer,
@@ -43,7 +51,7 @@
 --
 --   H = { noticeBoard, surfaceGui, signPanel, signText, box, Mesh, C, MAT, LAWN, plazaSpot, faceCentre } (LobbyBuilder's
 --   layout field L.H, built once per Build)
--- No other light (only the shelf's EggShelfGlow), no prompt (only the Egg Guide's PromptPart for PetService's), no
+-- No other light (only the shelf's EggShelfGlow), no prompt (only the egg row's PromptPart for PetService's), no
 -- animation (the server never animates; the sparkles are a ParticleEmitter). Plain Lua 5.1 syntax only.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -63,18 +71,30 @@ local EGG_KEYS = {
 	Mythic = "egg_mythic",
 	Secret = "egg_secret",
 }
--- the Blender egg's size (studs), the gap between centres, and the shelf turntable the client plays (spec 16.5: one turn in
--- SpinSeconds, a BobStuds bob over BobSeconds)
-local EGG = { Size = Vector3.new(2.25, 3, 2.5), Step = 2.5, SpinSeconds = 14, BobStuds = 0.12, BobSeconds = 3.2 }
--- the stone shelf and its centre's distance in front of the board: 3 studs (not 4) and 17.6 wide (the eggs need 17.25), so
--- at the trove's old spot its end keeps 0.8 stud from the Celestial machine's base (at 4 / 18 it touched it)
-local SHELF = { Size = Vector3.new(17.6, 0.8, 2.6), Z = -3 }
--- the walk-up Shop prompt's part (lobby shop 16.3: the old item stall's prompt spot, 1 stud further out for the shelf)
+-- the Blender egg's size (studs), the gap between centres (shop-area 16.17.2: 2.7 = one 135 px label cell at 50 px per
+-- stud), and the shelf turntable the client plays (spec 16.5: one turn in SpinSeconds, a BobStuds bob over BobSeconds)
+local EGG = { Size = Vector3.new(2.25, 3, 2.5), Step = 2.7, SpinSeconds = 14, BobStuds = 0.12, BobSeconds = 3.2 }
+-- the stone shelf: its size, its centre's distance in front of the board (Z) and its centre along the board (X, + = the
+-- reader's left; the eggs need 18.45 studs, the labels 18.9 + the Common label's nudge). Centred on the board as 16.17.2
+-- drew it (20 wide), its Secret end met the Cloud machine: the shelf
+-- touched its base and the Secret egg stood under its lever knob (0.00 stud; the knob hangs 7 studs up over the shelf's
+-- front corner). So the row slides off it: the eggs' centre at ROW_X (1.0 towards the reader's left), and the shelf
+-- reaches 9.3 studs past that on the Secret side (0.075 past the Secret egg) and 10.0 on the Common side (the Common
+-- label, nudged out, needs it): 19.3 wide, centred at X = 1.35. The PromptPart stays centred on the board.
+local SHELF = { Size = Vector3.new(19.3, 0.8, 2.6), Z = -3, X = 1.35 }
+local ROW_X = 1.0
+-- the rarity label strip on the shelf's front (16.17.2): px per stud, the label cell, the text size (0.6 stud), the band;
+-- Nudge = px a label moves off its cell's centre (+ = towards the canvas's right = the reader's right), measured above
+local STRIP = {
+	Name = "RarityStrip", PPS = 50, Cell = 135, Text = 30, Role = "Body", BandAlpha = 0.2,
+	Nudge = { Common = -22, Mythic = 8 },
+}
+-- the walk-up Shop prompt's part (lobby shop 16.3: just in front of the shelf)
 local COUNTER = { Offset = CFrame.new(0, 2, -5.6), Size = Vector3.new(5, 4, 3) }
 local SECRET = {
 	Body = Color3.fromRGB(40, 40, 52), -- Config.Rarities Secret
 	Tint = Color3.fromRGB(138, 92, 255), -- the Secret egg's violet glow (spec 5.6)
-	Text = Color3.fromRGB(178, 150, 255), -- its name on the navy board
+	Text = Color3.fromRGB(178, 150, 255), -- its label on the navy band
 }
 -- the shelf VFX (spec 16.5 "The world eggs"): the sparkle per egg from Rare up and the shelf's one light
 local SHELF_FX = {
@@ -83,7 +103,6 @@ local SHELF_FX = {
 	Detail = (WorldStyle.Tags and WorldStyle.Tags.Detail) or "NC_Detail",
 	Glow = { Name = "EggShelfGlow", Brightness = 1.0, Range = 10, Lift = 1.5, Color = Color3.fromRGB(255, 238, 206) },
 }
-local PX = { Title = 52, Info = 30 } -- px at 50 px per stud: 1.04 stud / 0.6 stud (the World text rule)
 -- the leaderboard board: where it stands (polar degrees, radius, plazaSpot clearance; spec 5.10 checked the clearance
 -- against the fountain, the NPC spots, the benches, the flower beds and the spawn) and its layout (shared with Task 23)
 local BOARD = {
@@ -115,14 +134,6 @@ local function eggOrder()
 	return out
 end
 
-local function eggName(id)
-	local names = type(Config.Eggs) == "table" and type(Config.Eggs.Names) == "table" and Config.Eggs.Names or {}
-	return names[id] or (id .. " Egg")
-end
-
--- 550 x 400 px canvas (11 x 8 studs): a 1.04-stud header, the 0.6-stud line (wrapped), then the names in two columns
--- (0.6 stud). The bottom fifth stays empty: the eggs on the shelf (3.8 studs tall) stand in front of it, and every
--- letter starts above 3.9 studs, so it shows over the eggs from a standing player's eye.
 -- the sparkle of one shelf egg (Rare and up) at an Attachment Center in its middle; nothing below Rare
 local function eggSparkle(egg, id)
 	local rate = SHELF_FX.Rate[id]
@@ -162,34 +173,42 @@ local function eggSparkle(egg, id)
 	return pe
 end
 
-local function guideSign(face, order, H)
-	local gui = H.surfaceGui(face, Enum.NormalId.Front)
-	local panel = H.signPanel(gui)
-	H.signText(panel, "EGG GUIDE", "Title", PX.Title, H.C.TextGold, "Header", 0.04, 0.025, 0.92, 0.14)
-	H.signText(panel, "Every egg hatches a random pet of its rarity", "Body", PX.Info, H.C.Text, "Sub", 0.05, 0.175, 0.9, 0.2, nil, true)
+-- the rarity label strip on the shelf's front (16.17.2): a Navy band, one label per egg standing under it. The canvas's
+-- left is the shelf's +X (the reader's left, where egg 1 stands), so egg i's centre is W / 2 - x_i * PPS px.
+local function rarityStrip(shelf, order, H)
+	local gui = H.surfaceGui(shelf, Enum.NormalId.Front)
+	gui.Name = STRIP.Name
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = STRIP.PPS
+	gui.LightInfluence = 0
+	local band = Instance.new("Frame")
+	band.Name = "Band"
+	band.Size = UDim2.new(1, 0, 1, 0)
+	band.BackgroundColor3 = H.C.Navy
+	band.BackgroundTransparency = STRIP.BandAlpha
+	band.BorderSizePixel = 0
+	band.Parent = gui
+	local w = SHELF.Size.X * STRIP.PPS
 	for i, id in ipairs(order) do
-		local row, col = math.floor((i - 1) / 2), (i - 1) % 2
-		local x = (col == 0) and 0.05 or 0.5
-		if i == #order and col == 0 then
-			x = 0.275 -- an odd last name sits in the middle of its row
-		end
+		local eggX = ROW_X - SHELF.X + (#order + 1 - 2 * i) * EGG.Step / 2 -- the egg's centre from the shelf's
+		local centre = w / 2 - eggX * STRIP.PPS + (STRIP.Nudge[id] or 0)
 		local color = (id == "Secret") and SECRET.Text or rarityColor(id)
-		H.signText(panel, eggName(id), "Heading", PX.Info, color, "EggName_" .. id, x, 0.39 + row * 0.105, 0.45, 0.1)
+		local label = H.signText(band, id, STRIP.Role, STRIP.Text, color, "Label_" .. id, (centre - STRIP.Cell / 2) / w, 0, STRIP.Cell / w, 1)
+		label.TextScaled = false
 	end
-	gui.Parent = face
+	gui.Parent = shelf
 	return gui
 end
 
-function LobbyBoardBuilder.EggGuide(parent, cf, H)
+function LobbyBoardBuilder.EggRow(parent, cf, H)
 	local model = Instance.new("Model")
-	model.Name = "EggGuide"
+	model.Name = "EggRow"
 	model.Parent = parent
 	local order = eggOrder()
-	local face = H.noticeBoard(model, cf, 11, 8, "EggGuideBoard")
-	guideSign(face, order, H)
 	-- the shelf: its bottom on the board's ground (the lawn), the part over the court's stone just sinks into it
-	local shelfCF = cf * CFrame.new(0, SHELF.Size.Y / 2, SHELF.Z)
+	local shelfCF = cf * CFrame.new(SHELF.X, SHELF.Size.Y / 2, SHELF.Z)
 	local shelf = H.box(model, "EggShelf", shelfCF, SHELF.Size, H.C.StoneLight, { Collide = true, Material = H.MAT.SmoothPlastic })
+	rarityStrip(shelf, order, H)
 	-- the shelf's one soft glow (Task 26): an Attachment over its top centre, so no part is added
 	local glowAt = Instance.new("Attachment")
 	glowAt.Name = SHELF_FX.Glow.Name
@@ -204,7 +223,7 @@ function LobbyBoardBuilder.EggGuide(parent, cf, H)
 	glow.Parent = glowAt
 	for i, id in ipairs(order) do
 		-- the reader faces the board's front (-Z): their left is +X, so the first egg stands at +X
-		local eggCF = cf * CFrame.new((#order + 1 - 2 * i) * EGG.Step / 2, SHELF.Size.Y, SHELF.Z)
+		local eggCF = cf * CFrame.new(ROW_X + (#order + 1 - 2 * i) * EGG.Step / 2, SHELF.Size.Y, SHELF.Z)
 		local color = rarityColor(id)
 		if id == "Secret" then
 			color = SECRET.Body:Lerp(SECRET.Tint, 0.18)
@@ -223,7 +242,7 @@ function LobbyBoardBuilder.EggGuide(parent, cf, H)
 			CollectionService:AddTag(egg, Config.Tags.Spin)
 		end
 	end
-	-- the walk-up Shop prompt's part (spec 16.3): invisible, not colliding, just in front of the shelf
+	-- the walk-up Shop prompt's part (spec 16.3): invisible, not colliding, just in front of the shelf, centred on the board
 	local prompt = H.box(model, "PromptPart", cf * COUNTER.Offset, COUNTER.Size, H.C.Cloud, { Transparency = 1, Shadow = false })
 	model.WorldPivot = cf
 	return model, prompt

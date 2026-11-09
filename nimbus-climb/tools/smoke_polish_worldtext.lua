@@ -10,7 +10,8 @@
 --                             outlined and on a solid plate, the plate compact (sized to its content, no huge empty
 --                             panel), LightInfluence 0, MaxDistance 50-150 (AlwaysOnTop beacons may reach further). Surface
 --                             signs: 40-60 px per stud, LightInfluence 0, no TextScaled, the biggest line >= 0.95 stud
---                             and every line >= 0.6 stud, the text fits its box. The home nameplate: "Free home" /
+--                             (not on a label strip of info lines only: LABEL_STRIPS, the egg row's RarityStrip) and every
+--                             line >= 0.6 stud, the text fits its box. The home nameplate: "Free home" /
 --                             "Press E at the gate" with the "+" icon; once claimed with E at the gate (Phase 2) the
 --                             owner's name, "Home Level <n>", the headshot (Players:GetUserThumbnailAsync, once per user,
 --                             cached) or the silhouette when the request fails; back to free when the owner leaves;
@@ -35,6 +36,10 @@ local NAME_MIN = 22 -- px at 1080p
 local INFO_MIN = 18
 local TITLE_STUDS = 0.95 -- surface signs: the biggest line
 local INFO_STUDS = 0.6
+-- label strips: surface signs of info lines only, no title line (ARCHITECTURE_V3's World text rule: "~1 stud for titles and
+-- ~0.6 stud for info lines"), so the title floor does not apply to them; every other rule does (shop-area 16.17.2: the egg
+-- row's RarityStrip, seven 0.6-stud rarity labels on the shelf's 0.8-stud front)
+local LABEL_STRIPS = { RarityStrip = true }
 
 ----------------------------------------------------------------------------------------------------
 -- the audit (both worlds)
@@ -254,7 +259,7 @@ local function auditGui(gui)
 		end
 		if pps and pps > 0 then
 			rec.maxStuds, rec.minStuds = maxPx / pps, minPx / pps
-			if maxPx / pps < TITLE_STUDS then
+			if maxPx / pps < TITLE_STUDS and not LABEL_STRIPS[gui.Name] then
 				bad(string.format("biggest letters %.2f stud < %.2f", maxPx / pps, TITLE_STUDS))
 			end
 			if minPx / pps < INFO_STUDS - 0.001 then
@@ -740,7 +745,7 @@ local function serverScenarios()
 			end
 		end
 		T.check(gateCount >= 3, "polish worldtext: the Gate Court gates carry a GateTag each", gateCount .. " gates with a tag")
-		-- lobby shop (spec 5.9): + the trove's JoinBillboard; the Egg Guide board's SignGui is checked by path below
+		-- lobby shop (spec 5.9): + the trove's JoinBillboard; the egg row's RarityStrip is checked by name below
 		local want = { Nameplate = Config.Lobby.SpotCount, GateTag = math.max(3, gateCount), PriceBillboard = #Config.Roulettes, TroveBillboard = 1, JoinBillboard = 1, NameTag = 1, SignGui = 6, HintTag = 5 }
 		local short = {}
 		for name, n in pairs(want) do
@@ -750,7 +755,8 @@ local function serverScenarios()
 		end
 		table.sort(short)
 		T.check(#short == 0, "the census covered the lobby, home, NPC, portal and course GUIs", table.concat(short, ", "))
-		-- lobby shop (spec 5.9): the Sky Trove's Join sign and the Egg Guide board are in the census and pass the rule
+		-- lobby shop (spec 5.9): the Sky Trove's Join sign is in the census and passes the rule; shop-area 16.17.2: so is the
+		-- egg row's RarityStrip (a label strip: seven 0.6-stud rarity labels, no title line)
 		local function recFor(needle)
 			for _, r in ipairs(records) do
 				if r.texts > 0 and string.find(r.path, needle, 1, true) then
@@ -759,11 +765,12 @@ local function serverScenarios()
 			end
 			return nil
 		end
-		local joinRec, guideRec = recFor("JoinBillboard"), recFor("EggGuideBoard")
+		local joinRec, stripRec = recFor("JoinBillboard"), recFor("RarityStrip")
 		T.check(joinRec ~= nil and #joinRec.problems == 0, "polish worldtext: the Sky Trove's Join sign is in the census and keeps the World text rule",
 			joinRec and table.concat(joinRec.problems, "; ") or "not in the census")
-		T.check(guideRec ~= nil and #guideRec.problems == 0 and guideRec.texts >= 9, "polish worldtext: the Egg Guide board (header, line, seven egg names) is in the census and keeps the sign rule",
-			guideRec and (guideRec.texts .. " texts; " .. table.concat(guideRec.problems, "; ")) or "not in the census")
+		T.check(stripRec ~= nil and stripRec.kind == "SurfaceGui" and #stripRec.problems == 0 and stripRec.texts == 7 and (stripRec.minStuds or 0) >= INFO_STUDS - 0.001,
+			"polish worldtext: the egg row's RarityStrip (seven rarity labels, every line >= 0.6 stud, fitting its box) is in the census and keeps the sign rule",
+			stripRec and (stripRec.texts .. " texts; " .. table.concat(stripRec.problems, "; ")) or "not in the census")
 		-- lobby shop Task 13 (spec 5.11 c): the Storm Altar is exempt above, but its "To the Plaza" sign keeps the rule. On the
 		-- Part fallback it is a tag (the full tag rule); on the dressed portal_ring mesh a one-line plaque on the 4 x 1-stud
 		-- navy board, so only its lines' 0.6-stud floor applies there (the 0.95-stud title floor does not fit the board)

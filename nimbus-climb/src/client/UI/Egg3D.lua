@@ -2,7 +2,7 @@
 -- docs/superpowers/specs/2026-11-07-lobby-shop-design.md 16.14 "3D eggs"): the real Blender egg in a ViewportFrame for the
 -- hatch cutscene's pedestal phases (EggStage: Rise, Crack) and the Shop's Secret hero egg (ShopEggs), and the crack that
 -- splits it into its two Blender halves which fly apart. The model is the shelf's own dressed mesh: MeshLibrary.Assemble
--- of the same key, the way MeshLibrary.Dress dresses the Egg Guide's shelf eggs (no fork, no second loader).
+-- of the same key, the way MeshLibrary.Dress dresses the egg row's shelf eggs (no fork, no second loader).
 --
 --   Egg3D.KEYS[rarity] = { Whole = "egg_<r>", Top = "egg_<r>_top", Bot = "egg_<r>_bot" }   (literal keys: tools/mesh_keys.py)
 --   Egg3D.Usable(rarity, opts) -> ok, reason   reason "low" (Low graphics), "missing" (the whole egg's key is not usable

@@ -179,9 +179,9 @@
       ]
     },
     "server/Services/LobbyBoardBuilder": {
-      "_comment": "lobby shop (2026-11-07) Tasks 10 / 11: the lobby's newer boards drawn with LobbyBuilder's helpers (H = L.H): the Egg Guide at the Sky Trove's old spot, the leaderboard board on the south lawn",
+      "_comment": "lobby shop (2026-11-07) Tasks 10 / 11, shop-area (2026-11-09) T2: the lobby's newer boards and the egg row drawn with LobbyBuilder's helpers (H = L.H): the seven-egg row with its rarity labels under the WINGED PETS board (spec 16.17.2), the leaderboard board on the south lawn",
       "functions": [
-        "EggGuide",
+        "EggRow",
         "Leaderboard"
       ]
     },

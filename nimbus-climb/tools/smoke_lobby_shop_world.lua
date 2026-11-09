@@ -13,14 +13,8 @@
 --                      forced fallback shop (LobbyBuilder._ForceShopFallback) puts its trove on the same plaza spot, facing
 --                      the centre; one
 --                      SkyTrove in a lobby either way; the TroveGroupDone attribute (a stored claim after the load and after
---                      a provisional load's recovery, at the claim, never for a player without the claim); the Egg Guide
---                      at the trove's old spot (at(-21, -8)), its children the board, the shelf, the seven eggs and (Task
---                      23) the invisible, non-colliding PromptPart: the 11 x 8 board reads "Every egg hatches a random pet of
---                      its rarity" and names the seven eggs in rarity colours in Config.Eggs.Order, no text behind the
---                      eggs; the stone shelf 3 studs in front (the plan's 4 touched the Celestial machine) with the seven
---                      eggs (2.25 x 3 x 2.5 ellipsoids, 2.5 studs apart, left to right as the reader sees them; Task 25:
---                      each tagged NC_Spin with SpinSeconds 14, BobStuds 0.12, BobSeconds 3.2, the shelf turntable) at least
---                      3 studs from every roulette prompt and clear of every other shop prop; the dress requests name
+--                      a provisional load's recovery, at the claim, never for a player without the claim); the egg row
+--                      (checkEggRow, shop-area 16.17.2) in front of the WINGED PETS board; the dress requests name
 --                      egg_common .. egg_secret on the Egg_<Rarity> parts at the egg's bottom centre; ML_DressKey only
 --                      where MeshLibrary.Status(key) ~= "missing" (in --mesh the scenario gives the egg keys fixture
 --                      holders, so the check runs there); the rarity board's subtitle; no "plaza decor skipped" warn in
@@ -67,9 +61,10 @@
 --                      part, clear of every other altar part while it turns and bobs; one cyan PointLight 1.0 / 12; the altar
 --                      <= 500 parts with its lights in the rule; a rebuild with StormAltar._Kit: one gem_world request on
 --                      WorldGem at the gem CFrame, ML_DressKey only where the key is not missing (--mesh: a fixture holder)
---   shop_prompt        the walk-up Shop prompt (spec 16.3, Task 23): the Egg Guide's PromptPart (invisible, not colliding,
---                      5 x 4 x 3) at the board's cf * (0, 2, -5.6) (+-0.1); LobbyInfo.Shop.Counter = { PromptPart, Center,
---                      Model = the EggGuide } (Roulettes / ItemShop unchanged); one ShopPrompt on it ("Open" / "Shop",
+--   shop_prompt        the walk-up Shop prompt (spec 16.3, Task 23; shop-area 16.17.2): the egg row's PromptPart (invisible,
+--                      not colliding, 5 x 4 x 3) at the WINGED PETS board's cf * (0, 2, -5.6) (+-0.1); LobbyInfo.Shop.Counter
+--                      = { PromptPart, Center = the board's Face, Model = the EggRow } (Roulettes / ItemShop unchanged); one
+--                      ShopPrompt on it ("Open" / "Shop",
 --                      HoldDuration 0, range 10, no line of sight), the only one in the workspace; a trigger fires one
 --                      OpenPanel("Shop", { Tab = "Eggs" }) to that player, a second within PROMPT_COOLDOWN none, InMatch
 --                      none, junk triggers nothing; no Counter -> no prompt and one warn; the lobby rebuilt -> exactly one
@@ -81,7 +76,8 @@
 --                      0.5, Lifetime 1.2-2, Speed 0.3-0.8; tagged NC_Detail; on an Attachment Center at the egg's
 --                      middle, so the Part fallback and a dressed mesh share it), Common and Uncommon none; one PointLight
 --                      EggShelfGlow 1.0 / 10 at the shelf's centre; every lobby light within the light rule; no part
---                      added to the Egg Guide; the trove <= 60 parts; the same on a rebuilt lobby
+--                      added to the egg row (shelf + seven eggs + PromptPart); the trove <= 60 parts; the same on a
+--                      rebuilt lobby
 --   shop_globe         the Gumball Globe (shop-area T1, spec 16.17.1): LobbyMachineBuilder.GLOBE / Rarities (the four
 --                      sequences, top first) / GlobeEggs; the prop_roulette_globe manifest (Egg1..Egg12, Meta.eggScale 0.42 /
 --                      chaseScale 0.44, inside 9 x 14.5 x 7, <= 4000 tris, the eight parts, every egg's middle inside the
@@ -91,6 +87,19 @@
 --                      unchanged; dressed (--mesh: fixture holders; default: the tag forced) -> GlobeEggs of twelve egg Models
 --                      at the attachments (ML_Scale, NC_Detail on 2..12, the egg_<rarity> requests in order); a manifest
 --                      without Egg7 -> one warn, no GlobeEggs, the machines stand
+--   shop_egg_row       the egg row under WINGED PETS (shop-area T2, spec 16.17.2): no EggGuide anywhere, one Model EggRow
+--                      at the board's frame (at(21, -8) on the lawn, facing the shop centre): EggShelf (the shelf numbers
+--                      of EGGROW below) with the seven Egg_<Rarity> eggs at Step 2.7 (Common at the reader's left), the
+--                      turntable tags, the sparkles, the egg_<rarity> requests; the RarityStrip SurfaceGui on the shelf's
+--                      front (50 px per stud, LightInfluence 0, a Navy Band at 0.2, seven Label_<Rarity> 135 x 40 px under
+--                      their eggs, 30 px Body text in the rarity colour (Secret 178,150,255) with the INK outline, no
+--                      TextScaled; measured with Roblox's BuilderSans-Bold no two labels meet and each stays on the
+--                      canvas); one EggShelfGlow; the PromptPart at cf * (0, 2, -5.6); LobbyInfo.Shop.Counter = { that
+--                      part, Center = the board's Face, Model = EggRow } with its one ShopPrompt; the WINGED PETS board's
+--                      letters and pills end above y 3.9 (<= 375 of 450 px), the subtitle right-aligned in the header row;
+--                      the eggs >= 3 studs from every roulette prompt, the row clear of every other shop prop; the right
+--                      lawn (at(-21, -8)) empty but for lamps / flower beds; the same on a rebuilt lobby and the forced
+--                      fallback shop keeps its ShopCounter
 -- Rebuilds follow smoke_p6_lobby.lua: the booted lobby is set aside (renamed) and put back, the hooks (_Kit,
 -- _ForceShopFallback), Config.Trove.GroupId, the Meadow stats and the fixture holders restored in every path.
 -- Deterministic: mock clock only. Plain Lua 5.1 syntax only.
@@ -120,8 +129,21 @@ local TROVE_DEG, TROVE_R = 165, 50
 local TROVE_NEED = { Guide = 12.5, Bench = 10, BenchPair = 0.5, Npc = 11.5, Bed = 10.5, Walk = 11.5, Court = 42.5, Footing = 0.5 }
 local WALK_HALF = 5 -- G.PathHalf: the cross walks' half width, border included
 local SOON_TEXT = "Group rewards coming soon!"
-local GUIDE_FOOTER = "Every egg hatches a random pet of its rarity"
 local RARITY_SUB = "Every egg hatches a pet of its rarity"
+-- the egg row under the WINGED PETS board (shop-area spec 16.17.2): the shelf, the egg step, the label strip, the prompt
+-- part's offset and the board's 450 px canvas with its 375 px line (the eggs in front stand 3.8 studs tall: every letter
+-- ends above y 3.9 = (11.4 - 3.9) x 50 px from the face's top). TextW: the labels' widths at 30 px measured with Roblox's
+-- own BuilderSans-Bold (content/fonts; Theme's Body face), the gap rule's input; Outline = signText's INK stroke at 30 px.
+local EGGROW = {
+	Shelf = Vector3.new(19.3, 0.8, 2.6), ShelfZ = -3, ShelfX = 1.35, EggsX = 1.0, Step = 2.7, EggSize = Vector3.new(2.25, 3, 2.5),
+	PPS = 50, StripH = 40, Cell = 135, Text = 30, BandAlpha = 0.2, Navy = Color3.fromRGB(34, 42, 76),
+	SecretText = Color3.fromRGB(178, 150, 255), MinGap = 6, Outline = 2, UnderEgg = 30,
+	TextW = { Common = 126, Uncommon = 161, Rare = 65, Epic = 59, Legendary = 151, Mythic = 98, Secret = 91 },
+	Prompt = Vector3.new(0, 2, -5.6), PromptSize = Vector3.new(5, 4, 3),
+	CanvasH = 450, MaxBottom = 375, HeaderTop = 60, RowTop = 68,
+	Glow = { Brightness = 1.0, Range = 10, Lift = 1.5 },
+	MachineGap = 3, PropGap = 0.3, RightLawn = 6,
+}
 
 ----------------------------------------------------------------------------------------------------
 -- helpers
@@ -175,11 +197,19 @@ local function shopFrame()
 	return CFrame.lookAt(S0, S0 + flat(o - S0).Unit), S0
 end
 
-local function guideFrame()
+-- the WINGED PETS board's ground frame (shop-area 16.17.2: the egg row stands in front of it): at(21, -8) on the lawn,
+-- its front (-Z) towards the shop centre
+local function boardFrame()
 	local shopCF, S0 = shopFrame()
-	local pos = (shopCF * CFrame.new(-21, 0, -8)).Position - Vector3.new(0, LAWN, 0)
+	local pos = (shopCF * CFrame.new(21, 0, -8)).Position - Vector3.new(0, LAWN, 0)
 	local target = S0 - Vector3.new(0, LAWN, 0)
 	return CFrame.lookAt(pos, pos + flat(target - pos).Unit)
+end
+
+-- the right lawn's spot at(-21, -8) (shop-area 16.17.2: empty but for its lamp and flower bed)
+local function rightLawn()
+	local shopCF = shopFrame()
+	return (shopCF * CFrame.new(-21, 0, -8)).Position
 end
 
 local function cfFromString(s)
@@ -295,7 +325,7 @@ local function rebuild(label, setup, inspect)
 end
 
 ----------------------------------------------------------------------------------------------------
--- the checks of one built trove / egg guide
+-- the checks of one built trove / egg row
 ----------------------------------------------------------------------------------------------------
 local function checkTrovePlace(label, stall)
 	local model = stall and stall.Model
@@ -385,114 +415,201 @@ local function checkTroveNeighbours(label, root, info, stall, Config)
 		label, dGuide, b1, b2, npc, beds[1] or -1, dWalk, dCourt, band, cell))
 end
 
-local function checkEggGuide(label, lobby, Config)
-	local shop = lobby:FindFirstChild("Shop")
-	local guide = shop and shop:FindFirstChild("EggGuide")
-	if not T.check(guide ~= nil and guide:IsA("Model"), label .. ": the Shop folder holds the EggGuide model") then
-		return
+-- a GuiObject's box in px (x, y, w, h) inside a SurfaceGui canvas of w x h px, from the Size / Position / AnchorPoint
+-- chain under the gui; nil when an AutomaticSize decides it or the object is not under the gui
+local function guiBox(obj, gui, w, h)
+	local chain = {}
+	local cur = obj
+	while cur and cur ~= gui do
+		chain[#chain + 1] = cur
+		cur = cur.Parent
 	end
-	local gcf = guideFrame()
-	T.check(near(guide:GetPivot().Position, gcf.Position), label .. ": the Egg Guide stands at the trove's old spot (at(-21, -8), on the lawn)",
-		fmt("%.2f off", (guide:GetPivot().Position - gcf.Position).Magnitude))
-	T.check(guide:GetPivot().LookVector:Dot(gcf.LookVector) > 0.999, label .. ": ...facing the shop's centre")
-	-- its children: the board, the shelf, the seven eggs and (Task 23, spec 16.3) the walk-up prompt's invisible PromptPart
-	local kids, wantKids = {}, { "EggGuideBoard", "EggShelf", "PromptPart" }
+	if cur ~= gui then
+		return nil
+	end
+	local x, y = 0, 0
+	for i = #chain, 1, -1 do
+		local o = chain[i]
+		if o:IsA("GuiObject") then
+			if o.AutomaticSize ~= Enum.AutomaticSize.None then
+				return nil
+			end
+			local ow = w * o.Size.X.Scale + o.Size.X.Offset
+			local oh = h * o.Size.Y.Scale + o.Size.Y.Offset
+			x = x + w * o.Position.X.Scale + o.Position.X.Offset - o.AnchorPoint.X * ow
+			y = y + h * o.Position.Y.Scale + o.Position.Y.Offset - o.AnchorPoint.Y * oh
+			w, h = ow, oh
+		end
+	end
+	return x, y, w, h
+end
+
+local function rarityDef(Config, id)
+	for _, rd in ipairs(Config.Rarities) do
+		if rd.Id == id then
+			return rd
+		end
+	end
+	return nil
+end
+
+-- the WINGED PETS board (shop-area 16.17.2): every letter and pill ends above y 3.9 (<= 375 of its 450 px), the header row
+-- holds the title (left) and the subtitle (right, two lines), the measured text widths keep them apart
+local function checkRarityBoard(label, shop)
+	local rb = shop and shop:FindFirstChild("RarityBoard")
+	local face = rb and rb:FindFirstChild("Face")
+	local gui = face and face:FindFirstChildOfClass("SurfaceGui")
+	local panel = gui and gui:FindFirstChild("Panel")
+	if not T.check(rb ~= nil and face ~= nil and gui ~= nil and panel ~= nil, label .. ": the RarityBoard with its SurfaceGui panel on its Face") then
+		return nil
+	end
+	local W, H = face.Size.X * gui.PixelsPerStud, face.Size.Y * gui.PixelsPerStud
+	T.check(math.abs(W - 700) < 0.5 and math.abs(H - EGGROW.CanvasH) < 0.5, label .. ": the board's canvas is 700 x 450 px (14 x 9 studs at 50 px per stud)", fmt("%.0f x %.0f", W, H))
+	local low, frames = {}, 0
+	for _, ch in ipairs(panel:GetChildren()) do
+		local isRow = ch:IsA("Frame") and string.match(ch.Name, "^Rarities%d+$") ~= nil
+		if ch:IsA("TextLabel") or isRow then
+			local _, y, _, h = guiBox(ch, gui, W, H)
+			if not y or y + h > EGGROW.MaxBottom + 1e-3 * H then
+				low[#low + 1] = ch.Name .. (y and fmt(" ends %.1f px", y + h) or " (no box)")
+			end
+			if isRow then
+				frames = frames + 1
+				for _, pill in ipairs(ch:GetChildren()) do
+					if pill:IsA("GuiObject") and pill.Size.Y.Scale == 0 and pill.Size.Y.Offset > h + 1e-3 then
+						low[#low + 1] = ch.Name .. "." .. pill.Name .. fmt(" %d px tall in a %.0f px row", pill.Size.Y.Offset, h)
+					end
+				end
+			end
+		end
+	end
+	T.check(#low == 0 and frames >= 4, label .. fmt(": every WINGED PETS letter and pill row ends above y 3.9 (<= %d of %d px; the eggs stand in front)", EGGROW.MaxBottom, EGGROW.CanvasH),
+		frames .. " pill rows; " .. table.concat(low, ", "))
+	local title, sub = panel:FindFirstChild("Header"), panel:FindFirstChild("Sub")
+	if T.check(title ~= nil and title:IsA("TextLabel") and title.Text == "WINGED PETS" and title.TextSize == 50, label .. ": the title 'WINGED PETS' at 50 px") then
+		local tx = guiBox(title, gui, W, H)
+		T.check(title.TextXAlignment == Enum.TextXAlignment.Left and tx ~= nil, label .. ": ...left-aligned in the header row")
+	end
+	if T.check(sub ~= nil and sub:IsA("TextLabel") and sub.Text == RARITY_SUB, label .. ": the subtitle reads '" .. RARITY_SUB .. "'", sub and sub.Text) then
+		local sx, sy, sw, sh = guiBox(sub, gui, W, H)
+		T.check(sx ~= nil and sub.TextXAlignment == Enum.TextXAlignment.Right and sy <= EGGROW.HeaderTop and sy + sh <= EGGROW.RowTop + 1e-3 and sub.TextSize == 30,
+			label .. ": ...30 px, right-aligned in the header row (starts <= 60 px, ends above the first roulette row at 68 px)", sx and fmt("y %.1f .. %.1f", sy, sy + sh))
+		-- measured (Roblox's fonts): the title 383 px (GothamBlack = Montserrat Black at 50 px), the subtitle wrapped into
+		-- "Every egg hatches" (261 px) / "a pet of its rarity" (238 px) by a box 261 .. 285 px wide ("Every egg hatches a" is
+		-- 286); two 30 px lines fit its height; the title's right end and the subtitle's left end >= 6 px apart (outlines in)
+		local tx = guiBox(title, gui, W, H)
+		if sx and tx then
+			local titleRight = tx + 383 + 3
+			local subLeft = sx + sw - 261 - 2
+			T.check(sub.TextWrapped == true and sw >= 261 and sw < 286 and sh >= 2 * 30, label .. ": ...wrapped into two lines (its box 261 .. 285 px wide, 60+ px tall)", fmt("%.1f x %.1f px", sw, sh))
+			T.check(subLeft - titleRight >= EGGROW.MinGap, label .. ": ...the title's letters and the subtitle's keep >= 6 px apart", fmt("%.1f px", subLeft - titleRight))
+		end
+	end
+	return face
+end
+
+-- the seven egg_<rarity> dress requests (LobbyBuilder._Kit) on the row's eggs at their bottom centres; ML_DressKey where the
+-- key is not missing (--mesh: fixture holders make every one count)
+local function checkEggRequests(label, LB, row, Config, ML)
+	local recs = {}
+	for _, rec in ipairs(LB and LB._Kit and LB._Kit.Targets or {}) do
+		for r, key in pairs(EGG_KEYS) do
+			if rec.Key == key then
+				recs[r] = recs[r] or {}
+				table.insert(recs[r], rec)
+			end
+		end
+	end
+	local bad = {}
+	for _, r in ipairs(Config.Eggs.Order) do
+		local list = recs[r] or {}
+		local egg = row and row:FindFirstChild("Egg_" .. r)
+		local rec = list[1]
+		if #list ~= 1 or not egg or rec.Target ~= egg then
+			bad[#bad + 1] = r .. fmt(" (%d records)", #list)
+		elseif not (typeof(rec.Origin) == "CFrame" and near(rec.Origin.Position, egg.Position - Vector3.new(0, 1.5, 0)) and rec.Origin.UpVector.Y > 0.999) then
+			bad[#bad + 1] = r .. " (origin not the egg's bottom centre)"
+		end
+	end
+	T.check(#bad == 0, label .. ": seven dress requests egg_common .. egg_secret on the Egg_<Rarity> parts at the egg's bottom centre", table.concat(bad, ", "))
+	local checked, wrong = 0, {}
+	for _, r in ipairs(Config.Eggs.Order) do
+		local key = EGG_KEYS[r]
+		local okSt, st = pcall(ML.Status, key)
+		local egg = row and row:FindFirstChild("Egg_" .. r)
+		if okSt and st ~= "missing" and egg then
+			checked = checked + 1
+			local off = cfFromString(egg:GetAttribute("ML_Offset"))
+			if egg:GetAttribute("ML_DressKey") ~= key or not off or not near((egg:GetPivot() * off).Position, egg.Position - Vector3.new(0, 1.5, 0)) then
+				wrong[#wrong + 1] = r
+			end
+		end
+	end
+	if MESH_MODE then
+		T.check(checked == 7 and #wrong == 0, label .. " (--mesh): every egg is tagged with its egg_<rarity> key, the mesh pivot on the egg's bottom centre",
+			checked .. " checked; wrong: " .. table.concat(wrong, ", "))
+	else
+		T.check(#wrong == 0, label .. ": ML_DressKey on the eggs whose key is not missing (" .. checked .. " here; --mesh checks all seven)", table.concat(wrong, ", "))
+	end
+end
+
+-- the egg row (shop-area 16.17.2) of one built lobby: the shelf, the seven eggs, the strip, the glow, the PromptPart, the
+-- WINGED PETS board above it, the clearances, the empty right lawn; info = its LobbyInfo (the Counter) -> the row | nil
+local function checkEggRow(label, lobby, Config, info)
+	local shop = lobby:FindFirstChild("Shop")
+	T.check(shop ~= nil and shop:FindFirstChild("EggGuide", true) == nil and shop:FindFirstChild("EggGuideBoard", true) == nil,
+		label .. ": no Egg Guide (board, shelf or model) anywhere in the Shop folder")
+	local rows = {}
+	for _, ch in ipairs(shop and shop:GetChildren() or {}) do
+		if ch.Name == "EggRow" then
+			rows[#rows + 1] = ch
+		end
+	end
+	local row = rows[1]
+	if not T.check(#rows == 1 and row:IsA("Model"), label .. ": the Shop folder holds one Model EggRow", #rows .. " EggRow") then
+		return nil
+	end
+	local bcf = boardFrame()
+	T.check(near(row:GetPivot().Position, bcf.Position) and row:GetPivot().LookVector:Dot(bcf.LookVector) > 0.999,
+		label .. ": the EggRow's pivot is the WINGED PETS board's ground frame (at(21, -8) on the lawn, facing the shop centre)",
+		fmt("%.2f off", (row:GetPivot().Position - bcf.Position).Magnitude))
+	local kids, wantKids = {}, { "EggShelf", "PromptPart" }
 	for _, r in ipairs(Config.Eggs.Order) do
 		wantKids[#wantKids + 1] = "Egg_" .. r
 	end
-	for _, ch in ipairs(guide:GetChildren()) do
+	for _, ch in ipairs(row:GetChildren()) do
 		kids[#kids + 1] = ch.Name
 	end
 	table.sort(kids)
 	table.sort(wantKids)
-	T.eq(table.concat(kids, ","), table.concat(wantKids, ","), label .. ": the Egg Guide holds the board, the shelf, the seven eggs and the PromptPart")
-	local pp = guide:FindFirstChild("PromptPart")
-	T.check(pp ~= nil and pp:IsA("BasePart") and pp.Transparency >= 0.99 and pp.CanCollide == false, label .. ": ...the PromptPart is invisible and not colliding")
-	-- the board
-	local board = guide:FindFirstChild("EggGuideBoard")
-	local face = board and board:FindFirstChild("Face")
-	local gui = face and face:FindFirstChildOfClass("SurfaceGui")
-	if T.check(board ~= nil and face ~= nil and gui ~= nil, label .. ": an EggGuideBoard notice board with a SurfaceGui on its Face") then
-		T.check(math.abs(face.Size.X - 11) < 0.01 and math.abs(face.Size.Y - 8) < 0.01, label .. ": the board is 11 x 8 (prop_board_s)", tostring(face.Size))
-		local rows = {}
-		local bad = {}
-		for i, r in ipairs(Config.Eggs.Order) do
-			local l = gui:FindFirstChild("EggName_" .. r, true)
-			local def = nil
-			for _, rd in ipairs(Config.Rarities) do
-				if rd.Id == r then
-					def = rd
-				end
-			end
-			if not (l and l:IsA("TextLabel") and l.Text == Config.Eggs.Names[r]) then
-				bad[#bad + 1] = r .. " (name " .. tostring(l and l.Text) .. ")"
-			elseif r == "Secret" then
-				local c = l.TextColor3
-				if not (c.B * 255 >= 200 and c.B > c.R and c.B > c.G) then
-					bad[#bad + 1] = "Secret (not violet " .. tostring(c) .. ")"
-				end
-			elseif not (def and sameColor(l.TextColor3, def.Color)) then
-				bad[#bad + 1] = r .. " (colour " .. tostring(l.TextColor3) .. ")"
-			end
-			if l then
-				rows[#rows + 1] = { Id = r, Y = l.Position.Y.Scale, X = l.Position.X.Scale, I = i }
-			end
-		end
-		T.check(#bad == 0, label .. ": the board names the seven eggs (Config.Eggs.Names) in their rarity colours (Secret violet)", table.concat(bad, ", "))
-		table.sort(rows, function(a, b)
-			if math.abs(a.Y - b.Y) > 1e-3 then
-				return a.Y < b.Y
-			end
-			return a.X < b.X
-		end)
-		local order = {}
-		for _, rw in ipairs(rows) do
-			order[#order + 1] = rw.Id
-		end
-		T.eq(table.concat(order, ","), table.concat(Config.Eggs.Order, ","), label .. ": ...read left to right, row by row, in Config.Eggs.Order")
-		local line = gui:FindFirstChild("Sub", true)
-		T.check(line ~= nil and line.Text == GUIDE_FOOTER, label .. ": the board's line reads '" .. GUIDE_FOOTER .. "'", line and line.Text)
-		-- every text box ends above the eggs' tops (the shelf's eggs stand in front of the board's lower part)
-		local shelf0 = guide:FindFirstChild("EggShelf")
-		local eggTop = shelf0 and (shelf0.Position.Y + shelf0.Size.Y / 2 + 3) or math.huge
-		local faceTop = face.Position.Y + face.Size.Y / 2
-		local low = {}
-		for _, l in ipairs(texts(gui)) do
-			local bottom = faceTop - (l.Position.Y.Scale + l.Size.Y.Scale) * face.Size.Y
-			if bottom < eggTop - 1e-3 then
-				low[#low + 1] = l.Name .. fmt(" %.2f", bottom - eggTop)
-			end
-		end
-		T.check(#low == 0, label .. ": no board text sits behind the eggs (every text box ends above their tops)", table.concat(low, ", "))
-	end
-	-- the shelf and the eggs
-	local shelf = guide:FindFirstChild("EggShelf")
+	T.eq(table.concat(kids, ","), table.concat(wantKids, ","), label .. ": the EggRow holds the shelf, the seven eggs and the PromptPart (nothing else)")
+
+	------------------------------------------------------------------ the shelf
+	local shelf = row:FindFirstChild("EggShelf")
 	if not T.check(shelf ~= nil and shelf:IsA("BasePart"), label .. ": a stone shelf EggShelf") then
-		return
+		return row
 	end
-	T.check(math.abs(shelf.Size.X - 18) <= 1 and shelf.Size.X >= 17.25 and math.abs(shelf.Size.Y - 0.8) <= 0.2 and math.abs(shelf.Size.Z - 2.6) <= 0.4,
-		label .. ": the shelf is about 18 x 0.8 x 2.6 (at least the eggs' 17.25)", tostring(shelf.Size))
-	-- 3 studs out, not the plan's 4: at 4 (18 wide) its end touched the Celestial machine's base
-	T.check(hdist(shelf.Position, (gcf * CFrame.new(0, 0, -3)).Position) <= 0.05, label .. ": the shelf stands 3 studs in front of the board, centred on it")
-	T.check(math.abs(shelf.Position.Y - shelf.Size.Y / 2 - gcf.Position.Y) <= 0.05, label .. ": ...its bottom on the board's ground (the lawn)")
+	local shelfCF = bcf * CFrame.new(EGGROW.ShelfX, EGGROW.Shelf.Y / 2, EGGROW.ShelfZ)
+	T.check(near(shelf.Size, EGGROW.Shelf, 0.01) and near(shelf.Position, shelfCF.Position, 0.05) and shelf.CFrame.LookVector:Dot(bcf.LookVector) > 0.999,
+		label .. fmt(": the shelf is %g x %g x %g at the board's cf * (%g, %g, %g) (the eggs' centre at x %g: the row slid towards the reader's left, off the Cloud machine), turned with the board",
+			EGGROW.Shelf.X, EGGROW.Shelf.Y, EGGROW.Shelf.Z, EGGROW.ShelfX, EGGROW.Shelf.Y / 2, EGGROW.ShelfZ, EGGROW.EggsX),
+		fmt("size %s, %.3f off", tostring(shelf.Size), (shelf.Position - shelfCF.Position).Magnitude))
+	T.check(shelf.Material == Enum.Material.SmoothPlastic and shelf.CanCollide == true and shelf.Anchored == true, label .. ": ...SmoothPlastic, colliding, anchored")
 	local top = shelf.Position.Y + shelf.Size.Y / 2
-	local right = -gcf.RightVector -- the reader faces the board's front: their right is the board's -X
+
+	------------------------------------------------------------------ the seven eggs
+	local right = -bcf.RightVector -- the reader faces the board's front: their right is the board's -X
 	local eggs, bad = {}, {}
 	for i, r in ipairs(Config.Eggs.Order) do
-		local egg = guide:FindFirstChild("Egg_" .. r)
-		local def = nil
-		for _, rd in ipairs(Config.Rarities) do
-			if rd.Id == r then
-				def = rd
-			end
-		end
+		local egg = row:FindFirstChild("Egg_" .. r)
+		local def = rarityDef(Config, r)
 		local mesh = egg and egg:FindFirstChildOfClass("SpecialMesh")
-		local want = (gcf * CFrame.new((4 - i) * 2.5, shelf.Size.Y + 1.5, -3)).Position
+		local want = (bcf * CFrame.new(EGGROW.EggsX + (8 - 2 * i) * EGGROW.Step / 2, EGGROW.Shelf.Y + EGGROW.EggSize.Y / 2, EGGROW.ShelfZ)).Position
 		if not (egg and egg:IsA("BasePart")) then
 			bad[#bad + 1] = r .. " missing"
 		else
 			eggs[#eggs + 1] = { Id = r, D = egg.Position:Dot(right) }
-			if not near(egg.Size, Vector3.new(2.25, 3, 2.5), 0.01) then
+			if not near(egg.Size, EGGROW.EggSize, 0.01) then
 				bad[#bad + 1] = r .. " size " .. tostring(egg.Size)
 			end
 			if not (mesh and mesh.MeshType == Enum.MeshType.Sphere and mesh.MeshId == "") then
@@ -512,25 +629,22 @@ local function checkEggGuide(label, lobby, Config)
 			if not near(egg.Position, want, 0.05) then
 				bad[#bad + 1] = r .. fmt(" %.2f off its place", (egg.Position - want).Magnitude)
 			end
-			if math.abs(egg.Position.Y - 1.5 - top) > 0.05 then
+			if math.abs(egg.Position.Y - EGGROW.EggSize.Y / 2 - top) > 0.05 then
 				bad[#bad + 1] = r .. " not standing on the shelf"
 			end
 		end
 	end
-	T.check(#bad == 0 and #eggs == 7, label .. ": seven Egg_<Rarity> eggs, 2.25 x 3 x 2.5 ellipsoids in SmoothPlastic and the rarity colour (Secret dark violet), standing on the shelf 2.5 studs apart",
-		table.concat(bad, "; "))
-	-- Task 25 (spec 16.5): a slow display turntable; the client's LobbyFx heartbeat turns and bobs each egg (the server never
-	-- animates)
+	T.check(#bad == 0 and #eggs == 7, label .. fmt(": seven Egg_<Rarity> eggs, 2.25 x 3 x 2.5 ellipsoids in SmoothPlastic and the rarity colour (Secret dark violet), standing on the shelf %g studs apart at cf * (%g + (8 - 2 i) * %g, %g, %g)",
+		EGGROW.Step, EGGROW.EggsX, EGGROW.Step / 2, EGGROW.Shelf.Y, EGGROW.ShelfZ), table.concat(bad, "; "))
 	local still = {}
 	for _, r in ipairs(Config.Eggs.Order) do
-		local egg = guide:FindFirstChild("Egg_" .. r)
+		local egg = row:FindFirstChild("Egg_" .. r)
 		if not (egg and CS:HasTag(egg, Config.Tags.Spin) and egg:GetAttribute("SpinSeconds") == 14 and egg:GetAttribute("BobStuds") == 0.12
 			and egg:GetAttribute("BobSeconds") == 3.2) then
-			still[#still + 1] = r .. (egg and fmt(" (%s %s / %s / %s)", tostring(CS:HasTag(egg, Config.Tags.Spin)), tostring(egg:GetAttribute("SpinSeconds")),
-				tostring(egg:GetAttribute("BobStuds")), tostring(egg:GetAttribute("BobSeconds"))) or " missing")
+			still[#still + 1] = r
 		end
 	end
-	T.check(#still == 0, label .. ": every egg is tagged NC_Spin with SpinSeconds 14, BobStuds 0.12, BobSeconds 3.2 (the shelf turntable)", table.concat(still, "; "))
+	T.check(#still == 0, label .. ": every egg is tagged NC_Spin with SpinSeconds 14, BobStuds 0.12, BobSeconds 3.2 (the shelf turntable)", table.concat(still, ", "))
 	table.sort(eggs, function(a, b)
 		return a.D < b.D
 	end)
@@ -538,34 +652,159 @@ local function checkEggGuide(label, lobby, Config)
 	for _, e in ipairs(eggs) do
 		order[#order + 1] = e.Id
 	end
-	T.eq(table.concat(order, ","), table.concat(Config.Eggs.Order, ","), label .. ": ...left to right (as the reader sees them) in Config.Eggs.Order")
-	-- clear of the machines' prompts and of the other shop props
-	local gaps, minGap = {}, math.huge
-	for _, rl in ipairs(Config.Roulettes) do
-		local m = shop:FindFirstChild("Roulette_" .. rl.Id)
-		local pp = m and m:FindFirstChild("PromptPart")
-		if pp then
-			local g = rectGap(shelf, pp)
-			minGap = math.min(minGap, g)
-			gaps[#gaps + 1] = rl.Id .. fmt(" %.2f", g)
-		else
-			gaps[#gaps + 1] = rl.Id .. " (no prompt part)"
-			minGap = -1
+	T.eq(table.concat(order, ","), table.concat(Config.Eggs.Order, ","), label .. ": ...left to right (as the reader sees them) in Config.Eggs.Order, Common at the reader's left")
+
+	------------------------------------------------------------------ the rarity label strip on the shelf's front
+	local strip = shelf:FindFirstChild("RarityStrip")
+	if T.check(strip ~= nil and strip:IsA("SurfaceGui"), label .. ": a SurfaceGui RarityStrip on the shelf") then
+		T.check(strip.Face == Enum.NormalId.Front and strip.SizingMode == Enum.SurfaceGuiSizingMode.PixelsPerStud and strip.PixelsPerStud == EGGROW.PPS
+			and strip.LightInfluence == 0 and (strip.Adornee == nil or strip.Adornee == shelf),
+			label .. ": ...on the shelf's Front face at 50 px per stud, LightInfluence 0")
+		local W, H = shelf.Size.X * strip.PixelsPerStud, shelf.Size.Y * strip.PixelsPerStud
+		local band = strip:FindFirstChild("Band")
+		T.check(band ~= nil and band:IsA("Frame") and band.Size.X.Scale == 1 and band.Size.Y.Scale == 1 and band.Size.X.Offset == 0 and band.Size.Y.Offset == 0
+			and math.abs(band.BackgroundTransparency - EGGROW.BandAlpha) < 1e-6 and sameColor(band.BackgroundColor3, EGGROW.Navy),
+			label .. ": ...a Navy Band over the whole canvas at BackgroundTransparency 0.2")
+		local Theme = req("shared/Theme")
+		local badL, spans = {}, {}
+		for i, id in ipairs(Config.Eggs.Order) do
+			local l = strip:FindFirstChild("Label_" .. id, true)
+			local def = rarityDef(Config, id)
+			local colour = (id == "Secret") and EGGROW.SecretText or (def and def.Color)
+			local x, _, w, h = nil, nil, nil, nil
+			if l and l:IsA("TextLabel") then
+				x, _, w, h = guiBox(l, strip, W, H)
+			end
+			local eggC = W / 2 - (EGGROW.EggsX - EGGROW.ShelfX + (8 - 2 * i) * EGGROW.Step / 2) * strip.PixelsPerStud -- the canvas's left = the shelf's +X end
+			if not (l and l:IsA("TextLabel") and x) then
+				badL[#badL + 1] = id .. " missing"
+			else
+				local c = x + w / 2
+				spans[i] = { Id = id, C = c, Half = ((EGGROW.TextW[id] or 0) + 2 * EGGROW.Outline) / 2 }
+				local stroke = l:FindFirstChildOfClass("UIStroke")
+				if not (math.abs(w - EGGROW.Cell) <= 0.5 and math.abs(h - EGGROW.StripH) <= 0.5) then
+					badL[#badL + 1] = id .. fmt(" box %.1f x %.1f px", w, h)
+				end
+				if math.abs(c - eggC) > EGGROW.UnderEgg then
+					badL[#badL + 1] = id .. fmt(" centre %.1f px, its egg at %.1f px", c, eggC)
+				end
+				if l.Text ~= id or l.TextSize ~= EGGROW.Text or l.TextScaled ~= false or l.TextWrapped ~= false then
+					badL[#badL + 1] = id .. fmt(" text '%s' %s px scaled %s", tostring(l.Text), tostring(l.TextSize), tostring(l.TextScaled))
+				end
+				if not (colour and sameColor(l.TextColor3, colour)) then
+					badL[#badL + 1] = id .. " colour " .. tostring(l.TextColor3)
+				end
+				if not (stroke and stroke.Thickness >= EGGROW.Outline and stroke.ApplyStrokeMode == Enum.ApplyStrokeMode.Contextual) then
+					badL[#badL + 1] = id .. " no INK outline"
+				end
+				if Theme and l.Font ~= Theme.Fonts.Body then
+					badL[#badL + 1] = id .. " font " .. tostring(l.Font) .. " (want Theme.Fonts.Body: the measured BuilderSans-Bold)"
+				end
+			end
+		end
+		T.check(#badL == 0, label .. ": seven Label_<Rarity> in Config.Eggs.Order, 135 x 40 px boxes standing under their eggs, the rarity id in 30 px Body (no TextScaled, no wrap) in the rarity colour (Secret 178,150,255) with the INK outline",
+			table.concat(badL, "; "))
+		-- the measured widths: neighbours >= MinGap apart, the end labels on the canvas
+		local gaps, worst = {}, math.huge
+		for i = 1, #Config.Eggs.Order do
+			local a, b = spans[i], spans[i + 1]
+			if a and i == 1 then
+				worst = math.min(worst, a.C - a.Half)
+				gaps[#gaps + 1] = fmt("left edge %.1f", a.C - a.Half)
+			end
+			if a and b then
+				local g = (b.C - b.Half) - (a.C + a.Half)
+				worst = math.min(worst, g)
+				gaps[#gaps + 1] = fmt("%s/%s %.1f", a.Id, b.Id, g)
+			elseif a and i == #Config.Eggs.Order then
+				worst = math.min(worst, W - (a.C + a.Half))
+				gaps[#gaps + 1] = fmt("right edge %.1f", W - (a.C + a.Half))
+			end
+		end
+		T.check(#spans == 7 and worst >= EGGROW.MinGap, label .. fmt(": no two labels meet (measured widths: every gap >= %d px) and the end labels stay on the %.0f px canvas", EGGROW.MinGap, W),
+			table.concat(gaps, ", "))
+	end
+
+	------------------------------------------------------------------ the shelf's one glow
+	local lights = {}
+	for _, d in ipairs(row:GetDescendants()) do
+		if d:IsA("Light") then
+			lights[#lights + 1] = d
 		end
 	end
-	T.check(minGap >= 3, label .. ": the shelf stands at least 3 studs from every roulette machine's prompt part", table.concat(gaps, ", "))
-	local hits = {}
+	local g = lights[1]
+	local at = g and g.Parent and g.Parent:IsA("Attachment") and g.Parent.WorldPosition or nil
+	T.check(#lights == 1 and g:IsA("PointLight") and g.Name == "EggShelfGlow" and math.abs(g.Brightness - EGGROW.Glow.Brightness) < 1e-6 and g.Range == EGGROW.Glow.Range
+		and not g.Shadows and at ~= nil and g.Parent.Parent == shelf and near(at, shelf.Position + Vector3.new(0, shelf.Size.Y / 2 + EGGROW.Glow.Lift, 0), 0.05),
+		label .. ": one PointLight EggShelfGlow 1.0 / 10 (no shadows) on an Attachment 1.5 over the shelf's top centre, no other light in the row",
+		#lights .. " lights" .. (g and (" " .. g:GetFullName()) or ""))
+
+	------------------------------------------------------------------ the walk-up PromptPart, LobbyInfo.Shop.Counter
+	local pp = row:FindFirstChild("PromptPart")
+	local wantPP = bcf * CFrame.new(EGGROW.Prompt)
+	T.check(pp ~= nil and pp:IsA("BasePart") and pp.Transparency >= 0.99 and pp.CanCollide == false and near(pp.Size, EGGROW.PromptSize, 0.01)
+		and near(pp.Position, wantPP.Position, 0.1), label .. ": the PromptPart is an invisible, non-colliding 5 x 4 x 3 part at the board's cf * (0, 2, -5.6)",
+		pp and fmt("%.3f off", (pp.Position - wantPP.Position).Magnitude) or "none")
+	local face = checkRarityBoard(label, shop)
+	if info then
+		local counter = type(info.Shop) == "table" and info.Shop.Counter
+		T.check(type(counter) == "table" and counter.PromptPart == pp and counter.Model == row and typeof(counter.Center) == "Vector3" and face ~= nil
+			and near(counter.Center, face.Position, 0.05), label .. ": LobbyInfo.Shop.Counter = { PromptPart = the row's part, Center = the WINGED PETS Face, Model = EggRow }")
+	end
+
+	------------------------------------------------------------------ clearances: the machines' prompts, the other props, the right lawn
+	local minGap = math.huge
+	for _, rl in ipairs(Config.Roulettes) do
+		local m = shop:FindFirstChild("Roulette_" .. rl.Id)
+		local mp = m and m:FindFirstChild("PromptPart")
+		for _, r in ipairs(Config.Eggs.Order) do
+			local egg = row:FindFirstChild("Egg_" .. r)
+			if mp and egg then
+				minGap = math.min(minGap, rectGap(egg, mp))
+			elseif not mp then
+				minGap = -1
+			end
+		end
+	end
+	T.check(minGap >= EGGROW.MachineGap, label .. ": every egg stands >= 3 studs from every roulette machine's prompt part", fmt("nearest %.2f", minGap))
+	local hits, nearest, nearestName = {}, math.huge, "-"
 	for _, d in ipairs(shop:GetDescendants()) do
-		if d:IsA("BasePart") and d.Transparency < 0.99 and not d:IsDescendantOf(guide) and d.Name ~= "ShopNeck" and not string.find(d:GetFullName(), "Ground", 1, true)
+		if d:IsA("BasePart") and d.Transparency < 0.99 and not d:IsDescendantOf(row) and d.Name ~= "ShopNeck" and not string.find(d:GetFullName(), "Ground", 1, true)
 			and not string.find(d:GetFullName(), "ShopCloud", 1, true) and d.Position.Y > top - 2 then
-			for _, mine in ipairs({ shelf, guide:FindFirstChild("Egg_Common"), guide:FindFirstChild("Egg_Secret") }) do
-				if mine and rectGap(mine, d) < 0.3 then
-					hits[#hits + 1] = d:GetFullName():gsub("^.-Shop%.", "")
+			for _, mine in ipairs(row:GetChildren()) do
+				if mine:IsA("BasePart") and mine.Transparency < 0.99 then
+					local gp = rectGap(mine, d)
+					if gp < nearest then
+						nearest, nearestName = gp, d:GetFullName():gsub("^.-Shop%.", "") .. " / " .. mine.Name
+					end
+					if gp < EGGROW.PropGap then
+						hits[#hits + 1] = d:GetFullName():gsub("^.-Shop%.", "") .. " (" .. mine.Name .. fmt(" %.2f)", gp)
+					end
 				end
 			end
 		end
 	end
-	T.check(#hits == 0, label .. ": the shelf and its end eggs keep clear of every other shop prop", table.concat(hits, ", "))
+	T.check(#hits == 0, label .. ": the shelf and the eggs keep >= 0.3 stud clear of every other shop prop", table.concat(hits, ", "))
+	T.info(fmt("*%s: the egg row's nearest shop prop %.2f studs (%s), nearest machine prompt %.2f", label, nearest, nearestName, minGap))
+	local spot, stray = rightLawn(), {}
+	for _, d in ipairs(shop:GetDescendants()) do
+		if d:IsA("BasePart") and d.Transparency < 0.99 and not string.find(d:GetFullName(), "Ground", 1, true) and not string.find(d:GetFullName(), "ShopCloud", 1, true)
+			and pointToRect(spot, d) < EGGROW.RightLawn and d.Position.Y > spot.Y - 2 then
+			local ok = false
+			local cur = d
+			while cur and cur ~= shop do
+				if cur.Name == "ShopLamp" or cur.Name == "FlowerBed" then
+					ok = true
+				end
+				cur = cur.Parent
+			end
+			if not ok then
+				stray[#stray + 1] = d:GetFullName():gsub("^.-Shop%.", "")
+			end
+		end
+	end
+	T.check(#stray == 0, label .. ": the right lawn (at(-21, -8), emptied by 16.17.2) holds nothing within 6 studs but lamps and flower beds", table.concat(stray, ", "))
+	return row
 end
 
 ----------------------------------------------------------------------------------------------------
@@ -612,8 +851,8 @@ S.lobby_trove_plaza = guarded("lobby_trove_plaza", function()
 		end
 	end
 
-	------------------------------------------------------------------ the booted Egg Guide, the rarity board
-	checkEggGuide("egg guide", lobby, Config)
+	------------------------------------------------------------------ the booted egg row (shop-area 16.17.2), the rarity board
+	checkEggRow("egg row", lobby, Config, info)
 	local rb = lobby:FindFirstChild("RarityBoard", true)
 	local sub = rb and rb:FindFirstChild("Sub", true)
 	T.check(sub ~= nil and sub.Text == RARITY_SUB, "rarity board: the subtitle reads '" .. RARITY_SUB .. "'", sub and sub.Text)
@@ -647,7 +886,7 @@ S.lobby_trove_plaza = guarded("lobby_trove_plaza", function()
 		if MESH_MODE then
 			-- --mesh: fixture holders for the egg keys in the fixture MeshLibrary's root (Status -> "loading"), removed after
 			local root = RS:FindFirstChild("P6PetsMeshLibrary")
-			if T.check(root ~= nil, "egg guide (--mesh): the fixture MeshLibrary root exists") then
+			if T.check(root ~= nil, "egg row (--mesh): the fixture MeshLibrary root exists") then
 				for _, key in pairs(EGG_KEYS) do
 					local h = Instance.new("Folder")
 					h.Name = key
@@ -670,47 +909,8 @@ S.lobby_trove_plaza = guarded("lobby_trove_plaza", function()
 		table.sort(got)
 		T.eq(table.concat(got, " / "), "2,000 Cash + 200 Tokens / Join the group!", "trove plaza: with GroupId 123 the Join sign reads 'Join the group!' over '2,000 Cash + 200 Tokens'")
 		T.eq(#troveOf(built.Folder), 1, "trove plaza rebuild: exactly one SkyTrove in the lobby")
-		local recs = {}
-		for _, rec in ipairs(LB._Kit and LB._Kit.Targets or {}) do
-			for r, key in pairs(EGG_KEYS) do
-				if rec.Key == key then
-					recs[r] = recs[r] or {}
-					table.insert(recs[r], rec)
-				end
-			end
-		end
-		local guide = built.Folder:FindFirstChild("EggGuide", true)
-		local bad = {}
-		for _, r in ipairs(Config.Eggs.Order) do
-			local list = recs[r] or {}
-			local egg = guide and guide:FindFirstChild("Egg_" .. r)
-			local rec = list[1]
-			if #list ~= 1 or not egg or rec.Target ~= egg then
-				bad[#bad + 1] = r .. fmt(" (%d records)", #list)
-			elseif not (typeof(rec.Origin) == "CFrame" and near(rec.Origin.Position, egg.Position - Vector3.new(0, 1.5, 0)) and rec.Origin.UpVector.Y > 0.999) then
-				bad[#bad + 1] = r .. " (origin not the egg's bottom centre)"
-			end
-		end
-		T.check(#bad == 0, "egg guide: seven dress requests egg_common .. egg_secret on the Egg_<Rarity> parts at the egg's bottom centre", table.concat(bad, ", "))
-		local checked, wrong = 0, {}
-		for _, r in ipairs(Config.Eggs.Order) do
-			local key = EGG_KEYS[r]
-			local okSt, st = pcall(ML.Status, key)
-			local egg = guide and guide:FindFirstChild("Egg_" .. r)
-			if okSt and st ~= "missing" and egg then
-				checked = checked + 1
-				local off = cfFromString(egg:GetAttribute("ML_Offset"))
-				if egg:GetAttribute("ML_DressKey") ~= key or not off or not near((egg:GetPivot() * off).Position, egg.Position - Vector3.new(0, 1.5, 0)) then
-					wrong[#wrong + 1] = r
-				end
-			end
-		end
-		if MESH_MODE then
-			T.check(checked == 7 and #wrong == 0, "egg guide (--mesh): every egg is tagged with its egg_<rarity> key, the mesh pivot on the egg's bottom centre",
-				checked .. " checked; wrong: " .. table.concat(wrong, ", "))
-		else
-			T.check(#wrong == 0, "egg guide: ML_DressKey on the eggs whose key is not missing (" .. checked .. " here; --mesh checks all seven)", table.concat(wrong, ", "))
-		end
+		local shop2 = built.Folder:FindFirstChild("Shop")
+		checkEggRequests("egg row", LB, shop2 and shop2:FindFirstChild("EggRow"), Config, ML)
 		local sk = skippedWarns(cursor)
 		T.check(#sk == 0, "trove plaza rebuild: no 'plaza decor skipped' warn", table.concat(sk, " | "))
 	end)
@@ -1785,7 +1985,8 @@ S.altar_world_gem = guarded("altar_world_gem", function()
 end)
 
 ----------------------------------------------------------------------------------------------------
--- shop_prompt (Task 23, spec 16.3 "The walk-up prompt"): the Egg Guide's PromptPart and PetService's ShopPrompt
+-- shop_prompt (Task 23, spec 16.3 "The walk-up prompt"; shop-area 16.17.2: on the egg row): the row's PromptPart and
+-- PetService's ShopPrompt
 ----------------------------------------------------------------------------------------------------
 local SHOP = {
 	Name = "ShopPrompt", Range = 10, Offset = Vector3.new(0, 2, -5.6), Size = Vector3.new(5, 4, 3), Caption = "eggs & gems",
@@ -1845,10 +2046,10 @@ S.shop_prompt = guarded("shop_prompt", function()
 	local lobby = workspace:FindFirstChild("NimbusLobby")
 	local PS = K.mod("PetService")
 	local shopFolder = lobby and lobby:FindFirstChild("Shop")
-	local guide = shopFolder and shopFolder:FindFirstChild("EggGuide")
-	local part = guide and guide:FindFirstChild("PromptPart")
+	local row = shopFolder and shopFolder:FindFirstChild("EggRow")
+	local part = row and row:FindFirstChild("PromptPart")
 	if not T.check(type(info) == "table" and type(info.Shop) == "table" and PS ~= nil and type(PS.Init) == "function" and part ~= nil,
-		"shop prompt: (precondition) LobbyInfo.Shop, PetService and the Egg Guide's PromptPart") then
+		"shop prompt: (precondition) LobbyInfo.Shop, PetService and the egg row's PromptPart") then
 		K.flushErrors("shop_prompt")
 		K.flushWarnings("shop_prompt", ALLOWED_WARNINGS)
 		return
@@ -1856,12 +2057,14 @@ S.shop_prompt = guarded("shop_prompt", function()
 
 	------------------------------------------------------------------ the part, LobbyInfo.Shop.Counter, the prompt
 	checkCounterPart("shop prompt", part)
-	local want = guideFrame() * CFrame.new(SHOP.Offset)
+	local want = boardFrame() * CFrame.new(SHOP.Offset)
 	T.check(near(part.Position, want.Position, 0.1) and part.CFrame.LookVector:Dot(want.LookVector) > 0.999,
-		"shop prompt: the PromptPart stands at the Egg Guide's cf * (0, 2, -5.6), in front of the shelf (+-0.1)", fmt("%.3f off", (part.Position - want.Position).Magnitude))
+		"shop prompt: the PromptPart stands at the WINGED PETS board's cf * (0, 2, -5.6), in front of the egg row (+-0.1)", fmt("%.3f off", (part.Position - want.Position).Magnitude))
 	local counter = info.Shop.Counter
-	T.check(type(counter) == "table" and counter.PromptPart == part and counter.Model == guide and typeof(counter.Center) == "Vector3",
-		"shop prompt: LobbyInfo.Shop.Counter = { PromptPart = the Egg Guide's part, Center, Model = the EggGuide }")
+	local rbFace = shopFolder:FindFirstChild("RarityBoard") and shopFolder.RarityBoard:FindFirstChild("Face")
+	T.check(type(counter) == "table" and counter.PromptPart == part and counter.Model == row and typeof(counter.Center) == "Vector3" and rbFace ~= nil
+		and near(counter.Center, rbFace.Position, 0.05),
+		"shop prompt: LobbyInfo.Shop.Counter = { PromptPart = the egg row's part, Center = the WINGED PETS board's Face, Model = the EggRow }")
 	local stall = info.Shop.ItemShop
 	T.check(type(info.Shop.Roulettes) == "table" and type(stall) == "table" and stall.PromptPart ~= nil and stall.Model ~= nil and stall.Lid ~= nil,
 		"shop prompt: LobbyInfo.Shop.Roulettes and .ItemShop keep their shapes")
@@ -1938,8 +2141,8 @@ S.shop_prompt = guarded("shop_prompt", function()
 		rebuild("shop prompt rebuild", function() end, function(built)
 			local c2 = built.Shop and built.Shop.Counter
 			local p2 = type(c2) == "table" and c2.PromptPart or nil
-			T.check(p2 ~= nil and p2 ~= part and p2:IsDescendantOf(built.Folder) and c2.Model ~= nil and c2.Model.Name == "EggGuide" and typeof(c2.Center) == "Vector3",
-				"shop prompt rebuild: the new lobby's Counter has its own PromptPart on its own EggGuide")
+			T.check(p2 ~= nil and p2 ~= part and p2:IsDescendantOf(built.Folder) and c2.Model ~= nil and c2.Model.Name == "EggRow" and typeof(c2.Center) == "Vector3",
+				"shop prompt rebuild: the new lobby's Counter has its own PromptPart on its own EggRow")
 			PS.Init(built)
 			local all = promptsNamed(workspace, SHOP.Name)
 			T.check(#all == 1 and all[1].Parent == p2, "shop prompt rebuild: lobby rebuilt -> exactly one ShopPrompt, on the new part", #all .. " ShopPrompts")
@@ -1974,7 +2177,7 @@ S.shop_prompt = guarded("shop_prompt", function()
 	-- the booted lobby's prompts back
 	pcall(PS.Init, info)
 	local back = promptsNamed(workspace, SHOP.Name)
-	T.check(#back == 1 and back[1].Parent == part, "shop prompt: the booted Egg Guide has its one ShopPrompt back", #back .. " ShopPrompts")
+	T.check(#back == 1 and back[1].Parent == part, "shop prompt: the booted egg row has its one ShopPrompt back", #back .. " ShopPrompts")
 	checkMachinePrompts("shop prompt (back)", info.Shop, Config)
 	for _, p in ipairs(players) do
 		if p.Parent then
@@ -2000,10 +2203,10 @@ local SHELF_FX = {
 	Detail = "NC_Detail",
 }
 
-local function checkShelfFx(label, guide, Config)
+local function checkShelfFx(label, row, Config)
 	local bad, emitters = {}, 0
 	for _, r in ipairs(Config.Eggs.Order) do
-		local egg = guide:FindFirstChild("Egg_" .. r)
+		local egg = row:FindFirstChild("Egg_" .. r)
 		local list = {}
 		for _, d in ipairs(egg and egg:GetDescendants() or {}) do
 			if d:IsA("ParticleEmitter") then
@@ -2054,21 +2257,21 @@ local function checkShelfFx(label, guide, Config)
 	T.check(#bad == 0 and emitters == 5, label .. ": Rare .. Secret eggs each hold one sparkle ParticleEmitter (Rate 1 / 2 / 3 / 4 / 5, the rarity colour (Secret violet), LightEmission 0.5, Lifetime 1.2-2, Speed 0.3-0.8, tagged NC_Detail) on an Attachment Center at the egg's middle; Common and Uncommon none",
 		table.concat(bad, "; "))
 	local lights = {}
-	for _, d in ipairs(guide:GetDescendants()) do
+	for _, d in ipairs(row:GetDescendants()) do
 		if d:IsA("Light") then
 			lights[#lights + 1] = d
 		end
 	end
-	local shelf = guide:FindFirstChild("EggShelf")
+	local shelf = row:FindFirstChild("EggShelf")
 	local g = lights[1]
 	local at = g and g.Parent and (g.Parent:IsA("Attachment") and g.Parent.WorldPosition or (g.Parent:IsA("BasePart") and g.Parent.Position)) or nil
 	T.check(#lights == 1 and g:IsA("PointLight") and g.Name == "EggShelfGlow" and math.abs(g.Brightness - 1.0) < 1e-6 and g.Range == 10 and not g.Shadows
 		and shelf ~= nil and at ~= nil and hdist(at, shelf.Position) <= 0.05 and at.Y >= shelf.Position.Y,
 		label .. ": one PointLight EggShelfGlow 1.0 / 10 (no shadows) at the shelf's centre, on or over it", #lights .. " lights" .. (g and (" " .. g:GetFullName()) or ""))
-	-- no part added: the sparkles and the glow ride on Attachments
-	local board = guide:FindFirstChild("EggGuideBoard")
-	local want = (board and countParts(board) or 0) + 1 + #Config.Eggs.Order + 1
-	T.eq(countParts(guide), want, label .. ": the Egg Guide adds no part (board + shelf + seven eggs + PromptPart)")
+	-- no part added: the sparkles and the glow ride on Attachments (shop-area 16.17.2: the row is the shelf, the seven eggs
+	-- and the PromptPart; no board of its own)
+	local want = 1 + #Config.Eggs.Order + 1
+	T.eq(countParts(row), want, label .. ": the egg row adds no part (shelf + seven eggs + PromptPart)")
 end
 
 S.egg_shelf_fx = guarded("egg_shelf_fx", function()
@@ -2079,11 +2282,11 @@ S.egg_shelf_fx = guarded("egg_shelf_fx", function()
 	local info = K.W.lobbyInfo
 	local lobby = workspace:FindFirstChild("NimbusLobby")
 	local shopFolder = lobby and lobby:FindFirstChild("Shop")
-	local guide = shopFolder and shopFolder:FindFirstChild("EggGuide")
-	if not T.check(guide ~= nil and type(info) == "table", "egg shelf fx: (precondition) the booted lobby's EggGuide") then
+	local row = shopFolder and shopFolder:FindFirstChild("EggRow")
+	if not T.check(row ~= nil and type(info) == "table", "egg shelf fx: (precondition) the booted lobby's EggRow") then
 		return
 	end
-	checkShelfFx("egg shelf fx", guide, Config)
+	checkShelfFx("egg shelf fx", row, Config)
 	-- every lobby light within the light rule (lamps <= 1.2 / 16, others <= 1.5 / 28, no spot / surface lights)
 	local Lamps = Config.Sky.Lamps
 	local bright, spots = {}, 0
@@ -2103,8 +2306,8 @@ S.egg_shelf_fx = guarded("egg_shelf_fx", function()
 	T.check(stall ~= nil and stall.Model ~= nil and countParts(stall.Model) <= 60, "egg shelf fx: the trove stays <= 60 parts", stall and stall.Model and tostring(countParts(stall.Model)) or "no trove")
 	-- the same set on a rebuilt lobby (a dev reset), and on the eggs' dressed meshes (the emitters stay on the Part)
 	rebuild("egg shelf fx rebuild", function() end, function(built)
-		local g2 = built.Folder:FindFirstChild("EggGuide", true)
-		if T.check(g2 ~= nil, "egg shelf fx rebuild: the rebuilt lobby has its EggGuide") then
+		local g2 = built.Folder:FindFirstChild("EggRow", true)
+		if T.check(g2 ~= nil, "egg shelf fx rebuild: the rebuilt lobby has its EggRow") then
 			checkShelfFx("egg shelf fx rebuild", g2, Config)
 		end
 	end)
@@ -2573,6 +2776,86 @@ S.shop_globe = guarded("shop_globe", function()
 		"globe: the hooks (_Manifest, _Kit, Mesh.tag) and the fixture holders are back")
 	K.flushErrors("shop_globe")
 	K.flushWarnings("shop_globe", GLOBE.Allowed)
+end)
+
+----------------------------------------------------------------------------------------------------
+-- shop_egg_row (shop-area T2, spec 16.17.2): the Egg Guide removed, the seven-egg row with its rarity labels under the
+-- WINGED PETS board, the walk-up E prompt there, no orphan
+----------------------------------------------------------------------------------------------------
+S.shop_egg_row = guarded("shop_egg_row", function()
+	if not K.needBoot() then
+		return
+	end
+	local Config = K.config()
+	local info = K.W.lobbyInfo
+	local lobby = workspace:FindFirstChild("NimbusLobby")
+	local ML = req("shared/MeshLibrary")
+	local LBD = req("server/Services/LobbyBoardBuilder")
+	if not T.check(lobby ~= nil and type(info) == "table" and type(info.Shop) == "table" and ML ~= nil and LBD ~= nil,
+		"egg row: (precondition) the booted lobby, its LobbyInfo.Shop, MeshLibrary and server/Services/LobbyBoardBuilder") then
+		return
+	end
+	T.check(type(LBD.EggRow) == "function" and LBD.EggGuide == nil, "egg row: LobbyBoardBuilder.EggRow exists, LobbyBoardBuilder.EggGuide is gone")
+	T.check(info.Shop.EggGuide == nil and (type(info.Shop.Counter) ~= "table" or info.Shop.Counter.Model == nil or info.Shop.Counter.Model.Name == "EggRow"),
+		"egg row: nothing named EggGuide in LobbyInfo (Counter.Model is the EggRow)")
+
+	------------------------------------------------------------------ the booted lobby
+	local row = checkEggRow("egg row", lobby, Config, info)
+	local part = row and row:FindFirstChild("PromptPart")
+	if part then
+		checkShopPrompt("egg row", part)
+	end
+	T.eq(#promptsNamed(workspace, SHOP.Name), 1, "egg row: exactly one ShopPrompt in the workspace, on the row's PromptPart")
+	checkMachinePrompts("egg row", info.Shop, Config)
+
+	------------------------------------------------------------------ a rebuilt lobby (the dress requests; --mesh: fixture holders)
+	rebuild("egg row rebuild", function(undo, LB)
+		LB._Kit = { Targets = {}, Clouds = {} }
+		if MESH_MODE then
+			local root = RS:FindFirstChild("P6PetsMeshLibrary")
+			if T.check(root ~= nil, "egg row (--mesh): the fixture MeshLibrary root exists") then
+				for _, key in pairs(EGG_KEYS) do
+					if not root:FindFirstChild(key) then
+						local h = Instance.new("Folder")
+						h.Name = key
+						h.Parent = root
+						undo[#undo + 1] = function()
+							h:Destroy()
+						end
+					end
+				end
+			end
+		end
+	end, function(built, cursor)
+		local LB = req("server/Services/LobbyBuilder")
+		local row2 = checkEggRow("egg row rebuild", built.Folder, Config, built)
+		T.check(row2 ~= nil and row2 ~= row, "egg row rebuild: the new lobby has its own EggRow")
+		checkEggRequests("egg row rebuild", LB, row2, Config, ML)
+		local failed = 0
+		for i = (cursor or 0) + 1, #Mock.Output do
+			local t = tostring(Mock.Output[i].text)
+			if string.find(t, "egg row failed", 1, true) or string.find(t, "rarity board failed", 1, true) then
+				failed = failed + 1
+			end
+		end
+		T.eq(failed, 0, "egg row rebuild: no 'egg row failed' / 'rarity board failed' warn")
+	end)
+
+	------------------------------------------------------------------ the forced fallback shop keeps its own counter
+	rebuild("egg row fallback", function(_, LB)
+		LB._ForceShopFallback = true
+	end, function(built)
+		local fb = built.Folder:FindFirstChild("ShopFallback")
+		local c2 = built.Shop and built.Shop.Counter
+		T.check(fb ~= nil and type(c2) == "table" and c2.Model ~= nil and c2.Model.Name == "ShopCounter" and c2.Model:IsDescendantOf(fb) and c2.PromptPart ~= nil,
+			"egg row fallback: the forced fallback shop keeps its own ShopCounter as the Counter")
+		T.check(built.Folder:FindFirstChild("EggRow", true) == nil and built.Folder:FindFirstChild("EggGuide", true) == nil,
+			"egg row fallback: no egg row (and no Egg Guide) in the fallback shop")
+	end)
+	local LB = req("server/Services/LobbyBuilder")
+	T.check(LB and LB._ForceShopFallback == nil and LB._Kit == nil and workspace:FindFirstChild("NimbusLobby") == lobby, "egg row: the hooks are back to nil, the booted lobby is back")
+	K.flushErrors("shop_egg_row")
+	K.flushWarnings("shop_egg_row", ALLOWED_WARNINGS)
 end)
 
 return S

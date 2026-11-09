@@ -14,7 +14,7 @@
 --     Gfx Low: nothing moves, every target (and its mesh) rests at its built pivot, the sign at its base offset, none in
 --       Moving(); back to High: they move again
 --     TroveGroupDone true -> JoinBillboard.Enabled false; cleared -> true
---     lobby rebuilt (Review Focus 4): the trove (a new JoinBillboard), a spin target and the Egg Guide destroyed and built
+--     lobby rebuilt (Review Focus 4): the trove (a new JoinBillboard), a spin target and the egg row destroyed and built
 --       again while the player has claimed -> the new sign is hidden, the new targets move, the old ones leave Moving()
 --       and the controller keeps no record of them, no error
 --     a target parked outside the workspace (GraphicsQuality's Low holder in ReplicatedStorage: no tag signal) rests at
@@ -118,18 +118,19 @@ function G.trove(at)
 	trove.Parent = workspace
 	return trove, join
 end
--- a stand-in for LobbyBoardBuilder.EggGuide: Model EggGuide > EggShelf + Egg_Epic + Egg_Rare (2.25 x 3 x 2.5, the shelf
--- turntable's attributes)
-function G.guide(at)
-	local guide = Instance.new("Model")
-	guide.Name = "EggGuide"
-	G.part("EggShelf", at + Vector3.new(0, -0.4, 0), Vector3.new(17.6, 0.8, 2.6), guide)
-	local epic = G.part("Egg_Epic", at + Vector3.new(0, 1.5, 0), Vector3.new(2.25, 3, 2.5), guide)
-	local rare = G.part("Egg_Rare", at + Vector3.new(2.5, 1.5, 0), Vector3.new(2.25, 3, 2.5), guide)
+-- a stand-in for LobbyBoardBuilder.EggRow (shop-area 16.17.2): Model EggRow > EggShelf + Egg_Epic + Egg_Rare (2.25 x 3 x
+-- 2.5, 2.7 studs apart, the shelf turntable's attributes)
+G.STEP = 2.7
+function G.eggRow(at)
+	local row = Instance.new("Model")
+	row.Name = "EggRow"
+	G.part("EggShelf", at + Vector3.new(0, -0.4, 0), Vector3.new(19.3, 0.8, 2.6), row)
+	local epic = G.part("Egg_Epic", at + Vector3.new(0, 1.5, 0), Vector3.new(2.25, 3, 2.5), row)
+	local rare = G.part("Egg_Rare", at + Vector3.new(G.STEP, 1.5, 0), Vector3.new(2.25, 3, 2.5), row)
 	G.tag(epic, "NC_Spin", 14, 0.12, 3.2)
 	G.tag(rare, "NC_Spin", 14, 0.12, 3.2)
-	guide.Parent = workspace
-	return guide, epic, rare
+	row.Parent = workspace
+	return row, epic, rare
 end
 
 S.client_lobby_fx = guarded("client_lobby_fx", function()
@@ -202,8 +203,8 @@ S.client_lobby_fx = guarded("client_lobby_fx", function()
 		T.check(G.same(far.CFrame, farBase, 1e-9), "lobby fx: a tagged part 200 studs away stays exactly put")
 
 		------------------------------------------------------------------ the shelf eggs: one turn in 14 s, bob +-0.12
-		local guide, epic, rare = G.guide(O + Vector3.new(0, 0, 30))
-		made[#made + 1] = guide
+		local row, epic, rare = G.eggRow(O + Vector3.new(0, 0, 30))
+		made[#made + 1] = row
 		local eBase = epic.CFrame
 		KC.advance(0.05)
 		run(0.6) -- the next pass picks it
@@ -297,7 +298,7 @@ S.client_lobby_fx = guarded("client_lobby_fx", function()
 			if not G.same(gem:GetPivot(), gemCF) or not G.same(a.CFrame, gemCF * relA) or not G.same(late.CFrame, gemCF * CFrame.new(1, 0, 0)) or not G.same(gPart.CFrame, gemCF * gRel) then
 				bad[#bad + 1] = "FxGem"
 			end
-			if not G.same(meshPart.CFrame, rare:GetPivot() * meshRel) or (rare.Position - (eBase.Position + Vector3.new(2.5, 0, 0))).Magnitude > 1e-4 then
+			if not G.same(meshPart.CFrame, rare:GetPivot() * meshRel) or (rare.Position - (eBase.Position + Vector3.new(G.STEP, 0, 0))).Magnitude > 1e-4 then
 				bad[#bad + 1] = "Egg_Rare"
 			end
 			if (join.StudsOffset - Vector3.new(0, 1, 0)).Magnitude > 1e-9 then
@@ -331,15 +332,15 @@ S.client_lobby_fx = guarded("client_lobby_fx", function()
 		local old = { near, epic, rare, join }
 		trove:Destroy()
 		near:Destroy()
-		guide:Destroy()
+		row:Destroy()
 		KC.advance(0.05)
 		local trove2, join2 = G.trove(O + Vector3.new(-20, 10, 24))
 		local near2 = G.part("FxNear", O + Vector3.new(50, 0, 4))
 		G.tag(near2, "NC_Spin", 4, 0.6, 2)
-		local guide2, epic2 = G.guide(O + Vector3.new(0, 0, 34))
+		local row2, epic2 = G.eggRow(O + Vector3.new(0, 0, 34))
 		made[#made + 1] = trove2
 		made[#made + 1] = near2
-		made[#made + 1] = guide2
+		made[#made + 1] = row2
 		KC.advance(0.05)
 		T.eq(join2.Enabled, false, "lobby fx: lobby rebuilt -> the new Join sign is hidden for the player who claimed")
 		run(1)

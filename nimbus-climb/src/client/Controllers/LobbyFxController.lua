@@ -2,8 +2,8 @@
 -- 16.5; plan Task 25): ONE Heartbeat for all lobby motion. The server builds and tags; only this client moves anything.
 --   * Config.Tags.Spin (NC_Spin) on a Model or a Part: turns about its built pivot's Y, one turn in SpinSeconds, and bobs
 --     BobStuds * sin(2 pi t / BobSeconds) from the built pivot (absolute each frame, never accumulating). Users: the world
---     gem (8 s, 0.6 / 3 s), the summon portal's GlowRing (6 s), the Egg Guide's seven shelf eggs (14 s, 0.12 / 3.2 s: a
---     slow display turntable).
+--     gem (8 s, 0.6 / 3 s), the summon portal's GlowRing (6 s), the egg row's seven shelf eggs under the WINGED PETS board
+--     (14 s, 0.12 / 3.2 s: a slow display turntable).
 --   * Config.Tags.Bob (NC_Bob) on a BillboardGui: StudsOffset.Y = its built value + the same bob (the trove's Join sign,
 --     0.5 / 2.4 s); on a Model or a Part: the bob alone.
 --   * Every JoinBillboard (the trove's Join sign, found through its NC_Bob tag) has Enabled = false while

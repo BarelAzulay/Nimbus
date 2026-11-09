@@ -5,7 +5,8 @@
 --                                            per machine ("Open" / its name, range 12) -> OpenPanel("Shop", { Tab =
 --                                            "Roulette", RouletteId }); lobby shop 16.3 (Task 23): the walk-up ShopPrompt
 --                                            ("Open" / "Shop", range 10, HoldDuration 0, no line of sight) on
---                                            lobbyInfo.Shop.Counter.PromptPart (the Egg Guide) -> OpenPanel("Shop", { Tab =
+--                                            lobbyInfo.Shop.Counter.PromptPart (the egg row under the WINGED PETS board,
+--                                            shop-area 16.17.2) -> OpenPanel("Shop", { Tab =
 --                                            "Eggs" }) after a live-player, not-InMatch, PROMPT_COOLDOWN check; no part ->
 --                                            one warn, no prompt
 --   PetService.BuyRoulette(player, rouletteId, currency|nil, spins|nil) -> ok, reply|reason
@@ -1492,7 +1493,7 @@ local function connectRemotes()
 end
 
 ----------------------------------------------------------------------
--- Roulette machines in the lobby: one ProximityPrompt each; the walk-up ShopPrompt on the Egg Guide (lobby shop 16.3)
+-- Roulette machines in the lobby: one ProximityPrompt each; the walk-up ShopPrompt on the egg row (lobby shop 16.3, 16.17.2)
 ----------------------------------------------------------------------
 
 local function buildPrompts(lobbyInfo)
@@ -1546,7 +1547,7 @@ local function buildPrompts(lobbyInfo)
 		end
 	end
 
-	-- lobby shop 16.3 (Task 23): the walk-up Shop prompt on the Egg Guide (Shop.Counter.PromptPart). The server only asks
+	-- lobby shop 16.3 (Task 23): the walk-up Shop prompt on the egg row (Shop.Counter.PromptPart). The server only asks
 	-- the client to open a window: a live player, not in a match, rate-limited per player.
 	local counter = type(shop.Counter) == "table" and shop.Counter.PromptPart or nil
 	if not (counter and typeof(counter) == "Instance" and counter:IsA("BasePart")) then
