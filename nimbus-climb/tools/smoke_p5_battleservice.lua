@@ -1278,6 +1278,8 @@ S.p5svc_duel_fair = scenario("p5svc_duel_fair", function()
 	-- a passive duel ends at exactly TimeLimit (no overtime) as a Draw by damage; a played duel pays once
 	local a = newPlayer("FairA", MID, 12)
 	local b = newPlayer("FairB", ALT, 10)
+	DS().AddTrophies(a, 50) -- (lobby-shop 16.13: a win over a 0-trophy player pays only the smaller prize)
+	DS().AddTrophies(b, 50)
 	toArena(a, 3, 0)
 	toArena(b, -3, 0)
 	local m3 = K.logSize()

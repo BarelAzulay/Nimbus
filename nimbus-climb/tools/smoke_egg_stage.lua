@@ -1223,8 +1223,31 @@ S.client_egg_stage = guarded("client_egg_stage", function()
 		local stOpen = againState()
 		T.check(stOpen.Text == "SPIN AGAIN" and stOpen.Price and not stOpen.Off, "egg stage: ...the policy answered false: 'SPIN AGAIN', its price shown, on again",
 			fmt("'%s', price %s, off %s", stOpen.Text, tostring(stOpen.Price), tostring(stOpen.Off)))
-		ES.Close()
+		ES.Done()
 		G.advance(0.2)
+		-- lobby-shop 16.12 (the owner's pick A): a token SPIN AGAIN locks the same way, restricted or still unknown
+		ES._Answer(G.result("Cloud", "Tokens", { G.pull(PC, "Cloud", epic) }))
+		ES.Skip()
+		G.advance(0.6)
+		for _, case in ipairs({ { true, "restricted" }, { nil, "unknown" } }) do
+			LocalPlayer:SetAttribute("PaidRandomItemsRestricted", case[1])
+			G.advance(0.4)
+			local stTok = againState()
+			T.check(stTok.Text == "Locked" and not stTok.Price and stTok.Off, "egg stage: a token SPIN AGAIN while the policy is " .. case[2] .. " reads 'Locked', no price, off (16.12)",
+				fmt("'%s', price %s, off %s", stTok.Text, tostring(stTok.Price), tostring(stTok.Off)))
+		end
+		LocalPlayer:SetAttribute("PaidRandomItemsRestricted", false)
+		G.advance(0.4)
+		ES.Close()
+		G.advance(0.4)
+		-- ...and a token request while restricted is a toast, never a BuyRoulette
+		LocalPlayer:SetAttribute("PaidRandomItemsRestricted", true)
+		local hTok, bTok = #hints, #KC.serverCalls("BuyRoulette")
+		local sentTok = ES.Request("Cloud", "Tokens", 1)
+		T.check(sentTok == false and #KC.serverCalls("BuyRoulette") == bTok and hints[hTok + 1] == "Token spins are not available on this account right now.",
+			"egg stage: Request(Cloud, Tokens) while restricted toasts 'Token spins are not available on this account right now.' and sends nothing (16.12)", tostring(hints[hTok + 1]))
+		LocalPlayer:SetAttribute("PaidRandomItemsRestricted", false)
+		G.advance(0.4)
 		-- Init: the RouletteResult listener (a failure probe: MenuController's old stage never opens on a failure)
 		ES.Init()
 		ES.Init()
@@ -1410,6 +1433,9 @@ S.client_egg_stage_mobile = guarded("client_egg_stage_mobile", function()
 	local rare = PC.RarityPool("Cloud", "Rare")[1]
 	local leg = PC.RarityPool("Storm", "Legendary")[1]
 	CS.Set("FastHatch", true)
+	-- (lobby-shop 16.12: a token SPIN AGAIN reads "Locked" while the policy answer is not "allowed"; an allowed account)
+	local policyBefore = LocalPlayer:GetAttribute("PaidRandomItemsRestricted")
+	LocalPlayer:SetAttribute("PaidRandomItemsRestricted", false)
 	G.advance(0.5)
 	local SKIP = { Rays = true, Flash = true, Vignette = true }
 	local BAR = { "SpinAgain", "Done", "Skip", "FastHatch" }
@@ -1661,6 +1687,7 @@ S.client_egg_stage_mobile = guarded("client_egg_stage_mobile", function()
 		ES.Close()
 	end
 	CS.Set("FastHatch", false)
+	LocalPlayer:SetAttribute("PaidRandomItemsRestricted", policyBefore)
 	G.advance(0.6)
 	KC.flushErrors("client_egg_stage_mobile")
 end)

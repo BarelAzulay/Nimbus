@@ -30,11 +30,12 @@
 --                                    it gold for 2.6 s (attribute Focused)
 --   ShopEggs.CardState(rouletteId, button) -> "NoOdds" | "Pending" | "Locked" | "Altar" | "Loading" | "Short" | "Ready"
 --                                    button = "Spin" (default) | "Spin3" | "SpinGems". In that order: no odds; a request
---                                    pending (EggStage.IsPending: every button); a gem button (SpinGems, every Secret
---                                    button) while PaidRandomItemsRestricted is not false (Locked); the Secret card away
---                                    from the Storm Altar (Altar, shop-area 16.17.3: ShopEggs.AtAltar() false); a gem
---                                    button before GemsSettled (Loading); the balance under the price (Short: the price
---                                    kept, drawn red, the button still taps and EggStage toasts); else Ready
+--                                    pending (EggStage.IsPending: every button); every button while
+--                                    PaidRandomItemsRestricted is not false (Locked; token spins too since lobby-shop
+--                                    16.12); the Secret card away from the Storm Altar (Altar, shop-area 16.17.3:
+--                                    ShopEggs.AtAltar() false); a gem button (SpinGems, every Secret button) before
+--                                    GemsSettled (Loading); the balance under the price (Short: the price kept, drawn
+--                                    red, the button still taps and EggStage toasts); else Ready
 --   ShopEggs.AtAltar() -> bool       (shop-area 16.17.3) the Secret roll can be bought from here: ShopEggs._AtAltar when a
 --                                    test set it (true / false); else Config.AtAltar(the character's HumanoidRootPart,
 --                                    no slack: the server allows AltarRangeSlack more) whenever there is a root and the
@@ -1231,16 +1232,15 @@ function ShopEggs.CardState(id, button)
 		return "Pending"
 	end
 	local gems = id == K.SECRET or button == "SpinGems"
-	if gems then
-		if attr("PaidRandomItemsRestricted") ~= false then
-			return "Locked"
-		end
-		if id == K.SECRET and not ShopEggs.AtAltar() then
-			return "Altar"
-		end
-		if attr("GemsSettled") ~= true then
-			return "Loading"
-		end
+	-- (lobby-shop 16.12, the owner's pick A: the token spins lock too, as the server refuses them while not "Allowed")
+	if attr("PaidRandomItemsRestricted") ~= false then
+		return "Locked"
+	end
+	if id == K.SECRET and not ShopEggs.AtAltar() then
+		return "Altar"
+	end
+	if gems and attr("GemsSettled") ~= true then
+		return "Loading"
 	end
 	local currency = gems and "Gems" or "Tokens"
 	local price = H.price(id, currency) * ((button == "Spin3" and not gems) and 3 or 1)

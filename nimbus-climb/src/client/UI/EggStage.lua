@@ -199,6 +199,7 @@ local K = {
 		Failed = "The spin failed.",
 		Fallback = "A new pet joined your collection!",
 		Policy = "Gem roulettes are not available on this account right now.",
+		TokenPolicy = "Token spins are not available on this account right now.", -- (lobby-shop 16.12)
 		Hatched = "You hatched: ",
 	},
 }
@@ -1837,8 +1838,8 @@ function H.refreshAgain()
 		reason = "none"
 	elseif H.inMatch() then
 		reason = "Shop closed"
-	elseif roll.Currency == "Gems" and not H.gemsOpen() then
-		reason = "Locked"
+	elseif not H.gemsOpen() then
+		reason = "Locked" -- (lobby-shop 16.12: a token spin too, as the server refuses it while not "Allowed")
 	elseif H.balance(roll.Currency) < price then
 		reason = roll.Currency == "Gems" and "Not enough Gems" or "Not enough Tokens"
 	end
@@ -3427,8 +3428,9 @@ function EggStage.Request(rouletteId, currency, spins)
 		return false
 	end
 	local price = H.price(roulette, currency) * spins
-	if currency == "Gems" and not H.gemsOpen() then
-		H.toast(K.TEXT.Policy)
+	if not H.gemsOpen() then
+		-- (lobby-shop 16.12, the owner's pick A: token spins need the same "allowed" answer)
+		H.toast(currency == "Gems" and K.TEXT.Policy or K.TEXT.TokenPolicy)
 		return false
 	end
 	if H.balance(currency) < price then

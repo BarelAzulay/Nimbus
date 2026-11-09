@@ -1220,6 +1220,9 @@ S.client_menu = guarded("client_menu", function()
 
 	-- Shop: the Eggs tab (lobby-shop Task 22: the Cloud Shop left MenuController; the four machine cards and the Secret
 	-- Roulette hero live on ShopController's Page_Eggs, odds on every card, every spin through the egg stage)
+	-- (lobby-shop 16.12: token spins lock while the policy answer is not "allowed"; this is an allowed account)
+	local policyBefore = LocalPlayer:GetAttribute("PaidRandomItemsRestricted")
+	LocalPlayer:SetAttribute("PaidRandomItemsRestricted", false)
 	Menu.Open("Shop", { Tab = "Eggs" })
 	advance(0.5)
 	local SC = M.ShopController
@@ -1300,6 +1303,7 @@ S.client_menu = guarded("client_menu", function()
 	end
 	press("Escape")
 	advance(0.5)
+	LocalPlayer:SetAttribute("PaidRandomItemsRestricted", policyBefore)
 
 	-- OpenPanel remote
 	toClient("OpenPanel", "Shop", { Tab = "Roulette", RouletteId = "Storm" })

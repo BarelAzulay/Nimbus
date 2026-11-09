@@ -235,6 +235,8 @@
         "SetPity",
         "GemsSettled",
         "_SettleForTest",
+        "DuelsWith",
+        "RecordDuel",
         "IsMigrated",
         "MarkMigrated",
         "MigratedNow",
@@ -818,7 +820,10 @@
         "SetRaidBoss",
         "EndRaids",
         "RaidTierFor",
-        "RaidRewardStatus"
+        "RaidRewardStatus",
+        "ZeroTrophyPrize",
+        "LowTrophyOpponent",
+        "_ClearPairsForTest"
       ],
       "signals": [
         "BattleEnded",
@@ -1163,6 +1168,8 @@
         "PolicyState",
         "IsRestricted",
         "SecretRouletteState",
+        "TokenSpinLock",
+        "Recheck",
         "GetRoulette",
         "ListRoulettes",
         "RoulettePrice",

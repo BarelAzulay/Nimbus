@@ -2573,3 +2573,145 @@ pictures, T4 the renders, T5 the gate.
   keeps the painted eggs beside its 3D Secret hero: the owner's picks named the roll's cards and the x3, not the Shop's
   page, and a new look on another screen goes through a pitch first. Wiring the same `HatchLook.EggImage` keys into the
   domes and the odds rows needs no new upload (Claude's pick: yes, as a follow-up once the owner has seen the pictures).
+
+### 16.12 The owner's answers of 2026-11-08 (token spins on restricted accounts, Trophies across servers)
+
+These override the text above where they differ (16.1's token-pack note, 16.7, 16.8 call 13 and its two morning questions).
+
+**Token-paid spins on restricted accounts (the owner's pick A).** The server never opens the token packs' Robux prompt for an
+account PolicyService does not call "Allowed" (16.1), but a client can open it itself and a paid receipt is always granted. So
+the spin is the lock now:
+- `PetService.BuyRoulette` refuses a token-paid spin unless `GemService.TokenSpinLock(player)` is nil, which it is only for
+  PolicyState "Allowed". "Restricted" answers "Token spins are not available on your account"; "Checking" (no answer yet, a
+  failed lookup, no GemService, an error) answers "Checking your account, try again in a moment" and asks PolicyService again,
+  the token lock's fail-closed rule. The check sits before the balance (nothing is charged, nothing rolled) and the remote
+  answers `RouletteResult(Ok = false, Reason)` as for any refusal. Gem spins keep their own lock, unchanged.
+- No new saved field: earned tokens and bought tokens are one balance, so every token spin closes for a restricted account.
+  Receipts are still always granted (the tokens stay in the balance, spendable if the policy answer ever changes).
+- The Shop: every token Spin / x3 button reads "Locked" (the token cards' word) and is inactive while `PaidRandomItemsRestricted`
+  is not false, exactly like the gem buttons; the cutscene's SPIN AGAIN reads "Locked" for a token roll too, and
+  `EggStage.Request` for tokens toasts "Token spins are not available on this account right now." and sends nothing.
+- Consequence for the owner to know: a restricted account can no longer hatch from any roulette (gem spins were already
+  closed), so the tutorial's "Your First Pet" step (Rolled) cannot be completed there; such a player can skip the tutorial and
+  still gets pets from the daily gifts and the other free grants. Left open as a follow-up (a free, non-paid first spin, or the
+  step skipped for restricted accounts) for the owner to decide. **Answered in 16.13**: the step gives a fixed starter pet.
+- Tests: the smoke mock's PolicyService now answers "allowed" by default like Roblox does for an ordinary account (a double
+  replaces it; nil brings it back; false = no API at all). `egg_spin_x3` (restricted: x1 / x3 / every machine refused with the
+  text, nothing charged, the remote's answer; unknown: refused, then allowed once PolicyService answers), `p2gems_policy`
+  (restricted and unchecked accounts refused), `client_shop_eggs` (token buttons Locked for restricted and unknown, taps send
+  nothing), `client_egg_stage` (token SPIN AGAIN Locked, the toast). The Storm Altar's "awakens soon" checks join with no API.
+
+**Trophies across servers (the owner's pick).** BattleService's pair limit (PAIR_LIMIT 3 counted duels per pair per
+PAIR_WINDOW 1,800 s, any outcome, counted at the duel's start) lived in one server's memory, so two accounts could trade wins
+by hopping servers, and a 0-trophy loser loses nothing. The design:
+- **Where the record lives.** On BOTH duellists' saves, `Battle.Duels = { { U = the opponent's UserId, T = Unix seconds }... }`,
+  newest first. Every duel start that counts for the limit (not a practice duel) writes one entry on each side
+  (`DataService.RecordDuel`), also when that start is already past the limit (the in-server list does the same). Recording both
+  sides (not only the winner) keeps the rule exactly the in-server one: a winner-only record would let A and B alternate
+  wins for 3 + 3 rewarded duels per window.
+- **How it is read.** At the start `pairAllows` takes the highest of this server's list, A's entries for B and B's entries for
+  A inside the window (`DataService.DuelsWith(player, opponent, now - 1800 + 1)`); 3 or more makes the duel trophy-free,
+  announced at the start as before. Either save alone holds the limit (one lost save does not reset it). The Unix clock is
+  `Raid.now()` (os.time; tests replace it through `BattleService.Debug.RaidNow`).
+- **Bounds.** At most 32 entries (`P3.DUELS_KEEP`; the oldest dropped), each U a whole UserId 1..1e15 and T whole Unix seconds
+  > 0 (junk dropped, duplicates once): about 1 KB at most. Only the last 30 minutes matter; 32 counted duels in 30 minutes
+  would need about ten other opponents in between to push a pair out, and the other side's record still holds it.
+- **Save rules.** A save without the field reads `{}` (no migration). It is stored only when not empty, never sent in the
+  ProfileSync snapshot (opponent ids stay on the server), merges across servers as a union of entries (then capped), and may
+  change while provisional (a union merges safely). A server of the older build still running during a rollout rebuilds
+  `Battle` without it, so for that window the limit counts only the newer servers' duels.
+- **0 Trophies.** `b.TrophiesAtStart` keeps both totals at the start; a winner whose opponent held 0 Trophies gets no Trophies
+  (`rw.NoTrophies = true`, toast "Victory! Your opponent had no trophies to win. +N tokens"); the win's tokens and XP, PvPWins
+  and the loser's side are unchanged. Taken at the start so the order the two sides are paid in cannot matter.
+  Consequence for the owner to know: every account starts at 0 and duels are the only source of Trophies, so two brand-new
+  players never earn Trophies from each other; new Trophies enter only when someone beats a player who already has some
+  (live saves from before this build seed it). Left open: a softer rule (fewer Trophies, not none) if that feels wrong.
+  **Replaced by 16.13** (the owner picked the softer rule: a quarter of the win, at least 1).
+- Tests: `p3bs_pair_hop` (three duels, both saves hold them, a real leave / rejoin with the server's list cleared: the 4th is
+  trophy-free; one save alone holds it; 30 minutes on the Unix clock later the pair earns again; the 32-entry cap and junk) and
+  `p3bs_zero_trophy` (a full win over a 0-trophy player pays tokens and XP, no Trophies). The duel tests that expected
+  Trophies.Win from a brand-new opponent give both duellists trophies first.
+
+### 16.13 The owner's follow-ups of 2026-11-08 (0-Trophy opponents, the restricted first pet)
+
+These override 16.12 where they differ (its "0 Trophies" bullet and its tutorial consequence).
+
+**A win over a 0-Trophy opponent pays a smaller prize, not none.** The cross-server pair limit of 16.12 stays exactly as it is.
+- `BattleService.ZeroTrophyPrize(trophies, share?)` = max(1, floor(share x trophies)); share = `Config.Battle.ZeroTrophyShare`
+  (0.25, the owner's quarter; a share outside (0, 1] or junk reads 0.25); a prize of 0 or less comes back unchanged. Pure.
+- `payDuel`: when the loser held 0 Trophies at the start (`b.TrophiesAtStart`, as in 16.12) the winner's Trophies.Win (20)
+  becomes ZeroTrophyPrize(20) = 5; tokens and XP of the win stay in full; `rw.NewOpponent = true` (replaces 16.12's
+  `rw.NoTrophies`, which no client read). The toast: "Victory! Your opponent was new: smaller trophy prize. +5 trophies, +N
+  tokens". Every other win, the loser's side, the pair limit, practice duels and early forfeits are unchanged.
+- Consequence: two brand-new players now seed Trophies slowly (5 per win, at most 3 rewarded duels per pair per 30 minutes,
+  and the loser stays at 0, so the winner keeps getting the smaller prize from that pair).
+- `Config.Battle` is new (it held nothing before; BattleService's other tunables stay local constants).
+- Tests: `p3bs_zero_trophy` (red on the 16.12 code first): the Config factor, the pure rule (20 -> 5, 21 -> 5, 3 -> 1, 1 -> 1,
+  0 -> 0, share 0.1 / 0.01 / 1, junk shares -> 0.25), a full win over a 0-Trophy player pays 5 Trophies + the full tokens and XP
+  with NewOpponent and the new toast; the same pair after the loser holds 50 Trophies pays the normal +20 and the normal toast.
+  README's fair-play line says a quarter (+5 instead of +20).
+- **Review fixes (2026-11-08, the main session's decisions).**
+  - *Low, not only 0.* A loss never takes a player below 0, so an alt holding a few Trophies (say 5) lost only those 5 while
+    feeding the full +20. The smaller prize now applies when the loser's Trophies at the start are below what a normal loss
+    takes: `BattleService.LowTrophyOpponent(trophies)` = a known total < max(1, |`BattleCatalog.Trophies.Loss`|) (10 today):
+    0, 5, 9 -> the smaller prize; 10, 50 -> the full win. `rw.LowTrophyOpponent = true` (replaces `rw.NewOpponent`, server
+    only), toast "Victory! Low-trophy opponent: smaller trophy prize. +5 trophies, +N tokens".
+  - *Unknown is not 0.* `b.TrophiesAtStart` holds nil for a record that cannot be read at the start (not loaded,
+    provisional); nil is never low, so the winner is not cut for the server's blind spot.
+  - *The duel record cannot be flushed.* `Battle.Duels` keeps every entry of the last 30 minutes (`P3.DUELS_WINDOW` 1,800 s
+    on `os.time()`), plus at most 32 older ones (`P3.DUELS_KEEP`), never more than 64 in all (`P3.DUELS_MAX`, about 2 KB);
+    before, ~30 duels with other opponents inside the window could push a pair's recent entries out of the 32.
+  - Tests: `p3bs_zero_trophy` (the pure rule incl. 0 / 5 / 9 / 10 / 50 / nil / NaN / a string; full duels against 0, 5
+    (smaller prize, the loser ends at 0) and 50 Trophies (full); an opponent whose record reads nil at the start while really
+    holding 40: full +20) and `p3bs_pair_hop` (41 entries in the window incl. the pair's under 40 newer ones all kept + 23
+    older = 64; 5 in the window + the newest 32 older; 70 in the window -> the newest 64), red on the old code first.
+
+**Restricted accounts get a fixed starter pet at "Your First Pet".** 16.12 closed every roulette for an account PolicyService
+restricts from paid random items, so the tutorial's step 4 (`spin`, CompleteOn "Rolled") could not be finished there. Now:
+- The pet: `Config.Tutorial.RestrictedStarterPet = "pebble_pup"` (Pebble Pup): a Common of the Cloud Roulette, the machine
+  the step points at, the first Common of the catalog and an Economy pet (a small token bonus), which suits the next
+  chapter (the Pet Garden makes money). Not random: the same pet for every such account.
+- `TutorialService` (`restrictedStarter`, read by the "Rolled" check that the 2 Hz poll and every nudge run): only when
+  `GemService.PolicyState(player)` is "Restricted". "Allowed" spins as before (nothing changes); "Checking" (unknown) waits:
+  nothing is granted and the step stays until the answer comes (GemService's own retries, or a refused spin's re-ask).
+- Once per save: the grant is the save's Trove ask `TutorialStarter` (`DataService.MarkTrove` with the grant record
+  `{ Pets = { pebble_pup = 1 } }`) followed, in the same non-yielding step, by `PetService.GrantPet(player, id, { Count = 1 })`
+  (the Store's pet path: discovered, auto-equipped as the first pet, no spin counted, Rolled not fired). The ask and the
+  pet ride one save; the Trove merge (union + the twin rule, built for the Sky Trove) keeps ONE pet in the store when two
+  servers both grant. A save that already holds the ask (the step again, a rejoin, a later server) completes the step with
+  nothing granted. A save not readable yet (loading, provisional) waits. A full stack of that pet marks the ask with no pet.
+  No new saved field (Trove existed); `ResetFields` (the dev reset) wipes Trove with the Tutorial, so a developer replay
+  can get it again.
+- Nothing a client sends reaches it: the TutorialEvent remote never completes a "Rolled" step, and the grant is decided
+  from the server's policy answer and the save alone.
+- The client: no new UI. The step ends as a spin's would without the egg: the toast "Nimbus hatched a Pebble Pup just for
+  you: your very first pet buddy!", the pet joins the team and follows, and the next TutorialState ("Pick a Buddy") is sent.
+  The gift step's 50 tokens are still paid to everyone (unchanged; they stay in the balance).
+- A nested nudge (GrantPet's team change fires TeamsChanged, which settles the tutorial again from inside the grant) is kept
+  from completing the step twice by a busy flag on the track.
+- Tests: `tut_starter_restricted` (red first): the config pet is a Cloud Common; a restricted account on the step gets
+  exactly one Pebble Pup (no spin counted, discovered, in the team, one toast, the next step sent, the ask saved); the step
+  again, and after a leave and rejoin: no second pet, the step completes; an allowed account gets nothing whatever
+  TutorialEvent it sends and its real spin completes the step (no ask written); an unknown policy waits, then the
+  "Restricted" answer grants once. `tut_starter_two_servers`: server A grants while the store fails, server B (read the
+  store before A's save) grants and saves, A's orphan retry lands: the store holds one Pebble Pup and the ask.
+- **Review fixes (2026-11-08, the main session's decisions).**
+  - *The policy is asked again.* `GemService.Recheck(player)` asks PolicyService again while the answer is "Checking"
+    (kickPolicy's own 5 s gap and busy flag; a known answer is left alone). The open "Your First Pet" step calls it on every
+    check (the 2 Hz poll) while "Checking", and so do the starter checks below; `PetService` calls it when a player opens the
+    Shop's Eggs page through a roulette machine's prompt or the Egg Guide's walk-up ShopPrompt (server-side requests already
+    gated: a live player, not in a match, the prompt cooldown). No new remote: the HUD pill opens the Shop on the client only.
+  - *Skipped tutorials get the starter too.* The same one-time grant runs when a restricted account skips the tutorial
+    (whatever pets it holds, like the step) and, once per session after the load, for a restricted save WITHOUT any pet
+    (no stack, Golden / Rainbow copy or hybrid), unless the tutorial is still running at or before its "Rolled" step (that
+    step gives it with its guidance). Both wait for the policy answer and a readable save; the same `TutorialStarter` ask
+    keeps it to once ever (a later load after the pet was released grants nothing).
+  - *The grant before the record.* `PetService.GrantPet` runs first and `MarkTrove` only once it returned true (both
+    non-yielding, the same step, so the ask and the pet still ride one save and the two-server guarantee holds); a refused
+    grant writes no ask, the step waits and the next check tries again (logged once per player).
+  - Tests: `tut_starter_restricted` (the unknown-policy case now completes with no outside re-ask; a new restricted account
+    early in the tutorial gets nothing on load) and the new `tut_starter_more` (Recheck exists, leaves a known answer alone and
+    keeps the 5 s gap; the ShopPrompt and a RoulettePrompt re-ask for a Checking account; skip -> one pet, once after a rejoin;
+    a skipped save with no pets -> the pet on load, once, and never again after it is released; the same with the answer
+    arriving after the load; a skipped save holding pets and an allowed skipper get nothing; a refused GrantPet writes no
+    ask, then the next try grants), red on the old code first; `tut_starter_two_servers` unchanged and green.

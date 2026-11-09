@@ -6767,6 +6767,16 @@ service("MarketplaceService", {
 	events = { "PromptGamePassPurchaseFinished", "PromptProductPurchaseFinished" },
 })
 service("GroupService", { props = { PromptJoinAsync = T.any(function() return Enum.GroupMembershipStatus.None end) } })
+-- [lobby-shop 16.12] PolicyService answers like Roblox (and Studio) does for an ordinary account: paid random items
+-- allowed. A test double replaces it (PolS.GetPolicyInfoForPlayerAsync = fn); writing nil brings this answer back;
+-- writing false means "no API at all" (GemService then never learns an answer: the account stays unchecked).
+service("PolicyService", {
+	props = {
+		GetPolicyInfoForPlayerAsync = T.any(function()
+			return { ArePaidRandomItemsRestricted = false, IsPaidItemTradingAllowed = true, AllowedExternalLinkReferences = {}, IsSubjectToChinaPolicies = false }
+		end),
+	},
+})
 -- [lobby-shop, Task 9] UserService (the leaderboard's names): GetUserInfosByUserIdsAsync(ids) answers { Id, Username,
 -- DisplayName, HasVerifiedBadge } for the ids found in Mock.Users ([userId] = { Username, DisplayName }), errors while
 -- Mock.UserServiceFail; Mock.UserServiceCalls counts the calls (failed ones too).

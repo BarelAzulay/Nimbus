@@ -525,6 +525,18 @@ Config.Eggs = {
 Config.Tutorial = {
 	GiftTokens = 50, -- granted once at the "spin your first roulette" step so a new player can afford it
 	FinishReward = { Tokens = 100 },
+	-- lobby-shop 16.13 (the owner's answer, 2026-11-08): an account PolicyService restricts from paid random items cannot
+	-- spin, so the "Your First Pet" step gives it this ONE fixed Common pet of the Cloud Roulette instead, once per save
+	-- (TutorialService; everyone else spins as before)
+	RestrictedStarterPet = "pebble_pup",
+}
+
+-- Pet battles (most duel tunables are BattleService locals; this table holds the ones the owner sets).
+Config.Battle = {
+	-- lobby-shop 16.13 (the owner's answer, 2026-11-08): a duel won over a player who held fewer Trophies at the start than
+	-- a loss takes (below |BattleCatalog.Trophies.Loss| = 10, 0 included; the review fix) pays floor(this x the normal win)
+	-- Trophies, at least 1 (BattleService.ZeroTrophyPrize / LowTrophyOpponent); tokens and XP stay in full
+	ZeroTrophyShare = 0.25,
 }
 
 -- v3: pet roles and battle/economy stats (values live per pet in PetCatalog; phases 2 and 3 use them).

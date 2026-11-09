@@ -994,11 +994,23 @@ S.client_shop_eggs = guarded("client_shop_eggs", function()
 			local hsp = G.eggBtn("Secret", "Spin")
 			T.check(G.disabled(hsp) and SE.CardState("Secret") == "Locked" and G.texts(G.eggCard("Secret")):find(text, 1, true) ~= nil,
 				"shop eggs: " .. tag .. ": the Secret card shows '" .. text .. "' and its Spin is inactive", G.texts(G.eggCard("Secret")))
-			T.check(not G.disabled(G.eggBtn("Cloud", "Spin")) and not G.disabled(G.eggBtn("Sky", "Spin3")) and SE.CardState("Cloud") == "Ready", "shop eggs: " .. tag .. ": the token spins stay open")
+			-- lobby-shop 16.12 (the owner's pick A): the token spins lock too, with the token cards' word ("Locked")
+			local lockedTok = {}
+			for _, id in ipairs(MACHINES) do
+				for _, name in ipairs({ "Spin", "Spin3" }) do
+					local b = G.eggBtn(id, name)
+					if not (b and G.disabled(b) and tostring(G.texts(b)):find("Locked", 1, true)) or SE.CardState(id, name) ~= "Locked" then
+						lockedTok[#lockedTok + 1] = id .. " " .. name .. ": " .. (b and G.texts(b) or "none") .. " " .. tostring(SE.CardState(id, name))
+					end
+				end
+			end
+			T.check(#lockedTok == 0, "shop eggs: " .. tag .. ": every token Spin / x3 reads 'Locked', inactive (CardState Locked; 16.12)", table.concat(lockedTok, "; "))
 			local mL = #Mock.RemoteLog
 			G.tap(hsp)
 			G.tap(G.eggBtn("Cloud", "SpinGems"))
-			T.eq(#buys(mL), 0, "shop eggs: " .. tag .. ": a tap on a locked gem button sends nothing")
+			G.tap(G.eggBtn("Cloud", "Spin"))
+			G.tap(G.eggBtn("Sky", "Spin3"))
+			T.eq(#buys(mL), 0, "shop eggs: " .. tag .. ": a tap on a locked gem or token button sends nothing")
 		end
 		lockCase(true, EGG_LOCK, "restricted")
 		lockCase(nil, EGG_CHECKING, "unknown")

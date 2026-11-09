@@ -70,7 +70,7 @@
 --   Queue(player) / Unqueue(player) -> ok, reason,
 --   Command(player, action, arg) -> ok, reason, extra (what BattleCommand does), Forfeit(player) -> ok,
 --   SetDoubleRewards(active, seconds|nil) (EventService may push the Double Rewards hour; it is also read from
---   EventService itself), IsDoubleRewards(), SetArena(arenaInfo, arenaBuilder), GetNetStats(), EstimateBytes(value),
+--   EventService itself), IsDoubleRewards(), ZeroTrophyPrize(trophies, share?) -> n (16.13, pure), LowTrophyOpponent(trophies) -> bool (16.13 review, pure), SetArena(arenaInfo, arenaBuilder), GetNetStats(), EstimateBytes(value),
 --   ListBattles() -> { summary... }, signals BattleStarted(battleId, info) and RaidJoined(player, battleId, tierId),
 --   flag BattleService.PayRaidRewards (default true: this service pays the raid tiers; see "Rewards"),
 --   Shutdown() (what game:BindToClose runs; tests call it: every running battle ends void with Reason "Shutdown", new
@@ -213,8 +213,13 @@
 --     once: the forfeit penalty (BattleCatalog.Trophies.Forfeit, a PvP loss) is written right away (before their profile
 --     is saved on leave); the opponent wins. When BOTH duellists leave together the duel is void: nobody is penalised.
 --   * Duel rewards are gated against farming (payDuel): withheld for a forfeit before FORFEIT_MIN_SECONDS and for a loser
---     who dealt no damage; the same two players earn from at most PAIR_LIMIT duels per PAIR_WINDOW seconds; a practice
---     duel (Duel.PowerGap) pays nothing and counts for nothing.
+--     who dealt no damage; the same two players earn from at most PAIR_LIMIT duels per PAIR_WINDOW seconds, across servers
+--     (lobby-shop 16.12: each counted duel start is also saved on both players' Battle.Duels and the limit reads the
+--     highest of this server's list and the two saves); a winner gets the smaller prize ZeroTrophyPrize (floor(
+--     Config.Battle.ZeroTrophyShare x the win), at least 1; tokens and XP stay; Rewards.LowTrophyOpponent = true) when the
+--     loser's KNOWN Trophies at the start were below what a loss takes (LowTrophyOpponent: < |Trophies.Loss|, 10; 16.13
+--     review fix, was "exactly 0"; an unreadable record is never low); a practice duel (Duel.PowerGap) pays nothing and
+--     counts for nothing.
 --   * A raid player who presses LEAVE (BattleController's, the Ring's button: BattleCommand "Forfeit", or the "LeaveRaid" request), stays
 --     out of the fight area through the warning's 3-2-1 (never while dead), leaves the game or is leashed is removed from the raid
 --     (no reward, said in the toast and on the result card; no rejoin of that
@@ -319,7 +324,7 @@ do
 end
 
 ----------------------------------------------------------------------
--- Tunables (Config.Battle does not exist: local constants, listed as a deviation)
+-- Tunables (local constants, listed as a deviation; Config.Battle holds only the owner's ZeroTrophyShare, 16.13)
 ----------------------------------------------------------------------
 local C = {
 	ATTR_IN_BATTLE = (type(Config.Attr) == "table" and Config.Attr.InBattle) or "InBattle", -- C11: Config.Attr.InBattle, own string as the fallback
@@ -802,6 +807,14 @@ local function trophiesOf(player)
 	return rec and tonumber(rec.Trophies) or 0
 end
 
+-- the Trophies of a record that can be read now, or nil (not loaded, provisional, junk): lobby-shop 16.13 review fix 5,
+-- b.TrophiesAtStart keeps nil for an unknown total so payDuel never cuts a win on a blind read
+local function knownTrophies(player)
+	local rec = battleRecord(player)
+	local n = rec and tonumber(rec.Trophies) or nil
+	return finite(n) and n or nil
+end
+
 -- The BattleSim team spec of the player's active preset: { Owner = userId, Side, Name, Pets = { { Key, PetId, Def,
 -- Level, Tier, Slot, Evo, Train, Xp, XpNext }... } }, or nil + a reason for a toast. `fallback` (Phase 4, the Champion
 -- Ring): a fixed key list used INSTEAD of the active preset (the run's fighters); an empty or all-busy team is refused
@@ -1231,6 +1244,37 @@ local function eventService()
 	return St.eventService or nil
 end
 
+-- lobby-shop 16.13 (the owner's answer, 2026-11-08): the Trophies a duel win pays when the opponent held 0 Trophies at
+-- the start: floor(share x trophies), at least 1. share = the argument, else Config.Battle.ZeroTrophyShare; a share
+-- outside (0, 1] (junk, NaN) is 0.25. A prize of 0 or less (not a win) comes back unchanged. Pure, never yields.
+local ZERO_TROPHY_SHARE = 0.25
+function BattleService.ZeroTrophyPrize(trophies, share)
+	if not finite(trophies) or trophies <= 0 then
+		return trophies
+	end
+	if share == nil then
+		share = type(Config.Battle) == "table" and Config.Battle.ZeroTrophyShare or nil
+	end
+	if not finite(share) or share <= 0 or share > 1 then
+		share = ZERO_TROPHY_SHARE
+	end
+	return max(1, floor(trophies * share))
+end
+
+-- lobby-shop 16.13 review fix (2026-11-08, the main session's decision): true when a duel loser's Trophies at the start
+-- make the win pay only ZeroTrophyPrize: a KNOWN total below what a normal loss takes (|BattleCatalog.Trophies.Loss|, 10
+-- today; at least 1, so 0 always counts). A loss never takes a player below 0, so an alt holding a few Trophies would
+-- otherwise feed the full win while losing only what it had. nil / junk (a record not readable at the start) is never
+-- low: the winner is not cut for the server's own blind spot. Pure, never yields.
+function BattleService.LowTrophyOpponent(trophies)
+	if not finite(trophies) then
+		return false
+	end
+	local T = BattleCatalog.Trophies or {}
+	local loss = tonumber(T.Loss)
+	return trophies < max(1, finite(loss) and abs(loss) or 0)
+end
+
 function BattleService.IsDoubleRewards()
 	local pushed = St.double
 	if pushed then
@@ -1479,6 +1523,21 @@ local function payDuel(b, part, res)
 	elseif rewarded and not won then
 		trophies, tokens, xp = tonumber(T.Loss) or 0, tonumber(tokensT.Loss) or 0, tonumber(xpT.Loss) or 0
 	end
+	-- lobby-shop 16.13 (was 16.12's "none"): beating a player who held fewer Trophies at the start than a loss takes
+	-- (BattleService.LowTrophyOpponent: a known total below |Trophies.Loss|; review fix: not only 0) pays the smaller prize,
+	-- BattleService.ZeroTrophyPrize (an empty or near-empty account feeds a farmer only a little); tokens and XP stay
+	local lowOpponent = false
+	if won and trophies > 0 and type(b.TrophiesAtStart) == "table" then
+		for _, other in ipairs(b.PartList) do
+			local had = other ~= part and b.TrophiesAtStart[other.UserId] or nil
+			if BattleService.LowTrophyOpponent(had) then
+				lowOpponent = true
+			end
+		end
+		if lowOpponent then
+			trophies = BattleService.ZeroTrophyPrize(trophies)
+		end
+	end
 	local double = tokens > 0 and BattleService.IsDoubleRewards()
 	if double then
 		tokens = floor(tokens * doubleMultiplier() + 0.5)
@@ -1509,6 +1568,7 @@ local function payDuel(b, part, res)
 	rw.Early = (won and res.Forfeit == true and short) or nil
 	rw.Practice = b.Practice or nil
 	rw.Unpaid = (won and not rewarded) or (won and stomp) or nil
+	rw.LowTrophyOpponent = lowOpponent or nil
 	local text
 	if b.Practice then
 		text = (won and "Practice duel won!" or (draw and "Practice duel: a draw." or "Practice duel lost.")) .. " No rewards for practice."
@@ -1518,6 +1578,8 @@ local function payDuel(b, part, res)
 		text = "Your opponent never fought back: the win counts, no rewards."
 	elseif won and not rewarded then
 		text = "Victory! You two dueled a lot lately: no rewards this time."
+	elseif won and lowOpponent then
+		text = "Victory! Low-trophy opponent: smaller trophy prize. +" .. trophies .. " trophies, +" .. tokens .. " tokens"
 	elseif won then
 		text = "Victory! +" .. trophies .. " trophies, +" .. tokens .. " tokens"
 	elseif draw then
@@ -2481,7 +2543,10 @@ local function pairKey(pa, pb)
 end
 
 -- true while these two players have fought fewer than PAIR_LIMIT trophy duels in the last PAIR_WINDOW seconds
--- (counts this one)
+-- (counts this one). lobby-shop 16.12: the limit holds across servers: every counted duel is also written on BOTH
+-- players' saves (DataService.RecordDuel: Unix seconds, Raid.now), and the count is the highest of this server's list
+-- and each save's duels with the other (DataService.DuelsWith), so a server hop, or one save that lost the record, does
+-- not reset it.
 local function pairAllows(pa, pb)
 	local key = pairKey(pa, pb)
 	local t = now()
@@ -2491,10 +2556,27 @@ local function pairAllows(pa, pb)
 			fresh[#fresh + 1] = at
 		end
 	end
-	local ok = #fresh < C.PAIR_LIMIT
+	local count = #fresh
+	local unix = Raid.now()
+	local DS = dataService()
+	if hasFn(DS, "DuelsWith") then
+		local na = try(DS, "DuelsWith", pa, pb.UserId, unix - C.PAIR_WINDOW + 1)
+		local nb = try(DS, "DuelsWith", pb, pa.UserId, unix - C.PAIR_WINDOW + 1)
+		count = max(count, finite(na) and na or 0, finite(nb) and nb or 0)
+	end
+	local ok = count < C.PAIR_LIMIT
 	fresh[#fresh + 1] = t
 	St.pairs[key] = fresh
+	if hasFn(DS, "RecordDuel") then
+		try(DS, "RecordDuel", pa, pb.UserId, unix)
+		try(DS, "RecordDuel", pb, pa.UserId, unix)
+	end
 	return ok
+end
+
+-- tests: forget this server's pair list (what a server hop does); the saved records stay
+function BattleService._ClearPairsForTest()
+	St.pairs = {}
 end
 
 local function beginBattle(b)
@@ -2566,6 +2648,9 @@ local function startDuel(pa, pb)
 	local powerA, powerB = powerOf(specA), powerOf(specB)
 	b.Practice = max(powerA, powerB) > max(1, min(powerA, powerB)) * C.DUEL_POWER_GAP
 	b.PairOk = b.Practice or pairAllows(pa, pb)
+	-- lobby-shop 16.12 / 16.13: the trophies each side holds at the start (payDuel pays the smaller prize for beating a
+	-- low-trophy player); nil when a record cannot be read (review fix 5: an unknown total is never treated as 0)
+	b.TrophiesAtStart = { [pa.UserId] = knownTrophies(pa), [pb.UserId] = knownTrophies(pb) }
 	for _, p in ipairs({ pa, pb }) do
 		stopWatching(p, "Joined")
 		removeFromQueue(p, true)

@@ -85,7 +85,9 @@
 --      happen at the Storm Altar"; the client's FromAltar is never read), not in a match, the profile loaded ("Your data is still loading"), the Secret
 --      Roulette's pity read (DataService.GetPity; provisional or no answer -> "Your data is still loading"), a
 --      gem-priced spin only once DataService.GemsSettled (the server-hop settle hold, same text), GemService.Quote (the
---      PolicyService lock, unchanged), the balance against Price = UnitPrice x spins (computed once, both currencies);
+--      PolicyService lock, unchanged), a token-paid spin only for a PolicyService-"Allowed" account (16.12:
+--      GemService.TokenSpinLock; "Token spins are not available on your account", or the checking text while unknown),
+--      the balance against Price = UnitPrice x spins (computed once, both currencies);
 --   2. the pulls, from RNG.Roll in order (roll(id, RNG.Roll): PetCatalog.RollPet, or the quote's GemService.RollPet
 --      for the Secret Roulette; the pity's forced pull is roll(id, RNG.Roll, { ForceRarity = "Secret" }), Pity = true,
 --      and must come back a Secret). A pull's rarity is its rolled pet's and never changes. A pet the player cannot hold
@@ -1172,6 +1174,26 @@ local function gemQuote(player, ctx)
 	return true
 end
 
+-- The token part of step 1 (lobby-shop 16.12, the owner's pick A): GemService.TokenSpinLock, nil only for a
+-- PolicyService-"Allowed" account. No GemService, a missing function, an error or an odd answer is unknown: refused with
+-- the checking text (fails closed, like StoreService's token lock). -> nil | reason
+local function tokenSpinLock(player)
+	local checking = "Checking your account, try again in a moment"
+	local gems = getGemService()
+	if not gems or type(gems.TokenSpinLock) ~= "function" then
+		return checking
+	end
+	local ok, reason = pcall(gems.TokenSpinLock, player)
+	if not ok then
+		warn("[PetService] GemService.TokenSpinLock errored: " .. tostring(reason))
+		return checking
+	end
+	if reason == nil or type(reason) == "string" then
+		return reason
+	end
+	return checking
+end
+
 -- The tokens a full-stack pull pays instead of its pet (lobby-shop review round 1, the payback rule): the rarity's
 -- Config.Index.Rewards Tokens, at most floor(the roulette's token Price x Config.Eggs.SubstituteShare (0.5)) for a token
 -- roulette, whichever currency paid, so a pull never pays back its own price and full stacks are never a token source (pets
@@ -1270,6 +1292,11 @@ function PetService.BuyRoulette(player, rouletteId, currency, spins)
 		local okQuote, reason = gemQuote(player, ctx)
 		if not okQuote then
 			return false, reason
+		end
+	else
+		local lock = tokenSpinLock(player) -- 16.12: before the balance, so a restricted account is told why
+		if lock then
+			return false, lock
 		end
 	end
 	ctx.Price = ctx.UnitPrice * spins -- computed once: the balance check and the charge use it
@@ -1523,6 +1550,19 @@ end
 -- Roulette machines in the lobby: one ProximityPrompt each; the walk-up ShopPrompt on the egg row (lobby shop 16.3, 16.17.2)
 ----------------------------------------------------------------------
 
+-- lobby-shop 16.13 review fix 2: a player opening the Shop's Eggs page (a machine or the Egg Guide; the server-side prompt is
+-- the request, already live-player / InMatch / cooldown checked) whose paid-random-items answer is still unknown gets
+-- PolicyService asked again (GemService.Recheck: its own 5 s gap), so the Locked buttons can open. Guarded, never yields.
+local function recheckPolicy(player)
+	local gems = getGemService()
+	if gems and type(gems.Recheck) == "function" then
+		local ok, err = pcall(gems.Recheck, player)
+		if not ok then
+			warn("[PetService] GemService.Recheck errored: " .. tostring(err))
+		end
+	end
+end
+
 local function buildPrompts(lobbyInfo)
 	for _, prompt in ipairs(promptObjects) do
 		if prompt.Parent then
@@ -1567,6 +1607,7 @@ local function buildPrompts(lobbyInfo)
 				if rateLimited(player, "Prompt_" .. rouletteId, PROMPT_COOLDOWN) then
 					return
 				end
+				recheckPolicy(player)
 				fireClient("OpenPanel", player, "Shop", { Tab = "Roulette", RouletteId = rouletteId })
 			end)
 		else
@@ -1601,6 +1642,7 @@ local function buildPrompts(lobbyInfo)
 		if rateLimited(player, "Prompt_Shop", PROMPT_COOLDOWN) then
 			return
 		end
+		recheckPolicy(player)
 		fireClient("OpenPanel", player, "Shop", { Tab = "Eggs" })
 	end)
 end
