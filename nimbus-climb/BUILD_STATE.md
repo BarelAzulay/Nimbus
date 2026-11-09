@@ -206,6 +206,50 @@ Updated: 2026-10-18 (after wave 2). Branch `v3-phase4`. Plan: `ARCHITECTURE_V3.m
   Also a first roll after joining: the cards show their pictures from the strip's first second.
   Open owner question 4 (Claude's pick first): the Shop's Eggs tab domes and odds rows: wire them to the same egg
   pictures in a follow-up, no new upload (pick), or keep them painted.
+- 2026-11-10 (frost-wyrm, branch `frost-wyrm` cut from integration 70fc213, not merged): the owner's answer of 2026-11-02,
+  "Frost Wyrm easier at Starter". One number: Frost Wyrm `HpTier.Starter` 1.30 -> 1.15 (`BattleCatalog.Bosses.frost_wyrm`;
+  Mid / High / Max and every other boss unchanged; no ability, timer or code change).
+  Why it was harder than its HpTier says: the Starter reference team (`SIM.RaidTeams.Starter`: aurora_fox L18 Frost,
+  moonlit_owl L17 Celestial, ember_phoenix L16 Flame) carries a Flame pet, and Flame beats Frost (x1.5 dealt, x0.75
+  taken). 1.30 was fitted on that counter: with the wheel off (the boss made Celestial for the test) the same 3 teams win
+  8 %, not 42 %. A team with no Flame pet, like the mid-Starter S5 team (aurora_fox L12 Frost, storm_tabby L14 Storm,
+  frostling_penguin L12 Frost: neutral both ways), met the highest Starter HP of the four bosses, with the hardest hits
+  (Ice Spit 0.06 / 2.2 s is +31 % over Storm Titan's Zap) and the widest circle lethal (r 10, the others' 9). The S5 groups wipe in the
+  enrage with 5-9 % of the boss left. Levers tried on the same seeds (ref = 3 reference teams, 12 seeds; S5 = 8 S5 teams,
+  8 seeds): Freeze off: ref 50 %, S5 0 % (8 % left); lethal r 10 -> 9: ref 58 %, S5 0 %; Ice Spit 0.06 -> 0.045: ref
+  67 %, S5 0 %; all hits at Storm Titan's size: ref 67 %, S5 25 %; a Starter-only hit factor x0.9 / 0.85 / 0.8 at HP
+  1.30 (48 / 16 seeds): ref 56 / 63 / 48 %, S5 0 / 6 / 25 %, with S5 fights to 309-330 s (one reached the 330 s
+  limit). Every damage lever lifts the reference team (which already counters the boss) more than S5, and lengthens
+  fights; HP barely moves the reference team and shortens fights, so HP is the lever, and the only per-boss, per-tier one.
+  HP sweep, 48 seeds each (ref 3 teams / 8 S5 teams, win and average length): 1.30 38 % 212 s / 0 % 278 s (9.4 % left);
+  1.25 44 % / 0 % (16 seeds); 1.22 63 % / 0 % (16); 1.20 46 % 196 s / 4 % 266 s; 1.18 52 % / 0 % (16); 1.15 44 % 191 s /
+  8 % 258 s (5.2 % left); 1.12 54 % 183 s / 13 % 253 s; 1.10 65 % / 19 % (16). 1.15 is the reference's "about 40 %" and
+  the neighbours' range; 1.12 is past it.
+  Starter, 48 seeds a cell, the same seeds before and after (3 ref teams / 3 S5 teams / 8 S5 teams: win, average s, max s):
+
+  | Boss | HpTier.Starter | 3 ref teams | 3 S5 teams | 8 S5 teams |
+  |---|---|---|---|---|
+  | Storm Titan (unchanged) | 1.23 | 29 %, 239 s | 0 %, 244 s | 23 %, 265 s (max 304) |
+  | Lava Golem (unchanged; Flame beats S5's two Frost pets) | 1.16 | 35 %, 226 s | 0 %, 216 s | 0 %, 288 s (max 313) |
+  | Shadow Hydra (unchanged) | 1.27 | 48 %, 233 s | 0 %, 249 s | 100 %, 260 s (max 323) |
+  | Frost Wyrm before | 1.30 | 38 %, 212 s | 0 %, 229 s | 0 %, 278 s (max 305) |
+  | Frost Wyrm after | 1.15 | 44 %, 191 s | 0 %, 214 s | 8 % (4 of 48, won in 232 s), 258 s (max 298) |
+
+  `SIM_BATTLE=full`, before (70fc213) and after: 67 of 67 targets both. The only lines that moved are Frost Wyrm
+  Starter's (solo 0 % 122 -> 99 s; 3 teams 42 %, won 198 -> 189 s, all 210 -> 189 s; 8 teams 100 %, 225 -> 202 s;
+  bottom solo 0 %) and the move section's Frost Wyrm S5 8-team stand / wander pair (277.8 / 248.6 s, x0.90 -> 228.0 /
+  256.3 s, x1.12, same outcome, inside its 15 %). Bands after: solo worst 8 %, average 2.0 %; 3 teams 25-50 %; 8 teams
+  worst 100 %; group fights 120-238 s, won 120-232 s; 0 timeouts, longest single fight 281 s; trained 8-team raids 4 of
+  4. Gemini could not be asked (API 402); no design call beyond the owner's answer.
+  Tests (targeted, one run at a time; the whole suite and client_replay NOT run: low memory, another builder):
+  `smoke.py --quick --only` raid_tiers 120 / 0, raid_lethal 114 / 0, raid_rewards 152 / 0 (64 warnings, the mock's "no
+  asset store"), p5battle_balance 78 / 0, bug2bat_raid_balance 86 / 0, evo_boss_twists 82 / 0, evo_el_boss 79 / 0,
+  p3events_bosses 194 / 0, p3events_raid 174 / 0, p3bs_raid 169 / 0, p5svc_raid 141 / 0, p3fixsrv_raid 145 / 0,
+  raid_flow_two_tiers 145 / 0, raid_flow_new 144 / 0, raid_svc_floor 144 / 0, the p3flow chain (reset, arrive, solo,
+  duels, raid, rejoin; p3flow_raid alone only skips: it needs its earlier chapters) 271 / 0; `node tools/check.mjs` 0
+  errors (the 5 old many-locals warnings). For the owner: a no-Flame mid-Starter group of 8 now wins now and then (about
+  1 in 12) instead of never; Storm Titan gives the same group about 1 in 4. Going further needs a damage change, which
+  also makes the reference team win more than the band allows.
 - 2026-10-28 (player ruling, wave 5 dungeon camera): the Camera shake setting OFF turns off ONLY the hit shakes; the dungeon entrance rush, the room walk-in shot and the FOV punch on big attacks always play (short, skippable). The rush is skipped when the camera is > 60 studs from the gate.
 - Evolve button; 2nd evolution only Epic+; level cap 100 for all pets (XP curve keeps rising).
 - Presses become food plants, Collector = Coin Magnet, Kitchen = Food Machine, Gym = Training Place.

@@ -10,6 +10,7 @@
 -- the dungeon ladder (floor 1 for any single level-1 pet, S10 >= floor 10). Change a number -> re-run the sim; the
 -- smoke scenarios (tools/smoke_p5_battlecore.lua) check the basics. 2026-11-01 (attack effects spec, real reach): raids re-tuned on the
 -- merged tree in BossHp's HpTier (Storm Titan High 0.90, Shadow Hydra Mid 0.96); the fight tiers replaced that build's HpPerPlayer tune.
+-- 2026-11-10: Frost Wyrm Starter HpTier 1.30 -> 1.15 (the owner's "easier at Starter"; numbers next to it).
 --
 -- Stat sources: BattleStatsOf(subject, level, tier, stage), the battle-only path (2026-10-31: level beats rarity), scales
 -- Power / Health by BattleStats.RarityScale, BattleLevelFactor(level, stage) and tier. PetCatalog.GetStats stays the garden's
@@ -1880,7 +1881,7 @@ BattleCatalog.Bosses = {
 		Element = "Frost",
 		Blurb = "A serpent of living ice. Flame pets melt its armour.",
 		HpFactor = 1,
-		HpTier = { Starter = 1.30, Mid = 1.27, High = 0.68, Max = 0.66 },
+		HpTier = { Starter = 1.15, Mid = 1.27, High = 0.68, Max = 0.66 }, -- Starter 1.30 -> 1.15 (the owner's ask, 2026-11-02): 1.30 was fitted on a reference team whose Ember Phoenix is Flame (x1.5 on Frost; with the wheel off it wins 8%, not 42%), so a team with no Flame pet met the hardest Starter boss: eight mid-Starter S5 teams won 0 of 48 (9% HP left), 3 reference teams 38% (48 seeds); at 1.15 eight S5 teams win 8% (4 of 48) in 258 s, 3 reference teams 44% in 191 s (1.12: 54% / 13%, past the neighbours' 29-48%); freeze, lethal radius and hit cuts moved S5 less and the hit cuts lengthened fights (one to the 330 s limit)
 		Radius = 7,
 		Scale = 1,
 		Basic = { Name = "Ice Spit", Interval = 2.2, Damage = 0.06, Range = 20 }, -- spec 2026-11-01: 0.045 -> 0.06, breath 0.3 -> 0.28, blizzard 0.15 -> 0.27 (Flame teams outlived the band: 3 teams 300 s, 8 teams 326 s; a flatter pair so Max is not one-shot)
