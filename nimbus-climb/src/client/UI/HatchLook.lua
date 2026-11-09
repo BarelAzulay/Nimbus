@@ -181,14 +181,16 @@ local K = {
 	POP = { Peak = 1.15, Rest = 1.09, Up = 0.1, Down = 0.15, UpFast = 0.05, DownFast = 0.07 },
 	SWEEP = { Normal = 0.3, Fast = 0.12, Band = 0.45, Rotation = 18 },
 	BOUNCE = 1.08,
-	-- (Task 2) the plinth, in shares of its box (1.1 x / 0.24 x the egg, 16.4): the Top disc 0.667 of the box tall,
-	-- centred on the box's top edge (the egg's foot); the Side the Top's own shape moved Band of the box down (review
-	-- round 1: the disc's thickness, a thin band under the Top that thins out round its ends, shaded darker downward; the
-	-- third of the box it showed before read as a second bar); the halo centred 16 / 90 of the box under the edge, 1.6 x
-	-- the box wide and 1.9 x the Top tall; the inner ring 0.76 x 0.7 of the Top
+	-- (Task 2) the plinth, in shares of its box (1.1 x / 0.24 x the egg, 16.4): the Top disc Top of the box tall, centred
+	-- on the box's top edge (the egg's foot); the Side the Top's own shape moved Band of the box down (review round 1: the
+	-- disc's thickness, a thin band under the Top that thins out round its ends, shaded darker downward; the third of the
+	-- box it showed before read as a second bar); the halo centred GlowY under the edge (the mock's 16 px under a 60 px
+	-- disc: 0.267 of the Top), 1.6 x the box wide and 1.9 x the Top tall. (review round 2) The Top is 0.92 of the box, so
+	-- the disc is 5 : 1 (1.1 / (0.24 x 0.92)), the mock's platA (rx 150 / ry 30): at 0.667 it was 7 : 1, a long straight
+	-- run that read as a bar; and no inner ring (a capsule inside a capsule read as a second bar: no ellipse primitive
+	-- without an image, so the frame fallback keeps one disc)
 	PLINTH = {
-		Top = 2 / 3, Band = 0.14, GlowY = 16 / 90, GlowW = 1.6, GlowH = 1.9 * 2 / 3, RingW = 0.76, RingH = 0.7, RingA = 0.45, Rim = 3, RimPhone = 2,
-		Ring = 2, RingPhone = 1.5,
+		Top = 0.92, Band = 0.14, GlowY = 0.92 * 16 / 60, GlowW = 1.6, GlowH = 1.9 * 0.92, Rim = 3, RimPhone = 2,
 		TopA = rgb(52, 72, 154), TopB = rgb(20, 29, 82), SideA = rgb(10, 17, 52), SideB = rgb(38, 56, 132),
 		-- the colour the plinth's rim / ring / glow are shaded from before the rarity is shown on it (a soft periwinkle
 		-- of the stage's navy: no rarity, no tease; Common's own grey reads as a white outline here)
@@ -825,11 +827,6 @@ function HatchLook.Plinth(box, rarity, phone, opts)
 	self.Rim = stroke(self.Top, HatchLook.Shade(P.Neutral, 0.25), phone and P.RimPhone or P.Rim, 0)
 	self.Rim.Name = "Rim"
 	HatchLook.PlinthLip(box, false)
-	if opts.Ring ~= false then
-		self.Ring = frame(box, "Ring", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0), Size = UDim2.fromScale(P.RingW, P.RingH * P.Top), ZIndex = z + 2 })
-		corner(self.Ring, 0.5)
-		self.RingStroke = stroke(self.Ring, HatchLook.Shade(P.Neutral, 0.4), phone and P.RingPhone or P.Ring, P.RingA)
-	end
 	return self
 end
 
@@ -849,22 +846,16 @@ function Plinth:SetAlpha(a)
 	self.Top.BackgroundTransparency = 1 - a
 	self.Side.BackgroundTransparency = 1 - a
 	self.Rim.Transparency = 1 - a
-	if self.RingStroke then
-		self.RingStroke.Transparency = 1 - a * (1 - K.PLINTH.RingA)
-	end
 	self.Glow:SetAlpha(a)
 end
 
 function Plinth:paint(c, seconds)
 	local out = {}
-	for _, p in ipairs({ { self.Rim, HatchLook.Shade(c, 0.25) }, { self.RingStroke, HatchLook.Shade(c, 0.4) } }) do
-		if p[1] then
-			if seconds and seconds > 0 then
-				out[#out + 1] = tween(p[1], seconds, { Color = p[2] }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, self.Track)
-			else
-				p[1].Color = p[2]
-			end
-		end
+	local rim = HatchLook.Shade(c, 0.25)
+	if seconds and seconds > 0 then
+		out[#out + 1] = tween(self.Rim, seconds, { Color = rim }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, self.Track)
+	else
+		self.Rim.Color = rim
 	end
 	self.Glow:SetColor(HatchLook.Shade(c, 0.2), seconds, self.Track, out)
 	return out

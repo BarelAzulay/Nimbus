@@ -2047,12 +2047,13 @@ function R.rise(roll, quick)
 			e.Plinth:SetAlpha(0)
 			e.Ring = HatchFx.CloudRing(hero, H.color(pull.Rarity), { ZIndex = 3, Track = S.Tweens })
 			e.Ring.Frame.Name = "CloudRing" .. j
-			-- the hero egg: Full with its rarity VFX (spec 16.5 "Where the VFX show"); its drifting sparkles come from the pool
+			-- the hero egg: Full with its rarity VFX (spec 16.5 "Where the VFX show"). (review round 2) No drifting sparkles
+			-- from the pool round it: the pick's clutter cap (ROLL_PICK.md "sparkles only at the burst"; 16.15 adds the shakes'
+			-- small pops) overrides 16.5's ambient sparks on the stage (the Shop's Secret hero keeps them)
 			e.Egg = EggArt.New(hero, pull.Rarity, cr.E, { Name = "Egg" .. j, ZIndex = 6, Vfx = true })
 			e.Egg.AnchorPoint = Vector2.new(0.5, 1)
 			e.Egg:SetAttribute("State", "Rise")
 			e.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = e.Egg })
-			roll.Pool:Ambient(e.Egg, pull.Rarity)
 			B.egg3d(roll, e, pull.Rarity)
 		end
 		roll.Eggs[j] = e
@@ -2118,6 +2119,11 @@ function R.rise(roll, quick)
 			st.Streaks, st.StreakBars = nil, nil
 		end
 	end
+	-- (review round 2) the strips slide away behind the bottom bar's top line (R.riseStep shrinks Strips to end there):
+	-- they never cross the Skip / Fast hatch chips on their way off the screen
+	if roll.UI.Strips then
+		roll.UI.Strips.ClipsDescendants = true
+	end
 	roll.Rising = true -- (R.advance steps it from this frame)
 	H.sfx(K.SOUND.Rise, H.scaleFor(roll.Pulls[roll.Best].Rarity))
 end
@@ -2156,9 +2162,13 @@ function R.riseStep(roll, t)
 		end
 	end
 	if roll.UI.Strips and S.Lay then
-		-- the strips slide away: down and off the screen, slow then fast (the egg has left them by then)
+		-- the strips slide away: down, slow then fast (the egg has left them by then); (review round 2) Strips ends at the
+		-- bottom bar's top line and clips, so they go behind it (the mock's strip leaves before the chips' row)
 		local top = S.Lay.Strip and S.Lay.Strip.Y and S.Lay.Strip.Y[1] or 0
-		roll.UI.Strips.Position = UDim2.fromOffset(0, (S.Lay.H - top) * u * u)
+		local dy = (S.Lay.H - top) * u * u
+		local floor = S.Lay.BarRoll and S.Lay.BarRoll.Y or S.Lay.H
+		roll.UI.Strips.Position = UDim2.fromOffset(0, dy)
+		roll.UI.Strips.Size = UDim2.new(1, 0, 0, math.max(0, floor - dy))
 	end
 	if u >= 1 then
 		roll.Rising = false
@@ -2238,7 +2248,10 @@ function R.crack(roll, j)
 	e.Step, e.Shook = 1, 0
 	HatchFx.Cracks(e.Egg, rarity, 1)
 	HatchFx.Leaks(e.Egg, rarity, 1)
-	H.tween(e.Pop, roll.T.Crack * 0.9, { Scale = K.PUSH }, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+	-- (review round 2) High only: the pick's card A ("blur and push-in off on Low"), spec 16.15 "Fallbacks"
+	if H.high() then
+		H.tween(e.Pop, roll.T.Crack * 0.9, { Scale = K.PUSH }, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+	end
 	if e.V3 then
 		-- the turn eases to a stop as the first crack glows (the cracks are drawn on the screen: the egg holds under them)
 		e.V3:Settle(roll.T.Crack * K.EGG3D.Settle)
@@ -3038,6 +3051,12 @@ function H.relayout()
 	end
 	if roll.UI.Strips then
 		roll.UI.Strips.Position = UDim2.fromOffset(0, 0)
+		roll.UI.Strips.Size = UDim2.fromScale(1, 1)
+	end
+	-- (review round 2) once the eggs have lifted out (the rise began) the strips are only leaving: a resize drops them now
+	-- instead of rebuilding their cards (H.applyStrips) and snapping them back on the screen until the rise's end
+	if roll.HeroBuilt and next(roll.Strips) ~= nil then
+		R.dropStrips(roll)
 	end
 	for _, c in pairs(roll.Cols) do
 		c.Pop.Scale = 1
