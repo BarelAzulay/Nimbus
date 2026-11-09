@@ -41,6 +41,7 @@
 --                                             win:Bounce(seconds) / win:Rest()   a 1.08 -> 1 Back Out pop / at rest
 --                                             win:SetDim(k)              the dims at k (0 = clear .. 1 = dark), per frame
 --                                             win:DropGlow()             the soft glow goes (the rise: the winner lifted out)
+--                                             win:DropDims()             the dims go (an x3 strip at the rise: the budget)
 --                                             win:Destroy()
 --   HatchLook.TrackFades(track, color, corner) -> FadeL, FadeR   the strip's ends fading from `color` to clear over the
 --                                             cards (EggStage places them over the card band)
@@ -56,6 +57,40 @@
 --                                             off, then forgets them. A remembered gui someone switches on meanwhile is
 --                                             forgotten at once (theirs again: never fought, never switched on by us later)
 --   HatchLook.HiddenCount() -> number         how many guis are remembered (tests)
+--   (Task 2: the opening)
+--   HatchLook.Plinth(box, rarity, phone, opts) -> plinth   the flat lit disc the hero egg, its halves and the pet stand on,
+--                                             drawn in the existing "Pedestal<j>" layout box (anchored at its top centre:
+--                                             the egg's foot): "Top" (a disc 0.667 of the box tall, centred ON the box's
+--                                             top edge so the egg stands in its middle; navy gradient 52,72,154 ->
+--                                             20,29,82, its UIStroke "Rim" 3 px / phone 2), "Side" (the rim's thickness
+--                                             under it: the lower third shows, a horizontal gradient 10,17,52 / 38,56,132
+--                                             / 10,17,52), "Ring" (an inner ring on the Top, 0.76 x 0.7 of it, its stroke
+--                                             at 0.45), "Glow1..2" (HatchLook.Glow: a soft halo round the disc) and a
+--                                             UIScale "Pop" on the box. No drum, no puffs, no bars (a5a38ac). Neutral
+--                                             (Shade(Metrics.PLINTH.Neutral, .25) rim, .4 ring, .2 glow) until Tint.
+--                                             opts = { Track (the tween set), Glows (1..2, default 2), Ring (false = none) }
+--                                             plinth:SetAlpha(a)        0 = hidden .. 1 = shown (the rise's fade, per frame)
+--                                             plinth:Tint(color, s)     rim Shade(c, .25), ring Shade(c, .4), glow Shade(c, .2)
+--                                                                       in s seconds (0: at once); remembered for Rest
+--                                             plinth:Reset()            neutral again;  plinth:Rest()  Pop 1, shown, colour
+--                                                                       snapped (a resize cancelled the tweens)
+--                                             plinth:FitGlow(share)     the halo at most share x the box wide (the screen's
+--                                                                       edge: a portrait x3's outer columns)
+--   HatchLook.PlinthLip(box, lip)             the Top's box: the disc centred on the box's top edge, or (lip = true: a
+--                                             phone's reveal) the whole box, the 12 px lip (EggStage's H.pedLook hides
+--                                             the other parts)
+--   HatchLook.IMAGES                          the three optional images, TextureIds keys: Rays "hatch_rays", Glow
+--                                             "hatch_glow", Sparkle "hatch_sparkle" (none uploaded: their frame
+--                                             fallbacks draw: HatchFx's ray wedges and spark squares, stacked round glows)
+--   HatchLook.Image(key) -> "rbxassetid://<id>" | nil   the key's shared/TextureIds id when it is a number > 0
+--                                             (HatchLook._Textures: a test table in place of the module; false = the module)
+--   HatchLook.Glow(parent, color, opts) -> glow   a soft glow: with a hatch_glow id one ImageLabel named opts.Name
+--                                             ("Glow") tinted `color`; without, opts.Count (2) crossed round Frames
+--                                             "<Name>1..n", each with a UIGradient fading it out (a wide one to its sides,
+--                                             a tall one to its top and bottom: no hard edge). opts = { Name, Count, Z }
+--                                             glow:Place(pos, size)     the glow's centre and box (UDim2: scale or offset)
+--                                             glow:SetAlpha(a)          0 = hidden .. 1 = shown
+--                                             glow:SetColor(c, s, track, out)   in s seconds (0: at once)
 --
 -- Plain Lua 5.1-compatible syntax only. Text goes through Theme roles.
 
@@ -92,6 +127,28 @@ local K = {
 	POP = { Peak = 1.15, Rest = 1.09, Up = 0.1, Down = 0.15, UpFast = 0.05, DownFast = 0.07 },
 	SWEEP = { Normal = 0.3, Fast = 0.12, Band = 0.45, Rotation = 18 },
 	BOUNCE = 1.08,
+	-- (Task 2) the plinth, in shares of its box (1.1 x / 0.24 x the egg, 16.4): the Top disc 0.667 of the box tall,
+	-- centred on the box's top edge (the egg's foot); the Side the same height from that edge down (its lower third
+	-- shows under the Top); the halo centred 16 / 90 of the box under the edge, 1.6 x the box wide and 1.9 x the Top
+	-- tall; the inner ring 0.76 x 0.7 of the Top
+	PLINTH = {
+		Top = 2 / 3, GlowY = 16 / 90, GlowW = 1.6, GlowH = 1.9 * 2 / 3, RingW = 0.76, RingH = 0.7, RingA = 0.45, Rim = 3, RimPhone = 2,
+		Ring = 2, RingPhone = 1.5,
+		TopA = rgb(52, 72, 154), TopB = rgb(20, 29, 82), SideA = rgb(10, 17, 52), SideB = rgb(38, 56, 132),
+		-- the colour the plinth's rim / ring / glow are shaded from before the rarity is shown on it (a soft periwinkle
+		-- of the stage's navy: no rarity, no tease; Common's own grey reads as a white outline here)
+		Neutral = rgb(110, 132, 200),
+	},
+	-- the glow's frame fallback (no hatch_glow id): crossed soft discs, a wide one fading to its sides and a tall one
+	-- fading to its top and bottom, so the halo round the plinth falls off every way (the mock's radial gradient) with no
+	-- hard edge; shares of the glow's box, transparency keypoints across each disc. The image's own transparency
+	GLOW = {
+		Discs = {
+			{ W = 1, H = 0.79, Rotation = 0, Fade = { { 0, 1 }, { 0.18, 0.9 }, { 0.5, 0.5 }, { 0.82, 0.9 }, { 1, 1 } } },
+			{ W = 0.72, H = 1, Rotation = 90, Fade = { { 0, 1 }, { 0.25, 0.84 }, { 0.5, 0.55 }, { 0.75, 0.84 }, { 1, 1 } } },
+		},
+		ImageA = 0.2,
+	},
 }
 HatchLook.Metrics = K
 
@@ -404,11 +461,19 @@ function Win:DropGlow()
 	end
 end
 
+-- (Task 2) the dims go (an x3 strip sliding away at the rise: the budget)
+function Win:DropDims()
+	for _, d in ipairs(self.Dims) do
+		d:Destroy()
+	end
+	self.Dims = {}
+end
+
 function Win:Place(x, y, w, h, trackW, trackH)
 	local root = self.Root
 	root.Position = UDim2.fromOffset(x + w / 2, y + h / 2)
 	root.Size = UDim2.fromOffset(math.max(0, w), math.max(0, h))
-	if trackW then
+	if trackW and self.Dims[2] then
 		local left, right = self.Dims[1], self.Dims[2]
 		left.Position = UDim2.fromOffset(0, 0)
 		left.Size = UDim2.fromOffset(math.max(0, x), trackH or h)
@@ -517,6 +582,206 @@ function HatchLook.TrackFades(track, color, cr)
 		out[i] = f
 	end
 	return out[1], out[2]
+end
+
+----------------------------------------------------------------------
+-- the optional images (spec 16.15 "Fallbacks": no id today, the frames draw)
+----------------------------------------------------------------------
+HatchLook.IMAGES = { Rays = "hatch_rays", Glow = "hatch_glow", Sparkle = "hatch_sparkle" }
+HatchLook._Textures = false -- (tests: a table of key -> id in place of shared/TextureIds; false = the module)
+
+local TextureIds = nil
+local function textures()
+	if type(HatchLook._Textures) == "table" then
+		return HatchLook._Textures
+	end
+	if TextureIds == nil then
+		TextureIds = false
+		local module = Shared:FindFirstChild("TextureIds")
+		if module and module:IsA("ModuleScript") then
+			local ok, ids = pcall(require, module)
+			if ok and type(ids) == "table" then
+				TextureIds = ids
+			end
+		end
+	end
+	return TextureIds or {}
+end
+
+function HatchLook.Image(key)
+	local id = textures()[key]
+	if type(id) == "number" and id > 0 then
+		return "rbxassetid://" .. tostring(id)
+	end
+	return nil
+end
+
+----------------------------------------------------------------------
+-- a soft glow: one ImageLabel with an id, else stacked round frames
+----------------------------------------------------------------------
+local Glow = {}
+Glow.__index = Glow
+
+function HatchLook.Glow(parent, color, opts)
+	opts = opts or {}
+	local self = setmetatable({ Parts = {}, Alphas = {}, Shares = {}, Alpha = 1 }, Glow)
+	local name = opts.Name or "Glow"
+	local z = opts.Z or parent.ZIndex
+	local image = HatchLook.Image(HatchLook.IMAGES.Glow)
+	if image then
+		self.Prop, self.ColorProp = "ImageTransparency", "ImageColor3"
+		self.Parts[1] = Util.Create("ImageLabel", {
+			Name = name, Image = image, ImageColor3 = color, ImageTransparency = K.GLOW.ImageA, BackgroundTransparency = 1, BorderSizePixel = 0,
+			AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = z, Parent = parent,
+		})
+		self.Alphas[1], self.Shares[1] = K.GLOW.ImageA, { W = 1, H = 1 }
+	else
+		self.Prop, self.ColorProp = "BackgroundTransparency", "BackgroundColor3"
+		local discs = K.GLOW.Discs
+		for i = 1, math.max(1, math.min(#discs, opts.Count or #discs)) do
+			local d = discs[i]
+			local f = frame(parent, name .. i, { AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = color, BackgroundTransparency = 0, ZIndex = z })
+			corner(f, 0.5)
+			local keys = {}
+			for k, kp in ipairs(d.Fade) do
+				keys[k] = NumberSequenceKeypoint.new(kp[1], kp[2])
+			end
+			Util.Create("UIGradient", { Rotation = d.Rotation, Transparency = NumberSequence.new(keys), Parent = f })
+			self.Parts[i], self.Alphas[i], self.Shares[i] = f, 0, d
+		end
+	end
+	return self
+end
+
+function Glow:Place(pos, size)
+	for i, p in ipairs(self.Parts) do
+		local w, h = self.Shares[i].W, self.Shares[i].H
+		p.Position = pos
+		p.Size = UDim2.new(size.X.Scale * w, size.X.Offset * w, size.Y.Scale * h, size.Y.Offset * h)
+	end
+end
+
+function Glow:SetAlpha(a)
+	self.Alpha = a
+	for i, p in ipairs(self.Parts) do
+		p[self.Prop] = 1 - a * (1 - self.Alphas[i])
+	end
+end
+
+function Glow:SetColor(c, seconds, track, out)
+	for _, p in ipairs(self.Parts) do
+		if seconds and seconds > 0 then
+			local tw = tween(p, seconds, { [self.ColorProp] = c }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, track)
+			if tw and out then
+				out[#out + 1] = tw
+			end
+		else
+			p[self.ColorProp] = c
+		end
+	end
+end
+
+----------------------------------------------------------------------
+-- the plinth (the Pedestal<j> box's look: a flat lit disc, never the old drum)
+----------------------------------------------------------------------
+local Plinth = {}
+Plinth.__index = Plinth
+
+function HatchLook.PlinthLip(box, lip)
+	local top = box and box:FindFirstChild("Top")
+	if not top then
+		return
+	end
+	if lip then
+		top.Position = UDim2.fromScale(0, 0)
+		top.Size = UDim2.fromScale(1, 1)
+	else
+		top.Position = UDim2.fromScale(0, -K.PLINTH.Top / 2)
+		top.Size = UDim2.fromScale(1, K.PLINTH.Top)
+	end
+end
+
+function HatchLook.Plinth(box, rarity, phone, opts)
+	opts = opts or {}
+	local P = K.PLINTH
+	local self = setmetatable({ Box = box, Rarity = rarity, Track = opts.Track, Alpha = 1, Color = nil }, Plinth)
+	local z = box.ZIndex
+	box.AnchorPoint = Vector2.new(0.5, 0) -- (the egg's foot: the pop grows round the disc's middle)
+	box.BackgroundTransparency = 1
+	self.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = box })
+	self.Glow = HatchLook.Glow(box, HatchLook.Shade(P.Neutral, 0.2), { Name = "Glow", Count = opts.Glows, Z = z - 1 })
+	self.Glow:Place(UDim2.fromScale(0.5, P.GlowY), UDim2.fromScale(P.GlowW, P.GlowH))
+	self.GlowW = P.GlowW
+	self.Side = frame(box, "Side", { Size = UDim2.fromScale(1, P.Top), BackgroundColor3 = K.WHITE, BackgroundTransparency = 0, ZIndex = z })
+	corner(self.Side, 0.5)
+	Util.Create("UIGradient", {
+		Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, P.SideA), ColorSequenceKeypoint.new(0.5, P.SideB), ColorSequenceKeypoint.new(1, P.SideA) }), Parent = self.Side,
+	})
+	self.Top = frame(box, "Top", { BackgroundColor3 = K.WHITE, BackgroundTransparency = 0, ZIndex = z + 1 })
+	corner(self.Top, 0.5)
+	Util.Create("UIGradient", { Rotation = 90, Color = ColorSequence.new(P.TopA, P.TopB), Parent = self.Top })
+	self.Rim = stroke(self.Top, HatchLook.Shade(P.Neutral, 0.25), phone and P.RimPhone or P.Rim, 0)
+	self.Rim.Name = "Rim"
+	HatchLook.PlinthLip(box, false)
+	if opts.Ring ~= false then
+		self.Ring = frame(box, "Ring", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0), Size = UDim2.fromScale(P.RingW, P.RingH * P.Top), ZIndex = z + 2 })
+		corner(self.Ring, 0.5)
+		self.RingStroke = stroke(self.Ring, HatchLook.Shade(P.Neutral, 0.4), phone and P.RingPhone or P.Ring, P.RingA)
+	end
+	return self
+end
+
+-- the halo at most `share` x the box wide (the room to the screen's nearer edge, both sides)
+function Plinth:FitGlow(share)
+	local P = K.PLINTH
+	local w = math.min(P.GlowW, math.max(1, share or P.GlowW))
+	if self.GlowW ~= w then
+		self.GlowW = w
+		self.Glow:Place(UDim2.fromScale(0.5, P.GlowY), UDim2.fromScale(w, P.GlowH))
+	end
+end
+
+function Plinth:SetAlpha(a)
+	a = math.max(0, math.min(1, a))
+	self.Alpha = a
+	self.Top.BackgroundTransparency = 1 - a
+	self.Side.BackgroundTransparency = 1 - a
+	self.Rim.Transparency = 1 - a
+	if self.RingStroke then
+		self.RingStroke.Transparency = 1 - a * (1 - K.PLINTH.RingA)
+	end
+	self.Glow:SetAlpha(a)
+end
+
+function Plinth:paint(c, seconds)
+	local out = {}
+	for _, p in ipairs({ { self.Rim, HatchLook.Shade(c, 0.25) }, { self.RingStroke, HatchLook.Shade(c, 0.4) } }) do
+		if p[1] then
+			if seconds and seconds > 0 then
+				out[#out + 1] = tween(p[1], seconds, { Color = p[2] }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, self.Track)
+			else
+				p[1].Color = p[2]
+			end
+		end
+	end
+	self.Glow:SetColor(HatchLook.Shade(c, 0.2), seconds, self.Track, out)
+	return out
+end
+
+function Plinth:Tint(color, seconds)
+	self.Color = color or HatchLook.RarityColor(self.Rarity)
+	return self:paint(self.Color, seconds)
+end
+
+function Plinth:Reset()
+	self.Color = nil
+	self:paint(K.PLINTH.Neutral, 0)
+end
+
+function Plinth:Rest()
+	self.Pop.Scale = 1
+	self:SetAlpha(1)
+	self:paint(self.Color or K.PLINTH.Neutral, 0)
 end
 
 ----------------------------------------------------------------------

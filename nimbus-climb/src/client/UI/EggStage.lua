@@ -15,6 +15,12 @@
 -- settles as it cracks, rocks in 3D with the shakes and, when its two halves' keys are usable too, splits into them at
 -- the burst (the frame moves into Halves1, attribute Split3D) and they fly apart; else today's 2D halves. No id, Low
 -- graphics, a phone with a 3D egg already showing or a failed Assemble: today's 2D egg exactly. x3 keeps 2D eggs.
+-- (roll-look, spec 16.15 "Roll look A+B") the dressed roll and opening (client/UI/HatchLook builds the pieces): the HUD
+-- hides, glossy strip cards under a gold window with B's colour tell, an overshoot and a land pop (Task 1); the opening
+-- (Task 2): every egg rises onto a flat lit plinth in its Pedestal box (HatchLook.Plinth: neutral, popping 0.6 -> 1 and
+-- fading in over the rise), Gemini's tweak from Rare up at the first shake (the plinth, the cloud ring and faint turning
+-- rays take the rarity colour; x3: the rays for the best pull only), the burst's punch (Stage's UIScale "Punch", High
+-- only), the sparks capped at 16 on phones; below Rare the plinth takes its colour at the burst.
 --
 --   EggStage.Init()                        connects the RouletteResult listener (once)
 --   EggStage.Show(result) -> bool          plays a RouletteResult (new shape with Pulls, or the old top-level shape); a
@@ -49,10 +55,11 @@
 --                                          columns); every teardown resets it. An exit before the reveal was fully built
 --                                          (roll.RevealBuilt, set last) toasts the roll's pulls
 --
--- Instances: NimbusHatch (DisplayOrder 25, IgnoreGuiInset, ResetOnSpawn false) > Stage > Dim (the tap-anywhere button),
--- Vignette, (Stars: the Secret backdrop), Content (the area under the top bar, UIScale "Fit") > Title, Strips > Strip1..3
--- > Track (a non-scrolling ScrollingFrame: it clips) > Cell1..12, Streaks (High), Pointer; Hero > Spot, Rays, CloudRing1..3,
--- Backlight1..3, Pedestal1..3, Egg1..3 (> Cracks, Leaks), Halves1..3, CrackWord; Burst > Shock, Sparks (the pool of 64);
+-- Instances: NimbusHatch (DisplayOrder 25, IgnoreGuiInset, ResetOnSpawn false) > Stage (UIScale "Punch") > Dim (the
+-- tap-anywhere button), Vignette, (Stars: the Secret backdrop), Content (the area under the top bar, UIScale "Fit") > Title,
+-- Strips > Strip1..3 > Track (a non-scrolling ScrollingFrame: it clips) > Cell1..12, Streaks (High), Pointer; Hero > Spot,
+-- Rays, CloudRing1..3, Backlight1..3, Pedestal1..3 (> Top, Side, Ring, Glow1..2 or Glow: the plinth), Egg1..3 (> Cracks,
+-- Leaks), Halves1..3, CrackWord; Burst > Shock, Sparks (the pool of 64);
 -- Reveal > Col1..3 > Banner (Word), Aura (Secret), Shell, Pet, Name, New (beside the name; an x3 phone / portrait column
 -- puts it on the pet frame's top-left corner, under an EvolvedRibbon when there is one), Note, EvolvedRibbon; BottomBar > Skip,
 -- FastHatch, SpinAgain, Done; then Stage > Flash. (The Rays live in Hero, not Burst: a GUI frame's children cannot sit
@@ -149,7 +156,7 @@ local K = {
 	SQUASH = 0.05, -- a shake squashes the egg this much (wider and lower, never taller)
 	SHOCK = 900 / 380, -- the shock ring's last diameter, in egg heights (900 px over the 380 px PC egg)
 	RAYS = 2.4, -- the rays' diameter, in egg heights (on the reveal 2.2 pet sizes)
-	RING = 1.3, -- the cloud ring's diameter, in egg heights
+	RING = 1.6, -- the cloud ring's diameter, in egg heights (roll-look: its puffs on a circle round the egg, the mock's ring)
 	SPOT = 520 / 380, -- the spot cone's width, in egg heights
 	SHAKE_SPARKS = 4,
 	SHAKE_SPARK = { Life = { 0.25, 0.4 }, Speed = { 90, 170 }, Px = { 4, 7 } },
@@ -218,12 +225,21 @@ K.LOOK = {
 	},
 	PC = { Card = { Corner = 18, Shadow = 8, Shine = 3, Plate = 30, Notch = 16, Win = 4, WinGlow = 10, Pad = 8 } },
 	PHONE = { Card = { Corner = 12, Shadow = 5, Shine = 2, Plate = 22, Notch = 10, Win = 3, WinGlow = 6, Pad = 6 } },
+	-- (Task 2) Gemini's shake tweak (Rare and up, at the first shake: the plinth, the cloud ring and the rays to the rarity
+	-- colour in Tween s, Fast hatch in Fast s; the rays rest at GroupTransparency Rays); the burst's punch (Stage's UIScale
+	-- to Scale in Up s, back in Down s; squeezed into a Fast hatch's shorter burst); the plinth's pop over the rise (From ->
+	-- 1, Back Out); below Rare the plinth takes its colour at the burst in BurstTint s; the sparks a phone's burst keeps
+	TWEAK = { Tween = 0.25, Fast = 0.1, Rays = 0.75 },
+	PUNCH = { Scale = 1.05, Up = 0.08, Down = 0.25 },
+	PLINTH_IN = { From = 0.6 },
+	BURST_TINT = 0.15,
+	PHONE_SPARKS = 16,
 }
 EggStage.Metrics = K
 
 -- S: the stage. Roll = the roll playing (or nil); Queue = results waiting for DONE; Lay = the layout of this screen
 local S = {
-	Gui = nil, Stage = nil, Content = nil, Fit = nil, Dim = nil, Flash = nil, Vignette = nil,
+	Gui = nil, Stage = nil, Content = nil, Fit = nil, Dim = nil, Flash = nil, Vignette = nil, Punch = nil,
 	Roll = nil, Queue = {}, Lay = nil, Conns = {}, Beat = nil, Bound = false, Inited = false,
 	Pending = false, PendToken = 0, PendFrom = nil, LastFire = -10, LastTap = -10,
 	Warm = {}, Warned = {}, Menu = nil, Sfx = nil, Builder = nil, GQ = nil, Stars = nil, Dimmed = false,
@@ -667,7 +683,7 @@ function H.makeRoll(result)
 	local roll = {
 		Result = result, Pulls = pulls, N = #pulls, Roulette = roulette, Currency = currency, HasStrip = hasStrip, Fast = fast, Best = best,
 		T = EggStage.Timings(fast, #pulls > 1 and 3 or 1), Strips = {}, Eggs = {}, Cols = {}, Views = {}, UI = {}, Phase = "Intro",
-		Sounds = {}, Hi = H.high(),
+		Sounds = {}, Hi = H.high(), Tweaked = {},
 	}
 	roll.Sched = R.schedule(roll)
 	return roll
@@ -967,7 +983,9 @@ function B.gui()
 		old:Destroy()
 	end
 	local gui = Util.Create("ScreenGui", { Name = K.GUI, DisplayOrder = K.ORDER, IgnoreGuiInset = true, ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling })
-	local stage = H.frame(gui, "Stage", { Size = UDim2.fromScale(1, 1) })
+	-- (roll-look) anchored at its centre: the burst's punch (the UIScale "Punch") grows the whole stage round the middle
+	local stage = H.frame(gui, "Stage", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1, 1) })
+	S.Punch = Util.Create("UIScale", { Name = "Punch", Scale = 1, Parent = stage })
 	S.Dim = Util.Create("TextButton", {
 		Name = "Dim", Text = "", AutoButtonColor = false, BorderSizePixel = 0, BackgroundColor3 = K.NAVY, BackgroundTransparency = 1,
 		Size = UDim2.fromScale(1, 1), ZIndex = 1, Parent = stage,
@@ -1316,7 +1334,8 @@ function H.applyHero(roll, lay)
 			e.Egg.Visible = e.State == "Rise" or e.State == "Crack"
 		end
 		if e.Ring then
-			e.Ring:Place(cx, eggY + cr.E / 2, K.RING * cr.E)
+			-- (roll-look) never past the screen's edge (a portrait x3's outer columns)
+			e.Ring:Place(cx, eggY + cr.E / 2, math.min(K.RING * cr.E, 2 * math.min(cx, lay.W - cx)))
 		end
 		if e.Back then
 			local d = 0.96 * cr.E
@@ -1332,20 +1351,28 @@ function H.applyHero(roll, lay)
 			end
 		end
 		if e.Ped then
+			-- (roll-look) the box is anchored at its top centre (the plinth pops round the egg's foot)
+			local pcx, pw
 			if roll.Revealed and lay.Cols[j] then
 				local p = lay.Cols[j].Ped -- (in Content's space: Hero fills Content)
-				H.place(e.Ped, p.X, p.Y, p.W, p.H)
+				pcx, pw = p.X + p.W / 2, p.W
+				H.place(e.Ped, pcx, p.Y, p.W, p.H)
 				H.pedLook(e.Ped, p.H < 20)
 			else
-				H.place(e.Ped, cx - cr.PedW / 2, eggY + cr.E, cr.PedW, cr.PedH)
+				pcx, pw = cx, cr.PedW
+				H.place(e.Ped, cx, eggY + cr.E, cr.PedW, cr.PedH)
 				H.pedLook(e.Ped, false)
+			end
+			if e.Plinth then
+				-- the halo never past the screen's edge (a portrait x3's outer columns)
+				e.Plinth:FitGlow(2 * math.min(pcx, lay.W - pcx) / math.max(1, pw))
 			end
 		end
 	end
 	H.placeWord(roll, lay)
-	-- the rays: round the last egg that burst, or behind the best pet on the reveal
+	-- the rays: round the last egg that burst (or the egg of Gemini's tweak), or behind the best pet on the reveal
 	if roll.Rays then
-		local at = roll.RaysAt
+		local at = roll.RaysAt or roll.TweakRays
 		if roll.Revealed then
 			local g = lay.Cols[roll.Best]
 			if g then
@@ -1368,8 +1395,8 @@ function H.placeWord(roll, lay)
 	end
 end
 
--- the pedestal's look: the cloud-stone drum (Top, Body, the gold Inlay, three cloud puffs), or only its top as the thin
--- lip a phone's reveal pet stands on
+-- the pedestal's look: the flat lit plinth (roll-look: Top, Side, Ring, the glow), or only its Top as the thin lip a
+-- phone's reveal pet stands on
 function H.pedLook(ped, lip)
 	if ped:GetAttribute("Lip") == lip then
 		return
@@ -1380,10 +1407,7 @@ function H.pedLook(ped, lip)
 			c.Visible = not lip
 		end
 	end
-	local top = ped:FindFirstChild("Top")
-	if top then
-		top.Size = lip and UDim2.fromScale(1, 1) or UDim2.fromScale(1, 0.44)
-	end
+	HatchLook.PlinthLip(ped, lip)
 end
 
 function H.applyReveal(roll, lay)
@@ -1737,11 +1761,15 @@ function R.strips(roll, t)
 	end
 end
 
--- the pedestal's box (spec 16.4 "Spot, Backlight, Pedestal"): an empty layout anchor only. The owner (2026-11-08)
--- asked to remove the drawn cloud-stone drum ("the useless bars below the pet"), so nothing is drawn in it; the egg,
--- the halves and the pet still stand on its box from 420 x 90 down to a phone's 12 px lip.
-function B.pedestal(hero, j, _rarity)
-	return H.frame(hero, "Pedestal" .. j, { ZIndex = 5 })
+-- the pedestal's box (spec 16.4 "Spot, Backlight, Pedestal"): the layout anchor the egg, the halves and the pet stand on,
+-- from 420 x 90 down to a phone's 12 px lip. The owner (2026-11-08) had the cloud-stone drum removed ("the useless bars
+-- below the pet"); roll-look (spec 16.15) draws a flat lit plinth in it instead (HatchLook.Plinth: a disc centred on
+-- the egg's foot, its thin side, an inner ring and a soft halo; nothing stacked under it). It starts neutral.
+function B.pedestal(hero, j, rarity, e)
+	local box = H.frame(hero, "Pedestal" .. j, { ZIndex = 5 })
+	-- (x3: one halo disc under the smaller plinths, the 750-instance budget)
+	e.Plinth = HatchLook.Plinth(box, rarity, not S.Lay.PC, { Track = S.Tweens, Glows = S.Roll and S.Roll.N > 1 and 1 or 2 })
+	return box
 end
 
 -- the rarity backlight: four stacked round glows, as strong as the egg's glow (none for Common / Uncommon)
@@ -1772,6 +1800,13 @@ function H.settleHero(roll)
 		if e.Ring and (e.State == "Rise" or e.State == "Crack") then
 			e.Ring:Show(0.01)
 			e.Ring:Spin(true)
+			if e.Tint then
+				e.Ring:Tint(e.Tint, 0) -- (Gemini's tweak already played: kept)
+			end
+		end
+		-- (roll-look) the plinth at rest: popped, shown, its colour snapped (the tweak's or the burst's, else neutral)
+		if e.Plinth then
+			e.Plinth:Rest()
 		end
 	end
 end
@@ -1785,13 +1820,17 @@ function R.rise(roll, quick)
 	if not quick then
 		roll.Spot = H.frame(hero, "Spot", { BackgroundColor3 = K.SPOT_COLOR, BackgroundTransparency = 1, ZIndex = 1 })
 		H.corner(roll.Spot, 0.5)
-		Util.Create("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.45, 0.84), NumberSequenceKeypoint.new(1, 0.6) }), Parent = roll.Spot })
+		-- (roll-look) fainter than 16.4's 0.84 / 0.6: its straight sides read as a pale box behind the plinth's halo
+		Util.Create("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.45, 0.92), NumberSequenceKeypoint.new(1, 0.76) }), Parent = roll.Spot })
 	end
 	for j, pull in ipairs(roll.Pulls) do
 		local e = { State = "Rise" }
 		e.Back, e.Glows = B.backlight(hero, j, pull.Rarity)
-		e.Ped = B.pedestal(hero, j, pull.Rarity)
+		e.Ped = B.pedestal(hero, j, pull.Rarity, e)
 		if not quick then
+			-- (roll-look) the plinth comes in with the rise: from K.LOOK.PLINTH_IN.From and clear (R.riseStep)
+			e.Plinth.Pop.Scale = K.LOOK.PLINTH_IN.From
+			e.Plinth:SetAlpha(0)
 			e.Ring = HatchFx.CloudRing(hero, H.color(pull.Rarity), { ZIndex = 3, Track = S.Tweens })
 			e.Ring.Frame.Name = "CloudRing" .. j
 			-- the hero egg: Full with its rarity VFX (spec 16.5 "Where the VFX show"); its drifting sparkles come from the pool
@@ -1848,6 +1887,18 @@ function R.rise(roll, quick)
 			st.Outer:Destroy()
 			st.Outer = nil
 		end
+		-- (Task 2) ...and its end fades and dims (the three plinths come in now: x3 stays inside 750 at the rise's start)
+		if roll.N > 1 then
+			for _, key in ipairs({ "FadeL", "FadeR" }) do
+				if st[key] then
+					st[key]:Destroy()
+					st[key] = nil
+				end
+			end
+			if st.Win then
+				st.Win:DropDims()
+			end
+		end
 		if st.Streaks then
 			st.Streaks:Destroy()
 			st.Streaks, st.StreakBars = nil, nil
@@ -1875,6 +1926,12 @@ function R.riseStep(roll, t)
 			e.Egg.Position = e.RiseFrom:Lerp(e.RiseTo, quad)
 			e.Pop.Scale = e.PopFrom + (1 - e.PopFrom) * back
 			e.Ped.Position = e.PedFrom:Lerp(e.PedTo, back)
+		end
+		if e.Plinth and e.PedTo then
+			-- (roll-look) the plinth pops in (Back Out, past 1 and back) and fades in over the whole rise
+			local from = K.LOOK.PLINTH_IN.From
+			e.Plinth.Pop.Scale = from + (1 - from) * back
+			e.Plinth:SetAlpha(u)
 		end
 		if e.Glows and e.Back.Visible then
 			for _, disc in ipairs(e.Glows) do
@@ -2021,6 +2078,67 @@ function R.shakeStart(roll, j, step)
 	HatchFx.Leaks(e.Egg, rarity, step)
 	roll.Pool:Burst(Vector2.new(cr.Cx[j], cr.EggY + 0.6 * cr.E), rarity, K.SHAKE_SPARKS, K.SHAKE_SPARK)
 	H.sfx(K.SOUND.Shake, H.scaleFor(rarity))
+	if e.Shook == 1 then
+		R.tweak(roll, j) -- (the first shake: step 3, or a Fast hatch's one shake)
+	end
+end
+
+-- (roll-look, spec 16.15) Gemini's shake tweak, Rare and up only (Common / Uncommon: nothing until the burst, no fake
+-- tease): the plinth's rim, ring and glow and the cloud ring turn the rarity colour; the rays come up faint and start
+-- turning behind the egg (x3: only for the best pull, the rays' one owner; the bursts move them on)
+function R.tweak(roll, j)
+	local e = roll.Eggs[j]
+	local rarity = roll.Pulls[j].Rarity
+	if not e or roll.Tweaked[j] or H.order(rarity) < 3 then
+		return
+	end
+	roll.Tweaked[j] = true
+	local tw = roll.Fast and K.LOOK.TWEAK.Fast or K.LOOK.TWEAK.Tween
+	local color = H.color(rarity)
+	e.Tint = color
+	if e.Plinth then
+		e.Plinth:Tint(color, tw)
+	end
+	if e.Ring then
+		e.Ring:Tint(color, tw)
+	end
+	if j == roll.Best and roll.Rays and not roll.RaysAt then
+		local cr = S.Lay.Crack
+		roll.TweakRays = j
+		roll.Rays:Recolor(rarity)
+		roll.Rays:Place(cr.Cx[j], cr.EggY + cr.E / 2, K.RAYS * cr.E)
+		roll.Rays:Flash(K.LOOK.TWEAK.Rays, tw)
+		roll.Rays:Spin(true)
+	end
+end
+
+-- (roll-look) the burst's punch: the whole stage 1 -> 1.05 -> 1 round its middle (High only; a Fast hatch's shorter
+-- burst squeezes it so it is over before the reveal). Phase tweens: the reveal and a resize put it back to 1
+function R.punch(roll)
+	local pu = S.Punch
+	if not (pu and pu.Parent) or not H.high() then
+		return
+	end
+	local P = K.LOOK.PUNCH
+	local k = math.min(1, (roll.T.Burst - 0.01) / (P.Up + P.Down))
+	pu.Scale = 1
+	local up = H.tween(pu, P.Up * k, { Scale = P.Scale }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	if up then
+		up.Completed:Connect(function(state)
+			if state == Enum.PlaybackState.Completed and S.Punch == pu and pu.Parent then
+				H.tween(pu, P.Down * k, { Scale = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+			end
+		end)
+	end
+end
+
+-- (roll-look) a burst's sparks: the rarity's count, capped on phones
+function H.sparks(rarity)
+	local n = K.SPARKS[rarity] or 12
+	if S.Lay and not S.Lay.PC then
+		n = math.min(n, K.LOOK.PHONE_SPARKS)
+	end
+	return n
 end
 
 function R.burst(roll, j)
@@ -2071,7 +2189,13 @@ function R.burst(roll, j)
 		e.Ring:Spin(false)
 		e.Ring:Pulse(color, T.Burst)
 	end
-	local n = roll.Pool:Burst(Vector2.new(cx, cy), rarity, K.SPARKS[rarity] or 12)
+	-- (roll-look) below Rare the plinth takes its colour now (the tweak gave it to Rare and up at the first shake); the punch
+	if e.Plinth and not e.Tint then
+		e.Tint = color
+		e.Plinth:Tint(color, math.min(K.LOOK.BURST_TINT, T.Burst))
+	end
+	R.punch(roll)
+	local n = roll.Pool:Burst(Vector2.new(cx, cy), rarity, H.sparks(rarity))
 	roll.UI.Burst:SetAttribute("Sparks", n)
 	H.sfx(K.SOUND.Burst, H.scaleFor(rarity))
 	H.sfx(K.SOUND.Ring, H.scaleFor(rarity))
@@ -2172,6 +2296,17 @@ function R.reveal(roll, skipped)
 	roll.UI.Crack.Visible = false
 	H.cancelTweens()
 	H.settleBackdrop(true)
+	-- (roll-look) the punch over (a Skip may cut it), every plinth shown in its rarity colour under its pet
+	if S.Punch then
+		S.Punch.Scale = 1
+	end
+	for j, e in pairs(roll.Eggs) do
+		if e.Plinth then
+			e.Tint = e.Tint or H.color(roll.Pulls[j].Rarity)
+			e.Plinth.Color = e.Tint
+			e.Plinth:Rest()
+		end
+	end
 	B.cols(roll)
 	if EggStage._InjectPhaseError == "Reveal" then
 		error("injected phase error (Reveal)") -- the test hook: an error inside the reveal's own build
@@ -2194,7 +2329,7 @@ function R.reveal(roll, skipped)
 			roll.Rays.Frame.Visible = true
 			roll.Rays.Frame.GroupTransparency = 0.3
 		end
-		roll.Pool:Burst(Vector2.new(px, py), best.Rarity, K.SPARKS[best.Rarity] or 12)
+		roll.Pool:Burst(Vector2.new(px, py), best.Rarity, H.sparks(best.Rarity))
 		R.flash(roll, loud, false)
 	end
 	-- Legendary and up keep slow gold rays behind the best pet; the others' rays fade with the burst's tail
@@ -2536,7 +2671,7 @@ function H.teardown(reason)
 	if S.Gui then
 		S.Gui:Destroy()
 	end
-	S.Gui, S.Stage, S.Content, S.Fit, S.Dim, S.Flash, S.Vignette, S.Lay = nil, nil, nil, nil, nil, nil, nil, nil
+	S.Gui, S.Stage, S.Content, S.Fit, S.Dim, S.Flash, S.Vignette, S.Lay, S.Punch = nil, nil, nil, nil, nil, nil, nil, nil, nil
 	pcall(EggStage.Closed.Fire, EggStage.Closed, reason)
 end
 
@@ -2567,6 +2702,9 @@ function H.relayout()
 	S.FlashToken = (S.FlashToken or 0) + 1
 	S.Lay = L.compute(roll.N, roll)
 	H.settleBackdrop()
+	if S.Punch then
+		S.Punch.Scale = 1 -- (roll-look: a punch cut short by the resize)
+	end
 	if roll.UI.Strips then
 		roll.UI.Strips.Position = UDim2.fromOffset(0, 0)
 	end
@@ -2606,6 +2744,11 @@ function H.relayout()
 		if roll.Revealed and H.order(roll.Pulls[roll.Best].Rarity) >= K.LOUD_FROM then
 			roll.Rays.Frame.Visible = true
 			roll.Rays.Frame.GroupTransparency = 0.45
+			roll.Rays:Spin(true)
+		elseif not roll.Revealed and roll.TweakRays and not roll.RaysAt then
+			-- (roll-look) Gemini's tweak played and no burst yet: the faint turning rays stay
+			roll.Rays.Frame.Visible = true
+			roll.Rays.Frame.GroupTransparency = K.LOOK.TWEAK.Rays
 			roll.Rays:Spin(true)
 		else
 			roll.Rays:Hide()

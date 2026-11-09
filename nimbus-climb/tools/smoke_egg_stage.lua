@@ -2575,23 +2575,26 @@ S.client_hatch_cutscene = guarded("client_hatch_cutscene", function()
 					local ring = hero("CloudRing1")
 					seen.ring = ring ~= nil and G.shown(ring) and ring:IsA("CanvasGroup") and spinning(ring)
 					T.check(seen.ring, "hatch cutscene: Rise: the rotating cloud ring (CloudRing1, one CanvasGroup) stands behind the pedestal (the owner's pick: Gemini's ring)")
+					-- (roll-look, spec 16.15: rewritten from "an empty layout box") the box holds only the flat lit plinth: its
+					-- disc and side within the box's width and no taller than the box (a flat disc, never the old drum), no
+					-- puffs, no bars (owner 2026-11-08)
 					local ped = hero("Pedestal1")
-					local inside = ped ~= nil
-					for _, d in ipairs(ped and ped:GetDescendants() or {}) do
+					local parts = {}
+					for _, d in ipairs(ped and ped:GetChildren() or {}) do
 						if d:IsA("GuiObject") then
-							local a, p = G.box(d), G.box(ped)
-							if a.x < p.x - 0.6 or a.y < p.y - 0.6 or a.x + a.w > p.x + p.w + 0.6 or a.y + a.h > p.y + p.h + 0.6 then
-								inside = false
-							end
+							parts[#parts + 1] = d.Name
 						end
 					end
-					local drawn = false
-						for _, d in ipairs(ped and ped:GetDescendants() or {}) do
-							if d:IsA("GuiObject") then
-								drawn = true
-							end
-						end
-						T.check(inside and not drawn and ped.BackgroundTransparency == 1, "hatch cutscene: Pedestal1 is an empty layout box: no drum, puffs or bars drawn under the pet (owner 2026-11-08)")
+					table.sort(parts)
+					local top, side = ped and ped:FindFirstChild("Top"), ped and ped:FindFirstChild("Side")
+					local flat = false
+					if top and side then
+						local p, a, b = G.box(ped), G.box(top), G.box(side)
+						flat = a.x >= p.x - 0.6 and a.x + a.w <= p.x + p.w + 0.6 and b.x >= p.x - 0.6 and b.x + b.w <= p.x + p.w + 0.6
+							and math.max(a.y + a.h, b.y + b.h) - math.min(a.y, b.y) <= p.h + 0.6
+					end
+					T.check(ped ~= nil and table.concat(parts, " ") == "Glow1 Glow2 Ring Side Top" and flat and ped.BackgroundTransparency == 1,
+						"hatch cutscene: Pedestal1 holds only the flat lit plinth (Top, Side, Ring, its halo): no drum, puffs or bars under the pet (owner 2026-11-08)", table.concat(parts, " "))
 				end
 			end
 			if ph == "Crack" and egg then

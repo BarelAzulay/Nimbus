@@ -377,9 +377,18 @@ S.client_egg3d = guarded("client_egg3d", function()
 			"egg3d cutscene: ...the 2D paint hidden (attribute Painted false, no body fill)")
 		local outline = egg and egg:FindFirstChild("Outline")
 		T.check(outline == nil or outline.Enabled == false, "egg3d cutscene: ...and its outline off")
-		T.check(G.hero("Backlight1") ~= nil and G.hero("CloudRing1") ~= nil and G.hero("Pedestal1") ~= nil, "egg3d cutscene: ...the backlight, the cloud ring and the (empty) pedestal stay round it")
+		T.check(G.hero("Backlight1") ~= nil and G.hero("CloudRing1") ~= nil and G.hero("Pedestal1") ~= nil, "egg3d cutscene: ...the backlight, the cloud ring and the pedestal (the flat plinth) stay round it")
 		local ped = G.hero("Pedestal1")
-		T.check(ped ~= nil and #ped:GetChildren() == 0, "egg3d cutscene: the pedestal stays an empty layout box (no drum or bars come back)", ped and tostring(#ped:GetChildren()) or "none")
+		-- (roll-look, spec 16.15: rewritten from "an empty layout box") the box holds only the flat lit plinth: no drum,
+		-- no puffs, no bars come back
+		local parts = {}
+		for _, c in ipairs(ped and ped:GetChildren() or {}) do
+			if c:IsA("GuiObject") then
+				parts[#parts + 1] = c.Name
+			end
+		end
+		table.sort(parts)
+		T.check(ped ~= nil and table.concat(parts, " ") == "Glow1 Glow2 Ring Side Top", "egg3d cutscene: the pedestal holds only the flat plinth (Top, Side, Ring, its halo): no drum or bars come back", table.concat(parts, " "))
 		T.eq(E3.Live(), 1, "egg3d cutscene: one ViewportFrame egg")
 		T.check(G.untilPhase(ES, "Crack", 3) ~= nil, "egg3d cutscene: the roll reaches Crack")
 		G.advance(0.45)

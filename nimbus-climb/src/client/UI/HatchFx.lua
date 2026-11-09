@@ -29,7 +29,9 @@
 --   HatchFx.CloudRing(parent, color [, opts]) -> ring   (the owner's pick: Gemini's cloud ring) a CanvasGroup
 --     "CloudRing" of 10 round cloud puffs with a UIScale "Swell": ring:Place(x, y, d), ring:Show(seconds), ring:Spin(on)
 --     (an endless Rotation tween, 24 s a turn; still on Low), ring:Pulse(color, seconds) (tinted the rarity colour at
---     once, swells sharply to 1.45 and fades: the burst), ring:Hide(), ring:Destroy()
+--     once, swells sharply to 1.45 and fades: the burst), ring:Tint(color, seconds) (roll-look, spec 16.15: Gemini's shake
+--     tweak, GroupColor3 tweened half way from its pale tint to `color`; 0 s at once; the burst's Pulse ends it),
+--     ring:Hide(), ring:Destroy()
 --   HatchFx.Stars(parent, n) -> { Frame, Destroy }   a Frame "Stars" with n small stars, each twinkling (an endless,
 --     offset alpha tween); Destroy stops the tweens and removes the frame
 --   HatchFx.Dim(on [, seconds]) -> effects   High graphics only: on = the client-only Lighting.NimbusHatchBlur
@@ -81,6 +83,10 @@ local K = {
 	RAY_TURN = 12, -- s a turn
 	RING_TURN = 24,
 	RING_PUFFS = 10,
+	RING_R = 0.4, -- (roll-look) the puffs' circle, a share of the ring's size (inside the CanvasGroup: it clips); their
+	-- sizes (big, small) and transparencies
+	RING_PUFF = { 0.14, 0.095 },
+	RING_PUFF_A = { 0.55, 0.66 },
 	RING_REST = 0.2, -- the ring's transparency at rest
 	RING_TINT = Color3.fromRGB(226, 234, 255),
 	SWELL = 1.45,
@@ -719,14 +725,16 @@ function HatchFx.CloudRing(parent, color, opts)
 		GroupColor3 = K.RING_TINT, Visible = false, ZIndex = opts.ZIndex or 1,
 	}, parent)
 	local swell = new("UIScale", { Name = "Swell", Scale = 1 }, ring)
-	-- the puffs: white (GroupColor3 tints them), on a circle 0.36 of the ring's size out, a little uneven so it reads as
-	-- cloud, not a gear
+	-- the puffs: white (GroupColor3 tints them), on a circle RING_R of the ring's size out, big and small in turn and see-
+	-- through (roll-look, spec 16.15: the pitch mock's cloudRing, a halo of soft cloud bubbles round the egg rather than
+	-- big blobs behind it), a little uneven so it reads as cloud, not a gear
 	for i = 1, K.RING_PUFFS do
 		local a = (i - 1) / K.RING_PUFFS * 2 * math.pi
-		local s = 0.2 + 0.05 * ((i * 0.618034) % 1)
-		local r = 0.36 + 0.03 * (((i + 3) * 0.381966) % 1)
+		local big = i % 2 == 1
+		local s = (big and K.RING_PUFF[1] or K.RING_PUFF[2]) * (1 + 0.12 * ((i * 0.618034) % 1))
+		local r = K.RING_R + 0.015 * (((i + 3) * 0.381966) % 1)
 		local puff = new("Frame", {
-			Name = "Puff" .. i, BorderSizePixel = 0, BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = (i % 3 == 0) and 0.25 or 0.08,
+			Name = "Puff" .. i, BorderSizePixel = 0, BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = big and K.RING_PUFF_A[1] or K.RING_PUFF_A[2],
 			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5 + math.cos(a) * r, 0.5 + math.sin(a) * r), Size = UDim2.fromScale(s, s),
 			ZIndex = ring.ZIndex,
 		}, ring)
@@ -751,11 +759,28 @@ function HatchFx.CloudRing(parent, color, opts)
 			return
 		end
 		seconds = math.max(0.05, seconds or 0.35)
+		cancel(self.Tw.Tint)
+		self.Tw.Tint = nil
 		f.Visible = true
 		f.GroupColor3 = c or self.Color or K.RING_TINT
 		f.GroupTransparency = 0
 		self:_play("Swell", self.Swell, TweenInfo.new(math.min(0.2, seconds), Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = K.SWELL })
 		self:_play("Fade", f, TweenInfo.new(seconds, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { GroupTransparency = 1 })
+	end
+	-- (roll-look, spec 16.15) Gemini's shake tweak: the ring turns half way to the rarity colour
+	function h:Tint(c, seconds)
+		local f = self.Frame
+		if not f or not f.Parent then
+			return
+		end
+		local goal = K.RING_TINT:Lerp(c or self.Color or K.RING_TINT, 0.5)
+		if seconds and seconds > 0 then
+			self:_play("Tint", f, TweenInfo.new(seconds, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { GroupColor3 = goal })
+		else
+			cancel(self.Tw.Tint)
+			self.Tw.Tint = nil
+			f.GroupColor3 = goal
+		end
 	end
 	return h
 end
