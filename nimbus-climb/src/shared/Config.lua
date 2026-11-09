@@ -99,7 +99,7 @@ Config.Attr = {
 	XpBoostEnds = "XpBoostEnds", -- unix seconds the XP potion bank ends; 0 = no potion running
 	StorePreview = "StorePreview", -- bool: Studio or an allowed dev sees every Store item, Id 0 included (PREVIEW buttons prompt nothing)
 	-- lobby shop (docs/superpowers/specs/2026-11-07-lobby-shop-design.md 5.2): DataService writes it, the client only reads it
-	GemsSettled = "GemsSettled", -- true once the gem settle hold ended for this load (absent before, never written false)
+	GemsSettled = "GemsSettled", -- true once this server owns the save for this load (the session lock's flag; absent before, never written false)
 	-- session lock (docs/superpowers/specs/2026-11-10-session-lock-design.md 5, 18): DataService writes it, the client only
 	-- reads it (the loading caption)
 	SaveWaiting = "SaveWaiting", -- true while the load waits for, or the session is provisional because of, another server's lock
@@ -619,9 +619,8 @@ Config.Gems = {
 		AltarRangeSlack = 10,
 		AltarBand = 24,
 	},
-	-- lobby shop (spec 5.2, the server-hop guard): gem-priced actions wait this many seconds after a load AND for one fresh
-	-- read of the stored record (DataService.GemsSettled); with no DataStore the hold ends at this time with no read
-	SettleSeconds = 15,
+	-- (SettleSeconds is gone since the session lock, 2026-11-10: gem-priced actions wait for DataService.GemsSettled, which
+	-- is the lock's flag OwnsSave; there is no timed hold any more, Config.Save holds the lock's numbers)
 }
 
 -- The Robux Store (docs/superpowers/specs/2026-11-04-shop-retention-design.md 5.1; store W0): every Robux item of the

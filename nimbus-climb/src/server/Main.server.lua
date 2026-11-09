@@ -322,6 +322,50 @@ step("Items refund toast", function()
 	end)
 end)
 
+-- session lock (docs/superpowers/specs/2026-11-10-session-lock-design.md 18): DataService sets the player attribute
+-- SaveWaiting while another server still holds the save. Once the world opened on a stand-in save (ProfileLoaded with
+-- SaveWaiting still true) the player hears it once; when the claim lands (SaveWaiting removed) they hear it is back.
+-- During the load's own wait nothing is said: the loading screen's caption covers it.
+step("Save wait toasts", function()
+	local waitAttr = (Config.Attr and Config.Attr.SaveWaiting) or "SaveWaiting"
+	local loadedAttr = (Config.Attr and Config.Attr.ProfileLoaded) or "ProfileLoaded"
+	local told = {} -- [player] = true once the "still being saved" toast went out (cleared by the "back" toast / leave)
+	local function notify(player, text, kind, seconds)
+		pcall(function()
+			Remotes.Get("Notify"):FireClient(player, text, kind, seconds)
+		end)
+	end
+	local function check(player)
+		if player.Parent == nil then
+			return
+		end
+		if player:GetAttribute(waitAttr) == true then
+			if not told[player] and player:GetAttribute(loadedAttr) == true then
+				told[player] = true
+				notify(player, "Your progress is still being saved by another server. Your pets and gems will show up in a moment.", "info", 6)
+			end
+		elseif told[player] then
+			told[player] = nil
+			notify(player, "Your progress is back!", "good", 4)
+		end
+	end
+	local function watch(player)
+		player:GetAttributeChangedSignal(waitAttr):Connect(function()
+			check(player)
+		end)
+		player:GetAttributeChangedSignal(loadedAttr):Connect(function()
+			check(player)
+		end)
+	end
+	Players.PlayerAdded:Connect(watch)
+	for _, player in ipairs(Players:GetPlayers()) do
+		watch(player)
+	end
+	Players.PlayerRemoving:Connect(function(player)
+		told[player] = nil
+	end)
+end)
+
 call("SpotService.Init", SpotService, "Init", lobbyInfo, {
 	DataService = DataService,
 	PetService = PetService,

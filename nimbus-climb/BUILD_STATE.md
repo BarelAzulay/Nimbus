@@ -206,6 +206,38 @@ Updated: 2026-10-18 (after wave 2). Branch `v3-phase4`. Plan: `ARCHITECTURE_V3.m
   Also a first roll after joining: the cards show their pictures from the strip's first second.
   Open owner question 4 (Claude's pick first): the Shop's Eggs tab domes and odds rows: wire them to the same egg
   pictures in a follow-up, no new upload (pick), or keep them painted.
+- 2026-11-10 (session lock, branch `session-lock` cut from integration 80cd184, not merged; spec
+  docs/superpowers/specs/2026-11-10-session-lock-design.md, plan docs/superpowers/plans/2026-11-10-session-lock.md,
+  T1 02aaba9 + T2; the owner's "Q2 full save session lock: YES, next build" of 2026-11-08; ledger
+  `.superpowers/lobby-shop/LEDGER.md`, section "session-lock").
+  What changed. (1) **T1, the lock core**: a player's save is owned by ONE server at a time. The record gets one optional
+  key `Lock = { Id, Job, Place, At }` (Id = game.JobId, "studio-<guid>" in Studio), claimed by ONE UpdateAsync at load
+  (no GetAsync; a brand-new player's claim writes a lock-only record, which every read treats as "nothing stored", so
+  two servers can never both think the player is new). Another server's live lock makes the load wait (attempts at 0, 3,
+  6, 9, 12 s), then the session plays a stand-in save (the provisional mode) while the recovery keeps claiming. Every
+  save refreshes the lock; an idle session's lock is refreshed once it is 120 s old; every write is guarded (a record
+  holding another server's live lock is never written: a stale server's late save is dropped, a present player gets the
+  stored record). The leave save and BindToClose release the lock; a crashed server's lock is free after 360 s
+  (`Config.Save`). PlayerService's own leave save is gone (one write per leave). Old saves need no migration (Version
+  stays 2). (2) **T2**: receipts while the save is held elsewhere answer NotProcessedYet and are granted once after the
+  claim; TutorialStarter, duels and trophies keep their rules (tested across a hop); the lobby shop's 15 s **gem settle
+  hold is retired** into the lock's flag: `GemsSettled` = `OwnsSave` (true at once after a normal load, so gem
+  actions no longer wait 15 s), `Settled` fires once per load, `_SettleForTest` only answers the flag,
+  `Config.Gems.SettleSeconds` is gone; the loading screen's caption reads "Another server is still saving your
+  progress..." while the player attribute `SaveWaiting` is true; Main.server toasts "Your progress is still being saved
+  by another server. Your pets and gems will show up in a moment." (info, 6 s) when the world opens on a stand-in save
+  and "Your progress is back!" (good, 4 s) when the claim lands.
+  DataStore calls (spec 17): per player, load 1 UpdateAsync (+ up to 4 while another server holds the lock; + 1 legacy
+  GetAsync for a player with no v2 record); autosave 1 write per 90 s when dirty, else 1 per ~180 s (the heartbeat);
+  leave 1; BindToClose 1 per entry. The settle read's GetAsync per join (and its retries) is gone.
+  Tests: see the T1 / T2 commit bodies and the ledger lines (targeted lists, one run at a time on this low-memory PC;
+  **the whole suite was NOT run**, nor `client_replay`: run it once on a free machine before any merge).
+  Not looked at in Studio (nothing in session-lock has been): 1 a normal join with API access: no wait, gem spins work
+  at once; 2 two Studio windows are two servers but treat each other's locks as free (the Studio rule), so a real hop
+  needs two live servers: join server A, spend gems, hop to B at once: B's loading screen may show the "Another server"
+  caption for a few seconds, then the gems match A's; 3 Stop in Studio (BindToClose) and rejoin: no wait.
+  Open owner question (Claude's pick first): `Config.Save.LockSeconds` 360 (pick: a crash locks a player out of their
+  real save for minutes, not half an hour) or 1800 (the ProfileStore-class default: safer for a long outage with a hop).
 - 2026-10-28 (player ruling, wave 5 dungeon camera): the Camera shake setting OFF turns off ONLY the hit shakes; the dungeon entrance rush, the room walk-in shot and the FOV punch on big attacks always play (short, skippable). The rush is skipped when the camera is > 60 studs from the gate.
 - Evolve button; 2nd evolution only Epic+; level cap 100 for all pets (XP curve keeps rising).
 - Presses become food plants, Collector = Coin Magnet, Kitchen = Food Machine, Gym = Training Place.

@@ -6,7 +6,8 @@ pcall(function() game:GetService("ReplicatedFirst"):RemoveDefaultLoadingScreen()
 -- ScreenGui "NimbusLoading" (DisplayOrder 100, IgnoreGuiInset, ResetOnSpawn false): a violet sky gradient
 -- (60,50,150) -> (190,110,200) with a soft cloud bank and a few sparkles; once Shared.Theme exists (no text before:
 -- fonts only through Theme roles) the logo NIMBUS / CLIMB (one line, or two when the screen is narrower than 700 px),
--- the tag line, the Cyan neon bar (min(0.6 W, 640 f) x 26 f), "Loading the sky... 64%", a tip from
+-- the tag line, the Cyan neon bar (min(0.6 W, 640 f) x 26 f), "Loading the sky... 64%" (session lock, 2026-11-10:
+-- "Another server is still saving your progress..." while the player attribute SaveWaiting is true), a tip from
 -- UpdateNotes.Tips that changes every 5 s, and SKIP after Config.Loading.SkipAfter (6) seconds.
 --
 -- Progress = 5 weighted stages, each 0..1; the bar only moves forward (0.25 s tween):
@@ -66,6 +67,7 @@ local St = {
 	Theme = nil,
 	Config = nil,
 	Tips = {},
+	Waiting = false, -- session lock: the player attribute SaveWaiting (another server still saves the progress)
 }
 
 ----------------------------------------------------------------------
@@ -437,8 +439,25 @@ local function showProgress(value, force)
 		}):Play()
 	end
 	if ui.Caption then
-		ui.Caption.Text = "Loading the sky... " .. math.floor(St.Shown * 100 + 0.5) .. "%"
+		-- session lock (spec 18): while another server still saves this player's progress (the player attribute
+		-- SaveWaiting, DataService's) the caption says so instead of the percentage
+		if St.Waiting then
+			ui.Caption.Text = "Another server is still saving your progress..."
+		else
+			ui.Caption.Text = "Loading the sky... " .. math.floor(St.Shown * 100 + 0.5) .. "%"
+		end
 	end
+end
+
+-- true while the player attribute SaveWaiting is set; a change re-draws the caption even when the bar did not move
+local function waitingChanged()
+	local attr = (St.Config and St.Config.Attr and St.Config.Attr.SaveWaiting) or "SaveWaiting"
+	local now = LocalPlayer:GetAttribute(attr) == true
+	if now == St.Waiting then
+		return false
+	end
+	St.Waiting = now
+	return true
 end
 
 local function nextTip()
@@ -524,6 +543,7 @@ task.spawn(function()
 	nextTip()
 	St.TipAt = St.Elapsed
 	local okMeasure, value = pcall(measure)
+	pcall(waitingChanged)
 	showProgress(okMeasure and value or St.Shown, true)
 	-- assets: the sky faces and this gui
 	task.spawn(function()
@@ -546,8 +566,11 @@ task.spawn(function()
 		St.Elapsed = St.Elapsed + (tonumber(dt) or L.POLL)
 		loading = (St.Config and St.Config.Loading) or loading
 		local ok, value = pcall(measure)
+		local okWait, changed = pcall(waitingChanged)
 		if ok then
-			showProgress(value)
+			showProgress(value, okWait and changed)
+		elseif okWait and changed then
+			showProgress(St.Shown, true)
 		end
 		if St.Ui.Skip and not St.Ui.Skip.Visible and St.Elapsed >= (tonumber(loading.SkipAfter) or 6) then
 			St.Ui.Skip.Visible = true

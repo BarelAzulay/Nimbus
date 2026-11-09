@@ -1,6 +1,7 @@
 -- smoke_pity.lua: the Secret pity record and the Fast hatch setting in the save (docs/superpowers/specs/
 -- 2026-11-07-lobby-shop-design.md 5.2, 5.5 "Fast hatch", 6; plan docs/superpowers/plans/2026-11-07-lobby-shop.md
--- Task 2; later tasks of the same plan add the gem settle hold and the pity's money step here). Loaded by
+-- Task 2; later tasks of the same plan add the gem settle hold, retired into the session lock's flag on 2026-11-10, and the
+-- pity's money step here). Loaded by
 -- tools/smoke.py in the server world and the client world (ARGS.context picks the half):
 --   secret_pity_save          (server, booted) DataService's new top-level field Pity = { Secret = { Spins, Hit } }:
 --                             GetPity / SetPity (a copy; nil and refused while provisional), the store round trip,
@@ -11,28 +12,28 @@
 --                             was (no Pity key, no Settings.FastHatch key) until the player uses the new thing, the
 --                             FastHatch setting (booleans only, stored only when true), the ProfileSync snapshot
 --                             (Settings.FastHatch, never Pity)
---   gem_settle                (server, booted; Task 3, part 1: the data layer) the gem settle hold after a load
---                             (spec 5.2 "The gem settle hold"): GemsSettled is false until Config.Gems.SettleSeconds have
---                             passed AND one settle read came back (attribute GemsSettled = true and Settled fired once
---                             then); a quiet read changes nothing (no rebase, no TeamsChanged, no snapshot); another
---                             server's save during the hold arrives through a rebase (ProfileRebased once, its listeners
---                             still see false); a failed read backs off (one GetAsync per attempt, then 5, 10, 20 s ...
---                             + up to 25%; review round 1); a GetAsync budget under 10 postpones it 5 s without counting a
---                             failure; with no store it is settled at 15 s with
---                             no read; a provisional load waits for its recovery read (>= 20 s), which counts as the
---                             settle read; _SettleForTest settles at once; a gem Mix waits for the settle, a token Mix not;
---                             part 2 (Task 4): a gem x1 / x3 spin waits for the settle (nothing charged), a token spin not;
---                             part 3 (Task 5): the hop with the pity: the old server spent the gems on a forced Secret and
---                             its leave save lands 8 s after this server's load (which read Since 6): the Secret Roulette and
---                             gem spins are refused until settled, then this server shows the old server's gems and Since 0
---                             (SecretPityLeft 7) and its next Secret spin is not forced;
---                             part 4 (Task 7): StoreRequest("GemBuy") before the settle toasts "Your data is still loading"
---                             and BuyWithGems refuses it (nothing spent, no potion time); after the settle it sells
+--   gem_settle                (server, booted; rewritten for the session lock, docs/superpowers/specs/2026-11-10-session-lock-
+--                             design.md 12: the 15 s gem settle hold is retired, GemsSettled is the lock's flag OwnsSave)
+--                             part 1: Config.Gems.SettleSeconds is gone; a normal load is settled at once (GemsSettled,
+--                             the attribute GemsSettled = true, Settled once; ProfileLoaded listeners see true; ONE store
+--                             call for the whole load); in the 20 s after it nothing happens (no ProfileRebased /
+--                             TeamsChanged / ProfileSync, no store read); _SettleForTest answers the flag; a gem Mix right
+--                             after the join mixes; a rejoin settles again (Settled once more); an outage's provisional
+--                             load is settled by its recovery's claim (ProfileRebased listeners see true); no store:
+--                             settled at once with no call;
+--                             part 2: a held load (the old server's fresh lock) refuses gem x1 / x3 spins (nothing charged),
+--                             a token spin on the stand-in works, the claim lets the gem spin through;
+--                             part 3: the hop with the pity: the old server spent the gems on a forced Secret and still
+--                             holds the save; this server never loads the stale Since 6: it waits, plays a stand-in that
+--                             refuses the Secret Roulette and gem spins, then claims the old server's record (10 gems,
+--                             the Secret pet, SecretPityLeft 7) and its next Secret spin is not forced;
+--                             part 4: StoreRequest("GemBuy") while the save is held toasts "Your save is still loading" and
+--                             BuyWithGems refuses it (nothing spent, no potion time); after the claim it sells
 --   secret_pity               (server, booted; Task 5) the Secret pity in PetService's money step (spec 5.2): six dry spins
 --                             count the attribute SecretPityLeft and SecretPity.Left 6 .. 1, the 7th is a forced Secret
 --                             (Pity = true) and the count restarts at 7; a natural Secret restarts it; refused spins (gems
 --                             short, provisional, GetPity nil) and token spins leave it alone; a stand-in join gets the
---                             attribute only once its recovery read settled it; another server's +3 Spins arrive by a rebase
+--                             attribute only once its recovery's claim settled it (already inside that ProfileRebased); another server's +3 Spins arrive by a rebase
 --                             (a merged Since of 8 shows 1 and forces the next spin); substitute pulls count; a forced pull's
 --                             strip shows the normal odds; a failed save keeps gems, pet and count together
 --   client_fasthatch_setting  (client) ClientSettings knows FastHatch (default false, booleans only, the 0.4 s debounce,
@@ -582,6 +583,8 @@ local function serverScenarios()
 		return box
 	end
 
+	-- session lock (2026-11-10, Task 2): the gem settle hold is retired; GemsSettled is the lock's flag (OwnsSave). Rewritten
+	-- to that rule, keeping the four parts' intent (see the file header)
 	S.gem_settle = guarded("gem_settle", function()
 		if not K.needBoot() then
 			return
@@ -589,25 +592,19 @@ local function serverScenarios()
 		local D = DS()
 		local DSt = Mock.DataStore
 		local Config = config()
-		if not T.check(type(D.GemsSettled) == "function" and type(D._SettleForTest) == "function" and type(D.Settled) == "table" and type(D.Settled.Connect) == "function",
-			"gem settle: DataService.GemsSettled / _SettleForTest and the Settled signal exist") then
+		if not T.check(type(D.GemsSettled) == "function" and type(D._SettleForTest) == "function" and type(D.Settled) == "table" and type(D.Settled.Connect) == "function"
+			and type(D.OwnsSave) == "function", "gem settle: DataService.GemsSettled / _SettleForTest / OwnsSave and the Settled signal exist") then
 			return
 		end
-		T.eq(Config.Gems and Config.Gems.SettleSeconds, 15, "gem settle: Config.Gems.SettleSeconds = 15")
+		T.eq(Config.Gems and Config.Gems.SettleSeconds, nil, "gem settle: Config.Gems.SettleSeconds is gone (the session lock retired the 15 s hold)")
 		T.eq(Config.Attr.GemsSettled, "GemsSettled", "gem settle: Config.Attr.GemsSettled = 'GemsSettled'")
 		local ATTR = Config.Attr.GemsSettled or "GemsSettled"
-		local function advanceTo(t)
-			local left = t - os.clock()
-			if left > 0 then
-				advance(left)
-			end
-		end
 		local function settledText(Dx, p)
 			return "GemsSettled " .. tostring(Dx.GemsSettled(p)) .. ", attribute " .. tostring(p:GetAttribute(ATTR))
 		end
-		local B, cloneB, releaseB = secondServer("DataServiceSettleB")
-		if not T.check(B ~= nil and type(B.Load) == "function", "gem settle: a second copy of DataService loads as 'the old server'", tostring(cloneB)) then
-			return
+		-- another live server's fresh lock on a record: the old server of a hop still holds the save
+		local function heldLock()
+			return { Id = "server-old", Job = "job-old", Place = 1, At = os.time() }
 		end
 		local players, counters = {}, {}
 		local function counter(signal, uid, probe)
@@ -618,47 +615,64 @@ local function serverScenarios()
 		local function settledProbe(who)
 			return D.GemsSettled(who)
 		end
+		local realData = DSt.Data
 		local okRun, errRun = pcall(function()
 			------------------------------------------------------------------------------------------------
-			-- one timeline, four players joined together: a quiet settle (p), a server hop whose old server saves 8 s
-			-- after the load (q), _SettleForTest (w), the gem Mix (f)
+			-- part 1: a normal load is settled at once (no settle read, Settled once, the attribute); nothing else
+			-- happens afterwards (no ProfileSync / ProfileRebased / TeamsChanged, no store read); _SettleForTest; a gem
+			-- Mix right after the join; an outage's provisional load is settled by its recovery's claim; no store
 			------------------------------------------------------------------------------------------------
-			local uidP, uidQ, uidW, uidF = newUserId(), newUserId(), newUserId(), newUserId()
-			DSt.Data[storeKey(uidP)] = oldRecord({ Gems = 300 })
-			DSt.Data[storeKey(uidQ)] = oldRecord({ Gems = 300 })
-			local firesP, firesQ, firesW, firesF = counter(D.Settled, uidP), counter(D.Settled, uidQ), counter(D.Settled, uidW), counter(D.Settled, uidF)
+			local uidP, uidW, uidF = newUserId(), newUserId(), newUserId()
+			local keyP = storeKey(uidP)
+			realData[keyP] = oldRecord({ Gems = 300 })
+			local firesP, firesW, firesF = counter(D.Settled, uidP), counter(D.Settled, uidW), counter(D.Settled, uidF)
 			local rebasedP, teamsP = counter(D.ProfileRebased, uidP), counter(D.TeamsChanged, uidP)
-			local rebasedQ = counter(D.ProfileRebased, uidQ, settledProbe)
-			local t0 = os.clock()
+			local loadedP = counter(D.ProfileLoaded, uidP, settledProbe)
+			-- p's record is watched: every store call reads the key once, every write assigns it once
+			local reads, writes = 0, 0
+			DSt.Data = setmetatable({}, {
+				__index = function(_, k)
+					if k == keyP then
+						reads = reads + 1
+					end
+					return realData[k]
+				end,
+				__newindex = function(_, k, v)
+					if k == keyP then
+						writes = writes + 1
+					end
+					realData[k] = v
+				end,
+			})
 			local p = Mock.AddPlayer("SettleQuiet" .. tostring(uidP % 1000), uidP)
-			local q = Mock.AddPlayer("SettleHop" .. tostring(uidQ % 1000), uidQ)
 			local w = Mock.AddPlayer("SettleTest" .. tostring(uidW % 1000), uidW)
 			local f = Mock.AddPlayer("SettleMix" .. tostring(uidF % 1000), uidF)
-			players[#players + 1], players[#players + 2], players[#players + 3], players[#players + 4] = p, q, w, f
-			B.Load(q) -- the old server still holds q (a hop: its leave save is not in yet)
+			players[#players + 1], players[#players + 2], players[#players + 3] = p, w, f
 			advance(1.2)
-			T.check(D.GemsSettled(p) == false and p:GetAttribute(ATTR) == nil, "gem settle: right after the join GemsSettled is false and the GemsSettled attribute is absent", settledText(D, p))
-			T.check(D.GetGems(q) == 300 and B.GetGems(q) == 300, "gem settle hop: (setup) both servers loaded the stored 300 gems", tostring(D.GetGems(q)) .. " / " .. tostring(B.GetGems(q)))
+			T.check(D.GemsSettled(p) == true and p:GetAttribute(ATTR) == true and firesP.n == 1, "gem settle: right after the join GemsSettled is true, the attribute GemsSettled = true and Settled fired once",
+				settledText(D, p) .. ", fires " .. firesP.n)
+			T.check(loadedP.n == 1 and loadedP.saw == true, "gem settle: ...ProfileLoaded listeners already see GemsSettled == true", tostring(loadedP.saw))
+			T.check(reads == 1 and writes == 1, "gem settle: ...ONE store call for the whole load (the claiming UpdateAsync; no settle read)", reads .. " reads, " .. writes .. " writes")
+			T.eq(D.GetGems(p), 300, "gem settle: ...the stored 300 gems")
+			local mark = K.logSize()
+			local reads0, writes0, rebased0, teams0 = reads, writes, rebasedP.n, teamsP.n
+			advance(20)
+			T.check(rebasedP.n == rebased0 and teamsP.n == teams0, "gem settle quiet: in the 20 s after the load no ProfileRebased and no TeamsChanged fire",
+				"rebased +" .. (rebasedP.n - rebased0) .. ", teams +" .. (teamsP.n - teams0))
+			T.eq(#K.remotesFor("ProfileSync", uidP, mark), 0, "gem settle quiet: ...no extra ProfileSync")
+			T.eq(reads - writes, reads0 - writes0, "gem settle quiet: ...and no store read (no GetAsync of the record: the settle read is gone)")
+			T.check(D.GetGems(p) == 300 and firesP.n == 1, "gem settle quiet: ...the live profile unchanged, Settled still once", tostring(D.GetGems(p)) .. " gems")
+			DSt.Data = realData
 
-			-- _SettleForTest: the settle read now, no 15 s wait
-			T.eq(D.GemsSettled(w), false, "gem settle test hook: (before) not settled")
-			T.eq(D._SettleForTest(w), true, "gem settle test hook: _SettleForTest(p) right after a join answers true")
-			T.check(D.GemsSettled(w) == true and w:GetAttribute(ATTR) == true and firesW.n == 1, "gem settle test hook: ...settled at once (attribute GemsSettled = true, Settled fired once)",
-				settledText(D, w) .. ", fires " .. firesW.n)
+			-- _SettleForTest answers the flag (no read, nothing to wait for)
+			T.check(D._SettleForTest(w) == true and D.GemsSettled(w) == true and w:GetAttribute(ATTR) == true and firesW.n == 1,
+				"gem settle test hook: _SettleForTest(p) right after a join answers true (the load settled it; Settled fired once, by the load)", settledText(D, w) .. ", fires " .. firesW.n)
 			T.eq(D._SettleForTest(nil), false, "gem settle test hook: _SettleForTest(nil) answers false")
 
-			-- the gem Mix waits for the settle; a token Mix does not
-			local function req(path)
-				local inst = K.moduleInstance(path)
-				local okReq, m = false, nil
-				if inst then
-					okReq, m = pcall(require, inst)
-				end
-				return okReq and type(m) == "table" and m or nil
-			end
-			local F = mod("FusionService") or req("server/Services/FusionService")
-			local TC = req("shared/TycoonCatalog")
-			local PK = req("shared/PetKeys")
+			-- the gem Mix works right after the join (no hold), the token Mix too
+			local F = mod("FusionService") or reqModule("server/Services/FusionService")
+			local TC = reqModule("shared/TycoonCatalog")
+			local PK = reqModule("shared/PetKeys")
 			if T.check(F and type(F.Mix) == "function" and TC and PK, "gem settle mix: FusionService, TycoonCatalog and PetKeys load") then
 				D.MutateHome(f, function(h)
 					h.Prestige = 1
@@ -674,173 +688,68 @@ local function serverScenarios()
 				D.AddTokens(f, 1000000)
 				D.AddGems(f, gemCost)
 				local okT, keyT = F.Mix(f, "pip_penguin", "maple_fox")
-				T.check(okT == true and D.GemsSettled(f) == false, "gem settle mix: a token Mix before the settle mixes", tostring(keyT))
-				local gems0, hybrids0 = D.GetGems(f), count(prof.Hybrids)
-				local okG, whyG = F.Mix(f, "pebble_pup", "cloudy_dragon")
-				T.check(okG == false and whyG == "Your data is still loading", "gem settle mix: a Mythic gem Mix before the settle is refused 'Your data is still loading'", tostring(okG) .. " " .. tostring(whyG))
-				T.check(D.GetGems(f) == gems0 and PK.Count(prof, "pebble_pup") == 1 and PK.Count(prof, "cloudy_dragon") == 1 and count(prof.Hybrids) == hybrids0,
-					"gem settle mix: ...gems and pets unchanged", tostring(D.GetGems(f)) .. " gems, " .. count(prof.Hybrids) .. " hybrids")
-				T.eq(D._SettleForTest(f), true, "gem settle mix: (setup) _SettleForTest(p)")
-				local okG2, keyG2 = F.Mix(f, "pebble_pup", "cloudy_dragon")
-				T.check(okG2 == true and D.GetGems(f) == gems0 - gemCost and PK.Count(prof, "cloudy_dragon") == 0, "gem settle mix: ...after the settle the gem Mix mixes (for " .. tostring(gemCost) .. " gems)",
-					tostring(keyG2) .. ", " .. tostring(D.GetGems(f)) .. " gems")
+				T.check(okT == true, "gem settle mix: a token Mix right after the join mixes", tostring(keyT))
+				local gems0 = D.GetGems(f)
+				local okG, keyG = F.Mix(f, "pebble_pup", "cloudy_dragon")
+				T.check(okG == true and D.GetGems(f) == gems0 - gemCost and PK.Count(prof, "cloudy_dragon") == 0, "gem settle mix: ...and a Mythic gem Mix right after the join mixes (for " .. tostring(gemCost) .. " gems: no 15 s wait)",
+					tostring(keyG) .. ", " .. tostring(D.GetGems(f)) .. " gems")
+				T.eq(firesF.n, 1, "gem settle mix: (Settled fired once for this load)")
 			end
-
-			-- 14 s after the load: nobody waiting is settled yet
-			advanceTo(t0 + 8)
-			T.check(B.SpendGems(q, 200) == true and B.Save(q) == true, "gem settle hop: 8 s after the load the old server's save lands (300 -> 100 gems)")
-			T.check(D.GetGems(q) == 300 and D.GemsSettled(q) == false, "gem settle hop: ...this server still shows 300 and is not settled (gem actions wait)", tostring(D.GetGems(q)))
-			advanceTo(t0 + 14)
-			T.check(D.GemsSettled(p) == false and p:GetAttribute(ATTR) == nil and firesP.n == 0, "gem settle: 14 s after the load: still not settled", settledText(D, p))
-			T.check(D.GemsSettled(q) == false and firesQ.n == 0, "gem settle hop: 14 s after the load: still not settled", settledText(D, q))
-			local rebased14, teams14 = rebasedP.n, teamsP.n
-			local mark = K.logSize()
-			local calls = DSt.Calls
-			local gemsP, tokensP, petsP = D.GetGems(p), D.GetTokens(p), count(D.GetProfile(p).Pets)
-			advanceTo(t0 + 15.5)
-			T.check(D.GemsSettled(p) == true and p:GetAttribute(ATTR) == true, "gem settle: past 15 s and the settle read: GemsSettled is true and the attribute GemsSettled = true", settledText(D, p))
-			T.eq(firesP.n, 1, "gem settle: ...Settled fired once")
-			T.check(DSt.Calls > calls, "gem settle: ...the settle read reached the store (Mock.DataStore.Calls grew)", tostring(DSt.Calls - calls))
-			T.check(rebasedP.n == rebased14 and teamsP.n == teams14, "gem settle quiet: a quiet read fires no ProfileRebased and no TeamsChanged", "rebased +" .. (rebasedP.n - rebased14) .. ", teams +" .. (teamsP.n - teams14))
-			local syncs = K.remotesFor("ProfileSync", uidP, mark)
-			T.eq(#syncs, 0, "gem settle quiet: ...and sends no extra ProfileSync")
-			T.check(D.GetGems(p) == gemsP and gemsP == 300 and D.GetTokens(p) == tokensP and count(D.GetProfile(p).Pets) == petsP, "gem settle quiet: ...the live profile is unchanged",
-				tostring(D.GetGems(p)) .. " gems")
-			T.check(D.GemsSettled(q) == true and q:GetAttribute(ATTR) == true and firesQ.n == 1, "gem settle hop: settled after the read (attribute set, Settled fired once)", settledText(D, q))
-			T.eq(D.GetGems(q), 100, "gem settle hop: ...the live Gems is the stored 100 (the settle read rebased onto the old server's save)")
-			T.eq(rebasedQ.n, 1, "gem settle hop: ...ProfileRebased fired once")
-			T.eq(rebasedQ.saw, false, "gem settle hop: ...and its listeners still saw GemsSettled == false (marked settled after the rebase)")
-			advance(20)
-			T.check(firesP.n == 1 and firesQ.n == 1 and firesW.n == 1 and firesF.n == 1, "gem settle: Settled fires once per load (no second fire later)",
-				firesP.n .. "/" .. firesQ.n .. "/" .. firesW.n .. "/" .. firesF.n)
-			for _, who in ipairs({ p, q, w, f }) do
+			for _, who in ipairs({ w, f }) do
 				leave(who)
 			end
 
-			------------------------------------------------------------------------------------------------
-			-- a failing settle read backs off (review round 1; it was a fixed 5 s retry for as long as the player stayed):
-			-- one GetAsync per attempt (no 1.5 s retry under the lock), then 5, 10, 20 s ... each + up to 25%
-			------------------------------------------------------------------------------------------------
-			local uidR = newUserId()
-			local firesR = counter(D.Settled, uidR)
-			local t3 = os.clock()
-			local r = Mock.AddPlayer("SettleFail" .. tostring(uidR % 1000), uidR)
-			players[#players + 1] = r
-			advanceTo(t3 + 14.5)
-			DSt.Fail = true
-			advanceTo(t3 + 24)
-			T.check(D.GemsSettled(r) == false and r:GetAttribute(ATTR) == nil and firesR.n == 0, "gem settle fail: settle reads that fail (Mock.DataStore.Fail, at 15 s and 20 - 21.25 s) leave the player not settled", settledText(D, r))
-			DSt.Fail = false
-			advanceTo(t3 + 29.5)
-			T.eq(D.GemsSettled(r), false, "gem settle fail: ...the retries back off: after two failures the next read waits 10 s (+ up to 2.5) (not yet at 29.5 s; a fixed 5 s retry settled at 28 s)")
-			advanceTo(t3 + 34)
-			T.check(D.GemsSettled(r) == true and r:GetAttribute(ATTR) == true and firesR.n == 1, "gem settle fail: ...the backed-off read (30 - 33.75 s) settles once Fail is cleared", settledText(D, r) .. ", fires " .. firesR.n)
-			leave(r)
+			-- a rejoin is a new load: settled at once again, Settled once more
+			leave(p)
+			local p2 = join("SettleQuiet", uidP)
+			players[#players + 1] = p2
+			T.check(D.GemsSettled(p2) == true and p2:GetAttribute(ATTR) == true and firesP.n == 2, "gem settle: a rejoin is a new load: settled at once, Settled once more",
+				settledText(D, p2) .. ", fires " .. firesP.n)
+			leave(p2)
 
-			-- a GetAsync request budget under the floor (10) postpones the settle read by 5 s without counting a failure (the
-			-- LeaderboardService rule: no back-off for a postponement)
-			local uidB = newUserId()
-			local firesB = counter(D.Settled, uidB)
-			DSt.Budget = DSt.Budget or {}
-			local savedBudget = DSt.Budget.GetAsync
-			local t4 = os.clock()
-			local bq = Mock.AddPlayer("SettleBudget" .. tostring(uidB % 1000), uidB)
-			players[#players + 1] = bq
-			advanceTo(t4 + 10)
-			DSt.Budget.GetAsync = 3
-			advanceTo(t4 + 19.5)
-			T.check(D.GemsSettled(bq) == false and firesB.n == 0, "gem settle budget: a GetAsync budget of 3 (< 10) postpones the settle read: not settled at 19.5 s", settledText(D, bq))
-			DSt.Budget.GetAsync = savedBudget
-			advanceTo(t4 + 22)
-			T.check(D.GemsSettled(bq) == true and firesB.n == 1, "gem settle budget: ...the budget back: the next attempt (20 - 21.25 s) reads and settles (a postponement is not a failure: no 10 s back-off)", settledText(D, bq))
-			leave(bq)
-
-			------------------------------------------------------------------------------------------------
-			-- a failed (provisional) load: no settle read of its own; a recovery read 15 s or more after the load counts as
-			-- the settle read. The store stays down until 20 s, so whichever recovery lands first (the scheduled one at
-			-- about 21.5 s, or an autosave's save, which recovers too) lands at >= 20 s
-			------------------------------------------------------------------------------------------------
+			-- an outage's provisional load: not settled until its recovery claims; then settled at once (ProfileRebased
+			-- listeners see true: the hold is gone)
 			local uidV = newUserId()
-			DSt.Data[storeKey(uidV)] = oldRecord({ Gems = 40 })
+			realData[storeKey(uidV)] = oldRecord({ Gems = 40 })
 			local firesV = counter(D.Settled, uidV)
 			local rebasedV = counter(D.ProfileRebased, uidV, settledProbe)
 			DSt.Fail = true
-			local t5 = os.clock()
 			local v = Mock.AddPlayer("SettleProv" .. tostring(uidV % 1000), uidV)
 			players[#players + 1] = v
 			advance(4)
 			if T.check(D.GetProfile(v) ~= nil and provisional(D, v), "gem settle provisional: (precondition) the load failed while the store is reachable") then
-				T.eq(D._SettleForTest(v), false, "gem settle provisional: _SettleForTest answers false while provisional")
-				advanceTo(t5 + 16)
-				T.check(D.GemsSettled(v) == false and v:GetAttribute(ATTR) == nil and firesV.n == 0, "gem settle provisional: still not settled after 15 s (no settle read of its own)", settledText(D, v))
-				advanceTo(t5 + 20)
+				T.check(D.GemsSettled(v) == false and v:GetAttribute(ATTR) == nil and firesV.n == 0 and D._SettleForTest(v) == false,
+					"gem settle provisional: not settled while provisional (_SettleForTest false too)", settledText(D, v))
 				DSt.Fail = false
 				T.check(K.waitFor(function()
 					return not provisional(D, v)
-				end, 40), "gem settle provisional: (the recovery reads the real save)")
-				local at = os.clock() - t5
-				T.check(at >= 20, "gem settle provisional: ...the recovery read landed at >= 20 s", tostring(at))
-				T.check(D.GemsSettled(v) == true and v:GetAttribute(ATTR) == true, "gem settle provisional: the recovery read counts as the settle read: settled at once", settledText(D, v))
-				T.eq(firesV.n, 1, "gem settle provisional: ...Settled fired once")
-				T.check(rebasedV.n >= 1 and rebasedV.saw == false, "gem settle provisional: ...ProfileRebased fired first and its listeners saw GemsSettled == false",
-					rebasedV.n .. " fires, saw " .. tostring(rebasedV.saw))
+				end, 40), "gem settle provisional: (the recovery claims the real save)")
+				T.check(D.GemsSettled(v) == true and v:GetAttribute(ATTR) == true and firesV.n == 1, "gem settle provisional: the recovery's claim settles it at once (Settled once)",
+					settledText(D, v) .. ", fires " .. firesV.n)
+				T.check(rebasedV.n >= 1 and rebasedV.saw == true, "gem settle provisional: ...ProfileRebased listeners already see GemsSettled == true", rebasedV.n .. " fires, saw " .. tostring(rebasedV.saw))
 				T.eq(D.GetGems(v), 40, "gem settle provisional: ...the stored gems are in")
 				advance(16)
-				T.eq(firesV.n, 1, "gem settle provisional: ...no later settle read fires Settled again")
+				T.eq(firesV.n, 1, "gem settle provisional: ...Settled never fires again")
 			end
 			DSt.Fail = false
 			leave(v)
 
-			-- a recovery sooner than SettleSeconds (a save recovers the stand-in about 4 s after the join) is not the
-			-- settle read: the normal settle read runs once SettleSeconds have passed since the load
-			local uidE = newUserId()
-			DSt.Data[storeKey(uidE)] = oldRecord({ Gems = 40 })
-			local firesE = counter(D.Settled, uidE)
-			DSt.Fail = true
-			local t6 = os.clock()
-			local e = Mock.AddPlayer("SettleEarly" .. tostring(uidE % 1000), uidE)
-			players[#players + 1] = e
-			advance(4)
-			DSt.Fail = false
-			if T.check(D.GetProfile(e) ~= nil and provisional(D, e), "gem settle early recovery: (precondition) the load failed while the store is reachable") then
-				T.check(D.Save(e) == true and not provisional(D, e), "gem settle early recovery: a save about 4 s after the join recovers the real record")
-				T.check(D.GemsSettled(e) == false and e:GetAttribute(ATTR) == nil and firesE.n == 0, "gem settle early recovery: ...a recovery sooner than 15 s does not end the hold", settledText(D, e))
-				-- the failed load returned after its two reads (about 1.5 s), so the normal settle read lands near t + 16.5 s
-				advanceTo(t6 + 15.5)
-				T.eq(D.GemsSettled(e), false, "gem settle early recovery: ...still held 14 s after the load")
-				advanceTo(t6 + 17.5)
-				T.check(D.GemsSettled(e) == true and e:GetAttribute(ATTR) == true and firesE.n == 1, "gem settle early recovery: ...the normal settle read ends it once 15 s have passed (Settled once)",
-					settledText(D, e) .. ", fires " .. firesE.n)
-				T.eq(D.GetGems(e), 40, "gem settle early recovery: ...the stored gems are in")
-			end
-			DSt.Fail = false
-			leave(e)
-
-			------------------------------------------------------------------------------------------------
-			-- no store (Studio without API access): settled at 15 s with no read
-			------------------------------------------------------------------------------------------------
+			-- no store (Studio without API access): settled at once, no read
 			local uidS = newUserId()
 			local s = join("SettleNoApi", uidS)
 			players[#players + 1] = s
-			advance(16) -- the booted server's own settle read of this player is done: nothing else reads during the check
 			local D2, clone2, release2 = secondServer("DataServiceSettleNoApi")
 			if T.check(D2 ~= nil and type(D2.GemsSettled) == "function", "gem settle no store: a fresh copy of DataService loads", tostring(clone2)) then
 				DSt.Unavailable = true
 				local okNo, errNo = pcall(function()
-					local t4 = os.clock()
+					local callsNo = DSt.Calls
 					D2.Load(s)
-					T.check(type(D2.IsProvisional) == "function" and D2.IsProvisional(s) == false and D2.GemsSettled(s) == false,
-						"gem settle no store: a load with no usable store is not provisional and not settled yet")
-					advanceTo(t4 + 14)
-					T.eq(D2.GemsSettled(s), false, "gem settle no store: ...false at 14 s")
-					advanceTo(t4 + 14.9)
-					T.eq(D2.GemsSettled(s), false, "gem settle no store: ...still false just before 15 s")
-					local callsNo = DSt.Calls -- a narrow window: the booted server's autosave sweep is unlikely to fall in it
-					advanceTo(t4 + 15.1)
-					T.eq(D2.GemsSettled(s), true, "gem settle no store: ...true at 15 s")
-					T.eq(DSt.Calls, callsNo, "gem settle no store: ...with no read (no DataStore call)")
+					T.check(type(D2.IsProvisional) == "function" and D2.IsProvisional(s) == false and D2.GemsSettled(s) == true,
+						"gem settle no store: a load with no usable store is not provisional and settled at once (nothing to own)")
+					T.eq(DSt.Calls, callsNo, "gem settle no store: ...with no DataStore call")
 				end)
 				DSt.Unavailable = false
+				pcall(D2.Release, s)
 				T.check(release2() == true, "gem settle no store: the copy's hooks are dropped with it")
 				if not okNo then
 					error(errNo, 0)
@@ -849,8 +758,8 @@ local function serverScenarios()
 			leave(s)
 
 			------------------------------------------------------------------------------------------------
-			-- part 2 (Task 4): gem-priced spins wait for the settle; token spins do not. The PolicyService double
-			-- allows the account, so the settle is the only hold
+			-- part 2: a held load (the old server's fresh lock) refuses gem x1 / x3 spins, nothing charged; a token spin on
+			-- the stand-in works (its tokens are a delta); the claim lets the gem spin through
 			------------------------------------------------------------------------------------------------
 			local PetS = mod("PetService")
 			local PolS = game:GetService("PolicyService")
@@ -859,8 +768,11 @@ local function serverScenarios()
 			end
 			local okSpin, errSpin = pcall(function()
 				local uidG = newUserId()
-				local g = join("SettleSpin", uidG)
+				realData[storeKey(uidG)] = oldRecord({ Gems = 0, Lock = heldLock() })
+				local g = Mock.AddPlayer("SettleSpin" .. tostring(uidG % 1000), uidG)
 				players[#players + 1] = g
+				advance(12.6)
+				T.check(provisional(D, g) and D.GemsSettled(g) == false, "gem settle spin: (precondition) the old server still holds the save: provisional, not settled", settledText(D, g))
 				local cloudGems = Config.Gems.RouletteGemPrices.Cloud
 				D.AddTokens(g, 1000)
 				D.AddGems(g, 10 * cloudGems)
@@ -868,26 +780,27 @@ local function serverScenarios()
 					local prof = D.GetProfile(g)
 					return D.GetTokens(g) .. "/" .. D.GetGems(g) .. "/" .. count(prof and prof.Pets) .. "/" .. tostring(prof and prof.Stats.Spins)
 				end
-				T.eq(D.GemsSettled(g), false, "gem settle spin: (precondition) not settled right after the join")
 				local before = wallet()
 				local ok1, why1 = PetS.BuyRoulette(g, "Cloud", "Gems")
 				local ok3, why3 = PetS.BuyRoulette(g, "Cloud", "Gems", 3)
 				T.check(ok1 == false and why1 == "Your data is still loading" and ok3 == false and why3 == "Your data is still loading",
-					"gem settle spin: before the settle a gem x1 and a gem x3 are refused 'Your data is still loading'", tostring(why1) .. " / " .. tostring(why3))
+					"gem settle spin: while the save is held a gem x1 and a gem x3 are refused 'Your data is still loading'", tostring(why1) .. " / " .. tostring(why3))
 				T.eq(wallet(), before, "gem settle spin: ...nothing charged or granted (tokens / gems / pets / spins)")
-				local t0, g0 = D.GetTokens(g), D.GetGems(g)
+				local t0 = D.GetTokens(g)
 				local okT = PetS.BuyRoulette(g, "Cloud")
-				T.check(okT == true and D.GetTokens(g) == t0 - Config.Roulettes[1].Price, "gem settle spin: ...a token spin before the settle is granted")
-				T.eq(D._SettleForTest(g), true, "gem settle spin: (setup) _SettleForTest(p)")
+				T.check(okT == true and D.GetTokens(g) == t0 - Config.Roulettes[1].Price, "gem settle spin: ...a token spin on the stand-in is granted (tokens merge as a delta)")
+				realData[storeKey(uidG)].Lock = nil -- the old server's leave save lands
+				advance(20)
+				T.check(D.GemsSettled(g) == true and not provisional(D, g), "gem settle spin: the old server released: the recovery claims, settled", settledText(D, g))
+				local g0 = D.GetGems(g)
 				local okG = PetS.BuyRoulette(g, "Cloud", "Gems")
-				T.check(okG == true and D.GetGems(g) == g0 - cloudGems, "gem settle spin: ...after the settle the gem spin is granted (the settle was the only hold)", tostring(D.GetGems(g)))
+				T.check(okG == true and D.GetGems(g) == g0 - cloudGems, "gem settle spin: ...now the gem spin is granted", tostring(D.GetGems(g)))
 				leave(g)
 
 				------------------------------------------------------------------------------------------------
-				-- part 3 (Task 5): the hop with the pity. The old server (B) spent the Secret Roulette's price on a forced
-				-- Secret (the money step's plain writes: the spend, the Secret pet, Pity { 7, 7 }); its leave save lands 8 s
-				-- after this server's load, which read the old record (Since 6: without the hold this server would force a
-				-- second Secret, paid with the same gems)
+				-- part 3: the hop with the pity. The old server spent the Secret Roulette's price on a forced Secret
+				-- (Since 6 -> Pity { 7, 7 }) and still holds the save; this server waits, plays a stand-in that refuses
+				-- every gem spin, and reads the old server's record once its lock frees: never the stale Since 6
 				------------------------------------------------------------------------------------------------
 				local Util = reqModule("shared/Util")
 				local PC = reqModule("shared/PetCatalog")
@@ -896,19 +809,17 @@ local function serverScenarios()
 				local PITY_ATTR = Config.Attr.SecretPityLeft or "SecretPityLeft"
 				local secretPet = PC.RarityPool(sr.Id, "Secret")[1].Id
 				local uidH = newUserId()
-				DSt.Data[storeKey(uidH)] = oldRecord({ Gems = price + 10, Pity = { Secret = { Spins = 6, Hit = 0 } } })
-				local tH = os.clock()
+				realData[storeKey(uidH)] = oldRecord({ Gems = price + 10, Pity = { Secret = { Spins = 6, Hit = 0 } }, Lock = heldLock() })
 				local h = Mock.AddPlayer("SettlePity" .. tostring(uidH % 1000), uidH)
 				players[#players + 1] = h
-				B.Load(h) -- the old server still holds h (a hop: its leave save is not in yet)
 				advance(1.2)
 				onDeck(h)
-				T.check(D.GetGems(h) == price + 10 and pityIs(D.GetPity(h), 6, 0), "gem settle pity hop: (setup) this server read the old record: " .. (price + 10) .. " Gems, Since 6",
+				T.check(D.GetProfile(h) == nil and D.GemsSettled(h) == false, "gem settle pity hop: the load waits for the old server's lock (no profile, not settled)")
+				local okW, whyW = PetS.BuyRoulette(h, sr.Id)
+				T.check(okW == false and whyW == "Your data is still loading", "gem settle pity hop: ...a Secret spin meanwhile is refused 'Your data is still loading'", tostring(whyW))
+				advance(11.4)
+				T.check(provisional(D, h) and D.GetGems(h) == 0 and D.GetPity(h) == nil, "gem settle pity hop: after the wait a stand-in: 0 gems, no pity (the stale " .. (price + 10) .. " gems / Since 6 never loaded)",
 					tostring(D.GetGems(h)) .. " gems, " .. show(D.GetPity(h)))
-				local profB = B.GetProfile(h)
-				T.check(B.SpendGems(h, price) == true and B.SetPity(h, 7, 7) == true, "gem settle pity hop: the old server's forced Secret: " .. price .. " Gems spent, Pity { 7, 7 }")
-				profB.Pets[secretPet] = (profB.Pets[secretPet] or 0) + 1
-				B.MarkDirty(h)
 				D.AddTokens(h, Config.Roulettes[1].Price)
 				local function walletH()
 					local prof = D.GetProfile(h)
@@ -918,17 +829,21 @@ local function serverScenarios()
 				local okS1, whyS1 = PetS.BuyRoulette(h, sr.Id)
 				local okS2, whyS2 = PetS.BuyRoulette(h, "Cloud", "Gems")
 				T.check(okS1 == false and whyS1 == "Your data is still loading" and okS2 == false and whyS2 == "Your data is still loading",
-					"gem settle pity hop: before the settle the Secret Roulette and a gem spin are refused 'Your data is still loading'", tostring(whyS1) .. " / " .. tostring(whyS2))
+					"gem settle pity hop: on the stand-in the Secret Roulette and a gem spin are refused 'Your data is still loading'", tostring(whyS1) .. " / " .. tostring(whyS2))
 				T.eq(walletH(), w0, "gem settle pity hop: ...nothing charged, granted or counted (tokens / gems / pets / spins / pity)")
 				T.eq(h:GetAttribute(PITY_ATTR), nil, "gem settle pity hop: ...and SecretPityLeft is absent while not settled")
-				advanceTo(tH + 8)
-				T.eq(B.Save(h), true, "gem settle pity hop: 8 s after the load the old server's leave save lands")
 				local okTok = PetS.BuyRoulette(h, "Cloud")
 				T.eq(okTok, true, "gem settle pity hop: ...a token spin is never held")
-				advanceTo(tH + 15.5)
-				T.eq(D.GemsSettled(h), true, "gem settle pity hop: settled after the 15 s settle read")
+				-- the old server's leave save lands: its spend, its Secret pet, Pity { 7, 7 }, the lock released
+				local recH = realData[storeKey(uidH)]
+				recH.Gems = 10
+				recH.Pity = { Secret = { Spins = 7, Hit = 7 } }
+				recH.Pets = { [secretPet] = 1 }
+				recH.Lock = nil
+				advance(20)
+				T.eq(D.GemsSettled(h), true, "gem settle pity hop: the recovery claimed: settled")
 				T.check(D.GetGems(h) == 10 and pityIs(D.GetPity(h), 7, 7) and (D.GetProfile(h).Pets[secretPet] or 0) == 1,
-					"gem settle pity hop: ...this server now shows the old server's 10 Gems, its Secret pet and Pity { 7, 7 } (Since 0)",
+					"gem settle pity hop: ...this server shows the old server's 10 Gems, its Secret pet and Pity { 7, 7 } (Since 0)",
 					tostring(D.GetGems(h)) .. " gems, " .. show(D.GetPity(h)) .. ", pet " .. tostring(D.GetProfile(h).Pets[secretPet]))
 				T.eq(h:GetAttribute(PITY_ATTR), 7, "gem settle pity hop: ...SecretPityLeft = 7")
 				local okPoor, whyPoor = PetS.BuyRoulette(h, sr.Id)
@@ -945,38 +860,43 @@ local function serverScenarios()
 				leave(h)
 
 				------------------------------------------------------------------------------------------------
-				-- part 4 (Task 7): the gem XP Potion (StoreRequest "GemBuy") waits for the settle too
+				-- part 4: the gem XP Potion (StoreRequest "GemBuy") while the save is held elsewhere toasts the loading
+				-- text and sells nothing; after the claim it sells
 				------------------------------------------------------------------------------------------------
 				local Store = reqModule("server/Services/StoreService")
 				local folder = K.remoteFolder and K.remoteFolder()
 				local storeRemote = folder and folder:FindFirstChild("StoreRequest")
 				if T.check(Store ~= nil and type(Store.BuyWithGems) == "function" and storeRemote ~= nil, "gem settle gem buy: StoreService.BuyWithGems and the StoreRequest remote exist") then
 					local uidB = newUserId()
-					local b = join("SettleGemBuy", uidB)
+					realData[storeKey(uidB)] = oldRecord({ Gems = 0, Lock = heldLock() })
+					local b = Mock.AddPlayer("SettleGemBuy" .. tostring(uidB % 1000), uidB)
 					players[#players + 1] = b
-					-- lobby-shop Task 16: the gem potion's price from Config (100 gems; was a literal 75)
+					advance(12.6)
 					local potionGems = K.config().Store.GemItems[1].Gems
 					D.AddGems(b, potionGems)
 					local gemsB, endsB = D.GetGems(b), Store.BoostEnds(b, "XpPotion")
-					T.check(D.GemsSettled(b) == false and gemsB >= potionGems, "gem settle gem buy: (precondition) not settled right after the join, " .. potionGems .. " gems or more", tostring(gemsB))
+					T.check(provisional(D, b) and D.GemsSettled(b) == false and gemsB >= potionGems, "gem settle gem buy: (precondition) the save is held elsewhere (a stand-in), " .. potionGems .. " gems or more", tostring(gemsB))
 					local markB = K.logSize()
 					Mock.FromClient(storeRemote, b, "GemBuy", "XpPotionGems")
 					advance(0.2)
 					local saidB = 0
 					for _, e in ipairs(K.remotesFor("Notify", uidB, markB)) do
-						if e.args[1] == "Your data is still loading" and e.args[2] == "bad" then
+						if e.args[1] == "Your save is still loading" and e.args[2] == "bad" then
 							saidB = saidB + 1
 						end
 					end
-					T.eq(saidB, 1, "gem settle gem buy: before the settle a GemBuy request toasts 'Your data is still loading'")
+					T.eq(saidB, 1, "gem settle gem buy: while the save is held a GemBuy request toasts 'Your save is still loading'")
 					local okB, whyB = Store.BuyWithGems(b, "XpPotionGems")
-					T.check(okB == false and whyB == "Your data is still loading", "gem settle gem buy: ...BuyWithGems answers false, 'Your data is still loading'", tostring(okB) .. " / " .. tostring(whyB))
+					T.check(okB == false and whyB == "Your save is still loading", "gem settle gem buy: ...BuyWithGems answers false, 'Your save is still loading'", tostring(okB) .. " / " .. tostring(whyB))
 					T.check(D.GetGems(b) == gemsB and Store.BoostEnds(b, "XpPotion") == endsB, "gem settle gem buy: ...nothing spent, no potion time",
 						tostring(D.GetGems(b)) .. " gems, ends " .. tostring(Store.BoostEnds(b, "XpPotion")))
-					T.eq(D._SettleForTest(b), true, "gem settle gem buy: (setup) _SettleForTest(p)")
+					realData[storeKey(uidB)].Lock = nil
+					advance(20)
+					T.eq(D.GemsSettled(b), true, "gem settle gem buy: (setup) the old server released: the recovery claimed")
+					local gemsB2 = D.GetGems(b)
 					local okB2 = Store.BuyWithGems(b, "XpPotionGems")
-					T.check(okB2 == true and D.GetGems(b) == gemsB - potionGems and Store.BoostEnds(b, "XpPotion") == os.time() + 1800,
-						"gem settle gem buy: ...after the settle the potion sells (" .. potionGems .. " gems, 30 minutes; the settle was the only hold)", tostring(D.GetGems(b)) .. " gems")
+					T.check(okB2 == true and D.GetGems(b) == gemsB2 - potionGems and Store.BoostEnds(b, "XpPotion") == os.time() + 1800,
+						"gem settle gem buy: ...after the claim the potion sells (" .. potionGems .. " gems, 30 minutes)", tostring(D.GetGems(b)) .. " gems")
 					leave(b)
 				end
 			end)
@@ -985,11 +905,9 @@ local function serverScenarios()
 				error(errSpin, 0)
 			end
 		end)
+		DSt.Data = realData
 		DSt.Fail = false
 		DSt.Unavailable = false
-		if type(DSt.Budget) == "table" then
-			DSt.Budget.GetAsync = nil -- (the budget case sets it; unset is the mock's 100)
-		end
 		for _, box in ipairs(counters) do
 			box.stop()
 		end
@@ -999,7 +917,6 @@ local function serverScenarios()
 			end
 		end
 		advance(12)
-		T.check(releaseB() == true, "gem settle: the old server's hooks are dropped with it")
 		if not okRun then
 			error(errRun, 0)
 		end
@@ -1064,10 +981,11 @@ local function serverScenarios()
 			------------------------------------------------------------------------------------------------
 			local p = join("PityRun", newUserId())
 			players[#players + 1] = p
-			T.eq(p:GetAttribute(ATTR), nil, "secret pity: right after the join (not settled) SecretPityLeft is absent")
-			T.eq(D._SettleForTest(p), true, "secret pity: (setup) the gem settle hold ends")
+			-- (session lock, 2026-11-10: a normal load is settled at once, so the attribute is there right after the join)
+			T.eq(p:GetAttribute(ATTR), 7, "secret pity: right after the join (settled at once: the lock's flag) SecretPityLeft = 7 (a record with no Pity: Since 0)")
+			T.eq(D._SettleForTest(p), true, "secret pity: (setup) GemsSettled")
 			advance(0.1)
-			T.eq(p:GetAttribute(ATTR), 7, "secret pity: once settled SecretPityLeft = 7 (a record with no Pity: Since 0)")
+			T.eq(p:GetAttribute(ATTR), 7, "secret pity: ...and stays 7")
 			PetS._SetRngForTest(stubRng(nil, MYTHIC), Util.NewRng(4401))
 			D.AddGems(p, 7 * price)
 			local gems0 = D.GetGems(p)
@@ -1190,9 +1108,11 @@ local function serverScenarios()
 					return not provisional(D, v)
 				end, 40), "secret pity stand-in: (the recovery reads the real save)")
 				advance(0.5)
-				T.check(rebasedV.n >= 1 and rebasedV.saw == "nil", "secret pity stand-in: inside the recovery's ProfileRebased SecretPityLeft is still absent (not settled yet)",
+				-- (session lock, 2026-11-10: the recovery's claim makes this server the owner BEFORE ProfileRebased fires, so
+				-- PetService's ProfileRebased handler already writes the attribute)
+				T.check(rebasedV.n >= 1 and rebasedV.saw == "2", "secret pity stand-in: inside the recovery's ProfileRebased SecretPityLeft is already 2 (the claim settled it first)",
 					rebasedV.n .. " fires, saw " .. tostring(rebasedV.saw))
-				T.check(settledV.n == 1 and D.GemsSettled(v) == true, "secret pity stand-in: ...the recovery read counted as the settle read (Settled fired once)", tostring(settledV.n))
+				T.check(settledV.n == 1 and D.GemsSettled(v) == true, "secret pity stand-in: ...the recovery's claim settled it (Settled fired once)", tostring(settledV.n))
 				T.eq(v:GetAttribute(ATTR), 2, "secret pity stand-in: ...after the settle SecretPityLeft = 2 (the stored Since 5)")
 
 				D.AddTokens(v, 1)

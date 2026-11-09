@@ -1,9 +1,9 @@
 -- smoke_session_lock.lua: the save session lock (docs/superpowers/specs/2026-11-10-session-lock-design.md; plan
--- docs/superpowers/plans/2026-11-10-session-lock.md Task 1). One server owns a player's save at a time: a Lock record
+-- docs/superpowers/plans/2026-11-10-session-lock.md Tasks 1 and 2). One server owns a player's save at a time: a Lock record
 -- { Id, Job, Place, At } inside the save, claimed by one UpdateAsync at load, refreshed by every save and by a heartbeat,
 -- honoured by every write, released by the leave save (and BindToClose: checked in smoke_server.lua's `shutdown`, the
 -- last DataService scenario of the run, because Mock.Shutdown ends the autosave loop for every later scenario).
--- Loaded by tools/smoke.py in the server world (booted):
+-- Loaded by tools/smoke.py in the server world (booted) and the client world (ARGS.context picks the half):
 --   lock_claim_release   Config.Save / Config.Attr.SaveWaiting; the claim at load (ONE UpdateAsync, no GetAsync; only Lock
 --                        changes; OwnsSave); an online player's lock stays fresh past LockSeconds (every sweep writes:
 --                        TycoonService refreshes Home.LastSeen every 15 s, so a live session is never idle); a dirty
@@ -25,6 +25,19 @@
 --                        the release is pending keeps the cached entry; a rejoin that races the leave's release write gets
 --                        the lock back at its next save, one after a landed release claims again (spec 6.5); a Save
 --                        during a held load waits and writes nothing
+--   lock_receipts_cross  (Task 2, spec 11 / 13) a receipt while the save is held elsewhere answers NotProcessedYet, then
+--                        PurchaseGranted once after the claim (saved with its receipt); a receipt the old server already
+--                        stored grants nothing again; TutorialStarter across the hop (the stand-in decides no ask, A's
+--                        grant arrives with the claim, ONE starter); duels and trophies made on the stand-in merge with
+--                        the stored ones (a union, a delta)
+--   lock_settle_flag     (Task 2, spec 12 / 18) Config.Gems.SettleSeconds is gone; a normal load is settled at once (no
+--                        settle read, Settled once, the GemsSettled attribute); a held load is not settled (gem spin and
+--                        gem Mix refused, nothing charged) until the recovery's claim, whose ProfileRebased listeners
+--                        already see GemsSettled true; the two save-wait toasts (Main.server) in order, none for a
+--                        normal join or during the wait; no usable store: settled at once
+--   client_lock_loading  (Task 2, client world, spec 18) the loading screen's caption reads "Another server is still
+--                        saving your progress..." while the player attribute SaveWaiting is true, "Loading the sky... N%"
+--                        again once it is removed, and the screen still reaches Done on ProfileLoaded
 -- White-box: the booted helpers of smoke_server.lua; a second copy of DataService against the same mock store is "another
 -- module copy" (the smoke_pity.lua secondServer shape) and gets its own server id with _SetServerIdForTest (every copy
 -- shares game.JobId "mock-job" otherwise: one server, two caches). Store calls and writes are counted PER KEY through a
@@ -229,11 +242,16 @@ local function serverScenarios()
 		return false
 	end
 
-	local function countUid(signal, uid)
-		local box = { n = 0 }
+	-- counts signal:Fire(player) for one user id until stop(); probe(player), when given, runs at each fire and its last
+	-- answer is kept in box.saw
+	local function countUid(signal, uid, probe)
+		local box = { n = 0, saw = nil }
 		local conn = signal:Connect(function(who)
 			if who and who.UserId == uid then
 				box.n = box.n + 1
+				if probe then
+					box.saw = probe(who)
+				end
 			end
 		end)
 		box.stop = function()
@@ -312,6 +330,47 @@ local function serverScenarios()
 			B._SetServerIdForTest(id)
 		end
 		return B, clone, rel
+	end
+
+	local function reqModule(path)
+		local inst = K.moduleInstance(path)
+		local okReq, m = false, nil
+		if inst then
+			okReq, m = pcall(require, inst)
+		end
+		return okReq and type(m) == "table" and m or nil
+	end
+
+	-- the two save-wait toasts (spec 18; Main.server's "Save wait toasts" step) a user got since `mark`, in order
+	local SAVING_TEXT = "Your progress is still being saved by another server. Your pets and gems will show up in a moment."
+	local BACK_TEXT = "Your progress is back!"
+	local function waitToasts(uid, mark)
+		local out = {}
+		for _, e in ipairs(K.remotesFor("Notify", uid, mark)) do
+			local args = type(e.args) == "table" and e.args or {}
+			if args[1] == SAVING_TEXT or args[1] == BACK_TEXT then
+				out[#out + 1] = { text = args[1], kind = args[2], secs = args[3] }
+			end
+		end
+		return out
+	end
+	local function showToasts(list)
+		local parts = {}
+		for _, t in ipairs(list) do
+			parts[#parts + 1] = string.format("%q %s %s", t.text, tostring(t.kind), tostring(t.secs))
+		end
+		return #parts .. " toasts: " .. table.concat(parts, "; ")
+	end
+
+	-- one call of `fn(...)` on its own thread: box.done / box.ok / box.result
+	local function spawnCall(fn, ...)
+		local box = { done = false }
+		local args = { n = select("#", ...), ... }
+		task.spawn(function()
+			local ok, result = pcall(fn, unpack(args, 1, args.n))
+			box.ok, box.result, box.done = ok, result, true
+		end)
+		return box
 	end
 
 	-- runs body under pcall, then always restores the store watch and the failure switches and removes the players left
@@ -824,10 +883,327 @@ local function serverScenarios()
 		end)
 	end)
 
+	----------------------------------------------------------------------------------------------------
+	-- lock_receipts_cross (Task 2): receipts and the cross-server pieces under the lock
+	----------------------------------------------------------------------------------------------------
+	S.lock_receipts_cross = guarded("lock_receipts_cross", function()
+		if not K.needBoot() then
+			return
+		end
+		local Config = config()
+		local D = DS()
+		local GS = reqModule("server/Services/GemService")
+		local TSv = mod("TutorialService")
+		local Steps = reqModule("shared/TutorialSteps")
+		local G = Config.Gems
+		local PolS = game:GetService("PolicyService")
+		local modes = {} -- [userId] = "restrict" (any other: allowed)
+		local savedIds = {}
+		for i, pk in ipairs(G.Products) do
+			savedIds[i] = pk.Id
+		end
+		run("lock_receipts_cross", function(players)
+			if not T.check(type(D.OwnsSave) == "function" and GS ~= nil and type(GS.ProcessReceipt) == "function" and TSv ~= nil and Steps ~= nil,
+				"lock receipts: (setup) DataService.OwnsSave, GemService.ProcessReceipt, TutorialService and TutorialSteps load") then
+				return
+			end
+			local GRANTED = Enum.ProductPurchaseDecision.PurchaseGranted
+			local NOT_YET = Enum.ProductPurchaseDecision.NotProcessedYet
+			local okBody, errBody = pcall(function()
+				local pack = G.Products[2]
+				pack.Id = 4400002 -- the owner pasted this pack's product id (restored after the scenario)
+				local function receipt(uid, purchaseId)
+					return { PlayerId = uid, PurchaseId = purchaseId, ProductId = pack.Id, CurrencySpent = pack.Robux or 1, PlaceIdWherePurchased = 1 }
+				end
+				local function decide(info)
+					local box = spawnCall(GS.ProcessReceipt, info)
+					K.waitFor(function()
+						return box.done
+					end, 60)
+					if not box.done then
+						return "unfinished"
+					end
+					return box.ok and box.result or ("error: " .. tostring(box.result))
+				end
+
+				-- a receipt while the save is held elsewhere: NotProcessedYet, then granted once after the claim
+				local uid = newUserId()
+				seed(uid, oldRecord({ Gems = 0, Lock = foreign("server-A") }))
+				local p = add("LockReceipt", uid)
+				players[#players + 1] = p
+				advance(0.5)
+				local box = spawnCall(GS.ProcessReceipt, receipt(uid, "lock-r1"))
+				advance(13.6) -- GemService waits ProfileWaitSeconds (12) in 0.5 s polls (each resumes on a mock frame: a little later)
+				T.check(box.done == true and box.ok == true and box.result == NOT_YET, "lock receipts: a receipt while the save is held elsewhere answers NotProcessedYet",
+					"done " .. tostring(box.done) .. ", " .. tostring(box.result))
+				T.check(D.IsProvisional(p) == true and D.GetGems(p) == 0, "lock receipts: ...nothing granted on the stand-in", "gems " .. tostring(D.GetGems(p)))
+				T.check(lockId(uid) == "server-A" and (stored(uid) or {}).GemReceipts == nil, "lock receipts: ...and the held record untouched")
+				stored(uid).Lock = nil -- A's leave save landed
+				advance(20) -- the first recovery claims
+				T.eq(D.OwnsSave(p), true, "lock receipts: (setup) A's release: the recovery claimed")
+				T.eq(decide(receipt(uid, "lock-r1")), GRANTED, "lock receipts: Roblox asks again after the claim: PurchaseGranted")
+				T.eq(D.GetGems(p), pack.Gems, "lock receipts: ...the pack's " .. tostring(pack.Gems) .. " gems are granted")
+				local rec = stored(uid) or {}
+				T.check(type(rec.GemReceipts) == "table" and rec.GemReceipts["lock-r1"] ~= nil and rec.Gems == pack.Gems,
+					"lock receipts: ...saved with its receipt before PurchaseGranted", "stored gems " .. tostring(rec.Gems))
+				T.check(decide(receipt(uid, "lock-r1")) == GRANTED and D.GetGems(p) == pack.Gems, "lock receipts: the same receipt a third time: PurchaseGranted, granted once")
+				leave(p)
+
+				-- a receipt the old server already stored is never granted again here
+				local u2 = newUserId()
+				seed(u2, oldRecord({ Gems = 300, GemReceipts = { ["lock-r2"] = os.time() - 30 } }))
+				local p2 = join("LockReceipt", u2)
+				players[#players + 1] = p2
+				T.eq(D.OwnsSave(p2), true, "lock receipts: (setup) the second buyer's record is claimed")
+				T.check(decide(receipt(u2, "lock-r2")) == GRANTED and D.GetGems(p2) == 300, "lock receipts: a receipt the old server already stored answers PurchaseGranted and grants nothing again",
+					"gems " .. tostring(D.GetGems(p2)))
+				leave(p2)
+
+				-- TutorialStarter across the hop: A granted the starter and still holds the record
+				local ASK, PET = "TutorialStarter", "pebble_pup"
+				local SPIN = Steps.IndexOf and Steps.IndexOf.spin
+				PolS.GetPolicyInfoForPlayerAsync = function(_, who)
+					return { ArePaidRandomItemsRestricted = modes[who.UserId] == "restrict", IsPaidItemTradingAllowed = true }
+				end
+				local function petCount(who)
+					local prof = D.GetProfile(who)
+					return prof and (prof.Pets[PET] or 0) or -1
+				end
+				local function onSpinStep(who)
+					D.SetTutorial(who, { Step = SPIN, Done = false, Gifted = true })
+					TSv.Reload(who)
+					advance(1.2)
+				end
+				local uT = newUserId()
+				modes[uT] = "restrict"
+				seed(uT, oldRecord({ Trove = { [ASK] = true }, Pets = { [PET] = 1 }, Tutorial = { Step = SPIN, Done = false, Gifted = true }, Lock = foreign("server-A") }))
+				local pt = add("LockStarter", uT)
+				players[#players + 1] = pt
+				advance(12.6)
+				T.eq(D.IsProvisional(pt), true, "lock starter: the restricted account's save is held: provisional after the wait")
+				onSpinStep(pt)
+				T.check(petCount(pt) == 0 and D.MarkTrove(pt, ASK, nil) == false, "lock starter: the stand-in grants nothing: no ask decided before A's write is read",
+					"pets " .. tostring(petCount(pt)))
+				stored(uT).Lock = nil -- A's write lands (its release)
+				advance(20)
+				local trove = D.GetTrove(pt)
+				T.check(D.OwnsSave(pt) == true and type(trove) == "table" and trove[ASK] == true and petCount(pt) == 1, "lock starter: A's grant arrived with the claim (the ask, ONE " .. PET .. ")",
+					"pets " .. tostring(petCount(pt)))
+				onSpinStep(pt)
+				advance(1.5)
+				T.eq(petCount(pt), 1, "lock starter: ...the step again on this server: still ONE starter (the twin rule)")
+				leave(pt)
+				local recT = stored(uT) or {}
+				T.check(type(recT.Pets) == "table" and recT.Pets[PET] == 1 and type(recT.Trove) == "table" and recT.Trove[ASK] == true, "lock starter: ...and the store holds it once")
+				PolS.GetPolicyInfoForPlayerAsync = nil
+
+				-- duels and trophies across the hop
+				local uB = newUserId()
+				seed(uB, oldRecord({ Battle = { Trophies = 10, Duels = { { U = 555, T = os.time() - 60 } } }, Lock = foreign("server-A") }))
+				local pb = add("LockDuel", uB)
+				players[#players + 1] = pb
+				advance(12.6)
+				local since = os.time() - 3600
+				T.eq(D.IsProvisional(pb), true, "lock duels: (setup) held after the wait: provisional")
+				T.eq(D.DuelsWith(pb, 555, since), 0, "lock duels: the stand-in knows no duels yet")
+				T.eq(D.RecordDuel(pb, 777, os.time()), true, "lock duels: RecordDuel is allowed while provisional (a union)")
+				local okT, totalT = D.AddTrophies(pb, 5)
+				T.check(okT == true and totalT == 5, "lock duels: AddTrophies is allowed while provisional (a delta: 0 + 5 on the stand-in)", tostring(totalT))
+				stored(uB).Lock = nil
+				advance(20)
+				T.check(D.OwnsSave(pb) == true and D.DuelsWith(pb, 555, since) == 1 and D.DuelsWith(pb, 777, since) == 1, "lock duels: after the claim the merge kept both duels (A's 555, this server's 777)",
+					tostring(D.DuelsWith(pb, 555, since)) .. " / " .. tostring(D.DuelsWith(pb, 777, since)))
+				T.eq(select(2, D.AddTrophies(pb, 0)), 15, "lock duels: ...and the trophies are 10 + 5")
+				leave(pb)
+				local recB = stored(uB) or {}
+				T.eq(type(recB.Battle) == "table" and recB.Battle.Trophies or nil, 15, "lock duels: ...saved at the leave")
+			end)
+			PolS.GetPolicyInfoForPlayerAsync = nil
+			for i, pk in ipairs(G.Products) do
+				pk.Id = savedIds[i]
+			end
+			if not okBody then
+				error(errBody, 0)
+			end
+		end)
+	end)
+
+	----------------------------------------------------------------------------------------------------
+	-- lock_settle_flag (Task 2): the gem settle hold retired into the lock's flag
+	----------------------------------------------------------------------------------------------------
+	S.lock_settle_flag = guarded("lock_settle_flag", function()
+		if not K.needBoot() then
+			return
+		end
+		local Config = config()
+		local D = DS()
+		run("lock_settle_flag", function(players)
+			T.eq(type(Config.Gems) == "table" and Config.Gems.SettleSeconds or nil, nil, "lock flag: Config.Gems.SettleSeconds is gone (the 15 s gem settle hold is retired)")
+			if not T.check(type(D.GemsSettled) == "function" and type(D._SettleForTest) == "function" and type(D.Settled) == "table" and type(D.Settled.Connect) == "function"
+				and type(D.OwnsSave) == "function", "lock flag: GemsSettled, _SettleForTest and the Settled signal stay (OwnsSave beside them)") then
+				return
+			end
+			local ATTR = Config.Attr.GemsSettled or "GemsSettled"
+			local function flagText(Dx, who)
+				return "GemsSettled " .. tostring(Dx.GemsSettled(who)) .. ", attribute " .. tostring(who:GetAttribute(ATTR))
+			end
+			startWatch()
+
+			-- a normal load is settled at once: no settle read, Settled once, the attribute
+			local uid = newUserId()
+			seed(uid, oldRecord({ Gems = 50 }))
+			local fires = countUid(D.Settled, uid)
+			local mark = K.logSize()
+			local p = join("LockFlag", uid)
+			players[#players + 1] = p
+			T.check(D.GemsSettled(p) == true and p:GetAttribute(ATTR) == true and fires.n == 1, "lock flag: a normal load is settled at once (GemsSettled, the attribute, Settled fired once)",
+				flagText(D, p) .. ", fires " .. fires.n)
+			T.eq(calls(uid), 1, "lock flag: ...no settle read: ONE store call (the claim) for the whole load")
+			T.eq(D._SettleForTest(p), true, "lock flag: _SettleForTest answers OwnsSave (true) and reads nothing")
+			T.eq(calls(uid), 1, "lock flag: ...still one store call")
+			T.eq(D._SettleForTest(nil), false, "lock flag: _SettleForTest(nil) answers false")
+			advance(30)
+			T.eq(fires.n, 1, "lock flag: Settled never fires twice for one load")
+			T.eq(#waitToasts(uid, mark), 0, "lock flag: no save-wait toast for a normal join")
+			fires.stop()
+			leave(p)
+
+			-- a held load is not settled; the claim through the recovery settles it (ProfileRebased listeners see true)
+			local uH = newUserId()
+			seed(uH, oldRecord({ Gems = 80, Lock = foreign("server-A") }))
+			local firesH = countUid(D.Settled, uH)
+			local rebasedH = countUid(D.ProfileRebased, uH, function(who)
+				return D.GemsSettled(who)
+			end)
+			local markH = K.logSize()
+			local ph = add("LockFlagHeld", uH)
+			players[#players + 1] = ph
+			advance(6)
+			T.eq(#waitToasts(uH, markH), 0, "lock flag toasts: no toast while the load waits (the loading screen's caption covers it)")
+			advance(6.6)
+			T.check(D.IsProvisional(ph) == true and D.GemsSettled(ph) == false and ph:GetAttribute(ATTR) == nil and firesH.n == 0,
+				"lock flag: a held load (provisional) is not settled: GemsSettled false, no attribute, no Settled", flagText(D, ph) .. ", fires " .. firesH.n)
+			T.eq(D._SettleForTest(ph), false, "lock flag: ...and _SettleForTest answers false")
+			local held = waitToasts(uH, markH)
+			T.check(#held == 1 and held[1].text == SAVING_TEXT and held[1].kind == "info" and held[1].secs == 6,
+				"lock flag toasts: the provisional-held play began: ONE \"still being saved\" toast (info, 6 s)", showToasts(held))
+			local PetS = mod("PetService")
+			local F = mod("FusionService") or reqModule("server/Services/FusionService")
+			D.AddGems(ph, 100)
+			local gems0 = D.GetGems(ph)
+			local okSpin, whySpin = PetS.BuyRoulette(ph, "Cloud", "Gems")
+			T.check(okSpin == false and whySpin == "Your data is still loading", "lock flag: a gem spin on the held stand-in is refused 'Your data is still loading'", tostring(whySpin))
+			if F and type(F.Mix) == "function" then
+				local okMix, whyMix = F.Mix(ph, "pebble_pup", "cloudy_dragon")
+				T.check(okMix == false and type(whyMix) == "string" and string.find(whyMix, "still loading", 1, true) ~= nil,
+					"lock flag: a gem Mix on the held stand-in is refused (still loading)", tostring(whyMix))
+			end
+			T.eq(D.GetGems(ph), gems0, "lock flag: ...nothing charged")
+			stored(uH).Lock = nil -- A's release
+			advance(20)
+			T.check(D.OwnsSave(ph) == true and D.GemsSettled(ph) == true and ph:GetAttribute(ATTR) == true and firesH.n == 1,
+				"lock flag: the recovery's claim settles it (GemsSettled, the attribute, Settled once)", flagText(D, ph) .. ", fires " .. firesH.n)
+			T.check(rebasedH.n == 1 and rebasedH.saw == true, "lock flag: ...ProfileRebased fired once and its listeners saw GemsSettled == true (the hold is gone)",
+				rebasedH.n .. " fires, saw " .. tostring(rebasedH.saw))
+			local both = waitToasts(uH, markH)
+			T.check(#both == 2 and both[1].text == SAVING_TEXT and both[2].text == BACK_TEXT and both[2].kind == "good" and both[2].secs == 4,
+				"lock flag toasts: ...then ONE \"Your progress is back!\" (good, 4 s), in that order", showToasts(both))
+			T.eq(D.GetGems(ph), 80 + 100, "lock flag: ...the stored 80 gems plus the stand-in's +100 delta")
+			advance(30)
+			T.check(firesH.n == 1 and #waitToasts(uH, markH) == 2, "lock flag: no second Settled and no more toasts later")
+			firesH.stop()
+			rebasedH.stop()
+			leave(ph)
+
+			-- no usable store (Studio without API access): settled at once
+			local uq = newUserId()
+			local q = join("LockFlagNoApi", uq)
+			players[#players + 1] = q
+			local D2, _, release2 = secondServer("DataServiceLockFlagNoApi")
+			if T.check(D2 ~= nil and type(D2.Load) == "function", "lock flag no store: a second DataService copy loads") then
+				DSt.Unavailable = true
+				local okLoad = pcall(D2.Load, q)
+				local settled = D2.GemsSettled(q)
+				DSt.Unavailable = false
+				T.check(okLoad and settled == true, "lock flag no store: no usable store: GemsSettled true at once (nothing to own)", tostring(settled))
+				pcall(D2.Release, q)
+				T.check(release2() == true, "lock flag no store: the copy's hooks are dropped with it")
+			end
+			leave(q)
+		end)
+	end)
+
+	return S
+end
+
+----------------------------------------------------------------------------------------------------
+-- client half
+----------------------------------------------------------------------------------------------------
+local function clientScenarios()
+	local S = {}
+	local KC = _G.KC
+	local LocalPlayer = game:GetService("Players").LocalPlayer
+
+	local function advance(seconds)
+		if KC and KC.advance then
+			KC.advance(seconds)
+		else
+			Mock.Advance(seconds)
+		end
+	end
+
+	-- the loading screen's caption while another server still saves the player's progress (spec 18)
+	S.client_lock_loading = guarded("client_lock_loading", function()
+		local pg = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		local folder = ROOTS["first"] and Mock.GetPath(ROOTS["first"]) or nil
+		local script = folder and folder:FindFirstChild("LoadingScreen") or nil
+		if not T.check(script ~= nil and pg ~= nil, "lock loading: (setup) src/first/LoadingScreen.client.lua is mounted and the PlayerGui exists") then
+			return
+		end
+		local shared = game:GetService("ReplicatedStorage"):FindFirstChild("Shared")
+		local Config = shared and shared:FindFirstChild("Config") and require(shared.Config) or nil
+		local LOADED = (Config and Config.Attr and Config.Attr.ProfileLoaded) or "ProfileLoaded"
+		local WAIT = (Config and Config.Attr and Config.Attr.SaveWaiting) or "SaveWaiting"
+		local wasLoaded = LocalPlayer:GetAttribute(LOADED)
+		local okRun, errRun = pcall(function()
+			LocalPlayer:SetAttribute(LOADED, nil)
+			LocalPlayer:SetAttribute(WAIT, true)
+			Mock.RunScript(script)
+			advance(0.6)
+			local gui = pg:FindFirstChild("NimbusLoading")
+			local caption = gui and gui:FindFirstChild("Caption", true) or nil
+			if not T.check(caption ~= nil, "lock loading: (setup) the loading screen and its caption are built") then
+				return
+			end
+			T.eq(caption.Text, "Another server is still saving your progress...", "lock loading: while SaveWaiting is true the caption says another server is still saving")
+			advance(2)
+			T.eq(caption.Text, "Another server is still saving your progress...", "lock loading: ...and keeps saying it while the bar moves")
+			T.check(gui:GetAttribute("Done") ~= true, "lock loading: ...not Done without the profile")
+			LocalPlayer:SetAttribute(WAIT, nil)
+			advance(0.5)
+			T.check(string.find(caption.Text, "^Loading the sky%.%.%. %d+%%$") ~= nil, "lock loading: SaveWaiting removed: within 0.5 s the caption is back to 'Loading the sky... N%'", caption.Text)
+			LocalPlayer:SetAttribute(LOADED, true)
+			advance(0.5)
+			T.eq(gui:GetAttribute("Done"), true, "lock loading: ProfileLoaded: the screen reaches Done as before")
+			T.check(string.find(caption.Text, "100%", 1, true) ~= nil, "lock loading: ...the caption says 100%", caption.Text)
+			advance(3)
+			T.check(gui.Parent == nil, "lock loading: ...and the screen is gone after the fade")
+		end)
+		LocalPlayer:SetAttribute(WAIT, nil)
+		LocalPlayer:SetAttribute(LOADED, wasLoaded == nil and true or wasLoaded)
+		advance(3)
+		if not okRun then
+			error(errRun, 0)
+		end
+		if KC and KC.flushErrors then
+			KC.flushErrors("client_lock_loading")
+		end
+	end)
+
 	return S
 end
 
 if CONTEXT == "server" then
 	return serverScenarios()
 end
-return {}
+return clientScenarios()
