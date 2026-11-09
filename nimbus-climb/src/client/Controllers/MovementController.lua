@@ -264,6 +264,9 @@ end
 ----------------------------------------------------------------------
 local function setMobileVisible(visible)
 	if ui and ui.mobile then
+		-- (roll-look review round 1) HudKeepOff: the egg stage may already have this gui off (its HUD hide), where this
+		-- write changes nothing it can see; the attribute keeps the buttons off when the stage restores the HUD
+		ui.mobile.Gui:SetAttribute("HudKeepOff", not visible)
 		ui.mobile.Gui.Enabled = visible
 	end
 end

@@ -1,6 +1,9 @@
 -- NotifyController (client, v3): the game's side-of-screen voice. Nothing here is ever centred.
 --
 --   NotifyController.Init()
+--   NotifyController.Toast(text, kind, duration) -> bool   (roll-look review round 1) a local toast exactly as the Notify
+--                                    remote shows one (MenuController.Hint routes here while its NimbusMenu gui is off:
+--                                    the egg stage's HUD hide)
 --
 -- Remotes handled
 --   Notify(text, kind, duration)  -> compact toast stack on the RIGHT edge, from the top (below the HUD currency
@@ -1356,6 +1359,16 @@ local function hookCamera()
 	task.delay(2, function()
 		pcall(relayout)
 	end)
+end
+
+-- (roll-look review round 1) a local toast, as the Notify remote would show it: for the menu's side hint while its gui
+-- (NimbusMenu) is off (the egg stage hides the HUD; NimbusNotify stays). -> true when shown (or queued for room)
+function NotifyController.Toast(text, kind, duration)
+	if not initialized or not UI.Stack or type(text) ~= "string" then
+		return false
+	end
+	local ok = pcall(onNotify, text, kind or "info", duration)
+	return ok
 end
 
 function NotifyController.Init()

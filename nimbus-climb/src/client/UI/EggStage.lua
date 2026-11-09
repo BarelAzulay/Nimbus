@@ -19,13 +19,17 @@
 -- hides, glossy strip cards under a gold window with B's colour tell, an overshoot and a land pop (Task 1); the opening
 -- (Task 2): every egg rises onto a flat lit plinth in its Pedestal box (HatchLook.Plinth: neutral, popping 0.6 -> 1 and
 -- fading in over the rise), Gemini's tweak from Rare up at the first shake (the plinth, the cloud ring and faint turning
--- rays take the rarity colour; x3: the rays for the best pull only), the burst's punch (Stage's UIScale "Punch", High
--- only), the sparks capped at 16 on phones; below Rare the plinth takes its colour at the burst. The reveal (Task 3): the
--- rarity word as letters popping in turn (HatchLook.Word: gradient, outline, glow; an x3 phone column one label), B's
--- silhouette from Legendary (the best pull's pets black for 0.3 s, the chain waiting for them), the name / NEW! / note
--- rising in, the glossy pills (HatchLook.Pill) rising in and the small chips (HatchLook.Chip / FastChip), a landscape
--- phone's x1 reveal side by side (the pet left, the word, name, note and pills right: L.reveal1Side), the rays dimmed to
--- 0.55 while the text shows.
+-- rays take the rarity colour; x3: the rays for the best pull only), the burst's punch (Hero's UIScale "Punch", Burst's
+-- following it, High only; review round 1: the title and the chips are never scaled), the sparks capped at 16 on phones;
+-- below Rare the plinth takes its colour at the burst. The reveal (Task 3): the rarity word as letters popping in turn
+-- (HatchLook.Word: gradient, outline, glow; an x3 phone column one label), B's silhouette from Legendary (the best pull's
+-- pets black for 0.3 s, the chain waiting for them; the gold flash gone by then), the name / NEW! / note rising in, the
+-- glossy pills (HatchLook.Pill) rising in and the small chips (HatchLook.Chip / FastChip), a landscape phone's x1 reveal
+-- side by side (the pet left, the word, name, note and pills right: L.reveal1Side), the rays dimmed to 0.55 while the
+-- text shows. (review round 1) No bowl: both 2D halves fly off at the burst and the pet stands on the plinth (its feet on
+-- the disc's centre line, K.LOOK.PET_FOOT) on a soft contact shadow; the title fades over the rise; the crack word is
+-- dressed like the reveal word (one HatchLook.Word label); the three optional images (HatchLook.IMAGES) are wired to the
+-- rays, the sparks and every glow; SPIN AGAIN / DONE arm only once their rise is in place.
 --
 --   EggStage.Init()                        connects the RouletteResult listener (once)
 --   EggStage.Show(result) -> bool          plays a RouletteResult (new shape with Pulls, or the old top-level shape); a
@@ -60,13 +64,14 @@
 --                                          columns); every teardown resets it. An exit before the reveal was fully built
 --                                          (roll.RevealBuilt, set last) toasts the roll's pulls
 --
--- Instances: NimbusHatch (DisplayOrder 25, IgnoreGuiInset, ResetOnSpawn false) > Stage (UIScale "Punch") > Dim (the
--- tap-anywhere button), Vignette, (Stars: the Secret backdrop), Content (the area under the top bar, UIScale "Fit") > Title,
--- Strips > Strip1..3 > Track (a non-scrolling ScrollingFrame: it clips) > Cell1..12, Streaks (High), Pointer; Hero > Spot,
--- Rays, CloudRing1..3, Backlight1..3, Pedestal1..3 (> Top, Side, Ring, Glow1..2 or Glow: the plinth), Egg1..3 (> Cracks,
--- Leaks), Halves1..3, CrackWord; Burst > Shock, Sparks (the pool of 64);
+-- Instances: NimbusHatch (DisplayOrder 25, IgnoreGuiInset, ResetOnSpawn false) > Stage > Dim (the tap-anywhere button),
+-- Vignette, (Stars: the Secret backdrop), Content (the area under the top bar, UIScale "Fit") > Title,
+-- Strips > Strip1..3 > Track (a non-scrolling ScrollingFrame: it clips) > Cell1..12, Streaks (High), Pointer; Hero (UIScale
+-- "Punch") > Spot, Rays, CloudRing1..3, Backlight1..3, Pedestal1..3 (> Top, Side, Ring, Glow1..2 or Glow: the plinth),
+-- Egg1..3 (> Cracks, Leaks), Halves1..3, CrackWord (a HatchLook.Word label: UIGradient + UIStroke); Burst (UIScale "Punch",
+-- following Hero's) > Shock, Sparks (the pool of 64);
 -- Reveal > TextIn (the rise's NumberValue), Col1..3 > Banner (Word: L1..Ln + Glow1..2, attribute Text; an x3 phone
--- column: one TextLabel), Aura (Secret), Shell, Pet, Name, New (beside the name; an x3 phone / portrait column
+-- column: one TextLabel), Aura (Secret), Pet (> Pop, Shadow, the PetViewport), Name, New (beside the name; an x3 phone / portrait column
 -- puts it on the pet frame's top-left corner, under an EvolvedRibbon when there is one), Note, EvolvedRibbon; BottomBar > Skip,
 -- FastHatch (the chips), SpinAgain, Done (the pills), PillsIn; then Stage > Flash. (The Rays live in Hero, not Burst: a GUI frame's children cannot sit
 -- between another frame's, and the rays belong behind the egg, the pedestal and the pet.) Strip cells are recycled (at
@@ -255,6 +260,19 @@ K.LOOK = {
 	SIL = { Hold = 0.3, Fill = 0.15, From = 5 },
 	CHAIN = { Letter = 0.05, Text = 0.2, TextRise = 16, TextIn = 0.25, New = 0.4, NewPeak = 1.3, NewIn = 0.15, NewOut = 0.12, Pills = 0.4, PillsRise = 20, PillsIn = 0.3 },
 	RAYS_TEXT = 0.55,
+	-- (review round 1) no bowl: the pet stands on the plinth. CloudUI.PetViewport frames the model at 1 / 1.2 of its frame,
+	-- centred, so its feet sit about PET_FOOT down the frame: a PC reveal lowers the pet frame until that line is the
+	-- plinth's centre line (the box's top); a soft contact Shadow (W x H of the frame, black at A, faded at its ends) sits
+	-- on it inside the pet frame, so it pops with the pet
+	PET_FOOT = 0.9,
+	PET_SHADOW = { W = 0.5, H = 0.07, A = 0.55 },
+	-- (review round 1) the machine's title fades out over this share of the rise (the mock's title leaves as the egg rises:
+	-- no second headline over the crack word on a landscape phone)
+	TITLE_OUT = 0.6,
+	-- (review round 1) B's silhouette wants a clean frame: for a roll that silhouettes, the gold flash peaks (from GOLD_FROM to
+	-- GOLD_PEAK) as early as the time left allows and is gone in GOLD_OUT_SIL (Quad Out) by the reveal (the pitch mock's
+	-- flash ends 0.1 s before its pet pops); rolls without a silhouette keep 16.4's 0.25 / 0.6
+	GOLD_OUT_SIL = 0.15,
 	CHEVRONS = "\226\128\186\226\128\186",
 	NEW = { Edge = Color3.fromRGB(107, 66, 0), Ink = Color3.fromRGB(58, 34, 0), Tilt = -6 },
 }
@@ -935,7 +953,6 @@ function L.reveal1Side(lay, P)
 	local petY = midTop + math.max(0, (avail - pet) / 2)
 	col.Pet = { X = (leftW - pet) / 2, Y = petY, S = pet }
 	col.Ped = { X = col.Pet.X + (pet - K.LIP.W * pet) / 2, Y = petY + pet - K.LIP.Up - K.LIP.H, W = K.LIP.W * pet, H = K.LIP.H }
-	col.Shell = L.shell(col.Pet, true)
 	local rx = leftW + r.Gap
 	local rw = cw - rx - 12
 	local items = {}
@@ -993,17 +1010,17 @@ function L.reveal1(lay, P)
 		col.Ped = { X = (cw - K.LIP.W * pet) / 2, Y = top + pet - K.LIP.Up - K.LIP.H, W = K.LIP.W * pet, H = K.LIP.H }
 	else
 		col.Ped = { X = (cw - pet) / 2, Y = top + pet, W = pet, H = pet * r.Ped }
+		L.standOnPlinth(col)
 	end
-	col.Shell = L.shell(col.Pet, r.Lip)
 	lay.Cols = { col }
 end
 
--- the shell (the egg's bottom half) at the pet's feet
-function L.shell(pet, lip)
-	local eggSize = math.floor(pet.S * 0.52)
-	local w = math.floor(EggArt.Metrics.WIDTH * eggSize + 0.5)
-	local bottom = pet.Y + pet.S - (lip and (K.LIP.Up + 4) or 2)
-	return { X = pet.X + (pet.S - w) / 2, Y = bottom - eggSize / 2, W = w, H = eggSize / 2, Egg = eggSize }
+-- (review round 1) no bowl (the pick's Baseline: "the pet stands on a platform, and the shell flies away at the
+-- burst"): on a plinth (PC) the pet frame comes down until its feet line (K.LOOK.PET_FOOT of the frame) is the plinth's
+-- centre line, the box's top where the disc's middle is. The rows under it keep their places (the frame only reaches
+-- into the plinth's box). A phone's lip already sits at the feet line (K.LIP.Up)
+function L.standOnPlinth(col)
+	col.Pet.Y = col.Pet.Y + (1 - K.LOOK.PET_FOOT) * col.Pet.S
 end
 
 -- x3 reveal: three columns (PC / phone landscape) or three rows (portrait)
@@ -1028,7 +1045,6 @@ function L.reveal3(lay, P, colW)
 			col.NoteY, col.NoteH, col.NoteSize = col.NameY + r.NameH + 4, r.NoteH, r.Note
 			col.New = { W = r.NewW, H = r.NewH, Size = r.New, Corner = true }
 			col.Ped = { X = col.X + (pet - K.LIP.W * pet) / 2, Y = col.Y + col.Pet.Y + pet - K.LIP.Up - K.LIP.H, W = K.LIP.W * pet, H = K.LIP.H }
-			col.Shell = L.shell(col.Pet, true)
 			cols[j] = col
 		end
 		lay.Cols = cols
@@ -1055,8 +1071,8 @@ function L.reveal3(lay, P, colW)
 			col.Ped = { X = col.X + (colW - K.LIP.W * pet) / 2, Y = colY + top + pet - K.LIP.Up - K.LIP.H, W = K.LIP.W * pet, H = K.LIP.H }
 		else
 			col.Ped = { X = col.X + (colW - r.PedW * pet) / 2, Y = colY + top + pet, W = r.PedW * pet, H = r.PedH * pet }
+			L.standOnPlinth(col)
 		end
-		col.Shell = L.shell(col.Pet, r.Lip)
 		cols[j] = col
 	end
 	lay.Cols = cols
@@ -1078,9 +1094,8 @@ function B.gui()
 		old:Destroy()
 	end
 	local gui = Util.Create("ScreenGui", { Name = K.GUI, DisplayOrder = K.ORDER, IgnoreGuiInset = true, ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling })
-	-- (roll-look) anchored at its centre: the burst's punch (the UIScale "Punch") grows the whole stage round the middle
+	-- (roll-look) anchored at its centre (review round 1: the burst's punch now scales only the roll's Hero and Burst, B.roll)
 	local stage = H.frame(gui, "Stage", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1, 1) })
-	S.Punch = Util.Create("UIScale", { Name = "Punch", Scale = 1, Parent = stage })
 	S.Dim = Util.Create("TextButton", {
 		Name = "Dim", Text = "", AutoButtonColor = false, BorderSizePixel = 0, BackgroundColor3 = K.NAVY, BackgroundTransparency = 1,
 		Size = UDim2.fromScale(1, 1), ZIndex = 1, Parent = stage,
@@ -1111,18 +1126,34 @@ function B.roll(roll)
 	end
 	roll.UI.Title = H.label(c, "Title", title, "Title", P.TitleSize, { ZIndex = 5, TextXAlignment = Enum.TextXAlignment.Center })
 	roll.UI.Strips = H.frame(c, "Strips", { Size = UDim2.fromScale(1, 1), ZIndex = 1 })
-	roll.UI.Hero = H.frame(c, "Hero", { Size = UDim2.fromScale(1, 1), ZIndex = 2 })
-	local burst = H.frame(c, "Burst", { Size = UDim2.fromScale(1, 1), ZIndex = 3 })
+	-- (roll-look review round 1) the burst's punch scales the stage's world only: Hero (the eggs, plinths, rays, ring, the
+	-- crack word) carries the UIScale "Punch" and Burst (the shock, the sparks) follows it; both anchored at their centre
+	-- (their children keep their places at scale 1). The title, the chips, the Dim and the vignette never move or clip
+	local mid = { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1, 1) }
+	mid.ZIndex = 2
+	roll.UI.Hero = H.frame(c, "Hero", mid)
+	S.Punch = Util.Create("UIScale", { Name = "Punch", Scale = 1, Parent = roll.UI.Hero })
+	local burst = H.frame(c, "Burst", { AnchorPoint = mid.AnchorPoint, Position = mid.Position, Size = mid.Size, ZIndex = 3 })
 	roll.UI.Burst = burst
+	local follow = Util.Create("UIScale", { Name = "Punch", Scale = 1, Parent = burst })
+	local punch = S.Punch
+	punch:GetPropertyChangedSignal("Scale"):Connect(function()
+		follow.Scale = punch.Scale
+	end)
 	-- (Task 27) the effects: the shock ring and the spark pool over the hero, the rays behind it (in Hero); the overlay
-	-- tweens play on over the reveal's start. The pool is stepped by the phase runner (one Heartbeat in all)
+	-- tweens play on over the reveal's start. The pool is stepped by the phase runner (one Heartbeat in all). (review round
+	-- 1) the hatch_rays / hatch_sparkle images when they have ids (HatchLook.IMAGES), else the frame fallbacks
 	local best = roll.Pulls[roll.Best].Rarity
 	roll.Shock = HatchFx.Shock(burst, best, { ZIndex = 3, Track = S.Overlay })
-	roll.Rays = HatchFx.Rays(roll.UI.Hero, best, { ZIndex = 2, Track = S.Overlay })
-	roll.Pool = HatchFx.Pool(burst, K.POOL, 4)
+	roll.Rays = HatchFx.Rays(roll.UI.Hero, best, { ZIndex = 2, Track = S.Overlay, Image = HatchLook.Image(HatchLook.IMAGES.Rays) })
+	roll.Pool = HatchFx.Pool(burst, K.POOL, 4, { Image = HatchLook.Image(HatchLook.IMAGES.Sparkle) })
 	roll.Pool:Drive()
 	roll.UI.Reveal = H.frame(c, "Reveal", { Size = UDim2.fromScale(1, 1), ZIndex = 4, Visible = false })
-	roll.UI.Crack = H.label(roll.UI.Hero, "CrackWord", "", "Title", S.Lay.Crack.WordH, { ZIndex = 8, Visible = false, TextXAlignment = Enum.TextXAlignment.Center })
+	-- (review round 1, spec 16.15 "Sizes") the crack word: one label dressed like the reveal word (the gradient and the
+	-- outline of its rarity, HatchLook.Word without letters), re-coloured as an x3's word moves on (R.word)
+	roll.CrackWord = HatchLook.Word(roll.UI.Hero, "", best, S.Lay.Crack.WordH, { Letters = false, Name = "CrackWord", ZIndex = 8 })
+	roll.UI.Crack = roll.CrackWord.Frame
+	roll.UI.Crack.Visible = false
 	if roll.HasStrip then
 		for j = 1, roll.N do
 			B.strip(roll, j)
@@ -1331,9 +1362,17 @@ function B.cols(roll)
 			Util.Create("UIStroke", { Color = K.AURA, Thickness = 3, Transparency = 0.6, Parent = aura })
 			Util.Create("UIGradient", { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(0.5, 0.9), NumberSequenceKeypoint.new(1, 0.2) }), Rotation = 90, Parent = aura })
 		end
-		local shell = H.frame(col, "Shell", { ZIndex = 4 })
+		-- (review round 1) no Shell: the pet stands on the plinth (or the phone's lip) on a soft contact shadow, inside its
+		-- frame under the model (it pops with the pet)
 		local pet = H.frame(col, "Pet", { ZIndex = 5 })
 		local pop = Util.Create("UIScale", { Name = "Pop", Scale = 0, Parent = pet })
+		local ps = K.LOOK.PET_SHADOW
+		local shadow = H.frame(pet, "Shadow", {
+			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, K.LOOK.PET_FOOT), Size = UDim2.fromScale(ps.W, ps.H),
+			BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = ps.A, ZIndex = 4,
+		})
+		H.corner(shadow, 0.5)
+		Util.Create("UIGradient", { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.3, 0.25), NumberSequenceKeypoint.new(0.5, 0), NumberSequenceKeypoint.new(0.7, 0.25), NumberSequenceKeypoint.new(1, 1) }), Parent = shadow })
 		local stage = 0
 		local okStage, st = pcall(PetBits.stage, pull.Key)
 		if okStage and type(st) == "number" then
@@ -1376,7 +1415,7 @@ function B.cols(roll)
 			end
 		end
 		roll.Cols[j] = {
-			Root = col, Shell = shell, Pet = pet, Pop = pop, Banner = banner, Word = word, Name = name, New = new, NewPop = newPop, Note = note, View = vf, Fade = fade, Rest = {},
+			Root = col, Pet = pet, Pop = pop, Banner = banner, Word = word, Name = name, New = new, NewPop = newPop, Note = note, View = vf, Fade = fade, Rest = {},
 			Sil = H.order(pull.Rarity) >= K.LOOK.SIL.From,
 		}
 	end
@@ -1423,6 +1462,9 @@ function H.apply()
 		H.place(title, 12, lay.Title.Y, lay.W - 24, lay.Title.H)
 		title.TextSize = lay.Title.Size
 		title.Visible = not roll.Revealed
+		if roll.HeroBuilt then
+			H.titleAlpha(roll, 0) -- (review round 1: gone once the egg has risen; a resize mid-rise ends the fade too)
+		end
 	end
 	H.applyStrips(roll, lay)
 	H.applyHero(roll, lay)
@@ -1536,7 +1578,11 @@ function H.placeWord(roll, lay)
 	local word = roll.UI.Crack
 	if word and lay then
 		local cr = lay.Crack
-		word.TextSize = cr.WordH
+		if roll.CrackWord then
+			roll.CrackWord:SetSize(cr.WordH) -- (the outline follows the size)
+		else
+			word.TextSize = cr.WordH
+		end
 		local w = math.min(lay.W - 24, H.textW(word.Text, cr.WordH, "Title") + 40)
 		H.place(word, (lay.W - w) / 2, cr.WordY, w, cr.WordH)
 	end
@@ -1586,18 +1632,8 @@ function H.applyReveal(roll, lay)
 			c.Pet.AnchorPoint = Vector2.new(0.5, 0.5)
 			local aura = c.Root:FindFirstChild("Aura")
 			if aura then
-				-- a soft halo just inside the pet's frame (clear of the shell and the pedestal under it)
+				-- a soft halo just inside the pet's frame (its middle above the feet and the plinth under them)
 				H.place(aura, g.Pet.X + g.Pet.S / 2, g.Pet.Y + g.Pet.S * 0.47, g.Pet.S * 0.86, g.Pet.S * 0.86)
-			end
-			local sh = g.Shell
-			local shellX, shellY = sh.X, sh.Y
-			H.place(c.Shell, shellX, shellY, sh.W, sh.H)
-			if c.ShellEgg ~= sh.Egg then
-				c.Shell:ClearAllChildren()
-				local top, bottom = EggArt.Halves(c.Shell, roll.Pulls[j].Rarity, sh.Egg)
-				top:Destroy()
-				bottom.Position = UDim2.fromOffset(0, 0)
-				c.ShellEgg = sh.Egg
 			end
 			-- the name (+ NEW!) row, then the note
 			local name, new, note = c.Root:FindFirstChild("Name"), c.Root:FindFirstChild("New"), c.Root:FindFirstChild("Note")
@@ -1928,11 +1964,23 @@ function B.pedestal(hero, j, rarity, e)
 	return box
 end
 
--- the rarity backlight: four stacked round glows, as strong as the egg's glow (none for Common / Uncommon)
+-- the rarity backlight: four stacked round glows, as strong as the egg's glow (none for Common / Uncommon); (review round
+-- 1, spec 16.15 "Fallbacks") with a hatch_glow id one soft ImageLabel in their box instead, its centre as strong as the
+-- four discs' together. Each part's shown transparency is its attribute Alpha (H.glowAlpha fades it)
 function B.backlight(hero, j, rarity)
 	local glow = EggArt.Glow(rarity)
 	local back = H.frame(hero, "Backlight" .. j, { Visible = glow > 0, ZIndex = 4 })
 	local discs = {}
+	local image = HatchLook.Image(HatchLook.IMAGES.Glow)
+	if image then
+		local disc = Util.Create("ImageLabel", {
+			Name = "Glow", Image = image, ImageColor3 = H.color(rarity), ImageTransparency = 1, BackgroundTransparency = 1, BorderSizePixel = 0,
+			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1, 1), ZIndex = 4, Parent = back,
+		})
+		disc:SetAttribute("Alpha", 1 - 0.9 * glow)
+		discs[1] = disc
+		return back, discs
+	end
 	for i, s in ipairs({ 1, 0.78, 0.58, 0.4 }) do
 		local disc = H.frame(back, "Glow" .. i, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(s, s), BackgroundColor3 = H.color(rarity), BackgroundTransparency = 1, ZIndex = 4 })
 		disc:SetAttribute("Alpha", 1 - glow * ({ 0.22, 0.32, 0.45, 0.62 })[i])
@@ -1942,16 +1990,26 @@ function B.backlight(hero, j, rarity)
 	return back, discs
 end
 
+-- a backlight part at u (0 = clear .. 1 = its attribute Alpha): a disc's background or the image's transparency
+function H.glowAlpha(disc, u)
+	if disc and disc.Parent then
+		local t = 1 + ((disc:GetAttribute("Alpha") or 1) - 1) * u
+		if disc:IsA("ImageLabel") then
+			disc.ImageTransparency = t
+		else
+			disc.BackgroundTransparency = t
+		end
+	end
+end
+
 -- the backdrop of the rise at rest (after a resize cancelled its tweens): the spot, the glows, the rings
 function H.settleHero(roll)
 	if roll.Spot and not roll.Revealed then
 		roll.Spot.BackgroundTransparency = 0
 	end
 	for _, e in pairs(roll.Eggs) do
-		for _, disc in ipairs(e.Back and e.Back:GetChildren() or {}) do
-			if disc:IsA("Frame") then
-				disc.BackgroundTransparency = disc:GetAttribute("Alpha") or 1
-			end
+		for _, disc in ipairs(e.Glows or {}) do
+			H.glowAlpha(disc, 1)
 		end
 		if e.Ring and (e.State == "Rise" or e.State == "Crack") then
 			e.Ring:Show(0.01)
@@ -2077,6 +2135,8 @@ function R.riseStep(roll, t)
 	if roll.Spot then
 		roll.Spot.BackgroundTransparency = 1 - u
 	end
+	-- (review round 1) the machine's title leaves as the egg rises (the mock's title fade): the crack word is the one headline
+	H.titleAlpha(roll, 1 - math.min(1, u / K.LOOK.TITLE_OUT))
 	for _, e in pairs(roll.Eggs) do
 		if e.Egg and e.RiseTo then
 			e.Egg.Position = e.RiseFrom:Lerp(e.RiseTo, quad)
@@ -2091,7 +2151,7 @@ function R.riseStep(roll, t)
 		end
 		if e.Glows and e.Back.Visible then
 			for _, disc in ipairs(e.Glows) do
-				disc.BackgroundTransparency = 1 + (disc:GetAttribute("Alpha") - 1) * u
+				H.glowAlpha(disc, u)
 			end
 		end
 	end
@@ -2103,6 +2163,26 @@ function R.riseStep(roll, t)
 	if u >= 1 then
 		roll.Rising = false
 	end
+end
+
+-- (review round 1) the title at alpha a (1 = as built .. 0 = gone: its text, its classic stroke and its outline); 0 is
+-- remembered (roll.TitleOut) so a resize keeps it gone
+function H.titleAlpha(roll, a)
+	local title = roll.UI.Title
+	if not (title and title.Parent) then
+		return
+	end
+	if not roll.TitleRest then
+		local outline = title:FindFirstChild("TextOutline") or title:FindFirstChildOfClass("UIStroke")
+		roll.TitleRest = { Stroke = title.TextStrokeTransparency, Outline = outline, OutlineA = outline and outline.Transparency or 1 }
+	end
+	local rest = roll.TitleRest
+	title.TextTransparency = 1 - a
+	title.TextStrokeTransparency = 1 - a * (1 - rest.Stroke)
+	if rest.Outline then
+		rest.Outline.Transparency = 1 - a * (1 - rest.OutlineA)
+	end
+	roll.TitleOut = a <= 0
 end
 
 function R.dropStrips(roll)
@@ -2176,8 +2256,9 @@ function R.word(roll)
 			local rarity = roll.Pulls[j].Rarity
 			local text = string.upper(rarity) .. " EGG!"
 			if word.Text ~= text or not word.Visible then
-				word.Text = text
-				word.TextColor3 = H.color(rarity)
+				-- (review round 1) the label stays white: its gradient and outline take the rarity (HatchLook.Word)
+				roll.CrackWord:SetText(text)
+				roll.CrackWord:SetRarity(rarity)
 				word.Visible = true
 				H.placeWord(roll, S.Lay)
 			end
@@ -2268,7 +2349,8 @@ function R.tweak(roll, j)
 	end
 end
 
--- (roll-look) the burst's punch: the whole stage 1 -> 1.05 -> 1 round its middle (High only; a Fast hatch's shorter
+-- (roll-look) the burst's punch: the stage's world (Hero, Burst following it; review round 1: never the title or the
+-- chips, which clipped at the screen's edges) 1 -> 1.05 -> 1 round its middle (High only; a Fast hatch's shorter
 -- burst squeezes it so it is over before the reveal). Phase tweens: the reveal and a resize put it back to 1
 function R.punch(roll)
 	local pu = S.Punch
@@ -2328,11 +2410,12 @@ function R.burst(roll, j)
 		e.V3:Destroy() -- (its halves have no ids: today's 2D halves take over under the flash)
 		e.V3 = nil
 	end
-	-- the halves fly apart: the top spins up-left and fades, the bottom settles as the shell on the pedestal
+	-- the halves fly apart: the top spins up-left and fades; (review round 1, the pick's Baseline "the shell flies away at
+	-- the burst", the mock's halfB) the bottom tumbles down-right and fades too: no shell is left for the pet to stand in
 	if e.Holder and e.Top and e.Bottom then
 		e.Holder.Visible = true
 		H.tween(e.Top, T.Burst, { Position = UDim2.fromOffset(-0.25 * cr.E, -0.45 * cr.E), Rotation = -35, GroupTransparency = 1 })
-		H.tween(e.Bottom, T.Burst, { Position = UDim2.fromOffset(0, cr.E / 2 + 0.04 * cr.E) })
+		H.tween(e.Bottom, T.Burst, { Position = UDim2.fromOffset(0.45 * cr.E, cr.E / 2 + 0.3 * cr.E), Rotation = 28, GroupTransparency = 1 })
 	end
 	-- the shock ring, the rays flashing in and turning, the cloud ring's swell in the rarity colour, the sparks
 	roll.Shock:Play(cx, cy, K.SHOCK * cr.E, T.Burst, color:Lerp(K.WHITE, 0.2))
@@ -2399,12 +2482,29 @@ function R.flash(roll, gold, white)
 		roll.GoldDone = true
 		f.BackgroundColor3 = K.GOLD
 		f.BackgroundTransparency = K.GOLD_FROM
-		S.FlashTw = H.tween(f, K.GOLD_IN, { BackgroundTransparency = K.GOLD_PEAK }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, true)
-		task.delay(K.GOLD_IN, function()
-			if S.FlashToken == token and S.Flash == f and f.Parent then
-				S.FlashTw = H.tween(f, K.GOLD_OUT, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In, true)
+		-- (review round 1) a roll whose best pull silhouettes (B's, from Legendary) needs a clean frame for its black cut-out:
+		-- the gold peaks as early as the time left allows and is gone by the reveal (K.LOOK.GOLD_OUT_SIL, Quad Out; at the
+		-- reveal itself, a Skip's tail, it fades straight out). Otherwise 16.4's GOLD_IN up, GOLD_OUT (Quad In) out
+		local up, out, outDir = K.GOLD_IN, K.GOLD_OUT, Enum.EasingDirection.In
+		if H.order(roll.Pulls[roll.Best].Rarity) >= K.LOOK.SIL.From then
+			local left = 0
+			if not roll.Revealed and roll.Sched and roll.Start then
+				left = math.max(0, roll.Sched.RevealAt - (os.clock() - roll.Start))
 			end
-		end)
+			out, outDir = K.LOOK.GOLD_OUT_SIL, Enum.EasingDirection.Out
+			up = Util.Clamp(left - out, 0, K.GOLD_IN)
+		end
+		local function fadeOut()
+			if S.FlashToken == token and S.Flash == f and f.Parent then
+				S.FlashTw = H.tween(f, out, { BackgroundTransparency = 1 }, Enum.EasingStyle.Quad, outDir, true)
+			end
+		end
+		if up < 0.02 then
+			fadeOut()
+		else
+			S.FlashTw = H.tween(f, up, { BackgroundTransparency = K.GOLD_PEAK }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, true)
+			task.delay(up, fadeOut)
+		end
 	else
 		f.BackgroundColor3 = K.WHITE
 		f.BackgroundTransparency = K.WHITE_FLASH[1]
@@ -2538,6 +2638,9 @@ function R.chain(roll, sil)
 	local C = K.LOOK.CHAIN
 	roll.ChainToken = (roll.ChainToken or 0) + 1
 	local token = roll.ChainToken
+	-- (review round 1) SPIN AGAIN and DONE arm no sooner than their rise is in place (the silhouette's 0.3 s puts it at 1.0 s,
+	-- past ARM_AFTER): never a grey-to-gold repaint, or a paid tap, on a pill still sliding in (H.armed)
+	roll.ArmAt = math.max(K.ARM_AFTER, sil + C.Pills + C.PillsIn)
 	local function later(at, fn)
 		task.delay(math.max(0, at), function()
 			if S.Roll == roll and roll.ChainToken == token and not roll.Dead then
@@ -2591,6 +2694,7 @@ end
 -- the chain at its end at once (a resize mid-chain: its tweens were cancelled), the beats still pending dropped
 function H.settleChain(roll)
 	roll.ChainToken = (roll.ChainToken or 0) + 1
+	roll.ArmAt = K.ARM_AFTER -- (the pills are in place now: 16.4's rule alone)
 	for _, c in pairs(roll.Cols) do
 		c.Word:Settle()
 		c.NewPop.Scale = 1
@@ -2824,6 +2928,7 @@ function H.finishRoll()
 	H.cancelTweens(true)
 	S.FlashTw = nil
 	S.FlashToken = (S.FlashToken or 0) + 1
+	S.Punch = nil -- (it lives in the roll's Hero, destroyed below)
 	if S.Content then
 		for _, child in ipairs(S.Content:GetChildren()) do
 			if child ~= S.Fit then
@@ -2981,14 +3086,16 @@ function H.relayout()
 	end
 end
 
--- (review round 2) the reveal is armed ARM_AFTER after it appeared and ARM_QUIET after the last tap on the stage
+-- (review round 2) the reveal is armed ARM_AFTER after it appeared and ARM_QUIET after the last tap on the stage;
+-- (roll-look review round 1) and not before the pills' rise is in place (roll.ArmAt, R.chain: 1.0 s from Legendary; and
+-- roll.PillK at 1, so a late frame never arms a pill still sliding in)
 function H.armed()
 	local roll = S.Roll
 	if not (roll and roll.Revealed and roll.RevealedAt) then
 		return false
 	end
 	local now = os.clock()
-	return now - roll.RevealedAt >= K.ARM_AFTER and now - S.LastTap >= K.ARM_QUIET
+	return now - roll.RevealedAt >= (roll.ArmAt or K.ARM_AFTER) and now - S.LastTap >= K.ARM_QUIET and (roll.PillK or 1) >= 1
 end
 
 -- one tap on the stage (the Dim, the Skip chip, SPIN AGAIN or DONE; Esc and B are keys, not taps): returns whether the

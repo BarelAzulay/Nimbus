@@ -6144,6 +6144,14 @@ defclass("Tween", "Instance", {
 			local id = st.playId
 			local info = st.info
 			Mock.ActiveTweens[self] = true
+			-- [roll-look review round 1] where it starts from and when (Mock.SnapTweens: the renders' in-between values)
+			st.startedAt = Clock.now
+			st.from = {}
+			for prop in pairs(st.goals) do
+				pcall(function()
+					st.from[prop] = st.target[prop]
+				end)
+			end
 			if info.RepeatCount >= 0 then
 				local cycles = info.RepeatCount + 1
 				local total = info.DelayTime + info.Time * cycles * (info.Reverses and 2 or 1)
@@ -6201,6 +6209,80 @@ function Mock.TweenGoals(tween)
 		out[prop] = goal
 	end
 	return out
+end
+-- [roll-look review round 1] the mock holds a tween's start value and applies its goal on the frame it completes (the
+-- smoke tests assert at rest points). A render of a moment mid-tween would show that held value, a frame Roblox never
+-- draws; Mock.SnapTweens() (tools/dump_gui.lua calls it before it dumps a timed scene) writes every playing tween's
+-- eased in-between value instead: TweenService's curves (Elastic and Bounce approximated), Reverses and repeats, for
+-- number, Color3, UDim2, UDim, Vector2 and Vector3 goals. It is never called by the smoke tests.
+local EASE = {
+	Linear = function(t) return t end,
+	Sine = function(t) return 1 - math.cos(t * math.pi / 2) end,
+	Quad = function(t) return t * t end,
+	Cubic = function(t) return t * t * t end,
+	Quart = function(t) return t ^ 4 end,
+	Quint = function(t) return t ^ 5 end,
+	Exponential = function(t) return t <= 0 and 0 or 2 ^ (10 * (t - 1)) end,
+	Circular = function(t) return 1 - math.sqrt(math.max(0, 1 - t * t)) end,
+	Back = function(t) return t * t * (2.70158 * t - 1.70158) end,
+	Elastic = function(t) return t * t end,
+	Bounce = function(t) return t * t end,
+}
+local function easeAlpha(style, direction, t)
+	local f = EASE[style and style.Name or "Quad"] or EASE.Quad
+	local dir = direction and direction.Name or "Out"
+	if dir == "In" then
+		return f(t)
+	elseif dir == "Out" then
+		return 1 - f(1 - t)
+	end
+	return t < 0.5 and f(2 * t) / 2 or 1 - f(2 - 2 * t) / 2
+end
+local function lerpValue(a, b, t)
+	local ty = typeof(b)
+	if ty == "number" and rawtype(a) == "number" then
+		return a + (b - a) * t
+	elseif (ty == "Color3" or ty == "UDim2" or ty == "Vector2" or ty == "Vector3") and typeof(a) == ty then
+		local ok, v = pcall(function()
+			return a:Lerp(b, t)
+		end)
+		if ok then
+			return v
+		end
+	elseif ty == "UDim" and typeof(a) == "UDim" then
+		return UDim.new(a.Scale + (b.Scale - a.Scale) * t, a.Offset + (b.Offset - a.Offset) * t)
+	end
+	return nil
+end
+function Mock.SnapTweens()
+	local n = 0
+	for tw in pairs(Mock.ActiveTweens) do
+		local st = tw[STATE]
+		local info = st and st.info
+		local target = st and st.target
+		if info and target and st.from and st.startedAt and not target[STATE].destroyed and st.props.PlaybackState.Name == "Playing" then
+			local el = Clock.now - st.startedAt - info.DelayTime
+			if el > 0 and info.Time > 0 then
+				local span = info.Time * (info.Reverses and 2 or 1)
+				local k = (info.RepeatCount < 0) and (el % span) or math.min(el, span)
+				local u = k / info.Time
+				if u > 1 then
+					u = 2 - u
+				end
+				local a = easeAlpha(info.EasingStyle, info.EasingDirection, math.max(0, math.min(1, u)))
+				for prop, goal in pairs(st.goals) do
+					local v = lerpValue(st.from[prop], goal, a)
+					if v ~= nil then
+						pcall(function()
+							target[prop] = v
+						end)
+						n = n + 1
+					end
+				end
+			end
+		end
+	end
+	return n
 end
 local TWEENABLE = { number = true, Vector3 = true, Vector2 = true, CFrame = true, Color3 = true, UDim2 = true, UDim = true, Rect = true, boolean = true }
 service("TweenService", {

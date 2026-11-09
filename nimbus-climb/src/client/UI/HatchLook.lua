@@ -53,18 +53,24 @@
 --   HatchLook.HideHud(playerGui, own) -> { ScreenGui }   switches off every Enabled ScreenGui in PlayerGui outside KEEP /
 --                                             ROBLOX and not `own`, and remembers it
 --   HatchLook.HideOne(gui)                    the same rule for one gui (PlayerGui.ChildAdded while the stage shows)
---   HatchLook.RestoreHud()                    switches each remembered gui back on when it is still in PlayerGui and still
---                                             off, then forgets them. A remembered gui someone switches on meanwhile is
---                                             forgotten at once (theirs again: never fought, never switched on by us later)
+--   HatchLook.RestoreHud()                    switches each remembered gui back on when it is still in PlayerGui, still
+--                                             off and not marked HudKeepOff, then forgets them. A remembered gui someone
+--                                             switches on meanwhile is forgotten at once (theirs again: never fought, never
+--                                             switched on by us later). (review round 1) An owner that switches its gui off
+--                                             while the stage has it off writes the same value, which the stage cannot see:
+--                                             it sets the attribute HudKeepOff (HatchLook.KEEP_OFF) = true for "keep it off"
+--                                             (MovementController's MobileControls on a death), false when it shows it again
 --   HatchLook.HiddenCount() -> number         how many guis are remembered (tests)
 --   (Task 2: the opening)
 --   HatchLook.Plinth(box, rarity, phone, opts) -> plinth   the flat lit disc the hero egg, its halves and the pet stand on,
 --                                             drawn in the existing "Pedestal<j>" layout box (anchored at its top centre:
 --                                             the egg's foot): "Top" (a disc 0.667 of the box tall, centred ON the box's
 --                                             top edge so the egg stands in its middle; navy gradient 52,72,154 ->
---                                             20,29,82, its UIStroke "Rim" 3 px / phone 2), "Side" (the rim's thickness
---                                             under it: the lower third shows, a horizontal gradient 10,17,52 / 38,56,132
---                                             / 10,17,52), "Ring" (an inner ring on the Top, 0.76 x 0.7 of it, its stroke
+--                                             20,29,82, its UIStroke "Rim" 3 px / phone 2), "Side" (the disc's thickness:
+--                                             the Top's shape Metrics.PLINTH.Band = 0.14 of the box lower, so a thin band
+--                                             shows under the Top's front edge and thins out round its ends; a vertical
+--                                             gradient 38,56,132 darkening to 10,17,52 over that band; review round 1),
+--                                             "Ring" (an inner ring on the Top, 0.76 x 0.7 of it, its stroke
 --                                             at 0.45), "Glow1..2" (HatchLook.Glow: a soft halo round the disc) and a
 --                                             UIScale "Pop" on the box. No drum, no puffs, no bars (a5a38ac). Neutral
 --                                             (Shade(Metrics.PLINTH.Neutral, .25) rim, .4 ring, .2 glow) until Tint.
@@ -79,9 +85,11 @@
 --   HatchLook.PlinthLip(box, lip)             the Top's box: the disc centred on the box's top edge, or (lip = true: a
 --                                             phone's reveal) the whole box, the 12 px lip (EggStage's H.pedLook hides
 --                                             the other parts)
---   HatchLook.IMAGES                          the three optional images, TextureIds keys: Rays "hatch_rays", Glow
---                                             "hatch_glow", Sparkle "hatch_sparkle" (none uploaded: their frame
---                                             fallbacks draw: HatchFx's ray wedges and spark squares, stacked round glows)
+--   HatchLook.IMAGES                          the three optional images, TextureIds keys: Rays "hatch_rays" (EggStage passes
+--                                             it to HatchFx.Rays: one ImageLabel fan), Glow "hatch_glow" (HatchLook.Glow: the
+--                                             plinth's and the word's glows; EggStage's backlight), Sparkle "hatch_sparkle"
+--                                             (HatchFx.Pool's sparks); none uploaded: their frame fallbacks draw (HatchFx's
+--                                             ray wedges and spark squares, stacked round glows)
 --   HatchLook.Image(key) -> "rbxassetid://<id>" | nil   the key's shared/TextureIds id when it is a number > 0
 --                                             (HatchLook._Textures: a test table in place of the module; false = the module)
 --   HatchLook.Glow(parent, color, opts) -> glow   a soft glow: with a hatch_glow id one ImageLabel named opts.Name
@@ -97,13 +105,16 @@
 --   HatchLook.Word(parent, text, rarity, size, opts) -> word   the rarity word: a Frame opts.Name ("Word") with the
 --                                             attribute Text; opts.Letters: one Theme "Title" TextLabel per glyph "L1..Ln"
 --                                             (white under a vertical UIGradient Shade(c, .78) / .22 / -.18, a round
---                                             UIStroke Shade(c, -.68) of clamp(round(size x 0.12), 2, 10) px, a UIScale
---                                             "Pop") 0.04 x size apart, over a soft Glow (c, peak about 0.55, the word +
---                                             0.6 x size wide, 1.1 x size tall); no Letters: one such TextLabel (an x3
---                                             phone column). opts = { Letters, Name, ZIndex, Measure = function(text, size)
---                                             -> px (the stage's real text widths) }
+--                                             UIStroke Shade(c, -.68) of clamp(round(size x 0.06), 2, 6) px: the mock's
+--                                             0.12 x size SVG stroke is centred on the glyph's edge, half of it shows; a
+--                                             UIScale "Pop") 0.04 x size apart, over a soft Glow (c, its centre about 0.55
+--                                             clear, the word + 1.0 x size wide, 1.8 x size tall); no Letters: one such
+--                                             TextLabel (an x3 phone column, the crack word). opts = { Letters, Name,
+--                                             ZIndex, Measure = function(text, size) -> px (the stage's real text widths) }
 --                                             word:Width() -> px            word:Place(cx, y)   (y = the top)
 --                                             word:SetSize(size)            word:Destroy()
+--                                             word:SetRarity(rarity)        the gradient, outline and glow re-coloured
+--                                             word:SetText(text)            a one-label word's text (+ attribute Text)
 --                                             word:Pop(startAt, stagger, track)   letter i (from 0) 0 -> 1.3 (0.12 s Quad
 --                                                 Out) -> 1 (0.14 s Quad In) at startAt + stagger x i, the glow in over
 --                                                 0.2 s from startAt + 0.05 (task.delay; the tweens go into `track`); one
@@ -171,11 +182,12 @@ local K = {
 	SWEEP = { Normal = 0.3, Fast = 0.12, Band = 0.45, Rotation = 18 },
 	BOUNCE = 1.08,
 	-- (Task 2) the plinth, in shares of its box (1.1 x / 0.24 x the egg, 16.4): the Top disc 0.667 of the box tall,
-	-- centred on the box's top edge (the egg's foot); the Side the same height from that edge down (its lower third
-	-- shows under the Top); the halo centred 16 / 90 of the box under the edge, 1.6 x the box wide and 1.9 x the Top
-	-- tall; the inner ring 0.76 x 0.7 of the Top
+	-- centred on the box's top edge (the egg's foot); the Side the Top's own shape moved Band of the box down (review
+	-- round 1: the disc's thickness, a thin band under the Top that thins out round its ends, shaded darker downward; the
+	-- third of the box it showed before read as a second bar); the halo centred 16 / 90 of the box under the edge, 1.6 x
+	-- the box wide and 1.9 x the Top tall; the inner ring 0.76 x 0.7 of the Top
 	PLINTH = {
-		Top = 2 / 3, GlowY = 16 / 90, GlowW = 1.6, GlowH = 1.9 * 2 / 3, RingW = 0.76, RingH = 0.7, RingA = 0.45, Rim = 3, RimPhone = 2,
+		Top = 2 / 3, Band = 0.14, GlowY = 16 / 90, GlowW = 1.6, GlowH = 1.9 * 2 / 3, RingW = 0.76, RingH = 0.7, RingA = 0.45, Rim = 3, RimPhone = 2,
 		Ring = 2, RingPhone = 1.5,
 		TopA = rgb(52, 72, 154), TopB = rgb(20, 29, 82), SideA = rgb(10, 17, 52), SideB = rgb(38, 56, 132),
 		-- the colour the plinth's rim / ring / glow are shaded from before the rarity is shown on it (a soft periwinkle
@@ -799,10 +811,13 @@ function HatchLook.Plinth(box, rarity, phone, opts)
 	self.Glow = HatchLook.Glow(box, HatchLook.Shade(P.Neutral, 0.2), { Name = "Glow", Count = opts.Glows, Z = z - 1 })
 	self.Glow:Place(UDim2.fromScale(0.5, P.GlowY), UDim2.fromScale(P.GlowW, P.GlowH))
 	self.GlowW = P.GlowW
-	self.Side = frame(box, "Side", { Size = UDim2.fromScale(1, P.Top), BackgroundColor3 = K.WHITE, BackgroundTransparency = 0, ZIndex = z })
+	-- the thickness: the Top's shape Band lower, so only a thin lit-to-dark band shows under the Top's front edge
+	local lit = 1 - P.Band / P.Top
+	self.Side = frame(box, "Side", { Position = UDim2.fromScale(0, P.Band - P.Top / 2), Size = UDim2.fromScale(1, P.Top), BackgroundColor3 = K.WHITE, BackgroundTransparency = 0, ZIndex = z })
 	corner(self.Side, 0.5)
 	Util.Create("UIGradient", {
-		Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, P.SideA), ColorSequenceKeypoint.new(0.5, P.SideB), ColorSequenceKeypoint.new(1, P.SideA) }), Parent = self.Side,
+		Rotation = 90,
+		Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, P.SideB), ColorSequenceKeypoint.new(lit, P.SideB), ColorSequenceKeypoint.new(1, P.SideA) }), Parent = self.Side,
 	})
 	self.Top = frame(box, "Top", { BackgroundColor3 = K.WHITE, BackgroundTransparency = 0, ZIndex = z + 1 })
 	corner(self.Top, 0.5)
@@ -877,6 +892,13 @@ end
 local Word = {}
 Word.__index = Word
 
+local function wordColors(c)
+	local W = K.WORD
+	return ColorSequence.new({
+		ColorSequenceKeypoint.new(0, HatchLook.Shade(c, W.Top)), ColorSequenceKeypoint.new(0.5, HatchLook.Shade(c, W.Mid)), ColorSequenceKeypoint.new(1, HatchLook.Shade(c, W.Bottom)),
+	})
+end
+
 local function wordLabel(parent, name, text, size, c, z)
 	local W = K.WORD
 	local l = Theme.Label(text, "Title", { Size = size, Stroke = 1 })
@@ -885,13 +907,7 @@ local function wordLabel(parent, name, text, size, c, z)
 	l.TextXAlignment = Enum.TextXAlignment.Center
 	l.TextYAlignment = Enum.TextYAlignment.Center
 	l.ZIndex = z
-	Util.Create("UIGradient", {
-		Rotation = 90,
-		Color = ColorSequence.new({
-			ColorSequenceKeypoint.new(0, HatchLook.Shade(c, W.Top)), ColorSequenceKeypoint.new(0.5, HatchLook.Shade(c, W.Mid)), ColorSequenceKeypoint.new(1, HatchLook.Shade(c, W.Bottom)),
-		}),
-		Parent = l,
-	})
+	Util.Create("UIGradient", { Rotation = 90, Color = wordColors(c), Parent = l })
 	Util.Create("UIStroke", { Color = HatchLook.Shade(c, W.Outline), Thickness = 2, LineJoinMode = Enum.LineJoinMode.Round, ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual, Parent = l })
 	l.Parent = parent
 	return l
@@ -1065,6 +1081,42 @@ end
 function Word:Destroy()
 	self:drop()
 	self.Frame:Destroy()
+end
+
+-- (review round 1) another rarity's colours on the same instances: the gradient, the outline and the glow (the crack
+-- word moves on to the next egg of an x3)
+function Word:SetRarity(rarity)
+	local c = HatchLook.RarityColor(rarity)
+	local seq, edge = wordColors(c), HatchLook.Shade(c, K.WORD.Outline)
+	local labels = { self.Frame }
+	if #self.Letters > 0 then
+		labels = {}
+		for i, L in ipairs(self.Letters) do
+			labels[i] = L.Label
+		end
+	end
+	for _, l in ipairs(labels) do
+		local g = l:FindFirstChildOfClass("UIGradient")
+		if g then
+			g.Color = seq
+		end
+		local s = l:FindFirstChildOfClass("UIStroke")
+		if s then
+			s.Color = edge
+		end
+	end
+	if self.Glow then
+		self.Glow:SetColor(c, 0)
+	end
+end
+
+-- a one-label word's new text (the attribute Text follows); a letter word keeps its letters
+function Word:SetText(text)
+	self.Text = tostring(text)
+	if #self.Letters == 0 then
+		self.Frame.Text = self.Text
+	end
+	self.Frame:SetAttribute("Text", self.Text)
 end
 
 ----------------------------------------------------------------------
@@ -1331,6 +1383,11 @@ function HatchLook.HideOne(gui)
 	return hideOne(gui, nil)
 end
 
+-- (review round 1) an owner that switches its gui off while the stage already has it off writes the same value: no
+-- signal reaches the stage, so the owner says so with the attribute HudKeepOff = true (MovementController's
+-- MobileControls on a death) and the restore leaves that gui off
+HatchLook.KEEP_OFF = "HudKeepOff"
+
 function HatchLook.RestoreHud()
 	local list = Hidden
 	Hidden = {}
@@ -1339,7 +1396,7 @@ function HatchLook.RestoreHud()
 			conn:Disconnect()
 		end)
 		pcall(function()
-			if gui.Parent ~= nil and gui.Enabled == false then
+			if gui.Parent ~= nil and gui.Enabled == false and gui:GetAttribute(HatchLook.KEEP_OFF) ~= true then
 				gui.Enabled = true
 			end
 		end)

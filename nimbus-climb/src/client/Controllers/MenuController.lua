@@ -3442,9 +3442,18 @@ function MenuController.OpenTeam(preset)
 	end
 end
 
--- The menu's side hint (CareController's local refusals use it too; never in the screen centre).
+-- The menu's side hint (CareController's local refusals use it too; never in the screen centre). (roll-look review round
+-- 1) While this gui is off (the egg stage hides the HUD: HatchLook.HideHud) the hint could not be seen, so it goes to
+-- NotifyController's toast stack (NimbusNotify stays on); the hint again when that is not there.
 function MenuController.Hint(text, kind)
 	if initialized and type(text) == "string" then
+		if gui and gui.Enabled == false then
+			local module = script.Parent:FindFirstChild("NotifyController")
+			local ok, nc = pcall(require, module)
+			if ok and type(nc) == "table" and type(nc.Toast) == "function" and nc.Toast(text, kind or "info") then
+				return
+			end
+		end
 		showHint(text, kind)
 	end
 end

@@ -4,7 +4,10 @@
 -- after) and one Heartbeat that runs only while a spark lives, unless its owner drives it (Drive: the egg stage steps
 -- it from its own phase Heartbeat, so the cutscene has exactly one); nothing else here runs per frame.
 --
---   HatchFx.Pool(parent, n [, z]) -> pool   a holder Frame "Sparks" over the parent (n defaults to 16)
+--   HatchFx.Pool(parent, n [, z, opts]) -> pool   a holder Frame "Sparks" over the parent (n defaults to 16); opts.Image
+--     (roll-look review round 1: the hatch_sparkle "rbxassetid://" id, spec 16.15 "Fallbacks"): the sparks are ImageLabels
+--     tinted their colour (1.6 x the square's size, unturned) instead of 45-degree squares; the confetti stays squares;
+--     never more than n objects of both kinds
 --     pool:Burst(at, rarity, count [, opts]) -> spawned   sparks flying out of `at` (a Vector2 in the parent's px) and
 --       fading in 0.55-0.9 s (opts.Life / opts.Speed / opts.Px ranges override: the shakes' small pops); never more
 --       than n live at once; halved on Low graphics
@@ -17,7 +20,8 @@
 --     pool:Drive()   the owner calls pool:Step(dt) from its own Heartbeat; the pool never connects one
 --     pool:Live() -> the sparks alive now;  pool:Destroy()   the frames and the Heartbeat gone
 --   HatchFx.Rays(parent, rarity [, opts]) -> rays   a CanvasGroup "Rays" of 16 thin wedges (8 bars through the centre,
---     clear in the middle): rays:Place(x, y, d), rays:Flash(alpha, seconds) (fade in, then rest at `alpha`),
+--     clear in the middle; opts.Image, the hatch_rays id: one ImageLabel "Fan" in their box, tinted, instead):
+--     rays:Place(x, y, d), rays:Flash(alpha, seconds) (fade in, then rest at `alpha`), rays:Recolor(rarity),
 --     rays:Spin(on) (an endless Rotation tween, 12 s a turn; still on Low), rays:Hide(), rays:Destroy()
 --   HatchFx.Shock(parent, rarity [, opts]) -> shock   a round Frame "Shock" with a 6 px UIStroke: shock:Play(x, y, d,
 --     seconds, color) grows it 0 -> d while its stroke fades, then hides it; shock:Hide(), shock:Destroy()
@@ -183,16 +187,34 @@ end
 local Pool = {}
 Pool.__index = Pool
 
-function Pool:_frame()
-	local f = table.remove(self.Free)
+-- a spark object: a 45-degree square Frame, or (img: the pool's hatch_sparkle image, roll-look review round 1) an
+-- ImageLabel tinted the spark colour. Never more than N of both kinds: when the pool is full a spare of the other kind
+-- makes room (the confetti stays paper squares after a burst of image sparks)
+function Pool:_frame(img)
+	local f = table.remove(img and self.FreeImg or self.Free)
 	if f then
 		return f
 	end
-	if self.Made >= self.N or not self.Holder then
+	if not self.Holder then
 		return nil
 	end
+	if self.Made >= self.N then
+		local spare = table.remove(img and self.Free or self.FreeImg)
+		if not spare then
+			return nil
+		end
+		spare:Destroy()
+		self.Made = self.Made - 1
+	end
 	self.Made = self.Made + 1
-	f = Instance.new("Frame")
+	if img then
+		f = Instance.new("ImageLabel")
+		f.Image = self.Image
+		f.BackgroundTransparency = 1
+		f.ImageTransparency = 1
+	else
+		f = Instance.new("Frame")
+	end
 	f.Name = "Spark"
 	f.BorderSizePixel = 0
 	f.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -204,17 +226,26 @@ function Pool:_frame()
 end
 
 function Pool:_spawn(rec)
-	local f = self:_frame()
+	local img = self.Image ~= nil and rec.Name ~= "Confetti"
+	local f = self:_frame(img)
 	if not f then
 		return false
 	end
 	rec.F = f
 	rec.Age = 0
+	-- the property the fade writes each frame (rec.AP), set once here: no class test per frame
+	rec.AP = img and "ImageTransparency" or "BackgroundTransparency"
 	f.Name = rec.Name or "Spark"
-	f.Rotation = rec.Rot or 45
-	f.BackgroundColor3 = rec.Color
-	f.Size = UDim2.fromOffset(rec.Px, rec.Py or rec.Px)
-	f.BackgroundTransparency = 1
+	f.Rotation = rec.Rot or (img and 0 or 45)
+	if img then
+		f.ImageColor3 = rec.Color
+	else
+		f.BackgroundColor3 = rec.Color
+	end
+	-- (an image sparkle is drawn inside its box: a little larger than the square it replaces)
+	local k = img and 1.6 or 1
+	f.Size = UDim2.fromOffset(rec.Px * k, (rec.Py or rec.Px) * k)
+	f[rec.AP] = 1
 	f.Position = UDim2.fromOffset(rec.X, rec.Y)
 	f.Visible = true
 	self.List[#self.List + 1] = rec
@@ -231,7 +262,8 @@ function Pool:_free(i)
 	if rec.F and rec.F.Parent then
 		rec.F.Visible = false
 		rec.F.Name = "Spark"
-		self.Free[#self.Free + 1] = rec.F
+		local list = (rec.AP == "ImageTransparency") and self.FreeImg or self.Free
+		list[#list + 1] = rec.F
 	end
 end
 
@@ -303,12 +335,12 @@ function Pool:_step(dt)
 				if rec.Mode == "Orbit" then
 					local th = rec.Phase + self.T * 2 * math.pi / K.ORBIT_PERIOD
 					f.Position = UDim2.fromOffset(cx + math.cos(th) * 0.6 * h, cy + math.sin(th) * 0.66 * h)
-					f.BackgroundTransparency = 0.2 + 0.3 * (0.5 + 0.5 * math.sin(self.T * 5 + rec.Phase))
+					f[rec.AP] = 0.2 + 0.3 * (0.5 + 0.5 * math.sin(self.T * 5 + rec.Phase))
 				else
 					local k = rec.Age / rec.Life
 					f.Position = UDim2.fromOffset(cx + (rec.Ox + rec.Vx * rec.Age) * h, cy + (rec.Oy - K.DRIFT_RISE * rec.Age) * h)
 					local fade = (k < 0.25) and (k / 0.25) or ((k > 0.65) and ((1 - k) / 0.35) or 1)
-					f.BackgroundTransparency = 1 - 0.85 * math.max(0, fade)
+					f[rec.AP] = 1 - 0.85 * math.max(0, fade)
 				end
 			end
 		elseif not gone and rec.Name == "Confetti" then
@@ -320,14 +352,14 @@ function Pool:_step(dt)
 			f.Position = UDim2.fromOffset(rec.X, rec.Y)
 			f.Rotation = rec.Rot
 			local left = rec.Life - rec.Age
-			f.BackgroundTransparency = (left < 0.35) and (1 - left / 0.35 * 0.9) or 0.1
+			f[rec.AP] = (left < 0.35) and (1 - left / 0.35 * 0.9) or 0.1
 		elseif not gone then
 			-- a burst spark: out, slowing, falling a little, fading
 			rec.Vx = rec.Vx * math.max(0, 1 - K.DRAG * dt)
 			rec.Vy = rec.Vy * math.max(0, 1 - K.DRAG * dt) + K.FALL * dt
 			rec.X, rec.Y = rec.X + rec.Vx * dt, rec.Y + rec.Vy * dt
 			f.Position = UDim2.fromOffset(rec.X, rec.Y)
-			f.BackgroundTransparency = 0.1 + 0.9 * (rec.Age / rec.Life)
+			f[rec.AP] = 0.1 + 0.9 * (rec.Age / rec.Life)
 		end
 		if gone then
 			self:_free(i)
@@ -489,6 +521,7 @@ function Pool:Destroy()
 	self.Amb = {}
 	self.List = {}
 	self.Free = {}
+	self.FreeImg = {}
 	self.Running = false
 	if self.Conn then
 		self.Conn:Disconnect()
@@ -501,7 +534,8 @@ function Pool:Destroy()
 	R.Pools[self] = nil
 end
 
-function HatchFx.Pool(parent, n, z)
+function HatchFx.Pool(parent, n, z, opts)
+	opts = type(opts) == "table" and opts or {}
 	local holder = Instance.new("Frame")
 	holder.Name = "Sparks"
 	holder.BackgroundTransparency = 1
@@ -515,6 +549,8 @@ function HatchFx.Pool(parent, n, z)
 		Z = z or 20,
 		Made = 0,
 		Free = {},
+		FreeImg = {},
+		Image = type(opts.Image) == "string" and opts.Image or nil,
 		List = {},
 		Amb = {},
 		Running = true,
@@ -649,19 +685,27 @@ function HatchFx.Rays(parent, rarity, opts)
 		Visible = false, ZIndex = opts.ZIndex or 1,
 	}, parent)
 	local color = rayColor(rarity)
-	-- each bar is two opposite rays: clear at the centre (the egg / pet reads through), bright mid-way, gone at the ends
-	local fade = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.16, 0.55), NumberSequenceKeypoint.new(0.36, 0.2),
-		NumberSequenceKeypoint.new(0.47, 1), NumberSequenceKeypoint.new(0.53, 1), NumberSequenceKeypoint.new(0.64, 0.2),
-		NumberSequenceKeypoint.new(0.84, 0.55), NumberSequenceKeypoint.new(1, 1),
-	})
-	for i = 1, 8 do
-		local bar = new("Frame", {
-			Name = "Ray" .. i, BorderSizePixel = 0, BackgroundColor3 = color, BackgroundTransparency = 0, AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1, (i % 2 == 0) and 0.022 or 0.034), Rotation = (i - 1) * 22.5,
-			ZIndex = holder.ZIndex,
+	if type(opts.Image) == "string" then
+		-- (roll-look review round 1, spec 16.15 "Fallbacks") the hatch_rays fan: one ImageLabel in the wedges' box, tinted
+		new("ImageLabel", {
+			Name = "Fan", Image = opts.Image, ImageColor3 = color, BackgroundTransparency = 1, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1, 1), ZIndex = holder.ZIndex,
 		}, holder)
-		new("UIGradient", { Name = "Fade", Transparency = fade }, bar)
+	else
+		-- each bar is two opposite rays: clear at the centre (the egg / pet reads through), bright mid-way, gone at the ends
+		local fade = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.16, 0.55), NumberSequenceKeypoint.new(0.36, 0.2),
+			NumberSequenceKeypoint.new(0.47, 1), NumberSequenceKeypoint.new(0.53, 1), NumberSequenceKeypoint.new(0.64, 0.2),
+			NumberSequenceKeypoint.new(0.84, 0.55), NumberSequenceKeypoint.new(1, 1),
+		})
+		for i = 1, 8 do
+			local bar = new("Frame", {
+				Name = "Ray" .. i, BorderSizePixel = 0, BackgroundColor3 = color, BackgroundTransparency = 0, AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1, (i % 2 == 0) and 0.022 or 0.034), Rotation = (i - 1) * 22.5,
+				ZIndex = holder.ZIndex,
+			}, holder)
+			new("UIGradient", { Name = "Fade", Transparency = fade }, bar)
+		end
 	end
 	local h = handle(holder, K.RAY_TURN, opts)
 	function h:Flash(alpha, seconds)
@@ -676,7 +720,9 @@ function HatchFx.Rays(parent, rarity, opts)
 	function h:Recolor(r)
 		local c = rayColor(r)
 		for _, bar in ipairs(self.Frame and self.Frame:GetChildren() or {}) do
-			if bar:IsA("Frame") then
+			if bar:IsA("ImageLabel") then
+				bar.ImageColor3 = c
+			elseif bar:IsA("Frame") then
 				bar.BackgroundColor3 = c
 			end
 		end

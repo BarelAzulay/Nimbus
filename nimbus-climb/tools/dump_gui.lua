@@ -3555,7 +3555,8 @@ function HATCH.pull(PC, rid, def, opts)
 end
 -- (Task 27) hatch:<rarity>@<seconds> = a forced x1 pull of that rarity (common .. secret; Cloud for Common .. Epic, Storm
 -- for Legendary, Secret Roulette for Mythic / Secret) stepped to that time; hatch3:<seconds> = a Storm x3 (Rare, Legendary,
--- then Common, or Epic where the Storm pool has no Common) at that time. The views above stay as aliases
+-- then Common, or Epic where the Storm pool has no Common) at that time. The views above stay as aliases. (roll-look
+-- review round 1) Every playing tween is drawn at its eased in-between value (Mock.SnapTweens), not the mock's held start
 HATCH.Rids = { common = "Cloud", uncommon = "Cloud", rare = "Cloud", epic = "Cloud", legendary = "Storm", mythic = "Secret", secret = "Secret" }
 function HATCH.forced(PC, rarity)
 	local key = tostring(rarity):lower()
@@ -3647,7 +3648,10 @@ function HATCH.scene(view)
 	while os.clock() - t0 < at - 1e-6 do
 		advance(1 / 30)
 	end
-	note(fmt("hatch:%s at %.2f s: phase %s, layout %s, %d instances", view, os.clock() - t0, tostring(ES.Phase()), tostring(ES.Layout()), ES.Stats().Instances))
+	-- [roll-look review round 1] the mock applies a tween's goal only when it completes: the playing tweens are snapped to
+	-- their eased in-between values, so a moment mid-tween draws what Roblox would (Mock.SnapTweens)
+	local snapped = type(Mock.SnapTweens) == "function" and Mock.SnapTweens() or 0
+	note(fmt("hatch:%s at %.2f s: phase %s, layout %s, %d instances, %d tween values snapped", view, os.clock() - t0, tostring(ES.Phase()), tostring(ES.Layout()), ES.Stats().Instances, snapped))
 end
 
 -- shop[:<tab>]          lobby-shop Tasks 21/22 (spec 16.3): the one Shop window (client/Controllers/ShopController) on its

@@ -20,15 +20,20 @@
 --       1.1 x / 0.24 x the egg under it), neutral until the shakes; the rise (the box's UIScale Pop 0.6 -> past 1 -> 1, the
 --       Top fading in from 1); Gemini's tweak from Rare up at the first shake (the plinth's rim / ring / glow, the cloud
 --       ring and faint turning rays in the rarity colour) and nothing of it below Rare until the burst (Common, Uncommon);
---       the burst's punch (Stage's UIScale "Punch" >= 1.04 within 0.1 s, back to 1 by + 0.4; none on Low), the 2D halves
+--       the burst's punch (Hero's UIScale "Punch" >= 1.04 within 0.1 s, Burst's following it, the Skip chip unmoved, back
+--       to 1 by + 0.4; none on Low), the 2D halves
 --       without ids, 28 sparks for an Epic on PC; the plinth in the rarity colour on the reveal; the image keys
 --       (HatchLook.IMAGES, HatchLook.Image with HatchLook._Textures, an ImageLabel Glow with an id, the frames without);
 --       a resize mid-tweak (snapped, nothing stranded, the roll reaches the reveal); x3 (three plinths, the tweak per egg,
 --       the rays only for the best pull); the budgets at every frame (x1 450 / x3 750 instances, 24 tweens, 1 Heartbeat,
---       <= 2 effects)
+--       <= 2 effects). Review round 1: the Side a thin band (PLINTH.Band of the box) shaded darker downward; the title
+--       gone once the hero shows; the crack word's gradient Shade(.78 / .22 / -.18) and 5 px outline at 80; every image key
+--       wired (one ImageLabel ray fan, image sparks, one backlight image; the frames without ids); a Fast hatch pass (the
+--       tell at Land - 0.25 / 0.1, the pop >= 1.14 in 0.06 and 1.09, one sweep gone by Land + 0.15, the tweak at the one
+--       shake, the punch, the budgets)
 --   client_roll_look_reveal  (client, 1920x1080 and 1280x720; Task 3) the reveal: the rarity word as letters (Col1 > Banner >
 --       Word: a Frame with the attribute Text and L1..Ln, each with its UIGradient (Shade .78 / .22 / -.18), UIStroke (Shade
---       -.68, round(size x 0.12)) and UIScale Pop) popping one after another 0.05 s apart (0 -> 1.3 -> 1) with its glow
+--       -.68, clamp(round(size x 0.06), 2, 6): 5 px at 84) and UIScale Pop) popping one after another 0.05 s apart (0 -> 1.3 -> 1) with its glow
 --       behind; no silhouette below Legendary; the name and note sliding up 16 px and fading in from SIL + 0.2, NEW!'s pop at
 --       SIL + 0.4; the glossy pills (SpinAgain / Done: Shadow, Face > Body, Shine, Label; SpinAgain's Chip > Coin + Price)
 --       56 tall (44.8 real px at the 0.8 floor), disabled (grey, Label 176,184,206) until armed, rising into place by SIL +
@@ -36,7 +41,13 @@
 --       chevrons); Legendary: the pet's ViewportFrame black until SIL 0.3, then white, the letters waiting for it, the rays
 --       resting at 0.55; a Skip / tap into the silhouette and a mash on SPIN AGAIN while the pills rise change nothing (no
 --       BuyRoulette, the reveal completes); x3 (three letter words at 56 px, the silhouette only on the Legendary column);
---       the budgets at every frame (x1 450 / x3 750 instances; <= 32 tweens in the reveal's first 0.7 s, <= 24 after)
+--       the budgets at every frame (x1 450 / x3 750 instances; <= 32 tweens in the reveal's first 0.7 s, <= 24 after).
+--       Review round 1: no Shell (x1, x3), the pet's feet (PET_FOOT) on the plinth's centre line over its contact Shadow;
+--       a refused answer and the 7 s "Still waiting" shown as toasts in an Enabled gui while the stage is up; the gold flash
+--       >= 0.85 clear at the silhouette's + 0.1; SPIN AGAIN disabled until its rise is in place (x3, Legendary best)
+--   (client_roll_look_stage, review round 1) a gui its owner marks HudKeepOff mid-roll stays off after DONE;
+--       MovementController's MobileControls carries HudKeepOff exactly while it keeps them off
+--   (client_roll_look_phone, review round 1) the title gone at the rise's end at 844x390
 --   client_roll_look_phone  (phone world; Task 1) 844x390 and 640x360: the x1 cards 130 x 160 with 15 px plate words, the
 --       window's 3 px stroke and 10 px notches, every text >= 15 px and nothing off the screen (RedoGeom.check); the x3 lite
 --       cards (no Shadow, Tint or Plate; <= 16 instances a cell); (Task 2) the phone plinth (1.1 x / 0.24 x the egg, Top
@@ -475,9 +486,15 @@ S.client_roll_look_stage = guarded("client_roll_look_stage", function()
 		local offGui = G.fakeGui("SmokeOffGui", false)
 		local onGui = G.fakeGui("SmokeOnGui", true)
 		local flipGui = G.fakeGui("SmokeFlipGui", true)
-		fakes = { offGui, onGui, flipGui }
+		local ownerGui = G.fakeGui("SmokeOwnerGui", true)
+		fakes = { offGui, onGui, flipGui, ownerGui }
 		ES.Show(G.result(PC, "Cloud", { epic }))
 		G.advance(0.2)
+		-- (review round 1) its owner switches it off while the stage already has it off: a same-value write the stage cannot
+		-- see, so the owner says so with HudKeepOff (MovementController's MobileControls on a death mid-roll)
+		T.check(ownerGui.Enabled == false, "roll look: (setup) the owner's gui hides with the HUD")
+		ownerGui:SetAttribute("HudKeepOff", true)
+		ownerGui.Enabled = false
 		local allOff = true
 		for _, g in ipairs(before) do
 			allOff = allOff and g.Enabled == false
@@ -510,7 +527,12 @@ S.client_roll_look_stage = guarded("client_roll_look_stage", function()
 		T.check(late.Enabled == true and onGui.Enabled == true, "roll look: DONE -> the gui added mid-roll is back, the one turned on mid-roll still on")
 		T.check(offGui.Enabled == false, "roll look: the gui that was off before the roll stays off (not ours)")
 		T.check(flipGui.Enabled == false, "roll look: a gui turned on and off again mid-roll stays off (its owner's choice)")
+		T.check(ownerGui.Enabled == false, "roll look: a gui its owner marked HudKeepOff mid-roll stays off after DONE (a same-value Enabled write is invisible)")
 		T.eq(HL.HiddenCount(), 0, "roll look: DONE -> the hide list is empty")
+		local mobile = pg:FindFirstChild("MobileControls")
+		if mobile then
+			T.check(mobile:GetAttribute("HudKeepOff") == (mobile.Enabled == false), "roll look: MovementController marks MobileControls HudKeepOff exactly while it keeps them off")
+		end
 		------------------------------------------------------------------ every other exit restores it too
 		local function exitCase(label, play)
 			ES.Show(G.result(PC, "Cloud", { epic }))
@@ -847,7 +869,10 @@ S.client_roll_look_open = guarded("client_roll_look_open", function()
 					kids = table.concat(kids, " "), pop = p.Pop and p.Pop.Scale or -1, top = p.Top and p.Top.BackgroundTransparency or -1,
 					topH = (p.Top and box) and p.Top.AbsoluteSize.Y / box.AbsoluteSize.Y or -1,
 					topMid = (p.Top and box) and (p.Top.AbsolutePosition.Y + p.Top.AbsoluteSize.Y / 2) - box.AbsolutePosition.Y or 99,
-					sideEnd = (p.Side and box) and (p.Side.AbsolutePosition.Y + p.Side.AbsoluteSize.Y) - box.AbsolutePosition.Y - 0.667 * box.AbsoluteSize.Y or 99,
+					-- (review round 1) the Side's band under the Top, a share of the box (thickness, not a second bar)
+					sideBand = (p.Side and p.Top and box) and ((p.Side.AbsolutePosition.Y + p.Side.AbsoluteSize.Y) - (p.Top.AbsolutePosition.Y + p.Top.AbsoluteSize.Y)) / box.AbsoluteSize.Y or 99,
+					sideW = (p.Side and p.Top) and (p.Side.AbsoluteSize.X - p.Top.AbsoluteSize.X) or 99,
+					sideGrad = p.Side and p.Side:FindFirstChildOfClass("UIGradient"),
 					boxW = box and box.AbsoluteSize.X or -1, boxH = box and box.AbsoluteSize.Y or -1, eh = eh,
 					foot = (egg and box) and (box.AbsolutePosition.Y - (egg.AbsolutePosition.Y + egg.AbsoluteSize.Y)) or 99,
 					rim = p.Rim and p.Rim.Color, rimT = p.Rim and p.Rim.Thickness, rays = rays ~= nil and rays.Visible,
@@ -856,10 +881,20 @@ S.client_roll_look_open = guarded("client_roll_look_open", function()
 			if t >= shake1 + 0.3 and not rec.tweak then
 				local ring = G.hero("CloudRing1")
 				local rays = G.hero("Rays")
+				local title = G.content() and G.content():FindFirstChild("Title")
+				local cw = G.hero("CrackWord")
 				rec.tweak = {
 					rim = p.Rim and p.Rim.Color, ring = p.RingStroke and p.RingStroke.Color, glow = p.Glow1 and p.Glow1.BackgroundColor3, cloud = ring and ring.GroupColor3,
 					rays = rays ~= nil and rays.Visible, raysA = rays and rays.GroupTransparency or 1, spin = rays ~= nil and G.spinning(rays),
+					-- (review round 1) the title gone once the hero shows (the mock fades it at the rise); the crack word dressed
+					titleGone = title == nil or not G.shown(title) or title.TextTransparency >= 0.99,
+					cw = cw, cwGrad = cw and cw:FindFirstChildOfClass("UIGradient"), cwStroke = cw and cw:FindFirstChildOfClass("UIStroke"),
 				}
+			end
+			-- (review round 1) the punch scales the stage's world (Hero, Burst), never the chrome (the title, the chips)
+			local skipChip = G.bar("Skip")
+			if skipChip and not rec.burstT then
+				rec.skipBox = G.box(skipChip)
 			end
 			if t >= riseEnd + 0.05 and t < shake1 - 0.02 and not rec.early then
 				local rays = G.hero("Rays")
@@ -869,8 +904,9 @@ S.client_roll_look_open = guarded("client_roll_look_open", function()
 					rec.early = "the rim is tinted before the first shake: " .. G.c3(p.Rim and p.Rim.Color)
 				end
 			end
-			local stage = G.stage()
-			local punch = stage and stage:FindFirstChild("Punch")
+			local heroF = G.content() and G.content():FindFirstChild("Hero")
+			local punch = heroF and heroF:FindFirstChild("Punch")
+			local bpunch = G.burstFrame() and G.burstFrame():FindFirstChildOfClass("UIScale")
 			local egg = G.hero("Egg1")
 			if egg and egg:GetAttribute("State") == "Burst" and not rec.burstT then
 				rec.burstT = t
@@ -880,6 +916,11 @@ S.client_roll_look_open = guarded("client_roll_look_open", function()
 			end
 			if rec.burstT and t <= rec.burstT + 0.1 and punch then
 				rec.punchEarly = math.max(rec.punchEarly, punch.Scale)
+				rec.burstFollow = rec.burstFollow ~= false and bpunch ~= nil and abs(bpunch.Scale - punch.Scale) <= 1e-6
+				if punch.Scale >= 1.04 and skipChip and rec.skipBox then
+					local b = G.box(skipChip)
+					rec.chromeMoved = math.max(rec.chromeMoved or 0, abs(b.x - rec.skipBox.x), abs(b.y - rec.skipBox.y), abs(b.w - rec.skipBox.w), abs(b.h - rec.skipBox.h))
+				end
 			end
 		end
 		T.check(rec.first ~= nil and rec.first.pop >= 0.6 - 0.005 and rec.first.pop <= 0.72 and rec.first.top >= 0.85,
@@ -889,7 +930,15 @@ S.client_roll_look_open = guarded("client_roll_look_open", function()
 		if T.check(r ~= nil, "roll look open: (setup) sampled at the rise's end") then
 			T.eq(r.kids, "Glow1 Glow2 Ring Side Top", "roll look open: Pedestal1 is the flat lit plinth: Top, Side, Ring, the soft halo Glow1..2 (no drum, no puffs, no bars)")
 			T.check(abs(r.pop - 1) <= 0.01 and r.top <= 0.01, "roll look open: at the rise's end the plinth rests: Pop 1, Top opaque", fmt("pop %.3f, top %.3f", r.pop, r.top))
-			T.check(abs(r.topH - 0.667) <= 0.01 and abs(r.sideEnd) <= 1.5, "roll look open: the Top is 0.667 of the box tall, the Side shows 0.333 under it", fmt("top %.3f, side end %+.1f px", r.topH, r.sideEnd))
+			local sk = r.sideGrad and r.sideGrad.Color.Keypoints or {}
+			local lum = function(c)
+				return c and (c.R + c.G + c.B) or 0
+			end
+			local band = HL.Metrics.PLINTH.Band or -1
+			T.check(abs(r.topH - 0.667) <= 0.01 and abs(r.sideBand - band) <= 0.01 and band > 0 and band <= 0.15 and abs(r.sideW) <= 0.6,
+				"roll look open: the Top is 0.667 of the box tall; the Side is its thickness: the same width, a thin band (<= 0.15 of the box) under it, not a second bar", fmt("top %.3f, band %.3f, width %+.1f px", r.topH, r.sideBand, r.sideW))
+			T.check(r.sideGrad ~= nil and r.sideGrad.Rotation == 90 and #sk >= 2 and lum(sk[#sk].Value) < lum(sk[1].Value) - 0.05,
+				"roll look open: ...shaded darker downward (a vertical UIGradient)", r.sideGrad and fmt("rot %s, %s -> %s", tostring(r.sideGrad.Rotation), G.c3(sk[1] and sk[1].Value), G.c3(sk[#sk] and sk[#sk].Value)) or "no gradient")
 			T.check(abs(r.topMid) <= 1.5, "roll look open: the Top's centre line sits on the egg's foot (the box's top): the egg stands in the middle of the disc", fmt("%+.1f px", r.topMid))
 			T.check(abs(r.boxW - 1.1 * r.eh) <= 1.5 and abs(r.boxH - 0.24 * r.eh) <= 1.5 and abs(r.foot) <= 0.6, "roll look open: the box is still 1.1 x / 0.24 x the egg, right under it",
 				fmt("egg %.1f, box %.1f x %.1f, gap %.1f", r.eh, r.boxW, r.boxH, r.foot))
@@ -903,12 +952,21 @@ S.client_roll_look_open = guarded("client_roll_look_open", function()
 				"roll look open: Gemini's tweak (Epic): the plinth's rim, inner ring and glow turn the rarity colour at the first shake", fmt("%s / %s / %s", G.c3(w.rim), G.c3(w.ring), G.c3(w.glow)))
 			T.check(G.near(w.cloud, RING_TINT:Lerp(epicC, 0.5), 2), "roll look open: ...the cloud ring's GroupColor3 too (RING_TINT half way to Epic)", G.c3(w.cloud))
 			T.check(w.rays and w.raysA <= 0.76 and w.spin, "roll look open: ...and the rays come up faint (GroupTransparency 0.75) and turn", fmt("visible %s, %.2f, spin %s", tostring(w.rays), w.raysA, tostring(w.spin)))
+			T.check(w.titleGone, "roll look open: the machine's title is gone once the hero egg shows (the mock fades it at the rise: no two headlines)")
+			local ck = w.cwGrad and w.cwGrad.Color.Keypoints or {}
+			T.check(w.cw ~= nil and w.cw.Text == "EPIC EGG!" and w.cw.TextSize == 80 and #ck == 3 and G.near(ck[1].Value, rgb(238, 223, 250)) and G.near(ck[2].Value, rgb(193, 140, 237)) and G.near(ck[3].Value, rgb(144, 89, 190)),
+				"roll look open: the crack word is one 80 px label with the word's gradient Shade(Epic, .78 / .22 / -.18) (spec 16.15 Sizes)", w.cw and fmt("%s %d, %s / %s / %s", w.cw.Text, w.cw.TextSize, G.c3(ck[1] and ck[1].Value), G.c3(ck[2] and ck[2].Value), G.c3(ck[3] and ck[3].Value)) or "no CrackWord")
+			T.check(w.cwStroke ~= nil and G.near(w.cwStroke.Color, rgb(56, 35, 74)) and w.cwStroke.Thickness == 5 and w.cw and G.near(w.cw.TextColor3, Color3.new(1, 1, 1)),
+				"roll look open: ...and its outline Shade(Epic, -.68), 5 px at 80 (white text under the gradient)", w.cwStroke and fmt("%s %s px", G.c3(w.cwStroke.Color), tostring(w.cwStroke.Thickness)) or "no stroke")
 		end
 		T.check(rec.over == nil, "roll look open: x1 within the budgets at every frame of Rise / Crack / Burst (450 instances, 24 tweens, 1 Heartbeat, <= 2 effects)", tostring(rec.over))
 		local stage = G.stage()
-		local punch = stage and stage:FindFirstChild("Punch")
-		T.check(stage and punch and punch:IsA("UIScale") and stage.AnchorPoint == Vector2.new(0.5, 0.5), "roll look open: Stage has a UIScale Punch and is anchored at its centre")
-		T.check(rec.punchEarly >= 1.04, "roll look open: the burst's punch reaches >= 1.04 within 0.1 s", fmt("%.3f", rec.punchEarly))
+		local heroF = G.content() and G.content():FindFirstChild("Hero")
+		local punch = heroF and heroF:FindFirstChild("Punch")
+		T.check(stage and stage:FindFirstChildOfClass("UIScale") == nil and punch and punch:IsA("UIScale") and heroF.AnchorPoint == Vector2.new(0.5, 0.5),
+			"roll look open: the punch's UIScale sits on Hero (anchored at its centre), not on Stage")
+		T.check(rec.punchEarly >= 1.04 and rec.burstFollow == true, "roll look open: the burst's punch reaches >= 1.04 within 0.1 s, Burst's UIScale following Hero's", fmt("%.3f, follow %s", rec.punchEarly, tostring(rec.burstFollow)))
+		T.check(rec.chromeMoved ~= nil and rec.chromeMoved <= 0.5, "roll look open: ...while the Skip chip keeps its box (the chrome is not punched: nothing clipped at the screen's edges)", tostring(rec.chromeMoved))
 		T.check(punch and abs(punch.Scale - 1) <= 0.005, "roll look open: ...and is back to 1 on the reveal", punch and tostring(punch.Scale) or "nil")
 		T.check(rec.halves2D == true, "roll look open: without the halves' ids the 2D HalfTop / HalfBottom open (16.14 stands)")
 		T.eq(rec.sparks, 28, "roll look open: 28 sparks for an Epic on PC")
@@ -956,13 +1014,13 @@ S.client_roll_look_open = guarded("client_roll_look_open", function()
 		local lowMax = 0
 		while os.clock() - t0 < Tm.RevealAt + 0.1 do
 			Mock.Advance(FINE, FINE)
-			local st = G.stage()
-			local pu = st and st:FindFirstChild("Punch")
+			local hf = G.content() and G.content():FindFirstChild("Hero")
+			local pu = hf and hf:FindFirstChild("Punch")
 			if pu then
 				lowMax = math.max(lowMax, pu.Scale)
 			end
 		end
-		T.check(lowMax <= 1.0001, "roll look open: Low graphics: no punch (Stage's Punch stays 1)", fmt("%.3f", lowMax))
+		T.check(lowMax <= 1.0001, "roll look open: Low graphics: no punch (Hero's Punch stays 1)", fmt("%.3f", lowMax))
 		ES.Close()
 		G.advance(0.4)
 		mode = "High"
@@ -980,6 +1038,50 @@ S.client_roll_look_open = guarded("client_roll_look_open", function()
 			"roll look open: with a hatch_glow id the plinth's glow is one ImageLabel Glow tinted Shade(c, .2) (after the tweak)", img and fmt("%s %s %s", img.ClassName, tostring(img.Image), G.c3(img.ImageColor3)) or "none")
 		ES.Close()
 		G.advance(0.4)
+		-- (review round 1) every key is wired: the ray fan, the sparkle and the backlight take the image when it has an id
+		local function imagesAt(at)
+			local hero = G.content() and G.content():FindFirstChild("Hero")
+			local rays = hero and hero:FindFirstChild("Rays")
+			local out = { rayImg = nil, rayBars = 0, sparkImg = 0, sparkFrame = 0, backImg = nil, backDiscs = 0 }
+			for _, c in ipairs(rays and rays:GetChildren() or {}) do
+				if c:IsA("ImageLabel") then
+					out.rayImg = c
+				elseif c:IsA("Frame") and c.Name:match("^Ray%d+$") then
+					out.rayBars = out.rayBars + 1
+				end
+			end
+			local holder = G.burstFrame() and G.burstFrame():FindFirstChild("Sparks")
+			for _, s in ipairs(holder and holder:GetChildren() or {}) do
+				if s.Visible and s.Name == "Spark" then
+					if s:IsA("ImageLabel") then
+						out.sparkImg = out.sparkImg + 1
+						out.sparkId = s.Image
+					else
+						out.sparkFrame = out.sparkFrame + 1
+					end
+				end
+			end
+			local back = G.hero("Backlight1")
+			for _, c in ipairs(back and back:GetChildren() or {}) do
+				if c:IsA("ImageLabel") then
+					out.backImg = c
+				elseif c:IsA("Frame") then
+					out.backDiscs = out.backDiscs + 1
+				end
+			end
+			return out
+		end
+		HL._Textures = { hatch_rays = 11, hatch_sparkle = 12, hatch_glow = 13 }
+		t0 = os.clock()
+		ES.Show(G.result(PC, "Cloud", { epic }))
+		G.until_(t0, burstAt + 0.05)
+		local im = imagesAt()
+		T.check(im.rayImg ~= nil and im.rayImg.Image == "rbxassetid://11" and im.rayBars == 0, "roll look open: with a hatch_rays id the rays are one ImageLabel fan (no wedges)",
+			im.rayImg and tostring(im.rayImg.Image) or fmt("no image, %d wedges", im.rayBars))
+		T.check(im.sparkImg >= 10 and im.sparkFrame == 0 and im.sparkId == "rbxassetid://12", "roll look open: with a hatch_sparkle id the burst's sparks are ImageLabels", fmt("%d images (%s), %d squares", im.sparkImg, tostring(im.sparkId), im.sparkFrame))
+		T.check(im.backImg ~= nil and im.backImg.Image == "rbxassetid://13" and im.backDiscs == 0, "roll look open: with a hatch_glow id the backlight is one ImageLabel glow", im.backImg and tostring(im.backImg.Image) or fmt("%d discs", im.backDiscs))
+		ES.Close()
+		G.advance(0.4)
 		HL._Textures = {}
 		T.check(HL.Image("hatch_glow") == nil, "roll look open: Image(key) is nil when the key has no id")
 		t0 = os.clock()
@@ -988,6 +1090,10 @@ S.client_roll_look_open = guarded("client_roll_look_open", function()
 		ped = G.hero("Pedestal1")
 		T.check(ped and ped:FindFirstChild("Glow") == nil and ped:FindFirstChild("Glow1") and ped:FindFirstChild("Glow2") and ped.Glow1:FindFirstChildOfClass("UIGradient"),
 			"roll look open: without an id the frame fallback: Glow1..2, round frames fading out through their UIGradients")
+		G.until_(t0, burstAt + 0.05)
+		im = imagesAt()
+		T.check(im.rayImg == nil and im.rayBars == 8 and im.sparkImg == 0 and im.sparkFrame >= 10 and im.backImg == nil and im.backDiscs == 4,
+			"roll look open: without ids the frame fallbacks: 8 ray bars, square sparks, 4 backlight discs", fmt("rays %s/%d, sparks %d/%d, back %s/%d", tostring(im.rayImg ~= nil), im.rayBars, im.sparkImg, im.sparkFrame, tostring(im.backImg ~= nil), im.backDiscs))
 		ES.Close()
 		G.advance(0.4)
 		HL._Textures = false
@@ -1009,6 +1115,85 @@ S.client_roll_look_open = guarded("client_roll_look_open", function()
 		ES.Close()
 		Mock.SetViewport(1920, 1080)
 		G.advance(0.6)
+		------------------------------------------------------------------ (review round 1) Fast hatch: every new beat's Fast branch
+		env.CS.Set("FastHatch", true)
+		local TF = ES.Timings(true, 1)
+		local fLand = TF.Intro + TF.Strip -- the strip stops (the Land phase starts)
+		local fRise = fLand + TF.Land + TF.Rise
+		local fShake = fRise + K.SHAKE_FAST[1][1] * TF.Crack
+		local fBurst = fRise + TF.Crack
+		local fr = { notGold = nil, popUp = 0, sweeps = 0, had = false, late = false, earlyTint = nil, punchUp = 0 }
+		t0 = os.clock()
+		ES.Show(G.result(PC, "Cloud", { epic }))
+		while os.clock() - t0 < TF.RevealAt + 0.2 and ES.Phase() ~= "Reveal" do
+			Mock.Advance(FINE, FINE)
+			local t = os.clock() - t0
+			local ph = ES.Phase()
+			if (ph == "Rise" or ph == "Crack" or ph == "Burst") and not fr.over then
+				local o = G.over(ES, 450)
+				if o then
+					fr.over = fmt("%s at %.2f s: %s", ph, t, o)
+				end
+			end
+			local ws = G.stroke(G.pointer(1) and G.pointer(1):FindFirstChild("Window"))
+			if t > TF.Intro + 0.05 and t < fLand - 0.25 - 0.02 and ws and not G.near(ws.Color, K.GOLD) and not fr.notGold then
+				fr.notGold = fmt("%.2f s: %s", t, G.c3(ws.Color))
+			end
+			-- (by Land - 0.15; + 0.02: the mock's 1/60 s frames)
+			if t >= fLand - 0.15 + 0.02 and not fr.tell then
+				fr.tell = ws and ws.Color
+			end
+			local strip = G.strip(1)
+			if strip and strip:GetAttribute("Landed") == true and not fr.landT then
+				fr.landT = t
+			end
+			local landed = fr.landT and G.cellAt(1, K.WIN)
+			if landed then
+				local pop = landed:FindFirstChild("Pop")
+				-- (+ one 1/60 s frame and + 0.03 s: the mock applies a tween's goal on the frame it completes)
+				if pop and t - fr.landT <= 0.06 + FINE + 1e-6 then
+					fr.popUp = math.max(fr.popUp, pop.Scale)
+				end
+				if pop and t >= fLand + TF.Land + 0.03 and not fr.popRest and t < fRise then
+					fr.popRest = pop.Scale
+				end
+				local has = landed:FindFirstChild("Sweep") ~= nil
+				if has and not fr.had then
+					fr.sweeps = fr.sweeps + 1
+				end
+				if has and t - fr.landT > 0.15 then
+					fr.late = true
+				end
+				fr.had = has
+			end
+			local p = G.plinth(1)
+			if t > fRise + 0.02 and t < fShake - 0.02 and p.Rim and not G.near(p.Rim.Color, HL.Shade(NEUTRAL, 0.25)) and not fr.earlyTint then
+				fr.earlyTint = fmt("%.2f s: %s", t, G.c3(p.Rim.Color))
+			end
+			if t >= fShake + K.LOOK.TWEAK.Fast + 0.03 and t < fBurst and not fr.tint then
+				fr.tint = p.Rim and p.Rim.Color
+			end
+			local hf = G.content() and G.content():FindFirstChild("Hero")
+			local pu = hf and hf:FindFirstChild("Punch")
+			if pu and t >= fBurst and t <= fBurst + 0.1 then
+				fr.punchUp = math.max(fr.punchUp, pu.Scale)
+			end
+		end
+		T.eq(ES.Phase(), "Reveal", "roll look fast: (setup) the Fast hatch roll reaches its reveal")
+		T.check(fr.notGold == nil and fr.tell ~= nil and G.near(fr.tell, epicC, 2), "roll look fast: the window is gold until Land - 0.25 and the Epic colour by Land - 0.15 (tell 0.25 / 0.1 s)",
+			fmt("%s; %s", tostring(fr.notGold), G.c3(fr.tell)))
+		T.check(fr.popUp >= 1.14 and fr.popRest ~= nil and abs(fr.popRest - 1.09) <= 0.01, "roll look fast: the land pop reaches >= 1.14 within 0.06 s and rests at 1.09 by Land's end",
+			fmt("%.3f, rest %s", fr.popUp, tostring(fr.popRest)))
+		T.check(fr.sweeps == 1 and not fr.late, "roll look fast: one shine Sweep, gone by Land + 0.15", fmt("%d, late %s", fr.sweeps, tostring(fr.late)))
+		T.check(fr.earlyTint == nil and fr.tint ~= nil and G.near(fr.tint, HL.Shade(epicC, 0.25)), "roll look fast: Gemini's tweak at the one shake (0.25 x Crack), nothing before it",
+			fmt("%s; %s", tostring(fr.earlyTint), G.c3(fr.tint)))
+		T.check(fr.punchUp >= 1.04, "roll look fast: the punch still plays in the shorter burst", fmt("%.3f", fr.punchUp))
+		local hfR = G.content() and G.content():FindFirstChild("Hero")
+		T.check(hfR and hfR:FindFirstChild("Punch") and abs(hfR.Punch.Scale - 1) <= 0.005, "roll look fast: ...and is 1 on the reveal")
+		T.check(fr.over == nil, "roll look fast: within the budgets at every frame of Rise / Crack / Burst", tostring(fr.over))
+		ES.Close()
+		G.advance(0.4)
+		env.CS.Set("FastHatch", false)
 		------------------------------------------------------------------ x3 (Storm Rare, Legendary, Common)
 		local storm = function(rr)
 			return PC.RarityPool("Storm", rr)[1]
@@ -1253,6 +1438,41 @@ S.client_roll_look_reveal = guarded("client_roll_look_reveal", function()
 		T.check(rec.maxInst <= 450, "roll look reveal: x1 Stats().Instances <= 450 at every frame", tostring(rec.maxInst))
 		T.check(overEarly == nil and overLate == nil, "roll look reveal: <= 32 tweens in the reveal's first 0.7 s, <= 24 after, one Heartbeat", tostring(overEarly or overLate))
 		RedoGeom.check(G.content(), "roll look reveal 1920x1080 x1", { MinText = 18, NoOverlap = { "Banner", "Pedestal1", "Name", "Note", "SpinAgain", "Done", "Skip", "FastHatch" }, Skip = { Rays = true, Flash = true, Vignette = true } })
+		-- (review round 1) no bowl: the pick's Baseline "the pet stands on a platform, and the shell flies away at the burst"
+		local col1 = G.col(1)
+		local petF, ped1 = G.colPart(1, "Pet"), G.hero("Pedestal1")
+		T.check(col1 ~= nil and col1:FindFirstChild("Shell") == nil, "roll look reveal: no Shell under Col1 (no bowl under the pet: the halves flew away at the burst)")
+		if petF and ped1 then
+			local feet = petF.AbsolutePosition.Y + (ES.Metrics.LOOK.PET_FOOT or 0) * petF.AbsoluteSize.Y
+			T.check(abs(feet - ped1.AbsolutePosition.Y) <= 1.5, "roll look reveal: the pet's feet (PET_FOOT of its frame) stand on the plinth's centre line (its box's top)",
+				fmt("feet %.1f, plinth %.1f", feet, ped1.AbsolutePosition.Y))
+			local sh = petF:FindFirstChild("Shadow")
+			T.check(sh ~= nil and G.shown(sh) and abs((sh.AbsolutePosition.Y + sh.AbsoluteSize.Y / 2) - feet) <= 1 and sh.AbsoluteSize.X < petF.AbsoluteSize.X,
+				"roll look reveal: a soft contact Shadow under its feet (inside the pet frame: it pops with the pet)")
+		end
+		-- (review round 1) the stage's toasts show while the HUD (NimbusMenu, the menu hint's gui) is hidden
+		local function toastShown(text)
+			for _, g in ipairs(G.pg():GetChildren()) do
+				if g:IsA("ScreenGui") and g.Enabled then
+					for _, d in ipairs(g:GetDescendants()) do
+						if d:IsA("TextLabel") and d.Text:find(text, 1, true) and G.shown(d) then
+							return g.Name
+						end
+					end
+				end
+			end
+			return nil
+		end
+		ES._Answer({ Ok = false, Reason = "Smoke says no gems" })
+		G.advance(0.5)
+		local where1 = toastShown("Smoke says no gems")
+		T.check(ES.IsShowing() and where1 ~= nil, "roll look reveal: a refused SPIN AGAIN's reason shows as a toast in an Enabled gui while the stage is up", tostring(where1))
+		G.advance(5)
+		local b0 = #KC.serverCalls("BuyRoulette")
+		T.check(ES.Request("Cloud", "Tokens", 1) == true and #KC.serverCalls("BuyRoulette") == b0 + 1, "roll look reveal: (setup) a SPIN AGAIN request leaves")
+		G.advance(ES.Metrics.WAIT_TIMEOUT + 0.4)
+		local where2 = toastShown(ES.Metrics.TEXT.NoAnswer)
+		T.check(ES.IsShowing() and where2 ~= nil, "roll look reveal: no answer in 7 s: 'Still waiting...' shows as a toast while the stage is up", tostring(where2))
 		ES.Done()
 		G.advance(0.4)
 		------------------------------------------------------------------ 1280x720: the pills are 44.8 real px
@@ -1282,7 +1502,8 @@ S.client_roll_look_reveal = guarded("client_roll_look_reveal", function()
 				local l1 = G.letters(G.colPart(1, "Word"))[1]
 				local nm = G.colPart(1, "Name")
 				if dt >= 0.1 and not s.p10 then
-					s.p10 = { view = v and v.ImageColor3, l1 = G.popOf(l1) }
+					local fl = G.stage() and G.stage():FindFirstChild("Flash")
+					s.p10 = { view = v and v.ImageColor3, l1 = G.popOf(l1), flash = fl and fl.BackgroundTransparency or -1 }
 					ES.Skip() -- a skip into the silhouette: the reveal ignores it
 					Mock.Click(G.bar("Done")) -- a tap on DONE before ARM_AFTER does nothing
 					local dim = G.stage() and G.stage():FindFirstChild("Dim")
@@ -1310,6 +1531,8 @@ S.client_roll_look_reveal = guarded("client_roll_look_reveal", function()
 			end
 			T.check(s.p10 and s.p10.view and G.near(s.p10.view, BLACK, 3) and s.p10.l1 == 0, "roll look silhouette: Legendary: at + 0.1 s the pet is black and no letter has popped",
 				s.p10 and fmt("%s, L1 %.2f", G.c3(s.p10.view), s.p10.l1) or "no sample")
+			T.check(s.p10 and s.p10.flash >= 0.85, "roll look silhouette: the gold flash has cleared (transparency >= 0.85) by + 0.1 s: a black cut-out, not a sepia smudge",
+				s.p10 and fmt("%.2f", s.p10.flash) or "no sample")
 			T.check(s.p47 and s.p47.view and G.near(s.p47.view, WHITE, 3), "roll look silhouette: ...white again by + 0.3 + 0.16 s", s.p47 and G.c3(s.p47.view) or "no sample")
 			T.check(s.p44 and s.p44.l1 >= 1.25, "roll look silhouette: ...the letters start at SIL 0.3 (L1 at its peak by + 0.44 s)", s.p44 and fmt("%.2f", s.p44.l1) or "no sample")
 			T.check(s.p60 and s.p60.nameA >= 0.99 and s.p78 and s.p78.nameA <= 0.01, "roll look silhouette: ...the name waits too (still clear at + 0.6 s, shown by + 0.78 s)",
@@ -1340,10 +1563,21 @@ S.client_roll_look_reveal = guarded("client_roll_look_reveal", function()
 		end)
 		local x3over = nil
 		local sil3 = nil
+		local armEarly, pillsSeen = nil, false
 		while tRev and os.clock() - tRev < 1.3 do
 			Mock.Advance(FINE, FINE)
 			local dt = os.clock() - tRev
 			maxX3 = math.max(maxX3, ES.Stats().Instances or 0)
+			-- (review round 1) no taps here: SPIN AGAIN stays disabled until its rise is done (the silhouette delays it to 1.0 s)
+			local pin, ag = G.bar("PillsIn"), G.bar("SpinAgain")
+			local LK = ES.Metrics.LOOK
+			local inPlace = LK.SIL.Hold + LK.CHAIN.Pills + LK.CHAIN.PillsIn
+			if pin and ag then
+				pillsSeen = true
+				if (pin.Value < 1 - 1e-6 or dt < inPlace - 0.02) and ag:GetAttribute("Disabled") == false and not armEarly then
+					armEarly = fmt("%.2f s: armed with the pills at %.2f", dt, pin.Value)
+				end
+			end
 			local o = G.overReveal(ES, 750, dt <= 0.7 and 32 or 24)
 			if o and not x3over then
 				x3over = fmt("%.2f s: %s", dt, o)
@@ -1369,6 +1603,15 @@ S.client_roll_look_reveal = guarded("client_roll_look_reveal", function()
 		T.check(tRev ~= nil and wordsOk, "roll look x3: three letter words at 56 px in the server's order", bad)
 		T.check(sil3 and sil3[2] and G.near(sil3[2], BLACK, 3) and sil3[1] and G.near(sil3[1], WHITE) and sil3[3] and G.near(sil3[3], WHITE),
 			"roll look x3: the silhouette only on the Legendary column", sil3 and fmt("%s / %s / %s", G.c3(sil3[1]), G.c3(sil3[2]), G.c3(sil3[3])) or "no sample")
+		T.check(pillsSeen and armEarly == nil and G.bar("SpinAgain"):GetAttribute("Disabled") == false, "roll look x3 (Legendary best): SPIN AGAIN stays disabled until its rise is in place, then arms",
+			tostring(armEarly))
+		local shells = 0
+		for j = 1, 3 do
+			if G.col(j) and G.col(j):FindFirstChild("Shell") then
+				shells = shells + 1
+			end
+		end
+		T.eq(shells, 0, "roll look x3: no Shell under any column (no bowls)")
 		T.check(maxX3 <= 750, "roll look x3: Stats().Instances <= 750 at every frame", tostring(maxX3))
 		T.check(x3over == nil, "roll look x3: <= 32 tweens in the reveal's first 0.7 s, <= 24 after", tostring(x3over))
 		ES.Done()
@@ -1466,6 +1709,10 @@ S.client_roll_look_phone = guarded("client_roll_look_phone", function()
 				"roll look phone plinth: 1.1 x / 0.24 x the egg, the Top 0.667 of it", fmt("egg %d, box %.1f x %.1f, top %.1f", eh, p.Box.AbsoluteSize.X, p.Box.AbsoluteSize.Y, p.Top.AbsoluteSize.Y))
 			T.check(p.Rim and p.Rim.Thickness == 2, "roll look phone plinth: a 2 px rim", tostring(p.Rim and p.Rim.Thickness))
 		end
+		-- (review round 1) the title is gone over the hero (it sat 1 px above the crack word on a landscape phone)
+		local titleP = G.content() and G.content():FindFirstChild("Title")
+		T.check(titleP == nil or not G.shown(titleP) or titleP.TextTransparency >= 0.99, "roll look phone: the machine's title is gone at the rise's end (no headline glued to the crack word)",
+			titleP and fmt("%.2f", titleP.TextTransparency) or "none")
 		local sparks = nil
 		while os.clock() - t0 < Tm.RevealAt + 0.1 do
 			G.advance(STEP)
