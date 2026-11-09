@@ -2126,16 +2126,18 @@ S.client_shop_secret_lock = guarded("client_shop_secret_lock", function()
 			"secret lock: at the altar the card is Ready: SPIN shown, TRAVEL / AltarChip / Dim hidden, the PityChip back, the same hint", tostring(SE.CardState("Secret")) .. "; " .. G.heroLook(k))
 		T.check(pulseFrames(3) > 0, "secret lock: ...and the hero's SPIN pulses again (High)")
 
-		------------------------------------------------------------------ FromAltar (the altar prompt's OpenPanel) unlocks until Close
+		------------------------------------------------------------------ FromAltar (the altar prompt's OpenPanel) stands in only
+		-- while there is no live reading (no AltarIslandAt replicated yet / no HumanoidRootPart); a live reading wins (review
+		-- round 1: opened at the altar, then walked away with the Shop open, the card locks again on the next tick)
 		SE._AtAltar = nil
-		workspace:SetAttribute(attrName, Vector3.new(4000, 300, 4000))
+		workspace:SetAttribute(attrName, nil)
 		Shop.Close()
 		G.advance(0.3)
 		Shop.Open({ RouletteId = "Secret", FromAltar = true })
 		G.advance(0.4)
 		k = G.heroKit()
 		T.check(SE.AtAltar() == true and SE.CardState("Secret") == "Ready" and G.shown(k.Spin) and k.Hero:GetAttribute("Focused") == true,
-			"secret lock: Open({ RouletteId = 'Secret', FromAltar = true }) (the altar's prompt) -> Ready and the Secret card focused, though the character reads far", tostring(SE.CardState("Secret")))
+			"secret lock: Open({ RouletteId = 'Secret', FromAltar = true }) (the altar's prompt) with no live reading yet (no AltarIslandAt) -> Ready and the Secret card focused", tostring(SE.CardState("Secret")))
 		Shop.Close()
 		G.advance(0.3)
 		T.eq(SE.AtAltar(), false, "secret lock: ...Close clears FromAltar")
@@ -2144,6 +2146,22 @@ S.client_shop_secret_lock = guarded("client_shop_secret_lock", function()
 		T.eq(SE.CardState("Secret"), "Altar", "secret lock: ...and the next plain open is locked again")
 		Shop.Close()
 		G.advance(0.3)
+		local siteA = Vector3.new(600, 300, 40)
+		workspace:SetAttribute(attrName, siteA)
+		if T.check(root ~= nil, "secret lock: (setup) the local character has a HumanoidRootPart for the FromAltar walk") then
+			Mock.Teleport(LocalPlayer, CFrame.new(siteA + Vector3.new(0, 3, -10)))
+			Shop.Open({ RouletteId = "Secret", FromAltar = true })
+			G.advance(0.4)
+			T.eq(SE.CardState("Secret"), "Ready", "secret lock: opened by the altar's prompt on the deck: Ready")
+			Mock.Teleport(LocalPlayer, CFrame.new(siteA + Vector3.new(0, 3, -60)))
+			G.advance(1.1)
+			k = G.heroKit()
+			T.check(SE.AtAltar() == false and SE.CardState("Secret") == "Altar" and not G.shown(k.Spin) and G.shown(k.Travel),
+				"secret lock: ...then walked 60 studs off with the Shop open: the card locks on the next tick (TRAVEL), the live reading wins over FromAltar",
+				tostring(SE.CardState("Secret")) .. "; " .. G.heroLook(k))
+			Shop.Close()
+			G.advance(0.3)
+		end
 
 		------------------------------------------------------------------ walk to / away from the altar: the card follows on the next tick
 		local site = Vector3.new(600, 300, 40)

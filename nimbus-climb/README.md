@@ -55,8 +55,8 @@ built-in sky, stays silent and draws emoji icons.
 - **Painted eggs.** Every egg in the windows is painted with its own motifs (a zigzag belt, stars, a crown, runes), with
   sparkles and a glow from Rare up. The seven eggs on the shelf under the WINGED PETS board are painted Blender models
   that turn slowly, each with its rarity's name on the shelf below it, and the rare ones sparkle.
-- **Cut gems.** Every Gem in the game's windows is drawn as a cut gem with a shine, and a big gem spins on the Storm
-  Altar's deck where Gems are spent.
+- **Cut gems.** Every Gem in the game's windows is drawn as a cut gem with a shine, and a big gem spins high over the
+  crystal beside the Storm Altar's walk (out of the way, never where players stand), where Gems are spent.
 - **The owner's gem prices** (Cloud 20, Storm 40, Sky 60, Celestial 180, the Secret Roulette 500) and the **XP Potion
   for 100 Gems** in the Shop's Gems tab (see [Gems](#gems-and-the-secret-roulette)).
 - **The Sky Trove moved to the plaza:** on the west lawn between the two west benches by the Guide board, with a
@@ -417,10 +417,11 @@ ends it (it asks first). Your step is saved, so the tutorial continues where you
   | **Professor Axolotl**, Element Scholar | elements, elements in battles and team synergy (Power), the Fusion Machine (Golden, Rainbow and hybrid pets), Gems, Prestige and the Secret pets of the Storm Altar |
 
 - **The Storm Altar** on its dark storm cloud at the village edge, with Stormfang prowling over the portal
-  disc. Take its gate in the Gate Court or cross its bridge from the street, then press **E** at the altar to open
-  the gems-only **Secret Roulette** in the Shop (see [Gems](#gems-and-the-secret-roulette)). The summon portal glows
-  cyan, with a turning ring of crystal bars (the summon ring) and a beam of light into the sky you can see from the
-  plaza, and a big cut gem spins on the deck. To go back, walk to the standing green ring beside the landing (the
+  disc. Take its gate in the Gate Court or cross its bridge from the street, then press **E** at the altar ("Secret
+  Roll") to open the gems-only **Secret Roulette** in the Shop (see [Gems](#gems-and-the-secret-roulette)); it is
+  spun here only. The summon portal glows cyan, with a turning ring of crystal bars (the summon ring) and a beam of
+  light into the sky you can see from the plaza, and a big cut gem floats high over the crystal beside the walk (not
+  where players stand). To go back, walk to the standing green ring beside the landing (the
   **return portal**) and press **E** ("Travel / Plaza"): it puts you on the plaza in front of the Storm Altar gate.
 - **Benches you can sit on.** Walk up to a lawn or garden bench and press **E** ("Sit"); two players fit on each
   bench, and jumping stands you up. While you sit, your pets lie down on the ground in front of you and get up
@@ -863,8 +864,11 @@ per Robux a pack gives than the smallest one). You spend them on:
 - **Roulette spins**, a premium way to roll, with the same odds as with tokens: Cloud 20, Storm 40, Sky 60 and
   Celestial 180 Gems a spin (the gem button on each machine card in the Shop's Eggs tab; gem spins are one egg at a
   time, **x3** is for tokens).
-- **The Secret Roulette** at the **Storm Altar** (press **E** at the altar, or press its big card at the top of the
-  Shop's Eggs tab): 500 Gems a spin, **Mythic 60 %, Secret 40 %**, one egg at a time, and the 7th spin in a row
+- **The Secret Roulette**, spun at the **Storm Altar only**: press **E** at the altar ("Secret Roll"), or spin its big
+  card at the top of the Shop's Eggs tab while you stand at the altar. Anywhere else that card reads **"Available at
+  the Storm Altar"** and its blue **TRAVEL** button takes you to the altar's landing (if the trip cannot happen right
+  now, a toast says why); the server refuses a Secret spin away from the altar ("Secret rolls happen at the Storm
+  Altar") and charges nothing. 500 Gems a spin, **Mythic 60 %, Secret 40 %**, one egg at a time, and the 7th spin in a row
   without a Secret always gives one; its card counts down ("Secret for sure in 3 more spins", on a phone "Secret in 3")
   and the count is kept in your save (about 1,215 Gems per Secret pet on average). It is the surest place for the four roulette Secret pets (Stormfang, Eclipse
   Dragon, Obsidian Phoenix, Phantom Kitsune); the **Celestial Roulette** also hatches them at **2 %** a spin, with
@@ -981,7 +985,8 @@ The header shows your Gems and Cloud Tokens. A **tab rail** on the left (on a po
 holds **Eggs**, **Gems**, **Packs**, **Passes** and **Boosts**; a gold dot on Packs means the Starter Pack is on sale
 and you have not bought it. The Shop closes with Esc, its X or gamepad B, and it is closed during a match.
 
-- **Eggs:** the **Secret Roulette** on top (500 Gems, its odds, the "Secret for sure in N more spins" chip) and one card
+- **Eggs:** the **Secret Roulette** on top (500 Gems, its odds, the "Secret for sure in N more spins" chip; away from
+  the Storm Altar it is greyed with "Available at the Storm Altar" and a **TRAVEL** button instead of SPIN) and one card
   per roulette machine (Cloud, Storm, Sky, Celestial): the machine with its eggs, the odds of every egg it can hatch,
   **SPIN** and **x3** for Cloud Tokens and a button for one spin with Gems. A card without odds cannot spin. While a
   spin waits for the server the cards dim; with no answer after about 7 seconds they come back with a short message.

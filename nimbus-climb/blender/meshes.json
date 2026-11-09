@@ -12353,16 +12353,16 @@
   },
   "prop_roulette_globe": {
    "class": "lobby",
-   "contentHash": "3bb360c59de2975f96cae95f11cfeb2b",
+   "contentHash": "eeb1cea80730cb59c2996ad67d32b22b",
    "description": "Shop roulette machine A Gumball Globe (spec 16.17): cabinet Primary, emblem Secondary, Egg1..Egg12 attachments for the real egg keys",
    "displayName": "NC Prop Roulette Globe",
    "fbx": "blender/out/prop_roulette_globe.fbx",
-   "fbxSha256": "6dfef92eea0f519472138d56dc9ed876edda20bc0051eec2be40261d747e3f86",
+   "fbxSha256": "8b85bab3264d7e8eb23b362f45f0c15fdc949e3fb27cb5025798de0701fb9a02",
    "manifest": "src/shared/MeshManifests/prop_roulette_globe.lua",
-   "maxTrianglesPerMesh": 2400,
+   "maxTrianglesPerMesh": 2418,
    "parts": 8,
-   "structureHash": "7d1cab985d8ac56be633d882c2fe079c",
-   "tris": 3942
+   "structureHash": "1e7e91cb264de136dfb4578accc47a52",
+   "tris": 3940
   },
   "prop_seedsack": {
    "class": "lobby",

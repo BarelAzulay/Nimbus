@@ -1,7 +1,8 @@
 """shop-area T1 (spec 16.17.1): the Gumball Globe prop_roulette_globe with its in-globe eggs.
 
     <python> blender/pitches/shop_area_globe.py --check
-        numbers (parts, tris, bounds, the build's geometry check) and the egg spots (EGG_SPOTS in
+        numbers (parts, tris <= 4000, bounds, top <= 14.4, the build's geometry check, ONE 6-connected piece: no
+        floating cell, the glass counted at the fine grid) and the egg spots (EGG_SPOTS in
         blender/kit/props/lobby_machine.py): every scaled egg inside the glass (no point in a glass cell or outside the
         globe), on the floor or resting on the eggs below (gap), no egg sunk into another by more than a sliver
         (depth), off the seat ring, the chase egg's face visible from the front, how full the globe reads. No bpy.
@@ -218,6 +219,47 @@ def check_eggs(verbose=True):
     return report
 
 
+def islands():
+    """6-connected pieces of the whole machine: the 0.25-stud machine cells plus the 0.5-stud glass cells (each split
+    into its 2 x 2 x 2 fine cells, same origin) -> [(cells, min xyz, max xyz, keys)], biggest first.  One piece = every
+    cell touches the rest by a face (the lid rests on the glass, the glass on the collar); more = something floats."""
+    from collections import deque
+    S = LM.MachineSculpt(KITOBJ, LM.K, LM.EXTENT, origin=LM.ORIGIN, name="Globe")
+    G = LM.MachineSculpt(KITOBJ, LM.GK, LM.EXTENT, origin=LM.ORIGIN, name="GlobeGlass")
+    LM._tints(S)
+    LM.design_globe(S, G)
+    L = S.g.L
+    occ = L != 0
+    hs, hg = S.g.half, G.g.half
+    ratio = int(round(LM.K / LM.GK))
+    gi = (np.arange(occ.shape[0]) - hs) // ratio + hg            # fine index -> glass index (same origin)
+    ok = (gi >= 0) & (gi < G.g.L.shape[0])
+    gi = np.clip(gi, 0, G.g.L.shape[0] - 1)
+    glass = (G.g.L != 0)[np.ix_(gi, gi, gi)] & ok[:, None, None] & ok[None, :, None] & ok[None, None, :]
+    occ = occ | glass
+    seen = np.zeros(occ.shape, bool)
+    pieces = []
+    for start in map(tuple, np.argwhere(occ)):
+        if seen[start]:
+            continue
+        seen[start] = True
+        q, cells = deque([start]), []
+        while q:
+            c = q.popleft()
+            cells.append(c)
+            for d in ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)):
+                nb = (c[0] + d[0], c[1] + d[1], c[2] + d[2])
+                if 0 <= nb[0] < occ.shape[0] and 0 <= nb[1] < occ.shape[1] and 0 <= nb[2] < occ.shape[2] and occ[nb] and not seen[nb]:
+                    seen[nb] = True
+                    q.append(nb)
+        cells = np.array(cells)
+        xyz = np.array(LM.ORIGIN) + (cells - hs + 0.5) * S.vs
+        keys = sorted({S.g.keys[L[tuple(c)]] or "Glass" for c in cells})
+        pieces.append((len(cells), xyz.min(0).round(3).tolist(), xyz.max(0).round(3).tolist(), keys))
+    pieces.sort(key=lambda p: -p[0])
+    return pieces
+
+
 def check():
     from build_all import Builder
     m = build_machine(ROULETTES[0])
@@ -228,9 +270,20 @@ def check():
     lo, hi = pts.min(0), pts.max(0)
     print("tris %d  parts %d  bounds min %s max %s size %s" % (m.tris(), len(m.objects), np.round(lo, 3), np.round(hi, 3), np.round(hi - lo, 3)))
     print("geometry:", Builder.check_geometry(m) or "ok")
+    # review round 1: check_geometry tests closure / zero-area only, never floating cells (the wing tips hovered)
+    pieces = islands()
+    print("islands: %d (one = every cell touches the machine by a face)" % len(pieces))
+    for p in pieces[1:]:
+        print("  FLOATS: %d cells %s .. %s %s" % p)
     for r in ROULETTES:
         print("  %-9s %s" % (r["Id"], " ".join(rarities(r["Odds"], 12))))
     rep = check_eggs()
+    if len(pieces) != 1:
+        rep["problems"].append("%d floating pieces" % (len(pieces) - 1))
+    if m.tris() > 4000:
+        rep["problems"].append("%d tris over the 4000 propBig budget" % m.tris())
+    if hi[1] > 14.4 + 1e-6:
+        rep["problems"].append("top %.2f over 14.4" % hi[1])
     print("egg problems:", rep["problems"] or "none")
     return 0 if not rep["problems"] else 1
 

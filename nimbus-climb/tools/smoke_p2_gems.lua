@@ -1455,17 +1455,45 @@ S.p2gems_secret_altar = guarded("p2gems_secret_altar", function()
 			"secret altar travel: GateService.Travel(p, 'Altar') puts the player on StormAltar.GetLanding() and fires Teleported 'Altar'",
 			tostring(okTr) .. " " .. tostring(whyTr) .. ", " .. tostring((rootPos() - (landing and landing.Position or Vector3.new())).Magnitude))
 		T.check(at(rootPos()) == true, "secret altar travel: ...the landing is at the altar (a Secret spin works there)")
+		local markCd = K.logSize()
 		local okCd, whyCd = GateS.Travel(p, "Altar")
 		T.check(okCd == false and whyCd == "cooldown", "secret altar travel: a second Travel at once is refused 'cooldown' (the gate's shared cooldown)", tostring(whyCd))
+		-- review round 1: the Shop closes on TRAVEL before any answer, so a refusal must say why (a toast, kind "bad")
+		T.check(K.notified(p, "Wait a moment", "bad", markCd), "secret altar travel: ...and the player is told 'Wait a moment' (no silent refusal)")
 		-- refusals move nobody
 		if spawnCF then
 			Mock.Teleport(p, spawnCF)
 		end
 		advance(1.6)
 		local n0, here = #got, rootPos()
+		local markM = K.logSize()
 		p:SetAttribute(Config.Attr.InMatch, true)
 		local okM, whyM = GateS.Travel(p, "Altar")
 		p:SetAttribute(Config.Attr.InMatch, false)
+		T.check(K.notified(p, "Finish your match first", "bad", markM), "secret altar travel: a match refusal tells the player 'Finish your match first'")
+		-- no landing (the altar not built): 'failed', nothing moves, and the player is told
+		local realLanding = SA.GetLanding
+		local markF = K.logSize()
+		SA.GetLanding = function()
+			return nil
+		end
+		advance(1.6)
+		local okF, whyF = GateS.Travel(p, "Altar")
+		SA.GetLanding = realLanding
+		T.check(okF == false and whyF == "failed" and K.notified(p, "Storm Altar", "bad", markF),
+			"secret altar travel: no landing -> 'failed' with a 'Storm Altar' toast", tostring(whyF))
+		-- one refusal toast per cooldown: a mash of refused taps does not stack toasts
+		local markT = K.logSize()
+		GateS.Travel(p, "Altar")
+		GateS.Travel(p, "Altar")
+		local toasts = 0
+		for _, e in ipairs(K.remotesFor("Notify", p.UserId, markT)) do
+			if tostring(e.args[1]):find("Wait a moment", 1, true) then
+				toasts = toasts + 1
+			end
+		end
+		T.check(toasts <= 1, "secret altar travel: two refused Travels at once toast at most once", toasts .. " toasts")
+		advance(1.6)
 		local battleAttr = (Config.Attr and Config.Attr.InBattle) or "InBattle"
 		p:SetAttribute(battleAttr, "B1")
 		local okB, whyB = GateS.Travel(p, "Altar")

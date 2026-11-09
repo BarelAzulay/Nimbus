@@ -16,6 +16,8 @@
 --                                      TRAVEL) runs the Altar gate prompt's checks without its distance ("dead" / "match" /
 --                                      "battle" / "locked" / "cooldown", the gates' shared 1.5 s cooldown) and puts the
 --                                      character on StormAltar.GetLanding() ("failed" without one), Teleported "Altar".
+--                                      Every Altar refusal toasts its reason (Notify "bad", at most one per 1.5 s:
+--                                      the Shop closed on TRAVEL, so a silent refusal read as a broken button).
 --                                      Anything else: "junk".
 --   GateService.ToLobby(player)        the Lobby portal's landing: the lobby spawn (PlayerService.GetLobbySpawnCFrame()), fires
 --                                      Teleported(player, "Plaza") -> moved
@@ -62,6 +64,7 @@ local S = {
 	parts = {}, -- gate id -> prompt part
 	plazaCF = nil, -- bug batch 2 #4: the "Plaza" gate's arrival (LobbyInfo.Gates.Altar.ReturnCFrame)
 	lastUse = {}, -- Player -> os.clock() of the last accepted use
+	lastRefusal = {}, -- Player -> os.clock() of the last refused Travel("Altar") toast
 	lobbyInfo = nil,
 	conn = nil,
 	initialized = false,
@@ -219,25 +222,48 @@ function GateService.Travel(player, dest)
 	return tycoon.OpenLobbyPortal(player)
 end
 
--- Travel(player, "Altar"): every refusal moves nothing; the cooldown is the gate prompts' (S.lastUse, COOLDOWN)
+-- Travel(player, "Altar") refusals the player is told about (shop-area review round 1: the Shop's TRAVEL closes the
+-- window before any answer, so a silent refusal read as a broken button). The texts are the home portal's
+-- (TycoonService Portal.refuse / its cooldown) where one exists. At most one per player per COOLDOWN, so a mash of
+-- refused taps never stacks toasts.
+local TRAVEL_REFUSED = {
+	dead = "You cannot travel right now",
+	match = "Finish your match first",
+	battle = "Finish your battle first!",
+	locked = "Leave the portal party first",
+	cooldown = "Wait a moment",
+	failed = "The Storm Altar is not ready yet",
+}
+
+local function refuseTravel(player, reason)
+	local now = os.clock()
+	local last = S.lastRefusal[player]
+	if not (last and now - last < COOLDOWN) then
+		S.lastRefusal[player] = now
+		notify(player, TRAVEL_REFUSED[reason] or "You cannot travel right now", "bad")
+	end
+	return false, reason
+end
+
+-- Travel(player, "Altar"): every refusal moves nothing and tells the player why; the cooldown is the gate prompts'
+-- (S.lastUse, COOLDOWN)
 function GateService._toAltar(player)
 	if not aliveRoot(player) then
-		return false, "dead"
+		return refuseTravel(player, "dead")
 	end
 	if inMatch(player) then
-		return false, "match"
+		return refuseTravel(player, "match")
 	end
 	if inBattle(player) then
-		notify(player, "Finish your battle first!", "bad")
-		return false, "battle"
+		return refuseTravel(player, "battle")
 	end
 	if isLocked(player) then
-		return false, "locked"
+		return refuseTravel(player, "locked")
 	end
 	local now = os.clock()
 	local last = S.lastUse[player]
 	if last and now - last < COOLDOWN then
-		return false, "cooldown"
+		return refuseTravel(player, "cooldown")
 	end
 	S.lastUse[player] = now
 	local altar = S.deps.StormAltar
@@ -247,7 +273,7 @@ function GateService._toAltar(player)
 		cf = ok and result or nil
 	end
 	if typeof(cf) ~= "CFrame" or not placeCharacter(player, cf) then
-		return false, "failed"
+		return refuseTravel(player, "failed")
 	end
 	GateService.Teleported:Fire(player, "Altar")
 	return true
@@ -349,6 +375,7 @@ function GateService.Init(lobbyInfo, deps)
 	end
 	Players.PlayerRemoving:Connect(function(player)
 		S.lastUse[player] = nil
+		S.lastRefusal[player] = nil
 	end)
 end
 

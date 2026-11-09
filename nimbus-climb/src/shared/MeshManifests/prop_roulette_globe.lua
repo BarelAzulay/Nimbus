@@ -55,7 +55,7 @@ return {
 		Min = { -4.5, 0, -3.5 },
 		Size = { 9, 14.25, 7 },
 	},
-	ContentHash = "3bb360c59de2975f96cae95f11cfeb2b",
+	ContentHash = "eeb1cea80730cb59c2996ad67d32b22b",
 	DarkFactor = { 0.8425, 0.85, 0.8875 },
 	DeepFactor = { 0.7098, 0.7225, 0.7877 },
 	Groups = {},
@@ -134,8 +134,8 @@ return {
 			Material = "Neon",
 			Name = "Emblem",
 			Shade = "base",
-			Size = { 4, 2.25, 0.25 },
-			Tris = 110,
+			Size = { 3.5, 2.25, 0.25 },
+			Tris = 90,
 		},
 		{
 			Center = { 0, 7.125, 0 },
@@ -147,7 +147,7 @@ return {
 			Name = "Fixed",
 			Shade = "fixed",
 			Size = { 9, 14.25, 7 },
-			Tris = 2400,
+			Tris = 2418,
 		},
 		{
 			Center = { 0, 8.25, -1.125 },
@@ -162,7 +162,7 @@ return {
 		},
 	},
 	Rig = "",
-	StructureHash = "7d1cab985d8ac56be633d882c2fe079c",
-	Tris = 3942,
+	StructureHash = "1e7e91cb264de136dfb4578accc47a52",
+	Tris = 3940,
 	VoxelStuds = 0.25,
 }

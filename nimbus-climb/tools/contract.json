@@ -186,7 +186,7 @@
       ]
     },
     "server/Services/LobbyMachineBuilder": {
-      "_comment": "shop-area (2026-11-09) T1, spec 16.17.1: the Gumball Globe roulette machine's pieces (LobbyBuilder.buildMachine tags prop_roulette_globe; only a dressed globe gets GlobeEggs, the twelve real egg_<rarity> eggs in its glass, H = L.H)",
+      "_comment": "shop-area (2026-11-09) T1, spec 16.17.1: the Gumball Globe roulette machine's pieces (LobbyBuilder.buildMachine tags prop_roulette_globe, and prop_roulette when that refuses (review round 1: today's uploaded cabinet); only a dressed globe gets GlobeEggs, the twelve real egg_<rarity> eggs in its glass, H = L.H)",
       "functions": [
         "Rarities",
         "GlobeEggs"

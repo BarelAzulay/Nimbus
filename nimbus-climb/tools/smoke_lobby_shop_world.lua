@@ -83,10 +83,13 @@
 --   shop_globe         the Gumball Globe (shop-area T1, spec 16.17.1): LobbyMachineBuilder.GLOBE / Rarities (the four
 --                      sequences, top first) / GlobeEggs; the prop_roulette_globe manifest (Egg1..Egg12, Meta.eggScale 0.42 /
 --                      chaseScale 0.44, inside 9 x 14.5 x 7, <= 4000 tris, the eight parts, every egg's middle inside the
---                      glass, pivots >= 0.9 apart, the chase egg in front); the default run (no id) = today's Part machine (no
---                      ML_DressKey, no GlobeEggs, no warn); one prop_roulette_globe request per Machine (origin, Look.Primary
---                      = the roulette colour, Look.Secondary = its top rarity's), the price card / DomeGlow / PromptPart
---                      unchanged; dressed (--mesh: fixture holders; default: the tag forced) -> GlobeEggs of twelve egg Models
+--                      glass, pivots >= 0.9 apart, the chase egg in front); the default run (no globe id) = today's machine,
+--                      the uploaded prop_roulette cabinet (review round 1: ML_DressKey prop_roulette in the roulette colour
+--                      with f17dc0d's look; --mesh, whose fixture has no prop_roulette id: the Part build), no GlobeEggs, no
+--                      warn; one prop_roulette_globe request per Machine (origin, Look.Primary = the roulette colour,
+--                      Look.Secondary = its top rarity's) and after it one prop_roulette request, the price card / DomeGlow /
+--                      PromptPart unchanged; dressed (--mesh: fixture holders; default: the tag forced) -> no prop_roulette
+--                      request, GlobeEggs of twelve egg Models
 --                      at the attachments (ML_Scale, NC_Detail on 2..12, the egg_<rarity> requests in order); a manifest
 --                      without Egg7 -> one warn, no GlobeEggs, the machines stand
 --   shop_egg_row       the egg row under WINGED PETS (shop-area T2, spec 16.17.2): no EggGuide anywhere, one Model EggRow
@@ -170,6 +173,45 @@ end
 
 local function near(a, b, tol)
 	return (a - b).Magnitude <= (tol or 0.05)
+end
+
+-- --mesh: fixture holders (a Folder named after the key: Status -> "loading") for `keys` (a list or a map's values),
+-- put into EVERY P6PetsMeshLibrary folder, each removal pushed on `undo`. P6.Install never destroys the folder before it,
+-- so after a scenario that re-installs (p6lobby_server) the first one found is stale while the library reads the newest
+-- (shop-area review round 1: such a run order left the globe and the egg row undressed). -> the number of folders
+local function fixtureHolders(keys, undo)
+	local list = {}
+	for _, k in pairs(keys) do
+		list[#list + 1] = k
+	end
+	table.sort(list)
+	local n = 0
+	for _, root in ipairs(RS:GetChildren()) do
+		if root.Name == "P6PetsMeshLibrary" then
+			n = n + 1
+			for _, key in ipairs(list) do
+				if not root:FindFirstChild(key) then
+					local h = Instance.new("Folder")
+					h.Name = key
+					h.Parent = root
+					undo[#undo + 1] = function()
+						h:Destroy()
+					end
+				end
+			end
+		end
+	end
+	return n
+end
+
+-- no fixture holder for `key` left in any P6PetsMeshLibrary folder
+local function holdersGone(key)
+	for _, root in ipairs(RS:GetChildren()) do
+		if root.Name == "P6PetsMeshLibrary" and root:FindFirstChild(key) then
+			return false
+		end
+	end
+	return true
 end
 
 local function sameColor(a, b)
@@ -887,17 +929,7 @@ S.lobby_trove_plaza = guarded("lobby_trove_plaza", function()
 		LB._Kit = { Targets = {}, Clouds = {} }
 		if MESH_MODE then
 			-- --mesh: fixture holders for the egg keys in the fixture MeshLibrary's root (Status -> "loading"), removed after
-			local root = RS:FindFirstChild("P6PetsMeshLibrary")
-			if T.check(root ~= nil, "egg row (--mesh): the fixture MeshLibrary root exists") then
-				for _, key in pairs(EGG_KEYS) do
-					local h = Instance.new("Folder")
-					h.Name = key
-					h.Parent = root
-					undo[#undo + 1] = function()
-						h:Destroy()
-					end
-				end
-			end
+			T.check(fixtureHolders(EGG_KEYS, undo) > 0, "egg row (--mesh): the fixture MeshLibrary root exists")
 		end
 	end, function(built, cursor)
 		local LB = req("server/Services/LobbyBuilder")
@@ -1676,17 +1708,7 @@ S.altar_portal_glow = guarded("altar_portal_glow", function()
 		if MESH_MODE then
 			-- --mesh: fixture holders for portal_ring and portal_altar_ring (its manifest since Task 29) in the fixture
 			-- MeshLibrary's root (Status -> "loading"), removed after
-			local root = RS:FindFirstChild("P6PetsMeshLibrary")
-			if T.check(root ~= nil, "altar portal glow (--mesh): the fixture MeshLibrary root exists") then
-				for _, key in ipairs({ "portal_ring", "portal_altar_ring" }) do
-					local h = Instance.new("Folder")
-					h.Name = key
-					h.Parent = root
-					undo[#undo + 1] = function()
-						h:Destroy()
-					end
-				end
-			end
+			T.check(fixtureHolders({ "portal_ring", "portal_altar_ring" }, undo) > 0, "altar portal glow (--mesh): the fixture MeshLibrary root exists")
 		else
 			-- the default run has no portal_ring id: the tag's answer is forced to "dressed" (after the real call records the
 			-- request) so the mesh-side sign is built and checked here too
@@ -1975,15 +1997,7 @@ S.altar_world_gem = guarded("altar_world_gem", function()
 		SA._Kit = { Targets = {} }
 		if MESH_MODE then
 			-- --mesh: a fixture holder for gem_world in the fixture MeshLibrary's root (Status -> "loading"), removed after
-			local root = RS:FindFirstChild("P6PetsMeshLibrary")
-			if T.check(root ~= nil, "world gem (--mesh): the fixture MeshLibrary root exists") then
-				local h = Instance.new("Folder")
-				h.Name = "gem_world"
-				h.Parent = root
-				undo[#undo + 1] = function()
-					h:Destroy()
-				end
-			end
+			T.check(fixtureHolders({ "gem_world" }, undo) > 0, "world gem (--mesh): the fixture MeshLibrary root exists")
 		end
 		local okB, A2 = pcall(SA.Build, info)
 		K.advance(0.3)
@@ -2022,8 +2036,7 @@ S.altar_world_gem = guarded("altar_world_gem", function()
 	local okBack = pcall(SA.Build, info)
 	K.advance(0.3)
 	local pad = SA.GetReturnPad()
-	local root = RS:FindFirstChild("P6PetsMeshLibrary")
-	local holderGone = root == nil or root:FindFirstChild("gem_world") == nil
+	local holderGone = holdersGone("gem_world")
 	T.check(okRun, "world gem: the rebuild checks ran", tostring(errRun))
 	T.check(okBack and SA._Kit == nil and holderGone and pad ~= nil and pad:FindFirstChild("PlazaGatePrompt") ~= nil,
 		"world gem: the hook and the holder are gone and the altar is rebuilt as normal (the return prompt re-bound)")
@@ -2367,6 +2380,7 @@ end)
 ----------------------------------------------------------------------------------------------------
 local GLOBE = {
 	Key = "prop_roulette_globe", Count = 12, Scale = 0.42, ChaseScale = 0.44, EggSize = Vector3.new(2.25, 3, 2.5),
+	OldKey = "prop_roulette", -- review round 1: the uploaded cabinet every Machine wears while the globe has no id
 	Parts = { "Body", "BodyDark", "BodyLight", "Bulb", "Emblem", "Fixed", "Glass", "Glow" },
 	Centre = Vector3.new(0, 9.75, 0), Inner = 2.8, Margin = 0.1, Gap = 0.9, MaxTris = 4000,
 	Footprint = Vector3.new(9, 14.5, 7),
@@ -2404,6 +2418,17 @@ local function emblemColour(Config, roulette)
 		return GLOBE.SecretEmblem
 	end
 	return top and top.Color
+end
+
+-- the prop_roulette look f17dc0d passed: Secondary = the top rarity's Config colour (Secret: its own dark Config colour)
+local function oldSecondary(Config, roulette)
+	local top = nil
+	for _, r in ipairs(Config.Rarities) do
+		if roulette.Odds and (roulette.Odds[r.Id] or 0) > 0 then
+			top = r
+		end
+	end
+	return top and top.Color or Color3.fromRGB(255, 205, 80)
 end
 
 local function v3of(t)
@@ -2551,9 +2576,19 @@ S.shop_globe = guarded("shop_globe", function()
 	------------------------------------------------------------------ the manifest
 	local man = checkGlobeManifest(ML)
 
-	------------------------------------------------------------------ the default run: no id -> today's Part machine exactly
+	------------------------------------------------------------------ the default run: no globe id -> today's machine,
+	-- the UPLOADED prop_roulette cabinet (review round 1: prop_roulette has a shipped id, so the live game dresses every
+	-- Machine with it; the voxel Part build is only what a place without that asset shows)
 	local okSt, st = pcall(ML.Status, GLOBE.Key)
 	T.check(okSt and st == "missing", "globe: MeshLibrary.Status('prop_roulette_globe') is 'missing' (no id in this build)", tostring(st))
+	-- (--mesh reconfigures MeshLibrary with the fixture's pet ids only: there prop_roulette is missing too and the Machine
+	-- stays on the Part build; the shipped MeshIds of the default run carry its uploaded id)
+	local okOld, stOld = pcall(ML.Status, GLOBE.OldKey)
+	local oldShipped = okOld and stOld ~= "missing"
+	if not MESH_MODE then
+		T.check(oldShipped, "globe: (precondition) MeshLibrary.Status('prop_roulette') is not 'missing' (its uploaded id ships in MeshIds)", tostring(stOld))
+	end
+	local wantKey = oldShipped and GLOBE.OldKey or nil
 	local shop = lobby:FindFirstChild("Shop")
 	local bootBad = {}
 	for _, r in ipairs(Config.Roulettes) do
@@ -2562,8 +2597,12 @@ S.shop_globe = guarded("shop_globe", function()
 		if not (m and body) then
 			bootBad[#bootBad + 1] = r.Id .. " (no Machine)"
 		end
-		if body and body:GetAttribute("ML_DressKey") ~= nil then
-			bootBad[#bootBad + 1] = r.Id .. " Machine ML_DressKey " .. tostring(body:GetAttribute("ML_DressKey"))
+		local wantS = oldSecondary(Config, r)
+		local dressOk = (wantKey == nil and body and body:GetAttribute("ML_DressKey") == nil)
+			or (body and body:GetAttribute("ML_DressKey") == wantKey and typeof(body:GetAttribute("ML_Primary")) == "Color3" and sameColor(body:GetAttribute("ML_Primary"), r.Color)
+				and typeof(body:GetAttribute("ML_Secondary")) == "Color3" and sameColor(body:GetAttribute("ML_Secondary"), wantS))
+		if body and not dressOk then
+			bootBad[#bootBad + 1] = r.Id .. " Machine ML_DressKey " .. tostring(body:GetAttribute("ML_DressKey")) .. " / " .. tostring(body:GetAttribute("ML_Primary")) .. " / " .. tostring(body:GetAttribute("ML_Secondary"))
 		end
 		if m and m:FindFirstChild("GlobeEggs") then
 			bootBad[#bootBad + 1] = r.Id .. " has GlobeEggs"
@@ -2572,25 +2611,53 @@ S.shop_globe = guarded("shop_globe", function()
 			bootBad[#bootBad + 1] = r.Id .. " lost PromptPart / PriceAnchor / DomeGlow"
 		end
 	end
-	T.check(#bootBad == 0, "globe (default run): every Roulette_<Id> is today's Part machine: Machine without ML_DressKey, no GlobeEggs, PromptPart / PriceAnchor / DomeGlow", table.concat(bootBad, "; "))
+	T.check(#bootBad == 0, "globe (default run): every Roulette_<Id>'s Machine wears today's uploaded cabinet (ML_DressKey prop_roulette, ML_Primary = the roulette colour, ML_Secondary = its top rarity's Config colour, as f17dc0d), no GlobeEggs, PromptPart / PriceAnchor / DomeGlow", table.concat(bootBad, "; "))
 	T.eq(warnsSince(0, "[LobbyMachineBuilder]"), 0, "globe (default run): no [LobbyMachineBuilder] warn in the boot log")
 
-	------------------------------------------------------------------ the dress request (default run: nothing dressed)
+	------------------------------------------------------------------ the dress request (default run: the globe asked first, then prop_roulette)
 	local _, S0 = shopFrame()
 	local origins = {}
 	rebuild("globe request", function(_, LB)
 		LB._Kit = { Targets = {}, Clouds = {} }
 	end, function(built)
 		local LB = req("server/Services/LobbyBuilder")
-		local recs, old = {}, 0
-		for _, rec in ipairs(LB._Kit and LB._Kit.Targets or {}) do
+		local recs, olds, order = {}, {}, {}
+		for i, rec in ipairs(LB._Kit and LB._Kit.Targets or {}) do
 			if rec.Key == GLOBE.Key then
 				recs[#recs + 1] = rec
-			elseif rec.Key == "prop_roulette" then
-				old = old + 1
+				order[rec] = i
+			elseif rec.Key == GLOBE.OldKey then
+				olds[#olds + 1] = rec
+				order[rec] = i
 			end
 		end
-		T.eq(old, 0, "globe: no 'prop_roulette' request any more (the old key is no longer tagged)")
+		local oldBad = {}
+		local f0 = built.Folder:FindFirstChild("Shop")
+		for _, r in ipairs(Config.Roulettes) do
+			local m = f0 and f0:FindFirstChild("Roulette_" .. r.Id)
+			local body = m and m:FindFirstChild("Machine")
+			local mine, globe = {}, nil
+			for _, rec in ipairs(olds) do
+				if body and rec.Target == body then
+					mine[#mine + 1] = rec
+				end
+			end
+			for _, rec in ipairs(recs) do
+				if body and rec.Target == body then
+					globe = rec
+				end
+			end
+			local rec = mine[1]
+			local look = rec and rec.Look or {}
+			if #mine ~= 1 then
+				oldBad[#oldBad + 1] = r.Id .. fmt(" (%d prop_roulette requests)", #mine)
+			elseif not (globe and order[globe] < order[rec] and typeof(rec.Origin) == "CFrame" and cfNear(rec.Origin, globe.Origin, 1e-4)
+				and typeof(look.Primary) == "Color3" and sameColor(look.Primary, r.Color) and typeof(look.Secondary) == "Color3" and sameColor(look.Secondary, oldSecondary(Config, r))) then
+				oldBad[#oldBad + 1] = r.Id .. " prop_roulette request not after the globe's at its origin with f17dc0d's look (" .. tostring(look.Primary) .. " / " .. tostring(look.Secondary) .. ")"
+			end
+		end
+		T.check(#oldBad == 0 and #olds == #Config.Roulettes, "globe: while prop_roulette_globe is missing each Machine asks for exactly one 'prop_roulette' dress after the globe's (same origin, Primary = the roulette colour, Secondary = its top rarity's Config colour)",
+			#olds .. " requests; " .. table.concat(oldBad, "; "))
 		local bad = {}
 		local f = built.Folder:FindFirstChild("Shop")
 		for _, r in ipairs(Config.Roulettes) do
@@ -2623,12 +2690,12 @@ S.shop_globe = guarded("shop_globe", function()
 					and pp and cfNear(pp.CFrame, o * CFrame.new(0, 2, -5.4), 0.01) and near(pp.Size, Vector3.new(5, 4, 3), 0.01)) then
 					bad[#bad + 1] = r.Id .. " price card / DomeGlow / PromptPart moved"
 				end
-				if body:GetAttribute("ML_DressKey") ~= nil or m:FindFirstChild("GlobeEggs") then
-					bad[#bad + 1] = r.Id .. " dressed or has GlobeEggs while the key is missing"
+				if body:GetAttribute("ML_DressKey") ~= wantKey or m:FindFirstChild("GlobeEggs") then
+					bad[#bad + 1] = r.Id .. " not on prop_roulette or has GlobeEggs while the globe key is missing"
 				end
 			end
 		end
-		T.check(#bad == 0 and #recs == #Config.Roulettes, "globe: one prop_roulette_globe request per machine on its Machine, origin = the ground centre facing the shop centre, Look.Primary = the roulette colour, Look.Secondary = its top rarity's colour (Celestial: the Secret violet 180,150,255); the price card at 14.2 + 3.8, DomeGlow at 9.5, PromptPart (0, 2, -5.4) unchanged; nothing dressed",
+		T.check(#bad == 0 and #recs == #Config.Roulettes, "globe: one prop_roulette_globe request per machine on its Machine, origin = the ground centre facing the shop centre, Look.Primary = the roulette colour, Look.Secondary = its top rarity's colour (Celestial: the Secret violet 180,150,255); the price card at 14.2 + 3.8, DomeGlow at 9.5, PromptPart (0, 2, -5.4) unchanged; the Machine on prop_roulette, no GlobeEggs",
 			#recs .. " requests; " .. table.concat(bad, "; "))
 	end)
 
@@ -2639,23 +2706,11 @@ S.shop_globe = guarded("shop_globe", function()
 	local function forceGlobe(undo)
 		if MESH_MODE then
 			-- --mesh: fixture holders (Status -> "loading") for the globe and the seven egg keys, removed after
-			local root = RS:FindFirstChild("P6PetsMeshLibrary")
-			if T.check(root ~= nil, "globe (--mesh): the fixture MeshLibrary root exists") then
-				local keys = { GLOBE.Key }
-				for _, k in pairs(EGG_KEYS) do
-					keys[#keys + 1] = k
-				end
-				for _, k in ipairs(keys) do
-					if not root:FindFirstChild(k) then
-						local h = Instance.new("Folder")
-						h.Name = k
-						h.Parent = root
-						undo[#undo + 1] = function()
-							h:Destroy()
-						end
-					end
-				end
+			local keys = { GLOBE.Key }
+			for _, k in pairs(EGG_KEYS) do
+				keys[#keys + 1] = k
 			end
+			T.check(fixtureHolders(keys, undo) > 0, "globe (--mesh): the fixture MeshLibrary root exists")
 		elseif M and realTag then
 			-- the default run has no globe id: the tag's answer is forced to "dressed" (after the real call records the request)
 			M.tag = function(target, key, ...)
@@ -2675,13 +2730,17 @@ S.shop_globe = guarded("shop_globe", function()
 		forceGlobe(undo)
 	end, function(built, cursor)
 		local LB2 = req("server/Services/LobbyBuilder")
-		local eggRecs = {}
+		local eggRecs, oldN = {}, 0
 		for _, rec in ipairs(LB2._Kit and LB2._Kit.Targets or {}) do
 			if typeof(rec.Target) == "Instance" and rec.Target.Name:match("^GlobeEgg%d+$") then
 				eggRecs[rec.Target] = eggRecs[rec.Target] or {}
 				table.insert(eggRecs[rec.Target], rec)
 			end
+			if rec.Key == GLOBE.OldKey then
+				oldN = oldN + 1
+			end
 		end
+		T.eq(oldN, 0, "globe dressed: a dressed globe asks for no 'prop_roulette' dress (the fallback only follows a refused globe tag)")
 		local f = built.Folder:FindFirstChild("Shop")
 		local bad, dressBad = {}, {}
 		for _, r in ipairs(Config.Roulettes) do
@@ -2818,8 +2877,7 @@ S.shop_globe = guarded("shop_globe", function()
 		T.check(built.Shop and built.Shop.Roulettes and built.Shop.Roulettes.Cloud and built.Shop.Roulettes.Cloud.PromptPart ~= nil, "globe without Egg7: LobbyInfo.Shop.Roulettes still carry their PromptParts")
 	end)
 
-	local root = RS:FindFirstChild("P6PetsMeshLibrary")
-	T.check(LMB._Manifest == nil and LB and LB._Kit == nil and (M == nil or M.tag == realTag) and (root == nil or root:FindFirstChild(GLOBE.Key) == nil),
+	T.check(LMB._Manifest == nil and LB and LB._Kit == nil and (M == nil or M.tag == realTag) and holdersGone(GLOBE.Key),
 		"globe: the hooks (_Manifest, _Kit, Mesh.tag) and the fixture holders are back")
 	K.flushErrors("shop_globe")
 	K.flushWarnings("shop_globe", GLOBE.Allowed)
@@ -2859,19 +2917,7 @@ S.shop_egg_row = guarded("shop_egg_row", function()
 	rebuild("egg row rebuild", function(undo, LB)
 		LB._Kit = { Targets = {}, Clouds = {} }
 		if MESH_MODE then
-			local root = RS:FindFirstChild("P6PetsMeshLibrary")
-			if T.check(root ~= nil, "egg row (--mesh): the fixture MeshLibrary root exists") then
-				for _, key in pairs(EGG_KEYS) do
-					if not root:FindFirstChild(key) then
-						local h = Instance.new("Folder")
-						h.Name = key
-						h.Parent = root
-						undo[#undo + 1] = function()
-							h:Destroy()
-						end
-					end
-				end
-			end
+			T.check(fixtureHolders(EGG_KEYS, undo) > 0, "egg row (--mesh): the fixture MeshLibrary root exists")
 		end
 	end, function(built, cursor)
 		local LB = req("server/Services/LobbyBuilder")

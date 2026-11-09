@@ -25,7 +25,8 @@
 --                    the roulette colour; shop-area spec 16.17.1: the Machine is tagged with the Gumball Globe key
 --                    prop_roulette_globe, Primary = the roulette colour, Secondary = its top rarity's (Secret: the
 --                    chat violet), and only when that tag dresses LobbyMachineBuilder.GlobeEggs piles the twelve real
---                    eggs in the glass beside it; with no globe id the machine is today's Part machine), the WINGED PETS
+--                    eggs in the glass beside it; with no globe id the Machine is tagged with today's uploaded cabinet
+--                    prop_roulette instead, the Part build only where that is missing too), the WINGED PETS
 --                    rarity board with the seven-egg row in front of it (shop-area 16.17.2: LobbyBoardBuilder.EggRow, a
 --                    stone shelf with the seven 3D eggs and a rarity label strip, the walk-up Shop prompt's part; the board's
 --                    letters end above the eggs), a token statue and an entrance arch, joined to the plaza by a short
@@ -3378,13 +3379,18 @@ local function buildMachine(parent, cf, roulette, H)
 	Voxel.BuildBoxes(boxes.Dome, { VoxelSize = 1, Palette = pal, CFrame = cf * CFrame.new(0, 0.5, 0), Model = body, CanCollide = true, CanQuery = true })
 	body.Parent = model
 	-- shop-area 16.17.1: the Gumball Globe for every roulette (cabinet = the roulette colour, emblem = its top rarity's;
-	-- Secret's near-black reads as the chat violet). Only a dressed globe gets the real eggs in its glass; with no id
-	-- the tag returns false and this stays today's Part machine.
+	-- Secret's near-black reads as the chat violet). Only a dressed globe gets the real eggs in its glass. With no globe
+	-- id the tag returns false and the Machine keeps today's look: the uploaded Phase 6 cabinet prop_roulette (review
+	-- round 1: it ships an id, so the live game wears it; Phase 6's look, eggs = the top rarity's Config colour), and
+	-- the voxel Part build only where that key is missing too.
 	local rarities = oddsRarities(roulette)
 	local top = rarities[#rarities]
 	local chat = type(Config.Eggs) == "table" and type(Config.Eggs.ChatColors) == "table" and Config.Eggs.ChatColors or {}
 	local emblem = (top and (chat[top.Id] or top.Color)) or C.Gold
 	local dressed = Mesh.tag(body, LobbyMachineBuilder.GLOBE.Key, cf, { Primary = roulette.Color or C.Rose, Secondary = emblem })
+	if not dressed then
+		Mesh.tag(body, "prop_roulette", cf, { Primary = roulette.Color or C.Rose, Secondary = (top and top.Color) or C.Gold })
+	end
 	if dressed and H then
 		local okEggs, errEggs = pcall(LobbyMachineBuilder.GlobeEggs, model, cf, roulette, H)
 		if not okEggs then

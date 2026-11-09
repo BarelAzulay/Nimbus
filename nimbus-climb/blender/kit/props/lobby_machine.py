@@ -4,20 +4,23 @@ design.md 16.17.1; the owner's pick, ported from the pitch's scripts/machines.py
   * "lobby_roulette_globe"  prop_roulette_globe: ONE mesh for the four roulettes (Cloud / Storm / Sky / Celestial).  A
                             cast-iron claw-foot gumball machine as the cloud shop's tinkers would have made it: an iron
                             plinth with a pale lip, four ball-and-claw feet and a little cloud bank (six puffs) tucked round
-                            its sides and back; the cabinet in the roulette colour (Primary) with a gold step, a lower and
-                            an upper gold trim that both fade into the cabinet through a pastel row (BodyLight = the
-                            roulette's own pale colour: GoldLight / Gold / BodyLight on top, BodyLight / Gold below),
+                            its sides and back; the cabinet in the roulette colour (Primary) with a dark gold step, a lower
+                            and an upper gold trim that both fade into the cabinet through a pastel row (BodyLight = the
+                            roulette's own pale colour: GoldLight / GoldDark / BodyLight on top, BodyLight / GoldLight
+                            over the step below: a dark gold line on every cabinet colour, Sky's orange included),
                             BodyDark fluting down the rounded corners; marquee bulbs on the upper trim (front, sides,
-                            back); the navy lit sign on the front with a Neon rim (Glow) and ONE four-point star emblem
-                            (Neon, Secondary = the roulette's top rarity colour, 2 studs across) with two twinkles; a
+                            back); the navy lit sign on the front with a Neon rim (Glow) and ONE four-point sparkle star
+                            emblem (Neon, Secondary = the roulette's top rarity colour, 2.75 x 2.25 studs, a diamond
+                            heart tapering to one-cell tips) with two one-cell twinkles; a
                             brass crank with a rubber knob (the viewer's right) and a gold coin plate with its slot and a
                             return button (the viewer's left); the chute at the bottom front: a dark mouth in a gold
                             frame with its flap, a gold tray on the step; cream side panels in gold frames with three
                             painted egg silhouettes each (BodyLight with a BodyDark band); an access door on the back with
                             hinges and a lock.  On top a gold neck, collar and floor, a gold seat ring holding a clear
                             glass globe (0.5-stud cells as the old dome, Transparency 0.70), a gold lid and the winged-
-                            cloud finial (a cloud on a gold collar, two gold wings swept back and up, the Glow ball on
-                            top).  Nothing above y 14.4; the 9 x 7 footprint (the puffs and the feet stay inside it: the
+                            cloud finial (a cloud on a gold collar, two gold wings swept back and up, every feather two
+                            cells wide and thick to its tip, the Glow ball on top).  ONE face-connected piece with the
+                            glass (shop_area_globe.py --check).  Nothing above y 14.4; the 9 x 7 footprint (the puffs and the feet stay inside it: the
                             shop's egg row comes close to the Cloud machine's side).
                             The eggs are NOT in the mesh: twelve attachments Egg1..Egg12 (pivot = the egg's bottom
                             centre in machine studs, rot = its turn) carry the real egg_<rarity> keys the game places
@@ -38,7 +41,6 @@ import numpy as np
 
 from props import prop
 from props.lobby import Sculpt, finish
-from props.lobby_shop import star4
 
 K = 4.0                      # 0.25-stud cells for the machine
 GK = 2.0                     # 0.5-stud cells for the glass (a sphere of fine glass cells costs thousands of tris)
@@ -203,12 +205,14 @@ class MachineSculpt(Sculpt):
         return fn(-self.X, self.Y) & (self.Z > z0) & (self.Z < z1)
 
 
-def star4_mask(cu, cv, s, sharp=0.55, heart=0.1):
-    """the emblem: a four-point star (half size s) as a picture-plane shape fn(u, v); the egg paint's star4 with
-    pointier arms (its exponent 0.65 read as a blunt cross at 0.25-stud cells) and a round heart"""
+def star4_mask(cu, cv, sh, sv, sharp=0.6, heart=0.45):
+    """the emblem: a four-point sparkle star (half sizes sh across, sv up) as a picture-plane shape fn(u, v): concave
+    arms (exponent `sharp`) round a diamond heart (|a| + |b| <= heart), so at 0.25-stud cells it steps 1 / 3 / 5 / 11
+    cells from the tips to the middle.  Review round 1: the old round heart and star4 core drew arms a constant 1-2
+    cells wide (a thick '+', a first-aid sign from the plaza)."""
     def fn(U, V):
-        a, b = np.abs(U - cu) / s, np.abs(V - cv) / s
-        return (a ** sharp + b ** sharp <= 1.0) | (a * a + b * b <= heart) | star4(U, V, cu, cv, s * 0.55)
+        a, b = np.abs(U - cu) / sh, np.abs(V - cv) / sv
+        return (a ** sharp + b ** sharp <= 1.0) | (a + b <= heart)
     return fn
 
 
@@ -292,12 +296,16 @@ def _cabinet(S):
     shell = S.has("Body") & ~S.rrect(0, 0, 3.35, 2.35, 0.65, 0.0, 9.0)
     corner = (np.abs(X) > 2.7) & (np.abs(Z) > 1.7)
     S.put("BodyDark", shell & corner & (np.abs((np.abs(X) - 2.7) - (np.abs(Z) - 1.7)) < 0.2) & (Y > 1.75) & (Y < 5.0))
-    # the trims fade into the cabinet through the roulette's pale colour: below BodyLight / Gold, on top
-    # BodyLight / Gold / GoldLight (rows of 0.25, full slabs one cell proud of the body)
-    S.put("Gold", S.rrect(0, 0, 3.8, 2.8, 0.9, 1.25, 1.5))
+    # the trims fade into the cabinet through the roulette's pale colour: below BodyLight / GoldLight over the dark
+    # step, on top BodyLight / GoldDark / GoldLight (rows of 0.25, full slabs one cell proud of the body).  Review round
+    # 1: the trims' Gold rows (244,198,84) sat within ~20 RGB of the Sky machine's cabinet (240,180,90) and its pale row
+    # beside GoldLight, so Sky read as one orange-cream block; a GoldDark row in each gold band (the step under the
+    # lower trim, the middle of the upper) now draws a dark line between trim and cabinet on every Primary, recoloured
+    # rows only (no new boundary, no tris)
+    S.put("GoldLight", S.rrect(0, 0, 3.8, 2.8, 0.9, 1.25, 1.5))
     S.put("BodyLight", S.rrect(0, 0, 3.8, 2.8, 0.9, 1.5, 1.75))
     S.put("BodyLight", S.rrect(0, 0, 3.8, 2.8, 0.9, 5.0, 5.25))
-    S.put("Gold", S.rrect(0, 0, 3.8, 2.8, 0.9, 5.25, 5.5))
+    S.put("GoldDark", S.rrect(0, 0, 3.8, 2.8, 0.9, 5.25, 5.5))
     S.put("GoldLight", S.rrect(0, 0, 3.8, 2.8, 0.9, 5.5, 5.75))
 
 
@@ -308,11 +316,10 @@ def _front(S):
     S.put("Navy", navy)
     rim = S.rrect_front(0, 3.625, 2.5, 1.375, 0.4, -2.75, -2.5) & ~navy        # the Neon rim, one cell
     S.put("Glow", rim)
-    # the star centred on a cell (x 0.125, y 3.625): on a cell boundary its thin vertical arms lost their tips
-    S.put("Emblem", S.front2d(star4_mask(-0.125, 3.625, 1.0), -3.0, -2.75) & S.rrect_front(0, 3.625, 2.2, 1.1, 0.3, -4, -2))
-    for u, v in ((-1.625, 4.375), (1.625, 2.875)):                              # two twinkles: plus marks on cells
-        S.put("Emblem", S.front2d(lambda U, V, u=u, v=v: ((np.abs(U - u) < 0.13) & (np.abs(V - v) < 0.38))
-                                  | ((np.abs(U - u) < 0.38) & (np.abs(V - v) < 0.13)), -3.0, -2.75))
+    # the star centred on a cell (x 0.125, y 3.625): on a cell boundary its thin arms lost their tips
+    S.put("Emblem", S.front2d(star4_mask(-0.125, 3.625, 1.35, 1.12), -3.0, -2.75) & S.rrect_front(0, 3.625, 2.2, 1.1, 0.3, -4, -2))
+    for u, v in ((-1.625, 4.375), (1.625, 2.875)):                              # two twinkles: one lit cell each
+        S.put("Emblem", S.front2d(lambda U, V, u=u, v=v: (np.abs(U - u) < 0.13) & (np.abs(V - v) < 0.13), -3.0, -2.75))
     # the coin plate: a gold plate with a slot and a return button
     plate = S.rrect_front(3.05, 4.0, 0.45, 0.65, 0.15, -3.0, -2.55)
     S.put("Gold", plate)
@@ -391,14 +398,19 @@ def _finial(S):
 
 
 # the wing plate: its root at the cloud's side, swept back (degrees about Y), three feathers (length, degrees up from the
-# plate's horizontal), the feather half width at its root, the plate's half thickness
+# plate's horizontal), the feather half width (Width x the taper, never under MinHalf), the plate's half thickness, the
+# top of every feather cell (the finial stays under y 14.4: a cell centred at 14.375 would reach 14.5).
+# Review round 1: at Width 0.25 / Half 0.16 the tips tapered under one 0.25-stud cell and the 0.32 plate, swept 25
+# degrees, broke apart (two 2-cell GoldDark tips hovered off the wings); a feather is now >= 0.4 wide and the plate 0.4
+# thick to its tip (>= (cos 25 + sin 25) x 0.25 = 0.33: face-connected at the sweep), shop_area_globe.py --check counts
+# the pieces.
 WING = {"Root": (0.7, 13.4, 0.1), "Sweep": 25.0, "Feathers": ((1.8, 24.0), (1.55, -4.0), (1.2, -32.0)),
-        "Width": 0.25, "Half": 0.16}
+        "Width": 0.3, "MinHalf": 0.2, "Half": 0.2, "Top": 14.25}
 
 
 def _wing(S, sx):
-    """one gold wing: three feathers fanned from the root in a plate one to two cells thick, the plate facing the
-    customer and swept back (so the front sees the fan and the side sees it at an angle), the top feather pale"""
+    """one gold wing: three feathers fanned from the root in a plate two cells thick, the plate facing the customer and
+    swept back (so the front sees the fan and the side sees it at an angle), the top feather pale, the tips dark"""
     rx, ry, rz = WING["Root"]
     root = np.array([sx * rx, ry, rz])
     sw = math.radians(WING["Sweep"])
@@ -410,14 +422,15 @@ def _wing(S, sx):
     u0 = dx * out[0] + dy * out[1] + dz * out[2]                                 # along the plate's horizontal
     v0 = dy                                                                       # up
     w = dx * normal[0] + dy * normal[1] + dz * normal[2]
-    thin = np.abs(w) <= WING["Half"]
+    thin = (np.abs(w) <= WING["Half"]) & (S.Y < WING["Top"])
     for i, (length, deg) in enumerate(WING["Feathers"]):
         a = math.radians(deg)
         cu, cv = math.cos(a), math.sin(a)
         fu = u0 * cu + v0 * cv                                                    # along the feather
         fv = -u0 * cv + v0 * cu                                                   # across it
         t = fu / length
-        feather = thin & (t > 0.0) & (t < 1.0) & (np.abs(fv) <= WING["Width"] * np.sqrt(np.clip(1.0 - t, 0, 1)) * (0.75 + 0.6 * t))
+        half = np.maximum(WING["MinHalf"], WING["Width"] * np.sqrt(np.clip(1.0 - t, 0, 1)) * (0.75 + 0.6 * t))
+        feather = thin & (t > 0.0) & (t < 1.0) & (np.abs(fv) <= half)
         S.put("GoldLight" if i == 0 else "Gold", feather, empty=True)
         S.put("GoldDark", feather & (t > 0.72), only=("GoldLight", "Gold"))      # the darker feather tips
 

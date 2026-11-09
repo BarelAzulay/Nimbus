@@ -4,7 +4,8 @@
 --     manifests   a committed manifest for every lobby key (blender/catalog/lobby.json), every part under 10k tris,
 --                 the layout-baked keys (cloud_*, floor_*, the altar) carry their LayoutSig
 --     default     the booted lobby with the shipped MeshIds: exactly the lobby keys with a shipped id are tagged (empty
---                 MeshIds = nothing tagged, nothing changes); the mock cannot load them, so the Parts stay visible
+--                 MeshIds = nothing tagged, nothing changes; the roulette Machines wear the uploaded prop_roulette while
+--                 prop_roulette_globe has no id); the mock cannot load them, so the Parts stay visible
 --     fixture     the real MeshLibrary pointed (_Configure) at canonical templates made from the committed manifests
 --                 (fake ids) and a second LobbyBuilder.Build() (the booted lobby is set aside and put back): every
 --                 key is tagged where the kit says (template clones, plots, shop, plaza layers, roads, gardens, sky),
@@ -54,10 +55,14 @@ local ALTAR_KEYS = {
 local PROP_KEYS = {
 	"prop_tree_round", "prop_tree_blossom", "prop_tree_pine", "prop_lamp", "prop_bench", "prop_flowerbed",
 	"prop_oasis_pool", "prop_oasis_islands", "prop_oasis_water", "prop_oasis_boat", "prop_welcome_arch", "prop_obelisk", "prop_banner", "prop_board_s",
-	-- shop-area 16.17.1: the machines tag the Gumball Globe prop_roulette_globe (the old prop_roulette is no longer tagged)
+	-- shop-area 16.17.1: the machines tag the Gumball Globe prop_roulette_globe first
 	"prop_board_l", "prop_roulette_globe", "prop_token_statue", "prop_shop_arch", "prop_pond",
 	"prop_pond_water", "prop_seedsack", -- (bug #12: the meadow_* clumps are not tagged: MeadowFx assembles them on the client)
 }
+-- shop-area review round 1: keys tagged only when the one before them refused: a Machine wears the uploaded prop_roulette
+-- while prop_roulette_globe has no id (the default mode wants it on every Machine: it ships an id), never both (the
+-- fixture, where the globe has one, wants none)
+local FALLBACK_KEYS = { "prop_roulette" }
 
 local function allKeys()
 	local list = {}
@@ -65,6 +70,9 @@ local function allKeys()
 		list[#list + 1] = k
 	end
 	for _, k in ipairs(PROP_KEYS) do
+		list[#list + 1] = k
+	end
+	for _, k in ipairs(FALLBACK_KEYS) do
 		list[#list + 1] = k
 	end
 	local altar = {}
@@ -356,6 +364,8 @@ S.p6lobby_server = guarded("p6lobby_server", function()
 		local spots = #(info.Spots or {})
 		T.check(got.prop_plot and #got.prop_plot == spots, fmt("p6 lobby fixture: every plot tagged (%d of %d)", got.prop_plot and #got.prop_plot or 0, spots))
 		T.check(got.prop_roulette_globe and #got.prop_roulette_globe == #Config.Roulettes, "p6 lobby fixture: one roulette globe per roulette")
+		T.check(got.prop_roulette == nil, "p6 lobby fixture: with the globe's id no Machine falls back to prop_roulette (never both)",
+			tostring(got.prop_roulette and #got.prop_roulette))
 		T.check(got.prop_lamp and #got.prop_lamp >= 20, fmt("p6 lobby fixture: lamp clones tagged (%d)", got.prop_lamp and #got.prop_lamp or 0))
 
 		-- origins: the plot mesh sits on SpotInfo.PlotCFrame, every Offset parses, the tag look / keep lists

@@ -1629,7 +1629,7 @@ S.p2flow_fusion_gems = guarded("p2flow_fusion_gems", function()
 		end
 	end
 	local secretId = Config.Gems.SecretRoulette.Id
-	if T.check(altarPrompt ~= nil, "flow secret: the Storm Altar has its Summon prompt") then
+	if T.check(altarPrompt ~= nil, "flow secret: the Storm Altar has its Secret Roll prompt") then
 		local where = promptPosition(altarPrompt)
 		if where then
 			Mock.Teleport(ann, CFrame.new(where + Vector3.new(0, 0, -6)))
@@ -1645,7 +1645,7 @@ S.p2flow_fusion_gems = guarded("p2flow_fusion_gems", function()
 				opened = opened + 1
 			end
 		end
-		T.eq(opened, 1, "flow secret: Ann's Summon opens the Shop on the Secret roulette")
+		T.eq(opened, 1, "flow secret: Ann's Secret Roll opens the Shop on the Secret roulette")
 		T.check(#K.remotesFor("OpenPanel", ben.UserId, mark) == 0 and toasted(ben, "not available", mark), "flow secret: Ben's account gets a side toast instead (no Shop)")
 	end
 	-- a gem spin of the Secret roulette (the Shop's Gems tab: BuyRoulette(id, "Gems")). The roll is pinned to the pool

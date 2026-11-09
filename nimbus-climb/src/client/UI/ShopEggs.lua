@@ -36,15 +36,17 @@
 --                                    button before GemsSettled (Loading); the balance under the price (Short: the price
 --                                    kept, drawn red, the button still taps and EggStage toasts); else Ready
 --   ShopEggs.AtAltar() -> bool       (shop-area 16.17.3) the Secret roll can be bought from here: ShopEggs._AtAltar when a
---                                    test set it (true / false); else the Shop was opened by the altar's prompt
---                                    (SetFromAltar, until Close); else Config.AtAltar(the character's HumanoidRootPart,
---                                    no slack: the server allows AltarRangeSlack more). Away from it the Secret card greys
+--                                    test set it (true / false); else Config.AtAltar(the character's HumanoidRootPart,
+--                                    no slack: the server allows AltarRangeSlack more) whenever there is a root and the
+--                                    replicated AltarIslandAt; only without that live reading the Shop opened by the
+--                                    altar's prompt counts (SetFromAltar, until Close). Away from it the Secret card greys
 --                                    under "Dim" (K.NAVY at K.DIM), the "AltarChip" ("Available at the Storm Altar";
 --                                    phone / portrait "At the Storm Altar") takes the PityChip's box and a blue "Travel"
 --                                    (the compass glyph + "TRAVEL") takes SPIN's: a tap sends QuickTravel("Altar") at most
 --                                    once per K.TRAVEL_GAP and closes the Shop (ctx.Close). A restricted account keeps the
 --                                    Locked card (no chip, no TRAVEL); the page repaints on the Shop's 1 s tick
---   ShopEggs.SetFromAltar(on)        ShopController.Open's FromAltar (the altar prompt), cleared by Close
+--   ShopEggs.SetFromAltar(on)        ShopController.Open's FromAltar (the altar prompt), cleared by Close; read by AtAltar()
+--                                    only while there is no live reading
 --   ShopEggs.HeroPulse(page) -> the UIScale "Pulse" of the hero's Spin (ShopController's shine pulses it, High only)
 --   ShopEggs.Fx(page) -> { Pool, Egg }   (Task 26, spec 16.5 "Where the VFX show") the page's HatchFx pool (16 sparks,
 --                                    in the hero card) and the Secret hero's big "HeroEgg" (EggArt Full, built Still). On
@@ -1188,21 +1190,27 @@ end
 -- Refresh
 ----------------------------------------------------------------------
 -- shop-area (spec 16.17.3): the Secret roll is bought at the Storm Altar only (PetService.BuyRoulette checks the distance;
--- this only picks the card's look)
+-- this only picks the card's look). The live reading (the character's HumanoidRootPart against the replicated altar
+-- site) wins whenever it exists; FromAltar (the altar prompt's open) only stands in while there is none (no root, no
+-- AltarIslandAt yet). Review round 1: FromAltar used to win until Close, so a player who opened the Shop at the altar
+-- and walked off kept a live SPIN the server refused.
 function ShopEggs.AtAltar()
 	if ShopEggs._AtAltar ~= nil then
 		return ShopEggs._AtAltar == true
-	end
-	if ALTAR.From then
-		return true
 	end
 	local ok, at = pcall(function()
 		local player = Players.LocalPlayer
 		local char = player and player.Character
 		local root = char and char:FindFirstChild("HumanoidRootPart")
-		return root ~= nil and root:IsA("BasePart") and Config.AtAltar(root.Position, 0)
+		if not (root ~= nil and root:IsA("BasePart")) or typeof(workspace:GetAttribute(Config.Lobby.ZoneAltarAttr)) ~= "Vector3" then
+			return nil -- no live reading
+		end
+		return Config.AtAltar(root.Position, 0) == true
 	end)
-	return ok and at == true
+	if ok and at ~= nil then
+		return at
+	end
+	return ALTAR.From == true
 end
 
 function ShopEggs.SetFromAltar(on)

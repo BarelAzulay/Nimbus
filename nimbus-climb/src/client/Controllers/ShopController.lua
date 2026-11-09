@@ -13,8 +13,9 @@
 --                                   the Eggs tab, that card scrolled into view and outlined gold for 2.6 s
 --                                   (ShopEggs.Focus); Currency alone never switches the tab. FromAltar = true (shop-area
 --                                   16.17.3: the Storm Altar's prompt): the Secret card reads "at the altar" until Close
---                                   (ShopEggs.SetFromAltar; a later Open while open keeps it; the server checks the distance
---                                   again on every spin)
+--                                   while the client has no live reading of the distance (ShopEggs.SetFromAltar; a live
+--                                   reading always wins, so walking off locks the card; a later Open while open keeps it;
+--                                   the server checks the distance again on every spin)
 --   ShopController.Close()
 --   ShopController.IsOpen() -> bool
 --   ShopController.NormalizeTab(tab) -> "Eggs" | "Gems" | "Packs" | "Passes" | "Boosts" | nil   "egg*", "roul*", "Items",

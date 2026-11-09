@@ -2294,10 +2294,14 @@ cycling the lower rarities in Config order taking one of each while any remains.
 (7 / 3 / 1) + Epic chase; Storm `U R E U R E U R U R R` (4 / 5 / 2) + Legendary; Sky `R E L R E L R E R E E` (4 / 5 / 2) +
 Mythic; Celestial `E L M E L M E L E L E` (5 / 4 / 2) + Secret. **The fallback rule:** `buildMachine` tags the body
 `Mesh.tag(body, "prop_roulette_globe", cf, { Primary = roulette.Color, Secondary = <emblem colour> })`; it returns true only
-when `MeshLibrary.Status(key) ~= "missing"`; GlobeEggs are built ONLY when it returned true. With no id (this build, today's
-`MeshIds`) the machine is exactly today's Part build (the voxel cabinet with its own dome and four voxel eggs), no
-`ML_DressKey`, no GlobeEggs, no warn; the old key `prop_roulette` is no longer tagged by code (its id and catalog entry stay
-until a cleanup after the upload). A manifest without the key or without an `Egg<i>` attachment: `GlobeEggs` warns once
+when `MeshLibrary.Status(key) ~= "missing"`; GlobeEggs are built ONLY when it returned true. **Corrected in review round 1**
+(the first text said "with no id the machine is exactly today's Part build" and stopped tagging `prop_roulette`: wrong for
+the live place, where `prop_roulette` has an uploaded id, 118961331660735, so today's machine IS that dressed Blender
+cabinet and the switch would have shown the voxel cabinets until the globe's upload): when the globe tag returns false,
+`buildMachine` tags the body `Mesh.tag(body, "prop_roulette", cf, { Primary = roulette.Color, Secondary = <top rarity's
+Config colour> })` (f17dc0d's call, unchanged), still no GlobeEggs, no warn; the voxel Part build shows only where that
+key is missing too (the mock's `--mesh` fixture). Once the globe dresses, `prop_roulette` is not asked for. The id and the
+catalog entry of `prop_roulette` stay until a cleanup after the globe's upload. A manifest without the key or without an `Egg<i>` attachment: `GlobeEggs` warns once
 (`[LobbyMachineBuilder] prop_roulette_globe: no Egg<i> attachment`) and returns nil; the machine still stands.
 
 **Budget of the eggs (High / Low).** The keys as uploaded (`src/shared/MeshManifests`): common 2968 / 1 part, uncommon 3282 /
@@ -2356,13 +2360,19 @@ roulette resolves to a gems-only one, before the pity read and any quote): the p
 remote's failure answer carries that Reason; nothing is charged, the pity untouched). The server never reads a client flag:
 `FromAltar` only unlocks the card on the client. Token roulettes and gem spins of token roulettes are untouched. **Travel:**
 `GateService.Travel(player, "Altar")` joins `"Plaza"` (the `QuickTravel` remote): the same checks as the Altar gate prompt
-without its distance (a live root, not InMatch, not in a battle, not locked, the shared 3 s cooldown) then
+without its distance (a live root, not InMatch, not in a battle, not locked, the gates' shared 1.5 s cooldown) then
 `placeCharacter(player, StormAltar.GetLanding())` and `Teleported:Fire(player, "Altar")`; anything else stays "junk".
+Every Altar refusal toasts its reason (review round 1; Notify "bad", at most one per player per 1.5 s): dead "You cannot
+travel right now", match "Finish your match first", battle "Finish your battle first!", locked "Leave the portal party
+first", cooldown "Wait a moment", failed "The Storm Altar is not ready yet" (the home portal's texts where it has one).
 **The Shop's Secret card** (`ShopEggs`): `CardState("Secret")` gains **"Altar"** between Locked and Loading (order: NoOdds,
 Pending, Locked, Altar, Loading, Short, Ready): the card is not at the altar when `ShopEggs.AtAltar()` is false =
-`ShopEggs._AtAltar` (a test override, nil = real) or `FromAltar` (set by `ShopController.Open(args)` ->
-`ShopEggs.SetFromAltar(args.FromAltar == true)`, cleared on Close) or `Config.AtAltar(LocalPlayer's HumanoidRootPart
-position)` (no slack: the client re-reads it every Shop tick, so a player who walks away sees the card lock again). In the
+`ShopEggs._AtAltar` (a test override, nil = real), else `Config.AtAltar(LocalPlayer's HumanoidRootPart position)` (no
+slack: the client re-reads it every Shop tick, so a player who walks away sees the card lock again) whenever there is a
+root and the replicated `AltarIslandAt`; only without that live reading `FromAltar` counts (set by
+`ShopController.Open(args)` -> `ShopEggs.SetFromAltar(args.FromAltar == true)`, cleared on Close; a later Open while the
+Shop is open keeps it). Review round 1: the first build let `FromAltar` win until Close, so a player who opened the Shop
+at the altar and walked off kept a live SPIN the server refused. In the
 Altar state the hero is greyed: a `Dim` Frame over the card body (`K.NAVY` at 0.35, under the chip, the Travel button and
 the hint), the pity chip hidden, a lock chip **`AltarChip` "Available at the Storm Altar"** (phone / portrait: "At the Storm
 Altar"; the PityChip's size and style, `K.CHIP` fill, the hero stroke) in the chip's place, `Spin` hidden and a blue
@@ -2387,6 +2397,31 @@ studs from both prompt parts; the sphere of the cube's half diagonal clear of ev
 straight below the gem is the stone ring / the crystal, never open deck (nobody stands there). The light (1.0 / 12), the Spin
 attributes, the Part fallback (one 4 x 4 x 4 Glass cube turned 45 / 45) and the `gem_world` dress request are as 5.7. Part
 count unchanged: the altar stays **494 / 500**; the prompt text and the Travel path add no part.
+
+**As built (2026-11-09, after review round 1; where this differs from the text above, this wins).** Measured and
+tested in T1-T3 and round 1; the code holds each number (named in brackets).
+- **16.17.1 the globe** (`blender/kit/props/lobby_machine.py`): 3,940 tris / 8 parts, 9 x 14.25 x 7, ONE face-connected
+  piece with the glass (`blender/pitches/shop_area_globe.py --check` counts the 6-connected pieces, the glass split to
+  the fine grid; round 1: two 2-cell wing tips had floated). The six cloud puffs sit **inside the 9 x 7 footprint**
+  (`(+-3.75, -1.0 / 1.15)` on the sides, `(+-1.5, 2.85)` at the back), not at r 4.2 / 4.5. The egg floor is at **y 7.5**
+  (`FLOOR_Y`, flush with the collar's lip; 6.95 hid the ring), the second layer re-settled until it rests on the ring
+  (`EGG_SPOTS`). The finial's feathers are >= 0.4 studs wide and the wing plate 0.4 thick to the tip, every cell under
+  y 14.25 (`WING`). The emblem is a sparkle star 2.75 x 2.25 studs (`star4_mask(-0.125, 3.625, 1.35, 1.12)`: a diamond
+  heart tapering to one-cell tips; round 1: the old round heart drew a thick '+') with two one-cell twinkles. The trims
+  (round 1, recoloured rows, no tris): lower `GoldLight` / `BodyLight` over the `GoldDark` step, upper `BodyLight` /
+  `GoldDark` / `GoldLight`, so a dark gold line separates trim and cabinet on every Primary (Sky's orange merged with
+  `Gold`). With no globe id the Machine wears `prop_roulette` (above).
+- **16.17.2 the egg row** (`LobbyBoardBuilder`): `EggShelf` **19.3** x 0.8 x 2.6 at `cf * (1.35, 0.4, -3)` (`SHELF`) and
+  egg i at `cf * (1.0 + (8 - 2 i) * 1.35, 0.8, -3)` (`ROW_X` 1.0): centred, the shelf touched the Cloud machine's base and
+  the Secret egg stood under its lever knob. The `RarityStrip` is 965 x 40 px (19.3 studs at 50 px), each label under its
+  egg in role **"Body"** at 30 px (`STRIP`; "Heading" set Uncommon 185 px wide in a 135 px cell), Common nudged -22 px and
+  Mythic +8 px so every gap is >= 9 px (`STRIP.Nudge`). WINGED PETS: the title in `(0.025, 6 / 450, 0.56, 54 / 450)`, the
+  subtitle **two right-aligned lines** in `(0.575, 4 / 450, 0.40, 62 / 450)` (507 px at 30 px cannot share a line with the
+  383 px title; `RB`).
+- **16.17.3 the Secret at the Altar**: `PetService.BuyRoulette`'s altar check stands after the "takes Gems only" and "Bad
+  spins" refusals (still before the pity read and any charge); `GateService`'s cooldown is **1.5 s** (shared with the gate
+  prompts), every Altar refusal toasts (above); `FromAltar` counts only without a live reading, and a later Open while
+  the Shop is open keeps it (above).
 
 **Tests and evidence (16.17).** Server: `shop_globe` and `shop_egg_row` in `tools/smoke_lobby_shop_world.lua`;
 `p2gems_secret_altar` in `tools/smoke_p2_gems.lua`; `altar_world_gem` rewritten to spot 2; `shop_prompt`, `egg_shelf_fx`,

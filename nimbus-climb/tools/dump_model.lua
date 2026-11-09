@@ -1872,9 +1872,12 @@ do
 		if SA then
 			SA._Kit = nil
 		end
-		local n = 0
+		-- one dress per target, the first request wins (shop-area review round 1: a roulette Machine asks for
+		-- prop_roulette_globe and, while that has no id, for prop_roulette after it; the preview shows the globe)
+		local n, dressed = 0, {}
 		for _, r in ipairs(recs) do
-			if dressFromManifest(r, ML) then
+			if not dressed[r.Target] and dressFromManifest(r, ML) then
+				dressed[r.Target] = true
 				n = n + 1
 			end
 		end
