@@ -58,6 +58,9 @@
 --                         strip3, crack, reveal (default), reveal3, secret ([lobby-shop] block); Task 27: hatch:<rarity>@<s>
 --                         = a forced x1 pull of that rarity at <s> seconds (e.g. hatch:epic@3.9)
 --   hatch3[:<s>]          lobby-shop Task 27: a Storm x3 (Rare, Legendary, then Common or Epic) at <s> seconds (default 7.3)
+--                         (egg-cards, spec 16.18) hatch:<view>[:pics][:3d] / hatch3:<s>[:pics][:3d]: "pics" stubs the egg_card
+--                         ids (the strip cards draw blender/textures/eggs/*.png), "3d" stubs Egg3D's MeshLibrary (the hero
+--                         eggs take the 3D path; the renderer draws each egg frame from its card picture, labelled)
 --   lobbyboard[:2|:3]     lobby-shop Task 24: the lobby board's SurfaceGui (LeaderboardController) with ten fake rows on page
 --                         1 Trophies (default), 2 Pets found or 3 Ring best, mirrored flat: fitted to the screen and as it
 --                         looks from 20 studs ([lobby-shop] block)
@@ -109,6 +112,10 @@ local fmt = string.format
 local floor, max, min, ceil = math.floor, math.max, math.min, math.ceil
 
 local notes = {}
+-- (egg-cards, spec 16.18) stubbed asset ids a scene maps to local PNGs (repo paths): "rbxassetid://<id>" -> an image the
+-- renderer draws for that ImageLabel; "viewport:<egg key>" -> the picture tools/render_gui.py draws in an Egg3D
+-- ViewportFrame of that key as a labelled stand-in (the GUI renderer has no 3D). Written into the dump as localImages
+local LOCAL_IMAGES = {}
 
 ----------------------------------------------------------------------
 -- helpers
@@ -651,6 +658,16 @@ local function nodeOf(inst, ctx, path, order)
 		n.image = { kind = "Image", image = tostring(inst.Image or ""), color = rgb(inst.ImageColor3), t = tonumber(inst.ImageTransparency) or 0 }
 	elseif inst:IsA("ViewportFrame") then
 		n.image = { kind = "Viewport", label = modelLabel(inst), color = rgb(inst.ImageColor3), t = tonumber(inst.ImageTransparency) or 0 }
+		-- (egg-cards) an Egg3D egg (attribute Key) whose card picture the scene mapped: drawn as a stand-in of the whole egg
+		local vkey = inst:GetAttribute("Key")
+		local pic = vkey and LOCAL_IMAGES["viewport:" .. tostring(vkey)]
+		if pic then
+			n.image.picture = pic
+			n.image.split = inst:GetAttribute("Split") == true
+			n.image.eggShare = 1 / max(1, tonumber(inst.Size.Y.Scale) or 2)
+			local turn = inst:FindFirstChild("Turn")
+			n.image.turn = turn and tonumber(turn.Value) or 0
+		end
 	elseif inst:IsA("VideoFrame") then
 		n.image = { kind = "Video", label = "video", color = { 255, 255, 255 }, t = 0 }
 	end
@@ -3571,13 +3588,62 @@ function HATCH.forced(PC, rarity)
 	end
 	return rid, (rid == "Secret") and "Gems" or "Tokens", { HATCH.pull(PC, rid, def, { Pity = name == "Secret" or nil }) }
 end
-scenario("hatch3", function(arg)
-	return HATCH.scene("x3@" .. tostring(arg or "7.3"))
+scenario("hatch3", function(arg, f1, f2)
+	return HATCH.scene("x3@" .. tostring((arg ~= nil and arg ~= "") and arg or "7.3"), f1, f2)
 end)
-scenario("hatch", function(view)
-	return HATCH.scene(view)
+scenario("hatch", function(view, f1, f2)
+	return HATCH.scene(view, f1, f2)
 end)
-function HATCH.scene(view)
+-- (egg-cards, spec 16.18) the scene's flags after the view: "pics" stubs the seven egg_card ids (HatchLook._Textures) and
+-- maps them to blender/textures/eggs/egg_card_<rarity>.png, so the strip cards draw the egg pictures; "3d" stubs Egg3D's
+-- MeshLibrary (every egg key ready, a small model per key), so the hero eggs take the 3D path (x1 and x3), each frame
+-- drawn by the renderer from its egg's card picture (a stand-in: the same mesh at the same camera, labelled)
+function HATCH.flags(f1, f2)
+	local on = {}
+	for _, f in ipairs({ f1, f2 }) do
+		if f then
+			on[tostring(f):lower()] = true
+		end
+	end
+	local rarities = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Secret" }
+	if on.pics then
+		local HL = req("client/UI/HatchLook")
+		local ids = {}
+		for i, r in ipairs(rarities) do
+			local id = 9900000000 + i
+			ids["egg_card_" .. r:lower()] = id
+			LOCAL_IMAGES["rbxassetid://" .. id] = "blender/textures/eggs/egg_card_" .. r:lower() .. ".png"
+		end
+		HL._Textures = ids
+	end
+	if on["3d"] then
+		local E3 = req("client/UI/Egg3D")
+		local stub = {}
+		function stub.IsReady(key)
+			return type(key) == "string" and key:match("^egg_%a+") ~= nil
+		end
+		function stub.Assemble(spec)
+			local key = spec and spec.Parts and spec.Parts[1] and spec.Parts[1].Key
+			local m = Instance.new("Model")
+			m.Name = (spec and spec.Name) or tostring(key)
+			local p = Instance.new("Part")
+			p.Name = "Fixed"
+			p.Anchored = true
+			p.Size = Vector3.new(2.2, 3, 2.2)
+			p.CFrame = CFrame.new(0, 1.5, 0)
+			p.Parent = m
+			m.WorldPivot = CFrame.new(0, 0, 1e-9)
+			return m
+		end
+		E3._ML = stub
+		for _, r in ipairs(rarities) do
+			LOCAL_IMAGES["viewport:egg_" .. r:lower()] = "blender/textures/eggs/egg_card_" .. r:lower() .. ".png"
+		end
+	end
+	return on
+end
+function HATCH.scene(view, f1, f2)
+	HATCH.flags(f1, f2)
 	view = tostring(view or "reveal"):lower()
 	local at = HATCH.At[view] or HATCH.At.reveal
 	local PC = req("shared/PetCatalog")
@@ -3898,6 +3964,9 @@ else
 end
 data.notes = notes
 data.player = LocalPlayer and LocalPlayer.Name or ""
+if next(LOCAL_IMAGES) ~= nil then
+	data.localImages = LOCAL_IMAGES -- (egg-cards: the stubbed ids' local PNGs, see LOCAL_IMAGES)
+end
 
 local json = toJson(data)
 if ARGS.out and ARGS.out ~= "" then

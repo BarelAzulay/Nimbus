@@ -127,6 +127,45 @@ Updated: 2026-10-18 (after wave 2). Branch `v3-phase4`. Plan: `ARCHITECTURE_V3.m
   Deviations (each commit and ledger line has the detail): T1 the x3 budget fixes (cells per strip floor(W / Step) + 2, the x3 word without an outline, square dims, plain x3 notches); T2 the x3 strips drop their fades, dims and outer rim at the rise and an x3 plinth has one halo disc (the x3 rise peak <= 750); T3 the phone pills in the right column, PC chip tap boxes 56 design px (44.8 real at 720p), the word outline 0.06 x its size, the glow taller and fainter, the pill rise capped by the room under it (about 11-14 px on PC), the banner slide-in removed; R1 the toast fix in `Hint` (not the stage), MobileControls through `HudKeepOff`, a soft contact shadow and the flying bottom half added from the mock; R2 the plinth Top 0.85 / Band 0.15 (5.4 : 1, so the disc stays inside its box and passes the hatch_cutscene "flat" check), the x3 strips clipped (a 2 px notch tip shows for about 3 frames at 4.15 s), a rotation mid-rise drops every strip, the x3 phone ribbon up to 0.75 of the pet frame (the review asked 0.6), render_gui.py's rbxasset support (scope). Gemini could not be asked in rounds 2 and 3 (ask-gemini 402, credits depleted); the pitch had Gemini's check on the web.
   Owner's Studio checklist (nothing in roll-look has been looked at in Studio; pull `roll-look` and serve that tree with Rojo on port 34872; the place file is not rebuilt): 1 an x1 Cloud spin on PC (1920x1080) with dev tokens: the HUD hides at once and comes back after DONE, after Skip, after Close and after a respawn mid-roll; the glossy cards and their plates; the gold window's overshoot, the land pop and one shine sweep; 2 a Rare or better roll: the window turns the rarity's colour about 0.7 s before the stop; a Common and an Uncommon roll stay gold; 3 the rise: the 3D egg lifts out of its card onto the flat lit plinth (an ellipse; no drum, no bars), the title fades; 4 the shakes: on Rare+ the plinth rim, the cloud ring and faint rays turn the rarity colour, the push-in; no drifting sparkles before the burst; 5 the burst punch and the 3D halves; 6 the reveal: the word pops letter by letter; a Legendary / Mythic / Secret pet shows black for 0.3 s, then fills; NEW!, the Evolved ribbon in the name row, the glossy SPIN AGAIN (coin and price) and DONE; 7 Low graphics: no blur, no punch, no push-in; the tell, the land pop, the silhouette and the letter pops still play; 8 a Storm x3: each strip tells its own colour, the strips slide away behind the bottom bar without crossing the chips, three plinths, the x3 reveal; 9 Fast hatch on, x1 and x3; 10 the phone emulator at 844x390, 640x360 and 360x640: the side-by-side x1 reveal, x3 columns with NEW! bottom-left and the ribbon top-right, "Close ››" at 640x360, notes on two lines with no lone word, 44 px taps; rotate during the rise and during the reveal; 11 the 11 egg sounds still play; a refused answer and the 7 s "Still waiting" toast show while the stage is up.
   Open owner questions (Claude's pick first): 1 merging: nothing is merged; `roll-look` holds `egg-3d`; merge it into `lobby-shop` after a whole-suite run on a free machine and the Studio check (pick); 2 the three optional images `hatch_rays` / `hatch_glow` / `hatch_sparkle`: keep the frame fallbacks for now (pick) or have the keyed session make and upload them (they would replace the 16 ray wedges, the stacked glow frames and the square sparks); 3 the plinth's neutral colour before the shakes (periwinkle 110,132,200): keep (pick); 4 the faint 16.4 spot cone behind the plinth: keep (pick) or remove; 5 the pet's name white (pick) or in the rarity colour; 6 the word's soft layered glow: keep (pick), stronger, or none; 7 the PC pills rise only about 11-14 px near the bottom edge: fine (pick) or lift the bar; 8 the x3 phone Evolved tag on the pet frame's top-right corner (it overlaps the model's upper right a little): keep (pick) or move it under the name.
+- 2026-11-09 (egg cards + x3 3D, branch `egg-cards` cut from `roll-look` 13e5adb, not merged; spec
+  docs/superpowers/specs/2026-11-07-lobby-shop-design.md 16.18 "Egg cards + x3 3D", which overrides 16.14's x3 rule and
+  16.15's painted strip eggs). The owner's Studio test of roll-look: "its all the same" (the strip cells drew the painted
+  eggs) and "only 3D crack and its only at opening 1 roll (on the 3x roll its the painted egg crack)". The owner's picks:
+  (1) the card eggs are pictures of the real Blender eggs; (2) the x3's three hero eggs are 3D and crack into their 3D
+  halves like x1.
+  What changed. `blender/textures/build_egg_cards.py` renders the 7 shelf eggs (the lobby catalog's egg_<rarity>, its
+  contentHash checked against the committed manifests) at Egg3D's rise camera (FOV 20, 8 degrees above, turned -28)
+  with a soft key light, no ground: 512 x 512 transparent PNGs in `blender/textures/eggs/egg_card_<rarity>.png`, indexed in
+  `blender/textures/textures.json`. `UI/HatchLook`: `EGG_IMAGES`, `EggImage`, `EggImages`, `Metrics.EGG_PIC.Fill` 0.9.
+  `UI/EggStage`: a strip cell draws the picture (ImageLabel `EggPic`) where its rarity has an id, else today's painted
+  egg (no ids = exactly as before; all seven = no painted egg made); the winner's picture lifts out at the rise. `UI/Egg3D`:
+  `Usable(..., { Need })`, `Limit(false)` 3 (was 2); `EggStage` decides the 3D once per roll (`H.use3d`): an x3's three
+  heroes turn, settle, rock and split into their 3D halves at their own bursts; Low graphics, an id 0, a failed
+  Assemble and every phone's x3 (3 > its one ViewportFrame) keep all three 2D, never a mix. Tools: `dump_gui.lua`
+  hatch flags `:pics` (the egg_card ids stubbed, mapped to the PNGs) and `:3d` (Egg3D's MeshLibrary stubbed);
+  `render_gui.py` draws the mapped PNGs and an Egg3D frame from its card picture (labelled "picture stand-in").
+  **Image keys needing the owner's keyed upload** (`tools/upload_assets.py --textures`, after the owner has looked at the
+  PNGs in `.superpowers/lobby-shop/evidence/egg-cards/`): `egg_card_common`, `egg_card_uncommon`, `egg_card_rare`,
+  `egg_card_epic`, `egg_card_legendary`, `egg_card_mythic`, `egg_card_secret`. Until then TextureIds has no egg_card
+  ids and the cards draw the painted eggs: the pictures only show in Studio after that upload (or with ids set by hand).
+  Measured: the x3 3D roll peaks at 713 stage instances (Rise, a ViewportFrame counted as one; cap 750 unchanged), 3 egg
+  ViewportFrames at most, 3 view tweens at most (roll-look's budget pass, a 2D x3 with other pulls, peaks at 724).
+  Tests (targeted, one run at a time; the whole suite and client_replay were NOT run: low memory, another builder in
+  another worktree): `smoke.py --quick --only` client_egg3d, client_egg3d_phone, client_roll_look_stage, _open, _reveal,
+  _phone, client_egg_stage, client_hatch_cutscene, client_egg_stage_mobile, client_shop_eggs: 1870 passed, 0 failed;
+  `--mesh` on the egg lists (client_egg3d, _phone, client_egg_stage, client_hatch_cutscene, client_egg_stage_mobile,
+  client_shop_eggs): 1688 passed, 0 failed; `--mesh` roll look lists: 968 passed; `node tools/check.mjs` 0 errors;
+  `tools/count_locals.py` EggStage 34, HatchLook 29, Egg3D 19. Evidence: `.superpowers/lobby-shop/evidence/egg-cards/`
+  (the 7 PNGs, `egg_cards_sheet.png`, `gui_strip_pics_1920x1080.png`, `gui_strip_pics_844x390.png`,
+  `gui_strip3_pics_1920x1080.png`, `gui_strip_noid_1920x1080.png` (id 0: today's painted cards),
+  `gui_x3_crack3d_1920x1080.png`, `gui_x3_crack_844x390.png` (a phone's x3: 2D), `gui_x3_burst3d_1920x1080.png`).
+  Owner's Studio checklist: 1 look at the 7 pictures and say go for the upload; 2 after the upload (or with the ids set
+  by hand in TextureIds), an x1 and an x3 spin on PC: the cards show the Blender eggs; 3 an x3 spin on PC with High
+  graphics: three turning 3D eggs on their plinths, each cracking into its 3D halves at its own burst; 4 the same on Low
+  and in the 844x390 emulator: the painted eggs, as before.
+  Open owner questions (Claude's pick first): 1 upload the 7 egg_card pictures as they are (pick) or change the view /
+  light first; 2 phones' x3: keep 2D (pick: 16.14's one-frame phone rule, no device measurement says three frames are
+  safe) or measure on a real phone and allow three; 3 merging: nothing is merged; `egg-cards` holds `roll-look`.
 - 2026-10-28 (player ruling, wave 5 dungeon camera): the Camera shake setting OFF turns off ONLY the hit shakes; the dungeon entrance rush, the room walk-in shot and the FOV punch on big attacks always play (short, skippable). The rush is skipped when the camera is > 60 studs from the gate.
 - Evolve button; 2nd evolution only Epic+; level cap 100 for all pets (XP curve keeps rising).
 - Presses become food plants, Collector = Coin Magnet, Kitchen = Food Machine, Gym = Training Place.
