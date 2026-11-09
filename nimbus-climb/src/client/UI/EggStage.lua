@@ -20,7 +20,12 @@
 -- (Task 2): every egg rises onto a flat lit plinth in its Pedestal box (HatchLook.Plinth: neutral, popping 0.6 -> 1 and
 -- fading in over the rise), Gemini's tweak from Rare up at the first shake (the plinth, the cloud ring and faint turning
 -- rays take the rarity colour; x3: the rays for the best pull only), the burst's punch (Stage's UIScale "Punch", High
--- only), the sparks capped at 16 on phones; below Rare the plinth takes its colour at the burst.
+-- only), the sparks capped at 16 on phones; below Rare the plinth takes its colour at the burst. The reveal (Task 3): the
+-- rarity word as letters popping in turn (HatchLook.Word: gradient, outline, glow; an x3 phone column one label), B's
+-- silhouette from Legendary (the best pull's pets black for 0.3 s, the chain waiting for them), the name / NEW! / note
+-- rising in, the glossy pills (HatchLook.Pill) rising in and the small chips (HatchLook.Chip / FastChip), a landscape
+-- phone's x1 reveal side by side (the pet left, the word, name, note and pills right: L.reveal1Side), the rays dimmed to
+-- 0.55 while the text shows.
 --
 --   EggStage.Init()                        connects the RouletteResult listener (once)
 --   EggStage.Show(result) -> bool          plays a RouletteResult (new shape with Pulls, or the old top-level shape); a
@@ -60,9 +65,10 @@
 -- Strips > Strip1..3 > Track (a non-scrolling ScrollingFrame: it clips) > Cell1..12, Streaks (High), Pointer; Hero > Spot,
 -- Rays, CloudRing1..3, Backlight1..3, Pedestal1..3 (> Top, Side, Ring, Glow1..2 or Glow: the plinth), Egg1..3 (> Cracks,
 -- Leaks), Halves1..3, CrackWord; Burst > Shock, Sparks (the pool of 64);
--- Reveal > Col1..3 > Banner (Word), Aura (Secret), Shell, Pet, Name, New (beside the name; an x3 phone / portrait column
+-- Reveal > TextIn (the rise's NumberValue), Col1..3 > Banner (Word: L1..Ln + Glow1..2, attribute Text; an x3 phone
+-- column: one TextLabel), Aura (Secret), Shell, Pet, Name, New (beside the name; an x3 phone / portrait column
 -- puts it on the pet frame's top-left corner, under an EvolvedRibbon when there is one), Note, EvolvedRibbon; BottomBar > Skip,
--- FastHatch, SpinAgain, Done; then Stage > Flash. (The Rays live in Hero, not Burst: a GUI frame's children cannot sit
+-- FastHatch (the chips), SpinAgain, Done (the pills), PillsIn; then Stage > Flash. (The Rays live in Hero, not Burst: a GUI frame's children cannot sit
 -- between another frame's, and the rays belong behind the egg, the pedestal and the pet.) Strip cells are recycled (at
 -- most 12 per strip): a cell re-skins its egg with EggArt.SetRarity when it wraps (Task 26: lean Medium eggs, Rim = false
 -- and Budget = 9; Rare and up wear a rarity ring on the cell's stroke; only the landed cell's egg gets its VFX).
@@ -192,8 +198,10 @@ K.PC = {
 	Crack1 = { Egg = 380, Word = 80 }, Crack3 = { Egg = 220, Word = 80 }, Col3 = 520,
 	R1 = { BannerY = 20, BannerH = 104, Word = 84, BannerMin = 320, BannerPad = 80, Gap = 8, Pet = 420, PetMin = 252, Ped = 90 / 420, NameGap = 16, NameH = 60, Name = 54, NoteGap = 4, NoteH = 32, Note = 24, NewW = 120, NewH = 44, New = 26 },
 	R3 = { BannerH = 70, Word = 56, BannerMin = 200, BannerPad = 60, Gap = 12, Pet = 300, PetMin = 180, PedW = 0.8, PedH = 0.18, NameGap = 12, NameH = 44, Name = 36, NoteGap = 4, NoteH = 52, Note = 20, NewW = 96, NewH = 36, New = 22 },
-	-- (Fast is 56 tall: at the PC factor's floor of 0.8, 1280x720 / 1366x768, it is still a 44.8 px tap target)
-	Bar = { Gap = 16, Text = 22, Skip = { 440, 300, 60 }, SkipReveal = { 360, 330, 60 }, Fast = { 280, 240, 56 }, Again = { 440, 400, 92 }, Done = { 220, 200, 92 }, Coin = 34, FastText = 22 },
+	-- (roll-look, spec 16.15 "Sizes") the glossy pills 56 tall (44.8 real px at the PC factor's floor of 0.8, 1280x720 /
+	-- 1366x768); the chips draw 36 px pills in tap boxes 56 tall for the same reason (the readability rule's 44 real px:
+	-- a 44 design px box is 35 px at the floor); { pref, min, height } in design px
+	Bar = { Gap = 16, Text = 22, ChipText = 18, Skip = { 260, 200, 56 }, SkipReveal = { 260, 200, 56 }, Fast = { 200, 170, 56 }, Again = { 380, 300, 56 }, Done = { 220, 180, 56 }, Coin = 30, FastText = 18 },
 }
 K.PHONE = {
 	TitleY = 6, TitleH = 28, TitleSize = 28, Side = 10,
@@ -202,7 +210,13 @@ K.PHONE = {
 	Crack1 = { Egg = 200, Word = 40 }, Crack3 = { Egg = 96, Word = 40 }, Col3 = 260,
 	R1 = { BannerY = 2, BannerH = 44, Word = 40, BannerMin = 160, BannerPad = 40, Gap = 2, Pet = 170, PetMin = 110, Lip = true, NameGap = 2, NameH = 30, Name = 26, NoteGap = 2, NoteH = 20, NoteH2 = 36, Note = 15, NewW = 70, NewH = 26, New = 15 },
 	R3 = { BannerH = 28, Word = 22, BannerMin = 120, BannerPad = 24, Gap = 2, Pet = 130, PetMin = 78, Lip = true, NameGap = 2, NameH = 22, Name = 18, NoteGap = 2, NoteH = 36, Note = 15, NewW = 56, NewH = 22, New = 15, RowPet = 110, RowMax = 150 },
-	Bar = { Gap = 8, Text = 16, Skip = { 208, 121, 44 }, SkipReveal = { 170, 128, 44 }, Fast = { 150, 135, 44 }, Again = { 220, 200, 44 }, Done = { 120, 110, 44 }, Coin = 20, FastText = 15 },
+	-- (roll-look) pills 46 tall, chips 44 px boxes drawing 32 px pills; Again3 = SPIN AGAIN x3 (its longer label beside the
+	-- price chip, measured with the real fonts)
+	Bar = { Gap = 8, Text = 16, ChipText = 15, Skip = { 150, 120, 44 }, SkipReveal = { 150, 120, 44 }, Fast = { 150, 135, 44 }, Again = { 208, 180, 46 }, Again3 = { 250, 226, 46 }, Done = { 118, 100, 46 }, Coin = 20, FastText = 15 },
+	-- (roll-look, spec 16.15 "Phone x1 landscape reveal", the pitch's phoneA) side by side: the pet in the left PetCol of
+	-- the width, the right column from the top: the word row (the 44 px band, letters at Word, Min WordMin), the name row
+	-- (+ NEW!), the note (two lines), the two pills; the chips stay on the bottom row
+	R1Side = { PetCol = 0.46, Pet = 170, PetMin = 110, WordRow = 48, BannerH = 44, BannerPad = 24, Word = 44, WordMin = 40, Gap = 8, NameH = 30, Name = 26, NoteGap = 4, NoteH = 36, Note = 15, PillGap = 12, NewW = 70, NewH = 26, New = 15 },
 }
 K.LIP = { W = 0.7, H = 12, Up = 8 }
 -- the crack's shakes as { from, to (shares of Crack), degrees }: two, one on Fast hatch
@@ -234,6 +248,15 @@ K.LOOK = {
 	PLINTH_IN = { From = 0.6 },
 	BURST_TINT = 0.15,
 	PHONE_SPARKS = 16,
+	-- (Task 3) B's silhouette (the best pull from Config.Rarities Order From: its pet black until Hold, white in Fill; the
+	-- reveal's chain waits for it); the chain (seconds from the silhouette's end: the letters Letter apart, the name / NEW! /
+	-- note rising TextRise px from Text in TextIn, NEW!'s pop to NewPeak at New in NewIn then NewOut, the pills rising
+	-- PillsRise px (less where the screen's edge is nearer) from Pills in PillsIn); the rays' rest while the text shows
+	SIL = { Hold = 0.3, Fill = 0.15, From = 5 },
+	CHAIN = { Letter = 0.05, Text = 0.2, TextRise = 16, TextIn = 0.25, New = 0.4, NewPeak = 1.3, NewIn = 0.15, NewOut = 0.12, Pills = 0.4, PillsRise = 20, PillsIn = 0.3 },
+	RAYS_TEXT = 0.55,
+	CHEVRONS = "\226\128\186\226\128\186",
+	NEW = { Edge = Color3.fromRGB(107, 66, 0), Ink = Color3.fromRGB(58, 34, 0), Tilt = -6 },
 }
 EggStage.Metrics = K
 
@@ -693,15 +716,16 @@ end
 -- layout (design px in Content's own space; Content = the screen under the top bar at the UIScale "Fit")
 ----------------------------------------------------------------------
 -- the bottom bar: { H, Items = { [name] = { x, y, w, h } } } for the roll (Skip, Fast hatch) or the reveal
-function L.bar(cw, P, portrait, reveal, hasAgain)
+function L.bar(cw, P, portrait, reveal, hasAgain, x3)
 	local spec = P.Bar
 	local gap = spec.Gap
 	local avail = cw - 24
+	local again = (x3 and spec.Again3) or spec.Again
 	local items
 	if reveal then
 		items = { { "Skip", spec.SkipReveal } }
 		if hasAgain then
-			items[#items + 1] = { "SpinAgain", spec.Again }
+			items[#items + 1] = { "SpinAgain", again }
 		end
 		items[#items + 1] = { "Done", spec.Done }
 		items[#items + 1] = { "FastHatch", spec.Fast }
@@ -750,15 +774,15 @@ function L.bar(cw, P, portrait, reveal, hasAgain)
 		local fastX = cw - 12 - fast
 		local okAnchored
 		if reveal then
-			local mainW = (hasAgain and (spec.Again[1] + gap) or 0) + spec.Done[1]
+			local mainW = (hasAgain and (again[1] + gap) or 0) + spec.Done[1]
 			local mainX = (cw - mainW) / 2
 			okAnchored = 12 + spec.SkipReveal[1] + gap <= mainX and mainX + mainW + gap <= fastX
 			if okAnchored then
 				out.Items.Skip = { x = 12, y = (h - spec.SkipReveal[3]) / 2, w = spec.SkipReveal[1], h = spec.SkipReveal[3] }
 				local x = mainX
 				if hasAgain then
-					out.Items.SpinAgain = { x = x, y = (h - spec.Again[3]) / 2, w = spec.Again[1], h = spec.Again[3] }
-					x = x + spec.Again[1] + gap
+					out.Items.SpinAgain = { x = x, y = (h - again[3]) / 2, w = again[1], h = again[3] }
+					x = x + again[1] + gap
 				end
 				out.Items.Done = { x = x, y = (h - spec.Done[3]) / 2, w = spec.Done[1], h = spec.Done[3] }
 			end
@@ -799,6 +823,21 @@ function L.bar(cw, P, portrait, reveal, hasAgain)
 	return out
 end
 
+-- (roll-look) a landscape phone's x1 reveal (side by side, its pills in the right column, L.reveal1Side): the bottom row
+-- holds the two chips only, Skip at the left, Fast hatch at the right
+function L.chipBar(cw, P)
+	local spec = P.Bar
+	local s, f = spec.SkipReveal, spec.Fast
+	local h = math.max(s[3], f[3])
+	return {
+		H = h,
+		Items = {
+			Skip = { x = 12, y = (h - s[3]) / 2, w = s[1], h = s[3] },
+			FastHatch = { x = cw - 12 - f[1], y = (h - f[3]) / 2, w = f[1], h = f[3] },
+		},
+	}
+end
+
 -- (review round 2) the roll's bar is the reveal's chip row: the Skip chip and the Fast hatch toggle sit exactly where the
 -- reveal puts "Tap to close" and its Fast hatch (one row, bottom-anchored like the reveal's), so the finger that skipped
 -- rests on the close chip or the Dim as the reveal appears, never on SPIN AGAIN or DONE (which also arm late: H.armed).
@@ -830,8 +869,12 @@ function L.compute(n, roll)
 	local lay = { Mode = mode, PC = pc, P = P, Scale = scale, W = cw, H = ch, Top = top, N = n, X3 = x3, Portrait = mode == "Portrait" }
 	local bm = (12 + bottom) / scale -- 12 screen px above the bottom inset at every scale
 	local hasAgain = roll ~= nil and roll.Roulette ~= nil
-	lay.BarReveal = L.bar(cw, P, lay.Portrait, true, hasAgain)
-	lay.BarRoll = L.rollBar(lay.BarReveal) or L.bar(cw, P, lay.Portrait, false, hasAgain)
+	lay.HasAgain = hasAgain
+	-- (roll-look) a landscape phone's x1 reveal stands side by side: its pills go to the right column, the bottom row
+	-- keeps the two chips (L.reveal1Side places the pills)
+	lay.Side = mode == "Phone" and not x3
+	lay.BarReveal = lay.Side and L.chipBar(cw, P) or L.bar(cw, P, lay.Portrait, true, hasAgain, x3)
+	lay.BarRoll = L.rollBar(lay.BarReveal) or L.bar(cw, P, lay.Portrait, false, hasAgain, x3)
 	lay.BarRoll.Y = ch - bm - lay.BarRoll.H
 	lay.BarReveal.Y = ch - bm - lay.BarReveal.H
 	lay.Title = { Y = P.TitleY, H = P.TitleH, Size = P.TitleSize }
@@ -869,10 +912,62 @@ function L.compute(n, roll)
 	-- the reveal
 	if x3 then
 		L.reveal3(lay, P, colW)
+	elseif lay.Side then
+		L.reveal1Side(lay, P)
 	else
 		L.reveal1(lay, P)
 	end
 	return lay
+end
+
+-- (roll-look, spec 16.15, the pitch's phoneA) a landscape phone's x1 reveal side by side: the pet (and its lip) centred in
+-- the left PetCol of the screen; the right column's stack (the word band, the name row, the note, the two pills) centred
+-- beside it; the pills are BottomBar's items placed up here (y relative to the bar), the chips stay on the bottom row
+function L.reveal1Side(lay, P)
+	local r = P.R1Side
+	local bar = P.Bar
+	local cw = lay.W
+	local col = { X = 0, Y = 0, W = cw, H = lay.H }
+	local leftW = math.floor(r.PetCol * cw)
+	local midTop, midBot = 2, lay.BarReveal.Y - 2
+	local avail = midBot - midTop
+	local pet = math.floor(Util.Clamp(math.min(r.Pet, leftW - 24, avail - 20), r.PetMin, r.Pet))
+	local petY = midTop + math.max(0, (avail - pet) / 2)
+	col.Pet = { X = (leftW - pet) / 2, Y = petY, S = pet }
+	col.Ped = { X = col.Pet.X + (pet - K.LIP.W * pet) / 2, Y = petY + pet - K.LIP.Up - K.LIP.H, W = K.LIP.W * pet, H = K.LIP.H }
+	col.Shell = L.shell(col.Pet, true)
+	local rx = leftW + r.Gap
+	local rw = cw - rx - 12
+	local items = {}
+	if lay.HasAgain then
+		items[1] = { "SpinAgain", bar.Again }
+	end
+	items[#items + 1] = { "Done", bar.Done }
+	local pillH = 0
+	for _, it in ipairs(items) do
+		pillH = math.max(pillH, it[2][3])
+	end
+	local stack = r.WordRow + r.Gap + r.NameH + r.NoteGap + r.NoteH + r.PillGap + pillH
+	local top = midTop + math.max(0, (avail - stack) / 2)
+	col.Banner = { CX = rx + rw / 2, Y = top + (r.WordRow - r.BannerH) / 2, H = r.BannerH, Word = r.Word, WordMin = r.WordMin, Min = 0, Pad = r.BannerPad, MaxW = rw }
+	col.NameX, col.NameW = rx, rw
+	col.NameY, col.NameH, col.NameSize = top + r.WordRow + r.Gap, r.NameH, r.Name
+	col.NoteY, col.NoteH, col.NoteSize = col.NameY + r.NameH + r.NoteGap, r.NoteH, r.Note
+	col.New = { W = r.NewW, H = r.NewH, Size = r.New }
+	-- the pills: preferred widths, down to their least when the column is narrow, centred under the note
+	local pref, least = bar.Gap * (#items - 1), bar.Gap * (#items - 1)
+	for _, it in ipairs(items) do
+		pref, least = pref + it[2][1], least + it[2][2]
+	end
+	local k = (pref <= rw or pref == least) and 1 or math.max(0, (rw - least) / (pref - least))
+	local x = rx + (rw - (least + (pref - least) * k)) / 2
+	local py = col.NoteY + r.NoteH + r.PillGap
+	for _, it in ipairs(items) do
+		local w = it[2][2] + (it[2][1] - it[2][2]) * k
+		lay.BarReveal.Items[it[1]] = { x = x, y = py + (pillH - it[2][3]) / 2 - lay.BarReveal.Y, w = w, h = it[2][3] }
+		x = x + w + bar.Gap
+	end
+	lay.Cols = { col }
 end
 
 -- x1 reveal: the Banner as the title band, then pet (+ pedestal or lip), name, note centred above the bottom bar
@@ -1151,42 +1246,44 @@ end
 
 function B.bar(roll)
 	local P = S.Lay.P
+	local phone = not S.Lay.PC
 	local bar = H.frame(S.Content, "BottomBar", { ZIndex = 6 })
 	roll.UI.Bar = bar
-	roll.UI.Skip = CloudUI.Button({ Name = "Skip", Text = "", Style = "Blue", TextSize = P.Bar.Text, ZIndex = 6, Parent = bar, Callback = function()
+	-- (roll-look, spec 16.15) the small chips (a 44 px tap box drawing a 36 / 32 px pill) and the glossy pills (HatchLook)
+	roll.UI.Skip = HatchLook.Chip(bar, { Name = "Skip", Text = "", TextSize = P.Bar.ChipText, Phone = phone, ZIndex = 6 })
+	roll.UI.Skip.Activated:Connect(function()
 		H.safe("tap", H.tap)
-	end })
-	-- (review round 2) DONE and SPIN AGAIN read Activated themselves (no CloudUI Callback, which drops a disabled button's
-	-- taps): a tap on them while they are not armed still counts as a tap and restarts the wait (H.press)
-	roll.UI.Done = CloudUI.Button({ Name = "Done", Text = "DONE", Style = "Green", TextSize = P.Bar.Text, ZIndex = 6, Parent = bar })
+	end)
+	-- (review round 2) DONE and SPIN AGAIN read Activated themselves: a tap on them while they are not armed still counts
+	-- as a tap and restarts the wait (H.press)
+	roll.UI.Done = HatchLook.Pill(bar, { Name = "Done", Kind = "Green", Text = "DONE", TextSize = P.Bar.Text, Phone = phone, ZIndex = 6 })
 	roll.UI.Done.Activated:Connect(function()
 		H.safe("done", H.doneTap)
 	end)
-	local again = CloudUI.Button({ Name = "SpinAgain", Text = "", Style = "Gold", TextSize = P.Bar.Text, ZIndex = 6, Parent = bar })
+	local again = HatchLook.Pill(bar, { Name = "SpinAgain", Kind = "Gold", Text = "SPIN AGAIN", TextSize = P.Bar.Text, Price = true, Coin = P.Bar.Coin, Phone = phone, ZIndex = 6 })
 	again.Activated:Connect(function()
 		H.safe("again", H.againTap)
 	end)
-	local row = H.frame(again, "Row", { Size = UDim2.fromScale(1, 1), ZIndex = 7 })
-	Util.Create("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, VerticalAlignment = Enum.VerticalAlignment.Center, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder, Parent = row })
-	local lbl = H.label(row, "Label", "SPIN AGAIN", "Button", P.Bar.Text, { ZIndex = 7, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, P.Bar.Text + 6), LayoutOrder = 1 })
-	local coin = H.frame(row, "Coin", { Size = UDim2.fromOffset(P.Bar.Coin, P.Bar.Coin), LayoutOrder = 2, ZIndex = 7 })
+	local parts = HatchLook.PillParts(again)
+	local z = parts.Coin.ZIndex
 	if roll.Currency == "Gems" then
-		local gem = GemIcon.New(coin, P.Bar.Coin, { ZIndex = 8 })
+		local gem = GemIcon.New(parts.Coin, P.Bar.Coin, { ZIndex = z })
 		gem.Position = UDim2.fromOffset(0, 0)
 	else
-		NeonKit.Icon(coin, "Tokens", P.Bar.Coin).ZIndex = 8
+		NeonKit.Icon(parts.Coin, "Tokens", P.Bar.Coin).ZIndex = z
 	end
-	local price = H.label(row, "Price", "", "Display", P.Bar.Text, { ZIndex = 7, AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, P.Bar.Text + 6), LayoutOrder = 3 })
-	roll.UI.Again, roll.UI.AgainLabel, roll.UI.AgainCoin, roll.UI.AgainPrice = again, lbl, coin, price
-	-- the Fast hatch toggle (ClientSettings FastHatch: the profile, every device)
-	local fast = Util.Create("TextButton", { Name = "FastHatch", Text = "", AutoButtonColor = false, BorderSizePixel = 0, BackgroundColor3 = Theme.Colors.PanelTop, BackgroundTransparency = 0.05, ZIndex = 6, Parent = bar })
-	H.corner(fast, 12)
-	H.stroke(fast, Theme.Colors.PanelLight, 2)
-	local sw = H.frame(fast, "Switch", { AnchorPoint = Vector2.new(0, 0.5), BackgroundTransparency = 0, ZIndex = 7 })
-	H.corner(sw, 0.5)
-	local knob = H.frame(sw, "Knob", { AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = K.WHITE, BackgroundTransparency = 0, ZIndex = 8 })
-	H.corner(knob, 0.5)
-	H.label(fast, "Label", "Fast hatch", "Label", P.Bar.FastText, { ZIndex = 7, TextXAlignment = Enum.TextXAlignment.Left })
+	roll.UI.Again, roll.UI.AgainLabel, roll.UI.AgainCoin, roll.UI.AgainPrice = again, parts.Label, parts.Coin, parts.Price
+	-- the pills' rise (spec 16.15 "Pills"): one NumberValue tweened 0 -> 1 drives both (H.pillsIn)
+	roll.UI.Pills = { again, roll.UI.Done }
+	roll.UI.PillParts = { parts, HatchLook.PillParts(roll.UI.Done) }
+	roll.UI.Rise = {}
+	local pillsIn = Util.Create("NumberValue", { Name = "PillsIn", Value = 1, Parent = bar })
+	roll.PillsIn = pillsIn
+	pillsIn:GetPropertyChangedSignal("Value"):Connect(function()
+		H.pillsIn(roll, pillsIn.Value)
+	end)
+	-- the Fast hatch chip (ClientSettings FastHatch: the profile, every device)
+	local fast = HatchLook.FastChip(bar, { Name = "FastHatch", TextSize = P.Bar.FastText, Phone = phone, ZIndex = 6 })
 	fast.Activated:Connect(function()
 		H.safe("fast", function()
 			ClientSettings.Set("FastHatch", ClientSettings.Get("FastHatch") ~= true)
@@ -1198,32 +1295,35 @@ end
 
 function H.paintFast(roll)
 	local fast = roll and roll.UI.Fast
-	if not fast then
-		return
+	if fast and fast.Parent then
+		HatchLook.SetFast(fast, ClientSettings.Get("FastHatch") == true)
 	end
-	local on = ClientSettings.Get("FastHatch") == true
-	local sw = fast:FindFirstChild("Switch")
-	local knob = sw and sw:FindFirstChild("Knob")
-	if sw then
-		sw.BackgroundColor3 = on and Theme.Colors.Good or Theme.Colors.PanelLight
+end
+
+-- (roll-look) the pills' rise at k (0 = low and clear .. 1 = in place); H.applyBar keeps each pill's rise on the screen
+function H.pillsIn(roll, k)
+	roll.PillK = k
+	for i, btn in ipairs(roll.UI.Pills or {}) do
+		if btn.Parent then
+			HatchLook.PillIn(roll.UI.PillParts[i], k, roll.UI.Rise[btn.Name] or 0)
+		end
 	end
-	if knob then
-		knob.Position = on and UDim2.new(1, -knob.Size.X.Offset - 3, 0.5, 0) or UDim2.new(0, 3, 0.5, 0)
-	end
-	fast:SetAttribute("On", on)
 end
 
 -- the reveal columns (one per pull, in the server's order)
 function B.cols(roll)
 	local reveal = roll.UI.Reveal
+	local lay = S.Lay
 	local brief = #roll.Pulls > 1 -- (review round 3) an x3 column's note leaves the name out: it sits right above
 	for j, pull in ipairs(roll.Pulls) do
 		local col = H.frame(reveal, "Col" .. j, { ZIndex = 4 })
-		local color = H.color(pull.Rarity)
-		local banner = H.frame(col, "Banner", { BackgroundColor3 = Theme.Darken(color, 0.55), BackgroundTransparency = 0.05, ZIndex = 5 })
-		H.corner(banner, 14)
-		H.stroke(banner, color, 3)
-		H.label(banner, "Word", string.upper(pull.Rarity) .. "!", "Title", 22, { Size = UDim2.fromScale(1, 1), ZIndex = 6, TextColor3 = color })
+		-- (roll-look, spec 16.15 "Reveal word") the Banner is the word's box (no plate, no border): the rarity word as
+		-- letters (gradient, outline, glow) popping in turn; an x3 phone column keeps one label
+		local banner = H.frame(col, "Banner", { ZIndex = 5 })
+		local g = lay.Cols[j]
+		local word = HatchLook.Word(banner, string.upper(pull.Rarity) .. "!", pull.Rarity, g and g.Banner.Word or 22, {
+			Letters = lay.PC or roll.N == 1, ZIndex = 6, Measure = H.titleW,
+		})
 		if pull.Rarity == "Secret" then
 			-- (Task 27) Secret's violet aura: a soft ring behind the pet, inside its frame
 			local aura = H.frame(col, "Aura", { AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = K.AURA, BackgroundTransparency = 0.8, ZIndex = 4 })
@@ -1243,20 +1343,67 @@ function B.cols(roll)
 			Spin = "spin", Excited = 1, Flap = 1.5, ZIndex = 5, Evolved = stage >= 1 and stage or nil, Detail = stage >= 1 and "Low" or nil,
 		})
 		roll.Views[#roll.Views + 1] = view
-		H.label(col, "Name", pull.Def.Name, "Title", 18, { ZIndex = 5, TextColor3 = color, TextTruncate = Enum.TextTruncate.AtEnd })
+		local vf = view and view.Frame
+		if vf and not vf:IsA("ViewportFrame") then
+			vf = vf:FindFirstChildWhichIsA("ViewportFrame", true)
+		end
+		-- (roll-look, the mock's sceneA) the name white in the round display face with the ink outline under the coloured word
+		local name = H.label(col, "Name", pull.Def.Name, "Display", 18, { ZIndex = 5, TextColor3 = K.WHITE, TextTruncate = Enum.TextTruncate.AtEnd })
 		-- (ZIndex 6 / 7 like the EvolvedRibbon: on a phone's x3 it sits on the pet frame's corner, over the pet's view)
-		local new = H.frame(col, "New", { BackgroundColor3 = K.GOLD, BackgroundTransparency = 0, ZIndex = 6, Visible = pull.IsNew })
-		H.corner(new, 8)
-		H.stroke(new, K.INK, 2)
-		H.label(new, "Text", "NEW!", "Button", 15, { Size = UDim2.fromScale(1, 1), ZIndex = 7 })
-		H.label(col, "Note", EggStage.NoteText(pull, pull.Rarity, brief), "Body", 15, { ZIndex = 5, TextWrapped = true, TextColor3 = Theme.Colors.Muted })
+		-- (roll-look) NEW! is a small gold pill with ink text (the mock's newPill), popping in at the chain's SIL + 0.4
+		local new = H.frame(col, "New", { BackgroundColor3 = K.WHITE, BackgroundTransparency = 0, ZIndex = 6, Visible = pull.IsNew })
+		H.corner(new, 0.5)
+		Util.Create("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(255, 224, 138), Color3.fromRGB(240, 166, 52)), Parent = new })
+		H.stroke(new, K.LOOK.NEW.Edge, 2)
+		local newText = Theme.Label("NEW!", "Button", { Size = 15, Stroke = 1 })
+		newText.Name, newText.Size, newText.ZIndex, newText.TextColor3, newText.Parent = "Text", UDim2.fromScale(1, 1), 7, K.LOOK.NEW.Ink, new
+		local newPop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = new })
+		local note = H.label(col, "Note", EggStage.NoteText(pull, pull.Rarity, brief), "Body", 15, { ZIndex = 5, TextWrapped = true, TextColor3 = Theme.Colors.Muted })
 		if stage >= 1 then
 			local ribbon = H.frame(col, "EvolvedRibbon", { BackgroundColor3 = K.GOLD, BackgroundTransparency = 0, Rotation = 8, ZIndex = 6 })
 			H.corner(ribbon, 10)
 			H.stroke(ribbon, K.INK, 2)
 			H.label(ribbon, "Text", stage >= 2 and "Evolved II" or "Evolved", "Button", 15, { Size = UDim2.fromScale(1, 1), ZIndex = 7 })
 		end
-		roll.Cols[j] = { Root = col, Shell = shell, Pet = pet, Pop = pop }
+		-- the chain's fades: { object, property, its shown value } (the name and note: their text, classic stroke, outline)
+		local fade = {}
+		for _, l in ipairs({ name, note }) do
+			fade[#fade + 1] = { l, "TextTransparency", 0 }
+			fade[#fade + 1] = { l, "TextStrokeTransparency", l.TextStrokeTransparency }
+			local outline = l:FindFirstChild("TextOutline")
+			if outline then
+				fade[#fade + 1] = { outline, "Transparency", outline.Transparency }
+			end
+		end
+		roll.Cols[j] = {
+			Root = col, Shell = shell, Pet = pet, Pop = pop, Banner = banner, Word = word, Name = name, New = new, NewPop = newPop, Note = note, View = vf, Fade = fade, Rest = {},
+			Sil = H.order(pull.Rarity) >= K.LOOK.SIL.From,
+		}
+	end
+	-- the name / NEW! / note rise (spec 16.15): one NumberValue tweened 0 -> 1 drives every column (H.textIn)
+	local textIn = Util.Create("NumberValue", { Name = "TextIn", Value = 1, Parent = reveal })
+	roll.TextIn = textIn
+	textIn:GetPropertyChangedSignal("Value"):Connect(function()
+		H.textIn(roll, textIn.Value)
+	end)
+end
+
+-- the stage's text widths in the Title face (the reveal word's letters)
+function H.titleW(text, size)
+	return H.textW(text, size, "Title")
+end
+
+-- (roll-look) the name / NEW! / note at k (0 = 16 px low and clear .. 1 = at their layout places, shown)
+function H.textIn(roll, k)
+	roll.TextK = k
+	local rise = (1 - k) * K.LOOK.CHAIN.TextRise
+	for _, c in pairs(roll.Cols) do
+		for key, at in pairs(c.Rest or {}) do
+			c[key].Position = at + UDim2.fromOffset(0, rise)
+		end
+		for _, f in ipairs(c.Fade or {}) do
+			f[1][f[2]] = 1 - k * (1 - f[3])
+		end
 	end
 end
 
@@ -1418,14 +1565,22 @@ function H.applyReveal(roll, lay)
 		local g = lay.Cols[j]
 		if g then
 			H.place(c.Root, g.X, g.Y, g.W, g.H)
-			local banner = c.Root:FindFirstChild("Banner")
-			local word = banner and banner:FindFirstChild("Word")
+			local banner, word = c.Banner, c.Word
 			if word then
-				word.TextSize = g.Banner.Word
-				local bw = math.max(g.Banner.Min, H.textW(word.Text, g.Banner.Word, "Title") + g.Banner.Pad)
-				bw = math.min(bw, g.Banner.MaxW or (g.W - 24))
-				local bx = g.Banner.Left and g.Banner.X or (g.W - bw) / 2
+				-- (roll-look) the word at its layout size (a landscape phone's right column: down to WordMin when it is long)
+				local maxW = g.Banner.MaxW or (g.W - 24)
+				local size = g.Banner.Word
+				word:SetSize(size)
+				if g.Banner.WordMin and word:Width() > maxW - 8 then
+					size = math.max(g.Banner.WordMin, math.floor(size * (maxW - 8) / word:Width()))
+					word:SetSize(size)
+				end
+				local bw = math.min(math.max(g.Banner.Min, word:Width() + g.Banner.Pad), maxW)
+				local bx = g.Banner.Left and g.Banner.X or (g.Banner.CX and (g.Banner.CX - bw / 2)) or (g.W - bw) / 2
 				H.place(banner, bx, g.Banner.Y, bw, g.Banner.H)
+				-- (its glow stays on the screen: the room above the word's top and to the nearer side, in Content's px)
+				local top, cx = g.Y + g.Banner.Y + (g.Banner.H - size) / 2, g.X + bx + bw / 2
+				word:Place(bw / 2, (g.Banner.H - size) / 2, { Up = math.max(0, top - 1), Half = math.max(0, math.min(cx, lay.W - cx) - 1) })
 			end
 			H.place(c.Pet, g.Pet.X + g.Pet.S / 2, g.Pet.Y + g.Pet.S / 2, g.Pet.S, g.Pet.S)
 			c.Pet.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -1452,7 +1607,7 @@ function H.applyReveal(roll, lay)
 			local nx, nw = g.NameX or 12, g.NameW or (g.W - 24)
 			local corner = g.New.Corner == true
 			local newW = (new and new.Visible and not corner) and (g.New.W + 8) or 0
-			local textW = math.min(nw - newW, H.textW(name.Text, g.NameSize, "Title") + 8)
+			local textW = math.min(nw - newW, H.textW(name.Text, g.NameSize, "Display") + 8)
 			local rowX = g.Row and nx or (nx + (nw - textW - newW) / 2)
 			name.TextSize = g.NameSize
 			H.place(name, rowX, g.NameY, textW, g.NameH)
@@ -1466,7 +1621,7 @@ function H.applyReveal(roll, lay)
 					new.Rotation = -8
 				else
 					H.place(new, rowX + textW + 8, g.NameY + (g.NameH - g.New.H) / 2, g.New.W, g.New.H)
-					new.Rotation = 0
+					new.Rotation = K.LOOK.NEW.Tilt
 				end
 				local t = new:FindFirstChild("Text")
 				if t then
@@ -1484,7 +1639,12 @@ function H.applyReveal(roll, lay)
 				end
 			end
 			c.Pop.Scale = roll.PopDone and 1 or c.Pop.Scale
+			-- (roll-look) the rest places the chain's rise ends at (H.textIn)
+			c.Rest.Name, c.Rest.New, c.Rest.Note = name.Position, new and new.Position or nil, note.Position
 		end
+	end
+	if roll.TextK and roll.TextK < 1 then
+		H.textIn(roll, roll.TextK)
 	end
 end
 
@@ -1492,13 +1652,15 @@ function H.applyBar(roll, lay)
 	local bar = roll.Revealed and lay.BarReveal or lay.BarRoll
 	H.place(roll.UI.Bar, 0, bar.Y, lay.W, bar.H)
 	local P = lay.P
-	local skipText
-	if roll.Revealed then
-		skipText = lay.PC and "Tap anywhere to close" or "Tap to close"
-	else
-		skipText = lay.PC and "Tap anywhere to skip" or "Tap to skip"
+	local phone = not lay.PC
+	-- (roll-look) the chips' text with the chevrons, the chips' and pills' sizes of this layout
+	local verb = roll.Revealed and "close" or "skip"
+	HatchLook.SetChipText(roll.UI.Skip, (lay.PC and "Tap anywhere to " or "Tap to ") .. verb .. " " .. K.LOOK.CHEVRONS)
+	HatchLook.SizeChip(roll.UI.Skip, P.Bar.ChipText, phone)
+	HatchLook.SizeChip(roll.UI.Fast, P.Bar.FastText, phone)
+	for _, btn in ipairs(roll.UI.Pills) do
+		HatchLook.SizePill(btn, P.Bar.Text, phone, P.Bar.Coin)
 	end
-	roll.UI.Skip.Text = skipText
 	for _, name in ipairs({ "Skip", "FastHatch", "SpinAgain", "Done" }) do
 		local o = roll.UI.Bar:FindFirstChild(name)
 		local it = bar.Items[name]
@@ -1506,25 +1668,16 @@ function H.applyBar(roll, lay)
 			o.Visible = it ~= nil
 			if it then
 				H.place(o, it.x, it.y, it.w, it.h)
-			end
-			if o:IsA("TextButton") and name ~= "FastHatch" and name ~= "SpinAgain" then
-				o.TextSize = P.Bar.Text
+				-- the pills rise PillsRise px into place, less where the screen's bottom edge is nearer (never off it)
+				roll.UI.Rise[name] = math.max(0, math.min(K.LOOK.CHAIN.PillsRise, lay.H - (bar.Y + it.y + it.h) - 1))
 			end
 		end
 	end
-	local fast = roll.UI.Fast
-	local sw, label = fast:FindFirstChild("Switch"), fast:FindFirstChild("Label")
-	local fh = (bar.Items.FastHatch and bar.Items.FastHatch.h) or 44
-	local swW, swH = lay.PC and 52 or 34, lay.PC and 28 or 20
-	H.place(sw, 10, fh / 2, swW, swH)
-	local knob = sw:FindFirstChild("Knob")
-	if knob then
-		knob.Size = UDim2.fromOffset(swH - 6, swH - 6)
-	end
-	label.TextSize = P.Bar.FastText
-	H.place(label, 10 + swW + 8, 0, ((bar.Items.FastHatch and bar.Items.FastHatch.w) or 150) - swW - 26, fh)
 	H.paintFast(roll)
 	H.refreshAgain()
+	if roll.PillK then
+		H.pillsIn(roll, roll.PillK)
+	end
 end
 
 -- SPIN AGAIN: the same roulette, currency and spins; disabled with the reason when it cannot be paid or is locked, and
@@ -1560,18 +1713,21 @@ function H.refreshAgain()
 	end
 	local lbl = roll.UI.AgainLabel
 	lbl.Text = reason or ((roll.N > 1) and "SPIN AGAIN x3" or "SPIN AGAIN")
-	roll.UI.AgainCoin.Visible = reason == nil
-	roll.UI.AgainPrice.Visible = reason == nil
 	local priceText = (S.Lay and S.Lay.PC) and Util.Commas(price) or Theme.ShortNumber(price)
+	local chipW = 0
 	if reason == nil then
-		-- (review round 3) measured with the real fonts (TextService): "SPIN AGAIN x3" + coin + "3,000" filled the 204 px button
-		-- of a 640x360 phone edge to edge, so a row that would not keep AGAIN_SLACK free takes the short price ("3K")
-		local need = H.textW(lbl.Text, lbl.TextSize, "Button") + roll.UI.AgainCoin.Size.X.Offset + H.textW(priceText, roll.UI.AgainPrice.TextSize, "Display") + 12 + K.AGAIN_SLACK
-		if need > btn.Size.X.Offset then
+		-- (review round 3) measured with the real fonts (TextService): a label that would not fit beside the price chip (its
+		-- content's width at the least) takes the short price ("3K"); (roll-look) the chip holds the coin and the price
+		local labelW = H.textW(lbl.Text, lbl.TextSize, "Button")
+		local fits
+		chipW, fits = HatchLook.FitPill(btn, labelW, H.textW(priceText, roll.UI.AgainPrice.TextSize, "Display"))
+		if not fits then
 			priceText = Theme.ShortNumber(price, 1000)
+			chipW = HatchLook.FitPill(btn, labelW, H.textW(priceText, roll.UI.AgainPrice.TextSize, "Display"))
 		end
 	end
 	roll.UI.AgainPrice.Text = priceText
+	HatchLook.SetPillChip(btn, chipW) -- (a reason: no chip, the label takes the whole pill)
 	CloudUI.SetDisabled(btn, reason ~= nil or S.Pending or not armed)
 end
 
@@ -2332,10 +2488,11 @@ function R.reveal(roll, skipped)
 		roll.Pool:Burst(Vector2.new(px, py), best.Rarity, H.sparks(best.Rarity))
 		R.flash(roll, loud, false)
 	end
-	-- Legendary and up keep slow gold rays behind the best pet; the others' rays fade with the burst's tail
+	-- Legendary and up keep slow gold rays behind the best pet (roll-look: dimmed to RAYS_TEXT while the text shows, the
+	-- clutter cap); the others' rays fade with the burst's tail
 	if loud then
 		roll.Rays:Recolor(best.Rarity) -- (x3: the last burst may have been a lesser egg's)
-		roll.Rays:Flash(0.45, 0.2)
+		roll.Rays:Flash(K.LOOK.RAYS_TEXT, 0.2)
 		roll.Rays:Spin(true)
 	elseif roll.Rays.Frame and roll.Rays.Frame.Visible then
 		roll.Rays:Flash(1, K.TAIL)
@@ -2346,16 +2503,13 @@ function R.reveal(roll, skipped)
 			end
 		end)
 	end
-	-- the pets pop (0 -> past 1 -> 1, Back), the banners slide in
+	-- the pets pop (0 -> past 1 -> 1, Back); (roll-look, spec 16.15) from Legendary the best pull's pets stand black (B's
+	-- silhouette) and the chain (the letters, the name / NEW! / note, the pills) waits SIL for them
 	for _, c in pairs(roll.Cols) do
 		H.tween(c.Pop, 0.35, { Scale = 1 }, Enum.EasingStyle.Back)
-		local banner = c.Root:FindFirstChild("Banner")
-		if banner then
-			local at = banner.Position
-			banner.Position = at + UDim2.fromOffset(0, -24)
-			H.tween(banner, 0.3, { Position = at }, Enum.EasingStyle.Back)
-		end
 	end
+	local sil = H.order(best.Rarity) >= K.LOOK.SIL.From and K.LOOK.SIL.Hold or 0
+	R.chain(roll, sil)
 	local mine = roll
 	task.delay(0.36, function()
 		if S.Roll == mine then
@@ -2374,6 +2528,78 @@ function R.reveal(roll, skipped)
 	R.revealSound(roll)
 	-- (review round 1) set last: an error anywhere above leaves it nil, and teardown("Error") toasts the pulls then
 	roll.RevealBuilt = true
+end
+
+-- (roll-look, spec 16.15 "Easing and timings") the reveal's chain from sil (0, or the silhouette's hold): the silhouettes
+-- fill at sil, the letters pop 0.05 s apart from sil, the name / NEW! / note rise at sil + 0.2, NEW! pops at sil + 0.4,
+-- the pills rise at sil + 0.4 (they still arm by the arming rule: H.armed). Every beat is a task.delay checked against
+-- roll.ChainToken (a resize settles the chain and drops the rest: H.settleChain) and the roll still showing
+function R.chain(roll, sil)
+	local C = K.LOOK.CHAIN
+	roll.ChainToken = (roll.ChainToken or 0) + 1
+	local token = roll.ChainToken
+	local function later(at, fn)
+		task.delay(math.max(0, at), function()
+			if S.Roll == roll and roll.ChainToken == token and not roll.Dead then
+				H.safe("chain", fn)
+			end
+		end)
+	end
+	for _, c in pairs(roll.Cols) do
+		c.Word:Pop(sil, C.Letter, S.Tweens)
+		c.NewPop.Scale = 0
+		if c.Sil and sil > 0 and c.View then
+			c.View.ImageColor3 = Color3.new(0, 0, 0)
+		end
+	end
+	H.textIn(roll, 0)
+	H.pillsIn(roll, 0)
+	if sil > 0 then
+		later(sil, function()
+			for _, c in pairs(roll.Cols) do
+				if c.Sil and c.View then
+					H.tween(c.View, K.LOOK.SIL.Fill, { ImageColor3 = K.WHITE })
+				end
+			end
+		end)
+	end
+	later(sil + C.Text, function()
+		roll.TextIn.Value = 0
+		H.tween(roll.TextIn, C.TextIn, { Value = 1 })
+	end)
+	later(sil + C.New, function()
+		for _, c in pairs(roll.Cols) do
+			if c.New.Visible then
+				local pop = c.NewPop
+				local up = H.tween(pop, C.NewIn, { Scale = C.NewPeak })
+				if up then
+					up.Completed:Connect(function(state)
+						if state == Enum.PlaybackState.Completed and pop.Parent then
+							H.tween(pop, C.NewOut, { Scale = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+						end
+					end)
+				end
+			end
+		end
+	end)
+	later(sil + C.Pills, function()
+		roll.PillsIn.Value = 0
+		H.tween(roll.PillsIn, C.PillsIn, { Value = 1 })
+	end)
+end
+
+-- the chain at its end at once (a resize mid-chain: its tweens were cancelled), the beats still pending dropped
+function H.settleChain(roll)
+	roll.ChainToken = (roll.ChainToken or 0) + 1
+	for _, c in pairs(roll.Cols) do
+		c.Word:Settle()
+		c.NewPop.Scale = 1
+		if c.View and c.View.Parent then
+			c.View.ImageColor3 = K.WHITE
+		end
+	end
+	H.textIn(roll, 1)
+	H.pillsIn(roll, 1)
 end
 
 -- the confetti falls once the pool can hold all of it (the burst's sparks go back first)
@@ -2710,10 +2936,6 @@ function H.relayout()
 	end
 	for _, c in pairs(roll.Cols) do
 		c.Pop.Scale = 1
-		local banner = c.Root:FindFirstChild("Banner")
-		if banner then
-			banner.Position = UDim2.fromOffset(0, 0) -- (H.apply places it)
-		end
 	end
 	roll.PopDone = roll.Revealed
 	-- a resize mid-rise ends the rise where it was going (H.apply puts the eggs and pedestals at their new places)
@@ -2725,6 +2947,9 @@ function H.relayout()
 	end
 	H.apply()
 	H.settleHero(roll)
+	if roll.Revealed then
+		H.settleChain(roll) -- (roll-look) every letter at 1, the silhouette filled, the text and the pills in place
+	end
 	-- (roll-look) the strips at rest: the window's bounce done and its tell colour snapped, a landed card's pop at 1.09
 	for _, st in pairs(roll.Strips) do
 		if st.Win then
@@ -2743,7 +2968,7 @@ function H.relayout()
 	if roll.Rays and roll.Rays.Frame then
 		if roll.Revealed and H.order(roll.Pulls[roll.Best].Rarity) >= K.LOUD_FROM then
 			roll.Rays.Frame.Visible = true
-			roll.Rays.Frame.GroupTransparency = 0.45
+			roll.Rays.Frame.GroupTransparency = K.LOOK.RAYS_TEXT
 			roll.Rays:Spin(true)
 		elseif not roll.Revealed and roll.TweakRays and not roll.RaysAt then
 			-- (roll-look) Gemini's tweak played and no burst yet: the faint turning rays stay

@@ -26,12 +26,27 @@
 --       a resize mid-tweak (snapped, nothing stranded, the roll reaches the reveal); x3 (three plinths, the tweak per egg,
 --       the rays only for the best pull); the budgets at every frame (x1 450 / x3 750 instances, 24 tweens, 1 Heartbeat,
 --       <= 2 effects)
+--   client_roll_look_reveal  (client, 1920x1080 and 1280x720; Task 3) the reveal: the rarity word as letters (Col1 > Banner >
+--       Word: a Frame with the attribute Text and L1..Ln, each with its UIGradient (Shade .78 / .22 / -.18), UIStroke (Shade
+--       -.68, round(size x 0.12)) and UIScale Pop) popping one after another 0.05 s apart (0 -> 1.3 -> 1) with its glow
+--       behind; no silhouette below Legendary; the name and note sliding up 16 px and fading in from SIL + 0.2, NEW!'s pop at
+--       SIL + 0.4; the glossy pills (SpinAgain / Done: Shadow, Face > Body, Shine, Label; SpinAgain's Chip > Coin + Price)
+--       56 tall (44.8 real px at the 0.8 floor), disabled (grey, Label 176,184,206) until armed, rising into place by SIL +
+--       0.7; the chips (Skip, FastHatch: a 44 px tap box drawing a 36 px Pill; "Tap anywhere to skip / close" + the
+--       chevrons); Legendary: the pet's ViewportFrame black until SIL 0.3, then white, the letters waiting for it, the rays
+--       resting at 0.55; a Skip / tap into the silhouette and a mash on SPIN AGAIN while the pills rise change nothing (no
+--       BuyRoulette, the reveal completes); x3 (three letter words at 56 px, the silhouette only on the Legendary column);
+--       the budgets at every frame (x1 450 / x3 750 instances; <= 32 tweens in the reveal's first 0.7 s, <= 24 after)
 --   client_roll_look_phone  (phone world; Task 1) 844x390 and 640x360: the x1 cards 130 x 160 with 15 px plate words, the
 --       window's 3 px stroke and 10 px notches, every text >= 15 px and nothing off the screen (RedoGeom.check); the x3 lite
 --       cards (no Shadow, Tint or Plate; <= 16 instances a cell); (Task 2) the phone plinth (1.1 x / 0.24 x the egg, Top
---       0.667, 2 px rim), the sparks capped at 16 (an Epic's 28), the reveal's 12 px lip (the Top only)
--- Deterministic: mock clock only. SoundFx.Play is spied (quiet) and put back; the viewport, the Fast hatch setting and the
--- attributes are put back. Plain Lua 5.1 syntax only.
+--       0.667, 2 px rim), the sparks capped at 16 (an Epic's 28), the reveal's 12 px lip (the Top only); (Task 3) the x1
+--       landscape reveal side by side (the pet in the left 0.46, the word, name, note and the two 46 px pills in the right
+--       column, the chips on the bottom row, nothing overlapping, 15 px text, one ViewportFrame) at 844x390 and 640x360;
+--       portrait 360x640 (the stack, the word as 40 px letters in the 44 px band); x3 phone words as one TextLabel; a
+--       rotation mid-chain (844x390 -> 390x844 at reveal + 0.15: every letter at 1, the pills in place, the text shown)
+-- Deterministic: mock clock only (a tween applies its goal when it completes). SoundFx.Play is spied (quiet) and put back;
+-- the viewport, the Fast hatch setting and the attributes are put back. Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
 local guarded = SmokeCommon.guarded
@@ -310,6 +325,89 @@ function G.plinth(j)
 		out.Glow1 = ped:FindFirstChild("Glow1")
 	end
 	return out
+end
+-- (Task 3) the reveal's parts
+function G.col(j)
+	local content = G.content()
+	local reveal = content and content:FindFirstChild("Reveal")
+	return reveal and reveal:FindFirstChild("Col" .. j) or nil
+end
+function G.colPart(j, name)
+	local col = G.col(j)
+	return col and col:FindFirstChild(name, true) or nil
+end
+function G.bar(name)
+	local content = G.content()
+	local bar = content and content:FindFirstChild("BottomBar")
+	return bar and bar:FindFirstChild(name) or nil
+end
+function G.box(o)
+	local p, s = o.AbsolutePosition, o.AbsoluteSize
+	return { x = p.X, y = p.Y, w = s.X, h = s.Y }
+end
+function G.intersects(a, b)
+	local tol = 0.51
+	return a.x < b.x + b.w - tol and b.x < a.x + a.w - tol and a.y < b.y + b.h - tol and b.y < a.y + a.h - tol
+end
+function G.letters(word)
+	local out = {}
+	local i = 1
+	while word and word:FindFirstChild("L" .. i) do
+		out[i] = word:FindFirstChild("L" .. i)
+		i = i + 1
+	end
+	return out
+end
+function G.popOf(o)
+	local p = o and o:FindFirstChild("Pop")
+	return p and p.Scale or -1
+end
+function G.view(j)
+	local pet = G.colPart(j, "Pet")
+	return pet and pet:FindFirstChildWhichIsA("ViewportFrame", true) or nil
+end
+function G.viewports()
+	local n = 0
+	local gui = G.gui()
+	for _, d in ipairs(gui and gui:GetDescendants() or {}) do
+		if d:IsA("ViewportFrame") then
+			n = n + 1
+		end
+	end
+	return n
+end
+-- the reveal's budgets at one moment: instances, tweens (tweenCap: 32 in the reveal's first 0.7 s), Heartbeats, effects
+function G.overReveal(ES, cap, tweenCap)
+	local st = ES.Stats()
+	local gui = G.gui()
+	local tw = gui and G.tweensUnder(gui) or 0
+	local bad = {}
+	if (st.Instances or 0) > cap then
+		bad[#bad + 1] = "instances " .. st.Instances
+	end
+	if tw > tweenCap or (st.Tweens or 0) > tweenCap then
+		bad[#bad + 1] = fmt("tweens %d (stage %d) > %d", tw, st.Tweens or 0, tweenCap)
+	end
+	if (st.Heartbeats or 0) > 1 then
+		bad[#bad + 1] = "heartbeats " .. tostring(st.Heartbeats)
+	end
+	return #bad > 0 and table.concat(bad, ", ") or nil
+end
+-- shows a result and steps every 1/60 s until its reveal: -> os.clock() at the reveal (nil if it never came); `each(t,
+-- phase)` sees every frame
+function G.toReveal(ES, result, each)
+	local t0 = os.clock()
+	ES.Show(result)
+	while os.clock() - t0 < 10 do
+		Mock.Advance(FINE, FINE)
+		if each then
+			each(os.clock() - t0, ES.Phase())
+		end
+		if ES.Phase() == "Reveal" then
+			return os.clock()
+		end
+	end
+	return nil
 end
 function G.fakeGui(name, enabled)
 	local g = Instance.new("ScreenGui")
@@ -987,6 +1085,302 @@ S.client_roll_look_open = guarded("client_roll_look_open", function()
 end)
 
 ----------------------------------------------------------------------------------------------------
+-- client_roll_look_reveal
+----------------------------------------------------------------------------------------------------
+local CHEVRONS = "\226\128\186\226\128\186"
+
+S.client_roll_look_reveal = guarded("client_roll_look_reveal", function()
+	local env = G.setup(1920, 1080)
+	local ES, HL, PC = env.ES, env.HL, env.PC
+	if not T.check(type(HL) == "table" and type(HL.Word) == "function" and type(HL.Pill) == "function" and type(HL.Chip) == "function" and type(HL.FastChip) == "function",
+		"roll look reveal: HatchLook.Word / Pill / Chip / FastChip exist") or not T.check(type(ES) == "table" and type(PC) == "table", "roll look reveal: EggStage and PetCatalog load") then
+		G.restore(env)
+		return
+	end
+	local KC = G.KC()
+	local ok, err = pcall(function()
+		local rgb = Color3.fromRGB
+		local WHITE, BLACK = Color3.new(1, 1, 1), Color3.new(0, 0, 0)
+		local epic = PC.RarityPool("Cloud", "Epic")[1]
+		local leg = PC.RarityPool("Storm", "Legendary")[1]
+		------------------------------------------------------------------ an Epic x1 at 1920x1080, every 1/60 s
+		local rec = { maxInst = 0, rollSkip = nil, rollFast = nil }
+		local tRev = G.toReveal(ES, G.result(PC, "Cloud", { epic }), function(t, ph)
+			local st = ES.Stats()
+			rec.maxInst = math.max(rec.maxInst, st.Instances or 0)
+			if ph == "Strip" and not rec.rollSkip then
+				local skip = G.bar("Skip")
+				local lbl = skip and skip:FindFirstChild("Label", true)
+				rec.rollSkip = lbl and lbl.Text or "?"
+			end
+		end)
+		if not T.check(tRev ~= nil, "roll look reveal: (setup) the Epic x1 reaches its reveal") then
+			return
+		end
+		T.eq(rec.rollSkip, "Tap anywhere to skip " .. CHEVRONS, "roll look chips: the roll's Skip chip reads 'Tap anywhere to skip' + the chevrons")
+		local word = G.colPart(1, "Word")
+		local letters = G.letters(word)
+		T.check(word ~= nil and word:IsA("Frame") and word:GetAttribute("Text") == "EPIC!" and word.Parent and word.Parent.Name == "Banner",
+			"roll look word: Col1 > Banner > Word is a Frame with the attribute Text 'EPIC!'", word and (word.ClassName .. " " .. tostring(word:GetAttribute("Text"))) or "no Word")
+		local partsOk = #letters == 5
+		for _, l in ipairs(letters) do
+			partsOk = partsOk and l:IsA("TextLabel") and l:FindFirstChildOfClass("UIGradient") ~= nil and l:FindFirstChildOfClass("UIStroke") ~= nil and l:FindFirstChild("Pop") ~= nil
+		end
+		T.check(partsOk, "roll look word: five letters L1..L5, each a TextLabel with its UIGradient, UIStroke and UIScale Pop", tostring(#letters))
+		local samples = {}
+		local function sample(label)
+			samples[label] = {}
+			for i, l in ipairs(letters) do
+				samples[label][i] = G.popOf(l)
+			end
+			local glow = word and (word:FindFirstChild("Glow1") or word:FindFirstChild("Glow"))
+			samples[label].glow = glow and (glow:IsA("ImageLabel") and glow.ImageTransparency or glow.BackgroundTransparency) or -1
+		end
+		local name, note, new = G.colPart(1, "Name"), G.colPart(1, "Note"), G.colPart(1, "New")
+		local view = G.view(1)
+		local again, done = G.bar("SpinAgain"), G.bar("Done")
+		local function faceOf(btn)
+			return btn and btn:FindFirstChild("Face")
+		end
+		local first = {
+			nameY = name and name.AbsolutePosition.Y or 0, nameA = name and name.TextTransparency or -1, noteA = note and note.TextTransparency or -1,
+			faceY = faceOf(again) and faceOf(again).Position.Y.Offset or -1, faceA = faceOf(again) and faceOf(again).GroupTransparency or -1,
+			view = view and view.ImageColor3 or nil,
+		}
+		sample("start")
+		local newPeak, overEarly, overLate = 0, nil, nil
+		local disabled01, labelOff = nil, nil
+		while os.clock() - tRev < 1.2 do
+			Mock.Advance(FINE, FINE)
+			local dt = os.clock() - tRev
+			local o = G.overReveal(ES, 450, dt <= 0.7 and 32 or 24)
+			if o then
+				if dt <= 0.7 then
+					overEarly = overEarly or fmt("%.2f s: %s", dt, o)
+				else
+					overLate = overLate or fmt("%.2f s: %s", dt, o)
+				end
+			end
+			rec.maxInst = math.max(rec.maxInst, ES.Stats().Instances or 0)
+			if new then
+				newPeak = math.max(newPeak, G.popOf(new))
+			end
+			if dt >= 0.1 and disabled01 == nil then
+				local lbl = again and again:FindFirstChild("Label", true)
+				disabled01 = again ~= nil and done ~= nil and again:GetAttribute("Disabled") == true and done:GetAttribute("Disabled") == true
+				labelOff = lbl and lbl.TextColor3 or nil
+			end
+			if dt >= 0.14 and not samples.p14 then
+				sample("p14")
+			end
+			if dt >= 0.36 and not samples.p36 then
+				sample("p36")
+			end
+			if dt >= 0.3 and not samples.p30 then
+				sample("p30")
+				rec.rays30 = G.hero("Rays") ~= nil and G.shown(G.hero("Rays"))
+			end
+			if dt >= 0.6 and not samples.p60 then
+				sample("p60")
+			end
+		end
+		T.check(samples.start[1] == 0 and samples.start[5] == 0, "roll look word: every letter starts at Pop 0", fmt("L1 %.2f L5 %.2f", samples.start[1], samples.start[5]))
+		T.check(samples.p14[1] >= 1.25 and samples.p14[1] <= 1.31 and samples.p14[5] == 0, "roll look word: at + 0.14 s L1 has popped to its 1.3 peak and L5 waits (0.05 s a letter)",
+			fmt("L1 %.2f L5 %.2f", samples.p14[1], samples.p14[5]))
+		T.check(samples.p36[5] >= 1.25 and math.abs(samples.p36[1] - 1) <= 0.01, "roll look word: at + 0.36 s L5 peaks and L1 is back at 1", fmt("L1 %.2f L5 %.2f", samples.p36[1], samples.p36[5]))
+		local allOne = true
+		for i = 1, 5 do
+			allOne = allOne and math.abs((samples.p60[i] or -1) - 1) <= 0.01
+		end
+		T.check(allOne, "roll look word: by + 0.6 s every letter rests at 1")
+		local glowRest = 1 - HL.Metrics.WORD.GlowA -- (a fallback disc's own transparency at rest; its gradient fades it out)
+		T.check(samples.start.glow >= 0.99 and abs(samples.p30.glow - glowRest) <= 0.01, "roll look word: the glow behind fades in by + 0.3 s", fmt("%.2f -> %.2f", samples.start.glow, samples.p30.glow))
+		if letters[1] then
+			local g = letters[1]:FindFirstChildOfClass("UIGradient")
+			local kp = g and g.Color.Keypoints or {}
+			local sk = letters[1]:FindFirstChildOfClass("UIStroke")
+			T.check(#kp == 3 and G.near(kp[1].Value, rgb(238, 223, 250)) and G.near(kp[2].Value, rgb(193, 140, 237)) and G.near(kp[3].Value, rgb(144, 89, 190)) and g.Rotation == 90,
+				"roll look word: L1's gradient is Shade(Epic, .78 / .22 / -.18) top to bottom", fmt("%s / %s / %s", G.c3(kp[1] and kp[1].Value), G.c3(kp[2] and kp[2].Value), G.c3(kp[3] and kp[3].Value)))
+			-- (the mock's 0.12 x size SVG stroke is centred on the glyph's edge: 0.06 x size shows outside it, a UIStroke's
+			-- whole thickness: 5 px at 84)
+			T.check(sk and G.near(sk.Color, rgb(56, 35, 74)) and sk.Thickness == 5 and letters[1].TextSize == 84, "roll look word: L1's outline Shade(Epic, -.68), 5 px at 84 px (the mock's visible outline)", sk and fmt("%s %s, %d px", G.c3(sk.Color), tostring(sk.Thickness), letters[1].TextSize) or "no stroke")
+		end
+		T.check(first.view ~= nil and G.near(first.view, WHITE), "roll look reveal: an Epic pet is never a silhouette (its ViewportFrame white)", G.c3(first.view))
+		-- the name / note slide up 16 px and fade in from + 0.2 s (over 0.25 s); NEW! pops at + 0.4 s
+		T.check(name ~= nil and first.nameA >= 0.99 and first.noteA >= 0.99, "roll look reveal: the name and note start transparent", fmt("%.2f / %.2f", first.nameA, first.noteA))
+		if name then
+			local rise = first.nameY - name.AbsolutePosition.Y
+			T.check(math.abs(rise - 16) <= 0.6 and name.TextTransparency <= 0.01 and note.TextTransparency <= 0.01, "roll look reveal: ...rise 16 px into place and show by + 0.45 s",
+				fmt("rise %.1f, %.2f / %.2f", rise, name.TextTransparency, note.TextTransparency))
+		end
+		T.check(newPeak >= 1.25 and new ~= nil and math.abs(G.popOf(new) - 1) <= 0.01, "roll look reveal: NEW! pops past 1.25 and rests at 1", fmt("peak %.2f", newPeak))
+		-- the pills
+		local function pillParts(btn)
+			local face = faceOf(btn)
+			return { Shadow = btn and btn:FindFirstChild("Shadow"), Face = face, Body = face and face:FindFirstChild("Body"), Shine = btn and btn:FindFirstChild("Shine", true),
+				Label = btn and btn:FindFirstChild("Label", true), Chip = btn and btn:FindFirstChild("Chip", true) }
+		end
+		local pa, pd = pillParts(again), pillParts(done)
+		T.check(again and again:IsA("TextButton") and pa.Shadow and pa.Face and pa.Face:IsA("CanvasGroup") and pa.Body and pa.Body:FindFirstChildOfClass("UIGradient") and pa.Body:FindFirstChildOfClass("UIStroke") and pa.Shine and pa.Label,
+			"roll look pills: SPIN AGAIN is a glossy pill (Shadow, Face (CanvasGroup) > Body (gradient + 3 px stroke), Shine, Label)")
+		T.check(pa.Chip and pa.Chip:FindFirstChild("Coin") and pa.Chip:FindFirstChild("Price"), "roll look pills: SPIN AGAIN's price chip holds the Coin and the Price")
+		T.check(done and done:IsA("TextButton") and pd.Shadow and pd.Face and pd.Body and pd.Shine and pd.Label and pd.Label.Text == "DONE", "roll look pills: DONE is a glossy pill too")
+		T.check(again and done and math.abs(again.AbsoluteSize.Y - 56) <= 0.6 and math.abs(done.AbsoluteSize.Y - 56) <= 0.6, "roll look pills: 56 px tall at 1920x1080",
+			again and fmt("%.1f / %.1f", again.AbsoluteSize.Y, done.AbsoluteSize.Y) or "none")
+		T.check(first.faceY >= 8 and first.faceY <= 20 and first.faceA >= 0.99, "roll look pills: they start lower (up to 20 px: the room under them) and clear", fmt("%.1f px, %.2f", first.faceY, first.faceA))
+		T.check(pa.Face and pa.Face.Position.Y.Offset == 0 and pa.Face.GroupTransparency <= 0.01 and pd.Face and pd.Face.Position.Y.Offset == 0, "roll look pills: ...and are in place, shown, by + 0.7 s")
+		T.check(disabled01 == true and labelOff ~= nil and G.near(labelOff, rgb(176, 184, 206)), "roll look pills: disabled before ARM_AFTER (grey: the Label 176,184,206)", G.c3(labelOff))
+		T.check(again:GetAttribute("Disabled") == false and done:GetAttribute("Disabled") == false and G.near(pa.Label.TextColor3, rgb(58, 34, 0)) and G.near(pd.Label.TextColor3, WHITE),
+			"roll look pills: armed: SPIN AGAIN's label ink 58,34,0, DONE's white", fmt("%s / %s", G.c3(pa.Label and pa.Label.TextColor3), G.c3(pd.Label and pd.Label.TextColor3)))
+		-- the chips
+		local skip, fast = G.bar("Skip"), G.bar("FastHatch")
+		-- (PC: the tap box is 56 design px, 44.8 real px at the 0.8 floor: the readability rule; the pill it draws is 36)
+		local function chipOk(btn, boxH, pillH)
+			local pill = btn and btn:FindFirstChild("Pill")
+			return btn ~= nil and btn:IsA("TextButton") and math.abs(btn.AbsoluteSize.Y - boxH) <= 0.6 and pill ~= nil and math.abs(pill.AbsoluteSize.Y - pillH) <= 0.6
+		end
+		T.check(chipOk(skip, 56, 36) and chipOk(fast, 56, 36), "roll look chips: Skip and Fast hatch are tap boxes (56 design px on PC) drawing a 36 px pill",
+			skip and fmt("%.1f / %.1f", skip.AbsoluteSize.Y, skip:FindFirstChild("Pill") and skip:FindFirstChild("Pill").AbsoluteSize.Y or -1) or "none")
+		local skipLbl = skip and skip:FindFirstChild("Label", true)
+		T.eq(skipLbl and skipLbl.Text, "Tap anywhere to close " .. CHEVRONS, "roll look chips: on the reveal the Skip chip reads 'Tap anywhere to close' + the chevrons")
+		local before = env.CS.Get("FastHatch")
+		Mock.Click(fast)
+		G.advance(STEP)
+		T.check(env.CS.Get("FastHatch") == (before ~= true) and fast:GetAttribute("On") == (before ~= true), "roll look chips: Fast hatch toggles ClientSettings and its switch (attribute On)")
+		Mock.Click(fast)
+		G.advance(STEP)
+		T.check(not rec.rays30, "roll look reveal: an Epic's rays are gone by + 0.3 s")
+		T.check(rec.maxInst <= 450, "roll look reveal: x1 Stats().Instances <= 450 at every frame", tostring(rec.maxInst))
+		T.check(overEarly == nil and overLate == nil, "roll look reveal: <= 32 tweens in the reveal's first 0.7 s, <= 24 after, one Heartbeat", tostring(overEarly or overLate))
+		RedoGeom.check(G.content(), "roll look reveal 1920x1080 x1", { MinText = 18, NoOverlap = { "Banner", "Pedestal1", "Name", "Note", "SpinAgain", "Done", "Skip", "FastHatch" }, Skip = { Rays = true, Flash = true, Vignette = true } })
+		ES.Done()
+		G.advance(0.4)
+		------------------------------------------------------------------ 1280x720: the pills are 44.8 real px
+		Mock.SetViewport(1280, 720)
+		G.advance(0.3)
+		tRev = G.toReveal(ES, G.result(PC, "Cloud", { epic }))
+		G.advance(1.0)
+		again = G.bar("SpinAgain")
+		T.check(tRev ~= nil and again and math.abs(again.AbsoluteSize.Y - 44.8) <= 0.5 and math.abs(G.bar("Done").AbsoluteSize.Y - 44.8) <= 0.5, "roll look pills: 44.8 real px at 1280x720 (the 0.8 floor)",
+			again and fmt("%.1f", again.AbsoluteSize.Y) or "none")
+		T.check(G.bar("Skip") and math.abs(G.bar("Skip").AbsoluteSize.Y - 44.8) <= 0.5 and math.abs(G.bar("FastHatch").AbsoluteSize.Y - 44.8) <= 0.5, "roll look chips: 44.8 real px tap boxes at 1280x720")
+		RedoGeom.check(G.content(), "roll look reveal 1280x720 x1", { MinText = 14, NoOverlap = { "Banner", "Pedestal1", "Name", "Note", "SpinAgain", "Done", "Skip", "FastHatch" }, Skip = { Rays = true, Flash = true, Vignette = true } })
+		ES.Done()
+		G.advance(0.4)
+		Mock.SetViewport(1920, 1080)
+		G.advance(0.3)
+		------------------------------------------------------------------ a Legendary x1: the silhouette holds 0.3 s, the chain waits for it
+		if T.check(leg ~= nil, "roll look silhouette: (setup) a Storm Legendary") then
+			tRev = G.toReveal(ES, G.result(PC, "Storm", { leg }))
+			local s = {}
+			local b0 = #KC.serverCalls("BuyRoulette")
+			local mashed = 0
+			while tRev and os.clock() - tRev < 1.25 do
+				Mock.Advance(FINE, FINE)
+				local dt = os.clock() - tRev
+				local v = G.view(1)
+				local l1 = G.letters(G.colPart(1, "Word"))[1]
+				local nm = G.colPart(1, "Name")
+				if dt >= 0.1 and not s.p10 then
+					s.p10 = { view = v and v.ImageColor3, l1 = G.popOf(l1) }
+					ES.Skip() -- a skip into the silhouette: the reveal ignores it
+					Mock.Click(G.bar("Done")) -- a tap on DONE before ARM_AFTER does nothing
+					local dim = G.stage() and G.stage():FindFirstChild("Dim")
+					if dim then
+						Mock.Click(dim)
+					end
+				end
+				if dt >= 0.44 and not s.p44 then
+					s.p44 = { l1 = G.popOf(l1) }
+				end
+				if dt >= 0.47 and not s.p47 then
+					s.p47 = { view = v and v.ImageColor3 }
+				end
+				if dt >= 0.6 and not s.p60 then
+					s.p60 = { nameA = nm and nm.TextTransparency or -1 }
+				end
+				if dt >= 0.78 and not s.p78 then
+					s.p78 = { nameA = nm and nm.TextTransparency or -1, rays = G.hero("Rays") and G.hero("Rays").GroupTransparency or -1 }
+				end
+				-- a mash on SPIN AGAIN while the pills rise (SIL + 0.4 .. + 0.9)
+				if dt >= 0.7 and dt <= 1.2 and mashed < 6 and math.floor(dt * 12) % 2 == 0 then
+					Mock.Click(G.bar("SpinAgain"))
+					mashed = mashed + 1
+				end
+			end
+			T.check(s.p10 and s.p10.view and G.near(s.p10.view, BLACK, 3) and s.p10.l1 == 0, "roll look silhouette: Legendary: at + 0.1 s the pet is black and no letter has popped",
+				s.p10 and fmt("%s, L1 %.2f", G.c3(s.p10.view), s.p10.l1) or "no sample")
+			T.check(s.p47 and s.p47.view and G.near(s.p47.view, WHITE, 3), "roll look silhouette: ...white again by + 0.3 + 0.16 s", s.p47 and G.c3(s.p47.view) or "no sample")
+			T.check(s.p44 and s.p44.l1 >= 1.25, "roll look silhouette: ...the letters start at SIL 0.3 (L1 at its peak by + 0.44 s)", s.p44 and fmt("%.2f", s.p44.l1) or "no sample")
+			T.check(s.p60 and s.p60.nameA >= 0.99 and s.p78 and s.p78.nameA <= 0.01, "roll look silhouette: ...the name waits too (still clear at + 0.6 s, shown by + 0.78 s)",
+				fmt("%.2f -> %.2f", s.p60 and s.p60.nameA or -1, s.p78 and s.p78.nameA or -1))
+			T.check(s.p78 and math.abs(s.p78.rays - 0.55) <= 0.02, "roll look reveal: Legendary's rays rest at GroupTransparency 0.55 while the text shows", s.p78 and fmt("%.2f", s.p78.rays) or "-")
+			T.eq(ES.Phase(), "Reveal", "roll look silhouette: a Skip, a DONE tap and a Dim tap into the silhouette leave the reveal up")
+			T.check(mashed >= 6 and #KC.serverCalls("BuyRoulette") - b0 == 0, "roll look pills: a mash on SPIN AGAIN while the pills rise sends no BuyRoulette", fmt("%d taps, %d sends", mashed, #KC.serverCalls("BuyRoulette") - b0))
+			local lw = G.letters(G.colPart(1, "Word"))
+			local done1 = #lw == 10
+			for _, l in ipairs(lw) do
+				done1 = done1 and math.abs(G.popOf(l) - 1) <= 0.01
+			end
+			local fa = G.bar("SpinAgain") and G.bar("SpinAgain"):FindFirstChild("Face")
+			local v = G.view(1)
+			T.check(done1 and fa and fa.Position.Y.Offset == 0 and fa.GroupTransparency <= 0.01 and v and G.near(v.ImageColor3, WHITE, 3), "roll look silhouette: ...and the reveal is complete by + 1.25 s (colour, ten letters at 1, pills in place)",
+				fmt("%d letters", #lw))
+			ES.Done()
+			G.advance(0.4)
+		end
+		------------------------------------------------------------------ x3 (Storm Rare / Legendary / Common or Epic) at 1920x1080
+		local storm = function(r)
+			return PC.RarityPool("Storm", r)[1]
+		end
+		local d1, d2, d3 = storm("Rare") or epic, leg, storm("Common") or epic
+		local maxX3 = 0
+		tRev = G.toReveal(ES, G.result(PC, "Storm", { d1, d2, d3 }), function()
+			maxX3 = math.max(maxX3, ES.Stats().Instances or 0)
+		end)
+		local x3over = nil
+		local sil3 = nil
+		while tRev and os.clock() - tRev < 1.3 do
+			Mock.Advance(FINE, FINE)
+			local dt = os.clock() - tRev
+			maxX3 = math.max(maxX3, ES.Stats().Instances or 0)
+			local o = G.overReveal(ES, 750, dt <= 0.7 and 32 or 24)
+			if o and not x3over then
+				x3over = fmt("%.2f s: %s", dt, o)
+			end
+			if dt >= 0.1 and not sil3 then
+				sil3 = {}
+				for j = 1, 3 do
+					local v = G.view(j)
+					sil3[j] = v and v.ImageColor3 or nil
+				end
+			end
+		end
+		local wordsOk, bad = true, ""
+		for j, def in ipairs({ d1, d2, d3 }) do
+			local w = G.colPart(j, "Word")
+			local ls = G.letters(w)
+			local want = string.upper(def.Rarity) .. "!"
+			if not (w and w:GetAttribute("Text") == want and #ls == #want and ls[1].TextSize == 56) then
+				wordsOk = false
+				bad = bad .. fmt("col %d %s %d letters; ", j, w and tostring(w:GetAttribute("Text")) or "none", #ls)
+			end
+		end
+		T.check(tRev ~= nil and wordsOk, "roll look x3: three letter words at 56 px in the server's order", bad)
+		T.check(sil3 and sil3[2] and G.near(sil3[2], BLACK, 3) and sil3[1] and G.near(sil3[1], WHITE) and sil3[3] and G.near(sil3[3], WHITE),
+			"roll look x3: the silhouette only on the Legendary column", sil3 and fmt("%s / %s / %s", G.c3(sil3[1]), G.c3(sil3[2]), G.c3(sil3[3])) or "no sample")
+		T.check(maxX3 <= 750, "roll look x3: Stats().Instances <= 750 at every frame", tostring(maxX3))
+		T.check(x3over == nil, "roll look x3: <= 32 tweens in the reveal's first 0.7 s, <= 24 after", tostring(x3over))
+		ES.Done()
+		G.advance(0.4)
+	end)
+	if not ok then
+		T.check(false, "roll look reveal: the scenario ran without an error", tostring(err))
+	end
+	G.restore(env)
+end)
+
+----------------------------------------------------------------------------------------------------
 -- client_roll_look_phone
 ----------------------------------------------------------------------------------------------------
 S.client_roll_look_phone = guarded("client_roll_look_phone", function()
@@ -1086,6 +1480,118 @@ S.client_roll_look_phone = guarded("client_roll_look_phone", function()
 		T.check(p.Top and G.shown(p.Top) and abs(p.Top.AbsoluteSize.Y - 12) <= 0.6 and not G.shown(p.Side) and not G.shown(p.Ring) and not G.shown(p.Glow1),
 			"roll look phone: the reveal keeps the 12 px lip (the plinth's Top only)", p.Top and fmt("%.1f px", p.Top.AbsoluteSize.Y) or "no Top")
 		ES.Close()
+		G.advance(0.4)
+		------------------------------------------------------------------ (Task 3) the x1 landscape reveal side by side
+		for _, size in ipairs({ { 844, 390 }, { 640, 360 } }) do
+			local W = size[1]
+			local label = fmt("roll look phone reveal %dx%d", size[1], size[2])
+			Mock.SetViewport(size[1], size[2])
+			G.advance(0.3)
+			local tRev = G.toReveal(ES, G.result(PC, "Cloud", { epic }))
+			G.advance(1.0)
+			if T.check(tRev ~= nil and ES.Phase() == "Reveal", label .. ": (setup) the reveal") then
+				local split = 0.46 * W
+				local pet = G.colPart(1, "Pet")
+				local pb = pet and G.box(pet)
+				T.check(pb ~= nil and pb.x + pb.w / 2 < split and pb.x >= -0.6 and pb.w >= 110 - 0.6, label .. ": the pet (>= 110 px) stands in the left 0.46 of the screen",
+					pb and fmt("%.0f..%.0f (%.0f px) of %.0f", pb.x, pb.x + pb.w, pb.w, split) or "no pet")
+				local where = {}
+				for _, nm in ipairs({ "Banner", "Name", "Note" }) do
+					local b = G.colPart(1, nm) and G.box(G.colPart(1, nm))
+					if not (b and b.x >= split - 0.6 and b.x + b.w <= W + 0.6) then
+						where[#where + 1] = nm .. (b and fmt(" %.0f..%.0f", b.x, b.x + b.w) or " none")
+					end
+				end
+				for _, nm in ipairs({ "SpinAgain", "Done" }) do
+					local b = G.bar(nm) and G.box(G.bar(nm))
+					if not (b and b.x >= split - 0.6 and b.x + b.w <= W + 0.6 and abs(b.h - 46) <= 0.6) then
+						where[#where + 1] = nm .. (b and fmt(" %.0f..%.0f x %.1f", b.x, b.x + b.w, b.h) or " none")
+					end
+				end
+				T.check(#where == 0, label .. ": the word, name, note and the two 46 px pills sit in the right column", table.concat(where, "; "))
+				local note, again, skip = G.colPart(1, "Note"), G.bar("SpinAgain"), G.bar("Skip")
+				if note and again and skip then
+					local nb, ab, sb = G.box(note), G.box(again), G.box(skip)
+					T.check(ab.y >= nb.y + nb.h - 0.6 and ab.y + ab.h <= sb.y + 0.6, label .. ": the pills sit under the note, above the chips' row",
+						fmt("note ends %.0f, pills %.0f..%.0f, chips from %.0f", nb.y + nb.h, ab.y, ab.y + ab.h, sb.y))
+				end
+				for _, nm in ipairs({ "Skip", "FastHatch" }) do
+					local o = G.bar(nm)
+					local pill = o and o:FindFirstChild("Pill")
+					T.check(o ~= nil and abs(o.AbsoluteSize.Y - 44) <= 0.6 and pill ~= nil and abs(pill.AbsoluteSize.Y - 32) <= 0.6, label .. ": the " .. nm .. " chip is a 44 px box drawing a 32 px pill",
+						o and fmt("%.1f / %s", o.AbsoluteSize.Y, pill and fmt("%.1f", pill.AbsoluteSize.Y) or "no pill") or "none")
+				end
+				local ls = G.letters(G.colPart(1, "Word"))
+				T.check(#ls == 5 and ls[1].TextSize >= 40 and ls[1].TextSize <= 44, label .. ": the word as letters at 44 px (40 at the least)", ls[1] and tostring(ls[1].TextSize) or "no letters")
+				local lip = G.hero("Pedestal1")
+				T.check(lip ~= nil and pb ~= nil and abs(lip.AbsoluteSize.Y - 12) <= 0.6 and abs((lip.AbsolutePosition.Y + lip.AbsoluteSize.Y) - (pb.y + pb.h - 8)) <= 0.6,
+					label .. ": the 12 px lip under the pet")
+				T.eq(G.viewports(), 1, label .. ": exactly one ViewportFrame (the pet's)")
+				RedoGeom.check(G.content(), label, { MinText = 15, NoOverlap = { "Banner", "Name", "Note", "SpinAgain", "Done", "Skip", "FastHatch", "Pedestal1" }, Skip = SKIP })
+			end
+			ES.Done()
+			G.advance(0.4)
+		end
+		------------------------------------------------------------------ portrait 360x640: the stack, the word as letters in the band
+		Mock.SetViewport(360, 640)
+		G.advance(0.3)
+		local tRevP = G.toReveal(ES, G.result(PC, "Cloud", { epic }))
+		G.advance(1.0)
+		local band = G.colPart(1, "Banner")
+		local lsP = G.letters(G.colPart(1, "Word"))
+		T.check(tRevP ~= nil and band ~= nil and abs(band.AbsoluteSize.Y - 44) <= 0.6 and abs(band.AbsolutePosition.Y - 60) <= 0.6 and #lsP == 5 and lsP[1].TextSize == 40,
+			"roll look phone portrait 360x640: the stack (the 44 px band at the top, the word as 40 px letters)", band and fmt("band %.1f at %.1f, %d letters", band.AbsoluteSize.Y, band.AbsolutePosition.Y, #lsP) or "no band")
+		RedoGeom.check(G.content(), "roll look phone portrait 360x640", { MinText = 15, NoOverlap = { "Banner", "Pedestal1", "Name", "Note", "SpinAgain", "Done", "Skip", "FastHatch" }, Skip = SKIP })
+		ES.Done()
+		G.advance(0.4)
+		------------------------------------------------------------------ x3 phone words: one TextLabel each
+		Mock.SetViewport(844, 390)
+		G.advance(0.3)
+		local storm3 = function(r)
+			return PC.RarityPool("Storm", r)[1]
+		end
+		local defs3 = { storm3("Rare") or epic, storm3("Legendary") or epic, storm3("Common") or epic }
+		G.toReveal(ES, G.result(PC, "Storm", defs3))
+		G.advance(1.0)
+		local labelsOk, why = true, ""
+		for j, def in ipairs(defs3) do
+			local w = G.colPart(j, "Word")
+			if not (w and w:IsA("TextLabel") and w:GetAttribute("Text") == string.upper(def.Rarity) .. "!" and w:FindFirstChild("L1") == nil) then
+				labelsOk = false
+				why = why .. fmt("col %d %s; ", j, w and w.ClassName or "none")
+			end
+		end
+		T.check(labelsOk, "roll look phone x3: each word is one TextLabel (no letters), its Text attribute set", why)
+		ES.Done()
+		G.advance(0.4)
+		------------------------------------------------------------------ a rotation mid-chain: 844x390 -> 390x844 at reveal + 0.15
+		Mock.SetViewport(844, 390)
+		G.advance(0.3)
+		local tRevR = G.toReveal(ES, G.result(PC, "Cloud", { epic }))
+		G.advance(0.15)
+		Mock.SetViewport(390, 844)
+		G.advance(STEP)
+		local function chainDone()
+			local ls = G.letters(G.colPart(1, "Word"))
+			local okL = #ls == 5
+			for _, l in ipairs(ls) do
+				okL = okL and abs(G.popOf(l) - 1) <= 0.01
+			end
+			local nm = G.colPart(1, "Name")
+			local faces = true
+			for _, b in ipairs({ "SpinAgain", "Done" }) do
+				local f = G.bar(b) and G.bar(b):FindFirstChild("Face")
+				faces = faces and f ~= nil and f.Position.Y.Offset == 0 and f.GroupTransparency <= 0.01
+			end
+			return okL and faces and nm ~= nil and nm.TextTransparency <= 0.01, fmt("letters %s, faces %s, name %.2f", tostring(okL), tostring(faces), nm and nm.TextTransparency or -1)
+		end
+		local done1, d1 = chainDone()
+		T.check(tRevR ~= nil and done1 and ES.Phase() == "Reveal", "roll look phone: a rotation mid-chain settles it at once (every letter at 1, the pills in place, the text shown)", d1)
+		G.advance(1.0)
+		local done2, d2 = chainDone()
+		T.check(done2 and ES.Phase() == "Reveal", "roll look phone: ...and nothing is left half way a second later", d2)
+		RedoGeom.check(G.content(), "roll look phone rotated 390x844", { MinText = 15, NoOverlap = { "Banner", "Pedestal1", "Name", "Note", "SpinAgain", "Done", "Skip", "FastHatch" }, Skip = SKIP })
+		ES.Done()
 		G.advance(0.4)
 	end)
 	if not ok then

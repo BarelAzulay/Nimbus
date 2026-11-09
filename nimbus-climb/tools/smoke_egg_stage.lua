@@ -774,7 +774,7 @@ S.client_egg_stage = guarded("client_egg_stage", function()
 		local note = G.colPart(1, "Note")
 		local nameL = G.colPart(1, "Name")
 		local newL = G.colPart(1, "New")
-		T.eq(word and word.Text, "EPIC!", "egg stage: the reveal Word reads 'EPIC!'")
+		T.eq(word and word:GetAttribute("Text"), "EPIC!", "egg stage: the reveal Word reads 'EPIC!'") -- (roll-look 16.15: a Frame of letters, its Text attribute)
 		T.eq(note and note.Text, "1 of " .. #epicPool .. " Epic pets " .. DOT .. " added to your pets", "egg stage: the reveal note (new)")
 		T.eq(nameL and nameL.Text, epic.Name, "egg stage: the reveal names the pet")
 		T.check(G.shown(newL), "egg stage: NEW! shows for a new pet")
@@ -992,7 +992,7 @@ S.client_egg_stage = guarded("client_egg_stage", function()
 			end
 		end
 		T.eq(cols, 3, "egg stage: x3 reveal shows three columns (name and note each)")
-		T.eq((G.colPart(2, "Word") or {}).Text, "LEGENDARY!", "egg stage: column 2 is pull 2 (the server's order, never re-sorted)")
+		T.eq(G.colPart(2, "Word") and G.colPart(2, "Word"):GetAttribute("Text"), "LEGENDARY!", "egg stage: column 2 is pull 2 (the server's order, never re-sorted)")
 		T.check(G.shown(G.colPart(3, "EvolvedRibbon")) and not G.shown(G.colPart(1, "EvolvedRibbon")), "egg stage: an evolved key's x3 column shows the EvolvedRibbon (only that column)")
 		local rev3 = 0
 		local list3 = soundsFrom(s3)
@@ -1188,8 +1188,8 @@ S.client_egg_stage = guarded("client_egg_stage", function()
 		-- button is off; it comes back by itself (refreshAgain every 8 heartbeats)
 		local function againState()
 			local btn = G.bar("SpinAgain")
-			local row = btn and btn:FindFirstChild("Row")
-			local lbl, price = row and row:FindFirstChild("Label"), row and row:FindFirstChild("Price")
+			-- (roll-look 16.15: the glossy pill: Face > Label, Face > Chip > Price)
+			local lbl, price = btn and btn:FindFirstChild("Label", true), btn and btn:FindFirstChild("Price", true)
 			return {
 				Text = lbl and tostring(lbl.Text) or "?",
 				Price = price ~= nil and G.shown(price),
@@ -1474,13 +1474,15 @@ S.client_egg_stage_mobile = guarded("client_egg_stage_mobile", function()
 			end
 			T.check(#bad == 0, label .. " real x3: with the real font widths every name and note fits; NEW! shows, clear of the name, note, banner and ribbon", table.concat(bad, "; "))
 			local again = G.bar("SpinAgain")
-			local row = again and again:FindFirstChild("Row")
-			local lbl, coin, price = row and row:FindFirstChild("Label"), row and row:FindFirstChild("Coin"), row and row:FindFirstChild("Price")
-			if T.check(lbl and coin and price and G.shown(price) and tostring(lbl.Text):find("x3", 1, true) ~= nil, label .. " real x3: SPIN AGAIN x3 shows its label, coin and price", lbl and tostring(lbl.Text) or "no row") then
-				local bw = again.Size.X.Offset
-				local need = RedoGeom.realWidth(lbl.Text, lbl.TextSize, lbl.Font) + coin.Size.X.Offset + RedoGeom.realWidth(price.Text, price.TextSize, price.Font) + 12
-				T.check(need + 8 <= bw + 0.5, label .. " real x3: SPIN AGAIN x3 + coin + price fits its button with 4 px clear each side (real font widths)",
-					fmt("'%s' + '%s' = %.1f px in %.1f", tostring(lbl.Text), tostring(price.Text), need, bw))
+			-- (roll-look 16.15: the glossy pill: the label beside the price chip, which holds the coin and the price)
+			local lbl, coin, price = again and again:FindFirstChild("Label", true), again and again:FindFirstChild("Coin", true), again and again:FindFirstChild("Price", true)
+			if T.check(lbl and coin and price and G.shown(price) and tostring(lbl.Text):find("x3", 1, true) ~= nil, label .. " real x3: SPIN AGAIN x3 shows its label, coin and price", lbl and tostring(lbl.Text) or "no label") then
+				local okL, dL = RedoGeom.fits(lbl)
+				local okP, dP = RedoGeom.fits(price)
+				local chip = price.Parent
+				local inside = chip ~= nil and lbl.AbsolutePosition.X + lbl.AbsoluteSize.X <= chip.AbsolutePosition.X + 0.6 and chip.AbsolutePosition.X + chip.AbsoluteSize.X <= again.AbsolutePosition.X + again.AbsoluteSize.X + 0.6
+				T.check(okL and okP and inside, label .. " real x3: SPIN AGAIN x3 fits its label room, the price its chip, side by side inside the pill (real font widths)",
+					dL .. " / " .. dP)
 			end
 		end)
 		ES.Metrics.MEASURE = savedMeasure
@@ -1566,8 +1568,15 @@ S.client_egg_stage_mobile = guarded("client_egg_stage_mobile", function()
 			skipClear(label .. " x1", rollSkip1)
 			if phone then
 				local banner, petF, lip = G.colPart(1, "Banner"), G.colPart(1, "Pet"), G.hero("Pedestal1")
-				T.check(banner ~= nil and abs(banner.AbsoluteSize.Y - 44) <= 0.6 and abs(banner.AbsolutePosition.Y - 60) <= 0.6, label .. " x1: the phone Banner is 44 tall, its top 2 px under the 58 px inset",
-					banner and fmt("%.1f at %.1f", banner.AbsoluteSize.Y, banner.AbsolutePosition.Y) or "none")
+				if w > h then
+					-- (roll-look 16.15 "Phone x1 landscape reveal": side by side, the word's 44 px band in the right column)
+					T.check(banner ~= nil and petF ~= nil and abs(banner.AbsoluteSize.Y - 44) <= 0.6 and banner.AbsolutePosition.Y >= 60 - 0.6 and banner.AbsolutePosition.X >= 0.46 * w - 0.6
+						and petF.AbsolutePosition.X + petF.AbsoluteSize.X / 2 < 0.46 * w, label .. " x1: the phone Banner is 44 tall, in the right column beside the pet (side by side)",
+						banner and fmt("%.1f at %.1f,%.1f", banner.AbsoluteSize.Y, banner.AbsolutePosition.X, banner.AbsolutePosition.Y) or "none")
+				else
+					T.check(banner ~= nil and abs(banner.AbsoluteSize.Y - 44) <= 0.6 and abs(banner.AbsolutePosition.Y - 60) <= 0.6, label .. " x1: the phone Banner is 44 tall, its top 2 px under the 58 px inset",
+						banner and fmt("%.1f at %.1f", banner.AbsoluteSize.Y, banner.AbsolutePosition.Y) or "none")
+				end
 				if petF and lip then
 					local pb, lb = G.box(petF), G.box(lip)
 					T.check(abs(lb.h - 12) <= 0.6 and abs((lb.y + lb.h) - (pb.y + pb.h - 8)) <= 0.6 and abs(lb.w - 0.7 * pb.w) <= 1.5, label .. " x1: the phone reveal pedestal is the thin lip (12 px, 0.7 x the pet, its bottom 8 px above the pet frame's)",
@@ -2671,7 +2680,7 @@ S.client_hatch_cutscene = guarded("client_hatch_cutscene", function()
 		T.check(rec.over == nil, "hatch cutscene: x1 Epic within the budgets at every phase (450 instances, 24 tweens, 1 Heartbeat, blur + preset)", tostring(rec.over))
 		local word, pet = G.colPart(1, "Word"), G.colPart(1, "Pet")
 		local pop = pet and pet:FindFirstChild("Pop")
-		T.eq(word and word.Text, "EPIC!", "hatch cutscene: Reveal: the Banner's Word reads 'EPIC!'")
+		T.eq(word and word:GetAttribute("Text"), "EPIC!", "hatch cutscene: Reveal: the Banner's Word reads 'EPIC!'") -- (roll-look 16.15: its Text attribute)
 		T.check(pop ~= nil and abs(pop.Scale - 1) < 1e-6, "hatch cutscene: Reveal: the pet's pop UIScale ends at 1", pop and tostring(pop.Scale) or "no Pop")
 		T.check(not G.shown(G.hero("Rays")), "hatch cutscene: Reveal: an Epic keeps no rays (only Legendary and up)")
 		local list = soundsFrom(s1)

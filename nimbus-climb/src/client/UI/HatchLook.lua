@@ -87,10 +87,53 @@
 --   HatchLook.Glow(parent, color, opts) -> glow   a soft glow: with a hatch_glow id one ImageLabel named opts.Name
 --                                             ("Glow") tinted `color`; without, opts.Count (2) crossed round Frames
 --                                             "<Name>1..n", each with a UIGradient fading it out (a wide one to its sides,
---                                             a tall one to its top and bottom: no hard edge). opts = { Name, Count, Z }
+--                                             a tall one to its top and bottom: no hard edge). opts = { Name, Count, Z,
+--                                             Discs (another disc list: the word's nested capsules) }
 --                                             glow:Place(pos, size)     the glow's centre and box (UDim2: scale or offset)
 --                                             glow:SetAlpha(a)          0 = hidden .. 1 = shown
+--                                             glow:Fade(a, s, track)    the same in s seconds (Quad Out)
 --                                             glow:SetColor(c, s, track, out)   in s seconds (0: at once)
+--   (Task 3: the reveal)
+--   HatchLook.Word(parent, text, rarity, size, opts) -> word   the rarity word: a Frame opts.Name ("Word") with the
+--                                             attribute Text; opts.Letters: one Theme "Title" TextLabel per glyph "L1..Ln"
+--                                             (white under a vertical UIGradient Shade(c, .78) / .22 / -.18, a round
+--                                             UIStroke Shade(c, -.68) of clamp(round(size x 0.12), 2, 10) px, a UIScale
+--                                             "Pop") 0.04 x size apart, over a soft Glow (c, peak about 0.55, the word +
+--                                             0.6 x size wide, 1.1 x size tall); no Letters: one such TextLabel (an x3
+--                                             phone column). opts = { Letters, Name, ZIndex, Measure = function(text, size)
+--                                             -> px (the stage's real text widths) }
+--                                             word:Width() -> px            word:Place(cx, y)   (y = the top)
+--                                             word:SetSize(size)            word:Destroy()
+--                                             word:Pop(startAt, stagger, track)   letter i (from 0) 0 -> 1.3 (0.12 s Quad
+--                                                 Out) -> 1 (0.14 s Quad In) at startAt + stagger x i, the glow in over
+--                                                 0.2 s from startAt + 0.05 (task.delay; the tweens go into `track`); one
+--                                                 label: hidden until startAt
+--                                             word:Settle()   every letter at 1, the glow shown, pending pops dropped (a
+--                                                 resize mid-chain)
+--   HatchLook.Pill(parent, opts) -> TextButton   a glossy pill button named opts.Name (transparent tap box, Text ""):
+--                                             "Shadow" (2,4,14 at 0.5, 7 px down, 4 px in), "Face" (a CanvasGroup: the
+--                                             rise and fade) > "Body" (the capsule: UIGradient "Fill" of the Kind, UIStroke
+--                                             "Edge" 3 px), "Shine" (white at 0.7 over the top third), "Label" (Theme
+--                                             "Button"; Gold: ink 58,34,0; Green: white with the ink outline) and, with
+--                                             opts.Price, "Chip" (black at 0.8, right-aligned 7 px in) > "Coin" (the stage
+--                                             puts the icon in it), "Price" (Theme "Display"). The attribute Disabled
+--                                             (CloudUI.SetDisabled) repaints it grey (stroke 60,64,76, text 176,184,206).
+--                                             opts = { Name, Kind = "Gold" | "Green", Text, TextSize, Price, Coin, Phone,
+--                                             ZIndex }
+--   HatchLook.PillParts(btn) -> { Shadow, Face, Body, Fill, Edge, Shine, Label, Chip, Coin, Price }
+--   HatchLook.SizePill(btn, textSize, phone, coin)   a layout's text and coin sizes
+--   HatchLook.FitPill(btn, labelW, priceW) -> chipW, fits   the price chip's width (80 / phone 66 at the least, its
+--                                             content's when the label needs the room) and whether the label fits
+--   HatchLook.SetPillChip(btn, w)             the chip w px wide (0: hidden, the label takes the whole pill)
+--   HatchLook.PillIn(parts, k, rise)          the rise: the Face rise x (1 - k) px lower and 1 - k clear, the shadow
+--                                             with it (k = 1: in place)
+--   HatchLook.Chip(parent, opts) -> TextButton   a small chip: a transparent 44 px tap box drawing a "Pill" (36 px, phone
+--                                             32; black at 0.55) with its "Label" (227,233,255). opts = { Name, Text,
+--                                             TextSize, Phone, ZIndex }
+--   HatchLook.FastChip(parent, opts) -> TextButton   the Fast hatch chip: the Pill navy 11,18,51 at 0.15 with a 44,63,136
+--                                             edge, its "Switch" (34 x 18, phone 30 x 16) and "Knob", the "Label"
+--   HatchLook.SetFast(chip, on)               the switch Theme.Colors.Good / 44,63,136, the knob's side, attribute On
+--   HatchLook.SizeChip(chip, textSize, phone) / HatchLook.SetChipText(chip, text)
 --
 -- Plain Lua 5.1-compatible syntax only. Text goes through Theme roles.
 
@@ -148,6 +191,36 @@ local K = {
 			{ W = 0.72, H = 1, Rotation = 90, Fade = { { 0, 1 }, { 0.25, 0.84 }, { 0.5, 0.55 }, { 0.75, 0.84 }, { 1, 1 } } },
 		},
 		ImageA = 0.2,
+	},
+	INK = rgb(11, 16, 48),
+	-- (Task 3) the rarity word (spec 16.15: the gradient / outline shades of c, the letters' pop, the glow behind). The
+	-- outline: the mock's SVG stroke (0.12 x size) is centred on the glyph's edge, so 0.06 x size of it shows outside the
+	-- glyph; a UIStroke's Thickness is all outside, so 0.06 x size draws the mock's outline (0.12 drew it twice as heavy).
+	-- The glow: a halo taller and wider than the word (GlowW x size more, GlowH x size tall, less where the screen's edge
+	-- is nearer), its fallback discs' centre about 0.68 clear (GlowA): the mock's blurred 0.5 stroke, never a slab
+	WORD = {
+		Top = 0.78, Mid = 0.22, Bottom = -0.18, Outline = -0.68, OutlineK = 0.06, OutlineMin = 2, OutlineMax = 6, Spacing = 0.04, Pad = 0.2,
+		Stagger = 0.05, Up = 0.12, Down = 0.14, Peak = 1.3, GlowAt = 0.05, GlowIn = 0.2, GlowA = 0.65, GlowW = 1.0, GlowH = 1.8,
+		-- the word glow's fallback: three nested capsules, each fading out to its sides (no hard side edge), stacked so
+		-- the halo also falls off up and down; at GlowA their centre is about 0.55 clear
+		Discs = {
+			{ W = 1, H = 1, Rotation = 0, Fade = { { 0, 1 }, { 0.2, 0.93 }, { 0.5, 0.8 }, { 0.8, 0.93 }, { 1, 1 } } },
+			{ W = 0.88, H = 0.66, Rotation = 0, Fade = { { 0, 1 }, { 0.2, 0.9 }, { 0.5, 0.72 }, { 0.8, 0.9 }, { 1, 1 } } },
+			{ W = 0.74, H = 0.38, Rotation = 0, Fade = { { 0, 1 }, { 0.25, 0.88 }, { 0.5, 0.65 }, { 0.75, 0.88 }, { 1, 1 } } },
+		},
+	},
+	-- the glossy pills (the mock's pillBtn): the face gradients top / middle (at Mid) / bottom, the stroke and text ink
+	PILL = {
+		Gold = { Top = rgb(255, 224, 138), Mid = rgb(246, 178, 60), Bottom = rgb(223, 143, 38), Edge = rgb(107, 66, 0), Ink = rgb(58, 34, 0) },
+		Green = { Top = rgb(124, 240, 162), Mid = rgb(47, 184, 102), Bottom = rgb(29, 138, 74), Edge = rgb(13, 77, 42), Ink = rgb(255, 255, 255), Outline = true },
+		Off = { Top = rgb(120, 126, 140), Mid = rgb(102, 108, 122), Bottom = rgb(84, 90, 104), Edge = rgb(60, 64, 76), Ink = rgb(176, 184, 206) },
+		MidAt = 0.55, Shadow = rgb(2, 4, 14), ShadowA = 0.5, ShadowY = 7, ShadowIn = 4, Edge = 3, ShineA = 0.7, ShineOffA = 0.88, ShineX = 12, ShineY = 4,
+		ShineH = 0.34, ChipA = 0.8, ChipIn = 7, ChipV = 16, ChipW = 80, ChipWPhone = 66, ChipPad = 9, CoinGap = 4, LabelL = 8, LabelGap = 4,
+	},
+	-- the chips (the mock's chip / fastChip): the pill heights in the 44 px tap box, colours, the switch
+	CHIP = {
+		H = 36, HPhone = 32, A = 0.55, Ink = rgb(227, 233, 255), Pad = 12, FastBg = rgb(11, 18, 51), FastA = 0.15, FastEdge = rgb(44, 63, 136),
+		Edge = 2, EdgePhone = 1.5, SwitchW = 34, SwitchH = 18, SwitchWPhone = 30, SwitchHPhone = 16, SwitchX = 10, Off = rgb(44, 63, 136),
 	},
 }
 HatchLook.Metrics = K
@@ -637,7 +710,7 @@ function HatchLook.Glow(parent, color, opts)
 		self.Alphas[1], self.Shares[1] = K.GLOW.ImageA, { W = 1, H = 1 }
 	else
 		self.Prop, self.ColorProp = "BackgroundTransparency", "BackgroundColor3"
-		local discs = K.GLOW.Discs
+		local discs = opts.Discs or K.GLOW.Discs
 		for i = 1, math.max(1, math.min(#discs, opts.Count or #discs)) do
 			local d = discs[i]
 			local f = frame(parent, name .. i, { AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = color, BackgroundTransparency = 0, ZIndex = z })
@@ -666,6 +739,20 @@ function Glow:SetAlpha(a)
 	for i, p in ipairs(self.Parts) do
 		p[self.Prop] = 1 - a * (1 - self.Alphas[i])
 	end
+end
+
+function Glow:Fade(a, seconds, track)
+	self.Alpha = a
+	local out = {}
+	for i, p in ipairs(self.Parts) do
+		local goal = 1 - a * (1 - self.Alphas[i])
+		if seconds and seconds > 0 then
+			out[#out + 1] = tween(p, seconds, { [self.Prop] = goal }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, track)
+		else
+			p[self.Prop] = goal
+		end
+	end
+	return out
 end
 
 function Glow:SetColor(c, seconds, track, out)
@@ -782,6 +869,422 @@ function Plinth:Rest()
 	self.Pop.Scale = 1
 	self:SetAlpha(1)
 	self:paint(self.Color or K.PLINTH.Neutral, 0)
+end
+
+----------------------------------------------------------------------
+-- (Task 3) the rarity word: a TextLabel a glyph popping in turn (or one label), its gradient, outline and glow
+----------------------------------------------------------------------
+local Word = {}
+Word.__index = Word
+
+local function wordLabel(parent, name, text, size, c, z)
+	local W = K.WORD
+	local l = Theme.Label(text, "Title", { Size = size, Stroke = 1 })
+	l.Name = name
+	l.TextColor3 = K.WHITE -- (the gradient tints it)
+	l.TextXAlignment = Enum.TextXAlignment.Center
+	l.TextYAlignment = Enum.TextYAlignment.Center
+	l.ZIndex = z
+	Util.Create("UIGradient", {
+		Rotation = 90,
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, HatchLook.Shade(c, W.Top)), ColorSequenceKeypoint.new(0.5, HatchLook.Shade(c, W.Mid)), ColorSequenceKeypoint.new(1, HatchLook.Shade(c, W.Bottom)),
+		}),
+		Parent = l,
+	})
+	Util.Create("UIStroke", { Color = HatchLook.Shade(c, W.Outline), Thickness = 2, LineJoinMode = Enum.LineJoinMode.Round, ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual, Parent = l })
+	l.Parent = parent
+	return l
+end
+
+local function outlineOf(size)
+	local W = K.WORD
+	return math.max(W.OutlineMin, math.min(W.OutlineMax, math.floor(size * W.OutlineK + 0.5)))
+end
+
+function HatchLook.Word(parent, text, rarity, size, opts)
+	opts = opts or {}
+	local c = HatchLook.RarityColor(rarity)
+	local z = opts.ZIndex or parent.ZIndex
+	local self = setmetatable({ Text = tostring(text), Size = size, Letters = {}, Measure = opts.Measure, Token = 0, Tw = {} }, Word)
+	if opts.Letters then
+		self.Frame = frame(parent, opts.Name or "Word", { ZIndex = z })
+		self.Glow = HatchLook.Glow(self.Frame, c, { Name = "Glow", Z = z, Discs = K.WORD.Discs })
+		self.Glow:SetAlpha(K.WORD.GlowA)
+		local i = 0
+		for ch in self.Text:gmatch("[%z\1-\127\194-\244][\128-\191]*") do
+			i = i + 1
+			local l = wordLabel(self.Frame, "L" .. i, ch, size, c, z + 1)
+			l.AnchorPoint = Vector2.new(0.5, 0.5) -- (its pop grows round its middle)
+			self.Letters[i] = { Label = l, Char = ch, Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = l }), W = 0 }
+		end
+	else
+		self.Frame = wordLabel(parent, opts.Name or "Word", self.Text, size, c, z)
+	end
+	self.Frame:SetAttribute("Text", self.Text)
+	self:SetSize(size)
+	return self
+end
+
+function Word:charW(text, size)
+	local w = self.Measure and self.Measure(text, size) or nil
+	return (type(w) == "number" and w > 0) and w or #text * size * 0.6
+end
+
+function Word:Width()
+	if #self.Letters == 0 then
+		return self:charW(self.Text, self.Size)
+	end
+	local w = 0
+	for _, L in ipairs(self.Letters) do
+		w = w + L.W
+	end
+	return w + K.WORD.Spacing * self.Size * (#self.Letters - 1)
+end
+
+function Word:SetSize(size)
+	self.Size = size
+	local th = outlineOf(size)
+	if #self.Letters == 0 then
+		self.Frame.TextSize = size
+		self.Frame:FindFirstChildOfClass("UIStroke").Thickness = th
+		return
+	end
+	local x, gap, pad = 0, K.WORD.Spacing * size, K.WORD.Pad * size
+	for _, L in ipairs(self.Letters) do
+		L.W = self:charW(L.Char, size)
+		L.Label.TextSize = size
+		L.Label:FindFirstChildOfClass("UIStroke").Thickness = th
+		-- the glyph's box: its advance + a little room for the outline (never clipped), centred on the advance
+		L.Label.Position = UDim2.fromOffset(x + L.W / 2, size / 2)
+		L.Label.Size = UDim2.fromOffset(L.W + pad, size)
+		x = x + L.W + gap
+	end
+	self:placeGlow()
+end
+
+-- the halo round the word: GlowW x size wider and GlowH x size tall, at most room.Up above / below it and room.Half to
+-- either side of its centre (the screen's edges: never off the screen)
+function Word:placeGlow()
+	if not self.Glow then
+		return
+	end
+	local size, w, room = self.Size, self:Width(), self.Room
+	local gw, gh = w + K.WORD.GlowW * size, K.WORD.GlowH * size
+	if room then
+		gw = math.min(gw, math.max(w, 2 * room.Half))
+		gh = math.min(gh, math.max(size, size + 2 * room.Up))
+	end
+	self.Glow:Place(UDim2.fromOffset(w / 2, size / 2), UDim2.fromOffset(gw, gh))
+end
+
+-- room (optional) = { Up = px free above the word's top, Half = px free from its centre to the nearer side }
+function Word:Place(cx, y, room)
+	local w = self:Width()
+	if #self.Letters == 0 then
+		w = w + K.WORD.Pad * self.Size
+	end
+	self.Frame.Position = UDim2.fromOffset(cx - w / 2, y)
+	self.Frame.Size = UDim2.fromOffset(w, self.Size)
+	if room then
+		self.Room = room
+		self:placeGlow()
+	end
+end
+
+function Word:drop()
+	self.Token = self.Token + 1
+	for tw in pairs(self.Tw) do
+		pcall(function()
+			tw:Cancel()
+		end)
+	end
+	self.Tw = {}
+end
+
+function Word:Pop(startAt, stagger, track)
+	self:drop()
+	local mine = self.Token
+	local W = K.WORD
+	startAt = math.max(0, tonumber(startAt) or 0)
+	if #self.Letters == 0 then
+		self.Frame.Visible = false
+		task.delay(startAt, function()
+			if self.Token == mine and self.Frame.Parent then
+				self.Frame.Visible = true
+			end
+		end)
+		return
+	end
+	local function play(inst, seconds, goals, direction)
+		local tw = tween(inst, seconds, goals, Enum.EasingStyle.Quad, direction, track)
+		if tw then
+			self.Tw[tw] = true
+		end
+		return tw
+	end
+	self.Glow:SetAlpha(0)
+	for i, L in ipairs(self.Letters) do
+		L.Pop.Scale = 0
+		task.delay(startAt + (stagger or W.Stagger) * (i - 1), function()
+			if self.Token ~= mine or not L.Pop.Parent then
+				return
+			end
+			local up = play(L.Pop, W.Up, { Scale = W.Peak }, Enum.EasingDirection.Out)
+			if up then
+				up.Completed:Connect(function(state)
+					if state == Enum.PlaybackState.Completed and self.Token == mine and L.Pop.Parent then
+						play(L.Pop, W.Down, { Scale = 1 }, Enum.EasingDirection.In)
+					end
+				end)
+			end
+		end)
+	end
+	task.delay(startAt + W.GlowAt, function()
+		if self.Token == mine and self.Frame.Parent then
+			for _, tw in ipairs(self.Glow:Fade(W.GlowA, W.GlowIn, track)) do
+				self.Tw[tw] = true
+			end
+		end
+	end)
+end
+
+function Word:Settle()
+	self:drop()
+	for _, L in ipairs(self.Letters) do
+		L.Pop.Scale = 1
+	end
+	if self.Glow then
+		self.Glow:SetAlpha(K.WORD.GlowA)
+	end
+	if #self.Letters == 0 and self.Frame.Parent then
+		self.Frame.Visible = true
+	end
+end
+
+function Word:Destroy()
+	self:drop()
+	self.Frame:Destroy()
+end
+
+----------------------------------------------------------------------
+-- (Task 3) the glossy pills and the small chips of the bottom bar
+----------------------------------------------------------------------
+local function pillFill(look)
+	return ColorSequence.new({
+		ColorSequenceKeypoint.new(0, look.Top), ColorSequenceKeypoint.new(K.PILL.MidAt, look.Mid), ColorSequenceKeypoint.new(1, look.Bottom),
+	})
+end
+
+function HatchLook.PillParts(btn)
+	local face = btn:FindFirstChild("Face")
+	local body = face and face:FindFirstChild("Body")
+	local chip = face and face:FindFirstChild("Chip")
+	return {
+		Shadow = btn:FindFirstChild("Shadow"), Face = face, Body = body, Fill = body and body:FindFirstChild("Fill"), Edge = body and body:FindFirstChild("Edge"),
+		Shine = face and face:FindFirstChild("Shine"), Label = face and face:FindFirstChild("Label"), Chip = chip, Coin = chip and chip:FindFirstChild("Coin"),
+		Price = chip and chip:FindFirstChild("Price"),
+	}
+end
+
+local function paintPill(btn)
+	local p = HatchLook.PillParts(btn)
+	local off = btn:GetAttribute("Disabled") == true
+	local look = off and K.PILL.Off or (K.PILL[btn:GetAttribute("Kind")] or K.PILL.Gold)
+	p.Fill.Color = pillFill(look)
+	p.Edge.Color = look.Edge
+	p.Label.TextColor3 = look.Ink
+	p.Shine.BackgroundTransparency = off and K.PILL.ShineOffA or K.PILL.ShineA
+	if p.Price then
+		p.Price.TextColor3 = look.Ink
+	end
+end
+
+function HatchLook.Pill(parent, opts)
+	opts = opts or {}
+	local P = K.PILL
+	local z = opts.ZIndex or 1
+	local kind = P[opts.Kind or "Gold"] and (opts.Kind or "Gold") or "Gold"
+	local btn = Util.Create("TextButton", {
+		Name = opts.Name or "Pill", Text = "", AutoButtonColor = false, Active = true, BorderSizePixel = 0, BackgroundTransparency = 1, ZIndex = z, Parent = parent,
+	})
+	btn:SetAttribute("Kind", kind)
+	local shadow = frame(btn, "Shadow", {
+		Position = UDim2.fromOffset(P.ShadowIn, P.ShadowY), Size = UDim2.new(1, -2 * P.ShadowIn, 1, 0), BackgroundColor3 = P.Shadow, BackgroundTransparency = P.ShadowA, ZIndex = z,
+	})
+	corner(shadow, 0.5)
+	local face = Util.Create("CanvasGroup", { Name = "Face", BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), ZIndex = z + 1, Parent = btn })
+	-- the capsule sits its stroke's width inside the group (a Border stroke draws outside its frame: never clipped)
+	local body = frame(face, "Body", { Position = UDim2.fromOffset(P.Edge, P.Edge), Size = UDim2.new(1, -2 * P.Edge, 1, -2 * P.Edge), BackgroundColor3 = K.WHITE, BackgroundTransparency = 0, ZIndex = z + 1 })
+	corner(body, 0.5)
+	Util.Create("UIGradient", { Name = "Fill", Rotation = 90, Color = pillFill(P[kind]), Parent = body })
+	stroke(body, P[kind].Edge, P.Edge, 0).Name = "Edge"
+	local shine = frame(face, "Shine", { Position = UDim2.fromOffset(P.ShineX, P.ShineY), Size = UDim2.new(1, -2 * P.ShineX, P.ShineH, 0), BackgroundColor3 = K.WHITE, BackgroundTransparency = P.ShineA, ZIndex = z + 2 })
+	corner(shine, 0.5)
+	local label = Theme.Label(opts.Text or "", "Button", { Size = opts.TextSize or 22, Stroke = 1 })
+	label.Name = "Label"
+	label.TextXAlignment = Enum.TextXAlignment.Center
+	label.ZIndex = z + 3
+	label.Parent = face
+	if P[kind].Outline then
+		Theme.TextOutline(label, 2, K.INK, 0)
+	end
+	if opts.Price then
+		local chip = frame(face, "Chip", { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -P.ChipIn, 0.5, 0), BackgroundColor3 = K.BLACK, BackgroundTransparency = P.ChipA, ZIndex = z + 2 })
+		corner(chip, 0.5)
+		frame(chip, "Coin", { AnchorPoint = Vector2.new(0, 0.5), ZIndex = z + 3 })
+		local price = Theme.Label("", "Display", { Size = 20, Stroke = 1 })
+		price.Name = "Price"
+		price.TextXAlignment = Enum.TextXAlignment.Center
+		price.ZIndex = z + 3
+		price.Parent = chip
+	end
+	btn:GetAttributeChangedSignal("Disabled"):Connect(function()
+		paintPill(btn)
+	end)
+	paintPill(btn)
+	HatchLook.SizePill(btn, opts.TextSize or 22, opts.Phone, opts.Coin)
+	HatchLook.SetPillChip(btn, opts.Price and (opts.Phone and P.ChipWPhone or P.ChipW) or 0)
+	return btn
+end
+
+function HatchLook.SizePill(btn, textSize, phone, coin)
+	local P = K.PILL
+	local p = HatchLook.PillParts(btn)
+	p.Label.TextSize = textSize
+	btn:SetAttribute("Phone", phone == true)
+	if p.Price then
+		coin = coin or (phone and 20 or 30)
+		p.Price.TextSize = math.max(15, textSize - 2)
+		p.Coin.Size = UDim2.fromOffset(coin, coin)
+		p.Coin.Position = UDim2.new(0, P.ChipPad, 0.5, 0)
+		p.Price.Position = UDim2.fromOffset(P.ChipPad + coin + P.CoinGap, 0)
+		p.Price.Size = UDim2.new(1, -(2 * P.ChipPad + coin + P.CoinGap), 1, 0)
+	end
+end
+
+-- the chip's width for a price priceW px wide: the mock's 80 / 66 at the least, only its content's when the label needs
+-- the room; fits = the label (labelW px) fits beside it
+function HatchLook.FitPill(btn, labelW, priceW)
+	local P = K.PILL
+	local p = HatchLook.PillParts(btn)
+	local coin = p.Coin and p.Coin.Size.X.Offset or 0
+	local content = 2 * P.ChipPad + coin + P.CoinGap + priceW
+	local least = btn:GetAttribute("Phone") == true and P.ChipWPhone or P.ChipW
+	local room = btn.Size.X.Offset - P.ChipIn - P.LabelL - P.LabelGap
+	local w = math.max(content, least)
+	if labelW > room - w then
+		w = content
+	end
+	return math.ceil(w), labelW <= room - w
+end
+
+function HatchLook.SetPillChip(btn, w)
+	local P = K.PILL
+	local p = HatchLook.PillParts(btn)
+	if p.Chip then
+		p.Chip.Visible = w > 0
+		p.Chip.Size = UDim2.new(0, math.max(0, w), 1, -P.ChipV)
+	end
+	if w > 0 then
+		p.Label.Position = UDim2.fromOffset(P.LabelL, 0)
+		p.Label.Size = UDim2.new(1, -(P.LabelL + P.LabelGap + w + P.ChipIn), 1, 0)
+	else
+		p.Label.Position = UDim2.fromOffset(P.LabelL, 0)
+		p.Label.Size = UDim2.new(1, -2 * P.LabelL, 1, 0)
+	end
+end
+
+function HatchLook.PillIn(parts, k, rise)
+	k = math.max(0, math.min(1, k))
+	parts.Face.Position = UDim2.fromOffset(0, (1 - k) * (rise or 0))
+	parts.Face.GroupTransparency = 1 - k
+	parts.Shadow.BackgroundTransparency = 1 - k * (1 - K.PILL.ShadowA)
+end
+
+function HatchLook.Chip(parent, opts)
+	opts = opts or {}
+	local C = K.CHIP
+	local z = opts.ZIndex or 1
+	local btn = Util.Create("TextButton", {
+		Name = opts.Name or "Chip", Text = "", AutoButtonColor = false, Active = true, BorderSizePixel = 0, BackgroundTransparency = 1, ZIndex = z, Parent = parent,
+	})
+	local pill = frame(btn, "Pill", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), BackgroundColor3 = K.BLACK, BackgroundTransparency = C.A, ZIndex = z })
+	corner(pill, 0.5)
+	local label = Theme.Label(opts.Text or "", "Label", { Size = opts.TextSize or 18, Stroke = 1 })
+	label.Name = "Label"
+	label.TextColor3 = C.Ink
+	label.TextXAlignment = Enum.TextXAlignment.Center
+	label.TextTruncate = Enum.TextTruncate.AtEnd
+	label.ZIndex = z + 1
+	label.Parent = pill
+	HatchLook.SizeChip(btn, opts.TextSize or 18, opts.Phone)
+	return btn
+end
+
+function HatchLook.FastChip(parent, opts)
+	opts = opts or {}
+	local C = K.CHIP
+	local z = opts.ZIndex or 1
+	local btn = HatchLook.Chip(parent, { Name = opts.Name or "FastHatch", Text = "Fast hatch", TextSize = opts.TextSize, Phone = opts.Phone, ZIndex = z })
+	local pill = btn:FindFirstChild("Pill")
+	pill.BackgroundColor3 = C.FastBg
+	pill.BackgroundTransparency = C.FastA
+	stroke(pill, C.FastEdge, opts.Phone and C.EdgePhone or C.Edge, 0).Name = "Edge"
+	local sw = frame(pill, "Switch", { AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = C.Off, BackgroundTransparency = 0, ZIndex = z + 1 })
+	corner(sw, 0.5)
+	corner(frame(sw, "Knob", { AnchorPoint = Vector2.new(0, 0.5), BackgroundColor3 = K.WHITE, BackgroundTransparency = 0, ZIndex = z + 2 }), 0.5)
+	HatchLook.SizeChip(btn, opts.TextSize or 18, opts.Phone)
+	HatchLook.SetFast(btn, false)
+	return btn
+end
+
+function HatchLook.SizeChip(btn, textSize, phone)
+	local C = K.CHIP
+	local pill = btn:FindFirstChild("Pill")
+	local label = pill:FindFirstChild("Label")
+	pill.Size = UDim2.new(1, 0, 0, phone and C.HPhone or C.H)
+	label.TextSize = textSize
+	local sw = pill:FindFirstChild("Switch")
+	if sw then
+		local w, h = phone and C.SwitchWPhone or C.SwitchW, phone and C.SwitchHPhone or C.SwitchH
+		sw.Position = UDim2.new(0, C.SwitchX, 0.5, 0)
+		sw.Size = UDim2.fromOffset(w, h)
+		sw:FindFirstChild("Knob").Size = UDim2.fromOffset(h - 4, h - 4)
+		local edge = pill:FindFirstChild("Edge")
+		if edge then
+			edge.Thickness = phone and C.EdgePhone or C.Edge
+		end
+		-- the label centred in the room right of the switch
+		label.Position = UDim2.fromOffset(C.SwitchX + w + 4, 0)
+		label.Size = UDim2.new(1, -(C.SwitchX + w + 4 + C.SwitchX), 1, 0)
+		HatchLook.SetFast(btn, btn:GetAttribute("On") == true)
+	else
+		label.Position = UDim2.fromOffset(C.Pad, 0)
+		label.Size = UDim2.new(1, -2 * C.Pad, 1, 0)
+	end
+end
+
+function HatchLook.SetChipText(btn, text)
+	local pill = btn and btn:FindFirstChild("Pill")
+	local label = pill and pill:FindFirstChild("Label")
+	if label then
+		label.Text = text
+	end
+end
+
+function HatchLook.SetFast(btn, on)
+	local pill = btn and btn:FindFirstChild("Pill")
+	local sw = pill and pill:FindFirstChild("Switch")
+	if not sw then
+		return
+	end
+	local knob = sw:FindFirstChild("Knob")
+	sw.BackgroundColor3 = on and Theme.Colors.Good or K.CHIP.Off
+	if knob then
+		knob.Position = on and UDim2.new(1, -knob.Size.X.Offset - 2, 0.5, 0) or UDim2.new(0, 2, 0.5, 0)
+	end
+	btn:SetAttribute("On", on == true)
 end
 
 ----------------------------------------------------------------------

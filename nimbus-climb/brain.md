@@ -39,3 +39,4 @@ Read with [`ABSOLUTE_RULES.md`](ABSOLUTE_RULES.md) before working.
   drawn as cut gems (`UI/GemIcon`); the Sky Trove at spot C; a global leaderboard (Trophies, Pets found, Ring best) and
   server-written titles (Top 10, Top 100, Creator = `DevService.IsOwner` only) with a Rank column; the altar portals lit.
   No save session lock in this build (the 15 s gem settle hold covers gems). Details in `BUILD_STATE.md`.
+- 2026-11-08: the roll look (branch roll-look, spec 16.15 "Roll look A+B", plan docs/superpowers/plans/2026-11-08-roll-look.md): the owner's pick A "Showcase" + B's colour tell (Rare+), B's silhouette (Legendary+, +0.3 s), Gemini's shake tint (Rare+), clutter caps; the HUD hides during the stage; the pedestal drum stays removed (a flat lit plinth instead).
