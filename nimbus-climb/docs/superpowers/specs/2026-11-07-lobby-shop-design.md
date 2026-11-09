@@ -2223,3 +2223,180 @@ Numbered 16.16 because 16.12-16.15 may exist on other branches. These override t
   shown but still in both modes: no turning, streaks / crackles off). `altar_portal_glow` checks the attribute.
 - **Part margin.** `StormAltar` measures 494 parts of the 500 budget (493 dressed; `storm_altar` and `altar_portal_glow`), a
   6-part margin: a longer bridge (more planks) or more return-ring segments would trip `checkAltarBudget`.
+
+### 16.17 Shop area: Gumball Globe, egg row, Secret at the Altar, gem spot 2 (2026-11-09, owner notes 2026-11-08; branch `shop-area`)
+
+The owner (2026-11-08, a Studio screenshot of the shop area): "the roulletes and eggs are the same thing, you seperated them
+and it confuses the player, you can remove the egg guide and put the eggs preview below the pets guide at the shop area. make
+the roulletes more detailed and small eggs inside for the quality look of them, seperate the secret roll from the main roll
+shop to the storm altar only!, at the main shop it will be seen as 'available at storm altar'". Then: "the Big gem at the
+altar, move it to other location not where the players might stand". Picks: the Secret roll is bought through the E prompt
+at the Altar; machines = card A "Gumball Globe" (owner, 2026-11-09 08:50; Gemini on the web agreed: A, risk "generic
+arcade", tweak a winged-cloud or sunburst finial and a pastel band on the gold trim, both taken; Claude added cloud puffs
+round the base, clearer glass and a fuller globe); World gem = spot 2 "Side crystal" (owner, confirmed). Pitch:
+`.superpowers/lobby-shop/pitch-shoparea/CARDS.md`, `BRIEF.md`, `renders/A_hero.png`, `A_row.png`, `A_detail.png`,
+`layout_after.png`, `layout_eggrow.png`, `altar_arrival.png`, `altar_top.png`, `altar_side.png`; the Blender sculpt of card A
+is `scripts/machines.py` `design_a` on `scripts/mkit.py` (a copy of `blender/kit` beside it). These override 16.3's Egg
+Guide and walk-up prompt, 5.7's gem spot and 5.9's shop layout where they differ. No upload in this build: every new mesh
+key has no id, so `MeshLibrary` keeps today's Part build until the owner uploads (`tools/upload_assets.py`, the keyed cloud
+session).
+
+**16.17.1 The Gumball Globe (one mesh for the four roulettes).** Key **`prop_roulette_globe`** (catalog `blender/catalog/lobby.json`,
+budget `propBig` = 4000 tris / 8 MeshParts, preview set `lobby_prop_roulette_globe`), prop **`lobby_roulette_globe`** in a new
+`blender/kit/props/lobby_machine.py` (the pitch's `MSculpt`, `emblem_fn`, `design_a` ported onto `props.lobby.Sculpt`; the
+pitch's `BASE_PAL` colours; K 4 = 0.25-stud cells for the machine, 0.5-stud cells for the glass as today's dome). Contract
+as `prop_roulette`: 9 x 7 footprint, pivot = ground centre, front -Z towards the customer, nothing above y 14.5 (the price
+card keeps `cf * (0, 14.2 + MACHINE_CARD_H / 2, 0)`, DomeGlow at 9.5, PromptPart at `(0, 2, -5.4)` 5 x 4 x 3: `buildMachine`
+places them unchanged). Parts (8): `Body` = `Primary`, `BodyLight` = lighten Primary 0.3, `BodyDark` = darken Primary 0.3,
+`Glow` (Neon, lighten Primary 0.25: the finial ball and the sign's rim), `Bulb` (Neon rgb 255,222,150: the marquee bulbs),
+**`Emblem` (Neon, `Secondary`)**, `Glass` (Glass material, rgb 224,240,255, Transparency 0.70: clearer than today's 0.55),
+`Fixed` (every constant colour baked: iron claw-foot plinth, gold trims and collar, cream side panels with painted egg
+silhouettes, the navy sign plate, coin plate, brass crank, chute and tray, the cloud puffs). The emblem is ONE shape for the
+four roulettes, the pitch's four-point star (`star4`, 2.0 studs across on the navy sign), tinted `Secondary` = the roulette's
+top rarity colour (`Config.Rarities`: Cloud -> Epic 176,108,232; Storm -> Legendary 242,182,68; Sky -> Mythic 238,98,140;
+Celestial -> Secret, drawn with the readable violet 180,150,255, `Config.Eggs.ChatColors.Secret`): the sign tells what the
+machine chases, the eggs inside show it. Decision: the pitch's four emblem shapes (cloud / bolt / sun / star) would need four
+meshes (4 x 8 batches, four uploads) or 11 parts (over `propBig`); one Secondary-tinted shape keeps one mesh. The agreed
+additions to A: the gold crown cap is replaced by a **winged-cloud finial** (a `Cloud` puff r 0.7 at y 13.1 on the gold
+collar r 0.45, two gold wings 0.9 long swept back and up, the `Glow` ball r 0.45 on top; top <= 14.4); a **pastel band** on
+both gold trims (the upper trim's three 0.25-stud rows top -> bottom `GoldLight` 255,226,140 / `Gold` 244,198,84 / `BodyLight`,
+the lower trim `Gold` / `BodyLight`: the roulette's own pale colour, no new part); **six cloud puffs** round the plinth foot
+(`Cloud` 236,241,250 over `CloudShade` 200,214,238, r 0.9 x 0.55 x 0.8 at r 4.2 / 4.5 alternating, y 0.3..1.3, clear of the
+front chute and the PromptPart); **clearer glass** (above); **a fuller globe**: 12 small eggs (below, about 60 % of the
+floor seen from the front). Target 3600-3900 tris (A measured 3312-3340 before the additions); `blender/build_all.py --key
+prop_roulette_globe` must pass its geometry check and the budget; `tools/mesh_names.py --check blender/out/*.manifest.json`
+(no referenced name baked into Fixed) and `tools/mesh_keys.py --check` (the key is a literal in `src`, the manifest
+exists) pass; `BUILD_KEYS` in `tools/mesh_keys.py` gains `prop_roulette_globe`. The egg geometry is NOT in the mesh.
+
+**The in-globe eggs (`Egg1..Egg12` attachments).** The manifest carries twelve attachments `Egg<i>` (pos = the egg's pivot =
+its bottom centre in machine studs, rot = its 3 x 3 rotation rows) and `Meta.eggScale 0.42`, `Meta.chaseScale 0.44`. `Egg1` is
+the chase spot: `(-0.35, 8.35, -0.95)`, yaw -0.3, tilt_x -0.3 (leaning to the front, nothing in front of it from the
+customer's eye); `Egg2..Egg8` a floor ring of seven at r 1.3 on the globe floor (y 6.95): angle `a_k = k * 2 pi / 7 + 0.35`
+(k = 0..6), pos `(1.3 sin a, 6.95, -1.3 cos a)`, yaw `a + 0.4`, tilt_x `0.2 cos a`, tilt_z `-0.2 sin a`; `Egg9..Egg12` a second
+layer of four at r 0.75, y 7.95: `a_k = k * pi / 2 + 0.8`, yaw `a + 1.2`, tilt_x `0.35 cos a`, tilt_z `-0.35 sin a`. The builder
+tunes these in Blender until every scaled egg (2.25 x 3 x 2.5 x 0.42 = 0.95 x 1.26 x 1.05; the chase x 0.44) sits inside the
+glass's inner sphere (centre `(0, 9.75, 0)`, r 2.8) by >= 0.1 stud, no two pivots are closer than 0.9 stud, the chase egg is
+whole in the front view, and the globe reads about 60 % full from the plaza; the final numbers are what the manifest says
+(the Lua reads the manifest, never these constants). In the game the eggs are the EXISTING keys `egg_<rarity>` (uploaded;
+`LobbyBoardBuilder.EGG_KEYS`) placed by a new **`src/server/Services/LobbyMachineBuilder.lua`** (LobbyBuilder's main chunk is
+near its local cap): `LobbyMachineBuilder.GlobeEggs(parent, cf, roulette, H) -> Model "GlobeEggs" | nil` builds, as a child of
+the `Roulette_<Id>` model beside `Machine` (never inside the dressed body), one Model `GlobeEgg<i>` per attachment holding one
+Part `Egg` (the Part fallback: a block with a Sphere SpecialMesh sized 2.25 x 3 x 2.5 x scale in the rarity colour, Secret
+`SECRET.Body:Lerp(SECRET.Tint, 0.18)` as the shelf egg, SmoothPlastic, anchored, CanCollide / CanTouch / CanQuery false), its
+`WorldPivot` = `cf * CFrame.new(Pos) * CFrame.new(0, 0, 0, Rot...)`, `H.Mesh.tag(model, "egg_<rarity>", pivot)` and then the
+attribute **`ML_Scale`** = 0.42 (0.44 on `GlobeEgg1`): `MeshLibrary.Dress` reads `ML_Scale` and assembles the mesh at that
+size about the pivot (`MeshLibrary.Assemble opts.Scale`), so no new upload. `GlobeEgg2..GlobeEgg12` are tagged
+`WorldStyle.Tags.Detail` (NC_Detail: the Low graphics setting parks the pile; the chase egg always shows); nothing is tagged
+Spin (a still pile). `LobbyMachineBuilder.Rarities(roulette, 12) -> { [1] = top, [2..12] = pile }`: top = the last of
+`oddsRarities(roulette)` (Config order), the pile = the lower rarities by weight: `count_r = max(1, floor(11 * w_r / sum + 0.5))`,
+then the largest count drops by one while the sum is over 11 and the lowest rarity gains one while it is under, interleaved by
+cycling the lower rarities in Config order taking one of each while any remains. Exact result: Cloud `C U R C U C U C C C C`
+(7 / 3 / 1) + Epic chase; Storm `U R E U R E U R U R R` (4 / 5 / 2) + Legendary; Sky `R E L R E L R E R E E` (4 / 5 / 2) +
+Mythic; Celestial `E L M E L M E L E L E` (5 / 4 / 2) + Secret. **The fallback rule:** `buildMachine` tags the body
+`Mesh.tag(body, "prop_roulette_globe", cf, { Primary = roulette.Color, Secondary = <emblem colour> })`; it returns true only
+when `MeshLibrary.Status(key) ~= "missing"`; GlobeEggs are built ONLY when it returned true. With no id (this build, today's
+`MeshIds`) the machine is exactly today's Part build (the voxel cabinet with its own dome and four voxel eggs), no
+`ML_DressKey`, no GlobeEggs, no warn; the old key `prop_roulette` is no longer tagged by code (its id and catalog entry stay
+until a cleanup after the upload). A manifest without the key or without an `Egg<i>` attachment: `GlobeEggs` warns once
+(`[LobbyMachineBuilder] prop_roulette_globe: no Egg<i> attachment`) and returns nil; the machine still stands.
+
+**Budget of the eggs (High / Low).** The keys as uploaded (`src/shared/MeshManifests`): common 2968 / 1 part, uncommon 3282 /
+1, rare 3300 / 1, epic 3732 / 3, legendary 3370 / 4, mythic 3714 / 4, secret 3530 / 4. Per machine: Cloud 37.7k tris / 14
+MeshParts, Storm 40.5k / 19, Sky 42.3k / 31, Celestial 43.1k / 43: **+163.5k tris / +107 MeshParts on High, +0 distinct mesh
+batches** (the seven egg assets are already in the scene on the shelf); on Low the pile is parked: the four chase eggs
+14.3k / 15. The globe key adds 8 batches (695 of the proposed 700 while `prop_roulette` stays listed, `tools/mesh_budget.py`
+"part budget"). The default `mesh_budget.py` scene is already over its old 300k / 400 line (503,686 / 2,001 before this
+build): the tool is run for the record (the key row and the TOTAL delta go in the commit body), the 3000-instance / 700-batch
+proposal is the line that must hold (1,774 + 107 instances in the worst view). Nothing moves per frame.
+
+**16.17.2 Shop-area layout: the egg row under WINGED PETS.** `LobbyBoardBuilder.EggGuide` and the Egg Guide board, shelf and
+prompt at `at(-21, -8)` are removed (the right side keeps its lamp at `(-25, 6)` and its flower bed at `(-11.5, -19)`; the
+lawn there stays empty). `buildRarityBoard(parent, cf)` (the 14 x 9 WINGED PETS board at `at(21, -8) - LAWN`, facing the
+centre; `noticeBoard`'s Face spans y 2.4..11.4) returns `face, model` and tightens its rows so **every letter and pill ends
+above y 3.9** (the shelf eggs in front are 3.8 tall; a standing eye 15 studs away sees the face down to ~3.5): one header row
+(700 x 450 canvas; "WINGED PETS" Title 50 px left in `(0.04, 6 / 450, 0.50, 54 / 450)`, the subtitle "Every egg hatches a pet
+of its rarity" Body 30 px right-aligned in `(0.54, 18 / 450, 0.42, 34 / 450)`), four roulette rows at `top = 68 + (i - 1) * 74`
+(name / price 36 px, the pills at `top + 38` 34 px tall; the fourth row's pills end at 362 px <= 375 = (11.4 - 3.9) x 50).
+New **`LobbyBoardBuilder.EggRow(parent, cf, H) -> Model "EggRow", PromptPart`** (cf = the board's ground CFrame, front -Z):
+`EggShelf` 20.0 x 0.8 x 2.6 at `cf * (0, 0.4, -3)` (StoneLight, SmoothPlastic, colliding; the Egg Guide's 17.6 grew for the
+labels); `EggShelfGlow` (an Attachment 1.5 over the shelf's top centre, PointLight 1.0 / 10, no shadows, rgb 255,238,206);
+the seven `Egg_<Rarity>` as 16.5 built them (2.25 x 3 x 2.5 Sphere-mesh blocks in the rarity colour, Secret dark with the
+violet tint, `Mesh.tag` `egg_<rarity>` at the bottom centre, Spin 14 s / bob 0.12 / 3.2 s, the Rare+ sparkles at their
+rates, no part added) at **Step 2.7**: egg i (Config.Eggs.Order, i = 1..7) at `cf * ((8 - 2 i) * 1.35, 0.8, -3)` (Common at
++X = the reader's left, Secret at the right); the **rarity label strip**: a SurfaceGui `RarityStrip` on `EggShelf`'s Front
+face, `PixelsPerStud 50` (1000 x 40 px), `LightInfluence 0`, a `Band` Frame over the whole canvas (LobbyBuilder's `C.Navy`,
+BackgroundTransparency 0.2) and seven TextLabels `Label_<Rarity>` 135 x 40 px with their centres at `x = 500 + (i - 4) * 135`
+(so each stands under its egg), text = the rarity id, `Theme.Label` role "Heading", TextSize 30 (0.6 stud, the World text
+rule's info floor), `TextScaled false`, the rarity colour (Secret 178,150,255), the INK outline `signText` gives (the rarity
+order puts the long words Uncommon and Legendary beside short ones, so no two labels meet: Uncommon ~137 px, Legendary ~154 px
+at 30 px); the invisible, non-colliding `PromptPart` 5 x 4 x 3 at `cf * (0, 2, -5.6)` (the same offset the Egg Guide had).
+`buildShop` returns `Counter = { PromptPart = that part, Center = the board Face's position, Model = the EggRow model }`;
+`PetService.buildPrompts` puts the walk-up `ShopPrompt` ("Open" / "Shop", range 10, `OpenPanel("Shop", { Tab = "Eggs" })`) on
+it unchanged; `fallbackShop` keeps its own `ShopCounter`. Parts: the Egg Guide's 17 (board 8, shelf, 7 eggs, prompt) become
+9 (shelf, 7 eggs, prompt): -8 lobby parts. **Tutorial:** no step targets the Egg Guide: `TutorialSteps` "shop" step is
+`{ Kind = "Shop" }`, `TutorialController.resolveTarget` points at `Roulette_<first roulette>` and `TutorialService` at
+`Shop.Roulettes[first].Center`; nothing moves (the pitch's "tutorial target EggGuide -> the board" was wrong; verified by
+grep). **No orphan:** after this change `EggGuide` / `EggGuideBoard` / "Egg Guide" appear nowhere live in `src`, `tools`
+(tests rewritten to `EggRow`: `smoke_lobby_shop_world` `checkEggGuide` -> `checkEggRow` and `guideFrame` -> the WINGED PETS
+board's frame, `smoke_lobby_fx` `G.guide`, `smoke_hud_items`, `smoke_p5_world`'s light census, `tools/contract.json`
+`LobbyBoardBuilder` -> `EggRow`), `README.md` or the headers of LobbyBuilder, LobbyBoardBuilder, PetService and
+LobbyFxController; the spec's older sections stay as history.
+
+**16.17.3 The Secret roll only at the Storm Altar.** Prompt: the existing `AltarPrompt` at `A * (0, 2.4, 0)` (range 21) reads
+**ActionText "Secret Roll"**, ObjectText "Storm Altar"; when `GemService.SecretRouletteState` is "Open" it fires
+`OpenPanel("Shop", { RouletteId = "Secret", Currency = "Gems", FromAltar = true })` (the Restricted / Checking toasts as
+before). **Config:** `Config.Gems.SecretRoulette.AltarRange = 36` (studs, horizontal, from the island's site: the deck r 23,
+the landing ~17-21 and the bridge's first 13 studs), `AltarRangeSlack = 10` (the server's allowance for a player walking off
+while the reply travels), `AltarBand = 24` (studs of height either way); **`Config.AtAltar(pos, slack) -> boolean`** (shared,
+beside `Config.InLobbyZone`): true when `workspace:GetAttribute(Config.Lobby.ZoneAltarAttr)` ("AltarIslandAt", a Vector3
+`StormAltar.Build` writes and Roblox replicates) exists, the horizontal distance <= AltarRange + (slack or 0) and |dy| <=
+AltarBand; junk or no attribute -> false (fails closed). **Server rule** (`PetService.BuyRoulette` step 1, right after the
+roulette resolves to a gems-only one, before the pity read and any quote): the player's `HumanoidRootPart` must exist and
+`Config.AtAltar(root.Position, AltarRangeSlack)` must hold, else `false, "Secret rolls happen at the Storm Altar"` (the
+remote's failure answer carries that Reason; nothing is charged, the pity untouched). The server never reads a client flag:
+`FromAltar` only unlocks the card on the client. Token roulettes and gem spins of token roulettes are untouched. **Travel:**
+`GateService.Travel(player, "Altar")` joins `"Plaza"` (the `QuickTravel` remote): the same checks as the Altar gate prompt
+without its distance (a live root, not InMatch, not in a battle, not locked, the shared 3 s cooldown) then
+`placeCharacter(player, StormAltar.GetLanding())` and `Teleported:Fire(player, "Altar")`; anything else stays "junk".
+**The Shop's Secret card** (`ShopEggs`): `CardState("Secret")` gains **"Altar"** between Locked and Loading (order: NoOdds,
+Pending, Locked, Altar, Loading, Short, Ready): the card is not at the altar when `ShopEggs.AtAltar()` is false =
+`ShopEggs._AtAltar` (a test override, nil = real) or `FromAltar` (set by `ShopController.Open(args)` ->
+`ShopEggs.SetFromAltar(args.FromAltar == true)`, cleared on Close) or `Config.AtAltar(LocalPlayer's HumanoidRootPart
+position)` (no slack: the client re-reads it every Shop tick, so a player who walks away sees the card lock again). In the
+Altar state the hero is greyed: a `Dim` Frame over the card body (`K.NAVY` at 0.35, under the chip, the Travel button and
+the hint), the pity chip hidden, a lock chip **`AltarChip` "Available at the Storm Altar"** (phone / portrait: "At the Storm
+Altar"; the PityChip's size and style, `K.CHIP` fill, the hero stroke) in the chip's place, `Spin` hidden and a blue
+**`Travel` button "TRAVEL"** (`CloudUI.Button` style "Blue", the compass glyph `NeonKit.Glyphs.Travel`, 290 x 100 on PC, 44
+tall on a phone, exactly where Spin sits, no price) that fires `QuickTravel("Altar")` once per `K.TRAVEL_GAP` 0.4 s and
+closes the Shop (`ctx.Close`); the hero's hint reads **"Secret rolls happen at the Storm Altar"** in every state (was "Also
+at the Storm Altar"); the pulse stays off while Altar. Locked (PolicyService) still wins over Altar (a restricted account
+never travels for nothing). Phone text >= 15 px, PC >= 18 px as 16.3. Gamepass / Robux paths, `Spin3` on the token cards,
+the pity and `SecretPityLeft` are untouched; the Secret card stays x1.
+
+**16.17.4 The World gem at spot 2 "Side crystal".** `StormAltar` `GEM` becomes `{ Up = 15, CrystalStep = 3, TipClear = 2,
+BobClear = 1.4, Size = 4, SpinSeconds = 8, BobStuds = 0.6, BobSeconds = 3 }`: the gem's centre stands **15.0 studs over the
+deck** straight above the **medium crystal** (`CRYSTALS[HEAD +- 3]`: W 2.4, H 3.4, Tip 2.4, Mount 3.2, on ring radius
+`RING_C` 12.2) on the side away from the return ring: of the two medium crystals, the one whose altar-space position has a
+positive dot with the gem's side in the bridge frame (`side = RETURN_SIDE >= 0 and -1 or 1`); at the default bearing 180 that
+is ring index 8 (130.9 degrees), altar space `(9.21, 15.0, 8.00)` = bridge frame **ahead 8.0 / side -9.2 / up 15.0** (the
+pitch's spot 2). The gem rests facing the walk (`flatLook` towards `polarCF(A, gapDeg, 12)`; the Spin tag turns it). Numbers:
+the crystal's tip is at ~9.05 over the deck (mount 3.56, body 3.4 + tip 2.4, lean 9 degrees), so the Part cube's lowest
+corner (15 - 3.41) clears it by 2.5 (>= TipClear 2) and by 1.9 at the bob's bottom (>= BobClear 1.4), the `gem_world` mesh
+(6 x 4.5 x 6) by 3.7; lateral distance to the bridge's centre line 9.2 (the lane 4 + the turning cube's 3.46 = 7.46); >= 12
+studs from both prompt parts; the sphere of the cube's half diagonal clear of every other altar part while it turns and bobs;
+straight below the gem is the stone ring / the crystal, never open deck (nobody stands there). The light (1.0 / 12), the Spin
+attributes, the Part fallback (one 4 x 4 x 4 Glass cube turned 45 / 45) and the `gem_world` dress request are as 5.7. Part
+count unchanged: the altar stays **494 / 500**; the prompt text and the Travel path add no part.
+
+**Tests and evidence (16.17).** Server: `shop_globe` and `shop_egg_row` in `tools/smoke_lobby_shop_world.lua`;
+`p2gems_secret_altar` in `tools/smoke_p2_gems.lua`; `altar_world_gem` rewritten to spot 2; `shop_prompt`, `egg_shelf_fx`,
+`lobby_trove_plaza`'s guide checks, `p2gems_altar` ("Summon" -> "Secret Roll"), `p2gems_roulettes` and `smoke_pity.lua`'s
+Secret spins (the player stands on the altar deck first) rewritten to the new rule. Client: `client_shop_secret_lock` in
+`tools/smoke_shop_ui.lua`; `client_shop_eggs` (`_AtAltar = true`, the hint), `smoke_p2_ui`'s Secret open (`FromAltar = true`),
+`client_lobby_fx` (the stand-in named `EggRow`). Python: `tools/test_mesh_keys.py`; `mesh_keys.py --check`, `mesh_names.py
+--check`, `mesh_budget.py` (recorded); `node tools/check.mjs` 0 errors; `count_locals.py` on LobbyBuilder (<= 200).
+Evidence in `.superpowers/lobby-shop/evidence/shop-area/`: Blender renders of the globe (hero, the four in a row with a 5-stud
+player, the eggs through the glass, the plaza eye at 5 studs / 25 away, side), `render_model.py` views of the shop island
+(the egg row under the board, the empty right lawn) and of the altar (the gem over the side crystal), `render_gui.py` of the
+Shop's Eggs tab locked and unlocked at 1920x1080 and 844x390; every file looked at before "done". The Studio check (morning):
+the strip's labels at 30 px, the globe once uploaded.
