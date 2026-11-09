@@ -945,7 +945,14 @@ local function clientScenarios()
 		LocalPlayer:SetAttribute("PaidRandomItemsRestricted", false)
 		local settledBefore = LocalPlayer:GetAttribute(Config.Attr.GemsSettled or "GemsSettled")
 		LocalPlayer:SetAttribute(Config.Attr.GemsSettled or "GemsSettled", true)
-		-- shop-area 16.17.3: the Secret card spins at the Storm Altar only; FromAltar = true is what the altar's prompt sends
+		-- shop-area 16.17.3: the Secret card spins at the Storm Altar only; FromAltar = true is what the altar's prompt sends.
+		-- FromAltar counts only without a live position reading, and the whole run's world replicates the altar island,
+		-- so the test stands the player at the altar the way smoke_egg_stage does (ShopEggs._AtAltar, restored below)
+		local SE = moduleAt("client", "UI/ShopEggs")
+		local atAltar0 = SE and SE._AtAltar
+		if SE then
+			SE._AtAltar = true
+		end
 		MC.Open("Shop", { Tab = "Eggs", FromAltar = true })
 		advance(0.6)
 		local shopGui = pg():FindFirstChild("NimbusShop")
@@ -972,6 +979,9 @@ local function clientScenarios()
 		advance(0.3)
 		local br = calls("BuyRoulette", mark)
 		T.check(#br == 1 and br[1].args[1] == "Secret" and br[1].args[2] == "Gems", "p2ui shop: a gem spin sends BuyRoulette('Secret', 'Gems')", #br .. " calls")
+		if SE then
+			SE._AtAltar = atAltar0
+		end
 		toClient("RouletteResult", { Ok = false, Reason = "test" })
 		advance(0.3)
 		local cloudCard = page and find(page, "ShopCard_Cloud")
