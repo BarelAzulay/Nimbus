@@ -2007,3 +2007,127 @@ the advance table of `RedoGeom.realWidth`): the smoke mock's flat 0.5 em per cha
 - **Tests.** `client_egg3d` (the view, keys, light, turn and rock math, the split and the flight driven by hand, the cutscene
   with stubbed ids: 3D egg at Rise, halves at Burst, removed at Reveal / Skip / close; halves-0, id 0, Low and failed
   Assemble fallbacks; x3 2D; the Shop hero) and `client_egg3d_phone` (one frame at most, a second refused, freed on close).
+
+### 16.15 Roll look A+B (2026-11-08, the owner's pick "A + B", branch `roll-look`)
+
+The owner: "make it look cool and high quality because right now it looks really bad (the opening and the roll)"
+(`.superpowers/lobby-shop/evidence/roll-now/*.jpg`). Pick (`.superpowers/lobby-shop/pitch-roll/ROLL_PICK.md`, `CARDS.md`,
+the animated mock `page.html` section A, functions `cardA`, `sceneA`, `phoneA`, `wordA`, `platA`, `pillBtn`, `chip`, `fastChip`,
+the `@keyframes` at its top): option **A "Showcase"**, every Baseline item, plus **B's colour tell** (Rare and up), **B's
+silhouette** (Legendary and up), **Gemini's shake-colour tweak** (Rare and up) and the **clutter caps** (one shine sweep,
+sparkles only at the burst and the shakes' small pops, the rays dimmed while the reveal text shows). Phases, timings (16.4),
+Skip, Fast hatch, x3, the arming rule, the 11 egg sounds and the 3D egg (16.14) stand; the only timing change is the
+Legendary+ silhouette (+0.3 s to the reveal's text chain). The pedestal's cloud-stone drum and its three puffs stay removed
+(a5a38ac, the owner: "remove the useless bars"): the new plinth below is a flat lit disc, nothing stacked under it.
+
+**Files.** A new `src/client/UI/HatchLook.lua` holds the dressed pieces as builders and handles with no stage state
+(the cards, the gold window, the plinth, the rarity word, the glossy pills and chips, the HUD hide, the image keys);
+`EggStage` calls them from its builders and phase runner; `HatchFx` keeps the effects. Every colour below is a function of
+the rarity colour `c` = `Config.Rarities[].Color` (Secret: `EggStage.Metrics.SECRET_TEXT` rgb(180,150,255), the mock's
+`RC.Secret`) through `HatchLook.Shade(c, t)` = `c:Lerp(white, t)` for `t >= 0`, `c:Lerp(black, -t)` for `t < 0` (the mock's
+`shade`). Values below are rounded to whole channels; tests allow +-1.
+
+**Colours per rarity** (`HatchLook.Shade`; the word's gradient top / middle / bottom and its outline):
+
+| Rarity | c | Word top `.78` | Word middle `.22` | Word bottom `-.18` | Outline `-.68` |
+|---|---|---|---|---|---|
+| Common | 168,178,194 | 236,238,242 | 187,195,207 | 138,146,159 | 54,57,62 |
+| Uncommon | 104,196,128 | 222,242,227 | 137,209,156 | 85,161,105 | 33,63,41 |
+| Rare | 88,158,232 | 218,234,250 | 125,179,237 | 72,130,190 | 28,51,74 |
+| Epic | 176,108,232 | 238,223,250 | 193,140,237 | 144,89,190 | 56,35,74 |
+| Legendary | 242,182,68 | 252,239,214 | 245,198,109 | 198,149,56 | 77,58,22 |
+| Mythic | 238,98,140 | 251,220,230 | 242,133,165 | 195,80,115 | 76,31,45 |
+| Secret | 180,150,255 | 239,232,255 | 197,173,255 | 148,123,209 | 58,48,82 |
+
+Other tints: card rim `Shade(c, .05)` opaque from Rare up, `Shade(c, -.1)` at transparency 0.25 for Common / Uncommon; card
+tint `c` at transparency 0.5 fading to 1 by 0.75 of the card's height (a vertical UIGradient on a "Tint" frame); rarity
+plate `Shade(c, -.45)` with a `Shade(c, .1)` stroke; plinth rim `Shade(c, .25)`, its inner ring `Shade(c, .4)` at 0.45, its
+glow `Shade(c, .2)`; the word's glow `c` at 0.55; the tell and the tweak tint = `EggStage`'s `H.color(rarity)`. Fixed colours:
+ink rgb(11,16,48); card face rgb(37,51,122) -> rgb(17,25,68) (vertical); card shadow rgb(2,4,14) at 0.45; shine line white at
+0.65; track face rgb(20,31,82) -> rgb(8,13,40) on a rgb(3,5,15) 0.15 outer, stroke rgb(44,63,136) 2 px; gold window
+rgb(255,215,106), its glow stroke rgb(244,196,78) at 0.65, notches rgb(255,215,106) with a rgb(90,54,0) stroke; the window's
+rest gold is `EggStage.Metrics.GOLD` rgb(242,182,68) when no tell plays; plinth top rgb(52,72,154) -> rgb(20,29,82), side
+rgb(10,17,52) / rgb(38,56,132) / rgb(10,17,52) (horizontal); gold pill rgb(255,224,138) -> rgb(246,178,60) at 0.55 ->
+rgb(223,143,38), stroke rgb(107,66,0), text ink rgb(58,34,0); green pill rgb(124,240,162) -> rgb(47,184,102) at 0.55 ->
+rgb(29,138,74), stroke rgb(13,77,42), white text with the ink outline; a disabled pill rgb(120,126,140) -> rgb(84,90,104),
+stroke rgb(60,64,76), text rgb(176,184,206); Skip chip black at 0.55 with rgb(227,233,255) text; Fast hatch chip rgb(11,18,51)
+at 0.15 with a rgb(44,63,136) stroke, its switch rgb(44,63,136) (on: `Theme.Colors.Good`), knob white.
+
+**Sizes** (design px under `Content`'s UIScale "Fit": PC = `Theme.ScreenFactor`, so 1280x720 shows 0.8 x these and 1920x1080
+1 x; phones 1:1 at 844x390 / 640x360 and the portrait 360x640 / 390x844; 5.5's middle shrink to 0.6 still takes the cells,
+the crack egg and the reveal pet, text never shrinks):
+
+| Piece | PC (1080p design px) | Phone (real px) |
+|---|---|---|
+| Strip card x1 | 230 x 250 (16.4), corner 18, shadow +8 below, shine line 3 px inset 12 / 6 from the top, plate 0.8 w x 30 at 42 above the bottom, word 18 px white (was 24, rarity-coloured) | 130 x 160, corner 12, shadow +5, shine 2, plate 0.8 w x 22, word 15 |
+| Strip card x3 | 190 x 210, lite: face, rim, shine (no shadow, tint or plate) | 76 x 66, lite |
+| Gold window | the landed cell's box + 8 px a side, stroke 4, glow stroke 10 at 0.65, notches 16 px squares at 45 degrees centred on its top and bottom edges | + 6 px, stroke 3, glow 6, notches 10 |
+| Track ends | two fade frames 0.12 x the track's width at its ends, the track colour -> clear | the same |
+| Hero plinth (the `Pedestal<j>` box: 1.1 x / 0.24 x the egg, 16.4) | x1 420 x 90: "Top" ellipse = the top 0.667 of the box (60 tall) with the rim, "Side" the lower 0.333 (30), "Glow1..3" ellipses 1.6 x the box wide and 1.9 x the top tall, centred 16 px under the top, transparencies 0.6 / 0.75 / 0.88 at 1 / 0.72 / 0.45 of that size; x3 242 x 53 the same shares | x1 220 x 48 (Top 32, Side 16, glow 352 x 61); x3 106 x 23; the reveal keeps 16.4's 12 px lip = the Top only (`H.pedLook`) |
+| Crack word | 80 px, one label, gradient + outline | 40 |
+| Reveal word | x1 84 px letters (R1), x3 56 px letters (R3) | x1 landscape 44 (min 40) letters in the right column; portrait 40 letters in the 44 px band; x3 22 px, one label (no letters) |
+| Pills | 56 tall (44.8 real px at the 0.8 floor: the pitch's "about 52" read at 720p), SPIN AGAIN 380 pref / 300 min with an 80 x 40 price chip, DONE 220 / 180, text 22 | 46 tall, SPIN AGAIN 208 / 180 with a 66 x 30 chip, DONE 118 / 100, text 16 |
+| Chips | Skip 260 / 200, Fast hatch 200 / 170: a 44 px tap box drawing a 36 px pill, text 18, switch 34 x 18 | Skip 150 / 120, Fast 150 / 135: 44 px box, 32 px pill, text 15, switch 30 x 16 |
+| Phone x1 landscape reveal | n/a | side by side (the pitch's `phoneA`): the pet in the left 0.46 of the width (170 max, 110 min, the lip under it), the right column from the top: word row 48, name 26 (row 30) + NEW! 70 x 26, note 15 (36 tall, two lines), the two pills 46; the chips on the bottom bar as the roll's |
+| Portrait reveal | n/a | the stack of 16.4 (band, pet, lip, name, note, the two bar rows) with the word as letters |
+
+**Easing and timings** (seconds; Fast hatch in brackets; everything else as 16.4):
+
+| Beat | When | Motion |
+|---|---|---|
+| Strip | 16.4's ease `1 - (1 - p) ^ 2.8` plus an overshoot `18 x S px x p ^ 8` (Fast 8) past the winner | `R.strips` |
+| Colour tell (Rare+) | 0.7 (0.25) before that strip lands | the window's gold, glow and notches tween to `H.color(rarity)` in 0.25 (0.1), Quad Out; Common / Uncommon stay gold (no fake tease); x3: each strip its own pull's colour |
+| Land | the Land phase 0.35 (0.12) | the cells spring back from the overshoot with Back Out (`1 + 2.70158 (k - 1) ^ 3 + 1.70158 (k - 1) ^ 2`, the rise's curve), driven per frame; the landed card's UIScale 1 -> 1.15 in 0.1 Quad Out -> 1.09 in 0.15 Quad InOut; one shine sweep (a white gradient frame, Offset -1 -> 1) in 0.3 (0.12); the other cards dim to 0.6 as today |
+| Rise | 0.5 (0.2) | as 16.4, plus the plinth: UIScale 0.6 -> 1 Back Out and its transparencies from 1 over the whole phase |
+| Shake tweak (Gemini, Rare+) | the first shake's start, 0.12 x Crack (0.25 x) | the plinth rim and inner ring, the cloud ring's `GroupColor3` and the rays tween to the rarity colour in 0.25 (0.1), Quad Out; the rays come up to `GroupTransparency` 0.75 and start turning; Common / Uncommon: nothing until the burst |
+| Burst | 16.4 | plus a punch: a UIScale "Punch" on `Stage` (AnchorPoint 0.5, 0.5) 1 -> 1.05 in 0.08 Quad Out -> 1 in 0.25 Quad InOut (High only); the sparks capped at 16 on phones |
+| Reveal, t = 0 | the pet pops as 16.4 (Back, 0.35); SIL = 0 below Legendary, 0.3 from Legendary | Legendary+: the pet's ViewportFrame `ImageColor3` black from the pop, held to 0.3, tweened to white 0.3 -> 0.45 Quad Out |
+| Word | SIL + 0.05 x i for letter i (0-based) | each letter's UIScale 0 -> 1.3 in 0.12 Quad Out -> 1 in 0.14 Quad In; the glow behind fades in over 0.2 from SIL + 0.05 |
+| Name, NEW!, note | SIL + 0.2 | slide up 16 px and fade in over 0.25 Quad Out; NEW! pops 0 -> 1.3 -> 1 (0.15) at SIL + 0.4 |
+| Pills | SIL + 0.4 | slide up 20 px and fade in over 0.3 Quad Out; they still arm by 16.4's rule (ARM_AFTER 0.8 from the reveal, ARM_QUIET 0.5) and show disabled until then |
+| Rays on the reveal | Legendary+ | rest at `GroupTransparency` 0.55 while the text shows (16.4 had 0.45: the clutter cap) |
+
+**Budgets.** 16.4's caps stand and are asserted at every phase: x1 <= 450 instances, x3 <= 750 (today: x1 264 / 242 / 184
+at strip / crack / reveal, x3 reveal 325, phone x1 reveal 170; an x1 card adds <= 7 instances, an x3 lite card <= 2, the
+plinth 9, the window 7, a 5-letter word 18, two pills 16, two chips 12); tweens <= 24 live plus the Secret stars, except the
+reveal's first 0.7 s, where the letter pops may take it to 32; one Heartbeat; one Lighting effect plus the "Hatch" preset.
+An x1 strip cell stays <= 20 instances (16.4 said 14; the card skin is the difference), an x3 cell <= 16.
+
+**The HUD hides.** On `H.open()` (after the ScreenGui exists) every `ScreenGui` in PlayerGui that is `Enabled` and not in
+`HatchLook.KEEP = { NimbusHatch, NimbusNotify, NimbusMouseLockHint, CloudUITooltip, NimbusShop, NimbusDev, NimbusMainMenu,
+NimbusLoading }` gets `Enabled = false` and is remembered; a ScreenGui added to PlayerGui while the stage shows is hidden the
+same way (one `ChildAdded` connection, in `S.Conns`). Every `teardown(reason)` (Done, Error, Match, Close) re-enables each
+remembered gui that is still in PlayerGui and still `Enabled == false` (a gui someone turned on meanwhile is left alone) and
+forgets the list. Why the KEEP list: NimbusNotify carries the "Still waiting" / "You hatched" toasts and the Legendary chat
+line; NimbusShop hides its own Holder on `EggStage.Opened` and sits under the stage (DisplayOrder 19 < 25), so its
+`Enabled` stays the Shop's; the dev tools, the cursor hint and the tooltip never cover the stage. Roblox's own top bar stays
+(the 58 px inset); `MenuController.SetTouchHidden("Hatch", true)` keeps hiding the thumbstick as today.
+
+**Fallbacks.** Low graphics (`GraphicsQuality.Effective() == "Low"`): no blur / tint, half the sparks, static rays and ring,
+no speed streaks (16.4), no punch; the tell, the land pop, the shine, the letter pops and the silhouette stay (one tween
+each). Images: three optional keys `HatchLook.IMAGES = { Rays = "hatch_rays", Glow = "hatch_glow", Sparkle = "hatch_sparkle" }`
+read from `shared/TextureIds` (`HatchLook.Image(key) -> "rbxassetid://" .. id | nil`, the ShopController `store_*` pattern;
+`tools/check.mjs` lists `UI/HatchLook.lua` among the TextureIds joiners). With no id (today: the keys are not in TextureIds,
+nothing is uploaded) the frame fallbacks draw: the rays are `HatchFx.Rays`' 16 wedges, every glow (backlight, plinth glow,
+word glow) is stacked round Frames with gradients, the sparkles are the pool's 45-degree squares; with an id the same
+positions and sizes take an ImageLabel with `ImageColor3` = the tint. The 2D `EggArt` egg stays the hero when the 3D egg
+is not usable (16.14). x3 rolls keep 2D eggs and lite cards; a phone keeps one ViewportFrame at a time.
+
+**What stays 2D** (frames, gradients, strokes): the strip cards and their painted eggs, the gold window, the plinth, the
+backlight, the cloud ring, the cracks and leaks (over the ViewportFrame), the rays, the shock ring, the sparks, the flash,
+the crack word, the reveal word, the pills and chips. 3D: the x1 hero egg and its halves (16.14, when usable) and the pet
+(`CloudUI.PetViewport`).
+
+**Compatibility.** Instance names tests rely on keep their places: `Pointer` is the gold window's root (children `Glow`,
+`Window`, `NotchTop`, `NotchBottom`), `Pedestal<j>` the plinth's box (children `Top`, `Side`, `Glow1..3`, `Ring`; the lip
+rule shows `Top` only), `Banner` the reveal word's box with the `Word` handle inside it (a Frame with the attribute `Text`
+and children `L1..Ln`; x3 phone: one TextLabel `Word`), `BottomBar` > `Skip`, `FastHatch`, `SpinAgain`, `Done` the pills
+and chips (TextButtons; `CloudUI.SetDisabled` keeps working through the `Disabled` attribute).
+
+**Tests.** `tools/smoke_roll_look.lua`: `client_roll_look_stage` (the HUD hide and restore on every exit, the cards, the
+window and the tell, the overshoot and the land pop, `HatchLook.Shade`), `client_roll_look_open` (the plinth and its lip,
+the tweak from Rare up only, the punch and its Low fallback, the phone spark cap, the image keys and fallbacks),
+`client_roll_look_reveal` (the letters and their timing, the silhouette from Legendary only, the +0.3 s chain, the pills
+and chips, the disabled pill, budgets at every phase, x3), `client_roll_look_phone` (844x390, 640x360, portrait: the
+side-by-side reveal, 15 px text, 44 px taps, one ViewportFrame). Evidence: `tools/render_gui.py hatch:<rarity>@<s>` and
+`hatch3:<s>` at 1920x1080, 1280x720, 844x390 and 360x640, in `.superpowers/lobby-shop/evidence/roll-look/`.
