@@ -11,8 +11,8 @@
 --   FRACTION (a half-health player stays at half health with the new maximum).
 -- * 0.5s lobby loop: players who fall off the lobby are sent back (no damage), the lobby keeps
 --   everybody at full health, and max health self-heals if it ever drifts from the perks.
--- * PlayerRemoving: save + cleanup (DataService decides when the profile cache entry is released:
---   never while the final save failed).
+-- * PlayerRemoving: cleanup (DataService's own leave handler saves and decides when the profile cache entry is
+--   released: never while the final save failed).
 --
 -- Public API (ARCHITECTURE.md + v2):
 --   Init(lobbyInfo)  SetSpawnProvider(fn)  SetPerkProvider(fn)  SetHomeProvider(fn)
@@ -572,9 +572,9 @@ local function onPlayerRemoving(player)
 			conn:Disconnect()
 		end
 	end
-	-- Save only. Freeing the profile cache entry is DataService's decision (its own PlayerRemoving
-	-- handler releases after ITS save): a failed final save must keep the entry for retries.
-	pcall(DataService.Save, player)
+	-- Saving and freeing the profile cache entry are DataService's: its own PlayerRemoving handler saves (a release
+	-- write, deferred after every other handler) and releases. (Session lock, 2026-11-10: this handler no longer saves
+	-- too, so a leave is ONE write instead of a possible second one inside Roblox's 6 s same-key window.)
 end
 
 ----------------------------------------------------------------------

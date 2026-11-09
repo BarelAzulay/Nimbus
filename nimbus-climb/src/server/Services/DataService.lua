@@ -248,6 +248,23 @@
 --     at leave time (PetCareService refunds the dishes still cooking) is still in the cache and travels with
 --     that save or with its orphan retry; a save started at once had nothing to write when the session was
 --     already saved, returned without yielding, and Release dropped the entry before those handlers ran.
+--   * Session lock (2026-11-10, docs/superpowers/specs/2026-11-10-session-lock-design.md; helper table P8): a player's
+--     save is owned by ONE server at a time. The record holds one optional top-level key Lock = { Id, Job, Place, At }
+--     (Id = game.JobId, "studio-<guid>" in Studio; Job / Place are diagnostics; At = Unix seconds of the last write that
+--     carried it), in KNOWN_TOP, never in a profile / Base / delta / snapshot; Version stays 2. The load claims it with
+--     ONE UpdateAsync whose pure callback only adds Lock (no GetAsync); a brand-new player's claim writes a lock-only
+--     record { Lock }, which every read treats as "nothing stored" (the v1 lookup still runs). A live lock of another
+--     server makes the load wait (attempts every Config.Save.ClaimRetrySeconds, at most ClaimWaitSeconds; the player
+--     attribute Config.Attr.SaveWaiting = true meanwhile), then play PROVISIONALLY (see above) while the recovery keeps
+--     claiming. Every save refreshes the lock; an idle entry's empty save still writes once the lock is
+--     HeartbeatSeconds old (skipped while the UpdateAsync budget is under 10). Every write is guarded: a record that
+--     holds another server's live lock is never written (the write is cancelled, a warning): an orphan's entry is
+--     dropped (a stale server never saves), a player still here gets the stored record (the store wins) and plays
+--     provisionally until the lock frees. A write for a player who left (or is leaving, or at BindToClose) is a
+--     release (Lock cleared); an entry whose release failed stays an orphan until it lands. A lock is free (stale)
+--     when its At is LockSeconds old or more, LockSeconds in the future, junk, or (Studio only) another Studio
+--     session's. Every DataService copy in the smoke mock shares game.JobId "mock-job" (one server, two caches); a test
+--     gives a copy its own id with _SetServerIdForTest.
 --   * The store never holds a sparse array: Garden / Gym are written as arrays with "" for empty slots (or a map
 --     with string keys when a slot has a name); empty Phase 2 maps (Food, Tiers, Hybrids, GemReceipts) and Teams /
 --     Battle while they hold the defaults are left out of the record. ProfileSync uses the same slot encoding (client
@@ -394,6 +411,9 @@
 --     NotProcessedYet; `gems` = the amount granted with it (a number = { Gems = n }, or a grant table), so a purchase
 --     another server already stored is never added twice), SyncSoon(player) (a throttled Sync: at most one snapshot
 --     per 0.25 s, trailing call kept), signal ProfileRebased(player, profile).
+--     Session lock: OwnsSave(player) -> bool (the profile is loaded, not provisional, and this server holds the lock;
+--     true with no usable store: nothing to own), _SetServerIdForTest(id) -> id | false (Studio and the mock only: this
+--     module copy's server id, set before its first Load).
 --   Store build (spec section 6; helper table P7; nothing here yields; every write is one step and rides the next
 --   UpdateAsync with its grant record):
 --     NoteReceiptGrant(player, purchaseId, grant) -> ok   records what a receipt REALLY granted (substitutes included;
@@ -452,6 +472,7 @@
 -- Plain Lua 5.1-compatible syntax only.
 
 local DataStoreService = game:GetService("DataStoreService")
+local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -522,6 +543,7 @@ local KNOWN_TOP = {
 	Store = true, Daily = true, Trove = true, -- Store build
 	Pity = true, -- lobby shop (without it keepForeign would copy the stored Pity back over every save: a frozen count)
 	UpdatedAt = true,
+	Lock = true, -- session lock: record metadata like UpdatedAt; known, so a release that leaves it out really removes it
 }
 local KNOWN_HOME = {
 	Level = true, Rooms = true, Prestige = true, Stations = true, Garden = true, Gym = true, CollectorCash = true,
@@ -547,7 +569,11 @@ local KNOWN_STATS = { Matches = true, Wins = true, TokensEarned = true, Spins = 
 --   DailyClaims = { grant... } the daily claims (MutateDaily's grant, stamped At / Prev / PlayStart / Star) not in the
 --     store yet, in claim order,
 --   TroveGrants = { [askId] = grant } the Trove asks (MarkTrove) not in the store yet (P7.pruneGrants drops all three
---     after a confirmed save)
+--     after a confirmed save),
+--   session lock: LockHeld = this server's lock is in the record (the claim or a non-release write landed; false after
+--     a release or a guard trip), LockAt = os.time() of that write (the heartbeat's age), HeldBy = { Id, At } of the
+--     live lock that made the load wait or the guard trip (nil once claimed), Leaving = PlayerRemoving ran for this
+--     session (its writes are releases; Load clears it on a rejoin)
 -- }
 local cache = {}
 local store = nil
@@ -902,6 +928,16 @@ local P7 = {
 	SETTLE_RETRY_MAX = 60,
 	SETTLE_JITTER = 0.25,
 	SETTLE_BUDGET = 10,
+}
+
+-- Session lock (2026-11-10, docs/superpowers/specs/2026-11-10-session-lock-design.md; see the header): ONE table again
+-- (the one new top-level local besides HttpService). Id is this server's id: game.JobId on a live server, a
+-- "studio-<guid>" per Studio session (game.JobId is "" there); _SetServerIdForTest changes it for one module copy. The
+-- numbers live in Config.Save (P8.num falls back to the spec's values when a key is missing).
+local P8 = {
+	Id = (game.JobId ~= "" and game.JobId) or ("studio-" .. HttpService:GenerateGUID(false)),
+	BUDGET = 10, -- an UpdateAsync request budget under this skips a heartbeat (the release and real saves still go)
+	DEFAULTS = { LockSeconds = 360, HeartbeatSeconds = 120, ClaimWaitSeconds = 12, ClaimRetrySeconds = 3 },
 }
 
 -- The Dungeon record: Best = the highest floor cleared (0 = none), Cleared = { [floor] = true } in the live profile
@@ -4507,32 +4543,163 @@ local function readKey(dataStore, key, attempts)
 	return false, nil
 end
 
+----------------------------------------------------------------------
+-- The session lock (helpers; see the header and the P8 table)
+----------------------------------------------------------------------
+
+-- A Config.Save number (the spec's default when the key is missing or junk).
+function P8.num(key)
+	local save = Config.Save
+	local n = type(save) == "table" and tonumber(save[key]) or nil
+	if n and n == n and n >= 0 and n < math.huge then
+		return n
+	end
+	return P8.DEFAULTS[key]
+end
+
+-- The usable lock of a stored record: { Id, At } (At sanitised), or nil when there is none or it is junk (a string Id
+-- and a finite At are required). Pure.
+function P8.lockOf(raw)
+	local lock = type(raw) == "table" and raw.Lock or nil
+	if type(lock) ~= "table" or type(lock.Id) ~= "string" or not isFinite(lock.At) then
+		return nil
+	end
+	return { Id = lock.Id, At = sanitizeTime(lock.At) }
+end
+
+-- true when `lock` (a P8.lockOf answer) no longer protects the record (spec 10, in this order): no lock / junk; its At is
+-- LockSeconds old or older (a crashed server's lock expired); its At is more than LockSeconds in the future (a junk
+-- clock); the Studio rule: a Studio server treats another Studio session's lock as free (a force-closed Studio never
+-- locks the owner out); a live server's lock is honoured in Studio too. Pure.
+function P8.stale(lock, now)
+	if type(lock) ~= "table" or type(lock.Id) ~= "string" or not isFinite(lock.At) then
+		return true
+	end
+	local ttl = P8.num("LockSeconds")
+	if now - lock.At >= ttl or lock.At - now > ttl then
+		return true
+	end
+	return IS_STUDIO and string.sub(lock.Id, 1, 7) == "studio-"
+end
+
+-- true when a live lock of ANOTHER server protects the record `raw` at `now`. Pure.
+function P8.foreign(raw, now)
+	local lock = P8.lockOf(raw)
+	if lock and lock.Id ~= P8.Id and not P8.stale(lock, now) then
+		return lock
+	end
+	return nil
+end
+
+-- This server's lock record, stamped `now`.
+function P8.lockRecord(now)
+	return { Id = P8.Id, Job = game.JobId, Place = game.PlaceId, At = now }
+end
+
+-- A record that holds nothing but a lock (a brand-new player's claim: no Version, no Tokens) counts as "nothing stored".
+-- Every real save writes Version and Tokens (toStored), so no older record is ever taken for one.
+function P8.lockOnly(raw)
+	return type(raw) == "table" and raw.Version == nil and raw.Tokens == nil and raw.Lock ~= nil
+end
+
+-- true when this server's UpdateAsync request budget is under P8.BUDGET (an unanswered budget call counts as enough).
+function P8.writeBudgetLow()
+	local ok, n = pcall(function()
+		return DataStoreService:GetRequestBudgetForRequestType(Enum.DataStoreRequestType.UpdateAsync)
+	end)
+	return ok and type(n) == "number" and n < P8.BUDGET
+end
+
+-- The player attribute Config.Attr.SaveWaiting: true while the load waits for (or the session plays provisionally
+-- because of) another server's lock; removed (nil) once this server's claim landed. Written only when it changes.
+function P8.setWaiting(userId, on)
+	local player = Players:GetPlayerByUserId(userId)
+	if not player then
+		return
+	end
+	local attr = (Config.Attr and Config.Attr.SaveWaiting) or "SaveWaiting"
+	pcall(function()
+		if on then
+			if player:GetAttribute(attr) ~= true then
+				player:SetAttribute(attr, true)
+			end
+		elseif player:GetAttribute(attr) ~= nil then
+			player:SetAttribute(attr, nil)
+		end
+	end)
+end
+
+-- One claim attempt (spec 6.1): ONE UpdateAsync whose pure, non-yielding callback takes the lock (a shallow copy of the
+-- record with only Lock changed: no profile rebuild, so a newer or older build's fields stay as they are) or refuses it
+-- (another server's live lock: nil = no write). The last run's outcome travels through upvalues (the callback may run
+-- more than once). A stored value that is not a table is left alone (claimed without a write: the next save writes the
+-- record with the lock). Returns ok, seenRaw, held ({ Id, At } of the refusing lock).
+function P8.claim(dataStore, key)
+	local seen, held = nil, nil
+	local ok, err = pcall(function()
+		dataStore:UpdateAsync(key, function(old)
+			local now = os.time()
+			seen = old
+			held = P8.foreign(old, now)
+			if held or (old ~= nil and type(old) ~= "table") then
+				return nil
+			end
+			local rec = {}
+			if type(old) == "table" then
+				for k, v in pairs(old) do
+					rec[k] = v
+				end
+			end
+			rec.Lock = P8.lockRecord(now)
+			return rec
+		end)
+	end)
+	if not ok then
+		noteFailure("load", err)
+		return false, nil, nil
+	end
+	return true, seen, held
+end
+
 -- Reads a player's stored profile.
 -- Returns ok, profile|nil, migrated. ok=false means "could not read" (nothing may be assumed).
 -- profile == nil with ok=true means a brand-new player. migrated=true means the profile was built
 -- from a v1 save and the v2 key does not exist yet. `attempts`: readKey's (nil = 2).
-local function fetchProfile(userId, attempts)
+-- Session lock: with `claim` the v2 read is P8.claim (one UpdateAsync: the record is read AND this server's lock
+-- written); the 6th value `held` = { Id, At } when another server's live lock refused it (ok false), the 7th `wrote` =
+-- the claim landed (the record holds this server's lock even when the v1 read after it failed). A lock-only record
+-- counts as nothing stored, in both modes.
+local function fetchProfile(userId, attempts, claim)
 	local s = getStore()
 	if not s then
 		return false, nil, false
 	end
-	local ok, raw = readKey(s, keyFor(userId), attempts)
+	local ok, raw, held
+	if claim then
+		ok, raw, held = P8.claim(s, keyFor(userId))
+		if ok and held then
+			return false, nil, false, false, nil, held, false
+		end
+	else
+		ok, raw = readKey(s, keyFor(userId), attempts)
+	end
 	if not ok then
 		return false, nil, false
 	end
-	if raw ~= nil then
+	local wrote = claim == true
+	if raw ~= nil and not P8.lockOnly(raw) then
 		-- the 4th value: the raw record held a preset longer than 3 keys (Phase 5, 4.8: Load fires TeamsChanged once);
 		-- the 5th: the keys P3.gardenSolo took out of the Garden (bug batch 2 #18) or nil
 		local info = {}
 		local profile = normalizeProfile(raw, info)
-		return true, profile, false, P5.hadLongPreset(raw), info.GardenMoved
+		return true, profile, false, P5.hadLongPreset(raw), info.GardenMoved, nil, wrote
 	end
 	-- Nothing in v2: look for a v1 save to migrate.
 	local legacy = getLegacyStore()
 	if legacy then
 		local okLegacy, old = readKey(legacy, keyFor(userId), attempts)
 		if not okLegacy then
-			return false, nil, false
+			return false, nil, false, false, nil, nil, wrote
 		end
 		if old ~= nil then
 			local migrated = newProfile()
@@ -4541,10 +4708,64 @@ local function fetchProfile(userId, attempts)
 			else
 				migrated.Tokens = sanitize(old)
 			end
-			return true, migrated, true
+			return true, migrated, true, false, nil, nil, wrote
 		end
 	end
-	return true, nil, false
+	return true, nil, false, false, nil, nil, wrote
+end
+
+-- The load's claim loop (spec 6.2): one fetchProfile claim per attempt (the loop is the retry). Claimed -> done. Held by
+-- another server's live lock -> SaveWaiting = true (first time), give up as held once ClaimWaitSeconds were waited (or
+-- the player left), else wait ClaimRetrySeconds and try again: attempts at 0, 3, 6, 9, 12 s. An error / outage -> a
+-- second error gives up as failed (today's two attempts), else wait RETRY_DELAY. Returns fetchProfile's tuple
+-- (fetched, profile, migrated, trimmed, moved, held, wrote); entry.HeldBy keeps the last refusing lock.
+function P8.claimLoop(entry, userId)
+	local waited, errors, wrote = 0, 0, false
+	while true do
+		local pok, fetched, profile, migrated, trimmed, moved, held, didWrite = pcall(fetchProfile, userId, 1, true)
+		if not pok then
+			warn("[DataService] fetch errored: " .. tostring(fetched))
+			fetched, held, didWrite = false, nil, false
+		end
+		wrote = wrote or didWrite == true
+		if fetched then
+			return true, profile, migrated, trimmed == true, moved, nil, true
+		end
+		if held then
+			entry.HeldBy = held
+			P8.setWaiting(userId, true)
+			if waited >= P8.num("ClaimWaitSeconds") or not Players:GetPlayerByUserId(userId) then
+				return false, nil, false, false, nil, held, wrote
+			end
+			local step = math.max(P8.num("ClaimRetrySeconds"), 0.1)
+			task.wait(step)
+			waited = waited + step
+		else
+			errors = errors + 1
+			if errors >= 2 or storeDisabled or not getStore() then
+				return false, nil, false, false, nil, nil, wrote
+			end
+			task.wait(RETRY_DELAY)
+		end
+	end
+end
+
+-- The claim landed (a load, a re-claim or a recovery): this server holds the lock from now on.
+function P8.claimed(entry, userId)
+	entry.LockHeld = true
+	entry.LockAt = os.time()
+	entry.HeldBy = nil
+	P8.setWaiting(userId, false)
+end
+
+-- A claim attempt that did not end in a profile: the entry plays provisionally; it still holds the lock when the claim
+-- itself landed (the v1 read after it failed): its writes keep or release it like any other.
+function P8.notClaimed(entry, wrote)
+	entry.LoadFailed = true
+	if wrote then
+		entry.LockHeld = true
+		entry.LockAt = os.time()
+	end
 end
 
 ----------------------------------------------------------------------
@@ -4572,10 +4793,12 @@ local function ensureEntry(userId)
 	return entry
 end
 
--- Waits (bounded) for an in-flight load to finish.
+-- Waits (bounded) for an in-flight load to finish. Session lock: a load may wait ClaimWaitSeconds for another server's
+-- lock plus one RETRY_DELAY (spec 6.2), so the bound is that plus 4 s.
 local function waitForLoad(entry)
+	local bound = P8.num("ClaimWaitSeconds") + RETRY_DELAY + 4
 	local waited = 0
-	while entry.Loading and waited < 40 do
+	while entry.Loading and waited < bound do
 		task.wait(0.1)
 		waited = waited + 0.1
 	end
@@ -4598,22 +4821,21 @@ end
 local function loadEntry(player)
 	local userId = player.UserId
 	local entry = ensureEntry(userId)
-	if entry.Loaded then
-		return entry, false
-	end
 	if entry.Loading then
 		waitForLoad(entry)
 		return entry, false
 	end
+	-- Session lock (spec 6.5): a loaded entry is current while it holds the lock (a quick rejoin before the leave's
+	-- release landed, or an orphan whose release failed: the record cannot have moved) or while its recovery runs. One
+	-- the leave already released (a rejoin raced the leave: the entry is not dropped yet) claims again: the record may
+	-- hold another server's data by now, which the claim brings in (rebase; Load announces it to the new Player).
+	local again = entry.Loaded == true
+	if again and (entry.LockHeld or entry.LoadFailed or getStore() == nil) then
+		return entry, false
+	end
 
 	entry.Loading = true
-	local fetched, stored, migrated, trimmed, moved = false, nil, false, false, nil
-	local pok, a, b, c, d, e = pcall(fetchProfile, userId)
-	if pok then
-		fetched, stored, migrated, trimmed, moved = a, b, c, d == true, e
-	else
-		warn("[DataService] fetch errored: " .. tostring(a))
-	end
+	local fetched, stored, migrated, trimmed, moved, _, wrote = P8.claimLoop(entry, userId)
 
 	if fetched then
 		-- Anything the session did before the load finished (early AddTokens) is kept on top.
@@ -4628,12 +4850,15 @@ local function loadEntry(player)
 			entry.TeamsTrimmed = true -- Phase 5 (4.8): a stored 4-key preset loads with 3; Load fires TeamsChanged once
 		end
 		entry.GardenMoved = moved -- bug batch 2 #18: pets that left the Garden on this read (P3.gardenAnnounce)
+		P8.claimed(entry, userId)
 	else
-		entry.LoadFailed = true -- play on with defaults; saves/recovery merge with the real data later
+		-- play on with defaults; saves/recovery merge with the real data later (held by another server's lock: the
+		-- recovery claims once it frees)
+		P8.notClaimed(entry, wrote)
 	end
 	entry.Loaded = true
 	entry.Loading = false
-	return entry, true
+	return entry, not again
 end
 
 -- Tells the player's systems that the live profile changed underneath them.
@@ -4814,10 +5039,15 @@ function P7.recovered(entry, userId)
 end
 
 -- Re-reads the store for an entry whose load failed and merges the session on top of it.
--- Caller holds the entry lock. Returns true on success.
+-- Caller holds the entry lock. Returns true on success. Session lock: the read is a claim (one UpdateAsync); another
+-- server's live lock refuses it (false: the recovery loop or the next autosave tries again).
 local function recover(entry, userId)
-	local fetched, stored, migrated, _, moved = fetchProfile(userId)
+	local fetched, stored, migrated, _, moved, held, wrote = fetchProfile(userId, 1, true)
 	if not fetched then
+		if held then
+			entry.HeldBy = held
+		end
+		P8.notClaimed(entry, wrote)
 		return false
 	end
 	entry.GardenMoved = moved -- bug batch 2 #18 (announced by announceRebase)
@@ -4828,6 +5058,7 @@ local function recover(entry, userId)
 	end
 	rebase(entry, entry.Base, source, newBase)
 	entry.LoadFailed = false
+	P8.claimed(entry, userId) -- SaveWaiting removed before the announce: its listeners see the claim
 	announceRebase(userId, entry)
 	P7.recovered(entry, userId) -- lobby shop: the gem settle hold (after the announce: its listeners see the hold)
 	return true
@@ -4866,9 +5097,69 @@ end
 -- Saving
 ----------------------------------------------------------------------
 
+-- true when the store already holds everything the entry knows (nothing could be lost by dropping it).
+-- An unreadable comparison counts as "not clean": keeping data is always the safe direction. Session lock: an entry
+-- that still holds the lock is not clean either (its release must land first: the orphan loop retries it).
+local function entryIsClean(entry)
+	local ok, empty = pcall(function()
+		return isEmptyDelta(diffProfiles(entry.Profile, entry.Base, entry.Overwrite, deltaOpts(entry)))
+	end)
+	return ok and empty == true and entry.LockHeld ~= true
+end
+
+-- Session lock: a save whose delta is empty still writes when it must move the lock: a release while the entry holds
+-- it (the lock must go), or (not a release) the heartbeat of a loaded, real entry: its lock is HeartbeatSeconds old, or
+-- not held (a quick rejoin raced the leave's release: the next save takes it back; the guard still applies) and the
+-- UpdateAsync budget is not low (a skipped heartbeat is caught by the next sweep).
+function P8.mustWrite(entry, release)
+	if release then
+		return entry.LockHeld == true
+	end
+	if entry.Loaded ~= true or entry.LoadFailed == true then
+		return false
+	end
+	local due = entry.LockHeld ~= true or os.time() - (entry.LockAt or 0) >= P8.num("HeartbeatSeconds")
+	return due and not P8.writeBudgetLow()
+end
+
+-- Session lock: the write guard tripped (spec 8): another server's live lock is in the record, so this server's write
+-- was cancelled and its unsaved changes are dropped. A player who is not here (an orphan, a late leave save): the entry
+-- goes (a stale server never saves). A player still here (the same account on two servers at once): the store wins
+-- (the live profile becomes the stored record; the grant records and a pending ResetFields go with the dropped changes:
+-- a receipt never saved answers NotProcessedYet and Roblox asks again), the session plays provisionally and the
+-- recovery claims once the lock frees. Always false (the caller's save failed).
+function P8.tripped(entry, userId, lock, seen)
+	warn(string.format("[DataService] another server owns the save of user %s (lock %s, %d s old): this server's unsaved changes are dropped",
+		tostring(userId), tostring(lock.Id), math.max(0, os.time() - lock.At)))
+	entry.LockHeld = false
+	if not Players:GetPlayerByUserId(userId) then
+		if cache[userId] == entry then
+			cache[userId] = nil
+		end
+		return false
+	end
+	entry.ReceiptGrants, entry.DailyClaims, entry.TroveGrants, entry.Overwrite = nil, nil, nil, nil
+	entry.DungeonMigrated, entry.BerriesMigrated, entry.ItemsRefunded = nil, nil, nil
+	local storedProfile = normalizeProfile((not P8.lockOnly(seen)) and seen or nil)
+	replaceContents(entry.Profile, storedProfile)
+	entry.Base = copyProfile(storedProfile)
+	entry.LoadFailed = true
+	entry.HeldBy = lock
+	P8.setWaiting(userId, true)
+	scheduleRecovery(userId)
+	announceRebase(userId, entry)
+	return false
+end
+
 -- Body of a save; the caller holds the entry lock. Returns true when the store is up to date.
-local function writeEntry(entry, userId)
+-- Session lock: `mode` "release" (or a player who left / is leaving, or the server shutting down) writes the record
+-- without the lock; any other write stamps this server's lock. Every write is guarded (P8.tripped).
+local function writeEntry(entry, userId, mode)
+	local release = mode == "release" or entry.Leaving == true or shuttingDown or Players:GetPlayerByUserId(userId) == nil
 	if entry.LoadFailed then
+		if release and entryIsClean(entry) then
+			return true -- a stand-in with nothing to write and no lock of ours: no claim just to let go of it
+		end
 		if not recover(entry, userId) then
 			return false -- never write blind: it could hide a v1 save or a v2 profile we could not read
 		end
@@ -4883,22 +5174,36 @@ local function writeEntry(entry, userId)
 		local overwriteGen = entry.OverwriteGen
 		local snapshot = copyProfile(entry.Profile)
 		local delta = diffProfiles(snapshot, entry.Base, entry.Overwrite, deltaOpts(entry))
-		if isEmptyDelta(delta) then
+		if isEmptyDelta(delta) and not P8.mustWrite(entry, release) then
 			entry.Dirty = false
 			return true
 		end
 
-		local result = nil
+		local result, tripped, seen = nil, nil, nil
 		local ok, err = pcall(function()
 			result = s:UpdateAsync(keyFor(userId), function(old)
 				-- Must be pure and non-yielding: UpdateAsync may call it more than once.
+				local now = os.time()
+				tripped = P8.foreign(old, now)
+				if tripped then
+					seen = old
+					return nil -- the guard: another server owns the save (no write)
+				end
 				local record = keepForeign(toStored(applyDelta(normalizeProfile(old), delta)), old)
-				record.UpdatedAt = os.time()
+				record.UpdatedAt = now
+				if not release then
+					record.Lock = P8.lockRecord(now)
+				end
 				return record
 			end)
 		end)
 
+		if ok and tripped then
+			return P8.tripped(entry, userId, tripped, seen)
+		end
 		if ok then
+			entry.LockHeld = not release
+			entry.LockAt = os.time()
 			entry.Dirty = false
 			if delta.Overwrite and entry.OverwriteGen == overwriteGen then
 				entry.Overwrite = nil -- written; a ResetFields during the write stays pending for the next save
@@ -4934,19 +5239,22 @@ local function writeEntry(entry, userId)
 	return false
 end
 
-local function saveEntry(userId)
+local function saveEntry(userId, mode)
 	local entry = cache[userId]
 	if not entry then
 		return false
 	end
 	waitForLoad(entry)
+	if entry.Loading then
+		return false -- session lock: nothing of a loading entry may be written (its claim has not landed)
+	end
 	if not getStore() then
 		return false -- DataStores unavailable: the in-memory cache is all we have
 	end
 	if not acquire(entry) then
 		return false
 	end
-	local ok, result = pcall(writeEntry, entry, userId)
+	local ok, result = pcall(writeEntry, entry, userId, mode)
 	entry.Saving = false
 	if not ok then
 		if not IS_STUDIO then
@@ -4958,8 +5266,8 @@ local function saveEntry(userId)
 end
 
 -- pcall-safe save by user id (the player may be gone: orphaned entries are saved this way too).
-local function safeSave(userId)
-	local ok, result = pcall(saveEntry, userId)
+local function safeSave(userId, mode)
+	local ok, result = pcall(saveEntry, userId, mode)
 	if not ok then
 		if not IS_STUDIO then
 			warn("[DataService] Save errored: " .. tostring(result))
@@ -4969,21 +5277,18 @@ local function safeSave(userId)
 	return result == true
 end
 
--- Saves one player (pcall-safe, retries once, silent when DataStores are unavailable).
+-- Saves one player (pcall-safe, retries once, silent when DataStores are unavailable). Session lock: the save of a
+-- Player who left (and did not rejoin) is a release.
 function DataService.Save(player)
 	if not player then
 		return false
 	end
-	return safeSave(player.UserId)
-end
-
--- true when the store already holds everything the entry knows (nothing could be lost by dropping it).
--- An unreadable comparison counts as "not clean": keeping data is always the safe direction.
-local function entryIsClean(entry)
-	local ok, empty = pcall(function()
-		return isEmptyDelta(diffProfiles(entry.Profile, entry.Base, entry.Overwrite, deltaOpts(entry)))
-	end)
-	return ok and empty == true
+	local current = Players:GetPlayerByUserId(player.UserId)
+	local mode = nil
+	if player.Parent == nil and (current == nil or current == player) then
+		mode = "release"
+	end
+	return safeSave(player.UserId, mode)
 end
 
 -- After a save attempt on a departed player's entry: drop it once it is safe (clean) or hopeless
@@ -5060,9 +5365,16 @@ end
 ----------------------------------------------------------------------
 
 local function onPlayerRemoving(player)
-	-- PlayerService also saves (it does not release: Release is decided here); doing it here as well
-	-- means a missing call can never lose data or leak the cache entry. Saving twice is a no-op
-	-- (empty delta). Release keeps the entry when this save failed, see DataService.Release.
+	-- The one leave save (session lock: PlayerService no longer saves at leave, so a leave is ONE write) and the
+	-- release of the cache entry are decided here. Release keeps the entry when this save failed, see DataService.Release.
+	-- Session lock: the entry is marked Leaving at once (every write from now on is a release, Lock cleared; Load clears
+	-- the mark when the player rejoins), and the deferred save is a release write (it still writes with an empty delta
+	-- while the entry holds the lock).
+	local current = Players:GetPlayerByUserId(player.UserId)
+	local leaving = cache[player.UserId]
+	if leaving and (current == nil or current == player) then
+		leaving.Leaving = true
+	end
 	-- Deferred so that the other PlayerRemoving handlers run first (their order is not guaranteed): what they
 	-- write at leave time (PetCareService refunds the dishes still cooking, any other late write) is then in the
 	-- snapshot of this save, or in its orphan retry. Started at once, a save with nothing to write returned
@@ -5153,6 +5465,10 @@ function DataService.Load(player)
 		return newProfile()
 	end
 	hook()
+	local prior = cache[player.UserId]
+	if prior then
+		prior.Leaving = false -- session lock: a (re)join is not a leave (its writes keep the lock again)
+	end
 	local ok, entry, didLoad = pcall(loadEntry, player)
 	if not ok or not entry then
 		warn("[DataService] Load failed: " .. tostring(entry))
@@ -5316,6 +5632,30 @@ end
 function DataService.IsProvisional(player)
 	local entry = player and cache[player.UserId]
 	return entry ~= nil and entry.Loaded == true and isProvisional(entry)
+end
+
+-- Session lock (spec 12, 16): true when this server owns the player's save: the profile is loaded (not mid-claim), not
+-- provisional, and this server's lock is in the record. Also true with no usable store (Studio without API access:
+-- nothing to own). False until loaded, while a load waits for another server's lock, while provisional, after a release.
+function DataService.OwnsSave(player)
+	local entry = player and cache[player.UserId]
+	if not entry or entry.Loaded ~= true or entry.Loading == true then
+		return false
+	end
+	if getStore() == nil then
+		return true
+	end
+	return entry.LoadFailed ~= true and entry.LockHeld == true
+end
+
+-- Studio and the mock only (RunService:IsStudio(); false elsewhere): this module copy's server id (P8.Id), so a second
+-- copy of DataService in a test is a real other server for the lock. Set it before the copy's first Load.
+function DataService._SetServerIdForTest(id)
+	if not IS_STUDIO or type(id) ~= "string" or id == "" then
+		return false
+	end
+	P8.Id = id
+	return id
 end
 
 -- A copy of the tutorial progress { Step, Done, Gifted }, or nil until the profile is loaded. Also nil while the
@@ -7626,7 +7966,9 @@ function DataService.StartAutosave()
 					break
 				end
 				local entry = cache[userId]
-				if entry then
+				-- (session lock: a load may now wait up to ClaimWaitSeconds for another server's lock; the sweep skips a
+				-- loading entry instead of stalling on it: nothing of it may be written yet, the next sweep saves it)
+				if entry and not entry.Loading then
 					safeSave(userId)
 					if entry.Orphan then
 						settleOrphan(userId, entry)
@@ -7653,7 +7995,7 @@ function DataService.BindToClose()
 		local pending = #userIds
 		for _, userId in ipairs(userIds) do
 			task.spawn(function()
-				pcall(saveEntry, userId)
+				pcall(saveEntry, userId, "release") -- session lock: the server is closing: every save lets go of the lock
 				pending = pending - 1
 			end)
 		end

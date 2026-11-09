@@ -100,6 +100,9 @@ Config.Attr = {
 	StorePreview = "StorePreview", -- bool: Studio or an allowed dev sees every Store item, Id 0 included (PREVIEW buttons prompt nothing)
 	-- lobby shop (docs/superpowers/specs/2026-11-07-lobby-shop-design.md 5.2): DataService writes it, the client only reads it
 	GemsSettled = "GemsSettled", -- true once the gem settle hold ended for this load (absent before, never written false)
+	-- session lock (docs/superpowers/specs/2026-11-10-session-lock-design.md 5, 18): DataService writes it, the client only
+	-- reads it (the loading caption)
+	SaveWaiting = "SaveWaiting", -- true while the load waits for, or the session is provisional because of, another server's lock
 	SecretPityLeft = "SecretPityLeft", -- 1..PityAt: Secret Roulette spins left until a sure Secret (PetService; absent while
 	-- loading, provisional or not settled; the Secret card's chip reads it)
 	XpPassState = "XpPassState", -- StoreService.PassState(player, "PetXp2x"): "Owned" | "NotOwned" | "Checking" | "Unavailable",
@@ -424,6 +427,15 @@ Config.Tokens = {
 	LegacyDataStoreName = "NimbusClimb_v1", -- read once to migrate v1 saves ({Tokens=n})
 	AutosaveSeconds = 90,
 	ClientAnimated = true, -- the client controller TokenFx spins/bobs the coins; the server does not animate them
+}
+
+-- The save session lock (docs/superpowers/specs/2026-11-10-session-lock-design.md 5): one server owns a player's save at
+-- a time (a Lock record inside the save, claimed at load, refreshed by every save, released at leave / BindToClose).
+Config.Save = {
+	LockSeconds = 360, -- a lock whose At is this old (or older) is stale: a crashed server's lock expires (4 autosave sweeps)
+	HeartbeatSeconds = 120, -- a save with nothing to write still refreshes a lock at least this old (at the next autosave sweep)
+	ClaimWaitSeconds = 12, -- a load waits this long for a lock another live server holds, then plays provisionally
+	ClaimRetrySeconds = 3, -- between two claim attempts while held: attempts at 0, 3, 6, 9, 12 s = 5 UpdateAsync calls at most
 }
 
 ----------------------------------------------------------------------

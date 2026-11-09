@@ -628,8 +628,10 @@ S.fixr_data_clamp_twin = guarded("fixr_data_clamp_twin", function()
 		T.check(type(rec.Daily) == "table" and rec.Daily.LastClaimAt == F and rec.Daily.Streak == 2 and rec.Gems == 5 and rec.Tokens == 3,
 			"clamp twin: (precondition) none of B's saves reached the store", dailyText(rec) .. " Gems " .. tostring(rec.Gems))
 		-- server C loads the stale (F, 2) and pays day 3 again, at F + 20 h, and saves before B's retry
+		-- (session lock, 2026-11-10: C loads, claims and saves in the same instant the store comes back, with no clock step
+		-- between: a leave is ONE write now (PlayerService's second leave save is gone), which moved B's orphan retry
+		-- schedule ~1.5 s earlier, and a 0.2 s step here let B's pending retry land before C's save)
 		C.Load(p)
-		advance(0.2)
 		local tC = os.time()
 		T.check(tC - F >= READY, "clamp twin: (precondition) C's claim is a full 20 h after F")
 		local okC = C.MutateDaily(p, function(d)
