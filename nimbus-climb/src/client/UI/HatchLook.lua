@@ -104,8 +104,14 @@
 --   HatchLook.EGG_IMAGES[rarity] = "egg_card_<rarity>"   (egg-cards, spec 16.18) the strip cards' egg pictures (Cycles
 --                                             renders of the real Blender eggs, blender/textures/build_egg_cards.py; not
 --                                             uploaded yet); HatchLook.EggImage(rarity) -> "rbxassetid://<id>" | nil;
---                                             HatchLook.EggImages() -> how many of the seven have an id (0: none made);
---                                             Metrics.EGG_PIC.Fill = 0.9, the egg's share of its square picture
+--                                             HatchLook.EggImages() -> how many of the seven have an id;
+--                                             HatchLook.EggPictures() -> true only when all seven have one: the cards
+--                                             draw the pictures all together or not at all (review round 1: never a mix
+--                                             in a strip, and a cell never holds a painted egg and a picture);
+--                                             HatchLook.PreloadEggImages() -> n: ContentProvider:PreloadAsync of the
+--                                             seven urls not yet sent (a spawned thread, once per url; 0 when
+--                                             EggPictures() is false); Metrics.EGG_PIC.Fill = 0.9, the egg's share of
+--                                             its square picture
 --   HatchLook.Glow(parent, color, opts) -> glow   a soft glow: with a hatch_glow id one ImageLabel named opts.Name
 --                                             ("Glow") tinted `color`; without, opts.Count (2) crossed round Frames
 --                                             "<Name>1..n", each with a UIGradient fading it out (a wide one to its sides,
@@ -165,6 +171,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
+local ContentProvider = game:GetService("ContentProvider")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
@@ -740,7 +747,9 @@ function HatchLook.EggImage(rarity)
 	return key and HatchLook.Image(key) or nil
 end
 
--- how many of the seven egg pictures have an id here (0 = none: no picture is made anywhere)
+local EGG_ORDER = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Secret" }
+
+-- how many of the seven egg pictures have an id here
 function HatchLook.EggImages()
 	local n = 0
 	for _, key in pairs(HatchLook.EGG_IMAGES) do
@@ -749,6 +758,39 @@ function HatchLook.EggImages()
 		end
 	end
 	return n
+end
+
+-- (review round 1) the cards draw the pictures only when all seven have ids: one strip never mixes painted and rendered
+-- eggs (as the hero eggs are 3D all together or not at all), and a cell never carries both (the x3's 750 cap: a cell with
+-- a painted egg and a picture took a one-id x3 to 766 at the rise)
+function HatchLook.EggPictures()
+	return HatchLook.EggImages() >= #EGG_ORDER
+end
+
+-- (review round 1) the seven pictures fetched before a strip shows them (a 512 px image decodes a few frames after its
+-- first use, and a picture card has no painted egg to show meanwhile): the urls not sent yet go to one
+-- ContentProvider:PreloadAsync in a spawned thread, so nothing waits on it -> how many were sent now
+local PRELOADED = {}
+function HatchLook.PreloadEggImages()
+	if not HatchLook.EggPictures() then
+		return 0
+	end
+	local list = {}
+	for _, rarity in ipairs(EGG_ORDER) do
+		local url = HatchLook.EggImage(rarity)
+		if url and not PRELOADED[url] then
+			PRELOADED[url] = true
+			list[#list + 1] = url
+		end
+	end
+	if #list > 0 then
+		task.spawn(function()
+			pcall(function()
+				ContentProvider:PreloadAsync(list)
+			end)
+		end)
+	end
+	return #list
 end
 
 ----------------------------------------------------------------------

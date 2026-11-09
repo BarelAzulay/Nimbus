@@ -15,8 +15,15 @@ The view is client/UI/Egg3D's camera at the cutscene's rise: FieldOfView 20 (ver
 camera is pulled back until the egg's projected box is FILL (0.9, HatchLook.Metrics.EGG_PIC.Fill) of the picture's
 height and shifted so that box is centred: the game draws the picture as a square of (egg px) / FILL centred on the
 painted egg's box.  Light: a soft key (a sun with a wide 25-degree disc) from Egg3D's DIR (upper left, in front) over
-a soft white world fill; no ground, no shadow catcher: a transparent 512 x 512 RGBA PNG.  Fully clear pixels carry the
-card face's navy as RGB, so a scaled ImageLabel never shows a light fringe.  Fixed Cycles seed and sample count.
+a world fill; no ground, no shadow catcher: a transparent 512 x 512 RGBA PNG.  Fully clear pixels carry the card face's
+navy as RGB, so a scaled ImageLabel never shows a light fringe.  Fixed Cycles seed and sample count.
+
+(review round 1) The light per rarity is Egg3D's own: K.LIGHT is read from src/client/UI/Egg3D.lua (Ambient -> the world
+fill's colour, LightColor -> the key's colour, both sRGB -> linear), so the picture and the ViewportFrame egg it lifts into
+at the rise share each rarity's tint and its level against the others (Legendary warm gold, Secret a dimmer violet night)
+by construction.  The overall level and the key / fill split stay the first build's (scaled so the Common egg's fill and
+key keep that build's luminance: WORLD_LUM, KEY_ENERGY); how close they come to a Roblox ViewportFrame's Ambient +
+LightColor x LIGHT_AMOUNT is a Studio check (BUILD_STATE), and these two numbers are the knobs if it is off.
 
 Outputs: blender/textures/eggs/egg_card_<rarity>.png and the keys egg_card_<rarity> merged into the uploader index
 blender/textures/textures.json (other keys stay as they are; png, displayName, description, contentHash = the PNG's
@@ -61,6 +68,42 @@ PITCH = 8.0                     # Egg3D K.PITCH (degrees above)
 TURN = -28.0                    # EggStage K.EGG3D.Turn (degrees about the egg's upright axis)
 LIGHT_DIR = (-0.55, -1.0, 0.7)  # Egg3D K.DIR (Roblox: the direction the light travels)
 CLEAR_RGB = (17, 25, 68)        # the card face's foot (HatchLook card face 37,51,122 -> 17,25,68)
+EGG3D = os.path.join(REPO, "src", "client", "UI", "Egg3D.lua")
+WORLD_LUM = 0.7 * (0.2126 * 0.93 + 0.7152 * 0.95 + 0.0722 * 1.0)  # the first build's fill (0.93, 0.95, 1) x 0.7, as luminance
+KEY_ENERGY = 2.1                # the first build's white key (sun energy), given to Common's LightColor luminance
+
+
+def srgb_lin(c):
+    c = c / 255.0
+    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+
+def luminance(rgb):
+    return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]
+
+
+def egg3d_light():
+    """Egg3D's K.LIGHT read from the Lua: {rarity: ((Ambient rgb), (LightColor rgb))}, so the two rigs cannot drift"""
+    with open(EGG3D, encoding="utf-8") as fh:
+        src = fh.read()
+    rows = re.findall(r"(\w+)\s*=\s*\{\s*rgb\(\s*(\d+),\s*(\d+),\s*(\d+)\s*\),\s*rgb\(\s*(\d+),\s*(\d+),\s*(\d+)\s*\)\s*\}", src)
+    out = {r[0]: (tuple(int(v) for v in r[1:4]), tuple(int(v) for v in r[4:7])) for r in rows}
+    missing = [r for r in RARITIES if r not in out]
+    if missing:
+        raise SystemExit("Egg3D.lua K.LIGHT: no row for %s" % ", ".join(missing))
+    return out
+
+
+def rig(rarity):
+    """the world fill (linear rgb) and the key (linear rgb, energy) of this rarity: Egg3D's Ambient and LightColor, scaled
+    so Common keeps the first build's fill luminance (WORLD_LUM) and key energy (KEY_ENERGY)"""
+    light = egg3d_light()
+    amb_c = [srgb_lin(v) for v in light["Common"][0]]
+    key_c = [srgb_lin(v) for v in light["Common"][1]]
+    amb = [srgb_lin(v) for v in light[rarity][0]]
+    key = [srgb_lin(v) for v in light[rarity][1]]
+    k = WORLD_LUM / luminance(amb_c)
+    return [v * k for v in amb], key, KEY_ENERGY / luminance(key_c)
 
 
 def key_of(rarity):
@@ -89,7 +132,7 @@ def build_egg(rarity):
     return m, got
 
 
-def scene():
+def scene(rarity):
     sc = B.reset_scene()
     sc.render.engine = "CYCLES"
     sc.cycles.device = "CPU"
@@ -108,15 +151,17 @@ def scene():
     sc.render.image_settings.color_mode = "RGBA"
     sc.view_settings.view_transform = "Standard"
     sc.view_settings.look = "None"
+    fill, key, energy = rig(rarity)
     world = bpy.data.worlds.new("W")
     sc.world = world
     world.use_nodes = True
     bg = world.node_tree.nodes.get("Background")
-    bg.inputs["Color"].default_value = (0.93, 0.95, 1.0, 1)
-    bg.inputs["Strength"].default_value = 0.7
-    # the soft key: a sun with a wide disc from Egg3D's DIR (Roblox -> Blender: (-x, z, y))
+    bg.inputs["Color"].default_value = (fill[0], fill[1], fill[2], 1)
+    bg.inputs["Strength"].default_value = 1.0
+    # the soft key: a sun with a wide disc from Egg3D's DIR (Roblox -> Blender: (-x, z, y)) in this rarity's LightColor
     sun = bpy.data.lights.new("Key", "SUN")
-    sun.energy = 2.1
+    sun.color = (key[0], key[1], key[2])
+    sun.energy = energy
     sun.angle = math.radians(25)
     so = bpy.data.objects.new("Key", sun)
     sc.collection.objects.link(so)
@@ -175,7 +220,7 @@ def write_png(path, rgba):
 def render(rarity):
     t0 = time.time()
     m, chash = build_egg(rarity)
-    sc = scene()
+    sc = scene(rarity)
     objs = B.make_objects(m, None)
     for ob in objs:
         ob.rotation_euler = (0.0, 0.0, math.radians(TURN))  # Roblox Ry(t) = Blender Rz(t) about the pivot (bottom centre)

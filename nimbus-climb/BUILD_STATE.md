@@ -166,6 +166,35 @@ Updated: 2026-10-18 (after wave 2). Branch `v3-phase4`. Plan: `ARCHITECTURE_V3.m
   Open owner questions (Claude's pick first): 1 upload the 7 egg_card pictures as they are (pick) or change the view /
   light first; 2 phones' x3: keep 2D (pick: 16.14's one-frame phone rule, no device measurement says three frames are
   safe) or measure on a real phone and allow three; 3 merging: nothing is merged; `egg-cards` holds `roll-look`.
+  Review round 1 (2026-11-10, spec 16.18 updated). Fixed: (a) the 750 cap held only without picture ids: with 1 to 6
+  of the 7 ids every strip cell carried a painted egg AND a picture, and a 2D x3 reached 766 at the rise (a 3D x3 749);
+  now the pictures go all together or not at all (`HatchLook.EggPictures()`: all seven ids), so a cell holds one or the
+  other and one strip never mixes painted and rendered eggs. Measured at the rise, 1920x1080: x3 3D 713 (no id) / 713
+  (one id) / 554 (all seven); roll-look's 2D x3 724 / 724 / 598; x1 358. (b) The seven pictures are preloaded
+  (`HatchLook.PreloadEggImages`: one `ContentProvider:PreloadAsync` of the urls in a spawned thread at `EggStage.Init`,
+  asked again at each `Show`, a no-op once sent), so the first roll does not show blank card faces while 512 px images
+  decode. (c) `build_egg_cards.py` lights each picture with Egg3D's own light for that rarity (K.LIGHT read from
+  `Egg3D.lua`: Ambient -> the fill, LightColor -> the key), so the card and the 3D egg it lifts into share the tint and
+  relative level (Legendary warmer, Secret a darker violet night; Common unchanged); the 7 PNGs and `textures.json`
+  hashes re-made, the evidence copies replaced, `egg_cards_light_old_vs_new.png` shows the change. (d) A test of the
+  real path, an x3 from the open Shop: the Shop's Secret hero view goes on `EggStage.Opened`, three 3D heroes at the
+  rise, the hero back after DONE (it fails when the Shop's step-aside is removed). Not changed: phones' x3 stays 2D
+  (question 2, now written in the spec as Claude's reading, not an owner decision); the Shop's Eggs tab keeps its
+  painted dome and odds-row eggs (question 4). The x3 3D renders are layout stand-ins (every ViewportFrame egg in them
+  is its card picture), not proof of the 3D look: Studio check 5 below.
+  Gate (review round 1; targeted, one run at a time; the whole suite and client_replay NOT run): `smoke.py --quick
+  --only` client_egg3d, client_egg3d_phone, client_roll_look_stage, _open, _reveal, _phone, client_egg_stage,
+  client_hatch_cutscene, client_egg_stage_mobile, client_shop_eggs, client_egg_art, client_egg_vfx,
+  client_egg_stage_wiring: 2014 passed, 0 failed; `--mesh` egg lists (the same minus the roll look four): 1821 / 0;
+  `--mesh` roll look lists: 979 / 0; `node tools/check.mjs` 0 errors (the 5 old many-locals warnings);
+  `count_locals` EggStage 34, HatchLook 32, Egg3D 19. Red first: client_roll_look_stage 8 failures and client_egg3d 1 on
+  the old code.
+  Studio check 5 (with the 7 ids set by hand in TextureIds, or after the upload): an x1 and an x3 on PC, High: watch the
+  winner's card picture at the rise next to the 3D egg it becomes; if the 3D egg reads clearly darker, flatter or
+  differently tinted, re-run `build_egg_cards.py` with `WORLD_LUM` / `KEY_ENERGY` moved toward it (one command, 40 s).
+  Also a first roll after joining: the cards show their pictures from the strip's first second.
+  Open owner question 4 (Claude's pick first): the Shop's Eggs tab domes and odds rows: wire them to the same egg
+  pictures in a follow-up, no new upload (pick), or keep them painted.
 - 2026-10-28 (player ruling, wave 5 dungeon camera): the Camera shake setting OFF turns off ONLY the hit shakes; the dungeon entrance rush, the room walk-in shot and the FOV punch on big attacks always play (short, skippable). The rush is skipped when the camera is > 60 studs from the gate.
 - Evolve button; 2nd evolution only Epic+; level cap 100 for all pets (XP curve keeps rising).
 - Presses become food plants, Collector = Coin Magnet, Kitchen = Food Machine, Gym = Training Place.

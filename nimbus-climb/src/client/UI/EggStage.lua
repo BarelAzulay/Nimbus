@@ -17,8 +17,8 @@
 -- graphics, a phone with a 3D egg already showing or a failed Assemble: today's 2D egg exactly. (egg-cards, spec 16.18)
 -- An x3's three hero eggs are 3D the same way, each cracking into its halves at its own burst, when all three are
 -- usable at once (H.use3d: Egg3D's limit is 3 on PC / tablets, 1 on a phone, so a phone's x3 stays 2D); never a mix.
--- The strip cards draw the Blender egg's picture (HatchLook.EggImage, the TextureIds keys egg_card_<rarity>) where its
--- rarity has an id; else (today: nothing uploaded) the painted egg.
+-- The strip cards draw the Blender egg's picture (HatchLook.EggImage, the TextureIds keys egg_card_<rarity>) when all
+-- seven have ids (HatchLook.EggPictures; preloaded at Init); else (today: nothing uploaded) the painted egg, never a mix.
 -- (roll-look, spec 16.15 "Roll look A+B") the dressed roll and opening (client/UI/HatchLook builds the pieces): the HUD
 -- hides, glossy strip cards under a gold window with B's colour tell, an overshoot and a land pop (Task 1); the opening
 -- (Task 2): every egg rises onto a flat lit plinth in its Pedestal box (HatchLook.Plinth: neutral, popping 0.6 -> 1 and
@@ -1218,9 +1218,10 @@ function B.cells(roll, j)
 	-- (roll-look) as many recycled cells as can intersect the track at once (floor(W / Step) + 2, at most 12): the dressed
 	-- cards cost more, and an x3 strip of 12 went past 750 instances
 	st.Slots = math.min(K.MAX_CELLS, math.floor(g.W / g.Step) + 2)
-	-- (egg-cards, spec 16.18) the card egg is the Blender egg's picture where its rarity has an image id, else the painted
-	-- egg: no ids (today) -> no picture is made; all seven -> no painted egg is made
-	local pics = HatchLook.EggImages()
+	-- (egg-cards, spec 16.18) the card egg is the Blender egg's picture when all seven rarities have an image id
+	-- (HatchLook.EggPictures), else the painted egg: a cell holds one or the other, never both (review round 1: a one-id x3
+	-- with both peaked at 766 > 750 at the rise)
+	local pics = HatchLook.EggPictures()
 	local side = math.floor(g.Egg / HatchLook.Metrics.EGG_PIC.Fill + 0.5)
 	for slot = 1, st.Slots do
 		local f = H.frame(st.Track, "Cell" .. slot, { Size = UDim2.fromOffset(g.CellW, g.CellH), BackgroundColor3 = K.CELL, BackgroundTransparency = 0.15, Visible = false, ZIndex = 2 })
@@ -1234,7 +1235,7 @@ function B.cells(roll, j)
 		})
 		-- (Task 26) a lean egg: no rim light and <= 9 instances (spec 16.15: <= 20 per x1 cell, the card included)
 		local egg = nil
-		if pics < 7 then
+		if not pics then
 			egg = EggArt.New(f, "Common", g.Egg, { Form = g.Egg < 48 and "Simple" or "Medium", ZIndex = 3, Rim = false, Budget = 9 })
 			egg.AnchorPoint = Vector2.new(0.5, 0)
 		end
@@ -1261,7 +1262,7 @@ function B.cells(roll, j)
 		end
 		-- (egg-cards) the picture: a square of egg px / Fill centred on the painted egg's box, so its egg is the same height
 		local pic = nil
-		if pics > 0 then
+		if pics then
 			pic = Util.Create("ImageLabel", {
 				Name = "EggPic", Image = "", BackgroundTransparency = 1, BorderSizePixel = 0, ScaleType = Enum.ScaleType.Fit,
 				AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(g.CellW / 2, eggTop + g.Egg / 2), Size = UDim2.fromOffset(side, side),
@@ -1932,7 +1933,7 @@ function R.cells(roll, j, c)
 					local landed = st.Landed and i == K.WIN
 					local egg = cell.Egg -- (nil once the winner's egg has lifted out at the rise: the hero egg left its card)
 					local shown = rarity ~= false and rarity ~= nil and not (landed and st.Lifted)
-					-- (egg-cards, spec 16.18) the Blender egg's picture where this rarity has an id; else the painted egg
+					-- (egg-cards, spec 16.18) a picture cell (all seven ids) shows its rarity's picture; else the painted egg
 					local image = (cell.Pic and rarity) and HatchLook.EggImage(rarity) or nil
 					if cell.Pic then
 						cell.Pic.Visible = shown and image ~= nil
@@ -3341,6 +3342,8 @@ function EggStage.Init()
 		return
 	end
 	S.Inited = true
+	-- (egg-cards review round 1) the card pictures fetched at the client's start, well before a first roll shows them
+	H.safe("PreloadEggImages", HatchLook.PreloadEggImages)
 	local remote = H.remote("RouletteResult")
 	if remote then
 		remote.OnClientEvent:Connect(function(result)
@@ -3367,6 +3370,8 @@ function EggStage.Show(result)
 		H.toast(K.TEXT.Hatched .. table.concat(H.namesOf(roll, {}), ", "))
 		return false
 	end
+	-- (egg-cards review round 1) asks again before the strip is built: nothing once Init's preload sent every url
+	H.safe("PreloadEggImages", HatchLook.PreloadEggImages)
 	H.startRoll(roll)
 	pcall(EggStage.Opened.Fire, EggStage.Opened)
 	return true

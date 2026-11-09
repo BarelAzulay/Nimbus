@@ -19,6 +19,11 @@
 --       reveal, <= 750 instances and 3 egg frames at most every frame; x3 on Low, with one id 0 and with one failed
 --       Assemble -> all three 2D (never a mix). client_egg3d_phone: at 844x390, 640x360 and 360x640 an x3 stays 2D
 --       (3 > the phone's one frame, <= 750 instances), an x1 keeps its one 3D egg
+--   (egg-cards review round 1) client_egg3d: the 3D x3 with the card pictures' ids (one id: painted cards; all seven:
+--       picture cards) <= 750 at every frame and never above the painted cards' peak; the real path, SPIN from the open
+--       Shop: the Shop's Secret hero view lives (Live 1), the x3 starts, the Shop steps aside on EggStage.Opened and its
+--       view is gone by the first frame (Live 0), all three hero eggs 3D at the rise (Live 3), and after DONE the Shop is
+--       back with its 3D hero (Live 1)
 -- Deterministic: mock clock only. Egg3D._ML / _High and GraphicsQuality.Effective are put back after each scenario.
 -- Plain Lua 5.1 syntax only.
 
@@ -209,6 +214,9 @@ function G.x3run(ES, E3, PC, defs)
 	local riseFrames = 0
 	while os.clock() - t0 < 12 do
 		G.advance(STEP)
+		if out.liveFirstFrame == nil then
+			out.liveFirstFrame = E3.Live() -- (review round 1: the Shop's hero view, if the Shop was open, is gone by now)
+		end
 		local phase = ES.Phase()
 		local st = ES.Stats()
 		if (st.Instances or 0) > out.maxInst then
@@ -275,6 +283,7 @@ function G.setup(w, h)
 		PC = G.req("shared/PetCatalog"),
 		Shop = G.req("client/Controllers/ShopController"),
 		SE = G.req("client/UI/ShopEggs"),
+		HL = G.req("client/UI/HatchLook"),
 		oldVp = { Mock.Viewport.X, Mock.Viewport.Y },
 		keep = {},
 	}
@@ -321,6 +330,9 @@ function G.restore(env)
 	end
 	if env.E3 then
 		env.E3._ML, env.E3._High = nil, nil
+	end
+	if env.HL then
+		env.HL._Textures = false
 	end
 	if env.GQ and env.oldEff then
 		env.GQ.Effective = env.oldEff
@@ -597,6 +609,29 @@ S.client_egg3d = guarded("client_egg3d", function()
 		ES.Done()
 		G.advance(0.5)
 		T.check(not ES.IsShowing() and E3.Live() == 0 and ES.Stats().Instances == 0, "egg3d x3: DONE: nothing left")
+		-- (review round 1) the same 3D x3 with the card pictures' ids: one id (the cards stay painted: never both in a cell)
+		-- and all seven (picture cards, no painted egg) stay within 750, never above the painted cards' peak
+		local HL = env.HL
+		if T.check(type(HL) == "table" and type(HL.EGG_IMAGES) == "table", "egg3d x3: HatchLook and its EGG_IMAGES load") then
+			local all7 = {}
+			for i, r in ipairs(RARITIES) do
+				all7["egg_card_" .. r:lower()] = 9200 + i
+			end
+			local peaks = {}
+			for _, case in ipairs({ { "one egg_card id", { egg_card_epic = 9277 } }, { "all seven egg_card ids", all7 } }) do
+				HL._Textures = case[2]
+				local rp = G.x3run(ES, E3, PC, x3)
+				T.check(rp.rise3d == 3 and rp.maxInst <= 750 and rp.maxInst <= run.maxInst,
+					"egg3d x3 with " .. case[1] .. ": three 3D heroes, <= 750 instances at every frame, never above the painted cards' peak",
+					fmt("%d 3D, %d (%s) vs %d", rp.rise3d, rp.maxInst, rp.maxAt, run.maxInst))
+				peaks[#peaks + 1] = fmt("%s %d (%s)", case[1], rp.maxInst, rp.maxAt)
+				G.advance(1)
+				ES.Done()
+				G.advance(0.5)
+			end
+			HL._Textures = false
+			T.info("egg3d x3 3D peaks with the card pictures", fmt("none %d; %s", run.maxInst, table.concat(peaks, "; ")))
+		end
 		-- never a mix: Low graphics, one id 0, one failed Assemble -> all three 2D
 		local function x3twoD(label, setup)
 			setup()
@@ -655,6 +690,27 @@ S.client_egg3d = guarded("client_egg3d", function()
 		T.check(heroEgg and G.view(heroEgg) == nil and E3.Live() == 0, "egg3d shop: Low graphics -> the 2D hero egg")
 		Shop.Close()
 		env.mode = "High"
+		G.advance(0.5)
+		------------------------------------------------------------------ (review round 1) the real path: an x3 from the open Shop
+		-- the Shop's Secret hero view lives while the Eggs page shows; the stage's Opened makes the Shop step aside (its Holder
+		-- hidden), which ends that view before the rise, so the x3's three views fit Limit(false) = 3
+		E3._ML = G.stubML(G.allKeys())
+		Shop.Open({ Tab = "Eggs" })
+		G.advance(1)
+		local page2 = shopGui and shopGui:FindFirstChild("Page_Eggs", true)
+		local fx2 = page2 and SE.Fx(page2)
+		T.check(fx2 ~= nil and fx2.Egg3D ~= nil and E3.Live() == 1, "egg3d shop x3: (setup) the open Shop's Secret hero is a live 3D view (Live 1)", tostring(E3.Live()))
+		local runS = G.x3run(ES, E3, PC, x3)
+		T.check(runS.liveFirstFrame == 0, "egg3d shop x3: the stage opens, the Shop steps aside and its hero view is gone by the first frame (Live 0)", tostring(runS.liveFirstFrame))
+		T.check(runS.rise3d == 3 and runS.liveAtRise == 3, "egg3d shop x3: all three hero eggs are 3D at the rise (Live 3): the Shop's view never holds a slot",
+			fmt("%d of 3 (%s), live %s", runS.rise3d, runS.riseBad, tostring(runS.liveAtRise)))
+		T.check(runS.maxFrames <= 3, "egg3d shop x3: three egg ViewportFrames at most at once", tostring(runS.maxFrames))
+		G.advance(1)
+		ES.Done()
+		G.advance(1)
+		local fx3 = page2 and SE.Fx(page2)
+		T.check(not ES.IsShowing() and fx3 ~= nil and fx3.Egg3D ~= nil and E3.Live() == 1, "egg3d shop x3: after DONE the Shop is back with its 3D Secret hero (Live 1)", tostring(E3.Live()))
+		Shop.Close()
 		G.advance(0.5)
 	end)
 	if not ok then

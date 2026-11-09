@@ -2203,20 +2203,30 @@ pictures, T4 the renders, T5 the gate.
   uploaded mesh to the vertex) in Cycles: 512 x 512 RGBA, transparent, no ground; client/UI/Egg3D's camera at the rise
   (FieldOfView 20, 8 degrees above, the egg turned -28 degrees), pulled back until the egg's projected box is
   `HatchLook.Metrics.EGG_PIC.Fill` = 0.9 of the picture's height and centred; a soft key (a sun with a 25-degree disc
-  from Egg3D's DIR, the upper left in front) over a soft white world fill; clear pixels carry the card face's navy
-  rgb(17,25,68). PNGs `blender/textures/eggs/egg_card_<rarity>.png`, keys `egg_card_<rarity>` in
+  from Egg3D's DIR, the upper left in front) over a world fill, both in Egg3D's own light for that rarity (review round
+  1: `K.LIGHT` is read from `client/UI/Egg3D.lua`, Ambient -> the fill's colour, LightColor -> the key's, sRGB -> linear,
+  so the picture and the ViewportFrame egg it lifts into share each rarity's tint and its level against the others:
+  Legendary warm gold, Secret a dimmer violet night; the overall level and the key / fill split stay the first build's,
+  scaled on Common: `WORLD_LUM`, `KEY_ENERGY`, the knobs if the Studio check finds the two apart); clear pixels carry the
+  card face's navy rgb(17,25,68). PNGs `blender/textures/eggs/egg_card_<rarity>.png`, keys `egg_card_<rarity>` in
   `blender/textures/textures.json` for the owner's keyed `tools/upload_assets.py --textures`. NOT uploaded here: the
   owner sees them first (`.superpowers/lobby-shop/evidence/egg-cards/`).
 - **The wiring (no id = today).** `HatchLook.EGG_IMAGES[rarity] = "egg_card_<r>"`, `HatchLook.EggImage(rarity) ->
   "rbxassetid://<id>" | nil` (shared/TextureIds through `HatchLook.Image`, the `_Textures` test table; HatchLook is
-  already one of check.mjs's TextureIds joiners). A strip cell (`B.cells`) gets one ImageLabel "EggPic" when at least
-  one egg_card key has an id: a square of `egg px / Fill`, centred on the painted egg's box (so the drawn egg is the
-  painted egg's height), ScaleType Fit, the egg's ZIndex; the painted egg is still made unless all seven have ids.
-  `R.cells`, when a cell's rarity changes: an id -> the picture shows (Image = the id) and the painted egg hides; no id
-  -> the painted egg as today (`EggArt.SetRarity`) and the picture hides. Only a painted egg wears the landed VFX (a
-  picture has none: the window's tell, the land pop and its sweep carry the land). At the rise the winner's picture
-  lifts out with it (destroyed, like the painted egg). With no ids at all (today) no EggPic is made: exactly 16.15.
-  Cost: + 1 instance a cell (x1 <= 20, x3 <= 16 stand).
+  already one of check.mjs's TextureIds joiners). The pictures go all together or not at all (review round 1:
+  `HatchLook.EggPictures()` is true only when all seven egg_card keys have ids): then every strip cell (`B.cells`) gets
+  one ImageLabel "EggPic" and no painted egg: a square of `egg px / Fill`, centred on the painted egg's box (so the drawn
+  egg is the painted egg's height), ScaleType Fit, the egg's ZIndex; `R.cells` sets its Image to the cell's rarity's id
+  when the cell's rarity changes. Otherwise (no ids today, or one to six after a part-way upload) no EggPic is made and
+  every cell draws its painted egg exactly as 16.15: one strip never mixes painted and rendered eggs (as the hero eggs
+  are 3D all together or not at all), and a cell never holds both (a one-id x3 with both peaked at 766 > 750 at the
+  rise). Only a painted egg wears the landed VFX (a picture has none: the window's tell, the land pop and its sweep carry
+  the land). At the rise the winner's picture lifts out with it (destroyed, like the painted egg). Cost: a picture cell
+  is 8 instances lighter than a painted one (x1 <= 20, x3 <= 16 stand). Preload (review round 1): a 512 px picture decodes
+  a few frames after its first use and a picture card has no painted egg to show meanwhile, so
+  `HatchLook.PreloadEggImages()` sends the seven urls not sent yet to one `ContentProvider:PreloadAsync` in a spawned
+  thread (nothing waits on it; nothing when `EggPictures()` is false); `EggStage.Init` calls it at the client's start
+  and `EggStage.Show` again before the strip is built (a no-op once every url went).
 - **x3 3D.** `B.egg3d` loses its x1 guard. `Egg3D.Usable(rarity, { Phone, Need })` answers "limit" when `Live() + Need >
   Limit(phone)` (Need 1 = today's rule); `Egg3D.Limit(false)` = 3 (the x3's three hero eggs; the Shop's Secret hero is
   destroyed when the Shop hides on `EggStage.Opened`, before any egg rises), `Limit(true)` = 1 unchanged. `R.rise`
@@ -2225,21 +2235,46 @@ pictures, T4 the renders, T5 the gate.
   apart: the x1 code, per egg); otherwise every hero egg stays 2D, never a mix (a failed Assemble part-way destroys
   the views already made and paints their eggs again). So Low graphics, an id 0 and every phone's x3 (3 > the phone's
   one ViewportFrame: 16.14's "three ViewportFrames would cost too much on phones" stands, no phone measurement says
-  otherwise) keep today's 2D x3; a phone's x1 keeps its one 3D egg; PC and tablets (Layout "PC") get the x3 3D.
+  otherwise) keep today's 2D x3; a phone's x1 keeps its one 3D egg; PC and tablets (Layout "PC") get the x3 3D. The
+  phone x3 rule is the builder's reading of the owner's "phones over budget keep 2D", NOT an owner decision: it is an
+  open owner question (BUILD_STATE 2026-11-09 egg-cards; the ledger's egg-cards questions). Allowing it is one constant
+  (`Egg3D.Limit(true)`, or a limit of 3 for the x3 path only) plus the client_egg3d_phone x3 assertions, after three
+  ViewportFrame eggs are measured on a real phone.
 - **Budgets.** A ViewportFrame counts as one in `EggStage.Stats` (16.14), so the x3 3D adds three instances to the
   stage's count; its models (a whole egg <= 6 parts, then two halves) live inside the frames. x3 <= 750 stands
   (measured by client_egg3d at every frame of an x3 3D roll; the numbers go in BUILD_STATE). At most three egg
   ViewportFrames at once (from the rise to the reveal, which destroys them before the pets' three appear). Each view
   plays one endless turn tween until its crack and one Fly tween at its burst (Egg3D's own, not in `S.Tweens`).
+  Measured with the card pictures too (review round 1; every peak at the rise, 1920x1080): the x3 3D roll 713 with no
+  egg_card id, 713 with one (the painted path: no cell holds both), 554 with all seven; roll-look's 2D x3 budget roll
+  (Storm Rare / Legendary / Common) 724 / 724 / 598. Before the all-or-nothing rule a one-id 2D x3 reached 766 (> 750)
+  and a one-id 3D x3 749: the cap held only because no test stubbed an id.
 - **Tests.** `client_egg3d`: Limit(false) 3; x3 Epic / Rare / Epic with every key -> Egg1..3 each a ViewportFrame of
   its pull's key (attribute Egg3D, paint hidden), Live 3, every Halves<j> Split3D and split at its burst (EggTop /
   EggBot), Live 0 at the reveal, <= 750 instances and <= 3 egg frames every frame; x3 on Low, with one id 0 and with
   one failed Assemble -> all three 2D, Live 0. `client_egg3d_phone`: x3 at 844x390, 640x360 and 360x640 -> 2D (Live
   0), x1 at each -> one 3D egg. `client_roll_look_stage`: EGG_IMAGES' seven keys, EggImage nil at id 0; all seven ids
-  -> every shown cell an EggPic of its rarity's id, no painted egg made, <= 20 instances; one id (Epic) -> the Epic
-  cells pictures, the rest painted; no ids -> no EggPic; the winner's picture gone at the rise; x3 cells <= 16.
-  `client_roll_look_phone`: with ids, every shown picture inside its card at 844x390 and 640x360.
+  -> every shown cell an EggPic of its rarity's id, no painted egg made, <= 20 instances; no ids -> no EggPic; the
+  winner's picture gone at the rise; x3 cells <= 16. `client_roll_look_phone`: with ids, every shown picture inside its
+  card at 844x390 and 640x360. Review round 1: (`client_roll_look_stage`) one id (Epic) and six (no Secret) ->
+  `EggPictures()` false, no EggPic made, every card painted, nothing preloaded; the first roll with all seven ids
+  preloads their seven urls in one `PreloadAsync` (a spy on `Mock.PreloadHook`), a second roll none; the budget roll's x3
+  with one id and with all seven <= 750 and never above the painted path's peak (red before: 766). (`client_egg3d`) the
+  x3 3D roll with one id and with all seven <= 750, never above the painted cards' 713 (red before: 749 vs 713); the
+  real path, SPIN from the open Shop: its Secret hero view lives (Live 1), the stage opens and that view is gone by
+  the first frame (Live 0), all three heroes 3D at the rise (Live 3), the Shop back with its 3D hero after DONE (Live
+  1). That last test passed on the code as built; with the Shop's `U.Holder.Visible = false` taken out of
+  `EggStage.Opened` it fails (Live 1 at the first frame, 0 of 3 heroes 3D), so it pins the claim above.
 - **Evidence.** `tools/render_gui.py hatch:strip:pics` (the egg_card ids stubbed: `tools/dump_gui.lua` maps them to the
   local PNGs, `render_gui.py` draws them) and `hatch3:<s>:3d:pics` (the x3 crack with Egg3D's MeshLibrary stubbed; a
   ViewportFrame egg is drawn from its egg's card picture, the same mesh at the same camera, labelled as a stand-in) at
-  1920x1080 and 844x390; `.superpowers/lobby-shop/evidence/egg-cards/`.
+  1920x1080 and 844x390; `.superpowers/lobby-shop/evidence/egg-cards/`. The x3 3D renders are stand-ins for the layout
+  (where the three eggs, plinths and cracks sit), NOT proof of the 3D look: the GUI renderer has no 3D, so every
+  ViewportFrame egg in them IS its card picture, and no render shows how a Roblox ViewportFrame lights the mesh. The
+  match between a card's picture and the 3D egg it lifts into at the rise is a Studio check (BUILD_STATE's checklist:
+  the strip and the rise with the ids set, the picture next to the ViewportFrame egg of the same rarity); the rigs
+  share each rarity's light by construction (above), the overall level is the open part.
+- **Not covered (an owner question).** The Shop's Eggs tab (the machine domes' eggs and the odds rows' eggs, EggArt)
+  keeps the painted eggs beside its 3D Secret hero: the owner's picks named the roll's cards and the x3, not the Shop's
+  page, and a new look on another screen goes through a pitch first. Wiring the same `HatchLook.EggImage` keys into the
+  domes and the odds rows needs no new upload (Claude's pick: yes, as a follow-up once the owner has seen the pictures).
