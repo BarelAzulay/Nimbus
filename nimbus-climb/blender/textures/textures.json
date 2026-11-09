@@ -33,6 +33,62 @@
       "png": "blender/textures/store/daily_week_wisp.png",
       "structureHash": "2d61feb51a7c6bae74fcec251b494041"
     },
+    "egg_card_common": {
+      "build": "blender/textures/build_egg_cards.py (Blender 5.2 headless, Cycles seed 20261109)",
+      "contentHash": "3428b9561a5eb785e6510e9e7918cc7eee1267bddfbaa045f23787c5e6074e2b",
+      "description": "Nimbus Climb egg card picture: the Common egg (egg_common, the shelf / hatch mesh) at the hatch camera's three-quarter view, transparent",
+      "displayName": "NC egg card common",
+      "png": "blender/textures/eggs/egg_card_common.png",
+      "structureHash": "2d61feb51a7c6bae74fcec251b494041"
+    },
+    "egg_card_epic": {
+      "build": "blender/textures/build_egg_cards.py (Blender 5.2 headless, Cycles seed 20261109)",
+      "contentHash": "1974d65531fb0d5aeed39d0b640bec35b5d33eaf35ffc65e8d4c907657f9e1cd",
+      "description": "Nimbus Climb egg card picture: the Epic egg (egg_epic, the shelf / hatch mesh) at the hatch camera's three-quarter view, transparent",
+      "displayName": "NC egg card epic",
+      "png": "blender/textures/eggs/egg_card_epic.png",
+      "structureHash": "2d61feb51a7c6bae74fcec251b494041"
+    },
+    "egg_card_legendary": {
+      "build": "blender/textures/build_egg_cards.py (Blender 5.2 headless, Cycles seed 20261109)",
+      "contentHash": "ae4a8fed227f511da93758bdb77a0a3b453608b7e99db90eb8f981a9813492de",
+      "description": "Nimbus Climb egg card picture: the Legendary egg (egg_legendary, the shelf / hatch mesh) at the hatch camera's three-quarter view, transparent",
+      "displayName": "NC egg card legendary",
+      "png": "blender/textures/eggs/egg_card_legendary.png",
+      "structureHash": "2d61feb51a7c6bae74fcec251b494041"
+    },
+    "egg_card_mythic": {
+      "build": "blender/textures/build_egg_cards.py (Blender 5.2 headless, Cycles seed 20261109)",
+      "contentHash": "fa879a9b90dc69136dd7a81c3c40b1b7c2c7c1fd5a22b6804599636c403d53e4",
+      "description": "Nimbus Climb egg card picture: the Mythic egg (egg_mythic, the shelf / hatch mesh) at the hatch camera's three-quarter view, transparent",
+      "displayName": "NC egg card mythic",
+      "png": "blender/textures/eggs/egg_card_mythic.png",
+      "structureHash": "2d61feb51a7c6bae74fcec251b494041"
+    },
+    "egg_card_rare": {
+      "build": "blender/textures/build_egg_cards.py (Blender 5.2 headless, Cycles seed 20261109)",
+      "contentHash": "81f7aa2e50a69ae24fdfd9babe9b2e77a45d10cd87c676ff6583103732b631ac",
+      "description": "Nimbus Climb egg card picture: the Rare egg (egg_rare, the shelf / hatch mesh) at the hatch camera's three-quarter view, transparent",
+      "displayName": "NC egg card rare",
+      "png": "blender/textures/eggs/egg_card_rare.png",
+      "structureHash": "2d61feb51a7c6bae74fcec251b494041"
+    },
+    "egg_card_secret": {
+      "build": "blender/textures/build_egg_cards.py (Blender 5.2 headless, Cycles seed 20261109)",
+      "contentHash": "f6f714a2b64c67588e2e21e241228c77bb6b5c9f6c1f8fc204c3a8b2499108f6",
+      "description": "Nimbus Climb egg card picture: the Secret egg (egg_secret, the shelf / hatch mesh) at the hatch camera's three-quarter view, transparent",
+      "displayName": "NC egg card secret",
+      "png": "blender/textures/eggs/egg_card_secret.png",
+      "structureHash": "2d61feb51a7c6bae74fcec251b494041"
+    },
+    "egg_card_uncommon": {
+      "build": "blender/textures/build_egg_cards.py (Blender 5.2 headless, Cycles seed 20261109)",
+      "contentHash": "488247a171747ad97a3c54ed5d1c26c06cb7a65ee29976a832964ab783ed499c",
+      "description": "Nimbus Climb egg card picture: the Uncommon egg (egg_uncommon, the shelf / hatch mesh) at the hatch camera's three-quarter view, transparent",
+      "displayName": "NC egg card uncommon",
+      "png": "blender/textures/eggs/egg_card_uncommon.png",
+      "structureHash": "2d61feb51a7c6bae74fcec251b494041"
+    },
     "icon_gifts": {
       "build": "blender/textures/build_store.py (Blender 5.2 headless, Cycles seed 20261104)",
       "contentHash": "10ef0308751b75badf3b320037ac8c3f739512e926b88490ebe6f3bb10c12c77",

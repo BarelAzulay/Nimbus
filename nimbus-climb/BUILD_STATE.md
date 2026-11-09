@@ -138,6 +138,74 @@ Updated: 2026-10-18 (after wave 2). Branch `v3-phase4`. Plan: `ARCHITECTURE_V3.m
   Review round 2 (2026-11-09, four minor findings, each checked against the code first; all four real, none rejected; two taken with changed numbers): (1) the pile keys were `egg_<rarity>_low`, the project's LOD-twin suffix (`MeshLibrary.LowKey("egg_epic")` -> "egg_epic_low", no LayoutSig on either manifest, so SetLod "Low" would have rebuilt a full egg as the one-part pile egg once anything LODs an egg): renamed **`egg_<rarity>_pile`** before any upload (`LobbyMachineBuilder` PILE_KEYS, catalog, the seven manifests rebuilt with the same geometry and contentHashes, meshes.json, `mesh_keys.py`, the shop scene, comments); red first: `test_mesh_keys.py` (BUILD_KEYS want `_pile` + new `test_no_false_lod_twin`: no build key is named `<another build key>_low`) 2 failed, `shop_globe` 2 failed, then green. (2) `shop_area_globe.py --check` had floors (chase 85 %, eggs + bed 50 %) but looser than the delivered globe: now `CHASE_FLOOR` 90 %, `FILL_FLOOR` 55 % (eggs + bed), `EGG_FILL_FLOOR` 50 % (eggs alone), printed in the summary line (90.5 % / 51.4 % / 61.6 % today); red first with a scratch harness (three regressions passed the old check), green after. (3) the sunburst read as a cream crown: now a rising sun, the Neon half disc (r 0.75) in a one-cell GoldDark rim and five pointed Gold rays (14 / 50 / 90 / 130 / 166 degrees, tips on a 3.1 x 1.5 ellipse); the review's Base >= 0.5 / Tip >= 0.3 / sun >= 0.9 were tried and merge into a blob at 0.25-stud cells (`polish/r2/finial_candidates_fat_rays.png`), so the base is 0.4, the tip pointed but never thinner than a face-connected stroke, the disc 1.0 with its rim; the height stays 14.25 (the price tag stands at 14.2); the stale "nine rays" comment is gone; globe 3,924 tris (+12), 1 island. (4) the close altar-sign frame showed no board: re-rendered with one camera per ring, 9 studs from its SignFace, side by side (`polish/altar_sign_before_after_close.png`; the old one is `polish/r2/before_...`). Gate on the result (one run at a time, the whole suite NOT run): the 43 server lists of run A 2,532 / 0 / 32 warnings (the mock's no-asset-store); `--mesh` the 24 lobby / altar / shop server lists 1,682 / 0 / 0; client_p6mesh, client_lobby_fx, client_release_roulette, client_p6portalfx 552 / 0 / 0 and with `--mesh` 689 / 0 / 0; check.mjs 1,166 files 0 errors; count_locals exit 0 (LobbyMachineBuilder 16); mesh_budget exit 0 (TOTAL 511,890, the shop scene 255,574); mesh_names 8 manifests 0 problems; mesh_keys 33 build keys 0 problems; test_mesh_keys 0 failed; `shop_area_globe.py --check` 3,924 tris, 1 island, no egg problems. Renders looked at: every t1_* shot re-rendered with the new finial (`polish/`, the old finial in `polish/r2/before_t1_*`): from the plaza camera and the row the topper now reads as a sun with rays, from the 5-stud eye (t1_plaza) the lid hides the disc's foot and the rays read as a fan. Gemini could not be asked (ask-gemini 402).
   Owner's Studio checklist (nothing in shop-area has been looked at in Studio; pull `shop-area` and serve that tree with Rojo on port 34872; the place file is not rebuilt): 1 the shop island from the plaza and up close: the four machines still wear today's uploaded cabinet (the globe shows only after its upload); the egg row under WINGED PETS with the rarity labels readable at 30 px, nothing under the board's letters, the right lawn empty; 2 walk to the egg row and press E: the Shop opens on Eggs; 3 the Shop away from the altar (PC and the 844x390 emulator): the greyed Secret card, "Available at the Storm Altar", TRAVEL takes you to the altar's landing (tap it right after using a gate: a "Wait a moment" toast); 4 at the altar: E "Secret Roll" opens the Shop with SPIN live; walk off over the bridge with the Shop open and the card turns to TRAVEL within a second; 5 the World gem over the side crystal, nobody standing under it; 6 after the keyed session uploads `prop_roulette_globe`: the globe with its eggs from the plaza and up close (the wing finial, the star, the Sky machine's trims), and on Low graphics only the four chase eggs.
   Open owner questions (the ledger's "Questions for the morning", Claude's pick first): 1 merging: nothing is merged; `shop-area` holds `roll-look` and `altar-vortex`; merge only after one whole-suite run on a free machine (not run here, memory) and the Studio check (pick); 2 the globe upload by the keyed session (yes, then retire `prop_roulette` in a cleanup); 3 the emblem: one Secondary-tinted star (built) or four shapes (four meshes or 11 parts); 4 the egg row slid 1 stud off the Cloud machine (keep) or move the board / the machine instead; 5 the strip labels at 30 px after a Studio look.
+- 2026-11-09 (egg cards + x3 3D, branch `egg-cards` cut from `roll-look` 13e5adb, not merged; spec
+  docs/superpowers/specs/2026-11-07-lobby-shop-design.md 16.18 "Egg cards + x3 3D", which overrides 16.14's x3 rule and
+  16.15's painted strip eggs). The owner's Studio test of roll-look: "its all the same" (the strip cells drew the painted
+  eggs) and "only 3D crack and its only at opening 1 roll (on the 3x roll its the painted egg crack)". The owner's picks:
+  (1) the card eggs are pictures of the real Blender eggs; (2) the x3's three hero eggs are 3D and crack into their 3D
+  halves like x1.
+  What changed. `blender/textures/build_egg_cards.py` renders the 7 shelf eggs (the lobby catalog's egg_<rarity>, its
+  contentHash checked against the committed manifests) at Egg3D's rise camera (FOV 20, 8 degrees above, turned -28)
+  with a soft key light, no ground: 512 x 512 transparent PNGs in `blender/textures/eggs/egg_card_<rarity>.png`, indexed in
+  `blender/textures/textures.json`. `UI/HatchLook`: `EGG_IMAGES`, `EggImage`, `EggImages`, `Metrics.EGG_PIC.Fill` 0.9.
+  `UI/EggStage`: a strip cell draws the picture (ImageLabel `EggPic`) where its rarity has an id, else today's painted
+  egg (no ids = exactly as before; all seven = no painted egg made); the winner's picture lifts out at the rise. `UI/Egg3D`:
+  `Usable(..., { Need })`, `Limit(false)` 3 (was 2); `EggStage` decides the 3D once per roll (`H.use3d`): an x3's three
+  heroes turn, settle, rock and split into their 3D halves at their own bursts; Low graphics, an id 0, a failed
+  Assemble and every phone's x3 (3 > its one ViewportFrame) keep all three 2D, never a mix. Tools: `dump_gui.lua`
+  hatch flags `:pics` (the egg_card ids stubbed, mapped to the PNGs) and `:3d` (Egg3D's MeshLibrary stubbed);
+  `render_gui.py` draws the mapped PNGs and an Egg3D frame from its card picture (labelled "picture stand-in").
+  **Image keys needing the owner's keyed upload** (`tools/upload_assets.py --textures`, after the owner has looked at the
+  PNGs in `.superpowers/lobby-shop/evidence/egg-cards/`): `egg_card_common`, `egg_card_uncommon`, `egg_card_rare`,
+  `egg_card_epic`, `egg_card_legendary`, `egg_card_mythic`, `egg_card_secret`. Until then TextureIds has no egg_card
+  ids and the cards draw the painted eggs: the pictures only show in Studio after that upload (or with ids set by hand).
+  Measured: the x3 3D roll peaks at 713 stage instances (Rise, a ViewportFrame counted as one; cap 750 unchanged), 3 egg
+  ViewportFrames at most, 3 view tweens at most (roll-look's budget pass, a 2D x3 with other pulls, peaks at 724).
+  Tests (targeted, one run at a time; the whole suite and client_replay were NOT run: low memory, another builder in
+  another worktree): `smoke.py --quick --only` client_egg3d, client_egg3d_phone, client_roll_look_stage, _open, _reveal,
+  _phone, client_egg_stage, client_hatch_cutscene, client_egg_stage_mobile, client_shop_eggs: 1870 passed, 0 failed;
+  `--mesh` on the egg lists (client_egg3d, _phone, client_egg_stage, client_hatch_cutscene, client_egg_stage_mobile,
+  client_shop_eggs): 1688 passed, 0 failed; `--mesh` roll look lists: 968 passed; `node tools/check.mjs` 0 errors;
+  `tools/count_locals.py` EggStage 34, HatchLook 29, Egg3D 19. Evidence: `.superpowers/lobby-shop/evidence/egg-cards/`
+  (the 7 PNGs, `egg_cards_sheet.png`, `gui_strip_pics_1920x1080.png`, `gui_strip_pics_844x390.png`,
+  `gui_strip3_pics_1920x1080.png`, `gui_strip_noid_1920x1080.png` (id 0: today's painted cards),
+  `gui_x3_crack3d_1920x1080.png`, `gui_x3_crack_844x390.png` (a phone's x3: 2D), `gui_x3_burst3d_1920x1080.png`).
+  Owner's Studio checklist: 1 look at the 7 pictures and say go for the upload; 2 after the upload (or with the ids set
+  by hand in TextureIds), an x1 and an x3 spin on PC: the cards show the Blender eggs; 3 an x3 spin on PC with High
+  graphics: three turning 3D eggs on their plinths, each cracking into its 3D halves at its own burst; 4 the same on Low
+  and in the 844x390 emulator: the painted eggs, as before.
+  Open owner questions (Claude's pick first): 1 upload the 7 egg_card pictures as they are (pick) or change the view /
+  light first; 2 phones' x3: keep 2D (pick: 16.14's one-frame phone rule, no device measurement says three frames are
+  safe) or measure on a real phone and allow three; 3 merging: nothing is merged; `egg-cards` holds `roll-look`.
+  Review round 1 (2026-11-10, spec 16.18 updated). Fixed: (a) the 750 cap held only without picture ids: with 1 to 6
+  of the 7 ids every strip cell carried a painted egg AND a picture, and a 2D x3 reached 766 at the rise (a 3D x3 749);
+  now the pictures go all together or not at all (`HatchLook.EggPictures()`: all seven ids), so a cell holds one or the
+  other and one strip never mixes painted and rendered eggs. Measured at the rise, 1920x1080: x3 3D 713 (no id) / 713
+  (one id) / 554 (all seven); roll-look's 2D x3 724 / 724 / 598; x1 358. (b) The seven pictures are preloaded
+  (`HatchLook.PreloadEggImages`: one `ContentProvider:PreloadAsync` of the urls in a spawned thread at `EggStage.Init`,
+  asked again at each `Show`, a no-op once sent), so the first roll does not show blank card faces while 512 px images
+  decode. (c) `build_egg_cards.py` lights each picture with Egg3D's own light for that rarity (K.LIGHT read from
+  `Egg3D.lua`: Ambient -> the fill, LightColor -> the key), so the card and the 3D egg it lifts into share the tint and
+  relative level (Legendary warmer, Secret a darker violet night; Common unchanged); the 7 PNGs and `textures.json`
+  hashes re-made, the evidence copies replaced, `egg_cards_light_old_vs_new.png` shows the change. (d) A test of the
+  real path, an x3 from the open Shop: the Shop's Secret hero view goes on `EggStage.Opened`, three 3D heroes at the
+  rise, the hero back after DONE (it fails when the Shop's step-aside is removed). Not changed: phones' x3 stays 2D
+  (question 2, now written in the spec as Claude's reading, not an owner decision); the Shop's Eggs tab keeps its
+  painted dome and odds-row eggs (question 4). The x3 3D renders are layout stand-ins (every ViewportFrame egg in them
+  is its card picture), not proof of the 3D look: Studio check 5 below.
+  Gate (review round 1; targeted, one run at a time; the whole suite and client_replay NOT run): `smoke.py --quick
+  --only` client_egg3d, client_egg3d_phone, client_roll_look_stage, _open, _reveal, _phone, client_egg_stage,
+  client_hatch_cutscene, client_egg_stage_mobile, client_shop_eggs, client_egg_art, client_egg_vfx,
+  client_egg_stage_wiring: 2014 passed, 0 failed; `--mesh` egg lists (the same minus the roll look four): 1821 / 0;
+  `--mesh` roll look lists: 979 / 0; `node tools/check.mjs` 0 errors (the 5 old many-locals warnings);
+  `count_locals` EggStage 34, HatchLook 32, Egg3D 19. Red first: client_roll_look_stage 8 failures and client_egg3d 1 on
+  the old code.
+  Studio check 5 (with the 7 ids set by hand in TextureIds, or after the upload): an x1 and an x3 on PC, High: watch the
+  winner's card picture at the rise next to the 3D egg it becomes; if the 3D egg reads clearly darker, flatter or
+  differently tinted, re-run `build_egg_cards.py` with `WORLD_LUM` / `KEY_ENERGY` moved toward it (one command, 40 s).
+  Also a first roll after joining: the cards show their pictures from the strip's first second.
+  Open owner question 4 (Claude's pick first): the Shop's Eggs tab domes and odds rows: wire them to the same egg
+  pictures in a follow-up, no new upload (pick), or keep them painted.
 - 2026-10-28 (player ruling, wave 5 dungeon camera): the Camera shake setting OFF turns off ONLY the hit shakes; the dungeon entrance rush, the room walk-in shot and the FOV punch on big attacks always play (short, skippable). The rush is skipped when the camera is > 60 studs from the gate.
 - Evolve button; 2nd evolution only Epic+; level cap 100 for all pets (XP curve keeps rising).
 - Presses become food plants, Collector = Coin Magnet, Kitchen = Food Machine, Gym = Training Place.

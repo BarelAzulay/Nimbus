@@ -65,6 +65,14 @@
 --       calls), a low balance still shows; the PC Evolved ribbon in the name row after NEW!; (phone) the lip's Rim disc; x3
 --       at 640x360 with the real font widths: NEW! and Evolved apart (bottom-left / top-right corners), the Skip chip's label
 --       fitting, the notes breaking at their dots; a rotation mid-rise drops the lifted strips
+--   (egg-cards, spec 16.18) (stage) HatchLook.EGG_IMAGES / EggImage / Metrics.EGG_PIC; with all seven egg_card ids
+--       stubbed every shown card an ImageLabel EggPic of its rarity's id (a square, 160 / 0.9 px on PC, centred, inside
+--       its card), no painted egg made, <= 20 instances; the landed card keeps its picture, the winner's goes at the rise;
+--       no ids: no EggPic, today's painted eggs; x3 cells <= 16; (phone) at 844x390 and 640x360, x1 and x3, every picture
+--       a square inside its card. Review round 1: the pictures all together or not at all (EggPictures): one id (Epic) or
+--       six (no Secret) -> no EggPic made, every card painted (a cell never holds both); the seven urls preloaded once
+--       (ContentProvider:PreloadAsync, a spy on Mock.PreloadHook) as the first roll with them starts, not again after; the
+--       x3 peaks with one id and with all seven <= 750 and never above the painted path's
 -- Deterministic: mock clock only (a tween applies its goal when it completes). SoundFx.Play is spied (quiet) and put back;
 -- the viewport, the Fast hatch setting and the attributes are put back. Plain Lua 5.1 syntax only.
 
@@ -267,6 +275,10 @@ function G.restore(env)
 	end
 	if env.SF and env.realPlay then
 		env.SF.Play = env.realPlay
+	end
+	-- (egg-cards review round 1) a scenario that stopped part-way leaves no stubbed image ids behind
+	if env.HL then
+		env.HL._Textures = false
 	end
 	for name, v in pairs(env.keep) do
 		LocalPlayer:SetAttribute(name, v)
@@ -811,6 +823,218 @@ S.client_roll_look_stage = guarded("client_roll_look_stage", function()
 		ES.Close()
 		Mock.SetViewport(1920, 1080)
 		G.advance(0.6)
+		------------------------------------------------------------------ (egg-cards, spec 16.18) the cards' eggs: pictures of the Blender eggs
+		local namesOk = type(HL.EGG_IMAGES) == "table" and type(HL.EggImage) == "function"
+		for _, r in ipairs(RARITIES) do
+			namesOk = namesOk and HL.EGG_IMAGES[r] == "egg_card_" .. r:lower()
+		end
+		T.check(namesOk, "roll look egg cards: HatchLook.EGG_IMAGES names egg_card_<rarity> for the seven rarities (and EggImage exists)")
+		if namesOk then
+			local ids = {}
+			for i, r in ipairs(RARITIES) do
+				ids["egg_card_" .. r:lower()] = 9100 + i
+			end
+			HL._Textures = {}
+			T.check(HL.EggImage("Epic") == nil and HL.EggImage("Nope") == nil, "roll look egg cards: EggImage is nil at id 0 (and for an unknown rarity)")
+			HL._Textures = ids
+			T.eq(HL.EggImage("Epic"), "rbxassetid://9104", "roll look egg cards: EggImage joins the egg_card id (TextureIds)")
+			T.check(HL.Metrics and HL.Metrics.EGG_PIC and abs(HL.Metrics.EGG_PIC.Fill - 0.9) < 1e-6, "roll look egg cards: Metrics.EGG_PIC.Fill = 0.9 (the egg's share of its picture, as build_egg_cards.py frames it)")
+			-- reads the shown cells of strip j: -> { pics, painted (shown painted eggs), made (painted eggs at all), bad, most, inside }
+			local function cardEggs(j, want)
+				local out = { pics = 0, painted = 0, made = 0, bad = "", most = 0, inside = true, sizeOk = true, landedN = 0 }
+				for _, c in ipairs(G.cells(j)) do
+					-- (the landed card's land dressing, its UIScale Pop and the passing shine Sweep, is the land's: 16.15
+					-- counts a cell's budget on the moving strip)
+					if c:GetAttribute("Index") == K.WIN and G.strip(j) and G.strip(j):GetAttribute("Landed") == true then
+						out.landedN = G.count(c) - G.count(c:FindFirstChild("Pop")) - G.count(c:FindFirstChild("Sweep"))
+					else
+						out.most = math.max(out.most, G.count(c))
+					end
+					local egg, pic = nil, c:FindFirstChild("EggPic")
+					for _, ch in ipairs(c:GetChildren()) do
+						if ch:IsA("Frame") and ch:GetAttribute("Rarity") ~= nil and ch:GetAttribute("Form") ~= nil then
+							egg = ch
+						end
+					end
+					if egg then
+						out.made = out.made + 1
+					end
+					local word = G.plateWord(c)
+					local rarity = nil
+					for _, r in ipairs(RARITIES) do
+						if word and string.upper(r) == word.Text then
+							rarity = r
+						end
+					end
+					if c.Visible and rarity then
+						local id = want[rarity]
+						if id then
+							if pic and pic:IsA("ImageLabel") and pic.Visible and pic.Image == "rbxassetid://" .. id and not (egg and egg.Visible) then
+								out.pics = out.pics + 1
+								local pb, cb = G.box(pic), G.box(c)
+								if pb.x < cb.x - 0.6 or pb.y < cb.y - 0.6 or pb.x + pb.w > cb.x + cb.w + 0.6 or pb.y + pb.h > cb.y + cb.h + 0.6 then
+									out.inside = false
+								end
+								if abs(pb.w - pb.h) > 0.6 then
+									out.sizeOk = false
+								end
+							else
+								out.bad = out.bad .. fmt("%s: pic %s; ", rarity, pic and fmt("%s %s", tostring(pic.Visible), tostring(pic.Image)) or "none")
+							end
+						else
+							if egg and egg.Visible and egg:GetAttribute("Rarity") == rarity and not (pic and pic.Visible) then
+								out.painted = out.painted + 1
+							else
+								out.bad = out.bad .. fmt("%s: painted %s; ", rarity, tostring(egg and egg.Visible))
+							end
+						end
+					end
+				end
+				return out
+			end
+			-- (review round 1) the pictures are preloaded once, as the first roll that draws them starts (a spy on the mock's
+			-- ContentProvider:PreloadAsync; only the egg_card urls are read)
+			local wanted = {}
+			for _, id in pairs(ids) do
+				wanted["rbxassetid://" .. id] = true
+			end
+			wanted["rbxassetid://77"] = true
+			local preloads = {}
+			local oldHook = Mock.PreloadHook
+			Mock.PreloadHook = function(list, cb)
+				local got = {}
+				for _, item in ipairs(type(list) == "table" and list or {}) do
+					if type(item) == "string" and wanted[item] then
+						got[#got + 1] = item
+					end
+				end
+				if #got > 0 then
+					preloads[#preloads + 1] = got
+				end
+				if oldHook then
+					return oldHook(list, cb)
+				end
+			end
+			T.check(type(HL.EggPictures) == "function" and HL.EggPictures() == true and type(HL.PreloadEggImages) == "function",
+				"roll look egg cards: HatchLook.EggPictures() is true with all seven ids (and PreloadEggImages exists)")
+			-- all seven ids: every shown card draws its rarity's picture; no painted egg is made at all
+			t0 = os.clock()
+			ES.Show(G.result(PC, "Cloud", { epic }))
+			G.advance(STEP)
+			local first = preloads[1]
+			local firstOk = first ~= nil and #first == 7
+			for _, id in pairs(ids) do
+				local hit = false
+				for _, u in ipairs(first or {}) do
+					hit = hit or u == "rbxassetid://" .. id
+				end
+				firstOk = firstOk and hit
+			end
+			T.check(#preloads == 1 and firstOk, "roll look egg cards: the roll's start preloads the seven pictures (one ContentProvider:PreloadAsync of their seven urls)",
+				fmt("%d preload(s), first %s", #preloads, first and table.concat(first, " ") or "none"))
+			G.until_(t0, 2.0)
+			local all = cardEggs(1, { Common = 9101, Uncommon = 9102, Rare = 9103, Epic = 9104, Legendary = 9105, Mythic = 9106, Secret = 9107 })
+			T.check(all.pics >= 5 and all.bad == "" and all.painted == 0, "roll look egg cards: with every id each shown card shows an ImageLabel EggPic of its rarity's id", fmt("%d pictures; %s", all.pics, all.bad))
+			T.check(all.made == 0, "roll look egg cards: ...and no painted egg is made (all seven have pictures)", tostring(all.made))
+			T.check(all.inside and all.sizeOk, "roll look egg cards: ...each picture a square inside its card")
+			T.check(all.most <= 20, "roll look egg cards: an x1 cell with its picture is <= 20 instances", tostring(all.most))
+			-- the picture's egg is the painted egg's height: the square is egg px / Fill, centred on the egg's box
+			local g = nil
+			for _, c in ipairs(G.cells(1)) do
+				local pic = c:FindFirstChild("EggPic")
+				if c.Visible and pic and pic.Visible and not g then
+					g = { pic = G.box(pic), cell = G.box(c) }
+				end
+			end
+			local s = g and g.cell.w / 230 or 1
+			T.check(g ~= nil and abs(g.pic.h - 160 * s / 0.9) <= 1 and abs((g.pic.x + g.pic.w / 2) - (g.cell.x + g.cell.w / 2)) <= 1,
+				"roll look egg cards: the PC picture is 160 / 0.9 px (the painted egg's 160 px egg), centred across its card", g and fmt("%.1f px (S %.2f)", g.pic.h, s) or "no picture")
+			-- the landed card keeps its picture; at the rise the winner's picture lifts out with it
+			local stripP = G.strip(1)
+			Mock.AdvanceUntil(function()
+				return stripP ~= nil and stripP:GetAttribute("Landed") == true
+			end, 4, FINE)
+			G.advance(0.1)
+			local lc = G.cellAt(1, K.WIN)
+			local lpic = lc and lc:FindFirstChild("EggPic")
+			T.check(lpic ~= nil and lpic.Visible and lpic.Image == "rbxassetid://9104", "roll look egg cards: the landed Epic card shows the Epic picture", lpic and tostring(lpic.Image) or "none")
+			G.untilPhase(ES, "Rise", 3)
+			G.advance(STEP * 2)
+			lc = G.cellAt(1, K.WIN)
+			lpic = lc and lc:FindFirstChild("EggPic")
+			T.check(lc == nil or lpic == nil or not lpic.Visible, "roll look egg cards: at the rise the winner's picture lifts out of its card (no second egg left behind)")
+			ES.Close()
+			G.advance(0.4)
+			-- the same ids again: nothing is preloaded twice
+			ES.Show(G.result(PC, "Cloud", { epic }))
+			G.advance(0.2)
+			T.check(#preloads == 1, "roll look egg cards: a second roll with the same ids preloads nothing again", fmt("%d preload(s)", #preloads))
+			ES.Close()
+			G.advance(0.4)
+			-- (review round 1) all together or not at all: with one id (Epic) or six (no Secret) no EggPic is made and every
+			-- card draws its painted egg (never a mix of painted and rendered eggs in a strip; a cell never holds both), and
+			-- nothing is preloaded
+			local six = {}
+			for k, v in pairs(ids) do
+				if k ~= "egg_card_secret" then
+					six[k] = v
+				end
+			end
+			for _, case in ipairs({ { "one id (egg_card_epic)", { egg_card_epic = 77 } }, { "six ids (no egg_card_secret)", six } }) do
+				HL._Textures = case[2]
+				local np = #preloads
+				T.check(type(HL.EggPictures) == "function" and HL.EggPictures() == false, "roll look egg cards: EggPictures() is false with " .. case[1])
+				ES.Show(G.result(PC, "Cloud", { epic }))
+				Mock.AdvanceUntil(function()
+					return G.strip(1) ~= nil and G.strip(1):GetAttribute("Landed") == true
+				end, 4, FINE)
+				G.advance(0.1)
+				local part = cardEggs(1, {})
+				local anyPic = false
+				for _, c in ipairs(G.cells(1)) do
+					anyPic = anyPic or c:FindFirstChild("EggPic") ~= nil
+				end
+				T.check(not anyPic and part.painted >= 3 and part.bad == "", "roll look egg cards: with " .. case[1] .. " no EggPic is made and every card draws its painted egg (never a mix: a cell never holds both)",
+					fmt("pictures made %s, %d painted; %s", tostring(anyPic), part.painted, part.bad))
+				T.check(part.most <= 20 and part.landedN <= 20, "roll look egg cards: ...each cell <= 20 instances (the landed card's Pop and Sweep aside)", fmt("%d, landed %d", part.most, part.landedN))
+				T.check(#preloads == np, "roll look egg cards: ...and nothing is preloaded (the pictures are not used)", fmt("%d preload(s)", #preloads - np))
+				ES.Close()
+				G.advance(0.4)
+			end
+			Mock.PreloadHook = oldHook
+			-- no ids (today): no EggPic anywhere, the painted eggs exactly as 16.15
+			HL._Textures = {}
+			t0 = os.clock()
+			ES.Show(G.result(PC, "Cloud", { epic }))
+			G.until_(t0, 2.0)
+			local none = cardEggs(1, {})
+			local anyPic = false
+			for _, c in ipairs(G.cells(1)) do
+				anyPic = anyPic or c:FindFirstChild("EggPic") ~= nil
+			end
+			T.check(not anyPic and none.painted >= 5 and none.bad == "", "roll look egg cards: at id 0 no EggPic is made and every card draws its painted egg (today's look)", fmt("%d painted; %s", none.painted, none.bad))
+			ES.Close()
+			G.advance(0.4)
+			-- x3 with every id: lite cells with their pictures stay <= 16 instances
+			HL._Textures = ids
+			t0 = os.clock()
+			ES.Show(G.result(PC, "Storm", { PC.RarityPool("Storm", "Rare")[1] or rare, PC.RarityPool("Storm", "Legendary")[1] or epic, PC.RarityPool("Storm", "Common")[1] or epic }))
+			G.until_(t0, 2.0)
+			local most3, pics3 = 0, 0
+			for j = 1, 3 do
+				for _, c in ipairs(G.cells(j)) do
+					most3 = math.max(most3, G.count(c))
+					local pic = c:FindFirstChild("EggPic")
+					if c.Visible and pic and pic.Visible then
+						pics3 = pics3 + 1
+					end
+				end
+			end
+			T.check(pics3 >= 6 and most3 <= 16, "roll look egg cards: x3 cells show their pictures and stay <= 16 instances", fmt("%d pictures, %d at most", pics3, most3))
+			ES.Close()
+			G.advance(0.4)
+			HL._Textures = false
+		end
 		------------------------------------------------------------------ budgets: x1 <= 450 and x3 <= 750 instances at every frame
 		local function peak(defs, rid)
 			ES.Show(G.result(PC, rid, defs))
@@ -835,9 +1059,26 @@ S.client_roll_look_stage = guarded("client_roll_look_stage", function()
 		local storm = function(r)
 			return PC.RarityPool("Storm", r)[1]
 		end
-		local x3, x3At = peak({ storm("Rare") or rare, storm("Legendary") or epic, storm("Common") or epic }, "Storm")
+		local x3defs = { storm("Rare") or rare, storm("Legendary") or epic, storm("Common") or epic }
+		local x3, x3At = peak(x3defs, "Storm")
 		T.check(x3 <= 750, "roll look budget: x3 <= 750 instances at every frame of the roll", fmt("%d (%s)", x3, x3At))
 		T.info("roll look budget peaks", fmt("x1 %d (%s), x3 %d (%s)", x1, x1At, x3, x3At))
+		-- (review round 1, spec 16.18) the same x3 with the card pictures' ids: one id (painted cards) and all seven (picture
+		-- cards) stay within 750 and never above the painted path (no cell holds a painted egg and a picture)
+		if type(HL.EGG_IMAGES) == "table" then
+			local all7 = {}
+			for i, r in ipairs(RARITIES) do
+				all7["egg_card_" .. r:lower()] = 9150 + i
+			end
+			HL._Textures = { egg_card_epic = 9177 }
+			local x3m, x3mAt = peak(x3defs, "Storm")
+			HL._Textures = all7
+			local x3a, x3aAt = peak(x3defs, "Storm")
+			HL._Textures = false
+			T.check(x3m <= 750 and x3m <= x3, "roll look budget: x3 with one egg_card id <= 750 at every frame, never above the painted path", fmt("%d (%s) vs %d", x3m, x3mAt, x3))
+			T.check(x3a <= 750 and x3a <= x3, "roll look budget: x3 with all seven egg_card ids <= 750 at every frame, never above the painted path", fmt("%d (%s) vs %d", x3a, x3aAt, x3))
+			T.info("roll look budget x3 with pictures", fmt("none %d, one id %d (%s), all seven %d (%s)", x3, x3m, x3mAt, x3a, x3aAt))
+		end
 	end)
 	if not ok then
 		T.check(false, "roll look: the scenario ran without an error", tostring(err))
@@ -1911,6 +2152,46 @@ S.client_roll_look_phone = guarded("client_roll_look_phone", function()
 			RedoGeom.check(G.content(), label .. " strip", { MinText = 15, NoOverlap = { "Skip", "FastHatch" }, Skip = SKIP })
 			ES.Close()
 			G.advance(0.4)
+		end
+		-- (egg-cards, spec 16.18) with the egg_card ids every shown picture is a square inside its card (x1 and x3)
+		if type(HL.EGG_IMAGES) == "table" then
+			local ids = {}
+			for i, r in ipairs(RARITIES) do
+				ids["egg_card_" .. r:lower()] = 9100 + i
+			end
+			HL._Textures = ids
+			for _, size in ipairs({ { 844, 390 }, { 640, 360 } }) do
+				for _, n in ipairs({ 1, 3 }) do
+					local label = fmt("roll look phone %dx%d x%d egg cards", size[1], size[2], n)
+					Mock.SetViewport(size[1], size[2])
+					G.advance(0.3)
+					local t1 = os.clock()
+					local defs = n == 1 and { epic } or { epic, epic, epic }
+					ES.Show(G.result(PC, "Cloud", defs))
+					G.until_(t1, 2.0)
+					local pics, outside, most = 0, "", 0
+					for j = 1, n do
+						for _, c in ipairs(G.cells(j)) do
+							most = math.max(most, G.count(c))
+							local pic = c:FindFirstChild("EggPic")
+							if c.Visible and pic and pic.Visible then
+								pics = pics + 1
+								local pb, cb = G.box(pic), G.box(c)
+								if pb.x < cb.x - 0.6 or pb.y < cb.y - 0.6 or pb.x + pb.w > cb.x + cb.w + 0.6 or pb.y + pb.h > cb.y + cb.h + 0.6 or abs(pb.w - pb.h) > 0.6 then
+									outside = outside .. fmt("%s %.0f,%.0f %.0fx%.0f in %.0f,%.0f %.0fx%.0f; ", c.Name, pb.x, pb.y, pb.w, pb.h, cb.x, cb.y, cb.w, cb.h)
+								end
+							end
+						end
+					end
+					T.check(pics >= 3 and outside == "", label .. ": every shown picture is a square inside its card", fmt("%d pictures; %s", pics, outside))
+					T.check(most <= (n == 1 and 20 or 16), label .. ": a cell stays inside its budget", tostring(most))
+					ES.Close()
+					G.advance(0.4)
+				end
+			end
+			HL._Textures = false
+		else
+			T.check(false, "roll look phone egg cards: HatchLook.EGG_IMAGES exists")
 		end
 		-- x3 lite cards at 640x360
 		Mock.SetViewport(640, 360)

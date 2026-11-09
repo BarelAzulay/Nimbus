@@ -64,6 +64,7 @@ except Exception:  # pragma: no cover
     TTFont = None
 
 GRID_SIZES = [(1920, 1080), (1280, 720), (390, 844), (844, 390)]
+EGG_FILL = 0.9  # (egg-cards) HatchLook.Metrics.EGG_PIC.Fill: the egg's share of its card picture's height
 SCENARIOS = ["gallery", "lobby", "title", "match", "match:hit", "countdown", "party", "results", "pets", "pets:phone", "pets:pick", "pets:sheet", "loss", "loss:dungeon", "loss:phone",
              "menu:Index", "menu:Stats", "tutorial", "npc", "dev", "toasts", "portal", "portal:Saint:4",
              # Phase 4 (careui): the Home window, the Food Machine list, the garden picker, the Training Place, the EVOLVE
@@ -92,6 +93,9 @@ SCENARIOS = ["gallery", "lobby", "title", "match", "match:hit", "countdown", "pa
              "gems", "gems:store", "titles", "titles:10", "titles:30", "titles:60",
              "eggs", "eggs:simple", "hatch:strip", "hatch:strip3", "hatch:crack", "hatch:reveal", "hatch:reveal3", "hatch:secret",
              "hatch:epic@3.9", "hatch:legendary@5.3", "hatch:secret@5.9", "hatch3:6.0",
+             # (egg-cards, spec 16.18) the flags :pics (the egg_card ids stubbed: the cards draw blender/textures/eggs/*.png)
+             # and :3d (Egg3D's MeshLibrary stubbed: the hero eggs' frames drawn from their card pictures, labelled)
+             "hatch:strip:pics", "hatch:strip3:pics", "hatch3:4.6:3d:pics",
              "shop", "shop:restricted", "shop:Gems", "shop:Packs", "shop:Passes", "shop:Boosts",
              # (shop-area T3) the Secret card away from the Storm Altar (greyed, AltarChip, TRAVEL) and at it
              "shop_secret_locked", "shop_secret_altar",
@@ -937,6 +941,29 @@ class GuiRenderer:
         d.text((w / 2.0, h / 2.0), text, font=f, fill=color + (235,), anchor="mm")
         self.composite(layer, patch, cx - w / 2.0, cy - h / 2.0, clip)
 
+    # (egg-cards, spec 16.18) a scene's stubbed asset ids mapped to local PNGs (the dump's localImages, repo paths)
+    def local_png(self, path):
+        cache = self.__dict__.setdefault("_local_pngs", {})
+        if path not in cache:
+            full = os.path.join(ROOT, *str(path).split("/"))
+            try:
+                cache[path] = Image.open(full).convert("RGBA") if os.path.isfile(full) else None
+            except Exception:
+                cache[path] = None
+        return cache[path]
+
+    def draw_fit(self, img, layer, clip, x0, y0, x1, y1, tint, alpha):
+        """img fitted into the box (ScaleType Fit: centred, aspect kept) x tint, its alpha x alpha"""
+        bw, bh = x1 - x0, y1 - y0
+        k = min(bw / img.width, bh / img.height)
+        w, h = max(1, int(round(img.width * k))), max(1, int(round(img.height * k)))
+        px0, py0 = int(round(x0 + (bw - w) / 2.0)), int(round(y0 + (bh - h) / 2.0))
+        arr = np.asarray(img.resize((w, h), Image.LANCZOS), dtype=np.float32)
+        rgb = arr[..., :3] * tint
+        a = arr[..., 3] * alpha
+        out = np.dstack([np.clip(rgb, 0, 255), np.clip(a, 0, 255)]).astype(np.uint8)
+        self.composite(layer, Image.fromarray(out, "RGBA"), px0, py0, clip)
+
     def placeholder(self, n, layer, clip, x0, y0, x1, y1, r):
         im = n["image"]
         kind = im.get("kind", "Image")
@@ -944,6 +971,24 @@ class GuiRenderer:
         tint = np.array(im.get("color", [255, 255, 255]), dtype=np.float32) / 255.0
         if (kind == "Image" and not im.get("image")) or alpha <= 0.01 or x1 - x0 < 1 or y1 - y0 < 1:
             return
+        local = (self.dump.get("localImages") or {}).get(str(im.get("image", ""))) if kind == "Image" else None
+        if local:
+            png = self.local_png(local)
+            if png is not None:
+                # the stubbed id's own picture (what Roblox would draw once the id is real)
+                self.draw_fit(png, layer, clip, x0, y0, x1, y1, tint, alpha)
+                return
+        if kind == "Viewport" and im.get("picture") and not im.get("split"):
+            png = self.local_png(im["picture"])
+            if png is not None:
+                # an Egg3D egg drawn from its card picture (the same mesh at the same camera): the egg is eggShare of the
+                # frame's height and EGG_FILL of the picture's; labelled, it is a stand-in for the 3D render
+                side = (y1 - y0) * float(im.get("eggShare", 0.5)) / EGG_FILL
+                cx, cy = (x0 + x1) / 2.0, (y0 + y1) / 2.0
+                self.draw_fit(png, layer, clip, cx - side / 2.0, cy - side / 2.0, cx + side / 2.0, cy + side / 2.0, tint, alpha)
+                if side >= 60 * self.ss:
+                    self.label(layer, clip, cx, cy + side / 2.0 + 7 * self.ss, "3D egg (picture stand-in)", max(side, 140 * self.ss), size_px=9)
+                return
         px0, py0 = int(math.floor(x0)), int(math.floor(y0))
         pw, ph = int(math.ceil(x1)) - px0, int(math.ceil(y1)) - py0
         mask = Image.new("L", (pw, ph), 0)

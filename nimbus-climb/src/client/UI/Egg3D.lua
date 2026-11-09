@@ -6,7 +6,8 @@
 --
 --   Egg3D.KEYS[rarity] = { Whole = "egg_<r>", Top = "egg_<r>_top", Bot = "egg_<r>_bot" }   (literal keys: tools/mesh_keys.py)
 --   Egg3D.Usable(rarity, opts) -> ok, reason   reason "low" (Low graphics), "missing" (the whole egg's key is not usable
---                                  here: no id, still loading, refused, a failed load), "limit" (the phone limit), "rarity"
+--                                  here: no id, still loading, refused, a failed load), "limit" (Live() + opts.Need, 1 by
+--                                  default, would pass Limit(opts.Phone): egg-cards, an x3 asks for its three), "rarity"
 --   Egg3D.New(parent, rarity, opts) -> view | nil, reason   (nil = draw today's 2D EggArt egg, exactly as before)
 --       opts = { Phone = bool (the one-at-a-time limit), Name = "Egg3D", ZIndex, Spin = seconds a turn (nil = still),
 --                Turn = start angle (degrees), View = egg heights the frame shows (default 2: the frame is 2.5 x 2 of the
@@ -23,8 +24,9 @@
 --                                 its hollow and fading out from half-way, the cup rocks and settles where it stood
 --   view:Destroy()                everything (tweens, connections, the frame); also when the frame is destroyed
 --   Egg3D.Watch(fn) -> connection fn(key) when a mesh key may have become usable here (MeshLibrary.Changed)
---   Egg3D.Live() -> number        views alive now; Egg3D.Limit(phone) -> 1 on a phone, 2 elsewhere (the Shop hero and a
---                                 cutscene egg); the x3 roll and the strip cells always draw 2D eggs
+--   Egg3D.Live() -> number        views alive now; Egg3D.Limit(phone) -> 1 on a phone, 3 elsewhere (egg-cards, spec 16.18:
+--                                 the x3 roll's three hero eggs; the Shop's hero is destroyed when the Shop hides, before
+--                                 any cutscene egg rises); a phone's x3 stays 2D (3 > 1), the strip cells draw pictures
 --   Egg3D._ML / Egg3D._High       tests only: a MeshLibrary stand-in { IsReady, Assemble } and a graphics answer
 --
 -- The camera: FieldOfView 20 from 8 degrees above, framing 2 x the egg's height (the frame is 2 egg heights tall), so the
@@ -169,7 +171,7 @@ function Egg3D.Watch(fn)
 end
 
 function Egg3D.Limit(phone)
-	return phone and 1 or 2
+	return phone and 1 or 3
 end
 
 function Egg3D.Usable(rarity, opts)
@@ -183,7 +185,10 @@ function Egg3D.Usable(rarity, opts)
 	if not ready(keys.Whole) then
 		return false, "missing"
 	end
-	if Egg3D.Live() >= Egg3D.Limit(type(opts) == "table" and opts.Phone == true) then
+	opts = type(opts) == "table" and opts or {}
+	-- (egg-cards, spec 16.18) Need: the frames the caller is about to make (an x3 asks for its three at once)
+	local need = math.max(1, math.floor(tonumber(opts.Need) or 1))
+	if Egg3D.Live() + need > Egg3D.Limit(opts.Phone == true) then
 		return false, "limit"
 	end
 	return true, nil

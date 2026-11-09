@@ -27,7 +27,8 @@
 //                       "rbxassetid://" (no id) is allowed in src/client/PortalVortex.lua and (pet attack VFX, Task 6)
 //                       src/client/Controllers/AttackFx.lua and (living sky, Task 3) src/shared/SkyFaces.lua and (store
 //                       card art, spec 9; lobby-shop Task 21 moved it) src/client/Controllers/ShopController.lua and
-//                       (roll-look, spec 16.15: the optional hatch_* images) src/client/UI/HatchLook.lua, which
+//                       (roll-look, spec 16.15: the optional hatch_* images; egg-cards, spec 16.18: the strip cards'
+//                       egg pictures egg_card_*) src/client/UI/HatchLook.lua, which
 //                       join it to the numbers of
 //                       src/shared/TextureIds.lua (rule texture-ids: numbers only, written by tools/upload_assets.py), and
 //                       in src/client/SoundFx.lua, which joins it to the numbers of src/shared/AudioIds.lua (rule audio-ids) -
@@ -382,7 +383,7 @@ function analyse(file) {
 		|| (base === "AttackFx.lua" && path.basename(path.dirname(file)) === "Controllers" && path.basename(path.dirname(path.dirname(file))) === "client")
 		|| (base === "SkyFaces.lua" && path.basename(path.dirname(file)) === "shared") // the living sky faces (TextureIds sky_<theme>_<Face>)
 		|| (base === "ShopController.lua" && path.basename(path.dirname(file)) === "Controllers" && path.basename(path.dirname(path.dirname(file))) === "client") // the store card art (TextureIds store_*)
-		|| (base === "HatchLook.lua" && path.basename(path.dirname(file)) === "UI" && path.basename(path.dirname(path.dirname(file))) === "client"); // the roll look's optional images (TextureIds hatch_*)
+		|| (base === "HatchLook.lua" && path.basename(path.dirname(file)) === "UI" && path.basename(path.dirname(path.dirname(file))) === "client"); // the roll look's optional images (TextureIds hatch_*) and the card eggs' pictures (egg_card_*)
 	// review3 tooling-5: the PortalVortex prefix literals that are joined to a TextureIds id variable (not a literal id)
 	const vortexPrefixOk = isVortex ? vortexPrefixUses(ast) : new Set();
 	const normPath = file.replace(/\\/g, "/");
