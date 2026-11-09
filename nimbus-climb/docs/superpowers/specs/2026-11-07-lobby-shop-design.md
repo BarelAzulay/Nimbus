@@ -2187,3 +2187,39 @@ rise; x3 each strip's own tell colour, Uncommon kept gold; the budget counts abo
 label fitting, the notes breaking at their dots; a rotation mid-rise dropping the lifted strips. Evidence: `tools/render_gui.py hatch:<rarity>@<s>` and `hatch3:<s>` at 1920x1080, 1280x720, 844x390 and 360x640,
 in `.superpowers/lobby-shop/evidence/roll-look/`; (review round 1) `tools/dump_gui.lua` snaps every playing tween to its
 eased in-between value before it dumps (`Mock.SnapTweens`), so a moment mid-tween draws what Roblox would.
+
+### 16.16 Altar vortex fixes (2026-11-09, owner report 2026-11-08: "the gate at the storm altar doesnt have a vortex animated circle inside")
+
+Numbered 16.16 because 16.12-16.15 may exist on other branches. These override the text above where they differ.
+- **The green return ring on the Altar island had no vortex at all.** `StormAltar`'s `ReturnPortal` had no `GateId`, so
+  `PortalFxController` never tracked it, and no `Swirl` parts, so it could not have built one anyway. It is now a PortalFx gate
+  (`GateId = "Plaza"`; only PortalFx and DungeonController's `"Dungeon"` lookup read `GateId`) with an invisible anchored
+  `VortexCenter` part (nothing collides, queries or touches; +1 part, the altar is 494 of 500) in the Part ring's opening,
+  front = the walk, and the attributes `VortexRadius` 3.3 (the 13 segments' inner faces are 3.45 out), `VortexColor` (the
+  ring's green rgb(96,190,140)), `VortexMeshOffset` (VortexCenter to the `portal_ring` mesh's `PortalCenter`, 0.85 lower) and
+  `VortexMeshRadius` 2.25 (the mesh's Neon rim starts 2.5 out, `lobby_shop.py` `RING_RIM`). The mesh dress happens on each
+  client and can fail there (the Part ring then stays), so the client decides: `PortalFxController.scan` gives a gate with
+  `VortexRadius` + `VortexCenter` a `rec.Fixed` spot (PortalVortex's Fixed path, as HomePortalFx uses), the mesh's opening while
+  a child of the gate holds an `ML_Mesh`, else the Part ring's; an `ML_Mesh` arriving or leaving rescans the gate. The
+  vortex takes `VortexColor`.
+- **The lobby gate "Storm Altar" showed a flat white disc.** `VortexBoost` 1.4 lifted EVERY vortex layer 0.4 toward white
+  (the deep disc and the core too) and raised the SurfaceGui Brightness to 2 x 1.4 = 2.8: every channel of every layer went over
+  1 (the core's colour x Brightness was (1, 1, 1)), so all seven layers drew the same white. Now only the light layers (arms,
+  fine, streaks, rim) are lifted; deep and core keep the plain tints (so the swirl backdrop SwirlLook hands out stays deep too)
+  and the glow is capped at `PortalVortex.K.BOOST_GLOW_CAP` 1.15 (Brightness 2.3; the fallback's LightEmission x 1.15, capped
+  at 1). The Altar gate still reads brighter than the Obby gate (higher Brightness, lifted arms).
+- **Tests.** `client_p6portalfx`: the boosted gate's seen colours (tint x Brightness, clamped): the core's luminance <= 0.6
+  with a channel under 1, arms - core >= 0.3, the Altar's light layers brighter than the Obby gate's; the real StormAltar built
+  in the client world: the controller tracks ReturnPortal and shows a vortex centred in the Part ring's opening (+-0.1 stud),
+  inside its segments, in its green, then (an ML_Mesh under Ring) on the mesh's PortalCenter inside the 2.5 rim, then back.
+  `altar_portal_glow`: GateId, VortexCenter (place, facing, no collide / query / touch), the radii, the colour and the mesh
+  offset against the `portal_ring` manifest, on the booted altar and the forced-dressed rebuild.
+- **Review minors (Fable review of 920d359).** `ReturnPortal` carries `VortexMeshChild = "Ring"` and the client probes only
+  that child for an `ML_Mesh` (missing attribute = "Ring"), so an `ML_Mesh` under the Pad never moves the vortex. A rescan
+  keeps a fixed vortex whose spot and colour did not change (mesh or ring parts streaming in over several refreshes rebuild
+  it once, not per part); a moved spot (Part ring <-> mesh) rebuilds it with `rec.Fade = 0`, so it fades in instead of
+  popping. Tests in `client_p6portalfx`: the Pad's ML_Mesh, the fade from 0 after the swap, exactly one rebuild per spot
+  change across Part -> mesh (parts over three refreshes) -> Part, and Low graphics with the altar built (the Plaza vortex
+  shown but still in both modes: no turning, streaks / crackles off). `altar_portal_glow` checks the attribute.
+- **Part margin.** `StormAltar` measures 494 parts of the 500 budget (493 dressed; `storm_altar` and `altar_portal_glow`), a
+  6-part margin: a longer bridge (more planks) or more return-ring segments would trip `checkAltarBudget`.

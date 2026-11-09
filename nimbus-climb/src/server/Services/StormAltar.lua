@@ -62,7 +62,11 @@
 --              0.05 under the octagons' top; its Part fallback: 13 green Neon segments on a ring 4.5 up over the pad and
 --              two stone feet), never colliding or touching. "To the Plaza" on the mesh's SignFace (a SurfaceGui at 50
 --              px per stud on a SignFace part) once the ring is dressed, else a pixel BillboardGui over the ring. Its
---              "ReturnPrompt" anchor carries GateService's prompt (no panel) and a PointLight 1.3 / 14.
+--              "ReturnPrompt" anchor carries GateService's prompt (no panel) and a PointLight 1.3 / 14. Spec 16.16: a
+--              PortalFx gate (GateId "Plaza") whose client vortex sits on the invisible VortexCenter part (the Part
+--              ring's opening) or, once the client dressed the Ring (VortexMeshChild = "Ring"), VortexCenter x
+--              VortexMeshOffset (the mesh's PortalCenter), sized VortexRadius / VortexMeshRadius, coloured VortexColor
+--              (the ring's green).
 --   Gem        lobby-shop (spec 5.7): Model WorldGem, "gems are spent here": a cut gem (Blender key gem_world, pivot the
 --              girdle centre) floating 3 studs over the deck (the clear air under its lowest corner) beside the walk
 --              from the landing to the summon portal, 15 studs out along the bridge and 7.5 to the side away from the
@@ -159,6 +163,12 @@ local PORTAL = {
 	ReturnN = 13,
 	MeshDrop = 0.85, -- the portal_ring mesh pivot under the deck: its plinth top (1.0 up) ends 0.05 under the octagons
 	SignFace = Vector3.new(0, 8.25, -1.25), -- the portal_ring manifest's SignFace attachment (the navy board's front)
+	-- spec 16.16: the return ring's client vortex (PortalFxController's Fixed path). The Part fallback's segments have
+	-- their inner faces 3.8 - 0.35 = 3.45 out; the mesh's opening (its PortalCenter attachment, 4.5 over its pivot) ends
+	-- at the Neon rim's inner edge 2.5 out (blender/kit/props/lobby_shop.py RING_RIM). Both radii stay a little inside.
+	MeshCenter = Vector3.new(0, 4.5, 0),
+	VortexR = 3.3,
+	VortexMeshR = 2.25,
 }
 -- lobby-shop (spec 5.7): the world gem, in the bridge frame like the return portal. The plan's spot (halfway along the
 -- walk, 8.5 out, 7 to the side) is inside the medium crystal on the stone ring, so it floats over the open deck between
@@ -1550,6 +1560,19 @@ local function buildReturnPortal(parent, A, gapDeg)
 	local origin = cf * CFrame.new(0, -PORTAL.MeshDrop, 0)
 	ring.WorldPivot = origin
 	local dressed = Mesh.tag(ring, "portal_ring", origin, { Primary = C.ReturnGreen })
+	-- spec 16.16 (owner 2026-11-08: "the gate at the storm altar doesnt have a vortex animated circle inside"): the
+	-- client's PortalFxController draws a vortex in the opening. GateId makes it a tracked gate (only PortalFx and
+	-- DungeonController's "Dungeon" lookup read GateId); VortexCenter (invisible, nothing collides, queries or touches)
+	-- is the Part ring's opening, front = the walk. The mesh dress happens on each client (and can fail there), so the
+	-- client picks the mesh's opening (VortexMeshOffset / VortexMeshRadius) only while the Ring holds an ML_Mesh
+	-- (VortexMeshChild names that child: an ML_Mesh under any other child, the Pad say, never moves the vortex).
+	m:SetAttribute("GateId", "Plaza")
+	m:SetAttribute("VortexMeshChild", ring.Name)
+	local vc = invisible(m, "VortexCenter", mid, Vector3.new(0.2, 0.2, 0.2))
+	m:SetAttribute("VortexRadius", PORTAL.VortexR)
+	m:SetAttribute("VortexColor", C.ReturnGreen)
+	m:SetAttribute("VortexMeshOffset", vc.CFrame:Inverse() * (origin * CFrame.new(PORTAL.MeshCenter)))
+	m:SetAttribute("VortexMeshRadius", PORTAL.VortexMeshR)
 	local anchor = invisible(m, "ReturnPrompt", cf * CFrame.new(0, 2.5, 0), Vector3.new(2, 2, 2))
 	plazaSign(m, anchor, origin, dressed)
 	local glow = Instance.new("PointLight")

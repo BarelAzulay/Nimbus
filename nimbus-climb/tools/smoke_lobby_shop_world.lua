@@ -1280,6 +1280,36 @@ local function checkReturn(label, SA, altar, A, landing)
 	T.check(#solid == 0, label .. ": nothing collidable but the pads in the 4x6x4 box over the pad", table.concat(solid, ", ", 1, math.min(#solid, 4)))
 	local prompt = pad:FindFirstChild("PlazaGatePrompt")
 	T.check(prompt ~= nil and prompt.KeyboardKeyCode == Enum.KeyCode.E and prompt.MaxActivationDistance == 8, label .. ": the PlazaGatePrompt keeps E and range 8")
+	-- spec 16.16 (owner 2026-11-08: no vortex in the ring): ReturnPortal is a PortalFx gate (GateId "Plaza") with no
+	-- Swirl parts; the client's Fixed vortex reads the VortexCenter part and the Vortex* attributes
+	T.eq(portal:GetAttribute("GateId"), "Plaza", label .. ": ReturnPortal carries GateId 'Plaza' (PortalFxController tracks it)")
+	local vc = portal:FindFirstChild("VortexCenter")
+	local ringC = centre + Vector3.new(0, 4.5, 0)
+	T.check(vc ~= nil and vc:IsA("BasePart") and vc.Parent == portal and vc.Anchored and vc.Transparency == 1 and not vc.CanCollide and not vc.CanQuery and not vc.CanTouch
+		and near(vc.Position, ringC, 0.1) and face ~= nil and vc.CFrame.LookVector:Dot(face) > 0.9999,
+		label .. ": ...an invisible anchored VortexCenter (no collide / query / touch) in the Part ring's opening (4.5 over the pad, +-0.1), its front facing the walk",
+		vc and fmt("%.3f off", (vc.Position - ringC).Magnitude) or "no VortexCenter")
+	local radius, meshR, offset, color = portal:GetAttribute("VortexRadius"), portal:GetAttribute("VortexMeshRadius"), portal:GetAttribute("VortexMeshOffset"), portal:GetAttribute("VortexColor")
+	-- the Part ring: 13 segments 0.7 thick on r = 3.8 (inner faces 3.45 out); the mesh: the Neon rim's inner edge 2.5
+	-- out (blender/kit/props/lobby_shop.py RING_RIM)
+	T.check(type(radius) == "number" and radius > 1 and radius < 3.45 and type(meshR) == "number" and meshR > 1 and meshR < 2.5,
+		label .. ": ...VortexRadius inside the Part ring (< 3.45), VortexMeshRadius inside the mesh's Neon rim (< 2.5)", fmt("%s / %s", tostring(radius), tostring(meshR)))
+	T.check(typeof(color) == "Color3" and sameColor(color, GLOW.Green), label .. ": ...VortexColor = the ring's green rgb(96,190,140)", tostring(color))
+	-- review minor 1: the client probes only the named child for the mesh dress (an ML_Mesh under the Pad never counts)
+	local meshChild = portal:GetAttribute("VortexMeshChild")
+	T.check(meshChild == "Ring" and portal:FindFirstChild("Ring") ~= nil, label .. ": ...VortexMeshChild = 'Ring' (the child the portal_ring mesh dresses)", tostring(meshChild))
+	local ML = req("shared/MeshLibrary")
+	local man = ML and ML.Manifest("portal_ring")
+	local att = man and man.Attachments and man.Attachments.PortalCenter
+	local pc = att and (att.Pos or att.pos)
+	if T.check(typeof(offset) == "CFrame" and type(pc) == "table" and vc ~= nil and face ~= nil, label .. ": ...VortexMeshOffset (a CFrame) and the portal_ring manifest's PortalCenter") then
+		local y = padTop - 0.05 - GLOW.MeshPadY
+		local origin = CFrame.lookAt(Vector3.new(centre.X, y, centre.Z), Vector3.new(centre.X, y, centre.Z) + face)
+		local want = origin * CFrame.new(pc[1], pc[2], pc[3])
+		local got = vc.CFrame * offset
+		T.check(near(got.Position, want.Position, 0.1) and got.LookVector:Dot(face) > 0.9999,
+			label .. ": ...VortexCenter x VortexMeshOffset = the dressed mesh's PortalCenter (+-0.1), facing the walk", fmt("%.3f off", (got.Position - want.Position).Magnitude))
+	end
 	return portal, centre, padTop, face
 end
 

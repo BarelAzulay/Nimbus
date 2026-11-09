@@ -14,10 +14,16 @@
 --                      range), never moves, resizes or creates a part, skips Neon parts MeshLibrary hides for a mesh,
 --                      animates at most MAX_ACTIVE gates and none beyond RANGE studs, is static on Low graphics (every
 --                      value back to the built one), and forgets a removed gate after restoring nothing it should not;
---                      lobby shop (Task 12): a gate's VortexBoost attribute (the Altar's 1.4) lifts its vortex tint toward
---                      white and its glow (texture BRIGHTNESS x 1.4; fallback LightEmission x 1.4 capped at 1, beam / streak
---                      / backdrop colours lifted), so the Altar reads brighter than the Obby gate at the same distance; no
---                      boost = today's numbers; the swirl's built value does not change
+--                      lobby shop (Task 12, spec 16.16): a gate's VortexBoost attribute (the Altar's 1.4) lifts its LIGHT
+--                      layers' tints toward white (Disc / Core / the swirl backdrop stay deep) and its glow capped at
+--                      BOOST_GLOW_CAP (texture BRIGHTNESS x 1.15; fallback LightEmission x 1.15 capped at 1), so the Altar
+--                      reads brighter than the Obby gate at the same distance without washing out into a white disc (the
+--                      seen colour = tint x Brightness, clamped); no boost = today's numbers; the swirl's built value does
+--                      not change. Spec 16.16: StormAltar's green return ring (no Swirl parts) shows a vortex through the
+--                      Fixed path, centred in the Part ring's opening or, dressed (an ML_Mesh under Ring), the mesh's
+--                      PortalCenter, inside the ring, in its green; only the child VortexMeshChild names counts (an
+--                      ML_Mesh under the Pad does not), a moved spot fades the rebuilt vortex in from 0, one rebuild per
+--                      spot change (none per mesh part that arrives later), and on Low the Plaza vortex is shown but still
 -- Deterministic: no RNG; the time is the mock clock; every gate is destroyed and the quality mode restored at the end.
 
 local T = SmokeCommon.T
@@ -438,23 +444,57 @@ S.client_p6portalfx = guarded("client_p6portalfx", function()
 		local vB, vP, vA, vO = rB and rB.Vortex, rP and rP.Vortex, rA and rA.Vortex, rO and rO.Vortex
 		if T.check(vB and vP and vA and vO and vB.Shown and vP.Shown and vA.Shown and vO.Shown and vB.Mode == "Texture",
 			"boost (texture): the four gates at mirrored distances all show a textured vortex") then
-			local Bk = V.K.BRIGHTNESS
+			local Bk, cap = V.K.BRIGHTNESS, V.K.BOOST_GLOW_CAP
 			T.check(vB.Boost == 1.4 and vP.Boost == 1 and vA.Boost == 1.4 and vO.Boost == 1 and (rh.Vortex == nil or rh.Vortex.Boost == 1),
 				"boost: v.Boost = the gate's VortexBoost attribute (1.4), 1 without it", fmt("%s / %s", tostring(vB.Boost), tostring(vP.Boost)))
-			T.check(vP.Front.Brightness == Bk and vP.Back.Brightness == Bk and math.abs(vB.Front.Brightness - Bk * 1.4) < 1e-6 and math.abs(vB.Back.Brightness - Bk * 1.4) < 1e-6,
-				"boost (texture): VortexBoost 1.4 glows at BRIGHTNESS x 1.4, no boost keeps today's BRIGHTNESS", fmt("%.2f vs %.2f", vB.Front.Brightness, vP.Front.Brightness))
-			local lifted, bad = 0, {}
+			-- spec 16.16 (owner 2026-11-08: the Storm Altar gate showed a flat white disc): the glow is capped at
+			-- BRIGHTNESS x BOOST_GLOW_CAP (1.15), no longer x 1.4, which pushed every layer's colour over 1
+			T.check(type(cap) == "number" and cap > 1 and cap <= 1.2 and vP.Front.Brightness == Bk and vP.Back.Brightness == Bk
+				and math.abs(vB.Front.Brightness - Bk * cap) < 1e-6 and math.abs(vB.Back.Brightness - Bk * cap) < 1e-6,
+				"boost (texture): VortexBoost 1.4 glows at BRIGHTNESS x BOOST_GLOW_CAP (<= 1.2), no boost keeps today's BRIGHTNESS",
+				fmt("%.2f vs %.2f (cap %s)", vB.Front.Brightness, vP.Front.Brightness, tostring(cap)))
+			-- only the light layers (arms, fine, streaks, rim) are lifted 0.4 toward white; the deep disc and the core stay
+			-- the unboosted tints, so the centre keeps its depth
+			local LIGHT = { Arms = true, Fine = true, StreaksA = true, StreaksB = true, Rim = true }
+			local okLayers, bad = 0, {}
 			for i, e in ipairs(vB.Layers) do
 				local base = vP.Layers[i] and vP.Layers[i].Label.ImageColor3
-				if base and closeColor(e.Label.ImageColor3, base:Lerp(WHITE, 0.4)) then
-					lifted = lifted + 1
+				local want = base and (LIGHT[e.Spec.Name] and base:Lerp(WHITE, 0.4) or base)
+				if want and closeColor(e.Label.ImageColor3, want) then
+					okLayers = okLayers + 1
 				else
 					bad[#bad + 1] = e.Spec.Name
 				end
 			end
-			T.check(lifted == #vB.Layers and lifted > 0, "boost (texture): every layer's tint is the unboosted tint lifted 0.4 toward white", table.concat(bad, ", "))
-			T.check(vA.Front.Brightness > vO.Front.Brightness and lum(vA.Tint.deep) > lum(vO.Tint.deep) and lum(vA.Tint.arm) > lum(vO.Tint.arm),
-				"boost (texture): the Altar gate's vortex reads brighter than the Obby gate's at the same distance (glow, deep and arm tints)")
+			T.check(okLayers == #vB.Layers and okLayers > 0, "boost (texture): the light layers' tints are lifted 0.4 toward white, Disc and Core keep the unboosted tint",
+				table.concat(bad, ", "))
+			-- what the player sees: each layer's colour x the SurfaceGui Brightness, clamped at 1 per channel
+			local function eff(v, name)
+				local l = nil
+				for _, e in ipairs(v.Layers) do
+					if e.Spec.Name == name then
+						l = e.Label
+					end
+				end
+				local c, b = l and l.ImageColor3 or WHITE, v.Front.Brightness
+				return Color3.new(math.min(1, c.R * b), math.min(1, c.G * b), math.min(1, c.B * b))
+			end
+			local function below1(c)
+				return c.R < 1 or c.G < 1 or c.B < 1
+			end
+			local coreE, discE, armsE = eff(vB, "Core"), eff(vB, "Disc"), eff(vB, "Arms")
+			T.check(lum(coreE) <= 0.6 and (below1(coreE) or below1(discE)),
+				"boost (texture): the boosted vortex is no flat white disc: its core reads dark (luminance <= 0.6), Disc / Core keep a channel under 1",
+				fmt("core %.2f (%.2f %.2f %.2f), disc (%.2f %.2f %.2f)", lum(coreE), coreE.R, coreE.G, coreE.B, discE.R, discE.G, discE.B))
+			T.check(lum(armsE) - lum(coreE) >= 0.3, "boost (texture): the bright arms stand out from the deep core (luminance gap >= 0.3)",
+				fmt("arms %.2f core %.2f", lum(armsE), lum(coreE)))
+			local sumA, sumO = 0, 0
+			for _, name in ipairs({ "Arms", "Fine", "StreaksA", "Rim" }) do
+				sumA, sumO = sumA + lum(eff(vA, name)), sumO + lum(eff(vO, name))
+			end
+			T.check(vA.Front.Brightness > vO.Front.Brightness and lum(vA.Tint.arm) > lum(vO.Tint.arm) and sumA > sumO,
+				"boost (texture): the Altar gate's vortex still reads brighter than the Obby gate's at the same distance (glow, arm tint, the light layers as seen)",
+				fmt("%.2f vs %.2f", sumA, sumO))
 		end
 		-- the effects-only fallback: beam / streak colours lifted the same, LightEmission x 1.4 capped at 1, the swirl backdrop
 		Fx.SetTextureIds({})
@@ -462,18 +502,20 @@ S.client_p6portalfx = guarded("client_p6portalfx", function()
 		vB, vP, vA, vO = rB and rB.Vortex, rP and rP.Vortex, rA and rA.Vortex, rO and rO.Vortex
 		if T.check(vB and vP and vA and vO and vB.Mode == "Fallback" and vP.Mode == "Fallback" and vB.Shown, "boost (fallback): the four gates show the fallback vortex") then
 			local armB, armP, fineB, fineP = vB.Beams[1], vP.Beams[1], vB.Beams[V.K.ARMS + 1], vP.Beams[V.K.ARMS + 1]
-			T.check(math.abs(armP.LightEmission - 0.7) < 1e-6 and math.abs(armB.LightEmission - 0.98) < 1e-6 and fineP.LightEmission == 1 and fineB.LightEmission == 1
+			local cap = V.K.BOOST_GLOW_CAP or 0
+			T.check(math.abs(armP.LightEmission - 0.7) < 1e-6 and math.abs(armB.LightEmission - 0.7 * cap) < 1e-6 and fineP.LightEmission == 1 and fineB.LightEmission == 1
 				and vB.Streaks.LightEmission == 1 and vB.Crackle.LightEmission == 1,
-				"boost (fallback): the arm beams' LightEmission 0.7 x 1.4 = 0.98, the fine beams, streaks and crackles capped at 1",
+				"boost (fallback): the arm beams' LightEmission 0.7 x BOOST_GLOW_CAP, the fine beams, streaks and crackles capped at 1",
 				fmt("arm %.3f / %.3f, fine %.3f", armB.LightEmission, armP.LightEmission, fineB.LightEmission))
 			T.check(closeColor(firstColor(armB.Color), firstColor(armP.Color) and firstColor(armP.Color):Lerp(WHITE, 0.4))
 				and closeColor(firstColor(vB.Streaks.Color), firstColor(vP.Streaks.Color) and firstColor(vP.Streaks.Color):Lerp(WHITE, 0.4)),
 				"boost (fallback): the beam and streak colours are lifted 0.4 toward white")
+			-- spec 16.16: the deep backdrop is not lifted (the boosted swirl stays a dark backdrop, not a pale sheet)
 			local lookB, lookP = V.SwirlLook(vB), V.SwirlLook(vP)
-			T.check(closeColor(lookB.Color, lookP.Color:Lerp(WHITE, 0.4)) and lookB.Transparency == lookP.Transparency and closeColor(rB.Swirl[1].Part.Color, lookB.Color),
-				"boost (fallback): SwirlLook's deep backdrop colour is lifted the same, at the same transparency")
-			T.check(lum(V.SwirlLook(vA).Color) > lum(V.SwirlLook(vO).Color) and vA.Beams[1].LightEmission > vO.Beams[1].LightEmission,
-				"boost (fallback): the Altar gate's vortex reads brighter than the Obby gate's (backdrop, arm glow)")
+			T.check(closeColor(lookB.Color, lookP.Color) and lookB.Transparency == lookP.Transparency and closeColor(rB.Swirl[1].Part.Color, lookB.Color),
+				"boost (fallback): SwirlLook's deep backdrop keeps the unboosted deep colour, at the same transparency")
+			T.check(vA.Beams[1].LightEmission > vO.Beams[1].LightEmission and lum(firstColor(vA.Beams[1].Color)) > lum(firstColor(vO.Beams[1].Color)),
+				"boost (fallback): the Altar gate's vortex reads brighter than the Obby gate's (arm glow, arm colour)")
 		end
 		T.check(rB and rP and rB.Swirl[1] and rP.Swirl[1] and rB.Swirl[1].BaseT == rP.Swirl[1].BaseT and math.abs(rB.Swirl[1].BaseT - 0.62) < 1e-6
 			and rB.Swirl[1].Base == rP.Swirl[1].Base, "boost: the swirl's built value (Transparency 0.62, the gate colour) is the same with the boost")
@@ -483,6 +525,184 @@ S.client_p6portalfx = guarded("client_p6portalfx", function()
 		end
 		Mock.Advance(0.7)
 		T.check(Fx.Gate(boosted) == nil and rh.Vortex ~= nil and rh.Vortex.Mode == "Texture", "boost: the four test gates are forgotten, the hoop shows its textured vortex again")
+	end
+
+	------------------------------------------------------------------------------------------------
+	-- spec 16.16 (owner 2026-11-08: "the gate at the storm altar doesnt have a vortex animated circle inside"): the green
+	-- return ring on the Altar island (StormAltar's ReturnPortal: no Swirl parts) shows a vortex through the controller's
+	-- Fixed path, centred in the opening of the ring the player sees (the Part fallback's 13 segments, or the dressed
+	-- portal_ring mesh: an ML_Mesh under Ring), inside the ring, in its green. The client world has no server, so the real
+	-- StormAltar builds it here, standing in for replication (as smoke_client_v2's showcase check does).
+	------------------------------------------------------------------------------------------------
+	do
+		local services = Mock.GetPath(ROOTS["server"]):FindFirstChild("Services")
+		local saModule = services and services:FindFirstChild("StormAltar")
+		local okSA, SA = pcall(function()
+			return require(saModule)
+		end)
+		local okC, Cfg = pcall(function()
+			return require(Mock.GetPath(ROOTS["shared"] .. "/Config"))
+		end)
+		local okMan, man = pcall(function()
+			return require(Mock.GetPath(ROOTS["shared"] .. "/MeshManifests/portal_ring"))
+		end)
+		local zoneAttr = okC and type(Cfg) == "table" and Cfg.Lobby and Cfg.Lobby.ZoneAltarAttr
+		local zone0 = zoneAttr and workspace:GetAttribute(zoneAttr)
+		local camSaved = cam and cam.CFrame
+		local okB, errB = false, "StormAltar did not load"
+		if okSA and type(SA) == "table" and type(SA.Build) == "function" then
+			okB, errB = pcall(SA.Build, { AltarSite = CFrame.new(400, 0, 0) })
+		end
+		local altar = okB and SA.GetModel()
+		local portal = altar and altar:FindFirstChild("ReturnPortal")
+		local ring = portal and portal:FindFirstChild("Ring")
+		local vc = portal and portal:FindFirstChild("VortexCenter")
+		if T.check(portal ~= nil and ring ~= nil and cam ~= nil, "altar return ring: StormAltar builds ReturnPortal (with its Ring) in the client world", tostring(errB)) then
+			-- the opening the player sees in the Part fallback: the centre of the 13 green segments, inner edge = the
+			-- nearest segment's inner face
+			local segs, sum = {}, Vector3.new(0, 0, 0)
+			for _, d in ipairs(ring:GetDescendants()) do
+				if d:IsA("BasePart") and d.Name == "RingSegment" then
+					segs[#segs + 1] = d
+					sum = sum + d.Position
+				end
+			end
+			local opening = #segs > 0 and sum / #segs or Vector3.new(0, 0, 0)
+			local inner = math.huge
+			for _, s in ipairs(segs) do
+				inner = math.min(inner, (s.Position - opening).Magnitude - s.Size.Y / 2)
+			end
+			local green = segs[1] and segs[1].Color
+			local at = vc and vc.Position or opening
+			local look = vc and vc.CFrame.LookVector or Vector3.new(0, 0, -1)
+			cam.CFrame = CFrame.lookAt(at + look * 20 + Vector3.new(0, 3, 0), at)
+			Mock.Advance(0.7)
+			local rec = Fx.Gate(portal)
+			local v = rec and rec.Vortex
+			if T.check(rec ~= nil and v ~= nil and v.Shown, "altar return ring: the controller tracks ReturnPortal and shows its vortex (camera 20 studs away)",
+				rec and fmt("parts %s, vortex %s", tostring(rec.Parts), tostring(v ~= nil)) or "not tracked") then
+				local c = v.Center
+				T.check(#segs == 13 and (c.Position - opening).Magnitude <= 0.1, "altar return ring (Part fallback): the vortex is centred in the ring's opening (+-0.1 stud)",
+					fmt("%.3f off", (c.Position - opening).Magnitude))
+				local face = (segs[1].Position - opening):Cross(segs[2].Position - opening).Unit
+				T.check(math.abs(c.LookVector:Dot(face)) > 0.999 and vc ~= nil and c.LookVector:Dot(vc.CFrame.LookVector) > 0.999,
+					"altar return ring: ...in the ring's plane, its front facing the walk (VortexCenter's look)")
+				T.check(v.Radius > 1 and v.Radius < inner, "altar return ring (Part fallback): ...inside the ring (radius < the segments' inner edge)", fmt("radius %.2f, inner %.2f", v.Radius, inner))
+				T.check(green ~= nil and math.abs(v.Color.R - green.R) < 0.01 and math.abs(v.Color.G - green.G) < 0.01 and math.abs(v.Color.B - green.B) < 0.01 and v.Color.G > v.Color.R and v.Color.G > v.Color.B,
+					"altar return ring: ...in the ring's green", tostring(v.Color))
+				-- the dressed ring: the portal_ring mesh (an ML_Mesh under Ring, as MeshLibrary.Dress adds it on the client)
+				T.eq(portal:GetAttribute("VortexMeshChild"), "Ring", "altar return ring: ReturnPortal names the child a mesh may dress (VortexMeshChild = 'Ring')")
+				local pc = okMan and type(man) == "table" and man.Attachments and man.Attachments.PortalCenter and man.Attachments.PortalCenter.Pos
+				-- the gate has been on long enough to be fully faded in
+				Mock.Advance(1)
+				T.check(rec.Fade >= 1, "altar return ring: before the dress the vortex is fully faded in", fmt("fade %.2f", rec.Fade))
+				local built0 = Fx.Stats().Built
+				local vPart = rec.Vortex
+				local function meshPart(parent, name, up)
+					local mp = Instance.new("Part")
+					mp.Name = name
+					mp.Anchored = true
+					mp.CanCollide = false
+					mp.Size = Vector3.new(5.5, 5.5, 1)
+					mp.CFrame = ring:GetPivot() * CFrame.new(0, up, 0)
+					mp.Parent = parent
+					return mp
+				end
+				local mesh = Instance.new("Model")
+				mesh.Name = "ML_Mesh"
+				mesh.Parent = ring
+				meshPart(mesh, "PortalRim", 4.5)
+				-- review minor 2: the rebuilt vortex fades in (no pop): right after the swap its fade starts near 0, then rises
+				local swapped = Mock.AdvanceUntil(function()
+					return rec.Vortex ~= nil and rec.Vortex ~= vPart
+				end, 1.5)
+				local fade0 = rec.Fade
+				Mock.Advance(0.3)
+				T.check(swapped and fade0 < 0.15 and rec.Fade > fade0, "altar return ring (dressed): the rebuilt vortex fades in from 0 instead of popping",
+					fmt("swapped %s, fade right after %.2f, 0.3 s later %.2f", tostring(swapped), fade0, rec.Fade))
+				-- review minor 4: a dirty storm (mesh parts arriving over several refreshes) rebuilds once per spot change
+				meshPart(mesh, "PortalFeet", 1.5)
+				Mock.Advance(0.6)
+				meshPart(mesh, "PortalCap", 7.5)
+				Mock.Advance(0.6)
+				T.eq(Fx.Stats().Built - built0, 1, "altar return ring (dressed): exactly one rebuild for the dress, none per mesh part that arrives later")
+				local vd = rec.Vortex
+				local want = pc and (ring:GetPivot() * CFrame.new(pc[1], pc[2], pc[3])).Position
+				if T.check(want ~= nil and vd ~= nil and vd.Shown, "altar return ring (dressed): the vortex is rebuilt once the portal_ring mesh dresses the Ring") then
+					T.check((vd.Center.Position - want).Magnitude <= 0.1, "altar return ring (dressed): ...centred on the mesh's PortalCenter attachment (+-0.1 stud)",
+						fmt("%.3f off", (vd.Center.Position - want).Magnitude))
+					-- blender/kit/props/lobby_shop.py RING_RIM: the Neon rim's inner edge (the opening) is 2.5 studs out
+					T.check(vd.Radius > 1 and vd.Radius < 2.5, "altar return ring (dressed): ...inside the mesh's Neon rim (radius < 2.5)", fmt("radius %.2f", vd.Radius))
+					T.check(vd.Center.LookVector:Dot(c.LookVector) > 0.999, "altar return ring (dressed): ...facing the same way")
+				end
+				-- review minor 1: without the attribute the client probes "Ring" (the fallback name)
+				portal:SetAttribute("VortexMeshChild", nil)
+				rec.Dirty = true
+				Mock.Advance(0.6)
+				T.check(rec.Vortex ~= nil and want ~= nil and (rec.Vortex.Center.Position - want).Magnitude <= 0.1,
+					"altar return ring (dressed): no VortexMeshChild attribute -> the client still probes the child 'Ring'")
+				portal:SetAttribute("VortexMeshChild", "Ring")
+				mesh:Destroy()
+				Mock.Advance(0.7)
+				T.check(rec.Vortex ~= nil and (rec.Vortex.Center.Position - opening).Magnitude <= 0.1, "altar return ring: the mesh gone, the vortex is back in the Part ring's opening")
+				T.eq(Fx.Stats().Built - built0, 2, "altar return ring: Part -> mesh -> Part rebuilds exactly twice (once per spot change)")
+				-- review minor 1: an ML_Mesh under another child (the Pad) is not the ring's dress: the vortex stays put
+				local pad = portal:FindFirstChild("Pad")
+				local padMesh = Instance.new("Model")
+				padMesh.Name = "ML_Mesh"
+				padMesh.Parent = pad
+				meshPart(padMesh, "PadTop", 0.1)
+				Mock.Advance(0.7)
+				T.check(pad ~= nil and rec.Vortex ~= nil and (rec.Vortex.Center.Position - opening).Magnitude <= 0.1 and Fx.Stats().Built - built0 == 2,
+					"altar return ring: an ML_Mesh under the Pad (not the Ring) does not move or rebuild the vortex",
+					rec.Vortex and fmt("%.3f off, %d rebuilds", (rec.Vortex.Center.Position - opening).Magnitude, Fx.Stats().Built - built0) or "no vortex")
+				padMesh:Destroy()
+				Mock.Advance(0.7)
+				-- review minor 3: Low graphics with the altar built: the Plaza vortex is shown but static
+				if okGQ then
+					Fx.SetTextureIds(fake)
+					GQ.Apply("Low")
+					Mock.Advance(0.7)
+					local vl = rec.Vortex
+					local rot0 = vl and vl.Layers and vl.Layers[3] and vl.Layers[3].Label.Rotation
+					Mock.Advance(1.5)
+					local crackOn = false
+					for _, cr in ipairs(vl and vl.Crackles or {}) do
+						if cr.Label.Visible then
+							crackOn = true
+						end
+					end
+					T.check(vl ~= nil and vl.Mode == "Texture" and vl.Shown and vl.Static and rot0 ~= nil and vl.Layers[3].Label.Rotation == rot0 and not crackOn,
+						"altar return ring, Low graphics (texture): the vortex is shown but still (arms not turning, no crackles)")
+					Fx.SetTextureIds({})
+					Mock.Advance(0.7)
+					local vf2 = rec.Vortex
+					local a0, b0 = vf2 and vf2.SpinA.CFrame, vf2 and vf2.SpinB.CFrame
+					local beam = vf2 and vf2.Beams and vf2.Beams[1]
+					local w0, c0 = beam and beam.Width0, beam and beam.CurveSize0
+					local emitted0 = Mock.Stats_ and Mock.Stats_.particlesEmitted or 0
+					Mock.Advance(1.5)
+					T.check(vf2 ~= nil and vf2.Mode == "Fallback" and vf2.Shown and vf2.Static and beam ~= nil and beam.Enabled and beam.Width0 == w0 and beam.CurveSize0 == c0
+						and vf2.SpinA.CFrame == a0 and vf2.SpinB.CFrame == b0 and not vf2.Streaks.Enabled and not vf2.Crackle.Enabled
+						and (not Mock.Stats_ or Mock.Stats_.particlesEmitted == emitted0),
+						"altar return ring, Low graphics (fallback): shown, beams still, spinners not moving, streaks and crackles off")
+					Fx.SetTextureIds(fake)
+					GQ.Apply("High")
+					Mock.Advance(0.7)
+				end
+			end
+		end
+		if altar then
+			altar:Destroy()
+		end
+		if zoneAttr then
+			workspace:SetAttribute(zoneAttr, zone0)
+		end
+		if cam and camSaved then
+			cam.CFrame = camSaved
+		end
+		Mock.Advance(0.7)
+		T.check(portal == nil or Fx.Gate(portal) == nil, "altar return ring: the altar removed, its gate is forgotten")
 	end
 
 	-- Low graphics: a still vortex, the ring, gems and light at their built values
