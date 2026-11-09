@@ -46,6 +46,10 @@
    "tris": 4000,
    "parts": 6
   },
+  "eggLow": {
+   "tris": 800,
+   "parts": 1
+  },
   "gem": {
    "tris": 4000,
    "parts": 6
@@ -783,6 +787,90 @@
    "description": "Secret rarity egg (lobby-shop egglook A, painted, owner: more detail + VFX): night shell with a violet dusk, violet Neon cracks from the tip (GlowCrack) into a ring of magenta Neon runes (GlowRune), white Neon stars (GlowStar), pin-prick stars; Neon parts named Glow* are the VFX hooks; pivot bottom centre, attachment Center",
    "args": {
     "rarity": "secret"
+   }
+  },
+  {
+   "key": "egg_common_low",
+   "type": "prop",
+   "prop": "lobby_egg",
+   "lod": "Low",
+   "budget": "eggLow",
+   "description": "Common rarity egg, low (shop-area polish: the Gumball Globe's pile, shown at 0.5 scale): egg_common's shape and paint (simple spots) on 0.25-stud cells, its Neon baked flat into one part; pivot bottom centre, attachment Center",
+   "args": {
+    "rarity": "common",
+    "low": true
+   }
+  },
+  {
+   "key": "egg_uncommon_low",
+   "type": "prop",
+   "prop": "lobby_egg",
+   "lod": "Low",
+   "budget": "eggLow",
+   "description": "Uncommon rarity egg, low (shop-area polish: the Gumball Globe's pile, shown at 0.5 scale): egg_uncommon's shape and paint (the cream zigzag band) on 0.25-stud cells, its Neon baked flat into one part; pivot bottom centre, attachment Center",
+   "args": {
+    "rarity": "uncommon",
+    "low": true
+   }
+  },
+  {
+   "key": "egg_rare_low",
+   "type": "prop",
+   "prop": "lobby_egg",
+   "lod": "Low",
+   "budget": "eggLow",
+   "description": "Rare rarity egg, low (shop-area polish: the Gumball Globe's pile, shown at 0.5 scale): egg_rare's shape and paint (two white bands, ringed dots) on 0.25-stud cells, its Neon baked flat into one part; pivot bottom centre, attachment Center",
+   "args": {
+    "rarity": "rare",
+    "low": true
+   }
+  },
+  {
+   "key": "egg_epic_low",
+   "type": "prop",
+   "prop": "lobby_egg",
+   "lod": "Low",
+   "budget": "eggLow",
+   "description": "Epic rarity egg, low (shop-area polish: the Gumball Globe's pile, shown at 0.5 scale): egg_epic's shape and paint (the violet star band between gold trims) on 0.25-stud cells, its Neon baked flat into one part; pivot bottom centre, attachment Center",
+   "args": {
+    "rarity": "epic",
+    "low": true
+   }
+  },
+  {
+   "key": "egg_legendary_low",
+   "type": "prop",
+   "prop": "lobby_egg",
+   "lod": "Low",
+   "budget": "eggLow",
+   "description": "Legendary rarity egg, low (shop-area polish: the Gumball Globe's pile, shown at 0.5 scale): egg_legendary's shape and paint (the white-gold crown, ruby / sapphire gems) on 0.25-stud cells, its Neon baked flat into one part; pivot bottom centre, attachment Center",
+   "args": {
+    "rarity": "legendary",
+    "low": true
+   }
+  },
+  {
+   "key": "egg_mythic_low",
+   "type": "prop",
+   "prop": "lobby_egg",
+   "lod": "Low",
+   "budget": "eggLow",
+   "description": "Mythic rarity egg, low (shop-area polish: the Gumball Globe's pile, shown at 0.5 scale): egg_mythic's shape and paint (gradient bands, the wave ribbon and swirls) on 0.25-stud cells, its Neon baked flat into one part; pivot bottom centre, attachment Center",
+   "args": {
+    "rarity": "mythic",
+    "low": true
+   }
+  },
+  {
+   "key": "egg_secret_low",
+   "type": "prop",
+   "prop": "lobby_egg",
+   "lod": "Low",
+   "budget": "eggLow",
+   "description": "Secret rarity egg, low (shop-area polish: the Gumball Globe's pile, shown at 0.5 scale): egg_secret's shape and paint (night shell, violet cracks, the magenta rune ring (eight marks)) on 0.25-stud cells, its Neon baked flat into one part; pivot bottom centre, attachment Center",
+   "args": {
+    "rarity": "secret",
+    "low": true
    }
   },
   {

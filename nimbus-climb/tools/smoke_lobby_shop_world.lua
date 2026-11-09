@@ -42,7 +42,8 @@
 --                      centre line, within the deck and outside the landing box, the mesh's bounds clear of the rim clouds
 --                      and the stone ring, nothing collidable but the pads over the pad, the PlazaGatePrompt E / 8, the
 --                      sign "To the Plaza" (a pixel
---                      BillboardGui on the Part fallback); the altar <= 500 parts, its lights within the lobby rule; the
+--                      BillboardGui on the Part fallback; shop-area polish: the dressed mesh's 4 x 1 board reads
+--                      "Plaza" at 0.96 stud, the World text rule's ~1-stud title); the altar <= 500 parts, its lights within the lobby rule; the
 --                      portal_altar_ring manifest (Task 29) against the built altar: seated (its foot reaches into the old
 --                      disc), inside the Portal rim's nearest stone face as it turns (a 16-gon: half extent / cos 11.25),
 --                      no taller than the Part ring, one Fixed SmoothPlastic part + Neon Glow* parts, GlowBar the ring's
@@ -81,19 +82,23 @@
 --                      added to the egg row (shelf + seven eggs + PromptPart); the trove <= 60 parts; the same on a
 --                      rebuilt lobby
 --   shop_globe         the Gumball Globe (shop-area T1, spec 16.17.1): LobbyMachineBuilder.GLOBE / Rarities (the four
---                      sequences, top first) / GlobeEggs; the prop_roulette_globe manifest (Egg1..Egg12, Meta.eggScale 0.42 /
---                      chaseScale 0.44, inside 9 x 14.5 x 7, <= 4000 tris, the eight parts, every egg's middle inside the
---                      glass, pivots >= 0.9 apart, the chase egg in front); the default run (no globe id) = today's machine,
+--                      sequences, top first) / GlobeEggs / EggKey / SECRET_EMBLEM; the prop_roulette_globe manifest
+--                      (Egg1..Egg18, Meta.eggScale 0.5 / chaseScale 0.54, inside 9 x 14.5 x 7, <= 4000 tris, the eight
+--                      parts, glass 0.80, every egg's middle inside the glass, pivots >= 0.9 apart, the chase egg in
+--                      front; shop-area polish: 18 eggs, the pile on the low egg_<rarity>_low keys, the chase egg on
+--                      the full key); the default run (no globe id) = today's machine,
 --                      the uploaded prop_roulette cabinet (review round 1: ML_DressKey prop_roulette in the roulette colour
 --                      with f17dc0d's look; --mesh, whose fixture has no prop_roulette id: the Part build), no GlobeEggs, no
 --                      warn; one prop_roulette_globe request per Machine (origin, Look.Primary = the roulette colour,
 --                      Look.Secondary = its top rarity's) and after it one prop_roulette request, the price card / DomeGlow /
 --                      PromptPart unchanged; dressed (--mesh: fixture holders; default: the tag forced) -> no prop_roulette
---                      request, GlobeEggs of twelve egg Models
---                      at the attachments (ML_Scale, NC_Detail on 2..12, the egg_<rarity> requests in order); a manifest
+--                      request, GlobeEggs of eighteen egg Models
+--                      at the attachments (ML_Scale, NC_Detail on 2..18, Egg1 egg_<rarity>, the pile egg_<rarity>_low, in
+--                      order); a manifest
 --                      without Egg7 -> one warn, no GlobeEggs, the machines stand
 --   shop_egg_row       the egg row under WINGED PETS (shop-area T2, spec 16.17.2): no EggGuide anywhere, one Model EggRow
---                      at the board's frame (at(21, -8) on the lawn, facing the shop centre): EggShelf (the shelf numbers
+--                      at the board's frame (at(23, -10) on the lawn since shop-area polish (was at(21, -8)), facing the
+--                      shop centre, every egg >= 2 studs from the Cloud machine's 9 x 7 footprint): EggShelf (the shelf numbers
 --                      of EGGROW below) with the seven Egg_<Rarity> eggs at Step 2.7 (Common at the reader's left), the
 --                      turntable tags, the sparkles, the egg_<rarity> requests; the RarityStrip SurfaceGui on the shelf's
 --                      front (50 px per stud, LightInfluence 0, a Navy Band at 0.2, seven Label_<Rarity> 135 x 40 px under
@@ -103,7 +108,7 @@
 --                      part, Center = the board's Face, Model = EggRow } with its one ShopPrompt; the WINGED PETS board's
 --                      letters and pills end above y 3.9 (<= 375 of 450 px), the subtitle right-aligned in the header row;
 --                      the eggs >= 3 studs from every roulette prompt, the row clear of every other shop prop; the right
---                      lawn (at(-21, -8)) empty but for lamps / flower beds; the same on a rebuilt lobby and the forced
+--                      lawn (at(-21, -8)) empty but for lamps / flower beds (unchanged by the polish move); the same on a rebuilt lobby and the forced
 --                      fallback shop keeps its ShopCounter
 -- Rebuilds follow smoke_p6_lobby.lua: the booted lobby is set aside (renamed) and put back, the hooks (_Kit,
 -- _ForceShopFallback), Config.Trove.GroupId, the Meadow stats and the fixture holders restored in every path.
@@ -148,6 +153,8 @@ local EGGROW = {
 	CanvasH = 450, MaxBottom = 375, HeaderTop = 60, RowTop = 68,
 	Glow = { Brightness = 1.0, Range = 10, Lift = 1.5 },
 	MachineGap = 3, PropGap = 0.3, RightLawn = 6,
+	MachineClear = 2.0, MachineFoot = Vector3.new(9, 1, 7), -- polish: the row's clear gap to every machine
+	Board = Vector2.new(23, -10), -- polish: the WINGED PETS board's spot at(x, z) (was at(21, -8): the row's Secret end 0.44 stud off the Cloud machine)
 }
 
 ----------------------------------------------------------------------------------------------------
@@ -241,11 +248,11 @@ local function shopFrame()
 	return CFrame.lookAt(S0, S0 + flat(o - S0).Unit), S0
 end
 
--- the WINGED PETS board's ground frame (shop-area 16.17.2: the egg row stands in front of it): at(21, -8) on the lawn,
+-- the WINGED PETS board's ground frame (shop-area 16.17.2: the egg row stands in front of it): at(EGGROW.Board) on the lawn,
 -- its front (-Z) towards the shop centre
 local function boardFrame()
 	local shopCF, S0 = shopFrame()
-	local pos = (shopCF * CFrame.new(21, 0, -8)).Position - Vector3.new(0, LAWN, 0)
+	local pos = (shopCF * CFrame.new(EGGROW.Board.X, 0, EGGROW.Board.Y)).Position - Vector3.new(0, LAWN, 0)
 	local target = S0 - Vector3.new(0, LAWN, 0)
 	return CFrame.lookAt(pos, pos + flat(target - pos).Unit)
 end
@@ -615,7 +622,7 @@ local function checkEggRow(label, lobby, Config, info)
 	end
 	local bcf = boardFrame()
 	T.check(near(row:GetPivot().Position, bcf.Position) and row:GetPivot().LookVector:Dot(bcf.LookVector) > 0.999,
-		label .. ": the EggRow's pivot is the WINGED PETS board's ground frame (at(21, -8) on the lawn, facing the shop centre)",
+		label .. ": the EggRow's pivot is the WINGED PETS board's ground frame (at(23, -10) on the lawn, facing the shop centre)",
 		fmt("%.2f off", (row:GetPivot().Position - bcf.Position).Magnitude))
 	local kids, wantKids = {}, { "EggShelf", "PromptPart" }
 	for _, r in ipairs(Config.Eggs.Order) do
@@ -830,6 +837,40 @@ local function checkEggRow(label, lobby, Config, info)
 	end
 	T.check(#hits == 0, label .. ": the shelf and the eggs keep >= 0.3 stud clear of every other shop prop", table.concat(hits, ", "))
 	T.info(fmt("*%s: the egg row's nearest shop prop %.2f studs (%s), nearest machine prompt %.2f", label, nearest, nearestName, minGap))
+	-- polish 2026-11-09: the Secret end stood 0.44 stud from the Cloud machine (its eggs read as that machine's eggs): the
+	-- whole row keeps EGGROW.MachineClear from every machine, measured to each visible machine part (the Part build the
+	-- uploaded cabinet dresses) and to the Gumball Globe's 9 x 7 footprint round the machine's ground centre
+	local machineNear, machineName = math.huge, "-"
+	for _, rl in ipairs(Config.Roulettes) do
+		local m = shop:FindFirstChild("Roulette_" .. rl.Id)
+		local mp = m and m:FindFirstChild("PromptPart")
+		local foot = nil
+		if mp then
+			local cf0 = mp.CFrame * CFrame.new(0, -2, 5.4) -- buildMachine: PromptPart at cf * (0, 2, -5.4)
+			foot = { CFrame = cf0, Position = cf0.Position, Size = EGGROW.MachineFoot }
+		end
+		for _, mine in ipairs(row:GetChildren()) do
+			if mine:IsA("BasePart") and mine.Transparency < 0.99 then
+				if foot then
+					local g = rectGap(mine, foot)
+					if g < machineNear then
+						machineNear, machineName = g, rl.Id .. " footprint / " .. mine.Name
+					end
+				end
+				for _, d in ipairs(m and m:GetDescendants() or {}) do
+					if d:IsA("BasePart") and d.Transparency < 0.99 and d.Position.Y > top - 2 then
+						local g = rectGap(mine, d)
+						if g < machineNear then
+							machineNear, machineName = g, rl.Id .. " " .. d.Name .. " / " .. mine.Name
+						end
+					end
+				end
+			end
+		end
+	end
+	T.check(machineNear >= EGGROW.MachineClear, label .. fmt(": the egg row keeps >= %.1f studs from every roulette machine (its parts and the globe's 9 x 7 footprint): its eggs never read as a machine's", EGGROW.MachineClear),
+		fmt("nearest %.2f (%s)", machineNear, machineName))
+	T.info(fmt("*%s: the egg row's nearest roulette machine %.2f studs (%s)", label, machineNear, machineName))
 	local spot, stray = rightLawn(), {}
 	for _, d in ipairs(shop:GetDescendants()) do
 		if d:IsA("BasePart") and d.Transparency < 0.99 and not string.find(d:GetFullName(), "Ground", 1, true) and not string.find(d:GetFullName(), "ShopCloud", 1, true)
@@ -1217,7 +1258,11 @@ local GLOW = {
 	FaceAt = 14,
 	MeshPadY = 1.0, -- the portal_ring manifest's Pad attachment Y (the plinth top)
 	SignFace = Vector3.new(0, 8.25, -1.25), -- ...its SignFace attachment
-	SignText = "To the Plaza",
+	SignText = "To the Plaza", -- the Part fallback's pixel tag
+	-- (shop-area polish) the dressed ring's 4 x 1 navy board: "To the Plaza" fit it only at 0.6 stud, under the World
+	-- text rule's ~1-stud title; the board now reads the destination alone at 48 px = 0.96 stud
+	BoardText = "Plaza",
+	BoardStuds = 0.95,
 	Allowed = { "[DataService]", "[MeshLibrary]" },
 }
 
@@ -1596,7 +1641,7 @@ end
 local function checkSurfaceSign(label, portal, origin)
 	local list = signGuis(portal)
 	local gui = list[1]
-	if not T.check(#list == 1 and gui:IsA("SurfaceGui"), label .. ": the mesh's 'To the Plaza' sign is one SurfaceGui PlazaSign", #list .. " signs") then
+	if not T.check(#list == 1 and gui:IsA("SurfaceGui"), label .. ": the mesh's 'Plaza' sign is one SurfaceGui PlazaSign", #list .. " signs") then
 		return
 	end
 	local face = gui.Adornee or gui.Parent
@@ -1606,13 +1651,13 @@ local function checkSurfaceSign(label, portal, origin)
 		label .. ": ...on part SignFace (in ReturnPortal, beside the Ring), its front face on the mesh's SignFace attachment", front and fmt("%.3f off", (front - want.Position).Magnitude) or "no SignFace part")
 	local small = {}
 	for _, l in ipairs(texts(gui)) do
-		if l.TextSize / 50 < 0.6 or l.TextScaled then
-			small[#small + 1] = l.Text
+		if l.TextSize / 50 < GLOW.BoardStuds or l.TextScaled then
+			small[#small + 1] = l.Text .. " " .. fmt("%.2f stud", l.TextSize / 50)
 		end
 	end
-	T.eq(joinedText(gui), GLOW.SignText, label .. ": ...it reads 'To the Plaza'")
+	T.eq(joinedText(gui), GLOW.BoardText, label .. ": ...it reads 'Plaza' (the destination, title-sized on the 4 x 1 board)")
 	T.check(gui.Face == Enum.NormalId.Front and gui.SizingMode == Enum.SurfaceGuiSizingMode.PixelsPerStud and gui.PixelsPerStud == 50 and gui.LightInfluence == 0 and #small == 0,
-		label .. ": ...Face Front, 50 px per stud, lines >= 0.6 stud (no TextScaled), LightInfluence 0", tostring(gui.PixelsPerStud) .. " px/stud; small: " .. table.concat(small, ", "))
+		label .. ": ...Face Front, 50 px per stud, the title >= 0.95 stud (World text rule ~1 stud; no TextScaled), LightInfluence 0", tostring(gui.PixelsPerStud) .. " px/stud; small: " .. table.concat(small, ", "))
 end
 
 -- the portal_altar_ring manifest (Task 29) against a built altar: the mesh the client dresses GlowRing with
@@ -2378,19 +2423,22 @@ end)
 ----------------------------------------------------------------------------------------------------
 -- shop_globe (shop-area T1, spec 16.17.1): the Gumball Globe key prop_roulette_globe and its in-globe eggs
 ----------------------------------------------------------------------------------------------------
+-- polish 2026-11-09: 18 eggs (the 12 read ~25 % full) at 0.5 / the chase egg 0.54; the pile on the low keys
+-- egg_<rarity>_low (a few hundred tris each), only the chase egg on the full egg_<rarity>; Secret's star white-gold
 local GLOBE = {
-	Key = "prop_roulette_globe", Count = 12, Scale = 0.42, ChaseScale = 0.44, EggSize = Vector3.new(2.25, 3, 2.5),
+	Key = "prop_roulette_globe", Count = 18, Scale = 0.5, ChaseScale = 0.54, EggSize = Vector3.new(2.25, 3, 2.5),
 	OldKey = "prop_roulette", -- review round 1: the uploaded cabinet every Machine wears while the globe has no id
 	Parts = { "Body", "BodyDark", "BodyLight", "Bulb", "Emblem", "Fixed", "Glass", "Glow" },
-	Centre = Vector3.new(0, 9.75, 0), Inner = 2.8, Margin = 0.1, Gap = 0.9, MaxTris = 4000,
+	Centre = Vector3.new(0, 9.75, 0), Inner = 2.8, Margin = 0.1, Gap = 0.9, MaxTris = 4000, GlassT = 0.8,
 	Footprint = Vector3.new(9, 14.5, 7),
 	Seq = {
-		Cloud = "Epic Common Uncommon Rare Common Uncommon Common Uncommon Common Common Common Common",
-		Storm = "Legendary Uncommon Rare Epic Uncommon Rare Epic Uncommon Rare Uncommon Rare Rare",
-		Sky = "Mythic Rare Epic Legendary Rare Epic Legendary Rare Epic Rare Epic Epic",
-		Celestial = "Secret Epic Legendary Mythic Epic Legendary Mythic Epic Legendary Epic Legendary Epic",
+		Cloud = "Epic Common Uncommon Rare Common Uncommon Rare Common Uncommon Common Uncommon Common Uncommon Common Common Common Common Common",
+		Storm = "Legendary Uncommon Rare Epic Uncommon Rare Epic Uncommon Rare Epic Uncommon Rare Epic Uncommon Rare Uncommon Rare Rare",
+		Sky = "Mythic Rare Epic Legendary Rare Epic Legendary Rare Epic Legendary Rare Epic Rare Epic Rare Epic Epic Epic",
+		Celestial = "Secret Epic Legendary Mythic Epic Legendary Mythic Epic Legendary Mythic Epic Legendary Epic Legendary Epic Legendary Epic Legendary",
 	},
-	SecretEmblem = Color3.fromRGB(180, 150, 255), -- Config.Eggs.ChatColors.Secret: the readable violet
+	LowKey = "_low", -- the pile's dress key suffix (Egg2..Egg18); Egg1 (the chase egg) keeps the full key
+	SecretEmblem = Color3.fromRGB(255, 240, 200), -- polish: white-gold (the chat violet 180,150,255 twinned Cloud's Epic)
 	SecretEgg = Color3.fromRGB(40, 40, 52):Lerp(Color3.fromRGB(138, 92, 255), 0.18), -- the shelf egg's Part colour
 	NoEgg7 = "[LobbyMachineBuilder] prop_roulette_globe: no Egg7 attachment",
 	CardH = 7.6,
@@ -2462,7 +2510,7 @@ local function warnsSince(cursor, needle)
 	return n
 end
 
--- the manifest of the globe: Egg1..Egg12, the scales, the bounds, the budget, the eight parts, the egg spots in the glass
+-- the manifest of the globe: Egg1..Egg18, the scales, the bounds, the budget, the eight parts, the egg spots in the glass
 local function checkGlobeManifest(ML)
 	local man = ML and ML.Manifest(GLOBE.Key)
 	if not T.check(type(man) == "table" and type(man.Raw) == "table", "globe manifest: MeshLibrary.Manifest('" .. GLOBE.Key .. "') loads (src/shared/MeshManifests)") then
@@ -2482,10 +2530,10 @@ local function checkGlobeManifest(ML)
 			missing[#missing + 1] = "Egg" .. i
 		end
 	end
-	T.check(eggs == GLOBE.Count and #missing == 0 and #others == 0, "globe manifest: exactly twelve attachments Egg1..Egg12, each a Pos + 3 x 3 Rot",
+	T.check(eggs == GLOBE.Count and #missing == 0 and #others == 0, "globe manifest: exactly eighteen attachments Egg1..Egg18, each a Pos + 3 x 3 Rot",
 		fmt("%d Egg attachments, missing %s, others %s", eggs, table.concat(missing, ","), table.concat(others, ",")))
 	local meta = man.Raw.Meta or {}
-	T.check(meta.eggScale == GLOBE.Scale and meta.chaseScale == GLOBE.ChaseScale, "globe manifest: Meta.eggScale 0.42, Meta.chaseScale 0.44",
+	T.check(meta.eggScale == GLOBE.Scale and meta.chaseScale == GLOBE.ChaseScale, "globe manifest: Meta.eggScale 0.5, Meta.chaseScale 0.54",
 		tostring(meta.eggScale) .. " / " .. tostring(meta.chaseScale))
 	local b = man.Bounds or {}
 	local lo, hi, size = v3of(b.Min), v3of(b.Max), v3of(b.Size)
@@ -2503,8 +2551,8 @@ local function checkGlobeManifest(ML)
 	local em, gl, body = byName.Emblem, byName.Glass, byName.Body
 	T.check(em ~= nil and em.material == "Neon" and type(em.color) == "table" and em.color[1] == "Secondary"
 		and body ~= nil and type(body.color) == "table" and body.color[1] == "Primary"
-		and gl ~= nil and gl.material == "Glass" and math.abs((tonumber(gl.transparency) or 0) - 0.7) < 1e-6,
-		"globe manifest: Body = Primary, Emblem = Neon Secondary, Glass = Glass at Transparency 0.70")
+		and gl ~= nil and gl.material == "Glass" and math.abs((tonumber(gl.transparency) or 0) - GLOBE.GlassT) < 1e-6,
+		"globe manifest: Body = Primary, Emblem = Neon Secondary, Glass = Glass at Transparency 0.80 (polish: clearer, was 0.70)")
 	-- the egg spots: each scaled egg's middle inside the glass (centre (0, 9.75, 0), r 2.8 - 0.1), pivots >= 0.9 apart
 	local bad, spots = {}, {}
 	for i = 1, GLOBE.Count do
@@ -2530,13 +2578,16 @@ local function checkGlobeManifest(ML)
 	end
 	local chase = spots[1]
 	T.check(#bad == 0, "globe manifest: every egg's middle inside the glass by >= 0.1 stud, standing (up > 0.7), the pivots >= 0.9 apart", table.concat(bad, "; "))
+	-- (polish: the pile climbs to the back; an egg in front of the chase egg may stand lower than the chase egg's middle,
+	-- shop_area_globe.py --check ray-casts its face >= 85 % clear)
 	local front = true
+	local chaseMid = chase and chase.Y + GLOBE.EggSize.Y * GLOBE.ChaseScale / 2
 	for i = 2, GLOBE.Count do
-		if chase and spots[i] and spots[i].Z < chase.Z - 0.05 and math.abs(spots[i].X - chase.X) < 0.9 and spots[i].Y + 1.26 > chase.Y + 0.3 then
+		if chase and spots[i] and spots[i].Z < chase.Z - 0.05 and math.abs(spots[i].X - chase.X) < 0.9 and spots[i].Y + GLOBE.EggSize.Y * GLOBE.Scale > chaseMid then
 			front = false
 		end
 	end
-	T.check(chase ~= nil and chase.Z < 0 and front, "globe manifest: the chase egg Egg1 stands in the front half with no egg in front of it", chase and tostring(chase) or "no Egg1")
+	T.check(chase ~= nil and chase.Z < 0 and front, "globe manifest: the chase egg Egg1 stands in the front half, no egg in front of it reaching over its middle", chase and tostring(chase) or "no Egg1")
 	return man
 end
 
@@ -2555,7 +2606,25 @@ S.shop_globe = guarded("shop_globe", function()
 	end
 	T.check(G.Key == GLOBE.Key and G.Count == GLOBE.Count and G.Chase == 1 and G.Scale == GLOBE.Scale and G.ChaseScale == GLOBE.ChaseScale
 		and typeof(G.EggSize) == "Vector3" and near(G.EggSize, GLOBE.EggSize, 1e-6),
-		"globe: GLOBE = { Key prop_roulette_globe, Count 12, Chase 1, Scale 0.42, ChaseScale 0.44, EggSize 2.25 x 3 x 2.5 }")
+		"globe: GLOBE = { Key prop_roulette_globe, Count 18, Chase 1, Scale 0.5, ChaseScale 0.54, EggSize 2.25 x 3 x 2.5 }")
+	-- polish: the pile's dress keys are the low eggs, the chase egg's the full key; Secret's star white-gold
+	local lowKeys, badLow = 0, {}
+	for _, r in ipairs(Config.Rarities) do
+		local id = r.Id
+		local want = "egg_" .. string.lower(id)
+		local okK, full, low = pcall(function()
+			return LMB.EggKey(id, false), LMB.EggKey(id, true)
+		end)
+		if okK and full == want and low == want .. GLOBE.LowKey then
+			lowKeys = lowKeys + 1
+		else
+			badLow[#badLow + 1] = id .. " " .. tostring(full) .. " / " .. tostring(low)
+		end
+	end
+	T.check(type(LMB.EggKey) == "function" and lowKeys == #Config.Rarities, "globe: LobbyMachineBuilder.EggKey(rarity, pile) = egg_<rarity> for the chase egg, egg_<rarity>_low for the pile",
+		table.concat(badLow, "; "))
+	T.check(typeof(LMB.SECRET_EMBLEM) == "Color3" and sameColor(LMB.SECRET_EMBLEM, GLOBE.SecretEmblem), "globe: LobbyMachineBuilder.SECRET_EMBLEM is white-gold 255,240,200",
+		tostring(LMB.SECRET_EMBLEM))
 
 	------------------------------------------------------------------ Rarities (pure): the four sequences of 16.17.1
 	local byId = {}
@@ -2569,7 +2638,7 @@ S.shop_globe = guarded("shop_globe", function()
 	end
 	T.check(byId.Cloud and byId.Storm and byId.Sky and byId.Celestial, "globe: (precondition) the four roulettes Cloud / Storm / Sky / Celestial")
 	local okDuo, duo = pcall(LMB.Rarities, { Id = "Duo", Odds = { Mythic = 60, Secret = 40 } }, GLOBE.Count)
-	T.eq(okDuo and type(duo) == "table" and table.concat(duo, " ") or tostring(duo), "Secret" .. string.rep(" Mythic", 11), "globe: a roulette with two rarities fills the pile with the lower one")
+	T.eq(okDuo and type(duo) == "table" and table.concat(duo, " ") or tostring(duo), "Secret" .. string.rep(" Mythic", GLOBE.Count - 1), "globe: a roulette with two rarities fills the pile with the lower one")
 	local okSolo, solo = pcall(LMB.Rarities, { Id = "Solo", Odds = { Rare = 1 } }, 4)
 	T.eq(okSolo and type(solo) == "table" and table.concat(solo, " ") or tostring(solo), "Rare Rare Rare Rare", "globe: a one-rarity roulette shows that egg everywhere")
 
@@ -2709,6 +2778,7 @@ S.shop_globe = guarded("shop_globe", function()
 			local keys = { GLOBE.Key }
 			for _, k in pairs(EGG_KEYS) do
 				keys[#keys + 1] = k
+				keys[#keys + 1] = k .. GLOBE.LowKey -- polish: the pile's low eggs
 			end
 			T.check(fixtureHolders(keys, undo) > 0, "globe (--mesh): the fixture MeshLibrary root exists")
 		elseif M and realTag then
@@ -2743,6 +2813,7 @@ S.shop_globe = guarded("shop_globe", function()
 		T.eq(oldN, 0, "globe dressed: a dressed globe asks for no 'prop_roulette' dress (the fallback only follows a refused globe tag)")
 		local f = built.Folder:FindFirstChild("Shop")
 		local bad, dressBad = {}, {}
+		local pileFallback = 0
 		for _, r in ipairs(Config.Roulettes) do
 			local m = f and f:FindFirstChild("Roulette_" .. r.Id)
 			local body = m and m:FindFirstChild("Machine")
@@ -2769,7 +2840,8 @@ S.shop_globe = guarded("shop_globe", function()
 					local part = em and em:FindFirstChild("Egg")
 					local mesh = part and part:FindFirstChildOfClass("SpecialMesh")
 					local rarity = seq[i]
-					local key = rarity and ("egg_" .. string.lower(rarity))
+					-- (polish) the chase egg on the full key, the pile on the low eggs
+					local key = rarity and ("egg_" .. string.lower(rarity) .. ((i == 1) and "" or GLOBE.LowKey))
 					local colour = (rarity == "Secret") and GLOBE.SecretEgg or rarityColour(Config, rarity)
 					if not (em and em:IsA("Model") and part and part:IsA("BasePart")) then
 						bad[#bad + 1] = fmt("%s GlobeEgg%d missing", r.Id, i)
@@ -2816,6 +2888,11 @@ S.shop_globe = guarded("shop_globe", function()
 							end
 						elseif MESH_MODE then
 							dressBad[#dressBad + 1] = fmt("%s GlobeEgg%d: %s still missing under --mesh", r.Id, i, tostring(key))
+						elseif em:GetAttribute("ML_DressKey") ~= nil then
+							-- (polish) a key with no id (the low eggs before their upload): the rarity-tinted Part sphere stays
+							dressBad[#dressBad + 1] = fmt("%s GlobeEgg%d dressed %s though %s is missing", r.Id, i, tostring(em:GetAttribute("ML_DressKey")), tostring(key))
+						else
+							pileFallback = pileFallback + 1
 						end
 					end
 				end
@@ -2828,12 +2905,14 @@ S.shop_globe = guarded("shop_globe", function()
 				end
 			end
 		end
-		T.check(#bad == 0, "globe dressed: each Roulette_<Id> holds a GlobeEggs Model (beside Machine) of GlobeEgg1..12 at the manifest's Egg<i> attachments, one Sphere Part 'Egg' each (2.25 x 3 x 2.5 x 0.42, Egg1 x 0.44, standing on its pivot, anchored, no collide / touch / query, the rarity colour, Secret dark violet), ML_Scale, NC_Detail on 2..12 only, no Spin, one egg_<rarity> request at the pivot in 16.17.1's order",
+		T.check(#bad == 0, "globe dressed: each Roulette_<Id> holds a GlobeEggs Model (beside Machine) of GlobeEgg1..18 at the manifest's Egg<i> attachments, one Sphere Part 'Egg' each (2.25 x 3 x 2.5 x 0.5, Egg1 x 0.54, standing on its pivot, anchored, no collide / touch / query, the rarity colour, Secret dark violet), ML_Scale, NC_Detail on 2..18 only, no Spin, one request at the pivot in the Rarities order: Egg1 egg_<rarity>, the pile egg_<rarity>_low",
 			table.concat(bad, "; "))
 		if MESH_MODE then
-			T.check(#dressBad == 0, "globe dressed (--mesh): Machine tagged prop_roulette_globe (ML_Primary / ML_Secondary), every GlobeEgg ML_DressKey egg_<rarity>", table.concat(dressBad, "; "))
+			T.check(#dressBad == 0, "globe dressed (--mesh): Machine tagged prop_roulette_globe (ML_Primary / ML_Secondary), every GlobeEgg ML_DressKey egg_<rarity> (Egg1) / egg_<rarity>_low (the pile)", table.concat(dressBad, "; "))
 		else
-			T.check(#dressBad == 0, "globe dressed: ML_DressKey egg_<rarity> on the eggs whose key is not missing (--mesh checks every one)", table.concat(dressBad, "; "))
+			T.check(#dressBad == 0, "globe dressed: ML_DressKey on the eggs whose key is not missing (the chase egg's uploaded egg_<rarity>), none where it is missing (--mesh checks every one)", table.concat(dressBad, "; "))
+			-- (polish) the low keys have no id in this build: every pile egg is its rarity-tinted Part sphere
+			T.eq(pileFallback, #Config.Roulettes * (GLOBE.Count - 1), "globe dressed: until egg_<rarity>_low is uploaded every pile egg (4 x 17) stays the rarity-tinted Part sphere, undressed")
 		end
 		T.eq(warnsSince(cursor, "[LobbyMachineBuilder]"), 0, "globe dressed: no [LobbyMachineBuilder] warn")
 	end)

@@ -697,7 +697,8 @@ local function clientScenarios()
 			-- lobby-shop Task 22: the Secret Roulette is the Eggs tab's hero (NimbusShop ShopCard_Secret), always shown (a
 			-- restricted account sees its Lock line instead of the pity chip); its hint is one line. shop-area 16.17.3
 			-- (rewritten): the hint reads "Secret rolls happen at the Storm Altar" (38 characters; was the 23-character "Also
-			-- at the Storm Altar", hence the old <= 32 rule): one line inside its box (no wrap, no orphan word)
+			-- at the Storm Altar", hence the old <= 32 rule): one line inside its box (no wrap, no orphan word). Polish: the
+			-- text now follows the state (below)
 			MC.Open("Shop", { Tab = "Eggs" })
 			advance(0.8)
 			local shopGui = pg() and pg():FindFirstChild("NimbusShop")
@@ -710,9 +711,15 @@ local function clientScenarios()
 				local w = game:GetService("TextService"):GetTextSize(hint.Text, hint.TextSize, hint.Font, Vector2.new(10000, 1000)).X
 				fits, why = w <= hint.AbsoluteSize.X + 0.5, string.format("%.0f px in %.0f", w, hint.AbsoluteSize.X)
 			end
-			T.check(card ~= nil and card.Visible and hint ~= nil and hint.Text == "Secret rolls happen at the Storm Altar" and hint.TextWrapped ~= true and fits,
-				"Shop Eggs tab: the Secret Roulette hero's hint 'Secret rolls happen at the Storm Altar' is one line inside its box (no orphan word on a second line)",
-				(hint and hint.Text or "no hint") .. "; " .. tostring(why))
+			-- (shop-area polish) the hint follows the card's state: Altar "TRAVEL flies you to the Storm Altar", Ready (at
+			-- the altar) "You are at the Storm Altar", Locked the rule line "Secret rolls happen at the Storm Altar"
+			local SEm = moduleAt("client", "UI/ShopEggs")
+			local state = SEm and type(SEm.CardState) == "function" and SEm.CardState("Secret") or "?"
+			local wantHint = (state == "Locked" and "Secret rolls happen at the Storm Altar") or (state == "Altar" and "TRAVEL flies you to the Storm Altar")
+				or (state ~= "?" and "You are at the Storm Altar") or nil
+			T.check(card ~= nil and card.Visible and hint ~= nil and wantHint ~= nil and hint.Text == wantHint and hint.TextWrapped ~= true and fits,
+				"Shop Eggs tab: the Secret Roulette hero's hint matches its state (" .. tostring(state) .. ") and is one line inside its box (no orphan word on a second line)",
+				(hint and hint.Text or "no hint") .. "; want " .. tostring(wantHint) .. "; " .. tostring(why))
 			if type(MC.Close) == "function" then
 				MC.Close()
 			end

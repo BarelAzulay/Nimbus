@@ -12,7 +12,7 @@
 --                 the LayoutSig of every layout key matches this very build (the kit and the game agree), keep lists
 --                 (podium, sign boards) and looks (obelisk / banner / roulette / flower colours), no tagged subtree
 --                 hides another one's parts, the part count is the same as an untagged build (<= 8000) but the
---                 dressed globes' twelve in-globe eggs each (shop-area 16.17.1: prop_roulette_globe), a moved
+--                 dressed globes' eighteen in-globe eggs each (shop-area 16.17.1: prop_roulette_globe), a moved
 --                 part makes a layout key refuse to tag (no stale mesh), and Dress puts the mesh at the Tag origin
 --                 hiding the Parts but not the kept ones
 --     altar       the live Storm Altar's pieces match their committed LayoutSig (read-only: nothing is tagged)
@@ -339,14 +339,14 @@ S.p6lobby_server = guarded("p6lobby_server", function()
 		end
 		local lobby = info.Folder
 		local parts = partsOf(lobby)
-		-- shop-area 16.17.1: a dressed globe adds its twelve in-globe eggs (one Part each, beside the Machine); nothing else
+		-- shop-area 16.17.1: a dressed globe adds its eighteen in-globe eggs (one Part each, beside the Machine); nothing else
 		local globeParts = 0
 		for _, d in ipairs(lobby:GetDescendants()) do
 			if d.Name == "GlobeEggs" and d:IsA("Model") then
 				globeParts = globeParts + partsOf(d)
 			end
 		end
-		T.check(globeParts == 12 * #Config.Roulettes and parts == defaultParts + globeParts and parts <= 8000,
+		T.check(globeParts == 18 * #Config.Roulettes and parts == defaultParts + globeParts and parts <= 8000,
 			fmt("p6 lobby fixture: tagging adds no parts but the dressed globes' eggs (%d tagged build = %d untagged + %d globe eggs, budget 8000)", parts, defaultParts, globeParts))
 		local got = tagged(lobby, set)
 		local untagged = {}

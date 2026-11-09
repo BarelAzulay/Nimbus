@@ -1,0 +1,35 @@
+{
+ "name": "shop court, globe forced dressed (shop-area polish: 4 prop_roulette_globe, 4 chase eggs on egg_<rarity>, the 68 pile eggs on egg_<rarity>_low, the egg row's 7 eggs, the shop floor / cloud / arch / boards) + 16 players x 3 pets",
+ "budget": {
+  "tris": 300000,
+  "parts": 400
+ },
+ "pets": {
+  "High": 3,
+  "Low": 45
+ },
+ "keys": {
+  "floor_shop_1": 1,
+  "floor_shop_2": 1,
+  "floor_shop_3": 1,
+  "floor_shop_4": 1,
+  "floor_shop_5": 1,
+  "cloud_shop": 1,
+  "prop_shop_arch": 1,
+  "prop_board_l": 1,
+  "prop_roulette_globe": 4,
+  "egg_common": 1,
+  "egg_uncommon": 1,
+  "egg_rare": 1,
+  "egg_epic": 2,
+  "egg_legendary": 2,
+  "egg_mythic": 2,
+  "egg_secret": 2,
+  "egg_common_low": 10,
+  "egg_uncommon_low": 11,
+  "egg_rare_low": 15,
+  "egg_epic_low": 19,
+  "egg_legendary_low": 10,
+  "egg_mythic_low": 3
+ }
+}

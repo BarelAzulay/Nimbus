@@ -3667,6 +3667,19 @@
    "structureHash": "66d89695055b6b8d6c1a47f82818c654",
    "tris": 3248
   },
+  "egg_common_low": {
+   "class": "lobby",
+   "contentHash": "8b77719069647b1004e524563337ce69",
+   "description": "Common rarity egg, low (shop-area polish: the Gumball Globe's pile, shown at 0.5 scale): egg_common's shape and paint (simple spots) on 0.25-stud cells, its Neon baked flat into one part; pivot bottom centre, attachment Center",
+   "displayName": "NC Egg Common Low",
+   "fbx": "blender/out/egg_common_low.fbx",
+   "fbxSha256": "7136059bffe99bcd8440afdb181c31582334a21a070608ebcf6d1f3f1b8f2e47",
+   "manifest": "src/shared/MeshManifests/egg_common_low.lua",
+   "maxTrianglesPerMesh": 524,
+   "parts": 1,
+   "structureHash": "24e0dd524fb57e49ee201df556ecf4cb",
+   "tris": 524
+  },
   "egg_common_top": {
    "class": "hatch",
    "contentHash": "2325f69adbfe3c9d73927a15670acda9",
@@ -3705,6 +3718,19 @@
    "parts": 3,
    "structureHash": "99784b82017af17f22bfc35a57102acf",
    "tris": 3728
+  },
+  "egg_epic_low": {
+   "class": "lobby",
+   "contentHash": "e2f418030d04d12ec72f914dbfb06632",
+   "description": "Epic rarity egg, low (shop-area polish: the Gumball Globe's pile, shown at 0.5 scale): egg_epic's shape and paint (the violet star band between gold trims) on 0.25-stud cells, its Neon baked flat into one part; pivot bottom centre, attachment Center",
+   "displayName": "NC Egg Epic Low",
+   "fbx": "blender/out/egg_epic_low.fbx",
+   "fbxSha256": "a6304b78cb6638a109d7bf5091ac8aa1fd7da31ed2724be16ce6d4164489807b",
+   "manifest": "src/shared/MeshManifests/egg_epic_low.lua",
+   "maxTrianglesPerMesh": 736,
+   "parts": 1,
+   "structureHash": "e446d95fdfe185cbac7d6ba02b362330",
+   "tris": 736
   },
   "egg_epic_top": {
    "class": "hatch",
@@ -3745,6 +3771,19 @@
    "structureHash": "40524664d023b7bb862551f71edf862b",
    "tris": 3388
   },
+  "egg_legendary_low": {
+   "class": "lobby",
+   "contentHash": "5f8a5ed40c8cb3b03dcd62c16e6d40c8",
+   "description": "Legendary rarity egg, low (shop-area polish: the Gumball Globe's pile, shown at 0.5 scale): egg_legendary's shape and paint (the white-gold crown, ruby / sapphire gems) on 0.25-stud cells, its Neon baked flat into one part; pivot bottom centre, attachment Center",
+   "displayName": "NC Egg Legendary Low",
+   "fbx": "blender/out/egg_legendary_low.fbx",
+   "fbxSha256": "05cafc47a4f7ceabce1b6b874095e61af8e896ea8f2810ee1067c395cd611790",
+   "manifest": "src/shared/MeshManifests/egg_legendary_low.lua",
+   "maxTrianglesPerMesh": 584,
+   "parts": 1,
+   "structureHash": "e446d95fdfe185cbac7d6ba02b362330",
+   "tris": 584
+  },
   "egg_legendary_top": {
    "class": "hatch",
    "contentHash": "24e629e94e74e99f5a1b52632d852a1c",
@@ -3783,6 +3822,19 @@
    "parts": 3,
    "structureHash": "a3145d1c0c503dfff67a9f99337727b0",
    "tris": 3668
+  },
+  "egg_mythic_low": {
+   "class": "lobby",
+   "contentHash": "91732ab1e54796a7ef04b869b5b1ca88",
+   "description": "Mythic rarity egg, low (shop-area polish: the Gumball Globe's pile, shown at 0.5 scale): egg_mythic's shape and paint (gradient bands, the wave ribbon and swirls) on 0.25-stud cells, its Neon baked flat into one part; pivot bottom centre, attachment Center",
+   "displayName": "NC Egg Mythic Low",
+   "fbx": "blender/out/egg_mythic_low.fbx",
+   "fbxSha256": "e88059f9e836be385ae42d9f25e74dcab897b2eeadd92dba6005e04a0339ca18",
+   "manifest": "src/shared/MeshManifests/egg_mythic_low.lua",
+   "maxTrianglesPerMesh": 744,
+   "parts": 1,
+   "structureHash": "e446d95fdfe185cbac7d6ba02b362330",
+   "tris": 744
   },
   "egg_mythic_top": {
    "class": "hatch",
@@ -3823,6 +3875,19 @@
    "structureHash": "66d89695055b6b8d6c1a47f82818c654",
    "tris": 3414
   },
+  "egg_rare_low": {
+   "class": "lobby",
+   "contentHash": "fb94b1d032aa4d256d5185f82c1abfca",
+   "description": "Rare rarity egg, low (shop-area polish: the Gumball Globe's pile, shown at 0.5 scale): egg_rare's shape and paint (two white bands, ringed dots) on 0.25-stud cells, its Neon baked flat into one part; pivot bottom centre, attachment Center",
+   "displayName": "NC Egg Rare Low",
+   "fbx": "blender/out/egg_rare_low.fbx",
+   "fbxSha256": "b728cadd124e57964ef27c2885bc67563c00263622c212545bb2d1f869febea3",
+   "manifest": "src/shared/MeshManifests/egg_rare_low.lua",
+   "maxTrianglesPerMesh": 488,
+   "parts": 1,
+   "structureHash": "24e0dd524fb57e49ee201df556ecf4cb",
+   "tris": 488
+  },
   "egg_rare_top": {
    "class": "hatch",
    "contentHash": "e57ea955ad14766dcdbcc0a0c4d7bd83",
@@ -3862,6 +3927,19 @@
    "structureHash": "4f51bf7776adec460e1968debc659ff1",
    "tris": 3468
   },
+  "egg_secret_low": {
+   "class": "lobby",
+   "contentHash": "729e4268e0697ed3a65be639c48ab9b9",
+   "description": "Secret rarity egg, low (shop-area polish: the Gumball Globe's pile, shown at 0.5 scale): egg_secret's shape and paint (night shell, violet cracks, the magenta rune ring (eight marks)) on 0.25-stud cells, its Neon baked flat into one part; pivot bottom centre, attachment Center",
+   "displayName": "NC Egg Secret Low",
+   "fbx": "blender/out/egg_secret_low.fbx",
+   "fbxSha256": "948afc7db42c5bb00295aae8e255411d724c40691252922181c829896cb83758",
+   "manifest": "src/shared/MeshManifests/egg_secret_low.lua",
+   "maxTrianglesPerMesh": 612,
+   "parts": 1,
+   "structureHash": "24610a0247f01c23564c2ef2688a9dbb",
+   "tris": 612
+  },
   "egg_secret_top": {
    "class": "hatch",
    "contentHash": "9a7582a8131cf658b71e14904bbea1bf",
@@ -3900,6 +3978,19 @@
    "parts": 1,
    "structureHash": "66d89695055b6b8d6c1a47f82818c654",
    "tris": 3486
+  },
+  "egg_uncommon_low": {
+   "class": "lobby",
+   "contentHash": "36fa1604bb18b0e5871cfa78c2195060",
+   "description": "Uncommon rarity egg, low (shop-area polish: the Gumball Globe's pile, shown at 0.5 scale): egg_uncommon's shape and paint (the cream zigzag band) on 0.25-stud cells, its Neon baked flat into one part; pivot bottom centre, attachment Center",
+   "displayName": "NC Egg Uncommon Low",
+   "fbx": "blender/out/egg_uncommon_low.fbx",
+   "fbxSha256": "6ae20fed49df442e6476dfa9e6ed2139213d834d9e1325e50a384557c07e3afc",
+   "manifest": "src/shared/MeshManifests/egg_uncommon_low.lua",
+   "maxTrianglesPerMesh": 592,
+   "parts": 1,
+   "structureHash": "24e0dd524fb57e49ee201df556ecf4cb",
+   "tris": 592
   },
   "egg_uncommon_top": {
    "class": "hatch",
@@ -12353,16 +12444,16 @@
   },
   "prop_roulette_globe": {
    "class": "lobby",
-   "contentHash": "eeb1cea80730cb59c2996ad67d32b22b",
+   "contentHash": "b45be6d720b4c1da5c299d9034b881a1",
    "description": "Shop roulette machine A Gumball Globe (spec 16.17): cabinet Primary, emblem Secondary, Egg1..Egg12 attachments for the real egg keys",
    "displayName": "NC Prop Roulette Globe",
    "fbx": "blender/out/prop_roulette_globe.fbx",
-   "fbxSha256": "8b85bab3264d7e8eb23b362f45f0c15fdc949e3fb27cb5025798de0701fb9a02",
+   "fbxSha256": "ce9b931068b9cdf1642d62f5e231f182ca64fc95604877be16ccc543820a7152",
    "manifest": "src/shared/MeshManifests/prop_roulette_globe.lua",
-   "maxTrianglesPerMesh": 2418,
+   "maxTrianglesPerMesh": 2428,
    "parts": 8,
-   "structureHash": "1e7e91cb264de136dfb4578accc47a52",
-   "tris": 3940
+   "structureHash": "7578c9e0f27f305c6f4c1af50b31c908",
+   "tris": 3912
   },
   "prop_seedsack": {
    "class": "lobby",

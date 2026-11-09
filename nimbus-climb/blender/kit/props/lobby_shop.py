@@ -247,12 +247,18 @@ class Egg:
         return wrap(self.phi - phi0) * float(egg_r(y0)), self.Y - y0
 
     def spot(self, phi0, y0, r):
-        """a round spot of radius r on the shell at (phi0, y0) (a ball round the surface point)"""
+        """a round spot of radius r on the shell at (phi0, y0) (a ball round the surface point; on the low egg's coarse
+        cells a little bigger, so a dot still catches a surface cell)"""
+        if getattr(self, "low", False):
+            r = r + 0.35 * self.vs
         p = self.surf(phi0, y0)
         return (self.X - p[0]) ** 2 + (self.Y - p[1]) ** 2 + (self.Z - p[2]) ** 2 <= r * r
 
     def rows(self, y0, n):
-        """exactly n cell rows starting at the cell boundary nearest y0"""
+        """exactly n cell rows starting at the cell boundary nearest y0 (n counts the 0.1-stud rows of EGG_K: on a
+        coarser grid, egg_<rarity>_low, the same height in its own rows, at least one; at EGG_K exactly n)"""
+        if self.vs != 1.0 / EGG_K:
+            n = max(1, int(round(n * (1.0 / EGG_K) / self.vs)))
         b = self.oy + round((y0 - self.oy) / self.vs) * self.vs
         return (self.Y > b) & (self.Y < b + (n - 0.01) * self.vs + 0.01 * self.vs)
 
@@ -476,8 +482,13 @@ def _egg_secret(E, S):
     neon = EGG_NEON["secret"]
     # the rune ring: two one-row lines and eight 5 x 7 runes between them (one gap row each side), inlaid
     runes = E.rows(0.9, 1) | E.rows(1.9, 1)
+    if getattr(E, "low", False):
+        # egg_secret_low: a 5 x 7 rune is 1.25 x 1.75 studs on 0.25 cells; eight marks (a 2 x 3-cell bar each) instead
+        for k in range(8):
+            u, v = E.local(k * TAU / 8, 1.45)
+            runes |= (np.abs(u) < 0.13) & (np.abs(v) < 0.3)
     row = np.floor((E.Y - 1.1) / vs + 1e-6).astype(int)              # 0 = the runes' bottom row (y 1.1 - 1.2)
-    for k, glyph in enumerate(RUNES):
+    for k, glyph in enumerate(RUNES if not getattr(E, "low", False) else ()):
         u, _ = E.local(k * TAU / 8, 1.45)
         col = np.floor(u / vs + 3.0).astype(int)        # columns on cell boundaries, not centres
         for r in range(7):
@@ -529,22 +540,38 @@ EGG_NEON = {
 }
 
 
+EGG_LOW_K = 4.0                  # egg_<rarity>_low: 0.25-stud cells (12 rows tall)
+
+
 @prop("lobby_egg")
 def lobby_egg(entry, kit):
     a = entry.get("args") or {}
     rarity = a["rarity"]
+    low = bool(a.get("low", False))
     shell, light, paint = EGGS[rarity]
-    K = float(a.get("K", EGG_K))
+    K = float(a.get("K", EGG_LOW_K if low else EGG_K))
     S = ShopSculpt(kit, K, 1.75, origin=(0.0, EGG_H / 2, 0.0), name="egg")
     E = Egg(S)
+    E.low = low
     S.put(shell, E.inside)
     paint(E, S)
     _shine(E, S, light, (shell,))
+    if low:
+        # egg_<rarity>_low (shop-area polish 2026-11-09: the Gumball Globe's pile, 1.1 x 1.5 studs in the glass): the
+        # same egg and paint on 0.25-stud cells, the Neon details baked as plain colours into the one Fixed part (no
+        # Glow* part, no VFX hook: a still pile; one MeshPart per egg instead of up to four)
+        for k in list(S.neon):
+            SPAL[k] = tuple(int(v) for v in S.neon.pop(k)[1:4])
     m = kit.model(entry["key"], "prop", vs=S.vs, K=K)
     S.mesh_at(m, "Egg", {})
-    finish(m, {"source": "designed (lobby-shop pitch egglook A, owner: more detail + VFX): the %s rarity painted egg"
-               % rarity, "pivot": "bottom centre, front -Z", "rarity": rarity,
-               "glowParts": sorted(EGG_NEON.get(rarity, {}))})
+    if low:
+        finish(m, {"source": "designed (shop-area polish: the low egg of the Gumball Globe's pile): the %s rarity painted "
+                   "egg on 0.25-stud cells, its Neon baked flat" % rarity, "pivot": "bottom centre, front -Z",
+                   "rarity": rarity, "glowParts": []})
+    else:
+        finish(m, {"source": "designed (lobby-shop pitch egglook A, owner: more detail + VFX): the %s rarity painted egg"
+                   % rarity, "pivot": "bottom centre, front -Z", "rarity": rarity,
+                   "glowParts": sorted(EGG_NEON.get(rarity, {}))})
     m.attachments = {"Center": {"pos": [0.0, EGG_H / 2, 0.0], "rot": np.eye(3).tolist()}}
     return m
 

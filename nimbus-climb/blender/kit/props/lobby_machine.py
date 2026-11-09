@@ -15,18 +15,19 @@ design.md 16.17.1; the owner's pick, ported from the pitch's scripts/machines.py
                             brass crank with a rubber knob (the viewer's right) and a gold coin plate with its slot and a
                             return button (the viewer's left); the chute at the bottom front: a dark mouth in a gold
                             frame with its flap, a gold tray on the step; cream side panels in gold frames with three
-                            painted egg silhouettes each (BodyLight with a BodyDark band); an access door on the back with
-                            hinges and a lock.  On top a gold neck, collar and floor, a gold seat ring holding a clear
-                            glass globe (0.5-stud cells as the old dome, Transparency 0.70), a gold lid and the winged-
-                            cloud finial (a cloud on a gold collar, two gold wings swept back and up, every feather two
-                            cells wide and thick to its tip, the Glow ball on top).  ONE face-connected piece with the
-                            glass (shop_area_globe.py --check).  Nothing above y 14.4; the 9 x 7 footprint (the puffs and the feet stay inside it: the
-                            shop's egg row comes close to the Cloud machine's side).
-                            The eggs are NOT in the mesh: twelve attachments Egg1..Egg12 (pivot = the egg's bottom
-                            centre in machine studs, rot = its turn) carry the real egg_<rarity> keys the game places
-                            (LobbyMachineBuilder.GlobeEggs, ML_Scale Meta.eggScale 0.42, the chase egg Egg1 at
-                            Meta.chaseScale 0.44): a ring of seven on the floor leaning in, a second layer of four, the
-                            chase egg on top at the front.
+                            ONE bigger painted egg each (shop-area polish, SIDE_EGG: BodyDark with a Cream band); an
+                            access door on the back with hinges and a lock.  On top a gold neck, collar and floor with a
+                            cloud bed (CUSHION) the eggs rest on, a gold seat ring holding a clear glass globe (0.5-stud
+                            cells as the old dome, GLASS_RGB at Transparency 0.80), a gold lid and the sunburst finial
+                            (SUN: seven tapered rays, long Gold / short GoldLight, the Bulb sun disc).  ONE
+                            face-connected piece with the glass (shop_area_globe.py --check).  Nothing above y 14.25; the
+                            9 x 7 footprint (the puffs and the feet stay inside it: the shop's egg row comes close to the
+                            Cloud machine's side).
+                            The eggs are NOT in the mesh: eighteen attachments Egg1..Egg18 (EGG_SPOTS; pivot = the egg's
+                            bottom centre in machine studs, rot = its turn) where LobbyMachineBuilder.GlobeEggs places
+                            the game's eggs (ML_Scale Meta.eggScale 0.5, the pile on the low egg_<rarity>_low keys; the
+                            chase egg Egg1 at Meta.chaseScale 0.54 on the full egg_<rarity>, on top at the front): a
+                            natural pile settled by shop_area_globe.py --settle.
                             Parts (8): Body (Primary), BodyLight (lighten Primary 0.3), BodyDark (darken Primary 0.3),
                             Glow (Neon, lighten Primary 0.25), Bulb (Neon), Emblem (Neon, Secondary), Glass, Fixed (every
                             constant colour baked).  The tinted keys keep their dark shade (a vertex colour) but no light
@@ -46,14 +47,14 @@ K = 4.0                      # 0.25-stud cells for the machine
 GK = 2.0                     # 0.5-stud cells for the glass (a sphere of fine glass cells costs thousands of tris)
 EXTENT = 8.0                 # grid half extent round ORIGIN (studs)
 ORIGIN = (0.0, 7.0, 0.0)     # the grids' centre (the pivot stays the model origin)
-EGG_SCALE = 0.42             # 2.2 x 3 x 2.2 egg -> 0.92 x 1.26 x 0.92 studs
-CHASE_SCALE = 0.44
+EGG_SCALE = 0.5              # 2.2 x 3 x 2.2 egg -> 1.1 x 1.5 x 1.1 studs (polish: was 0.42; 18 eggs fill the globe)
+CHASE_SCALE = 0.54
 FLOOR_Y = 7.5                # the globe floor's top, flush with the collar's lip (the whole pile shows over the gold)
 GLOBE_C = (0.0, 9.75, 0.0)   # the glass sphere: centre, outer and inner radius, cut below / above
 GLOBE_R = (3.3, 2.8)
 GLOBE_Y = (7.3, 12.3)
-GLASS_RGB = (224, 240, 255)
-GLASS_T = 0.70
+GLASS_RGB = (212, 234, 255)  # polish 2026-11-09: a faint cool tint, clearer (was 224,240,255 at 0.70: read foggy grey)
+GLASS_T = 0.80
 
 PAL = {
     "Iron": (64, 70, 92), "IronLight": (96, 104, 130), "IronDark": (44, 48, 66),
@@ -218,33 +219,35 @@ def star4_mask(cu, cv, sh, sv, sharp=0.6, heart=0.45):
 
 # ---------------------------------------------------------------------------------------------- the egg spots
 # (pos = the egg's bottom centre in machine studs, yaw, tilt_x, tilt_z, scale): index 0 = the chase spot (the top rarity,
-# whole in the front view), then the floor ring of seven (leaning in), then the second layer of four.  Tuned with
-# blender/pitches/shop_area_globe.py --check (every egg inside the glass and off its cells, off the seat, on the floor or
-# resting on the eggs below, none sunk into another by more than 0.03, the chase egg's face 100 % clear from the front,
-# about half of the globe's lower half covered from the front):
-#   the floor ring = spec 16.17.1 (a_k = k 2 pi / 7 + 0.35 at r 1.3, yaw a + 0.4, leaning in 0.2) on the floor, raised
-#   from the spec's 6.95 to 7.5 = the collar's lip (at 6.95 the collar hid the ring's lower half from every angle);
-#   the second layer at a_k = k pi / 2 + 0.5, r 0.85, each with its own small lean, dropped until it rests on the ring
-#   (the spec's r 0.75 / lean 0.35 sank 0.15 - 0.26 stud into its neighbours);
-#   the chase egg at (-0.2, -1.05) leaning to the front, dropped onto the pile: it crowns it at the front.
+# whole in the front view), then the pile.  Polish 2026-11-09 (the 12-egg heap read ~25 % full): poured by
+# `blender/pitches/shop_area_globe.py --settle 17 --scale 0.5 --chase 0.54` (deterministic): each pile egg drops at the
+# lowest free spot of a 0.2-stud xz grid until it touches the floor, the cloud bed, the glass (0.04 clear) or an egg, the
+# chase egg last at the lowest front spot (z <= -0.8, |x| <= 1) whose face stays >= 90 % clear from the front.  --check:
+# 18 eggs, the globe's inner disc 51 % eggs / 62 % eggs + cloud bed from the front, the chase egg 90 % clear.
 EGG_SPOTS = [
-    ((-0.2, 9.36, -1.05), -0.3, -0.3, 0.0, CHASE_SCALE),
-    ((0.446, FLOOR_Y, -1.221), 0.75, 0.188, -0.069, EGG_SCALE),
-    ((1.233, FLOOR_Y, -0.413), 1.648, 0.064, -0.19, EGG_SCALE),
-    ((1.091, FLOOR_Y, 0.706), 2.545, -0.109, -0.168, EGG_SCALE),
-    ((0.128, FLOOR_Y, 1.294), 3.443, -0.199, -0.02, EGG_SCALE),
-    ((-0.931, FLOOR_Y, 0.907), 4.34, -0.14, 0.143, EGG_SCALE),
-    ((-1.29, FLOOR_Y, -0.163), 5.238, 0.025, 0.198, EGG_SCALE),
-    ((-0.677, FLOOR_Y, -1.11), 6.136, 0.171, 0.104, EGG_SCALE),
-    ((0.408, 8.62, -0.746), 1.7, 0.12, -0.1, EGG_SCALE),
-    ((0.746, 8.66, 0.408), 3.271, -0.1, -0.14, EGG_SCALE),
-    ((-0.408, 8.67, 0.746), 4.842, 0.14, 0.08, EGG_SCALE),
-    ((-0.746, 8.49, -0.408), 6.412, -0.08, 0.16, EGG_SCALE),
+    ((0.0, 9.758, -1.2), -0.3, -0.18, 0.0, CHASE_SCALE),
+    ((0.0, 7.91, -1.6), 2.4, 0.008, 0.034, EGG_SCALE),
+    ((-1.2, 7.978, -1.0), 4.8, 0.076, -0.058, EGG_SCALE),
+    ((1.2, 7.993, -1.0), 0.917, -0.015, 0.011, EGG_SCALE),
+    ((1.8, 8.199, 0.0), 3.317, 0.053, 0.079, EGG_SCALE),
+    ((-1.8, 8.375, 0.0), 5.717, -0.038, -0.012, EGG_SCALE),
+    ((1.6, 8.598, 1.0), 1.833, 0.03, 0.056, EGG_SCALE),
+    ((-1.6, 8.665, 1.0), 4.233, -0.061, -0.036, EGG_SCALE),
+    ((-0.4, 8.784, -0.6), 0.35, 0.007, 0.033, EGG_SCALE),
+    ((-0.8, 8.78, -1.8), 2.75, 0.075, -0.059, EGG_SCALE),
+    ((0.8, 8.905, -1.8), 5.15, -0.016, 0.01, EGG_SCALE),
+    ((0.8, 8.951, 1.8), 1.267, 0.052, 0.078, EGG_SCALE),
+    ((-0.8, 9.021, 1.8), 3.667, -0.039, -0.013, EGG_SCALE),
+    ((1.0, 9.019, -0.2), 6.067, 0.029, 0.055, EGG_SCALE),
+    ((-0.6, 9.288, 0.6), 2.184, -0.062, -0.036, EGG_SCALE),
+    ((-1.8, 9.394, -0.8), 4.584, 0.006, 0.032, EGG_SCALE),
+    ((0.4, 9.29, 0.8), 0.7, 0.075, -0.059, EGG_SCALE),
+    ((1.8, 9.461, -0.8), 3.1, -0.017, 0.009, EGG_SCALE),
 ]
 
 
 def egg_attachments():
-    """Egg1..Egg12 -> {pos, rot} (rounded: stable manifests)"""
+    """Egg1..Egg18 -> {pos, rot} (rounded: stable manifests)"""
     att = {}
     for i, (pos, yaw, tx, tz, _s) in enumerate(EGG_SPOTS):
         R = spot_rot(yaw, tx, tz)
@@ -341,6 +344,20 @@ def _front(S):
     del X, Y, Z
 
 
+# the painted egg on each side panel (polish 2026-11-09: ONE bigger egg per panel; three thin ones read as three bars from
+# the plaza): its middle (z, y), half width at the widest, half height, the narrower top (the egg profile's taper), the
+# Cream band's rows (y from, to)
+SIDE_EGG = {"Mid": (0.0, 3.5), "HalfW": 0.7, "HalfH": 1.0, "Taper": 0.2, "Band": (3.25, 3.5)}
+
+
+def side_egg_mask(Y, Z):
+    """the side panel's painted egg (z = across the panel, y = up): 1.4 wide x 2.0 tall, wider below the middle"""
+    zc, yc = SIDE_EGG["Mid"]
+    t = np.clip((Y - yc) / SIDE_EGG["HalfH"], -1.0, 1.0)
+    half = SIDE_EGG["HalfW"] * np.sqrt(np.clip(1.0 - t * t, 0.0, 1.0)) * (1.0 - SIDE_EGG["Taper"] * t)
+    return (np.abs(Y - yc) < SIDE_EGG["HalfH"]) & (np.abs(Z - zc) <= half)
+
+
 def _sides_back(S):
     X, Y, Z = S.X, S.Y, S.Z
     for sx in (-1, 1):
@@ -348,12 +365,10 @@ def _sides_back(S):
         frame = (np.abs(X - sx * 3.6) < 0.3) & (np.abs(Z) < 1.85) & (Y > 2.0) & (Y < 5.0) & ~side & (np.abs(X) < 3.65)
         S.put("Cream", side)
         S.put("Gold", frame)
-        for z in (-1.0, 0.0, 1.0):    # painted egg silhouettes in the cabinet colour: wider below the middle, a dark band
-            t = np.clip((Y - 3.5) / 0.6, -1.0, 1.0)  # (half width <= 0.36: a clear cell of cream between neighbours)
-            half = 0.34 * np.sqrt(np.clip(1.0 - t * t, 0.0, 1.0)) * (1.0 - 0.18 * t)
-            egg = side & (np.abs(Y - 3.5) < 0.6) & (np.abs(Z - z) <= half)
-            S.put("Body", egg)
-            S.put("BodyDark", egg & (np.abs(Y - 3.375) < 0.13))
+        # one painted egg in the cabinet's dark shade with a Cream band across its middle (reads as an egg at 25 studs)
+        egg = side & side_egg_mask(Y, Z)
+        S.put("BodyDark", egg)
+        S.put("Cream", egg & (Y > SIDE_EGG["Band"][0]) & (Y < SIDE_EGG["Band"][1]))
     # the access door on the back: a BodyDark outline, gold hinges and a lock
     back = (Z > 2.25) & (Z < 2.55)
     door = back & (np.abs(X) < 1.6) & (Y > 1.75) & (Y < 4.75)
@@ -376,6 +391,7 @@ def _neck_globe(S, G):
     S.put("GoldDark", S.ring(0, 0, 1.95, 2.65, 6.5, 7.5))                         # the collar the glass sits on
     S.put("GoldLight", S.ring(0, 0, 1.95, 2.65, 7.25, 7.5))                       # ...its pale lip
     S.put("Gold", S.cyl(0, 0, 1.95, 6.5, FLOOR_Y))                                # the floor, flush with the lip
+    _cushion(S)
     # the glass globe on its own 0.5-stud grid, clear of the seat and the lid
     G.glass["Glass"] = (["rgb"] + list(GLASS_RGB), GLASS_T)
     G.flat |= {"Glass"}
@@ -385,55 +401,67 @@ def _neck_globe(S, G):
     S.put("GoldDark", S.cyl(0, 0, 2.2, 12.5, 12.75))
 
 
+# The cloud bed inside the globe (polish 2026-11-09: the 12-egg heap read ~25 % full): cloud fluff on the floor that the
+# pile rests on, a thin layer over the whole floor (so no empty glass shows under the front eggs from the plaza) and a
+# stepped mound set back towards the rear, so the eggs climb towards the back like a shop display and the globe reads
+# about 60 % full from the front with 18 eggs (a real heap that full would take ~60).  Where a gap between eggs shows it,
+# it reads as packing fluff.  Tiers (centre z, radius, top y) stacked from the floor: flat tops and upright sides mesh to
+# a fraction of a round mound's triangles (the eggs hide nearly all of it); every cell clear of the glass's inner sphere
+# by BED_CLEAR.
+CUSHION = ((0.0, 1.95, 7.85), (0.35, 1.6, 8.1), (0.55, 1.25, 8.7), (0.75, 0.8, 9.3))
+BED_CLEAR = 0.3
+
+
+def cushion_mask(S):
+    m = np.zeros(S.g.L.shape, bool)
+    for cz, r, top in CUSHION:
+        m |= np.broadcast_to(S.cyl(0.0, cz, r, FLOOR_Y - 0.01, top), m.shape)
+    inside = ((S.X - GLOBE_C[0]) ** 2 + (S.Y - GLOBE_C[1]) ** 2 + (S.Z - GLOBE_C[2]) ** 2) < (GLOBE_R[1] - BED_CLEAR) ** 2
+    return m & np.broadcast_to(S.Y > FLOOR_Y, m.shape) & np.broadcast_to(inside, m.shape)
+
+
+def _cushion(S):
+    S.put("Cloud", cushion_mask(S))
+
+
+# The finial (polish 2026-11-09: round 1's swept three-feather wings read as "messy bits" from the plaza, and a flat
+# winged cloud at 0.25-stud cells came out as blocky horns): a SUNBURST, ONE silhouette facing the customer, the deco
+# topper of an old shop machine.  A fan of nine pointed rays over the half circle (long Gold rays, short GoldLight ones
+# between) round a warm Neon sun at the hub (the marquee Bulb colour), standing on the gold collar.  The fan is a plate
+# two cells thick (z -0.25 .. 0.25); the rays' tips stop under y 14.25 (top <= 14.4); every ray touches the sun: one
+# face-connected piece.  SUN: the hub (y), the long / short ray reach (studs, the width x Stretch), the rays' taper at
+# their sides (a pointed tip), the half thickness, the sun's radius.
+SUN = {"Hub": 12.75, "Reach": (2.4, 1.5), "Rays": (8.0, 34.0, 62.0, 90.0, 118.0, 146.0, 172.0), "Long": (1, 3, 5),
+       "Short": 0.75, "Base": 0.3, "Tip": 0.2, "Half": 0.25, "Sun": 0.62}
+
+
+def sunburst(S):
+    """-> (long rays, short rays, sun) masks of the finial (picture plane: u = x, v = y - hub).  Each ray a tapered
+    stroke from the hub to its tip on the ellipse Reach (long rays) or Short x Reach (the short ones between)"""
+    U, V = S.X, S.Y - SUN["Hub"]
+    plate = (np.abs(S.Z) < SUN["Half"]) & (V > -0.01) & (S.Y < 14.25)
+    sun = plate & ((U ** 2 + V ** 2) <= SUN["Sun"] ** 2)
+    rays = [np.zeros(np.broadcast(U, V, S.Z).shape, bool), np.zeros(np.broadcast(U, V, S.Z).shape, bool)]
+    rx, ry = SUN["Reach"]
+    for i, a in enumerate(SUN["Rays"]):
+        f = 1.0 if i in SUN["Long"] else SUN["Short"]
+        tx, ty = rx * f * math.cos(math.radians(a)), ry * f * math.sin(math.radians(a))
+        L2 = tx * tx + ty * ty
+        t = np.clip((U * tx + V * ty) / L2, 0.0, 1.0)
+        d = np.sqrt((U - t * tx) ** 2 + (V - t * ty) ** 2)
+        w = SUN["Base"] * (1 - t) + SUN["Tip"] * t
+        rays[0 if i in SUN["Long"] else 1] |= plate & (d <= w) & ((U * tx + V * ty) / L2 <= 1.0)
+    shape = S.g.L.shape
+    return (np.broadcast_to(rays[0] & ~sun, shape), np.broadcast_to(rays[1] & ~sun & ~rays[0], shape),
+            np.broadcast_to(sun, shape))
+
+
 def _finial(S):
-    """the winged-cloud finial: a gold collar, a cloud, two gold wings swept back and up, the Glow ball"""
-    S.put("Gold", S.cyl(0, 0, 0.5, 12.75, 13.0))
-    S.put("GoldLight", S.cyl(0, 0, 0.75, 12.75, 13.0) & ~S.cyl(0, 0, 0.5, 0, 99))
-    cloud = S.ell(0, 13.4, 0, 0.8, 0.55, 0.7) | S.ell(0.62, 13.25, 0.05, 0.5, 0.4, 0.5) | S.ell(-0.62, 13.25, 0.05, 0.5, 0.4, 0.5)
-    S.put("Cloud", cloud)
-    S.put("CloudShade", cloud & (S.Y < 13.1), only="Cloud")
-    for sx in (-1, 1):
-        _wing(S, sx)
-    S.put("Glow", S.ell(0, 13.95, 0, 0.45, 0.45, 0.45))
-
-
-# the wing plate: its root at the cloud's side, swept back (degrees about Y), three feathers (length, degrees up from the
-# plate's horizontal), the feather half width (Width x the taper, never under MinHalf), the plate's half thickness, the
-# top of every feather cell (the finial stays under y 14.4: a cell centred at 14.375 would reach 14.5).
-# Review round 1: at Width 0.25 / Half 0.16 the tips tapered under one 0.25-stud cell and the 0.32 plate, swept 25
-# degrees, broke apart (two 2-cell GoldDark tips hovered off the wings); a feather is now >= 0.4 wide and the plate 0.4
-# thick to its tip (>= (cos 25 + sin 25) x 0.25 = 0.33: face-connected at the sweep), shop_area_globe.py --check counts
-# the pieces.
-WING = {"Root": (0.7, 13.4, 0.1), "Sweep": 25.0, "Feathers": ((1.8, 24.0), (1.55, -4.0), (1.2, -32.0)),
-        "Width": 0.3, "MinHalf": 0.2, "Half": 0.2, "Top": 14.25}
-
-
-def _wing(S, sx):
-    """one gold wing: three feathers fanned from the root in a plate two cells thick, the plate facing the customer and
-    swept back (so the front sees the fan and the side sees it at an angle), the top feather pale, the tips dark"""
-    rx, ry, rz = WING["Root"]
-    root = np.array([sx * rx, ry, rz])
-    sw = math.radians(WING["Sweep"])
-    out = np.array([sx * math.cos(sw), 0.0, math.sin(sw)])                       # outward, swept back
-    up = np.array([0.0, 1.0, 0.0])
-    normal = np.cross(out, up)
-    normal /= np.linalg.norm(normal)
-    dx, dy, dz = S.X - root[0], S.Y - root[1], S.Z - root[2]
-    u0 = dx * out[0] + dy * out[1] + dz * out[2]                                 # along the plate's horizontal
-    v0 = dy                                                                       # up
-    w = dx * normal[0] + dy * normal[1] + dz * normal[2]
-    thin = (np.abs(w) <= WING["Half"]) & (S.Y < WING["Top"])
-    for i, (length, deg) in enumerate(WING["Feathers"]):
-        a = math.radians(deg)
-        cu, cv = math.cos(a), math.sin(a)
-        fu = u0 * cu + v0 * cv                                                    # along the feather
-        fv = -u0 * cv + v0 * cu                                                   # across it
-        t = fu / length
-        half = np.maximum(WING["MinHalf"], WING["Width"] * np.sqrt(np.clip(1.0 - t, 0, 1)) * (0.75 + 0.6 * t))
-        feather = thin & (t > 0.0) & (t < 1.0) & (np.abs(fv) <= half)
-        S.put("GoldLight" if i == 0 else "Gold", feather, empty=True)
-        S.put("GoldDark", feather & (t > 0.72), only=("GoldLight", "Gold"))      # the darker feather tips
-
+    """the sunburst finial: a gold collar, the ray fan, the Neon sun at its hub"""
+    long_rays, short_rays, sun = sunburst(S)
+    S.put("Gold", long_rays)
+    S.put("GoldLight", short_rays)
+    S.put("Bulb", sun)
 
 def design_globe(S, G):
     _plinth(S)

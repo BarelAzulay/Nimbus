@@ -135,8 +135,12 @@ local K = {
 		Locked = "Locked",
 		NoOdds = "Odds unavailable",
 		Hint = "Gems: same odds",
-		-- shop-area (spec 16.17.3): the Secret roll happens at the Storm Altar only (was "Also at the Storm Altar")
+		-- shop-area (spec 16.17.3): the Secret roll happens at the Storm Altar only (was "Also at the Storm Altar"). Polish:
+		-- the hero's hint follows its state: Locked keeps this rule line, Altar says what TRAVEL does, at the altar where
+		-- you are (ShopEggs.Refresh)
 		HeroHint = "Secret rolls happen at the Storm Altar",
+		HeroHintTravel = "TRAVEL flies you to the Storm Altar",
+		HeroHintHere = "You are at the Storm Altar",
 		AltarLock = "Available at the Storm Altar",
 		AltarLockShort = "At the Storm Altar",
 		Travel = "TRAVEL",
@@ -882,7 +886,8 @@ function L.heroPC(t, w, M)
 	H.arrangeTravel(t.Travel, 290, 100, 34, 44)
 	t.Hint.Visible = true
 	t.Hint.TextSize = 18
-	-- (shop-area) "Secret rolls happen at the Storm Altar" is ~322 px at 18 (a bolder face runs ~350): one line from
+	-- (shop-area) the longest hint, "Secret rolls happen at the Storm Altar", is ~322 px at 18 (a bolder face runs ~350;
+	-- "TRAVEL flies you to the Storm Altar" and "You are at the Storm Altar" are shorter): one line from
 	-- w - 380 to 10 px short of the card's edge, starting 8 px clear of the chips when they reach that far
 	local hintL = math.max(w - 380, x + chipW + 8)
 	place(t.Hint, hintL, ref and 172 or 152, w - 10 - hintL, 28)
@@ -1326,6 +1331,7 @@ function ShopEggs.Refresh(page, fromLayout)
 	h.AltarChip.Text = brief and K.TEXT.AltarLockShort or K.TEXT.AltarLock
 	h.Travel.Button.Visible = altar
 	h.Spin.Button.Visible = not altar
+	h.Hint.Text = (locked and K.TEXT.HeroHint) or (altar and K.TEXT.HeroHintTravel) or K.TEXT.HeroHintHere
 	if altar then
 		h.Pulse.Scale = 1
 	end

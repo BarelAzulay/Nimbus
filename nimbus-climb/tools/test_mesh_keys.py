@@ -134,7 +134,9 @@ def test_constants():
     want += ["egg_%s_%s" % (r, h) for r in rar for h in ("top", "bot")]
     # (shop-area 16.17.1) the Gumball Globe roulette machine (named by server/Services/LobbyMachineBuilder)
     want += ["prop_roulette_globe"]
-    check(list(MK.BUILD_KEYS) == want, "BUILD_KEYS are the plan's eleven keys + egg-3d's fourteen halves + the shop-area globe", MK.BUILD_KEYS)
+    # (shop-area polish) the globe pile's seven low eggs (named by server/Services/LobbyMachineBuilder LOW_KEYS)
+    want += ["egg_%s_low" % r for r in rar]
+    check(list(MK.BUILD_KEYS) == want, "BUILD_KEYS are the plan's eleven keys + egg-3d's fourteen halves + the shop-area globe + its seven low eggs", MK.BUILD_KEYS)
     check(list(MK.RESERVED) == ["gem_world_low"], "RESERVED is gem_world_low", MK.RESERVED)
 
 

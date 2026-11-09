@@ -24,8 +24,9 @@
 --   * SHOP ISLAND    at Config.Lobby.ShopOffset: four voxel gacha machines (Model Roulette_<Id>, built in
 --                    the roulette colour; shop-area spec 16.17.1: the Machine is tagged with the Gumball Globe key
 --                    prop_roulette_globe, Primary = the roulette colour, Secondary = its top rarity's (Secret: the
---                    chat violet), and only when that tag dresses LobbyMachineBuilder.GlobeEggs piles the twelve real
---                    eggs in the glass beside it; with no globe id the Machine is tagged with today's uploaded cabinet
+--                    white-gold 255,240,200 since the polish), and only when that tag dresses
+--                    LobbyMachineBuilder.GlobeEggs piles eighteen eggs in the glass beside it (the chase egg on
+--                    egg_<rarity>, the pile on egg_<rarity>_low); with no globe id the Machine is tagged with today's uploaded cabinet
 --                    prop_roulette instead, the Part build only where that is missing too), the WINGED PETS
 --                    rarity board with the seven-egg row in front of it (shop-area 16.17.2: LobbyBoardBuilder.EggRow, a
 --                    stone shelf with the seven 3D eggs and a rarity label strip, the walk-up Shop prompt's part; the board's
@@ -3386,7 +3387,8 @@ local function buildMachine(parent, cf, roulette, H)
 	local rarities = oddsRarities(roulette)
 	local top = rarities[#rarities]
 	local chat = type(Config.Eggs) == "table" and type(Config.Eggs.ChatColors) == "table" and Config.Eggs.ChatColors or {}
-	local emblem = (top and (chat[top.Id] or top.Color)) or C.Gold
+	-- (polish: Secret's star is white-gold; the chat violet 180,150,255 was a near twin of Cloud's Epic lavender)
+	local emblem = (top and top.Id == "Secret" and LobbyMachineBuilder.SECRET_EMBLEM) or (top and (chat[top.Id] or top.Color)) or C.Gold
 	local dressed = Mesh.tag(body, LobbyMachineBuilder.GLOBE.Key, cf, { Primary = roulette.Color or C.Rose, Secondary = emblem })
 	if not dressed then
 		Mesh.tag(body, "prop_roulette", cf, { Primary = roulette.Color or C.Rose, Secondary = (top and top.Color) or C.Gold })
@@ -3787,11 +3789,13 @@ local function buildShop(root, L)
 		roulettes[roulette.Id] = result
 	end
 
-	-- The WINGED PETS rarity board (lobby shop 5.9: on the lawn at at(21, -8), facing the centre) with the seven-egg row in
+	-- The WINGED PETS rarity board (lobby shop 5.9: on the lawn, facing the centre; at(23, -10) since the polish, below) with the seven-egg row in
 	-- front of it (shop-area 16.17.2: the old guide board's spot at at(-21, -8) is empty lawn now, with its lamp and
 	-- flower bed). The Sky Trove stands on the plaza lawn at L.TroveCF (worked out once in Build, before the plaza's
 	-- reservations); it stays in this folder, so a failed shop build takes it along and the fallback builds the only trove.
-	local boardCF = flatLook(at(21, -8) - Vector3.new(0, LAWN, 0), S - Vector3.new(0, LAWN, 0)) -- on the lawn layer
+	-- (shop-area polish: at(23, -10), out on the lawn and towards the entrance; at(21, -8) the row's Secret end stood
+	-- 0.44 stud off the Cloud machine and its eggs read as that machine's)
+	local boardCF = flatLook(at(23, -10) - Vector3.new(0, LAWN, 0), S - Vector3.new(0, LAWN, 0)) -- on the lawn layer
 	local okBoard, face = pcall(buildRarityBoard, f, boardCF)
 	if not okBoard then
 		warn("[LobbyBuilder] rarity board failed: " .. tostring(face))

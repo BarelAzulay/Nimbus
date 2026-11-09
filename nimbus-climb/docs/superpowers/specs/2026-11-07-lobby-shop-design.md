@@ -2423,6 +2423,47 @@ tested in T1-T3 and round 1; the code holds each number (named in brackets).
   prompts), every Altar refusal toasts (above); `FromAltar` counts only without a live reading, and a later Open while
   the Shop is open keeps it (above).
 
+**Polish (2026-11-09, after the owner's look at the build; where this differs from the text and "As built" above, this
+wins).**
+- **The globe** (`lobby_machine.py`): **3,912 tris / 8 parts**, 9 x 14.25 x 7, one piece. **18 eggs** (`Egg1..Egg18`,
+  `Meta.eggScale 0.5`, `Meta.chaseScale 0.54`; `EGG_SPOTS` dropped into the glass by `shop_area_globe.py --settle 18 --scale
+  0.5 --chase 0.54`, the same solid / graze rules as `--check`): a natural pile on a **cloud bed** (`CUSHION`, four stacked
+  `Cloud` cylinders from the collar lip to y 9.3, the eggs rest on it, `BED_CLEAR` 0.3), the chase egg `Egg1` at
+  `(0, 9.758, -1.2)` on top at the front (90 % of its face seen from the front); the globe reads **51 % full of eggs, 62 %
+  with the bed** (`--check`'s fill). `LobbyMachineBuilder.GLOBE` = `{ Count 18, Scale 0.5, ChaseScale 0.54 }`;
+  `Rarities(roulette, 18)`: Cloud Epic + `C U R C U R C U C U C U C C C C C` (10 / 5 / 2), Storm Legendary + 6 / 7 / 4 (U / R /
+  E), Sky Mythic + 6 / 8 / 3 (R / E / L), Celestial Secret + 7 / 7 / 3 (E / L / M); `NC_Detail` on `GlobeEgg2..18`.
+  **Glass** rgb **212,234,255** at Transparency **0.80** (`GLASS_RGB`, `GLASS_T`; a faint cool tint; the tried highlight
+  glint was dropped: at 0.5-stud cells it drew a white stepped blob). **Finial**: the winged cloud is replaced by a
+  **sunburst** on the lid (`SUN`: seven tapered rays, the long ones `Gold`, the short `GoldLight`, the sun disc on the
+  `Bulb` Neon; one face-connected island, top 14.25). **Side panels**: one bigger egg per panel (`SIDE_EGG`: 1.4 x 2.0,
+  narrower at the top) in `BodyDark` with a `Cream` band, inside the gold frame.
+- **Low pile eggs** (perf): seven new keys **`egg_<rarity>_low`** (catalog budget `eggLow` 800 tris / 1 part; prop
+  `lobby_egg` with `args.low`: K 4 instead of 10, the paint read kept, the neon keys baked flat into the one part, the
+  Secret's glyphs as 8 rune marks): common 524, uncommon 592, rare 488, epic 736, legendary 584, mythic 744, secret 612
+  tris, 1 part each. `LobbyMachineBuilder.EggKey(rarity, pile)`: the pile (`GlobeEgg2..18`) tags `egg_<rarity>_low`, only the
+  chase egg the full `egg_<rarity>`; with no id the pile egg stays its Part sphere. The full eggs and their 14 hatch halves
+  are byte-identical. **Budget** (`tools/mesh_budget.py --scene docs/phase6/review/lobby/scene_shop_globe.json`, the shop
+  with the globe dressed + 16 players x 3 pets): **255,526 tris** (the shop's keys 103,972: 4 globes 15,648 / 32 parts, 4
+  chase eggs 14,346 / 15, the 68 pile eggs 41,128 / 68, the shelf's 7 eggs, floor, cloud, arch, board), against **445,430**
+  if the pile used the full keys. Parts 1,649 (the old 400 line; every scene is over it, the pets alone are 1,506). The
+  proposed batch line: `mesh_budget.py` lists 702 / 700 because it counts `prop_roulette` and `prop_roulette_globe` both;
+  only one dresses at a time (694 effective). The low keys need an upload with the globe.
+- **Emblem**: Celestial's Secret emblem is **white-gold 255,240,200** (`LobbyMachineBuilder.SECRET_EMBLEM`; the chat
+  violet 180,150,255 twinned Cloud's Epic violet).
+- **The egg row**: the WINGED PETS board and its row moved to **`at(23, -10)`** (was `at(21, -8)`): every egg >= 2 studs from
+  the Cloud machine's 9 x 7 footprint (measured 3.28, Cloud's knob to the shelf; `EGGROW.MachineClear 2.0`). The 1-stud
+  row slide of "As built" stays (undoing it would cut the gap to ~2.2 for no gain).
+- **The hero's hint follows its state** (`ShopEggs.Refresh`): Locked **"Secret rolls happen at the Storm Altar"**
+  (`K.TEXT.HeroHint`), Altar **"TRAVEL flies you to the Storm Altar"** (`HeroHintTravel`), at the altar **"You are at the
+  Storm Altar"** (`HeroHintHere`); 18 px PC, 15 px portrait, hidden on a landscape phone as before (the chip says "At the
+  Storm Altar"). No short form needed: every text fits its box at every size tested.
+- **The altar's return sign**: on the dressed `portal_ring` the 4 x 1 navy board reads **"Plaza" at 48 px = 0.96 stud**
+  ("To the Plaza" fit it only at 0.6 stud, under the World text rule's ~1-stud title; the mesh is uploaded, so the board
+  was not widened); the Part fallback's pixel tag still reads "To the Plaza". The altar stays 494 / 500 parts.
+- **Travel to the Altar is instant on purpose** (`GateService.Travel(player, "Altar")`: no walk, no portal cutscene) until
+  the owner decides otherwise.
+
 **Tests and evidence (16.17).** Server: `shop_globe` and `shop_egg_row` in `tools/smoke_lobby_shop_world.lua`;
 `p2gems_secret_altar` in `tools/smoke_p2_gems.lua`; `altar_world_gem` rewritten to spot 2; `shop_prompt`, `egg_shelf_fx`,
 `lobby_trove_plaza`'s guide checks, `p2gems_altar` ("Summon" -> "Secret Roll"), `p2gems_roulettes` and `smoke_pity.lua`'s
@@ -2433,5 +2474,7 @@ Secret spins (the player stands on the altar deck first) rewritten to the new ru
 Evidence in `.superpowers/lobby-shop/evidence/shop-area/`: Blender renders of the globe (hero, the four in a row with a 5-stud
 player, the eggs through the glass, the plaza eye at 5 studs / 25 away, side), `render_model.py` views of the shop island
 (the egg row under the board, the empty right lawn) and of the altar (the gem over the side crystal), `render_gui.py` of the
-Shop's Eggs tab locked and unlocked at 1920x1080 and 844x390; every file looked at before "done". The Studio check (morning):
+Shop's Eggs tab locked and unlocked at 1920x1080 and 844x390; every file looked at before "done". The polish pass's renders
+are in `evidence/shop-area/polish/` (the globe shots `t1_*`, `shop_top` / `shop_front`, `gui_shop_secret_*` at 1920x1080,
+844x390 and 360x640, `altar_sign_before_after_*`). The Studio check (morning):
 the strip's labels at 30 px, the globe once uploaded.

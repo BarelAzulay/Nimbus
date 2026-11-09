@@ -3,28 +3,33 @@
 -- real eggs piled inside its glass. LobbyBuilder's main chunk is near its local cap, so the machine's new pieces live
 -- here (one local there); LobbyBuilder.buildMachine tags the globe key and calls GlobeEggs only when that tag dressed.
 --
---   LobbyMachineBuilder.GLOBE = { Key = "prop_roulette_globe", Count = 12, Chase = 1, Scale = 0.42, ChaseScale = 0.44,
---                                 EggSize = Vector3.new(2.25, 3, 2.5) }
+--   LobbyMachineBuilder.GLOBE = { Key = "prop_roulette_globe", Count = 18, Chase = 1, Scale = 0.5, ChaseScale = 0.54,
+--                                 EggSize = Vector3.new(2.25, 3, 2.5) }   (polish 2026-11-09: was 12 at 0.42 / 0.44)
+--   LobbyMachineBuilder.SECRET_EMBLEM = white-gold 255,240,200: the Celestial machine's star (its top rarity is Secret)
+--   LobbyMachineBuilder.EggKey(rarity, pile) -> "egg_<rarity>" (the chase egg) | "egg_<rarity>_low" (pile) | nil
 --   LobbyMachineBuilder.Rarities(roulette, count) -> { rarity id }
 --     Pure (no Instances). [1] = the roulette's top rarity (the last of its odds > 0 in Config.Rarities order: the chase
 --     egg), [2..count] = the pile of its lower rarities by weight: n_r = max(1, floor((count - 1) * w_r / sum + 0.5)),
 --     then the largest n drops by one while the sum is over count - 1 and the most common rarity gains one while it is
---     under; interleaved by cycling the lower rarities in Config order, one of each while any is left. Cloud: Epic +
---     C U R C U C U C C C C; Storm: Legendary + U R E U R E U R U R R; Sky: Mythic + R E L R E L R E R E E; Celestial:
---     Secret + E L M E L M E L E L E. One rarity -> that egg everywhere; none -> {}.
+--     under; interleaved by cycling the lower rarities in Config order, one of each while any is left. At 18: Cloud: Epic
+--     + C U R C U R C U C U C U C C C C C; Storm: Legendary + U R E U R E U R E U R E U R U R R; Sky: Mythic + R E L R E L
+--     R E L R E R E R E E E; Celestial: Secret + E L M E L M E L M E L E L E L E L. One rarity -> that egg everywhere;
+--     none -> {}.
 --   LobbyMachineBuilder.GlobeEggs(parent, cf, roulette, H) -> Model "GlobeEggs" | nil
---     cf = the machine's ground CFrame (the globe key's pivot, front -Z). Reads the globe manifest's Egg1..Egg12
+--     cf = the machine's ground CFrame (the globe key's pivot, front -Z). Reads the globe manifest's Egg1..Egg18
 --     attachments (pos = the egg's bottom centre in machine studs, rot = its turn) through MeshLibrary.Manifest and builds,
 --     as a child of `parent` (the Roulette_<Id> model, beside its Machine: never inside the dressed body), one Model
 --     GlobeEgg<i> per attachment holding one Part "Egg": the Part fallback (a block with a Sphere SpecialMesh, 2.25 x 3 x
 --     2.5 x the scale, in the rarity colour, Secret dark with the shelf egg's violet tint, SmoothPlastic, anchored, no
 --     collide / touch / query) standing on the pivot; the Model's WorldPivot = cf * the attachment, its attribute
---     ML_Scale = Scale (ChaseScale on GlobeEgg1: MeshLibrary.Dress assembles the uploaded egg_<rarity> mesh at that size
---     about the pivot, so nothing new is uploaded), then H.Mesh.tag(model, "egg_<rarity>", pivot) (ML_DressKey where that
---     key is not missing). GlobeEgg2..12 are tagged H.Detail (NC_Detail: the Low graphics setting parks the pile; the chase
---     egg always shows); nothing is tagged Spin (a still pile). A manifest that is missing, or lacks an Egg<i>
---     attachment, warns once per manifest ("[LobbyMachineBuilder] prop_roulette_globe: no Egg<i> attachment" / "...: no
---     manifest") and returns nil: the machine stands without its eggs.
+--     ML_Scale = Scale (ChaseScale on GlobeEgg1: MeshLibrary.Dress assembles the mesh at that size about the pivot), then
+--     H.Mesh.tag(model, EggKey(rarity, i ~= 1), pivot): the chase egg on the uploaded egg_<rarity>, the pile on
+--     egg_<rarity>_low (polish 2026-11-09, review round 2's perf finding: the full keys would put 68 x ~3.4k tris in the
+--     shop); ML_DressKey only where that key is not missing, so until the low eggs are uploaded the pile shows its Part
+--     spheres. GlobeEgg2..18 are tagged H.Detail (NC_Detail: the Low graphics setting parks the pile; the chase egg always
+--     shows); nothing is tagged Spin (a still pile). A manifest that is missing, or lacks an Egg<i> attachment, warns once
+--     per manifest ("[LobbyMachineBuilder] prop_roulette_globe: no Egg<i> attachment" / "...: no manifest") and returns
+--     nil: the machine stands without its eggs.
 --     H = LobbyBuilder's L.H (box, Mesh, C, MAT, Detail).
 --   LobbyMachineBuilder._Manifest  TESTS ONLY: a function(key) -> manifest used instead of MeshLibrary.Manifest (nil = real)
 -- No light, no prompt, no animation (the server never animates). Plain Lua 5.1 syntax only.
@@ -35,17 +40,24 @@ local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Co
 
 local LobbyMachineBuilder = {}
 
+-- polish 2026-11-09: 18 eggs (the 12 read ~25 % full) at 0.5, the chase egg 0.54 (blender/kit/props/lobby_machine.py
+-- EGG_SPOTS, poured by blender/pitches/shop_area_globe.py --settle onto the globe's cloud bed)
 local GLOBE = {
 	Key = "prop_roulette_globe", -- the mesh key, literal (tools/mesh_keys.py reads the keys from the source)
-	Count = 12,
+	Count = 18,
 	Chase = 1,
-	Scale = 0.42,
-	ChaseScale = 0.44,
+	Scale = 0.5,
+	ChaseScale = 0.54,
 	EggSize = Vector3.new(2.25, 3, 2.5), -- the shelf egg's Part size (LobbyBoardBuilder EGG.Size)
 }
 LobbyMachineBuilder.GLOBE = GLOBE
 
--- the egg mesh keys, literal (the uploaded keys the shelf eggs use: LobbyBoardBuilder EGG_KEYS)
+-- the Celestial machine's emblem (polish: white-gold; the chat violet 180,150,255 was a near twin of Cloud's Epic lavender)
+LobbyMachineBuilder.SECRET_EMBLEM = Color3.fromRGB(255, 240, 200)
+
+-- the egg mesh keys, literal: the chase egg wears the full uploaded egg (LobbyBoardBuilder EGG_KEYS, ~3-3.7k tris); the
+-- pile wears the low egg (polish: egg_<rarity>_low, a few hundred tris, one part; 68 full eggs would be ~230k tris).
+-- With no id for a key its egg stays the rarity-tinted Part sphere (Mesh.tag leaves it undressed)
 local EGG_KEYS = {
 	Common = "egg_common",
 	Uncommon = "egg_uncommon",
@@ -55,6 +67,20 @@ local EGG_KEYS = {
 	Mythic = "egg_mythic",
 	Secret = "egg_secret",
 }
+local LOW_KEYS = {
+	Common = "egg_common_low",
+	Uncommon = "egg_uncommon_low",
+	Rare = "egg_rare_low",
+	Epic = "egg_epic_low",
+	Legendary = "egg_legendary_low",
+	Mythic = "egg_mythic_low",
+	Secret = "egg_secret_low",
+}
+
+-- the dress key of an egg of `rarity`: the pile's low egg when `pile`, else the full egg (nil for an unknown rarity)
+function LobbyMachineBuilder.EggKey(rarity, pile)
+	return (pile and LOW_KEYS or EGG_KEYS)[rarity]
+end
 -- the Secret egg's Part colour: its near-black body with the violet glow (LobbyBoardBuilder SECRET, the shelf egg's)
 local SECRET_EGG = Color3.fromRGB(40, 40, 52):Lerp(Color3.fromRGB(138, 92, 255), 0.18)
 local DETAIL = "NC_Detail"
@@ -228,8 +254,9 @@ function LobbyMachineBuilder.GlobeEggs(parent, cf, roulette, H)
 		egg.WorldPivot = pivot
 		-- the size first, then the tag: a client that sees the dress tag reads ML_Scale with it
 		egg:SetAttribute("ML_Scale", s)
-		if type(H.Mesh) == "table" and type(H.Mesh.tag) == "function" and EGG_KEYS[id] then
-			H.Mesh.tag(egg, EGG_KEYS[id], pivot)
+		local key = LobbyMachineBuilder.EggKey(id, i ~= GLOBE.Chase)
+		if type(H.Mesh) == "table" and type(H.Mesh.tag) == "function" and key then
+			H.Mesh.tag(egg, key, pivot)
 		end
 		if i ~= GLOBE.Chase then
 			CollectionService:AddTag(egg, detail)

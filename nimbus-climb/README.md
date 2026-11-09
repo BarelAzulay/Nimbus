@@ -422,7 +422,7 @@ ends it (it asks first). Your step is saved, so the tutorial continues where you
   spun here only. The summon portal glows cyan, with a turning ring of crystal bars (the summon ring) and a beam of
   light into the sky you can see from the plaza, and a big cut gem floats high over the crystal beside the walk (not
   where players stand). To go back, walk to the standing green ring beside the landing (the
-  **return portal**) and press **E** ("Travel / Plaza"): it puts you on the plaza in front of the Storm Altar gate.
+  **return portal**, its sign reads **Plaza**) and press **E** ("Travel / Plaza"): it puts you on the plaza in front of the Storm Altar gate.
 - **Benches you can sit on.** Walk up to a lawn or garden bench and press **E** ("Sit"); two players fit on each
   bench, and jumping stands you up. While you sit, your pets lie down on the ground in front of you and get up
   again when you stand.
@@ -865,8 +865,9 @@ per Robux a pack gives than the smallest one). You spend them on:
   Celestial 180 Gems a spin (the gem button on each machine card in the Shop's Eggs tab; gem spins are one egg at a
   time, **x3** is for tokens).
 - **The Secret Roulette**, spun at the **Storm Altar only**: press **E** at the altar ("Secret Roll"), or spin its big
-  card at the top of the Shop's Eggs tab while you stand at the altar. Anywhere else that card reads **"Available at
-  the Storm Altar"** and its blue **TRAVEL** button takes you to the altar's landing (if the trip cannot happen right
+  card at the top of the Shop's Eggs tab while you stand at the altar (its hint says "You are at the Storm Altar").
+  Anywhere else that card reads **"Available at the Storm Altar"** and its blue **TRAVEL** button ("TRAVEL flies you to
+  the Storm Altar") takes you straight to the altar's landing (if the trip cannot happen right
   now, a toast says why); the server refuses a Secret spin away from the altar ("Secret rolls happen at the Storm
   Altar") and charges nothing. 500 Gems a spin, **Mythic 60 %, Secret 40 %**, one egg at a time, and the 7th spin in a row
   without a Secret always gives one; its card counts down ("Secret for sure in 3 more spins", on a phone "Secret in 3")
@@ -1867,7 +1868,8 @@ src/server   Main.server.lua; Services: Lighting, LobbyBuilder, StormAltar, Play
              Cash / Pet XP factors at the five earning sites), Daily (the daily streak and play-time gifts), Trove
              (the Sky Trove's group join reward), Leaderboard (the global leaderboard: Trophies, Pets found, Ring
              best, with the this-server fallback), LobbyBoardBuilder (the leaderboard board on the lobby's south lawn),
-             LobbyMachineBuilder (the shop's Gumball Globe machines: the real eggs piled in a dressed globe's glass)
+             LobbyMachineBuilder (the shop's Gumball Globe machines: 18 eggs piled in a dressed globe's glass,
+             the chase egg on the full egg mesh, the pile on the light egg_<rarity>_low meshes)
 src/client   Main.client.lua; State; UiGate (nothing shows before PLAY); ClientSettings; SoundFx; GraphicsQuality;
              PortalVortex (the swirling vortex inside every gate hoop); MouseLock (the Mouse lock option);
              LightingStack (lighting looks, e.g. the Dungeon); UI/CloudUI; UI/NeonKit (the neon cards, tiles and side

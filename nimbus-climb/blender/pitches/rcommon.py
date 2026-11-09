@@ -194,8 +194,9 @@ def court(radius=34.0, tones=((236, 232, 222), (222, 216, 204)), cell=2.0, z=0.0
     return ob
 
 
-def add_model(model, look, at=(0, 0, 0), yaw=0.0, glass_alpha=0.22, neon=3.0):
-    """the kit ModelSpec -> Blender objects at Blender position `at`, turned yaw radians about Z (0 = facing -Y)"""
+def add_model(model, look, at=(0, 0, 0), yaw=0.0, glass_alpha=0.22, neon=3.0, glass_rgb=(170, 210, 250), glass_rough=0.35):
+    """the kit ModelSpec -> Blender objects at Blender position `at`, turned yaw radians about Z (0 = facing -Y)
+    (shop-area polish: glass_rgb / glass_rough, the glass's own colour and a glossier finish for the clear globe)"""
     M = Matrix.Translation(V(at)) @ Matrix.Rotation(yaw, 4, "Z")
     made = B.make_objects(model, look, matrix=np.array(M))
     made2 = []
@@ -207,9 +208,9 @@ def add_model(model, look, at=(0, 0, 0), yaw=0.0, glass_alpha=0.22, neon=3.0):
             if os.environ.get("PITCH_NOGLASS"):
                 bpy.data.objects.remove(ob)
                 continue
-            bsdf.inputs["Base Color"].default_value = lin(170, 210, 250)
+            bsdf.inputs["Base Color"].default_value = lin(*glass_rgb)
             bsdf.inputs["Alpha"].default_value = float(os.environ.get("PITCH_GLASS", glass_alpha))
-            bsdf.inputs["Roughness"].default_value = 0.35
+            bsdf.inputs["Roughness"].default_value = glass_rough
             bsdf.inputs["Specular IOR Level"].default_value = 0.12
             try:
                 m.surface_render_method = "BLENDED"

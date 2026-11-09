@@ -21,8 +21,8 @@
 --                             PlayerGui): own and another player's follower cards and a ready card with its EVOLVE! pill,
 --                             "Lv" >= 22 px with a stroke, every text on a compact solid plate.
 -- The Storm Altar (another engineer's file, audited by smoke_storm.lua) and transient damage numbers are reported only,
--- except the altar's "To the Plaza" sign (lobby shop Task 13): the tag rule on the Part fallback, the 0.6-stud line
--- floor on the dressed ring's one-line plaque.
+-- except the altar's return sign (lobby shop Task 13): the tag rule on the Part fallback ("To the Plaza"), the full sign
+-- rule (title >= 0.95 stud) on the dressed ring's 4 x 1 board ("Plaza", shop-area polish).
 -- Players:GetUserThumbnailAsync is the mock's (lobby-shop Task 24: content + isReady, Mock.ThumbnailCalls counts the
 -- calls, Mock.ThumbnailFail fails them); this file reads those counters as deltas (it used to add its own stub, which
 -- stopped being installed once the mock had the method).
@@ -771,9 +771,10 @@ local function serverScenarios()
 		T.check(stripRec ~= nil and stripRec.kind == "SurfaceGui" and #stripRec.problems == 0 and stripRec.texts == 7 and (stripRec.minStuds or 0) >= INFO_STUDS - 0.001,
 			"polish worldtext: the egg row's RarityStrip (seven rarity labels, every line >= 0.6 stud, fitting its box) is in the census and keeps the sign rule",
 			stripRec and (stripRec.texts .. " texts; " .. table.concat(stripRec.problems, "; ")) or "not in the census")
-		-- lobby shop Task 13 (spec 5.11 c): the Storm Altar is exempt above, but its "To the Plaza" sign keeps the rule. On the
-		-- Part fallback it is a tag (the full tag rule); on the dressed portal_ring mesh a one-line plaque on the 4 x 1-stud
-		-- navy board, so only its lines' 0.6-stud floor applies there (the 0.95-stud title floor does not fit the board)
+		-- lobby shop Task 13 (spec 5.11 c): the Storm Altar is exempt above, but its return sign keeps the rule. On the
+		-- Part fallback it is a tag "To the Plaza" (the full tag rule); on the dressed portal_ring mesh the 4 x 1-stud navy
+		-- board reads "Plaza" (shop-area polish: "To the Plaza" fit it only at 0.6 stud), so the full sign rule applies,
+		-- the 0.95-stud title floor included
 		local SAlt = mod("StormAltar")
 		local rpad = SAlt and type(SAlt.GetReturnPad) == "function" and SAlt.GetReturnPad()
 		local rportal = rpad and rpad.Parent
@@ -785,14 +786,11 @@ local function serverScenarios()
 		end
 		if T.check(plaza ~= nil and census.seen[plaza] == true, "polish worldtext: the Storm Altar's 'To the Plaza' sign (ReturnPortal PlazaSign) is in the census") then
 			local prec = auditGui(plaza)
-			local probs = {}
-			for _, msg in ipairs(prec.problems) do
-				if not (plaza:IsA("SurfaceGui") and msg:find("biggest letters", 1, true)) then
-					probs[#probs + 1] = msg
-				end
-			end
-			T.check(prec.texts == 1 and prec.strings[1] == "To the Plaza" and #probs == 0 and (plaza:IsA("BillboardGui") or (prec.minStuds or 0) >= INFO_STUDS - 0.001),
-				"polish worldtext: ...it reads 'To the Plaza' and keeps the World text rule (" .. plaza.ClassName .. ")", table.concat(probs, "; "))
+			local probs = prec.problems
+			local wantText = plaza:IsA("SurfaceGui") and "Plaza" or "To the Plaza"
+			T.check(prec.texts == 1 and prec.strings[1] == wantText and #probs == 0 and (plaza:IsA("BillboardGui") or (prec.minStuds or 0) >= TITLE_STUDS - 0.001),
+				"polish worldtext: ...it reads '" .. wantText .. "' and keeps the World text rule, no exemption (" .. plaza.ClassName .. ")",
+				tostring(prec.strings[1]) .. "; " .. tostring(prec.minStuds) .. " stud; " .. table.concat(probs, "; "))
 		end
 		holder:Destroy()
 		advance(0.2)

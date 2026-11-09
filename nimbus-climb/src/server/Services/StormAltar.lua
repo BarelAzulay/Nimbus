@@ -62,8 +62,8 @@
 --              arrival spot, the 8-stud bridge lane and the island's rim clouds. Two flat navy Pad octagons (4 studs across, 0.2 high: the only colliding parts)
 --              and a standing ring in the Return-gate green (Model Ring, Blender key portal_ring with its plinth top
 --              0.05 under the octagons' top; its Part fallback: 13 green Neon segments on a ring 4.5 up over the pad and
---              two stone feet), never colliding or touching. "To the Plaza" on the mesh's SignFace (a SurfaceGui at 50
---              px per stud on a SignFace part) once the ring is dressed, else a pixel BillboardGui over the ring. Its
+--              two stone feet), never colliding or touching. "Plaza" (0.96 stud) on the mesh's SignFace (a SurfaceGui at
+--              50 px per stud on a SignFace part) once the ring is dressed, else a pixel BillboardGui "To the Plaza" over the ring. Its
 --              "ReturnPrompt" anchor carries GateService's prompt (no panel) and a PointLight 1.3 / 14. Spec 16.16: a
 --              PortalFx gate (GateId "Plaza") whose client vortex sits on the invisible VortexCenter part (the Part
 --              ring's opening) or, once the client dressed the Ring (VortexMeshChild = "Ring"), VortexCenter x
@@ -1504,9 +1504,11 @@ local function onAltarUsed(player)
 	StormAltar.Used:Fire(player)
 end
 
--- lobby-shop (spec 5.11 c): "To the Plaza" on the return ring (World text rule). Dressed with the portal_ring mesh: a
--- SurfaceGui at 50 px per stud (0.6-stud letters, all the 4 x 1 navy board takes) on an invisible SignFace part whose
--- front face sits 0.02 proud of the mesh's SignFace attachment; the Part fallback: a pixel BillboardGui over the ring.
+-- lobby-shop (spec 5.11 c): the return ring's sign (World text rule). Dressed with the portal_ring mesh: a SurfaceGui
+-- at 50 px per stud on an invisible SignFace part whose front face sits 0.02 proud of the mesh's SignFace attachment,
+-- reading "Plaza" at 48 px = 0.96 stud (shop-area polish: "To the Plaza" fit the 4 x 1 navy board only at 0.6 stud,
+-- under the rule's ~1-stud title; the destination alone is ~2.4 studs wide); the Part fallback: a pixel BillboardGui
+-- "To the Plaza" over the ring.
 local function plazaSign(parent, anchor, origin, dressed)
 	if dressed then
 		local face = block(parent, "SignFace", origin * CFrame.new(PORTAL.SignFace) * CFrame.new(0, 0, -0.02 + 0.05), Vector3.new(4.5, 1, 0.1), C.Navy, { Transparency = 1, Shadow = false })
@@ -1517,7 +1519,7 @@ local function plazaSign(parent, anchor, origin, dressed)
 		board.PixelsPerStud = POSTER_PPS
 		board.LightInfluence = 0
 		board.Adornee = face
-		label(board, "To the Plaza", "Title", { Name = "Text", Size = 30 }, 3)
+		label(board, "Plaza", "Title", { Name = "Text", Size = 48 }, 3)
 		board.Parent = face
 		return board
 	end
