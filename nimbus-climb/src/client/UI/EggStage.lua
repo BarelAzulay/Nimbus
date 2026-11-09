@@ -86,6 +86,7 @@ local ClientFolder = UIFolder.Parent
 local EggArt = require(UIFolder:WaitForChild("EggArt"))
 local Egg3D = require(UIFolder:WaitForChild("Egg3D"))
 local HatchFx = require(UIFolder:WaitForChild("HatchFx"))
+local HatchLook = require(UIFolder:WaitForChild("HatchLook"))
 local GemIcon = require(UIFolder:WaitForChild("GemIcon"))
 local CloudUI = require(UIFolder:WaitForChild("CloudUI"))
 local NeonKit = require(UIFolder:WaitForChild("NeonKit"))
@@ -179,7 +180,7 @@ local K = {
 -- design px per layout (spec 5.5 / 16.4); the middle (strip cells, crack eggs, reveal pets) shrinks to 0.6, text never
 K.PC = {
 	TitleY = 34, TitleH = 60, TitleSize = 52, Side = 40,
-	Strip1 = { H = 296, CellW = 230, CellH = 250, Step = 246, Egg = 160, Word = 24 },
+	Strip1 = { H = 296, CellW = 230, CellH = 250, Step = 246, Egg = 160, Word = 18 },
 	Strip3 = { H = 230, Gap = 30, CellW = 190, CellH = 210, Step = 206, Egg = 130, Word = 20 },
 	Crack1 = { Egg = 380, Word = 80 }, Crack3 = { Egg = 220, Word = 80 }, Col3 = 520,
 	R1 = { BannerY = 20, BannerH = 104, Word = 84, BannerMin = 320, BannerPad = 80, Gap = 8, Pet = 420, PetMin = 252, Ped = 90 / 420, NameGap = 16, NameH = 60, Name = 54, NoteGap = 4, NoteH = 32, Note = 24, NewW = 120, NewH = 44, New = 26 },
@@ -189,7 +190,7 @@ K.PC = {
 }
 K.PHONE = {
 	TitleY = 6, TitleH = 28, TitleSize = 28, Side = 10,
-	Strip1 = { H = 170, CellW = 130, CellH = 160, Step = 138, Egg = 104, Word = 16 },
+	Strip1 = { H = 170, CellW = 130, CellH = 160, Step = 138, Egg = 104, Word = 15 },
 	Strip3 = { H = 74, Gap = 6, CellW = 76, CellH = 66, Step = 80, Egg = 48 },
 	Crack1 = { Egg = 200, Word = 40 }, Crack3 = { Egg = 96, Word = 40 }, Col3 = 260,
 	R1 = { BannerY = 2, BannerH = 44, Word = 40, BannerMin = 160, BannerPad = 40, Gap = 2, Pet = 170, PetMin = 110, Lip = true, NameGap = 2, NameH = 30, Name = 26, NoteGap = 2, NoteH = 20, NoteH2 = 36, Note = 15, NewW = 70, NewH = 26, New = 15 },
@@ -204,6 +205,20 @@ K.SHAKE_FAST = { { 0.25, 0.75, 10 } }
 -- slow turn (seconds a turn) over the rise, settling over this share of the crack; a shake's dip (studs at full squash);
 -- the egg layers that turn with its rock on screen
 K.EGG3D = { Turn = -28, Spin = 9, Settle = 0.3, Dip = 0.06, Turns = { "Cracks", "Leaks" } }
+-- (roll-look, spec 16.15 "Roll look A+B") the dressed strip (client/UI/HatchLook builds the pieces): B's colour tell (Rare
+-- and up: the window turns the coming colour Before s ahead of the land, in Tween s; Fast hatch in brackets), the
+-- overshoot (Px x the strip's scale past the winner at the end of the ease, then the Back Out spring over Land), the
+-- track's colours, the card and window sizes per layout (design px at the 1080p strip; x3 and a shrunk strip scale them)
+K.LOOK = {
+	TELL = { Before = 0.7, Fast = 0.25, Tween = 0.25, TweenFast = 0.1 },
+	OVERSHOOT = { Px = 18, Fast = 8 },
+	TRACK = {
+		Top = Color3.fromRGB(20, 31, 82), Bottom = Color3.fromRGB(8, 13, 40), Outer = Color3.fromRGB(3, 5, 15), OuterA = 0.15, Rim = 4,
+		Edge = Color3.fromRGB(44, 63, 136), Fade = Color3.fromRGB(14, 22, 61), FadeW = 0.12,
+	},
+	PC = { Card = { Corner = 18, Shadow = 8, Shine = 3, Plate = 30, Notch = 16, Win = 4, WinGlow = 10, Pad = 8 } },
+	PHONE = { Card = { Corner = 12, Shadow = 5, Shine = 2, Plate = 22, Notch = 10, Win = 3, WinGlow = 6, Pad = 6 } },
+}
 EggStage.Metrics = K
 
 -- S: the stage. Roll = the roll playing (or nil); Queue = results waiting for DONE; Lay = the layout of this screen
@@ -1005,15 +1020,26 @@ end
 
 function B.strip(roll, j)
 	local st = { Cells = {}, Landed = false, Tick = nil }
+	local tk = K.LOOK.TRACK
+	local geo = H.cardGeo(S.Lay)
 	st.Frame = H.frame(roll.UI.Strips, "Strip" .. j, { ZIndex = 1 })
+	-- (roll-look) the track: navy glass (a vertical gradient) in a dark rim, a thin blue edge, its ends fading out
+	st.Outer = H.frame(st.Frame, "Outer", { BackgroundColor3 = tk.Outer, BackgroundTransparency = tk.OuterA, ZIndex = 0 })
+	st.OuterCorner = H.corner(st.Outer, geo.TrackCorner + tk.Rim)
 	st.Track = Util.Create("ScrollingFrame", {
-		Name = "Track", BorderSizePixel = 0, BackgroundColor3 = K.TRACK, BackgroundTransparency = 0.35, ClipsDescendants = true, Active = false,
+		Name = "Track", BorderSizePixel = 0, BackgroundColor3 = K.WHITE, BackgroundTransparency = 0, ClipsDescendants = true, Active = false,
 		ScrollingEnabled = false, ScrollBarThickness = 0, CanvasSize = UDim2.new(0, 0, 0, 0), Size = UDim2.fromScale(1, 1), ZIndex = 1, Parent = st.Frame,
 	})
-	H.corner(st.Track, 14)
-	H.stroke(st.Track, Theme.Colors.WellEdge, 3)
-	st.Pointer = H.frame(st.Frame, "Pointer", { AnchorPoint = Vector2.new(0.5, 0), BackgroundColor3 = K.GOLD, BackgroundTransparency = 0, ZIndex = 3 })
-	H.corner(st.Pointer, 3)
+	Util.Create("UIGradient", { Rotation = 90, Color = ColorSequence.new(tk.Top, tk.Bottom), Parent = st.Track })
+	st.TrackCorner = H.corner(st.Track, geo.TrackCorner)
+	H.stroke(st.Track, tk.Edge, 2)
+	st.FadeL, st.FadeR = HatchLook.TrackFades(st.Track, tk.Fade, geo.Corner)
+	-- the gold winner window (its root keeps the name Pointer) and the dims beside it
+	st.Pointer = H.frame(st.Frame, "Pointer", { ZIndex = 3 })
+	st.Win = HatchLook.Window(st.Frame, st.Pointer, {
+		Phone = not S.Lay.PC, Gold = K.GOLD, Stroke = geo.Win, Glow = geo.WinGlow, Notch = geo.Notch, Corner = geo.WinCorner, Track = S.Tweens,
+		NotchEdge = roll.N == 1, -- (x3: plain notches, the budget)
+	})
 	if roll.Hi then
 		-- (Task 27) soft speed streaks over the glass at full speed (High only; placed each frame inside the track)
 		st.Streaks = H.frame(st.Frame, "Streaks", { Size = UDim2.fromScale(1, 1), ZIndex = 2 })
@@ -1033,27 +1059,76 @@ function B.cells(roll, j)
 	local st = roll.Strips[j]
 	local g = S.Lay.Strip
 	for _, cell in pairs(st.Cells) do
-		cell.Frame:Destroy()
+		HatchLook.DropCard(cell.Card)
 	end
 	st.Cells = {}
 	st.Geo = g
-	for slot = 1, K.MAX_CELLS do
+	local geo = H.cardGeo(S.Lay)
+	-- (roll-look) as many recycled cells as can intersect the track at once (floor(W / Step) + 2, at most 12): the dressed
+	-- cards cost more, and an x3 strip of 12 went past 750 instances
+	st.Slots = math.min(K.MAX_CELLS, math.floor(g.W / g.Step) + 2)
+	for slot = 1, st.Slots do
 		local f = H.frame(st.Track, "Cell" .. slot, { Size = UDim2.fromOffset(g.CellW, g.CellH), BackgroundColor3 = K.CELL, BackgroundTransparency = 0.15, Visible = false, ZIndex = 2 })
 		H.corner(f, 12)
 		local stroke = H.stroke(f, Theme.Colors.WellEdge, 3)
-		-- (Task 26) a lean egg: no rim light and <= 9 instances (spec 16.4: <= 14 per cell, the cell's frame, corner, stroke
-		-- and word included)
+		-- (roll-look, spec 16.15) the glossy card: a navy face with the rarity tint, the rim, a shine line; x1 adds the
+		-- rarity plate holding the word and a shadow beside the cell (x3: lite, <= 16 instances a cell)
+		local card = HatchLook.Card(f, {
+			W = g.CellW, H = g.CellH, Corner = geo.Corner, Shadow = geo.Shadow, Shine = geo.Shine, Plate = geo.Plate, Word = g.Word,
+			Lite = roll.N > 1, Phone = not S.Lay.PC,
+		})
+		-- (Task 26) a lean egg: no rim light and <= 9 instances (spec 16.15: <= 20 per x1 cell, the card included)
 		local egg = EggArt.New(f, "Common", g.Egg, { Form = g.Egg < 48 and "Simple" or "Medium", ZIndex = 3, Rim = false, Budget = 9 })
 		egg.AnchorPoint = Vector2.new(0.5, 0)
-		local word = nil
-		if g.Word then
+		local word = card.PlateText
+		if word then
+			-- the egg stands in the room above the plate, a little low (its top keeps clear of the shine line)
+			local plateY = card.Plate.Position.Y.Offset
+			egg.Position = UDim2.fromOffset(g.CellW / 2, math.max(g.CellH * 0.06, (plateY - g.Egg) * 0.55))
+		elseif g.Word then
+			-- (an x3 card's word: the text stroke only, no outline instance: the x3 budget)
 			egg.Position = UDim2.fromOffset(g.CellW / 2, g.CellH * 0.08)
-			word = H.label(f, "Word", "", "Heading", g.Word, { ZIndex = 3, Position = UDim2.fromOffset(0, g.CellH * 0.08 + g.Egg + 2), Size = UDim2.fromOffset(g.CellW, g.Word + 4) })
+			word = Theme.Label("", "Heading", { Size = g.Word, Stroke = 0.2 })
+			word.Name = "Word"
+			word.ZIndex = 3
+			word.Position = UDim2.fromOffset(0, g.CellH * 0.08 + g.Egg + 2)
+			word.Size = UDim2.fromOffset(g.CellW, g.Word + 4)
+			word.Parent = f
 		else
 			egg.Position = UDim2.fromOffset(g.CellW / 2, (g.CellH - g.Egg) / 2)
 		end
-		st.Cells[slot] = { Frame = f, Stroke = stroke, Egg = egg, Word = word, Index = nil }
+		st.Cells[slot] = { Frame = f, Stroke = stroke, Egg = egg, Word = word, Index = nil, Card = card, OnPlate = word ~= nil and word == card.PlateText }
 	end
+end
+
+-- (roll-look) the card and window sizes of this layout: the PC / phone table at the 1080p x1 strip, scaled with the cells
+-- when they are smaller (x3, a shrunk strip); the plate never gets shorter than its word; an x3 phone's strips sit 6 px
+-- apart, so their windows go without notches
+function H.cardGeo(lay)
+	local base = lay.PC and K.LOOK.PC.Card or K.LOOK.PHONE.Card
+	local g = lay.Strip
+	local k = math.min(1, g.CellH / lay.P.Strip1.CellH)
+	local function px(v)
+		return math.max(1, math.floor(v * k + 0.5))
+	end
+	local geo = {
+		Corner = px(base.Corner), Shadow = px(base.Shadow), Shine = px(base.Shine), Plate = math.max(px(base.Plate), (g.Word or 0) + 6), Pad = px(base.Pad),
+		Win = math.max(2, math.floor(base.Win * math.max(k, 0.6) + 0.5)), WinGlow = math.max(3, math.floor(base.WinGlow * math.max(k, 0.6) + 0.5)),
+		Notch = (lay.X3 and not lay.PC) and 0 or px(base.Notch),
+	}
+	geo.WinCorner = geo.Corner + math.floor(geo.Pad / 2 + 0.5)
+	geo.TrackCorner = math.min(geo.Corner + geo.Pad, math.floor(g.H / 2))
+	return geo
+end
+
+-- the cell showing the winner (strip index K.WIN) once the strip has landed
+function H.landedCell(st)
+	for _, cell in pairs(st.Cells) do
+		if cell.Index == K.WIN then
+			return cell
+		end
+	end
+	return nil
 end
 
 function B.bar(roll)
@@ -1192,12 +1267,29 @@ end
 
 function H.applyStrips(roll, lay)
 	local g = lay.Strip
+	local geo = H.cardGeo(lay)
+	local rim = K.LOOK.TRACK.Rim
+	local band = (g.H - g.CellH) / 2
+	local fw = math.floor(K.LOOK.TRACK.FadeW * g.W + 0.5)
 	for j, st in pairs(roll.Strips) do
 		H.place(st.Frame, g.X, g.Y[j], g.W, g.H)
-		H.place(st.Pointer, g.W / 2, 0, math.max(4, 6 * g.S), g.H)
+		if st.Outer then
+			H.place(st.Outer, -rim, -rim, g.W + 2 * rim, g.H + 2 * rim)
+			st.OuterCorner.CornerRadius = UDim.new(0, geo.TrackCorner + rim)
+		end
+		st.TrackCorner.CornerRadius = UDim.new(0, geo.TrackCorner)
+		-- the ends fade over the card band (the track's own gradient shows above and below it)
+		H.place(st.FadeL, 0, band, fw, g.CellH)
+		H.place(st.FadeR, g.W - fw, band, fw, g.CellH)
+		for _, fade in ipairs({ st.FadeL, st.FadeR }) do
+			fade:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, geo.Corner)
+		end
 		if st.Geo ~= g then
 			B.cells(roll, j)
 		end
+		-- the gold window round the landed cell's box + Pad a side, the dims beside it over the track
+		st.Win:Style({ Stroke = geo.Win, Glow = geo.WinGlow, Notch = geo.Notch, Corner = geo.WinCorner })
+		st.Win:Place(g.W / 2 - g.CellW / 2 - geo.Pad, band - geo.Pad, g.CellW + 2 * geo.Pad, g.CellH + 2 * geo.Pad, g.W, g.H)
 		R.cells(roll, j, st.C or K.START_CELL)
 	end
 end
@@ -1500,42 +1592,43 @@ function R.cells(roll, j, c)
 	for i = first, last do
 		local x = half + (i - 1 - c) * g.Step + (g.Step - g.CellW) / 2
 		if x + g.CellW > 0 and x < g.W then
-			local slot = ((i - 1) % K.MAX_CELLS) + 1
+			local slot = ((i - 1) % (st.Slots or K.MAX_CELLS)) + 1
 			local cell = st.Cells[slot]
 			if cell and not used[slot] then
 				used[slot] = true
 				if cell.Index ~= i then
 					cell.Index = i
+					cell.Frame:SetAttribute("Index", i)
 					local rarity = rarities[i]
-					cell.Egg.Visible = rarity ~= false and rarity ~= nil
-					if rarity then
-						EggArt.SetRarity(cell.Egg, rarity)
+					local landed = st.Landed and i == K.WIN
+					local egg = cell.Egg -- (nil once the winner's egg has lifted out at the rise: the hero egg left its card)
+					if egg then
+						egg.Visible = rarity ~= false and rarity ~= nil and not (landed and st.Lifted)
+						if rarity then
+							EggArt.SetRarity(egg, rarity)
+						end
 					end
-					if cell.Word then
+					-- (roll-look, spec 16.15) the card by rarity: the face tint, the rim (Rare and up opaque in Shade(c, .05),
+					-- below Shade(c, -.1) at 0.25), the plate's word; the landed card's rim is 5 thick and its egg gets its
+					-- VFX, the others dim to 0.6 once the strip has landed
+					HatchLook.SetCard(cell.Card, rarity or false, landed and "Landed" or (st.Landed and "Dim") or "Idle")
+					if cell.Word and not cell.OnPlate then
 						cell.Word.Text = rarity or ""
 						cell.Word.TextColor3 = H.color(rarity)
 					end
-					local landed = st.Landed and i == K.WIN
-					-- (Task 26, spec 16.5) Rare and up wear a static rarity ring (the cell's own stroke: no instance); the
-					-- landed cell's is 5 thick and its egg gets its VFX, the others dim once the strip has landed
-					local ring = rarity and EggArt.Glow(rarity) > 0
-					local edge = (landed or ring) and H.color(rarity) or Theme.Colors.WellEdge
-					cell.Stroke.Color = (ring and st.Landed and not landed) and edge:Lerp(Theme.Colors.WellEdge, 0.55) or edge
-					cell.Stroke.Thickness = landed and 5 or 3
-					cell.Frame.BackgroundTransparency = (st.Landed and not landed) and 0.6 or 0.15
-					if (cell.Vfx == true) ~= (landed and rarity ~= nil and rarity ~= false) then
+					if egg and (cell.Vfx == true) ~= (landed and rarity ~= nil and rarity ~= false) then
 						cell.Vfx = landed and rarity ~= nil and rarity ~= false
-						EggArt.SetVfx(cell.Egg, cell.Vfx)
+						EggArt.SetVfx(egg, cell.Vfx)
 					end
 				end
-				cell.Frame.Position = UDim2.fromOffset(x, (g.H - g.CellH) / 2)
-				cell.Frame.Visible = true
+				-- (placed by its centre: the land pop grows round the middle; its shadow follows)
+				HatchLook.ShowCard(cell.Card, x + g.CellW / 2, g.H / 2)
 			end
 		end
 	end
 	for slot, cell in pairs(st.Cells) do
 		if not used[slot] then
-			cell.Frame.Visible = false
+			HatchLook.HideCard(cell.Card)
 		end
 	end
 end
@@ -1550,11 +1643,52 @@ function R.land(roll, j)
 		cell.Index = nil -- re-skin with the landed look on the next layout
 	end
 	R.cells(roll, j, st.C or K.START_CELL)
+	-- (roll-look) the winner has passed the window by the overshoot: the Back Out spring (R.landStep, from the next frame)
+	-- brings it back over Land; the window bounces, the landed card pops once with one shine sweep
 	local g = st.Geo
-	if g then
-		local w = math.max(4, 6 * g.S)
-		st.Pointer.Size = UDim2.fromOffset(w * 2, g.H)
-		H.tween(st.Pointer, roll.T.Land, { Size = UDim2.fromOffset(w, g.H) }, Enum.EasingStyle.Back)
+	st.Over = g and (roll.Fast and K.LOOK.OVERSHOOT.Fast or K.LOOK.OVERSHOOT.Px) * g.S or 0
+	st.Fresh, st.Settled = true, false
+	if st.Win then
+		st.Win:Bounce(roll.T.Land)
+	end
+	local cell = H.landedCell(st)
+	if cell then
+		HatchLook.LandPop(cell.Card, roll.Fast, S.Tweens)
+	end
+end
+
+-- (roll-look) one frame of the land: the landed strips spring back from the overshoot (Back Out, the rise's curve) and
+-- the track darkens round the window; a strip rests once its Land is over
+function R.landStep(roll, t)
+	for j, st in pairs(roll.Strips) do
+		if st.Landed and not st.Settled and st.Geo then
+			if st.Fresh then
+				st.Fresh = nil -- (the land's own frame shows the whole overshoot)
+			else
+				local k = Util.Clamp((t - roll.Sched.Land[j]) / math.max(0.01, roll.T.Land), 0, 1)
+				local back = 1 + 2.70158 * (k - 1) ^ 3 + 1.70158 * (k - 1) ^ 2
+				R.cells(roll, j, K.WIN - 0.5 + (st.Over or 0) * (1 - back) / st.Geo.Step)
+				if st.Win then
+					st.Win:SetDim(k)
+				end
+				st.Settled = k >= 1
+			end
+		end
+	end
+end
+
+-- (roll-look) B's colour tell: from Rare up the window, its glow and its notches turn the coming rarity's colour a moment
+-- before the strip stops (Common / Uncommon keep the gold: no fake tease); x3: each strip its own pull's colour
+function R.tell(roll, j, t)
+	local st = roll.Strips[j]
+	local rarity = roll.Pulls[j].Rarity
+	if st.Told or not st.Win or H.order(rarity) < 3 then
+		return
+	end
+	local tl = K.LOOK.TELL
+	if t >= roll.Sched.Land[j] - (roll.Fast and tl.Fast or tl.Before) then
+		st.Told = true
+		st.Win:Tell(H.color(rarity), roll.Fast and tl.TweenFast or tl.Tween)
 	end
 end
 
@@ -1577,21 +1711,28 @@ end
 function R.strips(roll, t)
 	local s = roll.Sched
 	for j, st in pairs(roll.Strips) do
-		local dur = math.max(0.01, s.Land[j] - s.IntroEnd)
-		local p = Util.Clamp((t - s.IntroEnd) / dur, 0, 1)
-		local c = K.START_CELL + (K.WIN - 0.5 - K.START_CELL) * (1 - (1 - p) ^ K.CURVE)
-		R.cells(roll, j, c)
-		R.streaks(st, t, p)
-		local cell = math.floor(c)
-		if st.Tick ~= cell then
-			if st.Tick ~= nil and j == 1 and p < 1 and os.clock() - (roll.LastTick or -1) >= 1 / K.TICKS_PER_S then
-				roll.LastTick = os.clock()
-				H.sfx(K.SOUND.Tick, K.QUIET)
+		-- (a landed strip belongs to R.landStep)
+		if not st.Landed then
+			local dur = math.max(0.01, s.Land[j] - s.IntroEnd)
+			local p = Util.Clamp((t - s.IntroEnd) / dur, 0, 1)
+			-- (roll-look, spec 16.15) today's ease plus the overshoot past the winner over its last stretch (p ^ 8)
+			local g = st.Geo
+			local over = g and (roll.Fast and K.LOOK.OVERSHOOT.Fast or K.LOOK.OVERSHOOT.Px) * g.S / g.Step or 0
+			local c = K.START_CELL + (K.WIN - 0.5 - K.START_CELL) * (1 - (1 - p) ^ K.CURVE) + over * p ^ 8
+			R.tell(roll, j, t)
+			R.cells(roll, j, c)
+			R.streaks(st, t, p)
+			local cell = math.floor(c)
+			if st.Tick ~= cell then
+				if st.Tick ~= nil and j == 1 and p < 1 and os.clock() - (roll.LastTick or -1) >= 1 / K.TICKS_PER_S then
+					roll.LastTick = os.clock()
+					H.sfx(K.SOUND.Tick, K.QUIET)
+				end
+				st.Tick = cell
 			end
-			st.Tick = cell
-		end
-		if p >= 1 and not st.Landed then
-			R.land(roll, j)
+			if p >= 1 then
+				R.land(roll, j)
+			end
 		end
 	end
 end
@@ -1687,9 +1828,25 @@ function R.rise(roll, quick)
 	for _, st in pairs(roll.Strips) do
 		for slot, cell in pairs(st.Cells) do
 			if not cell.Frame.Visible then
-				cell.Frame:Destroy()
+				HatchLook.DropCard(cell.Card)
 				st.Cells[slot] = nil
 			end
+		end
+		-- (roll-look) the winner lifts OUT of its card (the hero egg grows from its place: no second egg left behind), and
+		-- the window lets its soft glow go; an x3 strip drops its dark rim too (x3 stays inside 750 instances while the
+		-- strips slide away under the three rising eggs)
+		local lc = H.landedCell(st)
+		if lc and lc.Egg then
+			lc.Egg:Destroy()
+			lc.Egg = nil
+		end
+		st.Lifted = true
+		if st.Win then
+			st.Win:DropGlow()
+		end
+		if roll.N > 1 and st.Outer then
+			st.Outer:Destroy()
+			st.Outer = nil
 		end
 		if st.Streaks then
 			st.Streaks:Destroy()
@@ -2119,6 +2276,7 @@ function R.advance(roll)
 			H.sfx("SpinStart", K.QUIET)
 		end
 		R.strips(roll, t)
+		R.landStep(roll, t)
 	end
 	R.warmOne(roll)
 	if t >= s.LandEnd and not roll.HeroBuilt then
@@ -2206,6 +2364,13 @@ function H.open()
 	if not B.gui() then
 		return false
 	end
+	-- (roll-look, spec 16.15 "The HUD hides") every other Enabled ScreenGui goes off while the stage shows (HatchLook.KEEP
+	-- and Roblox's own stay), and one added meanwhile too; every teardown switches them back on (HatchLook.RestoreHud)
+	local pg = S.Gui.Parent
+	HatchLook.HideHud(pg, S.Gui)
+	S.Conns[#S.Conns + 1] = pg.ChildAdded:Connect(function(child)
+		H.safe("hud", HatchLook.HideOne, child)
+	end)
 	if not S.Beat then
 		S.Beat = RunService.Heartbeat:Connect(R.step)
 	end
@@ -2367,6 +2532,7 @@ function H.teardown(reason)
 	if mc and type(mc.SetTouchHidden) == "function" then
 		pcall(mc.SetTouchHidden, "Hatch", false)
 	end
+	H.safe("hud", HatchLook.RestoreHud)
 	if S.Gui then
 		S.Gui:Destroy()
 	end
@@ -2421,6 +2587,16 @@ function H.relayout()
 	end
 	H.apply()
 	H.settleHero(roll)
+	-- (roll-look) the strips at rest: the window's bounce done and its tell colour snapped, a landed card's pop at 1.09
+	for _, st in pairs(roll.Strips) do
+		if st.Win then
+			st.Win:Rest()
+		end
+		local cell = st.Landed and H.landedCell(st)
+		if cell then
+			HatchLook.SetPop(cell.Card, HatchLook.Metrics.POP.Rest)
+		end
+	end
 	-- the overlay at rest: the shock gone, the rays shown only where they stay (Legendary and up on the reveal) or while a
 	-- burst's tail would still play (they go with the next burst or the reveal)
 	if roll.Shock then
