@@ -12,6 +12,8 @@
 --                          entry dropped, no CastBreak, no hit; a Rally caster KO'd mid-cast: no buff
 --   feel_cast_wire         Events.Cast / CastBreak; every Cast / Special / CastBreak field a number or a string, `at` in 0.1 steps;
 --                          Validate holds, SpecialCast.Blast = 5 fails it
+--   feel_cast_simdodge     (review fix) sim_battle.lua's scripted player dashes an enemy Cast aimed at its fighter like a wind-up
+--                          (not a support cast, one aimed elsewhere or its own); end to end the NPC's Blast is a miss
 --   feel_cast_determinism  two Duels with specials on, seed 23, 40 s: the same event stream
 -- Client world:
 --   client_feel_tempo_beats    AttackFxCatalog's Weighty beats (charge x1.4 capped 1.1, travel at 0.7 speed capped 0.7, impact
@@ -23,11 +25,52 @@
 --                              Cast with no Special fades after its end + CAST_WAIT; old events (no Cast, no at): today's LATE_MAX
 --   client_feel_tempo_callout  the Special's name callout lives 1.6 s
 --   client_feel_tempo_low      Graphics Low: the same beats, no afterglow, the freeze kept
+-- RealCast ships OFF (sleep mode, the sim gate): every scenario here runs with the real cast turned on (guarded below).
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
-local guarded = SmokeCommon.guarded
 local CONTEXT = (ARGS and ARGS.context) or "server"
+
+-- (review fix) Config.Battle.Feel.Special.RealCast ships OFF (sleep mode: the balance sim's gate), so every scenario here
+-- turns the real cast on for its own run (BattleCatalog.Damage.SpecialCast = Config's Cast seconds per kind) and puts the
+-- shipped value back after; the scenarios that pin the off path still set SpecialCast = nil inside
+local function sharedModule(name)
+	local inst = nil
+	if CONTEXT == "server" then
+		inst = _G.K and _G.K.moduleInstance("shared/" .. name)
+	else
+		local ok, i = pcall(Mock.GetPath, ROOTS.shared .. "/" .. name)
+		inst = ok and i or nil
+	end
+	if not inst then
+		return nil
+	end
+	local ok, m = pcall(require, inst)
+	return ok and type(m) == "table" and m or nil
+end
+
+local function guarded(name, fn)
+	return SmokeCommon.guarded(name, function(...)
+		local BC = sharedModule("BattleCatalog")
+		local Config = sharedModule("Config")
+		local F = Config and Config.Battle and Config.Battle.Feel and Config.Battle.Feel.Special
+		local keep = BC and BC.Damage and BC.Damage.SpecialCast
+		if BC and BC.Damage and type(F) == "table" and type(F.Cast) == "table" then
+			local on = {}
+			for kind, s in pairs(F.Cast) do
+				on[kind] = s
+			end
+			BC.Damage.SpecialCast = on
+		end
+		local ok, err = pcall(fn, ...)
+		if BC and BC.Damage then
+			BC.Damage.SpecialCast = keep
+		end
+		if not ok then
+			error(err, 0)
+		end
+	end)
+end
 
 local abs, max, min, floor, huge = math.abs, math.max, math.min, math.floor, math.huge
 local fmt = string.format
@@ -177,7 +220,7 @@ local function serverScenarios()
 		local SC = BC.Damage.SpecialCast
 		if not T.check(type(SC) == "table" and near(SC.Blast, 0.9) and near(SC.Beam, 0.8) and near(SC.Storm, 0.95) and near(SC.Freeze, 0.7) and near(SC.Pounce, 0.6)
 			and near(SC.Heal, 0.55) and near(SC.Shield, 0.5) and near(SC.Rally, 0.55) and near(SC.Haste, 0.5),
-			"feel cast: BattleCatalog.Damage.SpecialCast = the spec's seconds per kind (Config.Battle.Feel.Special.Cast, RealCast on)") then
+			"feel cast: BattleCatalog.Damage.SpecialCast = the spec's seconds per kind (Config.Battle.Feel.Special.Cast, the real cast turned on for the scenario)") then
 			return
 		end
 		T.check(BS.Events.Cast == "Cast" and BS.Events.CastBreak == "CastBreak", "feel cast: BattleSim.Events has Cast and CastBreak")
@@ -439,6 +482,100 @@ local function serverScenarios()
 		T.check(seen.Cast == 4 and seen.Special == 3 and seen.CastBreak == 1 and #junk == 0,
 			fmt("feel cast wire: Cast (%d) / Special (%d) / CastBreak (%d): numbers and strings only (lists of ids aside), at in 0.1 steps", seen.Cast, seen.Special, seen.CastBreak),
 			table.concat(junk, ", "))
+	end)
+
+	-- tools/sim_battle.lua as a library (its scripted player, SIM.Player)
+	local SIMLIB = nil
+	local function simLib()
+		if SIMLIB then
+			return SIMLIB
+		end
+		local src = nil
+		for _, candidate in ipairs({ "tools/sim_battle.lua", "sim_battle.lua", "../tools/sim_battle.lua" }) do
+			local fh = io.open(candidate, "r")
+			if fh then
+				src = fh:read("*a")
+				fh:close()
+				break
+			end
+		end
+		if not src then
+			return nil
+		end
+		_G.SIM_BATTLE_LIBRARY = true
+		local chunk = (loadstring or load)(src, "=tools/sim_battle.lua")
+		local ok, lib = false, nil
+		if chunk then
+			ok, lib = pcall(chunk)
+		end
+		_G.SIM_BATTLE_LIBRARY = nil
+		if not ok or type(lib) ~= "table" then
+			return nil
+		end
+		lib.print = function() end
+		SIMLIB = lib
+		return lib
+	end
+
+	-- (review fix) the balance sim's scripted player reads the real cast's tell like a wind-up: an enemy Cast aimed at its
+	-- fighter (the target, or its spot inside the kind's area) -> a Dash press just before `at` (opts.dodge, opts.mistime);
+	-- a support cast, a cast aimed elsewhere, or my own side's cast -> no press. End to end: an NPC Blast at a dodging
+	-- player's fighter is a miss
+	S.feel_cast_simdodge = guarded("feel_cast_simdodge", function()
+		local BC, BS, PC = load("feel cast simdodge")
+		if not BC then
+			return
+		end
+		local SIM = simLib()
+		if not T.check(SIM ~= nil and type(SIM.Player) == "table" and type(SIM.Player.new) == "function", "feel cast simdodge: sim_battle.lua's SIM.Player loads") then
+			return
+		end
+		withDelay(BC, function()
+			-- unit level: synthetic Cast events into a fresh player's step
+			local function pressFor(ev)
+				local b, f, npc = npcBlast(BS, PC, BC)
+				local p = SIM.Player.new(b, 1, 5, { dodge = 1, mistime = 0, specials = false, element = false, buffs = false, attack = false, cheer = false, swap = false })
+				local t = b:Time()
+				ev.unit = ev.unit or npc.id
+				ev.at = t + 0.9
+				ev.type = "Cast"
+				p:step({ ev }, b:Snapshot())
+				return p.dashAt, t + 0.9, f, npc
+			end
+			local b0, f0, n0 = npcBlast(BS, PC, BC)
+			local fid = f0.id
+			local at1, due1 = pressFor({ kind = "Blast", target = fid, tx = 0, tz = 0 })
+			T.check(at1 ~= nil and at1 >= due1 - 0.2 - 1e-6 and at1 <= due1 - 0.05 + 1e-6,
+				fmt("feel cast simdodge: an enemy Blast cast at my fighter: a Dash press 0.05-0.2 s before at (press %s, at %.2f)", tostring(at1), due1))
+			local at2 = pressFor({ kind = "Blast", target = n0.id, tx = 40, tz = 40 })
+			T.check(at2 == nil, fmt("feel cast simdodge: a Blast aimed 40+ studs away: no press (%s)", tostring(at2)))
+			local at3 = pressFor({ kind = "Heal" })
+			T.check(at3 == nil, fmt("feel cast simdodge: an enemy Heal (support) cast: no press (%s)", tostring(at3)))
+			local at4 = pressFor({ kind = "Blast", unit = fid, target = n0.id, tx = 0, tz = 12 })
+			T.check(at4 == nil, fmt("feel cast simdodge: my own fighter's cast: no press (%s)", tostring(at4)))
+			local at5 = pressFor({ kind = "Storm", target = 999, tx = 3, tz = 2 })
+			T.check(at5 ~= nil, "feel cast simdodge: an enemy Storm aimed at a spot whose area covers my fighter: a press")
+			-- end to end: the dodging player vs the NPC's real cast
+			local b, f, npc = npcBlast(BS, PC, BC)
+			local p = SIM.Player.new(b, 1, 9, { dodge = 1, mistime = 0, specials = false, element = false, buffs = false, attack = false, cheer = false, swap = false })
+			local cast, blast = nil, nil
+			for _ = 1, 60 do
+				f.meter = 0
+				if not cast then
+					npc.meter = 100
+				end
+				local evs = b:Step(0.1)
+				cast = cast or findEvent(evs, "Cast", function(ev) return ev.unit == npc.id end)
+				blast = blast or findEvent(evs, "Hit", function(ev) return ev.to == f.id and ev.special == "Blast" end)
+				p:step(evs, b:Snapshot())
+				if blast then
+					break
+				end
+			end
+			T.check(cast ~= nil and blast ~= nil and blast.miss == true and p.dodges >= 1,
+				fmt("feel cast simdodge: end to end: the dodging scripted player dashes the NPC's Blast cast: a miss (cast %s, miss %s, dodges %d)",
+					tostring(cast ~= nil), tostring(blast and blast.miss), p.dodges))
+		end)
 	end)
 
 	S.feel_cast_determinism = guarded("feel_cast_determinism", function()

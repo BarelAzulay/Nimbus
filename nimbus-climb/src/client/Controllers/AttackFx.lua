@@ -802,6 +802,44 @@ local function bigBody(side)
 	return aimInfo(m).Big
 end
 
+-- (review fix) a big body's box top (world Y) and its flat half-width, from the aim cache placed on its pivot this frame
+-- (side.CF, set by aimOf); the last known top once the model is gone; nil for a pet (the "Above" anchor as before)
+local function topOf(side)
+	if not centreAim() then
+		return nil, nil
+	end
+	local m = side.Model
+	if m and m.Parent and side.CF then
+		local c = aimInfo(m)
+		if c.Big and c.Box and c.Size then
+			local b = side.CF * c.Box
+			local sz = c.Size
+			side.Top = b.Position.Y + 0.5 * (abs(b.RightVector.Y) * sz.X + abs(b.UpVector.Y) * sz.Y + abs(b.LookVector.Y) * sz.Z)
+			side.TopR = 0.5 * max(sz.X, sz.Z)
+		end
+	end
+	return side.Top, side.TopR
+end
+
+-- the point an "Above" piece hangs over: the hit point, lifted to the box top when it is on a big body (the Storm cloud,
+-- its rain, the crescent and the black sun sat inside a boss's upper body over its centre); -> the point, lifted?
+-- (worked out once per frame in refresh: eff.Over / eff.Lifted; the rain pieces read it, no Vector3 per piece)
+local function liftOf(eff)
+	local h = eff.Hit
+	local top = eff.TopY
+	if top and top > h.Y and eff.T[1] then
+		local d = V3(h.X - eff.T[1].X, 0, h.Z - eff.T[1].Z).Magnitude
+		if d <= (eff.TopR or 0) + 4 then
+			return V3(h.X, top, h.Z), true
+		end
+	end
+	return h, false
+end
+
+local function overOf(eff)
+	return eff.Over or eff.Hit, eff.Lifted == true
+end
+
 -- the floor under an effect's point: eff.FloorY (ctx.Ground, refined by one raycast under the target at the Play), never
 -- the hit point minus the caster's drop (a boss's feet root sank the rings under the floor)
 local function groundOf(eff, p)
@@ -914,6 +952,10 @@ local function refresh(eff)
 			eff.T[i] = p
 		end
 	end
+	local side1 = eff.Targets[1]
+	if side1 then
+		eff.TopY, eff.TopR = topOf(side1)
+	end
 	local first = eff.T[1]
 	if first and not eff.Area and not eff.AimFixed then
 		local d = flat(first - eff.S)
@@ -924,6 +966,7 @@ local function refresh(eff)
 	eff.Right = eff.Dir:Cross(UP)
 	eff.Mouth = eff.S + eff.Dir * (K.MOUTH * eff.Size) + UP * 0.25
 	eff.Hit = hitOf(eff)
+	eff.Over, eff.Lifted = liftOf(eff)
 end
 
 -- fills `out` with the world points of an anchor; returns how many
@@ -936,7 +979,7 @@ local function atPoints(eff, at, out)
 	elseif at == "Ground" then
 		out[1] = groundOf(eff, eff.Hit)
 	elseif at == "Above" then
-		out[1] = eff.Hit + UP * (K.ABOVE * eff.Size)
+		out[1] = overOf(eff) + UP * (K.ABOVE * eff.Size)
 	elseif at == "Behind" then
 		out[1] = eff.S - eff.Dir * (K.BEHIND * eff.Size) + UP * 0.5
 	elseif at == "Self" then
@@ -971,7 +1014,7 @@ local function anchorPoint(eff, it)
 	elseif a == "Source" then
 		p = eff.Mouth
 	elseif a == "Above" then
-		p = eff.Hit + UP * (K.ABOVE * eff.Size)
+		p = overOf(eff) + UP * (K.ABOVE * eff.Size)
 	elseif a == "Behind" then
 		p = eff.S - eff.Dir * (K.BEHIND * eff.Size)
 	elseif type(a) == "number" then
@@ -1252,6 +1295,10 @@ MOVE.Fall = function(eff, it, t)
 	local land = groundOf(eff, base + eff.Right * it.OffR + eff.Dir * it.OffD) + UP * 0.3
 	-- (Studio findings round) out of the low cloud (eff.CloudLift: its Height over the hit point) when it has one
 	local top = land + UP * (eff.CloudLift and (eff.Drop + eff.CloudLift + 0.3) or (K.ABOVE * eff.Size + 2))
+	local over, lifted = overOf(eff)
+	if lifted then -- (review fix) over a big body the cloud hangs over its box top: the rain starts there
+		top = V3(top.X, over.Y + (eff.CloudLift and (eff.CloudLift + 0.3) or (K.ABOVE * eff.Size + 2)), top.Z)
+	end
 	local u = seg(t, it.TR, it.TR + it.Drop)
 	local fade = seg(t, it.TR + it.Drop, it.TR + it.Drop + 0.15)
 	if fade >= 1 then
@@ -1422,7 +1469,7 @@ MOVE.Actor = function(eff, it, t)
 		return face(p, out) * CFrame.Angles(t * 5, 0, t * 3), ONE * outBack(seg(u, 0, 0.12)), fadeTo(it, fade)
 	elseif m == "Eclipse" then
 		local spin = CFrame.Angles(0, 0, t * 1.4)
-		local hang = face(eff.Hit + UP * (4.2 * eff.Size), -eff.Dir) * spin
+		local hang = face(overOf(eff) + UP * (4.2 * eff.Size), -eff.Dir) * spin
 		if t < T.Impact then
 			return hang, ONE * (outBack(seg(t, it.T0, it.T0 + 0.35)) * (1 + 0.04 * sin(t * 9))), fadeTo(it, 0)
 		end
@@ -1530,7 +1577,7 @@ MOVE.Actor = function(eff, it, t)
 		if eff.CloudTop then
 			lift = eff.CloudTop + K.MOON_GAP + 0.5 * it.Base.Z * it.S
 		end
-		local p = eff.Hit + UP * (lift - 2 * (1 - outCubic(seg(t, it.T0, it.T0 + 0.5)))) + eff.Dir * (K.MOON_BACK * eff.Size)
+		local p = overOf(eff) + UP * (lift - 2 * (1 - outCubic(seg(t, it.T0, it.T0 + 0.5)))) + eff.Dir * (K.MOON_BACK * eff.Size)
 		return face(p, -eff.Dir) * CFrame.Angles(0, 0, 0.15 * sin(t * 1.6)) * CFrame.Angles(pi / 2, 0, 0), ONE * outBack(seg(t, it.T0, it.T0 + 0.3)), fadeTo(it, fade)
 	end
 	local p = anchorPoint(eff, it) - UP * (3 * (1 - outCubic(seg(t, it.T0, it.T0 + 0.5))))
@@ -3993,10 +4040,12 @@ local function dash(unit, src, tgt, landAt, now, opts)
 	end
 	local s = { Model = (typeof(src.Model) == "Instance") and src.Model or nil, Pos = (typeof(src.Pos) == "Vector3") and src.Pos or nil }
 	local edge, fwd = nil, 0
+	local t0 = max(now, land - feelNum(M.In, 0.3))
 	if state == "back" then
-		-- caught on the way home: the run starts from where the hop back has got to
+		-- caught on the way home: the run starts from where the hop back has got to when the run starts (t0; the old
+		-- DashBack plays on until then: review fix, sampled at `now` the DashIn snapped forward by the hop's last 0.15 s)
 		edge = d.Reach
-		local p = clamp01((now - d.BackAt) / d.BackDur)
+		local p = clamp01((t0 - d.BackAt) / d.BackDur)
 		local PP = dep("PetPoses")
 		local smp = nil
 		if PP and type(PP.Sample) == "function" then
@@ -4021,7 +4070,6 @@ local function dash(unit, src, tgt, landAt, now, opts)
 		end
 		edge = min(K.DASH_MAX, world) / scale
 	end
-	local t0 = max(now, land - feelNum(M.In, 0.3))
 	local run = max(0.05, land - t0)
 	local segIn = { Name = "DashIn", T0 = t0, Dur = run / K.DASH_RUN, Reach = edge - fwd, Forward = fwd, Until = bk, StopAt = land, StopDur = AttackFx.HIT_STOP }
 	local segBack = { Name = "DashBack", T0 = bk, Dur = backDur, Reach = edge }

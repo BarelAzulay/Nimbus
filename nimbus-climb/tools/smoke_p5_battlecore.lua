@@ -559,7 +559,10 @@ S.p5sim_fighter = guarded("p5sim_fighter", function()
 		ok7 = b4:Command(1, "Special")
 		local evs7 = b4:Step(0.1)
 		-- (battle-feel T3: the real server cast) Casting from the press, its meter full, until the heal lands at the cast's end
-		local castingFirst = f4.state == BS.States.Casting and f4.meter >= 100 - 1e-6
+		-- (review round 1: RealCast ships off) on the instant path the heal lands in the press's step and the caster is Casting
+		-- its CastSeconds with the meter spent; the meter-full check is the real cast's only
+		local realCast = findEvent(evs7, "Cast") ~= nil
+		local castingFirst = f4.state == BS.States.Casting and (not realCast or f4.meter >= 100 - 1e-6)
 		evs7 = SmokeCommon.pastCast(b4, evs7, f4.id, 0.1)
 		local sp = findEvent(evs7, "Special")
 		T.check(ok7 and sp and sp.kind == "Heal" and f4.hp > f4.maxHp * 0.3 and bench4.hp > bench4.maxHp * 0.3 and #sp.heals == 2 and sp.heals[1][1] == f4.id and sp.heals[2][1] == bench4.id and f4.meter < 100 and castingFirst, "a fighter's Heal special heals the fighter AND its benched pets (dungeon fixes 7; Casting through its cast)", sp and sp.heals and #sp.heals)

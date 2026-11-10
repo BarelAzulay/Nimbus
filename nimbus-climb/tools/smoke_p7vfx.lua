@@ -726,9 +726,16 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 
 	-- travel by distance: 60 studs/s for the Blast orb; a basic ranged shot flies at RangedSpeed (34) and never less
 	-- than MinTravel (0.24 s: player note 1, the shot is seen crossing the gap), capped; impact = Charge + Release + Travel
+	-- (battle-feel T3, review round 1) Config.Battle.Feel.Special.Weighty: the specials' charge capped at ChargeMax (1.1), their
+	-- travel at Speed (0.7) capped at TravelMax, their Impact = Feel Impact (0.25); Weighty = false = the brief's numbers
+	local FS = Config.Battle and Config.Battle.Feel and Config.Battle.Feel.Special
+	local weighty = type(FS) == "table" and FS.Weighty == true
+	local spSpeed = weighty and FS.Speed or 1
+	local spCmax = weighty and FS.ChargeMax or 0.8
+	local spImpact = weighty and FS.Impact or 0.15
 	local blastNear = C.Resolve({ Element = "Flame", Attack = "Special", Kind = "Blast", Rarity = "Rare", Distance = 6 })
-	T.check(blastNear and math.abs(blastNear.Beats.Travel - 0.1) < 1e-6 and blastNear.Beats.MinTravel == nil,
-		"p7vfx catalog: the Blast orb's Travel = distance / 60 studs/s (no MinTravel)", blastNear and fmt("%.3f", blastNear.Beats.Travel))
+	T.check(blastNear and math.abs(blastNear.Beats.Travel - 0.1 / spSpeed) < 1e-6 and blastNear.Beats.MinTravel == nil,
+		"p7vfx catalog: the Blast orb's Travel = distance / 60 studs/s (/ the Weighty Speed) (no MinTravel)", blastNear and fmt("%.3f", blastNear.Beats.Travel))
 	local near = C.Resolve({ Element = "Flame", Attack = "Ranged", Rarity = "Rare", Distance = 6 })
 	local mid = C.Resolve({ Element = "Flame", Attack = "Ranged", Rarity = "Rare", Distance = 12 })
 	local far = C.Resolve({ Element = "Flame", Attack = "Ranged", Rarity = "Rare", Distance = 600 })
@@ -744,16 +751,17 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 		"p7vfx catalog: ImpactAt = Charge + Release + Travel")
 
 	-- beat ranges of the brief: Charge 0.12-0.3 (specials up to 0.8), Release 0.05, Impact 0.15, Linger 0.4-1.0
-	local ranges = T.tally("p7vfx catalog: attack beats in range (Charge 0.12-0.3 / specials <= 0.8, Release 0.05, Impact 0.15, Linger 0.4-1.0)")
+	local ranges = T.tally("p7vfx catalog: attack beats in range (Charge 0.12-0.3 / specials <= 0.8 (Weighty: ChargeMax), Release 0.05, Impact 0.15 (Weighty specials: Feel Impact), Linger 0.4-1.0)")
 	for _, element in ipairs(elements) do
 		for _, v in ipairs(variants()) do
 			if v.Attack ~= "Hurt" and v.Attack ~= "Ko" and v.Attack ~= "Victory" and v.Attack ~= "ShieldHit" then
 				for _, rarity in ipairs(RARITIES) do
 					local r = C.Resolve({ Element = element, Attack = v.Attack, Kind = v.Kind, Shape = v.Shape, Rarity = rarity, Mine = true })
 					local b = r and r.Beats or {}
-					local cmax = (v.Attack == "Special") and 0.8 or 0.3
+					local cmax = (v.Attack == "Special") and spCmax or 0.3
+					local imp = (v.Attack == "Special") and spImpact or 0.15
 					ranges:case(r ~= nil and b.Charge >= 0.12 - 1e-9 and b.Charge <= cmax + 1e-9 and math.abs(b.Release - 0.05) < 1e-9
-						and math.abs(b.Impact - 0.15) < 1e-9 and b.Linger >= 0.4 - 1e-9 and b.Linger <= 1.0 + 1e-9,
+						and math.abs(b.Impact - imp) < 1e-9 and b.Linger >= 0.4 - 1e-9 and b.Linger <= 1.0 + 1e-9,
 						fmt("%s %s %s: C %.2f R %.2f I %.2f L %.2f", element, v.label, rarity, b.Charge or -1, b.Release or -1, b.Impact or -1, b.Linger or -1))
 				end
 			end

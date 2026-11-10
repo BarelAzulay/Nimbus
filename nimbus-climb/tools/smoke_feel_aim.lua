@@ -11,6 +11,8 @@
 --                           Reach is AttackFx.LeapReach as before
 --   client_feel_aim_bite    a Melee bite on a boss lands on AttackFx.BitePoint: the boss's near edge on the flat line at the
 --                           caster's height (closer than the pivot); Mode "Pivot" = today's pivot
+--   client_feel_aim_above   (review fix) the Storm cloud and its rain over a boss hang over its box TOP (Height over it), over a
+--                           pet over the hit point as before
 -- Deterministic: a fake clock (Update(now) / ctx.Now), a fake MeshLibrary (every vfx_* core ready). Plain Lua 5.1 syntax.
 
 local T = SmokeCommon.T
@@ -463,6 +465,57 @@ S.client_feel_aim_bite = guarded("client_feel_aim_bite", function()
 	end)
 	env.done()
 	T.check(ok, "feel aim bite: no error", tostring(err))
+end)
+
+----------------------------------------------------------------------
+-- (review fix) the "Above" anchor over a big body: the Storm cloud and its rain sit over the boss's box TOP, not over its
+-- centre inside the upper body; over a pet the cloud keeps its Height over the hit point as before
+S.client_feel_aim_above = guarded("client_feel_aim_above", function()
+	local env = setup("above")
+	if not env then
+		return
+	end
+	local AF = env.AF
+	local ok, err = pcall(function()
+		local pet = unitModel(env.holder, "Pet", V3(0, G + 1.5, 0))
+		local boss = env.boss(V3(0, G, -24))
+		local cf, size = boss:GetBoundingBox()
+		local top = cf.Position.Y + 0.5 * (abs(cf.RightVector.Y) * size.X + abs(cf.UpVector.Y) * size.Y + abs(cf.LookVector.Y) * size.Z)
+		local function cloudOf(target)
+			AF.ClearAll()
+			T.check(AF.Play(env.ctx({ Attack = "Special", Kind = "Storm", Element = "Storm", Rarity = "Legendary", From = { Unit = 1, Model = pet }, To = { Unit = 2, Model = target } })), "feel above: a Storm special plays")
+			local eff = env.newest()
+			env.run(math.max(0.1, eff.Start + eff.Times.Travel + 0.1 - env.clock))
+			local clouds = itemsBy(eff, layerId("Cloud"))
+			local cloud = clouds[1] and clouds[1].Kit.Root.Position or nil
+			-- the rain: an emitter at the cloud, or falling pieces (MOVE.Fall): the highest drawn piece over 0.5 s
+			local rain = nil
+			for _ = 1, 15 do
+				for _, it in ipairs(itemsBy(eff, function(i)
+					return (type(i.Layer) == "table" and i.Layer.Id == "Rain") or (i.TR ~= nil and i.OffR ~= nil and i.Drop == 0.3) -- (MOVE.Fall pieces)
+				end)) do
+					local root = it.Kit.Root
+					if root and root:IsA("BasePart") and root.Transparency < 0.99 and (not rain or root.Position.Y > rain.Y) then
+						rain = root.Position
+					end
+				end
+				env.run(1 / 30)
+			end
+			return cloud, eff, rain
+		end
+		local c, eff, rain = cloudOf(boss)
+		T.info("feel above: the boss", fmt("box top Y %.2f, Hit Y %s, cloud %s, rain %s", top, tostring(eff and eff.Hit and eff.Hit.Y), tostring(c), tostring(rain)))
+		T.check(c ~= nil and eff ~= nil and eff.CloudLift ~= nil and c.Y > top + 1 and abs(c.Y - (top + eff.CloudLift)) < 0.6,
+			fmt("feel above: over a boss the Storm cloud sits its Height (%s) over the box top (cloud Y %s, top %.2f)", tostring(eff and eff.CloudLift), tostring(c and c.Y), top))
+		T.check(rain ~= nil and rain.Y > top + 1, fmt("feel above: ... and the rain starts from it, over the top (rain Y %s)", tostring(rain and rain.Y)))
+		-- over a pet: the Height over the hit point, as before
+		local foe = unitModel(env.holder, "Foe", V3(0, G + 1.5, -12))
+		local c2, e2 = cloudOf(foe)
+		T.check(c2 ~= nil and e2 ~= nil and e2.CloudLift ~= nil and abs(c2.Y - (e2.Hit.Y + e2.CloudLift)) < 0.6,
+			fmt("feel above: over a pet the cloud keeps its Height over the hit point (cloud Y %s, want %.2f)", tostring(c2 and c2.Y), (e2 and e2.Hit.Y or 0) + (e2 and e2.CloudLift or 0)))
+	end)
+	env.done()
+	T.check(ok, "feel aim above: no error", tostring(err))
 end)
 
 return S

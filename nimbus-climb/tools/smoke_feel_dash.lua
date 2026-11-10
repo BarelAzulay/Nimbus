@@ -18,7 +18,10 @@
 --                            false: no dash, today's Strike, the number at the event
 --   client_feel_dash_flurry  attacks 0.64 s apart stay in and bite in place (Strike Reach = Lunge on Forward = the edge), DashBack
 --                            0.75 s after the last landing; attacks 1.1 s apart make a full round trip each time
---   client_feel_dash_off     a gap under MinGap 3: no dash (false); Melee.Dash = false: false; Low graphics: the dash runs, no streak
+--   client_feel_dash_off     a gap under MinGap (1.5): no dash (false); Melee.Dash = false: false; Low graphics: the dash runs, no streak
+--   client_feel_dash_rejoin  (review fix) a dash caught on the hop back with its run starting later: the DashIn starts where the hop is AT t0
+--   client_feel_dash_gap     (review fix) at the shipped Standoff 0 a melee pet at the server's rest spot dashes at every raid boss with
+--                            room in its box (the Shadow Hydra's box reaches past it: today's Strike) and at a pet
 --   client_feel_dash_budget  eight melee pets dash at a boss in one frame: 4 streaks at most (mine kept), no new Instance between two
 --                            Updates mid-dash, every kit back in its pool (keep size) after
 -- Plain Lua 5.1 syntax only.
@@ -484,11 +487,11 @@ local function clientScenarios()
 		end
 		local AF, M = env.AF, env.M
 		local ok, err = pcall(function()
-			-- a pet already at the edge (gap 1.2 < MinGap 3): no dash
+			-- a pet already at the edge (gap 1.2 < MinGap 1.5): no dash
 			local a = unitModel(env.holder, "Near", V3(0, G + 1.5, 0))
 			local b = unitModel(env.holder, "NearT", V3(0, G + 1.5, -3.5))
 			local r = AF.Dash(1, { Unit = 1, Model = a, Pos = V3(0, G + 1.5, 0) }, { Unit = 2, Model = b, Pos = V3(0, G + 1.5, -3.5) }, env.clock + 0.45, env.clock, {})
-			T.check(r == false and AF.Pose(1) == nil and AF.DashState(1) == "out", "feel dash off: a gap under MinGap 3 studs: Dash returns false (today's Strike), no pose")
+			T.check(r == false and AF.Pose(1) == nil and AF.DashState(1) == "out", "feel dash off: a gap under MinGap 1.5 studs: Dash returns false (today's Strike), no pose")
 			-- Melee.Dash = false: false
 			local src, tgt = pair(env, 20, 3)
 			M.Dash = false
@@ -521,6 +524,123 @@ local function clientScenarios()
 		end)
 		env.done()
 		T.check(ok, "feel dash off: no error", tostring(err))
+	end)
+
+	----------------------------------------------------------------------------------------------
+	-- (review fix) a Dash caught on the hop back whose run starts later (t0 = land - In > now): the DashIn starts where the
+	-- hop has got to AT t0 (the old DashBack plays on until then), not where it was at the call: no forward snap
+	S.client_feel_dash_rejoin = guarded("client_feel_dash_rejoin", function()
+		local env = setup("rejoin")
+		if not env then
+			return
+		end
+		local AF, M, PP = env.AF, env.M, env.PP
+		local ok, err = pcall(function()
+			local unit = 5
+			local src, tgt = pair(env, 40, unit)
+			local land1 = env.clock + 0.45
+			T.check(AF.Dash(unit, src, tgt, land1, env.clock, { Tempo = 0.9 }) == true, "feel dash rejoin: the first dash is taken")
+			local _, d1 = AF.DashState(unit)
+			if not T.check(type(d1) == "table" and type(d1.BackAt) == "number", "feel dash rejoin: (setup) the dash record") then
+				return
+			end
+			local backAt, backDur, edge = d1.BackAt, d1.BackDur, d1.Reach
+			env.runTo(backAt + 0.05)
+			T.check(AF.DashState(unit) == "back", fmt("feel dash rejoin: (setup) on the hop back (%s)", AF.DashState(unit)))
+			-- an NPC Windup lands 0.45 s ahead: the run starts at land - In = now + 0.15
+			local now = env.clock
+			local land2 = now + 0.45
+			local t0 = land2 - M.In
+			T.check(AF.Dash(unit, src, tgt, land2, now, { Tempo = 0.9 }) == true, "feel dash rejoin: the dash caught on the hop back is taken")
+			local p0 = math.max(0, math.min(1, (t0 - backAt) / backDur))
+			local smp = PP.Sample("DashBack", p0, false, 1, edge)
+			local want = -smp.Body.Position.Z
+			local prevFwd, first = env.fwd(unit), nil
+			env.runTo(t0 + 0.2, function()
+				local pose = AF.Pose(unit)
+				if not first and pose and pose.Name == "DashIn" then
+					first = { Forward = pose.Forward or 0, Prev = prevFwd, Fwd = env.fwd(unit) }
+				end
+				prevFwd = env.fwd(unit)
+			end)
+			if not T.check(first ~= nil, "feel dash rejoin: the DashIn starts") then
+				return
+			end
+			T.check(abs(first.Forward - want) < 0.05,
+				fmt("feel dash rejoin: the DashIn starts where the hop back is at its run's start t0 (Forward %.2f, the hop at t0 %.2f)", first.Forward, want))
+			T.check(first.Fwd - first.Prev < 1.5,
+				fmt("feel dash rejoin: no forward snap from the last hop-back frame to the first DashIn frame (%.2f -> %.2f)", first.Prev, first.Fwd))
+		end)
+		env.done()
+		T.check(ok, "feel dash rejoin: no error", tostring(err))
+	end)
+
+	----------------------------------------------------------------------------------------------
+	-- (review fix) at the shipped knob (Standoff 0) a melee pet rests where the server orbits it: reach - 0.5 from the
+	-- target's centre. The dash + hop back must still play there: vs a raid boss and vs a pet (MinGap under those gaps)
+	S.client_feel_dash_gap = guarded("client_feel_dash_gap", function()
+		local env = setup("gap")
+		if not env then
+			return
+		end
+		local AF = env.AF
+		local BCat = moduleAt(ROOTS.shared .. "/BattleCatalog")
+		local PC = moduleAt(ROOTS.shared .. "/PetCatalog")
+		local PB = moduleAt(ROOTS.shared .. "/PetBuilder")
+		local ok, err = pcall(function()
+			if not T.check(BCat ~= nil and PC ~= nil and PB ~= nil and env.BB ~= nil, "feel dash gap: (setup) BattleCatalog, PetCatalog, PetBuilder, BossBuilder load") then
+				return
+			end
+			local so = tonumber(BCat.Damage.Standoff) or 0
+			local def = PC.Get("storm_tabby")
+			local st = BCat.UnitStats(def, 20)
+			local range = st and st.Range
+			if not T.check(type(range) == "number" and not st.Ranged, fmt("feel dash gap: (setup) storm_tabby is melee, range %s", tostring(range))) then
+				return
+			end
+			local function restDash(unit, targetModel, targetRadius, z0, x)
+				local m = PB.Build(def, { Detail = "Low", Scale = 1.3 }) -- (BattleController K.PET_SCALE: battle pets are drawn x1.3)
+				m.Parent = env.holder
+				local d = range + targetRadius + so - 0.5 -- the server's rest spot (BattleSim's orbit / harness stop)
+				local pos = V3(x, G + 1.5, z0 + d)
+				m:PivotTo(CFrame.lookAt(pos, V3(x, G + 1.5, z0)))
+				local tp = targetModel:GetPivot().Position
+				local r = AF.Dash(unit, { Unit = unit, Model = m, Pos = pos }, { Unit = unit + 1000, Model = targetModel, Pos = tp }, env.clock + 0.45, env.clock, {})
+				local gap = AF.LeapReach({ Model = m, Last = pos }, { Model = targetModel, Last = tp })
+				return r, d, gap
+			end
+			local ids = {}
+			for id in pairs(BCat.Bosses) do
+				ids[#ids + 1] = id
+			end
+			table.sort(ids)
+			local missed, gaps, unit = {}, {}, 1
+			for i, id in ipairs(ids) do
+				local boss = env.BB.Build(id, { Detail = "Low", CFrame = CFrame.new(i * 120, G, -30) })
+				if boss then
+					boss.Parent = env.holder
+					local rb, db, gb = restDash(unit, boss, BCat.Bosses[id].Radius, -30, i * 120)
+					gaps[#gaps + 1] = fmt("%s %.1f off, gap %.2f pose studs, dash %s", id, db, gb or -1, tostring(rb))
+					-- (a box that reaches past the rest spot, the Shadow Hydra's spread necks: no room, today's Strike)
+					if rb ~= true and (gb or 0) > 0 then
+						missed[#missed + 1] = id
+					end
+					unit = unit + 1
+				end
+			end
+			T.info("feel dash gap: the bosses", table.concat(gaps, "; "))
+			T.check(#ids >= 4 and #missed == 0, fmt("feel dash gap: at the shipped Standoff %s a melee pet at the server's rest spot dashes in and hops back vs every raid boss (%d bosses)", tostring(so), #ids),
+				table.concat(missed, ", "))
+			local bear = PB.Build(PC.Get("biscuit_bear"), { Detail = "Low", Scale = 1.3 })
+			bear.Parent = env.holder
+			bear:PivotTo(CFrame.new(60, G + 1.5, -30))
+			local bearR = BCat.UnitStats(PC.Get("biscuit_bear"), 18).Radius
+			local rp, dp, gp = restDash(100, bear, bearR, -30, 60)
+			T.check(rp == true, fmt("feel dash gap: ... and vs a pet (a bear, %.1f studs off its centre, gap %s)", dp, tostring(gp)))
+			T.check(type(env.M.MinGap) == "number" and env.M.MinGap >= 1, fmt("feel dash gap: MinGap stays at least 1 stud (no twitch dashes) (%s)", tostring(env.M.MinGap)))
+		end)
+		env.done()
+		T.check(ok, "feel dash gap: no error", tostring(err))
 	end)
 
 	----------------------------------------------------------------------------------------------

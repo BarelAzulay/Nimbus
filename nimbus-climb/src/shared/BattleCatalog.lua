@@ -1863,7 +1863,8 @@ BattleCatalog.Bosses = {
 		Element = "Storm",
 		Blurb = "A thunderhead given arms. Earth pets ground its lightning.",
 		HpFactor = 1,
-		HpTier = { Starter = 1.23, Mid = 0.94, High = 0.90, Max = 1.18 }, -- per fight tier, each fitted so 3 teams win about 40% (48 seeds); battle-feel T3 (the real cast, 2026-11-10, sleep mode, for the owner's OK): Mid 0.98 -> 0.94 (eight trained S7 teams took 248 s, 3 Mid teams won 19% of 48) and Max 1.22 -> 1.18 (8 Max teams 247 s, won 67%); Mid 1.03 -> 0.98:eight trained S7 teams took 246 s against the 240 s band; High 0.89 -> 0.90 with attack effects' reach: the top High solo won 17% against the 15% ceiling; Starter 1.24 -> 1.23: the forms build's Starter 3-team fights ran 243-244 s against the 240 s band (the owner's OK, 2026-11-02)
+		-- (battle-feel review, sleep mode) the T3 nudge (Mid 0.94, Max 1.18) is for Config.Battle.Feel.Special.RealCast = true only; RealCast ships off, so the fitted values stand (ledger, the morning questions)
+		HpTier = { Starter = 1.23, Mid = 0.98, High = 0.90, Max = 1.22 }, -- per fight tier, each fitted so 3 teams win about 40% (48 seeds); Mid 1.03 -> 0.98: eight trained S7 teams took 246 s against the 240 s band; High 0.89 -> 0.90 with attack effects' reach: the top High solo won 17% against the 15% ceiling; Starter 1.24 -> 1.23: the forms build's Starter 3-team fights ran 243-244 s against the 240 s band (the owner's OK, 2026-11-02)
 		Radius = 7,
 		Scale = 1,
 		Basic = { Name = "Zap", Interval = 2.4, Damage = 0.05, Range = 20 },

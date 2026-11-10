@@ -359,6 +359,45 @@ function Player:reaction()
 	return lo + (hi - lo) * self.rand()
 end
 
+-- (battle-feel review fix) does an enemy's Cast (BattleSim's real cast, Damage.SpecialCast) aim at my fighter? Its target,
+-- or its fixed spot (tx / tz) with my fighter inside the kind's area (BattleCatalog.Specials Radius; the Beam's line from
+-- the caster through the spot). Support casts (Heal / Shield / Rally / Haste) and my own side's never do
+local SUPPORT = {}
+for _, k in ipairs(BC.SupportKinds or {}) do
+	SUPPORT[k] = true
+end
+
+function Player:castCovers(ev, fid, me, myInfo, units)
+	local info = self.info[ev.unit]
+	if not info or info.side == self.side or SUPPORT[ev.kind] then
+		return false
+	end
+	if ev.target == fid then
+		return true
+	end
+	if type(ev.tx) ~= "number" or type(ev.tz) ~= "number" then
+		return false
+	end
+	local spec = BC.Specials[ev.kind] or {}
+	local r = myInfo.radius or 2
+	if ev.kind == "Beam" then
+		local c = units[ev.unit]
+		if not c then
+			return false
+		end
+		local dx, dz = ev.tx - c.x, ev.tz - c.z
+		local len = sqrt(dx * dx + dz * dz)
+		if len < 0.01 then
+			return false
+		end
+		return inShape({ shape = "Line", x = c.x, z = c.z, angle = math.atan2(dz, dx), length = spec.Length or 26, width = spec.Width or 4 }, me.x, me.z, r)
+	end
+	if type(spec.Radius) == "number" then
+		return inShape({ x = ev.tx, z = ev.tz, r = spec.Radius }, me.x, me.z, r)
+	end
+	return false
+end
+
 function Player:step(events, snapshot)
 	local b = self.battle
 	local t = b:Time()
@@ -399,6 +438,9 @@ function Player:step(events, snapshot)
 			at = ev.at
 			lethal = true
 		elseif ev.type == "Telegraph" and inShape(ev, me.x, me.z, myInfo.radius or 2) then
+			at = ev.at
+		elseif ev.type == "Cast" and type(ev.at) == "number" and self:castCovers(ev, fid, me, myInfo, units) then
+			-- (battle-feel review fix) the real cast's charge is a tell like a wind-up: dodged the same way
 			at = ev.at
 		elseif ev.type == "Parry" and ev.unit == fid then
 			self.parries = self.parries + 1
