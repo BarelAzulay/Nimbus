@@ -242,6 +242,16 @@ BattleCatalog.Damage = {
 	-- Config.Battle.Feel.Melee.Standoff (a number 0..20, Validate)
 	Standoff = (type(Config.Battle) == "table" and type(Config.Battle.Feel) == "table" and type(Config.Battle.Feel.Melee) == "table"
 		and tonumber(Config.Battle.Feel.Melee.Standoff)) or 0,
+	-- (feel-balance, plan docs/superpowers/plans/2026-11-10-feel-balance.md Task 1) the strike: a melee unit with a standoff
+	-- counts at its BITE POINT (its rest spot moved toward its target, at most Standoff, to where it would rest at 0) for the
+	-- dash the client draws: from biteAt - In x Out to biteAt + Bite + Hold + Back x Out, all the time while it flurries
+	-- (bites under FlurryBelow apart). Out = the share of the run in and of the hop back that counts as in. Every area test
+	-- and the boss's nearest pick use that point; single-target reach does not (DPS unchanged). Config.Battle.Feel.Melee
+	Strike = (function()
+		local M = type(Config.Battle) == "table" and type(Config.Battle.Feel) == "table" and type(Config.Battle.Feel.Melee) == "table"
+			and Config.Battle.Feel.Melee or {}
+		return { In = M.In or 0.30, Bite = M.Bite or 0.08, Hold = M.Hold or 0.12, Back = M.Back or 0.40, FlurryBelow = M.FlurryBelow or 0.75, Out = M.Out or 0.5 }
+	end)(),
 	-- (battle-feel T3, spec decision 6) the real cast: seconds a special's caster is Casting before its effects land, per
 	-- kind (Config.Battle.Feel.Special.Cast while RealCast; nil = today's instant special + CastSeconds). BattleSim sends
 	-- Cast { at } at the start, fires the special at `at` (a dash then dodges it), a stun cancels it (CastBreak, meter kept)
@@ -2573,6 +2583,31 @@ function BattleCatalog.Validate()
 	local so = BattleCatalog.Damage.Standoff
 	if not finite(so) or so < 0 or so > 20 then
 		bad("Damage.Standoff must be a number 0..20 studs")
+	end
+	-- (feel-balance) the strike window: In / Bite / Hold / Back 0..2 s, FlurryBelow 0..3 s, Out 0.25..1, and a window of at
+	-- least 0.3 s (three 10 Hz ticks: a shorter one could fall between two steps)
+	local st = BattleCatalog.Damage.Strike
+	if type(st) ~= "table" then
+		bad("Damage.Strike must be a table")
+	else
+		local okStrike = true
+		for _, key in ipairs({ "In", "Bite", "Hold", "Back" }) do
+			if not finite(st[key]) or st[key] < 0 or st[key] > 2 then
+				bad("Damage.Strike." .. key .. " must be a number 0..2 s")
+				okStrike = false
+			end
+		end
+		if not finite(st.FlurryBelow) or st.FlurryBelow < 0 or st.FlurryBelow > 3 then
+			bad("Damage.Strike.FlurryBelow must be a number 0..3 s")
+			okStrike = false
+		end
+		if not finite(st.Out) or st.Out < 0.25 or st.Out > 1 then
+			bad("Damage.Strike.Out must be a number 0.25..1")
+			okStrike = false
+		end
+		if okStrike and st.In * st.Out + st.Bite + st.Hold + st.Back * st.Out < 0.3 then
+			bad("Damage.Strike: In x Out + Bite + Hold + Back x Out must be at least 0.3 s (the 10 Hz tick)")
+		end
 	end
 	-- (battle-feel T3) the real cast seconds: nil (off), else a number 0.3..2 for every special kind
 	local sc = BattleCatalog.Damage.SpecialCast

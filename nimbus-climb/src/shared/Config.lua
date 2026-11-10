@@ -556,7 +556,7 @@ Config.Battle = {
 	-- server's damage lands at the press again. Turning it on needs the raid refit (the morning question in the ledger).
 	Feel = {
 		Melee = { Dash = true, Standoff = 0, In = 0.30, Bite = 0.08, Hold = 0.12, Back = 0.40, Hop = 0.5, Lunge = 0.6,
-			FlurryBelow = 0.75, MinGap = 1.5, Streak = true, StreakMax = 4 },
+			FlurryBelow = 0.75, MinGap = 1.5, Streak = true, StreakMax = 4, Out = 0.5 },
 		Aim = { Mode = "Centre", FloorRay = true },
 		Special = { Weighty = true, Tempo = 1.4, ChargeMax = 1.1, Speed = 0.7, TravelMax = 0.7, Impact = 0.25, HitStop = 0.08,
 			Afterglow = 1.5, Callout = 1.6, TravelHold = 0.3,

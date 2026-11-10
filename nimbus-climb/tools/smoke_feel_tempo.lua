@@ -578,6 +578,33 @@ local function serverScenarios()
 		end)
 	end)
 
+	-- (feel-balance Task 1) the scripted player sees its pet where it bites too: a telegraph over the snapshot's bite point
+	-- (bx, bz) and not over the rest spot draws a Dash press; the same telegraph with no bx in the snapshot draws none
+	S.feel_strike_simplayer = guarded("feel_strike_simplayer", function()
+		local BC, BS, PC = load("feel strike simplayer")
+		if not BC then
+			return
+		end
+		local SIM = simLib()
+		if not T.check(SIM ~= nil and type(SIM.Player) == "table", "feel strike simplayer: sim_battle.lua's SIM.Player loads") then
+			return
+		end
+		local function pressFor(withBody)
+			local b, f, npc = npcBlast(BS, PC, BC)
+			local p = SIM.Player.new(b, 1, 5, { dodge = 1, mistime = 0, specials = false, element = false, buffs = false, attack = false, cheer = false, swap = false })
+			local snap = b:Snapshot()
+			local me = snap.Units[f.id]
+			if withBody then
+				me.bx, me.bz = me.x, me.z + 8
+			end
+			local t = b:Time()
+			p:step({ { type = "Telegraph", id = 77, boss = npc.id, shape = "Circle", x = me.x, z = me.z + 9, r = 3, at = t + 2 } }, snap)
+			return p.dashAt
+		end
+		T.check(pressFor(true) ~= nil, "feel strike simplayer: a telegraph over my pet's bite point (bx, bz), not its rest spot: a Dash press")
+		T.check(pressFor(false) == nil, "feel strike simplayer: the same telegraph with no bite point in the snapshot: no press")
+	end)
+
 	S.feel_cast_determinism = guarded("feel_cast_determinism", function()
 		local BC, BS, PC = load("feel cast determinism")
 		if not BC then

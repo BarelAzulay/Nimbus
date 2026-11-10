@@ -281,6 +281,657 @@ local function serverScenarios()
 		T.check(#extra == 0 and BS.Events.Windup == "Windup", "feel standoff wire: the Windup event carries type / unit / target / at only", table.concat(extra, ", "))
 	end)
 
+	------------------------------------------------------------------------------------------------
+	-- (feel-balance, plan docs/superpowers/plans/2026-11-10-feel-balance.md Task 1) the body point: a melee unit with a
+	-- standoff counts at its bite point while it strikes (the dash the client draws), at its rest spot otherwise
+	------------------------------------------------------------------------------------------------
+	-- the body point (white-box: BattleSim keeps the offset from the rest spot in bdx / bdz while a window is open)
+	local function body(u)
+		if u.bdx then
+			return u.x + u.bdx, u.z + u.bdz, true
+		end
+		return u.x, u.z, false
+	end
+
+	-- a Raid on the real modules: `specs` = { { pets = { key... }, auto = bool }... }; the boss pinned (no attack, no
+	-- telegraph, no wave) unless `live`; -> b, boss, teams
+	local function raid(BS, bossId, tier, specs, seed, live)
+		local teams = {}
+		for i, spec in ipairs(specs) do
+			local pets = {}
+			for j, key in ipairs(spec.pets) do
+				pets[j] = { Key = key, Level = spec.level or 20, Slot = j }
+			end
+			teams[i] = { Owner = i, Side = 1, Pets = pets, Auto = spec.auto }
+		end
+		local b = BS.new({ Mode = "Raid", Boss = bossId, RaidTier = tier, Seed = seed or 7, Teams = teams })
+		if not b then
+			return nil
+		end
+		local boss = b.boss
+		boss.maxHp, boss.hp = 2e6, 2e6
+		if not live then
+			boss.nextAttack = huge
+			for _, e in ipairs(boss.attacks) do
+				e.nextAt = huge
+			end
+		end
+		local tms = {}
+		for i = 1, #specs do
+			tms[i] = b.teamByOwner[i]
+		end
+		return b, boss, tms
+	end
+
+	-- a standing fighter of a raid team at (x, z): it never walks (noEngage), swings at what is in reach
+	local function stand(tm, x, z)
+		local f = tm.fighter
+		f.x, f.z, f.px, f.pz = x, z, x, z
+		f.maxHp, f.hp = 1e9, 1e9
+		tm.wantX, tm.wantZ = x, z
+		tm.noEngage = true
+		tm.elementReadyAt = huge
+		return f
+	end
+
+	local function stepRaid(b, tms, seconds, onStep)
+		for _ = 1, floor(seconds / 0.1 + 0.5) do
+			for _, tm in ipairs(tms) do
+				local f = tm.fighter
+				f.meter = 0
+				tm.wantX, tm.wantZ = f.x, f.z
+			end
+			local evs = b:Step(0.1)
+			if onStep and onStep(evs, b:Time()) == true then
+				return true
+			end
+		end
+		return false
+	end
+
+	S.feel_strike_body = guarded("feel_strike_body", function()
+		local BC, BS = load("feel strike body")
+		if not BC then
+			return
+		end
+		local seen = {}
+		local windAt, rest, target = nil, nil, nil
+		withStandoff(BC, 8, function()
+			-- my standing ranged frog (no standoff of its own) widened to a radius-6 body; an NPC bear winds up at it
+			local b, tm, f, on = duel(BS, "puddle_frog", false, { "biscuit_bear" }, { { 0, 30 } })
+			f.radius = 6
+			local bear = on[1]
+			local d0 = bear.range + f.radius + 8 - 0.3
+			bear.x, bear.z, bear.px, bear.pz = 0, d0, 0, d0
+			bear.moveSpeed, bear.interval, bear.nextAttack = 0, 2.0, 0
+			target = f
+			run(b, tm, f, 1.6, false, function(evs, t)
+				for _, ev in ipairs(evs) do
+					if ev.type == "Windup" and ev.unit == bear.id and not windAt then
+						windAt = bear.windAt -- (the exact time: the event's `at` is rounded to 0.1)
+					end
+				end
+				local bx, bz, on2 = body(bear)
+				seen[#seen + 1] = { t = t, on = on2, nearer = dist(bear.x, bear.z, f.x, f.z) - dist(bx, bz, f.x, f.z), same = (bx == bear.x and bz == bear.z) }
+			end)
+			rest = bear
+		end)
+		if not T.check(windAt ~= nil and #seen > 0, "feel strike body: (setup) the bear winds up at my radius-6 fighter (Standoff 8)") then
+			return
+		end
+		local early, inside, after, bad = true, 0, true, {}
+		for _, s in ipairs(seen) do
+			if s.t <= windAt - 0.2 + 1e-6 then
+				early = early and s.same and not s.on
+			elseif s.t >= windAt - 0.15 - 1e-6 and s.t <= windAt + 0.40 + 1e-6 then
+				if s.on and abs(s.nearer - 8) <= 0.1 then
+					inside = inside + 1
+				else
+					bad[#bad + 1] = fmt("t %.2f on %s nearer %.2f", s.t, tostring(s.on), s.nearer)
+				end
+			elseif s.t >= windAt + 0.5 - 1e-6 and s.t <= windAt + 1.0 then
+				after = after and s.same and not s.on
+			end
+		end
+		T.check(early, fmt("feel strike body: 0.2 s before the wind-up lands (at %.2f) the body point is the rest spot", windAt))
+		T.check(inside >= 5 and #bad == 0, fmt("feel strike body: from at - 0.15 to at + 0.40 the body is 8.0 +- 0.1 studs nearer the target's centre (%d steps)", inside), table.concat(bad, "; "))
+		T.check(after, "feel strike body: from at + 0.5 the body point is the rest spot again")
+	end)
+
+	S.feel_strike_area = guarded("feel_strike_area", function()
+		local BC, BS = load("feel strike area")
+		if not BC then
+			return
+		end
+		local eruption = BC.Bosses.lava_golem.Attacks[2]
+		if not T.check(type(eruption) == "table" and eruption.Target == "Self" and eruption.Radius == 15, "feel strike area: (setup) the Lava Golem's Eruption is a Self circle of radius 15") then
+			return
+		end
+		local hitIn, hitOut, rangedHit, restD, ok = nil, nil, 0, nil, false
+		withStandoff(BC, 8, function()
+			local b, boss, tms = raid(BS, "lava_golem", "Max", { { pets = { "storm_tabby" } }, { pets = { "puddle_frog" } } })
+			if not b then
+				return
+			end
+			boss.x, boss.z, boss.px, boss.pz = 0, 0, 0, 0
+			local melee = tms[1].fighter
+			local ranged = tms[2].fighter
+			restD = melee.range + boss.radius + 8 - 0.5
+			stand(tms[1], 0, restD)
+			stand(tms[2], 21.7, 0)
+			ranged.nextAttack = huge
+			stepRaid(b, tms, 2, function()
+				melee.nextAttack = huge -- (no window during the warm-up: the wait below finds a window's first step)
+			end)
+			melee.nextAttack = 0
+			local nextId = 900
+			local function erupt()
+				nextId = nextId + 1
+				b.telegraphs[#b.telegraphs + 1] = { id = nextId, boss = boss, attack = eruption, at = b:Time() + 0.05, shape = "Circle", x = boss.x, z = boss.z, r = eruption.Radius }
+				local id = nextId
+				local n, nr = 0, 0
+				stepRaid(b, tms, 0.1, function(evs)
+					for _, ev in ipairs(evs) do
+						if ev.type == "Hit" and ev.tele == id and not ev.miss then
+							if ev.to == melee.id then
+								n = n + 1
+							elseif ev.to == ranged.id then
+								nr = nr + 1
+							end
+						end
+					end
+				end)
+				return n, nr
+			end
+			-- wait for a window (the melee pet's plain hit on the boss), then the eruption resolves inside it
+			local open = stepRaid(b, tms, 6, function()
+				return melee.bdx ~= nil
+			end)
+			if not open then
+				return
+			end
+			local nr1
+			hitIn, nr1 = erupt()
+			-- no more attacks: the window closes; 0.3 s after it the same eruption
+			melee.nextAttack = huge
+			stepRaid(b, tms, 3, function()
+				melee.nextAttack = huge
+				return melee.bdx == nil
+			end)
+			stepRaid(b, tms, 0.3, function()
+				melee.nextAttack = huge
+			end)
+			local nr2
+			hitOut, nr2 = erupt()
+			rangedHit = nr1 + nr2
+			ok = true
+		end)
+		if not T.check(ok, "feel strike area: (setup) a lava golem Max raid, my melee fighter at its rest spot strikes the boss (a window opens)") then
+			return
+		end
+		T.check(hitIn == 1, fmt("feel strike area: an Eruption resolved while my melee pet strikes (rest %.1f studs out) hits it once (%s)", restD, tostring(hitIn)))
+		T.check(hitOut == 0, fmt("feel strike area: the same Eruption 0.3 s after the window closed hits nothing (%s)", tostring(hitOut)))
+		T.check(rangedHit == 0, fmt("feel strike area: a ranged pet at 21.7 studs is hit by neither (%d)", rangedHit))
+	end)
+
+	S.feel_strike_flurry = guarded("feel_strike_flurry", function()
+		local BC, BS = load("feel strike flurry")
+		if not BC then
+			return
+		end
+		local fast, slowOut, slowIn = 0, 0, 0
+		local fastSteps = 0
+		withStandoff(BC, 8, function()
+			local b, tm, f, on = duel(BS, "puddle_frog", false, { "biscuit_bear" }, { { 0, 30 } })
+			local bear = on[1]
+			local d0 = bear.range + f.radius + 8 - 0.3
+			bear.x, bear.z, bear.px, bear.pz = 0, d0, 0, d0
+			bear.moveSpeed, bear.interval, bear.nextAttack = 0, 0.53, 0
+			run(b, tm, f, 2)
+			run(b, tm, f, 5, false, function()
+				fastSteps = fastSteps + 1
+				if bear.bdx ~= nil then
+					fast = fast + 1
+				end
+			end)
+			-- slowed: interval / slow = 0.9 (over FlurryBelow 0.75): per-attack windows, back at rest between them
+			bear.slowMult, bear.slowUntil = 0.53 / 0.9, huge
+			run(b, tm, f, 2)
+			run(b, tm, f, 5, false, function()
+				if bear.bdx ~= nil then
+					slowIn = slowIn + 1
+				else
+					slowOut = slowOut + 1
+				end
+			end)
+		end)
+		T.check(fastSteps == 50 and fast == 50, fmt("feel strike flurry: interval 0.53 s (under FlurryBelow 0.75): the body is in on every one of 50 steps (%d of %d)", fast, fastSteps))
+		T.check(slowIn >= 15 and slowOut >= 10, fmt("feel strike flurry: interval / slow 0.9: per-attack windows, the body back at rest between attacks (%d steps in, %d out of 50)", slowIn, slowOut))
+	end)
+
+	S.feel_strike_fighter = guarded("feel_strike_fighter", function()
+		local BC, BS = load("feel strike fighter")
+		if not BC then
+			return
+		end
+		local h, rows = nil, {}
+		withStandoff(BC, 8, function()
+			-- my standing melee fighter at its rest spot off a standing ranged frog (no standoff of its own: the full 8)
+			local b, tm, f, on = duel(BS, "storm_tabby", false, { "puddle_frog" }, { { 0, 30 } })
+			local frog = on[1]
+			local d0 = f.range + frog.radius + 8 - 0.5
+			frog.x, frog.z, frog.px, frog.pz = 0, d0, 0, d0
+			run(b, tm, f, 2.5, true, function(evs, t)
+				for _, ev in ipairs(evs) do
+					if ev.type == "Hit" and ev.from == f.id and not h then
+						h = t
+					end
+				end
+				if h then
+					f.nextAttack = huge
+					local bx, bz, inn = body(f)
+					rows[#rows + 1] = { t = t, on = inn, nearer = dist(f.x, f.z, frog.x, frog.z) - dist(bx, bz, frog.x, frog.z) }
+				end
+			end)
+		end)
+		if not T.check(h ~= nil, "feel strike fighter: (setup) my melee fighter's plain Hit (Standoff 8)") then
+			return
+		end
+		local bad, n = {}, 0
+		for _, r in ipairs(rows) do
+			local want = (r.t >= h + 0.15 - 1e-6 and r.t <= h + 0.70 + 1e-6)
+			if want then
+				n = n + 1
+			end
+			if r.on ~= want or (want and abs(r.nearer - 8) > 0.1) then
+				bad[#bad + 1] = fmt("h+%.2f on %s nearer %.2f", r.t - h, tostring(r.on), r.nearer)
+			end
+		end
+		T.check(n >= 5 and #bad == 0, fmt("feel strike fighter: a fighter's plain Hit at h: the body 8 studs in from h + 0.15 to h + 0.70, at rest before and after (%d steps in)", n), table.concat(bad, "; "))
+	end)
+
+	S.feel_strike_gone = guarded("feel_strike_gone", function()
+		local BC, BS = load("feel strike gone")
+		if not BC then
+			return
+		end
+		local was, after = false, true
+		withStandoff(BC, 8, function()
+			local b, tm, f, on = duel(BS, "storm_tabby", false, { "puddle_frog" }, { { 0, 30 } })
+			local frog = on[1]
+			local d0 = f.range + frog.radius + 8 - 0.5
+			frog.x, frog.z, frog.px, frog.pz = 0, d0, 0, d0
+			run(b, tm, f, 3, true, function()
+				if f.bdx ~= nil and not was then
+					was = true
+					frog.alive, frog.hp = false, 0 -- (knockOut's fields: the target is down mid-window)
+				elseif was then
+					return
+				end
+			end)
+			after = (f.bdx == nil)
+		end)
+		T.check(was, "feel strike gone: (setup) my fighter strikes (a window opens)")
+		T.check(after, "feel strike gone: the target KO'd mid-window: on the next step the body point is the rest spot")
+	end)
+
+	S.feel_strike_dash = guarded("feel_strike_dash", function()
+		local BC, BS = load("feel strike dash")
+		if not BC then
+			return
+		end
+		local F = BC.Fighter
+		local function dashCase(so)
+			local res = {}
+			withStandoff(BC, so, function()
+				local b, tm, f, on = duel(BS, "storm_tabby", false, { "puddle_frog" }, { { 0, 30 } })
+				local frog = on[1]
+				local d0 = f.range + frog.radius + so - 0.5
+				frog.x, frog.z, frog.px, frog.pz = 0, d0, 0, d0
+				local hitAt = nil
+				run(b, tm, f, 3, true, function(evs, t)
+					for _, ev in ipairs(evs) do
+						if ev.type == "Hit" and ev.from == f.id and not hitAt then
+							hitAt = t
+						end
+					end
+				end)
+				-- the next hit's window: step until it is open (Standoff 8) or 0.3 s after a hit (Standoff 0)
+				hitAt = nil
+				local ready = false
+				for _ = 1, 40 do
+					f.meter = 0
+					tm.wantX, tm.wantZ = 0, 0
+					for _, ev in ipairs(b:Step(0.1)) do
+						if ev.type == "Hit" and ev.from == f.id then
+							hitAt = b:Time()
+						end
+					end
+					if hitAt and b:Time() >= hitAt + 0.3 - 1e-6 then
+						ready = true
+						break
+					end
+				end
+				res.ready = ready
+				res.before = f.bdx ~= nil
+				local t = b:Time()
+				res.ok = b:Command(1, "Dash")
+				res.after = f.bdx ~= nil
+				res.iframes = (f.iframesUntil or 0) - t
+				res.snapBx = b:Snapshot().Units[f.id].bx
+			end)
+			return res
+		end
+		local r8, r0 = dashCase(8), dashCase(0)
+		T.check(r8.ready and r8.before and r8.ok == true, "feel strike dash: (setup) Standoff 8: my fighter mid-window presses a legal Dash")
+		T.check(not r8.after and r8.snapBx == nil, "feel strike dash: the same step the body point is the rest spot (no bx in the snapshot)")
+		T.check(r0.ok == true and abs(r8.iframes - r0.iframes) < 1e-9 and abs(r8.iframes - F.DashIFrames) < 1e-9,
+			fmt("feel strike dash: the i-frames end at the same time as at Standoff 0 (%.3f vs %.3f s)", r8.iframes or -1, r0.iframes or -1))
+	end)
+
+	S.feel_strike_mirror = guarded("feel_strike_mirror", function()
+		local BC, BS = load("feel strike mirror")
+		if not BC then
+			return
+		end
+		local got, want, dot = nil, nil, nil
+		withStandoff(BC, 8, function()
+			-- my standing melee fighter and an NPC melee tabby, rest spots 13 studs apart, both striking
+			local b, tm, f, on = duel(BS, "storm_tabby", false, { "storm_tabby" }, { { 0, 13 } })
+			local foe = on[1]
+			foe.moveSpeed, foe.nextAttack = 0, 0
+			local function adv(u, v)
+				local gap = dist(u.x, u.z, v.x, v.z) - (u.range + v.radius - 0.5)
+				return min(8, max(0, gap) * 0.5)
+			end
+			run(b, tm, f, 6, true, function()
+				if not got and f.bdx ~= nil and foe.bdx ~= nil then
+					local ax, az = body(f)
+					local bx, bz = body(foe)
+					got = dist(ax, az, bx, bz)
+					want = 13 - adv(f, foe) - adv(foe, f)
+					dot = (bx - ax) * (foe.x - f.x) + (bz - az) * (foe.z - f.z)
+				end
+			end)
+		end)
+		if not T.check(got ~= nil, "feel strike mirror: (setup) two melee units striking each other at the same step (Standoff 8)") then
+			return
+		end
+		-- (two storm_tabbies: they meet at the Standoff-0 rest distance, range + radius - 0.5 = 5.8; the plan's 5.0 was its estimate)
+		T.check(abs(got - want) <= 0.05 and got > 3, fmt("feel strike mirror: each advances half the free gap: the body points %.2f studs apart (want %.2f, the Standoff-0 rest distance)", got, want))
+		T.check(dot > 0, fmt("feel strike mirror: the body points have not crossed (dot %.2f)", dot))
+	end)
+
+	S.feel_strike_nearest = guarded("feel_strike_nearest", function()
+		local BC, BS = load("feel strike nearest")
+		if not BC then
+			return
+		end
+		local inPick, outPick, ids, ok = nil, nil, {}, false
+		withStandoff(BC, 8, function()
+			local b, boss, tms = raid(BS, "lava_golem", "Max", { { pets = { "storm_tabby" } }, { pets = { "puddle_frog" } } })
+			if not b then
+				return
+			end
+			boss.x, boss.z, boss.px, boss.pz = 0, 0, 0, 0
+			local melee = stand(tms[1], 0, 21.9)
+			local ranged = stand(tms[2], 21.7, 0)
+			ranged.nextAttack = huge
+			ids.melee, ids.ranged = melee.id, ranged.id
+			-- out of a window: the ranged pet (21.7) is nearer than the resting melee one (21.9)
+			melee.nextAttack = huge
+			stepRaid(b, tms, 1.5, function()
+				melee.nextAttack = huge
+			end)
+			boss.nextAttack = 0
+			stepRaid(b, tms, 0.1, function()
+				melee.nextAttack = huge
+			end)
+			outPick = boss.target and boss.target.id
+			-- in a window: the melee pet bites at ~14 studs
+			boss.nextAttack = huge
+			melee.nextAttack = 0
+			local open = stepRaid(b, tms, 3, function()
+				return melee.bdx ~= nil
+			end)
+			if not open then
+				return
+			end
+			boss.nextAttack = 0
+			stepRaid(b, tms, 0.1)
+			inPick = boss.target and boss.target.id
+			ok = true
+		end)
+		if not T.check(ok, "feel strike nearest: (setup) a lava golem Max raid, a melee pet resting at 21.9 studs and a ranged one at 21.7") then
+			return
+		end
+		T.check(outPick == ids.ranged, fmt("feel strike nearest: no window: the boss's basic picks the ranged pet (21.7 < 21.9) (%s)", tostring(outPick)))
+		T.check(inPick == ids.melee, fmt("feel strike nearest: while the melee pet strikes, the boss's basic picks it (%s, melee %s)", tostring(inPick), tostring(ids.melee)))
+	end)
+
+	-- (feel-balance, the Task 1 measurement) a boss aims its circles where it sees the pet: a Cluster circle started while my
+	-- melee pet strikes stands on its bite point, one started while it rests on its rest spot
+	S.feel_strike_aim = guarded("feel_strike_aim", function()
+		local BC, BS = load("feel strike aim")
+		if not BC then
+			return
+		end
+		local rows, ok = {}, false
+		withStandoff(BC, 8, function()
+			local b, boss, tms = raid(BS, "lava_golem", "Max", { { pets = { "storm_tabby" } } })
+			if not b then
+				return
+			end
+			boss.x, boss.z, boss.px, boss.pz = 0, 0, 0, 0
+			local melee = tms[1].fighter
+			local restD = melee.range + boss.radius + 8 - 0.5
+			stand(tms[1], 0, restD)
+			local pool = boss.attacks[1]
+			local function cast()
+				pool.nextAt = 0
+				local tele = nil
+				stepRaid(b, tms, 0.1, function(evs)
+					for _, ev in ipairs(evs) do
+						if ev.type == "Telegraph" and ev.attack == "pool" then
+							tele = ev
+						end
+					end
+				end)
+				pool.nextAt = huge
+				b.telegraphs = {}
+				return tele
+			end
+			-- resting (no attack): on the rest spot
+			stepRaid(b, tms, 1, function()
+				melee.nextAttack = huge
+			end)
+			local bx, bz = body(melee)
+			local t1 = cast()
+			rows.rest = t1 and dist(t1.x, t1.z, bx, bz)
+			rows.restOn = melee.bdx ~= nil
+			-- striking: on the bite point
+			melee.nextAttack = 0
+			stepRaid(b, tms, 3, function()
+				return melee.bdx ~= nil
+			end)
+			local sx, sz = body(melee)
+			local t2 = cast()
+			rows.strike = t2 and dist(t2.x, t2.z, sx, sz)
+			rows.strikeOn = melee.bdx ~= nil
+			rows.fromRest = t2 and dist(t2.x, t2.z, melee.x, melee.z)
+			ok = t1 ~= nil and t2 ~= nil
+		end)
+		if not T.check(ok, "feel strike aim: (setup) a lava golem Max raid, its Magma Pool (Cluster) cast at my melee pet twice") then
+			return
+		end
+		T.check(not rows.restOn and rows.rest <= 0.11, fmt("feel strike aim: my pet resting: the circle stands on its rest spot (%.2f studs off)", rows.rest))
+		T.check(rows.strikeOn and rows.strike <= 0.11 and rows.fromRest >= 7.5, fmt("feel strike aim: my pet striking: the circle stands on its bite point (%.2f off; %.2f from the rest spot)", rows.strike, rows.fromRest))
+	end)
+
+	S.feel_strike_zone = guarded("feel_strike_zone", function()
+		local BC, BS = load("feel strike zone")
+		if not BC then
+			return
+		end
+		local ticksIn, ticksOut, ok = 0, 0, false
+		withStandoff(BC, 8, function()
+			local b, tm, f, on = duel(BS, "puddle_frog", false, { "biscuit_bear" }, { { 0, 30 } })
+			local bear = on[1]
+			local d0 = bear.range + f.radius + 8 - 0.3
+			bear.x, bear.z, bear.px, bear.pz = 0, d0, 0, d0
+			bear.moveSpeed, bear.interval, bear.nextAttack = 0, 2.0, 0
+			-- my side's damage zone (radius 2) on the bear's bite point: 8 studs nearer my fighter than its rest spot
+			local zx, zz = 0, d0 - 8
+			b.zones[#b.zones + 1] = { x = zx, z = zz, r = 2, dps = 10, untilT = b:Time() + 20, nextTick = b:Time() + 0.1, side = 1, from = f, kind = "Linger" }
+			run(b, tm, f, 8, false, function(evs)
+				for _, ev in ipairs(evs) do
+					if ev.type == "Hit" and ev.zone and ev.to == bear.id then
+						if bear.bdx ~= nil then
+							ticksIn = ticksIn + 1
+						else
+							ticksOut = ticksOut + 1
+						end
+					end
+				end
+			end)
+			ok = true
+		end)
+		T.check(ok and ticksIn >= 1, fmt("feel strike zone: a zone under the bite point ticks the striking pet (%d ticks)", ticksIn))
+		T.check(ticksOut == 0, fmt("feel strike zone: ... and never the resting one (%d ticks at rest)", ticksOut))
+	end)
+
+	-- the event log of a 60 s seeded raid as one string hash (sorted keys, every value): storm_titan Starter, 3 Auto teams
+	local function logHash(BS)
+		local b = BS.new({ Mode = "Raid", Boss = "storm_titan", RaidTier = "Starter", Seed = 7, Teams = {
+			{ Owner = 1, Side = 1, Auto = true, Pets = { { Key = "aurora_fox", Level = 18, Slot = 1 }, { Key = "moonlit_owl", Level = 17, Slot = 2 }, { Key = "ember_phoenix", Level = 16, Slot = 3 } } },
+			{ Owner = 2, Side = 1, Auto = true, Pets = { { Key = "storm_tabby", Level = 18, Slot = 1 }, { Key = "moonlit_owl", Level = 17, Slot = 2 }, { Key = "ember_phoenix", Level = 16, Slot = 3 } } },
+			{ Owner = 3, Side = 1, Auto = true, Pets = { { Key = "biscuit_bear", Level = 18, Slot = 1 }, { Key = "aurora_fox", Level = 17, Slot = 2 }, { Key = "puddle_frog", Level = 16, Slot = 3 } } } } })
+		if not b then
+			return nil
+		end
+		b.boss.maxHp, b.boss.hp = 2e6, 2e6 -- (pinned: the fit's HP knobs never move this log)
+		local parts = {}
+		local function ser(v)
+			local tv = type(v)
+			if tv == "table" then
+				local keys = {}
+				for k in pairs(v) do
+					keys[#keys + 1] = k
+				end
+				table.sort(keys, function(a, c)
+					return tostring(a) < tostring(c)
+				end)
+				parts[#parts + 1] = "{"
+				for _, k in ipairs(keys) do
+					parts[#parts + 1] = tostring(k) .. "="
+					ser(v[k])
+					parts[#parts + 1] = ","
+				end
+				parts[#parts + 1] = "}"
+			elseif tv == "number" then
+				parts[#parts + 1] = fmt("%.10g", v)
+			else
+				parts[#parts + 1] = tostring(v)
+			end
+		end
+		local n, bxSeen = 0, 0
+		for _ = 1, 600 do
+			for _, ev in ipairs(b:Step(0.1)) do
+				n = n + 1
+				ser(ev)
+				parts[#parts + 1] = ";"
+			end
+			for _, s in pairs(b:Snapshot().Units) do
+				if s.bx ~= nil or s.bz ~= nil then
+					bxSeen = bxSeen + 1
+				end
+			end
+		end
+		local str = table.concat(parts)
+		local h = 0
+		for i = 1, #str do
+			h = (h * 31 + string.byte(str, i)) % 2147483647
+		end
+		return h, n, bxSeen, #str
+	end
+
+	-- recorded from 163a2f4 (battle-feel: Standoff 0, RealCast off), before the body point existed
+	local OFF_HASH, OFF_EVENTS = 792611972, 324
+
+	S.feel_strike_off = guarded("feel_strike_off", function()
+		local BC, BS = load("feel strike off")
+		if not BC then
+			return
+		end
+		local keepCast = BC.Damage.SpecialCast
+		BC.Damage.SpecialCast = nil
+		local h, n, bxSeen, len
+		local ok, err = pcall(function()
+			withStandoff(BC, 0, function()
+				h, n, bxSeen, len = logHash(BS)
+			end)
+		end)
+		BC.Damage.SpecialCast = keepCast
+		if not T.check(ok and h ~= nil, "feel strike off: (setup) a 60 s seeded raid at Standoff 0, the real cast off", tostring(err)) then
+			return
+		end
+		T.info("feel strike off: the event log", fmt("hash %d, %d events, %d chars", h, n, len))
+		T.check(OFF_HASH ~= nil and h == OFF_HASH and n == OFF_EVENTS, fmt("feel strike off: Standoff 0: the event log is 163a2f4's (hash %d / %s, %d / %s events)", h, tostring(OFF_HASH), n, tostring(OFF_EVENTS)))
+		T.check(bxSeen == 0, fmt("feel strike off: ... and no snapshot unit carries bx / bz (%d)", bxSeen))
+	end)
+
+	S.feel_strike_wire = guarded("feel_strike_wire", function()
+		local BC, BS = load("feel strike wire")
+		if not BC then
+			return
+		end
+		local St = BC.Damage.Strike
+		if not T.check(type(St) == "table", "feel strike wire: BattleCatalog.Damage.Strike exists") then
+			return
+		end
+		local Config = req("Config")
+		local M = Config.Battle.Feel.Melee
+		T.check(St.In == M.In and St.Bite == M.Bite and St.Hold == M.Hold and St.Back == M.Back and St.FlurryBelow == M.FlurryBelow and St.Out == M.Out and St.Out ~= nil,
+			"feel strike wire: Damage.Strike = Config.Battle.Feel.Melee's In / Bite / Hold / Back / FlurryBelow / Out")
+		T.check(select(1, BC.Validate()) == true, "feel strike wire: BattleCatalog.Validate passes")
+		local bad = {}
+		for _, case in ipairs({ { "Out", 0.1 }, { "Out", 1.5 }, { "In", -1 }, { "FlurryBelow", 4 }, { "Back", "x" } }) do
+			local keep = St[case[1]]
+			St[case[1]] = case[2]
+			if BC.Validate() ~= false then
+				bad[#bad + 1] = case[1] .. " " .. tostring(case[2])
+			end
+			St[case[1]] = keep
+		end
+		local keep = { St.In, St.Bite, St.Hold, St.Back }
+		St.In, St.Bite, St.Hold, St.Back = 0.1, 0.02, 0.02, 0.1
+		if BC.Validate() ~= false then
+			bad[#bad + 1] = "a window under 0.3 s"
+		end
+		St.In, St.Bite, St.Hold, St.Back = keep[1], keep[2], keep[3], keep[4]
+		T.check(#bad == 0, "feel strike wire: Validate catches Out 0.1 / 1.5, In -1, FlurryBelow 4, Back \"x\" and a window under 0.3 s (the 10 Hz tick)", table.concat(bad, ", "))
+		local inSnap, outSnap, match = nil, nil, false
+		withStandoff(BC, 8, function()
+			local b, tm, f, on = duel(BS, "puddle_frog", false, { "biscuit_bear" }, { { 0, 30 } })
+			local bear = on[1]
+			local d0 = bear.range + f.radius + 8 - 0.3
+			bear.x, bear.z, bear.px, bear.pz = 0, d0, 0, d0
+			bear.moveSpeed, bear.interval, bear.nextAttack = 0, 2.0, 0
+			run(b, tm, f, 2, false, function()
+				local s = b:Snapshot().Units[bear.id]
+				if bear.bdx ~= nil and not inSnap then
+					inSnap = s
+					local bx, bz = body(bear)
+					match = s.bx ~= nil and abs(s.bx - bx) <= 0.051 and abs(s.bz - bz) <= 0.051
+				elseif bear.bdx == nil and inSnap and not outSnap then
+					outSnap = s
+				end
+			end)
+		end)
+		T.check(inSnap ~= nil and match, "feel strike wire: Snapshot carries bx / bz (0.1 steps) for a unit in a window")
+		T.check(outSnap ~= nil and outSnap.bx == nil and outSnap.bz == nil, "feel strike wire: ... and omits them otherwise")
+	end)
+
 	return S
 end
 

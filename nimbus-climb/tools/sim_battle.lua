@@ -317,6 +317,15 @@ local function inShape(ev, x, z, radius)
 	return dx * dx + dz * dz <= (ev.r + radius) * (ev.r + radius)
 end
 
+-- (feel-balance) my fighter as a person sees it: at its rest spot, and at its bite point while the snapshot carries one
+-- (BattleSim's body point: a melee pet drawn dashing in). A shape over either is a shape over my pet
+local function covers(ev, me, radius)
+	if inShape(ev, me.x, me.z, radius) then
+		return true
+	end
+	return me.bx ~= nil and inShape(ev, me.bx, me.bz, radius)
+end
+
 function Player.new(battle, owner, seed, opts)
 	local self = setmetatable({}, Player)
 	self.battle = battle
@@ -390,10 +399,10 @@ function Player:castCovers(ev, fid, me, myInfo, units)
 		if len < 0.01 then
 			return false
 		end
-		return inShape({ shape = "Line", x = c.x, z = c.z, angle = math.atan2(dz, dx), length = spec.Length or 26, width = spec.Width or 4 }, me.x, me.z, r)
+		return covers({ shape = "Line", x = c.x, z = c.z, angle = math.atan2(dz, dx), length = spec.Length or 26, width = spec.Width or 4 }, me, r)
 	end
 	if type(spec.Radius) == "number" then
-		return inShape({ x = ev.tx, z = ev.tz, r = spec.Radius }, me.x, me.z, r)
+		return covers({ x = ev.tx, z = ev.tz, r = spec.Radius }, me, r)
 	end
 	return false
 end
@@ -437,7 +446,7 @@ function Player:step(events, snapshot)
 		elseif ev.type == "Telegraph" and ev.lethal then
 			at = ev.at
 			lethal = true
-		elseif ev.type == "Telegraph" and inShape(ev, me.x, me.z, myInfo.radius or 2) then
+		elseif ev.type == "Telegraph" and covers(ev, me, myInfo.radius or 2) then
 			at = ev.at
 		elseif ev.type == "Cast" and type(ev.at) == "number" and self:castCovers(ev, fid, me, myInfo, units) then
 			-- (battle-feel review fix) the real cast's charge is a tell like a wind-up: dodged the same way
@@ -508,7 +517,7 @@ function Player:step(events, snapshot)
 	local lethalDue, lethalNext = false, nil
 	for i = #self.lethals, 1, -1 do
 		local pending = self.lethals[i]
-		local close = inShape(pending.ev, me.x, me.z, (myInfo.radius or 2) + 3)
+		local close = covers(pending.ev, me, (myInfo.radius or 2) + 3)
 		if t >= pending.press or t + DT >= pending.ev.at then -- (a press between the last step and the hit goes in on the last step, as a real command would)
 			lethalDue = lethalDue or close
 			table.remove(self.lethals, i)
