@@ -170,9 +170,12 @@ S.client_afx_linger = guarded("client_afx_linger", function()
 	byBand:report()
 	T.check(near(Cat.Afterglow[4], 2.0) and #Cat.Afterglow == 4, "afx linger: AttackFxCatalog.Afterglow has one number a band, 2 s at most (the spec's 'up to 2 s')")
 	local offensive = T.tally("afx linger: every damaging attack has an Afterglow")
+	-- (battle-feel T3, spec decision 5) a special strike's afterglow is SpecialAfterglow (x Config.Battle.Feel.Special.Afterglow
+	-- 1.5 while Weighty: 3 s at Secret); the basics and the element attacks keep Afterglow's 2 s
 	for _, req in ipairs({ { Attack = "Melee" }, { Attack = "Ranged" }, { Attack = "Element", Shape = "Cone" }, { Attack = "Element", Shape = "Circle" }, { Attack = "Element", Shape = "Line" },
 		{ Attack = "Special", Kind = "Blast" }, { Attack = "Special", Kind = "Beam" }, { Attack = "Special", Kind = "Pounce" }, { Attack = "Special", Kind = "Freeze" }, { Attack = "Special", Kind = "Storm" } }) do
-		offensive:case(near(afterglow(req), 2.0), req.Attack .. " " .. tostring(req.Kind or req.Shape))
+		local want = (req.Attack == "Special") and Cat.SpecialAfterglow[4] or 2.0
+		offensive:case(near(afterglow(req), want), req.Attack .. " " .. tostring(req.Kind or req.Shape) .. ": " .. tostring(afterglow(req)) .. " (want " .. tostring(want) .. ")")
 	end
 	offensive:report()
 	local none = T.tally("afx linger: no Afterglow on support casts and reactions")

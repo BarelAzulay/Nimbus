@@ -696,7 +696,19 @@ local function clientScenarios()
 			sim:Command(me, "Target", aim.id)
 		end
 		local ok, why = sim:Command(me, "Special")
-		return ok, why, step(0.1)
+		-- (battle-feel T3: the real server cast) stepped to the step its Special lands in (the Cast comes first)
+		local evs = step(0.1)
+		for _ = 1, 15 do
+			local landed = not ok
+			for _, ev in ipairs(evs) do
+				landed = landed or ((ev.type == "Special" or ev.type == "CastBreak") and ev.unit == mine.id)
+			end
+			if landed then
+				break
+			end
+			evs = step(0.1)
+		end
+		return ok, why, evs
 	end
 
 	------------------------------------------------------------------------------------------------
@@ -934,10 +946,11 @@ local function clientScenarios()
 		-- EndAura: ends within a frame
 		t0 = R.clock
 		eff = rally()
-		while R.clock - t0 < 1 do
+		-- (battle-feel T3: the Weighty beats put a Legendary Rally's impact past 1 s: 1 s, or just past the impact if later)
+		while R.clock - t0 < math.max(1, (eff.Start - t0) + eff.Times.Impact + 0.1) do
 			R.run(1 / 30)
 		end
-		T.check(#itemsOf(eff, "AllyRing") == 1 and near(R.A:GetAttribute("AuraScale"), 1.2, 1e-6), "evo auras: at t0 + 1 the aura is on")
+		T.check(#itemsOf(eff, "AllyRing") == 1 and near(R.A:GetAttribute("AuraScale"), 1.2, 1e-6), "evo auras: at t0 + 1 (past the impact) the aura is on")
 		T.check(Fx.EndAura(1) == true, "evo auras: EndAura(unit) says it ended one")
 		R.run(1 / 30)
 		T.check(#itemsOf(eff, "AllyRing") == 0 and #itemsOf(eff, "Rouse") == 0 and R.A:GetAttribute("AuraScale") == 1, "evo auras: ...within a frame: AllyRing and Rouse gone, the scale back", tostring(R.A:GetAttribute("AuraScale")))
@@ -1098,7 +1111,7 @@ local function clientScenarios()
 		end
 		T.check(special ~= nil and special.form == 1 and special.x0 ~= nil and special.name == "Shadow Pack", "evo forms: the sim's event: form 1, its line, its name")
 		local eff = liveFor(mine.id, function(e)
-			return e.Recipe.Attack == "Special"
+			return e.Recipe.Attack == "Special" and not e.Pre and not e.Retired -- (battle-feel T3: not the cast's charge)
 		end)
 		T.check(eff ~= nil and eff.Recipe.Sig ~= nil and eff.Recipe.Sig.Name == "Shadow Pack" and eff.Recipe.Stage == 1, "evo forms: AttackFx plays the Shadow Pack")
 		if eff and special then

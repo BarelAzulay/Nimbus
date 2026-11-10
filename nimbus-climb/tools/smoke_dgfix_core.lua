@@ -194,10 +194,14 @@ S.dgfixcore_auto = guarded("dgfixcore_auto", function()
 	-- out of reach: no swing, no step toward the enemy (the auto-attack itself never walks; white-box: the wave 6 engage
 	-- rule, which does walk the pet to any enemy on the floor, is held off and pinned by smoke_fight.lua)
 	tD.noEngage = true
+	-- (battle-feel T2) at today's reach: a melee standoff (Damage.Standoff) would reach past this dungeon floor's edge
+	local keepSo = BC.Damage.Standoff
+	BC.Damage.Standoff = 0
 	put(de, 0, 18)
 	tD.fighter.nextAttack = 0
 	evs = stepFor(bD, 5)
-	T.check(hitBy(evs, tD.fighter.id) == nil and near(tD.fighter.z, 0, 1e-9), "nothing in reach: no swing and the fighter does not walk to it")
+	BC.Damage.Standoff = keepSo
+	T.check(hitBy(evs, tD.fighter.id) == nil and near(tD.fighter.z, 0, 1e-9), "nothing in reach: no swing and the fighter does not walk to it", fmt("hit %s, fighter z %.3f, enemy z %.2f", tostring(hitBy(evs, tD.fighter.id) ~= nil), tD.fighter.z, de.z))
 	-- busy states: Stunned / Casting / Dashing never swing
 	put(de, 0, 3)
 	local f = tD.fighter
@@ -269,7 +273,9 @@ S.dgfixcore_direct = guarded("dgfixcore_direct", function()
 	for i, e in ipairs(list) do
 		passive(e)
 		e.maxHp, e.hp = 1e9, 1e9
-		put(e, 0, 2 + 4 * i) -- e1 at 6 (in reach of a 4.5-range tabby + slack), e2 at 10, e3 at 14
+		-- e1 at 6 (in reach of a 4.5-range tabby + slack), e2 at 10, e3 at 14 (battle-feel T2: e3 + 2 x the melee standoff, out of
+		-- reach + slack + standoff)
+		put(e, 0, 2 + 4 * i + ((i == 3) and 2 * (BC.Damage.Standoff or 0) or 0))
 	end
 	-- Attack(): the nearest; repeated presses KEEP the live lock (bug #16: the old cycle walked the pet off its enemy)
 	local ok1, id1 = b:Command(1, "Attack")
@@ -528,7 +534,8 @@ S.dgfixcore_heal = guarded("dgfixcore_heal", function()
 	h2.hp, h3.hp = h2.maxHp * 0.2, h3.maxHp * 0.25
 	fh.meter = 100
 	local okS = bH:Command(1, "Special")
-	local sp = find(bH:Step(0.1), "Special")
+	-- (battle-feel T3: the real cast) the heal lands at the cast's end: stepped past it
+	local sp = find((SmokeCommon.pastCast(bH, bH:Step(0.1), fh.id, 0.1)), "Special")
 	local ids = {}
 	for _, h in ipairs(sp and sp.heals or {}) do
 		ids[h[1]] = h[2]

@@ -77,6 +77,10 @@
 --     special's own hits / Storm ticks due before the impact, the KOs they cause (Net.SpecialHold) and their units' drawn
 --     HP (Units.Hold) wait for it; a caster KO'd in its own late charge falls LAST_GASP after its impact. Other hits play
 --     on time; the End is not held. The inhale = SoundFx "Inhale" (Me.Inhale), its pitch rising to the release.
+--   * (battle-feel T3, the real server cast) a Cast event { at } starts the charge for ANY unit on its arrival (Atk.Cast ->
+--     AttackFx.Precharge, B.casts); its Special (+ at) hands the charge over with its travel given back up to TRAVEL_HOLD
+--     0.3 s (fxSpLate as above); my press's wait runs to the cast's end + CAST_WAIT; CastBreak / a KO / no Special by then
+--     shatter it (Atk.EndCast). A Special with no Cast and no `at` (an old recording, RealCast off) plays as above.
 --   * Music (client/SoundFx layers): my fight sets the "Battle" layer (Net.Music: at Start, End and Cleanup; a won
 --     Champion Ring round keeps it until the next round; a dungeon room keeps the Dungeon track, its boss room plays
 --     Battle); a won fight's result plays SoundFx "Reward" with the winners' cheer.
@@ -274,6 +278,13 @@ local K = {
 	-- (Task 11b, the Special pre-charge, player option C) a press predicts the charge; every other Special lands late
 	PRESS_WAIT = 0.7, -- a pressed SPECIAL's predicted charge waits this long for its Special event, then shatters
 	LATE_MAX = 0.35, -- a Special nobody here pressed: up to this much charge is given back, its impact (and its hits) that late
+	-- (battle-feel T3, spec decision 6, Config.Battle.Feel.Special) the real server cast: a Cast event starts the charge for
+	-- any unit (AttackFx.Precharge, due at its `at`); a Cast with no Special by its end + CAST_WAIT fades; the Special then
+	-- hands over with its travel given back up to TRAVEL_HOLD (its hits held that late); the name callout's life
+	CAST_WAIT = 0.5,
+	TRAVEL_HOLD = (Config.Battle and Config.Battle.Feel and Config.Battle.Feel.Special and tonumber(Config.Battle.Feel.Special.TravelHold)) or 0.3,
+	SPECIAL_CALLOUT = (Config.Battle and Config.Battle.Feel and Config.Battle.Feel.Special and Config.Battle.Feel.Special.Weighty == true
+		and tonumber(Config.Battle.Feel.Special.Callout)) or 1.2,
 	LAST_GASP = 0.05, -- a caster KO'd in its own late charge falls this long after the impact
 	HOLD_EPS = 0.02, -- (fix round 1, I1) a late Special's hit ends its victim's hold only this close to the hold's end
 	UNBENCH_SLACK = 0.25, -- (fix round 2, I2-b) a held auto-swap's incoming pet stays benched until its Swap plays; this
@@ -295,6 +306,9 @@ local K = {
 	FX_END_GRACE = 1.0, -- after the sim's End: no new AttackFx effect; the live ones finish for at most this long
 	FX_LATE_MAX = 0.3, -- seconds a ranged shot's Hit (and the victim's later events) may play after their time: the
 	--                    shot's flight is never cut below AttackFx's MinTravel (player note 1)
+	-- (battle-feel T2) a melee Hit this soon after the unit's Windup dashed it is that dash's bite (an NPC's: no new dash,
+	-- no hold); a melee Hit with no Windup before it (a player's fighter) dashes now, its impact held Melee.In (fxLate)
+	DASH_SEEN = 0.6,
 	RIPPLE_TICK_GAP = 0.75, -- (Task 10 re-review M8) a zone / burn tick's shield ripple waits this long after the unit's
 	--                    last ripple: every other 0.5 s zone tick (the cube path's 50 % zone flash, made deterministic)
 	-- (evolved forms) a Rally's bigger pet by stage (a look only: hit radius, range and hitboxes never hear of it)
@@ -3104,7 +3118,8 @@ local SUPPORT_KINDS = { Heal = true, Shield = true, Rally = true, Haste = true }
 -- a helper buff's Effect (BattleCatalog.Buffs) -> the support special whose look it borrows
 local BUFF_LOOK = { Heal = "Heal", Regen = "Heal", Shield = "Shield", Taken = "Shield", Damage = "Rally", Lifesteal = "Rally", Speed = "Haste", AttackSpeed = "Haste", Chill = "Haste" }
 -- the events AttackFx plays (on arrival: Net.Events)
-Atk.EVENTS = { [EV.Hit] = true, [EV.Special] = true, [EV.Element or "Element"] = true, [EV.KO] = true, [EV.Buff or "Buff"] = true, [EV.Swap or "Swap"] = true, [EV.Twist or "Twist"] = true }
+Atk.EVENTS = { [EV.Hit] = true, [EV.Special] = true, [EV.Element or "Element"] = true, [EV.KO] = true, [EV.Buff or "Buff"] = true, [EV.Swap or "Swap"] = true, [EV.Twist or "Twist"] = true,
+	[EV.Cast or "Cast"] = true } -- (battle-feel T3: the real cast's charge starts on its arrival)
 Atk.bodyOpts = { Pose = nil } -- (one table for every PetBuilder.PoseBody call)
 
 -- AttackFx's hooks go to Me: camera kick = Me.Shake (the Shake setting and SHAKE_MAX apply), the edge glow, and a
@@ -3227,6 +3242,28 @@ function Atk.Play(ctx)
 	return ok and played == true
 end
 
+-- (battle-feel T2) the seconds since the unit's last attack (the flurry's measured tempo; nil on its first)
+function Atk.Tempo(u, now)
+	if u.atkAt then
+		u.tempo = now - u.atkAt
+	end
+	u.atkAt = now
+	return u.tempo
+end
+
+-- (battle-feel T2, spec decisions 1 + 3) a melee pet's dash in, bite and hop back (AttackFx.Dash), its run ending at
+-- `landAt` (os.clock): a pose only, the server keeps the pet at its rest spot (Damage.Standoff out). -> taken?
+function Atk.Dash(B, a, v, landAt)
+	local AF = Atk.Mod()
+	if not (AF and type(AF.Dash) == "function") or B.ended or St.fxEndAt or a.isBoss or a.ranged or not v
+		or not a.model or not Atk.Drawable(a) or not Atk.Drives(a) or not Atk.Posable() then
+		return false
+	end
+	local now = os.clock()
+	local ok, r = pcall(AF.Dash, a.id, Atk.Side(B, a), Atk.Side(B, v), landAt, now, { Mine = a.mine == true, Low = St.fxLow == true, Tempo = Atk.Tempo(a, now) })
+	return ok and r == true
+end
+
 function Atk.Cancel(id)
 	local AF = Mods.AttackFx
 	if AF and type(AF.Cancel) == "function" then
@@ -3282,6 +3319,17 @@ function Atk.Update(now)
 	local pre = St.pre
 	if pre and now >= pre.untilT then
 		Atk.Shatter(pre.B)
+	end
+	-- (battle-feel T3) a server cast whose Special did not come by its end + CAST_WAIT: its charge fades (no allocation:
+	-- the records are walked in place)
+	local B = St.battle
+	local casts = B and B.casts
+	if casts and next(casts) ~= nil then
+		for id, rec in pairs(casts) do
+			if now >= rec.DueAt + K.CAST_WAIT then
+				Atk.EndCast(B, id, true)
+			end
+		end
 	end
 	local ok, err = pcall(AF.Update, now)
 	if not ok then
@@ -3484,11 +3532,29 @@ local function hitPlay(B, ev, dueAt, v, a)
 		Attack = a.ranged and "Ranged" or "Melee", From = Atk.Side(B, a), To = Atk.Side(B, v), Mine = a.mine == true,
 		Crit = ev.crit == true, Strong = num(ev.elem, 1) > 1, Miss = ev.miss == true, DueAt = dueAt, Ground = groundOf(B, a),
 	})
+	-- (battle-feel T2) a melee bite is a dash: an NPC's was scheduled by its Windup (landing on this hit); a fighter's
+	-- (no Windup) dashes now and lands Melee.In later, the Hit's number and the victim's next events held that long
+	local dashLate = 0
+	if not a.ranged then
+		local now = os.clock()
+		if a.dashedAt and now - a.dashedAt < K.DASH_SEEN then
+			ctx.Dashed = true
+			a.dashedAt = nil
+		elseif type(a.owner) == "number" then -- (a player's fighter: an NPC's every bite follows its Windup)
+			local M = Config.Battle and Config.Battle.Feel and Config.Battle.Feel.Melee
+			local inS = M and num(M.In, 0.3) or 0.3
+			if M and M.Dash == true and Atk.Dash(B, a, v, dueAt + inS) then
+				ctx.Dashed = true
+				ctx.DueAt = dueAt + inS
+				dashLate = inS
+			end
+		end
+	end
 	local played = Atk.Play(ctx)
 	a.fxDriven = played
 	-- a ranged shot keeps its flight (AttackFx MinTravel): its impact may land after the event's time; Net.Events
 	-- then plays the Hit (number, flash) and the victim's next events that much later, so they land with the shot
-	local late = played and tonumber(ctx.ImpactLate) or 0
+	local late = played and (dashLate > 0 and dashLate or tonumber(ctx.ImpactLate)) or 0
 	if late == late and late > 0 then
 		ev.fxLate = min(late, K.FX_LATE_MAX)
 		return played, ev.fxLate
@@ -3572,6 +3638,72 @@ function Atk.Shatter(B, quiet)
 	return ok and r == true
 end
 
+-- (battle-feel T3, spec decision 6) the server's real cast starts (the Cast event's arrival; ev.at = the sim time its
+-- effects land): the charge shows on the caster for everyone (AttackFx.Precharge, the glow + motes, rim, inhale, the
+-- held Cast pose), due at `at` on the render clock; B.casts[unit] = { Kind, DueAt } until its Special takes it over
+-- (Atk.Special), a CastBreak / a KO ends it (Atk.EndCast) or DueAt + CAST_WAIT passes (Atk.Update: a quiet fade). My own
+-- press keeps its prediction (St.pre): its wait is extended to the cast's end + CAST_WAIT
+function Atk.Cast(B, ev, dueAt)
+	local u = B.units[tonumber(ev.unit) or -1]
+	if not u then
+		return nil
+	end
+	if u.isBoss or not Atk.Drawable(u) then
+		return "none"
+	end
+	local now = os.clock()
+	local due = now + max(0, num(ev.at, B.renderT) - B.renderT)
+	if due < dueAt then
+		due = dueAt
+	end
+	local kind = tostring(ev.kind or "")
+	B.casts = B.casts or {}
+	local pre = St.pre
+	if pre and pre.B == B and pre.unit == u.id then
+		pre.untilT = max(pre.untilT, due + K.CAST_WAIT)
+		B.casts[u.id] = { Kind = kind, DueAt = due }
+		return true
+	end
+	local AF = Atk.Mod()
+	if not AF or type(AF.Precharge) ~= "function" or not u.model or St.fxEndAt or Atk.Lying(u) then
+		return false
+	end
+	local to = nil
+	local tgt = B.units[tonumber(ev.target) or -1]
+	if tgt and not tgt.gone and not SUPPORT_KINDS[kind] then
+		to = { Atk.Side(B, tgt) }
+	end
+	local ok, played = pcall(AF.Precharge, lookCtx(u, {
+		Kind = kind, From = Atk.Side(B, u), To = to, Mine = u.mine == true, Seconds = max(0.1, due - now), Ground = groundOf(B, u), Now = now,
+		Form = tonumber(ev.form),
+	}))
+	if ok and played == true then
+		B.casts[u.id] = { Kind = kind, DueAt = due }
+		return true
+	end
+	return false
+end
+
+-- (battle-feel T3) a unit's cast ends without its Special (a CastBreak, its KO, the wait over): its charge shatters
+-- (shards for mine unless `quiet`; another unit's only fades) and the record goes. My press's prediction: Atk.Shatter
+function Atk.EndCast(B, id, quiet)
+	local rec = B.casts and B.casts[id]
+	if B.casts then
+		B.casts[id] = nil
+	end
+	if St.pre and St.pre.unit == id then
+		return Atk.Shatter(B, quiet)
+	end
+	local AF = Mods.AttackFx
+	if not rec or not AF or type(AF.Shatter) ~= "function" then
+		return false
+	end
+	local u = B.units[id]
+	local loud = not quiet and u ~= nil and u.mine == true and not u.gone and not u.parked and not u.benched and not Atk.Lying(u)
+	local ok, r = pcall(AF.Shatter, id, os.clock(), not loud)
+	return ok and r == true
+end
+
 -- a Special: the caster's kind (its signature for the 12 top pets: PetId), at its targets / allies / the aimed spot.
 -- (Task 11b) my pressed Special takes over its predicted charge (Precharged: backdated to the press, impact on dueAt);
 -- every other one (bots, NPCs, allies, enemies, my pet with no press) gets its charge back: LateMax, the impact up to
@@ -3625,6 +3757,26 @@ function Atk.Special(B, ev, dueAt)
 	if precharged then
 		St.pre = nil
 	end
+	-- (battle-feel T3) a Special after its server cast (a Cast record, or the event's `at`): the charge the Cast started
+	-- hands over, the travel given back up to TRAVEL_HOLD (old recordings with neither: LATE_MAX as before)
+	local rec = B.casts and B.casts[u.id]
+	if B.casts then
+		B.casts[u.id] = nil
+	end
+	local castDriven = rec ~= nil or tonumber(ev.at) ~= nil
+	local castPre = false
+	if rec and not precharged then
+		local AF = Mods.AttackFx
+		castPre = AF ~= nil and type(AF.Precharging) == "function" and AF.Precharging(u.id) ~= nil
+	end
+	local lateMax = nil
+	if kind ~= "Pounce" then
+		if castDriven then
+			lateMax = K.TRAVEL_HOLD
+		elseif not precharged then
+			lateMax = K.LATE_MAX
+		end
+	end
 	local S = SPECIALS[kind] or {}
 	-- (evolved forms) a form's look: the pack's real charge line (the sim's floor space -> the world); a Rally's / Haste's aura, to the buff's end as it plays on the render clock
 	local line = nil
@@ -3642,7 +3794,7 @@ function Atk.Special(B, ev, dueAt)
 		Attack = "Special", Kind = kind, From = Atk.Side(B, u), To = to, Mine = u.mine == true, DueAt = dueAt,
 		Angle = tonumber(ev.angle) and worldAngle(B, tonumber(ev.angle)) or nil, Ground = groundOf(B, u),
 		Radius = areaOf(ev.r, S.Radius, u), Length = areaOf(ev.length, S.Length, u), Width = areaOf(ev.width, S.Width, u),
-		Precharged = precharged or nil, LateMax = (not precharged and kind ~= "Pounce") and K.LATE_MAX or nil,
+		Precharged = (precharged or castPre) or nil, LateMax = lateMax,
 		Form = tonumber(ev.form), Line = line, Seconds = seconds, Scale = scale,
 	})
 	local played = Atk.Play(ctx)
@@ -3650,11 +3802,14 @@ function Atk.Special(B, ev, dueAt)
 	if precharged and not played then
 		St.pre = pre
 		Atk.Shatter(B, true) -- (the Special came but could not play: its prediction fades, no "interrupted" cue)
+	elseif castPre and not played then
+		local AF = Mods.AttackFx
+		pcall(AF.Shatter, u.id, os.clock(), true) -- (battle-feel T3: the cast's charge just fades)
 	end
 	if played then
 		local late = tonumber(ctx.ImpactLate) or 0
 		if late == late and late > 0 then
-			ev.fxSpLate = min(late, K.LATE_MAX)
+			ev.fxSpLate = min(late, castDriven and K.TRAVEL_HOLD or K.LATE_MAX)
 		end
 		cover(B, to, dueAt)
 		if kind == "Storm" then
@@ -3867,6 +4022,8 @@ function Atk.Event(B, ev, dueAt)
 		return Atk.Hit(B, ev, dueAt)
 	elseif t == EV.Special then
 		return Atk.Special(B, ev, dueAt)
+	elseif t == (EV.Cast or "Cast") then
+		return Atk.Cast(B, ev, dueAt)
 	elseif t == (EV.Element or "Element") then
 		return Atk.Element(B, ev, dueAt)
 	elseif t == EV.KO then
@@ -3948,9 +4105,19 @@ function Atk.PoseOf(u, now, down, busy, animate, base)
 		u.poseCur = cur
 		cur.Name, cur.P, cur.Ranged, cur.Amp, cur.Reach = ps.Name, ps.P, ps.Ranged, ps.Amp, ps.Reach
 		pose, body, src = cur, poseBody(cur), "fx"
+		-- (battle-feel T2) a flurry's bite from the dash's edge: the held Forward (pose studs, scaled with the body below)
+		local fwd = num(ps.Forward, 0)
+		if fwd ~= 0 then
+			body = CFrame.new(0, 0, -fwd) * body
+		end
 		local blend = num(ps.Blend, 1)
 		if type(ps.Prev) == "table" and blend < 1 then
-			body = poseBody(ps.Prev):Lerp(body, clamp(blend, 0, 1))
+			local pf = num(ps.Prev.Forward, 0)
+			local prevBody = poseBody(ps.Prev)
+			if pf ~= 0 then
+				prevBody = CFrame.new(0, 0, -pf) * prevBody
+			end
+			body = prevBody:Lerp(body, clamp(blend, 0, 1))
 			if blend < 0.5 then
 				pose = ps.Prev
 			end
@@ -4488,7 +4655,7 @@ Handlers[EV.Special] = function(B, ev)
 	local cubes = not Atk.Result(B, ev)
 	if u and u.root and not u.parked then
 		local label = tostring(ev.name or kind)
-		Fx.Number(u.root, numberHeight(u) + 0.6, string.upper(label) .. "!", color:Lerp(COLORS.White, 0.2), K.CALLOUT_PX, 1.2)
+		Fx.Number(u.root, numberHeight(u) + 0.6, string.upper(label) .. "!", color:Lerp(COLORS.White, 0.2), K.CALLOUT_PX, K.SPECIAL_CALLOUT)
 		if cubes then
 			Fx.Burst(unitCenter(B, u), color, 8, 6, 0.35, 0.45, { up = 0.9, gravity = 4 })
 		end
@@ -4619,6 +4786,9 @@ Handlers[EV.KO] = function(B, ev)
 	Units.Unhold(u) -- (Task 11b) a KO held for a late Special's impact (or a last gasp) plays now
 	if St.pre and St.pre.unit == u.id then
 		Atk.Shatter(B, true) -- (fix round 1, I3) my pressed fighter went down before its Special: the charge just fades
+	end
+	if B.casts and B.casts[u.id] then
+		Atk.EndCast(B, u.id, true) -- (battle-feel T3) a caster KO'd in its cast: the server dropped it, its charge fades
 	end
 	Atk.Result(B, ev) -- AttackFx's Ko (played on arrival) marks the pet poofed: no cube poof below, it tumbles and lies
 	if u.root and not u.parked then
@@ -4870,7 +5040,33 @@ Handlers[EV.Windup or "Windup"] = function(B, ev)
 	if u then
 		-- the list row's "!" until the hit lands (at = sim time of the hit)
 		u.windupUntil = os.clock() + max(0.2, num(ev.at, B.renderT + 0.45) - B.renderT) + 0.1
+		-- (battle-feel T2) a melee pet dashes in to land its bite on the hit's time (at = its sim time, on the render clock)
+		local v = B.units[tonumber(ev.target) or -1]
+		if v and not u.ranged and not u.isBoss and Atk.Dash(B, u, v, os.clock() + max(0.05, num(ev.at, B.renderT + 0.45) - B.renderT)) then
+			u.dashedAt = os.clock()
+		end
 	end
+end
+
+-- (battle-feel T3) the server's real cast plays: the list row's "!" until its effects land (at = their sim time); the
+-- charge itself started on the event's arrival (Atk.Cast)
+Handlers[EV.Cast or "Cast"] = function(B, ev)
+	Atk.Result(B, ev)
+	local u = B.units[tonumber(ev.unit) or -1]
+	if u then
+		u.windupUntil = os.clock() + max(0.2, num(ev.at, B.renderT + 0.5) - B.renderT) + 0.1
+	end
+end
+
+-- (battle-feel T3) a stun (or a retreat) broke the cast before it landed: the charge shatters (shards on mine, an
+-- enemy's just fades); its meter stays full on the server
+Handlers[EV.CastBreak or "CastBreak"] = function(B, ev)
+	local id = tonumber(ev.unit) or -1
+	local u = B.units[id]
+	if u then
+		u.windupUntil = nil
+	end
+	Atk.EndCast(B, id, not (u and u.mine))
 end
 
 -- dungeon fixes (root cause A): the server opens a room's encounter with an EMPTY side 2 ("Start") and spawns every
@@ -10261,6 +10457,12 @@ end
 
 function BattleController._Pre()
 	return St.pre
+end
+
+-- TESTS ONLY (battle-feel T3): the live server casts { [unit] = { Kind, DueAt } } of the battle on screen
+function BattleController._Casts()
+	local B = St.battle
+	return B and B.casts or nil
 end
 
 -- TESTS ONLY (fix round 2, M5'): the inhale records by token

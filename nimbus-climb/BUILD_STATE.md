@@ -73,7 +73,7 @@ Updated: 2026-10-18 (after wave 2). Branch `v3-phase4`. Plan: `ARCHITECTURE_V3.m
   Within every band: solo average 3.0 %, 3 teams 38.6 %, 8 teams 98.9 %; three 3-team cells sit on the band's floor of 25 % (Lava Golem Starter and High, Frost Wyrm High). A High bottom-of-tier solo now wins now and then, no target asks otherwise: 48 seeds, Storm Titan 8 % (reach x1: 4 %), Frost Wyrm 8 % (reach x1: 2 %).
   A weak team in a Max raid (the owner's question, 48 seeds a cell, rule unchanged): it does not count as a team. A boss's HP weighs each team by its DPS against the strongest, so a Mid team, 1.1 % of a Max team's DPS, adds 0.001 % (Storm Titan 263,668,558 -> 263,671,297; a real eighth Max team adds 14.1 %). Win and time stay within noise (7 Max 88-100 %, 104-193 s; with the Mid team 92-100 %, 104-191 s). It also lowers the average fighter HP from 1.63 M to 1.43 M, which by DamageBasis makes the boss's hits on the Max teams about 5 % lighter; the boss's biggest calm hit on it is 5.7-13.7 x its health, and it ends a fight with 0.4-1.1 of its 3 lives. A win pays it the Helper medal at Max scale: 78 tokens, 65 XP.
   Frost Wyrm's biggest hit in a large group (0.39 -> 0.59 in the attack-fx log): not a bug and not reach. M5 is unevolved; the 108 tune pushed its slowest fights past main's clock enrage at 240 s, where hits double (HP 108 with the enrage moved off: 0.39). On this tree that clock is gone and every fight enrages at 30 % health, so the biggest hit is always an enraged one: calm 0.20 / 0.20 / 0.33 / 0.30, enraged 0.39 / 0.53 / 0.67 / 0.60 at Starter / Mid / High / Max (8 teams). The spec's x2 is the rule, nothing changed.
-  Eight M5 teams (highest pet L14, Evo 0, so the Starter tier) win 0 of 16 against Frost Wyrm in 278 s: raid-boss's numbers, no target covers a team in the middle of its tier; for the owner to judge. The last review's one finding, fixed (14f9963): the DASH warning (the floating DASH! and the HUD's cue) now tests a pet's own radius, as the sim's hit does, on a Circle and along a Line; before, a fixed 1.5-stud pad left a ring of up to 0.9 studs (a Bear, radius 2.4) where a lethal knocked a pet out with no warning over it. The pad is gone: every pet's radius is above it. Last gate on 14f9963, one run at a time: `smoke.py --quick` 18869 passed / 0 failed in 1094 s (961 warnings: 958 the mock's "no asset store", 3 the dev ban test's own failures), `--mesh` 1122 / 0, `node tools/check.mjs` 0 errors (5 many-locals warnings), `sim_tycoon.py --check` ok, `SIM_BATTLE=full` 64 of 64, the table above unchanged. The place file is main's, not rebuilt. Nothing looked at in Studio: both builds' lists above, and on this tree whether the bigger attack effects hide a lethal's rim.
+  Eight M5 teams (highest pet L14, Evo 0, so the Starter tier) win 0 of 16 against Frost Wyrm in 278 s: raid-boss's numbers, no target covers a team in the middle of its tier; for the owner to judge (answered 2026-11-10, frost-wyrm entry). The last review's one finding, fixed (14f9963): the DASH warning (the floating DASH! and the HUD's cue) now tests a pet's own radius, as the sim's hit does, on a Circle and along a Line; before, a fixed 1.5-stud pad left a ring of up to 0.9 studs (a Bear, radius 2.4) where a lethal knocked a pet out with no warning over it. The pad is gone: every pet's radius is above it. Last gate on 14f9963, one run at a time: `smoke.py --quick` 18869 passed / 0 failed in 1094 s (961 warnings: 958 the mock's "no asset store", 3 the dev ban test's own failures), `--mesh` 1122 / 0, `node tools/check.mjs` 0 errors (5 many-locals warnings), `sim_tycoon.py --check` ok, `SIM_BATTLE=full` 64 of 64, the table above unchanged. The place file is main's, not rebuilt. Nothing looked at in Studio: both builds' lists above, and on this tree whether the bigger attack effects hide a lethal's rim.
 - 2026-11-02 (evolved forms, Switch Target and Retreat; branch `evolved-forms` on top of `raid-fx`, not merged; spec docs/superpowers/specs/2026-11-01-evolved-forms-design.md, plan docs/superpowers/plans/2026-11-02-evolved-forms.md; all 14 pitch cards approved on https://claude.ai/artifact/TFVXosvvZdydi8fSmUmRfB): every evolution gives a pet's special (and its element attack) a new name, a real new effect on the server and a new look (`BattleCatalog.Forms` / `ElementAttacks[e].Forms` / `FormNames`, read through the stored stage; hybrids get forms by their real stage, applied 2026-11-03 in its own stage: `FormStageOf` reads every def's stored stage, a hybrid takes its kind's and element's shared names and looks, never its body pet's own, the owner's answer of 2026-11-02); Epic and up get unique forms (Stormfang: a plain storm pounce -> Shadow Pack, three shadow wolves -> Thunder Pack, five lightning wolves on the real charge line from behind the pet), Common to Rare share one look per kind in their own colour; cooler beams at every stage, Rally grows the pet (look only) and Haste gets an aura, both ending with the buff; F / X is Switch Target in every battle (tap = next enemy, hold = automatic; one enemy: says so, sends nothing), Special is the biggest button and the Special / Element buttons show the attack's name; R / D-pad down is Retreat in boss raids only; Candy Unicorn is Legendary, Magma Cub and Hydralotl Mythic with Secret-grade stats (`StatRarity`; every id unchanged, nothing joins the save). Bosses keep their immunity (a control twist pays a 7 % bonus hit instead); boss HP counts forms (`FormDps`); the owner's OKs of 2026-11-02: boss health counting forms, softer form values (BossBonus 0.07, Pounce Charge / Landing 0.35, Beam Mark 1.10 / Twin 0.4, Forked Bolt 0.3, Thunder Lance meter 3, Inferno 0.45), the Mythic index reward needing both raid drops, bench helpers plain, the boss bonus hit, the DASH! text, Storm Titan Starter HpTier 1.24 -> 1.23 (applied 2026-11-03 in its own stage after the gate run below: `SIM_BATTLE="full only=raids"` 11 of 11, Storm Titan Starter 3 teams 33 % won 244 s / all 243 s -> 25 % won 231 s / all 238 s, 8 teams 220 -> 215 s).
   Deviations from the spec, as the plan lists them (all kept): 1 the delayed-hit queue is `self.delayed`; 2 a hybrid is stage 0 by its def (now overruled by the owner, above); 3 Pounce Landing hits every enemy in the circle but the target; 4 Burning ground / Inferno carry 50 % over their seconds, Rockspire is the ring band r .. r + 4 x reach, Forked Bolt jumps 10 studs; 5 Mark applies to bosses, the Winds bonus once per zone per boss, the Chill bonus at the cast; 6 the other Epics' odds x1.33, Legendaries x0.75; 7 the Secret perk rule groups by `StatRarity or Rarity`; 8 a new hybrid of a raid pet carries `StatRarity` from its parents, a stored hybrid keeps its stored Rarity; 9 element form names replace the attack name at stage >= 1; 10 Stormfang's start keeps the slam ring, the slam bolts and the cloud ride; 11 names on touch sit inside the button face, Special >= 72 px; 12 Rally's bigger pet is `Model:ScaleTo` under pcall (the mock keeps the `AuraScale` attribute); 13 the Retreat button in the Cheer up! row, keys R and D-pad down, accepted while Stunned / Casting / Dashing, refused Down; 14 overruled (no free pet, below); 15 the stage-0 pin is a frozen replay (`evo_stage0_pinned`) every later task must keep.
   Retreat (plan Task 6, finished 2026-11-03 on the pies1 PC after the owner's freeze; the sim half was 95a6fdc, the rest the WIP 14f5da8): the team state on `team.retreat` (an incoming helper inherits it), a short dodge as the pet starts back, no attacks / meter / self-healing while back, helper buttons (a Heal included) work, the boss and the minions skip a retreated pet while anyone fights and turn back on it when nobody does, a telegraph already placed keeps its point, the lethal knocks out only the unit, Engage then a 10 s wait, accepted while Stunned / Casting / Dashing, refused Down, NoRetreat outside a raid; the service: `Cmd.ACTIONS` Retreat / Engage "noarg", the toasts, `Cmd.retreated` gives the leash the stun's grace, `Start.Team.Retreated` + `Cooldowns.Retreat`. **No free pet, the owner's choice 2026-11-02 (it overrules plan deviation 14's loss pay):** a player whose team was back for over half of ITS OWN time in a won fight (a late joiner is judged on its own seconds) keeps the medal, Tokens, XP, Gems and the win clock; only the Boss Raid pet roll is skipped (`rw.SatOut` + `Reason`, a result card line and, when something was paid, a toast; the roll is drawn and thrown away, so every other raider's draws are exactly what they were). The button: left of Cheer up! in its row (desktop, tablet); where the row has no room on its left it stacks above Cheer up! (360x640); where that stack would cover the fighter's cards or the screen's middle (every landscape phone: Cheer up! sits beside the card right under the cards; a portrait phone) it goes UNDER the vitals card, from the card's left edge and right of Roblox's stick (`Retreat.Place`, `Retreat.how`): the plan's "stack above" alone could not fit a phone, so this is a deviation of 2026-11-03, for the owner to look at. The label follows the server's echo, a dark sweep shows the 10 s, the stroke pulses while it says Engage (plain on Low).
@@ -206,6 +206,109 @@ Updated: 2026-10-18 (after wave 2). Branch `v3-phase4`. Plan: `ARCHITECTURE_V3.m
   Also a first roll after joining: the cards show their pictures from the strip's first second.
   Open owner question 4 (Claude's pick first): the Shop's Eggs tab domes and odds rows: wire them to the same egg
   pictures in a follow-up, no new upload (pick), or keep them painted.
+- 2026-11-10 (frost-wyrm, branch `frost-wyrm` cut from integration 70fc213, not merged): the owner's answer of 2026-11-02,
+  "Frost Wyrm easier at Starter". One number: Frost Wyrm `HpTier.Starter` 1.30 -> 1.15 (`BattleCatalog.Bosses.frost_wyrm`;
+  Mid / High / Max and every other boss unchanged; no ability, timer or code change).
+  Why it was harder than its HpTier says: the Starter reference team (`SIM.RaidTeams.Starter`: aurora_fox L18 Frost,
+  moonlit_owl L17 Celestial, ember_phoenix L16 Flame) carries a Flame pet, and Flame beats Frost (x1.5 dealt, x0.75
+  taken). 1.30 was fitted on that counter: with the wheel off (the boss made Celestial for the test) the same 3 teams win
+  8 %, not 42 %. A team with no Flame pet, like the mid-Starter S5 team (aurora_fox L12 Frost, storm_tabby L14 Storm,
+  frostling_penguin L12 Frost: neutral both ways), met the highest Starter HP of the four bosses, with the hardest hits
+  (Ice Spit 0.06 / 2.2 s is +31 % over Storm Titan's Zap) and the widest circle lethal (r 10, the others' 9). The S5 groups wipe in the
+  enrage with 5-9 % of the boss left. Levers tried on the same seeds (ref = 3 reference teams, 12 seeds; S5 = 8 S5 teams,
+  8 seeds): Freeze off: ref 50 %, S5 0 % (8 % left); lethal r 10 -> 9: ref 58 %, S5 0 %; Ice Spit 0.06 -> 0.045: ref
+  67 %, S5 0 %; all hits at Storm Titan's size: ref 67 %, S5 25 %; a Starter-only hit factor x0.9 / 0.85 / 0.8 at HP
+  1.30 (48 / 16 seeds): ref 56 / 63 / 48 %, S5 0 / 6 / 25 %, with S5 fights to 309-330 s (one reached the 330 s
+  limit). Every damage lever lifts the reference team (which already counters the boss) more than S5, and lengthens
+  fights; HP barely moves the reference team and shortens fights, so HP is the lever, and the only per-boss, per-tier one.
+  HP sweep, 48 seeds each (ref 3 teams / 8 S5 teams, win and average length): 1.30 38 % 212 s / 0 % 278 s (9.4 % left);
+  1.25 44 % / 0 % (16 seeds); 1.22 63 % / 0 % (16); 1.20 46 % 196 s / 4 % 266 s; 1.18 52 % / 0 % (16); 1.15 44 % 191 s /
+  8 % 258 s (5.2 % left); 1.12 54 % 183 s / 13 % 253 s; 1.10 65 % / 19 % (16). 1.15 is the reference's "about 40 %" and
+  the neighbours' range; 1.12 is past it.
+  Starter, 48 seeds a cell, the same seeds before and after (3 ref teams / 3 S5 teams / 8 S5 teams: win, average s, max s):
+
+  | Boss | HpTier.Starter | 3 ref teams | 3 S5 teams | 8 S5 teams |
+  |---|---|---|---|---|
+  | Storm Titan (unchanged) | 1.23 | 29 %, 239 s | 0 %, 244 s | 23 %, 265 s (max 304) |
+  | Lava Golem (unchanged; Flame beats S5's two Frost pets) | 1.16 | 35 %, 226 s | 0 %, 216 s | 0 %, 288 s (max 313) |
+  | Shadow Hydra (unchanged) | 1.27 | 48 %, 233 s | 0 %, 249 s | 100 %, 260 s (max 323) |
+  | Frost Wyrm before | 1.30 | 38 %, 212 s | 0 %, 229 s | 0 %, 278 s (max 305) |
+  | Frost Wyrm after | 1.15 | 44 %, 191 s | 0 %, 214 s | 8 % (4 of 48, won in 232 s), 258 s (max 298) |
+
+  `SIM_BATTLE=full`, before (70fc213) and after: 67 of 67 targets both. The only lines that moved are Frost Wyrm
+  Starter's (solo 0 % 122 -> 99 s; 3 teams 42 %, won 198 -> 189 s, all 210 -> 189 s; 8 teams 100 %, 225 -> 202 s;
+  bottom solo 0 %) and the move section's Frost Wyrm S5 8-team stand / wander pair (277.8 / 248.6 s, x0.90 -> 228.0 /
+  256.3 s, x1.12, same outcome, inside its 15 %). Review follow-up: that pair was 8 S5 teams on Frost Wyrm Starter, which
+  now win 8 % of seeds, so its same-outcome test was a coin toss on any seed. The move check now runs a settled cell, 8 x
+  `SIM.RaidTeams.Starter` on Shadow Hydra Starter (12 seeds probed: all won, 205-217 s, per-seed wander / stand x0.96-1.03),
+  4 seeds compared seed by seed (same winner, within 15 % each): 209.4 / 209.5 s, worst seed x1.034. `SIM_BATTLE=full`
+  after it: 67 of 67 (303 s); `smoke.py --quick --only` p5battle_balance 78 / 0, bug2bat_raid_balance 86 / 0; `node
+  tools/check.mjs` 0 errors. Bands after: solo worst 8 %, average 2.0 %; 3 teams 25-50 %; 8 teams
+  worst 100 %; group fights 120-238 s, won 120-232 s; 0 timeouts, longest single fight 281 s; trained 8-team raids 4 of
+  4. Gemini could not be asked (API 402); no design call beyond the owner's answer.
+  Tests (targeted, one run at a time; the whole suite and client_replay NOT run: low memory, another builder):
+  `smoke.py --quick --only` raid_tiers 120 / 0, raid_lethal 114 / 0, raid_rewards 152 / 0 (64 warnings, the mock's "no
+  asset store"), p5battle_balance 78 / 0, bug2bat_raid_balance 86 / 0, evo_boss_twists 82 / 0, evo_el_boss 79 / 0,
+  p3events_bosses 194 / 0, p3events_raid 174 / 0, p3bs_raid 169 / 0, p5svc_raid 141 / 0, p3fixsrv_raid 145 / 0,
+  raid_flow_two_tiers 145 / 0, raid_flow_new 144 / 0, raid_svc_floor 144 / 0, the p3flow chain (reset, arrive, solo,
+  duels, raid, rejoin; p3flow_raid alone only skips: it needs its earlier chapters) 271 / 0; `node tools/check.mjs` 0
+  errors (the 5 old many-locals warnings). For the owner: a no-Flame mid-Starter group of 8 now wins now and then (about
+  1 in 12) instead of never; Storm Titan gives the same group about 1 in 4. Going further needs a damage change, which
+  also makes the reference team win more than the band allows.
+- 2026-11-10 (battle feel, branch `battle-feel` cut from frost-wyrm 38cadc6, not merged; spec
+  docs/superpowers/specs/2026-11-10-battle-feel-design.md, plan docs/superpowers/plans/2026-11-10-battle-feel.md; Claude's
+  six pitch picks built in sleep mode, Gemini agreed on the pitch, the owner has not answered it yet; ledger
+  `.superpowers/battle-feel/LEDGER.md` with the morning questions): centre aim + the real floor, the melee dash in / bite /
+  hop back, the flurry lunge, weighty specials x1.4 and a real server cast (built, tested, shipped OFF).
+  The knobs, all in `Config.Battle.Feel` (`src/shared/Config.lua`). The owner can change any of them. Only `Melee.Standoff`
+  and `Special.RealCast` / `Cast` reach the server (and the balance). Everything else is drawing:
+
+  | Knob | Ships | What it does / what to change |
+  |---|---|---|
+  | `Melee.Dash` | true | false = today's Strike leap for every melee bite |
+  | `Melee.Standoff` | 0 | studs a melee pet / NPC rests away from its target (server). The pitch said 8; at 8 the sim misses 5 targets (raids easier, dungeons harder), so it ships 0 until a balance pass (morning question 1) |
+  | `Melee.MinGap` | 1.5 | the dash plays only across a gap at least this big, else today's Strike (at Standoff 0 the gaps are ~2.6-4.3 studs) |
+  | `Melee.In` / `Bite` / `Hold` / `Back` | 0.30 / 0.08 / 0.12 / 0.40 | seconds: the run in, the bite, the hold at the edge, the hop back |
+  | `Melee.Hop` | 0.5 | the low hop's height (studs, 0..3) over the last quarter of the run in (the hop back keeps its own 1-stud arc). Gate fix: PetPoses had 0.5 written in, so this knob did nothing; `AttackFx.Dash` now hands it over (`PetPoses.DashHop`, test `client_feel_dash_hop`) |
+  | `Melee.Lunge` / `FlurryBelow` | 0.6 / 0.75 | under a 0.75 s attack gap the pet stays in and lunges 0.6 from the edge (the flurry) |
+  | `Melee.Streak` / `StreakMax` | true / 4 | the speed streak behind a dashing pet, at most 4 at once (yours first), High graphics only |
+  | `Aim.Mode` | "Centre" | shots, beams and specials at the body centre; "Pivot" = today's aim (at a boss's feet) |
+  | `Aim.FloorRay` | true | one raycast per effect so ground rings sit on the real floor; false = the arena's ground height only |
+  | `Special.Weighty` | true | false = today's special beats |
+  | `Special.Tempo` / `ChargeMax` | 1.4 / 1.1 | the charge x1.4, capped at 1.1 s |
+  | `Special.Speed` / `TravelMax` | 0.7 / 0.7 | the travel at 0.7 speed, at most 0.7 s |
+  | `Special.Impact` / `HitStop` | 0.25 / 0.08 | the impact flash (s) and the hit freeze on the caster and its victims (s) |
+  | `Special.Afterglow` / `Callout` / `TravelHold` | 1.5 / 1.6 / 0.3 | afterglow x1.5 (0 on Low), the name callout 1.6 s, up to 0.3 s of lateness given back to the travel |
+  | `Special.RealCast` | false | true = the server's damage waits for the cast (a dash during the charge dodges, a stun breaks it, the meter is kept). Needs the raid refit first (morning questions 3-4) |
+  | `Special.Cast` | Blast 0.9, Beam 0.8, Storm 0.95, Freeze 0.7, Pounce 0.6, Heal 0.55, Shield 0.5, Rally 0.55, Haste 0.5 | seconds of server cast per kind (used only with RealCast on) |
+
+  Gate (e21105b): `SIM_BATTLE=full` 67 of 67 (197 s). Every line of the output is the same as base 38cadc6's (67 of 67)
+  except the step-cost line (0.041 vs 0.029 ms, under the 1 ms target; both ran next to a smoke run). That is expected:
+  at Standoff 0 with RealCast off the server fights as before. The slowest raid cells: Storm Titan Starter 3 teams (all
+  238 s, won 231 s), Lava Golem Starter 3 teams (won 232 s), Shadow Hydra Starter 3 teams (all 232 s), Storm Titan Max 8
+  teams (231 s), the trained Storm Titan 8 teams 232.8 s. Frost Wyrm is no longer near the edge: its slowest cell is
+  Starter 8 teams at 202 s. (The old "M5 235 s / 231 s" cells came from the pre-tier HpPerPlayer table, which is gone.)
+  Groups 120-238 s, won 120-232 s, 0 timeouts, the longest fight 281 s. The whole suite `smoke.py --quick` (4.7 GB
+  free, no other smoke run): 27,866 passed / 0 failed (835 scenarios, 1,409 s) on e21105b; after the Hop fix 27,878 / 0
+  (836, 1,442 s). Its 992 warnings are 984 mock "no asset store" lines and 8 the tests cause on purpose. The fix is
+  drawing only, and BattleSim never loads PetPoses, so the sim cannot move. `node tools/check.mjs` 0 errors (the 5 old
+  many-locals warnings). Evidence: `.superpowers/battle-feel/evidence/gate-*.txt`.
+  Owner Studio checklist (Play, a raid boss, then a dungeon or the Ring; screenshots into
+  `.superpowers/battle-feel/evidence/`):
+  1. Eight minions / pets dashing at a raid boss: each melee bite runs in, bites, and hops back, with no pets stacked or
+     flickering and at most 4 speed streaks. At Standoff 0 the run is short, so set `Melee.Standoff = 8` in Studio to see
+     the pitched look (the balance then moves; do not ship that without the balance pass).
+  2. Centre hits on the boss: bolts, beams and specials burst on the boss's body, not at its feet; the Storm cloud and the
+     Eclipse sun hang over its top, not inside it. The Shadow Hydra's bites stay today's Strike (its necks reach past
+     the rest spot).
+  3. Ground rings on the floor: telegraph circles, Storm / Freeze areas and the impact rings sit on the arena floor (not
+     sunk, not floating) in the raid pocket, a dungeon room and the Ring.
+  4. A weighty special: the longer charge (about 1 s), the slower travel, the impact with its short freeze, the
+     afterglow, the 1.6 s name callout; the numbers do not pop much before the impact.
+  5. Phone layout (the device emulator, a landscape phone and 390 x 844): the callout and the effects do not cover the
+     action buttons; nothing new in the screen centre.
+  6. Low graphics (Settings): no speed streaks, no afterglow, the dash still plays; the frame rate with 8 pets at a boss
+     is like today's.
 - 2026-10-28 (player ruling, wave 5 dungeon camera): the Camera shake setting OFF turns off ONLY the hit shakes; the dungeon entrance rush, the room walk-in shot and the FOV punch on big attacks always play (short, skippable). The rush is skipped when the camera is > 60 studs from the gate.
 - Evolve button; 2nd evolution only Epic+; level cap 100 for all pets (XP curve keeps rising).
 - Presses become food plants, Collector = Coin Magnet, Kitchen = Food Machine, Gym = Training Place.

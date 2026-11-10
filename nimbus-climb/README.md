@@ -1182,6 +1182,12 @@ them and train their skills at the Training Place.
   around the target cannot move or attack for a moment), **Beam** (hits every enemy in a line), **Rally** (+35 %
   damage) and **Haste** (35 % faster). Evolved pets reach farther (+15 %, then +30 %: see
   [Evolution](#evolution-the-evolve-button)).
+- **Battle feel:** a special takes a moment to cast (0.5 to 0.95 s by kind: the pet glows and gathers its power, its
+  row flashes "!"), then lands with weight: a slower orb or beam, a short freeze on the hit and a longer glow after.
+  DASH out of an enemy's charging special to dodge it, or walk out of where it is aimed; stunning the caster breaks it
+  (its energy stays full). Shots, beams and specials aim at the middle of the enemy's body (a big raid boss too), and
+  rings and cracks sit on the real floor. A melee pet with room to spare dashes in to bite and hops back; a quick
+  attacker stays in and bites in place.
 - **The look of a hit:** every hit from every pet lands with a shockwave ring, a flash, sparks and a ground mark, stronger at
   higher rarities. Rings are thin lines on the floor and never run past what the attack really reaches: a Blast's or a Freeze's ring
   shows exactly where it hits (a Beam or a Storm whose own effects already fill the budget has no sparks). Scorch marks, embers and storm zones stay on the ground a moment after they end (up to 2 seconds), dim and

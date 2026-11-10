@@ -10,6 +10,7 @@
 -- the dungeon ladder (floor 1 for any single level-1 pet, S10 >= floor 10). Change a number -> re-run the sim; the
 -- smoke scenarios (tools/smoke_p5_battlecore.lua) check the basics. 2026-11-01 (attack effects spec, real reach): raids re-tuned on the
 -- merged tree in BossHp's HpTier (Storm Titan High 0.90, Shadow Hydra Mid 0.96); the fight tiers replaced that build's HpPerPlayer tune.
+-- 2026-11-10: Frost Wyrm Starter HpTier 1.30 -> 1.15 (the owner's "easier at Starter"; numbers next to it).
 --
 -- Stat sources: BattleStatsOf(subject, level, tier, stage), the battle-only path (2026-10-31: level beats rarity), scales
 -- Power / Health by BattleStats.RarityScale, BattleLevelFactor(level, stage) and tier. PetCatalog.GetStats stays the garden's
@@ -235,6 +236,26 @@ BattleCatalog.Damage = {
 	MeterOnHurt = 2, -- NPC meter gained per hit taken
 	MeterPerSecond = 5, -- NPC passive meter gain while alive (2 -> 5, #27: a 20 s fight sees an NPC special)
 	CastSeconds = 0.5, -- a unit is Casting (no attacks) this long after a special
+	-- (battle-feel T2, spec docs/superpowers/specs/2026-11-10-battle-feel-design.md decision 2) studs a melee, non-boss unit rests
+	-- farther from its target between attacks (it dashes in to bite: a client pose); BattleSim adds it to the rest spot AND every
+	-- attack / hit test of that unit, so reach, damage and tempo do not change. 0 = today's orbit. The owner's knob:
+	-- Config.Battle.Feel.Melee.Standoff (a number 0..20, Validate)
+	Standoff = (type(Config.Battle) == "table" and type(Config.Battle.Feel) == "table" and type(Config.Battle.Feel.Melee) == "table"
+		and tonumber(Config.Battle.Feel.Melee.Standoff)) or 0,
+	-- (battle-feel T3, spec decision 6) the real cast: seconds a special's caster is Casting before its effects land, per
+	-- kind (Config.Battle.Feel.Special.Cast while RealCast; nil = today's instant special + CastSeconds). BattleSim sends
+	-- Cast { at } at the start, fires the special at `at` (a dash then dodges it), a stun cancels it (CastBreak, meter kept)
+	SpecialCast = (function()
+		local F = type(Config.Battle) == "table" and type(Config.Battle.Feel) == "table" and Config.Battle.Feel.Special or nil
+		if type(F) ~= "table" or F.RealCast ~= true or type(F.Cast) ~= "table" then
+			return nil
+		end
+		local out = {}
+		for kind, s in pairs(F.Cast) do
+			out[kind] = s
+		end
+		return out
+	end)(),
 	SpecialScale = 1, -- global multiplier on every special effect
 	-- a special is powered by its pet's own Power stat (x Roles.Power): effect x (base Power / Reference) ^ Exponent
 	SpecialPowerCurve = { Reference = 10, Exponent = 0.5 },
@@ -1842,6 +1863,7 @@ BattleCatalog.Bosses = {
 		Element = "Storm",
 		Blurb = "A thunderhead given arms. Earth pets ground its lightning.",
 		HpFactor = 1,
+		-- (battle-feel review, sleep mode) the T3 nudge (Mid 0.94, Max 1.18) is for Config.Battle.Feel.Special.RealCast = true only; RealCast ships off, so the fitted values stand (ledger, the morning questions)
 		HpTier = { Starter = 1.23, Mid = 0.98, High = 0.90, Max = 1.22 }, -- per fight tier, each fitted so 3 teams win about 40% (48 seeds); Mid 1.03 -> 0.98: eight trained S7 teams took 246 s against the 240 s band; High 0.89 -> 0.90 with attack effects' reach: the top High solo won 17% against the 15% ceiling; Starter 1.24 -> 1.23: the forms build's Starter 3-team fights ran 243-244 s against the 240 s band (the owner's OK, 2026-11-02)
 		Radius = 7,
 		Scale = 1,
@@ -1880,7 +1902,7 @@ BattleCatalog.Bosses = {
 		Element = "Frost",
 		Blurb = "A serpent of living ice. Flame pets melt its armour.",
 		HpFactor = 1,
-		HpTier = { Starter = 1.30, Mid = 1.27, High = 0.68, Max = 0.66 },
+		HpTier = { Starter = 1.15, Mid = 1.27, High = 0.68, Max = 0.66 }, -- Starter 1.30 -> 1.15 (the owner's ask, 2026-11-02): 1.30 was fitted on a reference team whose Ember Phoenix is Flame (x1.5 on Frost; with the wheel off it wins 8%, not 42% (12 seeds)), so a team with no Flame pet met the hardest Starter boss: eight mid-Starter S5 teams won 0 of 48 (9% HP left), 3 reference teams 38% (48 seeds); at 1.15 eight S5 teams win 8% (4 of 48) in 258 s, 3 reference teams 44% in 191 s (1.12: 54% / 13%, past the neighbours' 29-48%); freeze, lethal radius and hit cuts moved S5 less and the hit cuts lengthened fights (one to the 330 s limit)
 		Radius = 7,
 		Scale = 1,
 		Basic = { Name = "Ice Spit", Interval = 2.2, Damage = 0.06, Range = 20 }, -- spec 2026-11-01: 0.045 -> 0.06, breath 0.3 -> 0.28, blizzard 0.15 -> 0.27 (Flame teams outlived the band: 3 teams 300 s, 8 teams 326 s; a flatter pair so Max is not one-shot)
@@ -2546,6 +2568,25 @@ function BattleCatalog.Validate()
 	local R = BattleCatalog.Roles
 	if not (R.Combat and R.Support and R.Support.Power > 1 and R.Support.Health > 1 and R.Combat.Power == 1 and R.Combat.Health == 1) then
 		bad("Roles: Combat 1 / 1, Support above 1")
+	end
+	-- (battle-feel T2) the melee standoff: a number of studs 0..20
+	local so = BattleCatalog.Damage.Standoff
+	if not finite(so) or so < 0 or so > 20 then
+		bad("Damage.Standoff must be a number 0..20 studs")
+	end
+	-- (battle-feel T3) the real cast seconds: nil (off), else a number 0.3..2 for every special kind
+	local sc = BattleCatalog.Damage.SpecialCast
+	if sc ~= nil then
+		if type(sc) ~= "table" then
+			bad("Damage.SpecialCast must be nil or a table of seconds per kind")
+		else
+			for _, kind in ipairs(BattleCatalog.SpecialKinds) do
+				local v = sc[kind]
+				if not finite(v) or v < 0.3 or v > 2 then
+					bad("Damage.SpecialCast." .. kind .. " must be a number 0.3..2 seconds")
+				end
+			end
+		end
 	end
 	local F = BattleCatalog.Fighter
 	for _, key in ipairs({ "AttackSlack", "AttackTolerance", "ElementCooldown", "ElementMult", "ElementRange", "SpecialMeterMax", "MeterPerSecond", "MeterOnHit", "MeterOnHurt", "DashSeconds", "DashCooldown", "DashIFrames", "SwapCooldown", "SwapCastSeconds", "HelperCooldown", "SupportCooldown", "Windup", "KitFactor", "HelperWeight", "Lives", "WalkMult", "WalkMin", "WalkMax", "RunMult", "MoveSlack", "Leash", "LeashSeconds" }) do

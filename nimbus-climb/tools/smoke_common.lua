@@ -111,6 +111,36 @@ end
 
 SmokeCommon = { T = T, guarded = guarded, add = add }
 
+-- (battle-feel T3, the real server cast) a special press's effects land BattleCatalog.Damage.SpecialCast[kind] s after the
+-- press (Cast event first, the Special + its hits at `at`). `evs` = the events of the step after the press: when they hold
+-- a Cast of unit `unitId` (any unit when nil) and no Special of it, the battle is stepped `dt` (0.05) at a time until its
+-- Special. -> the events of the step the Special came in (`evs` itself on the instant path), the battle time it landed at
+-- (the time its effects used: the old tests' "t0", the press time on the instant path), and the Cast event (nil on the
+-- instant path)
+function SmokeCommon.pastCast(battle, evs, unitId, dt)
+	local function find(list, kind)
+		for _, ev in ipairs(list or {}) do
+			if ev.type == kind and (unitId == nil or ev.unit == unitId) then
+				return ev
+			end
+		end
+		return nil
+	end
+	local cast = find(evs, "Cast")
+	if not cast or find(evs, "Special") then
+		return evs, nil, nil
+	end
+	local guard = 0
+	while guard < 80 do
+		guard = guard + 1
+		local step = battle:Step(dt or 0.05)
+		if find(step, "Special") or find(step, "CastBreak") then
+			return step, battle:Time(), cast
+		end
+	end
+	return {}, battle:Time(), cast
+end
+
 -- Phase 5 (7.2): every smoke scenario runs with the main menu DISABLED ("what every existing smoke scenario and the mock
 -- get unless a test sets Enabled"): the character spawns at once on join and nothing is gated. Set here, in the common
 -- boot of every world (smoke.py loads this file right after mounting src/ and before any scenario file), so it does not

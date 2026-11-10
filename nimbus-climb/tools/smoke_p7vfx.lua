@@ -726,9 +726,16 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 
 	-- travel by distance: 60 studs/s for the Blast orb; a basic ranged shot flies at RangedSpeed (34) and never less
 	-- than MinTravel (0.24 s: player note 1, the shot is seen crossing the gap), capped; impact = Charge + Release + Travel
+	-- (battle-feel T3, review round 1) Config.Battle.Feel.Special.Weighty: the specials' charge capped at ChargeMax (1.1), their
+	-- travel at Speed (0.7) capped at TravelMax, their Impact = Feel Impact (0.25); Weighty = false = the brief's numbers
+	local FS = Config.Battle and Config.Battle.Feel and Config.Battle.Feel.Special
+	local weighty = type(FS) == "table" and FS.Weighty == true
+	local spSpeed = weighty and FS.Speed or 1
+	local spCmax = weighty and FS.ChargeMax or 0.8
+	local spImpact = weighty and FS.Impact or 0.15
 	local blastNear = C.Resolve({ Element = "Flame", Attack = "Special", Kind = "Blast", Rarity = "Rare", Distance = 6 })
-	T.check(blastNear and math.abs(blastNear.Beats.Travel - 0.1) < 1e-6 and blastNear.Beats.MinTravel == nil,
-		"p7vfx catalog: the Blast orb's Travel = distance / 60 studs/s (no MinTravel)", blastNear and fmt("%.3f", blastNear.Beats.Travel))
+	T.check(blastNear and math.abs(blastNear.Beats.Travel - 0.1 / spSpeed) < 1e-6 and blastNear.Beats.MinTravel == nil,
+		"p7vfx catalog: the Blast orb's Travel = distance / 60 studs/s (/ the Weighty Speed) (no MinTravel)", blastNear and fmt("%.3f", blastNear.Beats.Travel))
 	local near = C.Resolve({ Element = "Flame", Attack = "Ranged", Rarity = "Rare", Distance = 6 })
 	local mid = C.Resolve({ Element = "Flame", Attack = "Ranged", Rarity = "Rare", Distance = 12 })
 	local far = C.Resolve({ Element = "Flame", Attack = "Ranged", Rarity = "Rare", Distance = 600 })
@@ -744,16 +751,17 @@ S.p7vfx_catalog = guarded("p7vfx_catalog", function()
 		"p7vfx catalog: ImpactAt = Charge + Release + Travel")
 
 	-- beat ranges of the brief: Charge 0.12-0.3 (specials up to 0.8), Release 0.05, Impact 0.15, Linger 0.4-1.0
-	local ranges = T.tally("p7vfx catalog: attack beats in range (Charge 0.12-0.3 / specials <= 0.8, Release 0.05, Impact 0.15, Linger 0.4-1.0)")
+	local ranges = T.tally("p7vfx catalog: attack beats in range (Charge 0.12-0.3 / specials <= 0.8 (Weighty: ChargeMax), Release 0.05, Impact 0.15 (Weighty specials: Feel Impact), Linger 0.4-1.0)")
 	for _, element in ipairs(elements) do
 		for _, v in ipairs(variants()) do
 			if v.Attack ~= "Hurt" and v.Attack ~= "Ko" and v.Attack ~= "Victory" and v.Attack ~= "ShieldHit" then
 				for _, rarity in ipairs(RARITIES) do
 					local r = C.Resolve({ Element = element, Attack = v.Attack, Kind = v.Kind, Shape = v.Shape, Rarity = rarity, Mine = true })
 					local b = r and r.Beats or {}
-					local cmax = (v.Attack == "Special") and 0.8 or 0.3
+					local cmax = (v.Attack == "Special") and spCmax or 0.3
+					local imp = (v.Attack == "Special") and spImpact or 0.15
 					ranges:case(r ~= nil and b.Charge >= 0.12 - 1e-9 and b.Charge <= cmax + 1e-9 and math.abs(b.Release - 0.05) < 1e-9
-						and math.abs(b.Impact - 0.15) < 1e-9 and b.Linger >= 0.4 - 1e-9 and b.Linger <= 1.0 + 1e-9,
+						and math.abs(b.Impact - imp) < 1e-9 and b.Linger >= 0.4 - 1e-9 and b.Linger <= 1.0 + 1e-9,
 						fmt("%s %s %s: C %.2f R %.2f I %.2f L %.2f", element, v.label, rarity, b.Charge or -1, b.Release or -1, b.Impact or -1, b.Linger or -1))
 				end
 			end
@@ -1440,7 +1448,8 @@ end)
 ----------------------------------------------------------------------
 -- p7vfx_poses: shared/PetPoses (Task 5) and the PetBuilder.Animate rig hook (opts.Pose, PetBuilder.PoseBody)
 ----------------------------------------------------------------------
-local POSE_NAMES = { "Windup", "Strike", "Shoot", "Recoil", "Cast", "Hurt", "Ko", "Victory", "IdleBattle" }
+-- (battle-feel T2) + DashIn / DashBack: the melee dash in (holds at the edge) and the hop back to the rest spot
+local POSE_NAMES = { "Windup", "Strike", "Shoot", "Recoil", "Cast", "Hurt", "Ko", "Victory", "IdleBattle", "DashIn", "DashBack" }
 
 local function cfFinite(cf)
 	if typeof(cf) ~= "CFrame" then
@@ -1513,10 +1522,10 @@ S.p7vfx_poses = guarded("p7vfx_poses", function()
 	for i, n in ipairs(POSE_NAMES) do
 		namesOk = namesOk and P.Names[i] == n
 	end
-	T.check(namesOk, "p7vfx poses: PetPoses.Names = Windup, Strike, Shoot, Recoil, Cast, Hurt, Ko, Victory, IdleBattle (in order)")
+	T.check(namesOk, "p7vfx poses: PetPoses.Names = Windup, Strike, Shoot, Recoil, Cast, Hurt, Ko, Victory, IdleBattle, DashIn, DashBack (in order)")
 	local loops = P.Loops or {}
 	local holds = P.Holds or {}
-	T.check(loops.IdleBattle == true and holds.Ko == true, "p7vfx poses: IdleBattle loops (p = time), Ko holds its downed end pose")
+	T.check(loops.IdleBattle == true and holds.Ko == true and holds.DashIn == true, "p7vfx poses: IdleBattle loops (p = time), Ko holds its downed end pose, DashIn holds at the edge")
 
 	-- every pose, melee and ranged, at the sample points: finite CFrames, Lids in 0..1
 	local fin = T.tally("p7vfx poses: every pose at p = 0 / 0.25 / 0.5 / 1 (melee + ranged) returns finite CFrames, Lids 0..1")
@@ -1539,7 +1548,8 @@ S.p7vfx_poses = guarded("p7vfx_poses", function()
 		if not loops[name] then
 			for _, ranged in ipairs({ false, true }) do
 				for _, p in ipairs({ 0, 1 }) do
-					if not (p == 1 and holds[name]) then
+					-- (battle-feel T2) DashBack starts at the edge DashIn holds (checked below)
+					if not (p == 1 and holds[name]) and not (p == 0 and name == "DashBack") then
 						local s = P.Sample(name, p, ranged)
 						local ok = isIdentity(s.Body) and s.Lids == 0 and (s.Still or 0) == 0
 						for _, g in pairs(s.Groups) do
@@ -1552,6 +1562,33 @@ S.p7vfx_poses = guarded("p7vfx_poses", function()
 		end
 	end
 	rest:report()
+
+	-- (battle-feel T2) the dash pair: DashIn holds at the edge (p 1: body.Z == -reach, nothing else moved), its low hop
+	-- peaks in the last quarter of the run (p 0.585 .. 0.78); DashBack starts exactly there and lands at rest; both finite
+	do
+		local reach = 9.7
+		local edge = P.Sample("DashIn", 1, false, 1, reach)
+		local back0 = P.Sample("DashBack", 0, false, 1, reach)
+		local back1 = P.Sample("DashBack", 1, false, 1, reach)
+		T.check(math.abs(edge.Body.Position.Z + reach) < 1e-6 and math.abs(edge.Body.Position.Y) < 1e-6 and math.abs(edge.Body.Position.X) < 1e-6 and angleOf(edge.Body) < 1e-4,
+			"p7vfx poses: DashIn holds at the edge (p 1: body.Z == -reach, upright)", fmt("%s", tostring(edge.Body.Position)))
+		T.check((back0.Body.Position - edge.Body.Position).Magnitude < 1e-6 and isIdentity(back1.Body),
+			"p7vfx poses: DashBack starts at DashIn's edge and lands at rest (p 1)", fmt("%s -> %s", tostring(back0.Body.Position), tostring(back1.Body.Position)))
+		local peakY, peakP = -1, -1
+		local finiteAll = true
+		for i = 0, 200 do
+			local p = i / 200
+			local s = P.Sample("DashIn", p, false, 1, reach)
+			finiteAll = finiteAll and sampleOk(s) and sampleOk(P.Sample("DashBack", p, false, 1, reach))
+			if p <= 0.78 + 1e-9 and s.Body.Position.Y > peakY then
+				peakY, peakP = s.Body.Position.Y, p
+			end
+		end
+		T.check(finiteAll, "p7vfx poses: DashIn / DashBack finite at every p (reach 9.7)")
+		T.check(peakP >= 0.585 - 1e-9 and peakP <= 0.78 + 1e-9 and peakY > 0.3, fmt("p7vfx poses: DashIn's low hop peaks in the last quarter of the run (p %.3f, %.2f studs)", peakP, peakY))
+		local run = P.Sample("DashIn", 0.78, false, 1, reach)
+		T.check(math.abs(run.Body.Position.Z + reach) < 1e-3, fmt("p7vfx poses: DashIn's run reaches the edge at p 0.78 (DASH_RUN %s)", tostring(P.DASH_RUN)))
+	end
 
 	-- no pops: neighbouring samples (dp = 0.005; the loop: dt = 0.005 s over 12 s) stay close
 	local smooth = T.tally("p7vfx poses: no pops (each 0.005 step moves the body < 0.2 studs / 0.2 rad, each group < 0.2 rad)")

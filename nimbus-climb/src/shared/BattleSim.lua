@@ -69,8 +69,8 @@
 --                                     current engaged target (sticky until it dies or is untargetable), else the fresh threat (who
 --                                     hit it within ThreatSeconds), else the targetable enemy nearest to the FIGHTER (ties: lower
 --                                     id). Engaged, the fighter ignores the Move point and walks at the honest legal run (no
---                                     MoveSlack; 0 Stunned) to reach - 0.5 (melee) / reach - 1 (ranged: it holds at the edge of its
---                                     range) of the target. Back to FOLLOW only when no target is left (a wave still arriving, the
+--                                     MoveSlack; 0 Stunned) to reach - 0.5 (melee; battle-feel T2: + Damage.Standoff, standoffOf) /
+--                                     reach - 1 (ranged: it holds at the edge of its range) of the target. Back to FOLLOW only when no target is left (a wave still arriving, the
 --                                     fight's end); a Swap / the fighter's KO / RemoveTeam drop it too. Harness Auto teams
 --                                     (autoFighter) never engage: today's exact behaviour.
 --     "Cheer" ()                      wave 6, Raid / Dungeon only ("Cheer up!"): the fighter deals x (1 + CheerBoost 0.05) for
@@ -118,8 +118,11 @@
 --   battle:Time(), IsFinished(), Owners(), BossStatus() (+ Tier, Lethal = a lethal telegraph is pending), SetAnchor(owner, x, z)
 --   BattleSim.States = { Idle 0, Moving 1, Attacking 2, Benched 3, Casting 4, Down 5, Stunned 6, Dashing 7 }  (Winding = Attacking + windup bit)
 --   BattleSim.Events = { Hit, Special, KO, Telegraph, Spawn, Enrage, Order, Zone, Leave, End, Element, Dash, Buff, Swap, Windup, Wave,
---                        EnemiesDown, Speed, Engage, Parry, Cheer, Twist }
+--                        EnemiesDown, Speed, Engage, Parry, Cheer, Twist, Cast, CastBreak }
 -- Event shapes:
+--   (battle-feel T3) with BattleCatalog.Damage.SpecialCast (the real cast): Cast { unit, kind, name, at, target?, tx?, tz?, form? }
+--                when a special starts (Casting until at, the aim fixed), its Special (+ at = the cast's start) and effects at
+--                `at` (a target in dash i-frames then = a miss); CastBreak { unit, kind } = a stun / a retreat ended it (meter kept)
 --   Engage     { owner, unit (the fighter), on = true, target }  /  { owner, unit, on = false }   (only the FOLLOW / ENGAGED flips)
 --   Hit        { from, to, dmg, elem, crit, absorbed, miss = true (dodged), burn = true, leech = n, element = name, special = kind,
 --                tele, zone, attack, buffDmg = true, lethal = true (the enraged boss's lethal attack: dmg = the whole HP + shield, a KO follows),
@@ -204,6 +207,10 @@ BattleSim.Events = {
 	Parry = "Parry",
 	Cheer = "Cheer",
 	Twist = "Twist",
+	-- (battle-feel T3, spec decision 6) the real cast: Cast { unit, kind, name, at, target?, tx?, tz?, form? } at its start
+	-- (at = the sim time its effects land), CastBreak { unit, kind } when a stun / a retreat ends it first (meter kept)
+	Cast = "Cast",
+	CastBreak = "CastBreak",
 }
 BattleSim.Actions = { "Attack", "Element", "Special", "Dash", "Target", "Buff", "Swap", "Move", "Cheer", "Forfeit", "Retreat", "Engage" }
 BattleSim.Modes = { "Duel", "Raid", "Ring", "Dungeon" }
@@ -308,7 +315,7 @@ end
 local FALLBACK_DAMAGE = {
 	HpScale = 2.6, DamageScale = 0.6, Variance = 0.2, MinHit = 1, TargetSticky = 1.6, TargetSpread = 1.35, ThreatSeconds = 3,
 	MeterMax = 100, MeterStart = { 20, 50 }, MeterOnHit = 4, MeterOnHurt = 2, MeterPerSecond = 2,
-	CastSeconds = 0.5, SpecialScale = 1, SeparationRadius = 3.2, RetargetSeconds = 0.5, EngageSlack = 0.6,
+	CastSeconds = 0.5, SpecialScale = 1, SeparationRadius = 3.2, RetargetSeconds = 0.5, EngageSlack = 0.6, Standoff = 0,
 	NpcSpecialDelay = { 0.4, 1.4 }, KoMeterLoss = true, Slow = 0.6, Weaken = 0.85, BurnTicks = 3,
 }
 local FALLBACK_FIGHTER = {
@@ -2332,13 +2339,29 @@ local function queueDelayed(self, entry)
 	self.delayed[#self.delayed + 1] = entry
 end
 
+-- (battle-feel T3) the real cast's entries ride the same queue: { at, from, cast = kind, target, x, z, t0 }. fireCast lands it
+-- at `at`; cancelCast ends it (CastBreak, meter kept) when its caster is stunned or its team retreats first; a caster that
+-- fell / left / sits on the bench drops it silently
+local fireCast, cancelCast -- forward
+
 local function resolveDelayed(self, events)
 	local list = self.delayed
 	local i = 1
 	while i <= #list do
 		local d = list[i]
-		if self.t < d.at then
+		local u = d.from
+		if d.cast and (not onFloor(u) or self.t < u.stunUntil or u.team.retreat) then
+			table.remove(list, i)
+			if onFloor(u) then
+				cancelCast(self, d, events)
+			else
+				u.castEntry = nil
+			end
+		elseif self.t < d.at - (d.cast and 1e-6 or 0) then
 			i = i + 1
+		elseif d.cast then
+			table.remove(list, i)
+			fireCast(self, d, events)
 		elseif not onFloor(d.from) then
 			table.remove(list, i)
 		else
@@ -2375,38 +2398,42 @@ local function doubleStrike(self, u, target, events)
 	end
 end
 
-local function castSpecial(self, u, events)
-	local kind = u.specialKind
-	local S = kind and specialRules(kind)
-	if not S then
-		return false, "NoSpecial"
+-- (battle-feel T3) the real cast's seconds for `kind` (BattleCatalog.Damage.SpecialCast), nil = today's instant special
+local function castSecondsOf(D, kind)
+	local c = D.SpecialCast
+	local s = type(c) == "table" and c[kind] or nil
+	if finite(s) and s > 0 then
+		return s
 	end
+	return nil
+end
+
+-- a special's effects: the meter spent, the areas, hits, zones, buffs, heals and the Special event. `cast` = the real cast's
+-- queue entry firing now (battle-feel T3): its aim (cast.x, cast.z) was fixed at its start, the caster is not blocked again
+-- (it was Casting until now), a Blast's target inside its dash i-frames is a miss, the Special event carries at = its start.
+-- cast == nil: today's instant special (Casting CastSeconds after it)
+local function specialBody(self, u, target, events, cast)
+	local kind = u.specialKind
+	local S = specialRules(kind)
 	local D = damageRules()
 	local team = u.team
 	local isFighter = team.player and u == team.fighter
 	local base = u.specialPower * D.DamageScale * num(S.Scale, 1) * num(D.SpecialScale, 1)
 	local reach = reachOf(u)
 	local form = formOf(u) -- nil at stage 0
-	local offensive = kind ~= "Heal" and kind ~= "Shield" and kind ~= "Rally" and kind ~= "Haste"
-	local target = nil
-	if offensive then
-		target = isFighter and lockOf(team) or nil
-		if not target then
-			target = pickTarget(self, u)
-		end
-		if not target then
-			return false, "NoTarget"
-		end
-		if kind == "Pounce" and dist(u.x, u.z, target.x, target.z) > num(S.Range, 30) * reach + target.radius then
-			target = nearestEnemy(self, u, num(S.Range, 30) * reach + 3)
-			if not target then
-				return false, "TooFar"
-			end
+	-- the aimed spot: the target now (today), or where it stood at the cast's start (a sidestep out of the area dodges)
+	local ax, az = nil, nil
+	if target then
+		ax, az = target.x, target.z
+		if cast and kind ~= "Pounce" then
+			ax, az = cast.x, cast.z
 		end
 	end
 	u.meter = 0
-	u.castUntil = self.t + D.CastSeconds
-	u.state = S_CASTING
+	if not cast then
+		u.castUntil = self.t + D.CastSeconds
+		u.state = S_CASTING
+	end
 	u.windAt = nil
 	u.windTarget = nil
 	if u.nextAttack < u.castUntil then
@@ -2414,11 +2441,14 @@ local function castSpecial(self, u, events)
 	end
 	u.autoCastAt = nil
 	local ev = { type = EV.Special, unit = u.id, kind = kind, name = u.formName or (u.special and u.special.Name) or kind, x = r1(u.x), z = r1(u.z) }
+	if cast then
+		ev.at = r1(cast.t0)
+	end
 	if form then
 		ev.form = formStageOf(u)
 	end
 	if target then
-		ev.tx, ev.tz = r1(target.x), r1(target.z)
+		ev.tx, ev.tz = r1(ax), r1(az)
 		ev.target = target.id
 	end
 	local position = #events + 1
@@ -2428,15 +2458,19 @@ local function castSpecial(self, u, events)
 		ev.r = areaField(reach, r)
 		ev.targets = {}
 		for _, e in ipairs(livingEnemies(self, u.side)) do
-			if inCircle(e, target.x, target.z, r) then
+			if inCircle(e, ax, az, r) then
 				ev.targets[#ev.targets + 1] = e.id
-				applyDamage(self, u, e, base, events, extra)
+				if cast and inIFrames(self, e) then
+					missEvent(self, u, e, events, extra) -- (battle-feel T3) dashed through the cast: dodged
+				else
+					applyDamage(self, u, e, base, events, extra)
+				end
 			end
 		end
 		if form then
-			queueDelayed(self, { at = self.t + form.Aftershock.Delay, from = u, kind = kind, twist = "Aftershock", x = target.x, z = target.z, r = r, base = base, share = form.Aftershock.Share })
+			queueDelayed(self, { at = self.t + form.Aftershock.Delay, from = u, kind = kind, twist = "Aftershock", x = ax, z = az, r = r, base = base, share = form.Aftershock.Share })
 			if form.Patch then
-				patchZone(self, u, target.x, target.z, r, base * form.Patch.Share, form.Patch.Seconds, kind, events)
+				patchZone(self, u, ax, az, r, base * form.Patch.Share, form.Patch.Seconds, kind, events)
 			end
 		end
 	elseif kind == "Heal" then
@@ -2523,8 +2557,8 @@ local function castSpecial(self, u, events)
 	elseif kind == "Storm" then
 		local seconds = num(S.Seconds, 4)
 		local zone = {
-			x = target.x,
-			z = target.z,
+			x = ax,
+			z = az,
 			r = num(S.Radius, 6) * reach,
 			dps = base / seconds,
 			untilT = self.t + seconds,
@@ -2603,7 +2637,7 @@ local function castSpecial(self, u, events)
 		ev.targets, ev.stunned = {}, {}
 		local frozen = {}
 		for _, e in ipairs(livingEnemies(self, u.side)) do
-			if inCircle(e, target.x, target.z, r) then
+			if inCircle(e, ax, az, r) then
 				ev.targets[#ev.targets + 1] = e.id
 				if inIFrames(self, e) then
 					missEvent(self, u, e, events, extra)
@@ -2623,14 +2657,14 @@ local function castSpecial(self, u, events)
 		if form then
 			local thaw = self.t + stun
 			if #frozen > 0 then
-				queueDelayed(self, { at = thaw, from = u, kind = kind, twist = "Chill", x = target.x, z = target.z, targets = frozen, slow = form.Chill.Slow, seconds = form.Chill.Seconds })
+				queueDelayed(self, { at = thaw, from = u, kind = kind, twist = "Chill", x = ax, z = az, targets = frozen, slow = form.Chill.Slow, seconds = form.Chill.Seconds })
 			end
 			if form.Shatter then
-				queueDelayed(self, { at = thaw, from = u, kind = kind, twist = "Shatter", x = target.x, z = target.z, r = r, base = base, share = form.Shatter.Share })
+				queueDelayed(self, { at = thaw, from = u, kind = kind, twist = "Shatter", x = ax, z = az, r = r, base = base, share = form.Shatter.Share })
 			end
 		end
 	elseif kind == "Beam" then
-		local dx, dz = target.x - u.x, target.z - u.z
+		local dx, dz = ax - u.x, az - u.z
 		local angle = atan2(dz, dx)
 		if dx == 0 and dz == 0 then
 			angle = 0
@@ -2661,6 +2695,97 @@ local function castSpecial(self, u, events)
 	end
 	table.insert(events, position, ev)
 	return true, kind
+end
+
+-- a special press / an NPC's auto cast: today's refusals and target, then the effects at once (no SpecialCast) or, with the
+-- real cast (battle-feel T3, beginCast): Casting for SpecialCast[kind] s with the aim fixed now, the Cast event, the queue
+-- entry that fires them at `at` (fireCast); the meter stays full until then
+local function castSpecial(self, u, events)
+	local kind = u.specialKind
+	local S = kind and specialRules(kind)
+	if not S then
+		return false, "NoSpecial"
+	end
+	local D = damageRules()
+	local team = u.team
+	local isFighter = team.player and u == team.fighter
+	local reach = reachOf(u)
+	local offensive = kind ~= "Heal" and kind ~= "Shield" and kind ~= "Rally" and kind ~= "Haste"
+	local target = nil
+	if offensive then
+		target = isFighter and lockOf(team) or nil
+		if not target then
+			target = pickTarget(self, u)
+		end
+		if not target then
+			return false, "NoTarget"
+		end
+		if kind == "Pounce" and dist(u.x, u.z, target.x, target.z) > num(S.Range, 30) * reach + target.radius then
+			target = nearestEnemy(self, u, num(S.Range, 30) * reach + 3)
+			if not target then
+				return false, "TooFar"
+			end
+		end
+	end
+	local secs = castSecondsOf(D, kind)
+	if not secs then
+		return specialBody(self, u, target, events, nil)
+	end
+	-- beginCast
+	local at = self.t + secs
+	local d = { at = at, from = u, cast = kind, target = target, x = target and target.x or u.x, z = target and target.z or u.z, t0 = self.t }
+	queueDelayed(self, d)
+	u.castEntry = d
+	u.castUntil = at
+	u.state = S_CASTING
+	u.windAt = nil
+	u.windTarget = nil
+	if u.nextAttack < at then
+		u.nextAttack = at
+	end
+	u.autoCastAt = nil
+	local ev = { type = EV.Cast, unit = u.id, kind = kind, name = u.formName or (u.special and u.special.Name) or kind, at = r1(at) }
+	if formOf(u) then
+		ev.form = formStageOf(u)
+	end
+	if target then
+		ev.target = target.id
+		ev.tx, ev.tz = r1(target.x), r1(target.z)
+	end
+	events[#events + 1] = ev
+	return true, kind
+end
+
+-- (battle-feel T3) the cast lands (resolveDelayed at `at`): the Casting ends now, today's body at the fixed aim. A Pounce
+-- leaps at its target's live spot (another in reach when it fell); none left: the cast breaks (CastBreak, meter kept)
+function fireCast(self, d, events)
+	local u = d.from
+	u.castEntry = nil
+	if u.castUntil > self.t then
+		u.castUntil = self.t
+	end
+	if u.specialKind ~= d.cast then
+		return
+	end
+	local target = d.target
+	if target and (not target.alive or target.gone or target.benched) and d.cast == "Pounce" then
+		local S = specialRules("Pounce")
+		target = nearestEnemy(self, u, num(S and S.Range, 30) * reachOf(u) + 3)
+		if not target then
+			cancelCast(self, d, events)
+			return
+		end
+	end
+	specialBody(self, u, target, events, d)
+end
+
+function cancelCast(self, d, events)
+	local u = d.from
+	u.castEntry = nil
+	if u.castUntil > self.t then
+		u.castUntil = self.t
+	end
+	events[#events + 1] = { type = EV.CastBreak, unit = u.id, kind = d.cast }
 end
 
 -- NPC / Auto teams decide when to use a full meter
@@ -3388,6 +3513,16 @@ local function moveToward(u, tx, tz, step, stop)
 	return d - travel
 end
 
+-- (battle-feel T2, spec decision 2) the studs a melee, non-boss unit rests farther out: D.Standoff for it, 0 for a ranged
+-- unit or a boss. Added to its rest spot and to every attack / hit test of it alike (reach, damage and tempo unchanged)
+local function standoffOf(D, u)
+	if u.ranged or u.kind == "Boss" then
+		return 0
+	end
+	local so = D and D.Standoff
+	return (finite(so) and so > 0) and so or 0
+end
+
 local function teamIndex(team, u)
 	local idx, n = 1, 0
 	for _, v in ipairs(team.units) do
@@ -3462,7 +3597,7 @@ local function npcStep(self, u, dt, events)
 			u.windAt = nil
 			u.windTarget = nil
 			if target and target.alive and not target.gone and not target.benched then
-				local reach = u.range + target.radius + D.EngageSlack + 1.0
+				local reach = u.range + target.radius + standoffOf(D, u) + D.EngageSlack + 1.0
 				if dist(u.x, u.z, target.x, target.z) <= reach and not inIFrames(self, target) then
 					applyDamage(self, u, target, u.hit, events)
 					doubleStrike(self, u, target, events)
@@ -3503,7 +3638,7 @@ local function npcStep(self, u, dt, events)
 		u.state = S_IDLE
 		return
 	end
-	local reach = u.range + target.radius
+	local reach = u.range + target.radius + standoffOf(D, u) -- (battle-feel T2: the melee standoff, the orbit and the engage test alike)
 	local tx, tz = target.px, target.pz
 	local d = dist(u.x, u.z, tx, tz)
 	local moved = false
@@ -3604,7 +3739,7 @@ function fighterSwing(self, team, f, events)
 	if t < f.nextAttack - interval * (1 - num(F.AttackTolerance, 0.85)) then
 		return false
 	end
-	local target = autoTarget(self, team, f, num(F.AttackSlack, 3))
+	local target = autoTarget(self, team, f, num(F.AttackSlack, 3) + standoffOf(damageRules(), f))
 	if not target then
 		return false
 	end
@@ -3670,7 +3805,7 @@ local function engageStep(self, team, f, target, dt)
 		step = 0
 	end
 	local reach = f.range + target.radius
-	local stop = max(0, f.ranged and (reach - 1.0) or (reach - 0.5))
+	local stop = max(0, f.ranged and (reach - 1.0) or (reach + standoffOf(damageRules(), f) - 0.5)) -- (battle-feel T2: + the melee standoff)
 	local ox, oz = f.x, f.z
 	if step > 0 then
 		moveToward(f, target.x, target.z, step, stop)
@@ -3807,7 +3942,7 @@ function autoFighter(self, team, f, dt, events)
 		return
 	end
 	local _, run = legalSpeeds(self, team)
-	local reach = f.range + target.radius
+	local reach = f.range + target.radius + standoffOf(damageRules(), f) -- (battle-feel T2: the melee standoff)
 	local dx, dz = target.x - f.x, target.z - f.z
 	local d = sqrt(dx * dx + dz * dz)
 	local wantX, wantZ = f.x, f.z
@@ -4512,7 +4647,7 @@ function doCommand(self, team, action, arg, events)
 		end
 		team.lock = target
 		f.target = target
-		if not inReach(f, target, num(F.AttackSlack, 3)) then
+		if not inReach(f, target, num(F.AttackSlack, 3) + standoffOf(damageRules(), f)) then
 			return true, target.id, "OutOfReach"
 		end
 		return true, target.id

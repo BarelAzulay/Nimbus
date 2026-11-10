@@ -3086,7 +3086,8 @@ local function eclipseBattle(env)
 	local onAt, expDim = dimmed(), exposure()
 	local impactAt = el and (el.Start + el.Times.Impact) or nil
 	local offAt = nil
-	for _ = 1, 40 do
+	-- (battle-feel T3: the Weighty special's longer beats and its x1.5 afterglow, 3 s at Secret: 7 s, was 4)
+	for _ = 1, 70 do
 		pulse(0.1)
 		if not offAt and not dimmed() then
 			offAt = os.clock()
@@ -3281,6 +3282,12 @@ S.client_p7vfx_battle = guarded("client_p7vfx_battle", function()
 			if u and u.Kind ~= "Boss" and drawable(u) then
 				return { Attack = t, Unit = u.Id, Kind = (t == "Special") and ev.kind or nil, Shape = (t == "Element") and ev.shape or nil }
 			end
+		elseif t == "Cast" then
+			-- (battle-feel T3: the real server cast) its charge starts on arrival: one AttackFx.Precharge (a Special play)
+			local u = unit(ev.unit)
+			if u and u.Kind ~= "Boss" and drawable(u) and u.Model ~= nil then
+				return { Attack = "Special", Unit = u.Id, Kind = ev.kind }
+			end
 		elseif t == "KO" then
 			local u = unit(ev.unit)
 			if u and u.Kind ~= "Boss" and drawable(u) and u.Model ~= nil then
@@ -3451,7 +3458,8 @@ S.client_p7vfx_battle = guarded("client_p7vfx_battle", function()
 					attackPose = attackPose or g.Pose
 				end
 			end
-			T.check(calls[n1 + 1] and calls[n1 + 1].Result == true and (attackPose == "Strike" or attackPose == "Windup" or attackPose == "Shoot"),
+			-- (battle-feel T2: a melee pet with a gap to the boss dashes in: DashIn is its attack pose)
+			T.check(calls[n1 + 1] and calls[n1 + 1].Result == true and (attackPose == "Strike" or attackPose == "Windup" or attackPose == "Shoot" or attackPose == "DashIn"),
 				"idle: an attack pose replaces the idle (" .. tostring(attackPose) .. ")")
 			pulse(2)
 			local back = BC.GetUnit(who)
@@ -4229,9 +4237,21 @@ S.client_p7vfx_storm = guarded("client_p7vfx_storm", function()
 		local okC, whyC = sim:Command(me, "Special")
 		local hit, special = {}, nil
 		local evs = step(0.1)
+		-- (battle-feel T3: the real server cast) the Storm lands at the cast's end: stepped to its Special (the charge
+		-- before it is a prediction: e.Pre)
+		for _ = 1, 15 do
+			local landed = false
+			for _, ev in ipairs(evs) do
+				landed = landed or (ev.type == "Special" and ev.unit == mine.id)
+			end
+			if landed then
+				break
+			end
+			evs = step(0.1)
+		end
 		local fx = nil
 		for _, e in ipairs(AF._Live()) do
-			if e.Unit == mine.id and e.Recipe.Signature == "obsidian_phoenix" then
+			if e.Unit == mine.id and e.Recipe.Signature == "obsidian_phoenix" and not e.Pre and not e.Retired then
 				fx = e
 			end
 		end
@@ -4455,6 +4475,14 @@ S.client_p7vfx_precharge = guarded("client_p7vfx_precharge", function()
 		return nil
 	end
 	local AF_SetQ = AF.SetQuality
+	-- (battle-feel T3) these battles pin the INSTANT special (RealCast off: Special in the press's step, no Cast, no `at`):
+	-- the off switch and every old recording, the path LATE_MAX / PRESS_WAIT were built for. The real cast's press, hand-over,
+	-- break and timeout are client_feel_tempo_cast's (tools/smoke_feel_tempo.lua)
+	local preCat = moduleAt(ROOTS.shared .. "/BattleCatalog")
+	local preCast = preCat and preCat.Damage.SpecialCast
+	if preCat then
+		preCat.Damage.SpecialCast = nil
+	end
 	local ok, err = pcall(function()
 		------------------------------------------------------------------------------------------------------------------
 		-- battle 1: my Puddle Frog (Blast) against three NPC frogs
@@ -5552,6 +5580,9 @@ S.client_p7vfx_precharge = guarded("client_p7vfx_precharge", function()
 	hk.Inhale, hk.Hush, hk.Shatter = realInhale, realHush, realShatter
 	if audio then
 		audio.Inhale = oldInhale
+	end
+	if preCat then
+		preCat.Damage.SpecialCast = preCast -- (battle-feel T3: the real cast back on)
 	end
 	AF_SetQ(nil)
 	if not ok then

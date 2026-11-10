@@ -112,13 +112,17 @@ local function serverScenarios()
 		return b, f, on
 	end
 
-	-- my fighter casts its Special at foes[1]: the Special event, every event, the battle time before the cast
+	-- my fighter casts its Special at foes[1]: the Special event, every event, the battle time before the cast.
+	-- (battle-feel T3: the real cast) stepped past the cast to its Special (SmokeCommon.pastCast); t0 = the time it lands
+	-- (the time its effects used), so the timers below still read from the landing
 	local function special(b, f, foes)
 		f.meter = 100
 		b:Command(1, "Target", foes[1].id)
 		local t0 = b:Time()
 		local ok, why = b:Command(1, "Special")
 		local evs = b:Step(0.05)
+		local fire, ft = SmokeCommon.pastCast(b, evs, f.id)
+		evs, t0 = fire, ft or t0
 		return findEvent(evs, "Special"), evs, t0, ok, why
 	end
 
@@ -793,7 +797,9 @@ local function clientScenarios()
 		sim:Command(LocalPlayer.UserId, "Special")
 		local fx, hit, zoneEv = nil, {}, nil
 		local evs = step(0.1)
-		for _ = 1, 8 do
+		-- (battle-feel T3: the real server cast) the Storm lands 0.95 s after the press: 18 steps, not 8; the charge before
+		-- it is a prediction (e.Pre), not the effect
+		for _ = 1, 18 do
 			for _, ev in ipairs(evs) do
 				if ev.type == "Hit" and ev.zone and ev.from == mine.id then
 					hit[tonumber(ev.to)] = true
@@ -802,7 +808,7 @@ local function clientScenarios()
 				end
 			end
 			for _, e in ipairs(AF._Live()) do
-				if e.Unit == mine.id and e.Recipe.Attack == "Special" then
+				if e.Unit == mine.id and e.Recipe.Attack == "Special" and not e.Pre and not e.Retired then
 					fx = e
 				end
 			end

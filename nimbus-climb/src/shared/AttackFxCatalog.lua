@@ -660,7 +660,42 @@ AttackFxCatalog.Beats = {
 	--                  impact may then land up to this much after the event, and BattleController holds the hit for it)
 	DefaultDistance = 14, -- studs, when the request has no Distance
 	TravelMax = 0.5, -- seconds (the engine keeps impact <= the event's due time, except for a recipe's MinTravel)
+	-- (battle-feel T3, spec decision 5 "Weighty") the Special beats, from Config.Battle.Feel.Special (AttackFxCatalog.Reload):
+	-- the charge x SpecialTempo before the band step and the cap SpecialChargeMax, the orb / beam / rain at SpecialSpeed of
+	-- their speed (travel capped at SpecialTravelMax), the impact SpecialImpact. Weighty = false: today's numbers below
+	SpecialTempo = 1,
+	SpecialSpeed = 1,
+	SpecialTravelMax = 0.5,
+	SpecialImpact = 0.15,
 }
+-- (battle-feel T3) a special strike's afterglow by band: Afterglow x Config.Battle.Feel.Special.Afterglow (1.5: 1.2 / 1.8 /
+-- 2.4 / 3.0); = Afterglow when Weighty is false
+AttackFxCatalog.SpecialAfterglow = { 0.8, 1.2, 1.6, 2.0 }
+
+-- (battle-feel T3) re-reads Config.Battle.Feel.Special into Beats / SpecialAfterglow (at load; tests after patching the
+-- knob) -> true when the Weighty beats are on
+function AttackFxCatalog.Reload()
+	local C = lazy("Config")
+	local Bt = C and type(C.Battle) == "table" and C.Battle or nil
+	local F = Bt and type(Bt.Feel) == "table" and Bt.Feel or nil
+	local S = F and type(F.Special) == "table" and F.Special or {}
+	local on = S.Weighty == true
+	local function pick(v, default)
+		return (on and finite(v) and v > 0) and v or default
+	end
+	local B = AttackFxCatalog.Beats
+	B.SpecialTempo = pick(S.Tempo, 1)
+	B.SpecialChargeMax = pick(S.ChargeMax, 0.8)
+	B.SpecialSpeed = pick(S.Speed, 1)
+	B.SpecialTravelMax = pick(S.TravelMax, 0.5)
+	B.SpecialImpact = pick(S.Impact, 0.15)
+	local k = pick(S.Afterglow, 1)
+	for i, v in ipairs(AttackFxCatalog.Afterglow) do
+		AttackFxCatalog.SpecialAfterglow[i] = v * k
+	end
+	return on
+end
+AttackFxCatalog.Reload()
 
 -- the basic attacks; Skip = ladder layers this attack never draws; Swap = ladder layers replaced by another template
 -- (LayerSlots); Layers = the attack's own layers at every rarity (counts x DetailScale, like the element's detail).
@@ -2044,18 +2079,24 @@ function AttackFxCatalog.Resolve(req)
 	local chargeStep = special and 0.05 or B.ChargeStep
 	local charge = beats.Charge or 0
 	if charge > 0 then
-		charge = min(special and B.SpecialChargeMax or B.ChargeMax, charge + chargeStep * (band - 1))
+		-- (battle-feel T3) a special's charge x SpecialTempo before the band step and its cap
+		charge = min(special and B.SpecialChargeMax or B.ChargeMax, charge * (special and B.SpecialTempo or 1) + chargeStep * (band - 1))
 	end
 	local travel = beats.Travel
 	if core.Speed then
+		if special then
+			core.Speed = core.Speed * B.SpecialSpeed -- (battle-feel T3) the orb flies slower
+		end
 		local d = tonumber(req.Distance)
 		if not finite(d) or d < 0 then
 			d = B.DefaultDistance
 		end
-		travel = min(B.TravelMax, d / core.Speed)
+		travel = min(special and B.SpecialTravelMax or B.TravelMax, d / core.Speed)
 		if def.Shot then
 			travel = max(travel, B.MinTravel) -- a ranged shot is always seen flying (player note 1)
 		end
+	elseif special and finite(travel) and travel > 0 then
+		travel = min(B.SpecialTravelMax, travel / B.SpecialSpeed) -- (battle-feel T3) the beam / rain / leap at SpecialSpeed
 	end
 	local linger = beats.Linger or 0.5
 	if req.Attack ~= "Hurt" and not def.Short then
@@ -2065,7 +2106,7 @@ function AttackFxCatalog.Resolve(req)
 		Charge = charge,
 		Release = beats.Release or B.Release,
 		Travel = travel or 0,
-		Impact = beats.Impact or B.Impact,
+		Impact = beats.Impact or (special and B.SpecialImpact) or B.Impact,
 		Linger = min(B.LingerMax, linger),
 		MinTravel = def.Shot and min(travel or 0, B.MinTravel) or nil, -- the engine never cuts the shot's flight below this
 	}
@@ -2179,7 +2220,7 @@ function AttackFxCatalog.Resolve(req)
 		Size = AttackFxCatalog.SizeOf(rarity, stage),
 		CloudSize = AttackFxCatalog.CloudSizeOf(rarity, stage),
 		Density = mine and 1 or AttackFxCatalog.OthersDensity,
-		Afterglow = (not def.Twist and isStrike(req.Attack, def.Kind)) and AttackFxCatalog.Afterglow[band] or 0,
+		Afterglow = (not def.Twist and isStrike(req.Attack, def.Kind)) and (special and AttackFxCatalog.SpecialAfterglow or AttackFxCatalog.Afterglow)[band] or 0,
 		TailTrans = AttackFxCatalog.TailTransparency,
 		CameraPunch = not def.Twist and kickOf(req.Attack, def.Kind, band, mine),
 		ScreenGlow = mine and band == 4 and not def.Quiet,

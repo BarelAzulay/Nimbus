@@ -6,11 +6,15 @@
 -- syntax only.
 --
 -- API:
---   PetPoses.Names = { "Windup", "Strike", "Shoot", "Recoil", "Cast", "Hurt", "Ko", "Victory", "IdleBattle" }
+--   PetPoses.Names = { "Windup", "Strike", "Shoot", "Recoil", "Cast", "Hurt", "Ko", "Victory", "IdleBattle", "DashIn", "DashBack" }
 --   PetPoses.Loops = { IdleBattle = true }   p is TIME in seconds (any value; never at rest)
---   PetPoses.Holds = { Ko = true }           p = 1 is the pose's end state, held (the KO'd pet lies on its side until
---                                            the poof covers it and the model is parked); every other one-shot pose
---                                            is exactly at rest at p = 0 and p = 1, so starting / stopping never pops
+--   PetPoses.Holds = { Ko = true, DashIn = true }  p = 1 is the pose's end state, held (the KO'd pet lies on its side until
+--                                            the poof covers it and the model is parked; a dashed-in pet stands at the
+--                                            target's edge until its DashBack); every other one-shot pose is exactly at
+--                                            rest at p = 0 and p = 1, so starting / stopping never pops (DashBack starts
+--                                            at the edge DashIn holds and lands at rest)
+--   PetPoses.DASH_RUN = 0.78                 DashIn's run reaches the edge at this p (AttackFx times it on the landing)
+--   PetPoses.DashHop = nil                   DashIn's hop in studs (0..3; nil = 0.5); AttackFx.Dash sets it from Config Melee.Hop
 --   PetPoses.Sample(name, p, ranged, amp, reach) -> {
 --       Body   = CFrame   offset of the pet's root in its OWN frame (the pet faces -Z = LookVector, up +Y, right
 --                        +X; PetBuilder header), studs as written below (battle units: BattleController writes
@@ -58,12 +62,19 @@
 --              halo spinning, then a squash landing that settles.
 --   IdleBattle breathing 0.05 studs (1.8 s), and every 2-4 s a glance: a 10-13 deg look aside with a curious head tilt
 --              and a tail flick (the rig has no ear / head groups: the glance turns the whole body).
+--   DashIn     (battle-feel T2, spec decision 1) the melee dash: a straight run of `reach` studs along the LookVector
+--              (p 0 .. DASH_RUN 0.78, smooth), leaning in with the tail streaming; a low hop of Config Feel.Melee.Hop
+--              (0.5 studs) over the last quarter of the run (p 0.585 .. 0.78); the wings snap open 35 deg into the
+--              bite; at the edge the bite: a squash 0.25 and the chin down 12 deg (p 0.78 .. 1), back upright at p 1,
+--              held there (Holds) at exactly (0, 0, -reach). reach nil = 1.5 x amp (a short hop).
+--   DashBack   the hop back: from (0, 0, -reach) at p 0 to rest at p 1 (smooth), a 1.0-stud arc with the chin up at its
+--              top, a landing squash 0.15 at p ~0.9, settled at p 1.
 
 local PetPoses = {}
 
-PetPoses.Names = { "Windup", "Strike", "Shoot", "Recoil", "Cast", "Hurt", "Ko", "Victory", "IdleBattle" }
+PetPoses.Names = { "Windup", "Strike", "Shoot", "Recoil", "Cast", "Hurt", "Ko", "Victory", "IdleBattle", "DashIn", "DashBack" }
 PetPoses.Loops = { IdleBattle = true }
-PetPoses.Holds = { Ko = true }
+PetPoses.Holds = { Ko = true, DashIn = true }
 
 local PI = math.pi
 local TAU = 2 * math.pi
@@ -93,6 +104,23 @@ local HOP = 1.2
 local BREATH = 0.05
 local GLANCE_CELL = 3 -- one glance per cell, starting 0..1 s into it: 2-4 s between two glances
 local GLANCE_TIME = 1.1
+-- (battle-feel T2) the dash pair
+PetPoses.DASH_RUN = 0.78 -- DashIn's run ends (the bite lands) at this p
+local DASH_HOP_FROM = 0.585 -- the low hop starts here (the last quarter of the run)
+local DASH_HOP = 0.5 -- studs: the default of Config.Battle.Feel.Melee.Hop (the pose stays pure: no Config here)
+-- (battle-feel gate) PetPoses.DashHop = the knob's studs (0..3), set by AttackFx.Dash before it schedules a DashIn; nil = DASH_HOP
+PetPoses.DashHop = nil
+local function dashHop()
+	local h = PetPoses.DashHop
+	if type(h) ~= "number" or h ~= h or h == math.huge or h == -math.huge then
+		return DASH_HOP
+	end
+	return math.max(0, math.min(3, h))
+end
+local DASH_BACK_ARC = 1.0 -- studs: the hop back's arc
+local DASH_SQUASH = 0.25 -- the bite's squash (studs down)
+local DASH_CHIN = 12 -- degrees: the bite's chin down
+local DASH_LAND = 0.15 -- the hop back's landing squash
 
 ----------------------------------------------------------------------
 -- Easing
@@ -327,6 +355,40 @@ POSES.IdleBattle = function(f, t)
 		f.roll = -dir * 3 * env -- a curious head tilt
 		f.sway = dir * 15 * env -- and a tail flick
 	end
+end
+
+-- (battle-feel T2) the melee dash in: run, low hop, bite, held at the edge (p 1 = exactly (0, 0, -reach), upright)
+POSES.DashIn = function(f, p, _, amp, reachIn)
+	local reach = reachIn or LUNGE * (amp or 1)
+	local runEnd = PetPoses.DASH_RUN
+	local run = seg(p, 0, runEnd)
+	local lean = sin(PI * run) -- 0 -> 1 -> 0 over the run
+	local hop = sin(PI * seg(p, DASH_HOP_FROM, runEnd))
+	local bite = sin(PI * seg(p, runEnd, 1)) -- 0 -> 1 -> 0 over the bite
+	f.z = -reach * smooth(run)
+	f.y = dashHop() * hop - DASH_SQUASH * bite
+	f.pitch = -6 * lean + 8 * hop - DASH_CHIN * bite -- leaning in, the chin up over the hop, down into the bite
+	local wings = outBack(seg(p, runEnd - 0.08, runEnd), 1.70158) * (1 - smooth(seg(p, 0.86, 1)))
+	f.back = -SNAP_OPEN * wings
+	f.raise = 6 * wings
+	f.lift = -20 * lean -- the tail streams flat behind
+	f.haloTilt = 10 * lean
+	f.still = 0.6 * math.min(1, wings + lean)
+end
+
+-- (battle-feel T2) the hop back to the rest spot: from (0, 0, -reach) at p 0 to rest at p 1
+POSES.DashBack = function(f, p, _, amp, reachIn)
+	local reach = reachIn or LUNGE * (amp or 1)
+	local air = seg(p, 0, 0.85)
+	local arc = sin(PI * air)
+	local land = sin(PI * seg(p, 0.85, 1))
+	f.z = -reach * (1 - smooth(p))
+	f.y = DASH_BACK_ARC * arc - DASH_LAND * land
+	f.pitch = 10 * arc -- the chin up at the top
+	f.back = -20 * arc -- wings flare to brake
+	f.raise = 4 * arc
+	f.lift = 15 * arc
+	f.still = (air < 1) and 0.4 * arc or 0 -- (exactly 0 at rest: sin(pi) leaves a crumb)
 end
 
 ----------------------------------------------------------------------

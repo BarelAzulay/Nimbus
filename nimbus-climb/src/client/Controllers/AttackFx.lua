@@ -28,6 +28,14 @@
 --       more time than DueAt left; BattleController then plays the Hit that much later).
 --       A point is Model:GetPivot() while the Model is in the game, else its last known point, else Pos: a unit
 --       destroyed mid-travel ends the effect at its last known point; From.Model may be nil (From.Pos only).
+--       (battle-feel T1, docs/superpowers/specs/2026-11-10-battle-feel-design.md decision 4) a TARGET's point is its body
+--       centre while Config.Battle.Feel.Aim.Mode = "Centre": an Attachment named AimPoint in the model, else its bounding-box
+--       centre when that sits over K.AIM_MIN (1 stud) off the pivot (a boss's feet root), else the pivot (pets: unchanged);
+--       read once per model. A Melee bite / a Pounce on such a big body lands on its near edge at the caster's height.
+--       Ground layers stand on eff.FloorY = ctx.Ground, refined by ONE downward raycast under the target at the Play
+--       (Aim.FloorRay; believed within FLOOR_RAY_MAX 6 studs of ctx.Ground), never on the hit minus the caster's drop.
+--   AttackFx.AimOf(side) -> Vector3   a side's aim point (the rule above; Mode "Pivot" = its pivot)
+--   AttackFx.BitePoint(src, tgt) -> Vector3 | nil   the near edge of tgt on the flat line from src, at src.Last.Y
 --   AttackFx.Update(now)            advances every live effect and pose; called from BattleController's existing
 --                                   per-frame step (no RenderStepped / Heartbeat connection of its own)
 --   AttackFx.Pose(unitId, base?) -> { Name, P, Ranged, Amp?, Reach?, Blend, Prev? } | nil   the pose a battle unit shows now (PetPoses
@@ -150,6 +158,9 @@ AttackFx.MAX_CORES = 14
 AttackFx.PUNCH_MAX = 0.35 -- BattleController SHAKE_MAX
 AttackFx.CROSSFADE = 0.12
 AttackFx.HIT_STOP = 0.05
+-- (battle-feel T3, spec decision 5) a special's impact freezes the caster's Cast and each victim's Hurt this long:
+-- Config.Battle.Feel.Special.HitStop while Weighty is on (0 off; read per Play, see specialStop)
+AttackFx.SPECIAL_HIT_STOP = 0.08
 -- (Task 11b) a Special's charge cues: a rim Highlight on the charging pet (at most MAX_RIMS live at once, High only)
 -- and the inhale sound hook, both only when at least CUE_MIN seconds of the charge are seen; a press's predicted charge
 -- that is refused / never confirmed shatters: its shards fly for SHATTER seconds
@@ -182,16 +193,20 @@ local K = {
 	-- the target's facing edges minus LEAP_MARGIN, clamped 0 .. LEAP_MAX world studs
 	LEAP_MARGIN = 0.3,
 	LEAP_MAX = 12,
-	POUNCE_DUR_MAX = 1.6, -- (Task 10) the Pounce's Strike: up to 1.6 s, its landing (p 0.26) on the slam
+	-- (Task 10) the Pounce's Strike: up to this long, its landing (p 0.26) on the slam. (battle-feel T3: 1.6 -> 2.2: the
+	-- Weighty leap flies up to 0.5 s + the release, 0.55 / 0.26 = 2.12 s, so the landing still falls on the slam)
+	POUNCE_DUR_MAX = 2.2,
 	LEAP_TRAIL_UP = 0.3, -- (Task 10) the leap trails ride the pet this far over its pivot
 	BAND_RARITY = { "Common", "Rare", "Legendary", "Secret" },
-	PRIO = { Ko = 4, Cast = 3, Windup = 2, Strike = 2, Shoot = 2, Recoil = 2, Victory = 2, Hurt = 1 },
+	PRIO = { Ko = 4, Cast = 3, Windup = 2, Strike = 2, Shoot = 2, Recoil = 2, Victory = 2, Hurt = 1, DashIn = 2, DashBack = 2 },
 	-- (Task 11b) the charge cues and the predicted charge
 	RIM_IN = 0.3, -- the rim Highlight fades in over this from the charge's start (a backdated charge keeps its rim)
 	RIM_OUT = 0.25, -- ... and out over this after the release
 	RIM_OUTLINE = 0.2, -- its outline transparency at full
 	RIM_FILL = 0.82, -- its fill transparency at full (a faint wash of the element's colour)
-	PRE_HOLD = 1.2, -- seconds a predicted charge lasts at most (BattleController shatters it sooner: its PRESS_WAIT)
+	-- seconds a predicted charge lasts at most (BattleController shatters it sooner: its PRESS_WAIT, or (battle-feel T3)
+	-- the server cast's end + CAST_WAIT: up to ~1.7 s after a press)
+	PRE_HOLD = 2.0,
 	PRE_CAST_P = 0.5, -- the predicted charge's Cast pose holds at this p (risen, wings spread, eyes shut gathering power)
 	PRE_WINDUP_P = 0.6, -- ... a Pounce's Windup holds at this p (the full crouch)
 	PRE_MIN_CHARGE = 0.25, -- a pressed Special shows at least this much charge before its release (travel gives way)
@@ -236,7 +251,21 @@ local K = {
 	AURA_RATE = 0.75, -- its stream's particles a second, x the layer's Count
 	AURA_FADE = 0.3, -- its ring fades over this at the end
 	WIND_SPIN = 7, -- radians a second round the pet
+	-- (battle-feel T1, the centre aim) a model's bounding-box centre is aimed at only when it sits more than this from the
+	-- pivot (a boss's feet root); a pet's centre is its pivot, so pets aim exactly as before
+	AIM_MIN = 1.0,
+	FLOOR_RAY = 80, -- studs: the one downward ray per effect that finds the real floor under the target
+	-- (battle-feel T2, the melee dash: AttackFx.Dash) PetPoses.DASH_RUN: DashIn's run reaches the edge at this p (the landing)
+	DASH_RUN = 0.78,
+	DASH_MAX = 20, -- world studs a dash may run at most (the standoff gap to a boss's near edge is ~6-12)
+	LUNGE_DUR = 0.45, -- a flurry's in-place bite: a Strike of Melee.Lunge studs over this long, landing at p 0.26 (PetPoses LEAP_LAND)
+	LEAP_LAND = 0.26,
+	STREAK_LIFE = 0.12, -- the speed streak's Trail Lifetime (a short smear, never a tether)
+	STREAK_HALF = 0.4, -- studs: the streak's half-width
+	STREAK_TRANS = { Mine = 0.3, Other = 0.6 }, -- its transparency: my pet's reads first
 }
+-- (battle-feel T1) the ray's floor is believed only within this of ctx.Ground (a rail or a pit is not the arena floor)
+AttackFx.FLOOR_RAY_MAX = 6
 AttackFx.POOL_KEEP_TOTAL = K.KEEP.Emitter + K.KEEP.Beam + K.KEEP.Trail + K.KEEP.Light + K.KEEP.Disc + K.KEEP.Rim + K.CORE_KEEP * K.CORE_KEYS
 
 -- the 4x4 sheets of blender/vfx/textures.json: key -> { FlipbookMode, fps, LightEmission }
@@ -397,6 +426,7 @@ local St = {
 	dimSeq = 0, -- (Task 11) the last battle-dim token handed to Hooks.DimWorld
 	cueSeq = 0, -- (Task 11b) the last inhale token handed to Hooks.Inhale
 	lastBasicKick = nil, -- (attack effects, 2026-11-01) when a basic hit last kicked the camera (Kick.BasicGap)
+	streaks = {}, -- (battle-feel T2) the live dash streaks: { Kit, Unit, Model, T0, T1, Mine } (<= Melee.StreakMax)
 }
 
 local function warnOnce(key, msg)
@@ -669,8 +699,151 @@ local function pointOf(side)
 	return side.Last
 end
 
+-- (battle-feel T1) Config.Battle.Feel[group] (nil without the knob: the old behaviour)
+local function feelOf(group)
+	local C = dep("Config")
+	local B = C and C.Battle
+	local F = B and B.Feel
+	return type(F) == "table" and F[group] or nil
+end
+
+local function centreAim()
+	local a = feelOf("Aim")
+	return a ~= nil and a.Mode == "Centre"
+end
+
+-- (battle-feel T3) the special's hit freeze now: Feel.Special.HitStop while Weighty (else 0); AttackFx.SPECIAL_HIT_STOP
+-- follows it
+local function specialStop()
+	local s = feelOf("Special")
+	local v = (s ~= nil and s.Weighty == true and type(s.HitStop) == "number" and s.HitStop == s.HitStop) and max(0, min(0.3, s.HitStop)) or 0
+	AttackFx.SPECIAL_HIT_STOP = v
+	return v
+end
+
+-- (battle-feel T1) per model, read once: its AimPoint attachment (or false), the bounding-box centre's offset from the
+-- pivot in pivot space (zero when within K.AIM_MIN: pets) and the box itself in pivot space (the bite's near edge), so
+-- nothing scans the model's parts per frame. Weak keys: a destroyed model drops out.
+local aimCache = setmetatable({}, { __mode = "k" })
+local ZERO = V3(0, 0, 0)
+
+local function aimInfo(m)
+	local c = aimCache[m]
+	if c then
+		return c
+	end
+	c = { Att = false, Off = ZERO, UseOff = false, Big = false }
+	local att = m:FindFirstChild("AimPoint", true)
+	if att and att:IsA("Attachment") and att.Parent and att.Parent:IsA("BasePart") then
+		c.Att = att
+		c.Big = true
+	end
+	local okP, pv = pcall(m.GetPivot, m)
+	local okB, bcf, size = pcall(m.GetBoundingBox, m)
+	if okP and okB and typeof(pv) == "CFrame" and typeof(bcf) == "CFrame" and typeof(size) == "Vector3" then
+		local off = pv:PointToObjectSpace(bcf.Position)
+		if off.Magnitude > K.AIM_MIN then
+			c.Off = off
+			c.UseOff = true
+			c.Big = true
+		end
+		c.Box = pv:ToObjectSpace(bcf)
+		c.Size = size
+	end
+	aimCache[m] = c
+	return c
+end
+
+-- (battle-feel T1) a side's aim point: the body centre (the AimPoint attachment, else the cached box centre off the pivot,
+-- else the pivot) while Config.Battle.Feel.Aim.Mode = "Centre"; otherwise pointOf (today). side.Last stays the PIVOT (the
+-- leap, the distance and the direction read it); side.Aim / side.CF = the last centre / pivot CFrame. A model destroyed or
+-- parked keeps its last centre.
+local function aimOf(side)
+	if not centreAim() then
+		return pointOf(side)
+	end
+	local m = side.Model
+	if m then
+		if m.Parent then
+			local ok, cf = pcall(m.GetPivot, m)
+			if ok and typeof(cf) == "CFrame" then
+				side.Last = cf.Position
+				side.CF = cf
+				local c = aimInfo(m)
+				local q
+				if c.Att and c.Att.Parent then
+					q = c.Att.WorldPosition
+				elseif c.UseOff then
+					q = cf:PointToWorldSpace(c.Off)
+				else
+					q = side.Last
+				end
+				side.Aim = q
+				return q
+			end
+		else
+			side.Model = nil -- destroyed / parked: keep its last known point
+		end
+	end
+	if side.Aim then
+		return side.Aim
+	end
+	return pointOf(side)
+end
+AttackFx.AimOf = aimOf
+
+-- (battle-feel T1) is this side a big body (a boss: its centre off its pivot, or an AimPoint)? Bites land on its near
+-- edge; a pet is bitten at its pivot as before
+local function bigBody(side)
+	local m = side.Model
+	if not (m and m.Parent and centreAim()) then
+		return false
+	end
+	return aimInfo(m).Big
+end
+
+-- (review fix) a big body's box top (world Y) and its flat half-width, from the aim cache placed on its pivot this frame
+-- (side.CF, set by aimOf); the last known top once the model is gone; nil for a pet (the "Above" anchor as before)
+local function topOf(side)
+	if not centreAim() then
+		return nil, nil
+	end
+	local m = side.Model
+	if m and m.Parent and side.CF then
+		local c = aimInfo(m)
+		if c.Big and c.Box and c.Size then
+			local b = side.CF * c.Box
+			local sz = c.Size
+			side.Top = b.Position.Y + 0.5 * (abs(b.RightVector.Y) * sz.X + abs(b.UpVector.Y) * sz.Y + abs(b.LookVector.Y) * sz.Z)
+			side.TopR = 0.5 * max(sz.X, sz.Z)
+		end
+	end
+	return side.Top, side.TopR
+end
+
+-- the point an "Above" piece hangs over: the hit point, lifted to the box top when it is on a big body (the Storm cloud,
+-- its rain, the crescent and the black sun sat inside a boss's upper body over its centre); -> the point, lifted?
+-- (worked out once per frame in refresh: eff.Over / eff.Lifted; the rain pieces read it, no Vector3 per piece)
+local function liftOf(eff)
+	local h = eff.Hit
+	local top = eff.TopY
+	if top and top > h.Y and eff.T[1] then
+		local d = V3(h.X - eff.T[1].X, 0, h.Z - eff.T[1].Z).Magnitude
+		if d <= (eff.TopR or 0) + 4 then
+			return V3(h.X, top, h.Z), true
+		end
+	end
+	return h, false
+end
+
+local function overOf(eff)
+	return eff.Over or eff.Hit, eff.Lifted == true
+end
+
+-- the floor under an effect's point: eff.FloorY (ctx.Ground, refined by one raycast under the target at the Play), never
+-- the hit point minus the caster's drop (a boss's feet root sank the rings under the floor)
 local function groundOf(eff, p)
-	return V3(p.X, p.Y - eff.Drop + 0.05, p.Z)
+	return V3(p.X, (eff.FloorY or (p.Y - eff.Drop)) + 0.05, p.Z)
 end
 
 -- (Studio findings round) the spots a big piece must not pass through: the caster, and ctx.Avoid (a Vector3 or a list)
@@ -768,11 +941,20 @@ local function refresh(eff)
 	if s then
 		eff.S = s
 	end
+	-- (battle-feel T1) the body centre (aimOf); a bite (Melee, the Pounce) on a big body lands on its near edge at the
+	-- caster's height (AttackFx.BitePoint)
 	for i, side in ipairs(eff.Targets) do
-		local p = pointOf(side)
+		local p = aimOf(side)
+		if p and eff.Bite and bigBody(side) then
+			p = AttackFx.BitePoint(eff.Src, side) or p
+		end
 		if p then
 			eff.T[i] = p
 		end
+	end
+	local side1 = eff.Targets[1]
+	if side1 then
+		eff.TopY, eff.TopR = topOf(side1)
 	end
 	local first = eff.T[1]
 	if first and not eff.Area and not eff.AimFixed then
@@ -784,6 +966,7 @@ local function refresh(eff)
 	eff.Right = eff.Dir:Cross(UP)
 	eff.Mouth = eff.S + eff.Dir * (K.MOUTH * eff.Size) + UP * 0.25
 	eff.Hit = hitOf(eff)
+	eff.Over, eff.Lifted = liftOf(eff)
 end
 
 -- fills `out` with the world points of an anchor; returns how many
@@ -796,7 +979,7 @@ local function atPoints(eff, at, out)
 	elseif at == "Ground" then
 		out[1] = groundOf(eff, eff.Hit)
 	elseif at == "Above" then
-		out[1] = eff.Hit + UP * (K.ABOVE * eff.Size)
+		out[1] = overOf(eff) + UP * (K.ABOVE * eff.Size)
 	elseif at == "Behind" then
 		out[1] = eff.S - eff.Dir * (K.BEHIND * eff.Size) + UP * 0.5
 	elseif at == "Self" then
@@ -831,7 +1014,7 @@ local function anchorPoint(eff, it)
 	elseif a == "Source" then
 		p = eff.Mouth
 	elseif a == "Above" then
-		p = eff.Hit + UP * (K.ABOVE * eff.Size)
+		p = overOf(eff) + UP * (K.ABOVE * eff.Size)
 	elseif a == "Behind" then
 		p = eff.S - eff.Dir * (K.BEHIND * eff.Size)
 	elseif type(a) == "number" then
@@ -1112,6 +1295,10 @@ MOVE.Fall = function(eff, it, t)
 	local land = groundOf(eff, base + eff.Right * it.OffR + eff.Dir * it.OffD) + UP * 0.3
 	-- (Studio findings round) out of the low cloud (eff.CloudLift: its Height over the hit point) when it has one
 	local top = land + UP * (eff.CloudLift and (eff.Drop + eff.CloudLift + 0.3) or (K.ABOVE * eff.Size + 2))
+	local over, lifted = overOf(eff)
+	if lifted then -- (review fix) over a big body the cloud hangs over its box top: the rain starts there
+		top = V3(top.X, over.Y + (eff.CloudLift and (eff.CloudLift + 0.3) or (K.ABOVE * eff.Size + 2)), top.Z)
+	end
 	local u = seg(t, it.TR, it.TR + it.Drop)
 	local fade = seg(t, it.TR + it.Drop, it.TR + it.Drop + 0.15)
 	if fade >= 1 then
@@ -1282,7 +1469,7 @@ MOVE.Actor = function(eff, it, t)
 		return face(p, out) * CFrame.Angles(t * 5, 0, t * 3), ONE * outBack(seg(u, 0, 0.12)), fadeTo(it, fade)
 	elseif m == "Eclipse" then
 		local spin = CFrame.Angles(0, 0, t * 1.4)
-		local hang = face(eff.Hit + UP * (4.2 * eff.Size), -eff.Dir) * spin
+		local hang = face(overOf(eff) + UP * (4.2 * eff.Size), -eff.Dir) * spin
 		if t < T.Impact then
 			return hang, ONE * (outBack(seg(t, it.T0, it.T0 + 0.35)) * (1 + 0.04 * sin(t * 9))), fadeTo(it, 0)
 		end
@@ -1390,7 +1577,7 @@ MOVE.Actor = function(eff, it, t)
 		if eff.CloudTop then
 			lift = eff.CloudTop + K.MOON_GAP + 0.5 * it.Base.Z * it.S
 		end
-		local p = eff.Hit + UP * (lift - 2 * (1 - outCubic(seg(t, it.T0, it.T0 + 0.5)))) + eff.Dir * (K.MOON_BACK * eff.Size)
+		local p = overOf(eff) + UP * (lift - 2 * (1 - outCubic(seg(t, it.T0, it.T0 + 0.5)))) + eff.Dir * (K.MOON_BACK * eff.Size)
 		return face(p, -eff.Dir) * CFrame.Angles(0, 0, 0.15 * sin(t * 1.6)) * CFrame.Angles(pi / 2, 0, 0), ONE * outBack(seg(t, it.T0, it.T0 + 0.3)), fadeTo(it, fade)
 	end
 	local p = anchorPoint(eff, it) - UP * (3 * (1 - outCubic(seg(t, it.T0, it.T0 + 0.5))))
@@ -2969,10 +3156,12 @@ end
 ----------------------------------------------------------------------
 -- `base` (optional, Vector3): the unit's drawn position before the pose; a Pounce leap (seg.Landing) then reaches only
 -- from there to its landing spot, so a base the server slides to the target does not carry the pet past it (Task 10)
+-- (battle-feel T2) a segment's Until holds its end pose until then (DashIn at the edge until its DashBack); its Forward
+-- (pose studs) is an offset along the LookVector the pose does not carry itself (a flurry's bite from the edge)
 local function poseSample(entry, now, base)
 	local best = nil
 	for _, s in ipairs(entry.Segs) do
-		if now >= s.T0 and (now < s.T0 + s.Dur or s.Hold) then
+		if now >= s.T0 and (now < s.T0 + s.Dur or s.Hold or (s.Until and now < s.Until)) then
 			best = s
 		end
 	end
@@ -2988,12 +3177,12 @@ local function poseSample(entry, now, base)
 		local left = (best.Landing - flat(base)):Dot(best.Dir)
 		reach = max(0, min(K.LEAP_MAX, finite(left) and left or 0)) / best.Scale
 	end
-	return best.Name, clamp01(el / best.Dur), best.Ranged == true, best.Amp, reach
+	return best.Name, clamp01(el / best.Dur), best.Ranged == true, best.Amp, reach, best.Forward
 end
 
 local function poseActive(entry, at)
 	for _, s in ipairs(entry.Segs) do
-		if s.Hold or at < s.T0 + s.Dur then
+		if s.Hold or at < s.T0 + s.Dur or (s.Until and at < s.Until) then
 			return true
 		end
 	end
@@ -3038,26 +3227,64 @@ end
 -- to the target's near edge along the ground, minus K.LEAP_MARGIN, clamped 0 .. K.LEAP_MAX world studs; returned in
 -- the caster's pose units (PetPoses studs at scale 1: the drawing multiplies the body offset by the model's PB_Scale).
 -- Without models the pivots stand in with no size. nil = no target (the fixed hop)
-function AttackFx.LeapReach(src, tgt)
-	if not (src and tgt and typeof(src.Last) == "Vector3" and typeof(tgt.Last) == "Vector3") then
-		return nil
+-- the caster's front edge -> the target's near edge along the ground minus K.LEAP_MARGIN (world studs, unclamped; nil when
+-- the two stand on one spot) and the caster's PB_Scale (battle-feel T2: the dash reads it unclamped by LEAP_MAX)
+local function gapOf(src, tgt)
+	local s = src.Model and tonumber(src.Model:GetAttribute("PB_Scale")) or 1
+	if not finite(s) or s <= 0 then
+		s = 1
 	end
 	local d = flat(tgt.Last - src.Last)
 	local dist = d.Magnitude
 	if dist < 0.05 then
-		return 0
+		return nil, s
 	end
 	local u = d / dist
 	local c0, ch = spanAlong(src.Model, src.Last, u)
 	local t0, th = spanAlong(tgt.Model, src.Last, u)
 	local front = (c0 or 0) + (ch or 0)
 	local near = (t0 or dist) - (th or 0)
-	local world = max(0, min(K.LEAP_MAX, near - front - K.LEAP_MARGIN))
-	local s = src.Model and tonumber(src.Model:GetAttribute("PB_Scale")) or 1
-	if not finite(s) or s <= 0 then
-		s = 1
+	return near - front - K.LEAP_MARGIN, s
+end
+
+function AttackFx.LeapReach(src, tgt)
+	if not (src and tgt and typeof(src.Last) == "Vector3" and typeof(tgt.Last) == "Vector3") then
+		return nil
 	end
-	return world / s
+	local world, s = gapOf(src, tgt)
+	if not world then
+		return 0
+	end
+	return max(0, min(K.LEAP_MAX, world)) / s
+end
+
+-- (battle-feel T1) where a bite lands on a target: its near edge along the flat line from the caster's pivot through the
+-- target's, at the caster's height (src.Last.Y), never past the caster. The target's box comes from the aim cache (read
+-- once per model) placed on its pivot this frame, else from the model, else the pivot stands in with no size.
+-- src / tgt = { Model?, Last = Vector3, CF? }; nil without both points
+function AttackFx.BitePoint(src, tgt)
+	if not (type(src) == "table" and type(tgt) == "table" and typeof(src.Last) == "Vector3" and typeof(tgt.Last) == "Vector3") then
+		return nil
+	end
+	local d = flat(tgt.Last - src.Last)
+	local dist = d.Magnitude
+	if dist < 0.05 then
+		return src.Last
+	end
+	local u = d / dist
+	local t0, th
+	local m = tgt.Model
+	local c = m and aimCache[m]
+	if c and c.Box and typeof(tgt.CF) == "CFrame" then
+		local bcf = tgt.CF * c.Box
+		local size = c.Size
+		th = 0.5 * (abs(u:Dot(bcf.RightVector)) * size.X + abs(u:Dot(bcf.UpVector)) * size.Y + abs(u:Dot(bcf.LookVector)) * size.Z)
+		t0 = (bcf.Position - src.Last):Dot(u)
+	else
+		t0, th = spanAlong(m, src.Last, u)
+	end
+	local along = max(0, (t0 or dist) - (th or 0))
+	return src.Last + u * along
 end
 
 local function schedulePoses(eff, now)
@@ -3070,6 +3297,9 @@ local function schedulePoses(eff, now)
 	local offensive = eff.Path ~= "Self" and eff.Path ~= "Allies"
 	if r.Twist then -- (evolved forms) a form's delayed hit: the caster does not cast again; whoever it reached flinches (To = the struck, BattleController)
 		offensive = eff.Path ~= "Allies"
+	elseif eff.Dashed and A == "Melee" then
+		-- (battle-feel T2) the dash (AttackFx.Dash, scheduled from the Windup / the Hit) is this bite's body motion: no Windup
+		-- or Strike segment here; the victims' Hurt below stays
 	elseif A == "Melee" or A == "Ranged" or (A == "Element" and eff.Area ~= "Circle") or (A == "Special" and r.Kind == "Pounce") then
 		if T.Release > 0.04 then
 			segs[#segs + 1] = { Name = "Windup", T0 = st, Dur = T.Release, Ranged = ranged }
@@ -3104,6 +3334,14 @@ local function schedulePoses(eff, now)
 	elseif A == "Special" or A == "Element" then
 		-- Cast's release (p 0.66 .. 0.74) lands as the release beat ends
 		segs[1] = { Name = "Cast", T0 = st, Dur = max(0.6, min(1.6, T.Travel / 0.7)) }
+		-- (battle-feel T3) a special's impact holds the caster still for SPECIAL_HIT_STOP (the weight of the hit): the Cast
+		-- runs that much longer so it still plays out after the freeze; one that has played out before the impact (a
+		-- charge cut to a late event) holds its last frame until the freeze ends
+		if A == "Special" and not eff.Miss and specialStop() > 0 then
+			local seg = segs[1]
+			seg.StopAt, seg.StopDur = st + T.Impact, AttackFx.SPECIAL_HIT_STOP
+			seg.Until = max(seg.T0 + seg.Dur, seg.StopAt) + seg.StopDur
+		end
 	elseif A == "Hurt" then
 		segs[1] = { Name = "Hurt", T0 = st, Dur = K.HURT }
 	elseif A == "Ko" then
@@ -3115,9 +3353,15 @@ local function schedulePoses(eff, now)
 		setPoses(eff.Unit, segs, now)
 	end
 	if offensive and not eff.Miss and (A == "Melee" or A == "Ranged" or A == "Element" or A == "Special") then
+		-- (battle-feel T3) a special's victims flinch frozen for SPECIAL_HIT_STOP at the impact, like its caster
+		local stop = (A == "Special" and not r.Twist) and specialStop() or 0
 		for _, side in ipairs(eff.Targets) do
 			if side.Unit ~= nil and side.Unit ~= eff.Unit then
-				setPoses(side.Unit, { { Name = "Hurt", T0 = st + T.Impact, Dur = K.HURT } }, now)
+				local seg = { Name = "Hurt", T0 = st + T.Impact, Dur = K.HURT }
+				if stop > 0 then
+					seg.StopAt, seg.StopDur = st + T.Impact, stop
+				end
+				setPoses(side.Unit, { seg }, now)
 			end
 		end
 	end
@@ -3254,6 +3498,11 @@ local function applyQuality()
 		for _, eff in ipairs(St.live) do
 			strip(eff)
 		end
+		for i = #St.streaks, 1, -1 do -- (battle-feel T2: no dash streak on Low)
+			local sk = St.streaks[i]
+			St.streaks[i] = nil
+			give(sk.Kit)
+		end
 	end
 	return q
 end
@@ -3351,6 +3600,46 @@ local function sideOf(s)
 	return side
 end
 
+-- (battle-feel T1) one downward ray under the target's centre at the Play (Config.Battle.Feel.Aim.FloorRay): the real floor
+-- there, believed within AttackFx.FLOOR_RAY_MAX of eff.FloorY (ctx.Ground); the drawn battle (workspace.ClientBattle: the
+-- units, the boss, these kits) and the local character are skipped. Never per frame.
+local floorParams = nil
+local function refineFloor(eff, side)
+	local aim = feelOf("Aim")
+	if not (aim and aim.FloorRay == true and finite(eff.FloorY)) then
+		return
+	end
+	local at = aimOf(side)
+	if typeof(at) ~= "Vector3" then
+		return
+	end
+	if not floorParams then
+		floorParams = RaycastParams.new()
+		floorParams.FilterType = Enum.RaycastFilterType.Exclude
+	end
+	local skip = {}
+	local cb = Workspace:FindFirstChild(K.PARENT)
+	if cb then
+		skip[#skip + 1] = cb
+	end
+	if St.folder and St.folder.Parent and St.folder.Parent ~= cb then
+		skip[#skip + 1] = St.folder
+	end
+	local lp = Players and Players.LocalPlayer
+	local ch = lp and lp.Character
+	if ch then
+		skip[#skip + 1] = ch
+	end
+	floorParams.FilterDescendantsInstances = skip
+	local ok, hit = pcall(Workspace.Raycast, Workspace, at + UP * 1, V3(0, -K.FLOOR_RAY, 0), floorParams)
+	-- (an anchored part or the terrain: another player's character standing there is not the floor)
+	local inst = ok and hit and hit.Instance
+	local solid = inst ~= nil and inst:IsA("BasePart") and (inst.Anchored or inst:IsA("Terrain"))
+	if solid and typeof(hit.Position) == "Vector3" and abs(hit.Position.Y - eff.FloorY) <= AttackFx.FLOOR_RAY_MAX then
+		eff.FloorY = hit.Position.Y
+	end
+end
+
 local function resolve(ctx, distance, step)
 	local Cat = dep("AttackFxCatalog")
 	if not (Cat and type(Cat.Resolve) == "function") then
@@ -3437,6 +3726,12 @@ local function fitTimes(b, now, dueAt, lateMax, from)
 			Tr, short, C = Tr - c, short - c, C + c
 			c = min(R, short)
 			R, C = R - c, C + c
+		end
+		-- (battle-feel T3, spec decision 6) a cast-driven Special (`from` + `lateMax`: TravelHold): the charge stays
+		-- backdated, the travel the fit cut is given back up to lateMax, the impact that much after dueAt
+		if finite(lateMax) and lateMax > 0 then
+			local back = max(0, min((b.Travel or 0) - Tr, lateMax))
+			Tr, late = Tr + back, late + back
 		end
 	elseif finite(lateMax) and lateMax > 0 then
 		local extra = max(0, min((b.Charge or 0) - C, lateMax))
@@ -3603,6 +3898,212 @@ local function preparePose(eff, now)
 	end
 end
 
+----------------------------------------------------------------------
+-- (battle-feel T2, spec decisions 1 + 3) the melee dash: a pose pair on the unit, nothing on the wire. The server keeps
+-- the unit at its rest spot (Damage.Standoff out); DashIn runs it to the target's near edge so the run ends on the
+-- landing (the hit), it bites (today's HIT_STOP freeze), holds Bite + Hold, and DashBack hops it home. A faster tempo
+-- than Melee.FlurryBelow stays in: the next bite is a Strike lunge of Melee.Lunge on top of the edge (Forward).
+----------------------------------------------------------------------
+local function streakOff(i)
+	local sk = St.streaks[i]
+	table.remove(St.streaks, i)
+	if sk then
+		give(sk.Kit)
+	end
+end
+
+-- one pooled Trail kit (fx_speedlines) riding the dashing pet over its run, High only, at most Melee.StreakMax at once:
+-- my pet's first (at the cap it takes the oldest other pet's) -> taken?
+local function streakFor(unit, model, t0, t1, mine)
+	local M = feelOf("Melee")
+	if not (M and M.Streak ~= false and model and model.Parent) or effectiveQuality() == "Low" then
+		return false
+	end
+	for i = #St.streaks, 1, -1 do
+		if St.streaks[i].Unit == unit then
+			streakOff(i)
+		end
+	end
+	local cap = finite(M.StreakMax) and M.StreakMax or 4
+	if #St.streaks >= cap then
+		local other = nil
+		for i, sk in ipairs(St.streaks) do
+			if not sk.Mine then
+				other = i
+				break
+			end
+		end
+		if not mine or not other then
+			return false
+		end
+		streakOff(other)
+	end
+	local kit = take("Trail")
+	if not kit then
+		return false
+	end
+	local tr = kit.Trail
+	tr.Enabled = false
+	local ok, cf = pcall(model.GetPivot, model)
+	if ok and typeof(cf) == "CFrame" then
+		kit.Root.CFrame = CFrame.new(cf.Position + UP * K.LEAP_TRAIL_UP)
+	end
+	pcall(tr.Clear, tr)
+	local ids = dep("TextureIds")
+	local id = type(ids) == "table" and ids.fx_speedlines or nil
+	tr.Color = ColorSequence.new(WHITE)
+	tr.Transparency = NumberSequence.new({ kp(0, mine and K.STREAK_TRANS.Mine or K.STREAK_TRANS.Other), kp(1, 1) })
+	tr.WidthScale = NumberSequence.new({ kp(0, 1), kp(1, 0.2) })
+	tr.Lifetime = K.STREAK_LIFE
+	tr.LightEmission = 0.6
+	tr.LightInfluence = 0
+	tr.FaceCamera = true
+	tr.Texture = id and ("rbxassetid://" .. tostring(id)) or ""
+	tr.TextureMode = Enum.TextureMode.Stretch
+	kit.A0.Position = V3(0, K.STREAK_HALF, 0)
+	kit.A1.Position = V3(0, -K.STREAK_HALF, 0)
+	St.streaks[#St.streaks + 1] = { Kit = kit, Unit = unit, Model = model, T0 = t0, T1 = t1, Mine = mine == true }
+	return true
+end
+
+-- the streaks ride their pets (once a frame; no Instance made, the kits are the pool's)
+local function stepStreaks(now)
+	for i = #St.streaks, 1, -1 do
+		local sk = St.streaks[i]
+		local m = sk.Model
+		if now > sk.T1 or not (m and m.Parent) then
+			streakOff(i)
+		else
+			local ok, cf = pcall(m.GetPivot, m)
+			if ok and typeof(cf) == "CFrame" then
+				sk.Kit.Root.CFrame = CFrame.new(cf.Position + UP * K.LEAP_TRAIL_UP)
+			end
+			local on = now >= sk.T0
+			if sk.Kit.Trail.Enabled ~= on then
+				sk.Kit.Trail.Enabled = on
+			end
+		end
+	end
+end
+
+-- "in" from the run's start until its DashBack, "back" while it hops home, else "out"
+local function dashState(entry, now)
+	local d = entry and entry.Dash
+	if not d then
+		return "out"
+	end
+	if now < d.BackAt then
+		return "in"
+	elseif now < d.BackAt + d.BackDur then
+		return "back"
+	end
+	return "out"
+end
+
+local function feelNum(v, default)
+	return finite(v) and v or default
+end
+
+-- AttackFx.Dash(unit, src, tgt, landAt, now, opts) -> taken? src / tgt = Play's sides ({ Unit, Model, Pos }: src.Pos =
+-- the unit's drawn spot before any pose, its rest spot); landAt = when the hit lands (the run ends there); opts =
+-- { Mine, Low, Tempo = the seconds since the unit's last attack }. false (the caller plays today's Strike): Melee.Dash
+-- off, no gap of Melee.MinGap studs, a higher pose playing (a KO, a cast)
+local function dash(unit, src, tgt, landAt, now, opts)
+	local M = feelOf("Melee")
+	if unit == nil or not (M and M.Dash == true) or type(src) ~= "table" or type(tgt) ~= "table" or not finite(landAt) then
+		return false
+	end
+	now = finite(now) and now or (St.now or os.clock())
+	opts = type(opts) == "table" and opts or {}
+	-- (battle-feel gate) Melee.Hop reaches PetPoses' DashIn through a module field (PetPoses reads no Config)
+	local PPh = dep("PetPoses")
+	if PPh then
+		PPh.DashHop = max(0, min(3, feelNum(M.Hop, 0.5)))
+	end
+	local below = feelNum(M.FlurryBelow, 0.75)
+	local flurry = finite(opts.Tempo) and opts.Tempo < below
+	local backDur = max(0.05, feelNum(M.Back, 0.4))
+	local land = landAt
+	local bk = flurry and (land + below) or (land + feelNum(M.Bite, 0.08) + feelNum(M.Hold, 0.12))
+	local entry = St.poses[unit]
+	local d = entry and entry.Dash
+	local state = dashState(entry, now)
+	if state == "in" then
+		-- the flurry: still at the edge, the next bite lunges in place on top of it
+		local segs = entry.Segs
+		for i = #segs, 1, -1 do
+			local sg = segs[i]
+			if sg.Lunge and sg.T0 + sg.Dur < now then
+				table.remove(segs, i) -- (a long flurry keeps no spent bites)
+			end
+		end
+		local t0 = max(now, land - K.LEAP_LAND * K.LUNGE_DUR)
+		segs[#segs + 1] = { Name = "Strike", T0 = t0, Dur = K.LUNGE_DUR, Reach = feelNum(M.Lunge, 0.6), Forward = d.Reach, StopAt = land, StopDur = AttackFx.HIT_STOP, Lunge = true }
+		bk = max(bk, t0 + K.LUNGE_DUR)
+		d.In.Until, d.Back.T0, d.BackAt, d.LandAt = bk, bk, bk, land
+		return true
+	end
+	local s = { Model = (typeof(src.Model) == "Instance") and src.Model or nil, Pos = (typeof(src.Pos) == "Vector3") and src.Pos or nil }
+	local edge, fwd = nil, 0
+	local t0 = max(now, land - feelNum(M.In, 0.3))
+	if state == "back" then
+		-- caught on the way home: the run starts from where the hop back has got to when the run starts (t0; the old
+		-- DashBack plays on until then: review fix, sampled at `now` the DashIn snapped forward by the hop's last 0.15 s)
+		edge = d.Reach
+		local p = clamp01((t0 - d.BackAt) / d.BackDur)
+		local PP = dep("PetPoses")
+		local smp = nil
+		if PP and type(PP.Sample) == "function" then
+			local okS, r = pcall(PP.Sample, "DashBack", p, false, 1, edge)
+			smp = okS and r or nil
+		end
+		local cur = (type(smp) == "table" and typeof(smp.Body) == "CFrame") and -smp.Body.Position.Z or edge * (1 - smooth(p))
+		fwd = max(0, min(edge, cur))
+	else
+		-- the gap from the rest spot (the drawn spot, not the posed pivot) to the target's near edge
+		s.Last = s.Pos
+		if not s.Last and not pointOf(s) then
+			return false
+		end
+		local t = sideOf(tgt)
+		if not t then
+			return false
+		end
+		local world, scale = gapOf(s, t)
+		if not world or world < feelNum(M.MinGap, 3) then
+			return false
+		end
+		edge = min(K.DASH_MAX, world) / scale
+	end
+	local run = max(0.05, land - t0)
+	local segIn = { Name = "DashIn", T0 = t0, Dur = run / K.DASH_RUN, Reach = edge - fwd, Forward = fwd, Until = bk, StopAt = land, StopDur = AttackFx.HIT_STOP }
+	local segBack = { Name = "DashBack", T0 = bk, Dur = backDur, Reach = edge }
+	setPoses(unit, { segIn, segBack }, now)
+	local e2 = St.poses[unit]
+	if not (e2 and e2.Segs[1] == segIn) then
+		return false -- (a higher pose plays: a KO'd pet never dashes, a cast is not cut)
+	end
+	e2.Dash = { Reach = edge, LandAt = land, BackAt = bk, BackDur = backDur, In = segIn, Back = segBack, Mine = opts.Mine == true }
+	e2.Dash.Streak = (opts.Low ~= true) and streakFor(unit, s.Model, t0, land + 0.05, opts.Mine == true) or false
+	return true
+end
+
+function AttackFx.Dash(unit, src, tgt, landAt, now, opts)
+	local ok, r = pcall(dash, unit, src, tgt, landAt, now, opts)
+	if not ok then
+		St.errors = St.errors + 1
+		warnOnce("dash", "Dash failed: " .. tostring(r))
+		return false
+	end
+	return r == true
+end
+
+-- -> "out" | "in" | "back", and the dash record (read only: Reach = the edge in pose studs, LandAt, BackAt, Streak)
+function AttackFx.DashState(unit)
+	local entry = St.poses[unit]
+	return dashState(entry, St.now or os.clock()), entry and entry.Dash or nil
+end
+
 function AttackFx.Play(ctx)
 	if type(ctx) ~= "table" then
 		return false
@@ -3662,7 +4163,8 @@ function AttackFx.Play(ctx)
 				pre = p
 			end
 		end
-		local start, C, R, Tr, late = fitTimes(r.Beats, now, ctx.DueAt, (not isPre and not pre) and ctx.LateMax or nil, pre and pre.Start or nil)
+		-- (battle-feel T3) a taken-over charge with a LateMax (a cast-driven Special) gets its travel back (fitTimes)
+		local start, C, R, Tr, late = fitTimes(r.Beats, now, ctx.DueAt, (not isPre) and ctx.LateMax or nil, pre and pre.Start or nil)
 		ctx.ImpactLate = late
 		local Imp, L = r.Beats.Impact or 0.15, r.Beats.Linger or 0.5
 		local aliveSecs = (type(r.Alive) == "table" and finite(r.Alive.Seconds)) and r.Alive.Seconds or 0
@@ -3730,11 +4232,18 @@ function AttackFx.Play(ctx)
 			Stepped = step, Low = quality == "Low", Items = {}, Emitters = 0, Beams = 0, Trails = 0, Lights = 0, Cores = 0, Rims = 0,
 			Kind = ctx.Kind, Pre = isPre or nil, CueSeconds = isPre and (finite(ctx.Seconds) and max(0.1, ctx.Seconds) or K.PRE_HOLD) or nil,
 			Avoid = ctx.Avoid, AvoidPts = {}, -- (Studio findings round) the spots a big piece keeps clear of (avoidSpots)
+			-- (battle-feel T1) a bite lands on a big body's near edge; the floor every ground layer stands on
+			Bite = (r.Attack == "Melee" or (r.Attack == "Special" and ctx.Kind == "Pounce")) or nil,
+			FloorY = finite(ctx.Ground) and ctx.Ground or (src.Last.Y - drop),
+			Dashed = (ctx.Dashed == true and r.Attack == "Melee") or nil, -- (battle-feel T2) the bite's pose is AttackFx.Dash's
 		}
 		for i, side in ipairs(targets) do
 			eff.T[i] = side.Last
 		end
 		refresh(eff)
+		if targets[1] and not isPre then
+			refineFloor(eff, targets[1])
+		end
 		eff.CorePos = corePosOf(eff, 0)
 		-- (evolved forms) one aura a unit: a new cast replaces the one it still wears
 		if auraRel then
@@ -3969,6 +4478,7 @@ function AttackFx.Update(now)
 		end
 	end
 	trimTails()
+	stepStreaks(now)
 	for unit, entry in pairs(St.poses) do
 		local pending = entry.Prev and entry.SwitchAt and now < entry.SwitchAt + AttackFx.CROSSFADE
 		if not pending then
@@ -3987,7 +4497,7 @@ function AttackFx.Pose(unit, base)
 		return nil
 	end
 	local now = St.now or os.clock()
-	local name, p, ranged, amp, reach = poseSample(entry, now, base)
+	local name, p, ranged, amp, reach, fwd = poseSample(entry, now, base)
 	local prev = entry.Prev
 	local out = entry.Out
 	if not out then
@@ -3997,26 +4507,27 @@ function AttackFx.Pose(unit, base)
 	out.Blend, out.Prev = 1, nil
 	if not name then
 		if prev and entry.SwitchAt and now < entry.SwitchAt then -- the new pose has not started: the old one plays on
-			local n2, p2, r2, a2, x2 = poseSample(prev, now, base)
+			local n2, p2, r2, a2, x2, f2 = poseSample(prev, now, base)
 			if n2 then
-				out.Name, out.P, out.Ranged, out.Amp, out.Reach = n2, p2, r2, a2, x2
+				out.Name, out.P, out.Ranged, out.Amp, out.Reach, out.Forward = n2, p2, r2, a2, x2, f2 or 0
 				return out
 			end
 		end
 		return nil
 	end
-	out.Name, out.P, out.Ranged, out.Amp, out.Reach = name, p, ranged, amp, reach
+	-- (battle-feel T2) out.Forward: pose studs along the LookVector on top of the pose (a flurry's bite from the edge)
+	out.Name, out.P, out.Ranged, out.Amp, out.Reach, out.Forward = name, p, ranged, amp, reach, fwd or 0
 	if prev and entry.SwitchAt then
 		local w = (now - entry.SwitchAt) / AttackFx.CROSSFADE
 		if w < 1 then
-			local n2, p2, r2, a2, x2 = poseSample(prev, now, base)
+			local n2, p2, r2, a2, x2, f2 = poseSample(prev, now, base)
 			if n2 then
 				local po = entry.PrevOut
 				if not po then
 					po = {}
 					entry.PrevOut = po
 				end
-				po.Name, po.P, po.Ranged, po.Amp, po.Reach = n2, p2, r2, a2, x2
+				po.Name, po.P, po.Ranged, po.Amp, po.Reach, po.Forward = n2, p2, r2, a2, x2, f2 or 0
 				out.Blend = max(0, w)
 				out.Prev = po
 			end
@@ -4027,6 +4538,11 @@ end
 
 function AttackFx.Cancel(unit)
 	St.poses[unit] = nil
+	for i = #St.streaks, 1, -1 do
+		if St.streaks[i].Unit == unit then
+			streakOff(i)
+		end
+	end
 	for i = #St.live, 1, -1 do
 		local eff = St.live[i]
 		if eff and eff.Unit == unit then
@@ -4064,6 +4580,9 @@ function AttackFx.ClearAll()
 	St.live = {}
 	St.poses = {}
 	St.pre = {}
+	for i = #St.streaks, 1, -1 do
+		streakOff(i)
+	end
 	St.lastBasicKick = nil
 end
 
@@ -4076,7 +4595,8 @@ function AttackFx.SetQuality(q)
 end
 
 function AttackFx.Stats()
-	local s = { Live = 0, Stepped = 0, Tails = 0, Emitters = 0, Beams = 0, Trails = 0, Lights = 0, Cores = 0, Rims = 0, Pooled = 0, PoolInstances = 0, Errors = St.errors }
+	-- (battle-feel T2) Streaks = the dash streaks live (their Trail kits count in Trails too)
+	local s = { Live = 0, Stepped = 0, Tails = 0, Emitters = 0, Beams = 0, Trails = #St.streaks, Lights = 0, Cores = 0, Rims = 0, Pooled = 0, PoolInstances = 0, Errors = St.errors, Streaks = #St.streaks }
 	for _, eff in ipairs(St.live) do
 		if eff.Tail then
 			s.Tails = s.Tails + 1
