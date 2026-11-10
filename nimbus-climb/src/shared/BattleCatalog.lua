@@ -1844,8 +1844,10 @@ BattleCatalog.BossRules = {
 	-- (feel-balance 2026-11-10) 0.035 -> 0.05: at Standoff 8 a melee pet's bite reaches 8 studs farther, so it catches a
 	-- minion about 4x as often; minions lived 2.4x shorter and 3-team raids read 51% vs 38% at 48 seeds (with the minion
 	-- waves removed Standoff 8 moves nothing: 65.3% vs 64.9%). A harder minion bite gives the minion phase its pressure back
-	-- without adding fight time (MinionHp 1.0 did too, but added 7 s to fights already near the 240 s cap)
-	MinionDamage = 0.05,
+	-- without adding fight time (MinionHp 1.0 did too, but added 7 s to fights already near the 240 s cap).
+	-- (feel-balance 2026-11-11) 0.05 -> 0.06: at 0.05 the 3-team board still read 43% (48 seeds; 45% at 96) against the
+	-- fitted 40% (163a2f4: 38%); at 0.06 it reads 39.5% (48 seeds), the trained raids are unchanged (minions die first)
+	MinionDamage = 0.06,
 	-- boss HP x GroupFactor(teams) = teams ^ GroupExponent x (1 + GroupBonus x (1 - 1 / teams)): x1 solo, x1.85 at 3 teams, x1.95 at 8.
 	-- Spec 2026-11-01: 0.2 / 0.55 made 8 teams last 2.25 x a solo and hit the 330 s limit (Mid 8p 0% at 330 s) while solos won 50-100%.
 	GroupExponent = -0.1,
@@ -1881,8 +1883,10 @@ BattleCatalog.Bosses = {
 		Element = "Storm",
 		Blurb = "A thunderhead given arms. Earth pets ground its lightning.",
 		HpFactor = 1,
-		-- (battle-feel review, sleep mode) the T3 nudge (Mid 0.94, Max 1.18) is for Config.Battle.Feel.Special.RealCast = true only; RealCast ships off, so the fitted values stand (ledger, the morning questions)
-		HpTier = { Starter = 1.23, Mid = 0.98, High = 0.90, Max = 1.22 }, -- per fight tier, each fitted so 3 teams win about 40% (48 seeds); Mid 1.03 -> 0.98: eight trained S7 teams took 246 s against the 240 s band; High 0.89 -> 0.90 with attack effects' reach: the top High solo won 17% against the 15% ceiling; Starter 1.24 -> 1.23: the forms build's Starter 3-team fights ran 243-244 s against the 240 s band (the owner's OK, 2026-11-02)
+		-- (battle-feel review, sleep mode) the T3 nudge (Mid 0.94, Max 1.18) was for RealCast without the meter carry; with the carry (feel-balance) it is not needed
+		-- (feel-balance 2026-11-11) Mid 0.98 -> 0.95: 3 Mid teams read 9 of 12 (75%) on the official seeds while 48 seeds read 38%; 1.01 took
+		-- the eight trained S7 teams to 245.8 s (over 240); at 0.95 3 teams read 5 of 12 and 50% (48 seeds), the trained raid 229.1 s (was 235.3 s, max 244)
+		HpTier = { Starter = 1.23, Mid = 0.95, High = 0.90, Max = 1.22 }, -- per fight tier, each fitted so 3 teams win about 40% (48 seeds); Mid 1.03 -> 0.98: eight trained S7 teams took 246 s against the 240 s band; High 0.89 -> 0.90 with attack effects' reach: the top High solo won 17% against the 15% ceiling; Starter 1.24 -> 1.23: the forms build's Starter 3-team fights ran 243-244 s against the 240 s band (the owner's OK, 2026-11-02)
 		Radius = 7,
 		Scale = 1,
 		Basic = { Name = "Zap", Interval = 2.4, Damage = 0.05, Range = 20 },
@@ -1920,7 +1924,7 @@ BattleCatalog.Bosses = {
 		Element = "Frost",
 		Blurb = "A serpent of living ice. Flame pets melt its armour.",
 		HpFactor = 1,
-		HpTier = { Starter = 1.15, Mid = 1.27, High = 0.68, Max = 0.70 }, -- (feel-balance 2026-11-10) Max 0.66 -> 0.70: at Standoff 8 + the minion fix 3 Max teams won 75% (48 seeds); 0.68 / 0.69 / 0.70 read 71% / 58% / 53% at 96 seeds. Starter 1.30 -> 1.15 (the owner's ask, 2026-11-02): 1.30 was fitted on a reference team whose Ember Phoenix is Flame (x1.5 on Frost; with the wheel off it wins 8%, not 42% (12 seeds)), so a team with no Flame pet met the hardest Starter boss: eight mid-Starter S5 teams won 0 of 48 (9% HP left), 3 reference teams 38% (48 seeds); at 1.15 eight S5 teams win 8% (4 of 48) in 258 s, 3 reference teams 44% in 191 s (1.12: 54% / 13%, past the neighbours' 29-48%); freeze, lethal radius and hit cuts moved S5 less and the hit cuts lengthened fights (one to the 330 s limit)
+		HpTier = { Starter = 1.15, Mid = 1.27, High = 0.68, Max = 0.73 }, -- (feel-balance 2026-11-11) Max 0.66 -> 0.73: at Standoff 8 + MinionDamage 0.06, 3 Max teams read (96 seeds) 65% / 67% / 69% / 59% / 53% / 56% / 49% / 47% at 0.66 / 0.67 / 0.68 / 0.69 / 0.70 / 0.72 / 0.73 / 0.74 (163a2f4 at 0.66: 58% of 48, it passed on its 12-seed draw); 0.73 reads 4 of 12 official, solo 3%. Past the fit's +-6% cell cap on purpose: the rate flattens past 0.73. Starter 1.30 -> 1.15 (the owner's ask, 2026-11-02): 1.30 was fitted on a reference team whose Ember Phoenix is Flame (x1.5 on Frost; with the wheel off it wins 8%, not 42% (12 seeds)), so a team with no Flame pet met the hardest Starter boss: eight mid-Starter S5 teams won 0 of 48 (9% HP left), 3 reference teams 38% (48 seeds); at 1.15 eight S5 teams win 8% (4 of 48) in 258 s, 3 reference teams 44% in 191 s (1.12: 54% / 13%, past the neighbours' 29-48%); freeze, lethal radius and hit cuts moved S5 less and the hit cuts lengthened fights (one to the 330 s limit)
 		Radius = 7,
 		Scale = 1,
 		Basic = { Name = "Ice Spit", Interval = 2.2, Damage = 0.06, Range = 20 }, -- spec 2026-11-01: 0.045 -> 0.06, breath 0.3 -> 0.28, blizzard 0.15 -> 0.27 (Flame teams outlived the band: 3 teams 300 s, 8 teams 326 s; a flatter pair so Max is not one-shot)
@@ -1939,7 +1943,7 @@ BattleCatalog.Bosses = {
 		Element = "Shadow",
 		Blurb = "Three heads, one grudge. Celestial pets shine through its dark.",
 		HpFactor = 1,
-		HpTier = { Starter = 1.27, Mid = 0.96, High = 0.85, Max = 1.15 }, -- Mid 0.93 -> 0.96 with attack effects' reach: 3 Mid teams won 58% against the 55% ceiling (0.94, 0.95 still 58%)
+		HpTier = { Starter = 1.27, Mid = 0.96, High = 0.85, Max = 1.22 }, -- (feel-balance 2026-11-11) Max 1.15 -> 1.22: at Standoff 8 3 Max teams read 58% (48 seeds) / 59% (96) at HEAD, 65% (48) with MinionDamage 0.06; 1.18 reads 52% but 10 of 12 official; 1.22 reads 44% (48), 6 of 12, 231 s. Mid 0.93 -> 0.96 with attack effects' reach: 3 Mid teams won 58% against the 55% ceiling (0.94, 0.95 still 58%)
 		Radius = 7,
 		Scale = 1,
 		Basic = { Name = "Shadow Bite", Interval = 1.8, Damage = 0.035, Range = 20 }, -- spec 2026-11-01: 0.04 -> 0.035, fangs 0.3 -> 0.26, pulse 0.2 -> 0.18 (High and Max groups fell in 84-99 s under the 100 s band)
