@@ -242,6 +242,20 @@ BattleCatalog.Damage = {
 	-- Config.Battle.Feel.Melee.Standoff (a number 0..20, Validate)
 	Standoff = (type(Config.Battle) == "table" and type(Config.Battle.Feel) == "table" and type(Config.Battle.Feel.Melee) == "table"
 		and tonumber(Config.Battle.Feel.Melee.Standoff)) or 0,
+	-- (battle-feel T3, spec decision 6) the real cast: seconds a special's caster is Casting before its effects land, per
+	-- kind (Config.Battle.Feel.Special.Cast while RealCast; nil = today's instant special + CastSeconds). BattleSim sends
+	-- Cast { at } at the start, fires the special at `at` (a dash then dodges it), a stun cancels it (CastBreak, meter kept)
+	SpecialCast = (function()
+		local F = type(Config.Battle) == "table" and type(Config.Battle.Feel) == "table" and Config.Battle.Feel.Special or nil
+		if type(F) ~= "table" or F.RealCast ~= true or type(F.Cast) ~= "table" then
+			return nil
+		end
+		local out = {}
+		for kind, s in pairs(F.Cast) do
+			out[kind] = s
+		end
+		return out
+	end)(),
 	SpecialScale = 1, -- global multiplier on every special effect
 	-- a special is powered by its pet's own Power stat (x Roles.Power): effect x (base Power / Reference) ^ Exponent
 	SpecialPowerCurve = { Reference = 10, Exponent = 0.5 },
@@ -1849,7 +1863,7 @@ BattleCatalog.Bosses = {
 		Element = "Storm",
 		Blurb = "A thunderhead given arms. Earth pets ground its lightning.",
 		HpFactor = 1,
-		HpTier = { Starter = 1.23, Mid = 0.98, High = 0.90, Max = 1.22 }, -- per fight tier, each fitted so 3 teams win about 40% (48 seeds); Mid 1.03 -> 0.98: eight trained S7 teams took 246 s against the 240 s band; High 0.89 -> 0.90 with attack effects' reach: the top High solo won 17% against the 15% ceiling; Starter 1.24 -> 1.23: the forms build's Starter 3-team fights ran 243-244 s against the 240 s band (the owner's OK, 2026-11-02)
+		HpTier = { Starter = 1.23, Mid = 0.94, High = 0.90, Max = 1.18 }, -- per fight tier, each fitted so 3 teams win about 40% (48 seeds); battle-feel T3 (the real cast, 2026-11-10, sleep mode, for the owner's OK): Mid 0.98 -> 0.94 (eight trained S7 teams took 248 s, 3 Mid teams won 19% of 48) and Max 1.22 -> 1.18 (8 Max teams 247 s, won 67%); Mid 1.03 -> 0.98:eight trained S7 teams took 246 s against the 240 s band; High 0.89 -> 0.90 with attack effects' reach: the top High solo won 17% against the 15% ceiling; Starter 1.24 -> 1.23: the forms build's Starter 3-team fights ran 243-244 s against the 240 s band (the owner's OK, 2026-11-02)
 		Radius = 7,
 		Scale = 1,
 		Basic = { Name = "Zap", Interval = 2.4, Damage = 0.05, Range = 20 },
@@ -2558,6 +2572,20 @@ function BattleCatalog.Validate()
 	local so = BattleCatalog.Damage.Standoff
 	if not finite(so) or so < 0 or so > 20 then
 		bad("Damage.Standoff must be a number 0..20 studs")
+	end
+	-- (battle-feel T3) the real cast seconds: nil (off), else a number 0.3..2 for every special kind
+	local sc = BattleCatalog.Damage.SpecialCast
+	if sc ~= nil then
+		if type(sc) ~= "table" then
+			bad("Damage.SpecialCast must be nil or a table of seconds per kind")
+		else
+			for _, kind in ipairs(BattleCatalog.SpecialKinds) do
+				local v = sc[kind]
+				if not finite(v) or v < 0.3 or v > 2 then
+					bad("Damage.SpecialCast." .. kind .. " must be a number 0.3..2 seconds")
+				end
+			end
+		end
 	end
 	local F = BattleCatalog.Fighter
 	for _, key in ipairs({ "AttackSlack", "AttackTolerance", "ElementCooldown", "ElementMult", "ElementRange", "SpecialMeterMax", "MeterPerSecond", "MeterOnHit", "MeterOnHurt", "DashSeconds", "DashCooldown", "DashIFrames", "SwapCooldown", "SwapCastSeconds", "HelperCooldown", "SupportCooldown", "Windup", "KitFactor", "HelperWeight", "Lives", "WalkMult", "WalkMin", "WalkMax", "RunMult", "MoveSlack", "Leash", "LeashSeconds" }) do

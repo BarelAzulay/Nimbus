@@ -558,17 +558,20 @@ S.p5sim_fighter = guarded("p5sim_fighter", function()
 		f4.meter = 100
 		ok7 = b4:Command(1, "Special")
 		local evs7 = b4:Step(0.1)
+		-- (battle-feel T3: the real server cast) Casting from the press, its meter full, until the heal lands at the cast's end
+		local castingFirst = f4.state == BS.States.Casting and f4.meter >= 100 - 1e-6
+		evs7 = SmokeCommon.pastCast(b4, evs7, f4.id, 0.1)
 		local sp = findEvent(evs7, "Special")
-		T.check(ok7 and sp and sp.kind == "Heal" and f4.hp > f4.maxHp * 0.3 and bench4.hp > bench4.maxHp * 0.3 and #sp.heals == 2 and sp.heals[1][1] == f4.id and sp.heals[2][1] == bench4.id and f4.meter < 100 and f4.state == BS.States.Casting, "a fighter's Heal special heals the fighter AND its benched pets (dungeon fixes 7; Casting after)", sp and sp.heals and #sp.heals)
+		T.check(ok7 and sp and sp.kind == "Heal" and f4.hp > f4.maxHp * 0.3 and bench4.hp > bench4.maxHp * 0.3 and #sp.heals == 2 and sp.heals[1][1] == f4.id and sp.heals[2][1] == bench4.id and f4.meter < 100 and castingFirst, "a fighter's Heal special heals the fighter AND its benched pets (dungeon fixes 7; Casting through its cast)", sp and sp.heals and #sp.heals)
 		b4, t4, f4 = special("mallow_kitten", "Shield")
 		f4.meter = 100
 		b4:Command(1, "Special")
-		b4:Step(0.1)
+		SmokeCommon.pastCast(b4, b4:Step(0.1), f4.id, 0.1) -- (battle-feel T3: past the cast)
 		T.check(f4.shield > 0, "a fighter's Shield special shields the fighter", f4.shield)
 		b4, t4, f4 = special("mallow_kitten", "Rally")
 		f4.meter = 100
 		ok7 = b4:Command(1, "Special")
-		evs7 = b4:Step(0.1)
+		evs7 = SmokeCommon.pastCast(b4, b4:Step(0.1), f4.id, 0.1) -- (battle-feel T3: past the cast)
 		sp = findEvent(evs7, "Special")
 		T.check(ok7 and sp and sp.kind == "Rally" and near(f4.dmgBuffMult, 1.35, 1e-9) and f4.dmgBuffUntil > b4:Time() + 7, "Rally: +35% damage for 8 s on the fighter")
 		for _ = 1, 6 do
@@ -586,7 +589,7 @@ S.p5sim_fighter = guarded("p5sim_fighter", function()
 		f4.meter = 100
 		local before = b4:SpeedOf(1)
 		ok7 = b4:Command(1, "Special")
-		evs7 = b4:Step(0.1)
+		evs7 = SmokeCommon.pastCast(b4, b4:Step(0.1), f4.id, 0.1) -- (battle-feel T3: past the cast)
 		local after = b4:SpeedOf(1)
 		T.check(ok7 and near(after.Run, before.Run * 1.35, 1e-6) and near(after.Walk, before.Walk * 1.35, 1e-6) and findEvent(evs7, "Speed", function(ev)
 			return ev.owner == 1 and near(ev.run, after.Run, 0.11)
@@ -606,7 +609,7 @@ S.p5sim_fighter = guarded("p5sim_fighter", function()
 		f4.meter = 100
 		local e5 = firstEnemy(b4)
 		ok7 = b4:Command(1, "Special")
-		evs7 = b4:Step(0.1)
+		evs7 = SmokeCommon.pastCast(b4, b4:Step(0.1), f4.id, 0.1) -- (battle-feel T3: past the cast)
 		T.check(ok7 and findEvent(evs7, "Hit", function(h)
 			return h.from == f4.id and h.special == "Pounce" and h.to == e5.id
 		end) ~= nil and near(f4.x, 0, 0.01), "Pounce from a fighter strikes the target (the character does not teleport)")

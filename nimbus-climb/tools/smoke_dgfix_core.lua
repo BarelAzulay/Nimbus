@@ -534,7 +534,8 @@ S.dgfixcore_heal = guarded("dgfixcore_heal", function()
 	h2.hp, h3.hp = h2.maxHp * 0.2, h3.maxHp * 0.25
 	fh.meter = 100
 	local okS = bH:Command(1, "Special")
-	local sp = find(bH:Step(0.1), "Special")
+	-- (battle-feel T3: the real cast) the heal lands at the cast's end: stepped past it
+	local sp = find((SmokeCommon.pastCast(bH, bH:Step(0.1), fh.id, 0.1)), "Special")
 	local ids = {}
 	for _, h in ipairs(sp and sp.heals or {}) do
 		ids[h[1]] = h[2]

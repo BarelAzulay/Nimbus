@@ -214,7 +214,9 @@ local function raid(BS, entry, opts)
 	return b, f, boss, minion
 end
 
--- my team's fighter casts its Special at `foe`: the Special event, every event, the battle time before the cast
+-- my team's fighter casts its Special at `foe`: the Special event, every event, the battle time before the cast.
+-- (battle-feel T3: the real cast) stepped past the cast to its Special (SmokeCommon.pastCast); t0 = the time it lands
+-- (the time its effects used), so every twist's timer below still reads from the landing
 local function special(b, f, foe, owner)
 	owner = owner or 1
 	f.meter = 100
@@ -224,6 +226,8 @@ local function special(b, f, foe, owner)
 	local t0 = b:Time()
 	local ok, why = b:Command(owner, "Special")
 	local evs = b:Step(0.05)
+	local fire, ft = SmokeCommon.pastCast(b, evs, f.id)
+	evs, t0 = fire, ft or t0
 	return findEvent(evs, "Special", function(ev)
 		return ev.unit == f.id
 	end), evs, t0, ok, why
@@ -379,18 +383,33 @@ S.evo_stage0_pinned = guarded("evo_stage0_pinned", function()
 			{ Key = "frostling_penguin", Level = 12, Slot = 3 },
 		} }
 	end
-	local b = BS.new({ Mode = "Duel", Seed = 7, Zone = { X = 60, Z = 60 }, Teams = { side(1, 1), side(2, 2) } })
-	local koSteps = {}
-	for step = 1, 600 do
-		for _, ev in ipairs(b:Step(0.1)) do
-			if ev.type == "KO" then
-				koSteps[#koSteps + 1] = step
+	-- (battle-feel T3) the pin was recorded with the INSTANT special: it replays with Damage.SpecialCast off (the off switch
+	-- = today, byte for byte); the real cast's numbers of the same Duel are reported (they move on purpose: the cast)
+	local BC = req("BattleCatalog")
+	local function duel()
+		local b = BS.new({ Mode = "Duel", Seed = 7, Zone = { X = 60, Z = 60 }, Teams = { side(1, 1), side(2, 2) } })
+		local koSteps = {}
+		for step = 1, 600 do
+			for _, ev in ipairs(b:Step(0.1)) do
+				if ev.type == "KO" then
+					koSteps[#koSteps + 1] = step
+				end
 			end
 		end
+		local result = b:Result()
+		return floor(b.teams[1].damage), floor(b.teams[2].damage), table.concat(koSteps, ","), result and result.Reason or "none"
 	end
-	local result = b:Result()
-	local d1, d2, ko, reason = floor(b.teams[1].damage), floor(b.teams[2].damage), table.concat(koSteps, ","), result and result.Reason or "none"
-	T.check(d1 == DMG1 and d2 == DMG2 and ko == KO_STEPS and reason == REASON, "evo stage 0: the pinned Duel replays byte for byte (damage, KO steps, reason)", fmt("%d %d [%s] %s", d1, d2, ko, tostring(reason)))
+	local keepCast = BC and BC.Damage.SpecialCast
+	if BC then
+		BC.Damage.SpecialCast = nil
+	end
+	local okRun, d1, d2, ko, reason = pcall(duel)
+	if BC then
+		BC.Damage.SpecialCast = keepCast
+	end
+	T.check(okRun and d1 == DMG1 and d2 == DMG2 and ko == KO_STEPS and reason == REASON, "evo stage 0: the pinned Duel replays byte for byte (damage, KO steps, reason; SpecialCast off)", fmt("%s %s [%s] %s", tostring(d1), tostring(d2), tostring(ko), tostring(reason)))
+	local okCast, c1, c2, cko, creason = pcall(duel)
+	T.info("evo stage 0: the same Duel with the real cast (battle-feel T3)", okCast and fmt("%d %d [%s] %s", c1, c2, cko, tostring(creason)) or tostring(c1))
 end)
 
 ----------------------------------------------------------------------------------------------------
@@ -775,9 +794,9 @@ S.evo_heal = guarded("evo_heal", function()
 
 	-- Evo 2: Overflow
 	b, f, mate = healer(2)
-	local t0 = b:Time()
 	f.hp = f.maxHp - 10
-	ev, evs = special(b, f, nil)
+	local t0
+	ev, evs, t0 = special(b, f, nil) -- (battle-feel T3: t0 = when the heal landed, past its cast)
 	H = baseOf(BC, f, "Heal") * BC.Specials.Heal.Solo
 	local over = twists(evs, "Overflow")
 	T.check(near(f.shield, math.min(H - 10, H * 0.5), 1e-6) and near(f.shieldUntil, t0 + 6, 1e-6), "evo heal: 10 HP under max: the wasted part becomes a shield, at most half the heal, 6 s", fmt("%.1f of %.1f until %.2f", f.shield, H, f.shieldUntil))
@@ -936,16 +955,20 @@ S.evo_rally = guarded("evo_rally", function()
 	f.speedBuffMult, f.speedBuffUntil = 1.35, -1
 	special(b, f, foes[1])
 	T.check(near(f.speedBuffMult, 1.15, 1e-6), "evo rally: ...an expired one does not", fmt("%.2f", f.speedBuffMult))
-	-- the meter after the cast
+	-- the meter after the cast. (battle-feel T3: the real cast) read in the step the Rally lands in, past its cast: no
+	-- swing in between (nextAttack held), only that step's meter regen (<= 0.5) on top
 	local function meterAfter(evo)
 		local battle, u, on = field(BS, fighter(PC, "Rally", evo), { { 9, 0 } })
 		u.meter = 100
 		battle:Command(1, "Target", on[1].id)
 		battle:Command(1, "Special")
+		u.nextAttack = huge
+		SmokeCommon.pastCast(battle, battle:Step(0.05), u.id)
 		return u.meter
 	end
 	local meter = BC.Forms.Rally[2].Meter
-	T.check(meterAfter(2) == meter and meterAfter(1) == 0 and meterAfter(0) == 0, "evo rally: Evo 2: Fired up fills the meter right after the cast (0 at Evo 0 / 1)", fmt("%s %s %s", tostring(meterAfter(2)), tostring(meterAfter(1)), tostring(meterAfter(0))))
+	local m2, m1, m0 = meterAfter(2), meterAfter(1), meterAfter(0)
+	T.check(near(m2, meter, 0.5) and m1 < 0.5 and m0 < 0.5, "evo rally: Evo 2: Fired up fills the meter right after the cast lands (0 at Evo 0 / 1; + one step's regen)", fmt("%s %s %s", tostring(m2), tostring(m1), tostring(m0)))
 	-- Evo 0: nothing of it
 	b, f, foes = field(BS, fighter(PC, "Rally", 0), { { 9, 0 } })
 	ev = special(b, f, foes[1])
@@ -1319,12 +1342,14 @@ S.evo_delayed = guarded("evo_delayed", function()
 	-- two pets' Twins both fire
 	b, f, foes = field(BS, fighter(PC, "Beam", 2), { { 10, 0 } }, { Ally = fighter(PC, "Beam", 2) })
 	local ally = b.teams[3].fighter
-	evs = select(2, special(b, f, foes[1]))
-	local more = select(2, special(b, ally, foes[1], 2))
-	run(b, 1, evs)
-	for _, ev in ipairs(more) do
-		evs[#evs + 1] = ev
-	end
+	-- (battle-feel T3: the real cast) the two press together: one cast each, both land, then both Twins (stepping one
+	-- special past its cast first would fire the first Twin inside the second's cast)
+	f.meter, ally.meter = 100, 100
+	b:Command(1, "Target", foes[1].id)
+	b:Command(2, "Target", foes[1].id)
+	b:Command(1, "Special")
+	b:Command(2, "Special")
+	evs = run(b, 2, {})
 	local tw = twists(evs, "Twin")
 	T.check(#tw == 2 and tw[1].unit ~= tw[2].unit, "evo delayed: two Twins from two pets both fire", tostring(#tw))
 	-- an enemy dodging in its i-frames is missed, not struck

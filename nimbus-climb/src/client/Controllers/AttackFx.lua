@@ -158,6 +158,9 @@ AttackFx.MAX_CORES = 14
 AttackFx.PUNCH_MAX = 0.35 -- BattleController SHAKE_MAX
 AttackFx.CROSSFADE = 0.12
 AttackFx.HIT_STOP = 0.05
+-- (battle-feel T3, spec decision 5) a special's impact freezes the caster's Cast and each victim's Hurt this long:
+-- Config.Battle.Feel.Special.HitStop while Weighty is on (0 off; read per Play, see specialStop)
+AttackFx.SPECIAL_HIT_STOP = 0.08
 -- (Task 11b) a Special's charge cues: a rim Highlight on the charging pet (at most MAX_RIMS live at once, High only)
 -- and the inhale sound hook, both only when at least CUE_MIN seconds of the charge are seen; a press's predicted charge
 -- that is refused / never confirmed shatters: its shards fly for SHATTER seconds
@@ -190,7 +193,9 @@ local K = {
 	-- the target's facing edges minus LEAP_MARGIN, clamped 0 .. LEAP_MAX world studs
 	LEAP_MARGIN = 0.3,
 	LEAP_MAX = 12,
-	POUNCE_DUR_MAX = 1.6, -- (Task 10) the Pounce's Strike: up to 1.6 s, its landing (p 0.26) on the slam
+	-- (Task 10) the Pounce's Strike: up to this long, its landing (p 0.26) on the slam. (battle-feel T3: 1.6 -> 2.2: the
+	-- Weighty leap flies up to 0.5 s + the release, 0.55 / 0.26 = 2.12 s, so the landing still falls on the slam)
+	POUNCE_DUR_MAX = 2.2,
 	LEAP_TRAIL_UP = 0.3, -- (Task 10) the leap trails ride the pet this far over its pivot
 	BAND_RARITY = { "Common", "Rare", "Legendary", "Secret" },
 	PRIO = { Ko = 4, Cast = 3, Windup = 2, Strike = 2, Shoot = 2, Recoil = 2, Victory = 2, Hurt = 1, DashIn = 2, DashBack = 2 },
@@ -199,7 +204,9 @@ local K = {
 	RIM_OUT = 0.25, -- ... and out over this after the release
 	RIM_OUTLINE = 0.2, -- its outline transparency at full
 	RIM_FILL = 0.82, -- its fill transparency at full (a faint wash of the element's colour)
-	PRE_HOLD = 1.2, -- seconds a predicted charge lasts at most (BattleController shatters it sooner: its PRESS_WAIT)
+	-- seconds a predicted charge lasts at most (BattleController shatters it sooner: its PRESS_WAIT, or (battle-feel T3)
+	-- the server cast's end + CAST_WAIT: up to ~1.7 s after a press)
+	PRE_HOLD = 2.0,
 	PRE_CAST_P = 0.5, -- the predicted charge's Cast pose holds at this p (risen, wings spread, eyes shut gathering power)
 	PRE_WINDUP_P = 0.6, -- ... a Pounce's Windup holds at this p (the full crouch)
 	PRE_MIN_CHARGE = 0.25, -- a pressed Special shows at least this much charge before its release (travel gives way)
@@ -703,6 +710,15 @@ end
 local function centreAim()
 	local a = feelOf("Aim")
 	return a ~= nil and a.Mode == "Centre"
+end
+
+-- (battle-feel T3) the special's hit freeze now: Feel.Special.HitStop while Weighty (else 0); AttackFx.SPECIAL_HIT_STOP
+-- follows it
+local function specialStop()
+	local s = feelOf("Special")
+	local v = (s ~= nil and s.Weighty == true and type(s.HitStop) == "number" and s.HitStop == s.HitStop) and max(0, min(0.3, s.HitStop)) or 0
+	AttackFx.SPECIAL_HIT_STOP = v
+	return v
 end
 
 -- (battle-feel T1) per model, read once: its AimPoint attachment (or false), the bounding-box centre's offset from the
@@ -3271,6 +3287,14 @@ local function schedulePoses(eff, now)
 	elseif A == "Special" or A == "Element" then
 		-- Cast's release (p 0.66 .. 0.74) lands as the release beat ends
 		segs[1] = { Name = "Cast", T0 = st, Dur = max(0.6, min(1.6, T.Travel / 0.7)) }
+		-- (battle-feel T3) a special's impact holds the caster still for SPECIAL_HIT_STOP (the weight of the hit): the Cast
+		-- runs that much longer so it still plays out after the freeze; one that has played out before the impact (a
+		-- charge cut to a late event) holds its last frame until the freeze ends
+		if A == "Special" and not eff.Miss and specialStop() > 0 then
+			local seg = segs[1]
+			seg.StopAt, seg.StopDur = st + T.Impact, AttackFx.SPECIAL_HIT_STOP
+			seg.Until = max(seg.T0 + seg.Dur, seg.StopAt) + seg.StopDur
+		end
 	elseif A == "Hurt" then
 		segs[1] = { Name = "Hurt", T0 = st, Dur = K.HURT }
 	elseif A == "Ko" then
@@ -3282,9 +3306,15 @@ local function schedulePoses(eff, now)
 		setPoses(eff.Unit, segs, now)
 	end
 	if offensive and not eff.Miss and (A == "Melee" or A == "Ranged" or A == "Element" or A == "Special") then
+		-- (battle-feel T3) a special's victims flinch frozen for SPECIAL_HIT_STOP at the impact, like its caster
+		local stop = (A == "Special" and not r.Twist) and specialStop() or 0
 		for _, side in ipairs(eff.Targets) do
 			if side.Unit ~= nil and side.Unit ~= eff.Unit then
-				setPoses(side.Unit, { { Name = "Hurt", T0 = st + T.Impact, Dur = K.HURT } }, now)
+				local seg = { Name = "Hurt", T0 = st + T.Impact, Dur = K.HURT }
+				if stop > 0 then
+					seg.StopAt, seg.StopDur = st + T.Impact, stop
+				end
+				setPoses(side.Unit, { seg }, now)
 			end
 		end
 	end
@@ -3649,6 +3679,12 @@ local function fitTimes(b, now, dueAt, lateMax, from)
 			Tr, short, C = Tr - c, short - c, C + c
 			c = min(R, short)
 			R, C = R - c, C + c
+		end
+		-- (battle-feel T3, spec decision 6) a cast-driven Special (`from` + `lateMax`: TravelHold): the charge stays
+		-- backdated, the travel the fit cut is given back up to lateMax, the impact that much after dueAt
+		if finite(lateMax) and lateMax > 0 then
+			local back = max(0, min((b.Travel or 0) - Tr, lateMax))
+			Tr, late = Tr + back, late + back
 		end
 	elseif finite(lateMax) and lateMax > 0 then
 		local extra = max(0, min((b.Charge or 0) - C, lateMax))
@@ -4074,7 +4110,8 @@ function AttackFx.Play(ctx)
 				pre = p
 			end
 		end
-		local start, C, R, Tr, late = fitTimes(r.Beats, now, ctx.DueAt, (not isPre and not pre) and ctx.LateMax or nil, pre and pre.Start or nil)
+		-- (battle-feel T3) a taken-over charge with a LateMax (a cast-driven Special) gets its travel back (fitTimes)
+		local start, C, R, Tr, late = fitTimes(r.Beats, now, ctx.DueAt, (not isPre) and ctx.LateMax or nil, pre and pre.Start or nil)
 		ctx.ImpactLate = late
 		local Imp, L = r.Beats.Impact or 0.15, r.Beats.Linger or 0.5
 		local aliveSecs = (type(r.Alive) == "table" and finite(r.Alive.Seconds)) and r.Alive.Seconds or 0

@@ -172,7 +172,8 @@
 --              receiver's previous snapshot, as flat numbers (BattleSim.DecodeSnapshot decodes; code = id x 1024 + lives x 256
 --              + windup x 128 + mask x 8 + state). Fighters get a snapshot every step (10 Hz), spectators every other step.
 --   "Events"   the list of Step() events (Hit / Special / KO / Telegraph / Spawn / Enrage / Order / Zone / Leave / End /
---              Element / Dash / Buff / Swap / Windup / Wave / EnemiesDown / Speed / Engage / Parry / Cheer), only when the step
+--              Element / Dash / Buff / Swap / Windup / Wave / EnemiesDown / Speed / Engage / Parry / Cheer / Cast / CastBreak),
+--              only when the step
 --              produced any; a
 --              refusal of a command BEFORE the sim (NotInZone, junk) also echoes Order { owner, order, rejected }.
 --   "End"      { BattleId, Mode, Result (the public result: owner maps keyed by tostring(userId)), Rewards (the
