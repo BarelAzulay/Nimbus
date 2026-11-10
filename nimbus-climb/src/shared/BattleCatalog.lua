@@ -1841,7 +1841,11 @@ BattleCatalog.BossRules = {
 	MinHp = 2500, -- #2: 600 -> 2500
 	FloorSeconds = 100, -- the boss HP floor = this x BaselineDps(bossId, tierId), whatever the tier's HpSeconds (RaidTiers[i].Baseline)
 	MinionHp = 0.7,
-	MinionDamage = 0.035,
+	-- (feel-balance 2026-11-10) 0.035 -> 0.05: at Standoff 8 a melee pet's bite reaches 8 studs farther, so it catches a
+	-- minion about 4x as often; minions lived 2.4x shorter and 3-team raids read 51% vs 38% at 48 seeds (with the minion
+	-- waves removed Standoff 8 moves nothing: 65.3% vs 64.9%). A harder minion bite gives the minion phase its pressure back
+	-- without adding fight time (MinionHp 1.0 did too, but added 7 s to fights already near the 240 s cap)
+	MinionDamage = 0.05,
 	-- boss HP x GroupFactor(teams) = teams ^ GroupExponent x (1 + GroupBonus x (1 - 1 / teams)): x1 solo, x1.85 at 3 teams, x1.95 at 8.
 	-- Spec 2026-11-01: 0.2 / 0.55 made 8 teams last 2.25 x a solo and hit the 330 s limit (Mid 8p 0% at 330 s) while solos won 50-100%.
 	GroupExponent = -0.1,
@@ -1916,7 +1920,7 @@ BattleCatalog.Bosses = {
 		Element = "Frost",
 		Blurb = "A serpent of living ice. Flame pets melt its armour.",
 		HpFactor = 1,
-		HpTier = { Starter = 1.15, Mid = 1.27, High = 0.68, Max = 0.66 }, -- Starter 1.30 -> 1.15 (the owner's ask, 2026-11-02): 1.30 was fitted on a reference team whose Ember Phoenix is Flame (x1.5 on Frost; with the wheel off it wins 8%, not 42% (12 seeds)), so a team with no Flame pet met the hardest Starter boss: eight mid-Starter S5 teams won 0 of 48 (9% HP left), 3 reference teams 38% (48 seeds); at 1.15 eight S5 teams win 8% (4 of 48) in 258 s, 3 reference teams 44% in 191 s (1.12: 54% / 13%, past the neighbours' 29-48%); freeze, lethal radius and hit cuts moved S5 less and the hit cuts lengthened fights (one to the 330 s limit)
+		HpTier = { Starter = 1.15, Mid = 1.27, High = 0.68, Max = 0.70 }, -- (feel-balance 2026-11-10) Max 0.66 -> 0.70: at Standoff 8 + the minion fix 3 Max teams won 75% (48 seeds); 0.68 / 0.69 / 0.70 read 71% / 58% / 53% at 96 seeds. Starter 1.30 -> 1.15 (the owner's ask, 2026-11-02): 1.30 was fitted on a reference team whose Ember Phoenix is Flame (x1.5 on Frost; with the wheel off it wins 8%, not 42% (12 seeds)), so a team with no Flame pet met the hardest Starter boss: eight mid-Starter S5 teams won 0 of 48 (9% HP left), 3 reference teams 38% (48 seeds); at 1.15 eight S5 teams win 8% (4 of 48) in 258 s, 3 reference teams 44% in 191 s (1.12: 54% / 13%, past the neighbours' 29-48%); freeze, lethal radius and hit cuts moved S5 less and the hit cuts lengthened fights (one to the 330 s limit)
 		Radius = 7,
 		Scale = 1,
 		Basic = { Name = "Ice Spit", Interval = 2.2, Damage = 0.06, Range = 20 }, -- spec 2026-11-01: 0.045 -> 0.06, breath 0.3 -> 0.28, blizzard 0.15 -> 0.27 (Flame teams outlived the band: 3 teams 300 s, 8 teams 326 s; a flatter pair so Max is not one-shot)
@@ -1958,9 +1962,11 @@ BattleCatalog.BossOrder = { "storm_titan", "lava_golem", "frost_wyrm", "shadow_h
 -- no fight to tune there (3 teams fell in 95-100 s, 8 teams in 82-88 s against the 100 s band). SoloHit: a lone team's share of the
 -- boss's hits, apart from the group line (the line's 1.6 left solos 0 of 48 even with a 97% dodge trainer; "solo barely possible" is the
 -- owner's). Measured on 96 seeds a cell: 1.25-1.45 at Starter 16% - 2%, 1.1-1.25 at Mid 5% - 1% (frost_wyrm 17% at 1.14, over the 15% ceiling), at High 8.5% - 1%, at Max 3% - 0.5%.
+-- (feel-balance 2026-11-10) Mid HpSeconds 98 -> 95: the real cast costs the trained S7 8-team raid (tier Mid) ~6% of its
+-- time (storm_titan 230.9 s cast off -> 245.4 s cast on, 24 seeds; over the 240 s cap); at 95 it reads 237.3 s (24 seeds)
 BattleCatalog.RaidTiers = {
 	{ Id = "Starter", Level = { 1, 19 }, BossLevel = 15, Hit = 0.6, Reward = 0.4, EventScale = 0.5, Scale = 0.85, HpSeconds = 120, SoloHit = 1.45, Baseline = { PetId = "ember_phoenix", Level = 15, Evo = 0, Tier = "Normal" } },
-	{ Id = "Mid", Level = { 20, 49 }, BossLevel = 40, Hit = 0.8, Reward = 0.7, EventScale = 0.5, Scale = 1, HpSeconds = 98, SoloHit = 1.17, Baseline = { PetId = "ember_phoenix", Level = 40, Evo = 1, Tier = "Normal" } },
+	{ Id = "Mid", Level = { 20, 49 }, BossLevel = 40, Hit = 0.8, Reward = 0.7, EventScale = 0.5, Scale = 1, HpSeconds = 95, SoloHit = 1.17, Baseline = { PetId = "ember_phoenix", Level = 40, Evo = 1, Tier = "Normal" } },
 	{ Id = "High", Level = { 50, 79 }, BossLevel = 70, Hit = 1, Reward = 1, EventScale = 1, Scale = 1.15, HpSeconds = 112, SoloHit = 1.14, Baseline = { PetId = "ember_phoenix", Level = 70, Evo = 2, Tier = "Normal" } },
 	{ Id = "Max", Level = { 80, 100 }, BossLevel = 95, Hit = 1.3, Reward = 1.3, EventScale = 1, Scale = 1.3, HpSeconds = 127, GroupMin = 1.35, SoloHit = 1.08, Crown = true, Baseline = { PetId = "ember_phoenix", Level = 95, Evo = 2, Tier = "Rainbow" } },
 }
