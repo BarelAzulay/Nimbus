@@ -5205,10 +5205,45 @@ function P8.tripped(entry, userId, lock)
 	return false
 end
 
+-- The bookkeeping of a write of this entry that landed: `w` is what it wrote ({ Id, Snapshot, Release, At, Gen,
+-- Overwrite }, see writeEntry), `result` the record the store answered (review round 3: for an adopted lost-ack write,
+-- the record found). The Base, the lock state and the pending markers follow THAT write (its mode, not the caller's).
+function P8.landed(entry, userId, w, result)
+	-- (a landed write also overwrote whatever lock an uncertain claim may have left: ClaimSent is answered)
+	entry.SentWrite, entry.LandedWrite, entry.ClaimSent = nil, w.Id, nil
+	entry.LockHeld = not w.Release
+	entry.LockAt = w.At or os.time() -- the lock's At as written (the trust window counts from it)
+	if w.Overwrite and entry.OverwriteGen == w.Gen then
+		entry.Overwrite = nil -- written; a ResetFields during the write stays pending for the next save
+	end
+	entry.DungeonMigrated = nil -- Phase 5: the store holds the migration's Clears now (the Base adopts them below)
+	entry.BerriesMigrated = nil -- Phase 5: ...and the P5Home step's berries (counted there exactly once)
+	entry.ItemsRefunded = nil -- HUD cleanup: ...and the item refund (the store holds the marker now)
+	if type(result) == "table" then
+		local confirmed = normalizeProfile(result)
+		if profilesEqual(confirmed, w.Snapshot) then
+			entry.Base = w.Snapshot
+		else
+			-- The store held something different from what we assumed (another server,
+			-- a recovered load): adopt it and re-apply whatever changed since the snapshot.
+			rebase(entry, w.Snapshot, confirmed, confirmed)
+			announceRebase(userId, entry)
+		end
+	else
+		entry.Base = w.Snapshot
+	end
+	P7.pruneGrants(entry)
+	-- review round 1: a write that (re)took the lock settles a load that was not settled yet; review round 2: the
+	-- GemsSettled attribute follows the flag (a release with the player here removes it)
+	P8.settled(entry, userId)
+end
+
 -- Body of a save; the caller holds the entry lock. Returns true when the store is up to date.
 -- Session lock: `mode` "release" (or a player who left / is leaving, or the server shutting down) writes the record
 -- without the lock; any other write stamps this server's lock. Every write is guarded (P8.tripped; strict while this
 -- server's own lock may have expired). A release that lands after the player rejoined is followed by a re-take.
+-- Review round 3: `release` is the WANTED mode and never changes: an adopted lost-ack write (perhaps of the other mode)
+-- only moves the Base and the lock state; the loop then writes again whatever changed since it, or the lock move.
 local function writeEntry(entry, userId, mode)
 	local release = mode == "release" or entry.Leaving == true or shuttingDown or Players:GetPlayerByUserId(userId) == nil
 	if entry.LoadFailed then
@@ -5222,7 +5257,10 @@ local function writeEntry(entry, userId, mode)
 		end
 	end
 
-	for attempt = 1, 2 do
+	-- two tries; review round 3: an adoption is an answer, not a failed try: it gives the loop one more pass (once)
+	local tries, attempt, adopted = 2, 0, false
+	while attempt < tries do
+		attempt = attempt + 1
 		local s = getStore()
 		if not s then
 			return false
@@ -5245,12 +5283,12 @@ local function writeEntry(entry, userId, mode)
 		-- that nonce in the record, the earlier write landed: it is adopted (no second delta, and a strict release that
 		-- left no lock is not taken for another server's write)
 		local nonce = P8.nonce()
-		local result, tripped, stamp, made, adopt, adoptRaw = nil, nil, nil, nil, nil, nil
+		local result, tripped, made, adopt, adoptRaw = nil, nil, nil, nil, nil
 		local ok, err = pcall(function()
 			result = s:UpdateAsync(keyFor(userId), function(old)
 				-- Must be pure and non-yielding: UpdateAsync may call it more than once.
 				local now = os.time()
-				tripped, stamp, made, adopt, adoptRaw = nil, nil, nil, nil, nil
+				tripped, made, adopt, adoptRaw = nil, nil, nil, nil
 				local mine = P8.mine(entry, old)
 				if type(mine) == "table" then
 					adopt, adoptRaw = mine, old
@@ -5269,7 +5307,6 @@ local function writeEntry(entry, userId, mode)
 				if not release then
 					record.Lock = P8.lockRecord(now)
 				end
-				stamp = now
 				made = { Id = nonce, Snapshot = snapshot, Release = release, At = now, Gen = overwriteGen, Overwrite = delta.Overwrite }
 				return record
 			end)
@@ -5280,41 +5317,20 @@ local function writeEntry(entry, userId, mode)
 			entry.SentWrite[nonce] = made -- it may have committed (the answer lost)
 		end
 		if ok and adopt then
-			snapshot, release, stamp, overwriteGen, nonce = adopt.Snapshot, adopt.Release, adopt.At, adopt.Gen, adopt.Id
-			delta, result = { Overwrite = adopt.Overwrite }, adoptRaw
-		end
-		if ok and tripped then
+			-- review round 3: an earlier write of this entry landed although its answer was lost (nothing was written
+			-- now): the entry takes ITS Base and lock state (an autosave adopted by a release still holds the lock), and
+			-- the loop goes round again: the next pass writes what changed since that write, or the lock move the wanted
+			-- mode still needs (P8.mustWrite), or ends with nothing left to write
+			if not adopted then
+				tries = tries + 1
+			end
+			adopted = true
+			P8.landed(entry, userId, adopt, adoptRaw)
+		elseif ok and tripped then
 			return P8.tripped(entry, userId, tripped)
-		end
-		if ok then
-			-- (a landed write also overwrote whatever lock an uncertain claim may have left: ClaimSent is answered)
-			entry.SentWrite, entry.LandedWrite, entry.ClaimSent = nil, nonce, nil
-			entry.LockHeld = not release
-			entry.LockAt = stamp or os.time() -- the lock's At as written (the trust window counts from it)
+		elseif ok then
+			P8.landed(entry, userId, made, result)
 			entry.Dirty = false
-			if delta.Overwrite and entry.OverwriteGen == overwriteGen then
-				entry.Overwrite = nil -- written; a ResetFields during the write stays pending for the next save
-			end
-			entry.DungeonMigrated = nil -- Phase 5: the store holds the migration's Clears now (the Base adopts them below)
-			entry.BerriesMigrated = nil -- Phase 5: ...and the P5Home step's berries (counted there exactly once)
-			entry.ItemsRefunded = nil -- HUD cleanup: ...and the item refund (the store holds the marker now)
-			if type(result) == "table" then
-				local confirmed = normalizeProfile(result)
-				if profilesEqual(confirmed, snapshot) then
-					entry.Base = snapshot
-				else
-					-- The store held something different from what we assumed (another server,
-					-- a recovered load): adopt it and re-apply whatever changed since the snapshot.
-					rebase(entry, snapshot, confirmed, confirmed)
-					announceRebase(userId, entry)
-				end
-			else
-				entry.Base = snapshot
-			end
-			P7.pruneGrants(entry)
-			-- review round 1: a write that (re)took the lock settles a load that was not settled yet; review round 2: the
-			-- GemsSettled attribute follows the flag (a release with the player here removes it)
-			P8.settled(entry, userId)
 			if release and cache[userId] == entry and entry.Leaving ~= true and not shuttingDown and Players:GetPlayerByUserId(userId) then
 				-- review round 1: the player rejoined this server while this release was in flight (Load used the cached
 				-- entry): take the lock back at once with one more guarded write (review round 2: whatever the budget;
@@ -5325,14 +5341,14 @@ local function writeEntry(entry, userId, mode)
 				end
 			end
 			return true
-		end
-
-		noteFailure("save", err)
-		if storeDisabled then
-			return false
-		end
-		if attempt == 1 then
-			task.wait(RETRY_DELAY)
+		else
+			noteFailure("save", err)
+			if storeDisabled then
+				return false
+			end
+			if attempt < tries then
+				task.wait(RETRY_DELAY)
+			end
 		end
 	end
 	return false

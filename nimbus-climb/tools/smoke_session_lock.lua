@@ -1564,6 +1564,36 @@ local function serverScenarios()
 			T.eq(D.GetGems(l2), 8, "r2 lost ack: ...and the entry was dropped after its release landed (the rejoin reads the store)")
 			leave(l2)
 
+			-- review round 3: the lost answer was an AUTOSAVE (it stamped the lock) and the next call is the release: the
+			-- adoption only moves the Base; the release still writes what changed since (the +4) and lets go of the lock
+			local uN = newUserId()
+			seed(uN, oldRecord({ Gems = 20 }))
+			local n1 = join("R3Adopt", uN)
+			players[#players + 1] = n1
+			D.Save(n1)
+			D.AddGems(n1, 1)
+			DSt.CommitThenFail = 1
+			local boxN = spawnCall(D.Save, n1) -- attempt 1 commits 21 (+ the lock) and its answer is lost
+			advance(0.5)
+			failWrites(true)
+			advance(2) -- attempt 2 fails before its transform (nothing to adopt yet): the save reports false
+			failWrites(false)
+			T.check(boxN.done and boxN.result == false and (stored(uN) or {}).Gems == 21 and lockId(uN) == "mock-job",
+				"r3 adopt autosave: (setup) the autosave committed 21 with the lock, its answer lost, its retry failed",
+				"done " .. tostring(boxN.done) .. ", result " .. tostring(boxN.result) .. ", gems " .. tostring((stored(uN) or {}).Gems))
+			D.AddGems(n1, 4)
+			local markN = #Mock.Output
+			leave(n1) -- the release adopts the autosave that landed, then writes the +4 without the lock
+			T.check((stored(uN) or {}).Gems == 25 and lockOf(uN) == nil,
+				"r3 adopt autosave: the release after an adopted lost-ack autosave writes the +4 (25, not 21) and releases the lock at once",
+				"gems " .. tostring((stored(uN) or {}).Gems) .. ", " .. showLock(lockOf(uN)))
+			T.check(not hasWarn("another server owns the save", markN), "r3 adopt autosave: ...no guard trip")
+			stored(uN).Gems = 70
+			local n2 = join("R3Adopt", uN)
+			players[#players + 1] = n2
+			T.eq(D.GetGems(n2), 70, "r3 adopt autosave: ...and the entry was dropped at the leave (the rejoin reads the store)")
+			leave(n2)
+
 			-- finding 2: an orphan that never owned the save (held-provisional) keeps its delta while the next server holds
 			-- the lock longer than ORPHAN_TIMEOUT (1800 s): time refused by a live lock does not count; it lands after the release
 			local uO = newUserId()

@@ -289,6 +289,13 @@ Updated: 2026-10-18 (after wave 2). Branch `v3-phase4`. Plan: `ARCHITECTURE_V3.m
   cheap release; a held entry's recovery claims 4 s after the give-up; a landed claim is recorded the moment UpdateAsync
   returns. Gate: the WHOLE suite (`smoke.py --quick`, 4.76 GiB free, no other run) **27,801 passed, 0 failed**, 992
   warnings, 1,591 s; `node tools/check.mjs` 0 errors; `count_locals` DataService 162.
+  Review round 2 verification (2026-11-10, 1 major, taken): an adopted lost-ack write no longer ends the save. writeEntry
+  kept the adopted write's mode as its own and returned "saved", so a release that adopted a lost-ack AUTOSAVE left the
+  lock in the record and the changes since unwritten (at BindToClose: lost, the lock stranded 360 s). Now the wanted mode
+  never changes; the adoption only moves the Base and lock state (`P8.landed`, shared with a normal landed write) and the
+  loop goes round once more, writing what changed since or the lock move (`P8.mustWrite`). Tests: `lock_review2` "r3
+  adopt autosave" and `shutdown` LostAck (RED 3 fails, then GREEN); lock lists 774 / 0; the WHOLE suite 27,807 passed,
+  0 failed, 992 warnings, 1,612 s; `check.mjs` 0 errors; `count_locals` DataService 162.
 - 2026-10-28 (player ruling, wave 5 dungeon camera): the Camera shake setting OFF turns off ONLY the hit shakes; the dungeon entrance rush, the room walk-in shot and the FOV punch on big attacks always play (short, skippable). The rush is skipped when the camera is > 60 studs from the gate.
 - Evolve button; 2nd evolution only Epic+; level cap 100 for all pets (XP curve keeps rising).
 - Presses become food plants, Collector = Coin Magnet, Kitchen = Food Machine, Gym = Training Place.
