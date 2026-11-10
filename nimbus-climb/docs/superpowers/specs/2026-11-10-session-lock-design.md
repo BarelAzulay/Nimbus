@@ -98,7 +98,7 @@ P8.Id = (game.JobId ~= "" and game.JobId) or ("studio-" .. HttpService:GenerateG
 ```lua
 Config.Save = {
 	LockSeconds = 360,      -- a lock whose At is this old (or older) is stale: a crashed server's lock expires (4 autosave sweeps)
-	HeartbeatSeconds = 120, -- a save with nothing to write still refreshes a lock at least this old (refreshed at the 180 s sweep at the latest)
+	HeartbeatSeconds = 60,  -- a save with nothing to write still refreshes a lock at least this old: every 90 s sweep (review round 1; was 120)
 	ClaimWaitSeconds = 12,  -- a load waits this long for a lock another live server holds, then plays provisionally (section 6.3)
 	ClaimRetrySeconds = 3,  -- between two claim attempts while held: attempts at 0, 3, 6, 9, 12 s = 5 UpdateAsync calls at most
 }
@@ -107,11 +107,16 @@ Config.Attr.SaveWaiting = "SaveWaiting" -- true while the load waits for, or the
 
 Why these: the autosave sweep runs every 90 s (`DataService.lua:7600-7639`) and writes only dirty entries (`writeEntry`
 returns early on an empty delta, `DataService.lua:4886-4889`), so an idle player's lock would age for ever; the heartbeat
-rule (section 7) makes the 90 s sweep refresh a lock aged >= 120, i.e. at age 90 no, at 180 yes: the maximum age between two
-refreshes is about 180 s plus the sweep's spread (0.25 s per entry, `DataService.lua:7634`, plus latency), well under 360.
+rule (section 7) makes the 90 s sweep refresh a lock aged >= 60, i.e. at every sweep (review round 1; with 120 it was every
+other sweep, up to ~180-210 s between refreshes): the maximum age between two refreshes is about 90 s plus the sweep's spread
+(0.25 s per entry, `DataService.lua:7634`, plus latency), well under 360. (An online session is dirty at every sweep anyway:
+TycoonService refreshes `Home.LastSeen` every 15 s.)
 360 s is the trade-off between two rare bad cases: after a server CRASH the player plays provisionally (section 6.3) for up
-to `LockSeconds` + one autosave (the autosave's `writeEntry -> recover` claims, section 7) ~ 7.5 min; during an outage longer
-than `LockSeconds` with a hop in it, the old server's unsaved minutes are lost to the guard (section 8). Both are the standard
+to `LockSeconds` + one autosave (the autosave's `writeEntry -> recover` claims, section 7) ~ 7.5 min; during an outage of
+the old server's writes followed by a hop, the old server's unsaved minutes are lost to the guard (section 8). **The real
+window (review round 1):** `Lock.At` is the time of the last LANDED write, so the new server can take the save once the
+outage has lasted `LockSeconds` minus the lock's age when it began (at most ~90 s): about 270-360 s at 360, 1710-1800 s at
+1800. Past it the old server's writes are refused even after the new server released the save (section 21). Both are the standard
 session-lock trade-off; the owner can move the number (section 20). 12 s of wait covers the normal hop (a leave save lands in
 one or two seconds) and one orphan retry (first at 10 s, `ORPHAN_RETRY_FIRST`, `DataService.lua:491`), and stays under the
 loading screen's own `Config.Loading.MaxSeconds = 25` (`Config.lua:1272-1275`), so the wait is invisible except for the caption
@@ -149,7 +154,10 @@ Attempts are one `UpdateAsync` each (`fetchProfile(userId, 1, true)`: the loop i
 | held (a live lock, another id) | first time: the player attribute `SaveWaiting = true` (section 18); if `waited >= ClaimWaitSeconds` give up as **held**; else `task.wait(ClaimRetrySeconds)`, `waited += ClaimRetrySeconds`, try again |
 | the call errored or `fetched == false` with no `held` (outage, throttle, no store) | `errors += 1`; two errors give up as **failed** (today's two attempts, `readKey` at 4492); else `task.wait(RETRY_DELAY)` (1.5 s) |
 
-So a held load makes attempts at 0, 3, 6, 9 and 12 s (five) and stops; the whole loop is bounded by 12 + 1.5 s.
+So a held load makes attempts at 0, 3, 6, 9 and 12 s (five) and stops; the whole loop is bounded by 12 + 1.5 s. (Review round
+1: the 12 s are measured on the clock from the first attempt, `os.clock()`, and each sleep is at most what is left, so slow
+calls do not stretch the wait: with 2 s calls the attempts run at 0, 5 and 10 s and the load gives up at 12 s, not 22 s.
+The loop also stops at once when the server is closing.)
 `waitForLoad` (`DataService.lua:4576`, today 4 s) waits up to `ClaimWaitSeconds + RETRY_DELAY + 4` s, and `saveEntry` (4937)
 answers false while an entry is still `Loading` (nothing of a loading entry may be written).
 
@@ -174,11 +182,15 @@ player sees less waiting than before.
 
 - `entry.LockHeld == true` (the leave's release write has not landed, or the entry is an orphan whose release failed): the
   record cannot have moved (only a stale steal could, section 10), so the cached profile is current and no store call is made,
-  as today.
+  as today. **Review round 1:** only while the lock cannot have expired (`P8.trusted`: its last landed write is less than
+  `LockSeconds - 30` s old). An older one claims again: a record that still holds this server's lock was not taken (rebase,
+  nothing lost); any other record was taken by another server (perhaps released since), so the store wins and the stale
+  session's unsaved changes are dropped; a failed read leaves the entry as it was (strict writes, `OwnsSave` false).
 - `entry.LoadFailed == true` (provisional, held or outage): the recovery loop already runs; as today.
 - `entry.Loaded and not LockHeld and not LoadFailed` (released, not yet dropped: a window of one deferred step): run the claim
   loop; the record may hold another server's data, so a claim that comes back different from `Base` rebases (`rebase` +
-  `announceRebase`, the `settleRead` changed-case shape at 4696-4699).
+  `announceRebase`, the `settleRead` changed-case shape at 4696-4699). Review round 1: a re-claim that another server holds
+  (or that fails for a released entry) plays on a true stand-in (defaults), never on the cached profile.
 `Load` resets `entry.Leaving` (section 9) on every (re)join.
 
 ## 7. The heartbeat (idle players keep their lock fresh)
@@ -208,8 +220,10 @@ A `nil` return cancels the write (Roblox and the mock, `robloxmock.lua:6399`). W
   dropped")`, `entry.LockHeld = false`.
 - No player here (an orphan, a late leave save, BindToClose for a departed player): `cache[userId] = nil`. Its delta can never
   be written: a stale server does not save. This is the case of section 1 (A's late write is refused instead of merged).
-- The player IS here (the same account in two servers at once; theoretical): the store wins. `rebase(entry, copyProfile(entry.Profile),
-  normalizeProfile(seen), normalizeProfile(seen))` (live minus live = nothing: the live profile becomes the stored one), the
+- The player IS here (the same account in two servers at once; theoretical): the store wins. ~~`rebase(entry, copyProfile(entry.Profile),
+  normalizeProfile(seen), normalizeProfile(seen))` (the live profile becomes the stored one)~~ (review round 1: the session
+  becomes a true stand-in, defaults, `P8.standIn`, and the recovery's claim brings the stored record in: a provisional entry
+  never shows balances the owning server may be spending), the
   grant annotations `ReceiptGrants / DailyClaims / TroveGrants` and `Overwrite` cleared, `entry.LoadFailed = true`,
   `entry.HeldBy = tripped`, `scheduleRecovery`, `announceRebase`. A receipt granted in that session and never saved answers
   `NotProcessedYet` (GemService grants only after a successful save, `GemService.lua:13`), so Roblox asks again: no paid
@@ -270,7 +284,8 @@ SettleFrom / SettleLoopGen / GemsSettled` entry fields; `P7.SETTLE_*` at 898-904
 What stays, so no caller changes:
 
 - `DataService.GemsSettled(player)` = `DataService.OwnsSave(player)` (new, section 16): true when the profile is loaded, not
-  provisional and this server holds the lock (`entry.LockHeld`), or when there is no usable store (Studio without API access:
+  provisional and this server holds the lock (`entry.LockHeld`; review round 1: and it cannot have expired, `P8.trusted`;
+  the next landed write trusts it again and fires `Settled` if this load had not yet), or when there is no usable store (Studio without API access:
   nothing to own). Callers unchanged: `PetService.lua:1149-1152` (gem spins), `StoreService.lua:614-619` (GemBuy),
   `FusionService.lua:774-775` (gem Mix), the clients reading the attribute (`ShopEggs.lua:1242, 1280`, `ShopGems.lua:255`,
   `ShopController.lua:1876`).
@@ -332,10 +347,12 @@ Entry fields (`DataService.lua:534-551` comment): `LockHeld`, `LockAt`, `HeldBy 
 ## 17. DataStore budget
 
 Per player: load 1 `UpdateAsync` (+ up to 4 while held; + 1 legacy `GetAsync` for a player with no v2 record); autosave 1 write
-per 90 s when dirty, else 1 per ~180 s (heartbeat); leave 1; BindToClose 1 per entry. The Set/Update budget is 60 + 10 x
-players per minute: 30 players cost about 20 writes a minute plus joins. Reads drop by the retired settle read (one `GetAsync`
-per join plus retries). Same-key writes within 6 s (a dirty autosave right before a leave) queue on Roblox; a throttled
-release fails like any failed save and is retried by the orphan loop.
+per 90 s (dirty, or the heartbeat); leave 1 (+ 1 re-take when the player rejoined while it was in flight); BindToClose 1 per
+entry. The Set/Update budget is 60 + 10 x players per minute: 30 players cost about 20 writes a minute plus joins. Reads drop
+by the retired settle read (one `GetAsync` per join plus retries). Review round 1: Roblox removed the old 6 s same-key write
+cooldown in 2023 (DevForum "Removal of 6s Cool Down for Data Stores"; the limits page now gives per-key throughput, 4 MB a
+minute of writes, and queues a throttled key's requests); a throttled release fails like any failed save and is retried by
+the orphan loop.
 
 ## 18. What the player sees
 
@@ -370,9 +387,35 @@ Decisions made here (the owner can overrule each):
 1. Provisional play after the 12 s wait, not a kick (section 2).
 2. `LockSeconds = 360`: ProfileStore-class libraries assume a dead session only after much longer; 6 min was chosen so a crash
    locks a player out of their real save for minutes, not half an hour, at the price of losing the unsaved minutes of a
-   session whose server's writes failed for 6+ minutes while the player hopped. **Question:** 360 (my pick) or 1800?
+   session whose server's writes failed for 6+ minutes while the player hopped. **Question:** 360 (my pick) or 1800? (The
+   real window is `LockSeconds` minus the lock's age when the outage began, at most ~90 s: section 5.)
 3. The settle hold retired with its API kept (section 12), not kept beside the lock: the lock covers all of it, and keeping
    both means two waits for one risk.
 4. The Studio rule (section 10): a Studio server treats another Studio lock as free.
 5. The lock-only record for brand-new players (section 3) so the tutorial gift cannot double on a first-minute hop.
 6. `PlayerService`'s leave save removed (section 9): one write per leave.
+
+## 21. Review round 1 (2026-11-10)
+
+What changed in the rules above (DataService `P8.trusted`, `P8.ours`, `P8.standIn`; tests `lock_stale_cache`):
+
+1. **A cached lock is trusted only while it cannot have expired**: `LockSeconds - 30` s after its last landed write (`entry.LockAt`
+   is now the lock's `At` as written). Past that, a rejoin claims again (6.5), `OwnsSave` / `GemsSettled` answer false (12), and
+   every write is **strict**: it goes ahead only into a record that still holds THIS server's lock. Before, the guard refused only a
+   record holding another server's *live* lock, so a stale orphan (writes failing 6+ min, the player hopped, the new server took
+   the save, played, and released it) merged its old delta into the new server's record: the double spend of section 1 for every
+   currency, and the cached profile was served to a rejoin as current.
+2. **A provisional entry is always a true stand-in** (defaults): the store-wins trip (8) and a re-claim of a cached entry that
+   another server holds no longer show the record seen or the cached profile, whose balances the owning server may be spending
+   (Tokens / Cash spends have no provisional gate; a stand-in's 0 balance is the gate). The dropped unsaved changes are the guard's
+   rule (8); a receipt grant among them answers `NotProcessedYet` and Roblox asks again.
+3. **A leave during a held load still releases**: an entry still `Loading` is never clean, so `Release` keeps it as an orphan
+   whose retry writes the release once the load ends (a claim that lands after the leave save gave up waiting used to stamp a
+   lock nobody released for `LockSeconds`); `Load` keeps the orphan flag for a player who already left; BindToClose waits for
+   such a load and releases it too.
+4. **A release that lands after the player rejoined is followed by a re-take** (one guarded `UpdateAsync`, skipped like a
+   heartbeat under a low budget), so the player is not left on an unlocked record with `OwnsSave` false until the next sweep; a
+   non-release write fires `Settled` for a load that was not settled yet (once per load, as before).
+5. **The held wait is counted on the clock** (6.2); **HeartbeatSeconds 60** (5); the real hop window is stated in 5 and 20.
+6. Not taken: the review's premise of a 6 s same-key write cooldown (attempts landing at 0, 6, 12, 18, 24 s), with its
+   `ClaimRetrySeconds = 6`, a mock cooldown and GetAsync polling: Roblox removed that cooldown in 2023 (section 17).

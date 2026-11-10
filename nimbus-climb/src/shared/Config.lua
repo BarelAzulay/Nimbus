@@ -433,7 +433,7 @@ Config.Tokens = {
 -- a time (a Lock record inside the save, claimed at load, refreshed by every save, released at leave / BindToClose).
 Config.Save = {
 	LockSeconds = 360, -- a lock whose At is this old (or older) is stale: a crashed server's lock expires (4 autosave sweeps)
-	HeartbeatSeconds = 120, -- a save with nothing to write still refreshes a lock at least this old (at the next autosave sweep)
+	HeartbeatSeconds = 60, -- a save with nothing to write still refreshes a lock at least this old: every 90 s autosave sweep refreshes an idle lock (review round 1; was 120 = every other sweep)
 	ClaimWaitSeconds = 12, -- a load waits this long for a lock another live server holds, then plays provisionally
 	ClaimRetrySeconds = 3, -- between two claim attempts while held: attempts at 0, 3, 6, 9, 12 s = 5 UpdateAsync calls at most
 }

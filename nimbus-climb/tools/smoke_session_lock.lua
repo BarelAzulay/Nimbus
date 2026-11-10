@@ -11,7 +11,7 @@
 --                        the entry is dropped; a failed release keeps the orphan and its retry releases; a clean entry
 --                        whose release failed is kept (a quick rejoin uses it with no store call); the heartbeat rule on
 --                        an idle entry (a second copy with the same id: no write under HeartbeatSeconds, one write at
---                        120 s+, skipped while the UpdateAsync budget is under 10); no usable store: OwnsSave true
+--                        60 s+, skipped while the UpdateAsync budget is under 10); no usable store: OwnsSave true
 --   lock_two_servers     "server A" is a hand-seeded foreign lock (the mock has one Players list): B waits (attempts at 0,
 --                        3, 6, 9, 12 s, SaveWaiting), then plays provisionally; A's release lets B's recovery claim and
 --                        show A's data; stale / junk / far-future / Studio locks are free; a real second module copy with
@@ -23,8 +23,9 @@
 --                        migration through a lock-only record; an old record (no Lock) and a newer build's record (a
 --                        foreign field, Version 3) keep everything across the claim and the release; a quick rejoin while
 --                        the release is pending keeps the cached entry; a rejoin that races the leave's release write gets
---                        the lock back at its next save, one after a landed release claims again (spec 6.5); a Save
---                        during a held load waits and writes nothing
+--                        the lock back at once (a re-take right after the release; under a low budget at its next save),
+--                        one after a landed release claims again (spec 6.5); a Save during a held load waits and writes
+--                        nothing
 --   lock_receipts_cross  (Task 2, spec 11 / 13) a receipt while the save is held elsewhere answers NotProcessedYet, then
 --                        PurchaseGranted once after the claim (saved with its receipt); a receipt the old server already
 --                        stored grants nothing again; TutorialStarter across the hop (the stand-in decides no ask, A's
@@ -35,6 +36,12 @@
 --                        gem Mix refused, nothing charged) until the recovery's claim, whose ProfileRebased listeners
 --                        already see GemsSettled true; the two save-wait toasts (Main.server) in order, none for a
 --                        normal join or during the wait; no usable store: settled at once
+--   lock_stale_cache     (review round 1, spec 21) a rejoin onto a cached entry whose lock may have expired reads the store
+--                        (B took the save, spent, released: never the stale balance), and keeps its unsaved change when
+--                        the record still holds this server's lock; an expired orphan never writes into a record B took and
+--                        released; a player here after a long outage: OwnsSave false, the next write refused, a stand-in,
+--                        then B's record; a held re-claim of a cached entry is a true stand-in (no stale spend); a leave
+--                        during a held load still releases the late claim; slow calls do not stretch the held wait
 --   client_lock_loading  (Task 2, client world, spec 18) the loading screen's caption reads "Another server is still
 --                        saving your progress..." while the player attribute SaveWaiting is true, "Loading the sky... N%"
 --                        again once it is removed, and the screen still reaches Done on ProfileLoaded
@@ -406,7 +413,7 @@ local function serverScenarios()
 			local save = type(Config.Save) == "table" and Config.Save or {}
 			T.check(type(Config.Save) == "table", "lock config: Config.Save exists")
 			T.eq(save.LockSeconds, 360, "lock config: Config.Save.LockSeconds = 360")
-			T.eq(save.HeartbeatSeconds, 120, "lock config: Config.Save.HeartbeatSeconds = 120")
+			T.eq(save.HeartbeatSeconds, 60, "lock config: Config.Save.HeartbeatSeconds = 60 (review round 1: every 90 s sweep refreshes an idle lock)")
 			T.eq(save.ClaimWaitSeconds, 12, "lock config: Config.Save.ClaimWaitSeconds = 12")
 			T.eq(save.ClaimRetrySeconds, 3, "lock config: Config.Save.ClaimRetrySeconds = 3")
 			T.eq(Config.Attr.SaveWaiting, "SaveWaiting", "lock config: Config.Attr.SaveWaiting = \"SaveWaiting\"")
@@ -508,16 +515,16 @@ local function serverScenarios()
 				end
 				local ok1, n1 = hSave()
 				T.check(ok1 == true and n1 == 0, "lock heartbeat: an empty save of a fresh lock writes nothing", tostring(ok1) .. ", " .. n1 .. " writes")
-				advance(100)
+				advance(50)
 				local ok2, n2 = hSave()
-				T.check(ok2 == true and n2 == 0, "lock heartbeat: lock age 100 s < HeartbeatSeconds: an empty save writes nothing", tostring(ok2) .. ", " .. n2 .. " writes")
-				advance(25)
+				T.check(ok2 == true and n2 == 0, "lock heartbeat: lock age 50 s < HeartbeatSeconds: an empty save writes nothing", tostring(ok2) .. ", " .. n2 .. " writes")
+				advance(15)
 				local beforeRec = copyDeep(stored(uH))
 				local ok3, n3 = hSave()
 				T.check(ok3 == true and n3 == 1 and (lockOf(uH) or {}).At == os.time() and lockId(uH) == "mock-job",
-					"lock heartbeat: lock age 125 s >= 120: the empty save writes once and refreshes the lock", tostring(ok3) .. ", " .. n3 .. " writes, " .. showLock(lockOf(uH)))
+					"lock heartbeat: lock age 65 s >= 60: the empty save writes once and refreshes the lock", tostring(ok3) .. ", " .. n3 .. " writes, " .. showLock(lockOf(uH)))
 				T.check(sameExcept(stored(uH), beforeRec, { Lock = true, UpdatedAt = true }), "lock heartbeat: ...nothing but Lock / UpdatedAt changed")
-				advance(125)
+				advance(65)
 				DSt.Budget = { UpdateAsync = 5 }
 				local ok4, n4 = hSave()
 				T.check(ok4 == true and n4 == 0, "lock heartbeat: an UpdateAsync budget under 10 skips the heartbeat (no write)", tostring(ok4) .. ", " .. n4 .. " writes")
@@ -680,13 +687,17 @@ local function serverScenarios()
 			T.check(writes(uG) == wG and (stored(uG) or {}).Gems == 500 and lockId(uG) == "server-A", "lock guard: the write is refused: the record is untouched",
 				(writes(uG) - wG) .. " writes, gems " .. tostring((stored(uG) or {}).Gems))
 			T.check(hasWarn("another server owns the save", mark), "lock guard: ...with a [DataService] warning")
-			T.check(D.GetGems(pg) == 500 and D.OwnsSave(pg) == false and waiting(pg) == true, "lock guard: the player is here: the store wins (500), provisional, SaveWaiting",
+			-- (review round 1: the stand-in is the defaults, never the record seen: a provisional entry must not show a balance
+			-- the server that owns the save may be spending)
+			T.check(D.GetGems(pg) == 0 and D.IsProvisional(pg) == true and D.OwnsSave(pg) == false and waiting(pg) == true,
+				"lock guard: the player is here: the session's unsaved changes are dropped, it plays on a true stand-in (0 gems), provisional, SaveWaiting",
 				"gems " .. tostring(D.GetGems(pg)))
 			stored(uG).Lock = nil
 			T.check(K.waitFor(function()
 				return D.OwnsSave(pg) == true
 			end, 100), "lock guard: the lock freed: the recovery claims again")
 			T.eq(waiting(pg), nil, "lock guard: ...SaveWaiting removed")
+			T.eq(D.GetGems(pg), 500, "lock guard: ...and the store wins (the stored 500, without the dropped +1)")
 
 			-- the guard on an orphan: the late write of a server the player left is refused
 			D.AddGems(pg, 3)
@@ -826,7 +837,8 @@ local function serverScenarios()
 			T.check((stored(uQ) or {}).Gems == 2 and lockOf(uQ) == nil, "lock rejoin: ...its leave writes the gems and releases")
 
 			-- a rejoin races the leave's release write (spec 6.5): the new join finds the cached entry while the release is
-			-- in flight; the release lands after it (no lock held now) and the next save takes the lock back
+			-- in flight; the release lands after it and (review round 1) the same save takes the lock back at once, so the
+			-- player who is back never plays on an unlocked record (OwnsSave / GemsSettled stay true)
 			local uR = newUserId()
 			seed(uR, oldRecord({ Gems = 30 }))
 			local pr = join("LockRace", uR)
@@ -837,11 +849,28 @@ local function serverScenarios()
 			advance(0.3) -- the release write is in flight (it lands at 1 s)
 			local pr2 = add("LockRace", uR)
 			players[#players + 1] = pr2
+			local wR = writes(uR)
+			advance(1.5) -- the release landed at 1 s; the lock's re-take is in flight (it lands at 2 s)
+			DSt.Latency = 0
+			advance(0.5)
+			T.check(lockId(uR) == "mock-job" and D.GetProfile(pr2) ~= nil and D.GetGems(pr2) == 30 and D.OwnsSave(pr2) == true and D.GemsSettled(pr2) == true,
+				"lock race: the rejoin used the cached entry; the release landed after it and the lock was taken back at once (no wait for the next autosave)",
+				showLock(lockOf(uR)) .. ", OwnsSave " .. tostring(D.OwnsSave(pr2)))
+			T.eq(writes(uR) - wR, 2, "lock race: ...two writes: the release, then the re-take")
+			-- under a low UpdateAsync budget the re-take is skipped (like a heartbeat) and the next save takes the lock back
+			D.Save(pr2)
+			DSt.Latency = 1
+			Mock.RemovePlayer(pr2)
+			advance(0.3)
+			DSt.Budget = { UpdateAsync = 5 }
+			pr2 = add("LockRace", uR)
+			players[#players + 1] = pr2
 			advance(1.5)
 			DSt.Latency = 0
-			T.check(lockOf(uR) == nil and D.GetProfile(pr2) ~= nil and D.GetGems(pr2) == 30 and D.OwnsSave(pr2) == false,
-				"lock race: the rejoin used the cached entry; the release landed after it (the lock is not held now)", showLock(lockOf(uR)) .. ", OwnsSave " .. tostring(D.OwnsSave(pr2)))
-			T.check(D.Save(pr2) == true and lockId(uR) == "mock-job" and D.OwnsSave(pr2) == true, "lock race: the next save (empty delta) takes the lock back")
+			T.check(lockOf(uR) == nil and D.OwnsSave(pr2) == false, "lock race budget: a low UpdateAsync budget skips the re-take: the lock is not held for now",
+				showLock(lockOf(uR)) .. ", OwnsSave " .. tostring(D.OwnsSave(pr2)))
+			DSt.Budget = {}
+			T.check(D.Save(pr2) == true and lockId(uR) == "mock-job" and D.OwnsSave(pr2) == true, "lock race budget: ...the next save (empty delta) takes the lock back")
 			-- ...and a rejoin AFTER a landed release, while the entry is still cached (a write after the release's snapshot
 			-- kept it as an orphan), claims again (one UpdateAsync) and keeps that write
 			DSt.Latency = 1
@@ -1130,6 +1159,199 @@ local function serverScenarios()
 				T.check(release2() == true, "lock flag no store: the copy's hooks are dropped with it")
 			end
 			leave(q)
+		end)
+	end)
+
+	----------------------------------------------------------------------------------------------------
+	-- lock_stale_cache (review round 1): a cached lock is trusted only while it cannot have expired; a stale server's
+	-- unsaved changes never merge into a record another server took over (even after that server released it); a
+	-- provisional entry is always a true stand-in; a leave during a held load still releases; the held wait is
+	-- bounded by the clock
+	----------------------------------------------------------------------------------------------------
+	S.lock_stale_cache = guarded("lock_stale_cache", function()
+		if not K.needBoot() then
+			return
+		end
+		local D = DS()
+		run("lock_stale_cache", function(players)
+			if not T.check(type(D.OwnsSave) == "function" and type(D._SetServerIdForTest) == "function", "lock stale: the lock API exists") then
+				return
+			end
+			startWatch()
+			local function failWrites(on)
+				if on then
+					DSt.FailOnly, DSt.Fail = "UpdateAsync", true
+				else
+					DSt.Fail, DSt.FailOnly = false, nil
+				end
+			end
+			-- server B (by hand): it took the record (a stale steal), the player spent the gems there, B's release landed
+			local function stealSpendRelease(uid, field)
+				local rec = stored(uid)
+				rec[field or "Gems"] = 0
+				rec.Lock = nil
+				rec.UpdatedAt = os.time()
+			end
+
+			-- 1. a rejoin onto a cached entry whose lock may have expired reads the store (finding 1)
+			local u1 = newUserId()
+			seed(u1, oldRecord({ Gems = 500 }))
+			local a1 = join("LockExpRejoin", u1)
+			players[#players + 1] = a1
+			D.Save(a1) -- the join's own changes are written: from here the record holds this server's lock
+			D.AddGems(a1, 1) -- unsaved: this server's writes are about to fail
+			failWrites(true)
+			leave(a1) -- the release fails: an orphan that still holds the lock
+			advance(361) -- every orphan retry and sweep fails; the lock ages past LockSeconds (the next retry is at ~391 s)
+			stealSpendRelease(u1)
+			failWrites(false)
+			local c1 = calls(u1)
+			local a2 = join("LockExpRejoin", u1)
+			players[#players + 1] = a2
+			T.check(D.GetGems(a2) == 0, "lock expired rejoin: a cached entry whose lock may have expired is not served as current: the rejoin reads B's record (0 gems), never the stale 500",
+				"gems " .. tostring(D.GetGems(a2)))
+			T.eq(calls(u1) - c1, 1, "lock expired rejoin: ...ONE store call (the claim)")
+			T.check(D.OwnsSave(a2) == true and lockId(u1) == "mock-job", "lock expired rejoin: ...and this server owns the save again", showLock(lockOf(u1)))
+			leave(a2)
+			T.check((stored(u1) or {}).Gems == 0 and lockOf(u1) == nil, "lock expired rejoin: ...the stale session's +1 and its 500 never reached the store",
+				"gems " .. tostring((stored(u1) or {}).Gems))
+
+			-- 1b. ...and nothing is lost when nobody took the record: the claim finds this server's own lock, the unsaved change stays
+			local u1b = newUserId()
+			seed(u1b, oldRecord({ Gems = 500 }))
+			local k1 = join("LockExpKeep", u1b)
+			players[#players + 1] = k1
+			D.Save(k1)
+			D.AddGems(k1, 1)
+			failWrites(true)
+			leave(k1)
+			advance(340) -- past the trust window (LockSeconds - 30), not stale: nobody could have taken it
+			failWrites(false)
+			local c1b = calls(u1b)
+			local k2 = join("LockExpKeep", u1b)
+			players[#players + 1] = k2
+			T.check(D.GetGems(k2) == 501 and calls(u1b) - c1b == 1 and D.OwnsSave(k2) == true,
+				"lock expired keep: the record still holds this server's lock: the claim keeps the unsaved +1 (501)", "gems " .. tostring(D.GetGems(k2)) .. ", " .. (calls(u1b) - c1b) .. " calls")
+			leave(k2)
+			T.eq((stored(u1b) or {}).Gems, 501, "lock expired keep: ...and its leave writes it")
+
+			-- 2. an orphan whose lock expired never writes into a record another server took, even after that server released it
+			local u2 = newUserId()
+			seed(u2, oldRecord({ Gems = 500 }))
+			local b1 = join("LockExpOrphan", u2)
+			players[#players + 1] = b1
+			D.Save(b1)
+			D.AddGems(b1, 1)
+			failWrites(true)
+			leave(b1)
+			advance(361)
+			stealSpendRelease(u2)
+			failWrites(false)
+			local w2 = writes(u2)
+			local mark2 = #Mock.Output
+			advance(40) -- the next orphan retry (~391 s) and any sweep
+			T.check(writes(u2) == w2 and (stored(u2) or {}).Gems == 0 and lockOf(u2) == nil,
+				"lock expired orphan: the orphan's write is refused although B already released (no lock in the record): a stale server never saves",
+				(writes(u2) - w2) .. " writes, gems " .. tostring((stored(u2) or {}).Gems))
+			T.check(hasWarn("another server owns the save", mark2), "lock expired orphan: ...with a [DataService] warning")
+			stored(u2).Gems = 4
+			local b2 = join("LockExpOrphan", u2)
+			players[#players + 1] = b2
+			T.eq(D.GetGems(b2), 4, "lock expired orphan: ...and the stale entry was dropped: the rejoin reads the store")
+			leave(b2)
+
+			-- 3. a player still here whose own lock may have expired (an outage): OwnsSave false; the next write after B's steal
+			-- and release is refused and the session becomes a stand-in until the claim
+			local u3 = newUserId()
+			seed(u3, oldRecord({ Gems = 500 }))
+			local c = join("LockExpOnline", u3)
+			players[#players + 1] = c
+			D.Save(c)
+			T.eq(D.OwnsSave(c), true, "lock expired online: (setup) this server owns the save")
+			failWrites(true)
+			advance(335)
+			T.check(D.OwnsSave(c) == false and D.GemsSettled(c) == false and D.IsProvisional(c) == false,
+				"lock expired online: every write failed for 335 s: the own lock may have expired: OwnsSave / GemsSettled false (gem actions wait), not provisional",
+				"OwnsSave " .. tostring(D.OwnsSave(c)))
+			advance(30) -- B's steal is possible now
+			stealSpendRelease(u3)
+			failWrites(false)
+			T.eq(D.SpendGems(c, 500), true, "lock expired online: (setup) the stale view still shows 500 gems (spent here again, in memory)")
+			local w3 = writes(u3)
+			T.eq(D.Save(c), false, "lock expired online: the next save is refused: the record is no longer this server's (B took it, then released)")
+			T.check(writes(u3) == w3 and (stored(u3) or {}).Gems == 0, "lock expired online: ...nothing written")
+			T.check(D.IsProvisional(c) == true and D.GetGems(c) == 0 and waiting(c) == true, "lock expired online: ...the session plays on a stand-in (0 gems), SaveWaiting")
+			T.check(K.waitFor(function()
+				return D.OwnsSave(c) == true
+			end, 60), "lock expired online: the record is free: the recovery claims")
+			T.check(D.GetGems(c) == 0 and (stored(u3) or {}).Gems == 0, "lock expired online: ...B's record (0 gems): the stale spend never merged", "gems " .. tostring(D.GetGems(c)))
+			leave(c)
+
+			-- 4. a re-claim of a cached entry that another server holds plays on a true stand-in, never the stale balance (finding 5)
+			local u4 = newUserId()
+			seed(u4, oldRecord({ Tokens = 2000 }))
+			local e1 = join("LockHeldReclaim", u4)
+			players[#players + 1] = e1
+			D.Save(e1)
+			DSt.Latency = 1
+			Mock.RemovePlayer(e1)
+			advance(0.3)
+			D.AddTokens(e1, 5) -- a late write while the release is in flight: the orphan keeps it
+			advance(1.2)
+			DSt.Latency = 0
+			T.check(lockOf(u4) == nil and (stored(u4) or {}).Tokens == 2000, "lock held reclaim: (setup) the release landed; the late +5 stays cached")
+			local rec4 = stored(u4)
+			rec4.Tokens = 0 -- the player went to B and spent the 2000 there; B still holds the record
+			rec4.Lock = foreign("server-B")
+			local e2 = add("LockHeldReclaim", u4)
+			players[#players + 1] = e2
+			advance(13)
+			T.check(D.IsProvisional(e2) == true and D.GetTokens(e2) == 0, "lock held reclaim: the re-claim is held by B: a true stand-in (0 tokens), not the cached 2005",
+				"provisional " .. tostring(D.IsProvisional(e2)) .. ", tokens " .. tostring(D.GetTokens(e2)))
+			T.eq(D.SpendTokens(e2, 1500), false, "lock held reclaim: ...the 2000 spent on B cannot be spent again here")
+			stored(u4).Lock = nil -- B's release lands
+			T.check(K.waitFor(function()
+				return D.OwnsSave(e2) == true
+			end, 60), "lock held reclaim: B released: the recovery claims")
+			T.eq(D.GetTokens(e2), 0, "lock held reclaim: ...B's record (0 tokens)")
+			leave(e2)
+
+			-- 5. a leave during a held load whose claim lands after the leave save gave up still releases (finding 3)
+			local u5 = newUserId()
+			seed(u5, oldRecord({ Gems = 6, Lock = foreign("server-A") }))
+			DSt.Latency = 20
+			local g = add("LockLoadLeave", u5)
+			players[#players + 1] = g
+			advance(1)
+			Mock.RemovePlayer(g)
+			advance(1)
+			stored(u5).Lock = nil -- A's release lands; this server's first claim attempt is still in flight (it reads the record at 20 s)
+			advance(19.5)
+			DSt.Latency = 0
+			T.eq(lockId(u5), "mock-job", "lock leave while loading: (precondition) the claim landed after the leave save gave up waiting")
+			advance(15) -- the orphan retry (10 s after the Release)
+			T.eq(lockOf(u5), nil, "lock leave while loading: the loading entry was kept (not dropped) and its retry released the lock", showLock(lockOf(u5)))
+			stored(u5).Gems = 11
+			local g2 = join("LockLoadLeave", u5)
+			players[#players + 1] = g2
+			T.eq(D.GetGems(g2), 11, "lock leave while loading: ...then the entry was dropped (the rejoin reads the store)")
+			leave(g2)
+
+			-- 6. a held wait is bounded by the clock: slow calls (2 s each) still give up at ~12 s (finding 7)
+			local u6 = newUserId()
+			seed(u6, oldRecord({ Lock = foreign("server-A") }))
+			DSt.Latency = 2
+			local h = add("LockSlowHeld", u6)
+			players[#players + 1] = h
+			advance(14.5)
+			T.check(D.IsProvisional(h) == true, "lock slow held: with 2 s per call the held load gives up at ~12 s of wall time (attempts at 0, 5, 10), not after five 3 s sleeps (~22 s)",
+				calls(u6) .. " calls, provisional " .. tostring(D.IsProvisional(h)))
+			DSt.Latency = 0
+			stored(u6).Lock = nil
+			T.check(K.waitFor(function()
+				return D.OwnsSave(h) == true
+			end, 60), "lock slow held: ...and the recovery claims once A released")
+			leave(h)
 		end)
 	end)
 

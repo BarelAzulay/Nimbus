@@ -585,6 +585,15 @@ S.fixr_data_clamp_twin = guarded("fixr_data_clamp_twin", function()
 		return
 	end
 	local saved = { Fail = DSt.Fail }
+	-- session lock review round 1: B's orphan retry lands 6+ minutes after B's last landed write (the 20 h clamp forces
+	-- it), after C's release. Under LockSeconds 360 the strict guard refuses such a stale write (smoke_session_lock.lua
+	-- lock_stale_cache); this scenario tests the Daily twin MERGE, which still runs for a longer LockSeconds (the owner's
+	-- open 360 / 1800 question) and for an old build during a rolling deploy, so it pins LockSeconds at 3600 meanwhile
+	local saveCfg = type(config().Save) == "table" and config().Save or nil
+	local savedTtl = saveCfg and saveCfg.LockSeconds
+	if saveCfg then
+		saveCfg.LockSeconds = 3600
+	end
 	local okRun, errRun = pcall(function()
 		-- the store: day 2 paid by a server whose clock ran 6 min fast (past the slack): F reads 6 min ahead here
 		local uid = newUserId()
@@ -657,6 +666,9 @@ S.fixr_data_clamp_twin = guarded("fixr_data_clamp_twin", function()
 		advance(0.3)
 	end)
 	DSt.Fail = saved.Fail
+	if saveCfg then
+		saveCfg.LockSeconds = savedTtl
+	end
 	advance(12)
 	T.check(releaseC() == true, "clamp twin: server C's hooks are dropped with it")
 	if not okRun then
