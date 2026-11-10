@@ -230,12 +230,19 @@ Updated: 2026-10-18 (after wave 2). Branch `v3-phase4`. Plan: `ARCHITECTURE_V3.m
   DataStore calls (spec 17): per player, load 1 UpdateAsync (+ up to 4 while another server holds the lock; + 1 legacy
   GetAsync for a player with no v2 record); autosave 1 write per 90 s (dirty, or the heartbeat);
   leave 1; BindToClose 1 per entry. The settle read's GetAsync per join (and its retries) is gone.
-  Tests: see the T1 / T2 commit bodies and the ledger lines (targeted lists, one run at a time on this low-memory PC;
-  **the whole suite was NOT run**, nor `client_replay`: run it once on a free machine before any merge).
-  Not looked at in Studio (nothing in session-lock has been): 1 a normal join with API access: no wait, gem spins work
-  at once; 2 two Studio windows are two servers but treat each other's locks as free (the Studio rule), so a real hop
-  needs two live servers: join server A, spend gems, hop to B at once: B's loading screen may show the "Another server"
-  caption for a few seconds, then the gems match A's; 3 Stop in Studio (BindToClose) and rejoin: no wait.
+  Tests: see the T1 / T2 / review round 1 commit bodies and the ledger lines (targeted lists while building), and the
+  gate below (the whole suite, `client_replay` included, once on a0680be).
+  Owner Studio checklist (nothing in session-lock has been looked at in Studio yet; turn on "Enable Studio Access to
+  API Services" for 1-4): 1 **join**: no "Another server" caption, the world opens as fast as on integration, gem spins and
+  the Shop's gem buttons work at once (no 15 s "Loading..."); 2 **rejoin fast**: Stop, then Play again within 5 s: no
+  wait, the gems / tokens / pets you had at Stop are there (Stop fires BindToClose, which releases the lock); 3 **two
+  Studio windows** (two servers on your account): play in window 1, spend some gems, Stop, then Play in window 2: the
+  gems match; then play in window 1 and close Studio window 1 by force (no Stop), Play in window 2: no wait (the Studio
+  rule: a Studio session treats another Studio session's lock as free) and the save is the one from window 1's last
+  autosave; 4 the Output shows no `[DataService]` lock warnings in 1-3; 5 **a real hop** (only on two live servers, e.g.
+  a private test place with two servers): join server A, spend gems, hop to B at once: B's loading screen may show
+  "Another server is still saving your progress..." for a few seconds, then the gems match A's and nothing was spent
+  twice.
   Open owner question (Claude's pick first): `Config.Save.LockSeconds` 360 (pick: a crash locks a player out of their
   real save for minutes, not half an hour) or 1800 (the ProfileStore-class default: safer for a long outage with a hop).
   The real window for that question (review round 1): a lock is stale LockSeconds after the server's last LANDED write, and
@@ -254,6 +261,25 @@ Updated: 2026-10-18 (after wave 2). Branch `v3-phase4`. Plan: `ARCHITECTURE_V3.m
   rejoined is followed at once by a re-take (OwnsSave stayed false up to 90 s); the held wait is counted on the clock
   (slow calls no longer stretch it); HeartbeatSeconds 60. `fixr_data_clamp_twin` pins LockSeconds 3600 for its
   6-minute-late orphan (the Daily twin MERGE it tests still runs for a longer LockSeconds and for an old build).
+  **Gate (2026-11-10, on a0680be; 4,249,852 KiB = 4.05 GiB free at the start, so the whole suite):** `smoke.py --quick`
+  (every list, `client_replay` included; the run itself peaked near 3.5 GB, free memory fell to ~0.5 GB and recovered):
+  **27,765 passed, 2 failed**, 992 warnings (984 the mock's [MeshLibrary] lines; the 8 others:
+  tb_loss_levels_ring's 3 DevService outage lines, p7data_fields' 3 store / receipt lines, the mock's GroupService
+  member, and lock_claim_release's expected "[TutorialService] the restricted starter ... was not granted (tried again
+  later): Your save is still loading" while the save is held), 1,473 s. Integration 80cd184's own whole run, for scale:
+  27,599 / 1. Both failures were tests, fixed with no game code change: (1) `client_p2ui` "a gem spin sends
+  BuyRoulette('Secret', 'Gems')": the same one integration's run found; session-lock was cut before integration's fix,
+  so its test-only commit 376e912 is cherry-picked (a1b93b2); `client_p2ui,client_p2ui_mobile,client_shop_eggs` 658 / 0
+  (integration's number). (2) `p5dgn_migrate` "every other stored field is byte-identical ... -- +Lock": the player is
+  still online at that save, so the record now also holds this server's own session lock (spec 3, the intended change);
+  the scenario now allows `Lock` only when `OwnsSave` is true and the lock's Id is this server's ("mock-job"), any other
+  new key or another server's lock still fails (mutation: an expected Id of "server-other" turns it red, 1 failure);
+  `p5dgn_data,p5dgn_migrate,p5dgn_rollout,p5flow_migrate` 247 / 0. `node tools/check.mjs` 1,166 files 0 errors (the 5 old
+  many-locals warnings; DataService's main function 162 of 200 active locals); `count_locals` DataService 162,
+  Main.server 58, PlayerService 34, LoadingScreen 25, Config 9. Battle sim not run: the branch changes no battle state
+  (no Battle / Trophies / Duels line in DataService's diff; the lock wraps the whole record, the duel / trophy rules are
+  unchanged and `p3bs_*`, `p3flow_duels`, `p5svc_duel_fair` passed in the whole run). The whole suite was not run
+  again after the two test fixes (25 min, ~3.5 GB for the run on this PC); only the lists above were.
 - 2026-10-28 (player ruling, wave 5 dungeon camera): the Camera shake setting OFF turns off ONLY the hit shakes; the dungeon entrance rush, the room walk-in shot and the FOV punch on big attacks always play (short, skippable). The rush is skipped when the camera is > 60 studs from the gate.
 - Evolve button; 2nd evolution only Epic+; level cap 100 for all pets (XP curve keeps rising).
 - Presses become food plants, Collector = Coin Magnet, Kitchen = Food Machine, Gym = Training Place.
