@@ -543,8 +543,13 @@ Config.Battle = {
 	-- on the real floor either way, FloorRay = one raycast per effect). Special: the "Weighty" x1.4 beats and the real
 	-- server cast time per kind. The server reads only Melee.Standoff and Special.RealCast / Cast (BattleCatalog.Damage).
 	-- Off switches: Melee.Dash = false, Melee.Standoff = 0, Aim.Mode = "Pivot", Special.Weighty = false, Special.RealCast = false.
+	-- (battle-feel T2, sleep mode, 2026-11-10) Melee.Standoff ships at 0, not the pitched 8: at 8 (and at 3-4) the balance
+	-- sim misses its bands (raids easier: melee pets stand outside the boss's self-centred slams; dungeons harder: the
+	-- enemies spread out, fewer AoE hits; mirror duels lopsided at some stages). The dash, the flurry and the server
+	-- standoff are built and tested at 8; set 8 here to see them (the morning question in .superpowers/battle-feel/LEDGER.md).
+	-- At 0 a melee pet rests at today's spot and dashes only when a gap of MinGap studs is open (else today's Strike).
 	Feel = {
-		Melee = { Dash = true, Standoff = 8, In = 0.30, Bite = 0.08, Hold = 0.12, Back = 0.40, Hop = 0.5, Lunge = 0.6,
+		Melee = { Dash = true, Standoff = 0, In = 0.30, Bite = 0.08, Hold = 0.12, Back = 0.40, Hop = 0.5, Lunge = 0.6,
 			FlurryBelow = 0.75, MinGap = 3, Streak = true, StreakMax = 4 },
 		Aim = { Mode = "Centre", FloorRay = true },
 		Special = { Weighty = true, Tempo = 1.4, ChargeMax = 1.1, Speed = 0.7, TravelMax = 0.7, Impact = 0.25, HitStop = 0.08,

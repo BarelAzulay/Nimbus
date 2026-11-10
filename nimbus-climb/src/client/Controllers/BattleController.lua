@@ -295,6 +295,9 @@ local K = {
 	FX_END_GRACE = 1.0, -- after the sim's End: no new AttackFx effect; the live ones finish for at most this long
 	FX_LATE_MAX = 0.3, -- seconds a ranged shot's Hit (and the victim's later events) may play after their time: the
 	--                    shot's flight is never cut below AttackFx's MinTravel (player note 1)
+	-- (battle-feel T2) a melee Hit this soon after the unit's Windup dashed it is that dash's bite (an NPC's: no new dash,
+	-- no hold); a melee Hit with no Windup before it (a player's fighter) dashes now, its impact held Melee.In (fxLate)
+	DASH_SEEN = 0.6,
 	RIPPLE_TICK_GAP = 0.75, -- (Task 10 re-review M8) a zone / burn tick's shield ripple waits this long after the unit's
 	--                    last ripple: every other 0.5 s zone tick (the cube path's 50 % zone flash, made deterministic)
 	-- (evolved forms) a Rally's bigger pet by stage (a look only: hit radius, range and hitboxes never hear of it)
@@ -3227,6 +3230,28 @@ function Atk.Play(ctx)
 	return ok and played == true
 end
 
+-- (battle-feel T2) the seconds since the unit's last attack (the flurry's measured tempo; nil on its first)
+function Atk.Tempo(u, now)
+	if u.atkAt then
+		u.tempo = now - u.atkAt
+	end
+	u.atkAt = now
+	return u.tempo
+end
+
+-- (battle-feel T2, spec decisions 1 + 3) a melee pet's dash in, bite and hop back (AttackFx.Dash), its run ending at
+-- `landAt` (os.clock): a pose only, the server keeps the pet at its rest spot (Damage.Standoff out). -> taken?
+function Atk.Dash(B, a, v, landAt)
+	local AF = Atk.Mod()
+	if not (AF and type(AF.Dash) == "function") or B.ended or St.fxEndAt or a.isBoss or a.ranged or not v
+		or not a.model or not Atk.Drawable(a) or not Atk.Drives(a) or not Atk.Posable() then
+		return false
+	end
+	local now = os.clock()
+	local ok, r = pcall(AF.Dash, a.id, Atk.Side(B, a), Atk.Side(B, v), landAt, now, { Mine = a.mine == true, Low = St.fxLow == true, Tempo = Atk.Tempo(a, now) })
+	return ok and r == true
+end
+
 function Atk.Cancel(id)
 	local AF = Mods.AttackFx
 	if AF and type(AF.Cancel) == "function" then
@@ -3484,11 +3509,29 @@ local function hitPlay(B, ev, dueAt, v, a)
 		Attack = a.ranged and "Ranged" or "Melee", From = Atk.Side(B, a), To = Atk.Side(B, v), Mine = a.mine == true,
 		Crit = ev.crit == true, Strong = num(ev.elem, 1) > 1, Miss = ev.miss == true, DueAt = dueAt, Ground = groundOf(B, a),
 	})
+	-- (battle-feel T2) a melee bite is a dash: an NPC's was scheduled by its Windup (landing on this hit); a fighter's
+	-- (no Windup) dashes now and lands Melee.In later, the Hit's number and the victim's next events held that long
+	local dashLate = 0
+	if not a.ranged then
+		local now = os.clock()
+		if a.dashedAt and now - a.dashedAt < K.DASH_SEEN then
+			ctx.Dashed = true
+			a.dashedAt = nil
+		elseif type(a.owner) == "number" then -- (a player's fighter: an NPC's every bite follows its Windup)
+			local M = Config.Battle and Config.Battle.Feel and Config.Battle.Feel.Melee
+			local inS = M and num(M.In, 0.3) or 0.3
+			if M and M.Dash == true and Atk.Dash(B, a, v, dueAt + inS) then
+				ctx.Dashed = true
+				ctx.DueAt = dueAt + inS
+				dashLate = inS
+			end
+		end
+	end
 	local played = Atk.Play(ctx)
 	a.fxDriven = played
 	-- a ranged shot keeps its flight (AttackFx MinTravel): its impact may land after the event's time; Net.Events
 	-- then plays the Hit (number, flash) and the victim's next events that much later, so they land with the shot
-	local late = played and tonumber(ctx.ImpactLate) or 0
+	local late = played and (dashLate > 0 and dashLate or tonumber(ctx.ImpactLate)) or 0
 	if late == late and late > 0 then
 		ev.fxLate = min(late, K.FX_LATE_MAX)
 		return played, ev.fxLate
@@ -3948,9 +3991,19 @@ function Atk.PoseOf(u, now, down, busy, animate, base)
 		u.poseCur = cur
 		cur.Name, cur.P, cur.Ranged, cur.Amp, cur.Reach = ps.Name, ps.P, ps.Ranged, ps.Amp, ps.Reach
 		pose, body, src = cur, poseBody(cur), "fx"
+		-- (battle-feel T2) a flurry's bite from the dash's edge: the held Forward (pose studs, scaled with the body below)
+		local fwd = num(ps.Forward, 0)
+		if fwd ~= 0 then
+			body = CFrame.new(0, 0, -fwd) * body
+		end
 		local blend = num(ps.Blend, 1)
 		if type(ps.Prev) == "table" and blend < 1 then
-			body = poseBody(ps.Prev):Lerp(body, clamp(blend, 0, 1))
+			local pf = num(ps.Prev.Forward, 0)
+			local prevBody = poseBody(ps.Prev)
+			if pf ~= 0 then
+				prevBody = CFrame.new(0, 0, -pf) * prevBody
+			end
+			body = prevBody:Lerp(body, clamp(blend, 0, 1))
 			if blend < 0.5 then
 				pose = ps.Prev
 			end
@@ -4870,6 +4923,11 @@ Handlers[EV.Windup or "Windup"] = function(B, ev)
 	if u then
 		-- the list row's "!" until the hit lands (at = sim time of the hit)
 		u.windupUntil = os.clock() + max(0.2, num(ev.at, B.renderT + 0.45) - B.renderT) + 0.1
+		-- (battle-feel T2) a melee pet dashes in to land its bite on the hit's time (at = its sim time, on the render clock)
+		local v = B.units[tonumber(ev.target) or -1]
+		if v and not u.ranged and not u.isBoss and Atk.Dash(B, u, v, os.clock() + max(0.05, num(ev.at, B.renderT + 0.45) - B.renderT)) then
+			u.dashedAt = os.clock()
+		end
 	end
 end
 

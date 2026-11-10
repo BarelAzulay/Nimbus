@@ -490,7 +490,10 @@ function Player:step(events, snapshot)
 	end
 	local tu = units[target]
 	local tinfo2 = self.info[target]
-	local reach = (myInfo.range or 4) + (tinfo2 and tinfo2.radius or 2) + 1.0
+	-- (battle-feel T2) a melee pet fights from BattleCatalog.Damage.Standoff farther out (BattleSim grows its attack test
+	-- alike): the scripted player's "in reach" (its buffs, its ATTACK press, its ELEMENT press) counts it too (0 = as before)
+	local so = (not myInfo.ranged) and (tonumber(BC.Damage.Standoff) or 0) or 0
+	local reach = (myInfo.range or 4) + (tinfo2 and tinfo2.radius or 2) + so + 1.0
 	local dx, dz = tu.x - me.x, tu.z - me.z
 	local d = sqrt(dx * dx + dz * dz)
 	-- dungeon fixes (4): the pet auto-attacks; the player only DIRECTS it (one ATTACK press when the wanted target changes)
@@ -500,7 +503,7 @@ function Player:step(events, snapshot)
 		end
 	end
 	local cd = tinfo.Cooldowns or {}
-	if self.opts.element ~= false and (cd.Element or 0) <= 0 and d <= max(13, myInfo.range or 4) + (tinfo2 and tinfo2.radius or 2) then
+	if self.opts.element ~= false and (cd.Element or 0) <= 0 and d <= max(13, myInfo.range or 4) + so + (tinfo2 and tinfo2.radius or 2) then
 		b:Command(self.owner, "Element", target)
 	end
 	if self.opts.specials ~= false and me.meter >= 100 then

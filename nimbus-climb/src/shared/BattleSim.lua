@@ -69,8 +69,8 @@
 --                                     current engaged target (sticky until it dies or is untargetable), else the fresh threat (who
 --                                     hit it within ThreatSeconds), else the targetable enemy nearest to the FIGHTER (ties: lower
 --                                     id). Engaged, the fighter ignores the Move point and walks at the honest legal run (no
---                                     MoveSlack; 0 Stunned) to reach - 0.5 (melee) / reach - 1 (ranged: it holds at the edge of its
---                                     range) of the target. Back to FOLLOW only when no target is left (a wave still arriving, the
+--                                     MoveSlack; 0 Stunned) to reach - 0.5 (melee; battle-feel T2: + Damage.Standoff, standoffOf) /
+--                                     reach - 1 (ranged: it holds at the edge of its range) of the target. Back to FOLLOW only when no target is left (a wave still arriving, the
 --                                     fight's end); a Swap / the fighter's KO / RemoveTeam drop it too. Harness Auto teams
 --                                     (autoFighter) never engage: today's exact behaviour.
 --     "Cheer" ()                      wave 6, Raid / Dungeon only ("Cheer up!"): the fighter deals x (1 + CheerBoost 0.05) for
@@ -308,7 +308,7 @@ end
 local FALLBACK_DAMAGE = {
 	HpScale = 2.6, DamageScale = 0.6, Variance = 0.2, MinHit = 1, TargetSticky = 1.6, TargetSpread = 1.35, ThreatSeconds = 3,
 	MeterMax = 100, MeterStart = { 20, 50 }, MeterOnHit = 4, MeterOnHurt = 2, MeterPerSecond = 2,
-	CastSeconds = 0.5, SpecialScale = 1, SeparationRadius = 3.2, RetargetSeconds = 0.5, EngageSlack = 0.6,
+	CastSeconds = 0.5, SpecialScale = 1, SeparationRadius = 3.2, RetargetSeconds = 0.5, EngageSlack = 0.6, Standoff = 0,
 	NpcSpecialDelay = { 0.4, 1.4 }, KoMeterLoss = true, Slow = 0.6, Weaken = 0.85, BurnTicks = 3,
 }
 local FALLBACK_FIGHTER = {
@@ -3388,6 +3388,16 @@ local function moveToward(u, tx, tz, step, stop)
 	return d - travel
 end
 
+-- (battle-feel T2, spec decision 2) the studs a melee, non-boss unit rests farther out: D.Standoff for it, 0 for a ranged
+-- unit or a boss. Added to its rest spot and to every attack / hit test of it alike (reach, damage and tempo unchanged)
+local function standoffOf(D, u)
+	if u.ranged or u.kind == "Boss" then
+		return 0
+	end
+	local so = D and D.Standoff
+	return (finite(so) and so > 0) and so or 0
+end
+
 local function teamIndex(team, u)
 	local idx, n = 1, 0
 	for _, v in ipairs(team.units) do
@@ -3462,7 +3472,7 @@ local function npcStep(self, u, dt, events)
 			u.windAt = nil
 			u.windTarget = nil
 			if target and target.alive and not target.gone and not target.benched then
-				local reach = u.range + target.radius + D.EngageSlack + 1.0
+				local reach = u.range + target.radius + standoffOf(D, u) + D.EngageSlack + 1.0
 				if dist(u.x, u.z, target.x, target.z) <= reach and not inIFrames(self, target) then
 					applyDamage(self, u, target, u.hit, events)
 					doubleStrike(self, u, target, events)
@@ -3503,7 +3513,7 @@ local function npcStep(self, u, dt, events)
 		u.state = S_IDLE
 		return
 	end
-	local reach = u.range + target.radius
+	local reach = u.range + target.radius + standoffOf(D, u) -- (battle-feel T2: the melee standoff, the orbit and the engage test alike)
 	local tx, tz = target.px, target.pz
 	local d = dist(u.x, u.z, tx, tz)
 	local moved = false
@@ -3604,7 +3614,7 @@ function fighterSwing(self, team, f, events)
 	if t < f.nextAttack - interval * (1 - num(F.AttackTolerance, 0.85)) then
 		return false
 	end
-	local target = autoTarget(self, team, f, num(F.AttackSlack, 3))
+	local target = autoTarget(self, team, f, num(F.AttackSlack, 3) + standoffOf(damageRules(), f))
 	if not target then
 		return false
 	end
@@ -3670,7 +3680,7 @@ local function engageStep(self, team, f, target, dt)
 		step = 0
 	end
 	local reach = f.range + target.radius
-	local stop = max(0, f.ranged and (reach - 1.0) or (reach - 0.5))
+	local stop = max(0, f.ranged and (reach - 1.0) or (reach + standoffOf(damageRules(), f) - 0.5)) -- (battle-feel T2: + the melee standoff)
 	local ox, oz = f.x, f.z
 	if step > 0 then
 		moveToward(f, target.x, target.z, step, stop)
@@ -3807,7 +3817,7 @@ function autoFighter(self, team, f, dt, events)
 		return
 	end
 	local _, run = legalSpeeds(self, team)
-	local reach = f.range + target.radius
+	local reach = f.range + target.radius + standoffOf(damageRules(), f) -- (battle-feel T2: the melee standoff)
 	local dx, dz = target.x - f.x, target.z - f.z
 	local d = sqrt(dx * dx + dz * dz)
 	local wantX, wantZ = f.x, f.z
@@ -4512,7 +4522,7 @@ function doCommand(self, team, action, arg, events)
 		end
 		team.lock = target
 		f.target = target
-		if not inReach(f, target, num(F.AttackSlack, 3)) then
+		if not inReach(f, target, num(F.AttackSlack, 3) + standoffOf(damageRules(), f)) then
 			return true, target.id, "OutOfReach"
 		end
 		return true, target.id

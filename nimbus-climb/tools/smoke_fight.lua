@@ -203,7 +203,8 @@ local function serverScenarios()
 				"fight core (b): an enemy 30 studs from a WALKING character: engaged on the first step with ONE Engage { owner, unit, on = true, target }",
 				tostring(engaged(b)))
 			local run = b:SpeedOf(1).Run
-			local reach = f.range + e.radius
+			-- (battle-feel T2) a melee pet rests Damage.Standoff farther out (its attack test grown alike)
+			local reach = f.range + e.radius + (f.ranged and 0 or (D.Standoff or 0))
 			local maxStep, sawFull, hitAt = 0, false, nil
 			local lastX, lastZ = f.x, f.z
 			local t0 = b:Time()
@@ -237,7 +238,7 @@ local function serverScenarios()
 				strayed = max(strayed, d2(f.x, f.z, e.x, e.z) - reach)
 				switched = switched or b:TeamOf(1).Engaged ~= e.id
 			end
-			T.check(offs == 0 and not switched and strayed <= 0.2, "fight core (c): the character walks 20 studs away and back for 5 s: no Engage off, the pet stays on its target (within reach + 0.2)",
+			T.check(offs == 0 and not switched and strayed <= 0.2, "fight core (c): the character walks 20 studs away and back for 5 s: no Engage off, the pet stays on its target (within reach + Standoff + 0.2)",
 				fmt("offs %d, worst gap over reach %.2f, switched %s", offs, strayed, tostring(switched)))
 		end
 

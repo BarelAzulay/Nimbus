@@ -236,6 +236,12 @@ BattleCatalog.Damage = {
 	MeterOnHurt = 2, -- NPC meter gained per hit taken
 	MeterPerSecond = 5, -- NPC passive meter gain while alive (2 -> 5, #27: a 20 s fight sees an NPC special)
 	CastSeconds = 0.5, -- a unit is Casting (no attacks) this long after a special
+	-- (battle-feel T2, spec docs/superpowers/specs/2026-11-10-battle-feel-design.md decision 2) studs a melee, non-boss unit rests
+	-- farther from its target between attacks (it dashes in to bite: a client pose); BattleSim adds it to the rest spot AND every
+	-- attack / hit test of that unit, so reach, damage and tempo do not change. 0 = today's orbit. The owner's knob:
+	-- Config.Battle.Feel.Melee.Standoff (a number 0..20, Validate)
+	Standoff = (type(Config.Battle) == "table" and type(Config.Battle.Feel) == "table" and type(Config.Battle.Feel.Melee) == "table"
+		and tonumber(Config.Battle.Feel.Melee.Standoff)) or 0,
 	SpecialScale = 1, -- global multiplier on every special effect
 	-- a special is powered by its pet's own Power stat (x Roles.Power): effect x (base Power / Reference) ^ Exponent
 	SpecialPowerCurve = { Reference = 10, Exponent = 0.5 },
@@ -2547,6 +2553,11 @@ function BattleCatalog.Validate()
 	local R = BattleCatalog.Roles
 	if not (R.Combat and R.Support and R.Support.Power > 1 and R.Support.Health > 1 and R.Combat.Power == 1 and R.Combat.Health == 1) then
 		bad("Roles: Combat 1 / 1, Support above 1")
+	end
+	-- (battle-feel T2) the melee standoff: a number of studs 0..20
+	local so = BattleCatalog.Damage.Standoff
+	if not finite(so) or so < 0 or so > 20 then
+		bad("Damage.Standoff must be a number 0..20 studs")
 	end
 	local F = BattleCatalog.Fighter
 	for _, key in ipairs({ "AttackSlack", "AttackTolerance", "ElementCooldown", "ElementMult", "ElementRange", "SpecialMeterMax", "MeterPerSecond", "MeterOnHit", "MeterOnHurt", "DashSeconds", "DashCooldown", "DashIFrames", "SwapCooldown", "SwapCastSeconds", "HelperCooldown", "SupportCooldown", "Windup", "KitFactor", "HelperWeight", "Lives", "WalkMult", "WalkMin", "WalkMax", "RunMult", "MoveSlack", "Leash", "LeashSeconds" }) do
