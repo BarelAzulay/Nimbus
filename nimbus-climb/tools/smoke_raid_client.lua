@@ -780,6 +780,12 @@ S.client_raid_enrage = guarded("client_raid_enrage", function()
 	-- the warning goes by the server's own hit test: the sim hits a body whose edge reaches the shape (shape + the unit's radius, on a
 	-- Circle and along a Line), so the client warns that body; a shape that misses it warns nothing. A Bear held still, the boss kept
 	-- from casting; the sim's own telegraphs, so the server's Hit says what really lands.
+	-- (feel-balance) at Melee.Standoff 8 a held Bear still strikes the boss, and while it strikes the server tests its bite
+	-- point, not the pinned spot (smoke_feel_dash feel_strike_*): this probe pins the shape + radius rule on a still body, so
+	-- it runs at Standoff 0 (restored after)
+	local Cat = req("shared/BattleCatalog")
+	local keepSo = Cat.Damage.Standoff
+	Cat.Damage.Standoff = 0
 	d = newFight({ Tier = "High", Pocket = true, BossId = "frost_wyrm" }, "frost_wyrm", { "biscuit_bear" })
 	d.run(1)
 	local bear = d.sim.teamByOwner[d.me].fighter
@@ -830,6 +836,7 @@ S.client_raid_enrage = guarded("client_raid_enrage", function()
 	warned, called, struck = probe({ shape = "Circle", x = bearX + R + rim, z = bearZ, r = R, lethal = true })
 	T.check(struck and warned and called, "raid battle client: a lethal circle whose rim overlaps the body warns it and floats DASH!, as the server knocks it out", string.format("warned %s, called %s, struck %s", tostring(warned), tostring(called), tostring(struck)))
 	d.finish()
+	Cat.Damage.Standoff = keepSo
 	KC.advance(14)
 
 	-- a late joiner into an enraged fight

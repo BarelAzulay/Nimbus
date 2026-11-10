@@ -1315,7 +1315,9 @@ local function serverScenarios()
 		end
 		SIM.print = function() end
 		local TD = SIM.Targets.Dungeon
-		local s1 = SIM.floorSummary(SIM.Teams.S1, 1, nil, 8)
+		-- (feel-balance) 64 seeds, as the sim's own target: at 8 a >= 90% target is "every seed wins", and room 1 reads 62 / 64
+		-- at Standoff 8 (63 / 64 at 0) with seed 8 one of its two losses, so the 8-seed check failed on the draw, not the rate
+		local s1 = SIM.floorSummary(SIM.Teams.S1, 1, nil, 64)
 		T.check(s1[1] >= TD.S1.Room1 and s1[4] < TD.S1.Clear, "tb balance: 3 L1 Commons win room 1 of floor 1 and do not clear it (SIM.Targets.Dungeon.S1)", string.format("room 1 %.0f%%, clear %.0f%%", s1[1], s1[4]))
 		T.check(SIM.floorSummary(SIM.Teams.L7, 1, nil, 4)[4] >= TD.L7.Clear, "tb balance: 3 L7 Commons clear floor 1 (SIM.Targets.Dungeon.L7)")
 		local lastFloor, falls = 0, false
