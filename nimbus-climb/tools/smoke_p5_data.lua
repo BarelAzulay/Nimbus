@@ -730,6 +730,10 @@ S.p5dgn_migrate = guarded("p5dgn_migrate", function()
 	T.check(stGarden[1] == ids[1] and (stGarden[2] == nil or stGarden[2] == ""),
 		"p5 migrate: (bug batch 2 #18) b, equipped and in the team, left bed 2; a keeps bed 1", tostring(stGarden[1]) .. "," .. tostring(stGarden[2]))
 	expected.Home.Garden = deepCopy(stGarden)
+	-- session-lock (2026-11-10, spec 3): the player is still online, so the record also holds THIS server's session lock
+	-- { Id, Job, Place, At } (the mock's server id is "mock-job"); any other new key, or another server's lock, still differs
+	local lk = st.Lock
+	local ownLock = DataS.OwnsSave and DataS.OwnsSave(p) == true and type(lk) == "table" and lk.Id == "mock-job" and type(lk.At) == "number"
 	local differs = {}
 	for key, value in pairs(expected) do
 		if key ~= "Migrations" and key ~= "Teams" and key ~= "Tutorial" and not deepEqual(st[key], value) then
@@ -737,7 +741,8 @@ S.p5dgn_migrate = guarded("p5dgn_migrate", function()
 		end
 	end
 	for key in pairs(st) do
-		if expected[key] == nil and key ~= "Dungeon" and key ~= "UpdatedAt" then
+		-- (session lock review round 2: WriteId is record metadata like UpdatedAt: every write stamps its nonce)
+		if expected[key] == nil and key ~= "Dungeon" and key ~= "UpdatedAt" and key ~= "WriteId" and not (key == "Lock" and ownLock) then
 			differs[#differs + 1] = "+" .. key
 		end
 	end
@@ -755,7 +760,7 @@ S.p5dgn_migrate = guarded("p5dgn_migrate", function()
 		end
 	end
 	local farm = type(sth.Stations) == "table" and sth.Stations.Press1 or nil
-	T.check(#differs == 0, "p5 migrate: every other stored field is byte-identical (only Dungeon, Migrations.P5Dungeon / P5Home, UpdatedAt and the P5Home fold of the Home changed)", table.concat(differs, ", "))
+	T.check(#differs == 0, "p5 migrate: every other stored field is byte-identical (only Dungeon, Migrations.P5Dungeon / P5Home, UpdatedAt / WriteId, the P5Home fold of the Home and this server's own session Lock changed)", table.concat(differs, ", "))
 	T.check(#homeDiffers == 0 and type(farm) == "number" and farm >= before.Home.Stations.Press1 and (st.Migrations or {}).P5Home == (folds and true or nil),
 		"p5 migrate: ...the P5Home fold changed only the Berry Farm level (never lower), every other Home key and station is byte-identical; P5Home marked with the fold",
 		table.concat(homeDiffers, ", ") .. " Press1 " .. tostring(farm))

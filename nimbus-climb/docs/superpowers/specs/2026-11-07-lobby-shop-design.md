@@ -127,7 +127,7 @@ does not touch. Files this build edits that gui-redo does not touch: `MenuContro
   profile field (older servers keep unknown top-level fields through `keepForeign`, so the field must be in `KNOWN_TOP` or this
   version copies the stored value back over every save); provisional (stand-in) profiles never decide a one-time or money thing.
   There is no session lock: a load is a plain `GetAsync` (`fetchProfile`), and the old server's leave save may land after it (5.2,
-  the gem settle hold).
+  the gem settle hold). (retired 2026-11-10: the session lock replaces this, docs/superpowers/specs/2026-11-10-session-lock-design.md section 12; GemsSettled is OwnsSave, no timed hold)
 - Money and rolls today: `rollAndGrant` seeds a new rng per call from the clock, the user id and `Stats.Spins`, rolls, refuses a
   full stack with no charge, then charges and grants in one non-yielding step (`addCopies` refreshes and syncs inside it); the
   remote's pcall catches an error after the charge. 5.1 replaces this order: nothing refuses after the roll, and nothing that can
@@ -298,7 +298,7 @@ the answer is unknown ("Checking your account..."); token spins stay open (today
   profile is loading or provisional. The clamp matters: the merge can push `Since` above 6 (two servers each adding spins after the
   same hit), which would read "Secret for sure in -1"; a `Since` of 8 shows 1 and forces the next spin. `RouletteResult.SecretPity.Left`
   sends the same clamped number at once. The client's chip reads the attribute.
-- **The gem settle hold (server hops).** DataService has no session lock: a new server loads with a plain `GetAsync`
+- **The gem settle hold (server hops).** (retired 2026-11-10: the session lock replaces this, docs/superpowers/specs/2026-11-10-session-lock-design.md section 12; GemsSettled is OwnsSave, no timed hold) DataService has no session lock: a new server loads with a plain `GetAsync`
   (`fetchProfile`) while the old server's leave save may still be pending (the per-key write cooldown after an autosave or a
   receipt save, write throttling, or a failed save kept as an orphan and retried at 10 / 20 / 40 / 80 / 120 s), and the merge
   clamps a negative balance to 0. A player who hops right after spending gems could see the old gem balance and the old `Since` on
@@ -850,7 +850,7 @@ portal's ring, the Join billboard. The server never animates.
   nothing in that step can refuse after the charge).
 - `ResetFields` (dev) clears `Pity`. The ProfileSync snapshot carries `Settings.FastHatch`; the pity reaches the client by the
   attribute and the reply, not the snapshot.
-- No session lock is added (the settle hold, 5.2, is the local guard; the session claim is a morning question).
+- No session lock is added (the settle hold, 5.2, is the local guard; the session claim is a morning question). (retired 2026-11-10: the session lock replaces this, docs/superpowers/specs/2026-11-10-session-lock-design.md section 12; GemsSettled is OwnsSave, no timed hold)
 - Leaderboard values are copies in OrderedDataStores, never read back into a profile; losing them loses nothing of the player's.
 - `GemBuy` writes gems and the potion bank in one step; nothing new is stored.
 
@@ -1208,7 +1208,7 @@ were taken in a different form than the finding proposed, or one of two conflict
 ## 15 Main-session decisions after review (2026-11-07 04:50, these override anything above)
 - **Third leaderboard page = Ring best (`Ring.Best`), not Climb wins.** Ring.Best is set by the server from real Ring rounds, so it is safe to go global now. The Climb finish change (last checkpoint + minimum time) is NOT part of this build: it changes core Climb gameplay the owner did not ask for. It is a morning question for a later build. Pages: Trophies / Pets found / Ring best ("TOP RING ROUND"). No page waits on Studio timing.
 - **Token packs resized** to 2,500 / 8,000 / 25,000 Cloud Tokens (49 / 149 / 399 R$), so Robux buys about as many spins in tokens as in gems (the 399 R$ pack = 5 Celestial spins vs 6 by gems). Names follow the amounts. The `--gems` report still prints Robux per spin for both.
-- **Session lock** for saves: not in this build (morning question). The 15 s gem settle hold stays.
+- **Session lock** for saves: not in this build (morning question). The 15 s gem settle hold stays. (retired 2026-11-10: the session lock replaces this, docs/superpowers/specs/2026-11-10-session-lock-design.md section 12; GemsSettled is OwnsSave, no timed hold)
 - Prestige gems: unchanged; gem prices B stay; the `--gems` report is the evidence.
 
 ## 16 Owner's pitch answers (2026-11-07, these override sections 4-15 where they differ)

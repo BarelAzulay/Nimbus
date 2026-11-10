@@ -394,12 +394,26 @@ S.gem_potion_buy = guarded("gem_potion_buy", function()
 		passAttrOk(o, "Owned", "a true lookup at the join")
 		refusedWith(o, TEXT.Have, "pass Owned at the join")
 
-		-- n: not settled (no _SettleForTest, a few seconds after the join)
+		-- n: not settled. Session lock (2026-11-10): the 15 s settle hold is retired and GemsSettled is OwnsSave, so a
+		-- normal join is settled at once; a loaded, non-provisional player is unsettled only while this server does not
+		-- hold the save's lock: a rejoin that raced its own leave's release write uses the cached entry, the release lands
+		-- after it, and (review round 1) the re-take right after it is skipped under a low UpdateAsync budget; the next
+		-- save takes the lock back
 		local uidN = newUserId()
 		modes[uidN] = false
-		local n = track(join("PotionNotSettled", uidN))
-		T.check(loaded(n) and D.GemsSettled(n) == false and setGems(n, PRICE), "gem potion: (setup) a loaded player, not settled yet, " .. PRICE .. " gems")
+		local n0 = join("PotionNotSettled", uidN)
+		T.check(loaded(n0) and D.GemsSettled(n0) == true and D.Save(n0) == true, "gem potion: (setup) a normal join is settled at once (no _SettleForTest)")
+		DSt.Latency = 1
+		Mock.RemovePlayer(n0)
+		K.advance(0.3) -- the leave's release write is in flight (it lands at 1 s)
+		DSt.Budget = { UpdateAsync = 5 } -- the re-take after the release is skipped (like a heartbeat)
+		local n = track(Mock.AddPlayer("PotionNotSettled" .. tostring(uidN % 1000), uidN))
+		K.advance(1.5)
+		DSt.Latency = saved.Latency
+		DSt.Budget = {}
+		T.check(loaded(n) and D.GemsSettled(n) == false and setGems(n, PRICE), "gem potion: (setup) a loaded player whose save's lock this server does not hold yet (not settled), " .. PRICE .. " gems")
 		refusedWith(n, TEXT.Settling, "not settled")
+		T.check(D.Save(n) == true and D.GemsSettled(n) == true, "gem potion: ...the next save takes the lock back: settled")
 
 		-- l: the save still loading (a slow store)
 		DSt.Latency = 2

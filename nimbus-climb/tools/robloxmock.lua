@@ -6333,8 +6333,9 @@ service("TweenService", {
 -- [lobby-shop, Task 9] Budget = { [Enum.DataStoreRequestType name] = n } (unset: 100); Sorted = { [OrderedDataStore name] =
 -- { [key] = whole number } }; SortedLog = every OrderedDataStore SetAsync / GetSortedAsync call { Op = "Set" | "Get", Store,
 -- Key, Value, Time (= workspace:GetServerTimeNow()), Ok }; FailOnly = a call name ("GetSortedAsync", "GetAsync", ...): while
--- set, Fail fails only that call (Unavailable still fails every call)
-Mock.DataStore = { Data = {}, Fail = false, Unavailable = false, Latency = 0, Calls = 0, Writes = 0, Budget = {}, Sorted = {}, SortedLog = {}, FailOnly = nil }
+-- set, Fail fails only that call (Unavailable still fails every call); [session-lock, review round 2] CommitThenFail = n
+-- (see DSm.UpdateAsync)
+Mock.DataStore = { Data = {}, Fail = false, Unavailable = false, Latency = 0, Calls = 0, Writes = 0, Budget = {}, Sorted = {}, SortedLog = {}, FailOnly = nil, CommitThenFail = nil }
 local function storableCopy(v, depth)
 	local t = rawtype(v)
 	if t == "number" or t == "string" or t == "boolean" or v == nil then
@@ -6392,15 +6393,24 @@ function DSm.SetAsync(self, key, value)
 	Mock.DataStore.Data[self._name .. "/" .. tostring(key)] = storableCopy(value)
 	return "version"
 end
+-- [session-lock, review round 2] CommitThenFail = n: the next n UpdateAsync calls run the transform and commit what it
+-- returned (nil: nothing), THEN error as if the answer was lost (a write that landed although the caller saw a failure)
 function DSm.UpdateAsync(self, key, fn)
 	dsGate("UpdateAsync")
 	local full = self._name .. "/" .. tostring(key)
 	local new = fn(storableCopy(Mock.DataStore.Data[full]))
+	if new ~= nil then
+		Mock.DataStore.Writes = Mock.DataStore.Writes + 1
+		Mock.DataStore.Data[full] = storableCopy(new)
+	end
+	local ctf = Mock.DataStore.CommitThenFail
+	if type(ctf) == "number" and ctf > 0 then
+		Mock.DataStore.CommitThenFail = ctf - 1
+		error("502: API Services rejected request with error. (UpdateAsync failed after it committed: mock CommitThenFail)", 0)
+	end
 	if new == nil then
 		return nil
 	end
-	Mock.DataStore.Writes = Mock.DataStore.Writes + 1
-	Mock.DataStore.Data[full] = storableCopy(new)
 	return storableCopy(new)
 end
 function DSm.IncrementAsync(self, key, delta)

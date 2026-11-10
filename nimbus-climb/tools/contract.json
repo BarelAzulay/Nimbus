@@ -235,6 +235,8 @@
         "SetPity",
         "GemsSettled",
         "_SettleForTest",
+        "OwnsSave",
+        "_SetServerIdForTest",
         "DuelsWith",
         "RecordDuel",
         "IsMigrated",

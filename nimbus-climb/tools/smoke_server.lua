@@ -3516,6 +3516,22 @@ S.shutdown = guarded("shutdown", function()
 		return
 	end
 	local DataService = mod("DataService")
+	-- session lock, review round 2: two saves another server ("server-A") holds when the server closes. HeldDirty played
+	-- provisionally (the load gave up after 12 s) and earned 5 gems; A's lock frees 5 s into the shutdown: BindToClose keeps
+	-- claiming (every ClaimRetrySeconds, inside its 25 s cap) and lands the delta with the release. HeldLoading is still in
+	-- its load's wait when the server closes: nothing of it is written.
+	local function seedHeld(userId, gems)
+		Mock.DataStore.Data[config().Tokens.DataStoreName .. "/u_" .. userId] = {
+			Version = 2, Tokens = 3, Gems = gems, Pets = {}, Equipped = {}, Items = {},
+			Stats = { Matches = 0, Wins = 0, TokensEarned = 0, Spins = 0, BestTimes = {} },
+			Lock = { Id = "server-A", Job = "job-A", Place = 1, At = os.time() },
+		}
+	end
+	seedHeld(880101, 20)
+	local heldDirty = Mock.AddPlayer("HeldDirty", 880101)
+	advance(13)
+	T.eq(DataService.IsProvisional(heldDirty), true, "shutdown: (setup) HeldDirty's load gave up on A's lock: provisional")
+	DataService.AddGems(heldDirty, 5)
 	-- an orphan (left during a DataStore outage, still unsaved) must be flushed by BindToClose as well
 	local d = Mock.AddPlayer("OrphanD", 880004)
 	advance(1.5)
@@ -3526,15 +3542,65 @@ S.shutdown = guarded("shutdown", function()
 	advance(6)
 	T.eq(storedTokens(880004), storedBefore, "shutdown: an orphan stores nothing new while the DataStore is down")
 	Mock.DataStore.Fail = false
+	seedHeld(880102, 30)
+	Mock.AddPlayer("HeldLoading", 880102)
 	local p = Mock.AddPlayer("LastOut", 777003)
 	advance(1.0)
 	DataService.AddTokens(p, 9)
+	-- HeldDirty: A's lock is still live (refreshed) when the server closes, and A's release lands 5 s into the shutdown
+	storedProfile(880101).Lock = { Id = "server-A", Job = "job-A", Place = 1, At = os.time() }
+	task.delay(5, function()
+		storedProfile(880101).Lock = nil
+	end)
+	-- session lock, review round 3: LostAck's last autosave committed (+1 with the lock) but its answer was lost and its
+	-- retry failed before its transform; then the session earned 4 more. BindToClose's release adopts the autosave that
+	-- landed and must still write the +4 and let go of the lock (not end on the adoption with the lock stranded)
+	Mock.DataStore.Data[config().Tokens.DataStoreName .. "/u_880105"] = {
+		Version = 2, Tokens = 3, Gems = 40, Pets = {}, Equipped = {}, Items = {},
+		Stats = { Matches = 0, Wins = 0, TokensEarned = 0, Spins = 0, BestTimes = {} },
+	}
+	local lostAck = Mock.AddPlayer("LostAck", 880105)
+	advance(1.2)
+	DataService.Save(lostAck)
+	DataService.AddGems(lostAck, 1)
+	Mock.DataStore.CommitThenFail = 1
+	local ackDone, ackSaved = false, nil
+	task.spawn(function()
+		ackSaved = DataService.Save(lostAck)
+		ackDone = true
+	end)
+	advance(0.5)
+	Mock.DataStore.FailOnly, Mock.DataStore.Fail = "UpdateAsync", true
+	advance(2)
+	Mock.DataStore.Fail, Mock.DataStore.FailOnly, Mock.DataStore.CommitThenFail = false, nil, nil
+	local la = storedProfile(880105)
+	T.check(ackDone and ackSaved == false and type(la) == "table" and la.Gems == 41 and type(la.Lock) == "table",
+		"shutdown: (setup) LostAck's autosave committed 41 with the lock, its answer lost, its retry failed",
+		"done " .. tostring(ackDone) .. ", saved " .. tostring(ackSaved) .. ", gems " .. tostring(type(la) == "table" and la.Gems))
+	DataService.AddGems(lostAck, 4)
+	-- (A's lock above is refreshed again: the 2.5 s of setup must not let it age)
+	storedProfile(880101).Lock = { Id = "server-A", Job = "job-A", Place = 1, At = os.time() }
 	Mock.DataStore.Latency = 0.2
 	local finished = Mock.Shutdown(30)
 	Mock.DataStore.Latency = 0
+	local hd, hl = storedProfile(880101), storedProfile(880102)
+	T.check(type(hd) == "table" and hd.Gems == 25 and hd.Lock == nil,
+		"BindToClose: a dirty held-provisional session whose lock frees 5 s in lands its delta (20 + 5) and releases",
+		type(hd) == "table" and ("gems " .. tostring(hd.Gems) .. ", lock " .. tostring(hd.Lock and hd.Lock.Id)) or tostring(hd))
+	T.check(type(hl) == "table" and hl.Gems == 30 and type(hl.Lock) == "table" and hl.Lock.Id == "server-A" and hl.UpdatedAt == nil,
+		"BindToClose: a load still held when the server closes writes nothing (A's record and lock untouched)",
+		type(hl) == "table" and ("gems " .. tostring(hl.Gems) .. ", lock " .. tostring(hl.Lock and hl.Lock.Id) .. ", UpdatedAt " .. tostring(hl.UpdatedAt)) or tostring(hl))
+	local la2 = storedProfile(880105)
+	T.check(type(la2) == "table" and la2.Gems == 45 and la2.Lock == nil,
+		"BindToClose: a release that adopts a lost-ack autosave still writes what changed since (40 + 1 + 4) and releases the lock",
+		type(la2) == "table" and ("gems " .. tostring(la2.Gems) .. ", lock " .. tostring(la2.Lock and la2.Lock.Id)) or tostring(la2))
 	T.check(finished, "all BindToClose callbacks finish within 30 s")
 	T.eq(storedTokens(777003), 9, "BindToClose saves players that are still online", tostring(storedTokens(777003)))
 	T.eq(storedTokens(880004), 8, "BindToClose also flushes orphans (players who left during an outage)", tostring(storedTokens(880004)))
+	-- session lock (spec 9; smoke_session_lock.lua's BindToClose step lives here: Mock.Shutdown ends the autosave for good)
+	local lastOut, orphanD = storedProfile(777003), storedProfile(880004)
+	T.check(type(lastOut) == "table" and lastOut.Lock == nil, "BindToClose releases the session lock of a player still online", tostring(type(lastOut) == "table" and lastOut.Lock))
+	T.check(type(orphanD) == "table" and orphanD.Lock == nil, "BindToClose releases the session lock an orphan still held", tostring(type(orphanD) == "table" and orphanD.Lock))
 	flushErrors("shutdown")
 	flushWarnings("shutdown", { "[DataService]" })
 end)

@@ -308,7 +308,9 @@ or the VS Code "Rojo" extension are the easy ways to get it).
   Publish to Roblox). In Studio also turn on Game Settings -> Security -> **Enable Studio Access to API Services**.
   Without these the game still runs, it just forgets everything when you stop. Saves happen on leave, every 90 s
   and at server shutdown (older v1, v2 and v3 saves are migrated automatically, see
-  [Homes from older versions](#homes-from-older-versions)).
+  [Homes from older versions](#homes-from-older-versions)). One server owns a save at a time: a lock inside the
+  record, claimed at load, refreshed by every save, released at leave; another server waits up to 12 s, then plays a
+  stand-in save until the lock frees (the loading screen says "Another server is still saving your progress...").
 - **After publishing an update, move the live servers to it.** Once people play the game, every time you publish
   a new version use **Migrate to Latest Update** on the Creator Hub (the steps are in
   [Publishing an update](#publishing-an-update-owner)).

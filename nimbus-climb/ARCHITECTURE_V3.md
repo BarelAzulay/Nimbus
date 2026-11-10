@@ -3021,7 +3021,7 @@ leashed after 3 s); `trials` deleted. `SIM.Stages`, `SIM.team`, `SIM.Player` kep
 * M6: StreamingEnabled stays OFF. Turning it on is a game-wide change (every `workspace.X` client access needs WaitForChild / streaming signals)
   that does not fit Phase 5; the client-total budget and `MAX_DUNGEONS 8` bound the cost instead.
 * M7: the server-held spawn was taken (the approved decision) instead of asking the player again; `PlayerService.lua` is owned by menu (W3).
-* m8: no session lock (a DataService redesign, out of scope); the claim is corrected and the window stated; the Gems clamp absorbs it.
+* m8: no session lock (a DataService redesign, out of scope); the claim is corrected and the window stated; the Gems clamp absorbs it. (2026-11-10: the session lock landed, spec docs/superpowers/specs/2026-11-10-session-lock-design.md)
 * m11: every pet within PET_NEAR is drawn evolved under a part budget rather than telling the player "a distance detail".
 * m16 was adopted (Food converted into berries once), which also removes m7's change path and the leftover branch of Feed.
 * M5: named per-owner blocks, not split files (the render_*.py loaders and the smoke boot stay unchanged).
