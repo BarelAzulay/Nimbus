@@ -20,6 +20,7 @@
 --                            0.75 s after the last landing; attacks 1.1 s apart make a full round trip each time
 --   client_feel_dash_off     a gap under MinGap (1.5): no dash (false); Melee.Dash = false: false; Low graphics: the dash runs, no streak
 --   client_feel_dash_rejoin  (review fix) a dash caught on the hop back with its run starting later: the DashIn starts where the hop is AT t0
+--   client_feel_dash_hop     (gate fix) Melee.Hop reaches PetPoses' DashIn: the hop peaks at the knob's studs (0.5 / 1.2 / 0; 9 clamps to 3)
 --   client_feel_dash_gap     (review fix) at the shipped Standoff 0 a melee pet at the server's rest spot dashes at every raid boss with
 --                            room in its box (the Shadow Hydra's box reaches past it: today's Strike) and at a pet
 --   client_feel_dash_budget  eight melee pets dash at a boss in one frame: 4 streaks at most (mine kept), no new Instance between two
@@ -573,6 +574,41 @@ local function clientScenarios()
 		end)
 		env.done()
 		T.check(ok, "feel dash rejoin: no error", tostring(err))
+	end)
+
+	----------------------------------------------------------------------------------------------
+	-- (gate fix) Melee.Hop is a real knob: AttackFx.Dash hands it to PetPoses' DashIn (it was a fixed 0.5 there, so the
+	-- owner's number did nothing); the hop's peak over the run (p 0 .. DASH_RUN 0.78) is the knob's studs, clamped 0..3
+	S.client_feel_dash_hop = guarded("client_feel_dash_hop", function()
+		local env = setup("hop")
+		if not env then
+			return
+		end
+		local AF, M, PP = env.AF, env.M, env.PP
+		local ok, err = pcall(function()
+			local function peak()
+				local best = -1
+				for i = 0, 156 do -- p 0 .. 0.78 (the bite's squash starts after the run)
+					local s = PP.Sample("DashIn", i / 200, false, 1, 9.7)
+					if s.Body.Position.Y > best then
+						best = s.Body.Position.Y
+					end
+				end
+				return best
+			end
+			T.check(env.saved.Hop == 0.5, fmt("feel dash hop: (setup) the shipped Melee.Hop is 0.5 (%s)", tostring(env.saved.Hop)))
+			for i, case in ipairs({ { 0.5, 0.5 }, { 1.2, 1.2 }, { 0, 0 }, { 9, 3 } }) do
+				M.Hop = case[1]
+				local unit = 20 + 2 * i
+				local src, tgt = pair(env, 60 + 20 * i, unit)
+				T.check(AF.Dash(unit, src, tgt, env.clock + 0.45, env.clock, {}) == true, fmt("feel dash hop: a dash at Hop %s is taken", tostring(case[1])))
+				local got = peak()
+				T.check(abs(got - case[2]) < 0.02, fmt("feel dash hop: Melee.Hop %s -> the DashIn hop peaks at %.2f studs (%.2f)", tostring(case[1]), case[2], got))
+			end
+		end)
+		PP.DashHop = nil -- the next dash sets it again; other pose checks read the default
+		env.done()
+		T.check(ok, "feel dash hop: no error", tostring(err))
 	end)
 
 	----------------------------------------------------------------------------------------------

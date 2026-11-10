@@ -255,6 +255,60 @@ Updated: 2026-10-18 (after wave 2). Branch `v3-phase4`. Plan: `ARCHITECTURE_V3.m
   errors (the 5 old many-locals warnings). For the owner: a no-Flame mid-Starter group of 8 now wins now and then (about
   1 in 12) instead of never; Storm Titan gives the same group about 1 in 4. Going further needs a damage change, which
   also makes the reference team win more than the band allows.
+- 2026-11-10 (battle feel, branch `battle-feel` cut from frost-wyrm 38cadc6, not merged; spec
+  docs/superpowers/specs/2026-11-10-battle-feel-design.md, plan docs/superpowers/plans/2026-11-10-battle-feel.md; Claude's
+  six pitch picks built in sleep mode, Gemini agreed on the pitch, the owner has not answered it yet; ledger
+  `.superpowers/battle-feel/LEDGER.md` with the morning questions): centre aim + the real floor, the melee dash in / bite /
+  hop back, the flurry lunge, weighty specials x1.4 and a real server cast (built, tested, shipped OFF).
+  The knobs, all in `Config.Battle.Feel` (`src/shared/Config.lua`). The owner can change any of them. Only `Melee.Standoff`
+  and `Special.RealCast` / `Cast` reach the server (and the balance). Everything else is drawing:
+
+  | Knob | Ships | What it does / what to change |
+  |---|---|---|
+  | `Melee.Dash` | true | false = today's Strike leap for every melee bite |
+  | `Melee.Standoff` | 0 | studs a melee pet / NPC rests away from its target (server). The pitch said 8; at 8 the sim misses 5 targets (raids easier, dungeons harder), so it ships 0 until a balance pass (morning question 1) |
+  | `Melee.MinGap` | 1.5 | the dash plays only across a gap at least this big, else today's Strike (at Standoff 0 the gaps are ~2.6-4.3 studs) |
+  | `Melee.In` / `Bite` / `Hold` / `Back` | 0.30 / 0.08 / 0.12 / 0.40 | seconds: the run in, the bite, the hold at the edge, the hop back |
+  | `Melee.Hop` | 0.5 | the low hop's height (studs, 0..3) over the last quarter of the run in (the hop back keeps its own 1-stud arc). Gate fix: PetPoses had 0.5 written in, so this knob did nothing; `AttackFx.Dash` now hands it over (`PetPoses.DashHop`, test `client_feel_dash_hop`) |
+  | `Melee.Lunge` / `FlurryBelow` | 0.6 / 0.75 | under a 0.75 s attack gap the pet stays in and lunges 0.6 from the edge (the flurry) |
+  | `Melee.Streak` / `StreakMax` | true / 4 | the speed streak behind a dashing pet, at most 4 at once (yours first), High graphics only |
+  | `Aim.Mode` | "Centre" | shots, beams and specials at the body centre; "Pivot" = today's aim (at a boss's feet) |
+  | `Aim.FloorRay` | true | one raycast per effect so ground rings sit on the real floor; false = the arena's ground height only |
+  | `Special.Weighty` | true | false = today's special beats |
+  | `Special.Tempo` / `ChargeMax` | 1.4 / 1.1 | the charge x1.4, capped at 1.1 s |
+  | `Special.Speed` / `TravelMax` | 0.7 / 0.7 | the travel at 0.7 speed, at most 0.7 s |
+  | `Special.Impact` / `HitStop` | 0.25 / 0.08 | the impact flash (s) and the hit freeze on the caster and its victims (s) |
+  | `Special.Afterglow` / `Callout` / `TravelHold` | 1.5 / 1.6 / 0.3 | afterglow x1.5 (0 on Low), the name callout 1.6 s, up to 0.3 s of lateness given back to the travel |
+  | `Special.RealCast` | false | true = the server's damage waits for the cast (a dash during the charge dodges, a stun breaks it, the meter is kept). Needs the raid refit first (morning questions 3-4) |
+  | `Special.Cast` | Blast 0.9, Beam 0.8, Storm 0.95, Freeze 0.7, Pounce 0.6, Heal 0.55, Shield 0.5, Rally 0.55, Haste 0.5 | seconds of server cast per kind (used only with RealCast on) |
+
+  Gate (e21105b): `SIM_BATTLE=full` 67 of 67 (197 s). Every line of the output is the same as base 38cadc6's (67 of 67)
+  except the step-cost line (0.041 vs 0.029 ms, under the 1 ms target; both ran next to a smoke run). That is expected:
+  at Standoff 0 with RealCast off the server fights as before. The slowest raid cells: Storm Titan Starter 3 teams (all
+  238 s, won 231 s), Lava Golem Starter 3 teams (won 232 s), Shadow Hydra Starter 3 teams (all 232 s), Storm Titan Max 8
+  teams (231 s), the trained Storm Titan 8 teams 232.8 s. Frost Wyrm is no longer near the edge: its slowest cell is
+  Starter 8 teams at 202 s. (The old "M5 235 s / 231 s" cells came from the pre-tier HpPerPlayer table, which is gone.)
+  Groups 120-238 s, won 120-232 s, 0 timeouts, the longest fight 281 s. The whole suite `smoke.py --quick` (4.7 GB
+  free, no other smoke run): 27,866 passed / 0 failed (835 scenarios, 1,409 s) on e21105b; after the Hop fix 27,878 / 0
+  (836, 1,442 s). Its 992 warnings are 984 mock "no asset store" lines and 8 the tests cause on purpose. The fix is
+  drawing only, and BattleSim never loads PetPoses, so the sim cannot move. `node tools/check.mjs` 0 errors (the 5 old
+  many-locals warnings). Evidence: `.superpowers/battle-feel/evidence/gate-*.txt`.
+  Owner Studio checklist (Play, a raid boss, then a dungeon or the Ring; screenshots into
+  `.superpowers/battle-feel/evidence/`):
+  1. Eight minions / pets dashing at a raid boss: each melee bite runs in, bites, and hops back, with no pets stacked or
+     flickering and at most 4 speed streaks. At Standoff 0 the run is short, so set `Melee.Standoff = 8` in Studio to see
+     the pitched look (the balance then moves; do not ship that without the balance pass).
+  2. Centre hits on the boss: bolts, beams and specials burst on the boss's body, not at its feet; the Storm cloud and the
+     Eclipse sun hang over its top, not inside it. The Shadow Hydra's bites stay today's Strike (its necks reach past
+     the rest spot).
+  3. Ground rings on the floor: telegraph circles, Storm / Freeze areas and the impact rings sit on the arena floor (not
+     sunk, not floating) in the raid pocket, a dungeon room and the Ring.
+  4. A weighty special: the longer charge (about 1 s), the slower travel, the impact with its short freeze, the
+     afterglow, the 1.6 s name callout; the numbers do not pop much before the impact.
+  5. Phone layout (the device emulator, a landscape phone and 390 x 844): the callout and the effects do not cover the
+     action buttons; nothing new in the screen centre.
+  6. Low graphics (Settings): no speed streaks, no afterglow, the dash still plays; the frame rate with 8 pets at a boss
+     is like today's.
 - 2026-10-28 (player ruling, wave 5 dungeon camera): the Camera shake setting OFF turns off ONLY the hit shakes; the dungeon entrance rush, the room walk-in shot and the FOV punch on big attacks always play (short, skippable). The rush is skipped when the camera is > 60 studs from the gate.
 - Evolve button; 2nd evolution only Epic+; level cap 100 for all pets (XP curve keeps rising).
 - Presses become food plants, Collector = Coin Magnet, Kitchen = Food Machine, Gym = Training Place.

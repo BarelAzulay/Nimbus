@@ -4015,6 +4015,11 @@ local function dash(unit, src, tgt, landAt, now, opts)
 	end
 	now = finite(now) and now or (St.now or os.clock())
 	opts = type(opts) == "table" and opts or {}
+	-- (battle-feel gate) Melee.Hop reaches PetPoses' DashIn through a module field (PetPoses reads no Config)
+	local PPh = dep("PetPoses")
+	if PPh then
+		PPh.DashHop = max(0, min(3, feelNum(M.Hop, 0.5)))
+	end
 	local below = feelNum(M.FlurryBelow, 0.75)
 	local flurry = finite(opts.Tempo) and opts.Tempo < below
 	local backDur = max(0.05, feelNum(M.Back, 0.4))

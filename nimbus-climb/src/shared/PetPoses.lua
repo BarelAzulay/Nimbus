@@ -14,6 +14,7 @@
 --                                            rest at p = 0 and p = 1, so starting / stopping never pops (DashBack starts
 --                                            at the edge DashIn holds and lands at rest)
 --   PetPoses.DASH_RUN = 0.78                 DashIn's run reaches the edge at this p (AttackFx times it on the landing)
+--   PetPoses.DashHop = nil                   DashIn's hop in studs (0..3; nil = 0.5); AttackFx.Dash sets it from Config Melee.Hop
 --   PetPoses.Sample(name, p, ranged, amp, reach) -> {
 --       Body   = CFrame   offset of the pet's root in its OWN frame (the pet faces -Z = LookVector, up +Y, right
 --                        +X; PetBuilder header), studs as written below (battle units: BattleController writes
@@ -106,7 +107,16 @@ local GLANCE_TIME = 1.1
 -- (battle-feel T2) the dash pair
 PetPoses.DASH_RUN = 0.78 -- DashIn's run ends (the bite lands) at this p
 local DASH_HOP_FROM = 0.585 -- the low hop starts here (the last quarter of the run)
-local DASH_HOP = 0.5 -- studs (Config.Battle.Feel.Melee.Hop: the knob's number, kept here so the pose stays pure)
+local DASH_HOP = 0.5 -- studs: the default of Config.Battle.Feel.Melee.Hop (the pose stays pure: no Config here)
+-- (battle-feel gate) PetPoses.DashHop = the knob's studs (0..3), set by AttackFx.Dash before it schedules a DashIn; nil = DASH_HOP
+PetPoses.DashHop = nil
+local function dashHop()
+	local h = PetPoses.DashHop
+	if type(h) ~= "number" or h ~= h or h == math.huge or h == -math.huge then
+		return DASH_HOP
+	end
+	return math.max(0, math.min(3, h))
+end
 local DASH_BACK_ARC = 1.0 -- studs: the hop back's arc
 local DASH_SQUASH = 0.25 -- the bite's squash (studs down)
 local DASH_CHIN = 12 -- degrees: the bite's chin down
@@ -356,7 +366,7 @@ POSES.DashIn = function(f, p, _, amp, reachIn)
 	local hop = sin(PI * seg(p, DASH_HOP_FROM, runEnd))
 	local bite = sin(PI * seg(p, runEnd, 1)) -- 0 -> 1 -> 0 over the bite
 	f.z = -reach * smooth(run)
-	f.y = DASH_HOP * hop - DASH_SQUASH * bite
+	f.y = dashHop() * hop - DASH_SQUASH * bite
 	f.pitch = -6 * lean + 8 * hop - DASH_CHIN * bite -- leaning in, the chin up over the hop, down into the bite
 	local wings = outBack(seg(p, runEnd - 0.08, runEnd), 1.70158) * (1 - smooth(seg(p, 0.86, 1)))
 	f.back = -SNAP_OPEN * wings
