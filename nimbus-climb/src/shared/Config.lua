@@ -537,6 +537,20 @@ Config.Battle = {
 	-- a loss takes (below |BattleCatalog.Trophies.Loss| = 10, 0 included; the review fix) pays floor(this x the normal win)
 	-- Trophies, at least 1 (BattleService.ZeroTrophyPrize / LowTrophyOpponent); tokens and XP stay in full
 	ZeroTrophyShare = 0.25,
+	-- (battle-feel, 2026-11-10: docs/superpowers/specs/2026-11-10-battle-feel-design.md "The knob"; the owner can change any
+	-- of these) how battles look and feel. Melee: the dash in + bite + hop back, the 8-stud standoff, the flurry under a
+	-- 0.75 s attack gap. Aim: shots / beams / specials at the target's body centre ("Pivot" = the old pivot aim; rings stay
+	-- on the real floor either way, FloorRay = one raycast per effect). Special: the "Weighty" x1.4 beats and the real
+	-- server cast time per kind. The server reads only Melee.Standoff and Special.RealCast / Cast (BattleCatalog.Damage).
+	-- Off switches: Melee.Dash = false, Melee.Standoff = 0, Aim.Mode = "Pivot", Special.Weighty = false, Special.RealCast = false.
+	Feel = {
+		Melee = { Dash = true, Standoff = 8, In = 0.30, Bite = 0.08, Hold = 0.12, Back = 0.40, Hop = 0.5, Lunge = 0.6,
+			FlurryBelow = 0.75, MinGap = 3, Streak = true, StreakMax = 4 },
+		Aim = { Mode = "Centre", FloorRay = true },
+		Special = { Weighty = true, Tempo = 1.4, ChargeMax = 1.1, Speed = 0.7, TravelMax = 0.7, Impact = 0.25, HitStop = 0.08,
+			Afterglow = 1.5, Callout = 1.6, TravelHold = 0.3,
+			RealCast = true, Cast = { Blast = 0.9, Beam = 0.8, Storm = 0.95, Freeze = 0.7, Pounce = 0.6, Heal = 0.55, Shield = 0.5, Rally = 0.55, Haste = 0.5 } },
+	},
 }
 
 -- v3: pet roles and battle/economy stats (values live per pet in PetCatalog; phases 2 and 3 use them).

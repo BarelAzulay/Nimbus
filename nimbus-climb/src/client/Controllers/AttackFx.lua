@@ -28,6 +28,14 @@
 --       more time than DueAt left; BattleController then plays the Hit that much later).
 --       A point is Model:GetPivot() while the Model is in the game, else its last known point, else Pos: a unit
 --       destroyed mid-travel ends the effect at its last known point; From.Model may be nil (From.Pos only).
+--       (battle-feel T1, docs/superpowers/specs/2026-11-10-battle-feel-design.md decision 4) a TARGET's point is its body
+--       centre while Config.Battle.Feel.Aim.Mode = "Centre": an Attachment named AimPoint in the model, else its bounding-box
+--       centre when that sits over K.AIM_MIN (1 stud) off the pivot (a boss's feet root), else the pivot (pets: unchanged);
+--       read once per model. A Melee bite / a Pounce on such a big body lands on its near edge at the caster's height.
+--       Ground layers stand on eff.FloorY = ctx.Ground, refined by ONE downward raycast under the target at the Play
+--       (Aim.FloorRay; believed within FLOOR_RAY_MAX 6 studs of ctx.Ground), never on the hit minus the caster's drop.
+--   AttackFx.AimOf(side) -> Vector3   a side's aim point (the rule above; Mode "Pivot" = its pivot)
+--   AttackFx.BitePoint(src, tgt) -> Vector3 | nil   the near edge of tgt on the flat line from src, at src.Last.Y
 --   AttackFx.Update(now)            advances every live effect and pose; called from BattleController's existing
 --                                   per-frame step (no RenderStepped / Heartbeat connection of its own)
 --   AttackFx.Pose(unitId, base?) -> { Name, P, Ranged, Amp?, Reach?, Blend, Prev? } | nil   the pose a battle unit shows now (PetPoses
@@ -236,7 +244,13 @@ local K = {
 	AURA_RATE = 0.75, -- its stream's particles a second, x the layer's Count
 	AURA_FADE = 0.3, -- its ring fades over this at the end
 	WIND_SPIN = 7, -- radians a second round the pet
+	-- (battle-feel T1, the centre aim) a model's bounding-box centre is aimed at only when it sits more than this from the
+	-- pivot (a boss's feet root); a pet's centre is its pivot, so pets aim exactly as before
+	AIM_MIN = 1.0,
+	FLOOR_RAY = 80, -- studs: the one downward ray per effect that finds the real floor under the target
 }
+-- (battle-feel T1) the ray's floor is believed only within this of ctx.Ground (a rail or a pit is not the arena floor)
+AttackFx.FLOOR_RAY_MAX = 6
 AttackFx.POOL_KEEP_TOTAL = K.KEEP.Emitter + K.KEEP.Beam + K.KEEP.Trail + K.KEEP.Light + K.KEEP.Disc + K.KEEP.Rim + K.CORE_KEEP * K.CORE_KEYS
 
 -- the 4x4 sheets of blender/vfx/textures.json: key -> { FlipbookMode, fps, LightEmission }
@@ -669,8 +683,104 @@ local function pointOf(side)
 	return side.Last
 end
 
+-- (battle-feel T1) Config.Battle.Feel[group] (nil without the knob: the old behaviour)
+local function feelOf(group)
+	local C = dep("Config")
+	local B = C and C.Battle
+	local F = B and B.Feel
+	return type(F) == "table" and F[group] or nil
+end
+
+local function centreAim()
+	local a = feelOf("Aim")
+	return a ~= nil and a.Mode == "Centre"
+end
+
+-- (battle-feel T1) per model, read once: its AimPoint attachment (or false), the bounding-box centre's offset from the
+-- pivot in pivot space (zero when within K.AIM_MIN: pets) and the box itself in pivot space (the bite's near edge), so
+-- nothing scans the model's parts per frame. Weak keys: a destroyed model drops out.
+local aimCache = setmetatable({}, { __mode = "k" })
+local ZERO = V3(0, 0, 0)
+
+local function aimInfo(m)
+	local c = aimCache[m]
+	if c then
+		return c
+	end
+	c = { Att = false, Off = ZERO, UseOff = false, Big = false }
+	local att = m:FindFirstChild("AimPoint", true)
+	if att and att:IsA("Attachment") and att.Parent and att.Parent:IsA("BasePart") then
+		c.Att = att
+		c.Big = true
+	end
+	local okP, pv = pcall(m.GetPivot, m)
+	local okB, bcf, size = pcall(m.GetBoundingBox, m)
+	if okP and okB and typeof(pv) == "CFrame" and typeof(bcf) == "CFrame" and typeof(size) == "Vector3" then
+		local off = pv:PointToObjectSpace(bcf.Position)
+		if off.Magnitude > K.AIM_MIN then
+			c.Off = off
+			c.UseOff = true
+			c.Big = true
+		end
+		c.Box = pv:ToObjectSpace(bcf)
+		c.Size = size
+	end
+	aimCache[m] = c
+	return c
+end
+
+-- (battle-feel T1) a side's aim point: the body centre (the AimPoint attachment, else the cached box centre off the pivot,
+-- else the pivot) while Config.Battle.Feel.Aim.Mode = "Centre"; otherwise pointOf (today). side.Last stays the PIVOT (the
+-- leap, the distance and the direction read it); side.Aim / side.CF = the last centre / pivot CFrame. A model destroyed or
+-- parked keeps its last centre.
+local function aimOf(side)
+	if not centreAim() then
+		return pointOf(side)
+	end
+	local m = side.Model
+	if m then
+		if m.Parent then
+			local ok, cf = pcall(m.GetPivot, m)
+			if ok and typeof(cf) == "CFrame" then
+				side.Last = cf.Position
+				side.CF = cf
+				local c = aimInfo(m)
+				local q
+				if c.Att and c.Att.Parent then
+					q = c.Att.WorldPosition
+				elseif c.UseOff then
+					q = cf:PointToWorldSpace(c.Off)
+				else
+					q = side.Last
+				end
+				side.Aim = q
+				return q
+			end
+		else
+			side.Model = nil -- destroyed / parked: keep its last known point
+		end
+	end
+	if side.Aim then
+		return side.Aim
+	end
+	return pointOf(side)
+end
+AttackFx.AimOf = aimOf
+
+-- (battle-feel T1) is this side a big body (a boss: its centre off its pivot, or an AimPoint)? Bites land on its near
+-- edge; a pet is bitten at its pivot as before
+local function bigBody(side)
+	local m = side.Model
+	if not (m and m.Parent and centreAim()) then
+		return false
+	end
+	return aimInfo(m).Big
+end
+
+-- the floor under an effect's point: eff.FloorY (ctx.Ground, refined by one raycast under the target at the Play), never
+-- the hit point minus the caster's drop (a boss's feet root sank the rings under the floor)
 local function groundOf(eff, p)
-	return V3(p.X, p.Y - eff.Drop + 0.05, p.Z)
+	return V3(p.X, (eff.FloorY or (p.Y - eff.Drop)) + 0.05, p.Z)
 end
 
 -- (Studio findings round) the spots a big piece must not pass through: the caster, and ctx.Avoid (a Vector3 or a list)
@@ -768,8 +878,13 @@ local function refresh(eff)
 	if s then
 		eff.S = s
 	end
+	-- (battle-feel T1) the body centre (aimOf); a bite (Melee, the Pounce) on a big body lands on its near edge at the
+	-- caster's height (AttackFx.BitePoint)
 	for i, side in ipairs(eff.Targets) do
-		local p = pointOf(side)
+		local p = aimOf(side)
+		if p and eff.Bite and bigBody(side) then
+			p = AttackFx.BitePoint(eff.Src, side) or p
+		end
 		if p then
 			eff.T[i] = p
 		end
@@ -3060,6 +3175,35 @@ function AttackFx.LeapReach(src, tgt)
 	return world / s
 end
 
+-- (battle-feel T1) where a bite lands on a target: its near edge along the flat line from the caster's pivot through the
+-- target's, at the caster's height (src.Last.Y), never past the caster. The target's box comes from the aim cache (read
+-- once per model) placed on its pivot this frame, else from the model, else the pivot stands in with no size.
+-- src / tgt = { Model?, Last = Vector3, CF? }; nil without both points
+function AttackFx.BitePoint(src, tgt)
+	if not (type(src) == "table" and type(tgt) == "table" and typeof(src.Last) == "Vector3" and typeof(tgt.Last) == "Vector3") then
+		return nil
+	end
+	local d = flat(tgt.Last - src.Last)
+	local dist = d.Magnitude
+	if dist < 0.05 then
+		return src.Last
+	end
+	local u = d / dist
+	local t0, th
+	local m = tgt.Model
+	local c = m and aimCache[m]
+	if c and c.Box and typeof(tgt.CF) == "CFrame" then
+		local bcf = tgt.CF * c.Box
+		local size = c.Size
+		th = 0.5 * (abs(u:Dot(bcf.RightVector)) * size.X + abs(u:Dot(bcf.UpVector)) * size.Y + abs(u:Dot(bcf.LookVector)) * size.Z)
+		t0 = (bcf.Position - src.Last):Dot(u)
+	else
+		t0, th = spanAlong(m, src.Last, u)
+	end
+	local along = max(0, (t0 or dist) - (th or 0))
+	return src.Last + u * along
+end
+
 local function schedulePoses(eff, now)
 	local r = eff.Recipe
 	local A = r.Attack
@@ -3349,6 +3493,46 @@ local function sideOf(s)
 		return nil
 	end
 	return side
+end
+
+-- (battle-feel T1) one downward ray under the target's centre at the Play (Config.Battle.Feel.Aim.FloorRay): the real floor
+-- there, believed within AttackFx.FLOOR_RAY_MAX of eff.FloorY (ctx.Ground); the drawn battle (workspace.ClientBattle: the
+-- units, the boss, these kits) and the local character are skipped. Never per frame.
+local floorParams = nil
+local function refineFloor(eff, side)
+	local aim = feelOf("Aim")
+	if not (aim and aim.FloorRay == true and finite(eff.FloorY)) then
+		return
+	end
+	local at = aimOf(side)
+	if typeof(at) ~= "Vector3" then
+		return
+	end
+	if not floorParams then
+		floorParams = RaycastParams.new()
+		floorParams.FilterType = Enum.RaycastFilterType.Exclude
+	end
+	local skip = {}
+	local cb = Workspace:FindFirstChild(K.PARENT)
+	if cb then
+		skip[#skip + 1] = cb
+	end
+	if St.folder and St.folder.Parent and St.folder.Parent ~= cb then
+		skip[#skip + 1] = St.folder
+	end
+	local lp = Players and Players.LocalPlayer
+	local ch = lp and lp.Character
+	if ch then
+		skip[#skip + 1] = ch
+	end
+	floorParams.FilterDescendantsInstances = skip
+	local ok, hit = pcall(Workspace.Raycast, Workspace, at + UP * 1, V3(0, -K.FLOOR_RAY, 0), floorParams)
+	-- (an anchored part or the terrain: another player's character standing there is not the floor)
+	local inst = ok and hit and hit.Instance
+	local solid = inst ~= nil and inst:IsA("BasePart") and (inst.Anchored or inst:IsA("Terrain"))
+	if solid and typeof(hit.Position) == "Vector3" and abs(hit.Position.Y - eff.FloorY) <= AttackFx.FLOOR_RAY_MAX then
+		eff.FloorY = hit.Position.Y
+	end
 end
 
 local function resolve(ctx, distance, step)
@@ -3730,11 +3914,17 @@ function AttackFx.Play(ctx)
 			Stepped = step, Low = quality == "Low", Items = {}, Emitters = 0, Beams = 0, Trails = 0, Lights = 0, Cores = 0, Rims = 0,
 			Kind = ctx.Kind, Pre = isPre or nil, CueSeconds = isPre and (finite(ctx.Seconds) and max(0.1, ctx.Seconds) or K.PRE_HOLD) or nil,
 			Avoid = ctx.Avoid, AvoidPts = {}, -- (Studio findings round) the spots a big piece keeps clear of (avoidSpots)
+			-- (battle-feel T1) a bite lands on a big body's near edge; the floor every ground layer stands on
+			Bite = (r.Attack == "Melee" or (r.Attack == "Special" and ctx.Kind == "Pounce")) or nil,
+			FloorY = finite(ctx.Ground) and ctx.Ground or (src.Last.Y - drop),
 		}
 		for i, side in ipairs(targets) do
 			eff.T[i] = side.Last
 		end
 		refresh(eff)
+		if targets[1] and not isPre then
+			refineFloor(eff, targets[1])
+		end
 		eff.CorePos = corePosOf(eff, 0)
 		-- (evolved forms) one aura a unit: a new cast replaces the one it still wears
 		if auraRel then
