@@ -3882,12 +3882,24 @@ function Atk.Element(B, ev, dueAt)
 	for i, t in ipairs(list) do
 		to[i] = Atk.Side(B, t)
 	end
+	-- (feel-balance Task 2) a melee pet with a standoff dashes in for its element too (the server grows it from the bite
+	-- point it sends as ev.x / ev.z): the same dash as a bite, landing on the element's time; its Circle stands there
+	local center = (shape == "Circle" and u.ranged) and worldPoint(B, tx, u.centerY or 1.5, tz) or nil
+	local dashed = false
+	if not u.ranged and list[1] then
+		local ex, ez = num(ev.x, u.x), num(ev.z, u.z)
+		dashed = Atk.Dash(B, u, list[1], dueAt)
+		if dashed and shape == "Circle" and ((ex - u.x) * (ex - u.x) + (ez - u.z) * (ez - u.z)) > 0.25 then
+			center = worldPoint(B, ex, u.centerY or 1.5, ez)
+		end
+	end
 	local played = Atk.Play(lookCtx(u, {
 		Attack = "Element", Shape = shape, Element = element, From = Atk.Side(B, u), To = (#to > 0) and to or nil,
 		Angle = worldAngle(B, num(ev.angle, 0)), Radius = radius, Length = length, Width = width, Mine = u.mine == true, DueAt = dueAt,
 		Ground = groundOf(B, u), Form = tonumber(ev.form),
 		-- (evolved forms: a ranged pet's Circle stands on its aim point; the sim's too)
-		Center = (shape == "Circle" and u.ranged) and worldPoint(B, tx, u.centerY or 1.5, tz) or nil,
+		Center = center,
+		Dashed = dashed or nil, -- (the dash is the caster's body motion: no Cast / Strike pose over it)
 	}))
 	u.fxDriven = played
 	if played then

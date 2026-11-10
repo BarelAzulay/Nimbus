@@ -266,6 +266,10 @@ BattleCatalog.Damage = {
 		end
 		return out
 	end)(),
+	-- (feel-balance Task 2) the meter carry: while a real cast charges (the meter sits full) every meter gain is kept and
+	-- added after the fire, so a long cast does not starve the next special (Config.Battle.Feel.Special.Carry, a boolean)
+	SpecialCarry = (type(Config.Battle) == "table" and type(Config.Battle.Feel) == "table" and type(Config.Battle.Feel.Special) == "table"
+		and Config.Battle.Feel.Special.Carry == true) or false,
 	SpecialScale = 1, -- global multiplier on every special effect
 	-- a special is powered by its pet's own Power stat (x Roles.Power): effect x (base Power / Reference) ^ Exponent
 	SpecialPowerCurve = { Reference = 10, Exponent = 0.5 },
@@ -2608,6 +2612,9 @@ function BattleCatalog.Validate()
 		if okStrike and st.In * st.Out + st.Bite + st.Hold + st.Back * st.Out < 0.3 then
 			bad("Damage.Strike: In x Out + Bite + Hold + Back x Out must be at least 0.3 s (the 10 Hz tick)")
 		end
+	end
+	if type(BattleCatalog.Damage.SpecialCarry) ~= "boolean" then
+		bad("Damage.SpecialCarry must be true or false")
 	end
 	-- (battle-feel T3) the real cast seconds: nil (off), else a number 0.3..2 for every special kind
 	local sc = BattleCatalog.Damage.SpecialCast

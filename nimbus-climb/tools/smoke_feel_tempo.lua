@@ -578,6 +578,70 @@ local function serverScenarios()
 		end)
 	end)
 
+	-- (feel-balance Task 2) the meter carry: what the meter gains while a real cast charges (it sits full) is kept for after
+	-- the fire, so a long cast does not starve the next special; a stun breaks the cast with the meter full and no carry;
+	-- Damage.SpecialCarry = false: the old frozen meter (only the fire step's own gain after the fire)
+	S.feel_cast_carry = guarded("feel_cast_carry", function()
+		local BC, BS, PC = load("feel cast carry")
+		if not BC then
+			return
+		end
+		local F = BC.Fighter
+		if not T.check(BC.Damage.SpecialCarry == true, fmt("feel cast carry: BattleCatalog.Damage.SpecialCarry ships true (Config.Battle.Feel.Special.Carry) (%s)", tostring(BC.Damage.SpecialCarry))) then
+			return
+		end
+		local function blast(opts)
+			local b, f, foes = field(BS, fighter(PC, "Blast"), { { 12, 0 } })
+			local _, t0, ok = press(b, f, foes)
+			local res = { ok = ok, t0 = t0 }
+			if opts.hurt then
+				-- one enemy zone tick on my fighter mid-cast (t0 + 0.4)
+				b.zones[#b.zones + 1] = { x = f.x, z = f.z, r = 2, dps = 10, untilT = t0 + 0.6, nextTick = t0 + 0.4, side = 2, from = foes[1], kind = "Linger" }
+			end
+			for _ = 1, 40 do
+				f.nextAttack = huge -- (no plain hit: its MeterOnHit would land in the fire step)
+				if opts.stun and b:Time() >= t0 + 0.4 - 1e-6 and not res.stunned then
+					f.stunUntil = b:Time() + 0.5
+					res.stunned = true
+				end
+				local evs = b:Step(0.05)
+				for _, ev in ipairs(evs) do
+					if ev.type == "Hit" and ev.to == f.id and ev.zone then
+						res.hurt = (res.hurt or 0) + 1
+					elseif ev.type == "CastBreak" and ev.unit == f.id then
+						res.broke = true
+					end
+				end
+				if findEvent(evs, "Special", function(ev) return ev.unit == f.id end) then
+					res.fireT, res.meter = b:Time(), f.meter
+					break
+				end
+				if res.broke then
+					res.meter, res.carry = f.meter, f.meterCarry
+					break
+				end
+			end
+			return res
+		end
+		local per, hurtGain = F.MeterPerSecond, F.MeterOnHurt
+		local r1 = blast({})
+		local want1 = r1.fireT and per * (r1.fireT - r1.t0) or -1
+		T.check(r1.ok and r1.fireT ~= nil and near(r1.fireT - r1.t0, 0.9, 0.051) and near(r1.meter, want1, 0.1),
+			fmt("feel cast carry: Blast (0.9 s), no damage: the meter right after the fire = %g/s x the cast = %.2f (%s)", per, want1, tostring(r1.meter)))
+		local r2 = blast({ hurt = true })
+		local want2 = r2.fireT and (per * (r2.fireT - r2.t0) + hurtGain * (r2.hurt or 0)) or -1
+		T.check(r2.fireT ~= nil and r2.hurt == 1 and near(r2.meter, want2, 0.1),
+			fmt("feel cast carry: one hit taken during the cast: + MeterOnHurt %g (%.2f, got %s, hits %s)", hurtGain, want2, tostring(r2.meter), tostring(r2.hurt)))
+		local r3 = blast({ stun = true })
+		T.check(r3.broke == true and near(r3.meter, F.SpecialMeterMax, 1e-6) and (r3.carry == nil or r3.carry == 0),
+			fmt("feel cast carry: a stun mid-cast: CastBreak, the meter still full (%s), no carry left (%s)", tostring(r3.meter), tostring(r3.carry)))
+		BC.Damage.SpecialCarry = false
+		local okOff, r4 = pcall(blast, {})
+		BC.Damage.SpecialCarry = true
+		T.check(okOff and r4.fireT ~= nil and r4.meter <= per * 0.05 + 1e-6,
+			fmt("feel cast carry: SpecialCarry = false: after the fire only the fire step's own gain (%s)", tostring(okOff and r4.meter)))
+	end)
+
 	-- (feel-balance Task 1) the scripted player sees its pet where it bites too: a telegraph over the snapshot's bite point
 	-- (bx, bz) and not over the rest spot draws a Dash press; the same telegraph with no bx in the snapshot draws none
 	S.feel_strike_simplayer = guarded("feel_strike_simplayer", function()

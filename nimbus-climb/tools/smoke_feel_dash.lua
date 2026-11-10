@@ -800,6 +800,109 @@ local function serverScenarios()
 		T.check(ticksOut == 0, fmt("feel strike zone: ... and never the resting one (%d ticks at rest)", ticksOut))
 	end)
 
+	------------------------------------------------------------------------------------------------
+	-- (feel-balance Task 2) ELEMENT from the bite point: a melee caster with a standoff dashes in for its element too
+	------------------------------------------------------------------------------------------------
+	S.feel_element_origin = guarded("feel_element_origin", function()
+		local BC, BS = load("feel element origin")
+		if not BC then
+			return
+		end
+		local quake = BC.ElementAttacks.Earth
+		if not T.check(quake and quake.Shape == "Circle" and quake.Radius == 8, "feel element origin: (setup) Earth's Quake is a Circle of radius 8") then
+			return
+		end
+		-- a melee Quake caster resting at its reach from one ranged frog (Standoff 8): the circle grows from the bite point
+		local hitsQ, okQ = 0, false
+		withStandoff(BC, 8, function()
+			local b, tm, f, on = duel(BS, "storm_tabby", false, { "puddle_frog" }, { { 0, 30 } })
+			local frog = on[1]
+			local d0 = f.range + frog.radius + 8 - 0.5
+			frog.x, frog.z, frog.px, frog.pz, frog.moveSpeed, frog.nextAttack = 0, d0, 0, d0, 0, huge
+			f.elems = { "Earth" }
+			tm.elementReadyAt = 0
+			local evs = {}
+			okQ = b:Command(1, "Element", frog.id) == true
+			-- (the command's events reach the next Step's list: BattleService's pending)
+			for _, ev in ipairs(b:Step(0.1)) do
+				if ev.type == "Hit" and ev.from == f.id and ev.to == frog.id and ev.element and not ev.miss then
+					hitsQ = hitsQ + 1
+				end
+			end
+		end)
+		T.check(okQ and hitsQ == 1, fmt("feel element origin: a melee Quake caster at its rest spot (Standoff 8) hits the frog at its reach (%d Hit)", hitsQ))
+		-- a Cone caster (Flare) facing three frogs: the same frogs hit at Standoff 8 (rest 8 back) as at Standoff 0
+		local function coneSet(so)
+			local set = {}
+			withStandoff(BC, so, function()
+				local b, tm, f, on = duel(BS, "storm_tabby", false, { "puddle_frog", "puddle_frog", "puddle_frog" }, { { 0, 0 }, { 3, 9 }, { 12, 3 } })
+				local frog = on[1]
+				local d0 = f.range + frog.radius - 0.5
+				local spots = { { 0, d0 }, { 3, d0 + 6 }, { 11, d0 + 1 } }
+				for i, u in ipairs(on) do
+					u.x, u.z, u.px, u.pz, u.moveSpeed, u.nextAttack = spots[i][1], spots[i][2], spots[i][1], spots[i][2], 0, huge
+				end
+				f.x, f.z, f.px, f.pz = 0, -so, 0, -so
+				tm.wantX, tm.wantZ = 0, -so
+				f.elems = { "Flame" }
+				tm.elementReadyAt = 0
+				b:Command(1, "Element", frog.id)
+				for _, ev in ipairs(b:Step(0.1)) do
+					if ev.type == "Element" and ev.unit == f.id then
+						for _, id in ipairs(ev.targets or {}) do
+							for i, u in ipairs(on) do
+								if u.id == id then
+									set[#set + 1] = i
+								end
+							end
+						end
+					end
+				end
+			end)
+			table.sort(set)
+			return table.concat(set, ",")
+		end
+		local s0, s8 = coneSet(0), coneSet(8)
+		T.check(s0 ~= "" and s0 == s8, fmt("feel element origin: a melee Flare cone hits the same frogs at Standoff 8 (rest 8 back) as at 0 (%s vs %s)", s8, s0))
+	end)
+
+	S.feel_element_mirror = guarded("feel_element_mirror", function()
+		local BC, BS = load("feel element mirror")
+		if not BC then
+			return
+		end
+		local hits, ok = {}, false
+		withStandoff(BC, 8, function()
+			-- two players' melee Radiance casters (Celestial, a Circle of radius 8 with no stun: a Quake's stun would refuse the
+			-- second press) in a duel, resting at their engaged distance (reach + Standoff - 0.5)
+			local b = BS.new({ Mode = "Duel", Seed = 3, Zone = { X = 160, Z = 160 }, TimeLimit = 300,
+				Teams = { { Owner = 1, Side = 1, Pets = { { Key = "storm_tabby", Level = 20, Slot = 1 } } }, { Owner = 2, Side = 2, Pets = { { Key = "storm_tabby", Level = 20, Slot = 1 } } } } })
+			if not b then
+				return
+			end
+			local a, c = b.teams[1].fighter, b.teams[2].fighter
+			local d0 = a.range + c.radius + 8 - 0.5
+			a.x, a.z, a.px, a.pz = 0, 0, 0, 0
+			c.x, c.z, c.px, c.pz = 0, d0, 0, d0
+			for i, tm in ipairs({ b.teams[1], b.teams[2] }) do
+				local f = tm.fighter
+				tm.wantX, tm.wantZ, tm.noEngage, tm.elementReadyAt = f.x, f.z, true, 0
+				f.elems, f.nextAttack, f.maxHp, f.hp = { "Celestial" }, huge, 1e9, 1e9
+			end
+			b:Command(1, "Element", c.id)
+			b:Command(2, "Element", a.id)
+			for _, ev in ipairs(b:Step(0.1)) do
+				if ev.type == "Hit" and ev.element and not ev.miss then
+					hits[ev.from] = (hits[ev.from] or 0) + 1
+				end
+			end
+			hits.a, hits.c = a.id, c.id
+			ok = true
+		end)
+		T.check(ok and (hits[hits.a] or 0) == 1 and (hits[hits.c] or 0) == 1,
+			fmt("feel element mirror: two melee Radiance casters at rest reach (Standoff 8): each cast hits the other (%s / %s)", tostring(hits[hits.a]), tostring(hits[hits.c])))
+	end)
+
 	-- the event log of a 60 s seeded raid as one string hash (sorted keys, every value): storm_titan Starter, 3 Auto teams
 	local function logHash(BS)
 		local b = BS.new({ Mode = "Raid", Boss = "storm_titan", RaidTier = "Starter", Seed = 7, Teams = {
@@ -1705,6 +1808,105 @@ local function clientScenarios()
 			T.check(agree and ((def.play.Dashed and def.dashIn and held >= M.In - 1e-6) or (not def.play.Dashed and def.strike and held < M.In - 0.05)),
 				fmt("feel dash mine: at the shipped Standoff the bite is a dash (held %.2f) or today's Strike, the number with the impact (dashed %s)", held, tostring(def.play.Dashed)))
 		end
+	end)
+
+	----------------------------------------------------------------------------------------------
+	-- (feel-balance Task 2) a melee pet's ELEMENT is a dash too: the server grows it from the bite point
+	S.client_feel_dash_element = guarded("client_feel_dash_element", function()
+		local BC, AF, BS, PP, M = loadBattle("feel dash element")
+		if not BC then
+			return
+		end
+		local function fight(so, near)
+			local res = { dashes = 0, element = false }
+			atStandoff(so, function()
+				local d = driver(BS, "storm_tabby", "biscuit_bear", false)
+				if not d then
+					return
+				end
+				d.tm.noEngage = true
+				d.foe.moveSpeed, d.foe.nextAttack = 0, huge
+				local gap = near and 2.5 or (d.f.range + d.foe.radius + so - 0.5) -- (near: the two bodies touch)
+				d.foe.x, d.foe.z, d.foe.px, d.foe.pz = 0, -8 + gap, 0, -8 + gap
+				local mine = d.f.id
+				local sp = spies(AF, BC, PP, { mine })
+				local ok, err = pcall(function()
+					for _ = 1, 6 do
+						d.f.nextAttack, d.foe.nextAttack = huge, huge
+						d.tm.wantX, d.tm.wantZ = 0, -8
+						d.step()
+					end
+					d.tm.elementReadyAt = 0
+					res.cmd = d.sim:Command(d.me, "Element", d.foe.id)
+					for _ = 1, 10 do
+						d.f.nextAttack, d.foe.nextAttack = huge, huge
+						d.tm.wantX, d.tm.wantZ = 0, -8
+						for _, ev in ipairs(d.step()) do
+							if ev.type == "Element" and ev.unit == mine then
+								res.element = true
+							end
+						end
+					end
+					for _, c in ipairs(sp.dash) do
+						if c.Unit == mine and c.Result == true then
+							res.dashes = res.dashes + 1
+						end
+					end
+					local sawIn, sawBack = false, false
+					for _, f in ipairs(sp.frames) do
+						sawIn = sawIn or f.Name == "DashIn"
+						sawBack = sawBack or f.Name == "DashBack"
+					end
+					res.sawIn, res.sawBack = sawIn, sawBack
+				end)
+				sp.undo()
+				d.finish()
+				if not ok then
+					error(err, 0)
+				end
+			end)
+			return res
+		end
+		local r8 = fight(8, false)
+		T.check(r8.cmd == true and r8.element, "feel dash element: (setup) my melee fighter casts its ELEMENT at Standoff 8")
+		T.check(r8.dashes == 1 and r8.sawIn and r8.sawBack, fmt("feel dash element: Standoff 8: the Element event schedules one DashIn / DashBack (%d dashes)", r8.dashes))
+		local r0 = fight(0, true)
+		T.check(r0.cmd == true and r0.element and r0.dashes == 0, fmt("feel dash element: Standoff 0 with a gap under MinGap 1.5: no dash (%d)", r0.dashes))
+	end)
+
+	-- (feel-balance Task 2, decision 4) at Standoff 8 a melee pet's rest spot leaves room to the Shadow Hydra's box: it dashes
+	S.client_feel_dash_hydra = guarded("client_feel_dash_hydra", function()
+		local env = setup("hydra")
+		if not env then
+			return
+		end
+		local AF = env.AF
+		local BCat = moduleAt(ROOTS.shared .. "/BattleCatalog")
+		local PC = moduleAt(ROOTS.shared .. "/PetCatalog")
+		local PB = moduleAt(ROOTS.shared .. "/PetBuilder")
+		local ok, err = pcall(function()
+			if not T.check(BCat ~= nil and PC ~= nil and PB ~= nil and env.BB ~= nil, "feel dash hydra: (setup) the catalogs and builders load") then
+				return
+			end
+			local def = PC.Get("storm_tabby")
+			local st = BCat.UnitStats(def, 20)
+			local boss = env.BB.Build("shadow_hydra", { Detail = "Low", CFrame = CFrame.new(0, G, -30) })
+			if not T.check(boss ~= nil, "feel dash hydra: (setup) a Shadow Hydra") then
+				return
+			end
+			boss.Parent = env.holder
+			local m = PB.Build(def, { Detail = "Low", Scale = 1.3 })
+			m.Parent = env.holder
+			local d = st.Range + BCat.Bosses.shadow_hydra.Radius + 8 - 0.5
+			local pos = V3(0, G + 1.5, -30 + d)
+			m:PivotTo(CFrame.lookAt(pos, V3(0, G + 1.5, -30)))
+			local tp = boss:GetPivot().Position
+			local gap = AF.LeapReach({ Model = m, Last = pos }, { Model = boss, Last = tp })
+			local r = AF.Dash(1, { Unit = 1, Model = m, Pos = pos }, { Unit = 1001, Model = boss, Pos = tp }, env.clock + 0.45, env.clock, {})
+			T.check(gap ~= nil and gap >= 1.5 / 1.3 and r == true, fmt("feel dash hydra: Standoff 8: the rest spot %.1f studs off the Hydra leaves a %.2f-stud gap (pose studs) to its box: the dash plays (%s)", d, gap or -1, tostring(r)))
+		end)
+		env.done()
+		T.check(ok, "feel dash hydra: no error", tostring(err))
 	end)
 
 	return S

@@ -1927,6 +1927,7 @@ local function knockOut(self, u, by, events, forfeit)
 	if u.sTo then
 		Strike.close(u)
 	end
+	u.meterCarry = nil
 	if damageRules().KoMeterLoss then
 		u.meter = 0
 	end
@@ -2006,6 +2007,16 @@ end
 
 local shieldBreak -- forward
 
+-- (feel-balance Task 2) a meter gain of `gain` (capped at `top`): while a real cast charges (castEntry, the meter sits
+-- full) with Damage.SpecialCarry it is kept in u.meterCarry and added after the fire (fireCast); else it fills the meter
+function Strike.meter(u, gain, top)
+	if u.castEntry and damageRules().SpecialCarry == true then
+		u.meterCarry = min(top, (u.meterCarry or 0) + gain)
+	else
+		u.meter = min(top, u.meter + gain)
+	end
+end
+
 -- Applies `amount` of damage from `attacker` (may be nil for zones) to `victim`. Returns the damage dealt (after
 -- shields). `extra` fields are copied into the Hit event; extra == nil marks a plain attack (crits, meter, chill, leech).
 local function applyDamage(self, attacker, victim, amount, events, extra, noVariance)
@@ -2066,7 +2077,7 @@ local function applyDamage(self, attacker, victim, amount, events, extra, noVari
 		if attacker.kind ~= "Boss" and attacker.alive and extra == nil then
 			local gain = isFighter and num(F.MeterOnHit, 4) or num(D.MeterOnHit, 4)
 			local top = isFighter and num(F.SpecialMeterMax, 100) or num(D.MeterMax, 100)
-			attacker.meter = min(top, attacker.meter + gain * (attacker.meterRate or 1))
+			Strike.meter(attacker, gain * (attacker.meterRate or 1), top)
 			-- Chill: the fighter's plain hits slow its enemies
 			if attacker.chillUntil and self.t < attacker.chillUntil and applySlow(self, victim, num(D.Slow, 0.6), 2) then
 				ev.slow = true
@@ -2097,7 +2108,7 @@ local function applyDamage(self, attacker, victim, amount, events, extra, noVari
 		local isFighter = victim.team.player and victim == victim.team.fighter
 		local gain = isFighter and num(F.MeterOnHurt, 2) or num(D.MeterOnHurt, 2)
 		local top = isFighter and num(F.SpecialMeterMax, 100) or num(D.MeterMax, 100)
-		victim.meter = min(top, victim.meter + gain * (victim.meterRate or 1))
+		Strike.meter(victim, gain * (victim.meterRate or 1), top)
 	end
 	if mult ~= 1 then
 		ev.elem = mult
@@ -2323,7 +2334,7 @@ local function applyBuff(self, target, buff, mult, events, ev)
 	end
 	if finite(buff.Meter) and buff.Meter > 0 then
 		local top = num(fighterRules().SpecialMeterMax, 100)
-		target.meter = min(top, target.meter + buff.Meter)
+		Strike.meter(target, buff.Meter, top)
 	end
 	ev["until"] = r1(untilT)
 	return untilT
@@ -2515,6 +2526,7 @@ local function resolveDelayed(self, events)
 				cancelCast(self, d, events)
 			else
 				u.castEntry = nil
+				u.meterCarry = nil
 			end
 		elseif self.t < d.at - (d.cast and 1e-6 or 0) then
 			i = i + 1
@@ -2927,6 +2939,7 @@ function fireCast(self, d, events)
 		u.castUntil = self.t
 	end
 	if u.specialKind ~= d.cast then
+		u.meterCarry = nil
 		return
 	end
 	local target = d.target
@@ -2938,12 +2951,21 @@ function fireCast(self, d, events)
 			return
 		end
 	end
+	local carry = u.meterCarry
+	u.meterCarry = nil
 	specialBody(self, u, target, events, d)
+	-- (feel-balance Task 2) the meter carry: what the full meter gained during the charge, after the spend
+	if carry and carry > 0 and u.alive then
+		local isFighter = u.team.player and u == u.team.fighter
+		local top = isFighter and num(fighterRules().SpecialMeterMax, 100) or num(damageRules().MeterMax, 100)
+		u.meter = min(top, u.meter + carry)
+	end
 end
 
 function cancelCast(self, d, events)
 	local u = d.from
 	u.castEntry = nil
+	u.meterCarry = nil -- (the meter is still full: nothing to carry)
 	if u.castUntil > self.t then
 		u.castUntil = self.t
 	end
@@ -3060,11 +3082,19 @@ local function castElement(self, team, u, arg, events)
 	end
 	local form = elementFormOf(u) -- nil at stage 0
 	local name = form and form.Name or a.Name
-	local angle, tx, tz = aimOf(self, team, u, arg)
+	local angle, tx, tz, aimT = aimOf(self, team, u, arg)
 	-- a ranged fighter reaches out to its own range at least (the design's "ranged pets use max(Range, 14)")
 	local reachOut = u.ranged and num(u.range, 0) or 0
 	local reach = reachOf(u)
-	local cx, cz = u.x, u.z -- a Circle's centre
+	-- (feel-balance Task 2) the origin: a melee caster with a standoff dashes in for its element too, so its Cone / Line /
+	-- Circle grows from its bite point toward the aimed unit (Strike.point; the rest spot at Standoff 0) and the cast opens a
+	-- strike window now (the client draws the dash)
+	local ox, oz = u.x, u.z
+	if aimT and standoffOf(damageRules(), u) > 0 then
+		ox, oz = Strike.point(damageRules(), u, aimT)
+		Strike.open(self, u, aimT, self.t)
+	end
+	local cx, cz = ox, oz -- a Circle's centre
 	if a.Shape == "Circle" and u.ranged then
 		-- a ranged pet's Circle lands on its aim point, no farther than its range: a far aim falls short, never across the floor
 		local dx, dz = tx - u.x, tz - u.z
@@ -3074,7 +3104,7 @@ local function castElement(self, team, u, arg, events)
 		end
 		cx, cz = tx, tz
 	end
-	local ev = { type = EV.Element, unit = u.id, element = element, name = name, x = r1(u.x), z = r1(u.z), angle = floor(angle * 1000 + 0.5) / 1000, tx = r1(tx), tz = r1(tz), shape = a.Shape, targets = {} }
+	local ev = { type = EV.Element, unit = u.id, element = element, name = name, x = r1(ox), z = r1(oz), angle = floor(angle * 1000 + 0.5) / 1000, tx = r1(tx), tz = r1(tz), shape = a.Shape, targets = {} }
 	if form then
 		ev.form = formStageOf(u)
 	end
@@ -3086,7 +3116,7 @@ local function castElement(self, team, u, arg, events)
 		length = max(num(a.Length, num(F.ElementRange, 14)) * reach, reachOut)
 		ev.length = areaField(reach, length)
 		for _, e in ipairs(enemies) do
-			if inCone(e, u.x, u.z, angle, half, length) then
+			if inCone(e, ox, oz, angle, half, length) then
 				hits[#hits + 1] = e
 			end
 		end
@@ -3094,7 +3124,7 @@ local function castElement(self, team, u, arg, events)
 		length, width = max(num(a.Length, 24) * reach, reachOut), num(a.Width, 4) * reach
 		ev.length, ev.width = areaField(reach, length), areaField(reach, width)
 		for _, e in ipairs(enemies) do
-			if inLine(e, u.x, u.z, angle, length, width) then
+			if inLine(e, ox, oz, angle, length, width) then
 				hits[#hits + 1] = e
 			end
 		end
@@ -3130,7 +3160,7 @@ local function castElement(self, team, u, arg, events)
 				-- a twist a boss is immune to (burn, slow, root) pays one bonus hit instead
 				local immune = false
 				if finite(a.Push) and e.kind ~= "Boss" then
-					local dx, dz = e.x - u.x, e.z - u.z
+					local dx, dz = e.x - ox, e.z - oz
 					local d = sqrt(dx * dx + dz * dz)
 					if d > 0.01 then
 						e.x, e.z = e.x + dx / d * a.Push, e.z + dz / d * a.Push
@@ -3172,15 +3202,15 @@ local function castElement(self, team, u, arg, events)
 	end
 	if form then
 		if form.Maelstrom then
-			queueDelayed(self, { at = self.t + form.Maelstrom.Delay, from = u, kind = element, element = name, twist = "Maelstrom", x = u.x, z = u.z, angle = angle, half = half, length = length, base = dmg, share = form.Maelstrom.Share })
+			queueDelayed(self, { at = self.t + form.Maelstrom.Delay, from = u, kind = element, element = name, twist = "Maelstrom", x = ox, z = oz, angle = angle, half = half, length = length, base = dmg, share = form.Maelstrom.Share })
 		end
 		if form.Inferno then
 			-- the ground burns where the attack lands: at the aim, no farther than the cone's end
-			local dx, dz = tx - u.x, tz - u.z
+			local dx, dz = tx - ox, tz - oz
 			local d = sqrt(dx * dx + dz * dz)
 			local px, pz = tx, tz
 			if d > length then
-				px, pz = u.x + dx / d * length, u.z + dz / d * length
+				px, pz = ox + dx / d * length, oz + dz / d * length
 			end
 			patchZone(self, u, px, pz, form.Inferno.Radius * reach, dmg * form.Inferno.Share, form.Inferno.Seconds, element, events)
 		end
@@ -3745,7 +3775,7 @@ local function npcStep(self, u, dt, events)
 		u.state = S_IDLE
 		return
 	end
-	u.meter = min(D.MeterMax, u.meter + D.MeterPerSecond * dt * (u.meterRate or 1))
+	Strike.meter(u, D.MeterPerSecond * dt * (u.meterRate or 1), D.MeterMax)
 	if t < u.stunUntil then
 		u.state = S_STUNNED
 		u.windAt = nil
@@ -4034,7 +4064,7 @@ local function fighterStep(self, team, dt, events)
 	if team.retreat then
 		team.retreatSeconds = team.retreatSeconds + dt -- (no meter while back; a team with no living fighter is not counted)
 	else
-		f.meter = min(num(F.SpecialMeterMax, 100), f.meter + num(F.MeterPerSecond, 6) * dt * (f.meterRate or 1))
+		Strike.meter(f, num(F.MeterPerSecond, 6) * dt * (f.meterRate or 1), num(F.SpecialMeterMax, 100))
 	end
 	if team.auto and not team.npc then
 		autoFighter(self, team, f, dt, events)
@@ -4868,7 +4898,7 @@ function doCommand(self, team, action, arg, events)
 			if th.at > t - 1e-9 and th.at - t <= window + 1e-6 then
 				local src = th.src
 				if not team.retreat then
-					f.meter = min(num(F.SpecialMeterMax, 100), f.meter + num(F.ParryMeter, 8))
+					Strike.meter(f, num(F.ParryMeter, 8), num(F.SpecialMeterMax, 100))
 				end
 				if src.kind == "Boss" then
 					-- applyStun refuses bosses: a short stagger instead (no new basic attack / telegraph), once per ParryBossGap

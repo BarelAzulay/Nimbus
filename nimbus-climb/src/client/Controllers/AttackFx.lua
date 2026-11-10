@@ -3297,9 +3297,9 @@ local function schedulePoses(eff, now)
 	local offensive = eff.Path ~= "Self" and eff.Path ~= "Allies"
 	if r.Twist then -- (evolved forms) a form's delayed hit: the caster does not cast again; whoever it reached flinches (To = the struck, BattleController)
 		offensive = eff.Path ~= "Allies"
-	elseif eff.Dashed and A == "Melee" then
-		-- (battle-feel T2) the dash (AttackFx.Dash, scheduled from the Windup / the Hit) is this bite's body motion: no Windup
-		-- or Strike segment here; the victims' Hurt below stays
+	elseif eff.Dashed and (A == "Melee" or A == "Element") then
+		-- (battle-feel T2) the dash (AttackFx.Dash, scheduled from the Windup / the Hit; feel-balance: a melee pet's Element)
+		-- is this bite's body motion: no Windup / Strike / Cast segment here; the victims' Hurt below stays
 	elseif A == "Melee" or A == "Ranged" or (A == "Element" and eff.Area ~= "Circle") or (A == "Special" and r.Kind == "Pounce") then
 		if T.Release > 0.04 then
 			segs[#segs + 1] = { Name = "Windup", T0 = st, Dur = T.Release, Ranged = ranged }
@@ -4235,7 +4235,7 @@ function AttackFx.Play(ctx)
 			-- (battle-feel T1) a bite lands on a big body's near edge; the floor every ground layer stands on
 			Bite = (r.Attack == "Melee" or (r.Attack == "Special" and ctx.Kind == "Pounce")) or nil,
 			FloorY = finite(ctx.Ground) and ctx.Ground or (src.Last.Y - drop),
-			Dashed = (ctx.Dashed == true and r.Attack == "Melee") or nil, -- (battle-feel T2) the bite's pose is AttackFx.Dash's
+			Dashed = (ctx.Dashed == true and (r.Attack == "Melee" or r.Attack == "Element")) or nil, -- (battle-feel T2) the bite's pose is AttackFx.Dash's (feel-balance: an Element's too)
 		}
 		for i, side in ipairs(targets) do
 			eff.T[i] = side.Last

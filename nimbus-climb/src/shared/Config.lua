@@ -541,26 +541,23 @@ Config.Battle = {
 	-- of these) how battles look and feel. Melee: the dash in + bite + hop back, the 8-stud standoff, the flurry under a
 	-- 0.75 s attack gap. Aim: shots / beams / specials at the target's body centre ("Pivot" = the old pivot aim; rings stay
 	-- on the real floor either way, FloorRay = one raycast per effect). Special: the "Weighty" x1.4 beats and the real
-	-- server cast time per kind. The server reads only Melee.Standoff and Special.RealCast / Cast (BattleCatalog.Damage).
+	-- server cast time per kind. The server reads Melee.Standoff, the strike window (Melee.In / Bite / Hold / Back /
+	-- FlurryBelow / Out) and Special.RealCast / Cast / Carry (BattleCatalog.Damage).
 	-- Off switches: Melee.Dash = false, Melee.Standoff = 0, Aim.Mode = "Pivot", Special.Weighty = false, Special.RealCast = false.
-	-- (battle-feel T2, sleep mode, 2026-11-10) Melee.Standoff ships at 0, not the pitched 8: at 8 (and at 3-4) the balance
-	-- sim misses its bands (raids easier: melee pets stand outside the boss's self-centred slams; dungeons harder: the
-	-- enemies spread out, fewer AoE hits; mirror duels lopsided at some stages). The dash, the flurry and the server
-	-- standoff are built and tested at 8; set 8 here to see them (the morning question in .superpowers/battle-feel/LEDGER.md).
-	-- At 0 a melee pet rests at today's spot and dashes only when a gap of MinGap studs is open (else today's Strike).
-	-- (review fix, sleep mode) MinGap 3 -> 1.5: at Standoff 0 the rest-spot gaps are ~2.6-4.3 studs (a Frost Wyrm 2.8, pets
-	-- 2.6-3.4), so at 3 most bites were today's Strike; at 1.5 the short dash + hop back plays against every boss whose box
-	-- leaves room (the Shadow Hydra's spread necks reach past the rest spot: its Strike stays).
-	-- (review fix, sleep mode) Special.RealCast ships OFF: with it on the balance sim read 65 of 67 (two raid win-rate bands);
-	-- off it reads 67 of 67. The specials still look Weighty (the charge, the travel, the impact, the afterglow); only the
-	-- server's damage lands at the press again. Turning it on needs the raid refit (the morning question in the ledger).
+	-- (feel-balance, 2026-11-10, the owner's pick "Balance pass") Melee.Standoff = 8 and Special.RealCast = true ship ON:
+	-- plan docs/superpowers/plans/2026-11-10-feel-balance.md. At 8 a melee pet rests 8 studs farther out and dashes in per
+	-- attack; the server counts it at its BITE POINT while it strikes (Melee.Out = the share of the run in and of the hop back
+	-- that counts as in), so a pet drawn inside a boss's slam is hit and one hopping back is not, and a melee pet's ELEMENT
+	-- grows from its bite point. The real cast lands a special's effects at its cast end (a dash in the charge dodges it);
+	-- Special.Carry keeps what the full meter would have gained during the charge for after the fire (no double tax).
+	-- (review fix, battle-feel) MinGap 3 -> 1.5: the short dash + hop back plays against every boss whose box leaves room.
 	Feel = {
-		Melee = { Dash = true, Standoff = 0, In = 0.30, Bite = 0.08, Hold = 0.12, Back = 0.40, Hop = 0.5, Lunge = 0.6,
+		Melee = { Dash = true, Standoff = 8, In = 0.30, Bite = 0.08, Hold = 0.12, Back = 0.40, Hop = 0.5, Lunge = 0.6,
 			FlurryBelow = 0.75, MinGap = 1.5, Streak = true, StreakMax = 4, Out = 0.5 },
 		Aim = { Mode = "Centre", FloorRay = true },
 		Special = { Weighty = true, Tempo = 1.4, ChargeMax = 1.1, Speed = 0.7, TravelMax = 0.7, Impact = 0.25, HitStop = 0.08,
 			Afterglow = 1.5, Callout = 1.6, TravelHold = 0.3,
-			RealCast = false, Cast = { Blast = 0.9, Beam = 0.8, Storm = 0.95, Freeze = 0.7, Pounce = 0.6, Heal = 0.55, Shield = 0.5, Rally = 0.55, Haste = 0.5 } },
+			RealCast = true, Carry = true, Cast = { Blast = 0.9, Beam = 0.8, Storm = 0.95, Freeze = 0.7, Pounce = 0.6, Heal = 0.55, Shield = 0.5, Rally = 0.55, Haste = 0.5 } },
 	},
 }
 

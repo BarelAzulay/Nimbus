@@ -1130,7 +1130,9 @@ S.p5svc_position_legit = scenario("p5svc_position_legit", function()
 			else
 				local u = tr.units[eid]
 				local mine = tr.static[tr.fighter] or {}
-				local reach = (tonumber(mine.range) or 4.5) + (tonumber(s.radius) or 1) + (tonumber(F.AttackSlack) or 3)
+				-- (feel-balance: + the melee standoff, 8 ships: the server's reach of a melee fighter grows by it alike)
+				local so = (not mine.ranged) and (tonumber(bc.Damage.Standoff) or 0) or 0
+				local reach = (tonumber(mine.range) or 4.5) + (tonumber(s.radius) or 1) + (tonumber(F.AttackSlack) or 3) + so
 				-- the character runs at the enemy (feed through the latency buffer)
 				local dx, dz = u.x - rx, u.z - rz
 				local d = math.sqrt(dx * dx + dz * dz)
