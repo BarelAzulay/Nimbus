@@ -290,7 +290,10 @@ What stays, so no caller changes:
   `FusionService.lua:774-775` (gem Mix), the clients reading the attribute (`ShopEggs.lua:1242, 1280`, `ShopGems.lua:255`,
   `ShopController.lua:1876`).
 - The player attribute `Config.Attr.GemsSettled = true`, written when the flag turns true (at `Load`, and at the recovery's
-  claim), never written false (as today, `DataService.lua:440-441`).
+  claim), never written false (as today, `DataService.lua:440-441`). Review round 2: it follows the flag: removed (nil) when
+  the flag turns false with the player here (a guard trip, a release that landed after a rejoin, at once; the trust window
+  running out with no landed write: after the next save attempt, the autosave sweep within 90 s; no timer threads), and set
+  again by the next landed non-release write (`Settled` still fires once per load).
 - `DataService.Settled` fires once per load, after `ProfileLoaded` (or after `ProfileRebased` when the claim came through the
   recovery). `PetService.lua:1674-1675` listens to it for the pity attribute. Order change from today: `ProfileRebased`
   listeners now see `GemsSettled == true` (the hold is gone); `gem_settle` is rewritten to that rule.
@@ -419,3 +422,42 @@ What changed in the rules above (DataService `P8.trusted`, `P8.ours`, `P8.standI
 5. **The held wait is counted on the clock** (6.2); **HeartbeatSeconds 60** (5); the real hop window is stated in 5 and 20.
 6. Not taken: the review's premise of a 6 s same-key write cooldown (attempts landing at 0, 6, 12, 18, 24 s), with its
    `ClaimRetrySeconds = 6`, a mock cooldown and GetAsync polling: Roblox removed that cooldown in 2023 (section 17).
+
+## 22. Review round 2 (2026-11-10)
+
+Eleven minor findings, all taken (DataService `P8.letGo`, `P8.mine`, `P8.nonce`, `P8.lapsed`, `P8.retakeLater`; tests
+`lock_review2`, new steps in `lock_rejoin_migrate`, `lock_stale_cache` and `smoke_server.lua`'s `shutdown`; the mock knob
+`Mock.DataStore.CommitThenFail`). No new write is added back to back on one key except where one already was (a claim and
+its release), so the per-key write pacing is unchanged.
+
+1. **The v1 migration is applied once** by an expired re-claim (6.5): a record that is still lock-only means nothing of the
+   cached session landed and its profile already holds the v1 tokens on a defaults Base, so the re-read v1 balance is not
+   added again (it used to double the legacy tokens).
+2. **A held orphan does not run out**: time an orphan spends refused by another server's live lock (`HeldBy`, it never owned
+   the save) does not count toward `ORPHAN_TIMEOUT`; its stand-in delta lands after that server's release. `HeldBy` is
+   cleared by a claim that failed with an error (an outage counts as before).
+3. **BindToClose keeps claiming a held stand-in** every `ClaimRetrySeconds` inside its 25 s cap, so a dirty provisional entry
+   whose lock frees during the shutdown lands its delta and releases; a load still held when the server closes writes nothing.
+4. **The GemsSettled attribute follows the flag** (section 12): removed when ownership lapses with the player here, set again
+   by the next landed write.
+5. **A cached held-provisional rejoin shows SaveWaiting** on the new Player; the claim clears it.
+6. **The re-take after a late release never waits for budget** (only an empty-delta heartbeat does, 7); a failed re-take is
+   tried again every 6 s (at most 5 times; the autosave sweep re-takes too).
+7. **Lost answers (chosen: the WriteId nonce, not the documented loss)**: every write stamps `WriteId` (a per-module-copy run
+   id and a counter; record metadata in `KNOWN_TOP`, like `UpdatedAt`; every claim clears it). A write whose UpdateAsync
+   errored after its transform produced a record is kept in `entry.SentWrite[nonce]`; when the next attempt finds that nonce
+   in the record, the earlier write landed and is adopted (its snapshot becomes the Base, no second write). So a strict
+   release whose answer was lost is not taken for another server's write (it used to trip the guard), and, found by the new
+   test, the same lost answer no longer applies a currency delta twice (54, not 58). Strict mode also accepts the record of
+   the last landed write (`entry.LandedWrite`). Not covered: a lost answer followed by a re-claim of the cached entry (6.5)
+   or a recovery still rebases from the old Base (a double delta in that narrower case, as before this round).
+8. **A claim that committed and then failed does not strand its lock**: `entry.ClaimSent` marks a claim whose answer was lost
+   (cleared by any answered claim or landed write); the release of a clean stand-in that carries it makes ONE `UpdateAsync`
+   that clears the lock only when the record holds this server's lock (a lock-only record keeps its shape with the lock
+   expired at once, `At = 0`, so the v1 lookup still runs). The entry is not clean (Release keeps it) until that lands.
+9. **A held entry's first recovery claim comes 4 s after the give-up** (delays 4, 10, 20, 40, 80, 160, 300 s), not the outage
+   cadence's 20 s.
+10. **A landed claim is recorded at once**: `P8.claim` sets `LockHeld` / `LockAt` on the entry the moment UpdateAsync returns
+    with a write, before the read is normalised, so an error after it (the claim loop's pcall, Load's fallback) still releases;
+    an expired re-claim whose claim landed but whose read errored becomes a stand-in (never the stale cached session).
+11. The plan's `HeartbeatSeconds 120` line gained a dated note (round 1 moved it to 60).

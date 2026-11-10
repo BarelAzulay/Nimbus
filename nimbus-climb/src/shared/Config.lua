@@ -99,7 +99,7 @@ Config.Attr = {
 	XpBoostEnds = "XpBoostEnds", -- unix seconds the XP potion bank ends; 0 = no potion running
 	StorePreview = "StorePreview", -- bool: Studio or an allowed dev sees every Store item, Id 0 included (PREVIEW buttons prompt nothing)
 	-- lobby shop (docs/superpowers/specs/2026-11-07-lobby-shop-design.md 5.2): DataService writes it, the client only reads it
-	GemsSettled = "GemsSettled", -- true once this server owns the save for this load (the session lock's flag; absent before, never written false)
+	GemsSettled = "GemsSettled", -- true while this server owns the save (the session lock's flag, OwnsSave); absent before, removed (nil, never written false) when ownership lapses with the player here, set again by the next landed write (review round 2)
 	-- session lock (docs/superpowers/specs/2026-11-10-session-lock-design.md 5, 18): DataService writes it, the client only
 	-- reads it (the loading caption)
 	SaveWaiting = "SaveWaiting", -- true while the load waits for, or the session is provisional because of, another server's lock

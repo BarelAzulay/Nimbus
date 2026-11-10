@@ -741,7 +741,8 @@ S.p5dgn_migrate = guarded("p5dgn_migrate", function()
 		end
 	end
 	for key in pairs(st) do
-		if expected[key] == nil and key ~= "Dungeon" and key ~= "UpdatedAt" and not (key == "Lock" and ownLock) then
+		-- (session lock review round 2: WriteId is record metadata like UpdatedAt: every write stamps its nonce)
+		if expected[key] == nil and key ~= "Dungeon" and key ~= "UpdatedAt" and key ~= "WriteId" and not (key == "Lock" and ownLock) then
 			differs[#differs + 1] = "+" .. key
 		end
 	end
@@ -759,7 +760,7 @@ S.p5dgn_migrate = guarded("p5dgn_migrate", function()
 		end
 	end
 	local farm = type(sth.Stations) == "table" and sth.Stations.Press1 or nil
-	T.check(#differs == 0, "p5 migrate: every other stored field is byte-identical (only Dungeon, Migrations.P5Dungeon / P5Home, UpdatedAt, the P5Home fold of the Home and this server's own session Lock changed)", table.concat(differs, ", "))
+	T.check(#differs == 0, "p5 migrate: every other stored field is byte-identical (only Dungeon, Migrations.P5Dungeon / P5Home, UpdatedAt / WriteId, the P5Home fold of the Home and this server's own session Lock changed)", table.concat(differs, ", "))
 	T.check(#homeDiffers == 0 and type(farm) == "number" and farm >= before.Home.Stations.Press1 and (st.Migrations or {}).P5Home == (folds and true or nil),
 		"p5 migrate: ...the P5Home fold changed only the Berry Farm level (never lower), every other Home key and station is byte-identical; P5Home marked with the fold",
 		table.concat(homeDiffers, ", ") .. " Press1 " .. tostring(farm))

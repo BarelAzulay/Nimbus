@@ -280,6 +280,15 @@ Updated: 2026-10-18 (after wave 2). Branch `v3-phase4`. Plan: `ARCHITECTURE_V3.m
   (no Battle / Trophies / Duels line in DataService's diff; the lock wraps the whole record, the duel / trophy rules are
   unchanged and `p3bs_*`, `p3flow_duels`, `p5svc_duel_fair` passed in the whole run). The whole suite was not run
   again after the two test fixes (25 min, ~3.5 GB for the run on this PC); only the lists above were.
+  Review round 2 (2026-11-10, 11 minor findings, all taken; spec 22): the v1 tokens are applied once by an expired
+  re-claim of a lock-only record (they doubled); a held orphan's time behind a live lock does not run out ORPHAN_TIMEOUT;
+  BindToClose keeps claiming a held stand-in inside its 25 s cap; the GemsSettled attribute follows OwnsSave (removed when
+  it lapses with the player here); a cached held rejoin shows SaveWaiting; the re-take after a late release ignores the
+  budget and retries every 6 s; every write stamps a WriteId nonce, so a write whose answer was lost is adopted (no guard
+  trip on a strict release, and no currency delta applied twice); a claim that committed then failed is let go by one
+  cheap release; a held entry's recovery claims 4 s after the give-up; a landed claim is recorded the moment UpdateAsync
+  returns. Gate: the WHOLE suite (`smoke.py --quick`, 4.76 GiB free, no other run) **27,801 passed, 0 failed**, 992
+  warnings, 1,591 s; `node tools/check.mjs` 0 errors; `count_locals` DataService 162.
 - 2026-10-28 (player ruling, wave 5 dungeon camera): the Camera shake setting OFF turns off ONLY the hit shakes; the dungeon entrance rush, the room walk-in shot and the FOV punch on big attacks always play (short, skippable). The rush is skipped when the camera is > 60 studs from the gate.
 - Evolve button; 2nd evolution only Epic+; level cap 100 for all pets (XP curve keeps rising).
 - Presses become food plants, Collector = Coin Magnet, Kitchen = Food Machine, Gym = Training Place.

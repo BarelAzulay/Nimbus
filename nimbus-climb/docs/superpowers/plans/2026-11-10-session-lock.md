@@ -27,6 +27,7 @@
 
 - The lock is ONE optional top-level key `Lock = { Id, Job, Place, At }` of the save record, in `KNOWN_TOP`, never in a profile / `Base` / delta / snapshot; `Version` stays 2; no new DataStore key (spec 3, 14).
 - `Config.Save = { LockSeconds = 360, HeartbeatSeconds = 120, ClaimWaitSeconds = 12, ClaimRetrySeconds = 3 }`; `Config.Attr.SaveWaiting = "SaveWaiting"`; `Config.Gems.SettleSeconds` removed in Task 2 (spec 5, 12).
+  - 2026-11-10 (review round 1): `HeartbeatSeconds` is now **60**, not 120 (spec 21.5); the heartbeat test checks 50 s (no write) and 65 s (one write).
 - The server id `P8.Id = (game.JobId ~= "" and game.JobId) or ("studio-" .. HttpService:GenerateGUID(false))`; `_SetServerIdForTest` works only where `RunService:IsStudio()` (spec 4).
 - Every `UpdateAsync` callback is pure and non-yielding; outcomes travel through upvalues, never through UpdateAsync's return value for a cancelled write (spec 6.1, 8).
 - A load never waits more than `ClaimWaitSeconds + RETRY_DELAY` (13.5 s); the normal case (free or stale lock) is one round trip (spec 6.2, 6.4).
