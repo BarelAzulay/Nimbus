@@ -550,6 +550,9 @@ Config.Battle = {
 	-- that counts as in), so a pet drawn inside a boss's slam is hit and one hopping back is not, and a melee pet's ELEMENT
 	-- grows from its bite point. The real cast lands a special's effects at its cast end (a dash in the charge dodges it);
 	-- Special.Carry keeps what the full meter would have gained during the charge for after the fire (no double tax).
+	-- The raid refit that goes with 8 / true (BattleCatalog; each number's reading in BUILD_STATE.md 2026-11-11):
+	-- BossRules.MinionDamage 0.06, RaidTiers Mid HpSeconds 95, HpTier storm_titan Mid 0.95, frost_wyrm Max 0.73,
+	-- shadow_hydra Max 1.22. Change Standoff or RealCast -> re-run SIM_BATTLE=full and read the raid cells at 48 seeds.
 	-- (review fix, battle-feel) MinGap 3 -> 1.5: the short dash + hop back plays against every boss whose box leaves room.
 	Feel = {
 		Melee = { Dash = true, Standoff = 8, In = 0.30, Bite = 0.08, Hold = 0.12, Back = 0.40, Hop = 0.5, Lunge = 0.6,
