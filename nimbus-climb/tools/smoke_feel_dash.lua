@@ -662,6 +662,135 @@ local function serverScenarios()
 		T.check(dot > 0, fmt("feel strike mirror: the body points have not crossed (dot %.2f)", dot))
 	end)
 
+	-- (feel-balance review) the half-way meet only while the other one strikes back: a melee pet biting a RESTING melee pet
+	-- runs the whole free gap (to where it stood at Standoff 0), so the defender's own areas round itself still reach it
+	S.feel_strike_meet = guarded("feel_strike_meet", function()
+		local BC, BS = load("feel strike meet")
+		if not BC then
+			return
+		end
+		local got, full, half = nil, nil, nil
+		withStandoff(BC, 8, function()
+			local b, tm, f, on = duel(BS, "storm_tabby", false, { "storm_tabby" }, { { 0, 13 } })
+			local foe = on[1]
+			foe.moveSpeed, foe.nextAttack = 0, huge -- (it rests: never strikes)
+			local gap = 13 - (f.range + foe.radius - 0.5)
+			full, half = min(8, gap), min(8, gap * 0.5)
+			run(b, tm, f, 4, true, function()
+				foe.nextAttack = huge
+				foe.x, foe.z, foe.px, foe.pz = 0, 13, 0, 13
+				if not got and f.bdx ~= nil and foe.bdx == nil then
+					local ax, az = body(f)
+					got = dist(f.x, f.z, ax, az)
+				end
+			end)
+		end)
+		if not T.check(got ~= nil, "feel strike meet: (setup) my melee fighter strikes a resting melee tabby (Standoff 8)") then
+			return
+		end
+		T.check(abs(got - full) <= 0.05 and full - half > 1, fmt("feel strike meet: it runs the whole free gap, %.2f studs in (want %.2f; half-way would be %.2f)", got, full, half))
+	end)
+
+	-- (feel-balance review) the standoff's reach only against the enemy a fighter rests at (or one resting at it): a passing
+	-- enemy 4 studs past plain reach is not swung at, the locked one at the same distance is
+	S.feel_strike_reach = guarded("feel_strike_reach", function()
+		local BC, BS = load("feel strike reach")
+		if not BC then
+			return
+		end
+		local hitLock, hitPass = false, false
+		withStandoff(BC, 8, function()
+			local b, tm, f, on = duel(BS, "storm_tabby", false, { "puddle_frog", "puddle_frog" }, { { 0, 30 }, { 0, -30 } })
+			local lock, pass = on[1], on[2]
+			local d = f.range + lock.radius + BC.Fighter.AttackSlack + 4
+			lock.x, lock.z, lock.px, lock.pz = 0, d, 0, d
+			pass.x, pass.z, pass.px, pass.pz = 0, -d, 0, -d
+			for _, u in ipairs(on) do
+				u.moveSpeed, u.nextAttack = 0, huge
+			end
+			tm.lock = lock
+			local function hold()
+				for _, u in ipairs(on) do
+					u.nextAttack = huge
+					u.target = nil -- (no one rests at my fighter)
+				end
+				lock.x, lock.z, lock.px, lock.pz = 0, d, 0, d
+				pass.x, pass.z, pass.px, pass.pz = 0, -d, 0, -d
+			end
+			run(b, tm, f, 3, true, function(evs)
+				hold()
+				for _, ev in ipairs(evs) do
+					if ev.type == "Hit" and ev.from == f.id then
+						hitLock = hitLock or ev.to == lock.id
+						hitPass = hitPass or ev.to == pass.id
+					end
+				end
+			end)
+			-- the lock (the enemy it fights) moves far away: only the passing frog stays at that distance
+			lock.x, lock.z, lock.px, lock.pz = 0, 70, 0, 70
+			run(b, tm, f, 3, true, function(evs)
+				for _, u in ipairs(on) do
+					u.nextAttack = huge
+					u.target = nil
+				end
+				lock.x, lock.z, lock.px, lock.pz = 0, 70, 0, 70
+				pass.x, pass.z, pass.px, pass.pz = 0, -d, 0, -d
+				for _, ev in ipairs(evs) do
+					if ev.type == "Hit" and ev.from == f.id and ev.to == pass.id then
+						hitPass = true
+					end
+				end
+			end)
+		end)
+		T.check(hitLock, "feel strike reach: my melee fighter swings at its lock 4 studs past plain reach (the standoff's reach)")
+		T.check(not hitPass, "feel strike reach: ...but not at a passing enemy at the same distance that does not rest at it")
+	end)
+
+	-- (feel-balance review) Damage.ModeDamage: every direct hit in a Duel of player teams x ModeDamage.Duel, the same stream
+	-- otherwise (another mode's entry, a Duel with an NPC team)
+	S.feel_mode_damage = guarded("feel_mode_damage", function()
+		local BC, BS = load("feel mode damage")
+		if not BC then
+			return
+		end
+		local keep = BC.Damage.ModeDamage
+		-- two Auto player teams (or `npc`: the foe an NPC team), the first plain Hit of my fighter
+		local function firstHit(md, npc)
+			BC.Damage.ModeDamage = md
+			local dmg = nil
+			local ok, err = pcall(function()
+				withStandoff(BC, 0, function()
+					local b = BS.new({ Mode = "Duel", Seed = 7, Zone = { X = 60, Z = 60 }, Teams = {
+						{ Owner = 1, Side = 1, Auto = true, Specials = false, Pets = { { Key = "storm_tabby", Level = 20, Slot = 1 } } },
+						{ Owner = npc and "npc" or 2, Side = 2, Auto = true, Npc = npc or nil, Specials = false, Pets = { { Key = "puddle_frog", Level = 45, Slot = 1, NoSpecial = true } } } } })
+					local f = b.teams[1].fighter
+					for _ = 1, 100 do
+						f.meter = 0
+						for _, ev in ipairs(b:Step(0.1)) do
+							if ev.type == "Hit" and ev.from == f.id and not ev.miss and not ev.burn and not dmg then
+								dmg = ev.dmg
+							end
+						end
+						if dmg then
+							break
+						end
+					end
+				end)
+			end)
+			BC.Damage.ModeDamage = keep
+			if not ok then
+				error(err, 0)
+			end
+			return dmg
+		end
+		T.check(type(keep) == "table" and keep.Duel == 1.1, "feel mode damage: ModeDamage ships { Duel = 1.1 }", tostring(keep and keep.Duel))
+		local plain, paced = firstHit(nil), firstHit({ Duel = 1.2 })
+		T.check(plain ~= nil and paced ~= nil and abs(paced / plain - 1.2) < 0.02, fmt("feel mode damage: the same hit x1.2 with ModeDamage.Duel 1.2 (%s -> %s)", tostring(plain), tostring(paced)))
+		T.check(firstHit({ Raid = 2 }) == plain, "feel mode damage: another mode's entry leaves a Duel alone")
+		local npcPlain, npcPaced = firstHit(nil, true), firstHit({ Duel = 1.2 }, true)
+		T.check(npcPlain ~= nil and npcPaced == npcPlain, fmt("feel mode damage: a Duel with an NPC team keeps x1 (no one dodges its casts: %s -> %s)", tostring(npcPlain), tostring(npcPaced)))
+	end)
+
 	S.feel_strike_nearest = guarded("feel_strike_nearest", function()
 		local BC, BS = load("feel strike nearest")
 		if not BC then
@@ -968,12 +1097,28 @@ local function serverScenarios()
 		end
 		local keepCast = BC.Damage.SpecialCast
 		BC.Damage.SpecialCast = nil
+		-- (feel-balance review) the log was recorded with 163a2f4's Starter SoloHit 1.45 (three Auto teams of unequal power
+		-- weigh in under two teams' worth, so the lone-team line still shapes the boss's hits): the balance number is held
+		-- at its old value here, the pin is about the strike code at Standoff 0
+		local starter = nil
+		for _, tier in ipairs(BC.RaidTiers) do
+			if tier.Id == "Starter" then
+				starter = tier
+			end
+		end
+		local keepSolo = starter and starter.SoloHit
+		if starter then
+			starter.SoloHit = 1.45
+		end
 		local h, n, bxSeen, len
 		local ok, err = pcall(function()
 			withStandoff(BC, 0, function()
 				h, n, bxSeen, len = logHash(BS)
 			end)
 		end)
+		if starter then
+			starter.SoloHit = keepSolo
+		end
 		BC.Damage.SpecialCast = keepCast
 		if not T.check(ok and h ~= nil, "feel strike off: (setup) a 60 s seeded raid at Standoff 0, the real cast off", tostring(err)) then
 			return

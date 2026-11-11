@@ -5,11 +5,13 @@
 --   support   Support (Economy) pets: DPS ratio 0.65-0.75 of Combat pets; a Support fighter can fight, best as a helper
 --   levels    level beats rarity (battles only): a L30 Common beats a L1 Secret (>= 93%), a L100 evolved Common an unevolved L50 Secret (>= 80%),
 --             a Secret stays the stronger pet at equal level and stage
---   duels     mirror duels per stage (scripted players both sides): 40-60%, no draws, none at the 120 s limit
+--   duels     mirror duels per stage (scripted players both sides): 40-60%, no draws; the pace (feel-balance review): at most 5%
+--             timeouts and an average under 100 s at every stage and in the evolved mirror (SIM.Targets.Duel)
 --             + the element counter (balance-5: Water vs Flame, the wheel on vs off): it decides an even fight (>= 90%)
 --             and is worth x1.15-1.45 TeamPower
 --   raids     per boss and fight tier (spec 2026-11-01, SIM.RaidTeams, SIM.Targets.Raid), a team near the top of the tier with
---             the default trainer: solo <= 15%, 3 teams 25-55%, 8 teams >= 70%; group fights, won and lost, last 100-240 s and none
+--             the default trainer (48 seeds a solo / 3-team cell in full): solo <= 15% a cell and 2-8% on average, 3 teams
+--             25-55%, 8 teams >= 70%; group fights, won and lost, last 100-240 s and none
 --             times out; a dare is harder; the lethal attack spares a dodging fighter and kills a standing one; joins / leaves; idle alts
 --   ring      the owner's wall (spec 2026-10-31 s.4, run XP + loss XP, HP carried, fainted pets out; SIM.Targets.Ring): 3 L1 Commons
 --             win 2-4 rounds, Ring 5 in <= 10% of seeds; Legendaries, the owner's Secrets, L50, maxed by band; round 1 is an easy
@@ -264,7 +266,8 @@ SIM.Targets = {
 		Max = { Floor = { 12, 12 } },
 	},
 	Progress = { Ring5 = { 4, 9 }, F1 = { 4, 10 }, Ring10 = { 20, 45 } },
-	Raid = { Solo = 15, Three = { 25, 55 }, Eight = 70, Group = { 100, 240 }, Warning = 2.5 },
+	Raid = { Solo = 15, SoloAverage = { 2, 8 }, Three = { 25, 55 }, Eight = 70, Group = { 100, 240 }, Warning = 2.5 },
+	Duel = { Timeouts = 5, AvgSeconds = 100 }, -- (feel-balance review) the mirror duels' pace
 }
 local function inBand(value, band)
 	return value >= band[1] and value <= band[2]
@@ -1016,6 +1019,9 @@ section("duels", function(opts)
 	local seeds = max(32, opts.seeds)
 	local worst, longest, draws, timeouts, wins1, n = 50, 0, 0, 0, 0, 0
 	local stageOk = true
+	-- (feel-balance review) the duel's pace: the worst stage's timeout share and average length (the evolved mirror below)
+	local paceOk, worstOut, worstDur = true, 0, 0
+	local DT_ = SIM.Targets.Duel
 	for _, st in ipairs(SIM.Stages) do
 		local agg = series(function(seed)
 			return { Mode = "Duel", Seed = seed, Teams = { team(1, 1, st.Pets), team(2, 2, st.Pets) } }
@@ -1028,6 +1034,7 @@ section("duels", function(opts)
 			stageOk = false
 		end
 		longest = max(longest, agg.maxDur)
+		worstOut, worstDur = max(worstOut, pct(agg.timeouts, agg.n)), max(worstDur, agg.avgDur)
 		draws = draws + agg.draws
 		timeouts = timeouts + agg.timeouts
 		wins1 = wins1 + agg.wins[1]
@@ -1043,6 +1050,12 @@ section("duels", function(opts)
 	end, { [1] = "player", [2] = "player" }, max(128, opts.seeds))
 	out(fmt("  %-4s %-11s power %6d  side1 %3d%%  draws %d  timeouts %2d  dur %5.1f s (max %5.1f)  maxHit %.2f", "L50", "Evolved II", powerOf(SIM.Teams.L50), evolved.winPct, evolved.draws, evolved.timeouts, evolved.avgDur, evolved.maxDur, evolved.maxPetHit))
 	target("an evolved mirror duel (3 L50 Legendaries, Evo 2, both sides scripted) is fair: 40-60%, no draws", evolved.winPct >= 40 and evolved.winPct <= 60 and evolved.draws == 0, fmt("side1 %d%%, draws %d", evolved.winPct, evolved.draws))
+	-- (feel-balance review) a duel ends by knock-out, not on the 120 s clock: the fairness rows cannot see it (a timeout goes
+	-- to the damage leader), so its share and the average length are a target of their own (163a2f4: 0 timeouts, the
+	-- longest stage 98.6 s, the evolved mirror 92.7 s)
+	worstOut, worstDur = max(worstOut, pct(evolved.timeouts, evolved.n)), max(worstDur, evolved.avgDur)
+	paceOk = worstOut <= DT_.Timeouts and worstDur <= DT_.AvgSeconds
+	target(fmt("mirror duels end by knock-out: at most %d%% timeouts and an average under %d s at every stage and in the evolved mirror", DT_.Timeouts, DT_.AvgSeconds), paceOk, fmt("worst %d%% timeouts, longest average %.1f s", worstOut, worstDur))
 	SIM.elementCounter(opts.seeds)
 end)
 
@@ -1212,9 +1225,12 @@ end
 
 section("raids", function(opts)
 	local T = SIM.Targets.Raid
-	local seeds = opts.quick and 4 or 12
+	-- (feel-balance review 2026-11-11) full: 48 seeds a solo and a 3-team cell (was 12: one seed was 8 points, a 45% cell read
+	-- 58% on its 12-seed draw and a 5% solo cell read 17% on 2 wins; at about 5% a 16-cell board had ~85% odds of one such
+	-- false miss). About +2 minutes a full run. Quick keeps 4 / 12
+	local seeds = opts.quick and 4 or 48
 	local seeds8 = opts.quick and 2 or 6
-	local soloSeeds = 12 -- also in quick: at 4 seeds one win reads 25%, a cell could not be about 5% and under the 15% ceiling
+	local soloSeeds = opts.quick and 12 or 48 -- (quick: at 4 seeds one win reads 25%, a cell could not be about 5% and under the 15% ceiling)
 	header(fmt("Raids per boss and tier (default trainer, a team near the top of the tier): %d seeds a cell, %d solo, %d for 8 teams", seeds, soloSeeds, seeds8))
 	local soloOk, threeOk, eightOk, groupDurOk, wonDurOk = true, true, true, true, true
 	local worstSolo, worstThreeLo, worstThreeHi, worstEight, longest, shortest = 0, 100, 0, 100, 0, huge
@@ -1246,6 +1262,10 @@ section("raids", function(opts)
 		end
 	end
 	target("solo: a team near the top of its tier wins at most 15% in every boss x tier cell (about 5%)", soloOk, fmt("worst %d%%, average %.1f%%", worstSolo, soloSum / max(1, soloCells)))
+	-- (feel-balance review) the floor: "solo barely possible" (the owner's) is not "solo impossible"; the ceiling above cannot
+	-- see a board that falls to 0% (the 2026-11-11 refit read 0.5% here before SoloHit was refitted)
+	local soloAvg = soloSum / max(1, soloCells)
+	target(fmt("solo stays barely possible: the cells average %d-%d%%", T.SoloAverage[1], T.SoloAverage[2]), inBand(soloAvg, T.SoloAverage), fmt("average %.1f%%", soloAvg))
 	target("3 teams: 25-55% in every cell", threeOk, fmt("%d%%-%d%%", worstThreeLo, worstThreeHi))
 	target("8 teams: at least 70% in every cell", eightOk, fmt("worst %d%%", worstEight))
 	target("group fights (3 and 8 teams, won and lost) average 100-240 s in every cell, Lava Golem included", groupDurOk, fmt("%.0f-%.0f s", shortest, longest))

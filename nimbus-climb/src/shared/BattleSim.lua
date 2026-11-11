@@ -507,8 +507,11 @@ function Strike.rules(D)
 end
 
 -- the studs u's bite point lies in from its rest spot toward `target`: the free gap down to the Standoff-0 rest spot
--- (reach - 0.5), at most the standoff; half of it when the target has a standoff too (both dash in: they meet half-way)
-function Strike.advance(D, u, target)
+-- (reach - 0.5), at most the standoff; half of it only while the target strikes back at u at time t (both dash in: they
+-- meet half-way). (feel-balance review) It was half whenever the target had a standoff, so a melee pet biting a resting
+-- melee pet stopped 4 studs short of where it stood at Standoff 0, outside the defender's own areas round itself (a mirror
+-- duel's Shield Burst never reached it): the duels' extra length at Standoff 8
+function Strike.advance(D, u, target, t)
 	local so = standoffOf(D, u)
 	if so <= 0 or not target then
 		return 0
@@ -517,15 +520,15 @@ function Strike.advance(D, u, target)
 	if gap <= 0 then
 		return 0
 	end
-	if standoffOf(D, target) > 0 then
+	if standoffOf(D, target) > 0 and target.sTgt == u and target.sFrom and t and t >= target.sFrom - STRIKE_EPS and t <= target.sTo + STRIKE_EPS then
 		gap = gap * 0.5
 	end
 	return min(so, gap)
 end
 
--- u's bite point toward `target` now -> x, z (its rest spot when it has no advance)
-function Strike.point(D, u, target)
-	local adv = Strike.advance(D, u, target)
+-- u's bite point toward `target` at time t -> x, z (its rest spot when it has no advance)
+function Strike.point(D, u, target, t)
+	local adv = Strike.advance(D, u, target, t)
 	if adv <= 0 then
 		return u.x, u.z
 	end
@@ -588,7 +591,7 @@ function Strike.refresh(self)
 					Strike.close(u)
 				else
 					D = D or damageRules()
-					local adv = Strike.advance(D, u, tg)
+					local adv = Strike.advance(D, u, tg, t)
 					local dx, dz = tg.x - u.x, tg.z - u.z
 					local d = sqrt(dx * dx + dz * dz)
 					if adv > 0 and d > 0.01 then
@@ -1456,6 +1459,20 @@ function BattleSim.new(setup)
 	if type(mh) == "table" and type(mh.Modes) == "table" and mh.Modes[mode] and finite(mh.Share) and mh.Share > 0 then
 		self.maxHitShare = mh.Share
 	end
+	-- (feel-balance review) the mode's pace: every direct hit x Damage.ModeDamage[mode] (nil = x1) in a fight of player teams
+	-- only (the cause is both sides dashing out of the real casts; an NPC never dodges one, so a fight with an NPC team keeps x1)
+	local md = damageRules().ModeDamage
+	if type(md) == "table" and finite(md[mode]) and md[mode] > 0 and md[mode] ~= 1 then
+		local players = type(setup.Teams) == "table" and #setup.Teams > 0
+		for _, spec in ipairs(type(setup.Teams) == "table" and setup.Teams or {}) do
+			if type(spec) ~= "table" or spec.Npc then
+				players = false
+			end
+		end
+		if players then
+			self.modeDamage = md[mode]
+		end
+	end
 	local teams = type(setup.Teams) == "table" and setup.Teams or {}
 	for _, spec in ipairs(teams) do
 		if type(spec) == "table" then
@@ -2054,6 +2071,9 @@ local function applyDamage(self, attacker, victim, amount, events, extra, noVari
 	end
 	if victim.markUntil and self.t < victim.markUntil then
 		dmg = dmg * victim.markMult
+	end
+	if self.modeDamage and not (extra and (extra.burn or extra.thorns)) then
+		dmg = dmg * self.modeDamage -- (a burn tick / thorns come from a hit already paced: not twice)
 	end
 	local cap = self.maxHitShare
 	if cap and attacker and attacker.kind ~= "Boss" and dmg > victim.maxHp * cap then
@@ -3091,7 +3111,7 @@ local function castElement(self, team, u, arg, events)
 	-- strike window now (the client draws the dash)
 	local ox, oz = u.x, u.z
 	if aimT and standoffOf(damageRules(), u) > 0 then
-		ox, oz = Strike.point(damageRules(), u, aimT)
+		ox, oz = Strike.point(damageRules(), u, aimT, self.t)
 		Strike.open(self, u, aimT, self.t)
 	end
 	local cx, cz = ox, oz -- a Circle's centre
@@ -3902,10 +3922,26 @@ local function inReach(f, e, slack)
 	return dx * dx + dz * dz <= reach * reach
 end
 
+-- (feel-balance review) the standoff's share of the auto-attack's reach against `e`: f's standoff when e is the enemy f
+-- rests at (f.restOn: its engaged / Auto target or the lock), e's standoff when e rests at f (e.target == f: the gap
+-- between them is e's), else 0. Every other enemy is reached as at Standoff 0, so a melee pet does not catch passing
+-- minions 8 studs sooner than it would without the standoff (reach unchanged)
+local function standoffSlack(D, f, e)
+	local so = 0
+	if e == f.restOn then
+		so = standoffOf(D, f)
+	end
+	if e.target == f then
+		so = max(so, standoffOf(D, e))
+	end
+	return so
+end
+
 -- the auto-attack's target: the lock when targetable and in reach, else the nearest targetable enemy in reach (by id on ties)
 local function autoTarget(self, team, f, slack)
+	local D = damageRules()
 	local lock = lockOf(team)
-	if lock and targetable(self, lock) and inReach(f, lock, slack) then
+	if lock and targetable(self, lock) and inReach(f, lock, slack + standoffSlack(D, f, lock)) then
 		return lock
 	end
 	local best, bestD2 = nil, huge
@@ -3916,7 +3952,7 @@ local function autoTarget(self, team, f, slack)
 		if e.side ~= side and targetable(self, e) then
 			local dx, dz = e.x - f.x, e.z - f.z
 			local d2 = dx * dx + dz * dz
-			local reach = f.range + e.radius + slack
+			local reach = f.range + e.radius + slack + standoffSlack(D, f, e)
 			if d2 <= reach * reach and d2 < bestD2 then
 				best, bestD2 = e, d2
 			end
@@ -3936,7 +3972,7 @@ function fighterSwing(self, team, f, events)
 	if t < f.nextAttack - interval * (1 - num(F.AttackTolerance, 0.85)) then
 		return false
 	end
-	local target = autoTarget(self, team, f, num(F.AttackSlack, 3) + standoffOf(damageRules(), f))
+	local target = autoTarget(self, team, f, num(F.AttackSlack, 3))
 	if not target then
 		return false
 	end
@@ -4074,6 +4110,9 @@ local function fighterStep(self, team, dt, events)
 	if not team.auto then
 		engaged = engageUpdate(self, team, f, events)
 	end
+	-- (feel-balance review) the enemy this fighter rests at (standoffSlack): the engaged target, else the lock, else the
+	-- nearest enemy (an Auto team's target; in play a swinging fighter is always engaged or locked)
+	f.restOn = engaged or lockOf(team) or nearestEnemy(self, f) or nil
 	if t < f.dashUntil then
 		-- wave 6: the Dash sidestep (set at the press) at legal run x the dash factor, then it holds until DashSeconds end
 		local left = f.dashLeft or 0

@@ -4352,13 +4352,51 @@ function Tele.Covers(tl, x, z, pad)
 	return dx * dx + dz * dz <= (tl.r + pad) * (tl.r + pad)
 end
 
+-- (feel-balance review) the studs a melee, non-boss unit rests farther out (BattleSim standoffOf; 0 for a ranged unit or a boss)
+function Tele.StandoffOf(u)
+	if not u or u.ranged or u.isBoss then
+		return 0
+	end
+	local so = BattleCatalog and type(BattleCatalog.Damage) == "table" and tonumber(BattleCatalog.Damage.Standoff)
+	return (so and so > 0) and so or 0
+end
+
+-- (feel-balance review) where the server counts my striking melee pet: its BITE POINT (BattleSim Strike.point), the rest
+-- spot moved toward its target by the free gap down to the Standoff-0 rest spot (range + the target's radius - 0.5), at most
+-- the standoff (half of the gap while a melee target strikes back: both points are returned). The wire carries no body
+-- point, so the client works it out the same way from the unit's target -> x, z, hx, hz | nil (no standoff, no target,
+-- already at the edge)
+function Tele.BitePoint(B, u)
+	local so = Tele.StandoffOf(u)
+	local tg = so > 0 and u.target and B.units[u.target] or nil
+	if not tg or tg.hp <= 0 then
+		return nil
+	end
+	local dx, dz = tg.x - u.x, tg.z - u.z
+	local d = sqrt(dx * dx + dz * dz)
+	local gap = d - (u.range + tg.radius - 0.5)
+	if gap <= 0 or d < 0.01 then
+		return nil
+	end
+	local adv = min(so, gap)
+	local half = Tele.StandoffOf(tg) > 0 and min(so, gap * 0.5) or adv
+	return u.x + dx / d * adv, u.z + dz / d * adv, u.x + dx / d * half, u.z + dz / d * half
+end
+
 -- my fighter's body reaches a telegraph that has not hit yet (the HUD's DASH cue: dash through it): the sim's own test,
--- the shape + the unit's radius, so every pet it would hit is warned
+-- the shape + the unit's radius, so every pet it would hit is warned. (feel-balance review) A melee pet with a standoff is
+-- hit at its bite point while it strikes, so a shape over its bite point warns too (the sim's scripted player dodges on it)
 local function threatened(B, tl)
 	for slot = 1, 4 do
 		local u = B.mine[slot]
-		if u and u.hp > 0 and u.state ~= S_DOWN and u.state ~= S_BENCHED and Tele.Covers(tl, u.x, u.z, u.radius) then
-			return u
+		if u and u.hp > 0 and u.state ~= S_DOWN and u.state ~= S_BENCHED then
+			if Tele.Covers(tl, u.x, u.z, u.radius) then
+				return u
+			end
+			local bx, bz, hx, hz = Tele.BitePoint(B, u)
+			if bx and (Tele.Covers(tl, bx, bz, u.radius) or Tele.Covers(tl, hx, hz, u.radius)) then
+				return u
+			end
 		end
 	end
 	return nil

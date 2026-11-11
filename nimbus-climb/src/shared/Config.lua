@@ -553,6 +553,8 @@ Config.Battle = {
 	-- The raid refit that goes with 8 / true (BattleCatalog; each number's reading in BUILD_STATE.md 2026-11-11):
 	-- BossRules.MinionDamage 0.06, RaidTiers Mid HpSeconds 95, HpTier storm_titan Mid 0.95, frost_wyrm Max 0.73,
 	-- shadow_hydra Max 1.22. Change Standoff or RealCast -> re-run SIM_BATTLE=full and read the raid cells at 48 seeds.
+	-- (feel-balance review, 2026-11-11) RaidTiers SoloHit Starter 1.33 / Mid 1.05 / High 0.96 (solos back to about 4-5%) and
+	-- Damage.ModeDamage = { Duel = 1.1 } (the dodgeable cast had pushed mirror duels onto the 120 s clock).
 	-- (review fix, battle-feel) MinGap 3 -> 1.5: the short dash + hop back plays against every boss whose box leaves room.
 	Feel = {
 		Melee = { Dash = true, Standoff = 8, In = 0.30, Bite = 0.08, Hold = 0.12, Back = 0.40, Hop = 0.5, Lunge = 0.6,

@@ -400,15 +400,18 @@ S.evo_stage0_pinned = guarded("evo_stage0_pinned", function()
 		return floor(b.teams[1].damage), floor(b.teams[2].damage), table.concat(koSteps, ","), result and result.Reason or "none"
 	end
 	-- (feel-balance) and with the melee standoff off (Damage.Standoff 0: the pin's pets rest where they did; 8 ships)
-	local keepCast, keepSo = BC and BC.Damage.SpecialCast, BC and BC.Damage.Standoff
+	-- (feel-balance review) and the Duel pace off (Damage.ModeDamage nil: x1; { Duel = 1.1 } ships)
+	local keepCast, keepSo, keepMode = BC and BC.Damage.SpecialCast, BC and BC.Damage.Standoff, BC and BC.Damage.ModeDamage
 	if BC then
 		BC.Damage.SpecialCast = nil
 		BC.Damage.Standoff = 0
+		BC.Damage.ModeDamage = nil
 	end
 	local okRun, d1, d2, ko, reason = pcall(duel)
 	if BC then
 		BC.Damage.SpecialCast = keepCast
 		BC.Damage.Standoff = keepSo
+		BC.Damage.ModeDamage = keepMode
 	end
 	T.check(okRun and d1 == DMG1 and d2 == DMG2 and ko == KO_STEPS and reason == REASON, "evo stage 0: the pinned Duel replays byte for byte (damage, KO steps, reason; SpecialCast off)", fmt("%s %s [%s] %s", tostring(d1), tostring(d2), tostring(ko), tostring(reason)))
 	local okCast, c1, c2, cko, creason = pcall(duel)

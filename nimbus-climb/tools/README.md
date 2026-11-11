@@ -156,7 +156,8 @@ SIM_BATTLE="quick only=duels,raids" python3 -c "import lupa.luajit21 as L; L.Lua
   `py -3.12 tools/sim_measure.py "raid <boss> <tier> <players> <seeds> <standoff> <on|off>;..."` (on|off = the real
   cast) prints a cell's win rate with what hits the melee and the ranged fighters, where they stand, and the specials
   per fighter-minute. A second argument runs another Lua file in its place (the fit's own scans). The `raids` table
-  reads 12 seeds a cell, where one seed is 8 points: read a cell at 48-96 seeds before changing a number for it.
+  reads 48 seeds a solo and a 3-team cell in full (feel-balance review; it was 12, where one seed was 8 points), 6 for
+  8 teams; quick reads 12 / 4 / 2: read a noisy cell at 96 seeds before changing a number for it.
 
 ## Model renderer: see the voxel art without Studio
 

@@ -360,6 +360,25 @@ Updated: 2026-10-18 (after wave 2). Branch `v3-phase4`. Plan: `ARCHITECTURE_V3.m
   a blink; (4) the Shadow Hydra: the dash plays (client_feel_dash_hydra: its box leaves >= 1.5 studs at 8); (5) the
   threat cue (HUD Threat / DASH!) tests a pet's rest spot only, so a pet whose bite point but not its rest spot is
   inside a telegraph is hit while it strikes, without the cue (morning question).
+- 2026-11-11 (feel balance review round, branch `feel-balance`, not merged; ledger `.superpowers/battle-feel/LEDGER.md`
+  "feel-balance review round"; evidence `.superpowers/battle-feel/evidence/fbr-*.txt`): four review findings, each
+  checked against the code and the sim, each fix with a test that fails on 8d37a73 (fbr-red-head.txt).
+
+  | Change | Why (the reading) |
+  |---|---|
+  | HUD Dash cue / DASH! test the bite point too (BattleController `Tele.BitePoint`) | the server hits a striking melee pet at its bite point; the wire never carried it (SnapshotDelta has no bx / bz), so the client works it out like `Strike.point`; test: `client_raid_enrage` at Standoff 8 with a striking Bear |
+  | the standoff's reach only toward the enemy a fighter rests at, or one resting at it (BattleSim `standoffSlack`, `f.restOn`) | the auto-attack had it against every enemy; with the fix `MinionDamage` 0.06 still reads 40% for 3 teams at 48 seeds (0.035: 49%, 10 official misses), so 0.06 stays; test `feel_strike_reach` |
+  | a bite runs the whole free gap unless the other melee unit strikes back (`Strike.advance`) | it was always half-way, so a pet biting a resting melee pet stopped 3.6 studs short (the evolved mirror's Shield Burst never reached it); test `feel_strike_meet` |
+  | `RaidTiers` SoloHit Starter 1.45 -> 1.33, Mid 1.17 -> 1.05, High 1.14 -> 0.96 (Max 1.08) | solos had fallen to 1.2% (48 seeds); these read 4.0% at 96 seeds, the gate 4.6% |
+  | `Damage.ModeDamage = { Duel = 1.1 }` (new; direct hits in a duel of player teams; no NPC team, no burn / thorns twice) | both sides now dash out of the real casts (the cause: the scripted dodge off took S2 87 -> 71 s), so mirror duels hit the 120 s clock (16 of 640, 33 of 128 evolved); 1.1 clears it: 0 timeouts, longest average 96.6 s (163a2f4 98.6 s); test `feel_mode_damage` |
+  | sim targets: solo cells average 2-8%; duels at most 5% timeouts and an average under 100 s; the raid table at 48 seeds a solo / 3-team cell (was 12) | the 12-seed board read a 45% cell as 58% and a 5% solo cell as 17%; about +2.5 min a full run |
+
+  Gate: `SIM_BATTLE=full` 69 of 69 (fbr-sim-full-3.txt, 500 s): duels 50% overall, worst stage 45%, 0 timeouts; solo worst
+  15% (frost_wyrm Starter / Mid, on the ceiling), average 4.6%; 3 teams 31-52%; 8 teams 100%; groups 121-237 s; trained S7
+  4 of 4; dungeon 97 / 59 / 8; Ring 5 4.4 min. Battle lists (258 scenarios) 6143 / 1 = the pre-existing
+  client_p5battle_mobile 390x844 BossBar (fails the same on 8d37a73). The whole suite `smoke.py --quick` (6.1 GB free, nothing else running): 27,971 passed / 0 failed / 992 warnings (1,886 s; fbr-smoke-whole-quick.txt).
+  `node tools/check.mjs` 0 errors. Owner questions 7-9 in the ledger (the duel pace knob, the 48-seed table, the Frost Wyrm
+  solo cells).
 - 2026-10-28 (player ruling, wave 5 dungeon camera): the Camera shake setting OFF turns off ONLY the hit shakes; the dungeon entrance rush, the room walk-in shot and the FOV punch on big attacks always play (short, skippable). The rush is skipped when the camera is > 60 studs from the gate.
 - Evolve button; 2nd evolution only Epic+; level cap 100 for all pets (XP curve keeps rising).
 - Presses become food plants, Collector = Coin Magnet, Kitchen = Food Machine, Gym = Training Place.
