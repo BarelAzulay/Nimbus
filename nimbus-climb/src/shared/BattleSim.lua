@@ -433,17 +433,30 @@ local function pointInLine(px, pz, radius, x, z, angle, length, width)
 	return perp <= width / 2 + radius
 end
 
+-- (feel-balance) every area test reads a unit at its BODY POINT: the rest spot, or its bite point while it strikes
+-- (u.bdx / u.bdz = the offset, set by Strike.refresh; nil = at rest, the exact old test)
 local function inCircle(u, x, z, r)
+	local bdx = u.bdx
+	if bdx then
+		return pointInCircle(u.x + bdx, u.z + u.bdz, u.radius, x, z, r)
+	end
 	return pointInCircle(u.x, u.z, u.radius, x, z, r)
 end
 
 local function inLine(u, x, z, angle, length, width)
+	local bdx = u.bdx
+	if bdx then
+		return pointInLine(u.x + bdx, u.z + u.bdz, u.radius, x, z, angle, length, width)
+	end
 	return pointInLine(u.x, u.z, u.radius, x, z, angle, length, width)
 end
 
 -- a body inside a cone from (x, z) along `angle`, half-angle `half` (radians), `length` studs
 local function inCone(u, x, z, angle, half, length)
 	local dx, dz = u.x - x, u.z - z
+	if u.bdx then
+		dx, dz = dx + u.bdx, dz + u.bdz
+	end
 	local d = sqrt(dx * dx + dz * dz)
 	if d > length + u.radius then
 		return false
@@ -461,6 +474,137 @@ local function inCone(u, x, z, angle, half, length)
 	-- the body's radius widens the cone a little at its distance
 	local extra = (d > 0.01) and (u.radius / d) or 0
 	return abs(a) <= half + extra
+end
+
+-- (battle-feel T2, spec decision 2) the studs a melee, non-boss unit rests farther out: D.Standoff for it, 0 for a ranged
+-- unit or a boss. Added to its rest spot and to every attack / hit test of it alike (reach, damage and tempo unchanged)
+local function standoffOf(D, u)
+	if u.ranged or u.kind == "Boss" then
+		return 0
+	end
+	local so = D and D.Standoff
+	return (finite(so) and so > 0) and so or 0
+end
+
+----------------------------------------------------------------------
+-- (feel-balance, plan docs/superpowers/plans/2026-11-10-feel-balance.md Task 1) THE STRIKE: a melee unit with a standoff
+-- has a server BODY POINT on the dash the client draws (BattleCatalog.Damage.Strike): at its bite point (the rest spot moved
+-- Strike.advance toward its target) from biteAt - In x Out to biteAt + Bite + Hold + Back x Out of every bite, all the time
+-- while it flurries (bites under FlurryBelow apart), at the rest spot otherwise and at once when it is stunned, casts,
+-- dashes, falls, leaves the floor or its target does. Strike.refresh sets u.bdx / u.bdz (the offset) once per step before
+-- any unit acts; the area tests (inCircle / inLine / inCone), the boss's nearest pick and Snapshot (bx, bz) read it. The
+-- server alone moves it: no command does (a Dash only closes it). No RNG. Standoff 0: no window ever opens.
+----------------------------------------------------------------------
+local Strike = {}
+local STRIKE_EPS = 1e-6
+
+function Strike.rules(D)
+	local s = D and D.Strike
+	if type(s) ~= "table" then
+		s = {}
+	end
+	return num(s.In, 0.3), num(s.Bite, 0.08), num(s.Hold, 0.12), num(s.Back, 0.4), num(s.FlurryBelow, 0.75), num(s.Out, 0.5)
+end
+
+-- the studs u's bite point lies in from its rest spot toward `target`: the free gap down to the Standoff-0 rest spot
+-- (reach - 0.5), at most the standoff; half of it only while the target strikes back at u at time t (both dash in: they
+-- meet half-way). (feel-balance review) It was half whenever the target had a standoff, so a melee pet biting a resting
+-- melee pet stopped 4 studs short of where it stood at Standoff 0, outside the defender's own areas round itself (a mirror
+-- duel's Shield Burst never reached it): the duels' extra length at Standoff 8
+function Strike.advance(D, u, target, t)
+	local so = standoffOf(D, u)
+	if so <= 0 or not target then
+		return 0
+	end
+	local gap = dist(u.x, u.z, target.x, target.z) - (u.range + target.radius - 0.5)
+	if gap <= 0 then
+		return 0
+	end
+	if standoffOf(D, target) > 0 and target.sTgt == u and target.sFrom and t and t >= target.sFrom - STRIKE_EPS and t <= target.sTo + STRIKE_EPS then
+		gap = gap * 0.5
+	end
+	return min(so, gap)
+end
+
+-- u's bite point toward `target` at time t -> x, z (its rest spot when it has no advance)
+function Strike.point(D, u, target, t)
+	local adv = Strike.advance(D, u, target, t)
+	if adv <= 0 then
+		return u.x, u.z
+	end
+	local dx, dz = target.x - u.x, target.z - u.z
+	local d = sqrt(dx * dx + dz * dz)
+	if d < 0.01 then
+		return u.x, u.z
+	end
+	return u.x + dx / d * adv, u.z + dz / d * adv
+end
+
+function Strike.close(u)
+	u.sFrom, u.sTo, u.sTgt, u.nFrom, u.nTo, u.nTgt, u.bdx, u.bdz = nil, nil, nil, nil, nil, nil, nil, nil
+end
+
+-- u's bite on `target` is drawn at biteAt: its window, merged into the open one when they touch (a flurry: bites under
+-- FlurryBelow apart hold it to biteAt + FlurryBelow + Back x Out, so the next bite lands inside it); a window that starts
+-- after the open one ends waits in the next slot
+function Strike.open(self, u, target, biteAt)
+	local D = damageRules()
+	if standoffOf(D, u) <= 0 or not target or not finite(biteAt) then
+		return
+	end
+	local In, Bite, Hold, Back, Below, Out = Strike.rules(D)
+	local from = biteAt - In * Out
+	local flurry = u.sBite ~= nil and biteAt - u.sBite < Below
+	local to = biteAt + (flurry and (Below + Back * Out) or (Bite + Hold + Back * Out))
+	u.sBite = biteAt
+	if u.sTo and u.sTgt == target and u.sTo >= from - 0.1 - STRIKE_EPS then
+		u.sFrom, u.sTo = min(u.sFrom, from), max(u.sTo, to)
+	elseif u.sTo and u.sTo >= self.t - STRIKE_EPS then
+		if u.nTo and u.nTgt == target and u.nTo >= from - 0.1 - STRIKE_EPS then
+			u.nFrom, u.nTo = min(u.nFrom, from), max(u.nTo, to)
+		else
+			u.nFrom, u.nTo, u.nTgt = from, to, target
+		end
+	else
+		u.sFrom, u.sTo, u.sTgt = from, to, target
+		u.nFrom, u.nTo, u.nTgt = nil, nil, nil
+	end
+end
+
+-- once per step, before any unit acts: every unit's body point for this step
+function Strike.refresh(self)
+	local D = nil
+	local t = self.t
+	local list = self.units
+	for i = 1, #list do
+		local u = list[i]
+		local on = false
+		if u.sTo then
+			while u.sTo and t > u.sTo + STRIKE_EPS do
+				u.sFrom, u.sTo, u.sTgt = u.nFrom, u.nTo, u.nTgt
+				u.nFrom, u.nTo, u.nTgt = nil, nil, nil
+			end
+			if u.sTo and t >= u.sFrom - STRIKE_EPS then
+				local tg = u.sTgt
+				if not u.alive or u.gone or u.benched or t < (u.stunUntil or 0) or t < (u.castUntil or 0) or t < (u.dashUntil or 0)
+					or not tg or not tg.alive or tg.gone or tg.benched then
+					Strike.close(u)
+				else
+					D = D or damageRules()
+					local adv = Strike.advance(D, u, tg, t)
+					local dx, dz = tg.x - u.x, tg.z - u.z
+					local d = sqrt(dx * dx + dz * dz)
+					if adv > 0 and d > 0.01 then
+						u.bdx, u.bdz = dx / d * adv, dz / d * adv
+						on = true
+					end
+				end
+			end
+		end
+		if not on and u.bdx then
+			u.bdx, u.bdz = nil, nil
+		end
+	end
 end
 
 ----------------------------------------------------------------------
@@ -1315,6 +1459,20 @@ function BattleSim.new(setup)
 	if type(mh) == "table" and type(mh.Modes) == "table" and mh.Modes[mode] and finite(mh.Share) and mh.Share > 0 then
 		self.maxHitShare = mh.Share
 	end
+	-- (feel-balance review) the mode's pace: every direct hit x Damage.ModeDamage[mode] (nil = x1) in a fight of player teams
+	-- only (the cause is both sides dashing out of the real casts; an NPC never dodges one, so a fight with an NPC team keeps x1)
+	local md = damageRules().ModeDamage
+	if type(md) == "table" and finite(md[mode]) and md[mode] > 0 and md[mode] ~= 1 then
+		local players = type(setup.Teams) == "table" and #setup.Teams > 0
+		for _, spec in ipairs(type(setup.Teams) == "table" and setup.Teams or {}) do
+			if type(spec) ~= "table" or spec.Npc then
+				players = false
+			end
+		end
+		if players then
+			self.modeDamage = md[mode]
+		end
+	end
 	local teams = type(setup.Teams) == "table" and setup.Teams or {}
 	for _, spec in ipairs(teams) do
 		if type(spec) == "table" then
@@ -1577,6 +1735,13 @@ function BattleSim:Snapshot()
 				end
 			end
 			local s = { x = r1(u.x), z = r1(u.z), hp = hp, state = u.state, meter = floor(u.meter + 0.5), lives = unitLives(u) }
+			if u.bdx then
+				-- (feel-balance) the body point while it strikes (only while it differs from the rest spot)
+				local bx, bz = r1(u.x + u.bdx), r1(u.z + u.bdz)
+				if bx ~= s.x or bz ~= s.z then
+					s.bx, s.bz = bx, bz
+				end
+			end
 			local tgt = u.target
 			if tgt and tgt.alive and not tgt.gone then
 				s.target = tgt.id
@@ -1776,6 +1941,10 @@ local function knockOut(self, u, by, events, forfeit)
 	u.windAt = nil
 	u.windTarget = nil
 	u.burnLeft = 0
+	if u.sTo then
+		Strike.close(u)
+	end
+	u.meterCarry = nil
 	if damageRules().KoMeterLoss then
 		u.meter = 0
 	end
@@ -1855,6 +2024,16 @@ end
 
 local shieldBreak -- forward
 
+-- (feel-balance Task 2) a meter gain of `gain` (capped at `top`): while a real cast charges (castEntry, the meter sits
+-- full) with Damage.SpecialCarry it is kept in u.meterCarry and added after the fire (fireCast); else it fills the meter
+function Strike.meter(u, gain, top)
+	if u.castEntry and damageRules().SpecialCarry == true then
+		u.meterCarry = min(top, (u.meterCarry or 0) + gain)
+	else
+		u.meter = min(top, u.meter + gain)
+	end
+end
+
 -- Applies `amount` of damage from `attacker` (may be nil for zones) to `victim`. Returns the damage dealt (after
 -- shields). `extra` fields are copied into the Hit event; extra == nil marks a plain attack (crits, meter, chill, leech).
 local function applyDamage(self, attacker, victim, amount, events, extra, noVariance)
@@ -1893,6 +2072,9 @@ local function applyDamage(self, attacker, victim, amount, events, extra, noVari
 	if victim.markUntil and self.t < victim.markUntil then
 		dmg = dmg * victim.markMult
 	end
+	if self.modeDamage and not (extra and (extra.burn or extra.thorns)) then
+		dmg = dmg * self.modeDamage -- (a burn tick / thorns come from a hit already paced: not twice)
+	end
 	local cap = self.maxHitShare
 	if cap and attacker and attacker.kind ~= "Boss" and dmg > victim.maxHp * cap then
 		dmg = victim.maxHp * cap
@@ -1915,7 +2097,7 @@ local function applyDamage(self, attacker, victim, amount, events, extra, noVari
 		if attacker.kind ~= "Boss" and attacker.alive and extra == nil then
 			local gain = isFighter and num(F.MeterOnHit, 4) or num(D.MeterOnHit, 4)
 			local top = isFighter and num(F.SpecialMeterMax, 100) or num(D.MeterMax, 100)
-			attacker.meter = min(top, attacker.meter + gain * (attacker.meterRate or 1))
+			Strike.meter(attacker, gain * (attacker.meterRate or 1), top)
 			-- Chill: the fighter's plain hits slow its enemies
 			if attacker.chillUntil and self.t < attacker.chillUntil and applySlow(self, victim, num(D.Slow, 0.6), 2) then
 				ev.slow = true
@@ -1946,7 +2128,7 @@ local function applyDamage(self, attacker, victim, amount, events, extra, noVari
 		local isFighter = victim.team.player and victim == victim.team.fighter
 		local gain = isFighter and num(F.MeterOnHurt, 2) or num(D.MeterOnHurt, 2)
 		local top = isFighter and num(F.SpecialMeterMax, 100) or num(D.MeterMax, 100)
-		victim.meter = min(top, victim.meter + gain * (victim.meterRate or 1))
+		Strike.meter(victim, gain * (victim.meterRate or 1), top)
 	end
 	if mult ~= 1 then
 		ev.elem = mult
@@ -2006,6 +2188,9 @@ local function applyStun(self, e, seconds)
 	e.state = S_STUNNED
 	e.windAt = nil
 	e.windTarget = nil
+	if e.sTo then
+		Strike.close(e) -- (feel-balance) a stunned pet stands where it is
+	end
 	return true
 end
 
@@ -2024,8 +2209,10 @@ end
 ----------------------------------------------------------------------
 -- Targeting
 ----------------------------------------------------------------------
--- nearest living enemy on the floor, judged on start-of-step positions (px / pz)
-local function nearestEnemy(self, u, maxDist)
+-- nearest living enemy on the floor, judged on start-of-step positions (px / pz; feel-balance: `body` = an enemy that strikes
+-- at its body point, the offset Strike.refresh set this step: the boss's basic pick. The NPCs' own target picks stay on rest
+-- spots: a body point that comes and goes made a minion swap targets every RetargetSeconds and walk instead of biting)
+local function nearestEnemy(self, u, maxDist, body)
 	local best, bestD2 = nil, (maxDist and maxDist * maxDist) or huge
 	local list = self.units
 	local side = u.side
@@ -2033,6 +2220,9 @@ local function nearestEnemy(self, u, maxDist)
 		local e = list[i]
 		if e.side ~= side and targetable(self, e) then
 			local dx, dz = e.px - u.px, e.pz - u.pz
+			if body and e.bdx then
+				dx, dz = dx + e.bdx, dz + e.bdz
+			end
 			local d2 = dx * dx + dz * dz
 			if d2 < bestD2 then
 				best, bestD2 = e, d2
@@ -2164,7 +2354,7 @@ local function applyBuff(self, target, buff, mult, events, ev)
 	end
 	if finite(buff.Meter) and buff.Meter > 0 then
 		local top = num(fighterRules().SpecialMeterMax, 100)
-		target.meter = min(top, target.meter + buff.Meter)
+		Strike.meter(target, buff.Meter, top)
 	end
 	ev["until"] = r1(untilT)
 	return untilT
@@ -2356,6 +2546,7 @@ local function resolveDelayed(self, events)
 				cancelCast(self, d, events)
 			else
 				u.castEntry = nil
+				u.meterCarry = nil
 			end
 		elseif self.t < d.at - (d.cast and 1e-6 or 0) then
 			i = i + 1
@@ -2727,6 +2918,9 @@ local function castSpecial(self, u, events)
 			end
 		end
 	end
+	if u.sTo then
+		Strike.close(u) -- (feel-balance) a caster stands at its rest spot
+	end
 	local secs = castSecondsOf(D, kind)
 	if not secs then
 		return specialBody(self, u, target, events, nil)
@@ -2765,6 +2959,7 @@ function fireCast(self, d, events)
 		u.castUntil = self.t
 	end
 	if u.specialKind ~= d.cast then
+		u.meterCarry = nil
 		return
 	end
 	local target = d.target
@@ -2776,12 +2971,21 @@ function fireCast(self, d, events)
 			return
 		end
 	end
+	local carry = u.meterCarry
+	u.meterCarry = nil
 	specialBody(self, u, target, events, d)
+	-- (feel-balance Task 2) the meter carry: what the full meter gained during the charge, after the spend
+	if carry and carry > 0 and u.alive then
+		local isFighter = u.team.player and u == u.team.fighter
+		local top = isFighter and num(fighterRules().SpecialMeterMax, 100) or num(damageRules().MeterMax, 100)
+		u.meter = min(top, u.meter + carry)
+	end
 end
 
 function cancelCast(self, d, events)
 	local u = d.from
 	u.castEntry = nil
+	u.meterCarry = nil -- (the meter is still full: nothing to carry)
 	if u.castUntil > self.t then
 		u.castUntil = self.t
 	end
@@ -2898,11 +3102,19 @@ local function castElement(self, team, u, arg, events)
 	end
 	local form = elementFormOf(u) -- nil at stage 0
 	local name = form and form.Name or a.Name
-	local angle, tx, tz = aimOf(self, team, u, arg)
+	local angle, tx, tz, aimT = aimOf(self, team, u, arg)
 	-- a ranged fighter reaches out to its own range at least (the design's "ranged pets use max(Range, 14)")
 	local reachOut = u.ranged and num(u.range, 0) or 0
 	local reach = reachOf(u)
-	local cx, cz = u.x, u.z -- a Circle's centre
+	-- (feel-balance Task 2) the origin: a melee caster with a standoff dashes in for its element too, so its Cone / Line /
+	-- Circle grows from its bite point toward the aimed unit (Strike.point; the rest spot at Standoff 0) and the cast opens a
+	-- strike window now (the client draws the dash)
+	local ox, oz = u.x, u.z
+	if aimT and standoffOf(damageRules(), u) > 0 then
+		ox, oz = Strike.point(damageRules(), u, aimT, self.t)
+		Strike.open(self, u, aimT, self.t)
+	end
+	local cx, cz = ox, oz -- a Circle's centre
 	if a.Shape == "Circle" and u.ranged then
 		-- a ranged pet's Circle lands on its aim point, no farther than its range: a far aim falls short, never across the floor
 		local dx, dz = tx - u.x, tz - u.z
@@ -2912,7 +3124,7 @@ local function castElement(self, team, u, arg, events)
 		end
 		cx, cz = tx, tz
 	end
-	local ev = { type = EV.Element, unit = u.id, element = element, name = name, x = r1(u.x), z = r1(u.z), angle = floor(angle * 1000 + 0.5) / 1000, tx = r1(tx), tz = r1(tz), shape = a.Shape, targets = {} }
+	local ev = { type = EV.Element, unit = u.id, element = element, name = name, x = r1(ox), z = r1(oz), angle = floor(angle * 1000 + 0.5) / 1000, tx = r1(tx), tz = r1(tz), shape = a.Shape, targets = {} }
 	if form then
 		ev.form = formStageOf(u)
 	end
@@ -2924,7 +3136,7 @@ local function castElement(self, team, u, arg, events)
 		length = max(num(a.Length, num(F.ElementRange, 14)) * reach, reachOut)
 		ev.length = areaField(reach, length)
 		for _, e in ipairs(enemies) do
-			if inCone(e, u.x, u.z, angle, half, length) then
+			if inCone(e, ox, oz, angle, half, length) then
 				hits[#hits + 1] = e
 			end
 		end
@@ -2932,7 +3144,7 @@ local function castElement(self, team, u, arg, events)
 		length, width = max(num(a.Length, 24) * reach, reachOut), num(a.Width, 4) * reach
 		ev.length, ev.width = areaField(reach, length), areaField(reach, width)
 		for _, e in ipairs(enemies) do
-			if inLine(e, u.x, u.z, angle, length, width) then
+			if inLine(e, ox, oz, angle, length, width) then
 				hits[#hits + 1] = e
 			end
 		end
@@ -2968,7 +3180,7 @@ local function castElement(self, team, u, arg, events)
 				-- a twist a boss is immune to (burn, slow, root) pays one bonus hit instead
 				local immune = false
 				if finite(a.Push) and e.kind ~= "Boss" then
-					local dx, dz = e.x - u.x, e.z - u.z
+					local dx, dz = e.x - ox, e.z - oz
 					local d = sqrt(dx * dx + dz * dz)
 					if d > 0.01 then
 						e.x, e.z = e.x + dx / d * a.Push, e.z + dz / d * a.Push
@@ -3010,15 +3222,15 @@ local function castElement(self, team, u, arg, events)
 	end
 	if form then
 		if form.Maelstrom then
-			queueDelayed(self, { at = self.t + form.Maelstrom.Delay, from = u, kind = element, element = name, twist = "Maelstrom", x = u.x, z = u.z, angle = angle, half = half, length = length, base = dmg, share = form.Maelstrom.Share })
+			queueDelayed(self, { at = self.t + form.Maelstrom.Delay, from = u, kind = element, element = name, twist = "Maelstrom", x = ox, z = oz, angle = angle, half = half, length = length, base = dmg, share = form.Maelstrom.Share })
 		end
 		if form.Inferno then
 			-- the ground burns where the attack lands: at the aim, no farther than the cone's end
-			local dx, dz = tx - u.x, tz - u.z
+			local dx, dz = tx - ox, tz - oz
 			local d = sqrt(dx * dx + dz * dz)
 			local px, pz = tx, tz
 			if d > length then
-				px, pz = u.x + dx / d * length, u.z + dz / d * length
+				px, pz = ox + dx / d * length, oz + dz / d * length
 			end
 			patchZone(self, u, px, pz, form.Inferno.Radius * reach, dmg * form.Inferno.Share, form.Inferno.Seconds, element, events)
 		end
@@ -3060,6 +3272,9 @@ function swapIn(self, team, incoming, events, auto)
 	-- the incoming pet starts in FOLLOW (it re-engages after its cast + the still time)
 	dropEngage(self, team, events)
 	if out then
+		if out.sTo then
+			Strike.close(out) -- (feel-balance) to the bench from its rest spot
+		end
 		x, z = out.x, out.z
 		if out.alive then
 			out.benched = true
@@ -3123,6 +3338,15 @@ local function telegraphPoints(self, boss, a)
 	local r = num(a.Radius, num(a.Width, 6))
 	local points = {}
 	local covered = {}
+	-- (feel-balance) the boss aims where it sees each pet: its body point (the bite point while it strikes)
+	local ex, ez = {}, {}
+	for _, e in ipairs(enemies) do
+		if e.bdx then
+			ex[e], ez[e] = e.x + e.bdx, e.z + e.bdz
+		else
+			ex[e], ez[e] = e.x, e.z
+		end
+	end
 	for _ = 1, count do
 		local pool = {}
 		for _, e in ipairs(enemies) do
@@ -3140,7 +3364,7 @@ local function telegraphPoints(self, boss, a)
 			p = pool[1]
 			local bestD2 = huge
 			for _, e in ipairs(pool) do
-				local dx, dz = e.x - boss.x, e.z - boss.z
+				local dx, dz = ex[e] - boss.x, ez[e] - boss.z
 				local d2 = dx * dx + dz * dz
 				if d2 < bestD2 then
 					p, bestD2 = e, d2
@@ -3151,7 +3375,7 @@ local function telegraphPoints(self, boss, a)
 			for _, c in ipairs(pool) do
 				local n = 0
 				for _, q in ipairs(pool) do
-					local dx, dz = q.x - c.x, q.z - c.z
+					local dx, dz = ex[q] - ex[c], ez[q] - ez[c]
 					if dx * dx + dz * dz <= r * r then
 						n = n + 1
 					end
@@ -3161,9 +3385,9 @@ local function telegraphPoints(self, boss, a)
 				end
 			end
 		end
-		points[#points + 1] = { x = p.x, z = p.z }
+		points[#points + 1] = { x = ex[p], z = ez[p] }
 		for _, e in ipairs(pool) do
-			local dx, dz = e.x - p.x, e.z - p.z
+			local dx, dz = ex[e] - ex[p], ez[e] - ez[p]
 			if dx * dx + dz * dz <= (r + e.radius) * (r + e.radius) then
 				covered[e] = true
 			end
@@ -3394,7 +3618,7 @@ local function bossStep(self, boss, events)
 	end
 	-- the basic attack on the nearest fighter in range (a dash dodges it)
 	if t >= boss.nextAttack then
-		local target = nearestEnemy(self, boss, boss.range + boss.radius)
+		local target = nearestEnemy(self, boss, boss.range + boss.radius, true) -- (feel-balance: a striking pet at its bite point)
 		if target then
 			local basic = def.Basic or {}
 			boss.target = target
@@ -3513,15 +3737,7 @@ local function moveToward(u, tx, tz, step, stop)
 	return d - travel
 end
 
--- (battle-feel T2, spec decision 2) the studs a melee, non-boss unit rests farther out: D.Standoff for it, 0 for a ranged
--- unit or a boss. Added to its rest spot and to every attack / hit test of it alike (reach, damage and tempo unchanged)
-local function standoffOf(D, u)
-	if u.ranged or u.kind == "Boss" then
-		return 0
-	end
-	local so = D and D.Standoff
-	return (finite(so) and so > 0) and so or 0
-end
+-- (standoffOf: with the geometry helpers, feel-balance: the strike reads it)
 
 local function teamIndex(team, u)
 	local idx, n = 1, 0
@@ -3579,7 +3795,7 @@ local function npcStep(self, u, dt, events)
 		u.state = S_IDLE
 		return
 	end
-	u.meter = min(D.MeterMax, u.meter + D.MeterPerSecond * dt * (u.meterRate or 1))
+	Strike.meter(u, D.MeterPerSecond * dt * (u.meterRate or 1), D.MeterMax)
 	if t < u.stunUntil then
 		u.state = S_STUNNED
 		u.windAt = nil
@@ -3670,6 +3886,7 @@ local function npcStep(self, u, dt, events)
 			u.windTarget = target
 			u.nextAttack = t + u.interval / slow * (0.9 + 0.2 * rand(self))
 			events[#events + 1] = { type = EV.Windup, unit = u.id, target = target.id, at = r1(u.windAt) }
+			Strike.open(self, u, target, u.windAt) -- (feel-balance) the client lands this bite's dash at windAt
 		end
 	elseif moved then
 		u.state = S_MOVING
@@ -3705,10 +3922,26 @@ local function inReach(f, e, slack)
 	return dx * dx + dz * dz <= reach * reach
 end
 
+-- (feel-balance review) the standoff's share of the auto-attack's reach against `e`: f's standoff when e is the enemy f
+-- rests at (f.restOn: its engaged / Auto target or the lock), e's standoff when e rests at f (e.target == f: the gap
+-- between them is e's), else 0. Every other enemy is reached as at Standoff 0, so a melee pet does not catch passing
+-- minions 8 studs sooner than it would without the standoff (reach unchanged)
+local function standoffSlack(D, f, e)
+	local so = 0
+	if e == f.restOn then
+		so = standoffOf(D, f)
+	end
+	if e.target == f then
+		so = max(so, standoffOf(D, e))
+	end
+	return so
+end
+
 -- the auto-attack's target: the lock when targetable and in reach, else the nearest targetable enemy in reach (by id on ties)
 local function autoTarget(self, team, f, slack)
+	local D = damageRules()
 	local lock = lockOf(team)
-	if lock and targetable(self, lock) and inReach(f, lock, slack) then
+	if lock and targetable(self, lock) and inReach(f, lock, slack + standoffSlack(D, f, lock)) then
 		return lock
 	end
 	local best, bestD2 = nil, huge
@@ -3719,7 +3952,7 @@ local function autoTarget(self, team, f, slack)
 		if e.side ~= side and targetable(self, e) then
 			local dx, dz = e.x - f.x, e.z - f.z
 			local d2 = dx * dx + dz * dz
-			local reach = f.range + e.radius + slack
+			local reach = f.range + e.radius + slack + standoffSlack(D, f, e)
 			if d2 <= reach * reach and d2 < bestD2 then
 				best, bestD2 = e, d2
 			end
@@ -3739,7 +3972,7 @@ function fighterSwing(self, team, f, events)
 	if t < f.nextAttack - interval * (1 - num(F.AttackTolerance, 0.85)) then
 		return false
 	end
-	local target = autoTarget(self, team, f, num(F.AttackSlack, 3) + standoffOf(damageRules(), f))
+	local target = autoTarget(self, team, f, num(F.AttackSlack, 3))
 	if not target then
 		return false
 	end
@@ -3755,6 +3988,10 @@ function fighterSwing(self, team, f, events)
 	else
 		applyDamage(self, f, target, f.hit, events)
 		doubleStrike(self, f, target, events)
+	end
+	-- (feel-balance) the client holds a fighter's bite Melee.In (no Windup): its dash lands at t + In
+	if f.alive then
+		Strike.open(self, f, target, t + Strike.rules(damageRules()))
 	end
 	return true
 end
@@ -3863,7 +4100,7 @@ local function fighterStep(self, team, dt, events)
 	if team.retreat then
 		team.retreatSeconds = team.retreatSeconds + dt -- (no meter while back; a team with no living fighter is not counted)
 	else
-		f.meter = min(num(F.SpecialMeterMax, 100), f.meter + num(F.MeterPerSecond, 6) * dt * (f.meterRate or 1))
+		Strike.meter(f, num(F.MeterPerSecond, 6) * dt * (f.meterRate or 1), num(F.SpecialMeterMax, 100))
 	end
 	if team.auto and not team.npc then
 		autoFighter(self, team, f, dt, events)
@@ -3873,6 +4110,9 @@ local function fighterStep(self, team, dt, events)
 	if not team.auto then
 		engaged = engageUpdate(self, team, f, events)
 	end
+	-- (feel-balance review) the enemy this fighter rests at (standoffSlack): the engaged target, else the lock, else the
+	-- nearest enemy (an Auto team's target; in play a swinging fighter is always engaged or locked)
+	f.restOn = engaged or lockOf(team) or nearestEnemy(self, f) or nil
 	if t < f.dashUntil then
 		-- wave 6: the Dash sidestep (set at the press) at legal run x the dash factor, then it holds until DashSeconds end
 		local left = f.dashLeft or 0
@@ -4263,6 +4503,8 @@ function BattleSim:Step(dt)
 		self.pending = {}
 	end
 	self.anyEngaged = anyEngaged(self)
+	-- (feel-balance) the body points of this step, before the boss, the telegraphs, the delayed effects and the zones read them
+	Strike.refresh(self)
 	if self.boss then
 		bossStep(self, self.boss, events)
 	end
@@ -4680,6 +4922,9 @@ function doCommand(self, team, action, arg, events)
 		if t < team.dashReadyAt then
 			return false, "Cooldown", r1(team.dashReadyAt - t)
 		end
+		if f.sTo then
+			Strike.close(f) -- (feel-balance) the dash starts from where the pet really is: its body point is its rest spot at once
+		end
 		f.dashUntil = t + num(F.DashSeconds, 0.35)
 		f.iframesUntil = t + num(F.DashIFrames, 0.35)
 		team.dashReadyAt = t + num(F.DashCooldown, 2.5) * rechargeOf(self, f)
@@ -4692,7 +4937,7 @@ function doCommand(self, team, action, arg, events)
 			if th.at > t - 1e-9 and th.at - t <= window + 1e-6 then
 				local src = th.src
 				if not team.retreat then
-					f.meter = min(num(F.SpecialMeterMax, 100), f.meter + num(F.ParryMeter, 8))
+					Strike.meter(f, num(F.ParryMeter, 8), num(F.SpecialMeterMax, 100))
 				end
 				if src.kind == "Boss" then
 					-- applyStun refuses bosses: a short stagger instead (no new basic attack / telegraph), once per ParryBossGap

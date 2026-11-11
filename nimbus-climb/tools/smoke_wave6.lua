@@ -2282,6 +2282,20 @@ local function clientScenarios()
 		T.check(#numbersReading("DODGED!") == 1, "parry fx: a plain miss still shows DODGED!", #numbersReading("DODGED!") .. " shown")
 		d:run(1.3, 30)
 		-- the drawn dash follows the event's dir (the sidestep), not its target (the enemy stands at +Z)
+		-- (feel-balance) at Melee.Standoff 8 my melee fighter bites from 8 studs out even with the engage rule held off, and
+		-- the client draws each bite as a run in toward the enemy (+Z, AttackFx.Dash): its swings are held here, as the
+		-- server holds them while it dashes, and the last run ends first, so the offset below is the dodge's alone
+		local fu = nil
+		for _, u in ipairs(d.sim.units) do
+			if u.id == fid then
+				fu = u
+			end
+		end
+		local keepNext = fu and fu.nextAttack
+		if fu then
+			fu.nextAttack = math.huge
+		end
+		d:run(1.2, 30)
 		local p0 = BC.GetUnit(fid).Drawn
 		d:events({ { type = "Dash", unit = fid, dir = { 1, 0 }, target = enemyId } })
 		local best, bestLen = nil, 0
@@ -2296,6 +2310,9 @@ local function clientScenarios()
 		local dot = best and best.Unit.X or -1
 		T.check(bestLen > 1 and dot > 0.9, "parry fx: the drawn pet dashes along the event's dir (+X), not toward its target (+Z)",
 			fmt("moved %.2f studs, dot %.2f", bestLen, dot))
+		if fu then
+			fu.nextAttack = keepNext
+		end
 		d:run(1, 30)
 		-- Low graphics: the callout only
 		if CS and GQ and type(CS.Set) == "function" then

@@ -496,9 +496,20 @@ local function clientScenarios()
 		for _ = 1, 30 do
 			Fx.Step(1 / 30)
 		end
+		-- DungeonFx's clock (St.Time) keeps running across the whole suite once a client boot has started it, so the
+		-- ring's angle against its rest frame is that clock mod 2 pi (1 run in ~20 it lands within 8 degrees of rest).
+		-- So the probe reads the turn between two frames 0.5 s apart (0.5 rad at SpinSpeed 1) and the angle formula.
+		local first = ring.CFrame
+		local t1 = Fx.Stats().Time
+		for _ = 1, 15 do
+			Fx.Step(1 / 30)
+		end
 		local turned = ring.CFrame
 		local stats = Fx.Stats()
-		T.check(stats.Rings >= 1 and (turned.Position - rest.Position).Magnitude < 1e-3 and turned.LookVector:Dot(rest.LookVector) < 0.99, "bug5 spin: a tagged ring near the camera turns about its own Y (and stays in place)", string.format("rings %d moving %d", stats.Rings, stats.Moving))
+		local want = rest * CFrame.Angles(0, Fx.Angle(stats.Time, 1, 1), 0)
+		T.check(stats.Rings >= 1 and (turned.Position - rest.Position).Magnitude < 1e-3 and (first.Position - rest.Position).Magnitude < 1e-3
+			and turned.LookVector:Dot(first.LookVector) < 0.99 and turned.LookVector:Dot(want.LookVector) > 0.9999 and stats.Time > t1,
+			"bug5 spin: a tagged ring near the camera turns about its own Y (and stays in place)", string.format("rings %d moving %d", stats.Rings, stats.Moving))
 		T.check(math.abs(turned.UpVector:Dot(rest.UpVector) - 1) < 1e-3, "bug5 spin: the turn keeps the ring's local Y")
 		Fx.Stop()
 		T.check((ring.CFrame.Position - rest.Position).Magnitude < 1e-3 and ring.CFrame.LookVector:Dot(rest.LookVector) > 0.9999, "bug5 spin: Stop() puts the ring back at rest")

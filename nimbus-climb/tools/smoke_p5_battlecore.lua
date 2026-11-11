@@ -389,8 +389,9 @@ S.p5sim_fighter = guarded("p5sim_fighter", function()
 	T.check(not ok and why == "BadTarget" and not ok2 and why2 == "BadTarget" and findEvent(evs, "Order", function(ev)
 		return ev.rejected == "BadTarget" and ev.order == "Attack" and ev.owner == 1
 	end) ~= nil and countType(evs, "Order") == 1, "Attack on an ally / a junk id is refused BadTarget; a refused command echoes an Order event with rejected (one echo per team per step)")
-	-- reach = range + radius + AttackSlack: the auto-attack swings inside it, never 0.2 stud beyond it
-	local reach = f.range + e.radius
+	-- reach = range + radius + AttackSlack: the auto-attack swings inside it, never 0.2 stud beyond it (feel-balance: + the
+	-- melee standoff Damage.Standoff, 8 ships: a melee pet bites from its rest spot, the dash closes the gap)
+	local reach = f.range + e.radius + ((not f.ranged) and (tonumber(BC.Damage.Standoff) or 0) or 0)
 	local function swingsAt(dz)
 		place(b, tm, 0, 0, 0, dz)
 		e.target, e.retargetAt, e.windAt = nil, huge, nil
@@ -992,8 +993,11 @@ S.p5sim_ai = guarded("p5sim_ai", function()
 		local evs = b3:Step(0.1)
 		for _, ev in ipairs(evs) do
 			if ev.type == "Windup" and ev.target == f3.id then
-				f3.x, f3.z = 0, -15 -- teleported away (white-box): out of reach when the hit lands
-				t3.wantX, t3.wantZ = 0, -15
+				-- teleported away (white-box): out of reach when the hit lands (feel-balance: the melee reach grows by the
+				-- standoff, 8 ships, so twice that farther)
+				local away = -15 - 2 * (tonumber(D.Standoff) or 0)
+				f3.x, f3.z = 0, away
+				t3.wantX, t3.wantZ = 0, away
 			elseif ev.type == "Hit" and ev.from == e3.id and ev.miss then
 				missed = true
 			end

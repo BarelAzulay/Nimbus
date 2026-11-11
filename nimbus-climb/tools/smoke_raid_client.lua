@@ -780,6 +780,12 @@ S.client_raid_enrage = guarded("client_raid_enrage", function()
 	-- the warning goes by the server's own hit test: the sim hits a body whose edge reaches the shape (shape + the unit's radius, on a
 	-- Circle and along a Line), so the client warns that body; a shape that misses it warns nothing. A Bear held still, the boss kept
 	-- from casting; the sim's own telegraphs, so the server's Hit says what really lands.
+	-- (feel-balance) at Melee.Standoff 8 a held Bear still strikes the boss, and while it strikes the server tests its bite
+	-- point, not the pinned spot (smoke_feel_dash feel_strike_*): this probe pins the shape + radius rule on a still body, so
+	-- it runs at Standoff 0 (restored after)
+	local Cat = req("shared/BattleCatalog")
+	local keepSo = Cat.Damage.Standoff
+	Cat.Damage.Standoff = 0
 	d = newFight({ Tier = "High", Pocket = true, BossId = "frost_wyrm" }, "frost_wyrm", { "biscuit_bear" })
 	d.run(1)
 	local bear = d.sim.teamByOwner[d.me].fighter
@@ -829,6 +835,69 @@ S.client_raid_enrage = guarded("client_raid_enrage", function()
 	T.check(struck and warned, "raid battle client: ...and a line whose tip overlaps it", string.format("warned %s, struck %s", tostring(warned), tostring(struck)))
 	warned, called, struck = probe({ shape = "Circle", x = bearX + R + rim, z = bearZ, r = R, lethal = true })
 	T.check(struck and warned and called, "raid battle client: a lethal circle whose rim overlaps the body warns it and floats DASH!, as the server knocks it out", string.format("warned %s, called %s, struck %s", tostring(warned), tostring(called), tostring(struck)))
+	d.finish()
+	Cat.Damage.Standoff = keepSo
+	KC.advance(14)
+
+	-- (feel-balance review) at the shipped Standoff a striking melee pet is hit at its BITE POINT (the server's body point),
+	-- so the client warns it there too: a lethal circle over the bite point but not over the rest spot warns, floats DASH!
+	-- and (the telegraph timed inside an open strike window) the server's Hit lands; one past the rest spot on the far side
+	-- warns nothing
+	T.check(Cat.Damage.Standoff == 8, "raid battle client: (setup) Melee.Standoff ships 8", tostring(Cat.Damage.Standoff))
+	d = newFight({ Tier = "High", Pocket = true, BossId = "frost_wyrm" }, "frost_wyrm", { "biscuit_bear" })
+	d.run(4)
+	bear = d.sim.teamByOwner[d.me].fighter
+	bearX, bearZ = bear.x, bear.z
+	d.sim.boss.staggerUntil = math.huge
+	function d.pin()
+		bear.x, bear.z = bearX, bearZ
+		if bear.alive then
+			bear.hp = bear.maxHp
+		end
+	end
+	local biteX, biteZ = nil, nil
+	d.run(4, function()
+		if bear.bdx then
+			biteX, biteZ = bear.x + bear.bdx, bear.z + bear.bdz
+			return true
+		end
+		return false
+	end)
+	local adv = biteX and math.sqrt((biteX - bearX) ^ 2 + (biteZ - bearZ) ^ 2) or 0
+	T.check(biteX ~= nil and adv > bear.radius + 1, "raid battle client: (setup) the held Bear strikes: its bite point lies in from its rest spot", string.format("advance %.2f", adv))
+	if biteX then
+		local ux, uz = (biteX - bearX) / adv, (biteZ - bearZ) / adv
+		-- a telegraph landing inside the next strike window (Strike.open at the swing: sFrom .. sTo)
+		local function strikeProbe(tele)
+			d.run(3, function()
+				return bear.sTo ~= nil and bear.sFrom ~= nil and bear.sFrom > d.sim:Time() - 0.01
+			end)
+			probeId = probeId + 1
+			local at = (bear.sFrom or d.sim:Time()) + 0.25
+			tele.id, tele.boss, tele.attack, tele.at = probeId, d.sim.boss, absoluteZero, at
+			d.sim.telegraphs[#d.sim.telegraphs + 1] = tele
+			d.sim.pending[#d.sim.pending + 1] = { type = "Telegraph", id = tele.id, boss = d.sim.boss.id, name = absoluteZero.Name, attack = absoluteZero.Id, shape = tele.shape, x = tele.x, z = tele.z, r = tele.r, at = tele.at, hits = at - d.sim:Time(), lethal = tele.lethal }
+			local w, c, s = false, false, false
+			d.run(1.5, function(evs)
+				w = w or BC.GetBattle().Threat
+				c = c or calloutShown()
+				for _, e in ipairs(evs) do
+					if e.type == "Hit" and e.tele == tele.id and e.to == bear.id then
+						s = true
+					end
+				end
+				return s
+			end)
+			return w, c, s
+		end
+		local cx, cz = biteX + ux * (R - 1), biteZ + uz * (R - 1)
+		T.check(math.sqrt((cx - bearX) ^ 2 + (cz - bearZ) ^ 2) > R + bear.radius + 0.3, "raid battle client: (setup) the circle clears the Bear's rest spot")
+		warned, called, struck = strikeProbe({ shape = "Circle", x = cx, z = cz, r = R, lethal = true })
+		T.check(struck and warned and called, "raid battle client: a lethal circle over a striking Bear's bite point (not its rest spot) warns it and floats DASH!, as the server knocks it out", string.format("warned %s, called %s, struck %s", tostring(warned), tostring(called), tostring(struck)))
+		cx, cz = bearX - ux * (R + bear.radius + 0.3), bearZ - uz * (R + bear.radius + 0.3)
+		warned, called, struck = strikeProbe({ shape = "Circle", x = cx, z = cz, r = R, lethal = true })
+		T.check(not struck and not warned and not called, "raid battle client: ...and one past its rest spot on the far side warns nothing", string.format("warned %s, called %s, struck %s", tostring(warned), tostring(called), tostring(struck)))
+	end
 	d.finish()
 	KC.advance(14)
 

@@ -399,13 +399,19 @@ S.evo_stage0_pinned = guarded("evo_stage0_pinned", function()
 		local result = b:Result()
 		return floor(b.teams[1].damage), floor(b.teams[2].damage), table.concat(koSteps, ","), result and result.Reason or "none"
 	end
-	local keepCast = BC and BC.Damage.SpecialCast
+	-- (feel-balance) and with the melee standoff off (Damage.Standoff 0: the pin's pets rest where they did; 8 ships)
+	-- (feel-balance review) and the Duel pace off (Damage.ModeDamage nil: x1; { Duel = 1.1 } ships)
+	local keepCast, keepSo, keepMode = BC and BC.Damage.SpecialCast, BC and BC.Damage.Standoff, BC and BC.Damage.ModeDamage
 	if BC then
 		BC.Damage.SpecialCast = nil
+		BC.Damage.Standoff = 0
+		BC.Damage.ModeDamage = nil
 	end
 	local okRun, d1, d2, ko, reason = pcall(duel)
 	if BC then
 		BC.Damage.SpecialCast = keepCast
+		BC.Damage.Standoff = keepSo
+		BC.Damage.ModeDamage = keepMode
 	end
 	T.check(okRun and d1 == DMG1 and d2 == DMG2 and ko == KO_STEPS and reason == REASON, "evo stage 0: the pinned Duel replays byte for byte (damage, KO steps, reason; SpecialCast off)", fmt("%s %s [%s] %s", tostring(d1), tostring(d2), tostring(ko), tostring(reason)))
 	local okCast, c1, c2, cko, creason = pcall(duel)
@@ -967,8 +973,19 @@ S.evo_rally = guarded("evo_rally", function()
 		return u.meter
 	end
 	local meter = BC.Forms.Rally[2].Meter
-	local m2, m1, m0 = meterAfter(2), meterAfter(1), meterAfter(0)
-	T.check(near(m2, meter, 0.5) and m1 < 0.5 and m0 < 0.5, "evo rally: Evo 2: Fired up fills the meter right after the cast lands (0 at Evo 0 / 1; + one step's regen)", fmt("%s %s %s", tostring(m2), tostring(m1), tostring(m0)))
+	-- (feel-balance) the meter carry (Damage.SpecialCarry) adds what the full meter gained during the 0.55 s cast on top of
+	-- both: the pin reads it with the carry off, then checks the carry is the same at every stage
+	local keepCarry = BC.Damage.SpecialCarry
+	BC.Damage.SpecialCarry = false
+	local okM, m2, m1, m0 = pcall(function()
+		return meterAfter(2), meterAfter(1), meterAfter(0)
+	end)
+	BC.Damage.SpecialCarry = keepCarry
+	T.check(okM and near(m2, meter, 0.5) and m1 < 0.5 and m0 < 0.5, "evo rally: Evo 2: Fired up fills the meter right after the cast lands (0 at Evo 0 / 1; + one step's regen; the carry off)", fmt("%s %s %s", tostring(m2), tostring(m1), tostring(m0)))
+	if keepCarry then
+		local c2, c1 = meterAfter(2), meterAfter(1)
+		T.check(near(c2 - c1, meter, 0.5) and c1 > 0.5, "evo rally: with the meter carry on, Fired up still adds its meter on top of the carry", fmt("%.2f %.2f", c2, c1))
+	end
 	-- Evo 0: nothing of it
 	b, f, foes = field(BS, fighter(PC, "Rally", 0), { { 9, 0 } })
 	ev = special(b, f, foes[1])
@@ -993,6 +1010,15 @@ S.evo_rally = guarded("evo_rally", function()
 		end
 		local on = 0
 		for _ = 1, 1200 do
+			if not chases then
+				-- (feel-balance) the standing tank never bites: at Standoff 8 a melee bear reaches 8 studs farther, so standing
+				-- it would bite the ranged fighter at its range edge (MeterOnHurt: the chasing case below reports that)
+				for _, e in ipairs(battle.units) do
+					if e.side == 2 then
+						e.nextAttack = huge
+					end
+				end
+			end
 			battle:Step(0.1)
 			if battle:Time() < u.dmgBuffUntil then
 				on = on + 1

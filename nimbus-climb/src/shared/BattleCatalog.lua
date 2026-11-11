@@ -237,11 +237,22 @@ BattleCatalog.Damage = {
 	MeterPerSecond = 5, -- NPC passive meter gain while alive (2 -> 5, #27: a 20 s fight sees an NPC special)
 	CastSeconds = 0.5, -- a unit is Casting (no attacks) this long after a special
 	-- (battle-feel T2, spec docs/superpowers/specs/2026-11-10-battle-feel-design.md decision 2) studs a melee, non-boss unit rests
-	-- farther from its target between attacks (it dashes in to bite: a client pose); BattleSim adds it to the rest spot AND every
-	-- attack / hit test of that unit, so reach, damage and tempo do not change. 0 = today's orbit. The owner's knob:
+	-- farther from its target between attacks (it dashes in to bite: a client pose); BattleSim adds it to the rest spot AND the
+	-- attack / hit tests of that unit toward the enemy it rests at (or one resting at it; feel-balance review: a fighter's
+	-- auto-attack had it against every enemy), so reach, damage and tempo do not change. 0 = today's orbit. The owner's knob:
 	-- Config.Battle.Feel.Melee.Standoff (a number 0..20, Validate)
 	Standoff = (type(Config.Battle) == "table" and type(Config.Battle.Feel) == "table" and type(Config.Battle.Feel.Melee) == "table"
 		and tonumber(Config.Battle.Feel.Melee.Standoff)) or 0,
+	-- (feel-balance, plan docs/superpowers/plans/2026-11-10-feel-balance.md Task 1) the strike: a melee unit with a standoff
+	-- counts at its BITE POINT (its rest spot moved toward its target, at most Standoff, to where it would rest at 0) for the
+	-- dash the client draws: from biteAt - In x Out to biteAt + Bite + Hold + Back x Out, all the time while it flurries
+	-- (bites under FlurryBelow apart). Out = the share of the run in and of the hop back that counts as in. Every area test
+	-- and the boss's nearest pick use that point; single-target reach does not (DPS unchanged). Config.Battle.Feel.Melee
+	Strike = (function()
+		local M = type(Config.Battle) == "table" and type(Config.Battle.Feel) == "table" and type(Config.Battle.Feel.Melee) == "table"
+			and Config.Battle.Feel.Melee or {}
+		return { In = M.In or 0.30, Bite = M.Bite or 0.08, Hold = M.Hold or 0.12, Back = M.Back or 0.40, FlurryBelow = M.FlurryBelow or 0.75, Out = M.Out or 0.5 }
+	end)(),
 	-- (battle-feel T3, spec decision 6) the real cast: seconds a special's caster is Casting before its effects land, per
 	-- kind (Config.Battle.Feel.Special.Cast while RealCast; nil = today's instant special + CastSeconds). BattleSim sends
 	-- Cast { at } at the start, fires the special at `at` (a dash then dodges it), a stun cancels it (CastBreak, meter kept)
@@ -256,6 +267,10 @@ BattleCatalog.Damage = {
 		end
 		return out
 	end)(),
+	-- (feel-balance Task 2) the meter carry: while a real cast charges (the meter sits full) every meter gain is kept and
+	-- added after the fire, so a long cast does not starve the next special (Config.Battle.Feel.Special.Carry, a boolean)
+	SpecialCarry = (type(Config.Battle) == "table" and type(Config.Battle.Feel) == "table" and type(Config.Battle.Feel.Special) == "table"
+		and Config.Battle.Feel.Special.Carry == true) or false,
 	SpecialScale = 1, -- global multiplier on every special effect
 	-- a special is powered by its pet's own Power stat (x Roles.Power): effect x (base Power / Reference) ^ Exponent
 	SpecialPowerCurve = { Reference = 10, Exponent = 0.5 },
@@ -266,6 +281,14 @@ BattleCatalog.Damage = {
 	KoMeterLoss = true, -- a downed pet's meter is lost
 	-- NO ONE-SHOTS in PvP: in a duel a single pet hit never takes more than Share of the victim's max HP
 	MaxHit = { Modes = { Duel = true }, Share = 0.6 },
+	-- (feel-balance review 2026-11-11) a mode's pace: every direct hit x this (nil / missing = x1; burn ticks and thorns come
+	-- from a hit already paced) in a fight of PLAYER teams only (an NPC team never dodges a cast). Duel 1.1: with the real cast a
+	-- player dashes out of the specials aimed at it and a melee pet rests its standoff out, so mirror duels ran 12-20% longer
+	-- and hit the 120 s clock (SIM_BATTLE=full: 16 of 640 stage duels and 33 of 128 evolved mirrors timed out, 0 / 0 at
+	-- 163a2f4). With the scripted players' cast dodge switched off the timeouts went (S2 87 -> 71 s): the dodge is the cause,
+	-- and it is the owner's pick, so the pace comes back here, both sides alike (32 seeds a stage: S2 74 s, S6 92 s, evolved
+	-- 96 s, 0 timeouts; 163a2f4 72 / 99 / 93 s)
+	ModeDamage = { Duel = 1.1 },
 	-- NO DRAWS in PvP: a double knock-out or a duel timeout goes to the side that dealt more damage (forfeits stay a draw)
 	DoubleKoByDamage = { Duel = true },
 	-- ExpectedDps (boss HP, raid head counts): about this share of a fighter's damage comes from its ELEMENT + SPECIAL
@@ -1827,7 +1850,17 @@ BattleCatalog.BossRules = {
 	MinHp = 2500, -- #2: 600 -> 2500
 	FloorSeconds = 100, -- the boss HP floor = this x BaselineDps(bossId, tierId), whatever the tier's HpSeconds (RaidTiers[i].Baseline)
 	MinionHp = 0.7,
-	MinionDamage = 0.035,
+	-- (feel-balance 2026-11-10) 0.035 -> 0.05: at Standoff 8 a melee pet's bite reaches 8 studs farther, so it catches a
+	-- minion about 4x as often; minions lived 2.4x shorter and 3-team raids read 51% vs 38% at 48 seeds (with the minion
+	-- waves removed Standoff 8 moves nothing: 65.3% vs 64.9%). A harder minion bite gives the minion phase its pressure back
+	-- without adding fight time (MinionHp 1.0 did too, but added 7 s to fights already near the 240 s cap).
+	-- (feel-balance 2026-11-11) 0.05 -> 0.06: at 0.05 the 3-team board still read 43% (48 seeds; 45% at 96) against the
+	-- fitted 40% (163a2f4: 38%); at 0.06 it reads 39.5% (48 seeds), the trained raids are unchanged (minions die first)
+	-- (feel-balance review 2026-11-11) kept at 0.06 after the reach fix (BattleSim standoffSlack: the standoff's reach only
+	-- against the enemy a fighter rests at or one resting at it): with it the 3-team board reads 40.0% at 0.06 and 48.8% at
+	-- 0.035 (48 seeds, 10 official misses), so the extra reach was not what made the minions easy. 0.06 holds for both
+	-- fighter kinds: the Mid and High reference teams fight with a ranged pet (ember_phoenix, cloudy_dragon), Starter / Max melee
+	MinionDamage = 0.06,
 	-- boss HP x GroupFactor(teams) = teams ^ GroupExponent x (1 + GroupBonus x (1 - 1 / teams)): x1 solo, x1.85 at 3 teams, x1.95 at 8.
 	-- Spec 2026-11-01: 0.2 / 0.55 made 8 teams last 2.25 x a solo and hit the 330 s limit (Mid 8p 0% at 330 s) while solos won 50-100%.
 	GroupExponent = -0.1,
@@ -1863,8 +1896,10 @@ BattleCatalog.Bosses = {
 		Element = "Storm",
 		Blurb = "A thunderhead given arms. Earth pets ground its lightning.",
 		HpFactor = 1,
-		-- (battle-feel review, sleep mode) the T3 nudge (Mid 0.94, Max 1.18) is for Config.Battle.Feel.Special.RealCast = true only; RealCast ships off, so the fitted values stand (ledger, the morning questions)
-		HpTier = { Starter = 1.23, Mid = 0.98, High = 0.90, Max = 1.22 }, -- per fight tier, each fitted so 3 teams win about 40% (48 seeds); Mid 1.03 -> 0.98: eight trained S7 teams took 246 s against the 240 s band; High 0.89 -> 0.90 with attack effects' reach: the top High solo won 17% against the 15% ceiling; Starter 1.24 -> 1.23: the forms build's Starter 3-team fights ran 243-244 s against the 240 s band (the owner's OK, 2026-11-02)
+		-- (battle-feel review, sleep mode) the T3 nudge (Mid 0.94, Max 1.18) was for RealCast without the meter carry; with the carry (feel-balance) it is not needed
+		-- (feel-balance 2026-11-11) Mid 0.98 -> 0.95: 3 Mid teams read 9 of 12 (75%) on the official seeds while 48 seeds read 38%; 1.01 took
+		-- the eight trained S7 teams to 245.8 s (over 240); at 0.95 3 teams read 5 of 12 and 50% (48 seeds), the trained raid 229.1 s (was 235.3 s, max 244)
+		HpTier = { Starter = 1.23, Mid = 0.95, High = 0.90, Max = 1.22 }, -- per fight tier, each fitted so 3 teams win about 40% (48 seeds); Mid 1.03 -> 0.98: eight trained S7 teams took 246 s against the 240 s band; High 0.89 -> 0.90 with attack effects' reach: the top High solo won 17% against the 15% ceiling; Starter 1.24 -> 1.23: the forms build's Starter 3-team fights ran 243-244 s against the 240 s band (the owner's OK, 2026-11-02)
 		Radius = 7,
 		Scale = 1,
 		Basic = { Name = "Zap", Interval = 2.4, Damage = 0.05, Range = 20 },
@@ -1902,7 +1937,7 @@ BattleCatalog.Bosses = {
 		Element = "Frost",
 		Blurb = "A serpent of living ice. Flame pets melt its armour.",
 		HpFactor = 1,
-		HpTier = { Starter = 1.15, Mid = 1.27, High = 0.68, Max = 0.66 }, -- Starter 1.30 -> 1.15 (the owner's ask, 2026-11-02): 1.30 was fitted on a reference team whose Ember Phoenix is Flame (x1.5 on Frost; with the wheel off it wins 8%, not 42% (12 seeds)), so a team with no Flame pet met the hardest Starter boss: eight mid-Starter S5 teams won 0 of 48 (9% HP left), 3 reference teams 38% (48 seeds); at 1.15 eight S5 teams win 8% (4 of 48) in 258 s, 3 reference teams 44% in 191 s (1.12: 54% / 13%, past the neighbours' 29-48%); freeze, lethal radius and hit cuts moved S5 less and the hit cuts lengthened fights (one to the 330 s limit)
+		HpTier = { Starter = 1.15, Mid = 1.27, High = 0.68, Max = 0.73 }, -- (feel-balance 2026-11-11) Max 0.66 -> 0.73: at Standoff 8 + MinionDamage 0.06, 3 Max teams read (96 seeds) 65% / 67% / 69% / 59% / 53% / 56% / 49% / 47% at 0.66 / 0.67 / 0.68 / 0.69 / 0.70 / 0.72 / 0.73 / 0.74 (163a2f4 at 0.66: 58% of 48, it passed on its 12-seed draw); 0.73 reads 4 of 12 official, solo 3%. Past the fit's +-6% cell cap on purpose: the rate flattens past 0.73. Starter 1.30 -> 1.15 (the owner's ask, 2026-11-02): 1.30 was fitted on a reference team whose Ember Phoenix is Flame (x1.5 on Frost; with the wheel off it wins 8%, not 42% (12 seeds)), so a team with no Flame pet met the hardest Starter boss: eight mid-Starter S5 teams won 0 of 48 (9% HP left), 3 reference teams 38% (48 seeds); at 1.15 eight S5 teams win 8% (4 of 48) in 258 s, 3 reference teams 44% in 191 s (1.12: 54% / 13%, past the neighbours' 29-48%); freeze, lethal radius and hit cuts moved S5 less and the hit cuts lengthened fights (one to the 330 s limit)
 		Radius = 7,
 		Scale = 1,
 		Basic = { Name = "Ice Spit", Interval = 2.2, Damage = 0.06, Range = 20 }, -- spec 2026-11-01: 0.045 -> 0.06, breath 0.3 -> 0.28, blizzard 0.15 -> 0.27 (Flame teams outlived the band: 3 teams 300 s, 8 teams 326 s; a flatter pair so Max is not one-shot)
@@ -1921,7 +1956,7 @@ BattleCatalog.Bosses = {
 		Element = "Shadow",
 		Blurb = "Three heads, one grudge. Celestial pets shine through its dark.",
 		HpFactor = 1,
-		HpTier = { Starter = 1.27, Mid = 0.96, High = 0.85, Max = 1.15 }, -- Mid 0.93 -> 0.96 with attack effects' reach: 3 Mid teams won 58% against the 55% ceiling (0.94, 0.95 still 58%)
+		HpTier = { Starter = 1.27, Mid = 0.96, High = 0.85, Max = 1.22 }, -- (feel-balance 2026-11-11) Max 1.15 -> 1.22: at Standoff 8 3 Max teams read 58% (48 seeds) / 59% (96) at HEAD, 65% (48) with MinionDamage 0.06; 1.18 reads 52% but 10 of 12 official; 1.22 reads 44% (48), 6 of 12, 231 s. Mid 0.93 -> 0.96 with attack effects' reach: 3 Mid teams won 58% against the 55% ceiling (0.94, 0.95 still 58%)
 		Radius = 7,
 		Scale = 1,
 		Basic = { Name = "Shadow Bite", Interval = 1.8, Damage = 0.035, Range = 20 }, -- spec 2026-11-01: 0.04 -> 0.035, fangs 0.3 -> 0.26, pulse 0.2 -> 0.18 (High and Max groups fell in 84-99 s under the 100 s band)
@@ -1944,10 +1979,16 @@ BattleCatalog.BossOrder = { "storm_titan", "lava_golem", "frost_wyrm", "shadow_h
 -- no fight to tune there (3 teams fell in 95-100 s, 8 teams in 82-88 s against the 100 s band). SoloHit: a lone team's share of the
 -- boss's hits, apart from the group line (the line's 1.6 left solos 0 of 48 even with a 97% dodge trainer; "solo barely possible" is the
 -- owner's). Measured on 96 seeds a cell: 1.25-1.45 at Starter 16% - 2%, 1.1-1.25 at Mid 5% - 1% (frost_wyrm 17% at 1.14, over the 15% ceiling), at High 8.5% - 1%, at Max 3% - 0.5%.
+-- (feel-balance 2026-11-10) Mid HpSeconds 98 -> 95: the real cast costs the trained S7 8-team raid (tier Mid) ~6% of its
+-- time (storm_titan 230.9 s cast off -> 245.4 s cast on, 24 seeds; over the 240 s cap); at 95 it reads 237.3 s (24 seeds)
+-- (feel-balance review 2026-11-11) SoloHit Starter 1.45 -> 1.33, Mid 1.17 -> 1.05, High 1.14 -> 0.96 (Max 1.08 kept): with
+-- MinionDamage 0.06 (it bites a lone team too) solos read 1.2% at 48 seeds (Starter 0.5%, Mid 0.5%, High 0%; 163a2f4: 4.8%);
+-- these read 4.0% at 96 seeds a cell (worst frost_wyrm Mid 10%, storm_titan Max 7%; the official 12 seeds 8 of 192 = 4.2%).
+-- Max stays: at 1.02 storm_titan Max solo already read 19% (48 seeds)
 BattleCatalog.RaidTiers = {
-	{ Id = "Starter", Level = { 1, 19 }, BossLevel = 15, Hit = 0.6, Reward = 0.4, EventScale = 0.5, Scale = 0.85, HpSeconds = 120, SoloHit = 1.45, Baseline = { PetId = "ember_phoenix", Level = 15, Evo = 0, Tier = "Normal" } },
-	{ Id = "Mid", Level = { 20, 49 }, BossLevel = 40, Hit = 0.8, Reward = 0.7, EventScale = 0.5, Scale = 1, HpSeconds = 98, SoloHit = 1.17, Baseline = { PetId = "ember_phoenix", Level = 40, Evo = 1, Tier = "Normal" } },
-	{ Id = "High", Level = { 50, 79 }, BossLevel = 70, Hit = 1, Reward = 1, EventScale = 1, Scale = 1.15, HpSeconds = 112, SoloHit = 1.14, Baseline = { PetId = "ember_phoenix", Level = 70, Evo = 2, Tier = "Normal" } },
+	{ Id = "Starter", Level = { 1, 19 }, BossLevel = 15, Hit = 0.6, Reward = 0.4, EventScale = 0.5, Scale = 0.85, HpSeconds = 120, SoloHit = 1.33, Baseline = { PetId = "ember_phoenix", Level = 15, Evo = 0, Tier = "Normal" } },
+	{ Id = "Mid", Level = { 20, 49 }, BossLevel = 40, Hit = 0.8, Reward = 0.7, EventScale = 0.5, Scale = 1, HpSeconds = 95, SoloHit = 1.05, Baseline = { PetId = "ember_phoenix", Level = 40, Evo = 1, Tier = "Normal" } },
+	{ Id = "High", Level = { 50, 79 }, BossLevel = 70, Hit = 1, Reward = 1, EventScale = 1, Scale = 1.15, HpSeconds = 112, SoloHit = 0.96, Baseline = { PetId = "ember_phoenix", Level = 70, Evo = 2, Tier = "Normal" } },
 	{ Id = "Max", Level = { 80, 100 }, BossLevel = 95, Hit = 1.3, Reward = 1.3, EventScale = 1, Scale = 1.3, HpSeconds = 127, GroupMin = 1.35, SoloHit = 1.08, Crown = true, Baseline = { PetId = "ember_phoenix", Level = 95, Evo = 2, Tier = "Rainbow" } },
 }
 BattleCatalog.RaidTierOrder = { "Starter", "Mid", "High", "Max" }
@@ -2573,6 +2614,47 @@ function BattleCatalog.Validate()
 	local so = BattleCatalog.Damage.Standoff
 	if not finite(so) or so < 0 or so > 20 then
 		bad("Damage.Standoff must be a number 0..20 studs")
+	end
+	-- (feel-balance review) a mode's pace: nil, or a table of mode -> 0.5..2
+	local md = BattleCatalog.Damage.ModeDamage
+	if md ~= nil then
+		if type(md) ~= "table" then
+			bad("Damage.ModeDamage must be nil or a table of mode -> 0.5..2")
+		else
+			for mode, v in pairs(md) do
+				if not finite(v) or v < 0.5 or v > 2 then
+					bad("Damage.ModeDamage." .. tostring(mode) .. " must be a number 0.5..2")
+				end
+			end
+		end
+	end
+	-- (feel-balance) the strike window: In / Bite / Hold / Back 0..2 s, FlurryBelow 0..3 s, Out 0.25..1, and a window of at
+	-- least 0.3 s (three 10 Hz ticks: a shorter one could fall between two steps)
+	local st = BattleCatalog.Damage.Strike
+	if type(st) ~= "table" then
+		bad("Damage.Strike must be a table")
+	else
+		local okStrike = true
+		for _, key in ipairs({ "In", "Bite", "Hold", "Back" }) do
+			if not finite(st[key]) or st[key] < 0 or st[key] > 2 then
+				bad("Damage.Strike." .. key .. " must be a number 0..2 s")
+				okStrike = false
+			end
+		end
+		if not finite(st.FlurryBelow) or st.FlurryBelow < 0 or st.FlurryBelow > 3 then
+			bad("Damage.Strike.FlurryBelow must be a number 0..3 s")
+			okStrike = false
+		end
+		if not finite(st.Out) or st.Out < 0.25 or st.Out > 1 then
+			bad("Damage.Strike.Out must be a number 0.25..1")
+			okStrike = false
+		end
+		if okStrike and st.In * st.Out + st.Bite + st.Hold + st.Back * st.Out < 0.3 then
+			bad("Damage.Strike: In x Out + Bite + Hold + Back x Out must be at least 0.3 s (the 10 Hz tick)")
+		end
+	end
+	if type(BattleCatalog.Damage.SpecialCarry) ~= "boolean" then
+		bad("Damage.SpecialCarry must be true or false")
 	end
 	-- (battle-feel T3) the real cast seconds: nil (off), else a number 0.3..2 for every special kind
 	local sc = BattleCatalog.Damage.SpecialCast
