@@ -486,8 +486,12 @@ S.client_p3battle_trial = guarded("client_p3battle_trial", function()
 	T.check(got ~= nil and got.Y > want.Y + 0.5 and got.Y < want.Y + 6, "BattleController: pets hover just above the floor", got and fmt(got.Y - want.Y) or "nil")
 
 	-- smoothness: 60 fps frames between 10 Hz snapshots, no jumps (the enemies; mine follow my character)
+	-- (feel-balance) at Melee.Standoff 8 a melee enemy's bite is drawn as a quick run in from 8 studs out and a hop back
+	-- (AttackFx.Dash, a pose of the whole model): those frames are the dash, not the interpolation, so they are skipped
+	local AFx = moduleAt("client", "Controllers/AttackFx")
 	local maxJump, worst = 0, ""
 	local last = {}
+	local frames = 0
 	for _ = 1, 20 do
 		d:forward()
 		local evs = d.sim:Step(0.1)
@@ -501,7 +505,11 @@ S.client_p3battle_trial = guarded("client_p3battle_trial", function()
 				local inf = u.side ~= 1 and BC.GetUnit(u.id)
 				local m = inf and inf.Model
 				local r = m and not inf.Parked and (m.PrimaryPart or m:FindFirstChild("Body"))
+				if r and AFx and type(AFx.DashState) == "function" and AFx.DashState(u.id) ~= "out" then
+					r = nil
+				end
 				if r then
+					frames = frames + 1
 					local p = r.Position
 					local prev = last[u.id]
 					if prev then
@@ -517,7 +525,7 @@ S.client_p3battle_trial = guarded("client_p3battle_trial", function()
 			end
 		end
 	end
-	T.check(maxJump < 1.4, "BattleController: smooth interpolation at 60 fps (largest per-frame step)", fmt(maxJump) .. " studs (" .. worst .. ")")
+	T.check(maxJump < 1.4 and frames >= 60, "BattleController: smooth interpolation at 60 fps (largest per-frame step)", fmt(maxJump) .. " studs (" .. worst .. "), " .. frames .. " unit frames read")
 
 	-- numbers: world billboards in pixels, never a screen-centre text
 	local sawNumber, badNumber = false, nil

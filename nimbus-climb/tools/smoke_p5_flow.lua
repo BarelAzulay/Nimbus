@@ -1393,7 +1393,9 @@ local function tryControls(X, p, tr)
 		if u and (u.meter or 0) >= full and Kit.nearestEnemy(tr) and tr.ticks % 5 == 0 then
 			local from = #tr.events
 			cmd("Special")
-			for _ = 1, 3 do
+			-- (feel-balance) with Config.Battle.Feel.Special.RealCast on, the Special event lands at the cast end
+			-- (a Cast event first; BattleCatalog.Damage.SpecialCast, at most 0.95 s): wait up to 1.5 s for it
+			for _ = 1, 15 do
 				advance(0.1)
 				Kit.pump(tr)
 				if eventSince(tr, from, "Special", mine) then
