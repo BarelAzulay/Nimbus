@@ -595,6 +595,10 @@ S.client_egg3d = guarded("client_egg3d", function()
 		T.eq(E3.Limit(false), 3, "egg3d x3: the PC / tablet limit is three ViewportFrame eggs (the x3's heroes; the Shop's hero is gone by then)")
 		E3._ML = G.stubML(G.allKeys())
 		local x3 = { epic, rare, epic }
+		-- the painted cards' run is no ids at all (shared/TextureIds holds the uploaded card ids now)
+		if type(env.HL) == "table" then
+			env.HL._Textures = {}
+		end
 		local run = G.x3run(ES, E3, PC, x3)
 		T.check(run.rise3d == 3 and run.liveAtRise == 3, "egg3d x3: Rise: Egg1..3 each hold the ViewportFrame egg of their own pull (attribute Egg3D = egg_<rarity>, the 2D paint hidden), Live 3",
 			fmt("%d of 3 (%s), live %s", run.rise3d, run.riseBad, tostring(run.liveAtRise)))

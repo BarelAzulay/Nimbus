@@ -1054,6 +1054,10 @@ S.client_roll_look_stage = guarded("client_roll_look_stage", function()
 			G.advance(0.4)
 			return most, at
 		end
+		-- the painted path is no ids at all (shared/TextureIds holds the uploaded card ids now)
+		if type(HL) == "table" then
+			HL._Textures = {}
+		end
 		local x1, x1At = peak({ epic }, "Cloud")
 		T.check(x1 <= 450, "roll look budget: x1 <= 450 instances at every frame of the roll", fmt("%d (%s)", x1, x1At))
 		local storm = function(r)

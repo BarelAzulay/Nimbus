@@ -3,6 +3,13 @@
 -- effects-only fallback) and the pet attack VFX sheets fx_* (blender/vfx/textures.json).
 -- Rejected assets are left out; assets still in review are listed and simply fall back until approved.
 return {
+	egg_card_common = 82905985057225,
+	egg_card_epic = 138322305015306,
+	egg_card_legendary = 116610779042439,
+	egg_card_mythic = 70691449675787,
+	egg_card_rare = 112208218589890,
+	egg_card_secret = 112857974996230,
+	egg_card_uncommon = 84046719903185,
 	fx_crack = 96614468669578,
 	fx_darkglass = 107399066957226,
 	fx_droplets = 98654791201529,
