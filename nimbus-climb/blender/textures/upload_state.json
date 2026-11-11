@@ -1,5 +1,68 @@
 {
   "assets": {
+    "egg_card_common": {
+      "assetId": 82905985057225,
+      "contentHash": "3428b9561a5eb785e6510e9e7918cc7eee1267bddfbaa045f23787c5e6074e2b",
+      "fileSha256": "3428b9561a5eb785e6510e9e7918cc7eee1267bddfbaa045f23787c5e6074e2b",
+      "idSetByHand": "2026-11-11T06:03:21Z",
+      "moderationState": null,
+      "structureHash": "2d61feb51a7c6bae74fcec251b494041",
+      "uploadedOutside": true
+    },
+    "egg_card_epic": {
+      "assetId": 138322305015306,
+      "contentHash": "1974d65531fb0d5aeed39d0b640bec35b5d33eaf35ffc65e8d4c907657f9e1cd",
+      "fileSha256": "1974d65531fb0d5aeed39d0b640bec35b5d33eaf35ffc65e8d4c907657f9e1cd",
+      "idSetByHand": "2026-11-11T06:03:21Z",
+      "moderationState": null,
+      "structureHash": "2d61feb51a7c6bae74fcec251b494041",
+      "uploadedOutside": true
+    },
+    "egg_card_legendary": {
+      "assetId": 116610779042439,
+      "contentHash": "ae4a8fed227f511da93758bdb77a0a3b453608b7e99db90eb8f981a9813492de",
+      "fileSha256": "ae4a8fed227f511da93758bdb77a0a3b453608b7e99db90eb8f981a9813492de",
+      "idSetByHand": "2026-11-11T06:03:21Z",
+      "moderationState": null,
+      "structureHash": "2d61feb51a7c6bae74fcec251b494041",
+      "uploadedOutside": true
+    },
+    "egg_card_mythic": {
+      "assetId": 70691449675787,
+      "contentHash": "fa879a9b90dc69136dd7a81c3c40b1b7c2c7c1fd5a22b6804599636c403d53e4",
+      "fileSha256": "fa879a9b90dc69136dd7a81c3c40b1b7c2c7c1fd5a22b6804599636c403d53e4",
+      "idSetByHand": "2026-11-11T06:03:21Z",
+      "moderationState": null,
+      "structureHash": "2d61feb51a7c6bae74fcec251b494041",
+      "uploadedOutside": true
+    },
+    "egg_card_rare": {
+      "assetId": 112208218589890,
+      "contentHash": "81f7aa2e50a69ae24fdfd9babe9b2e77a45d10cd87c676ff6583103732b631ac",
+      "fileSha256": "81f7aa2e50a69ae24fdfd9babe9b2e77a45d10cd87c676ff6583103732b631ac",
+      "idSetByHand": "2026-11-11T06:03:21Z",
+      "moderationState": null,
+      "structureHash": "2d61feb51a7c6bae74fcec251b494041",
+      "uploadedOutside": true
+    },
+    "egg_card_secret": {
+      "assetId": 112857974996230,
+      "contentHash": "f6f714a2b64c67588e2e21e241228c77bb6b5c9f6c1f8fc204c3a8b2499108f6",
+      "fileSha256": "f6f714a2b64c67588e2e21e241228c77bb6b5c9f6c1f8fc204c3a8b2499108f6",
+      "idSetByHand": "2026-11-11T06:03:21Z",
+      "moderationState": null,
+      "structureHash": "2d61feb51a7c6bae74fcec251b494041",
+      "uploadedOutside": true
+    },
+    "egg_card_uncommon": {
+      "assetId": 84046719903185,
+      "contentHash": "488247a171747ad97a3c54ed5d1c26c06cb7a65ee29976a832964ab783ed499c",
+      "fileSha256": "488247a171747ad97a3c54ed5d1c26c06cb7a65ee29976a832964ab783ed499c",
+      "idSetByHand": "2026-11-11T06:03:21Z",
+      "moderationState": null,
+      "structureHash": "2d61feb51a7c6bae74fcec251b494041",
+      "uploadedOutside": true
+    },
     "fx_crack": {
       "assetId": 96614468669578,
       "contentHash": "5c9b88ff4eaca42c6539a89add27641151122abe888ddaf77f525873f732598f",
