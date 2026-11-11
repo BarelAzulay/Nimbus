@@ -142,6 +142,9 @@ local K = {
 		HeroHint = "Secret rolls happen at the Storm Altar",
 		HeroHintTravel = "TRAVEL flies you to the Storm Altar",
 		HeroHintHere = "You are at the Storm Altar",
+		-- TRAVEL works only from the lobby (the owner's call 2026-11-11; GateService "away"): elsewhere it greys out
+		HeroHintLobby = "Go to the lobby to travel to the Storm Altar",
+		HeroHintLobbyShort = "Travel from the lobby", -- phone / portrait (the long one runs past 296 px at 15)
 		AltarLock = "Available at the Storm Altar",
 		AltarLockShort = "At the Storm Altar",
 		Travel = "TRAVEL",
@@ -581,7 +584,7 @@ end
 -- a TRAVEL tap: only while the page shows, at most once per K.TRAVEL_GAP; QuickTravel("Altar") (the server checks the
 -- trip: GateService.Travel), then the Shop closes
 function H.travel(P)
-	if not H.shown(P.Page) or os.clock() - ALTAR.LastTravel < K.TRAVEL_GAP then
+	if not H.shown(P.Page) or not ShopEggs.InLobby() or os.clock() - ALTAR.LastTravel < K.TRAVEL_GAP then
 		return
 	end
 	ALTAR.LastTravel = os.clock()
@@ -1219,6 +1222,27 @@ function ShopEggs.AtAltar()
 	return ALTAR.From == true
 end
 
+-- TRAVEL's look: true while the character stands in the lobby (Config.InLobbyZone, the server's rule for the trip);
+-- with no live reading (no root) it stays true and the server decides. Tests: ShopEggs._InLobby (nil = live).
+function ShopEggs.InLobby()
+	if ShopEggs._InLobby ~= nil then
+		return ShopEggs._InLobby == true
+	end
+	local ok, inLobby = pcall(function()
+		local player = Players.LocalPlayer
+		local char = player and player.Character
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		if not (root ~= nil and root:IsA("BasePart")) then
+			return nil
+		end
+		return Config.InLobbyZone(root.Position) == true
+	end)
+	if ok and inLobby ~= nil then
+		return inLobby
+	end
+	return true
+end
+
 function ShopEggs.SetFromAltar(on)
 	ALTAR.From = on == true
 end
@@ -1331,7 +1355,13 @@ function ShopEggs.Refresh(page, fromLayout)
 	h.AltarChip.Text = brief and K.TEXT.AltarLockShort or K.TEXT.AltarLock
 	h.Travel.Button.Visible = altar
 	h.Spin.Button.Visible = not altar
-	h.Hint.Text = (locked and K.TEXT.HeroHint) or (altar and K.TEXT.HeroHintTravel) or K.TEXT.HeroHintHere
+	-- away from the lobby TRAVEL greys out and the hint says where it works (the server refuses "away" anyway)
+	local away = altar and not ShopEggs.InLobby()
+	if (h.Travel.Button:GetAttribute("Disabled") == true) ~= away then
+		CloudUI.SetDisabled(h.Travel.Button, away)
+	end
+	local lobbyHint = brief and K.TEXT.HeroHintLobbyShort or K.TEXT.HeroHintLobby
+	h.Hint.Text = (locked and K.TEXT.HeroHint) or (away and lobbyHint) or (altar and K.TEXT.HeroHintTravel) or K.TEXT.HeroHintHere
 	if altar then
 		h.Pulse.Scale = 1
 	end
