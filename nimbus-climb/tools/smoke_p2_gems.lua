@@ -1508,6 +1508,29 @@ S.p2gems_secret_altar = guarded("p2gems_secret_altar", function()
 		T.check(okM == false and whyM == "match" and okB == false and whyB == "battle" and okNil == false and whyNil == "junk",
 			"secret altar travel: refused in a match ('match'), in a battle ('battle'), for a non-player ('junk')", tostring(whyM) .. " / " .. tostring(whyB) .. " / " .. tostring(whyNil))
 		T.check(#got == n0 and (rootPos() - here).Magnitude < 0.01, "secret altar travel: ...and nothing moved, no Teleported")
+		-- the owner's call (2026-11-11): TRAVEL only from the lobby. A home plot (the spot ring, outside the lobby zone) and
+		-- the Altar island itself are refused 'away' with a toast, nothing moves; the lobby spawn still travels (below)
+		local L = Config.Lobby
+		local plotCF = CFrame.new(L.Origin + Vector3.new(L.SpotRingRadius, 3, 0))
+		local awayCases = { { "a home plot", plotCF } }
+		if typeof(landing) == "CFrame" then
+			awayCases[#awayCases + 1] = { "the Altar island", landing }
+		end
+		for _, case in ipairs(awayCases) do
+			Mock.Teleport(p, case[2])
+			advance(1.6)
+			local nA, hereA, markA = #got, rootPos(), K.logSize()
+			local okA, whyA = GateS.Travel(p, "Altar")
+			T.check(okA == false and whyA == "away" and #got == nA and (rootPos() - hereA).Magnitude < 0.01
+				and K.notified(p, "from the lobby", "bad", markA),
+				"secret altar travel: from " .. case[1] .. " (not the lobby) -> 'away', a 'from the lobby' toast, nothing moved",
+				string.format("%s %s, inLobby %s", tostring(okA), tostring(whyA), tostring(Config.InLobbyZone(hereA))))
+		end
+		if spawnCF then
+			T.check(Config.InLobbyZone(spawnCF.Position) == true, "secret altar travel: the lobby spawn is in the lobby zone (where TRAVEL works)")
+			Mock.Teleport(p, spawnCF)
+		end
+		advance(1.6)
 		-- the QuickTravel remote: the same move after the cooldown; a mash moves once; junk raises nothing
 		local QT = remote("QuickTravel")
 		local errs = #Mock.Errors

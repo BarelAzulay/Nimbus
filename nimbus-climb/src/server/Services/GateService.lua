@@ -14,7 +14,8 @@
 --                                      with Go home and the replacing of an open portal are that portal's); nothing moves
 --                                      until the owner walks in. dest "Altar" (shop-area 16.17.3: the Shop's Secret card
 --                                      TRAVEL) runs the Altar gate prompt's checks without its distance ("dead" / "match" /
---                                      "battle" / "locked" / "cooldown", the gates' shared 1.5 s cooldown) and puts the
+--                                      "battle" / "locked" / "cooldown", the gates' shared 1.5 s cooldown), only from the
+--                                      lobby (Config.InLobbyZone, else "away"; the owner's call 2026-11-11), and puts the
 --                                      character on StormAltar.GetLanding() ("failed" without one), Teleported "Altar".
 --                                      Every Altar refusal toasts its reason (Notify "bad", at most one per 1.5 s:
 --                                      the Shop closed on TRAVEL, so a silent refusal read as a broken button).
@@ -232,6 +233,7 @@ local TRAVEL_REFUSED = {
 	battle = "Finish your battle first!",
 	locked = "Leave the portal party first",
 	cooldown = "Wait a moment",
+	away = "Travel to the Storm Altar from the lobby",
 	failed = "The Storm Altar is not ready yet",
 }
 
@@ -246,9 +248,11 @@ local function refuseTravel(player, reason)
 end
 
 -- Travel(player, "Altar"): every refusal moves nothing and tells the player why; the cooldown is the gate prompts'
--- (S.lastUse, COOLDOWN)
+-- (S.lastUse, COOLDOWN). The owner's call (2026-11-11): only from the lobby (Config.InLobbyZone: not a home plot, the
+-- ring street, the Arena, a course, nor the Altar island itself), like the other trips' portal walk -> "away".
 function GateService._toAltar(player)
-	if not aliveRoot(player) then
+	local root = aliveRoot(player)
+	if not root then
 		return refuseTravel(player, "dead")
 	end
 	if inMatch(player) then
@@ -264,6 +268,9 @@ function GateService._toAltar(player)
 	local last = S.lastUse[player]
 	if last and now - last < COOLDOWN then
 		return refuseTravel(player, "cooldown")
+	end
+	if not Config.InLobbyZone(root.Position) then
+		return refuseTravel(player, "away")
 	end
 	S.lastUse[player] = now
 	local altar = S.deps.StormAltar

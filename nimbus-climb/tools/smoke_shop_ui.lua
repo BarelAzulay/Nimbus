@@ -2062,7 +2062,24 @@ S.client_shop_secret_lock = guarded("client_shop_secret_lock", function()
 		end
 		T.check(#bad == 0, label .. ": the lock chip, the hint and TRAVEL fit their boxes with the real font widths", table.concat(bad, "; "))
 	end
+	-- the Altar look below is read from the lobby (TRAVEL live); "away from the lobby" has its own block
+	SE._InLobby = true
 	local ok, err = pcall(function()
+		------------------------------------------------------------------ the live lobby reading (Config.InLobbyZone on the root)
+		if root then
+			local L = Config.Lobby
+			SE._InLobby = nil
+			Mock.Teleport(LocalPlayer, CFrame.new(L.Origin + Vector3.new(0, 3, 20)))
+			local inPlaza = SE.InLobby()
+			Mock.Teleport(LocalPlayer, CFrame.new(L.Origin + Vector3.new(L.SpotRingRadius, 3, 0)))
+			local onPlot = SE.InLobby()
+			T.check(inPlaza == true and onPlot == false, "secret lock: InLobby() reads the root live: the plaza true, a home plot false",
+				tostring(inPlaza) .. " / " .. tostring(onPlot))
+			SE._InLobby = true
+			if root0 then
+				Mock.Teleport(LocalPlayer, root0)
+			end
+		end
 		------------------------------------------------------------------ 1920x1080, away from the altar
 		Mock.SetViewport(1920, 1080)
 		G.advance(0.6)
@@ -2121,6 +2138,37 @@ S.client_shop_secret_lock = guarded("client_shop_secret_lock", function()
 		Mock.Click(k.Travel)
 		G.advance(0.1)
 		T.eq(#KC.serverCalls("QuickTravel", mark), 1, "secret lock: ...a TRAVEL tap with the Shop closed sends nothing")
+
+		------------------------------------------------------------------ away from the lobby: TRAVEL greys out (the owner's call 2026-11-11)
+		SE._InLobby = false
+		Shop.Open({ Tab = "Eggs" })
+		G.advance(1.2)
+		k = G.heroKit()
+		local markAway = #Mock.RemoteLog
+		T.check(G.shown(k.Travel) and G.disabled(k.Travel) and G.text(k.Hero, "Hint") == "Go to the lobby to travel to the Storm Altar",
+			"secret lock: away from the lobby TRAVEL shows greyed out and the hint reads 'Go to the lobby to travel to the Storm Altar'",
+			G.heroLook(k) .. "; hint " .. tostring(G.text(k.Hero, "Hint")))
+		fitsAll("secret lock away from the lobby 1920x1080", { k.Hint })
+		Mock.Click(k.Travel)
+		G.advance(0.6)
+		T.check(#KC.serverCalls("QuickTravel", markAway) == 0 and Shop.IsOpen(), "secret lock: ...a TRAVEL tap there sends nothing and the Shop stays open",
+			#KC.serverCalls("QuickTravel", markAway) .. " sends, open " .. tostring(Shop.IsOpen()))
+		SE._InLobby = true
+		Shop.Close()
+		G.advance(0.3)
+		-- the phone's short hint (the long one runs past the portrait hint's box)
+		RedoGeom.at(360, 640, true, "secret lock away 360x640", function()
+			SE._InLobby = false
+			Shop.Open({ Tab = "Eggs" })
+			G.advance(1.2)
+			local kk = G.heroKit()
+			T.check(not (kk.Hint and G.shown(kk.Hint)) or kk.Hint.Text == "Travel from the lobby",
+				"secret lock away 360x640: a shown hero hint reads 'Travel from the lobby'", kk.Hint and kk.Hint.Text or "no hint")
+			fitsAll("secret lock away 360x640", { kk.Hint })
+			SE._InLobby = true
+			Shop.Close()
+			G.advance(0.3)
+		end)
 
 		------------------------------------------------------------------ at the altar: today's card
 		SE._AtAltar = true
@@ -2249,6 +2297,7 @@ S.client_shop_secret_lock = guarded("client_shop_secret_lock", function()
 	if not ok then
 		T.fail("secret lock: scenario error", tostring(err))
 	end
+	SE._InLobby = nil
 	workspace:SetAttribute(attrName, site0)
 	if root and root0 and root.Parent then
 		Mock.Teleport(LocalPlayer, root0)
