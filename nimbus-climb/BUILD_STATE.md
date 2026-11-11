@@ -379,6 +379,24 @@ Updated: 2026-10-18 (after wave 2). Branch `v3-phase4`. Plan: `ARCHITECTURE_V3.m
   client_p5battle_mobile 390x844 BossBar (fails the same on 8d37a73). The whole suite `smoke.py --quick` (6.1 GB free, nothing else running): 27,971 passed / 0 failed / 992 warnings (1,886 s; fbr-smoke-whole-quick.txt).
   `node tools/check.mjs` 0 errors. Owner questions 7-9 in the ledger (the duel pace knob, the 48-seed table, the Frost Wyrm
   solo cells).
+  Branch gate (2026-11-11, on 16b9016 + one test fix; evidence `.superpowers/battle-feel/evidence/fbg-*.txt`; 5.9 GB free,
+  nothing else running, the sim and the suite one at a time): `SIM_BATTLE=full` 69 of 69 (515 s; the same as
+  fbr-sim-full-3.txt line for line except the step-cost line, 0.055 vs 0.053 ms). The slowest raid cells (3 teams, all
+  fights): storm_titan Starter 237 s (won 232), shadow_hydra Starter 235 s (won 232), lava_golem Starter 230 s,
+  shadow_hydra Max 227 s; the longest single fight 271 s, 0 timeouts; trained S7 8 teams shadow_hydra 229.8 s / storm_titan
+  229.1 s (cap 240). Whole suite `smoke.py --quick` run 1: 27,970 / 1 (857 scenarios, 1,793 s): `client_bug5dgn_spin`, a
+  test-only flake: DungeonFx's spin clock keeps running across the suite once a client boot starts it, so the probe's
+  ring sat at that clock mod 2 pi and about 1 run in 20 landed within 8 degrees of rest (reproduced by seeding the clock at
+  2 pi - 1: the old check fails with the suite's message, the new one passes). The fix (`tools/smoke_bug5_dungeon.lua`) reads the turn between two frames 0.5 s apart and the angle
+  formula; no game code changed. Run 2 after the fix: 27,971 passed / 0 failed / 992 warnings (857 scenarios, 1,812 s).
+  `node tools/check.mjs` 0 errors (1166 files, 5 old many-locals warnings).
+  Owner Studio checklist for this branch (Play Solo, Graphics High):
+  1. A raid boss (Storm Titan): melee pets (Bear, Cat) rest about 8 studs back from the boss and dash in for each bite,
+     then hop back; none stands glued to the boss.
+  2. The Champion Ring: the same rest about 8 studs back and the dash in, against an NPC team.
+  3. A special lands when its show lands: the damage numbers / knock-back come at the impact, not at the button press.
+  4. Dash while an enemy special is charging (the wind-up ring / glow): your pet takes no hit from it; stand still and
+     it lands.
 - 2026-10-28 (player ruling, wave 5 dungeon camera): the Camera shake setting OFF turns off ONLY the hit shakes; the dungeon entrance rush, the room walk-in shot and the FOV punch on big attacks always play (short, skippable). The rush is skipped when the camera is > 60 studs from the gate.
 - Evolve button; 2nd evolution only Epic+; level cap 100 for all pets (XP curve keeps rising).
 - Presses become food plants, Collector = Coin Magnet, Kitchen = Food Machine, Gym = Training Place.
