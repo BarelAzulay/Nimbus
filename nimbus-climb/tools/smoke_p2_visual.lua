@@ -715,7 +715,10 @@ local function clientScenarios()
 			-- the altar) "You are at the Storm Altar", Locked the rule line "Secret rolls happen at the Storm Altar"
 			local SEm = moduleAt("client", "UI/ShopEggs")
 			local state = SEm and type(SEm.CardState) == "function" and SEm.CardState("Secret") or "?"
-			local wantHint = (state == "Locked" and "Secret rolls happen at the Storm Altar") or (state == "Altar" and "TRAVEL flies you to the Storm Altar")
+			-- (owner Q7, 2026-11-11) away from the lobby the Altar hint says where TRAVEL works
+			local inLobby = not (SEm and type(SEm.InLobby) == "function") or SEm.InLobby()
+			local altarHint = inLobby and "TRAVEL flies you to the Storm Altar" or "Go to the lobby to travel to the Storm Altar"
+			local wantHint = (state == "Locked" and "Secret rolls happen at the Storm Altar") or (state == "Altar" and altarHint)
 				or (state ~= "?" and "You are at the Storm Altar") or nil
 			T.check(card ~= nil and card.Visible and hint ~= nil and wantHint ~= nil and hint.Text == wantHint and hint.TextWrapped ~= true and fits,
 				"Shop Eggs tab: the Secret Roulette hero's hint matches its state (" .. tostring(state) .. ") and is one line inside its box (no orphan word on a second line)",
