@@ -110,8 +110,8 @@ fine details (claws, beaks, nostrils, inner ears, feather/fur tufts). Cute and a
   names >= 22 px and info lines >= 18 px at 1080p, with a dark stroke, a compact solid backing plate sized to the text
   (no huge empty panels), sensible MaxDistance (~60-120 studs) and LightInfluence 0. Card range (2026-11-12, slop-audit
   win 2; only the range shrinks, the text keeps its pixel size, no studs-scaled text and no distance fade): gate and
-  portal name cards (`GateTag`, `PortalBillboard`, the builders' stand-in `GateTag`s) show within **45 studs**
-  (`WorldStyle.TagRange`; was 120), the own follower's pet card within **15** (was 90). Far-read exceptions, kept on
+  portal name cards (`GateTag`, `PortalBillboard`, the builders' stand-in `GateTag`s) show within **55 studs**
+  (`WorldStyle.TagRange`; 2026-11-13 owner: 55, was 45; first 120), the own follower's pet card within **15** (was 90). Far-read exceptions, kept on
   purpose: the arena forum's Return gate 110 (`spec.TagRange`: the forum's lone way home stands ~100 studs from the
   colosseum's main gate), the Storm Altar `TitleTag` 150, the downed marker 250, the tutorial guide sign 4000, battle
   cards 140, `RaidGateTag` 120, the home portal tag and the home tags 120, the home nameplates (80), the arena boards
@@ -2450,7 +2450,7 @@ WorldStyle.BuildGate(parent, siteCFrame, spec) -> model, pad, promptPart
   22 wide x 8 deep x 26 tall: two Marble columns on Slate plinths, a Slate lintel with a Marble keystone, a 0.4-stud Neon inlay ring, a Neon disc
   (Transparency 0.35) + a ForceField disc, a 6x6 voxel emblem (<= 30 parts, one per Glyph, built once and cloned); Pad = a 14 x 0.6 x 14 Slate
   slab with a Marble border and a Neon glyph (the PortalService zone part sits on it) else a 10 x 0.3 x 6 step; the pixel BillboardGui tag
-  (title 28 px, info 20 px, pill 18 px, stroke, MaxDistance 45 = `WorldStyle.TagRange` or `spec.TagRange`, 2026-11-12, was 120,
+  (title 28 px, info 20 px, pill 18 px, stroke, MaxDistance 55 = `WorldStyle.TagRange` or `spec.TagRange`, 2026-11-13 owner: 55, was 45, first 120,
   LightInfluence 0) 27 studs up; one PointLight (Range 14, Brightness 1.2,
   Shadows = false) + sparkles (Rate 6); <= 90 parts, owners add <= 30 (crown, torches): every gate <= 120.
 WorldStyle.Palette, WorldStyle.Materials, WorldStyle.Plinth(parent, cf, size, mat), WorldStyle.Kerb(...), WorldStyle.Chamfer(...)   (on Voxel.Box)

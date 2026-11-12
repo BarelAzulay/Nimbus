@@ -44,7 +44,8 @@
 --   * TextButton "GiftsButton": round, x = NimbusHud.TopRightLeft - 8 - size, y = 6 (gui px); 56 px at 1080p (x the screen
 --     factor), 44 px on a phone; hidden with the strips (InMatch / InBattle, or no top-right strips) and, with its ring and
 --     pip, while any window of K.WINDOWS is open (slop audit 2026-11-12, win 5: H.windowUp; back within K.WINDOW_POLL of the
---     close; the Gifts window itself keeps it); re-laid out on the HUD's
+--     close), and (owner 2026-11-13) while the Gifts window itself is open (back at once on Close) or an NPC talk box
+--     is up (NpcController, in K.WINDOWS); re-laid out on the HUD's
 --     TopRightLeft / TopRightBottom signals. Children: the Gifts glyph, Frame "Pip" (a 10 px Neon.Red dot: an unlocked
 --     claim (ClaimView "Claim" / "Repair") or a ready play tier, >= Config.Daily.PipDelaySeconds after the last
 --     CharacterAdded, the tutorial at its spin step or later), a 0.4 s shake when a play tier becomes Ready in a payload
@@ -132,13 +133,14 @@ local K = {
 	SMALL = 500, -- the smaller screen side at most this = a phone (the button)
 	-- (slop audit 2026-11-12, win 5) the button, its ring and its pip step aside while any of these controllers answers
 	-- IsOpen() == true: every window that can sit over the button's corner. Each one's IsOpen is false in ordinary play with
-	-- no window up (read 2026-11-12). Never DailyController itself (its own window keeps the button), NpcController (a talk
-	-- box), DevController or MainMenuController (the title screen hides the whole HUD on its own; its Settings / Credits /
-	-- What's new windows are asked through MainMenuController.Window() in H.windowUp instead).
+	-- no window up (read 2026-11-12). Owner 2026-11-13: also NpcController (an NPC talk box up: IsOpen() -> true, npcId)
+	-- and the Gifts window itself (S.Open, asked in H.windowUp: never this list). Never DevController or MainMenuController
+	-- (the title screen hides the whole HUD on its own; its Settings / Credits / What's new windows are asked through
+	-- MainMenuController.Window() in H.windowUp instead).
 	WINDOWS = {
 		"MenuController", "PetsController", "ShopController", "StoreController", "TroveController", "IndexController",
 		"FusionController", "CareController", "TrainController", "DungeonController", "ObbyController", "RaidGateController",
-		"ArenaController", "LossScreen",
+		"ArenaController", "LossScreen", "NpcController",
 	},
 	WINDOW_POLL = 0.25, -- seconds: no shared close signal exists, so a watcher re-lays the button out when that answer changes
 	WINDOW_RETRY = 2, -- seconds before a K.WINDOWS module not found yet is looked up again (review round 1)
@@ -527,6 +529,7 @@ local function hiddenByPlay()
 end
 
 local H = {}
+DailyController._H = H -- (review round 2) tests stand in a step of Open (a build / layout / render that throws)
 
 -- the first of `texts` that fits the label's box (its design width less FIT_SLACK) at its size and font, measured by
 -- TextService (the real font: a cell's text is never cut to "Week W..."); the last one when none does
@@ -702,12 +705,9 @@ function H.buildButton()
 	Theme.Corner(pip, UDim.new(0.5, 0))
 	pip.Parent = U.Button
 	U.Pip = pip
+	-- (owner 2026-11-13) the button only opens: it hides while its window is open (X / Esc / gamepad B close it)
 	U.Button.Activated:Connect(function()
-		if S.Open then
-			DailyController.Close()
-		else
-			DailyController.Open()
-		end
+		DailyController.Open()
 	end)
 end
 
@@ -732,7 +732,10 @@ end
 -- corner (the Shop's wide rect, the Pets window, the Index, the menu's windows, the Training Place ...) would sit under or
 -- over it: the button, its ring and its pip hide while any controller of K.WINDOWS answers IsOpen() == true. Re-laid out by
 -- MenuController.WindowOpened (another id), ShopController.Toggled and the K.WINDOW_POLL watcher (a close path with no
--- signal: an X, Esc, another window taking over, a match start). The Gifts window itself is not in the list.
+-- signal: an X, Esc, another window taking over, a match start). (owner 2026-11-13) The Gifts window itself hides them
+-- too: S.Open, asked first (Open / Close re-lay the button out at once); an NPC talk box is NpcController in the list.
+-- Nothing anchors to the button (the window is centred, the tutorial has no arrow on it, no claim flies to it), and
+-- X / Esc / gamepad B still close the window while its toggle button is hidden.
 -- (review round 1) the poll stays cheap: each K.WINDOWS module is looked up (FindFirstChild + require) once and kept; one
 -- not found yet is looked up again at most every K.WINDOW_RETRY seconds; a tick is then only their IsOpen calls
 function H.windowModule(name)
@@ -750,6 +753,9 @@ function H.windowModule(name)
 end
 
 function H.windowUp()
+	if S.Open then
+		return true
+	end
 	for _, name in ipairs(K.WINDOWS) do
 		local mod = H.windowModule(name)
 		if mod and type(mod.IsOpen) == "function" then
@@ -2002,11 +2008,25 @@ function DailyController.Open(args)
 		S.Tab = (not claimable(S.State) and tierReady(S.State)) and "Play" or "Daily"
 	end
 	S.Open = true
-	H.layoutButton()
-	H.ensureWindow()
-	H.layout()
-	U.Holder.Visible = true
-	H.render()
+	-- (review round 2) S.Open hides the button first; a build / layout / render that throws is undone (the window shut,
+	-- S.Open false, the button back at once: a phone has no Esc to get out of a half-built window with no button)
+	local built = safe("open", function()
+		H.layoutButton()
+		H.ensureWindow()
+		H.layout()
+		U.Holder.Visible = true
+		H.render()
+	end)
+	if not built then
+		S.Open = false
+		if U.Holder then
+			U.Holder.Visible = false
+		end
+		H.syncBack()
+		safe("cover", H.coverColumn)
+		safe("layout", H.layoutButton)
+		return false
+	end
 	H.syncBack()
 	if not wasOpen then
 		U.Pop.Scale = K.OPEN_FROM
@@ -2015,7 +2035,7 @@ function DailyController.Open(args)
 		if menu and menu.WindowOpened then
 			menu.WindowOpened:Fire("Daily")
 		end
-		safe("layout", H.layoutButton) -- (win 5) the windows WindowOpened just closed no longer hide the button
+		safe("layout", H.layoutButton) -- (win 5) after the windows WindowOpened just closed (owner 2026-11-13: S.Open keeps it hidden)
 	end
 	H.coverColumn() -- after WindowOpened: the window it closed clears only its own cover
 	return true
@@ -2031,6 +2051,7 @@ function DailyController.Close()
 	end
 	H.syncBack()
 	H.coverColumn()
+	safe("layout", H.layoutButton) -- (owner 2026-11-13) the button, its ring and its pip are back at once
 end
 
 function DailyController.Init()

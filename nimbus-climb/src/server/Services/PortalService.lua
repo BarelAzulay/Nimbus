@@ -28,8 +28,8 @@
 --   * While a countdown runs the side walls show a soft ForceField shimmer in the portal colour.
 -- Billboard (World text rule, ARCHITECTURE_V3.md): a PIXEL-sized BillboardGui above each gate replaces the
 -- studs-sized card LobbyBuilder made: difficulty name + stars, "2/4 players" and a status pill ("Step in to
--- play" / "Starting in 12"). It floats ~27 studs up and shows within 45 studs (the gate card range,
--- WorldStyle.TagRange; 2026-11-12, was 120).
+-- play" / "Starting in 12"). It floats ~27 studs up and shows within 55 studs (the gate card range,
+-- WorldStyle.TagRange; 2026-11-13 owner: 55, was 45; first 120).
 -- Countdown face (eye level, for friends standing next to the portal): a SurfaceGui in the gate's swirl,
 -- facing the plaza, ~11 studs above the pad: "Starting in", a 3.2-stud numeral on a round badge and the head
 -- count. Shown only while the pad has a party.
@@ -93,7 +93,7 @@ local PAD_SPREAD = 2.5 -- members put back on the pad stand on a ring this wide
 local BB = {
 	Width = 380, -- transparent container; the plate inside is sized to its text
 	Height = 150,
-	MaxDistance = 45, -- studs: the gate card range (= WorldStyle.TagRange; 2026-11-12, was 120)
+	MaxDistance = 55, -- studs: the gate card range (= WorldStyle.TagRange; 2026-11-13 owner: 55, was 45; first 120)
 	Gap = 2.5, -- studs between the top of the gate and the bottom of the plate
 	NameText = 32,
 	InfoText = 21,

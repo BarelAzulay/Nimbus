@@ -10,7 +10,8 @@
 --                             outlined and on a solid plate, the plate compact (sized to its content, no huge empty
 --                             panel), LightInfluence 0, MaxDistance 50-150 (AlwaysOnTop beacons may reach further; the
 --                             2026-11-12 card range, named exceptions: gate and portal cards GateTag / PortalBillboard
---                             exactly 45 (the arena forum's Portal_Return 110, its documented far-read exception), the
+--                             exactly 55 (2026-11-13 owner: 55, was 45; the arena forum's Portal_Return 110, its
+--                             documented far-read exception), the
 --                             own follower's pet card exactly 15, the Food Bowl sign >= 40). Surface
 --                             signs: 40-60 px per stud, LightInfluence 0, no TextScaled, the biggest line >= 0.95 stud
 --                             (not on a label strip of info lines only: LABEL_STRIPS, the egg row's RarityStrip) and every
@@ -48,7 +49,7 @@ local LABEL_STRIPS = { RarityStrip = true }
 -- its pixel size. Gate and portal cards show within exactly GATE_RANGE studs (WorldStyle.TagRange); the arena forum's
 -- Return gate keeps RETURN_RANGE (the forum's lone way home stands ~100 studs from the colosseum's main gate); the own
 -- follower's pet card shows within exactly OWN_FOLLOWER_RANGE (PetCard.Modes.Follower). Every other tag keeps 50-150.
-local GATE_RANGE = 45
+local GATE_RANGE = 55 -- 2026-11-13 owner: 55 (was 45)
 local RETURN_RANGE = 110
 local OWN_FOLLOWER_RANGE = 15
 
@@ -798,7 +799,7 @@ local function serverScenarios()
 		local lobbyModel = workspace:FindFirstChild("NimbusLobby")
 		local gatesFolder = lobbyModel and lobbyModel:FindFirstChild("Gates")
 		local gateCount = 0
-		local gateRanges = T.tally("polish worldtext: every lobby GateTag (the Gate Court) shows within exactly " .. GATE_RANGE .. " studs (the 2026-11-12 card range)")
+		local gateRanges = T.tally("polish worldtext: every lobby GateTag (the Gate Court) shows within exactly " .. GATE_RANGE .. " studs (the card range, 2026-11-13 owner: 55, was 45)")
 		for _, g in ipairs(gatesFolder and gatesFolder:GetChildren() or {}) do
 			local gtag = g:IsA("Model") and g:FindFirstChild("GateTag", true)
 			if gtag then

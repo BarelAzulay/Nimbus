@@ -13,7 +13,8 @@
 --                        (NeonKit.CloseMark, >= 44 px); win 5, the Gifts button, its ring and its pip hide behind every
 --                        window in DailyController.K.WINDOWS (the menu's Pets window, the Index, the Stats window), not only
 --                        the Shop, and are back within 0.4 s of that window closing (its own X, or MenuController switching
---                        ids and closing); the Gifts window itself keeps them
+--                        ids and closing). Owner 2026-11-13: the Gifts window itself hides them too (at once, back at
+--                        once on Close), and so does an open NPC talk box (NpcController.IsOpen, back within K.WINDOW_POLL)
 --   client_daily_pip    the pip waits PipDelaySeconds after a spawn and the tutorial's spin step, the shake when a tier
 --                        becomes Ready (never on the first payload after a Loading one), the ring's fill and its paused dim,
 --                        the button hides in a match
@@ -389,9 +390,13 @@ local function clientScenarios()
 		-- (gui-redo Task 9: the big centred window replaced the 760x420 drop-down under the button)
 		T.check(win ~= nil and abs(win.AbsoluteSize.X - 1180) <= 1 and abs(win.AbsoluteSize.Y - 720) <= 1 and DC.Layout() == "PC", "daily window: 1180x720 at 1080p (PC)",
 			win and fmt("%dx%d %s", win.AbsoluteSize.X, win.AbsoluteSize.Y, tostring(DC.Layout())) or "no window")
-		T.check(H.inBox(win, DC) and H.shown(btn) and abs(btn.AbsolutePosition.X + btn.AbsoluteSize.X - (left - 8)) <= 1 and btn.AbsolutePosition.Y == 6,
-			"daily window: centred in its BigRect box, the Gifts button stays where it was",
+		T.check(H.inBox(win, DC) and abs(btn.AbsolutePosition.X + btn.AbsoluteSize.X - (left - 8)) <= 1 and btn.AbsolutePosition.Y == 6,
+			"daily window: centred in its BigRect box, the Gifts button laid out where it was",
 			win and fmt("window %d,%d %dx%d, button %d,%d", win.AbsolutePosition.X, win.AbsolutePosition.Y, win.AbsoluteSize.X, win.AbsoluteSize.Y, btn.AbsolutePosition.X, btn.AbsolutePosition.Y) or "no window")
+		-- (owner 2026-11-13) the Gifts window hides its own button, ring and pip too (X / Esc / gamepad B close it)
+		local own = H.giftsParts()
+		T.check(not own[1] and not own[2] and not own[3], "daily window: (owner 2026-11-13) its own window hides the Gifts button, its ring and its pip at once",
+			H.partsText(own))
 		T.check(H.header():find("Day 3 of 7", 1, true) ~= nil and H.header():find("Week 2", 1, true) ~= nil, "daily window: the header", H.header())
 		T.check(H.cellCount() == 7 and H.cellText(1):find("$", 1, true) ~= nil and H.cellDimmed(1) and H.cellDimmed(2) and not H.cellDimmed(3) and H.cellPulsing(3)
 			and not H.cellPulsing(4), "daily window: 7 cells, claimed dim, today pulsing",
@@ -507,7 +512,8 @@ local function clientScenarios()
 			KC.advance(0.3)
 			T.check(DC.IsOpen() and not Pets.IsOpen(), "daily window: the Gifts window closes the Pets window (MenuController's WindowOpened handler)",
 				fmt("gifts %s, pets %s", tostring(DC.IsOpen()), tostring(Pets.IsOpen())))
-			T.check(atOnce[1] and atOnce[2] and H.shown(btn), "daily window: (win 5) ...and its own button and ring show again at once (no poll wait)", H.partsText(atOnce))
+			-- (owner 2026-11-13: before, its own button and ring came back here; the Gifts window now hides them itself)
+			T.check(not atOnce[1] and not atOnce[2] and not H.shown(btn), "daily window: (owner 2026-11-13) ...and its own button and ring stay hidden behind the Gifts window", H.partsText(atOnce))
 			Pets.Open()
 			KC.advance(0.3)
 			T.check(not DC.IsOpen() and Pets.IsOpen(), "daily window: the Pets window closes the Gifts window")
@@ -533,17 +539,19 @@ local function clientScenarios()
 			inList[name] = true
 		end
 		for _, name in ipairs({ "MenuController", "PetsController", "ShopController", "StoreController", "TroveController", "IndexController", "FusionController",
-			"CareController", "TrainController", "DungeonController", "ObbyController", "RaidGateController", "ArenaController", "LossScreen" }) do
+			"CareController", "TrainController", "DungeonController", "ObbyController", "RaidGateController", "ArenaController", "LossScreen",
+			"NpcController" }) do -- (owner 2026-11-13) the NPC talk box too
 			if not inList[name] then
 				wrong[#wrong + 1] = "missing " .. name
 			end
 		end
-		for _, name in ipairs({ "DailyController", "NpcController", "DevController", "MainMenuController" }) do
+		-- (its own window is asked through its own state, not the list)
+		for _, name in ipairs({ "DailyController", "DevController", "MainMenuController" }) do
 			if inList[name] then
 				wrong[#wrong + 1] = "lists " .. name
 			end
 		end
-		T.check(#wrong == 0 and DC.K.WINDOW_POLL == 0.25, "daily window: (win 5) K.WINDOWS names every window controller (never itself, the NPC dialog, DEV or the title menu), K.WINDOW_POLL 0.25 s",
+		T.check(#wrong == 0 and DC.K.WINDOW_POLL == 0.25, "daily window: (win 5) K.WINDOWS names every window controller and the NPC talk box (never itself, DEV or the title menu), K.WINDOW_POLL 0.25 s",
 			fmt("%s; poll %s", table.concat(wrong, ", "), tostring(DC.K.WINDOW_POLL)))
 		-- (review round 1) the poll is cheap: every K.WINDOWS module is resolved once and kept, so a tick is only their IsOpen
 		-- calls (no FindFirstChild + require 14 times every 0.25 s)
@@ -617,15 +625,77 @@ local function clientScenarios()
 			else
 				T.fail("daily window: (win 5) needs MainMenuController.OpenSettings / CloseWindows")
 			end
+			-- (owner 2026-11-13: before, the Gifts window kept its own button) its own window hides them at once and Close
+			-- brings them back at once (no poll wait); the pip flow is the same as behind any window
 			DC.Open()
+			p = H.giftsParts()
+			T.check(DC.IsOpen() and none(p), "daily window: (owner 2026-11-13) the Gifts window hides its own button, ring and pip at once", H.partsText(p))
 			KC.advance(0.6)
 			p = H.giftsParts()
-			T.check(DC.IsOpen() and all(p), "daily window: (win 5) the Gifts window itself never hides its own button", H.partsText(p))
+			T.check(DC.IsOpen() and none(p), "daily window: (owner 2026-11-13) ...and keeps them hidden while open (the poll agrees)", H.partsText(p))
 			DC.Close()
+			p = H.giftsParts()
+			T.check(not DC.IsOpen() and all(p), "daily window: (owner 2026-11-13) ...back at once on Close", H.partsText(p))
 			KC.advance(0.3)
+			-- (owner 2026-11-13) the NPC talk box hides them too, back within K.WINDOW_POLL of it closing. This world has no
+			-- NPC models to talk to (client_pets builds and removes its own), so NpcController.IsOpen is stood in for with the
+			-- real one's shape (true, npcId) on the very module table the watcher keeps
+			local NC = H.moduleAt("client", "Controllers/NpcController")
+			if NC and type(NC.IsOpen) == "function" then
+				T.check(NC.IsOpen() == false, "daily window: (owner 2026-11-13) NpcController.IsOpen() is false with no talk box up", tostring(NC.IsOpen()))
+				local realIsOpen = NC.IsOpen
+				NC.IsOpen = function()
+					return true, "sparky_fox"
+				end
+				KC.advance(0.3)
+				p = H.giftsParts()
+				local keptNpc = type(DC._S) == "table" and DC._S.WindowMods and DC._S.WindowMods.NpcController == NC
+				NC.IsOpen = realIsOpen
+				T.check(keptNpc and none(p), "daily window: (owner 2026-11-13) an open NPC talk box hides the Gifts button, its ring and its pip",
+					fmt("watcher keeps NpcController %s, %s", tostring(keptNpc), H.partsText(p)))
+				KC.advance(0.3)
+				p = H.giftsParts()
+				T.check(NC.IsOpen() == false and all(p), "daily window: (owner 2026-11-13) ...back within K.WINDOW_POLL of the talk box closing", H.partsText(p))
+			else
+				T.fail("daily window: (owner 2026-11-13) needs NpcController.IsOpen")
+			end
 			H.restoreTutorial(prevTutorial)
 		else
 			T.fail("daily window: (win 5) needs MenuController, PetsController and IndexController")
+		end
+		-- (review round 2) Open hides the button first; a build / layout / render that throws is undone: the window shut,
+		-- S.Open false and the button back at once (a phone has no Esc to get out). H.render is stood in for on the
+		-- module's own H table (DailyController._H) and restored
+		local DH = DC._H
+		if type(DH) == "table" and type(DH.render) == "function" then
+			KC.advance(0.3)
+			T.check(H.shown(btn) and not DC.IsOpen(), "daily window: (review round 2) (setup) the window shut and the Gifts button shown", H.partsText(H.giftsParts()))
+			local realRender = DH.render
+			DH.render = function()
+				error("planted render error")
+			end
+			local o0 = #Mock.Output
+			local okOpen, opened = pcall(DC.Open)
+			DH.render = realRender
+			local p = H.giftsParts()
+			T.check(okOpen and opened == false and not DC.IsOpen() and DC._S.Open == false and DC._S.BackBound ~= true and not H.shown(H.win()) and p[1],
+				"daily window: (review round 2) a render that throws in Open: Open returns false, S.Open false, no Back binding, the window hidden, the Gifts button back at once",
+				fmt("pcall %s (%s), open %s, back %s, window %s, %s", tostring(okOpen), tostring(opened), tostring(DC._S.Open), tostring(DC._S.BackBound),
+					tostring(H.shown(H.win())), H.partsText(p)))
+			-- (the planted fault's warning belongs to this check: dropped, so the warn audit sees only real ones)
+			for i = #Mock.Output, o0 + 1, -1 do
+				local o = Mock.Output[i]
+				if o.kind == "warn" and tostring(o.text):find("planted render error", 1, true) then
+					table.remove(Mock.Output, i)
+				end
+			end
+			DC.Open()
+			KC.advance(0.3)
+			T.check(DC.IsOpen() and H.shown(H.win()) and not H.shown(btn), "daily window: (review round 2) ...and the next Open builds the window as usual")
+			DC.Close()
+			KC.advance(0.3)
+		else
+			T.fail("daily window: (review round 2) needs DailyController._H.render")
 		end
 		-- InMatch closes it
 		DC.Open()

@@ -30,7 +30,7 @@
 --                client/PortalVortex reads to lift that gate's vortex toward white and its glow (the Altar's 1.4); the
 --                swirl itself is built as always,
 --                TagRange = studs (optional, 2026-11-12): the GateTag's MaxDistance for this gate; a number > 0, anything
---                else = WorldStyle.TagRange (45). Only the arena Return gate passes one (110, ArenaBuilder) }
+--                else = WorldStyle.TagRange (55). Only the arena Return gate passes one (110, ArenaBuilder) }
 --       Shape by glyph: "crown" = the P4 Champion Ring crowned square arch (gold trim, violet glow, crown baked into
 --       the voxels); every other glyph = the round hoop: a stone base, two stone pillars with coloured caps and a
 --       glowing dot, a chunky pixel ring whose outer band is the gate colour around a white cloud frame, an inner Neon
@@ -42,7 +42,7 @@
 --       never collide), "GlowCore" (invisible, the PrimaryPart, 11.5 up; not named SwirlCore so PortalService keeps the countdown face at the lock wall: PointLight "GateLight" Range 28 Brightness 1.3
 --       + ParticleEmitter "Sparkles" Rate 12 drifting toward the plaza), "Crest*" / "Star*" parts, "PromptAnchor"
 --       (invisible, front of the opening, 3 up: prompts go here), the BillboardGui "GateTag" (Plate: Title 28 px,
---       Info 20 px, Pill.Label 18 px; anchor 27 studs up, MaxDistance = spec.TagRange or WorldStyle.TagRange 45, see the
+--       Info 20 px, Pill.Label 18 px; anchor 27 studs up, MaxDistance = spec.TagRange or WorldStyle.TagRange 55, see the
 --       card range below). Pad = true: "Pad" (14 x 0.6 x 14, 14 studs
 --       in front, walkable; the PortalService zone sits on it) tiled like P4 (a colour rim, a light stone ring, a Neon
 --       plus; X for swords, a crown for the arch: "PadTile*" 0.06 thick on top) + two lanterns on its front corners;
@@ -52,9 +52,10 @@
 --   WorldStyle.IsWorldMaterial(m), WorldStyle.Saturation(color), WorldStyle.GateSize, WorldStyle.Look = "P4",
 --   WorldStyle.Tags.Detail ("NC_Detail": pure decor, the Low graphics setting hides it), WorldStyle.Tags.Exempt
 --   ("NC_StyleExempt": pets / tokens / the storm island, skipped by the look audit of p5world_style).
--- The card range (2026-11-12, slop-audit win 2; ARCHITECTURE_V3.md World text rule): WorldStyle.TagRange = 45 studs is the
+-- The card range (2026-11-12, slop-audit win 2; ARCHITECTURE_V3.md World text rule): WorldStyle.TagRange = 55 studs is the
 --   MaxDistance of the world's gate and portal name cards (every GateTag, LobbyBuilder's and ArenaBuilder's stand-in GateTag,
---   PortalService's PortalBillboard; was 120); the own follower's pet card is 15 (PetCard). Only the range shrank: the cards
+--   PortalService's PortalBillboard; first 120, 45 on 2026-11-12; 2026-11-13 owner: 55, was 45); the own follower's pet
+--   card is 15 (PetCard). Only the range changed: the cards
 --   keep their pixel size (no studs-scaled text, no distance fade). Far-read exceptions, kept on purpose: the arena forum's
 --   Return gate 110 (spec.TagRange: the forum's lone way home stands ~100 studs from the colosseum's main gate), the Storm
 --   Altar TitleTag 150, the downed marker 250, the tutorial guide sign 4000, battle cards 140, RaidGateTag 120, the home
@@ -75,8 +76,9 @@ WorldStyle.Look = "P4"
 WorldStyle.Tags = { Detail = "NC_Detail", Exempt = "NC_StyleExempt" }
 -- studs: the MaxDistance of a gate's name card (GateTag). 2026-11-12 (slop-audit win 2, was 120): the card shows only near
 -- its gate, so the plaza no longer reads as a wall of labels. Only the range shrank: the card keeps its pixel size (the
--- World text rule). spec.TagRange overrides it for one gate (the arena Return gate's 110).
-WorldStyle.TagRange = 45
+-- World text rule). 2026-11-13 owner (Studio check): 55 (was 45), so a card shows a little sooner on the walk up.
+-- spec.TagRange overrides it for one gate (the arena Return gate's 110).
+WorldStyle.TagRange = 55
 
 ----------------------------------------------------------------------
 -- Materials (6.1 A1): SmoothPlastic surfaces, Neon glow, Glass water. The rest are aliases (see the header).

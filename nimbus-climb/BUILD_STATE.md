@@ -508,6 +508,16 @@ Updated: 2026-10-18 (after wave 2). Branch `v3-phase4`. Plan: `ARCHITECTURE_V3.m
   the Gate Court, the own follower tag at 15 (by the formation's numbers it flips on and off when the camera swings to
   the side or front at default zoom: an owner call between 15, about 25 or hiding own tags), the Golem at each tier and
   the Haze, the battle HUD with the card hidden on PC and phones, the drawn X on PC and a phone.
+- 2026-11-13 (quick-wins, the owner's Studio check): seen in Studio and OK: the gate cards' range, the drawn close X and
+  the Gifts button hiding under the Pets window. Owner's changes: (1) `WorldStyle.TagRange` **55** (was 45; PortalService
+  `BB.MaxDistance`, the LobbyBuilder stand-in, ArenaBuilder's default; the exceptions unchanged: Return gate 110, raid gate
+  tag 120, home tags 120, Storm Altar 150, own follower 15, others' follower 60). (2) The Gifts button also hides while its
+  own Daily window is open (back at once on Close) and while an NPC talk box is open (`NpcController` in `K.WINDOWS`, back
+  within the 0.25 s poll); with the window open the button can no longer close it (X, Esc and gamepad B still do).
+  (3) The gold "Thanks for playing Nimbus Climb!" line stays. (4) The roll machines: the keyed session uploaded
+  `prop_roulette_globe` (77972886482080) and the seven `egg_<rarity>_pile` eggs (branch `globe-upload` b8d0b45,
+  fast-forwarded into quick-wins), so the machines now dress the Gumball Globe; `prop_roulette` is kept until a cleanup.
+  Gate: the review (Fable 5.2) found no blocker; its minors are fixed in this branch.
 - 2026-10-28 (player ruling, wave 5 dungeon camera): the Camera shake setting OFF turns off ONLY the hit shakes; the dungeon entrance rush, the room walk-in shot and the FOV punch on big attacks always play (short, skippable). The rush is skipped when the camera is > 60 studs from the gate.
 - Evolve button; 2nd evolution only Epic+; level cap 100 for all pets (XP curve keeps rising).
 - Presses become food plants, Collector = Coin Magnet, Kitchen = Food Machine, Gym = Training Place.

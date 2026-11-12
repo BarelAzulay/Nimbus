@@ -27,8 +27,9 @@
 --                                 the real font widths (TextService:GetTextSize measures them for the scenario): day 7
 --                                 names its pet, tier 6 says what it gives (finding 5)
 --   client_fixr_daily_resize      (phone world) the open Portrait window stays shown when the gui width changes while the
---                                 screen stays portrait (360x640 -> 375x667 -> 390x844 -> 360x640); the first Gifts tap
---                                 closes it (findings 4 / 7)
+--                                 screen stays portrait (360x640 -> 375x667 -> 390x844 -> 360x640); the Gifts button
+--                                 hides while it is open and, after Close, its tap opens it again (findings 4 / 7; owner
+--                                 2026-11-13: the button no longer closes it)
 --   client_fixr_menu_cover        (phone world) 360x640: no NimbusMenu tile draws over the open Gifts window or the Store,
 --                                 also when one window opens over another (the Store, the Pets window); the tiles come back
 --                                 when every window is closed (open item n1)
@@ -933,6 +934,10 @@ local function clientScenarios()
 		H.fire(H.base(H.now()))
 		DC.Close()
 		KC.advance(0.2)
+		-- (review round 2) the Gifts button is shown in this world before the window opens (the Close half below needs it)
+		local btn = H.btn()
+		local shownBefore = H.shown(btn)
+		T.check(shownBefore, "fixr daily resize: (setup) the Gifts button is shown at 360x640 before the window opens")
 		DC.Open({ Tab = "Daily" })
 		KC.advance(0.3)
 		T.check(DC.IsOpen() and H.shown(H.win()), "fixr daily resize: (setup) the window is open at 360x640 (Portrait)")
@@ -945,15 +950,16 @@ local function clientScenarios()
 			T.check(DC.IsOpen() and H.shown(win) and H.inside(win, 0, 0, GW, GH),
 				fmt("fixr daily resize: %dx%d keeps the open window shown (rebuilt for the new width)", size[1], size[2]), H.desc(win) .. " open " .. tostring(DC.IsOpen()))
 		end
-		-- the Gifts button's first tap closes the shown window (never an invisible one)
-		local btn = H.btn()
-		if H.shown(btn) then
+		-- (owner 2026-11-13: the Gifts button no longer toggles the open window) the button hides while its window is open;
+		-- Close brings it back and its tap opens the window again (never an invisible one)
+		T.check(not H.shown(btn), "fixr daily resize: ...the Gifts button hides while its window is open")
+		DC.Close()
+		local back = H.shown(btn)
+		T.check(shownBefore and back, "fixr daily resize: (review round 2) ...the Gifts button is back at once after Close (no poll wait)",
+			fmt("shown before %s, after Close %s", tostring(shownBefore), tostring(back)))
+		if back then
 			H.tap(btn)
-			T.check(not DC.IsOpen() and not H.shown(H.win()), "fixr daily resize: ...the first Gifts tap closes it")
-			H.tap(btn)
-			T.check(DC.IsOpen() and H.shown(H.win()), "fixr daily resize: ...and the next one opens it again")
-		else
-			T.warn("fixr daily resize: the Gifts button is hidden in this world (the tap half skipped)")
+			T.check(DC.IsOpen() and H.shown(H.win()), "fixr daily resize: ...after Close the Gifts tap opens it again")
 		end
 		DC.Close()
 		KC.advance(0.3)

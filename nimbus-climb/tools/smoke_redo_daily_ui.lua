@@ -5,7 +5,7 @@
 -- line), with the 10-minute lock read from the payload's Unlock { Need, Left }. Client and phone worlds only (client_files,
 -- loaded after smoke_redo_geom.lua, whose RedoGeom it uses):
 --   client_daily_ui_a      (1920x1080, then 844x390 touch) a ready payload: the window centred in its BigRect box (the Gifts
---                          button stays where it is), seven tiles, today (Cell3) raised 8 px over Cell2 with the same
+--                          button stays where it is, hidden while the window is open: owner 2026-11-13), seven tiles, today (Cell3) raised 8 px over Cell2 with the same
 --                          bottom, gold and reading "TODAY", Day 7 twice a tile plus the gap with the Week Wisp's viewport,
 --                          claimed tiles dimmed with their tick, the header, the streak chip, "Week Wisp in 4 more days"
 --                          over the seven-segment bar (claimed / today / open), CLAIM! active and one DailyRequest("Claim")
@@ -279,7 +279,8 @@ local function clientScenarios()
 					T.check(DC.IsOpen() and H.shown(H.win()), label .. ": the window opens")
 					T.eq(DC.Layout(), sz[4], label .. ": Layout()")
 					H.centred(DC, label)
-					T.check(btn ~= nil and btn.AbsolutePosition.X == bx and btn.AbsolutePosition.Y == by and H.shown(btn), label .. ": the Gifts button stays where it is")
+					-- (owner 2026-11-13) the Gifts window hides its own button; it is still laid out where it was
+					T.check(btn ~= nil and btn.AbsolutePosition.X == bx and btn.AbsolutePosition.Y == by and not H.shown(btn), label .. ": the Gifts button stays where it is, hidden while its window is open")
 					-- the header and the chips
 					T.eq(H.text(H.find("Header")), "Day 3 of 7 " .. DOT .. " Week 2", label .. ": the header")
 					T.eq(H.text(H.find("StreakChip")), sz[4] == "PC" and "Streak: 2 days" or "Streak: 2", label .. ": the streak chip")
@@ -475,10 +476,13 @@ local function clientScenarios()
 					KC.advance(0.2)
 					T.check(DCx.IsOpen() and H.shown(claim) and claim.Text == "CLAIM!" and not H.disabled(claim) and not H.shown(l1), label .. ": a payload with Left 0 shows CLAIM! without reopening",
 						claim.Text .. " disabled " .. tostring(H.disabled(claim)))
-					T.eq(DCx.PipShown(), true, label .. ": ...and the pip")
+					-- (owner 2026-11-13) the open window hides the pip with its button: it shows once the window closes
+					T.eq(DCx.PipShown(), false, label .. ": ...no pip while the window is open")
 					mark = #Mock.RemoteLog
 					H.click(claim)
 					T.eq(#H.sent(mark), 1, label .. ": ...which claims")
+					DCx.Close()
+					T.eq(DCx.PipShown(), true, label .. ": ...and the pip once the window closes (the claim not answered yet)")
 					KC.toClient("TutorialState", prevTutorial or H.tutorialDone())
 					KC.advance(0.2)
 				end)

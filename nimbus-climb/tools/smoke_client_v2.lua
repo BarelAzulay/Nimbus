@@ -1611,6 +1611,21 @@ local function npcClientChecks()
 	end
 	advance(0.8)
 	T.check(not NC.IsOpen(), "NPC: Close closes the dialog")
+	-- (owner 2026-11-13, review round 2) a real talk box hides the Gifts button (DailyController's K.WINDOWS watcher asks
+	-- NpcController.IsOpen every K.WINDOW_POLL s) and it is back within 0.3 s of NpcController.Close
+	local dailyGui = gui():FindFirstChild("NimbusDaily")
+	local giftsBtn = dailyGui and descendantNamed(dailyGui, "GiftsButton")
+	if T.check(giftsBtn ~= nil and isShown(giftsBtn), "NPC: (setup) the Gifts button is shown with no talk box up") then
+		NC.Open(first.Id)
+		advance(0.3)
+		T.check(NC.IsOpen() and not isShown(giftsBtn), "NPC: (owner 2026-11-13) an open talk box hides the Gifts button within 0.3 s",
+			sfmt("talk box %s, button %s", tostring(NC.IsOpen()), tostring(isShown(giftsBtn))))
+		NC.Close()
+		advance(0.3)
+		T.check(not NC.IsOpen() and isShown(giftsBtn), "NPC: (owner 2026-11-13) ...and it is back within 0.3 s of NpcController.Close",
+			sfmt("talk box %s, button %s", tostring(NC.IsOpen()), tostring(isShown(giftsBtn))))
+		advance(0.5)
+	end
 	NC.Open(first.Id)
 	advance(0.5)
 	T.check(NC.IsOpen(), "NPC: NpcController.Open(npcId) opens it again")

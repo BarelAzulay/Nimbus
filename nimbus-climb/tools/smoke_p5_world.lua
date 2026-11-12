@@ -18,9 +18,9 @@
 --                          step, the prompt anchor, the GlowCore light (28 / 1.3) + sparkles (12), the pixel tag per the
 --                          World text rule, upright on a tilted site, deterministic) and the look audit (styleAudit:
 --                          SmoothPlastic / Neon / Glass, no Cylinder / Ball, small parts without shadows) on every gate.
---                          The card range (2026-11-12, slop-audit win 2): WorldStyle.TagRange = 45 studs is every
---                          GateTag's MaxDistance; spec.TagRange (a number > 0) overrides it (the arena Return gate's 110),
---                          anything else falls back to 45.
+--                          The card range (2026-11-12, slop-audit win 2; 2026-11-13 owner: 55, was 45): WorldStyle.TagRange
+--                          = 55 studs is every GateTag's MaxDistance; spec.TagRange (a number > 0) overrides it (the arena
+--                          Return gate's 110), anything else falls back to 55.
 --                          [W2 worldlobby] extends it with the lobby-wide audit (+ area-weighted saturation >= 0.3).
 --   client_p5lightingstack (client) LightingStack: Push A, Push B, Pop A -> B applied; Pop B -> base exact; unknown id
 --                          no-op; tweened pushes reach their goal and a later Push cancels a running tween; re-push moves
@@ -134,7 +134,8 @@ end
 
 -- The pixel tag of the World text rule: offset-only sizes, TextSize >= 18 (titles >= 22), an outline on every
 -- label, LightInfluence 0, never TextScaled. The card range (2026-11-12, slop-audit win 2; was 60..120): MaxDistance ==
--- WorldStyle.TagRange and WorldStyle.TagRange == 45 studs (only the range shrank: the text keeps its pixel size).
+-- WorldStyle.TagRange and WorldStyle.TagRange == 55 studs (2026-11-13 owner: 55, was 45; only the range changed: the
+-- text keeps its pixel size).
 -- ws = shared/WorldStyle (looked up through _G.K when not given).
 local function pixelTagCheck(gui, label, ws)
 	if not T.check(gui ~= nil and gui:IsA("BillboardGui"), label .. ": has a BillboardGui tag") then
@@ -143,7 +144,7 @@ local function pixelTagCheck(gui, label, ws)
 	ws = ws or (_G.K and _G.K.M and _G.K.M["shared/WorldStyle"])
 	local range = type(ws) == "table" and ws.TagRange or nil
 	T.check(gui.Size.X.Scale == 0 and gui.Size.Y.Scale == 0 and gui.Size.X.Offset > 0, label .. ": the tag is pixel-sized (offset UDim2)", tostring(gui.Size))
-	T.check(range == 45 and gui.MaxDistance == range, label .. ": MaxDistance == WorldStyle.TagRange (45 studs)", "MaxDistance " .. tostring(gui.MaxDistance) .. ", TagRange " .. tostring(range))
+	T.check(range == 55 and gui.MaxDistance == range, label .. ": MaxDistance == WorldStyle.TagRange (55 studs)", "MaxDistance " .. tostring(gui.MaxDistance) .. ", TagRange " .. tostring(range))
 	T.eq(gui.LightInfluence, 0, label .. ": LightInfluence 0")
 	local t = T.tally(label .. ": every tag label is >= 18 px, outlined, not TextScaled")
 	local count = 0
@@ -734,11 +735,11 @@ local function serverScenarios()
 			T.check(ym:FindFirstChild("Trim").Color == WS.Palette.Accent.Yellow, "a colour name resolves to Palette.Accent first (not the UI neon)")
 			local jm = WS.BuildGate(folder, CFrame.new(3400, 600, 2000), { Id = "T2", Glyph = "nope", Color = 5 })
 			T.check(jm ~= nil and jm:GetAttribute("Glyph") == "cloud" and jm:FindFirstChild("Trim").Color == WS.Palette.Accent.Blue, "junk glyph / colour -> the star crest in the default blue (no error)")
-			-- the card range (2026-11-12, slop-audit win 2): WorldStyle.TagRange = 45 studs; spec.TagRange (a number > 0)
-			-- sets one gate's GateTag MaxDistance (the arena Return gate's 110), anything else falls back to TagRange.
-			-- Built outside the workspace: polish_worldtext's census pins every workspace GateTag at 45 (the arena's
-			-- Return gate aside), and these test gates are not part of the world
-			T.eq(WS.TagRange, 45, "WorldStyle.TagRange is 45 studs (the world card range; was 120)")
+			-- the card range (2026-11-12, slop-audit win 2; 2026-11-13 owner: 55, was 45): WorldStyle.TagRange = 55 studs;
+			-- spec.TagRange (a number > 0) sets one gate's GateTag MaxDistance (the arena Return gate's 110), anything else
+			-- falls back to TagRange. Built outside the workspace: polish_worldtext's census pins every workspace GateTag
+			-- at 55 (the arena's Return gate aside), and these test gates are not part of the world
+			T.eq(WS.TagRange, 55, "WorldStyle.TagRange is 55 studs (the world card range; 2026-11-13 owner, was 45, first 120)")
 			local offWorld = Instance.new("Folder")
 			offWorld.Name = "P5TagRangeTest"
 			local rm = WS.BuildGate(offWorld, CFrame.new(3450, 600, 2000), { Id = "R1", Title = "R", Info = "", Color = "Green", Glyph = "house", Pad = false, TagRange = 110 })
@@ -747,11 +748,11 @@ local function serverScenarios()
 			local srm = WS.BuildGate(offWorld, CFrame.new(3450, 600, 2100), { Id = "R2", Title = "R", Info = "", Color = "Green", Glyph = "house", Pad = false, Scale = 0.6, TagRange = 110 })
 			local srtag = srm and srm:FindFirstChild("GateTag", true)
 			T.check(srtag ~= nil and srtag.MaxDistance == 110, "...a scaled gate (Scale 0.6, the Return gate) keeps its TagRange", srtag and tostring(srtag.MaxDistance) or "no tag")
-			local junkRange = T.tally("a non-number (or not > 0) TagRange falls back to WorldStyle.TagRange (45)")
+			local junkRange = T.tally("a non-number (or not > 0) TagRange falls back to WorldStyle.TagRange (55)")
 			for i, junk in ipairs({ "110", true, {}, -5, 0, 0 / 0 }) do
 				local okJ, jg = pcall(WS.BuildGate, offWorld, CFrame.new(3450 + i * 30, 600, 2200), { Id = "RJ" .. i, Title = "R", Info = "", Color = "Green", Glyph = "house", Pad = false, TagRange = junk })
 				local jtag = okJ and jg and jg:FindFirstChild("GateTag", true)
-				junkRange:case(jtag ~= nil and jtag.MaxDistance == 45, tostring(junk) .. " -> " .. (jtag and tostring(jtag.MaxDistance) or tostring(jg)))
+				junkRange:case(jtag ~= nil and jtag.MaxDistance == 55, tostring(junk) .. " -> " .. (jtag and tostring(jtag.MaxDistance) or tostring(jg)))
 			end
 			junkRange:report()
 			offWorld:Destroy()
