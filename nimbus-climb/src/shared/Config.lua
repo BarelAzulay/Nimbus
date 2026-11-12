@@ -1028,7 +1028,7 @@ Config.Sky = {
 				EnvironmentDiffuseScale = 0.5,
 				EnvironmentSpecularScale = 0.45,
 			},
-			Atmosphere = { Density = 0.42, Offset = 0.15, Color = skyRgb(90, 64, 58), Decay = skyRgb(230, 96, 36), Glare = 0.3, Haze = 2.4 },
+			Atmosphere = { Density = 0.42, Offset = 0.15, Color = skyRgb(90, 64, 58), Decay = skyRgb(230, 96, 36), Glare = 0.3, Haze = 1.2 },
 			Clouds = { Cover = 0.7, Density = 0.7, Color = skyRgb(96, 72, 66) },
 			ColorCorrection = { Brightness = 0, Contrast = 0.14, Saturation = 0.1, TintColor = skyRgb(255, 250, 247) },
 			Sky = { StarCount = 0 },
@@ -1321,6 +1321,12 @@ Config.MainMenu = {
 	OrbitHeight = 38,
 	OrbitPeriod = 60, -- seconds per orbit
 	FallbackSeconds = 90, -- the server spawns the character after this even without MenuPlay (Y13)
+	-- (quick wins 2026-11-12, win 1; review round 1) the world cards the title screen keeps off, client-side, until PLAY:
+	-- BillboardGui names of the lobby's labels (gate and portal cards, the obby join board, the Sky Trove, the garden
+	-- names, the NPC and home nameplates, the raid gate's and the home portals' client tags). Smoke p5menu_orbit_cards
+	-- checks every enabled card in the built lobby within MaxDistance of the menu's camera orbit against this list.
+	-- Players' own tags (TitleTag) and pet cards are not world cards and stay as they are.
+	HideCards = { "GateTag", "PortalBillboard", "JoinBillboard", "TroveBillboard", "NameTag", "Nameplate", "RaidGateTag", "PortalName" },
 }
 
 return Config

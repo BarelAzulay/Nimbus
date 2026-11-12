@@ -25,9 +25,11 @@
 --                                               enrage colour (and back); the core light brightens
 --   BossBuilder.TierLooks[tierId]               { Color, Aura, Crown } per fight tier
 --   BossBuilder.SetTier(model, tierId, opts) -> ok  dresses a built boss for a fight tier (again with another tier; nil takes it off;
---                                               an unknown tier is refused): the glow parts lean to the tier's colour (the enrage
---                                               colours win while enraged), a TierAura emitter and a TierLight on Fx_Core, Max's
---                                               TierCrown of 8 Neon spikes (rig parts: Animate moves them); model attribute Tier.
+--                                               an unknown tier is refused). The boss keeps its own colours (no tint: every glow
+--                                               part stays its sculpt colour; the enrage colours win while enraged); the tier
+--                                               shows in a TierAura emitter and a TierLight on Fx_Core (both in the tier's
+--                                               Color), Max's TierCrown of 8 Neon spikes (rig parts: Animate moves them) and the
+--                                               name plate; model attribute Tier.
 --                                               No aura on a Low boss or with opts.NoAura = true (Graphics Low)
 --   BossBuilder.Colors(bossId) -> { Glow, Telegraph, Edge, Enrage, Element }   (Color3s)
 --   BossBuilder.TelegraphColor(bossId, attackId) -> fill Color3, edge Color3     colour of a floor telegraph
@@ -1061,7 +1063,8 @@ local function registerRig(model, bossId)
 					table.insert(rig.CFs, d.CFrame)
 					local glowKey = GLOW_KEYS[d.Name] and d.Name or d:GetAttribute("MK_Key")
 					if GLOW_KEYS[glowKey] then
-						-- (Rest = the sculpted colour; Color = what it wears, the tier's tint on top)
+						-- (Rest = the sculpted colour; Color = what it wears out of an enrage: the sculpt colour, SetTier
+						-- never tints it)
 						table.insert(rig.Glow, { Part = d, Color = d.Color, Rest = d.Color, Key = glowKey })
 					end
 				end
@@ -1633,8 +1636,10 @@ function BossBuilder.SetTier(model, tierId, opts)
 			return false
 		end
 	end
+	-- no tint: the boss keeps its own colours at every tier (a lerp toward the tier colour turned the Lava Golem's magma
+	-- mauve); the tier shows in the aura, the tier light, Max's crown and the name plate. The enrage colours win while enraged
 	for _, entry in ipairs(rig.Glow) do
-		entry.Color = look and entry.Rest:Lerp(look.Color, 0.5) or entry.Rest
+		entry.Color = entry.Rest
 		if not rig.Enraged then
 			entry.Part.Color = entry.Color
 		end

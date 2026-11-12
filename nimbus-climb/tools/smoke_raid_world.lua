@@ -7,8 +7,10 @@
 --   raid_world_pocket  BuildPocket(index, "Raid"): 96 x 96, a colliding floor, no crowd, the part budget; FreePocket; the Ring pocket
 --                      is unchanged
 --   raid_world_boards  the event board with no floor fight (the boss waits, the next boss, a line per fight) and with one (the HP bar)
---   raid_world_bosses  tier dressing: scale, crown, aura, SetTier re-dresses, the enrage colours win, Low has no aura; LookAt
---   raid_world_sky     the real SkyService: only the floor fight drives the server-wide sky
+--   raid_world_bosses  tier dressing: scale, crown, aura, SetTier re-dresses, the enrage colours win, Low has no aura; LookAt;
+--                      no tint (slop audit win 3): at every tier the boss keeps its sculpt colours (glow parts and all), the
+--                      tier shows in the TierLight / TierAura / crown in BB.TierLooks[tier].Color
+--   raid_world_sky     the real SkyService: only the floor fight drives the server-wide sky; the lava raid's Haze is 1.2
 -- White-box: the wipes command the sim (St is an upvalue of IsInBattle, as in smoke_raid_service.lua). Plain Lua 5.1 syntax only.
 
 local K = _G.K
@@ -304,6 +306,80 @@ end)
 ----------------------------------------------------------------------------------------------------
 -- raid_world_bosses
 ----------------------------------------------------------------------------------------------------
+local function dist(a, b)
+	return math.abs(a.R - b.R) + math.abs(a.G - b.G) + math.abs(a.B - b.B)
+end
+
+-- BossBuilder's glowing palette keys (GLOW_KEYS there: SetEnraged recolours them); a mesh part names its key in MK_Key
+local GLOW_NAMES = { Eye = true, Glow = true, Magma = true, MagmaHot = true, Rune = true, Bolt = true }
+
+local function isGlow(part)
+	return GLOW_NAMES[part.Name] == true or GLOW_NAMES[tostring(part:GetAttribute("MK_Key") or "")] == true
+end
+
+-- a boss's own parts (not the tier crown's spikes), keyed "<joint>/<palette key>"
+local function eachBossPart(model, fn)
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("BasePart") and d.Parent and d.Parent.Name ~= "TierCrown" then
+			fn(d, d.Parent.Name .. "/" .. d.Name)
+		end
+	end
+end
+
+-- the distinct colours each "<joint>/<palette key>" wears on a model
+local function sculptColours(model)
+	local out = {}
+	eachBossPart(model, function(part, key)
+		local list = out[key]
+		if not list then
+			list = {}
+			out[key] = list
+		end
+		for _, c in ipairs(list) do
+			if dist(c, part.Color) < 1e-6 then
+				return
+			end
+		end
+		list[#list + 1] = part.Color
+	end)
+	return out
+end
+
+-- -> glow parts, glow parts off the reference colours, other parts off them, the first one off (text)
+local function offSculpt(model, ref)
+	local glowN, glowOff, otherOff, bad = 0, 0, 0, nil
+	eachBossPart(model, function(part, key)
+		local best = math.huge
+		for _, c in ipairs(ref[key] or {}) do
+			best = math.min(best, dist(c, part.Color))
+		end
+		local glows = isGlow(part)
+		if glows then
+			glowN = glowN + 1
+		end
+		if best >= 0.001 then
+			if glows then
+				glowOff = glowOff + 1
+			else
+				otherOff = otherOff + 1
+			end
+			bad = bad or (key .. " " .. tostring(part.Color))
+		end
+	end)
+	return glowN, glowOff, otherOff, bad
+end
+
+-- { part -> Color } for every glow part of a model
+local function glowColours(model)
+	local out = {}
+	eachBossPart(model, function(part)
+		if isGlow(part) then
+			out[part] = part.Color
+		end
+	end)
+	return out
+end
+
 S.raid_world_bosses = guarded("raid_world_bosses", function()
 	local BB = req("shared/BossBuilder")
 	local BC = req("shared/BattleCatalog")
@@ -333,31 +409,90 @@ S.raid_world_bosses = guarded("raid_world_bosses", function()
 		BB.Animate(maxed, "Idle", 0, { CFrame = CFrame.new(100, 0, 0) })
 		T.check((spike.Position - spikeAt - Vector3.new(100, 0, 0)).Magnitude < 1e-3, id .. ": Animate moves the crown with the rig")
 		BB.Animate(maxed, "Idle", 0, { CFrame = CFrame.new() })
-		-- a lit tint: the glow parts turn the tier's colour; the enrage colours win while enraged and the tint comes back
+		-- no tint (slop audit win 3: the tier tint turned the Lava Golem's magma mauve): at every tier every glow part (Eye, Glow,
+		-- Magma, MagmaHot, Rune, Bolt: any key the rig glows) and every other boss part keeps its sculpt colour, whether the
+		-- boss is built at a tier or dressed later; the tier shows in the aura, the tier light, Max's crown and the name plate
+		local plainColours = sculptColours(plain)
+		local function offPlain(model)
+			return offSculpt(model, plainColours)
+		end
+		for _, built in ipairs({ { maxed, "built at Max" }, { starter, "built at Starter" } }) do
+			local glowN, glowOff, otherOff, bad = offPlain(built[1])
+			T.check(glowN > 0 and glowOff == 0, id .. ": " .. built[2] .. ": every glow part has its plain-model colour", tostring(glowN) .. " glow parts, " .. tostring(glowOff) .. " off: " .. tostring(bad))
+			T.check(otherOff == 0, id .. ": " .. built[2] .. ": no other boss part changes colour", tostring(otherOff) .. " off: " .. tostring(bad))
+		end
+		local dressed = BB.Build(id, { Detail = "High" })
+		local tierIds = {}
+		for tierId in pairs(BB.TierLooks) do
+			tierIds[#tierIds + 1] = tierId
+		end
+		table.sort(tierIds)
+		local glowBad, otherBad, shows = {}, {}, {}
+		for _, tierId in ipairs(tierIds) do
+			local tierLook = BB.TierLooks[tierId]
+			if not BB.SetTier(dressed, tierId) then
+				shows[#shows + 1] = tierId .. ": SetTier refused"
+			end
+			local glowN, glowOff, otherOff, bad = offPlain(dressed)
+			if glowN == 0 or glowOff > 0 then
+				glowBad[#glowBad + 1] = tierId .. " (" .. tostring(glowN) .. " glow parts, " .. tostring(glowOff) .. " off: " .. tostring(bad) .. ")"
+			end
+			if otherOff > 0 then
+				otherBad[#otherBad + 1] = tierId .. " (" .. tostring(otherOff) .. " off: " .. tostring(bad) .. ")"
+			end
+			-- the tier still shows without the tint: the light (every tier), the aura (a tier with Aura > 0), Max's crown
+			local tierLight = dressed:FindFirstChild("TierLight", true)
+			local tierAura = dressed:FindFirstChild("TierAura", true)
+			if not (tierLight and tierLight:IsA("PointLight") and dist(tierLight.Color, tierLook.Color) < 1e-6) then
+				shows[#shows + 1] = tierId .. ": no TierLight in the tier colour"
+			end
+			if tierLook.Aura > 0 then
+				if not (tierAura and tierAura:IsA("ParticleEmitter") and dist(tierAura.Color.Keypoints[1].Value, tierLook.Color) < 1e-6) then
+					shows[#shows + 1] = tierId .. ": no TierAura in the tier colour"
+				end
+			elseif tierAura ~= nil then
+				shows[#shows + 1] = tierId .. ": an aura at Aura 0"
+			end
+			local crown = dressed:FindFirstChild("TierCrown")
+			if tierLook.Crown then
+				local spikes = crown and crown:GetChildren() or {}
+				if #spikes ~= 8 or dist(spikes[1].Color, tierLook.Color) > 1e-6 then
+					shows[#shows + 1] = tierId .. ": no crown of 8 spikes in the tier colour"
+				end
+			elseif crown ~= nil then
+				shows[#shows + 1] = tierId .. ": a crown below Max"
+			end
+		end
+		T.check(#glowBad == 0, id .. ": SetTier at every tier: every glow part keeps its plain-model colour", table.concat(glowBad, "; "))
+		T.check(#otherBad == 0, id .. ": SetTier at every tier: no other boss part changes colour", table.concat(otherBad, "; "))
+		T.check(#tierIds == 4 and #shows == 0, id .. ": the tier still shows without the tint: TierLight (and TierAura above Aura 0) in BB.TierLooks[tier].Color, Max's crown", table.concat(shows, "; "))
+		dressed:Destroy()
+		-- the enrage colours win while enraged, and the sculpt colours come back after
 		local glow = nil
-		local plainGlow = nil
 		for _, name in ipairs({ "Eye", "Glow", "Magma", "Rune" }) do
 			glow = glow or maxed:FindFirstChild(name, true)
-			plainGlow = plainGlow or plain:FindFirstChild(name, true)
 		end
-		local look = BB.TierLooks.Max.Color
-		local function dist(a, b)
-			return math.abs(a.R - b.R) + math.abs(a.G - b.G) + math.abs(a.B - b.B)
-		end
-		local tinted = glow.Color
-		T.check(dist(tinted, look) < dist(plainGlow.Color, look), id .. ": the glow parts lean toward the tier colour")
+		local rest = glow.Color
 		BB.SetEnraged(maxed, true)
-		T.check(dist(glow.Color, tinted) > 0.01, id .. ": SetEnraged wins while enraged")
+		T.check(dist(glow.Color, rest) > 0.01, id .. ": SetEnraged wins while enraged")
 		BB.SetTier(maxed, "Max")
-		T.check(dist(glow.Color, tinted) > 0.01, id .. ": SetTier does not take the enrage colours away")
+		T.check(dist(glow.Color, rest) > 0.01, id .. ": SetTier does not take the enrage colours away")
 		BB.SetEnraged(maxed, false)
-		T.check(dist(glow.Color, tinted) < 1e-6, id .. ": the tint comes back after the enrage")
+		local _, glowOffAfter = offPlain(maxed)
+		T.check(dist(glow.Color, rest) < 1e-6 and glowOffAfter == 0, id .. ": the sculpt colours come back after the enrage", tostring(glowOffAfter) .. " glow parts off")
 		T.check(BB.SetTier(maxed, "Max") and #maxed.TierCrown:GetChildren() == 8 and BB.PartCount(maxed) <= 960, id .. ": SetTier is idempotent")
 		local count = BB.PartCount(maxed)
 		T.check(BB.SetTier(maxed, "Mid") and maxed:FindFirstChild("TierCrown", true) == nil and maxed:GetAttribute("Tier") == "Mid" and BB.PartCount(maxed) == count - 8, id .. ": SetTier re-dresses (the crown goes)")
 		T.check(BB.Animate(maxed, "Idle", 0.5, {}) == true, id .. ": Animate still runs after the crown went")
+		local beforeNil = glowColours(maxed)
 		T.check(BB.SetTier(maxed, nil) and maxed:GetAttribute("Tier") == nil and maxed:FindFirstChild("TierAura", true) == nil and maxed:FindFirstChild("TierLight", true) == nil, id .. ": SetTier(nil) takes the dressing off")
-		T.check(dist(glow.Color, tinted) > 0.001, id .. ": SetTier(nil) takes the tint off")
+		local changed = 0
+		for part, c in pairs(beforeNil) do
+			if dist(part.Color, c) > 1e-6 then
+				changed = changed + 1
+			end
+		end
+		T.check(next(beforeNil) ~= nil and changed == 0, id .. ": SetTier(nil) changes no glow colour", tostring(changed) .. " changed")
 		T.check(BB.SetTier(maxed, "Banana") == false, id .. ": an unknown tier is refused")
 		BB.SetTier(maxed, "Max")
 		-- Graphics Low: the crown stays, the aura does not
@@ -425,6 +560,8 @@ S.raid_world_sky = guarded("raid_world_sky", function()
 	local bs = req("server/Services/BattleService")
 	local info = arenaBuilder().GetInfo()
 	local cfg = K.config().Sky
+	-- slop audit win 3: the lava raid's haze was a murky smear over the lava colours (2.4)
+	T.eq(K.config().Sky.Looks.lava_golem.Atmosphere.Haze, 1.2, "raid sky: the lava raid's Atmosphere.Haze is 1.2 (was 2.4)")
 	local attr = cfg.Attr.Event
 	local players = {}
 	local function add(prefix, level, dx)
