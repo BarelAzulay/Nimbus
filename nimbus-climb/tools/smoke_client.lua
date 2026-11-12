@@ -935,6 +935,107 @@ S.client_notify = guarded("client_notify", function()
 	toClient("DashFx", 424242) -- unknown player: no crash
 	advance(0.2)
 	Mock.RemovePlayer(other)
+
+	-- (quick wins, review round 1) the title screen's toast hold (NotifyController.SetHeld): a system toast (4th argument
+	-- { System = true }) and an error show at once, a gameplay toast waits; at the end every kept toast shows one by one
+	-- in the order sent (the join welcome first, never cut); identical ones merge; older than 60 s are stale unless Keep
+	local NC = M.NotifyController
+	if T.check(NC ~= nil and type(NC.SetHeld) == "function" and type(NC.IsHeld) == "function", "notify hold: NotifyController.SetHeld / IsHeld exist") then
+		advance(9) -- every earlier toast gone
+		NC.SetHeld("SmokeNotify", true)
+		T.eq(NC.IsHeld(), true, "notify hold: IsHeld while an owner holds")
+		toClient("Notify", "Held system line", "info", 6, { System = true })
+		toClient("Notify", "Held error line", "bad", 6)
+		toClient("Notify", "Held gameplay line", "info", 6)
+		advance(0.5)
+		T.check(findText("held system line") ~= nil, "notify hold: a system toast ({ System = true }) shows at once while held", allShownText())
+		T.check(findText("held error line") ~= nil, "notify hold: a 'bad' toast shows at once while held", allShownText())
+		T.check(findText("held gameplay line") == nil, "notify hold: a gameplay toast waits while held", allShownText())
+		NC.SetHeld("SmokeNotify", false)
+		T.eq(NC.IsHeld(), false, "notify hold: not held once the owner lets go")
+		advance(0.5)
+		T.check(findText("held gameplay line") ~= nil, "notify hold: ...and the waiting toast shows then", allShownText())
+		advance(9)
+
+		-- the welcome first, then 20 token / good toasts and one sent twice: 22 distinct, over the cap of 16
+		local WELCOME = "Pick a free home: press E at its gate!"
+		NC.SetHeld("SmokeNotify", true)
+		toClient("Notify", WELCOME, "info", 6, { Keep = true })
+		for i = 1, 20 do
+			toClient("Notify", "Reward line " .. i, i % 2 == 0 and "token" or "good", 2)
+		end
+		toClient("Notify", "Event line", "info", 3)
+		toClient("Notify", "Event line", "info", 3)
+		advance(0.5)
+		T.check(findText("reward line") == nil and findText("pick a free home") == nil, "notify hold: (setup) 22 gameplay toasts held, none shown", allShownText())
+		NC.SetHeld("SmokeNotify", false)
+		local seen, order, peak = {}, {}, 0
+		for _ = 1, 160 do -- 40 s
+			local live = 0
+			for _, d in ipairs(texts(nil, true)) do
+				local t = tostring(d.Text)
+				if t == WELCOME or t:find("Reward line", 1, true) == 1 or t:find("Event line", 1, true) == 1 then
+					live = live + 1
+					if not seen[t] then
+						seen[t] = true
+						order[#order + 1] = t
+					end
+				end
+			end
+			peak = math.max(peak, live)
+			advance(0.25)
+		end
+		T.eq(order[1], WELCOME, "notify hold: the join welcome (Keep) shows first after the hold", table.concat(order, " | "))
+		local cut, kept = {}, {}
+		for i = 1, 20 do
+			if seen["Reward line " .. i] then
+				kept[#kept + 1] = i
+			else
+				cut[#cut + 1] = i
+			end
+		end
+		T.eq(table.concat(cut, ","), "1,2,3,4,5,6", "notify hold: over the cap of 16 only the six oldest token / good toasts are dropped")
+		local ascending = true
+		local last = 0
+		for _, t in ipairs(order) do
+			local n = tonumber(t:match("^Reward line (%d+)$"))
+			if n then
+				ascending = ascending and n > last
+				last = n
+			end
+		end
+		T.check(#kept == 14 and ascending, "notify hold: ...the other 14 all show, in the order sent", table.concat(order, " | "))
+		T.check(seen["Event line  x2"] == true and not seen["Event line"], "notify hold: two identical held toasts show once as 'Event line  x2'", table.concat(order, " | "))
+		T.check(peak <= 4, "notify hold: the released toasts never stack more than 4 at a time", tostring(peak))
+
+		-- the age limit: a plain held toast older than 60 s is stale at release, a Keep one is not
+		NC.SetHeld("SmokeNotify", true)
+		toClient("Notify", "Stale event line", "info", 4)
+		toClient("Notify", "Kept welcome line", "info", 4, { Keep = true })
+		advance(61)
+		toClient("Notify", "Fresh reward line", "good", 4)
+		NC.SetHeld("SmokeNotify", false)
+		local stale = false
+		for _ = 1, 12 do -- 3 s
+			stale = stale or findText("stale event line") ~= nil
+			advance(0.25)
+		end
+		T.check(not stale, "notify hold: a held toast older than 60 s is dropped at release (stale)", allShownText())
+		T.check(findText("kept welcome line") ~= nil and findText("fresh reward line") ~= nil,
+			"notify hold: ...a Keep one of the same age and a fresh one show", allShownText())
+		advance(6)
+		-- owner-keyed: one owner letting go does not release another's hold
+		NC.SetHeld("SmokeA", true)
+		NC.SetHeld("SmokeB", true)
+		NC.SetHeld("SmokeA", false)
+		toClient("Notify", "Two owner line", "info", 4)
+		advance(0.5)
+		T.check(NC.IsHeld() == true and findText("two owner line") == nil, "notify hold: A on, B on, A off: still held")
+		NC.SetHeld("SmokeB", false)
+		advance(0.5)
+		T.check(NC.IsHeld() == false and findText("two owner line") ~= nil, "notify hold: ...shown once the last owner lets go")
+		advance(5)
+	end
 	flushWarnings("client notify")
 	flushErrors("client notify")
 end)

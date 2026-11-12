@@ -14,6 +14,10 @@
 --   client_evo_retreat_mobile (phone world) the button on phones: >= 44 px, in the Cheer up! row, stacked above it or under the vitals card (where
 --                             the stack would cover the fighter's cards or the screen's middle: every landscape phone, a portrait phone), clear of
 --                             everything, out of the screen's middle
+--                             (quick wins, win 4: a fighter's vitals card steps aside for the fight, so both scenarios read GetLayout().VitalsSlot:
+--                             the row is centred in the card's empty slot, its bottom edge on the slot's bottom edge; where the row is wider than the
+--                             slot plus 8 px each side Cheer up! is centred there and Retreat stacks above it; the stack beside the slot and under it
+--                             stay the fallbacks; both buttons on screen, >= 44 px on touch, clear of each other, the fighter's cards and the middle)
 -- White-box: the sim's units and teams (same Lua state); the service's St is an upvalue of IsInBattle, as in smoke_raid_service.lua. Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -1499,7 +1503,7 @@ local function clientScenarios()
 		return out
 	end
 
-	-- the placement rules at the current viewport -> problem | nil, rect, how ("row" | "stack")
+	-- the placement rules at the current viewport -> problem | nil, rect, how ("row" | "stack" | "under")
 	local function placeProblem(touch)
 		local b, c = H.find("Root.Retreat"), H.find("Root.Cheer")
 		if not b or not shownIn(b) then
@@ -1516,26 +1520,86 @@ local function clientScenarios()
 		-- vitals card (8 px below it, from its left edge or further right) where that stack would cover the fighter's cards or the middle
 		local row = abs((rc.x0 - r.x1) - 8) <= 2 and abs(r.y0 - rc.y0) <= 2 and abs(r.y1 - rc.y1) <= 2
 		local stack = abs((rc.y0 - r.y1) - 8) <= 2 and abs(r.x0 - rc.x0) <= 2 and abs(r.x1 - rc.x1) <= 2
-		local v = H.moduleAt("client", "Controllers/HudController").GetLayout().Vitals
+		-- quick wins (win 4): a fighter's vitals card steps aside for the fight (GetLayout().Vitals nil) and the pair takes its slot
+		-- (GetLayout().VitalsSlot): the row centred on the slot, its bottom edge on the slot's bottom edge; where the row is wider than the
+		-- slot plus 8 px each side, Cheer up! centred on the slot and Retreat stacked above it; the stack beside the slot (Cheer up! moved
+		-- out of the screen's middle) and under the slot stay the fallbacks
+		local L = H.moduleAt("client", "Controllers/HudController").GetLayout()
+		local v = L.VitalsSlot
+		if L.Vitals ~= nil then
+			why[#why + 1] = "the vitals card still shows in the fight"
+		end
+		if v == nil then
+			why[#why + 1] = "GetLayout().VitalsSlot is nil"
+		end
 		local under = v ~= nil and abs((r.y0 - (v.Y + v.H)) - 8) <= 2 and r.x0 >= v.X - 2 and r.x1 <= v.X + v.W + 2
-		if not (row or stack or under) then
-			why[#why + 1] = "neither left of Cheer up!, stacked above it nor under the vitals card: " .. rstr(r) .. " vs " .. rstr(rc)
+		local slotRow, slotStack, besideStack, aboveSlot = false, false, false, false
+		local blockedBy = nil
+		if v ~= nil then
+			local cxS, bottomS = v.X + v.W / 2, v.Y + v.H
+			local bw, bh = r.x1 - r.x0, r.y1 - r.y0
+			local rowFits = bw * 2 + 8 <= v.W + 16 + 2
+			besideStack = stack and abs((v.X - rc.x1) - 8) <= 2 and abs(rc.y0 - v.Y) <= 2
+			-- where the slot's centred spots would cover something (a small portrait phone: the narrowest card reaches the battle's RUN
+			-- button) the pair slides flush with the slot's left or right edge; where that is not clear either it keeps its places around
+			-- a shown card: Cheer up! 8 px above the slot, centred, Retreat in its row or above it
+			local spots
+			if rowFits then
+				spots = { { x0 = cxS - bw - 4, y0 = bottomS - bh, x1 = cxS - 4, y1 = bottomS }, { x0 = cxS + 4, y0 = bottomS - bh, x1 = cxS + bw + 4, y1 = bottomS } }
+			else
+				spots = { { x0 = cxS - bw / 2, y0 = bottomS - bh, x1 = cxS + bw / 2, y1 = bottomS }, { x0 = cxS - bw / 2, y0 = bottomS - 2 * bh - 8, x1 = cxS + bw / 2, y1 = bottomS - bh - 8 } }
+			end
+			for _, o in ipairs(obstacles(touch)) do
+				for _, q in ipairs(spots) do
+					if not blockedBy and o[1] ~= "Battle.Cheer" and overlaps(q, o[2]) then
+						blockedBy = o[1]
+					end
+				end
+			end
+			local onBottom = abs(rc.y1 - bottomS) <= 2
+			local slotR = v.X + v.W
+			slotRow = row and onBottom and (abs((r.x0 + rc.x1) / 2 - cxS) <= 2 or (blockedBy ~= nil and (abs(r.x0 - v.X) <= 2 or abs(rc.x1 - slotR) <= 2)))
+			slotStack = stack and onBottom and not rowFits -- (only where the row does not fit)
+				and (abs((rc.x0 + rc.x1) / 2 - cxS) <= 2 or (blockedBy ~= nil and (abs(rc.x0 - v.X) <= 2 or abs(rc.x1 - slotR) <= 2)))
+			local cheerAbove = abs((v.Y - rc.y1) - 8) <= 2 and abs((rc.x0 + rc.x1) / 2 - cxS) <= 2
+			aboveSlot = blockedBy ~= nil and cheerAbove and (row or stack)
+		end
+		if not (slotRow or slotStack or besideStack or under or aboveSlot) then
+			why[#why + 1] = "neither a row centred in the vitals card's slot, Cheer up! centred in it with Retreat stacked above (row too wide), the stack beside the slot nor under it"
+				.. (blockedBy and (" (nor, the slot's spots covering " .. blockedBy .. ", the row / stack above the slot)") or "") .. ": "
+				.. rstr(r) .. " / Cheer " .. rstr(rc) .. (v and fmt(" / slot %.0f,%.0f %.0fx%.0f", v.X, v.Y, v.W, v.H) or "")
 		end
 		if r.x0 < 0 or r.y0 < 0 or r.x1 > vp.X or r.y1 > areaY then
 			why[#why + 1] = "off the screen " .. rstr(r)
 		end
+		if rc.x0 < 0 or rc.y0 < 0 or rc.x1 > vp.X or rc.y1 > areaY then
+			why[#why + 1] = "Cheer up! off the screen " .. rstr(rc)
+		end
 		if touch and (r.x1 - r.x0 < 44 or r.y1 - r.y0 < 44) then
 			why[#why + 1] = fmt("tap target %.0fx%.0f < 44x44", r.x1 - r.x0, r.y1 - r.y0)
 		end
+		if touch and (rc.x1 - rc.x0 < 44 or rc.y1 - rc.y0 < 44) then
+			why[#why + 1] = fmt("Cheer up! tap target %.0fx%.0f < 44x44", rc.x1 - rc.x0, rc.y1 - rc.y0)
+		end
+		-- (the list holds Cheer up!: the two never overlap)
 		for _, o in ipairs(obstacles(touch)) do
 			if overlaps(r, o[2]) then
 				why[#why + 1] = fmt("covers %s %s (Retreat %s)", o[1], rstr(o[2]), rstr(r))
 			end
 		end
+		-- ...and Cheer up! clears the same list (the fighter's cards, the cluster, RUN / DASH, Roblox's stick and jump button)
+		for _, o in ipairs(obstacles(touch)) do
+			if o[1] ~= "Battle.Cheer" and overlaps(rc, o[2]) then
+				why[#why + 1] = fmt("Cheer up! covers %s %s (Cheer %s)", o[1], rstr(o[2]), rstr(rc))
+			end
+		end
 		-- the middle of the screen stays free (HudController's CENTRE_TOL)
 		local cx, cy = vp.X / 2, vp.Y / 2 - (Mock.TopInset or 0)
-		if r.x0 < cx + vp.X * 0.145 and r.x1 > cx - vp.X * 0.145 and r.y0 < cy + vp.Y * 0.145 and r.y1 > cy - vp.Y * 0.145 then
-			why[#why + 1] = "in the middle of the screen " .. rstr(r)
+		for _, pair in ipairs({ { "Retreat", r }, { "Cheer up!", rc } }) do
+			local q = pair[2]
+			if q.x0 < cx + vp.X * 0.145 and q.x1 > cx - vp.X * 0.145 and q.y0 < cy + vp.Y * 0.145 and q.y1 > cy - vp.Y * 0.145 then
+				why[#why + 1] = pair[1] .. " in the middle of the screen " .. rstr(q)
+			end
 		end
 		return #why > 0 and table.concat(why, "; ") or nil, r, row and "row" or (stack and "stack" or (under and "under" or "none"))
 	end
@@ -1569,7 +1633,7 @@ local function clientScenarios()
 		end
 		T.check(keys.R and keys.DPadDown, "evo retreat client: R and D-pad down are bound while fighting a raid")
 		local why, _, how = placeProblem(false)
-		T.check(why == nil and how == "row", "evo retreat client 1920x1080: left of Cheer up!, same height, covering nothing", tostring(why))
+		T.check(why == nil and how == "row", "evo retreat client 1920x1080: left of Cheer up!, same height, the row centred in the vitals card's slot, covering nothing", tostring(why) .. " / " .. tostring(how))
 		-- the key chip
 		local chip = b:FindFirstChild("Key", true)
 		T.check(chip ~= nil and chip.Text == "R" and shownIn(chip), "evo retreat client: the key chip says R", chip and tostring(chip.Text) or "missing")
@@ -1728,7 +1792,7 @@ local function clientScenarios()
 		d = H.fight({ Mode = "Raid" })
 		if T.check(d ~= nil, "evo retreat client: (setup) a raid at 1366x768") then
 			local problem, _, shape = placeProblem(false)
-			T.check(problem == nil and shape == "row", "evo retreat client 1366x768: left of Cheer up!, covering nothing", tostring(problem))
+			T.check(problem == nil and shape == "row", "evo retreat client 1366x768: left of Cheer up!, the row centred in the vitals card's slot, covering nothing", tostring(problem) .. " / " .. tostring(shape))
 			H.cleanup(BC, d)
 		end
 		Mock.SetViewport(1920, 1080)
@@ -1753,14 +1817,16 @@ local function clientScenarios()
 			local d = H.fight({ Mode = "Raid" })
 			if T.check(d ~= nil and BC.GetBattle() ~= nil, tag .. "(setup) a raid") then
 				local why, r, how = placeProblem(true)
-				T.check(why == nil, tag .. "the button: >= 44 px, in the Cheer up! row, stacked above it or under the vitals card, on the screen, clear of everything, out of the middle", tostring(why) .. (r and (" " .. rstr(r)) or ""))
-				local v = H.moduleAt("client", "Controllers/HudController").GetLayout().Vitals
+				T.check(why == nil, tag .. "the pair: >= 44 px, in the vitals card's slot (a centred row, or Cheer up! centred with Retreat above) or the stacked fallback, on the screen, clear of everything and of each other, out of the middle",
+					tostring(why) .. (r and (" " .. rstr(r)) or ""))
+				local v = H.moduleAt("client", "Controllers/HudController").GetLayout().VitalsSlot
 				local c = H.find("Root.Cheer")
 				if v and c then
 					local rc = rectOf(c)
-					-- Cheer up! beside the vitals card -> Retreat stacks above it, or sits under the card where the stack would cover the fighter's cards
+					T.info(fmt("%sslot %.0f,%.0f %.0fx%.0f; Cheer up! %s; Retreat %s (%s)", tag, v.X, v.Y, v.W, v.H, rstr(rc), r and rstr(r) or "-", tostring(how)))
+					-- Cheer up! beside the card's slot -> Retreat stacks above it, or sits under the slot where the stack would cover the fighter's cards
 					if rc.x1 <= v.X + 1 and rc.y1 > v.Y then
-						T.check(how == "stack" or how == "under", tag .. "the row sits beside the card: it stacks above Cheer up! or sits under the card", tostring(how))
+						T.check(how == "stack" or how == "under", tag .. "Cheer up! sits beside the slot: Retreat stacks above it or sits under the slot", tostring(how))
 					end
 				end
 				local b = H.find("Root.Retreat")

@@ -2,10 +2,13 @@
 --
 --   HudController.Init()
 --   HudController.GetLayout() -> { TopLeftRight, TopLeftBottom, TopRightBottom, BottomLeftTop, Scale, CurrencyMode,
---                                  Vitals = { X, Y, W, H } | nil }   (wave 6: the vitals card's gui-area rect; the battle
---                                  HUD's Cheer up! button sits right above it)
+--                                  Vitals = { X, Y, W, H } | nil,   (wave 6: the vitals card's gui-area rect while it shows)
+--                                  VitalsSlot = { X, Y, W, H } | nil }   (quick wins: the same rect shown or hidden; nil only
+--                                  with no card. A fighter's pet battle hides the card and the battle HUD's Cheer up! /
+--                                  Retreat buttons take its slot)
 --   HudController.SetVitalsHidden(who, on)   (gui-redo) a window that would cover only part of the vitals card hides it
---                                  while open (the Gifts window, `who` = "Daily"); back when the last one lets go
+--                                  while open (the Gifts window, `who` = "Daily"; BattleController's fighter, `who` =
+--                                  "Battle"); back when the last one lets go
 --
 -- One ScreenGui "NimbusHud" (display order 10, IgnoreGuiInset = false, built by CloudUI.NewScreenGui).
 -- Nothing the game announces is ever drawn in the middle of the screen. The layout map:
@@ -3005,6 +3008,9 @@ function HudController.GetLayout()
 		CurrencyMode = S.currencyMode,
 		Vitals = (vitalsRect and UI.Vitals and UI.Vitals.Visible and UI.Gui and UI.Gui.Enabled)
 			and { X = vitalsRect.X, Y = vitalsRect.Y, W = vitalsRect.W, H = vitalsRect.H } or nil,
+		-- quick wins (win 4): the card's rect whether it is shown or hidden (nil only with no card): a fighter's pet battle
+		-- hides the card (SetVitalsHidden("Battle", true)) and BattleController puts Cheer up! / Retreat in its slot
+		VitalsSlot = (vitalsRect and UI.Vitals) and { X = vitalsRect.X, Y = vitalsRect.Y, W = vitalsRect.W, H = vitalsRect.H } or nil,
 	}
 end
 

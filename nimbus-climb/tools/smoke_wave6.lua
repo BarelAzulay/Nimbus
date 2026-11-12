@@ -27,14 +27,20 @@
 --   client_w6_podium_cheer (client world) OnPodium = true loops Animate.PlayEmote("cheer") (now, again within 4.5 s),
 --                         nil stops it; my own Cheer event plays once, another owner's none; not standing = retries;
 --                         no PlayEmote = false, no error; no Sound instance
---   client_w6_cheer_button (client world) HudController.GetLayout().Vitals; a dungeon / raid fight shows "Cheer up!" 8 px
---                         above the vitals card, centred on it, on screen and covering nothing (1920x1080, 1366x768); a
---                         click = ONE BattleCommand("Cheer"), the Cheer event = the glow 5 s + the sweep 20 s + one emote;
---                         a click in the cooldown sends nothing and shakes; ready again after 20 s; Ring / Duel: none;
---                         End takes it away
---   client_w6_cheer_mobile (phone world) the same placement at 844x390 / 390x844 / 749x388 on a touch phone (a landscape
---                         phone: the spot above is the screen middle, so beside the card on the left, top level), >= 44x44 px,
---                         clear of the action cluster, RUN / DASH and Roblox's jump button
+--   client_w6_cheer_button (client world) HudController.GetLayout().Vitals / VitalsSlot; (quick wins, win 4) a fighter's
+--                         vitals card steps aside for the fight (GetLayout().Vitals nil, VitalsSlot its rect, the frame
+--                         hidden) and comes back after a leave, the result, the cleanup and on turning spectator; the battle
+--                         never lets go of another owner's hide ("Daily"); a spectator keeps the card; a dungeon / raid fight
+--                         shows "Cheer up!" in the card's slot, centred on it, its bottom edge on the slot's bottom edge, on
+--                         screen and covering nothing (1920x1080, 1366x768); a click = ONE BattleCommand("Cheer"), the Cheer
+--                         event = the glow 5 s + the sweep 20 s + one emote; a click in the cooldown sends nothing and shakes;
+--                         ready again after 20 s; Ring / Duel: none; End takes it away
+--   client_w6_cheer_mobile (phone world) the same placement at 844x390 / 390x844 / 749x388 / 360x640 on a touch phone (where
+--                         the slot is the screen middle: beside the slot on the left, top level; where the slot's spot covers
+--                         something, e.g. 360x640's RUN button: the shown-card place, 8 px above the slot or beside it),
+--                         >= 44x44 px, clear of the action cluster, RUN / DASH and Roblox's jump button; the card hidden
+--                         during each fight, back after a leave, the result and the cleanup; a spectator keeps it; "Daily"'s
+--                         hide outlives the fight
 --   w6_dgn_walkin_floors  (server world, booted) floors 1, 2, 5, 9, 12 one solo run after the other, rooms 1-4 through
 --                         their doors: the Fade first, the room's payload within Out + Hold + 0.5 s, NO new pocket
 --                         instance (the next room's build) ahead of it, the client's findPocket picks the run's holder,
@@ -1717,7 +1723,8 @@ local function clientScenarios()
 			dungeon = (mode == "Dungeon") and { Floor = 2, Room = 1, Wave = 1, Waves = 3, Name = "Ember Hall", Element = "Flame" } or nil }, Driver)
 	end
 
-	function Driver:start()
+	-- spectator: the Start a watcher gets (Side 0, Spectator = true, no Team); the same id again = a raid's refresh (turning spectator)
+	function Driver:start(spectator)
 		local p = self.sim:Describe()
 		p.BattleId = self.id
 		p.Zone = { CFrame = self.zoneCF, Size = Vector3.new(p.Zone.X, 30, p.Zone.Z), X = p.Zone.X, Z = p.Zone.Z }
@@ -1726,6 +1733,11 @@ local function clientScenarios()
 		p.Spectator = false
 		p.T = self.sim:Time()
 		p.Dungeon = self.dungeon
+		if spectator then
+			p.Side, p.Spectator = 0, true
+			KC.toClient("BattleState", "Start", p, self.id)
+			return
+		end
 		local team = self.sim:TeamOf(self.me)
 		p.Team = { Fighter = team.Fighter, Bench = team.Bench, Lives = team.Lives, Speed = team.Speed,
 			Cooldowns = { Element = team.Cooldowns.Element, Dash = team.Cooldowns.Dash, Swap = team.Cooldowns.Swap, Cheer = team.Cooldowns.Cheer, Buff = {} } }
@@ -1997,31 +2009,107 @@ local function clientScenarios()
 		return out
 	end
 
+	-- the HUD's vitals card frame (NimbusHud.BottomLeft.Vitals) and HudController.GetLayout()
+	local function vitalsState()
+		local HC = H.moduleAt("client", "Controllers/HudController")
+		local pg = LocalPlayer:FindFirstChild("PlayerGui")
+		local hud = pg and pg:FindFirstChild("NimbusHud")
+		local bl = hud and hud:FindFirstChild("BottomLeft")
+		local okL, layout = pcall(function()
+			return HC.GetLayout()
+		end)
+		return bl and bl:FindFirstChild("Vitals"), (okL and type(layout) == "table") and layout or {}
+	end
+
+	local function isRect(v)
+		return type(v) == "table" and type(v.X) == "number" and type(v.Y) == "number" and type(v.W) == "number" and type(v.H) == "number" and v.W > 0 and v.H > 0
+	end
+
+	local function vstr(v)
+		return isRect(v) and fmt("%.0f,%.0f %.0fx%.0f", v.X, v.Y, v.W, v.H) or tostring(v)
+	end
+
+	-- quick wins (win 4): the card has stepped aside (a fighter's fight): GetLayout().Vitals nil, VitalsSlot its rect, the frame
+	-- not Visible -> problem | nil
+	local function vitalsHiddenProblem()
+		local card, L = vitalsState()
+		if not card then
+			return "no NimbusHud.BottomLeft.Vitals"
+		end
+		local why = {}
+		if L.Vitals ~= nil then
+			why[#why + 1] = "GetLayout().Vitals = " .. vstr(L.Vitals) .. " (not nil)"
+		end
+		if not isRect(L.VitalsSlot) then
+			why[#why + 1] = "GetLayout().VitalsSlot = " .. vstr(L.VitalsSlot) .. " (not a rect)"
+		end
+		if card.Visible ~= false then
+			why[#why + 1] = "the card's Visible is " .. tostring(card.Visible)
+		end
+		return #why > 0 and table.concat(why, "; ") or nil
+	end
+
+	-- ...and back: the frame Visible, GetLayout().Vitals = VitalsSlot = its rect -> problem | nil
+	local function vitalsShownProblem()
+		local card, L = vitalsState()
+		if not card then
+			return "no NimbusHud.BottomLeft.Vitals"
+		end
+		local why = {}
+		if card.Visible ~= true then
+			why[#why + 1] = "the card's Visible is " .. tostring(card.Visible)
+		end
+		if not isRect(L.Vitals) then
+			why[#why + 1] = "GetLayout().Vitals = " .. vstr(L.Vitals)
+		elseif not (isRect(L.VitalsSlot) and L.VitalsSlot.X == L.Vitals.X and L.VitalsSlot.Y == L.Vitals.Y and L.VitalsSlot.W == L.Vitals.W and L.VitalsSlot.H == L.Vitals.H) then
+			why[#why + 1] = "VitalsSlot " .. vstr(L.VitalsSlot) .. " differs from Vitals " .. vstr(L.Vitals)
+		end
+		return #why > 0 and table.concat(why, "; ") or nil
+	end
+
 	-- the placement rules at the current viewport -> problem | nil
 	local function cheerProblem(touch)
-		local HC = H.moduleAt("client", "Controllers/HudController")
 		local b = H.find("Root.Cheer")
 		if not b or not shownIn(b) then
 			return "Cheer not shown"
 		end
-		local v = HC and HC.GetLayout().Vitals
-		if not v then
-			return "HudController.GetLayout().Vitals is nil"
+		local _, layout = vitalsState()
+		local v = layout.VitalsSlot
+		if not isRect(v) then
+			return "HudController.GetLayout().VitalsSlot is " .. vstr(v)
 		end
 		local r = rectOf(b)
 		local why = {}
 		local vp = Mock.Viewport
-		-- 8 px above the card, centred on it; where that spot is the middle of the screen (a landscape phone: the card sits
-		-- high) it goes beside the card instead: its right edge 8 px left of the card, its top level with the card's top
-		local cxV = v.X + v.W / 2
+		-- quick wins (win 4): the fighter's vitals card has stepped aside, Cheer up! takes its slot: centred on it, its bottom edge on
+		-- the slot's bottom edge (2 px); where that spot is the middle of the screen (BattleController K.CHEER_CENTRE_TOL 0.15) it
+		-- goes beside the slot instead: its right edge 8 px left of the slot, its top level with the slot's top
+		local TOL = 0.15
+		local cxV, slotBottom = v.X + v.W / 2, v.Y + v.H
 		local bw, bh = r.x1 - r.x0, r.y1 - r.y0
 		local cyM = vp.Y / 2 - (Mock.TopInset or 0)
-		local aboveInMiddle = cxV - bw / 2 < vp.X * 0.645 and cxV + bw / 2 > vp.X * 0.355 and v.Y - 8 - bh < cyM + vp.Y * 0.145 and v.Y - 8 > cyM - vp.Y * 0.145
-		local above = abs((v.Y - r.y1) - 8) <= 2 and abs((r.x0 + r.x1) / 2 - cxV) <= 2
+		local slotInMiddle = cxV - bw / 2 < vp.X * (0.5 + TOL) and cxV + bw / 2 > vp.X * (0.5 - TOL) and slotBottom - bh < cyM + vp.Y * TOL and slotBottom > cyM - vp.Y * TOL
 		local beside = abs((v.X - r.x1) - 8) <= 2 and abs(r.y0 - v.Y) <= 2
-		if not (above or (aboveInMiddle and beside)) then
-			why[#why + 1] = fmt("not 8 px above the vitals card %.0f,%.0f %.0fx%.0f, centred%s", v.X, v.Y, v.W, v.H,
-				aboveInMiddle and " (that spot is the middle: then 8 px left of it, top level)" or "")
+		-- where the slot's centre would cover something (a small portrait phone: the narrowest card reaches the battle's RUN button)
+		-- Cheer up! slides flush with the slot's left or right edge; where that is not clear either it keeps its place around a shown
+		-- card: 8 px above the slot, centred; beside it where that spot is the middle
+		local spot = { x0 = cxV - bw / 2, y0 = slotBottom - bh, x1 = cxV + bw / 2, y1 = slotBottom }
+		local blockedBy = nil
+		for _, o in ipairs(cheerObstacles(touch)) do
+			if not blockedBy and o[1] ~= "Battle.Retreat" and overlaps(spot, o[2]) then
+				blockedBy = o[1]
+			end
+		end
+		local centred = abs((r.x0 + r.x1) / 2 - cxV) <= 2
+		local flush = abs(r.x0 - v.X) <= 2 or abs(r.x1 - (v.X + v.W)) <= 2
+		local inSlot = abs(r.y1 - slotBottom) <= 2 and (centred or (blockedBy ~= nil and flush))
+		local aboveInMiddle = cxV - bw / 2 < vp.X * (0.5 + TOL) and cxV + bw / 2 > vp.X * (0.5 - TOL) and v.Y - 8 - bh < cyM + vp.Y * TOL and v.Y - 8 > cyM - vp.Y * TOL
+		local above = abs((v.Y - r.y1) - 8) <= 2 and abs((r.x0 + r.x1) / 2 - cxV) <= 2
+		local fallback = blockedBy ~= nil and (above or (aboveInMiddle and beside))
+		if not (inSlot or (slotInMiddle and beside) or fallback) then
+			why[#why + 1] = fmt("not in the vitals card's slot %.0f,%.0f %.0fx%.0f (centred, bottom edge on its bottom edge)%s%s", v.X, v.Y, v.W, v.H,
+				slotInMiddle and " (that spot is the middle: then 8 px left of it, top level)" or "",
+				blockedBy and (" (the slot's centre covers " .. blockedBy .. ": then flush with a slot edge, 8 px above the slot, or beside it)") or "")
 		end
 		local areaY = vp.Y - (Mock.TopInset or 0)
 		if r.x0 < 0 or r.y0 < 0 or r.x1 > vp.X or r.y1 > areaY then
@@ -2030,20 +2118,21 @@ local function clientScenarios()
 		if touch and (r.x1 - r.x0 < 44 or r.y1 - r.y0 < 44) then
 			why[#why + 1] = fmt("tap target %.0fx%.0f < 44x44", r.x1 - r.x0, r.y1 - r.y0)
 		end
-		-- the GetLayout rect is the real card
+		-- the GetLayout rect is the real card (its frame keeps its place while hidden)
 		local vr = { x0 = v.X, y0 = v.Y, x1 = v.X + v.W, y1 = v.Y + v.H }
 		local hud = LocalPlayer.PlayerGui:FindFirstChild("NimbusHud")
 		local card = hud and hud:FindFirstChild("Vitals", true)
 		if card and abs(rectOf(card).y0 - vr.y0) > 2 then
-			why[#why + 1] = fmt("GetLayout().Vitals.Y %.0f but the card's top is %.0f", vr.y0, rectOf(card).y0)
+			why[#why + 1] = fmt("GetLayout().VitalsSlot.Y %.0f but the card's top is %.0f", vr.y0, rectOf(card).y0)
 		end
 		for _, o in ipairs(cheerObstacles(touch)) do
 			if overlaps(r, o[2]) then
 				why[#why + 1] = fmt("covers %s %s (Cheer %s)", o[1], rstr(o[2]), rstr(r))
 			end
 		end
-		if overlaps(r, vr) then
-			why[#why + 1] = "covers the vitals rect"
+		-- (a shown card is never covered; a hidden card's slot is Cheer up!'s place)
+		if layout.Vitals ~= nil and overlaps(r, vr) then
+			why[#why + 1] = "covers the shown vitals card"
 		end
 		-- the middle of the screen stays free (HudController's CENTRE_TOL)
 		local cx, cy = vp.X / 2, vp.Y / 2 - (Mock.TopInset or 0)
@@ -2062,10 +2151,14 @@ local function clientScenarios()
 			local tag = label .. " " .. size[1] .. "x" .. size[2]
 			if T.check(d ~= nil and BC.GetBattle() ~= nil, tag .. ": (setup) a fighting dungeon HUD") then
 				d:run(0.6, 30)
+				local hiddenWhy = vitalsHiddenProblem()
+				T.check(hiddenWhy == nil, tag .. ": the vitals card steps aside for the fight (GetLayout().Vitals nil, VitalsSlot its rect, the frame hidden)", tostring(hiddenWhy))
 				local why, r = cheerProblem(touch)
-				T.check(why == nil, tag .. ": Cheer up! sits 8 px above the vitals card, centred on it, on screen, covering nothing",
+				T.check(why == nil, tag .. ": Cheer up! sits in the vitals card's slot, centred on it, its bottom edge on the slot's bottom edge, on screen, covering nothing",
 					tostring(why) .. (r and (" " .. rstr(r)) or ""))
 				H.cleanup(BC, d)
+				local shownWhy = vitalsShownProblem()
+				T.check(shownWhy == nil, tag .. ": the card is back after the fight", tostring(shownWhy))
 			end
 		end
 	end
@@ -2083,13 +2176,19 @@ local function clientScenarios()
 		local v = HC.GetLayout().Vitals
 		T.check(type(v) == "table" and v.W > 0 and v.H > 0 and v.Y > 0, "cheer button: HudController.GetLayout().Vitals = the vitals card's rect",
 			v and fmt("%s,%s %sx%s", tostring(v.X), tostring(v.Y), tostring(v.W), tostring(v.H)) or "nil")
+		local shown0 = vitalsShownProblem()
+		T.check(shown0 == nil, "cheer button: out of a fight the card shows and GetLayout().VitalsSlot = GetLayout().Vitals", tostring(shown0))
 		local d = H.fighting("Dungeon")
 		if T.check(d ~= nil and BC.GetBattle() ~= nil, "cheer button: (setup) a fighting dungeon HUD") then
+			local hiddenWhy = vitalsHiddenProblem()
+			T.check(hiddenWhy == nil, "cheer button: a fighter's vitals card steps aside for the fight (GetLayout().Vitals nil, VitalsSlot its rect, NimbusHud.BottomLeft.Vitals hidden)",
+				tostring(hiddenWhy))
 			local b = H.find("Root.Cheer")
 			T.check(b ~= nil and shownIn(b) and b.Text == "Cheer up!" and b:IsA("TextButton"), "cheer button: a dungeon fight shows the TextButton \"Cheer up!\"",
 				b and tostring(b.Text) or "missing")
 			local why, r = cheerProblem(false)
-			T.check(why == nil, "cheer button 1920x1080: 8 px above the vitals card, centred on it, on screen, covering nothing", tostring(why) .. (r and (" " .. rstr(r)) or ""))
+			T.check(why == nil, "cheer button 1920x1080: in the vitals card's slot, centred on it, its bottom edge on the slot's bottom edge, on screen, covering nothing",
+				tostring(why) .. (r and (" " .. rstr(r)) or ""))
 			-- a click -> exactly one BattleCommand("Cheer"); the server's Cheer event -> the glow + the sweep
 			local mark = #Mock.RemoteLog
 			local n0 = #calls
@@ -2131,18 +2230,88 @@ local function clientScenarios()
 			-- BattleController.Cheer() is the same command (refused locally during the cooldown)
 			local mark4 = #Mock.RemoteLog
 			T.check(BC.Cheer() == false and H.count(mark4, "Cheer") == 0, "cheer button: BattleController.Cheer() during the cooldown -> false, nothing sent")
+			-- a leave (the End "Left"): the card is back at once, under the result card
+			KC.toClient("BattleState", "End", { BattleId = d.id, Mode = d.mode, Outcome = "Left", Won = false, Spectator = false, Reason = "Left" }, d.id)
+			Mock.Step(0.1)
+			local leftWhy = vitalsShownProblem()
+			T.check(leftWhy == nil, "cheer button: a leave (End \"Left\") brings the vitals card back at once", tostring(leftWhy))
 			-- End -> gone
 			H.cleanup(BC, d)
 			T.check(not shownIn(b) and (H.find("Root.Cheer") == nil or not shownIn(H.find("Root.Cheer"))), "cheer button: the battle's End takes the button away",
 				fmt("visible %s, parent %s, battle %s, gui %s", tostring(b.Visible), tostring(b.Parent and b.Parent.Name), tostring(BC.GetBattle() ~= nil),
 					tostring(b:FindFirstAncestorOfClass("ScreenGui") and b:FindFirstAncestorOfClass("ScreenGui").Enabled)))
+			local cleanWhy = vitalsShownProblem()
+			T.check(cleanWhy == nil, "cheer button: ...and the card stays back after the cleanup", tostring(cleanWhy))
 		end
 		-- a raid shows it too; the Ring and a duel never
 		local dr = H.fighting("Raid")
 		if T.check(dr ~= nil and BC.GetBattle() ~= nil, "cheer button: (setup) a raid fight") then
 			local b = H.find("Root.Cheer")
 			T.check(b ~= nil and shownIn(b), "cheer button: a raid fight shows it")
+			local hiddenWhy = vitalsHiddenProblem()
+			T.check(hiddenWhy == nil, "cheer button: a raid fighter's vitals card steps aside too", tostring(hiddenWhy))
+			-- the result (a lost raid): the result card, the vitals card back
+			KC.toClient("BattleState", "End", { BattleId = dr.id, Mode = "Raid", Outcome = "Lose", Won = false, Spectator = false, Reason = "Wipe" }, dr.id)
+			Mock.Step(0.1)
+			local resultCard = H.find("Root.ResultCard")
+			local resultWhy = vitalsShownProblem()
+			T.check(resultCard ~= nil and shownIn(resultCard) and resultWhy == nil, "cheer button: the result card brings the vitals card back",
+				fmt("result card %s; %s", tostring(resultCard ~= nil and shownIn(resultCard)), tostring(resultWhy)))
 			H.cleanup(BC, dr)
+			local cleanWhy = vitalsShownProblem()
+			T.check(cleanWhy == nil, "cheer button: ...and after the raid's cleanup", tostring(cleanWhy))
+		end
+		-- turning spectator mid-fight (a raid's refresh Start with Spectator = true): the card comes back
+		local dt = H.fighting("Raid")
+		if T.check(dt ~= nil and BC.GetBattle() ~= nil and vitalsHiddenProblem() == nil, "cheer button: (setup) a raid fighter, the card hidden") then
+			dt:start(true)
+			dt:step(30)
+			local B = BC.GetBattle()
+			local specWhy = vitalsShownProblem()
+			T.check(B ~= nil and B.Fighter == false and specWhy == nil, "cheer button: turning spectator mid-fight brings the vitals card back",
+				fmt("fighter %s; %s", tostring(B and B.Fighter), tostring(specWhy)))
+			KC.toClient("BattleState", "End", { BattleId = dt.id, Mode = "Raid", Spectator = true, Reason = "OutOfRange" }, dt.id)
+			H.cleanup(BC, dt)
+		end
+		-- a spectator from the start: the card stays
+		local ds = H.driver("Raid")
+		if T.check(ds ~= nil, "cheer button: (setup) a raid to watch") then
+			ds:start(true)
+			ds:run(0.6, 30)
+			local B = BC.GetBattle()
+			local specWhy = vitalsShownProblem()
+			T.check(B ~= nil and B.Spectator == true and B.Fighter == false and specWhy == nil, "cheer button: a spectator keeps the vitals card",
+				fmt("spectator %s; %s", tostring(B and B.Spectator), tostring(specWhy)))
+			KC.toClient("BattleState", "End", { BattleId = ds.id, Mode = "Raid", Spectator = true, Reason = "OutOfRange" }, ds.id)
+			H.cleanup(BC, ds)
+		end
+		-- another owner's hide ("Daily", the Gifts window): the fight never lets go of it
+		HC.SetVitalsHidden("Daily", true)
+		local dd = H.fighting("Dungeon")
+		if T.check(dd ~= nil and BC.GetBattle() ~= nil, "cheer button: (setup) a fight while the Gifts window hides the card") then
+			local hiddenWhy = vitalsHiddenProblem()
+			T.check(hiddenWhy == nil, "cheer button: (Daily + Battle) the card is hidden in the fight", tostring(hiddenWhy))
+			H.cleanup(BC, dd)
+			local stillWhy = vitalsHiddenProblem()
+			T.check(stillWhy == nil, "cheer button: after the fight the card stays hidden while \"Daily\" holds it (the battle releases only its own hide)", tostring(stillWhy))
+		end
+		HC.SetVitalsHidden("Daily", false)
+		local backWhy = vitalsShownProblem()
+		T.check(backWhy == nil, "cheer button: ...and shows when \"Daily\" lets go", tostring(backWhy))
+		-- (review round 1) the battle's hide is let go by SetVisible(false) even with no battle gui (a path that ever
+		-- clears Hud.gui early cannot leave the player's HP card hidden after the fight)
+		local BHud = BC._Hud
+		if T.check(type(BHud) == "table" and type(BHud.SetVisible) == "function" and type(BHud.SetVitalsHidden) == "function",
+			"cheer button: (setup) BattleController._Hud (tests only)") then
+			local gui = BHud.gui
+			BHud.SetVitalsHidden(true)
+			local heldWhy = vitalsHiddenProblem()
+			BHud.gui = nil
+			local okVis, errVis = pcall(BHud.SetVisible, false)
+			BHud.gui = gui
+			local freeWhy = vitalsShownProblem()
+			T.check(heldWhy == nil and okVis and freeWhy == nil, "cheer button: SetVisible(false) with no battle gui still lets the HP card show again",
+				fmt("held %s; ok %s %s; after %s", tostring(heldWhy), tostring(okVis), tostring(errVis), tostring(freeWhy)))
 		end
 		for _, mode in ipairs({ "Ring", "Duel" }) do
 			local dm = H.fighting(mode)
@@ -2162,13 +2331,55 @@ local function clientScenarios()
 		KC.flushErrors("client_w6_cheer_button")
 	end)
 
+	-- quick wins (win 4) on a phone: the card back after a leave and after the result, a spectator keeps it, "Daily"'s hide outlives the fight
+	local function vitalsRounds(tag)
+		local BC = H.moduleAt("client", "Controllers/BattleController")
+		local HC = H.moduleAt("client", "Controllers/HudController")
+		local d = H.fighting("Dungeon")
+		if T.check(d ~= nil and vitalsHiddenProblem() == nil, tag .. ": (setup) a dungeon fighter, the card hidden", tostring(vitalsHiddenProblem())) then
+			KC.toClient("BattleState", "End", { BattleId = d.id, Mode = d.mode, Outcome = "Left", Won = false, Spectator = false, Reason = "Left" }, d.id)
+			Mock.Step(0.1)
+			T.check(vitalsShownProblem() == nil, tag .. ": a leave (End \"Left\") brings the card back", tostring(vitalsShownProblem()))
+			H.cleanup(BC, d)
+			T.check(vitalsShownProblem() == nil, tag .. ": ...and it stays after the cleanup", tostring(vitalsShownProblem()))
+		end
+		local dr = H.fighting("Raid")
+		if T.check(dr ~= nil and vitalsHiddenProblem() == nil, tag .. ": (setup) a raid fighter, the card hidden", tostring(vitalsHiddenProblem())) then
+			KC.toClient("BattleState", "End", { BattleId = dr.id, Mode = "Raid", Outcome = "Lose", Won = false, Spectator = false, Reason = "Wipe" }, dr.id)
+			Mock.Step(0.1)
+			local card = H.find("Root.ResultCard")
+			T.check(card ~= nil and shownIn(card) and vitalsShownProblem() == nil, tag .. ": the result card brings the card back", tostring(vitalsShownProblem()))
+			H.cleanup(BC, dr)
+		end
+		local ds = H.driver("Raid")
+		if T.check(ds ~= nil, tag .. ": (setup) a raid to watch") then
+			ds:start(true)
+			ds:run(0.6, 30)
+			T.check(BC.GetBattle() ~= nil and BC.GetBattle().Spectator == true and vitalsShownProblem() == nil, tag .. ": a spectator keeps the card", tostring(vitalsShownProblem()))
+			KC.toClient("BattleState", "End", { BattleId = ds.id, Mode = "Raid", Spectator = true, Reason = "OutOfRange" }, ds.id)
+			H.cleanup(BC, ds)
+		end
+		HC.SetVitalsHidden("Daily", true)
+		local dd = H.fighting("Dungeon")
+		if T.check(dd ~= nil, tag .. ": (setup) a fight while \"Daily\" hides the card") then
+			H.cleanup(BC, dd)
+			T.check(vitalsHiddenProblem() == nil, tag .. ": the fight does not let go of \"Daily\"'s hide", tostring(vitalsHiddenProblem()))
+		end
+		HC.SetVitalsHidden("Daily", false)
+		T.check(vitalsShownProblem() == nil, tag .. ": ...the card shows when \"Daily\" lets go", tostring(vitalsShownProblem()))
+	end
+
 	S.client_w6_cheer_mobile = guarded("client_w6_cheer_mobile", function()
 		local BC = H.moduleAt("client", "Controllers/BattleController")
 		if not T.check(BC ~= nil, "cheer phone: BattleController loads") then
 			return
 		end
 		local err0 = #Mock.Errors
-		cheerLayouts("cheer phone", { { 844, 390 }, { 390, 844 }, { 749, 388 } }, true)
+		-- (360x640, quick wins: the narrowest card's slot reaches the battle's RUN button, so Cheer up! keeps its shown-card place)
+		cheerLayouts("cheer phone", { { 844, 390 }, { 390, 844 }, { 749, 388 }, { 360, 640 } }, true)
+		Mock.SetViewport(844, 390)
+		H.step(15, 1 / 30)
+		vitalsRounds("cheer phone 844x390")
 		Mock.SetViewport(390, 844)
 		H.step(15, 1 / 30)
 		T.check(#Mock.Errors == err0, "cheer phone: no script error")

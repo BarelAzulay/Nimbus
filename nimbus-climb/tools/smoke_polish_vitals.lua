@@ -6,11 +6,13 @@
 --                                lightning badge + a matching stamina tube (smooth drain / refill, dims when empty) and
 --                                the dash ring (the cooldown sweep follows MovementController, the face lights up when
 --                                a dash is ready); the DOWNED state; every part inside the card, readable, bottom-left,
---                                in the old hotbar's spot, clear of the menu column and the currency stack
+--                                in the old hotbar's spot, clear of the menu column and the currency stack;
+--                                (quick wins, win 4) HudController.GetLayout().VitalsSlot = Vitals while the card shows,
+--                                the same rect after SetVitalsHidden("X", true) (Vitals nil then, the card hidden)
 --   client_polish_vitals_mobile  (phone world, touch: 390x844, 844x390, 1024x768) the card stays on screen, readable
 --                                (>= 14 px), clear of the touch buttons, the menu column, the currency stack
 --                                and the top-left panel (4-player party); short landscape screens get the compact card
---                                (the dash ring spans both rows)
+--                                (the dash ring spans both rows); the VitalsSlot pins at each size
 --   client_polish_matchpanel_mobile  (phone world, touch: 844x390, 667x375, 390x844, 1024x768) the match panel: the
 --                                token line sits under the tall Leave button, so its text never overlaps the timer or
 --                                the countdown numeral (pop included; widths measured with 20 % slack for real fonts),
@@ -256,6 +258,50 @@ local function partsInside(c, slack)
 	return out
 end
 
+-- quick wins (win 4): HudController.GetLayout().VitalsSlot is the card's rect whether the card is shown or hidden (a pet battle hides
+-- it for a fighter and BattleController puts Cheer up! / Retreat in its slot); GetLayout().Vitals keeps its meaning (nil while hidden)
+local function sameRect(a, b)
+	return type(a) == "table" and type(b) == "table" and a.X == b.X and a.Y == b.Y and a.W == b.W and a.H == b.H
+end
+
+local function rstr(v)
+	return type(v) == "table" and fmt("%s,%s %sx%s", tostring(v.X), tostring(v.Y), tostring(v.W), tostring(v.H)) or tostring(v)
+end
+
+local function hudController()
+	local HC = KC().M and KC().M.HudController
+	if type(HC) ~= "table" then
+		-- (the phone world keeps no controller table: the module itself, the same instance the HUD runs)
+		local ok, inst = pcall(Mock.GetPath, ROOTS["client"] .. "/Controllers/HudController")
+		if ok and inst then
+			local okR, m = pcall(require, inst)
+			HC = okR and type(m) == "table" and m or nil
+		end
+	end
+	return HC
+end
+
+local function slotChecks(c, label)
+	local HC = hudController()
+	if not T.check(HC ~= nil and type(HC.GetLayout) == "function" and type(HC.SetVitalsHidden) == "function", label .. ": (setup) HudController.GetLayout + SetVitalsHidden") then
+		return
+	end
+	local L0 = HC.GetLayout()
+	T.check(type(L0.VitalsSlot) == "table" and sameRect(L0.VitalsSlot, L0.Vitals), label .. ": GetLayout().VitalsSlot equals GetLayout().Vitals while the card is shown",
+		rstr(L0.VitalsSlot) .. " vs " .. rstr(L0.Vitals))
+	local box = rect(c.Vitals)
+	T.check(type(L0.VitalsSlot) == "table" and math.abs(L0.VitalsSlot.Y - box.y0) <= 2 and math.abs(L0.VitalsSlot.X - box.x0) <= 2, label .. ": ...and it is the card's own rect",
+		rstr(L0.VitalsSlot) .. fmt(" vs card %.0f,%.0f", box.x0, box.y0))
+	HC.SetVitalsHidden("X", true)
+	local L1 = HC.GetLayout()
+	T.check(L1.Vitals == nil and sameRect(L1.VitalsSlot, L0.VitalsSlot) and c.Vitals.Visible == false,
+		label .. ": SetVitalsHidden(\"X\", true): the card hides, Vitals is nil, VitalsSlot stays the same rect",
+		fmt("Vitals %s, VitalsSlot %s, Visible %s", rstr(L1.Vitals), rstr(L1.VitalsSlot), tostring(c.Vitals.Visible)))
+	HC.SetVitalsHidden("X", false)
+	local L2 = HC.GetLayout()
+	T.check(c.Vitals.Visible == true and sameRect(L2.Vitals, L0.Vitals) and sameRect(L2.VitalsSlot, L0.VitalsSlot), label .. ": ...let go: the card and both rects are back")
+end
+
 ----------------------------------------------------------------------------------------------------
 -- desktop: the card, its animation and its states
 ----------------------------------------------------------------------------------------------------
@@ -324,6 +370,7 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	end
 	T.check(c.Hud:GetAttribute("BottomLeftTop") ~= nil and c.Hud:GetAttribute("BottomLeftTop") <= rect(c.Vitals).y0 + 1, "vitals: the HUD still publishes BottomLeftTop above the card",
 		tostring(c.Hud:GetAttribute("BottomLeftTop")))
+	slotChecks(c, "vitals")
 
 	-- 4. a hit: the bar flashes, the card shakes, the white trail waits and then catches up
 	setHealth(117, 100)
@@ -496,6 +543,9 @@ S.client_polish_vitals_mobile = guarded("client_polish_vitals_mobile", function(
 					end
 				end
 				T.check(#hit == 0, label .. ": clear of the touch buttons", table.concat(hit, ", "))
+				if players == 0 then
+					slotChecks(c, label)
+				end
 				local compact = c.Card.AbsoluteSize.Y < c.Vitals.AbsoluteSize.Y - 2
 				if size[2] < 500 then
 					T.check(compact and c.Ring.AbsoluteSize.Y > 0.55 * c.Card.AbsoluteSize.Y, label .. ": a short screen gets the compact card (the dash ring spans both rows)")

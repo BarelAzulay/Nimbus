@@ -96,7 +96,9 @@
 --     their cone / circle / line; camera shakes x ClientSettings.Get("Shake") (Humanoid.CameraOffset, tiny, rare).
 --   * Wave 6: the trainer's cheer (TrainerCheer, my avatar only: Roblox replicates it to the others): the server's
 --     OnPodium attribute (Ring / PvP) loops Animate.PlayEmote("cheer"), my own Cheer event plays it once. Cheer up!
---     (CheerUp, Raid / Dungeon fighters) sits right above the vitals card (HudController.GetLayout().Vitals).
+--     (CheerUp, Raid / Dungeon fighters) sits right above the vitals card (HudController.GetLayout().Vitals); quick wins
+--     (win 4): a fighter's vitals card steps aside for the whole fight (HudController.SetVitalsHidden("Battle"), back at
+--     the result / leave / cleanup / turning spectator) and Cheer up! / Retreat take its empty slot (GetLayout().VitalsSlot).
 --   * Wave 5 dungeon camera (bugs #15 / #26): the shake rides on the resting CameraOffset (DungeonController's dungeon
 --     shoulder) and gives it back; in a dungeon every hit on my fighter shakes lightly (HIT_SHAKE_LIGHT) and an AttackFx
 --     punch >= PUNCH_BIG also punches the FOV (MovementController.FovPunch, FOV_PUNCH 6 degrees x min(1, amount / 0.4));
@@ -6038,6 +6040,7 @@ function Hud.Rebuild()
 		Hud.cmd.Visible = false
 		Hud.enemies.Visible = false
 		Hud.SetMenuHidden(false)
+		Hud.SetVitalsHidden(false)
 		Leave.Place(m, nil, false)
 		CheerUp.Place(m, nil, false)
 		Retreat.Place(m, nil, false)
@@ -6087,8 +6090,10 @@ function Hud.Rebuild()
 	Hud.LayoutTop(B, m, teamW, listH, rightY, isFighting or between)
 	-- action cluster ---------------------------------------------------------------------------------
 	Hud.cmd.Visible = isFighting
+	Hud.cluster = nil -- (the laid-out cluster: CheerUp.SlotClear keeps Cheer up! / Retreat off it)
 	if isFighting then
 		local L = Hud.ClusterLayout(m)
+		Hud.cluster = L
 		Hud.cmd.Size = UDim2.fromOffset(L.w, L.h)
 		Hud.cmd.Position = UDim2.fromOffset(m.W, m.H)
 		for _, kind in ipairs(ACTIONS) do
@@ -6105,6 +6110,9 @@ function Hud.Rebuild()
 		Hud.Keys()
 	end
 	Hud.SetMenuHidden((isFighting or between) and m.Compact) -- a phone: the menu column steps aside (wide screens keep it)
+	-- (quick wins, win 4) a fighter's own vitals card steps aside on every screen (a spectator keeps it); before CheerUp.Place,
+	-- which reads its empty slot
+	Hud.SetVitalsHidden(isFighting or between)
 	Leave.Place(m, B, isFighting)
 	CheerUp.Place(m, B, isFighting)
 	Retreat.Place(m, B, isFighting)
@@ -7005,6 +7013,7 @@ function Hud.ShowResult(B, payload)
 	Hud.enemies.Visible = false
 	Hud.teamPlace = nil
 	Hud.SetMenuHidden(false)
+	Hud.SetVitalsHidden(false)
 	Leave.Place(m, nil, false)
 	CheerUp.Place(m, nil, false)
 	Retreat.Place(m, nil, false)
@@ -7106,6 +7115,12 @@ function Hud.UpdateResult(now)
 end
 
 function Hud.SetVisible(on)
+	if not on then
+		-- (quick wins, review round 1) the holds on other controllers are let go first, with or without the battle gui:
+		-- a path that ever clears Hud.gui early can never leave the menu column or the player's HP card hidden
+		Hud.SetMenuHidden(false)
+		Hud.SetVitalsHidden(false)
+	end
 	if not Hud.gui then
 		return
 	end
@@ -7115,7 +7130,6 @@ function Hud.SetVisible(on)
 		Hud.cmd.Visible = false
 		Hud.enemies.Visible = false
 		Hud.teamPlace = nil
-		Hud.SetMenuHidden(false)
 		if Hud.leave then
 			Hud.leave.Visible = false
 		end
@@ -7139,6 +7153,19 @@ function Hud.SetMenuHidden(on)
 		Hud.menuHidden = on
 	elseif not on then
 		Hud.menuHidden = false
+	end
+end
+
+-- quick wins (win 4): a fighter's own HP / stamina card (HudController) steps aside for the fight on every screen; Cheer up! and
+-- Retreat take its slot (CheerUp.Layout). Our owner key is "Battle": another owner's hide (the Gifts window, "Daily") is never
+-- released here, and HudController shows the card when the last owner lets go
+function Hud.SetVitalsHidden(on)
+	if Mods.HudCtl == nil then
+		Mods.HudCtl = optional(script.Parent, "HudController") or false
+	end
+	local hc = Mods.HudCtl
+	if hc and type(hc.SetVitalsHidden) == "function" then
+		pcall(hc.SetVitalsHidden, "Battle", on == true)
 	end
 end
 
@@ -7307,28 +7334,83 @@ end
 -- wave 6: CHEER UP! (Raid / Dungeon fighters): BattleCommand "Cheer"; the server gives my fighter x (1 + CheerBoost) for
 -- CheerSeconds, cooldown CheerCooldown (BattleCatalog.Fighter; the server decides). The button sits right above the
 -- vitals card (HudController.GetLayout().Vitals: CHEER_GAP_PX above it, centred on it), so it never shares a row with
--- the hotbar, the touch buttons or the action cluster. The gold glow behind it shows the boost, a dark veil that shrinks
--- to the right the cooldown. The trainer's cheer emote is Cheer.Mine (TrainerCheer) on the server's Cheer event.
+-- the hotbar, the touch buttons or the action cluster. Quick wins (win 4): a fighter's card steps aside for the fight
+-- (Hud.SetVitalsHidden), so in a fight the button takes the card's empty slot (GetLayout().VitalsSlot): centred on it, its
+-- bottom edge on the slot's bottom edge (with Retreat: a centred row, or Retreat above). The gold glow behind it shows the
+-- boost, a dark veil that shrinks to the right the cooldown. The trainer's cheer emote is Cheer.Mine (TrainerCheer) on the
+-- server's Cheer event.
 ----------------------------------------------------------------------
 function CheerUp.Allowed(B)
 	return B ~= nil and B.Fighter == true and not B.ended and (B.Mode == "Raid" or B.Mode == "Dungeon")
 end
 
--- HudController (the vitals card's rect); nil when missing
+-- HudController (the vitals card's rect); nil when missing. The second value, hidden: the card has stepped aside (a fighter's fight,
+-- Hud.SetVitalsHidden; or another window's hide) and the rect is its empty slot (GetLayout().VitalsSlot): Cheer up! and Retreat sit in
+-- it then (quick wins, win 4). The action cluster's keep-out (Hud.ClusterLayout) reads the same rect either way.
 function CheerUp.Layout()
 	if Mods.HudCtl == nil then
 		Mods.HudCtl = optional(script.Parent, "HudController") or false
 	end
 	local hc = Mods.HudCtl
 	if not hc or type(hc.GetLayout) ~= "function" then
-		return nil
+		return nil, false
 	end
 	local ok, layout = pcall(hc.GetLayout)
-	local v = ok and type(layout) == "table" and layout.Vitals or nil
-	if type(v) == "table" and tonumber(v.X) and tonumber(v.Y) and tonumber(v.W) and tonumber(v.H) then
-		return v
+	if not ok or type(layout) ~= "table" then
+		return nil, false
 	end
-	return nil
+	local v = layout.Vitals or layout.VitalsSlot
+	if type(v) == "table" and tonumber(v.X) and tonumber(v.Y) and tonumber(v.W) and tonumber(v.H) then
+		return v, layout.Vitals == nil and layout.VitalsSlot ~= nil
+	end
+	return nil, false
+end
+
+-- (quick wins, win 4) the card's empty slot is ours only where the buttons put in it stay clear of the touch controls (RUN and
+-- Roblox's jump button: a small portrait phone's narrowest card reaches the RUN button's battle spot), the action cluster and the
+-- fighter's cards; else Cheer up! / Retreat keep the places they have around a shown card. boxes = { { cx, bottom }, ... } (design
+-- px; the buttons' anchor is 0.5, 1), each w x h
+function CheerUp.SlotClear(m, boxes, w, h)
+	local f = max(0.05, m.F)
+	local keep = {}
+	if m.Touch then
+		local r = Hud.TouchRects(m)
+		for _, t in ipairs({ r.jump, r.run }) do
+			if type(t) == "table" and tonumber(t[1]) and tonumber(t[2]) and tonumber(t[3]) and tonumber(t[4]) then
+				-- (screen px: x from the left, y up from the gui area's bottom) -> design px from the top-left
+				keep[#keep + 1] = { t[1] / f, m.H - t[4] / f, t[3] / f, m.H - t[2] / f }
+			end
+		end
+	end
+	for _, kind in ipairs(ACTIONS) do
+		local s = Hud.cluster and Hud.cluster[kind]
+		if type(s) == "table" then
+			-- (Commands is anchored at the gui area's bottom-right; a button's centre is (W + x, H + y), diameter d)
+			local x, y, d = m.W + s[1], m.H + s[2], s[3]
+			keep[#keep + 1] = { x - d / 2, y - d / 2, x + d / 2, y + d / 2 }
+		end
+	end
+	if Hud.team and Hud.team.Visible then
+		local tx, ty = Hud.team.Position.X.Offset, Hud.team.Position.Y.Offset
+		keep[#keep + 1] = { tx, ty, tx + Hud.team.Size.X.Offset, ty + Hud.team.Size.Y.Offset }
+	end
+	for _, b in ipairs(boxes) do
+		local x0, y0, x1, y1 = b[1] - w / 2, b[2] - h, b[1] + w / 2, b[2]
+		for _, k in ipairs(keep) do
+			if x0 < k[3] and k[1] < x1 and y0 < k[4] and k[2] < y1 then
+				return false
+			end
+		end
+	end
+	return true
+end
+
+-- the re-place key (CheerUp.Update): the card's rect, whether it is hidden (its slot is ours) and whether Retreat shares the row
+function CheerUp.Key(v, hidden, withRetreat)
+	if not v then
+		return "-"
+	end
+	return string.format("%d,%d,%d,%d,%s,%s", v.X, v.Y, v.W, v.H, hidden and "slot" or "card", withRetreat and "R" or "-")
 end
 
 function CheerUp.Make(parent)
@@ -7357,6 +7439,8 @@ function CheerUp.Place(m, B, isFighting)
 	C.Button.Visible = on
 	C.Glow.Visible = on
 	CheerUp.beside = false
+	CheerUp.row = false
+	CheerUp.inSlot = false
 	if not on then
 		CheerUp.placed = nil
 		return
@@ -7367,22 +7451,57 @@ function CheerUp.Place(m, B, isFighting)
 		w = max(w, K.CHEER_TOUCH_W_PX / f)
 		h = max(h, K.CHEER_TOUCH_PX / f)
 	end
-	local v = CheerUp.Layout()
+	local gap = K.CHEER_GAP_PX / f
+	local v, hidden = CheerUp.Layout()
+	local withRetreat = Retreat.Allowed(B)
 	local cx, bottom
-	if v then
-		cx = (v.X + v.W / 2) / f
-		bottom = (v.Y - K.CHEER_GAP_PX) / f
-	else
-		cx, bottom = m.W / 2, m.H - 150 -- (no vitals card: low in the middle)
+	local rowLeft = nil -- (the slot's row: Retreat's centre, left of Cheer up!)
+	if v and hidden then
+		-- quick wins (win 4): the card has stepped aside for the fight; its slot is ours. Cheer up! centred on it, its bottom edge on
+		-- the slot's bottom edge; with Retreat too, a row centred on the slot (Retreat left, Cheer up! right, one gap between) where it
+		-- fits the slot plus one gap each side, else Cheer up! stays centred and Retreat stacks above it (Retreat.Place). Where the
+		-- centre would reach the touch controls, the action cluster or the fighter's cards (CheerUp.SlotClear; a small portrait
+		-- phone's narrowest card reaches the battle's RUN button) the group slides flush with the slot's left, then its right edge;
+		-- where none is clear, the places around a shown card below are kept, measured against the slot
+		local sx, sb = (v.X + v.W / 2) / f, (v.Y + v.H) / f
+		local rowFits = withRetreat and 2 * w + gap <= v.W / f + 2 * gap
+		local half = rowFits and (w + gap / 2) or (w / 2)
+		for _, gc in ipairs({ sx, v.X / f + half, (v.X + v.W) / f - half }) do
+			local boxes = { { gc, sb } }
+			if rowFits then
+				boxes = { { gc + (w + gap) / 2, sb }, { gc - (w + gap) / 2, sb } }
+			elseif withRetreat then
+				boxes[2] = { gc, sb - h - gap }
+			end
+			if not CheerUp.inSlot and CheerUp.SlotClear(m, boxes, w, h) then
+				CheerUp.inSlot = true
+				cx, bottom = boxes[1][1], sb
+				if rowFits then
+					rowLeft = boxes[2][1]
+					CheerUp.row = true
+				end
+			end
+		end
+	end
+	if not CheerUp.inSlot then
+		if v then
+			cx = (v.X + v.W / 2) / f
+			bottom = (v.Y - K.CHEER_GAP_PX) / f
+		else
+			cx, bottom = m.W / 2, m.H - 150 -- (no vitals card: low in the middle)
+		end
 	end
 	-- the middle of the screen stays free (HudController's CENTRE_TOL band): a landscape phone's card sits so high that the
-	-- spot above it is in that band; the button then goes beside the card in its row, on the left (between Roblox's stick
-	-- and the card: the right is the action cluster's), its top level with the card's top
+	-- spot above it is in that band; the button then goes beside the card (or its empty slot) in its row, on the left (between
+	-- Roblox's stick and the card: the right is the action cluster's), its top level with the card's top
 	local tol = K.CHEER_CENTRE_TOL
 	local bandL, bandR = m.W * (0.5 - tol), m.W * (0.5 + tol)
 	local midY = (m.VY / 2 - m.Inset) / f
 	local bandT, bandB = midY - m.VY * tol / f, midY + m.VY * tol / f
-	if cx + w / 2 > bandL and cx - w / 2 < bandR and bottom > bandT and bottom - h < bandB then
+	local left = rowLeft and (rowLeft - w / 2) or (cx - w / 2)
+	if cx + w / 2 > bandL and left < bandR and bottom > bandT and bottom - h < bandB then
+		CheerUp.row = false
+		CheerUp.inSlot = false
 		if v then
 			cx = (v.X - K.CHEER_GAP_PX) / f - w / 2
 			bottom = v.Y / f + h
@@ -7396,17 +7515,17 @@ function CheerUp.Place(m, B, isFighting)
 	C.Button.Position = UDim2.fromOffset(cx, bottom)
 	C.Glow.Size = UDim2.fromOffset(w + 16, h + 16)
 	C.Glow.Position = UDim2.fromOffset(cx, bottom - h / 2)
-	CheerUp.placed = v and string.format("%d,%d,%d,%d", v.X, v.Y, v.W, v.H) or "-"
+	CheerUp.placed = CheerUp.Key(v, hidden, withRetreat)
 end
 
--- 10 Hz: the sweep, the glow; a vitals card that moved takes the button with it
+-- 10 Hz: the sweep, the glow; a vitals card that moved (or stepped aside / came back) takes the button with it
 function CheerUp.Update(B, now)
 	local C = Hud.cheer
 	if not C or not C.Button.Visible then
 		return
 	end
-	local v = CheerUp.Layout()
-	local key = v and string.format("%d,%d,%d,%d", v.X, v.Y, v.W, v.H) or "-"
+	local v, hidden = CheerUp.Layout()
+	local key = CheerUp.Key(v, hidden, Retreat.Allowed(B))
 	if key ~= CheerUp.placed and Hud.m then
 		CheerUp.Place(Hud.m, B, B.Fighter and not B.ended)
 		Retreat.Place(Hud.m, B, B.Fighter and not B.ended)
@@ -7430,7 +7549,9 @@ end
 -- evolved forms: RETREAT (boss raid fighters only): BattleCommand "Retreat" / "Engage"; the server decides (BattleSim "Retreat"). The button sits in the
 -- Cheer up! row, its left, the same size; where that row has no room on its left (the screen edge, Roblox's stick) it stacks above Cheer up!; where
 -- that stack would cover the fighter's cards (a landscape phone: Cheer up! sits beside the card, right under the cards) or the screen's middle (a
--- portrait phone) it goes under the vitals card instead, from the card's left edge and right of Roblox's stick. The label follows the server's
+-- portrait phone) it goes under the vitals card instead, from the card's left edge and right of Roblox's stick. Quick wins (win 4): with the card
+-- stepped aside for the fight the row is centred in its empty slot (Retreat left, Cheer up! right) where it fits the slot plus one gap each side,
+-- else Retreat stacks above Cheer up! (centred in the slot); the fallbacks above are measured against the slot. The label follows the server's
 -- echo (B.retreated), a dark veil that shrinks to the right is the 10 s wait after an Engage, the stroke pulses while it says Engage (plain on
 -- Graphics Low).
 ----------------------------------------------------------------------
@@ -7472,18 +7593,20 @@ function Retreat.Place(m, B, isFighting)
 	local gap = K.CHEER_GAP_PX / f
 	local x, y = cx - w - gap, bottom
 	Retreat.how = "row"
-	-- the row's left is the screen edge or Roblox's stick (Cheer up! beside the card): above Cheer up!
-	if CheerUp.beside or x - w / 2 < K.EDGE then
+	local v = CheerUp.Layout()
+	-- the row's left is the screen edge or Roblox's stick (Cheer up! beside the card): above Cheer up!; so too in the card's
+	-- empty slot (quick wins, win 4) where CheerUp.Place made no row there (the row is wider than the slot plus a gap each side)
+	if CheerUp.beside or x - w / 2 < K.EDGE or (CheerUp.inSlot and not CheerUp.row) then
 		x, y = cx, bottom - h - gap
 		Retreat.how = "stack"
-		-- ...unless the stack covers the fighter's cards (the Team block) or the screen's middle: under the vitals card then
+		-- ...unless the stack covers the fighter's cards (the Team block) or the screen's middle: under the vitals card (or its
+		-- empty slot) then
 		local covers = false
 		if Hud.team and Hud.team.Visible then
 			local tx, ty = Hud.team.Position.X.Offset, Hud.team.Position.Y.Offset
 			local tr, tb = tx + Hud.team.Size.X.Offset, ty + Hud.team.Size.Y.Offset
 			covers = x + w / 2 > tx - gap and x - w / 2 < tr + gap and y > ty - gap and y - h < tb + gap
 		end
-		local v = CheerUp.Layout()
 		if v and (covers or Retreat.inMiddle(m, x, y, w, h)) then
 			local small = min(m.VX, m.VY) <= K.STICK_SMALL_PHONE
 			local stickW = (small and K.STICK_W_SMALL or K.STICK_W_LARGE) / f
@@ -10346,6 +10469,7 @@ function BattleController.Stop()
 		St.loop = nil
 	end
 	Hud.SetMenuHidden(false)
+	Hud.SetVitalsHidden(false)
 	Me.MouseHold("BattleResult", false)
 	Me.MouseHold("BattleLeave", false)
 	St.prompts = {}
@@ -10498,6 +10622,7 @@ BattleController._Units = Units -- TESTS ONLY (tools/smoke_p6_creatures.lua: the
 BattleController._Me = Me -- TESTS ONLY (tools/smoke_p7vfx_client.lua: the Eclipse dim, Task 11)
 BattleController._Fx = Fx -- TESTS ONLY (tools/smoke_p7vfx_client.lua: the Special pre-charge, Task 11b: numbers / flashes)
 BattleController._Ring = Ring -- TESTS ONLY (tools/smoke_ring_noheal_client.lua: the run card's line, HUD cleanup Task 4)
+BattleController._Hud = Hud -- TESTS ONLY (tools/smoke_wave6.lua: the vitals hold let go without a battle gui, quick wins review)
 
 -- TESTS ONLY (Task 11b): the raw battle unit record (its drawn HP, hold, hurt time) and my predicted charge
 function BattleController._Unit(id)
