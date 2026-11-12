@@ -1732,6 +1732,22 @@ local function clientScenarios()
 		T.check(#Mock.SystemMessages == n0 + 4 and KC.findText("plain toast here") ~= nil, "notify pull: kind 'good' stays a toast, no system message")
 		KC.advance(4)
 
+		-- (quick wins, review round 1) a pull is a chat line, not a toast: the title screen's toast hold never holds it
+		local NC = require(Mock.GetPath(ROOTS["client"] .. "/Controllers/NotifyController"))
+		if type(NC.SetHeld) == "function" then
+			local nH = #Mock.SystemMessages
+			NC.SetHeld("SmokePull", true)
+			KC.toClient("Notify", "Di hatched a Legendary Sun Fox!", "pull", 4)
+			KC.advance(0.5)
+			T.check(#Mock.SystemMessages == nH + 1 and KC.findText("di hatched") == nil,
+				"notify pull: while the toasts are held (the title screen) a pull still goes to the chat at once, no toast",
+				(#Mock.SystemMessages - nH) .. " messages; " .. KC.allShownText())
+			NC.SetHeld("SmokePull", false)
+			KC.advance(1)
+			T.check(#Mock.SystemMessages == nH + 1 and KC.findText("di hatched") == nil,
+				"notify pull: ...and nothing of it comes back when the hold ends (no second chat line, no toast)", KC.allShownText())
+		end
+
 		-- no channel (the legacy chat, or not replicated yet): today's toast with the text
 		if channels then
 			channels.Parent = nil
@@ -1742,6 +1758,17 @@ local function clientScenarios()
 			KC.advance(0.5)
 			T.check(#Mock.SystemMessages == n1 and shownExactly(text) == 1, "notify pull: without TextChannels -> one toast with the text, no system message", KC.allShownText())
 			KC.advance(5)
+			-- held with no chat: the fallback toast is a gameplay toast and waits for the end of the hold like one
+			if type(NC.SetHeld) == "function" then
+				NC.SetHeld("SmokePull", true)
+				KC.toClient("Notify", "Ed hatched a Legendary Sun Fox!", "pull", 4)
+				KC.advance(0.5)
+				T.check(KC.findText("ed hatched") == nil, "notify pull: without TextChannels, while held, the fallback toast waits", KC.allShownText())
+				NC.SetHeld("SmokePull", false)
+				KC.advance(0.5)
+				T.check(shownExactly("Ed hatched a Legendary Sun Fox!") == 1, "notify pull: ...and shows once the hold ends", KC.allShownText())
+				KC.advance(5)
+			end
 		end)
 		if channels then
 			channels.Parent = TCS

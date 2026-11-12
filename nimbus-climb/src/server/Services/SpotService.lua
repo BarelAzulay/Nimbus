@@ -80,6 +80,9 @@ local PROFILE_WAIT = 20 -- give up waiting for a profile after this many seconds
 local REMOTE_COOLDOWN = 0.25 -- per player per remote
 local HEADSHOT_RETRY = 120 -- seconds before a failed headshot request may be tried again
 local WELCOME_DELAY = 4 -- seconds after the profile loaded before the "press E at your gate" toast
+-- (quick wins, review round 1) the welcome's "press E" lines are onboarding: a player still on the title screen keeps
+-- them however long they wait (NotifyController's hold drops other toasts older than 60 s)
+local WELCOME_OPTS = { Keep = true }
 local GATE_OUTSIDE = 6 -- studs in front of the gate (street side) where GoToSpot puts a player without a plot
 local GATE_LIFT = 3 -- studs above the ground for that placement (the character's root height)
 local ATTR_IN_BATTLE = Config.Attr.InBattle or "InBattle" -- BattleService's player attribute (the battle id)
@@ -140,7 +143,8 @@ end
 -- Small helpers
 ----------------------------------------------------------------------
 
-local function notify(player, text, kind, seconds)
+-- opts (optional): the Notify remote's 4th argument (NotifyController: Keep = true survives the title screen's toast hold)
+local function notify(player, text, kind, seconds, opts)
 	if not player or not player.Parent then
 		return
 	end
@@ -152,7 +156,11 @@ local function notify(player, text, kind, seconds)
 	end
 	if notifyRemote then
 		pcall(function()
-			notifyRemote:FireClient(player, text, kind or "info", seconds or 3)
+			if opts ~= nil then
+				notifyRemote:FireClient(player, text, kind or "info", seconds or 3, opts)
+			else
+				notifyRemote:FireClient(player, text, kind or "info", seconds or 3)
+			end
 		end)
 	end
 end
@@ -999,9 +1007,9 @@ local function scheduleWelcome(player)
 		end
 		local last = lastSpotIndex(player)
 		if last and not owners[last] then
-			notify(player, "Welcome back! Press E at your gate (#" .. tostring(last) .. ").", "info", 6)
+			notify(player, "Welcome back! Press E at your gate (#" .. tostring(last) .. ").", "info", 6, WELCOME_OPTS)
 		elseif SpotService.FindFreeSpot(nil, nil) then
-			notify(player, "Pick a free home: press E at its gate!", "info", 6)
+			notify(player, "Pick a free home: press E at its gate!", "info", 6, WELCOME_OPTS)
 		else
 			notify(player, "Every home is taken right now.", "info", 6)
 		end

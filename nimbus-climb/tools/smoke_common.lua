@@ -111,6 +111,94 @@ end
 
 SmokeCommon = { T = T, guarded = guarded, add = add }
 
+-- slop-audit win 6 (2026-11-12; review round 1: the ONE check every window's close button goes through, client world).
+-- The problems of a close button's drawn X (NeonKit.CloseMark); {} = a good X:
+--   a TextButton with no text anywhere on it reading X / x / U+2715 / U+00D7 and no image; a CloseMark Frame child (not
+--   Active, the button not clipping, drawn above the button's other children) centred on the button within 1 px and
+--   inside it; BarA (+45) / BarB (-45) white bars over InkA / InkB dark bars (larger, drawn under the white ones), every
+--   bar shown, not Active, no UIStroke; with opts.MinTap (a phone window: 44) the button is at least that big.
+-- opts.Shown: the visibility test (default KC.isShown in the client world).
+SmokeCommon.CLOSE_TEXTS = { "X", "x", "\226\156\149", "\195\151" }
+function SmokeCommon.closeMarkIssues(button, opts)
+	opts = type(opts) == "table" and opts or {}
+	local KCw = rawget(_G, "KC")
+	local shown = opts.Shown or (KCw and KCw.isShown) or function(o)
+		return o.Visible ~= false
+	end
+	local sfmt, abs = string.format, math.abs
+	local out = {}
+	if not (button and button:IsA("TextButton")) then
+		return { "no TextButton" }
+	end
+	local list = { button }
+	for _, d in ipairs(button:GetDescendants()) do
+		list[#list + 1] = d
+	end
+	for _, d in ipairs(list) do
+		if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
+			for _, bad in ipairs(SmokeCommon.CLOSE_TEXTS) do
+				if tostring(d.Text):find(bad, 1, true) then
+					out[#out + 1] = sfmt("%s reads '%s'", d.Name, tostring(d.Text))
+					break
+				end
+			end
+		elseif d:IsA("ImageLabel") or d:IsA("ImageButton") then
+			out[#out + 1] = "an image " .. d.Name
+		end
+	end
+	local bp, bs = button.AbsolutePosition, button.AbsoluteSize
+	if opts.MinTap and (bs.X < opts.MinTap or bs.Y < opts.MinTap) then
+		out[#out + 1] = sfmt("tap %.0fx%.0f < %d", bs.X, bs.Y, opts.MinTap)
+	end
+	local mark = button:FindFirstChild("CloseMark")
+	if not (mark and mark:IsA("Frame")) then
+		out[#out + 1] = "no CloseMark Frame child"
+		return out
+	end
+	if mark.Active ~= false or button.ClipsDescendants then
+		out[#out + 1] = sfmt("mark Active %s, button ClipsDescendants %s", tostring(mark.Active), tostring(button.ClipsDescendants))
+	end
+	for _, c in ipairs(button:GetChildren()) do
+		if c ~= mark and c:IsA("GuiObject") and c.ZIndex >= mark.ZIndex then
+			out[#out + 1] = sfmt("%s (z %d) is not under the mark (z %d)", c.Name, c.ZIndex, mark.ZIndex)
+		end
+	end
+	local mp, ms = mark.AbsolutePosition, mark.AbsoluteSize
+	if abs(bp.X + bs.X / 2 - (mp.X + ms.X / 2)) > 1 or abs(bp.Y + bs.Y / 2 - (mp.Y + ms.Y / 2)) > 1 then
+		out[#out + 1] = sfmt("mark centre %.1f,%.1f vs button centre %.1f,%.1f", mp.X + ms.X / 2, mp.Y + ms.Y / 2, bp.X + bs.X / 2, bp.Y + bs.Y / 2)
+	end
+	if ms.X < 4 or ms.Y < 4 or mp.X < bp.X - 0.5 or mp.Y < bp.Y - 0.5 or mp.X + ms.X > bp.X + bs.X + 0.5 or mp.Y + ms.Y > bp.Y + bs.Y + 0.5 then
+		out[#out + 1] = sfmt("mark %.1f,%.1f %.1fx%.1f not inside button %.1f,%.1f %.1fx%.1f", mp.X, mp.Y, ms.X, ms.Y, bp.X, bp.Y, bs.X, bs.Y)
+	end
+	local parts = {}
+	for _, want in ipairs({ { "BarA", 45, true }, { "BarB", -45, true }, { "InkA", 45, false }, { "InkB", -45, false } }) do
+		local bar = mark:FindFirstChild(want[1])
+		parts[want[1]] = bar
+		local c = bar and bar.BackgroundColor3
+		if not (bar and bar:IsA("Frame")) then
+			out[#out + 1] = "no " .. want[1]
+		elseif bar.Rotation ~= want[2] then
+			out[#out + 1] = sfmt("%s.Rotation %s (want %d)", want[1], tostring(bar.Rotation), want[2])
+		elseif not (shown(bar) and bar.BackgroundTransparency <= 0.2 and bar.AbsoluteSize.X >= 4 and bar.AbsoluteSize.Y >= 1) then
+			out[#out + 1] = want[1] .. " is not visible"
+		elseif bar.Active ~= false or bar:FindFirstChildOfClass("UIStroke") then
+			out[#out + 1] = want[1] .. " is Active or has a UIStroke"
+		elseif want[3] and not (c.R > 0.9 and c.G > 0.9 and c.B > 0.9) then
+			out[#out + 1] = want[1] .. " is not white " .. tostring(c)
+		elseif not want[3] and not (c.R < 0.25 and c.G < 0.25 and c.B < 0.25) then
+			out[#out + 1] = want[1] .. " is not dark " .. tostring(c)
+		end
+	end
+	for _, pair in ipairs({ { "BarA", "InkA" }, { "BarB", "InkB" } }) do
+		local bar, ink = parts[pair[1]], parts[pair[2]]
+		if bar and ink and not (ink.AbsoluteSize.X > bar.AbsoluteSize.X and ink.AbsoluteSize.Y > bar.AbsoluteSize.Y and ink.ZIndex < bar.ZIndex
+			and parts.InkA and parts.InkB and bar.ZIndex > math.max(parts.InkA.ZIndex, parts.InkB.ZIndex)) then
+			out[#out + 1] = pair[2] .. " is not a larger dark bar under " .. pair[1]
+		end
+	end
+	return out
+end
+
 -- (battle-feel T3, the real server cast) a special press's effects land BattleCatalog.Damage.SpecialCast[kind] s after the
 -- press (Cast event first, the Special + its hits at `at`). `evs` = the events of the step after the press: when they hold
 -- a Cast of unit `unitId` (any unit when nil) and no Special of it, the battle is stepped `dt` (0.05) at a time until its

@@ -745,6 +745,15 @@ S.p2flow_arrive = guarded("p2flow_arrive", function()
 	T.check(toasted(ann, "Pick a free home: press E at its gate", mark, "info") and toasted(ben, "Pick a free home", mark),
 		"flow join: new players get the side toast 'Pick a free home: press E at its gate!'")
 	T.check(not toasted(ann, "Welcome back", mark), "flow join: ...not 'Welcome back' (they never had a plot)")
+	-- (quick wins, review round 1) the welcome is onboarding: sent with { Keep = true }, so a player still on the title
+	-- screen keeps it through NotifyController's toast hold (its 60 s age limit and its cap)
+	local keepArg = nil
+	for _, e in ipairs(K.remotesFor("Notify", ann.UserId, mark)) do
+		if tostring(e.args[1]):find("Pick a free home", 1, true) then
+			keepArg = e.args[4]
+		end
+	end
+	T.check(type(keepArg) == "table" and keepArg.Keep == true, "flow join: the welcome toast carries the 4th argument { Keep = true }", tostring(keepArg))
 	T.eq(Gs.PolicyState(ann), "Allowed", "flow join: Ann's account may buy random items (PolicyService)")
 	T.eq(Gs.PolicyState(ben), "Restricted", "flow join: Ben's account may not (paid random items restricted)")
 	T.check(ann:GetAttribute("PaidRandomItemsRestricted") == false and ben:GetAttribute("PaidRandomItemsRestricted") == true,

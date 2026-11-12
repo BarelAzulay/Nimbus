@@ -330,9 +330,12 @@ step("Save wait toasts", function()
 	local waitAttr = (Config.Attr and Config.Attr.SaveWaiting) or "SaveWaiting"
 	local loadedAttr = (Config.Attr and Config.Attr.ProfileLoaded) or "ProfileLoaded"
 	local told = {} -- [player] = true once the "still being saved" toast went out (cleared by the "back" toast / leave)
+	-- (quick wins, review round 1) system toasts: { System = true } shows them even on the title screen (NotifyController's
+	-- hold), since they describe the moment and would be wrong if they arrived after PLAY
+	local SYSTEM = { System = true }
 	local function notify(player, text, kind, seconds)
 		pcall(function()
-			Remotes.Get("Notify"):FireClient(player, text, kind, seconds)
+			Remotes.Get("Notify"):FireClient(player, text, kind, seconds, SYSTEM)
 		end)
 	end
 	local function check(player)

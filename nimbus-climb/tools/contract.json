@@ -463,8 +463,11 @@
       ]
     },
     "client/Controllers/NotifyController": {
+      "_comment": "quick wins 2026-11-12 (win 1, review round 1): SetHeld / IsHeld, the title screen's owner-keyed toast hold (MainMenuController holds it)",
       "functions": [
-        "Init"
+        "Init",
+        "SetHeld",
+        "IsHeld"
       ]
     },
     "client/Controllers/MenuController": {
@@ -952,7 +955,8 @@
         "Build",
         "BuildPortal",
         "BuildRun",
-        "FreeRun"
+        "FreeRun",
+        "PartyMax"
       ]
     },
     "server/Services/DungeonService": {
@@ -964,6 +968,9 @@
       "signals": [
         "RunEnded",
         "RoomCleared"
+      ],
+      "fields": [
+        "MAX_PARTY"
       ]
     },
     "client/LightingStack": {
@@ -1002,7 +1009,8 @@
         "Button",
         "Pill",
         "Dock",
-        "SideRect"
+        "SideRect",
+        "CloseMark"
       ],
       "pending": {
         "_comment": "store (2026-11-04) W0 Task 2: the big-window rule shared by the Pets and Store windows",

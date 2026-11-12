@@ -1901,7 +1901,8 @@ These override the text above where they differ.
   the reveal. A pet whose prewarm build fails is not built again that session, and the pulls after it still warm.
 - **The Secret SPIN's pulse** runs only while that button can be tapped (not Locked, Loading, Pending or without odds).
 - **The HUD Gifts button** hides while the Shop is open (`ShopController.Toggled`): it sat over the Shop header's token balance
-  and the X at 844x390 and 1366x768.
+  and the X at 844x390 and 1366x768. (Later, quick wins 2026-11-12, win 5: it hides while ANY window is open, every controller of
+  `DailyController.K.WINDOWS`, not only the Shop.)
 - **The gem settle read** is one GetAsync per attempt (never held across the 1.5 s retry under the lock), backs off 5, 10, 20,
   40, then 60 s, each plus up to 25% at random, and a GetAsync budget under 10 postpones it 5 s without counting a failure. The
   first read stays at 15 s (no extra jitter there: it would move the hold).

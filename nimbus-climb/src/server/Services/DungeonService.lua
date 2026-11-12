@@ -113,6 +113,9 @@ local K = {
 -- bug batch 2 #14: one pickable chest slot per possible member; Init asserts DungeonBuilder.CHEST_COUNT (the chests
 -- Treasure_1 builds) >= this, so a full party never runs out of chests (the builder comes in through deps, no require)
 K.CHEST_SLOTS = K.MAX_PARTY
+-- (quick wins, review round 1) the party cap for the texts: DungeonBuilder's gate info ("up to MAX_PARTY - 1 friends")
+-- reads it here, the client reads the Lobby payload's Max
+DungeonService.MAX_PARTY = K.MAX_PARTY
 
 -- the room change's fade (dungeon-fixes decision 2): the server enters the next room after Out
 local FADE = { Out = 0.45, Hold = 0.35, In = 0.45 }
@@ -545,6 +548,7 @@ local function lobbyPayload(player)
 		cleared[f] = rec.Cleared and rec.Cleared[f] == true or false
 	end
 	return {
+		Max = K.MAX_PARTY, -- (quick wins, review round 1) the party cap: the window's "up to Max - 1 friends"
 		Parties = parties,
 		Mine = mine,
 		Record = { Best = tonumber(rec.Best) or 0, Cleared = cleared, Runs = tonumber(rec.Runs) or 0, Clears = tonumber(rec.Clears) or 0 },

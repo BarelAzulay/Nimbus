@@ -487,6 +487,27 @@ Updated: 2026-10-18 (after wave 2). Branch `v3-phase4`. Plan: `ARCHITECTURE_V3.m
   3. A special lands when its show lands: the damage numbers / knock-back come at the impact, not at the button press.
   4. Dash while an enemy special is charging (the wind-up ring / glow): your pet takes no hit from it; stand still and
      it lands.
+- 2026-11-12 (quick wins, branch `quick-wins`, not merged; plan docs/superpowers/plans/2026-11-12-quick-wins.md; the owner's
+  seven approved wins from the AI-slop audit `.superpowers/slop-audit/round2.json`, then one code-review round):
+  (1) a clean title screen: the world cards named in `Config.MainMenu.HideCards` (gate / portal cards, the obby join
+  board, the Sky Trove, garden names, NPC and home nameplates, the raid gate and home portal tags) are off client-side
+  until PLAY (smoke `p5menu_orbit_cards` checks every card in range of the menu's orbit against the list); gameplay toasts
+  are held by `NotifyController.SetHeld("MainMenu")` and all shown after PLAY, one every 0.35 s, in order ("bad", the
+  save-wait toasts sent with `{ System = true }` and chat "pull" lines are never held; the join welcome goes with
+  `{ Keep = true }`; at most 16 held, the oldest token / good dropped first; older than 60 s dropped unless Keep); the
+  release after PLAY runs every step on its own guard. (2) World cards `WorldStyle.TagRange` 45 (was 120), own follower
+  tag 15 (was 90), far-read exceptions listed in ARCHITECTURE_V3 "World text rule". (3) The Lava Golem keeps its own
+  colours at every tier (the tier shows on the aura, the tier light, Max's crown and the name plate); lava raid Haze 1.2.
+  (4) A fighter's HP / stamina card hides for the whole pet battle (`HudController.SetVitalsHidden("Battle")`), Cheer up!
+  / Retreat sit in its slot (`GetLayout().VitalsSlot`). (5) The Gifts button hides behind every window of
+  `DailyController.K.WINDOWS` (resolved once, polled every 0.25 s). (6) One drawn close X (`NeonKit.CloseMark`) on every
+  window's close button and the Dungeon party's KICK; a member who left reads U+00D7. (7) Credits "A SaintsField game" /
+  "Created by St.Gavin", "up to 3 friends" built from the party cap (`DungeonService.MAX_PARTY`, the Lobby payload's
+  `Max`), "F = target", a random first loading tip, `Config.Tagline` on the loading and title screens.
+  Not looked at in Studio: the title screen from the full orbit, the toasts arriving after PLAY, the 45-stud cards in
+  the Gate Court, the own follower tag at 15 (by the formation's numbers it flips on and off when the camera swings to
+  the side or front at default zoom: an owner call between 15, about 25 or hiding own tags), the Golem at each tier and
+  the Haze, the battle HUD with the card hidden on PC and phones, the drawn X on PC and a phone.
 - 2026-10-28 (player ruling, wave 5 dungeon camera): the Camera shake setting OFF turns off ONLY the hit shakes; the dungeon entrance rush, the room walk-in shot and the FOV punch on big attacks always play (short, skippable). The rush is skipped when the camera is > 60 studs from the gate.
 - Evolve button; 2nd evolution only Epic+; level cap 100 for all pets (XP curve keeps rising).
 - Presses become food plants, Collector = Coin Magnet, Kitchen = Food Machine, Gym = Training Place.
