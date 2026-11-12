@@ -1251,8 +1251,15 @@ local function clientScenarios()
 		-- the sticker
 		local sticker = part("Sticker")
 		T.check(sticker:IsA("ImageLabel") and sticker.Image == CR.EMBLEM, "p5credits " .. tag .. ": the sticker is the SF emblem picture", sticker.Image)
-		local ring = sticker:FindFirstChildOfClass("UIStroke")
-		CR.colour(ring, "e3b341", tag .. " the sticker's gold ring", "Color")
+		-- the gold ring is a round disc behind the emblem (2026-11-13: a UIStroke on the ImageLabel drew square in Studio)
+		T.check(sticker:FindFirstChildOfClass("UIStroke") == nil, "p5credits " .. tag .. ": the sticker carries no UIStroke (it drew square in Studio)")
+		local ring = sticker.Parent:FindFirstChild("StickerRing")
+		T.check(ring ~= nil and ring:IsA("Frame") and ring.BackgroundTransparency == 0 and ring:FindFirstChildOfClass("UICorner") ~= nil
+			and ring:FindFirstChildOfClass("UICorner").CornerRadius == UDim.new(1, 0) and ring.ZIndex < sticker.ZIndex,
+			"p5credits " .. tag .. ": a round gold disc (StickerRing) sits behind the sticker")
+		CR.colour(ring, "e3b341", tag .. " the sticker's gold ring", "BackgroundColor3")
+		T.check(ring ~= nil and ring.Size.X.Offset > sticker.Size.X.Offset and ring.Position == sticker.Position,
+			"p5credits " .. tag .. ": the ring is centred on the sticker and wider than it", ring and tostring(ring.Size) or "none")
 		T.check(sticker:FindFirstChildOfClass("UICorner") ~= nil, "p5credits " .. tag .. ": the sticker is round")
 		T.check(CR.near(sticker.Rotation, 12, 3), "p5credits " .. tag .. ": the sticker tilts about 12 deg", tostring(sticker.Rotation))
 
@@ -1287,8 +1294,7 @@ local function clientScenarios()
 		end
 		T.check(#out == 0, "p5credits " .. tag .. ": nothing overflows the body", table.concat(out, "; "))
 		T.check(#small == 0, "p5credits " .. tag .. ": no text under the readable floor (" .. floor .. " px)", table.concat(small, ", "))
-		local ringT = ring and ring.Thickness * CR.scale(sticker) or 0
-		local st = { CR.box(sticker, nil, ringT) }
+		local st = { CR.box(ring or sticker) }
 		local covered = {}
 		for _, e in ipairs(texts) do
 			if CR.overlap(st, e[2]) then

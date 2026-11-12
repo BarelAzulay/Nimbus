@@ -1749,6 +1749,17 @@ function Credits.sticker(body, L)
 		ZIndex = 4,
 	}, body)
 	H.corner(shadow)
+	-- the gold ring is its own round disc behind the emblem: a UIStroke on the ImageLabel drew as a square in Studio
+	-- (2026-11-13), and a circle needs no tilt
+	local ring = H.frame("StickerRing", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = S.Ring,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromOffset(L.StickerX, L.StickerY),
+		Size = UDim2.fromOffset(L.S + 2 * L.Ring, L.S + 2 * L.Ring),
+		ZIndex = 4,
+	}, body)
+	H.corner(ring)
 	local emblem = Credits.image(C.EMBLEM)
 	local sticker = Instance.new("ImageLabel")
 	sticker.Name = "Sticker"
@@ -1763,7 +1774,6 @@ function Credits.sticker(body, L)
 	sticker.Rotation = C.STICKER_TILT
 	sticker.ZIndex = 5
 	H.corner(sticker)
-	Credits.stroke(sticker, S.Ring, L.Ring)
 	sticker.Parent = body
 	return sticker
 end
