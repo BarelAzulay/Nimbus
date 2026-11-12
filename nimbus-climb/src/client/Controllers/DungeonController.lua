@@ -209,7 +209,8 @@ local G = {
 	-- (no gem glyph: lobby-shop Task 15, spec 5.7: the loot / end lines say "gems" in words)
 	Skull = "\240\159\146\128",
 	Dot = "\194\183",
-	Cross = "\226\156\149",
+	-- (review round 1) a member who left: U+00D7, a Latin-1 sign every UI font has (U+2715 drew a missing-glyph box)
+	Gone = "\195\151",
 	Chest = "\240\159\142\129",
 	Star = "\226\152\133",
 	Pip = "\226\151\143",
@@ -532,6 +533,17 @@ function H.dungeonNumber(field, default)
 	local BC = H.catalog()
 	local D = BC and BC.Dungeon
 	return tonumber(D and D[field]) or default
+end
+
+-- (quick wins, review round 1) the party cap: the Lobby payload's Max (DungeonService MAX_PARTY), else a party entry's
+-- Max, else 4 (a party is the player + Max - 1 friends)
+function H.partyMax()
+	local lobby = S.Lobby
+	local n = lobby and tonumber(lobby.Max) or nil
+	if not n and lobby and type(lobby.Parties) == "table" and type(lobby.Parties[1]) == "table" then
+		n = tonumber(lobby.Parties[1].Max)
+	end
+	return (n and n >= 2 and n < 100) and math.floor(n) or 4
 end
 
 -- the saved record: the Lobby payload's Record (fresh from the server) or State.Dungeon()
@@ -1005,11 +1017,12 @@ function W.partyMine(box, short, mine)
 				TextXAlignment = Enum.TextXAlignment.Right,
 			})
 			if leader and not isMe then
-				local kick = W.button(row, "KickButton", G.Cross, C.Red, UDim2.fromOffset(38, h - 8), 1, function()
+				local kick = W.button(row, "KickButton", "", C.Red, UDim2.fromOffset(38, h - 8), 1, function()
 					if H.request("Kick", m.UserId) then
 						H.hint("Removed " .. tostring(m.Name or "the player"), 3)
 					end
 				end, "Outline")
+				NeonKit.CloseMark(kick) -- (review round 1) the drawn X of every close button, not the U+2715 glyph
 				kick.AnchorPoint = Vector2.new(1, 0.5)
 				kick.Position = UDim2.new(1, -6, 0.5, 0)
 				kick:SetAttribute("UserId", m.UserId)
@@ -1132,7 +1145,7 @@ function W.footer()
 		elseif rec.Best >= H.floorCount() then
 			text = "Every floor cleared! Run them again for loot."
 		else
-			text = "Rooms, waves and a boss. Solo or up to 4 friends."
+			text = "Rooms, waves and a boss. Solo or up to " .. tostring(H.partyMax() - 1) .. " friends." -- (you + the rest)
 		end
 	end
 	U.Footer.Text = text
@@ -1833,7 +1846,7 @@ function R.refresh()
 			if i > 4 then
 				break
 			end
-			local glyph = m.Left and G.Cross or (m.Downed and G.Skull or G.Check)
+			local glyph = m.Left and G.Gone or (m.Downed and G.Skull or G.Check)
 			local color = m.Left and C.Muted or (m.Downed and C.Red or C.Green)
 			local chipF = H.frame(U.CardMembers, "Member" .. i, { BackgroundTransparency = 0, BackgroundColor3 = C.RowDark, LayoutOrder = i })
 			H.corner(chipF, 8)

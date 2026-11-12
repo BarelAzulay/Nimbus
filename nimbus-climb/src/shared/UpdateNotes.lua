@@ -70,10 +70,10 @@ UpdateNotes.Notes = {
 	},
 }
 
--- The README's owner checklist tells the owner to put their name on the first line.
+-- The owner's credit lines, exactly as given (quick wins 2026-11-12: the studio, then the creator; no other line).
 UpdateNotes.Credits = {
-	"Game by the Nimbus Climb owner",
-	"Built with Claude",
+	"A SaintsField game",
+	"Created by St.Gavin",
 }
 
 UpdateNotes.Tips = {

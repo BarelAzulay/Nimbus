@@ -7,12 +7,23 @@
 --                      stays false
 --   client_p5loading   the ReplicatedFirst screen: RemoveDefaultLoadingScreen called, no text before Shared.Theme, the bar
 --                      never goes back, 85% while the profile is not loaded, SKIP only after 6 s, tips rotate every 5 s,
---                      Done at 100% (ProfileLoaded), at MaxSeconds and on SKIP, gone after the fade
+--                      Done at 100% (ProfileLoaded), at MaxSeconds and on SKIP, gone after the fade; (quick wins, win 7)
+--                      the tag line is Config.Tagline and the first tip is random (math.random stubbed to k shows tips[k]
+--                      for two k with the same UserId), not UserId % #tips
 --   client_p5menu      with the menu enabled: every ScreenGui except NimbusLoading / NimbusMainMenu / NimbusNotify is off until
 --                      PLAY (incl. one created later and NimbusDash / NimbusRun / NimbusIndex / NimbusNpcDialog /
 --                      NimbusTutorialPointer by name), Shift / Q do nothing before PLAY, no character before PLAY, MenuPlay
 --                      fired once, camera Scriptable then Custom, Played once, the tutorial gui off before / on after, the
---                      loading screen faded by the menu, the UPDATES badge, /menu reopens it without a second MenuPlay
+--                      loading screen faded by the menu, the UPDATES badge, /menu reopens it without a second MenuPlay;
+--                      (quick wins, win 1) the world cards (BillboardGuis named in Config.MainMenu.HideCards) are off on
+--                      the title screen (one added or switched on meanwhile too) and back as their owner left them after
+--                      PLAY, other BillboardGuis (a player's TitleTag) untouched; gameplay toasts wait for PLAY
+--                      (NotifyController.SetHeld / IsHeld, owner-keyed; review round 1: all six shown after PLAY, in
+--                      order, one by one), a "bad" toast shows at once; the release after PLAY always runs to the end (a
+--                      throwing Orbit.stop / Gate.open still lets the toasts go and brings the cards back); (win 7) the
+--                      tag line is Config.Tagline, the credits are exactly "A SaintsField game" / "Created by St.Gavin"
+--   p5menu_orbit_cards (server; review round 1) the title screen census in the built lobby: every BillboardGui the menu's
+--                      camera orbit comes within MaxDistance of (the client-built RaidGateTag too) is in HideCards
 --   client_p5menu_mobile (phone 390x844) PLAY >= 56 px and on screen, no menu text under 14 px or off screen, SETTINGS is
 --                      a bottom sheet below 0.44 H, a tap sends MenuPlay once
 --   client_p5settings  sliders -> ONE SettingsSet after the 0.4 s debounce with clamped whole numbers; Graphics Low hides
@@ -141,6 +152,81 @@ local function serverScenarios()
 		K.flushErrors("p5menu_spawn")
 	end)
 
+	-- (quick wins, review round 1) the title screen census in the built lobby: every BillboardGui (on or off now) the
+	-- menu's camera orbit comes within MaxDistance of (MainMenuController Orbit: Lobby.Origin + GateArcRadius towards GateFacing,
+	-- Config.MainMenu OrbitRadius / OrbitHeight; 72 points) carries a name the menu hides (Config.MainMenu.HideCards)
+	S.p5menu_orbit_cards = guarded("p5menu_orbit_cards", function()
+		local Config = K.config()
+		local lobby, cfg = Config.Lobby, Config.MainMenu
+		local a0 = math.rad(lobby.GateFacing)
+		local c = lobby.Origin + Vector3.new(math.cos(a0) * lobby.GateArcRadius, 0, math.sin(a0) * lobby.GateArcRadius)
+		local orbit = {}
+		for i = 0, 71 do
+			local a = i / 72 * math.pi * 2
+			orbit[#orbit + 1] = Vector3.new(c.X + math.cos(a) * cfg.OrbitRadius, c.Y + cfg.OrbitHeight, c.Z + math.sin(a) * cfg.OrbitRadius)
+		end
+		local hide = {}
+		for _, name in ipairs(type(cfg.HideCards) == "table" and cfg.HideCards or {}) do
+			hide[name] = true
+		end
+		local function at(b)
+			local a = b.Adornee or b.Parent
+			local p = nil
+			if a and a:IsA("BasePart") then
+				p = a.Position
+			elseif a and a:IsA("Attachment") then
+				p = a.WorldPosition
+			elseif a and a:IsA("Model") then
+				p = a:GetPivot().Position
+			end
+			return p and (p + b.StudsOffsetWorldSpace + b.StudsOffset) or nil
+		end
+		-- every card, the ones off right now too (an owner may switch one on while the menu is up: a home's showcase tag)
+		local total, inRange, shown = 0, {}, {}
+		for _, b in ipairs(workspace:GetDescendants()) do
+			if b:IsA("BillboardGui") then
+				total = total + 1
+				local p = at(b)
+				local range = b.MaxDistance
+				local near = math.huge
+				for _, q in ipairs(p and orbit or {}) do
+					near = math.min(near, (q - p).Magnitude)
+				end
+				if p and (range <= 0 or near <= range) then
+					local line = string.format("%s %.0f/%s (%s%s)", b.Name, near, tostring(range), b.Parent and b.Parent.Name or "?", b.Enabled and "" or ", off now")
+					inRange[#inRange + 1] = line
+					if not hide[b.Name] then
+						shown[#shown + 1] = line
+					end
+				end
+			end
+		end
+		-- the client-built raid gate card (RaidGateController: "RaidGateTag", 5 studs over the NC_RaidGateCrest / NC_RaidGate
+		-- part, MaxDistance 120) is not in this world: counted from its adornee
+		local CS = game:GetService("CollectionService")
+		local crest = CS:GetTagged("NC_RaidGateCrest")[1] or CS:GetTagged("NC_RaidGate")[1]
+		if crest then
+			total = total + 1
+			local p = crest.Position + Vector3.new(0, 5, 0)
+			local near = math.huge
+			for _, q in ipairs(orbit) do
+				near = math.min(near, (q - p).Magnitude)
+			end
+			if near <= 120 then
+				local line = string.format("RaidGateTag %.0f/120 (client, %s)", near, crest.Name)
+				inRange[#inRange + 1] = line
+				if not hide.RaidGateTag then
+					shown[#shown + 1] = line
+				end
+			end
+		end
+		table.sort(inRange)
+		T.info("p5menu orbit: world BillboardGuis in range of the title screen's orbit (name nearest/MaxDistance)", #inRange .. " of " .. total .. ": " .. table.concat(inRange, ", "))
+		T.check(total > 0, "p5menu orbit: (setup) the built lobby has world BillboardGuis", tostring(total))
+		T.check(#shown == 0, "p5menu orbit: every world card in range of the title screen's camera orbit is one the menu hides (Config.MainMenu.HideCards)", table.concat(shown, ", "))
+		K.flushErrors("p5menu_orbit_cards")
+	end)
+
 	return S
 end
 
@@ -217,6 +303,27 @@ local function clientScenarios()
 	end
 	function H.find(root, name)
 		return root and root:FindFirstChild(name, true) or nil
+	end
+	-- (quick wins, win 1) the texts of the NimbusNotify toast stack that start with `prefix`, oldest first
+	-- (NotifyController: one ToastSlot per toast, LayoutOrder = -serial, newest on top)
+	function H.toasts(prefix)
+		local notify = H.pg():FindFirstChild("NimbusNotify")
+		local stack = notify and H.find(notify, "ToastStack")
+		local list = {}
+		for _, slot in ipairs(stack and stack:GetChildren() or {}) do
+			local label = slot.Name == "ToastSlot" and H.find(slot, "Text") or nil
+			if label and string.sub(label.Text, 1, #prefix) == prefix then
+				list[#list + 1] = { Order = slot.LayoutOrder, Text = label.Text }
+			end
+		end
+		table.sort(list, function(a, b)
+			return a.Order > b.Order
+		end)
+		local out = {}
+		for i, e in ipairs(list) do
+			out[i] = e.Text
+		end
+		return out
 	end
 
 	------------------------------------------------------------------------------------------------
@@ -312,6 +419,45 @@ local function clientScenarios()
 		LocalPlayer:SetAttribute(ATTR, true)
 		H.advance(3)
 		T.check(pg:FindFirstChild("NimbusLoading") == nil, "p5loading: no loading screen left behind")
+
+		-- (quick wins, win 7) the tag line is Config.Tagline, and the first tip is random: math.random stubbed to k
+		-- shows tips[k] first, for two different k with the same UserId (UserId % #tips showed one tip forever)
+		local notes = sharedModule("UpdateNotes")
+		local tips = notes and type(notes.Tips) == "table" and notes.Tips or {}
+		if T.check(#tips >= 5, "p5loading: (setup) UpdateNotes.Tips has at least 5 tips", tostring(#tips)) then
+			local realRandom = math.random
+			for round, k in ipairs({ 2, 5 }) do
+				local okRun, runErr = pcall(function()
+					math.random = function(a, b)
+						if a ~= nil and b ~= nil and k >= a and k <= b then
+							return k
+						end
+						if a == nil then
+							return realRandom()
+						elseif b == nil then
+							return realRandom(a)
+						end
+						return realRandom(a, b)
+					end
+					Mock.RunScript(script)
+					H.advance(0.4)
+				end)
+				math.random = realRandom -- restored also when the run failed
+				T.check(okRun, "p5loading: (setup) the loading script ran with math.random stubbed to " .. k, tostring(runErr))
+				local g4 = pg:FindFirstChild("NimbusLoading")
+				local tip4 = g4 and H.find(g4, "Tip")
+				T.eq(tip4 and tip4.Text, tips[k], "p5loading: with math.random -> " .. k .. " the first tip shown is tips[" .. k .. "] (same UserId "
+					.. tostring(LocalPlayer.UserId) .. ")")
+				if round == 1 then
+					local tagline = g4 and H.find(g4, "Tagline")
+					T.eq(tagline and tagline.Text, "Climb the storm. Together.", "p5loading: the tag line reads 'Climb the storm. Together.'")
+					T.eq(tagline and tagline.Text, Config and Config.Tagline, "p5loading: the tag line is Config.Tagline (not the feature list)")
+				end
+				H.advance(3) -- the profile is loaded: Done at 100%, faded and destroyed 2 s later (menu disabled)
+				T.check(g4 == nil or g4.Parent == nil, "p5loading: the tip run " .. round .. " leaves no loading screen behind")
+			end
+			math.random = realRandom
+		end
 		KC.flushErrors("client_p5loading")
 	end)
 
@@ -369,12 +515,62 @@ local function clientScenarios()
 		local conn = UiGate.Played:Connect(function()
 			played = played + 1
 		end)
+		-- (quick wins, win 1) world cards in the workspace: two shown, one its owner had switched off, one other card
+		local cardHost = Instance.new("Part")
+		cardHost.Name = "P5MenuCardHost"
+		cardHost.Anchored = true
+		cardHost.Parent = workspace
+		local function worldCard(name, on)
+			local b = Instance.new("BillboardGui")
+			b.Name = name
+			b.Enabled = on
+			b.Parent = cardHost
+			return b
+		end
+		local cardGate = worldCard("GateTag", true)
+		local cardPortal = worldCard("PortalBillboard", true)
+		local cardGateOff = worldCard("GateTag", false)
+		local cardName = worldCard("TitleTag", true) -- a player's title: not a world card
+		-- (review round 1) one card of every name in Config.MainMenu.HideCards (the obby join board, the Sky Trove, ...)
+		local hideNames = type(Config.MainMenu.HideCards) == "table" and Config.MainMenu.HideCards or {}
+		local cardEach = {}
+		for _, name in ipairs(hideNames) do
+			cardEach[#cardEach + 1] = worldCard(name, true)
+		end
+		local cardAway = worldCard("PortalBillboard", true) -- taken out of the workspace during the menu, back after
+		local cardGone = worldCard("GateTag", true) -- destroyed during the menu (PLAY must not trip over it)
+		local cardLate = nil
+		local NC = H.client("Controllers/NotifyController")
 		local log0 = #Mock.RemoteLog
 		Config.MainMenu.Enabled = true
 		UiGate._ResetForTests()
 		MMC._M.SentPlay = false
 		MMC.Open()
 		H.advance(0.2)
+		T.check(cardGate.Enabled == false and cardPortal.Enabled == false, "p5menu: the world cards (GateTag / PortalBillboard) are hidden on the title screen",
+			tostring(cardGate.Enabled) .. " / " .. tostring(cardPortal.Enabled))
+		T.eq(cardGateOff.Enabled, false, "p5menu: a world card that was already off stays off on the title screen")
+		T.eq(cardName.Enabled, true, "p5menu: other BillboardGuis (a player's TitleTag) are untouched by the title screen")
+		local wantNames = { "GateTag", "PortalBillboard", "JoinBillboard", "TroveBillboard", "NameTag", "Nameplate", "RaidGateTag", "PortalName" }
+		T.eq(table.concat(hideNames, ","), table.concat(wantNames, ","),
+			"p5menu: Config.MainMenu.HideCards names the lobby's world cards (gate / portal cards, join board, Sky Trove, garden names, NPC / home nameplates, raid gate, home portals)")
+		local stillOn = {}
+		for _, b in ipairs(cardEach) do
+			if b.Enabled then
+				stillOn[#stillOn + 1] = b.Name
+			end
+		end
+		T.check(#cardEach == #hideNames and #stillOn == 0, "p5menu: a card of every HideCards name is hidden on the title screen", table.concat(stillOn, ", "))
+		cardLate = worldCard("GateTag", true)
+		H.advance(0.1)
+		T.eq(cardLate.Enabled, false, "p5menu: a GateTag that appears while the menu is up (a gate streaming in) is hidden too")
+		cardGate.Enabled = true -- its owner switches it on during the menu
+		H.advance(0.1)
+		T.eq(cardGate.Enabled, false, "p5menu: a world card its owner switches on during the menu stays hidden until PLAY")
+		T.eq(cardAway.Enabled, false, "p5menu: (setup) the card that will leave the workspace is hidden first")
+		cardAway.Parent = nil
+		cardGone:Destroy()
+		H.advance(0.1)
 		local later = Instance.new("ScreenGui")
 		later.Name = "NimbusLater"
 		later.Parent = pg
@@ -420,6 +616,28 @@ local function clientScenarios()
 		local notes = sharedModule("UpdateNotes")
 		local wantBadge = (notes and notes.Latest or 0) > (CS.Get("SeenNotes") or 0)
 		T.check(badge ~= nil and badge.Visible == wantBadge, "p5menu: the NEW badge on UPDATES follows Latest > SeenNotes", tostring(wantBadge))
+		-- (quick wins, win 7) the tag line is the game's tag line, the credits are the owner's two lines
+		local tagline = H.find(menuGui, "Tagline")
+		T.eq(tagline and tagline.Text, "Climb the storm. Together.", "p5menu: the menu's tag line reads 'Climb the storm. Together.'")
+		T.eq(tagline and tagline.Text, Config.Tagline, "p5menu: the menu's tag line is Config.Tagline (not the feature list)")
+		MMC.OpenCredits()
+		H.advance(0.3)
+		local credits = MMC.Window()
+		if T.check(credits ~= nil and credits.Parent ~= nil, "p5menu: CREDITS opens its window") then
+			local c1, c2 = H.find(credits, "Credit1"), H.find(credits, "Credit2")
+			T.eq(c1 and c1.Text, "A SaintsField game", "p5menu: the first credit line is exactly 'A SaintsField game'")
+			T.eq(c2 and c2.Text, "Created by St.Gavin", "p5menu: the second credit line is exactly 'Created by St.Gavin'")
+			T.check(H.find(credits, "Credit3") == nil, "p5menu: there is no third credit line")
+			local claude = {}
+			for _, d in ipairs(H.texts(credits)) do
+				if string.find(string.lower(d.Text), "claude", 1, true) then
+					claude[#claude + 1] = d.Name
+				end
+			end
+			T.check(#claude == 0, "p5menu: no text in the Credits window mentions Claude", table.concat(claude, ", "))
+		end
+		MMC.CloseWindows()
+		H.advance(0.2)
 		-- Shift / Q do nothing before PLAY
 		local MC = H.client("Controllers/MovementController")
 		local _ = MC
@@ -436,6 +654,23 @@ local function clientScenarios()
 		T.check(LocalPlayer.Character == nil, "p5menu: no character before PLAY")
 		T.eq(#H.calls("MenuPlay", log0), 0, "p5menu: no MenuPlay before PLAY")
 		T.eq(played, 0, "p5menu: UiGate.Played has not fired before PLAY")
+
+		-- (quick wins, win 1) gameplay toasts wait for PLAY (at most 4, order kept); a "bad" toast shows at once
+		local canHold = T.check(type(NC.SetHeld) == "function" and type(NC.IsHeld) == "function", "p5menu: NotifyController.SetHeld / IsHeld exist")
+		if canHold then
+			T.eq(NC.IsHeld(), true, "p5menu: toasts are held while the main menu is up")
+		end
+		NC.Toast("p5menu held 1", "info", 8)
+		H.advance(0.1)
+		T.eq(#H.toasts("p5menu held"), 0, "p5menu: an 'info' toast adds no toast to the NimbusNotify stack while the menu is up")
+		NC.Toast("p5menu bad", "bad", 8)
+		H.advance(0.1)
+		T.eq(#H.toasts("p5menu bad"), 1, "p5menu: a 'bad' toast (an error) shows at once on the title screen")
+		for i = 2, 6 do
+			NC.Toast("p5menu held " .. i, "info", 8)
+		end
+		H.advance(0.1)
+		T.eq(#H.toasts("p5menu held"), 0, "p5menu: six held toasts, none shown before PLAY")
 
 		-- PLAY (Enter + a click: one MenuPlay)
 		pcall(Mock.TriggerAction, "NimbusMenuPlay", "Begin", Mock.NewInput("Return", "Keyboard", "Begin"))
@@ -467,6 +702,54 @@ local function clientScenarios()
 		T.check(#back == 0, "p5menu: every gated gui is back as it was after PLAY", table.concat(back, ", "))
 		T.check(tut == nil or tut.Enabled == true, "p5menu: the tutorial gui shows after PLAY (its owner switched it on meanwhile)")
 		T.eq(later.Enabled, true, "p5menu: a gui created during the menu comes on after PLAY")
+		-- (quick wins, win 1) the world cards are back as their owners left them
+		T.check(cardGate.Enabled == true and cardPortal.Enabled == true, "p5menu: after PLAY the world cards (GateTag / PortalBillboard) show again",
+			tostring(cardGate.Enabled) .. " / " .. tostring(cardPortal.Enabled))
+		T.eq(cardLate.Enabled, true, "p5menu: the GateTag that appeared during the menu shows after PLAY")
+		T.eq(cardGateOff.Enabled, false, "p5menu: the world card that was off before the menu is still off after PLAY")
+		T.eq(cardName.Enabled, true, "p5menu: the player's TitleTag is still untouched after PLAY")
+		local stillOff = {}
+		for _, b in ipairs(cardEach) do
+			if not b.Enabled then
+				stillOff[#stillOff + 1] = b.Name
+			end
+		end
+		T.check(#stillOff == 0, "p5menu: ...and every HideCards card shows again after PLAY", table.concat(stillOff, ", "))
+		cardAway.Parent = cardHost
+		H.advance(0.1)
+		T.eq(cardAway.Enabled, true, "p5menu: a world card that left the workspace during the menu gets its wish back too (not left off for good)")
+		-- the held toasts: (review round 1) ALL six, first seen in the order sent, one by one as the column has room (none
+		-- cut: the first is never pushed out by the newest); nothing held any more
+		local seenOrder, seenAt, firstHeld = {}, {}, nil
+		for step = 1, 100 do -- 25 s on the mock clock
+			for _, text in ipairs(H.toasts("p5menu held")) do
+				if not seenAt[text] then
+					seenAt[text] = step
+					seenOrder[#seenOrder + 1] = text
+				end
+			end
+			if step == 1 then
+				firstHeld = H.toasts("p5menu held")
+			end
+			H.advance(0.25)
+		end
+		T.eq(table.concat(seenOrder, " | "), "p5menu held 1 | p5menu held 2 | p5menu held 3 | p5menu held 4 | p5menu held 5 | p5menu held 6",
+			"p5menu: after PLAY all six held toasts show, first seen in the order sent (none dropped)")
+		T.check(#firstHeld >= 1 and #firstHeld <= 3 and firstHeld[1] == "p5menu held 1",
+			"p5menu: ...they come one by one from the oldest (at most 3 next to the live 'bad' toast just after PLAY)", table.concat(firstHeld, " | "))
+		if canHold then
+			T.eq(NC.IsHeld(), false, "p5menu: nothing is held after PLAY")
+			NC.Toast("p5menu after play", "info", 8)
+			H.advance(0.1)
+			T.eq(#H.toasts("p5menu after play"), 1, "p5menu: after PLAY a new 'info' toast shows at once")
+			-- owner-keyed: one owner letting go does not release another's hold
+			NC.SetHeld("SmokeA", true)
+			NC.SetHeld("SmokeB", true)
+			NC.SetHeld("SmokeA", false)
+			T.eq(NC.IsHeld(), true, "p5menu: SetHeld is owner-keyed (A on, B on, A off: still held)")
+			NC.SetHeld("SmokeB", false)
+			T.eq(NC.IsHeld(), false, "p5menu: ...and free once the last owner lets go")
+		end
 
 		-- /menu reopens it client-side (no second MenuPlay), PLAY closes it again
 		local Dev = H.client("Controllers/DevController")
@@ -477,11 +760,61 @@ local function clientScenarios()
 		H.advance(0.3)
 		T.eq(MMC.IsOpen(), true, "p5menu: the menu is open again")
 		T.eq(pg:FindFirstChild("NimbusHud") and pg.NimbusHud.Enabled, false, "p5menu: /menu hides the HUD again")
+		T.check(cardGate.Enabled == false and cardLate.Enabled == false, "p5menu: /menu hides the world cards again")
 		MMC.Play()
 		H.advance(0.8)
 		T.eq(#H.calls("MenuPlay", log0), 1, "p5menu: PLAY after /menu sends no second MenuPlay")
 		T.eq(MMC.IsOpen(), false, "p5menu: ...and closes the menu")
+		T.check(cardGate.Enabled == true and cardLate.Enabled == true and cardGateOff.Enabled == false, "p5menu: ...and the world cards are back as they were")
 		T.eq(played, 1, "p5menu: Played does not fire twice")
+
+		-- (review round 1) the release after PLAY always runs to the end: with the orbit's stop and the gate's open
+		-- both throwing, the toasts are let go, the world cards come back and the menu is closed
+		T.check(Dev.OnChat("/menu") == true, "p5menu: (setup) /menu opens the menu for the failing-release case")
+		H.advance(0.3)
+		local MM = MMC._M
+		local realOrbit, realGateAdd = MM.Orbit.Conn, MM.Gate.AddConn
+		local function failing()
+			return {
+				Disconnect = function()
+					error("smoke: a failing Disconnect", 0)
+				end,
+			}
+		end
+		local out0 = #Mock.Output
+		T.check(realOrbit ~= nil and realGateAdd ~= nil and NC.IsHeld() == true and cardGate.Enabled == false,
+			"p5menu: (setup) the reopened menu orbits, gates the guis, holds the toasts and hides the cards")
+		MM.Orbit.Conn, MM.Gate.AddConn = failing(), failing()
+		MMC.Play()
+		H.advance(0.8)
+		T.eq(NC.IsHeld(), false, "p5menu: Orbit.stop and Gate.open throwing during PLAY still let the toasts go (IsHeld false)")
+		T.check(cardGate.Enabled == true and cardLate.Enabled == true, "p5menu: ...the world cards still come back")
+		T.check(MMC.IsOpen() == false and MM.Playing == false and UiGate.HasPlayed() == true, "p5menu: ...and the menu is closed (Open / Playing false, played)")
+		local warned = 0
+		for i = #Mock.Output, out0 + 1, -1 do -- the two expected warnings are this case's own: taken out of the log
+			local o = Mock.Output[i]
+			if o.kind == "warn" and string.find(o.text, "smoke: a failing Disconnect", 1, true) then
+				warned = warned + 1
+				table.remove(Mock.Output, i)
+			end
+		end
+		T.eq(warned, 2, "p5menu: ...each failing step is reported once (warn: orbit, gate)")
+		-- put the real connections back where the test broke them
+		if realOrbit then
+			realOrbit:Disconnect()
+		end
+		if realGateAdd then
+			realGateAdd:Disconnect()
+		end
+		MM.Orbit.Conn, MM.Gate.AddConn = nil, nil
+		for g, c in pairs(MM.Gate.Conns) do
+			c:Disconnect()
+			if g.Parent and MM.Gate.Wanted[g] ~= nil then
+				g.Enabled = MM.Gate.Wanted[g]
+			end
+			MM.Gate.Conns[g] = nil
+			MM.Gate.Wanted[g] = nil
+		end
 		pg:SetAttribute("NC_Dev", devFlag)
 		T.eq(Dev.OnChat("/menu"), devFlag == true, "p5menu: /menu does nothing without NC_Dev")
 		if MMC.IsOpen() then
@@ -495,6 +828,7 @@ local function clientScenarios()
 			g:Destroy()
 		end
 		later:Destroy()
+		cardHost:Destroy()
 		KC.flushErrors("client_p5menu")
 	end)
 

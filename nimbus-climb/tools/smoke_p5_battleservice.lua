@@ -14,11 +14,13 @@
 --                         past the zone edge IS leashed after ~3 s
 --   p5svc_duel_fair       Duel.PowerGap 2 (practice beyond it: nothing paid, Practice in the invite), the queue's power
 --                         band, MaxHit 0.6 in duels, a passive duel ends at 120 s (no overtime: DoubleKoByDamage / Draw),
---                         a played duel pays once, a leaver loses
---   p5svc_raid            8 fighters + the boss: BossHp(bossId, teams, tier) with ExpectedDps, 25 units, every client under
+--                         a played duel pays once, a leaver loses; (quick wins, win 7) the duel's controls hint says
+--                         "F = target", never "F = attack"
+--   p5svc_raid           8 fighters + the boss: BossHp(bossId, teams, tier) with ExpectedDps, 25 units, every client under
 --                         6 KB/s, a leaver removed, medals paid once at the end
 --   p5svc_ring            rounds 1-3 won by ONE level-25 pet pressing ATTACK once per second (moving toward the champion;
---                         HUD cleanup Task 4: no heal between rounds, plain level-1 champions), XP once per round, Start.Team / Ring info, the loss third on the natural end
+--                         HUD cleanup Task 4: no heal between rounds, plain level-1 champions), XP once per round, Start.Team / Ring info, the loss third on the natural end;
+--                         (quick wins, win 7) the round's controls hint says "F = target", never "F = attack"
 --   p5svc_encounter       the encounter API with NO run provider (KeysInBattle / canBattle work), OpenEncounter 1 and 4
 --                         teams with KeepInBattle (the InBattle attribute untouched on add, release, leave, force release),
 --                         SpawnWave + Wave events, OnWave / OnBossHp / OnDown / OnLeave, EncounterStatus, FinishEncounter
@@ -1222,6 +1224,15 @@ S.p5svc_duel_fair = scenario("p5svc_duel_fair", function()
 	local m2 = K.logSize()
 	local ok, id = bs.StartDuel(strong, weak)
 	T.check(ok == true and toasted(strong, "Practice duel", m2), "p5 duel fair: a duel > PowerGap apart starts as a PRACTICE duel (toast)", tostring(id))
+	-- (quick wins, win 7) the controls hint names F as the target key (BattleController binds F to the target switch)
+	local duelHint = nil
+	for _, text in ipairs(toasts(strong, m2)) do
+		if text:find("Duel vs", 1, true) then
+			duelHint = text
+		end
+	end
+	T.check(duelHint ~= nil and duelHint:find("F = target", 1, true) ~= nil and duelHint:find("F = attack", 1, true) == nil,
+		"p5 duel fair: the duel's controls hint on the Notify remote says 'F = target', never 'F = attack'", tostring(duelHint))
 	local ts = tracker(strong)
 	ts.cursor = m2
 	local tw = tracker(weak)
@@ -1529,6 +1540,15 @@ S.p5svc_ring = scenario("p5svc_ring", function()
 		cleanup({ p })
 		return
 	end
+	-- (quick wins, win 7) the controls hint names F as the target key (BattleController binds F to the target switch)
+	local ringHint = nil
+	for _, text in ipairs(toasts(p, mark)) do
+		if text:find("Champion Ring, round", 1, true) then
+			ringHint = text
+		end
+	end
+	T.check(ringHint ~= nil and ringHint:find("F = target", 1, true) ~= nil and ringHint:find("F = attack", 1, true) == nil,
+		"p5 ring: the round's controls hint on the Notify remote says 'F = target', never 'F = attack'", tostring(ringHint))
 	local tr = tracker(p)
 	tr.cursor = mark
 	advance(0.2)

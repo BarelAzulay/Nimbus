@@ -25,10 +25,15 @@
 --                    free, RunEnded once, nothing paid twice; a run older than RunMaxSeconds ends)
 --   p5dgn_world      templates within their budgets, BuildRun <= 950 live parts, no overlap over 20 seeds, the
 --                    attachments, zones Mode Dungeon 44 / 56 inside the floor, Accent parts recoloured, FreeRun clean,
---                    the portal <= 120 parts with OpenPanel "Dungeon", the portal outside every zone
+--                    the portal <= 120 parts with OpenPanel "Dungeon", the portal outside every zone; (quick wins, win 7)
+--                    the gate's info says "up to <Max - 1> friends" for the Lobby payload's party Max (4 players: 3 friends);
+--                    (review round 1) the payload's top-level Max, DungeonBuilder.PartyMax() read from DungeonService.MAX_PARTY
 --   p5dgn_net        a 4-player room under the raid budget (6 KB/s per client), DungeonState payloads < 1 KB, junk
 --                    DungeonRequest 60/s refused without errors
--- dungeonclient (W4, client world): client_p5dungeon / client_p5dungeon_mobile (placeholders report info only)
+-- dungeonclient (W4, client world): client_p5dungeon / client_p5dungeon_mobile (placeholders report info only); (quick
+--                    wins, win 7) the window's lobby line says "up to <Max - 1> friends", never "up to <Max>" (review round 1:
+--                    a payload Max 5 reads "up to 4"); KICK is the shared drawn X (SmokeCommon.closeMarkIssues); a member who
+--                    left reads U+00D7, never U+2715
 -- Plain Lua 5.1 syntax only.
 
 local CONTEXT = (ARGS and ARGS.context) or "server"
@@ -2200,6 +2205,42 @@ local function serverScenarios()
 		T.check(inside == 0, "p5 world: the portal stands outside every battle zone")
 		local tag = i.Portal:FindFirstChild("GateTag", true)
 		T.check(tag ~= nil and i.Portal:GetAttribute("DungeonBoard") ~= nil, "p5 world: the gate has its tag and the DungeonBoard attribute")
+		-- (quick wins, win 7) the gate's info line names the real party cap: a party of Max players is you + Max - 1
+		-- friends (Max read from the Lobby payload of a real party, DungeonService MAX_PARTY)
+		local capPlayer = newPlayer("DgnCap", WEAK, 1)
+		toPad(capPlayer, 0, 0)
+		request(capPlayer, "Create", 1)
+		local capLobby = openLobby(capPlayer)
+		local cap = nil
+		for _, entry in ipairs(capLobby and type(capLobby.Parties) == "table" and capLobby.Parties or {}) do
+			if entry.Leader == capPlayer.UserId then
+				cap = tonumber(entry.Max)
+			end
+		end
+		cleanup({ capPlayer })
+		local infoLabel = tag and tag:FindFirstChild("Info", true)
+		local infoText = infoLabel and infoLabel.Text or ""
+		-- (review round 1) the payload carries the cap at its top too (the window's line reads it), and the gate's text is
+		-- built from the same number (DungeonBuilder.PartyMax reads DungeonService.MAX_PARTY)
+		T.check(capLobby ~= nil and capLobby.Max == cap, "p5 world: the Lobby payload's top-level Max is the party cap", tostring(capLobby and capLobby.Max) .. " vs " .. tostring(cap))
+		local DB = DGB()
+		T.check(DB ~= nil and type(DB.PartyMax) == "function" and DB.PartyMax() == cap, "p5 world: DungeonBuilder.PartyMax() is the party cap the gate's text is built from",
+			tostring(DB and DB.PartyMax and DB.PartyMax()))
+		local Svc = DGS()
+		if DB and type(DB.PartyMax) == "function" and Svc and Svc.MAX_PARTY ~= nil then
+			local was = Svc.MAX_PARTY
+			Svc.MAX_PARTY = 6
+			local six = DB.PartyMax()
+			Svc.MAX_PARTY = was
+			T.eq(six, 6, "p5 world: ...read from DungeonService.MAX_PARTY, not a literal (a cap of 6 reads 6)")
+		else
+			T.fail("p5 world: DungeonService.MAX_PARTY is exposed for the gate's text", tostring(Svc and Svc.MAX_PARTY))
+		end
+		if T.check(cap ~= nil and cap >= 2, "p5 world: (setup) the Lobby payload gives the party cap (Max)", tostring(cap)) then
+			local friends = cap - 1
+			T.check(infoText:find("up to " .. friends .. " friends", 1, true) ~= nil and infoText:find("up to " .. cap, 1, true) == nil,
+				"p5 world: the gate's info says 'up to " .. friends .. " friends' (a party is " .. cap .. " players), never 'up to " .. cap .. "'", infoText)
+		end
 	end)
 
 	------------------------------------------------------------------------------------------------
@@ -2657,6 +2698,7 @@ local function clientScenarios()
 			cleared[f] = f <= 4
 		end
 		return {
+			Max = 4,
 			Parties = { { Leader = 501, LeaderName = "Ava", Floor = 3, Count = 2, Max = 4, Open = true, InRun = false },
 				{ Leader = 502, LeaderName = "Sam", Floor = 5, Count = 3, Max = 4, Open = true, InRun = true, Room = 2 } },
 			Mine = mine,
@@ -2751,6 +2793,27 @@ local function clientScenarios()
 			return
 		end
 		T.check(#C5.sends(mark, "Open") >= 1, "p5dgn client: opening sends DungeonRequest('Open')")
+		-- (quick wins, win 7) the lobby line names the real party cap (the payload's Max players = you + Max - 1 friends);
+		-- read on floor 1 (no "your team looks weak" line), then floor 3 is selected again
+		local cap = C5.lobby(nil).Parties[1].Max
+		DC.Open(1)
+		KC.advance(0.4)
+		local footer = C5.find(win, "Footer")
+		local footerText = footer and footer.Text or ""
+		T.check(footerText:find("up to " .. (cap - 1) .. " friends", 1, true) ~= nil and footerText:find("up to " .. cap, 1, true) == nil,
+			"p5dgn client: the lobby line says 'up to " .. (cap - 1) .. " friends' (a party is " .. cap .. " players), never 'up to " .. cap .. "'", footerText)
+		-- (review round 1) built from the payload's cap, not a literal: a Lobby payload with Max 5 reads "up to 4 friends"
+		local five = C5.lobby(nil)
+		five.Max = 5
+		KC.toClient("DungeonState", "Lobby", five)
+		KC.advance(0.4)
+		footer = C5.find(win, "Footer")
+		T.check(footer ~= nil and footer.Text:find("up to 4 friends", 1, true) ~= nil, "p5dgn client: a Lobby payload with Max 5 makes the lobby line 'up to 4 friends' (the text follows the cap)",
+			footer and footer.Text or "no footer")
+		KC.toClient("DungeonState", "Lobby", C5.lobby(nil))
+		KC.advance(0.4)
+		DC.Open(3)
+		KC.advance(0.4)
 		-- floors: 12 rows, cleared / next / locked from the Record
 		local rows = 0
 		for f = 1, 12 do
@@ -2822,6 +2885,9 @@ local function clientScenarios()
 		KC.advance(0.6)
 		local kick = C5.find(win, "KickButton")
 		T.check(kick and kick:GetAttribute("UserId") == 501, "p5dgn client: the leader sees KICK on the other member only")
+		-- (review round 1) KICK wears the drawn X every window's close button has (the shared check), not the U+2715 glyph
+		local kickIssues = SmokeCommon.closeMarkIssues(kick)
+		T.check(#kickIssues == 0, "p5dgn client: the KICK button is the drawn X (NeonKit.CloseMark: no glyph, four bars, centred)", table.concat(kickIssues, "; "))
 		mark = #Mock.RemoteLog
 		Mock.Click(kick)
 		KC.advance(0.4)
@@ -2893,6 +2959,18 @@ local function clientScenarios()
 				"p5dgn desktop: 'Floor 3 - Flooded Vaults' and 'Room 2 / 4'", C5.find(card, "Room").Text)
 			local downed = C5.find(card, "Member2")
 			T.check(downed and downed:GetAttribute("Downed") == true, "p5dgn desktop: member chips show who is Downed")
+			-- (review round 1) a member who left reads "× Ava" (U+00D7, a sign the font has), never the U+2715 box glyph
+			run.Members[2].Left = true
+			KC.toClient("DungeonState", "Run", run)
+			KC.advance(0.3)
+			local gone = C5.find(card, "Member2")
+			local goneLabel = gone and C5.find(gone, "Text")
+			local goneText = goneLabel and goneLabel.Text or ""
+			T.check(gone ~= nil and gone:GetAttribute("Left") == true and goneText == "\195\151 Ava" and not goneText:find("\226\156\149", 1, true),
+				"p5dgn desktop: a member who left reads '\195\151 Ava' (U+00D7), not the U+2715 glyph", goneText)
+			run.Members[2].Left = false
+			KC.toClient("DungeonState", "Run", run)
+			KC.advance(0.3)
 		else
 			T.check(C5.find(card, "Text").Text:find("Room 2/4", 1, true), "p5dgn phone: the chip reads 'Room 2/4'", C5.find(card, "Text").Text)
 			local r = C5.rect(card)

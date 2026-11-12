@@ -4,9 +4,20 @@
 --   NotifyController.Toast(text, kind, duration) -> bool   (roll-look review round 1) a local toast exactly as the Notify
 --                                    remote shows one (MenuController.Hint routes here while its NimbusMenu gui is off:
 --                                    the egg stage's HUD hide)
+--   NotifyController.SetHeld(who, on) (quick wins 2026-11-12, win 1) owner-keyed hold, like HudController.SetVitalsHidden:
+--                                    while any owner holds (the main menu: "MainMenu", from Open until the PLAY fade
+--                                    ends) every gameplay toast waits instead of showing (Notify remote and Toast alike).
+--                                    Not held: "bad" (an error / a refusal), a Notify sent with opts.System (the
+--                                    save-wait toasts) and "pull" (a chat line, posted at once). Identical held toasts
+--                                    merge; up to HELD_MAX (16) distinct ones are kept, the oldest token / good one
+--                                    dropped first and an opts.Keep one (the join welcome) last. When the last owner lets
+--                                    go, the ones older than HELD_SECONDS (60) are dropped unless Keep, and the rest are
+--                                    shown in the order sent, one every HELD_PACE (0.35 s) while the column has room.
+--   NotifyController.IsHeld() -> bool  true while any owner holds
 --
 -- Remotes handled
---   Notify(text, kind, duration)  -> compact toast stack on the RIGHT edge, from the top (below the HUD currency
+--   Notify(text, kind, duration[, opts])  opts (optional table): System / Keep, see SetHeld above.
+--                                 -> compact toast stack on the RIGHT edge, from the top (below the HUD currency
 --                                    stack when that sits top-right on a short screen, and below the top-left
 --                                    panel on a narrow one). Max 4, 250 design px wide, newest on top, slide in
 --                                    from the right, `Toast` role font at the readable 18 px, a coloured accent
@@ -74,6 +85,14 @@ local MIN_TOAST_H = 52 -- a one-line toast (design px)
 local WAIT_MAX = 3
 local WAIT_SECONDS = 20
 local WAIT_MIN_SHOWN = 1.5 -- seconds a toast must have been readable before it may be pushed out for good
+-- (quick wins, win 1; review round 1) toasts held by SetHeld (the title screen): parked, then shown one by one once the
+-- hold ends, so nothing is cut. Identical held toasts merge ("x2"). Over HELD_MAX distinct ones the oldest low-value
+-- one (HELD_LOW: token / good) goes first, then the oldest plain one; a Keep one (opts.Keep: the join welcome) last.
+-- At release a held toast older than HELD_SECONDS is dropped as stale (a "Double Rewards in 2 minutes" line), unless Keep.
+local HELD_MAX = 16
+local HELD_SECONDS = 60
+local HELD_LOW = { token = true, good = true }
+local HELD_PACE = 0.35 -- seconds between two released toasts (and between two room checks while the column is full)
 
 -- KEEP IN SYNC with HudController.lua: EDGE and TOUCH_EDGE.
 local EDGE = 12
@@ -130,6 +149,10 @@ local UI = {} -- Gui, Stack, StackScale, ToastPad, ResultPad, ResultHolder
 local scalers = {}
 local toasts = {} -- live toasts, oldest first
 local waiting = {} -- toasts pushed out for room: { Text, Kind, Duration, Until }, oldest first
+local holders = {} -- SetHeld owners: { [who] = true }; any owner holds the non-"bad" toasts
+local held = {} -- toasts waiting for the hold to end: { Text, Kind, Duration, Keep, Count, At }, oldest first (<= HELD_MAX)
+local released = {} -- held toasts let go and not shown yet (the drain), oldest first
+local drainArmed = false -- a drain step is scheduled
 local toastSerial = 0
 local result = { Panel = nil, Serial = 0, Height = 0 } -- the open result card (Height: design px)
 local lastDashFx = {}
@@ -733,6 +756,17 @@ local function addToast(text, kind, duration)
 	scheduleExpiry(toast, duration)
 end
 
+-- true when the toast column fits one more toast with this text under the live ones (height only)
+local function columnFits(text)
+	local k = currentScale()
+	local place = toastPlacement()
+	local used = 0
+	for _, live in ipairs(toasts) do
+		used = used + estimateToastHeight(live.Label.Text) + TOAST_GAP
+	end
+	return used + estimateToastHeight(text) <= (place.Bottom - place.Top) / math.max(0.01, k)
+end
+
 -- Shows the oldest waiting toast when the column has room for it again (one at a time; stale ones are dropped).
 function flushWaiting()
 	local now = os.clock()
@@ -743,17 +777,48 @@ function flushWaiting()
 	if not entry or not UI.Stack then
 		return
 	end
-	local k = currentScale()
-	local place = toastPlacement()
-	local used = 0
-	for _, live in ipairs(toasts) do
-		used = used + estimateToastHeight(live.Label.Text) + TOAST_GAP
-	end
-	if used + estimateToastHeight(entry.Text) > (place.Bottom - place.Top) / math.max(0.01, k) then
+	if not columnFits(entry.Text) then
 		return -- still no room: tried again when the next toast leaves
 	end
 	table.remove(waiting, 1)
 	addToast(entry.Text, entry.Kind, entry.Duration)
+end
+
+-- (quick wins, review round 1) the drain of the released held toasts: one every HELD_PACE seconds while the column has
+-- room (fewer than MAX_TOASTS live and it fits; an empty column always takes one), so a long list is read one by one
+-- instead of the newest pushing the first out. Paused while held again (the /menu reopen); resumed at that release.
+-- A failing step drops the rest with a warning (drainReleased), so the chain can never stick armed.
+local drainStep
+local function drainReleased()
+	local ok, err = pcall(drainStep)
+	if not ok then
+		drainArmed = false
+		released = {}
+		warn("[NotifyController] the held toasts failed: " .. tostring(err))
+	end
+end
+
+function drainStep()
+	drainArmed = false
+	if next(holders) ~= nil or #released == 0 then
+		return
+	end
+	local entry = released[1]
+	if not UI.Stack then
+		released = {} -- no toast column to show them on
+		return
+	end
+	local live = #toasts
+	if live == 0 or (live < MAX_TOASTS and columnFits(tostring(entry.Text))) then
+		table.remove(released, 1)
+		for _ = 1, math.max(1, entry.Count or 1) do
+			addToast(entry.Text, entry.Kind, entry.Duration) -- repeats merge into "text x2"
+		end
+	end
+	if #released > 0 then
+		drainArmed = true
+		task.delay(HELD_PACE, drainReleased)
+	end
 end
 
 local function buildToastStack()
@@ -1297,13 +1362,55 @@ local function pullToChat(text)
 	return true
 end
 
-local function onNotify(text, kind, duration)
+-- which held toast leaves when the list is full: the oldest low-value one (HELD_LOW), else the oldest that is not
+-- Keep, else the oldest
+local function heldVictim()
+	local plain = nil
+	for i, entry in ipairs(held) do
+		if not entry.Keep then
+			local _, name = kindColor(entry.Kind)
+			if HELD_LOW[name] then
+				return i
+			end
+			plain = plain or i
+		end
+	end
+	return plain or 1
+end
+
+-- parks a toast while held (the title screen); an identical one already parked only counts up
+local function holdToast(text, kind, duration, keep)
+	local now = os.clock()
+	for _, entry in ipairs(held) do
+		if entry.Text == text and entry.Kind == kind then
+			entry.Count = entry.Count + 1
+			entry.At = now
+			entry.Duration = duration
+			entry.Keep = entry.Keep or keep
+			return
+		end
+	end
+	table.insert(held, { Text = text, Kind = kind, Duration = duration, Keep = keep, Count = 1, At = now })
+	while #held > HELD_MAX do
+		table.remove(held, heldVictim())
+	end
+end
+
+-- opts (4th argument, optional table): System = true shows it even while held (the save-wait toasts: they describe the
+-- moment, so they must not arrive late); Keep = true keeps it through the hold's age limit and its cap (the join welcome)
+local function onNotify(text, kind, duration, opts)
+	opts = type(opts) == "table" and opts or nil
 	if kind == "pull" then
+		-- a chat line, not a toast: never held (the chat is not the title screen's toast column)
 		local ok, shown = pcall(pullToChat, tostring(text))
 		if ok and shown then
 			return
 		end
 		kind = "good" -- no chat channel (or it failed): today's toast
+	end
+	if next(holders) ~= nil and kind ~= "bad" and not (opts and opts.System == true) then
+		holdToast(tostring(text), kind, duration, opts ~= nil and opts.Keep == true)
+		return
 	end
 	addToast(text, kind, duration)
 end
@@ -1362,13 +1469,47 @@ local function hookCamera()
 end
 
 -- (roll-look review round 1) a local toast, as the Notify remote would show it: for the menu's side hint while its gui
--- (NimbusMenu) is off (the egg stage hides the HUD; NimbusNotify stays). -> true when shown (or queued for room)
+-- (NimbusMenu) is off (the egg stage hides the HUD; NimbusNotify stays). -> true when shown (or queued for room, or held)
 function NotifyController.Toast(text, kind, duration)
 	if not initialized or not UI.Stack or type(text) ~= "string" then
 		return false
 	end
 	local ok = pcall(onNotify, text, kind or "info", duration)
 	return ok
+end
+
+-- (quick wins, win 1) owner-keyed hold of the gameplay toasts (see the header). Letting go as the last owner drops the
+-- stale ones (older than HELD_SECONDS, unless Keep) and shows the rest one by one in the order sent (drainReleased);
+-- an owner that never held changes nothing.
+function NotifyController.SetHeld(who, on)
+	if type(who) ~= "string" or who == "" then
+		return
+	end
+	if on == true then
+		holders[who] = true
+		return
+	end
+	if holders[who] == nil then
+		return
+	end
+	holders[who] = nil
+	if next(holders) ~= nil then
+		return
+	end
+	local now = os.clock()
+	for _, entry in ipairs(held) do
+		if entry.Keep or now - entry.At <= HELD_SECONDS then
+			table.insert(released, entry)
+		end
+	end
+	held = {}
+	if not drainArmed then
+		drainReleased()
+	end
+end
+
+function NotifyController.IsHeld()
+	return next(holders) ~= nil
 end
 
 function NotifyController.Init()

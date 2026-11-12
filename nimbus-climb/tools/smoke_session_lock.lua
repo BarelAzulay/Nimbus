@@ -366,7 +366,7 @@ local function serverScenarios()
 		for _, e in ipairs(K.remotesFor("Notify", uid, mark)) do
 			local args = type(e.args) == "table" and e.args or {}
 			if args[1] == SAVING_TEXT or args[1] == BACK_TEXT then
-				out[#out + 1] = { text = args[1], kind = args[2], secs = args[3] }
+				out[#out + 1] = { text = args[1], kind = args[2], secs = args[3], opts = args[4] }
 			end
 		end
 		return out
@@ -1197,6 +1197,14 @@ local function serverScenarios()
 			local both = waitToasts(uH, markH)
 			T.check(#both == 2 and both[1].text == SAVING_TEXT and both[2].text == BACK_TEXT and both[2].kind == "good" and both[2].secs == 4,
 				"lock flag toasts: ...then ONE \"Your progress is back!\" (good, 4 s), in that order", showToasts(both))
+			-- (quick wins, review round 1) both are system toasts: { System = true } shows them even on the title screen
+			local sys = 0
+			for _, t in ipairs(both) do
+				if type(t.opts) == "table" and t.opts.System == true then
+					sys = sys + 1
+				end
+			end
+			T.eq(sys, 2, "lock flag toasts: both save-wait toasts are sent as system toasts (4th argument { System = true }), so the title screen's toast hold shows them at once")
 			T.eq(D.GetGems(ph), 80 + 100, "lock flag: ...the stored 80 gems plus the stand-in's +100 delta")
 			advance(30)
 			T.check(firesH.n == 1 and #waitToasts(uH, markH) == 2, "lock flag: no second Settled and no more toasts later")

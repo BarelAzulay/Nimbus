@@ -6,18 +6,25 @@
 --     character behind the menu. Until PLAY every ScreenGui in PlayerGui that is not in UiGate.ALLOW (NimbusLoading,
 --     NimbusMainMenu, NimbusNotify) is kept Enabled = false: the ones there now and any added later (ChildAdded); an
 --     owner that switches its gui on meanwhile gets it back on at PLAY (its wish is remembered).
+--   * (quick wins 2026-11-12, win 1) The title screen is clean: the world name cards (BillboardGuis named in
+--     Config.MainMenu.HideCards: the gate / portal cards, the obby join board, the Sky Trove, garden names, NPC and
+--     home nameplates, the raid gate and home portal tags) anywhere in the workspace are kept Enabled = false by the
+--     same rule (there now, added later, an owner's wish remembered; one that was off stays off), client-side only;
+--     and NotifyController.SetHeld("MainMenu", true) holds the gameplay toasts until the end of PLAY.
 --   * The camera is Scriptable and orbits the Gate Court (centre = Lobby.Origin + GateArcRadius towards GateFacing;
 --     Config.MainMenu OrbitRadius 90, OrbitHeight 38, OrbitPeriod 60 s; RenderStepped while the menu is up only).
 --   * The loading screen (NimbusLoading) is faded (0.4 s) and destroyed once its Done attribute is true.
 --   * PLAY (button, Enter / keypad Enter, gamepad A): MenuPlay fired once per session (no args), wait for the
---     character (<= 5 s, then go on anyway), 0.35 s fade, camera Custom on the humanoid, the guis back, UiGate.MarkPlayed().
+--     character (<= 5 s, then go on anyway), 0.35 s fade, camera Custom on the humanoid, the guis and world cards back,
+--     UiGate.MarkPlayed(), then the held toasts (SetHeld("MainMenu", false)).
 --     Shown once per session; respawns never show it again. DevController's /menu reopens it (Open(): client-side
 --     only, the character stays, MenuPlay is never sent again).
 -- With Enabled false: UiGate.MarkPlayed() at once, nothing gated (the loading screen fades by itself).
 -- Always: GraphicsQuality.Init() and SoundFx.Music(SoundFx.Wanted()) (Lobby unless a battle / dungeon layer is on).
 --
 -- Layout (NeonKit; design px of a 1080p screen under one UIScale clamp(H / 1080, 0.8, 1.25)): a left column on
--- landscape screens (x = 60, <= 0.42 W), a centred column on portrait ones: logo NIMBUS / CLIMB, the tag line, the
+-- landscape screens (x = 60, <= 0.42 W), a centred column on portrait ones: logo NIMBUS / CLIMB, the tag line
+-- (Config.Tagline, "Climb the storm. Together."), the
 -- "NEW" update ribbon, PLAY (Primary Green, 76 tall), SETTINGS (Blue outline) + UPDATES (Purple outline with a NEW
 -- badge while UpdateNotes.Latest > Settings.SeenNotes), a dark gradient over the world so the text reads, and a
 -- version + CREDITS chip bottom-right.
@@ -26,7 +33,7 @@
 --             Camera shake (ON / OFF), Mouse lock (ON / OFF, keyboard + mouse devices only; the L key toggles it too);
 --             applied at once through ClientSettings.Set (sent after a 0.4 s debounce)
 --   UPDATES   UpdateNotes.Notes newest first; opening it sends SettingsSet("SeenNotes", UpdateNotes.Latest)
---   CREDITS   UpdateNotes.Credits
+--   CREDITS   UpdateNotes.Credits ("A SaintsField game" / "Created by St.Gavin") and the gold thank-you line
 -- MouseLock (client/MouseLock.lua, dungeon-fixes decision 6): Init starts it (idempotent); the menu screen is a hold
 -- ("MainMenu", from Open until the PLAY fade ends); the windows are holds through NeonKit.Dock.
 --
@@ -77,7 +84,11 @@ local K = {
 	GLYPH_SHAKE = "\240\159\147\183",
 	GLYPH_MOUSE = "\240\159\142\175",
 	MOUSE_HOLD = "MainMenu",
-	DOT = "  \226\128\162  ",
+	TOAST_HOLD = "MainMenu", -- NotifyController.SetHeld owner key (quick wins, win 1)
+	TAGLINE = "Climb the storm. Together.", -- when Config.Tagline is missing
+	-- (quick wins, win 1) the world name cards hidden on the title screen, by BillboardGui name: Config.MainMenu.HideCards
+	-- (review round 1: every lobby label the orbit can see); this list only when Config has none
+	WORLD_CARDS = { "GateTag", "PortalBillboard" },
 }
 
 -- state (tests read it through MainMenuController._M)
@@ -92,6 +103,7 @@ local M = {
 	Ui = {},
 	Win = { Name = nil, Holder = nil, Dock = nil, Panel = nil },
 	Gate = { On = false, Wanted = {}, Conns = {}, AddConn = nil },
+	Cards = { On = false, Names = {}, Wanted = {}, Conns = {}, AddConn = nil }, -- the world cards (HideCards), like Gate
 	Orbit = { Conn = nil, T = 0 },
 	Mods = {},
 	Notes = nil,
@@ -254,6 +266,78 @@ function Gate.open()
 			g.Enabled = want
 		end
 		G.Wanted[g] = nil
+	end
+end
+
+----------------------------------------------------------------------
+-- the world cards (quick wins, win 1): the BillboardGuis named in Config.MainMenu.HideCards anywhere in the workspace
+-- are off while the menu is up (client-side only), the same rule as the gate: the ones there now and any that appear
+-- later (a gate streaming in, /menu mid-game); an owner that switches one on meanwhile gets it back at PLAY; one that
+-- was already off stays off. The owners that switch their card on and off at run time (LobbyFxController's join board,
+-- HomePortalFx, RaidGateController) re-apply their own state every pass, so a card whose owner switched it off while
+-- it was held off is put right by that owner's next pass after PLAY. Every other BillboardGui (players' TitleTag, pet
+-- cards) is untouched.
+----------------------------------------------------------------------
+local Cards = {}
+
+-- the names to hide, as a set: Config.MainMenu.HideCards (K.WORLD_CARDS when Config has no list)
+function Cards.names()
+	local list = H.menuCfg().HideCards
+	local set = {}
+	for _, name in ipairs(type(list) == "table" and list or K.WORLD_CARDS) do
+		set[tostring(name)] = true
+	end
+	return set
+end
+
+function Cards.track(g)
+	local C = M.Cards
+	if not C.On or not C.Names[g.Name] or not g:IsA("BillboardGui") or C.Wanted[g] ~= nil then
+		return
+	end
+	C.Wanted[g] = g.Enabled
+	g.Enabled = false
+	C.Conns[g] = g:GetPropertyChangedSignal("Enabled"):Connect(function()
+		if C.On and g.Enabled then
+			C.Wanted[g] = true -- its owner switched it on: remember, keep it off until PLAY
+			g.Enabled = false
+		end
+	end)
+end
+
+function Cards.close()
+	local C = M.Cards
+	if C.On then
+		return
+	end
+	C.On = true
+	C.Names = Cards.names()
+	for _, d in ipairs(Workspace:GetDescendants()) do
+		Cards.track(d)
+	end
+	C.AddConn = Workspace.DescendantAdded:Connect(function(d)
+		Cards.track(d)
+	end)
+end
+
+function Cards.open()
+	local C = M.Cards
+	C.On = false
+	if C.AddConn then
+		C.AddConn:Disconnect()
+		C.AddConn = nil
+	end
+	for g, conn in pairs(C.Conns) do
+		conn:Disconnect()
+		C.Conns[g] = nil
+	end
+	for g, want in pairs(C.Wanted) do
+		-- every remembered card gets its wish back: a destroyed one is a harmless no-op (pcall), and one that was only
+		-- taken out of the workspace meanwhile (streamed out, moved) is not left off for good if it comes back
+		pcall(function()
+			g.Enabled = want
+		end)
+		C.Wanted[g] = nil
 	end
 end
 
@@ -550,7 +634,7 @@ function Menu.build()
 	})
 	M.Ui.Column = column
 	M.Ui.Logo = Menu.logo(column, colW, logoSize, align, 1)
-	H.label("Tagline", "Pets" .. K.DOT .. "Homes" .. K.DOT .. "Battles" .. K.DOT .. "Sky obbies", "Heading", short and 20 or 23, {
+	H.label("Tagline", tostring(Config.Tagline or K.TAGLINE), "Heading", short and 20 or 23, {
 		Outline = 2,
 		Color = Color3.fromRGB(255, 236, 252),
 		Size = UDim2.fromOffset(colW, 30),
@@ -689,6 +773,15 @@ function H.mouseHold(on)
 	end
 	M.MouseHeld = on
 	pcall(on and ml.Hold or ml.Release, K.MOUSE_HOLD)
+end
+
+-- (quick wins, win 1) NotifyController.SetHeld for the menu screen: gameplay toasts wait for PLAY (the module is
+-- optional; a missing or older one without SetHeld is skipped)
+function H.holdToasts(on)
+	local notify = H.mod("NotifyController")
+	if notify and type(notify.SetHeld) == "function" then
+		H.safe("toasts", notify.SetHeld, K.TOAST_HOLD, on == true)
+	end
 end
 
 function Menu.bindKeys(on)
@@ -1029,8 +1122,10 @@ function MainMenuController.Open()
 	M.Open = true
 	M.Playing = false
 	H.mouseHold(true)
+	H.holdToasts(true)
 	Loading.hook()
 	Gate.close()
+	H.safe("cards", Cards.close)
 	local ok = H.safe("build", Menu.build)
 	if not ok and M.Menu then
 		M.Menu:Destroy()
@@ -1067,20 +1162,27 @@ function MainMenuController.Play()
 			end
 		end
 		if M.Menu then
-			Menu.fade(M.Menu, K.FADE)
+			H.safe("fade", Menu.fade, M.Menu, K.FADE)
 		end
 		task.wait(K.FADE)
-		if M.Menu then
-			M.Menu:Destroy()
-			M.Menu = nil
+		-- (review round 1) the release always runs to the end: every step on its own guard, so one that fails never
+		-- strands the next (the HUD, the world cards and the held toasts must come back whatever happens)
+		local menu = M.Menu
+		M.Menu = nil
+		if menu then
+			H.safe("destroy", function()
+				menu:Destroy()
+			end)
 		end
-		Orbit.stop()
-		Gate.open()
+		H.safe("orbit", Orbit.stop)
+		H.safe("gate", Gate.open)
+		H.safe("cards", Cards.open)
 		M.Open = false
 		M.Playing = false
-		H.mouseHold(false)
-		UiGate.MarkPlayed()
+		H.safe("mouse", H.mouseHold, false)
+		H.safe("played", UiGate.MarkPlayed)
 		H.sound("Whoosh")
+		H.holdToasts(false) -- last: the held toasts land on the game screen, the HUD already back
 	end)
 	return true
 end

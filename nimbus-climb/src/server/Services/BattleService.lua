@@ -2669,8 +2669,9 @@ local function startDuel(pa, pb)
 	beginBattle(b)
 	sendLobby(pa)
 	sendLobby(pb)
-	notify(pa, "Duel vs " .. shortName(pb) .. "! F = attack, E = element, Q = special, Shift = dash", "info", 4)
-	notify(pb, "Duel vs " .. shortName(pa) .. "! F = attack, E = element, Q = special, Shift = dash", "info", 4)
+	-- (F switches the target: BattleController binds F / ButtonX to the target key; the pet attacks by itself)
+	notify(pa, "Duel vs " .. shortName(pb) .. "! F = target, E = element, Q = special, Shift = dash", "info", 4)
+	notify(pb, "Duel vs " .. shortName(pa) .. "! F = target, E = element, Q = special, Shift = dash", "info", 4)
 	if b.Practice then
 		local strong = (powerA >= powerB) and pa or pb
 		local text = "Practice duel: " .. shortName(strong) .. "'s team is far stronger. No trophies or rewards."
@@ -3775,7 +3776,7 @@ function BattleService.StartRing(player, startRound)
 	end
 	local champion = type(spec) == "table" and St.battles[idOrWhy] and St.battles[idOrWhy].Champion or nil
 	local who = (type(champion) == "table" and champion.Name) and (": " .. tostring(champion.Name)) or ""
-	notify(player, "Champion Ring, round " .. first .. who .. "! F = attack, E = element, Q = special, Shift = dash", "info", 4)
+	notify(player, "Champion Ring, round " .. first .. who .. "! F = target, E = element, Q = special, Shift = dash", "info", 4)
 	return true, idOrWhy
 end
 

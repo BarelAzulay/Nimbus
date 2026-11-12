@@ -1811,6 +1811,18 @@ end
 ----------------------------------------------------------------------
 local State = { Info = nil, Pockets = {}, Built = false }
 
+-- (quick wins, review round 1) the party cap the gate's "up to N friends" is built from: DungeonService.MAX_PARTY (a
+-- party is the player + N friends). Read at build time, when Main.server has already loaded DungeonService (no require
+-- loop: DungeonService never requires this module); 4 when it cannot be read.
+function DungeonBuilder.PartyMax()
+	local inst = script.Parent and script.Parent:FindFirstChild("DungeonService")
+	local ok, svc = pcall(function()
+		return inst and require(inst) or nil
+	end)
+	local n = ok and type(svc) == "table" and tonumber(svc.MAX_PARTY) or nil
+	return (n and n >= 2 and n < 100) and floor(n) or 4
+end
+
 function DungeonBuilder.BuildPortal(gatesFolder, siteCFrame)
 	if typeof(siteCFrame) ~= "CFrame" then
 		siteCFrame = CFrame.new(Config.Lobby.Origin + Vector3.new(0, 0, 118), Config.Lobby.Origin)
@@ -1818,7 +1830,7 @@ function DungeonBuilder.BuildPortal(gatesFolder, siteCFrame)
 	local model, pad, promptPart = WorldStyle.BuildGate(gatesFolder, siteCFrame, {
 		Id = "Dungeon",
 		Title = "The Dungeon",
-		Info = "Rooms, waves and a boss. Solo or up to 4 friends",
+		Info = "Rooms, waves and a boss. Solo or up to " .. tostring(DungeonBuilder.PartyMax() - 1) .. " friends",
 		Pill = "Floors cleared here: -",
 		Color = "Purple",
 		Glyph = "torch",

@@ -6,9 +6,10 @@ pcall(function() game:GetService("ReplicatedFirst"):RemoveDefaultLoadingScreen()
 -- ScreenGui "NimbusLoading" (DisplayOrder 100, IgnoreGuiInset, ResetOnSpawn false): a violet sky gradient
 -- (60,50,150) -> (190,110,200) with a soft cloud bank and a few sparkles; once Shared.Theme exists (no text before:
 -- fonts only through Theme roles) the logo NIMBUS / CLIMB (one line, or two when the screen is narrower than 700 px),
--- the tag line, the Cyan neon bar (min(0.6 W, 640 f) x 26 f), "Loading the sky... 64%" (session lock, 2026-11-10:
--- "Another server is still saving your progress..." while the player attribute SaveWaiting is true), a tip from
--- UpdateNotes.Tips that changes every 5 s, and SKIP after Config.Loading.SkipAfter (6) seconds.
+-- the tag line (Config.Tagline, "Climb the storm. Together."), the Cyan neon bar (min(0.6 W, 640 f) x 26 f), "Loading
+-- the sky... 64%" (session lock, 2026-11-10: "Another server is still saving your progress..." while the player
+-- attribute SaveWaiting is true), a tip from UpdateNotes.Tips (a random first one, then the next every 5 s), and SKIP
+-- after Config.Loading.SkipAfter (6) seconds.
 --
 -- Progress = 5 weighted stages, each 0..1; the bar only moves forward (0.25 s tween):
 --   game loaded 0.30 (game:IsLoaded()) | shared modules 0.10 (Config, Theme, Util, Voxel present)
@@ -261,7 +262,9 @@ local function buildContent()
 	end
 	St.Ui.Logo = logo
 
-	label("Tagline", "Pets  \226\128\162  Homes  \226\128\162  Battles  \226\128\162  Sky obbies", "Heading", short and 20 or 24, {
+	-- the game's tag line (Config.Tagline; St.Config is nil when Config failed to load)
+	local tagline = (St.Config and type(St.Config.Tagline) == "string" and St.Config.Tagline) or "Climb the storm. Together."
+	label("Tagline", tagline, "Heading", short and 20 or 24, {
 		Outline = 2,
 		Color = Color3.fromRGB(255, 232, 252),
 		Size = UDim2.fromOffset(math.floor(designW), 32),
@@ -534,7 +537,8 @@ task.spawn(function()
 		St.Tips = notes.Tips
 	end
 	if #St.Tips > 0 then
-		St.TipIndex = (LocalPlayer.UserId % #St.Tips) -- nextTip() moves to the first one shown
+		-- a random first tip each load (UserId % #Tips showed a player the same tip every time); nextTip() moves to it
+		St.TipIndex = math.random(1, #St.Tips) - 1
 	end
 	local okBuild, err = pcall(buildContent)
 	if not okBuild then
