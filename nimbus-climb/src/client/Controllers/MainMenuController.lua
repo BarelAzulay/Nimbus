@@ -33,11 +33,27 @@
 --             Camera shake (ON / OFF), Mouse lock (ON / OFF, keyboard + mouse devices only; the L key toggles it too);
 --             applied at once through ClientSettings.Set (sent after a 0.4 s debounce)
 --   UPDATES   UpdateNotes.Notes newest first; opening it sends SettingsSet("SeenNotes", UpdateNotes.Latest)
---   CREDITS   UpdateNotes.Credits ("A SaintsField game" / "Created by St.Gavin") and the gold thank-you line
+--   CREDITS   (credits look B "Signed by the Maker", the owner's pick 2026-11-13) a Signboard window, not the neon panel:
+--             a small pink roof (ONE fixed-size piece, K.CR.ROOF_W x ROOF_H, never stretched with the window), a navy header
+--             with CREDITS (Theme Sign = LuckiestGuy, a dark drop line) and the drawn X, a wood frame round a cream body.
+--             In the body: a polaroid (-5 deg, a red pin, the creator's headshot via Players:GetUserThumbnailAsync on a
+--             sky gradient, "the boss"), a navy plank holding the studio's SAINTSFIELD wordmark picture (TextureIds
+--             saintsfield_wordmark), CREATED BY, the signature (Theme.Fonts.Signature, -3 deg, a swash), the gold italic
+--             thank-you line, and the round SF emblem sticker (TextureIds saintsfield_emblem, gold ring, 12 deg) in the
+--             bottom-right corner, clear of every text. Every text is UpdateNotes.Credits; the headshot is game.CreatorId
+--             for a user-owned game, else Config.CreatorUserId. Landscape: the polaroid left of the text; portrait: above
+--             it (a portrait phone too short for that: beside it). The texts are measured (TextService): the polaroid
+--             shrinks before the column gets too narrow, the signature fills its row, the thank-you line wraps to as
+--             many rows as it needs, and only the rows that reach the sticker end left of it. Rebuilt when the screen
+--             changes size.
+-- Every window: X, Esc (InputBegan), gamepad B ("NimbusMenuWinBack", High, bound while one is open) and CloseWindows close
+-- it; opening one fires MenuController.WindowOpened(<name>) (the game's windows close on it, as for each other) and
+-- closes the DEV panel, so nothing peeks out from under it (the Restart / Skip tutorial buttons did, under Credits).
 -- MouseLock (client/MouseLock.lua, dungeon-fixes decision 6): Init starts it (idempotent); the menu screen is a hold
 -- ("MainMenu", from Open until the PLAY fade ends); the windows are holds through NeonKit.Dock.
 --
--- Public: Init(), Open(), Play(), IsOpen(), OpenSettings(), OpenUpdates(), OpenCredits(), CloseWindows(), Window()
+-- Public: Init(), Open(), Play(), IsOpen(), OpenSettings(), OpenUpdates(), OpenCredits(), CloseWindows(), Window(),
+-- CreditsMetrics (the K.CR table: sizes; MEASURE, a text-width hook for the offline renderer)
 -- Plain Lua 5.1-compatible syntax only; fonts only through Theme roles.
 
 local Players = game:GetService("Players")
@@ -46,6 +62,7 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local ContextActionService = game:GetService("ContextActionService")
 local Workspace = game:GetService("Workspace")
+local TextService = game:GetService("TextService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
@@ -89,7 +106,64 @@ local K = {
 	-- (quick wins, win 1) the world name cards hidden on the title screen, by BillboardGui name: Config.MainMenu.HideCards
 	-- (review round 1: every lobby label the orbit can see); this list only when Config has none
 	WORLD_CARDS = { "GateTag", "PortalBillboard" },
+	WIN_BACK = "NimbusMenuWinBack", -- gamepad B closes a window (bound only while one is open)
+	-- (credits look B) the Signboard Credits window, design px of a 1080p screen
+	CR = {
+		W = 760, -- the preferred window: roof + header + body + drop line
+		H = 520,
+		TALL_H = 540, -- a portrait screen (the polaroid stacked above the text)
+		ROOF_W = 300, -- the roof: one fixed-size piece, never stretched with the window
+		ROOF_H = 44,
+		SLOPE_T = 52, -- a roof slope's thickness (its lower part hides behind the header)
+		FASCIA_H = 9,
+		HEAD_H = 64,
+		HEAD_H_SMALL = 52,
+		RIM = 5, -- the header's dark wood rim
+		WOOD = 6, -- the wood frame round the body
+		LINE = 5, -- the body's inner line: inset ...
+		LINE_T = 3, -- ... and thickness
+		DROP = 8, -- the window's drop line
+		WIDE_MIN = 560, -- a narrower body is the small layout (phones)
+		WM_ASPECT = 1024 / 230, -- the wordmark picture
+		-- the texts are MEASURED (Credits.textW), never guessed: the signature as big as its row allows, the thank-you
+		-- line's wrapped line count
+		SIG_SPARE = 1.06, -- the signature's measured width times this (the -3 deg lean, the marker's ragged ends)
+		FACE_SPARE = 1.1, -- a FontFace text (Nunito Bold Italic) measured with its role's Enum.Font, times this
+		SIG_MIN = 30, -- the smallest signature (design px)
+		COL_MIN = 190, -- side by side: the text column is never narrower (the polaroid shrinks first)
+		P_MIN = 84, -- the smallest polaroid side by side ...
+		STACK_P_MIN = 112, -- ... and stacked (below it a short portrait screen goes side by side instead)
+		MEASURE = nil, -- function(text, size, font, face) -> width: replaces TextService (tools/dump_gui.lua's renders)
+		STICKER_TILT = 12,
+		POLAROID_TILT = -5,
+		SIG_TILT = -3,
+		TITLE = "CREDITS",
+		WORDMARK = "saintsfield_wordmark", -- TextureIds keys (tools/upload_assets.py --textures)
+		EMBLEM = "saintsfield_emblem",
+	},
+	-- the Signboard kit's colours (the pitch's --g-* tokens)
+	SIGN = {
+		Roof = Color3.fromRGB(233, 132, 155), -- #e9849b
+		RoofShade = Color3.fromRGB(185, 86, 109), -- #b9566d
+		Navy = Color3.fromRGB(29, 43, 85), -- #1d2b55 (the header, the plank, the signature ink)
+		Wood = Color3.fromRGB(138, 90, 50), -- #8a5a32
+		WoodDark = Color3.fromRGB(94, 58, 29), -- #5e3a1d
+		Cream = Color3.fromRGB(246, 236, 214), -- #f6ecd6
+		CreamLine = Color3.fromRGB(234, 219, 184), -- #eadbb8
+		Drop = Color3.fromRGB(11, 19, 48), -- #0b1330 (the title's drop line)
+		Muted = Color3.fromRGB(122, 106, 76), -- #7a6a4c (CREATED BY)
+		Gold = Color3.fromRGB(138, 101, 18), -- #8a6512 (the thank-you line)
+		Ring = Color3.fromRGB(227, 179, 65), -- #e3b341 (the sticker's ring, the plank's nails)
+		SkyTop = Color3.fromRGB(127, 196, 242), -- #7fc4f2
+		SkyBottom = Color3.fromRGB(207, 234, 252), -- #cfeafc
+		Pin = Color3.fromRGB(214, 69, 91), -- #d6455b
+		PinDark = Color3.fromRGB(143, 31, 51), -- #8f1f33
+		Caption = Color3.fromRGB(58, 58, 58), -- #3a3a3a
+		PhotoEdge = Color3.fromRGB(216, 207, 189),
+		Shadow = Color3.fromRGB(40, 26, 10),
+	},
 }
+MainMenuController.CreditsMetrics = K.CR
 
 -- state (tests read it through MainMenuController._M)
 local M = {
@@ -101,7 +175,8 @@ local M = {
 	Gui = nil,
 	Menu = nil, -- the full-screen menu frame
 	Ui = {},
-	Win = { Name = nil, Holder = nil, Dock = nil, Panel = nil },
+	Win = { Name = nil, Holder = nil, Dock = nil, Panel = nil, Resize = nil, Back = false },
+	Heads = {}, -- [userId] = the headshot content (Players:GetUserThumbnailAsync, once per user)
 	Gate = { On = false, Wanted = {}, Conns = {}, AddConn = nil },
 	Cards = { On = false, Names = {}, Wanted = {}, Conns = {}, AddConn = nil }, -- the world cards (HideCards), like Gate
 	Orbit = { Conn = nil, T = 0 },
@@ -821,28 +896,95 @@ end
 ----------------------------------------------------------------------
 local Win = {}
 
+-- gamepad B closes the open window: bound at High priority only while one is open (B is the dash button too), so the
+-- press that closes it is sunk; the unbind waits a frame (that press is still being dispatched)
+function Win.bindBack(on)
+	local W = M.Win
+	if on then
+		if W.Back then
+			return
+		end
+		W.Back = true
+		H.safe("bind back", function()
+			ContextActionService:BindActionAtPriority(K.WIN_BACK, function(_, state)
+				if not M.Win.Name then
+					return Enum.ContextActionResult.Pass
+				end
+				if state == Enum.UserInputState.Begin then
+					H.sound("Click")
+					Win.close()
+				end
+				return Enum.ContextActionResult.Sink
+			end, false, Enum.ContextActionPriority.High.Value, Enum.KeyCode.ButtonB)
+		end)
+	elseif W.Back then
+		task.defer(function()
+			if M.Win.Name or not M.Win.Back then
+				return -- another window opened meanwhile (it keeps the binding)
+			end
+			M.Win.Back = false
+			pcall(function()
+				ContextActionService:UnbindAction(K.WIN_BACK)
+			end)
+		end)
+	end
+end
+
 function Win.close()
 	local W = M.Win
+	if W.Resize then
+		W.Resize:Disconnect()
+	end
 	if W.Dock then
 		pcall(W.Dock.Disconnect)
 	end
 	if W.Holder then
 		W.Holder:Destroy()
 	end
-	W.Name, W.Holder, W.Dock, W.Panel = nil, nil, nil, nil
+	W.Name, W.Holder, W.Dock, W.Panel, W.Resize = nil, nil, nil, nil, nil
 	M.Settings.Rows = {}
+	Win.bindBack(false)
 end
 
-function Win.open(name, title, category, prefH)
+-- what lies behind a window that opens: the game's windows close on MenuController.WindowOpened (as they do for each
+-- other), and the DEV panel (docked right, under the menu's gui) is closed so its buttons never peek out from under it
+function Win.clearBehind(name)
+	local menu = H.mod("MenuController")
+	local signal = menu and menu.WindowOpened
+	if type(signal) == "table" and type(signal.Fire) == "function" then
+		H.safe("WindowOpened", function()
+			signal:Fire(name)
+		end)
+	end
+	local dev = H.mod("DevController")
+	if dev and type(dev.IsOpen) == "function" and type(dev.Close) == "function" and dev.IsOpen() then
+		H.safe("dev panel", dev.Close)
+	end
+end
+
+-- a window's root, docked by the window rule (prefW x prefH design px); nil without a gui
+function Win.holder(name, prefW, prefH)
 	Win.close()
 	local gui = Menu.gui()
 	if not gui then
 		return nil
 	end
 	local W = M.Win
-	local holder = H.frame("Window_" .. name, { Size = UDim2.fromOffset(K.WIN_W, prefH), ZIndex = 10 }, gui)
+	local holder = H.frame("Window_" .. name, { Size = UDim2.fromOffset(prefW, prefH), ZIndex = 10 }, gui)
 	local fit = Util.Create("UIScale", { Name = "Fit", Scale = 1, Parent = holder })
-	W.Dock = NeonKit.Dock(holder, fit, K.WIN_W, prefH)
+	W.Dock = NeonKit.Dock(holder, fit, prefW, prefH)
+	W.Name, W.Holder = name, holder
+	Win.clearBehind(name)
+	Win.bindBack(true)
+	return holder
+end
+
+function Win.open(name, title, category, prefH)
+	local holder = Win.holder(name, K.WIN_W, prefH)
+	if not holder then
+		return nil
+	end
+	local W = M.Win
 	W.Panel = CloudUI.Panel({
 		Name = name .. "Panel",
 		Title = title,
@@ -855,7 +997,6 @@ function Win.open(name, title, category, prefH)
 		end,
 		Parent = holder,
 	})
-	W.Name, W.Holder = name, holder
 	return W.Panel
 end
 
@@ -1074,29 +1215,630 @@ function MainMenuController.OpenUpdates()
 	Menu.refreshBadge()
 end
 
-function MainMenuController.OpenCredits()
-	local panel = Win.open("Credits", "Credits", "Fusion", 420)
-	if not panel then
+----------------------------------------------------------------------
+-- the Credits window (credits look B "Signed by the Maker"): a Signboard window built from Frames
+----------------------------------------------------------------------
+local Credits = {}
+
+-- the owner's texts (UpdateNotes.Credits: the one place they live)
+function Credits.texts()
+	local notes = H.notes()
+	local c = notes and notes.Credits
+	return type(c) == "table" and c or {}
+end
+
+-- the headshot's user: the game's owner when a user owns it, else the creator's account (Config.CreatorUserId)
+function Credits.creatorId()
+	local id = nil
+	pcall(function()
+		if game.CreatorType == Enum.CreatorType.User and tonumber(game.CreatorId) and game.CreatorId > 0 then
+			id = game.CreatorId
+		end
+	end)
+	return id or tonumber(Config.CreatorUserId)
+end
+
+-- "rbxassetid://<id>" of a TextureIds key, nil while it has no id
+function Credits.image(key)
+	local ids = H.optional(Shared, "TextureIds")
+	local id = ids and ids[key]
+	if type(id) == "number" and id > 0 then
+		local digits = string.format("%.0f", id) -- whole digits (a 15-digit id never prints as 1.05e+14)
+		return "rbxassetid://" .. digits
+	end
+	return nil
+end
+
+-- the headshot into `label` (a web call: once per user, off the build)
+function Credits.headshot(label, userId)
+	if not userId then
 		return
 	end
-	H.sound("Click")
-	local notes = H.notes()
-	local list = Win.list(panel)
-	for i, line in ipairs(notes and notes.Credits or {}) do
-		H.label("Credit" .. i, tostring(line), "Heading", 24, {
-			Outline = 2,
-			TextWrapped = true,
-			Size = UDim2.new(1, 0, 0, 40),
-			LayoutOrder = i,
-		}, list)
+	local cached = M.Heads[userId]
+	if type(cached) == "string" then
+		label.Image = cached
+		return
 	end
-	H.label("Thanks", "Thanks for playing Nimbus Climb!", "Body", 20, {
-		Outline = 2,
-		Color = K.NEW_GOLD,
+	task.spawn(function()
+		local ok, content = pcall(function()
+			return Players:GetUserThumbnailAsync(userId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420)
+		end)
+		if ok and type(content) == "string" and content ~= "" then
+			M.Heads[userId] = content
+			if label.Parent then
+				label.Image = content
+			end
+		end
+	end)
+end
+
+-- a plain text on the cream body (no outline: dark ink on a light card reads by itself)
+function Credits.text(name, text, role, size, color, props, parent)
+	local l = Theme.Label(tostring(text or ""), role, { Size = size, Color = color, Stroke = 1 })
+	l.Name = name
+	for key, value in pairs(props) do
+		l[key] = value
+	end
+	l.Parent = parent
+	return l
+end
+
+function Credits.stroke(parent, color, thickness)
+	return Util.Create("UIStroke", {
+		Color = color,
+		Thickness = thickness,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		LineJoinMode = Enum.LineJoinMode.Miter,
+		Parent = parent,
+	})
+end
+
+-- a text's width in px (TextService: the real font). K.CR.MEASURE(text, size, font, face) replaces it when set:
+-- tools/dump_gui.lua's renders pass the renderer's font metrics (the mock's GetTextSize is a flat 0.5 em per
+-- character). GetTextSize knows no FontFace: a face text is measured with its role font, times FACE_SPARE.
+function Credits.textW(text, size, font, face)
+	local C = K.CR
+	text = tostring(text or "")
+	-- one layout tries many sizes: a text is measured once per build (Credits.layout starts a fresh cache)
+	local key = text .. "|" .. tostring(size) .. "|" .. tostring(font) .. "|" .. tostring(face)
+	local cache = Credits.Widths
+	if cache and cache[key] then
+		return cache[key]
+	end
+	local ok, v = pcall(function()
+		if type(C.MEASURE) == "function" then
+			return C.MEASURE(text, size, font, face)
+		end
+		local w = TextService:GetTextSize(text, size, font, Vector2.new(100000, 1000)).X
+		return face and w * C.FACE_SPARE or w
+	end)
+	if not (ok and type(v) == "number") then
+		v = #text * size * 0.55
+	end
+	if cache then
+		cache[key] = v
+	end
+	return v
+end
+
+-- the rows `text` wraps to in `width` px (Roblox wraps on spaces) and the widest single word
+function Credits.wrap(text, size, font, face, width)
+	local rows, line, widest = 0, nil, 0
+	for word in tostring(text or ""):gmatch("%S+") do
+		widest = math.max(widest, Credits.textW(word, size, font, face))
+		local try = line and (line .. " " .. word) or word
+		if line and Credits.textW(try, size, font, face) > width then
+			rows = rows + 1
+			line = word
+		else
+			line = try
+		end
+	end
+	return rows + (line and 1 or 0), widest
+end
+
+-- the polaroid's numbers for a side of P design px: white frame, square photo, caption band
+function Credits.polaroidSize(L, P)
+	L.P = P
+	L.Border = math.max(6, math.floor(P * 0.055 + 0.5))
+	L.Photo = P - 2 * L.Border
+	L.CapSize = math.max(18, math.floor(P * 0.105 + 0.5))
+	L.CapH = L.CapSize + math.max(10, math.floor(P * 0.09 + 0.5))
+	L.PolH = L.Border + L.Photo + L.CapH
+end
+
+-- the column's rows top to bottom (column px) for its width L.ColW: a row that meets the sticker (narrow[row]) ends
+-- left of it; the signature as big as its row allows (<= sigMax); the thank-you line as many rows as it wraps to
+function Credits.rows(L, texts, sigMax, narrow)
+	local C = K.CR
+	local function rowW(key)
+		return narrow[key] and math.floor(math.min(L.ColW, L.StickerLeft - L.ColX - 6)) or L.ColW
+	end
+	local small = L.Small
+	-- the plank fits the wordmark (1024:230), as wide as the column allows
+	L.PadX, L.PadY = small and 10 or 14, small and 8 or 10
+	local wmH = small and 44 or 62
+	local wmW = wmH * C.WM_ASPECT
+	if wmW > L.ColW - 2 * L.PadX then
+		wmW = L.ColW - 2 * L.PadX
+		wmH = wmW / C.WM_ASPECT
+	end
+	L.WmW, L.WmH = math.floor(wmW), math.floor(wmH)
+	L.PlankW, L.PlankH = L.WmW + 2 * L.PadX, L.WmH + 2 * L.PadY
+	L.CreatedW, L.SigW, L.ThanksW = rowW("Created"), rowW("Sig"), rowW("Thanks")
+	local sigFont = Theme.Fonts.Signature
+	local em = Credits.textW(texts.Creator, 100, sigFont) / 100 * C.SIG_SPARE
+	L.SigSize = math.max(C.SIG_MIN, math.min(sigMax, math.floor(L.SigW / math.max(em, 1))))
+	L.SigH = math.ceil(L.SigSize * 1.2)
+	local lines, widest = Credits.wrap(texts.Thanks, L.ThanksSize, Theme.Fonts.Body, Theme.Faces.Thanks, L.ThanksW - 2)
+	L.ThanksLines = math.max(1, lines)
+	-- every row's text fits its width: the signature on one line, CREATED BY, no thank-you word wider than its row
+	local createdW = Credits.textW(texts.Role, L.CreatedSize, Theme.Fonts.Label, Theme.Faces.Caps)
+	L.RowsFit = L.SigSize * em <= L.SigW and widest <= L.ThanksW - 2 and createdW <= L.CreatedW - 2
+	L.ThanksH = L.ThanksLines * math.ceil(L.ThanksSize * 1.25) + 4
+	local gapPlank = small and 8 or 14
+	local gapThanks = small and 6 or 10
+	L.PlankY = 0
+	L.CreatedY = L.PlankH + gapPlank
+	L.CreatedH = L.CreatedSize + 6
+	L.SigY = L.CreatedY + L.CreatedH
+	L.SwashY = L.SigY + math.floor(L.SigSize * 1.04) -- just under the name's baseline (the text sits centred in SigH)
+	L.ThanksY = L.SwashY + gapThanks + 6
+	L.ColH = L.ThanksY + L.ThanksH
+end
+
+-- the column in its room (centred below the polaroid when stacked, beside it otherwise); true when it fits. Rows that
+-- reach down to the sticker's tilted box (the leaning signature's box a little lower) are narrowed and the column
+-- laid out again, until no new row meets it
+function Credits.placeColumn(L, texts, sigMax, pad)
+	local narrow = {}
+	local room = (L.BodyH - pad) - L.ColTop
+	for _ = 1, 4 do
+		Credits.rows(L, texts, sigMax, narrow)
+		L.ColY = L.ColTop + math.max(0, math.floor((room - L.ColH) / 2))
+		local added = false
+		if L.ColX + L.ColW > L.StickerLeft then
+			for _, row in ipairs({
+				{ "Created", L.CreatedY + L.CreatedH },
+				{ "Sig", L.SigY + L.SigH + math.ceil(L.SigW * 0.06) },
+				{ "Thanks", L.ThanksY + L.ThanksH },
+			}) do
+				if not narrow[row[1]] and L.ColY + row[2] + 2 > L.StickerTop then
+					narrow[row[1]] = true
+					added = true
+				end
+			end
+		end
+		if not added then
+			break
+		end
+	end
+	return L.ColH <= room and L.RowsFit
+end
+
+-- every number of the body's layout for a window of w x h design px (stacked: the polaroid above the text; a portrait
+-- screen too short for that falls back to side by side, L.Stacked says which)
+function Credits.layout(w, h, stacked, texts)
+	local C = K.CR
+	Credits.Widths = {}
+	local L = { Stacked = stacked }
+	local small = stacked or (w - 2 * C.WOOD) < C.WIDE_MIN
+	L.Small = small
+	L.HeadH = small and C.HEAD_H_SMALL or C.HEAD_H
+	L.HeadY = C.ROOF_H
+	L.WoodY = L.HeadY + L.HeadH
+	L.WoodH = h - L.WoodY - C.DROP
+	L.BodyW = w - 2 * C.WOOD
+	L.BodyH = L.WoodH - 2 * C.WOOD
+	local pad = small and 12 or 18
+
+	-- the sticker: bottom-right corner; its tilted box (ring included) is what the texts keep clear of
+	L.S = small and 60 or 92
+	L.Ring = small and 3 or 4
+	local inset = small and 12 or 16
+	L.StickerX = L.BodyW - inset - L.S / 2
+	L.StickerY = L.BodyH - inset - L.S / 2
+	local a = math.rad(C.STICKER_TILT)
+	local half = L.S / 2 * (math.abs(math.cos(a)) + math.abs(math.sin(a))) + L.Ring
+	L.StickerLeft = L.StickerX - half
+	L.StickerTop = L.StickerY - half
+
+	L.Pin = small and 18 or 22
+	L.CreatedSize = small and 18 or 20
+	L.ThanksSize = small and 18 or 20
+	local sigMax = small and 54 or 72
+
+	-- stacked: the column as wide as the body, the polaroid as big as the height left above it allows
+	if stacked then
+		L.ColX = pad + 4
+		L.ColW = L.BodyW - 2 * L.ColX
+		L.PolX = L.BodyW / 2
+		for P = 140, C.STACK_P_MIN, -2 do
+			Credits.polaroidSize(L, P)
+			L.PolY = pad + L.Pin / 2 + L.PolH / 2
+			L.ColTop = pad + L.Pin / 2 + L.PolH + 10
+			if Credits.placeColumn(L, texts, sigMax, pad) then
+				return L
+			end
+		end
+		-- too short to stack (a small portrait phone): side by side in the same window
+		L.Stacked = false
+	end
+
+	-- side by side: the polaroid as big as the height allows and the column's minimum width leaves; smaller still
+	-- (then a smaller signature) until the column fits beside it
+	local gapCol = small and 10 or 18
+	local function side(P)
+		Credits.polaroidSize(L, P)
+		L.PolX = pad + P * 0.56
+		L.PolY = L.BodyH / 2 + L.Pin / 4
+		L.ColX = math.floor(P * 1.12) + pad + gapCol
+		L.ColW = L.BodyW - L.ColX - pad
+		L.ColTop = pad
+	end
+	local pMax = math.min(small and 150 or 210, math.floor((L.BodyH - 2 * pad - 20) / 1.22),
+		math.floor((L.BodyW - 2 * pad - gapCol - C.COL_MIN) / 1.12))
+	pMax = math.max(C.P_MIN, pMax)
+	for P = pMax, C.P_MIN, -4 do
+		side(P)
+		if Credits.placeColumn(L, texts, sigMax, pad) then
+			return L
+		end
+	end
+	side(C.P_MIN)
+	for size = sigMax - 2, C.SIG_MIN, -2 do
+		if Credits.placeColumn(L, texts, size, pad) then
+			return L
+		end
+	end
+	return L
+end
+
+-- the roof: a gable of two tilted slopes (their lower parts hide behind the header), a darker fascia board under it
+-- and a round vent; one fixed-size piece centred on the header, whatever the window's width
+function Credits.roof(parent)
+	local C, S = K.CR, K.SIGN
+	local roof = H.frame("Roof", {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 0),
+		Size = UDim2.fromOffset(C.ROOF_W, C.ROOF_H),
+		ZIndex = 2,
+	}, parent)
+	local halfW = C.ROOF_W / 2
+	local theta = math.atan2(C.ROOF_H, halfW)
+	local len = math.sqrt(halfW * halfW + C.ROOF_H * C.ROOF_H)
+	-- the slope's top edge runs eave -> ridge; its centre sits half a thickness below that edge's middle
+	local nx, ny = math.sin(theta), math.cos(theta)
+	local cx, cy = halfW / 2 + nx * C.SLOPE_T / 2, C.ROOF_H / 2 + ny * C.SLOPE_T / 2
+	for _, side in ipairs({ { "SlopeL", cx, -1 }, { "SlopeR", C.ROOF_W - cx, 1 } }) do
+		H.frame(side[1], {
+			BackgroundTransparency = 0,
+			BackgroundColor3 = S.Roof,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromOffset(side[2], cy),
+			Size = UDim2.fromOffset(len + 1, C.SLOPE_T),
+			Rotation = side[3] * math.deg(theta),
+			ZIndex = 1,
+		}, roof)
+	end
+	H.frame("Fascia", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = S.RoofShade,
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, 0),
+		Size = UDim2.fromOffset(C.ROOF_W + 16, C.FASCIA_H),
+		ZIndex = 2,
+	}, roof)
+	local vent = H.frame("Vent", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = S.Cream,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromOffset(halfW, math.floor(C.ROOF_H * 0.52)),
+		Size = UDim2.fromOffset(14, 14),
+		ZIndex = 3,
+	}, roof)
+	H.corner(vent)
+	Credits.stroke(vent, S.WoodDark, 2)
+	return roof
+end
+
+-- the header: dark wood rim, navy plate, CREDITS with its drop line, the drawn red X
+function Credits.head(parent, L)
+	local C, S = K.CR, K.SIGN
+	local head = H.frame("Head", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = S.WoodDark,
+		Position = UDim2.fromOffset(0, L.HeadY),
+		Size = UDim2.new(1, 0, 0, L.HeadH),
+		Active = true,
+		ZIndex = 3,
+	}, parent)
+	local plate = H.frame("Plate", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = S.Navy,
+		Position = UDim2.fromOffset(C.RIM, C.RIM),
+		Size = UDim2.new(1, -2 * C.RIM, 1, -C.RIM),
+	}, head)
+	local closeSize = L.Small and 38 or 44
+	local titleSize = L.Small and 28 or Theme.Sizes.Sign
+	local box = UDim2.new(1, -(18 + closeSize + 20), 1, 0)
+	Credits.text("TitleDrop", C.TITLE, "Sign", titleSize, S.Drop, {
+		Position = UDim2.fromOffset(18, 3),
+		Size = box,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 1,
+	}, plate)
+	Credits.text("Title", C.TITLE, "Sign", titleSize, K.WHITE, {
+		Position = UDim2.fromOffset(18, 0),
+		Size = box,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 2,
+	}, plate)
+	local close = CloudUI.Button({
+		Name = "Close",
+		Text = "",
+		Style = "Red",
+		TextSize = 24,
+		Size = UDim2.fromOffset(closeSize, closeSize),
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -10, 0.5, 0),
+		ZIndex = 3,
+		Callback = function()
+			H.sound("Click")
+			Win.close()
+		end,
+		Parent = plate,
+	})
+	NeonKit.CloseMark(close)
+	return head
+end
+
+-- the polaroid: white frame, sky-gradient photo with the headshot, a red pin, the marker caption
+function Credits.polaroid(body, L, texts)
+	local C, S = K.CR, K.SIGN
+	H.frame("PolaroidShadow", {
+		BackgroundTransparency = 0.78,
+		BackgroundColor3 = S.Shadow,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromOffset(L.PolX + 4, L.PolY + 6),
+		Size = UDim2.fromOffset(L.P, L.PolH),
+		Rotation = C.POLAROID_TILT,
+		ZIndex = 2,
+	}, body)
+	local pol = H.frame("Polaroid", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = K.WHITE,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromOffset(L.PolX, L.PolY),
+		Size = UDim2.fromOffset(L.P, L.PolH),
+		Rotation = C.POLAROID_TILT,
+		ZIndex = 3,
+	}, body)
+	local photo = H.frame("Photo", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = K.WHITE,
+		Position = UDim2.fromOffset(L.Border, L.Border),
+		Size = UDim2.fromOffset(L.Photo, L.Photo),
+	}, pol)
+	Util.Create("UIGradient", { Color = ColorSequence.new(S.SkyTop, S.SkyBottom), Rotation = 90, Parent = photo })
+	Credits.stroke(photo, S.PhotoEdge, 1)
+	local avatar = Instance.new("ImageLabel")
+	avatar.Name = "Avatar"
+	avatar.BackgroundTransparency = 1
+	avatar.BorderSizePixel = 0
+	avatar.Size = UDim2.fromScale(1, 1)
+	avatar.ScaleType = Enum.ScaleType.Fit
+	avatar.Image = ""
+	avatar.Parent = photo
+	Credits.headshot(avatar, Credits.creatorId())
+	Credits.text("Caption", texts.Caption, "Signature", L.CapSize, S.Caption, {
+		Position = UDim2.fromOffset(0, L.Border + L.Photo),
+		Size = UDim2.fromOffset(L.P, L.CapH),
+	}, pol)
+	local pin = H.frame("Pin", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = S.Pin,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromOffset(L.P / 2, 2),
+		Size = UDim2.fromOffset(L.Pin, L.Pin),
+		ZIndex = 2,
+	}, pol)
+	H.corner(pin)
+	Credits.stroke(pin, S.PinDark, 1.5)
+	local shine = H.frame("PinShine", {
+		BackgroundTransparency = 0.15,
+		BackgroundColor3 = K.WHITE,
+		Position = UDim2.fromScale(0.24, 0.2),
+		Size = UDim2.fromScale(0.3, 0.3),
+		ZIndex = 3,
+	}, pin)
+	H.corner(shine)
+	return pol
+end
+
+-- the text column: the plank with the wordmark, CREATED BY, the signature + swash, the thank-you line
+function Credits.column(body, L, texts)
+	local C, S = K.CR, K.SIGN
+	local col = H.frame("Column", {
+		Position = UDim2.fromOffset(L.ColX, L.ColY),
+		Size = UDim2.fromOffset(L.ColW, L.ColH),
+		ZIndex = 3,
+	}, body)
+	local plank = H.frame("Plank", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = S.Navy,
+		Position = UDim2.fromOffset(0, L.PlankY),
+		Size = UDim2.fromOffset(L.PlankW, L.PlankH),
+	}, col)
+	Credits.stroke(plank, S.WoodDark, 3)
+	for _, side in ipairs({ { "NailL", 0 }, { "NailR", 1 } }) do
+		local nail = H.frame(side[1], {
+			BackgroundTransparency = 0,
+			BackgroundColor3 = S.Ring,
+			AnchorPoint = Vector2.new(side[2], 0.5),
+			Position = UDim2.new(side[2], side[2] == 0 and 4 or -4, 0.5, 0),
+			Size = UDim2.fromOffset(5, 5),
+			ZIndex = 2,
+		}, plank)
+		H.corner(nail)
+	end
+	local wordmark = Credits.image(C.WORDMARK)
+	if wordmark then
+		local wm = Instance.new("ImageLabel")
+		wm.Name = "Wordmark"
+		wm.BackgroundTransparency = 1
+		wm.BorderSizePixel = 0
+		wm.AnchorPoint = Vector2.new(0.5, 0.5)
+		wm.Position = UDim2.fromScale(0.5, 0.5)
+		wm.Size = UDim2.fromOffset(L.WmW, L.WmH)
+		wm.ScaleType = Enum.ScaleType.Fit
+		wm.Image = wordmark
+		wm.ZIndex = 3
+		Util.Create("UIAspectRatioConstraint", { AspectRatio = C.WM_ASPECT, Parent = wm })
+		wm.Parent = plank
+	else
+		-- no uploaded picture (a fresh place): the studio's name on the plank
+		Credits.text("WordmarkText", texts.Studio, "Heading", L.Small and 18 or 22, K.WHITE, {
+			Size = UDim2.fromScale(1, 1),
+			ZIndex = 3,
+		}, plank)
+	end
+	Credits.text("CreatedBy", texts.Role, "Label", L.CreatedSize, S.Muted, {
+		Position = UDim2.fromOffset(2, L.CreatedY),
+		Size = UDim2.fromOffset(L.CreatedW - 2, L.CreatedH),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Bottom,
+	}, col)
+	Theme.Face(col:FindFirstChild("CreatedBy"), "Caps")
+	local sig = Credits.text("Signature", texts.Creator, "Signature", L.SigSize, S.Navy, {
+		Position = UDim2.fromOffset(0, L.SigY),
+		Size = UDim2.fromOffset(L.SigW, L.SigH),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Rotation = C.SIG_TILT,
+		ZIndex = 2,
+	}, col)
+	-- the swash: one round pen stroke under the name (a child of the name: it leans with it)
+	local swashW = math.min(L.SigW - 24, math.floor(L.SigSize * 3.1))
+	local swash = H.frame("Swash", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = S.Navy,
+		Position = UDim2.fromOffset(math.floor(L.SigSize * 0.12), L.SwashY - L.SigY),
+		Size = UDim2.fromOffset(swashW, L.Small and 4 or 5),
+	}, sig)
+	H.corner(swash)
+	Credits.text("Thanks", texts.Thanks, "Body", L.ThanksSize, S.Gold, {
+		Position = UDim2.fromOffset(2, L.ThanksY),
+		Size = UDim2.fromOffset(L.ThanksW - 2, L.ThanksH),
 		TextWrapped = true,
-		Size = UDim2.new(1, 0, 0, 40),
-		LayoutOrder = 99,
-	}, list)
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top,
+	}, col)
+	Theme.Face(col:FindFirstChild("Thanks"), "Thanks")
+	return col
+end
+
+-- the round SF emblem, a gold ring, tilted, in the body's bottom-right corner
+function Credits.sticker(body, L)
+	local C, S = K.CR, K.SIGN
+	local shadow = H.frame("StickerShadow", {
+		BackgroundTransparency = 0.72,
+		BackgroundColor3 = S.Shadow,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromOffset(L.StickerX + 2, L.StickerY + 4),
+		Size = UDim2.fromOffset(L.S, L.S),
+		ZIndex = 4,
+	}, body)
+	H.corner(shadow)
+	local emblem = Credits.image(C.EMBLEM)
+	local sticker = Instance.new("ImageLabel")
+	sticker.Name = "Sticker"
+	sticker.BackgroundTransparency = emblem and 1 or 0
+	sticker.BackgroundColor3 = S.Navy
+	sticker.BorderSizePixel = 0
+	sticker.AnchorPoint = Vector2.new(0.5, 0.5)
+	sticker.Position = UDim2.fromOffset(L.StickerX, L.StickerY)
+	sticker.Size = UDim2.fromOffset(L.S, L.S)
+	sticker.ScaleType = Enum.ScaleType.Fit
+	sticker.Image = emblem or ""
+	sticker.Rotation = C.STICKER_TILT
+	sticker.ZIndex = 5
+	H.corner(sticker)
+	Credits.stroke(sticker, S.Ring, L.Ring)
+	sticker.Parent = body
+	return sticker
+end
+
+-- builds the whole window into the docked holder (its design size is the dock's)
+function Credits.build(holder, stacked)
+	local C, S = K.CR, K.SIGN
+	local texts = Credits.texts()
+	local w, h = holder.Size.X.Offset, holder.Size.Y.Offset
+	local L = Credits.layout(w, h, stacked, texts)
+	local sign = H.frame("CreditsSign", { Size = UDim2.fromScale(1, 1) }, holder)
+	H.frame("Drop", {
+		BackgroundTransparency = 0.6,
+		BackgroundColor3 = S.Drop,
+		Position = UDim2.fromOffset(0, L.HeadY + C.DROP),
+		Size = UDim2.new(1, 0, 0, L.HeadH + L.WoodH),
+		ZIndex = 1,
+	}, sign)
+	Credits.roof(sign)
+	Credits.head(sign, L)
+	local wood = H.frame("Wood", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = S.Wood,
+		Position = UDim2.fromOffset(0, L.WoodY),
+		Size = UDim2.new(1, 0, 0, L.WoodH),
+		Active = true,
+		ZIndex = 3,
+	}, sign)
+	local body = H.frame("Body", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = S.Cream,
+		Position = UDim2.fromOffset(C.WOOD, C.WOOD),
+		Size = UDim2.new(1, -2 * C.WOOD, 1, -2 * C.WOOD),
+	}, wood)
+	local line = H.frame("Line", {
+		Position = UDim2.fromOffset(C.LINE, C.LINE),
+		Size = UDim2.new(1, -2 * C.LINE, 1, -2 * C.LINE),
+		ZIndex = 1,
+	}, body)
+	Credits.stroke(line, S.CreamLine, C.LINE_T)
+	Credits.polaroid(body, L, texts)
+	Credits.column(body, L, texts)
+	Credits.sticker(body, L)
+	holder:SetAttribute("CreditsLayout", L.Stacked and "Stacked" or (L.Small and "Small" or "Wide"))
+	return sign
+end
+
+-- quiet: a rebuild after a screen resize (no click, the window was already open)
+function MainMenuController.OpenCredits(quiet)
+	local vp = H.viewport()
+	local stacked = vp.Y > vp.X
+	local holder = Win.holder("Credits", K.CR.W, stacked and K.CR.TALL_H or K.CR.H)
+	if not holder then
+		return
+	end
+	if quiet ~= true then
+		H.sound("Click")
+	end
+	H.safe("credits", Credits.build, holder, stacked)
+	local camera = Workspace.CurrentCamera
+	if camera then
+		-- one rebuild per burst of size changes (a window drag fires many)
+		local pending = false
+		M.Win.Resize = camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+			if pending then
+				return
+			end
+			pending = true
+			task.defer(function()
+				if M.Win.Name == "Credits" and M.Win.Holder == holder then
+					H.safe("credits resize", MainMenuController.OpenCredits, true)
+				end
+			end)
+		end)
+	end
 end
 
 function MainMenuController.CloseWindows()
@@ -1210,6 +1952,13 @@ function MainMenuController.Init()
 		return
 	end
 	ClientSettings.Changed:Connect(onSettingChanged)
+	-- Esc closes an open window (Settings / Updates / Credits; gamepad B: Win.bindBack)
+	game:GetService("UserInputService").InputBegan:Connect(function(input)
+		if input.KeyCode == Enum.KeyCode.Escape and M.Win.Name then
+			H.sound("Click")
+			Win.close()
+		end
+	end)
 	local MouseLock = H.mod("MouseLock")
 	if MouseLock and type(MouseLock.Start) == "function" then
 		H.safe("MouseLock", MouseLock.Start) -- idempotent (Main.client.lua may start it first)

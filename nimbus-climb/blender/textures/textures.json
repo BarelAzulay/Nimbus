@@ -145,6 +145,22 @@
       "png": "blender/textures/store/icon_vip_crown.png",
       "structureHash": "b988807bdf988ed51c8ef175265dd5e1"
     },
+    "saintsfield_emblem": {
+      "build": "the owner's studio logo (branding/README.md, SaintsField), uploaded from Studio as an Image",
+      "contentHash": "cce2e389341c6ada095fe1582c40ee0da4acd85fa790a6e2f23608d4e4e9c14d",
+      "description": "Nimbus Climb Credits window: the round colour SF emblem, transparent corners (the owner's studio logo)",
+      "displayName": "NC SaintsField emblem",
+      "png": "branding/saintsfield-emblem.png",
+      "structureHash": "7c34f1e9a8db2126400ee42a5d34547f"
+    },
+    "saintsfield_wordmark": {
+      "build": "the owner's studio logo (branding/README.md, SaintsField), uploaded from Studio as an Image",
+      "contentHash": "591657331544d53a7a09d276b700be9ebfc0bd7ad43e9d960f1700f38c27d0d6",
+      "description": "Nimbus Climb Credits window: the SaintsField / GAME PRODUCTIONS silver wordmark, transparent (the owner's studio logo)",
+      "displayName": "NC SaintsField wordmark",
+      "png": "branding/saintsfield-wordmark.png",
+      "structureHash": "90f5bae05566502cae0979e2e471836b"
+    },
     "sky_day_vivid_Bk": {
       "build": "py -3.12 blender/sky/build_sky_manifest.py  (%s)",
       "contentHash": "cb66006ecbda806b01060c6d5a03f02f4c0e7e77e1a9cebb89b2b584c7063f02",

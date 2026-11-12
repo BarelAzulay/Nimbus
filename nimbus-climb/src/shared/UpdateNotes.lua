@@ -4,7 +4,7 @@
 --   UpdateNotes.Latest   -> 6   the newest note's Version; the menu shows a "NEW" badge while Settings.SeenNotes < Latest
 --                                and opening UPDATES sends SettingsSet("SeenNotes", Latest)
 --   UpdateNotes.Notes    -> { { Version, Title, Lines = { ... } }, ... }  newest first
---   UpdateNotes.Credits  -> { line, ... }
+--   UpdateNotes.Credits  -> { Studio, Role, Creator, Caption, Thanks }  the Credits window's texts
 --   UpdateNotes.Tips     -> { 12 short tips }  the loading screen rotates one every 5 s (LoadingScreen.client.lua)
 -- Texts are for kids: short lines, plain words, no jargon. Plain Lua 5.1-compatible syntax only.
 
@@ -70,10 +70,15 @@ UpdateNotes.Notes = {
 	},
 }
 
--- The owner's credit lines, exactly as given (quick wins 2026-11-12: the studio, then the creator; no other line).
+-- The owner's credit texts, exactly as given: the one place the Credits window reads them (credits look B "Signed by the
+-- Maker", 2026-11-13). The studio shows as its real wordmark picture (TextureIds saintsfield_wordmark); Studio is its
+-- name for when the picture is missing.
 UpdateNotes.Credits = {
-	"A SaintsField game",
-	"Created by St.Gavin",
+	Studio = "SaintsField",
+	Role = "CREATED BY",
+	Creator = "St.Gavin",
+	Caption = "the boss",
+	Thanks = "Thanks for playing Nimbus Climb!",
 }
 
 UpdateNotes.Tips = {

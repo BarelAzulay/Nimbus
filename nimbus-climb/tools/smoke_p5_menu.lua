@@ -21,7 +21,21 @@
 --                      (NotifyController.SetHeld / IsHeld, owner-keyed; review round 1: all six shown after PLAY, in
 --                      order, one by one), a "bad" toast shows at once; the release after PLAY always runs to the end (a
 --                      throwing Orbit.stop / Gate.open still lets the toasts go and brings the cards back); (win 7) the
---                      tag line is Config.Tagline, the credits are exactly "A SaintsField game" / "Created by St.Gavin"
+--                      tag line is Config.Tagline; (credits look B) the Credits window shows the owner's texts from
+--                      UpdateNotes.Credits ("CREATED BY" / "St.Gavin" / "the boss" / the thank-you line), no Claude
+--   client_p5credits   (credits look B "Signed by the Maker", desktop 1920x1080 + 1280x720) the Signboard window: the fixed
+--                      roof (never stretched: same design size while the window resizes), navy header + CREDITS (Theme
+--                      Sign = LuckiestGuy), wood frame, cream body; the polaroid (-5 deg, pin, the creator's headshot
+--                      rbxthumb on the sky gradient, "the boss"), the navy plank with the SAINTSFIELD wordmark (TextureIds
+--                      saintsfield_wordmark, aspect kept), CREATED BY, the signature (Theme.Fonts.Signature =
+--                      PermanentMarker, -3 deg, a swash), the italic gold thank-you line, the round SF emblem sticker
+--                      (TextureIds saintsfield_emblem, gold ring, ~12 deg) covering no text; nothing outside the body, no
+--                      text under the floor; the texts come from UpdateNotes.Credits alone; the id = game.CreatorId for a
+--                      user-owned game, else Config.CreatorUserId; X / Esc / gamepad B / CloseWindows close it; opening
+--                      it hides what peeked out behind it (the DEV panel's Restart / Skip tutorial buttons) and fires
+--                      MenuController.WindowOpened("Credits") like the other windows
+--   client_p5credits_mobile  the same window on a landscape phone 844x390 (side by side) and a portrait one 390x844
+--                      (the polaroid stacked above the text)
 --   p5menu_orbit_cards (server; review round 1) the title screen census in the built lobby: every BillboardGui the menu's
 --                      camera orbit comes within MaxDistance of (the client-built RaidGateTag too) is in HideCards
 --   client_p5menu_mobile (phone 390x844) PLAY >= 56 px and on screen, no menu text under 14 px or off screen, SETTINGS is
@@ -624,10 +638,13 @@ local function clientScenarios()
 		H.advance(0.3)
 		local credits = MMC.Window()
 		if T.check(credits ~= nil and credits.Parent ~= nil, "p5menu: CREDITS opens its window") then
-			local c1, c2 = H.find(credits, "Credit1"), H.find(credits, "Credit2")
-			T.eq(c1 and c1.Text, "A SaintsField game", "p5menu: the first credit line is exactly 'A SaintsField game'")
-			T.eq(c2 and c2.Text, "Created by St.Gavin", "p5menu: the second credit line is exactly 'Created by St.Gavin'")
-			T.check(H.find(credits, "Credit3") == nil, "p5menu: there is no third credit line")
+			-- (credits look B) the owner's texts, exactly
+			local want = { CreatedBy = "CREATED BY", Signature = "St.Gavin", Caption = "the boss", Thanks = "Thanks for playing Nimbus Climb!" }
+			for name, text in pairs(want) do
+				local l = H.find(credits, name)
+				T.eq(l and l.Text, text, "p5menu: the Credits window's " .. name .. " reads exactly '" .. text .. "'")
+			end
+			T.check(H.find(credits, "Credit1") == nil, "p5menu: the old typed 'A SaintsField game' line is gone (the wordmark picture replaces it)")
 			local claude = {}
 			for _, d in ipairs(H.texts(credits)) do
 				if string.find(string.lower(d.Text), "claude", 1, true) then
@@ -1076,6 +1093,408 @@ local function clientScenarios()
 			Mock.SetViewport(vp0.X, vp0.Y)
 		end
 		KC.flushErrors("client_p5menu_mobile")
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- (credits look B "Signed by the Maker") the Credits window, one size at a time
+	local CR = {
+		WORDMARK = "rbxassetid://105015128819853",
+		EMBLEM = "rbxassetid://114032351365198",
+		CREATOR_ID = 93742920, -- St.Gavin's account (Config.CreatorUserId)
+	}
+	function CR.rgb(c)
+		return c and string.format("%d,%d,%d", math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5)) or "nil"
+	end
+	function CR.hex(h)
+		return string.format("%d,%d,%d", tonumber(h:sub(1, 2), 16), tonumber(h:sub(3, 4), 16), tonumber(h:sub(5, 6), 16))
+	end
+	function CR.colour(obj, hex, what, field)
+		local c = obj and obj[field or "BackgroundColor3"]
+		T.eq(CR.rgb(c), CR.hex(hex), "p5credits: " .. what .. " is #" .. hex)
+	end
+	-- the product of every UIScale from obj up to its ScreenGui (on-screen px per design px)
+	function CR.scale(obj)
+		local s, cur = 1, obj
+		while cur and not cur:IsA("ScreenGui") do
+			local us = cur:FindFirstChildOfClass("UIScale")
+			if us then
+				s = s * us.Scale
+			end
+			cur = cur.Parent
+		end
+		return s
+	end
+	-- obj's on-screen box with its own and its ancestors' Rotation applied (each about its own centre), up to `stop`:
+	-- x0, y0, x1, y1 (the mock lays boxes out unrotated, as Roblox does)
+	function CR.box(obj, stop, grow)
+		local p, s = obj.AbsolutePosition, obj.AbsoluteSize
+		local g = grow or 0
+		local pts = { { p.X - g, p.Y - g }, { p.X + s.X + g, p.Y - g }, { p.X - g, p.Y + s.Y + g }, { p.X + s.X + g, p.Y + s.Y + g } }
+		local cur = obj
+		while cur and cur ~= stop and cur:IsA("GuiObject") do
+			local r = tonumber(cur.Rotation) or 0
+			if math.abs(r) > 1e-3 then
+				local cp, cs = cur.AbsolutePosition, cur.AbsoluteSize
+				local cx, cy = cp.X + cs.X / 2, cp.Y + cs.Y / 2
+				local a = math.rad(r)
+				for _, q in ipairs(pts) do
+					local dx, dy = q[1] - cx, q[2] - cy
+					q[1], q[2] = cx + dx * math.cos(a) - dy * math.sin(a), cy + dx * math.sin(a) + dy * math.cos(a)
+				end
+			end
+			cur = cur.Parent
+		end
+		local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
+		for _, q in ipairs(pts) do
+			x0, y0, x1, y1 = math.min(x0, q[1]), math.min(y0, q[2]), math.max(x1, q[1]), math.max(y1, q[2])
+		end
+		return x0, y0, x1, y1
+	end
+	function CR.overlap(a, b)
+		return a[1] < b[3] - 0.5 and b[1] < a[3] - 0.5 and a[2] < b[4] - 0.5 and b[2] < a[4] - 0.5
+	end
+	function CR.near(a, b, tol)
+		return type(a) == "number" and math.abs(a - b) <= (tol or 0.5)
+	end
+
+	-- every check of one open Credits window at the current viewport; `stacked` = the polaroid above the text (true),
+	-- beside it (false) or either (nil: a short portrait phone may fall back to side by side; the window says which)
+	function CR.check(tag, stacked)
+		local Theme = sharedModule("Theme")
+		local notes = sharedModule("UpdateNotes")
+		local MMC = H.client("Controllers/MainMenuController")
+		local vp = Mock.Viewport
+		local W, Hh = vp.X, vp.Y
+		local holder, name = MMC.Window()
+		if not T.check(holder ~= nil and name == "Credits", "p5credits " .. tag .. ": OpenCredits opens the Credits window") then
+			return nil
+		end
+		local function part(n)
+			return H.find(holder, n)
+		end
+		local missing = {}
+		for _, n in ipairs({ "Roof", "SlopeL", "SlopeR", "Fascia", "Head", "Plate", "Title", "Close", "Wood", "Body", "Line", "Polaroid", "Pin",
+			"Photo", "Avatar", "Caption", "Column", "Plank", "Wordmark", "CreatedBy", "Signature", "Swash", "Thanks", "Sticker" }) do
+			if part(n) == nil then
+				missing[#missing + 1] = n
+			end
+		end
+		if not T.check(#missing == 0, "p5credits " .. tag .. ": every part of the Signboard window exists", table.concat(missing, ", ")) then
+			return nil
+		end
+		local body = part("Body")
+
+		-- the frame: roof, header, wood, cream body (Frames + UIStroke, no 9-sliced picture)
+		CR.colour(part("SlopeL"), "e9849b", tag .. " the roof")
+		CR.colour(part("SlopeR"), "e9849b", tag .. " the roof (right slope)")
+		CR.colour(part("Fascia"), "b9566d", tag .. " the roof's shade board")
+		CR.colour(part("Plate"), "1d2b55", tag .. " the header")
+		CR.colour(part("Head"), "5e3a1d", tag .. " the header's dark wood rim")
+		CR.colour(part("Wood"), "8a5a32", tag .. " the wood frame")
+		CR.colour(body, "f6ecd6", tag .. " the cream body")
+		local line = part("Line"):FindFirstChildOfClass("UIStroke")
+		CR.colour(line, "eadbb8", tag .. " the body's inner line", "Color")
+		local sliced = {}
+		for _, d in ipairs(holder:GetDescendants()) do
+			if d:IsA("ImageLabel") and d.ScaleType == Enum.ScaleType.Slice then
+				sliced[#sliced + 1] = d.Name
+			end
+		end
+		T.check(#sliced == 0, "p5credits " .. tag .. ": no 9-sliced images in the frame", table.concat(sliced, ", "))
+		local title = part("Title")
+		T.eq(title.Text, "CREDITS", "p5credits " .. tag .. ": the header reads CREDITS")
+		T.check(Theme.Fonts.Sign ~= nil and title.Font == Theme.Fonts.Sign, "p5credits " .. tag .. ": CREDITS uses the Theme Sign font")
+		T.check(part("TitleDrop") ~= nil, "p5credits " .. tag .. ": CREDITS has its dark drop line")
+		T.check(part("Close"):IsA("GuiButton") and H.find(part("Close"), "CloseMark") ~= nil, "p5credits " .. tag .. ": the drawn close X (NeonKit.CloseMark)")
+
+		-- the polaroid
+		local pol = part("Polaroid")
+		CR.colour(pol, "ffffff", tag .. " the polaroid")
+		T.check(CR.near(pol.Rotation, -5, 1), "p5credits " .. tag .. ": the polaroid leans about -5 deg", tostring(pol.Rotation))
+		local avatar = part("Avatar")
+		T.eq(avatar.Image, "rbxthumb://type=AvatarHeadShot&id=" .. CR.CREATOR_ID .. "&w=420&h=420",
+			"p5credits " .. tag .. ": the photo is the creator's headshot (Config.CreatorUserId for a game not owned by a user)")
+		local grad = part("Photo"):FindFirstChildOfClass("UIGradient")
+		local kp = grad and grad.Color.Keypoints
+		T.check(kp ~= nil and CR.rgb(kp[1].Value) == CR.hex("7fc4f2") and CR.rgb(kp[#kp].Value) == CR.hex("cfeafc"),
+			"p5credits " .. tag .. ": the photo sits on the sky gradient #7fc4f2 -> #cfeafc")
+		local caption = part("Caption")
+		T.eq(caption.Text, notes.Credits.Caption, "p5credits " .. tag .. ": the caption is UpdateNotes.Credits.Caption")
+		T.check(Theme.Fonts.Signature ~= nil and caption.Font == Theme.Fonts.Signature, "p5credits " .. tag .. ": the caption is in the signature font")
+		CR.colour(part("Pin"), "d6455b", tag .. " the red pin")
+
+		-- the plank + the wordmark picture
+		CR.colour(part("Plank"), "1d2b55", tag .. " the navy plank")
+		local wm = part("Wordmark")
+		T.check(wm:IsA("ImageLabel") and wm.Image == CR.WORDMARK, "p5credits " .. tag .. ": the plank holds the SAINTSFIELD wordmark picture", wm.Image)
+		local ar = wm:FindFirstChildOfClass("UIAspectRatioConstraint")
+		T.check(wm.ScaleType == Enum.ScaleType.Fit or (ar and CR.near(ar.AspectRatio, 1024 / 230, 0.02)), "p5credits " .. tag .. ": the wordmark keeps its 1024:230 aspect")
+		local ws = wm.AbsoluteSize
+		T.check(ws.Y > 0 and CR.near(ws.X / ws.Y, 1024 / 230, 0.08), "p5credits " .. tag .. ": the wordmark box is 1024:230", string.format("%.1f x %.1f", ws.X, ws.Y))
+
+		-- the column texts (one place: UpdateNotes.Credits)
+		local created, sig, thanks = part("CreatedBy"), part("Signature"), part("Thanks")
+		T.eq(created.Text, notes.Credits.Role, "p5credits " .. tag .. ": CREATED BY is UpdateNotes.Credits.Role")
+		CR.colour(created, "7a6a4c", tag .. " CREATED BY", "TextColor3")
+		T.eq(sig.Text, notes.Credits.Creator, "p5credits " .. tag .. ": the signature is UpdateNotes.Credits.Creator")
+		T.check(sig.Font == Theme.Fonts.Signature, "p5credits " .. tag .. ": the signature uses Theme.Fonts.Signature")
+		CR.colour(sig, "1d2b55", tag .. " the signature ink", "TextColor3")
+		T.check(CR.near(sig.Rotation, -3, 1), "p5credits " .. tag .. ": the signature leans about -3 deg", tostring(sig.Rotation))
+		T.eq(thanks.Text, notes.Credits.Thanks, "p5credits " .. tag .. ": the thank-you line is UpdateNotes.Credits.Thanks")
+		CR.colour(thanks, "8a6512", tag .. " the thank-you line", "TextColor3")
+		local face = thanks.FontFace
+		T.check(face ~= nil and tostring(face.Family):find("Nunito", 1, true) ~= nil and face.Style == Enum.FontStyle.Italic and face.Weight == Enum.FontWeight.Bold,
+			"p5credits " .. tag .. ": the thank-you line is Nunito Bold Italic", face and tostring(face.Family) or "no FontFace")
+		local cface = created.FontFace
+		T.check(cface ~= nil and tostring(cface.Family):find("Nunito", 1, true) ~= nil, "p5credits " .. tag .. ": CREATED BY is Nunito")
+
+		-- the sticker
+		local sticker = part("Sticker")
+		T.check(sticker:IsA("ImageLabel") and sticker.Image == CR.EMBLEM, "p5credits " .. tag .. ": the sticker is the SF emblem picture", sticker.Image)
+		local ring = sticker:FindFirstChildOfClass("UIStroke")
+		CR.colour(ring, "e3b341", tag .. " the sticker's gold ring", "Color")
+		T.check(sticker:FindFirstChildOfClass("UICorner") ~= nil, "p5credits " .. tag .. ": the sticker is round")
+		T.check(CR.near(sticker.Rotation, 12, 3), "p5credits " .. tag .. ": the sticker tilts about 12 deg", tostring(sticker.Rotation))
+
+		-- fits: the whole window on screen, everything inside the body, no text under the floor, the sticker covers no text
+		local hx0, hy0, hx1, hy1 = CR.box(holder)
+		T.check(hx0 >= -1 and hy0 >= -1 and hx1 <= W + 1 and hy1 <= Hh + 1, "p5credits " .. tag .. ": the window (roof included) is on screen",
+			string.format("%.0f,%.0f - %.0f,%.0f in %dx%d", hx0, hy0, hx1, hy1, W, Hh))
+		local b = { CR.box(body) }
+		local out, small, texts = {}, {}, {}
+		-- the readable floor (ARCHITECTURE_V3): Theme.Readability.MinPx, one px more on a screen 1000+ px tall
+		local floor = Theme.Readability.MinPx + (Hh >= 1000 and 1 or 0)
+		for _, d in ipairs(body:GetDescendants()) do
+			if d:IsA("GuiObject") and KC.isShown(d) then
+				local stroke = d:FindFirstChildOfClass("UIStroke")
+				local grow = (stroke and stroke.ApplyStrokeMode == Enum.ApplyStrokeMode.Border) and stroke.Thickness * CR.scale(d) or 0
+				local r = { CR.box(d, nil, grow) }
+				if r[1] < b[1] - 1 or r[2] < b[2] - 1 or r[3] > b[3] + 1 or r[4] > b[4] + 1 then
+					out[#out + 1] = string.format("%s %.0f,%.0f-%.0f,%.0f", d.Name, r[1], r[2], r[3], r[4])
+				end
+				if (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Text ~= "" then
+					texts[#texts + 1] = { d, r }
+					local px = d.TextSize * CR.scale(d)
+					if px < floor - 1e-6 then
+						small[#small + 1] = d.Name .. string.format(" %.1f", px)
+					end
+					local tw, th = Mock.TextExtent(d, d.TextWrapped and d.Size.X.Offset or nil)
+					if tw > d.Size.X.Offset + 0.5 or th > d.Size.Y.Offset + 0.5 then
+						out[#out + 1] = string.format("%s text %.0fx%.0f in %dx%d", d.Name, tw, th, d.Size.X.Offset, d.Size.Y.Offset)
+					end
+				end
+			end
+		end
+		T.check(#out == 0, "p5credits " .. tag .. ": nothing overflows the body", table.concat(out, "; "))
+		T.check(#small == 0, "p5credits " .. tag .. ": no text under the readable floor (" .. floor .. " px)", table.concat(small, ", "))
+		local ringT = ring and ring.Thickness * CR.scale(sticker) or 0
+		local st = { CR.box(sticker, nil, ringT) }
+		local covered = {}
+		for _, e in ipairs(texts) do
+			if CR.overlap(st, e[2]) then
+				covered[#covered + 1] = e[1].Name
+			end
+		end
+		if CR.overlap(st, { CR.box(wm) }) then
+			covered[#covered + 1] = "Wordmark"
+		end
+		T.check(#covered == 0, "p5credits " .. tag .. ": the sticker covers no text", table.concat(covered, ", "))
+		-- the thank-you line: every wrapped line fits its label (Roblox draws no line past the label's bottom) and no
+		-- word is wider than the label (no mid-word wraps); the signature fits its box on one line
+		local tw = thanks.Size.X.Offset
+		local _, th = Mock.TextExtent(thanks, tw)
+		T.check(th <= thanks.Size.Y.Offset + 0.5, "p5credits " .. tag .. ": the thank-you line's measured height fits its label",
+			string.format("%.0f text in %d", th, thanks.Size.Y.Offset))
+		local probe = Instance.new("TextLabel")
+		probe.TextSize, probe.Font = thanks.TextSize, thanks.Font
+		pcall(function()
+			probe.FontFace = thanks.FontFace
+		end)
+		local split = {}
+		for word in tostring(thanks.Text):gmatch("%S+") do
+			probe.Text = word
+			if (Mock.TextExtent(probe)) > tw + 0.5 then
+				split[#split + 1] = word
+			end
+		end
+		probe:Destroy()
+		T.check(#split == 0, "p5credits " .. tag .. ": no word of the thank-you line is wider than its label (no mid-word wrap)", table.concat(split, ", "))
+		local sw = Mock.TextExtent(sig)
+		T.check(sw <= sig.Size.X.Offset + 0.5, "p5credits " .. tag .. ": the signature fits its box on one line", string.format("%.0f in %d", sw, sig.Size.X.Offset))
+		local pr = { CR.box(pol) }
+		local cr = { CR.box(part("Column")) }
+		if stacked == nil then
+			stacked = holder:GetAttribute("CreditsLayout") == "Stacked"
+		end
+		if stacked then
+			T.check(pr[4] <= cr[2] + 2, "p5credits " .. tag .. ": portrait: the polaroid sits above the text", string.format("polaroid bottom %.0f, text top %.0f", pr[4], cr[2]))
+		else
+			T.check(pr[3] <= cr[1] + 2, "p5credits " .. tag .. ": landscape: the polaroid is left of the text", string.format("polaroid right %.0f, text left %.0f", pr[3], cr[1]))
+		end
+		local roof = part("Roof")
+		T.check(roof.Size.X.Scale == 0 and roof.Size.Y.Scale == 0 and roof:FindFirstChildOfClass("UIScale") == nil,
+			"p5credits " .. tag .. ": the roof is a fixed-size piece (offset only, no scale of its own)")
+		return { Roof = roof.Size.X.Offset .. "x" .. roof.Size.Y.Offset, HolderW = holder.Size.X.Offset, HolderPx = holder.AbsoluteSize }
+	end
+
+	-- opens the window at w x h (touch: as a phone, no keyboard / mouse), checks it; returns CR.check's result
+	function CR.at(w, h, stacked, touch)
+		local MMC = H.client("Controllers/MainMenuController")
+		local UIS = game:GetService("UserInputService")
+		local old = { UIS.TouchEnabled, UIS.KeyboardEnabled, UIS.MouseEnabled }
+		if touch ~= nil then
+			UIS.TouchEnabled, UIS.KeyboardEnabled, UIS.MouseEnabled = touch, not touch, not touch
+		end
+		Mock.SetViewport(w, h)
+		H.advance(0.2)
+		MMC.CloseWindows()
+		MMC.OpenCredits()
+		H.advance(0.3)
+		local r = CR.check(w .. "x" .. h .. (touch and " touch" or ""), stacked)
+		UIS.TouchEnabled, UIS.KeyboardEnabled, UIS.MouseEnabled = old[1], old[2], old[3]
+		return r
+	end
+
+	S.client_p5credits = guarded("client_p5credits", function()
+		local vp0 = Mock.Viewport
+		local MMC = H.client("Controllers/MainMenuController")
+		local Theme = sharedModule("Theme")
+		local notes = sharedModule("UpdateNotes")
+		local cfg = sharedModule("Config")
+		local ids = sharedModule("TextureIds") or {}
+		T.eq(ids.saintsfield_wordmark, 105015128819853, "p5credits: TextureIds records the uploaded wordmark (saintsfield_wordmark)")
+		T.eq(ids.saintsfield_emblem, 114032351365198, "p5credits: TextureIds records the uploaded emblem (saintsfield_emblem)")
+		T.eq(cfg.CreatorUserId, CR.CREATOR_ID, "p5credits: Config.CreatorUserId is St.Gavin's account")
+		T.check(type(notes.Credits) == "table" and notes.Credits.Creator == "St.Gavin" and notes.Credits.Role == "CREATED BY"
+			and notes.Credits.Caption == "the boss" and notes.Credits.Thanks == "Thanks for playing Nimbus Climb!",
+			"p5credits: UpdateNotes.Credits holds the owner's texts (one place)")
+		local okMarker, marker = pcall(function()
+			return Enum.Font.PermanentMarker
+		end)
+		T.check(okMarker and Theme.Fonts.Signature == marker, "p5credits: Theme.Fonts.Signature is PermanentMarker (the one constant to swap)")
+
+		local first = CR.at(1920, 1080, false)
+		local second = CR.at(1280, 720, false)
+		if first and second then
+			T.check(first.Roof == second.Roof, "p5credits: the roof keeps one design size at every screen", tostring(first.Roof) .. " / " .. tostring(second.Roof))
+		end
+		-- the live resize: the window follows the screen, the roof does not stretch with it
+		CR.at(1920, 1080, false)
+		local holder0 = MMC.Window()
+		local roof0 = holder0 and H.find(holder0, "Roof")
+		local roofSize0, holderPx0 = roof0 and roof0.Size, holder0 and holder0.AbsoluteSize
+		Mock.SetViewport(1280, 720)
+		H.advance(0.3)
+		local holder1, name1 = MMC.Window()
+		T.check(holder1 ~= nil and name1 == "Credits", "p5credits: the window stays open while the screen resizes")
+		if holder1 and roofSize0 then
+			local roof1 = H.find(holder1, "Roof")
+			T.check(roof1 ~= nil and roof1.Size.X.Offset == roofSize0.X.Offset and roof1.Size.Y.Offset == roofSize0.Y.Offset and roof1.Size.X.Scale == 0, "p5credits: resizing the screen leaves the roof's design size alone")
+			T.check(math.abs(holder1.AbsoluteSize.X - holderPx0.X) > 1, "p5credits: ...while the window itself resizes", tostring(holderPx0) .. " -> " .. tostring(holder1.AbsoluteSize))
+			CR.check("1280x720 after a live resize", false)
+		end
+
+		-- one place: a changed name shows without a code change
+		local was = notes.Credits.Creator
+		notes.Credits.Creator = "Somebody"
+		MMC.OpenCredits()
+		H.advance(0.2)
+		local sigX = MMC.Window() and H.find(MMC.Window(), "Signature")
+		T.eq(sigX and sigX.Text, "Somebody", "p5credits: the signature reads UpdateNotes.Credits.Creator (no repeated literal)")
+		notes.Credits.Creator = was
+		-- a user-owned game shows its owner's headshot
+		local okSet = pcall(function()
+			game.CreatorType = Enum.CreatorType.User
+			game.CreatorId = 4242
+		end)
+		if okSet then
+			MMC.OpenCredits()
+			H.advance(0.2)
+			local av = MMC.Window() and H.find(MMC.Window(), "Avatar")
+			T.eq(av and av.Image, "rbxthumb://type=AvatarHeadShot&id=4242&w=420&h=420", "p5credits: a user-owned game shows game.CreatorId's headshot")
+			pcall(function()
+				game.CreatorType = nil
+				game.CreatorId = 1
+			end)
+		else
+			T.info("*p5credits: the mock's game.CreatorType is read-only; the user-owned branch is not exercised")
+		end
+
+		-- every close path
+		local UIS = game:GetService("UserInputService")
+		MMC.OpenCredits()
+		H.advance(0.2)
+		local close = MMC.Window() and H.find(MMC.Window(), "Close")
+		if close then
+			Mock.Click(close)
+		end
+		H.advance(0.2)
+		T.check(MMC.Window() == nil, "p5credits: the X closes the window")
+		MMC.OpenCredits()
+		H.advance(0.2)
+		Mock.FireSignal(UIS, "InputBegan", Mock.NewInput("Escape", "Keyboard", "Begin"), false)
+		H.advance(0.2)
+		T.check(MMC.Window() == nil, "p5credits: Esc closes the window")
+		MMC.OpenCredits()
+		H.advance(0.2)
+		pcall(Mock.TriggerAction, "NimbusMenuWinBack", "Begin", Mock.NewInput("ButtonB", "Gamepad1", "Begin"))
+		H.advance(0.2)
+		T.check(MMC.Window() == nil, "p5credits: gamepad B closes the window")
+		MMC.OpenCredits()
+		H.advance(0.2)
+		MMC.CloseWindows()
+		H.advance(0.2)
+		T.check(MMC.Window() == nil, "p5credits: CloseWindows closes the window")
+
+		-- (fix) what peeked out under the window: the DEV panel's Restart / Skip tutorial buttons; the other windows
+		-- close on MenuController.WindowOpened
+		local pg = H.pg()
+		local Dev = H.client("Controllers/DevController")
+		local MC = H.client("Controllers/MenuController")
+		local opened = {}
+		local conn = MC.WindowOpened:Connect(function(id)
+			opened[#opened + 1] = tostring(id)
+		end)
+		pg:SetAttribute("NC_Dev", true)
+		H.advance(1)
+		Dev.Open()
+		H.advance(0.5)
+		if T.check(Dev.IsOpen() == true, "p5credits: (setup) the DEV panel is open") then
+			MMC.OpenCredits()
+			H.advance(0.3)
+			T.check(Dev.IsOpen() == false, "p5credits: opening Credits hides the DEV panel that peeked out under it (Restart / Skip tutorial)")
+		end
+		T.check(table.concat(opened, ","):find("Credits", 1, true) ~= nil, "p5credits: opening Credits fires MenuController.WindowOpened('Credits')", table.concat(opened, ","))
+		conn:Disconnect()
+		MMC.CloseWindows()
+		pg:SetAttribute("NC_Dev", nil)
+		H.advance(0.5)
+		Mock.SetViewport(vp0.X, vp0.Y)
+		H.advance(0.2)
+		KC.flushErrors("client_p5credits")
+	end)
+
+	S.client_p5credits_mobile = guarded("client_p5credits_mobile", function()
+		local vp0 = Mock.Viewport
+		local MMC = H.client("Controllers/MainMenuController")
+		local wide = CR.at(844, 390, false)
+		local tall = CR.at(390, 844, true)
+		if wide and tall then
+			T.check(wide.Roof == tall.Roof, "p5credits phone: the roof keeps one design size in landscape and portrait")
+		end
+		-- the project's usual phone list (smoke_evo_buttons / smoke_egg_stage / smoke_fixr_daily_ui), as touch devices:
+		-- landscape side by side; a tall portrait stacks, a short one may fall back to side by side
+		for _, s in ipairs({ { 844, 390, false }, { 740, 360, false }, { 667, 375, false }, { 640, 360, false },
+			{ 390, 844, true }, { 360, 740, nil }, { 375, 667, nil }, { 360, 640, nil } }) do
+			local r = CR.at(s[1], s[2], s[3], true)
+			if r and wide then
+				T.check(r.Roof == wide.Roof, "p5credits phone " .. s[1] .. "x" .. s[2] .. ": the roof keeps its one design size", tostring(r.Roof))
+			end
+		end
+		MMC.CloseWindows()
+		Mock.SetViewport(vp0.X, vp0.Y)
+		H.advance(0.2)
+		KC.flushErrors("client_p5credits_mobile")
 	end)
 
 	return S

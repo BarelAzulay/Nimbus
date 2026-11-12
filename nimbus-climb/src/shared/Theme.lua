@@ -51,6 +51,23 @@ Theme.Fonts = {
 	-- v2 additions
 	Toast = font("GothamBlack", "GothamBold"), -- side-of-screen system messages (v5: GothamBlack neon pills)
 	Button = font("GothamBlack", "GothamBold"), -- text on buttons, tabs and tiles (v5: GothamBlack)
+	-- (credits look B) the Signboard window kit: its header title, and the maker's hand-written signature + polaroid caption.
+	-- Signature is THE one place to swap that face (the owner's pick PermanentMarker; Gemini's phone pick was "Kalam")
+	Sign = font("LuckiestGuy", "FredokaOne"),
+	Signature = font("PermanentMarker", "FredokaOne"),
+}
+
+-- FontFace roles (a weight or style an Enum.Font has not got): put on a label with Theme.Face(label, role) after
+-- Theme.Label. Nil when the engine has no Font.new (then the label keeps its role font).
+local function face(family, weight, style)
+	local ok, value = pcall(function()
+		return Font.new("rbxasset://fonts/families/" .. family .. ".json", Enum.FontWeight[weight], Enum.FontStyle[style])
+	end)
+	return ok and value or nil
+end
+Theme.Faces = {
+	Caps = face("Nunito", "Heavy", "Normal"), -- (credits look B) small spaced capitals ("CREATED BY")
+	Thanks = face("Nunito", "Bold", "Italic"), -- (credits look B) the gold thank-you line
 }
 
 ----------------------------------------------------------------------
@@ -80,6 +97,8 @@ Theme.Sizes = {
 	Script = 19,
 	Toast = 18,
 	Button = 22,
+	Sign = 34,
+	Signature = 56,
 }
 
 local function clamp(n, lo, hi)
@@ -515,6 +534,17 @@ function Theme.Label(text, role, opts)
 		end
 	end
 	return label
+end
+
+-- Puts the FontFace role `role` (Theme.Faces) on a text object; false when that face is not available.
+function Theme.Face(obj, role)
+	local f = Theme.Faces[role]
+	if not (obj and f) then
+		return false
+	end
+	return (pcall(function()
+		obj.FontFace = f
+	end))
 end
 
 function Theme.Corner(parent, radius)

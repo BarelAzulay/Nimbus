@@ -2878,6 +2878,25 @@ scenario("mainmenu", function(window)
 	if window == "updates" then
 		MMC.OpenUpdates()
 	elseif window == "credits" then
+		-- (credits look B) the studio logos' uploaded ids drawn from their source PNGs (branding/)
+		local ids = req("shared/TextureIds") or {}
+		for key, png in pairs({ saintsfield_wordmark = "branding/saintsfield-wordmark.png", saintsfield_emblem = "branding/saintsfield-emblem.png" }) do
+			if type(ids[key]) == "number" then
+				LOCAL_IMAGES["rbxassetid://" .. fmt("%.0f", ids[key])] = png
+			end
+		end
+		-- the window measures its signature and thank-you line with TextService:GetTextSize (the mock's is a flat
+		-- 0.5 em per character): its MEASURE hook gets the renderer's font metrics instead (Mock.TextExtent)
+		if type(MMC.CreditsMetrics) == "table" then
+			MMC.CreditsMetrics.MEASURE = function(text, size, font, face)
+				local probe = Instance.new("TextLabel") -- a fresh one: a face set before never sticks to the next text
+				probe.Text, probe.TextSize, probe.Font = text, size, font
+				if face then
+					probe.FontFace = face
+				end
+				return (Mock.TextExtent(probe))
+			end
+		end
 		MMC.OpenCredits()
 	end
 	advance(0.6)

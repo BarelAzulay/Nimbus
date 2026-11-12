@@ -5,6 +5,9 @@ local Config = {}
 
 Config.GameName = "Nimbus Climb"
 Config.Tagline = "Climb the storm. Together."
+-- (credits look B) the creator's Roblox account (St.Gavin): the Credits polaroid shows its headshot when the game is not
+-- owned by a user account (a group game; game.CreatorId is the owner's id otherwise). The names are UpdateNotes.Credits.
+Config.CreatorUserId = 93742920
 
 ----------------------------------------------------------------------
 -- Character physics (applied to every Humanoid by PlayerService)

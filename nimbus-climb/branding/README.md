@@ -1,5 +1,16 @@
 # Nimbus Climb - game icon (the Cloudy Dragon)
 
+## The studio logos (SaintsField), used by the Credits window
+
+| File | What it is | Roblox Image id |
+|---|---|---|
+| `saintsfield-wordmark.png` | 1024 x 230, transparent: the silver SAINTSFIELD / GAME PRODUCTIONS wordmark (on the navy plank) | `TextureIds.saintsfield_wordmark` |
+| `saintsfield-emblem.png` | 512 x 512, transparent corners: the round colour SF emblem (the corner sticker) | `TextureIds.saintsfield_emblem` |
+
+The owner's own logo art, uploaded from Studio as Images and recorded with
+`tools/upload_assets.py --textures --upload --set-id KEY=IMAGEID` (sends nothing; index `blender/textures/textures.json`).
+A changed PNG is a new upload (a new id), like every image in that index.
+
 The game icon shows the **Cloudy Dragon**, the Mythic mascot pet (`cloudy_dragon` in `PetCatalog`), floating in a
 sky with a golden cloud token.
 

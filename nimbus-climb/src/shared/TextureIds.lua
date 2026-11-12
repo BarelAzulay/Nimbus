@@ -40,6 +40,8 @@ return {
 	fx_thorn = 108794659764717,
 	fx_voidring = 72735299069339,
 	fx_wisps = 87801455217864,
+	saintsfield_emblem = 114032351365198,
+	saintsfield_wordmark = 105015128819853,
 	sky_day_vivid_Bk = 105357670769779,
 	sky_day_vivid_Dn = 106213730878998,
 	sky_day_vivid_Ft = 102097491863533,

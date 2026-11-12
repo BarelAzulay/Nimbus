@@ -333,6 +333,24 @@
       "structureHash": "c949ca5f2270f9c991f288082a0370bc",
       "uploadedOutside": true
     },
+    "saintsfield_emblem": {
+      "assetId": 114032351365198,
+      "contentHash": "cce2e389341c6ada095fe1582c40ee0da4acd85fa790a6e2f23608d4e4e9c14d",
+      "fileSha256": "cce2e389341c6ada095fe1582c40ee0da4acd85fa790a6e2f23608d4e4e9c14d",
+      "idSetByHand": "2026-11-12T23:01:11Z",
+      "moderationState": null,
+      "structureHash": "7c34f1e9a8db2126400ee42a5d34547f",
+      "uploadedOutside": true
+    },
+    "saintsfield_wordmark": {
+      "assetId": 105015128819853,
+      "contentHash": "591657331544d53a7a09d276b700be9ebfc0bd7ad43e9d960f1700f38c27d0d6",
+      "fileSha256": "591657331544d53a7a09d276b700be9ebfc0bd7ad43e9d960f1700f38c27d0d6",
+      "idSetByHand": "2026-11-12T23:01:11Z",
+      "moderationState": null,
+      "structureHash": "90f5bae05566502cae0979e2e471836b",
+      "uploadedOutside": true
+    },
     "sky_day_vivid_Bk": {
       "assetId": 105357670769779,
       "contentHash": "cb66006ecbda806b01060c6d5a03f02f4c0e7e77e1a9cebb89b2b584c7063f02",
