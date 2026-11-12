@@ -42,7 +42,9 @@
 -- Screen: ScreenGui "NimbusDaily" (DisplayOrder 19 like the Store and the Pets window: they never overlap, each Open fires
 -- MenuController.WindowOpened(id) and each closes on any other id; IgnoreGuiInset = false: the HUD attributes are gui px).
 --   * TextButton "GiftsButton": round, x = NimbusHud.TopRightLeft - 8 - size, y = 6 (gui px); 56 px at 1080p (x the screen
---     factor), 44 px on a phone; hidden with the strips (InMatch / InBattle, or no top-right strips); re-laid out on the HUD's
+--     factor), 44 px on a phone; hidden with the strips (InMatch / InBattle, or no top-right strips) and, with its ring and
+--     pip, while any window of K.WINDOWS is open (slop audit 2026-11-12, win 5: H.windowUp; back within K.WINDOW_POLL of the
+--     close; the Gifts window itself keeps it); re-laid out on the HUD's
 --     TopRightLeft / TopRightBottom signals. Children: the Gifts glyph, Frame "Pip" (a 10 px Neon.Red dot: an unlocked
 --     claim (ClaimView "Claim" / "Repair") or a ready play tier, >= Config.Daily.PipDelaySeconds after the last
 --     CharacterAdded, the tutorial at its spin step or later), a 0.4 s shake when a play tier becomes Ready in a payload
@@ -55,8 +57,8 @@
 --     844 x 390 phone, "Phone" at scale 1; "PC" at the screen factor; a phone box taller than wide is "Portrait"). The PC
 --     layout is computed in the design box (box px / scale) with card A's 1080p numbers as its largest form. Inside:
 --     "DailyWindow" (navy, gold edge, UIScale "Pop" for the 0.22 s Back-Out open) > "TitleBar" (gold: Tab_Daily "Daily",
---     Tab_Play "Play time", the red CloseButton: 56 px PC / 44 px phone, header 76 / 50) and "Body" > DailyPage, PlayPage,
---     Fx. While open on a phone (or a touch-only device) Roblox's stick and jump are hidden (MenuController.
+--     Tab_Play "Play time", the red CloseButton: 56 px PC / 44 px phone, its X drawn by NeonKit.CloseMark, header 76 / 50)
+--     and "Body" > DailyPage, PlayPage, Fx. While open on a phone (or a touch-only device) Roblox's stick and jump are hidden (MenuController.
 --     SetTouchHidden("Daily", on)), the menu tiles step aside (MenuController.SetColumnCovered(windowLeft, "Daily")) and
 --     the HUD's vitals card hides (HudController.SetVitalsHidden("Daily", on): the window's edge would cut it on PC).
 --   * DailyPage (card A): Header "Day 3 of 7 . Week 2" (the middle dot), StreakChip "Streak: 9 days" (phone "Streak: 9";
@@ -128,6 +130,18 @@ local K = {
 	BTN = 56, -- the button at 1080p (x the screen factor) ...
 	BTN_MIN = 44, -- ... never below this
 	SMALL = 500, -- the smaller screen side at most this = a phone (the button)
+	-- (slop audit 2026-11-12, win 5) the button, its ring and its pip step aside while any of these controllers answers
+	-- IsOpen() == true: every window that can sit over the button's corner. Each one's IsOpen is false in ordinary play with
+	-- no window up (read 2026-11-12). Never DailyController itself (its own window keeps the button), NpcController (a talk
+	-- box), DevController or MainMenuController (the title screen hides the whole HUD on its own; its Settings / Credits /
+	-- What's new windows are asked through MainMenuController.Window() in H.windowUp instead).
+	WINDOWS = {
+		"MenuController", "PetsController", "ShopController", "StoreController", "TroveController", "IndexController",
+		"FusionController", "CareController", "TrainController", "DungeonController", "ObbyController", "RaidGateController",
+		"ArenaController", "LossScreen",
+	},
+	WINDOW_POLL = 0.25, -- seconds: no shared close signal exists, so a watcher re-lays the button out when that answer changes
+	WINDOW_RETRY = 2, -- seconds before a K.WINDOWS module not found yet is looked up again (review round 1)
 	PIP = 10,
 	RING_PAD = 4, -- the ring sits this far outside the button
 	RING_STROKE = 3,
@@ -286,9 +300,12 @@ local S = {
 	Pulse = false,
 	BackBound = false,
 	Hidden = true,
+	WindowUp = false, -- H.windowUp() at the last H.layoutButton (the K.WINDOW_POLL watcher compares against it)
+	WindowMods = {}, -- (review round 1) [name] = the K.WINDOWS module once found, or the clock of its next look-up
 	TouchOff = false,
 	VitalsOff = false, -- the HUD's vitals card is hidden for this window (H.coverColumn)
 }
+DailyController._S = S -- (review round 1) tests read the state (the K.WINDOWS module cache)
 local warned = {}
 
 local function warnOnce(key, err)
@@ -711,15 +728,54 @@ function H.paintRing()
 	U.Ring.Visible = not S.Hidden and type(st) == "table" and st.Loading ~= true and #tiers(st) > 0
 end
 
--- (lobby-shop review round 1) the Shop window (NimbusShop, the same DisplayOrder 19, Shop A's wide rect) covers the
--- button's corner: the button, its ring and its pip hide while the Shop is open (ShopController.Toggled re-lays it out)
-function H.shopUp()
-	local shop = controller("ShopController")
-	if type(shop) ~= "table" or type(shop.IsOpen) ~= "function" then
-		return false
+-- (lobby-shop review round 1: the Shop only; slop audit 2026-11-12, win 5: every window) a window over the button's
+-- corner (the Shop's wide rect, the Pets window, the Index, the menu's windows, the Training Place ...) would sit under or
+-- over it: the button, its ring and its pip hide while any controller of K.WINDOWS answers IsOpen() == true. Re-laid out by
+-- MenuController.WindowOpened (another id), ShopController.Toggled and the K.WINDOW_POLL watcher (a close path with no
+-- signal: an X, Esc, another window taking over, a match start). The Gifts window itself is not in the list.
+-- (review round 1) the poll stays cheap: each K.WINDOWS module is looked up (FindFirstChild + require) once and kept; one
+-- not found yet is looked up again at most every K.WINDOW_RETRY seconds; a tick is then only their IsOpen calls
+function H.windowModule(name)
+	local hit = S.WindowMods[name]
+	if type(hit) == "table" then
+		return hit
 	end
-	local ok, open = pcall(shop.IsOpen)
-	return ok and open == true
+	local t = os.clock()
+	if type(hit) == "number" and t < hit then
+		return nil
+	end
+	local mod = controller(name)
+	S.WindowMods[name] = mod or (t + K.WINDOW_RETRY)
+	return mod
+end
+
+function H.windowUp()
+	for _, name in ipairs(K.WINDOWS) do
+		local mod = H.windowModule(name)
+		if mod and type(mod.IsOpen) == "function" then
+			local ok, open = pcall(mod.IsOpen)
+			if ok and open == true then
+				return true
+			end
+		end
+	end
+	-- (gate fix) the menu's own windows (Settings from the HUD pill's gear, Credits, What's new) are not the title screen,
+	-- so MainMenuController.IsOpen() says false for them: ask Window() for the panel's holder instead
+	local main = H.windowModule("MainMenuController")
+	if main and type(main.Window) == "function" then
+		local ok, holder = pcall(main.Window)
+		if ok and holder ~= nil and holder.Parent ~= nil then
+			return true
+		end
+	end
+	return false
+end
+
+-- the K.WINDOW_POLL watcher's step: a layout only when the answer changed since the last one
+function H.watchWindows()
+	if H.windowUp() ~= S.WindowUp then
+		H.layoutButton()
+	end
 end
 
 function H.layoutButton()
@@ -729,7 +785,8 @@ function H.layoutButton()
 	local size = H.buttonSize()
 	local hud = H.hud()
 	local left = tonumber(hud and hud:GetAttribute("TopRightLeft")) or 0
-	S.Hidden = left <= 0 or hiddenByPlay() or H.shopUp()
+	S.WindowUp = H.windowUp()
+	S.Hidden = left <= 0 or hiddenByPlay() or S.WindowUp
 	local x = math.floor(left - K.GAP - size + 0.5)
 	U.Button.Size = UDim2.fromOffset(size, size)
 	U.Button.Position = UDim2.fromOffset(x + S.ShakeX, K.TOP)
@@ -905,10 +962,11 @@ function H.ensureWindow()
 	U.TabPlay.Activated:Connect(function()
 		H.setTab("Play")
 	end)
-	U.Close = NeonKit.Button({ Name = "CloseButton", Text = NeonKit.Glyphs.Close, Color = "Red", Size = 44, TextSize = 22, Parent = bar, Callback = function()
+	U.Close = NeonKit.Button({ Name = "CloseButton", Text = "", Color = "Red", Size = 44, TextSize = 22, Parent = bar, Callback = function()
 		DailyController.Close()
 	end })
 	U.Close.ZIndex = 7
+	NeonKit.CloseMark(U.Close) -- slop audit 2026-11-12: a drawn X (the U+2715 glyph showed a missing-glyph box)
 	U.Body = Util.Create("Frame", { Name = "Body", BackgroundTransparency = 1, BorderSizePixel = 0, ClipsDescendants = true, ZIndex = 4, Parent = win })
 
 	-- the Daily page (card A)
@@ -1011,8 +1069,7 @@ function H.layout()
 		place(U.Bar:FindFirstChild(tab.Name .. "Fill"), x, M.TabY, M.TabW[i], M.TabH)
 	end
 	U.TabDaily.TextSize, U.TabPlay.TextSize = M.TabText, M.TabText
-	place(U.Close, W - M.HeadPad - M.Close, M.CloseY, M.Close, M.Close)
-	U.Close.TextSize = math.floor(M.Close * 0.5)
+	place(U.Close, W - M.HeadPad - M.Close, M.CloseY, M.Close, M.Close) -- (its drawn X scales with it)
 	local B = Hh - M.Header
 	place(U.Body, 0, M.Header, W, B)
 	H.layoutDaily(M, W, B)
@@ -1958,6 +2015,7 @@ function DailyController.Open(args)
 		if menu and menu.WindowOpened then
 			menu.WindowOpened:Fire("Daily")
 		end
+		safe("layout", H.layoutButton) -- (win 5) the windows WindowOpened just closed no longer hide the button
 	end
 	H.coverColumn() -- after WindowOpened: the window it closed clears only its own cover
 	return true
@@ -2007,8 +2065,14 @@ function DailyController.Init()
 	local menu = controller("MenuController")
 	if menu and menu.WindowOpened then
 		menu.WindowOpened:Connect(function(id)
-			if id ~= "Daily" and S.Open then
-				DailyController.Close()
+			if id ~= "Daily" then
+				if S.Open then
+					DailyController.Close()
+				end
+				-- (win 5) the button steps aside behind the window that opened (deferred: it finishes opening first)
+				task.defer(function()
+					safe("windows", H.layoutButton)
+				end)
 			end
 		end)
 	end
@@ -2020,6 +2084,14 @@ function DailyController.Init()
 		end)
 	end
 	safe("layout", H.layoutButton)
+	-- (win 5) no window fires a shared close signal (an X, Esc, another window taking over, a match start): the watcher
+	-- re-lays the button out only when the K.WINDOWS answer changes
+	task.spawn(function()
+		while true do
+			task.wait(K.WINDOW_POLL)
+			safe("windows", H.watchWindows)
+		end
+	end)
 	task.spawn(function()
 		local pg = LocalPlayer:WaitForChild("PlayerGui")
 		local hud = pg:WaitForChild("NimbusHud", 30)

@@ -135,7 +135,6 @@ local C = {
 local G = {
 	Star = "\226\152\133",
 	Down = "\226\150\190",
-	Close = "\226\156\149",
 	Glass = "\240\159\148\141",
 	Icon = { Train = "\240\159\146\170", Upgrade = "\226\156\168", Mix = "\226\156\168" },
 }
@@ -465,12 +464,13 @@ function H.build()
 	U.Icon = label(header, "Icon", "Title", 36, { ZIndex = 4, TextTruncate = Enum.TextTruncate.None })
 	U.Title = label(header, "Title", "Title", 34, { ZIndex = 4, TextXAlignment = Enum.TextXAlignment.Left })
 	U.Close = CloudUI.Button({
-		Name = "CloseButton", Text = G.Close, Style = "Red", Size = UDim2.fromOffset(44, 44), TextSize = 22, ZIndex = 5,
+		Name = "CloseButton", Text = "", Style = "Red", Size = UDim2.fromOffset(44, 44), TextSize = 22, ZIndex = 5,
 		Callback = function()
 			PetPicker.Close()
 		end,
 		Parent = header,
 	})
+	NeonKit.CloseMark(U.Close) -- slop audit 2026-11-12: a drawn X (the U+2715 glyph showed a missing-glyph box)
 	-- body
 	local body = Util.Create("Frame", { Name = "Body", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 2, Parent = panel })
 	U.Body = body
@@ -671,8 +671,7 @@ function H.layout()
 	place(U.HeaderFoot, 0, M.Header - 18, W, 18)
 	place(U.Icon, M.HeadPad, (M.Header - M.Icon) / 2, M.Icon, M.Icon)
 	U.Icon.TextSize = M.IconText
-	place(U.Close, W - M.HeadPad - M.Close, M.CloseY, M.Close, M.Close)
-	U.Close.TextSize = math.floor(M.Close * 0.5)
+	place(U.Close, W - M.HeadPad - M.Close, M.CloseY, M.Close, M.Close) -- (its drawn X scales with it)
 	local titleX = M.HeadPad + M.Icon + 8
 	local titleW = W - titleX - M.Close - 2 * M.HeadPad
 	place(U.Title, titleX, 0, titleW, M.Header)

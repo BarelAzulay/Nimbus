@@ -9,8 +9,12 @@
 --                        in the screen centre" became the Store's form: opening it puts no OTHER text in the middle, and no
 --                        Gifts text is left there after Close. gui-redo Task 10: the Play tab is card B's gift boxes, so
 --                        the header is PlayHeader and a far tier shows its own clock ("12:50", counting from ServerNow)
---                        instead of "13 min to go"
---   client_daily_pip     the pip waits PipDelaySeconds after a spawn and the tutorial's spin step, the shake when a tier
+--                        instead of "13 min to go". Slop-audit 2026-11-12: win 6, the CloseButton's X is drawn
+--                        (NeonKit.CloseMark, >= 44 px); win 5, the Gifts button, its ring and its pip hide behind every
+--                        window in DailyController.K.WINDOWS (the menu's Pets window, the Index, the Stats window), not only
+--                        the Shop, and are back within 0.4 s of that window closing (its own X, or MenuController switching
+--                        ids and closing); the Gifts window itself keeps them
+--   client_daily_pip    the pip waits PipDelaySeconds after a spawn and the tutorial's spin step, the shake when a tier
 --                        becomes Ready (never on the first payload after a Loading one), the ring's fill and its paused dim,
 --                        the button hides in a match
 --   client_daily_chips   the boost chips: x2 Cash, x2 XP with the potion's time left, the pass's x2 XP, the started / 5 min
@@ -18,7 +22,8 @@
 --   client_daily_vip     VipController.IsVip, the gold [VIP] chat prefix, the lobby crown on High only, hidden in a battle,
 --                        gone on leave
 --   client_daily_mobile  (phone world, 844x390 touch) the 44 px button, the 820x330 window at 12,59 at scale 1 (gui-redo
---                        Task 9: the BigRect box; it was 560x300 under the button), 92x122 tiles (were 64x92), CLAIM! 230x64
+--                        Task 9: the BigRect box; it was 560x300 under the button), 92x122 tiles (were 64x92), the 44 px X
+--                        still drawn and centred (slop-audit win 6), CLAIM! 230x64
 --                        (was 200x48), texts >= 15, chips 34x18 text 15
 -- No DailyService yet (W2): every payload is fired at the client with KC.toClient("DailyState", ...). The viewport, the
 -- graphics level, the tutorial state, the attributes and MenuController.Hint are restored at the end of each scenario.
@@ -325,6 +330,20 @@ local function clientScenarios()
 	function H.sent(mark)
 		return KC.serverCalls("DailyRequest", mark)
 	end
+	-- slop-audit win 6: the problems of a close button's drawn X ({} = good): the shared check (smoke_common.lua
+	-- SmokeCommon.closeMarkIssues, review round 1), with a tap of at least 44 px
+	function H.closeMarkIssues(button)
+		return SmokeCommon.closeMarkIssues(button, { Shown = H.shown, MinTap = 44 })
+	end
+	-- win 5: the Gifts button, its ring and its pip as { button, ring, pip } shown flags
+	function H.giftsParts()
+		local b = H.btn()
+		local ring = H.gui() and H.gui():FindFirstChild("Ring")
+		return { H.shown(b), H.shown(ring), H.shown(H.find(b, "Pip")) }
+	end
+	function H.partsText(p)
+		return fmt("button %s, ring %s, pip %s", tostring(p[1]), tostring(p[2]), tostring(p[3]))
+	end
 
 	S.client_daily_window = guarded("client_daily_window", function()
 		local restoreScreen = H.saveScreen()
@@ -459,6 +478,10 @@ local function clientScenarios()
 		H.tapTab("Daily")
 		centred = H.centredWhere(others)
 		T.check(#centred == 0, "daily window: nothing in the screen centre (Daily tab)", KC.describeCentred(centred))
+		-- (slop-audit win 6) the X is drawn, never a glyph
+		local closeIssues = H.closeMarkIssues(H.find(H.win(), "CloseButton"))
+		T.check(#closeIssues == 0, "daily window: the CloseButton's X is drawn (NeonKit.CloseMark: BarA +45 / BarB -45, centred, no text), a tap of at least 44 px",
+			table.concat(closeIssues, "; "))
 		-- X closes; Esc closes
 		H.tap(H.find(H.win(), "CloseButton"))
 		T.check(not DC.IsOpen() and not H.shown(H.win()), "daily window: X closes it")
@@ -476,9 +499,15 @@ local function clientScenarios()
 		if Pets then
 			Pets.Open()
 			KC.advance(0.3)
-			H.tap(btn)
+			-- (slop-audit win 5: the Gifts button hides behind the Pets window, so the Gifts window comes from DailyController.Open,
+			-- e.g. a hint or the server; the window rule is the same)
+			T.check(not H.shown(btn), "daily window: (win 5) the Gifts button hides behind the Pets window", H.partsText(H.giftsParts()))
+			DC.Open()
+			local atOnce = H.giftsParts()
+			KC.advance(0.3)
 			T.check(DC.IsOpen() and not Pets.IsOpen(), "daily window: the Gifts window closes the Pets window (MenuController's WindowOpened handler)",
 				fmt("gifts %s, pets %s", tostring(DC.IsOpen()), tostring(Pets.IsOpen())))
+			T.check(atOnce[1] and atOnce[2] and H.shown(btn), "daily window: (win 5) ...and its own button and ring show again at once (no poll wait)", H.partsText(atOnce))
 			Pets.Open()
 			KC.advance(0.3)
 			T.check(not DC.IsOpen() and Pets.IsOpen(), "daily window: the Pets window closes the Gifts window")
@@ -493,6 +522,110 @@ local function clientScenarios()
 			T.check(not DC.IsOpen(), "daily window: the Shop closes the Gifts window")
 			MC.Close()
 			KC.advance(0.3)
+		end
+		-- slop-audit win 5 (Review Focus 4): the Gifts button, its ring and its pip hide behind EVERY window of
+		-- DailyController.K.WINDOWS (not only the Shop) and are back within 0.4 s of that window closing, whatever closed it
+		-- (no shared close signal: DailyController polls every K.WINDOW_POLL s)
+		local IC = H.moduleAt("client", "Controllers/IndexController")
+		local list = type(DC.K.WINDOWS) == "table" and DC.K.WINDOWS or {}
+		local inList, wrong = {}, {}
+		for _, name in ipairs(list) do
+			inList[name] = true
+		end
+		for _, name in ipairs({ "MenuController", "PetsController", "ShopController", "StoreController", "TroveController", "IndexController", "FusionController",
+			"CareController", "TrainController", "DungeonController", "ObbyController", "RaidGateController", "ArenaController", "LossScreen" }) do
+			if not inList[name] then
+				wrong[#wrong + 1] = "missing " .. name
+			end
+		end
+		for _, name in ipairs({ "DailyController", "NpcController", "DevController", "MainMenuController" }) do
+			if inList[name] then
+				wrong[#wrong + 1] = "lists " .. name
+			end
+		end
+		T.check(#wrong == 0 and DC.K.WINDOW_POLL == 0.25, "daily window: (win 5) K.WINDOWS names every window controller (never itself, the NPC dialog, DEV or the title menu), K.WINDOW_POLL 0.25 s",
+			fmt("%s; poll %s", table.concat(wrong, ", "), tostring(DC.K.WINDOW_POLL)))
+		-- (review round 1) the poll is cheap: every K.WINDOWS module is resolved once and kept, so a tick is only their IsOpen
+		-- calls (no FindFirstChild + require 14 times every 0.25 s)
+		KC.advance(0.6)
+		local cache = type(DC._S) == "table" and DC._S.WindowMods or nil
+		local kept = {}
+		for _, name in ipairs(list) do
+			if type(cache) == "table" and type(cache[name]) == "table" then
+				kept[#kept + 1] = name
+			end
+		end
+		T.check(#kept == #list and #list > 0, "daily window: (win 5) the watcher keeps every K.WINDOWS module once resolved (a tick only calls IsOpen)",
+			#kept .. " of " .. #list)
+		if MC and Pets and IC then
+			local TC = H.moduleAt("client", "Controllers/TutorialController")
+			local prevTutorial = TC and TC.GetState and TC.GetState() or nil
+			KC.toClient("TutorialState", H.tutorial("done", { Done = true, Completed = true }))
+			H.fire(H.base(H.now()))
+			if not DC.PipShown() then
+				KC.advance(21) -- the pip waits PipDelaySeconds after a spawn
+			end
+			local function all(p)
+				return p[1] and p[2] and p[3]
+			end
+			local function none(p)
+				return not p[1] and not p[2] and not p[3]
+			end
+			local p = H.giftsParts()
+			T.check(all(p), "daily window: (win 5) no window up: the Gifts button, its ring and its pip show", H.partsText(p))
+			MC.Open("Pets")
+			KC.advance(0.3)
+			p = H.giftsParts()
+			T.check(Pets.IsOpen() and none(p), "daily window: (win 5) the menu's Pets window hides the Gifts button, its ring and its pip",
+				fmt("pets %s, %s", tostring(Pets.IsOpen()), H.partsText(p)))
+			local petsGui = H.pg():FindFirstChild("NimbusPets")
+			local petsWin = petsGui and petsGui:FindFirstChild("PetsWindow", true)
+			local petsX = petsWin and petsWin:FindFirstChild("Close")
+			if petsX then
+				Mock.Click(petsX) -- the Pets window's own (drawn) X
+			end
+			KC.advance(0.4)
+			p = H.giftsParts()
+			T.check(petsX ~= nil and not Pets.IsOpen() and all(p), "daily window: (win 5) ...back within 0.4 s of the Pets window's own X",
+				fmt("X %s, pets %s, %s", tostring(petsX ~= nil), tostring(Pets.IsOpen()), H.partsText(p)))
+			MC.Open("Index")
+			KC.advance(0.3)
+			p = H.giftsParts()
+			T.check(IC.IsOpen() and none(p), "daily window: (win 5) the Pet Index hides them too", fmt("index %s, %s", tostring(IC.IsOpen()), H.partsText(p)))
+			MC.Open("Stats")
+			KC.advance(0.3)
+			p = H.giftsParts()
+			T.check(not IC.IsOpen() and MC.IsOpen() and none(p), "daily window: (win 5) MenuController switching to Stats: still hidden",
+				fmt("index %s, menu %s, %s", tostring(IC.IsOpen()), tostring(MC.IsOpen()), H.partsText(p)))
+			MC.Close()
+			KC.advance(0.4)
+			p = H.giftsParts()
+			T.check(not MC.IsOpen() and all(p), "daily window: (win 5) ...back within 0.4 s of MenuController closing it", fmt("menu %s, %s", tostring(MC.IsOpen()), H.partsText(p)))
+			-- (gate fix) the in-game Settings window (the HUD pill's gear) is MainMenuController's, whose IsOpen() is the title
+			-- screen only: it must hide the button too
+			local MMC = H.moduleAt("client", "Controllers/MainMenuController")
+			if MMC and MMC.OpenSettings and MMC.CloseWindows then
+				MMC.OpenSettings()
+				KC.advance(0.3)
+				p = H.giftsParts()
+				T.check(MMC.Window() ~= nil and not MMC.IsOpen() and none(p), "daily window: (win 5) the in-game Settings window hides the Gifts button, its ring and its pip",
+					fmt("settings %s, %s", tostring(MMC.Window() ~= nil), H.partsText(p)))
+				MMC.CloseWindows()
+				KC.advance(0.4)
+				p = H.giftsParts()
+				T.check(MMC.Window() == nil and all(p), "daily window: (win 5) ...back within 0.4 s of Settings closing", H.partsText(p))
+			else
+				T.fail("daily window: (win 5) needs MainMenuController.OpenSettings / CloseWindows")
+			end
+			DC.Open()
+			KC.advance(0.6)
+			p = H.giftsParts()
+			T.check(DC.IsOpen() and all(p), "daily window: (win 5) the Gifts window itself never hides its own button", H.partsText(p))
+			DC.Close()
+			KC.advance(0.3)
+			H.restoreTutorial(prevTutorial)
+		else
+			T.fail("daily window: (win 5) needs MenuController, PetsController and IndexController")
 		end
 		-- InMatch closes it
 		DC.Open()
@@ -809,6 +942,9 @@ local function clientScenarios()
 			"daily mobile: centred at 12,59, inside the screen", win and fmt("%d,%d in %dx%d", win.AbsolutePosition.X, win.AbsolutePosition.Y, gui.AbsoluteSize.X, gui.AbsoluteSize.Y) or "")
 		local cell = H.cell(1)
 		T.check(cell ~= nil and abs(cell.AbsoluteSize.X - 92) <= 1 and abs(cell.AbsoluteSize.Y - 122) <= 1, "daily mobile: tiles 92x122", cell and fmt("%dx%d", cell.AbsoluteSize.X, cell.AbsoluteSize.Y) or "")
+		-- (slop-audit win 6, Review Focus 5) the phone layout re-sizes the X (56 -> 44 px): the drawn mark follows it
+		local closeIssues = H.closeMarkIssues(H.find(win, "CloseButton"))
+		T.check(#closeIssues == 0, "daily mobile: the 44 px CloseButton keeps its drawn X centred", table.concat(closeIssues, "; "))
 		local claim = H.claimButton()
 		T.check(claim ~= nil and abs(claim.AbsoluteSize.X - 230) <= 1 and abs(claim.AbsoluteSize.Y - 64) <= 1, "daily mobile: CLAIM! 230x64", claim and fmt("%dx%d", claim.AbsoluteSize.X, claim.AbsoluteSize.Y) or "")
 		local function smallest(root)

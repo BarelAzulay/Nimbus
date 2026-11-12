@@ -13,7 +13,7 @@
 -- ScreenGui NimbusLoss (DisplayOrder 24: above the battle HUD's result card, below Notify 30), card LossCard (NeonKit.Card, centred
 -- under the top bar; 16 px side gutters on a phone; every button >= 44 px): Title, Sub, PetRow1..3 (Face viewport, Name, Levels
 -- "L1 -> L3" with a pop + one SoundFx "Reward" for the whole card, or "L1" + XpBar moving from XpBefore to XpFrac), Lines,
--- FightAgain ("Fight again", hidden without OnFightAgain), EditTeam ("Edit team"), CloseButton.
+-- FightAgain ("Fight again", hidden without OnFightAgain), EditTeam ("Edit team"), CloseButton (its X drawn: NeonKit.CloseMark).
 -- Fight again and Edit team wait for the return teleport: while Config.Attr.InBattle is still set (RETURN_DELAY after the end) the
 -- button says "Returning..." and ignores taps, then acts once. A refused start leaves the screen (the server's toast says why) and
 -- the button works again after START_WAIT; the next battle's InBattle closes the screen.
@@ -425,7 +425,7 @@ local function build()
 		Title = text(body, "Title", "", "Title", 34, GOLD, { TextXAlignment = Enum.TextXAlignment.Left }),
 		Sub = text(body, "Sub", "", "Body", 19, MUTED),
 		Lines = lines,
-		Close = NeonKit.Button({ Name = "CloseButton", Text = "X", Color = "Red", Variant = "Outline", Size = UDim2.fromOffset(K.CLOSE, K.CLOSE), TextSize = 24, Parent = body, Callback = function()
+		Close = NeonKit.Button({ Name = "CloseButton", Text = "", Color = "Red", Variant = "Outline", Size = UDim2.fromOffset(K.CLOSE, K.CLOSE), TextSize = 24, Parent = body, Callback = function()
 			local payload = S.Payload
 			LossScreen.Hide()
 			if payload and payload.OnClose then
@@ -435,6 +435,7 @@ local function build()
 		FightAgain = NeonKit.Button({ Name = "FightAgain", Text = "Fight again", Color = "Green", Size = UDim2.fromOffset(300, K.BUTTON_H), TextSize = 24, Parent = body, Callback = fightAgain }),
 		EditTeam = NeonKit.Button({ Name = "EditTeam", Text = "Edit team", Color = "Blue", Variant = "Outline", Size = UDim2.fromOffset(300, K.BUTTON_H), TextSize = 24, Parent = body, Callback = editTeam }),
 	}
+	NeonKit.CloseMark(U.Close) -- slop audit 2026-11-12: a drawn X (no "X" letter, no glyph)
 	local mouse = optional(Client, "MouseLock")
 	if mouse and type(mouse.WatchVisible) == "function" then
 		safe("mouse", mouse.WatchVisible, "LossScreen", card.Root) -- the cursor is free while the card shows

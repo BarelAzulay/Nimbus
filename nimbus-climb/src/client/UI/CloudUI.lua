@@ -1,8 +1,9 @@
 -- CloudUI: the game's UI kit. v5 (Phase 5, ARCHITECTURE_V3.md "Phase 5 build contract" 6.6): every widget is re-skinned
 -- on the Neon kit (client/UI/NeonKit.lua, image 21.png): dark navy faces, a glowing neon border in the widget's own
 -- colour, GothamBlack labels with a dark stroke. Panel = a Neon card (accent = props.Accent, props.Category or Blue)
--- with a GothamBlack 34 title, a neon underline and a red X; the cloud bumps, the sky-blue frame and the pixel glint
--- of v3 are gone ("less cute"). The API, the names and the attributes below are UNCHANGED.
+-- with a GothamBlack 34 title, a neon underline and a red X (drawn by NeonKit.CloseMark since the slop audit, 2026-11-12);
+-- the cloud bumps, the sky-blue frame and the pixel glint of v3 are gone ("less cute"). The API, the names and the
+-- attributes below are UNCHANGED.
 -- (v3 text kept for the API:) the chunky "cloud" UI kit. Front-page-simulator style panels made cloudier: a thick dark
 -- navy outline, glossy sky-blue frames with a bevelled rim, puffy cloud bumps along the top edge, a bold
 -- title bar with big outlined title text and a red X, glossy buttons with a darker bottom lip, and a tiny
@@ -727,7 +728,7 @@ function CloudUI.Panel(props)
 		end
 		local closeButton = CloudUI.Button({
 			Name = "Close",
-			Text = "X",
+			Text = "",
 			Style = "Red",
 			TextSize = 24,
 			Size = UDim2.fromOffset(closeSize, closeSize),
@@ -739,6 +740,7 @@ function CloudUI.Panel(props)
 			end,
 			Parent = root,
 		})
+		NeonKit.CloseMark(closeButton) -- slop audit 2026-11-12: the X is drawn (no "X" letter, no glyph); it follows a resize
 		panel.CloseButton = closeButton
 	end
 

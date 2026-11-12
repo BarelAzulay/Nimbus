@@ -170,7 +170,6 @@ local WHITE = Colors.White
 local MUTED = Colors.Muted or Colors.CloudShade
 local GOLD = Theme.Neon.Gold
 local TAB_COLORS = { Eggs = "Green", Gems = "Blue", Packs = "Gold", Passes = "Purple", Boosts = "Pink" }
-local CLOSE_GLYPH = "\226\156\149"
 
 -- every pack's own colours (the owner's note, 2026-11-04): Top -> Bottom is the card's gradient (saturated, the Bottom
 -- dark enough for white text), Edge its neon stroke and glow. No two packs share a pair.
@@ -639,7 +638,7 @@ function H.build()
 	U.TokText = label("Text", tokPill, "0", "Display", 22, { TextXAlignment = Enum.TextXAlignment.Left })
 	U.Close = CloudUI.Button({
 		Name = "CloseButton",
-		Text = CLOSE_GLYPH,
+		Text = "",
 		Style = "Red",
 		Size = UDim2.fromOffset(44, 44),
 		TextSize = 22,
@@ -648,6 +647,7 @@ function H.build()
 		end,
 		Parent = header,
 	})
+	NeonKit.CloseMark(U.Close) -- slop audit 2026-11-12: a drawn X (the U+2715 glyph showed a missing-glyph box)
 
 	-- the rail
 	local rail = frame("Rail", holder)
@@ -1086,8 +1086,7 @@ function H.layoutHeader(W, R)
 	place(U.Header, 0, 0, W, R.Header)
 	place(U.Band, 0, 0, W, portrait and R.Row or R.Header)
 	local closeY = portrait and 0 or math.floor((R.Header - R.Close) / 2)
-	place(U.Close, W - R.Close - (portrait and 3 or 10), closeY, R.Close, R.Close)
-	U.Close.TextSize = math.floor(R.Close * 0.5)
+	place(U.Close, W - R.Close - (portrait and 3 or 10), closeY, R.Close, R.Close) -- (its drawn X scales with it)
 	local rowH = portrait and R.Row or R.Header
 	place(U.Icon, portrait and 8 or 14, (rowH - R.Icon) / 2, R.Icon + 4, R.Icon)
 	U.Icon.TextSize = R.Icon

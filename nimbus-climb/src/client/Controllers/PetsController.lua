@@ -55,6 +55,7 @@ local Remotes = require(Shared:WaitForChild("Remotes"))
 
 local Client = script.Parent.Parent
 local CloudUI = require(Client:WaitForChild("UI"):WaitForChild("CloudUI"))
+local NeonKit = require(Client:WaitForChild("UI"):WaitForChild("NeonKit"))
 local Bits = require(Client:WaitForChild("UI"):WaitForChild("PetBits"))
 local State = require(Client:WaitForChild("State"))
 local SoundFx = require(Client:WaitForChild("SoundFx"))
@@ -937,7 +938,7 @@ function H.buildDetail()
 	end)
 	d.Close = CloudUI.Button({
 		Name = "SheetClose",
-		Text = "X",
+		Text = "",
 		Style = "Red",
 		TextSize = 22,
 		ZIndex = 23,
@@ -947,6 +948,7 @@ function H.buildDetail()
 		end,
 		Parent = d.Frame,
 	})
+	NeonKit.CloseMark(d.Close) -- slop audit 2026-11-12: a drawn X (no "X" letter, no glyph)
 end
 
 function H.build()

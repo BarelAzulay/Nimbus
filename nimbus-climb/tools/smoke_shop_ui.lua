@@ -5,7 +5,8 @@
 --   client_shop_window   (1920x1080) NimbusShop (order 19, IgnoreGuiInset, not reset on spawn) > ShopWindow = NeonKit.BigRect
 --                        1540x910; the rail's five tabs in order at x 18, y 16 + i * 92 (+44 from Tab_Packs) under the
 --                        header, 224 x 80, the RobuxDivider between Gems and Packs; the header (Title "Shop", Balance_Gems
---                        a GemIcon.Amount, Balance_Tokens, CloseButton, no Cash pill); NormalizeTab for every alias; Open
+--                        a GemIcon.Amount, Balance_Tokens, CloseButton with its drawn X (slop-audit win 6: NeonKit.CloseMark,
+--                        >= 44 px), no Cash pill); NormalizeTab for every alias; Open
 --                        { Tab = "Currency" } -> Gems, { Tab = "Passes" } -> Passes; the first open shows Eggs (Task 22), a
 --                        re-open the last tab; Packs / Passes / Boosts hold every StoreCatalog card of their tab inside the
 --                        content box (x 262, width 1240); Tab_Packs.Dot while the Starter Pack is on sale and unbought;
@@ -504,6 +505,12 @@ end
 function G.noOverlapNames()
 	return { "Tab_Eggs", "Tab_Gems", "Tab_Packs", "Tab_Passes", "Tab_Boosts", "Balance_Gems", "Balance_Tokens", "CloseButton" }
 end
+-- slop-audit win 6 (2026-11-12): the X is drawn (NeonKit.CloseMark), not the U+2715 glyph that showed a missing-glyph box.
+-- The problems of a close button ({} = good): the shared check (smoke_common.lua SmokeCommon.closeMarkIssues, review
+-- round 1), with a tap target of at least 44 px.
+function G.closeMarkIssues(button)
+	return SmokeCommon.closeMarkIssues(button, { Shown = G.shown, MinTap = 44 })
+end
 -- (review round 1) across ScreenGuis: the HUD Gifts button (NimbusDaily, the same DisplayOrder 19) is shown with the Shop
 -- closed, hidden while it is open (it sat over Balance_Tokens / the X), and back after Close
 function G.giftsCheck(Shop, tag)
@@ -611,6 +618,9 @@ S.client_shop_window = guarded("client_shop_window", function()
 	T.check(title ~= nil and tostring(title.Text) == "Shop", "shop window: the header's Title reads 'Shop'")
 	T.check(gemsPill ~= nil and gemsPill:FindFirstChild("GemAmount", true) ~= nil and header:FindFirstChild("Balance_Tokens") ~= nil and header:FindFirstChild("CloseButton") ~= nil,
 		"shop window: Balance_Gems (a GemIcon.Amount), Balance_Tokens and CloseButton")
+	local closeIssues = G.closeMarkIssues(header and header:FindFirstChild("CloseButton"))
+	T.check(#closeIssues == 0, "shop window: the CloseButton's X is drawn (NeonKit.CloseMark: BarA +45 / BarB -45, centred, no U+2715 box, no text), a tap of at least 44 px",
+		table.concat(closeIssues, "; "))
 	T.check(win:FindFirstChild("Balance_Cash", true) == nil, "shop window: no Cash pill")
 	T.check(G.near(G.rel(body, win).x, 262) and G.near(G.rel(body, win).w, 1240), "shop window: the content box (Body) at x 262, 1240 wide", G.d(body))
 	-- NormalizeTab

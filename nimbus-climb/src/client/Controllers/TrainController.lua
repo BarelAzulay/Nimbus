@@ -178,7 +178,6 @@ local C = {
 local G = {
 	Muscle = "\240\159\146\170", -- the Training Place's station icon (TycoonCatalog Gym) and the picker's Train icon
 	Star = "\226\152\133",
-	Close = "\226\156\149",
 	Prev = "\226\128\185",
 	Next = "\226\128\186",
 	Arrow = "\226\134\146",
@@ -745,12 +744,13 @@ function H.build()
 	Theme.Corner(U.Chip, UDim.new(0.5, 0))
 	Theme.Stroke(U.Chip, Theme.Lighten(C.Accent, 0.35), 2, 0.2)
 	U.Close = CloudUI.Button({
-		Name = "CloseButton", Text = G.Close, Style = "Red", Size = UDim2.fromOffset(44, 44), TextSize = 22, ZIndex = 5,
+		Name = "CloseButton", Text = "", Style = "Red", Size = UDim2.fromOffset(44, 44), TextSize = 22, ZIndex = 5,
 		Callback = function()
 			TrainController.Close()
 		end,
 		Parent = header,
 	})
+	NeonKit.CloseMark(U.Close) -- slop audit 2026-11-12: a drawn X (the U+2715 glyph showed a missing-glyph box)
 	-- body
 	local body = Util.Create("Frame", { Name = "Body", BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 2, Parent = panel })
 	U.Body = body
@@ -970,8 +970,7 @@ function H.layoutHeader()
 	place(U.HeaderFoot, 0, M.Header - 18, W, 18)
 	place(U.Icon, M.HeadPad, (M.Header - M.Icon) / 2, M.Icon, M.Icon)
 	U.Icon.TextSize = M.IconText
-	place(U.Close, W - M.HeadPad - M.Close, (M.Header - M.Close) / 2, M.Close, M.Close)
-	U.Close.TextSize = math.floor(M.Close * 0.5)
+	place(U.Close, W - M.HeadPad - M.Close, (M.Header - M.Close) / 2, M.Close, M.Close) -- (its drawn X scales with it)
 	U.Chip.TextSize = M.ChipText
 	local chipW = math.ceil(H.width(U.Chip.Text, M.ChipText, U.Chip.Font)) + 2 * M.ChipPad
 	local chipX = W - M.HeadPad - M.Close - M.Gap - chipW

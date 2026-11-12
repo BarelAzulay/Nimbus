@@ -1,6 +1,7 @@
 -- smoke_client_v2.lua: client scenarios for the v2 UI (ARCHITECTURE_V2.md section 9), run in the client world of
 -- tools/smoke.py after smoke_client.lua (which exports its helpers as the global KC):
---   client_ui_kit      CloudUI: every constructor of the kit, chunky style, shared update loop
+--   client_ui_kit      CloudUI: every constructor of the kit, chunky style, shared update loop; a closable panel's X is
+--                      drawn (slop-audit win 6, NeonKit.CloseMark: two rotated bars, no glyph) and follows a resized button
 --   client_state       State: ProfileSync mirror, defaults, sanitising, Changed / Tokens
 --   client_menu        MenuController: 6 icon tiles (v3), the Pets window (PetsController) / Shop (roulettes + items) / Stats windows,
 --                      the roulette spin + reveal, OpenPanel, Esc, one window at a time; v3 Pet Index window
@@ -66,6 +67,13 @@ local function allNamed(root, name)
 		end
 	end
 	return out
+end
+
+-- slop-audit win 6 (2026-11-12): a close button's drawn X (NeonKit.CloseMark): the shared check (smoke_common.lua
+-- SmokeCommon.closeMarkIssues, review round 1: every window's close button goes through the same one). {} = a good X.
+local sfmt = string.format -- (fmt above is KC.fmt, a number formatter)
+local function closeMarkIssues(button)
+	return SmokeCommon.closeMarkIssues(button, { Shown = isShown })
 end
 
 -- true when a shown label under `root` contains the number n (thousands separators ignored: '1,000' == 1000)
@@ -255,9 +263,47 @@ S.client_ui_kit = guarded("client_ui_kit", function()
 	local plain = CloudUI.Panel({ Name = "NoClouds", Clouds = false, Size = UDim2.fromOffset(200, 100), Parent = g })
 	T.check(plain.Root:FindFirstChild("CloudPuffs") == nil and plain.TitleLabel == nil and plain.Root:FindFirstChild("Close", true) == nil, "no title / not closable: no title, underline or red X")
 	local x = panel.Root:FindFirstChild("Close", true)
-	if T.check(x ~= nil and x:IsA("TextButton") and x.Text == "X", "a closable panel has a red X button") then
+	-- (slop-audit win 6: the X is drawn by NeonKit.CloseMark, two rotated bars; the "X" letter / U+2715 glyph is gone)
+	if T.check(x ~= nil and x:IsA("TextButton") and x.Text == "", "a closable panel has a red close button with no text (its X is drawn)",
+		x and ("text '" .. tostring(x.Text) .. "'") or "no Close button") then
 		local c = x.BackgroundColor3
 		T.check(c.R > c.G + 0.12 and c.R > c.B, "...and it is red", tostring(c))
+		local issues = closeMarkIssues(x)
+		T.check(#issues == 0, "...its CloseMark: white BarA (+45) / BarB (-45) over dark ink, centred within 1 px, inside the button, no X / U+2715 / U+00D7 text",
+			table.concat(issues, "; "))
+		local mark = x:FindFirstChild("CloseMark")
+		-- (Review Focus 5) a close button resized / moved after it is built (PetsController moves panel.CloseButton; phones)
+		local oldSize, oldPos, oldAnchor = x.Size, x.Position, x.AnchorPoint
+		x.AnchorPoint = Vector2.new(0, 0)
+		x.Position = UDim2.new(1, -84, 0, 6)
+		x.Size = UDim2.fromOffset(64, 52)
+		advance(0.05)
+		issues = closeMarkIssues(x)
+		T.check(#issues == 0, "...still centred and inside the button after it is resized to 64x52 and moved", table.concat(issues, "; "))
+		T.check(mark ~= nil and abs(mark.AbsoluteSize.X - mark.AbsoluteSize.Y) <= 0.5 and abs(mark.AbsoluteSize.Y - 0.6 * 52) <= 1,
+			"...the mark stays square at 0.6 of the button's short side", mark and sfmt("%.1fx%.1f", mark.AbsoluteSize.X, mark.AbsoluteSize.Y) or "no mark")
+		x.Size, x.Position, x.AnchorPoint = oldSize, oldPos, oldAnchor
+		advance(0.05)
+		local okNK, NK = pcall(require, Mock.GetPath(ROOTS["client"] .. "/UI/NeonKit"))
+		NK = okNK and type(NK) == "table" and NK or nil
+		local again = NK and type(NK.CloseMark) == "function" and NK.CloseMark(x) or nil
+		T.check(again ~= nil and again == mark and #allNamed(x, "CloseMark") == 1 and x.Text == "", "NeonKit.CloseMark on a marked button returns the existing mark (no second one)")
+		T.check(NK ~= nil and NK.Glyphs.Close == nil, "NeonKit.Glyphs has no Close glyph any more (U+2715 drew a missing-glyph box)")
+		if NK and type(NK.CloseMark) == "function" then
+			-- a NeonKit.Button (its UIPadding is text room: without text the mark measures the whole button) with a kit label
+			local nb = NK.Button({ Name = "KitClose", Text = "Close", Color = "Red", Size = 44, Parent = g })
+			local lb = Instance.new("TextLabel")
+			lb.Name = "Label"
+			lb.Text = "X"
+			lb.Parent = nb
+			local nm = NK.CloseMark(nb)
+			advance(0.05)
+			issues = closeMarkIssues(nb)
+			T.check(#issues == 0 and nb.Text == "" and lb.Text == "" and nm ~= nil and abs(nm.AbsoluteSize.X - 0.6 * 44) <= 1,
+				"NeonKit.CloseMark on a NeonKit.Button: its text and its label's text cleared, the mark 0.6 of the 44 px button, centred",
+				sfmt("%s; text '%s' / '%s', mark %s", table.concat(issues, "; "), nb.Text, lb.Text, nm and sfmt("%.1f", nm.AbsoluteSize.X) or "none"))
+			nb:Destroy()
+		end
 		Mock.Click(x)
 		advance(0.1)
 		T.eq(closed, 1, "...clicking it calls OnClose")

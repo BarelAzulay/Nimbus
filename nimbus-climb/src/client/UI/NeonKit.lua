@@ -10,6 +10,7 @@
 --                                        "Gems": a TextLabel with no text hosting a client/UI/GemIcon (the cut gem)
 --   NeonKit.Pill(props)   -> { Root, Card, Coin, Glyph, Text, SetText(text), SetColor(color) }
 --   NeonKit.Button(props) -> TextButton (Variant "Primary" | "Outline"; hover 1.04 / press 0.95; Disabled attribute)
+--   NeonKit.CloseMark(button, opts) -> Frame "CloseMark" (the drawn X of every window's close button; slop audit 2026-11-12)
 --   NeonKit.SideRect(prefW, prefH, minW, minH) -> { x, y, w, h, scale, mode = "Side" | "Sheet", designW, designH }
 --   NeonKit.BigRect(K, opts) -> { x, y, w, h, scale, mode = "PC" | "Phone", portrait }   (the Pets / Store window box)
 --   NeonKit.Dock(holder, uiScale, prefW, prefH, minW, minH) -> { Rect, Refresh(), Disconnect() }
@@ -64,6 +65,9 @@ NeonKit.Metrics = {
 	SheetScale = 0.8,
 	MinScaleDesktop = 0.85,
 	MinScaleTouch = 0.8,
+	CloseMark = 0.6, -- the drawn close X: its square box x the button's short side (CloseMark)
+	CloseBar = 0.17, -- ... a bar's thickness x that box (its length is the box side)
+	CloseInk = 2, -- ... the dark bar under each white one is this many px larger on every side
 }
 local MX = NeonKit.Metrics
 
@@ -92,7 +96,7 @@ NeonKit.Glyphs = {
 	Cash = "$",
 	Tokens = "\226\152\129", -- cloud
 	-- (Gems has no glyph: lobby-shop Task 15, NeonKit.Icon draws a GemIcon for it)
-	Close = "\226\156\149", -- multiplication x
+	-- (no Close glyph since the slop audit, 2026-11-12: U+2715 showed a missing-glyph box; NeonKit.CloseMark draws the X)
 	Lock = "\240\159\148\146",
 	Play = "\226\150\182",
 	-- store (2026-11-04): the Store window, its tabs, the Gifts button, the VIP crown, the Sky Trove
@@ -761,6 +765,84 @@ function NeonKit.Button(props)
 	end
 	button.Parent = props.Parent
 	return button
+end
+
+----------------------------------------------------------------------
+-- CloseMark (slop audit 2026-11-12, win 6)
+----------------------------------------------------------------------
+-- The X of a close button, drawn: the U+2715 glyph showed a missing-glyph box in Roblox's fonts, so every window's close
+-- button carries this instead. It clears the button's text (its own Text and the Text of every TextLabel child: the label a
+-- kit puts on a button) and removes the button's UIPadding (room for that text; NeonKit.Button has one: without text the
+-- mark measures the whole button), then adds Frame "CloseMark": square (a 1:1 UIAspectRatioConstraint) at opts.Scale
+-- (Metrics.CloseMark, 0.6) of the button's short side, centred (AnchorPoint 0.5, 0.5), scale-sized so it follows a button
+-- that is resized or moved later, Active = false (taps reach the button), drawn above the button's other children. Inside:
+-- InkA / InkB (dark, Metrics.CloseInk px larger on every side) under BarA (Rotation 45) / BarB (Rotation -45), white rounded
+-- bars as long as the box side and Metrics.CloseBar of it thick. No font glyph, no image, no per-bar UIStroke. A rotated
+-- frame is not clipped by ClipsDescendants, so the mark sits directly on the button, never under a clipping frame of its own.
+-- Calling it again returns the existing mark (after clearing the text again). The button's name, size, position, colours
+-- and callbacks are untouched.
+--   opts (optional) = { Color = Color3 (the bars; default white), Ink = Color3 (default PanelInk), Scale = number,
+--                       ZIndex = number (the mark and the ink; the white bars one above) }
+function NeonKit.CloseMark(button, opts)
+	if not (button and button:IsA("GuiButton")) then
+		return nil
+	end
+	opts = type(opts) == "table" and opts or {}
+	if button:IsA("TextButton") then
+		button.Text = ""
+	end
+	for _, child in ipairs(button:GetChildren()) do
+		if child:IsA("TextLabel") then
+			child.Text = ""
+		elseif child:IsA("UIPadding") then
+			child:Destroy()
+		end
+	end
+	local existing = button:FindFirstChild("CloseMark")
+	if existing then
+		return existing
+	end
+	local z = tonumber(opts.ZIndex)
+	if not z then
+		z = button.ZIndex
+		for _, child in ipairs(button:GetChildren()) do
+			if child:IsA("GuiObject") and child.ZIndex > z then
+				z = child.ZIndex
+			end
+		end
+		z = z + 1
+	end
+	local scale = tonumber(opts.Scale) or MX.CloseMark
+	local mark = frame("CloseMark", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(scale, scale),
+		Active = false,
+		ZIndex = z,
+	})
+	Util.Create("UIAspectRatioConstraint", { AspectRatio = 1, Parent = mark })
+	local function bar(name, rotation, color, grow, zIndex)
+		local b = frame(name, {
+			BackgroundTransparency = 0,
+			BackgroundColor3 = color,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.new(1, 2 * grow, MX.CloseBar, 2 * grow),
+			Rotation = rotation,
+			Active = false,
+			ZIndex = zIndex,
+		}, mark)
+		round(b)
+		return b
+	end
+	local ink = colorOf(opts.Ink, INK)
+	local color = colorOf(opts.Color, WHITE)
+	bar("InkA", 45, ink, MX.CloseInk, z)
+	bar("InkB", -45, ink, MX.CloseInk, z)
+	bar("BarA", 45, color, 0, z + 1)
+	bar("BarB", -45, color, 0, z + 1)
+	mark.Parent = button
+	return mark
 end
 
 ----------------------------------------------------------------------

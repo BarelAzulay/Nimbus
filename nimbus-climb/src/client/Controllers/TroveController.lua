@@ -255,19 +255,19 @@ local function build(mode)
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextYAlignment = Enum.TextYAlignment.Center,
 	})
-	NeonKit.Button({
+	local close = NeonKit.Button({
 		Name = "Close",
-		Text = NeonKit.Glyphs.Close,
+		Text = "",
 		Color = "Red",
 		Variant = "Outline",
 		Size = UDim2.fromOffset(M.Close, M.Close),
-		TextSize = math.max(16, math.floor(M.Close * 0.5)),
 		Position = UDim2.new(1, -(M.Pad - 2) - M.Close, 0, math.floor((M.Bar - M.Close) / 2)),
 		Parent = body,
 		Callback = function()
 			TroveController.Close()
 		end,
 	})
+	NeonKit.CloseMark(close) -- slop audit 2026-11-12: a drawn X (the U+2715 glyph showed a missing-glyph box)
 	label(body, "Subtitle", TEXT.Sub, "Body", M.Sub, {
 		Position = UDim2.fromOffset(M.Pad + 2, M.SubY),
 		Size = UDim2.new(1, -2 * M.Pad, 0, M.SubH),
