@@ -108,7 +108,14 @@ fine details (claws, beaks, nostrils, inner ears, feather/fur tufts). Cute and a
   read it"):** text in the 3D world must stay readable from normal camera distances. Name/info tags above things
   (BillboardGui) are sized in PIXELS (offset UDim2, never studs-scale for text), so they keep a constant on-screen size:
   names >= 22 px and info lines >= 18 px at 1080p, with a dark stroke, a compact solid backing plate sized to the text
-  (no huge empty panels), sensible MaxDistance (~60-120 studs) and LightInfluence 0. Big signs on surfaces (SurfaceGui)
+  (no huge empty panels), sensible MaxDistance (~60-120 studs) and LightInfluence 0. Card range (2026-11-12, slop-audit
+  win 2; only the range shrinks, the text keeps its pixel size, no studs-scaled text and no distance fade): gate and
+  portal name cards (`GateTag`, `PortalBillboard`, the builders' stand-in `GateTag`s) show within **45 studs**
+  (`WorldStyle.TagRange`; was 120), the own follower's pet card within **15** (was 90). Far-read exceptions, kept on
+  purpose: the arena forum's Return gate 110 (`spec.TagRange`: the forum's lone way home stands ~100 studs from the
+  colosseum's main gate), the Storm Altar `TitleTag` 150, the downed marker 250, the tutorial guide sign 4000, battle
+  cards 140, `RaidGateTag` 120, the home portal tag and the home tags 120, the home nameplates (80), the arena boards
+  (`TAG_RANGE` 110); garden / training pet cards 90 and other players' pet cards 60 stay. Big signs on surfaces (SurfaceGui)
   use PixelsPerStud ~40-60 and letters at least ~1 stud tall for titles and ~0.6 stud for info lines, so they read
   from ~30 studs. Never a fixed small TextSize inside a studs-sized billboard. Every new sign follows this.
 * **Terrain** (`workspace.Terrain`, smooth terrain) may be used for organic shapes (cloud islands, ground). Use
@@ -1161,7 +1168,8 @@ FeedPrice(def, level)       = XpToNext(level) x RarityScale(def) x FeedBase     
   6 px (XP blue, SPECIAL gold) and 9 px (HP green own / red enemy) at 1080p scaled by `Theme.ScaledSize`, card width
   96 px, LightInfluence 0, a fill is written only when it moved by > 0.004 (BattleController's rule :1464), never
   per frame. A pulsing gold "EVOLVE!" pill (an `Active` button) when the pet is ready.
-* Modes: own follower / own garden pet: level + XP (MaxDistance 90); own unit in a battle: level + HP + SPECIAL + XP
+* Modes: own follower: level + XP (MaxDistance 15, the 2026-11-12 card range, was 90); own garden pet: level + XP
+  (MaxDistance 90); own unit in a battle: level + HP + SPECIAL + XP
   (140, `BAR_DISTANCE`); enemy / NPC unit: level + HP; other players' followers: level only (60, at most 12 cards at
   once, nearest first); a training pet at home: + a purple timer bar "2:10". Followers' cards are hidden while the
   owner is InBattle (the followers are parked).
@@ -2302,7 +2310,7 @@ Economy: `sim_tycoon.py --dungeon 0.1` (a run every 10 min) +~8% Cash; combined 
 
 #### 5.3 Portal, party, run (player flow)
 * `Portal_Dungeon` = `DungeonBuilder.BuildPortal(gatesFolder, LobbyInfo.GateSites.Dungeon)`: `WorldStyle.BuildGate` (Purple, Glyph "torch",
-  title "The Dungeon", info "Rooms, waves and a boss. Solo or up to 4 friends", pill "Floors cleared here: Alex - 7" from the attribute
+  title "The Dungeon", info "Rooms, waves and a boss. Solo or up to 3 friends", pill "Floors cleared here: Alex - 7" from the attribute
   `DungeonBoard`) + two torches, <= 120 parts; prompt `DungeonPrompt` with `OpenPanel = "Dungeon"` (handled in ArenaController's
   `onPromptTriggered` next to "Ring", which calls `DungeonController.Open`). Returns `DungeonInfo = { Portal, Pad, PromptPart, ReturnCFrame }`.
 * Window (DungeonController, NeonKit side panel 640x860 Purple): a 12-tile floor list (element icon, name, "Cleared" / "Recommended power
@@ -2442,7 +2450,8 @@ WorldStyle.BuildGate(parent, siteCFrame, spec) -> model, pad, promptPart
   22 wide x 8 deep x 26 tall: two Marble columns on Slate plinths, a Slate lintel with a Marble keystone, a 0.4-stud Neon inlay ring, a Neon disc
   (Transparency 0.35) + a ForceField disc, a 6x6 voxel emblem (<= 30 parts, one per Glyph, built once and cloned); Pad = a 14 x 0.6 x 14 Slate
   slab with a Marble border and a Neon glyph (the PortalService zone part sits on it) else a 10 x 0.3 x 6 step; the pixel BillboardGui tag
-  (title 28 px, info 20 px, pill 18 px, stroke, MaxDistance 120, LightInfluence 0) 27 studs up; one PointLight (Range 14, Brightness 1.2,
+  (title 28 px, info 20 px, pill 18 px, stroke, MaxDistance 45 = `WorldStyle.TagRange` or `spec.TagRange`, 2026-11-12, was 120,
+  LightInfluence 0) 27 studs up; one PointLight (Range 14, Brightness 1.2,
   Shadows = false) + sparkles (Rate 6); <= 90 parts, owners add <= 30 (crown, torches): every gate <= 120.
 WorldStyle.Palette, WorldStyle.Materials, WorldStyle.Plinth(parent, cf, size, mat), WorldStyle.Kerb(...), WorldStyle.Chamfer(...)   (on Voxel.Box)
 ```
@@ -2578,6 +2587,13 @@ name: the vitals' top), `BottomCentreTop` / `BottomCentreLeft` / `BottomCentreRi
 0.7 to clear the jump button, else the HUD hides the strips while it covers them), MovementController (RUN avoids the
 bottom-centre vitals footprint). Tests: `tools/smoke_bug2_gui.lua` (`client_bug2gui_layout`, `client_bug2gui_mobile`, `client_bug2gui_stickemu`,
 `client_bug2gui_stick_mobile`, `client_bug2gui_empty`, `client_bug2gui_empty_mobile`).
+(quick wins 2026-11-12, win 4) `HudController.SetVitalsHidden(who, on)` is owner-keyed (the card shows only when no owner holds it): the
+Gifts window holds "Daily", BattleController holds "Battle" for a FIGHTER's whole pet battle (between rounds too; a spectator keeps the card;
+released by the no-battle rebuild, the result, `SetVisible(false)` (even with no battle gui) and `Stop`). `GetLayout().VitalsSlot` is the
+card's rect whether it is shown or hidden (`Vitals` stays nil while hidden): Cheer up! sits centred in that slot, bottom edges level, and in a
+raid Retreat joins it as a centred row (Retreat left, 8 px gap) or stacks above it when the row does not fit; `CheerUp.SlotClear` slides both
+flush to the slot's left or right edge when RUN, Roblox's jump button, the action cluster or the fighter's cards cover the centre (360x640).
+Tests: `smoke_wave6.lua` (`client_w6_cheer_button`, `client_w6_cheer_mobile`), `smoke_evo_retreat.lua`, `smoke_polish_vitals.lua`.
 
 ### 7. Loading screen, main menu, settings (world design 7-8; menu W3)
 
@@ -2606,6 +2622,15 @@ menu disabled the script fades itself after 2 s. One 0.25 s poll loop, no per-fr
   UPDATES (Purple outline, "NEW" badge when `UpdateNotes.Latest > Settings.SeenNotes`), a left-to-right dark gradient, version chip.
   TutorialController waits `UiGate.WaitForPlay(600)` before its first panel (TutorialService is event-driven, nothing advances). DevController
   `/menu` reopens it (client-side only: the character stays).
+  (quick wins 2026-11-12, win 1 + review round 1) The title screen is clean. World cards: every BillboardGui in the workspace named in
+  `Config.MainMenu.HideCards` (GateTag, PortalBillboard, JoinBillboard, TroveBillboard, NameTag, Nameplate, RaidGateTag, PortalName) is kept
+  `Enabled = false` client-side by the same rule as the guis (there now and via `DescendantAdded`, an owner's switch-on remembered, one that was
+  off stays off) and restored at PLAY; players' TitleTags and pet cards stay. Smoke `p5menu_orbit_cards` checks that every card in the built
+  lobby within its MaxDistance of the orbit (72 points) is in that list. Toasts: `NotifyController.SetHeld("MainMenu", true)` from Open until
+  the end of PLAY holds the gameplay toasts; "bad", a Notify sent with the 4th argument `{ System = true }` (the save-wait toasts) and "pull"
+  (a chat line) are never held; identical held toasts merge, at most 16 are kept (the oldest token / good dropped first, a `{ Keep = true }`
+  one, the join welcome, last); at release the ones older than 60 s are dropped unless Keep and the rest show one every 0.35 s while the toast
+  column has room. The release after PLAY runs every step on its own guard, so a failing step never leaves the HUD, the cards or the toasts held.
 * Server half (**PlayerService.lua**, owner menu W3): Main.server's boot spawn gate (`holdSpawns` / `releaseSpawns`, :138-165) keeps
   `Players.CharacterAutoLoads = false` for the server's life (`releaseSpawns` no longer re-enables it nor loads characters; LightingService:147 drops
   its `CharacterAutoLoads = true` line). `PlayerService.setupPlayer` records `St.waiting[player] = true`; the remote **`MenuPlay`** (first per
@@ -2629,7 +2654,7 @@ menu disabled the script fades itself after 2 s. One 0.25 s poll loop, no per-fr
   crowd + drums: `src/client/Controllers/RingAmbience.lua`), `src/client/GraphicsQuality.lua` (Auto: `SavedQualityLevel <= 3` = Low; Low pushes "GfxLow" (Bloom / SunRays / DoF off, Clouds
   Density 0.4), reparents `NC_Detail` models to a local holder, disables their emitters, pauses SkyDragonController; High restores).
 * `src/shared/UpdateNotes.lua` (lead W0): `{ Latest = 5, Notes = { { Version = 5, Title = "The Big Sky Update", Lines = {...} }, ... }, Credits =
-  { "Game by <owner>", "Built with Claude" }, Tips = { 12 tips } }`; opening UPDATES sends `SettingsSet("SeenNotes", Latest)`.
+  { "A SaintsField game", "Created by St.Gavin" }, Tips = { 12 tips } }`; opening UPDATES sends `SettingsSet("SeenNotes", Latest)`.
 
 ### 8. Tutorial and NPC tips (ONE owner: tutorial W4; C9). Indices never move: chapter 1 = 1-9, 2 = 10-14, 3 = 15-18, 4 = 19-21.
 
@@ -2954,7 +2979,7 @@ NPC / README accuracy. Release gate: full `bash tools/run_checks.sh`, `--smoke -
 | `smoke_p5_battleclient.lua` | client + phone | battleclient (W3) | `client_p5hud_fighter` (writes only on change, loss trail, energy, lives, portraits + rings from events, late-join cooldowns from Start), `client_p5hud_enemies` (rows, lock first, +n, windup flash, boss bar not centred), `client_p5input` (map bound only in battle, hold-to-attack cadence, swap hold, Tab cycle, predictions + rejected shake + timeout reset, `SetDashKeys` / `SetFreeDash` / `SetBattleSpeed(walk, run)` on Start / Speed / End (WalkSpeed written = walk, run target = run, nil restores the server base, a server 0 still wins), binds inert before `UiGate.HasPlayed()`), `client_p5models` (fighter at the shoulder of the server position, blended with the root within 2 studs, following the server beyond, helpers fly on Buff / Swap, Winding pose, DODGED, shake x Shake setting), `client_p5battle_mobile` / `_landscape` (nothing in the centre 40%, buttons >= 60 px, menu column hidden), `client_p5result`; renders `battle:fighter`, `battle:raid`, `battle:dungeon` |
 | `smoke_p5_follow.lua` | client | homefx+pets (W3) | `client_p5follow_formation` (`FormationFor` on 7 width mixes == 3.8 +-0.05), `client_p5follow_motion` (walk 16 / 24 / 27 straight, 90-degree turn, reverse: gaps >= 0, lag <= back + 9, settle <= back + 1, ahead <= 0.5 after 0.6 s, channel >= 1.0), `client_p5wild` (`PB_Evolved`, `Wild` tint + eyes) |
 | `smoke_p5_looks.lua` | client + server | careui (W3) | `client_p5looks` (keys at stage 1 and 2: Pets grid slot, detail, Index tile (BestStage), Team card + tiles, Fusion tile, Care rows, own garden pets all evolved (12), reveal of an evolved key + ribbon, Ring card, followers: each builds `PB_Evolved == stage` at Low), `p5looks_podium`, `client_p5support_power` (the Pets panel detail of an Economy pet shows "Battle power" from `BattleCatalog.UnitStats` with the Support role, never the raw Power 2-4; m17), `client_p5team3` (3 slots, FIGHTER / HELPER labels, "Set as fighter" rotates, no 4th slot), `client_p5menu_tiles` (2x3 grid, names kept, Dock, no backdrop) |
-| `smoke_p5_menu.lua` | server + client + phone | menu (W3) | `p5menu_spawn` (with `Config.MainMenu.Enabled`: a joining player has no Character until `MenuPlay`; a second `MenuPlay` does nothing; no remote -> the character appears after the 90 s fallback on the mock clock; death -> respawn after RespawnTime; a player leaving before PLAY leaves nothing behind; Enabled false -> the character spawns at once as every other scenario expects), `client_p5loading` (RemoveDefaultLoadingScreen, bar never backwards, SKIP after 6 s, Done at 100%, tips rotate, no text before Theme, gone after the fade), `client_p5menu` (every ScreenGui except NimbusLoading / NimbusMainMenu / NimbusNotify disabled until PLAY incl. one created later and NimbusDash / NimbusRun / NimbusIndex / NimbusNpcDialog / NimbusTutorialPointer by name; Shift / Q do nothing before PLAY; no character before PLAY; `MenuPlay` fired once; camera Scriptable then Custom, `Played` once, tutorial panel absent before / shown after, UPDATES badge), `client_p5settings` (slider -> one `SettingsSet` after the debounce with clamped ints; Gfx Low hides `NC_Detail` and pushes GfxLow, High restores; Shake OFF -> amplitude 0; SeenNotes sent on UPDATES) |
+| `smoke_p5_menu.lua` | server + client + phone | menu (W3) | `p5menu_spawn` (with `Config.MainMenu.Enabled`: a joining player has no Character until `MenuPlay`; a second `MenuPlay` does nothing; no remote -> the character appears after the 90 s fallback on the mock clock; death -> respawn after RespawnTime; a player leaving before PLAY leaves nothing behind; Enabled false -> the character spawns at once as every other scenario expects), `client_p5loading` (RemoveDefaultLoadingScreen, bar never backwards, SKIP after 6 s, Done at 100%, tips rotate, no text before Theme, gone after the fade), `client_p5menu` (every ScreenGui except NimbusLoading / NimbusMainMenu / NimbusNotify disabled until PLAY incl. one created later and NimbusDash / NimbusRun / NimbusIndex / NimbusNpcDialog / NimbusTutorialPointer by name; Shift / Q do nothing before PLAY; no character before PLAY; `MenuPlay` fired once; camera Scriptable then Custom, `Played` once, tutorial panel absent before / shown after, UPDATES badge; quick wins: the HideCards world cards off until PLAY, the held toasts all shown after PLAY in order, a throwing release step never strands the hold, the tag line and the credits), `p5menu_orbit_cards` (server, quick wins review: every card in range of the title screen's orbit is in `Config.MainMenu.HideCards`), `client_p5settings` (slider -> one `SettingsSet` after the debounce with clamped ints; Gfx Low hides `NC_Detail` and pushes GfxLow, High restores; Shake OFF -> amplitude 0; SeenNotes sent on UPDATES) |
 | `smoke_p5_tutorial.lua` | server + client | tutorial (W4) | `p5ui_content` (every step id / text 97-125 bytes / target; NPC lines <= 125 bytes, needles from the catalogs: Berry Farm, Food Bowl, Cloud Cash, Berry Basket, Dungeon, fighter / helpers), `p5dgn_tutorial` (chapter 3 `team` -> `dungeon` with the arrow at the Dungeon pad -> floor 1 cleared marks DungeonWon -> `raid`; a veteran with `TrialCleared[1]` skips; `OpenPanel("Dungeon", { Floor = 1 })` once), `p5ui_tutorial_ch2` (steps 10-14 against a Phase 5 home: Farm pad then Kitchen pad, the biggest drop, Fed), `p5ui_portal_obby` (the chapter-1 portal step targets `Portals.Obby`), resume from every index 1-21 |
 | `smoke_p5_flow.lua` | server + client | flow (W4) | `p5flow_new` (a new player: menu PLAY -> tutorial -> Easy obby -> claim -> Garden -> a roaming pet poops -> scoop -> Farm -> Food Machine -> Feed with berries -> `/petlevel 20` + EVOLVE (looks evolved in the grid) -> team of 3 -> dungeon floor 1 solo -> ring rounds 1-3 -> prestige keeps berries and the Garden), `p5flow_migrate` (a Phase 4 save: 4 plants + Collector + 6 decor + a 4-key team + TrialBest 15 + leftover Feasts + BestTimes {Easy, Medium}: Home Level unchanged or up, Farm level, DecorCredit / LegacyMagnet, 3-key team with the 4th pet owned, floors 1-5 cleared, Hard unlocked, Feasts spent as berries, Ready to evolve), `p5flow_dungeon` (3 players: a party clears floors 1-2, one wipes solo on floor 4, a late join, Double Rewards, rejoin keeps `Dungeon`, the dev reset), `p5flow_rejoin` / `p5flow_merge` (two servers: berries, Dungeon (Cleared union, Clears not doubled by two migrations, a first clear paid on both servers before either saved lands once in Cleared), Settings, Teams) |
 

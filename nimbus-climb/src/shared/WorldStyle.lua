@@ -28,7 +28,9 @@
 --                attributes GateScale and ML_Scale (the Blender mesh and the vortex dress at that size),
 --                VortexBoost = number (optional, lobby shop 5.11 a): written as the model attribute VortexBoost, which
 --                client/PortalVortex reads to lift that gate's vortex toward white and its glow (the Altar's 1.4); the
---                swirl itself is built as always }
+--                swirl itself is built as always,
+--                TagRange = studs (optional, 2026-11-12): the GateTag's MaxDistance for this gate; a number > 0, anything
+--                else = WorldStyle.TagRange (45). Only the arena Return gate passes one (110, ArenaBuilder) }
 --       Shape by glyph: "crown" = the P4 Champion Ring crowned square arch (gold trim, violet glow, crown baked into
 --       the voxels); every other glyph = the round hoop: a stone base, two stone pillars with coloured caps and a
 --       glowing dot, a chunky pixel ring whose outer band is the gate colour around a white cloud frame, an inner Neon
@@ -40,7 +42,8 @@
 --       never collide), "GlowCore" (invisible, the PrimaryPart, 11.5 up; not named SwirlCore so PortalService keeps the countdown face at the lock wall: PointLight "GateLight" Range 28 Brightness 1.3
 --       + ParticleEmitter "Sparkles" Rate 12 drifting toward the plaza), "Crest*" / "Star*" parts, "PromptAnchor"
 --       (invisible, front of the opening, 3 up: prompts go here), the BillboardGui "GateTag" (Plate: Title 28 px,
---       Info 20 px, Pill.Label 18 px; anchor 27 studs up, MaxDistance 120). Pad = true: "Pad" (14 x 0.6 x 14, 14 studs
+--       Info 20 px, Pill.Label 18 px; anchor 27 studs up, MaxDistance = spec.TagRange or WorldStyle.TagRange 45, see the
+--       card range below). Pad = true: "Pad" (14 x 0.6 x 14, 14 studs
 --       in front, walkable; the PortalService zone sits on it) tiled like P4 (a colour rim, a light stone ring, a Neon
 --       plus; X for swords, a crown for the arch: "PadTile*" 0.06 thick on top) + two lanterns on its front corners;
 --       else "Step" (10 x 0.3 x 6, 6 studs in front). Attributes GateId, Glyph, GateShape ("Hoop" | "Arch").
@@ -49,6 +52,14 @@
 --   WorldStyle.IsWorldMaterial(m), WorldStyle.Saturation(color), WorldStyle.GateSize, WorldStyle.Look = "P4",
 --   WorldStyle.Tags.Detail ("NC_Detail": pure decor, the Low graphics setting hides it), WorldStyle.Tags.Exempt
 --   ("NC_StyleExempt": pets / tokens / the storm island, skipped by the look audit of p5world_style).
+-- The card range (2026-11-12, slop-audit win 2; ARCHITECTURE_V3.md World text rule): WorldStyle.TagRange = 45 studs is the
+--   MaxDistance of the world's gate and portal name cards (every GateTag, LobbyBuilder's and ArenaBuilder's stand-in GateTag,
+--   PortalService's PortalBillboard; was 120); the own follower's pet card is 15 (PetCard). Only the range shrank: the cards
+--   keep their pixel size (no studs-scaled text, no distance fade). Far-read exceptions, kept on purpose: the arena forum's
+--   Return gate 110 (spec.TagRange: the forum's lone way home stands ~100 studs from the colosseum's main gate), the Storm
+--   Altar TitleTag 150, the downed marker 250, the tutorial guide sign 4000, battle cards 140, RaidGateTag 120, the home
+--   portal tag and the home tags 120 (HomePortalFx, HomeFx), the home nameplates (SpotService 80), the arena boards
+--   (ArenaBuilder TAG_RANGE 110).
 
 local Shared = script.Parent
 local Voxel = require(Shared:WaitForChild("Voxel", 10))
@@ -62,6 +73,10 @@ local PI = math.pi
 
 WorldStyle.Look = "P4"
 WorldStyle.Tags = { Detail = "NC_Detail", Exempt = "NC_StyleExempt" }
+-- studs: the MaxDistance of a gate's name card (GateTag). 2026-11-12 (slop-audit win 2, was 120): the card shows only near
+-- its gate, so the plaza no longer reads as a wall of labels. Only the range shrank: the card keeps its pixel size (the
+-- World text rule). spec.TagRange overrides it for one gate (the arena Return gate's 110).
+WorldStyle.TagRange = 45
 
 ----------------------------------------------------------------------
 -- Materials (6.1 A1): SmoothPlastic surfaces, Neon glow, Glass water. The rest are aliases (see the header).
@@ -391,7 +406,12 @@ local function buildTag(adornee, lift, spec, color)
 	gui.SizeOffset = Vector2.new(0, 0.5) -- the plate grows upwards from the anchor
 	gui.StudsOffsetWorldSpace = Vector3.new(0, lift, 0)
 	gui.LightInfluence = 0
-	gui.MaxDistance = 120
+	-- the card range: spec.TagRange when it is a number > 0 (NaN fails the test), else WorldStyle.TagRange
+	local range = spec.TagRange
+	if type(range) ~= "number" or not (range > 0) then
+		range = WorldStyle.TagRange
+	end
+	gui.MaxDistance = range
 	gui.AlwaysOnTop = false
 	gui.ClipsDescendants = false
 	gui.Adornee = adornee

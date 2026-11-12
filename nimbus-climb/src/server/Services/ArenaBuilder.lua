@@ -2752,7 +2752,8 @@ local Gates = {
 }
 
 -- A Gate Court gate: WorldStyle.BuildGate (or a plain stand-in when WorldStyle is missing / throws) -> model, pad,
--- promptPart, the tag's pill label. spec = { Id, Title, Info, Color, Glyph, Pad, Pill, Scale (WorldStyle's gate only) }
+-- promptPart, the tag's pill label. spec = { Id, Title, Info, Color, Glyph, Pad, Pill, Scale (WorldStyle's gate only),
+-- TagRange (studs, optional: the GateTag's MaxDistance; default the gate card range 45 = WorldStyle.TagRange) }
 function Gates.build(parent, site, spec)
 	local model, pad, prompt = nil, nil, nil
 	if WorldStyle and type(WorldStyle.BuildGate) == "function" then
@@ -2765,6 +2766,7 @@ function Gates.build(parent, site, spec)
 			Pad = spec.Pad,
 			Pill = spec.Pill,
 			Scale = spec.Scale,
+			TagRange = spec.TagRange,
 			Name = "Portal_" .. spec.Id,
 		})
 		if ok then
@@ -2791,7 +2793,7 @@ function Gates.build(parent, site, spec)
 		end
 		prompt = box(model, "PromptAnchor", site * CFrame.new(0, 3, -2.2), Vector3.new(2, 2, 1), C.Stone, { Transparency = 1, Shadow = false })
 		local anchor = anchorPart(model, "TagAnchor", site * CFrame.new(0, 27, 0))
-		local gui = newTag(anchor, "GateTag", spec.TagWidth or 420, 150, 0, 120)
+		local gui = newTag(anchor, "GateTag", spec.TagWidth or 420, 150, 0, spec.TagRange or 45) -- 45: the gate card range (was 120)
 		local plate = tagPlate(gui, C.Gold, 200)
 		tagText(plate, "Title", spec.Title, "Heading", 28, C.Text, 1)
 		tagText(plate, "Info", spec.Info, "Body", 20, C.Text, 2)
@@ -2875,7 +2877,9 @@ end
 -- beside the arrival star (where everyone lands)
 function Gates.buildReturn(model, A)
 	local rSite = CFrame.lookAt((A * CFrame.new(-30, 0, ISL.FrontZ + 12)).Position, (A * CFrame.new(0, 0, ISL.FrontZ + 30)).Position)
-	local gate, _, prompt = Gates.build(model, rSite, { Id = "Return", Title = "To the Plaza", Info = "Homes, gates, shop", Color = "Green", Glyph = "house", Pad = false, Scale = 0.6 })
+	-- TagRange 110: a documented exception to the 45-stud gate card range (2026-11-12): the forum's lone way home stands
+	-- about 100 studs from the colosseum's main gate, so its card stays readable from there. Delete the field for 45.
+	local gate, _, prompt = Gates.build(model, rSite, { Id = "Return", Title = "To the Plaza", Info = "Homes, gates, shop", Color = "Green", Glyph = "house", Pad = false, Scale = 0.6, TagRange = 110 })
 	local p = makePrompt(prompt, "ArenaReturnPrompt", "Travel", "Plaza")
 	p.MaxActivationDistance = PROMPT_RANGE + 2
 	S.gatePrompts[p] = true

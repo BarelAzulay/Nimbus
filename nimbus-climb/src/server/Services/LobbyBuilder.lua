@@ -542,7 +542,8 @@ end
 -- World text rule (ARCHITECTURE_V3.md, added after the playtest "letters too small"):
 --   * Tags above things are PIXEL-sized BillboardGuis (offset UDim2), so their text keeps one on-screen size at
 --     any distance: names >= 22 px and info lines >= 18 px at 1080p, outlined glyphs on a compact solid plate
---     that sizes itself to its text, LightInfluence 0 and a MaxDistance of ~60-120 studs.
+--     that sizes itself to its text, LightInfluence 0 and a MaxDistance of ~60-120 studs (a gate's name card 45:
+--     the gate card range, WorldStyle.TagRange, 2026-11-12).
 --   * Signs on surfaces are SurfaceGuis at SIGN_PPS pixels per stud with FIXED text sizes: titles >= 1 stud,
 --     info lines >= 0.6 stud.
 --   * Never TextScaled in the world: the engine drew the auto-scaled world text tiny in the playtest.
@@ -3154,7 +3155,8 @@ function Gates.Fallback(parent, site, id, info, color)
 		pad = box(model, "Step", site * CFrame.new(0, 0.15, -6), Vector3.new(10, 0.3, 6), C.Slate, { Collide = true })
 	end
 	local prompt = box(model, "PromptAnchor", site * CFrame.new(0, 3, -2.2), Vector3.new(2, 2, 1), C.Slate, { Transparency = 1, Shadow = false })
-	local gui = newTag(lintel, "GateTag", 420, 150, 27 - 17.4, 120)
+	-- 45 studs: the gate card range (= WorldStyle.TagRange, written out: this stand-in runs without WorldStyle; was 120)
+	local gui = newTag(lintel, "GateTag", 420, 150, 27 - 17.4, 45)
 	local plate = tagPlate(gui, color, 190, Enum.FillDirection.Vertical, 2)
 	tagText(plate, "Title", info.Title, "Heading", 28, rgb(255, 255, 255), 1)
 	tagText(plate, "Info", info.Info, "Body", 20, C.TextDim, 2)

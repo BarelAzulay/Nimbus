@@ -2,7 +2,8 @@
 -- server/Services/PortalService.lua + the party panel of client/Controllers/HudController.lua).
 -- Loaded by tools/smoke.py in BOTH worlds; ARGS.context picks the half:
 --   polish_portals                 (server) the pixel-sized portal billboards (World text rule: pixel sizes, >= 22 px
---                                  names / >= 18 px info lines, outlines, compact solid plate, MaxDistance, above the
+--                                  names / >= 18 px info lines, outlines, compact solid plate, MaxDistance exactly 45
+--                                  (the 2026-11-12 card range: GateTag and PortalBillboard alike), above the
 --                                  gate, the old studs-sized card gone), the lock walls (collision groups NC_PortalWall /
 --                                  NC_PortalLocked: walls only collide with locked players, they enclose the pad on
 --                                  every side and above), joining locks every character part, the server safety net
@@ -259,7 +260,9 @@ local function serverScenarios()
 		------------------------------------------------------------------------------------------
 		-- 1. billboards (World text rule) + lock walls, on every portal
 		------------------------------------------------------------------------------------------
-		local boards = T.tally("every portal billboard is PIXEL-sized (offset UDim2), LightInfluence 0, not AlwaysOnTop, MaxDistance 60-130")
+		-- the card range (2026-11-12, slop-audit win 2; was 60-130): a gate / portal card shows within exactly 45 studs
+		-- (WorldStyle.TagRange, PortalService BB.MaxDistance); the text keeps its pixel size
+		local boards = T.tally("every portal billboard is PIXEL-sized (offset UDim2), LightInfluence 0, not AlwaysOnTop, MaxDistance exactly 45")
 		local single = T.tally("the old studs-sized portal card is gone (one BillboardGui per portal)")
 		local textRule = T.tally("billboard texts: not TextScaled, outlined, Theme fonts, names >= 22 px, info lines >= 18 px")
 		local plates = T.tally("the billboard plate is solid, auto-sized to its text and compact (fits the container)")
@@ -278,7 +281,7 @@ local function serverScenarios()
 			local info = infoOf(id)
 			local gui = info and info.Billboard
 			if info and gui and gui:IsA("BillboardGui") then
-				boards:case(gui.Size.X.Scale == 0 and gui.Size.Y.Scale == 0 and gui.Size.X.Offset > 0 and gui.LightInfluence == 0 and gui.AlwaysOnTop == false and gui.MaxDistance >= 60 and gui.MaxDistance <= 130, id .. ": size " .. tostring(gui.Size) .. " maxDistance " .. tostring(gui.MaxDistance))
+				boards:case(gui.Size.X.Scale == 0 and gui.Size.Y.Scale == 0 and gui.Size.X.Offset > 0 and gui.LightInfluence == 0 and gui.AlwaysOnTop == false and gui.MaxDistance == 45, id .. ": " .. gui.Name .. " size " .. tostring(gui.Size) .. " maxDistance " .. tostring(gui.MaxDistance))
 				local n = 0
 				for _, d in ipairs(info.Model:GetDescendants()) do
 					if d:IsA("BillboardGui") then
@@ -431,6 +434,17 @@ local function serverScenarios()
 			end
 		end
 		boards:report()
+		-- PortalService's own PortalBillboard (built only when a gate carries no GateTag, so today's world never shows it):
+		-- the source's BB table holds the same 45-stud card range (2026-11-12, was 120)
+		do
+			local psModule = Mock.GetPath(ROOTS["server"] .. "/Services/PortalService")
+			local okSrc, src = pcall(function()
+				return psModule and psModule.Source
+			end)
+			local bbBody = okSrc and type(src) == "string" and src:match("\nlocal BB = (%b{})") or nil
+			local bbRange = bbBody and tonumber(bbBody:match("MaxDistance%s*=%s*([%d%.]+)")) or nil
+			T.check(bbRange == 45, "PortalService's stand-in PortalBillboard: BB.MaxDistance is 45 studs (the gate card range)", tostring(bbRange))
+		end
 		faces:report()
 		faceSpot:report()
 		faceLetters:report()
@@ -459,8 +473,8 @@ local function serverScenarios()
 				end
 			end
 			local gui = guis[1]
-			T.check(#guis == 1 and gui.Size.X.Scale == 0 and gui.Size.Y.Scale == 0 and gui.Size.X.Offset > 0 and gui.LightInfluence == 0 and gui.AlwaysOnTop == false and gui.MaxDistance >= 60 and gui.MaxDistance <= 130,
-				"ring portal: one PIXEL-sized billboard (LightInfluence 0, not AlwaysOnTop, MaxDistance 60-130)", gui and (tostring(gui.Size) .. " " .. tostring(gui.MaxDistance)) or "none")
+			T.check(#guis == 1 and gui.Size.X.Scale == 0 and gui.Size.Y.Scale == 0 and gui.Size.X.Offset > 0 and gui.LightInfluence == 0 and gui.AlwaysOnTop == false and gui.MaxDistance == 45,
+				"ring portal: one PIXEL-sized billboard (LightInfluence 0, not AlwaysOnTop, MaxDistance exactly 45: the 2026-11-12 card range)", gui and (gui.Name .. " " .. tostring(gui.Size) .. " " .. tostring(gui.MaxDistance)) or "none")
 			if gui then
 				local okText = true
 				local bad = {}

@@ -8,7 +8,10 @@
 --                             made here. Billboards: pixel-sized (offset UDim2: no studs-scaled billboard with a fixed
 --                             TextSize), no TextScaled / TextTruncate, names >= 22 px and info lines >= 18 px, every text
 --                             outlined and on a solid plate, the plate compact (sized to its content, no huge empty
---                             panel), LightInfluence 0, MaxDistance 50-150 (AlwaysOnTop beacons may reach further). Surface
+--                             panel), LightInfluence 0, MaxDistance 50-150 (AlwaysOnTop beacons may reach further; the
+--                             2026-11-12 card range, named exceptions: gate and portal cards GateTag / PortalBillboard
+--                             exactly 45 (the arena forum's Portal_Return 110, its documented far-read exception), the
+--                             own follower's pet card exactly 15, the Food Bowl sign >= 40). Surface
 --                             signs: 40-60 px per stud, LightInfluence 0, no TextScaled, the biggest line >= 0.95 stud
 --                             (not on a label strip of info lines only: LABEL_STRIPS, the egg row's RarityStrip) and every
 --                             line >= 0.6 stud, the text fits its box. The home nameplate: "Free home" /
@@ -19,7 +22,8 @@
 --   client_polish_worldtext   (client, 1920x1080) the tutorial guide sign and the NPC nameplates as the client
 --                             controllers show them (their UIScale included); the Phase 4 pet cards (PetCard, in the
 --                             PlayerGui): own and another player's follower cards and a ready card with its EVOLVE! pill,
---                             "Lv" >= 22 px with a stroke, every text on a compact solid plate.
+--                             "Lv" >= 22 px with a stroke, every text on a compact solid plate, the own follower's card
+--                             at exactly 15 studs (the 2026-11-12 card range), another player's within 50-150.
 -- The Storm Altar (another engineer's file, audited by smoke_storm.lua) and transient damage numbers are reported only,
 -- except the altar's return sign (lobby shop Task 13): the tag rule on the Part fallback ("To the Plaza"), the full sign
 -- rule (title >= 0.95 stud) on the dressed ring's 4 x 1 board ("Plaza", shop-area polish).
@@ -40,6 +44,13 @@ local INFO_STUDS = 0.6
 -- ~0.6 stud for info lines"), so the title floor does not apply to them; every other rule does (shop-area 16.17.2: the egg
 -- row's RarityStrip, seven 0.6-stud rarity labels on the shelf's 0.8-stud front)
 local LABEL_STRIPS = { RarityStrip = true }
+-- the card range (2026-11-12, slop-audit win 2; ARCHITECTURE_V3.md World text rule): only the range shrank, the text keeps
+-- its pixel size. Gate and portal cards show within exactly GATE_RANGE studs (WorldStyle.TagRange); the arena forum's
+-- Return gate keeps RETURN_RANGE (the forum's lone way home stands ~100 studs from the colosseum's main gate); the own
+-- follower's pet card shows within exactly OWN_FOLLOWER_RANGE (PetCard.Modes.Follower). Every other tag keeps 50-150.
+local GATE_RANGE = 45
+local RETURN_RANGE = 110
+local OWN_FOLLOWER_RANGE = 15
 
 ----------------------------------------------------------------------------------------------------
 -- the audit (both worlds)
@@ -150,9 +161,28 @@ local function signBox(d, gui, canvasW, canvasH)
 	return w, h
 end
 
+-- The exact MaxDistance a named card must have (the card range above), with its reason; nil = the 50-150 rule.
+-- opts.PetMode = the PetCard mode the caller knows the card has ("Follower" = the own follower's card).
+local function exactRange(gui, opts)
+	if type(opts) == "table" and opts.PetMode == "Follower" then
+		return OWN_FOLLOWER_RANGE, "the own follower's pet card"
+	end
+	if gui.Name == "PortalBillboard" then
+		return GATE_RANGE, "a portal card"
+	end
+	if gui.Name == "GateTag" then
+		local ret = gui:FindFirstAncestor("Portal_Return")
+		if ret and ret:FindFirstAncestor("BattleArena") then
+			return RETURN_RANGE, "the arena Return gate (documented exception)"
+		end
+		return GATE_RANGE, "a gate card"
+	end
+	return nil
+end
+
 -- Audits one BillboardGui / SurfaceGui. Returns { path, name, kind, texts = n, sizes = {px...}, problems = {...},
--- strings = {...} }; a gui without any visible text gets texts = 0 and no verdict.
-local function auditGui(gui)
+-- strings = {...} }; a gui without any visible text gets texts = 0 and no verdict. opts: see exactRange.
+local function auditGui(gui, opts)
 	local rec = { path = shortPath(gui), name = gui.Name, kind = gui.ClassName, texts = 0, sizes = {}, problems = {}, strings = {} }
 	local function bad(msg)
 		rec.problems[#rec.problems + 1] = msg
@@ -225,7 +255,12 @@ local function auditGui(gui)
 			bad(string.format("smallest text %.1f px < %d px", minPx, INFO_MIN))
 		end
 		local md = gui.MaxDistance
-		if gui.AlwaysOnTop then
+		local exact, why = exactRange(gui, opts)
+		if exact then
+			if md ~= exact then
+				bad("MaxDistance " .. tostring(md) .. " (want exactly " .. exact .. ": " .. why .. ")")
+			end
+		elseif gui.AlwaysOnTop then
 			if not (md >= 50) then
 				bad("MaxDistance " .. tostring(md))
 			end
@@ -312,7 +347,8 @@ end
 -- Folds audit records into hard checks (tags / signs) and a report-only line for exempt GUIs.
 local function report(label, records)
 	local tags = T.tally(label .. ": every BillboardGui tag is pixel-sized with readable text (names >= " .. NAME_MIN .. " px, lines >= " .. INFO_MIN
-		.. " px, no TextScaled), outlined on a compact solid plate, LightInfluence 0, MaxDistance 50-150 (beacons further)", 4)
+		.. " px, no TextScaled), outlined on a compact solid plate, LightInfluence 0, MaxDistance 50-150 (beacons further; gate / portal cards exactly "
+		.. GATE_RANGE .. ", the arena Return gate " .. RETURN_RANGE .. ", the own follower's pet card " .. OWN_FOLLOWER_RANGE .. ")", 4)
 	local signs = T.tally(label .. ": every SurfaceGui sign runs at 40-60 px per stud with fixed text: the biggest line >= " .. TITLE_STUDS
 		.. " stud, every line >= " .. INFO_STUDS .. " stud, fitting its box, LightInfluence 0", 4)
 	local counts = { BillboardGui = 0, SurfaceGui = 0 }
@@ -430,6 +466,29 @@ local function serverScenarios()
 			local text = table.concat(rec.problems, "; ")
 			T.check(text:find("studs-scaled", 1, true) and text:find("TextScaled", 1, true) and text:find("smallest text", 1, true) and text:find("MaxDistance", 1, true),
 				"the audit rejects a studs-sized billboard with TextScaled / small fixed text and a long MaxDistance", text)
+			-- the card range's named exceptions are exact: a gate card at the old 120, a portal card at 60 and an own
+			-- follower's card at the old 90 are rejected, though each sits inside 50-150
+			local function rangeProblem(name, md, opts)
+				local g = Instance.new("BillboardGui")
+				g.Name = name
+				g.Size = UDim2.fromOffset(200, 60)
+				g.MaxDistance = md
+				local l = Instance.new("TextLabel")
+				l.Text = "Card"
+				l.TextSize = 24
+				l.Parent = g
+				local r = auditGui(g, opts)
+				g:Destroy()
+				return table.concat(r.problems, "; ")
+			end
+			local gateText = rangeProblem("GateTag", 120)
+			local portalText = rangeProblem("PortalBillboard", 60)
+			local petText = rangeProblem("PetCard", 90, { PetMode = "Follower" })
+			local fineText = rangeProblem("GateTag", GATE_RANGE) .. rangeProblem("PetCard", OWN_FOLLOWER_RANGE, { PetMode = "Follower" })
+			T.check(gateText:find("want exactly " .. GATE_RANGE, 1, true) and portalText:find("want exactly " .. GATE_RANGE, 1, true)
+				and petText:find("want exactly " .. OWN_FOLLOWER_RANGE, 1, true) and not fineText:find("MaxDistance", 1, true),
+				"the audit holds the card range exactly: GateTag / PortalBillboard " .. GATE_RANGE .. ", the own follower's card " .. OWN_FOLLOWER_RANGE .. " (120 / 60 / 90 rejected)",
+				gateText .. " | " .. portalText .. " | " .. petText .. " | " .. fineText)
 			local sign = Instance.new("SurfaceGui")
 			sign.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
 			sign.PixelsPerStud = 40
@@ -739,12 +798,16 @@ local function serverScenarios()
 		local lobbyModel = workspace:FindFirstChild("NimbusLobby")
 		local gatesFolder = lobbyModel and lobbyModel:FindFirstChild("Gates")
 		local gateCount = 0
+		local gateRanges = T.tally("polish worldtext: every lobby GateTag (the Gate Court) shows within exactly " .. GATE_RANGE .. " studs (the 2026-11-12 card range)")
 		for _, g in ipairs(gatesFolder and gatesFolder:GetChildren() or {}) do
-			if g:IsA("Model") and g:FindFirstChild("GateTag", true) then
+			local gtag = g:IsA("Model") and g:FindFirstChild("GateTag", true)
+			if gtag then
 				gateCount = gateCount + 1
+				gateRanges:case(gtag:IsA("BillboardGui") and gtag.MaxDistance == GATE_RANGE, g.Name .. ": MaxDistance " .. tostring(gtag.MaxDistance))
 			end
 		end
 		T.check(gateCount >= 3, "polish worldtext: the Gate Court gates carry a GateTag each", gateCount .. " gates with a tag")
+		gateRanges:report(gateCount .. " gates")
 		-- lobby shop (spec 5.9): + the trove's JoinBillboard; the egg row's RarityStrip is checked by name below
 		local want = { Nameplate = Config.Lobby.SpotCount, GateTag = math.max(3, gateCount), PriceBillboard = #Config.Roulettes, TroveBillboard = 1, JoinBillboard = 1, NameTag = 1, SignGui = 6, HintTag = 5 }
 		local short = {}
@@ -901,15 +964,22 @@ local function clientScenarios()
 				ready:SetLevel(20, 1, true)
 				ready:SetXp(0.3)
 			end
+			-- the card range (2026-11-12): the own follower's card ("Follower", the ready card too) is held at exactly
+			-- OWN_FOLLOWER_RANGE by the audit, another player's ("Other") keeps the 50-150 rule
 			local recs = {}
+			local ownCards = 0
 			for _, c in ipairs(PC and PC.GetCards and PC.GetCards() or {}) do
-				recs[#recs + 1] = auditGui(c.Gui)
+				if c.Mode == "Follower" then
+					ownCards = ownCards + 1
+				end
+				recs[#recs + 1] = auditGui(c.Gui, { PetMode = c.Mode })
 			end
 			if ready then
-				recs[#recs + 1] = auditGui(ready.Gui)
+				recs[#recs + 1] = auditGui(ready.Gui, { PetMode = "Follower" })
 			end
+			T.check(ownCards >= 1, "pet cards: the own follower's card is among them (its exact " .. OWN_FOLLOWER_RANGE .. "-stud range is audited)", tostring(ownCards))
 			if T.check(#recs >= 4, "pet cards exist in the client world (precondition: 1 own + 2 of another player + a ready card)", tostring(#recs)) then
-				local tl = T.tally("pet cards (PetCard): pixel-sized, \"Lv\" >= " .. NAME_MIN .. " px with a stroke, stars / EVOLVE! >= " .. INFO_MIN .. " px, compact solid plates, LightInfluence 0, MaxDistance 50-150")
+				local tl = T.tally("pet cards (PetCard): pixel-sized, \"Lv\" >= " .. NAME_MIN .. " px with a stroke, stars / EVOLVE! >= " .. INFO_MIN .. " px, compact solid plates, LightInfluence 0, MaxDistance 50-150 (the own follower's card exactly " .. OWN_FOLLOWER_RANGE .. ")")
 				for _, rec in ipairs(recs) do
 					tl:case(#rec.problems == 0 and rec.texts >= 1 and rec.maxPx >= NAME_MIN, rec.path .. ": " .. table.concat(rec.problems, "; ") .. " (max " .. tostring(rec.maxPx) .. " px)")
 				end

@@ -12,7 +12,8 @@
 --                     Portal_Arena are WorldStyle gates (<= 120 parts each, a pixel tag) in LobbyInfo.GatesFolder at
 --                     GateSites.Ring / .Arena (RingPrompt OpenPanel = "Ring" on the pad, ArenaPortalPrompt), the RingBoard
 --                     pill; the forum's Return gate; the arena never touches the lobby and stays below the sky dragon;
---                     the bridge link; readable world text
+--                     the bridge link; readable world text; the card range (2026-11-12): every ArenaBuilder GateTag at
+--                     exactly 45 studs, Portal_Return's at 110 (its documented exception)
 --   p3arena_boards    (booted) ApplyArenaState draws the event board and the trophy leaderboard; junk never errors
 --   p3arena_pockets   (booted) BuildPocket(index[, "Ring"]): the Champion Ring pocket only (Phase 5: nil / unknown kinds
 --                     build it too): contract shape, Size = BattleCatalog.Zones.Ring 44 x 44, 100..250 parts, far out
@@ -555,6 +556,29 @@ S.p3arena_world = guarded("p3arena_world", function()
 	billOk:report()
 	fontOk:report()
 	strokeOk:report()
+	-- the card range (2026-11-12, slop-audit win 2): every gate card ArenaBuilder builds shows within exactly 45 studs
+	-- (WorldStyle.TagRange; Portal_Ring and Portal_Arena in the Gate Court, any gate on the island), except the forum's
+	-- Portal_Return: 110, its documented far-read exception (the forum's lone way home, ~100 studs from the main gate)
+	local returnTag = returnGate and returnGate:FindFirstChild("GateTag", true)
+	T.check(returnTag ~= nil and returnTag:IsA("BillboardGui") and returnTag.MaxDistance == 110, "arena text: Portal_Return's GateTag shows within 110 studs (the documented exception)",
+		returnTag and tostring(returnTag.MaxDistance) or "no tag")
+	local gateRange = T.tally("arena text: every other GateTag ArenaBuilder builds (the island, Portal_Ring, Portal_Arena) shows within exactly 45 studs")
+	local arenaGates = { model }
+	if typeof(gatesFolder) == "Instance" then
+		arenaGates[#arenaGates + 1] = gatesFolder:FindFirstChild("Portal_Ring")
+		arenaGates[#arenaGates + 1] = gatesFolder:FindFirstChild("Portal_Arena")
+	end
+	for _, root in ipairs(arenaGates) do
+		for _, d in ipairs(root:GetDescendants()) do
+			if d:IsA("BillboardGui") and d.Name == "GateTag" and d ~= returnTag then
+				gateRange:case(d.MaxDistance == 45, d:GetFullName() .. ": MaxDistance " .. tostring(d.MaxDistance))
+			end
+		end
+		if root ~= model then
+			gateRange:case(root:FindFirstChild("GateTag", true) ~= nil, root.Name .. " carries a GateTag")
+		end
+	end
+	gateRange:report()
 	T.check(model:FindFirstChild("EventBoard", true) ~= nil and model:FindFirstChild("Leaderboard", true) ~= nil, "arena: the event board and the trophy leaderboard exist")
 	K.flushErrors("p3arena_world")
 	K.flushWarnings("p3arena_world")
