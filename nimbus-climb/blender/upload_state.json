@@ -2823,6 +2823,16 @@
       "structureHash": "66d89695055b6b8d6c1a47f82818c654",
       "uploadedAt": "2026-11-08T19:56:59Z"
     },
+    "egg_common_pile": {
+      "assetId": 84150775453163,
+      "contentHash": "8b77719069647b1004e524563337ce69",
+      "fileSha256": "7136059bffe99bcd8440afdb181c31582334a21a070608ebcf6d1f3f1b8f2e47",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-12T22:29:33.619Z",
+      "revisionId": "1",
+      "structureHash": "24e0dd524fb57e49ee201df556ecf4cb",
+      "uploadedAt": "2026-11-12T22:29:37Z"
+    },
     "egg_common_top": {
       "assetId": 129296295206652,
       "contentHash": "2325f69adbfe3c9d73927a15670acda9",
@@ -2852,6 +2862,16 @@
       "revisionId": "1",
       "structureHash": "99784b82017af17f22bfc35a57102acf",
       "uploadedAt": "2026-11-08T19:57:35Z"
+    },
+    "egg_epic_pile": {
+      "assetId": 88065955652030,
+      "contentHash": "e2f418030d04d12ec72f914dbfb06632",
+      "fileSha256": "a6304b78cb6638a109d7bf5091ac8aa1fd7da31ed2724be16ce6d4164489807b",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-12T22:29:46.264Z",
+      "revisionId": "1",
+      "structureHash": "e446d95fdfe185cbac7d6ba02b362330",
+      "uploadedAt": "2026-11-12T22:29:47Z"
     },
     "egg_epic_top": {
       "assetId": 105624672573934,
@@ -2883,6 +2903,16 @@
       "structureHash": "40524664d023b7bb862551f71edf862b",
       "uploadedAt": "2026-11-08T19:58:00Z"
     },
+    "egg_legendary_pile": {
+      "assetId": 127483188588583,
+      "contentHash": "5f8a5ed40c8cb3b03dcd62c16e6d40c8",
+      "fileSha256": "05cafc47a4f7ceabce1b6b874095e61af8e896ea8f2810ee1067c395cd611790",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-12T22:29:54.206Z",
+      "revisionId": "1",
+      "structureHash": "e446d95fdfe185cbac7d6ba02b362330",
+      "uploadedAt": "2026-11-12T22:29:57Z"
+    },
     "egg_legendary_top": {
       "assetId": 102988594664307,
       "contentHash": "24e629e94e74e99f5a1b52632d852a1c",
@@ -2912,6 +2942,16 @@
       "revisionId": "1",
       "structureHash": "a3145d1c0c503dfff67a9f99337727b0",
       "uploadedAt": "2026-11-08T19:58:27Z"
+    },
+    "egg_mythic_pile": {
+      "assetId": 129542259661327,
+      "contentHash": "91732ab1e54796a7ef04b869b5b1ca88",
+      "fileSha256": "e88059f9e836be385ae42d9f25e74dcab897b2eeadd92dba6005e04a0339ca18",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-12T22:30:06.524Z",
+      "revisionId": "1",
+      "structureHash": "e446d95fdfe185cbac7d6ba02b362330",
+      "uploadedAt": "2026-11-12T22:30:08Z"
     },
     "egg_mythic_top": {
       "assetId": 134388858042681,
@@ -2943,6 +2983,16 @@
       "structureHash": "66d89695055b6b8d6c1a47f82818c654",
       "uploadedAt": "2026-11-08T19:58:57Z"
     },
+    "egg_rare_pile": {
+      "assetId": 94029936337240,
+      "contentHash": "fb94b1d032aa4d256d5185f82c1abfca",
+      "fileSha256": "b728cadd124e57964ef27c2885bc67563c00263622c212545bb2d1f869febea3",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-12T22:30:22.969Z",
+      "revisionId": "1",
+      "structureHash": "24e0dd524fb57e49ee201df556ecf4cb",
+      "uploadedAt": "2026-11-12T22:30:23Z"
+    },
     "egg_rare_top": {
       "assetId": 93830830314871,
       "contentHash": "e57ea955ad14766dcdbcc0a0c4d7bd83",
@@ -2973,6 +3023,16 @@
       "structureHash": "4f51bf7776adec460e1968debc659ff1",
       "uploadedAt": "2026-11-08T19:59:29Z"
     },
+    "egg_secret_pile": {
+      "assetId": 116834657067265,
+      "contentHash": "729e4268e0697ed3a65be639c48ab9b9",
+      "fileSha256": "948afc7db42c5bb00295aae8e255411d724c40691252922181c829896cb83758",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-12T22:30:35.967Z",
+      "revisionId": "1",
+      "structureHash": "24610a0247f01c23564c2ef2688a9dbb",
+      "uploadedAt": "2026-11-12T22:30:41Z"
+    },
     "egg_secret_top": {
       "assetId": 106629544724504,
       "contentHash": "9a7582a8131cf658b71e14904bbea1bf",
@@ -3002,6 +3062,16 @@
       "revisionId": "1",
       "structureHash": "66d89695055b6b8d6c1a47f82818c654",
       "uploadedAt": "2026-11-08T19:59:51Z"
+    },
+    "egg_uncommon_pile": {
+      "assetId": 135979735475290,
+      "contentHash": "36fa1604bb18b0e5871cfa78c2195060",
+      "fileSha256": "6ae20fed49df442e6476dfa9e6ed2139213d834d9e1325e50a384557c07e3afc",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-12T22:30:48.239Z",
+      "revisionId": "1",
+      "structureHash": "24e0dd524fb57e49ee201df556ecf4cb",
+      "uploadedAt": "2026-11-12T22:30:52Z"
     },
     "egg_uncommon_top": {
       "assetId": 139705008551136,
@@ -9757,6 +9827,16 @@
       "revisionId": "1",
       "structureHash": "4797909deac5d03fc85661ad8b20abae",
       "uploadedAt": "2026-10-23T18:57:47Z"
+    },
+    "prop_roulette_globe": {
+      "assetId": 77972886482080,
+      "contentHash": "7b60f59d9a2bacbd21b8f441cbe548f4",
+      "fileSha256": "818647966662c6e42b189ebc42022d933885256dd5ed1e11b00029019b752fe6",
+      "moderationState": "Approved",
+      "revisionCreateTime": "2026-11-12T22:30:59.652Z",
+      "revisionId": "1",
+      "structureHash": "e8fd3dc59f138a4c3928d2c99b09713b",
+      "uploadedAt": "2026-11-12T22:31:02Z"
     },
     "prop_seedsack": {
       "assetId": 100559797047172,
