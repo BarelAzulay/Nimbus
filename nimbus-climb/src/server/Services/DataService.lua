@@ -4485,6 +4485,7 @@ local function noteFailure(what, err)
 		string.find(message, "StudioAccessToApisNotAllowed", 1, true)
 		or string.find(message, "Studio access to APIs", 1, true)
 		or string.find(message, "Enable Studio Access", 1, true)
+		or string.find(message, "Cannot write to DataStore from studio", 1, true) -- a write's refusal (403); the claim is one
 		or string.find(message, "publish this place", 1, true) -- an unpublished place in Studio
 	then
 		storeDisabled = true -- stop hammering an API that will keep refusing us

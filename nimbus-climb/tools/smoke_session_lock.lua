@@ -396,7 +396,7 @@ local function serverScenarios()
 		local okRun, errRun = pcall(body, players)
 		stopWatch()
 		DSt.Fail, DSt.FailOnly, DSt.FailCount, DSt.Latency, DSt.Unavailable = false, nil, nil, 0, false
-		DSt.Budget, DSt.CommitThenFail = {}, nil
+		DSt.Budget, DSt.CommitThenFail, DSt.StudioNoApi = {}, nil, false
 		for _, p in ipairs(players) do
 			if p.Parent then
 				Mock.RemovePlayer(p)
@@ -564,6 +564,31 @@ local function serverScenarios()
 				T.check(release2() == true, "lock no store: the copy's hooks are dropped with it")
 			end
 			leave(q)
+
+			-- Studio without API access the way Roblox answers it: GetDataStore works and the claim's UpdateAsync is refused
+			-- with "403: Cannot write to DataStore from studio ..." (owner's bug 2026-11-12: the profile stayed provisional
+			-- for good and every dev command said "your data is still loading")
+			local us = newUserId()
+			local qs = join("LockStudioNoApi", us)
+			players[#players + 1] = qs
+			local D3, _, release3 = secondServer("DataServiceLockStudioNoApi")
+			if T.check(D3 ~= nil and type(D3.Load) == "function", "lock studio no api: a second DataService copy loads") then
+				DSt.StudioNoApi = true
+				local okLoad = pcall(D3.Load, qs)
+				local provisional = type(D3.IsProvisional) == "function" and D3.IsProvisional(qs)
+				local owns = type(D3.OwnsSave) == "function" and D3.OwnsSave(qs)
+				local c0 = DSt.Calls
+				pcall(D3.Save, qs)
+				local saveCalls = DSt.Calls - c0
+				DSt.StudioNoApi = false
+				T.check(okLoad and provisional == false and owns == true,
+					"lock studio no api: a refused claim (403) is Studio without API access: not provisional, OwnsSave true",
+					"provisional " .. tostring(provisional) .. ", owns " .. tostring(owns))
+				T.eq(saveCalls, 0, "lock studio no api: ...and later saves stop calling the store")
+				pcall(D3.Release, qs)
+				T.check(release3() == true, "lock studio no api: the copy's hooks are dropped with it")
+			end
+			leave(qs)
 		end)
 	end)
 

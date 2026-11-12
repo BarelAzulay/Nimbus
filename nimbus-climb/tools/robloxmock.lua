@@ -6334,8 +6334,10 @@ service("TweenService", {
 -- { [key] = whole number } }; SortedLog = every OrderedDataStore SetAsync / GetSortedAsync call { Op = "Set" | "Get", Store,
 -- Key, Value, Time (= workspace:GetServerTimeNow()), Ok }; FailOnly = a call name ("GetSortedAsync", "GetAsync", ...): while
 -- set, Fail fails only that call (Unavailable still fails every call); [session-lock, review round 2] CommitThenFail = n
--- (see DSm.UpdateAsync)
-Mock.DataStore = { Data = {}, Fail = false, Unavailable = false, Latency = 0, Calls = 0, Writes = 0, Budget = {}, Sorted = {}, SortedLog = {}, FailOnly = nil, CommitThenFail = nil }
+-- (see DSm.UpdateAsync); StudioNoApi = true: Studio without API access the way Roblox answers it (GetDataStore works, every
+-- call errors: a read with "502: ... Studio access to APIs is not allowed.", a write with "403: Cannot write to DataStore
+-- from studio if API access is not enabled.")
+Mock.DataStore = { Data = {}, Fail = false, Unavailable = false, Latency = 0, Calls = 0, Writes = 0, Budget = {}, Sorted = {}, SortedLog = {}, FailOnly = nil, CommitThenFail = nil, StudioNoApi = false }
 local function storableCopy(v, depth)
 	local t = rawtype(v)
 	if t == "number" or t == "string" or t == "boolean" or v == nil then
@@ -6364,6 +6366,12 @@ local function dsGate(name)
 	cfg.Calls = cfg.Calls + 1
 	if cfg.Latency > 0 and not isMainThread() then
 		task.wait(cfg.Latency)
+	end
+	if cfg.StudioNoApi then
+		if name == "SetAsync" or name == "UpdateAsync" or name == "IncrementAsync" or name == "RemoveAsync" then
+			error("403: Cannot write to DataStore from studio if API access is not enabled.", 0)
+		end
+		error("502: API Services rejected request with error. Error code: 7 Reason: Studio access to APIs is not allowed.", 0)
 	end
 	if cfg.Unavailable or (cfg.Fail and (cfg.FailOnly == nil or cfg.FailOnly == name)) then
 		if cfg.FailCount and cfg.FailCount > 0 then
