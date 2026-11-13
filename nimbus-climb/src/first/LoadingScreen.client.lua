@@ -8,8 +8,9 @@ pcall(function() game:GetService("ReplicatedFirst"):RemoveDefaultLoadingScreen()
 -- IgnoreGuiInset, ResetOnSpawn false) over a flat day sky (127,196,242) -> (207,234,252) with stepped cloud puffs (3-4
 -- stacked Frames, each row 12 px narrower on each side, no corners). A Signboard hangs from the top of the screen on two
 -- ropes: the flat pink awning, the navy header plank, the 6 px wood frame round the stone body; width min(0.5 W, 620
--- design px), the screen less a 16 px gutter on each side below 700 px wide. It swings +-1.5 deg (Sine, 3.2 s); nothing
--- else moves.
+-- design px) and at least 480, the screen less a 16 px gutter on each side on a portrait phone (below 700 px wide). On a
+-- short screen the header, padding and tag line shrink until the swinging board ends above the tip card. It swings
+-- +-1.5 deg (Sine, 3.2 s); nothing else moves.
 --   * Before Shared.Theme replicates: the sky, the clouds and the whole board (no text), drawn with this script's own copy
 --     of the few Theme.Sign tokens and SignKit sizes it needs (smoke loading_tokens_match_theme pins them equal).
 --   * Once Theme (and SignKit, PixelIcon) exist: "NIMBUS CLIMB" in LuckiestGuy gold on the navy plank (no outline), the
@@ -307,30 +308,13 @@ local function layout()
 	local vp = viewport()
 	local f = factor(vp.Y)
 	local dw, dh = vp.X / f, vp.Y / f
-	local narrow = vp.X < 700
+	-- a portrait phone: the full-width board, SKIP above the tip card (a landscape phone keeps SKIP beside the card,
+	-- unless that leaves the card too thin)
+	local narrow = vp.X < 700 and (vp.X < vp.Y or dw - 2 * (L.SKIP_W + 48) < 360)
 	for _, pair in ipairs({ { ui.Clouds, ui.CloudScale }, { ui.Content, ui.ReadScale } }) do
 		pair[1].Size = UDim2.fromOffset(math.floor(dw + 0.5), math.floor(dh + 0.5))
 		pair[2].Scale = f
 	end
-
-	-- the board
-	local boardW = narrow and math.floor(dw - 32 / f) or math.floor(math.min(0.5 * vp.X, 620 * f) / f)
-	local inner = boardW - 2 * L.FRAME
-	local headH = narrow and 64 or 84
-	local pad = narrow and 12 or 18
-	local gap = narrow and 4 or 6
-	local bw = math.min(40, math.floor((inner - 2 * pad - (L.BLOCKS - 1) * gap) / L.BLOCKS))
-	local bh = math.floor(bw * 0.8)
-	local rowW = L.BLOCKS * bw + (L.BLOCKS - 1) * gap
-	local compact = boardW < 600 -- the session-lock caption takes two lines there
-	local capH = compact and 52 or 30
-	local tagY, tagH = pad - 4, 26
-	local rowY = tagY + tagH + 10 + (St.Images.Mascot and 36 or 0)
-	local capY = rowY + bh + 6
-	local bodyH = capY + capH + pad - 6 + L.LIP
-	local woodH = bodyH + 2 * L.FRAME
-	local headY = L.ROOF_H - 3
-	local boardH = headY + headH + woodH
 
 	-- the tip card and SKIP along the bottom (SKIP above the card on a narrow screen)
 	local tipW = narrow and math.floor(dw - 40) or math.floor(math.min(760, dw - 2 * (L.SKIP_W + 48)))
@@ -349,7 +333,45 @@ local function layout()
 	end
 	local tipTop = dh - 20 - tipH
 	local bottom = narrow and (tipTop - 24 - L.SKIP_H) or (tipTop - 16)
-	local topY = math.max(math.ceil(58 / f) + 12, math.floor((bottom - boardH) * 0.45))
+
+	-- the board: min(0.5 W, 620 design px) but never under 480 (the title's room on a portrait tablet), within the 16 px
+	-- gutter; the screen less the gutter on a narrow screen
+	local boardW = math.floor(dw - 32 / f)
+	if not narrow then
+		boardW = math.floor(math.min(boardW, math.max(480, math.min(0.5 * vp.X, 620 * f) / f)))
+	end
+	local inner = boardW - 2 * L.FRAME
+	local droop = math.ceil(0.5 * boardW * math.sin(math.rad(L.SWING))) -- a lower corner at the end of the swing
+	local minTop = math.ceil(58 / f) + 12 -- below Roblox's top bar
+	-- on a short screen (a 360 px landscape phone) step down until the swinging board ends above `bottom`: 1 a slimmer
+	-- header and padding, 2 also no tag line; past that it may hang higher, into the top bar's height
+	local headH, titleSize, pad, gap, bw, bh, rowW, compact, capH, tagY, tagH, rowY, capY, bodyH, woodH, boardH
+	local headY = L.ROOF_H - 3
+	for short = 0, 2 do
+		local slim = narrow or short >= 1
+		headH = slim and 64 or 84
+		titleSize = slim and 44 or 64
+		pad = slim and 12 or 18
+		gap = slim and 4 or 6
+		bw = math.min(40, math.floor((inner - 2 * pad - (L.BLOCKS - 1) * gap) / L.BLOCKS))
+		bh = math.floor(bw * 0.8)
+		rowW = L.BLOCKS * bw + (L.BLOCKS - 1) * gap
+		compact = boardW < 600 -- the session-lock caption takes two lines there
+		capH = compact and 52 or 30
+		tagY, tagH = pad - 4, short >= 2 and 0 or 26
+		rowY = (tagH > 0 and (tagY + tagH + 10) or pad) + (St.Images.Mascot and 36 or 0)
+		capY = rowY + bh + 6
+		bodyH = capY + capH + pad - 6 + L.LIP
+		woodH = bodyH + 2 * L.FRAME
+		boardH = headY + headH + woodH
+		if minTop + boardH + droop <= bottom then
+			break
+		end
+	end
+	local topY = math.max(minTop, math.floor((bottom - boardH) * 0.45))
+	if topY + boardH + droop > bottom then
+		topY = math.max(8, bottom - boardH - droop)
+	end
 	St.Geo = { BoardW = boardW, BlockW = bw, Gap = gap, RowY = rowY, RowX = math.floor((inner - rowW) / 2) }
 
 	local half = topY + boardH
@@ -376,11 +398,21 @@ local function layout()
 		b.Size = UDim2.fromOffset(bw, bh)
 	end
 	if ui.Title then
-		ui.Title.TextSize = narrow and 44 or 64
+		-- stepped down until it fits the plate with 12 px each side
+		local room = boardW - 2 * L.RIM - 24
+		while titleSize > 24 do
+			local ok, size = pcall(Theme.Measure, ui.Title.Text, "Title", titleSize)
+			if not ok or not size or size.X <= room then
+				break
+			end
+			titleSize = titleSize - 2
+		end
+		ui.Title.TextSize = titleSize
 	end
 	if ui.Tagline then
+		ui.Tagline.Visible = tagH > 0
 		ui.Tagline.Position = UDim2.fromOffset(pad, tagY)
-		ui.Tagline.Size = UDim2.fromOffset(inner - 2 * pad, tagH)
+		ui.Tagline.Size = UDim2.fromOffset(inner - 2 * pad, math.max(tagH, 1))
 	end
 	if ui.Caption then
 		ui.Caption.Position = UDim2.fromOffset(pad, capY)

@@ -61,6 +61,9 @@
 --   loading_skip_is_plank     SKIP is a SignKit plank with the pixel arrow, no glyph arrow, and still finishes the screen
 --   loading_images_optional   Config.Loading.Images keys unset -> no image (typed title, drawn clouds); set -> Logo,
 --                             Backdrop and Mascot ImageLabels, the title and clouds off
+--   loading_board_fits        (U3 review) at 768x1024, 834x1194, 640x360, 667x375, 800x360, 740x360, 720x360 and the grid
+--                             sizes: the title fits its plate, the swinging board ends above the tip card and clear of
+--                             SKIP, SKIP clear of the card, the board below the top bar, the blocks and caption in the body
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -1497,6 +1500,66 @@ local function clientScenarios()
 		LoadingH.cleanup()
 		T.check(ok, "loading images: the scenario ran", tostring(err))
 		LKC.flushErrors("loading_images_optional")
+	end)
+
+	-- (U3 review) the board fits every screen: portrait tablets, landscape phones (360-375 px tall) and the grid sizes.
+	-- The title stays on the plate with 12 design px each side, the board (plus the swing's droop: half its width times
+	-- sin 1.5 degrees, the mock does not turn it) ends above the tip card and clear of SKIP, SKIP clear of the tip card,
+	-- the board below Roblox's top bar, the blocks and the caption inside the stone body
+	S.loading_board_fits = guarded("loading_board_fits", function()
+		local Theme = LoadingH.shared("Theme")
+		if not T.check(Theme ~= nil and Theme.Measure ~= nil, "loading fit: (setup) Theme.Measure loads") then
+			return
+		end
+		local function rect(obj)
+			local p, s = obj.AbsolutePosition, obj.AbsoluteSize
+			return { X = p.X, Y = p.Y, R = p.X + s.X, B = p.Y + s.Y }
+		end
+		local function overlap(a, b)
+			return a.X < b.R and b.X < a.R and a.Y < b.B and b.Y < a.B
+		end
+		local function show(r)
+			return fmt("%d,%d..%d,%d", r.X, r.Y, r.R, r.B)
+		end
+		local ok, err = pcall(function()
+			local sizes = { { 768, 1024 }, { 834, 1194 }, { 640, 360 }, { 667, 375 }, { 800, 360 }, { 740, 360 }, { 720, 360 },
+				{ 844, 390 }, { 390, 844 }, { 1920, 1080 }, { 1280, 720 } }
+			for _, s in ipairs(sizes) do
+				local tag = s[1] .. "x" .. s[2]
+				local f = Theme.ScreenFactor(s[2])
+				local gui = LoadingH.run({ Size = s })
+				local board = gui and gui:FindFirstChild("Board", true)
+				local plate = gui and gui:FindFirstChild("Plate", true)
+				local title = plate and plate:FindFirstChild("Title")
+				local tip = gui and gui:FindFirstChild("TipCard", true)
+				local skip = gui and gui:FindFirstChild("Skip", true)
+				local body = gui and gui:FindFirstChild("Body", true)
+				local row = gui and gui:FindFirstChild("BlockRow", true)
+				local caption = gui and gui:FindFirstChild("Caption", true)
+				if not T.check(board and plate and title and tip and skip and body and row and caption, "loading fit: (setup) the board, tip card and SKIP at " .. tag) then
+					return
+				end
+				local width = Theme.Measure(title.Text, "Title", title.TextSize).X
+				local room = plate.AbsoluteSize.X / f - 24
+				T.check(width <= room, "loading fit: the title stays on the plate with 12 px each side at " .. tag,
+					fmt("title %d at %d px, plate room %.0f", width, title.TextSize, room))
+				local b, t, k = rect(board), rect(tip), rect(skip)
+				local droop = math.ceil(0.5 * board.AbsoluteSize.X * math.sin(math.rad(1.5)))
+				local swung = { X = b.X, Y = b.Y, R = b.R, B = b.B + droop }
+				T.check(swung.B <= t.Y, "loading fit: the swinging board ends above the tip card at " .. tag, show(swung) .. " vs tip " .. show(t))
+				T.check(not overlap(swung, k), "loading fit: the swinging board is clear of SKIP at " .. tag, show(swung) .. " vs skip " .. show(k))
+				T.check(not overlap(k, t), "loading fit: SKIP is clear of the tip card at " .. tag, show(k) .. " vs tip " .. show(t))
+				T.check(b.Y >= Mock.TopInset, "loading fit: the board hangs below Roblox's top bar at " .. tag, show(b))
+				local inside = rect(body)
+				local r, c = rect(row), rect(caption)
+				T.check(r.Y >= inside.Y and c.B <= inside.B and r.X >= inside.X and r.R <= inside.R,
+					"loading fit: the blocks and the caption sit inside the stone body at " .. tag, show(r) .. " / " .. show(c) .. " in " .. show(inside))
+				LoadingH.cleanup()
+			end
+		end)
+		LoadingH.cleanup()
+		T.check(ok, "loading fit: the scenario ran", tostring(err))
+		LKC.flushErrors("loading_board_fits")
 	end)
 
 	return S
