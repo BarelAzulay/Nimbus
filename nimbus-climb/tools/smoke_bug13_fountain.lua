@@ -2,9 +2,10 @@
 -- option C "Sky-Oasis Steps"). Loaded by tools/smoke.py in the server world and the client world:
 --   bug13fountain_server (server) the booted lobby's Fountain model (LobbyBuilder buildFountain):
 --                        the bug: no emitter sits inside the Nimbus statue (the old Spray started at centre + 10.6, in
---                        its body), none uses the sparkle star, none is named Spray, every emitter texture is one of
---                        Roblox's own particle textures (nothing to upload); the animation: three falls, each a Core
---                        Beam + >= 2 Streak Beams with a scrolling texture (TextureSpeed ~= 0, Wrap) between attachments
+--                        its body), none uses the sparkle star, none is named Spray, every emitter wears one of the
+--                        game's own FxSprites sheets (kit B X1); the animation: three falls, each a Core
+--                        Beam (FxSprites Strip "Sheet") + >= 2 Streak Beams with a scrolling texture (Strip "Flow",
+--                        never the hairline Dash strip; TextureSpeed ~= 0, Wrap) between attachments
 --                        on the "Falls" anchor (tagged OasisFalls), the lip above the impact, the impact on the water /
 --                        the island it lands on, the streaks scroll lip -> impact (Oasis.Flow = -1: the Beam docs say a
 --                        positive TextureSpeed runs A0 -> A1, and A0 is the impact); a Splash part at every impact with
@@ -24,6 +25,22 @@
 
 local T = SmokeCommon.T
 local guarded = SmokeCommon.guarded
+
+-- kit B X1: the role of one of the game's own particle sprites (shared/FxSprites), nil for any other texture
+local function fxRole(tex)
+	local ok, FX = pcall(function()
+		return require(Mock.GetPath(ROOTS["shared"] .. "/FxSprites"))
+	end)
+	return ok and type(FX) == "table" and FX.RoleOf(tostring(tex)) or nil
+end
+
+-- kit B X1 review: FxSprites.Strip(name) (a Beam strip), nil when the module is missing
+local function fxStrip(name)
+	local ok, s = pcall(function()
+		return require(Mock.GetPath(ROOTS["shared"] .. "/FxSprites")).Strip(name)
+	end)
+	return ok and s or nil
+end
 local CONTEXT = (ARGS and ARGS.context) or "server"
 
 local abs, max, sqrt = math.abs, math.max, math.sqrt
@@ -108,7 +125,7 @@ local function serverScenarios()
 			T.info("bug13 fountain: no NimbusStatue", "PetBuilder / PetCatalog not in this build: the statue checks are skipped")
 		end
 
-		-- the bug: the water's emitters (no spray in the statue, no sparkle star, built-in textures only). The statue's
+		-- the bug: the water's emitters (no spray in the statue, no sparkle star, FxSprites sheets only). The statue's
 		-- own pet effects (PetBuilder's RaritySparkles) belong to Nimbus, not to the water: skipped here.
 		local statueParts = {}
 		if statue then
@@ -132,10 +149,10 @@ local function serverScenarios()
 					end
 				end
 				local tex = string.lower(tostring(d.Texture))
-				if tex:find("sparkle") then
+				if tex:find("sparkle") or fxRole(d.Texture) == "Sparkle" then
 					sparkle[#sparkle + 1] = d.Name
 				end
-				if tex ~= "" and tex:sub(1, 30) ~= "rbxasset://textures/particles/" then
+				if not fxRole(d.Texture) then
 					foreign[#foreign + 1] = d.Name .. "=" .. tex
 				end
 			end
@@ -147,7 +164,7 @@ local function serverScenarios()
 		T.check(#inside == 0, "bug13 fountain: no emitter starts inside the Nimbus statue (the old spray did)", table.concat(inside, ", "))
 		T.check(#sparkle == 0, "bug13 fountain: no emitter uses the sparkle star (water, not glitter)", table.concat(sparkle, ", "))
 		T.check(#sprayNamed == 0, "bug13 fountain: the old Spray is gone", table.concat(sprayNamed, ", "))
-		T.check(#foreign == 0, "bug13 fountain: every emitter texture is Roblox's own (rbxasset particles: nothing to upload)", table.concat(foreign, ", "))
+		T.check(#foreign == 0, "bug13 fountain: every emitter wears one of the game's own FxSprites sheets (kit B X1)", table.concat(foreign, ", "))
 		-- phones: GraphicsQuality's Low parks every NC_Detail-tagged decor (emitters off). The fountain keeps only its
 		-- ripple rings (and the Beams) running on Low.
 		local function detailed(inst)
@@ -192,17 +209,31 @@ local function serverScenarios()
 					"bug13 fountain: fall " .. i .. " is thrown outward over the rim (impact beyond the lip)")
 				T.check(core.CurveSize0 > 0 and core.CurveSize1 > 0, "bug13 fountain: fall " .. i .. " is curved (CurveSize0 / 1 > 0)")
 			end
-			local streaks, moving = 0, 0
+			-- kit B X1 review: the falls must stay visible. The core wears the soft water sheet strip and the streaks the
+			-- flow strip (FxSprites "Sheet" / "Flow": their own upload or the old stock glow), never "" and never the
+			-- hairline fx_speedlines (Dash) strip.
+			if okCore then
+				local want = fxStrip("Sheet")
+				T.check(want ~= nil and want ~= "" and core.Texture == want and core.Texture ~= fxStrip("Dash"),
+					"bug13 fountain: fall " .. i .. "'s core wears the soft water sheet (FxSprites Strip \"Sheet\")", tostring(core.Texture) .. " vs " .. tostring(want))
+			end
+			local streaks, moving, flow = 0, 0, 0
+			local wantFlow = fxStrip("Flow")
 			for _, b in ipairs(anchor:GetChildren()) do
 				if b:IsA("Beam") and b.Name:sub(1, #tag + 6) == tag .. "Streak" then
 					streaks = streaks + 1
 					if abs(b.TextureSpeed) > 0.5 and b.TextureMode == Enum.TextureMode.Wrap and b.Texture ~= "" then
 						moving = moving + 1
 					end
+					if wantFlow and wantFlow ~= "" and b.Texture == wantFlow and b.Texture ~= fxStrip("Dash") then
+						flow = flow + 1
+					end
 				end
 			end
 			T.check(streaks >= (f.Big and 3 or 2) and moving == streaks,
 				"bug13 fountain: fall " .. i .. " has scrolling streak Beams (Wrap, TextureSpeed set: the water runs)", fmt("%d streaks, %d moving", streaks, moving))
+			T.check(streaks > 0 and flow == streaks, "bug13 fountain: fall " .. i .. "'s streaks wear the flow strip (FxSprites Strip \"Flow\")",
+				fmt("%d of %d (want %s)", flow, streaks, tostring(wantFlow)))
 			local uphill = {}
 			for _, b in ipairs(anchor:GetChildren()) do
 				if b:IsA("Beam") and b.Name:sub(1, #tag + 6) == tag .. "Streak" and b.Attachment0 and b.Attachment1 then

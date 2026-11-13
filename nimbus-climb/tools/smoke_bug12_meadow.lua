@@ -16,7 +16,7 @@
 --                      the story: >= 1 SeedSack next to a plaza flower bed, non-colliding, Detail decor, its +X
 --                      downwind, its Part build mirrors the kit's SACK; a drift of >= 20 wildflowers in the bed's two
 --                      colours streams downwind of each sack; dandelion seeds: a Detail-tagged MeadowSeeds model with
---                      built-in particle textures blowing downwind;
+--                      FxSprites Glow motes blowing downwind (kit B X1);
 --                      the meshes: a committed manifest for every meadow key (1 part, flowers 2 with a tinted Petal),
 --                      clump-sized bounds, and the sack manifest fits the sack Part build
 --   client_bug12meadow_sway (client) MeadowFx on a test Meadow folder: Tilt is bounded and smooth at 60 fps, its gust
@@ -30,6 +30,14 @@
 
 local T = SmokeCommon.T
 local guarded = SmokeCommon.guarded
+
+-- kit B X1: the role of one of the game's own particle sprites (shared/FxSprites), nil for any other texture
+local function fxRole(tex)
+	local ok, FX = pcall(function()
+		return require(Mock.GetPath(ROOTS["shared"] .. "/FxSprites"))
+	end)
+	return ok and type(FX) == "table" and FX.RoleOf(tostring(tex)) or nil
+end
 local CONTEXT = (ARGS and ARGS.context) or "server"
 
 local abs, max, min, sqrt, floor = math.abs, math.max, math.min, math.sqrt, math.floor
@@ -402,7 +410,7 @@ local function serverScenarios()
 				if e:IsA("ParticleEmitter") then
 					nSeeds = nSeeds + 1
 					local tex = tostring(e.Texture)
-					if tex:sub(1, 30) ~= "rbxasset://textures/particles/" or e.Acceleration:Dot(w) <= 0 or e.Name ~= "DandelionSeeds" then
+					if fxRole(tex) ~= "Glow" or e.Acceleration:Dot(w) <= 0 or e.Name ~= "DandelionSeeds" then
 						seedsOk = false
 					end
 					if e.Parent:IsA("BasePart") and (e.Parent.CanCollide or e.Parent.Transparency < 1) then
@@ -412,7 +420,7 @@ local function serverScenarios()
 			end
 		end
 		T.check(seeds ~= nil and CS:HasTag(seeds, "NC_Detail") and nSeeds >= 1 and nSeeds <= MK.Seeds.Sectors and seedsOk,
-			fmt("bug12 meadow: dandelion seeds blow downwind (%d invisible emitter boxes, built-in texture, Detail: Low parks them)", nSeeds))
+			fmt("bug12 meadow: dandelion seeds blow downwind (%d invisible emitter boxes, the FxSprites Glow sheet, Detail: Low parks them)", nSeeds))
 
 		-- 5. the meshes (manifests committed with the kit)
 		local manOk, manWhy = true, {}

@@ -110,8 +110,7 @@ local LINE_COUNT = 18 -- screen speed lines
 local BUTTON_ALPHA = 0.2
 local BUTTON_ALPHA_LOCKED = 0.7
 
-local TEX_SMOKE = "rbxasset://textures/particles/smoke_main.dds"
-local TEX_SPARKLES = "rbxasset://textures/particles/sparkles_main.dds"
+local FxSprites = require(Shared.FxSprites) -- the game's own particle sprites (kit B X1)
 
 ----------------------------------------------------------------------
 -- State
@@ -696,8 +695,11 @@ end
 ----------------------------------------------------------------------
 local function newEmitter(parent, props)
 	local emitter = Instance.new("ParticleEmitter")
+	FxSprites.Apply(emitter, props.Sprite) -- props.Sprite: an FxSprites role (texture + flipbook)
 	for key, value in pairs(props) do
-		emitter[key] = value
+		if key ~= "Sprite" then
+			emitter[key] = value
+		end
 	end
 	emitter.Parent = parent
 	return emitter
@@ -723,7 +725,7 @@ local function buildCharacterFx(humanoid, root)
 	-- soft footstep dust (toggled while running on the ground)
 	fx.dust = newEmitter(feet, {
 		Name = "NC_RunDust",
-		Texture = TEX_SMOKE,
+		Sprite = "Puff",
 		Color = ColorSequence.new(Theme.Colors.Cloud, Theme.Colors.CloudShade),
 		Transparency = NumberSequence.new({
 			NumberSequenceKeypoint.new(0, 0.6),
@@ -749,7 +751,7 @@ local function buildCharacterFx(humanoid, root)
 	-- bigger puff for landings and the dash take-off (manual :Emit only)
 	fx.puff = newEmitter(feet, {
 		Name = "NC_Puff",
-		Texture = TEX_SMOKE,
+		Sprite = "Puff",
 		Color = ColorSequence.new(Theme.Colors.Cloud, Theme.Colors.CloudShade),
 		Transparency = NumberSequence.new({
 			NumberSequenceKeypoint.new(0, 0.35),
@@ -776,7 +778,7 @@ local function buildCharacterFx(humanoid, root)
 	-- sparkle burst for the dash
 	fx.sparks = newEmitter(root, {
 		Name = "NC_DashSparks",
-		Texture = TEX_SPARKLES,
+		Sprite = "Sparkle",
 		Color = ColorSequence.new(Theme.Colors.White, Theme.Colors.Stamina),
 		Transparency = NumberSequence.new({
 			NumberSequenceKeypoint.new(0, 0),

@@ -24,6 +24,7 @@ local Config = require(Shared.Config)
 local Theme = require(Shared.Theme)
 local Util = require(Shared.Util)
 local Remotes = require(Shared.Remotes)
+local FxSprites = require(Shared.FxSprites) -- the game's own particle sprites (kit B X1)
 
 local DamageService = {}
 
@@ -225,7 +226,7 @@ local function reviveBurst(player)
 	attachment.Parent = root
 
 	local emitter = Instance.new("ParticleEmitter")
-	emitter.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	FxSprites.Apply(emitter, "Sparkle")
 	emitter.Color = ColorSequence.new(Theme.Colors.Good, Theme.Colors.White)
 	emitter.LightEmission = 1
 	emitter.Lifetime = NumberRange.new(0.8, 1.3)

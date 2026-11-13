@@ -184,7 +184,7 @@ local TOP = ORIGIN.Y -- the lobby's walking height; the arena island's walking s
 local ARENA_NAME = "BattleArena"
 local ZONE_TAG = "NC_BattleZone"
 local ATTR_IN_BATTLE = "InBattle" -- BattleService's player attribute (battle id) from the contract
-local SPARKLES = "rbxasset://textures/particles/sparkles_main.dds"
+local FxSprites = require(Shared:WaitForChild("FxSprites")) -- the game's own particle sprites (kit B X1)
 local SEED = 20261011
 local DEFAULT_ANGLE = 202.5 -- the arena's direction from the plaza when the lobby reserves none
 local STEP16 = pi * 2 / 16
@@ -378,7 +378,7 @@ end
 
 local function emitter(parent, props)
 	local e = Instance.new("ParticleEmitter")
-	e.Texture = SPARKLES
+	FxSprites.Apply(e, props and props.Sprite or "Sparkle") -- props.Sprite: an FxSprites role
 	e.Color = ColorSequence.new(C.TextGold)
 	e.LightEmission = 0.6
 	e.LightInfluence = 0
@@ -390,7 +390,9 @@ local function emitter(parent, props)
 	e.Rotation = NumberRange.new(0, 360)
 	e.RotSpeed = NumberRange.new(-60, 60)
 	for k, v in pairs(props or {}) do
-		e[k] = v
+		if k ~= "Sprite" then
+			e[k] = v
+		end
 	end
 	e.Parent = parent
 	return e
@@ -2706,7 +2708,7 @@ local function buildBridge(parent, A, startZ, endZ)
 		Art.cyl(m, "ArchPillar", foot * CFrame.new(0, 0.9, 0), 14.4, 2.1, "Marble", { Collide = true })
 		Art.part(m, "ArchCap", A * CFrame.new(sx * (hw + 1.6), 15.5, az), Vector3.new(2.6, 0.6, 2.6), "Brass", { Shadow = false })
 		local fl = Art.part(m, "Flame", A * CFrame.new(sx * (hw + 1.6), 16.4, az) * CFrame.Angles(0, rad(45), 0), Vector3.new(1, 1.2, 1), flameColor(C.Crimson), { Material = MAT.Neon, Shadow = false })
-		emitter(fl, { Color = ColorSequence.new(rgb(255, 220, 160), C.Crimson), Rate = 3, Speed = NumberRange.new(1, 2), EmissionDirection = Enum.NormalId.Top, SpreadAngle = Vector2.new(15, 15) })
+		emitter(fl, { Sprite = "Ember", Color = ColorSequence.new(rgb(255, 220, 160), C.Crimson), Rate = 3, Speed = NumberRange.new(1, 2), EmissionDirection = Enum.NormalId.Top, SpreadAngle = Vector2.new(15, 15) })
 	end
 	Art.part(m, "ArchLintel", A * CFrame.new(0, 14.6, az), Vector3.new(BRIDGE_W + 6, 1.2, 2.4), "Marble", { Collide = true })
 	local sign = Art.part(m, "ArchSign", A * CFrame.new(0, 11.5, az), Vector3.new(12, 4, 0.6), "SlateDark", { Collide = true, Shadow = false })

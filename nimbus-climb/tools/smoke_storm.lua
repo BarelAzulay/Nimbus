@@ -32,6 +32,14 @@
 
 local T = SmokeCommon.T
 local guarded = SmokeCommon.guarded
+
+-- kit B X1: the role of one of the game's own particle sprites (shared/FxSprites), nil for any other texture
+local function fxRole(tex)
+	local ok, FX = pcall(function()
+		return require(Mock.GetPath(ROOTS["shared"] .. "/FxSprites"))
+	end)
+	return ok and type(FX) == "table" and FX.RoleOf(tostring(tex)) or nil
+end
 local CONTEXT = (ARGS and ARGS.context) or "server"
 
 local abs, max, min, huge = math.abs, math.max, math.min, math.huge
@@ -79,13 +87,13 @@ local function plain(text)
 	return (tostring(text):gsub("<[^>]*>", ""))
 end
 
--- every image / texture / mesh / sound id of `root` that is neither empty, built in (rbxasset://) nor the player's
--- art: { "ClassName Name: id" }
+-- every image / texture / mesh / sound id of `root` that is neither empty, built in (rbxasset://), an emitter's
+-- FxSprites sheet (kit B X1) nor the player's art: { "ClassName Name: id" }
 local function foreignAssets(root, art)
 	local out = {}
 	local function check(d, id)
 		id = tostring(id or "")
-		if id ~= "" and id ~= art and not id:find("^rbxasset://") then
+		if id ~= "" and id ~= art and not id:find("^rbxasset://") and not (d:IsA("ParticleEmitter") and fxRole(id)) then
 			out[#out + 1] = d.ClassName .. " " .. d.Name .. ": " .. id
 		end
 	end
@@ -817,7 +825,7 @@ local function serverScenarios()
 		end
 		T.eq(Config.Art.StormfangImage, CONTRACT.v3.artImage, "Config.Art.StormfangImage is the player's uploaded sheet")
 		local foreign = foreignAssets(altar, Config.Art.StormfangImage)
-		T.check(#foreign == 0, "Storm Altar: no asset id but Config.Art.StormfangImage (built-in rbxasset:// textures only)", table.concat(foreign, "; "))
+		T.check(#foreign == 0, "Storm Altar: no asset id but Config.Art.StormfangImage (built-in rbxasset:// textures and the FxSprites particle sheets only)", table.concat(foreign, "; "))
 
 		-- no overlap with the portals, roulette machines, NPC spots / NPC pets, the spawn or the home plots
 		local obs = obstacles(info, Config, boundsOf(altar))

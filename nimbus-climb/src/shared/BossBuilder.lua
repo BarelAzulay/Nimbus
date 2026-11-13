@@ -58,6 +58,7 @@
 
 local Shared = script.Parent
 local Voxel = require(Shared:WaitForChild("Voxel"))
+local FxSprites = require(Shared:WaitForChild("FxSprites")) -- the tier aura's soft glow (kit B X1)
 
 local BossBuilder = {}
 
@@ -1593,6 +1594,7 @@ local function setAura(core, look, on)
 	if not aura then
 		aura = Instance.new("ParticleEmitter")
 		aura.Name = "TierAura"
+		FxSprites.Apply(aura, "Glow")
 		aura.Lifetime = NumberRange.new(1.2, 2)
 		aura.Speed = NumberRange.new(1, 3)
 		aura.SpreadAngle = Vector2.new(180, 180)

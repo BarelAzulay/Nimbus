@@ -119,6 +119,14 @@
 
 local T = SmokeCommon.T
 local guarded = SmokeCommon.guarded
+
+-- kit B X1: the role of one of the game's own particle sprites (shared/FxSprites), nil for any other texture
+local function fxRole(tex)
+	local ok, FX = pcall(function()
+		return require(Mock.GetPath(ROOTS["shared"] .. "/FxSprites"))
+	end)
+	return ok and type(FX) == "table" and FX.RoleOf(tostring(tex)) or nil
+end
 local CONTEXT = (ARGS and ARGS.context) or "server"
 
 local S = {}
@@ -2367,8 +2375,8 @@ local function checkShelfFx(label, row, Config)
 			if not (att and att:IsA("Attachment") and att.Name == "Center" and att.Parent == egg and near(att.WorldPosition, egg.Position, 0.05)) then
 				bad[#bad + 1] = r .. " not on an Attachment Center at the egg's middle"
 			end
-			if (pe.Texture or "") ~= "" and string.find(pe.Texture, "rbxassetid", 1, true) then
-				bad[#bad + 1] = r .. " has an uploaded texture"
+			if fxRole(pe.Texture) ~= "Sparkle" then
+				bad[#bad + 1] = r .. " is not on the FxSprites Sparkle sheet (kit B X1)"
 			end
 		end
 	end

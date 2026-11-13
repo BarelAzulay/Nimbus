@@ -2,7 +2,7 @@
 -- owner: evofx, wave 1). Loaded by tools/smoke.py in BOTH worlds:
 --   p6evofx_specs   (server, pure) PetFx.Spec for every element x stage x detail: stage 1 = 1 emitter + light 0.6 /
 --                   range 6, stage 2 = 2 emitters + light 1.0 / range 8, total Rate <= 12 (High) and <= 4 (Low), Low
---                   at most half of High, default sprite only (no texture ids), every curve valid; ElementOf
+--                   at most half of High, each element on its FxSprites sheet (recipe Sprite, kit B X1), every curve valid; ElementOf
 --   p6evofx_build   (server, pure) the real PetBuilder.Build of every catalog pet at stage 0 / 1 / 2 (Low detail; a
 --                   few at High): stage 0 has no Body.PetFx, evolved pets get it within budget with the pet's catalog
 --                   element, the stage-2 aura glows in the pet's Glow colours and its Neon Aura parts pulse; PetFx
@@ -16,6 +16,14 @@
 
 local T = SmokeCommon.T
 local guarded = SmokeCommon.guarded
+
+-- kit B X1: the role of one of the game's own particle sprites (shared/FxSprites), nil for any other texture
+local function fxRole(tex)
+	local ok, FX = pcall(function()
+		return require(Mock.GetPath(ROOTS["shared"] .. "/FxSprites"))
+	end)
+	return ok and type(FX) == "table" and FX.RoleOf(tostring(tex)) or nil
+end
 
 local S = {}
 local IS_SERVER = game:GetService("RunService"):IsServer()
@@ -101,7 +109,7 @@ S.p6evofx_specs = guarded("p6evofx_specs", function()
 		budget:case(s2.Rate > s1.Rate and s2.Wide > 1 and s2.Light.Brightness > s1.Light.Brightness and s2.Light.Range > s1.Light.Range,
 			e .. ": stage 2 is stronger than stage 1 (more particles, wider, brighter, bigger light)")
 		local r = Fx.Elements[e]
-		budget:case(r.Texture == nil, e .. ": default sprite only (no texture id)")
+		budget:case(r.Texture == nil and type(r.Sprite) == "string" and r.Sprite ~= "", e .. ": an FxSprites sheet (Sprite " .. tostring(r.Sprite) .. "), no raw texture id")
 		budget:case(r.Lifetime[1] > 0 and r.Lifetime[1] <= r.Lifetime[2] and r.Lifetime[2] <= 3 and r.Speed[1] <= r.Speed[2], e .. ": sane lifetime / speed ranges")
 		local function curveOk(c)
 			if type(c) ~= "table" or #c < 2 or c[1][1] ~= 0 or c[#c][1] ~= 1 then
@@ -160,12 +168,14 @@ S.p6evofx_build = guarded("p6evofx_build", function()
 					tag .. ": soft PointLight")
 				all:case(fx:GetAttribute("Element") == (def.Element or fx:GetAttribute("Element")) and fx:GetAttribute("Stage") == stage, tag .. ": element " .. tostring(fx:GetAttribute("Element")))
 				local tagged = true
+				local recipe = Fx.Elements[fx:GetAttribute("Element")]
 				for _, pe in ipairs(list) do
-					if not CollectionService:HasTag(pe, Fx.TAG) or pe.Texture ~= "" or not pe.Enabled then
+					local want = (pe.Name == "FxMain") and (recipe and recipe.Sprite) or "Sparkle"
+					if not CollectionService:HasTag(pe, Fx.TAG) or fxRole(pe.Texture) ~= want or not pe.Enabled then
 						tagged = false
 					end
 				end
-				all:case(tagged, tag .. ": emitters tagged PetFx, default sprite, on (server)")
+				all:case(tagged, tag .. ": emitters tagged PetFx, on the element's FxSprites sheet (aura: Sparkle), on (server)")
 				if stage == 2 then
 					stage2Seen = stage2Seen + 1
 					if (fx:GetAttribute("Pulse") or 0) > 0 then

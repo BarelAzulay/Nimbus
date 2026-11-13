@@ -33,6 +33,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
+local FxSprites = require(Shared:WaitForChild("FxSprites")) -- the game's own particle sprites (kit B X1)
 local okTheme, Theme = pcall(function()
 	return require(Shared:WaitForChild("Theme"))
 end)
@@ -365,6 +366,7 @@ function P.build(rec)
 	local ok = pcall(function()
 		local em = Instance.new("ParticleEmitter")
 		em.Name = "Sparkles"
+		FxSprites.Apply(em, "Sparkle")
 		em.Color = ColorSequence.new(P.lighten(color, 0.6), GOLD)
 		em.Rate = 6
 		em.Lifetime = NumberRange.new(0.8, 1.4)

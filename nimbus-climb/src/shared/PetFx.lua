@@ -12,8 +12,9 @@
 		         Fx = true (force effects in a viewport), Element = "Flame" (override) }
 		Builds Body.PetFx (an Attachment at the root; Attachments only work as children of a BasePart, so the effect
 		holder IS the attachment) with:
-		  * FxMain   the element's ParticleEmitter (default sprite only: shapes from Size / Squash / Transparency /
-		             LightEmission curves; embers, snow, sparks, petals, bubbles, gem glints, star motes, wisps)
+		  * FxMain   the element's ParticleEmitter on its FxSprites sheet (recipe.Sprite, kit B X1; shapes from Size /
+		             Squash / Transparency / LightEmission curves; embers, snow, sparks, leaves, bubbles, gem glints, star
+		             motes, wisps)
 		  * FxAura   stage 2 only: a shell of twinkling glints in the pet's own Glow / GlowB colours, locked to the pet
 		  * FxLight  a soft PointLight (stage 1: brightness 0.6, range 6; stage 2: 1.0, range 8; x Scale)
 		Stage 2 also flags the Neon `Aura*` parts PB_Pulse so PetBuilder.Animate breathes them (no new loop here).
@@ -33,6 +34,8 @@
 
 local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
+
+local FxSprites = require(script.Parent:WaitForChild("FxSprites")) -- the element sheets (kit B X1)
 
 local PetFx = {}
 
@@ -59,11 +62,12 @@ end
 ----------------------------------------------------------------------
 -- The element recipes. Lengths are in pet units U = the pet's largest extent / 7 (about 1 stud for a second
 -- evolution at Scale 1), so the same recipe fits a small first evolution, a big Ascended form and a mesh pet.
--- Color = { t, r, g, b }; Size / Transparency / Squash = { t, v }; Light = LightEmission.
+-- Color = { t, r, g, b }; Size / Transparency / Squash = { t, v }; Light = LightEmission; Sprite = the FxSprites role.
 ----------------------------------------------------------------------
 local E = {}
 -- Flame: embers that leap out of the pet and float up like a campfire's, gold -> orange -> red, shrinking as they cool
 E.Flame = {
+	Sprite = "Ember",
 	Rate = 6, Lifetime = { 1.4, 2.0 }, Speed = { 3.0, 4.4 }, Spread = { 75, 75 }, Drag = 1.6,
 	Accel = { 0, 2.0, 0 }, Rot = { 0, 360 }, RotSpeed = { -140, 140 }, Light = 0.6, Brightness = 1.1,
 	Color = { { 0, 255, 236, 120 }, { 0.35, 255, 150, 40 }, { 1, 240, 70, 40 } },
@@ -74,6 +78,7 @@ E.Flame = {
 }
 -- Frost: soft snowflakes puffed out of the fur that drift slowly down, white with an icy blue edge, turning gently
 E.Frost = {
+	Sprite = "Snow",
 	Rate = 5, Lifetime = { 2.2, 3.0 }, Speed = { 3.4, 4.6 }, Spread = { 80, 80 }, Drag = 1.8,
 	Accel = { 0.2, -1.1, 0 }, Rot = { 0, 360 }, RotSpeed = { -50, 50 }, Light = 0.35, Brightness = 1.1,
 	Color = { { 0, 255, 255, 255 }, { 0.5, 200, 240, 255 }, { 1, 140, 210, 255 } },
@@ -83,6 +88,7 @@ E.Frost = {
 }
 -- Storm: quick electric sparks that crackle outward as bright streaks, white-blue -> violet
 E.Storm = {
+	Sprite = "Spark",
 	Rate = 7, Lifetime = { 0.45, 0.7 }, Speed = { 8, 11 }, Spread = { 180, 180 }, Drag = 3.2,
 	Accel = { 0, 0, 0 }, Rot = { 0, 0 }, RotSpeed = { 0, 0 }, Light = 0.7, Brightness = 1.1,
 	Color = { { 0, 200, 240, 255 }, { 0.5, 96, 160, 255 }, { 1, 160, 100, 255 } },
@@ -94,6 +100,7 @@ E.Storm = {
 }
 -- Nature: little leaves that tumble out and sail down sideways on a breeze, fresh green -> spring lime
 E.Nature = {
+	Sprite = "Leaf",
 	Rate = 5, Lifetime = { 2.0, 2.8 }, Speed = { 3.6, 4.8 }, Spread = { 75, 75 }, Drag = 1.6,
 	Accel = { 0.9, -1.0, 0.3 }, Rot = { 0, 360 }, RotSpeed = { -160, 160 }, Light = 0, Brightness = 1.1, Influence = 0.5,
 	Color = { { 0, 150, 236, 110 }, { 0.6, 120, 216, 92 }, { 1, 214, 244, 130 } },
@@ -104,6 +111,7 @@ E.Nature = {
 }
 -- Water: shiny bubbles that bob upward and swell before they pop, aqua -> sky blue
 E.Water = {
+	Sprite = "Droplet",
 	Rate = 5, Lifetime = { 1.8, 2.5 }, Speed = { 2.8, 4.0 }, Spread = { 90, 90 }, Drag = 1.8,
 	Accel = { 0, 1.8, 0 }, Rot = { 0, 360 }, RotSpeed = { -40, 40 }, Light = 0.25, Brightness = 1.1,
 	Color = { { 0, 150, 236, 255 }, { 0.6, 80, 186, 255 }, { 1, 140, 226, 255 } },
@@ -113,6 +121,7 @@ E.Water = {
 }
 -- Earth: golden gem glints kicked up like crystal dust that twinkle and fall back, amber -> mint crystal
 E.Earth = {
+	Sprite = "Sparkle",
 	Rate = 5, Lifetime = { 1.3, 1.8 }, Speed = { 5.0, 6.4 }, Spread = { 50, 50 }, Drag = 1.0,
 	Accel = { 0, -5.0, 0 }, Rot = { 0, 0 }, RotSpeed = { 0, 0 }, Light = 0.5, Brightness = 1.1,
 	Color = { { 0, 255, 220, 110 }, { 0.5, 255, 180, 70 }, { 1, 120, 230, 180 } },
@@ -122,6 +131,7 @@ E.Earth = {
 }
 -- Celestial: twinkling star motes that float out around the pet and rise, white-gold
 E.Celestial = {
+	Sprite = "Star",
 	Rate = 6, Lifetime = { 1.8, 2.6 }, Speed = { 4.6, 6.0 }, Spread = { 180, 180 }, Drag = 2.0,
 	Accel = { 0, 0.6, 0 }, Rot = { 0, 0 }, RotSpeed = { 0, 0 }, Light = 0.6, Brightness = 1.1,
 	Color = { { 0, 255, 250, 210 }, { 0.5, 255, 222, 110 }, { 1, 255, 190, 90 } },
@@ -131,6 +141,7 @@ E.Celestial = {
 }
 -- Shadow: soft violet wisps that curl upward and stretch thin, violet -> magenta
 E.Shadow = {
+	Sprite = "Wisp",
 	Rate = 5, Lifetime = { 1.6, 2.2 }, Speed = { 2.6, 3.6 }, Spread = { 90, 90 }, Drag = 1.4,
 	Accel = { 0, 1.8, 0 }, Rot = { -15, 15 }, RotSpeed = { -30, 30 }, Light = 0.1, Brightness = 1.1,
 	Color = { { 0, 120, 70, 210 }, { 0.5, 168, 90, 240 }, { 1, 230, 100, 200 } },
@@ -144,6 +155,7 @@ PetFx.Elements = E
 -- the second evolution's aura: a shell of glints around the pet in its Glow / GlowB colours that twinkle and turn,
 -- locked to the pet so it travels with it
 local AURA = {
+	Sprite = "Sparkle",
 	Lifetime = { 1.5, 2.1 }, Speed = { 6.0, 7.2 }, Spread = { 180, 180 }, Drag = 2.2,
 	Accel = { 0, 0.4, 0 }, Rot = { 0, 360 }, RotSpeed = { -90, 90 }, Light = 0.4, Brightness = 1.1, Locked = true,
 	Size = { { 0, 0 }, { 0.2, 0.97 }, { 0.4, 0.46 }, { 0.6, 0.92 }, { 0.8, 0.41 }, { 1, 0 } },
@@ -332,6 +344,7 @@ end
 local function makeEmitter(name, s, scale, wide, grow)
 	local pe = Instance.new("ParticleEmitter")
 	pe.Name = name
+	FxSprites.Apply(pe, s.Sprite or "Sparkle")
 	pe.Rate = s.Rate
 	pe.Lifetime = NumberRange.new(s.Lifetime[1], s.Lifetime[2])
 	pe.Speed = NumberRange.new(s.Speed[1] * scale * wide, s.Speed[2] * scale * wide)

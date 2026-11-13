@@ -64,6 +64,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Util = require(Shared.Util)
 local Remotes = require(Shared.Remotes)
+local FxSprites = require(Shared.FxSprites) -- the game's own particle sprites (kit B X1)
 
 local DungeonService = {}
 DungeonService.RunEnded = Util.Signal() -- Fire(runId, result) once per run, after the payments
@@ -1720,6 +1721,7 @@ function Dg.markChest(run, slot, m)
 			glow.Parent = part
 			local burst = Instance.new("ParticleEmitter")
 			burst.Name = "OpenBurst"
+			FxSprites.Apply(burst, "Sparkle")
 			burst.Color = ColorSequence.new(Color3.fromRGB(255, 214, 90))
 			burst.LightEmission = 0.8
 			burst.Rate = 0

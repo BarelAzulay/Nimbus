@@ -49,7 +49,7 @@ if not themeOk or type(Theme) ~= "table" then
 	Theme = {}
 end
 
-local SPARKLE_TEXTURE = "rbxasset://textures/particles/sparkles_main.dds"
+local FxSprites = require(Shared:WaitForChild("FxSprites")) -- the game's own glint sheet (kit B X1)
 
 local MESH_KEYS = { Cloud = "token_cloud", Golden = "token_golden", Cash = "token_cash", GoldenCash = "token_goldencash" }
 function TokenLook.MeshKey(paletteName)
@@ -353,7 +353,7 @@ function TokenLook.Build(opts)
 	if opts.Sparkles ~= false then
 		local sparkles = Instance.new("ParticleEmitter")
 		sparkles.Name = "Sparkles"
-		sparkles.Texture = SPARKLE_TEXTURE
+		FxSprites.Apply(sparkles, "Sparkle")
 		sparkles.Color = ColorSequence.new(look.Glow, look.Face)
 		sparkles.LightEmission = 1
 		sparkles.LightInfluence = 0

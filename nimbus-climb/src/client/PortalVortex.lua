@@ -36,6 +36,8 @@
 
 local PortalVortex = {}
 
+local FxSprites = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("FxSprites"))
+
 local K = {
 	TEXTURE_KEYS = { "vortex_disc", "vortex_core", "vortex_arms", "vortex_fine", "vortex_streaks", "vortex_rim" },
 	CRACKLES = { "vortex_crackle_1", "vortex_crackle_2", "vortex_crackle_3", "vortex_crackle_4" },
@@ -359,6 +361,7 @@ local function buildFallback(v, tint, folder)
 	try(streaks, "Orientation", Enum.ParticleOrientation.VelocityParallel)
 	try(streaks, "Squash", NumberSequence.new(1.4))
 	try(streaks, "Brightness", 2)
+	FxSprites.Apply(streaks, "Glow") -- a soft round glow squashed along its flight (any orientation reads)
 	v.Streaks = streaks
 	v.StreakT = streaks.Transparency
 	-- rim crackles: short bright sparks on the rim, emitted in soft bursts
@@ -381,6 +384,7 @@ local function buildFallback(v, tint, folder)
 	try(crackle, "ShapePartial", 1)
 	try(crackle, "Squash", NumberSequence.new(1.8))
 	try(crackle, "Brightness", 2)
+	FxSprites.Apply(crackle, "Spark")
 	v.Crackle = crackle
 end
 

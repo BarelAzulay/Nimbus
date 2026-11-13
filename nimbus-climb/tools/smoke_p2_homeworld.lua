@@ -44,6 +44,14 @@
 
 local T = SmokeCommon.T
 local guarded = SmokeCommon.guarded
+
+-- kit B X1: the role of one of the game's own particle sprites (shared/FxSprites), nil for any other texture
+local function fxRole(tex)
+	local ok, FX = pcall(function()
+		return require(Mock.GetPath(ROOTS["shared"] .. "/FxSprites"))
+	end)
+	return ok and type(FX) == "table" and FX.RoleOf(tostring(tex)) or nil
+end
 local CONTEXT = (ARGS and ARGS.context) or "server"
 
 local abs, floor, max, min, huge = math.abs, math.floor, math.max, math.min, math.huge
@@ -222,7 +230,7 @@ local function serverScenarios()
 		T.check(TC.Get("Press2") == nil and TC.Get("Collector") == nil and HB.BuildStationModel("Press2", 1) == nil and HB.BuildStationModel("Collector", 1) == nil,
 			"station art: the 4 old plants and the Coin Magnet are gone (Press2-4 / Collector build nothing)")
 
-		local clean = T.tally("station art: every station at every level builds a clean model (anchored, no welds, no scripts, no asset ids, no retired pieces or attributes)")
+		local clean = T.tally("station art: every station at every level builds a clean model (anchored, no welds, no scripts, emitters on FxSprites sheets only, no retired pieces or attributes)")
 		local budget = T.tally("station art: per-station part budgets (Farm 150, Garden 95, Food Machine 55, Training Place 90, House 150, Fusion 90, Fence 90, Fountain 80, others 80)")
 		local differ = T.tally("station art: every level looks different from the one before")
 		local fits = T.tally("station art: every station stays inside its Slot.Footprint (+0.75 stud; the Yard Fence inside the plot)")
@@ -250,8 +258,8 @@ local function serverScenarios()
 						for _, d in ipairs(m:GetDescendants()) do
 							if d:IsA("WeldConstraint") or d:IsA("Weld") or d:IsA("Script") or d:IsA("LocalScript") then
 								bad = d.ClassName .. " " .. d.Name
-							elseif d:IsA("ParticleEmitter") and tostring(d.Texture):find("rbxassetid", 1, true) then
-								bad = "asset id on " .. d.Name
+							elseif d:IsA("ParticleEmitter") and not fxRole(d.Texture) then
+								bad = "not an FxSprites sprite on " .. d.Name
 							elseif RETIRED[d.Name] then
 								bad = "retired piece " .. d.Name
 							end

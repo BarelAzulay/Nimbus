@@ -382,6 +382,7 @@ function analyse(file) {
 	const isVortex = (base === "PortalVortex.lua" && path.basename(path.dirname(file)) === "client")
 		|| (base === "SoundFx.lua" && path.basename(path.dirname(file)) === "client") // the AudioIds joiner (Config.Audio)
 		|| (base === "AttackFx.lua" && path.basename(path.dirname(file)) === "Controllers" && path.basename(path.dirname(path.dirname(file))) === "client")
+		|| (base === "FxSprites.lua" && path.basename(path.dirname(file)) === "shared") // (kit B X1) the particle sprites by role (TextureIds fx_*)
 		|| (base === "SkyFaces.lua" && path.basename(path.dirname(file)) === "shared") // the living sky faces (TextureIds sky_<theme>_<Face>)
 		|| (base === "ShopController.lua" && path.basename(path.dirname(file)) === "Controllers" && path.basename(path.dirname(path.dirname(file))) === "client") // the store card art (TextureIds store_*)
 		|| (base === "HatchLook.lua" && path.basename(path.dirname(file)) === "UI" && path.basename(path.dirname(path.dirname(file))) === "client") // the roll look's optional images (TextureIds hatch_*) and the card eggs' pictures (egg_card_*)
@@ -725,6 +726,39 @@ function analyse(file) {
 	// -- kit B: OBBY lane (kitb-obby) --
 	// (end of the OBBY lane rules)
 	// -- kit B: FX lane (kitb-fx) --
+	// X1 (BUILD_PLAN finding 8): every emitter wears the game's own sprites (shared/FxSprites: the uploaded fx_* sheets).
+	//   stock-particles  a built-in particle texture path ("rbxasset://textures/particles/...") outside
+	//                    src/shared/FxSprites.lua, which keeps them only as the fallback for an id that is 0 / missing
+	//   bare-emitter     a ParticleEmitter created (Instance.new("ParticleEmitter") / make("ParticleEmitter", ...)) in a
+	//                    function that never names FxSprites: it would show the engine's default sparkle
+	// client/Controllers/AttackFx.lua (its own fx_* sheet engine) is exempt from bare-emitter. CourseBuilder.lua and
+	// HazardService.lua (the OBBY lane's O3) only warn until O3 moves them onto FxSprites (then drop FX_PENDING_O3).
+	(function fxLane() {
+		const FX_PENDING_O3 = new Set(["CourseBuilder.lua", "HazardService.lua"]);
+		const isFxSprites = base === "FxSprites.lua" && path.basename(dir) === "shared";
+		const isAttackFx = base === "AttackFx.lua" && path.basename(dir) === "Controllers";
+		const sev = side === "server" && FX_PENDING_O3.has(base) ? "warning" : "error";
+		const namesFx = (fnNode) => anyNode(fnNode, (n) => isId(n, "FxSprites") || strValue(n) === "FxSprites", true);
+		const chunk = { type: "Chunk", body: ast.body };
+		(function walk(n, fnNode) {
+			if (!n || typeof n !== "object") return;
+			if (n.type === "FunctionDeclaration") fnNode = n;
+			if (n.type === "StringLiteral" && !isFxSprites) {
+				const v = strValue(n);
+				if (v && v.includes("rbxasset://textures/particles")) {
+					report(n, sev, "stock-particles", "built-in particle texture '" + v.slice(0, 60) + "': use FxSprites.Apply(emitter, role) (the game's own fx_* sheets)");
+				}
+			}
+			if (n.type === "CallExpression" && !isAttackFx && strValue(n.arguments[0]) === "ParticleEmitter") {
+				const dp = dottedPath(n.base);
+				const isNew = dp && dp.length === 2 && dp[0] === "Instance" && dp[1] === "new";
+				if ((isNew || isId(n.base, "make")) && !namesFx(fnNode)) {
+					report(n, sev, "bare-emitter", "a ParticleEmitter with no FxSprites sprite shows the engine's default sparkle: FxSprites.Apply(emitter, role)");
+				}
+			}
+			for (const c of childNodes(n)) walk(c, fnNode);
+		})(chunk, chunk);
+	})();
 	// (end of the FX lane rules)
 	// -- kit B: UI lane (kitb-ui) --
 	// (end of the UI lane rules)

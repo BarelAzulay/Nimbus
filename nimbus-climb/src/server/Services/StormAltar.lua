@@ -201,7 +201,7 @@ local PILLAR_TOP = 15.2
 local PANEL_Z = -(PILLAR_W / 2 + 0.2) -- centre of the poster's stone frame, on the street face of the pillars
 
 local MAT = Enum.Material
-local SPARKLES = "rbxasset://textures/particles/sparkles_main.dds"
+local FxSprites = require(Shared:WaitForChild("FxSprites")) -- the game's own particle sprites (kit B X1)
 
 local function rgb(r, g, b)
 	return Color3.fromRGB(r, g, b)
@@ -352,7 +352,7 @@ end
 local function sparkles(parent, rate, speed, size)
 	local e = Instance.new("ParticleEmitter")
 	e.Name = "StormSparkles"
-	e.Texture = SPARKLES
+	FxSprites.Apply(e, "Sparkle")
 	e.Color = ColorSequence.new(C.CrystalCore, C.Violet)
 	e.LightEmission = 0.8
 	e.LightInfluence = 0

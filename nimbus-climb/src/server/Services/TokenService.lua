@@ -42,7 +42,7 @@ local TOKEN_TAG = Config.Tags.CloudToken
 local GOLDEN_TAG = Config.Tags.GoldenToken
 local DEFAULT_VALUE = Config.Tokens.DefaultValue
 local GOLDEN_VALUE = Config.Tokens.GoldenValue
-local SPARKLE_TEXTURE = "rbxasset://textures/particles/sparkles_main.dds" -- the collect burst
+local FxSprites = require(Shared.FxSprites) -- the collect burst's glints (kit B X1: the game's own sheet)
 
 ----------------------------------------------------------------------
 -- Tunables
@@ -265,7 +265,7 @@ local function playCollectEffect(token, effectParent, golden)
 	burst.CFrame = CFrame.new(position)
 
 	local emitter = Instance.new("ParticleEmitter")
-	emitter.Texture = SPARKLE_TEXTURE
+	FxSprites.Apply(emitter, "Sparkle")
 	emitter.Color = ColorSequence.new(glow, core)
 	emitter.LightEmission = 1
 	emitter.LightInfluence = 0

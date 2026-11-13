@@ -275,12 +275,11 @@ local function countParts(inst)
 	return n
 end
 
-local SMOKE = "rbxasset://textures/particles/smoke_main.dds"
-local SPARKLES = "rbxasset://textures/particles/sparkles_main.dds"
+local FxSprites = require(Shared.FxSprites) -- the game's own particle sprites (kit B X1)
 
 local function emitter(parent, props)
 	local e = Instance.new("ParticleEmitter")
-	e.Texture = SPARKLES
+	FxSprites.Apply(e, props and props.Sprite or "Sparkle") -- props.Sprite: an FxSprites role
 	e.LightEmission = 0.5
 	e.LightInfluence = 0
 	e.Rate = 4
@@ -300,7 +299,9 @@ local function emitter(parent, props)
 	})
 	if props then
 		for k, v in pairs(props) do
-			e[k] = v
+			if k ~= "Sprite" then
+				e[k] = v
+			end
 		end
 	end
 	e.Parent = parent
@@ -2007,6 +2008,7 @@ function Art.Fountain(def, level)
 	att.CFrame = basin.CFrame:Inverse() * CFrame.new(0, top + 0.4, 0)
 	att.Parent = basin
 	emitter(att, {
+		Sprite = "Droplet",
 		Color = ColorSequence.new(rgb(206, 232, 250)),
 		LightEmission = 0.2,
 		Rate = 10 + level * 4,

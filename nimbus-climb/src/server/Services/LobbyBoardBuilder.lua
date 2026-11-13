@@ -58,6 +58,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local WorldStyle = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("WorldStyle"))
+local FxSprites = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("FxSprites"))
 
 local LobbyBoardBuilder = {}
 
@@ -99,7 +100,7 @@ local SECRET = {
 -- the shelf VFX (spec 16.5 "The world eggs"): the sparkle per egg from Rare up and the shelf's one light
 local SHELF_FX = {
 	Rate = { Rare = 1, Epic = 2, Legendary = 3, Mythic = 4, Secret = 5 },
-	Texture = "rbxasset://textures/particles/sparkles_main.dds", -- the built-in sparkle (nothing to upload)
+	Sprite = "Sparkle", -- an FxSprites role: the game's own glint sheet (kit B X1; was the built-in sparkle)
 	Detail = (WorldStyle.Tags and WorldStyle.Tags.Detail) or "NC_Detail",
 	Glow = { Name = "EggShelfGlow", Brightness = 1.0, Range = 10, Lift = 1.5, Color = Color3.fromRGB(255, 238, 206) },
 }
@@ -146,7 +147,7 @@ local function eggSparkle(egg, id)
 	local color = (id == "Secret") and SECRET.Tint or rarityColor(id)
 	local pe = Instance.new("ParticleEmitter")
 	pe.Name = "Sparkle"
-	pe.Texture = SHELF_FX.Texture
+	FxSprites.Apply(pe, SHELF_FX.Sprite)
 	pe.Rate = rate
 	pe.Color = ColorSequence.new(color)
 	pe.LightEmission = 0.5

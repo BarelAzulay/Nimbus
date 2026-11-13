@@ -6864,7 +6864,7 @@ end
 ----------------------------------------------------------------------
 -- Rarity flair
 ----------------------------------------------------------------------
-local SPARKLE_TEXTURE = "rbxasset://textures/particles/sparkles_main.dds"
+local FxSprites = require(script.Parent:WaitForChild("FxSprites", 10)) -- the game's own glint sheet (kit B X1)
 
 local function addSparkles(model, look, rate, scale)
 	local root = model.PrimaryPart
@@ -6873,7 +6873,7 @@ local function addSparkles(model, look, rate, scale)
 	end
 	local emitter = Instance.new("ParticleEmitter")
 	emitter.Name = "RaritySparkles"
-	emitter.Texture = SPARKLE_TEXTURE
+	FxSprites.Apply(emitter, "Sparkle")
 	local a, b = lighten(look.WingColor, 0.5), lighten(look.Primary, 0.35)
 	if look.Rarity == "Secret" then
 		a, b = hueShift(look.Secondary, 0), hueShift(look.Secondary, 0.15)
@@ -6908,7 +6908,7 @@ local function addFinishSparkles(model, look, rate, scale)
 	end
 	local emitter = Instance.new("ParticleEmitter")
 	emitter.Name = "FinishSparkles"
-	emitter.Texture = SPARKLE_TEXTURE
+	FxSprites.Apply(emitter, "Sparkle")
 	if look.Finish == "Golden" then
 		emitter.Color = ColorSequence.new(rgb(255, 214, 96), rgb(255, 248, 214))
 	else

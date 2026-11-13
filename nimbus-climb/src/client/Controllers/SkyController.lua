@@ -411,7 +411,7 @@ local function buildFireflies()
 		host.Transparency = 1
 		host.Size = Vector3.new(F.Spread, F.Height * 0.6, F.Spread)
 		host.CFrame = CFrame.new(list[i].Pos + Vector3.new(0, F.Height, 0))
-		local e = Instance.new("ParticleEmitter") -- the default sparkle texture
+		local e = require(Shared:WaitForChild("FxSprites")).Apply(Instance.new("ParticleEmitter"), "Glow") -- kit B X1: the own soft glow (was the default sparkle)
 		e.Rate = F.Rate
 		e.Lifetime = NumberRange.new(F.Lifetime[1], F.Lifetime[2])
 		e.Speed = NumberRange.new(F.Speed[1], F.Speed[2])

@@ -111,8 +111,7 @@ local CONFETTI_PIECES = 22
 -- dash puffs of other players
 local FX_MAX_DISTANCE = 140
 local FX_MIN_INTERVAL = 0.2
-local TEX_SMOKE = "rbxasset://textures/particles/smoke_main.dds"
-local TEX_SPARKLES = "rbxasset://textures/particles/sparkles_main.dds"
+local FxSprites = require(Shared:WaitForChild("FxSprites")) -- the game's own particle sprites (kit B X1)
 
 local Colors = Theme.Colors
 local WHITE = Colors.White
@@ -1182,8 +1181,11 @@ end
 ----------------------------------------------------------------------
 local function newEmitter(parent, props)
 	local emitter = Instance.new("ParticleEmitter")
+	FxSprites.Apply(emitter, props.Sprite) -- props.Sprite: an FxSprites role (texture + flipbook)
 	for key, value in pairs(props) do
-		emitter[key] = value
+		if key ~= "Sprite" then
+			emitter[key] = value
+		end
 	end
 	emitter.Parent = parent
 	return emitter
@@ -1218,7 +1220,7 @@ local function dashPuff(player)
 
 	local puff = newEmitter(feet, {
 		Name = "NC_DashPuff",
-		Texture = TEX_SMOKE,
+		Sprite = "Puff",
 		Color = ColorSequence.new(Colors.Cloud, Colors.CloudShade),
 		Transparency = NumberSequence.new({
 			NumberSequenceKeypoint.new(0, 0.35),
@@ -1243,7 +1245,7 @@ local function dashPuff(player)
 
 	local sparks = newEmitter(root, {
 		Name = "NC_DashSparks",
-		Texture = TEX_SPARKLES,
+		Sprite = "Sparkle",
 		Color = ColorSequence.new(soft, Colors.Stamina),
 		Transparency = NumberSequence.new({
 			NumberSequenceKeypoint.new(0, 0),
