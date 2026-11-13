@@ -15,7 +15,8 @@ Checks
   prop hooks  every catalog prop entry names a builder registered by kit/props/*.py ("<class>: hook <name> missing")
   vfx         the pet attack VFX cores (catalog vfx): one white Neon part Core per key, args.size, manifest up to date
   obby        the obby cloud set (catalog obby): one baked part per key, built twice = the committed manifest, each
-              family's fit (far / sea / underside Seat and rim / storm height under the head clearance)
+              family's fit (far / sea / underside Seat and rim / an underside's reach past its slab at UnderFit.Max
+              inside the smallest GapMin / storm height under the head clearance)
   manifests   every src/shared/MeshManifests/*.lua loads in Lua and follows the name contract (recipe 4.3): Body parts
               are palette keys (+Light / Dark), group parts start with their group name, MK keys present, Fixed
               parts bake no referenced key (tools/mesh_names.py), recipes use known ops; blender/meshes.json lists
@@ -269,11 +270,21 @@ def obby_config():
     return float(clear.group(1)) if clear else 13.0, float(base.group(1)) if base else 4.5
 
 
+def obby_gaps():
+    """the smallest jump gap of any difficulty (Config.Difficulties GapMin, Easy's 4) and the biggest underside scale
+    (Config.Course.Clouds.UnderFit.Max): an underside puff's reach past its slab, at that scale, must stay in the gap"""
+    src = open(os.path.join(REPO, "src/shared/Config.lua"), encoding="utf-8").read()
+    gaps = [float(g) for g in re.findall(r"\bGapMin = ([0-9.]+)", src)]
+    fit = re.search(r"\bUnderFit = \{[^}]*\bMax = ([0-9.]+)", src)
+    return min(gaps) if gaps else 4.0, float(fit.group(1)) if fit else 1.4
+
+
 def test_obby(br):
     """the obby cloud set (catalog obby, kit/props/obby.py, kit-b B1): one baked SmoothPlastic part `Cloud` per key,
     the committed manifest = a fresh build (built twice: same hash), and each family fits where the OBBY lane puts it:
     far cumulus 60-120 studs wide with a flat base under the pivot; the sea flat and wide; an underside's rim one voxel
-    over its Seat (the slab's underside) so at scale 1.4 it stays 0.5 under a 2-stud slab's top; the storm cloud short
+    over its Seat (the slab's underside) so at scale 1.4 it stays 0.5 under a 2-stud slab's top, and its reach past the
+    slab at UnderFit.Max 0.5 inside the smallest GapMin (else Mesh.under shrinks it to 0.6); the storm cloud short
     enough to sit StormBase over a step at scale 1 under the head clearance (CourseBuilder Mesh.storm)"""
     import build_all
     import props
@@ -286,6 +297,7 @@ def test_obby(br):
     hooked = "obby_cloud" in props.load_all()
     check(hooked, "obby: prop obby_cloud registered (kit/props/obby.py)")
     clear, base = obby_config()
+    gap_min, fit_max = obby_gaps()
     b = build_all.Builder(export=False, verbose=False)
     b._bridge = br
     for e in cat["keys"]:
@@ -312,6 +324,15 @@ def test_obby(br):
             check(seat is not None and all(abs(v) < 1e-6 for v in seat["Pos"]), "obby: %s Seat at the pivot" % key, seat)
             check(0 < hi[1] <= vs + 1e-6 and hi[1] * 1.4 <= 2 - 0.5,
                   "obby: %s rim one voxel over the Seat, under a 2-stud slab's top at scale 1.4" % key, hi[1])
+            if hooked:
+                # CourseBuilder Mesh.under drops a puff to scale 1, then 0.6, when its box reaches the next step's slab:
+                # the reach past the slab (Bounds minus the design's slab half) at UnderFit.Max stays 0.5 inside GapMin
+                from props import obby
+                hx, hz = obby.DESIGNS[e["args"]["design"]]["_slab"]
+                over = max(hi[0] - hx, -lo[0] - hx, hi[2] - hz, -lo[2] - hz)
+                check(over * fit_max <= gap_min - 0.5,
+                      "obby: %s reaches %.2f past its slab, x%.1f = %.2f, under GapMin %g - 0.5" % (
+                          key, over, fit_max, over * fit_max, gap_min), (lo, hi, hx, hz))
         elif key == "obby_storm_cloud":
             check(abs(lo[1]) < 1e-6 and size[1] <= clear - base - 0.4 and 12 <= size[0] <= 16,
                   "obby: %s 12-16 wide, base at the pivot, fits StormBase %.1f under Clearance %g at scale 1" % (

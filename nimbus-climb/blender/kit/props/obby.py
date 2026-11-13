@@ -11,7 +11,8 @@ are new designs (DESIGNS below), not recorded lobby clouds, so no LayoutSig: the
            belly; pivot = the deck's top centre
   under_*  the puff a platform's slab sits in: pivot = attachment Seat = the slab's underside centre (X = the long side);
            a rim one voxel high hugs the slab footprint (hollow above the Seat), so at any scale up to 1.4 it stays
-           under a 2-stud slab's walking top; the belly hangs below
+           under a 2-stud slab's walking top; the belly hangs below; nothing reaches more than 2.5 studs past the
+           slab, so at scale 1.4 the puff still stops inside Easy's 4-stud gap (CourseBuilder Mesh.under keeps it)
   storm    a dark heavy cumulus for a Storm step: storm palette (StormAltar's), darkest at the flat base;
            pivot = the base's bottom centre, short enough to sit StormBase over a step under the head clearance
 """
@@ -101,28 +102,30 @@ def sea(sx, sz, rnd, sx2, sz2, billows, belly, seed):
             "Rim": billows, "Puffs": belly, "Seed": seed, "Cut": {"Hi": 3}}
 
 
-def under(hx, hz, depth, seed, margin=2.0):
+def under(hx, hz, depth, seed, margin=1.3):
     """the slab's puff: a plate one voxel under the Seat, a lumpy rim round the slab footprint (2hx x 2hz, hollow over
     the Seat, one voxel high), a lumpy misty belly about `depth` studs deep; lumps jittered by `seed` so the four
-    sizes never mirror each other"""
+    sizes never mirror each other.  Nothing reaches more than about margin + 1 studs past the slab: CourseBuilder
+    Mesh.under shrinks a puff whose box reaches the next step, and Easy's gaps start at 4 (selftest obby)"""
     r = random.Random(seed)
 
     def j(v, a):
         return v * (1 + r.uniform(-a, a))
     rim = []
-    ex, ez = hx + 0.6, hz + 0.6
+    ex, ez = hx + 0.3, hz + 0.3
     # the lumps are round bulges centred a stud under the Seat (the Cut keeps one voxel of them over it), so the rim
     # reads as puffs round the slab, not as a flat collar
-    for sx_, sz_ in ((-1, -1), (1, -1), (1, 1), (-1, 1)):  # corners: the fattest lumps
-        rim.append([sx_ * ex + r.uniform(-0.8, 0.8), -1.0, sz_ * ez + r.uniform(-0.8, 0.8), j(margin + 1.2, 0.25),
-                    j(3.0, 0.15), j(margin + 1.0, 0.25)])
+    for sx_, sz_ in ((-1, -1), (1, -1), (1, 1), (-1, 1)):  # corners: the fattest lumps, centred on the slab's corner
+        rim.append([sx_ * (hx + r.uniform(-0.5, 0.0)), -1.0, sz_ * (hz + r.uniform(-0.5, 0.0)), j(margin + 0.4, 0.12),
+                    j(3.0, 0.15), j(margin + 0.3, 0.12)])
     for half, e, along in ((hx, ez, "x"), (hz, ex, "z")):  # each side: a lump every ~6 studs
         n = max(1, int(round(2 * half / 6.0)))
         step = 2 * half / n
         for k in (-1, 1):
             for i in range(n):
                 t = -half + (i + 0.5) * step + r.uniform(-0.2, 0.2) * step
-                w, d = j(step * 0.45 + 1.0, 0.2), j(margin, 0.25)
+                w, d = j(step * 0.45 + 1.0, 0.2), j(margin, 0.15)
+                w = min(w, half + 1.0 - abs(t))  # an end lump stops a stud past the corner (the corner lump rounds it)
                 if along == "x":
                     rim.append([t, -1.0, k * e, w, j(2.5, 0.15), d])
                 else:
@@ -134,9 +137,9 @@ def under(hx, hz, depth, seed, margin=2.0):
         [-hx * 0.1, -depth * 0.72, hz * r.uniform(0.2, 0.45), hx * 0.32, depth * 0.3, hz * 0.32],
         [hx * 0.25, -depth * 0.3, -hz * 0.6, hx * 0.45, depth * 0.3, hz * 0.35],
     ]
-    return {"Tiers": [{"SX": 2 * hx + 2.0, "SZ": 2 * hz + 2.0, "Round": 3.0, "H": 1, "Key": "Cloud"}],
+    return {"Tiers": [{"SX": 2 * hx + 1.0, "SZ": 2 * hz + 1.0, "Round": 3.0, "H": 1, "Key": "Cloud"}],
             "Rim": rim, "Puffs": belly, "Seed": seed,
-            "Cut": {"Hi": 1, "Hollow": [hx, hz, 1]}, "_seat": True}
+            "Cut": {"Hi": 1, "Hollow": [hx, hz, 1]}, "_seat": True, "_slab": [hx, hz]}
 
 
 DESIGNS = {
@@ -182,7 +185,7 @@ DESIGNS = {
     "under_s": under(6.25, 5.0, 6.0, 31),
     "under_m": under(7.75, 6.25, 7.5, 32),
     "under_l": under(9.5, 7.75, 9.0, 33),
-    "under_pad": under(15.0, 15.0, 11.0, 34, margin=2.5),
+    "under_pad": under(15.0, 15.0, 11.0, 34, margin=1.6),
     # a dark heavy cumulus, about 14 x 9 and 6 tall: a flat base under a wide low body, three domed heads of
     # different heights with dips between them (so no profile reads as a block)
     "storm": {"Tiers": [{"SX": 10, "SZ": 6, "Round": 3, "H": 1, "Key": "Mist"}], "Rim": [
