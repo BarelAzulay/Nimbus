@@ -47,6 +47,7 @@ local StoreCatalog = require(Shared:WaitForChild("StoreCatalog"))
 local UI = script.Parent
 local NeonKit = require(UI:WaitForChild("NeonKit"))
 local GemIcon = require(UI:WaitForChild("GemIcon"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7a) the token piles, the potion
 local CloudUI = require(UI:WaitForChild("CloudUI"))
 
 local ShopGems = {}
@@ -160,9 +161,10 @@ local function drawArt(host, px, count, tokens)
 	local cur = Theme.Currency.Tokens
 	for i, spot in ipairs(K.SPOTS[count] or K.SPOTS[1]) do
 		local s = math.floor(spot[3] * px)
-		local g = label("Token" .. i, box, cur.Glyph, "Display", math.max(15, math.floor(s * 0.82)), {
+		local g = label("Token" .. i, box, "", "Display", math.max(15, math.floor(s * 0.82)), {
 			TextColor3 = cur.Color, TextTruncate = Enum.TextTruncate.None,
 		})
+		PixelIcon.Host(g, cur.Icon) -- (kit-b U7a) a Cloud Token coin of the pile
 		place(g, spot[1] * px - s / 2, spot[2] * px - s / 2, s, s)
 	end
 end
@@ -350,7 +352,8 @@ local function buildPotion(P)
 	local c = card("GemPotion", P.Scroll, K.POTION, { Theme.Darken(K.POTION, 0.35), Theme.Darken(K.POTION, 0.75) })
 	local b = c.Body
 	local p = { Root = c.Root, Card = c }
-	p.Icon = label("Icon", b, NeonKit.Glyphs.Boosts, "Display", 64, { TextTruncate = Enum.TextTruncate.None })
+	p.Icon = label("Icon", b, "", "Display", 64, { TextTruncate = Enum.TextTruncate.None })
+	PixelIcon.Host(p.Icon, NeonKit.IconName("Boosts")) -- (kit-b U7a) the potion, sized with the label
 	p.Title = Theme.StyleTitle(label("Title", b,"XP Potion \194\183 30 minutes", "Title", 32, { TextXAlignment = Enum.TextXAlignment.Left }))
 	p.Text = label("Text", b, "Your team earns double pet XP. Not random, so every account can buy it.", "Body", 22,
 		{ TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true, TextTruncate = Enum.TextTruncate.None, TextColor3 = Theme.Colors.Muted or WHITE })

@@ -138,7 +138,6 @@ local RAID_FLOOR_MARGIN = 4 -- studs around the boss gate's / the Boss Raid floo
 local RAID_FLOOR_RADIUS = 48 -- studs around a Floor given only as a position (half of BattleCatalog.Zones.Raid)
 local ATTR_IN_BATTLE = "InBattle" -- BattleService's attribute (the battle id while the player fights)
 local STATION_FRONT_GAP = 2.5 -- studs in front of a station's footprint where its guide arrow stands
-local TOKEN_GLYPH = "\226\152\129" -- cloud
 
 -- client event -> the CompleteOn it can complete (Skip / Sync are handled separately)
 local EVENT_COMPLETES = {
@@ -1417,7 +1416,7 @@ local function payChapter(player, track, chapter)
 	if chapter <= 1 then
 		local amount = finishTokens()
 		if amount > 0 and addTokens(player, amount) then
-			notify(player, "Basics complete! +" .. amount .. " " .. TOKEN_GLYPH .. " from Nimbus", "good", 6)
+			notify(player, "Basics complete! +" .. amount .. " Tokens from Nimbus", "good", 6)
 			return amount
 		end
 		return 0
@@ -1431,7 +1430,7 @@ local function payChapter(player, track, chapter)
 	end
 	if chapter >= 3 then
 		if ARENA_FINISH_TOKENS > 0 and addTokens(player, ARENA_FINISH_TOKENS) then
-			notify(player, "Battle tutorial complete! +" .. commas(ARENA_FINISH_TOKENS) .. " " .. TOKEN_GLYPH .. " from Nimbus", "good", 6)
+			notify(player, "Battle tutorial complete! +" .. commas(ARENA_FINISH_TOKENS) .. " Tokens from Nimbus", "good", 6)
 			return ARENA_FINISH_TOKENS
 		end
 		return 0
@@ -1474,7 +1473,7 @@ local function enterStep(player, track)
 		-- Gifted is stored BEFORE the tokens are paid: a crash in between can never pay twice
 		if persist(player, track) then
 			if amount > 0 and addTokens(player, amount) then
-				notify(player, "Nimbus gave you " .. amount .. " " .. TOKEN_GLYPH .. " Cloud Tokens!", "token", 5)
+				notify(player, "Nimbus gave you " .. amount .. " Cloud Tokens!", "token", 5)
 			end
 			return true
 		end

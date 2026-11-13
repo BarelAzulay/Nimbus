@@ -323,14 +323,18 @@ Theme.Kinds = {
 	token = rgb(255, 196, 64),
 }
 
--- Currencies (v3): glyph, attribute name (Config.Attr values) and the coin colours used by the HUD stack,
+-- Currencies (v3): icon, attribute name (Config.Attr values) and the coin colours used by the HUD stack,
 -- the shop and price tags. Cash and Gems arrive with the tycoon phase.
+-- kit-b U7a: Icon is what the currency draws as (NeonKit.Icon / PixelIcon.Lead): a shared/PixelIcon name, or "Gems" for
+-- the cut gem (UI/GemIcon); no currency has an emoji glyph any more. Glyph is the plain-text sign a sentence may still
+-- carry ("$3,000/min"); a currency with none is written as its Word ("50 Tokens").
 Theme.Currency = {
 	Tokens = {
 		Id = "Tokens",
 		Name = "Cloud Tokens",
 		Attr = "CloudTokens",
-		Glyph = "\226\152\129", -- cloud
+		Icon = "token", -- the Cloud Token coin
+		Word = "Tokens",
 		Color = rgb(238, 190, 62),
 		Glow = rgb(250, 224, 132),
 	},
@@ -338,6 +342,8 @@ Theme.Currency = {
 		Id = "Cash",
 		Name = "Cash",
 		Attr = "Cash",
+		Icon = "note", -- the banknote
+		Word = "Cash",
 		Glyph = "$",
 		Color = rgb(112, 204, 98),
 		Glow = rgb(196, 240, 150),
@@ -346,7 +352,8 @@ Theme.Currency = {
 		Id = "Gems",
 		Name = "Gems",
 		Attr = "Gems",
-		Glyph = "\226\151\134", -- black diamond
+		Icon = "Gems", -- the cut gem (UI/GemIcon)
+		Word = "Gems",
 		Color = rgb(84, 196, 246),
 		Glow = rgb(186, 236, 255),
 	},

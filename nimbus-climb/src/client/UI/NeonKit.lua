@@ -8,8 +8,11 @@
 --   NeonKit.Card(props)  -> { Root, Body, Stroke, Glow, Floor, SetColor(color), SetGlow(on) }
 --   NeonKit.Tile(props)   -> { Root, Card, Orb, Icon, Label, SetBadge(on), SetColor(color), SetLabel(text), SetIcon(id) }
 --   NeonKit.Orb(parent, color, size)  -> Frame (a glossy disc; centred in its parent unless moved)
---   NeonKit.Icon(parent, id, size)    -> TextLabel (emoji glyph) | ImageLabel (when Config.Icons[id] = "rbxassetid://n");
---                                        "Gems": a TextLabel with no text hosting a client/UI/GemIcon (the cut gem)
+--   NeonKit.Icon(parent, id, size)    -> TextLabel with no text hosting a PixelIcon (kit-b U7a: Config.Icons[id] names one,
+--                                        or `id` is a PixelIcon name) | ImageLabel (Config.Icons[id] = "rbxassetid://n") |
+--                                        "Gems": the same empty TextLabel hosting a client/UI/GemIcon (the cut gem) |
+--                                        a TextLabel showing `id` itself (plain text such as "!" or "R$": no emoji)
+--   NeonKit.IconName(id)              -> the PixelIcon name `id` draws as, or nil
 --   NeonKit.Pill(props)   -> { Root, Card, Coin, Glyph, Text, SetText(text), SetColor(color) }
 --   NeonKit.Button(props) -> TextButton (Variant "Primary" | "Outline"; hover 1.04 / press 0.95; Disabled attribute)
 --   NeonKit.CloseMark(button, opts) -> Frame "CloseMark" (the drawn X of every window's close button; slop audit 2026-11-12)
@@ -35,6 +38,7 @@ local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
 local GemIcon = require(script.Parent:WaitForChild("GemIcon"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon"))
 
 local NeonKit = {}
 
@@ -73,47 +77,9 @@ NeonKit.Metrics = {
 }
 local MX = NeonKit.Metrics
 
--- Default glyphs of the icon ids (Config.Icons[id] = "rbxassetid://n" swaps in a real image later, no code change).
-NeonKit.Glyphs = {
-	Pets = "\240\159\144\190", -- paw prints
-	Items = "\240\159\142\146", -- backpack
-	Inventory = "\240\159\142\146",
-	Team = "\226\154\148\239\184\143", -- crossed swords
-	Index = "\240\159\147\150", -- open book
-	Shop = "\240\159\155\146", -- cart
-	Home = "\240\159\143\160", -- house
-	Spot = "\240\159\143\160",
-	Stats = "\240\159\143\134", -- trophy
-	Settings = "\226\154\153\239\184\143", -- gear
-	Travel = "\240\159\167\173", -- compass (HUD cleanup: the top-left pill's Quick Travel)
-	Obby = "\226\155\176\239\184\143", -- mountain
-	Dungeon = "\240\159\151\157\239\184\143", -- key
-	Ring = "\240\159\145\145", -- crown
-	Arena = "\240\159\143\159\239\184\143", -- stadium
-	Altar = "\226\154\161", -- lightning
-	Care = "\240\159\141\147", -- berry
-	Berries = "\240\159\141\147",
-	Fusion = "\226\156\168", -- sparkles
-	Battle = "\226\154\148\239\184\143",
-	Cash = "$",
-	Tokens = "\226\152\129", -- cloud
-	-- (Gems has no glyph: lobby-shop Task 15, NeonKit.Icon draws a GemIcon for it)
-	-- (no Close glyph since the slop audit, 2026-11-12: U+2715 showed a missing-glyph box; NeonKit.CloseMark draws the X)
-	Lock = "\240\159\148\146",
-	Play = "\226\150\182",
-	-- store (2026-11-04): the Store window, its tabs, the Gifts button, the VIP crown, the Sky Trove
-	Store = "\240\159\143\170", -- convenience store
-	Packs = "\240\159\147\166", -- package
-	Passes = "\240\159\142\171", -- ticket
-	Boosts = "\240\159\167\170", -- test tube (the potions)
-	Currency = "\240\159\146\176", -- money bag
-	Roulettes = "\240\159\142\161", -- ferris wheel
-	Eggs = "\240\159\165\154", -- egg (lobby-shop 16.3: the Shop's Eggs tab and its header icon)
-	Gifts = "\240\159\142\129", -- wrapped gift
-	Repair = "\240\159\148\167", -- wrench (the Gifts window's streak repair: a claim that pays nothing)
-	VipCrown = "\240\159\145\145", -- crown
-	Trove = "\240\159\167\176", -- toolbox (a chest)
-}
+-- (kit-b U7a) the icon ids are PixelIcons now: Config.Icons[id] names each one's 9 x 9 bitmap (or an uploaded image),
+-- so no id draws an emoji. NeonKit.Glyphs keeps only the plain-text fallbacks of the ids with no icon (none today).
+NeonKit.Glyphs = {}
 
 ----------------------------------------------------------------------
 -- helpers
@@ -413,25 +379,47 @@ local function iconImage(id)
 	local icons = Config.Icons
 	if type(icons) == "table" and type(id) == "string" then
 		local value = icons[id]
-		if type(value) == "string" and value ~= "" then
+		if type(value) == "string" and value:sub(1, 13) == "rbxassetid://" then
 			return value
 		end
 	end
 	return nil
 end
 
--- An icon: the emoji glyph of `id` (NeonKit.Glyphs[id], or `id` itself when it is not a known id) as a TextLabel of
--- `size` px, or an ImageLabel once Config.Icons[id] holds an asset id. Centred in its parent unless moved.
--- "Gems" (lobby-shop Task 15, spec 5.7): a TextLabel with empty Text hosting a GemIcon of `size` px (so callers that set
--- Text properties on the icon stay safe).
+-- (U7a) the PixelIcon an id draws as: Config.Icons[id] when it names a bitmap, else `id` itself when it is one; nil
+function NeonKit.IconName(id)
+	if type(id) ~= "string" then
+		return nil
+	end
+	local icons = Config.Icons
+	local value = type(icons) == "table" and icons[id] or nil
+	if type(value) == "string" and PixelIcon.Bitmaps[value] then
+		return value
+	end
+	if PixelIcon.Bitmaps[id] then
+		return id
+	end
+	return nil
+end
+
+-- (U7a) a PixelIcon centred in a text object, following its colour, fade and ZIndex (PixelIcon.Host; px nil: 0.9 x its
+-- TextSize, redrawn when that changes)
+local function hostPixelIcon(host, name, px)
+	return PixelIcon.Host(host, name, px)
+end
+
+-- An icon of `size` px, centred in its parent unless moved: a PixelIcon (Config.Icons[id] names it, or `id` is a PixelIcon
+-- name) hosted in a TextLabel with no text, so callers that set TextColor3 / TextTransparency / ZIndex on the icon recolour,
+-- fade and layer it; an ImageLabel once Config.Icons[id] holds an asset id; "Gems" (lobby-shop Task 15, spec 5.7): the same
+-- empty TextLabel hosting a GemIcon of `size` px; anything else shows `id` as plain text (no emoji: kit-b U7a).
 function NeonKit.Icon(parent, id, size)
 	local px = tonumber(size) or 32
 	local image = iconImage(id)
+	local pixel = not image and NeonKit.IconName(id) or nil
 	local icon
-	if not image and id == "Gems" then
+	if not image and (id == "Gems" or pixel) then
 		icon = Theme.Label("", "Display", {
 			Size = px,
-			Stroke = 1,
 			Props = {
 				Name = "Icon",
 				AnchorPoint = Vector2.new(0.5, 0.5),
@@ -439,9 +427,14 @@ function NeonKit.Icon(parent, id, size)
 				Size = UDim2.fromOffset(px * 1.25, px * 1.25),
 			},
 		})
-		local gem = GemIcon.New(icon, px)
-		gem.AnchorPoint = Vector2.new(0.5, 0.5)
-		gem.Position = UDim2.fromScale(0.5, 0.5)
+		if pixel then
+			hostPixelIcon(icon, pixel) -- 0.9 x the TextSize, redrawn when a caller resizes the icon like a glyph
+			icon:SetAttribute("PixelIcon", pixel)
+		else
+			local gem = GemIcon.New(icon, px)
+			gem.AnchorPoint = Vector2.new(0.5, 0.5)
+			gem.Position = UDim2.fromScale(0.5, 0.5)
+		end
 	elseif image then
 		icon = Util.Create("ImageLabel", {
 			Name = "Icon",
@@ -585,7 +578,7 @@ end
 ----------------------------------------------------------------------
 -- Pill (currency / status)
 ----------------------------------------------------------------------
--- props: Text, Glyph (coin glyph; default none), Color (default Blue), Size (UDim2 | number width; default 200x40),
+-- props: Text, Glyph (coin glyph or icon id, e.g. "Tokens"; default none), Color (default Blue), Size (UDim2 | number width; default 200x40),
 --        Height (when Size is a number; default 40), TextSize (default 0.62 x height), Font role (default "Display"),
 --        Name, Position, AnchorPoint, LayoutOrder, ZIndex, Parent, Glow (default false)
 function NeonKit.Pill(props)
@@ -651,10 +644,14 @@ function NeonKit.Pill(props)
 			Size = UDim2.fromScale(0.56, 0.24),
 		}, coin)
 		round(shine)
-		glyph = Theme.Label(props.Glyph, "Display", {
+		-- (U7a) an icon id or PixelIcon name draws its PixelIcon on the coin; other text shows as it is
+		glyph = Theme.Label(NeonKit.IconName(props.Glyph) and "" or props.Glyph, "Display", {
 			Size = math.floor(coinD * 0.56 + 0.5),
 			Props = { Name = "Glyph", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center },
 		})
+		if NeonKit.IconName(props.Glyph) then
+			hostPixelIcon(glyph, NeonKit.IconName(props.Glyph), coinD * 0.56)
+		end
 		glyph.Parent = coin
 	end
 	local textLeft = hasCoin and (coinD - left + 6) or math.floor(h * 0.45)

@@ -1410,9 +1410,48 @@ for group, keys in pairs(AUDIO_KEYS) do
 	end
 end
 
--- Menu icons (optional): the tiles use emoji glyphs; Config.Icons[tileId] = "rbxassetid://<id>" replaces one with an
--- image (NeonKit.Icon). Empty table = glyphs everywhere.
-Config.Icons = {}
+-- Icons (kit-b U7a): the icon id of a tile, tab, coin or badge -> the shared/PixelIcon bitmap NeonKit.Icon draws (the kit
+-- pitch's 9 x 9 icons, kit_pitch_mockups.html; no emoji). A value "rbxassetid://<id>" draws that image instead (a sheet
+-- later). "Gems" has no entry: NeonKit.Icon draws the cut gem (UI/GemIcon, the lobby-shop pick).
+Config.Icons = {
+	Pets = "paw",
+	Items = "pack",
+	Inventory = "pack",
+	Team = "shield",
+	Index = "book",
+	Shop = "bag",
+	Store = "bag",
+	Home = "house",
+	Spot = "house",
+	Stats = "stats",
+	Settings = "gear",
+	Travel = "arrow",
+	Obby = "mountain",
+	Dungeon = "key",
+	Ring = "crown",
+	VipCrown = "crown",
+	Arena = "trophy",
+	Altar = "bolt",
+	Care = "apple",
+	Berries = "apple",
+	Fusion = "sparkle",
+	Battle = "sword",
+	Cash = "note",
+	Tokens = "token",
+	Currency = "coin",
+	Lock = "lock",
+	Play = "play",
+	Packs = "box",
+	Passes = "ticket",
+	Boosts = "potion",
+	Roulettes = "gumball",
+	Eggs = "egg",
+	Gifts = "gift",
+	Repair = "wrench",
+	Trove = "chest",
+	Group = "people",
+	Like = "heart",
+}
 
 -- Phase 6: the Blender models. Mesh key -> Roblox Model asset id, written only by tools/upload_assets.py into
 -- shared/MeshIds.lua. Empty = every model uses its Part build. See README "Phase 6" and ARCHITECTURE_V3.md "## Phase 6".

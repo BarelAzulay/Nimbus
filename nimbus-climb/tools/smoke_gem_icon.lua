@@ -323,7 +323,7 @@ S.client_gem_icon = guarded("client_gem_icon", function()
 	local nkGem = nk and nk:FindFirstChild("GemIcon")
 	T.check(nk ~= nil and nk:IsA("TextLabel") and nk.Name == "Icon" and nk.Text == "" and nkGem ~= nil and nkGem.Size == UDim2.fromOffset(40, 40),
 		"gem icon: NeonKit.Icon('Gems') is a TextLabel 'Icon' with no text hosting a 40 px GemIcon", nk and (nk.ClassName .. " '" .. tostring(nk.Text) .. "'") or "none")
-	T.check(NeonKit.Icon(holder, "Tokens", 40).Text ~= "", "gem icon: NeonKit.Icon('Tokens') keeps its glyph")
+	T.check(NeonKit.Icon(holder, "Tokens", 40):GetAttribute("PixelIcon") == "token", "gem icon: NeonKit.Icon('Tokens') draws its own icon (kit-b U7a: the token PixelIcon)")
 
 	------------------------------------------------------------------ the HUD coin
 	LocalPlayer:SetAttribute(Config.Attr.Gems, 85)

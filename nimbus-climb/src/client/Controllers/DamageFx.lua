@@ -8,7 +8,7 @@
 --     "-12" number with a kind word ("ZAP!") that pops, rises and fades above the local player's head.
 --   * Storm damage arrives four times a second, so it is merged into one gentle number every
 --     STORM_INTERVAL seconds instead of spamming the screen.
---   * The MatchTokens player attribute going up pops a golden "+n ☁" above the head (golden tokens get a
+--   * The MatchTokens player attribute going up pops a golden "+n <coin>" above the head (golden tokens get a
 --     bigger, paler pop).
 --
 -- Colours follow the calmer v2 palette: nothing flashes white, the lightning flash is a faint warm wash.
@@ -29,6 +29,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7a) the token pop's coin
 local Util = require(Shared:WaitForChild("Util"))
 local Remotes = require(Shared:WaitForChild("Remotes"))
 
@@ -370,6 +371,10 @@ local function spawnFloat(cfg)
 		},
 	})
 	number.Parent = root
+	if cfg.Icon then
+		-- (kit-b U7a) a PixelIcon after the number (the token pop's coin); it fades with the number
+		PixelIcon.Lead(number, cfg.Icon, { After = true, Colour = cfg.IconColor })
+	end
 	table.insert(texts, number)
 	table.insert(outlines, number:FindFirstChild("TextOutline"))
 	if cfg.Gradient then
@@ -451,7 +456,9 @@ end
 local function spawnTokenPop(delta)
 	local golden = delta >= (Config.Tokens.GoldenValue or 5)
 	spawnFloat({
-		Text = "+" .. delta .. " \226\152\129",
+		Text = "+" .. delta,
+		Icon = Theme.Currency.Tokens.Icon,
+		IconColor = golden and Colors.TokenGlow or Colors.Token,
 		Color = Colors.Token,
 		Gradient = golden and { Colors.White:Lerp(Colors.TokenGlow, 0.4), Colors.TokenGlow }
 			or { Colors.TokenGlow, Colors.Token },
@@ -568,7 +575,7 @@ function DamageFx.Init()
 		end)
 	end)
 
-	-- "+n ☁" whenever the match token count goes up
+	-- "+n <coin>" whenever the match token count goes up
 	lastMatchTokens = tonumber(LocalPlayer:GetAttribute(ATTR.MatchTokens)) or 0
 	LocalPlayer:GetAttributeChangedSignal(ATTR.MatchTokens):Connect(function()
 		local ok, err = pcall(onMatchTokensChanged)

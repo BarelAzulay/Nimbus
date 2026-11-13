@@ -95,6 +95,7 @@ local UI = Client:WaitForChild("UI")
 local CloudUI = require(UI:WaitForChild("CloudUI"))
 local NeonKit = require(UI:WaitForChild("NeonKit"))
 local GemIcon = require(UI:WaitForChild("GemIcon"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7a) the token chip's coin
 local PetPicker = require(UI:WaitForChild("PetPicker"))
 local State = require(Client:WaitForChild("State"))
 
@@ -123,6 +124,7 @@ FusionController.Closed = Util.Signal()
 -- Tunables (design px; PC = the 1080p mock, Phone = screen px)
 ----------------------------------------------------------------------
 local K = {
+	CHIP_COIN = 18, -- (kit-b U7a) the Cloud Token coin before the header chip's balance (a PixelIcon, px)
 	DISPLAY_ORDER = 22, -- above NimbusMenu (20) and the Pet Index (21); under the Training Place (23) and the sheet (24)
 	RECT = { H0 = 390, W0 = 820, Y0 = 330, H1 = 1080, W1 = 1440, Y1 = 880 },
 	MARGIN = 12,
@@ -193,7 +195,7 @@ local C = {
 		Rainbow = Color3.fromRGB(255, 112, 200),
 	},
 }
-local TOKEN_INFO = Theme.Currency and Theme.Currency.Tokens or { Glyph = "\226\152\129", Color = C.Gold }
+local TOKEN_INFO = Theme.Currency and Theme.Currency.Tokens or { Icon = "token", Color = C.Gold } -- (kit-b U7a) the coin
 local GEM_INFO = Theme.Currency and Theme.Currency.Gems or { Color = Colors.Gem } -- (drawn: GemIcon, never a glyph)
 
 -- glyphs as UTF-8 byte escapes (the source stays plain ASCII)
@@ -969,6 +971,7 @@ function H.build()
 		safe("tab", H.setTab, "Mix")
 	end)
 	U.TokenChip = H.chip("TokenChip", TOKEN_INFO.Color or C.Gold)
+	PixelIcon.Lead(U.TokenChip, TOKEN_INFO.Icon or "token", { Px = K.CHIP_COIN }) -- (kit-b U7a) the coin before the balance
 	U.GemChip = H.chip("GemChip", GEM_INFO.Color or Colors.Gem or C.White)
 	-- lobby-shop Task 15 (spec 5.7): the gem balance is the drawn gem + the number (GemIcon.Amount), the chip sized to it
 	U.GemAmount = GemIcon.Amount(U.GemChip, 0, { TextSize = 22, Color = GEM_INFO.Color or Colors.Gem, ZIndex = 6 })
@@ -1141,7 +1144,7 @@ function H.layoutHeader()
 	local font = Theme.FontOf(U.TabUp)
 	local upW = math.max(M.TabUpW, H.boxW("UPGRADE", M.TabText, font) + 2 * M.TabPad)
 	local mixW = math.max(M.TabMixW, H.boxW("MIX", M.TabText, font) + 2 * M.TabPad)
-	local tokW = H.boxW(U.TokenChip.Text, M.ChipText, Theme.FontOf(U.TokenChip)) + 2 * M.ChipPad
+	local tokW = H.boxW(U.TokenChip.Text, M.ChipText, Theme.FontOf(U.TokenChip)) + 2 * M.ChipPad + K.CHIP_COIN + 4 -- + the coin
 	GemIcon.SetAmount(U.GemAmount, nil, { TextSize = M.ChipText }) -- (re-measures: the gem + the number)
 	local gemW = U.GemAmount.Size.X.Offset + 2 * M.ChipPad
 	local titleX = M.HeadPad + M.Icon + 8
@@ -1661,7 +1664,7 @@ function H.short(n)
 end
 
 function H.paintHeader()
-	U.TokenChip.Text = tostring(TOKEN_INFO.Glyph) .. " " .. H.short(H.balance("Tokens"))
+	U.TokenChip.Text = H.short(H.balance("Tokens"))
 	GemIcon.SetAmount(U.GemAmount, H.short(H.balance("Gems")))
 	for _, spec in ipairs({ { U.TabUp, "Upgrade" }, { U.TabMix, "Mix" } }) do
 		local b, on = spec[1], S.Tab == spec[2]

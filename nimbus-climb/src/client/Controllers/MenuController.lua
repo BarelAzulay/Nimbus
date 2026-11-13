@@ -94,6 +94,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7a) the Stats window's coins and stars
 local Remotes = require(Shared:WaitForChild("Remotes"))
 
 local Client = script.Parent.Parent
@@ -251,35 +252,19 @@ local C2 = {
 	},
 }
 
--- Glyphs as UTF-8 byte escapes (the source stays plain ASCII).
+-- Text glyphs as UTF-8 byte escapes (the source stays plain ASCII). kit-b U7a: the tiles, the coins and the Stats window
+-- draw PixelIcons (NeonKit.Icon, PixelIcon.Lead); the emoji that were here unused went. What is left is typography (the
+-- dash, the bullet, the cash sign) and the Home window's text glyphs (House, Star, Lock, Check, Seedling), which U7b
+-- redraws with the tycoon station icons (tools/fixtures/emoji_backlog.txt lists them until then).
 local G = {
-	Backpack = "\240\159\142\146",
-	Paw = "\240\159\144\190",
-	Book = "\240\159\147\150",
-	Money = "\240\159\146\176",
 	House = "\240\159\143\160",
-	Chart = "\240\159\147\138",
 	Lock = "\240\159\148\146",
 	Star = "\226\152\133",
-	StarOutline = "\226\152\134",
-	Cloud = "\226\152\129",
-	Down = "\226\150\188",
 	Dash = "\226\128\148",
-	Sparkle = "\226\156\166",
-	Gem = (CURRENCY.Gems and CURRENCY.Gems.Glyph) or "\226\151\134", -- black diamond
 	Cash = (CURRENCY.Cash and CURRENCY.Cash.Glyph) or "$",
 	Bullet = "\194\183", -- middle dot
 	Check = "\226\156\147",
-	Snack = "\240\159\141\170", -- cookie
-	Meal = "\240\159\141\178", -- pot of food
-	Feast = "\240\159\165\167", -- pie
-	Food = "\240\159\141\150", -- meat on bone
 	Seedling = "\240\159\140\177",
-	Muscle = "\240\159\146\170",
-	Hybrid = "\226\156\168", -- sparkles
-	Storm = "\226\154\161", -- high voltage
-	Robux = "R$",
-	Swords = "\226\154\148\239\184\143", -- crossed swords (emoji presentation): the Team tile
 }
 
 ----------------------------------------------------------------------
@@ -426,17 +411,16 @@ local function commas(n)
 	return Util.Commas(tonumber(n) or 0)
 end
 
-local function cloudAmount(n)
-	return G.Cloud .. " " .. commas(n)
-end
 
 local function inMatch()
 	return LocalPlayer ~= nil and LocalPlayer:GetAttribute(Config.Attr.InMatch) == true
 end
 
-local function starText(count)
+-- (kit-b U7a) a difficulty rating on an empty label: `count` gold PixelIcon stars of five, the rest dim
+local function starRating(label, count)
 	count = Util.Clamp(math.floor(tonumber(count) or 0), 0, 5)
-	return string.rep(G.Star, count) .. string.rep(G.StarOutline, 5 - count)
+	label.Text = ""
+	PixelIcon.Lead(label, "star", { Count = count, Of = 5, Px = 18 })
 end
 
 local function petTotals()
@@ -1699,6 +1683,9 @@ local function buildStats(win)
 			TextScaled = true,
 		})
 		Util.Create("UITextSizeConstraint", { MaxTextSize = 34, MinTextSize = 18, Parent = value })
+		if spec[1] == "Tokens" or spec[1] == "Earned" then
+			PixelIcon.Lead(value, Theme.Currency.Tokens.Icon, { Px = 27 }) -- (kit-b U7a) the coin before the amount
+		end
 		makeText(tile, "Caption", spec[2], "Heading", 18, MUTED, {
 			Position = UDim2.fromOffset(14, 56),
 			Size = UDim2.new(1, -28, 0, 24),
@@ -1785,11 +1772,11 @@ local function buildStats(win)
 			Size = UDim2.new(0.55, -22, 0, 30),
 			TextXAlignment = Enum.TextXAlignment.Left,
 		})
-		makeText(row, "Stars", starText(difficulty.Stars), "Heading", 18, GOLD, {
+		starRating(makeText(row, "Stars", "", "Heading", 18, GOLD, {
 			Position = UDim2.fromOffset(22, 36),
 			Size = UDim2.new(0.55, -22, 0, 24),
 			TextXAlignment = Enum.TextXAlignment.Left,
-		})
+		}), difficulty.Stars)
 		rows[difficulty.Id] = makeText(row, "Time", "--:--", "Display", 30, WHITE, {
 			AnchorPoint = Vector2.new(1, 0),
 			Position = UDim2.new(1, -14, 0, 0),
@@ -1826,8 +1813,8 @@ local function buildStats(win)
 		else
 			tiles.WinRate.Text = G.Dash
 		end
-		tiles.Tokens.Text = cloudAmount(State.Tokens())
-		tiles.Earned.Text = cloudAmount(stats.TokensEarned or 0)
+		tiles.Tokens.Text = commas(State.Tokens())
+		tiles.Earned.Text = commas(stats.TokensEarned or 0)
 		tiles.Spins.Text = commas(stats.Spins or 0)
 		local _, total = petTotals()
 		tiles.Found.Text = string.format("%d / %d", discoveredCount(), catalogTotal())
@@ -1849,7 +1836,7 @@ local function buildStats(win)
 		-- Phase 5 (10.5): the Trial ladder is gone; the dungeon line takes its place
 		local dungeon = type(State.Dungeon) == "function" and State.Dungeon() or nil
 		dungeon = type(dungeon) == "table" and dungeon or {}
-		battleLabel.Text = string.format("\240\159\143\134 %s trophies     Dungeon: floor %d cleared, %s runs\nDuels: %s won, %s lost     Boss raids: %s",
+		battleLabel.Text = string.format("Trophies: %s     Dungeon: floor %d cleared, %s runs\nDuels: %s won, %s lost     Boss raids: %s",
 			commas(b.Trophies or 0), math.floor(tonumber(dungeon.Best) or 0), commas(math.floor(tonumber(dungeon.Runs) or 0)),
 			commas(b.PvPWins or 0), commas(b.PvPLosses or 0), commas(b.Raids or 0))
 
@@ -1972,19 +1959,20 @@ K.HERO_H_SHORT = 76 -- ... on short windows (landscape phones)
 K.HERO_SHINE = 0.75 -- seconds of one light sweep
 K.HERO_SHINE_EVERY = 5.5
 P5.HERO = {
-	GoHome = { Title = "Go home", Sub = "A magic portal for you and your pets", Short = "Hop in with your pets!", Glyph = "\240\159\143\160", Badge = "\226\158\156" },
-	ClaimHome = { Title = "Claim a home", Sub = "Get your own sky island, free!", Short = "Your own sky island, free!", Glyph = "\240\159\143\161", Badge = "\226\156\168" },
+	-- (kit-b U7a) the orb and the badge draw PixelIcons
+	GoHome = { Title = "Go home", Sub = "A magic portal for you and your pets", Short = "Hop in with your pets!", Glyph = "house", Badge = "arrow" },
+	ClaimHome = { Title = "Claim a home", Sub = "Get your own sky island, free!", Short = "Your own sky island, free!", Glyph = "house", Badge = "sparkle" },
 }
 -- what a home gives (the claim view's "Your home" tiles)
 P5.CLAIM_GETS = {
-	{ Glyph = "\240\159\140\177", Title = "Pet Garden", Text = "Pets roam and play", Color = "Green" },
-	{ Glyph = "\240\159\141\147", Title = "Berry Farm", Text = "Berries feed pets", Color = "Pink" },
-	{ Glyph = "\226\152\129", Title = "Cloud Cash", Text = "Pets earn for you", Color = "Cyan" },
+	{ Glyph = "sprout", Title = "Pet Garden", Text = "Pets roam and play", Color = "Green" },
+	{ Glyph = "apple", Title = "Berry Farm", Text = "Berries feed pets", Color = "Pink" },
+	{ Glyph = "note", Title = "Cloud Cash", Text = "Pets earn for you", Color = "Cyan" },
 }
 P5.CLAIM_STEPS = {
-	{ Glyph = "\240\159\140\128", Text = "Tap Claim a home: a magic portal opens" },
-	{ Glyph = "\240\159\143\131", Text = "Walk into it: you land at a free home" },
-	{ Glyph = "\240\159\148\145", Text = "Press E at its gate. The home is yours!" },
+	{ Glyph = "sparkle", Text = "Tap Claim a home: a magic portal opens" },
+	{ Glyph = "dash", Text = "Walk into it: you land at a free home" },
+	{ Glyph = "key", Text = "Press E at its gate. The home is yours!" },
 }
 
 -- one hero card (a clickable NeonKit card) -> { Root, Title, Sub, Orb, Badge, Shine, Fx }
@@ -2071,7 +2059,8 @@ function P5.heroCard(parent, id, callback)
 	round(badge)
 	stroke(badge, Theme.Darken(Theme.NeonColor("Orange"), 0.35), 3, 0)
 	Theme.Gradient(badge, WHITE, Color3.fromRGB(255, 226, 160), 90)
-	makeText(badge, "Glyph", spec.Badge, "Title", 28, Theme.NeonColor("Orange"), { Size = UDim2.fromScale(1, 1), ZIndex = 7 })
+	local badgeGlyph = makeText(badge, "Glyph", "", "Title", 28, Theme.NeonColor("Orange"), { Size = UDim2.fromScale(1, 1), ZIndex = 7 })
+	PixelIcon.Host(badgeGlyph, spec.Badge, 27)
 	hero.Badge = badge
 	-- hover / press: a gentle grow and squash, a sweep on hover
 	hero.Fx = P5.Kit.AttachFx(root, function(hover, press)

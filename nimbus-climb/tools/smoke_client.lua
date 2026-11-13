@@ -830,13 +830,14 @@ S.client_hud = guarded("client_hud", function()
 	T.check(findText("checkpoint 2/4") ~= nil, "the match panel shows 'Checkpoint 2/4'", allShownText())
 	T.check(findText("7/24") ~= nil, "the match panel shows the token progress ('7/24')", allShownText())
 	T.check(findText("buddy") ~= nil and findText("fallen") ~= nil, "the team list shows the other members", allShownText())
+	-- (kit-b U7a) the mark is a PixelIcon x on the chip's empty State label, no longer a skull emoji
 	local skull = false
 	for _, d in ipairs(texts(nil, true)) do
-		if tostring(d.Text):find("\240\159\146\128") or tostring(d.Text):find("\226\152\160") then
+		if d.Name == "State" and d:GetAttribute("PixelIcon") == "x" and d:FindFirstChild("Icon") then
 			skull = true
 		end
 	end
-	T.check(skull, "downed team members get a skull mark")
+	T.check(skull, "downed team members get a downed mark (the PixelIcon x)")
 	-- the time keeps ticking down with each message
 	toClient("MatchState", matchState({ Seconds = 544, Checkpoint = 3, TokensCollected = 9 }))
 	advance(0.8)

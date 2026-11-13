@@ -568,10 +568,11 @@ function Contrast.Read(list, index)
 end
 
 -- tools/fixtures/contrast_backlog.txt as Lua patterns: the texts U6 left below the rule outside the review's families (a GUI
--- path per line, "*" = any run of characters but a dot, "#" a comment); a hit there is counted, not failed
-function Contrast.Backlog()
+-- path per line, "*" = any run of characters but a dot, "#" a comment); a hit there is counted, not failed. `file` reads
+-- another backlog of the same form (U7a: tools/fixtures/emoji_backlog.txt)
+function Contrast.Backlog(file)
 	local out = {}
-	local fh = io and io.open and io.open("tools/fixtures/contrast_backlog.txt", "r")
+	local fh = io and io.open and io.open(file or "tools/fixtures/contrast_backlog.txt", "r")
 	if not fh then
 		return out
 	end
@@ -619,6 +620,90 @@ function Contrast.Walk(pg)
 	end
 	table.sort(bad)
 	return bad, read, owed
+end
+
+-- (kit-b U7a) the emoji rule, the same ranges as render_gui.is_emoji (tools/stroke_walk.py --emoji): kit B draws its icons
+-- (PixelIcon), so a shown text carries no emoji and no pictographic symbol (arrows, the clocks, geometric shapes, the
+-- miscellaneous symbols and dingbats, the stars block, U+1F000 and up, the emoji joiners); typography stays
+local Emoji = {}
+SmokeCommon.Emoji = Emoji
+Emoji.BACKLOG = "tools/fixtures/emoji_backlog.txt"
+
+function Emoji.Is(cp)
+	return cp >= 0x1F000 or cp == 0xFE0F or cp == 0x200D or cp == 0x20E3 or (cp >= 0x2190 and cp <= 0x21FF)
+		or (cp >= 0x2300 and cp <= 0x23FF) or (cp >= 0x25A0 and cp <= 0x27BF) or (cp >= 0x2900 and cp <= 0x297F)
+		or (cp >= 0x2B00 and cp <= 0x2BFF)
+end
+
+-- the emoji code points of a UTF-8 string, as "U+XXXX" strings (rich-text tags dropped)
+function Emoji.Find(s)
+	s = tostring(s or ""):gsub("<[^>]*>", "")
+	local out, i = {}, 1
+	while i <= #s do
+		local c = s:byte(i)
+		local n, cp = 1, c
+		if c >= 0xF0 then
+			n, cp = 4, c % 0x08
+		elseif c >= 0xE0 then
+			n, cp = 3, c % 0x10
+		elseif c >= 0xC0 then
+			n, cp = 2, c % 0x20
+		end
+		for k = 1, n - 1 do
+			cp = cp * 64 + ((s:byte(i + k) or 0x80) % 0x40)
+		end
+		if Emoji.Is(cp) then
+			out[#out + 1] = string.format("U+%04X", cp)
+		end
+		i = i + n
+	end
+	return out
+end
+
+-- is a text object shown: its own text not see-through, every GuiObject up to its LayerCollector Visible, that Enabled
+function Emoji.Shown(o)
+	if (tonumber(o.TextTransparency) or 0) >= 0.99 then
+		return false
+	end
+	local p = o
+	while p do
+		if p:IsA("LayerCollector") then
+			return p.Enabled ~= false
+		end
+		if p:IsA("GuiObject") and p.Visible == false then
+			return false
+		end
+		p = p.Parent
+	end
+	return true
+end
+
+-- every shown text under `pg` with an emoji code point: hits[path] = "text U+XXXX ...", and backlog hits counted apart
+-- (owed[path] = true); `hits` / `owed` may be passed in to gather several walks
+function Emoji.Walk(pg, hits, owed)
+	hits, owed = hits or {}, owed or {}
+	local backlog = Contrast.Backlog(Emoji.BACKLOG)
+	for _, d in ipairs(pg:GetDescendants()) do
+		if (d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox")) and Emoji.Shown(d) then
+			local cps = Emoji.Find(d.Text)
+			if #cps > 0 then
+				local path = d:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
+				local known = false
+				for _, pattern in ipairs(backlog) do
+					if path:find(pattern) then
+						known = true
+						break
+					end
+				end
+				if known then
+					owed[path] = true
+				else
+					hits[path] = table.concat(cps, " ")
+				end
+			end
+		end
+	end
+	return hits, owed
 end
 
 -- (battle-feel T3, the real server cast) a special press's effects land BattleCatalog.Damage.SpecialCast[kind] s after the

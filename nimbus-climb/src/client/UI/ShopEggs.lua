@@ -85,6 +85,7 @@ local Remotes = require(Shared:WaitForChild("Remotes"))
 local UI = script.Parent
 local NeonKit = require(UI:WaitForChild("NeonKit"))
 local GemIcon = require(UI:WaitForChild("GemIcon"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7a) the token coin, TRAVEL's arrow
 local CloudUI = require(UI:WaitForChild("CloudUI"))
 local EggArt = require(UI:WaitForChild("EggArt"))
 local Egg3D = require(UI:WaitForChild("Egg3D"))
@@ -432,7 +433,8 @@ function H.spinButton(P, parent, name, style, word, currency, id, spins)
 	p.Word = label("Word", p.Button, p.BaseWord, "Button", 22, { TextTruncate = Enum.TextTruncate.None })
 	if currency == "Tokens" then
 		local cur = Theme.Currency.Tokens
-		p.Icon = label("TokenIcon", p.Button, cur.Glyph, "Display", 22, { TextColor3 = cur.Color, TextTruncate = Enum.TextTruncate.None })
+		p.Icon = label("TokenIcon", p.Button, "", "Display", 22, { TextColor3 = cur.Color, TextTruncate = Enum.TextTruncate.None })
+		PixelIcon.Host(p.Icon, cur.Icon) -- (kit-b U7a) the Cloud Token coin, sized with the label
 	end
 	p.Price = label("Price", p.Button, "", "Button", 22, { TextTruncate = Enum.TextTruncate.None })
 	return p
@@ -562,7 +564,8 @@ function H.travelButton(P, parent)
 	})
 	CloudUI.SetStyle(tr.Button, "Blue")
 	tr.Button.Visible = false
-	tr.Icon = label("Icon", tr.Button, NeonKit.Glyphs.Travel, "Display", 44, { TextTruncate = Enum.TextTruncate.None })
+	tr.Icon = label("Icon", tr.Button, "", "Display", 44, { TextTruncate = Enum.TextTruncate.None })
+	PixelIcon.Host(tr.Icon, NeonKit.IconName("Travel")) -- (kit-b U7a) the arrow, sized with the label
 	tr.Word = label("Word", tr.Button, K.TEXT.Travel, "Button", 34, { TextTruncate = Enum.TextTruncate.None, TextXAlignment = LEFT })
 	return tr
 end

@@ -1864,7 +1864,10 @@ S.client_roll_look_reveal = guarded("client_roll_look_reveal", function()
 		-- (review round 2) the budget bookkeeping (spec 16.15 "Budgets"): each dressed piece's instances, counted here so the
 		-- spec's numbers stay the ones the next budget change is planned from
 		T.eq(word and G.count(word) or -1, 30, "roll look budget: a 5-letter word is 30 instances (its Frame, 3 glow capsules x 3, 5 letters x [TextLabel, UIGradient, UIStroke, UIScale])")
-		T.eq((again and G.count(again) or 0) + (done and G.count(done) or 0), 28, "roll look budget: the two pills are 28 instances (SPIN AGAIN 16 with its price chip and coin icon, DONE 12 with its label outline)")
+		-- (kit-b U7a) the coin icon is the token PixelIcon: its Frame and one Frame per merged run
+		local PI = G.req("shared/PixelIcon")
+		local coin = 1 + (PI and #PI.Runs("token") or 0)
+		T.eq((again and G.count(again) or 0) + (done and G.count(done) or 0), 28 + coin, "roll look budget: the two pills are " .. (28 + coin) .. " instances (SPIN AGAIN 16 with its price chip and coin icon + the pixel coin's " .. coin .. ", DONE 12 with its label outline)")
 		T.eq((skip and G.count(skip) or 0) + (fast and G.count(fast) or 0), 13, "roll look budget: the two chips are 13 instances (Skip 4, Fast hatch 9)")
 		-- (review round 2) SPIN AGAIN's refresh (every 8 heartbeats while the reveal shows) does nothing while nothing changed:
 		-- no PillParts lookups, no measuring and fitting, no writes

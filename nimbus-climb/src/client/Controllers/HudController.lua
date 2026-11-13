@@ -65,6 +65,7 @@ local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
 local Remotes = require(Shared:WaitForChild("Remotes"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7a) the coins' and the chips' icons
 
 local Client = script.Parent.Parent
 local CloudUI = require(Client:WaitForChild("UI"):WaitForChild("CloudUI"))
@@ -153,6 +154,7 @@ local K = {
 	TITLE_CARD_SECONDS = 4,
 	LEAVE_CONFIRM_SECONDS = 3,
 	GO_SECONDS = 1.0, -- how long "GO!" replaces the timer
+	STAR_PX = 18, -- (kit-b U7a) a difficulty star (PixelIcon) after the match / party level name
 	LAYOUT_POLL = 0.5, -- seconds between two geometry checks
 }
 
@@ -322,15 +324,6 @@ local function topInset()
 	return inset
 end
 
-local function hex(color)
-	return string.format(
-		"#%02X%02X%02X",
-		math.floor(color.R * 255 + 0.5),
-		math.floor(color.G * 255 + 0.5),
-		math.floor(color.B * 255 + 0.5)
-	)
-end
-
 local function fireRemote(name)
 	local remote = remoteCache[name]
 	if not remote then
@@ -343,10 +336,6 @@ local function fireRemote(name)
 	if remote then
 		remote:FireServer()
 	end
-end
-
-local function stars(count)
-	return string.rep("\226\152\133", math.max(0, math.min(5, math.floor(tonumber(count) or 0))))
 end
 
 ----------------------------------------------------------------------
@@ -464,13 +453,28 @@ local function newBadge(parent, name, size, color, glow)
 end
 
 -- Glossy coin badge: newBadge plus a glyph (kit B, no outline: in the ink that reads on the coin's gradient).
+-- (kit-b U7a) `glyph` may be a PixelIcon name ("token", "note"): the coin's Glyph label is then empty and hosts that icon
+-- at about glyphSize px (setCoinIcon redraws it at a new size)
+local function setCoinIcon(label, name, px)
+	local old = label:FindFirstChild("Icon")
+	if old then
+		old:Destroy()
+	end
+	label:SetAttribute("PixelIcon", name)
+	PixelIcon.Host(label, name, px * 0.8)
+end
+
 local function newCoin(parent, name, size, color, glow, glyph, glyphSize)
 	local coin = newBadge(parent, name, size, color, glow)
-	newText(coin, "Glyph", glyph, "Display", glyphSize, Theme.TextOn(badgeSequence(color, glow)), {
+	local icon = PixelIcon.Bitmaps[glyph] and glyph or nil
+	local label = newText(coin, "Glyph", icon and "" or glyph, "Display", glyphSize, Theme.TextOn(badgeSequence(color, glow)), {
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Position = UDim2.new(0, 0, 0, -1),
 		ZIndex = 2,
 	})
+	if icon then
+		setCoinIcon(label, icon, glyphSize)
+	end
 	return coin
 end
 
@@ -1589,7 +1593,7 @@ local function buildCurrencyRow(parent, entry)
 		end
 		setGem(K.COIN)
 	else
-		coin = newCoin(row, "Coin", K.COIN, color, glow, def.Glyph or "?", 30)
+		coin = newCoin(row, "Coin", K.COIN, color, glow, def.Icon or def.Glyph or "?", 30)
 	end
 	coin.AnchorPoint = Vector2.new(0, 0.5)
 	coin.Position = UDim2.new(0, 0, 0.5, 0)
@@ -1651,6 +1655,10 @@ local function setRowGeometry(c, compact)
 	c.Coin.Size = UDim2.fromOffset(coinSize, coinSize)
 	if c.CoinGlyph then
 		c.CoinGlyph.TextSize = strip and 19 or (compact and 24 or 30)
+		local icon = c.CoinGlyph:GetAttribute("PixelIcon")
+		if icon then
+			setCoinIcon(c.CoinGlyph, icon, c.CoinGlyph.TextSize)
+		end
 	end
 	if c.SetGem then
 		c.SetGem(coinSize)
@@ -1811,6 +1819,7 @@ local function buildMatch(holder)
 		Size = UDim2.new(0.55, 0, 0, M.TokensH),
 		TextXAlignment = Enum.TextXAlignment.Right,
 	})
+	UI.MatchTokensIcon = PixelIcon.Lead(UI.MatchTokens, Theme.Currency.Tokens.Icon) -- (kit-b U7a) the coin before the count
 	UI.TokensScale = newScale(UI.MatchTokens, 1)
 
 	-- checkpoint progress
@@ -1956,7 +1965,7 @@ local function buildTitleCard(holder)
 	round(gloss)
 
 	-- a gold cloud coin at the left
-	local coin = newCoin(card, "Coin", 54, Colors.Token, Colors.TokenGlow, "\226\152\129", 30)
+	local coin = newCoin(card, "Coin", 54, Colors.Token, Colors.TokenGlow, Theme.Currency.Tokens.Icon, 30)
 	coin.AnchorPoint = Vector2.new(0, 0.5)
 	coin.Position = UDim2.new(0, 11, 0.5, 0)
 
@@ -2533,24 +2542,35 @@ local function updateTeam(members)
 		local frac = Util.Clamp(tonumber(m.Health) or 0, 0, 1)
 		chip.Fill.Size = UDim2.fromScale(frac, 1)
 		chip.Fill.BackgroundColor3 = Theme.HealthColor(frac)
+		-- (kit-b U7a) the state is a PixelIcon on the empty State label: a tick when finished, an x when downed
+		local mark = m.Finished and "check" or (m.Downed and "x" or nil)
+		if chip.State:GetAttribute("PixelIcon") ~= mark then
+			local old = chip.State:FindFirstChild("Icon")
+			if old then
+				old:Destroy()
+			end
+			chip.State:SetAttribute("PixelIcon", mark)
+			if mark then
+				PixelIcon.Host(chip.State, mark, chip.State.TextSize)
+			end
+		end
+		chip.State.Text = ""
 		if m.Finished then
-			chip.State.Text = "\226\156\148"
 			chip.State.TextColor3 = Colors.Good
 			chip.Stroke.Color = Colors.Good
 		elseif m.Downed then
-			chip.State.Text = "\226\152\160" -- skull and crossbones
 			chip.State.TextColor3 = Colors.Bad
 			chip.Stroke.Color = Colors.Bad
 		else
-			chip.State.Text = ""
 			chip.Stroke.Color = isMe and NEON.Gold or Theme.Darken(NEON.Grey, 0.3)
 		end
 	end
 end
 
 local function updateTokensLine(state)
-	local text = "\226\152\129 " .. tostring(math.floor(tonumber(state.TokensCollected) or 0))
+	local text = tostring(math.floor(tonumber(state.TokensCollected) or 0))
 		.. "/" .. tostring(math.floor(tonumber(state.TotalTokens) or 0))
+	UI.MatchTokensIcon.Visible = true -- (kit-b U7a) the coin leads the count ("Get ready!" hides it)
 	if UI.MatchTokens.Text ~= text then
 		local grew = Mt.TokensSeen ~= nil and (tonumber(state.TokensCollected) or 0) > Mt.TokensSeen
 		Mt.TokensSeen = tonumber(state.TokensCollected) or 0
@@ -2596,6 +2616,7 @@ local function updateMatchClock(now)
 		if n ~= Mt.Last then
 			Mt.Last = n
 			UI.MatchTokens.Text = "Get ready!"
+			UI.MatchTokensIcon.Visible = false
 			pop(UI.TimerScale, 1.7, 0.5)
 		end
 		setTimerText(tostring(n), numeralColor(n), M.CountText)
@@ -2755,11 +2776,19 @@ local function applyMatchState(state)
 		color = Colors.Stamina
 	end
 	local diff = Config.GetDifficulty and Config.GetDifficulty(state.DifficultyId) or nil
-	local starText = ""
-	if diff then
-		starText = "  <font color=\"" .. hex(GOLD) .. "\">" .. stars(diff.Stars) .. "</font>"
+	-- (kit-b U7a) the difficulty's stars are gold PixelIcons after its name
+	UI.MatchTitle.Text = tostring(state.DifficultyName or state.DifficultyId or "Match")
+	local starCount = diff and math.max(0, math.min(5, math.floor(tonumber(diff.Stars) or 0))) or 0
+	if UI.MatchTitle:GetAttribute("Stars") ~= starCount then
+		UI.MatchTitle:SetAttribute("Stars", starCount)
+		local old = UI.MatchTitle:FindFirstChild("TrailIcon")
+		if old then
+			old:Destroy()
+		end
+		if starCount > 0 then
+			PixelIcon.Lead(UI.MatchTitle, "star", { After = true, Count = starCount, Px = K.STAR_PX, Colour = GOLD })
+		end
 	end
-	UI.MatchTitle.Text = tostring(state.DifficultyName or state.DifficultyId or "Match") .. starText
 	UI.MatchTitle.TextColor3 = Theme.Lighten(color, 0.25)
 
 	local total = math.max(1, math.floor(tonumber(state.TotalCheckpoints) or 1))
@@ -2850,7 +2879,7 @@ local function fitPartyTexts()
 	UI.PartyTitle.TextSize = fittingSize(title, Theme.FontOf(UI.PartyTitle), { M.TitleText, 26, 24, 22 }, inner - leaveW - 8)
 	if Pt.LevelPlain then
 		local room = inner - ((Pt.Leader and M.ChangeW or M.PartyCountW) + 6)
-		UI.PartyLevel.TextSize = fittingSize(Pt.LevelPlain, Theme.FontOf(UI.PartyLevel), { 20, 19, 18 }, room)
+		UI.PartyLevel.TextSize = fittingSize(Pt.LevelPlain, Theme.FontOf(UI.PartyLevel), { 20, 19, 18 }, room - (Pt.StarsW or 0))
 	end
 	UI.PartyStatus.TextSize = fittingSize(status, Theme.FontOf(UI.PartyStatus), { M.PartyStatusText, 20, 19 }, inner)
 	if textFits(Pt.HintLong, Theme.FontOf(UI.PartyHint), M.PartyHintText, inner - M.PartyCountW - 6) then
@@ -2910,9 +2939,21 @@ local function applyPartyState(state)
 		UI.PartyTitle.Text = tostring(state.DifficultyName or "?")
 		UI.PartyTitle.TextColor3 = Theme.Lighten(color, 0.25)
 	end
-	local starText = (starCount > 0) and ("  <font color=\"" .. hex(NEON.Gold) .. "\">" .. stars(starCount) .. "</font>") or ""
-	UI.PartyLevel.Text = levelName .. starText
-	Pt.LevelPlain = obby and (levelName .. ((starCount > 0) and ("  " .. stars(starCount)) or "")) or nil
+	-- (kit-b U7a) the level's stars are gold PixelIcons after its name; fitting leaves them their room (Pt.StarsW)
+	starCount = math.max(0, math.min(5, math.floor(starCount)))
+	UI.PartyLevel.Text = levelName
+	if UI.PartyLevel:GetAttribute("Stars") ~= starCount then
+		UI.PartyLevel:SetAttribute("Stars", starCount)
+		local old = UI.PartyLevel:FindFirstChild("TrailIcon")
+		if old then
+			old:Destroy()
+		end
+		if starCount > 0 then
+			PixelIcon.Lead(UI.PartyLevel, "star", { After = true, Count = starCount, Px = K.STAR_PX, Colour = NEON.Gold })
+		end
+	end
+	Pt.StarsW = (starCount > 0) and (starCount * K.STAR_PX + (starCount - 1) * math.floor(K.STAR_PX / 9) + math.max(3, math.floor(K.STAR_PX / 4))) or 0
+	Pt.LevelPlain = obby and levelName or nil
 	UI.PartyLevel.TextColor3 = Theme.Lighten(color, 0.3)
 	Pt.Leader = obby and state.LeaderUserId ~= nil and state.LeaderUserId == player.UserId
 	Pt.Level = levelId

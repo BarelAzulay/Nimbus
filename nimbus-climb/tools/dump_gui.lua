@@ -2541,7 +2541,7 @@ function NK.gallery()
 	end
 	local r1 = row("Pills", 1, 52)
 	NeonKit.Pill({ Name = "Pill_Cash", Text = "12.4K", Glyph = "$", Color = "Green", Size = 200, LayoutOrder = 1, Parent = r1 })
-	NeonKit.Pill({ Name = "Pill_Tokens", Text = "1,250", Glyph = "\226\152\129", Color = "Gold", Size = 200, LayoutOrder = 2, Parent = r1 })
+	NeonKit.Pill({ Name = "Pill_Tokens", Text = "1,250", Glyph = "Tokens", Color = "Gold", Size = 200, LayoutOrder = 2, Parent = r1 }) -- (kit-b U7a) the token PixelIcon
 	-- (lobby-shop Task 15: the gem pill's coin holds the drawn cut gem on the navy badge with a cyan ring, like the HUD's)
 	local gemPill = NeonKit.Pill({ Name = "Pill_Gems", Text = "85", Glyph = " ", Color = "Cyan", Size = 200, LayoutOrder = 3, Parent = r1 })
 	gemPill.Glyph.Text = ""

@@ -84,7 +84,7 @@
 --     "Claimed" | "Locked", Pulsing): Time "10 min" on top, Gift (an Orb in the tier's colour under the "Gifts" icon;
 --     attribute Bobbing: a Ready box's gift bobs and its border pulses on the 1 s tick), Reward (the resolved amount; on a
 --     box narrower inside than WRAP_BELOW it takes two lines: "+150" / "Tokens", "Berry" / "Basket"), and one slot: Claim
---     (green "CLAIM": DailyRequest("ClaimPlay", i)), Clock (+ ClockGlyph when it fits: TierCountdown, on the 1 s tick) or
+--     (green "CLAIM": DailyRequest("ClaimPlay", i)), Clock (+ ClockGlyph, a PixelIcon clock, when it fits: TierCountdown, on the 1 s tick) or
 --     Check (claimed: a big tick over the Dim). PC: 260 x 250 boxes at 1080p, four on top and three under, both rows
 --     centred (the rows slide from PlayCompact to PlayFull with the body); phone: seven 104 x 204 boxes in one row; portrait:
 --     four a row, row 2 centred. Fx: the week's Rainbow Sweep and 24 Confetti frames (both skipped on Low).
@@ -112,6 +112,7 @@ local GuiService = game:GetService("GuiService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7a) the claimed tick and the tier clock
 local Util = require(Shared:WaitForChild("Util"))
 local Remotes = require(Shared:WaitForChild("Remotes"))
 local TutorialSteps = require(Shared:WaitForChild("TutorialSteps"))
@@ -241,7 +242,7 @@ local TEXT = {
 	PlayPausedPC = { "Paused: move around to keep counting!", "Paused: move around!" },
 	PlayPausedTouch = { "Paused: close this and move around!", "Paused: close this and move!" },
 	ClaimAll = "CLAIM ALL (%d)",
-	ClockGlyph = "\226\143\176", -- alarm clock
+	ClockIcon = "clock", -- (kit-b U7a) the PixelIcon beside a tier's countdown
 }
 
 -- the owner's colourful cells (kept here, not in Theme): one saturated colour per day (today is Neon.Gold) and per tier
@@ -275,7 +276,7 @@ local CELL_LOOK = {
 }
 
 local DOT = "\194\183"
-local CHECK = "\226\156\148"
+local CHECK = "check" -- (kit-b U7a) the claimed tick is a PixelIcon
 local WHITE = Theme.Colors.White
 local GOLD = Theme.Neon.Gold
 local INK = Theme.Colors.PanelInk or Color3.fromRGB(8, 10, 28)
@@ -900,7 +901,8 @@ function H.newCell(i, parent)
 	dim.Visible = false
 	Theme.Corner(dim, UDim.new(0, 12))
 	dim.Parent = c.Body
-	local check = label("Check", CHECK, "Title", 36, c.Body, { TextColor3 = Theme.Neon.Green, ZIndex = 7, Visible = false, TextWrapped = false })
+	local check = label("Check", "", "Title", 36, c.Body, { TextColor3 = Theme.Neon.Green, ZIndex = 7, Visible = false, TextWrapped = false })
+	PixelIcon.Host(check, CHECK) -- sized with the label
 	U.Cells[i] = { Card = c, Root = c.Root, Pop = pop, Day = day, Art = art, Amount = amount, Dim = dim, Check = check, ArtKey = nil, LookKey = nil }
 end
 
@@ -926,8 +928,10 @@ function H.newTier(i, parent)
 	Theme.Corner(dim, UDim.new(0, 12))
 	dim.Parent = c.Body
 	local clock = label("Clock", "", "Display", 16, c.Body, { TextColor3 = WHITE, TextWrapped = false, ZIndex = 5, Visible = false })
-	local glyph = label("ClockGlyph", TEXT.ClockGlyph, "Display", 16, c.Body, { TextWrapped = false, ZIndex = 5, Visible = false })
-	local check = label("Check", CHECK, "Title", 28, c.Body, { TextColor3 = Theme.Neon.Green, ZIndex = 7, TextWrapped = false, Visible = false })
+	local glyph = label("ClockGlyph", "", "Display", 16, c.Body, { TextWrapped = false, ZIndex = 5, Visible = false })
+	PixelIcon.Host(glyph, TEXT.ClockIcon) -- sized with the label
+	local check = label("Check", "", "Title", 28, c.Body, { TextColor3 = Theme.Neon.Green, ZIndex = 7, TextWrapped = false, Visible = false })
+	PixelIcon.Host(check, CHECK)
 	local claim = NeonKit.Button({ Name = "Claim", Text = "CLAIM", Color = "Green", Size = UDim2.fromOffset(92, 44), TextSize = 16,
 		Parent = c.Body, Callback = function()
 			H.send("ClaimPlay", i)

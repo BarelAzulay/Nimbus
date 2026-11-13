@@ -49,6 +49,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7a) the reward's Cloud Token coin
 local Remotes = require(Shared:WaitForChild("Remotes"))
 
 local Client = script.Parent.Parent
@@ -115,7 +116,7 @@ local K = {
 	PANEL_INSET_W = 24, -- the Neon panel's content inset (left + right, design px)
 	REWARD_ROOMY_W = 480, -- a reward box narrower than this (design px) gets the 150 x 52 CLAIM button
 	REWARD_LABEL_W = 112, -- "Rewards:" (Heading 22) and its gap
-	REWARD_AMOUNT_W = 140, -- the widest amount (the Secret group's "☁ 10,000" in Display 30)
+	REWARD_AMOUNT_W = 140, -- the widest amount (the Secret group's "<coin> 10,000" in Display 30)
 	REWARD_SUB_MIN_W = 150, -- narrower than this, the line under the amount is left out (no 4-line wrap)
 	ELEMENTS_STRIP_W = 132,
 	ELEMENTS_BTN_H = 52,
@@ -142,7 +143,6 @@ local BUTTONS = Theme.Buttons or {}
 local ACCENT = Color3.fromRGB(70, 182, 196) -- the Index teal (menu tile + title bar)
 local INSET = Color3.fromRGB(20, 30, 70)
 local SILHOUETTE = Color3.new(0, 0, 0)
-local TOKEN_GLYPH = (Theme.Currency and Theme.Currency.Tokens and Theme.Currency.Tokens.Glyph) or "\226\152\129"
 local ROLE_COLORS = { Economy = Color3.fromRGB(96, 196, 108), Combat = Color3.fromRGB(228, 104, 96) }
 local G = {
 	Check = "\226\156\147",
@@ -1567,7 +1567,7 @@ local function renderRewards()
 	U.RewardSub.Position = UDim2.fromOffset(16, 44)
 	U.RewardSub.Size = UDim2.new(0, subW or 0, 0, 44)
 	local found, total, complete, claimed, claimable = groupStatus(group)
-	U.RewardAmount.Text = TOKEN_GLYPH .. " " .. commas(rewardTokens(group))
+	U.RewardAmount.Text = commas(rewardTokens(group))
 	local button = U.ClaimButton
 	local pending = S.ClaimPending == group.Id and not claimed
 	if claimed then
@@ -2235,6 +2235,7 @@ local function buildCentre(centre)
 		Size = UDim2.new(1, -350, 0, 32),
 		TextXAlignment = Enum.TextXAlignment.Left,
 	})
+	PixelIcon.Lead(U.RewardAmount, Theme.Currency.Tokens.Icon) -- (kit-b U7a) the coin before the amount
 	U.RewardSub = makeText(rewards, "Sub", "", "Body", 18, MUTED, {
 		Position = UDim2.fromOffset(16, 44),
 		Size = UDim2.new(1, -230, 0, 44),

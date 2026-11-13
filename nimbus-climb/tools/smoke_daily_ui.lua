@@ -936,7 +936,7 @@ local function clientScenarios()
 		T.check(c ~= nil and c:IsA("BillboardGui") and c.Enabled and c.MaxDistance == 60 and abs(c.StudsOffset.Y - 2.4) < 1e-6, "daily vip: a VIP's character gets the VipCrown billboard on High",
 			c and fmt("enabled %s, max %s, offset %s", tostring(c.Enabled), tostring(c.MaxDistance), tostring(c.StudsOffset)) or "none")
 		local glyph = c and H.find(c, "Icon")
-		T.check(glyph ~= nil and tostring(glyph.Text) ~= "", "daily vip: the crown shows the VipCrown glyph")
+		T.check(glyph ~= nil and glyph:GetAttribute("PixelIcon") == "crown", "daily vip: the crown shows the VipCrown icon (kit-b U7a: the pixel crown)")
 		p2:SetAttribute("InBattle", "B7")
 		KC.advance(0.3)
 		c = crown()

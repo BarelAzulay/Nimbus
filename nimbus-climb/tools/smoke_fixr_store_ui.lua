@@ -593,16 +593,16 @@ local function clientScenarios()
 		local vip = H.card(win, "VIP")
 		local vipArt = vip and vip:FindFirstChild("Art", true)
 		local vipGlyph = vipArt and vipArt:FindFirstChild("Glyph")
-		T.check(vipArt ~= nil and vipArt:FindFirstChildWhichIsA("ImageLabel") == nil and vipGlyph ~= nil and vipGlyph.Visible and vipGlyph.Text ~= "",
-			"store art: no store_vip key = the VIP card keeps its glyph")
+		T.check(vipArt ~= nil and vipArt:FindFirstChildWhichIsA("ImageLabel") == nil and vipGlyph ~= nil and vipGlyph.Visible and vipGlyph:GetAttribute("PixelIcon") == "crown" and vipGlyph:FindFirstChild("Icon") ~= nil,
+			"store art: no store_vip key = the VIP card keeps its icon (kit-b U7a: the pixel crown)")
 		local tab = win:FindFirstChild("Tab_Packs", true)
 		local icon = tab and tab:FindFirstChild("Icon")
 		T.check(icon ~= nil and icon:IsA("ImageLabel") and icon.Image == "rbxassetid://777",
 			"store art: the Packs tab icon goes through NeonKit.Icon (Config.Icons.Packs swaps in an image)", icon and icon.ClassName or "no icon")
 		local passes = win:FindFirstChild("Tab_Passes", true)
 		local passIcon = passes and passes:FindFirstChild("Icon")
-		T.check(passIcon ~= nil and passIcon:IsA("TextLabel") and passIcon:GetAttribute("IconId") == "Passes" and passIcon.Text ~= "",
-			"store art: a tab without Config.Icons keeps the NeonKit glyph (IconId Passes)", passIcon and passIcon.ClassName or "no icon")
+		T.check(passIcon ~= nil and passIcon:IsA("TextLabel") and passIcon:GetAttribute("IconId") == "Passes" and passIcon:GetAttribute("PixelIcon") == "ticket",
+			"store art: a tab with a PixelIcon in Config.Icons keeps it (kit-b U7a; IconId Passes: the ticket)", passIcon and passIcon.ClassName or "no icon")
 		-- the image goes away again: the next open draws the glyph
 		Config.Icons.Packs = hadPacks
 		ids.store_starter = hadArt

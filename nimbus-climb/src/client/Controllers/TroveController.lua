@@ -77,7 +77,7 @@ local TEXT = {
 	Status = { Checked = "Rejoin to check", Unavailable = "Try again soon", Loading = "Loading..." },
 	Button = { Open = "JOIN", Done = "DONE", Preview = "PREVIEW" },
 }
-local GLYPH = { Group = "\240\159\145\165", Like = "\240\159\145\141" } -- busts in silhouette, thumbs up
+local GLYPH = { Group = "Group", Like = "Like" } -- (kit-b U7a) NeonKit.Icon ids: the pixel people and heart (Config.Icons)
 
 local S = {
 	Inited = false,

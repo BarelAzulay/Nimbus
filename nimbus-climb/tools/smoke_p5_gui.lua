@@ -575,9 +575,9 @@ S.client_p5neon = guarded("client_p5neon", function()
 	T.eq(clicks, 1, "p5neon: Tile: a click calls the Callback")
 	tile.SetBadge(true)
 	T.check(NK.shown(tile.Badge), "p5neon: Tile.SetBadge shows the red dot")
-	-- Icon: an emoji glyph, or an ImageLabel once Config.Icons[id] holds an asset id
+	-- Icon: the id's PixelIcon (kit-b U7a), or an ImageLabel once Config.Icons[id] holds an asset id
 	local icon = NeonKit.Icon(g, "Shop", 40)
-	T.check(icon:IsA("TextLabel") and icon.Text == NeonKit.Glyphs.Shop, "p5neon: Icon(id): the emoji glyph by default")
+	T.check(icon:IsA("TextLabel") and icon.Text == "" and icon:GetAttribute("PixelIcon") == "bag", "p5neon: Icon(id): the id's PixelIcon by default (kit-b U7a: Shop = the bag)")
 	Config.Icons = Config.Icons or {}
 	Config.Icons.SmokeIcon = "rbxassetid://123"
 	local img = NeonKit.Icon(g, "SmokeIcon", 40)

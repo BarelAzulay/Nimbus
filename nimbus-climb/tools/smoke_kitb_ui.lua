@@ -89,6 +89,15 @@
 --   T0 (the owner's title pick B: FredokaOne titles, Theme.StyleTitle): theme_style_title (server world, pure) and
 --   kitb_titles_stamped (client; T0 review) the run-time walk: every Title-role Title / TitleText / Headline label in the
 --   built windows is stamped Plain or a Theme.TitleExempt kind, and each expected window title is found Plain
+--   U7a (icons: tiles and currency; finding 7, rejects audit 5):
+--   token_glyph_sources       (server world, pure) no script outside U7b's glyph tables and world signs writes the cloud
+--                             glyph (U+2601) the Cloud Token used
+--   kitb_no_emoji_ui          (client) the emoji walk: after the client run and with each window U7a reworked open, no shown
+--                             text carries an emoji or pictographic symbol (SmokeCommon.Emoji; tools/stroke_walk.py --emoji
+--                             runs the same rule over every render scenario); tools/fixtures/emoji_backlog.txt is counted
+--   token_icon_everywhere     (client) Theme.Currency names the icons (no emoji glyph), Config.Icons fills every icon id
+--                             from PixelIcon, NeonKit.Icon("Tokens") draws the coin and follows TextColor3 / fade / ZIndex,
+--                             PixelIcon.Lead puts it before an amount, and every token surface holds it at run time
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -1135,6 +1144,23 @@ local function serverScenarios()
 		T.check(#fonts == 0, "kitb font: no script sets .Font directly (Theme.SetRole)", table.concat(fonts, ", "))
 		T.check(#measures == 0, "kitb font: no script measures with GetTextSize (Theme.Measure / Theme.MeasureLabel)", table.concat(measures, ", "))
 		K.flushErrors("kitb_no_direct_font")
+	end)
+
+	-- (U7a) the Cloud Token's cloud glyph (U+2601, as bytes or as the escape \226\152\129) is gone from every script but the
+	-- glyph tables and world signs U7b redraws (the arena, dungeon and obby tables, the home and lobby signs, the tycoon
+	-- catalog): the currency is the PixelIcon coin (Theme.Currency.Tokens.Icon) and a sentence says "Tokens"
+	S.token_glyph_sources = guarded("token_glyph_sources", function()
+		local U7B = { ArenaController = true, DungeonController = true, ObbyController = true, HomeBuilder = true, LobbyBuilder = true, TycoonCatalog = true }
+		local hits, n = {}, 0
+		for _, f in ipairs(gameSources()) do
+			n = n + 1
+			if not U7B[f.inst.Name] and (f.src:find("\\226\\152\\129", 1, true) or f.src:find("\226\152\129", 1, true)) then
+				hits[#hits + 1] = f.inst.Name
+			end
+		end
+		T.check(n > 20, "token glyph: the game's scripts are mounted", tostring(n))
+		T.check(#hits == 0, "token glyph: no script outside U7b's tables writes the cloud glyph (the token is its PixelIcon)", table.concat(hits, ", "))
+		K.flushErrors("token_glyph_sources")
 	end)
 
 	-- corner radii are Theme.Radius tokens ("None", "S", "M", and "Round" for a pill or a disc) in every file U6 swept; the
@@ -3385,6 +3411,260 @@ local function clientScenarios()
 		Mock.SetViewport(old[1], old[2])
 		LKC.advance(0.2)
 		LKC.flushErrors("kitb_titles_stamped")
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- U7a (icons: tiles and currency; finding 7, rejects audit 5): the icon ids draw PixelIcons, the Cloud Token is its coin
+	local U7 = {}
+	function U7.client(path)
+		local inst = Mock.GetPath(ROOTS.client .. "/" .. path)
+		local ok, mod = false, nil
+		if inst then
+			ok, mod = pcall(require, inst)
+		end
+		return ok and type(mod) == "table" and mod or nil
+	end
+	function U7.try(what, fn)
+		local ok, err = pcall(fn)
+		T.check(ok, "u7a walk: " .. what .. " opens", tostring(err))
+		LKC.advance(0.4)
+	end
+	function U7.path(d)
+		return (d:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", ""))
+	end
+	-- the windows U7a reworked, opened one after another; `look()` runs after each (and once before, for the boot's GUI)
+	function U7.openAll(look)
+		local Config = LoadingH.shared("Config")
+		local PC = LoadingH.shared("PetCatalog")
+		local Menu = U7.client("Controllers/MenuController")
+		look()
+		for _, id in ipairs({ "Pets", "Index", "Stats" }) do
+			U7.try("the " .. id .. " window", function()
+				Menu.Open(id)
+			end)
+			look()
+		end
+		pcall(Menu.Close)
+		for _, tab in ipairs({ "Eggs", "Gems", "Packs", "Passes", "Boosts" }) do
+			U7.try("the Shop on " .. tab, function()
+				U7.client("Controllers/ShopController").Open({ Tab = tab })
+			end)
+			look()
+		end
+		pcall(U7.client("Controllers/ShopController").Close)
+		U7.try("the Gifts window", function()
+			U7.client("Controllers/DailyController").Open({})
+		end)
+		look()
+		pcall(U7.client("Controllers/DailyController").Close)
+		U7.try("Fusion", function()
+			U7.client("Controllers/FusionController").Open("Upgrade", {})
+		end)
+		look()
+		pcall(U7.client("Controllers/FusionController").Close)
+		U7.try("a token toast", function()
+			LKC.toClient("Notify", "+25 cloud tokens", "token", 8)
+		end)
+		look()
+		U7.try("a match result", function()
+			game:GetService("Players").LocalPlayer:SetAttribute(Config.Attr.InMatch, true)
+			LKC.toClient("MatchResult", {
+				Won = true, Reason = "victory", Seconds = 187, MatchTokens = 11, Bonus = 10, DifficultyId = "Easy", DifficultyName = "Easy",
+				Stars = 1, TotalTokens = 24,
+				Members = {
+					{ Name = game:GetService("Players").LocalPlayer.Name, MatchTokens = 11, Finished = true, Downed = false },
+					{ Name = "Buddy", MatchTokens = 6, Finished = true, Downed = false },
+				},
+			})
+			LKC.advance(1.5)
+		end)
+		look()
+		pcall(function()
+			game:GetService("Players").LocalPlayer:SetAttribute(Config.Attr.InMatch, nil)
+		end)
+		U7.try("the hatch stage", function()
+			local def = PC.RarityPool("Cloud", "Common")[1]
+			local all = {}
+			for _, d in ipairs(PC.PossiblePets("Cloud")) do
+				all[#all + 1] = d.Id
+			end
+			local strip = {}
+			for i = 1, 40 do
+				strip[i] = all[((i * 7) % #all) + 1]
+			end
+			strip[34] = def.Id
+			local pull = { PetId = def.Id, Key = def.Id, Rarity = def.Rarity, IsNew = true, NewDiscovery = true, Count = 1, PoolSize = 1, Strip = strip }
+			U7.client("UI/EggStage").Show({ Ok = true, RouletteId = "Cloud", Currency = "Tokens", Spins = 1, UnitPrice = 50, Price = 50, Pulls = { pull }, Tokens = 5000, Gems = 5000,
+				PetId = def.Id, Key = def.Id, IsNew = true, NewDiscovery = true, Count = 1, Strip = strip })
+			LKC.advance(8)
+		end)
+		look()
+	end
+
+	-- the emoji rule over PlayerGui (tools/stroke_walk.py --emoji runs it over the dump of every render scenario): after the
+	-- client run and with each window U7a reworked open in turn (the menu's Pets / Index / Stats, the Shop on every tab,
+	-- the Gifts window, Fusion, a token toast, a match result, the hatch stage), no shown text carries an emoji or
+	-- pictographic symbol code point (SmokeCommon.Emoji). The texts in tools/fixtures/emoji_backlog.txt (U7b's glyph
+	-- tables) are counted, not failed; U7b empties that list.
+	S.kitb_no_emoji_ui = guarded("kitb_no_emoji_ui", function()
+		local Emoji = SmokeCommon.Emoji
+		local pg = game:GetService("Players").LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		if not T.check(Emoji ~= nil and pg ~= nil, "kitb emoji walk: SmokeCommon.Emoji and PlayerGui exist") then
+			return
+		end
+		local old = { Mock.Viewport.X, Mock.Viewport.Y }
+		Mock.SetViewport(1920, 1080)
+		LKC.advance(0.1)
+		local hits, owed, walks = {}, {}, 0
+		U7.openAll(function()
+			walks = walks + 1
+			Emoji.Walk(pg, hits, owed)
+		end)
+		local list, n = {}, 0
+		for path, cps in pairs(hits) do
+			list[#list + 1] = path .. " " .. cps
+		end
+		for _ in pairs(owed) do
+			n = n + 1
+		end
+		table.sort(list)
+		T.info(fmt("*kitb emoji walk: %d walks, %d texts with an emoji outside the backlog, %d in tools/fixtures/emoji_backlog.txt", walks, #list, n))
+		T.check(#list == 0, fmt("kitb emoji walk: no shown text carries an emoji code point (%d)", #list), table.concat(list, "; ", 1, math.min(#list, 10)))
+		Mock.SetViewport(old[1], old[2])
+		LKC.advance(0.2)
+		LKC.flushErrors("kitb_no_emoji_ui")
+	end)
+
+	-- the Cloud Token is its PixelIcon coin wherever the game shows the currency: Theme.Currency names the icons (no emoji
+	-- glyph left in any currency), Config.Icons fills every icon id from PixelIcon, NeonKit.Icon("Tokens") draws the coin
+	-- (and follows the colour / fade a caller sets on it), PixelIcon.Lead puts the coin before an amount, and at run time
+	-- each token surface holds a "token" PixelIcon and no cloud glyph: the HUD coin and title card, the match HUD line,
+	-- the Shop's balance, an egg card's price and the Gems tab's token piles, the Fusion chip, the token toast, the Stats
+	-- tiles, the Index reward, the match result's rows and the hatch stage's Spin again chip
+	S.token_icon_everywhere = guarded("token_icon_everywhere", function()
+		local Theme = LoadingH.shared("Theme")
+		local Config = LoadingH.shared("Config")
+		local PixelIcon = LoadingH.shared("PixelIcon")
+		local NK = U7.client("UI/NeonKit")
+		local Emoji = SmokeCommon.Emoji
+		if not T.check(Theme and Config and PixelIcon and NK and Emoji, "token icon: Theme, Config, PixelIcon, NeonKit and SmokeCommon.Emoji load") then
+			return
+		end
+		-- the data
+		local cur = Theme.Currency or {}
+		T.check(cur.Tokens and cur.Tokens.Icon == "token" and PixelIcon.Bitmaps.token ~= nil, "token icon: Theme.Currency.Tokens.Icon = \"token\" (the PixelIcon coin)", tostring(cur.Tokens and cur.Tokens.Icon))
+		T.check(cur.Cash and cur.Cash.Icon == "note" and cur.Gems and cur.Gems.Icon == "Gems", "token icon: Cash draws the note, Gems the cut gem (Icon = \"Gems\")")
+		local glyphs = {}
+		for id, c in pairs(cur) do
+			for k, v in pairs(c) do
+				if type(v) == "string" and #Emoji.Find(v) > 0 then
+					glyphs[#glyphs + 1] = id .. "." .. k
+				end
+			end
+		end
+		T.check(#glyphs == 0, "token icon: no emoji glyph left in Theme.Currency", table.concat(glyphs, ", "))
+		local ids = { "Pets", "Items", "Inventory", "Team", "Index", "Shop", "Home", "Spot", "Stats", "Settings", "Travel", "Obby", "Dungeon",
+			"Ring", "Arena", "Altar", "Care", "Berries", "Fusion", "Battle", "Cash", "Tokens", "Lock", "Play", "Store", "Packs", "Passes",
+			"Boosts", "Currency", "Roulettes", "Eggs", "Gifts", "Repair", "VipCrown", "Trove" }
+		local missing, badValue = {}, {}
+		for _, id in ipairs(ids) do
+			if Config.Icons[id] == nil then
+				missing[#missing + 1] = id
+			end
+		end
+		for id, v in pairs(Config.Icons) do
+			if not (type(v) == "string" and (PixelIcon.Bitmaps[v] or v:sub(1, 13) == "rbxassetid://")) then
+				badValue[#badValue + 1] = id .. "=" .. tostring(v)
+			end
+		end
+		T.check(#missing == 0, "token icon: Config.Icons names an icon for every tile / tab / coin id", table.concat(missing, ", "))
+		T.check(#badValue == 0, "token icon: every Config.Icons value is a PixelIcon bitmap (or an rbxassetid)", table.concat(badValue, ", "))
+		T.check(Config.Icons.Tokens == "token", "token icon: Config.Icons.Tokens = \"token\"")
+		-- NeonKit.Icon draws it and follows what a caller sets on a glyph
+		local f = Instance.new("Frame")
+		local icon = NK.Icon(f, "Tokens", 27)
+		local pix = icon and icon:FindFirstChild("Icon")
+		T.check(icon and icon:IsA("TextLabel") and icon.Text == "" and icon:GetAttribute("PixelIcon") == "token" and pix and pix:GetAttribute("PixelIcon") == "token",
+			"token icon: NeonKit.Icon(parent, \"Tokens\") is an empty TextLabel hosting the token PixelIcon", icon and (icon.ClassName .. " '" .. tostring(icon.Text) .. "'") or "nil")
+		local rect = pix and pix:FindFirstChild("R1")
+		if rect then
+			T.check(pix.Size.X.Offset == 27 and #pix:GetChildren() == #PixelIcon.Runs("token"), "token icon: the coin is 27 px, one Frame per merged run")
+			icon.TextColor3 = Color3.fromRGB(10, 200, 30)
+			icon.TextTransparency = 0.5
+			icon.ZIndex = 7
+			T.check(rect.BackgroundColor3 == Color3.fromRGB(10, 200, 30) and math.abs(rect.BackgroundTransparency - 0.5) < 1e-6 and rect.ZIndex == 7,
+				"token icon: the coin follows the icon's TextColor3, TextTransparency and ZIndex")
+		end
+		local tile = NK.Icon(f, "Pets", 38)
+		T.check(tile and tile:GetAttribute("PixelIcon") == "paw" and tile:FindFirstChild("Icon") and tile:FindFirstChild("Icon").Size.X.Offset == 36,
+			"token icon: a tile id draws its PixelIcon at the nearest multiple of 9 (Pets: the paw, 38 -> 36 px)")
+		local plain = NK.Icon(f, "R$", 20)
+		T.check(plain and plain.Text == "R$", "token icon: plain text that is no icon id shows as it is")
+		f:Destroy()
+		-- PixelIcon.Lead: the coin before an amount
+		local lab = Instance.new("TextLabel")
+		lab.Size = UDim2.fromOffset(200, 30)
+		lab.TextSize = 20
+		lab.Text = "1,250"
+		lab.TextXAlignment = Enum.TextXAlignment.Left
+		local lead = type(PixelIcon.Lead) == "function" and PixelIcon.Lead(lab, "token") or nil
+		local pad = lab:FindFirstChildOfClass("UIPadding")
+		T.check(lead and lead.Name == "LeadIcon" and lead:GetAttribute("PixelIcon") == "token" and lead.Size.X.Offset == 18 and pad and pad.PaddingLeft.Offset >= 18,
+			"token icon: PixelIcon.Lead(label, \"token\") puts an 18 px coin before a 20 px amount and pads the text past it")
+		lab:Destroy()
+		-- run time: each surface holds the coin and no cloud glyph
+		local pg = game:GetService("Players").LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		local surfaces = {
+			{ "the HUD token coin", "^NimbusHud%.TopRight%.Currency%.Currency_Tokens" },
+			{ "the HUD title card", "^NimbusHud%.TopLeft%.TitleCard%.Coin" },
+			{ "the match HUD tokens line", "^NimbusHud%.TopLeft%.MatchPanel%..-%.Inner%.Tokens" },
+			{ "the Shop's token balance", "^NimbusShop%..-%.Balance_Tokens" },
+			{ "an egg card's spin price", "^NimbusShop%..-ShopCard_Cloud%.Body%.Spin" },
+			{ "the Gems tab's token piles", "^NimbusShop%..-%.TokenPack_%d+%.Body%.Art" },
+			{ "the Fusion token chip", "^NimbusFusion%..-%.TokenChip" },
+			{ "the token toast", "^NimbusNotify%..-%.Toast%.Icon" },
+			{ "the Stats window's tokens", "^NimbusMenu%.Window_Stats%..-%.Tile_Tokens" },
+			{ "the Stats window's tokens earned", "^NimbusMenu%.Window_Stats%..-%.Tile_Earned" },
+			{ "the Index reward", "^NimbusIndex%..-%.Rewards%.Amount" },
+			{ "the match result's tokens", "^NimbusNotify%.ResultHolder%..-%.RowTokens" },
+			{ "the match result's members", "^NimbusNotify%.ResultHolder%..-%.Member%d+%.Tokens" },
+			{ "the hatch stage's Spin again", "^NimbusHatch%..-%.SpinAgain" },
+		}
+		local seen, cloudy = {}, {}
+		local function look()
+			for _, d in ipairs(pg:GetDescendants()) do
+				local path = U7.path(d)
+				for _, s in ipairs(surfaces) do
+					if path:find(s[2]) then
+						if d:GetAttribute("PixelIcon") == "token" then
+							seen[s[1]] = true
+						end
+						if (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Text:find("\226\152\129", 1, true) then
+							cloudy[path] = true
+						end
+					end
+				end
+			end
+		end
+		local old = { Mock.Viewport.X, Mock.Viewport.Y }
+		Mock.SetViewport(1920, 1080)
+		LKC.advance(0.1)
+		U7.openAll(look)
+		local absent, cl = {}, {}
+		for _, s in ipairs(surfaces) do
+			if not seen[s[1]] then
+				absent[#absent + 1] = s[1]
+			end
+		end
+		for path in pairs(cloudy) do
+			cl[#cl + 1] = path
+		end
+		table.sort(cl)
+		T.check(#absent == 0, "token icon: every token surface holds the token PixelIcon", table.concat(absent, ", "))
+		T.check(#cl == 0, "token icon: no token surface shows the cloud glyph", table.concat(cl, "; "))
+		Mock.SetViewport(old[1], old[2])
+		LKC.advance(0.2)
+		LKC.flushErrors("token_icon_everywhere")
 	end)
 
 	return S

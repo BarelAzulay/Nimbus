@@ -77,7 +77,7 @@ NpcDialog.Settings = {
 ----------------------------------------------------------------------
 -- Number helpers (the tips quote Config)
 ----------------------------------------------------------------------
-local TOKEN = "\226\152\129" -- the cloud glyph used for Cloud Tokens everywhere
+local TOKEN = "Tokens" -- (kit-b U7a) a sentence names the currency; the coin icon is for amounts shown on their own
 
 local function commas(n)
 	local s = tostring(math.floor((tonumber(n) or 0) + 0.5))
@@ -133,7 +133,7 @@ local M = Config.Match or {}
 local T = Config.Tokens or {}
 local D = Config.Damage or {}
 
--- "Cloud 50 ☁ up to Celestial 5,000 ☁": the cheapest and the priciest token roulette
+-- "Cloud 50 Tokens up to Celestial 5,000 Tokens": the cheapest and the priciest token roulette
 local function rouletteRange()
 	local low, high = nil, nil
 	for _, r in ipairs(Config.Roulettes or {}) do
@@ -172,7 +172,7 @@ local function mythicChances()
 	return joinAnd(parts)
 end
 
--- Index rewards of the lowest and the highest token-roulette rarity ("50 ☁ for Commons up to 5,000 ☁ for Mythics")
+-- Index rewards of the lowest and the highest token-roulette rarity ("50 Tokens for Commons up to 5,000 Tokens for Mythics")
 local function indexRewardRange()
 	local rewards = (Config.Index and Config.Index.Rewards) or {}
 	local low, high = nil, nil
@@ -403,10 +403,11 @@ NpcDialog.Npcs = {
 		Accent = Color3.fromRGB(160, 126, 222),
 		Keywords = { "roulette", "shop island", "Mythic", "Pet Index", "Gems", "Berry Basket", "Food Machine", "Feed", "EVOLVE", "evolved" },
 		Lines = {
-			"Hoo-hoo! New pets hatch from the roulettes on the shop island: " .. rouletteRange() .. ". Pricier means rarer!",
+			-- (kit-b U7a) "Tokens" replaced the cloud glyph, so two lines were trimmed back under the 125-byte line limit
+			"Hoo-hoo! Pets hatch from the shop island roulettes: " .. rouletteRange() .. ". Pricier means rarer!",
 			"Mythic pets only appear in the " .. mythicChances() .. " roulettes. "
 				.. (cheapGemSpin and ("Gems buy spins too: a " .. cheapGemSpin .. "!") or "The shop shows every chance."),
-			"Every pet you find fills the Pet Index. Complete a rarity group for a reward: " .. indexRewardRange() .. "!",
+			"Every new pet fills the Pet Index. Finish a rarity group for a reward: " .. indexRewardRange() .. "!",
 			"Your farm fills the Berry Basket. Press E at the Food Machine, pick a pet and press Feed: berries become XP!",
 			"At level " .. number(evoLevels[1] or 20) .. " press EVOLVE for a new look! Evolved pets grow " .. evoFaster
 				.. " faster per level. Epic+ evolve again at " .. number(evoLevels[2] or 50) .. ".",
