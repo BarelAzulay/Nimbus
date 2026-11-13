@@ -27,13 +27,26 @@
 --   sky_painted_looks_have_no_engine_stars (server world, pure) every phase and raid look with a painted skybox has
 --                             StarCount 0 (the stars are painted; no engine field popping on at the mid-blend)
 --   lightingservice_boot_uses_painted_day (server world, booted) empty (or half-pasted) Config.Sky.Faces boots the
---                             painted Day skybox (SkyFaces.For(Themes.Day)), StarCount 0, CelestialBodiesShown false,
---                             Glare 0 ("Painted"); the stock sky only when the Day theme is not uploaded; six owner faces win
+--                             painted skybox of the loop's first phase (S2 review; the Day's when that one is not
+--                             uploaded), StarCount 0, CelestialBodiesShown false, Glare 0, its own SunRays at 0 ("Painted"):
+--                             faces / stars / sun / glare / rays = SkyCycle.Preset at that phase; the stock sky only when
+--                             neither theme is uploaded; six owner faces win
 --   skytransition_preloads_next_theme (client) SkyTransition.Preload(theme) = one ContentProvider:PreloadAsync with exactly
 --                             its six face ids (nothing for a missing theme); SkyController preloads the next theme once
 --                             per blend window, at its first refresh inside it
---   skytransition_preloads_raids_after_menu (client) the four raid skies preload once the menu's PLAY fires (UiGate.Played),
---                             once per start; a controller started after PLAY preloads them at once
+--   skytransition_preloads_raids_after_menu (client) the four raid skies preload Transitions.Preload.RaidDelay s after the
+--                             menu's PLAY fires (UiGate.Played), one at a time in one thread (S2 review), once per start;
+--                             a controller started after PLAY: RaidDelay s after its start; stopped in the delay: nothing
+--   S3 (small transitions; sky audit F9, F10):
+--   hatchfx_blur_tweens_out   (client) HatchFx.Dim(false, s): NimbusHatchBlur tweens Size -> 0 over s (Quad In) and is
+--                             destroyed when that completes (SkyTransition.BlurOut; default Transitions.Screen.Out); on
+--                             again mid-fade keeps the same blur (the fade cancelled, never destroyed later)
+--   dungeon_light_dim_duration (client) the run's Dungeon light pushes over Transitions.Zone.In (1.5 s) and, at an End
+--                             with no fade on screen, pops over Zone.Out (2 s)
+--   dungeon_late_mood_slow_push (client) a tier mood read after the start (the pocket streamed in) is re-pushed once,
+--                             over Zone.Late (2.5 s)
+--   dungeon_end_fade_tweens_out (client) End under the black fade: the light pops at 0 s (unseen) and the frame tweens out
+--                             over Transitions.Screen.Lift (0.3 s), then the overlay is off
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -368,11 +381,15 @@ local function serverScenarios()
 		local LS = K.M["server/Services/LightingService"]
 		local Config = K.config()
 		local SkyFaces = K.M["shared/SkyFaces"] or loadModule("SkyFaces")
+		local SkyCycle = K.M["shared/SkyCycle"] or loadModule("SkyCycle")
 		local Lighting = game:GetService("Lighting")
-		if not T.check(type(LS) == "table" and type(LS.Init) == "function" and type(SkyFaces) == "table", "LightingService + SkyFaces are loaded") then
+		if not T.check(type(LS) == "table" and type(LS.Init) == "function" and type(SkyFaces) == "table" and type(SkyCycle) == "table", "LightingService + SkyFaces + SkyCycle are loaded") then
 			return
 		end
-		local savedFaces, savedDay = {}, Config.Sky.Themes.Day
+		-- S2 review: the boot sky is the theme of the loop's position 0 (SkyService boots SkyOffset 0: a fresh server's first
+		-- phase), so a fresh Play's first client apply keeps the faces the loading screen preloaded
+		local first = SkyCycle.At(0, 0, 1, 0).Phase
+		local savedFaces, savedDay, savedFirst = {}, Config.Sky.Themes.Day, Config.Sky.Themes[first]
 		for k, v in pairs(Config.Sky.Faces) do
 			savedFaces[k] = v
 		end
@@ -381,20 +398,32 @@ local function serverScenarios()
 				Config.Sky.Faces[k] = faces[k] or ""
 			end
 		end
-		local function painted(label)
-			local want = SkyFaces.For(Config.Sky.Themes.Day)
+		-- theme = the boot theme expected; phase = the phase whose SkyCycle.Preset (with faces) the sky must equal
+		local function painted(label, theme, phase)
+			local want = SkyFaces.For(theme)
 			local s = Lighting:FindFirstChildOfClass("Sky")
 			local atm = Lighting:FindFirstChildOfClass("Atmosphere")
-			if not T.check(want ~= nil and s ~= nil and atm ~= nil, label .. ": the Day theme's faces exist, a Sky and an Atmosphere") then
+			local rays = Lighting:FindFirstChildOfClass("SunRaysEffect")
+			if not T.check(want ~= nil and s ~= nil and atm ~= nil and rays ~= nil, label .. ": the boot theme's faces exist, a Sky, an Atmosphere and SunRays") then
 				return
 			end
-			local faces = T.tally(label .. ": the six Skybox faces = SkyFaces.For(Config.Sky.Themes.Day)")
+			local faces = T.tally(label .. ": the six Skybox faces = SkyFaces.For(" .. tostring(theme) .. ")")
 			for slot, id in pairs(want) do
 				faces:case(s[slot] == id and id:sub(1, 13) == "rbxassetid://", fmt("%s %s vs %s", slot, tostring(s[slot]), id))
 			end
 			faces:report()
 			T.check(s.StarCount == 0 and s.CelestialBodiesShown == false, label .. ": no engine stars, no engine sun / moon", fmt("StarCount %s, CelestialBodiesShown %s", tostring(s.StarCount), tostring(s.CelestialBodiesShown)))
 			T.check(atm.Glare == 0, label .. ": Atmosphere Glare 0", tostring(atm.Glare))
+			-- S2 review: what SkyController's first apply at that phase writes (SkyCycle.Preset with faces): the sun rays,
+			-- glare, engine sun and stars do not move when the living sky takes over
+			if phase then
+				local at = { Phase = phase, Next = phase, T = 0, Blend = 0 }
+				local p = SkyCycle.Preset(at, nil, 0, SkyFaces.For)
+				T.check(rays.Intensity == p.SunRays.Intensity, fmt("%s: SunRays.Intensity %s = SkyCycle.Preset at %s (%s)", label, tostring(rays.Intensity), phase, tostring(p.SunRays.Intensity)))
+				T.check(atm.Glare == p.Atmosphere.Glare and s.CelestialBodiesShown == p.Sky.CelestialBodiesShown and s.StarCount == p.Sky.StarCount,
+					fmt("%s: Glare / CelestialBodiesShown / StarCount = SkyCycle.Preset at %s", label, phase), fmt("%s / %s / %s", tostring(p.Atmosphere.Glare), tostring(p.Sky.CelestialBodiesShown), tostring(p.Sky.StarCount)))
+				T.check(s.SkyboxBk == p.Sky.SkyboxBk and s.SkyboxUp == p.Sky.SkyboxUp, fmt("%s: the faces = SkyCycle.Preset at %s (no swap at the first apply)", label, phase), tostring(p.Sky.SkyboxBk))
+			end
 		end
 		local ok, err = pcall(function()
 			setFaces({})
@@ -402,26 +431,37 @@ local function serverScenarios()
 			T.eq(LS.Init(), "Painted", "empty Config.Sky.Faces -> Init returns Painted")
 			T.eq(LS.Current, "Painted", "LightingService.Current = Painted")
 			T.check(type(LS.Look.Painted) == "table", "LightingService.Look.Painted exists")
-			painted("empty faces")
+			T.check(type(LS.Look.Painted.SunRays) == "table" and LS.Look.Painted.SunRays ~= LS.Look.Custom.SunRays and LS.Look.Painted.SunRays.Intensity == 0 and LS.Look.Custom.SunRays == LS.Look.Fallback.SunRays and LS.Look.Custom.SunRays.Intensity > 0,
+				"Look.Painted has its own SunRays at Intensity 0; Custom and Fallback keep the shared faint rays")
+			T.check(first == Config.Sky.Cycle.Order[1] and Config.Sky.Themes[first] ~= Config.Sky.Themes.Day, fmt("the loop starts at %s, whose sky (%s) is not the Day's (the case S2 got wrong)", tostring(first), tostring(Config.Sky.Themes[first])))
+			painted("empty faces", Config.Sky.Themes[first], first)
 			K.flushWarnings("lightingservice_boot_uses_painted_day: empty faces warn nothing")
 			-- a half-pasted Config.Sky.Faces warns (names the missing face) and still boots painted, never the stock sky
 			setFaces({ Bk = "rbxassetid://101", Dn = "rbxassetid://102", Ft = "rbxassetid://103", Lf = "rbxassetid://104", Rt = "rbxassetid://105" })
 			T.eq(LS.Init(), "Painted", "one owner face missing (Up) -> Painted")
-			painted("one owner face missing")
+			painted("one owner face missing", Config.Sky.Themes[first], first)
 			K.flushWarnings("lightingservice_boot_uses_painted_day", { "[LightingService]" })
-			-- the Day theme not uploaded: the stock sky is the last resort
+			-- the first phase's theme not uploaded: the painted Day sky
 			setFaces({})
+			Config.Sky.Themes[first] = "kitb_not_uploaded"
+			T.eq(LS.Init(), "Painted", "the first phase's theme not uploaded -> still Painted")
+			painted("first theme missing", Config.Sky.Themes.Day, "Day")
+			-- neither uploaded: the stock sky is the last resort
 			Config.Sky.Themes.Day = "kitb_not_uploaded"
-			T.eq(LS.Init(), "Fallback", "no Day theme faces either -> Fallback")
+			T.eq(LS.Init(), "Fallback", "no first-phase or Day theme faces either -> Fallback")
 			local s = Lighting:FindFirstChildOfClass("Sky")
 			T.check(s ~= nil and s.SkyboxBk == "" and s.SkyboxUp == "", "Fallback: the stock sky (faces cleared)")
+			local rays = Lighting:FindFirstChildOfClass("SunRaysEffect")
+			T.check(rays ~= nil and rays.Intensity == LS.Look.Fallback.SunRays.Intensity, "Fallback: its faint sun rays come back", rays and tostring(rays.Intensity))
 			Config.Sky.Themes.Day = savedDay
+			Config.Sky.Themes[first] = savedFirst
 			-- six owner faces still win
 			setFaces({ Bk = "rbxassetid://101", Dn = "rbxassetid://102", Ft = "rbxassetid://103", Lf = "rbxassetid://104", Rt = "rbxassetid://105", Up = "rbxassetid://106" })
 			T.eq(LS.Init(), "Custom", "six owner faces -> Custom")
 		end)
 		T.check(ok, "lightingservice_boot_uses_painted_day ran without errors", tostring(err))
 		Config.Sky.Themes.Day = savedDay
+		Config.Sky.Themes[first] = savedFirst
 		for k in pairs(Config.Sky.Faces) do
 			Config.Sky.Faces[k] = savedFaces[k]
 		end
@@ -784,10 +824,32 @@ local function clientScenarios()
 			end
 			return n, all
 		end
+		-- S2 review: one theme at a time in one thread (each PreloadAsync here takes 1 s), RaidDelay s after PLAY so the
+		-- lobby's own assets load first
+		local delay = Cfg.Sky.Transitions.Preload and Cfg.Sky.Transitions.Preload.RaidDelay
+		local function slowPreloads()
+			local lists = {}
+			lists.threads = {}
+			Mock.PreloadHook = function(list)
+				lists[#lists + 1] = list
+				lists.threads[coroutine.running()] = true
+				task.wait(1)
+			end
+			return lists
+		end
+		local function threads(lists)
+			local n = 0
+			for _ in pairs(lists.threads) do
+				n = n + 1
+			end
+			return n
+		end
 		local ok, err = pcall(function()
+			T.check(type(delay) == "number" and delay >= 2 and delay <= 10, "Config.Sky.Transitions.Preload.RaidDelay: a few seconds", tostring(delay))
+			delay = type(delay) == "number" and delay or 4
 			SC.Stop()
 			St.Gate = gate
-			local lists = preloads()
+			local lists = slowPreloads()
 			publish(300) -- Day, no window near
 			SC.Start()
 			KC.advance(0.1)
@@ -796,21 +858,267 @@ local function clientScenarios()
 			played = true
 			gate.Played:Fire()
 			KC.advance(0.1)
+			T.check(#lists == 0, "PLAY: nothing at once (the lobby loads first)", describe(lists))
+			KC.advance(delay - 0.15)
+			T.check(#lists == 0, fmt("still nothing just before RaidDelay (%.1f s)", delay), describe(lists))
+			KC.advance(0.15)
+			T.check(#lists == 1, "RaidDelay s after PLAY: the first raid sky starts (only one)", describe(lists))
+			KC.advance(1.0)
+			T.check(#lists == 2, "one at a time: the second starts when the first is done", describe(lists))
+			KC.advance(2.5)
 			local count, all = raidLists(lists)
-			T.check(count == 4 and all and #lists == 4, "PLAY: the four raid skies preload (four lists of six faces)", describe(lists))
+			T.check(count == 4 and all and #lists == 4, "the four raid skies preloaded (four lists of six faces)", describe(lists))
+			T.check(threads(lists) == 1, "all four from one thread", fmt("%d threads", threads(lists)))
 			gate.Played:Fire()
-			KC.advance(0.1)
+			KC.advance(delay + 4.5)
 			T.check(#lists == 4, "once per start: a second Played adds nothing", describe(lists))
-			-- a controller that starts after PLAY preloads them at once
+			-- a controller that starts after PLAY preloads them RaidDelay s after its start
 			SC.Stop()
-			lists = preloads()
+			lists = slowPreloads()
 			SC.Start()
 			KC.advance(0.1)
+			T.check(#lists == 0, "started after PLAY: nothing at once", describe(lists))
+			KC.advance(delay + 4)
 			count, all = raidLists(lists)
-			T.check(count == 4 and all, "started after PLAY: the raid skies preload at once", describe(lists))
+			T.check(count == 4 and all and threads(lists) == 1, "started after PLAY: the raid skies preload after RaidDelay, one thread", describe(lists))
+			-- stopped before the delay ran out: nothing
+			SC.Stop()
+			lists = slowPreloads()
+			SC.Start()
+			KC.advance(0.1)
+			SC.Stop()
+			KC.advance(delay + 4)
+			T.check(#lists == 0, "a controller stopped during RaidDelay preloads nothing", describe(lists))
 		end)
 		St.Gate = nil
 		T.check(ok, "skytransition_preloads_raids_after_menu ran without errors", tostring(err))
+	end)
+
+	-- S3 (sky audit F9, F10): small transitions -------------------------------------------------------------------------
+	local Lighting = game:GetService("Lighting")
+
+	-- the tweens playing on `inst` right now
+	local function playingOn(inst)
+		local out = {}
+		for tw in pairs(Mock.ActiveTweens) do
+			if tw.Instance == inst and tw.PlaybackState == Enum.PlaybackState.Playing then
+				out[#out + 1] = tw
+			end
+		end
+		return out
+	end
+
+	local function countBlurs()
+		local n = 0
+		for _, c in ipairs(Lighting:GetChildren()) do
+			if c.Name == "NimbusHatchBlur" then
+				n = n + 1
+			end
+		end
+		return n
+	end
+
+	S.hatchfx_blur_tweens_out = guarded("hatchfx_blur_tweens_out", function()
+		local okF, FX = pcall(require, Mock.GetPath(ROOTS["client"] .. "/UI/HatchFx"))
+		local okT, ST = pcall(require, Mock.GetPath(ROOTS["client"] .. "/SkyTransition"))
+		if not T.check(okF and type(FX) == "table" and okT and type(ST) == "table" and type(ST.BlurOut) == "function", "HatchFx + SkyTransition.BlurOut load", tostring(okT and ST)) then
+			return
+		end
+		local Scr = Cfg.Sky.Transitions.Screen
+		T.check(type(Scr) == "table" and type(Scr.Out) == "number" and Scr.Out > 0, "Config.Sky.Transitions.Screen.Out (BlurOut's default)", tostring(Scr))
+		local function blur()
+			return Lighting:FindFirstChild("NimbusHatchBlur")
+		end
+		local ok, err = pcall(function()
+			FX.Dim(false, 0.01)
+			KC.advance(0.1)
+			FX.Dim(true, 0.2)
+			KC.advance(0.3)
+			local b = blur()
+			if not T.check(b ~= nil and b:IsA("BlurEffect") and b.Size == 14, "Dim(true): NimbusHatchBlur at Size 14 (High)", b and tostring(b.Size) or "no blur") then
+				return
+			end
+			-- off: the blur eases to 0 over the given seconds (Quad In), then goes
+			local on = FX.Dim(false, 0.35)
+			KC.advance(0.05)
+			local tw = playingOn(b)
+			T.check(blur() == b and b.Parent == Lighting, "Dim(false): the blur is still there 0.05 s later (no one-frame snap)")
+			T.check(#tw == 1 and Mock.TweenGoals(tw[1]).Size == 0 and math.abs(tw[1].TweenInfo.Time - 0.35) < 1e-6 and tw[1].TweenInfo.EasingStyle == Enum.EasingStyle.Quad and tw[1].TweenInfo.EasingDirection == Enum.EasingDirection.In,
+				"Dim(false, 0.35): one Size -> 0 tween over 0.35 s, Quad In", tw[1] and fmt("%d tweens, %.2f s %s %s", #tw, tw[1].TweenInfo.Time, tw[1].TweenInfo.EasingStyle.Name, tw[1].TweenInfo.EasingDirection.Name) or "none")
+			T.check(on == 0 and FX.Stats().Effects == 0, "Dim(false): the effects count says off at once (the fading blur is on its way out)", tostring(on))
+			KC.advance(0.35)
+			T.check(blur() == nil and b.Parent == nil, "the blur is destroyed when its fade completes")
+			-- on again in the middle of a fade: the same blur comes back from where it is (no new one, no pop to 0)
+			FX.Dim(true, 0.2)
+			KC.advance(0.3)
+			b = blur()
+			FX.Dim(false, 0.35)
+			KC.advance(0.1)
+			FX.Dim(true, 0.2)
+			KC.advance(0.01)
+			local tw2 = playingOn(b)
+			T.check(blur() == b and countBlurs() == 1, "Dim(true) mid-fade keeps the fading blur (one NimbusHatchBlur)", fmt("%d blurs", countBlurs()))
+			T.check(#tw2 == 1 and Mock.TweenGoals(tw2[1]).Size == 14, "...the fade is cancelled, one tween back to 14", fmt("%d tweens", #tw2))
+			KC.advance(0.6)
+			T.check(blur() == b and b.Size == 14, "...and the cancelled fade never destroys it", blur() and tostring(blur().Size) or "gone")
+			FX.Dim(false, 0.35)
+			KC.advance(0.5)
+			T.check(blur() == nil and countBlurs() == 0, "off again: gone after the fade")
+			-- the helper alone: the kind's seconds when none are given; junk does nothing
+			local bb = Instance.new("BlurEffect")
+			bb.Name = "KitbBlurOut"
+			bb.Size = 10
+			bb.Parent = Lighting
+			local t3 = ST.BlurOut(bb)
+			T.check(t3 ~= nil and math.abs(t3.TweenInfo.Time - Scr.Out) < 1e-6 and Mock.TweenGoals(t3).Size == 0, "SkyTransition.BlurOut(blur): Size -> 0 over Screen.Out", t3 and tostring(t3.TweenInfo.Time) or "no tween")
+			KC.advance(Scr.Out + 0.1)
+			T.check(bb.Parent == nil, "SkyTransition.BlurOut: destroyed after the tween")
+			local okJ = pcall(function()
+				ST.BlurOut(nil)
+				ST.BlurOut("x")
+				ST.BlurOut(Instance.new("Folder"))
+			end)
+			T.check(okJ, "SkyTransition.BlurOut ignores junk")
+		end)
+		T.check(ok, "hatchfx_blur_tweens_out ran without errors", tostring(err))
+		pcall(FX.Dim, false, 0.01)
+		KC.advance(0.1)
+	end)
+
+	-- a dungeon run on this client (the DungeonState payloads), the Dungeon pushes / pops of LightingStack recorded
+	local function withDungeon(name, fn)
+		return guarded(name, function()
+			local okD, DC = pcall(require, Mock.GetPath(ROOTS["client"] .. "/Controllers/DungeonController"))
+			local okL, LSt = pcall(require, Mock.GetPath(ROOTS["client"] .. "/LightingStack"))
+			if not T.check(okD and type(DC) == "table" and okL and type(LSt) == "table", "DungeonController + LightingStack load", tostring(DC)) then
+				return
+			end
+			pcall(DC.Init)
+			local LP = game:GetService("Players").LocalPlayer
+			local me = LP.UserId
+			local function endRun()
+				KC.toClient("DungeonState", "End", { Floor = 2, Name = "Stone Halls", Cleared = false, Reason = "Quit", Room = 1, Totals = { Cash = 0, Tokens = 0, Xp = 0, Gems = 0 } })
+			end
+			endRun()
+			KC.advance(2.6)
+			local rec = { pushes = {}, pops = {} }
+			local realPush, realPop = LSt.Push, LSt.Pop
+			LSt.Push = function(id, preset, seconds)
+				if id == "Dungeon" then
+					rec.pushes[#rec.pushes + 1] = { preset = preset, s = seconds }
+				end
+				return realPush(id, preset, seconds)
+			end
+			LSt.Pop = function(id, seconds)
+				if id == "Dungeon" then
+					rec.pops[#rec.pops + 1] = { s = seconds }
+				end
+				return realPop(id, seconds)
+			end
+			LP:SetAttribute("InMatch", false)
+			LP:SetAttribute("InBattle", "D88")
+			rec.run = { RunId = "D88", Floor = 2, Name = "Stone Halls", Element = "Earth", Room = 0, RoomCount = 4, Wave = 0, Waves = 0, State = "Hall",
+				Members = { { UserId = me, Name = LP.Name } }, Confirmed = {}, NeedConfirm = 1, EnterOpen = true, Next = 1, Joinable = true }
+			rec.endRun = endRun
+			local ok, err = pcall(fn, DC, LP, rec)
+			LSt.Push, LSt.Pop = realPush, realPop
+			endRun()
+			LP:SetAttribute("InBattle", nil)
+			KC.advance(2.6)
+			T.check(ok, name .. " ran without errors", tostring(err))
+			T.check(DC.GetState().Lit ~= true, name .. ": the run's light is off afterwards")
+			KC.flushErrors(name)
+		end)
+	end
+
+	local function zone()
+		local Z = Cfg.Sky.Transitions.Zone
+		T.check(type(Z) == "table" and Z.In == 1.5 and Z.Out == 2 and Z.Late == 2.5, "Config.Sky.Transitions.Zone: In 1.5, Out 2, Late 2.5", Z and fmt("%s / %s / %s", tostring(Z.In), tostring(Z.Out), tostring(Z.Late)) or "missing")
+		return Z or { In = 1.5, Out = 2, Late = 2.5 }
+	end
+
+	S.dungeon_light_dim_duration = withDungeon("dungeon_light_dim_duration", function(DC, LP, rec)
+		local Z = zone()
+		KC.toClient("DungeonState", "Run", rec.run)
+		KC.advance(0.1)
+		T.check(DC.GetState().Lit == true and #rec.pushes == 1 and rec.pushes[1].s == Z.In, fmt("the run's dim: one Dungeon push over Zone.In (%.1f s; was 1 s)", Z.In), rec.pushes[1] and tostring(rec.pushes[1].s) or "no push")
+		KC.advance(0.5)
+		rec.endRun()
+		KC.advance(0.1)
+		T.check(#rec.pops == 1 and rec.pops[1].s == Z.Out, fmt("End with no fade on screen: the light comes back over Zone.Out (%.1f s; was 1 s)", Z.Out), rec.pops[1] and tostring(rec.pops[1].s) or "no pop")
+	end)
+
+	S.dungeon_late_mood_slow_push = withDungeon("dungeon_late_mood_slow_push", function(DC, LP, rec)
+		local Z = zone()
+		local char = LP.Character
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		if not T.check(root ~= nil and root:IsA("BasePart"), "the client world has a character root (the pocket is found near it)") then
+			return
+		end
+		local folder = Workspace:FindFirstChild("Dungeons")
+		local madeFolder = folder == nil
+		if madeFolder then
+			folder = Instance.new("Folder")
+			folder.Name = "Dungeons"
+			folder.Parent = Workspace
+		end
+		local holder = nil
+		local ok, err = pcall(function()
+			KC.toClient("DungeonState", "Run", rec.run)
+			KC.advance(0.1)
+			T.check(#rec.pushes == 1 and rec.pushes[1].s == Z.In, "the run starts with no pocket mood readable: the contract preset over Zone.In", rec.pushes[1] and tostring(rec.pushes[1].s) or "no push")
+			-- the pocket streams in a moment later with its tier mood
+			holder = Instance.new("Part")
+			holder.Name = "KitbMoodPocket"
+			holder.Anchored = true
+			holder.Position = root.Position
+			holder:SetAttribute("MoodAmbient", Color3.fromRGB(150, 140, 170))
+			holder:SetAttribute("MoodOutdoor", Color3.fromRGB(160, 150, 180))
+			holder:SetAttribute("MoodBrightness", 0.02)
+			holder:SetAttribute("MoodContrast", 0.12)
+			holder:SetAttribute("MoodTint", Color3.fromRGB(250, 246, 255))
+			holder.Parent = folder
+			KC.advance(1.3)
+			local p = rec.pushes[2]
+			local want = DC._Mood.Read(holder)
+			T.check(#rec.pushes == 2 and p.s == Z.Late, fmt("the late mood is re-pushed over Zone.Late (%.1f s, not a 1 s re-tint mid-play)", Z.Late), fmt("%d pushes, %s", #rec.pushes, p and tostring(p.s) or "-"))
+			T.check(p ~= nil and want ~= nil and p.preset.Lighting.Ambient == want.Lighting.Ambient, "...with the pocket's mood", p and tostring(p.preset.Lighting.Ambient) or "-")
+			KC.advance(3)
+			T.check(#rec.pushes == 2, "...once (no further re-pushes)", tostring(#rec.pushes))
+		end)
+		if holder then
+			holder:Destroy()
+		end
+		if madeFolder then
+			folder:Destroy()
+		end
+		T.check(ok, "dungeon_late_mood_slow_push body", tostring(err))
+	end)
+
+	S.dungeon_end_fade_tweens_out = withDungeon("dungeon_end_fade_tweens_out", function(DC, LP, rec)
+		local Scr = Cfg.Sky.Transitions.Screen
+		T.check(type(Scr) == "table" and Scr.Lift == 0.3, "Config.Sky.Transitions.Screen.Lift: 0.3 s", Scr and tostring(Scr.Lift) or "missing")
+		local lift = Scr and Scr.Lift or 0.3
+		local pg = LP:FindFirstChild("PlayerGui")
+		local fg = pg and pg:FindFirstChild("NimbusDungeonFade")
+		local frame = fg and fg:FindFirstChild("Fade")
+		if not T.check(frame ~= nil, "the NimbusDungeonFade overlay exists") then
+			return
+		end
+		KC.toClient("DungeonState", "Run", rec.run)
+		KC.advance(0.6)
+		KC.toClient("DungeonState", "Fade", { Out = 0.45, Hold = 0.35, In = 0.45, Room = 1 })
+		KC.advance(0.6)
+		T.check(frame.Visible and frame.BackgroundTransparency <= 0.05, "(setup) the screen is black", tostring(frame.BackgroundTransparency))
+		rec.endRun()
+		KC.advance(0.05)
+		local tw = playingOn(frame)
+		T.check(frame.Visible == true and fg.Enabled == true, "End under the black: the frame is still up 0.05 s later (no one-frame cut)")
+		T.check(#tw == 1 and Mock.TweenGoals(tw[1]).BackgroundTransparency == 1 and math.abs(tw[1].TweenInfo.Time - lift) < 1e-6, fmt("...it tweens out over Screen.Lift (%.1f s)", lift), tw[1] and fmt("%d tweens, %.2f s", #tw, tw[1].TweenInfo.Time) or "no tween")
+		T.check(DC.GetState().Fade == nil, "...the fade itself is over (GetState().Fade nil)", tostring(DC.GetState().Fade))
+		T.check(#rec.pops == 1 and rec.pops[1].s == 0, "the light pops back under the black (0 s: never seen)", rec.pops[1] and tostring(rec.pops[1].s) or "no pop")
+		KC.advance(lift + 0.05)
+		T.check(frame.Visible == false and fg.Enabled == false, "after Screen.Lift the overlay is off")
 	end)
 
 	return S

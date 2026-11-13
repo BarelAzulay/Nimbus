@@ -8,12 +8,16 @@
 --                   horizon, white moving clouds and 2500 stars
 --   * Look.Custom   the owner's painted skybox (branding/sky/*.png, the 6 ids pasted into Config.Sky.Faces): the same
 --                   P4 light, a light pink air to match the painted sky, no engine stars (they are painted)
---   * Look.Painted  no Config.Sky.Faces (kit-b S2, sky audit F4 / F12): the living sky's painted Day theme
---                   (SkyFaces.For(Config.Sky.Themes.Day)) with the Day look's air, no engine sun / moon / stars, Glare 0,
---                   so every frame before SkyController's first apply (server captures, the loading screen's preload of
---                   Lighting.Sky, a client whose SkyController failed) is the painted sky, never the stock one
+--   * Look.Painted  no Config.Sky.Faces (kit-b S2, sky audit F4 / F12): the living sky's painted theme of the loop's
+--                   first phase (Config.Sky.Themes[Config.Sky.Cycle.Order[1]]: SkyService boots SkyOffset 0, so a fresh
+--                   server starts there; the Day theme when that one is not uploaded) with the Day look's light and air,
+--                   no engine sun / moon / stars, Glare 0, no sun rays, so every frame before SkyController's first apply
+--                   (server captures, the loading screen's preload of Lighting.Sky, a client whose SkyController failed)
+--                   is the painted sky, never the stock one. The faces, sun, stars, glare and rays are what SkyCycle.Preset
+--                   writes at that phase (S2 review), so on a fresh Play the first apply swaps no faces the loading
+--                   screen did not preload; the light and air it sets at once (the first apply is instant)
 -- Init() picks Custom only when ALL SIX faces are set (one missing -> Painted, with a warning that names it); the
--- stock-sky Fallback only when the Day theme is not uploaded either.
+-- stock-sky Fallback only when neither the first phase's theme nor the Day theme is uploaded.
 -- A face is the full content id Studio's Asset Manager copies (scheme://..., an Image id); anything else counts as unset.
 -- The tuned numbers live in the Look table so the owner can tweak the mood in one place.
 -- Lighting.Technology (ShadowMap, as in Phase 4) cannot be written from a script (plugin security):
@@ -32,7 +36,7 @@ local LightingService = {}
 
 local rgb = Color3.fromRGB
 
--- Shared by both looks (the same table in each, so a tweak applies to both): the Phase 4 numbers
+-- Shared by the looks (the same table in each, so a tweak applies to all; Painted has its own SunRays): the Phase 4 numbers
 local BLOOM = { Enabled = true, Intensity = 0.16, Size = 18, Threshold = 1.6 } -- only the brightest accents (neon, tokens) glow
 local COLOR = { Enabled = true, Brightness = 0, Contrast = 0.1, Saturation = 0.14, TintColor = rgb(255, 250, 242) }
 local SUNRAYS = { Enabled = true, Intensity = 0.06, Spread = 0.6 }
@@ -110,7 +114,7 @@ LightingService.Look = {
 		DepthOfField = DOF,
 	},
 	Painted = {
-		Lighting = p4Light(), -- = Config.Sky.Looks.Day's light: SkyController's first apply moves nothing at Day
+		Lighting = p4Light(), -- = Config.Sky.Looks.Day's light (SkyController's first apply sets the phase's own at once)
 		Atmosphere = {
 			Density = 0.28,
 			Offset = 0.25,
@@ -126,7 +130,8 @@ LightingService.Look = {
 			MoonAngularSize = 9,
 		},
 		Clouds = { Enabled = true, Cover = 0.5, Density = 0.6, Color = rgb(240, 244, 252) },
-		SunRays = SUNRAYS,
+		-- (S2 review) no rays: they glow at the hidden engine sun, next to the painted one (SkyCycle.Preset's Intensity 0)
+		SunRays = { Enabled = true, Intensity = 0, Spread = 0.6 },
 		Bloom = BLOOM,
 		ColorCorrection = COLOR,
 		DepthOfField = DOF,
@@ -222,12 +227,18 @@ end
 
 function LightingService.Init()
 	local faces, missing, any = LightingService.CustomFaces()
-	-- no complete owner skybox: the living sky's painted Day faces ({ SkyboxBk = ..., the six } or nil: not uploaded)
-	local painted = not faces and type(Config.Sky) == "table" and type(Config.Sky.Themes) == "table" and SkyFaces.For(Config.Sky.Themes.Day) or nil
+	-- no complete owner skybox: the living sky's painted faces of the loop's first phase, else the Day's
+	-- ({ SkyboxBk = ..., the six } or nil: not uploaded)
+	local painted = nil
+	if not faces and type(Config.Sky) == "table" and type(Config.Sky.Themes) == "table" then
+		local order = type(Config.Sky.Cycle) == "table" and Config.Sky.Cycle.Order
+		local first = type(order) == "table" and order[1] or nil
+		painted = (first and SkyFaces.For(Config.Sky.Themes[first])) or SkyFaces.For(Config.Sky.Themes.Day)
+	end
 	local name = faces and "Custom" or (painted and "Painted" or "Fallback")
 	if not faces and any then
 		-- the owner started pasting ids: say which ones are still missing / unreadable (a warning, not an error)
-		warn("[LightingService] Config.Sky.Faces is missing " .. table.concat(missing, ", ") .. " (paste the full id from Asset Manager -> Copy ID): using the " .. (painted and "painted Day" or "fallback") .. " sky until all six are set")
+		warn("[LightingService] Config.Sky.Faces is missing " .. table.concat(missing, ", ") .. " (paste the full id from Asset Manager -> Copy ID): using the " .. (painted and "painted" or "fallback") .. " sky until all six are set")
 	end
 	local look = LightingService.Look[name]
 
