@@ -22,8 +22,8 @@
 --                                    shared + server sources hold no rbxasset://textures/particles path outside
 --                                    FxSprites.lua, and every emitter they create goes through FxSprites
 --   fx_no_stock_particles_client     (client) the same for the client world's emitters and the client sources
--- The OBBY lane's files (CourseBuilder, HazardService: O3) and their course folders are listed as pending, not failed;
--- O3 removes them from PENDING_O3. AttackFx plays the fx_* sheets through its own engine: the walks accept any fx_*
+-- The OBBY lane's files (CourseBuilder, HazardService) and their course folders were listed as pending until O3 moved
+-- them onto FxSprites; PENDING_O3 is empty now, so they count like every other file. AttackFx plays the fx_* sheets through its own engine: the walks accept any fx_*
 -- sheet on its Grid4x4 flipbook, and its creation site is not scanned (its scenarios check every played layer).
 -- Plain Lua 5.1 syntax only.
 
@@ -41,6 +41,7 @@ local WANT = {
 	Dust = { "fx_dust", "OneShot", 16 },
 	Droplet = { "fx_droplets", "OneShot", 16 },
 	Wisp = { "fx_wisps", "Loop", 16 },
+	Cloud = { "fx_stormcloud", "Loop", 12 }, -- O3 review: the storm mist under an obby storm cloud
 	Snow = { "fx_snow", "Loop", 12 },
 	Spark = { "fx_sparks", "Loop", 24 },
 	Leaf = { "fx_leaves", "Loop", 16 },
@@ -56,8 +57,9 @@ local WANT_STRIPS = {
 	Flow = { "fx_waterflow", STOCK .. "explosion01_implosion_main.dds" }, -- the fountain fall streaks
 	Sheet = { "fx_watersheet", STOCK .. "explosion01_implosion_main.dds" }, -- the fountain fall core
 }
--- the OBBY lane's emitter files (BUILD_PLAN O3 moves them onto FxSprites)
-local PENDING_O3 = { CourseBuilder = true, HazardService = true }
+-- the OBBY lane's emitter files while they waited for O3 (empty: O3 moved CourseBuilder and HazardService onto
+-- FxSprites, so the walks and the source scan hold them to the rule like every other file)
+local PENDING_O3 = {}
 -- textured by their own engine (AttackFx tuneEmitter: every played layer's sheet; smoke_p7vfx_client checks them)
 local OWN_ENGINE = { AttackFx = true }
 local NEAR_LINES = 40 -- an emitter creation must reach FxSprites within this many lines
@@ -106,7 +108,7 @@ local function walkEmitters(FX, roots, Ids)
 				local flip = ownSheet and d.FlipbookLayout == Enum.ParticleFlipbookLayout.Grid4x4
 				if not (role and (flip or not ownSheet)) then
 					local line = d:GetFullName() .. " = '" .. tex .. "'" .. ((role and not flip) and " (no Grid4x4 flipbook)" or "")
-					if ancestorNamed(d, "^Course_") then
+					if next(PENDING_O3) ~= nil and ancestorNamed(d, "^Course_") then
 						pending[#pending + 1] = line
 					else
 						bad[#bad + 1] = line

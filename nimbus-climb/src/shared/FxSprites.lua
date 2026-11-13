@@ -10,6 +10,7 @@
 --   Dust     fx_dust      a sandy dust puff with grit (baked)
 --   Droplet  fx_droplets  a water drop that wobbles, squashes and pops: splashes, bubbles, Water pets (baked)
 --   Wisp     fx_wisps     curling purple wisps: Shadow pets (baked)
+--   Cloud    fx_stormcloud  a billowing neutral-grey cloud with flashes inside: the obby storm mist (runtime tint)
 --   Snow     fx_snow      a six-armed snowflake: Frost pets (baked)
 --   Spark    fx_sparks    zig-zag electric crackles: Storm pets, the vortex rim (runtime tint)
 --   Leaf     fx_leaves    two leaves tumbling: Nature pets (baked)
@@ -45,6 +46,7 @@ local ROLES = {
 	Dust = { Key = "fx_dust", Mode = "OneShot", Fps = 16, Stock = STOCK .. "smoke_main.dds" },
 	Droplet = { Key = "fx_droplets", Mode = "OneShot", Fps = 16, Stock = STOCK .. "explosion01_implosion_main.dds" },
 	Wisp = { Key = "fx_wisps", Mode = "Loop", Fps = 16, Stock = STOCK .. "smoke_main.dds" },
+	Cloud = { Key = "fx_stormcloud", Mode = "Loop", Fps = 12, Stock = STOCK .. "smoke_main.dds" },
 	Snow = { Key = "fx_snow", Mode = "Loop", Fps = 12, Stock = STOCK .. "sparkles_main.dds" },
 	Spark = { Key = "fx_sparks", Mode = "Loop", Fps = 24, Stock = STOCK .. "fire_sparks_main.dds" },
 	Leaf = { Key = "fx_leaves", Mode = "Loop", Fps = 16, Stock = STOCK .. "sparkles_main.dds" },

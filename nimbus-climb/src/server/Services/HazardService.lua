@@ -29,6 +29,7 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Util = require(Shared.Util)
+local FxSprites = require(Shared.FxSprites) -- kit-b O3: the game's own particle sprites (no stock sparkle / smoke)
 local DamageService = require(script.Parent.DamageService)
 
 -- Theme is only used for its in-world palette; a broken UI kit must never take the hazards down.
@@ -40,8 +41,6 @@ end
 local HazardService = {}
 
 local TAGS = Config.Tags
-local SPARKLE_TEXTURE = "rbxasset://textures/particles/sparkles_main.dds"
-local SMOKE_TEXTURE = "rbxasset://textures/particles/smoke_main.dds"
 local TWO_PI = math.pi * 2
 
 ----------------------------------------------------------------------
@@ -113,8 +112,10 @@ PAL.Warn = calm(colorOr(WORLD.HazardGlow, Color3.fromRGB(204, 84, 100)))
 PAL.WarnFill = PAL.Warn:Lerp(Color3.fromRGB(236, 170, 160), 0.3)
 PAL.BoltCore = Color3.fromRGB(210, 222, 244) -- soft blue-white, never pure white
 PAL.BoltGlow = Color3.fromRGB(118, 110, 204)
-PAL.RainTop = Color3.fromRGB(152, 174, 210)
-PAL.RainBottom = Color3.fromRGB(104, 136, 188)
+PAL.RainTop = Color3.fromRGB(225, 235, 255) -- near-white: the Droplet sheet's own blue shows through
+PAL.RainBottom = Color3.fromRGB(200, 220, 250)
+PAL.StormMist = Color3.fromRGB(200, 208, 226) -- tints the neutral-grey fx_stormcloud sheet to a slate storm grey
+PAL.StormMistDeep = Color3.fromRGB(150, 160, 190)
 PAL.Sparkle = Color3.fromRGB(228, 214, 164)
 PAL.PuffLight = Color3.fromRGB(206, 218, 238)
 PAL.PuffDark = Color3.fromRGB(150, 168, 200)
@@ -192,13 +193,16 @@ local function makePart(props)
 	return part
 end
 
+-- props.Sprite = the FxSprites role of its texture (Sparkle when left out); the other props are set as given.
 local function newEmitter(props)
 	local emitter = Instance.new("ParticleEmitter")
-	emitter.Texture = SPARKLE_TEXTURE
+	FxSprites.Apply(emitter, props.Sprite or "Sparkle")
 	emitter.LightEmission = 1
 	emitter.LightInfluence = 0
 	for key, value in pairs(props) do
-		emitter[key] = value
+		if key ~= "Sprite" then
+			emitter[key] = value
+		end
 	end
 	return emitter
 end
@@ -206,7 +210,7 @@ end
 -- Soft smoke puff emitter (cannon poof, wind drift). Rate 0: fire it with :Emit() or set Rate.
 local function newPuffEmitter(props)
 	local emitter = newEmitter({
-		Texture = SMOKE_TEXTURE,
+		Sprite = "Puff",
 		Rate = 0,
 		Color = ColorSequence.new(PAL.PuffLight, PAL.PuffDark),
 		LightEmission = 0.05,
@@ -1120,7 +1124,10 @@ end
 ----------------------------------------------------------------------
 -- Behaviour: StormCloud
 ----------------------------------------------------------------------
--- A rain emitter hugging the top of the storm volume; drops fall through it and a little below.
+-- A rain emitter hugging the top of the storm volume; drops (the Droplet sprite) fall through it to the platform top,
+-- and a slow Cloud mist layer drifts down under the cloud (kit-b O3: the volume itself is invisible now).
+-- The Droplet sheet is OneShot over a drop's life (fall, wobble, then a splash crown), so the life ends where the
+-- drop reaches the volume bottom (the platform top) and the pop plays on the surface, not under the slab.
 local function addRain(ctx, part)
 	if part:FindFirstChildOfClass("ParticleEmitter") then
 		return -- the builder already dressed this cloud
@@ -1134,27 +1141,61 @@ local function addRain(ctx, part)
 		CFrame = part.CFrame * CFrame.new(0, size.Y / 2 - 0.1, 0),
 		Parent = ctx.container,
 	})
-	local lifetime = math.max(0.35, (size.Y + 2) / fallSpeed)
+	local fallAccel = 40
+	local fall = math.max(0.5, size.Y - 0.1) -- the emitter sits 0.1 under the volume top
+	-- fallSpeed * t + fallAccel / 2 * t^2 = fall
+	local lifetime = (-fallSpeed + math.sqrt(fallSpeed * fallSpeed + 2 * fallAccel * fall)) / fallAccel
 	local rate = Util.Clamp(size.X * size.Z * 1.2, 60, 320)
 	local rain = newEmitter({
 		Name = "Rain",
+		Sprite = "Droplet",
 		Rate = rate,
-		Lifetime = NumberRange.new(lifetime * 0.9, lifetime * 1.1),
+		Lifetime = NumberRange.new(lifetime * 0.9, lifetime),
 		Speed = NumberRange.new(fallSpeed * 0.9, fallSpeed * 1.1),
 		EmissionDirection = Enum.NormalId.Bottom,
 		SpreadAngle = Vector2.new(3, 3),
 		LightEmission = 0.1,
 		LightInfluence = 0.7,
 		Color = ColorSequence.new(PAL.RainTop, PAL.RainBottom),
-		Size = NumberSequence.new(0.28),
+		Size = NumberSequence.new(0.85), -- the drop fills ~0.31 of its cell: ~0.26 studs drawn
+		Squash = NumberSequence.new({ -- a taller streak while falling, round again for the pop
+			NumberSequenceKeypoint.new(0, 0.6),
+			NumberSequenceKeypoint.new(0.6, 0.6),
+			NumberSequenceKeypoint.new(1, 0),
+		}),
 		Transparency = NumberSequence.new({
 			NumberSequenceKeypoint.new(0, 0.2),
 			NumberSequenceKeypoint.new(0.8, 0.4),
 			NumberSequenceKeypoint.new(1, 1),
 		}),
-		Acceleration = Vector3.new(0, -40, 0),
+		Acceleration = Vector3.new(0, -fallAccel, 0),
 	})
 	rain.Parent = rainPart
+	local mist = newEmitter({
+		Name = "StormMist",
+		Sprite = "Cloud",
+		Rate = Util.Clamp(size.X * size.Z * 0.04, 3, 10),
+		Lifetime = NumberRange.new(3, 4.5),
+		Speed = NumberRange.new(0.6, 1.4),
+		EmissionDirection = Enum.NormalId.Bottom,
+		SpreadAngle = Vector2.new(20, 20),
+		Rotation = NumberRange.new(-12, 12), -- a cloud sheet stays upright
+		RotSpeed = NumberRange.new(-4, 4),
+		LightEmission = 0,
+		LightInfluence = 0.8,
+		Color = ColorSequence.new(PAL.StormMist, PAL.StormMistDeep), -- the sheet is neutral grey: a grey-blue tint
+		Size = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 2.5),
+			NumberSequenceKeypoint.new(1, 4.5),
+		}),
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1),
+			NumberSequenceKeypoint.new(0.2, 0.6),
+			NumberSequenceKeypoint.new(0.75, 0.75),
+			NumberSequenceKeypoint.new(1, 1),
+		}),
+	})
+	mist.Parent = rainPart
 	table.insert(ctx.permanents, rainPart)
 end
 
@@ -1278,6 +1319,7 @@ local function strikeAt(ctx, zone, target)
 	light.Parent = impact
 	local sparks = newEmitter({
 		Name = "StrikeSparks",
+		Sprite = "Spark", -- zig-zag electric crackles
 		Rate = 0,
 		Color = ColorSequence.new(PAL.BoltCore, PAL.BoltGlow),
 		Lifetime = NumberRange.new(0.35, 0.7),

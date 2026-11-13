@@ -732,12 +732,11 @@ function analyse(file) {
 	//   bare-emitter     a ParticleEmitter created (Instance.new("ParticleEmitter") / make("ParticleEmitter", ...)) in a
 	//                    function that never names FxSprites: it would show the engine's default sparkle
 	// client/Controllers/AttackFx.lua (its own fx_* sheet engine) is exempt from bare-emitter. CourseBuilder.lua and
-	// HazardService.lua (the OBBY lane's O3) only warn until O3 moves them onto FxSprites (then drop FX_PENDING_O3).
+	// HazardService.lua only warned until the OBBY lane's O3 moved them onto FxSprites; they are errors like the rest now.
 	(function fxLane() {
-		const FX_PENDING_O3 = new Set(["CourseBuilder.lua", "HazardService.lua"]);
 		const isFxSprites = base === "FxSprites.lua" && path.basename(dir) === "shared";
 		const isAttackFx = base === "AttackFx.lua" && path.basename(dir) === "Controllers";
-		const sev = side === "server" && FX_PENDING_O3.has(base) ? "warning" : "error";
+		const sev = "error";
 		const namesFx = (fnNode) => anyNode(fnNode, (n) => isId(n, "FxSprites") || strValue(n) === "FxSprites", true);
 		const chunk = { type: "Chunk", body: ast.body };
 		(function walk(n, fnNode) {
