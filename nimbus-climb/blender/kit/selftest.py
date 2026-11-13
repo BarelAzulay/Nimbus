@@ -1,6 +1,7 @@
 """Kit self-test (no bpy needed: python3 + numpy + lupa).  Run after changing the kit or the sculpt code:
 
     python3 blender/kit/selftest.py            # ~20 s; exit 1 on any failure
+    python3 blender/kit/selftest.py --only obby,props   # just those checks
 
 Checks
   hooks       PetBuilder._Blueprint / BossBuilder._Blueprint answer (groups, grids, anchors) and change NOTHING for
@@ -13,6 +14,8 @@ Checks
               adds it)
   prop hooks  every catalog prop entry names a builder registered by kit/props/*.py ("<class>: hook <name> missing")
   vfx         the pet attack VFX cores (catalog vfx): one white Neon part Core per key, args.size, manifest up to date
+  obby        the obby cloud set (catalog obby): one baked part per key, built twice = the committed manifest, each
+              family's fit (far / sea / underside Seat and rim / storm height under the head clearance)
   manifests   every src/shared/MeshManifests/*.lua loads in Lua and follows the name contract (recipe 4.3): Body parts
               are palette keys (+Light / Dark), group parts start with their group name, MK keys present, Fixed
               parts bake no referenced key (tools/mesh_names.py), recipes use known ops; blender/meshes.json lists
@@ -258,17 +261,91 @@ def test_vfx(br):
             check(h == t.get("ContentHash"), "vfx: %s committed manifest = a fresh build" % key, (t.get("ContentHash"), h))
 
 
+def obby_config():
+    """the obby numbers the cloud set must fit (Config.Course): Clearance and Clouds.StormBase"""
+    src = open(os.path.join(REPO, "src/shared/Config.lua"), encoding="utf-8").read()
+    clear = re.search(r"^\tClearance = ([0-9.]+)", src, re.M)
+    base = re.search(r"\bStormBase = ([0-9.]+)", src)
+    return float(clear.group(1)) if clear else 13.0, float(base.group(1)) if base else 4.5
+
+
+def test_obby(br):
+    """the obby cloud set (catalog obby, kit/props/obby.py, kit-b B1): one baked SmoothPlastic part `Cloud` per key,
+    the committed manifest = a fresh build (built twice: same hash), and each family fits where the OBBY lane puts it:
+    far cumulus 60-120 studs wide with a flat base under the pivot; the sea flat and wide; an underside's rim one voxel
+    over its Seat (the slab's underside) so at scale 1.4 it stays 0.5 under a 2-stud slab's top; the storm cloud short
+    enough to sit StormBase over a step at scale 1 under the head clearance (CourseBuilder Mesh.storm)"""
+    import build_all
+    import props
+    from bridge import lua2py
+    from nvox.manifest import hashes
+    cat = build_all.load_catalogs().get("obby")
+    check(cat is not None, "obby: catalog blender/catalog/obby.json")
+    if cat is None:
+        return
+    hooked = "obby_cloud" in props.load_all()
+    check(hooked, "obby: prop obby_cloud registered (kit/props/obby.py)")
+    clear, base = obby_config()
+    b = build_all.Builder(export=False, verbose=False)
+    b._bridge = br
+    for e in cat["keys"]:
+        key = e["key"]
+        f = os.path.join(REPO, "src/shared/MeshManifests/%s.lua" % key)
+        if not os.path.exists(f):
+            check(False, "obby: %s manifest built" % key, "no src/shared/MeshManifests/%s.lua" % key)
+            continue
+        t = lua2py(lua_table(br.rt, f))
+        parts = t.get("Parts") or []
+        check(len(parts) == 1 and parts[0].get("Name") == "Cloud" and parts[0].get("Color") == "vertex"
+              and parts[0].get("Material") == "SmoothPlastic", "obby: %s is one baked SmoothPlastic part Cloud" % key,
+              [(q.get("Name"), q.get("Color"), q.get("Material")) for q in parts])
+        lo, hi, size = t["Bounds"]["Min"], t["Bounds"]["Max"], t["Bounds"]["Size"]
+        vs = float(t.get("VoxelStuds") or 1)
+        if key.startswith("cloud_obby_far_"):
+            check(60 - vs <= size[0] <= 120 + vs and lo[1] < 0 < hi[1] and size[1] < size[0],
+                  "obby: %s a cumulus 60-120 wide, base under the pivot" % key, (size, lo[1], hi[1]))
+        elif key.startswith("cloud_obby_sea_"):
+            check(size[0] >= 100 and size[1] <= 0.3 * size[0] and 0 < hi[1] <= vs * 3.01,
+                  "obby: %s a flat wide sea deck (billows at most 3 voxels over the pivot)" % key, (size, hi[1]))
+        elif key.startswith("cloud_obby_under_"):
+            seat = (t.get("Attachments") or {}).get("Seat")
+            check(seat is not None and all(abs(v) < 1e-6 for v in seat["Pos"]), "obby: %s Seat at the pivot" % key, seat)
+            check(0 < hi[1] <= vs + 1e-6 and hi[1] * 1.4 <= 2 - 0.5,
+                  "obby: %s rim one voxel over the Seat, under a 2-stud slab's top at scale 1.4" % key, hi[1])
+        elif key == "obby_storm_cloud":
+            check(abs(lo[1]) < 1e-6 and size[1] <= clear - base - 0.4 and 12 <= size[0] <= 16,
+                  "obby: %s 12-16 wide, base at the pivot, fits StormBase %.1f under Clearance %g at scale 1" % (
+                      key, base, clear), size)
+        if hooked:
+            from props import obby
+            design, V = e["args"]["design"], float(e["args"]["V"])
+            raw = obby.design_cells(design, V)
+            ps = obby.pieces(raw)
+            # the build keeps only the biggest piece; the design itself must not lean on that (a stray voxel or two)
+            check(ps and len(raw) - len(ps[0]) <= max(2, len(raw) // 200),
+                  "obby: %s one solid piece (%d voxels, %d would float)" % (key, len(raw), len(raw) - len(ps[0]) if ps else 0))
+            entry = dict(e, _class="obby")
+            budget = build_all.resolve_budget(cat, entry)
+            h1 = hashes(b.build(entry, budget))[0]
+            h2 = hashes(b.build(entry, budget))[0]
+            check(h1 == h2 == t.get("ContentHash"), "obby: %s built twice = the committed manifest" % key,
+                  (t.get("ContentHash"), h1, h2))
+
+
 def main():
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--only", help="comma list of checks: hooks, recipes, determinism, wave25, props, vfx, obby, manifests")
+    a = ap.parse_args()
+    only = set(a.only.split(",")) if a.only else None
     t0 = time.time()
     from bridge import Bridge
     br = Bridge()
-    test_hooks(br)
-    test_recipes(br)
-    test_determinism(br)
-    test_wave25()
-    test_prop_hooks()
-    test_vfx(br)
-    test_manifests(br)
+    for name, fn in (("hooks", test_hooks), ("recipes", test_recipes), ("determinism", test_determinism),
+                     ("wave25", lambda _: test_wave25()), ("props", lambda _: test_prop_hooks()), ("vfx", test_vfx),
+                     ("obby", test_obby), ("manifests", test_manifests)):
+        if only is None or name in only:
+            fn(br)
     fails = [r for r in RESULTS if not r[0]]
     print("selftest: %d checks, %d failed, %.1fs" % (len(RESULTS), len(fails), time.time() - t0))
     return 1 if fails else 0
