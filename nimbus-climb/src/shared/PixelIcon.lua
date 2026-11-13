@@ -13,14 +13,16 @@
 --                                      colour), TextTransparency and ZIndex (and with px nil its TextSize): an icon a
 --                                      caller treats as a glyph
 --   PixelIcon.Lead(label, name[, opts]) (U7a) the icon in front of a label's text ("<coin> 1,250"), the text inset past it;
---                                      opts.After / Count / Of: a rating after the text ("Easy" + 3 lit stars of 5); opts.Gap
+--                                      opts.After / Count / Of: a rating after the text ("Easy" + 3 lit stars of 5); opts.Gap.
+--                                      Placed from TextBounds, or Theme.MeasureLabel when that reads 0 (a server: world signs)
 --   PixelIcon.Clear(label[, opts])     (U7b) takes a Lead icon off again (a row whose mark comes and goes), insets back
 --   PixelIcon.Mark(label, name|nil[, opts])  (U7b) Lead / Clear only when the mark changed: a status line set each refresh
 --   PixelIcon.Set(host, name|nil[, px])      (U7b) Host only when the icon changed (the text emptied): a glyph label
 -- Runs: each row's horizontal runs, then runs with the same columns in the rows below merged into one taller rectangle,
 -- so an icon is a handful of Frames (smoke: at most 25). A generated sheet (one upload) can replace the Frames later in
 -- dense grids; it would be drawn from this same data.
--- Requires nothing (Shared, usable from ReplicatedFirst). Plain Lua 5.1-compatible syntax only.
+-- Requires nothing at load (Shared, usable from ReplicatedFirst); Lead requires Theme (its sibling) on the first text it
+-- must measure itself (U7b review: a server's TextBounds read 0). Plain Lua 5.1-compatible syntax only.
 
 local PixelIcon = {}
 
@@ -292,6 +294,26 @@ local function scaleOf(obj)
 	return s
 end
 
+-- (U7b review) the width of a label's text in its own px, for when TextBounds has none: Theme.MeasureLabel (TextService
+-- with the label's font; a Nunito face, whose .Font reads Unknown, on its role's Enum font with the role's spare
+-- widening, so it runs wide, never short). A Roblox server lays out no text (TextBounds reads 0 there), and the world
+-- signs Lead on the server, where the icon's place is set once (no client places it again). Theme is required here, on
+-- first use, not at load: PixelIcon loads without it (the loading screen draws icons before Theme arrives)
+local function measuredWidth(label)
+	local text = tostring(label.Text or "")
+	if text == "" then
+		return 0
+	end
+	local ok, v = pcall(function()
+		local Theme = require(script.Parent.Theme)
+		return Theme.MeasureLabel(label)
+	end)
+	if ok and typeof(v) == "Vector2" and v.X > 0 then
+		return math.ceil(v.X)
+	end
+	return math.ceil(#text * (tonumber(label.TextSize) or 14) * 0.6)
+end
+
 function PixelIcon.Lead(label, name, opts)
 	opts = opts or {}
 	if not PixelIcon.Bitmaps[name] then
@@ -359,9 +381,14 @@ function PixelIcon.Lead(label, name, opts)
 	local align = label.TextXAlignment
 	-- a UIPadding insets the label's children as it insets the text, so the icon is placed in the same padded box as the
 	-- letters: scale 0 / 0.5 / 1 are the text area's left edge, centre and right edge. TextBounds is screen px: back to
-	-- the label's own px (a UIScale tween changes TextBounds, so a pop re-places it at the new scale)
+	-- the label's own px (a UIScale tween changes TextBounds, so a pop re-places it at the new scale). (U7b review) No
+	-- bounds for a text that has letters (the server; a client before its first layout, which re-places on TextBounds):
+	-- measured (measuredWidth)
 	local function place()
 		local textW = label.TextBounds.X / scaleOf(label)
+		if textW <= 0 and label.Text ~= "" then
+			textW = measuredWidth(label)
+		end
 		box.AnchorPoint = Vector2.new(after and 0 or 1, 0.5)
 		if align == Enum.TextXAlignment.Right then
 			box.Position = after and UDim2.new(1, gap, 0.5, 0) or UDim2.new(1, -(textW + gap), 0.5, 0)

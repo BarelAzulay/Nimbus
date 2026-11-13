@@ -42,7 +42,8 @@
 --                             changes, no UIScale, no glow; Activated runs the callback
 --   signkit_blockrow_fill     (server world, pure) a row of n stone blocks (offset sizes), FillBlocks(row, k) turns the
 --                             first k gold (face and lip), clamped to 0..n and floored
---   signkit_shared_only       (server world, pure) SignKit requires only Theme from Shared, PixelIcon requires nothing;
+--   signkit_shared_only       (server world, pure) SignKit requires only Theme from Shared, PixelIcon nothing at load
+--                             (Theme only inside Lead's measure, U7b review);
 --                             neither touches a client-only service, so the loading screen (ReplicatedFirst) can use both
 --   pixelicon_bitmaps_9x9     (server world, pure) every icon is 9 rows of 9 cells of "." / "#"; the pitch's 27 bitmaps
 --                             are kept exactly as the owner saw them; the screens' icons exist (play, gear, scroll, star,
@@ -98,6 +99,13 @@
 --   token_icon_everywhere     (client) Theme.Currency names the icons (no emoji glyph), Config.Icons fills every icon id
 --                             from PixelIcon, NeonKit.Icon("Tokens") draws the coin and follows TextColor3 / fade / ZIndex,
 --                             PixelIcon.Lead puts it before an amount, and every token surface holds it at run time
+--   U7b review:
+--   pixelicon_lead_server_measure (server world, pure) Lead with TextBounds at 0 (a server) still puts the icon outside
+--                             the text, every alignment, before and after, fixed and auto-sized
+--   kitb_world_sign_icons     (server world) each world sign's icon by sign (machine and rarity-board coins, arena
+--                             trophies, gate stars = the difficulty's Stars, a locked pad's lock placed as a server
+--                             builds it, the pads' station icons, the closed bed's star, the bounce arrow)
+--   arena_side_invite_fits    (client) the incoming-challenge side card: trophies, power and the clock inside the card
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -669,7 +677,9 @@ local function serverScenarios()
 			end
 			return table.concat(lines, "\n")
 		end
-		for name, allowed in pairs({ SignKit = { Theme = true }, PixelIcon = {} }) do
+		-- (U7b review) PixelIcon may require Theme too, but only inside a function (Lead measuring a server-built sign's
+		-- text): at load it still requires nothing, so the loading screen can draw icons before Theme arrives
+		for name, allowed in pairs({ SignKit = { Theme = true }, PixelIcon = { Theme = true } }) do
 			local src = code(name)
 			T.check(src ~= "", "shared only: " .. name .. " has source")
 			local bad = {}
@@ -679,7 +689,16 @@ local function serverScenarios()
 					bad[#bad + 1] = arg
 				end
 			end
-			T.check(#bad == 0, "shared only: " .. name .. " requires only " .. (next(allowed) and "Theme (a sibling in Shared)" or "nothing"), table.concat(bad, ", "))
+			T.check(#bad == 0, "shared only: " .. name .. " requires only Theme (a sibling in Shared)", table.concat(bad, ", "))
+			if name == "PixelIcon" then
+				local top = {}
+				for line in (src .. "\n"):gmatch("([^\n]*)\n") do
+					if line:match("^%S") and line:find("require%s*%(") then
+						top[#top + 1] = line
+					end
+				end
+				T.check(#top == 0, "shared only: PixelIcon requires nothing at load (Theme only inside Lead's measure)", table.concat(top, " | "))
+			end
 			local client = {}
 			for _, word in ipairs({ "LocalPlayer", "PlayerGui", "UserInputService", "StarterPlayer", "ReplicatedFirst", "GetService%(\"Players\"%)", "Controllers", "client/" }) do
 				if src:find(word) then
@@ -1086,6 +1105,67 @@ local function serverScenarios()
 		K.flushErrors("pixelicon_lead_uiscale")
 	end)
 
+	-- (g2) (U7b review) PixelIcon.Lead on the server: a Roblox server lays out no text, so TextBounds is expected to read 0
+	-- there (forced here through Mock.TextExtent while Lead runs), and no client ever places a server-built icon again (the
+	-- TextBounds / Text connections live on the server). The world signs Lead there: the machine and rarity-board prices,
+	-- a locked pad's LockLabel, the gate card's stars. With the bounds at 0 every icon still sits its gap outside the text
+	-- (as the client then lays the text out), for each alignment, before and after, on a fixed label and on an auto-sized
+	-- one (tagText: AutomaticSize XY, centred)
+	S.pixelicon_lead_server_measure = guarded("pixelicon_lead_server_measure", function()
+		local PI = shared("PixelIcon")
+		local Mock = rawget(_G, "Mock")
+		if not (PI and Mock and type(Mock.TextExtent) == "function") then
+			return
+		end
+		local gui = Instance.new("ScreenGui")
+		gui.IgnoreGuiInset = true
+		local root = Instance.new("Frame")
+		root.Size = UDim2.fromOffset(600, 900)
+		root.Parent = gui
+		local L, R, C = Enum.TextXAlignment.Left, Enum.TextXAlignment.Right, Enum.TextXAlignment.Center
+		-- { alignment, after, auto-sized }
+		local cases = { { L, false }, { L, true }, { R, false }, { R, true }, { C, false }, { C, true }, { C, false, true }, { C, true, true } }
+		local realExtent = Mock.TextExtent
+		for i, case in ipairs(cases) do
+			local align, after, auto = case[1], case[2], case[3] == true
+			local label = Instance.new("TextLabel")
+			label.Position = UDim2.fromOffset(150, 20 + i * 60)
+			label.Size = auto and UDim2.fromOffset(0, 26) or UDim2.fromOffset(300, 30)
+			if auto then
+				label.AutomaticSize = Enum.AutomaticSize.XY
+			end
+			label.TextSize = 22
+			label.Text = "12,500"
+			label.TextXAlignment = align
+			label.Parent = root
+			Mock.TextExtent = function()
+				return 0, 0
+			end
+			local ok, box = pcall(PI.Lead, label, "token", { After = after })
+			Mock.TextExtent = realExtent
+			local tag = fmt("pixelicon lead, server: %s, %s%s", align.Name, after and "after" or "before", auto and ", auto-sized" or "")
+			if T.check(ok and box ~= nil, tag .. ": Lead draws with TextBounds at 0", tostring(box)) then
+				local px = PI.Snap(22 * 0.9)
+				local gap = math.max(3, math.floor(px / 4))
+				local pad = label:FindFirstChildOfClass("UIPadding")
+				local ap, as = label.AbsolutePosition, label.AbsoluteSize
+				local x0 = ap.X + (pad and pad.PaddingLeft.Offset or 0)
+				local x1 = ap.X + as.X - (pad and pad.PaddingRight.Offset or 0)
+				local tw = label.TextBounds.X
+				local t0 = (align == L and x0) or (align == R and x1 - tw) or ((x0 + x1 - tw) / 2)
+				local ip, is = box.AbsolutePosition, box.AbsoluteSize
+				local space = after and (ip.X - (t0 + tw)) or (t0 - (ip.X + is.X))
+				-- never over the text, and its own gap away: Theme.MeasureLabel measures this Enum-font label as the mock lays
+				-- it out (a Nunito face runs a few per cent wide on a server, never short)
+				T.check(tw > 0 and space >= gap - 0.5 and space <= gap + 1, tag .. ": the icon sits its gap outside the text, not over it",
+					fmt("space %.1f, gap %d (text %.1f..%.1f, icon %.1f..%.1f)", space, gap, t0, t0 + tw, ip.X, ip.X + is.X))
+			end
+		end
+		Mock.TextExtent = realExtent
+		gui:Destroy()
+		K.flushErrors("pixelicon_lead_server_measure")
+	end)
+
 	-- (h) the Credits baseline (tools/fixtures/credits_tree_u1.txt) is rewritten only with smoke.py's explicit
 	-- --record-credits-tree flag, never because NC_RECORD_CREDITS_TREE happens to be set during a normal run
 	S.credits_record_needs_flag = guarded("credits_record_needs_flag", function()
@@ -1342,6 +1422,176 @@ local function serverScenarios()
 		T.check(#hits == 0, fmt("kitb emoji world: no world sign text carries an emoji code point (%d)", #hits), table.concat(hits, "; ", 1, math.min(#hits, 8)))
 		T.check((icons.star or 0) > 0, "kitb emoji world: the gates' difficulty stars are PixelIcons on their signs")
 		K.flushErrors("kitb_no_emoji_world")
+	end)
+
+	-- (U7b review) each world sign U7b redrew holds its icon, by sign: the token coin before every machine tag's price and
+	-- every rarity-board price, the trophy after each arena board count, the gate card's stars (as many as its difficulty's
+	-- Stars), and on a private plot built here: the lock before a locked pad's reason, the station's icon on a pad's name
+	-- row, the star on a closed garden bed's sign, the up arrow on a bounce pad. The plot's signs are built the way a
+	-- server builds them (TextBounds forced to 0, see pixelicon_lead_server_measure): the lock sits outside its text
+	S.kitb_world_sign_icons = guarded("kitb_world_sign_icons", function()
+		local IconOn = SmokeCommon.IconOn
+		local Mock = rawget(_G, "Mock")
+		local function mod(key)
+			local inst = K.moduleInstance(key)
+			local ok, m = false, nil
+			if inst then
+				ok, m = pcall(require, inst)
+			end
+			return ok and type(m) == "table" and m or nil
+		end
+		local Config, HB, CB, TC = mod("shared/Config"), mod("server/Services/HomeBuilder"), mod("server/Services/CourseBuilder"), mod("shared/TycoonCatalog")
+		if not T.check(Config and HB and CB and TC and Mock and IconOn, "kitb world icons: Config, HomeBuilder, CourseBuilder, TycoonCatalog and SmokeCommon.IconOn load") then
+			return
+		end
+		local ws = game:GetService("Workspace")
+		local function inSurface(d)
+			return d:FindFirstAncestorWhichIsA("SurfaceGui") ~= nil
+		end
+		local tags, boards, trophies, gates, bad = 0, 0, 0, 0, {}
+		local function want(where, label, name, which, count)
+			local got, n = IconOn(label, which)
+			if got ~= name or (count and n ~= count) then
+				bad[#bad + 1] = fmt("%s: %s x%d (want %s%s)", where, tostring(got), n, name, count and (" x" .. count) or "")
+			end
+		end
+		local stars = {}
+		for _, d in ipairs(Config.Difficulties or {}) do
+			stars[tostring(d.DisplayName or d.Id)] = tonumber(d.Stars) or 1
+		end
+		for _, d in ipairs(ws:GetDescendants()) do
+			if d:IsA("BillboardGui") and d.Name == "PriceBillboard" then
+				tags = tags + 1
+				want(d:GetFullName(), d:FindFirstChild("PriceLabel", true), "token", "Lead")
+			elseif d:IsA("TextLabel") and d.Name:match("^Price%d+$") and d:FindFirstAncestor("RarityBoard") then
+				boards = boards + 1
+				want(d:GetFullName(), d, "token", "Lead")
+			elseif d:IsA("TextLabel") and d.Name == "Trophies" and d:FindFirstAncestor("LeaderGui") then
+				trophies = trophies + 1
+				want(d:GetFullName(), d, "trophy", "Trail")
+			elseif d:IsA("TextLabel") and d.Name == "Info" and d:FindFirstAncestorWhichIsA("BillboardGui") and d:FindFirstChild("LeadIcon") then
+				local diff = tostring(d.Text):match("^(.-) %- %d+/%d+ players$")
+				if diff and stars[diff] then
+					gates = gates + 1
+					want(d:GetFullName(), d, "star", "Lead", stars[diff])
+					local box = d:FindFirstChild("LeadIcon")
+					local drawn = 0
+					for _, c in ipairs(box:GetChildren()) do
+						if c:GetAttribute("PixelIcon") == "star" then
+							drawn = drawn + 1
+						end
+					end
+					if drawn ~= stars[diff] then
+						bad[#bad + 1] = fmt("%s: %d stars drawn, %s has %d", d:GetFullName(), drawn, diff, stars[diff])
+					end
+				end
+			end
+		end
+		T.check(tags >= 4 and boards >= 4 and trophies == 10 and gates >= 1, "kitb world icons: the machine tags, the rarity-board prices, the arena board rows and a gate card are found",
+			fmt("%d tags, %d board prices, %d trophy rows, %d gate cards", tags, boards, trophies, gates))
+		-- a private plot far from the lobby, built with the server's bounds (TextBounds 0)
+		local root = Instance.new("Folder")
+		root.Name = "SmokeSignIcons"
+		root.Parent = ws
+		local spotFolder = Instance.new("Folder")
+		spotFolder.Name = "Spot_97"
+		spotFolder.Parent = root
+		local plotCF = CFrame.new(-4000, 300, 4000)
+		local spot = { Index = 97, PlotCFrame = plotCF, PlotSize = TC.PlotSize, Center = plotCF.Position, Folder = spotFolder }
+		local realExtent = Mock.TextExtent
+		Mock.TextExtent = function()
+			return 0, 0
+		end
+		-- the pads as TycoonCatalog.AvailablePads lists them (each with its station's Icon)
+		local function icon(id)
+			local def = TC.Get(id)
+			return def and def.Icon
+		end
+		local okPlot, err = pcall(function()
+			HB.PreparePlot(spot)
+			HB.SetPads(spot, {
+				{ StationId = "DecorFountain", Icon = icon("DecorFountain"), NextLevel = 1, Price = 0, Level = 0, Title = "Fountain", Locked = "Unlocks at Home Level 3", LevelText = "" },
+				{ StationId = "Kitchen", Icon = icon("Kitchen"), NextLevel = 2, Price = 50, Level = 1, Title = "Food Machine", LevelText = "Lv 1 -> 2" },
+			})
+		end)
+		Mock.TextExtent = realExtent
+		T.check(okPlot, "kitb world icons: a private plot takes a locked and an open pad", tostring(err))
+		local lock, nameIcons = nil, 0
+		for _, d in ipairs(spotFolder:GetDescendants()) do
+			if d:IsA("TextLabel") and d.Name == "LockLabel" then
+				lock = d
+			elseif d:IsA("TextLabel") and d.Name == "Icon" and d:FindFirstAncestor("PadSign") then
+				nameIcons = nameIcons + 1
+				local model = d:FindFirstAncestorWhichIsA("Model")
+				want(d:GetFullName(), d, icon(model and model:GetAttribute("StationId") or "") or "?")
+			end
+		end
+		T.check(nameIcons == 2, "kitb world icons: each pad sign's name row hosts its station's icon", tostring(nameIcons))
+		if T.check(lock ~= nil, "kitb world icons: the locked pad's sign has its LockLabel") then
+			want(lock:GetFullName(), lock, "lock", "Lead")
+			local box = lock:FindFirstChild("LeadIcon")
+			if box then
+				local pad = lock:FindFirstChildOfClass("UIPadding")
+				local ap, as = lock.AbsolutePosition, lock.AbsoluteSize
+				local x0 = ap.X + (pad and pad.PaddingLeft.Offset or 0)
+				local x1 = ap.X + as.X - (pad and pad.PaddingRight.Offset or 0)
+				local tw = lock.TextBounds.X
+				local t0 = (lock.TextXAlignment == Enum.TextXAlignment.Left and x0) or (lock.TextXAlignment == Enum.TextXAlignment.Right and x1 - tw) or ((x0 + x1 - tw) / 2)
+				local right = box.AbsolutePosition.X + box.AbsoluteSize.X
+				T.check(tw > 0 and right <= t0 + 0.5, "kitb world icons: the server-built lock sits before its text, not over it",
+					fmt("icon ends %.1f, text %.1f..%.1f", right, t0, t0 + tw))
+			end
+		end
+		-- a closed garden bed's sign (the Garden at its base places, so the rest are closed)
+		local okG, garden = pcall(HB.BuildStationModel, "Garden", 1, nil, 1)
+		local closed = 0
+		for _, d in ipairs(okG and garden and garden:GetDescendants() or {}) do
+			if d:IsA("TextLabel") and d.Name == "Star" and inSurface(d) then
+				closed = closed + 1
+				want("Garden " .. d:GetFullName(), d, "star")
+			end
+		end
+		T.check(closed > 0, "kitb world icons: a closed garden bed's sign is found", tostring(garden))
+		if okG and garden then
+			garden:Destroy()
+		end
+		-- a bounce pad's arrow: the first layout with a Bounce step
+		local layout = nil
+		for _, diff in ipairs(Config.Difficulties or {}) do
+			for seed = 1, 12 do
+				local okL, l = pcall(CB.GenerateLayout, diff.Id, seed)
+				if okL and type(l) == "table" then
+					for _, st in ipairs(l.Steps or {}) do
+						if st.Kind == "Bounce" then
+							layout = l
+							break
+						end
+					end
+				end
+				if layout then
+					break
+				end
+			end
+			if layout then
+				break
+			end
+		end
+		local arrows = 0
+		if T.check(layout ~= nil, "kitb world icons: a course layout with a bounce pad") then
+			local okC, info = pcall(CB.Build, layout, Vector3.new(-30000, 900, 0), root)
+			for _, d in ipairs(okC and type(info) == "table" and info.Folder and info.Folder:GetDescendants() or {}) do
+				if d:IsA("TextLabel") and d:FindFirstAncestor("PadGlyph") then
+					arrows = arrows + 1
+					want("bounce " .. d:GetFullName(), d, "up")
+				end
+			end
+			T.check(okC and arrows > 0, "kitb world icons: the bounce pads are built", tostring(info))
+		end
+		root:Destroy()
+		table.sort(bad)
+		T.info(fmt("*kitb world icons: %d tags, %d board prices, %d trophy rows, %d gate cards, %d pad name icons, %d closed beds, %d bounce arrows", tags, boards, trophies, gates, nameIcons, closed, arrows))
+		T.check(#bad == 0, fmt("kitb world icons: every world sign holds its icon (%d wrong)", #bad), table.concat(bad, "; ", 1, math.min(#bad, 8)))
+		K.flushErrors("kitb_world_sign_icons")
 	end)
 
 	-- corner radii are Theme.Radius tokens ("None", "S", "M", and "Round" for a pill or a disc) in every file U6 swept; the
@@ -3740,6 +3990,78 @@ local function clientScenarios()
 		Mock.SetViewport(old[1], old[2])
 		LKC.advance(0.2)
 		LKC.flushErrors("kitb_no_emoji_ui")
+	end)
+
+	-- (U7b review) the incoming-challenge side card (K.SIDE_W 340 px) at five-digit trophies and power: the trophies (the
+	-- trophy icon), the power (the sword) and the countdown (the hourglass, in its own right-hand label) each sit inside
+	-- the card's body and clear of each other, so the clock, the one live value, is never cut or spilled
+	S.arena_side_invite_fits = guarded("arena_side_invite_fits", function()
+		local AC = U7.client("Controllers/ArenaController")
+		local pg = game:GetService("Players").LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		if not T.check(AC and pg, "arena side invite: ArenaController and PlayerGui") then
+			return
+		end
+		local IconOn = SmokeCommon.IconOn
+		local old = { Mock.Viewport.X, Mock.Viewport.Y }
+		Mock.SetViewport(1920, 1080)
+		pcall(AC.Close)
+		pcall(U7.client("Controllers/MenuController").Close)
+		LKC.advance(0.3)
+		LKC.toClient("BattleState", "Lobby", { Queue = { Queued = false, Waiting = 0 },
+			Invites = { { FromUserId = 501, FromName = "StormChaser", Trophies = 12345, Power = 98765, ExpiresIn = 28 } } })
+		LKC.advance(0.6)
+		local side = pg:FindFirstChild("NimbusArenaSide")
+		local card = side and side:FindFirstChild("Invite1", true)
+		local body = card and card:FindFirstChild("Body")
+		local info = body and body:FindFirstChild("Info")
+		if T.check(card and body and info and LKC.isShown(card), "arena side invite: the card shows with its Info line") then
+			local sc = card.AbsoluteSize.X / 340
+			local bx0, bx1 = body.AbsolutePosition.X, body.AbsolutePosition.X + body.AbsoluteSize.X
+			-- the screen span of a label's glyphs (its alignment in its padded box) and of its Lead icon
+			local function span(label)
+				local pad = label:FindFirstChildOfClass("UIPadding")
+				local x0 = label.AbsolutePosition.X + (pad and pad.PaddingLeft.Offset or 0) * sc
+				local x1 = label.AbsolutePosition.X + label.AbsoluteSize.X - (pad and pad.PaddingRight.Offset or 0) * sc
+				local tw = label.TextBounds.X
+				local a = label.TextXAlignment
+				local t0 = (a == Enum.TextXAlignment.Left and x0) or (a == Enum.TextXAlignment.Right and x1 - tw) or ((x0 + x1 - tw) / 2)
+				local lo, hi = t0, t0 + tw
+				local box = label:FindFirstChild("LeadIcon")
+				if box then
+					lo = math.min(lo, box.AbsolutePosition.X)
+					hi = math.max(hi, box.AbsolutePosition.X + box.AbsoluteSize.X)
+				end
+				return lo, hi
+			end
+			local trophies, power, clock = info:FindFirstChild("Trophies", true), info:FindFirstChild("Power", true), info:FindFirstChild("Clock", true)
+			T.check(trophies and power and clock, "arena side invite: the Info line holds Trophies, Power and Clock labels",
+				fmt("%s '%s'", info.ClassName, tostring(info:IsA("TextLabel") and info.Text or "")))
+			if trophies and power and clock then
+				T.check(trophies.Text == "12,345" and IconOn(trophies, "Lead") == "trophy" and power.Text == "98,765" and IconOn(power, "Lead") == "sword"
+					and tostring(clock.Text):match("^%d+:%d%d$") and IconOn(clock, "Lead") == "hourglass",
+					"arena side invite: trophies (trophy icon), power (sword icon) and the clock (hourglass icon) as values",
+					fmt("'%s' %s, '%s' %s, '%s' %s", trophies.Text, tostring(IconOn(trophies, "Lead")), power.Text, tostring(IconOn(power, "Lead")), clock.Text, tostring(IconOn(clock, "Lead"))))
+				local spans, out = {}, {}
+				for _, l in ipairs({ trophies, power, clock }) do
+					local lo, hi = span(l)
+					spans[#spans + 1] = { l.Name, lo, hi }
+					if lo < bx0 - 0.5 or hi > bx1 + 0.5 then
+						out[#out + 1] = fmt("%s %.0f..%.0f", l.Name, lo, hi)
+					end
+				end
+				T.check(#out == 0, "arena side invite: every value and icon sits inside the card body", fmt("body %.0f..%.0f; %s", bx0, bx1, table.concat(out, ", ")))
+				T.check(spans[1][3] <= spans[2][2] + 0.5 and spans[2][3] <= spans[3][2] + 0.5, "arena side invite: trophies, power and clock never overlap",
+					fmt("%.0f..%.0f, %.0f..%.0f, %.0f..%.0f", spans[1][2], spans[1][3], spans[2][2], spans[2][3], spans[3][2], spans[3][3]))
+			else
+				-- the line as one label: it must fit the body at least (it did not: the clock spilled)
+				local lo, hi = span(info)
+				T.check(hi <= bx1 + 0.5, "arena side invite: the Info line fits the card body", fmt("text %.0f..%.0f, body %.0f..%.0f", lo, hi, bx0, bx1))
+			end
+		end
+		LKC.toClient("BattleState", "Lobby", { Queue = { Queued = false, Waiting = 0 }, Invites = {} })
+		Mock.SetViewport(old[1], old[2])
+		LKC.advance(0.3)
+		LKC.flushErrors("arena_side_invite_fits")
 	end)
 
 	-- the Cloud Token is its PixelIcon coin wherever the game shows the currency: Theme.Currency names the icons (no emoji

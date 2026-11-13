@@ -116,6 +116,7 @@ local K = {
 	WALK_AWAY = 70, -- studs from the portal that close a Ring window opened there
 	ARENA_SLACK = 12, -- studs around the arena's bounding box that still count as "in the arena"
 	SIDE_W = 340, -- side cards
+	SIDE_CLOCK_W = 76, -- an invite card's countdown (hourglass + "0:28"), right-aligned in its own label
 	SIDE_BOTTOM = 112, -- design px above the bottom edge (clear of the hotbar's corner and the HUD)
 	SIDE_BOTTOM_TOUCH = 210, -- touch screens: above Roblox's jump button
 	SIDE_BOTTOM_PORTRAIT = 340, -- portrait phones: above the HUD's raised bottom-left block (vitals + currency)
@@ -1714,11 +1715,13 @@ local function buildArena()
 				TextTruncate = Enum.TextTruncate.AtEnd,
 			})
 		end
-		makeText(row, "Info", commas(invite.Trophies or 0) .. " trophies  " .. G.Bullet .. "  " .. commas(invite.Power or 0) .. " power  " .. G.Bullet .. "  "
-			.. clock(lobbySeconds(invite.ExpiresIn) or 0), "Body", 19, MUTED, {
+		-- (U7b review) the clock first and the end truncated: a narrow panel cuts the power, never the time left
+		makeText(row, "Info", clock(lobbySeconds(invite.ExpiresIn) or 0) .. " left  " .. G.Bullet .. "  " .. commas(invite.Trophies or 0) .. " trophies  "
+			.. G.Bullet .. "  " .. commas(invite.Power or 0) .. " power", "Body", 19, MUTED, {
 			Position = UDim2.fromOffset(12, 34),
 			Size = UDim2.new(1, -24, 0, 24),
 			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
 		})
 		CloudUI.Button({
 			Name = "Accept",
@@ -2249,11 +2252,19 @@ function refreshSide()
 					TextTruncate = Enum.TextTruncate.AtEnd,
 					LayoutOrder = 2,
 				})
-				local info = makeText(card, "Info", "", "Heading", 18, C.Power, {
-					Size = UDim2.new(1, 0, 0, 24),
-					TextXAlignment = Enum.TextXAlignment.Left,
-					LayoutOrder = 3,
-				})
+				-- (U7b review) the challenger's trophies and power as icon + value, the countdown in its own right-hand
+				-- label: the line in words ran past the 306 px body and cut the clock, its one live value
+				local info = makeFrame(card, "Info", { Size = UDim2.new(1, 0, 0, 26), LayoutOrder = 3 })
+				local stats = makeFrame(info, "Stats", { Size = UDim2.new(1, -K.SIDE_CLOCK_W, 1, 0) })
+				listLayout(stats, Enum.FillDirection.Horizontal, 14, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
+				lead(autoText(stats, "Trophies", commas(invite.Trophies or 0), "Heading", 18, C.Power, 1), "Trophy")
+				lead(autoText(stats, "Power", commas(invite.Power or 0), "Heading", 18, C.Power, 2), "Swords")
+				local timeLeft = lead(makeText(info, "Clock", "", "Heading", 18, C.Power, {
+					AnchorPoint = Vector2.new(1, 0),
+					Position = UDim2.new(1, 0, 0, 0),
+					Size = UDim2.new(0, K.SIDE_CLOCK_W, 1, 0),
+					TextXAlignment = Enum.TextXAlignment.Right,
+				}), "hourglass")
 				local buttons = makeFrame(card, "Buttons", { Size = UDim2.new(1, 0, 0, 46), LayoutOrder = 4 })
 				CloudUI.Button({
 					Name = "Accept",
@@ -2293,7 +2304,7 @@ function refreshSide()
 				local total = math.max(1, tonumber(invite.ExpiresIn) or 30)
 				table.insert(U.SideCards, function()
 					local left = lobbySeconds(invite.ExpiresIn) or 0
-					info.Text = commas(invite.Trophies or 0) .. " trophies  " .. G.Bullet .. "  " .. commas(invite.Power or 0) .. " power  " .. G.Bullet .. "  " .. clock(left)
+					timeLeft.Text = clock(left)
 					fill.Size = UDim2.new(Util.Clamp(left / total, 0, 1), 0, 1, 0)
 				end)
 			end
