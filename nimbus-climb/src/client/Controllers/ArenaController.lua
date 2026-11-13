@@ -1032,7 +1032,7 @@ function Ring.build()
 	-- the title row (wide windows also carry the tags in it; narrow ones show them on their own row)
 	ui.ChampHead = makeFrame(champ, "Head", { Size = UDim2.new(1, 0, 0, 34), LayoutOrder = 1 })
 	listLayout(ui.ChampHead, Enum.FillDirection.Horizontal, 10, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
-	ui.ChampTitle = autoText(ui.ChampHead, "Title", "", "Title", 26, WHITE, 0)
+	ui.ChampTitle = Theme.StyleTitle(autoText(ui.ChampHead, "Title", "", "Title", 26, WHITE, 0), "Section") -- (T0) a section head
 	ui.ChampTitle.TextXAlignment = Enum.TextXAlignment.Left
 	ui.ChampTags = makeFrame(champ, "Tags", { Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 2 })
 	listLayout(ui.ChampTags, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
@@ -1537,11 +1537,11 @@ local function buildArena()
 	pad(quick, 14, 10, 14, 14)
 	listLayout(quick, Enum.FillDirection.Vertical, 8)
 	ui.DuelFaces = TeamFaces.New(quick, { LayoutOrder = 0, ReturnTo = panelReturn })
-	makeText(quick, "Title", "Quick match", "Title", 26, WHITE, {
+	Theme.StyleTitle(makeText(quick, "Title", "Quick match", "Title", 26, WHITE, {
 		Size = UDim2.new(1, 0, 0, 32),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		LayoutOrder = 1,
-	})
+	}), "Section")
 	wrapText(quick, "Text", "Get paired with a player near your trophies. Both of you stay in the arena: the duel runs on a free ring.", "Body", 19, MUTED, 2)
 	ui.QueueStatus = wrapText(quick, "Status", "", "Heading", 20, C.Power, 3)
 	local queueRow = makeFrame(quick, "Buttons", { Size = UDim2.new(1, 0, 0, 56), LayoutOrder = 4 })
@@ -1840,11 +1840,11 @@ local function buildArena()
 		end
 		-- players to challenge
 		clearChildren(ui.ChallengeList)
-		makeText(ui.ChallengeList, "Title", "Challenge a player", "Title", 26, WHITE, {
+		Theme.StyleTitle(makeText(ui.ChallengeList, "Title", "Challenge a player", "Title", 26, WHITE, {
 			Size = UDim2.new(1, 0, 0, 32),
 			TextXAlignment = Enum.TextXAlignment.Left,
 			LayoutOrder = 0,
-		})
+		}), "Section")
 		local others = {}
 		for _, p in ipairs(Players:GetPlayers()) do
 			if p ~= LocalPlayer then
@@ -1998,11 +1998,11 @@ local function buildArena()
 
 	local function refreshLeaders()
 		clearChildren(ui.LeaderScroll)
-		makeText(ui.LeaderScroll, "Title", "Trophy leaders in this server", "Title", 26, WHITE, {
+		Theme.StyleTitle(makeText(ui.LeaderScroll, "Title", "Trophy leaders in this server", "Title", 26, WHITE, {
 			Size = UDim2.new(1, 0, 0, 34),
 			TextXAlignment = Enum.TextXAlignment.Left,
 			LayoutOrder = 0,
-		})
+		}), "Section")
 		local list = leaderboard()
 		local meShown = false
 		for i, row in ipairs(list) do

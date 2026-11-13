@@ -86,6 +86,9 @@
 --   (server world, pure) signkit_plank_press_sinks (a), signkit_plank_off_disabled (b), signkit_plank_label_fits (c),
 --   signkit_style_tokens (d), signkit_header_rim_matches_frame (e), pixelicon_clamp_and_warn (f),
 --   credits_record_needs_flag (h)
+--   T0 (the owner's title pick B: FredokaOne titles, Theme.StyleTitle): theme_style_title (server world, pure) and
+--   kitb_titles_stamped (client; T0 review) the run-time walk: every Title-role Title / TitleText / Headline label in the
+--   built windows is stamped Plain or a Theme.TitleExempt kind, and each expected window title is found Plain
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -1257,33 +1260,20 @@ local function serverScenarios()
 		T.check(l.Font == Enum.Font.FredokaOne, "kitb title: a Title label is FredokaOne", tostring(l.Font))
 		l:Destroy()
 		T.check(Theme.StyleTitle(nil) == nil, "kitb title: StyleTitle(nil) is a no-op")
-		K.flushErrors("theme_style_title")
-	end)
-
-	-- (T0) every window title goes through Theme.StyleTitle: the window kits (CloudUI.Panel, SignKit.Header), the windows that
-	-- draw their own header title (Shop, the pet picker, Fusion, Training, the Sky Trove) and the loading board
-	S.kitb_window_titles_styled = guarded("kitb_window_titles_styled", function()
-		local files = {
-			"src/client/UI/CloudUI.lua", "src/shared/SignKit.lua", "src/client/Controllers/ShopController.lua", "src/client/UI/PetPicker.lua",
-			"src/client/Controllers/FusionController.lua", "src/client/Controllers/TrainController.lua", "src/client/Controllers/TroveController.lua",
-			"src/first/LoadingScreen.client.lua",
-		}
-		local bad, read = {}, 0
-		for _, path in ipairs(files) do
-			local fh = io.open(path, "r")
-			local src = fh and fh:read("*a") or ""
-			if fh then
-				fh:close()
-				read = read + 1
-			end
-			src = src:gsub("%-%-%[(=*)%[.-%]%1%]", ""):gsub("%-%-[^\n]*", "")
-			if not src:find("StyleTitle%(") then
-				bad[#bad + 1] = path
-			end
+		-- (T0 review) a heading that is not a window's name passes its Theme.TitleExempt kind: stamped with it, nothing added
+		local kinds = 0
+		for kind, why in pairs(Theme.TitleExempt or {}) do
+			kinds = kinds + 1
+			T.check(type(why) == "string" and #why > 20, "kitb title: exempt kind " .. tostring(kind) .. " gives its reason", tostring(why))
+			local h = Theme.Label("Best times", "Title", { Size = 28 })
+			local n = #h:GetChildren()
+			Theme.StyleTitle(h, kind)
+			T.check(h:GetAttribute("TitleLook") == kind and #h:GetChildren() == n, "kitb title: StyleTitle(label, " .. tostring(kind) .. ") stamps the kind and adds nothing",
+				tostring(h:GetAttribute("TitleLook")))
+			h:Destroy()
 		end
-		T.eq(read, #files, "kitb title: every window file is read")
-		T.check(#bad == 0, "kitb title: every window title goes through Theme.StyleTitle", table.concat(bad, ", "))
-		K.flushErrors("kitb_window_titles_styled")
+		T.check(kinds >= 2 and Theme.TitleExempt.Plain == nil, "kitb title: Theme.TitleExempt names its kinds (Section, OwnGradient), never Plain", tostring(kinds))
+		K.flushErrors("theme_style_title")
 	end)
 
 	return S
@@ -3237,6 +3227,164 @@ local function clientScenarios()
 		LoadingH.cleanup()
 		T.check(ok, "loading tip: the scenario ran", tostring(err))
 		LKC.flushErrors("loading_tip_clear_of_bulb")
+	end)
+
+	-- (T0 review) every window title goes through Theme.StyleTitle, seen at run time: the walk opens the windows that build
+	-- late (Training with its confirm, Fusion, the pet picker, the Shop, the Home window with its hero cards and Prestige
+	-- confirm, the loss screen, a battle's result card, the hatch stage, the garden recall dialog), then fails on any
+	-- Title-role TextLabel named Title / TitleText / Headline in PlayerGui whose TitleLook is not "Plain" (a window title)
+	-- or a kind of Theme.TitleExempt (a heading that skips the title look on purpose, each kind with its reason). Each
+	-- expected window title must be found as "Plain", so a window that stops building fails here instead of passing absent.
+	S.kitb_titles_stamped = guarded("kitb_titles_stamped", function()
+		local Theme = LoadingH.shared("Theme")
+		local PC = LoadingH.shared("PetCatalog")
+		local pg = game:GetService("Players").LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		if not T.check(Theme and type(Theme.TitleExempt) == "table" and pg, "kitb titles walk: Theme.TitleExempt and PlayerGui exist") then
+			return
+		end
+		local function client(path)
+			local inst = Mock.GetPath(ROOTS.client .. "/" .. path)
+			local ok, mod = false, nil
+			if inst then
+				ok, mod = pcall(require, inst)
+			end
+			return ok and type(mod) == "table" and mod or nil
+		end
+		local function try(what, fn)
+			local ok, err = pcall(fn)
+			T.check(ok, "kitb titles walk: " .. what .. " opens", tostring(err))
+			LKC.advance(0.3)
+		end
+		local old = { Mock.Viewport.X, Mock.Viewport.Y }
+		Mock.SetViewport(1920, 1080)
+		LKC.advance(0.1)
+		local names = { Title = true, TitleText = true, Headline = true }
+		local found, bad = {}, {}
+		local function walk()
+			for _, d in ipairs(pg:GetDescendants()) do
+				if d:IsA("TextLabel") and names[d.Name] and d:GetAttribute("FontRole") == "Title" then
+					local path = d:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
+					local look = d:GetAttribute("TitleLook")
+					found[path] = look
+					if look ~= "Plain" and (look == nil or Theme.TitleExempt[look] == nil) then
+						bad[path] = tostring(look)
+					end
+				end
+			end
+		end
+		walk() -- what the boot built (the Care confirm, the dungeon's end card, the HUD panels, the menu windows' bars)
+		local Menu = client("Controllers/MenuController")
+		try("the Home window", function()
+			Menu.Open("Home")
+		end)
+		walk()
+		try("Training", function()
+			client("Controllers/TrainController").Open({})
+		end)
+		walk()
+		try("the pet picker", function()
+			client("UI/PetPicker").Open({ Context = "Train", Title = "Pick a pet to train", OnPick = function() end, OnClose = function() end })
+		end)
+		walk()
+		pcall(client("UI/PetPicker").Close)
+		pcall(client("Controllers/TrainController").Close)
+		try("Fusion", function()
+			client("Controllers/FusionController").Open("Upgrade", {})
+		end)
+		walk()
+		pcall(client("Controllers/FusionController").Close)
+		try("the Shop", function()
+			client("Controllers/ShopController").Open({ Tab = "Eggs" })
+		end)
+		walk()
+		pcall(client("Controllers/ShopController").Close)
+		try("the loss screen", function()
+			client("Controllers/LossScreen").Show({ Mode = "Ring", Title = "RUN OVER", Sub = "The champion won round 2", Pets = {} })
+		end)
+		walk()
+		pcall(client("Controllers/LossScreen").Hide)
+		try("a battle's result card", function()
+			local BC = client("Controllers/BattleController")
+			local id = "kitb_titles"
+			game:GetService("Players").LocalPlayer:SetAttribute(LoadingH.shared("Config").Attr.InBattle, id)
+			BC.HandleState("Start", { BattleId = id, Mode = "Ring", Side = 1, Spectator = false, T = 0, Units = {}, Ring = { Round = 1, Best = 0, Start = 1 },
+				Zone = { CFrame = CFrame.new(0, 400, 0), X = 40, Z = 40 } }, id)
+			LKC.advance(0.2)
+			BC.HandleState("End", { BattleId = id, Mode = "Ring", Outcome = "Win", Won = true, Spectator = false, Reason = "KO",
+				Rewards = { Won = true, Round = 1, Cash = 10, Xp = 5, Start = 1 } }, id)
+		end)
+		walk()
+		pcall(function()
+			client("Controllers/BattleController").HideResult()
+			game:GetService("Players").LocalPlayer:SetAttribute(LoadingH.shared("Config").Attr.InBattle, nil)
+		end)
+		try("the hatch stage", function()
+			local def = PC.RarityPool("Cloud", "Common")[1]
+			local all = {}
+			for _, d in ipairs(PC.PossiblePets("Cloud")) do
+				all[#all + 1] = d.Id
+			end
+			local strip = {}
+			for i = 1, 40 do
+				strip[i] = all[((i * 7) % #all) + 1]
+			end
+			strip[34] = def.Id
+			local pull = { PetId = def.Id, Key = def.Id, Rarity = def.Rarity, IsNew = true, NewDiscovery = true, Count = 1, PoolSize = 1, Strip = strip }
+			client("UI/EggStage").Show({ Ok = true, RouletteId = "Cloud", Currency = "Tokens", Spins = 1, UnitPrice = 50, Price = 50, Pulls = { pull }, Tokens = 5000, Gems = 5000,
+				PetId = def.Id, Key = def.Id, IsNew = true, NewDiscovery = true, Count = 1, Strip = strip })
+		end)
+		walk()
+		try("the garden recall dialog", function()
+			client("UI/PetBits").askRecall(pg:FindFirstChild("NimbusMenu") or pg, "kitb_pet", { To = "Team", Preset = 1, Keys = {} }, nil, nil, function() end)
+		end)
+		walk()
+		pcall(client("UI/PetBits").closeRecall)
+		-- the window titles this walk must have seen as "Plain" (a Lua pattern on the path inside PlayerGui each)
+		local expected = {
+			{ "the Care confirm", "^NimbusCare%.CareConfirm%.Box%.Title$" },
+			{ "the dungeon's end card", "^NimbusDungeonRun%.EndCard%..-%.Title$" },
+			{ "the Home window's bar", "%.Window_Home%..-%.TitleBar%.Title$" },
+			{ "the Go home hero card", "%.Hero%.GoHome%..-%.Title$" },
+			{ "the Prestige confirm", "%.PrestigeConfirm%.Box%.Title$" },
+			{ "the Training window", "^NimbusTrain%..-Header%.Title$" },
+			{ "the Training confirm", "^NimbusTrain%..-%.Box%.Title$" },
+			{ "the pet picker", "^NimbusPetPicker%..-%.Title$" },
+			{ "the Fusion window", "^NimbusFusion%..-%.Title$" },
+			{ "the Shop", "^NimbusShop%..-%.Title$" },
+			{ "the Sky Trove", "^NimbusTrove%..-%.TitleText$" },
+			{ "the loss card", "^NimbusLoss%.LossCard%..-%.Title$" },
+			{ "the battle result card", "%.ResultCard%..-%.Title$" },
+			{ "the hatch stage", "^NimbusHatch%..-%.Title$" },
+			{ "the garden recall dialog", "%.GardenRecall%.Box%.Title$" },
+			{ "the party panel", "^NimbusHud%..-%.PartyPanel%..-%.Title$" },
+		}
+		local missing = {}
+		for _, e in ipairs(expected) do
+			local hit = false
+			for path, look in pairs(found) do
+				if look == "Plain" and path:find(e[2]) then
+					hit = true
+					break
+				end
+			end
+			if not hit then
+				missing[#missing + 1] = e[1]
+			end
+		end
+		local badList, seen = {}, {}
+		for path, look in pairs(bad) do
+			badList[#badList + 1] = path .. " (" .. look .. ")"
+		end
+		for path, look in pairs(found) do
+			seen[#seen + 1] = path .. "=" .. tostring(look)
+		end
+		table.sort(badList)
+		table.sort(seen)
+		T.check(#missing == 0, "kitb titles walk: every expected window title is built and stamped Plain", table.concat(missing, ", ") .. " | seen: " .. table.concat(seen, "; "))
+		T.check(#badList == 0, "kitb titles walk: no Title-role title without the TitleLook stamp (Plain, or a Theme.TitleExempt kind)", table.concat(badList, "; "))
+		Mock.SetViewport(old[1], old[2])
+		LKC.advance(0.2)
+		LKC.flushErrors("kitb_titles_stamped")
 	end)
 
 	return S

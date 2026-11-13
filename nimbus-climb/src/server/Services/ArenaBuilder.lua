@@ -2631,7 +2631,9 @@ local function buildGateSign(parent, A)
 	frame.CanQuery = false
 	local gui = surfaceGui(part, Enum.NormalId.Front)
 	local p = signPanel(gui, C.TextGold)
-	signText(p, "Title", "BATTLE ARENA", "Title", 64, C.TextGold, 0.04, 0.08, 0.92, 0.48)
+	-- (T0 review) 56 px: FredokaOne runs about 1.2 x as wide as the old LuckiestGuy, so BATTLE ARENA at 64 px (507 px + the
+	-- outline) spilled past its 506 px box; at 56 px it is about 449 px with the outline, still 1.12 stud tall
+	signText(p, "Title", "BATTLE ARENA", "Title", 56, C.TextGold, 0.04, 0.08, 0.92, 0.48)
 	signText(p, "Subtitle", "Duels and boss raids", "Heading", 30, C.Text, 0.04, 0.6, 0.92, 0.3)
 	-- the main gate's own prompt: the arena panel (raids, duels, the queue)
 	local anchor = anchorPart(parent, "GatePromptAnchor", A * CFrame.new(0, 3, -(COL.WallOut + 2)), Vector3.new(1, 1, 1))

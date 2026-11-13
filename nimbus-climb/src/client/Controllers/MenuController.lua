@@ -1760,10 +1760,10 @@ local function buildStats(win)
 	})
 	pad(list, 8, 4, 14, 8)
 	listLayout(list, Enum.FillDirection.Vertical, 8)
-	makeText(list, "Title", "Best times", "Title", 28, WHITE, {
+	Theme.StyleTitle(makeText(list, "Title", "Best times", "Title", 28, WHITE, {
 		Size = UDim2.new(1, 0, 0, 36),
 		LayoutOrder = 0,
-	})
+	}), "Section")
 	for index, difficulty in ipairs(Config.Difficulties) do
 		local row = makeFrame(list, "Row_" .. difficulty.Id, {
 			Size = UDim2.new(1, 0, 0, 66),
@@ -2041,7 +2041,7 @@ function P5.heroCard(parent, id, callback)
 	local icon = P5.Kit.Icon(orb, spec.Glyph, 34)
 	icon.ZIndex = 6
 	hero.Orb = orb
-	hero.Title = makeText(card.Body, "Title", spec.Title, "Title", 34, WHITE, {
+	hero.Title = Theme.StyleTitle(makeText(card.Body, "Title", spec.Title, "Title", 34, WHITE, {
 		Position = UDim2.new(0, 96, 0.5, -2),
 		AnchorPoint = Vector2.new(0, 1),
 		Size = UDim2.new(1, -176, 0, 40),
@@ -2049,7 +2049,7 @@ function P5.heroCard(parent, id, callback)
 		TextYAlignment = Enum.TextYAlignment.Bottom,
 		TextScaled = true,
 		ZIndex = 6,
-	})
+	}))
 	Util.Create("UITextSizeConstraint", { MaxTextSize = 34, MinTextSize = 24, Parent = hero.Title })
 	hero.Sub = makeText(card.Body, "Sub", spec.Sub, "Body", 19, Color3.fromRGB(255, 247, 222), {
 		Position = UDim2.new(0, 96, 0.5, 2),
@@ -2740,11 +2740,11 @@ do
 				Size = UDim2.new(1, 0, 0, 34),
 				LayoutOrder = order,
 			})
-			makeText(header, "Title", section.Title, "Title", 24, WHITE, {
+			Theme.StyleTitle(makeText(header, "Title", section.Title, "Title", 24, WHITE, {
 				Position = UDim2.fromOffset(6, 0),
 				Size = UDim2.new(1, -12, 1, 0),
 				TextXAlignment = Enum.TextXAlignment.Left,
-			})
+			}), "Section")
 			H.Sections[#H.Sections + 1] = header
 			for _, def in ipairs(stations) do
 				if type(def) == "table" and section.Kinds[def.Kind] then
@@ -2784,11 +2784,11 @@ do
 		stroke(box, GOLD, 4, 0)
 		Theme.Gradient(box, Colors.PanelLight, Colors.Panel, 90)
 		H.ConfirmBox = box
-		makeText(box, "Title", G.Star .. " Prestige now?", "Title", 32, GOLD, {
+		Theme.StyleTitle(makeText(box, "Title", G.Star .. " Prestige now?", "Title", 32, GOLD, {
 			Position = UDim2.fromOffset(16, 12),
 			Size = UDim2.new(1, -32, 0, 40),
 			ZIndex = 32,
-		})
+		}))
 		-- three lines: what starts over, what stays, what the new star gives
 		local lines = makeFrame(box, "Lines", {
 			Position = UDim2.fromOffset(16, 62),

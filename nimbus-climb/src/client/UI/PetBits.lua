@@ -598,9 +598,9 @@ function PetBits.askRecall(gui, key, target, onYes, onNo, send)
 	PetBits.corner(box, 16)
 	PetBits.stroke(box, GARDEN_COLOR, 4, 0)
 	Theme.Gradient(box, Colors.PanelLight, Colors.Panel, 90)
-	PetBits.text(box, "Title", SEEDLING .. " This pet is gardening!", "Title", 28, GARDEN_COLOR, {
+	Theme.StyleTitle(PetBits.text(box, "Title", SEEDLING .. " This pet is gardening!", "Title", 28, GARDEN_COLOR, {
 		Position = UDim2.fromOffset(16, 12), Size = UDim2.new(1, -32, 0, 36), ZIndex = 62,
-	})
+	}))
 	PetBits.text(box, "Body", "Take it out of the garden and put it in your team?", "Body", 20, WHITE, {
 		Position = UDim2.fromOffset(16, 54), Size = UDim2.new(1, -32, 0, 60), TextWrapped = true, ZIndex = 62,
 	})

@@ -978,11 +978,11 @@ local function buildResults(data)
 	})
 
 	-- headline with a gradient (the label itself stays white, the gradient colours it)
-	local headline = newText(inner, "Headline", won and "VICTORY!" or "DEFEAT", "Title", 40, WHITE, {
+	local headline = Theme.StyleTitle(newText(inner, "Headline", won and "VICTORY!" or "DEFEAT", "Title", 40, WHITE, {
 		Position = UDim2.fromOffset(0, titleY),
 		Size = UDim2.new(1, 0, 0, TITLE_H),
 		TextXAlignment = Enum.TextXAlignment.Center,
-	})
+	}), "OwnGradient")
 	if won then
 		Theme.Gradient(headline, Colors.TokenGlow, Colors.Token, 90)
 	else

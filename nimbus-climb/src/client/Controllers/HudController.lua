@@ -1854,13 +1854,13 @@ local function buildParty(holder)
 	UI.PartyInner = inner
 
 	-- row A: the portal's name and the big red Leave button (the only way out of a locked portal)
-	UI.PartyTitle = newText(inner, "Title", "Party", "Title", M.TitleText, WHITE, {
+	UI.PartyTitle = Theme.StyleTitle(newText(inner, "Title", "Party", "Title", M.TitleText, WHITE, {
 		AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.new(0, 0, 0, M.PartyLeaveH / 2),
 		Size = UDim2.new(1, -(M.PartyLeaveW + 8), 0, M.TitleH),
 		RichText = true,
 		TextTruncate = Enum.TextTruncate.AtEnd,
-	})
+	}))
 	UI.PartyLeave = CloudUI.Button({
 		Name = "LeaveParty",
 		Text = "Leave",
@@ -1960,11 +1960,11 @@ local function buildTitleCard(holder)
 	coin.AnchorPoint = Vector2.new(0, 0.5)
 	coin.Position = UDim2.new(0, 11, 0.5, 0)
 
-	local title = newText(card, "Title", string.upper(tostring(Config.GameName)), "Title", 32, WHITE, {
+	local title = Theme.StyleTitle(newText(card, "Title", string.upper(tostring(Config.GameName)), "Title", 32, WHITE, {
 		Position = UDim2.new(0, 74, 0, 6),
 		Size = UDim2.new(1, -84, 0, 38),
 		TextTruncate = Enum.TextTruncate.AtEnd,
-	})
+	}), "OwnGradient")
 	Theme.Gradient(title, Colors.Cloud, Colors.TokenGlow, 90)
 	newText(card, "Tagline", tostring(Config.Tagline), "Script", 19, Colors.Muted or Colors.Cloud, {
 		Position = UDim2.new(0, 74, 0, 44),

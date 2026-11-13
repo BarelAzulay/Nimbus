@@ -336,7 +336,7 @@ local function buildHero(P)
 	local b = c.Body
 	local h = { Root = c.Root, Card = c, Key = "Gems" .. K.HERO_INDEX }
 	h.Pile = frame("Pile", b)
-	h.Title = label("Title", b, "Gems", "Title", 46, { TextXAlignment = Enum.TextXAlignment.Left })
+	h.Title = Theme.StyleTitle(label("Title", b, "Gems", "Title", 46, { TextXAlignment = Enum.TextXAlignment.Left }))
 	h.Line1 = label("Line1", b, "Spin the Secret Roulette and every machine with gems.", "Body", 24, { TextXAlignment = Enum.TextXAlignment.Left })
 	h.Line2 = label("Line2", b, "", "Heading", 24, { TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = K.LINE })
 	h.Note = label("Note", b, "", "Body", 18, { TextColor3 = K.LINE, Visible = false })
@@ -351,7 +351,7 @@ local function buildPotion(P)
 	local b = c.Body
 	local p = { Root = c.Root, Card = c }
 	p.Icon = label("Icon", b, NeonKit.Glyphs.Boosts, "Display", 64, { TextTruncate = Enum.TextTruncate.None })
-	p.Title = label("Title", b, "XP Potion \194\183 30 minutes", "Title", 32, { TextXAlignment = Enum.TextXAlignment.Left })
+	p.Title = Theme.StyleTitle(label("Title", b,"XP Potion \194\183 30 minutes", "Title", 32, { TextXAlignment = Enum.TextXAlignment.Left }))
 	p.Text = label("Text", b, "Your team earns double pet XP. Not random, so every account can buy it.", "Body", 22,
 		{ TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true, TextTruncate = Enum.TextTruncate.None, TextColor3 = Theme.Colors.Muted or WHITE })
 	p.Buy = newButton(P, b, function()

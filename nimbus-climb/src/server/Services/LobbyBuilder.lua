@@ -773,7 +773,9 @@ end
 local function keyRow(parent, y, rowH, keyText, descText)
 	local chip = Instance.new("Frame")
 	chip.Name = "KeyChip"
-	chip.Size = UDim2.new(0.27, 0, rowH, 0)
+	-- (T0 review) 0.30 wide (165 px): DUNGEON in FredokaOne at 30 px is about 154 px with its outline (the chip was 148 px);
+	-- the description moves right to match and keeps the board's right margin
+	chip.Size = UDim2.new(0.30, 0, rowH, 0)
 	chip.Position = UDim2.new(0.04, 0, y, 0)
 	chip.BackgroundColor3 = rgb(58, 66, 100)
 	chip.BorderSizePixel = 0
@@ -781,7 +783,7 @@ local function keyRow(parent, y, rowH, keyText, descText)
 	outline(chip, C.TextGold, 2.5, 0.25)
 	chip.Parent = parent
 	signText(chip, keyText, "Heading", SIGN_INFO, C.TextGold, "Key", 0, 0, 1, 1)
-	signText(parent, descText, "Body", SIGN_INFO, C.Text, "Desc", 0.335, y, 0.64, rowH, Enum.TextXAlignment.Left)
+	signText(parent, descText, "Body", SIGN_INFO, C.Text, "Desc", 0.355, y, 0.62, rowH, Enum.TextXAlignment.Left)
 end
 
 ----------------------------------------------------------------------

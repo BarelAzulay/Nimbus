@@ -1132,7 +1132,7 @@ function B.roll(roll)
 	if roll.N > 1 then
 		title = title .. " x3"
 	end
-	roll.UI.Title = H.label(c, "Title", title, "Title", P.TitleSize, { ZIndex = 5, TextXAlignment = Enum.TextXAlignment.Center })
+	roll.UI.Title = Theme.StyleTitle(H.label(c, "Title", title, "Title", P.TitleSize, { ZIndex = 5, TextXAlignment = Enum.TextXAlignment.Center }))
 	roll.UI.Strips = H.frame(c, "Strips", { Size = UDim2.fromScale(1, 1), ZIndex = 1 })
 	-- (roll-look review round 1) the burst's punch scales the stage's world only: Hero (the eggs, plinths, rays, ring, the
 	-- crack word) carries the UIScale "Punch" and Burst (the shock, the sparks) follows it; both anchored at their centre

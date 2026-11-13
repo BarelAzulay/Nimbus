@@ -34,7 +34,8 @@
 -- read in capitals (`Theme.CapsRoles`, kept by Theme.SetRole; LuckiestGuy's lower case reads oddly: "PeTS").
 -- T0 (the owner's title pick B): the Title role is FredokaOne; LuckiestGuy stays on Accent (damage numbers, world hint
 -- words) and Sign (the approved Credits header). Every window title goes through `Theme.StyleTitle(label)`, the one place a
--- designed title treatment will go (today it adds nothing).
+-- designed title treatment will go (today it adds nothing). T0 review: so do the Title-role headings that are not a
+-- window's name, with a `Theme.TitleExempt` kind (a section head, a headline with its own gradient) that keeps them plain.
 -- Plain Lua 5.1-compatible syntax only. Safe to require on the server and on the client.
 
 local Theme = {}
@@ -844,11 +845,20 @@ end
 -- draw their own header title, the loading board) is passed here after it is styled, so a designed title look (gradient,
 -- border, shadow) is added in this one place. Today it adds nothing: it stamps attribute TitleLook = "Plain" (the look in
 -- use) and leaves the label as it was. Safe to call twice. Returns the label.
-function Theme.StyleTitle(label)
+-- T0 review: a Title-role heading that is NOT a window's name passes a kind from Theme.TitleExempt (each with its reason):
+-- StyleTitle(label, kind) stamps TitleLook = kind and never gives it the window title look, so a run-time walk
+-- (smoke_kitb_ui kitb_titles_stamped) tells a heading skipped on purpose from a window title someone forgot.
+Theme.TitleExempt = {
+	Section = "a section head or an empty-state line inside a window (Best times, Quick match, Elements, a Home section): "
+		.. "the window's own title carries the title look, its sections stay plain under it",
+	OwnGradient = "a headline that paints its own gradient over white text (the race result's VICTORY! / DEFEAT, the HUD's "
+		.. "game-name card); a second title treatment would fight that gradient",
+}
+function Theme.StyleTitle(label, kind)
 	if not label then
 		return nil
 	end
-	label:SetAttribute("TitleLook", "Plain")
+	label:SetAttribute("TitleLook", kind or "Plain")
 	return label
 end
 

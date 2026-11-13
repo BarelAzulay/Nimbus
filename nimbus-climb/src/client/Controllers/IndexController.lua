@@ -2043,11 +2043,11 @@ local function buildElementsCard()
 	})
 	pad(scroll, 10, 8, 14, 10)
 	listLayout(scroll, Enum.FillDirection.Vertical, 10, Enum.HorizontalAlignment.Center)
-	makeText(scroll, "Title", "Elements", "Title", 30, WHITE, {
+	Theme.StyleTitle(makeText(scroll, "Title", "Elements", "Title", 30, WHITE, {
 		Size = UDim2.new(1, 0, 0, 36),
 		LayoutOrder = 1,
 		ZIndex = 22,
-	})
+	}), "Section")
 	makeText(scroll, "Explain", "Every pet has an element. In battles an element deals x1.5 damage to the one its arrow points at, and only x0.75 back.", "Body", 19, MUTED, {
 		Size = UDim2.new(1, -10, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
@@ -2205,11 +2205,11 @@ local function buildCentre(centre)
 		LayoutOrder = 1,
 		ZIndex = 5,
 	})
-	makeText(U.FusionEmpty, "Title", "No fused pets yet", "Title", 28, WHITE, {
+	Theme.StyleTitle(makeText(U.FusionEmpty, "Title", "No fused pets yet", "Title", 28, WHITE, {
 		Size = UDim2.new(1, -30, 0, 34),
 		LayoutOrder = 2,
 		ZIndex = 5,
-	})
+	}), "Section")
 	makeText(U.FusionEmpty, "Body", "Golden and Rainbow copies and the hybrids you mix at the Fusion Machine show up here.", "Body", 19, MUTED, {
 		Size = UDim2.new(1, -60, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,

@@ -918,12 +918,12 @@ function H.buildConfirm()
 	H.corner(box, 16)
 	U.ConfirmStroke = H.stroke(box, GOLD, 4, 0)
 	Theme.Gradient(box, Colors.PanelLight, Colors.Panel, 90)
-	U.ConfirmTitle = H.text(box, "Title", "", "Title", 30, GOLD, {
+	U.ConfirmTitle = Theme.StyleTitle(H.text(box, "Title", "", "Title", 30, GOLD, {
 		Position = UDim2.fromOffset(16, 12),
 		Size = UDim2.new(1, -32, 0, 40),
 		TextScaled = true,
 		ZIndex = 32,
-	})
+	}))
 	Util.Create("UITextSizeConstraint", { MaxTextSize = 30, MinTextSize = 22, Parent = U.ConfirmTitle })
 	U.ConfirmText = H.text(box, "Text", "", "Body", 20, WHITE, {
 		Position = UDim2.fromOffset(20, 60),

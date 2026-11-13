@@ -421,7 +421,7 @@ local function build()
 		Gui = gui,
 		Card = card,
 		Fit = fit,
-		Title = text(body, "Title", "", "Title", 34, GOLD, { TextXAlignment = Enum.TextXAlignment.Left }),
+		Title = Theme.StyleTitle(text(body, "Title", "", "Title", 34, GOLD, { TextXAlignment = Enum.TextXAlignment.Left })), -- (T0) the one title treatment
 		Sub = text(body, "Sub", "", "Body", 19, MUTED),
 		Lines = lines,
 		Close = NeonKit.Button({ Name = "CloseButton", Text = "", Color = "Red", Variant = "Outline", Size = UDim2.fromOffset(K.CLOSE, K.CLOSE), TextSize = 24, Parent = body, Callback = function()

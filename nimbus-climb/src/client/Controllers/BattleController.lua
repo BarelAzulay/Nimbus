@@ -6976,7 +6976,7 @@ function Hud.ShowResult(B, payload)
 	-- (a short landscape screen: the OK button shares the title's line, long titles step down a size)
 	local titleW = w - 2 * K.PAD - 8 - (short and 100 or 0)
 	local titleSize = short and (#titleText > 9 and 25 or 30) or 34
-	local title = part(label(body, titleText, "Title", titleSize, { Name = "Title", Position = UDim2.fromOffset(K.PAD + 4, y), Size = UDim2.fromOffset(titleW, 40), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = color, TextTruncate = Enum.TextTruncate.AtEnd }))
+	local title = part(Theme.StyleTitle(label(body, titleText, "Title", titleSize, { Name = "Title", Position = UDim2.fromOffset(K.PAD + 4, y), Size = UDim2.fromOffset(titleW, 40), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = color, TextTruncate = Enum.TextTruncate.AtEnd })))
 	title.TextStrokeColor3 = COLORS.Ink
 	y = y + 42
 	local plain = { Wipe = true, KO = true, Cleared = true, BossDown = true }

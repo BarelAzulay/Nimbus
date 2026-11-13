@@ -2245,7 +2245,8 @@ local function buildClaimSign(rec)
 	local m = Instance.new("Model")
 	m.Name = "ClaimSign"
 	-- a signboard on a wooden post on the verge beside the gate, facing the street. Two parts only: the free plots
-	-- live inside the lobby and count toward its part budget. (World text rule: 50 px per stud, 1.1 stud title,
+	-- live inside the lobby and count toward its part budget. (World text rule: 50 px per stud, a 1.04 stud title (T0 review:
+	-- 52 px, FREE HOME in FredokaOne is about 306 px with its outline in the 329 px box; 56 px touched its edges),
 	-- 0.6 stud info, both fitting the 7 x 2.6 stud board; the GUI draws the board's frame.)
 	local base = cf * CFrame.new(11, 0, -half - 2) * CFrame.Angles(0, math.pi, 0)
 	box(m, "Post", base * CFrame.new(0, 1.6, 0), Vector3.new(0.6, 3.2, 0.6), C.PlankDark, { Collide = true })
@@ -2255,7 +2256,7 @@ local function buildClaimSign(rec)
 	vgradient(panel, C.Violet, C.Navy)
 	rounded(panel, 14)
 	outline(panel, C.CashGlow, 5, 0.1)
-	signText(panel, "FREE HOME", "Title", 56, C.TextGreen, "Title", 0.03, 0.06, 0.94, 0.5)
+	signText(panel, "FREE HOME", "Title", 52, C.TextGreen, "Title", 0.03, 0.06, 0.94, 0.5)
 	signText(panel, "Press E at the gate", "Body", 30, C.Text, "Info", 0.03, 0.58, 0.94, 0.34)
 	rec.ClaimSign = m
 	return m
