@@ -873,14 +873,16 @@ end
 -- Sign/logo build (the owner's pick T1 "Ribbon title", 2026-11-13; FINAL_OPTIONS.md, drawn at a 20 px title, every size
 -- here grows with the text): stamps TitleLook = "Ribbon" and hangs the ribbon's pieces under the label, back to front: two
 -- swallowtail tails (#171C4F, a stepped notch in the outer end), the band (navy, 1.5x
--- the text tall, overhanging the label's box; round the text of a centred title; a lit top line, a darker lip, two brass
+-- the text tall, round the text and its stair, inside the label's box with the letters moved in onto it (a header
+-- title), or centred round the text (a centred title); a lit top line, a darker lip, two brass
 -- piping lines), the gold underline
 -- under the text with its three rising steps, a navy shadow copy of the text, and the face: white text under a hard
 -- three-band gold gradient with ONE brown outline (Theme.OutlineOnPlate). The label's own text is hidden by a see-through
 -- UIGradient (TitleHide), so the caller's font, size, colour and text props stay as they were; the copies follow its
 -- text, size, alignment and transparency.
 Theme.TitleExempt = {
-	Section = "a section head or an empty-state line inside a window (Best times, Quick match, Elements, a Home section): "
+	Section = "a section head, a card's heading or an empty-state line inside a window (Best times, Quick match, Elements, a Home "
+		.. "section, the Shop's SECRET ROULETTE / Gems / XP Potion cards): "
 		.. "the window's own title carries the title look, its sections stay plain under it",
 	OwnGradient = "a headline that paints its own gradient over white text (the race result's VICTORY! / DEFEAT, the HUD's "
 		.. "game-name card); a second title treatment would fight that gradient",
@@ -1008,17 +1010,58 @@ local function ribbonLayout(label, rib)
 	local bandTop = math.floor(yo - bandH / 2 + px(R.Drop) + 0.5)
 	local band = rib.RibbonBand
 	local centred = label.TextXAlignment == Enum.TextXAlignment.Center
+	local inR = label.TextXAlignment == Enum.TextXAlignment.Right
+	local sw, sh = px(R.StepW, 2), px(R.StepH, 2)
+	-- the box's real width (0 = not laid out yet: no limit)
+	local boxW = 0
+	pcall(function()
+		boxW = label.AbsoluteSize.X
+	end)
+	if boxW <= 0 and label.Size.X.Scale == 0 then
+		boxW = label.Size.X.Offset
+	end
+	-- (sign/logo review) how far a header title's letters move in off the box's edge, onto the band, and whether the
+	-- stair after them still fits in the box
+	local inset, stairs = 0, true
 	if centred then
 		-- a centred title (a dialog, the hatch stage) hangs a banner round its text, room for the steps on both sides
-		local half = math.floor(tw / 2 + 3 * px(R.StepW, 2) + pad + 0.5)
+		local half = math.floor(tw / 2 + 3 * sw + pad + 0.5)
 		band.Position = UDim2.new(0.5, -half, ya, bandTop)
 		band.Size = UDim2.new(0, 2 * half, 0, bandH)
 	else
-		-- a header title runs the ribbon along its box, overhanging it on the left; on the right the band stops where its
-		-- tail (notch and all) still ends inside the box: a phone's header puts the A/B/C buttons right after the title
-		band.Position = UDim2.new(0, -pad, ya, bandTop)
-		band.Size = UDim2.new(1, pad + px(R.TailOver) - px(R.TailW), 0, bandH)
+		-- a header title keeps its ribbon INSIDE its box (review: overhanging it covered the Shop's egg icon and poked out
+		-- of the Pets window's frame) and round its text (review: a band the box's whole width ran under the Pets
+		-- window's A/B/C buttons, laid over the box's right end on a phone): the left tail's notch starts at the box's
+		-- edge, the letters move in onto the band, the stair follows them, then a little band and the right tail, never
+		-- past the box. A box with too little room keeps the letters nearer its edge, then leaves the stair off (a box
+		-- fitted to its text, as Fusion's)
+		local lead = px(R.TailW) - px(R.TailOver)
+		local gap = math.floor(pad / 2 + 0.5)
+		inset = lead + gap
+		if boxW > 0 then
+			local free = boxW - tw - 3 * sw - gap - lead
+			stairs = free >= 0
+			if not stairs then
+				free = boxW - tw - gap - lead
+			end
+			inset = math.max(0, math.min(inset, math.floor(free)))
+		end
+		local stop = inset + tw + (stairs and 3 * sw or 0) + gap
+		if boxW > 0 then
+			stop = math.min(stop, boxW - lead)
+		end
+		band.Position = UDim2.new(0, lead, ya, bandTop)
+		if inR then
+			band.Size = UDim2.new(1, -2 * lead, 0, bandH) -- (no right-aligned title today) along the whole box
+		else
+			band.Size = UDim2.new(0, math.max(1, math.floor(stop - lead + 0.5)), 0, bandH)
+		end
 	end
+	-- the copies drawn in from the edge the text starts on (the label's own text, hidden, stays where it was)
+	for _, copy in ipairs({ rib.TitleFace, rib.TitleShadow }) do
+		copy.Size = UDim2.new(1, -inset, 1, 0)
+	end
+	local faceX = inR and 0 or inset
 	band.Highlight.Size = UDim2.new(1, 0, 0, px(R.Top))
 	band.Lip.Size = UDim2.new(1, 0, 0, px(R.Lip))
 	local pipe = px(R.Pipe)
@@ -1038,25 +1081,26 @@ local function ribbonLayout(label, rib)
 			ribbonTail(tail, tw0, th, notch, tail == rib.TailL and -1 or 1)
 		end
 	end
-	rib.TitleShadow.Position = UDim2.fromOffset(0, px(R.Shadow, 2))
+	rib.TitleFace.Position = UDim2.fromOffset(faceX, 0)
+	rib.TitleShadow.Position = UDim2.fromOffset(faceX, px(R.Shadow, 2))
 	rib.TitleFace.TitleOutline.Thickness = px(R.Stroke, 2)
 	rib.TitleShadow.TitleOutline.Thickness = px(R.Stroke, 2)
 	-- the underline on the low piping, under the letters; its three steps rising after it
-	local xs, xo = 0, 0
+	local xs, xo = 0, inset
 	if label.TextXAlignment == Enum.TextXAlignment.Center then
 		xs, xo = 0.5, -tw / 2
-	elseif label.TextXAlignment == Enum.TextXAlignment.Right then
-		xs, xo = 1, -tw
+	elseif inR then
+		xs, xo = 1, -tw - inset
 	end
 	local under = px(R.Under, 2)
 	local underY = bandTop + lowPipe - under
 	rib.RibbonUnderline.Position = UDim2.new(xs, math.floor(xo + 0.5), ya, underY)
-	rib.RibbonUnderline.Size = UDim2.fromOffset(math.floor(tw + 0.5), under)
-	local sw, sh = px(R.StepW, 2), px(R.StepH, 2)
+	rib.RibbonUnderline.Size = UDim2.fromOffset(math.floor((boxW > 0 and not centred and math.min(tw, boxW - inset) or tw) + 0.5), under)
 	for i = 1, 3 do
 		local st = rib["RibbonStep" .. i]
 		st.Position = UDim2.new(xs, math.floor(xo + tw + 0.5) + (i - 1) * sw, ya, underY + under - (i + 1) * sh)
 		st.Size = UDim2.fromOffset(sw, (i + 1) * sh)
+		st.Visible = stairs
 	end
 end
 
@@ -1149,7 +1193,8 @@ local function ribbon(label)
 		for _, prop in ipairs(RIBBON_MIRROR) do
 			label:GetPropertyChangedSignal(prop):Connect(again)
 		end
-		for _, prop in ipairs({ "FontFace", "TextBounds" }) do
+		-- (review) the box's width too: the letters' inset and the stair fit the box the caller places
+		for _, prop in ipairs({ "FontFace", "TextBounds", "Size", "AbsoluteSize" }) do
 			pcall(function()
 				label:GetPropertyChangedSignal(prop):Connect(again)
 			end)

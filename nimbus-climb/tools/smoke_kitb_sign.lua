@@ -732,6 +732,15 @@ local function clientScenarios()
 				end
 				return seen
 			end
+			-- (review) the menu opened with Camera shake already OFF: the blades turn through the entrance, then rest level
+			Settings.Set("Shake", false)
+			local offMenu = Menu.open({ Wait = 3 })
+			local offSwing = Menu.find(offMenu, "Swing")
+			if T.check(offSwing ~= nil and #blades(offSwing) == 2, "sign props: (setup) two propellers on the board opened with shake OFF") then
+				local rest = sample(offSwing, 1.6)
+				T.check(rest.Level and not rest.Up, "sign props: opened with Camera shake OFF, the blades rest level after the entrance")
+			end
+			Menu.close()
 			Settings.Set("Shake", true)
 			local menu = Menu.open({ Wait = 3 })
 			local swing = Menu.find(menu, "Swing")

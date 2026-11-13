@@ -1329,20 +1329,39 @@ local function serverScenarios()
 		-- the band: navy, 1.5x the text size tall, overhanging the title's box on both sides
 		local band = rib:FindFirstChild("RibbonBand")
 		T.check(band ~= nil and sameColor(band.BackgroundColor3, Sg.Navy) and band.BackgroundTransparency == 0, "kitb title: a navy band", band and hex(band.BackgroundColor3) or "missing")
-		T.check(band ~= nil and math.abs(band.Size.Y.Offset - math.floor(30 * k + 0.5)) <= 1 and band.Size.X.Scale == 1 and band.Position.X.Scale == 0
-			and band.Position.X.Offset < 0,
-			"kitb title: the band is 1.5x the text tall, runs along the title's box and overhangs it on the left", band and tostring(band.Size) .. " at " .. tostring(band.Position) or "")
+		local tw34 = Theme.Measure("PETS", "Title", 34).X
+		T.check(band ~= nil and math.abs(band.Size.Y.Offset - math.floor(30 * k + 0.5)) <= 1 and band.Size.X.Scale == 0 and band.Position.X.Scale == 0
+			and band.Position.X.Offset > 0 and band.Size.X.Offset > tw34 and band.Position.X.Offset + band.Size.X.Offset < 420 / 2,
+			"kitb title: the band is 1.5x the text tall and wraps the text inside the title's box (not the box's whole width)",
+			band and tostring(band.Size) .. " at " .. tostring(band.Position) or "")
+		-- (sign/logo review, SIGN2 renders) no overhang on the left either: it covered the Shop's egg icon and poked out of
+		-- the Pets window's frame. The left tail's notch ends at the box's edge, and the letters move in onto the band
+		local tailL = rib:FindFirstChild("TailL")
+		local leftmost = math.huge
+		if tailL then
+			leftmost = tailL.Position.X.Offset
+			for _, n in ipairs(tailL:GetChildren()) do
+				leftmost = math.min(leftmost, tailL.Position.X.Offset + n.Position.X.Offset)
+			end
+		end
+		T.check(tailL ~= nil and tailL.Position.X.Scale == 0 and leftmost == 0, "kitb title: a header title's ribbon starts at its box's left edge (the tail's notch too)",
+			fmt("left tail starts at %s px", tostring(leftmost)))
+		local faceIn = rib:FindFirstChild("TitleFace")
+		T.check(faceIn ~= nil and band ~= nil and faceIn.Position.X.Offset > band.Position.X.Offset and faceIn.Size.X.Offset == -faceIn.Position.X.Offset,
+			"kitb title: ...and its letters start on the band, their box narrowed to match", faceIn and (tostring(faceIn.Position) .. " " .. tostring(faceIn.Size)) or "")
 		-- (SIGN2 render, 390x844 Pets) a phone's header puts the A/B/C buttons right after the title's box: the ribbon (the
 		-- band and the right tail with its notch) ends inside the box on the right, never over the next control
 		local tailR = rib:FindFirstChild("TailR")
 		local reach = -math.huge
 		if tailR then
-			reach = tailR.Position.X.Offset + tailR.Size.X.Offset
+			local x0 = tailR.Position.X.Scale * 420 + tailR.Position.X.Offset
+			reach = x0 + tailR.Size.X.Offset
 			for _, n in ipairs(tailR:GetChildren()) do
-				reach = math.max(reach, tailR.Position.X.Offset + n.Position.X.Offset + n.Size.X.Offset)
+				reach = math.max(reach, x0 + n.Position.X.Offset + n.Size.X.Offset)
 			end
+			reach = reach - 420
 		end
-		T.check(band ~= nil and tailR ~= nil and tailR.Position.X.Scale == 1 and reach <= 0 and band.Position.X.Offset + band.Size.X.Offset <= 0,
+		T.check(band ~= nil and tailR ~= nil and reach <= 0 and band.Position.X.Offset + band.Size.X.Offset <= 420,
 			"kitb title: a header title's ribbon ends inside its box on the right (the tail's notch too)", fmt("right tail reaches %s px past the box", tostring(reach)))
 		if band then
 			local hi, lip, pipes = band:FindFirstChild("Highlight"), band:FindFirstChild("Lip"), ofKind(band, "Piping")
@@ -1360,10 +1379,13 @@ local function serverScenarios()
 		local tails = ofKind(rib, "Tail")
 		T.eq(#tails, 2, "kitb title: a tail at each end of the band")
 		local leftOut, rightOut, notched = false, false, 0
+		local function at(u)
+			return u.Scale * 420 + u.Offset -- an x in the 420 px title's box
+		end
 		for _, t in ipairs(tails) do
-			if band and t.Position.X.Scale == 0 and t.Position.X.Offset < band.Position.X.Offset then
+			if band and t.Name == "TailL" and at(t.Position.X) < at(band.Position.X) then
 				leftOut = true
-			elseif band and t.Position.X.Scale == 1 and t.Position.X.Offset + t.Size.X.Offset > band.Position.X.Offset + band.Size.X.Offset then
+			elseif band and t.Name == "TailR" and at(t.Position.X) + t.Size.X.Offset > at(band.Position.X) + at(band.Size.X) then
 				rightOut = true
 			end
 			if #ofKind(t, "Notch") >= 2 then
@@ -3437,8 +3459,20 @@ local function clientScenarios()
 		LKC.advance(0.1)
 		local names = { Title = true, TitleText = true, Headline = true }
 		local found, bad = {}, {}
+		-- (sign/logo review) the ribbon is a window's NAME: never on a heading inside a scrolling body (a Shop card's
+		-- SECRET ROULETTE, Gems, XP Potion), and the Shop holds one ribbon (its header's "Shop")
+		local scrolled, shopRibbons = {}, {}
 		local function walk()
 			for _, d in ipairs(pg:GetDescendants()) do
+				if d:IsA("TextLabel") and d:GetAttribute("TitleLook") == "Ribbon" then
+					local path = d:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
+					if d:FindFirstAncestorWhichIsA("ScrollingFrame") then
+						scrolled[path] = true
+					end
+					if path:find("^NimbusShop%.") then
+						shopRibbons[path] = true
+					end
+				end
 				if d:IsA("TextLabel") and names[d.Name] and d:GetAttribute("FontRole") == "Title" then
 					local path = d:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
 					local look = d:GetAttribute("TitleLook")
@@ -3559,9 +3593,169 @@ local function clientScenarios()
 		table.sort(seen)
 		T.check(#missing == 0, "kitb titles walk: every expected window title is built and stamped Ribbon", table.concat(missing, ", ") .. " | seen: " .. table.concat(seen, "; "))
 		T.check(#badList == 0, "kitb titles walk: no Title-role title without the TitleLook stamp (Plain, or a Theme.TitleExempt kind)", table.concat(badList, "; "))
+		local inScroll, shopList = {}, {}
+		for path in pairs(scrolled) do
+			inScroll[#inScroll + 1] = path
+		end
+		for path in pairs(shopRibbons) do
+			shopList[#shopList + 1] = path
+		end
+		table.sort(inScroll)
+		table.sort(shopList)
+		T.check(#inScroll == 0, "kitb titles walk: no ribbon title inside a scrolling body (a card or section heading passes \"Section\")", table.concat(inScroll, "; "))
+		T.check(#shopList == 1 and shopList[1]:find("%.Header%.Title$") ~= nil, "kitb titles walk: the Shop holds one ribbon, its header's title", table.concat(shopList, "; "))
 		Mock.SetViewport(old[1], old[2])
 		LKC.advance(0.2)
 		LKC.flushErrors("kitb_titles_stamped")
+	end)
+
+	-- (sign/logo review, SIGN2 renders) a header title's ribbon stays clear of its neighbours: at 390x844 and 844x390 the
+	-- Shop, Pets, Training, Fusion, the pet picker and the Sky Trove are opened, and no piece of a visible ribbon (band,
+	-- tails with their notches, underline, steps) may cross a visible sibling of the title (the Shop's egg icon, a tab or
+	-- close button, a balance pill; a strip under the title's whole width and a thin rule of 4 px or less do not count) or
+	-- a button of its window laid over the header (the Pets window's A/B/C),
+	-- nor leave its window's frame by more than TailOver
+	S.kitb_title_ribbon_clear = guarded("kitb_title_ribbon_clear", function()
+		local Theme = LoadingH.shared("Theme")
+		local pg = game:GetService("Players").LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		if not T.check(Theme and Theme.TitleRibbon and pg, "kitb ribbon clear: Theme.TitleRibbon and PlayerGui exist") then
+			return
+		end
+		local function client(path)
+			local inst = Mock.GetPath(ROOTS.client .. "/" .. path)
+			local ok, mod = false, nil
+			if inst then
+				ok, mod = pcall(require, inst)
+			end
+			return ok and type(mod) == "table" and mod or nil
+		end
+		local function shown(g)
+			local p = g
+			while p and not p:IsA("LayerCollector") do
+				if p:IsA("GuiObject") and not p.Visible then
+					return false
+				end
+				p = p.Parent
+			end
+			return p ~= nil and p.Enabled ~= false
+		end
+		local function rect(g)
+			local p, s = g.AbsolutePosition, g.AbsoluteSize
+			return { p.X, p.Y, p.X + s.X, p.Y + s.Y }
+		end
+		local function cross(a, b)
+			return math.min(a[3], b[3]) - math.max(a[1], b[1]) > 0.5 and math.min(a[4], b[4]) - math.max(a[2], b[2]) > 0.5
+		end
+		-- a strip that runs under the title's whole width (the header's band, its foot) is the plate the ribbon sits on
+		local function spans(outer, inner)
+			return outer[1] <= inner[1] + 0.5 and outer[3] >= inner[3] - 0.5
+		end
+		local problems, seen = {}, {}
+		local function check(where)
+			for _, l in ipairs(pg:GetDescendants()) do
+				if l:IsA("TextLabel") and l:GetAttribute("TitleLook") == "Ribbon" and l.TextXAlignment ~= Enum.TextXAlignment.Center and shown(l) then
+					local name = l:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
+					seen[#seen + 1] = where .. " " .. name
+					local own = rect(l)
+					local k = (tonumber(l.TextSize) or 20) / Theme.TitleRibbon.Base
+					local slack = math.max(1, math.floor(Theme.TitleRibbon.TailOver * k + 0.5))
+					-- the window: the title's ancestor right under its ScreenGui
+					local win = l
+					while win.Parent and not win.Parent:IsA("LayerCollector") do
+						win = win.Parent
+					end
+					local frame = rect(win)
+					local pieces = {}
+					for _, d in ipairs(l:GetDescendants()) do
+						if d:IsA("Frame") and d.BackgroundTransparency < 1 and shown(d) then
+							local r = rect(d)
+							if r[3] - r[1] > 0 and r[4] - r[2] > 0 then
+								pieces[#pieces + 1] = { d, r }
+							end
+						end
+					end
+					-- its siblings, and every button of its window laid over the header (the Pets window's A/B/C sit on
+					-- the right end of the title's box on a phone)
+					local near = l.Parent:GetChildren()
+					for _, b in ipairs(win:GetDescendants()) do
+						if b:IsA("GuiButton") and b.Parent ~= l.Parent and not b:IsDescendantOf(l) and shown(b) then
+							near[#near + 1] = b
+						end
+					end
+					for _, sib in ipairs(near) do
+						if sib ~= l and sib:IsA("GuiObject") and sib.Visible then
+							local r = rect(sib)
+							if r[3] - r[1] > 4 and r[4] - r[2] > 4 and not spans(r, own) then
+								for _, pc in ipairs(pieces) do
+									if cross(pc[2], r) then
+										problems[#problems + 1] = fmt("%s %s: %s crosses %s (title x %d..%d, piece x %d..%d, %s x %d..%d)", where, name, pc[1].Name, sib.Name,
+											own[1], own[3], pc[2][1], pc[2][3], sib.Name, r[1], r[3])
+										break
+									end
+								end
+							end
+						end
+					end
+					for _, pc in ipairs(pieces) do
+						local r = pc[2]
+						if r[1] < frame[1] - slack or r[3] > frame[3] + slack then
+							problems[#problems + 1] = fmt("%s %s: %s leaves the window by %d px", where, name, pc[1].Name,
+								math.floor(math.max(frame[1] - r[1], r[3] - frame[3])))
+						end
+					end
+				end
+			end
+		end
+		local old = { Mock.Viewport.X, Mock.Viewport.Y }
+		local windows = {
+			{ "Shop", function()
+				client("Controllers/ShopController").Open({ Tab = "Eggs" })
+			end, function()
+				client("Controllers/ShopController").Close()
+			end },
+			{ "Pets", function()
+				client("Controllers/MenuController").Open("Pets")
+			end, function()
+				client("Controllers/MenuController").Close()
+			end },
+			{ "Training", function()
+				client("Controllers/TrainController").Open({})
+			end, function()
+				client("Controllers/TrainController").Close()
+			end },
+			{ "Fusion", function()
+				client("Controllers/FusionController").Open("Upgrade", {})
+			end, function()
+				client("Controllers/FusionController").Close()
+			end },
+			{ "the pet picker", function()
+				client("UI/PetPicker").Open({ Context = "Train", Title = "Pick a pet to train", OnPick = function() end, OnClose = function() end })
+			end, function()
+				client("UI/PetPicker").Close()
+			end },
+			{ "the Sky Trove", function()
+				client("Controllers/TroveController").Open({})
+			end, function()
+				client("Controllers/TroveController").Close()
+			end },
+		}
+		for _, size in ipairs({ { 390, 844 }, { 844, 390 } }) do
+			Mock.SetViewport(size[1], size[2])
+			LKC.advance(0.3)
+			for _, w in ipairs(windows) do
+				local ok, err = pcall(w[2])
+				T.check(ok, "kitb ribbon clear: " .. w[1] .. " opens at " .. size[1] .. "x" .. size[2], tostring(err))
+				LKC.advance(0.4)
+				check(size[1] .. "x" .. size[2] .. " " .. w[1])
+				pcall(w[3])
+				LKC.advance(0.2)
+			end
+		end
+		T.check(#seen >= 8, "kitb ribbon clear: (setup) the walk saw the header titles", table.concat(seen, "; "))
+		T.check(#problems == 0, "kitb ribbon clear: no header ribbon crosses a neighbour of its title or leaves its window", table.concat(problems, "; "))
+		Mock.SetViewport(old[1], old[2])
+		LKC.advance(0.2)
+		LKC.flushErrors("kitb_title_ribbon_clear")
 	end)
 
 	return S

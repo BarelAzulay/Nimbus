@@ -1312,7 +1312,9 @@ end
 function Menu.run(ui)
 	local B, E = K.BOARD, Menu.entrance()
 	ui.Phase = "Entering"
-	SignKit.Spin(ui.Board, true) -- (sign/logo build) B2's propellers turn while the board opens
+	-- (sign/logo build) B2's propellers turn while the board opens; "Spinning" says so, so Menu.sway can stop them at rest
+	ui.Board:SetAttribute("Spinning", true)
+	SignKit.Spin(ui.Board, true)
 	Menu.tween(ui, "Move", ui.Swing, TweenInfo.new(tonumber(E.Drop) or 0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Position = ui.Rest }, function()
 		Menu.snap(ui)
 	end)
@@ -1503,6 +1505,7 @@ function Menu.leave()
 	Menu.stopMotion(ui)
 	ui.Phase, ui.Swaying = "Leaving", nil
 	if ui.Board then
+		ui.Board:SetAttribute("Spinning", false)
 		SignKit.Spin(ui.Board, false)
 	end
 	local swing = ui.Swing
