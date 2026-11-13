@@ -778,7 +778,9 @@ function Menu.refreshBadge()
 end
 
 -- (kit B U4) a PixelIcon left of a plank's label, the two centred together on the face by a row layout (the engine
--- measures the text: AutomaticSize); returns the icon
+-- measures the text: AutomaticSize); returns the icon. (U5 review) The text is fitted again to the face less the icon
+-- and the gap (SignKit fitted it to the bare face), and the auto-sized label never truncates: under the board's UIScale
+-- a 1 px auto-size shortfall would otherwise draw "PLA..."
 function Menu.plankIcon(plank, name, px, colour)
 	local face = plank:FindFirstChild("Face", true)
 	local label = face and face:FindFirstChild("Label")
@@ -786,18 +788,23 @@ function Menu.plankIcon(plank, name, px, colour)
 	if not icon then
 		return nil
 	end
+	local gap = math.floor(px * 0.4)
 	local group = H.frame("Group", { Size = UDim2.fromScale(1, 1), ZIndex = 3 }, face)
 	Util.Create("UIListLayout", {
 		FillDirection = Enum.FillDirection.Horizontal,
 		HorizontalAlignment = Enum.HorizontalAlignment.Center,
 		VerticalAlignment = Enum.VerticalAlignment.Center,
 		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = UDim.new(0, math.floor(px * 0.4)),
+		Padding = UDim.new(0, gap),
 		Parent = group,
 	})
 	icon.LayoutOrder = 1
 	icon.ZIndex = 3
 	icon.Parent = group
+	local edge = plank:GetAttribute("EdgePx") or SignKit.Sizes.Edge
+	local room = plank.Size.X.Offset - 2 * edge - 2 * SignKit.Sizes.LabelPad - icon.Size.X.Offset - gap
+	label.TextSize = SignKit.FitSize(label.Text, label.TextSize, room)
+	label.TextTruncate = Enum.TextTruncate.None
 	label.LayoutOrder = 2
 	label.AutomaticSize = Enum.AutomaticSize.X
 	label.Position = UDim2.fromOffset(0, 0)
@@ -805,6 +812,7 @@ function Menu.plankIcon(plank, name, px, colour)
 	label.Parent = group
 	return icon
 end
+MainMenuController._PlankIcon = Menu.plankIcon -- tests (U5 review)
 
 -- the hint line's input: a gamepad (a console, or the pad was the last input), touch, else keyboard
 function H.inputKind()

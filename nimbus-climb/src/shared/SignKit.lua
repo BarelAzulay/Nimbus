@@ -320,6 +320,7 @@ local function fitSize(textValue, size, room)
 	end
 	return size
 end
+SignKit.FitSize = fitSize -- (U5 review) for a caller that lays its own icon beside the label (MainMenuController)
 
 -- opts: Text, Style (SignKit.Styles name, default Stone), Width, Height, TextSize (stepped down to fit the face, then the
 -- label truncates), Face / Lip / Edge / TextColor overrides, LipPx (the lip's height, default Sizes.Lip), IconSlot (a

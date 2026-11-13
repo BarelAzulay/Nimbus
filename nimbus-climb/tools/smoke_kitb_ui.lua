@@ -76,6 +76,9 @@
 --                             6 px square bullet
 --   settings_hidden_under_credits the DEV panel (Restart / Skip tutorial) and a menu window are never open together
 --   loading_tip_clear_of_bulb (g) the tip's text starts 12 px or more right of the pixel bulb at every size
+--   menu_plank_labels_fit     (U5 review) PLAY / SETTINGS / UPDATES: the auto-sized label beside its icon never truncates,
+--                             and text + icon + gap fits the face at 1920x1080, 1280x720, 844x390 and 390x844; a label
+--                             that just fits a bare face steps down once its icon is laid beside it
 --   (server world, pure) signkit_plank_press_sinks (a), signkit_plank_off_disabled (b), signkit_plank_label_fits (c),
 --   signkit_style_tokens (d), signkit_header_rim_matches_frame (e), pixelicon_clamp_and_warn (f),
 --   credits_record_needs_flag (h)
@@ -1990,6 +1993,60 @@ local function clientScenarios()
 		MenuH.close()
 		T.check(ok, "menu play: the scenario ran", tostring(err))
 		LKC.flushErrors("menu_play_is_green_plank_only")
+	end)
+
+	-- (U5 review) PLAY, SETTINGS and UPDATES: the label beside its pixel icon is auto-sized (Menu.plankIcon), so it never
+	-- truncates (a 1 px auto-size shortfall under the board's UIScale would draw "PLA..."), and the text was fitted to
+	-- the face less the icon and the gap: text + icon + gap fits the face's room, in design px, at every screen size
+	S.menu_plank_labels_fit = guarded("menu_plank_labels_fit", function()
+		local Theme = LoadingH.shared("Theme")
+		local SK = LoadingH.shared("SignKit")
+		local Z = SK.Sizes
+		local ok, err = pcall(function()
+			for _, s in ipairs({ { 1920, 1080, "Keyboard" }, { 1280, 720, "Keyboard" }, { 844, 390, "Touch" }, { 390, 844, "Touch" } }) do
+				local tag = s[1] .. "x" .. s[2]
+				local menu = MenuH.open({ Size = s, Input = s[3] })
+				for _, name in ipairs({ "PlayButton", "SettingsButton", "UpdatesButton" }) do
+					local plank = MenuH.find(menu, name)
+					local label = plank and MenuH.find(plank, "Label")
+					local group = label and label.Parent
+					local layout = group and group:FindFirstChildOfClass("UIListLayout")
+					local icon = nil
+					for _, c in ipairs(group and group:GetChildren() or {}) do
+						if c:GetAttribute("PixelIcon") then
+							icon = c
+						end
+					end
+					if T.check(label ~= nil and icon ~= nil and layout ~= nil, "menu labels: " .. name .. " has its label and icon in a row at " .. tag) then
+						T.check(label.TextTruncate == Enum.TextTruncate.None, "menu labels: " .. name .. "'s auto-sized label never truncates at " .. tag, tostring(label.TextTruncate))
+						local w = Theme.Measure(label.Text, "Button", label.TextSize).X
+						local room = plank.Size.X.Offset - 2 * Z.Edge - 2 * Z.LabelPad
+						local used = w + icon.Size.X.Offset + layout.Padding.Offset
+						T.check(used <= room or label.TextSize == 14, "menu labels: " .. name .. " text + icon + gap fits its face at " .. tag,
+							fmt("%d + %d + %d px in %d at %d", w, icon.Size.X.Offset, layout.Padding.Offset, room, label.TextSize))
+					end
+				end
+				MenuH.close()
+			end
+			-- today's three labels leave 60 px or more spare, so a label that just fits a bare face (5 px spare) proves the
+			-- icon and the gap are taken off before the size steps down
+			local MMC = MenuH.mmc()
+			local text = "SETTINGS AND MORE"
+			local width = Theme.Measure(text, "Button", 22).X + 2 * Z.Edge + 2 * Z.LabelPad + 5
+			local plank = SK.Plank(Instance.new("Frame"), { Text = text, Width = width, TextSize = 22 })
+			local icon = MMC._PlankIcon and MMC._PlankIcon(plank, "gear", 18, Theme.Sign.Text)
+			local label = MenuH.find(plank, "Label")
+			local layout = label and label.Parent:FindFirstChildOfClass("UIListLayout")
+			if T.check(icon ~= nil and layout ~= nil, "menu labels: (tight) the icon row is built (MainMenuController._PlankIcon)") then
+				local w = Theme.Measure(text, "Button", label.TextSize).X
+				local used = w + icon.Size.X.Offset + layout.Padding.Offset
+				T.check(used <= width - 2 * Z.Edge - 2 * Z.LabelPad and label.TextSize < 22, "menu labels: (tight) the label steps down to fit beside its icon",
+					fmt("%d + %d + %d px in %d at %d", w, icon.Size.X.Offset, layout.Padding.Offset, width - 2 * Z.Edge - 2 * Z.LabelPad, label.TextSize))
+			end
+		end)
+		MenuH.close()
+		T.check(ok, "menu labels: the scenario ran", tostring(err))
+		LKC.flushErrors("menu_plank_labels_fit")
 	end)
 
 	-- no neon kit on the title screen: no gradient, no rounded corner, no glow ring, no classic text stroke, no neon colour
