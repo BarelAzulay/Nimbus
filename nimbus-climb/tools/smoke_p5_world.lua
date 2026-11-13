@@ -291,10 +291,14 @@ local function serverScenarios()
 		end
 		-- kit-b S2: with the living sky's Day theme uploaded, empty / incomplete faces boot the painted Day sky ("Painted",
 		-- smoke_kitb_sky.lua lightingservice_boot_uses_painted_day); the Fallback below is the last resort, so its checks
-		-- run with the Day theme hidden (a theme with no ids)
+		-- run with the Day theme hidden (a theme with no ids); S2 review: the boot sky is the loop's first phase's theme
+		-- (falling back to the Day's), so that one is hidden too
 		local savedDay = Config.Sky.Themes and Config.Sky.Themes.Day
+		local firstPhase = Config.Sky.Cycle.Order[1]
+		local savedFirst = Config.Sky.Themes and Config.Sky.Themes[firstPhase]
 		local ok, err = pcall(function()
 			Config.Sky.Themes.Day = "p5_no_day_theme"
+			Config.Sky.Themes[firstPhase] = "p5_no_day_theme"
 			-- 1. empty faces (the shipped Config) and no Day theme -> Fallback
 			setFaces(Config, {})
 			K.resetCursors()
@@ -369,6 +373,7 @@ local function serverScenarios()
 		T.check(ok, "p5world_lighting ran without errors", tostring(err))
 		-- restore the shipped Config and the boot look for the scenarios after this one
 		if Config.Sky.Themes then
+			Config.Sky.Themes[firstPhase] = savedFirst
 			Config.Sky.Themes.Day = savedDay
 		end
 		for k in pairs(Config.Sky.Faces) do

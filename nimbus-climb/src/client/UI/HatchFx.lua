@@ -41,8 +41,9 @@
 --   HatchFx.Dim(on [, seconds]) -> effects   High graphics only: on = the client-only Lighting.NimbusHatchBlur
 --     (BlurEffect, ours by name, 0 -> 14) and the cool tint pushed as the LightingStack preset "Hatch" (Brightness
 --     -0.08, Saturation -0.25 against LightingStack.Value without "Hatch"; no ColorCorrectionEffect of our own: the
---     LightingStack is the only client writer of Lighting); off = the blur destroyed and the preset popped. -> how many
---     of the two are on now
+--     LightingStack is the only client writer of Lighting); off = the blur eased out over `seconds` (kit-b S3, sky audit
+--     F10: client/SkyTransition.BlurOut, Size -> 0 Quad In, then destroyed; it no longer counts as on) and the preset
+--     popped. On again mid-fade takes the fading blur back from where it is. -> how many of the two are on now
 --   HatchFx.Stats() -> { Live, Pooled, Tweens, Heartbeats, Effects }   (tests) every pool's live sparks and frames, the
 --     tweens playing that HatchFx made (stars, rays, rings, shocks, the blur), the pools whose Heartbeat is connected
 --     and the Lighting effects on (Dim)
@@ -108,6 +109,7 @@ HatchFx.Metrics = K
 local R = {
 	Pools = setmetatable({}, { __mode = "k" }), Stars = setmetatable({}, { __mode = "k" }), GQ = nil, Rng = Random.new(26),
 	Blur = nil, BlurTween = nil, Pushed = false, LS = nil,
+	Fading = nil, ST = nil, -- { Blur, Tween }: the blur easing out after Dim(false); client/SkyTransition (lazy)
 }
 
 local function high()
@@ -951,6 +953,21 @@ local function lightingStack()
 	return R.LS or nil
 end
 
+local function skyTransition()
+	if R.ST == nil then
+		R.ST = false
+		local client = script.Parent and script.Parent.Parent
+		local module = client and client:FindFirstChild("SkyTransition")
+		if module and module:IsA("ModuleScript") then
+			local ok, mod = pcall(require, module)
+			if ok and type(mod) == "table" then
+				R.ST = mod
+			end
+		end
+	end
+	return R.ST or nil
+end
+
 local function effectsOn()
 	local n = 0
 	if R.Blur and R.Blur.Parent then
@@ -967,11 +984,21 @@ function HatchFx.Dim(on, seconds)
 	local ls = lightingStack()
 	if on and high() then
 		if not (R.Blur and R.Blur.Parent) then
-			local old = Lighting:FindFirstChild("NimbusHatchBlur")
-			if old and old:IsA("BlurEffect") then
-				old:Destroy()
+			local fading = R.Fading
+			R.Fading = nil
+			if fading and fading.Blur.Parent then
+				-- still easing out: stop there and come back from that size (no new blur, no jump to 0)
+				pcall(function()
+					fading.Tween:Cancel()
+				end)
+				R.Blur = fading.Blur
+			else
+				local old = Lighting:FindFirstChild("NimbusHatchBlur")
+				if old and old:IsA("BlurEffect") then
+					old:Destroy()
+				end
+				R.Blur = new("BlurEffect", { Name = "NimbusHatchBlur", Size = 0 }, Lighting)
 			end
-			R.Blur = new("BlurEffect", { Name = "NimbusHatchBlur", Size = 0 }, Lighting)
 		end
 		cancel(R.BlurTween)
 		R.BlurTween = play(R.Blur, TweenInfo.new(seconds, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = K.BLUR })
@@ -988,8 +1015,19 @@ function HatchFx.Dim(on, seconds)
 		cancel(R.BlurTween)
 		R.BlurTween = nil
 		if R.Blur then
-			R.Blur:Destroy()
+			local blur = R.Blur
 			R.Blur = nil
+			-- eased out, then destroyed by SkyTransition (at once only without it, or for a blur already off Lighting)
+			local ST = skyTransition()
+			local ok, tween = false, nil
+			if ST and blur.Parent then
+				ok, tween = pcall(ST.BlurOut, blur, seconds)
+			end
+			if ok and tween then
+				R.Fading = { Blur = blur, Tween = tween }
+			else
+				blur:Destroy()
+			end
 		end
 		if R.Pushed and ls then
 			pcall(ls.Pop, "Hatch", seconds)

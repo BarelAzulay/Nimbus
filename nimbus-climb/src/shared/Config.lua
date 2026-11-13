@@ -867,7 +867,7 @@ Config.Art = {
 -- Dawn 2 -> Day 6 -> Sunset 9 -> Night 3 min, each phase blending into the next over its last Blend seconds, plus a
 -- server-wide raid sky while a raid boss is up. shared/SkyCycle turns the server time into a phase and a preset; the
 -- client re-applies it every Refresh s with a Tween s tween (LightingStack base). Faces stays LightingService's boot sky
--- (empty = the painted Day theme, kit-b S2).
+-- (empty = the painted theme of the loop's first phase, else the Day's; kit-b S2).
 -- Each skybox swap hides behind the haze bridge (Transitions, Bridge).
 --   Themes / RaidThemes  the painted skybox (blender/sky/sky_themes.py theme id) per phase / per raid boss id; the faces
 --                        are TextureIds "sky_<theme>_<Face>" (shared/SkyFaces); a theme without all six = the boot sky
@@ -896,9 +896,20 @@ Config.Sky = {
 	--   Raid    a raid sky in (In s from SkyEventAt; raid to raid too) and out (Out s); the client refreshes every Step s
 	--           with Step s tweens while one blends (else Cycle.Refresh / Tween); the bridge colour = the raid look's
 	--           Atmosphere Decay
+	--   Zone    (kit-b S3, sky audit F9) a zone mood pushed over the world (DungeonController's "Dungeon" light, Sine through
+	--           LightingStack): In s to dim at the run's start, Late s for a tier mood read late (the pocket streamed in
+	--           after the start: a slow re-tint, not a 1 s shift mid-play), Out s back at the end (0 s while the screen is
+	--           black under a fade)
+	--   Screen  (S3, F10) screen-space effects: Out = SkyTransition.BlurOut's default fade (Quad In), Lift = the dungeon's
+	--           black fade frame tweened out when End arrives under it
+	--   Preload (S2 review) RaidDelay = seconds after PLAY before the four raid skies preload, one at a time (the lobby's
+	--           own assets load first)
 	Transitions = {
 		Cycle = { BridgeHalf = 0.284, Density = 0.65, Haze = 3.4, Cover = 0.85 },
 		Raid = { In = 8, Out = 6, Step = 0.5, BridgeHalf = 0.3, Density = 0.7, Haze = 4.0, Cover = 0.9 },
+		Zone = { In = 1.5, Late = 2.5, Out = 2 },
+		Screen = { Out = 0.35, Lift = 0.3 },
+		Preload = { RaidDelay = 4 },
 	},
 	-- the cycle's bridge colour per skybox pair (Themes[phase] .. ">" .. Themes[next]): Color = the average of the two
 	-- painted skies' horizon band (the 15% above the horizon of Ft / Bk / Lf / Rt, .superpowers/sky-final), Decay = the

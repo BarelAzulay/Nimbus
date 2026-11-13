@@ -37,8 +37,9 @@
 --   * Low graphics: GraphicsQuality.Recap after each applied refresh (the GfxLow cloud cap follows the sky, updated in
 --     place and carried by the next refresh: it never cancels or re-eases these linear base tweens)
 --   * the preload (kit-b S2, sky audit F4; client/SkyTransition): the next theme's six faces are fetched once per blend
---     window, at its first refresh inside it (about 37 s before the swap at blend 0.5), and the four raid themes once
---     the menu's PLAY fires (UiGate.Played; at once when Start comes after PLAY), once per Start
+--     window, at its first refresh inside it (about 37 s before the swap at blend 0.5), and the four raid themes
+--     Transitions.Preload.RaidDelay (4) s after the menu's PLAY fires (UiGate.Played; after Start when Start comes after
+--     PLAY), one at a time, once per Start
 -- The "look" = the raid boss id from its eventBlend 0.5, else the next phase from the phase's Blend 0.5, else the phase
 -- (the same moments the skybox swaps).
 --
@@ -470,20 +471,30 @@ local function preloadNext(at)
 	end
 end
 
--- the four raid themes (sorted by boss id: every client fetches them in the same order), once per Start
+-- the four raid themes (sorted by boss id: every client fetches them in the same order), once per Start: S2 review,
+-- Transitions.Preload.RaidDelay s later (the lobby's own assets first), then one theme at a time in this one thread
+-- (each PreloadAsync waits for the last); a Stop (or a new Start) ends the queue
 local function preloadRaids()
 	if St.RaidsPreloaded or not St.Running then
 		return
 	end
 	St.RaidsPreloaded = true
-	local ids = {}
-	for bossId in pairs(cfg().RaidThemes) do
-		ids[#ids + 1] = bossId
-	end
-	table.sort(ids)
-	for _, bossId in ipairs(ids) do
-		pcall(SkyTransition.Preload, cfg().RaidThemes[bossId])
-	end
+	local gen = St.Gen
+	local pre = cfg().Transitions.Preload
+	local delay = type(pre) == "table" and tonumber(pre.RaidDelay) or 4
+	task.delay(delay, function()
+		local ids = {}
+		for bossId in pairs(cfg().RaidThemes) do
+			ids[#ids + 1] = bossId
+		end
+		table.sort(ids)
+		for _, bossId in ipairs(ids) do
+			if not St.Running or St.Gen ~= gen then
+				return
+			end
+			pcall(SkyTransition.Preload, cfg().RaidThemes[bossId], true)
+		end
+	end)
 end
 
 ----------------------------------------------------------------------
@@ -610,7 +621,7 @@ function SkyController.Start()
 			end
 		end)
 	end
-	-- the raid skies after PLAY (a raid becomes possible), at once when PLAY came first
+	-- the raid skies after PLAY (a raid becomes possible; RaidDelay s later), from now when PLAY came first
 	St.RaidsPreloaded = false
 	local gate = uiGate()
 	if gate and type(gate.HasPlayed) == "function" and gate.HasPlayed() then

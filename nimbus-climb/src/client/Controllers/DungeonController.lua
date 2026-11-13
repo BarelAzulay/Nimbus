@@ -35,10 +35,12 @@
 --     toasts flash inside it ("Room 2 cleared! +$340 +24 tokens +70 XP"). The End card (totals, first clear, unlock,
 --     new best) sits at the right (desktop / landscape) or under the top bar (portrait), never in the centre.
 --     A lost floor (Wipe / Timeout) shows client/Controllers/LossScreen instead (R.showLoss; team balance).
---   * Lighting: LightingStack.Push("Dungeon", preset, 1) when a run starts (darker ambient, ColorCorrection Brightness
---     -0.12 / Contrast 0.1 / a warm grey tint, Atmosphere density +0.15); Pop("Dungeon", 1) on End or when the player
---     is no longer in the pocket (InBattle released). The music follows the same switch: SoundFx.SetLayer("Dungeon",
---     true / false) (the Dungeon track while the run lasts; BattleController's Battle layer wins in the boss room).
+--   * Lighting: LightingStack.Push("Dungeon", preset, 1.5) when a run starts (darker ambient, ColorCorrection Brightness
+--     -0.12 / Contrast 0.1 / a warm grey tint, Atmosphere density +0.15; a tier mood read late is re-pushed over 2.5 s);
+--     Pop("Dungeon", 2) on End or when the player is no longer in the pocket (InBattle released); 0 s on an End under
+--     a black fade (kit-b S3, sky audit F9: Config.Sky.Transitions.Zone; was 1 s each). The music follows the same
+--     switch: SoundFx.SetLayer("Dungeon", true / false) (the Dungeon track while the run lasts; BattleController's
+--     Battle layer wins in the boss room).
 --   * Sounds: SoundFx "Reward" when the chest pays out (DungeonState "Chest") and when a room's loot comes in (not
 --     the third-of-the-XP consolation of a lost run).
 --   * Camera (wave 6): while a run lasts, R.camClamp (RenderStep NimbusDungeonCamBox at Camera + 1) keeps the camera
@@ -54,7 +56,8 @@
 --   * The room change fade (DungeonState "Fade" { Out, Hold, In }): ONE black full-screen Frame in its own ScreenGui
 --     NimbusDungeonFade (IgnoreGuiInset, DisplayOrder K.FADE_ORDER 25: above the HUD 10, the battle HUD / run card 12
 --     and the windows 20-23, below Notify 30); tweens to black over Out, holds (until the next room's Run payload,
---     at least Hold), back over In; never stuck: a FADE_SAFETY 6 s clear, End and leaving the run clear it at once.
+--     at least Hold), back over In; never stuck: a FADE_SAFETY 6 s clear, leaving the run clears it at once, End lifts
+--     it over Config.Sky.Transitions.Screen.Lift (0.3 s; kit-b S3).
 --     (wave 6: the black waits up to FADE_SAFETY for the room: the server's payload can queue behind a big
 --     replication; the old 3 s clear dropped the walk-in when it came late.)
 --   * Wave 5 (bugs #15 / #26):
@@ -139,8 +142,7 @@ local K = {
 	FADE_MAX_STEP = 2, -- Out / Hold / In are clamped to 0..this
 	TICK = 0.25, -- the light loop
 	BACK_ACTION = "NimbusDungeonBack",
-	LIGHT_ID = "Dungeon",
-	LIGHT_SECONDS = 1,
+	LIGHT_ID = "Dungeon", -- pushed over Config.Sky.Transitions.Zone In / Late, popped over Out (kit-b S3, sky audit F9)
 	MOOD_RETRY = 1, -- bug #5 review: re-read the tier mood every 1 s ...
 	MOOD_TRIES = 10, -- ... up to 10 s while the run is lit (streaming / a slow join)
 	ZOOM_RUN = 14, -- bug batch 2 (#19): the camera zoom cap inside a run (rooms are 16 studs high)
@@ -2102,6 +2104,33 @@ function R.clearFade()
 	end
 end
 
+-- kit-b S3 (sky audit F9): End with the fade on screen: the fade is over at once (S.Fade nil), but the black frame
+-- tweens out over Config.Sky.Transitions.Screen.Lift (0.3 s) instead of vanishing in one frame. -> true when the screen
+-- was black (nearly opaque) at that moment: the light may change under it unseen
+function R.liftFade()
+	local frame = U.Fade
+	if not (S.Fade and frame and frame.Visible and frame.BackgroundTransparency < 0.99) then
+		R.clearFade()
+		return false
+	end
+	local black = frame.BackgroundTransparency <= 0.1
+	local tr = type(Config.Sky) == "table" and Config.Sky.Transitions
+	local lift = type(tr) == "table" and type(tr.Screen) == "table" and tonumber(tr.Screen.Lift) or 0.3
+	S.Fade = nil
+	if S.Walk and S.Walk.Phase == "Hold" then
+		H.safe("walk go", R.walkGo)
+	end
+	local seq = S.FadeSeq
+	R.fadeTween(1, lift)
+	task.delay(lift, function()
+		-- a new fade since (FadeSeq moved) keeps the overlay
+		if S.Fade == nil and S.FadeSeq == seq then
+			R.clearFade()
+		end
+	end)
+	return black
+end
+
 -- the light loop's safety net (a lost task.delay never leaves the screen black)
 function R.fadeTick()
 	local fade = S.Fade
@@ -2197,7 +2226,16 @@ function R.sound(name)
 	end
 end
 
-function R.light(on)
+-- kit-b S3 (sky audit F9): the zone timings, Config.Sky.Transitions.Zone (In 1.5 / Late 2.5 / Out 2; was 1 s each)
+local function zoneSeconds(key, default)
+	local tr = type(Config.Sky) == "table" and Config.Sky.Transitions
+	local zone = type(tr) == "table" and tr.Zone
+	local v = type(zone) == "table" and tonumber(zone[key]) or nil
+	return (v and v == v and v >= 0) and v or default
+end
+
+-- off: over Zone.Out, or over `seconds` when given (End under a black fade: 0, the change is never seen)
+function R.light(on, seconds)
 	if on == S.Lit then
 		return
 	end
@@ -2211,10 +2249,11 @@ function R.light(on)
 		return
 	end
 	if on then
-		H.safe("light push", LS.Push, K.LIGHT_ID, R.preset(), K.LIGHT_SECONDS)
+		H.safe("light push", LS.Push, K.LIGHT_ID, R.preset(), zoneSeconds("In", 1.5))
 		if not S.MoodSet then
 			-- the run started before the player stood in the pocket (streaming, a slow join): re-read the style's mood
-			-- every K.MOOD_RETRY s up to K.MOOD_TRIES times while the run's lighting is on, push it once it can be read
+			-- every K.MOOD_RETRY s up to K.MOOD_TRIES times while the run's lighting is on, push it once it can be read,
+			-- over Zone.Late (a slow re-tint while the player is already playing)
 			S.MoodGen = (S.MoodGen or 0) + 1
 			local gen = S.MoodGen
 			task.spawn(function()
@@ -2225,14 +2264,14 @@ function R.light(on)
 					end
 					local preset = R.preset()
 					if S.MoodSet then
-						H.safe("light push", LS.Push, K.LIGHT_ID, preset, K.LIGHT_SECONDS)
+						H.safe("light push", LS.Push, K.LIGHT_ID, preset, zoneSeconds("Late", 2.5))
 						return
 					end
 				end
 			end)
 		end
 	else
-		H.safe("light pop", LS.Pop, K.LIGHT_ID, K.LIGHT_SECONDS)
+		H.safe("light pop", LS.Pop, K.LIGHT_ID, tonumber(seconds) or zoneSeconds("Out", 2))
 	end
 end
 
@@ -3368,8 +3407,9 @@ function R.onState(kind, payload)
 		S.Toast = nil
 		H.safe("walk clear", R.walkClear)
 		H.safe("enter clear", R.enterClear)
-		R.clearFade()
-		R.light(false)
+		-- (kit-b S3) a fade on screen lifts over 0.3 s; the light comes back under the black at once, else over Zone.Out
+		local black = R.liftFade()
+		R.light(false, black and 0 or nil)
 		R.zoom(false)
 		R.unwatchDoors()
 		H.safe("shoulder", R.shoulder)
