@@ -62,7 +62,7 @@ local function clientScenarios()
 	local LocalPlayer = Players.LocalPlayer
 	local H = {}
 
-	local MUSCLE = "\240\159\146\170"
+	local MUSCLE = "" -- (kit-b U7b) the confirm title has no glyph (the weight is the header's PixelIcon)
 	local SKILLS = { "Speed", "Physique", "Ability", "Defense" }
 	-- key, level, stored evolution, skill ranks
 	local FIX = {
@@ -402,7 +402,7 @@ local function clientScenarios()
 				H.click(H.part("Speed", "Action"))
 				local confirm = H.confirm()
 				T.check(confirm ~= nil and H.shown(confirm), "train ui: TRAIN asks first")
-				T.eq(H.text(H.find("Title", confirm)), MUSCLE .. " TRAIN ATTACK SPEED?", "train ui: today's confirm title") -- (kit-b U6: a Title-role text reads in capitals)
+				T.eq(H.text(H.find("Title", confirm)), MUSCLE .. "TRAIN ATTACK SPEED?", "train ui: today's confirm title") -- (kit-b U6: a Title-role text reads in capitals)
 				T.eq(H.text(H.find("Text", confirm)), name .. " goes to Rank 1 Attack Speed for " .. TCat.FormatCash(cost) .. ". It takes 1 min. " .. name
 					.. " rests at home until it's done, then comes back by itself.", "train ui: today's confirm text")
 				T.eq(H.text(H.find("Yes", confirm)), "Train " .. TCat.FormatCash(cost), "train ui: Yes reads 'Train $300'")

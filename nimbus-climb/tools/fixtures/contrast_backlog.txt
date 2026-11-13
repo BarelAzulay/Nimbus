@@ -33,10 +33,6 @@ NimbusFusion.Window_*.Panel.Body.Pills.Pill_*  # "Uncommon" #FFFFFF on #498665 4
 NimbusHatch.Stage.Content.BottomBar.SpinAgain.Face.Chip.Coin.Icon  # "☁" #FFFFFF on #C89E4A 2.49:1 < 3
 NimbusHatch.Stage.Content.BottomBar.SpinAgain.Face.Chip.Price  # "500" #B0B8CE on #565B66 3.44:1 < 4.5
 NimbusHatch.Stage.Content.BottomBar.SpinAgain.Face.Label  # "SPIN AGAIN" #B0B8CE on #6C7280 2.43:1 < 3
-NimbusHud.TopRight.Currency.Currency_*.RunChip.Run  # "+7" #FAE084 on #7E6939 4.05:1 < 4.5
-NimbusIndex.Window_*.IndexPanel.Content.Main.Centre.GridWell.PetGrid.IndexPet_*.Elements.Element_*  # "Nature" #FFFFFF on #61B353 2.59:1 < 4.5
-NimbusIndex.Window_*.IndexPanel.Content.Main.Detail.DetailBody.Meta.Element_*  # "Earth" #FFFFFF on #A6794D 3.84:1 < 4.5
-NimbusMenu.MenuColumn.Entry_*.MenuButton_*.Body.Badge.Mark  # "!" #FFFFFF on #FF4C64 3.25:1 < 4.5
 NimbusMenu.Window_*.HomePanel.Content.Hero.GoHome.Body.Badge.Glyph  # "➜" #FF9630 on #FFE7B1 1.80:1 < 3
 NimbusMenu.Window_*.HomePanel.Content.Hero.GoHome.Body.Sub  # "Hop in with your pet" #FFF7DE on #C79D3A 2.35:1 < 4.5
 NimbusMenu.Window_*.HomePanel.Content.Hero.GoHome.Body.Title  # "GO HOME" #FFFFFF on #CDA03B 2.41:1 < 3
@@ -47,15 +43,6 @@ NimbusNpcDialog.NpcDialog.Slide.Card.Footer.Button_*  # "Next" #FFFFFF on #2F895
 NimbusNpcDialog.NpcDialog.Slide.NameTab.Name  # "SPARKY FOX" #FFFFFF on #59B8BD 2.33:1 < 3
 NimbusPetPicker.Window_*.Panel.Body.Grid.Card_*.Badge  # "x5" #FFFFFF on #1F8A3C 4.41:1 < 4.5
 NimbusPetPicker.Window_*.Panel.Body.Grid.Card_*.Rarity  # "Secret" #6D6F7B on #161B34 3.40:1 < 4.5
-NimbusPets.Window_*.PetsWindow.Content.Detail.ActEvolve  # "Evolve" #FFFFFF on #98793A 4.07:1 < 4.5
-NimbusPets.Window_*.PetsWindow.Content.Detail.ActFeed  # "Feed" #FFFFFF on #98793A 4.07:1 < 4.5
-NimbusPets.Window_*.PetsWindow.Content.Detail.ActPut  # "Put in team" #FFFFFF on #2F895B 4.34:1 < 4.5
-NimbusPets.Window_*.PetsWindow.Content.GridWell.Grid.Card_*.Element  # "C" #FFFFFF on #FFD468 1.41:1 < 3
-NimbusPets.Window_*.PetsWindow.Content.GridWell.Grid.Card_*.Number  # "1" #FFFFFF on #6CD090 1.90:1 < 3
-NimbusPets.Window_*.PetsWindow.Content.Sheet.ActEvolve  # "Evolve" #FFFFFF on #98793A 4.08:1 < 4.5
-NimbusPets.Window_*.PetsWindow.Content.Sheet.ActFeed  # "Feed" #FFFFFF on #98793A 4.08:1 < 4.5
-NimbusPets.Window_*.PetsWindow.Content.Sheet.ActPut  # "Put in team" #FFFFFF on #2F895B 4.35:1 < 4.5
-NimbusPets.Window_*.PetsWindow.Content.Slot*.Tag  # "HELPER" #FFFFFF on #40AAFF 2.50:1 < 3
 NimbusShop.ShopWindow.Body.Page_*.Card_*.Body.GetsYou  # "Gets you:" #D4E0F6 on #ECB022 1.46:1 < 4.5
 NimbusShop.ShopWindow.Body.Page_*.Card_*.Body.Line*  # "VIP: x2 daily Cash a" #FFFFFF on #FFE192 1.28:1 < 4.5
 NimbusShop.ShopWindow.Body.Page_*.Card_*.Body.Name  # "STARTER PACK" #FFFFFF on #FF9C2B 2.09:1 < 3

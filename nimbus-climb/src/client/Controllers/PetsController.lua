@@ -21,13 +21,15 @@
 -- closes this one silently.
 --
 -- Screen: ScreenGui "NimbusPets" (DisplayOrder 19, just under NimbusMenu's 20: MenuController's side hint, the toast of a
--- refused action, shows over the window; IgnoreGuiInset = true), Frame "PetsWindow" (a CloudUI.Panel). Sizes in screen px: a
+-- refused action, shows over the window; IgnoreGuiInset = true), Frame "PetsWindow" (a CloudUI.Panel, kit-b U8: the Signboard
+-- skin with the paw on its header; every block is a kit B block: flat face, wood edge, darker lip, no glow). Sizes in screen px: a
 -- 1920x1080 screen 1260x900 centred, a phone 844x390 820x330 under Roblox's top bar, others between (K.RECT). The layout is
 -- "Phone" when the window is under K.PHONE_W x K.SHORT design px: there the design is in screen px (scale 1, texts >= 15).
 --   PC: Slot1..3 (Face, Tag FIGHTER | HELPER, PetName, Level, Power, Busy, Glow, Empty), TeamPower, TeamBreakdown, AutoFill, ClearTeam
 --       ("Tap again to clear" for 3 s), PresetA..C (attribute Selected on the active team, Shown on the team shown), Undo (6 s
 --       after AutoFill); a GridWell with SortButton, PickBanner + PickCancel and Grid (the ONLY ScrollingFrame) of Card_<key>
---       (Picture, Level, Element, Power, a UIStroke Rarity, Number, Busy, Tier, Stars, Count, Name); Detail: the selected pet (Name,
+--       (Picture, Level, Element, Power, Number, Busy, Tier, Stars, Count, Name; kit-b U8: the rarity is the card's Lip, in the
+--       rarity's colour, with attribute Rarity; Element is a CloudUI.ElementChip, its drawn icon); Detail: the selected pet (Name,
 --       Meta, XpBar, Row_Income | Power | Health | Speed with Label + Value, Work, Perks, ActPut | ActFighter + ActRemove, ActFeed,
 --       ActTrain, ActGarden, ActEvolve).
 --   Phone: the slots in a column on the left (a row on top when the screen is portrait), the same controls on the top row, 104 x
@@ -39,6 +41,9 @@
 -- (PetBits.askRecall, HomeAction "GardenRecall" stores the team in ONE request); a training pet is refused on the spot.
 -- A hole ("") in a TeamSet keeps the others at their index: the server's kept rule lets a busy pet stay only in its slot.
 -- Remotes used: BattleRequest ("TeamSet", "TeamSelect"), HomeAction ("GardenSet", "GardenRecall"), Notify (in).
+-- (kit-b U8) One colour by role: green is the window's one main action (Put in team; Open Shop when there are no pets), gold
+-- the selected thing (the active team, the selected card's face), red what removes (Remove, an armed Clear, the X), stone
+-- everything else.
 -- Plain Lua 5.1-compatible syntax only. All text goes through Theme roles; no asset ids.
 
 local Players = game:GetService("Players")
@@ -51,6 +56,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7b) the power sword, the stars, the busy marks
 local Remotes = require(Shared:WaitForChild("Remotes"))
 
 local Client = script.Parent.Parent
@@ -98,36 +104,32 @@ local K = {
 	WIDE_ROWS_W = 380, -- design px of the detail's rows: below this the two columns share them unevenly
 	WIDE_W = 1150, -- design px: from this window width the buttons and the detail take their full size
 	PHONE_CARD = { 104, 130, 6 },
+	CARD_LIP = 6, -- (kit-b U8) px of a card's rarity lip
+	PHONE_TITLE = { 104, 134, 42 }, -- a phone's title sign: portrait width, landscape width, height
+	CHIP = 26, -- px of a card's element / number / tier chips
 }
 
-local Colors = Theme.Colors
-local WHITE = Colors.White
-local NAVY = Colors.Navy or Colors.Ink
-local MUTED = Colors.Muted or Colors.CloudShade
-local GOLD = Colors.Gold or Colors.Token
-local GOOD = Colors.Good
-local INSET_COLOR = Color3.fromRGB(20, 30, 70)
-local POWER_GOLD = Color3.fromRGB(255, 214, 110)
-local FIGHTER_COLOR = Theme.Neon.Red
-local HELPER_COLOR = Theme.Neon.Blue
-local GARDEN_COLOR = Color3.fromRGB(120, 196, 90)
-local TRAIN_COLOR = Color3.fromRGB(150, 122, 226)
+-- (kit-b U8) the Signboard palette: brown ink on stone, the role tags on red / sky, the busy covers on violet / grass
+local SIGN = Theme.Sign
+local INK = SIGN.Text
+local MUTED = SIGN.TextMuted
+local GOLD = SIGN.Gold
+local FIGHTER_COLOR = SIGN.Red
+local HELPER_COLOR = SIGN.Sky
+local GARDEN_COLOR = SIGN.Grass
+local TRAIN_COLOR = SIGN.Violet
 local TIER_COLORS = { Golden = Color3.fromRGB(246, 196, 64), Rainbow = Color3.fromRGB(226, 110, 214), Hybrid = Color3.fromRGB(150, 110, 232) }
-local XP_COLOR = Color3.fromRGB(120, 200, 255)
-local ROW_COLORS = { Income = Colors.Cash or Color3.fromRGB(112, 204, 98), Power = Color3.fromRGB(236, 112, 96), Health = Color3.fromRGB(240, 120, 150), Speed = Color3.fromRGB(98, 172, 232) }
+local XP_COLOR = SIGN.Sky
 local ROWS = { { "Income", "Coins" }, { "Power", "Battle power" }, { "Health", "Health" }, { "Speed", "Speed" } }
 
+-- typography (kit-b U7b: the sword, the stars and the busy / work marks are PixelIcons, ICON; the emoji went)
 local G = {
-	Star = "\226\152\133",
-	Swords = "\226\154\148",
-	Seedling = "\240\159\140\177",
-	Muscle = "\240\159\146\170",
-	Sparkle = "\226\156\166",
 	Bullet = "\194\183",
 	Close = "\195\151",
 }
+local ICON = { Power = "sword", Star = "star", Training = "weight", Garden = "sprout", Evolve = "sparkle" }
 
-local frame, text, corner, round, stroke = Bits.frame, Bits.text, Bits.corner, Bits.round, Bits.stroke
+local frame, text, stroke = Bits.frame, Bits.text, Bits.stroke
 
 local initialized = false
 local LocalPlayer = nil
@@ -760,6 +762,7 @@ function H.chipButton(name, label, style, callback)
 		Name = name,
 		Text = label,
 		Style = style,
+		Skin = "Sign",
 		TextSize = 20,
 		ZIndex = 2,
 		Callback = function()
@@ -780,40 +783,36 @@ function H.buildSlot(index)
 		AutoButtonColor = false,
 		BorderSizePixel = 0,
 		Text = "",
-		BackgroundColor3 = WHITE,
 		ZIndex = 2,
 		Parent = U.Content,
 	})
 	item.Button = button
-	corner(button, 14)
-	item.Stroke = stroke(button, NAVY, 3, 0)
-	item.Gradient = Util.Create("UIGradient", { Rotation = 90, Parent = button })
+	-- (kit-b U8) a raised stone tile; its lip takes the pet's rarity colour (refreshSlots)
+	CloudUI.SignBlock(button, "Stone", { Face = SIGN.Tile })
 	item.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = button })
 	item.Face = frame(button, "Face", { ZIndex = 2 })
-	-- (kit-b U6) FIGHTER / HELPER is a tag: the Tag role (Theme keeps it in capitals)
-	item.Tag = text(button, "Tag", "HELPER", "Tag", 18, WHITE, { BackgroundTransparency = 0, BackgroundColor3 = HELPER_COLOR, ZIndex = 5 })
-	corner(item.Tag, 8)
-	stroke(item.Tag, NAVY, 2, 0)
-	item.Name = text(button, "PetName", "", "Heading", 18, WHITE, { TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 4 })
-	item.Level = text(button, "Level", "", "Heading", 18, WHITE, { TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4 })
-	item.Power = text(button, "Power", "", "Heading", 18, POWER_GOLD, { TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 4 })
-	item.Busy = text(button, "Busy", "", "Heading", 18, WHITE, {
-		BackgroundTransparency = 0.35,
-		BackgroundColor3 = Color3.fromRGB(12, 16, 36),
+	-- (kit-b U6) FIGHTER / HELPER is a tag: the Tag role (Theme keeps it in capitals); U8: a flat band, red / sky
+	item.Tag = text(button, "Tag", "HELPER", "Tag", 18, INK, { BackgroundTransparency = 0, BackgroundColor3 = HELPER_COLOR, ZIndex = 5 })
+	item.Name = text(button, "PetName", "", "Heading", 18, INK, { TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 4 })
+	item.Level = text(button, "Level", "", "Heading", 18, MUTED, { TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4 })
+	item.Power = text(button, "Power", "", "Heading", 18, INK, { TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 4 })
+	PixelIcon.Lead(item.Power, ICON.Power) -- (kit-b U7b)
+	item.Busy = text(button, "Busy", "", "Heading", 18, INK, {
+		BackgroundTransparency = 0.2,
+		BackgroundColor3 = TRAIN_COLOR,
 		Size = UDim2.new(1, 0, 1, 0),
 		Visible = false,
 		ZIndex = 6,
 	})
-	corner(item.Busy, 14)
 	item.Empty = text(button, "Empty", "Empty", "Heading", 20, MUTED, {
 		Size = UDim2.new(1, -8, 1, 0),
 		Position = UDim2.fromOffset(4, 0),
 		TextWrapped = true,
 		ZIndex = 4,
 	})
+	-- pick mode's ring: a square gold frame round the slot (a selection mark, not a glow)
 	item.Glow = frame(button, "Glow", { Position = UDim2.fromOffset(-3, -3), Size = UDim2.new(1, 6, 1, 6), Visible = false, ZIndex = 7 })
-	corner(item.Glow, 16)
-	stroke(item.Glow, GOLD, 4, 0)
+	stroke(item.Glow, GOLD, 4, 0).LineJoinMode = Enum.LineJoinMode.Miter
 	button.Activated:Connect(function()
 		safe("slot", H.tapSlot, index)
 	end)
@@ -828,38 +827,31 @@ function H.buildCard(key)
 		AutoButtonColor = false,
 		BorderSizePixel = 0,
 		Text = "",
-		BackgroundColor3 = WHITE,
 		Parent = U.Grid,
 	})
 	item.Button = button
-	corner(button, 12)
-	item.Rarity = stroke(button, NAVY, 3, 0)
-	item.Rarity.Name = "Rarity"
-	item.Gradient = Util.Create("UIGradient", { Rotation = 90, Parent = button })
-	item.Picture = frame(button, "Picture", { ZIndex = 2 })
-	item.Name = text(button, "Name", "", "Body", 18, WHITE, { TextWrapped = true, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 3 })
-	item.Level = text(button, "Level", "", "Heading", 18, WHITE, { TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3 })
-	item.Power = text(button, "Power", "", "Heading", 18, POWER_GOLD, { TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 3 })
-	item.Element = text(button, "Element", "", "Button", 18, WHITE, { BackgroundTransparency = 0, ZIndex = 4 })
-	round(item.Element)
-	stroke(item.Element, NAVY, 2, 0)
-	item.Number = text(button, "Number", "", "Button", 18, WHITE, { BackgroundTransparency = 0, BackgroundColor3 = GOOD, Visible = false, ZIndex = 6 })
-	round(item.Number)
-	stroke(item.Number, NAVY, 2.5, 0)
-	item.Tier = frame(button, "Tier", { BackgroundTransparency = 0, BackgroundColor3 = WHITE, Visible = false, ZIndex = 5 })
-	round(item.Tier)
-	stroke(item.Tier, NAVY, 2, 0)
-	item.TierMark = text(item.Tier, "Mark", "", "Button", 18, WHITE, { Size = UDim2.new(1, 0, 1, 0), ZIndex = 6 })
-	item.Stars = text(button, "Stars", "", "Title", 18, GOLD, { Visible = false, ZIndex = 5 })
-	item.Count = text(button, "Count", "", "Heading", 18, WHITE, { TextXAlignment = Enum.TextXAlignment.Right, Visible = false, ZIndex = 4 })
-	item.Busy = text(button, "Busy", "", "Heading", 18, WHITE, {
-		BackgroundTransparency = 0.35,
-		BackgroundColor3 = Color3.fromRGB(12, 16, 36),
+	-- (kit-b U8) the pitch's .pc: a stone tile with the rarity on its lip (refreshCards paints the lip, the selected face)
+	CloudUI.SignBlock(button, "Stone", { Face = SIGN.Tile, LipPx = K.CARD_LIP, Pad = false })
+	item.Picture = frame(button, "Picture", { BackgroundTransparency = 0, BackgroundColor3 = SIGN.PetWell, ZIndex = 2 })
+	item.Name = text(button, "Name", "", "Body", 18, INK, { TextWrapped = true, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 3 })
+	item.Level = text(button, "Level", "", "Heading", 18, MUTED, { TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3 })
+	item.Power = text(button, "Power", "", "Heading", 18, INK, { TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 3 })
+	PixelIcon.Lead(item.Power, ICON.Power) -- (kit-b U7b)
+	-- the team slot's number: a green square (the pitch's tick chip) with the dark green ink
+	item.Number = text(button, "Number", "", "Button", 18, SIGN.OnGrass, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Grass, Visible = false, ZIndex = 6 })
+	stroke(item.Number, SIGN.Wood, 2, 0).LineJoinMode = Enum.LineJoinMode.Miter
+	item.Tier = frame(button, "Tier", { BackgroundTransparency = 0, BackgroundColor3 = GOLD, Visible = false, ZIndex = 5 })
+	stroke(item.Tier, SIGN.Wood, 2, 0).LineJoinMode = Enum.LineJoinMode.Miter
+	item.TierMark = text(item.Tier, "Mark", "", "Button", 18, INK, { Size = UDim2.new(1, 0, 1, 0), ZIndex = 6 })
+	item.Stars = text(button, "Stars", "", "Title", 18, SIGN.GoldLip, { Visible = false, ZIndex = 5 })
+	item.Count = text(button, "Count", "", "Heading", 18, INK, { TextXAlignment = Enum.TextXAlignment.Right, Visible = false, ZIndex = 4 })
+	item.Busy = text(button, "Busy", "", "Heading", 18, INK, {
+		BackgroundTransparency = 0.2,
+		BackgroundColor3 = TRAIN_COLOR,
 		TextWrapped = true,
 		Visible = false,
 		ZIndex = 7,
 	})
-	corner(item.Busy, 12)
 	button.Activated:Connect(function()
 		safe("card", H.tapCard, key)
 	end)
@@ -871,9 +863,10 @@ end
 function H.buildDetail()
 	local d = {}
 	U.D = d
-	d.Frame = frame(U.Content, "Detail", { BackgroundTransparency = 0.1, BackgroundColor3 = INSET_COLOR, Active = true, ZIndex = 20 })
-	corner(d.Frame, 14)
-	d.Stroke = stroke(d.Frame, Colors.WellEdge or NAVY, 3, 0.15)
+	-- (kit-b U8) the pitch's .dp: a sunk stone well
+	d.Frame = frame(U.Content, "Detail", { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Well, Active = true, ZIndex = 20 })
+	d.Stroke = stroke(d.Frame, SIGN.WellEdge, 2, 0)
+	d.Stroke.LineJoinMode = Enum.LineJoinMode.Miter
 	d.Hint = text(d.Frame, "Hint", "Pick a pet to see its details.", "Body", 19, MUTED, {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0.5, 0, 0.5, 0),
@@ -881,26 +874,27 @@ function H.buildDetail()
 		TextWrapped = true,
 		ZIndex = 21,
 	})
-	d.Glow = frame(d.Frame, "Glow", { BackgroundTransparency = 0.78, BackgroundColor3 = GOLD, ZIndex = 21 })
-	round(d.Glow)
+	-- the square light well the pet stands in (the pitch's .dw; was a soft gold disc)
+	d.Glow = frame(d.Frame, "PetWell", { BackgroundTransparency = 0, BackgroundColor3 = SIGN.PetWell, ZIndex = 21 })
+	stroke(d.Glow, SIGN.WellEdge, 2, 0).LineJoinMode = Enum.LineJoinMode.Miter
 	d.Picture = frame(d.Frame, "Picture", { ZIndex = 22 })
-	d.Name = text(d.Frame, "Name", "", "Title", 30, WHITE, { TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 21 })
-	d.Meta = text(d.Frame, "Meta", "", "Body", 19, Color3.fromRGB(201, 212, 234), { TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 21 })
-	d.Xp = CloudUI.Bar({ Name = "XpBar", Height = 26, TextSize = 18, Color = XP_COLOR, Parent = d.Frame })
+	d.Name = text(d.Frame, "Name", "", "Title", 30, INK, { TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 21 })
+	d.Meta = text(d.Frame, "Meta", "", "Body", 19, MUTED, { TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 21 })
+	d.Xp = CloudUI.Bar({ Name = "XpBar", Height = 26, TextSize = 18, Color = XP_COLOR, Skin = "Sign", Parent = d.Frame })
 	d.Xp.Root.ZIndex = 21
 	for _, row in ipairs(ROWS) do
 		local holder = frame(d.Frame, "Row_" .. row[1], { ZIndex = 21 })
-		local label = text(holder, "Label", row[2], "Body", 18, Color3.fromRGB(201, 212, 234), { Size = UDim2.new(1, 0, 1, 0), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 22 })
-		local value = text(holder, "Value", "", "Heading", 19, ROW_COLORS[row[1]], { Size = UDim2.new(1, 0, 1, 0), TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 22 })
+		local label = text(holder, "Label", row[2], "Body", 18, MUTED, { Size = UDim2.new(1, 0, 1, 0), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 22 })
+		local value = text(holder, "Value", "", "Heading", 19, INK, { Size = UDim2.new(1, 0, 1, 0), TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 22 })
 		U.Rows[row[1]] = { Frame = holder, Label = label, Value = value }
 	end
-	d.Work = text(d.Frame, "Work", "", "Heading", 18, Theme.Lighten(GOOD, 0.35), {
+	d.Work = text(d.Frame, "Work", "", "Heading", 18, INK, {
 		TextWrapped = true,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextYAlignment = Enum.TextYAlignment.Top,
 		ZIndex = 21,
 	})
-	d.Perks = text(d.Frame, "Perks", "", "Body", 18, Theme.Lighten(GOOD, 0.3), {
+	d.Perks = text(d.Frame, "Perks", "", "Body", 18, INK, {
 		TextWrapped = true,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextYAlignment = Enum.TextYAlignment.Top,
@@ -911,6 +905,7 @@ function H.buildDetail()
 			Name = name,
 			Text = label,
 			Style = style,
+			Skin = "Sign",
 			TextSize = 22,
 			ZIndex = 23,
 			Callback = function()
@@ -924,23 +919,25 @@ function H.buildDetail()
 		d[name] = button
 		return button
 	end
+	-- (kit-b U8) one colour by role: Put in team is the green one, Remove the red one, the rest stone
 	action("ActPut", "Put in team", "Green", H.putInTeam)
-	action("ActFighter", "Make fighter", "Red", H.makeFighter)
-	action("ActRemove", "Remove", "Pink", H.removeSelected)
-	action("ActFeed", "Feed", "Gold", function()
+	action("ActFighter", "Make fighter", "Gray", H.makeFighter)
+	action("ActRemove", "Remove", "Red", H.removeSelected)
+	action("ActFeed", "Feed", "Gray", function()
 		H.careOpen("Feed")
 	end)
-	action("ActTrain", "Train", "Red", function()
+	action("ActTrain", "Train", "Gray", function()
 		H.careOpen("Train")
 	end)
-	action("ActGarden", "Garden", "Blue", H.doGarden)
-	action("ActEvolve", "Evolve", "Gold", function()
+	action("ActGarden", "Garden", "Gray", H.doGarden)
+	action("ActEvolve", "Evolve", "Gray", function()
 		H.careOpen("Evolve")
 	end)
 	d.Close = CloudUI.Button({
 		Name = "SheetClose",
 		Text = "",
 		Style = "Red",
+		Skin = "Sign",
 		TextSize = 22,
 		ZIndex = 23,
 		Callback = function()
@@ -949,7 +946,7 @@ function H.buildDetail()
 		end,
 		Parent = d.Frame,
 	})
-	NeonKit.CloseMark(d.Close) -- slop audit 2026-11-12: a drawn X (no "X" letter, no glyph)
+	NeonKit.CloseMark(d.Close, { Square = true, Ink = SIGN.RedLip, Color = INK }) -- slop audit 2026-11-12: a drawn X (no "X" letter, no glyph)
 end
 
 function H.build()
@@ -966,8 +963,8 @@ function H.build()
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Title = "Pets",
 		Closable = true,
-		Category = "Pets",
-		Accent = Theme.Neon.Orange,
+		Skin = "Signboard", -- (kit-b U8) the pitch's Pets window: roof, navy header with the paw, wood frame, stone body
+		Icon = "paw",
 		OnClose = function()
 			PetsController.Close()
 		end,
@@ -979,16 +976,16 @@ function H.build()
 	for i = 1, K.SLOTS do
 		H.buildSlot(i)
 	end
-	U.TeamPower = text(U.Content, "TeamPower", "", "Heading", 28, POWER_GOLD, { TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 2 })
-	U.Breakdown = text(U.Content, "TeamBreakdown", "", "Body", 18, Color3.fromRGB(201, 212, 234), {
+	U.TeamPower = text(U.Content, "TeamPower", "", "Heading", 28, INK, { TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 2 })
+	U.Breakdown = text(U.Content, "TeamBreakdown", "", "Body", 18, MUTED, {
 		TextWrapped = true,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextYAlignment = Enum.TextYAlignment.Top,
 		ZIndex = 2,
 	})
-	U.AutoFill = H.chipButton("AutoFill", "Auto-fill best", "Blue", H.autoFill)
+	U.AutoFill = H.chipButton("AutoFill", "Auto-fill best", "Gray", H.autoFill)
 	U.Clear = H.chipButton("ClearTeam", "Clear", "Gray", H.clearTeam)
-	U.Undo = H.chipButton("Undo", "Undo", "Gold", H.undoFill)
+	U.Undo = H.chipButton("Undo", "Undo", "Gray", H.undoFill)
 	U.Undo.Visible = false
 	U.Undo.ZIndex = 3
 	U.Presets = {}
@@ -998,15 +995,16 @@ function H.build()
 			H.selectTeam(i)
 		end)
 	end
-	U.Well = frame(U.Content, "GridWell", { BackgroundTransparency = 0.42, BackgroundColor3 = INSET_COLOR, ZIndex = 2 })
-	corner(U.Well, 12)
-	U.WellStroke = stroke(U.Well, Colors.WellEdge or NAVY, 3, 0.15)
+	-- (kit-b U8) the cards sit in a sunk stone well (the pitch's .wl)
+	U.Well = frame(U.Content, "GridWell", { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Well, ZIndex = 2 })
+	U.WellStroke = stroke(U.Well, SIGN.WellEdge, 2, 0)
+	U.WellStroke.LineJoinMode = Enum.LineJoinMode.Miter
 	U.Grid = CloudUI.Grid(U.Well, UDim2.fromOffset(116, 170), UDim2.fromOffset(8, 8))
 	U.Grid.Name = "Grid"
 	U.Grid.ZIndex = 3
 	U.GridLayout = U.Grid:FindFirstChild("Layout")
 	U.GridPad = U.Grid:FindFirstChildWhichIsA("UIPadding")
-	U.Sort = H.chipButton("SortButton", "Strongest", "Blue", function()
+	U.Sort = H.chipButton("SortButton", "Strongest", "Gray", function()
 		for i, mode in ipairs(K.SORTS) do
 			if mode == S.Sort then
 				PetsController.SetSort(K.SORTS[i % #K.SORTS + 1])
@@ -1014,15 +1012,15 @@ function H.build()
 			end
 		end
 	end)
+	-- pick mode's banner: a small navy sign with the gold words
 	U.Banner = text(U.Content, "PickBanner", "", "Heading", 20, GOLD, {
-		BackgroundTransparency = 0.1,
-		BackgroundColor3 = INSET_COLOR,
+		BackgroundTransparency = 0,
+		BackgroundColor3 = SIGN.Navy,
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Visible = false,
 		ZIndex = 9,
 	})
-	corner(U.Banner, 10)
-	stroke(U.Banner, GOLD, 2, 0)
+	stroke(U.Banner, SIGN.Wood, 3, 0).LineJoinMode = Enum.LineJoinMode.Miter
 	U.PickCancel = H.chipButton("PickCancel", G.Close, "Red", function()
 		S.Pick = nil
 		H.refresh()
@@ -1030,12 +1028,13 @@ function H.build()
 	U.PickCancel.Visible = false
 	U.PickCancel.ZIndex = 10
 	U.Empty = frame(U.Well, "Empty", { Size = UDim2.new(1, 0, 1, 0), Visible = false, ZIndex = 5 })
-	U.EmptyTitle = text(U.Empty, "Title", "No pets yet!", "Title", 26, WHITE, {
+	U.EmptyTitle = text(U.Empty, "Title", "No pets yet!", "Title", 26, INK, {
 		AnchorPoint = Vector2.new(0.5, 1),
 		Position = UDim2.new(0.5, 0, 0.5, -34),
 		Size = UDim2.new(1, -24, 0, 34),
 		ZIndex = 6,
 	})
+	Theme.StyleTitle(U.EmptyTitle, "Section") -- (kit-b U8) the one title treatment, as the Index's empty Fusions card
 	U.EmptyBody = text(U.Empty, "Body", "", "Body", 18, MUTED, {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0.5, 0, 0.5, -8),
@@ -1046,7 +1045,8 @@ function H.build()
 	U.EmptyButton = CloudUI.Button({
 		Name = "OpenShop",
 		Text = "Open Shop",
-		Style = "Gold",
+		Style = "Green", -- (kit-b U8) the empty window's one main action
+		Skin = "Sign",
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0.5, 20),
 		Size = UDim2.fromOffset(200, 48),
@@ -1118,26 +1118,28 @@ function H.layoutCard(item)
 	for _, label in ipairs({ item.Level, item.Power, item.Name, item.Count, item.Busy, item.Number, item.Stars }) do
 		label.TextSize = fs
 	end
+	-- (kit-b U8) the pet stands in its light well inside the edge; the element chip on its top-left, the team number top-right
 	if phone then
-		place(item.Picture, 2, 2, w - 4, 80)
+		place(item.Picture, 4, 4, w - 8, 78)
 		place(item.Level, 6, 84, 44, 22)
-		place(item.Power, 4, 106, w - 10, 22)
+		place(item.Power, 4, 104, w - 10, 20)
 		item.Name.Visible = false
 	else
-		place(item.Picture, 2, 2, w - 4, 94)
-		place(item.Level, 6, 72, 52, 24)
-		place(item.Name, 4, 96, w - 8, 42)
-		place(item.Power, 4, 142, w - 10, 24)
+		place(item.Picture, 4, 4, w - 8, 92)
+		place(item.Level, 8, 72, 52, 24)
+		place(item.Name, 4, 98, w - 8, 40)
+		place(item.Power, 4, 140, w - 10, 22)
 		item.Name.Visible = true
 	end
-	item.Element.TextSize = fs
 	item.TierMark.TextSize = fs
-	place(item.Element, w - 30, 4, 26, 26)
-	place(item.Number, 4, 4, 26, 26)
-	place(item.Tier, 4, 34, 26, 26)
-	place(item.Stars, w / 2 - 18, 2, 36, 22)
-	place(item.Count, w - 44, phone and 84 or 74, 40, 22)
-	place(item.Busy, 0, 0, w, phone and 82 or 96)
+	if item.Element then
+		place(item.Element, 7, 7, K.CHIP, K.CHIP)
+	end
+	place(item.Number, w - 7 - K.CHIP, 7, K.CHIP, K.CHIP)
+	place(item.Tier, w - 7 - K.CHIP, 11 + K.CHIP, K.CHIP, K.CHIP)
+	place(item.Stars, w / 2 - 18, 4, 36, 22)
+	place(item.Count, w - 44, phone and 60 or 72, 40, 22)
+	place(item.Busy, 0, 0, w, phone and 82 or 96) -- (the card's whole width: "Gardening" and its mark stay on one line)
 	item.Busy.TextWrapped = true
 end
 
@@ -1485,6 +1487,42 @@ function H.layoutPhone(W, H0)
 	H.layoutDetail(sheetW, sheetH)
 end
 
+-- (kit-b U8) the Signboard header: the full-width navy plank over the window on PC (the content starts under it, 62 px);
+-- on a phone the content takes the whole window, so the plank is a short sign at the top-left (the title only, no paw) with
+-- the controls beside it, and the roof sits on that sign at its own fixed phone width (never stretched with the window).
+function H.layoutHeader(panel, phone)
+	local head, title = panel.TitleBar, panel.TitleLabel
+	local plate = title and title.Parent
+	local slot = plate and plate:FindFirstChild("IconSlot")
+	U.TitlePos = U.TitlePos or title.Position
+	U.TitleSize = U.TitleSize or title.Size
+	U.HeadSize = U.HeadSize or head.Size
+	if phone then
+		local w = S.Portrait and K.PHONE_TITLE[1] or K.PHONE_TITLE[2]
+		head.Position = UDim2.fromOffset(0, 0)
+		head.Size = UDim2.fromOffset(w, K.PHONE_TITLE[3])
+		title.TextSize = 24
+		title.Position = UDim2.fromOffset(10, 0)
+		title.Size = UDim2.new(1, -16, 1, 0)
+	else
+		head.Position = UDim2.fromOffset(0, 0)
+		head.Size = U.HeadSize
+		title.TextSize = 34
+		title.Position = U.TitlePos
+		title.Size = U.TitleSize
+	end
+	if slot then
+		slot.Visible = not phone
+	end
+	local roof = panel.Roof
+	if roof then
+		local w = phone and (S.Portrait and K.PHONE_TITLE[1] or K.PHONE_TITLE[2]) + 12 or CloudUI.Metrics.SignRoofW
+		roof.AnchorPoint = phone and Vector2.new(0, 0) or Vector2.new(0.5, 0)
+		roof.Position = phone and UDim2.fromOffset(-6, -10) or UDim2.new(0.5, 0, 0, -10)
+		roof.Size = UDim2.fromOffset(w, roof.Size.Y.Offset)
+	end
+end
+
 function H.layout()
 	if not S.Built then
 		return
@@ -1510,11 +1548,7 @@ function H.layout()
 	U.Content.Position = UDim2.fromOffset(0, phone and 0 or 62)
 	U.Content.Size = UDim2.new(1, 0, 1, phone and 0 or -62)
 	if panel.TitleBar then
-		panel.TitleBar.Position = UDim2.fromOffset(phone and 2 or 12, phone and 2 or 6)
-		panel.TitleBar.Size = phone and UDim2.fromOffset(S.Portrait and 104 or 134, 38) or UDim2.new(1, -24, 0, 50)
-		panel.TitleLabel.TextSize = phone and 24 or 34
-		U.TitleSize = U.TitleSize or panel.TitleLabel.Size
-		panel.TitleLabel.Size = phone and UDim2.new(1, -8, 1, 0) or U.TitleSize
+		H.layoutHeader(panel, phone)
 	end
 	if panel.CloseButton then
 		local size = phone and K.TOUCH or H.touchSize()
@@ -1522,7 +1556,7 @@ function H.layout()
 		panel.CloseButton.AnchorPoint = Vector2.new(0, 0)
 		panel.CloseButton.Position = phone and UDim2.new(1, -(size + 6), 0, 4) or UDim2.new(1, -(size + 16), 0, 8)
 	end
-	U.Well.BackgroundTransparency = 0.42
+	U.Well.BackgroundTransparency = 0
 	U.WellStroke.Enabled = true
 	if phone then
 		H.layoutPhone(W, H0)
@@ -1600,9 +1634,9 @@ function H.refreshSlots(keys)
 		end
 		item.Tag.Text = fighter and "FIGHTER" or "HELPER"
 		item.Tag.BackgroundColor3 = fighter and FIGHTER_COLOR or HELPER_COLOR
-		local tint = def and CloudUI.RarityColor(def.Rarity) or Color3.fromRGB(70, 92, 150)
-		item.Gradient.Color = ColorSequence.new(Theme.Lighten(INSET_COLOR, 0.28):Lerp(tint, 0.35), Theme.Darken(INSET_COLOR, 0.1):Lerp(tint, 0.18))
-		item.Stroke.Color = def and Theme.Lighten(tint, 0.15) or NAVY
+		-- (kit-b U8) the rarity on the slot's lip, as on the cards; an empty slot keeps the stone lip
+		CloudUI.SignBlock(item.Button, "Stone", { Face = SIGN.Tile, LipColor = def and CloudUI.RarityColor(def.Rarity) or SIGN.StoneLip, Pad = false })
+		item.Button:SetAttribute("Rarity", def and def.Rarity or nil)
 		item.Empty.Visible = def == nil
 		item.Empty.Text = S.Pick == i and "Tap a pet" or "Empty"
 		item.Level.Visible = def ~= nil and not (busy and S.Mode == "Phone")
@@ -1611,7 +1645,9 @@ function H.refreshSlots(keys)
 		item.Name.Visible = def ~= nil and S.Mode == "PC"
 		item.Glow.Visible = S.Pick == i
 		item.Busy.Visible = busy ~= nil
-		item.Busy.Text = busy == "Training" and (G.Muscle .. " Training") or (busy and (G.Seedling .. " Gardening") or "")
+		item.Busy.Text = busy == "Training" and "Training" or (busy and "Gardening" or "")
+		item.Busy.BackgroundColor3 = busy == "Training" and TRAIN_COLOR or GARDEN_COLOR
+		PixelIcon.Mark(item.Busy, busy == "Training" and ICON.Training or (busy and ICON.Garden or nil)) -- (kit-b U7b)
 		local stage = def and Bits.stage(key) or 0
 		local viewKey = def and (key .. "|" .. stage) or nil
 		if item.ViewKey ~= viewKey then
@@ -1637,7 +1673,7 @@ function H.refreshSlots(keys)
 			local level = Bits.petLevel(key)
 			item.Name.Text = Bits.displayName(key, def)
 			item.Level.Text = "L" .. level
-			item.Power.Text = G.Swords .. " " .. commas(H.powerOf(key))
+			item.Power.Text = commas(H.powerOf(key))
 		end
 	end
 end
@@ -1680,7 +1716,9 @@ function H.refreshTop()
 	for i, button in ipairs(U.Presets) do
 		button:SetAttribute("Selected", i == active)
 		button:SetAttribute("Shown", i == shown)
-		CloudUI.SetStyle(button, i == active and "Blue" or (i == shown and "Gold" or "Gray"))
+		-- (kit-b U8) the active team is the gold (selected) block; a team only being looked at keeps stone with the ink edge
+		CloudUI.SetStyle(button, i == active and "Gold" or "Gray")
+		button:SetAttribute("Outline", i == shown and i ~= active)
 		button.Visible = not (phone and picking and not S.Portrait)
 	end
 	-- pick mode takes the controls' row on a phone, the sort's side on PC
@@ -1810,20 +1848,31 @@ function H.refreshCards(keys)
 			item.Viewport = nil
 			S.Ready[key] = nil
 		end
-		local tint = CloudUI.RarityColor(def.Rarity)
-		item.Gradient.Color = ColorSequence.new(Theme.Lighten(INSET_COLOR, 0.3):Lerp(tint, 0.38), Theme.Darken(INSET_COLOR, 0.05):Lerp(tint, 0.2))
+		-- (kit-b U8) the rarity on the lip; the selected card takes the selected face and the ink edge
 		local selected = key == S.Selected
-		item.Rarity.Color = selected and GOLD or Theme.Lighten(tint, 0.1)
-		item.Rarity.Thickness = selected and 4 or 3
+		CloudUI.SignBlock(item.Button, "Stone", {
+			Face = selected and SIGN.Selected or SIGN.Tile,
+			Edge = selected and INK or nil,
+			LipColor = CloudUI.RarityColor(def.Rarity),
+			LipPx = K.CARD_LIP,
+			Pad = false,
+		})
+		item.Button:SetAttribute("Rarity", def.Rarity)
+		item.Button:SetAttribute("Selected", selected)
 		item.Name.Text = Bits.displayName(key, def)
 		item.Level.Text = "L" .. level
-		item.Power.Text = G.Swords .. " " .. commas(H.powerOf(key))
+		item.Power.Text = commas(H.powerOf(key))
+		-- the element chip: its drawn icon on the element's colour (was the element's first letter in a disc)
 		local element = Bits.elementsOf(def)[1]
-		local info = element and Config.Elements.Info[element]
-		item.Element.Visible = info ~= nil
-		if info then
-			item.Element.BackgroundColor3 = info.Color
-			item.Element.Text = element:sub(1, 1)
+		if item.ElementId ~= element then
+			if item.Element then
+				item.Element:Destroy()
+			end
+			item.Element = element and CloudUI.ElementChip(item.Button, element, K.CHIP, { ZIndex = 4 }) or nil
+			item.ElementId = element
+			if item.Element then
+				place(item.Element, 7, 7, K.CHIP, K.CHIP)
+			end
 		end
 		local slot = slotOf[key]
 		item.Number.Visible = slot ~= nil
@@ -1835,17 +1884,20 @@ function H.refreshCards(keys)
 		if mark then
 			item.Tier.BackgroundColor3 = (hybrid and TIER_COLORS.Hybrid) or TIER_COLORS[tier]
 			item.TierMark.Text = mark
+			item.TierMark.TextColor3 = Theme.TextOn(item.Tier.BackgroundColor3)
 		end
 		item.Stars.Visible = stage > 0
-		item.Stars.Text = string.rep(G.Star, math.min(2, stage))
+		if stage > 0 then
+			PixelIcon.Mark(item.Stars, ICON.Star, { Count = math.min(2, stage), Of = math.min(2, stage) }) -- (kit-b U7b)
+		end
 		local copies = State.OwnedCount(key)
 		item.Count.Visible = copies > 1
 		item.Count.Text = "x" .. copies
 		local busy = Bits.busyOf(key)
 		item.Busy.Visible = busy ~= nil
-		item.Busy.Text = busy == "Training" and (G.Muscle .. "\nTraining") or (busy and (G.Seedling .. "\nGardening") or "")
-		item.Busy.TextColor3 = WHITE
-		item.Busy.BackgroundColor3 = busy == "Training" and Theme.Darken(TRAIN_COLOR, 0.55) or (busy and Theme.Darken(GARDEN_COLOR, 0.55) or NAVY)
+		item.Busy.Text = busy == "Training" and "Training" or (busy and "Gardening" or "")
+		PixelIcon.Mark(item.Busy, busy == "Training" and ICON.Training or (busy and ICON.Garden or nil)) -- (kit-b U7b)
+		item.Busy.BackgroundColor3 = busy == "Training" and TRAIN_COLOR or GARDEN_COLOR
 	end
 	U.Grid.Visible = #order > 0
 	U.Empty.Visible = #order == 0
@@ -1866,10 +1918,8 @@ function H.refreshDetail(keys, order)
 	local has = def ~= nil and State.OwnedCount(key) > 0
 	if S.Mode == "Phone" then
 		d.Frame.Visible = has and S.SheetOpen
-		d.Frame.BackgroundTransparency = 0
 	else
 		d.Frame.Visible = #order > 0
-		d.Frame.BackgroundTransparency = 0.1
 	end
 	-- (a landscape sheet's own X sits where the window's is: one X at a time, the top one closes the top thing)
 	U.Panel.CloseButton.Visible = not (d.Frame.Visible and S.Mode == "Phone" and not S.Portrait)
@@ -1904,10 +1954,7 @@ function H.refreshDetail(keys, order)
 		d.ViewKey = viewKey
 	end
 	local tier = Bits.tierOf(key, def)
-	local tint = CloudUI.RarityColor(def.Rarity)
-	d.Glow.BackgroundColor3 = TIER_COLORS[tier] or tint
 	d.Name.Text = Bits.displayName(key, def)
-	d.Name.TextColor3 = def.Rarity == "Secret" and Color3.fromRGB(196, 168, 255) or Theme.Lighten(tint, 0.3)
 	-- "Lv 1 / 100, Epic, Celestial", the copy's tier / evolution in the same line
 	local level, xp = Bits.petLevel(key)
 	local cap = Bits.levelCap(key, def)
@@ -1921,10 +1968,9 @@ function H.refreshDetail(keys, order)
 	for _, element in ipairs(Bits.elementsOf(def)) do
 		meta[#meta + 1] = element
 	end
-	if stage > 0 then
-		meta[#meta + 1] = string.rep(G.Star, math.min(2, stage))
-	end
 	d.Meta.Text = table.concat(meta, " " .. G.Bullet .. " ")
+	-- (kit-b U7b) the evolution stars after the line, drawn
+	PixelIcon.Mark(d.Meta, stage > 0 and ICON.Star or nil, { After = true, Count = math.min(2, stage), Of = math.min(2, stage), Colour = SIGN.GoldLip })
 	local need = Bits.xpToNext(level)
 	if level >= cap then
 		d.Xp.SetFraction(1)
@@ -1946,22 +1992,22 @@ function H.refreshDetail(keys, order)
 	local map = type(home.Garden) == "table" and home.Garden or {}
 	local placed = #Bits.slotsHolding(map, key) > 0
 	local ready = Bits.canEvolve(key, def, level)
-	local work, workColor, lines = "", Theme.Lighten(GOOD, 0.35), 1
+	local work, lines, mark = "", 1, nil
 	if job then
-		work = G.Muscle .. " Training " .. Bits.skillName(job.Stat) .. " (" .. Bits.jobLeft(job) .. " left)"
-		workColor = Theme.Lighten(TRAIN_COLOR, 0.35)
+		work, mark = "Training " .. Bits.skillName(job.Stat) .. " (" .. Bits.jobLeft(job) .. " left)", ICON.Training
 	elseif placed then
-		work = G.Seedling .. " Working in your Garden"
+		work, mark = "Working in your Garden", ICON.Garden
 	end
 	if ready then
 		if work ~= "" then
 			work = work .. "\n"
 			lines = 2
 		end
-		work = work .. G.Sparkle .. " Ready to evolve!"
+		work = work .. "Ready to evolve!"
+		mark = mark or ICON.Evolve
 	end
 	d.Work.Text = work
-	d.Work.TextColor3 = workColor
+	PixelIcon.Mark(d.Work, lines == 1 and mark or nil) -- (kit-b U7b) a one-line work note leads with its mark
 	d.WorkLines = lines
 	-- the special, then the follow perks
 	local perkLines = {}
@@ -1988,7 +2034,6 @@ function H.refreshDetail(keys, order)
 	d.ActEvolve.Visible = ready ~= nil
 	d.ActTrain.Text = job and "Training" or "Train"
 	d.ActGarden.Text = placed and "Leave Garden" or "Garden"
-	CloudUI.SetStyle(d.ActGarden, placed and "Pink" or "Blue")
 	H.placeActions()
 	d.Perks.Visible = d.PerksH >= d.PerkLineH
 	local shown = {}

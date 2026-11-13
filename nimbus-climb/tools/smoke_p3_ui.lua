@@ -749,8 +749,8 @@ local function clientScenarios()
 		advance(0.6)
 		-- its card carries the seedling "Gardening" label; a pet that is not gardening has none
 		local axoText = axo:FindFirstChild("Busy")
-		T.check(axoText and shown(axoText) and axoText.Text:find("Gardening", 1, true) and axoText.Text:find("\240\159\140\177", 1, true) and axoText.TextSize >= 18,
-			"p3ui recall: a gardening pet's card has the seedling 'Gardening' label (bug batch 2 #18)", axoText and axoText.Text)
+		T.check(axoText and shown(axoText) and axoText.Text:find("Gardening", 1, true) and SmokeCommon.IconOn(axoText) == "sprout" and axoText.TextSize >= 18,
+			"p3ui recall: a gardening pet's card has the sprout 'Gardening' label (bug batch 2 #18; kit-b U7b: a PixelIcon)", axoText and axoText.Text)
 		local pupCard = find(win, "Card_pebble_pup")
 		T.check(pupCard ~= nil and not shown(pupCard:FindFirstChild("Busy")), "p3ui recall: ...a pet that is not gardening has no label")
 		local putBtn = find(win, "ActPut")

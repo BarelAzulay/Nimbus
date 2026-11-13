@@ -97,6 +97,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7b) the dungeon's marks
 local Remotes = require(Shared:WaitForChild("Remotes"))
 
 local Client = script.Parent.Parent
@@ -201,24 +202,13 @@ local C = {
 	Gem = Colors.Gem or Color3.fromRGB(84, 196, 246),
 }
 
--- glyphs as UTF-8 escapes (the source stays ASCII)
+-- typography as UTF-8 escapes (the source stays ASCII). kit-b U7b: the marks are PixelIcons (the sword before a power, the
+-- lock / tick of a floor, the crown of the leader, a member's tick / skull, the room pips, the torch of the countdown), the
+-- loot lines say "tokens" and "gems" in words (lobby-shop Task 15, spec 5.7); the emoji went
 local G = {
-	Swords = "\226\154\148",
-	Crown = "\240\159\145\145",
-	Check = "\226\156\147",
-	Lock = "\240\159\148\146",
-	Cloud = "\226\152\129",
-	-- (no gem glyph: lobby-shop Task 15, spec 5.7: the loot / end lines say "gems" in words)
-	Skull = "\240\159\146\128",
 	Dot = "\194\183",
 	-- (review round 1) a member who left: U+00D7, a Latin-1 sign every UI font has (U+2715 drew a missing-glyph box)
 	Gone = "\195\151",
-	Chest = "\240\159\142\129",
-	Star = "\226\152\133",
-	Pip = "\226\151\143",
-	PipOff = "\226\151\139",
-	Torch = "\240\159\148\165",
-	Hourglass = "\226\143\179",
 }
 
 -- the dungeon mood (contract 5.6): absolute values for the ambient / colour correction, the haze relative to the base
@@ -673,6 +663,7 @@ function W.build()
 		Size = UDim2.new(0, 150, 1, 0),
 		TextXAlignment = Enum.TextXAlignment.Right,
 	})
+	PixelIcon.Lead(U.Power, "sword") -- (kit-b U7b) the team's power
 	-- the floor list
 	U.Floors = Instance.new("ScrollingFrame")
 	U.Floors.Name = "Floors"
@@ -811,11 +802,11 @@ function W.refreshFloors(rec, short)
 		ui.Sub.Size = UDim2.new(1, -190, 0, short and 22 or 24)
 		local status, subColor, chip, chipColor
 		if not open then
-			status = G.Lock .. " Clear floor " .. (f - 1) .. " first"
+			status = "Clear floor " .. (f - 1) .. " first"
 			subColor = C.Muted
 			chip, chipColor = "LOCKED", C.Locked
 		elseif cleared then
-			status = G.Check .. " Cleared"
+			status = "Cleared"
 			subColor = C.Green
 			chip, chipColor = "CLEARED", C.Green
 		else
@@ -828,6 +819,7 @@ function W.refreshFloors(rec, short)
 			end
 		end
 		ui.Sub.Text = status
+		PixelIcon.Mark(ui.Sub, (not open) and "lock" or (cleared and "check" or nil)) -- (kit-b U7b)
 		ui.Sub.TextColor3 = subColor
 		ui.ChipText.Text = chip
 		ui.ChipRim.Color = chipColor
@@ -1008,20 +1000,23 @@ function W.partyMine(box, short, mine)
 			H.corner(row, "M")
 			row:SetAttribute("UserId", m.UserId)
 			row:SetAttribute("Ready", ready)
-			local tick = H.text(row, "Ready", ready and G.Check or G.Hourglass, "Heading", 20, ready and C.Green or C.Muted, {
+			local tick = H.text(row, "Ready", "", "Heading", 20, ready and C.Green or C.Muted, {
 				Position = UDim2.fromOffset(8, 0),
 				Size = UDim2.new(0, 28, 1, 0),
 				TextXAlignment = Enum.TextXAlignment.Center,
 			})
+			PixelIcon.Set(tick, ready and "check" or "hourglass", 18) -- (kit-b U7b)
 			tick:SetAttribute("Ready", ready)
-			local name = (m.UserId == mine.Leader and (G.Crown .. " ") or "") .. tostring(m.Name or "?")
-			H.text(row, "Name", name, "Body", 19, WHITE, { Position = UDim2.fromOffset(42, 0), Size = UDim2.new(1, -190, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd })
-			H.text(row, "Power", G.Swords .. " " .. H.commas(m.Power or 0), "Heading", 18, C.Power, {
+			local name = H.text(row, "Name", tostring(m.Name or "?"), "Body", 19, WHITE, { Position = UDim2.fromOffset(42, 0), Size = UDim2.new(1, -190, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd })
+			if m.UserId == mine.Leader then
+				PixelIcon.Lead(name, "crown") -- (kit-b U7b) the party leader
+			end
+			PixelIcon.Lead(H.text(row, "Power", H.commas(m.Power or 0), "Heading", 18, C.Power, {
 				AnchorPoint = Vector2.new(1, 0),
 				Position = UDim2.new(1, leader and not isMe and -52 or -10, 0, 0),
 				Size = UDim2.new(0, 110, 1, 0),
 				TextXAlignment = Enum.TextXAlignment.Right,
-			})
+			}), "sword")
 			if leader and not isMe then
 				local kick = W.button(row, "KickButton", "", C.Red, UDim2.fromOffset(38, h - 8), 1, function()
 					if H.request("Kick", m.UserId) then
@@ -1178,7 +1173,7 @@ function W.refresh()
 	local rec = H.record()
 	local power = H.teamPower()
 	U.Record.Text = "Best: floor " .. rec.Best .. " " .. G.Dot .. " " .. rec.Clears .. " clears " .. G.Dot .. " " .. rec.Runs .. " runs"
-	U.Power.Text = G.Swords .. " " .. H.commas(power)
+	U.Power.Text = H.commas(power)
 	W.refreshFloors(rec, short)
 	-- the party box (rebuilt: a handful of frames, only on a payload / a tap)
 	local mine = S.Lobby and type(S.Lobby.Mine) == "table" and S.Lobby.Mine or nil
@@ -1440,7 +1435,7 @@ function R.build()
 	local eb = H.frame(endCard.Body, "List", { Size = UDim2.new(1, 0, 1, 0) })
 	H.pad(eb, 16, 12, 16, 14)
 	H.list(eb, Enum.FillDirection.Vertical, 6)
-	U.EndTitle = H.text(eb, "Title", "", "Title", 28, WHITE, { Size = UDim2.new(1, 0, 0, 36), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 1 })
+	U.EndTitle = Theme.StyleTitle(H.text(eb, "Title", "", "Title", 28, WHITE, { Size = UDim2.new(1, 0, 0, 36), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 1 }))
 	U.EndReason = H.text(eb, "Reason", "", "Body", 19, C.Muted, { Size = UDim2.new(1, 0, 0, 50), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, LayoutOrder = 2 })
 	U.EndTotals = H.text(eb, "Totals", "", "Heading", 20, WHITE, { Size = UDim2.new(1, 0, 0, 26), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 3 })
 	U.EndFirst = H.text(eb, "FirstClear", "", "Heading", 20, C.Gold, { Size = UDim2.new(1, 0, 0, 26), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 4 })
@@ -1646,21 +1641,14 @@ function R.chipText(room, count)
 	return "Back soon..."
 end
 
-function R.pips(room, count)
-	local out = {}
-	for i = 1, count do
-		if i == count then
-			out[#out + 1] = (i <= room) and G.Crown or G.PipOff
-		else
-			out[#out + 1] = (i <= room) and G.Pip or G.PipOff
-		end
-	end
-	return table.concat(out, " ")
+-- (kit-b U7b) the room pips after the room line: `room` lit PixelIcon pips of `count`, the rest dim
+function R.pips(label, room, count)
+	PixelIcon.Mark(label, "pip", { After = true, Count = math.max(0, math.min(room, count)), Of = count, Gap = 12 })
 end
 
 function R.lootText()
 	local t = S.Totals
-	local parts = { "$" .. H.commas(t.Cash), G.Cloud .. " " .. H.commas(t.Tokens), "+" .. H.commas(t.Xp) .. " XP" }
+	local parts = { "$" .. H.commas(t.Cash), H.commas(t.Tokens) .. " tokens", "+" .. H.commas(t.Xp) .. " XP" }
 	if (tonumber(t.Gems) or 0) > 0 then
 		parts[#parts + 1] = H.commas(t.Gems) .. " gems"
 	end
@@ -1804,8 +1792,10 @@ function R.refresh()
 		local isLeader = LocalPlayer and mine.Leader == LocalPlayer.UserId
 		local needReady = not isLeader and not W.myReady(mine)
 		local f = math.floor(tonumber(mine.Floor) or 1)
-		U.CardTitle.Text = G.Torch .. " The Dungeon " .. G.Dot .. " Floor " .. f
+		U.CardTitle.Text = "The Dungeon " .. G.Dot .. " Floor " .. f
+		PixelIcon.Mark(U.CardTitle, "flame") -- (kit-b U7b) the torch of the countdown
 		U.CardRoom.Text = cd
+		PixelIcon.Mark(U.CardRoom, nil, { After = true })
 		U.CardWave.Visible = false
 		U.CardStatus.Text = "Stay near the Dungeon gate"
 		U.CardMembers.Visible = false
@@ -1826,7 +1816,9 @@ function R.refresh()
 	local count = math.floor(tonumber(run.RoomCount) or 4)
 	U.Card.SetColor(H.elementColor(run.Element or info.Element))
 	U.CardTitle.Text = "Floor " .. f .. " " .. G.Dot .. " " .. tostring(run.Name or info.Name)
-	U.CardRoom.Text = ((room >= count) and "Boss room" or ("Room " .. room .. " / " .. count)) .. "   " .. R.pips(room, count)
+	PixelIcon.Mark(U.CardTitle, nil)
+	U.CardRoom.Text = (room >= count) and "Boss room" or ("Room " .. room .. " / " .. count)
+	R.pips(U.CardRoom, room, count)
 	local waves = tonumber(run.Waves)
 	local wave = tonumber(run.Wave)
 	U.CardWave.Visible = waves ~= nil and waves > 0 and run.State == "Fight"
@@ -1852,13 +1844,16 @@ function R.refresh()
 			if i > 4 then
 				break
 			end
-			local glyph = m.Left and G.Gone or (m.Downed and G.Skull or G.Check)
+			local mark = (not m.Left) and (m.Downed and "skull" or "check") or nil -- (kit-b U7b) PixelIcons; a member who left keeps the sign
 			local color = m.Left and C.Muted or (m.Downed and C.Red or C.Green)
 			local chipF = H.frame(U.CardMembers, "Member" .. i, { BackgroundTransparency = 0, BackgroundColor3 = C.RowDark, LayoutOrder = i })
 			H.corner(chipF, "M")
 			chipF:SetAttribute("Downed", m.Downed == true)
 			chipF:SetAttribute("Left", m.Left == true)
-			H.text(chipF, "Text", glyph .. " " .. tostring(m.Name or "?"), "Body", 18, color, { Position = UDim2.fromOffset(6, 0), Size = UDim2.new(1, -8, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd })
+			local chipText = H.text(chipF, "Text", (m.Left and (G.Gone .. " ") or "") .. tostring(m.Name or "?"), "Body", 18, color, { Position = UDim2.fromOffset(6, 0), Size = UDim2.new(1, -8, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd })
+			if mark then
+				PixelIcon.Lead(chipText, mark)
+			end
 		end
 	end
 	local t = S.Totals
@@ -1947,7 +1942,7 @@ function R.fillEnd()
 	end
 	U.EndReason.Text = text
 	local t = type(e.Totals) == "table" and e.Totals or S.Totals
-	local parts = { "$" .. H.commas(t.Cash), G.Cloud .. " " .. H.commas(t.Tokens), "+" .. H.commas(t.Xp) .. " XP" }
+	local parts = { "$" .. H.commas(t.Cash), H.commas(t.Tokens) .. " tokens", "+" .. H.commas(t.Xp) .. " XP" }
 	if (tonumber(t.Gems) or 0) > 0 then
 		parts[#parts + 1] = H.commas(t.Gems) .. " gems"
 	end
@@ -1955,7 +1950,8 @@ function R.fillEnd()
 	local first = type(e.FirstClear) == "table" and e.FirstClear or nil
 	U.EndFirst.Visible = first ~= nil
 	if first then
-		U.EndFirst.Text = G.Star .. " First clear! +" .. H.commas(first.Tokens or 0) .. " " .. G.Cloud .. "  +" .. H.commas(first.Gems or 0) .. " gems"
+		U.EndFirst.Text = "First clear! +" .. H.commas(first.Tokens or 0) .. " tokens  +" .. H.commas(first.Gems or 0) .. " gems"
+		PixelIcon.Mark(U.EndFirst, "star") -- (kit-b U7b)
 	end
 	local lines = {}
 	if tonumber(e.Unlocked) then
@@ -3376,7 +3372,7 @@ function R.onState(kind, payload)
 				text = text .. " (" .. math.floor(payload.LevelUps) .. " level up!)"
 			end
 		end
-		R.toast(text, payload.Loss and C.Blue or C.Gold, nil, "+$" .. H.commas(payload.Cash) .. " +" .. H.commas(payload.Tokens) .. G.Cloud .. " +" .. H.commas(payload.Xp) .. "XP")
+		R.toast(text, payload.Loss and C.Blue or C.Gold, nil, "+$" .. H.commas(payload.Cash) .. " +" .. H.commas(payload.Tokens) .. " tokens +" .. H.commas(payload.Xp) .. "XP")
 		if not payload.Loss then
 			R.sound("Reward")
 		end
@@ -3393,7 +3389,7 @@ function R.onState(kind, payload)
 		S.ChestOpened = true
 		H.safe("chests", R.lockChests)
 		local label = (kindName == "Cash") and ("$" .. H.commas(amount)) or (H.commas(amount) .. " " .. (kindName == "Gems" and "Gems" or "tokens"))
-		R.toast(G.Chest .. " Chest: +" .. label .. "!", (kindName == "Gems") and C.Gem or C.Gold, nil, G.Chest .. " +" .. label)
+		R.toast("Chest: +" .. label .. "!", (kindName == "Gems") and C.Gem or C.Gold, nil, "+" .. label)
 		R.sound("Reward")
 	elseif kind == "Fade" then
 		if S.Run then

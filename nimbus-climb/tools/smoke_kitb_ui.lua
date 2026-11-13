@@ -3,8 +3,8 @@
 -- UI line of tools/smoke.py (that line only).
 --   U1 (Theme: roles, stroke rule, tokens; fonts audit F1, F2, F5, F6, F11, F12, rejects audit 8; the owner: "all fonts in
 --   the game and gui ... cool unique style and fonts, good looking gui matching what we pitched"):
---   theme_roles_kitb          (server world, pure) the pitch's role map: Title / Sign / Accent LuckiestGuy; Heading / Button /
---                             Tag / Nameplate / Display FredokaOne; Body / Label / Toast Nunito ExtraBold through
+--   theme_roles_kitb          (server world, pure) the pitch's role map: Sign / Accent LuckiestGuy; Title (T0, the owner's
+--                             title pick B) / Heading / Button / Tag / Nameplate / Display FredokaOne; Body / Label / Toast Nunito ExtraBold through
 --                             Theme.Faces; Script Nunito Bold Italic; Signature PermanentMarker; GothamBlack and Fondamento
 --                             gone from every role; a default size for the new roles
 --   theme_style_no_default_stroke (server world, pure) Theme.Style / Theme.Label give no classic stroke and no outline
@@ -42,7 +42,8 @@
 --                             changes, no UIScale, no glow; Activated runs the callback
 --   signkit_blockrow_fill     (server world, pure) a row of n stone blocks (offset sizes), FillBlocks(row, k) turns the
 --                             first k gold (face and lip), clamped to 0..n and floored
---   signkit_shared_only       (server world, pure) SignKit requires only Theme from Shared, PixelIcon requires nothing;
+--   signkit_shared_only       (server world, pure) SignKit requires only Theme from Shared, PixelIcon nothing at load
+--                             (Theme only inside Lead's measure, U7b review);
 --                             neither touches a client-only service, so the loading screen (ReplicatedFirst) can use both
 --   pixelicon_bitmaps_9x9     (server world, pure) every icon is 9 rows of 9 cells of "." / "#"; the pitch's 27 bitmaps
 --                             are kept exactly as the owner saw them; the screens' icons exist (play, gear, scroll, star,
@@ -86,6 +87,25 @@
 --   (server world, pure) signkit_plank_press_sinks (a), signkit_plank_off_disabled (b), signkit_plank_label_fits (c),
 --   signkit_style_tokens (d), signkit_header_rim_matches_frame (e), pixelicon_clamp_and_warn (f),
 --   credits_record_needs_flag (h)
+--   T0 (the owner's title pick B: FredokaOne titles, Theme.StyleTitle): theme_style_title (server world, pure) and
+--   kitb_titles_stamped (client; T0 review) the run-time walk: every Title-role Title / TitleText / Headline label in the
+--   built windows is stamped Plain or a Theme.TitleExempt kind, and each expected window title is found Plain
+--   U7a (icons: tiles and currency; finding 7, rejects audit 5):
+--   token_glyph_sources       (server world, pure) no script outside U7b's glyph tables and world signs writes the cloud
+--                             glyph (U+2601) the Cloud Token used
+--   kitb_no_emoji_ui          (client) the emoji walk: after the client run and with each window U7a reworked open, no shown
+--                             text carries an emoji or pictographic symbol (SmokeCommon.Emoji; tools/stroke_walk.py --emoji
+--                             runs the same rule over every render scenario); tools/fixtures/emoji_backlog.txt is counted
+--   token_icon_everywhere     (client) Theme.Currency names the icons (no emoji glyph), Config.Icons fills every icon id
+--                             from PixelIcon, NeonKit.Icon("Tokens") draws the coin and follows TextColor3 / fade / ZIndex,
+--                             PixelIcon.Lead puts it before an amount, and every token surface holds it at run time
+--   U7b review:
+--   pixelicon_lead_server_measure (server world, pure) Lead with TextBounds at 0 (a server) still puts the icon outside
+--                             the text, every alignment, before and after, fixed and auto-sized
+--   kitb_world_sign_icons     (server world) each world sign's icon by sign (machine and rarity-board coins, arena
+--                             trophies, gate stars = the difficulty's Stars, a locked pad's lock placed as a server
+--                             builds it, the pads' station icons, the closed bed's star, the bounce arrow)
+--   arena_side_invite_fits    (client) the incoming-challenge side card: trophies, power and the clock inside the card
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -155,7 +175,7 @@ local function serverScenarios()
 		end
 		local F = Theme.Fonts
 		local want = {
-			Title = "LuckiestGuy", Sign = "LuckiestGuy", Accent = "LuckiestGuy",
+			Title = "FredokaOne", Sign = "LuckiestGuy", Accent = "LuckiestGuy",
 			Heading = "FredokaOne", Button = "FredokaOne", Tag = "FredokaOne", Nameplate = "FredokaOne", Display = "FredokaOne",
 			Signature = "PermanentMarker",
 		}
@@ -279,7 +299,7 @@ local function serverScenarios()
 			"kitb setrole: SetRole(Body) = the Nunito face, the role stamp and (Theme.FontOf) the Enum fallback", tostring(label.Font))
 		T.check(sameColor(label.TextColor3, Color3.fromRGB(200, 10, 10)) and label.TextSize == 31 and math.abs(label.TextStrokeTransparency - 0.7) < 1e-6, "kitb setrole: SetRole leaves colour, size and stroke alone")
 		Theme.SetRole(label, "Title")
-		T.check(label.Font == Theme.Fonts.Title and label.FontFace ~= Theme.Faces.Body and tostring(label.FontFace.Family):find("LuckiestGuy") ~= nil and label:GetAttribute("FontRole") == "Title",
+		T.check(label.Font == Theme.Fonts.Title and label.FontFace ~= Theme.Faces.Body and tostring(label.FontFace.Family):find("FredokaOne") ~= nil and label:GetAttribute("FontRole") == "Title",
 			"kitb setrole: SetRole(Title) after Body clears the Nunito face (the Title font is the face)", tostring(label.Font) .. " " .. faceText(label.FontFace))
 		Theme.SetRole(label, "NoSuchRole")
 		T.check(label.FontFace == Theme.Faces.Body and Theme.FontOf(label) == Theme.Fonts.Body and label:GetAttribute("FontRole") == "Body", "kitb setrole: an unknown role is Body")
@@ -475,7 +495,7 @@ local function serverScenarios()
 			"signkit roof: Shape = 'Gable' builds the Credits gable (two slopes, fascia, vent)")
 		T.check(g.Size == UDim2.fromOffset(300, 44) and not hasScale(g), "signkit roof: the gable is fixed-size too")
 
-		-- the header: navy plank, gold LuckiestGuy title, no stroke
+		-- the header: navy plank, gold FredokaOne title (T0: the owner's title pick B) through Theme.StyleTitle, no stroke
 		local win = holder(600, 400)
 		local head, plate = SK.Header(win, { Title = "PETS" })
 		T.check(head and head.Name == "Head" and head:GetAttribute("SignKit") == "Header" and plate and plate.Name == "Plate", "signkit header: Head + Plate")
@@ -484,13 +504,21 @@ local function serverScenarios()
 				hex(plate.BackgroundColor3) .. " in " .. hex(head.BackgroundColor3))
 			T.check(head.Size.X.Scale == 1 and head.Size.Y.Offset == Z.HeadH, "signkit header: full width, HeadH tall", tostring(head.Size))
 			local title = plate:FindFirstChild("Title")
-			T.check(title and title.Text == "PETS" and title.Font == Enum.Font.LuckiestGuy and sameColor(title.TextColor3, Sg.Gold),
-				"signkit header: the title is LuckiestGuy gold", title and (tostring(title.Font) .. " " .. hex(title.TextColor3)) or "none")
+			T.check(title and title.Text == "PETS" and title.Font == Enum.Font.FredokaOne and sameColor(title.TextColor3, Sg.Gold),
+				"signkit header: the title is FredokaOne gold", title and (tostring(title.Font) .. " " .. hex(title.TextColor3)) or "none")
+			T.check(title and title:GetAttribute("TitleLook") == "Plain", "signkit header: the title goes through Theme.StyleTitle (TitleLook stamp)",
+				title and tostring(title:GetAttribute("TitleLook")) or "none")
 			T.check(title and title.TextStrokeTransparency == 1 and #textStrokes(title) == 0, "signkit header: the title has no stroke (gold on navy, 9:1)")
 			T.check(plate:FindFirstChild("TitleDrop") == nil, "signkit header: no drop line unless asked")
 		end
 		local _, plate2 = SK.Header(win, { Title = "X", Drop = Color3.fromRGB(11, 19, 48), IconSlot = true })
 		T.check(plate2 and plate2:FindFirstChild("TitleDrop") and plate2:FindFirstChild("IconSlot"), "signkit header: Drop adds the drop line, IconSlot the gold icon square")
+		-- (T0) the Credits header's Sign role keeps its approved LuckiestGuy and stays out of the title treatment
+		local _, plate3 = SK.Header(win, { Title = "CREDITS", TitleRole = "Sign" })
+		local signTitle = plate3 and plate3:FindFirstChild("Title")
+		T.check(signTitle and signTitle.Font == Enum.Font.LuckiestGuy and signTitle:GetAttribute("TitleLook") == nil,
+			"signkit header: a Sign-role title stays LuckiestGuy with no title treatment",
+			signTitle and (tostring(signTitle.Font) .. " " .. tostring(signTitle:GetAttribute("TitleLook"))) or "none")
 
 		-- frame (wood) and body (stone with its lip)
 		local wood = SK.Frame(win, { Y = 60, Height = 300 })
@@ -649,7 +677,9 @@ local function serverScenarios()
 			end
 			return table.concat(lines, "\n")
 		end
-		for name, allowed in pairs({ SignKit = { Theme = true }, PixelIcon = {} }) do
+		-- (U7b review) PixelIcon may require Theme too, but only inside a function (Lead measuring a server-built sign's
+		-- text): at load it still requires nothing, so the loading screen can draw icons before Theme arrives
+		for name, allowed in pairs({ SignKit = { Theme = true }, PixelIcon = { Theme = true } }) do
 			local src = code(name)
 			T.check(src ~= "", "shared only: " .. name .. " has source")
 			local bad = {}
@@ -659,7 +689,16 @@ local function serverScenarios()
 					bad[#bad + 1] = arg
 				end
 			end
-			T.check(#bad == 0, "shared only: " .. name .. " requires only " .. (next(allowed) and "Theme (a sibling in Shared)" or "nothing"), table.concat(bad, ", "))
+			T.check(#bad == 0, "shared only: " .. name .. " requires only Theme (a sibling in Shared)", table.concat(bad, ", "))
+			if name == "PixelIcon" then
+				local top = {}
+				for line in (src .. "\n"):gmatch("([^\n]*)\n") do
+					if line:match("^%S") and line:find("require%s*%(") then
+						top[#top + 1] = line
+					end
+				end
+				T.check(#top == 0, "shared only: PixelIcon requires nothing at load (Theme only inside Lead's measure)", table.concat(top, " | "))
+			end
 			local client = {}
 			for _, word in ipairs({ "LocalPlayer", "PlayerGui", "UserInputService", "StarterPlayer", "ReplicatedFirst", "GetService%(\"Players\"%)", "Controllers", "client/" }) do
 				if src:find(word) then
@@ -1008,6 +1047,125 @@ local function serverScenarios()
 		K.flushErrors("pixelicon_clamp_and_warn")
 	end)
 
+	-- (g) (U7a review) PixelIcon.Lead under a UIScale: Roblox's TextBounds is screen px (after every UIScale on and above
+	-- the label) while Position offsets are the label's own px. At 0.8 (a phone), 1.25 (a big screen) and 1.7 (a token
+	-- pop) every icon sits just outside its text, its own gap away: never over the text, never a wider gap
+	S.pixelicon_lead_uiscale = guarded("pixelicon_lead_uiscale", function()
+		local PI = shared("PixelIcon")
+		local Mock = rawget(_G, "Mock")
+		if not (PI and Mock) then
+			return
+		end
+		local gui = Instance.new("ScreenGui")
+		gui.IgnoreGuiInset = true
+		local L, R, C = Enum.TextXAlignment.Left, Enum.TextXAlignment.Right, Enum.TextXAlignment.Center
+		local cases = { { L, false }, { L, true }, { R, false }, { R, true }, { C, false }, { C, true } }
+		for _, sc in ipairs({ 0.8, 1, 1.25, 1.7 }) do
+			local root = Instance.new("Frame")
+			root.Size = UDim2.fromOffset(400, 400)
+			local ui = Instance.new("UIScale")
+			ui.Scale = sc
+			ui.Parent = root
+			root.Parent = gui
+			-- the mock's TextBounds scales like Roblox's
+			local probe = Instance.new("TextLabel")
+			probe.Size = UDim2.fromOffset(200, 30)
+			probe.TextSize = 20
+			probe.Text = "1,250"
+			probe.Parent = root
+			local own = Mock.TextExtent(probe)
+			T.check(math.abs(probe.TextBounds.X - own * sc) < 0.01, fmt("mock: TextBounds is screen px under a UIScale of %.2f", sc),
+				fmt("%.1f, own %.1f", probe.TextBounds.X, own))
+			for i, case in ipairs(cases) do
+				local align, after = case[1], case[2]
+				local label = Instance.new("TextLabel")
+				label.Size = UDim2.fromOffset(300, 30)
+				label.Position = UDim2.fromOffset(50, 40 + i * 50)
+				label.TextSize = 20
+				label.Text = "1,250"
+				label.TextXAlignment = align
+				label.Parent = root
+				local box = PI.Lead(label, "token", { After = after })
+				local px = PI.Snap(18)
+				local gap = math.max(3, math.floor(px / 4)) * sc
+				local pad = label:FindFirstChildOfClass("UIPadding")
+				local ap, as = label.AbsolutePosition, label.AbsoluteSize
+				local x0 = ap.X + (pad and pad.PaddingLeft.Offset or 0) * sc
+				local x1 = ap.X + as.X - (pad and pad.PaddingRight.Offset or 0) * sc
+				local tw = label.TextBounds.X
+				local t0 = (align == L and x0) or (align == R and x1 - tw) or ((x0 + x1 - tw) / 2)
+				local ip, is = box.AbsolutePosition, box.AbsoluteSize
+				local space = after and (ip.X - (t0 + tw)) or (t0 - (ip.X + is.X))
+				T.check(space >= gap - 0.5 and space <= gap + sc + 0.5,
+					fmt("pixelicon lead: UIScale %.2f, %s, %s: the icon sits its gap outside the text", sc, align.Name, after and "after" or "before"),
+					fmt("space %.1f, gap %.1f (text %.1f..%.1f, icon %.1f..%.1f)", space, gap, t0, t0 + tw, ip.X, ip.X + is.X))
+			end
+		end
+		gui:Destroy()
+		K.flushErrors("pixelicon_lead_uiscale")
+	end)
+
+	-- (g2) (U7b review) PixelIcon.Lead on the server: a Roblox server lays out no text, so TextBounds is expected to read 0
+	-- there (forced here through Mock.TextExtent while Lead runs), and no client ever places a server-built icon again (the
+	-- TextBounds / Text connections live on the server). The world signs Lead there: the machine and rarity-board prices,
+	-- a locked pad's LockLabel, the gate card's stars. With the bounds at 0 every icon still sits its gap outside the text
+	-- (as the client then lays the text out), for each alignment, before and after, on a fixed label and on an auto-sized
+	-- one (tagText: AutomaticSize XY, centred)
+	S.pixelicon_lead_server_measure = guarded("pixelicon_lead_server_measure", function()
+		local PI = shared("PixelIcon")
+		local Mock = rawget(_G, "Mock")
+		if not (PI and Mock and type(Mock.TextExtent) == "function") then
+			return
+		end
+		local gui = Instance.new("ScreenGui")
+		gui.IgnoreGuiInset = true
+		local root = Instance.new("Frame")
+		root.Size = UDim2.fromOffset(600, 900)
+		root.Parent = gui
+		local L, R, C = Enum.TextXAlignment.Left, Enum.TextXAlignment.Right, Enum.TextXAlignment.Center
+		-- { alignment, after, auto-sized }
+		local cases = { { L, false }, { L, true }, { R, false }, { R, true }, { C, false }, { C, true }, { C, false, true }, { C, true, true } }
+		local realExtent = Mock.TextExtent
+		for i, case in ipairs(cases) do
+			local align, after, auto = case[1], case[2], case[3] == true
+			local label = Instance.new("TextLabel")
+			label.Position = UDim2.fromOffset(150, 20 + i * 60)
+			label.Size = auto and UDim2.fromOffset(0, 26) or UDim2.fromOffset(300, 30)
+			if auto then
+				label.AutomaticSize = Enum.AutomaticSize.XY
+			end
+			label.TextSize = 22
+			label.Text = "12,500"
+			label.TextXAlignment = align
+			label.Parent = root
+			Mock.TextExtent = function()
+				return 0, 0
+			end
+			local ok, box = pcall(PI.Lead, label, "token", { After = after })
+			Mock.TextExtent = realExtent
+			local tag = fmt("pixelicon lead, server: %s, %s%s", align.Name, after and "after" or "before", auto and ", auto-sized" or "")
+			if T.check(ok and box ~= nil, tag .. ": Lead draws with TextBounds at 0", tostring(box)) then
+				local px = PI.Snap(22 * 0.9)
+				local gap = math.max(3, math.floor(px / 4))
+				local pad = label:FindFirstChildOfClass("UIPadding")
+				local ap, as = label.AbsolutePosition, label.AbsoluteSize
+				local x0 = ap.X + (pad and pad.PaddingLeft.Offset or 0)
+				local x1 = ap.X + as.X - (pad and pad.PaddingRight.Offset or 0)
+				local tw = label.TextBounds.X
+				local t0 = (align == L and x0) or (align == R and x1 - tw) or ((x0 + x1 - tw) / 2)
+				local ip, is = box.AbsolutePosition, box.AbsoluteSize
+				local space = after and (ip.X - (t0 + tw)) or (t0 - (ip.X + is.X))
+				-- never over the text, and its own gap away: Theme.MeasureLabel measures this Enum-font label as the mock lays
+				-- it out (a Nunito face runs a few per cent wide on a server, never short)
+				T.check(tw > 0 and space >= gap - 0.5 and space <= gap + 1, tag .. ": the icon sits its gap outside the text, not over it",
+					fmt("space %.1f, gap %d (text %.1f..%.1f, icon %.1f..%.1f)", space, gap, t0, t0 + tw, ip.X, ip.X + is.X))
+			end
+		end
+		Mock.TextExtent = realExtent
+		gui:Destroy()
+		K.flushErrors("pixelicon_lead_server_measure")
+	end)
+
 	-- (h) the Credits baseline (tools/fixtures/credits_tree_u1.txt) is rewritten only with smoke.py's explicit
 	-- --record-credits-tree flag, never because NC_RECORD_CREDITS_TREE happens to be set during a normal run
 	S.credits_record_needs_flag = guarded("credits_record_needs_flag", function()
@@ -1126,6 +1284,316 @@ local function serverScenarios()
 		K.flushErrors("kitb_no_direct_font")
 	end)
 
+	-- (U7a) the Cloud Token's cloud glyph (U+2601, as bytes or as the escape \226\152\129) is gone from every script: the
+	-- currency is the PixelIcon coin (Theme.Currency.Tokens.Icon) and a sentence says "Tokens". U7a let U7b's glyph tables
+	-- keep it; U7b redrew them, so no script is excused any more
+	S.token_glyph_sources = guarded("token_glyph_sources", function()
+		local U7B = {}
+		local hits, n = {}, 0
+		for _, f in ipairs(gameSources()) do
+			n = n + 1
+			if not U7B[f.inst.Name] and (f.src:find("\\226\\152\\129", 1, true) or f.src:find("\226\152\129", 1, true)) then
+				hits[#hits + 1] = f.inst.Name
+			end
+		end
+		T.check(n > 20, "token glyph: the game's scripts are mounted", tostring(n))
+		T.check(#hits == 0, "token glyph: no script writes the cloud glyph (the token is its PixelIcon)", table.concat(hits, ", "))
+		K.flushErrors("token_glyph_sources")
+	end)
+
+	-- (U7b) the emoji code points of a string (SmokeCommon.Emoji.Is), its decimal escapes (\240\159\143\134) read as the
+	-- bytes they stand for; rich-text tags are NOT dropped (this reads source, where "<" is a comparison)
+	local function emojiIn(s)
+		local Is = SmokeCommon.Emoji.Is
+		s = tostring(s or ""):gsub("\\(%d%d?%d?)", function(d)
+			local b = tonumber(d)
+			return b < 256 and string.char(b) or nil
+		end)
+		local out, i = {}, 1
+		while i <= #s do
+			local c = s:byte(i)
+			local n, cp = 1, c
+			if c >= 0xF0 then
+				n, cp = 4, c % 0x08
+			elseif c >= 0xE0 then
+				n, cp = 3, c % 0x10
+			elseif c >= 0xC0 then
+				n, cp = 2, c % 0x20
+			end
+			for k = 1, n - 1 do
+				local b = s:byte(i + k)
+				if not b or b < 0x80 or b > 0xBF then
+					n, cp = 1, 0 -- not a UTF-8 sequence (a byte range in a pattern, "[\128-\255]"): one byte, no code point
+					break
+				end
+				cp = cp * 64 + (b % 0x40)
+			end
+			if cp <= 0x10FFFF and Is(cp) then
+				out[#out + 1] = string.format("U+%04X", cp)
+			end
+			i = i + n
+		end
+		return out
+	end
+
+	-- (U7b) the walk of U7a with zero allowed, at the source: no game script writes an emoji or pictographic code point
+	-- (as UTF-8 or as escapes, comments aside): the glyph tables of the battle HUD, the arena, dungeon, train, care, fusion,
+	-- index, obby, pets and picker windows, the tycoon catalog and the world signs are PixelIcons (Host / Lead) or words.
+	-- Typography stays (the middle dot, the bullet, the dashes, the multiplication sign, the angle quotes)
+	S.kitb_no_emoji_sources = guarded("kitb_no_emoji_sources", function()
+		local hits, n = {}, 0
+		for _, f in ipairs(gameSources()) do
+			n = n + 1
+			local cps = emojiIn(f.src)
+			if #cps > 0 then
+				hits[#hits + 1] = f.inst.Name .. " x" .. #cps .. " (" .. table.concat(cps, " ", 1, math.min(#cps, 4)) .. ")"
+			end
+		end
+		T.check(n > 20, "kitb emoji sources: the game's scripts are mounted", tostring(n))
+		T.check(#hits == 0, fmt("kitb emoji sources: no script writes an emoji code point (%d)", #hits), table.concat(hits, "; "))
+		K.flushErrors("kitb_no_emoji_sources")
+	end)
+
+	-- (U7b) the icons U7b added and where they are named: each a 9 x 9 PixelIcon; TycoonCatalog's icons (a station's, a house
+	-- tier's, the prestige pad's) are PixelIcon names, so the Home window and the pad signs draw them
+	S.pixelicon_u7b_set = guarded("pixelicon_u7b_set", function()
+		local PI = shared("PixelIcon")
+		local TC = shared("TycoonCatalog")
+		if not (PI and TC) then
+			return
+		end
+		local missing = {}
+		for _, name in ipairs({ "drop", "leaf", "target", "skull", "hourglass", "glass", "castle", "berry", "pot", "weight", "vault", "fence", "fountain", "basket", "pip", "up", "left", "shift" }) do
+			if not (PI.Runs(name) and #PI.Runs(name) > 0) then
+				missing[#missing + 1] = name
+			end
+		end
+		T.check(#missing == 0, "pixelicon u7b: the battle, dungeon, train and home icons exist", table.concat(missing, ", "))
+		local bad = {}
+		local function want(where, icon)
+			if not (type(icon) == "string" and PI.Bitmaps[icon]) then
+				bad[#bad + 1] = where .. "=" .. tostring(icon)
+			end
+		end
+		for key, icon in pairs(TC.Icons or {}) do
+			want("Icons." .. key, icon)
+		end
+		for _, def in ipairs(TC.Stations or {}) do
+			want(def.Id, def.Icon)
+		end
+		for _, tier in ipairs(TC.HouseTiers or {}) do
+			want(tier.Id, tier.Icon)
+		end
+		local pp = type(TC.Get) == "function" and TC.Get("Prestige")
+		want("Prestige", pp and pp.Icon)
+		table.sort(bad)
+		T.check(#bad == 0, "pixelicon u7b: every TycoonCatalog icon is a PixelIcon name", table.concat(bad, ", "))
+		K.flushErrors("pixelicon_u7b_set")
+	end)
+
+	-- (U7b) the world signs (BillboardGui / SurfaceGui text the server builds: the lobby gates, the portals, the arena
+	-- boards, the home pads, the spots' showcase tags, the courses): after the server run no text in the workspace carries
+	-- an emoji code point, and the ratings and marks they had are PixelIcons there (the gates' stars at least). World
+	-- signs stay still (owner 2026-11-13: only the menu and loading signs sway): an icon adds no motion
+	S.kitb_no_emoji_world = guarded("kitb_no_emoji_world", function()
+		local ws = game:GetService("Workspace")
+		local hits, texts, icons = {}, 0, {}
+		for _, d in ipairs(ws:GetDescendants()) do
+			if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
+				texts = texts + 1
+				local cps = emojiIn(d.Text)
+				if #cps > 0 then
+					hits[#hits + 1] = d:GetFullName() .. " '" .. tostring(d.Text) .. "'"
+				end
+			end
+			local icon = d:GetAttribute("PixelIcon")
+			if type(icon) == "string" and (d:FindFirstAncestorWhichIsA("BillboardGui") or d:FindFirstAncestorWhichIsA("SurfaceGui")) then
+				icons[icon] = (icons[icon] or 0) + 1
+			end
+		end
+		table.sort(hits)
+		local names = {}
+		for k, v in pairs(icons) do
+			names[#names + 1] = k .. " x" .. v
+		end
+		table.sort(names)
+		T.info(fmt("*kitb emoji world: %d texts, world sign icons: %s", texts, table.concat(names, ", ")))
+		T.check(texts > 20, "kitb emoji world: the server built its signs", tostring(texts))
+		T.check(#hits == 0, fmt("kitb emoji world: no world sign text carries an emoji code point (%d)", #hits), table.concat(hits, "; ", 1, math.min(#hits, 8)))
+		T.check((icons.star or 0) > 0, "kitb emoji world: the gates' difficulty stars are PixelIcons on their signs")
+		K.flushErrors("kitb_no_emoji_world")
+	end)
+
+	-- (U7b review) each world sign U7b redrew holds its icon, by sign: the token coin before every machine tag's price and
+	-- every rarity-board price, the trophy after each arena board count, the gate card's stars (as many as its difficulty's
+	-- Stars), and on a private plot built here: the lock before a locked pad's reason, the station's icon on a pad's name
+	-- row, the star on a closed garden bed's sign, the up arrow on a bounce pad. The plot's signs are built the way a
+	-- server builds them (TextBounds forced to 0, see pixelicon_lead_server_measure): the lock sits outside its text
+	S.kitb_world_sign_icons = guarded("kitb_world_sign_icons", function()
+		local IconOn = SmokeCommon.IconOn
+		local Mock = rawget(_G, "Mock")
+		local function mod(key)
+			local inst = K.moduleInstance(key)
+			local ok, m = false, nil
+			if inst then
+				ok, m = pcall(require, inst)
+			end
+			return ok and type(m) == "table" and m or nil
+		end
+		local Config, HB, CB, TC = mod("shared/Config"), mod("server/Services/HomeBuilder"), mod("server/Services/CourseBuilder"), mod("shared/TycoonCatalog")
+		if not T.check(Config and HB and CB and TC and Mock and IconOn, "kitb world icons: Config, HomeBuilder, CourseBuilder, TycoonCatalog and SmokeCommon.IconOn load") then
+			return
+		end
+		local ws = game:GetService("Workspace")
+		local function inSurface(d)
+			return d:FindFirstAncestorWhichIsA("SurfaceGui") ~= nil
+		end
+		local tags, boards, trophies, gates, bad = 0, 0, 0, 0, {}
+		local function want(where, label, name, which, count)
+			local got, n = IconOn(label, which)
+			if got ~= name or (count and n ~= count) then
+				bad[#bad + 1] = fmt("%s: %s x%d (want %s%s)", where, tostring(got), n, name, count and (" x" .. count) or "")
+			end
+		end
+		local stars = {}
+		for _, d in ipairs(Config.Difficulties or {}) do
+			stars[tostring(d.DisplayName or d.Id)] = tonumber(d.Stars) or 1
+		end
+		for _, d in ipairs(ws:GetDescendants()) do
+			if d:IsA("BillboardGui") and d.Name == "PriceBillboard" then
+				tags = tags + 1
+				want(d:GetFullName(), d:FindFirstChild("PriceLabel", true), "token", "Lead")
+			elseif d:IsA("TextLabel") and d.Name:match("^Price%d+$") and d:FindFirstAncestor("RarityBoard") then
+				boards = boards + 1
+				want(d:GetFullName(), d, "token", "Lead")
+			elseif d:IsA("TextLabel") and d.Name == "Trophies" and d:FindFirstAncestor("LeaderGui") then
+				trophies = trophies + 1
+				want(d:GetFullName(), d, "trophy", "Trail")
+			elseif d:IsA("TextLabel") and d.Name == "Info" and d:FindFirstAncestorWhichIsA("BillboardGui") and d:FindFirstChild("LeadIcon") then
+				local diff = tostring(d.Text):match("^(.-) %- %d+/%d+ players$")
+				if diff and stars[diff] then
+					gates = gates + 1
+					want(d:GetFullName(), d, "star", "Lead", stars[diff])
+					local box = d:FindFirstChild("LeadIcon")
+					local drawn = 0
+					for _, c in ipairs(box:GetChildren()) do
+						if c:GetAttribute("PixelIcon") == "star" then
+							drawn = drawn + 1
+						end
+					end
+					if drawn ~= stars[diff] then
+						bad[#bad + 1] = fmt("%s: %d stars drawn, %s has %d", d:GetFullName(), drawn, diff, stars[diff])
+					end
+				end
+			end
+		end
+		T.check(tags >= 4 and boards >= 4 and trophies == 10 and gates >= 1, "kitb world icons: the machine tags, the rarity-board prices, the arena board rows and a gate card are found",
+			fmt("%d tags, %d board prices, %d trophy rows, %d gate cards", tags, boards, trophies, gates))
+		-- a private plot far from the lobby, built with the server's bounds (TextBounds 0)
+		local root = Instance.new("Folder")
+		root.Name = "SmokeSignIcons"
+		root.Parent = ws
+		local spotFolder = Instance.new("Folder")
+		spotFolder.Name = "Spot_97"
+		spotFolder.Parent = root
+		local plotCF = CFrame.new(-4000, 300, 4000)
+		local spot = { Index = 97, PlotCFrame = plotCF, PlotSize = TC.PlotSize, Center = plotCF.Position, Folder = spotFolder }
+		local realExtent = Mock.TextExtent
+		Mock.TextExtent = function()
+			return 0, 0
+		end
+		-- the pads as TycoonCatalog.AvailablePads lists them (each with its station's Icon)
+		local function icon(id)
+			local def = TC.Get(id)
+			return def and def.Icon
+		end
+		local okPlot, err = pcall(function()
+			HB.PreparePlot(spot)
+			HB.SetPads(spot, {
+				{ StationId = "DecorFountain", Icon = icon("DecorFountain"), NextLevel = 1, Price = 0, Level = 0, Title = "Fountain", Locked = "Unlocks at Home Level 3", LevelText = "" },
+				{ StationId = "Kitchen", Icon = icon("Kitchen"), NextLevel = 2, Price = 50, Level = 1, Title = "Food Machine", LevelText = "Lv 1 -> 2" },
+			})
+		end)
+		Mock.TextExtent = realExtent
+		T.check(okPlot, "kitb world icons: a private plot takes a locked and an open pad", tostring(err))
+		local lock, nameIcons = nil, 0
+		for _, d in ipairs(spotFolder:GetDescendants()) do
+			if d:IsA("TextLabel") and d.Name == "LockLabel" then
+				lock = d
+			elseif d:IsA("TextLabel") and d.Name == "Icon" and d:FindFirstAncestor("PadSign") then
+				nameIcons = nameIcons + 1
+				local model = d:FindFirstAncestorWhichIsA("Model")
+				want(d:GetFullName(), d, icon(model and model:GetAttribute("StationId") or "") or "?")
+			end
+		end
+		T.check(nameIcons == 2, "kitb world icons: each pad sign's name row hosts its station's icon", tostring(nameIcons))
+		if T.check(lock ~= nil, "kitb world icons: the locked pad's sign has its LockLabel") then
+			want(lock:GetFullName(), lock, "lock", "Lead")
+			local box = lock:FindFirstChild("LeadIcon")
+			if box then
+				local pad = lock:FindFirstChildOfClass("UIPadding")
+				local ap, as = lock.AbsolutePosition, lock.AbsoluteSize
+				local x0 = ap.X + (pad and pad.PaddingLeft.Offset or 0)
+				local x1 = ap.X + as.X - (pad and pad.PaddingRight.Offset or 0)
+				local tw = lock.TextBounds.X
+				local t0 = (lock.TextXAlignment == Enum.TextXAlignment.Left and x0) or (lock.TextXAlignment == Enum.TextXAlignment.Right and x1 - tw) or ((x0 + x1 - tw) / 2)
+				local right = box.AbsolutePosition.X + box.AbsoluteSize.X
+				T.check(tw > 0 and right <= t0 + 0.5, "kitb world icons: the server-built lock sits before its text, not over it",
+					fmt("icon ends %.1f, text %.1f..%.1f", right, t0, t0 + tw))
+			end
+		end
+		-- a closed garden bed's sign (the Garden at its base places, so the rest are closed)
+		local okG, garden = pcall(HB.BuildStationModel, "Garden", 1, nil, 1)
+		local closed = 0
+		for _, d in ipairs(okG and garden and garden:GetDescendants() or {}) do
+			if d:IsA("TextLabel") and d.Name == "Star" and inSurface(d) then
+				closed = closed + 1
+				want("Garden " .. d:GetFullName(), d, "star")
+			end
+		end
+		T.check(closed > 0, "kitb world icons: a closed garden bed's sign is found", tostring(garden))
+		if okG and garden then
+			garden:Destroy()
+		end
+		-- a bounce pad's arrow: the first layout with a Bounce step
+		local layout = nil
+		for _, diff in ipairs(Config.Difficulties or {}) do
+			for seed = 1, 12 do
+				local okL, l = pcall(CB.GenerateLayout, diff.Id, seed)
+				if okL and type(l) == "table" then
+					for _, st in ipairs(l.Steps or {}) do
+						if st.Kind == "Bounce" then
+							layout = l
+							break
+						end
+					end
+				end
+				if layout then
+					break
+				end
+			end
+			if layout then
+				break
+			end
+		end
+		local arrows = 0
+		if T.check(layout ~= nil, "kitb world icons: a course layout with a bounce pad") then
+			local okC, info = pcall(CB.Build, layout, Vector3.new(-30000, 900, 0), root)
+			for _, d in ipairs(okC and type(info) == "table" and info.Folder and info.Folder:GetDescendants() or {}) do
+				if d:IsA("TextLabel") and d:FindFirstAncestor("PadGlyph") then
+					arrows = arrows + 1
+					want("bounce " .. d:GetFullName(), d, "up")
+				end
+			end
+			T.check(okC and arrows > 0, "kitb world icons: the bounce pads are built", tostring(info))
+		end
+		root:Destroy()
+		table.sort(bad)
+		T.info(fmt("*kitb world icons: %d tags, %d board prices, %d trophy rows, %d gate cards, %d pad name icons, %d closed beds, %d bounce arrows", tags, boards, trophies, gates, nameIcons, closed, arrows))
+		T.check(#bad == 0, fmt("kitb world icons: every world sign holds its icon (%d wrong)", #bad), table.concat(bad, "; ", 1, math.min(#bad, 8)))
+		K.flushErrors("kitb_world_sign_icons")
+	end)
+
 	-- corner radii are Theme.Radius tokens ("None", "S", "M", and "Round" for a pill or a disc) in every file U6 swept; the
 	-- list is check.mjs's RADIUS_SWEPT (its radius-literal rule holds the same files), so U7 / U9 add families in one place
 	S.kitb_radius_tokens = guarded("kitb_radius_tokens", function()
@@ -1225,6 +1693,44 @@ local function serverScenarios()
 		T.check(m.X == b.X, "kitb caps: Theme.MeasureLabel measures a Title label's text in capitals", tostring(m) .. " vs " .. tostring(b))
 		t:Destroy()
 		K.flushErrors("theme_caps_roles")
+	end)
+
+	-- (T0, the owner's title pick B: FredokaOne titles) the one title helper: Theme.StyleTitle(label) is where a designed
+	-- title treatment (gradient / border / shadow) will go; today it adds nothing (no child, the font, size, colour, stroke
+	-- and text as they were) and stamps TitleLook = "Plain"; twice is the same as once; nil is a no-op
+	S.theme_style_title = guarded("theme_style_title", function()
+		local Theme = theme()
+		if not Theme then
+			return
+		end
+		if not T.check(type(Theme.StyleTitle) == "function", "kitb title: Theme.StyleTitle exists") then
+			return
+		end
+		local l = Theme.Label("Pets", "Title", { Size = 34, Color = Theme.Sign.Gold })
+		local kids, font, size, colour, stroke, text = #l:GetChildren(), l.Font, l.TextSize, l.TextColor3, l.TextStrokeTransparency, l.Text
+		T.check(Theme.StyleTitle(l) == l, "kitb title: StyleTitle returns the label")
+		Theme.StyleTitle(l)
+		T.check(#l:GetChildren() == kids and l.Font == font and l.TextSize == size and sameColor(l.TextColor3, colour) and l.TextStrokeTransparency == stroke and l.Text == text,
+			"kitb title: StyleTitle adds nothing today (no child; font, size, colour, stroke, text unchanged), twice too",
+			#l:GetChildren() .. " children, " .. tostring(l.Font) .. " " .. tostring(l.TextSize))
+		T.check(l:GetAttribute("TitleLook") == "Plain", "kitb title: StyleTitle stamps TitleLook = Plain", tostring(l:GetAttribute("TitleLook")))
+		T.check(l.Font == Enum.Font.FredokaOne, "kitb title: a Title label is FredokaOne", tostring(l.Font))
+		l:Destroy()
+		T.check(Theme.StyleTitle(nil) == nil, "kitb title: StyleTitle(nil) is a no-op")
+		-- (T0 review) a heading that is not a window's name passes its Theme.TitleExempt kind: stamped with it, nothing added
+		local kinds = 0
+		for kind, why in pairs(Theme.TitleExempt or {}) do
+			kinds = kinds + 1
+			T.check(type(why) == "string" and #why > 20, "kitb title: exempt kind " .. tostring(kind) .. " gives its reason", tostring(why))
+			local h = Theme.Label("Best times", "Title", { Size = 28 })
+			local n = #h:GetChildren()
+			Theme.StyleTitle(h, kind)
+			T.check(h:GetAttribute("TitleLook") == kind and #h:GetChildren() == n, "kitb title: StyleTitle(label, " .. tostring(kind) .. ") stamps the kind and adds nothing",
+				tostring(h:GetAttribute("TitleLook")))
+			h:Destroy()
+		end
+		T.check(kinds >= 2 and Theme.TitleExempt.Plain == nil, "kitb title: Theme.TitleExempt names its kinds (Section, OwnGradient), never Plain", tostring(kinds))
+		K.flushErrors("theme_style_title")
 	end)
 
 	return S
@@ -1651,7 +2157,8 @@ local function clientScenarios()
 				local title = plate and plate:FindFirstChild("Title")
 				T.check(plate ~= nil and sameColor(plate.BackgroundColor3, Sign.Navy), "loading board: the navy header plank at " .. tag)
 				if T.check(title ~= nil and title.Text == "NIMBUS CLIMB", "loading board: the header reads NIMBUS CLIMB at " .. tag, title and title.Text or "missing") then
-					T.check(title:GetAttribute("FontRole") == "Title" and title.Font == Theme.Fonts.Title, "loading board: the title is the Title role (LuckiestGuy)", tostring(title.Font))
+					T.check(title:GetAttribute("FontRole") == "Title" and title.Font == Theme.Fonts.Title and title:GetAttribute("TitleLook") == "Plain",
+						"loading board: the title is the Title role (FredokaOne) through Theme.StyleTitle", tostring(title.Font) .. " " .. tostring(title:GetAttribute("TitleLook")))
 					T.check(sameColor(title.TextColor3, Sign.Gold) and title.TextStrokeTransparency >= 1 and #textStrokes(title) == 0,
 						"loading board: gold on navy with no outline and no stroke", hex(title.TextColor3))
 				end
@@ -2169,7 +2676,8 @@ local function clientScenarios()
 				local title = plate and plate:FindFirstChild("Title")
 				T.check(plate ~= nil and sameColor(plate.BackgroundColor3, Sign.Navy), "menu board: the navy header plank at " .. tag)
 				if T.check(title ~= nil and title.Text == "NIMBUS CLIMB", "menu board: the header reads NIMBUS CLIMB at " .. tag, title and title.Text or "missing") then
-					T.check(title:GetAttribute("FontRole") == "Title" and title.Font == Theme.Fonts.Title, "menu board: the title is the Title role (LuckiestGuy)", tostring(title.Font))
+					T.check(title:GetAttribute("FontRole") == "Title" and title.Font == Theme.Fonts.Title and title:GetAttribute("TitleLook") == "Plain",
+						"menu board: the title is the Title role (FredokaOne) through Theme.StyleTitle", tostring(title.Font) .. " " .. tostring(title:GetAttribute("TitleLook")))
 					T.check(sameColor(title.TextColor3, Sign.Gold) and title.TextStrokeTransparency >= 1 and #textStrokes(title) == 0,
 						"menu board: gold on navy with no outline and no stroke", hex(title.TextColor3))
 				end
@@ -2875,8 +3383,9 @@ local function clientScenarios()
 		local t = plate and plate:FindFirstChild("Title")
 		T.check(plate ~= nil and sameColor(plate.BackgroundColor3, Sign.Navy), "u5 window: the navy header plank at " .. tag)
 		if T.check(t ~= nil and t.Text == title, "u5 window: the header reads " .. title .. " at " .. tag, t and t.Text or "missing") then
-			T.check(t:GetAttribute("FontRole") == "Title" and t.Font == Theme.Fonts.Title and sameColor(t.TextColor3, Sign.Gold),
-				"u5 window: " .. title .. " in LuckiestGuy gold (Title role)", tostring(t.Font) .. " " .. hex(t.TextColor3))
+			T.check(t:GetAttribute("FontRole") == "Title" and t.Font == Theme.Fonts.Title and sameColor(t.TextColor3, Sign.Gold) and t:GetAttribute("TitleLook") == "Plain",
+				"u5 window: " .. title .. " in FredokaOne gold (Title role, through Theme.StyleTitle)",
+				tostring(t.Font) .. " " .. hex(t.TextColor3) .. " " .. tostring(t:GetAttribute("TitleLook")))
 		end
 		local slot = plate and plate:FindFirstChild("IconSlot")
 		T.check(slot ~= nil and WinH.icon(slot) == icon, "u5 window: the pixel " .. icon .. " on the header's gold square at " .. tag)
@@ -3175,6 +3684,1145 @@ local function clientScenarios()
 		LoadingH.cleanup()
 		T.check(ok, "loading tip: the scenario ran", tostring(err))
 		LKC.flushErrors("loading_tip_clear_of_bulb")
+	end)
+
+	-- (T0 review) every window title goes through Theme.StyleTitle, seen at run time: the walk opens the windows that build
+	-- late (Training with its confirm, Fusion, the pet picker, the Shop, the Home window with its hero cards and Prestige
+	-- confirm, the loss screen, a battle's result card, the hatch stage, the garden recall dialog), then fails on any
+	-- Title-role TextLabel named Title / TitleText / Headline in PlayerGui whose TitleLook is not "Plain" (a window title)
+	-- or a kind of Theme.TitleExempt (a heading that skips the title look on purpose, each kind with its reason). Each
+	-- expected window title must be found as "Plain", so a window that stops building fails here instead of passing absent.
+	S.kitb_titles_stamped = guarded("kitb_titles_stamped", function()
+		local Theme = LoadingH.shared("Theme")
+		local PC = LoadingH.shared("PetCatalog")
+		local pg = game:GetService("Players").LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		if not T.check(Theme and type(Theme.TitleExempt) == "table" and pg, "kitb titles walk: Theme.TitleExempt and PlayerGui exist") then
+			return
+		end
+		local function client(path)
+			local inst = Mock.GetPath(ROOTS.client .. "/" .. path)
+			local ok, mod = false, nil
+			if inst then
+				ok, mod = pcall(require, inst)
+			end
+			return ok and type(mod) == "table" and mod or nil
+		end
+		local function try(what, fn)
+			local ok, err = pcall(fn)
+			T.check(ok, "kitb titles walk: " .. what .. " opens", tostring(err))
+			LKC.advance(0.3)
+		end
+		local old = { Mock.Viewport.X, Mock.Viewport.Y }
+		Mock.SetViewport(1920, 1080)
+		LKC.advance(0.1)
+		local names = { Title = true, TitleText = true, Headline = true }
+		local found, bad = {}, {}
+		local function walk()
+			for _, d in ipairs(pg:GetDescendants()) do
+				if d:IsA("TextLabel") and names[d.Name] and d:GetAttribute("FontRole") == "Title" then
+					local path = d:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
+					local look = d:GetAttribute("TitleLook")
+					found[path] = look
+					if look ~= "Plain" and (look == nil or Theme.TitleExempt[look] == nil) then
+						bad[path] = tostring(look)
+					end
+				end
+			end
+		end
+		walk() -- what the boot built (the Care confirm, the dungeon's end card, the HUD panels, the menu windows' bars)
+		local Menu = client("Controllers/MenuController")
+		try("the Home window", function()
+			Menu.Open("Home")
+		end)
+		walk()
+		try("Training", function()
+			client("Controllers/TrainController").Open({})
+		end)
+		walk()
+		try("the pet picker", function()
+			client("UI/PetPicker").Open({ Context = "Train", Title = "Pick a pet to train", OnPick = function() end, OnClose = function() end })
+		end)
+		walk()
+		pcall(client("UI/PetPicker").Close)
+		pcall(client("Controllers/TrainController").Close)
+		try("Fusion", function()
+			client("Controllers/FusionController").Open("Upgrade", {})
+		end)
+		walk()
+		pcall(client("Controllers/FusionController").Close)
+		try("the Shop", function()
+			client("Controllers/ShopController").Open({ Tab = "Eggs" })
+		end)
+		walk()
+		pcall(client("Controllers/ShopController").Close)
+		try("the loss screen", function()
+			client("Controllers/LossScreen").Show({ Mode = "Ring", Title = "RUN OVER", Sub = "The champion won round 2", Pets = {} })
+		end)
+		walk()
+		pcall(client("Controllers/LossScreen").Hide)
+		try("a battle's result card", function()
+			local BC = client("Controllers/BattleController")
+			local id = "kitb_titles"
+			game:GetService("Players").LocalPlayer:SetAttribute(LoadingH.shared("Config").Attr.InBattle, id)
+			BC.HandleState("Start", { BattleId = id, Mode = "Ring", Side = 1, Spectator = false, T = 0, Units = {}, Ring = { Round = 1, Best = 0, Start = 1 },
+				Zone = { CFrame = CFrame.new(0, 400, 0), X = 40, Z = 40 } }, id)
+			LKC.advance(0.2)
+			BC.HandleState("End", { BattleId = id, Mode = "Ring", Outcome = "Win", Won = true, Spectator = false, Reason = "KO",
+				Rewards = { Won = true, Round = 1, Cash = 10, Xp = 5, Start = 1 } }, id)
+		end)
+		walk()
+		pcall(function()
+			client("Controllers/BattleController").HideResult()
+			game:GetService("Players").LocalPlayer:SetAttribute(LoadingH.shared("Config").Attr.InBattle, nil)
+		end)
+		try("the hatch stage", function()
+			local def = PC.RarityPool("Cloud", "Common")[1]
+			local all = {}
+			for _, d in ipairs(PC.PossiblePets("Cloud")) do
+				all[#all + 1] = d.Id
+			end
+			local strip = {}
+			for i = 1, 40 do
+				strip[i] = all[((i * 7) % #all) + 1]
+			end
+			strip[34] = def.Id
+			local pull = { PetId = def.Id, Key = def.Id, Rarity = def.Rarity, IsNew = true, NewDiscovery = true, Count = 1, PoolSize = 1, Strip = strip }
+			client("UI/EggStage").Show({ Ok = true, RouletteId = "Cloud", Currency = "Tokens", Spins = 1, UnitPrice = 50, Price = 50, Pulls = { pull }, Tokens = 5000, Gems = 5000,
+				PetId = def.Id, Key = def.Id, IsNew = true, NewDiscovery = true, Count = 1, Strip = strip })
+		end)
+		walk()
+		try("the garden recall dialog", function()
+			client("UI/PetBits").askRecall(pg:FindFirstChild("NimbusMenu") or pg, "kitb_pet", { To = "Team", Preset = 1, Keys = {} }, nil, nil, function() end)
+		end)
+		walk()
+		pcall(client("UI/PetBits").closeRecall)
+		-- the window titles this walk must have seen as "Plain" (a Lua pattern on the path inside PlayerGui each)
+		local expected = {
+			{ "the Care confirm", "^NimbusCare%.CareConfirm%.Box%.Title$" },
+			{ "the dungeon's end card", "^NimbusDungeonRun%.EndCard%..-%.Title$" },
+			{ "the Home window's bar", "%.Window_Home%..-%.TitleBar%.Title$" },
+			{ "the Go home hero card", "%.Hero%.GoHome%..-%.Title$" },
+			{ "the Prestige confirm", "%.PrestigeConfirm%.Box%.Title$" },
+			{ "the Training window", "^NimbusTrain%..-Header%.Title$" },
+			{ "the Training confirm", "^NimbusTrain%..-%.Box%.Title$" },
+			{ "the pet picker", "^NimbusPetPicker%..-%.Title$" },
+			{ "the Fusion window", "^NimbusFusion%..-%.Title$" },
+			{ "the Shop", "^NimbusShop%..-%.Title$" },
+			{ "the Sky Trove", "^NimbusTrove%..-%.TitleText$" },
+			{ "the loss card", "^NimbusLoss%.LossCard%..-%.Title$" },
+			{ "the battle result card", "%.ResultCard%..-%.Title$" },
+			{ "the hatch stage", "^NimbusHatch%..-%.Title$" },
+			{ "the garden recall dialog", "%.GardenRecall%.Box%.Title$" },
+			{ "the party panel", "^NimbusHud%..-%.PartyPanel%..-%.Title$" },
+		}
+		local missing = {}
+		for _, e in ipairs(expected) do
+			local hit = false
+			for path, look in pairs(found) do
+				if look == "Plain" and path:find(e[2]) then
+					hit = true
+					break
+				end
+			end
+			if not hit then
+				missing[#missing + 1] = e[1]
+			end
+		end
+		local badList, seen = {}, {}
+		for path, look in pairs(bad) do
+			badList[#badList + 1] = path .. " (" .. look .. ")"
+		end
+		for path, look in pairs(found) do
+			seen[#seen + 1] = path .. "=" .. tostring(look)
+		end
+		table.sort(badList)
+		table.sort(seen)
+		T.check(#missing == 0, "kitb titles walk: every expected window title is built and stamped Plain", table.concat(missing, ", ") .. " | seen: " .. table.concat(seen, "; "))
+		T.check(#badList == 0, "kitb titles walk: no Title-role title without the TitleLook stamp (Plain, or a Theme.TitleExempt kind)", table.concat(badList, "; "))
+		Mock.SetViewport(old[1], old[2])
+		LKC.advance(0.2)
+		LKC.flushErrors("kitb_titles_stamped")
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- U7a (icons: tiles and currency; finding 7, rejects audit 5): the icon ids draw PixelIcons, the Cloud Token is its coin
+	local U7 = {}
+	function U7.client(path)
+		local inst = Mock.GetPath(ROOTS.client .. "/" .. path)
+		local ok, mod = false, nil
+		if inst then
+			ok, mod = pcall(require, inst)
+		end
+		return ok and type(mod) == "table" and mod or nil
+	end
+	function U7.try(what, fn)
+		local ok, err = pcall(fn)
+		T.check(ok, "u7a walk: " .. what .. " opens", tostring(err))
+		LKC.advance(0.4)
+	end
+	function U7.path(d)
+		return (d:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", ""))
+	end
+	-- the windows U7a reworked, opened one after another; `look()` runs after each (and once before, for the boot's GUI)
+	function U7.openAll(look)
+		local Config = LoadingH.shared("Config")
+		local PC = LoadingH.shared("PetCatalog")
+		local Menu = U7.client("Controllers/MenuController")
+		look()
+		for _, id in ipairs({ "Pets", "Index", "Stats" }) do
+			U7.try("the " .. id .. " window", function()
+				Menu.Open(id)
+			end)
+			look()
+		end
+		pcall(Menu.Close)
+		for _, tab in ipairs({ "Eggs", "Gems", "Packs", "Passes", "Boosts" }) do
+			U7.try("the Shop on " .. tab, function()
+				U7.client("Controllers/ShopController").Open({ Tab = tab })
+			end)
+			look()
+		end
+		pcall(U7.client("Controllers/ShopController").Close)
+		U7.try("the Gifts window", function()
+			U7.client("Controllers/DailyController").Open({})
+		end)
+		look()
+		pcall(U7.client("Controllers/DailyController").Close)
+		U7.try("Fusion", function()
+			U7.client("Controllers/FusionController").Open("Upgrade", {})
+		end)
+		look()
+		pcall(U7.client("Controllers/FusionController").Close)
+		U7.try("a token toast", function()
+			LKC.toClient("Notify", "+25 cloud tokens", "token", 8)
+		end)
+		look()
+		U7.try("a match result", function()
+			game:GetService("Players").LocalPlayer:SetAttribute(Config.Attr.InMatch, true)
+			LKC.toClient("MatchResult", {
+				Won = true, Reason = "victory", Seconds = 187, MatchTokens = 11, Bonus = 10, DifficultyId = "Easy", DifficultyName = "Easy",
+				Stars = 1, TotalTokens = 24,
+				Members = {
+					{ Name = game:GetService("Players").LocalPlayer.Name, MatchTokens = 11, Finished = true, Downed = false },
+					{ Name = "Buddy", MatchTokens = 6, Finished = true, Downed = false },
+				},
+			})
+			LKC.advance(1.5)
+		end)
+		look()
+		pcall(function()
+			game:GetService("Players").LocalPlayer:SetAttribute(Config.Attr.InMatch, nil)
+		end)
+		U7.try("the hatch stage", function()
+			local def = PC.RarityPool("Cloud", "Common")[1]
+			local all = {}
+			for _, d in ipairs(PC.PossiblePets("Cloud")) do
+				all[#all + 1] = d.Id
+			end
+			local strip = {}
+			for i = 1, 40 do
+				strip[i] = all[((i * 7) % #all) + 1]
+			end
+			strip[34] = def.Id
+			local pull = { PetId = def.Id, Key = def.Id, Rarity = def.Rarity, IsNew = true, NewDiscovery = true, Count = 1, PoolSize = 1, Strip = strip }
+			U7.client("UI/EggStage").Show({ Ok = true, RouletteId = "Cloud", Currency = "Tokens", Spins = 1, UnitPrice = 50, Price = 50, Pulls = { pull }, Tokens = 5000, Gems = 5000,
+				PetId = def.Id, Key = def.Id, IsNew = true, NewDiscovery = true, Count = 1, Strip = strip })
+			LKC.advance(8)
+		end)
+		look()
+	end
+	-- (U7b) the windows of U7b's glyph tables, opened the way the server opens them (OpenPanel): the Arena on each tab, the
+	-- Champion Ring, the Dungeon, the Training Place, the Home window, the Food Machine and the garden picker, the Obby
+	-- picker; `look()` runs after each
+	function U7.openU7b(look)
+		local panels = {
+			{ "Arena", { Tab = "Duels" } }, { "Arena", { Tab = "Raid" } }, { "Arena", { Tab = "Leaderboard" } }, { "Ring", {} },
+			{ "Dungeon", {} }, { "Train", {} }, { "Home", {} }, { "Pets", { Tab = "Pets", Action = "Feed" } },
+			{ "Pets", { Action = "Garden", Slot = 3 } }, { "Obby", {} },
+		}
+		for _, p in ipairs(panels) do
+			U7.try("the " .. p[1] .. " panel " .. tostring(p[2].Tab or p[2].Action or ""), function()
+				LKC.toClient("OpenPanel", p[1], p[2])
+				LKC.advance(1)
+			end)
+			look()
+			pcall(function()
+				LKC.toClient("ClosePanel", p[1])
+			end)
+			pcall(U7.client("Controllers/MenuController").Close)
+			LKC.advance(0.3)
+		end
+	end
+
+	-- the emoji rule over PlayerGui (tools/stroke_walk.py --emoji runs it over the dump of every render scenario): after the
+	-- client run and with each window U7a reworked open in turn (the menu's Pets / Index / Stats, the Shop on every tab,
+	-- the Gifts window, Fusion, a token toast, a match result, the hatch stage), no shown text carries an emoji or
+	-- pictographic symbol code point (SmokeCommon.Emoji). The texts in tools/fixtures/emoji_backlog.txt (U7b's glyph
+	-- tables) are counted, not failed; U7b empties that list.
+	S.kitb_no_emoji_ui = guarded("kitb_no_emoji_ui", function()
+		local Emoji = SmokeCommon.Emoji
+		local pg = game:GetService("Players").LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		if not T.check(Emoji ~= nil and pg ~= nil, "kitb emoji walk: SmokeCommon.Emoji and PlayerGui exist") then
+			return
+		end
+		local old = { Mock.Viewport.X, Mock.Viewport.Y }
+		Mock.SetViewport(1920, 1080)
+		LKC.advance(0.1)
+		local hits, owed, walks = {}, {}, 0
+		local function walk()
+			walks = walks + 1
+			Emoji.Walk(pg, hits, owed)
+		end
+		U7.openAll(walk)
+		U7.openU7b(walk) -- (U7b) and the windows of the glyph tables U7b redrew; the backlog is empty
+		local list, n = {}, 0
+		for path, cps in pairs(hits) do
+			list[#list + 1] = path .. " " .. cps
+		end
+		for _ in pairs(owed) do
+			n = n + 1
+		end
+		table.sort(list)
+		T.info(fmt("*kitb emoji walk: %d walks, %d texts with an emoji outside the backlog, %d in tools/fixtures/emoji_backlog.txt", walks, #list, n))
+		T.check(#list == 0, fmt("kitb emoji walk: no shown text carries an emoji code point (%d)", #list), table.concat(list, "; ", 1, math.min(#list, 10)))
+		local backlog = SmokeCommon.Contrast.Backlog(Emoji.BACKLOG)
+		T.check(#backlog == 0 and n == 0, "kitb emoji walk: U7b emptied tools/fixtures/emoji_backlog.txt (zero allowed)", #backlog .. " line(s), " .. n .. " text(s) on them")
+		Mock.SetViewport(old[1], old[2])
+		LKC.advance(0.2)
+		LKC.flushErrors("kitb_no_emoji_ui")
+	end)
+
+	-- (U7b review) the incoming-challenge side card (K.SIDE_W 340 px) at five-digit trophies and power: the trophies (the
+	-- trophy icon), the power (the sword) and the countdown (the hourglass, in its own right-hand label) each sit inside
+	-- the card's body and clear of each other, so the clock, the one live value, is never cut or spilled
+	S.arena_side_invite_fits = guarded("arena_side_invite_fits", function()
+		local AC = U7.client("Controllers/ArenaController")
+		local pg = game:GetService("Players").LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		if not T.check(AC and pg, "arena side invite: ArenaController and PlayerGui") then
+			return
+		end
+		local IconOn = SmokeCommon.IconOn
+		local old = { Mock.Viewport.X, Mock.Viewport.Y }
+		Mock.SetViewport(1920, 1080)
+		pcall(AC.Close)
+		pcall(U7.client("Controllers/MenuController").Close)
+		LKC.advance(0.3)
+		LKC.toClient("BattleState", "Lobby", { Queue = { Queued = false, Waiting = 0 },
+			Invites = { { FromUserId = 501, FromName = "StormChaser", Trophies = 12345, Power = 98765, ExpiresIn = 28 } } })
+		LKC.advance(0.6)
+		local side = pg:FindFirstChild("NimbusArenaSide")
+		local card = side and side:FindFirstChild("Invite1", true)
+		local body = card and card:FindFirstChild("Body")
+		local info = body and body:FindFirstChild("Info")
+		if T.check(card and body and info and LKC.isShown(card), "arena side invite: the card shows with its Info line") then
+			local sc = card.AbsoluteSize.X / 340
+			local bx0, bx1 = body.AbsolutePosition.X, body.AbsolutePosition.X + body.AbsoluteSize.X
+			-- the screen span of a label's glyphs (its alignment in its padded box) and of its Lead icon
+			local function span(label)
+				local pad = label:FindFirstChildOfClass("UIPadding")
+				local x0 = label.AbsolutePosition.X + (pad and pad.PaddingLeft.Offset or 0) * sc
+				local x1 = label.AbsolutePosition.X + label.AbsoluteSize.X - (pad and pad.PaddingRight.Offset or 0) * sc
+				local tw = label.TextBounds.X
+				local a = label.TextXAlignment
+				local t0 = (a == Enum.TextXAlignment.Left and x0) or (a == Enum.TextXAlignment.Right and x1 - tw) or ((x0 + x1 - tw) / 2)
+				local lo, hi = t0, t0 + tw
+				local box = label:FindFirstChild("LeadIcon")
+				if box then
+					lo = math.min(lo, box.AbsolutePosition.X)
+					hi = math.max(hi, box.AbsolutePosition.X + box.AbsoluteSize.X)
+				end
+				return lo, hi
+			end
+			local trophies, power, clock = info:FindFirstChild("Trophies", true), info:FindFirstChild("Power", true), info:FindFirstChild("Clock", true)
+			T.check(trophies and power and clock, "arena side invite: the Info line holds Trophies, Power and Clock labels",
+				fmt("%s '%s'", info.ClassName, tostring(info:IsA("TextLabel") and info.Text or "")))
+			if trophies and power and clock then
+				T.check(trophies.Text == "12,345" and IconOn(trophies, "Lead") == "trophy" and power.Text == "98,765" and IconOn(power, "Lead") == "sword"
+					and tostring(clock.Text):match("^%d+:%d%d$") and IconOn(clock, "Lead") == "hourglass",
+					"arena side invite: trophies (trophy icon), power (sword icon) and the clock (hourglass icon) as values",
+					fmt("'%s' %s, '%s' %s, '%s' %s", trophies.Text, tostring(IconOn(trophies, "Lead")), power.Text, tostring(IconOn(power, "Lead")), clock.Text, tostring(IconOn(clock, "Lead"))))
+				local spans, out = {}, {}
+				for _, l in ipairs({ trophies, power, clock }) do
+					local lo, hi = span(l)
+					spans[#spans + 1] = { l.Name, lo, hi }
+					if lo < bx0 - 0.5 or hi > bx1 + 0.5 then
+						out[#out + 1] = fmt("%s %.0f..%.0f", l.Name, lo, hi)
+					end
+				end
+				T.check(#out == 0, "arena side invite: every value and icon sits inside the card body", fmt("body %.0f..%.0f; %s", bx0, bx1, table.concat(out, ", ")))
+				T.check(spans[1][3] <= spans[2][2] + 0.5 and spans[2][3] <= spans[3][2] + 0.5, "arena side invite: trophies, power and clock never overlap",
+					fmt("%.0f..%.0f, %.0f..%.0f, %.0f..%.0f", spans[1][2], spans[1][3], spans[2][2], spans[2][3], spans[3][2], spans[3][3]))
+			else
+				-- the line as one label: it must fit the body at least (it did not: the clock spilled)
+				local lo, hi = span(info)
+				T.check(hi <= bx1 + 0.5, "arena side invite: the Info line fits the card body", fmt("text %.0f..%.0f, body %.0f..%.0f", lo, hi, bx0, bx1))
+			end
+		end
+		LKC.toClient("BattleState", "Lobby", { Queue = { Queued = false, Waiting = 0 }, Invites = {} })
+		Mock.SetViewport(old[1], old[2])
+		LKC.advance(0.3)
+		LKC.flushErrors("arena_side_invite_fits")
+	end)
+
+	-- the Cloud Token is its PixelIcon coin wherever the game shows the currency: Theme.Currency names the icons (no emoji
+	-- glyph left in any currency), Config.Icons fills every icon id from PixelIcon, NeonKit.Icon("Tokens") draws the coin
+	-- (and follows the colour / fade a caller sets on it), PixelIcon.Lead puts the coin before an amount, and at run time
+	-- each token surface holds a "token" PixelIcon and no cloud glyph: the HUD coin and title card, the match HUD line,
+	-- the Shop's balance, an egg card's price and the Gems tab's token piles, the Fusion chip, the token toast, the Stats
+	-- tiles, the Index reward, the match result's rows and the hatch stage's Spin again chip
+	S.token_icon_everywhere = guarded("token_icon_everywhere", function()
+		local Theme = LoadingH.shared("Theme")
+		local Config = LoadingH.shared("Config")
+		local PixelIcon = LoadingH.shared("PixelIcon")
+		local NK = U7.client("UI/NeonKit")
+		local Emoji = SmokeCommon.Emoji
+		if not T.check(Theme and Config and PixelIcon and NK and Emoji, "token icon: Theme, Config, PixelIcon, NeonKit and SmokeCommon.Emoji load") then
+			return
+		end
+		-- the data
+		local cur = Theme.Currency or {}
+		T.check(cur.Tokens and cur.Tokens.Icon == "token" and PixelIcon.Bitmaps.token ~= nil, "token icon: Theme.Currency.Tokens.Icon = \"token\" (the PixelIcon coin)", tostring(cur.Tokens and cur.Tokens.Icon))
+		T.check(cur.Cash and cur.Cash.Icon == "note" and cur.Gems and cur.Gems.Icon == "Gems", "token icon: Cash draws the note, Gems the cut gem (Icon = \"Gems\")")
+		local glyphs = {}
+		for id, c in pairs(cur) do
+			for k, v in pairs(c) do
+				if type(v) == "string" and #Emoji.Find(v) > 0 then
+					glyphs[#glyphs + 1] = id .. "." .. k
+				end
+			end
+		end
+		T.check(#glyphs == 0, "token icon: no emoji glyph left in Theme.Currency", table.concat(glyphs, ", "))
+		local ids = { "Pets", "Items", "Inventory", "Team", "Index", "Shop", "Home", "Spot", "Stats", "Settings", "Travel", "Obby", "Dungeon",
+			"Ring", "Arena", "Altar", "Care", "Berries", "Fusion", "Battle", "Cash", "Tokens", "Lock", "Play", "Store", "Packs", "Passes",
+			"Boosts", "Currency", "Roulettes", "Eggs", "Gifts", "Repair", "VipCrown", "Trove" }
+		local missing, badValue = {}, {}
+		for _, id in ipairs(ids) do
+			if Config.Icons[id] == nil then
+				missing[#missing + 1] = id
+			end
+		end
+		for id, v in pairs(Config.Icons) do
+			if not (type(v) == "string" and (PixelIcon.Bitmaps[v] or v:sub(1, 13) == "rbxassetid://")) then
+				badValue[#badValue + 1] = id .. "=" .. tostring(v)
+			end
+		end
+		T.check(#missing == 0, "token icon: Config.Icons names an icon for every tile / tab / coin id", table.concat(missing, ", "))
+		T.check(#badValue == 0, "token icon: every Config.Icons value is a PixelIcon bitmap (or an rbxassetid)", table.concat(badValue, ", "))
+		T.check(Config.Icons.Tokens == "token", "token icon: Config.Icons.Tokens = \"token\"")
+		-- NeonKit.Icon draws it and follows what a caller sets on a glyph
+		local f = Instance.new("Frame")
+		local icon = NK.Icon(f, "Tokens", 27)
+		local pix = icon and icon:FindFirstChild("Icon")
+		T.check(icon and icon:IsA("TextLabel") and icon.Text == "" and icon:GetAttribute("PixelIcon") == "token" and pix and pix:GetAttribute("PixelIcon") == "token",
+			"token icon: NeonKit.Icon(parent, \"Tokens\") is an empty TextLabel hosting the token PixelIcon", icon and (icon.ClassName .. " '" .. tostring(icon.Text) .. "'") or "nil")
+		local rect = pix and pix:FindFirstChild("R1")
+		if rect then
+			T.check(pix.Size.X.Offset == 27 and #pix:GetChildren() == #PixelIcon.Runs("token"), "token icon: the coin is 27 px, one Frame per merged run")
+			icon.TextColor3 = Color3.fromRGB(10, 200, 30)
+			icon.TextTransparency = 0.5
+			icon.ZIndex = 7
+			T.check(rect.BackgroundColor3 == Color3.fromRGB(10, 200, 30) and math.abs(rect.BackgroundTransparency - 0.5) < 1e-6 and rect.ZIndex == 7,
+				"token icon: the coin follows the icon's TextColor3, TextTransparency and ZIndex")
+		end
+		local tile = NK.Icon(f, "Pets", 38)
+		T.check(tile and tile:GetAttribute("PixelIcon") == "paw" and tile:FindFirstChild("Icon") and tile:FindFirstChild("Icon").Size.X.Offset == 36,
+			"token icon: a tile id draws its PixelIcon at the nearest multiple of 9 (Pets: the paw, 38 -> 36 px)")
+		local plain = NK.Icon(f, "R$", 20)
+		T.check(plain and plain.Text == "R$", "token icon: plain text that is no icon id shows as it is")
+		f:Destroy()
+		-- PixelIcon.Host on a host that already holds an icon replaces it (a mark that changes, the HUD coin resized by the
+		-- layout poll): one icon left, and the old one's colour hooks are gone with it
+		local host = Instance.new("TextLabel")
+		host.TextSize = 20
+		PixelIcon.Host(host, "check")
+		PixelIcon.Host(host, "x")
+		local icons = {}
+		for _, c in ipairs(host:GetChildren()) do
+			if c.Name == "Icon" then
+				icons[#icons + 1] = c
+			end
+		end
+		host.TextColor3 = Color3.fromRGB(200, 10, 10)
+		local r1 = icons[1] and icons[1]:FindFirstChild("R1")
+		T.check(#icons == 1 and icons[1]:GetAttribute("PixelIcon") == "x" and r1 and r1.BackgroundColor3 == Color3.fromRGB(200, 10, 10),
+			"token icon: hosting again replaces the icon (one left, the new one follows the host's colour)", tostring(#icons))
+		host:Destroy()
+		-- PixelIcon.Lead: the coin before an amount
+		local lab = Instance.new("TextLabel")
+		lab.Size = UDim2.fromOffset(200, 30)
+		lab.TextSize = 20
+		lab.Text = "1,250"
+		lab.TextXAlignment = Enum.TextXAlignment.Left
+		local lead = type(PixelIcon.Lead) == "function" and PixelIcon.Lead(lab, "token") or nil
+		local pad = lab:FindFirstChildOfClass("UIPadding")
+		T.check(lead and lead.Name == "LeadIcon" and lead:GetAttribute("PixelIcon") == "token" and lead.Size.X.Offset == 18 and pad and pad.PaddingLeft.Offset >= 18,
+			"token icon: PixelIcon.Lead(label, \"token\") puts an 18 px coin before a 20 px amount and pads the text past it")
+		lab:Destroy()
+		-- run time: each surface holds the coin and no cloud glyph
+		local pg = game:GetService("Players").LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		local surfaces = {
+			{ "the HUD token coin", "^NimbusHud%.TopRight%.Currency%.Currency_Tokens" },
+			{ "the HUD title card", "^NimbusHud%.TopLeft%.TitleCard%.Coin" },
+			{ "the match HUD tokens line", "^NimbusHud%.TopLeft%.MatchPanel%..-%.Inner%.Tokens" },
+			{ "the Shop's token balance", "^NimbusShop%..-%.Balance_Tokens" },
+			{ "an egg card's spin price", "^NimbusShop%..-ShopCard_Cloud%.Body%.Spin" },
+			{ "the Gems tab's token piles", "^NimbusShop%..-%.TokenPack_%d+%.Body%.Art" },
+			{ "the Fusion token chip", "^NimbusFusion%..-%.TokenChip" },
+			{ "the token toast", "^NimbusNotify%..-%.Toast%.Icon" },
+			{ "the Stats window's tokens", "^NimbusMenu%.Window_Stats%..-%.Tile_Tokens" },
+			{ "the Stats window's tokens earned", "^NimbusMenu%.Window_Stats%..-%.Tile_Earned" },
+			{ "the Index reward", "^NimbusIndex%..-%.Rewards%.Amount" },
+			{ "the match result's tokens", "^NimbusNotify%.ResultHolder%..-%.RowTokens" },
+			{ "the match result's members", "^NimbusNotify%.ResultHolder%..-%.Member%d+%.Tokens" },
+			{ "the hatch stage's Spin again", "^NimbusHatch%..-%.SpinAgain" },
+		}
+		local seen, cloudy = {}, {}
+		local function look()
+			for _, d in ipairs(pg:GetDescendants()) do
+				local path = U7.path(d)
+				for _, s in ipairs(surfaces) do
+					if path:find(s[2]) then
+						if d:GetAttribute("PixelIcon") == "token" then
+							seen[s[1]] = true
+						end
+						if (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Text:find("\226\152\129", 1, true) then
+							cloudy[path] = true
+						end
+					end
+				end
+			end
+		end
+		local old = { Mock.Viewport.X, Mock.Viewport.Y }
+		Mock.SetViewport(1920, 1080)
+		LKC.advance(0.1)
+		U7.openAll(look)
+		local absent, cl = {}, {}
+		for _, s in ipairs(surfaces) do
+			if not seen[s[1]] then
+				absent[#absent + 1] = s[1]
+			end
+		end
+		for path in pairs(cloudy) do
+			cl[#cl + 1] = path
+		end
+		table.sort(cl)
+		T.check(#absent == 0, "token icon: every token surface holds the token PixelIcon", table.concat(absent, ", "))
+		T.check(#cl == 0, "token icon: no token surface shows the cloud glyph", table.concat(cl, "; "))
+		Mock.SetViewport(old[1], old[2])
+		LKC.advance(0.2)
+		LKC.flushErrors("token_icon_everywhere")
+	end)
+
+	------------------------------------------------------------------------------------------------
+	-- U8 (finding 15; the owner's kit B pitch, the HUD and Pets stages, and the Index moved in on 2026-11-13): the lobby HUD,
+	-- the Pets window and the Index on the Signboard kit. Each scenario sets its screen and input, feeds a known profile
+	-- (U8.feed: five pets, a team of two) and puts everything back after.
+	local U8 = {}
+	U8.KEYS = { "ember_phoenix", "biscuit_bear", "sunbeam_bear", "pebble_pup", "maple_fox" }
+	function U8.pg()
+		return game:GetService("Players").LocalPlayer:FindFirstChildOfClass("PlayerGui")
+	end
+	function U8.rect(o)
+		local p, s = o.AbsolutePosition, o.AbsoluteSize
+		return { X = p.X, Y = p.Y, R = p.X + s.X, B = p.Y + s.Y }
+	end
+	function U8.show(r)
+		return fmt("%d,%d..%d,%d", r.X, r.Y, r.R, r.B)
+	end
+	function U8.overlap(a, b)
+		return a.X < b.R - 0.5 and b.X < a.R - 0.5 and a.Y < b.B - 0.5 and b.Y < a.B - 0.5
+	end
+	-- the product of the UIScales on an object and every GuiObject above it (screen px per design px)
+	function U8.scaleOf(o)
+		local s, cur = 1, o
+		while cur and not cur:IsA("LayerCollector") do
+			if cur:IsA("GuiObject") then
+				for _, c in ipairs(cur:GetChildren()) do
+					if c:IsA("UIScale") and c.Scale > 0 then
+						s = s * c.Scale
+					end
+				end
+			end
+			cur = cur.Parent
+		end
+		return s
+	end
+	-- shown: every GuiObject up to its ScreenGui visible, and the ScreenGui enabled
+	function U8.shown(o)
+		local cur = o
+		while cur and not cur:IsA("LayerCollector") do
+			if cur:IsA("GuiObject") and not cur.Visible then
+				return false
+			end
+			cur = cur.Parent
+		end
+		return cur ~= nil and cur.Enabled ~= false
+	end
+	function U8.feed(team)
+		local pets, levels, discovered = {}, {}, {}
+		for i, key in ipairs(U8.KEYS) do
+			pets[key] = 1
+			levels[key] = { Level = 4 + 3 * i, Xp = 10 }
+			discovered[key] = true
+		end
+		local preset = team or { U8.KEYS[1], U8.KEYS[2] }
+		LKC.toClient("ProfileSync", {
+			Tokens = 1250, Pets = pets, Equipped = preset, Items = {},
+			Stats = { Matches = 0, Wins = 0, TokensEarned = 0, Spins = 0, BestTimes = {} },
+			Perks = { MaxHealth = 0, TokenBonus = 0, StaminaRegen = 0, CheckpointHeal = 0 },
+			Discovered = discovered, IndexClaimed = {},
+			Tutorial = { Step = 1000, Done = true, Gifted = true },
+			Cash = 48200, Gems = 320,
+			Home = { Level = 5, Prestige = 0, Stations = { Garden = 1 }, Garden = {}, Gym = {}, CollectorCash = 0 },
+			Food = {}, Tiers = {}, Hybrids = {}, PetLevels = levels,
+			Teams = { Presets = { preset, {}, {} }, Active = 1, Slots = 3, Busy = {} },
+			Battle = { Trophies = 120, TrialBest = 0, TrialCleared = {}, Raids = 0, RaidBestDamage = 0, PvPWins = 0, PvPLosses = 0, EventPets = {} },
+			PetGrowth = {}, Ring = { Best = 0, Runs = 0 },
+		})
+		LKC.advance(0.2)
+	end
+	function U8.closeAll()
+		for _, name in ipairs({ "Controllers/PetsController", "Controllers/IndexController", "Controllers/MenuController", "Controllers/DailyController",
+			"Controllers/ShopController" }) do
+			local m = U7.client(name)
+			if m and type(m.Close) == "function" then
+				pcall(m.Close, true)
+			end
+		end
+		LKC.advance(0.4)
+	end
+	-- runs fn(tag) at a screen size and input, in the lobby (no match, no battle), with the U8 profile and every window closed
+	function U8.at(w, h, touch, label, fn)
+		local UIS = game:GetService("UserInputService")
+		local Config = LoadingH.shared("Config")
+		local lp = game:GetService("Players").LocalPlayer
+		local old = { Mock.Viewport.X, Mock.Viewport.Y, UIS.TouchEnabled, UIS.KeyboardEnabled, UIS.MouseEnabled }
+		UIS.TouchEnabled, UIS.KeyboardEnabled, UIS.MouseEnabled = touch, not touch, not touch
+		Mock.SetViewport(w, h)
+		lp:SetAttribute(Config.Attr.InMatch, false)
+		lp:SetAttribute(Config.Attr.InBattle, nil)
+		LKC.toClient("MatchState", nil)
+		LKC.toClient("PartyState", nil)
+		U8.closeAll()
+		U8.feed()
+		LKC.advance(1.2) -- the HUD's layout poll (0.5 s) and the gift's relayout
+		local tag = fmt("%s %dx%d", label, w, h)
+		local ok, err = pcall(fn, tag)
+		T.check(ok, tag .. ": the check ran", tostring(err))
+		U8.closeAll()
+		UIS.TouchEnabled, UIS.KeyboardEnabled, UIS.MouseEnabled = old[3], old[4], old[5]
+		Mock.SetViewport(old[1], old[2])
+		LKC.advance(0.6)
+	end
+	U8.SIZES = { { 1920, 1080, false }, { 1280, 720, false }, { 844, 390, true }, { 390, 844, true } }
+	-- a fill counts as green: the grass plank of kit B, or any colour whose green leads red and blue clearly
+	function U8.green(c)
+		local Sign = LoadingH.shared("Theme").Sign
+		return sameColor(c, Sign.Grass) or sameColor(c, Sign.GrassLip) or (c.G > c.R + 0.2 and c.G > c.B + 0.2)
+	end
+	-- the face a button shows: its own fill when it paints one, else its Face child's (a SignKit plank, a kit B block)
+	function U8.faceOf(button)
+		if button.BackgroundTransparency < 0.5 then
+			return button.BackgroundColor3
+		end
+		local face = button:FindFirstChild("Face", true)
+		if face and face:IsA("GuiObject") and face.BackgroundTransparency < 0.5 then
+			return face.BackgroundColor3
+		end
+		return nil
+	end
+	-- the shown buttons under `root` whose face is green (the actions; a pet card's in-team chip is a label, not a button)
+	function U8.greenActions(root)
+		local out = {}
+		for _, d in ipairs(root and root:GetDescendants() or {}) do
+			if d:IsA("GuiButton") and U8.shown(d) then
+				local c = U8.faceOf(d)
+				if c and U8.green(c) then
+					out[#out + 1] = d.Name
+				end
+			end
+		end
+		table.sort(out)
+		return out
+	end
+
+	-- (U8) the gift docks under the currency strips (the pitch's HUD stage: a small pink block right-aligned under them): its
+	-- right edge on the strips' right edge, its top a small gap under the last strip, never over a strip, and the HUD's
+	-- TopRightBottom (where the toasts start) under it; a kit B block (the pink awning colour, square, the pixel gift and
+	-- "Gift"), at every grid size
+	S.hud_gift_under_strips = guarded("hud_gift_under_strips", function()
+		local Theme = LoadingH.shared("Theme")
+		local Sign = Theme.Sign
+		for _, s in ipairs(U8.SIZES) do
+			U8.at(s[1], s[2], s[3], "hud gift", function(tag)
+				local pg = U8.pg()
+				local hud = pg:FindFirstChild("NimbusHud")
+				local daily = pg:FindFirstChild("NimbusDaily")
+				local gift = daily and daily:FindFirstChild("GiftsButton", true)
+				local strips = nil
+				for _, d in ipairs(hud and hud:GetDescendants() or {}) do
+					if d.Name:match("^Currency_") and d:IsA("GuiObject") and U8.shown(d) then
+						local r = U8.rect(d)
+						strips = strips and { X = math.min(strips.X, r.X), Y = math.min(strips.Y, r.Y), R = math.max(strips.R, r.R), B = math.max(strips.B, r.B) } or r
+					end
+				end
+				if not T.check(gift ~= nil and strips ~= nil and U8.shown(gift), tag .. ": the strips and the Gifts button show in the lobby") then
+					return
+				end
+				local g = U8.rect(gift)
+				T.check(math.abs(g.R - strips.R) <= 1.5, tag .. ": the gift's right edge is the strips' right edge", fmt("gift %s, strips %s", U8.show(g), U8.show(strips)))
+				T.check(g.Y >= strips.B + 2 and g.Y <= strips.B + 16, tag .. ": the gift sits a small gap under the last strip", fmt("gift %s, strips %s", U8.show(g), U8.show(strips)))
+				local over = {}
+				for _, d in ipairs(hud:GetDescendants()) do
+					if d.Name:match("^Currency_") and d:IsA("GuiObject") and U8.shown(d) and U8.overlap(U8.rect(d), g) then
+						over[#over + 1] = d.Name
+					end
+				end
+				T.check(#over == 0, tag .. ": the gift covers no strip", table.concat(over, ", "))
+				T.check((tonumber(hud:GetAttribute("TopRightBottom")) or 0) >= g.B - 0.5, tag .. ": TopRightBottom (where the toasts start) is under the gift",
+					fmt("TopRightBottom %s, gift bottom %d", tostring(hud:GetAttribute("TopRightBottom")), g.B))
+				T.check(g.R - g.X >= 44 - 0.5 and g.B - g.Y >= 44 - 0.5, tag .. ": the gift is a thumb-sized target (44 px)", U8.show(g))
+				-- the kit B block
+				local face = U8.faceOf(gift)
+				T.check(face ~= nil and sameColor(face, Sign.Roof), tag .. ": the gift is a pink block (the awning colour)", face and hex(face) or "no face")
+				local round, gloss, icon, word = false, false, false, false
+				for _, d in ipairs(gift:GetDescendants()) do
+					round = round or (d:IsA("UICorner") and d.Parent == gift)
+					gloss = gloss or d:IsA("UIGradient")
+					icon = icon or d:GetAttribute("PixelIcon") == "gift"
+					word = word or ((d:IsA("TextLabel")) and d.Text == "Gift" and U8.shown(d))
+				end
+				T.check(not round and not gloss, tag .. ": square, no gloss gradient")
+				T.check(icon and word, tag .. ": the pixel gift and the word Gift", fmt("icon %s, word %s", tostring(icon), tostring(word)))
+			end)
+		end
+		LKC.flushErrors("hud_gift_under_strips")
+	end)
+
+	-- (U8) the Pets window's cards (the pitch's .pc): a stone face, the rarity on the card's lip (the bottom band in the
+	-- rarity's colour), a light pet well, the element as a chip with its PixelIcon (no letter), the team slot on a green chip,
+	-- the selected card gold-faced; no corner, no gloss. The Index's pet tiles share the card (the owner moved the Index into
+	-- U8: one pet card for both windows)
+	S.pets_rarity_on_lip = guarded("pets_rarity_on_lip", function()
+		local Theme = LoadingH.shared("Theme")
+		local Config = LoadingH.shared("Config")
+		local Sign = Theme.Sign
+		local CloudUI = U7.client("UI/CloudUI")
+		local State = U7.client("State")
+		local PC = U7.client("Controllers/PetsController")
+		if not T.check(CloudUI and State and PC, "pets lip: CloudUI, State and PetsController load") then
+			return
+		end
+		local function checkCard(card, def, tag, what)
+			local lip = card:FindFirstChild("Lip")
+			local c = U8.rect(card)
+			T.check(card.BackgroundTransparency < 0.05 and (sameColor(card.BackgroundColor3, Sign.Tile) or sameColor(card.BackgroundColor3, Sign.Selected)),
+				tag .. ": " .. what .. " has a stone face", hex(card.BackgroundColor3))
+			if T.check(lip ~= nil and lip:IsA("Frame"), tag .. ": " .. what .. " has its Lip") then
+				local l = U8.rect(lip)
+				T.check(sameColor(lip.BackgroundColor3, CloudUI.RarityColor(def.Rarity)) and lip.BackgroundTransparency < 0.05,
+					tag .. ": " .. what .. "'s lip wears its rarity's colour (" .. tostring(def.Rarity) .. ")", hex(lip.BackgroundColor3))
+				T.check(math.abs(l.B - c.B) <= 1.5 and l.B - l.Y >= 4 and math.abs(l.X - c.X) <= 1.5 and math.abs(l.R - c.R) <= 1.5,
+					tag .. ": " .. what .. "'s lip runs along the card's bottom edge", fmt("lip %s, card %s", U8.show(l), U8.show(c)))
+			end
+			T.eq(card:GetAttribute("Rarity"), def.Rarity, tag .. ": " .. what .. " carries attribute Rarity")
+			T.check(card:FindFirstChildOfClass("UICorner") == nil and card:FindFirstChildOfClass("UIGradient") == nil, tag .. ": " .. what .. " is square with no gloss")
+		end
+		for _, s in ipairs({ { 1920, 1080, false }, { 844, 390, true } }) do
+			U8.at(s[1], s[2], s[3], "pets lip", function(tag)
+				PC.Open({ Key = U8.KEYS[4] })
+				LKC.advance(1)
+				local win = U8.pg():FindFirstChild("NimbusPets")
+				for i, key in ipairs(U8.KEYS) do
+					local card = win and win:FindFirstChild("Card_" .. key, true)
+					local def = State.DefOf(key)
+					if T.check(card ~= nil and def ~= nil, tag .. ": the card of " .. key .. " exists") then
+						checkCard(card, def, tag, key)
+						local element = card:FindFirstChild("Element")
+						local el = def.Element or (type(def.Elements) == "table" and def.Elements[1]) or nil
+						local info = el and Config.Elements.Info[el]
+						if info then
+							local icon = nil
+							for _, d in ipairs(element and element:GetDescendants() or {}) do
+								icon = icon or d:GetAttribute("PixelIcon")
+							end
+							T.check(element and sameColor(element.BackgroundColor3, info.Color) and (not element:IsA("TextLabel") or element.Text == "")
+								and icon ~= nil and icon == info.Icon, tag .. ": " .. key .. "'s element is a chip with its PixelIcon (" .. tostring(info.Icon) .. "), no letter",
+								element and fmt("%s %s icon %s", element.ClassName, hex(element.BackgroundColor3), tostring(icon)) or "no Element")
+						end
+						local number = card:FindFirstChild("Number")
+						if i <= 2 then
+							T.check(number and U8.shown(number) and number.Text == tostring(i) and sameColor(number.BackgroundColor3, Sign.Grass),
+								tag .. ": " .. key .. " (team slot " .. i .. ") shows its slot on a green chip", number and fmt("%q %s", number.Text, hex(number.BackgroundColor3)) or "no Number")
+						end
+						local well = card:FindFirstChild("Picture")
+						T.check(well and well.BackgroundTransparency < 0.05 and sameColor(well.BackgroundColor3, Sign.PetWell), tag .. ": " .. key .. "'s pet sits in the light pet well",
+							well and hex(well.BackgroundColor3) or "no Picture")
+						if key == U8.KEYS[4] then
+							T.check(sameColor(card.BackgroundColor3, Sign.Selected), tag .. ": the selected card is gold-faced", hex(card.BackgroundColor3))
+						end
+					end
+				end
+				PC.Close(true)
+				LKC.advance(0.4)
+				-- the Index's tiles: the same card (U8 review: on the first key's rarity tab, so a tab left open by an earlier
+				-- scenario, say an empty Fusions tab after client_p2ui, never hides the tiles)
+				local Menu = U7.client("Controllers/MenuController")
+				local first = LoadingH.shared("PetCatalog").Get(U8.KEYS[1])
+				Menu.Open("Index", { GroupId = first and first.Rarity or "Common" })
+				LKC.advance(1)
+				local index = U8.pg():FindFirstChild("NimbusIndex")
+				local n = 0
+				for _, d in ipairs(index and index:GetDescendants() or {}) do
+					local id = d.Name:match("^IndexPet_(.+)$")
+					if id and d:IsA("GuiButton") and U8.shown(d) then
+						local def = LoadingH.shared("PetCatalog").Get(id)
+						if def then
+							n = n + 1
+							checkCard(d, def, tag, "Index tile " .. id)
+						end
+					end
+				end
+				T.check(n > 0, tag .. ": the Index shows pet tiles", tostring(n))
+			end)
+		end
+		LKC.flushErrors("pets_rarity_on_lip")
+	end)
+
+	-- (U8) one colour by role: at most one green action on the screen. The lobby HUD (tiles, pill, strips, gift) has none;
+	-- the Pets window's one green action is "Put in team" (shown for a pet out of the team; none for a team pet); the
+	-- Index's only possible green is its Claim button
+	S.kitb_one_green_action = guarded("kitb_one_green_action", function()
+		local PC = U7.client("Controllers/PetsController")
+		local Menu = U7.client("Controllers/MenuController")
+		U8.at(1920, 1080, false, "one green", function(tag)
+			local pg = U8.pg()
+			local hud = {}
+			for _, name in ipairs({ "NimbusHud", "NimbusTopBar", "NimbusMenu", "NimbusDaily" }) do
+				for _, g in ipairs(U8.greenActions(pg:FindFirstChild(name))) do
+					hud[#hud + 1] = name .. "." .. g
+				end
+			end
+			T.check(#hud == 0, tag .. ": the lobby HUD has no green action", table.concat(hud, ", "))
+			PC.Open({ Key = U8.KEYS[4] })
+			LKC.advance(0.8)
+			local greens = U8.greenActions(pg:FindFirstChild("NimbusPets"))
+			T.check(#greens == 1 and greens[1] == "ActPut", tag .. ": a pet out of the team: Put in team is the one green action", table.concat(greens, ", "))
+			PC.Open({ Key = U8.KEYS[2] })
+			LKC.advance(0.8)
+			greens = U8.greenActions(pg:FindFirstChild("NimbusPets"))
+			T.check(#greens == 0, tag .. ": a team pet: no green action (Remove is the red one)", table.concat(greens, ", "))
+			PC.Close(true)
+			LKC.advance(0.4)
+			Menu.Open("Index")
+			LKC.advance(1)
+			greens = U8.greenActions(pg:FindFirstChild("NimbusIndex"))
+			T.check(#greens == 0 or (#greens == 1 and greens[1] == "Claim"), tag .. ": the Index's only green action is Claim", table.concat(greens, ", "))
+		end)
+		LKC.flushErrors("kitb_one_green_action")
+	end)
+
+	-- (U8; the owner's Index renders: "UNCOMMON" cut on the phone tab) the rarity tabs are signboard tabs: at every grid size each
+	-- tab that shows in the tab strip shows whole (never half under the strip's edge or the Elements button), and its name fits
+	-- the tab at its own size, never cut or squeezed under 18 design px.
+	-- U8 review (the after render listed "Uncommon", "Legendary" and "Fusions" overflowing at 1920x1080 while this passed):
+	-- widths are FredokaOne's real ones (SmokeCommon.RealWidth; the mock's TextService is a flat 0.5 em), given to the
+	-- window through IndexController.Metrics.MEASURE as the renderer does; a name's padding (the Fusions sparkle's inset)
+	-- counts, with 2 px to spare; and the name's drawn text (with its lead icon) never meets the tab's count or its badge
+	-- corner (the badge shows whenever a reward waits, so its place is kept free while it is hidden too)
+	S.index_tabs_fit_phone = guarded("index_tabs_fit_phone", function()
+		local Menu = U7.client("Controllers/MenuController")
+		local IC = U7.client("Controllers/IndexController")
+		local RealWidth = SmokeCommon.RealWidth
+		local SPARE = 2
+		local metrics = IC and type(IC.Metrics) == "table" and IC.Metrics or nil
+		local savedMeasure = metrics and metrics.MEASURE
+		if metrics then
+			metrics.MEASURE = function(text, size, font)
+				return RealWidth(text, size, font)
+			end
+		end
+		-- a label's drawn text in its tab's own design px: the padded box, the text's real width placed by its alignment,
+		-- one TextSize tall in the middle of the box
+		local function local_(o, tab, sc)
+			local p = (o.AbsolutePosition - tab.AbsolutePosition) / sc
+			local z = o.AbsoluteSize / sc
+			return { X = p.X, Y = p.Y, R = p.X + z.X, B = p.Y + z.Y }
+		end
+		local function textRect(label, tab, sc)
+			local r = local_(label, tab, sc)
+			local pad = label:FindFirstChildOfClass("UIPadding")
+			local pl, pr = pad and pad.PaddingLeft.Offset or 0, pad and pad.PaddingRight.Offset or 0
+			local pt, pb = pad and pad.PaddingTop.Offset or 0, pad and pad.PaddingBottom.Offset or 0
+			local w = RealWidth(label.Text, label.TextSize, label.Font)
+			local left, right = r.X + pl, r.R - pr
+			local x = left
+			if label.TextXAlignment == Enum.TextXAlignment.Right then
+				x = right - w
+			elseif label.TextXAlignment == Enum.TextXAlignment.Center then
+				x = (left + right - w) / 2
+			end
+			local cy = r.Y + pt + (r.B - r.Y - pt - pb) / 2
+			local out = { X = x, R = x + w, Y = cy - label.TextSize / 2, B = cy + label.TextSize / 2 }
+			local lead = label:FindFirstChild("LeadIcon")
+			if lead then
+				local l = local_(lead, tab, sc)
+				out.X, out.Y, out.B = math.min(out.X, l.X), math.min(out.Y, l.Y), math.max(out.B, l.B)
+			end
+			return out, w, pl + pr
+		end
+		for _, s in ipairs(U8.SIZES) do
+			U8.at(s[1], s[2], s[3], "index tabs", function(tag)
+				Menu.Open("Index")
+				LKC.advance(1)
+				local index = U8.pg():FindFirstChild("NimbusIndex")
+				local list = index and index:FindFirstChild("GroupList", true)
+				if not T.check(list ~= nil, tag .. ": the tab strip (GroupList) exists") then
+					return
+				end
+				local view = U8.rect(list)
+				local elements = index:FindFirstChild("ElementsButton", true)
+				local cut, tight, seen, meets = {}, {}, 0, {}
+				for _, tab in ipairs(list:GetDescendants()) do
+					if tab.Name:match("^Group_") and tab:IsA("GuiButton") and U8.shown(tab) then
+						local r = U8.rect(tab)
+						if U8.overlap(r, view) then
+							seen = seen + 1
+							local inside = r.X >= view.X - 0.5 and r.R <= view.R + 0.5 and r.Y >= view.Y - 0.5 and r.B <= view.B + 0.5
+							local under = elements and U8.shown(elements) and U8.overlap(r, U8.rect(elements))
+							if not inside or under then
+								cut[#cut + 1] = tab.Name .. " " .. U8.show(r)
+							end
+							local name = tab:FindFirstChild("GroupName", true)
+							if name then
+								local sc = U8.scaleOf(name)
+								local rect, w, inset = textRect(name, tab, sc)
+								local room = name.AbsoluteSize.X / sc
+								if name.TextScaled or inset + w + SPARE > room + 0.01 or name.TextSize < 18 then
+									tight[#tight + 1] = fmt("%s %q %.1f px + %d inset in %.1f at %s%s", tab.Name, name.Text, w, inset, room, tostring(name.TextSize),
+										name.TextScaled and " (scaled)" or "")
+								end
+								for _, other in ipairs({ "Progress", "Badge" }) do
+									local o = tab:FindFirstChild(other)
+									if o then
+										local r = other == "Progress" and (textRect(o, tab, sc)) or local_(o, tab, sc)
+										if U8.overlap(rect, r) then
+											meets[#meets + 1] = fmt("%s %q %s meets its %s %s", tab.Name, name.Text, U8.show(rect), other, U8.show(r))
+										end
+									end
+								end
+							end
+						end
+					end
+				end
+				T.check(seen >= 2, tag .. ": the strip shows at least two tabs", tostring(seen))
+				T.check(#cut == 0, tag .. ": every tab in view shows whole (none half under the strip's edge or the Elements button)", table.concat(cut, "; ") .. " | view " .. U8.show(view))
+				T.check(#tight == 0, tag .. ": every tab's name (with its lead icon's inset and 2 px to spare) fits it at a fixed size of 18 px or more, real FredokaOne widths",
+					table.concat(tight, "; "))
+				T.check(#meets == 0, tag .. ": no tab's name meets the tab's count or its badge corner", table.concat(meets, "; "))
+			end)
+		end
+		if metrics then
+			metrics.MEASURE = savedMeasure
+		end
+		LKC.flushErrors("index_tabs_fit_phone")
+	end)
+
+	-- (U8; the owner's Index renders: Claim under Roblox's jump button at 844x390) on a touch phone the Claim button never
+	-- sits under the jump button: Roblox's touch controls go while the window is open (MenuController.SetTouchHidden, as the
+	-- Pets window, the Shop and the Gifts window do), or the button is clear of the jump button's square; and they come back
+	-- as they were on Close
+	S.index_claim_clear_of_jump = guarded("index_claim_clear_of_jump", function()
+		local Menu = U7.client("Controllers/MenuController")
+		local IC = U7.client("Controllers/IndexController")
+		local GuiService = game:GetService("GuiService")
+		for _, s in ipairs({ { 844, 390, true }, { 390, 844, true } }) do
+			U8.at(s[1], s[2], s[3], "index claim", function(tag)
+				local before = GuiService.TouchControlsEnabled
+				Menu.Open("Index")
+				LKC.advance(1)
+				local index = U8.pg():FindFirstChild("NimbusIndex")
+				local claim = index and index:FindFirstChild("Claim", true)
+				if not T.check(claim ~= nil and U8.shown(claim), tag .. ": the Claim button shows") then
+					return
+				end
+				-- Roblox's jump button on a phone (HudController K: J = 70, from 1.5 J + 10 to 0.5 J + 10 off the right edge, its
+				-- bottom 20 px over the bottom edge), in the window's own coordinates
+				local J = 70
+				local inset = index.IgnoreGuiInset and 0 or 58
+				local jump = { X = s[1] - (1.5 * J + 10), R = s[1] - (0.5 * J + 10), Y = s[2] - 20 - J - inset, B = s[2] - 20 - inset }
+				local hidden = GuiService.TouchControlsEnabled == false
+				local c = U8.rect(claim)
+				T.check(hidden or not U8.overlap(c, jump), tag .. ": Claim is never under the jump button (the touch controls hidden, or Claim clear of it)",
+					fmt("touch controls %s, claim %s, jump %s", tostring(GuiService.TouchControlsEnabled), U8.show(c), U8.show(jump)))
+				IC.Close()
+				LKC.advance(0.5)
+				T.eq(GuiService.TouchControlsEnabled, before, tag .. ": the touch controls are back as they were after Close")
+			end)
+		end
+		LKC.flushErrors("index_claim_clear_of_jump")
+	end)
+
+	-- (U8; finding 15) no neon glow in the U8 families: the lobby HUD (NimbusHud, the top-bar pill, the menu tiles, the gift, the
+	-- boost chips under it), the
+	-- Pets window and the Index. No glow ring (a NeonKit Glow frame or GlowStroke shown), no gloss gradient (a UIGradient on
+	-- a shown object; kit B's functional ones are named Lip, Step, Sweep or Fill and keep a flat face), no neon border (a
+	-- Border UIStroke in a Theme.Neon colour) and no Theme.Neon fill. NeonKit.Card's glow is off unless asked for
+	S.kitb_no_neon_glow = guarded("kitb_no_neon_glow", function()
+		local Theme = LoadingH.shared("Theme")
+		local NK = U7.client("UI/NeonKit")
+		local PC = U7.client("Controllers/PetsController")
+		local Menu = U7.client("Controllers/MenuController")
+		if not T.check(NK and PC and Menu, "no neon glow: NeonKit, PetsController and MenuController load") then
+			return
+		end
+		local plain = NK.Card({ Name = "U8Probe" })
+		local lit = NK.Card({ Name = "U8Probe", Glow = true })
+		T.check(plain.Glow.Visible == false and lit.Glow.Visible == true, "no neon glow: NeonKit.Card's glow is off by default (Glow = true turns it on)")
+		plain.Root:Destroy()
+		lit.Root:Destroy()
+		local ALLOWED = { Lip = true, Step = true, Sweep = true, Fill = true }
+		local function neonName(c)
+			for name, n in pairs(Theme.Neon) do
+				if sameColor(c, n) then
+					return name
+				end
+			end
+			return nil
+		end
+		-- (U8 review) the drawn cut gem (client/UI/GemIcon, spec 5.7) is an icon whose tones are its art (U8 kept it on its navy
+		-- square): its gradients are not a panel's gloss. The Gems strip shows only in some lobby states, so the walk met it
+		-- only after another scenario had turned it on
+		local function inGemIcon(d)
+			local cur = d.Parent
+			while cur and not cur:IsA("LayerCollector") do
+				if cur.Name == "GemIcon" then
+					return true
+				end
+				cur = cur.Parent
+			end
+			return false
+		end
+		local function walk(root, family, bad)
+			for _, d in ipairs(root and root:GetDescendants() or {}) do
+				local p = d.Parent
+				if d:IsA("UIStroke") and p and p:IsA("GuiObject") and U8.shown(p) and d.Enabled ~= false and d.Transparency < 0.95 then
+					if d.Name == "GlowStroke" or (p.Name == "Glow" and d.ApplyStrokeMode == Enum.ApplyStrokeMode.Border) then
+						bad[#bad + 1] = family .. ": a glow ring on " .. p:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
+					elseif d.ApplyStrokeMode == Enum.ApplyStrokeMode.Border and neonName(d.Color) then
+						bad[#bad + 1] = family .. ": a neon " .. neonName(d.Color) .. " border on " .. p.Name
+					end
+				elseif d:IsA("UIGradient") and p and p:IsA("GuiObject") and U8.shown(p) and d.Enabled ~= false and not ALLOWED[d.Name] and not inGemIcon(d) then
+					bad[#bad + 1] = family .. ": a gloss gradient on " .. p:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
+				elseif d:IsA("GuiObject") and d.BackgroundTransparency < 0.5 and U8.shown(d) and neonName(d.BackgroundColor3) then
+					bad[#bad + 1] = family .. ": a neon " .. neonName(d.BackgroundColor3) .. " fill on " .. d.Name
+				end
+			end
+		end
+		for _, s in ipairs({ { 1920, 1080, false }, { 844, 390, true } }) do
+			U8.at(s[1], s[2], s[3], "no neon glow", function(tag)
+				local pg = U8.pg()
+				local bad = {}
+				local menu = pg:FindFirstChild("NimbusMenu")
+				walk(pg:FindFirstChild("NimbusHud"), "HUD", bad)
+				walk(pg:FindFirstChild("NimbusTopBar"), "HUD pill", bad)
+				walk(menu and menu:FindFirstChild("MenuColumn"), "HUD tiles", bad)
+				local daily = pg:FindFirstChild("NimbusDaily")
+				local gift = daily and daily:FindFirstChild("GiftsButton")
+				if gift then
+					walk(gift, "HUD gift", bad)
+				end
+				-- (U8 review) the boost chips hang right under the gift: both shown (the two passes), each a kit B tag (a flat
+				-- block in its wood edge, square: no UICorner, no gradient)
+				local lp = game:GetService("Players").LocalPlayer
+				local oldPasses = lp:GetAttribute("OwnedPasses")
+				lp:SetAttribute("OwnedPasses", "Cash2x,PetXp2x")
+				LKC.advance(0.3)
+				local boosts = pg:FindFirstChild("NimbusBoosts")
+				local chips = 0
+				for _, name in ipairs({ "Chip_Cash", "Chip_Xp" }) do
+					local chip = boosts and boosts:FindFirstChild(name, true)
+					if chip and U8.shown(chip) then
+						chips = chips + 1
+						T.check(chip:FindFirstChildOfClass("UICorner") == nil and chip:FindFirstChildOfClass("UIGradient") == nil and chip:FindFirstChild("SignEdge") ~= nil
+							and chip.BackgroundTransparency == 0, tag .. ": the boost chip " .. name .. " is a kit B tag (a flat face in a wood edge, square)")
+					end
+				end
+				T.check(chips == 2, tag .. ": both boost chips show under the gift (the two passes)", tostring(chips))
+				walk(boosts, "HUD boosts", bad)
+				lp:SetAttribute("OwnedPasses", oldPasses)
+				LKC.advance(0.3)
+				PC.Open({ Key = U8.KEYS[4] })
+				LKC.advance(1)
+				walk(pg:FindFirstChild("NimbusPets"), "Pets", bad)
+				PC.Close(true)
+				LKC.advance(0.4)
+				Menu.Open("Index")
+				LKC.advance(1)
+				walk(pg:FindFirstChild("NimbusIndex"), "Index", bad)
+				T.check(#bad == 0, fmt("%s: no glow ring, gloss gradient, neon border or neon fill in the HUD, the Pets window and the Index (%d)", tag, #bad),
+					table.concat(bad, "; ", 1, math.min(#bad, 12)))
+			end)
+		end
+		LKC.flushErrors("kitb_no_neon_glow")
+	end)
+
+	-- (U8) CloudUI.Panel's Signboard skin (Skin = "Signboard"; the Pets window and the Index wear it): the flat pink awning at a
+	-- FIXED size centred on the top (never stretched with the window: Gemini's sign rule), the navy header plank in its wood
+	-- rim with the title in gold through Theme.StyleTitle (stamped TitleLook), the wood frame and the stone body, the red
+	-- close block with the drawn X; Panel.Content where it always was (callers' layouts do not move); no glow, gradient or
+	-- corner
+	S.panel_signboard_skin = guarded("panel_signboard_skin", function()
+		local Theme = LoadingH.shared("Theme")
+		local Sign = Theme.Sign
+		local CloudUI = U7.client("UI/CloudUI")
+		local SK = LoadingH.shared("SignKit")
+		local gui = Instance.new("ScreenGui")
+		gui.Name = "U8PanelProbe"
+		gui.Parent = U8.pg()
+		local function build(w, h)
+			return CloudUI.Panel({ Name = "Probe", Title = "Pets", Closable = true, Skin = "Signboard", Icon = "paw", Size = UDim2.fromOffset(w, h), Parent = gui })
+		end
+		local a, b = build(900, 600), build(1200, 760)
+		local plain = CloudUI.Panel({ Name = "Plain", Title = "Pets", Size = UDim2.fromOffset(900, 600), Parent = gui })
+		LKC.advance(0.1)
+		for _, p in ipairs({ a, b }) do
+			local root = p.Root
+			local roof = root:FindFirstChild("Roof")
+			T.check(roof and roof:GetAttribute("SignKit") == "Roof" and roof.Size.X.Scale == 0 and roof.Size.Y.Scale == 0, "panel skin: a SignKit roof of fixed offset size")
+			local head = nil
+			for _, d in ipairs(root:GetDescendants()) do
+				head = head or (d:GetAttribute("SignKit") == "Header" and d or nil)
+			end
+			local plate = head and head:FindFirstChild("Plate")
+			T.check(head and head:GetAttribute("SignKit") == "Header" and plate and sameColor(plate.BackgroundColor3, Sign.Navy), "panel skin: the navy header plank (SignKit Header)")
+			T.check(p.TitleLabel and sameColor(p.TitleLabel.TextColor3, Sign.Gold) and p.TitleLabel:GetAttribute("TitleLook") ~= nil and p.TitleLabel:GetAttribute("FontRole") == "Title",
+				"panel skin: the title in gold, Title role, through Theme.StyleTitle", p.TitleLabel and hex(p.TitleLabel.TextColor3) or "no title")
+			local icon = false
+			for _, d in ipairs(root:GetDescendants()) do
+				icon = icon or d:GetAttribute("PixelIcon") == "paw"
+			end
+			T.check(icon, "panel skin: the header carries the window's pixel icon (paw)")
+			T.check(p.Body and sameColor(p.Body.BackgroundColor3, Sign.Wood) and p.Body.BackgroundTransparency < 0.05, "panel skin: the wood frame (Body)", p.Body and hex(p.Body.BackgroundColor3) or "")
+			local stone = p.Body:FindFirstChild("Stone")
+			T.check(stone and sameColor(stone.BackgroundColor3, Sign.Stone), "panel skin: the stone body inside the frame")
+			T.check(p.CloseButton and U8.faceOf(p.CloseButton) and sameColor(U8.faceOf(p.CloseButton), Sign.Red) and p.CloseButton:FindFirstChild("CloseMark"),
+				"panel skin: the red close block with the drawn X")
+			local bad = {}
+			for _, d in ipairs(root:GetDescendants()) do
+				if d:IsA("UIGradient") or d:IsA("UICorner") then
+					bad[#bad + 1] = d.ClassName .. " on " .. d.Parent.Name
+				elseif d.Name == "Glow" and d:IsA("GuiObject") and d.Visible then
+					bad[#bad + 1] = "a glow on " .. d.Parent.Name
+				end
+			end
+			T.check(#bad == 0, "panel skin: no gradient, corner or glow", table.concat(bad, ", "))
+		end
+		T.check(a.Root:FindFirstChild("Roof").Size == b.Root:FindFirstChild("Roof").Size, "panel skin: the roof keeps its size on a bigger window")
+		T.check(a.Content.Position == plain.Content.Position and a.Content.Size == plain.Content.Size, "panel skin: Panel.Content sits where the plain panel's does")
+		T.eq(SK.Sizes.RoofH, a.Root:FindFirstChild("Roof").Size.Y.Offset, "panel skin: the roof is the SignKit roof's height")
+		gui:Destroy()
+		LKC.flushErrors("panel_signboard_skin")
 	end)
 
 	return S

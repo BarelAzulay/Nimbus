@@ -682,7 +682,8 @@ local function nodeOf(inst, ctx, path, order)
 			-- (kit-b U6) the role Theme stamped on it (Theme.SetRole), read by tools/stroke_walk.py's casing rule
 			role = inst:GetAttribute("FontRole"),
 			-- (kit-b U6 review) the mock's TextBounds in screen px: where the glyphs sit, read by render_gui.contrast_rule
-			bounds = { (tonumber(inst.TextBounds.X) or 0) * s, (tonumber(inst.TextBounds.Y) or 0) * s },
+			-- (U7a review: the mock's TextBounds is screen px already, like Roblox's)
+			bounds = { tonumber(inst.TextBounds.X) or 0, tonumber(inst.TextBounds.Y) or 0 },
 			-- TextScaled bounds in screen px (Roblox's TextScaled tops out at 100 px before UIScale)
 			minSize = 1 * s,
 			maxSize = 100 * s,
@@ -956,7 +957,11 @@ local function scenario(name, fn)
 	ORDER[#ORDER + 1] = name
 end
 
-scenario("lobby", function()
+-- lobby[:boosts]: boosts (kit-b U8 review) owns the Cash2x and PetXp2x passes, so both boost chips hang under the gift
+scenario("lobby", function(arg)
+	if arg == "boosts" then
+		LocalPlayer:SetAttribute("OwnedPasses", "Cash2x,PetXp2x")
+	end
 	advance(0.5)
 end)
 
@@ -1041,6 +1046,16 @@ scenario("menu", function(window, tab, action, key)
 	end
 	if (action and action ~= "") or (key and key ~= "") then
 		careProfile()
+	end
+	-- (kit-b U8 review) the Index sizes its tab names with TextService:GetTextSize (the mock's is a flat 0.5 em per
+	-- character): its Metrics.MEASURE hook gets the renderer's font metrics instead (Mock.TextExtent)
+	local IC = lower == "index" and req("client/Controllers/IndexController") or nil
+	if IC and type(IC.Metrics) == "table" then
+		local probe = Instance.new("TextLabel")
+		IC.Metrics.MEASURE = function(text, size, font)
+			probe.Text, probe.TextSize, probe.Font = text, size, font
+			return (Mock.TextExtent(probe))
+		end
 	end
 	toClient("OpenPanel", window, args)
 	advance(2.5)
@@ -2541,7 +2556,7 @@ function NK.gallery()
 	end
 	local r1 = row("Pills", 1, 52)
 	NeonKit.Pill({ Name = "Pill_Cash", Text = "12.4K", Glyph = "$", Color = "Green", Size = 200, LayoutOrder = 1, Parent = r1 })
-	NeonKit.Pill({ Name = "Pill_Tokens", Text = "1,250", Glyph = "\226\152\129", Color = "Gold", Size = 200, LayoutOrder = 2, Parent = r1 })
+	NeonKit.Pill({ Name = "Pill_Tokens", Text = "1,250", Glyph = "Tokens", Color = "Gold", Size = 200, LayoutOrder = 2, Parent = r1 }) -- (kit-b U7a) the token PixelIcon
 	-- (lobby-shop Task 15: the gem pill's coin holds the drawn cut gem on the navy badge with a cyan ring, like the HUD's)
 	local gemPill = NeonKit.Pill({ Name = "Pill_Gems", Text = "85", Glyph = " ", Color = "Cyan", Size = 200, LayoutOrder = 3, Parent = r1 })
 	gemPill.Glyph.Text = ""

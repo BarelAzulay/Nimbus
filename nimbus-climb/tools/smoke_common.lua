@@ -111,6 +111,41 @@ end
 
 SmokeCommon = { T = T, guarded = guarded, add = add }
 
+-- Real text widths (moved here from smoke_redo_geom.lua, T0 review: the world sign fit check of smoke_polish_worldtext.lua
+-- needs them in the server world too): the advance widths (1/1000 em) of ASCII 32..126 per face; any other character
+-- counts 0.6 em. Luckiest: Roblox's shipped LuckiestGuy-Regular.ttf; Fredoka: FredokaOne; Builder: Builder Sans Bold;
+-- Gotham (Montserrat Black widths) is the fallback for any other name.
+SmokeCommon.Advance = {
+	Luckiest = { 195, 279, 480, 606, 437, 725, 630, 232, 389, 382, 542, 456, 223, 382, 222, 505, 633, 388, 509, 528, 539, 531, 573, 506, 571, 555, 248, 247, 455, 391, 455, 554, 665, 626, 594, 515, 583, 479, 487, 626, 626, 297, 510, 614, 452, 791, 704, 638, 596, 691, 606, 531, 543, 623, 613, 908, 588, 607, 487, 366, 505, 365, 485, 302, 283, 626, 594, 513, 584, 577, 488, 627, 626, 294, 510, 603, 451, 898, 652, 638, 597, 691, 606, 532, 545, 611, 614, 910, 595, 605, 496, 410, 287, 402, 576 },
+	Fredoka = { 253, 267, 429, 749, 475, 838, 748, 208, 384, 384, 503, 527, 238, 433, 237, 526, 608, 407, 609, 608, 592, 530, 560, 561, 582, 560, 238, 237, 627, 478, 627, 512, 908, 765, 646, 679, 704, 638, 637, 714, 699, 257, 549, 639, 587, 870, 720, 775, 632, 830, 631, 583, 731, 726, 783, 999, 741, 686, 643, 348, 528, 348, 526, 826, 482, 596, 592, 517, 598, 573, 450, 585, 605, 255, 252, 536, 327, 851, 606, 600, 582, 582, 457, 489, 449, 606, 638, 793, 567, 604, 586, 381, 217, 381, 651 },
+	Gotham = { 300, 314, 489, 740, 657, 917, 777, 254, 381, 381, 473, 620, 304, 390, 304, 440, 692, 418, 608, 614, 712, 619, 661, 645, 678, 661, 304, 304, 620, 620, 620, 606, 1037, 806, 773, 744, 826, 673, 644, 769, 804, 350, 574, 765, 617, 954, 804, 848, 743, 848, 745, 657, 654, 784, 786, 1206, 762, 710, 687, 410, 440, 410, 620, 500, 600, 639, 700, 615, 705, 653, 426, 711, 702, 326, 334, 713, 326, 1040, 702, 678, 700, 700, 456, 565, 460, 698, 644, 977, 645, 644, 570, 438, 320, 438, 620 },
+	Builder = { 250, 278, 458, 685, 580, 894, 704, 268, 366, 366, 431, 518, 264, 350, 264, 424, 646, 407, 585, 587, 612, 589, 615, 528, 632, 615, 292, 292, 518, 518, 518, 541, 919, 704, 635, 677, 702, 576, 574, 693, 720, 280, 505, 649, 566, 894, 720, 745, 627, 745, 641, 574, 556, 690, 716, 960, 658, 642, 559, 377, 424, 377, 476, 422, 276, 566, 613, 533, 613, 567, 405, 616, 601, 260, 255, 531, 260, 879, 601, 590, 613, 613, 415, 483, 403, 591, 574, 806, 536, 574, 465, 478, 294, 478, 600 },
+}
+SmokeCommon.Faces = { FredokaOne = "Fredoka", BuilderSansBold = "Builder", BuilderSans = "Builder", BuilderSansMedium = "Builder", BuilderSansExtraBold = "Builder", LuckiestGuy = "Luckiest" }
+
+-- the width in px of `text` at `size` in `font` (an Enum.Font or its name). known = true: nil for a face outside the
+-- table but Gotham's own (the caller keeps its own estimate); otherwise any other face measures as Gotham
+function SmokeCommon.RealWidth(text, size, font, known)
+	local name = (typeof(font) == "EnumItem" and font.Name) or tostring(font)
+	local face = SmokeCommon.Faces[name] or ((name:find("^Gotham") or not known) and "Gotham" or nil)
+	if not face then
+		return nil
+	end
+	local adv = SmokeCommon.Advance[face]
+	local em = 0
+	for ch in tostring(text):gmatch("[%z\1-\127\194-\244][\128-\191]*") do
+		local b = ch:byte()
+		if #ch == 1 then
+			if b >= 32 and b <= 126 then
+				em = em + adv[b - 31] / 1000
+			end
+		else
+			em = em + 0.6
+		end
+	end
+	return em * (tonumber(size) or 14)
+end
+
 -- slop-audit win 6 (2026-11-12; review round 1: the ONE check every window's close button goes through, client world).
 -- The problems of a close button's drawn X (NeonKit.CloseMark); {} = a good X:
 --   a TextButton with no text anywhere on it reading X / x / U+2715 / U+00D7 and no image; a CloseMark Frame child (not
@@ -421,8 +456,9 @@ local function samplePoints(item)
 	local ok, tb = pcall(function()
 		return o.TextBounds
 	end)
-	local tw = (ok and tb) and math.min(tb.X * s, x1 - x0) or (x1 - x0)
-	local th = (ok and tb) and math.min(tb.Y * s, y1 - y0) or (y1 - y0)
+	-- (TextBounds is screen px: the mock's, like Roblox's, is already under every UIScale)
+	local tw = (ok and tb) and math.min(tb.X, x1 - x0) or (x1 - x0)
+	local th = (ok and tb) and math.min(tb.Y, y1 - y0) or (y1 - y0)
 	local x, y = (x0 + x1) / 2, (y0 + y1) / 2
 	if o.TextXAlignment == Enum.TextXAlignment.Left then
 		x = x0 + tw / 2
@@ -533,10 +569,11 @@ function Contrast.Read(list, index)
 end
 
 -- tools/fixtures/contrast_backlog.txt as Lua patterns: the texts U6 left below the rule outside the review's families (a GUI
--- path per line, "*" = any run of characters but a dot, "#" a comment); a hit there is counted, not failed
-function Contrast.Backlog()
+-- path per line, "*" = any run of characters but a dot, "#" a comment); a hit there is counted, not failed. `file` reads
+-- another backlog of the same form (U7a: tools/fixtures/emoji_backlog.txt)
+function Contrast.Backlog(file)
 	local out = {}
-	local fh = io and io.open and io.open("tools/fixtures/contrast_backlog.txt", "r")
+	local fh = io and io.open and io.open(file or "tools/fixtures/contrast_backlog.txt", "r")
 	if not fh then
 		return out
 	end
@@ -584,6 +621,111 @@ function Contrast.Walk(pg)
 	end
 	table.sort(bad)
 	return bad, read, owed
+end
+
+-- (kit-b U7a) the emoji rule, the same ranges as render_gui.is_emoji (tools/stroke_walk.py --emoji): kit B draws its icons
+-- (PixelIcon), so a shown text carries no emoji and no pictographic symbol (arrows, the clocks, geometric shapes, the
+-- miscellaneous symbols and dingbats, the stars block, U+1F000 and up, the emoji joiners); typography stays
+local Emoji = {}
+SmokeCommon.Emoji = Emoji
+Emoji.BACKLOG = "tools/fixtures/emoji_backlog.txt"
+
+function Emoji.Is(cp)
+	return cp >= 0x1F000 or cp == 0xFE0F or cp == 0x200D or cp == 0x20E3 or (cp >= 0x2190 and cp <= 0x21FF)
+		or (cp >= 0x2300 and cp <= 0x23FF) or (cp >= 0x25A0 and cp <= 0x27BF) or (cp >= 0x2900 and cp <= 0x297F)
+		or (cp >= 0x2B00 and cp <= 0x2BFF)
+end
+
+-- the emoji code points of a UTF-8 string, as "U+XXXX" strings (rich-text tags dropped)
+function Emoji.Find(s)
+	s = tostring(s or ""):gsub("<[^>]*>", "")
+	local out, i = {}, 1
+	while i <= #s do
+		local c = s:byte(i)
+		local n, cp = 1, c
+		if c >= 0xF0 then
+			n, cp = 4, c % 0x08
+		elseif c >= 0xE0 then
+			n, cp = 3, c % 0x10
+		elseif c >= 0xC0 then
+			n, cp = 2, c % 0x20
+		end
+		for k = 1, n - 1 do
+			cp = cp * 64 + ((s:byte(i + k) or 0x80) % 0x40)
+		end
+		if Emoji.Is(cp) then
+			out[#out + 1] = string.format("U+%04X", cp)
+		end
+		i = i + n
+	end
+	return out
+end
+
+-- is a text object shown: its own text not see-through, every GuiObject up to its LayerCollector Visible, that Enabled
+function Emoji.Shown(o)
+	if (tonumber(o.TextTransparency) or 0) >= 0.99 then
+		return false
+	end
+	local p = o
+	while p do
+		if p:IsA("LayerCollector") then
+			return p.Enabled ~= false
+		end
+		if p:IsA("GuiObject") and p.Visible == false then
+			return false
+		end
+		p = p.Parent
+	end
+	return true
+end
+
+-- every shown text under `pg` with an emoji code point: hits[path] = "text U+XXXX ...", and backlog hits counted apart
+-- (owed[path] = true); `hits` / `owed` may be passed in to gather several walks
+function Emoji.Walk(pg, hits, owed)
+	hits, owed = hits or {}, owed or {}
+	local backlog = Contrast.Backlog(Emoji.BACKLOG)
+	for _, d in ipairs(pg:GetDescendants()) do
+		if (d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox")) and Emoji.Shown(d) then
+			local cps = Emoji.Find(d.Text)
+			if #cps > 0 then
+				local path = d:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
+				local known = false
+				for _, pattern in ipairs(backlog) do
+					if path:find(pattern) then
+						known = true
+						break
+					end
+				end
+				if known then
+					owed[path] = true
+				else
+					hits[path] = table.concat(cps, " ")
+				end
+			end
+		end
+	end
+	return hits, owed
+end
+
+-- (kit-b U7b) the PixelIcon a text object shows in place of a glyph: (name, count) of its PixelIcon.Lead row ("LeadIcon",
+-- or "TrailIcon" with which = "Trail"; either when which is nil), else of the icon it hosts (PixelIcon.Host: "Icon");
+-- nil, 0 when it has none
+function SmokeCommon.IconOn(label, which)
+	if not label then
+		return nil, 0
+	end
+	local box = label:FindFirstChild(which == "Trail" and "TrailIcon" or "LeadIcon")
+	if not box and which == nil then
+		box = label:FindFirstChild("TrailIcon")
+	end
+	if box and box:GetAttribute("PixelIcon") then
+		return box:GetAttribute("PixelIcon"), tonumber(box:GetAttribute("IconCount")) or 1
+	end
+	local icon = label:FindFirstChild("Icon")
+	if icon and icon:GetAttribute("PixelIcon") then
+		return icon:GetAttribute("PixelIcon"), 1
+	end
+	return nil, 0
 end
 
 -- (battle-feel T3, the real server cast) a special press's effects land BattleCatalog.Damage.SpecialCast[kind] s after the

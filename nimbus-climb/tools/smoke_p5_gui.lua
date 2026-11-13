@@ -535,16 +535,19 @@ S.client_p5neon = guarded("client_p5neon", function()
 	T.check(C.PanelTop == Color3.fromRGB(26, 32, 72) and C.PanelBottom == Color3.fromRGB(12, 15, 38) and C.PanelInk == Color3.fromRGB(8, 10, 28) and C.Navy ~= nil and C.FrameTop ~= nil,
 		"p5neon: Colors.PanelTop / PanelBottom / PanelInk (old keys kept)")
 	local F = Theme.Fonts
-	-- (kit-b U1) the pitch's roles: LuckiestGuy titles, FredokaOne buttons, Nunito ExtraBold faces over the Builder Sans
-	-- fallback for Body / Label / Toast (smoke_kitb_ui.lua theme_roles_kitb pins the whole map)
-	T.check(F.Title == Enum.Font.LuckiestGuy and F.Button == Enum.Font.FredokaOne and F.Toast == Enum.Font.BuilderSansBold and F.Display == Enum.Font.FredokaOne
+	-- (kit-b U1) the pitch's roles: FredokaOne titles (T0: the owner's title pick B) and buttons, LuckiestGuy accents, Nunito
+	-- ExtraBold faces over the Builder Sans fallback for Body / Label / Toast (smoke_kitb_ui.lua theme_roles_kitb pins the whole map)
+	T.check(F.Title == Enum.Font.FredokaOne and F.Button == Enum.Font.FredokaOne and F.Toast == Enum.Font.BuilderSansBold and F.Display == Enum.Font.FredokaOne
 		and F.Accent == Enum.Font.LuckiestGuy and F.Body == Enum.Font.BuilderSansBold and F.Label == Enum.Font.BuilderSansBold
 		and Theme.Faces.Body ~= nil and Theme.Faces.Toast ~= nil,
-		"p5neon: fonts: Title / Accent LuckiestGuy, Button / Display FredokaOne, Body / Label / Toast BuilderSansBold under the Nunito face")
+		"p5neon: fonts: Title / Button / Display FredokaOne, Accent LuckiestGuy, Body / Label / Toast BuilderSansBold under the Nunito face")
 
 	local g = CloudUI.NewScreenGui("SmokeNeon", 41)
 	-- Card: 3 px neon stroke, glow ring (+3 px frame, 5 px stroke at 0.62), floor on a short card, sheen, Body
-	local card = NeonKit.Card({ Name = "C1", Size = UDim2.fromOffset(240, 120), Color = "Purple", Parent = g })
+	-- (kit-b U8) the glow is opt-in now: this card asks for it, a plain card keeps it hidden
+	local card = NeonKit.Card({ Name = "C1", Size = UDim2.fromOffset(240, 120), Color = "Purple", Glow = true, Parent = g })
+	local plainCard = NeonKit.Card({ Name = "C0", Size = UDim2.fromOffset(240, 120), Color = "Purple", Parent = g })
+	T.check(plainCard.Glow and plainCard.Glow.Visible == false, "p5neon: Card: no glow unless asked for (kit-b U8)")
 	local stroke = card.Root:FindFirstChild("NeonStroke")
 	T.check(stroke and stroke:IsA("UIStroke") and stroke.Thickness == 3 and stroke.Color == Theme.Neon.Purple and stroke.Transparency == 0,
 		"p5neon: Card: a 3 px neon UIStroke in its colour")
@@ -575,9 +578,9 @@ S.client_p5neon = guarded("client_p5neon", function()
 	T.eq(clicks, 1, "p5neon: Tile: a click calls the Callback")
 	tile.SetBadge(true)
 	T.check(NK.shown(tile.Badge), "p5neon: Tile.SetBadge shows the red dot")
-	-- Icon: an emoji glyph, or an ImageLabel once Config.Icons[id] holds an asset id
+	-- Icon: the id's PixelIcon (kit-b U7a), or an ImageLabel once Config.Icons[id] holds an asset id
 	local icon = NeonKit.Icon(g, "Shop", 40)
-	T.check(icon:IsA("TextLabel") and icon.Text == NeonKit.Glyphs.Shop, "p5neon: Icon(id): the emoji glyph by default")
+	T.check(icon:IsA("TextLabel") and icon.Text == "" and icon:GetAttribute("PixelIcon") == "bag", "p5neon: Icon(id): the id's PixelIcon by default (kit-b U7a: Shop = the bag)")
 	Config.Icons = Config.Icons or {}
 	Config.Icons.SmokeIcon = "rbxassetid://123"
 	local img = NeonKit.Icon(g, "SmokeIcon", 40)
@@ -708,10 +711,13 @@ S.client_p5hud_pills = guarded("client_p5hud_pills", function()
 	for _, id in ipairs({ "Cash", "Gems", "Tokens" }) do
 		local row = pill(id)
 		local body = row and row:FindFirstChild("Body")
-		local stroke = body and body:FindFirstChild("NeonStroke")
-		local grad = body and body:FindFirstChildOfClass("UIGradient")
-		T.check(NK.shown(row) and stroke and stroke.Color == Theme.Neon[want[id]] and grad and grad.Color.Keypoints[1].Value == Theme.Colors.PanelTop,
-			"p5hud_pills: the " .. id .. " pill is a dark navy neon pill with a " .. want[id] .. " border")
+		-- (kit-b U8, restated: was a dark navy neon pill with a Green / Cyan / Gold border) a kit B currency strip: a stone
+		-- tile face, a wood edge and its darker lip, no gloss; the currency's colour is its coin square
+		local stroke = body and body:FindFirstChild("SignEdge")
+		local lip = body and body:FindFirstChild("Lip")
+		T.check(NK.shown(row) and stroke and stroke.Color == Theme.Sign.Wood and body.BackgroundColor3 == Theme.Sign.Tile and lip ~= nil
+			and body:FindFirstChildOfClass("UIGradient") == nil and body:FindFirstChildOfClass("UICorner") == nil,
+			"p5hud_pills: the " .. id .. " strip is a stone tile with a wood edge and its lip (kit-b U8; was a " .. want[id] .. " neon pill)")
 	end
 	local amount = pill("Cash") and pill("Cash"):FindFirstChild("Amount")
 	T.check(amount and amount.Text == "12.4K", "p5hud_pills: Cash reads 12.4K", amount and amount.Text or "none")

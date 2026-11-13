@@ -45,6 +45,7 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7b) the "more" mark
 local Util = require(Shared:WaitForChild("Util"))
 
 local function optionalShared(name)
@@ -135,7 +136,7 @@ local TAU = math.pi * 2
 local TAG = (NpcDialog and NpcDialog.Tag) or "NC_Npc"
 local SETTINGS = (NpcDialog and NpcDialog.Settings) or {}
 local CLOSE_DISTANCE = tonumber(SETTINGS.CloseDistance) or 16
-local TOKEN_GLYPH = (Theme.Currency and Theme.Currency.Tokens and Theme.Currency.Tokens.Glyph) or "\226\152\129"
+local TOKEN_WORD = (Theme.Currency and Theme.Currency.Tokens and Theme.Currency.Tokens.Word) or "Tokens" -- (kit-b U7a) "50 Tokens"
 
 local C = {
 	White = Theme.Colors.White,
@@ -417,7 +418,7 @@ local function richLine(text, def, accent)
 			end
 		end
 	end
-	-- numbers: "+10", "x1.5", "1,000 ☁", "40%", "1.6"
+	-- numbers: "+10", "x1.5", "1,000 Tokens", "40%", "1.6"
 	local init = 1
 	while true do
 		local s, e = string.find(text, "[%+x]?%d[%d,%.]*%%?", init)
@@ -430,7 +431,7 @@ local function richLine(text, def, accent)
 		while e > s and string.find(string.sub(text, e, e), "[,%.]") do
 			e = e - 1
 		end
-		local glyph = " " .. TOKEN_GLYPH
+		local glyph = " " .. TOKEN_WORD
 		if string.sub(text, e + 1, e + #glyph) == glyph then
 			e = e + #glyph
 		end
@@ -1060,7 +1061,7 @@ local function buildDialog()
 	})
 	line.Parent = well
 	UI.Line = line
-	local more = Theme.Label("\226\150\188", "Label", { -- down triangle: "there is more"
+	local more = Theme.Label("", "Label", { -- the PixelIcon down arrow: "there is more" (kit-b U7b; it was U+25BC)
 		Size = 20,
 		Color = C.Gold,
 		Props = {
@@ -1073,6 +1074,7 @@ local function buildDialog()
 		},
 	})
 	more.Parent = well
+	PixelIcon.Host(more, "down", 18)
 	UI.More = more
 
 	-- page dots in the bottom row of the well

@@ -14,7 +14,7 @@ pcall(function() game:GetService("ReplicatedFirst"):RemoveDefaultLoadingScreen()
 -- trim like the title screen's (grain, nails, rope rings, the striped awning's notched lip, a chipped corner).
 --   * Before Shared.Theme replicates: the sky, the clouds and the whole board (no text), drawn with this script's own copy
 --     of the few Theme.Sign tokens and SignKit sizes it needs (smoke loading_tokens_match_theme pins them equal).
---   * Once Theme (and SignKit, PixelIcon) exist: "NIMBUS CLIMB" in LuckiestGuy gold on the navy plank (no outline), the
+--   * Once Theme (and SignKit, PixelIcon) exist: "NIMBUS CLIMB" in FredokaOne gold on the navy plank (no outline), the
 --     tag line (Config.Tagline, Nunito italic), 12 stone blocks that turn gold one by one with a 0.12 s pop, the caption
 --     "Loading the sky... 64%" (FredokaOne; session lock, 2026-11-10: "Another server is still saving your progress..."
 --     while the player attribute SaveWaiting is true), a tip from UpdateNotes.Tips in a SignKit.Notice with the pixel bulb
@@ -517,6 +517,7 @@ local function buildText(SignKit, PixelIcon)
 		Visible = St.Images.Logo == nil,
 		ZIndex = 3,
 	}, ui.Plate)
+	St.Theme.StyleTitle(ui.Title) -- (T0) the one title treatment, as every window title
 	-- the game's tag line (Config.Tagline; St.Config is nil when Config failed to load)
 	local tagline = (St.Config and type(St.Config.Tagline) == "string" and St.Config.Tagline) or "Climb the storm. Together."
 	ui.Tagline = label("Tagline", tagline, "Script", 20, Sign.TextMuted, { ZIndex = 2 }, ui.Body)

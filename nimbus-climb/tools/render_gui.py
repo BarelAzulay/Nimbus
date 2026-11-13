@@ -6,7 +6,7 @@
                                 [--mark-small [PX]] [--no-chrome] [--no-labels] [--echo] [-v]
     python3 tools/render_gui.py --list
 
-Scenarios (see tools/dump_gui.lua): gallery, signkit (kit B: every SignKit part and PixelIcon), lobby, title, match[:hit], countdown, party, results,
+Scenarios (see tools/dump_gui.lua): gallery, signkit (kit B: every SignKit part and PixelIcon), lobby[:boosts], title, match[:hit], countdown, party, results,
 pets[:phone|:pick|:sheet|:<key>], loss[:ring|:dungeon|:phone], menu:<Index|Shop|Stats>[:<Tab>], tutorial[:<step>], npc[:<n>], dev, toasts,
 portal[:<Id>[:<players>[:<studs>]]] (a portal's world GUIs mirrored flat: the pixel billboard and the eye-level
 countdown face as big as it looks from <studs> away; Phase 5: portal:Obby), battle[:<mode>[:<phase>]]
@@ -1696,6 +1696,41 @@ def in_backlog(backlog, path):
         if rx.match(path):
             return pattern
     return None
+
+
+# kit-b U7a: the emoji rule. Kit B draws its icons (PixelIcon), so a shown text carries no emoji and no pictographic
+# symbol: they draw from the device's emoji font or fall back out of LuckiestGuy / FredokaOne / Nunito (finding 7).
+# Typography stays (the dashes, the middle dot, the guillemets, the times sign, the ellipsis). The same ranges are
+# SmokeCommon.Emoji.Is (the client walk kitb_no_emoji_ui).
+EMOJI_BACKLOG = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "emoji_backlog.txt")
+
+
+def is_emoji(cp):
+    """True for an emoji or pictographic symbol code point: arrows, technical symbols (the clocks), geometric shapes,
+    miscellaneous symbols and dingbats (stars, cloud, ticks, swords), the supplemental arrows, the stars and squares
+    block, everything from U+1F000, and the joiners / variation selector that build emoji."""
+    return (cp >= 0x1F000 or cp in (0xFE0F, 0x200D, 0x20E3) or 0x2190 <= cp <= 0x21FF or 0x2300 <= cp <= 0x23FF
+            or 0x25A0 <= cp <= 0x27BF or 0x2900 <= cp <= 0x297F or 0x2B00 <= cp <= 0x2BFF)
+
+
+def emoji_rule(dump):
+    """[(path, text, "U+XXXX ...")] of the shown texts of a dump that carry an emoji code point (rich-text tags dropped)."""
+    out = []
+
+    def walk(n):
+        tx = n.get("text")
+        if tx and float(tx.get("t", 0)) < 0.99:
+            text = re.sub(r"<[^>]*>", "", str(tx.get("text", "")))
+            cps = sorted(set(ord(ch) for ch in text if is_emoji(ord(ch))))
+            if cps:
+                out.append((n.get("path", ""), text, " ".join("U+%04X" % cp for cp in cps)))
+        for c in n.get("children", []):
+            walk(c)
+
+    for gui in dump.get("guis", []):
+        for n in gui.get("nodes", []):
+            walk(n)
+    return out
 
 
 def describe(t):

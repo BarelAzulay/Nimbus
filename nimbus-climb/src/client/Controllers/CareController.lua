@@ -55,6 +55,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7b) the stars, the where marks, the berry
 local Remotes = require(Shared:WaitForChild("Remotes"))
 
 local Client = script.Parent.Parent
@@ -137,22 +138,13 @@ local ACCENTS = {
 }
 local ROLE_COLORS = { Economy = Color3.fromRGB(96, 196, 108), Combat = Color3.fromRGB(228, 104, 96) }
 
--- glyphs as UTF-8 byte escapes (the source stays plain ASCII)
-local G = {
-	Star = "\226\152\133",
-	Food = "\240\159\141\178", -- pot of food (the Food Machine)
-	Seedling = "\240\159\140\177",
-	Muscle = "\240\159\146\170",
-	Lock = "\240\159\148\146",
-	Bullet = "\194\183",
-	Clock = "\226\143\177", -- stopwatch
-	Sparkle = "\226\156\168",
-	Berry = "\240\159\141\147", -- strawberry (Phase 5 berries)
-}
+-- (kit-b U7b) the marks are PixelIcons, not emoji: a pet's evolution stars, where it is (training: the weight, the
+-- garden: the sprout, following: the star), the berry basket
+local ICON = { Star = "star", Training = "weight", Garden = "sprout", Following = "star", Berry = "berry" }
 
 local TITLES = {
-	Feed = G.Food .. " Food Machine",
-	Garden = G.Seedling .. " Pet Garden",
+	Feed = "Food Machine",
+	Garden = "Pet Garden",
 }
 
 local SKILLS = (BattleCatalog and type(BattleCatalog.TrainingSkills) == "table" and #BattleCatalog.TrainingSkills == 4)
@@ -454,11 +446,9 @@ function H.canEvolve(key, def, level)
 	return nil
 end
 
+-- how many evolution stars a pet shows (0-2; kit-b U7b: drawn as PixelIcons after its name)
 function H.stars(stage)
-	if stage and stage > 0 then
-		return string.rep(G.Star, math.min(2, stage))
-	end
-	return ""
+	return (stage and stage > 0) and math.min(2, stage) or 0
 end
 
 function H.home()
@@ -625,20 +615,20 @@ function H.skillName(stat)
 	return tostring(stat)
 end
 
--- where a pet copy is: "Physique 2:10" (training) | "In Garden" | "Following" | nil, and its colour
+-- where a pet copy is: "Physique 2:10" (training) | "In Garden" | "Following" | nil, its colour and its PixelIcon
 function H.whereText(key, home)
 	local job = H.job(key)
 	if job then
 		local left = (tonumber(job.Ends) or 0) - H.now()
-		return G.Muscle .. " " .. H.skillName(job.Stat) .. " " .. H.clock(left), Theme.Lighten(PURPLE, 0.3)
+		return H.skillName(job.Stat) .. " " .. H.clock(left), Theme.Lighten(PURPLE, 0.3), ICON.Training
 	end
 	if #H.gardenSlots(home or H.home(), key) > 0 then
-		return G.Seedling .. " In Garden", Theme.Lighten(GOOD, 0.3)
+		return "In Garden", Theme.Lighten(GOOD, 0.3), ICON.Garden
 	end
 	if H.equippedCount(key) > 0 then
-		return G.Star .. " Following", GOLD
+		return "Following", GOLD, ICON.Following
 	end
-	return nil, MUTED
+	return nil, MUTED, nil
 end
 
 -- the room left below the level cap, in XP
@@ -918,12 +908,12 @@ function H.buildConfirm()
 	H.corner(box, 16)
 	U.ConfirmStroke = H.stroke(box, GOLD, 4, 0)
 	Theme.Gradient(box, Colors.PanelLight, Colors.Panel, 90)
-	U.ConfirmTitle = H.text(box, "Title", "", "Title", 30, GOLD, {
+	U.ConfirmTitle = Theme.StyleTitle(H.text(box, "Title", "", "Title", 30, GOLD, {
 		Position = UDim2.fromOffset(16, 12),
 		Size = UDim2.new(1, -32, 0, 40),
 		TextScaled = true,
 		ZIndex = 32,
-	})
+	}))
 	Util.Create("UITextSizeConstraint", { MaxTextSize = 30, MinTextSize = 22, Parent = U.ConfirmTitle })
 	U.ConfirmText = H.text(box, "Text", "", "Body", 20, WHITE, {
 		Position = UDim2.fromOffset(20, 60),
@@ -1019,11 +1009,12 @@ function H.buildWindow()
 		Color = Color3.fromRGB(236, 84, 140),
 		Parent = U.Top,
 	})
-	U.BasketIcon = H.text(U.Top, "BasketIcon", G.Berry, "Title", 26, WHITE, {
+	U.BasketIcon = H.text(U.Top, "BasketIcon", "", "Title", 26, WHITE, {
 		AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.new(0, 0, 0.5, 0),
 		Size = UDim2.fromOffset(30, 32),
 	})
+	PixelIcon.Host(U.BasketIcon, ICON.Berry, 27) -- (kit-b U7b)
 	U.BasketRate = H.text(U.Top, "BasketRate", "", "Heading", 18, Color3.fromRGB(255, 196, 226), {
 		AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.new(1, 0, 0.5, 0),
@@ -1078,12 +1069,14 @@ function H.paintHead(row, key, def, home)
 	local cap = H.cap(def, key)
 	local stage = H.stage(key)
 	local stars = H.stars(stage)
-	row.Name.Text = H.name(key, def) .. (stars ~= "" and ("  " .. stars) or "")
+	row.Name.Text = H.name(key, def)
+	PixelIcon.Mark(row.Name, stars > 0 and ICON.Star or nil, { After = true, Count = stars, Of = stars, Colour = GOLD })
 	row.Level.Text = "Lv " .. level .. " / " .. cap
 	row.Level.TextColor3 = level >= cap and GOLD or WHITE
-	local where, color = H.whereText(key, home)
+	local where, color, icon = H.whereText(key, home)
 	row.Where.Text = where or ""
 	row.Where.TextColor3 = color
+	PixelIcon.Mark(row.Where, where and icon or nil)
 	return level, cap, stage
 end
 
@@ -1410,7 +1403,7 @@ function H.refreshFeed(home, cash)
 	U.FeedEmpty.Visible = #keys == 0
 	U.FeedEmpty.Text = "No pets yet! Spin a roulette in the Shop to hatch one."
 	-- how it works (the kid rule, 3.4), always the same words
-	U.Leftovers.Text = G.Berry .. " Each Feed turns berries into XP. Your garden pets grow more berries!"
+	U.Leftovers.Text = "Each Feed turns berries into XP. Your garden pets grow more berries!"
 	local level = H.station(home, "Kitchen")
 	local shares = TycoonCatalog and TycoonCatalog.FeedShare or {}
 	local def = H.call(TycoonCatalog, "Get", "Kitchen")
@@ -1516,7 +1509,7 @@ function H.refreshGarden(home)
 	if current and type(current) == "string" then
 		U.GardenNow.Text = "Now here: " .. H.name(current) .. ". Pick a pet to swap, or take it out."
 	elseif slot and slot > open then
-		U.GardenNow.Text = G.Lock .. " This place opens with a Prestige."
+		U.GardenNow.Text = "This place opens with a Prestige."
 	else
 		U.GardenNow.Text = "Pick a pet: it eats at the Food Bowl and poops Cloud Cash."
 	end
@@ -2029,7 +2022,7 @@ function CareController.ConfirmEvolve(key)
 	H.showConfirm({
 		Kind = "Evolve",
 		Key = key,
-		Title = G.Sparkle .. " Evolve " .. name .. "?",
+		Title = "Evolve " .. name .. "?",
 		Text = name .. " changes into its " .. (nextStage == 2 and "Evolved II" or "Evolved") .. " form: Level bonus x" .. bonusText
 			.. " (battle power, health and coins). It keeps its level.",
 		YesText = "EVOLVE!",

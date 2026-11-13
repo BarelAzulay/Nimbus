@@ -115,6 +115,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7b) the trophy board's trophies
 
 local ArenaBuilder = {}
 ArenaBuilder.Teleported = Util.Signal()
@@ -305,12 +306,10 @@ local function flameColor(color)
 	return color:Lerp(rgb(255, 250, 230), 0.18)
 end
 
+-- typography only (kit-b U7b: the trophy board draws its PixelIcon trophy; the emoji went)
 local GLYPH = {
-	Trophy = "\240\159\143\134",
-	Swords = "\226\154\148",
 	Dot = "\194\183",
 	Dash = "\226\128\147",
-	Clock = "\226\143\176",
 }
 
 ----------------------------------------------------------------------
@@ -2179,6 +2178,7 @@ local function buildLeaderboard(parent, cf)
 		local rank = signText(row, "Rank", tostring(i), "Display", 32, rankColor, 0.01, 0, 0.1, 1)
 		local name = signText(row, "PlayerName", "", "Heading", 32, C.Text, 0.12, 0, 0.6, 1, Enum.TextXAlignment.Left)
 		local trophies = signText(row, "Trophies", "", "Display", 32, C.TextGold, 0.72, 0, 0.27, 1, Enum.TextXAlignment.Right)
+		PixelIcon.Lead(trophies, "trophy", { After = true }) -- (kit-b U7b) the trophy after the count, drawn
 		rows[i] = { Frame = row, Rank = rank, Name = name, Trophies = trophies }
 	end
 	local empty = signText(p, "EmptyLabel", "No champions yet!", "Heading", 36, C.Text, 0.04, 0.42, 0.92, 0.1)
@@ -2332,7 +2332,7 @@ local function drawLeaders(list)
 			local nameW = LEADER_W * SIGN_PPS * 0.94 * 0.6
 			row.Name.Text = fitText(tostring(e.Name or ("Player " .. tostring(e.UserId))), 32, nameW - 6)
 			local t = max(0, floor(tonumber(e.Trophies) or 0))
-			row.Trophies.Text = commas(t) .. " " .. GLYPH.Trophy
+			row.Trophies.Text = commas(t)
 		else
 			row.Frame.Visible = false
 			row.Name.Text = ""
@@ -2631,7 +2631,9 @@ local function buildGateSign(parent, A)
 	frame.CanQuery = false
 	local gui = surfaceGui(part, Enum.NormalId.Front)
 	local p = signPanel(gui, C.TextGold)
-	signText(p, "Title", "BATTLE ARENA", "Title", 64, C.TextGold, 0.04, 0.08, 0.92, 0.48)
+	-- (T0 review) 56 px: FredokaOne runs about 1.2 x as wide as the old LuckiestGuy, so BATTLE ARENA at 64 px (507 px + the
+	-- outline) spilled past its 506 px box; at 56 px it is about 449 px with the outline, still 1.12 stud tall
+	signText(p, "Title", "BATTLE ARENA", "Title", 56, C.TextGold, 0.04, 0.08, 0.92, 0.48)
 	signText(p, "Subtitle", "Duels and boss raids", "Heading", 30, C.Text, 0.04, 0.6, 0.92, 0.3)
 	-- the main gate's own prompt: the arena panel (raids, duels, the queue)
 	local anchor = anchorPart(parent, "GatePromptAnchor", A * CFrame.new(0, 3, -(COL.WallOut + 2)), Vector3.new(1, 1, 1))

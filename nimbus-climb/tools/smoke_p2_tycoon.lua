@@ -43,7 +43,7 @@ if CONTEXT ~= "server" then
 end
 
 local advance, config, mod = K.advance, K.config, K.mod
-local STAR = "\226\152\133"
+local STAR = " star" -- (kit-b U7b) the nameplate says its Prestige stars in words ("Home Level 12 <bullet> 1 star")
 
 local function near(a, b, tol)
 	return type(a) == "number" and type(b) == "number" and abs(a - b) <= (tol or 1e-6)

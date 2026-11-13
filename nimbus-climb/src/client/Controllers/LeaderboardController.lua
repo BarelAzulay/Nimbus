@@ -64,7 +64,7 @@ local K = {
 	SHORT_FROM = 1e6, -- Theme.ShortNumber from here, commas below
 	TICK = 0.25,
 	HEAD_CACHE = 200, -- headshots kept before the cache starts over
-	ICONS = { Trophies = "Stats", Pets = "Pets", Ring = "Ring" }, -- NeonKit glyph ids (trophy, paw prints, crown)
+	ICONS = { Trophies = "trophy", Pets = "Pets", Ring = "Ring" }, -- NeonKit icon ids / PixelIcon names (trophy, paw, crown)
 	GOLD = rgb(255, 211, 77),
 	MUTED = rgb(201, 211, 242),
 	TOP = rgb(36, 50, 122),

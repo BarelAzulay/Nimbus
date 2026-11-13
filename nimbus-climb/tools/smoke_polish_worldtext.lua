@@ -69,6 +69,28 @@ local function isText(d)
 	return d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox")
 end
 
+-- (T0 review) the font a sign text is measured with: its Enum font, or nil for a FontFace role (Theme.Faces: Nunito), whose
+-- Enum font is only a fallback and which has no advance table (the caller keeps the 0.5 em estimate for those)
+local faceRoles = nil
+local function measuredFont(d)
+	if faceRoles == nil then
+		faceRoles = {}
+		local inst = Mock.GetPath(ROOTS.shared .. "/Theme")
+		local ok, Theme = false, nil
+		if inst then
+			ok, Theme = pcall(require, inst)
+		end
+		if ok and type(Theme) == "table" and type(Theme.Faces) == "table" then
+			faceRoles = Theme.Faces
+		end
+	end
+	local role = d:GetAttribute("FontRole")
+	if role and faceRoles[role] then
+		return nil
+	end
+	return d.Font
+end
+
 -- product of the UIScales from `d` up to (and including) the layer collector `gui`
 local function scaleWithin(d, gui)
 	local s = 1
@@ -229,6 +251,14 @@ local function auditGui(gui, opts)
 			end
 		end
 	end
+	-- (kit-b U7b) a PixelIcon drawn in place of a glyph (an empty label hosting it: the closed bed's star) is a mark of its
+	-- size: it counts for the biggest line, not for the smallest
+	for _, d in ipairs(gui:GetDescendants()) do
+		if d:IsA("Frame") and d.Name == "Icon" and type(d:GetAttribute("PixelIcon")) == "string" and d.Parent and isText(d.Parent)
+			and plain(d.Parent.Text) == "" and visibleWithin(d, gui) then
+			maxPx = math.max(maxPx, d.Size.Y.Offset * scaleWithin(d, gui))
+		end
+	end
 	rec.maxPx, rec.minPx = maxPx, minPx
 	if #scaled > 0 then
 		bad("TextScaled text " .. table.concat(scaled, ", "))
@@ -301,7 +331,10 @@ local function auditGui(gui, opts)
 			if minPx / pps < INFO_STUDS - 0.001 then
 				bad(string.format("smallest letters %.2f stud < %.2f", minPx / pps, INFO_STUDS))
 			end
-			-- the text fits its box (a flat 0.5 em per character, like the mock measures text)
+			-- the text fits its box. T0 review: measured with the face's real advance widths (SmokeCommon.RealWidth:
+			-- FredokaOne capitals run 0.59-0.66 em, so the flat 0.5 em per character the mock measures with let BATTLE ARENA
+			-- spill past its box) plus the outline on both sides; a face outside the table (Nunito) keeps the 0.5 em estimate as
+			-- it was (no outline added)
 			local part = gui.Adornee or gui.Parent
 			if part and part:IsA("BasePart") then
 				local fw, fh = faceStuds(part, gui.Face)
@@ -309,10 +342,18 @@ local function auditGui(gui, opts)
 					local w, h = signBox(d, gui, fw * pps, fh * pps)
 					if w then
 						local px = d.TextSize * scaleWithin(d, gui)
+						local ring = 0
+						for _, c in ipairs(d:GetChildren()) do
+							if c:IsA("UIStroke") and c.ApplyStrokeMode == Enum.ApplyStrokeMode.Contextual and c.Enabled ~= false then
+								ring = math.max(ring, tonumber(c.Thickness) or 0)
+							end
+						end
 						local lines = 0
 						local widest = 0
 						for line in (plain(d.Text) .. "\n"):gmatch("([^\n]*)\n") do
-							local est = 0.5 * px * utf8len(line)
+							local font = measuredFont(d)
+							local real = font and SmokeCommon.RealWidth(line, px, font, true)
+							local est = real and (real + 2 * ring) or 0.5 * px * utf8len(line)
 							widest = math.max(widest, est)
 							lines = lines + math.max(1, math.ceil(est / math.max(1, w)))
 						end

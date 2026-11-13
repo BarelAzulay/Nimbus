@@ -94,6 +94,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7a) the Stats window's coins and stars
 local Remotes = require(Shared:WaitForChild("Remotes"))
 
 local Client = script.Parent.Parent
@@ -251,36 +252,17 @@ local C2 = {
 	},
 }
 
--- Glyphs as UTF-8 byte escapes (the source stays plain ASCII).
+-- Text glyphs as UTF-8 byte escapes (the source stays plain ASCII). kit-b U7a: the tiles, the coins and the Stats window
+-- draw PixelIcons (NeonKit.Icon, PixelIcon.Lead); the emoji that were here unused went. U7b: the Home window's marks are
+-- PixelIcons too (HOME_ICON; a station's icon is its TycoonCatalog Icon, a PixelIcon name). What is left is typography
+-- (the dash, the bullet, the cash sign).
 local G = {
-	Backpack = "\240\159\142\146",
-	Paw = "\240\159\144\190",
-	Book = "\240\159\147\150",
-	Money = "\240\159\146\176",
-	House = "\240\159\143\160",
-	Chart = "\240\159\147\138",
-	Lock = "\240\159\148\146",
-	Star = "\226\152\133",
-	StarOutline = "\226\152\134",
-	Cloud = "\226\152\129",
-	Down = "\226\150\188",
 	Dash = "\226\128\148",
-	Sparkle = "\226\156\166",
-	Gem = (CURRENCY.Gems and CURRENCY.Gems.Glyph) or "\226\151\134", -- black diamond
 	Cash = (CURRENCY.Cash and CURRENCY.Cash.Glyph) or "$",
 	Bullet = "\194\183", -- middle dot
-	Check = "\226\156\147",
-	Snack = "\240\159\141\170", -- cookie
-	Meal = "\240\159\141\178", -- pot of food
-	Feast = "\240\159\165\167", -- pie
-	Food = "\240\159\141\150", -- meat on bone
-	Seedling = "\240\159\140\177",
-	Muscle = "\240\159\146\170",
-	Hybrid = "\226\156\168", -- sparkles
-	Storm = "\226\154\161", -- high voltage
-	Robux = "R$",
-	Swords = "\226\154\148\239\184\143", -- crossed swords (emoji presentation): the Team tile
 }
+-- (kit-b U7b) the Home window's PixelIcons
+local HOME_ICON = { House = "house", Lock = "lock", Star = "star", Check = "check", Seedling = "sprout", Arrow = "play" }
 
 ----------------------------------------------------------------------
 -- Module state
@@ -426,17 +408,16 @@ local function commas(n)
 	return Util.Commas(tonumber(n) or 0)
 end
 
-local function cloudAmount(n)
-	return G.Cloud .. " " .. commas(n)
-end
 
 local function inMatch()
 	return LocalPlayer ~= nil and LocalPlayer:GetAttribute(Config.Attr.InMatch) == true
 end
 
-local function starText(count)
+-- (kit-b U7a) a difficulty rating on an empty label: `count` gold PixelIcon stars of five, the rest dim
+local function starRating(label, count)
 	count = Util.Clamp(math.floor(tonumber(count) or 0), 0, 5)
-	return string.rep(G.Star, count) .. string.rep(G.StarOutline, 5 - count)
+	label.Text = ""
+	PixelIcon.Lead(label, "star", { Count = count, Of = 5, Px = 18 })
 end
 
 local function petTotals()
@@ -1178,7 +1159,8 @@ P5.MAX_COLS = 3 -- the tiles wrap into at most this many columns (the shortest l
 P5.CENTRE_TOL = 0.145 -- the column never reaches into the screen middle (|dx| < 14.5% of the width: HudController's rule)
 P5.SLIDE = 0.25 -- seconds of the collapse / expand slide
 
--- active (its window is open): the gold glow ring + a gold label; disabled (in a match): grey
+-- active (its window is open): the gold glow ring + a gold label; disabled (in a match): grey. (kit-b U8) The tiles are kit B
+-- stone tiles (NeonKit.Tile Skin "Sign"): active = the gold face, disabled = the sunk well; the skin paints its own label
 local function paintTile(entry)
 	local tile = entry.Tile
 	if not tile then
@@ -1189,7 +1171,7 @@ local function paintTile(entry)
 		entry.Painted = tostring(color) .. tostring(entry.Active)
 		tile.SetColor(entry.Active and "Gold" or color)
 		tile.Card.SetGlow(entry.Active == true)
-		if tile.Label then
+		if tile.Label and tile.Skin ~= "Sign" then
 			tile.Label.TextColor3 = entry.Active and Theme.Lighten(GOLD, 0.45) or WHITE
 		end
 	end
@@ -1211,6 +1193,7 @@ local function buildTile(column, spec, index)
 		Icon = spec.Icon,
 		Label = (not spec.Gear) and spec.Label or nil, -- the gear stays icon-only
 		Glow = false,
+		Skin = "Sign", -- (kit-b U8) the pitch's HUD tiles
 		Parent = entry.Root,
 		Callback = function()
 			safe("menu " .. spec.Id, spec.Action)
@@ -1402,19 +1385,20 @@ local function buildColumn()
 	end
 	-- the hide / show tab: a slim navy tab with an arrow, beside the last tile (the gear), so the tutorial's pointer
 	-- at Pets / Team / Index / Home never lands on it
+	-- (kit-b U8) a stone tab in a wood edge like the tiles, the arrow in brown
 	local tab = Util.Create("TextButton", {
 		Name = "Toggle",
 		Text = "",
 		AutoButtonColor = false,
-		BackgroundColor3 = Colors.PanelBottom or NAVY,
-		BackgroundTransparency = 0.08,
+		BackgroundColor3 = Theme.Sign.Tile,
+		BackgroundTransparency = 0,
 		BorderSizePixel = 0,
 		ZIndex = 3,
 		Parent = column,
 	})
-	corner(tab, "M")
-	U.TabStroke = stroke(tab, Theme.Lighten(Colors.PanelTop or NAVY, 0.35), 2, 0.1)
-	U.TabArrow = makeText(tab, "Arrow", "<", "Display", 26, WHITE, {
+	U.TabStroke = stroke(tab, Theme.Sign.Wood, 3, 0)
+	U.TabStroke.LineJoinMode = Enum.LineJoinMode.Miter
+	U.TabArrow = makeText(tab, "Arrow", "<", "Display", 26, Theme.Sign.Text, {
 		Size = UDim2.fromScale(1, 1),
 		TextXAlignment = Enum.TextXAlignment.Center,
 		ZIndex = 4,
@@ -1424,12 +1408,11 @@ local function buildColumn()
 		Position = UDim2.new(1, -2, 0, 4),
 		Size = UDim2.fromOffset(14, 14),
 		BackgroundTransparency = 0,
-		BackgroundColor3 = Theme.Neon and Theme.Neon.Red or Colors.Bad,
+		BackgroundColor3 = Theme.Sign.Red,
 		Visible = false,
 		ZIndex = 5,
 	})
-	round(U.TabBadge)
-	stroke(U.TabBadge, INK, 2, 0)
+	stroke(U.TabBadge, Theme.Sign.Wood, 2, 0)
 	U.Tab = tab
 	tab.Activated:Connect(function()
 		safe("menu fold", P5.setCollapsed, not U.Collapsed, true)
@@ -1699,6 +1682,9 @@ local function buildStats(win)
 			TextScaled = true,
 		})
 		Util.Create("UITextSizeConstraint", { MaxTextSize = 34, MinTextSize = 18, Parent = value })
+		if spec[1] == "Tokens" or spec[1] == "Earned" then
+			PixelIcon.Lead(value, Theme.Currency.Tokens.Icon, { Px = 27 }) -- (kit-b U7a) the coin before the amount
+		end
 		makeText(tile, "Caption", spec[2], "Heading", 18, MUTED, {
 			Position = UDim2.fromOffset(14, 56),
 			Size = UDim2.new(1, -28, 0, 24),
@@ -1760,10 +1746,10 @@ local function buildStats(win)
 	})
 	pad(list, 8, 4, 14, 8)
 	listLayout(list, Enum.FillDirection.Vertical, 8)
-	makeText(list, "Title", "Best times", "Title", 28, WHITE, {
+	Theme.StyleTitle(makeText(list, "Title", "Best times", "Title", 28, WHITE, {
 		Size = UDim2.new(1, 0, 0, 36),
 		LayoutOrder = 0,
-	})
+	}), "Section")
 	for index, difficulty in ipairs(Config.Difficulties) do
 		local row = makeFrame(list, "Row_" .. difficulty.Id, {
 			Size = UDim2.new(1, 0, 0, 66),
@@ -1785,11 +1771,11 @@ local function buildStats(win)
 			Size = UDim2.new(0.55, -22, 0, 30),
 			TextXAlignment = Enum.TextXAlignment.Left,
 		})
-		makeText(row, "Stars", starText(difficulty.Stars), "Heading", 18, GOLD, {
+		starRating(makeText(row, "Stars", "", "Heading", 18, GOLD, {
 			Position = UDim2.fromOffset(22, 36),
 			Size = UDim2.new(0.55, -22, 0, 24),
 			TextXAlignment = Enum.TextXAlignment.Left,
-		})
+		}), difficulty.Stars)
 		rows[difficulty.Id] = makeText(row, "Time", "--:--", "Display", 30, WHITE, {
 			AnchorPoint = Vector2.new(1, 0),
 			Position = UDim2.new(1, -14, 0, 0),
@@ -1826,8 +1812,8 @@ local function buildStats(win)
 		else
 			tiles.WinRate.Text = G.Dash
 		end
-		tiles.Tokens.Text = cloudAmount(State.Tokens())
-		tiles.Earned.Text = cloudAmount(stats.TokensEarned or 0)
+		tiles.Tokens.Text = commas(State.Tokens())
+		tiles.Earned.Text = commas(stats.TokensEarned or 0)
 		tiles.Spins.Text = commas(stats.Spins or 0)
 		local _, total = petTotals()
 		tiles.Found.Text = string.format("%d / %d", discoveredCount(), catalogTotal())
@@ -1849,7 +1835,7 @@ local function buildStats(win)
 		-- Phase 5 (10.5): the Trial ladder is gone; the dungeon line takes its place
 		local dungeon = type(State.Dungeon) == "function" and State.Dungeon() or nil
 		dungeon = type(dungeon) == "table" and dungeon or {}
-		battleLabel.Text = string.format("\240\159\143\134 %s trophies     Dungeon: floor %d cleared, %s runs\nDuels: %s won, %s lost     Boss raids: %s",
+		battleLabel.Text = string.format("Trophies: %s     Dungeon: floor %d cleared, %s runs\nDuels: %s won, %s lost     Boss raids: %s",
 			commas(b.Trophies or 0), math.floor(tonumber(dungeon.Best) or 0), commas(math.floor(tonumber(dungeon.Runs) or 0)),
 			commas(b.PvPWins or 0), commas(b.PvPLosses or 0), commas(b.Raids or 0))
 
@@ -1875,12 +1861,14 @@ end
 -- Home window (Phase 2): the house, income, the Collector, prestige, and every station with its upgrade
 ----------------------------------------------------------------------
 -- Phase 5 (3.4): the Home window's flow strip, the first item of its list: four neon tiles that tell the home loop
--- "Berry Farm Lv 13" -> "Pets eat & poop $3,000/min" -> "Berry Basket 1,240 / 3,000" -> "Food Machine: Feed = XP".
+-- "Berry Farm Lv 13" -> "Pets earn Cash $3,000/min" -> "Berry Basket 1,240 / 3,000" -> "Food Machine: Feed = XP".
+-- (kit-b U7b) each tile's Glyph is a PixelIcon name (NeonKit.Icon draws it); the second tile was "Pets eat & poop" with
+-- the pile-of-poo emoji (rejects audit 5): it says what the player gets, the Cash note icon (Config.Icons.Cash)
 P5.STRIP = {
-	{ Id = "Farm", Title = "Berry Farm", Glyph = "\240\159\141\147", Color = "Pink" },
-	{ Id = "Poop", Title = "Pets eat & poop", Glyph = "\240\159\146\169", Color = "Green" },
-	{ Id = "Basket", Title = "Berry Basket", Glyph = "\240\159\167\186", Color = "Purple" },
-	{ Id = "Machine", Title = "Food Machine", Glyph = "\240\159\141\178", Color = "Orange" },
+	{ Id = "Farm", Title = "Berry Farm", Glyph = "berry", Color = "Pink" },
+	{ Id = "Earn", Title = "Pets earn Cash", Glyph = "note", Color = "Green" },
+	{ Id = "Basket", Title = "Berry Basket", Glyph = "basket", Color = "Purple" },
+	{ Id = "Machine", Title = "Food Machine", Glyph = "pot", Color = "Orange" },
 }
 function P5.buildStrip(H, _content)
 	local strip = makeFrame(H.List, "FlowStrip", { Size = UDim2.new(1, 0, 0, 84), LayoutOrder = -1000 })
@@ -1907,7 +1895,8 @@ function P5.buildStrip(H, _content)
 		Util.Create("UITextSizeConstraint", { MaxTextSize = 22, MinTextSize = 18, Parent = value })
 		H.StripTiles[i] = { Card = card, Title = title, Value = value }
 		if i < #P5.STRIP then
-			H.StripArrows[i] = makeText(strip, "Arrow" .. i, "\226\150\182", "Title", 18, GOLD, { Size = UDim2.fromOffset(20, 76) })
+			H.StripArrows[i] = makeText(strip, "Arrow" .. i, "", "Title", 18, GOLD, { Size = UDim2.fromOffset(20, 76) })
+			PixelIcon.Host(H.StripArrows[i], HOME_ICON.Arrow, 9) -- (kit-b U7b; 9 px: the gap between two tiles' rims is ~14 px)
 		end
 	end
 end
@@ -1972,19 +1961,20 @@ K.HERO_H_SHORT = 76 -- ... on short windows (landscape phones)
 K.HERO_SHINE = 0.75 -- seconds of one light sweep
 K.HERO_SHINE_EVERY = 5.5
 P5.HERO = {
-	GoHome = { Title = "Go home", Sub = "A magic portal for you and your pets", Short = "Hop in with your pets!", Glyph = "\240\159\143\160", Badge = "\226\158\156" },
-	ClaimHome = { Title = "Claim a home", Sub = "Get your own sky island, free!", Short = "Your own sky island, free!", Glyph = "\240\159\143\161", Badge = "\226\156\168" },
+	-- (kit-b U7a) the orb and the badge draw PixelIcons
+	GoHome = { Title = "Go home", Sub = "A magic portal for you and your pets", Short = "Hop in with your pets!", Glyph = "house", Badge = "arrow" },
+	ClaimHome = { Title = "Claim a home", Sub = "Get your own sky island, free!", Short = "Your own sky island, free!", Glyph = "house", Badge = "sparkle" },
 }
 -- what a home gives (the claim view's "Your home" tiles)
 P5.CLAIM_GETS = {
-	{ Glyph = "\240\159\140\177", Title = "Pet Garden", Text = "Pets roam and play", Color = "Green" },
-	{ Glyph = "\240\159\141\147", Title = "Berry Farm", Text = "Berries feed pets", Color = "Pink" },
-	{ Glyph = "\226\152\129", Title = "Cloud Cash", Text = "Pets earn for you", Color = "Cyan" },
+	{ Glyph = "sprout", Title = "Pet Garden", Text = "Pets roam and play", Color = "Green" },
+	{ Glyph = "apple", Title = "Berry Farm", Text = "Berries feed pets", Color = "Pink" },
+	{ Glyph = "note", Title = "Cloud Cash", Text = "Pets earn for you", Color = "Cyan" },
 }
 P5.CLAIM_STEPS = {
-	{ Glyph = "\240\159\140\128", Text = "Tap Claim a home: a magic portal opens" },
-	{ Glyph = "\240\159\143\131", Text = "Walk into it: you land at a free home" },
-	{ Glyph = "\240\159\148\145", Text = "Press E at its gate. The home is yours!" },
+	{ Glyph = "sparkle", Text = "Tap Claim a home: a magic portal opens" },
+	{ Glyph = "dash", Text = "Walk into it: you land at a free home" },
+	{ Glyph = "key", Text = "Press E at its gate. The home is yours!" },
 }
 
 -- one hero card (a clickable NeonKit card) -> { Root, Title, Sub, Orb, Badge, Shine, Fx }
@@ -2041,7 +2031,7 @@ function P5.heroCard(parent, id, callback)
 	local icon = P5.Kit.Icon(orb, spec.Glyph, 34)
 	icon.ZIndex = 6
 	hero.Orb = orb
-	hero.Title = makeText(card.Body, "Title", spec.Title, "Title", 34, WHITE, {
+	hero.Title = Theme.StyleTitle(makeText(card.Body, "Title", spec.Title, "Title", 34, WHITE, {
 		Position = UDim2.new(0, 96, 0.5, -2),
 		AnchorPoint = Vector2.new(0, 1),
 		Size = UDim2.new(1, -176, 0, 40),
@@ -2049,7 +2039,7 @@ function P5.heroCard(parent, id, callback)
 		TextYAlignment = Enum.TextYAlignment.Bottom,
 		TextScaled = true,
 		ZIndex = 6,
-	})
+	}))
 	Util.Create("UITextSizeConstraint", { MaxTextSize = 34, MinTextSize = 24, Parent = hero.Title })
 	hero.Sub = makeText(card.Body, "Sub", spec.Sub, "Body", 19, Color3.fromRGB(255, 247, 222), {
 		Position = UDim2.new(0, 96, 0.5, 2),
@@ -2071,7 +2061,8 @@ function P5.heroCard(parent, id, callback)
 	round(badge)
 	stroke(badge, Theme.Darken(Theme.NeonColor("Orange"), 0.35), 3, 0)
 	Theme.Gradient(badge, WHITE, Color3.fromRGB(255, 226, 160), 90)
-	makeText(badge, "Glyph", spec.Badge, "Title", 28, Theme.NeonColor("Orange"), { Size = UDim2.fromScale(1, 1), ZIndex = 7 })
+	local badgeGlyph = makeText(badge, "Glyph", "", "Title", 28, Theme.NeonColor("Orange"), { Size = UDim2.fromScale(1, 1), ZIndex = 7 })
+	PixelIcon.Host(badgeGlyph, spec.Badge, 27)
 	hero.Badge = badge
 	-- hover / press: a gentle grow and squash, a sweep on hover
 	hero.Fx = P5.Kit.AttachFx(root, function(hover, press)
@@ -2451,7 +2442,8 @@ do
 		round(disc)
 		stroke(disc, NAVY, 3, 0)
 		Theme.Gradient(disc, Theme.Lighten(C2.Kind.House, 0.35), Theme.Darken(C2.Kind.House, 0.2), 90)
-		H.HouseGlyph = makeText(disc, "Glyph", G.House, "Title", 36, WHITE, { Size = UDim2.new(1, 0, 1, 0) })
+		H.HouseGlyph = makeText(disc, "Glyph", "", "Title", 36, WHITE, { Size = UDim2.new(1, 0, 1, 0) })
+		PixelIcon.Set(H.HouseGlyph, HOME_ICON.House, 36) -- (kit-b U7b) the tier's PixelIcon (paintSummary)
 		H.HouseName = makeText(house, "Tier", "Cottage", "Title", 30, Theme.Lighten(C2.Kind.House, 0.4), {
 			Position = UDim2.fromOffset(88, 8),
 			Size = UDim2.new(1, -170, 0, 36),
@@ -2505,11 +2497,11 @@ do
 		-- the Pet Garden: coins waiting on the lawn, coins per minute, places, the legacy lines (no Collect: kids walk
 		-- over their coins)
 		local garden = card("GardenCard", 3, 168)
-		makeText(garden, "Caption", G.Seedling .. " Pet Garden", "Heading", 19, MUTED, {
+		PixelIcon.Lead(makeText(garden, "Caption", "Pet Garden", "Heading", 19, MUTED, {
 			Position = UDim2.fromOffset(14, 8),
 			Size = UDim2.new(0.6, -14, 0, 24),
 			TextXAlignment = Enum.TextXAlignment.Left,
-		})
+		}), HOME_ICON.Seedling) -- (kit-b U7b)
 		H.Places = makeText(garden, "Places", "", "Heading", 18, Theme.Lighten(C2.Kind.Garden, 0.35), {
 			AnchorPoint = Vector2.new(1, 0),
 			Position = UDim2.new(1, -14, 0, 8),
@@ -2568,7 +2560,7 @@ do
 		})
 		H.PrestigeButton = CloudUI.Button({
 			Name = "Prestige",
-			Text = G.Star .. " Prestige",
+			Text = "Prestige",
 			Style = "Gold",
 			AnchorPoint = Vector2.new(0.5, 1),
 			Position = UDim2.new(0.5, 0, 1, -10),
@@ -2656,7 +2648,8 @@ do
 			corner(row.Disc, "M")
 			stroke(row.Disc, NAVY, 3, 0)
 			Theme.Gradient(row.Disc, Theme.Lighten(color, 0.35), Theme.Darken(color, 0.2), 90)
-			makeText(row.Disc, "Glyph", tostring(def.Icon or G.House), "Title", 34, WHITE, { Size = UDim2.new(1, 0, 1, 0) })
+			-- (kit-b U7b) the station's PixelIcon (its TycoonCatalog Icon), the house for one that names none
+			PixelIcon.Host(makeText(row.Disc, "Glyph", "", "Title", 34, WHITE, { Size = UDim2.new(1, 0, 1, 0) }), PixelIcon.Bitmaps[def.Icon] and def.Icon or HOME_ICON.House, 36)
 			row.Name = makeText(frame, "Name", def.Name, "Title", 24, WHITE, {
 				Position = UDim2.fromOffset(88, 6),
 				Size = UDim2.new(1, -360, 0, 30),
@@ -2740,11 +2733,11 @@ do
 				Size = UDim2.new(1, 0, 0, 34),
 				LayoutOrder = order,
 			})
-			makeText(header, "Title", section.Title, "Title", 24, WHITE, {
+			Theme.StyleTitle(makeText(header, "Title", section.Title, "Title", 24, WHITE, {
 				Position = UDim2.fromOffset(6, 0),
 				Size = UDim2.new(1, -12, 1, 0),
 				TextXAlignment = Enum.TextXAlignment.Left,
-			})
+			}), "Section")
 			H.Sections[#H.Sections + 1] = header
 			for _, def in ipairs(stations) do
 				if type(def) == "table" and section.Kinds[def.Kind] then
@@ -2784,11 +2777,11 @@ do
 		stroke(box, GOLD, 4, 0)
 		Theme.Gradient(box, Colors.PanelLight, Colors.Panel, 90)
 		H.ConfirmBox = box
-		makeText(box, "Title", G.Star .. " Prestige now?", "Title", 32, GOLD, {
+		Theme.StyleTitle(makeText(box, "Title", "Prestige now?", "Title", 32, GOLD, {
 			Position = UDim2.fromOffset(16, 12),
 			Size = UDim2.new(1, -32, 0, 40),
 			ZIndex = 32,
-		})
+		}))
 		-- three lines: what starts over, what stays, what the new star gives
 		local lines = makeFrame(box, "Lines", {
 			Position = UDim2.fromOffset(16, 62),
@@ -2829,7 +2822,7 @@ do
 		listLayout(buttons, Enum.FillDirection.Horizontal, 14, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
 		local yes = CloudUI.Button({
 			Name = "ConfirmPrestige",
-			Text = G.Star .. " Prestige!",
+			Text = "Prestige!",
 			Style = "Gold",
 			Size = UDim2.fromOffset(220, 56),
 			TextSize = 25,
@@ -2955,7 +2948,8 @@ do
 				row.Button.Visible = false
 				row.Price.Visible = false
 				row.Lock.Visible = true
-				row.Lock.Text = G.Lock .. " " .. tostring(lock)
+				row.Lock.Text = tostring(lock)
+				PixelIcon.Mark(row.Lock, HOME_ICON.Lock) -- (kit-b U7b)
 				return
 			end
 			row.Lock.Visible = false
@@ -2982,11 +2976,17 @@ do
 			else
 				H.HouseName.Text = (type(tier) == "table" and tier.Name) or "Cottage"
 			end
-			H.HouseGlyph.Text = (type(tier) == "table" and tier.Icon) or G.House
+			local houseIcon = type(tier) == "table" and tier.Icon or nil
+			PixelIcon.Set(H.HouseGlyph, PixelIcon.Bitmaps[houseIcon] and houseIcon or HOME_ICON.House, 36)
 			H.HomeLevel.Text = "Home Level " .. homeLevel
 			-- prestige stars in the corner (none before the first prestige)
 			H.Stars.Visible = stars > 0
-			H.Stars.Text = stars <= 3 and string.rep(G.Star, stars) or (G.Star .. " x" .. stars)
+			-- (kit-b U7b) PixelIcon stars: one per prestige up to three, then one star and "x7"
+			H.Stars.Text = stars <= 3 and "" or ("x" .. stars)
+			if stars > 0 then
+				local shown = stars <= 3 and stars or 1
+				PixelIcon.Mark(H.Stars, HOME_ICON.Star, { Count = shown, Of = shown })
+			end
 			local nextTier = tiers[(houseLevel >= 1 and (tierIndex or 1) or 0) + 1]
 			H.NextHouse.TextColor3 = MUTED
 			if houseLevel < 1 then
@@ -2994,7 +2994,7 @@ do
 			elseif type(nextTier) == "table" then
 				local at = tonumber(nextTier.HomeLevel) or 0
 				if homeLevel >= at then
-					H.NextHouse.Text = G.Check .. " Upgrade the House to a " .. tostring(nextTier.Name) .. "!"
+					H.NextHouse.Text = "Upgrade the House to a " .. tostring(nextTier.Name) .. "!"
 					H.NextHouse.TextColor3 = Theme.Lighten(GOOD, 0.35)
 				else
 					H.NextHouse.Text = "Next: " .. tostring(nextTier.Name) .. " at Home Level " .. at
@@ -3002,18 +3002,21 @@ do
 			else
 				H.NextHouse.Text = "Your " .. ((type(tier) == "table" and tier.Name) or "house") .. " is complete!"
 			end
+			PixelIcon.Mark(H.NextHouse, H.NextHouse.Text:sub(1, 7) == "Upgrade" and HOME_ICON.Check or nil) -- (kit-b U7b)
 			-- prestige
 			local P = TycoonCatalog and TycoonCatalog.Prestige or {}
 			local need = tonumber(P.HomeLevel) or 40
-			H.PrestigeTitle.Text = "Prestige  " .. G.Star .. " " .. stars .. "  ->  " .. (stars + 1)
+			H.PrestigeTitle.Text = "Prestige  " .. stars .. "  ->  " .. (stars + 1) .. ((stars + 1 == 1) and " star" or " stars")
 			H.PrestigeBar.SetFraction(need > 0 and math.min(1, homeLevel / need) or 0)
 			H.PrestigeBar.SetText("Home Level " .. math.min(homeLevel, need) .. "/" .. need)
 			local ok, reason = P2.catalogCall("CanPrestige", home)
 			if ok then
-				H.PrestigeNeed.Text = G.Check .. " Ready to prestige!"
+				H.PrestigeNeed.Text = "Ready to prestige!"
+				PixelIcon.Mark(H.PrestigeNeed, HOME_ICON.Check) -- (kit-b U7b)
 				H.PrestigeNeed.TextColor3 = Theme.Lighten(GOOD, 0.35)
 			else
-				H.PrestigeNeed.Text = G.Lock .. " " .. tostring(reason or "Not ready yet")
+				H.PrestigeNeed.Text = tostring(reason or "Not ready yet")
+				PixelIcon.Mark(H.PrestigeNeed, HOME_ICON.Lock)
 				H.PrestigeNeed.TextColor3 = C2.Lock
 			end
 			local gems = P2.catalogCall("PrestigeGems", stars + 1) or P.GemReward or 0

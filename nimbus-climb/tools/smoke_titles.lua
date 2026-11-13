@@ -368,7 +368,10 @@ S.client_titles = guarded("client_titles", function()
 			fmt("%dx%d at %d", crown.AbsoluteSize.X, crown.AbsoluteSize.Y, crown.AbsolutePosition.X))
 		T.check(abs(plate.AbsolutePosition.Y - (crown.AbsolutePosition.Y + 34) - 4) <= 0.5 and abs(plate.AbsolutePosition.Y + plate.AbsoluteSize.Y - 74) <= 0.5,
 			"titles: " .. label .. ": the Crown sits 4 px above the Plate, the Plate at the bottom", fmt("crown y %d, plate y %d h %d", crown.AbsolutePosition.Y, plate.AbsolutePosition.Y, plate.AbsoluteSize.Y))
-		T.check(#tag:GetDescendants() <= 7, "titles: " .. label .. ": at most 7 instances inside the tag with the crown", tostring(#tag:GetDescendants()))
+		-- (kit-b U7a) the crown is a PixelIcon now: its Frame and one Frame per merged run on top of the 7
+		local PI = G.req("shared/PixelIcon")
+		local budget = 7 + 1 + (PI and #PI.Runs("crown") or 0)
+		T.check(#tag:GetDescendants() <= budget, "titles: " .. label .. ": at most " .. budget .. " instances inside the tag with the crown (7 + the pixel crown)", tostring(#tag:GetDescendants()))
 	end
 	local function noCrown(label)
 		local tag = TC.TagOf(pv)

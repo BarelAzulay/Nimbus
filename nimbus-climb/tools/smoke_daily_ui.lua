@@ -363,11 +363,13 @@ local function clientScenarios()
 		local gui = H.pg():WaitForChild("NimbusDaily", 2)
 		local btn = H.btn()
 		local hud = H.pg():FindFirstChild("NimbusHud")
-		local left = hud and hud:GetAttribute("TopRightLeft") or 0
-		local okBtn = T.check(DC ~= nil and gui ~= nil and btn ~= nil and abs(btn.AbsolutePosition.X + btn.AbsoluteSize.X - (left - 8)) <= 1
-			and btn.AbsolutePosition.Y == 6 and btn.AbsoluteSize.X == 56 and btn.AbsoluteSize.Y == 56,
-			"daily window: the Gifts button sits 8 px left of the strips, 56 px at 1080p",
-			btn and fmt("button %d,%d %dx%d, TopRightLeft %s", btn.AbsolutePosition.X, btn.AbsolutePosition.Y, btn.AbsoluteSize.X, btn.AbsoluteSize.Y, tostring(left)) or "no NimbusDaily.GiftsButton")
+		-- (kit-b U8, restated: the gift sat 8 px left of the strips at y 6) the gift docks under the currency strips where the
+		-- HUD says (GiftLeft / GiftTop / GiftSize), 56 px at 1080p (hud_gift_under_strips checks the dock itself)
+		local gl, gt, gs = hud and hud:GetAttribute("GiftLeft") or -1, hud and hud:GetAttribute("GiftTop") or -1, hud and hud:GetAttribute("GiftSize") or 0
+		local okBtn = T.check(DC ~= nil and gui ~= nil and btn ~= nil and abs(btn.AbsolutePosition.X - gl) <= 1 and abs(btn.AbsolutePosition.Y - gt) <= 1
+			and gs == 56 and btn.AbsoluteSize.X == 56 and btn.AbsoluteSize.Y == 56,
+			"daily window: the Gifts button docks under the strips (GiftLeft / GiftTop), 56 px at 1080p",
+			btn and fmt("button %d,%d %dx%d, dock %s,%s %s", btn.AbsolutePosition.X, btn.AbsolutePosition.Y, btn.AbsoluteSize.X, btn.AbsoluteSize.Y, tostring(gl), tostring(gt), tostring(gs)) or "no NimbusDaily.GiftsButton")
 		if not okBtn or not DC then
 			w.restore()
 			restoreScreen()
@@ -390,7 +392,7 @@ local function clientScenarios()
 		-- (gui-redo Task 9: the big centred window replaced the 760x420 drop-down under the button)
 		T.check(win ~= nil and abs(win.AbsoluteSize.X - 1180) <= 1 and abs(win.AbsoluteSize.Y - 720) <= 1 and DC.Layout() == "PC", "daily window: 1180x720 at 1080p (PC)",
 			win and fmt("%dx%d %s", win.AbsoluteSize.X, win.AbsoluteSize.Y, tostring(DC.Layout())) or "no window")
-		T.check(H.inBox(win, DC) and abs(btn.AbsolutePosition.X + btn.AbsoluteSize.X - (left - 8)) <= 1 and btn.AbsolutePosition.Y == 6,
+		T.check(H.inBox(win, DC) and abs(btn.AbsolutePosition.X - gl) <= 1 and abs(btn.AbsolutePosition.Y - gt) <= 1, -- (kit-b U8: the dock under the strips)
 			"daily window: centred in its BigRect box, the Gifts button laid out where it was",
 			win and fmt("window %d,%d %dx%d, button %d,%d", win.AbsolutePosition.X, win.AbsolutePosition.Y, win.AbsoluteSize.X, win.AbsoluteSize.Y, btn.AbsolutePosition.X, btn.AbsolutePosition.Y) or "no window")
 		-- (owner 2026-11-13) the Gifts window hides its own button, ring and pip too (X / Esc / gamepad B close it)
@@ -734,7 +736,8 @@ local function clientScenarios()
 		T.check(DC.PipShown() == true and H.shown(H.find(H.btn(), "Pip")), "daily pip: shown PipDelaySeconds after the spawn when a claim is ready")
 		local pip = H.find(H.btn(), "Pip")
 		local Theme = select(3, KC.env())
-		T.check(pip ~= nil and pip.AbsoluteSize.X == 10 and pip.BackgroundColor3 == Theme.Neon.Red, "daily pip: a 10 px Neon.Red dot")
+		T.check(pip ~= nil and pip.AbsoluteSize.X == 10 and pip.BackgroundColor3 == Theme.Sign.Red and pip:FindFirstChildOfClass("UICorner") == nil,
+			"daily pip: a 10 px Sign red square (kit-b U8; was a Neon.Red dot)")
 		KC.toClient("TutorialState", H.tutorial("shop"))
 		KC.advance(0.2)
 		T.eq(DC.PipShown(), false, "daily pip: not before the tutorial's spin step (Id shop, Step 3)")
@@ -936,7 +939,7 @@ local function clientScenarios()
 		T.check(c ~= nil and c:IsA("BillboardGui") and c.Enabled and c.MaxDistance == 60 and abs(c.StudsOffset.Y - 2.4) < 1e-6, "daily vip: a VIP's character gets the VipCrown billboard on High",
 			c and fmt("enabled %s, max %s, offset %s", tostring(c.Enabled), tostring(c.MaxDistance), tostring(c.StudsOffset)) or "none")
 		local glyph = c and H.find(c, "Icon")
-		T.check(glyph ~= nil and tostring(glyph.Text) ~= "", "daily vip: the crown shows the VipCrown glyph")
+		T.check(glyph ~= nil and glyph:GetAttribute("PixelIcon") == "crown", "daily vip: the crown shows the VipCrown icon (kit-b U7a: the pixel crown)")
 		p2:SetAttribute("InBattle", "B7")
 		KC.advance(0.3)
 		c = crown()
@@ -998,9 +1001,10 @@ local function clientScenarios()
 			return
 		end
 		local hud = H.pg():FindFirstChild("NimbusHud")
-		local left = hud and hud:GetAttribute("TopRightLeft") or 0
-		T.check(abs(btn.AbsolutePosition.X + 44 - (left - 8)) <= 1 and btn.AbsolutePosition.Y == 6, "daily mobile: 8 px left of the strips, y 6",
-			fmt("x %d, y %d, TopRightLeft %s", btn.AbsolutePosition.X, btn.AbsolutePosition.Y, tostring(left)))
+		-- (kit-b U8, restated: was 8 px left of the strips at y 6) docked under the strips where the HUD says
+		local gl, gt = hud and hud:GetAttribute("GiftLeft") or -1, hud and hud:GetAttribute("GiftTop") or -1
+		T.check(abs(btn.AbsolutePosition.X - gl) <= 1 and abs(btn.AbsolutePosition.Y - gt) <= 1, "daily mobile: docked under the strips (GiftLeft / GiftTop)",
+			fmt("x %d, y %d, dock %s,%s", btn.AbsolutePosition.X, btn.AbsolutePosition.Y, tostring(gl), tostring(gt)))
 		H.tap(btn)
 		local win = H.win()
 		local gui = H.gui()

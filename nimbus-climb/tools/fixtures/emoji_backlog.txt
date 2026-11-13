@@ -1,0 +1,10 @@
+# kit-b U7a: the emoji rule's backlog (tools/stroke_walk.py --emoji and the client walk kitb_no_emoji_ui read it).
+# Shown texts that still carry an emoji or pictographic symbol after U7a (tiles and currency). They belong to U7b's glyph
+# tables (battle, arena, dungeon, train, tycoon, world signs) and the windows' own glyph tables U7b sweeps with them. A
+# text listed here is counted, not failed; any other text with an emoji code point fails. This list only shrinks and U7b
+# empties it ("the walk of U7a with zero allowed"). One GUI path per line, "*" = any run of characters but a dot.
+# Recorded 2026-11-13 over the 106 render scenarios at 1920x1080 (py -3.12 tools/stroke_walk.py --only-emoji -v), after
+# U7a cleared the tiles, the top bar, the HUD, the coins, the Shop, the Gifts window, the hatch stage, the toasts and the
+# match result, the Stats window and the lobby board's icons.
+# U7b (2026-11-13): the glyph tables and world signs above are drawn as PixelIcons now and the list is empty. Keep it
+# empty: an emoji in a shown text is a failure, and its fix is an icon (PixelIcon.Host / Lead) or a word, not a line here.

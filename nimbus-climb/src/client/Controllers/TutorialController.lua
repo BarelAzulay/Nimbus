@@ -133,7 +133,7 @@ local K = {
 
 local FxSprites = require(Shared:WaitForChild("FxSprites")) -- the guide trail's dot strip (kit B X1)
 local BULLET = "\194\187 " -- >>
-local TOKEN_GLYPH = "\226\152\129" -- cloud
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7a) the portrait's fallback cloud
 
 local function rgb(r, g, b)
 	return Color3.fromRGB(r, g, b)
@@ -1560,7 +1560,8 @@ local function setupPortraitModel()
 	end
 	if not model then
 		-- no pet art available: a friendly cloud glyph instead of an empty bubble
-		label(view.Parent, "Fallback", TOKEN_GLYPH, "Title", 52, C.White, { Size = UDim2.fromScale(1, 1), ZIndex = 3 })
+		local fallback = label(view.Parent, "Fallback", "", "Title", 52, C.White, { Size = UDim2.fromScale(1, 1), ZIndex = 3 })
+		PixelIcon.Host(fallback, "cloud", 45) -- (kit-b U7a) the pitch's pixel cloud
 		return
 	end
 	model.Parent = view
@@ -1842,7 +1843,7 @@ local function renderFinale(reward)
 	paintPips(0, true)
 	local text = "You know the basics now. Happy climbing, see you in the clouds!"
 	if type(reward) == "number" and reward > 0 then
-		text = "+" .. reward .. " " .. TOKEN_GLYPH .. " Cloud Tokens are yours! You know the basics now. Happy climbing!"
+		text = "+" .. reward .. " Cloud Tokens are yours! You know the basics now. Happy climbing!"
 	end
 	S.heightKey = nil
 	startTyping(text)

@@ -2119,9 +2119,9 @@ S.client_shop_secret_lock = guarded("client_shop_secret_lock", function()
 		T.check(not G.shown(k.Spin) and G.shown(k.Travel) and G.near(tb.x, hb.w - 320) and G.near(tb.y, 66) and G.near(tb.w, 290) and G.near(tb.h, 100),
 			"secret lock: SPIN hidden; a 290 x 100 TRAVEL button exactly where SPIN sits (w - 320, 66)", G.heroLook(k) .. "; " .. fmt("%.0f,%.0f %.0fx%.0f", tb.x, tb.y, tb.w, tb.h))
 		local icon = k.Travel:FindFirstChild("Icon")
-		T.check(k.Travel:GetAttribute("Style") == "Blue" and G.text(k.Travel, "Word") == ALTAR.Word and icon ~= nil and G.shown(icon) and icon.Text == NK.Glyphs.Travel
+		T.check(k.Travel:GetAttribute("Style") == "Blue" and G.text(k.Travel, "Word") == ALTAR.Word and icon ~= nil and G.shown(icon) and icon:FindFirstChild("Icon") ~= nil and icon:FindFirstChild("Icon"):GetAttribute("PixelIcon") == NK.IconName("Travel")
 			and k.Travel:FindFirstChild("Price", true) == nil and k.Travel:FindFirstChild("GemIcon", true) == nil and not G.disabled(k.Travel),
-			"secret lock: ...blue (Style 'Blue'), 'TRAVEL' with the compass glyph, no price, active", G.texts(k.Travel))
+			"secret lock: ...blue (Style 'Blue'), 'TRAVEL' with the travel icon (kit-b U7a: the pixel arrow), no price, active", G.texts(k.Travel))
 		local cb, pb = G.rel(k.Chip, k.Hero), k.Pity and G.rel(k.Pity, k.Hero)
 		T.check(G.shown(k.Chip) and k.Chip.Text == ALTAR.Lock and k.Pity and not G.shown(k.Pity) and G.near(cb.x, 360) and G.near(cb.y, 132) and G.near(cb.h, 48) and cb.w >= 400 - 1
 			and k.Chip.TextSize == 22 and pb and G.near(pb.x, cb.x) and G.near(pb.y, cb.y),

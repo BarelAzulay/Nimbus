@@ -46,7 +46,10 @@
 -- re-checked twice a second and on every viewport change, and published as attributes on the NimbusHud
 -- gui (TopLeftRight, TopLeftBottom, TopRightLeft, TopRightBottom, BottomLeftTop = the top of the bottom block (the
 -- vitals card), BottomCentreTop / Left / Right = the vitals card, HudScale100; gui-area pixels) so the toasts,
--- dialogs and side panels can keep clear of the HUD.
+-- dialogs and side panels can keep clear of the HUD. (kit-b U8) GiftLeft / GiftTop / GiftSize: the gift's dock under the
+-- strips in the lobby (0 = none); DailyController puts its Gifts button there and TopRightBottom includes it.
+-- kit-b U8 (the pitch's HUD stage, kit B): the strips are stone blocks with a coloured coin square, the vitals card a stone
+-- card in a wood edge; no neon border, glow or gloss.
 --
 -- Data: Humanoid health, player attributes (CloudTokens, MatchTokens, InMatch, Downed, Stamina, Cash, Gems)
 -- and the MatchState / PartyState remotes. Everything is nil-safe: no humanoid, no match, no party, a
@@ -65,6 +68,7 @@ local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
 local Remotes = require(Shared:WaitForChild("Remotes"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7a) the coins' and the chips' icons
 
 local Client = script.Parent.Parent
 local CloudUI = require(Client:WaitForChild("UI"):WaitForChild("CloudUI"))
@@ -108,10 +112,15 @@ local K = {
 	STRIP_W = 168, -- one strip (design px); in a match the token strip grows by its "+n" chip
 	STRIP_H = 32,
 	STRIP_GAP = 6,
-	STRIP_COIN = 30, -- the coin at the strip's left end
+	STRIP_COIN = 24, -- the coin at the strip's left end (kit-b U8: a square inside the block, clear of its lip)
 	STRIP_TEXT = 24, -- the number (shrinks to STRIP_TEXT_MIN for long numbers; >= 14 px on a phone)
 	STRIP_TEXT_MIN = 18,
 	STRIP_CHIP_W = 56, -- the "+n" match chip on the token strip
+	-- (kit-b U8: the pitch's HUD stage) the gift docks under the strips in the lobby, right-aligned: this square (design px,
+	-- x the screen factor, never under GIFT_MIN gui px: a thumb), GIFT_GAP under the last strip
+	GIFT = 56,
+	GIFT_MIN = 44,
+	GIFT_GAP = 8,
 	STRIP_CHIP_H = 24,
 	-- ... except in a battle / dungeon run on a landscape phone, where the battle HUD needs the right edge: there the
 	-- strips sit in ONE row inside Roblox's top band (the v5 place the battle HUD is laid out around)
@@ -153,6 +162,7 @@ local K = {
 	TITLE_CARD_SECONDS = 4,
 	LEAVE_CONFIRM_SECONDS = 3,
 	GO_SECONDS = 1.0, -- how long "GO!" replaces the timer
+	STAR_PX = 18, -- (kit-b U7a) a difficulty star (PixelIcon) after the match / party level name
 	LAYOUT_POLL = 0.5, -- seconds between two geometry checks
 }
 
@@ -163,14 +173,14 @@ local K = {
 -- leaves a gap at the bottom of its slot, with a bigger dash ring at the right end spanning both rows.
 local VG = {
 	Regular = {
-		H = K.VITALS_H, CARD_H = K.VITALS_H, CARD_X = 20, CARD_CORNER = Theme.Radius.M,
+		H = K.VITALS_H, CARD_H = K.VITALS_H, CARD_X = 20, CARD_CORNER = 0, -- (kit-b U8: square)
 		BADGE_X = 28, HEART = 52, HEART_Y = 26, HEART_TEXT = 34, BOLT = 36, BOLT_Y = 72,
 		HP_X = 46, HP_Y = 8, HP_H = 36, HP_TEXT = 26, PAD_R = 10,
 		ST_X = 40, ST_Y = 61, ST_H = 22,
 		RING = 40, RING_Y = 71, RING_GAP = 8, RING_FACE = 22, RING_TEXT = 20, RING_SPAN = false,
 	},
 	Compact = {
-		H = 80, CARD_H = 70, CARD_X = 18, CARD_CORNER = Theme.Radius.M,
+		H = 80, CARD_H = 70, CARD_X = 18, CARD_CORNER = 0,
 		BADGE_X = 24, HEART = 44, HEART_Y = 22, HEART_TEXT = 30, BOLT = 28, BOLT_Y = 54,
 		HP_X = 40, HP_Y = 7, HP_H = 30, HP_TEXT = 23, PAD_R = 9,
 		ST_X = 34, ST_Y = 45, ST_H = 18,
@@ -322,15 +332,6 @@ local function topInset()
 	return inset
 end
 
-local function hex(color)
-	return string.format(
-		"#%02X%02X%02X",
-		math.floor(color.R * 255 + 0.5),
-		math.floor(color.G * 255 + 0.5),
-		math.floor(color.B * 255 + 0.5)
-	)
-end
-
 local function fireRemote(name)
 	local remote = remoteCache[name]
 	if not remote then
@@ -343,10 +344,6 @@ local function fireRemote(name)
 	if remote then
 		remote:FireServer()
 	end
-end
-
-local function stars(count)
-	return string.rep("\226\152\133", math.max(0, math.min(5, math.floor(tonumber(count) or 0))))
 end
 
 ----------------------------------------------------------------------
@@ -428,49 +425,71 @@ local function pop(scaleObj, peak, seconds)
 	tween(scaleObj, seconds or 0.35, { Scale = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 end
 
--- Face of a glossy round badge: a light top, the base colour, then a hard darker lip at the bottom.
+-- Face of a badge (kit-b U8: the kit B block): the flat colour, then a hard darker lip along the bottom. `glow` is kept for
+-- the callers and no longer lightens the top (no gloss).
 local function badgeSequence(color, glow)
 	return ColorSequence.new({
-		ColorSequenceKeypoint.new(0, glow),
-		ColorSequenceKeypoint.new(0.55, color),
-		ColorSequenceKeypoint.new(0.8, Theme.Darken(color, 0.08)),
+		ColorSequenceKeypoint.new(0, color),
+		ColorSequenceKeypoint.new(0.8, color),
 		ColorSequenceKeypoint.new(0.82, Theme.Darken(color, 0.28)),
-		ColorSequenceKeypoint.new(1, Theme.Darken(color, 0.32)),
+		ColorSequenceKeypoint.new(1, Theme.Darken(color, 0.28)),
 	})
 end
 
--- Glossy round badge (navy outline, soft shine). Returns the badge, its UIGradient and its UIStroke.
+-- A square kit B badge (kit-b U8: was a glossy round one): the flat face with its lip (a UIGradient named "Lip" with a hard
+-- step), a wood edge. Returns the badge, its UIGradient and its UIStroke.
 local function newBadge(parent, name, size, color, glow)
 	local badge = newFrame(parent, name, {
 		Size = UDim2.fromOffset(size, size),
 		BackgroundTransparency = 0,
 		BackgroundColor3 = WHITE,
 	})
-	round(badge)
-	local stroke = Theme.Stroke(badge, VS.PanelInk, 3, 0)
+	local stroke = Theme.Stroke(badge, Theme.Sign.Wood, 3, 0)
+	stroke.LineJoinMode = Enum.LineJoinMode.Miter
 	local g = Instance.new("UIGradient")
+	g.Name = "Lip"
 	g.Rotation = 90
 	g.Color = badgeSequence(color, glow)
 	g.Parent = badge
-	local shine = newFrame(badge, "Shine", {
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0.1, 0),
-		Size = UDim2.new(0.56, 0, 0.24, 0),
-		BackgroundTransparency = 0.6,
-		BackgroundColor3 = WHITE,
-	})
-	round(shine)
 	return badge, g, stroke
 end
 
 -- Glossy coin badge: newBadge plus a glyph (kit B, no outline: in the ink that reads on the coin's gradient).
+-- (kit-b U7a) `glyph` may be a PixelIcon name ("token", "note"): the coin's Glyph label is then empty and hosts that icon
+-- at about glyphSize px (setCoinIcon redraws it at a new size)
+local function setCoinIcon(label, name, px)
+	local old = label:FindFirstChild("Icon")
+	if old and old:GetAttribute("PixelIcon") == name and old.Size.X.Offset == PixelIcon.Snap(px * 0.8) then
+		return -- the layout poll re-applies the geometry every 0.5 s: nothing to redraw
+	end
+	label:SetAttribute("PixelIcon", name)
+	PixelIcon.Host(label, name, px * 0.8)
+end
+
+-- (kit-b U8) a square kit B block in `color` with a wood edge (the currency strip's coin square, the vitals' badges)
+function Vitals.SignSquare(parent, name, size, color)
+	local sq = newFrame(parent, name, {
+		Size = UDim2.fromOffset(size, size),
+		BackgroundTransparency = 0,
+		BackgroundColor3 = color,
+	})
+	local edge = Theme.Stroke(sq, Theme.Sign.Wood, 2, 0)
+	edge.Name = "SignEdge"
+	edge.LineJoinMode = Enum.LineJoinMode.Miter
+	return sq
+end
+
 local function newCoin(parent, name, size, color, glow, glyph, glyphSize)
 	local coin = newBadge(parent, name, size, color, glow)
-	newText(coin, "Glyph", glyph, "Display", glyphSize, Theme.TextOn(badgeSequence(color, glow)), {
+	local icon = PixelIcon.Bitmaps[glyph] and glyph or nil
+	local label = newText(coin, "Glyph", icon and "" or glyph, "Display", glyphSize, Theme.TextOn(badgeSequence(color, glow)), {
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Position = UDim2.new(0, 0, 0, -1),
 		ZIndex = 2,
 	})
+	if icon then
+		setCoinIcon(label, icon, glyphSize)
+	end
 	return coin
 end
 
@@ -907,6 +926,7 @@ local function applyMargins(animate, force)
 	end
 	local stackH = n * K.STRIP_H + (n - 1) * K.STRIP_GAP
 	local topRightBottom, topRightLeft = 0, 0
+	local giftLeft, giftTop, giftSize = 0, 0, 0
 	local mode = "TopRight"
 	if UI.Currency and topBand then
 		-- one row in the top band (above the gui area: the gui starts below Roblox's top bar)
@@ -947,6 +967,16 @@ local function applyMargins(animate, force)
 		if UI.Currency.Visible == yield then
 			UI.Currency.Visible = not yield
 		end
+		-- (kit-b U8) the gift's dock under the strips, in the lobby only (DailyController hides its button in a match or a
+		-- battle anyway): DailyController puts its button on this square (GiftLeft / GiftTop / GiftSize), and the toasts,
+		-- side panels and the tutorial start under it (TopRightBottom). While a corner card is up (a phone's dungeon End
+		-- card) the gift steps aside, so the card starts right under the strips
+		if not inMatch and not inBattle and cornerCard == nil then
+			giftSize = math.max(K.GIFT_MIN, math.floor(K.GIFT * k)) -- (44 on a 844x390 phone, as the button was)
+			giftTop = math.floor(topRightBottom + K.GIFT_GAP * k + 0.5)
+			giftLeft = math.floor(area.X - side - giftSize + 0.5)
+			topRightBottom = giftTop + giftSize
+		end
 	end
 	S.currencyMode = mode
 
@@ -969,6 +999,9 @@ local function applyMargins(animate, force)
 	publish("TopLeftBottom", topH > 0 and (K.EDGE + topH * k) or 0)
 	publish("TopRightBottom", topRightBottom)
 	publish("TopRightLeft", topRightLeft)
+	publish("GiftLeft", giftLeft)
+	publish("GiftTop", giftTop)
+	publish("GiftSize", giftSize)
 	publish("BottomLeftTop", vitalsTop)
 	publish("BottomCentreTop", vitalsTop)
 	publish("BottomCentreLeft", vitalsLeft)
@@ -1078,14 +1111,13 @@ end
 -- (a sweep that fills clockwise while the dash recharges). Shapes are Frames (no font glyphs, no images);
 -- the parts are placed by setVitalsGeometry (VG.Regular / VG.Compact).
 
--- Glossy fill of a vitals tube: a soft light top, the base colour, a gentle darker band at the bottom.
+-- Fill of a vitals tube (kit-b U8: the pitch's .hp i): the flat colour and a hard darker lip along the bottom (no gloss).
 function Vitals.BarSequence(color)
 	return ColorSequence.new({
-		ColorSequenceKeypoint.new(0, Theme.Lighten(color, 0.45)),
-		ColorSequenceKeypoint.new(0.4, color),
-		ColorSequenceKeypoint.new(0.72, Theme.Darken(color, 0.05)),
-		ColorSequenceKeypoint.new(0.76, Theme.Darken(color, 0.2)),
-		ColorSequenceKeypoint.new(1, Theme.Darken(color, 0.24)),
+		ColorSequenceKeypoint.new(0, color),
+		ColorSequenceKeypoint.new(0.7, color),
+		ColorSequenceKeypoint.new(0.72, Theme.Darken(color, 0.22)),
+		ColorSequenceKeypoint.new(1, Theme.Darken(color, 0.22)),
 	})
 end
 
@@ -1093,14 +1125,14 @@ end
 -- fill with a highlight strip, a white flash layer on the fill and an optional centred number.
 -- opts: Color, Trail (bool), Text. Placed and sized by setVitalsGeometry.
 function Vitals.NewBar(parent, name, opts)
+	-- (kit-b U8) the track is the stone well in a wood edge, square (the pitch's .hp)
 	local root = newFrame(parent, name, {
 		BackgroundTransparency = 0,
-		BackgroundColor3 = WHITE,
+		BackgroundColor3 = Theme.Sign.Well,
 		ZIndex = 2,
 	})
-	round(root)
-	Theme.Stroke(root, VS.Edge, 3, 0)
-	Theme.Gradient(root, VS.TrackTop, VS.TrackBottom, 90)
+	local edge = Theme.Stroke(root, Theme.Sign.Wood, 2, 0)
+	edge.LineJoinMode = Enum.LineJoinMode.Miter
 
 	local inner = newFrame(root, "Inner", {
 		Position = UDim2.fromOffset(3, 3),
@@ -1114,7 +1146,6 @@ function Vitals.NewBar(parent, name, opts)
 			Size = UDim2.fromScale(1, 1),
 			ZIndex = 1,
 		})
-		round(trail)
 	end
 	local fill = newFrame(inner, "Fill", {
 		BackgroundTransparency = 0,
@@ -1122,32 +1153,23 @@ function Vitals.NewBar(parent, name, opts)
 		Size = UDim2.fromScale(1, 1),
 		ZIndex = 2,
 	})
-	round(fill)
 	local gradient = Instance.new("UIGradient")
+	gradient.Name = "Lip"
 	gradient.Rotation = 90
 	gradient.Color = Vitals.BarSequence(opts.Color)
 	gradient.Parent = fill
-	local shine = newFrame(fill, "Shine", {
-		Position = UDim2.new(0, 7, 0.1, 0),
-		Size = UDim2.new(1, -14, 0.26, 0),
-		BackgroundTransparency = 0.45,
-		BackgroundColor3 = WHITE,
-		ZIndex = 3,
-	})
-	round(shine)
 	local flash = newFrame(fill, "Flash", {
 		BackgroundTransparency = 1,
 		BackgroundColor3 = WHITE,
 		Size = UDim2.fromScale(1, 1),
 		ZIndex = 4,
 	})
-	round(flash)
 	-- kit B (no outline on a surface): the number reads by the colour of what lies under it, and the fill moves under a
 	-- centred number. So it is drawn three times, each copy clipped to one stretch of the tube: dark ink over the fill
 	-- (Theme.TextOn of the fill's gradient), dark ink over the white damage trail, white over the dark track.
 	local label, windows = nil, {}
 	if opts.Text then
-		for _, spec in ipairs({ { "TextFill", Theme.TextOn(Vitals.BarSequence(opts.Color)) }, { "TextTrail", Theme.TextOn(WHITE) }, { "TextTrack", WHITE } }) do
+		for _, spec in ipairs({ { "TextFill", Theme.TextOn(Vitals.BarSequence(opts.Color)) }, { "TextTrail", Theme.TextOn(WHITE) }, { "TextTrack", Theme.TextOn("Well") } }) do
 			local clip = newFrame(inner, spec[1], {
 				ClipsDescendants = true,
 				Size = UDim2.fromScale(1, 1),
@@ -1202,9 +1224,6 @@ function Vitals.NewBar(parent, name, opts)
 		end
 		shownFill = value
 		fill.Size = UDim2.fromScale(value, 1)
-		-- the highlight strip is inset: it only fits once the fill is wider than tall
-		local size = inner.AbsoluteSize
-		shine.Visible = size.X * value >= size.Y
 		placeText()
 	end
 	function bar.SetTrail(value)
@@ -1222,7 +1241,7 @@ function Vitals.NewBar(parent, name, opts)
 		end
 	end
 	function bar.Invalidate()
-		shownFill = -1 -- the size changed: re-check the highlight strip on the next SetFraction
+		shownFill = -1 -- the size changed: place the text windows again on the next SetFraction
 	end
 	function bar.SetText(text)
 		for _, w in ipairs(windows) do
@@ -1327,16 +1346,13 @@ function Vitals.BuildTicks(bar)
 	return ticks
 end
 
--- v5: the vitals card's neon border colour: green (healthy), amber (hurt), red (low / downed).
+-- the vitals card's edge (kit-b U8: the wood edge of kit B; the HP fill already shows green / amber / red): wood, the sign
+-- red while low or downed
 function Vitals.BorderColor()
-	if S.downed then
-		return NEON.Red
-	elseif H.Target <= K.LOW_HEALTH then
-		return NEON.Red
-	elseif H.Target <= 0.6 then
-		return NEON.Yellow
+	if S.downed or H.Target <= K.LOW_HEALTH then
+		return Theme.Sign.Red
 	end
-	return NEON.Green
+	return Theme.Sign.Wood
 end
 
 function Vitals.PaintBorder()
@@ -1344,7 +1360,6 @@ function Vitals.PaintBorder()
 		local c = Vitals.BorderColor()
 		UI.CardStroke.Color = c
 		UI.CardGlow.Color = c
-		UI.CardGlow.Transparency = 0.62
 	end
 end
 
@@ -1360,15 +1375,15 @@ end
 -- as the cooldown runs out. The sweep is two half-discs, each clipped to its half of the ring, with a
 -- hard-step transparency gradient turned to the sweep angle (see setSweep). Sized by setVitalsGeometry.
 function Vitals.NewDashRing(parent)
+	-- (kit-b U8) a square stone well in a wood edge; the sweep's halves are square too (the stepped gradients still turn)
 	local root = newFrame(parent, "DashRing", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		BackgroundTransparency = 0,
-		BackgroundColor3 = WHITE,
+		BackgroundColor3 = Theme.Sign.Well,
 		ZIndex = 3,
 	})
-	round(root)
-	Theme.Stroke(root, VS.Edge, 3, 0)
-	Theme.Gradient(root, VS.TrackTop, VS.TrackBottom, 90)
+	local ringEdge = Theme.Stroke(root, Theme.Sign.Wood, 2, 0)
+	ringEdge.LineJoinMode = Enum.LineJoinMode.Miter
 	local sweep = newFrame(root, "Sweep", {
 		Position = UDim2.fromOffset(2, 2),
 		Size = UDim2.new(1, -4, 1, -4),
@@ -1386,8 +1401,8 @@ function Vitals.NewDashRing(parent)
 			BackgroundTransparency = 0,
 			BackgroundColor3 = VS.Arc,
 		})
-		round(disc)
 		local g = Instance.new("UIGradient")
+		g.Name = "Sweep"
 		g.Transparency = VS.Solid
 		g.Parent = disc
 		halves[i] = { Disc = disc, Gradient = g }
@@ -1417,7 +1432,7 @@ setVitalsGeometry = function(g)
 	UI.Card.Position = UDim2.fromOffset(g.CARD_X, 0)
 	UI.Card.Size = UDim2.new(1, -g.CARD_X, 0, g.CARD_H)
 	UI.CardCorner.CornerRadius = UDim.new(0, g.CARD_CORNER)
-	UI.RimCorner.CornerRadius = UDim.new(0, g.CARD_CORNER - 2)
+	UI.RimCorner.CornerRadius = UDim.new(0, math.max(0, g.CARD_CORNER - 2))
 	UI.GlowCorner.CornerRadius = UDim.new(0, g.CARD_CORNER + 3)
 
 	-- the ring ends the stamina row, or (RING_SPAN) both rows
@@ -1461,26 +1476,36 @@ local function buildVitals(holder)
 
 	-- v5: a Neon card: the dark navy plate, a neon border in the health colour (green / amber / red, pulsing red
 	-- when low), a soft outer glow ring and a thin light bevel inside the border
+	-- (kit-b U8: the pitch's .vit) the stone card in a wood edge, square, its darker lip along the bottom; the old glow ring
+	-- and rim stay as hidden frames (the layout still sizes their corners)
 	local card = newFrame(body, "Card", {
-		BackgroundTransparency = 0.02,
-		BackgroundColor3 = WHITE,
+		BackgroundTransparency = 0,
+		BackgroundColor3 = Theme.Sign.Stone,
 	})
 	UI.Card = card
-	UI.CardCorner = Theme.Corner(card, "M")
-	UI.CardStroke = Theme.Stroke(card, NEON.Green, 3, 0)
-	Theme.Gradient(card, VS.PanelTop, VS.PanelBottom, 90)
+	UI.CardCorner = Theme.Corner(card, "None")
+	UI.CardStroke = Theme.Stroke(card, Theme.Sign.Wood, 3, 0)
+	UI.CardStroke.LineJoinMode = Enum.LineJoinMode.Miter
+	newFrame(card, "Lip", {
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, 5),
+		BackgroundTransparency = 0,
+		BackgroundColor3 = Theme.Sign.StoneLip,
+	})
 	local glow = newFrame(card, "Glow", {
 		Position = UDim2.fromOffset(-3, -3),
 		Size = UDim2.new(1, 6, 1, 6),
+		Visible = false,
 	})
-	UI.GlowCorner = Theme.Corner(glow, "M")
-	UI.CardGlow = Theme.Stroke(glow, NEON.Green, 5, 0.62)
+	UI.GlowCorner = Theme.Corner(glow, "None")
+	UI.CardGlow = Theme.Stroke(glow, Theme.Sign.Wood, 5, 1)
 	local rim = newFrame(card, "Rim", {
 		Position = UDim2.fromOffset(2, 2),
 		Size = UDim2.new(1, -4, 1, -4),
+		Visible = false,
 	})
-	UI.RimCorner = Theme.Corner(rim, "M")
-	Theme.Stroke(rim, WHITE, 1.5, 0.88)
+	UI.RimCorner = Theme.Corner(rim, "None")
 
 	-- health tube with the damage trail, then the thinner stamina tube (ends left of the dash ring)
 	UI.HpBar = Vitals.NewBar(body, "HealthBar", { Color = Colors.Health, Trail = true, Text = "100 / 100" })
@@ -1530,54 +1555,35 @@ end
 local function buildCurrencyRow(parent, entry)
 	local def = entry.Def or {}
 	local color = def.Color or Colors.Token
-	local glow = def.Glow or Colors.TokenGlow
 	local row = newFrame(parent, "Currency_" .. entry.Id, {
 		Size = UDim2.fromOffset(K.STRIP_W, K.STRIP_H),
 		Visible = false,
 	})
 
-	-- v5: a neon pill (its left end hides behind the coin): the dark navy fill, a neon border in the currency's
-	-- colour, a thin sheen line and the colour glowing up from the floor of the pill
+	-- (kit-b U8: the pitch's .cs) one stone block: the tile face, a wood edge, its darker lip along the bottom; the coin is a
+	-- square in the currency's colour inside its left end (.ci), the amount in brown. No neon, no sheen, no corner
 	local neon = Theme.NeonColor(entry.Neon or "Gold")
 	local body = newFrame(row, "Body", {
-		BackgroundTransparency = 0.02,
-		BackgroundColor3 = WHITE,
-	})
-	round(body)
-	local bodyStroke = Theme.Stroke(body, neon, 3, 0)
-	bodyStroke.Name = "NeonStroke"
-	Theme.Gradient(body, VS.PanelTop, VS.PanelBottom, 90)
-	local shine = newFrame(body, "Shine", {
-		AnchorPoint = Vector2.new(0.5, 0),
-		BackgroundTransparency = 0.82,
-		BackgroundColor3 = WHITE,
-	})
-	round(shine)
-	local lip = newFrame(body, "Lip", {
-		AnchorPoint = Vector2.new(0.5, 1),
 		BackgroundTransparency = 0,
-		BackgroundColor3 = neon,
+		BackgroundColor3 = Theme.Sign.Tile,
+		Size = UDim2.fromScale(1, 1),
 	})
-	Theme.Corner(lip, "M")
-	local fade = Instance.new("UIGradient")
-	fade.Rotation = 90
-	fade.Transparency = NumberSequence.new(1, 0.72)
-	fade.Parent = lip
+	local bodyStroke = Theme.Stroke(body, Theme.Sign.Wood, 2, 0)
+	bodyStroke.Name = "SignEdge"
+	bodyStroke.LineJoinMode = Enum.LineJoinMode.Miter
+	local lip = newFrame(body, "Lip", {
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, 4),
+		BackgroundTransparency = 0,
+		BackgroundColor3 = Theme.Sign.StoneLip,
+	})
 
 	local coin, setGem
 	if entry.Id == "Gems" then
-		-- lobby-shop Task 15 (spec 5.7): the gem coin is the navy panel fill with a cyan neon ring and the drawn cut gem
-		-- (client/UI/GemIcon) at coin size, so a cyan gem never sits on a cyan badge; setRowGeometry rebuilds the gem
-		-- whenever the coin changes size
-		local fill, ring
-		coin, fill, ring = newBadge(row, "Coin", K.COIN, color, glow)
-		fill.Color = ColorSequence.new(VS.PanelTop, VS.PanelBottom)
-		ring.Color = color
-		ring.Thickness = 2.5
-		local gloss = coin:FindFirstChild("Shine")
-		if gloss then
-			gloss.BackgroundTransparency = 0.88
-		end
+		-- lobby-shop Task 15 (spec 5.7): the drawn cut gem (client/UI/GemIcon) at coin size; (kit-b U8) on a square of sign
+		-- navy, so the cyan gem never sits on a cyan block; setRowGeometry rebuilds the gem whenever the coin changes size
+		coin = Vitals.SignSquare(row, "Coin", K.COIN, Theme.Sign.Navy)
 		setGem = function(px)
 			local old = coin:FindFirstChild("GemIcon")
 			if old then
@@ -1589,20 +1595,30 @@ local function buildCurrencyRow(parent, entry)
 		end
 		setGem(K.COIN)
 	else
-		coin = newCoin(row, "Coin", K.COIN, color, glow, def.Glyph or "?", 30)
+		-- the coin square in the currency's own colour (Cash the grass green, Tokens gold), its PixelIcon in the ink that reads
+		coin = Vitals.SignSquare(row, "Coin", K.COIN, color)
+		local glyph = def.Icon or def.Glyph or "?"
+		local icon = PixelIcon.Bitmaps[glyph] and glyph or nil
+		local label = newText(coin, "Glyph", icon and "" or glyph, "Display", 30, Theme.TextOn(color), {
+			TextXAlignment = Enum.TextXAlignment.Center,
+			ZIndex = 4,
+		})
+		if icon then
+			setCoinIcon(label, icon, 30)
+		end
 	end
 	coin.AnchorPoint = Vector2.new(0, 0.5)
-	coin.Position = UDim2.new(0, 0, 0.5, 0)
+	coin.Position = UDim2.new(0, 4, 0.5, -2)
 	coin.ZIndex = 3
 
-	local amount = newText(row, "Amount", "0", "Display", 32, WHITE, {
+	local amount = newText(row, "Amount", "0", "Display", 32, Theme.Sign.Text, {
 		AnchorPoint = Vector2.new(0, 0.5),
 		ZIndex = 3,
 	})
 
 	local c = {
 		Id = entry.Id, Def = def, Attr = entry.Attr, Always = entry.Always == true,
-		Row = row, Body = body, Shine = shine, Lip = lip, Coin = coin, CoinGlyph = coin:FindFirstChild("Glyph"), SetGem = setGem,
+		Row = row, Body = body, Lip = lip, Coin = coin, CoinGlyph = coin:FindFirstChild("Glyph"), SetGem = setGem,
 		Neon = neon, Stroke = bodyStroke,
 		Amount = amount, AmountScale = newScale(amount, 1), CoinScale = newScale(coin, 1),
 		Target = 0, Display = 0, Shown = nil, Seen = false, Available = false, ChipShown = false,
@@ -1610,19 +1626,20 @@ local function buildCurrencyRow(parent, entry)
 	}
 
 	if entry.Run then
+		-- (kit-b U8) the "+n" match chip: a small gold block with brown text in a wood edge
 		local chip = newFrame(row, "RunChip", {
 			AnchorPoint = Vector2.new(1, 0.5),
 			Position = UDim2.new(1, -7, 0.5, 0),
 			Size = UDim2.fromOffset(K.CHIP_W, 32),
-			BackgroundTransparency = 0.05,
-			BackgroundColor3 = Theme.Darken(color, 0.5),
+			BackgroundTransparency = 0,
+			BackgroundColor3 = Theme.Sign.Gold,
 			Visible = false,
 			ZIndex = 4,
 		})
-		round(chip)
-		Theme.Stroke(chip, color, 2, 0.1)
+		local chipEdge = Theme.Stroke(chip, Theme.Sign.Wood, 2, 0)
+		chipEdge.LineJoinMode = Enum.LineJoinMode.Miter
 		c.Chip = chip
-		c.RunLabel = newText(chip, "Run", "+0", "Accent", 21, glow, {
+		c.RunLabel = newText(chip, "Run", "+0", "Accent", 21, Theme.Sign.Text, {
 			TextXAlignment = Enum.TextXAlignment.Center,
 			ZIndex = 5,
 		})
@@ -1651,6 +1668,10 @@ local function setRowGeometry(c, compact)
 	c.Coin.Size = UDim2.fromOffset(coinSize, coinSize)
 	if c.CoinGlyph then
 		c.CoinGlyph.TextSize = strip and 19 or (compact and 24 or 30)
+		local icon = c.CoinGlyph:GetAttribute("PixelIcon")
+		if icon then
+			setCoinIcon(c.CoinGlyph, icon, c.CoinGlyph.TextSize)
+		end
 	end
 	if c.SetGem then
 		c.SetGem(coinSize)
@@ -1660,13 +1681,9 @@ local function setRowGeometry(c, compact)
 		c.Chip.Position = UDim2.new(1, strip and -4 or -7, 0.5, 0)
 		c.RunLabel.TextSize = strip and 18 or 21
 	end
-	c.Body.Position = UDim2.fromOffset(math.floor(coinSize * 0.4), 0)
-	c.Body.Size = UDim2.new(1, -math.floor(coinSize * 0.4), 1, 0)
-	c.Shine.Position = UDim2.new(0.5, math.floor(coinSize * 0.25), 0, 4)
-	c.Shine.Size = UDim2.new(1, -math.floor(coinSize * 0.9), 0, 2)
-	c.Lip.Position = UDim2.new(0.5, 0, 1, strip and -2 or -3)
-	c.Lip.Size = UDim2.new(1, -6, 0.55, strip and -2 or -3)
-	c.Amount.Position = UDim2.new(0, coinSize + (strip and 6 or 8), 0.5, -1)
+	-- (kit-b U8) the block spans the row; the coin square sits inside its left end, the amount after it
+	c.Lip.Size = UDim2.new(1, 0, 0, strip and 4 or 5)
+	c.Amount.Position = UDim2.new(0, 4 + coinSize + (strip and 6 or 8), 0.5, -2)
 	if c.Stroke then
 		c.Stroke.Thickness = strip and 2 or 3
 	end
@@ -1811,6 +1828,7 @@ local function buildMatch(holder)
 		Size = UDim2.new(0.55, 0, 0, M.TokensH),
 		TextXAlignment = Enum.TextXAlignment.Right,
 	})
+	UI.MatchTokensIcon = PixelIcon.Lead(UI.MatchTokens, Theme.Currency.Tokens.Icon) -- (kit-b U7a) the coin before the count
 	UI.TokensScale = newScale(UI.MatchTokens, 1)
 
 	-- checkpoint progress
@@ -1854,13 +1872,13 @@ local function buildParty(holder)
 	UI.PartyInner = inner
 
 	-- row A: the portal's name and the big red Leave button (the only way out of a locked portal)
-	UI.PartyTitle = newText(inner, "Title", "Party", "Title", M.TitleText, WHITE, {
+	UI.PartyTitle = Theme.StyleTitle(newText(inner, "Title", "Party", "Title", M.TitleText, WHITE, {
 		AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.new(0, 0, 0, M.PartyLeaveH / 2),
 		Size = UDim2.new(1, -(M.PartyLeaveW + 8), 0, M.TitleH),
 		RichText = true,
 		TextTruncate = Enum.TextTruncate.AtEnd,
-	})
+	}))
 	UI.PartyLeave = CloudUI.Button({
 		Name = "LeaveParty",
 		Text = "Leave",
@@ -1956,15 +1974,15 @@ local function buildTitleCard(holder)
 	round(gloss)
 
 	-- a gold cloud coin at the left
-	local coin = newCoin(card, "Coin", 54, Colors.Token, Colors.TokenGlow, "\226\152\129", 30)
+	local coin = newCoin(card, "Coin", 54, Colors.Token, Colors.TokenGlow, Theme.Currency.Tokens.Icon, 30)
 	coin.AnchorPoint = Vector2.new(0, 0.5)
 	coin.Position = UDim2.new(0, 11, 0.5, 0)
 
-	local title = newText(card, "Title", string.upper(tostring(Config.GameName)), "Title", 32, WHITE, {
+	local title = Theme.StyleTitle(newText(card, "Title", string.upper(tostring(Config.GameName)), "Title", 32, WHITE, {
 		Position = UDim2.new(0, 74, 0, 6),
 		Size = UDim2.new(1, -84, 0, 38),
 		TextTruncate = Enum.TextTruncate.AtEnd,
-	})
+	}), "OwnGradient")
 	Theme.Gradient(title, Colors.Cloud, Colors.TokenGlow, 90)
 	newText(card, "Tagline", tostring(Config.Tagline), "Script", 19, Colors.Muted or Colors.Cloud, {
 		Position = UDim2.new(0, 74, 0, 44),
@@ -2135,7 +2153,7 @@ local function updateHealth(dt, now)
 		beat = beat * beat
 		UI.Heart.Rotation = math.sin(now * 3.7) * 4
 		UI.HeartScale.Scale = 1 + 0.16 * beat
-		UI.CardStroke.Color = Theme.Darken(NEON.Red, 0.55):Lerp(NEON.Red, 0.25 + 0.75 * beat)
+		UI.CardStroke.Color = Theme.Sign.RedLip:Lerp(Theme.Sign.Red, 0.25 + 0.75 * beat)
 		UI.CardGlow.Transparency = 0.85 - 0.4 * beat
 		if not H.HitFx then
 			flash.BackgroundTransparency = 1 - 0.3 * beat
@@ -2354,7 +2372,7 @@ local function setAmountText(c, n)
 	local strip = c.Compact == "Strip"
 	local coinSize = coinSizeOf(c)
 	local chip = c.ChipShown and ((strip and K.STRIP_CHIP_W or K.CHIP_W) + 6) or 0
-	local lead = coinSize + (strip and 6 or 8)
+	local lead = 4 + coinSize + (strip and 6 or 8) -- (kit-b U8) the coin square sits 4 px inside the block
 	local avail = c.Width - lead - 10 - chip
 	local size = Util.Clamp(math.floor(avail / (math.max(1, #text) * 0.6)), strip and K.STRIP_TEXT_MIN or 18, strip and K.STRIP_TEXT or 32)
 	c.Amount.Text = text
@@ -2533,24 +2551,35 @@ local function updateTeam(members)
 		local frac = Util.Clamp(tonumber(m.Health) or 0, 0, 1)
 		chip.Fill.Size = UDim2.fromScale(frac, 1)
 		chip.Fill.BackgroundColor3 = Theme.HealthColor(frac)
+		-- (kit-b U7a) the state is a PixelIcon on the empty State label: a tick when finished, an x when downed
+		local mark = m.Finished and "check" or (m.Downed and "x" or nil)
+		if chip.State:GetAttribute("PixelIcon") ~= mark then
+			local old = chip.State:FindFirstChild("Icon")
+			if old then
+				old:Destroy()
+			end
+			chip.State:SetAttribute("PixelIcon", mark)
+			if mark then
+				PixelIcon.Host(chip.State, mark, chip.State.TextSize)
+			end
+		end
+		chip.State.Text = ""
 		if m.Finished then
-			chip.State.Text = "\226\156\148"
 			chip.State.TextColor3 = Colors.Good
 			chip.Stroke.Color = Colors.Good
 		elseif m.Downed then
-			chip.State.Text = "\226\152\160" -- skull and crossbones
 			chip.State.TextColor3 = Colors.Bad
 			chip.Stroke.Color = Colors.Bad
 		else
-			chip.State.Text = ""
 			chip.Stroke.Color = isMe and NEON.Gold or Theme.Darken(NEON.Grey, 0.3)
 		end
 	end
 end
 
 local function updateTokensLine(state)
-	local text = "\226\152\129 " .. tostring(math.floor(tonumber(state.TokensCollected) or 0))
+	local text = tostring(math.floor(tonumber(state.TokensCollected) or 0))
 		.. "/" .. tostring(math.floor(tonumber(state.TotalTokens) or 0))
+	UI.MatchTokensIcon.Visible = true -- (kit-b U7a) the coin leads the count ("Get ready!" hides it)
 	if UI.MatchTokens.Text ~= text then
 		local grew = Mt.TokensSeen ~= nil and (tonumber(state.TokensCollected) or 0) > Mt.TokensSeen
 		Mt.TokensSeen = tonumber(state.TokensCollected) or 0
@@ -2596,6 +2625,7 @@ local function updateMatchClock(now)
 		if n ~= Mt.Last then
 			Mt.Last = n
 			UI.MatchTokens.Text = "Get ready!"
+			UI.MatchTokensIcon.Visible = false
 			pop(UI.TimerScale, 1.7, 0.5)
 		end
 		setTimerText(tostring(n), numeralColor(n), M.CountText)
@@ -2755,11 +2785,19 @@ local function applyMatchState(state)
 		color = Colors.Stamina
 	end
 	local diff = Config.GetDifficulty and Config.GetDifficulty(state.DifficultyId) or nil
-	local starText = ""
-	if diff then
-		starText = "  <font color=\"" .. hex(GOLD) .. "\">" .. stars(diff.Stars) .. "</font>"
+	-- (kit-b U7a) the difficulty's stars are gold PixelIcons after its name
+	UI.MatchTitle.Text = tostring(state.DifficultyName or state.DifficultyId or "Match")
+	local starCount = diff and math.max(0, math.min(5, math.floor(tonumber(diff.Stars) or 0))) or 0
+	if UI.MatchTitle:GetAttribute("Stars") ~= starCount then
+		UI.MatchTitle:SetAttribute("Stars", starCount)
+		local old = UI.MatchTitle:FindFirstChild("TrailIcon")
+		if old then
+			old:Destroy()
+		end
+		if starCount > 0 then
+			PixelIcon.Lead(UI.MatchTitle, "star", { After = true, Count = starCount, Px = K.STAR_PX, Colour = GOLD })
+		end
 	end
-	UI.MatchTitle.Text = tostring(state.DifficultyName or state.DifficultyId or "Match") .. starText
 	UI.MatchTitle.TextColor3 = Theme.Lighten(color, 0.25)
 
 	local total = math.max(1, math.floor(tonumber(state.TotalCheckpoints) or 1))
@@ -2850,7 +2888,7 @@ local function fitPartyTexts()
 	UI.PartyTitle.TextSize = fittingSize(title, Theme.FontOf(UI.PartyTitle), { M.TitleText, 26, 24, 22 }, inner - leaveW - 8)
 	if Pt.LevelPlain then
 		local room = inner - ((Pt.Leader and M.ChangeW or M.PartyCountW) + 6)
-		UI.PartyLevel.TextSize = fittingSize(Pt.LevelPlain, Theme.FontOf(UI.PartyLevel), { 20, 19, 18 }, room)
+		UI.PartyLevel.TextSize = fittingSize(Pt.LevelPlain, Theme.FontOf(UI.PartyLevel), { 20, 19, 18 }, room - (Pt.StarsW or 0))
 	end
 	UI.PartyStatus.TextSize = fittingSize(status, Theme.FontOf(UI.PartyStatus), { M.PartyStatusText, 20, 19 }, inner)
 	if textFits(Pt.HintLong, Theme.FontOf(UI.PartyHint), M.PartyHintText, inner - M.PartyCountW - 6) then
@@ -2910,9 +2948,21 @@ local function applyPartyState(state)
 		UI.PartyTitle.Text = tostring(state.DifficultyName or "?")
 		UI.PartyTitle.TextColor3 = Theme.Lighten(color, 0.25)
 	end
-	local starText = (starCount > 0) and ("  <font color=\"" .. hex(NEON.Gold) .. "\">" .. stars(starCount) .. "</font>") or ""
-	UI.PartyLevel.Text = levelName .. starText
-	Pt.LevelPlain = obby and (levelName .. ((starCount > 0) and ("  " .. stars(starCount)) or "")) or nil
+	-- (kit-b U7a) the level's stars are gold PixelIcons after its name; fitting leaves them their room (Pt.StarsW)
+	starCount = math.max(0, math.min(5, math.floor(starCount)))
+	UI.PartyLevel.Text = levelName
+	if UI.PartyLevel:GetAttribute("Stars") ~= starCount then
+		UI.PartyLevel:SetAttribute("Stars", starCount)
+		local old = UI.PartyLevel:FindFirstChild("TrailIcon")
+		if old then
+			old:Destroy()
+		end
+		if starCount > 0 then
+			PixelIcon.Lead(UI.PartyLevel, "star", { After = true, Count = starCount, Px = K.STAR_PX, Colour = NEON.Gold })
+		end
+	end
+	Pt.StarsW = (starCount > 0) and (starCount * K.STAR_PX + (starCount - 1) * math.floor(K.STAR_PX / 9) + math.max(3, math.floor(K.STAR_PX / 4))) or 0
+	Pt.LevelPlain = obby and levelName or nil
 	UI.PartyLevel.TextColor3 = Theme.Lighten(color, 0.3)
 	Pt.Leader = obby and state.LeaderUserId ~= nil and state.LeaderUserId == player.UserId
 	Pt.Level = levelId

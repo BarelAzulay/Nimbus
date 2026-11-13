@@ -183,6 +183,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7b) the HUD's element, action and key icons
 
 local Client = script.Parent.Parent
 
@@ -5438,25 +5439,28 @@ local function setPie(pie, frac, color)
 	St.ringWrites = (St.ringWrites or 0) + 1
 end
 
-local ELEMENT_GLYPH = {
-	Water = "\240\159\146\167", -- droplet
-	Flame = "\240\159\148\165", -- fire
-	Frost = "\226\157\132", -- snowflake
-	Nature = "\240\159\141\131", -- leaf
-	Earth = "\226\155\176", -- mountain
-	Storm = "\226\154\161", -- lightning
-	Celestial = "\226\156\168", -- sparkles
-	Shadow = "\240\159\140\153", -- moon
+-- (kit-b U7b) the HUD's icons are PixelIcons (they were emoji): an element's, an action button's, the lives' hearts, a
+-- boss's crown, the evolution stars; a D-pad key hint is its arrow (KEY_ICON)
+local ELEMENT_ICON = {
+	Water = "drop",
+	Flame = "flame",
+	Frost = "flake",
+	Nature = "leaf",
+	Earth = "mountain",
+	Storm = "bolt",
+	Celestial = "sparkle",
+	Shadow = "moon",
 }
-local GLYPH = {
-	Target = "\240\159\142\175", -- bullseye
-	Special = "\226\152\133", -- star
-	Dash = "\240\159\146\168", -- dash
-	Swap = "\226\135\132", -- left-right arrows
-	Heart = "\226\153\165", -- heart
-	Crown = "\240\159\145\145",
-	Star = "\226\152\133",
+local ICON = {
+	Target = "target",
+	Special = "star",
+	Dash = "dash",
+	Swap = "swap",
+	Heart = "heart",
+	Crown = "crown",
+	Star = "star",
 }
+local KEY_ICON = { DPadDown = "down", DPadUp = "up", DPadRight = "arrow", DPadLeft = "left", Shift = "shift" } -- (the word would spill out of the 30 px chip)
 
 function Hud.Ensure()
 	if Hud.gui and Hud.gui.Parent then
@@ -5518,16 +5522,30 @@ end
 -- the key hints (keyboard / gamepad)
 function Hud.KeyText(kind, index)
 	if St.gamepad then
-		return ({ Target = "X", Element = "Y", Special = "RB", Dash = "B", Retreat = "\226\134\147", Buff = (index == 2) and "\226\134\145" or "LB", Swap = (index == 2) and "\226\134\146" or "\226\134\144" })[kind] or ""
+		-- (kit-b U7b) the D-pad by name: Hud.SetKey draws its arrow (KEY_ICON)
+		return ({ Target = "X", Element = "Y", Special = "RB", Dash = "B", Retreat = "DPadDown", Buff = (index == 2) and "DPadUp" or "LB", Swap = (index == 2) and "DPadRight" or "DPadLeft" })[kind] or ""
 	end
-	return ({ Target = "F", Element = "E", Special = "Q", Dash = "\226\135\167", Retreat = "R", Buff = tostring(index or 1), Swap = "hold " .. tostring(index or 1) })[kind] or ""
+	return ({ Target = "F", Element = "E", Special = "Q", Dash = "Shift", Retreat = "R", Buff = tostring(index or 1), Swap = "hold " .. tostring(index or 1) })[kind] or ""
+end
+
+-- (kit-b U7b) a key chip's label: a D-pad key or Shift draws its PixelIcon arrow, any other key is its text
+function Hud.SetKey(lbl, key)
+	if not lbl then
+		return
+	end
+	local icon = KEY_ICON[key]
+	PixelIcon.Set(lbl, icon, 18)
+	if not icon then
+		setText(lbl, key)
+	end
 end
 
 ----------------------------------------------------------------------
 -- the fighter card (top left) + the two helper portraits under it
 ----------------------------------------------------------------------
 local function heart(parent, i)
-	local l = label(parent, GLYPH.Heart, "Display", 20, { Name = "Heart" .. i, Size = UDim2.fromOffset(22, 22), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = COLORS.Life })
+	local l = label(parent, "", "Display", 20, { Name = "Heart" .. i, Size = UDim2.fromOffset(22, 22), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = COLORS.Life })
+	PixelIcon.Host(l, ICON.Heart, 18) -- (kit-b U7b) lit / lost by its TextColor3
 	return l
 end
 
@@ -5651,8 +5669,9 @@ function Hud.BuildHelper(i)
 	H.Level = smallPill(cell, "Lv 1", COLORS.LevelPill, { Name = "Level", AutomaticSize = Enum.AutomaticSize.None, ZIndex = 8 })
 	H.Level.TextSize = 16
 	H.Buff = label(cell, "", "Heading", 15, { Name = "Buff", TextXAlignment = Enum.TextXAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd }, true)
-	H.Swap = make("TextButton", { Name = "Swap", Text = GLYPH.Swap .. " Swap", AutoButtonColor = true, BackgroundColor3 = Color3.fromRGB(40, 60, 120), BorderSizePixel = 0, ZIndex = 6 }, cell)
+	H.Swap = make("TextButton", { Name = "Swap", Text = "Swap", AutoButtonColor = true, BackgroundColor3 = Color3.fromRGB(40, 60, 120), BorderSizePixel = 0, ZIndex = 6 }, cell)
 	Theme.Style(H.Swap, "Button", { Size = 15 })
+	PixelIcon.Lead(H.Swap, ICON.Swap) -- (kit-b U7b) the swap arrows before "Swap" / the countdown
 	Theme.Corner(H.Swap, "M")
 	H.SwapStroke = Theme.Stroke(H.Swap, COLORS.SwapEdge, 2, 0)
 	H.SwapFill = make("Frame", { Name = "HoldFill", BackgroundColor3 = COLORS.White, BackgroundTransparency = 0.7, BorderSizePixel = 0, Size = UDim2.fromScale(0, 1), ZIndex = 7, Visible = false }, H.Swap)
@@ -5744,12 +5763,14 @@ function Hud.BuildActions()
 		A.FaceGradient = make("UIGradient", { Name = "Fill", Rotation = 90, Color = ColorSequence.new(Theme.Darken(base, 0.35), Theme.Darken(base, 0.72)) }, face)
 		A.FaceStroke = Theme.Stroke(face, Theme.Lighten(base, 0.25), 2.5, 0)
 		A.Face = face
-		A.Glyph = label(face, GLYPH[kind] or "", "Display", 30, { Name = "Glyph", Size = UDim2.fromScale(1, 1), ZIndex = 4, TextXAlignment = Enum.TextXAlignment.Center })
+		A.Glyph = label(face, "", "Display", 30, { Name = "Glyph", Size = UDim2.fromScale(1, 1), ZIndex = 4, TextXAlignment = Enum.TextXAlignment.Center })
+		PixelIcon.Set(A.Glyph, ICON[kind]) -- (kit-b U7b) follows the glyph's TextSize, colour and fade
 		A.Count = label(face, "", "Display", 26, { Name = "Count", Size = UDim2.fromScale(1, 1), ZIndex = 5, Visible = false, TextXAlignment = Enum.TextXAlignment.Center })
 		-- (Label: the narrower caption face, so "MARSHMALLOW" stays one word on one line)
 		A.Caption = label(b, string.upper(kind), "Label", K.CAPTION_TEXT, { Name = "Caption", AnchorPoint = Vector2.new(0.5, 0), ZIndex = 6, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top, TextWrapped = true }, true)
 		make("UITextSizeConstraint", { Name = "NameSize", MinTextSize = K.NAME_MIN_PX, MaxTextSize = K.NAME_MAX_PX }, A.Caption)
-		A.Key = keyChip(b, Hud.KeyText(kind), { Name = "Key", AnchorPoint = Vector2.new(0.5, 0.5) })
+		A.Key = keyChip(b, "", { Name = "Key", AnchorPoint = Vector2.new(0.5, 0.5) })
+		Hud.SetKey(A.Key:FindFirstChild("Text"), Hud.KeyText(kind))
 		Hud.buttons[kind] = A
 		local action = kind
 		b.InputBegan:Connect(function(input)
@@ -5904,7 +5925,10 @@ function Hud.LayoutEnemies(B, m)
 			row.Icon.Position = UDim2.fromOffset(16, 5)
 			row.Icon.BackgroundColor3 = elementColor(u.element):Lerp(COLORS.Navy, 0.25)
 			local boss = u.kind == "MiniBoss" or u.info.boss ~= nil
-			setText(row.IconText, boss and GLYPH.Crown or string.upper(string.sub(u.name, 1, 1)))
+			PixelIcon.Set(row.IconText, boss and ICON.Crown or nil) -- (kit-b U7b) a boss's crown, else its initial
+			if not boss then
+				setText(row.IconText, string.upper(string.sub(u.name, 1, 1)))
+			end
 			row.IconText.TextSize = boss and (icon * 0.55) or (icon * 0.6)
 			row.IconText:SetAttribute("BaseText", row.IconText.TextSize)
 			local x = 16 + icon + 8
@@ -6367,8 +6391,10 @@ function Hud.FillFighter(B)
 		setText(F.Level, "Lv " .. tostring(floor(f.level)))
 		-- kit B: no outline on the badge; its small glyph reads on the face (Theme.ReadableFace)
 		F.Element.BackgroundColor3, F.ElementGlyph.TextColor3 = Theme.ReadableFace(elementColor(f.element), 4.5)
-		setText(F.ElementGlyph, ELEMENT_GLYPH[f.element] or "")
-		setText(F.Stars, string.rep(GLYPH.Star, clamp(f.evo or 0, 0, 2)))
+		PixelIcon.Set(F.ElementGlyph, ELEMENT_ICON[f.element]) -- (kit-b U7b)
+		local evo = clamp(f.evo or 0, 0, 2)
+		setText(F.Stars, "")
+		PixelIcon.Mark(F.Stars, evo > 0 and ICON.Star or nil, { Count = evo, Of = evo })
 		if Hud.fighterCard.SetColor then
 			pcall(Hud.fighterCard.SetColor, elementColor(f.element):Lerp(Theme.Neon.Green or COLORS.Mine, 0.55))
 		end
@@ -6425,7 +6451,7 @@ function Hud.Captions(B)
 	for kind, A in pairs(Hud.buttons) do
 		setText(A.Caption, caps[kind] or kind)
 		if kind == "Element" and f then
-			setText(A.Glyph, ELEMENT_GLYPH[f.element] or GLYPH.Special)
+			PixelIcon.Set(A.Glyph, ELEMENT_ICON[f.element] or ICON.Special)
 			local c = elementColor(f.element)
 			A.FaceGradient.Color = ColorSequence.new(Theme.Darken(c, 0.3), Theme.Darken(c, 0.7))
 			A.FaceStroke.Color = Theme.Lighten(c, 0.25)
@@ -6516,7 +6542,8 @@ function Hud.LayoutTop(B, m, teamW, listH, rightY, show)
 		-- track: so it is white, and the fill is deepened where white would not read on it (Theme.ReadableFace, white only)
 		Hud.bossFill.BackgroundColor3 = Theme.ReadableFace(elementColor(bossUnit.element):Lerp(COLORS.Enemy, 0.5), 4.5, true)
 		Hud.bossText.TextColor3 = COLORS.White
-		setText(Hud.bossName, (bossUnit.kind == "MiniBoss" and (GLYPH.Crown .. " ") or "") .. bossUnit.name)
+		setText(Hud.bossName, bossUnit.name)
+		PixelIcon.Mark(Hud.bossName, bossUnit.kind == "MiniBoss" and ICON.Crown or nil) -- (kit-b U7b)
 		setText(Hud.bossElement, tostring(bossUnit.element or "?"))
 		paintPill(Hud.bossElement, elementColor(bossUnit.element))
 		yy = yy + nameH + 32
@@ -6561,17 +6588,17 @@ function Hud.Keys()
 	for kind, A in pairs(Hud.buttons or {}) do
 		local t = A.Key and A.Key:FindFirstChild("Text")
 		if t then
-			setText(t, Hud.KeyText(kind))
+			Hud.SetKey(t, Hud.KeyText(kind))
 		end
 	end
 	for i, H in ipairs(Hud.helpers or {}) do
 		local t = H.Key and H.Key:FindFirstChild("Text")
 		if t then
-			setText(t, Hud.KeyText("Buff", i))
+			Hud.SetKey(t, Hud.KeyText("Buff", i))
 		end
 	end
 	if Hud.retreat then
-		setText(Hud.retreat.Key, Hud.KeyText("Retreat"))
+		Hud.SetKey(Hud.retreat.Key, Hud.KeyText("Retreat"))
 	end
 end
 
@@ -6800,9 +6827,9 @@ function Hud.Update(B, now, force)
 				H.SwapFill.Size = UDim2.fromScale(hold, 1)
 			end
 			if swapLeft > 0.05 and not down then
-				setText(H.Swap, GLYPH.Swap .. " " .. math.ceil(swapLeft - 0.05))
+				setText(H.Swap, tostring(math.ceil(swapLeft - 0.05)))
 			else
-				setText(H.Swap, GLYPH.Swap .. " Swap")
+				setText(H.Swap, "Swap")
 			end
 		end
 		H.index = i
@@ -6976,7 +7003,7 @@ function Hud.ShowResult(B, payload)
 	-- (a short landscape screen: the OK button shares the title's line, long titles step down a size)
 	local titleW = w - 2 * K.PAD - 8 - (short and 100 or 0)
 	local titleSize = short and (#titleText > 9 and 25 or 30) or 34
-	local title = part(label(body, titleText, "Title", titleSize, { Name = "Title", Position = UDim2.fromOffset(K.PAD + 4, y), Size = UDim2.fromOffset(titleW, 40), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = color, TextTruncate = Enum.TextTruncate.AtEnd }))
+	local title = part(Theme.StyleTitle(label(body, titleText, "Title", titleSize, { Name = "Title", Position = UDim2.fromOffset(K.PAD + 4, y), Size = UDim2.fromOffset(titleW, 40), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = color, TextTruncate = Enum.TextTruncate.AtEnd })))
 	title.TextStrokeColor3 = COLORS.Ink
 	y = y + 42
 	local plain = { Wipe = true, KO = true, Cleared = true, BossDown = true }
@@ -7633,10 +7660,11 @@ function Retreat.Make(parent)
 	b:SetAttribute("BaseText", 20)
 	local sweep = make("Frame", { Name = "Sweep", BackgroundColor3 = COLORS.Navy, BackgroundTransparency = 0.35, BorderSizePixel = 0, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromScale(0, 1), Visible = false, ZIndex = 5 }, b)
 	Theme.Corner(sweep, "M")
-	local key = label(b, Hud.KeyText("Retreat"), "Label", 14, { Name = "Key", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 8, 0.5, 0), Size = UDim2.fromOffset(18, 18), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 6, TextColor3 = b.TextColor3 })
+	local key = label(b, "", "Label", 14, { Name = "Key", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 8, 0.5, 0), Size = UDim2.fromOffset(18, 18), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 6, TextColor3 = b.TextColor3 })
 	b.Activated:Connect(function()
 		BattleController.Retreat()
 	end)
+	Hud.SetKey(key, Hud.KeyText("Retreat"))
 	Hud.retreat = { Button = b, Sweep = sweep, Stroke = stroke, Key = key }
 	return b
 end

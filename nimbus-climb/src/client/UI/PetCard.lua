@@ -50,6 +50,7 @@ local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Theme = require(Shared:WaitForChild("Theme"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7b) the evolution stars
 
 local PetCard = {}
 PetCard.__index = PetCard
@@ -104,7 +105,7 @@ local C = {
 	LifeLost = Color3.fromRGB(58, 64, 96),
 }
 
-local STAR = "\226\152\133" -- U+2605 BLACK STAR
+local STAR_ICON = "star" -- (kit-b U7b) the evolution stars are PixelIcons (they were U+2605)
 
 local live = 0
 
@@ -395,6 +396,8 @@ function PetCard:_layout()
 		bw = starPx * self.stage + px(10, 6)
 		self.starsLabel.TextSize = starPx
 		badge.Size = UDim2.fromOffset(bw, bh)
+		-- (kit-b U7b) one PixelIcon star per stage, centred, at the multiple of 9 that fits starPx
+		PixelIcon.Lead(self.starsLabel, STAR_ICON, { Count = self.stage, Of = self.stage, Px = math.max(9, 9 * math.floor(starPx / 9)) })
 	end
 	badge.Visible = hasStars
 	if self.ready then
@@ -455,7 +458,7 @@ function PetCard:SetLevel(level, stage, ready)
 	local relayout = false
 	if stage ~= self.stage then
 		self.stage = stage
-		self.starsLabel.Text = stage >= 2 and (STAR .. STAR) or (stage == 1 and STAR or "")
+		self.starsLabel.Text = "" -- (kit-b U7b) the layout draws the stars (PixelIcon.Lead, Count = the stage)
 		relayout = true
 	end
 	if ready ~= self.ready then

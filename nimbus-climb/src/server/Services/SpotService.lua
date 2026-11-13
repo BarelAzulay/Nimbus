@@ -8,8 +8,8 @@
 --   plot) and remembered in Profile.SpotIndex as the player's LAST plot: a returning player whose last plot is free
 --   gets the side toast "Welcome back! Press E at your gate", everyone else "Pick a free home: press E at its gate".
 -- * Nameplate (LobbyBuilder builds it: a compact PIXEL-sized tag, World text rule): NameLabel = the owner's display
---   name, SubLabel = "Home Level 12 <bullet> <star><star>" (the Home Level and one star glyph per Prestige;
---   "<star> x7" past five stars),
+--   name, SubLabel = "Home Level 12 <bullet> 2 stars" (the Home Level and the Prestige stars in words; kit-b U7b: no
+--   star glyph),
 --   refreshed whenever the home changes; the avatar disc shows the owner's headshot (Players:GetUserThumbnailAsync in
 --   pcall, cached per user; the silhouette built from frames is the fallback). Free plots read "Free home" /
 --   "Press E at the gate" with a "+" on the disc.
@@ -54,10 +54,8 @@ local SpotService = {}
 SpotService.Claimed = Util.Signal() -- Fire(player, index)
 SpotService.Released = Util.Signal() -- Fire(player, index)
 
--- "\226\128\162" = bullet, "\226\152\133" = black star (escaped so the file stays plain ASCII).
+-- "\226\128\162" = bullet (escaped so the file stays plain ASCII).
 local BULLET = "\226\128\162"
-local STAR = "\226\152\133"
-local MAX_STAR_GLYPHS = 5 -- more stars than this read "<star> x7"
 
 local FREE_NAME = "Free home"
 local FREE_SUB = "Press E at the gate"
@@ -693,17 +691,12 @@ local function homeStatsOf(profile)
 	return wholeNumber(level, 100000), wholeNumber(home.Prestige, 100000)
 end
 
--- "Home Level 12" / "Home Level 12 <bullet> <star><star>" / "Home Level 3 <bullet> <star> x7"
+-- "Home Level 12" / "Home Level 12 <bullet> 1 star" / "Home Level 3 <bullet> 7 stars" (kit-b U7b: the Prestige stars
+-- in words, no emoji on a world sign)
 local function homeLine(level, stars)
 	local text = "Home Level " .. tostring(level)
 	if stars > 0 then
-		local glyphs
-		if stars <= MAX_STAR_GLYPHS then
-			glyphs = string.rep(STAR, stars)
-		else
-			glyphs = STAR .. " x" .. tostring(stars)
-		end
-		text = text .. " " .. BULLET .. " " .. glyphs
+		text = text .. " " .. BULLET .. " " .. tostring(stars) .. (stars == 1 and " star" or " stars")
 	end
 	return text
 end

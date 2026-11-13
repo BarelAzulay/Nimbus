@@ -531,9 +531,11 @@ local function clientScenarios()
 				T.check(H.same(PP.Shown(), H.keysOf(PP.Sorted("Train", PP.Entries("Train"), "Default", "All", ""))), "picker ui: the cards come in the default Train order")
 				-- card contents
 				local auroraLv = H.card(k2) and RedoGeom.find(H.card(k2), "Level")
-				local stars = string.rep("\226\152\133", State.PetStage(k2))
-				T.check(auroraLv ~= nil and auroraLv.Text:find("Lv 34", 1, true) == 1 and (stars == "" or auroraLv.Text:find(stars, 1, true) ~= nil),
-					"picker ui: 'Lv 34' with one star per stage", auroraLv and auroraLv.Text or "no Level")
+				-- (kit-b U7b) the stars are PixelIcons after the text (SmokeCommon.IconOn: the trail row's icon and count)
+				local stars = math.min(2, State.PetStage(k2))
+				local starIcon, starCount = SmokeCommon.IconOn(auroraLv, "Trail")
+				T.check(auroraLv ~= nil and auroraLv.Text == "Lv 34" and (stars == 0 and starIcon == nil or (starIcon == "star" and starCount == stars)),
+					"picker ui: 'Lv 34' with one star per stage", auroraLv and (auroraLv.Text .. " " .. tostring(starIcon) .. " x" .. tostring(starCount)) or "no Level")
 				local badge = H.card(k2) and RedoGeom.find(H.card(k2), "Badge")
 				T.check(badge ~= nil and H.shown(badge), "picker ui: a team pet shows the team star badge (Train)")
 				local nonTeam = H.card(k1) and RedoGeom.find(H.card(k1), "Badge")

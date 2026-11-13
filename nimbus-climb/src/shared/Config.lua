@@ -666,15 +666,16 @@ Config.PetStats = {
 -- and Celestial and Shadow are each strong against the other. Anything else is neutral.
 Config.Elements = {
 	Order = { "Water", "Flame", "Frost", "Nature", "Earth", "Storm", "Celestial", "Shadow" },
+	-- (kit-b U8) Icon = the element's PixelIcon (the battle HUD's set, U7b): the element chips of the Pets window and the Index
 	Info = {
-		Water = { Color = Color3.fromRGB(64, 148, 236), Blurb = "Douses Flame" },
-		Flame = { Color = Color3.fromRGB(240, 108, 56), Blurb = "Melts Frost" },
-		Frost = { Color = Color3.fromRGB(150, 222, 248), Blurb = "Freezes Nature" },
-		Nature = { Color = Color3.fromRGB(104, 190, 86), Blurb = "Roots crack Earth" },
-		Earth = { Color = Color3.fromRGB(178, 128, 80), Blurb = "Grounds Storm" },
-		Storm = { Color = Color3.fromRGB(110, 128, 255), Blurb = "Electrifies Water" },
-		Celestial = { Color = Color3.fromRGB(255, 212, 104), Blurb = "Shines through Shadow" },
-		Shadow = { Color = Color3.fromRGB(128, 72, 178), Blurb = "Swallows Celestial light" },
+		Water = { Color = Color3.fromRGB(64, 148, 236), Blurb = "Douses Flame", Icon = "drop" },
+		Flame = { Color = Color3.fromRGB(240, 108, 56), Blurb = "Melts Frost", Icon = "flame" },
+		Frost = { Color = Color3.fromRGB(150, 222, 248), Blurb = "Freezes Nature", Icon = "flake" },
+		Nature = { Color = Color3.fromRGB(104, 190, 86), Blurb = "Roots crack Earth", Icon = "leaf" },
+		Earth = { Color = Color3.fromRGB(178, 128, 80), Blurb = "Grounds Storm", Icon = "mountain" },
+		Storm = { Color = Color3.fromRGB(110, 128, 255), Blurb = "Electrifies Water", Icon = "bolt" },
+		Celestial = { Color = Color3.fromRGB(255, 212, 104), Blurb = "Shines through Shadow", Icon = "sparkle" },
+		Shadow = { Color = Color3.fromRGB(128, 72, 178), Blurb = "Swallows Celestial light", Icon = "moon" },
 	},
 	-- Strong[attacker] = the defender elements it deals extra damage to.
 	Strong = {
@@ -1432,9 +1433,48 @@ for group, keys in pairs(AUDIO_KEYS) do
 	end
 end
 
--- Menu icons (optional): the tiles use emoji glyphs; Config.Icons[tileId] = "rbxassetid://<id>" replaces one with an
--- image (NeonKit.Icon). Empty table = glyphs everywhere.
-Config.Icons = {}
+-- Icons (kit-b U7a): the icon id of a tile, tab, coin or badge -> the shared/PixelIcon bitmap NeonKit.Icon draws (the kit
+-- pitch's 9 x 9 icons, kit_pitch_mockups.html; no emoji). A value "rbxassetid://<id>" draws that image instead (a sheet
+-- later). "Gems" has no entry: NeonKit.Icon draws the cut gem (UI/GemIcon, the lobby-shop pick).
+Config.Icons = {
+	Pets = "paw",
+	Items = "pack",
+	Inventory = "pack",
+	Team = "shield",
+	Index = "book",
+	Shop = "bag",
+	Store = "bag",
+	Home = "house",
+	Spot = "house",
+	Stats = "stats",
+	Settings = "gear",
+	Travel = "arrow",
+	Obby = "mountain",
+	Dungeon = "key",
+	Ring = "crown",
+	VipCrown = "crown",
+	Arena = "trophy",
+	Altar = "bolt",
+	Care = "apple",
+	Berries = "apple",
+	Fusion = "sparkle",
+	Battle = "sword",
+	Cash = "note",
+	Tokens = "token",
+	Currency = "coin",
+	Lock = "lock",
+	Play = "play",
+	Packs = "box",
+	Passes = "ticket",
+	Boosts = "potion",
+	Roulettes = "gumball",
+	Eggs = "egg",
+	Gifts = "gift",
+	Repair = "wrench",
+	Trove = "chest",
+	Group = "people",
+	Like = "heart",
+}
 
 -- Phase 6: the Blender models. Mesh key -> Roblox Model asset id, written only by tools/upload_assets.py into
 -- shared/MeshIds.lua. Empty = every model uses its Part build. See README "Phase 6" and ARCHITECTURE_V3.md "## Phase 6".

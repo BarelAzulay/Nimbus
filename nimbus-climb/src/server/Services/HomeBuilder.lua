@@ -95,6 +95,7 @@ local CollectionService = game:GetService("CollectionService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Theme = require(Shared.Theme)
+local PixelIcon = require(Shared.PixelIcon) -- (kit-b U7b) the pad signs' icons, the closed bed's star
 
 local HomeBuilder = {}
 
@@ -139,12 +140,8 @@ local SIGN_PPS = 50 -- surface signs: pixels per stud
 local TAG_NAME = 24 -- px: pad sign names (World text rule: >= 22)
 local TAG_INFO = 20 -- px: info lines (>= 18)
 local TAG_PRICE = 22
-local GLYPH = {
-	Lock = "\240\159\148\146",
-	Star = "\226\173\144",
-	Cloud = "\226\152\129",
-	Arrow = "\226\150\182",
-}
+-- (kit-b U7b) the signs' icons are PixelIcons (a station's TycoonCatalog Icon is a PixelIcon name); the emoji table went
+local PAD_ICON = "house" -- a pad that names no icon
 
 local function rgb(r, g, b)
 	return Color3.fromRGB(r, g, b)
@@ -1089,7 +1086,8 @@ function Garden.closedSign(parent, bedCF, size)
 	vgradient(panel, C.Violet, C.Navy)
 	rounded(panel, 10)
 	outline(panel, C.TextGold, 4, 0.1)
-	signText(panel, GLYPH.Star, "Heading", 48, C.TextGold, "Star", 0.0, 0.0, 0.28, 1.0)
+	-- (kit-b U7b) the star is a 54 px PixelIcon (1.08 stud: the sign's biggest mark, as the 48 px glyph was)
+	PixelIcon.Host(signText(panel, "", "Heading", 48, C.TextGold, "Star", 0.0, 0.0, 0.3, 1.0), "star", 54)
 	signText(panel, "Prestige", "Heading", 30, C.TextGold, "Title", 0.28, 0.02, 0.72, 0.48)
 	signText(panel, "to open", "Heading", 30, C.Text, "Info", 0.28, 0.5, 0.72, 0.48)
 	return board
@@ -2245,7 +2243,8 @@ local function buildClaimSign(rec)
 	local m = Instance.new("Model")
 	m.Name = "ClaimSign"
 	-- a signboard on a wooden post on the verge beside the gate, facing the street. Two parts only: the free plots
-	-- live inside the lobby and count toward its part budget. (World text rule: 50 px per stud, 1.1 stud title,
+	-- live inside the lobby and count toward its part budget. (World text rule: 50 px per stud, a 1.04 stud title (T0 review:
+	-- 52 px, FREE HOME in FredokaOne is about 306 px with its outline in the 329 px box; 56 px touched its edges),
 	-- 0.6 stud info, both fitting the 7 x 2.6 stud board; the GUI draws the board's frame.)
 	local base = cf * CFrame.new(11, 0, -half - 2) * CFrame.Angles(0, math.pi, 0)
 	box(m, "Post", base * CFrame.new(0, 1.6, 0), Vector3.new(0.6, 3.2, 0.6), C.PlankDark, { Collide = true })
@@ -2255,7 +2254,7 @@ local function buildClaimSign(rec)
 	vgradient(panel, C.Violet, C.Navy)
 	rounded(panel, 14)
 	outline(panel, C.CashGlow, 5, 0.1)
-	signText(panel, "FREE HOME", "Title", 56, C.TextGreen, "Title", 0.03, 0.06, 0.94, 0.5)
+	signText(panel, "FREE HOME", "Title", 52, C.TextGreen, "Title", 0.03, 0.06, 0.94, 0.5)
 	signText(panel, "Press E at the gate", "Body", 30, C.Text, "Info", 0.03, 0.58, 0.94, 0.34)
 	rec.ClaimSign = m
 	return m
@@ -2895,7 +2894,7 @@ local function priceText(pad)
 		if m and m == m and m > 1 and m < 100 then
 			return "Reset: " .. multText(m) .. " income"
 		end
-		return "Start over: +1 " .. GLYPH.Star
+		return "Start over: +1 star"
 	end
 	if price <= 0 then
 		return "FREE"
@@ -2917,12 +2916,16 @@ local function buildPadSign(anchor, pad, state)
 	local plate = tagPlate(gui, edge)
 	local row1 = plainFrame(plate, "NameRow", { AutomaticSize = Enum.AutomaticSize.XY, LayoutOrder = 1 })
 	listLayout(row1, Enum.FillDirection.Horizontal, 6)
-	tagText(row1, "Icon", tostring(pad.Icon or GLYPH.Cloud), "Title", TAG_NAME, C.Text, 1)
+	-- (kit-b U7b) the station's PixelIcon in a fixed box (an empty label would size to nothing)
+	local icon = tagText(row1, "Icon", "", "Title", TAG_NAME, C.Text, 1)
+	icon.AutomaticSize = Enum.AutomaticSize.None
+	icon.Size = UDim2.fromOffset(TAG_NAME + 4, TAG_NAME + 4)
+	PixelIcon.Host(icon, PixelIcon.Bitmaps[pad.Icon] and pad.Icon or PAD_ICON, PixelIcon.Snap(TAG_NAME))
 	tagText(row1, "NameLabel", tostring(pad.Title or pad.Name or pad.StationId), "Title", TAG_NAME, C.Text, 2)
 	local row2 = plainFrame(plate, "InfoRow", { AutomaticSize = Enum.AutomaticSize.XY, LayoutOrder = 2 })
 	listLayout(row2, Enum.FillDirection.Horizontal, 10)
 	if state == "Locked" then
-		tagText(row2, "LockLabel", GLYPH.Lock .. " " .. tostring(pad.Locked), "Body", TAG_INFO, C.TextLock, 1)
+		PixelIcon.Lead(tagText(row2, "LockLabel", tostring(pad.Locked), "Body", TAG_INFO, C.TextLock, 1), "lock") -- (kit-b U7b)
 	else
 		tagText(row2, "LevelLabel", tostring(pad.LevelText or ""), "Body", TAG_INFO, C.TextGold, 1)
 		tagText(row2, "PriceLabel", priceText(pad), "Display", TAG_PRICE, (state == "Prestige") and rgb(226, 196, 255) or C.TextGreen, 2)

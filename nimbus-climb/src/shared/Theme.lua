@@ -32,6 +32,10 @@
 -- Theme.Corner takes "Round" (a pill or a disc) beside the Theme.Radius tokens. World signs (BillboardGui / SurfaceGui) keep
 -- their one outline on their plate (the World text rule of ARCHITECTURE_V3). Casing: the Title, Sign, Accent and Tag roles
 -- read in capitals (`Theme.CapsRoles`, kept by Theme.SetRole; LuckiestGuy's lower case reads oddly: "PeTS").
+-- T0 (the owner's title pick B): the Title role is FredokaOne; LuckiestGuy stays on Accent (damage numbers, world hint
+-- words) and Sign (the approved Credits header). Every window title goes through `Theme.StyleTitle(label)`, the one place a
+-- designed title treatment will go (today it adds nothing). T0 review: so do the Title-role headings that are not a
+-- window's name, with a `Theme.TitleExempt` kind (a section head, a headline with its own gradient) that keeps them plain.
 -- Plain Lua 5.1-compatible syntax only. Safe to require on the server and on the client.
 
 local Theme = {}
@@ -55,12 +59,13 @@ end
 -- Font roles. Use roles, never raw Enum.Font, anywhere in the game.
 -- v3: Body and Label moved to the heavier Builder Sans cuts (far easier to read at small sizes on busy
 -- backgrounds); the chunky display faces stay.
--- kit B: the pitch's three faces. LuckiestGuy is loud, so it is for titles, signs and damage numbers only;
--- FredokaOne carries headings, buttons, tags and nameplates; reading text is Nunito ExtraBold (Theme.Faces below:
--- the Enum font of a FontFace role is only its fallback for an engine without Font.new).
+-- kit B: the pitch's three faces. LuckiestGuy is loud, so it is for the Credits sign and damage numbers only (T0: titles
+-- moved to FredokaOne); FredokaOne carries titles, headings, buttons, tags and nameplates; reading text is Nunito ExtraBold
+-- (Theme.Faces below: the Enum font of a FontFace role is only its fallback for an engine without Font.new).
 Theme.Fonts = {
-	-- THE one line for the title face (the owner's pitch: LuckiestGuy; Gemini prefers FredokaOne, a morning question)
-	Title = font("LuckiestGuy", "FredokaOne"), -- logo fallback, banners, portal names, window titles
+	-- THE one line for the title face (T0: the owner's title pick B, FredokaOne; was LuckiestGuy). Window titles also go
+	-- through Theme.StyleTitle
+	Title = font("FredokaOne"), -- logo fallback, banners, portal names, window titles
 	Display = font("FredokaOne"), -- big numbers: timer, countdown, currency counts
 	Heading = font("FredokaOne"), -- panel headers, section heads, card / pet names
 	Body = font("BuilderSansBold", "GothamBold"), -- descriptions, dialog text (face: Nunito ExtraBold)
@@ -75,7 +80,7 @@ Theme.Fonts = {
 	Nameplate = font("FredokaOne"), -- names over heads (over the world: Outline = "World")
 	-- (credits look B) the Signboard window kit: its header title, and the maker's hand-written signature + polaroid caption.
 	-- Signature is THE one place to swap that face (the owner's pick PermanentMarker; Gemini's phone pick was "Kalam").
-	-- Sign stays its own entry so the approved Credits look does not move when the Title line flips.
+	-- Sign stays its own entry so the approved Credits look does not move when the Title line flips (T0: it did; Sign kept).
 	Sign = font("LuckiestGuy", "FredokaOne"),
 	Signature = font("PermanentMarker", "FredokaOne"),
 }
@@ -318,14 +323,18 @@ Theme.Kinds = {
 	token = rgb(255, 196, 64),
 }
 
--- Currencies (v3): glyph, attribute name (Config.Attr values) and the coin colours used by the HUD stack,
+-- Currencies (v3): icon, attribute name (Config.Attr values) and the coin colours used by the HUD stack,
 -- the shop and price tags. Cash and Gems arrive with the tycoon phase.
+-- kit-b U7a: Icon is what the currency draws as (NeonKit.Icon / PixelIcon.Lead): a shared/PixelIcon name, or "Gems" for
+-- the cut gem (UI/GemIcon); no currency has an emoji glyph any more. Glyph is the plain-text sign a sentence may still
+-- carry ("$3,000/min"); a currency with none is written as its Word ("50 Tokens").
 Theme.Currency = {
 	Tokens = {
 		Id = "Tokens",
 		Name = "Cloud Tokens",
 		Attr = "CloudTokens",
-		Glyph = "\226\152\129", -- cloud
+		Icon = "token", -- the Cloud Token coin
+		Word = "Tokens",
 		Color = rgb(238, 190, 62),
 		Glow = rgb(250, 224, 132),
 	},
@@ -333,6 +342,8 @@ Theme.Currency = {
 		Id = "Cash",
 		Name = "Cash",
 		Attr = "Cash",
+		Icon = "note", -- the banknote
+		Word = "Cash",
 		Glyph = "$",
 		Color = rgb(112, 204, 98),
 		Glow = rgb(196, 240, 150),
@@ -341,7 +352,8 @@ Theme.Currency = {
 		Id = "Gems",
 		Name = "Gems",
 		Attr = "Gems",
-		Glyph = "\226\151\134", -- black diamond
+		Icon = "Gems", -- the cut gem (UI/GemIcon)
+		Word = "Gems",
 		Color = rgb(84, 196, 246),
 		Glow = rgb(186, 236, 255),
 	},
@@ -373,6 +385,14 @@ Theme.Sign = {
 	Well = rgb(243, 230, 200), -- #F3E6C8 (a sunk / disabled stone)
 	WellEdge = rgb(201, 168, 119), -- #C9A877
 	Post = rgb(196, 138, 78), -- #C48A4E (sign posts and ropes; their shaded side is Wood)
+	-- U8 (the HUD, Pets and Index stages of the pitch): the selected card's face (--selFace), the light well a pet stands in
+	-- (--pwell), the sky and violet blocks (--sky / --vio with their lips)
+	Selected = rgb(255, 233, 168), -- #FFE9A8
+	PetWell = rgb(235, 221, 185), -- #EBDDB9
+	Sky = rgb(108, 196, 245), -- #6CC4F5
+	SkyLip = rgb(58, 143, 203), -- #3A8FCB
+	Violet = rgb(169, 139, 234), -- #A98BEA
+	VioletLip = rgb(115, 84, 196), -- #7354C4
 }
 
 -- kit B corner radius tokens in px (Theme.Corner(obj, "M")); the windows of the pitch are square-cornered blocks, so the
@@ -834,6 +854,27 @@ function Theme.Measure(text, role, size, width)
 	local frame = Vector2.new(tonumber(width) and (tonumber(width) / spare) or 100000, 100000)
 	local raw = game:GetService("TextService"):GetTextSize(text, size, Theme.Fonts[role], frame)
 	return Vector2.new(math.ceil(raw.X * spare), raw.Y)
+end
+
+-- T0: the one title treatment. Every window title (CloudUI.Panel, SignKit.Header with the Title role, the windows that
+-- draw their own header title, the loading board) is passed here after it is styled, so a designed title look (gradient,
+-- border, shadow) is added in this one place. Today it adds nothing: it stamps attribute TitleLook = "Plain" (the look in
+-- use) and leaves the label as it was. Safe to call twice. Returns the label.
+-- T0 review: a Title-role heading that is NOT a window's name passes a kind from Theme.TitleExempt (each with its reason):
+-- StyleTitle(label, kind) stamps TitleLook = kind and never gives it the window title look, so a run-time walk
+-- (smoke_kitb_ui kitb_titles_stamped) tells a heading skipped on purpose from a window title someone forgot.
+Theme.TitleExempt = {
+	Section = "a section head or an empty-state line inside a window (Best times, Quick match, Elements, a Home section): "
+		.. "the window's own title carries the title look, its sections stay plain under it",
+	OwnGradient = "a headline that paints its own gradient over white text (the race result's VICTORY! / DEFEAT, the HUD's "
+		.. "game-name card); a second title treatment would fight that gradient",
+}
+function Theme.StyleTitle(label, kind)
+	if not label then
+		return nil
+	end
+	label:SetAttribute("TitleLook", kind or "Plain")
+	return label
 end
 
 -- Build a styled TextLabel. props are applied after styling so you can override anything.

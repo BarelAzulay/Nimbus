@@ -93,6 +93,7 @@ local Client = script.Parent.Parent
 local CloudUI = require(Client:WaitForChild("UI"):WaitForChild("CloudUI"))
 local NeonKit = require(Client:WaitForChild("UI"):WaitForChild("NeonKit"))
 local GemIcon = require(Client:WaitForChild("UI"):WaitForChild("GemIcon"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7a) the header egg, the token coin, the card art
 local ShopGems = require(Client:WaitForChild("UI"):WaitForChild("ShopGems"))
 local ShopEggs = require(Client:WaitForChild("UI"):WaitForChild("ShopEggs"))
 local EggStage = require(Client:WaitForChild("UI"):WaitForChild("EggStage"))
@@ -619,8 +620,9 @@ function H.build()
 	U.Band = frame("Band", header, { BackgroundTransparency = 0, BackgroundColor3 = K.ACCENT })
 	Theme.Corner(U.Band, UDim.new(0, 18))
 	Util.Create("UIGradient", { Rotation = 90, Color = ColorSequence.new(Theme.Lighten(K.ACCENT, 0.15), Theme.Darken(K.ACCENT, 0.45)), Parent = U.Band })
-	U.Icon = label("Icon", header, NeonKit.Glyphs.Eggs, "Display", 42, { TextTruncate = Enum.TextTruncate.None })
-	U.Title = label("Title", header, "Shop", "Title", 34, { TextXAlignment = Enum.TextXAlignment.Left })
+	U.Icon = label("Icon", header, "", "Display", 42, { TextTruncate = Enum.TextTruncate.None })
+	PixelIcon.Host(U.Icon, NeonKit.IconName("Eggs")) -- (kit-b U7a) the egg, sized with the label
+	U.Title = Theme.StyleTitle(label("Title", header, "Shop", "Title", 34, { TextXAlignment = Enum.TextXAlignment.Left }))
 	local function pill(id)
 		local cur = Theme.Currency[id]
 		local root = frame("Balance_" .. id, header, { BackgroundTransparency = 0.15, BackgroundColor3 = Colors.PanelInk or K.NAVY })
@@ -634,7 +636,8 @@ function H.build()
 	U.GemsAmount.Position = UDim2.fromScale(0.5, 0.5)
 	local tokPill, tokCur = pill("Tokens")
 	U.TokPill = tokPill
-	U.TokGlyph = label("Glyph", tokPill, tokCur.Glyph, "Display", 22, { TextColor3 = tokCur.Color, TextTruncate = Enum.TextTruncate.None })
+	U.TokGlyph = label("Glyph", tokPill, "", "Display", 22, { TextColor3 = tokCur.Color, TextTruncate = Enum.TextTruncate.None })
+	PixelIcon.Host(U.TokGlyph, tokCur.Icon) -- (kit-b U7a) the Cloud Token coin, sized with the label
 	U.TokText = label("Text", tokPill, "0", "Display", 22, { TextXAlignment = Enum.TextXAlignment.Left })
 	U.Close = CloudUI.Button({
 		Name = "CloseButton",
@@ -847,7 +850,9 @@ function H.buildCard(item, page, isHero)
 	local b = card.Body
 	local art = frame("Art", b, { BackgroundTransparency = 0.35, BackgroundColor3 = Theme.Darken(H.palette(item).Bottom, 0.35) })
 	Theme.Corner(art, UDim.new(0, 12))
-	local glyph = label("Glyph", art, H.artGlyph(item), "Display", 40, { Size = UDim2.fromScale(1, 1), TextTruncate = Enum.TextTruncate.None })
+	local glyph = label("Glyph", art, "", "Display", 40, { Size = UDim2.fromScale(1, 1), TextTruncate = Enum.TextTruncate.None })
+	glyph:SetAttribute("PixelIcon", H.artGlyph(item))
+	PixelIcon.Host(glyph, H.artGlyph(item)) -- (kit-b U7a) the card's icon, sized with the art box
 	local image = nil
 	local artKey = H.artKey(item)
 	local artId = artKey and tonumber(textureIds()[artKey]) or nil
@@ -899,19 +904,19 @@ function H.buildCard(item, page, isHero)
 	return entry
 end
 
+-- (kit-b U7a) the PixelIcon a card's art box draws when it has no render
 function H.artGlyph(item)
-	local G = NeonKit.Glyphs
 	local g = type(item.Grants) == "table" and item.Grants or {}
 	if item.Key == "VIP" then
-		return G.VipCrown or G.Passes
+		return NeonKit.IconName("VipCrown")
 	end
 	if g.Tokens and not g.Pets then
-		return Theme.Currency.Tokens.Glyph
+		return Theme.Currency.Tokens.Icon
 	end
 	if g.Cash and not g.Pets then
-		return Theme.Currency.Cash.Glyph
+		return Theme.Currency.Cash.Icon
 	end
-	return G[item.Tab] or G.Store
+	return NeonKit.IconName(item.Tab) or NeonKit.IconName("Store")
 end
 
 -- (re)builds every card page when the shown set changed

@@ -57,6 +57,7 @@ local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
 local Remotes = require(Shared:WaitForChild("Remotes"))
+local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7a) the toast and result card icons
 
 local Client = script.Parent.Parent
 local CloudUI = require(Client:WaitForChild("UI"):WaitForChild("CloudUI"))
@@ -127,9 +128,12 @@ local FALLBACK_KINDS = {
 }
 local KIND_GLYPH = {
 	info = "i",
-	good = "\226\156\148", -- check mark
 	bad = "!",
-	token = "\226\152\129", -- cloud
+}
+-- (kit-b U7a) the kinds whose badge is a PixelIcon, not a letter: a tick, the Cloud Token coin
+local KIND_ICON = {
+	good = "check",
+	token = "token",
 }
 
 local REASON_TEXT = {
@@ -658,10 +662,14 @@ local function buildToast(text, kind)
 	})
 	round(icon)
 	local iconStroke = Theme.Stroke(icon, color, 2, 1)
-	local glyph = newText(icon, "Glyph", KIND_GLYPH[kindName] or "i", "Heading", 18, WHITE, {
+	local glyph = newText(icon, "Glyph", KIND_ICON[kindName] and "" or (KIND_GLYPH[kindName] or "i"), "Heading", 18, WHITE, {
 		TextXAlignment = Enum.TextXAlignment.Center,
 		TextTransparency = 1,
 	})
+	if KIND_ICON[kindName] then
+		glyph:SetAttribute("PixelIcon", KIND_ICON[kindName])
+		PixelIcon.Host(glyph, KIND_ICON[kindName], 18) -- fades in and out with the glyph's TextTransparency
+	end
 
 	local label = newText(card, "Text", text, "Toast", TOAST_TEXT_SIZE, toastTextColor(color), {
 		Position = UDim2.new(0, TOAST_ICON + 10, 0, 0),
@@ -978,11 +986,11 @@ local function buildResults(data)
 	})
 
 	-- headline with a gradient (the label itself stays white, the gradient colours it)
-	local headline = newText(inner, "Headline", won and "VICTORY!" or "DEFEAT", "Title", 40, WHITE, {
+	local headline = Theme.StyleTitle(newText(inner, "Headline", won and "VICTORY!" or "DEFEAT", "Title", 40, WHITE, {
 		Position = UDim2.fromOffset(0, titleY),
 		Size = UDim2.new(1, 0, 0, TITLE_H),
 		TextXAlignment = Enum.TextXAlignment.Center,
-	})
+	}), "OwnGradient")
 	if won then
 		Theme.Gradient(headline, Colors.TokenGlow, Colors.Token, 90)
 	else
@@ -991,15 +999,15 @@ local function buildResults(data)
 
 	-- difficulty + stars
 	local diffText = tostring(data.DifficultyName or data.DifficultyId or "")
-	if starCount > 0 then
-		diffText = diffText .. "  <font color=\"" .. hex(GOLD) .. "\">" .. string.rep("\226\152\133", math.min(5, starCount)) .. "</font>"
-	end
-	newText(inner, "Difficulty", diffText, "Heading", 21, Theme.Lighten(diffColor, 0.3), {
+	local diffLabel = newText(inner, "Difficulty", diffText, "Heading", 21, Theme.Lighten(diffColor, 0.3), {
 		Position = UDim2.fromOffset(0, diffY),
 		Size = UDim2.new(1, 0, 0, DIFF_H),
 		TextXAlignment = Enum.TextXAlignment.Center,
 		RichText = true,
 	})
+	if starCount > 0 then -- (kit-b U7a) the stars are gold PixelIcons after the name
+		PixelIcon.Lead(diffLabel, "star", { After = true, Count = math.min(5, starCount), Px = 18, Colour = GOLD })
+	end
 	if reason then
 		newText(inner, "Reason", reason, "Body", 18, MUTED, {
 			Position = UDim2.fromOffset(0, reasonY),
@@ -1040,14 +1048,17 @@ local function buildResults(data)
 	local seconds = tonumber(data.Seconds) or 0
 
 	statRow(1, "Time", Util.FormatTime(seconds), WHITE)
-	local tokenValue = statRow(2, "Tokens", "0 \226\152\129", Colors.TokenGlow)
-	local bonusValue = statRow(3, "Win bonus", bonus > 0 and "+0 \226\152\129" or "-", bonus > 0 and GOLD or MUTED)
+	-- (kit-b U7a) the amounts end in the Cloud Token coin (a PixelIcon after the number)
+	local tokenValue = statRow(2, "Tokens", "0", Colors.TokenGlow)
+	PixelIcon.Lead(tokenValue, Theme.Currency.Tokens.Icon, { After = true })
+	local bonusValue = statRow(3, "Win bonus", bonus > 0 and "+0" or "-", bonus > 0 and GOLD or MUTED)
 	countUp(tokenValue, ownTokens, 0.45, 0.8, function(n)
-		return tostring(n) .. " \226\152\129"
+		return tostring(n)
 	end, serial)
 	if bonus > 0 then
+		PixelIcon.Lead(bonusValue, Theme.Currency.Tokens.Icon, { After = true })
 		countUp(bonusValue, bonus, 0.9, 0.7, function(n)
-			return "+" .. tostring(n) .. " \226\152\129"
+			return "+" .. tostring(n)
 		end, serial)
 	end
 
@@ -1064,27 +1075,30 @@ local function buildResults(data)
 				Size = UDim2.new(1, -104, 1, 0),
 				TextTruncate = Enum.TextTruncate.AtEnd,
 			})
-			newText(row, "Tokens", "\226\152\129 " .. tostring(m.Tokens), "Heading", 18, Colors.TokenGlow, {
+			local tokens = newText(row, "Tokens", tostring(m.Tokens), "Heading", 18, Colors.TokenGlow, {
 				AnchorPoint = Vector2.new(1, 0),
 				Position = UDim2.new(1, -28, 0, 0),
 				Size = UDim2.fromOffset(70, MEMBER_H),
 				TextXAlignment = Enum.TextXAlignment.Right,
 			})
-			local stateText = ""
-			local stateColor = WHITE
+			PixelIcon.Lead(tokens, Theme.Currency.Tokens.Icon) -- (kit-b U7a) the coin before the amount
+			-- (kit-b U7a) the state is a PixelIcon: a tick when finished, an x when downed
+			local mark, stateColor = nil, WHITE
 			if m.Finished then
-				stateText = "\226\156\148"
-				stateColor = Colors.Good
+				mark, stateColor = "check", Colors.Good
 			elseif m.Downed then
-				stateText = "\226\152\160" -- skull and crossbones
-				stateColor = Colors.Bad
+				mark, stateColor = "x", Colors.Bad
 			end
-			newText(row, "State", stateText, "Heading", 18, stateColor, {
+			local state = newText(row, "State", "", "Heading", 18, stateColor, {
 				AnchorPoint = Vector2.new(1, 0),
 				Position = UDim2.new(1, -4, 0, 0),
 				Size = UDim2.fromOffset(20, MEMBER_H),
 				TextXAlignment = Enum.TextXAlignment.Center,
 			})
+			if mark then
+				state:SetAttribute("PixelIcon", mark)
+				PixelIcon.Host(state, mark, 18)
+			end
 		end
 	end
 

@@ -5,8 +5,8 @@
 --   SignKit.Roof(parent, opts)    the flat pink awning with its dark edge and darker lip: ONE fixed-size piece (offset
 --                                 only, never stretched with the window; Gemini's rule), centred on the window's top.
 --                                 opts.Shape = "Gable": the Credits window's gable (two slopes, fascia, vent)
---   SignKit.Header(parent, opts)  the navy sign plank in a wood rim, its title in LuckiestGuy gold (Title role); returns
---                                 head, plate (the caller adds a close X to the plate)
+--   SignKit.Header(parent, opts)  the navy sign plank in a wood rim, its title in FredokaOne gold (Title role, through
+--                                 Theme.StyleTitle); returns head, plate (the caller adds a close X to the plate)
 --   SignKit.Frame(parent, opts)   the wood frame under the header
 --   SignKit.Body(frame, opts)     the stone body inside it, with the stone lip along its bottom
 --   SignKit.Plank(parent, opts)   a button with a real bottom lip: hover lifts the block 2 px, press sinks it 4 px and the
@@ -234,12 +234,15 @@ function SignKit.Header(parent, opts)
 			ZIndex = 1,
 		}, plate)
 	end
-	text("Title", opts.Title, role, size, opts.TitleColor or Sign.Gold, {
+	local title = text("Title", opts.Title, role, size, opts.TitleColor or Sign.Gold, {
 		Position = UDim2.fromOffset(x, 0),
 		Size = box,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		ZIndex = 2,
 	}, plate)
+	if role == "Title" then
+		Theme.StyleTitle(title) -- (T0) the one title treatment; the Credits' Sign role keeps its approved look
+	end
 	place(head, opts, "Header")
 	return head, plate
 end

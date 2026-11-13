@@ -1165,7 +1165,7 @@ S.client_p3battle_cards = guarded("client_p3battle_cards", function()
 		local u3 = bySlot[3] and BC.GetUnit(bySlot[3].id)
 		local g3 = bySlot[3] and cardOf(BC, bySlot[3].id)
 		local st = g3 and g3:FindFirstChild("StarBadge")
-		T.check(u3 and u3.Evo == 2 and partCount(u3.Model) <= (budgets.petEvo2Low or 520) and st and st.Visible and tostring(st.Stars.Text) == "\226\152\133\226\152\133",
+		T.check(u3 and u3.Evo == 2 and partCount(u3.Model) <= (budgets.petEvo2Low or 520) and st and st.Visible and select(2, SmokeCommon.IconOn(st.Stars)) == 2 and SmokeCommon.IconOn(st.Stars) == "star",
 			"cards: a second-evolution unit (Epic+) uses Evolved = 2 within petEvo2Low and shows two stars", u3 and (tostring(u3.Evo) .. " / " .. partCount(u3.Model) .. " parts") or "nil")
 	end
 	-- fills written only on change: 60 frames without a new snapshot write nothing; a fight writes far less than once per frame

@@ -1312,9 +1312,10 @@ local function clientScenarios()
 		r = NK.BigRect(KP, { Width = 1920, Height = 1080, Inset = 58 })
 		T.check(r.mode == "PC" and math.abs(r.w - 1540) < 1 and math.abs(r.h - 910) < 1 and math.abs(r.x - 190) < 1, "store bigrect: 1920x1080 = 1540x910 centred (x 190), PC", string.format("%s %sx%s at %s,%s scale %s", tostring(r.mode), tostring(r.w), tostring(r.h), tostring(r.x), tostring(r.y), tostring(r.scale)))
 		T.check(r.portrait == false, "store bigrect: a landscape window is not portrait")
-		T.check(NK.Glyphs.Store ~= nil and NK.Glyphs.Gifts ~= nil and NK.Glyphs.Packs ~= nil and NK.Glyphs.Roulettes ~= nil and NK.Glyphs.VipCrown ~= nil and NK.Glyphs.Trove ~= nil, "store bigrect: the new glyph ids")
-		T.eq(NK.Glyphs.Eggs, "\240\159\165\154", "store bigrect: the Shop's Eggs tab glyph (an egg)")
-		T.check(NK.Glyphs.Passes ~= nil and NK.Glyphs.Boosts ~= nil and NK.Glyphs.Currency ~= nil, "store bigrect: the tab glyph ids")
+		-- (kit-b U7a) the icon ids draw PixelIcons named in Config.Icons (NeonKit.IconName), no emoji glyph
+		T.check(NK.IconName("Store") ~= nil and NK.IconName("Gifts") ~= nil and NK.IconName("Packs") ~= nil and NK.IconName("Roulettes") ~= nil and NK.IconName("VipCrown") ~= nil and NK.IconName("Trove") ~= nil, "store bigrect: the new icon ids")
+		T.eq(NK.IconName("Eggs"), "egg", "store bigrect: the Shop's Eggs tab icon (the pixel egg)")
+		T.check(NK.IconName("Passes") ~= nil and NK.IconName("Boosts") ~= nil and NK.IconName("Currency") ~= nil, "store bigrect: the tab icon ids")
 	end)
 
 	return S

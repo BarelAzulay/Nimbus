@@ -8,10 +8,11 @@
 -- the XP potion bank ends; 0 = none). The server decides both; this only shows them.
 -- Screen: ScreenGui "NimbusBoosts" (DisplayOrder 10 like the HUD, IgnoreGuiInset = false: gui px), Frame "BoostChips"
 --   right-aligned at the strips' right edge (the HUD's side margin: 12 px, 20 on touch), y = NimbusHud.TopRightBottom + 4,
---   holding TextLabels "Chip_Cash" ("x2 Cash", Neon.Green, while OwnedPasses has Cash2x) and "Chip_Xp" ("x2 XP · 58m",
---   Neon.Purple, while XpBoostEnds > now, the time left refreshed every second; "x2 XP" while OwnedPasses has PetXp2x: the
---   pass and a potion never stack, the pass wins). 46x24 at 1080p (text 18), 34x18 text 15 on a phone (the smaller screen
---   side <= 500); a chip grows with its text. Hidden with the strips (InMatch / InBattle, or no top-right strips).
+--   holding TextLabels "Chip_Cash" ("x2 Cash", while OwnedPasses has Cash2x) and "Chip_Xp" ("x2 XP · 58m", while
+--   XpBoostEnds > now, the time left refreshed every second; "x2 XP" while OwnedPasses has PetXp2x: the pass and a potion
+--   never stack, the pass wins). 46x24 at 1080p (text 18), 34x18 text 15 on a phone (the smaller screen side <= 500); a chip
+--   grows with its text. Hidden with the strips (InMatch / InBattle, or no top-right strips). kit-b U8 review: each chip is
+--   a kit B tag (CloudUI.SignBlock: Cash the cash green, XP the violet, a wood edge, square; no neon border).
 -- Side hints (MenuController.Hint): "x2 Pet XP started!" only for a potion that starts during this view: XpBoostEnds rises
 -- from a value that was no running potion (0, or an old end already in the past: the server leaves the last end on the
 -- attribute) to an end whose time left is one whole potion (a Config.Store.Items Boost.XpPotion length, within
@@ -46,6 +47,11 @@ local K = {
 	PHONE = { W = 34, H = 18, Text = 15, Pad = 5 },
 	TICK = 1,
 	START_SLACK = 15, -- seconds: a fresh potion's time left is its full length within this (os.time vs the server clock)
+	-- (kit-b U8 review) the chips' kit B looks: Cash in the HUD's cash green (its strip's coin square) with the dark green
+	-- ink, XP in the kit's violet with the brown ink (5.2:1); a 2 px wood edge suits a 18-24 px chip
+	CASH_LOOK = { Face = Theme.Sign.Grass, Lip = Theme.Sign.GrassLip, Edge = Theme.Sign.Wood, Text = Theme.Sign.OnGrass },
+	XP_LOOK = { Face = Theme.Sign.Violet, Lip = Theme.Sign.VioletLip, Edge = Theme.Sign.Wood, Text = Theme.Sign.Text },
+	EDGE_PX = 2,
 }
 BoostBadgeController.K = K
 
@@ -156,27 +162,19 @@ end
 
 local H = {}
 
-function H.chip(name, color)
+-- (kit-b U8 review) a chip is a kit B tag: a flat block in its colour in a wood edge (UIStroke "SignEdge"), square, its
+-- text in the ink that reads on it; no lip (as the strips' coin squares: at 18-24 px a lip ran under the letters like an
+-- underline)
+function H.chip(name, look)
 	local l = Theme.Label("", "Heading", { Size = K.PC.Text })
 	l.Name = name
-	l.BackgroundColor3 = Theme.Darken(color, 0.55)
-	l.BackgroundTransparency = 0.1
-	l.TextColor3 = color
 	l.AutomaticSize = Enum.AutomaticSize.X
 	l.TextXAlignment = Enum.TextXAlignment.Center
 	l.Visible = false
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0.5, 0)
-	corner.Parent = l
-	local stroke = Instance.new("UIStroke")
-	stroke.Name = "ChipStroke"
-	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	stroke.Color = color
-	stroke.Thickness = 1.5
-	stroke.Parent = l
 	local pad = Instance.new("UIPadding")
 	pad.Name = "Pad"
 	pad.Parent = l
+	CloudUI.SignBlock(l, look, { EdgePx = K.EDGE_PX, LipPx = 0, Pad = false })
 	l.Parent = U.Holder
 	return l
 end
@@ -277,9 +275,9 @@ function BoostBadgeController.Init()
 	layout.SortOrder = Enum.SortOrder.LayoutOrder
 	layout.Parent = holder
 	U.Layout = layout
-	U.Cash = H.chip("Chip_Cash", Theme.Neon.Green)
+	U.Cash = H.chip("Chip_Cash", K.CASH_LOOK)
 	U.Cash.LayoutOrder = 2
-	U.Xp = H.chip("Chip_Xp", Theme.Neon.Purple)
+	U.Xp = H.chip("Chip_Xp", K.XP_LOOK)
 	U.Xp.LayoutOrder = 1
 	S.Ends = boostEnds()
 	S.Seen = boostAttr() ~= nil

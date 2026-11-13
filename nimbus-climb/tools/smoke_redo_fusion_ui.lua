@@ -76,7 +76,11 @@ local function clientScenarios()
 	local MIX_NAMES = { "Slot_Body", "Chips_Body", "SwapButton", "Slot_Style", "Chips_Style", "Arrow", "Result", "CostBar", "FuseButton", "Info", "Tab_Upgrade", "Tab_Mix", "CloseButton" }
 	local MIX_PHONE = { "Slot_Body", "Chips_Body", "SwapButton", "Slot_Style", "Chips_Style", "Arrow", "Result", "CostBar", "FuseButton", "Outcome", "Tab_Upgrade", "Tab_Mix", "CloseButton" }
 	local MIX_PORTRAIT = { "Slot_Body", "Chips_Body", "SwapButton", "Slot_Style", "Chips_Style", "Arrow", "Result", "CostBar", "FuseButton", "Outcome", "Info", "Tab_Upgrade", "Tab_Mix", "CloseButton" }
-	local SWORD, STAR = "\226\154\148", "\226\152\133"
+	-- (kit-b U7b) a chip's sword / star is its PixelIcon "MoveIcon" left of the text, no glyph in the text
+	local function moveIcon(chip)
+		local icon = chip and chip:FindFirstChild("MoveIcon")
+		return icon and icon:GetAttribute("PixelIcon") or "none"
+	end
 
 	function H.req(path)
 		local root, rest = path:match("^(%a+)/(.+)$")
@@ -782,10 +786,12 @@ local function clientScenarios()
 				end
 				T.eq(H.lits(), "1100", "fusion moves: 'BB': the Body's two chips are lit, the Style's are not")
 				T.check(H.checksMatch(), "fusion moves: ...every lit chip (and only those) shows its check")
-				T.eq(H.text(H.chip("Body", "Attack")), SWORD .. " Flare " .. DOT .. " Flame", "fusion moves: PC Body attack chip '<sword> Flare . Flame'")
-				T.eq(H.text(H.chip("Body", "Special")), STAR .. " Leaf Pounce " .. DOT .. " Pounce", "fusion moves: PC Body special chip '<star> Leaf Pounce . Pounce'")
-				T.eq(H.text(H.chip("Style", "Attack")), SWORD .. " Bolt " .. DOT .. " Storm", "fusion moves: PC Style attack chip '<sword> Bolt . Storm'")
-				T.eq(H.text(H.chip("Style", "Special")), STAR .. " Static Storm " .. DOT .. " Storm", "fusion moves: PC Style special chip '<star> Static Storm . Storm'")
+				T.eq(H.text(H.chip("Body", "Attack")), "Flare " .. DOT .. " Flame", "fusion moves: PC Body attack chip '<sword> Flare . Flame'")
+				T.check(moveIcon(H.chip("Body", "Attack")) == "sword" and moveIcon(H.chip("Body", "Special")) == "star",
+					"fusion moves: the attack chip draws the PixelIcon sword, the special chip the star (kit-b U7b)", moveIcon(H.chip("Body", "Attack")))
+				T.eq(H.text(H.chip("Body", "Special")), "Leaf Pounce " .. DOT .. " Pounce", "fusion moves: PC Body special chip '<star> Leaf Pounce . Pounce'")
+				T.eq(H.text(H.chip("Style", "Attack")), "Bolt " .. DOT .. " Storm", "fusion moves: PC Style attack chip '<sword> Bolt . Storm'")
+				T.eq(H.text(H.chip("Style", "Special")), "Static Storm " .. DOT .. " Storm", "fusion moves: PC Style special chip '<star> Static Storm . Storm'")
 				local result = H.find("Result")
 				local oa, os2 = RedoGeom.find(result, "OutcomeAttack"), RedoGeom.find(result, "OutcomeSpecial")
 				T.check(H.shown(oa) and H.shown(os2), "fusion moves: PC: OutcomeAttack and OutcomeSpecial inside the NEW HYBRID card")
@@ -829,7 +835,7 @@ local function clientScenarios()
 				T.eq(H.t("PetName", H.find("Slot_Body")), "Storm Tabby", "fusion moves: (swap) Storm Tabby is the Body now")
 				T.eq(FC.Moves(), "BB", "fusion moves: swap: 'SS' -> 'BB' (both moves stay with Storm Tabby, now the Body)")
 				T.eq(H.lits(), "1100", "fusion moves: ...the chips lit under the new Body")
-				T.eq(H.text(H.chip("Body", "Attack")), SWORD .. " Bolt " .. DOT .. " Storm", "fusion moves: ...the Body's chips are Storm Tabby's")
+				T.eq(H.text(H.chip("Body", "Attack")), "Bolt " .. DOT .. " Storm", "fusion moves: ...the Body's chips are Storm Tabby's")
 				T.eq(H.text(oa), "Normal attack: Storm (Bolt)", "fusion moves: ...the attack line is unchanged")
 				T.eq(H.text(os2), "Special: Storm (Static Storm)", "fusion moves: ...the special line is unchanged")
 				FC.SetMoves("aurora_fox", "pebble_pup")
@@ -864,7 +870,7 @@ local function clientScenarios()
 				T.check(PP.IsOpen() and PP.Pick("pebble_pup"), "fusion moves: (pick Pebble Pup as the Style)")
 				KC.advance(0.4)
 				T.eq(FC.Moves(), "BB", "fusion moves: a new Style pet resets to 'BB'")
-				T.eq(H.text(H.chip("Style", "Attack")), SWORD .. " Quake " .. DOT .. " Earth", "fusion moves: ...the Style's chips are Pebble Pup's")
+				T.eq(H.text(H.chip("Style", "Attack")), "Quake " .. DOT .. " Earth", "fusion moves: ...the Style's chips are Pebble Pup's")
 				FC.SetMoves("pebble_pup", "pebble_pup")
 				KC.advance(0.2)
 				T.eq(FC.Moves(), "SS", "fusion moves: (SS)")
@@ -932,10 +938,10 @@ local function clientScenarios()
 						T.check(sz and math.abs(sz.X - 130) <= 1 and math.abs(sz.Y - 44) <= 1, "fusion moves phone: " .. side .. " " .. which .. " chip is 130 x 44", c and RedoGeom.desc(c) or "nil")
 					end
 				end
-				T.eq(H.text(H.chip("Body", "Attack")), SWORD .. " Flare", "fusion moves phone: the attack chip '<sword> Flare'")
-				T.eq(H.text(H.chip("Body", "Special")), STAR .. " Leaf Pounce", "fusion moves phone: the special chip '<star> Leaf Pounce'")
+				T.eq(H.text(H.chip("Body", "Attack")), "Flare", "fusion moves phone: the attack chip '<sword> Flare'")
+				T.eq(H.text(H.chip("Body", "Special")), "Leaf Pounce", "fusion moves phone: the special chip '<star> Leaf Pounce'")
 				local styleSpecial = H.chip("Style", "Special")
-				T.eq(H.text(styleSpecial), STAR .. " Static Storm", "fusion moves phone: every chip keeps its glyph ('<star> Static Storm', wrapped when it must)")
+				T.eq(H.text(styleSpecial), "Static Storm", "fusion moves phone: every chip keeps its icon ('<star> Static Storm', wrapped when it must)")
 				local okFit, fitDetail = RedoGeom.fits(styleSpecial)
 				T.check(okFit, "fusion moves phone: ...and fits its 130 x 44", fitDetail)
 				RedoGeom.check(win, "fusion moves 844x390", { NoOverlap = { "Slot_Body", "Chips_Body", "SwapButton", "Slot_Style", "Chips_Style", "Arrow", "Result", "Outcome", "CostBar", "FuseButton" } })

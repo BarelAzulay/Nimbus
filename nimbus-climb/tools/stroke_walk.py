@@ -21,7 +21,13 @@ against the opaque fill painted under its glyphs (a gradient read where the glyp
 3:1 for 18 px and up, 4.5:1 below (render_gui.contrast_rule; the client walk kitb_text_contrast is the same rule). The
 texts listed in tools/fixtures/contrast_backlog.txt are counted, not failed (the list only shrinks; --grid over every
 scenario names the lines no text hits any more).
-Exit status: 0 when no scenario has a stroke or contrast hit (or --warn), 1 otherwise, 2 when a dump fails.
+The emoji rule (kit-b U7a, --emoji; the smoke scenario kitb_no_emoji_ui is its client walk) runs over the same dumps
+and fails too: a shown text with an emoji or pictographic symbol code point (render_gui.emoji_rule; kit B draws its icons
+as PixelIcons). The texts in tools/fixtures/emoji_backlog.txt are counted, not failed: U7b's glyph tables (battle, arena,
+dungeon, train, tycoon, world signs and the rest of the windows), and U7b empties the list.
+    py -3.12 tools/stroke_walk.py --emoji --only-emoji   # the emoji rule alone over every render scenario
+Exit status: 0 when no scenario has a stroke, contrast (or, with --emoji, emoji) hit (or --warn), 1 otherwise, 2 when a
+dump fails.
 """
 import argparse
 import gc
@@ -88,6 +94,8 @@ def main():
     ap.add_argument("--warn", action="store_true", help="report only, exit 0")
     ap.add_argument("--casing", action="store_true", help="also report the casing rule (buttons sentence case, tags capitals)")
     ap.add_argument("--bare", action="store_true", help="also list texts with no outline and no backdrop (over the world)")
+    ap.add_argument("--emoji", action="store_true", help="also the emoji rule (kit-b U7a): no emoji code point in a shown text")
+    ap.add_argument("--only-emoji", action="store_true", help="the emoji rule alone (implies --emoji; no stroke / contrast)")
     ap.add_argument("-v", "--verbose", action="store_true", help="list every hit, not the first 6 per scenario")
     args = ap.parse_args()
 
@@ -97,6 +105,10 @@ def main():
     total_d, total_p, total_c, total_read, failed, cased, bares = 0, 0, 0, 0, [], {}, {}
     backlog = RG.contrast_backlog()
     owed, used = 0, set()
+    if args.only_emoji:
+        args.emoji = True
+    emoji_backlog = RG.contrast_backlog(RG.EMOJI_BACKLOG) if args.emoji else []
+    total_e, emoji_owed, emoji_used = 0, 0, set()
     for name in names:
         for (w, h) in sizes:
             try:
@@ -107,6 +119,17 @@ def main():
                 continue
             doubled, panelled = RG.stroke_rule(dump)
             dim, read = RG.contrast_rule(dump)
+            emoji = []
+            if args.emoji:
+                for hit in RG.emoji_rule(dump):
+                    pattern = RG.in_backlog(emoji_backlog, hit[0])
+                    if pattern:
+                        emoji_owed += 1
+                        emoji_used.add(pattern)
+                    else:
+                        emoji.append(hit)
+            if args.only_emoji:
+                doubled, panelled, dim, read = [], [], [], 0
             total_read += read
             # the backlog (tools/fixtures/contrast_backlog.txt): reported in the totals, not failed
             kept = []
@@ -129,6 +152,10 @@ def main():
             total_d += len(doubled)
             total_p += len(panelled)
             total_c += len(dim)
+            total_e += len(emoji)
+            for (p, text, cps) in (emoji if args.verbose else emoji[:6]):
+                shown = text[:24].replace("\n", " ").encode("ascii", "backslashreplace").decode("ascii")
+                print("%-22s %4dx%-4d emoji  %s \"%s\" %s" % (name, w, h, p, shown, cps))
             if doubled or panelled or dim:
                 print("%-22s %4dx%-4d %3d stroke+outline, %3d outlined on a panel, %3d below the contrast rule"
                       % (name, w, h, len(doubled), len(panelled), len(dim)))
@@ -144,6 +171,13 @@ def main():
           " (%d texts read; %d more in the backlog, %d of its %d lines seen)%s"
           % (len(names), len(sizes), total_d, total_p, total_c, total_read, owed, len(used), len(backlog),
              (", %d dump(s) failed" % len(failed)) if failed else ""))
+    if args.emoji:
+        print("emoji rule: %d text(s) with an emoji code point (%d more in the backlog, %d of its %d lines seen)"
+              % (total_e, emoji_owed, len(emoji_used), len(emoji_backlog)))
+        if not args.scenarios:
+            for pattern, _ in emoji_backlog:
+                if pattern not in emoji_used:
+                    print("    emoji backlog line no longer hit (remove it): " + pattern)
     if args.grid and not args.scenarios:
         for pattern, _ in backlog:
             if pattern not in used:
@@ -160,7 +194,7 @@ def main():
         return 2
     if args.warn:
         return 0
-    return 1 if (total_d or total_p or total_c) else 0
+    return 1 if (total_d or total_p or total_c or total_e) else 0
 
 
 if __name__ == "__main__":

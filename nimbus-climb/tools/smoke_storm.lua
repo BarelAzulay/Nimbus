@@ -1400,7 +1400,10 @@ local function clientScenarios()
 				local element = PC.GetElements(id)[1]
 				local chip = named(card, "Element")
 				local meta = named(detail, "Meta")
-				panel:case(chip ~= nil and chip.TextSize >= 15 and chip.BackgroundColor3 == Config.Elements.Info[element].Color and meta.Text:find(element, 1, true) ~= nil and findText(PC.Get(id).Name:lower(), detail) ~= nil,
+				-- (kit-b U8, restated: the chip was a letter at >= 15 px) the chip is the element's drawn icon on its colour
+				-- (CloudUI.ElementChip, attribute Element), at least 15 px
+				local chipOk = chip ~= nil and ((chip:IsA("TextLabel") and chip.TextSize >= 15) or (chip:GetAttribute("Element") == element and chip.AbsoluteSize.X >= 15))
+				panel:case(chipOk and chip.BackgroundColor3 == Config.Elements.Info[element].Color and meta.Text:find(element, 1, true) ~= nil and findText(PC.Get(id).Name:lower(), detail) ~= nil,
 					id .. " (" .. tostring(element) .. "): " .. tostring(meta and meta.Text))
 			end
 		end

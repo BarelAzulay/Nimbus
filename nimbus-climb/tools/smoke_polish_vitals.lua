@@ -351,17 +351,25 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 
 	-- 1. the look: chunky outlined plate, thick outlined tubes with a gradient fill + highlight strip, shapes not glyphs
 	local plateStroke = c.CardStroke
-	T.check(plateStroke ~= nil and plateStroke.Thickness >= 3 and c.Card:FindFirstChildOfClass("UICorner") ~= nil and c.Card:FindFirstChildOfClass("UIGradient") ~= nil,
-		"vitals: the card is a rounded dark navy plate with a thick neon border")
-	T.check(sameColor(plateStroke.Color, Theme.Neon.Green, 0.01), "vitals: full health: the neon border is green (v5)", tostring(plateStroke.Color))
+	-- (kit-b U8, restated: was a rounded dark navy plate with a gloss gradient and a green neon border) a square stone
+	-- plate with a thick wood edge and its darker lip, no gloss
+	local cardLip = c.Card:FindFirstChild("Lip")
+	local cardCorner = c.Card:FindFirstChildOfClass("UICorner") -- (the layout keeps a 0 px one it resizes)
+	T.check(plateStroke ~= nil and plateStroke.Thickness >= 3 and (cardCorner == nil or (cardCorner.CornerRadius.Offset == 0 and cardCorner.CornerRadius.Scale == 0)) and c.Card:FindFirstChildOfClass("UIGradient") == nil
+		and sameColor(c.Card.BackgroundColor3, Theme.Sign.Stone, 0.01) and cardLip ~= nil and sameColor(cardLip.BackgroundColor3, Theme.Sign.StoneLip, 0.01),
+		"vitals: the card is a square stone plate with a thick wood edge and its lip")
+	T.check(sameColor(plateStroke.Color, Theme.Sign.Wood, 0.01), "vitals: full health: the edge is wood (kit-b U8; was the green neon border)", tostring(plateStroke.Color))
 	local k = scaleOf(c.Hp)
-	T.check(c.Hp.AbsoluteSize.Y / k >= 34 and strokeOf(c.Hp) ~= nil and strokeOf(c.Hp).Thickness >= 3, "vitals: the HP tube is thick (>= 34 design px) with a rounded dark outline",
+	T.check(c.Hp.AbsoluteSize.Y / k >= 34 and strokeOf(c.Hp) ~= nil and strokeOf(c.Hp).Thickness >= 2 and sameColor(strokeOf(c.Hp).Color, Theme.Sign.Wood, 0.01) and c.Hp:FindFirstChildOfClass("UICorner") == nil,
+		"vitals: the HP tube is thick (>= 34 design px) with a square wood outline (kit-b U8; was a rounded dark 3 px one)",
 		fmt("%.0f design px", c.Hp.AbsoluteSize.Y / k))
 	T.check(c.St.AbsoluteSize.Y / k >= 18 and strokeOf(c.St) ~= nil, "vitals: the stamina tube matches it (>= 18 design px, same outline), not a thin afterthought",
 		fmt("%.0f design px", c.St.AbsoluteSize.Y / k))
 	local fillGradient = c.HpFill and c.HpFill:FindFirstChildOfClass("UIGradient")
-	T.check(fillGradient ~= nil and fillGradient.Rotation == 90 and #fillGradient.Color.Keypoints >= 3 and c.HpFill:FindFirstChild("Shine") ~= nil,
-		"vitals: the HP fill has a soft top-to-bottom gradient and a highlight strip")
+	-- (kit-b U8, restated: was a soft gradient and a white Shine strip) a flat fill with its hard darker lip (a stepped
+	-- UIGradient named Lip, top to bottom, that also carries the health colour), no highlight strip
+	T.check(fillGradient ~= nil and fillGradient.Name == "Lip" and fillGradient.Rotation == 90 and #fillGradient.Color.Keypoints >= 3 and c.HpFill:FindFirstChild("Shine") == nil,
+		"vitals: the HP fill is flat with a hard lip, no highlight strip")
 	local heartShape = path(c.Heart, "HeartShape")
 	local tip = path(heartShape, "Tip")
 	T.check(heartShape ~= nil and tip ~= nil and close(tip.Rotation, 45, 0.1) and path(heartShape, "LobeL") ~= nil and path(heartShape, "LobeR") ~= nil,
@@ -433,7 +441,7 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	T.check(close(fraction(c.Trail), fraction(c.HpFill), 0.01) and close(fraction(c.HpFill), 47 / 117, 0.01), "vitals: the trail catches up with the fill",
 		fmt("trail %.2f, fill %.2f", fraction(c.Trail), fraction(c.HpFill)))
 	T.check(sameColor(gradientAt(fillGradient, 0.4), Theme.Colors.HealthMid, 0.03), "vitals: 40% health turns the fill amber")
-	T.check(sameColor(c.CardStroke.Color, Theme.Neon.Yellow, 0.01), "vitals: ...and the card's neon border amber (v5)")
+	T.check(sameColor(c.CardStroke.Color, Theme.Sign.Wood, 0.01), "vitals: ...and the card's edge stays wood (kit-b U8: the fill carries the amber; was an amber neon border)")
 
 	-- 5. low health (< 30%): the heart beats, the outline glows red, the fill is red
 	setHealth(117, 18)
@@ -441,7 +449,7 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	local maxScale, minScale, maxRed = 0, 9, 0
 	-- v5 (Phase 5, 6.6): the Neon card's border shows the health state: green, amber, red (pulsing when low)
 	local navy = Theme.Colors.Navy
-	local healthy = Theme.Neon.Green
+	local healthy = Theme.Sign.Wood -- (kit-b U8: the wood edge; was the green neon border)
 	for _ = 1, 40 do
 		advance(1 / 30)
 		local s = c.HeartScale and c.HeartScale.Scale or 1
@@ -456,7 +464,7 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	T.check(readsLow, "vitals: ...and the number reads on the dark track (white there; kit-b U6 review)", notesLow)
 	setHealth(117, 117)
 	advance(1.5)
-	T.check(c.HeartScale.Scale == 1 and c.Heart.Rotation == 0 and sameColor(c.CardStroke.Color, healthy, 0.01), "vitals: healed: the pulse stops, the neon border is green again")
+	T.check(c.HeartScale.Scale == 1 and c.Heart.Rotation == 0 and sameColor(c.CardStroke.Color, healthy, 0.01), "vitals: healed: the pulse stops, the edge is wood again")
 
 	-- 6. stamina drains and refills smoothly, and dims when empty
 	advance(4)
@@ -519,7 +527,7 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	T.check(shown(c.Notice) and tostring(c.Notice.Text):lower():find("wait for a teammate", 1, true) ~= nil and c.HpText.Text == "DOWNED", "vitals: downed: 'DOWNED' + 'Wait for a teammate!'")
 	T.check(not shown(c.St) and not shown(c.Ring) and not shown(c.Bolt) and shown(path(c.Heart, "Glyph")) and not shown(heartShape),
 		"vitals: ...the stamina row makes room and the heart badge shows '!'")
-	T.check(sameColor(c.CardStroke.Color, Theme.Neon.Red, 0.01), "vitals: ...and the card's neon border is red")
+	T.check(sameColor(c.CardStroke.Color, Theme.Sign.Red, 0.01), "vitals: ...and the card's edge is red (kit-b U8: Sign red; was the neon red)")
 	small = smallTexts(c.Vitals, 15)
 	T.check(#small == 0, "vitals: the downed texts are readable too", table.concat(small, ", "))
 	LocalPlayer:SetAttribute("Downed", false)
@@ -615,9 +623,8 @@ end)
 -- (the mock measures a flat 0.5 em per character; FredokaOne digits run ~0.6 em)
 local function textRect(label, slack)
 	local r = rect(label)
-	local k = scaleOf(label)
-	local b = label.TextBounds
-	local w, h = b.X * k * (slack or 1), b.Y * k
+	local b = label.TextBounds -- screen px (the mock's, like Roblox's, already under every UIScale)
+	local w, h = b.X * (slack or 1), b.Y
 	local ax = label.TextXAlignment
 	local x0
 	if ax == Enum.TextXAlignment.Right then
