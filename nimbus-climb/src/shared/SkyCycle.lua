@@ -29,6 +29,15 @@
 --       RaidThemes[fromId] from fromBlend 0.5, RaidThemes[eventId] from eventBlend 0.5. facesFor(themeId) (SkyFaces.For)
 --       -> { SkyboxBk = id, ... } adds the Skybox* strings to the Sky group; nil / no facesFor = no Skybox keys, so the
 --       Sky keeps what LightingService set at boot. The result is passed through Floor.
+--       The haze bridge (kit-b S1, Config.Sky.Transitions): each layer whose skybox differs from the one under it (the
+--       phase change when Themes[phase] ~= Themes[Next]; each raid layer) thickens by k = Bridge(its blend, its
+--       BridgeHalf): Atmosphere Density / Haze and Clouds Cover rise toward the transition's peaks, Glare toward 0,
+--       Atmosphere Color / Decay toward the bridge colour (Config.Sky.Bridge["<theme>><theme>"] for a phase change, the
+--       raid look's Decay for a raid). The swaps above all sit at blend 0.5, the bridge's peak (k = 1), so they happen
+--       behind the thickest air; a layer mixed over by a later one takes its haze with it (a full raid sky shows no
+--       cycle bridge)
+--   SkyCycle.Bridge(blend, half) -> k   0 outside |blend - 0.5| < half, a smoothstep up to 1 at blend 0.5, symmetric;
+--       junk / half <= 0 = 0
 --   SkyCycle.Floor(preset) -> preset   the readability floor, in place: Lighting.Brightness >= Floor.Brightness (1.0),
 --       every OutdoorAmbient channel >= Floor.OutdoorAmbientMin (70) / 255, every ColorCorrection TintColor channel
 --       within Floor.TintMax (8) / 255 of white (the colour comes from the world light, never a screen tint).
@@ -222,6 +231,53 @@ function SkyCycle.Floor(preset)
 	return preset
 end
 
+function SkyCycle.Bridge(blend, half)
+	if not (finite(blend) and finite(half)) or half <= 0 then
+		return 0
+	end
+	local x = 1 - math.abs(blend - 0.5) / half
+	if x <= 0 then
+		return 0
+	elseif x >= 1 then
+		return 1
+	end
+	return x * x * (3 - 2 * x)
+end
+
+-- v lifted toward peak by k (0..1); a value already past the peak stays
+local function toward(v, peak, k)
+	if type(v) ~= "number" or not finite(peak) then
+		return v
+	end
+	return v + (max(v, peak) - v) * k
+end
+
+-- the haze bridge on a (fresh) preset, in place: tr = a Config.Sky.Transitions entry, colors = { Color, Decay } or nil
+local function bridgeOn(preset, k, tr, colors)
+	if not (k > 0 and type(tr) == "table") then
+		return
+	end
+	local atm = preset.Atmosphere
+	if type(atm) == "table" then
+		atm.Density = toward(atm.Density, tr.Density, k)
+		atm.Haze = toward(atm.Haze, tr.Haze, k)
+		if type(atm.Glare) == "number" then
+			atm.Glare = atm.Glare * (1 - k)
+		end
+		if type(colors) == "table" then
+			for _, prop in ipairs({ "Color", "Decay" }) do
+				if typeof(atm[prop]) == "Color3" and typeof(colors[prop]) == "Color3" then
+					atm[prop] = atm[prop]:Lerp(colors[prop], k)
+				end
+			end
+		end
+	end
+	local clouds = preset.Clouds
+	if type(clouds) == "table" and type(clouds.Cover) == "number" then
+		clouds.Cover = min(1, toward(clouds.Cover, tr.Cover, k))
+	end
+end
+
 function SkyCycle.Preset(at, eventId, eventBlend, facesFor, fromId, fromBlend)
 	local sky = cfg()
 	local order, looks = sky.Cycle.Order, sky.Looks
@@ -249,13 +305,26 @@ function SkyCycle.Preset(at, eventId, eventBlend, facesFor, fromId, fromBlend)
 	end
 	preset.Lighting.ClockTime = clock and dial(clock) or nil
 	local theme = sky.Themes[blend >= 0.5 and nextPhase or phase]
+	local tr = type(sky.Transitions) == "table" and sky.Transitions or {}
+
+	-- the phase change's bridge (only when the skybox changes: no swap, nothing to hide)
+	local themeA, themeB = sky.Themes[phase], sky.Themes[nextPhase]
+	if themeA ~= themeB and type(tr.Cycle) == "table" then
+		local pair = type(sky.Bridge) == "table" and sky.Bridge[tostring(themeA) .. ">" .. tostring(themeB)] or nil
+		bridgeOn(preset, SkyCycle.Bridge(blend, tr.Cycle.BridgeHalf), tr.Cycle, pair)
+	end
 
 	-- the raid sky that showed when this one began (back-to-back raids), then this raid sky on top
 	local function raidOn(id, b)
 		local look = type(id) == "string" and sky.RaidThemes[id] and looks[id] or nil
 		b = clamp(num(b, 0), 0, 1)
 		if look and b > 0 then
+			local under = theme
 			preset = mix(preset, copyLook(look), b)
+			if sky.RaidThemes[id] ~= under and type(tr.Raid) == "table" then
+				local decay = look.Atmosphere and look.Atmosphere.Decay
+				bridgeOn(preset, SkyCycle.Bridge(b, tr.Raid.BridgeHalf), tr.Raid, { Color = decay, Decay = decay })
+			end
 			if b >= 0.5 then
 				local fixed = clockAt(look, 0)
 				preset.Lighting.ClockTime = fixed and dial(fixed) or nil

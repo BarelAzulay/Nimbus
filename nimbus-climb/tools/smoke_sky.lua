@@ -19,7 +19,8 @@
 --                      phase (speed clamped to [0.1, 120], nil epoch = 0), no NaN anywhere in the preset; junk event ids
 --                      and blends are ignored
 --   sky_event_blend    (server world, pure) the four raid themes match BattleCatalog.Bosses; eventBlend 1 = the raid look,
---                      0.5 = the midpoint for numbers and Color3; the returned themeId (and the faces asked of facesFor)
+--                      0.5 = the midpoint for numbers and Color3 (the haze bridge's Atmosphere props and Clouds.Cover
+--                      aside: smoke_kitb_sky.lua); the returned themeId (and the faces asked of facesFor)
 --                      switch to the raid theme exactly at eventBlend >= 0.5; phase theme swaps at Blend 0.5; raid to
 --                      raid (fromId / fromBlend): blend 0 = exactly the old raid sky, 1 = the new one, the midpoint lies
 --                      between the two raid looks (never toward the cycle), theme + clock swap at 0.5
@@ -43,11 +44,11 @@
 --   client_sky_whole_loop (client) SkyController over a whole loop + a raid in 2 s refreshes: every step moves the sun
 --                      0..0.2 h round the dial, and the only instant ClockTime sets are the one midnight re-base (a
 --                      step of <= 0.2 h from just before 24 to just after 0) and a raid sky's fixed clock (in and out)
---   client_sky_event   (client) SkyEvent + SkyEventAt: the raid blend rises over EventBlend (3) s to 1 (a late joiner
---                      mid-raid lands on the raid sky at once); cleared -> back to the cycle over 3 s
+--   client_sky_event   (client) SkyEvent + SkyEventAt: the raid blend rises over Transitions.Raid.In (8) s to 1 (a late
+--                      joiner mid-raid lands on the raid sky at once); cleared -> back to the cycle over Raid.Out (6) s
 --   client_sky_event_back_to_back (client) SkyEvent storm_titan -> lava_golem with no clear: the base blends from the
 --                      storm look to the lava look (every step on the line between the two, never toward the cycle),
---                      look / theme / clock swap at the midpoint, the full lava sky after 3 s; a raid that ends half
+--                      look / theme / clock swap at the midpoint, the full lava sky after Raid.In s; a raid that ends half
 --                      blended in leaves from where it was (no jump up to 1)
 --   client_sky_battle_lift (client) InBattle "B12" at Night -> Push("SkyLift", Config.Sky.Lift.Preset, 1.5); "D3" (a
 --                      dungeon run) -> no lift; cleared -> Pop over 1.5 s; Day -> no lift
@@ -78,6 +79,8 @@ local abs, floor, min = math.abs, math.floor, math.min
 local fmt = string.format
 
 local GROUPS = { "Lighting", "Atmosphere", "Clouds", "ColorCorrection", "Sky" }
+-- the props the haze bridge moves around a skybox swap (SkyCycle.Bridge, checked in smoke_kitb_sky.lua): no plain lerp there
+local BRIDGED = { Atmosphere = { Density = true, Haze = true, Glare = true, Color = true, Decay = true }, Clouds = { Cover = true } }
 
 local function isColor(v)
 	return typeof(v) == "Color3"
@@ -194,7 +197,7 @@ local function serverScenarios()
 		local c = cfg.Cycle
 		T.check(c.Order[1] == "Dawn" and c.Order[2] == "Day" and c.Order[3] == "Sunset" and c.Order[4] == "Night" and #c.Order == 4, "Cycle.Order = Dawn, Day, Sunset, Night")
 		T.check(c.Seconds.Dawn == 120 and c.Seconds.Day == 360 and c.Seconds.Sunset == 540 and c.Seconds.Night == 180, "Cycle.Seconds = Dawn 120, Day 360, Sunset 540, Night 180 (a 20 min loop)")
-		T.check(c.Blend == 75 and c.Refresh == 2 and c.Tween == 2 and c.EventBlend == 3, "Cycle Blend 75, Refresh 2, Tween 2, EventBlend 3")
+		T.check(c.Blend == 75 and c.Refresh == 2 and c.Tween == 2 and c.EventBlend == nil, "Cycle Blend 75, Refresh 2, Tween 2 (no EventBlend: a raid sky's In / Out are Config.Sky.Transitions.Raid)")
 		local a = SC.At(0, 0, 1, 0)
 		T.check(a.Phase == "Dawn" and abs(a.T) < 1e-9 and a.Blend == 0 and a.Next == "Day", "t = 0: Dawn, T = 0, Blend 0, Next Day", fmt("%s T %.3f Blend %.3f", tostring(a.Phase), a.T or -1, a.Blend or -1))
 		a = SC.At(119, 0, 1, 0)
@@ -564,11 +567,11 @@ local function serverScenarios()
 				T.check(th1 == theme and p1.Sky.SkyboxBk == "bk:" .. theme, fmt("t %d %s blend 1: theme + faces %s", t, bossId, theme), tostring(th1))
 				-- 0.5 = the midpoint of every number (not ClockTime / integers) and Color3
 				local pm, thm = SC.Preset(at, bossId, 0.5, faces)
-				local mid = T.tally(fmt("t %d %s blend 0.5 = the midpoint (numbers + Color3)", t, bossId))
+				local mid = T.tally(fmt("t %d %s blend 0.5 = the midpoint (numbers + Color3; the haze bridge's props aside)", t, bossId))
 				for _, group in ipairs(GROUPS) do
 					for prop, v1 in pairs(p1[group] or {}) do
 						local v0, vm = p0[group] and p0[group][prop], pm[group][prop]
-						if prop ~= "ClockTime" and prop ~= "StarCount" and v0 ~= nil then
+						if prop ~= "ClockTime" and prop ~= "StarCount" and v0 ~= nil and not (BRIDGED[group] and BRIDGED[group][prop]) then
 							if type(v1) == "number" then
 								mid:case(abs(vm - (v0 + v1) / 2) < 1e-9, fmt("%s.%s %.4f vs %.4f / %.4f", group, prop, vm, v0, v1))
 							elseif isColor(v1) then
@@ -629,9 +632,10 @@ local function serverScenarios()
 					local a, b, v = storm.Lighting[prop], lava.Lighting[prop], px.Lighting[prop]
 					line:case(abs(v - (a + (b - a) * x)) < 1e-9, fmt("x %.2f %s %.4f vs %.4f..%.4f (cycle %.4f)", x, prop, v, a, b, cyc.Lighting[prop]))
 				end
-				local ca, cb, cv = storm.Atmosphere.Color, lava.Atmosphere.Color, px.Atmosphere.Color
+				-- (a Color3 the haze bridge leaves alone: the Atmosphere colours bend toward the bridge colour mid-way)
+				local ca, cb, cv = storm.Lighting.Ambient, lava.Lighting.Ambient, px.Lighting.Ambient
 				local ce = ca:Lerp(cb, x)
-				line:case(abs(cv.R - ce.R) < 1e-9 and abs(cv.G - ce.G) < 1e-9 and abs(cv.B - ce.B) < 1e-9, fmt("x %.2f Atmosphere.Color", x))
+				line:case(abs(cv.R - ce.R) < 1e-9 and abs(cv.G - ce.G) < 1e-9 and abs(cv.B - ce.B) < 1e-9, fmt("x %.2f Lighting.Ambient", x))
 				local wantTheme = x >= 0.5 and "lava_obsidian" or "storm_teal"
 				local wantClock = x >= 0.5 and cfg.Looks.lava_golem.Clock[1] or cfg.Looks.storm_titan.Clock[1]
 				line:case(thx == wantTheme and px.Sky.SkyboxBk == "bk:" .. wantTheme and abs(px.Lighting.ClockTime - wantClock) < 1e-9, fmt("x %.2f theme %s clock %.2f (want %s %.2f)", x, tostring(thx), px.Lighting.ClockTime, wantTheme, wantClock))
@@ -1092,13 +1096,14 @@ local function clientScenarios()
 		SC.Refresh()
 		local st = SC.State()
 		T.check(st.Event == "storm_titan" and st.EventBlend < 0.1, "raid start: the blend begins at 0", tostring(st.EventBlend))
-		KC.advance(1.5)
+		local R = Cfg.Sky.Transitions.Raid
+		KC.advance(R.In / 2)
 		SC.Refresh()
-		T.check(near(SC.State().EventBlend, 0.5, 0.05), "1.5 s in: blend ~0.5", tostring(SC.State().EventBlend))
-		KC.advance(1.6)
+		T.check(near(SC.State().EventBlend, 0.5, 0.05), "Raid.In / 2 s in: blend ~0.5", tostring(SC.State().EventBlend))
+		KC.advance(R.In / 2 + 0.1)
 		SC.Refresh()
 		st = SC.State()
-		T.check(st.EventBlend == 1 and st.Look == "storm_titan" and st.Theme == Cfg.Sky.RaidThemes.storm_titan, "after EventBlend (3) s: the full raid sky (theme storm_teal)", tostring(st.EventBlend) .. " " .. tostring(st.Theme))
+		T.check(st.EventBlend == 1 and st.Look == "storm_titan" and st.Theme == Cfg.Sky.RaidThemes.storm_titan, "after Raid.In (8) s: the full raid sky (theme storm_teal)", tostring(st.EventBlend) .. " " .. tostring(st.Theme))
 		T.check(near(LS.Value("Lighting", "Brightness"), Cfg.Sky.Looks.storm_titan.Lighting.Brightness, 1e-3), "the base is the raid look", tostring(LS.Value("Lighting", "Brightness")))
 		-- (the mock's tweens land only when they complete: stop the loop so the last 2 s step is not restarted)
 		SC.Stop()
@@ -1108,18 +1113,18 @@ local function clientScenarios()
 		LS.SetBase({ Lighting = { Brightness = 2.5 } }, 0)
 		SC.Start()
 		T.check(SC.State().EventBlend == 1 and near(Lighting.Brightness, Cfg.Sky.Looks.storm_titan.Lighting.Brightness, 1e-3), "a late joiner mid-raid: the raid sky at once", tostring(Lighting.Brightness))
-		-- the raid ends: back to the cycle over 3 s
+		-- the raid ends: back to the cycle over Raid.Out s
 		Workspace:SetAttribute(A.Event, "")
 		Workspace:SetAttribute(A.EventAt, Workspace:GetServerTimeNow())
 		SC.Refresh()
 		T.check(SC.State().Event == "storm_titan" and SC.State().EventBlend > 0.9, "raid end: the blend starts back from 1")
-		KC.advance(1.5)
+		KC.advance(R.Out / 2)
 		SC.Refresh()
-		T.check(near(SC.State().EventBlend, 0.5, 0.05), "1.5 s after the end: ~0.5", tostring(SC.State().EventBlend))
-		KC.advance(1.6)
+		T.check(near(SC.State().EventBlend, 0.5, 0.05), "Raid.Out / 2 s after the end: ~0.5", tostring(SC.State().EventBlend))
+		KC.advance(R.Out / 2 + 0.1)
 		SC.Refresh()
 		st = SC.State()
-		T.check(st.Event == nil and st.EventBlend == 0 and st.Look == "Day", "3 s after the end: the cycle again (Day)", tostring(st.Event) .. " " .. tostring(st.Look))
+		T.check(st.Event == nil and st.EventBlend == 0 and st.Look == "Day", "Raid.Out (6) s after the end: the cycle again (Day)", tostring(st.Event) .. " " .. tostring(st.Look))
 		-- junk event ids never show a raid sky
 		Workspace:SetAttribute(A.Event, "no_such_boss")
 		Workspace:SetAttribute(A.EventAt, Workspace:GetServerTimeNow() - 10)
@@ -1148,8 +1153,9 @@ local function clientScenarios()
 		Workspace:SetAttribute(A.EventAt, Workspace:GetServerTimeNow())
 		local line = T.tally("storm -> lava: the base stays on the line between the two raid looks (never toward the cycle)")
 		local swap = T.tally("storm -> lava: look, theme and clock stay storm's below blend 0.5 and are lava's from 0.5")
+		local R = Cfg.Sky.Transitions.Raid
 		local firstBlend
-		for _ = 0, 6 do
+		for _ = 0, 2 * R.In - 1 do -- every 0.5 s up to 0.5 s before the end of the blend
 			SC.Refresh()
 			st = SC.State()
 			local pS, pL = presets()
@@ -1174,19 +1180,19 @@ local function clientScenarios()
 		SC.Refresh()
 		st = SC.State()
 		local _, pL = presets()
-		T.check(st.Event == "lava_golem" and st.EventBlend == 1 and st.EventFrom == nil and near(base("Brightness"), pL.Lighting.Brightness, 1e-6), "3 s on: the full lava sky, nothing left to blend from", tostring(st.EventBlend) .. " " .. tostring(st.EventFrom))
-		-- the raid ends: back to the cycle from the lava sky over 3 s
+		T.check(st.Event == "lava_golem" and st.EventBlend == 1 and st.EventFrom == nil and near(base("Brightness"), pL.Lighting.Brightness, 1e-6), "Raid.In s on: the full lava sky, nothing left to blend from", tostring(st.EventBlend) .. " " .. tostring(st.EventFrom))
+		-- the raid ends: back to the cycle from the lava sky over Raid.Out s
 		Workspace:SetAttribute(A.Event, "")
 		Workspace:SetAttribute(A.EventAt, Workspace:GetServerTimeNow())
 		SC.Refresh()
 		T.check(SC.State().Event == "lava_golem" and SC.State().EventBlend > 0.95, "the lava raid ends: the blend back starts from 1")
-		KC.advance(3.2)
+		KC.advance(R.Out + 0.2)
 		SC.Refresh()
-		T.check(SC.State().Event == nil and SC.State().EventBlend == 0, "3 s after: the plain cycle")
+		T.check(SC.State().Event == nil and SC.State().EventBlend == 0, "Raid.Out s after: the plain cycle")
 		-- a raid that ends while still blending in leaves from where it was (no jump up to the full raid sky)
 		Workspace:SetAttribute(A.Event, "frost_wyrm")
 		Workspace:SetAttribute(A.EventAt, Workspace:GetServerTimeNow())
-		KC.advance(0.9)
+		KC.advance(R.In * 0.3)
 		SC.Refresh()
 		local mid = SC.State().EventBlend
 		Workspace:SetAttribute(A.Event, "")
@@ -1194,12 +1200,12 @@ local function clientScenarios()
 		SC.Refresh()
 		st = SC.State()
 		T.check(mid > 0.2 and mid < 0.4 and st.Event == "frost_wyrm" and st.EventBlend <= mid + 1e-6, fmt("the frost raid ends at blend %.2f: it leaves from %.2f (not 1)", mid, st.EventBlend))
-		KC.advance(1.5)
+		KC.advance(R.Out / 2)
 		SC.Refresh()
 		T.check(SC.State().EventBlend < mid * 0.6, "and keeps fading out", tostring(SC.State().EventBlend))
-		KC.advance(1.7)
+		KC.advance(R.Out / 2 + 0.2)
 		SC.Refresh()
-		T.check(SC.State().Event == nil, "gone after 3 s")
+		T.check(SC.State().Event == nil, "gone after Raid.Out s")
 		SC.Start()
 	end)
 

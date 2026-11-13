@@ -840,6 +840,7 @@ Config.Art = {
 -- Dawn 2 -> Day 6 -> Sunset 9 -> Night 3 min, each phase blending into the next over its last Blend seconds, plus a
 -- server-wide raid sky while a raid boss is up. shared/SkyCycle turns the server time into a phase and a preset; the
 -- client re-applies it every Refresh s with a Tween s tween (LightingStack base). Faces stays LightingService's boot sky.
+-- Each skybox swap hides behind the haze bridge (Transitions, Bridge).
 --   Themes / RaidThemes  the painted skybox (blender/sky/sky_themes.py theme id) per phase / per raid boss id; the faces
 --                        are TextureIds "sky_<theme>_<Face>" (shared/SkyFaces); a theme without all six = the boot sky
 --   Looks[phase | boss]  the world light per LightingStack group + Clock = { from, to } (the ClockTime walked through
@@ -856,13 +857,34 @@ Config.Sky = {
 		Seconds = { Dawn = 120, Day = 360, Sunset = 540, Night = 180 }, -- a 1200 s (20 min) loop
 		Blend = 75, -- seconds at the end of each phase that blend into the next
 		Refresh = 2, -- the client re-applies the sky every Refresh s ...
-		Tween = 2, -- ... with a tween this long (no per-frame work)
-		EventBlend = 3, -- seconds a raid sky takes to blend in on the raid start and back out on its end
+		Tween = 2, -- ... with a tween this long (no per-frame work); Transitions.Raid.Step while a raid sky blends
+	},
+	-- the haze bridge (kit-b S1, sky audit F1-F3): Roblox cannot blend two skyboxes, so around each skybox swap the air and
+	-- the cloud deck thicken toward a bridge colour, the faces, StarCount and a raid's fixed clock switch at the peak
+	-- (shared/SkyCycle.Bridge: k = 1 at blend 0.5, 0 outside |blend - 0.5| < BridgeHalf) and the air clears again.
+	-- Density / Haze / Cover = the peak the bridge lifts each toward (never lowers one already thicker); Glare goes to 0.
+	-- Tune in Studio: the faces about 85% hidden at the peak, the next obby platform (60 studs) still clearly visible.
+	--   Cycle   a phase change. BridgeHalf 0.284 of the smoothstep Blend = the middle 30 s of the 75 s window
+	--   Raid    a raid sky in (In s from SkyEventAt; raid to raid too) and out (Out s); the client refreshes every Step s
+	--           with Step s tweens while one blends (else Cycle.Refresh / Tween); the bridge colour = the raid look's
+	--           Atmosphere Decay
+	Transitions = {
+		Cycle = { BridgeHalf = 0.284, Density = 0.65, Haze = 3.4, Cover = 0.85 },
+		Raid = { In = 8, Out = 6, Step = 0.5, BridgeHalf = 0.3, Density = 0.7, Haze = 4.0, Cover = 0.9 },
+	},
+	-- the cycle's bridge colour per skybox pair (Themes[phase] .. ">" .. Themes[next]): Color = the average of the two
+	-- painted skies' horizon band (the 15% above the horizon of Ft / Bk / Lf / Rt, .superpowers/sky-final), Decay = the
+	-- average of their lower band. A pair with no entry keeps the looks' own lerp
+	Bridge = {
+		["dusk_amber>day_vivid"] = { Color = skyRgb(199, 167, 149), Decay = skyRgb(212, 198, 189) },
+		["day_vivid>dusk_amber"] = { Color = skyRgb(199, 167, 149), Decay = skyRgb(212, 198, 189) },
+		["dusk_amber>night_aurora"] = { Color = skyRgb(122, 90, 69), Decay = skyRgb(117, 94, 90) },
+		["night_aurora>dusk_amber"] = { Color = skyRgb(122, 90, 69), Decay = skyRgb(117, 94, 90) },
 	},
 	Speed = { Default = 1, Min = 0.1, Max = 120 }, -- the dev /sky speed clamp (SkySpeed attribute)
 	-- the Workspace attributes server/Services/SkyService publishes (the clock: no remote traffic): Epoch = the server
 	-- time at boot, Speed / Offset = the dev /sky speed and phase jump (loop seconds), Event = the raid boss id whose sky
-	-- is up ("" = none), EventAt = the server time Event last changed (the clients' EventBlend s blend in / out)
+	-- is up ("" = none), EventAt = the server time Event last changed (the clients blend in / out from it: Transitions.Raid)
 	Attr = { Epoch = "SkyEpoch", Speed = "SkySpeed", Offset = "SkyOffset", Event = "SkyEvent", EventAt = "SkyEventAt" },
 	EventWatch = 5, -- seconds between the server's checks that a raid sky still has its raid (a missed end never sticks)
 	Themes = { Dawn = "dusk_amber", Day = "day_vivid", Sunset = "dusk_amber", Night = "night_aurora" },

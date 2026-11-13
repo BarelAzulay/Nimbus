@@ -3,7 +3,9 @@
 -- Workspace attributes (server/Services/SkyService, Config.Sky.Attr); every Config.Sky.Cycle.Refresh (2) s this turns
 -- them into the moment's look with shared/SkyCycle (+ shared/SkyFaces for the painted skybox) and moves the BASE of
 -- client/LightingStack with a Cycle.Tween (2) s tween, so the Dungeon / GfxLow / AttackFxDim presets keep winning on
--- top. No per-frame code (one task.wait loop), no remote traffic.
+-- top. No per-frame code (one task.wait loop), no remote traffic. While a raid sky blends in or out the refresh runs
+-- every Config.Sky.Transitions.Raid.Step (0.5) s with 0.5 s tweens instead (kit-b S1: the haze bridge around its skybox
+-- swap is seen as a smooth rise, not 1-2 samples); the loop wakes every Step s and refreshes when its step is due.
 --
 --   * no SkyEpoch attribute (an older server, tests): inert, the boot sky stays, nothing below runs
 --   * the first apply after Start is instant (seconds 0): a late joiner never sees the boot afternoon fade away
@@ -13,13 +15,14 @@
 --     Sunset -> Night and Night -> Dawn changes included). Set at once (LightingStack.SetBase's instant set) only
 --     (a) when it passes midnight (23.9 -> 0.1: a tween would run back through the day; 24 h = 0 h, so invisible) and
 --     (b) on a segment change (a raid sky's mid-blend, in or out) by more than Config.Sky.ClockJump h
---   * the raid sky: SkyEvent (a boss id with a RaidThemes sky) blends in over Cycle.EventBlend (3) s from SkyEventAt
---     (a late joiner mid-raid is on the raid sky at once) and back out over 3 s once SkyEvent is "" again. Each new
+--   * the raid sky: SkyEvent (a boss id with a RaidThemes sky) blends in over Transitions.Raid.In (8) s from SkyEventAt
+--     (a late joiner mid-raid is on the raid sky at once) and back out over Raid.Out (6) s once SkyEvent is "" again. Each new
 --     SkyEventAt starts a transition FROM what showed at that moment (St.From = { Id, Blend }): back-to-back raids
 --     (SkyEvent storm_titan -> lava_golem, no clear) blend raid sky to raid sky (the skybox swap at the midpoint),
 --     never back through the cycle look; a raid that ends half blended in leaves from where it was
 --   * the local raid sky (SetLocalEvent, a fight in a side pocket): for this client alone it takes the place of the SkyEvent /
---     SkyEventAt attributes, with the same blend in and out; taken off, the attributes are back in charge (from that moment)
+--     SkyEventAt attributes, with the same blend in and out; taken off, the attributes are back in charge (from that moment).
+--     Both refresh at once (task.defer), not on the next loop tick (sky audit F3)
 --   * the battle lift (Config.Sky.Lift): in an outdoor pet battle (Config.Attr.InBattle "B...") under a dark look
 --     (Night, the eclipse raid) LightingStack.Push("SkyLift") over 1.5 s, popped over 1.5 s after the fight / at dawn
 --   * the lamps (Config.Sky.Lamps): the lobby's LampGlass / LanternLight / StallLight / DomeGlow / TroveGlow PointLights
@@ -89,6 +92,8 @@ local St = {
 	FireflyFolder = nil,
 	Applies = 0,
 	Skipped = 0,
+	Step = nil, -- the refresh step the last refresh chose (Cycle.Refresh, or Raid.Step while a raid sky blends)
+	Waited = 0, -- loop seconds since the last refresh
 	GQ = nil, -- client/GraphicsQuality (lazy); false = unavailable
 }
 SkyController._St = St
@@ -130,11 +135,17 @@ local function raidId(id)
 	return nil
 end
 
+-- the current raid transition's length: Raid.In toward a raid sky (from the cycle or another raid), Raid.Out back
+local function raidSeconds()
+	local R = cfg().Transitions.Raid
+	return St.EvId and R.In or R.Out
+end
+
 -- what the current raid transition shows at server time t: id, blend, fromId, fromBlend (SkyCycle.Preset's event args)
 local function shownAt(t)
 	local x = 1
 	if finite(St.EvAt) then
-		x = math.max(0, math.min(1, (t - St.EvAt) / math.max(0.01, cfg().Cycle.EventBlend)))
+		x = math.max(0, math.min(1, (t - St.EvAt) / math.max(0.01, raidSeconds())))
 	end
 	local from = St.From
 	if St.EvId then
@@ -193,6 +204,17 @@ end
 
 local function resetEvent()
 	St.EvSeen, St.EvAt, St.EvId, St.From, St.EventFrom = false, nil, nil, nil, nil
+end
+
+-- the refresh step and tween at server time now (after eventNow): Raid.Step / Raid.Step while a raid transition is
+-- still running (something to blend, inside its In / Out s), else Cycle.Refresh / Cycle.Tween
+local function cadence(now)
+	local sky = cfg()
+	if St.EvSeen and finite(St.EvAt) and (St.EvId ~= nil or St.From ~= nil) and now - St.EvAt < raidSeconds() then
+		local step = sky.Transitions.Raid.Step
+		return step, step
+	end
+	return sky.Cycle.Refresh, sky.Cycle.Tween
 end
 
 ----------------------------------------------------------------------
@@ -420,13 +442,17 @@ function SkyController.Refresh(now)
 	local sky = cfg()
 	local A = sky.Attr
 	local epoch = Workspace:GetAttribute(A.Epoch)
+	St.Waited = 0
 	if not finite(epoch) then
+		St.Step = sky.Cycle.Refresh
 		settle()
 		return SkyController.State()
 	end
 	now = finite(now) and now or Workspace:GetServerTimeNow()
 	local at = SkyCycle.At(now, epoch, Workspace:GetAttribute(A.Speed), Workspace:GetAttribute(A.Offset))
 	local event, eventBlend, fromId, fromBlend = eventNow(now)
+	local step, tween = cadence(now)
+	St.Step = step
 	local preset, theme = SkyCycle.Preset(at, event, eventBlend, SkyFaces.For, fromId, fromBlend)
 	-- the raid sky in charge (the same moments SkyCycle switches the clock and the skybox): the new raid from its
 	-- blend 0.5, else the one it blends from while that is at 0.5 or more
@@ -442,7 +468,7 @@ function SkyController.Refresh(now)
 	if LightingStack.Busy() then
 		St.Skipped = St.Skipped + 1
 	else
-		local seconds = St.First and 0 or sky.Cycle.Tween
+		local seconds = St.First and 0 or tween
 		local clock = preset.Lighting.ClockTime
 		local seg = raid or at.Phase
 		local instant = nil
@@ -526,11 +552,18 @@ function SkyController.Start()
 	St.Loops = St.Loops + 1
 	St.Thread = task.spawn(function()
 		while true do
-			task.wait(cfg().Cycle.Refresh)
+			-- wake every Raid.Step s (cheap); refresh when the step the last refresh chose is due, so a raid that starts
+			-- mid-step goes onto the fast cadence at once
+			local tick = math.min(cfg().Transitions.Raid.Step, cfg().Cycle.Refresh)
+			task.wait(tick)
 			if not St.Running or St.Gen ~= gen then
 				break
 			end
-			safeRefresh()
+			St.Waited = St.Waited + tick
+			if St.Waited >= (St.Step or cfg().Cycle.Refresh) - 1e-6 then
+				St.Waited = 0
+				safeRefresh()
+			end
 		end
 		if St.Gen == gen then
 			St.Loops = St.Loops - 1
@@ -541,12 +574,27 @@ end
 
 SkyController.Init = SkyController.Start
 
+-- a refresh right after this frame (a running controller only), like the attribute signals' (sky audit F3: the pocket
+-- fight's sky used to wait for the next loop tick, and could open on the swap itself)
+local function refreshSoon()
+	if not St.Running then
+		return
+	end
+	local gen = St.Gen
+	task.defer(function()
+		if St.Running and St.Gen == gen then
+			safeRefresh()
+		end
+	end)
+end
+
 function SkyController.SetLocalEvent(bossId)
 	if bossId == nil then
 		if St.Local then
 			St.LocalOut = { At = Workspace:GetServerTimeNow(), Attr = Workspace:GetAttribute(cfg().Attr.EventAt) }
+			St.Local = nil
+			refreshSoon()
 		end
-		St.Local = nil
 		return true
 	end
 	if not raidId(bossId) then
@@ -554,6 +602,7 @@ function SkyController.SetLocalEvent(bossId)
 	end
 	if not (St.Local and St.Local.Id == bossId) then
 		St.Local = { Id = bossId, At = Workspace:GetServerTimeNow() }
+		refreshSoon()
 	end
 	St.LocalOut = nil
 	return true
