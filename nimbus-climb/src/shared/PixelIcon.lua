@@ -13,7 +13,9 @@
 --                                      colour), TextTransparency and ZIndex (and with px nil its TextSize): an icon a
 --                                      caller treats as a glyph
 --   PixelIcon.Lead(label, name[, opts]) (U7a) the icon in front of a label's text ("<coin> 1,250"), the text inset past it;
---                                      opts.After / Count / Of: a rating after the text ("Easy" + 3 lit stars of 5); opts.Gap.
+--                                      opts.After / Count / Of: a rating after the text ("Easy" + 3 lit stars of 5); opts.Gap;
+--                                      opts.Room (render gate): a left-aligned label keeps the trailing icons' room inside
+--                                      its box (its text truncates first, the icons never leave the box).
 --                                      Placed from TextBounds, or Theme.MeasureLabel when that reads 0 (a server: world signs)
 --   PixelIcon.Clear(label[, opts])     (U7b) takes a Lead icon off again (a row whose mark comes and goes), insets back
 --   PixelIcon.Mark(label, name|nil[, opts])  (U7b) Lead / Clear only when the mark changed: a status line set each refresh
@@ -389,6 +391,15 @@ function PixelIcon.Lead(label, name, opts)
 		if textW <= 0 and label.Text ~= "" then
 			textW = measuredWidth(label)
 		end
+		if opts.Room == true and after and align == Enum.TextXAlignment.Left then
+			-- (render gate) a truncated text's bounds can run past its text area: the icons start at that area's end at most
+			local okA, boxW = pcall(function()
+				return label.AbsoluteSize.X / scaleOf(label)
+			end)
+			if okA and type(boxW) == "number" and boxW > 0 then
+				textW = math.min(textW, boxW - pad.PaddingLeft.Offset - pad.PaddingRight.Offset)
+			end
+		end
 		box.AnchorPoint = Vector2.new(after and 0 or 1, 0.5)
 		if align == Enum.TextXAlignment.Right then
 			box.Position = after and UDim2.new(1, gap, 0.5, 0) or UDim2.new(1, -(textW + gap), 0.5, 0)
@@ -405,7 +416,7 @@ function PixelIcon.Lead(label, name, opts)
 	end
 	if not after and align ~= Enum.TextXAlignment.Right then
 		pad.PaddingLeft = UDim.new(pad.PaddingLeft.Scale, baseL + w + gap)
-	elseif after and align ~= Enum.TextXAlignment.Left then
+	elseif after and (align ~= Enum.TextXAlignment.Left or opts.Room == true) then
 		pad.PaddingRight = UDim.new(pad.PaddingRight.Scale, baseR + w + gap)
 	end
 	sync()
@@ -418,6 +429,10 @@ function PixelIcon.Lead(label, name, opts)
 		label:GetPropertyChangedSignal("TextBounds"):Connect(place),
 		label:GetPropertyChangedSignal("Text"):Connect(place),
 	}
+	if opts.Room == true then
+		table.insert(leadConns[label][childName], label:GetPropertyChangedSignal("AbsoluteSize"):Connect(place))
+		table.insert(leadConns[label][childName], label:GetPropertyChangedSignal("Size"):Connect(place))
+	end
 	return box
 end
 

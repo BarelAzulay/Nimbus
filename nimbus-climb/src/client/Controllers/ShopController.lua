@@ -622,7 +622,9 @@ function H.build()
 	Util.Create("UIGradient", { Rotation = 90, Color = ColorSequence.new(Theme.Lighten(K.ACCENT, 0.15), Theme.Darken(K.ACCENT, 0.45)), Parent = U.Band })
 	U.Icon = label("Icon", header, "", "Display", 42, { TextTruncate = Enum.TextTruncate.None })
 	PixelIcon.Host(U.Icon, NeonKit.IconName("Eggs")) -- (kit-b U7a) the egg, sized with the label
-	U.Title = Theme.StyleTitle(label("Title", header, "Shop", "Title", 34, { TextXAlignment = Enum.TextXAlignment.Left }))
+	U.Title = label("Title", header, "Shop", "Title", 34, { TextXAlignment = Enum.TextXAlignment.Left })
+	U.Title:SetAttribute("RibbonBand", "NoTails") -- (render gate) on the navy header the tails read as a glitchy block (U9 wave 2 redraws it)
+	Theme.StyleTitle(U.Title)
 	local function pill(id)
 		local cur = Theme.Currency[id]
 		local root = frame("Balance_" .. id, header, { BackgroundTransparency = 0.15, BackgroundColor3 = Colors.PanelInk or K.NAVY })

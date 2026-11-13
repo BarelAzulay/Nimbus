@@ -168,22 +168,24 @@ local K = {
 
 -- VG: geometry of the vitals card in design px (1080p), width 236-300 (the bars stretch with it; the badges
 -- and the dash ring keep their size). H = the layout slot, CARD_H = the card drawn in it (from the top).
--- Left column: the heart badge over the lightning badge, both overlapping the card's left edge. Regular (desktops):
--- the dash ring ends the stamina row. Compact (short touch screens, landscape phones): a flatter card that
--- leaves a gap at the bottom of its slot, with a bigger dash ring at the right end spanning both rows.
+-- Left column: the heart badge over the lightning badge. (render gate, the pitch's .vit) both the same size, centred on
+-- one column INSIDE the card (they overhung its left edge, the bolt below its bottom), each on its bar's row; the bars
+-- start on one line right of them. Regular (desktops): the dash ring ends the stamina row. Compact (short touch screens,
+-- landscape phones): a flatter card that leaves a gap at the bottom of its slot, with a bigger dash ring at the right end
+-- spanning both rows.
 local VG = {
 	Regular = {
-		H = K.VITALS_H, CARD_H = K.VITALS_H, CARD_X = 20, CARD_CORNER = 0, -- (kit-b U8: square)
-		BADGE_X = 28, HEART = 52, HEART_Y = 26, HEART_TEXT = 34, BOLT = 36, BOLT_Y = 72,
-		HP_X = 46, HP_Y = 8, HP_H = 36, HP_TEXT = 26, PAD_R = 10,
-		ST_X = 40, ST_Y = 61, ST_H = 22,
+		H = K.VITALS_H, CARD_H = K.VITALS_H, CARD_X = 0, CARD_CORNER = 0, -- (kit-b U8: square)
+		BADGE_X = 25, HEART = 32, HEART_Y = 26, HEART_TEXT = 22, BOLT = 32, BOLT_Y = 72,
+		HP_X = 49, HP_Y = 8, HP_H = 36, HP_TEXT = 26, PAD_R = 10,
+		ST_X = 49, ST_Y = 61, ST_H = 22,
 		RING = 40, RING_Y = 71, RING_GAP = 8, RING_FACE = 22, RING_TEXT = 20, RING_SPAN = false,
 	},
 	Compact = {
-		H = 80, CARD_H = 70, CARD_X = 18, CARD_CORNER = 0,
-		BADGE_X = 24, HEART = 44, HEART_Y = 22, HEART_TEXT = 30, BOLT = 28, BOLT_Y = 54,
+		H = 80, CARD_H = 70, CARD_X = 0, CARD_CORNER = 0,
+		BADGE_X = 20, HEART = 24, HEART_Y = 22, HEART_TEXT = 18, BOLT = 24, BOLT_Y = 53,
 		HP_X = 40, HP_Y = 7, HP_H = 30, HP_TEXT = 23, PAD_R = 9,
-		ST_X = 34, ST_Y = 45, ST_H = 18,
+		ST_X = 40, ST_Y = 45, ST_H = 18,
 		RING = 46, RING_Y = 35, RING_GAP = 8, RING_FACE = 30, RING_TEXT = 22, RING_SPAN = true,
 	},
 }
@@ -203,6 +205,11 @@ local VS = {
 	PanelBottom = Colors.PanelBottom or Colors.Panel,
 	PanelInk = Colors.PanelInk or Colors.Ink,
 	BoltBlue = Color3.fromRGB(70, 156, 236),
+	-- (render gate, the pitch's .vit) colour by role: the HP bar red, the stamina gold (bar, bolt badge, dash face)
+	Hp = Theme.Sign.Red,
+	HpDown = Theme.Sign.RedLip,
+	Stamina = Theme.Sign.Gold,
+	BoltInk = Theme.Sign.Text,
 	Edge = Theme.Darken(NAVY, 0.3), -- outline of the tubes and the dash ring
 	TrackTop = Color3.fromRGB(12, 16, 40), -- the dark inset track of the tubes and the ring
 	TrackBottom = Color3.fromRGB(40, 52, 104),
@@ -1407,7 +1414,7 @@ function Vitals.NewDashRing(parent)
 		g.Parent = disc
 		halves[i] = { Disc = disc, Gradient = g }
 	end
-	local face, faceGradient, faceStroke = newBadge(root, "Face", 20, Colors.Stamina, Theme.Lighten(Colors.Stamina, 0.45))
+	local face, faceGradient, faceStroke = newBadge(root, "Face", 20, VS.Stamina, Theme.Lighten(VS.Stamina, 0.45))
 	face.AnchorPoint = Vector2.new(0.5, 0.5)
 	face.Position = UDim2.fromScale(0.5, 0.5)
 	face.ZIndex = 2
@@ -1508,20 +1515,21 @@ local function buildVitals(holder)
 	UI.RimCorner = Theme.Corner(rim, "None")
 
 	-- health tube with the damage trail, then the thinner stamina tube (ends left of the dash ring)
-	UI.HpBar = Vitals.NewBar(body, "HealthBar", { Color = Colors.Health, Trail = true, Text = "100 / 100" })
-	UI.StBar = Vitals.NewBar(body, "StaminaBar", { Color = Colors.Stamina })
+	UI.HpBar = Vitals.NewBar(body, "HealthBar", { Color = VS.Hp, Trail = true, Text = "100 / 100" })
+	UI.StBar = Vitals.NewBar(body, "StaminaBar", { Color = VS.Stamina })
 	Vitals.BuildTicks(UI.StBar)
 	UI.Ring = Vitals.NewDashRing(body)
 
-	-- lightning badge (under the heart), then the heart badge on top
-	local bolt, boltGradient = newBadge(body, "StaminaBadge", 36, VS.BoltBlue, Theme.Lighten(VS.BoltBlue, 0.45))
+	-- lightning badge (under the heart), then the heart badge on top (render gate: gold with a brown bolt, the stamina's
+	-- colour)
+	local bolt, boltGradient = newBadge(body, "StaminaBadge", 36, VS.Stamina, Theme.Lighten(VS.Stamina, 0.45))
 	bolt.AnchorPoint = Vector2.new(0.5, 0.5)
 	bolt.ZIndex = 5
-	local boltShadow = Vitals.BoltShape(bolt, "BoltShadow", 0.68, Theme.Darken(VS.BoltBlue, 0.6), 2)
+	local boltShadow = Vitals.BoltShape(bolt, "BoltShadow", 0.68, Theme.Darken(VS.Stamina, 0.35), 2)
 	boltShadow.Position = UDim2.new(0.5, 0, 0.5, 2)
 	UI.Bolt = {
 		Badge = bolt, Gradient = boltGradient, Shadow = boltShadow,
-		Shape = Vitals.BoltShape(bolt, "Bolt", 0.68, WHITE, 3),
+		Shape = Vitals.BoltShape(bolt, "Bolt", 0.68, VS.BoltInk, 3),
 	}
 
 	local heart = newBadge(body, "Heart", 52, HEART_RED, Theme.Lighten(HEART_RED, 0.38))
@@ -2112,12 +2120,13 @@ local function updateHealth(dt, now)
 	end
 	UI.HpBar.SetTrail(H.Trail)
 
-	-- colour: green -> amber -> red, red while downed
+	-- colour (render gate, the pitch's .vit): the HP bar is red at every level (low health shows on the card's red edge),
+	-- the darker red while downed
 	local key = "ok"
-	local color = Theme.HealthColor(H.Target)
+	local color = VS.Hp
 	if S.downed then
 		key = "down"
-		color = Colors.Bad
+		color = VS.HpDown
 	elseif H.Target <= K.LOW_HEALTH then
 		key = "low"
 	elseif H.Target <= 0.6 then
@@ -2259,9 +2268,9 @@ function Vitals.PaintRing(ready, afford)
 		half.Disc.BackgroundColor3 = sweepColor
 	end
 	if ready then
-		ring.FaceGradient.Color = badgeSequence(Colors.Stamina, Theme.Lighten(Colors.Stamina, 0.45))
+		ring.FaceGradient.Color = badgeSequence(VS.Stamina, Theme.Lighten(VS.Stamina, 0.45))
 	else
-		ring.FaceGradient.Color = badgeSequence(Theme.Darken(Colors.Stamina, 0.55), Theme.Darken(Colors.Stamina, 0.35))
+		ring.FaceGradient.Color = badgeSequence(Theme.Darken(VS.Stamina, 0.55), Theme.Darken(VS.Stamina, 0.35))
 	end
 	ring.Glyph.TextColor3 = Theme.TextOn(ring.FaceGradient.Color) -- kit B: brown on the bright face, white on the dark one
 	ring.Glyph.TextTransparency = ready and 0 or 0.35
@@ -2272,11 +2281,11 @@ end
 
 -- dim 0 = bright .. 1 = empty: the tube greys out and the lightning badge fades
 function Vitals.PaintStaminaDim(dim)
-	local base = VS.BoltBlue:Lerp(VS.Grey, 0.85 * dim)
+	local base = VS.Stamina:Lerp(VS.Grey, 0.85 * dim)
 	UI.Bolt.Gradient.Color = badgeSequence(base, Theme.Lighten(base, 0.45))
 	Vitals.SetShapeTransparency(UI.Bolt.Shape, 0.5 * dim)
 	Vitals.SetShapeTransparency(UI.Bolt.Shadow, 0.5 * dim)
-	UI.StBar.SetColor(Colors.Stamina:Lerp(VS.Grey, 0.7 * dim))
+	UI.StBar.SetColor(VS.Stamina:Lerp(VS.Grey, 0.7 * dim))
 end
 
 local function updateStamina(dt, now)

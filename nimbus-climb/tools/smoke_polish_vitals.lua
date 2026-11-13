@@ -376,7 +376,11 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 		"vitals: the heart badge draws a real heart (a turned square + two lobes)")
 	local boltShape = path(c.Bolt, "Bolt")
 	T.check(boltShape ~= nil and #boltShape:GetChildren() == 3, "vitals: the stamina badge draws a lightning bolt")
-	T.check(c.Heart.AbsoluteSize.X / k >= 44 and c.Bolt.AbsoluteSize.X / k >= 28 and c.Ring.AbsoluteSize.X / k >= 34, "vitals: badges and the dash ring are chunky")
+	-- (render gate, GATE_KITB; the pitch's .vit) the heart and bolt badges the same size on one column (was a 52 px heart
+	-- and a 36 px bolt, overhanging the card)
+	T.check(c.Heart.AbsoluteSize.X / k >= 28 and close(c.Heart.AbsoluteSize.X, c.Bolt.AbsoluteSize.X, 0.5) and c.Ring.AbsoluteSize.X / k >= 34,
+		"vitals: badges and the dash ring are chunky, the two badges one size",
+		fmt("heart %.0f, bolt %.0f design px", c.Heart.AbsoluteSize.X / k, c.Bolt.AbsoluteSize.X / k))
 
 	-- 2. the number: big, the Display font. Readability rule (kit-b U6 review): it sits on the HP tube with no outline, so
 	-- it must read by its colour: dark ink on the fill, at least 3:1 against every stop of the fill's gradient
@@ -386,11 +390,16 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 		"vitals: the HP number is big (>= 24 px at 1080p), Display font", fmt("%.1f px", c.HpText.TextSize * scaleOf(c.HpText)))
 	local reading = contrastOf(c.HpText)
 	T.check(reading ~= nil and reading.backdrop == c.HpFill and reading.ratio >= reading.need,
-		"vitals: full health: the HP number reads on the green fill (>= 3:1 at its worst gradient stop, no outline)",
+		"vitals: full health: the HP number reads on the red fill (>= 3:1 at its worst gradient stop, no outline)",
 		reading and fmt("%.2f:1 on %s (need %g)", reading.ratio, reading.backdrop.Name, reading.need) or "not read (outlined, hidden or no fill under it)")
 	local small = smallTexts(c.Vitals, 15)
 	T.check(#small == 0, "vitals: every text of the card is >= 15 px at 1920x1080", table.concat(small, ", "))
-	T.check(fillGradient and sameColor(gradientAt(fillGradient, 0.4), Theme.Colors.Health, 0.03), "vitals: full health is green")
+	-- (render gate, the pitch's .vit: colour by role) the HP fill is the sign red, the stamina fill the sign gold
+	T.check(fillGradient and sameColor(gradientAt(fillGradient, 0.4), Theme.Sign.Red, 0.03), "vitals: full health is red (the pitch's HP colour; was green)")
+	local stGradient = c.StFill and c.StFill:FindFirstChildOfClass("UIGradient")
+	T.check(stGradient and sameColor(gradientAt(stGradient, 0.4), Theme.Sign.Gold, 0.03), "vitals: the stamina fill is gold (the pitch's segments; was blue)")
+	local boltGradient = c.Bolt:FindFirstChildOfClass("UIGradient")
+	T.check(boltGradient and sameColor(gradientAt(boltGradient, 0.4), Theme.Sign.Gold, 0.03), "vitals: the lightning badge is gold too (was blue)")
 
 	-- 3. place (bug batch 2 #1, option A): bottom-centre right above the hotbar, inside its slot, clear of the hotbar,
 	-- the menu column and the currency stack
@@ -407,7 +416,19 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	local outside = partsInside(c, 4 * k)
 	T.check(#outside == 0, "vitals: every part of the card stays inside its layout slot", table.concat(outside, ", "))
 	local cardBox = rect(c.Card)
-	T.check(cardBox.x0 > box.x0 + 8 * k and rect(c.Heart).x0 < cardBox.x0, "vitals: the heart badge overlaps the card's left edge (like the coins above)")
+	-- (render gate, GATE_KITB: they overhung the card, the bolt below its bottom) both badges sit inside the card, on one
+	-- column, each beside its own tube
+	local hb, bb, hpb, stb = rect(c.Heart), rect(c.Bolt), rect(c.Hp), rect(c.St)
+	local inside = true
+	for _, r in ipairs({ hb, bb }) do
+		inside = inside and r.x0 >= cardBox.x0 - 0.5 and r.x1 <= cardBox.x1 + 0.5 and r.y0 >= cardBox.y0 - 0.5 and r.y1 <= cardBox.y1 + 0.5
+	end
+	T.check(inside, "vitals: the heart and bolt badges sit inside the card", fmt("card %.0f,%.0f-%.0f,%.0f heart %.0f,%.0f-%.0f,%.0f bolt %.0f,%.0f-%.0f,%.0f",
+		cardBox.x0, cardBox.y0, cardBox.x1, cardBox.y1, hb.x0, hb.y0, hb.x1, hb.y1, bb.x0, bb.y0, bb.x1, bb.y1))
+	T.check(close(hb.x0, bb.x0, 1) and close(hb.x1, bb.x1, 1) and hb.x1 <= hpb.x0 and bb.x1 <= stb.x0 and close(hpb.x0, stb.x0, 1),
+		"vitals: ...on one column, the two tubes starting on one line right of them")
+	T.check(math.abs((hb.y0 + hb.y1) / 2 - (hpb.y0 + hpb.y1) / 2) <= 2 and math.abs((bb.y0 + bb.y1) / 2 - (stb.y0 + stb.y1) / 2) <= 3,
+		"vitals: ...each badge on its own tube's row")
 	for _, other in ipairs({ { "NimbusMenu.MenuColumn", "the menu column" }, { "NimbusHud.TopRight.Currency", "the currency stack" } }) do
 		local o = path(playerGui(), other[1])
 		if o and shown(o) then
@@ -440,8 +461,8 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	advance(2)
 	T.check(close(fraction(c.Trail), fraction(c.HpFill), 0.01) and close(fraction(c.HpFill), 47 / 117, 0.01), "vitals: the trail catches up with the fill",
 		fmt("trail %.2f, fill %.2f", fraction(c.Trail), fraction(c.HpFill)))
-	T.check(sameColor(gradientAt(fillGradient, 0.4), Theme.Colors.HealthMid, 0.03), "vitals: 40% health turns the fill amber")
-	T.check(sameColor(c.CardStroke.Color, Theme.Sign.Wood, 0.01), "vitals: ...and the card's edge stays wood (kit-b U8: the fill carries the amber; was an amber neon border)")
+	T.check(sameColor(gradientAt(fillGradient, 0.4), Theme.Sign.Red, 0.03), "vitals: 40% health keeps the red fill (render gate: the role's colour; was amber)")
+	T.check(sameColor(c.CardStroke.Color, Theme.Sign.Wood, 0.01), "vitals: ...and the card's edge stays wood (kit-b U8; was an amber neon border)")
 
 	-- 5. low health (< 30%): the heart beats, the outline glows red, the fill is red
 	setHealth(117, 18)
@@ -459,7 +480,7 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	end
 	T.check(maxScale > 1.08 and minScale < 1.03, "vitals: below 30% the heart beats", fmt("scale %.2f..%.2f", minScale, maxScale))
 	T.check(maxRed > 0.25, "vitals: ...and the card's outline pulses red", fmt("+%.2f red", maxRed))
-	T.check(sameColor(gradientAt(fillGradient, 0.4), Theme.Colors.HealthLow, 0.03), "vitals: low health turns the fill red")
+	T.check(sameColor(gradientAt(fillGradient, 0.4), Theme.Sign.Red, 0.03), "vitals: low health keeps the fill red (the red edge and the beat tell it)")
 	local readsLow, notesLow = hpNumberReads(c)
 	T.check(readsLow, "vitals: ...and the number reads on the dark track (white there; kit-b U6 review)", notesLow)
 	setHealth(117, 117)

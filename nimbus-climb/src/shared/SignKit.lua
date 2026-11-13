@@ -6,7 +6,9 @@
 --                                 only, never stretched with the window; Gemini's rule), centred on the window's top.
 --                                 opts.Shape = "Gable": the Credits window's gable (two slopes, fascia, vent)
 --   SignKit.Header(parent, opts)  the navy sign plank in a wood rim, its title in FredokaOne gold (Title role, through
---                                 Theme.StyleTitle); returns head, plate (the caller adds a close X to the plate)
+--                                 Theme.StyleTitle); returns head, plate (the caller adds a close X to the plate).
+--                                 opts.Ribbon: the plate is the T1 band out over the frame with its tails
+--                                 (SignKit.HeaderOverhang(head, on) pulls it in and drops the tails)
 --   SignKit.Frame(parent, opts)   the wood frame under the header
 --   SignKit.Body(frame, opts)     the stone body inside it, with the stone lip along its bottom
 --   SignKit.Plank(parent, opts)   a button with a real bottom lip: hover lifts the block 2 px, press sinks it 4 px and the
@@ -201,34 +203,102 @@ end
 -- header, frame, body
 ----------------------------------------------------------------------
 
+-- (render gate, GATE_KITB; the pitch title_T1: "The band sizes to the header; the tails are fixed") the band over a
+-- Ribbon header: the plate reaches this far past the frame on each side, a swallowtail tail hangs off each end
+SignKit.HeaderBand = { Over = 10 }
+
+-- the plate inside the rim, or (a Ribbon header) the band out over the frame with its tails; SignKit.HeaderOverhang
+local function placePlate(head, on)
+	local plate = head:FindFirstChild("Plate")
+	local rim = head:GetAttribute("Rim") or Z.Rim
+	local over = on and SignKit.HeaderBand.Over or 0
+	if not plate then
+		return
+	end
+	-- the plate's own parts (the icon square, the title) keep their place on the screen when the plate moves
+	local delta = (on and -over or rim) - plate.Position.X.Offset
+	if delta ~= 0 then
+		for _, c in ipairs(plate:GetChildren()) do
+			if c:IsA("GuiObject") and c:GetAttribute("Ribbon") == nil then
+				local p, s = c.Position, c.Size
+				c.Position = UDim2.new(p.X.Scale, p.X.Offset - delta, p.Y.Scale, p.Y.Offset)
+				if s.X.Scale == 1 then
+					c.Size = UDim2.new(1, s.X.Offset + delta, s.Y.Scale, s.Y.Offset)
+				end
+			end
+		end
+	end
+	plate.Position = UDim2.fromOffset(on and -over or rim, rim)
+	plate.Size = UDim2.new(1, on and 2 * over or -2 * rim, 1, -rim)
+	for _, side in ipairs({ "TailL", "TailR" }) do
+		local tail = head:FindFirstChild(side)
+		if tail then
+			tail.Visible = on
+		end
+	end
+	head:SetAttribute("Overhang", on)
+end
+
+-- (render gate) a Ribbon header's band out over the frame with its tails (on), or kept inside the rim with no tails (off:
+-- a phone's short title sign, whose tails would land on the controls beside it). The title does not move
+function SignKit.HeaderOverhang(head, on)
+	if head and head:GetAttribute("Ribbon") then
+		placePlate(head, on == true)
+	end
+end
+
 -- opts: Title, TitleRole ("Title"), TitleSize, TitleColor (gold), Drop (a Color3: a drop line 3 px under the title),
 -- TitleX, Reserve (px kept free on the right, e.g. for a close X), Y, Height, Rim, RimColor (wood), Color (navy),
--- IconSlot (a gold square left of the title for a PixelIcon)
+-- IconSlot (a gold square left of the title for a PixelIcon), Ribbon (render gate: the plate is the T1 band the whole
+-- header wide, out over the frame by HeaderBand.Over with a tail at each end; the title's ribbon keeps only its
+-- letters, underline and stair, Theme's RibbonBand = "Header")
 function SignKit.Header(parent, opts)
 	opts = opts or {}
 	local rim = tonumber(opts.Rim) or Z.Rim
+	local role = opts.TitleRole or "Title"
+	local ribbon = opts.Ribbon == true and role == "Title"
+	local shift = ribbon and SignKit.HeaderBand.Over or 0 -- the plate starts this far left of the head: its children move in
 	local head = fill("Head", opts.RimColor or Sign.Wood, {
 		Position = UDim2.fromOffset(0, tonumber(opts.Y) or 0),
 		Size = UDim2.new(1, 0, 0, tonumber(opts.Height) or Z.HeadH),
 		Active = true,
 	}, parent)
+	head:SetAttribute("Rim", rim)
 	local plate = fill("Plate", opts.Color or Sign.Navy, {
 		Position = UDim2.fromOffset(rim, rim),
 		Size = UDim2.new(1, -2 * rim, 1, -rim),
 	}, head)
-	local x = tonumber(opts.TitleX) or Z.TitleX
+	local size = tonumber(opts.TitleSize) or Theme.RoleSize(role)
+	if ribbon then
+		-- the tails behind the band's ends (ZIndex under the plate), their bottoms a little under the band's (the pitch)
+		local R = Theme.TitleRibbon
+		local k = size / R.Base
+		local function px(v, least)
+			return math.max(least or 1, math.floor(v * k + 0.5))
+		end
+		local tw, th, over, notch = px(R.TailW), px(R.TailH), px(R.TailOver), px(R.Notch, 2)
+		for _, side in ipairs({ { "TailL", -1 }, { "TailR", 1 } }) do
+			local tail = fill(side[1], Sign.NavyLip, { ZIndex = 0 }, head)
+			tail:SetAttribute("Ribbon", "Tail")
+			Theme.RibbonTail(tail, tw, th, notch, side[2])
+			tail.Position = side[2] < 0 and UDim2.new(0, -shift - (tw - notch) + over, 1, -th + px(R.TailOver))
+				or UDim2.new(1, shift - over, 1, -th + px(R.TailOver))
+		end
+		head:SetAttribute("Ribbon", true)
+		placePlate(head, true)
+	end
+	local x = (tonumber(opts.TitleX) or Z.TitleX) + shift
 	if opts.IconSlot then
 		local slot = fill("IconSlot", Sign.Gold, {
 			AnchorPoint = Vector2.new(0, 0.5),
-			Position = UDim2.new(0, 12, 0.5, 0),
+			Position = UDim2.new(0, 12 + shift, 0.5, 0),
 			Size = UDim2.fromOffset(Z.IconSlot, Z.IconSlot),
+			ZIndex = 2, -- over the band's pipings
 		}, plate)
 		line(slot, Sign.Text, 2)
-		x = 12 + Z.IconSlot + 12
+		x = 12 + Z.IconSlot + 12 + shift
 	end
-	local role = opts.TitleRole or "Title"
-	local size = tonumber(opts.TitleSize) or Theme.RoleSize(role)
-	local box = UDim2.new(1, -(x + (tonumber(opts.Reserve) or 0)), 1, 0)
+	local box = UDim2.new(1, -(x + (tonumber(opts.Reserve) or 0) + shift), 1, 0)
 	if opts.Drop then
 		text("TitleDrop", opts.Title, role, size, opts.Drop, {
 			Position = UDim2.fromOffset(x, 3),
@@ -244,6 +314,9 @@ function SignKit.Header(parent, opts)
 		ZIndex = 2,
 	}, plate)
 	if role == "Title" then
+		if ribbon then
+			title:SetAttribute("RibbonBand", "Header") -- the plate is its band
+		end
 		Theme.StyleTitle(title) -- (T0) the one title treatment; the Credits' Sign role keeps its approved look
 	end
 	place(head, opts, "Header")

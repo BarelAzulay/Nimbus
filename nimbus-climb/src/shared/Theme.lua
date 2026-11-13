@@ -991,6 +991,31 @@ local function ribbonTail(tail, w, h, notch, outer)
 	end
 end
 
+Theme.RibbonTail = ribbonTail -- (render gate) SignKit.Header's tails on a header-wide band
+
+-- (render gate, GATE_KITB) a header title whose header IS the band (label attribute RibbonBand = "Header", set by
+-- SignKit.Header's Ribbon opt; the pitch title_T1: "the band sizes to the header"): the label's parent, the header's navy
+-- plate, gets the band's lines in the label's px (the lit top, the lip, two brass pipings along its whole width).
+-- Returns the px from the plate's bottom to the top of the low piping (the underline sits on it)
+local PLATE_LINES = { { "BandTop", "NavyTop", "Top" }, { "BandLip", "NavyLip", "Lip" }, { "BandPipeTop", "Brass", "Pipe" }, { "BandPipeLow", "Brass", "Pipe" } }
+local function ribbonPlate(plate, px)
+	local R = Theme.TitleRibbon
+	for _, spec in ipairs(PLATE_LINES) do
+		local f = plate:FindFirstChild(spec[1])
+		if not f then
+			f = ribbonFrame(spec[1], Theme.Sign[spec[2]], 0, plate)
+			f:SetAttribute("Ribbon", "PlateLine")
+		end
+		f.Size = UDim2.new(1, 0, 0, px(R[spec[3]]))
+	end
+	local lip, pipe, pipeIn = px(R.Lip), px(R.Pipe), px(R.PipeIn)
+	plate.BandTop.Position = UDim2.fromOffset(0, 0)
+	plate.BandLip.Position = UDim2.new(0, 0, 1, -lip)
+	plate.BandPipeTop.Position = UDim2.fromOffset(0, pipeIn)
+	plate.BandPipeLow.Position = UDim2.new(0, 0, 1, -(lip + pipeIn + pipe))
+	return lip + pipeIn + pipe
+end
+
 -- (kit-b merge) the product of the UIScales on `obj` and every GuiObject above it, up to its ScreenGui: TextBounds and
 -- AbsoluteSize are screen px (after all of them), the ribbon's offsets are the label's own px (PixelIcon's scaleOf)
 local function uiScaleOf(obj)
@@ -1045,6 +1070,15 @@ local function ribbonLayout(label, rib)
 	local bandH, pad = px(R.Band), px(R.Pad)
 	local bandTop = math.floor(yo - bandH / 2 + px(R.Drop) + 0.5)
 	local band = rib.RibbonBand
+	-- (render gate) nil: the title's own band and tails; "Header": its header's plate is the band (SignKit.Header, Ribbon);
+	-- "NoTails": its own band without the tails (a title on a navy header that is not the band: tails inside a navy
+	-- bar read as a glitchy darker block)
+	local mode = label:GetAttribute("RibbonBand")
+	local onPlate = mode == "Header" and label.Parent ~= nil and label.Parent:IsA("GuiObject")
+	local tailsOn = mode == nil
+	band.Visible = not onPlate
+	rib.TailL.Visible = tailsOn
+	rib.TailR.Visible = tailsOn
 	local centred = label.TextXAlignment == Enum.TextXAlignment.Center
 	local inR = label.TextXAlignment == Enum.TextXAlignment.Right
 	local sw, sh = px(R.StepW, 2), px(R.StepH, 2)
@@ -1059,7 +1093,10 @@ local function ribbonLayout(label, rib)
 	-- (sign/logo review) how far a header title's letters move in off the box's edge, onto the band, and whether the
 	-- stair after them still fits in the box
 	local inset, stairs = 0, true
-	if centred then
+	if onPlate then
+		-- the plate is the band: the letters stay where the caller put them, the stair follows them while the box has room
+		stairs = boxW <= 0 or boxW - tw - 3 * sw >= 0
+	elseif centred then
 		-- a centred title (a dialog, the hatch stage) hangs a banner round its text, room for the steps on both sides
 		local half = math.floor(tw / 2 + 3 * sw + pad + 0.5)
 		band.Position = UDim2.new(0.5, -half, ya, bandTop)
@@ -1071,7 +1108,7 @@ local function ribbonLayout(label, rib)
 		-- edge, the letters move in onto the band, the stair follows them, then a little band and the right tail, never
 		-- past the box. A box with too little room keeps the letters nearer its edge, then leaves the stair off (a box
 		-- fitted to its text, as Fusion's)
-		local lead = px(R.TailW) - px(R.TailOver)
+		local lead = tailsOn and px(R.TailW) - px(R.TailOver) or 0
 		local gap = math.floor(pad / 2 + 0.5)
 		inset = lead + gap
 		if boxW > 0 then
@@ -1117,8 +1154,10 @@ local function ribbonLayout(label, rib)
 			ribbonTail(tail, tw0, th, notch, tail == rib.TailL and -1 or 1)
 		end
 	end
-	rib.TitleFace.Position = UDim2.fromOffset(faceX, 0)
-	rib.TitleShadow.Position = UDim2.fromOffset(faceX, px(R.Shadow, 2))
+	-- on a header's plate the letters ride high on the band as they do on the title's own (its Drop)
+	local lift = onPlate and px(R.Drop) or 0
+	rib.TitleFace.Position = UDim2.fromOffset(faceX, -lift)
+	rib.TitleShadow.Position = UDim2.fromOffset(faceX, px(R.Shadow, 2) - lift)
 	rib.TitleFace.TitleOutline.Thickness = px(R.Stroke, 2)
 	rib.TitleShadow.TitleOutline.Thickness = px(R.Stroke, 2)
 	-- the underline on the low piping, under the letters; its three steps rising after it
@@ -1130,6 +1169,9 @@ local function ribbonLayout(label, rib)
 	end
 	local under = px(R.Under, 2)
 	local underY = bandTop + lowPipe - under
+	if onPlate then
+		ya, underY = 1, -ribbonPlate(label.Parent, px) - under -- on the plate's low piping (the label is the plate's height)
+	end
 	rib.RibbonUnderline.Position = UDim2.new(xs, math.floor(xo + 0.5), ya, underY)
 	rib.RibbonUnderline.Size = UDim2.fromOffset(math.floor((boxW > 0 and not centred and math.min(tw, boxW - inset) or tw) + 0.5), under)
 	for i = 1, 3 do
@@ -1235,6 +1277,9 @@ local function ribbon(label)
 				label:GetPropertyChangedSignal(prop):Connect(again)
 			end)
 		end
+		pcall(function()
+			label:GetAttributeChangedSignal("RibbonBand"):Connect(again)
+		end)
 	end
 end
 

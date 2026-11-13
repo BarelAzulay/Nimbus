@@ -59,6 +59,7 @@ local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
 local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7a) the reward's Cloud Token coin
+local SignKit = require(Shared:WaitForChild("SignKit")) -- (render gate) the header band kept inside the docked window
 local Remotes = require(Shared:WaitForChild("Remotes"))
 
 local Client = script.Parent.Parent
@@ -2435,6 +2436,9 @@ local function buildWindow()
 		Parent = holder,
 	})
 	U.Panel = panel
+	-- (render gate) docked 12 px from the screen's edge (side) or across it (sheet), the T1 band's tails would leave the
+	-- screen: the band stays the header's width inside the frame, no tails
+	SignKit.HeaderOverhang(panel.TitleBar, false)
 	U.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = panel.Root })
 	local content = panel.Content
 

@@ -843,6 +843,7 @@ local function signPanel(props)
 			Height = TITLE_TOP + TITLE_H,
 			Rim = edge,
 			IconSlot = props.Icon ~= nil,
+			Ribbon = true, -- (render gate) the T1 band the header's width, out over the frame with its tails (title_T1)
 			Reserve = props.Closable and (CLOSE_SIZE + 18) or 16,
 			Name = "TitleBar",
 			ZIndex = 3,
@@ -983,6 +984,7 @@ function CloudUI.Panel(props)
 				ZIndex = 6,
 			},
 		})
+		titleLabel:SetAttribute("RibbonBand", "NoTails") -- (render gate) tails inside the navy card read as a glitchy block
 		Theme.StyleTitle(titleLabel)
 		titleLabel.Parent = titleBar
 		underline = frame("Underline", {

@@ -57,6 +57,7 @@ local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
 local PixelIcon = require(Shared:WaitForChild("PixelIcon")) -- (kit-b U7b) the power sword, the stars, the busy marks
+local SignKit = require(Shared:WaitForChild("SignKit")) -- (render gate) the header's band in over a phone's title sign
 local Remotes = require(Shared:WaitForChild("Remotes"))
 
 local Client = script.Parent.Parent
@@ -76,11 +77,16 @@ PetsController.Closed = Util.Signal()
 local K = {
 	DISPLAY_ORDER = 19,
 	MARGIN = 12, -- screen px left and right of the window
+	PORTRAIT_TOP = 52, -- (render gate) a portrait screen's window starts this far under the gui inset: the HUD's currency
+	-- row (its 12 px edge + a 32 px strip) and an 8 px gap
 	RECT = { H0 = 390, W0 = 820, Y0 = 330, H1 = 1080, W1 = 1260, Y1 = 900 }, -- window px at the two screen heights
 	PHONE_W = 900, -- design px: narrower, or lower than SHORT, is the phone layout (the PC top row needs this much)
 	SHORT = 560,
 	PC_MIN_H = 600, -- a landscape screen this tall keeps the window under PC_MAX_W of its width
 	PC_MAX_W = 0.76,
+	POWER_28_W = 290, -- (render gate) Team power keeps its 28 px text from this width (a six-figure power fits), else 24
+	BAND_REACH = 28, -- (render gate) design px the header's T1 band and its tails reach past the window's frame on PC
+	-- (SignKit.HeaderBand.Over 10 + a 34 px title's tail 24 - 7 under the band)
 	SLOTS = 3,
 	PRESETS = 3,
 	SEND_GAP = 0.45, -- seconds between two TeamSet / TeamSelect (the server's cooldowns are 0.4 / 0.3: a closer one is dropped)
@@ -797,8 +803,10 @@ function H.buildSlot(index)
 	item.Level = text(button, "Level", "", "Heading", 18, MUTED, { TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 4 })
 	item.Power = text(button, "Power", "", "Heading", 18, INK, { TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 4 })
 	PixelIcon.Lead(item.Power, ICON.Power) -- (kit-b U7b)
+	-- (render gate) the busy cover is opaque over the slot's top (tag and face): a see-through one left the HELPER tag, the
+	-- name, level and power as a second washed-out layer; the name and power below it stay readable (layoutSlot)
 	item.Busy = text(button, "Busy", "", "Heading", 18, INK, {
-		BackgroundTransparency = 0.2,
+		BackgroundTransparency = 0,
 		BackgroundColor3 = TRAIN_COLOR,
 		Size = UDim2.new(1, 0, 1, 0),
 		Visible = false,
@@ -838,15 +846,17 @@ function H.buildCard(key)
 	item.Power = text(button, "Power", "", "Heading", 18, INK, { TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 3 })
 	PixelIcon.Lead(item.Power, ICON.Power) -- (kit-b U7b)
 	-- the team slot's number: a green square (the pitch's tick chip) with the dark green ink
-	item.Number = text(button, "Number", "", "Button", 18, SIGN.OnGrass, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Grass, Visible = false, ZIndex = 6 })
+	-- (render gate: over the busy cover, so a busy team pet still shows its slot)
+	item.Number = text(button, "Number", "", "Button", 18, SIGN.OnGrass, { BackgroundTransparency = 0, BackgroundColor3 = SIGN.Grass, Visible = false, ZIndex = 8 })
 	stroke(item.Number, SIGN.Wood, 2, 0).LineJoinMode = Enum.LineJoinMode.Miter
 	item.Tier = frame(button, "Tier", { BackgroundTransparency = 0, BackgroundColor3 = GOLD, Visible = false, ZIndex = 5 })
 	stroke(item.Tier, SIGN.Wood, 2, 0).LineJoinMode = Enum.LineJoinMode.Miter
 	item.TierMark = text(item.Tier, "Mark", "", "Button", 18, INK, { Size = UDim2.new(1, 0, 1, 0), ZIndex = 6 })
 	item.Stars = text(button, "Stars", "", "Title", 18, SIGN.GoldLip, { Visible = false, ZIndex = 5 })
 	item.Count = text(button, "Count", "", "Heading", 18, INK, { TextXAlignment = Enum.TextXAlignment.Right, Visible = false, ZIndex = 4 })
+	-- (render gate) opaque over the picture's top, its own label only (layoutCard: the level under it stays readable)
 	item.Busy = text(button, "Busy", "", "Heading", 18, INK, {
-		BackgroundTransparency = 0.2,
+		BackgroundTransparency = 0,
 		BackgroundColor3 = TRAIN_COLOR,
 		TextWrapped = true,
 		Visible = false,
@@ -1094,21 +1104,41 @@ function H.rect()
 	local factor = Theme.ScreenFactor(h)
 	local big = math.max(1, factor)
 	local pxW = math.min((R.W0 + (R.W1 - R.W0) * t) * big, w - 2 * K.MARGIN)
+	-- (render gate) the header band's tails reach BAND_REACH past the frame: room for them on both sides of the screen
+	local reach = K.BAND_REACH * factor
+	local band = (w - pxW) / 2 >= reach + K.MARGIN
 	if w > h and h >= K.PC_MIN_H then
-		pxW = math.min(pxW, w * K.PC_MAX_W) -- the menu tiles and the currency pills stay free
+		-- the menu tiles and the currency pills stay free (render gate: of the band's tails too, while the window keeps its
+		-- full-size PC layout that way; a narrower screen keeps the window's width and the band stays inside)
+		local cap = w * K.PC_MAX_W
+		if pxW > cap - 2 * reach and (cap - 2 * reach) / factor < K.WIDE_W then
+			pxW = math.min(pxW, cap)
+			band = false
+		else
+			pxW = math.min(pxW, cap - 2 * reach)
+		end
 	end
-	local pxH = math.min((R.Y0 + (R.Y1 - R.Y0) * t) * big, h - inset - 2)
+	-- (render gate) a portrait screen keeps the HUD's currency row (under the gui inset) free, with a gap under it
+	local top = w < h and K.PORTRAIT_TOP or 0
+	local pxH = math.min((R.Y0 + (R.Y1 - R.Y0) * t) * big, h - inset - top - 2)
 	local phone = pxW / factor < K.PHONE_W or pxH / factor < K.SHORT
 	local scale = phone and 1 or factor
 	return {
 		x = math.floor((w - pxW) / 2 + 0.5),
-		y = math.floor(inset + (h - inset - pxH) / 2 + 0.5),
+		y = math.floor(math.max(inset + (h - inset - pxH) / 2, inset + top) + 0.5),
 		w = pxW,
 		h = pxH,
 		scale = scale,
 		mode = phone and "Phone" or "PC",
 		portrait = pxH > pxW,
+		band = band and not phone, -- the header's band out over the frame with its tails (SignKit.HeaderOverhang)
 	}
+end
+
+-- the label's top inset (its UIPadding, shared with PixelIcon's lead inset, which insets the mark with the text)
+function H.padTop(label, px)
+	local pad = label:FindFirstChildOfClass("UIPadding") or Util.Create("UIPadding", { Parent = label })
+	pad.PaddingTop = UDim.new(0, px)
 end
 
 function H.layoutCard(item)
@@ -1139,7 +1169,10 @@ function H.layoutCard(item)
 	place(item.Tier, w - 7 - K.CHIP, 11 + K.CHIP, K.CHIP, K.CHIP)
 	place(item.Stars, w / 2 - 18, 4, 36, 22)
 	place(item.Count, w - 44, phone and 60 or 72, 40, 22)
-	place(item.Busy, 0, 0, w, phone and 82 or 96) -- (the card's whole width: "Gardening" and its mark stay on one line)
+	-- (the card's whole width: "Gardening" and its mark stay on one line; render gate: down to the level on PC and the count
+	-- on a phone, so both still read under the opaque cover)
+	place(item.Busy, 0, 0, w, phone and 58 or 70)
+	H.padTop(item.Busy, 7 + K.CHIP) -- the label and its mark under the chips row (the team number stays on top)
 	item.Busy.TextWrapped = true
 end
 
@@ -1165,6 +1198,8 @@ function H.layoutSlot(item, w, h)
 		place(item.Power, 50, h - 30, w - 58, 26)
 		item.Name.Visible = true
 	end
+	-- (render gate) the opaque busy cover over the tag and the face; the power (and the name on PC) stay clear under it
+	place(item.Busy, 0, 0, w, phone and h - 26 or h - 56)
 end
 
 -- design px of a tap target: the PC layout runs under a UIScale, 0.8 on a small screen or a tablet
@@ -1366,7 +1401,9 @@ function H.layoutPC(W, H0)
 			button.TextSize = 26
 		end
 	else
-		U.TeamPower.TextSize = powerW >= 250 and 28 or 24
+		-- (render gate) 28 only while a six-figure power fits: "Team power 19,820" is 259 px at 28 in FredokaOne (the
+		-- render's font metrics), so at 257 px it ran into Auto-fill best
+		U.TeamPower.TextSize = powerW >= K.POWER_28_W and 28 or 24
 		place(U.TeamPower, powerX, top + 8, powerW, 36)
 		place(U.Breakdown, powerX, top + 50, powerW, slot - 54)
 		place(U.AutoFill, buttonX, top + 8, buttonW, 60)
@@ -1489,14 +1526,18 @@ end
 
 -- (kit-b U8) the Signboard header: the full-width navy plank over the window on PC (the content starts under it, 62 px);
 -- on a phone the content takes the whole window, so the plank is a short sign at the top-left (the title only, no paw) with
--- the controls beside it, and the roof sits on that sign at its own fixed phone width (never stretched with the window).
-function H.layoutHeader(panel, phone)
+-- the controls beside it (render gate: no roof there).
+function H.layoutHeader(panel, phone, band)
 	local head, title = panel.TitleBar, panel.TitleLabel
 	local plate = title and title.Parent
 	local slot = plate and plate:FindFirstChild("IconSlot")
 	U.TitlePos = U.TitlePos or title.Position
 	U.TitleSize = U.TitleSize or title.Size
 	U.HeadSize = U.HeadSize or head.Size
+	-- (render gate) the T1 band reaches out over the frame with its tails on PC (its title kept as built, U.TitlePos); a
+	-- phone's short sign keeps it inside (its tails would land on the A button and off the screen's edge), its title
+	-- placed on that plate below. A PC window with no room beside it (H.rect's band) pulls it in at the end
+	SignKit.HeaderOverhang(head, not phone)
 	if phone then
 		local w = S.Portrait and K.PHONE_TITLE[1] or K.PHONE_TITLE[2]
 		head.Position = UDim2.fromOffset(0, 0)
@@ -1517,12 +1558,14 @@ function H.layoutHeader(panel, phone)
 	if slot then
 		slot.Visible = not phone
 	end
+	-- (render gate) no roof on a phone: over the short title sign it was a stub that covered the currency strips (portrait)
+	-- or sat under Roblox's top-left buttons (landscape)
 	local roof = panel.Roof
 	if roof then
-		local w = phone and (S.Portrait and K.PHONE_TITLE[1] or K.PHONE_TITLE[2]) + 12 or CloudUI.Metrics.SignRoofW
-		roof.AnchorPoint = phone and Vector2.new(0, 0) or Vector2.new(0.5, 0)
-		roof.Position = phone and UDim2.fromOffset(-6, -10) or UDim2.new(0.5, 0, 0, -10)
-		roof.Size = UDim2.fromOffset(w, roof.Size.Y.Offset)
+		roof.Visible = not phone
+	end
+	if not phone and not band then
+		SignKit.HeaderOverhang(head, false) -- (the title and the paw stay where they are on the screen)
 	end
 end
 
@@ -1551,7 +1594,7 @@ function H.layout()
 	U.Content.Position = UDim2.fromOffset(0, phone and 0 or 62)
 	U.Content.Size = UDim2.new(1, 0, 1, phone and 0 or -62)
 	if panel.TitleBar then
-		H.layoutHeader(panel, phone)
+		H.layoutHeader(panel, phone, r.band)
 	end
 	if panel.CloseButton then
 		local size = phone and K.TOUCH or H.touchSize()
@@ -1972,8 +2015,8 @@ function H.refreshDetail(keys, order)
 		meta[#meta + 1] = element
 	end
 	d.Meta.Text = table.concat(meta, " " .. G.Bullet .. " ")
-	-- (kit-b U7b) the evolution stars after the line, drawn
-	PixelIcon.Mark(d.Meta, stage > 0 and ICON.Star or nil, { After = true, Count = math.min(2, stage), Of = math.min(2, stage), Colour = SIGN.GoldLip })
+	-- (kit-b U7b) the evolution stars after the line, drawn; (render gate) inside the line's box: the text truncates first
+	PixelIcon.Mark(d.Meta, stage > 0 and ICON.Star or nil, { After = true, Room = true, Count = math.min(2, stage), Of = math.min(2, stage), Colour = SIGN.GoldLip })
 	local need = Bits.xpToNext(level)
 	if level >= cap then
 		d.Xp.SetFraction(1)

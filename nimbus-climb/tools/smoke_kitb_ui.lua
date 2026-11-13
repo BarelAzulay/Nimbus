@@ -1986,6 +1986,116 @@ local function serverScenarios()
 		K.flushErrors("theme_title_ribbon_uiscale")
 	end)
 
+	-- (render gate, GATE_KITB finding 1; the pitch title_T1: "The band sizes to the header; the tails are fixed") a
+	-- SignKit.Header with Ribbon: its navy plate IS the band (the lit top, the lip, two brass pipings, the header's whole
+	-- width), reaching HeaderBand.Over past the frame on each side with a swallowtail tail behind each end; the title keeps
+	-- only its letters, underline and stair (its own band and tails hidden), the underline on the plate's low piping.
+	-- SignKit.HeaderOverhang(head, false) pulls the band inside the rim and drops the tails, the title staying put. A title
+	-- with RibbonBand = "NoTails" (on a navy header that is not the band) keeps its own band from its box's edge, no tails
+	S.theme_title_ribbon_modes = guarded("theme_title_ribbon_modes", function()
+		local Theme, SK = theme(), shared("SignKit")
+		if not (Theme and SK) then
+			return
+		end
+		if not T.check(type(SK.HeaderOverhang) == "function" and type(SK.HeaderBand) == "table", "ribbon modes: SignKit.HeaderOverhang and SignKit.HeaderBand exist") then
+			return
+		end
+		local Sg = Theme.Sign
+		local gui = Instance.new("ScreenGui")
+		gui.IgnoreGuiInset = true
+		local win = Instance.new("Frame")
+		win.Size = UDim2.fromOffset(900, 600)
+		win.Position = UDim2.fromOffset(100, 100)
+		win.Parent = gui
+		local head, plate = SK.Header(win, { Title = "Pets", TitleSize = 34, Height = 64, Rim = 6, IconSlot = true, Reserve = 70, Ribbon = true })
+		local title = plate:FindFirstChild("Title")
+		local over = SK.HeaderBand.Over
+		if not T.check(title ~= nil and title:GetAttribute("TitleLook") == "Ribbon" and title:GetAttribute("RibbonBand") == "Header",
+			"ribbon modes: a Ribbon header's title wears the ribbon with RibbonBand = Header") then
+			gui:Destroy()
+			return
+		end
+		T.check(sameColor(plate.BackgroundColor3, Sg.Navy) and plate.Position.X.Offset == -over and plate.Size.X.Scale == 1 and plate.Size.X.Offset == 2 * over,
+			"ribbon modes: the plate is the band the header's width, out over the frame by HeaderBand.Over each side", tostring(plate.Position) .. " " .. tostring(plate.Size))
+		local lines = {}
+		for _, name in ipairs({ "BandTop", "BandLip", "BandPipeTop", "BandPipeLow" }) do
+			local f = plate:FindFirstChild(name)
+			lines[name] = f
+			T.check(f ~= nil and f.Size.X.Scale == 1 and f.Size.X.Offset == 0, "ribbon modes: the plate carries " .. name .. " along its whole width")
+		end
+		T.check(lines.BandTop and sameColor(lines.BandTop.BackgroundColor3, Sg.NavyTop) and lines.BandLip and sameColor(lines.BandLip.BackgroundColor3, Sg.NavyLip)
+			and lines.BandPipeTop and sameColor(lines.BandPipeTop.BackgroundColor3, Sg.Brass) and lines.BandPipeLow and sameColor(lines.BandPipeLow.BackgroundColor3, Sg.Brass),
+			"ribbon modes: ...the lit top, the darker lip and two brass pipings")
+		local slot = plate:FindFirstChild("IconSlot")
+		T.check(slot ~= nil and lines.BandPipeTop ~= nil and slot.ZIndex > lines.BandPipeTop.ZIndex and title.ZIndex > lines.BandPipeTop.ZIndex,
+			"ribbon modes: the icon square and the title draw over the band's lines")
+		-- the tails: behind the plate, past the frame, notched
+		local plateX0 = plate.Position.X.Offset
+		local plateX1 = 900 + plate.Position.X.Offset + plate.Size.X.Offset
+		for _, side in ipairs({ "TailL", "TailR" }) do
+			local tail = head:FindFirstChild(side)
+			if T.check(tail ~= nil and tail.Visible and tail.ZIndex < plate.ZIndex and sameColor(tail.BackgroundColor3, Sg.NavyLip), "ribbon modes: " .. side .. " hangs behind the band") then
+				local x0 = tail.Position.X.Scale * 900 + tail.Position.X.Offset
+				local lo, hi = x0, x0 + tail.Size.X.Offset
+				local notches = 0
+				for _, n in ipairs(tail:GetChildren()) do
+					lo, hi = math.min(lo, x0 + n.Position.X.Offset), math.max(hi, x0 + n.Position.X.Offset + n.Size.X.Offset)
+					notches = notches + 1
+				end
+				if side == "TailL" then
+					T.check(lo < plateX0 and hi > plateX0 and lo < -over, "ribbon modes: the left tail sticks out past the band's left end, beyond the frame", fmt("tail %d..%d, band from %d", lo, hi, plateX0))
+				else
+					T.check(hi > plateX1 and lo < plateX1 and hi > 900 + over, "ribbon modes: the right tail sticks out past the band's right end, beyond the frame", fmt("tail %d..%d, band to %d", lo, hi, plateX1))
+				end
+				T.check(notches >= 2, "ribbon modes: " .. side .. " has its stepped swallowtail notch")
+			end
+		end
+		-- the title: no band or tails of its own; its underline sits on the plate's low piping
+		local band, under = title:FindFirstChild("RibbonBand"), title:FindFirstChild("RibbonUnderline")
+		T.check(band ~= nil and not band.Visible and not title:FindFirstChild("TailL").Visible and not title:FindFirstChild("TailR").Visible,
+			"ribbon modes: the title's own band and tails are hidden (the plate is its band)")
+		local pipeLow = lines.BandPipeLow
+		T.check(under ~= nil and pipeLow ~= nil and under.Position.Y.Scale == 1 and pipeLow.Position.Y.Scale == 1
+			and under.Position.Y.Offset + under.Size.Y.Offset == pipeLow.Position.Y.Offset and sameColor(under.BackgroundColor3, Sg.Gold),
+			"ribbon modes: the gold underline sits on the plate's low piping", under and pipeLow and (tostring(under.Position) .. " / " .. tostring(pipeLow.Position)) or "")
+		local steps = 0
+		for _, d in ipairs(title:GetChildren()) do
+			if d:GetAttribute("Ribbon") == "Step" and d.Visible then
+				steps = steps + 1
+			end
+		end
+		T.eq(steps, 3, "ribbon modes: ...and ends in its three steps (the box has room)")
+		-- pulled in: inside the rim, no tails, the title and the icon where they were on the screen
+		local function at(o)
+			return o.Position.X.Offset + plate.Position.X.Offset
+		end
+		local titleAt, slotAt = at(title), at(slot)
+		SK.HeaderOverhang(head, false)
+		T.check(plate.Position.X.Offset == 6 and plate.Size.X.Offset == -12 and not head.TailL.Visible and not head.TailR.Visible,
+			"ribbon modes: HeaderOverhang(false) keeps the band inside the rim and drops the tails", tostring(plate.Position) .. " " .. tostring(plate.Size))
+		T.check(at(title) == titleAt and at(slot) == slotAt, "ribbon modes: ...the title and the icon stay where they were", fmt("title %d -> %d", titleAt, at(title)))
+		SK.HeaderOverhang(head, true)
+		T.check(plate.Position.X.Offset == -over and head.TailL.Visible and head.TailR.Visible and at(title) == titleAt, "ribbon modes: HeaderOverhang(true) puts them back")
+		-- a header built without Ribbon keeps today's look: the plate inside the rim, the title's own ribbon
+		local _, plain = SK.Header(win, { Title = "Credits", TitleSize = 34, Height = 64, Rim = 6 })
+		local pt = plain:FindFirstChild("Title")
+		T.check(plain.Position.X.Offset == 6 and plain:FindFirstChild("BandPipeLow") == nil and pt and pt:GetAttribute("RibbonBand") == nil and pt.RibbonBand.Visible,
+			"ribbon modes: a header without Ribbon keeps its plate inside the rim and the title's own band")
+		-- NoTails: the title's own band from its box's left edge, no tails
+		local l = Theme.Label("Shop", "Title", { Size = 34 })
+		l.Size = UDim2.fromOffset(420, 58)
+		l.TextXAlignment = Enum.TextXAlignment.Left
+		l:SetAttribute("RibbonBand", "NoTails")
+		l.Parent = win
+		Theme.StyleTitle(l)
+		T.check(l.RibbonBand.Visible and l.RibbonBand.Position.X.Offset == 0 and not l.TailL.Visible and not l.TailR.Visible,
+			"ribbon modes: NoTails keeps the title's own band from its box's edge, without tails", tostring(l.RibbonBand.Position))
+		l:SetAttribute("RibbonBand", nil)
+		T.check(l.TailL.Visible and l.TailR.Visible and l.RibbonBand.Position.X.Offset > 0, "ribbon modes: ...and the tails come back when the attribute goes")
+		gui:Destroy()
+		K.flushErrors("theme_title_ribbon_modes")
+	end)
+
 	return S
 end
 
@@ -4524,7 +4634,7 @@ local function clientScenarios()
 		end
 		return cur ~= nil and cur.Enabled ~= false
 	end
-	function U8.feed(team)
+	function U8.feed(team, garden, growth) -- (render gate) garden: keys in the Pet Garden (busy pets); growth: PetGrowth
 		local pets, levels, discovered = {}, {}, {}
 		for i, key in ipairs(U8.KEYS) do
 			pets[key] = 1
@@ -4539,11 +4649,11 @@ local function clientScenarios()
 			Discovered = discovered, IndexClaimed = {},
 			Tutorial = { Step = 1000, Done = true, Gifted = true },
 			Cash = 48200, Gems = 320,
-			Home = { Level = 5, Prestige = 0, Stations = { Garden = 1 }, Garden = {}, Gym = {}, CollectorCash = 0 },
+			Home = { Level = 5, Prestige = 0, Stations = { Garden = 1 }, Garden = garden or {}, Gym = {}, CollectorCash = 0 },
 			Food = {}, Tiers = {}, Hybrids = {}, PetLevels = levels,
 			Teams = { Presets = { preset, {}, {} }, Active = 1, Slots = 3, Busy = {} },
 			Battle = { Trophies = 120, TrialBest = 0, TrialCleared = {}, Raids = 0, RaidBestDamage = 0, PvPWins = 0, PvPLosses = 0, EventPets = {} },
-			PetGrowth = {}, Ring = { Best = 0, Runs = 0 },
+			PetGrowth = growth or {}, Ring = { Best = 0, Runs = 0 },
 		})
 		LKC.advance(0.2)
 	end
@@ -4753,6 +4863,126 @@ local function clientScenarios()
 			end)
 		end
 		LKC.flushErrors("pets_rarity_on_lip")
+	end)
+
+	-- (render gate, GATE_KITB findings 1-4) the Pets window at the four gate sizes, with a gardening team pet and an
+	-- evolved one: on PC the header's T1 band reaches out over the frame with its tails, clear of the HUD's currency
+	-- strips and inside the screen; on a phone the band stays in the short sign, no tails and no roof stub; a portrait
+	-- window starts under the currency row with a gap; a busy pet's cover is opaque and leaves the slot's power (and a
+	-- card's level) clear, the team number on top; the detail's evolution stars stay inside its rarity line
+	S.pets_gate_fixes = guarded("pets_gate_fixes", function()
+		local PC = U7.client("Controllers/PetsController")
+		if not T.check(PC ~= nil, "pets gate: PetsController loads") then
+			return
+		end
+		local K1, K2, K3 = U8.KEYS[1], U8.KEYS[2], U8.KEYS[3]
+		local sizes = { { 960, 640, false } } -- a small PC screen: no room for the tails beside the strips
+		for _, s in ipairs(U8.SIZES) do
+			sizes[#sizes + 1] = s
+		end
+		for _, s in ipairs(sizes) do
+			U8.at(s[1], s[2], s[3], "pets gate", function(tag)
+				U8.feed({ K1, K2, K3 }, { K2 }, { [K1] = { Evo = 2 } })
+				PC.Open({ Key = K1 })
+				LKC.advance(1)
+				local win = U8.pg():FindFirstChild("NimbusPets")
+				local holder = win and win:FindFirstChild("Window_Pets", true)
+				local head, roof = nil, nil
+				for _, d in ipairs(holder and holder:GetDescendants() or {}) do
+					head = head or (d:GetAttribute("SignKit") == "Header" and d or nil)
+					roof = roof or (d:GetAttribute("SignKit") == "Roof" and d or nil)
+				end
+				if not T.check(holder ~= nil and head ~= nil, tag .. ": the window and its Signboard header are built") then
+					return
+				end
+				local phone = s[3]
+				local vp = Mock.Viewport
+				local hud = U8.pg():FindFirstChild("NimbusHud")
+				-- rects in screen px: a ScreenGui that does not ignore the gui inset starts under Roblox's top bar
+				local function inset(o)
+					local g = o:FindFirstAncestorWhichIsA("LayerCollector")
+					return (g and g:IsA("ScreenGui") and not g.IgnoreGuiInset) and (Mock.TopInset or 0) or 0
+				end
+				local function screen(o)
+					local r, dy = U8.rect(o), inset(o)
+					return { X = r.X, Y = r.Y + dy, R = r.R, B = r.B + dy }
+				end
+				local strips = {}
+				local cur = hud and hud:FindFirstChild("Currency", true)
+				for _, row in ipairs(cur and cur:GetChildren() or {}) do
+					if row:IsA("GuiObject") and U8.shown(row) then
+						strips[#strips + 1] = screen(row)
+					end
+				end
+				local tails = { head:FindFirstChild("TailL"), head:FindFirstChild("TailR") }
+				if phone then
+					T.check(head:GetAttribute("Overhang") == false and not U8.shown(tails[1]) and not U8.shown(tails[2]),
+						tag .. ": a phone's title sign keeps the band inside, no tails (they would land on the A button)")
+					T.check(roof == nil or not U8.shown(roof), tag .. ": no roof stub over a phone's title sign")
+				elseif vp.X < 1280 then
+					local plate = head:FindFirstChild("Plate")
+					local slot, title = plate and plate:FindFirstChild("IconSlot"), plate and plate:FindFirstChild("Title")
+					T.check(head:GetAttribute("Overhang") == false and not U8.shown(tails[1]) and not U8.shown(tails[2]),
+						tag .. ": with no room beside the window the band stays inside the frame, no tails")
+					T.check(slot and title and U8.rect(slot).X >= U8.rect(head).X and U8.rect(title).X >= U8.rect(slot).R
+						and U8.rect(title).X - U8.rect(slot).R <= 20,
+						tag .. ": ...the paw and the title still inside the header, the title right of the paw",
+						slot and title and (U8.show(U8.rect(slot)) .. " / " .. U8.show(U8.rect(title))) or "")
+				else
+					T.check(head:GetAttribute("Overhang") == true and tails[1] and U8.shown(tails[1]) and tails[2] and U8.shown(tails[2]),
+						tag .. ": on PC the band reaches out over the frame with its tails (title_T1)")
+					for _, tail in ipairs(tails) do
+						local r = screen(tail)
+						for _, n in ipairs(tail:GetChildren()) do
+							local q = screen(n)
+							r = { X = math.min(r.X, q.X), Y = math.min(r.Y, q.Y), R = math.max(r.R, q.R), B = math.max(r.B, q.B) }
+						end
+						T.check(r.X >= 0 and r.R <= vp.X, tag .. ": " .. tail.Name .. " stays on the screen", U8.show(r))
+						local hit = nil
+						for _, st in ipairs(strips) do
+							hit = hit or (U8.overlap(r, st) and st or nil)
+						end
+						T.check(hit == nil, tag .. ": " .. tail.Name .. " stays clear of the HUD's currency strips", hit and (U8.show(r) .. " over " .. U8.show(hit)) or "")
+					end
+				end
+				if vp.Y > vp.X then
+					local top = screen(holder).Y
+					local low = 0
+					for _, st in ipairs(strips) do
+						low = math.max(low, st.B)
+					end
+					T.check(#strips > 0 and top >= low + 6, tag .. ": the portrait window starts under the currency row with a gap",
+						fmt("window top %d, %d strips to %d", top, #strips, low))
+				end
+				-- the busy slot and card (K2 is in the garden)
+				local slot = holder:FindFirstChild("Slot2", true)
+				local busy = slot and slot:FindFirstChild("Busy")
+				if T.check(busy ~= nil and U8.shown(busy), tag .. ": the gardening team pet's slot shows its busy cover") then
+					T.check(busy.BackgroundTransparency == 0, tag .. ": ...opaque (no washed-out text under it)", tostring(busy.BackgroundTransparency))
+					local power = slot:FindFirstChild("Power")
+					T.check(power and U8.shown(power) and U8.rect(power).Y >= U8.rect(busy).B - 0.5, tag .. ": ...and the slot's power reads below it",
+						power and (U8.show(U8.rect(power)) .. " vs " .. U8.show(U8.rect(busy))) or "no Power")
+				end
+				local card = holder:FindFirstChild("Card_" .. K2, true)
+				local cb = card and card:FindFirstChild("Busy")
+				if T.check(cb ~= nil and U8.shown(cb), tag .. ": the gardening pet's card shows its busy cover") then
+					local level, number = card:FindFirstChild("Level"), card:FindFirstChild("Number")
+					T.check(cb.BackgroundTransparency == 0 and level and U8.rect(level).Y >= U8.rect(cb).B - 0.5,
+						tag .. ": ...opaque, the card's level clear below it", level and (U8.show(U8.rect(level)) .. " vs " .. U8.show(U8.rect(cb))) or "no Level")
+					T.check(number and U8.shown(number) and number.ZIndex > cb.ZIndex, tag .. ": ...the team number chip drawn over it")
+				end
+				-- the detail's stars (K1 is evolved twice) inside its line and its panel
+				local detail = holder:FindFirstChild("Detail", true) or holder:FindFirstChild("Sheet", true)
+				local meta = detail and detail:FindFirstChild("Meta")
+				local stars = meta and meta:FindFirstChild("TrailIcon")
+				if T.check(stars ~= nil, tag .. ": the detail shows the evolution stars after its line") then
+					local r, m, d = U8.rect(stars), U8.rect(meta), U8.rect(detail)
+					T.check(r.R <= m.R + 0.5 and r.R <= d.R + 0.5, tag .. ": ...inside the line's box and the detail panel", fmt("stars %s, line %s, panel %s", U8.show(r), U8.show(m), U8.show(d)))
+				end
+				PC.Close(true)
+			end)
+		end
+		LKC.flushErrors("pets_gate_fixes")
 	end)
 
 	-- (U8) one colour by role: at most one green action on the screen. The lobby HUD (tiles, pill, strips, gift) has none;
