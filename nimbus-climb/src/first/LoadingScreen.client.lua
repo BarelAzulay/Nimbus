@@ -87,7 +87,7 @@ local L = {
 	ROOF_H = 18,
 	ROOF_EDGE = 4,
 	ROOF_LIP = 5,
-	RIM = 5,
+	RIM = 6,
 	FRAME = 6,
 	LIP = 8,
 	ROPE_W = 6,
@@ -326,7 +326,7 @@ local function layout()
 		for _, tip in ipairs(St.Tips) do
 			local ok, size = pcall(Theme.Measure, tip, "Body", tipSize)
 			if ok and size then
-				lines = math.max(lines, math.ceil(size.X / (tipW - 68) + 0.25))
+				lines = math.max(lines, math.ceil(size.X / (tipW - 76) + 0.25)) -- the card less the bulb, its gap and the edges
 			end
 		end
 		tipH = math.max(64, math.ceil(lines * tipSize * 1.25) + 28)

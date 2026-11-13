@@ -6,7 +6,8 @@
 --   PixelIcon.Runs(name)               its merged rectangles { { x, y, w, h }, ... } in cells (nil for an unknown name)
 --   PixelIcon.New(parent, name, px, colour)  a transparent px x px Frame (attribute PixelIcon = name) holding one Frame per
 --                                      merged rectangle, snapped to whole pixels (cell = floor(px / 9), centred); nil for
---                                      an unknown name
+--                                      an unknown name. px under 9 draws at 9; a px between multiples of 9 warns once
+--                                      (PixelIcon.Warned)
 -- Runs: each row's horizontal runs, then runs with the same columns in the rows below merged into one taller rectangle,
 -- so an icon is a handful of Frames (smoke: at most 25). A generated sheet (one upload) can replace the Frames later in
 -- dense grids; it would be drawn from this same data.
@@ -55,11 +56,17 @@ PixelIcon.Bitmaps = {
 	bulb = "..#####../.#######./##..#####/##.######/.#######./..#####../........./..#####../...###...", -- a tip
 	swap = "........./.....#.../########./.....#.../........./...#...../.########/...#...../.........",
 	token = "..#####../.#######./####.####/###...###/##.....##/##.....##/#########/.#######./..#####..", -- the Cloud Token coin
+	-- (U5) the settings scale's - (the pitch's plus without its upright)
+	minus = "........./........./........./#########/#########/#########/........./........./.........",
 }
 -- tick is the pitch's check (one drawing, two names)
 PixelIcon.Bitmaps.tick = PixelIcon.Bitmaps.check
 
 local cache = {}
+
+-- (U5) the sizes warned about: [px] = 1. A size between multiples of 9 draws whole cells off-centre in a padded box, so
+-- New warns once per such size (pass 18, 27, 36, ...)
+PixelIcon.Warned = {}
 
 -- the merged rectangles of an icon, { x, y, w, h } in cells (0-based), nil for an unknown name
 function PixelIcon.Runs(name)
@@ -111,8 +118,12 @@ function PixelIcon.New(parent, name, px, colour)
 	if not rects then
 		return nil
 	end
-	px = math.floor(tonumber(px) or 18)
-	local cell = math.max(1, math.floor(px / 9))
+	px = math.max(9, math.floor(tonumber(px) or 18)) -- under 9 px a cell would be under a pixel: one px a cell
+	if px % 9 ~= 0 and not PixelIcon.Warned[px] then
+		PixelIcon.Warned[px] = 1
+		warn("[PixelIcon] " .. px .. " px is not a multiple of 9: the cells draw at " .. (9 * math.floor(px / 9)) .. " px in a padded box")
+	end
+	local cell = math.floor(px / 9)
 	local pad = math.floor((px - 9 * cell) / 2)
 	local icon = Instance.new("Frame")
 	icon.Name = "Icon"
