@@ -54,8 +54,12 @@
 --                                     no ball StormPuff is left, and they are NOT NC_Detail (a hazard tell stays on Low);
 --                                     with the shipped key list (cloud_storm_puff has an id but reads as a box, so it is
 --                                     not on the list) the Part puffs stay
---   obby_rain_uses_droplets           HazardService's rain is the Droplet sprite (fx_droplets, Grid4x4) and a slow Wisp
---                                     layer (fx_wisps) drifts under the cloud
+--   obby_rain_uses_droplets           HazardService's rain is the Droplet sprite (fx_droplets, Grid4x4), big enough to see
+--                                     (Size x 0.31, the drop's share of its cell, at least 0.2 studs), near-white so the
+--                                     baked blue shows, and its OneShot pop lands on the storm platform top (mid speed
+--                                     over the longest life = the fall from the emitter to the volume bottom, 0.75 studs);
+--                                     a slow mist layer of the Cloud sprite (fx_stormcloud, neutral grey, not the baked
+--                                     violet fx_wisps strands) drifts under the cloud, never spun 0-360
 --   obby_no_stock_particle_paths      no course or hazard emitter (built, or made by HazardService.Attach) shows a
 --                                     rbxasset://textures/particles path or an empty texture: each wears an FxSprites
 --                                     role's sheet; the CourseBuilder / HazardService sources name no stock path and
@@ -338,6 +342,7 @@ local function serverScenarios()
 								if d:HasTag(K.config().Tags.StormCloud) then
 									b.storms[#b.storms + 1] = {
 										transparency = d.Transparency, touch = d.CanTouch, collide = d.CanCollide, dps = d:GetAttribute("DPS"),
+										pos = d.Position, size = d.Size,
 									}
 								end
 								if d.Name == "StormPuff" then
@@ -366,6 +371,8 @@ local function serverScenarios()
 									b.emitters[#b.emitters + 1] = {
 										where = d:GetFullName(), name = d.Name, parent = d.Parent and d.Parent.Name, texture = tostring(d.Texture),
 										role = FX and FX.RoleOf(tostring(d.Texture)), flip = d.FlipbookLayout, speed = d.Speed, rate = d.Rate,
+										size = d.Size, color = d.Color, rotation = d.Rotation, lifetime = d.Lifetime, accel = d.Acceleration,
+										at = d.Parent and d.Parent:IsA("BasePart") and d.Parent.Position or nil,
 									}
 								end
 							end
@@ -1145,32 +1152,67 @@ local function serverScenarios()
 			return
 		end
 		local rain = T.tally("obby rain: every storm's rain is the Droplet sprite (fx_droplets on its Grid4x4 flipbook)")
-		local wisp = T.tally("obby rain: every storm has a slow Wisp layer (fx_wisps, at most 2 studs/s) drifting under the cloud")
+		local seen = T.tally("obby rain: the drawn drop (Rain Size x 0.31) is at least 0.2 studs")
+		local pale = T.tally("obby rain: the rain tint is near-white (every channel >= 0.75), so the baked blue shows")
+		local lands = T.tally("obby rain: the drop's pop lands on the platform top (mid speed over the longest life = the fall, 0.75 studs)")
+		local mist = T.tally("obby rain: every storm has a slow mist layer of the Cloud sprite (fx_stormcloud, at most 2 studs/s, no 0-360 spin)")
 		local n = 0
 		for _, b in ipairs(data.builds) do
 			local storms = #stormSteps(b.layout)
 			if storms > 0 then
-				local rains, wisps = 0, 0
+				local rains, mists = 0, 0
 				for _, e in ipairs(b.emitters) do
 					if e.parent == "StormRain" then
 						if e.name == "Rain" then
 							rains = rains + 1
 							rain:case(e.texture == data.roleTex.Droplet and e.flip == Enum.ParticleFlipbookLayout.Grid4x4,
 								b.who .. ": Rain '" .. e.texture .. "' (want '" .. tostring(data.roleTex.Droplet) .. "')")
-						elseif e.texture == data.roleTex.Wisp then
-							wisps = wisps + 1
-							wisp:case(e.speed.Max <= 2 and e.rate > 0, b.who .. ": " .. e.name .. " speed " .. tostring(e.speed.Max) .. " rate " .. tostring(e.rate))
+							local smallest = math.huge
+							for _, kp in ipairs(e.size.Keypoints) do
+								smallest = math.min(smallest, kp.Value)
+							end
+							seen:case(smallest * 0.31 >= 0.2, b.who .. ": Rain Size " .. tostring(smallest))
+							local dark = math.huge
+							for _, kp in ipairs(e.color.Keypoints) do
+								dark = math.min(dark, kp.Value.R, kp.Value.G, kp.Value.B)
+							end
+							pale:case(dark >= 0.75, b.who .. ": darkest rain channel " .. string.format("%.2f", dark))
+							local storm, best = nil, math.huge
+							for _, v in ipairs(b.storms) do
+								local dxz = e.at and Vector2.new(v.pos.X - e.at.X, v.pos.Z - e.at.Z).Magnitude or math.huge
+								if dxz < best then
+									storm, best = v, dxz
+								end
+							end
+							if storm then
+								local fall = e.at.Y - (storm.pos.Y - storm.size.Y / 2)
+								local t = e.lifetime.Max
+								local v0 = (e.speed.Min + e.speed.Max) / 2
+								local travel = v0 * t + 0.5 * math.abs(e.accel.Y) * t * t
+								lands:case(math.abs(travel - fall) <= 0.75,
+									b.who .. ": " .. string.format("travel %.2f over %.3f s, fall %.2f", travel, t, fall))
+							else
+								lands:case(false, b.who .. ": no storm volume under the rain")
+							end
+						elseif e.texture == data.roleTex.Cloud then
+							mists = mists + 1
+							mist:case(e.speed.Max <= 2 and e.rate > 0 and e.rotation.Max - e.rotation.Min <= 60,
+								b.who .. ": " .. e.name .. " speed " .. tostring(e.speed.Max) .. " rate " .. tostring(e.rate)
+									.. " rotation " .. tostring(e.rotation.Min) .. ".." .. tostring(e.rotation.Max))
 						end
 					end
 				end
 				n = n + storms
 				rain:case(rains == storms, b.who .. ": " .. rains .. " rain emitters for " .. storms .. " storms")
-				wisp:case(wisps == storms, b.who .. ": " .. wisps .. " wisp layers for " .. storms .. " storms")
+				mist:case(mists == storms, b.who .. ": " .. mists .. " mist layers for " .. storms .. " storms")
 			end
 		end
 		T.check(n > 0, "obby rain: the builds have storms", tostring(n))
 		rain:report()
-		wisp:report()
+		seen:report()
+		pale:report()
+		lands:report()
+		mist:report()
 		K.flushErrors("obby_rain_uses_droplets")
 	end)
 

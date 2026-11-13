@@ -41,6 +41,7 @@ local WANT = {
 	Dust = { "fx_dust", "OneShot", 16 },
 	Droplet = { "fx_droplets", "OneShot", 16 },
 	Wisp = { "fx_wisps", "Loop", 16 },
+	Cloud = { "fx_stormcloud", "Loop", 12 }, -- O3 review: the storm mist under an obby storm cloud
 	Snow = { "fx_snow", "Loop", 12 },
 	Spark = { "fx_sparks", "Loop", 24 },
 	Leaf = { "fx_leaves", "Loop", 16 },
