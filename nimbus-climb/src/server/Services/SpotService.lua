@@ -337,8 +337,8 @@ end
 local function tagLabel(parent, name, text, role, size, order)
 	local label = Theme.Label(text, role, {
 		Size = size,
-		Stroke = 1, -- the glyph outline replaces the classic stroke
-		Outline = 2.5,
+		Outline = "World", -- a world sign: ONE outline, no classic stroke (kit-b U6)
+		OutlineThickness = 2.5,
 		OutlineColor = INK,
 		Props = {
 			Name = name,

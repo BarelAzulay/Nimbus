@@ -5882,7 +5882,7 @@ function Hud.LayoutEnemies(B, m)
 	end
 	local more = #list - n
 	if not Hud.more then
-		Hud.more = label(Hud.enemies, "", "Heading", 16, { Name = "More", TextXAlignment = Enum.TextXAlignment.Right })
+		Hud.more = label(Hud.enemies, "", "Heading", 16, { Name = "More", TextXAlignment = Enum.TextXAlignment.Right }, true) -- (U6) over the arena: one outline
 	end
 	Hud.more.Visible = more > 0
 	if more > 0 then

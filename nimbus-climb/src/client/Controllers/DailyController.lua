@@ -1400,9 +1400,10 @@ function H.setTab(tab)
 	H.render()
 end
 
--- selected: light gold (the mock's #fff3c4 -> #ffc93c) under white outlined text; else dark glass under muted text
+-- selected: light gold (the mock's #fff3c4 -> #ffc93c) under ink text (kit-b U6: no outline, so dark on the pale gold);
+-- else dark glass under muted text
 function H.paintTab(button, selected)
-	button.TextColor3 = selected and WHITE or MUTED
+	button.TextColor3 = selected and INK or MUTED
 	button:SetAttribute("Selected", selected)
 	local fill = U.Bar:FindFirstChild(button.Name .. "Fill")
 	if not fill then

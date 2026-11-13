@@ -661,8 +661,8 @@ local function tagText(parent, name, text, role, size, color, order, thickness)
 	local label = Theme.Label(text, role, {
 		Size = size,
 		Color = color or C.Text,
-		Stroke = 1, -- the glyph outline below replaces the classic text stroke
-		Outline = thickness or 2.5,
+		Outline = "World", -- a world sign: ONE outline, no classic stroke (kit-b U6)
+		OutlineThickness = thickness or 2.5,
 		OutlineColor = INK,
 		Props = {
 			Name = name,
@@ -723,8 +723,8 @@ local function signText(parent, text, role, size, color, name, x, y, w, h, align
 	local label = Theme.Label(text, role, {
 		Size = size,
 		Color = color,
-		Stroke = 1,
-		Outline = math.max(2, math.floor(size / 16 + 0.5)),
+		Outline = "World", -- a world sign: ONE outline, no classic stroke (kit-b U6)
+		OutlineThickness = math.max(2, math.floor(size / 16 + 0.5)),
 		OutlineColor = INK,
 		Props = {
 			Name = name,
@@ -4166,7 +4166,7 @@ local function homeNameplate(anchor, index, accent)
 	avatarDisc(plate, index, accent)
 	local texts = plainFrame(plate, "Texts", { AutomaticSize = Enum.AutomaticSize.XY, LayoutOrder = 2 })
 	listLayout(texts, Enum.FillDirection.Vertical, 0, Enum.HorizontalAlignment.Left)
-	local nameLabel = tagText(texts, "NameLabel", "Free home", "Title", TAG_NAME, C.Text, 1)
+	local nameLabel = tagText(texts, "NameLabel", "Free home", "Nameplate", TAG_NAME, C.Text, 1) -- (kit-b U6) a player's name keeps its case
 	local subLabel = tagText(texts, "SubLabel", "Step in to claim", "Body", TAG_INFO, C.TextGold, 2, 2)
 	return gui, nameLabel, subLabel
 end

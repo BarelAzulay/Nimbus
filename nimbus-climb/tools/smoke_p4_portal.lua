@@ -128,6 +128,7 @@ local function clientScenarios()
 			local gui = info and info.Gui
 			local label = gui and gui:FindFirstChild("Name", true)
 			local want = (LocalPlayer.DisplayName ~= nil and LocalPlayer.DisplayName ~= "" and LocalPlayer.DisplayName or LocalPlayer.Name) .. "'s portal"
+			want = want:upper() -- (kit-b U6) a Title-role tag reads in capitals
 			T.check(label and label.Text == want, "p4 portal client: ...with a name tag \"" .. want .. "\"", label and label.Text or "no tag")
 			T.check(gui and gui:IsA("BillboardGui") and gui.Size.X.Scale == 0 and gui.LightInfluence == 0 and label.TextSize >= 22
 				and label.TextStrokeTransparency == 1 and label:FindFirstChild("TextOutline") == nil and label.Parent:IsA("Frame") and label.Parent.BackgroundTransparency <= 0.25 and gui.MaxDistance >= 60,

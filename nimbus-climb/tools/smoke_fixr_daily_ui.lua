@@ -455,7 +455,7 @@ local function clientScenarios()
 		H.fire(H.streak(now, 13, 13))
 		before = sound.count("DailyWeek")
 		H.fire(H.streak(now, 14, 14))
-		T.check(H.body():find("WEEK DONE! Week Wisp is yours!", 1, true) ~= nil and H.confetti() == 24 and sound.count("DailyWeek") == before + 1,
+		T.check(H.body():upper():find("WEEK DONE! WEEK WISP IS YOURS!", 1, true) ~= nil and H.confetti() == 24 and sound.count("DailyWeek") == before + 1,
 			"fixr daily week: a paid day 7 (Weeks 1 -> 2) celebrates: banner, 24 confetti, DailyWeek",
 			fmt("confetti %d, DailyWeek %d", H.confetti(), sound.count("DailyWeek") - before))
 		KC.advance(6) -- WEEK_SECONDS 4.5 + the 1 s render tick

@@ -1316,16 +1316,17 @@ local function buildPanel()
 		round(tuft)
 	end
 
-	-- header: name, step title, pips, counter pill, fold button
+	-- header: name, step title, pips, counter pill, fold button (kit-b U6: no outline any more, so the name and the step
+	-- title on the pale cloud frame read in navy; gold and white had no contrast there)
 	local header = box("Header", { Size = UDim2.new(1, 0, 0, K.HEADER_H), ZIndex = 5 }, main)
 	local x0 = K.PAD + K.PORTRAIT + 12
-	UI.Name = label(header, "GuideName", "Nimbus", "Title", K.NAME_SIZE, C.Gold, {
+	UI.Name = label(header, "GuideName", "Nimbus", "Title", K.NAME_SIZE, C.Navy, {
 		Position = UDim2.fromOffset(x0, 12),
 		Size = UDim2.new(1, -(x0 + 150), 0, 34),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 	})
-	UI.StepTitle = label(header, "StepTitle", "", "Heading", K.TITLE_SIZE, C.White, {
+	UI.StepTitle = label(header, "StepTitle", "", "Heading", K.TITLE_SIZE, C.Navy, {
 		Position = UDim2.fromOffset(x0, 46),
 		Size = UDim2.new(1, -(x0 + K.PAD), 0, 26),
 		TextXAlignment = Enum.TextXAlignment.Left,

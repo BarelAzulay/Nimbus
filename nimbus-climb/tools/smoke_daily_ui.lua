@@ -397,7 +397,7 @@ local function clientScenarios()
 		local own = H.giftsParts()
 		T.check(not own[1] and not own[2] and not own[3], "daily window: (owner 2026-11-13) its own window hides the Gifts button, its ring and its pip at once",
 			H.partsText(own))
-		T.check(H.header():find("Day 3 of 7", 1, true) ~= nil and H.header():find("Week 2", 1, true) ~= nil, "daily window: the header", H.header())
+		T.check(H.header():upper():find("DAY 3 OF 7", 1, true) ~= nil and H.header():upper():find("WEEK 2", 1, true) ~= nil, "daily window: the header", H.header())
 		T.check(H.cellCount() == 7 and H.cellText(1):find("$", 1, true) ~= nil and H.cellDimmed(1) and H.cellDimmed(2) and not H.cellDimmed(3) and H.cellPulsing(3)
 			and not H.cellPulsing(4), "daily window: 7 cells, claimed dim, today pulsing",
 			fmt("%d cells, cell1 '%s', dim %s %s %s, pulse %s", H.cellCount(), H.cellText(1), tostring(H.cellDimmed(1)), tostring(H.cellDimmed(2)), tostring(H.cellDimmed(3)), tostring(H.cellPulsing(3))))
@@ -429,7 +429,7 @@ local function clientScenarios()
 			p3.Days[i].Claimed, p3.Days[i].Today = true, false
 		end
 		H.fire(p3)
-		T.check(H.body():find("WEEK DONE! Week Wisp is yours!", 1, true) ~= nil and H.confetti() == 24, "daily window: day 7 = the week banner + confetti inside the window (High)",
+		T.check(H.body():upper():find("WEEK DONE! WEEK WISP IS YOURS!", 1, true) ~= nil and H.confetti() == 24, "daily window: day 7 = the week banner + confetti inside the window (High)",
 			fmt("confetti %d, body %s", H.confetti(), H.body():sub(1, 200)))
 		KC.advance(3)
 		T.eq(H.confetti(), 0, "daily window: the confetti is gone after its fall")

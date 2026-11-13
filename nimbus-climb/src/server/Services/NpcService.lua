@@ -483,8 +483,8 @@ local function textPill(parent, name, text, role, size, padX, height, minW, thic
 	}, parent)
 	local label = Theme.Label(text, role, {
 		Size = size,
-		Stroke = 1, -- the glyph outline replaces the classic stroke
-		Outline = thickness,
+		Outline = "World", -- a world sign: ONE outline, no classic stroke (kit-b U6)
+		OutlineThickness = thickness,
 		OutlineColor = INK,
 		Props = {
 			Name = (name == "NamePill") and "Name" or "Title",
@@ -535,7 +535,7 @@ local function buildNameplate(parent, def, accent, offsetY)
 	stroke(titlePill, Theme.Colors.Navy or Theme.Colors.Ink, 2.5)
 
 	-- name pill: dark navy card, accent outline, big outlined name
-	local namePill = textPill(plate, "NamePill", def.Name or "Friend", "Title", NAME_PX, 16, NAME_PX + 18, 150, 2.5, 10)
+	local namePill = textPill(plate, "NamePill", def.Name or "Friend", "Nameplate", NAME_PX, 16, NAME_PX + 18, 150, 2.5, 10) -- (kit-b U6) a name over a head
 	namePill.Position = UDim2.new(0.5, 0, 1, -(titleH - 4))
 	corner(namePill, 16)
 	stroke(namePill, accent, 3.5)
@@ -555,8 +555,8 @@ local function buildNameplate(parent, def, accent, offsetY)
 	stroke(badge, Theme.Colors.Navy or Theme.Colors.Ink, 3)
 	local mark = Theme.Label("!", "Accent", {
 		Size = 26,
-		Stroke = 1,
-		Outline = 2,
+		Outline = "World", -- a world sign: ONE outline, no classic stroke (kit-b U6)
+		OutlineThickness = 2,
 		OutlineColor = INK,
 		Props = { Name = "Mark", Size = UDim2.fromScale(1, 1), ZIndex = 4 },
 	})

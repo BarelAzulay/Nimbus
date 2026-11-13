@@ -529,7 +529,7 @@ S.client_raid_panel = guarded("client_raid_panel", function()
 		local nextBoss = find(win, "NextBoss")
 		T.check(nextBoss and KC.isShown(nextBoss) and nextBoss.Text:find("5:00", 1, true) ~= nil or (nextBoss and nextBoss.Text:find("4:5", 1, true) ~= nil), "raid panel client: when the boss changes", nextBoss and nextBoss.Text)
 		local name = find(win, "BossBlurb") or find(win, "Name")
-		T.check(textOf(find(win, "Boss")):find("Frost Wyrm", 1, true) ~= nil, "raid panel client: the boss's name", name and name.Text)
+		T.check(textOf(find(win, "Boss")):upper():find("FROST WYRM", 1, true) ~= nil, "raid panel client: the boss's name", name and name.Text)
 		T.check(textOf(find(win, "Tips")):find("350", 1, true) ~= nil and find(win, "TiersTitle") ~= nil, "raid panel client: the medal rows show my tier's numbers (Gold 500 x0.7)", textOf(find(win, "Tips")))
 		T.check(not textOf(find(win, "Tips")):find("RETREAT", 1, true) and textOf(find(win, "Tips")):find("DASH", 1, true) ~= nil, "raid panel client: the tips say DASH")
 

@@ -722,7 +722,7 @@ S.spots = guarded("spots", function()
 			end
 		end
 		local joined = table.concat(tagText, " | ")
-		T.check(joined:find(def.Name, 1, true) ~= nil and joined:find("Common", 1, true) ~= nil, "a small tag names the pet and its rarity", joined)
+		T.check(joined:upper():find(def.Name:upper(), 1, true) ~= nil and joined:find("Common", 1, true) ~= nil, "a small tag names the pet and its rarity", joined)
 	end
 	-- not rebuilt for an equal-or-lower pet
 	grant(Q, common2, 1)
@@ -742,7 +742,7 @@ S.spots = guarded("spots", function()
 			end
 		end
 		local joined = table.concat(texts, " | ")
-		T.check(joined:find("Cloudy Dragon", 1, true) ~= nil and joined:find("Mythic", 1, true) ~= nil, "...and the tag names the Cloudy Dragon (Mythic)", joined)
+		T.check(joined:upper():find("CLOUDY DRAGON", 1, true) ~= nil and joined:find("Mythic", 1, true) ~= nil, "...and the tag names the Cloudy Dragon (Mythic)", joined)
 	end
 	-- all pets gone -> empty podium again
 	local prof = profileOf(Q)

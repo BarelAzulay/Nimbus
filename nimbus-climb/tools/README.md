@@ -257,8 +257,8 @@ python3 tools/stroke_walk.py --casing --bare lobby shop              # + the cas
 
 `stroke_walk.py` (kit-b U6) dumps the render scenarios one at a time (default: all but the widget galleries, at 1920x1080;
 `--grid` adds the other three sizes) and fails on any text with a classic stroke under an outline, or an outline on an
-opaque panel (kit B "stroke or panel, never both"). `--casing` lists Button-role texts in capitals and Tag-role texts with
-lower case; `--bare` lists texts with no outline and no backdrop, the candidates for `Outline = "World"`. `--warn` only
+opaque panel (kit B "stroke or panel, never both"; the world signs mirrored into WorldMirror keep their one outline on
+their plate). `--casing` lists Button-role texts in capitals and Tag / Title / Sign / Accent texts with lower case; `--bare` lists texts with no outline and no backdrop, the candidates for `Outline = "World"`. `--warn` only
 reports.
 
 * Scenarios: `lobby`, `title` (title card up), `match` / `match:hit` (a quarter second after a hit), `countdown`,

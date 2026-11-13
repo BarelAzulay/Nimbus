@@ -1062,8 +1062,9 @@ local function buildGroupTile(group, index)
 		TextStrokeTransparency = 1,
 		Rotation = 12,
 	})
-	-- name on top, then a slim progress bar with the "3/6" count at its right end
-	tile.Name = makeText(button, "GroupName", group.Rarity, "Title", 24, WHITE, {
+	-- name on top, then a slim progress bar with the "3/6" count at its right end (kit-b U6: a card name is a Heading, the
+	-- Title face's capitals would not fit "LEGENDARY" in the narrow phone tile)
+	tile.Name = makeText(button, "GroupName", group.Rarity, "Heading", 24, WHITE, {
 		Position = UDim2.fromOffset(12, 4),
 		Size = UDim2.new(1, -52, 0, 30),
 		TextXAlignment = Enum.TextXAlignment.Left,
@@ -1165,7 +1166,7 @@ local function buildFusionTile(index)
 		TextStrokeTransparency = 1,
 		Rotation = 12,
 	})
-	tile.Name = makeText(button, "GroupName", "Fusions", "Title", 24, WHITE, {
+	tile.Name = makeText(button, "GroupName", "Fusions", "Heading", 24, WHITE, { -- (a card name, like the rarity tiles)
 		Position = UDim2.fromOffset(12, 4),
 		Size = UDim2.new(1, -52, 0, 30),
 		TextXAlignment = Enum.TextXAlignment.Left,

@@ -1156,7 +1156,7 @@ local function gradient(parent, top, bottom)
 end
 
 local function label(parent, text, role, props, outline)
-	local l = Theme.Label(text, role, { Color = props.Color or C.White, Stroke = 0, Outline = outline or 2, OutlineColor = C.Ink, Scaled = props.Scaled, Size = props.Size })
+	local l = Theme.Label(text, role, { Color = props.Color or C.White, Outline = "World", OutlineThickness = outline or 2, OutlineColor = C.Ink, Scaled = props.Scaled, Size = props.Size })
 	l.Name = props.Name or "Text"
 	l.AnchorPoint = props.AnchorPoint or Vector2.new(0.5, 0.5)
 	l.Position = props.Position or UDim2.fromScale(0.5, 0.5)

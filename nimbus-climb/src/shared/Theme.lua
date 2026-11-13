@@ -29,7 +29,9 @@
 -- U6 (the outline and font sweep): one outline at most. Theme.Style never sets a classic text stroke (an old caller's Stroke
 -- is ignored), so a label is either plain (on a panel, plank, chip or button) or carries ONE outline: Outline = "World"
 -- for text over the 3D world with no plate. Theme.Measure also takes an Enum font (the old GetTextSize helpers), and
--- Theme.Corner takes "Round" (a pill or a disc) beside the Theme.Radius tokens.
+-- Theme.Corner takes "Round" (a pill or a disc) beside the Theme.Radius tokens. World signs (BillboardGui / SurfaceGui) keep
+-- their one outline on their plate (the World text rule of ARCHITECTURE_V3). Casing: the Title, Sign, Accent and Tag roles
+-- read in capitals (`Theme.CapsRoles`, kept by Theme.SetRole; LuckiestGuy's lower case reads oddly: "PeTS").
 -- Plain Lua 5.1-compatible syntax only. Safe to require on the server and on the client.
 
 local Theme = {}
@@ -612,10 +614,70 @@ end
 -- The outline thickness of Outline = "World" per role (damage numbers read from further away than a nameplate).
 local WORLD_OUTLINE = { Accent = 3, Title = 3, Sign = 3, Display = 2.5 }
 
+-- kit B casing (U6; the owner saw LuckiestGuy's odd lower-case "e" in "PeTS"): titles, signs, accents and tags read in
+-- capitals. Theme.SetRole keeps a label of these roles in capitals whatever text is set on it later; a label moved to
+-- another role keeps the case of the texts set after. Buttons read in sentence case (written so by the callers).
+Theme.CapsRoles = { Title = true, Sign = true, Accent = true, Tag = true }
+
+-- `text` in capitals outside rich text tags ("<font ...>") and entities ("&amp;"); ASCII letters only, every other byte
+-- (UTF-8 symbols) stays.
+function Theme.Caps(text)
+	text = tostring(text or "")
+	local out, pos = {}, 1
+	while true do
+		local s = text:find("[<&]", pos)
+		if not s then
+			break
+		end
+		local e
+		if text:sub(s, s) == "<" then
+			e = text:find(">", s, true)
+		else
+			local _, last = text:find("^&#?%w+;", s)
+			e = last
+		end
+		if e then
+			out[#out + 1] = text:sub(pos, s - 1):upper()
+			out[#out + 1] = text:sub(s, e)
+			pos = e + 1
+		else
+			out[#out + 1] = text:sub(pos, s):upper() -- a lone "<" or "&"
+			pos = s + 1
+		end
+	end
+	out[#out + 1] = text:sub(pos):upper()
+	return table.concat(out)
+end
+
+-- labels already listening for their text (weak keys: the label owns its connection)
+local capsHooked = setmetatable({}, { __mode = "k" })
+
+local function keepCaps(obj)
+	if obj:IsA("TextBox") then
+		return -- what a player types stays as typed
+	end
+	local now = Theme.Caps(obj.Text)
+	if obj.Text ~= now then
+		obj.Text = now
+	end
+	if capsHooked[obj] then
+		return
+	end
+	capsHooked[obj] = true
+	obj:GetPropertyChangedSignal("Text"):Connect(function()
+		if Theme.CapsRoles[obj:GetAttribute("FontRole")] then
+			local caps = Theme.Caps(obj.Text)
+			if obj.Text ~= caps then
+				obj.Text = caps
+			end
+		end
+	end)
+end
+
 -- Puts a role's font on a text object and nothing else (colour, size and stroke stay): the Enum font (which also resets
 -- FontFace, so a label leaving a face role loses its Nunito face), then the role's FontFace when it has one, and stamps
 -- the role on it (attribute FontRole, read by Theme.FontOf). Use it instead of `obj.Font = Theme.Fonts.X`, which would
--- drop a FontFace. An unknown role is Body. Returns obj.
+-- drop a FontFace. A Theme.CapsRoles role keeps the text in capitals. An unknown role is Body. Returns obj.
 function Theme.SetRole(obj, role)
 	if not obj then
 		return nil
@@ -626,6 +688,9 @@ function Theme.SetRole(obj, role)
 	obj.Font = Theme.Fonts[role]
 	Theme.Face(obj, role)
 	obj:SetAttribute("FontRole", role)
+	if Theme.CapsRoles[role] then
+		keepCaps(obj)
+	end
 	return obj
 end
 
@@ -658,6 +723,9 @@ end
 function Theme.MeasureLabel(obj, text, size, width)
 	if text == nil then
 		text = obj and obj.Text or ""
+	end
+	if obj and Theme.CapsRoles[stampedRole(obj)] then
+		text = Theme.Caps(text) -- (U6) what the label will show
 	end
 	size = tonumber(size) or (obj and obj.TextSize) or nil
 	local f = obj and obj.Font
@@ -704,7 +772,7 @@ end
 -- The size of `text` in a role's font at `size` px (wrapped at `width` when given): TextService:GetTextSize with the role's
 -- Enum font, X widened by Theme.MeasureSpare for a FontFace role and rounded up (TextService does not know FontFace;
 -- GetTextBoundsAsync does, but it yields). A wrap width is narrowed by the same factor, so the rows counted are the wider
--- face's. An unknown role measures as Body. `role` may also be an Enum.Font (U6: the old GetTextSize helpers pass the
+-- face's. An unknown role measures as Body; a Theme.CapsRoles role measures the text in capitals. `role` may also be an Enum.Font (U6: the old GetTextSize helpers pass the
 -- font they read): measured 1:1 with that font, and Enum.Font.Unknown (a Nunito face read back) as Body. Returns a Vector2.
 function Theme.Measure(text, role, size, width)
 	if typeof(role) == "EnumItem" and role ~= Enum.Font.Unknown then
@@ -715,6 +783,9 @@ function Theme.Measure(text, role, size, width)
 		role = "Body"
 	end
 	text = tostring(text or "")
+	if Theme.CapsRoles[role] then
+		text = Theme.Caps(text) -- (U6) a caps role shows its text in capitals
+	end
 	size = tonumber(size) or Theme.RoleSize(role)
 	local spare = Theme.MeasureSpare[role] or 1
 	local frame = Vector2.new(tonumber(width) and (tonumber(width) / spare) or 100000, 100000)

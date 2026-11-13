@@ -9,10 +9,13 @@
 Each scenario is dumped by tools/render_gui.py's real client boot (tools/dump_gui.lua) and walked with
 render_gui.stroke_rule: a text with both a classic stroke (TextStrokeTransparency < 0.95) and an outline (a Contextual
 UIStroke), or an outlined text whose nearest painted background is opaque. Text over the 3D world keeps ONE outline
-(Theme Outline = "World") and no plate, so it passes. One scenario is dumped at a time (one lupa world, freed after).
+(Theme Outline = "World"), so it passes: floating HUD text with no plate, and the world signs mirrored into WorldMirror
+(BillboardGui / SurfaceGui), which keep their one outline on their plate (ARCHITECTURE_V3's World text rule). One
+scenario is dumped at a time (one lupa world, freed after).
 The casing rule (fonts audit F9) runs over the same dumps: a Button-role text (Theme's FontRole stamp) with an
-all-capitals word of 4+ letters, or a Tag-role text with a lower-case letter. --casing reports it (it is not a failure
-until U9 renames the remaining windows' buttons).
+all-capitals word of 4+ letters, or a Tag / Title / Sign / Accent text with a lower-case letter (Theme keeps those in
+capitals). --casing reports it (not a failure: the smoke scenario kitb_casing_rule fails on the swept families; U9 renames
+the remaining windows' buttons).
 Exit status: 0 when no scenario has a stroke hit (or --warn), 1 otherwise, 2 when a dump fails.
 """
 import argparse
@@ -36,7 +39,7 @@ def casing(dump):
 
     def walk(n):
         tx = n.get("text")
-        if tx and tx.get("role") in ("Button", "Tag"):
+        if tx and tx.get("role") in ("Button", "Tag", "Title", "Sign", "Accent"):
             text = re.sub(r"<[^>]*>", "", str(tx.get("text", "")))
             if tx["role"] == "Button":
                 if any(len(w) >= 4 and w == w.upper() for w in re.findall(r"[A-Za-z]+", text)):

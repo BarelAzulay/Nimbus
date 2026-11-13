@@ -719,7 +719,7 @@ local function clientScenarios()
 		local box = recallBox()
 		local title = box and find(box, "Title")
 		local body = box and find(box, "Body")
-		T.check(box and title and title.Text:find("This pet is gardening!", 1, true) and body and body.Text:find("Take it out of the garden", 1, true) and body.Text:find("put it in your team?", 1, true),
+		T.check(box and title and title.Text:upper():find("THIS PET IS GARDENING!", 1, true) and body and body.Text:find("Take it out of the garden", 1, true) and body.Text:find("put it in your team?", 1, true),
 			"p3ui recall: picking a gardening pet opens NimbusPets.GardenRecall ('This pet is gardening! Take it out of the garden and put it in your team?')", body and body.Text)
 		T.check(box and find(box, "RecallYes") and find(box, "RecallNo"), "p3ui recall: ...with Yes and No")
 		T.check(lastRequest(mark, "TeamSet") == nil and #homeActions(mark) == 0, "p3ui recall: ...and sends nothing yet")
@@ -805,7 +805,7 @@ local function clientScenarios()
 			if row then
 				rows = rows + 1
 				local nm = row:FindFirstChild("Name")
-				if nm and nm.Text:find("(you)", 1, true) then
+				if nm and nm.Text:lower():find("(you)", 1, true) then
 					mine = i
 				end
 			end

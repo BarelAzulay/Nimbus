@@ -1163,6 +1163,50 @@ local function serverScenarios()
 		K.flushErrors("kitb_radius_tokens")
 	end)
 
+	-- U6 casing (the owner saw LuckiestGuy's odd lower-case "e" in "PeTS"): Title, Sign, Accent and Tag labels read in
+	-- capitals, the text they are made with and every text set later; rich text tags and entities stay as written; the
+	-- reading and button roles keep their case; a label moved to a reading role keeps the case of later texts; Theme.Measure
+	-- and Theme.MeasureLabel measure the capitals
+	S.theme_caps_roles = guarded("theme_caps_roles", function()
+		local Theme = theme()
+		if not Theme then
+			return
+		end
+		for _, role in ipairs({ "Title", "Sign", "Accent", "Tag" }) do
+			local l = Theme.Label("Pets", role)
+			T.check(l.Text == "PETS", "kitb caps: a " .. role .. " label reads in capitals", l.Text)
+			l.Text = "Daily gift"
+			T.check(l.Text == "DAILY GIFT", "kitb caps: ...and so does a text set later (" .. role .. ")", l.Text)
+			l:Destroy()
+		end
+		local rich = Theme.Label("<font color=\"#FFD24A\">Pets</font> &amp; eggs", "Title")
+		T.check(rich.Text == "<font color=\"#FFD24A\">PETS</font> &amp; EGGS", "kitb caps: rich text tags and entities stay as written", rich.Text)
+		rich:Destroy()
+		T.check(Theme.Caps("Lv 5 \194\183 a < b") == "LV 5 \194\183 A < B", "kitb caps: Theme.Caps keeps UTF-8 symbols and a lone '<'", Theme.Caps("Lv 5 \194\183 a < b"))
+		for _, role in ipairs({ "Heading", "Button", "Body", "Label", "Display", "Script", "Toast", "Nameplate" }) do
+			local l = Theme.Label("Feed", role)
+			T.check(l.Text == "Feed", "kitb caps: a " .. role .. " label keeps its case", l.Text)
+			l:Destroy()
+		end
+		local moved = Theme.Label("Pets", "Title")
+		Theme.SetRole(moved, "Body")
+		moved.Text = "Lucky pets"
+		T.check(moved.Text == "Lucky pets", "kitb caps: a label moved to a reading role keeps the case of later texts", moved.Text)
+		moved:Destroy()
+		local box = Instance.new("TextBox")
+		box.Text = "typed"
+		Theme.Style(box, "Title")
+		T.check(box.Text == "typed", "kitb caps: a TextBox keeps what the player typed", box.Text)
+		box:Destroy()
+		local a, b = Theme.Measure("Pets", "Title", 30), Theme.Measure("PETS", "Title", 30)
+		T.check(a.X == b.X, "kitb caps: Theme.Measure measures a Title in capitals", tostring(a) .. " vs " .. tostring(b))
+		local t = Theme.Label("PETS", "Title", { Size = 30 })
+		local m = Theme.MeasureLabel(t, "Pets")
+		T.check(m.X == b.X, "kitb caps: Theme.MeasureLabel measures a Title label's text in capitals", tostring(m) .. " vs " .. tostring(b))
+		t:Destroy()
+		K.flushErrors("theme_caps_roles")
+	end)
+
 	return S
 end
 
@@ -1202,7 +1246,10 @@ local function clientScenarios()
 				if classic and ring then
 					doubled[#doubled + 1] = path
 				end
-				if classic or ring then
+				-- a world sign (BillboardGui / SurfaceGui: a pet card, a damage number) keeps its ONE outline on its plate
+				-- (ARCHITECTURE_V3's World text rule, read over a bright sky at any distance); only a doubled one fails there
+				local world = d:FindFirstAncestorWhichIsA("BillboardGui") or d:FindFirstAncestorWhichIsA("SurfaceGui")
+				if (classic or ring) and not world then
 					local opaque, panel = onPanel(d)
 					if opaque then
 						panelled[#panelled + 1] = path .. (panel ~= d and (" on " .. panel.Name) or " (own fill)")
@@ -1221,9 +1268,9 @@ local function clientScenarios()
 	end)
 
 	-- U6 (fonts audit F9): kit B's casing rule over every text Theme stamped with a role in PlayerGui after the client run:
-	-- a Button reads in sentence case (no all-capitals word of 4+ letters: "Leave", not "LEAVE"), a Tag in capitals. Rich
-	-- text tags are not text. A failure in the ScreenGuis of the families U6 swept (CASING_SWEPT); elsewhere a warning
-	-- with the count (U9 sweeps those windows; the SignKit planks of the main menu, Settings and the loading screen keep
+	-- a Button reads in sentence case (no all-capitals word of 4+ letters: "Leave", not "LEAVE"), a Tag / Title / Sign /
+	-- Accent in capitals (Theme keeps those, so they fail in every family). Rich text tags are not text. A button in
+	-- capitals fails in the ScreenGuis of the families U6 swept (CASING_SWEPT); elsewhere it is a warning with the count (U9 sweeps those windows; the SignKit planks of the main menu, Settings and the loading screen keep
 	-- the capitals of the owner's approved U2-U5 boards until the owner rules on it).
 	local CASING_SWEPT = { NimbusMenu = true, NimbusBattle = true, NimbusHud = true, NimbusIndex = true, NimbusNotify = true,
 		NimbusDungeon = true, NimbusDungeonRun = true }
@@ -1248,21 +1295,21 @@ local function clientScenarios()
 							break
 						end
 					end
-				elseif role == "Tag" and text:find("%a") then
+				elseif (role == "Tag" or role == "Title" or role == "Sign" or role == "Accent") and text:find("%a") then
+					-- (Theme.SetRole keeps these in capitals, so a lower-case letter fails in every family)
 					tags = tags + 1
 					if text:find("%l") then
-						local into = swept and quiet or later
-						into[#into + 1] = path .. " \"" .. text .. "\""
+						quiet[#quiet + 1] = path .. " \"" .. text .. "\" (" .. role .. ")"
 					end
 				end
 			end
 		end
 		table.sort(shouty)
 		table.sort(quiet)
-		T.info(fmt("*kitb casing: %d button texts, %d tag texts", buttons, tags))
+		T.info(fmt("*kitb casing: %d button texts, %d tag / title texts", buttons, tags))
 		T.check(buttons > 0, "kitb casing: the client run left Button-role text in PlayerGui", tostring(buttons))
 		T.check(#shouty == 0, fmt("kitb casing: buttons read in sentence case (%d in capitals)", #shouty), table.concat(shouty, "; ", 1, math.min(#shouty, 8)))
-		T.check(#quiet == 0, fmt("kitb casing: tags read in capitals (%d not)", #quiet), table.concat(quiet, "; ", 1, math.min(#quiet, 8)))
+		T.check(#quiet == 0, fmt("kitb casing: tags, titles, signs and accents read in capitals (%d not)", #quiet), table.concat(quiet, "; ", 1, math.min(#quiet, 8)))
 		if #later > 0 then
 			table.sort(later)
 			T.warn(fmt("kitb casing: %d text(s) outside the swept families break the casing rule (U9 sweeps them)", #later), table.concat(later, "; ", 1, math.min(#later, 8)))

@@ -742,7 +742,7 @@ local function clientScenarios()
 		local houseName = find(win, "Tier")
 		local homeLevel = find(win, "HomeLevel")
 		local wantLevel = TC.HomeLevelOf(snapshot("mid").Home)
-		T.check(houseName and houseName.Text == "Villa" and homeLevel and homeLevel.Text == "Home Level " .. wantLevel,
+		T.check(houseName and houseName.Text == "VILLA" and homeLevel and homeLevel.Text == "Home Level " .. wantLevel,
 			"p2ui menu: the house tier and the Home Level show", (houseName and houseName.Text or "?") .. " / " .. (homeLevel and homeLevel.Text or "?"))
 		-- Phase 5: income per second from the plot folder (live), the garden places in its parts line
 		local income = find(win, "PerSecond")
@@ -760,7 +760,7 @@ local function clientScenarios()
 		local press1 = find(win, "Station_Press1")
 		local upgrade = press1 and find(press1, "Upgrade")
 		local berry = TC.Get("Press1")
-		T.check(press1 and find(press1, "Name") and find(press1, "Name").Text == berry.Name, "p2ui menu: Station_Press1 is the " .. tostring(berry.Name))
+		T.check(press1 and find(press1, "Name") and find(press1, "Name").Text == berry.Name:upper(), "p2ui menu: Station_Press1 is the " .. tostring(berry.Name))
 		mark = #Mock.RemoteLog
 		T.check(upgrade and upgrade.Visible and not disabled(upgrade), "p2ui menu: an affordable upgrade is enabled")
 		if upgrade then
@@ -833,7 +833,7 @@ local function clientScenarios()
 		T.check(levelTag and levelTag.Visible and levelTag.Text == "L12", "p2ui pets: the card shows the copy's level")
 		local detail = find(inv, "Detail")
 		local nameLabel = find(detail, "Name")
-		T.check(nameLabel and nameLabel.Text == "Golden Pebble Pup", "p2ui pets: the detail card shows the selected copy", nameLabel and nameLabel.Text or "")
+		T.check(nameLabel and nameLabel.Text == "GOLDEN PEBBLE PUP", "p2ui pets: the detail card shows the selected copy", nameLabel and nameLabel.Text or "")
 		local meta = find(detail, "Meta")
 		local xpBar = find(detail, "XpBar")
 		T.check(meta and meta.Text:find("Golden", 1, true) and xpBar ~= nil and find(xpBar, "Text") and find(xpBar, "Text").Text:find("300", 1, true),
@@ -1025,7 +1025,7 @@ local function clientScenarios()
 			T.check(tileF ~= nil and table.concat(keys, ",") == "hyb:hc1,maple_fox@Rainbow,pebble_pup@Golden",
 				"p2ui index: Open('Fusions') lists the fused copies (hybrids, Golden, Rainbow)", table.concat(keys, ","))
 			local title = index and find(index, "GroupTitle")
-			T.check(title and title.Text:find("Fusions", 1, true), "p2ui index: ...under a 'Fusions' header")
+			T.check(title and title.Text:upper():find("FUSIONS", 1, true), "p2ui index: ...under a 'Fusions' header")
 			T.eq(IC.ClaimableCount(), claimable, "p2ui index: fusions are not part of the group rewards")
 			local claimButton = index and find(index, "Claim")
 			T.check(claimButton and not disabled(claimButton) and claimButton.Text ~= "Claim", "p2ui index: the rewards box leads to the Fusion Machine / the Home window instead of a claim")

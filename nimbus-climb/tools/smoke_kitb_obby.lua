@@ -1711,7 +1711,7 @@ local function serverScenarios()
 			for _, t in ipairs(b.tags) do
 				if t.first == "GOAL" then
 					goal = t
-				elseif t.first:find("^Checkpoint ") then
+				elseif t.first:upper():find("^CHECKPOINT ") then
 					cps[#cps + 1] = t
 				end
 			end
@@ -1722,7 +1722,7 @@ local function serverScenarios()
 						total = total + 1
 					end
 				end
-				local lastName = "Checkpoint " .. total .. "/" .. total
+				local lastName = "CHECKPOINT " .. total .. "/" .. total -- (kit-b U6: a Title-role tag reads in capitals)
 				local found = {}
 				for _, t in ipairs(cps) do
 					found[t.first] = true
@@ -1732,7 +1732,7 @@ local function serverScenarios()
 					end
 				end
 				for k = 1, total - 1 do
-					keep:case(found["Checkpoint " .. k .. "/" .. total] == true, b.who .. ": no tag on checkpoint " .. k)
+					keep:case(found["CHECKPOINT " .. k .. "/" .. total] == true, b.who .. ": no tag on checkpoint " .. k)
 				end
 				-- the screenshot's view: the player on the last checkpoint pad (and one step earlier), the camera behind
 				-- and above, looking at the Finish

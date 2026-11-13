@@ -1465,10 +1465,12 @@ def text_report(renderer, height):
 
 def stroke_rule(dump):
     """kit B "stroke or panel, never both" over a dump: [paths of texts with a classic stroke AND an outline],
-    [paths of outlined texts whose nearest painted background (the text's own first) is opaque]."""
+    [paths of outlined texts whose nearest painted background (the text's own first) is opaque]. The world signs
+    mirrored into the dump's WorldMirror (BillboardGui / SurfaceGui) keep their ONE outline on their plate (the World
+    text rule of ARCHITECTURE_V3), so only the first list applies to them (kit-b U6)."""
     doubled, panelled = [], []
 
-    def walk(n, backdrop):
+    def walk(n, backdrop, world):
         bgT = float(n.get("bgT", 1))
         here = backdrop
         if bgT < 0.99:
@@ -1480,14 +1482,15 @@ def stroke_rule(dump):
                        and float(k.get("thickness", 0)) > 0 for k in (n.get("strokes") or []))
             if classic and ring:
                 doubled.append(n.get("path", ""))
-            if (classic or ring) and here[0]:
+            if (classic or ring) and here[0] and not world:
                 panelled.append(n.get("path", ""))
         for c in n.get("children", []):
-            walk(c, here)
+            walk(c, here, world)
 
     for gui in dump.get("guis", []):
+        world = gui.get("name") == "WorldMirror"
         for n in gui.get("nodes", []):
-            walk(n, (False, ""))
+            walk(n, (False, ""), world)
     return doubled, panelled
 
 

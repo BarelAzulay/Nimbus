@@ -593,7 +593,7 @@ local function serverScenarios()
 		T.check(math.abs((hard.Model:GetAttribute("Countdown") or -99) - (cd or 0)) <= 1, "Portal_Hard attribute Countdown follows the timer", tostring(hard.Model:GetAttribute("Countdown")))
 		-- the eye-level face next to the pad shows the same countdown
 		local faceNum = tonumber(faceText("Obby", "Num"))
-		T.check(faceShown("Obby") and faceText("Obby", "Top") == "Starting in" and faceNum ~= nil and shown ~= nil and math.abs(faceNum - shown) <= 1
+		T.check(faceShown("Obby") and faceText("Obby", "Top") == "STARTING IN" and faceNum ~= nil and shown ~= nil and math.abs(faceNum - shown) <= 1
 			and faceText("Obby", "Count") == "1/" .. Config.Match.MaxPlayers .. " players",
 			"the eye-level face appears with 'Starting in', the billboard's seconds and '1/" .. Config.Match.MaxPlayers .. " players'",
 			faceText("Obby", "Top") .. " / " .. faceText("Obby", "Num") .. " / " .. faceText("Obby", "Count"))
@@ -706,7 +706,7 @@ local function serverScenarios()
 			K.enterPortal(d, "Obby")
 			advance(0.6)
 			T.check(isLocked(d) and statusText("Obby"):lower():find("waiting") ~= nil, "a party below MinPlayers waits (locked, 'Waiting for players...')", statusText("Obby"))
-			T.check(faceShown("Obby") and faceText("Obby", "Top") == "Waiting..." and tonumber(faceText("Obby", "Num")) ~= nil, "...and the face says 'Waiting...' over the seconds left", faceText("Obby", "Top"))
+			T.check(faceShown("Obby") and faceText("Obby", "Top") == "WAITING..." and tonumber(faceText("Obby", "Num")) ~= nil, "...and the face says 'Waiting...' over the seconds left", faceText("Obby", "Top"))
 			mark = K.logSize()
 			local released = K.waitFor(function()
 				return not isLocked(d)
@@ -735,7 +735,7 @@ local function serverScenarios()
 		T.check(allIn, "four players fill the Saint party, all locked")
 		T.check(statusText("Obby"):find("Full! Starting in %d") ~= nil, "a full party's billboard reads 'Full! Starting in N'", statusText("Obby"))
 		T.eq(countText("Obby"), Config.Match.MaxPlayers .. "/" .. Config.Match.MaxPlayers .. " players", "...and '" .. Config.Match.MaxPlayers .. "/" .. Config.Match.MaxPlayers .. " players'")
-		T.check(faceShown("Obby") and faceText("Obby", "Top") == "Starting in" and faceText("Obby", "Count") == "Full! " .. Config.Match.MaxPlayers .. "/" .. Config.Match.MaxPlayers
+		T.check(faceShown("Obby") and faceText("Obby", "Top") == "STARTING IN" and faceText("Obby", "Count") == "Full! " .. Config.Match.MaxPlayers .. "/" .. Config.Match.MaxPlayers
 			and tonumber(faceText("Obby", "Num")) ~= nil and tonumber(faceText("Obby", "Num")) <= Config.Match.FullPartyCountdown,
 			"the face of a full party: 'Starting in', the short countdown and 'Full! " .. Config.Match.MaxPlayers .. "/" .. Config.Match.MaxPlayers .. "'",
 			faceText("Obby", "Top") .. " / " .. faceText("Obby", "Num") .. " / " .. faceText("Obby", "Count"))

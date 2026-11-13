@@ -605,8 +605,8 @@ local function plateLabel(parent, name, text, role, size, color, outlineColor, o
 	local label = Theme.Label(text, role, {
 		Size = size,
 		Color = color,
-		Stroke = 1, -- the glyph outline below replaces the classic stroke
-		Outline = 2.5,
+		Outline = "World", -- a world sign: ONE outline, no classic stroke (kit-b U6)
+		OutlineThickness = 2.5,
 		OutlineColor = outlineColor or INK,
 		Props = {
 			Name = name,
@@ -869,8 +869,8 @@ local function buildFace(party)
 	local num = Theme.Label("0", "Display", {
 		Size = FACE.NumText,
 		Color = Theme.Colors.White,
-		Stroke = 1,
-		Outline = 6,
+		Outline = "World", -- a world sign: ONE outline, no classic stroke (kit-b U6)
+		OutlineThickness = 6,
 		OutlineColor = INK,
 		Props = {
 			Name = "NumeralLabel",
