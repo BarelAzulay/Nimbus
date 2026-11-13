@@ -4,8 +4,9 @@
 --     manifests   a committed manifest for every lobby key (blender/catalog/lobby.json), every part under 10k tris,
 --                 the layout-baked keys (cloud_*, floor_*, the altar) carry their LayoutSig
 --     default     the booted lobby with the shipped MeshIds: exactly the lobby keys with a shipped id are tagged (empty
---                 MeshIds = nothing tagged, nothing changes; the roulette Machines wear the uploaded prop_roulette while
---                 prop_roulette_globe has no id); the mock cannot load them, so the Parts stay visible
+--                 MeshIds = nothing tagged, nothing changes; the roulette Machines wear prop_roulette_globe now that it
+--                 ships an id (b8d0b45), so the still-shipped prop_roulette is the one shipped key left untagged; while
+--                 the globe has no id they wear prop_roulette); the mock cannot load them, so the Parts stay visible
 --     fixture     the real MeshLibrary pointed (_Configure) at canonical templates made from the committed manifests
 --                 (fake ids) and a second LobbyBuilder.Build() (the booted lobby is set aside and put back): every
 --                 key is tagged where the kit says (template clones, plots, shop, plaza layers, roads, gardens, sky),
@@ -26,6 +27,8 @@ local RS = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
 local Workspace = game:GetService("Workspace")
 local fmt = string.format
+-- --mesh reconfigures MeshLibrary with the fixture's pet ids (the shipped lobby ids, the globe's among them, are not there)
+local MESH_MODE = (os and os.getenv and os.getenv("NC_MESH_FIXTURES") == "1") or false
 
 local function req(root, path)
 	local ok, inst = pcall(Mock.GetPath, ROOTS[root] .. "/" .. path)
@@ -60,9 +63,13 @@ local PROP_KEYS = {
 	"prop_pond_water", "prop_seedsack", -- (bug #12: the meadow_* clumps are not tagged: MeadowFx assembles them on the client)
 }
 -- shop-area review round 1: keys tagged only when the one before them refused: a Machine wears the uploaded prop_roulette
--- while prop_roulette_globe has no id (the default mode wants it on every Machine: it ships an id), never both (the
--- fixture, where the globe has one, wants none)
+-- while prop_roulette_globe has no id, never both (the fixture, where the globe has one, wants none). Since b8d0b45 the
+-- globe ships an id too, so the default mode wants the globe on every Machine and prop_roulette (still shipped, kept
+-- until a later cleanup: BUILD_STATE 2026-11-09 "Polish uploads") on none
 local FALLBACK_KEYS = { "prop_roulette" }
+-- fallback key -> the key it stands in for: shipped but untagged is right for exactly these, and only while that key
+-- ships and is tagged
+local FALLBACK_OF = { prop_roulette = "prop_roulette_globe" }
 
 local function allKeys()
 	local list = {}
@@ -230,19 +237,37 @@ S.p6lobby_server = guarded("p6lobby_server", function()
 			stray[#stray + 1] = key
 		end
 	end
-	local nShipped = 0
+	-- a fallback key whose primary ships and is tagged stands idle on purpose (prop_roulette while the globe dresses)
+	local function benched(key)
+		local primary = FALLBACK_OF[key]
+		return primary ~= nil and shipped(primary) and found[primary] ~= nil
+	end
+	local nShipped, wantIdle, both = 0, {}, {}
 	for _, key in ipairs(allKeys()) do
 		if shipped(key) then
 			nShipped = nShipped + 1
-			if not found[key] then
+			if benched(key) then
+				wantIdle[#wantIdle + 1] = key
+				if found[key] then
+					both[#both + 1] = key .. " + " .. FALLBACK_OF[key]
+				end
+			elseif not found[key] then
 				idle[#idle + 1] = key
 			end
 		end
 	end
 	table.sort(stray)
 	T.check(#stray == 0, "p6 lobby default: only lobby keys with a shipped id are tagged", table.concat(stray, ", "))
-	T.check(#idle == 0, fmt("p6 lobby default: every lobby key with a shipped id is tagged in the booted lobby (%d shipped, %d tagged)", nShipped, n),
-		table.concat(idle, ", "))
+	T.check(#idle == 0 and n == nShipped - #wantIdle,
+		fmt("p6 lobby default: every lobby key with a shipped id is tagged in the booted lobby but a fallback whose key dresses (%d shipped, %d tagged, %d benched: %s)",
+			nShipped, n, #wantIdle, table.concat(wantIdle, ", ")), table.concat(idle, ", "))
+	T.check(#both == 0, "p6 lobby default: a benched fallback tags nothing (never both: no Machine wears prop_roulette beside the globe)", table.concat(both, "; "))
+	if not MESH_MODE then
+		-- b8d0b45: the globe ships, so the shipped prop_roulette is benched, exactly that one key
+		T.check(#wantIdle == 1 and wantIdle[1] == "prop_roulette" and found.prop_roulette_globe ~= nil and #found.prop_roulette_globe == #Config.Roulettes,
+			"p6 lobby default: the shipped MeshIds dress every Machine with prop_roulette_globe and bench exactly prop_roulette (still shipped, worn by none)",
+			fmt("benched %s; %d globes", table.concat(wantIdle, ", "), found.prop_roulette_globe and #found.prop_roulette_globe or 0))
+	end
 	local liveTags, strayTags = 0, 0
 	for _, d in ipairs(CollectionService:GetTagged("ML_Dress")) do
 		local key = d:GetAttribute("ML_DressKey")
@@ -302,8 +327,24 @@ S.p6lobby_server = guarded("p6lobby_server", function()
 	-- a second build next to the booted one (set aside, put back afterwards)
 	live.Name = "NimbusLobby_P6Keep"
 	ML._Reset() -- a true untagged build: under --mesh the global pet fixtures would turn the fountain statue into a mesh
+	-- (b8d0b45) _Reset forgets the ids, but the boot's template folder still holds the shipped keys ('loading'), so this
+	-- "untagged" build still dresses the shipped globe and piles its 18 eggs per Machine: those Parts are counted apart
+	local globeShippedHere = (function()
+		local okG, stG = pcall(ML.Status, "prop_roulette_globe")
+		return okG and stG ~= "missing"
+	end)()
 	local okDefault, infoDefault = pcall(LB.Build)
 	local defaultParts = (okDefault and infoDefault and infoDefault.Folder) and partsOf(infoDefault.Folder) or -1
+	local defaultGlobeParts = 0
+	if okDefault and infoDefault and infoDefault.Folder then
+		for _, d in ipairs(infoDefault.Folder:GetDescendants()) do
+			if d.Name == "GlobeEggs" and d:IsA("Model") then
+				defaultGlobeParts = defaultGlobeParts + partsOf(d)
+			end
+		end
+	end
+	T.check(defaultGlobeParts == (globeShippedHere and 18 * #Config.Roulettes or 0) and (MESH_MODE or globeShippedHere),
+		fmt("p6 lobby: the build with the shipped ids piles 18 globe eggs per Machine since the globe ships (b8d0b45; --mesh: none) (%d egg Parts)", defaultGlobeParts))
 	-- [fix-runtime W2.5] a place()d clone's pivot is where it was placed: Plot:GetPivot() == SpotInfo.PlotCFrame
 	-- (TutorialController uses it as the plot's ground point)
 	local pivotBad, pivotN = {}, 0
@@ -346,8 +387,11 @@ S.p6lobby_server = guarded("p6lobby_server", function()
 				globeParts = globeParts + partsOf(d)
 			end
 		end
-		T.check(globeParts == 18 * #Config.Roulettes and parts == defaultParts + globeParts and parts <= 8000,
-			fmt("p6 lobby fixture: tagging adds no parts but the dressed globes' eggs (%d tagged build = %d untagged + %d globe eggs, budget 8000)", parts, defaultParts, globeParts))
+		-- the parts outside the globe eggs are the same in both builds; the eggs follow the dressed globe (72 here: 4 x 18;
+		-- the shipped-id build already has them since b8d0b45, so with today's MeshIds both totals read 7302)
+		T.check(globeParts == 18 * #Config.Roulettes and parts - globeParts == defaultParts - defaultGlobeParts and parts <= 8000,
+			fmt("p6 lobby fixture: tagging adds no parts but the dressed globes' eggs (%d tagged build = %d shipped-id build - %d of its globe eggs + %d globe eggs, budget 8000)",
+				parts, defaultParts, defaultGlobeParts, globeParts))
 		local got = tagged(lobby, set)
 		local untagged = {}
 		for _, key in ipairs(LAYOUT_KEYS) do

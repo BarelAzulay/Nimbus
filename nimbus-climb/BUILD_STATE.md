@@ -518,6 +518,12 @@ Updated: 2026-10-18 (after wave 2). Branch `v3-phase4`. Plan: `ARCHITECTURE_V3.m
   `prop_roulette_globe` (77972886482080) and the seven `egg_<rarity>_pile` eggs (branch `globe-upload` b8d0b45,
   fast-forwarded into quick-wins), so the machines now dress the Gumball Globe; `prop_roulette` is kept until a cleanup.
   Gate: the review (Fable 5.2) found no blocker; its minors are fixed in this branch.
+  (5) The globe glass, seen nearly invisible in Studio (Glass 0.80, 212,234,255), is now SmoothPlastic 0.60, 200,230,255
+  (owner OK after a live preview; `lobby_machine.py` GLASS_* rebuilt the key: contentHash 0e3159905c20bf5364d99a4f3315f2a4,
+  structureHash unchanged, the FBX byte-identical to the uploaded one). `upload_assets.py` now plans one "update" of
+  77972886482080 (same bytes; it only brings upload_state in line) for the keyed session when the owner OKs it.
+  (6) Tests pinned to the pre-upload world (shop_globe, p6lobby_server, the egg row) now pin the uploaded state; the no-id
+  fallback is still tested by forcing MeshLibrary.Status to "missing" inside the scenario.
 - 2026-10-28 (player ruling, wave 5 dungeon camera): the Camera shake setting OFF turns off ONLY the hit shakes; the dungeon entrance rush, the room walk-in shot and the FOV punch on big attacks always play (short, skippable). The rush is skipped when the camera is > 60 studs from the gate.
 - Evolve button; 2nd evolution only Epic+; level cap 100 for all pets (XP curve keeps rising).
 - Presses become food plants, Collector = Coin Magnet, Kitchen = Food Machine, Gym = Training Place.

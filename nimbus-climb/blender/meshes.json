@@ -12444,7 +12444,7 @@
   },
   "prop_roulette_globe": {
    "class": "lobby",
-   "contentHash": "7b60f59d9a2bacbd21b8f441cbe548f4",
+   "contentHash": "0e3159905c20bf5364d99a4f3315f2a4",
    "description": "Shop roulette machine A Gumball Globe (spec 16.17): cabinet Primary, emblem Secondary, Egg1..Egg12 attachments for the real egg keys",
    "displayName": "NC Prop Roulette Globe",
    "fbx": "blender/out/prop_roulette_globe.fbx",

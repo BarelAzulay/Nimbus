@@ -18,7 +18,8 @@ design.md 16.17.1; the owner's pick, ported from the pitch's scripts/machines.py
                             ONE bigger painted egg each (shop-area polish, SIDE_EGG: BodyDark with a Cream band); an
                             access door on the back with hinges and a lock.  On top a gold neck, collar and floor with a
                             cloud bed (CUSHION) the eggs rest on, a gold seat ring holding a clear glass globe (0.5-stud
-                            cells as the old dome, GLASS_RGB at Transparency 0.80), a gold lid and the sunburst finial
+                            cells as the old dome, SmoothPlastic in GLASS_RGB at Transparency 0.60: 2026-11-13 owner,
+                            visible glass, was Glass 0.80), a gold lid and the sunburst finial
                             (SUN: a rising sun, the Bulb half disc in a GoldDark rim, five pointed Gold rays).  ONE
                             face-connected piece with the glass (shop_area_globe.py --check).  Nothing above y 14.25; the
                             9 x 7 footprint (the puffs and the feet stay inside it: the shop's egg row comes close to the
@@ -29,7 +30,7 @@ design.md 16.17.1; the owner's pick, ported from the pitch's scripts/machines.py
                             chase egg Egg1 at Meta.chaseScale 0.54 on the full egg_<rarity>, on top at the front): a
                             natural pile settled by shop_area_globe.py --settle.
                             Parts (8): Body (Primary), BodyLight (lighten Primary 0.3), BodyDark (darken Primary 0.3),
-                            Glow (Neon, lighten Primary 0.25), Bulb (Neon), Emblem (Neon, Secondary), Glass, Fixed (every
+                            Glow (Neon, lighten Primary 0.25), Bulb (Neon), Emblem (Neon, Secondary), Glass (SmoothPlastic 0.60), Fixed (every
                             constant colour baked).  The tinted keys keep their dark shade (a vertex colour) but no light
                             shade (a light shade is a part of its own: it would make a ninth).
                             0.25-stud cells (K 4); pivot = ground centre, front -Z (the customer).
@@ -53,8 +54,12 @@ FLOOR_Y = 7.5                # the globe floor's top, flush with the collar's li
 GLOBE_C = (0.0, 9.75, 0.0)   # the glass sphere: centre, outer and inner radius, cut below / above
 GLOBE_R = (3.3, 2.8)
 GLOBE_Y = (7.3, 12.3)
-GLASS_RGB = (212, 234, 255)  # polish 2026-11-09: a faint cool tint, clearer (was 224,240,255 at 0.70: read foggy grey)
-GLASS_T = 0.80
+# 2026-11-13 owner (seen live in Studio): visible glass, SmoothPlastic at 0.60 in 200,230,255 (was Glass 0.80 / 212,234,255:
+# the Glass material at 0.80 read nearly invisible, the egg pile looked heaped on the cabinet; before that, polish
+# 2026-11-09: 224,240,255 at 0.70 read foggy grey)
+GLASS_RGB = (200, 230, 255)
+GLASS_T = 0.60
+GLASS_MAT = "SmoothPlastic"
 
 PAL = {
     "Iron": (64, 70, 92), "IronLight": (96, 104, 130), "IronDark": (44, 48, 66),
@@ -123,7 +128,7 @@ class MachineSculpt(Sculpt):
         for k in self.neon:
             mats[k] = ("Neon", 0.0)
         for k, (r, t) in self.glass.items():
-            mats[k] = ("Glass", t)
+            mats[k] = (GLASS_MAT, t)  # the globe's glass (2026-11-13 owner: SmoothPlastic, was Glass)
         fixed = [k for k in rec if k not in self.tint and k not in self.neon and k not in self.glass]
         g = self.g
         for k in fixed:  # baked keys take the "lb" prefix (tools/mesh_names.py: no game-referenced name in Fixed)

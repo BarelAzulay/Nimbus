@@ -13,7 +13,8 @@
         "lobby_roulette_globe" with each roulette's look), the REAL painted lobby_egg models placed at the manifest's
         Egg<i> attachments at Meta.eggScale / chaseScale in LobbyMachineBuilder's rarity order (shop-area polish: the
         chase egg on the full egg_<rarity> key, K 10, the pile on egg_<rarity>_pile, K 4), a 5-stud player for scale,
-        the glass at the game's Transparency 0.80 in GLASS_RGB.
+        the glass at the game's Transparency GLASS_T in GLASS_RGB (2026-11-13 owner: SmoothPlastic 0.60 / 200,230,255,
+        was Glass 0.80 / 212,234,255).
     <python> blender/pitches/shop_area_globe.py --settle N --scale s --chase c
         drops N eggs into the globe (the same solid / graze rules as --check) and prints EGG_SPOTS rows.
 

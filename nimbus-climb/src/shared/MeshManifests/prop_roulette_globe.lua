@@ -79,7 +79,7 @@ return {
 		Min = { -4.5, 0, -3.5 },
 		Size = { 9, 14.25, 7 },
 	},
-	ContentHash = "7b60f59d9a2bacbd21b8f441cbe548f4",
+	ContentHash = "0e3159905c20bf5364d99a4f3315f2a4",
 	DarkFactor = { 0.8425, 0.85, 0.8875 },
 	DeepFactor = { 0.7098, 0.7225, 0.7877 },
 	Groups = {},
@@ -96,14 +96,14 @@ return {
 	Parts = {
 		{
 			Center = { 0, 10, 0 },
-			Color = { "rgb", 212, 234, 255 },
+			Color = { "rgb", 200, 230, 255 },
 			Group = "Glass",
 			Key = "Glass",
-			Material = "Glass",
+			Material = "SmoothPlastic",
 			Name = "Glass",
 			Shade = "base",
 			Size = { 7, 5, 7 },
-			Transparency = 0.8,
+			Transparency = 0.6,
 			Tris = 968,
 		},
 		{

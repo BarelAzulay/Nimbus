@@ -84,17 +84,20 @@
 --   shop_globe         the Gumball Globe (shop-area T1, spec 16.17.1): LobbyMachineBuilder.GLOBE / Rarities (the four
 --                      sequences, top first) / GlobeEggs / EggKey / SECRET_EMBLEM; the prop_roulette_globe manifest
 --                      (Egg1..Egg18, Meta.eggScale 0.5 / chaseScale 0.54, inside 9 x 14.5 x 7, <= 4000 tris, the eight
---                      parts, glass 0.80, every egg's middle inside the glass, pivots >= 0.9 apart, the chase egg in
+--                      parts, glass SmoothPlastic 0.60 rgb 200,230,255, every egg's middle inside the glass, pivots >= 0.9 apart, the chase egg in
 --                      front; shop-area polish: 18 eggs, the pile on the low-poly egg_<rarity>_pile keys, the chase egg on
---                      the full key); the default run (no globe id) = today's machine,
---                      the uploaded prop_roulette cabinet (review round 1: ML_DressKey prop_roulette in the roulette colour
---                      with f17dc0d's look; --mesh, whose fixture has no prop_roulette id: the Part build), no GlobeEggs, no
---                      warn; one prop_roulette_globe request per Machine (origin, Look.Primary = the roulette colour,
---                      Look.Secondary = its top rarity's) and after it one prop_roulette request, the price card / DomeGlow /
---                      PromptPart unchanged; dressed (--mesh: fixture holders; default: the tag forced) -> no prop_roulette
+--                      the full key); the default run (b8d0b45: the globe and the seven egg_<rarity>_pile ids ship) = every
+--                      Machine on ML_DressKey prop_roulette_globe (the roulette colour / its top rarity's emblem) with its
+--                      GlobeEggs, the eggs on their keys, no warn (--mesh, whose fixture has no lobby ids: the globe is
+--                      missing and the Machine the Part build, no GlobeEggs); the fallback, with the globe's Status forced
+--                      'missing': one prop_roulette_globe request per Machine (origin, Look.Primary = the roulette colour,
+--                      Look.Secondary = its top rarity's) and after it one prop_roulette request (the still-shipped cabinet,
+--                      f17dc0d's look; --mesh: the Part build), no GlobeEggs, the price card / DomeGlow / PromptPart
+--                      unchanged; dressed (--mesh: fixture holders; default: the real shipped ids) -> no prop_roulette
 --                      request, GlobeEggs of eighteen egg Models
 --                      at the attachments (ML_Scale, NC_Detail on 2..18, Egg1 egg_<rarity>, the pile egg_<rarity>_pile, in
---                      order); a manifest
+--                      order), all 68 pile eggs dressed on egg_<rarity>_pile; dressed with the pile keys' Status forced
+--                      'missing' -> every pile egg stays the rarity-tinted Part sphere, undressed; a manifest
 --                      without Egg7 -> one warn, no GlobeEggs, the machines stand
 --   shop_egg_row       the egg row under WINGED PETS (shop-area T2, spec 16.17.2): no EggGuide anywhere, one Model EggRow
 --                      at the board's frame (at(23, -10) on the lawn since shop-area polish (was at(21, -8)), facing the
@@ -562,15 +565,25 @@ end
 -- the seven egg_<rarity> dress requests (LobbyBuilder._Kit) on the row's eggs at their bottom centres; ML_DressKey where the
 -- key is not missing (--mesh: fixture holders make every one count)
 local function checkEggRequests(label, LB, row, Config, ML)
-	local recs = {}
+	-- b8d0b45: the shipped globe now dresses, so each machine's chase egg (GlobeEgg1 under Roulette_<Id>.GlobeEggs) asks
+	-- for its top rarity's egg_<rarity> too: those are counted apart (shop_globe checks them) and must be all the rest
+	local recs, others = {}, {}
 	for _, rec in ipairs(LB and LB._Kit and LB._Kit.Targets or {}) do
 		for r, key in pairs(EGG_KEYS) do
 			if rec.Key == key then
-				recs[r] = recs[r] or {}
-				table.insert(recs[r], rec)
+				local t = rec.Target
+				local onRow = row and typeof(t) == "Instance" and (t == row or t:IsDescendantOf(row))
+				if onRow or not row then
+					recs[r] = recs[r] or {}
+					table.insert(recs[r], rec)
+				elseif not (typeof(t) == "Instance" and t.Name == "GlobeEgg1" and t.Parent and t.Parent.Name == "GlobeEggs"
+					and t.Parent.Parent and string.sub(t.Parent.Parent.Name, 1, 9) == "Roulette_") then
+					others[#others + 1] = key .. " on " .. (typeof(t) == "Instance" and t:GetFullName() or tostring(t))
+				end
 			end
 		end
 	end
+	T.check(#others == 0, label .. ": every other egg_<rarity> request is a globe's chase egg (Roulette_<Id>.GlobeEggs.GlobeEgg1)", table.concat(others, "; "))
 	local bad = {}
 	for _, r in ipairs(Config.Eggs.Order) do
 		local list = recs[r] or {}
@@ -2427,9 +2440,12 @@ end)
 -- egg_<rarity>_pile (a few hundred tris each), only the chase egg on the full egg_<rarity>; Secret's star white-gold
 local GLOBE = {
 	Key = "prop_roulette_globe", Count = 18, Scale = 0.5, ChaseScale = 0.54, EggSize = Vector3.new(2.25, 3, 2.5),
-	OldKey = "prop_roulette", -- review round 1: the uploaded cabinet every Machine wears while the globe has no id
+	OldKey = "prop_roulette", -- review round 1: the uploaded cabinet a Machine wears while the globe has no id (still shipped after b8d0b45)
 	Parts = { "Body", "BodyDark", "BodyLight", "Bulb", "Emblem", "Fixed", "Glass", "Glow" },
-	Centre = Vector3.new(0, 9.75, 0), Inner = 2.8, Margin = 0.1, Gap = 0.9, MaxTris = 4000, GlassT = 0.8,
+	Centre = Vector3.new(0, 9.75, 0), Inner = 2.8, Margin = 0.1, Gap = 0.9, MaxTris = 4000,
+	-- 2026-11-13 owner (seen live in Studio): visible glass, SmoothPlastic 0.60 rgb 200,230,255 (was Glass 0.80 / 212,234,255:
+	-- nearly invisible, the egg pile read as heaped on the cabinet)
+	GlassMaterial = "SmoothPlastic", GlassT = 0.6, GlassRGB = { 200, 230, 255 },
 	Footprint = Vector3.new(9, 14.5, 7),
 	Seq = {
 		Cloud = "Epic Common Uncommon Rare Common Uncommon Rare Common Uncommon Common Uncommon Common Uncommon Common Common Common Common Common",
@@ -2553,8 +2569,11 @@ local function checkGlobeManifest(ML)
 	local em, gl, body = byName.Emblem, byName.Glass, byName.Body
 	T.check(em ~= nil and em.material == "Neon" and type(em.color) == "table" and em.color[1] == "Secondary"
 		and body ~= nil and type(body.color) == "table" and body.color[1] == "Primary"
-		and gl ~= nil and gl.material == "Glass" and math.abs((tonumber(gl.transparency) or 0) - GLOBE.GlassT) < 1e-6,
-		"globe manifest: Body = Primary, Emblem = Neon Secondary, Glass = Glass at Transparency 0.80 (polish: clearer, was 0.70)")
+		and gl ~= nil and gl.material == GLOBE.GlassMaterial and math.abs((tonumber(gl.transparency) or 0) - GLOBE.GlassT) < 1e-6
+		and type(gl.color) == "table" and gl.color[1] == "rgb" and gl.color[2] == GLOBE.GlassRGB[1] and gl.color[3] == GLOBE.GlassRGB[2]
+		and gl.color[4] == GLOBE.GlassRGB[3],
+		"globe manifest: Body = Primary, Emblem = Neon Secondary, Glass = SmoothPlastic at Transparency 0.60 in rgb 200,230,255 (2026-11-13 owner: visible glass, was Glass 0.80 / 212,234,255)",
+		gl and fmt("Glass %s %s %s", tostring(gl.material), tostring(gl.transparency), type(gl.color) == "table" and table.concat(gl.color, ",") or tostring(gl.color)) or "no Glass part")
 	-- the egg spots: each scaled egg's middle inside the glass (centre (0, 9.75, 0), r 2.8 - 0.1), pivots >= 0.9 apart
 	local bad, spots = {}, {}
 	for i = 1, GLOBE.Count do
@@ -2648,18 +2667,35 @@ S.shop_globe = guarded("shop_globe", function()
 	------------------------------------------------------------------ the manifest
 	local man = checkGlobeManifest(ML)
 
-	------------------------------------------------------------------ the default run: no globe id -> today's machine,
-	-- the UPLOADED prop_roulette cabinet (review round 1: prop_roulette has a shipped id, so the live game dresses every
-	-- Machine with it; the voxel Part build is only what a place without that asset shows)
-	local okSt, st = pcall(ML.Status, GLOBE.Key)
-	T.check(okSt and st == "missing", "globe: MeshLibrary.Status('prop_roulette_globe') is 'missing' (no id in this build)", tostring(st))
-	-- (--mesh reconfigures MeshLibrary with the fixture's pet ids only: there prop_roulette is missing too and the Machine
-	-- stays on the Part build; the shipped MeshIds of the default run carry its uploaded id)
-	local okOld, stOld = pcall(ML.Status, GLOBE.OldKey)
-	local oldShipped = okOld and stOld ~= "missing"
-	if not MESH_MODE then
-		T.check(oldShipped, "globe: (precondition) MeshLibrary.Status('prop_roulette') is not 'missing' (its uploaded id ships in MeshIds)", tostring(stOld))
+	------------------------------------------------------------------ the default run: the shipped MeshIds (b8d0b45 uploaded
+	-- prop_roulette_globe and the seven egg_<rarity>_pile ids) -> every Machine wears the Gumball Globe with its eggs;
+	-- prop_roulette keeps its id (kept until a later cleanup, BUILD_STATE 2026-11-09 "Polish uploads") but no Machine
+	-- wears it. --mesh reconfigures MeshLibrary with the fixture's pet ids only: there the globe and prop_roulette are
+	-- missing and the Machine stays on the Part build.
+	local function shippedKey(key)
+		local okK, stK = pcall(ML.Status, key)
+		return okK and stK ~= "missing", stK
 	end
+	local globeShipped, st = shippedKey(GLOBE.Key)
+	if MESH_MODE then
+		T.check(not globeShipped, "globe (--mesh): MeshLibrary.Status('prop_roulette_globe') is 'missing' (the fixture carries no lobby ids)", tostring(st))
+	else
+		T.check(globeShipped, "globe: MeshLibrary.Status('prop_roulette_globe') is not 'missing' (its uploaded id ships in MeshIds, b8d0b45)", tostring(st))
+		local pileOff = {}
+		for _, r in ipairs(Config.Rarities) do
+			local pk = "egg_" .. string.lower(r.Id) .. GLOBE.PileKey
+			local okP, stP = shippedKey(pk)
+			if not okP then
+				pileOff[#pileOff + 1] = pk .. " " .. tostring(stP)
+			end
+		end
+		T.check(#pileOff == 0, "globe: (precondition) the seven egg_<rarity>_pile keys ship an id in MeshIds (b8d0b45)", table.concat(pileOff, "; "))
+	end
+	local oldShipped, stOld = shippedKey(GLOBE.OldKey)
+	if not MESH_MODE then
+		T.check(oldShipped, "globe: (precondition) MeshLibrary.Status('prop_roulette') is not 'missing' (its uploaded id still ships in MeshIds: the fallback cabinet)", tostring(stOld))
+	end
+	-- the fallback a refused globe tag falls to: the shipped cabinet, else the voxel Part build
 	local wantKey = oldShipped and GLOBE.OldKey or nil
 	local shop = lobby:FindFirstChild("Shop")
 	local bootBad = {}
@@ -2669,28 +2705,63 @@ S.shop_globe = guarded("shop_globe", function()
 		if not (m and body) then
 			bootBad[#bootBad + 1] = r.Id .. " (no Machine)"
 		end
-		local wantS = oldSecondary(Config, r)
-		local dressOk = (wantKey == nil and body and body:GetAttribute("ML_DressKey") == nil)
-			or (body and body:GetAttribute("ML_DressKey") == wantKey and typeof(body:GetAttribute("ML_Primary")) == "Color3" and sameColor(body:GetAttribute("ML_Primary"), r.Color)
-				and typeof(body:GetAttribute("ML_Secondary")) == "Color3" and sameColor(body:GetAttribute("ML_Secondary"), wantS))
+		local dressOk
+		if globeShipped then
+			local wantE = emblemColour(Config, r)
+			dressOk = body and body:GetAttribute("ML_DressKey") == GLOBE.Key and typeof(body:GetAttribute("ML_Primary")) == "Color3" and sameColor(body:GetAttribute("ML_Primary"), r.Color)
+				and typeof(body:GetAttribute("ML_Secondary")) == "Color3" and wantE ~= nil and sameColor(body:GetAttribute("ML_Secondary"), wantE)
+		else
+			local wantS = oldSecondary(Config, r)
+			dressOk = (wantKey == nil and body and body:GetAttribute("ML_DressKey") == nil)
+				or (body and body:GetAttribute("ML_DressKey") == wantKey and typeof(body:GetAttribute("ML_Primary")) == "Color3" and sameColor(body:GetAttribute("ML_Primary"), r.Color)
+					and typeof(body:GetAttribute("ML_Secondary")) == "Color3" and sameColor(body:GetAttribute("ML_Secondary"), wantS))
+		end
 		if body and not dressOk then
 			bootBad[#bootBad + 1] = r.Id .. " Machine ML_DressKey " .. tostring(body:GetAttribute("ML_DressKey")) .. " / " .. tostring(body:GetAttribute("ML_Primary")) .. " / " .. tostring(body:GetAttribute("ML_Secondary"))
 		end
-		if m and m:FindFirstChild("GlobeEggs") then
+		local ge = m and m:FindFirstChild("GlobeEggs")
+		if globeShipped and not (ge and ge:IsA("Model") and #ge:GetChildren() == GLOBE.Count) then
+			bootBad[#bootBad + 1] = r.Id .. " has no GlobeEggs of " .. GLOBE.Count
+		elseif not globeShipped and ge then
 			bootBad[#bootBad + 1] = r.Id .. " has GlobeEggs"
 		end
 		if m and not (m:FindFirstChild("PromptPart") and m:FindFirstChild("PriceAnchor") and m:FindFirstChild("DomeGlow")) then
 			bootBad[#bootBad + 1] = r.Id .. " lost PromptPart / PriceAnchor / DomeGlow"
 		end
 	end
-	T.check(#bootBad == 0, "globe (default run): every Roulette_<Id>'s Machine wears today's uploaded cabinet (ML_DressKey prop_roulette, ML_Primary = the roulette colour, ML_Secondary = its top rarity's Config colour, as f17dc0d), no GlobeEggs, PromptPart / PriceAnchor / DomeGlow", table.concat(bootBad, "; "))
+	if MESH_MODE then
+		T.check(#bootBad == 0, "globe (--mesh default run): the globe missing, every Roulette_<Id>'s Machine on the Part build (no ML_DressKey: the fixture has no prop_roulette id either), no GlobeEggs, PromptPart / PriceAnchor / DomeGlow", table.concat(bootBad, "; "))
+	else
+		T.check(#bootBad == 0, "globe (default run): every Roulette_<Id>'s Machine wears the uploaded Gumball Globe (ML_DressKey prop_roulette_globe, ML_Primary = the roulette colour, ML_Secondary = its top rarity's emblem colour), its GlobeEggs of 18 beside it, none on prop_roulette, PromptPart / PriceAnchor / DomeGlow", table.concat(bootBad, "; "))
+	end
 	T.eq(warnsSince(0, "[LobbyMachineBuilder]"), 0, "globe (default run): no [LobbyMachineBuilder] warn in the boot log")
 
-	------------------------------------------------------------------ the dress request (default run: the globe asked first, then prop_roulette)
+	-- forces MeshLibrary.Status(key) = 'missing' for `keys` (Mesh.tag reads it per call) so a rebuild walks the no-id
+	-- path of keys that ship an id (b8d0b45): the fallback stays covered after the upload
+	local function forceMissing(keys, undo)
+		local realStatus = ML.Status
+		local off = {}
+		for _, k in ipairs(keys) do
+			off[k] = true
+		end
+		ML.Status = function(key, ...)
+			if off[key] then
+				return "missing"
+			end
+			return realStatus(key, ...)
+		end
+		undo[#undo + 1] = function()
+			ML.Status = realStatus
+		end
+	end
+	local realStatusFn = ML.Status
+
+	------------------------------------------------------------------ the dress request, no globe id (forced): the globe asked first, then prop_roulette
 	local _, S0 = shopFrame()
 	local origins = {}
-	rebuild("globe request", function(_, LB)
+	rebuild("globe request", function(undo, LB)
 		LB._Kit = { Targets = {}, Clouds = {} }
+		forceMissing({ GLOBE.Key }, undo)
 	end, function(built)
 		local LB = req("server/Services/LobbyBuilder")
 		local recs, olds, order = {}, {}, {}
@@ -2784,19 +2855,9 @@ S.shop_globe = guarded("shop_globe", function()
 				keys[#keys + 1] = k .. GLOBE.PileKey -- polish: the pile eggs
 			end
 			T.check(fixtureHolders(keys, undo) > 0, "globe (--mesh): the fixture MeshLibrary root exists")
-		elseif M and realTag then
-			-- the default run has no globe id: the tag's answer is forced to "dressed" (after the real call records the request)
-			M.tag = function(target, key, ...)
-				local r = realTag(target, key, ...)
-				if key == GLOBE.Key then
-					return true
-				end
-				return r
-			end
-			undo[#undo + 1] = function()
-				M.tag = realTag
-			end
 		end
+		-- the default run: nothing to force since b8d0b45 (the shipped globe and pile ids dress for real; the old
+		-- override of the tag's answer is gone, so these rebuilds walk the live path)
 	end
 	rebuild("globe dressed", function(undo, LB2)
 		LB2._Kit = { Targets = {}, Clouds = {} }
@@ -2816,7 +2877,7 @@ S.shop_globe = guarded("shop_globe", function()
 		T.eq(oldN, 0, "globe dressed: a dressed globe asks for no 'prop_roulette' dress (the fallback only follows a refused globe tag)")
 		local f = built.Folder:FindFirstChild("Shop")
 		local bad, dressBad = {}, {}
-		local pileFallback = 0
+		local pileDressed = 0
 		for _, r in ipairs(Config.Roulettes) do
 			local m = f and f:FindFirstChild("Roulette_" .. r.Id)
 			local body = m and m:FindFirstChild("Machine")
@@ -2884,40 +2945,89 @@ S.shop_globe = guarded("shop_globe", function()
 						if #recs ~= 1 or recs[1].Key ~= key or typeof(recs[1].Origin) ~= "CFrame" or not cfNear(recs[1].Origin, want, 0.01) then
 							bad[#bad + 1] = fmt("%s GlobeEgg%d dress request %s (want one %s at the pivot)", r.Id, i, recs[1] and tostring(recs[1].Key) or "none", tostring(key))
 						end
+						-- b8d0b45: every egg key ships (default run) or has a fixture holder (--mesh): each egg is dressed
 						local okE, stE = pcall(ML.Status, key)
-						if okE and stE ~= "missing" then
-							if em:GetAttribute("ML_DressKey") ~= key then
-								dressBad[#dressBad + 1] = fmt("%s GlobeEgg%d ML_DressKey %s", r.Id, i, tostring(em:GetAttribute("ML_DressKey")))
-							end
-						elseif MESH_MODE then
-							dressBad[#dressBad + 1] = fmt("%s GlobeEgg%d: %s still missing under --mesh", r.Id, i, tostring(key))
-						elseif em:GetAttribute("ML_DressKey") ~= nil then
-							-- (polish) a key with no id (the low eggs before their upload): the rarity-tinted Part sphere stays
-							dressBad[#dressBad + 1] = fmt("%s GlobeEgg%d dressed %s though %s is missing", r.Id, i, tostring(em:GetAttribute("ML_DressKey")), tostring(key))
-						else
-							pileFallback = pileFallback + 1
+						if not (okE and stE ~= "missing") then
+							dressBad[#dressBad + 1] = fmt("%s GlobeEgg%d: %s missing (%s)", r.Id, i, tostring(key), MESH_MODE and "under --mesh" or "no shipped id")
+						elseif em:GetAttribute("ML_DressKey") ~= key then
+							dressBad[#dressBad + 1] = fmt("%s GlobeEgg%d ML_DressKey %s", r.Id, i, tostring(em:GetAttribute("ML_DressKey")))
+						elseif i ~= 1 then
+							pileDressed = pileDressed + 1
 						end
 					end
 				end
-				if MESH_MODE then
-					local wantE = emblemColour(Config, r)
-					if not (body:GetAttribute("ML_DressKey") == GLOBE.Key and typeof(body:GetAttribute("ML_Primary")) == "Color3" and sameColor(body:GetAttribute("ML_Primary"), r.Color)
-						and typeof(body:GetAttribute("ML_Secondary")) == "Color3" and wantE and sameColor(body:GetAttribute("ML_Secondary"), wantE)) then
-						dressBad[#dressBad + 1] = r.Id .. " Machine not tagged prop_roulette_globe with ML_Primary / ML_Secondary"
-					end
+				local wantE = emblemColour(Config, r)
+				if not (body:GetAttribute("ML_DressKey") == GLOBE.Key and typeof(body:GetAttribute("ML_Primary")) == "Color3" and sameColor(body:GetAttribute("ML_Primary"), r.Color)
+					and typeof(body:GetAttribute("ML_Secondary")) == "Color3" and wantE and sameColor(body:GetAttribute("ML_Secondary"), wantE)) then
+					dressBad[#dressBad + 1] = r.Id .. " Machine not tagged prop_roulette_globe with ML_Primary / ML_Secondary"
 				end
 			end
 		end
 		T.check(#bad == 0, "globe dressed: each Roulette_<Id> holds a GlobeEggs Model (beside Machine) of GlobeEgg1..18 at the manifest's Egg<i> attachments, one Sphere Part 'Egg' each (2.25 x 3 x 2.5 x 0.5, Egg1 x 0.54, standing on its pivot, anchored, no collide / touch / query, the rarity colour, Secret dark violet), ML_Scale, NC_Detail on 2..18 only, no Spin, one request at the pivot in the Rarities order: Egg1 egg_<rarity>, the pile egg_<rarity>_pile",
 			table.concat(bad, "; "))
-		if MESH_MODE then
-			T.check(#dressBad == 0, "globe dressed (--mesh): Machine tagged prop_roulette_globe (ML_Primary / ML_Secondary), every GlobeEgg ML_DressKey egg_<rarity> (Egg1) / egg_<rarity>_pile (the pile)", table.concat(dressBad, "; "))
-		else
-			T.check(#dressBad == 0, "globe dressed: ML_DressKey on the eggs whose key is not missing (the chase egg's uploaded egg_<rarity>), none where it is missing (--mesh checks every one)", table.concat(dressBad, "; "))
-			-- (polish) the low keys have no id in this build: every pile egg is its rarity-tinted Part sphere
-			T.eq(pileFallback, #Config.Roulettes * (GLOBE.Count - 1), "globe dressed: until egg_<rarity>_pile is uploaded every pile egg (4 x 17) stays the rarity-tinted Part sphere, undressed")
-		end
+		T.check(#dressBad == 0, "globe dressed" .. (MESH_MODE and " (--mesh)" or "") .. ": Machine tagged prop_roulette_globe (ML_Primary / ML_Secondary), every GlobeEgg ML_DressKey egg_<rarity> (Egg1) / egg_<rarity>_pile (the pile)" .. (MESH_MODE and "" or ", on the shipped ids (b8d0b45)"), table.concat(dressBad, "; "))
+		-- b8d0b45: the seven egg_<rarity>_pile ids ship, so every pile egg (4 x 17) is dressed on its pile key
+		T.eq(pileDressed, #Config.Roulettes * (GLOBE.Count - 1), "globe dressed: every pile egg (4 x 17) wears its egg_<rarity>_pile (the pile ids ship)")
 		T.eq(warnsSince(cursor, "[LobbyMachineBuilder]"), 0, "globe dressed: no [LobbyMachineBuilder] warn")
+	end)
+
+	------------------------------------------------------------------ dressed, the pile keys with no id (forced): the pile's Part fallback
+	local pileKeys = {}
+	for _, r in ipairs(Config.Rarities) do
+		pileKeys[#pileKeys + 1] = "egg_" .. string.lower(r.Id) .. GLOBE.PileKey
+	end
+	rebuild("globe pile missing", function(undo, LB2)
+		LB2._Kit = { Targets = {}, Clouds = {} }
+		forceGlobe(undo)
+		forceMissing(pileKeys, undo)
+	end, function(built, cursor)
+		local LB2 = req("server/Services/LobbyBuilder")
+		local reqN = {}
+		for _, rec in ipairs(LB2._Kit and LB2._Kit.Targets or {}) do
+			if typeof(rec.Target) == "Instance" and rec.Target.Name:match("^GlobeEgg%d+$") then
+				reqN[rec.Target] = (reqN[rec.Target] or 0) + 1
+			end
+		end
+		local f = built.Folder:FindFirstChild("Shop")
+		local bad, pileFallback = {}, 0
+		for _, r in ipairs(Config.Roulettes) do
+			local m = f and f:FindFirstChild("Roulette_" .. r.Id)
+			local body = m and m:FindFirstChild("Machine")
+			local ge = m and m:FindFirstChild("GlobeEggs")
+			local seq = {}
+			for w in string.gmatch(GLOBE.Seq[r.Id] or "", "%S+") do
+				seq[#seq + 1] = w
+			end
+			if not (ge and body and body:GetAttribute("ML_DressKey") == GLOBE.Key) then
+				bad[#bad + 1] = r.Id .. " (globe not dressed or no GlobeEggs)"
+			else
+				for i = 1, GLOBE.Count do
+					local em = ge:FindFirstChild("GlobeEgg" .. i)
+					local part = em and em:FindFirstChild("Egg")
+					local mesh = part and part:FindFirstChildOfClass("SpecialMesh")
+					local rarity = seq[i]
+					local colour = (rarity == "Secret") and GLOBE.SecretEgg or rarityColour(Config, rarity)
+					local full = rarity and ("egg_" .. string.lower(rarity))
+					if not (em and part and part:IsA("BasePart") and reqN[em] == 1) then
+						bad[#bad + 1] = fmt("%s GlobeEgg%d missing or not asked once", r.Id, i)
+					elseif i == 1 then
+						-- the chase egg's full key is not forced: it still dresses
+						if em:GetAttribute("ML_DressKey") ~= full then
+							bad[#bad + 1] = fmt("%s GlobeEgg1 ML_DressKey %s (want %s)", r.Id, tostring(em:GetAttribute("ML_DressKey")), tostring(full))
+						end
+					elseif em:GetAttribute("ML_DressKey") ~= nil then
+						bad[#bad + 1] = fmt("%s GlobeEgg%d dressed %s though its pile key is missing", r.Id, i, tostring(em:GetAttribute("ML_DressKey")))
+					elseif not (mesh and mesh.MeshType == Enum.MeshType.Sphere and colour and sameColor(part.Color, colour) and part.Transparency == 0) then
+						bad[#bad + 1] = fmt("%s GlobeEgg%d not the visible rarity-tinted Sphere", r.Id, i)
+					else
+						pileFallback = pileFallback + 1
+					end
+				end
+			end
+		end
+		T.check(#bad == 0, "globe pile missing: the Machine still on the globe, the chase egg still on egg_<rarity>, each egg asked once", table.concat(bad, "; "))
+		T.eq(pileFallback, #Config.Roulettes * (GLOBE.Count - 1), "globe pile missing: with no egg_<rarity>_pile id every pile egg (4 x 17) stays the rarity-tinted Part sphere, undressed")
+		T.eq(warnsSince(cursor, "[LobbyMachineBuilder]"), 0, "globe pile missing: no [LobbyMachineBuilder] warn")
 	end)
 
 	------------------------------------------------------------------ a manifest without Egg7: one warn, no GlobeEggs, the machine stands
@@ -2959,8 +3069,8 @@ S.shop_globe = guarded("shop_globe", function()
 		T.check(built.Shop and built.Shop.Roulettes and built.Shop.Roulettes.Cloud and built.Shop.Roulettes.Cloud.PromptPart ~= nil, "globe without Egg7: LobbyInfo.Shop.Roulettes still carry their PromptParts")
 	end)
 
-	T.check(LMB._Manifest == nil and LB and LB._Kit == nil and (M == nil or M.tag == realTag) and holdersGone(GLOBE.Key),
-		"globe: the hooks (_Manifest, _Kit, Mesh.tag) and the fixture holders are back")
+	T.check(LMB._Manifest == nil and LB and LB._Kit == nil and (M == nil or M.tag == realTag) and ML.Status == realStatusFn and holdersGone(GLOBE.Key),
+		"globe: the hooks (_Manifest, _Kit, Mesh.tag, MeshLibrary.Status) and the fixture holders are back")
 	K.flushErrors("shop_globe")
 	K.flushWarnings("shop_globe", GLOBE.Allowed)
 end)
