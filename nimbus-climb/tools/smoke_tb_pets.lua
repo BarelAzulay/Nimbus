@@ -342,7 +342,9 @@ local function clientScenarios()
 			T.check(shownPart(H.card(TRAINING), "Busy") and shownPart(H.card(GARDEN), "Busy") and not shownPart(H.card(K4), "Busy"), "tb pets: busy marks on the training and the gardening pet only")
 			T.check(H.find(H.card(K1), "Number").Text == "1" and H.find(H.card(K2), "Number").Text == "2" and shownPart(H.card(K3), "Number") and not shownPart(H.card(K4), "Number"), "tb pets: the team number badge")
 			T.check(H.find(H.card(K4), "Level").Text == "L2" and H.find(H.card(K4), "Power").Text:find(tostring(H.power(K4)), 1, true) ~= nil, "tb pets: a card shows the level and the power")
-			T.check(shownPart(H.card(K4), "Picture") and H.find(H.card(K4), "Rarity") and H.find(H.card(K4), "Rarity"):IsA("UIStroke"), "tb pets: the picture and the rarity border")
+			-- (kit-b U8, restated) the rarity was a UIStroke border; on kit B it is the card's Lip in the rarity's colour
+			local lipK4 = H.card(K4) and H.card(K4):FindFirstChild("Lip")
+			T.check(shownPart(H.card(K4), "Picture") and lipK4 and lipK4:IsA("Frame") and lipK4.BackgroundColor3 == H.req("client/UI/CloudUI").RarityColor(PCat.Get(K4).Rarity) and H.card(K4):GetAttribute("Rarity") == PCat.Get(K4).Rarity, "tb pets: the picture and the rarity on the lip")
 			local Config = H.req("shared/Config")
 			local elementOf = PCat.ElementsOf(PCat.Get(K1))[1]
 			T.check(H.find(H.card(K1), "Element").BackgroundColor3 == Config.Elements.Info[elementOf].Color, "tb pets: the element icon wears the element's colour", elementOf)

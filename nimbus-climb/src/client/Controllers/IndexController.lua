@@ -9,7 +9,16 @@
 --
 -- MenuController opens it from the menu "Index" tile and from OpenPanel("Index"), and relays Opened as
 -- MenuController.WindowOpened("Index") (the tutorial listens there). This module never requires
--- MenuController (no require cycle). Open("Fusions") opens the Fusions tab.
+-- MenuController at load (no require cycle; it looks it up at open / close time for SetTouchHidden, and at click time
+-- for the Home window). Open("Fusions") opens the Fusions tab.
+--
+-- kit-b U8: the window is a kit B sign (CloudUI.Panel Skin "Signboard", the book on its header): stone wells with brown
+-- ink, no glow, gloss or neon border. The rarity groups are signboard tabs (a stone tab with the rarity on its lip, the
+-- selected one gold-faced; in the tall layout's strip a whole number of tabs fills the strip, so none shows cut, and the
+-- names sit at a fixed size that fits). A pet tile is the Pets window's card: a stone tile, the pet in its light well, the
+-- rarity on its lip (attribute Rarity), the element as a chip with its drawn icon. On a touch phone Roblox's thumbstick
+-- and jump button go while the window is open (MenuController.SetTouchHidden("Index"), as Pets, Shop and Gifts do): the
+-- jump button sat on CLAIM at 844x390.
 --
 -- Phase 2 (ARCHITECTURE_V3.md section 11 + "Phase 2 build contract"): a "Fusions" tile under the rarity groups
 -- lists every fused pet the player owns: hybrids (mixed at the Fusion Machine, one of a kind) and Golden / Rainbow
@@ -20,7 +29,7 @@
 --
 -- Layout (cloud-styled through CloudUI, like the reference "Pet Index" window):
 --   title bar "Pet Index" + red X
---   left    vertical group list: one rarity-coloured gradient tile per rarity group with "3/6" progress,
+--   left    vertical group list: one rarity tab per rarity group with "3/6" progress,
 --           a check when its reward is claimed and a red "!" when it can be claimed; an "Elements" card button
 --   centre  group header with an x/N progress bar, a grid of pet tiles (ViewportFrame of the pet; pets not
 --           discovered yet are black silhouettes via ViewportFrame.ImageColor3 = (0, 0, 0) with a "???"
@@ -42,7 +51,6 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local ContextActionService = game:GetService("ContextActionService")
-local TweenService = game:GetService("TweenService")
 local Debris = game:GetService("Debris")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -112,7 +120,10 @@ local K = {
 	TALL = 760,
 	STRIP_H = 64, -- the group strip of the tall layout (tiles + room for its scroll bar)
 	STRIP_TILE_W = 150,
-	STRIP_NAME_PAD = 34, -- a strip tile's name runs past the faint star art (the badge corner stays clear)
+	STRIP_NAME_PAD = 28, -- a strip tile's name keeps clear of the badge corner
+	STRIP_TILE_MIN_W = 120, -- (kit-b U8) the narrowest strip tab: "Legendary" at 20 px and its badge
+	STRIP_PAD_L = 4, -- the strip's left padding and the gap between two tabs
+	STRIP_GAP = 6,
 	PANEL_INSET_W = 24, -- the Neon panel's content inset (left + right, design px)
 	REWARD_ROOMY_W = 480, -- a reward box narrower than this (design px) gets the 150 x 52 CLAIM button
 	REWARD_LABEL_W = 112, -- "Rewards:" (Heading 22) and its gap
@@ -126,6 +137,7 @@ local K = {
 	-- ms, a cached clone a few: a fixed count hitched on fresh clients)
 	TILE_BUDGET = 0.004,
 	TILES_MAX = 3,
+	TILE_LIP = 6, -- (kit-b U8) px of a pet tile's rarity lip (the Pets cards' CARD_LIP)
 	CLAIM_GAP = 0.6, -- seconds between two IndexClaim sends
 	CLAIM_TIMEOUT = 5, -- seconds the CLAIM button waits for the server before it resets
 	BACK_ACTION = "NimbusIndexBack",
@@ -133,15 +145,11 @@ local K = {
 }
 
 local Colors = Theme.Colors
-local WHITE = Colors.White
-local NAVY = Colors.Navy or Colors.Ink
-local MUTED = Colors.Muted or Colors.CloudShade
-local GOLD = Colors.Gold or Colors.Token
-local GOOD = Colors.Good
-local BAD = Colors.Bad
-local BUTTONS = Theme.Buttons or {}
-local ACCENT = Color3.fromRGB(70, 182, 196) -- the Index teal (menu tile + title bar)
-local INSET = Color3.fromRGB(20, 30, 70)
+-- (kit-b U8) the Signboard palette: brown ink on stone and in the wells, wood edges
+local SIGN = Theme.Sign
+local INK = SIGN.Text
+local MUTED = SIGN.TextMuted
+local GOLD = SIGN.Gold
 local SILHOUETTE = Color3.new(0, 0, 0)
 local ROLE_COLORS = { Economy = Color3.fromRGB(96, 196, 108), Combat = Color3.fromRGB(228, 104, 96) }
 -- (kit-b U7b) the window's marks are PixelIcons, not emoji (the title says "Pet Index" in words: the menu tile has the book)
@@ -223,7 +231,7 @@ local function makeText(parent, name, text, role, size, color, props)
 	end
 	local label = Theme.Label(tostring(text), role, {
 		Size = size,
-		Color = color or WHITE,
+		Color = color or INK,
 		Props = p,
 	})
 	label.Parent = parent
@@ -235,12 +243,15 @@ local function corner(parent, radius)
 	return Theme.Corner(parent, radius or "M")
 end
 
-local function round(parent)
-	return Theme.Corner(parent, "Round")
+local function stroke(parent, color, thickness, transparency)
+	return Theme.Stroke(parent, color or SIGN.Wood, thickness or 3, transparency or 0)
 end
 
-local function stroke(parent, color, thickness, transparency)
-	return Theme.Stroke(parent, color or NAVY, thickness or 3, transparency or 0)
+-- (kit-b U8) a square edge with mitred corners (kit B has no rounded blocks)
+local function edge(parent, color, thickness)
+	local s = stroke(parent, color, thickness, 0)
+	s.LineJoinMode = Enum.LineJoinMode.Miter
+	return s
 end
 
 local function pad(parent, left, top, right, bottom)
@@ -283,14 +294,43 @@ local function tween(inst, seconds, goal, style, direction)
 	return Util.Tween(inst, seconds, goal, style, direction)
 end
 
+-- (kit-b U8) a sunk stone well (the pitch's .wl): flat, its own darker edge
 local function inset(parent, name, props)
 	local p = props or {}
-	p.BackgroundColor3 = INSET
-	p.BackgroundTransparency = 0.42
+	p.BackgroundColor3 = SIGN.Well
+	p.BackgroundTransparency = 0
 	local frame = makeFrame(parent, name, p)
-	corner(frame, "M")
-	stroke(frame, Colors.WellEdge or NAVY, 3, 0.15)
+	edge(frame, SIGN.WellEdge, 2)
 	return frame
+end
+
+-- a small square tag (the pitch's .chp): the colour, the ink that reads on it, a wood edge (a mid-tone that no ink reads
+-- 4.5:1 on is lightened until brown does)
+local function signPill(text, color, parent)
+	for _ = 1, 6 do
+		if Theme.Contrast(Theme.TextOn(color), color) >= 4.6 then
+			break
+		end
+		color = Theme.Lighten(color, 0.08)
+	end
+	local pill = Theme.Label(tostring(text or ""), "Heading", {
+		Size = 18,
+		Color = Theme.TextOn(color),
+		Props = {
+			Name = "Pill",
+			BackgroundTransparency = 0,
+			BackgroundColor3 = color,
+			BorderSizePixel = 0,
+			AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.fromOffset(0, 28),
+			TextXAlignment = Enum.TextXAlignment.Center,
+		},
+	})
+	edge(pill, SIGN.Wood, 2)
+	pad(pill, 9, 0, 9, 0)
+	Util.Create("UISizeConstraint", { MinSize = Vector2.new(34, 28), Parent = pill })
+	pill.Parent = parent
+	return pill
 end
 
 local function rarityColor(rarityId)
@@ -708,36 +748,28 @@ end
 -- Visual helpers
 ----------------------------------------------------------------------
 -- CloudUI.Pill with a text size that stays >= 14 px at the phone scale (0.8).
+-- (kit-b U8) the kit B tag (was CloudUI.Pill's neon pill); 18 px
 local function readablePill(text, kind, parent)
-	local pill = CloudUI.Pill(text, kind, parent)
-	if pill then
-		pill.TextSize = math.max(pill.TextSize, 18)
-	end
-	return pill
+	return signPill(text, typeof(kind) == "Color3" and kind or SIGN.Stone, parent)
 end
 
--- Small coloured pill with the element name (no asset ids).
+-- Small element chip with the element's drawn icon and its name (kit-b U8: CloudUI.ElementChip, the Pets cards' chip
+-- with the name after the icon; was a rounded glossy pill).
 local function elementPill(parent, element, textSize, layoutOrder)
-	local color = elementColor(element)
-	local pill = Theme.Label(element, "Heading", {
-		Size = textSize or 17,
-		Color = WHITE,
-		Props = {
-			Name = "Element_" .. element,
-			BackgroundTransparency = 0,
-			BackgroundColor3 = color,
-			AutomaticSize = Enum.AutomaticSize.X,
-			Size = UDim2.fromOffset(0, (textSize or 17) + 9),
-			LayoutOrder = layoutOrder or 0,
-			ZIndex = 4,
-		},
+	local chip = CloudUI.ElementChip(parent, element, (textSize or 17) + 9, {
+		Label = element,
+		TextSize = textSize or 17,
+		Role = "Heading", -- (mixed case: "Celestial" fits a narrow tile at 18 px)
+		Name = "Element_" .. element,
+		LayoutOrder = layoutOrder or 0,
+		ZIndex = 4,
 	})
-	round(pill)
-	stroke(pill, NAVY, 2, 0)
-	Theme.Gradient(pill, Color3.fromRGB(255, 255, 255), Color3.fromRGB(196, 204, 226), 90)
-	pad(pill, 9, 0, 9, 1)
-	pill.Parent = parent
-	return pill
+	if not chip then
+		chip = signPill(element, elementColor(element), parent)
+		chip.Name = "Element_" .. element
+		chip.LayoutOrder = layoutOrder or 0
+	end
+	return chip
 end
 
 -- Confetti squares flying out of `centre` (a UDim2 inside `parent`).
@@ -861,6 +893,8 @@ local function relayout()
 		U.GroupList.Size = UDim2.new(1, U.ElementsButton and -(K.ELEMENTS_STRIP_W + 8) or 0, 1, 0)
 		U.GroupPad.PaddingTop = UDim.new(0, 0)
 		U.GroupPad.PaddingBottom = UDim.new(0, 12)
+		U.GroupPad.PaddingLeft = UDim.new(0, K.STRIP_PAD_L)
+		U.GroupPad.PaddingRight = UDim.new(0, 0)
 		local centreTop = strip + 8
 		-- Phase 5: a docked sheet is shorter; the grid gets 2/3 of it, and a landscape-phone window (< 600 design px
 		-- tall) shows the grid only (the tiles carry name, rarity and element)
@@ -880,6 +914,8 @@ local function relayout()
 		U.GroupList.AutomaticCanvasSize = Enum.AutomaticSize.Y
 		U.GroupPad.PaddingTop = UDim.new(0, 6)
 		U.GroupPad.PaddingBottom = UDim.new(0, 6)
+		U.GroupPad.PaddingLeft = UDim.new(0, 4)
+		U.GroupPad.PaddingRight = UDim.new(0, 10)
 		U.Detail.Visible = true
 		U.Detail.AnchorPoint = Vector2.new(1, 0)
 		U.Detail.Position = UDim2.new(1, 0, 0, 0)
@@ -907,8 +943,6 @@ local function relayout()
 		U.RewardAmount.Position = UDim2.new(0, narrow and 14 or 128, 0.5, 0)
 		U.RewardAmount.Size = UDim2.new(1, -(narrow and 180 or 294), 0, 34)
 		U.ClaimButton.Size = UDim2.fromOffset(150, 52)
-		U.ClaimGlow.Size = UDim2.fromOffset(150 + 14, 52 + 10)
-		U.ClaimGlow.Position = UDim2.new(1, -14 - 75, 0.5, 0)
 	else
 		-- the reward box follows the centre's own width (a docked 1920x1080 window has a narrow centre between the
 		-- group column and the detail card, like a portrait phone): a narrow centre gets the smaller CLAIM button,
@@ -928,8 +962,6 @@ local function relayout()
 		U.RewardAmount.Position = UDim2.fromOffset(withLabel and (16 + K.REWARD_LABEL_W) or 16, 6)
 		U.RewardAmount.Size = UDim2.new(0, math.max(0, withLabel and (textW - K.REWARD_LABEL_W) or textW), 0, 32)
 		U.ClaimButton.Size = UDim2.fromOffset(buttonW, buttonH)
-		U.ClaimGlow.Size = UDim2.fromOffset(buttonW + 16, buttonH + 16)
-		U.ClaimGlow.Position = UDim2.new(1, -14 - buttonW / 2, 0.5, 0)
 		S.RewardTextW = textW
 	end
 	if short then
@@ -941,17 +973,30 @@ local function relayout()
 	end
 	U.View.Size = UDim2.new(1, 0, 0, (short or tall) and K.VIEW_H_SHORT or K.VIEW_H)
 	local tileH = short and K.GROUP_TILE_H_SHORT or K.GROUP_TILE_H
-	local tileSize = tall and UDim2.new(0, K.STRIP_TILE_W, 1, 0) or UDim2.new(1, -10, 0, tileH)
-	-- the strip's tiles are narrow: the name gets the star art's room too, so "Uncommon" / "Legendary" stay on one
-	-- line at the 18 px minimum (TextScaled wraps a word that does not fit, mid-word)
+	-- (kit-b U8) the strip shows a whole number of tabs: as many as fit at STRIP_TILE_MIN_W share the strip's width, so
+	-- the strip's edge (and the Elements button beside it) never cuts one at rest (the owner's phone render: "UNCOMMON"
+	-- half under the Elements button)
+	local stripTabW = K.STRIP_TILE_W
+	if tall then
+		local viewW = (w - K.PANEL_INSET_W - 20) - (U.ElementsButton and (K.ELEMENTS_STRIP_W + 8) or 0)
+		local room = viewW - K.STRIP_PAD_L
+		local n = math.max(1, math.floor((room + K.STRIP_GAP) / (K.STRIP_TILE_MIN_W + K.STRIP_GAP)))
+		stripTabW = math.floor((room - (n - 1) * K.STRIP_GAP) / n)
+	end
+	local tileSize = tall and UDim2.new(0, stripTabW, 1, 0) or UDim2.new(1, -10, 0, tileH)
+	-- the names sit at a fixed size that fits (never TextScaled: it shrank "Uncommon" in the strip): 20 px in the strip,
+	-- 24 px in the column
 	local nameSize = UDim2.new(1, -(tall and K.STRIP_NAME_PAD or 52), 0, 30)
+	local nameText = tall and 20 or 24
 	for _, tile in pairs(S.GroupTiles) do
 		tile.Button.Size = tileSize
 		tile.Name.Size = nameSize
+		tile.Name.TextSize = nameText
 	end
 	if S.FusionTile then
 		S.FusionTile.Button.Size = tileSize
 		S.FusionTile.Name.Size = nameSize
+		S.FusionTile.Name.TextSize = nameText
 	end
 	if U.ElementsButton then
 		if tall then
@@ -1012,106 +1057,68 @@ end
 ----------------------------------------------------------------------
 -- Group list (left)
 ----------------------------------------------------------------------
-local refreshAll, selectGroup, selectPet, renderDetail, showElements, revealGroupTile
+local refreshAll, selectGroup, selectPet, renderDetail, showElements, revealGroupTile, H_paintTab, syncTouch
 
 local function buildGroupTile(group, index)
 	local color = rarityColor(group.Rarity)
 	local accent = rarityAccent(group.Rarity)
-	local tile = { Group = group }
+	local tile = { Group = group, Lip = color }
 	local button = Util.Create("TextButton", {
 		Name = "Group_" .. group.Id,
 		AutoButtonColor = false,
 		BorderSizePixel = 0,
 		Text = "",
-		BackgroundColor3 = WHITE,
 		Size = UDim2.new(1, -10, 0, K.GROUP_TILE_H),
 		LayoutOrder = index,
 		Parent = U.GroupList,
 	})
-	corner(button, "M")
-	tile.Stroke = stroke(button, NAVY, 3, 0)
-	-- rarity art: a diagonal gradient, a pale gloss band and a big faint glyph on the right
-	local top, bottom = Theme.Lighten(color, 0.12), Theme.Darken(color, 0.42)
-	if group.Rarity == "Secret" then
-		top, bottom = Color3.fromRGB(118, 78, 196), Color3.fromRGB(26, 34, 70)
-	end
-	local gradient = Util.Create("UIGradient", {
-		Color = ColorSequence.new(top, bottom),
-		Rotation = 60,
-		Parent = button,
-	})
-	tile.Gradient = gradient
-	local gloss = makeFrame(button, "Gloss", {
-		BackgroundTransparency = 0.8,
-		BackgroundColor3 = WHITE,
-		Position = UDim2.fromOffset(8, 4),
-		Size = UDim2.new(1, -16, 0, 10),
-	})
-	round(gloss)
-	local art = makeText(button, "Art", "", "Title", 38, Theme.Lighten(accent, 0.5), {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -8, 0, 0),
-		Size = UDim2.fromOffset(40, 40),
-		TextTransparency = 0.45,
-		TextStrokeTransparency = 1,
-		Rotation = 12,
-	})
-	PixelIcon.Host(art, ICON.Star, 36) -- (kit-b U7b) the tile's faint star, see-through as the glyph was
+	-- (kit-b U8) a signboard tab: a stone tab, the rarity on its lip (refreshGroupTiles gold-faces the selected one)
+	CloudUI.SignBlock(button, "Stone", { Face = SIGN.Tile, LipColor = color, Pad = false })
+	button:SetAttribute("Rarity", group.Rarity)
 	-- name on top, then a slim progress bar with the "3/6" count at its right end (kit-b U6: a card name is a Heading, the
-	-- Title face's capitals would not fit "LEGENDARY" in the narrow phone tile)
-	-- kit B (no outline): the name takes the ink that reads on the light top-left end of the diagonal gradient (Theme.TextOn:
-	-- brown on a light colour, white on a dark one); the count sits on a small navy plate in white (it drops under 18 px on
-	-- a phone, where no ink reads 4.5:1 on the grey and blue tiles' mid tones)
-	tile.Name = makeText(button, "GroupName", group.Rarity, "Heading", 24, Theme.TextOn(top), {
+	-- Title face's capitals would not fit "LEGENDARY" in the narrow phone tile); U8: brown on the stone at a fixed size
+	-- (relayout: 24 px in the column, 20 in the strip)
+	tile.Name = makeText(button, "GroupName", group.Rarity, "Heading", 24, INK, {
 		Position = UDim2.fromOffset(12, 4),
 		Size = UDim2.new(1, -52, 0, 30),
 		TextXAlignment = Enum.TextXAlignment.Left,
-		TextScaled = true,
 		ZIndex = 2,
 	})
-	Util.Create("UITextSizeConstraint", { MaxTextSize = 24, MinTextSize = 18, Parent = tile.Name })
-	tile.Progress = makeText(button, "Progress", "0/0", "Heading", 19, WHITE, {
+	tile.Progress = makeText(button, "Progress", "0/0", "Heading", 19, MUTED, {
 		AnchorPoint = Vector2.new(1, 1),
-		Position = UDim2.new(1, -8, 1, -5),
+		Position = UDim2.new(1, -8, 1, -7),
 		Size = UDim2.fromOffset(0, 22),
 		AutomaticSize = Enum.AutomaticSize.X,
-		BackgroundTransparency = 0.15,
-		BackgroundColor3 = NAVY,
 		TextXAlignment = Enum.TextXAlignment.Right,
 		ZIndex = 2,
 	})
-	corner(tile.Progress, "M")
-	pad(tile.Progress, 7, 0, 7, 0)
 	local track = makeFrame(button, "Track", {
 		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 12, 1, -11),
+		Position = UDim2.new(0, 12, 1, -13),
 		Size = UDim2.new(1, -80, 0, 10),
-		BackgroundTransparency = 0.2,
-		BackgroundColor3 = Color3.fromRGB(14, 20, 52),
+		BackgroundTransparency = 0,
+		BackgroundColor3 = SIGN.Well,
 		ZIndex = 2,
 	})
-	round(track)
-	stroke(track, NAVY, 1.5, 0)
+	edge(track, SIGN.WellEdge, 2)
 	tile.Fill = makeFrame(track, "Fill", {
 		Size = UDim2.new(0, 0, 1, 0),
 		BackgroundTransparency = 0,
-		BackgroundColor3 = Theme.Lighten(accent, 0.35),
+		BackgroundColor3 = accent,
 		ZIndex = 3,
 	})
-	round(tile.Fill)
 	-- top-right corner: a check when claimed, a red "!" when the reward waits
 	tile.Badge = makeFrame(button, "Badge", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(1, -8, 0, 8),
 		Size = UDim2.fromOffset(28, 28),
 		BackgroundTransparency = 0,
-		BackgroundColor3 = BUTTONS.Red or BAD,
+		BackgroundColor3 = SIGN.Red,
 		Visible = false,
 		ZIndex = 4,
 	})
-	round(tile.Badge)
-	stroke(tile.Badge, NAVY, 2.5, 0)
-	tile.BadgeText = makeText(tile.Badge, "Mark", "!", "Button", 19, WHITE, {
+	edge(tile.Badge, SIGN.Wood, 2)
+	tile.BadgeText = makeText(tile.Badge, "Mark", "!", "Button", 19, INK, {
 		Size = UDim2.new(1, 0, 1, 0),
 		ZIndex = 5,
 	})
@@ -1132,64 +1139,33 @@ end
 
 -- The "Fusions" tile under the rarity groups (not a reward group): the player's hybrids and Golden / Rainbow copies.
 local function buildFusionTile(index)
-	local tile = {}
+	local tile = { Lip = FUSION_COLOR }
 	local button = Util.Create("TextButton", {
 		Name = "Group_" .. FUSIONS,
 		AutoButtonColor = false,
 		BorderSizePixel = 0,
 		Text = "",
-		BackgroundColor3 = WHITE,
 		Size = UDim2.new(1, -10, 0, K.GROUP_TILE_H),
 		LayoutOrder = index,
 		Parent = U.GroupList,
 	})
-	corner(button, "M")
-	tile.Stroke = stroke(button, NAVY, 3, 0)
-	Util.Create("UIGradient", {
-		Color = ColorSequence.new({
-			ColorSequenceKeypoint.new(0, Color3.fromRGB(246, 196, 64)),
-			ColorSequenceKeypoint.new(0.45, Color3.fromRGB(226, 110, 214)),
-			ColorSequenceKeypoint.new(1, Color3.fromRGB(88, 70, 170)),
-		}),
-		Rotation = 60,
-		Parent = button,
-	})
-	local gloss = makeFrame(button, "Gloss", {
-		BackgroundTransparency = 0.8,
-		BackgroundColor3 = WHITE,
-		Position = UDim2.fromOffset(8, 4),
-		Size = UDim2.new(1, -16, 0, 10),
-	})
-	round(gloss)
-	local art = makeText(button, "Art", "", "Title", 38, WHITE, {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -8, 0, 0),
-		Size = UDim2.fromOffset(40, 40),
-		TextTransparency = 0.45,
-		TextStrokeTransparency = 1,
-		Rotation = 12,
-	})
-	PixelIcon.Host(art, ICON.Sparkle, 36) -- (kit-b U7b)
-	-- kit B (no outline): the name is brown on the gold end of the gold -> pink -> violet tile; the count runs across the
-	-- pink-to-violet foot, where neither ink reads on the whole line, so it sits on a small navy plate in white
-	tile.Name = makeText(button, "GroupName", "Fusions", "Heading", 24, Theme.Sign.Text, { -- (a card name, like the rarity tiles)
+	-- (kit-b U8) the same signboard tab, the fusion violet on its lip and the sparkle before the name
+	CloudUI.SignBlock(button, "Stone", { Face = SIGN.Tile, LipColor = FUSION_COLOR, Pad = false })
+	tile.Name = makeText(button, "GroupName", "Fusions", "Heading", 24, INK, { -- (a card name, like the rarity tiles)
 		Position = UDim2.fromOffset(12, 4),
 		Size = UDim2.new(1, -52, 0, 30),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		ZIndex = 2,
 	})
-	tile.Progress = makeText(button, "Progress", "", "Heading", 19, WHITE, {
+	PixelIcon.Lead(tile.Name, ICON.Sparkle)
+	tile.Progress = makeText(button, "Progress", "", "Heading", 19, MUTED, {
 		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 10, 1, -5),
+		Position = UDim2.new(0, 12, 1, -7),
 		Size = UDim2.fromOffset(0, 22),
 		AutomaticSize = Enum.AutomaticSize.X,
-		BackgroundTransparency = 0.15,
-		BackgroundColor3 = NAVY,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		ZIndex = 2,
 	})
-	corner(tile.Progress, "M")
-	pad(tile.Progress, 7, 0, 7, 0)
 	tile.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = button })
 	button.MouseEnter:Connect(function()
 		tween(tile.Pop, 0.12, { Scale = 1.03 })
@@ -1205,6 +1181,17 @@ local function buildFusionTile(index)
 	return tile
 end
 
+-- (kit-b U8) a tab's look: stone, or gold-faced with the ink edge when it is the shown group; the lip keeps its rarity
+function H_paintTab(tile, selected)
+	CloudUI.SignBlock(tile.Button, "Stone", {
+		Face = selected and SIGN.Selected or SIGN.Tile,
+		Edge = selected and INK or nil,
+		LipColor = tile.Lip,
+		Pad = false,
+	})
+	tile.Button:SetAttribute("Selected", selected)
+end
+
 local function refreshGroupTiles()
 	for _, group in ipairs(S.Groups) do
 		local tile = S.GroupTiles[group.Id]
@@ -1213,31 +1200,28 @@ local function refreshGroupTiles()
 			tile.Progress.Text = string.format("%d/%d", found, total)
 			tile.Fill.Size = UDim2.new(total > 0 and found / total or 0, 0, 1, 0)
 			local selected = S.GroupId == group.Id
-			tile.Stroke.Color = selected and GOLD or NAVY
-			tile.Stroke.Thickness = selected and 4 or 3
+			H_paintTab(tile, selected)
 			if claimable then
 				tile.Badge.Visible = true
-				tile.Badge.BackgroundColor3 = BUTTONS.Red or BAD
+				tile.Badge.BackgroundColor3 = SIGN.Red
 				PixelIcon.Set(tile.BadgeText, nil)
 				tile.BadgeText.Text = "!"
 			elseif claimed then
 				tile.Badge.Visible = true
-				tile.Badge.BackgroundColor3 = BUTTONS.Green or GOOD
+				tile.Badge.BackgroundColor3 = SIGN.Grass
 				tile.BadgeText.Text = ""
 				PixelIcon.Set(tile.BadgeText, ICON.Check) -- (kit-b U7b)
 			else
 				tile.Badge.Visible = false
 			end
-			tile.Progress.TextColor3 = complete and Theme.Lighten(GOOD, 0.45) or WHITE
+			tile.Progress.TextColor3 = complete and INK or MUTED
 		end
 	end
 	local fusionTile = S.FusionTile
 	if fusionTile then
 		local n = #fusionKeys()
 		fusionTile.Progress.Text = n == 1 and "1 fused pet" or (n .. " fused pets")
-		local selected = S.GroupId == FUSIONS
-		fusionTile.Stroke.Color = selected and GOLD or NAVY
-		fusionTile.Stroke.Thickness = selected and 4 or 3
+		H_paintTab(fusionTile, S.GroupId == FUSIONS)
 	end
 end
 
@@ -1255,23 +1239,27 @@ local function paintTile(tile)
 	local def = tile.Def
 	local discovered = State.IsDiscovered(def.Id)
 	local selected = S.PetId == def.Id
-	local color = rarityAccent(def.Rarity)
+	-- (kit-b U8) the Pets window's card: stone, the selected one gold-faced with the ink edge, the rarity on the lip
+	CloudUI.SignBlock(tile.Button, "Stone", {
+		Face = selected and SIGN.Selected or SIGN.Tile,
+		Edge = selected and INK or nil,
+		LipColor = rarityColor(def.Rarity),
+		LipPx = K.TILE_LIP,
+		Pad = false,
+	})
+	tile.Button:SetAttribute("Rarity", def.Rarity)
 	if discovered then
-		tile.Gradient.Color = ColorSequence.new(Theme.Lighten(color, 0.55), Theme.Darken(color, 0.12))
 		-- fused copies show the pet's own name: the chip carries the tier ("Golden Pebble Pup" needs three lines)
 		if tile.FusionChip and not isHybridKey(def.Id, def) then
 			tile.Caption.Text = def.Name or def.DisplayName
 		else
 			tile.Caption.Text = def.DisplayName or def.Name
 		end
-		tile.Caption.TextColor3 = WHITE
+		tile.Caption.TextColor3 = INK
 	else
-		tile.Gradient.Color = ColorSequence.new(Color3.fromRGB(112, 132, 182), Color3.fromRGB(64, 80, 132))
 		tile.Caption.Text = "???"
 		tile.Caption.TextColor3 = MUTED
 	end
-	tile.Stroke.Color = selected and GOLD or (discovered and Theme.Darken(color, 0.25) or NAVY)
-	tile.Stroke.Thickness = selected and 4 or 3
 	if tile.Viewport then
 		local frame = tile.Viewport.Frame
 		if frame then
@@ -1309,6 +1297,7 @@ local function paintTile(tile)
 		tile.FusionChip.Visible = hybrid or tier ~= "Normal"
 		tile.FusionChip.BackgroundColor3 = hybrid and FUSION_COLOR or (TIER_COLORS[tier] or GOLD)
 		tile.FusionText.Text = hybrid and "H" or (tier == "Rainbow" and "R" or "G")
+		tile.FusionText.TextColor3 = Theme.TextOn(tile.FusionChip.BackgroundColor3)
 		local level = petLevelOf(def.Id)
 		tile.LevelTag.Text = "Lv " .. level
 		tile.LevelTag.Visible = level > 1
@@ -1395,37 +1384,27 @@ local function buildTile(def, index)
 		AutoButtonColor = false,
 		BorderSizePixel = 0,
 		Text = "",
-		BackgroundColor3 = WHITE,
 		LayoutOrder = index,
 		Parent = U.Grid,
 	})
-	corner(button, "M")
-	tile.Stroke = stroke(button, NAVY, 3, 0)
-	tile.Gradient = Util.Create("UIGradient", { Rotation = 90, Parent = button })
-	local gloss = makeFrame(button, "Gloss", {
-		BackgroundTransparency = 0.78,
-		BackgroundColor3 = WHITE,
-		Position = UDim2.fromOffset(7, 5),
-		Size = UDim2.new(1, -14, 0.22, 0),
-	})
-	corner(gloss, "M")
+	tile.Button = button
+	-- (kit-b U8) the pet stands in its light well (paintTile paints the card and its rarity lip)
 	tile.Art = makeFrame(button, "Art", {
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 6),
-		Size = UDim2.new(1, -12, 1, -50),
+		Position = UDim2.new(0.5, 0, 0, 4),
+		Size = UDim2.new(1, -8, 1, -52),
+		BackgroundTransparency = 0,
+		BackgroundColor3 = SIGN.PetWell,
 		ZIndex = 2,
 	})
 	local band = makeFrame(button, "NameBand", {
 		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, -5),
+		Position = UDim2.new(0.5, 0, 1, -(K.TILE_LIP + 1)),
 		Size = UDim2.new(1, -10, 0, 40),
-		BackgroundTransparency = 0.25,
-		BackgroundColor3 = Color3.fromRGB(16, 24, 60),
 		ZIndex = 3,
 	})
-	corner(band, "M")
 	-- 18 design px on up to two lines: never under 14 px at the phone scale (readability rule)
-	tile.Caption = makeText(band, "Caption", "???", "Heading", 18, WHITE, {
+	tile.Caption = makeText(band, "Caption", "???", "Heading", 18, INK, {
 		Position = UDim2.fromOffset(3, 0),
 		Size = UDim2.new(1, -6, 1, 0),
 		TextWrapped = true,
@@ -1442,17 +1421,16 @@ local function buildTile(def, index)
 	if S.GroupId == FUSIONS then
 		local chip = makeFrame(button, "FusionBadge", {
 			AnchorPoint = Vector2.new(1, 0),
-			Position = UDim2.new(1, -6, 0, 6),
-			Size = UDim2.fromOffset(30, 30),
+			Position = UDim2.new(1, -7, 0, 7),
+			Size = UDim2.fromOffset(28, 28),
 			BackgroundTransparency = 0,
 			BackgroundColor3 = FUSION_COLOR,
 			ZIndex = 5,
 		})
-		round(chip)
-		stroke(chip, NAVY, 2.5, 0)
+		edge(chip, SIGN.Wood, 2)
 		tile.FusionChip = chip
-		tile.FusionText = makeText(chip, "Mark", "", "Button", 18, WHITE, { Size = UDim2.new(1, 0, 1, 0), ZIndex = 6 })
-		tile.LevelTag = makeText(button, "LevelTag", "", "Heading", 18, WHITE, {
+		tile.FusionText = makeText(chip, "Mark", "", "Button", 18, INK, { Size = UDim2.new(1, 0, 1, 0), ZIndex = 6 })
+		tile.LevelTag = makeText(button, "LevelTag", "", "Heading", 18, INK, {
 			AnchorPoint = Vector2.new(1, 1),
 			Position = UDim2.new(1, -8, 1, -48),
 			Size = UDim2.fromOffset(70, 22),
@@ -1464,7 +1442,7 @@ local function buildTile(def, index)
 	tile.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = button })
 	button.MouseEnter:Connect(function()
 		tile.Hover = true
-		tween(tile.Pop, 0.12, { Scale = 1.05 })
+		tween(tile.Pop, 0.12, { Scale = 1.03 })
 		if tile.Viewport and tile.BuiltDiscovered then
 			tile.Viewport.SetAnimated(true)
 		end
@@ -1479,7 +1457,6 @@ local function buildTile(def, index)
 	button.Activated:Connect(function()
 		safe("select pet", selectPet, def.Id)
 	end)
-	tile.Button = button
 	S.Tiles[def.Id] = tile
 	table.insert(S.TileOrder, def.Id)
 	paintTile(tile)
@@ -1498,9 +1475,9 @@ local function renderHeader()
 		local n = #S.TileOrder
 		U.GroupTitle.Text = "Fusions"
 		PixelIcon.Mark(U.GroupTitle, ICON.Sparkle) -- (kit-b U7b)
-		U.GroupTitle.TextColor3 = Theme.Lighten(FUSION_COLOR, 0.45)
+		U.GroupTitle.TextColor3 = INK
 		U.HeaderFill.Size = UDim2.new(n > 0 and 1 or 0, 0, 1, 0)
-		U.HeaderFill.BackgroundColor3 = Theme.Lighten(FUSION_COLOR, 0.15)
+		U.HeaderFill.BackgroundColor3 = FUSION_COLOR
 		U.HeaderCount.Text = n == 1 and "1 fused pet" or (n .. " fused pets")
 		return
 	end
@@ -1512,9 +1489,9 @@ local function renderHeader()
 	local accent = rarityAccent(group.Rarity)
 	U.GroupTitle.Text = group.Rarity .. " Pets"
 	PixelIcon.Mark(U.GroupTitle, nil)
-	U.GroupTitle.TextColor3 = Theme.Lighten(accent, 0.4)
+	U.GroupTitle.TextColor3 = INK
 	U.HeaderFill.Size = UDim2.new(total > 0 and found / total or 0, 0, 1, 0)
-	U.HeaderFill.BackgroundColor3 = complete and (BUTTONS.Green or GOOD) or Theme.Lighten(accent, 0.15)
+	U.HeaderFill.BackgroundColor3 = complete and SIGN.Grass or accent
 	U.HeaderCount.Text = string.format("%d/%d", found, total)
 end
 
@@ -1545,13 +1522,8 @@ local function renderRewards()
 		U.RewardSub.TextColor3 = MUTED
 		local button = U.ClaimButton
 		button.Text = machine and "Fuse pets" or "My Home"
-		CloudUI.SetStyle(button, machine and "Blue" or "Green")
+		CloudUI.SetStyle(button, "Green") -- (kit-b U8) the tab's one main action
 		CloudUI.SetDisabled(button, false)
-		if U.ClaimPulse then
-			U.ClaimPulse:Cancel()
-			U.ClaimPulse = nil
-		end
-		U.ClaimGlow.Visible = false
 		return
 	end
 	local group = S.GroupById[S.GroupId]
@@ -1591,26 +1563,8 @@ local function renderRewards()
 		CloudUI.SetStyle(button, "Gray")
 		CloudUI.SetDisabled(button, true)
 	end
-	U.RewardSub.TextColor3 = claimable and Theme.Lighten(GOOD, 0.45) or MUTED
-	-- a soft glow pulses behind the button while the reward waits
-	if claimable and not pending then
-		U.ClaimGlow.Visible = true
-		if not U.ClaimPulse then
-			U.ClaimGlow.BackgroundTransparency = 0.75
-			U.ClaimPulse = TweenService:Create(
-				U.ClaimGlow,
-				TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-				{ BackgroundTransparency = 0.2 }
-			)
-			U.ClaimPulse:Play()
-		end
-	else
-		if U.ClaimPulse then
-			U.ClaimPulse:Cancel()
-			U.ClaimPulse = nil
-		end
-		U.ClaimGlow.Visible = false
-	end
+	U.RewardSub.TextColor3 = claimable and INK or MUTED
+	-- (kit-b U8) no glow pulses behind the button any more: a waiting reward is the green CLAIM block and the tab's red "!"
 end
 
 ----------------------------------------------------------------------
@@ -1640,7 +1594,6 @@ function renderDetail()
 	U.DetailBody.Visible = true
 	U.DetailEmpty.Visible = false
 	local discovered = State.IsDiscovered(def.Id)
-	local accent = rarityAccent(def.Rarity)
 
 	-- viewport: spinning when discovered, a still black silhouette otherwise
 	local best = discovered and type(State.BestStage) == "function" and (tonumber(State.BestStage(def.Id)) or 0) or 0
@@ -1667,9 +1620,6 @@ function renderDetail()
 		end
 		S.DetailKey = key
 	end
-	for _, glow in ipairs(U.Glows) do
-		glow.BackgroundColor3 = Theme.Lighten(accent, 0.25)
-	end
 	U.Mystery.Visible = not discovered
 
 	-- Stormfang (the player's own creature) shows its 2D art once discovered
@@ -1683,7 +1633,7 @@ function renderDetail()
 	local tier = tierOfKey(def.Id, def)
 	local hybrid = isHybridKey(def.Id, def)
 	local fused = hybrid or tier ~= "Normal"
-	U.Name.TextColor3 = discovered and Theme.Lighten(accent, 0.45) or MUTED
+	U.Name.TextColor3 = discovered and INK or MUTED
 
 	-- meta: rarity, element and role pills (rebuilt only when they change)
 	local elements = discovered and elementsOf(def) or {}
@@ -1709,7 +1659,7 @@ function renderDetail()
 			table.insert(S.DetailPills, elementPill(U.Meta, element, 18, 1 + i))
 		end
 		if role then
-			local rolePill = readablePill(role, ROLE_COLORS[role] or BUTTONS.Blue, U.Meta)
+			local rolePill = readablePill(role, ROLE_COLORS[role] or SIGN.Sky, U.Meta)
 			rolePill.LayoutOrder = 50
 			table.insert(S.DetailPills, rolePill)
 		end
@@ -1740,7 +1690,7 @@ function renderDetail()
 		local value = stats and stats[statKey]
 		if type(value) == "number" then
 			row.Value.Text = commas(math.floor(value + 0.5))
-			row.Value.TextColor3 = WHITE
+			row.Value.TextColor3 = INK
 			row.Fill.Size = UDim2.new(Util.Clamp(value / (maxes[statKey] or 1), 0.04, 1), 0, 1, 0)
 		else
 			row.Value.Text = "?"
@@ -1754,8 +1704,6 @@ function renderDetail()
 	U.Special.Visible = special ~= nil
 	if special then
 		U.SpecialName.Text = tostring(special.Name or "Special")
-		local color = typeof(special.Color) == "Color3" and special.Color or GOLD
-		U.SpecialName.TextColor3 = Theme.Lighten(color, 0.35)
 		U.SpecialKind.Text = tostring(special.Kind or "")
 		U.SpecialKind.Visible = special.Kind ~= nil
 	end
@@ -1781,15 +1729,15 @@ function renderDetail()
 			text = "A " .. tier .. " copy: x" .. (tier == "Rainbow" and "2.5" or "1.5") .. " stats and perks. " .. text
 		end
 		U.Info.Text = text
-		U.Info.TextColor3 = WHITE
+		U.Info.TextColor3 = INK
 		local owned = State.OwnedCount(def.Id)
 		U.Owned.Visible = true
 		if owned > 0 and fused then
 			U.Owned.Text = "Lv " .. petLevelOf(def.Id) .. "   " .. string.char(226, 128, 162) .. "   You own x" .. owned
-			U.Owned.TextColor3 = Theme.Lighten(GOOD, 0.4)
+			U.Owned.TextColor3 = INK
 		elseif owned > 0 then
 			U.Owned.Text = "You own x" .. owned
-			U.Owned.TextColor3 = Theme.Lighten(GOOD, 0.4)
+			U.Owned.TextColor3 = INK
 		else
 			U.Owned.Text = "Discovered"
 			U.Owned.TextColor3 = MUTED
@@ -2028,13 +1976,12 @@ end
 local function buildElementsCard()
 	local card = makeFrame(U.Centre, "ElementsCard", {
 		Size = UDim2.new(1, 0, 1, -(K.REWARD_H + 8)),
-		BackgroundTransparency = 0.05,
-		BackgroundColor3 = Color3.fromRGB(26, 38, 86),
+		BackgroundTransparency = 0,
+		BackgroundColor3 = SIGN.Stone,
 		Visible = false,
 		ZIndex = 20,
 	})
-	corner(card, "M")
-	stroke(card, NAVY, 3, 0)
+	edge(card, SIGN.Wood, 3) -- (kit-b U8) a stone card in its wood edge
 	U.ElementsCard = card
 	local scroll = scroller(card, "Scroll", {
 		Position = UDim2.fromOffset(6, 6),
@@ -2043,7 +1990,7 @@ local function buildElementsCard()
 	})
 	pad(scroll, 10, 8, 14, 10)
 	listLayout(scroll, Enum.FillDirection.Vertical, 10, Enum.HorizontalAlignment.Center)
-	Theme.StyleTitle(makeText(scroll, "Title", "Elements", "Title", 30, WHITE, {
+	Theme.StyleTitle(makeText(scroll, "Title", "Elements", "Title", 30, INK, {
 		Size = UDim2.new(1, 0, 0, 36),
 		LayoutOrder = 1,
 		ZIndex = 22,
@@ -2076,7 +2023,7 @@ local function buildElementsCard()
 			elementPill(holder, element, 18, 1)
 			-- arrow half way to the next element, pointing clockwise (screen y grows downwards)
 			local mid = angle + math.rad(180 / n)
-			local arrow = makeText(wheel, "Arrow" .. i, "", "Title", 24, GOLD, {
+			local arrow = makeText(wheel, "Arrow" .. i, "", "Title", 24, SIGN.Wood, {
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				Position = UDim2.new(0.5 + math.cos(mid) * 0.41, 0, 0.5 + math.sin(mid) * 0.43, 0),
 				Size = UDim2.fromOffset(28, 28),
@@ -2110,7 +2057,7 @@ local function buildElementsCard()
 			elementPill(row, element, 18, 1)
 			if partner and partner ~= element then
 				done[partner] = true
-				PixelIcon.Host(makeText(row, "Both", "", "Title", 24, GOLD, { Size = UDim2.fromOffset(34, 32), LayoutOrder = 2, ZIndex = 22 }), ICON.Swap, 18) -- (kit-b U7b)
+				PixelIcon.Host(makeText(row, "Both", "", "Title", 24, SIGN.Wood, { Size = UDim2.fromOffset(34, 32), LayoutOrder = 2, ZIndex = 22 }), ICON.Swap, 18) -- (kit-b U7b)
 				elementPill(row, partner, 18, 3)
 			end
 		end
@@ -2118,7 +2065,8 @@ local function buildElementsCard()
 	local back = CloudUI.Button({
 		Name = "CloseElements",
 		Text = "Back to pets",
-		Style = "Blue",
+		Style = "Gray",
+		Skin = "Sign",
 		Size = UDim2.fromOffset(220, 52),
 		TextSize = 22,
 		LayoutOrder = 50,
@@ -2152,7 +2100,7 @@ local function buildCentre(centre)
 	-- header: group name + progress bar "x/N"
 	local header = inset(centre, "GroupHeader", { Size = UDim2.new(1, 0, 0, K.HEADER_H) })
 	U.Header = header
-	U.GroupTitle = makeText(header, "GroupTitle", "", "Title", 28, WHITE, {
+	U.GroupTitle = makeText(header, "GroupTitle", "", "Title", 28, INK, {
 		Position = UDim2.fromOffset(16, 0),
 		Size = UDim2.new(0.5, -16, 1, 0),
 		TextXAlignment = Enum.TextXAlignment.Left,
@@ -2164,18 +2112,15 @@ local function buildCentre(centre)
 		Position = UDim2.new(1, -14, 0.5, 0),
 		Size = UDim2.new(0.46, 0, 0, 30),
 		BackgroundTransparency = 0,
-		BackgroundColor3 = Color3.fromRGB(14, 20, 52),
+		BackgroundColor3 = SIGN.Tile,
 	})
-	round(track)
-	stroke(track, NAVY, 3, 0)
+	edge(track, SIGN.Wood, 2) -- (kit-b U8) a flat bar: stone track, wood edge, the rarity's fill
 	U.HeaderFill = makeFrame(track, "Fill", {
 		Size = UDim2.new(0, 0, 1, 0),
 		BackgroundTransparency = 0,
-		BackgroundColor3 = GOOD,
+		BackgroundColor3 = SIGN.Grass,
 	})
-	round(U.HeaderFill)
-	Theme.Gradient(U.HeaderFill, Color3.fromRGB(255, 255, 255), Color3.fromRGB(190, 198, 222), 90)
-	U.HeaderCount = makeText(track, "Count", "0/0", "Display", 22, WHITE, {
+	U.HeaderCount = makeText(track, "Count", "0/0", "Display", 22, INK, {
 		Size = UDim2.new(1, 0, 1, 0),
 		ZIndex = 3,
 	})
@@ -2201,13 +2146,13 @@ local function buildCentre(centre)
 	-- the Fusions tab without any fused pet yet
 	U.FusionEmpty = makeFrame(well, "FusionEmpty", { Size = UDim2.new(1, 0, 1, 0), Visible = false, ZIndex = 5 })
 	listLayout(U.FusionEmpty, Enum.FillDirection.Vertical, 10, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
-	local emptyGlyph = makeText(U.FusionEmpty, "Glyph", "", "Title", 54, Theme.Lighten(FUSION_COLOR, 0.4), {
+	local emptyGlyph = makeText(U.FusionEmpty, "Glyph", "", "Title", 54, SIGN.VioletLip, {
 		Size = UDim2.new(1, 0, 0, 60),
 		LayoutOrder = 1,
 		ZIndex = 5,
 	})
 	PixelIcon.Host(emptyGlyph, ICON.Sparkle, 54) -- (kit-b U7b)
-	Theme.StyleTitle(makeText(U.FusionEmpty, "Title", "No fused pets yet", "Title", 28, WHITE, {
+	Theme.StyleTitle(makeText(U.FusionEmpty, "Title", "No fused pets yet", "Title", 28, INK, {
 		Size = UDim2.new(1, -30, 0, 34),
 		LayoutOrder = 2,
 		ZIndex = 5,
@@ -2227,12 +2172,12 @@ local function buildCentre(centre)
 		Size = UDim2.new(1, 0, 0, K.REWARD_H),
 	})
 	U.Rewards = rewards
-	U.RewardLabel = makeText(rewards, "Label", "Rewards:", "Heading", 22, WHITE, {
+	U.RewardLabel = makeText(rewards, "Label", "Rewards:", "Heading", 22, INK, {
 		Position = UDim2.fromOffset(16, 8),
 		Size = UDim2.fromOffset(120, 28),
 		TextXAlignment = Enum.TextXAlignment.Left,
 	})
-	U.RewardAmount = makeText(rewards, "Amount", "", "Display", 30, Colors.Token, {
+	U.RewardAmount = makeText(rewards, "Amount", "", "Display", 30, INK, {
 		Position = UDim2.fromOffset(140, 6),
 		Size = UDim2.new(1, -350, 0, 32),
 		TextXAlignment = Enum.TextXAlignment.Left,
@@ -2245,19 +2190,11 @@ local function buildCentre(centre)
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextYAlignment = Enum.TextYAlignment.Top,
 	})
-	-- the glow is a sibling behind the button (the button's own UIScale is its hover effect)
-	U.ClaimGlow = makeFrame(rewards, "ClaimGlow", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		BackgroundTransparency = 0.6,
-		BackgroundColor3 = Theme.Lighten(BUTTONS.Green or GOOD, 0.35),
-		Visible = false,
-		ZIndex = 1,
-	})
-	corner(U.ClaimGlow, "M")
 	U.ClaimButton = CloudUI.Button({
 		Name = "Claim",
 		Text = "Claim",
 		Style = "Gray",
+		Skin = "Sign", -- (kit-b U8) green only while the reward waits (renderRewards)
 		Size = UDim2.fromOffset(184, 60),
 		AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.new(1, -14, 0.5, 0),
@@ -2294,24 +2231,19 @@ local function buildDetail(detail)
 	pad(body, 10, 8, 14, 12)
 	listLayout(body, Enum.FillDirection.Vertical, 6, Enum.HorizontalAlignment.Center)
 
-	-- big viewport with a soft rarity glow and a "?" behind silhouettes
+	-- big viewport in the square light pet well (kit-b U8: was two soft gold glow discs) and a "?" behind silhouettes
 	local view = makeFrame(body, "View", { Size = UDim2.new(1, 0, 0, K.VIEW_H), LayoutOrder = 1 })
 	U.View = view
-	U.Glows = {}
-	for i, disc in ipairs({ { 0.96, 0.84 }, { 0.72, 0.76 } }) do
-		-- square discs sized by the view's height (the view is shorter in the compact layout)
-		local glow = makeFrame(view, "Glow" .. i, {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.new(0.5, 0, 0.5, 0),
-			Size = UDim2.fromScale(disc[1], disc[1]),
-			BackgroundTransparency = disc[2],
-			BackgroundColor3 = GOLD,
-		})
-		Util.Create("UIAspectRatioConstraint", { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Height, Parent = glow })
-		round(glow)
-		table.insert(U.Glows, glow)
-	end
-	U.Mystery = makeText(view, "Mystery", "?", "Title", 100, Color3.fromRGB(120, 140, 196), {
+	local well = makeFrame(view, "PetWell", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.5, 0),
+		Size = UDim2.fromScale(0.96, 0.96),
+		BackgroundTransparency = 0,
+		BackgroundColor3 = SIGN.PetWell,
+	})
+	Util.Create("UIAspectRatioConstraint", { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Height, Parent = well })
+	edge(well, SIGN.WellEdge, 2)
+	U.Mystery = makeText(view, "Mystery", "?", "Title", 100, MUTED, {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0.5, 0, 0.5, 0),
 		Size = UDim2.fromScale(0.6, 0.6),
@@ -2332,10 +2264,9 @@ local function buildDetail(detail)
 		LayoutOrder = 2,
 		Parent = body,
 	})
-	corner(U.Banner, "M")
-	stroke(U.Banner, Color3.fromRGB(63, 200, 255), 3, 0)
+	edge(U.Banner, SIGN.Wood, 3)
 
-	U.Name = makeText(body, "Name", "", "Title", 30, WHITE, {
+	U.Name = makeText(body, "Name", "", "Title", 30, INK, {
 		Size = UDim2.new(1, 0, 0, 36),
 		TextScaled = true,
 		LayoutOrder = 3,
@@ -2375,7 +2306,7 @@ local function buildDetail(detail)
 	}
 	for i, statKey in ipairs(statKeys) do
 		local row = makeFrame(statsBox, "Stat_" .. statKey, { Size = UDim2.new(1, 0, 0, 24), LayoutOrder = i })
-		makeText(row, "Label", statNames[statKey] or statKey, "Heading", 18, WHITE, {
+		makeText(row, "Label", statNames[statKey] or statKey, "Heading", 18, INK, {
 			Size = UDim2.new(0, 86, 1, 0),
 			TextXAlignment = Enum.TextXAlignment.Left,
 		})
@@ -2383,17 +2314,16 @@ local function buildDetail(detail)
 			AnchorPoint = Vector2.new(0, 0.5),
 			Position = UDim2.new(0, 90, 0.5, 0),
 			Size = UDim2.new(1, -150, 0, 12),
-			BackgroundTransparency = 0.1,
-			BackgroundColor3 = Color3.fromRGB(14, 20, 52),
+			BackgroundTransparency = 0,
+			BackgroundColor3 = SIGN.Tile,
 		})
-		round(bar)
+		edge(bar, SIGN.WellEdge, 2)
 		local fill = makeFrame(bar, "Fill", {
 			Size = UDim2.new(0, 0, 1, 0),
 			BackgroundTransparency = 0,
 			BackgroundColor3 = statColors[statKey] or GOLD,
 		})
-		round(fill)
-		local value = makeText(row, "Value", "?", "Heading", 18, WHITE, {
+		local value = makeText(row, "Value", "?", "Heading", 18, INK, {
 			AnchorPoint = Vector2.new(1, 0),
 			Position = UDim2.new(1, 0, 0, 0),
 			Size = UDim2.new(0, 54, 1, 0),
@@ -2408,13 +2338,13 @@ local function buildDetail(detail)
 		LayoutOrder = 8,
 	})
 	U.Special = special
-	local specialCaption = makeText(special, "Caption", "SPECIAL", "Heading", 18, GOLD, {
+	local specialCaption = makeText(special, "Caption", "SPECIAL", "Heading", 18, INK, {
 		Position = UDim2.fromOffset(10, 4),
 		Size = UDim2.new(1, -20, 0, 22),
 		TextXAlignment = Enum.TextXAlignment.Left,
 	})
 	PixelIcon.Lead(specialCaption, ICON.Sparkle) -- (kit-b U7b)
-	U.SpecialName = makeText(special, "SpecialName", "", "Title", 22, WHITE, {
+	U.SpecialName = makeText(special, "SpecialName", "", "Title", 22, INK, {
 		Position = UDim2.fromOffset(10, 26),
 		Size = UDim2.new(1, -110, 0, 28),
 		TextXAlignment = Enum.TextXAlignment.Left,
@@ -2428,13 +2358,13 @@ local function buildDetail(detail)
 		TextXAlignment = Enum.TextXAlignment.Right,
 	})
 
-	U.Matchup = makeText(body, "Matchup", "", "Body", 18, Theme.Lighten(BUTTONS.Blue or MUTED, 0.5), {
+	U.Matchup = makeText(body, "Matchup", "", "Body", 18, INK, {
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		TextWrapped = true,
 		LayoutOrder = 9,
 	})
-	U.Info = makeText(body, "Info", "", "Body", 19, WHITE, {
+	U.Info = makeText(body, "Info", "", "Body", 19, INK, {
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		TextWrapped = true,
@@ -2467,7 +2397,8 @@ local function buildWindow()
 		Name = "IndexPanel",
 		Title = "Pet Index",
 		Closable = true,
-		Category = "Index",
+		Skin = "Signboard", -- (kit-b U8) roof, navy header with the book, wood frame, stone body
+		Icon = "book",
 		Size = UDim2.new(1, 0, 1, 0),
 		Position = UDim2.new(0.5, 0, 0.5, 0),
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -2501,7 +2432,8 @@ local function buildWindow()
 		U.ElementsButton = CloudUI.Button({
 			Name = "Elements",
 			Text = "Elements",
-			Style = "Blue",
+			Style = "Gray",
+			Skin = "Sign",
 			AnchorPoint = Vector2.new(0.5, 1),
 			Position = UDim2.new(0.5, 0, 1, 0),
 			Size = UDim2.new(1, -10, 0, K.ELEMENTS_BTN_H),
@@ -2535,7 +2467,7 @@ local function buildWindow()
 		Size = UDim2.new(1, -20, 0, K.FOOTER_H - 6),
 	})
 	U.Footer = footer
-	U.FooterText = makeText(footer, "Unlocked", "Unlocked: 0/0", "Title", 26, WHITE, {
+	U.FooterText = makeText(footer, "Unlocked", "Unlocked: 0/0", "Title", 26, INK, {
 		Size = UDim2.new(0, 260, 1, 0),
 		TextXAlignment = Enum.TextXAlignment.Left,
 	})
@@ -2544,18 +2476,15 @@ local function buildWindow()
 		Position = UDim2.new(0, 270, 0.5, 0),
 		Size = UDim2.new(1, -350, 0, 18),
 		BackgroundTransparency = 0,
-		BackgroundColor3 = Color3.fromRGB(14, 20, 52),
+		BackgroundColor3 = SIGN.Well,
 	})
-	round(track)
-	stroke(track, NAVY, 3, 0)
+	edge(track, SIGN.Wood, 2)
 	U.FooterFill = makeFrame(track, "Fill", {
 		Size = UDim2.new(0, 0, 1, 0),
 		BackgroundTransparency = 0,
 		BackgroundColor3 = GOLD,
 	})
-	round(U.FooterFill)
-	Theme.Gradient(U.FooterFill, Color3.fromRGB(255, 255, 255), Color3.fromRGB(206, 196, 170), 90)
-	U.FooterPercent = makeText(footer, "Percent", "0%", "Display", 24, GOLD, {
+	U.FooterPercent = makeText(footer, "Percent", "0%", "Display", 24, INK, {
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, 0, 0, 0),
 		Size = UDim2.new(0, 70, 1, 0),
@@ -2570,6 +2499,22 @@ end
 ----------------------------------------------------------------------
 -- Open / close
 ----------------------------------------------------------------------
+-- (kit-b U8) on a touch screen Roblox's thumbstick and jump button go while the window is open (the jump button sat on
+-- CLAIM at 844x390) and come back as they were: MenuController keeps the one owner set (required here at open / close
+-- time, when both modules are loaded: no require cycle)
+function syncTouch()
+	local want = S.Open and UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+	if want == (S.TouchOff == true) then
+		return
+	end
+	S.TouchOff = want
+	local module = script.Parent:FindFirstChild("MenuController")
+	local ok, menu = pcall(require, module)
+	if ok and type(menu) == "table" and type(menu.SetTouchHidden) == "function" then
+		safe("touch", menu.SetTouchHidden, "Index", want)
+	end
+end
+
 function IndexController.IsOpen()
 	return S.Open
 end
@@ -2635,6 +2580,7 @@ function IndexController.Open(groupId)
 	end
 	safe("select", selectGroup, target)
 	safe("refresh", refreshAll)
+	syncTouch()
 	if not wasOpen then
 		IndexController.Opened:Fire(target)
 	end
@@ -2648,10 +2594,7 @@ function IndexController.Close()
 	S.Token = S.Token + 1
 	local mine = S.Token
 	syncBackBinding()
-	if U.ClaimPulse then
-		U.ClaimPulse:Cancel()
-		U.ClaimPulse = nil
-	end
+	syncTouch()
 	tween(U.Pop, 0.12, { Scale = 0.9 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 	task.delay(0.13, function()
 		if S.Token == mine and not S.Open and U.Holder then
