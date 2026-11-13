@@ -1159,7 +1159,8 @@ P5.MAX_COLS = 3 -- the tiles wrap into at most this many columns (the shortest l
 P5.CENTRE_TOL = 0.145 -- the column never reaches into the screen middle (|dx| < 14.5% of the width: HudController's rule)
 P5.SLIDE = 0.25 -- seconds of the collapse / expand slide
 
--- active (its window is open): the gold glow ring + a gold label; disabled (in a match): grey
+-- active (its window is open): the gold glow ring + a gold label; disabled (in a match): grey. (kit-b U8) The tiles are kit B
+-- stone tiles (NeonKit.Tile Skin "Sign"): active = the gold face, disabled = the sunk well; the skin paints its own label
 local function paintTile(entry)
 	local tile = entry.Tile
 	if not tile then
@@ -1170,7 +1171,7 @@ local function paintTile(entry)
 		entry.Painted = tostring(color) .. tostring(entry.Active)
 		tile.SetColor(entry.Active and "Gold" or color)
 		tile.Card.SetGlow(entry.Active == true)
-		if tile.Label then
+		if tile.Label and tile.Skin ~= "Sign" then
 			tile.Label.TextColor3 = entry.Active and Theme.Lighten(GOLD, 0.45) or WHITE
 		end
 	end
@@ -1192,6 +1193,7 @@ local function buildTile(column, spec, index)
 		Icon = spec.Icon,
 		Label = (not spec.Gear) and spec.Label or nil, -- the gear stays icon-only
 		Glow = false,
+		Skin = "Sign", -- (kit-b U8) the pitch's HUD tiles
 		Parent = entry.Root,
 		Callback = function()
 			safe("menu " .. spec.Id, spec.Action)
@@ -1383,19 +1385,20 @@ local function buildColumn()
 	end
 	-- the hide / show tab: a slim navy tab with an arrow, beside the last tile (the gear), so the tutorial's pointer
 	-- at Pets / Team / Index / Home never lands on it
+	-- (kit-b U8) a stone tab in a wood edge like the tiles, the arrow in brown
 	local tab = Util.Create("TextButton", {
 		Name = "Toggle",
 		Text = "",
 		AutoButtonColor = false,
-		BackgroundColor3 = Colors.PanelBottom or NAVY,
-		BackgroundTransparency = 0.08,
+		BackgroundColor3 = Theme.Sign.Tile,
+		BackgroundTransparency = 0,
 		BorderSizePixel = 0,
 		ZIndex = 3,
 		Parent = column,
 	})
-	corner(tab, "M")
-	U.TabStroke = stroke(tab, Theme.Lighten(Colors.PanelTop or NAVY, 0.35), 2, 0.1)
-	U.TabArrow = makeText(tab, "Arrow", "<", "Display", 26, WHITE, {
+	U.TabStroke = stroke(tab, Theme.Sign.Wood, 3, 0)
+	U.TabStroke.LineJoinMode = Enum.LineJoinMode.Miter
+	U.TabArrow = makeText(tab, "Arrow", "<", "Display", 26, Theme.Sign.Text, {
 		Size = UDim2.fromScale(1, 1),
 		TextXAlignment = Enum.TextXAlignment.Center,
 		ZIndex = 4,
@@ -1405,12 +1408,11 @@ local function buildColumn()
 		Position = UDim2.new(1, -2, 0, 4),
 		Size = UDim2.fromOffset(14, 14),
 		BackgroundTransparency = 0,
-		BackgroundColor3 = Theme.Neon and Theme.Neon.Red or Colors.Bad,
+		BackgroundColor3 = Theme.Sign.Red,
 		Visible = false,
 		ZIndex = 5,
 	})
-	round(U.TabBadge)
-	stroke(U.TabBadge, INK, 2, 0)
+	stroke(U.TabBadge, Theme.Sign.Wood, 2, 0)
 	U.Tab = tab
 	tab.Activated:Connect(function()
 		safe("menu fold", P5.setCollapsed, not U.Collapsed, true)

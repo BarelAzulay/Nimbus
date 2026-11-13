@@ -644,15 +644,16 @@ Config.PetStats = {
 -- and Celestial and Shadow are each strong against the other. Anything else is neutral.
 Config.Elements = {
 	Order = { "Water", "Flame", "Frost", "Nature", "Earth", "Storm", "Celestial", "Shadow" },
+	-- (kit-b U8) Icon = the element's PixelIcon (the battle HUD's set, U7b): the element chips of the Pets window and the Index
 	Info = {
-		Water = { Color = Color3.fromRGB(64, 148, 236), Blurb = "Douses Flame" },
-		Flame = { Color = Color3.fromRGB(240, 108, 56), Blurb = "Melts Frost" },
-		Frost = { Color = Color3.fromRGB(150, 222, 248), Blurb = "Freezes Nature" },
-		Nature = { Color = Color3.fromRGB(104, 190, 86), Blurb = "Roots crack Earth" },
-		Earth = { Color = Color3.fromRGB(178, 128, 80), Blurb = "Grounds Storm" },
-		Storm = { Color = Color3.fromRGB(110, 128, 255), Blurb = "Electrifies Water" },
-		Celestial = { Color = Color3.fromRGB(255, 212, 104), Blurb = "Shines through Shadow" },
-		Shadow = { Color = Color3.fromRGB(128, 72, 178), Blurb = "Swallows Celestial light" },
+		Water = { Color = Color3.fromRGB(64, 148, 236), Blurb = "Douses Flame", Icon = "drop" },
+		Flame = { Color = Color3.fromRGB(240, 108, 56), Blurb = "Melts Frost", Icon = "flame" },
+		Frost = { Color = Color3.fromRGB(150, 222, 248), Blurb = "Freezes Nature", Icon = "flake" },
+		Nature = { Color = Color3.fromRGB(104, 190, 86), Blurb = "Roots crack Earth", Icon = "leaf" },
+		Earth = { Color = Color3.fromRGB(178, 128, 80), Blurb = "Grounds Storm", Icon = "mountain" },
+		Storm = { Color = Color3.fromRGB(110, 128, 255), Blurb = "Electrifies Water", Icon = "bolt" },
+		Celestial = { Color = Color3.fromRGB(255, 212, 104), Blurb = "Shines through Shadow", Icon = "sparkle" },
+		Shadow = { Color = Color3.fromRGB(128, 72, 178), Blurb = "Swallows Celestial light", Icon = "moon" },
 	},
 	-- Strong[attacker] = the defender elements it deals extra damage to.
 	Strong = {

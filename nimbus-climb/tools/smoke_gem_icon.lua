@@ -337,9 +337,10 @@ S.client_gem_icon = guarded("client_gem_icon", function()
 	local grad = coin and coin:FindFirstChildOfClass("UIGradient")
 	local ring = coin and coin:FindFirstChildOfClass("UIStroke")
 	local kps = grad and grad.Color.Keypoints or {}
-	T.check(#kps >= 2 and kps[1].Value == Theme.Colors.PanelTop and kps[#kps].Value == Theme.Colors.PanelBottom,
-		"gem hud: the Gems badge is the navy panel fill (PanelTop -> PanelBottom)")
-	T.check(ring ~= nil and ring.Color == Theme.Currency.Gems.Color, "gem hud: ...with a cyan UIStroke ring (Theme.Currency.Gems.Color)")
+	-- (kit-b U8, restated: was the navy panel gradient with a cyan ring) a flat Sign navy square in its wood edge
+	T.check(#kps == 0 and coin ~= nil and coin.BackgroundColor3 == Theme.Sign.Navy and coin.BackgroundTransparency == 0,
+		"gem hud: the Gems badge is a flat Sign navy square (no gradient)")
+	T.check(ring ~= nil and ring.Color == Theme.Sign.Wood, "gem hud: ...with its wood edge (kit-b U8; was a cyan ring)")
 	local glyphLabel = coin and coin:FindFirstChild("Glyph")
 	T.check(glyphLabel == nil or tostring(glyphLabel.Text) == "", "gem hud: no glyph text on the Gems coin")
 	local cashCoin = hud and hud:FindFirstChild("Currency_Tokens", true)

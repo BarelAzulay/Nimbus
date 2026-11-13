@@ -544,7 +544,10 @@ S.client_p5neon = guarded("client_p5neon", function()
 
 	local g = CloudUI.NewScreenGui("SmokeNeon", 41)
 	-- Card: 3 px neon stroke, glow ring (+3 px frame, 5 px stroke at 0.62), floor on a short card, sheen, Body
-	local card = NeonKit.Card({ Name = "C1", Size = UDim2.fromOffset(240, 120), Color = "Purple", Parent = g })
+	-- (kit-b U8) the glow is opt-in now: this card asks for it, a plain card keeps it hidden
+	local card = NeonKit.Card({ Name = "C1", Size = UDim2.fromOffset(240, 120), Color = "Purple", Glow = true, Parent = g })
+	local plainCard = NeonKit.Card({ Name = "C0", Size = UDim2.fromOffset(240, 120), Color = "Purple", Parent = g })
+	T.check(plainCard.Glow and plainCard.Glow.Visible == false, "p5neon: Card: no glow unless asked for (kit-b U8)")
 	local stroke = card.Root:FindFirstChild("NeonStroke")
 	T.check(stroke and stroke:IsA("UIStroke") and stroke.Thickness == 3 and stroke.Color == Theme.Neon.Purple and stroke.Transparency == 0,
 		"p5neon: Card: a 3 px neon UIStroke in its colour")
@@ -708,10 +711,13 @@ S.client_p5hud_pills = guarded("client_p5hud_pills", function()
 	for _, id in ipairs({ "Cash", "Gems", "Tokens" }) do
 		local row = pill(id)
 		local body = row and row:FindFirstChild("Body")
-		local stroke = body and body:FindFirstChild("NeonStroke")
-		local grad = body and body:FindFirstChildOfClass("UIGradient")
-		T.check(NK.shown(row) and stroke and stroke.Color == Theme.Neon[want[id]] and grad and grad.Color.Keypoints[1].Value == Theme.Colors.PanelTop,
-			"p5hud_pills: the " .. id .. " pill is a dark navy neon pill with a " .. want[id] .. " border")
+		-- (kit-b U8, restated: was a dark navy neon pill with a Green / Cyan / Gold border) a kit B currency strip: a stone
+		-- tile face, a wood edge and its darker lip, no gloss; the currency's colour is its coin square
+		local stroke = body and body:FindFirstChild("SignEdge")
+		local lip = body and body:FindFirstChild("Lip")
+		T.check(NK.shown(row) and stroke and stroke.Color == Theme.Sign.Wood and body.BackgroundColor3 == Theme.Sign.Tile and lip ~= nil
+			and body:FindFirstChildOfClass("UIGradient") == nil and body:FindFirstChildOfClass("UICorner") == nil,
+			"p5hud_pills: the " .. id .. " strip is a stone tile with a wood edge and its lip (kit-b U8; was a " .. want[id] .. " neon pill)")
 	end
 	local amount = pill("Cash") and pill("Cash"):FindFirstChild("Amount")
 	T.check(amount and amount.Text == "12.4K", "p5hud_pills: Cash reads 12.4K", amount and amount.Text or "none")

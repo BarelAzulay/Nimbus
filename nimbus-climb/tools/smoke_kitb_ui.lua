@@ -4213,6 +4213,524 @@ local function clientScenarios()
 		LKC.flushErrors("token_icon_everywhere")
 	end)
 
+	------------------------------------------------------------------------------------------------
+	-- U8 (finding 15; the owner's kit B pitch, the HUD and Pets stages, and the Index moved in on 2026-11-13): the lobby HUD,
+	-- the Pets window and the Index on the Signboard kit. Each scenario sets its screen and input, feeds a known profile
+	-- (U8.feed: five pets, a team of two) and puts everything back after.
+	local U8 = {}
+	U8.KEYS = { "ember_phoenix", "biscuit_bear", "sunbeam_bear", "pebble_pup", "maple_fox" }
+	function U8.pg()
+		return game:GetService("Players").LocalPlayer:FindFirstChildOfClass("PlayerGui")
+	end
+	function U8.rect(o)
+		local p, s = o.AbsolutePosition, o.AbsoluteSize
+		return { X = p.X, Y = p.Y, R = p.X + s.X, B = p.Y + s.Y }
+	end
+	function U8.show(r)
+		return fmt("%d,%d..%d,%d", r.X, r.Y, r.R, r.B)
+	end
+	function U8.overlap(a, b)
+		return a.X < b.R - 0.5 and b.X < a.R - 0.5 and a.Y < b.B - 0.5 and b.Y < a.B - 0.5
+	end
+	-- the product of the UIScales on an object and every GuiObject above it (screen px per design px)
+	function U8.scaleOf(o)
+		local s, cur = 1, o
+		while cur and not cur:IsA("LayerCollector") do
+			if cur:IsA("GuiObject") then
+				for _, c in ipairs(cur:GetChildren()) do
+					if c:IsA("UIScale") and c.Scale > 0 then
+						s = s * c.Scale
+					end
+				end
+			end
+			cur = cur.Parent
+		end
+		return s
+	end
+	-- shown: every GuiObject up to its ScreenGui visible, and the ScreenGui enabled
+	function U8.shown(o)
+		local cur = o
+		while cur and not cur:IsA("LayerCollector") do
+			if cur:IsA("GuiObject") and not cur.Visible then
+				return false
+			end
+			cur = cur.Parent
+		end
+		return cur ~= nil and cur.Enabled ~= false
+	end
+	function U8.feed(team)
+		local pets, levels, discovered = {}, {}, {}
+		for i, key in ipairs(U8.KEYS) do
+			pets[key] = 1
+			levels[key] = { Level = 4 + 3 * i, Xp = 10 }
+			discovered[key] = true
+		end
+		local preset = team or { U8.KEYS[1], U8.KEYS[2] }
+		LKC.toClient("ProfileSync", {
+			Tokens = 1250, Pets = pets, Equipped = preset, Items = {},
+			Stats = { Matches = 0, Wins = 0, TokensEarned = 0, Spins = 0, BestTimes = {} },
+			Perks = { MaxHealth = 0, TokenBonus = 0, StaminaRegen = 0, CheckpointHeal = 0 },
+			Discovered = discovered, IndexClaimed = {},
+			Tutorial = { Step = 1000, Done = true, Gifted = true },
+			Cash = 48200, Gems = 320,
+			Home = { Level = 5, Prestige = 0, Stations = { Garden = 1 }, Garden = {}, Gym = {}, CollectorCash = 0 },
+			Food = {}, Tiers = {}, Hybrids = {}, PetLevels = levels,
+			Teams = { Presets = { preset, {}, {} }, Active = 1, Slots = 3, Busy = {} },
+			Battle = { Trophies = 120, TrialBest = 0, TrialCleared = {}, Raids = 0, RaidBestDamage = 0, PvPWins = 0, PvPLosses = 0, EventPets = {} },
+			PetGrowth = {}, Ring = { Best = 0, Runs = 0 },
+		})
+		LKC.advance(0.2)
+	end
+	function U8.closeAll()
+		for _, name in ipairs({ "Controllers/PetsController", "Controllers/IndexController", "Controllers/MenuController", "Controllers/DailyController",
+			"Controllers/ShopController" }) do
+			local m = U7.client(name)
+			if m and type(m.Close) == "function" then
+				pcall(m.Close, true)
+			end
+		end
+		LKC.advance(0.4)
+	end
+	-- runs fn(tag) at a screen size and input, in the lobby (no match, no battle), with the U8 profile and every window closed
+	function U8.at(w, h, touch, label, fn)
+		local UIS = game:GetService("UserInputService")
+		local Config = LoadingH.shared("Config")
+		local lp = game:GetService("Players").LocalPlayer
+		local old = { Mock.Viewport.X, Mock.Viewport.Y, UIS.TouchEnabled, UIS.KeyboardEnabled, UIS.MouseEnabled }
+		UIS.TouchEnabled, UIS.KeyboardEnabled, UIS.MouseEnabled = touch, not touch, not touch
+		Mock.SetViewport(w, h)
+		lp:SetAttribute(Config.Attr.InMatch, false)
+		lp:SetAttribute(Config.Attr.InBattle, nil)
+		LKC.toClient("MatchState", nil)
+		LKC.toClient("PartyState", nil)
+		U8.closeAll()
+		U8.feed()
+		LKC.advance(1.2) -- the HUD's layout poll (0.5 s) and the gift's relayout
+		local tag = fmt("%s %dx%d", label, w, h)
+		local ok, err = pcall(fn, tag)
+		T.check(ok, tag .. ": the check ran", tostring(err))
+		U8.closeAll()
+		UIS.TouchEnabled, UIS.KeyboardEnabled, UIS.MouseEnabled = old[3], old[4], old[5]
+		Mock.SetViewport(old[1], old[2])
+		LKC.advance(0.6)
+	end
+	U8.SIZES = { { 1920, 1080, false }, { 1280, 720, false }, { 844, 390, true }, { 390, 844, true } }
+	-- a fill counts as green: the grass plank of kit B, or any colour whose green leads red and blue clearly
+	function U8.green(c)
+		local Sign = LoadingH.shared("Theme").Sign
+		return sameColor(c, Sign.Grass) or sameColor(c, Sign.GrassLip) or (c.G > c.R + 0.2 and c.G > c.B + 0.2)
+	end
+	-- the face a button shows: its own fill when it paints one, else its Face child's (a SignKit plank, a kit B block)
+	function U8.faceOf(button)
+		if button.BackgroundTransparency < 0.5 then
+			return button.BackgroundColor3
+		end
+		local face = button:FindFirstChild("Face", true)
+		if face and face:IsA("GuiObject") and face.BackgroundTransparency < 0.5 then
+			return face.BackgroundColor3
+		end
+		return nil
+	end
+	-- the shown buttons under `root` whose face is green (the actions; a pet card's in-team chip is a label, not a button)
+	function U8.greenActions(root)
+		local out = {}
+		for _, d in ipairs(root and root:GetDescendants() or {}) do
+			if d:IsA("GuiButton") and U8.shown(d) then
+				local c = U8.faceOf(d)
+				if c and U8.green(c) then
+					out[#out + 1] = d.Name
+				end
+			end
+		end
+		table.sort(out)
+		return out
+	end
+
+	-- (U8) the gift docks under the currency strips (the pitch's HUD stage: a small pink block right-aligned under them): its
+	-- right edge on the strips' right edge, its top a small gap under the last strip, never over a strip, and the HUD's
+	-- TopRightBottom (where the toasts start) under it; a kit B block (the pink awning colour, square, the pixel gift and
+	-- "Gift"), at every grid size
+	S.hud_gift_under_strips = guarded("hud_gift_under_strips", function()
+		local Theme = LoadingH.shared("Theme")
+		local Sign = Theme.Sign
+		for _, s in ipairs(U8.SIZES) do
+			U8.at(s[1], s[2], s[3], "hud gift", function(tag)
+				local pg = U8.pg()
+				local hud = pg:FindFirstChild("NimbusHud")
+				local daily = pg:FindFirstChild("NimbusDaily")
+				local gift = daily and daily:FindFirstChild("GiftsButton", true)
+				local strips = nil
+				for _, d in ipairs(hud and hud:GetDescendants() or {}) do
+					if d.Name:match("^Currency_") and d:IsA("GuiObject") and U8.shown(d) then
+						local r = U8.rect(d)
+						strips = strips and { X = math.min(strips.X, r.X), Y = math.min(strips.Y, r.Y), R = math.max(strips.R, r.R), B = math.max(strips.B, r.B) } or r
+					end
+				end
+				if not T.check(gift ~= nil and strips ~= nil and U8.shown(gift), tag .. ": the strips and the Gifts button show in the lobby") then
+					return
+				end
+				local g = U8.rect(gift)
+				T.check(math.abs(g.R - strips.R) <= 1.5, tag .. ": the gift's right edge is the strips' right edge", fmt("gift %s, strips %s", U8.show(g), U8.show(strips)))
+				T.check(g.Y >= strips.B + 2 and g.Y <= strips.B + 16, tag .. ": the gift sits a small gap under the last strip", fmt("gift %s, strips %s", U8.show(g), U8.show(strips)))
+				local over = {}
+				for _, d in ipairs(hud:GetDescendants()) do
+					if d.Name:match("^Currency_") and d:IsA("GuiObject") and U8.shown(d) and U8.overlap(U8.rect(d), g) then
+						over[#over + 1] = d.Name
+					end
+				end
+				T.check(#over == 0, tag .. ": the gift covers no strip", table.concat(over, ", "))
+				T.check((tonumber(hud:GetAttribute("TopRightBottom")) or 0) >= g.B - 0.5, tag .. ": TopRightBottom (where the toasts start) is under the gift",
+					fmt("TopRightBottom %s, gift bottom %d", tostring(hud:GetAttribute("TopRightBottom")), g.B))
+				T.check(g.R - g.X >= 44 - 0.5 and g.B - g.Y >= 44 - 0.5, tag .. ": the gift is a thumb-sized target (44 px)", U8.show(g))
+				-- the kit B block
+				local face = U8.faceOf(gift)
+				T.check(face ~= nil and sameColor(face, Sign.Roof), tag .. ": the gift is a pink block (the awning colour)", face and hex(face) or "no face")
+				local round, gloss, icon, word = false, false, false, false
+				for _, d in ipairs(gift:GetDescendants()) do
+					round = round or (d:IsA("UICorner") and d.Parent == gift)
+					gloss = gloss or d:IsA("UIGradient")
+					icon = icon or d:GetAttribute("PixelIcon") == "gift"
+					word = word or ((d:IsA("TextLabel")) and d.Text == "Gift" and U8.shown(d))
+				end
+				T.check(not round and not gloss, tag .. ": square, no gloss gradient")
+				T.check(icon and word, tag .. ": the pixel gift and the word Gift", fmt("icon %s, word %s", tostring(icon), tostring(word)))
+			end)
+		end
+		LKC.flushErrors("hud_gift_under_strips")
+	end)
+
+	-- (U8) the Pets window's cards (the pitch's .pc): a stone face, the rarity on the card's lip (the bottom band in the
+	-- rarity's colour), a light pet well, the element as a chip with its PixelIcon (no letter), the team slot on a green chip,
+	-- the selected card gold-faced; no corner, no gloss. The Index's pet tiles share the card (the owner moved the Index into
+	-- U8: one pet card for both windows)
+	S.pets_rarity_on_lip = guarded("pets_rarity_on_lip", function()
+		local Theme = LoadingH.shared("Theme")
+		local Config = LoadingH.shared("Config")
+		local Sign = Theme.Sign
+		local CloudUI = U7.client("UI/CloudUI")
+		local State = U7.client("State")
+		local PC = U7.client("Controllers/PetsController")
+		if not T.check(CloudUI and State and PC, "pets lip: CloudUI, State and PetsController load") then
+			return
+		end
+		local function checkCard(card, def, tag, what)
+			local lip = card:FindFirstChild("Lip")
+			local c = U8.rect(card)
+			T.check(card.BackgroundTransparency < 0.05 and (sameColor(card.BackgroundColor3, Sign.Tile) or sameColor(card.BackgroundColor3, Sign.Selected)),
+				tag .. ": " .. what .. " has a stone face", hex(card.BackgroundColor3))
+			if T.check(lip ~= nil and lip:IsA("Frame"), tag .. ": " .. what .. " has its Lip") then
+				local l = U8.rect(lip)
+				T.check(sameColor(lip.BackgroundColor3, CloudUI.RarityColor(def.Rarity)) and lip.BackgroundTransparency < 0.05,
+					tag .. ": " .. what .. "'s lip wears its rarity's colour (" .. tostring(def.Rarity) .. ")", hex(lip.BackgroundColor3))
+				T.check(math.abs(l.B - c.B) <= 1.5 and l.B - l.Y >= 4 and math.abs(l.X - c.X) <= 1.5 and math.abs(l.R - c.R) <= 1.5,
+					tag .. ": " .. what .. "'s lip runs along the card's bottom edge", fmt("lip %s, card %s", U8.show(l), U8.show(c)))
+			end
+			T.eq(card:GetAttribute("Rarity"), def.Rarity, tag .. ": " .. what .. " carries attribute Rarity")
+			T.check(card:FindFirstChildOfClass("UICorner") == nil and card:FindFirstChildOfClass("UIGradient") == nil, tag .. ": " .. what .. " is square with no gloss")
+		end
+		for _, s in ipairs({ { 1920, 1080, false }, { 844, 390, true } }) do
+			U8.at(s[1], s[2], s[3], "pets lip", function(tag)
+				PC.Open({ Key = U8.KEYS[4] })
+				LKC.advance(1)
+				local win = U8.pg():FindFirstChild("NimbusPets")
+				for i, key in ipairs(U8.KEYS) do
+					local card = win and win:FindFirstChild("Card_" .. key, true)
+					local def = State.DefOf(key)
+					if T.check(card ~= nil and def ~= nil, tag .. ": the card of " .. key .. " exists") then
+						checkCard(card, def, tag, key)
+						local element = card:FindFirstChild("Element")
+						local el = def.Element or (type(def.Elements) == "table" and def.Elements[1]) or nil
+						local info = el and Config.Elements.Info[el]
+						if info then
+							local icon = nil
+							for _, d in ipairs(element and element:GetDescendants() or {}) do
+								icon = icon or d:GetAttribute("PixelIcon")
+							end
+							T.check(element and sameColor(element.BackgroundColor3, info.Color) and (not element:IsA("TextLabel") or element.Text == "")
+								and icon ~= nil and icon == info.Icon, tag .. ": " .. key .. "'s element is a chip with its PixelIcon (" .. tostring(info.Icon) .. "), no letter",
+								element and fmt("%s %s icon %s", element.ClassName, hex(element.BackgroundColor3), tostring(icon)) or "no Element")
+						end
+						local number = card:FindFirstChild("Number")
+						if i <= 2 then
+							T.check(number and U8.shown(number) and number.Text == tostring(i) and sameColor(number.BackgroundColor3, Sign.Grass),
+								tag .. ": " .. key .. " (team slot " .. i .. ") shows its slot on a green chip", number and fmt("%q %s", number.Text, hex(number.BackgroundColor3)) or "no Number")
+						end
+						local well = card:FindFirstChild("Picture")
+						T.check(well and well.BackgroundTransparency < 0.05 and sameColor(well.BackgroundColor3, Sign.PetWell), tag .. ": " .. key .. "'s pet sits in the light pet well",
+							well and hex(well.BackgroundColor3) or "no Picture")
+						if key == U8.KEYS[4] then
+							T.check(sameColor(card.BackgroundColor3, Sign.Selected), tag .. ": the selected card is gold-faced", hex(card.BackgroundColor3))
+						end
+					end
+				end
+				PC.Close(true)
+				LKC.advance(0.4)
+				-- the Index's tiles: the same card
+				local Menu = U7.client("Controllers/MenuController")
+				Menu.Open("Index")
+				LKC.advance(1)
+				local index = U8.pg():FindFirstChild("NimbusIndex")
+				local n = 0
+				for _, d in ipairs(index and index:GetDescendants() or {}) do
+					local id = d.Name:match("^IndexPet_(.+)$")
+					if id and d:IsA("GuiButton") and U8.shown(d) then
+						local def = LoadingH.shared("PetCatalog").Get(id)
+						if def then
+							n = n + 1
+							checkCard(d, def, tag, "Index tile " .. id)
+						end
+					end
+				end
+				T.check(n > 0, tag .. ": the Index shows pet tiles", tostring(n))
+			end)
+		end
+		LKC.flushErrors("pets_rarity_on_lip")
+	end)
+
+	-- (U8) one colour by role: at most one green action on the screen. The lobby HUD (tiles, pill, strips, gift) has none;
+	-- the Pets window's one green action is "Put in team" (shown for a pet out of the team; none for a team pet); the
+	-- Index's only possible green is its Claim button
+	S.kitb_one_green_action = guarded("kitb_one_green_action", function()
+		local PC = U7.client("Controllers/PetsController")
+		local Menu = U7.client("Controllers/MenuController")
+		U8.at(1920, 1080, false, "one green", function(tag)
+			local pg = U8.pg()
+			local hud = {}
+			for _, name in ipairs({ "NimbusHud", "NimbusTopBar", "NimbusMenu", "NimbusDaily" }) do
+				for _, g in ipairs(U8.greenActions(pg:FindFirstChild(name))) do
+					hud[#hud + 1] = name .. "." .. g
+				end
+			end
+			T.check(#hud == 0, tag .. ": the lobby HUD has no green action", table.concat(hud, ", "))
+			PC.Open({ Key = U8.KEYS[4] })
+			LKC.advance(0.8)
+			local greens = U8.greenActions(pg:FindFirstChild("NimbusPets"))
+			T.check(#greens == 1 and greens[1] == "ActPut", tag .. ": a pet out of the team: Put in team is the one green action", table.concat(greens, ", "))
+			PC.Open({ Key = U8.KEYS[2] })
+			LKC.advance(0.8)
+			greens = U8.greenActions(pg:FindFirstChild("NimbusPets"))
+			T.check(#greens == 0, tag .. ": a team pet: no green action (Remove is the red one)", table.concat(greens, ", "))
+			PC.Close(true)
+			LKC.advance(0.4)
+			Menu.Open("Index")
+			LKC.advance(1)
+			greens = U8.greenActions(pg:FindFirstChild("NimbusIndex"))
+			T.check(#greens == 0 or (#greens == 1 and greens[1] == "Claim"), tag .. ": the Index's only green action is Claim", table.concat(greens, ", "))
+		end)
+		LKC.flushErrors("kitb_one_green_action")
+	end)
+
+	-- (U8; the owner's Index renders: "UNCOMMON" cut on the phone tab) the rarity tabs are signboard tabs: at every grid size each
+	-- tab that shows in the tab strip shows whole (never half under the strip's edge or the Elements button), and its name fits
+	-- the tab at its own size, never cut or squeezed under 18 design px
+	S.index_tabs_fit_phone = guarded("index_tabs_fit_phone", function()
+		local Theme = LoadingH.shared("Theme")
+		local Menu = U7.client("Controllers/MenuController")
+		for _, s in ipairs(U8.SIZES) do
+			U8.at(s[1], s[2], s[3], "index tabs", function(tag)
+				Menu.Open("Index")
+				LKC.advance(1)
+				local index = U8.pg():FindFirstChild("NimbusIndex")
+				local list = index and index:FindFirstChild("GroupList", true)
+				if not T.check(list ~= nil, tag .. ": the tab strip (GroupList) exists") then
+					return
+				end
+				local view = U8.rect(list)
+				local elements = index:FindFirstChild("ElementsButton", true)
+				local cut, tight, seen = {}, {}, 0
+				for _, tab in ipairs(list:GetDescendants()) do
+					if tab.Name:match("^Group_") and tab:IsA("GuiButton") and U8.shown(tab) then
+						local r = U8.rect(tab)
+						if U8.overlap(r, view) then
+							seen = seen + 1
+							local inside = r.X >= view.X - 0.5 and r.R <= view.R + 0.5 and r.Y >= view.Y - 0.5 and r.B <= view.B + 0.5
+							local under = elements and U8.shown(elements) and U8.overlap(r, U8.rect(elements))
+							if not inside or under then
+								cut[#cut + 1] = tab.Name .. " " .. U8.show(r)
+							end
+							local name = tab:FindFirstChild("GroupName", true)
+							if name then
+								local size = name.TextScaled and 18 or name.TextSize
+								local w = Theme.MeasureLabel(name, name.Text, size).X
+								local room = name.AbsoluteSize.X / U8.scaleOf(name)
+								if name.TextScaled or w > room + 0.5 or name.TextSize < 18 then
+									tight[#tight + 1] = fmt("%s %q %d px in %d at %s%s", tab.Name, name.Text, w, room, tostring(name.TextSize), name.TextScaled and " (scaled)" or "")
+								end
+							end
+						end
+					end
+				end
+				T.check(seen >= 2, tag .. ": the strip shows at least two tabs", tostring(seen))
+				T.check(#cut == 0, tag .. ": every tab in view shows whole (none half under the strip's edge or the Elements button)", table.concat(cut, "; ") .. " | view " .. U8.show(view))
+				T.check(#tight == 0, tag .. ": every tab's name fits it at a fixed size of 18 px or more", table.concat(tight, "; "))
+			end)
+		end
+		LKC.flushErrors("index_tabs_fit_phone")
+	end)
+
+	-- (U8; the owner's Index renders: Claim under Roblox's jump button at 844x390) on a touch phone the Claim button never
+	-- sits under the jump button: Roblox's touch controls go while the window is open (MenuController.SetTouchHidden, as the
+	-- Pets window, the Shop and the Gifts window do), or the button is clear of the jump button's square; and they come back
+	-- as they were on Close
+	S.index_claim_clear_of_jump = guarded("index_claim_clear_of_jump", function()
+		local Menu = U7.client("Controllers/MenuController")
+		local IC = U7.client("Controllers/IndexController")
+		local GuiService = game:GetService("GuiService")
+		for _, s in ipairs({ { 844, 390, true }, { 390, 844, true } }) do
+			U8.at(s[1], s[2], s[3], "index claim", function(tag)
+				local before = GuiService.TouchControlsEnabled
+				Menu.Open("Index")
+				LKC.advance(1)
+				local index = U8.pg():FindFirstChild("NimbusIndex")
+				local claim = index and index:FindFirstChild("Claim", true)
+				if not T.check(claim ~= nil and U8.shown(claim), tag .. ": the Claim button shows") then
+					return
+				end
+				-- Roblox's jump button on a phone (HudController K: J = 70, from 1.5 J + 10 to 0.5 J + 10 off the right edge, its
+				-- bottom 20 px over the bottom edge), in the window's own coordinates
+				local J = 70
+				local inset = index.IgnoreGuiInset and 0 or 58
+				local jump = { X = s[1] - (1.5 * J + 10), R = s[1] - (0.5 * J + 10), Y = s[2] - 20 - J - inset, B = s[2] - 20 - inset }
+				local hidden = GuiService.TouchControlsEnabled == false
+				local c = U8.rect(claim)
+				T.check(hidden or not U8.overlap(c, jump), tag .. ": Claim is never under the jump button (the touch controls hidden, or Claim clear of it)",
+					fmt("touch controls %s, claim %s, jump %s", tostring(GuiService.TouchControlsEnabled), U8.show(c), U8.show(jump)))
+				IC.Close()
+				LKC.advance(0.5)
+				T.eq(GuiService.TouchControlsEnabled, before, tag .. ": the touch controls are back as they were after Close")
+			end)
+		end
+		LKC.flushErrors("index_claim_clear_of_jump")
+	end)
+
+	-- (U8; finding 15) no neon glow in the U8 families: the lobby HUD (NimbusHud, the top-bar pill, the menu tiles, the gift), the
+	-- Pets window and the Index. No glow ring (a NeonKit Glow frame or GlowStroke shown), no gloss gradient (a UIGradient on
+	-- a shown object; kit B's functional ones are named Lip, Step, Sweep or Fill and keep a flat face), no neon border (a
+	-- Border UIStroke in a Theme.Neon colour) and no Theme.Neon fill. NeonKit.Card's glow is off unless asked for
+	S.kitb_no_neon_glow = guarded("kitb_no_neon_glow", function()
+		local Theme = LoadingH.shared("Theme")
+		local NK = U7.client("UI/NeonKit")
+		local PC = U7.client("Controllers/PetsController")
+		local Menu = U7.client("Controllers/MenuController")
+		if not T.check(NK and PC and Menu, "no neon glow: NeonKit, PetsController and MenuController load") then
+			return
+		end
+		local plain = NK.Card({ Name = "U8Probe" })
+		local lit = NK.Card({ Name = "U8Probe", Glow = true })
+		T.check(plain.Glow.Visible == false and lit.Glow.Visible == true, "no neon glow: NeonKit.Card's glow is off by default (Glow = true turns it on)")
+		plain.Root:Destroy()
+		lit.Root:Destroy()
+		local ALLOWED = { Lip = true, Step = true, Sweep = true, Fill = true }
+		local function neonName(c)
+			for name, n in pairs(Theme.Neon) do
+				if sameColor(c, n) then
+					return name
+				end
+			end
+			return nil
+		end
+		local function walk(root, family, bad)
+			for _, d in ipairs(root and root:GetDescendants() or {}) do
+				local p = d.Parent
+				if d:IsA("UIStroke") and p and p:IsA("GuiObject") and U8.shown(p) and d.Enabled ~= false and d.Transparency < 0.95 then
+					if d.Name == "GlowStroke" or (p.Name == "Glow" and d.ApplyStrokeMode == Enum.ApplyStrokeMode.Border) then
+						bad[#bad + 1] = family .. ": a glow ring on " .. p:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
+					elseif d.ApplyStrokeMode == Enum.ApplyStrokeMode.Border and neonName(d.Color) then
+						bad[#bad + 1] = family .. ": a neon " .. neonName(d.Color) .. " border on " .. p.Name
+					end
+				elseif d:IsA("UIGradient") and p and p:IsA("GuiObject") and U8.shown(p) and d.Enabled ~= false and not ALLOWED[d.Name] then
+					bad[#bad + 1] = family .. ": a gloss gradient on " .. p:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
+				elseif d:IsA("GuiObject") and d.BackgroundTransparency < 0.5 and U8.shown(d) and neonName(d.BackgroundColor3) then
+					bad[#bad + 1] = family .. ": a neon " .. neonName(d.BackgroundColor3) .. " fill on " .. d.Name
+				end
+			end
+		end
+		for _, s in ipairs({ { 1920, 1080, false }, { 844, 390, true } }) do
+			U8.at(s[1], s[2], s[3], "no neon glow", function(tag)
+				local pg = U8.pg()
+				local bad = {}
+				local menu = pg:FindFirstChild("NimbusMenu")
+				walk(pg:FindFirstChild("NimbusHud"), "HUD", bad)
+				walk(pg:FindFirstChild("NimbusTopBar"), "HUD pill", bad)
+				walk(menu and menu:FindFirstChild("MenuColumn"), "HUD tiles", bad)
+				local daily = pg:FindFirstChild("NimbusDaily")
+				local gift = daily and daily:FindFirstChild("GiftsButton")
+				if gift then
+					walk(gift, "HUD gift", bad)
+				end
+				PC.Open({ Key = U8.KEYS[4] })
+				LKC.advance(1)
+				walk(pg:FindFirstChild("NimbusPets"), "Pets", bad)
+				PC.Close(true)
+				LKC.advance(0.4)
+				Menu.Open("Index")
+				LKC.advance(1)
+				walk(pg:FindFirstChild("NimbusIndex"), "Index", bad)
+				T.check(#bad == 0, fmt("%s: no glow ring, gloss gradient, neon border or neon fill in the HUD, the Pets window and the Index (%d)", tag, #bad),
+					table.concat(bad, "; ", 1, math.min(#bad, 12)))
+			end)
+		end
+		LKC.flushErrors("kitb_no_neon_glow")
+	end)
+
+	-- (U8) CloudUI.Panel's Signboard skin (Skin = "Signboard"; the Pets window and the Index wear it): the flat pink awning at a
+	-- FIXED size centred on the top (never stretched with the window: Gemini's sign rule), the navy header plank in its wood
+	-- rim with the title in gold through Theme.StyleTitle (stamped TitleLook), the wood frame and the stone body, the red
+	-- close block with the drawn X; Panel.Content where it always was (callers' layouts do not move); no glow, gradient or
+	-- corner
+	S.panel_signboard_skin = guarded("panel_signboard_skin", function()
+		local Theme = LoadingH.shared("Theme")
+		local Sign = Theme.Sign
+		local CloudUI = U7.client("UI/CloudUI")
+		local SK = LoadingH.shared("SignKit")
+		local gui = Instance.new("ScreenGui")
+		gui.Name = "U8PanelProbe"
+		gui.Parent = U8.pg()
+		local function build(w, h)
+			return CloudUI.Panel({ Name = "Probe", Title = "Pets", Closable = true, Skin = "Signboard", Icon = "paw", Size = UDim2.fromOffset(w, h), Parent = gui })
+		end
+		local a, b = build(900, 600), build(1200, 760)
+		local plain = CloudUI.Panel({ Name = "Plain", Title = "Pets", Size = UDim2.fromOffset(900, 600), Parent = gui })
+		LKC.advance(0.1)
+		for _, p in ipairs({ a, b }) do
+			local root = p.Root
+			local roof = root:FindFirstChild("Roof")
+			T.check(roof and roof:GetAttribute("SignKit") == "Roof" and roof.Size.X.Scale == 0 and roof.Size.Y.Scale == 0, "panel skin: a SignKit roof of fixed offset size")
+			local head = nil
+			for _, d in ipairs(root:GetDescendants()) do
+				head = head or (d:GetAttribute("SignKit") == "Header" and d or nil)
+			end
+			local plate = head and head:FindFirstChild("Plate")
+			T.check(head and head:GetAttribute("SignKit") == "Header" and plate and sameColor(plate.BackgroundColor3, Sign.Navy), "panel skin: the navy header plank (SignKit Header)")
+			T.check(p.TitleLabel and sameColor(p.TitleLabel.TextColor3, Sign.Gold) and p.TitleLabel:GetAttribute("TitleLook") ~= nil and p.TitleLabel:GetAttribute("FontRole") == "Title",
+				"panel skin: the title in gold, Title role, through Theme.StyleTitle", p.TitleLabel and hex(p.TitleLabel.TextColor3) or "no title")
+			local icon = false
+			for _, d in ipairs(root:GetDescendants()) do
+				icon = icon or d:GetAttribute("PixelIcon") == "paw"
+			end
+			T.check(icon, "panel skin: the header carries the window's pixel icon (paw)")
+			T.check(p.Body and sameColor(p.Body.BackgroundColor3, Sign.Wood) and p.Body.BackgroundTransparency < 0.05, "panel skin: the wood frame (Body)", p.Body and hex(p.Body.BackgroundColor3) or "")
+			local stone = p.Body:FindFirstChild("Stone")
+			T.check(stone and sameColor(stone.BackgroundColor3, Sign.Stone), "panel skin: the stone body inside the frame")
+			T.check(p.CloseButton and U8.faceOf(p.CloseButton) and sameColor(U8.faceOf(p.CloseButton), Sign.Red) and p.CloseButton:FindFirstChild("CloseMark"),
+				"panel skin: the red close block with the drawn X")
+			local bad = {}
+			for _, d in ipairs(root:GetDescendants()) do
+				if d:IsA("UIGradient") or d:IsA("UICorner") then
+					bad[#bad + 1] = d.ClassName .. " on " .. d.Parent.Name
+				elseif d.Name == "Glow" and d:IsA("GuiObject") and d.Visible then
+					bad[#bad + 1] = "a glow on " .. d.Parent.Name
+				end
+			end
+			T.check(#bad == 0, "panel skin: no gradient, corner or glow", table.concat(bad, ", "))
+		end
+		T.check(a.Root:FindFirstChild("Roof").Size == b.Root:FindFirstChild("Roof").Size, "panel skin: the roof keeps its size on a bigger window")
+		T.check(a.Content.Position == plain.Content.Position and a.Content.Size == plain.Content.Size, "panel skin: Panel.Content sits where the plain panel's does")
+		T.eq(SK.Sizes.RoofH, a.Root:FindFirstChild("Roof").Size.Y.Offset, "panel skin: the roof is the SignKit roof's height")
+		gui:Destroy()
+		LKC.flushErrors("panel_signboard_skin")
+	end)
+
 	return S
 end
 

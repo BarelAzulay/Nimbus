@@ -385,6 +385,14 @@ Theme.Sign = {
 	Well = rgb(243, 230, 200), -- #F3E6C8 (a sunk / disabled stone)
 	WellEdge = rgb(201, 168, 119), -- #C9A877
 	Post = rgb(196, 138, 78), -- #C48A4E (sign posts and ropes; their shaded side is Wood)
+	-- U8 (the HUD, Pets and Index stages of the pitch): the selected card's face (--selFace), the light well a pet stands in
+	-- (--pwell), the sky and violet blocks (--sky / --vio with their lips)
+	Selected = rgb(255, 233, 168), -- #FFE9A8
+	PetWell = rgb(235, 221, 185), -- #EBDDB9
+	Sky = rgb(108, 196, 245), -- #6CC4F5
+	SkyLip = rgb(58, 143, 203), -- #3A8FCB
+	Violet = rgb(169, 139, 234), -- #A98BEA
+	VioletLip = rgb(115, 84, 196), -- #7354C4
 }
 
 -- kit B corner radius tokens in px (Theme.Corner(obj, "M")); the windows of the pitch are square-cornered blocks, so the

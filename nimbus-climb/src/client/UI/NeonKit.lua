@@ -211,7 +211,8 @@ end
 -- Card
 ----------------------------------------------------------------------
 -- props: Name, Size (UDim2 | number | Vector2; default 200x120), Position, AnchorPoint, LayoutOrder, ZIndex, Parent,
---        Color (Color3 | neon / category name; default Blue), Corner (14), Stroke (3), Glow (bool, default true),
+--        Color (Color3 | neon / category name; default Blue), Corner (14), Stroke (3), Glow (bool; kit-b U8: default
+--        false, the outer glow ring only when asked for),
 --        Floor (bool; default: the card is at most 260 design px tall), Fill ({ top, bottom } Color3s; default
 --        PanelTop -> PanelBottom), Sheen (bool, default true), Class ("Frame" default | "TextButton": a clickable
 --        card, Text = "" and AutoButtonColor off), Transparency (the fill, default 0), Active, ClipsDescendants
@@ -273,7 +274,7 @@ function NeonKit.Card(props)
 		Position = UDim2.fromOffset(-MX.GlowPad, -MX.GlowPad),
 		Size = UDim2.new(1, 2 * MX.GlowPad, 1, 2 * MX.GlowPad),
 		ZIndex = z,
-		Visible = props.Glow ~= false,
+		Visible = props.Glow == true,
 	}, root)
 	corner(glow, radius + MX.GlowPad)
 	local glowStroke = stroke(glow, color, MX.GlowStroke, MX.GlowTransparency, "GlowStroke")
@@ -470,12 +471,148 @@ end
 -- Tile (image 21.png)
 ----------------------------------------------------------------------
 -- props: Size (number, design px; default 84), Color (default "Blue"), Icon (an icon id or a glyph), Label (text),
---        Callback(tile), Badge (bool), Name, Position, AnchorPoint, LayoutOrder, ZIndex, Parent, Glow (default true)
+--        Callback(tile), Badge (bool), Name, Position, AnchorPoint, LayoutOrder, ZIndex, Parent, Glow (kit-b U8: default
+--        false), Skin ("Sign": the kit B tile, see signTile)
+-- (kit-b U8) the pitch's HUD tile (.sb): a stone block with a wood edge and its darker lip, the PixelIcon and the label in
+-- brown, no orb and no glow. SetColor("Gold") = the selected tile (gold face), "Grey" = disabled (the sunk well), any other
+-- colour = stone (one colour by role). tile.Card is a stand-in with SetColor / SetGlow (no glow on this skin)
+local SIGN_TILE_LIP = 5
+local function signTile(props, s, hasLabel)
+	local Sign = Theme.Sign
+	local root = Instance.new("TextButton")
+	root.Name = props.Name or ("Tile_" .. tostring(props.Label or props.Icon or ""))
+	root.Text = ""
+	root.AutoButtonColor = false
+	root.Active = true
+	root.BorderSizePixel = 0
+	root.BackgroundTransparency = 0
+	root.BackgroundColor3 = Sign.Tile
+	root.Size = UDim2.fromOffset(s, s)
+	root.Position = props.Position or UDim2.new()
+	root.AnchorPoint = props.AnchorPoint or Vector2.new(0, 0)
+	root.LayoutOrder = props.LayoutOrder or 0
+	root.ZIndex = props.ZIndex or 1
+	root:SetAttribute("Skin", "Sign")
+	local edge = stroke(root, Sign.Wood, 3, 0, "SignEdge")
+	edge.LineJoinMode = Enum.LineJoinMode.Miter
+	local lip = frame("Lip", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = Sign.StoneLip,
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, SIGN_TILE_LIP),
+		ZIndex = root.ZIndex,
+	}, root)
+	local body = frame("Body", { Size = UDim2.new(1, 0, 1, -SIGN_TILE_LIP), ZIndex = root.ZIndex }, root)
+	local iconY = hasLabel and 0.4 or 0.5
+	local iconPx = PixelIcon.Snap(s * (hasLabel and MX.TileIcon or 0.56))
+	local icon = NeonKit.Icon(body, props.Icon or props.Label or "", iconPx)
+	icon.Position = UDim2.fromScale(0.5, iconY)
+	icon.TextColor3 = Sign.Text
+	local label = nil
+	if hasLabel then
+		label = Theme.Label(props.Label, "Button", {
+			Size = math.max(MX.TileLabelMin, math.floor(s * MX.TileLabel + 0.5)),
+			Color = Sign.Text,
+			Props = {
+				Name = "Label",
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.new(0.5, 0, 0.82, 0),
+				Size = UDim2.new(1, 0, 0, math.floor(s * 0.3 + 0.5)),
+				TextXAlignment = Enum.TextXAlignment.Center,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+			},
+		})
+		label.Parent = body
+	end
+	-- the attention mark: a small red square with a brown "!" (4.8:1 on the red; white read 3.3:1)
+	local badgePx = math.max(22, math.floor(s * 0.28))
+	local badge = frame("Badge", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = Sign.Red,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(1, -4, 0, 4),
+		Size = UDim2.fromOffset(badgePx, badgePx),
+		Visible = props.Badge == true,
+	}, body)
+	local badgeEdge = stroke(badge, Sign.Wood, 2, 0, "SignEdge")
+	badgeEdge.LineJoinMode = Enum.LineJoinMode.Miter
+	local mark = Theme.Label("!", "Button", {
+		Size = math.max(MX.TileLabelMin, math.floor(s * 0.2 + 0.5)),
+		Color = Sign.Text,
+		Props = { Name = "Mark", Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center },
+	})
+	mark.Parent = badge
+	local look = "Stone"
+	local card = { Root = root, Body = body, Stroke = edge, Lip = lip }
+	local tile = { Root = root, Card = card, Icon = icon, Label = label, Badge = badge, Skin = "Sign", Color = colorOf(props.Color) }
+	local function paint(hover, press)
+		local face, lipColor = Sign.Tile, Sign.StoneLip
+		if look == "Gold" then
+			face, lipColor = Sign.Gold, Sign.GoldLip
+		elseif look == "Grey" then
+			face, lipColor = Sign.Well, Sign.WellEdge
+		end
+		if hover and not press and look ~= "Grey" then
+			face = Theme.Lighten(face, 0.06)
+		end
+		root.BackgroundColor3 = face
+		lip.BackgroundColor3 = lipColor
+		lip.Size = UDim2.new(1, 0, 0, press and 2 or SIGN_TILE_LIP)
+		local ink = look == "Grey" and Sign.TextMuted or Sign.Text
+		icon.TextColor3 = ink
+		if label then
+			label.TextColor3 = ink
+		end
+	end
+	function card.SetColor(c)
+		tile.SetColor(c)
+	end
+	function card.SetGlow() end
+	tile.Fx = attachFx(root, function(hover, press)
+		paint(hover, press)
+	end, 1, 1)
+	function tile.SetBadge(on)
+		badge.Visible = on and true or false
+	end
+	function tile.SetColor(newColor)
+		look = (newColor == "Gold" or newColor == "Grey") and newColor or "Stone"
+		tile.Color = colorOf(newColor, tile.Color)
+		paint(tile.Fx.Hover, tile.Fx.Press)
+	end
+	function tile.SetLabel(text)
+		if label then
+			label.Text = tostring(text or "")
+		end
+	end
+	function tile.SetIcon(id)
+		local pos = icon.Position
+		icon:Destroy()
+		icon = NeonKit.Icon(body, id, iconPx)
+		icon.Position = pos
+		tile.Icon = icon
+		paint(tile.Fx.Hover, tile.Fx.Press)
+	end
+	if props.Callback then
+		root.Activated:Connect(function()
+			if not isDisabled(root) then
+				props.Callback(tile)
+			end
+		end)
+	end
+	paint(false, false)
+	root.Parent = props.Parent
+	return tile
+end
+
 function NeonKit.Tile(props)
 	props = props or {}
 	local s = tonumber(props.Size) or 84
 	if typeof(props.Size) == "UDim2" then
 		s = props.Size.X.Offset
+	end
+	if props.Skin == "Sign" then
+		return signTile(props, s, type(props.Label) == "string" and props.Label ~= "")
 	end
 	local color = colorOf(props.Color)
 	local hasLabel = type(props.Label) == "string" and props.Label ~= ""
@@ -768,7 +905,8 @@ end
 -- frame is not clipped by ClipsDescendants, so the mark sits directly on the button, never under a clipping frame of its own.
 -- Calling it again returns the existing mark (after clearing the text again). The button's name, size, position, colours
 -- and callbacks are untouched.
---   opts (optional) = { Color = Color3 (the bars; default white), Ink = Color3 (default PanelInk), Scale = number,
+--   opts (optional) = { Color = Color3 (the bars; default white), Ink = Color3 (default PanelInk), Square = true (kit B:
+--   bars with square ends), Scale = number,
 --                       ZIndex = number (the mark and the ink; the white bars one above) }
 function NeonKit.CloseMark(button, opts)
 	if not (button and button:IsA("GuiButton")) then
@@ -819,7 +957,9 @@ function NeonKit.CloseMark(button, opts)
 			Active = false,
 			ZIndex = zIndex,
 		}, mark)
-		round(b)
+		if not opts.Square then
+			round(b)
+		end
 		return b
 	end
 	local ink = colorOf(opts.Ink, INK)

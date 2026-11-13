@@ -56,6 +56,8 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Theme = require(Shared:WaitForChild("Theme"))
 local Util = require(Shared:WaitForChild("Util"))
+local SignKit = require(Shared:WaitForChild("SignKit")) -- (kit-b U8) the Signboard skin's roof and header
+local PixelIcon = require(Shared:WaitForChild("PixelIcon"))
 local NeonKit = require(script.Parent:WaitForChild("NeonKit"))
 
 local CloudUI = {}
@@ -426,6 +428,139 @@ local function attachFx(button, opts)
 end
 
 ----------------------------------------------------------------------
+-- kit B blocks (U8: the HUD, the Pets window and the Index on the Signboard kit)
+----------------------------------------------------------------------
+-- The pitch's block (kit_pitch_mockups.html .bk, kit B): a flat face, a darker lip along its bottom, a wood edge; square,
+-- no glow, no gloss gradient. One colour by role (finding 15): green is THE main action of a screen, gold is selected,
+-- red is danger or close, everything else stone.
+local SIGN = Theme.Sign
+CloudUI.SignLooks = {
+	Stone = { Face = SIGN.Tile, Lip = SIGN.StoneLip, Edge = SIGN.Wood, Text = SIGN.Text },
+	Primary = { Face = SIGN.Grass, Lip = SIGN.GrassLip, Edge = SIGN.Wood, Text = SIGN.OnGrass },
+	Selected = { Face = SIGN.Gold, Lip = SIGN.GoldLip, Edge = SIGN.Wood, Text = SIGN.Text },
+	Danger = { Face = SIGN.Red, Lip = SIGN.RedLip, Edge = SIGN.Wood, Text = SIGN.Text }, -- brown reads 4.8:1 on the red, white 3:1
+	Off = { Face = SIGN.Well, Lip = SIGN.Well, Edge = SIGN.WellEdge, Text = SIGN.TextMuted },
+	Gift = { Face = SIGN.Roof, Lip = SIGN.RoofLip, Edge = SIGN.Wood, Text = SIGN.Text },
+	Navy = { Face = SIGN.Navy, Lip = SIGN.NavyLip, Edge = SIGN.GoldLip, Text = SIGN.Gold },
+}
+-- a CloudUI.Button style -> its kit B role
+CloudUI.SignRole = { Green = "Primary", Gold = "Selected", Red = "Danger", Pink = "Danger", Blue = "Stone", Gray = "Stone" }
+CloudUI.SignMetrics = { Edge = 3, Lip = 5, PressLip = 2 }
+local SM = CloudUI.SignMetrics
+
+local function signLook(look)
+	if type(look) == "table" then
+		return look
+	end
+	return CloudUI.SignLooks[look or "Stone"] or CloudUI.SignLooks.Stone
+end
+
+-- Paints `obj` (a Frame / TextLabel / TextButton) as a kit B block, in place: its face, a wood edge (UIStroke "SignEdge",
+-- mitred corners) and the lip (Frame "Lip" along its bottom); any UICorner, UIGradient and border UIStroke it had go. A
+-- text object gets the look's ink and a bottom padding over the lip. Calling it again repaints (a state change).
+-- opts: Face, Lip / LipColor, Edge, Text (colour overrides), EdgePx (default 3), LipPx (default 5; 0 = none), Pad (false:
+-- no padding). Returns edge, lip.
+function CloudUI.SignBlock(obj, look, opts)
+	opts = opts or {}
+	local name = type(look) == "string" and look or nil
+	look = signLook(look)
+	for _, c in ipairs(obj:GetChildren()) do
+		if c:IsA("UICorner") or c:IsA("UIGradient") or (c:IsA("UIStroke") and c.Name ~= "SignEdge" and c.ApplyStrokeMode == Enum.ApplyStrokeMode.Border) then
+			c:Destroy()
+		end
+	end
+	obj.BackgroundTransparency = 0
+	obj.BackgroundColor3 = opts.Face or look.Face
+	local edge = obj:FindFirstChild("SignEdge")
+	if not edge then
+		edge = stroke(obj, look.Edge, opts.EdgePx or SM.Edge, 0)
+		edge.Name = "SignEdge"
+		edge.LineJoinMode = Enum.LineJoinMode.Miter
+	end
+	edge.Color = opts.Edge or look.Edge
+	local lipPx = tonumber(opts.LipPx) or SM.Lip
+	local lip = obj:FindFirstChild("Lip")
+	if not lip then
+		lip = frame("Lip", {
+			AnchorPoint = Vector2.new(0, 1),
+			Position = UDim2.new(0, 0, 1, 0),
+			BackgroundTransparency = 0,
+			ZIndex = obj.ZIndex,
+		}, obj)
+	end
+	lip.Size = UDim2.new(1, 0, 0, lipPx)
+	lip.BackgroundColor3 = opts.LipColor or opts.Lip or look.Lip
+	lip.Visible = lipPx > 0
+	if obj:IsA("TextButton") or obj:IsA("TextLabel") then
+		obj.TextColor3 = opts.Text or look.Text
+		if opts.Pad ~= false and lipPx > 0 then
+			local pad = obj:FindFirstChild("LipPad")
+			if not pad then
+				pad = Util.Create("UIPadding", { Name = "LipPad", Parent = obj })
+			end
+			pad.PaddingBottom = UDim.new(0, lipPx)
+		end
+	end
+	if name then
+		obj:SetAttribute("SignLook", name)
+	end
+	return edge, lip
+end
+
+-- A small square chip in an element's colour holding its PixelIcon (Config.Elements.Info[element].Icon) in the ink that
+-- reads on it, with a wood edge (the pitch's .el). opts: Label (the element's name after the icon, on its own stone tag
+-- inside the chip's edge: brown on stone reads at any size, where no ink reads 4.5:1 on the mid-tone element colours),
+-- TextSize, Role (the label's Theme role, default Tag; the Index's narrow tiles use Heading), Name, ZIndex, LayoutOrder.
+-- Returns the chip (attribute Element), or nil for an unknown element.
+function CloudUI.ElementChip(parent, element, px, opts)
+	opts = opts or {}
+	local info = Config.Elements and Config.Elements.Info and Config.Elements.Info[element]
+	if not info then
+		return nil
+	end
+	px = tonumber(px) or 26
+	local ink = Theme.TextOn(info.Color)
+	local chip = Instance.new("Frame")
+	chip.Size = UDim2.fromOffset(px, px)
+	if opts.Label then
+		chip.AutomaticSize = Enum.AutomaticSize.X
+		local label = Theme.Label(tostring(opts.Label), opts.Role or "Tag", { Size = opts.TextSize or 16, Color = SIGN.Text })
+		label.Name = "Label"
+		label.AutomaticSize = Enum.AutomaticSize.X
+		label.Position = UDim2.fromOffset(px, 0)
+		label.Size = UDim2.fromOffset(0, px)
+		label.BackgroundTransparency = 0
+		label.BackgroundColor3 = SIGN.Tile
+		label.BorderSizePixel = 0
+		label.ZIndex = opts.ZIndex or 1
+		padding(label, 5, 0, 6, 0)
+		label.Parent = chip
+	end
+	chip.Name = opts.Name or "Element"
+	chip.BorderSizePixel = 0
+	chip.BackgroundTransparency = 0
+	chip.BackgroundColor3 = info.Color
+	chip.ZIndex = opts.ZIndex or 1
+	chip.LayoutOrder = opts.LayoutOrder or 0
+	local edge = stroke(chip, SIGN.Wood, 2, 0)
+	edge.Name = "SignEdge"
+	edge.LineJoinMode = Enum.LineJoinMode.Miter
+	local iconPx = math.max(9, 9 * math.floor((px - 6) / 9))
+	local icon = info.Icon and PixelIcon.New(chip, info.Icon, iconPx, ink)
+	if icon then
+		icon.AnchorPoint = Vector2.new(0, 0.5)
+		icon.Position = UDim2.new(0, math.floor((px - iconPx) / 2), 0.5, 0)
+		icon.ZIndex = chip.ZIndex
+		for _, f in ipairs(icon:GetChildren()) do
+			f.ZIndex = chip.ZIndex
+		end
+	end
+	chip:SetAttribute("Element", element)
+	chip.Parent = parent
+	return chip
+end
+
+----------------------------------------------------------------------
 -- Screen gui
 ----------------------------------------------------------------------
 function CloudUI.NewScreenGui(name, displayOrder)
@@ -463,9 +598,75 @@ end
 ----------------------------------------------------------------------
 -- props: Text, Style ("Green"|"Pink"|"Red"|"Blue"|"Gold"|"Gray"), Size (default 160x50), Position,
 --        AnchorPoint, Callback (called as Callback(button)), Parent, TextSize (default 22), Name,
---        LayoutOrder, ZIndex
+--        LayoutOrder, ZIndex, Skin ("Sign": a kit B block, see signButton)
+local function signButton(props)
+	local state = { Style = isStyleName(props.Style) and titleCase(props.Style) or "Gray" }
+	local button = Util.Create("TextButton", {
+		Name = props.Name or ("Button_" .. tostring(props.Text or "")),
+		AutoButtonColor = false,
+		Active = true,
+		BorderSizePixel = 0,
+		Size = props.Size or UDim2.fromOffset(160, 50),
+		Position = props.Position or UDim2.new(),
+		AnchorPoint = props.AnchorPoint or Vector2.new(0, 0),
+		LayoutOrder = props.LayoutOrder or 0,
+		ZIndex = props.ZIndex or 1,
+		Text = props.Text or "",
+		TextTruncate = Enum.TextTruncate.AtEnd,
+	})
+	Theme.Style(button, "Button", { Size = props.TextSize or CloudUI.Metrics.ButtonText })
+	button:SetAttribute("Skin", "Sign")
+	local fx
+	local function isDisabled()
+		return button:GetAttribute("Disabled") == true or button.Active == false
+	end
+	-- no scale bounce (kit B): hover lightens the face a touch, a press sinks it onto its lip (the lip thins, the text drops)
+	local function paint()
+		local disabled = isDisabled()
+		local role = disabled and "Off" or (CloudUI.SignRole[state.Style] or "Stone")
+		local look = CloudUI.SignLooks[role]
+		local pressing = fx and fx.Pressing and not disabled
+		local face = look.Face
+		if fx and fx.Hovering and not disabled and not pressing then
+			face = Theme.Lighten(face, 0.06)
+		end
+		-- attribute Outline = true: the ink edge of the pitch's selected card (a shown-but-not-active team, say)
+		local edge = (not disabled and button:GetAttribute("Outline") == true) and SIGN.Text or nil
+		CloudUI.SignBlock(button, role, { Face = face, Edge = edge, LipPx = pressing and SM.PressLip or SM.Lip })
+		local pad = button:FindFirstChild("LipPad")
+		if pad then
+			pad.PaddingTop = UDim.new(0, pressing and (SM.Lip - SM.PressLip) or 0)
+		end
+	end
+	fx = attachFx(button, { Hover = 1, Press = 1, OnState = paint })
+	paint()
+	button:GetAttributeChangedSignal("Disabled"):Connect(paint)
+	button:GetAttributeChangedSignal("Outline"):Connect(paint)
+	button:GetPropertyChangedSignal("Active"):Connect(paint)
+	button:GetAttributeChangedSignal("Style"):Connect(function()
+		local style = button:GetAttribute("Style")
+		if type(style) == "string" and isStyleName(style) then
+			state.Style = titleCase(style)
+			paint()
+		end
+	end)
+	if props.Callback then
+		button.Activated:Connect(function()
+			if isDisabled() then
+				return
+			end
+			props.Callback(button)
+		end)
+	end
+	button.Parent = props.Parent
+	return button
+end
+
 function CloudUI.Button(props)
 	props = props or {}
+	if props.Skin == "Sign" then
+		return signButton(props)
+	end
 	local state = { Style = isStyleName(props.Style) and titleCase(props.Style) or "Green" }
 
 	local button = Util.Create("TextButton", {
@@ -582,9 +783,135 @@ end
 ----------------------------------------------------------------------
 -- props: Name, Size, Position, AnchorPoint, Title, Closable, OnClose, Parent, Accent (Color3: the neon border, glow,
 --        title underline), Category (v5: a Theme.Category name, e.g. "Pets", when no Accent is given; default Blue),
---        Glow (v5, default true), Clouds (ignored since v5: no cloud bumps), LayoutOrder, TitleSize (default 34)
+--        Glow (v5; kit-b U8: default false, NeonKit's glow is opt-in), Clouds (ignored since v5: no cloud bumps), LayoutOrder,
+--        TitleSize (default 34), Skin ("Signboard": kit B, see signPanel), Icon (a PixelIcon name for a Signboard header)
+-- (kit-b U8) Skin = "Signboard": the window as a kit B sign (the pitch's Pets stage): the flat pink awning (SignKit.Roof)
+-- at a FIXED size (Metrics.SignRoofW) centred over the top, never stretched with the window (Gemini's sign rule: the
+-- roof is one sprite, never 9-sliced); the navy header plank in its wood rim (SignKit.Header) with the title in gold
+-- through Theme.StyleTitle and, with props.Icon, the window's PixelIcon on the gold square; the wood frame (Body) and the
+-- stone inside it (Body.Stone, its lip along the bottom); a red close block with the drawn X. Panel.Content sits where a
+-- plain panel's does, so the callers' layouts do not move. No glow, gradient, corner or drop shadow; SetAccent does
+-- nothing on this skin (one look for every window).
+CloudUI.Metrics.SignRoofW = 360
+CloudUI.Metrics.SignFrame = 6
+
+local function signPanel(props)
+	local hasTitle = type(props.Title) == "string" and props.Title ~= ""
+	local topInset = CloudUI.ContentInset(hasTitle, props.Clouds)
+	local edge = CloudUI.Metrics.SignFrame
+	local root = frame(props.Name or "CloudPanel", {
+		Size = props.Size or UDim2.fromOffset(520, 380),
+		Position = props.Position or UDim2.new(),
+		AnchorPoint = props.AnchorPoint or Vector2.new(0, 0),
+		LayoutOrder = props.LayoutOrder or 0,
+	})
+	root:SetAttribute("Skin", "Signboard")
+	local body = frame("Body", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = SIGN.Wood,
+		Size = UDim2.new(1, 0, 1, 0),
+		ZIndex = 2,
+		Active = true, -- sinks clicks so the world behind the window is not clicked
+	}, root)
+	body:SetAttribute("SignKit", "Frame")
+	local stone = frame("Stone", {
+		BackgroundTransparency = 0,
+		BackgroundColor3 = SIGN.Stone,
+		Position = UDim2.fromOffset(edge, edge),
+		Size = UDim2.new(1, -2 * edge, 1, -2 * edge),
+		ZIndex = 2,
+	}, body)
+	stone:SetAttribute("SignKit", "Body")
+	frame("Lip", {
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, SignKit.Sizes.Lip),
+		BackgroundTransparency = 0,
+		BackgroundColor3 = SIGN.StoneLip,
+		ZIndex = 2,
+	}, stone)
+	local content = frame("Content", {
+		Position = UDim2.new(0, PANEL_PAD, 0, topInset),
+		Size = UDim2.new(1, -2 * PANEL_PAD, 1, -(topInset + PANEL_PAD)),
+		ZIndex = 4,
+	}, root)
+	local titleBar, titleLabel = nil, nil
+	if hasTitle then
+		local head, plate = SignKit.Header(body, {
+			Title = props.Title,
+			TitleSize = props.TitleSize or TITLE_TEXT,
+			Height = TITLE_TOP + TITLE_H,
+			Rim = edge,
+			IconSlot = props.Icon ~= nil,
+			Reserve = props.Closable and (CLOSE_SIZE + 18) or 16,
+			Name = "TitleBar",
+			ZIndex = 3,
+		})
+		titleBar = head
+		titleLabel = plate:FindFirstChild("Title")
+		if titleLabel then
+			titleLabel.TextTruncate = Enum.TextTruncate.AtEnd
+			titleLabel.ZIndex = 6
+		end
+		local slot = plate:FindFirstChild("IconSlot")
+		if slot and props.Icon then
+			local icon = PixelIcon.New(slot, props.Icon, 27, SIGN.Text)
+			if icon then
+				icon.AnchorPoint = Vector2.new(0.5, 0.5)
+				icon.Position = UDim2.fromScale(0.5, 0.5)
+			end
+		end
+	end
+	-- the awning: one fixed-size piece over the header's top rim (its lower part overlaps the rim, so it reads as the roof
+	-- of the sign and stays inside a window that sits right under Roblox's top bar)
+	local roof = SignKit.Roof(root, { Width = CloudUI.Metrics.SignRoofW, Y = -10, ZIndex = 3 })
+
+	local panel = { Root = root, Body = body, Content = content, TitleBar = titleBar, TitleLabel = titleLabel, Roof = roof, Card = nil, Skin = "Signboard" }
+	function panel.Close()
+		if props.OnClose then
+			props.OnClose(panel)
+		else
+			root.Visible = false
+		end
+	end
+	function panel.SetTitle(text)
+		if titleLabel then
+			titleLabel.Text = tostring(text)
+		end
+	end
+	function panel.SetAccent() end
+	function panel.Destroy()
+		root:Destroy()
+	end
+	if props.Closable then
+		local position = hasTitle and UDim2.new(1, -(PANEL_PAD + 4 + CLOSE_SIZE / 2), 0, TITLE_TOP + math.floor(TITLE_H / 2) - 2)
+			or UDim2.new(1, -12 - CLOSE_SIZE / 2, 0, 8 + CLOSE_SIZE / 2)
+		local closeButton = CloudUI.Button({
+			Name = "Close",
+			Text = "",
+			Style = "Red",
+			Skin = "Sign",
+			Size = UDim2.fromOffset(CLOSE_SIZE, CLOSE_SIZE),
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = position,
+			ZIndex = 8,
+			Callback = function()
+				panel.Close()
+			end,
+			Parent = root,
+		})
+		NeonKit.CloseMark(closeButton, { Square = true, Ink = SIGN.RedLip, Color = SIGN.Text }) -- square bars in a Danger block's brown ink
+		panel.CloseButton = closeButton
+	end
+	root.Parent = props.Parent
+	return panel
+end
+
 function CloudUI.Panel(props)
 	props = props or {}
+	if props.Skin == "Signboard" then
+		return signPanel(props)
+	end
 	local hasTitle = type(props.Title) == "string" and props.Title ~= ""
 	local accent = props.Accent
 	if typeof(accent) ~= "Color3" then
@@ -616,7 +943,7 @@ function CloudUI.Panel(props)
 		Color = accent,
 		Corner = PANEL_CORNER,
 		Stroke = OUTLINE_THICKNESS,
-		Glow = props.Glow ~= false,
+		Glow = props.Glow == true,
 		Floor = false,
 		ZIndex = 2,
 		Active = true, -- sinks clicks so the world behind the window is not clicked
@@ -752,12 +1079,14 @@ end
 ----------------------------------------------------------------------
 -- Bar
 ----------------------------------------------------------------------
--- props: Size, Color, Label, Parent, Height, Position, AnchorPoint, Name, LayoutOrder, TextSize
+-- props: Size, Color, Label, Parent, Height, Position, AnchorPoint, Name, LayoutOrder, TextSize, Skin ("Sign", kit-b U8: a
+--        flat well track in a wood edge, a flat fill with its darker lip, square, no gloss)
 function CloudUI.Bar(props)
 	props = props or {}
 	local height = props.Height or 24
 	local color = props.Color or Colors.Health
 	local fraction = 1
+	local sign = props.Skin == "Sign"
 
 	local root = frame(props.Name or "CloudBar", {
 		BackgroundColor3 = WHITE,
@@ -767,10 +1096,17 @@ function CloudUI.Bar(props)
 		AnchorPoint = props.AnchorPoint or Vector2.new(0, 0),
 		LayoutOrder = props.LayoutOrder or 0,
 	})
-	round(root)
-	-- v5: a dark ink track with a thin light rim (the fill carries the colour)
-	local trackStroke = stroke(root, Theme.Lighten(PANEL_TOP, 0.12), 2.5, 0)
-	gradient(root, ColorSequence.new(INK, PANEL_TOP), 90)
+	-- v5: a dark ink track with a thin light rim (the fill carries the colour); kit B: the stone well in its wood edge
+	local trackStroke
+	if sign then
+		root.BackgroundColor3 = SIGN.Well
+		trackStroke = stroke(root, SIGN.Wood, 2, 0)
+		trackStroke.LineJoinMode = Enum.LineJoinMode.Miter
+	else
+		round(root)
+		trackStroke = stroke(root, Theme.Lighten(PANEL_TOP, 0.12), 2.5, 0)
+		gradient(root, ColorSequence.new(INK, PANEL_TOP), 90)
+	end
 
 	local inner = frame("Inner", {
 		Position = UDim2.new(0, 3, 0, 3),
@@ -782,23 +1118,39 @@ function CloudUI.Bar(props)
 		BackgroundTransparency = 0,
 		Size = UDim2.new(1, 0, 1, 0),
 	}, inner)
-	round(fill)
 	local function fillSequence(c)
+		if sign then
+			return ColorSequence.new(c)
+		end
 		return ColorSequence.new({
 			ColorSequenceKeypoint.new(0, Theme.Lighten(c, 0.34)),
 			ColorSequenceKeypoint.new(0.5, c),
 			ColorSequenceKeypoint.new(1, Theme.Darken(c, 0.16)),
 		})
 	end
-	local fillGradient = gradient(fill, fillSequence(color), 90)
-	addShine(fill, 0.34, 6, 0.7)
+	local fillGradient, fillLip = nil, nil
+	if sign then
+		-- the flat fill and its darker lip (the pitch's .hp i: an inset bottom band)
+		fill.BackgroundColor3 = color
+		fillLip = frame("Lip", {
+			AnchorPoint = Vector2.new(0, 1),
+			Position = UDim2.new(0, 0, 1, 0),
+			Size = UDim2.new(1, 0, 0.3, 0),
+			BackgroundTransparency = 0,
+			BackgroundColor3 = Theme.Darken(color, 0.22),
+		}, fill)
+	else
+		round(fill)
+		fillGradient = gradient(fill, fillSequence(color), 90)
+		addShine(fill, 0.34, 6, 0.7)
+	end
 
 	-- kit B (no outline on a surface): the label reads by the colour of what lies under it, and the fill moves under a
 	-- centred label. So it is drawn twice, each copy clipped to one stretch of the bar: dark ink over the bright fill
 	-- (Theme.TextOn of its gradient), white over the dark track. Both copies are named "Text"; bar.Label is the fill's.
 	local textSize = props.TextSize or Util.Clamp(math.floor(height * 0.66 + 0.5), 15, 26)
 	local copies = {}
-	for _, spec in ipairs({ { "TextFill", Theme.TextOn(fillSequence(color)) }, { "TextTrack", WHITE } }) do
+	for _, spec in ipairs({ { "TextFill", Theme.TextOn(fillSequence(color)) }, { "TextTrack", sign and Theme.TextOn("Well") or WHITE } }) do
 		local clip = frame(spec[1], {
 			ClipsDescendants = true,
 			Size = UDim2.new(1, 0, 1, 0),
@@ -873,8 +1225,13 @@ function CloudUI.Bar(props)
 			return
 		end
 		color = newColor
-		fillGradient.Color = fillSequence(color)
-		label.TextColor3 = Theme.TextOn(fillGradient.Color)
+		if sign then
+			fill.BackgroundColor3 = color
+			fillLip.BackgroundColor3 = Theme.Darken(color, 0.22)
+		else
+			fillGradient.Color = fillSequence(color)
+		end
+		label.TextColor3 = Theme.TextOn(fillSequence(color))
 	end
 	bar.TrackStroke = trackStroke
 

@@ -41,12 +41,16 @@
 --
 -- Screen: ScreenGui "NimbusDaily" (DisplayOrder 19 like the Store and the Pets window: they never overlap, each Open fires
 -- MenuController.WindowOpened(id) and each closes on any other id; IgnoreGuiInset = false: the HUD attributes are gui px).
---   * TextButton "GiftsButton": round, x = NimbusHud.TopRightLeft - 8 - size, y = 6 (gui px); 56 px at 1080p (x the screen
+--   * TextButton "GiftsButton": (kit-b U8) a small pink kit B block (the pitch's HUD stage: the pixel gift over "Gift") docked
+--     under the HUD's currency strips: the square NimbusHud publishes (GiftLeft / GiftTop / GiftSize: right-aligned with
+--     the strips, 8 px x the screen factor under them, 56 px at 1080p x the factor, never under 44); without those
+--     attributes (no HUD) x = NimbusHud.TopRightLeft - 8 - size, y = 6 (gui px), 56 px at 1080p (x the screen
 --     factor), 44 px on a phone; hidden with the strips (InMatch / InBattle, or no top-right strips) and, with its ring and
 --     pip, while any window of K.WINDOWS is open (slop audit 2026-11-12, win 5: H.windowUp; back within K.WINDOW_POLL of the
 --     close), and (owner 2026-11-13) while the Gifts window itself is open (back at once on Close) or an NPC talk box
 --     is up (NpcController, in K.WINDOWS); re-laid out on the HUD's
---     TopRightLeft / TopRightBottom signals. Children: the Gifts glyph, Frame "Pip" (a 10 px Neon.Red dot: an unlocked
+--     TopRightLeft / TopRightBottom / GiftLeft / GiftTop / GiftSize signals. Children: the Gifts icon and word, Frame "Pip"
+--     (a 10 px Sign red square, kit-b U8: an unlocked
 --     claim (ClaimView "Claim" / "Repair") or a ready play tier, >= Config.Daily.PipDelaySeconds after the last
 --     CharacterAdded, the tutorial at its spin step or later), a 0.4 s shake when a play tier becomes Ready in a payload
 --     that is not the first after a join / Loading one. Frame "Ring" (around the button, attribute Fill = Play.Seconds /
@@ -639,18 +643,48 @@ function H.buttonSize()
 	return math.max(K.BTN_MIN, math.floor(K.BTN * Theme.ScreenFactor(viewport().Y)))
 end
 
+-- (kit-b U8: the pitch's HUD stage) the button is a small pink kit B block (the awning colour: face, darker lip, wood edge;
+-- square) with the pixel gift over the word "Gift", both brown; H.paintButton sizes them to the block
 function H.buildButton()
 	local size = H.buttonSize()
-	local card = NeonKit.Card({
-		Name = "GiftsButton", Class = "TextButton", Color = "Gold", Size = size, Corner = math.floor(size / 2),
-		Floor = false, Sheen = false, ZIndex = 2, Parent = U.Gui,
-	})
-	U.Button = card.Root
-	U.ButtonCard = card
-	U.Icon = NeonKit.Icon(card.Body, "Gifts", math.floor(size * 0.5))
-	U.Icon.Size = UDim2.fromScale(0.9, 0.9)
-	U.Icon.TextScaled = true
+	local Sign = Theme.Sign
+	local button = Instance.new("TextButton")
+	button.Name = "GiftsButton"
+	button.Text = ""
+	button.AutoButtonColor = false
+	button.BorderSizePixel = 0
+	button.BackgroundTransparency = 0
+	button.BackgroundColor3 = Sign.Roof
+	button.Size = UDim2.fromOffset(size, size)
+	button.ZIndex = 2
+	button:SetAttribute("SignLook", "Gift")
+	local edge = Instance.new("UIStroke")
+	edge.Name = "SignEdge"
+	edge.Color = Sign.Wood
+	edge.Thickness = 3
+	edge.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	edge.LineJoinMode = Enum.LineJoinMode.Miter
+	edge.Parent = button
+	local lip = Instance.new("Frame")
+	lip.Name = "Lip"
+	lip.BorderSizePixel = 0
+	lip.BackgroundColor3 = Sign.RoofLip
+	lip.AnchorPoint = Vector2.new(0, 1)
+	lip.Position = UDim2.new(0, 0, 1, 0)
+	lip.Size = UDim2.new(1, 0, 0, 5)
+	lip.ZIndex = 2
+	lip.Parent = button
+	button.Parent = U.Gui
+	U.Button = button
+	U.Icon = NeonKit.Icon(button, "Gifts", 27)
+	U.Icon.TextColor3 = Sign.Text
 	U.Icon.ZIndex = 3
+	U.Word = Theme.Label("Gift", "Button", { Size = 15, Color = Sign.Text })
+	U.Word.Name = "Word"
+	U.Word.AnchorPoint = Vector2.new(0.5, 0.5)
+	U.Word.TextXAlignment = Enum.TextXAlignment.Center
+	U.Word.ZIndex = 3
+	U.Word.Parent = button
 	-- the ring: two clipped halves of one circle, each stroke under a stepped gradient (spec 8: "fills toward the next tier")
 	local ring = Instance.new("Frame")
 	ring.Name = "Ring"
@@ -670,6 +704,7 @@ function H.buildButton()
 		half.Position = UDim2.fromScale(i == 1 and 0.5 or 0, 0)
 		half.ZIndex = 3
 		half.Parent = ring
+		-- (kit-b U8) square, round the square block: the stepped gradient still sweeps it clockwise
 		local arc = Instance.new("Frame")
 		arc.Name = "Arc"
 		arc.BackgroundTransparency = 1
@@ -678,10 +713,10 @@ function H.buildButton()
 		arc.Position = UDim2.fromScale(i == 1 and -1 or 0, 0)
 		arc.ZIndex = 3
 		arc.Parent = half
-		Theme.Corner(arc, UDim.new(0.5, 0))
 		local stroke = Instance.new("UIStroke")
 		stroke.Name = "RingStroke"
-		stroke.Color = GOLD
+		stroke.LineJoinMode = Enum.LineJoinMode.Miter
+		stroke.Color = Theme.Sign.Gold
 		stroke.Thickness = K.RING_STROKE
 		stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 		stroke.Parent = arc
@@ -696,14 +731,18 @@ function H.buildButton()
 	end
 	local pip = Instance.new("Frame")
 	pip.Name = "Pip"
-	pip.BackgroundColor3 = Theme.Neon.Red
+	pip.BackgroundColor3 = Theme.Sign.Red -- (kit-b U8) a small red square in a wood edge
 	pip.BorderSizePixel = 0
 	pip.AnchorPoint = Vector2.new(0.5, 0.5)
 	pip.Position = UDim2.new(1, -4, 0, 4)
 	pip.Size = UDim2.fromOffset(K.PIP, K.PIP)
 	pip.ZIndex = 5
 	pip.Visible = false
-	Theme.Corner(pip, UDim.new(0.5, 0))
+	local pipEdge = Instance.new("UIStroke")
+	pipEdge.Color = Theme.Sign.Wood
+	pipEdge.Thickness = 2
+	pipEdge.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	pipEdge.Parent = pip
 	pip.Parent = U.Button
 	U.Pip = pip
 	-- (owner 2026-11-13) the button only opens: it hides while its window is open (X / Esc / gamepad B close it)
@@ -794,14 +833,32 @@ function H.layoutButton()
 	local left = tonumber(hud and hud:GetAttribute("TopRightLeft")) or 0
 	S.WindowUp = H.windowUp()
 	S.Hidden = left <= 0 or hiddenByPlay() or S.WindowUp
-	local x = math.floor(left - K.GAP - size + 0.5)
+	local x, y = math.floor(left - K.GAP - size + 0.5), K.TOP
+	-- (kit-b U8) the HUD's dock under the strips (GiftLeft / GiftTop / GiftSize; a HUD without them: left of the strips as
+	-- before); a dock of 0 (a result card holding the corner) hides the button
+	local dock = hud and tonumber(hud:GetAttribute("GiftSize"))
+	if dock ~= nil then
+		size = dock
+		x = tonumber(hud:GetAttribute("GiftLeft")) or x
+		y = tonumber(hud:GetAttribute("GiftTop")) or y
+		S.Hidden = S.Hidden or dock <= 0
+	end
 	U.Button.Size = UDim2.fromOffset(size, size)
-	U.Button.Position = UDim2.fromOffset(x + S.ShakeX, K.TOP)
-	U.ButtonCard.Root:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, math.floor(size / 2))
+	U.Button.Position = UDim2.fromOffset(x + S.ShakeX, y)
+	-- the pixel gift over the word, sized to the block (the word never under 14 px)
+	local iconPx = math.max(18, math.floor(size * 0.48 / 9) * 9)
+	if U.Icon.TextSize ~= iconPx then
+		U.Icon.TextSize = iconPx
+		U.Icon.Size = UDim2.fromOffset(iconPx, iconPx)
+	end
+	U.Icon.Position = UDim2.fromScale(0.5, 0.38)
+	U.Word.TextSize = math.max(14, math.floor(size * 0.27 + 0.5))
+	U.Word.Size = UDim2.new(1, 0, 0, U.Word.TextSize + 2)
+	U.Word.Position = UDim2.fromScale(0.5, 0.76)
 	U.Button.Visible = not S.Hidden
 	local r = size + 2 * K.RING_PAD
 	U.Ring.Size = UDim2.fromOffset(r, r)
-	U.Ring.Position = UDim2.fromOffset(x + S.ShakeX - K.RING_PAD, K.TOP - K.RING_PAD)
+	U.Ring.Position = UDim2.fromOffset(x + S.ShakeX - K.RING_PAD, y - K.RING_PAD)
 	H.paintRing()
 	if S.Hidden then
 		U.Ring.Visible = false
@@ -2122,7 +2179,7 @@ function DailyController.Init()
 		local pg = LocalPlayer:WaitForChild("PlayerGui")
 		local hud = pg:WaitForChild("NimbusHud", 30)
 		if hud then
-			for _, name in ipairs({ "TopRightLeft", "TopRightBottom" }) do
+			for _, name in ipairs({ "TopRightLeft", "TopRightBottom", "GiftLeft", "GiftTop", "GiftSize" }) do
 				hud:GetAttributeChangedSignal(name):Connect(function()
 					safe("relayout", H.relayout)
 				end)

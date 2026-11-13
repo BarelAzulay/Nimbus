@@ -7,7 +7,8 @@
 --   TopBarController.Refresh()                              relayout now (tests; a changed top-bar inset)
 --
 -- Screen: ScreenGui "NimbusTopBar" (display order 21, IgnoreGuiInset = true, so its px are screen px).
---   * Frame "Pill": one rounded navy pill inside Roblox's top-bar band (y 0 .. GuiService:GetGuiInset().Y), right of
+--   * Frame "Pill": (kit-b U8: the pitch's HUD stage, "the top bar is a navy sign plank") one square navy sign plank with a
+--     gold-lip edge, its darker lip along the bottom and the labels and icons in sign gold, inside Roblox's top-bar band (y 0 .. GuiService:GetGuiInset().Y), right of
 --     Roblox's own buttons: GuiService.TopbarInset.Min.X + 8 (read under pcall; K.FALLBACK_LEFT 212 while it is not
 --     available) and left of TopbarInset.Max.X (else K.RIGHT_RESERVE px off the right edge: the "..." button).
 --     TextButtons PillButton_Shop (lobby shop 16.3, Task 23: ShopController.Open() with no tab, the one Shop window on
@@ -71,6 +72,7 @@ local BUTTONS = {
 local Colors = Theme.Colors
 local WHITE = Colors.White
 local NAVY = Colors.PanelBottom or Color3.fromRGB(12, 15, 38)
+local SIGN = Theme.Sign -- (kit-b U8) the navy sign plank
 
 local LocalPlayer = nil
 local initialized = false
@@ -356,11 +358,12 @@ local function buildButton(parent, spec, order, callback)
 		ZIndex = 3,
 		Parent = parent,
 	})
-	Util.Create("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = root })
 	local icon = NeonKit.Icon(root, spec.Icon, K.ICON)
 	icon.ZIndex = 4
+	icon.TextColor3 = SIGN.Gold
 	local label = Theme.Label(spec.Label, "Button", {
 		Size = K.LABEL_TEXT,
+		Color = SIGN.Gold,
 		Props = {
 			Name = "Label",
 			TextXAlignment = Enum.TextXAlignment.Left,
@@ -371,8 +374,10 @@ local function buildButton(parent, spec, order, callback)
 	label.Parent = root
 	local fx = nil
 	fx = NeonKit.AttachFx(root, function(hover, press)
-		root.BackgroundTransparency = (hover or press) and 0.85 or 1
-	end)
+		-- (kit-b U8) hover lifts the plank's face a little lighter under the button; no scale
+		root.BackgroundColor3 = SIGN.NavyLip
+		root.BackgroundTransparency = (hover or press) and 0.55 or 1
+	end, 1, 1)
 	root.Activated:Connect(function()
 		safe("pill " .. spec.Id, callback)
 	end)
@@ -385,18 +390,28 @@ end
 local function build()
 	local pill = Util.Create("Frame", {
 		Name = "Pill",
-		BackgroundColor3 = NAVY,
-		BackgroundTransparency = 0.18,
+		BackgroundColor3 = SIGN.Navy,
+		BackgroundTransparency = 0,
 		BorderSizePixel = 0,
 		ZIndex = 2,
 		Parent = gui,
 	})
-	Util.Create("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = pill })
 	Util.Create("UIStroke", {
-		Color = Theme.Lighten(Colors.PanelTop or NAVY, 0.35),
-		Thickness = 1.5,
-		Transparency = 0.25,
+		Name = "SignEdge",
+		Color = SIGN.GoldLip,
+		Thickness = 2,
 		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		LineJoinMode = Enum.LineJoinMode.Miter,
+		Parent = pill,
+	})
+	Util.Create("Frame", {
+		Name = "Lip",
+		BackgroundColor3 = SIGN.NavyLip,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, 3),
+		ZIndex = 2,
 		Parent = pill,
 	})
 	U.Pill = pill
