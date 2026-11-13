@@ -34,8 +34,12 @@
 -- read in capitals (`Theme.CapsRoles`, kept by Theme.SetRole; LuckiestGuy's lower case reads oddly: "PeTS").
 -- T0 (the owner's title pick B): the Title role is FredokaOne; LuckiestGuy stays on Accent (damage numbers, world hint
 -- words) and Sign (the approved Credits header). Every window title goes through `Theme.StyleTitle(label)`, the one place a
--- designed title treatment will go (today it adds nothing). T0 review: so do the Title-role headings that are not a
--- window's name, with a `Theme.TitleExempt` kind (a section head, a headline with its own gradient) that keeps them plain.
+-- designed title treatment goes. T0 review: so do the Title-role headings that are not a window's name, with a
+-- `Theme.TitleExempt` kind (a section head, a headline with its own gradient) that keeps them plain.
+-- Sign/logo build (the owner's picks 2026-11-13, .superpowers/sign-logo-pitch): StyleTitle gives every window title T1,
+-- the folded ribbon with gold outlined letters and the stair underline. That puts ONE outline on text on a plate, which
+-- U6 forbids, so the owner's exception is written down in `Theme.OutlineOnPlate`: the Title role only, one outline, no
+-- classic stroke (the ribbon's letters and the logo's; the stroke walks read it).
 -- Plain Lua 5.1-compatible syntax only. Safe to require on the server and on the client.
 
 local Theme = {}
@@ -393,6 +397,20 @@ Theme.Sign = {
 	SkyLip = rgb(58, 143, 203), -- #3A8FCB
 	Violet = rgb(169, 139, 234), -- #A98BEA
 	VioletLip = rgb(115, 84, 196), -- #7354C4
+	-- (sign/logo build, .superpowers/sign-logo-pitch/FINAL_OPTIONS.md "Base palette"): the B2 rig, the T1 ribbon and the L2
+	-- logo's three tones per material
+	WoodLight = rgb(181, 118, 60), -- #B5763C (the frame's lit top / left edge)
+	WoodDark = rgb(94, 58, 27), -- #5E3A1B (its shaded bottom / right edge, the lashings' gaps)
+	NavyLight = rgb(46, 58, 122), -- #2E3A7A (the canopy's navy stripes, the logo's plaque)
+	NavyTop = rgb(59, 74, 154), -- #3B4A9A (a navy part's lit top line)
+	GoldLight = rgb(255, 229, 138), -- #FFE58A (gold's lit band)
+	GoldDeep = rgb(242, 169, 59), -- #F2A93B (gold's lowest band)
+	Brass = rgb(233, 180, 76), -- #E9B44C (piping, hubs)
+	Iron = rgb(154, 163, 173), -- #9AA3AD (carabiners)
+	IronDark = rgb(93, 102, 112), -- #5D6670 (eye-bolts, a carabiner's shaded side)
+	Canvas = rgb(243, 230, 200), -- #F3E6C8 (the canopy's weathered cream stripes)
+	CloudShade = rgb(221, 230, 247), -- #DDE6F7 (the logo's cream letters, lower band)
+	CloudSide = rgb(201, 214, 238), -- #C9D6EE (their block side)
 }
 
 -- kit B corner radius tokens in px (Theme.Corner(obj, "M")); the windows of the pitch are square-cornered blocks, so the
@@ -674,6 +692,11 @@ function Theme.TextOutline(obj, thickness, color, transparency)
 	return outline
 end
 
+-- U6's one exception to "outline only with no plate" (the owner's T1 pick, 2026-11-13): the roles whose text may keep ONE
+-- outline (and no classic stroke) on a plate. The Title role only: the T1 ribbon's gold letters and the logo's letters.
+-- smoke SmokeCommon.StrokeWalk and tools/render_gui.py's stroke_rule read it; every other outlined text on a plate fails.
+Theme.OutlineOnPlate = { Title = true }
+
 -- The outline thickness of Outline = "World" per role (damage numbers read from further away than a nameplate).
 local WORLD_OUTLINE = { Accent = 3, Title = 3, Sign = 3, Display = 2.5 }
 
@@ -857,23 +880,353 @@ function Theme.Measure(text, role, size, width)
 end
 
 -- T0: the one title treatment. Every window title (CloudUI.Panel, SignKit.Header with the Title role, the windows that
--- draw their own header title, the loading board) is passed here after it is styled, so a designed title look (gradient,
--- border, shadow) is added in this one place. Today it adds nothing: it stamps attribute TitleLook = "Plain" (the look in
--- use) and leaves the label as it was. Safe to call twice. Returns the label.
+-- draw their own header title, the loading board) is passed here after it is styled, so the title look lives in this one
+-- place. Safe to call twice. Returns the label.
 -- T0 review: a Title-role heading that is NOT a window's name passes a kind from Theme.TitleExempt (each with its reason):
 -- StyleTitle(label, kind) stamps TitleLook = kind and never gives it the window title look, so a run-time walk
 -- (smoke_kitb_ui kitb_titles_stamped) tells a heading skipped on purpose from a window title someone forgot.
+-- Sign/logo build (the owner's pick T1 "Ribbon title", 2026-11-13; FINAL_OPTIONS.md, drawn at a 20 px title, every size
+-- here grows with the text): stamps TitleLook = "Ribbon" and hangs the ribbon's pieces under the label, back to front: two
+-- swallowtail tails (#171C4F, a stepped notch in the outer end), the band (navy, 1.5x
+-- the text tall, round the text and its stair, inside the label's box with the letters moved in onto it (a header
+-- title), or centred round the text (a centred title); a lit top line, a darker lip, two brass
+-- piping lines), the gold underline
+-- under the text with its three rising steps, a navy shadow copy of the text, and the face: white text under a hard
+-- three-band gold gradient with ONE brown outline (Theme.OutlineOnPlate). The label's own text is hidden by a see-through
+-- UIGradient (TitleHide), so the caller's font, size, colour and text props stay as they were; the copies follow its
+-- text, size, alignment and transparency.
 Theme.TitleExempt = {
-	Section = "a section head or an empty-state line inside a window (Best times, Quick match, Elements, a Home section): "
+	Section = "a section head, a card's heading or an empty-state line inside a window (Best times, Quick match, Elements, a Home "
+		.. "section, the Shop's SECRET ROULETTE / Gems / XP Potion cards): "
 		.. "the window's own title carries the title look, its sections stay plain under it",
 	OwnGradient = "a headline that paints its own gradient over white text (the race result's VICTORY! / DEFEAT, the HUD's "
 		.. "game-name card); a second title treatment would fight that gradient",
+	Logo = "a letter of the game's logo (shared/Logo.lua, L2): the lockup draws its own letter look (bands, outline, block "
+		.. "side); a ribbon round each letter would bury it",
 }
+
+-- T1's sizes at a 20 px title (the pitch's ribbon): the band 30 tall, overhanging 12 each side and sitting 3 below the
+-- text's centre (the letters ride high on it); the tails 14 x 24, their bottoms on the band's, 4 under it, a 6 px notch in
+-- two steps (the pitch's 4 x 6 fold is left off: the hatch stage's instance budget); lines 2 (lit top), 3 (lip), 2 (piping, 3 in from the top and above the lip); the face's
+-- outline 2, the shadow 3 below; the underline 3 thick on the low piping, steps 6 wide, each 3 taller than the last
+Theme.TitleRibbon = {
+	Base = 20,
+	Band = 30,
+	Pad = 12,
+	Drop = 3,
+	TailW = 14,
+	TailH = 24,
+	TailOver = 4,
+	Notch = 6,
+	Top = 2,
+	Lip = 3,
+	Pipe = 2,
+	PipeIn = 3,
+	Stroke = 2,
+	Shadow = 3,
+	Under = 3,
+	StepW = 6,
+	StepH = 3,
+}
+
+-- the copies mirror these label props (and its FontFace)
+local RIBBON_MIRROR = { "Text", "TextSize", "TextScaled", "TextWrapped", "TextTruncate", "TextXAlignment", "TextYAlignment",
+	"RichText", "LineHeight", "MaxVisibleGraphemes", "TextTransparency", "Font" }
+
+local function ribbonFrame(name, colour, z, parent)
+	local f = Instance.new("Frame")
+	f.Name = name
+	f.BorderSizePixel = 0
+	f.BackgroundColor3 = colour
+	f.BackgroundTransparency = 0
+	f.ZIndex = z
+	f.Parent = parent
+	return f
+end
+
+-- the face / shadow copy of the label's text (Title role: the U6 exception's one outline)
+local function ribbonCopy(label, name, colour, outline, z, parent)
+	local t = Instance.new("TextLabel")
+	t.Name = name
+	t.BackgroundTransparency = 1
+	t.Size = UDim2.fromScale(1, 1)
+	t.ZIndex = z
+	t.TextColor3 = colour
+	t.TextStrokeTransparency = 1
+	t:SetAttribute("FontRole", "Title")
+	for _, c in ipairs(label:GetChildren()) do
+		if c:IsA("UITextSizeConstraint") then
+			c:Clone().Parent = t
+		end
+	end
+	local o = Instance.new("UIStroke")
+	o.Name = "TitleOutline"
+	o.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+	o.LineJoinMode = Enum.LineJoinMode.Round
+	o.Color = outline
+	o.Thickness = Theme.TitleRibbon.Stroke
+	o.Parent = t
+	t.Parent = parent
+	return t
+end
+
+-- a tail: the frame is its body (w - notch wide); the outer end hangs off it in two columns that leave a stepped
+-- swallowtail notch (a deeper cut at the very end). `outer` is the side the notch is cut in (-1 left, 1 right)
+local function ribbonTail(tail, w, h, notch, outer)
+	for _, c in ipairs(tail:GetChildren()) do
+		c:Destroy()
+	end
+	local step = math.max(1, math.floor(notch / 2))
+	local mid = h / 2
+	tail.Size = UDim2.fromOffset(w - notch, h)
+	-- two columns at the outer end: the inner one with a small gap, the outermost with a wider one
+	for i, gap in ipairs({ math.max(1, math.floor(h / 8)), math.max(2, math.floor(h / 4)) }) do
+		local colW = i == 1 and notch - step or step
+		local x = outer < 0 and (i == 1 and step - notch or -notch) or (i == 1 and w - notch or w - step)
+		for _, part in ipairs({ { 0, math.floor(mid - gap) }, { math.ceil(mid + gap), h - math.ceil(mid + gap) } }) do
+			local n = ribbonFrame("Notch", Theme.Sign.NavyLip, 1, tail)
+			n.Position = UDim2.fromOffset(x, part[1])
+			n.Size = UDim2.fromOffset(colW, part[2])
+		end
+	end
+end
+
+-- sizes the band, tails, underline and steps for the label's text now
+local function ribbonLayout(label, rib)
+	local R = Theme.TitleRibbon
+	local size = tonumber(label.TextSize) or R.Base
+	local okB, bounds = pcall(function()
+		return label.TextBounds
+	end)
+	if label.TextScaled and okB and bounds and bounds.Y > 0 then
+		size = bounds.Y
+	end
+	local k = size / R.Base
+	local function px(v, least)
+		return math.max(least or 1, math.floor(v * k + 0.5))
+	end
+	-- the text the label really draws (its TextBounds, once it has them), else measured
+	local tw = okB and bounds and bounds.X or 0
+	if tw <= 0 then
+		local okW, m = pcall(Theme.MeasureLabel, label, label.Text, size)
+		tw = okW and m and m.X or 0
+	end
+	if label.Size.X.Scale == 0 and label.Size.X.Offset > 0 then
+		tw = math.min(tw, label.Size.X.Offset)
+	end
+	-- the text's centre line in the label's box, by its vertical alignment (scale, offset)
+	local ya, yo = 0.5, 0
+	if label.TextYAlignment == Enum.TextYAlignment.Top then
+		ya, yo = 0, size * 0.6
+	elseif label.TextYAlignment == Enum.TextYAlignment.Bottom then
+		ya, yo = 1, -size * 0.6
+	end
+	local bandH, pad = px(R.Band), px(R.Pad)
+	local bandTop = math.floor(yo - bandH / 2 + px(R.Drop) + 0.5)
+	local band = rib.RibbonBand
+	local centred = label.TextXAlignment == Enum.TextXAlignment.Center
+	local inR = label.TextXAlignment == Enum.TextXAlignment.Right
+	local sw, sh = px(R.StepW, 2), px(R.StepH, 2)
+	-- the box's real width (0 = not laid out yet: no limit)
+	local boxW = 0
+	pcall(function()
+		boxW = label.AbsoluteSize.X
+	end)
+	if boxW <= 0 and label.Size.X.Scale == 0 then
+		boxW = label.Size.X.Offset
+	end
+	-- (sign/logo review) how far a header title's letters move in off the box's edge, onto the band, and whether the
+	-- stair after them still fits in the box
+	local inset, stairs = 0, true
+	if centred then
+		-- a centred title (a dialog, the hatch stage) hangs a banner round its text, room for the steps on both sides
+		local half = math.floor(tw / 2 + 3 * sw + pad + 0.5)
+		band.Position = UDim2.new(0.5, -half, ya, bandTop)
+		band.Size = UDim2.new(0, 2 * half, 0, bandH)
+	else
+		-- a header title keeps its ribbon INSIDE its box (review: overhanging it covered the Shop's egg icon and poked out
+		-- of the Pets window's frame) and round its text (review: a band the box's whole width ran under the Pets
+		-- window's A/B/C buttons, laid over the box's right end on a phone): the left tail's notch starts at the box's
+		-- edge, the letters move in onto the band, the stair follows them, then a little band and the right tail, never
+		-- past the box. A box with too little room keeps the letters nearer its edge, then leaves the stair off (a box
+		-- fitted to its text, as Fusion's)
+		local lead = px(R.TailW) - px(R.TailOver)
+		local gap = math.floor(pad / 2 + 0.5)
+		inset = lead + gap
+		if boxW > 0 then
+			local free = boxW - tw - 3 * sw - gap - lead
+			stairs = free >= 0
+			if not stairs then
+				free = boxW - tw - gap - lead
+			end
+			inset = math.max(0, math.min(inset, math.floor(free)))
+		end
+		local stop = inset + tw + (stairs and 3 * sw or 0) + gap
+		if boxW > 0 then
+			stop = math.min(stop, boxW - lead)
+		end
+		band.Position = UDim2.new(0, lead, ya, bandTop)
+		if inR then
+			band.Size = UDim2.new(1, -2 * lead, 0, bandH) -- (no right-aligned title today) along the whole box
+		else
+			band.Size = UDim2.new(0, math.max(1, math.floor(stop - lead + 0.5)), 0, bandH)
+		end
+	end
+	-- the copies drawn in from the edge the text starts on (the label's own text, hidden, stays where it was)
+	for _, copy in ipairs({ rib.TitleFace, rib.TitleShadow }) do
+		copy.Size = UDim2.new(1, -inset, 1, 0)
+	end
+	local faceX = inR and 0 or inset
+	band.Highlight.Size = UDim2.new(1, 0, 0, px(R.Top))
+	band.Lip.Size = UDim2.new(1, 0, 0, px(R.Lip))
+	local pipe = px(R.Pipe)
+	local lowPipe = bandH - px(R.Lip) - px(R.PipeIn) - pipe
+	band.PipingTop.Position = UDim2.fromOffset(0, px(R.PipeIn))
+	band.PipingTop.Size = UDim2.new(1, 0, 0, pipe)
+	band.PipingLow.Position = UDim2.fromOffset(0, lowPipe)
+	band.PipingLow.Size = UDim2.new(1, 0, 0, pipe)
+	-- the tails: TailOver under the band's ends, the rest sticking out, their bottoms on the band's
+	local tw0, th, over, notch = px(R.TailW), px(R.TailH), px(R.TailOver), px(R.Notch, 2)
+	local bx, bs = band.Position.X, band.Size.X
+	rib.TailL.Position = UDim2.new(bx.Scale, bx.Offset - tw0 + over + notch, ya, bandTop + bandH - th)
+	rib.TailR.Position = UDim2.new(bx.Scale + bs.Scale, bx.Offset + bs.Offset - over, ya, bandTop + bandH - th)
+	if rib.TailL:GetAttribute("TailK") ~= k then
+		rib.TailL:SetAttribute("TailK", k)
+		for _, tail in ipairs({ rib.TailL, rib.TailR }) do
+			ribbonTail(tail, tw0, th, notch, tail == rib.TailL and -1 or 1)
+		end
+	end
+	rib.TitleFace.Position = UDim2.fromOffset(faceX, 0)
+	rib.TitleShadow.Position = UDim2.fromOffset(faceX, px(R.Shadow, 2))
+	rib.TitleFace.TitleOutline.Thickness = px(R.Stroke, 2)
+	rib.TitleShadow.TitleOutline.Thickness = px(R.Stroke, 2)
+	-- the underline on the low piping, under the letters; its three steps rising after it
+	local xs, xo = 0, inset
+	if label.TextXAlignment == Enum.TextXAlignment.Center then
+		xs, xo = 0.5, -tw / 2
+	elseif inR then
+		xs, xo = 1, -tw - inset
+	end
+	local under = px(R.Under, 2)
+	local underY = bandTop + lowPipe - under
+	rib.RibbonUnderline.Position = UDim2.new(xs, math.floor(xo + 0.5), ya, underY)
+	rib.RibbonUnderline.Size = UDim2.fromOffset(math.floor((boxW > 0 and not centred and math.min(tw, boxW - inset) or tw) + 0.5), under)
+	for i = 1, 3 do
+		local st = rib["RibbonStep" .. i]
+		st.Position = UDim2.new(xs, math.floor(xo + tw + 0.5) + (i - 1) * sw, ya, underY + under - (i + 1) * sh)
+		st.Size = UDim2.fromOffset(sw, (i + 1) * sh)
+		st.Visible = stairs
+	end
+end
+
+-- the copies and the ribbon follow the label (a fade on the title fades the whole ribbon)
+local function ribbonSync(label, rib)
+	local fade = label.TextTransparency
+	for _, copy in ipairs({ rib.TitleFace, rib.TitleShadow }) do
+		for _, prop in ipairs(RIBBON_MIRROR) do
+			pcall(function()
+				copy[prop] = label[prop]
+			end)
+		end
+		pcall(function()
+			copy.FontFace = label.FontFace
+		end)
+		copy.TitleOutline.Transparency = fade
+	end
+	for _, piece in ipairs(rib:GetChildren()) do
+		if piece:IsA("Frame") and piece:GetAttribute("Ribbon") ~= nil then
+			piece.BackgroundTransparency = fade
+			for _, d in ipairs(piece:GetDescendants()) do
+				if d:IsA("Frame") then
+					d.BackgroundTransparency = fade
+				end
+			end
+		end
+	end
+	ribbonLayout(label, rib)
+end
+
+local ribboned = setmetatable({}, { __mode = "k" }) -- labels already following (weak keys)
+
+local function ribbon(label)
+	local Sign = Theme.Sign
+	-- the pieces hang straight under the label (no holder frame: the hatch stage counts its instances), each with its
+	-- Ribbon attribute
+	local rib = label
+	if not label:FindFirstChild("RibbonBand") then
+		-- back to front (Sibling ZIndex under the label): tails 1, band 2, underline + steps 3, shadow 4, face 5
+		for _, side in ipairs({ "TailL", "TailR" }) do
+			ribbonFrame(side, Sign.NavyLip, 1, rib):SetAttribute("Ribbon", "Tail")
+		end
+		local band = ribbonFrame("RibbonBand", Sign.Navy, 2, rib)
+		band:SetAttribute("Ribbon", "Band")
+		ribbonFrame("Highlight", Sign.NavyTop, 2, band)
+		local lip = ribbonFrame("Lip", Sign.NavyLip, 2, band)
+		lip.AnchorPoint = Vector2.new(0, 1)
+		lip.Position = UDim2.fromScale(0, 1)
+		ribbonFrame("PipingTop", Sign.Brass, 2, band):SetAttribute("Ribbon", "Piping")
+		ribbonFrame("PipingLow", Sign.Brass, 2, band):SetAttribute("Ribbon", "Piping")
+		ribbonFrame("RibbonUnderline", Sign.Gold, 3, rib):SetAttribute("Ribbon", "Underline")
+		for i = 1, 3 do
+			ribbonFrame("RibbonStep" .. i, Sign.Gold, 3, rib):SetAttribute("Ribbon", "Step")
+		end
+		ribbonCopy(label, "TitleShadow", Sign.NavyLip, Sign.NavyLip, 4, rib):SetAttribute("Ribbon", "Shadow")
+		local face = ribbonCopy(label, "TitleFace", Color3.new(1, 1, 1), Sign.Text, 5, rib)
+		face:SetAttribute("Ribbon", "Face")
+		local bands = Instance.new("UIGradient")
+		bands.Rotation = 90
+		bands.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Sign.GoldLight),
+			ColorSequenceKeypoint.new(0.45, Sign.GoldLight),
+			ColorSequenceKeypoint.new(0.4501, Sign.Gold),
+			ColorSequenceKeypoint.new(0.8, Sign.Gold),
+			ColorSequenceKeypoint.new(0.8001, Sign.GoldDeep),
+			ColorSequenceKeypoint.new(1, Sign.GoldDeep),
+		})
+		bands.Parent = face
+	end
+	-- the label's own text (and any outline of its own) hidden: its copies draw it
+	if not label:FindFirstChild("TitleHide") then
+		local hide = Instance.new("UIGradient")
+		hide.Name = "TitleHide"
+		hide.Transparency = NumberSequence.new(1)
+		hide.Parent = label
+	end
+	for _, c in ipairs(label:GetChildren()) do
+		if c:IsA("UIStroke") and c.ApplyStrokeMode == Enum.ApplyStrokeMode.Contextual then
+			c.Transparency = 1
+		end
+	end
+	ribbonSync(label, rib)
+	if not ribboned[label] then
+		ribboned[label] = true
+		local function again()
+			if label:FindFirstChild("RibbonBand") and label:GetAttribute("TitleLook") == "Ribbon" then
+				ribbonSync(label, label)
+			end
+		end
+		for _, prop in ipairs(RIBBON_MIRROR) do
+			label:GetPropertyChangedSignal(prop):Connect(again)
+		end
+		-- (review) the box's width too: the letters' inset and the stair fit the box the caller places
+		for _, prop in ipairs({ "FontFace", "TextBounds", "Size", "AbsoluteSize" }) do
+			pcall(function()
+				label:GetPropertyChangedSignal(prop):Connect(again)
+			end)
+		end
+	end
+end
+
 function Theme.StyleTitle(label, kind)
 	if not label then
 		return nil
 	end
-	label:SetAttribute("TitleLook", kind or "Plain")
+	if kind then
+		label:SetAttribute("TitleLook", kind)
+		return label
+	end
+	label:SetAttribute("TitleLook", "Ribbon")
+	ribbon(label)
 	return label
 end
 

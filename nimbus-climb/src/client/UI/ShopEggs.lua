@@ -520,7 +520,7 @@ function H.buildHero(P, parent)
 	t.Hero = true
 	t.Root:SetAttribute("Hero", true)
 	t.Machine = H.machine(b, K.SECRET, K.HERO_MACHINE, true)
-	t.Title = Theme.StyleTitle(label("Title", b, t.Name, "Title", 46, { TextXAlignment = LEFT }))
+	t.Title = Theme.StyleTitle(label("Title", b, t.Name, "Title", 46, { TextXAlignment = LEFT }), "Section") -- a card's heading: the Shop's header title wears the ribbon
 	t.Odds = frame("OddsLine", b)
 	t.GemsOnly = label("GemsOnly", t.Odds, K.TEXT.GemsOnly, "Body", 24, { TextXAlignment = LEFT, TextColor3 = MUTED })
 	t.NoOdds = label("NoOdds", b, K.TEXT.NoOdds, "Body", 22, { Visible = false, TextColor3 = MUTED, TextXAlignment = LEFT })

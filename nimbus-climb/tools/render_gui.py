@@ -1463,11 +1463,16 @@ def text_report(renderer, height):
     return shown, small, smallest, floor_px
 
 
+OUTLINE_ON_PLATE = {"Title"}  # Theme.OutlineOnPlate: the roles that may keep ONE outline on a plate (sign/logo build, T1)
+
+
 def stroke_rule(dump):
     """kit B "stroke or panel, never both" over a dump: [paths of texts with a classic stroke AND an outline],
     [paths of outlined texts whose nearest painted background (the text's own first) is opaque]. The world signs
     mirrored into the dump's WorldMirror (BillboardGui / SurfaceGui) keep their ONE outline on their plate (the World
-    text rule of ARCHITECTURE_V3), so only the first list applies to them (kit-b U6)."""
+    text rule of ARCHITECTURE_V3), so only the first list applies to them (kit-b U6). (sign/logo build) The owner's written
+    exception (T1, 2026-11-13; Theme.OutlineOnPlate): a Title-role text (text.role) with ONE outline and no classic
+    stroke may sit on a plate: the ribbon's gold letters and the logo's letters."""
     doubled, panelled = [], []
 
     def walk(n, backdrop, world):
@@ -1478,11 +1483,13 @@ def stroke_rule(dump):
         tx = n.get("text")
         if tx and str(tx.get("text", "")).strip() and float(tx.get("t", 0)) < 0.99:
             classic = float(tx.get("strokeT", 1)) < 0.95
-            ring = any(k.get("mode", "Contextual") == "Contextual" and float(k.get("t", 0)) < 0.95
-                       and float(k.get("thickness", 0)) > 0 for k in (n.get("strokes") or []))
+            rings = sum(1 for k in (n.get("strokes") or []) if k.get("mode", "Contextual") == "Contextual"
+                        and float(k.get("t", 0)) < 0.95 and float(k.get("thickness", 0)) > 0)
+            ring = rings > 0
+            excepted = tx.get("role") in OUTLINE_ON_PLATE and rings == 1 and not classic
             if classic and ring:
                 doubled.append(n.get("path", ""))
-            if (classic or ring) and here[0] and not world:
+            if (classic or ring) and here[0] and not world and not excepted:
                 panelled.append(n.get("path", ""))
         for c in n.get("children", []):
             walk(c, here, world)

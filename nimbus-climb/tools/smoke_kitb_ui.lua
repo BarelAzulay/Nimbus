@@ -89,7 +89,7 @@
 --   credits_record_needs_flag (h)
 --   T0 (the owner's title pick B: FredokaOne titles, Theme.StyleTitle): theme_style_title (server world, pure) and
 --   kitb_titles_stamped (client; T0 review) the run-time walk: every Title-role Title / TitleText / Headline label in the
---   built windows is stamped Plain or a Theme.TitleExempt kind, and each expected window title is found Plain
+--   built windows is stamped Ribbon (T1) or a Theme.TitleExempt kind, and each expected window title is found Ribbon
 --   U7a (icons: tiles and currency; finding 7, rejects audit 5):
 --   token_glyph_sources       (server world, pure) no script outside U7b's glyph tables and world signs writes the cloud
 --                             glyph (U+2601) the Cloud Token used
@@ -139,6 +139,23 @@ local function textStrokes(obj)
 		end
 	end
 	return out
+end
+
+-- (sign/logo build) the owner's two designed looks the flat-kit walks let through (2026-11-13): a window title's T1
+-- ribbon (its pieces, attribute Ribbon: the gold banded letters with ONE outline, the band, the tails; the TitleHide
+-- gradient that hides the label's own text under it) and the logo's letters (shared/Logo: banded faces with ONE outline)
+local function designedLook(d)
+	if d.Name == "TitleHide" and d.Parent and d.Parent:GetAttribute("TitleLook") == "Ribbon" then
+		return true
+	end
+	local o = d
+	while o do
+		if o:GetAttribute("Ribbon") ~= nil or o:GetAttribute("Logo") ~= nil then
+			return true
+		end
+		o = o.Parent
+	end
+	return false
 end
 
 local function serverScenarios()
@@ -506,7 +523,7 @@ local function serverScenarios()
 			local title = plate:FindFirstChild("Title")
 			T.check(title and title.Text == "PETS" and title.Font == Enum.Font.FredokaOne and sameColor(title.TextColor3, Sg.Gold),
 				"signkit header: the title is FredokaOne gold", title and (tostring(title.Font) .. " " .. hex(title.TextColor3)) or "none")
-			T.check(title and title:GetAttribute("TitleLook") == "Plain", "signkit header: the title goes through Theme.StyleTitle (TitleLook stamp)",
+			T.check(title and title:GetAttribute("TitleLook") == "Ribbon", "signkit header: the title goes through Theme.StyleTitle (TitleLook stamp)",
 				title and tostring(title:GetAttribute("TitleLook")) or "none")
 			T.check(title and title.TextStrokeTransparency == 1 and #textStrokes(title) == 0, "signkit header: the title has no stroke (gold on navy, 9:1)")
 			T.check(plate:FindFirstChild("TitleDrop") == nil, "signkit header: no drop line unless asked")
@@ -1695,9 +1712,13 @@ local function serverScenarios()
 		K.flushErrors("theme_caps_roles")
 	end)
 
-	-- (T0, the owner's title pick B: FredokaOne titles) the one title helper: Theme.StyleTitle(label) is where a designed
-	-- title treatment (gradient / border / shadow) will go; today it adds nothing (no child, the font, size, colour, stroke
-	-- and text as they were) and stamps TitleLook = "Plain"; twice is the same as once; nil is a no-op
+	-- (T0, the owner's title pick B: FredokaOne titles) the one title helper: Theme.StyleTitle(label) is where the designed
+	-- title treatment goes. (sign/logo build, the owner's pick T1 2026-11-13) it is the folded ribbon: a navy band (its
+	-- highlight, lip and two brass piping lines) that overhangs the title's box, a swallowtail tail at each end, the letters
+	-- in GOLD (three hard bands) with ONE brown outline over a navy shadow copy, and a gold underline that ends in three
+	-- rising steps. The label's own text is hidden under the ribbon's copies (a UIGradient, so the caller's props stay as
+	-- they were) and the copies follow the label (text, size, transparency). Stamps TitleLook = "Ribbon"; twice is the same
+	-- as once; nil is a no-op
 	S.theme_style_title = guarded("theme_style_title", function()
 		local Theme = theme()
 		if not Theme then
@@ -1706,17 +1727,204 @@ local function serverScenarios()
 		if not T.check(type(Theme.StyleTitle) == "function", "kitb title: Theme.StyleTitle exists") then
 			return
 		end
-		local l = Theme.Label("Pets", "Title", { Size = 34, Color = Theme.Sign.Gold })
-		local kids, font, size, colour, stroke, text = #l:GetChildren(), l.Font, l.TextSize, l.TextColor3, l.TextStrokeTransparency, l.Text
+		local Sg = Theme.Sign
+		-- a ColorSequence / NumberSequence at time t
+		local function colourAt(seq, t)
+			local kps = seq.Keypoints
+			for i = 1, #kps - 1 do
+				local a, b = kps[i], kps[i + 1]
+				if t >= a.Time and t <= b.Time then
+					local f = b.Time > a.Time and (t - a.Time) / (b.Time - a.Time) or 0
+					return a.Value:Lerp(b.Value, f)
+				end
+			end
+			return kps[#kps].Value
+		end
+		local function ofKind(root, name)
+			local out = {}
+			for _, d in ipairs(root:GetDescendants()) do
+				if d.Name == name or d:GetAttribute("Ribbon") == name then
+					out[#out + 1] = d
+				end
+			end
+			return out
+		end
+		local l = Theme.Label("Pets", "Title", { Size = 34, Color = Sg.Gold })
+		l.Size = UDim2.fromOffset(420, 58)
+		l.TextXAlignment = Enum.TextXAlignment.Left
+		local font, size, colour, text = l.Font, l.TextSize, l.TextColor3, l.Text
+		local before = #l:GetDescendants()
 		T.check(Theme.StyleTitle(l) == l, "kitb title: StyleTitle returns the label")
 		Theme.StyleTitle(l)
-		T.check(#l:GetChildren() == kids and l.Font == font and l.TextSize == size and sameColor(l.TextColor3, colour) and l.TextStrokeTransparency == stroke and l.Text == text,
-			"kitb title: StyleTitle adds nothing today (no child; font, size, colour, stroke, text unchanged), twice too",
-			#l:GetChildren() .. " children, " .. tostring(l.Font) .. " " .. tostring(l.TextSize))
-		T.check(l:GetAttribute("TitleLook") == "Plain", "kitb title: StyleTitle stamps TitleLook = Plain", tostring(l:GetAttribute("TitleLook")))
-		T.check(l.Font == Enum.Font.FredokaOne, "kitb title: a Title label is FredokaOne", tostring(l.Font))
+		-- the ribbon hangs its pieces straight under the label (no holder frame) and stays light: the hatch stage's roll
+		-- look keeps a whole-screen instance budget, and its title wears the ribbon too
+		T.check(#l:GetDescendants() - before <= 25, "kitb title: the ribbon adds at most 25 instances to a title", tostring(#l:GetDescendants() - before))
+		T.check(l:GetAttribute("TitleLook") == "Ribbon", "kitb title: StyleTitle stamps TitleLook = Ribbon (the owner's T1)", tostring(l:GetAttribute("TitleLook")))
+		T.check(l.Font == Enum.Font.FredokaOne and l.Font == font and l.TextSize == size and sameColor(l.TextColor3, colour) and l.Text == text and l.TextStrokeTransparency == 1,
+			"kitb title: the caller's label keeps its font, size, colour and text (no classic stroke)", tostring(l.Font) .. " " .. tostring(l.TextSize))
+		local ribbons = {}
+		for _, c in ipairs(l:GetChildren()) do
+			if c.Name == "RibbonBand" then
+				ribbons[#ribbons + 1] = l
+			end
+		end
+		T.eq(#ribbons, 1, "kitb title: one ribbon (one RibbonBand) under the title, twice styled too")
+		local hide = l:FindFirstChild("TitleHide")
+		local hidden = hide and hide:IsA("UIGradient")
+		if hidden then
+			for _, kp in ipairs(hide.Transparency.Keypoints) do
+				hidden = hidden and kp.Value >= 0.999
+			end
+		end
+		T.check(hidden, "kitb title: the label's own text is hidden under the ribbon's copies (a fully see-through UIGradient)")
+		local rib = ribbons[1]
+		if not T.check(rib ~= nil, "kitb title: (setup) the ribbon") then
+			l:Destroy()
+			return
+		end
+		local k = 34 / 20 -- the pitch drew T1 at a 20 px title
+		-- the band: navy, 1.5x the text size tall, overhanging the title's box on both sides
+		local band = rib:FindFirstChild("RibbonBand")
+		T.check(band ~= nil and sameColor(band.BackgroundColor3, Sg.Navy) and band.BackgroundTransparency == 0, "kitb title: a navy band", band and hex(band.BackgroundColor3) or "missing")
+		local tw34 = Theme.Measure("PETS", "Title", 34).X
+		T.check(band ~= nil and math.abs(band.Size.Y.Offset - math.floor(30 * k + 0.5)) <= 1 and band.Size.X.Scale == 0 and band.Position.X.Scale == 0
+			and band.Position.X.Offset > 0 and band.Size.X.Offset > tw34 and band.Position.X.Offset + band.Size.X.Offset < 420 / 2,
+			"kitb title: the band is 1.5x the text tall and wraps the text inside the title's box (not the box's whole width)",
+			band and tostring(band.Size) .. " at " .. tostring(band.Position) or "")
+		-- (sign/logo review, SIGN2 renders) no overhang on the left either: it covered the Shop's egg icon and poked out of
+		-- the Pets window's frame. The left tail's notch ends at the box's edge, and the letters move in onto the band
+		local tailL = rib:FindFirstChild("TailL")
+		local leftmost = math.huge
+		if tailL then
+			leftmost = tailL.Position.X.Offset
+			for _, n in ipairs(tailL:GetChildren()) do
+				leftmost = math.min(leftmost, tailL.Position.X.Offset + n.Position.X.Offset)
+			end
+		end
+		T.check(tailL ~= nil and tailL.Position.X.Scale == 0 and leftmost == 0, "kitb title: a header title's ribbon starts at its box's left edge (the tail's notch too)",
+			fmt("left tail starts at %s px", tostring(leftmost)))
+		local faceIn = rib:FindFirstChild("TitleFace")
+		T.check(faceIn ~= nil and band ~= nil and faceIn.Position.X.Offset > band.Position.X.Offset and faceIn.Size.X.Offset == -faceIn.Position.X.Offset,
+			"kitb title: ...and its letters start on the band, their box narrowed to match", faceIn and (tostring(faceIn.Position) .. " " .. tostring(faceIn.Size)) or "")
+		-- (SIGN2 render, 390x844 Pets) a phone's header puts the A/B/C buttons right after the title's box: the ribbon (the
+		-- band and the right tail with its notch) ends inside the box on the right, never over the next control
+		local tailR = rib:FindFirstChild("TailR")
+		local reach = -math.huge
+		if tailR then
+			local x0 = tailR.Position.X.Scale * 420 + tailR.Position.X.Offset
+			reach = x0 + tailR.Size.X.Offset
+			for _, n in ipairs(tailR:GetChildren()) do
+				reach = math.max(reach, x0 + n.Position.X.Offset + n.Size.X.Offset)
+			end
+			reach = reach - 420
+		end
+		T.check(band ~= nil and tailR ~= nil and reach <= 0 and band.Position.X.Offset + band.Size.X.Offset <= 420,
+			"kitb title: a header title's ribbon ends inside its box on the right (the tail's notch too)", fmt("right tail reaches %s px past the box", tostring(reach)))
+		if band then
+			local hi, lip, pipes = band:FindFirstChild("Highlight"), band:FindFirstChild("Lip"), ofKind(band, "Piping")
+			T.check(hi ~= nil and sameColor(hi.BackgroundColor3, Sg.NavyTop) and hi.Position.Y.Offset == 0, "kitb title: a lighter top highlight on the band")
+			T.check(lip ~= nil and sameColor(lip.BackgroundColor3, Sg.NavyLip) and lip.AnchorPoint.Y == 1, "kitb title: a darker bottom lip on the band")
+			local brass = 0
+			for _, p in ipairs(pipes) do
+				if sameColor(p.BackgroundColor3, Sg.Brass) and p.Size.X.Scale == 1 then
+					brass = brass + 1
+				end
+			end
+			T.eq(brass, 2, "kitb title: two brass piping lines along the band")
+		end
+		-- the tails: two, darker, behind the band, sticking out past its ends, a stepped swallowtail notch on the outer end
+		local tails = ofKind(rib, "Tail")
+		T.eq(#tails, 2, "kitb title: a tail at each end of the band")
+		local leftOut, rightOut, notched = false, false, 0
+		local function at(u)
+			return u.Scale * 420 + u.Offset -- an x in the 420 px title's box
+		end
+		for _, t in ipairs(tails) do
+			if band and t.Name == "TailL" and at(t.Position.X) < at(band.Position.X) then
+				leftOut = true
+			elseif band and t.Name == "TailR" and at(t.Position.X) + t.Size.X.Offset > at(band.Position.X) + at(band.Size.X) then
+				rightOut = true
+			end
+			if #ofKind(t, "Notch") >= 2 then
+				notched = notched + 1
+			end
+			T.check(t.ZIndex < (band and band.ZIndex or 0), "kitb title: a tail sits behind the band")
+		end
+		T.check(leftOut and rightOut, "kitb title: the tails stick out past both ends of the band")
+		T.eq(notched, 2, "kitb title: each tail has a stepped swallowtail notch")
+		-- the letters: a navy shadow copy, then the gold face with one brown outline
+		local face, shadow = rib:FindFirstChild("TitleFace"), rib:FindFirstChild("TitleShadow")
+		if T.check(face ~= nil and shadow ~= nil and face:IsA("TextLabel") and shadow:IsA("TextLabel"), "kitb title: a Face and a Shadow copy of the text") then
+			T.check(face.Text == "PETS" and shadow.Text == "PETS" and face:GetAttribute("FontRole") == "Title" and face.Font == Enum.Font.FredokaOne and face.TextSize == 34,
+				"kitb title: the copies read the title (Title role, FredokaOne, its size)", face.Text .. " " .. tostring(face.Font) .. " " .. tostring(face.TextSize))
+			local g = face:FindFirstChildOfClass("UIGradient")
+			T.check(sameColor(face.TextColor3, Color3.new(1, 1, 1)) and g ~= nil and g.Rotation == 90, "kitb title: the face is white under a vertical gradient")
+			if g then
+				T.check(sameColor(colourAt(g.Color, 0.2), Sg.GoldLight) and sameColor(colourAt(g.Color, 0.6), Sg.Gold) and sameColor(colourAt(g.Color, 0.9), Sg.GoldDeep),
+					"kitb title: ...GOLD in three bands (light to 45 %, gold to 80 %, deep below)",
+					hex(colourAt(g.Color, 0.2)) .. " " .. hex(colourAt(g.Color, 0.6)) .. " " .. hex(colourAt(g.Color, 0.9)))
+				T.check(not sameColor(colourAt(g.Color, 0.44), colourAt(g.Color, 0.46)) and sameColor(colourAt(g.Color, 0.3), colourAt(g.Color, 0.44)),
+					"kitb title: ...hard bands (no smooth blend)")
+			end
+			local fs = textStrokes(face)
+			T.check(#fs == 1 and sameColor(fs[1].Color, Sg.Text) and fs[1].Thickness >= 2, "kitb title: ONE brown outline on the face (the U6 Title exception)",
+				#fs .. " outlines" .. (fs[1] and (" " .. hex(fs[1].Color) .. " " .. tostring(fs[1].Thickness)) or ""))
+			T.check(sameColor(shadow.TextColor3, Sg.NavyLip) and shadow.Position.Y.Offset >= 3 and shadow.ZIndex < face.ZIndex, "kitb title: a navy shadow copy below and behind the face",
+				hex(shadow.TextColor3) .. " +" .. tostring(shadow.Position.Y.Offset))
+			-- the underline and its stair: gold, under the text, three steps rising to the right after it
+			local under = rib:FindFirstChild("RibbonUnderline")
+			local steps = ofKind(rib, "Step")
+			local w = Theme.Measure("PETS", "Title", 34).X
+			T.check(under ~= nil and sameColor(under.BackgroundColor3, Sg.Gold) and math.abs(under.Size.X.Offset - w) <= 2 and under.ZIndex < shadow.ZIndex,
+				"kitb title: a gold underline as wide as the text, under the letters", under and tostring(under.Size) or "missing")
+			table.sort(steps, function(a, b)
+				return a.Position.X.Offset < b.Position.X.Offset
+			end)
+			local rising = #steps == 3
+			for i = 2, #steps do
+				rising = rising and steps[i].Size.Y.Offset > steps[i - 1].Size.Y.Offset and steps[i].Position.X.Offset > steps[i - 1].Position.X.Offset
+			end
+			T.check(rising and under ~= nil and steps[1].Position.X.Offset >= under.Position.X.Offset + under.Size.X.Offset - 1 and sameColor(steps[1].BackgroundColor3, Sg.Gold),
+				"kitb title: ...that ends in three gold steps rising to the right", tostring(#steps) .. " steps")
+			T.check(band ~= nil and tails[1] ~= nil and tails[1].ZIndex < band.ZIndex and band.ZIndex < under.ZIndex and under.ZIndex < shadow.ZIndex and shadow.ZIndex < face.ZIndex,
+				"kitb title: drawn back to front: tails, band, underline, shadow, face")
+			-- the copies follow the label
+			l.Text = "Shop"
+			T.check(face.Text == "SHOP" and shadow.Text == "SHOP", "kitb title: a new text on the title shows on its copies (in capitals)", face.Text .. " / " .. shadow.Text)
+			T.check(under ~= nil and math.abs(under.Size.X.Offset - Theme.Measure("SHOP", "Title", 34).X) <= 2, "kitb title: ...and the underline fits the new text", under and tostring(under.Size) or "")
+			-- the ribbon measures the text the label really draws (its TextBounds, once it has them): the renders' font
+			-- metrics, Roblox's own text layout
+			local savedExtent = Mock.TextExtent
+			Mock.TextExtent = function(obj, limit)
+				if obj == l then
+					return 123, 34
+				end
+				return savedExtent(obj, limit)
+			end
+			l.Text = "Shop!"
+			local okTB = under ~= nil and math.abs(under.Size.X.Offset - 123) <= 1
+			Mock.TextExtent = savedExtent
+			l.Text = "Shop"
+			T.check(okTB, "kitb title: the underline follows the label's TextBounds when it has them", under and tostring(under.Size) or "")
+			l.TextSize = 28
+			T.check(face.TextSize == 28 and shadow.TextSize == 28 and band ~= nil and math.abs(band.Size.Y.Offset - 42) <= 1, "kitb title: a new size resizes the copies and the band",
+				tostring(face.TextSize) .. " band " .. (band and tostring(band.Size.Y.Offset) or ""))
+			l.TextTransparency = 0.5
+			T.check(face.TextTransparency == 0.5 and shadow.TextTransparency == 0.5 and fs[1] ~= nil and fs[1].Transparency == 0.5,
+				"kitb title: a fade on the title fades its copies and outline", tostring(face.TextTransparency))
+			l.TextXAlignment = Enum.TextXAlignment.Center
+			T.check(under ~= nil and under.Position.X.Scale == 0.5 and face.TextXAlignment == Enum.TextXAlignment.Center, "kitb title: a centred title centres its copies and underline")
+			-- a centred title (a dialog, the hatch stage) hangs a banner round its text, not across its whole box: it stays
+			-- on the screen however wide the box is
+			local tw = Theme.Measure("SHOP", "Title", 28).X
+			T.check(band ~= nil and band.Size.X.Scale == 0 and band.Position.X.Scale == 0.5 and band.Size.X.Offset > tw and band.Size.X.Offset < tw + 6 * 28
+				and math.abs(band.Position.X.Offset + band.Size.X.Offset / 2) <= 1, "kitb title: a centred title's band fits round its text (with room for the steps)",
+				band and (tostring(band.Size) .. " at " .. tostring(band.Position)) or "")
+		end
 		l:Destroy()
 		T.check(Theme.StyleTitle(nil) == nil, "kitb title: StyleTitle(nil) is a no-op")
+		T.check(type(Theme.OutlineOnPlate) == "table" and Theme.OutlineOnPlate.Title == true and next(Theme.OutlineOnPlate, "Title") == nil and next(Theme.OutlineOnPlate) == "Title",
+			"kitb title: the U6 exception is written down: only the Title role may carry one outline on a plate (Theme.OutlineOnPlate)")
 		-- (T0 review) a heading that is not a window's name passes its Theme.TitleExempt kind: stamped with it, nothing added
 		local kinds = 0
 		for kind, why in pairs(Theme.TitleExempt or {}) do
@@ -1729,7 +1937,8 @@ local function serverScenarios()
 				tostring(h:GetAttribute("TitleLook")))
 			h:Destroy()
 		end
-		T.check(kinds >= 2 and Theme.TitleExempt.Plain == nil, "kitb title: Theme.TitleExempt names its kinds (Section, OwnGradient), never Plain", tostring(kinds))
+		T.check(kinds >= 3 and Theme.TitleExempt.Plain == nil and Theme.TitleExempt.Ribbon == nil and Theme.TitleExempt.Logo ~= nil,
+			"kitb title: Theme.TitleExempt names its kinds (Section, OwnGradient, Logo), never Plain or Ribbon", tostring(kinds))
 		K.flushErrors("theme_style_title")
 	end)
 
@@ -1745,46 +1954,11 @@ local function clientScenarios()
 		if not T.check(pg ~= nil, "kitb stroke walk: PlayerGui exists") then
 			return
 		end
-		local function shown(t)
-			return tostring(t or ""):gsub("%s", "") ~= ""
-		end
-		-- the nearest GuiObject (the label itself first) that paints a background: is it opaque?
-		local function onPanel(obj)
-			local o = obj
-			while o and not o:IsA("LayerCollector") do
-				if o:IsA("GuiObject") then
-					local bt = tonumber(o.BackgroundTransparency) or 1
-					if bt < 0.99 then
-						return bt < 0.3, o
-					end
-				end
-				o = o.Parent
-			end
-			return false, nil
-		end
-		local total, doubled, panelled = 0, {}, {}
-		for _, d in ipairs(pg:GetDescendants()) do
-			if (d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox")) and shown(d.Text) then
-				total = total + 1
-				local classic = (tonumber(d.TextStrokeTransparency) or 1) < 0.95
-				local ring = #textStrokes(d) > 0
-				local path = d:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
-				if classic and ring then
-					doubled[#doubled + 1] = path
-				end
-				-- a world sign (BillboardGui / SurfaceGui: a pet card, a damage number) keeps its ONE outline on its plate
-				-- (ARCHITECTURE_V3's World text rule, read over a bright sky at any distance); only a doubled one fails there
-				local world = d:FindFirstAncestorWhichIsA("BillboardGui") or d:FindFirstAncestorWhichIsA("SurfaceGui")
-				if (classic or ring) and not world then
-					local opaque, panel = onPanel(d)
-					if opaque then
-						panelled[#panelled + 1] = path .. (panel ~= d and (" on " .. panel.Name) or " (own fill)")
-					end
-				end
-			end
-		end
-		table.sort(doubled)
-		table.sort(panelled)
+		-- (sign/logo build) SmokeCommon.StrokeWalk with Theme.OutlineOnPlate: the Title role's ONE outline on a plate is the
+		-- owner's written exception (T1); every other outlined text on a plate still fails
+		local themeInst = Mock.GetPath(ROOTS.shared .. "/Theme")
+		local okTheme, Theme = pcall(require, themeInst)
+		local total, doubled, panelled = SmokeCommon.StrokeWalk(pg, okTheme and type(Theme) == "table" and Theme.OutlineOnPlate or nil)
 		T.check(total > 0, "kitb stroke walk: the client run left text in PlayerGui", tostring(total))
 		T.info(fmt("*kitb stroke walk: %d texts, %d with stroke + outline, %d outlined on an opaque panel", total, #doubled, #panelled))
 		-- U6: a failure from now on (U1 reported these as a warning); tools/stroke_walk.py runs the same rule over the dumps of
@@ -2115,9 +2289,11 @@ local function clientScenarios()
 		return n
 	end
 
-	-- the board of the pitch: two ropes, the flat awning roof, the navy header with NIMBUS CLIMB in LuckiestGuy (gold on
-	-- navy, no outline), the 6 px wood frame round the stone body; width min(0.5 W, 620 design px) on a wide screen and the
-	-- screen less a 16 px gutter on each side on a portrait phone; the board swings (its Swing turns, within 1.5 degrees)
+	-- the board of the pitch: two ropes, the flat awning roof (sign/logo build: the B2 canopy, navy and cream), the navy
+	-- header with the game's logo (L2 until the L1 picture is uploaded; the typed title stays off), the 6 px wood frame round
+	-- the stone body; width min(0.5 W, 620 design px) on a wide screen and the screen less a 16 px gutter on each side on a
+	-- portrait phone; the board sways like the title screen's (Config.MainMenu.Sway: its Swing turns +-Degrees, Period a
+	-- full back-and-forth)
 	S.loading_board_parts = guarded("loading_board_parts", function()
 		local Theme = LoadingH.shared("Theme")
 		local Sign = Theme and Theme.Sign
@@ -2151,17 +2327,15 @@ local function clientScenarios()
 				end
 				T.eq(ropes, 2, "loading board: two ropes at " .. tag)
 				local face = roof and roof:FindFirstChild("Face")
-				T.check(roof ~= nil and face ~= nil and sameColor(face.BackgroundColor3, Sign.Roof) and roof.Size.X.Scale == 0 and roof.Size.Y.Offset == 18,
-					"loading board: the flat awning roof (pink face, 18 px, a fixed offset width) at " .. tag, roof and tostring(roof.Size) or "missing")
+				T.check(roof ~= nil and face ~= nil and sameColor(face.BackgroundColor3, Sign.Canvas) and roof.Size.X.Scale == 0 and roof.Size.Y.Offset == 18,
+					"loading board: the flat canopy roof (B2: a canvas face under navy stripes, 18 px, a fixed offset width) at " .. tag, roof and tostring(roof.Size) or "missing")
 				local plate = head and head:FindFirstChild("Plate")
 				local title = plate and plate:FindFirstChild("Title")
 				T.check(plate ~= nil and sameColor(plate.BackgroundColor3, Sign.Navy), "loading board: the navy header plank at " .. tag)
-				if T.check(title ~= nil and title.Text == "NIMBUS CLIMB", "loading board: the header reads NIMBUS CLIMB at " .. tag, title and title.Text or "missing") then
-					T.check(title:GetAttribute("FontRole") == "Title" and title.Font == Theme.Fonts.Title and title:GetAttribute("TitleLook") == "Plain",
-						"loading board: the title is the Title role (FredokaOne) through Theme.StyleTitle", tostring(title.Font) .. " " .. tostring(title:GetAttribute("TitleLook")))
-					T.check(sameColor(title.TextColor3, Sign.Gold) and title.TextStrokeTransparency >= 1 and #textStrokes(title) == 0,
-						"loading board: gold on navy with no outline and no stroke", hex(title.TextColor3))
-				end
+				local logo = board:FindFirstChild("Logo", true)
+				T.check(logo ~= nil and logo:GetAttribute("Logo") == "L2" and logo.Visible, "loading board: the header shows the logo (L2, the live stand-in) at " .. tag,
+					logo and tostring(logo:GetAttribute("Logo")) or "missing")
+				T.check(title == nil or title.Visible == false, "loading board: ...and the typed title is off at " .. tag)
 				local body = wood and wood:FindFirstChild("Body")
 				T.check(wood ~= nil and sameColor(wood.BackgroundColor3, Sign.Wood) and body ~= nil and body.Position.X.Offset == 6 and body.Position.Y.Offset == 6,
 					"loading board: a 6 px wood frame round the body at " .. tag)
@@ -2175,12 +2349,13 @@ local function clientScenarios()
 						swingTween = tw
 					end
 				end
+				local W = LoadingH.shared("Config").MainMenu.Sway
 				local goal = swingTween and Mock.TweenGoals(swingTween).Rotation
 				local info = swingTween and swingTween.TweenInfo
-				T.check(math.abs(swing.Rotation) <= 1.51 and goal ~= nil and math.abs(math.abs(goal) - 1.5) < 1e-6 and math.abs(goal - swing.Rotation) > 2.9,
-					"loading board: the board swings from -1.5 to +1.5 degrees at " .. tag, fmt("%.2f -> %s", swing.Rotation, tostring(goal)))
-				T.check(info ~= nil and info.RepeatCount < 0 and info.Reverses == true and info.EasingStyle == Enum.EasingStyle.Sine and math.abs(info.Time - 3.2) < 1e-6,
-					"loading board: ...endlessly, back and forth, Sine, 3.2 s")
+				T.check(math.abs(swing.Rotation) <= W.Degrees + 0.01 and goal ~= nil and math.abs(math.abs(goal) - W.Degrees) < 1e-6 and math.abs(goal - swing.Rotation) > 2 * W.Degrees - 0.1,
+					"loading board: the board sways from -" .. W.Degrees .. " to +" .. W.Degrees .. " degrees (as the title screen's) at " .. tag, fmt("%.2f -> %s", swing.Rotation, tostring(goal)))
+				T.check(info ~= nil and info.RepeatCount < 0 and info.Reverses == true and info.EasingStyle == Enum.EasingStyle.Sine and math.abs(info.Time - W.Period / 2) < 1e-6,
+					"loading board: ...endlessly, back and forth, Sine, Sway.Period a full swing")
 				LoadingH.cleanup()
 			end
 		end)
@@ -2243,7 +2418,9 @@ local function clientScenarios()
 		LKC.flushErrors("loading_no_round_corners")
 	end)
 
-	-- no neon: no UIStroke, no glow, no classic text stroke, no gradient but the sky's, none of the old neon colours
+	-- no neon: no UIStroke, no glow, no classic text stroke, no gradient but the sky's, none of the old neon colours.
+	-- (sign/logo build) Except the logo's letters: the owner's L2 (2026-11-13) gives each letter ONE brown outline and a
+	-- three-band fill (Title role, the U6 Title exception); the typed title under it is off
 	S.loading_no_neon_no_stroke = guarded("loading_no_neon_no_stroke", function()
 		local NEON = { "#40E2EC", "#B068FF", "#3C3296", "#BE6EC8", "#96F6FF" }
 		local ok, err = pcall(function()
@@ -2251,9 +2428,22 @@ local function clientScenarios()
 			if not T.check(gui ~= nil, "loading neon: (setup) the screen is built") then
 				return
 			end
+			-- shown: no hidden object between it and the gui; the logo's letters are the one allowed outline
+			local function exempt(d)
+				local o = d.Parent
+				while o and o ~= gui do
+					if (o:IsA("GuiObject") and not o.Visible) or o:GetAttribute("Logo") ~= nil then
+						return true
+					end
+					o = o.Parent
+				end
+				return false
+			end
 			local strokes, grads, classic, neon = {}, {}, {}, {}
 			for _, d in ipairs(gui:GetDescendants()) do
-				if d:IsA("UIStroke") then
+				if exempt(d) then
+					-- the logo's letters (or something not on screen)
+				elseif d:IsA("UIStroke") then
 					strokes[#strokes + 1] = d.Parent and d.Parent.Name or "?"
 				elseif d:IsA("UIGradient") and not (d.Parent and d.Parent.Name == "Sky") then
 					grads[#grads + 1] = d.Parent and d.Parent.Name or "?"
@@ -2299,10 +2489,12 @@ local function clientScenarios()
 					bad[#bad + 1] = what .. " ~= Theme.Sign." .. key .. " (" .. (obj and hex(obj.BackgroundColor3) or "missing") .. ")"
 				end
 			end
+			-- (sign/logo build) the roof is the B2 canopy from the first frame: navy, its darker edge and lip (no pink flash
+			-- before SignKit stripes it)
 			local roof = board:FindFirstChild("Roof")
-			want(roof, "RoofEdge", "roof edge")
-			want(roof and roof:FindFirstChild("Face"), "Roof", "roof face")
-			want(roof and roof:FindFirstChild("Face") and roof.Face:FindFirstChild("Lip"), "RoofLip", "roof lip")
+			want(roof, "NavyLip", "roof edge")
+			want(roof and roof:FindFirstChild("Face"), "NavyLight", "roof face")
+			want(roof and roof:FindFirstChild("Face") and roof.Face:FindFirstChild("Lip"), "NavyLip", "roof lip")
 			local head = board:FindFirstChild("Head")
 			want(head, "Wood", "header rim")
 			want(head and head:FindFirstChild("Plate"), "Navy", "header plate")
@@ -2477,9 +2669,10 @@ local function clientScenarios()
 				end
 			end
 			T.check(#images == 0, "loading images: ids 0 -> no image on the screen", table.concat(images, ", "))
-			local title = gui:FindFirstChild("Title", true)
+			local logo0 = gui:FindFirstChild("Logo", true)
 			local clouds = gui:FindFirstChild("Clouds", true)
-			T.check(title ~= nil and title.Visible and clouds ~= nil and clouds.Visible, "loading images: ids 0 -> the typed title and the cloud sky")
+			T.check(logo0 ~= nil and logo0:GetAttribute("Logo") == "L2" and clouds ~= nil and clouds.Visible,
+				"loading images: ids 0 -> the live L2 logo (the L1 picture's stand-in) and the cloud sky", logo0 and tostring(logo0:GetAttribute("Logo")) or "no logo")
 			LoadingH.cleanup()
 			ids[keys.Logo], ids[keys.Backdrop], ids[keys.Mascot] = 101, 202, 303
 			local g2 = LoadingH.run()
@@ -2489,7 +2682,8 @@ local function clientScenarios()
 			local logo = g2:FindFirstChild("Logo", true)
 			local back = g2:FindFirstChild("Backdrop", true)
 			local mascot = g2:FindFirstChild("Mascot", true)
-			T.check(logo ~= nil and logo:IsA("ImageLabel") and logo.Image == "rbxassetid://101", "loading images: the logo id -> a Logo image in the header", logo and logo.Image or "missing")
+			T.check(logo ~= nil and logo:IsA("ImageLabel") and logo.Image == "rbxassetid://101" and logo:GetAttribute("Logo") == "L1",
+				"loading images: the logo id -> the L1 Logo image in the header", logo and tostring(logo.Image) or "missing")
 			local t2 = g2:FindFirstChild("Title", true)
 			T.check(t2 == nil or t2.Visible == false, "loading images: ...and the typed title is off")
 			T.check(back ~= nil and back:IsA("ImageLabel") and back.Image == "rbxassetid://202", "loading images: the lobby render id -> a Backdrop image", back and back.Image or "missing")
@@ -2669,18 +2863,19 @@ local function clientScenarios()
 				T.eq(#(kinds.Rope or {}), 2, "menu board: two ropes at " .. tag)
 				local roof = (kinds.Roof or {})[1]
 				local face = roof and roof:FindFirstChild("Face")
-				T.check(roof ~= nil and face ~= nil and sameColor(face.BackgroundColor3, Sign.Roof) and roof.Size.X.Scale == 0,
-					"menu board: the flat awning roof (pink face, a fixed offset width) at " .. tag, roof and tostring(roof.Size) or "missing")
+				T.check(roof ~= nil and face ~= nil and sameColor(face.BackgroundColor3, Sign.Canvas) and roof.Size.X.Scale == 0,
+					"menu board: the flat canopy roof (B2: a canvas face under navy stripes, a fixed offset width) at " .. tag, roof and tostring(roof.Size) or "missing")
 				local head = (kinds.Header or {})[1]
 				local plate = head and head:FindFirstChild("Plate")
 				local title = plate and plate:FindFirstChild("Title")
 				T.check(plate ~= nil and sameColor(plate.BackgroundColor3, Sign.Navy), "menu board: the navy header plank at " .. tag)
-				if T.check(title ~= nil and title.Text == "NIMBUS CLIMB", "menu board: the header reads NIMBUS CLIMB at " .. tag, title and title.Text or "missing") then
-					T.check(title:GetAttribute("FontRole") == "Title" and title.Font == Theme.Fonts.Title and title:GetAttribute("TitleLook") == "Plain",
-						"menu board: the title is the Title role (FredokaOne) through Theme.StyleTitle", tostring(title.Font) .. " " .. tostring(title:GetAttribute("TitleLook")))
-					T.check(sameColor(title.TextColor3, Sign.Gold) and title.TextStrokeTransparency >= 1 and #textStrokes(title) == 0,
-						"menu board: gold on navy with no outline and no stroke", hex(title.TextColor3))
-				end
+				-- (sign/logo build) the header shows the game's logo (L2 until the L1 picture is uploaded); the typed
+				-- Config.MainMenu.Header stays under it, off
+				local logo = MenuH.find(board, "Logo")
+				T.check(logo ~= nil and logo:GetAttribute("Logo") == "L2" and logo.Visible, "menu board: the header shows the logo (L2) at " .. tag,
+					logo and tostring(logo:GetAttribute("Logo")) or "missing")
+				T.check(title ~= nil and title.Text == "NIMBUS CLIMB" and title.Visible == false, "menu board: ...the typed NIMBUS CLIMB is under it, off, at " .. tag,
+					title and (title.Text .. " " .. tostring(title.Visible)) or "missing")
 				local wood = (kinds.Frame or {})[1]
 				local body = (kinds.Body or {})[1]
 				T.check(wood ~= nil and sameColor(wood.BackgroundColor3, Sign.Wood), "menu board: the wood frame at " .. tag)
@@ -2845,7 +3040,9 @@ local function clientScenarios()
 				local menu = MenuH.open({ Size = s, Input = s[3] })
 				local bad = {}
 				for _, d in ipairs(menu:GetDescendants()) do
-					if d:IsA("UIGradient") or d:IsA("UICorner") then
+					if designedLook(d) then
+						-- the T1 ribbon / the logo's letters (the owner's picks)
+					elseif d:IsA("UIGradient") or d:IsA("UICorner") then
 						bad[#bad + 1] = d.ClassName .. " in " .. d.Parent.Name
 					elseif d:IsA("UIStroke") and d.ApplyStrokeMode ~= Enum.ApplyStrokeMode.Contextual then
 						bad[#bad + 1] = "a border ring on " .. d.Parent.Name
@@ -3353,7 +3550,9 @@ local function clientScenarios()
 	function WinH.neon(holder, Theme)
 		local bad = {}
 		for _, d in ipairs(holder:GetDescendants()) do
-			if d:IsA("UIGradient") or d:IsA("UICorner") then
+			if designedLook(d) then
+				-- the header title's T1 ribbon (the owner's pick)
+			elseif d:IsA("UIGradient") or d:IsA("UICorner") then
 				bad[#bad + 1] = d.ClassName .. " in " .. d.Parent.Name
 			elseif (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Text ~= "" and (d.TextStrokeTransparency < 0.95 or #textStrokes(d) > 0) then
 				bad[#bad + 1] = "a stroke on " .. d.Name
@@ -3383,7 +3582,7 @@ local function clientScenarios()
 		local t = plate and plate:FindFirstChild("Title")
 		T.check(plate ~= nil and sameColor(plate.BackgroundColor3, Sign.Navy), "u5 window: the navy header plank at " .. tag)
 		if T.check(t ~= nil and t.Text == title, "u5 window: the header reads " .. title .. " at " .. tag, t and t.Text or "missing") then
-			T.check(t:GetAttribute("FontRole") == "Title" and t.Font == Theme.Fonts.Title and sameColor(t.TextColor3, Sign.Gold) and t:GetAttribute("TitleLook") == "Plain",
+			T.check(t:GetAttribute("FontRole") == "Title" and t.Font == Theme.Fonts.Title and sameColor(t.TextColor3, Sign.Gold) and t:GetAttribute("TitleLook") == "Ribbon",
 				"u5 window: " .. title .. " in FredokaOne gold (Title role, through Theme.StyleTitle)",
 				tostring(t.Font) .. " " .. hex(t.TextColor3) .. " " .. tostring(t:GetAttribute("TitleLook")))
 		end
@@ -3689,9 +3888,9 @@ local function clientScenarios()
 	-- (T0 review) every window title goes through Theme.StyleTitle, seen at run time: the walk opens the windows that build
 	-- late (Training with its confirm, Fusion, the pet picker, the Shop, the Home window with its hero cards and Prestige
 	-- confirm, the loss screen, a battle's result card, the hatch stage, the garden recall dialog), then fails on any
-	-- Title-role TextLabel named Title / TitleText / Headline in PlayerGui whose TitleLook is not "Plain" (a window title)
+	-- Title-role TextLabel named Title / TitleText / Headline in PlayerGui whose TitleLook is not "Ribbon" (a window title: the owner's T1)
 	-- or a kind of Theme.TitleExempt (a heading that skips the title look on purpose, each kind with its reason). Each
-	-- expected window title must be found as "Plain", so a window that stops building fails here instead of passing absent.
+	-- expected window title must be found as "Ribbon", so a window that stops building fails here instead of passing absent.
 	S.kitb_titles_stamped = guarded("kitb_titles_stamped", function()
 		local Theme = LoadingH.shared("Theme")
 		local PC = LoadingH.shared("PetCatalog")
@@ -3717,13 +3916,25 @@ local function clientScenarios()
 		LKC.advance(0.1)
 		local names = { Title = true, TitleText = true, Headline = true }
 		local found, bad = {}, {}
+		-- (sign/logo review) the ribbon is a window's NAME: never on a heading inside a scrolling body (a Shop card's
+		-- SECRET ROULETTE, Gems, XP Potion), and the Shop holds one ribbon (its header's "Shop")
+		local scrolled, shopRibbons = {}, {}
 		local function walk()
 			for _, d in ipairs(pg:GetDescendants()) do
+				if d:IsA("TextLabel") and d:GetAttribute("TitleLook") == "Ribbon" then
+					local path = d:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
+					if d:FindFirstAncestorWhichIsA("ScrollingFrame") then
+						scrolled[path] = true
+					end
+					if path:find("^NimbusShop%.") then
+						shopRibbons[path] = true
+					end
+				end
 				if d:IsA("TextLabel") and names[d.Name] and d:GetAttribute("FontRole") == "Title" then
 					local path = d:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
 					local look = d:GetAttribute("TitleLook")
 					found[path] = look
-					if look ~= "Plain" and (look == nil or Theme.TitleExempt[look] == nil) then
+					if look ~= "Ribbon" and (look == nil or Theme.TitleExempt[look] == nil) then
 						bad[path] = tostring(look)
 					end
 				end
@@ -3796,7 +4007,7 @@ local function clientScenarios()
 		end)
 		walk()
 		pcall(client("UI/PetBits").closeRecall)
-		-- the window titles this walk must have seen as "Plain" (a Lua pattern on the path inside PlayerGui each)
+		-- the window titles this walk must have seen as "Ribbon" (a Lua pattern on the path inside PlayerGui each)
 		local expected = {
 			{ "the Care confirm", "^NimbusCare%.CareConfirm%.Box%.Title$" },
 			{ "the dungeon's end card", "^NimbusDungeonRun%.EndCard%..-%.Title$" },
@@ -3819,7 +4030,7 @@ local function clientScenarios()
 		for _, e in ipairs(expected) do
 			local hit = false
 			for path, look in pairs(found) do
-				if look == "Plain" and path:find(e[2]) then
+				if look == "Ribbon" and path:find(e[2]) then
 					hit = true
 					break
 				end
@@ -3837,8 +4048,19 @@ local function clientScenarios()
 		end
 		table.sort(badList)
 		table.sort(seen)
-		T.check(#missing == 0, "kitb titles walk: every expected window title is built and stamped Plain", table.concat(missing, ", ") .. " | seen: " .. table.concat(seen, "; "))
+		T.check(#missing == 0, "kitb titles walk: every expected window title is built and stamped Ribbon", table.concat(missing, ", ") .. " | seen: " .. table.concat(seen, "; "))
 		T.check(#badList == 0, "kitb titles walk: no Title-role title without the TitleLook stamp (Plain, or a Theme.TitleExempt kind)", table.concat(badList, "; "))
+		local inScroll, shopList = {}, {}
+		for path in pairs(scrolled) do
+			inScroll[#inScroll + 1] = path
+		end
+		for path in pairs(shopRibbons) do
+			shopList[#shopList + 1] = path
+		end
+		table.sort(inScroll)
+		table.sort(shopList)
+		T.check(#inScroll == 0, "kitb titles walk: no ribbon title inside a scrolling body (a card or section heading passes \"Section\")", table.concat(inScroll, "; "))
+		T.check(#shopList == 1 and shopList[1]:find("%.Header%.Title$") ~= nil, "kitb titles walk: the Shop holds one ribbon, its header's title", table.concat(shopList, "; "))
 		Mock.SetViewport(old[1], old[2])
 		LKC.advance(0.2)
 		LKC.flushErrors("kitb_titles_stamped")
@@ -4823,6 +5045,155 @@ local function clientScenarios()
 		T.eq(SK.Sizes.RoofH, a.Root:FindFirstChild("Roof").Size.Y.Offset, "panel skin: the roof is the SignKit roof's height")
 		gui:Destroy()
 		LKC.flushErrors("panel_signboard_skin")
+	end)
+
+	-- (sign/logo review, SIGN2 renders) a header title's ribbon stays clear of its neighbours: at 390x844 and 844x390 the
+	-- Shop, Pets, Training, Fusion, the pet picker and the Sky Trove are opened, and no piece of a visible ribbon (band,
+	-- tails with their notches, underline, steps) may cross a visible sibling of the title (the Shop's egg icon, a tab or
+	-- close button, a balance pill; a strip under the title's whole width and a thin rule of 4 px or less do not count) or
+	-- a button of its window laid over the header (the Pets window's A/B/C),
+	-- nor leave its window's frame by more than TailOver
+	S.kitb_title_ribbon_clear = guarded("kitb_title_ribbon_clear", function()
+		local Theme = LoadingH.shared("Theme")
+		local pg = game:GetService("Players").LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		if not T.check(Theme and Theme.TitleRibbon and pg, "kitb ribbon clear: Theme.TitleRibbon and PlayerGui exist") then
+			return
+		end
+		local function client(path)
+			local inst = Mock.GetPath(ROOTS.client .. "/" .. path)
+			local ok, mod = false, nil
+			if inst then
+				ok, mod = pcall(require, inst)
+			end
+			return ok and type(mod) == "table" and mod or nil
+		end
+		local function shown(g)
+			local p = g
+			while p and not p:IsA("LayerCollector") do
+				if p:IsA("GuiObject") and not p.Visible then
+					return false
+				end
+				p = p.Parent
+			end
+			return p ~= nil and p.Enabled ~= false
+		end
+		local function rect(g)
+			local p, s = g.AbsolutePosition, g.AbsoluteSize
+			return { p.X, p.Y, p.X + s.X, p.Y + s.Y }
+		end
+		local function cross(a, b)
+			return math.min(a[3], b[3]) - math.max(a[1], b[1]) > 0.5 and math.min(a[4], b[4]) - math.max(a[2], b[2]) > 0.5
+		end
+		-- a strip that runs under the title's whole width (the header's band, its foot) is the plate the ribbon sits on
+		local function spans(outer, inner)
+			return outer[1] <= inner[1] + 0.5 and outer[3] >= inner[3] - 0.5
+		end
+		local problems, seen = {}, {}
+		local function check(where)
+			for _, l in ipairs(pg:GetDescendants()) do
+				if l:IsA("TextLabel") and l:GetAttribute("TitleLook") == "Ribbon" and l.TextXAlignment ~= Enum.TextXAlignment.Center and shown(l) then
+					local name = l:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
+					seen[#seen + 1] = where .. " " .. name
+					local own = rect(l)
+					local k = (tonumber(l.TextSize) or 20) / Theme.TitleRibbon.Base
+					local slack = math.max(1, math.floor(Theme.TitleRibbon.TailOver * k + 0.5))
+					-- the window: the title's ancestor right under its ScreenGui
+					local win = l
+					while win.Parent and not win.Parent:IsA("LayerCollector") do
+						win = win.Parent
+					end
+					local frame = rect(win)
+					local pieces = {}
+					for _, d in ipairs(l:GetDescendants()) do
+						if d:IsA("Frame") and d.BackgroundTransparency < 1 and shown(d) then
+							local r = rect(d)
+							if r[3] - r[1] > 0 and r[4] - r[2] > 0 then
+								pieces[#pieces + 1] = { d, r }
+							end
+						end
+					end
+					-- its siblings, and every button of its window laid over the header (the Pets window's A/B/C sit on
+					-- the right end of the title's box on a phone)
+					local near = l.Parent:GetChildren()
+					for _, b in ipairs(win:GetDescendants()) do
+						if b:IsA("GuiButton") and b.Parent ~= l.Parent and not b:IsDescendantOf(l) and shown(b) then
+							near[#near + 1] = b
+						end
+					end
+					for _, sib in ipairs(near) do
+						if sib ~= l and sib:IsA("GuiObject") and sib.Visible then
+							local r = rect(sib)
+							if r[3] - r[1] > 4 and r[4] - r[2] > 4 and not spans(r, own) then
+								for _, pc in ipairs(pieces) do
+									if cross(pc[2], r) then
+										problems[#problems + 1] = fmt("%s %s: %s crosses %s (title x %d..%d, piece x %d..%d, %s x %d..%d)", where, name, pc[1].Name, sib.Name,
+											own[1], own[3], pc[2][1], pc[2][3], sib.Name, r[1], r[3])
+										break
+									end
+								end
+							end
+						end
+					end
+					for _, pc in ipairs(pieces) do
+						local r = pc[2]
+						if r[1] < frame[1] - slack or r[3] > frame[3] + slack then
+							problems[#problems + 1] = fmt("%s %s: %s leaves the window by %d px", where, name, pc[1].Name,
+								math.floor(math.max(frame[1] - r[1], r[3] - frame[3])))
+						end
+					end
+				end
+			end
+		end
+		local old = { Mock.Viewport.X, Mock.Viewport.Y }
+		local windows = {
+			{ "Shop", function()
+				client("Controllers/ShopController").Open({ Tab = "Eggs" })
+			end, function()
+				client("Controllers/ShopController").Close()
+			end },
+			{ "Pets", function()
+				client("Controllers/MenuController").Open("Pets")
+			end, function()
+				client("Controllers/MenuController").Close()
+			end },
+			{ "Training", function()
+				client("Controllers/TrainController").Open({})
+			end, function()
+				client("Controllers/TrainController").Close()
+			end },
+			{ "Fusion", function()
+				client("Controllers/FusionController").Open("Upgrade", {})
+			end, function()
+				client("Controllers/FusionController").Close()
+			end },
+			{ "the pet picker", function()
+				client("UI/PetPicker").Open({ Context = "Train", Title = "Pick a pet to train", OnPick = function() end, OnClose = function() end })
+			end, function()
+				client("UI/PetPicker").Close()
+			end },
+			{ "the Sky Trove", function()
+				client("Controllers/TroveController").Open({})
+			end, function()
+				client("Controllers/TroveController").Close()
+			end },
+		}
+		for _, size in ipairs({ { 390, 844 }, { 844, 390 } }) do
+			Mock.SetViewport(size[1], size[2])
+			LKC.advance(0.3)
+			for _, w in ipairs(windows) do
+				local ok, err = pcall(w[2])
+				T.check(ok, "kitb ribbon clear: " .. w[1] .. " opens at " .. size[1] .. "x" .. size[2], tostring(err))
+				LKC.advance(0.4)
+				check(size[1] .. "x" .. size[2] .. " " .. w[1])
+				pcall(w[3])
+				LKC.advance(0.2)
+			end
+		end
+		T.check(#seen >= 8, "kitb ribbon clear: (setup) the walk saw the header titles", table.concat(seen, "; "))
+		T.check(#problems == 0, "kitb ribbon clear: no header ribbon crosses a neighbour of its title or leaves its window", table.concat(problems, "; "))
+		Mock.SetViewport(old[1], old[2])
+		LKC.advance(0.2)
+		LKC.flushErrors("kitb_title_ribbon_clear")
 	end)
 
 	return S

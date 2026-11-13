@@ -338,7 +338,7 @@ local function buildHero(P)
 	local b = c.Body
 	local h = { Root = c.Root, Card = c, Key = "Gems" .. K.HERO_INDEX }
 	h.Pile = frame("Pile", b)
-	h.Title = Theme.StyleTitle(label("Title", b, "Gems", "Title", 46, { TextXAlignment = Enum.TextXAlignment.Left }))
+	h.Title = Theme.StyleTitle(label("Title", b, "Gems", "Title", 46, { TextXAlignment = Enum.TextXAlignment.Left }), "Section") -- a card's heading: the Shop's header title wears the ribbon
 	h.Line1 = label("Line1", b, "Spin the Secret Roulette and every machine with gems.", "Body", 24, { TextXAlignment = Enum.TextXAlignment.Left })
 	h.Line2 = label("Line2", b, "", "Heading", 24, { TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = K.LINE })
 	h.Note = label("Note", b, "", "Body", 18, { TextColor3 = K.LINE, Visible = false })
@@ -354,7 +354,7 @@ local function buildPotion(P)
 	local p = { Root = c.Root, Card = c }
 	p.Icon = label("Icon", b, "", "Display", 64, { TextTruncate = Enum.TextTruncate.None })
 	PixelIcon.Host(p.Icon, NeonKit.IconName("Boosts")) -- (kit-b U7a) the potion, sized with the label
-	p.Title = Theme.StyleTitle(label("Title", b,"XP Potion \194\183 30 minutes", "Title", 32, { TextXAlignment = Enum.TextXAlignment.Left }))
+	p.Title = Theme.StyleTitle(label("Title", b,"XP Potion \194\183 30 minutes", "Title", 32, { TextXAlignment = Enum.TextXAlignment.Left }), "Section") -- a card's heading
 	p.Text = label("Text", b, "Your team earns double pet XP. Not random, so every account can buy it.", "Body", 22,
 		{ TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true, TextTruncate = Enum.TextTruncate.None, TextColor3 = Theme.Colors.Muted or WHITE })
 	p.Buy = newButton(P, b, function()

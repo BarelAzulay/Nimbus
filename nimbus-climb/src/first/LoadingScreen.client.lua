@@ -9,9 +9,12 @@ pcall(function() game:GetService("ReplicatedFirst"):RemoveDefaultLoadingScreen()
 -- stacked Frames, each row 12 px narrower on each side, no corners). A Signboard hangs from the top of the screen on two
 -- ropes: the flat pink awning, the navy header plank, the 6 px wood frame round the stone body; width min(0.5 W, 620
 -- design px) and at least 480, the screen less a 16 px gutter on each side on a portrait phone (below 700 px wide). On a
--- short screen the header, padding and tag line shrink until the swinging board ends above the tip card. It swings
--- +-1.5 deg (Sine, 3.2 s); nothing else moves. (sign build) Once SignKit is there the board wears SignKit.Workshop's
--- trim like the title screen's (grain, nails, rope rings, the striped awning's notched lip, a chipped corner).
+-- short screen the header, padding and tag line shrink until the swinging board ends above the tip card. (sign/logo
+-- build, the owner's answer 2026-11-13) It sways like the title screen's board: +-Config.MainMenu.Sway.Degrees, a full
+-- back-and-forth every Sway.Period (Sine InOut), endlessly; the gui's Sway attribute false (MainMenuController passes
+-- the Camera shake setting on) stops it level. Once SignKit is there the board wears B2 "Sky-climber's rig" like the
+-- title screen's (SignKit.Rig; its propellers flip while it sways), and once Logo is there the header shows the logo
+-- (the L1 picture when its TextureIds key has an id, the live L2 until then; the typed title stays under it, off).
 --   * Before Shared.Theme replicates: the sky, the clouds and the whole board (no text), drawn with this script's own copy
 --     of the few Theme.Sign tokens and SignKit sizes it needs (smoke loading_tokens_match_theme pins them equal).
 --   * Once Theme (and SignKit, PixelIcon) exist: "NIMBUS CLIMB" in FredokaOne gold on the navy plank (no outline), the
@@ -63,8 +66,8 @@ local L = {
 	FADE = 0.8,
 	BLOCKS = 12,
 	POP = 0.12, -- one block turns gold every POP seconds, lifting 4 px and dropping back
-	SWING = 1.5, -- degrees each way
-	SWING_TIME = 3.2,
+	SWAY = 1, -- degrees each way and a full back-and-forth: Config.MainMenu.Sway's (smoke pins them equal) until Config
+	SWAY_PERIOD = 3.6,
 	SKY_TOP = rgb(127, 196, 242),
 	SKY_BOTTOM = rgb(207, 234, 252),
 	CLOUD = rgb(255, 255, 255),
@@ -75,6 +78,8 @@ local L = {
 		StoneLip = rgb(220, 201, 160),
 		Wood = rgb(140, 90, 46),
 		Navy = rgb(35, 42, 110),
+		NavyLight = rgb(46, 58, 122), -- (sign/logo build) the B2 canopy, navy from the first frame
+		NavyLip = rgb(23, 28, 79),
 		Gold = rgb(255, 210, 74),
 		GoldLip = rgb(201, 154, 30),
 		Roof = rgb(238, 111, 166),
@@ -223,7 +228,6 @@ local function buildSkeleton()
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0),
-		Rotation = -L.SWING,
 		ZIndex = 5,
 	}, ui.Content)
 	ui.Ropes = {}
@@ -239,14 +243,15 @@ local function buildSkeleton()
 	end
 	ui.Board = make("Frame", { Name = "Board", BackgroundTransparency = 1, ZIndex = 2 }, ui.Swing)
 
-	-- the flat awning (SignKit.Roof): a fixed size, wider than the board
-	ui.Roof = kit(block("Roof", SIGN.RoofEdge, { ZIndex = 3 }, ui.Board), "Roof")
-	local face = block("Face", SIGN.Roof, {
+	-- the flat awning (SignKit.Roof): a fixed size, wider than the board; (sign/logo build) the B2 canopy's navy until
+	-- SignKit.Rig stripes it
+	ui.Roof = kit(block("Roof", SIGN.NavyLip, { ZIndex = 3 }, ui.Board), "Roof")
+	local face = block("Face", SIGN.NavyLight, {
 		Position = UDim2.fromOffset(L.ROOF_EDGE, L.ROOF_EDGE),
 		Size = UDim2.new(1, -2 * L.ROOF_EDGE, 1, -2 * L.ROOF_EDGE),
 		ZIndex = 3,
 	}, ui.Roof)
-	block("Lip", SIGN.RoofLip, {
+	block("Lip", SIGN.NavyLip, {
 		AnchorPoint = Vector2.new(0, 1),
 		Position = UDim2.new(0, 0, 1, 0),
 		Size = UDim2.new(1, 0, 0, L.ROOF_LIP),
@@ -294,10 +299,45 @@ local function buildSkeleton()
 		}, bf)
 	end
 
-	ui.SwingTween = TweenService:Create(ui.Swing, TweenInfo.new(L.SWING_TIME, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
-		Rotation = L.SWING,
-	})
-	ui.SwingTween:Play()
+end
+
+-- (sign/logo build) the sway: Config.MainMenu.Sway once Config is there (this script's copy before), off while the gui's
+-- Sway attribute is false (Camera shake OFF, passed on by MainMenuController); B2's propellers turn while it sways
+local function swayCfg()
+	local W = St.Config and type(St.Config.MainMenu) == "table" and St.Config.MainMenu.Sway
+	if type(W) == "table" then
+		return tonumber(W.Degrees) or 0, tonumber(W.Period) or L.SWAY_PERIOD
+	end
+	return L.SWAY, L.SWAY_PERIOD
+end
+
+local function sway()
+	local ui = St.Ui
+	local deg, period = swayCfg()
+	local on = gui:GetAttribute("Sway") ~= false and deg > 0
+	local spin = St.Kit and on
+	if St.SwayOn == on and St.SwayDeg == deg and St.SwayPeriod == period and St.Spinning == spin then
+		return
+	end
+	if St.SwayOn ~= on or St.SwayDeg ~= deg or St.SwayPeriod ~= period then
+		if ui.SwingTween then
+			ui.SwingTween:Cancel()
+			ui.SwingTween = nil
+		end
+		if on then
+			ui.Swing.Rotation = -deg
+			ui.SwingTween = TweenService:Create(ui.Swing, TweenInfo.new(period / 2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+				Rotation = deg,
+			})
+			ui.SwingTween:Play()
+		else
+			ui.Swing.Rotation = 0
+		end
+	end
+	St.SwayOn, St.SwayDeg, St.SwayPeriod, St.Spinning = on, deg, period, spin
+	if St.Kit then
+		St.Kit.Spin(ui.Board, on)
+	end
 end
 
 ----------------------------------------------------------------------
@@ -342,7 +382,7 @@ local function layout()
 		boardW = math.floor(math.min(boardW, math.max(480, math.min(0.5 * vp.X, 620 * f) / f)))
 	end
 	local inner = boardW - 2 * L.FRAME
-	local droop = math.ceil(0.5 * boardW * math.sin(math.rad(L.SWING))) -- a lower corner at the end of the swing
+	local droop = math.ceil(0.5 * boardW * math.sin(math.rad((swayCfg())))) -- a lower corner at the end of the swing
 	local minTop = math.ceil(58 / f) + 12 -- below Roblox's top bar
 	-- on a short screen (a 360 px landscape phone) step down until the swinging board ends above `bottom`: 1 a slimmer
 	-- header and padding, 2 also no tag line; past that it may hang higher, into the top bar's height
@@ -435,12 +475,34 @@ local function layout()
 	if ui.Mascot then
 		ui.Mascot.Position = UDim2.fromOffset(St.Geo.RowX + math.max(0, St.Blocks - 0.5) * (bw + gap), rowY)
 	end
-	-- (sign build) the owner's "Workshop" trim (SignKit.Workshop, once SignKit is there), drawn again when the board's
-	-- width or the screen factor changes (its awning's stripes and notched lip are cut to the width; the trim grows with
-	-- the board, the grain keeps 2 screen px under the factor)
-	if St.Kit and (St.TrimW ~= boardW or St.TrimF ~= f) then
-		St.TrimW, St.TrimF = boardW, f
-		St.Kit.Workshop({ Roof = ui.Roof, Head = ui.Head, Frame = ui.Wood, Ropes = ui.Ropes }, { Width = boardW, Factor = f })
+	-- (sign/logo build) the owner's B2 rig (SignKit.Rig, once SignKit is there), drawn again when the board changes size
+	-- (its canopy is cut to the width, the lashings and the plate sit on its corners and foot)
+	local rigKey = boardW .. "x" .. boardH .. "x" .. topY
+	if St.Kit and St.RigKey ~= rigKey then
+		St.RigKey = rigKey
+		St.Kit.Rig({ Board = ui.Board, Roof = ui.Roof, Head = ui.Head, Frame = ui.Wood, Ropes = ui.Ropes }, {
+			Width = boardW,
+			Version = St.Latest and ("V" .. tostring(St.Latest)) or nil,
+		})
+	end
+	-- the logo on the header (over the canopy: its bumps rise above the plate, its bolt ends at the plate's foot), built
+	-- again when the header or the picture changes
+	local logoKey = boardW .. "x" .. headH .. "x" .. tostring(St.Images.Logo)
+	if St.LogoMod and St.LogoKey ~= logoKey then
+		St.LogoKey = logoKey
+		if ui.Logo then
+			ui.Logo:Destroy()
+		end
+		local s = St.LogoMod.Fit(boardW - 2 * L.RIM, headH - L.RIM)
+		ui.Logo = St.LogoMod.Build(ui.Board, {
+			Image = St.Images.Logo,
+			Scale = s,
+			Position = UDim2.fromOffset(math.floor(boardW / 2), math.floor(headY + L.RIM - 18 * s)),
+			ZIndex = 4,
+		})
+		if ui.Title then
+			ui.Title.Visible = false
+		end
 	end
 end
 
@@ -468,21 +530,7 @@ local function applyImages(ids)
 		}, ui.Sky)
 		ui.Clouds.Visible = false
 	end
-	if St.Images.Logo and not ui.Logo then
-		ui.Logo = make("ImageLabel", {
-			Name = "Logo",
-			BackgroundTransparency = 1,
-			Image = St.Images.Logo,
-			ScaleType = Enum.ScaleType.Fit,
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.new(1, -16, 1, -8),
-			ZIndex = 3,
-		}, ui.Plate)
-		if ui.Title then
-			ui.Title.Visible = false
-		end
-	end
+	-- (sign/logo build) the logo picture (L1) goes on in layout(), on shared/Logo
 	if St.Images.Mascot and not ui.Mascot then
 		ui.Mascot = make("ImageLabel", {
 			Name = "Mascot",
@@ -514,7 +562,7 @@ local function buildText(SignKit, PixelIcon)
 	local ui, Sign = St.Ui, St.Theme.Sign
 	ui.Title = label("Title", "NIMBUS CLIMB", "Title", 64, Sign.Gold, {
 		Size = UDim2.fromScale(1, 1),
-		Visible = St.Images.Logo == nil,
+		Visible = St.LogoMod == nil, -- (sign/logo build) the logo shows the game's name once shared/Logo is there
 		ZIndex = 3,
 	}, ui.Plate)
 	St.Theme.StyleTitle(ui.Title) -- (T0) the one title treatment, as every window title
@@ -525,7 +573,7 @@ local function buildText(SignKit, PixelIcon)
 	if not (SignKit and PixelIcon) then
 		return
 	end
-	St.Kit = type(SignKit.Workshop) == "function" and SignKit or nil -- (sign build) layout() draws the workshop trim
+	St.Kit = type(SignKit.Rig) == "function" and SignKit or nil -- (sign/logo build) layout() draws the B2 rig
 	-- the tip: a small wood-framed stone card with the pixel bulb on a gold chip
 	local card, face = SignKit.Notice(ui.Content, {
 		Name = "TipCard",
@@ -779,7 +827,11 @@ end
 
 buildSkeleton()
 layout()
+sway()
 gui:GetAttributeChangedSignal("Progress"):Connect(drawProgress)
+gui:GetAttributeChangedSignal("Sway"):Connect(function()
+	pcall(sway)
+end)
 do
 	local camera = Workspace.CurrentCamera
 	if camera then
@@ -825,6 +877,13 @@ task.spawn(function()
 	if okNotes and type(notes) == "table" and type(notes.Tips) == "table" then
 		St.Tips = notes.Tips
 	end
+	if okNotes and type(notes) == "table" then
+		St.Latest = notes.Latest -- (sign/logo build) the rig's brass version plate
+	end
+	local okLogo, LogoMod = pcall(function()
+		return require(shared:WaitForChild("Logo", 10))
+	end)
+	St.LogoMod = okLogo and type(LogoMod) == "table" and type(LogoMod.Build) == "function" and LogoMod or nil
 	if #St.Tips > 0 then
 		-- a random first tip each load (UserId % #Tips showed a player the same tip every time); nextTip() moves to it
 		St.TipIndex = math.random(1, #St.Tips) - 1
@@ -834,6 +893,7 @@ task.spawn(function()
 		warn("[LoadingScreen] " .. tostring(err))
 	end
 	pcall(layout)
+	pcall(sway) -- Config's sway numbers, and the propellers now that the rig is drawn
 	nextTip()
 	St.TipAt = St.Elapsed
 	local okMeasure, value = pcall(measure)
