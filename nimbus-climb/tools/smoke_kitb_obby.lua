@@ -143,6 +143,9 @@ local UNDER_PARTS = { Puff = true, Stalactite = true, RimPuff = true, Belly = tr
 -- slide (Medium 38: MovingCloud_27 over Checkpoint 17; Hard 39: MovingCloud_45 over PendulumPlatform 29) and puffs
 -- that only reach a PlateBridge's span / plate island (Hard 4: steps 28 and 29 over bridge 18)
 local PINNED_PICKS = { { "Medium", 38 }, { "Hard", 39 }, { "Hard", 4 } }
+-- the clouds wave review's seeds (125 shipped courses): the heaviest Saint courses, which need more than PhoneTrim far
+-- clouds trimmed to stay under 300k on a phone (seeds 1..3 never do), so PhoneRoom and Mesh.trim's far-then-sea loop run
+local HEAVY_PICKS = { { "Saint", 9 }, { "Saint", 19 }, { "Saint", 25 } }
 local PINNED = {
 	{ who = "Medium seed 38", index = 27, via = "slide" },
 	{ who = "Hard seed 39", index = 45, via = "slide" },
@@ -290,8 +293,8 @@ local function serverScenarios()
 		local picks = {}
 		if mode == "guard" then
 			picks[1] = { who = "Easy seed 1 + two puffs by step 2", layout = guardLayout(CB) }
-		elseif mode == "pinned" then
-			for _, p in ipairs(PINNED_PICKS) do
+		elseif mode == "pinned" or mode == "heavy" then
+			for _, p in ipairs((mode == "heavy") and HEAVY_PICKS or PINNED_PICKS) do
 				picks[#picks + 1] = { who = p[1] .. " seed " .. p[2], layout = CB.GenerateLayout(p[1], p[2]) }
 			end
 		else
@@ -305,7 +308,7 @@ local function serverScenarios()
 		local RS = game:GetService("ReplicatedStorage")
 		local hadFolder = RS:FindFirstChild("MeshLibrary") ~= nil
 		local ids = {}
-		if mode == "shipped" then
+		if mode == "shipped" or mode == "heavy" then
 			-- the clouds wave: the real MeshIds (the B1 keys uploaded in ee5c3b3, the stand-ins, the shipped storm list)
 			ids = sharedModule("MeshIds") or {}
 		elseif mode ~= "empty" then
@@ -1969,9 +1972,16 @@ local function serverScenarios()
 		local want = CL.PhoneTrim
 		T.check(type(want) == "number" and want >= 2 and want <= 4 and want == math.floor(want), "obby tris: Config.Course.Clouds.PhoneTrim trims 2-4 far clouds (owner's call)", tostring(want))
 		T.eq(CL.PhoneTrimTag, TRIM_TAG, "obby tris: the phone trim tag is " .. TRIM_TAG)
-		local data = collect("shipped")
-		if not noBuildErrors(data, "obby tris (shipped ids)") or type(want) ~= "number" then
+		local data, heavyData = collect("shipped"), collect("heavy")
+		if not noBuildErrors(data, "obby tris (shipped ids)") or not noBuildErrors(heavyData, "obby tris (the heavy Saint seeds)")
+			or type(want) ~= "number" then
 			return
+		end
+		local builds = {}
+		for _, d in ipairs({ data, heavyData }) do
+			for _, b in ipairs(d.builds) do
+				builds[#builds + 1] = b
+			end
 		end
 		local ML = K.mod("MeshLibrary")
 		local tris = {}
@@ -1992,8 +2002,8 @@ local function serverScenarios()
 		local phone = T.tally("obby tris: a phone (the trimmed far clouds parked) stays under " .. TRI_BUDGET .. " (the course's clouds + 16 players x 3 pets)")
 		local low = T.tally("obby tris: Low graphics (every NC_Detail cloud parked too) stays under " .. TRI_BUDGET .. " (the course's clouds + 16 players x 3 pets)")
 		local worst = { High = { 0, "" }, Phone = { 0, "" }, Low = { 0, "" }, Tokens = { 0, "" } }
-		local mostTrim, beyond = 0, 0
-		for _, b in ipairs(data.builds) do
+		local mostTrim, beyond, seaCourses = 0, 0, 0
+		for _, b in ipairs(builds) do
 			local all, trimmed, detail, tokens, nFar, nTrim, nSea = 0, 0, 0, 0, 0, 0, 0
 			local minTrim, maxKeep = { FarCloud = math.huge, SeaCloud = math.huge }, { FarCloud = -math.huge, SeaCloud = -math.huge }
 			for _, d in ipairs(b.dressed) do
@@ -2030,6 +2040,7 @@ local function serverScenarios()
 				.. " far clouds and " .. nSea .. " sea clouds trimmed" .. (extra and " (the last one was not needed)" or ""))
 			mostTrim = max(mostTrim, nTrim)
 			beyond = beyond + ((nTrim > min(want, nFar)) and 1 or 0)
+			seaCourses = seaCourses + ((nSea > 0) and 1 or 0)
 			for _, nm in ipairs({ "FarCloud", "SeaCloud" }) do
 				heavy:case(maxKeep[nm] <= minTrim[nm] or minTrim[nm] == math.huge, b.who .. string.format(": %s trimmed down to %s tris, kept up to %s", nm, tostring(minTrim[nm]), tostring(maxKeep[nm])))
 			end
@@ -2042,13 +2053,16 @@ local function serverScenarios()
 				end
 			end
 		end
+		-- the heavy Saint seeds make PhoneRoom and the far-then-sea loop do work: without them every course stops at PhoneTrim
+		T.check(beyond > 0, "obby tris: some course trims past PhoneTrim (PhoneRoom drives Mesh.trim's loop)", beyond .. " of " .. #builds .. " courses")
+		T.check(seaCourses > 0, "obby tris: some course trims a sea cloud (after every far cloud)", seaCourses .. " of " .. #builds .. " courses")
 		count:report()
 		heavy:report()
 		known:report()
 		phone:report()
 		low:report()
-		T.info(string.format("*obby tris (course clouds + %d pet tris): desktop High worst %d (%s), phone worst %d (%s; up to %d clouds trimmed, %d of %d courses past PhoneTrim), Low worst %d (%s); the coin tokens add up to %d more (%s)",
-			PETS_TRIS, worst.High[1], worst.High[2], worst.Phone[1], worst.Phone[2], mostTrim, beyond, #data.builds, worst.Low[1], worst.Low[2], worst.Tokens[1], worst.Tokens[2]))
+		T.info(string.format("*obby tris (course clouds + %d pet tris): desktop High worst %d (%s), phone worst %d (%s; up to %d clouds trimmed, %d of %d courses past PhoneTrim, %d trim sea clouds), Low worst %d (%s); the coin tokens add up to %d more (%s)",
+			PETS_TRIS, worst.High[1], worst.High[2], worst.Phone[1], worst.Phone[2], mostTrim, beyond, #builds, seaCourses, worst.Low[1], worst.Low[2], worst.Tokens[1], worst.Tokens[2]))
 		K.flushErrors("obby_tris_budget_phone")
 	end)
 
