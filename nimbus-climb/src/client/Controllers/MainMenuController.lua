@@ -34,7 +34,11 @@
 -- .superpowers/sign-pitch) Entrance "Rope drop": once the loading screen has faded, the board falls on its ropes, the
 -- ropes snap taut (two pixel dust puffs, the SignThunk hook), it bounces and swings gently (Config.MainMenu.Entrance),
 -- the buttons pop from their centre 60 ms apart; then it sways +-1 degree about the rope tops until PLAY
--- (Config.MainMenu.Sway; Camera shake OFF = none). The board wears SignKit.Workshop's trim. It is laid out again when the
+-- (Config.MainMenu.Sway; Camera shake OFF = none). (sign/logo build, the owner's picks 2026-11-13) The board wears B2
+-- "Sky-climber's rig" (SignKit.Rig: the navy and canvas canopy, lashings, carabiners, the propellers that flip while it
+-- opens or sways, the brass version plate) and the header shows the logo (shared/Logo: the L1 picture once its
+-- TextureIds key has an id, L2 until then; the typed Config.MainMenu.Header stays under it, off). The Camera shake
+-- setting is passed on to the loading screen (its gui's Sway attribute). It is laid out again when the
 -- viewport changes (a short screen shortens its ropes). PLAY: the board is pulled up (0.3 s, Quad In) while the camera
 -- tweens to the spawn view (0.8 s, Sine InOut); the release (the HUD back, Custom) waits for it to land.
 -- Behind Config.Preview.TitleShots (PICK, off): the camera holds Key A / Key P of Config.MainMenu.Shots (FOV 50) instead
@@ -92,6 +96,7 @@ local Util = require(Shared:WaitForChild("Util"))
 local Remotes = require(Shared:WaitForChild("Remotes"))
 local SignKit = require(Shared:WaitForChild("SignKit"))
 local PixelIcon = require(Shared:WaitForChild("PixelIcon"))
+local Logo = require(Shared:WaitForChild("Logo"))
 
 local Client = script.Parent.Parent
 local UI = Client:WaitForChild("UI")
@@ -341,6 +346,17 @@ end
 
 function H.menuCfg()
 	return type(Config.MainMenu) == "table" and Config.MainMenu or {}
+end
+
+-- the "rbxassetid://" image of a TextureIds key (TextureIds.lua holds only uploaded ids), nil while it has none (id 0)
+function H.textureImage(key)
+	local ids = H.optional(Shared, "TextureIds")
+	local id = ids and ids[key]
+	if type(id) == "number" and id > 0 then
+		local digits = string.format("%.0f", id) -- whole digits (a 15-digit id never prints as 1.05e+14)
+		return "rbxassetid://" .. digits
+	end
+	return nil
 end
 
 ----------------------------------------------------------------------
@@ -672,10 +688,20 @@ function Loading.fade(gui)
 	end)
 end
 
+-- (sign/logo build) the loading screen's board sways like the title screen's; Camera shake OFF stops it. The loading
+-- screen cannot read the settings (ReplicatedFirst), so the setting goes to its gui's Sway attribute (here, and again
+-- whenever it changes or arrives with the profile)
+function Loading.passSway(gui)
+	if gui and gui.Parent and gui.Name == "NimbusLoading" then
+		gui:SetAttribute("Sway", ClientSettings.Get("Shake") ~= false)
+	end
+end
+
 function Loading.watch(gui)
 	if not gui or gui.Name ~= "NimbusLoading" or not gui:IsA("ScreenGui") then
 		return
 	end
+	Loading.passSway(gui)
 	if gui:GetAttribute("Done") == true then
 		Loading.fade(gui)
 		return
@@ -1005,11 +1031,21 @@ function Menu.build(enter)
 		title.Position = UDim2.fromOffset(0, 0)
 		title.Size = UDim2.fromScale(1, 1)
 		title.TextXAlignment = Enum.TextXAlignment.Center
+		title.Visible = false -- (sign/logo build) the logo below shows the game's name
 	end
+	-- (sign/logo build) the logo on the header (over the canopy: its bumps rise above the plate, its bolt ends at the
+	-- plate's foot): the L1 picture when Config.Loading.Images.Logo has an id in TextureIds, else the live L2
+	local logoScale = Logo.Fit(boardW - 2 * Z.Rim, headH - Z.Rim)
+	M.Ui.Logo = Logo.Build(board, {
+		Image = H.textureImage(Logo.Key(Config)),
+		Scale = logoScale,
+		Position = UDim2.fromOffset(math.floor(boardW / 2), math.floor(headY + Z.Rim - 18 * logoScale)),
+		ZIndex = 4,
+	})
 	local wood = SignKit.Frame(board, { Y = headY + headH, Height = woodH, ZIndex = 1 })
 	local body = SignKit.Body(wood)
-	-- (sign build) the owner's "Workshop" trim: grain, nails, rope rings, the striped awning's notched lip, a chip
-	SignKit.Workshop({ Roof = roof, Head = head, Frame = wood, Ropes = ropes }, { Width = boardW, Factor = f })
+	-- (sign/logo build) the owner's B2 "Sky-climber's rig" (it replaced the Workshop trim)
+	SignKit.Rig({ Board = board, Roof = roof, Head = head, Frame = wood, Ropes = ropes }, { Width = boardW, Version = "V" .. latest })
 
 	local tagline = Theme.Label(tostring(Config.Tagline or K.TAGLINE), "Body", { Size = 20, Color = Theme.TextOn("Stone") })
 	tagline.Name = "Tagline"
@@ -1276,6 +1312,7 @@ end
 function Menu.run(ui)
 	local B, E = K.BOARD, Menu.entrance()
 	ui.Phase = "Entering"
+	SignKit.Spin(ui.Board, true) -- (sign/logo build) B2's propellers turn while the board opens
 	Menu.tween(ui, "Move", ui.Swing, TweenInfo.new(tonumber(E.Drop) or 0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Position = ui.Rest }, function()
 		Menu.snap(ui)
 	end)
@@ -1363,6 +1400,11 @@ function Menu.sway(ui)
 	end
 	local W = Menu.swayCfg()
 	local d = tonumber(W.Degrees) or 0
+	-- (sign/logo build) B2's propellers turn while it sways and rest level when it does not
+	if ui.Board and (ui.Board:GetAttribute("RigSpin") == nil or (ui.Board:GetAttribute("Spinning") == true) ~= Menu.swayOn()) then
+		ui.Board:SetAttribute("Spinning", Menu.swayOn())
+		SignKit.Spin(ui.Board, Menu.swayOn())
+	end
 	if Menu.swayOn() then
 		if ui.Swaying and ui.Tw.Turn == ui.Swaying then
 			return
@@ -1460,6 +1502,9 @@ function Menu.leave()
 	local B, ui = K.BOARD, M.Ui
 	Menu.stopMotion(ui)
 	ui.Phase, ui.Swaying = "Leaving", nil
+	if ui.Board then
+		SignKit.Spin(ui.Board, false)
+	end
 	local swing = ui.Swing
 	if swing and swing.Parent then
 		local p = ui.Rest or swing.Position
@@ -2032,13 +2077,7 @@ end
 
 -- "rbxassetid://<id>" of a TextureIds key, nil while it has no id
 function Credits.image(key)
-	local ids = H.optional(Shared, "TextureIds")
-	local id = ids and ids[key]
-	if type(id) == "number" and id > 0 then
-		local digits = string.format("%.0f", id) -- whole digits (a 15-digit id never prints as 1.05e+14)
-		return "rbxassetid://" .. digits
-	end
-	return nil
+	return H.textureImage(key)
 end
 
 -- the headshot into `label` (a web call: once per user, off the build)
@@ -2702,6 +2741,10 @@ local function onSettingChanged(key)
 	end
 	if key == "Shake" and M.Open and not M.Playing then
 		H.safe("sway", Menu.sway, M.Ui) -- (sign build) Camera shake OFF stops the title board's sway, ON brings it back
+	end
+	if key == "Shake" then
+		local pg = H.playerGui()
+		Loading.passSway(pg and pg:FindFirstChild("NimbusLoading")) -- (sign/logo build) ...and the loading board's
 	end
 end
 

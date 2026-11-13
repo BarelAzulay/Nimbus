@@ -234,6 +234,66 @@ function SmokeCommon.closeMarkIssues(button, opts)
 	return out
 end
 
+-- kit-b U6: the stroke walk (client world) over every shown text under `root`: one outline at most, and no outline on an
+-- opaque plate. Returns the count of texts walked, the paths with a classic stroke AND an outline (doubled) and the paths
+-- outlined on an opaque plate (panelled; the nearest painted background, the text's own first, under 0.3 transparency).
+-- A world sign (BillboardGui / SurfaceGui) keeps its ONE outline on its plate (ARCHITECTURE_V3's World text rule).
+-- (sign/logo build) `allowed` is Theme.OutlineOnPlate, the owner's written exception (T1, 2026-11-13): a text whose
+-- FontRole is in it (the Title role only) may carry ONE outline and no classic stroke on a plate (the ribbon's gold
+-- letters, the logo's letters). tools/render_gui.py's stroke_rule is the same rule over the dumps.
+local function contextualRings(obj)
+	local n = 0
+	for _, c in ipairs(obj:GetChildren()) do
+		if c:IsA("UIStroke") and c.ApplyStrokeMode == Enum.ApplyStrokeMode.Contextual and c.Enabled ~= false and (tonumber(c.Thickness) or 0) > 0 and (tonumber(c.Transparency) or 0) < 0.95 then
+			n = n + 1
+		end
+	end
+	return n
+end
+function SmokeCommon.StrokeWalk(root, allowed)
+	allowed = allowed or {}
+	local function shown(t)
+		return tostring(t or ""):gsub("%s", "") ~= ""
+	end
+	-- the nearest GuiObject (the label itself first) that paints a background: is it opaque?
+	local function onPanel(obj)
+		local o = obj
+		while o and not o:IsA("LayerCollector") do
+			if o:IsA("GuiObject") then
+				local bt = tonumber(o.BackgroundTransparency) or 1
+				if bt < 0.99 then
+					return bt < 0.3, o
+				end
+			end
+			o = o.Parent
+		end
+		return false, nil
+	end
+	local total, doubled, panelled = 0, {}, {}
+	for _, d in ipairs(root:GetDescendants()) do
+		if (d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox")) and shown(d.Text) then
+			total = total + 1
+			local classic = (tonumber(d.TextStrokeTransparency) or 1) < 0.95
+			local rings = contextualRings(d)
+			local path = d:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
+			if classic and rings > 0 then
+				doubled[#doubled + 1] = path
+			end
+			local world = d:FindFirstAncestorWhichIsA("BillboardGui") or d:FindFirstAncestorWhichIsA("SurfaceGui")
+			local excepted = allowed[d:GetAttribute("FontRole")] == true and rings == 1 and not classic
+			if (classic or rings > 0) and not world and not excepted then
+				local opaque, panel = onPanel(d)
+				if opaque then
+					panelled[#panelled + 1] = path .. (panel ~= d and (" on " .. panel.Name) or " (own fill)")
+				end
+			end
+		end
+	end
+	table.sort(doubled)
+	table.sort(panelled)
+	return total, doubled, panelled
+end
+
 -- kit-b U6 review: the contrast rule (client world). kit B gives a text no outline on a surface; it reads by its colour
 -- against what is painted under it. For a text with no outline (no Contextual UIStroke, no classic stroke): the sample
 -- point is the centre of its glyphs (TextBounds placed by its alignment inside its padded box); its backdrop is the last

@@ -15,10 +15,13 @@
 --   SignKit.Rope(parent, opts)    a rope / post the board hangs from
 --   SignKit.BlockRow(parent, opts) n stone blocks with a darker lip; SignKit.FillBlocks(row, k) turns the first k gold
 --   SignKit.Notice(parent, opts)  a small wood-framed stone card (a tip, a notice); returns notice, face
---   SignKit.Workshop(parts, opts) (sign build: the owner's pick "A Workshop") the hand-built trim on a hanging board's
---                                 parts: wood grain strips in the frame and the header rim, iron nails, a metal ring on
---                                 each rope, the awning striped with a notched lip, one chipped corner. Opt-in: only the
---                                 title screen's and the loading screen's boards call it (Credits stays as approved)
+--   SignKit.Rig(parts, opts)      (sign/logo build: the owner's pick B2 "Sky-climber's rig", 2026-11-13; it replaced the
+--                                 Workshop trim) a hanging board's canopy (canvas under navy stripes, a scalloped
+--                                 valance with brass piping, a stitched patch), the frame's bevel, rope lashings on its
+--                                 corners, the canvas body's hem, twisted ropes ending in carabiners on eye-bolts, two
+--                                 propellers, the brass version plate. Opt-in: only the title screen's and the loading
+--                                 screen's boards call it (Credits stays as approved). SignKit.Spin(root, on) flips the
+--                                 propellers (2 frames, never a rotation); SignKit.PropFrame(root, n) sets one
 -- Every part stamps attribute SignKit = its kind. Sizes are design px of a 1080p screen (the pitch's 0.8-scale px / 0.8);
 -- opts override any colour or size, so a look the owner already approved (Credits) builds from these parts unchanged.
 -- Requires only Theme (Shared). Plain Lua 5.1-compatible syntax only.
@@ -514,219 +517,329 @@ function SignKit.Notice(parent, opts)
 end
 
 ----------------------------------------------------------------------
--- workshop trim (sign build; the owner's pick "A Workshop" on .superpowers/sign-pitch/sign_pitch.html)
+-- the sky-climber's rig (sign/logo build: the owner's pick B2, .superpowers/sign-logo-pitch/FINAL_OPTIONS.md "BOARD")
 ----------------------------------------------------------------------
 
--- the trim's colours: the wood's own grain (Theme.Sign.Wood towards Text / Post) and the pitch's iron (#9AA3AD / #5D6670;
--- Theme.Sign has no grey, a later Iron / IronDark token there wins)
-SignKit.WorkshopColors = {
-	Grain = Sign.Wood:Lerp(Sign.Text, 0.45), -- a darker grain line
-	GrainLight = Sign.Wood:Lerp(Sign.Post, 0.6), -- a lighter one, and the chipped corner's raw wood
-	Iron = Sign.Iron or Color3.fromRGB(154, 163, 173),
-	IronDark = Sign.IronDark or Color3.fromRGB(93, 102, 112),
-	Stripe = Sign.RoofLip,
-	Notch = Sign.RoofLip, -- the pitch's darker pink lip (--pinkdk)
+-- The pitch drew B2 on a 250 px board; every size here is its px times k = the board's width / 250, clamped 1 .. 2 (as the
+-- Workshop trim before it). Positions along the board follow its real width.
+SignKit.RigSizes = {
+	Stripe = 26, -- the canopy's navy stripes ...
+	Gap = 14, -- ... and the canvas between them
+	Scallop = 20, -- the valance's scallops: 20 wide, dropping 8 in three steps, brass piping under each step
+	Drop = 8,
+	Pipe = 2,
+	PatchW = 16, -- the stitched patch at x 176 of 250
+	PatchH = 12,
+	PatchAt = 176,
+	Stitch = 3,
+	Lash = 14, -- a corner lashing's square
+	Twist = 6, -- the ropes' twist blocks
+	CaraW = 12, -- the carabiner and its open gate
+	CaraH = 18,
+	Gate = 8,
+	Eye = 10, -- the eye-bolt on the canopy's top edge
+	Bar = 3, -- the iron's bar
+	Prop = 22, -- a propeller's blade, hub and bracket, centred 6 in from each end of the board, 4 above it
+	PropW = 6,
+	Hub = 6,
+	BracketW = 8,
+	BracketH = 10,
+	PropIn = 6,
+	PropUp = 4,
+	PlateW = 40, -- the brass version plate on the bottom rail: 13 above the board's foot to 3 below it
+	PlateH = 16,
+	PlateUp = 13,
+	PlateText = 11,
+	Hem = 3, -- the canvas body's hem and its 2 px lit top / left
+	HemLit = 2,
+	Bevel = 2, -- the frame's lit top / left edge, 3 for its shaded bottom / right
+	Shade = 3,
+	Flip = 0.5, -- the propellers' 2-frame flip
 }
-local WC = SignKit.WorkshopColors
-local NOTCH_H = 7 -- the awning's notched lip: a 4 px tooth and its 3 px point
+local RZ = SignKit.RigSizes
 
--- one trim block: a flat Frame stamped SignKit = "Workshop", Workshop = its kind
-local function bit(kind, colour, props, parent)
-	local f = fill("Trim" .. kind, colour, props, parent)
-	f:SetAttribute("SignKit", "Workshop")
-	f:SetAttribute("Workshop", kind)
+-- one rig piece: a flat Frame stamped SignKit = "Rig", Rig = its kind (Trim = the B2 trim it belongs to)
+local function piece(kind, colour, props, parent, trim)
+	local f = fill("Rig" .. kind, colour, props, parent)
+	f:SetAttribute("SignKit", "Rig")
+	f:SetAttribute("Rig", kind)
+	if trim then
+		f:SetAttribute("Trim", trim)
+	end
 	return f
 end
 
--- the trim of an earlier call, so a re-layout can draw it again at the new size
-local function clearTrim(parent)
+local function clearRig(parent)
 	for _, c in ipairs(parent:GetChildren()) do
-		if c:GetAttribute("SignKit") == "Workshop" then
+		if c:GetAttribute("SignKit") == "Rig" then
 			c:Destroy()
 		end
 	end
 end
 
--- a grain strip on a rail: x / y as { scale, offset }, w / h the same
-local function grain(parent, light, x, y, w, h, z)
-	return bit("Grain", light and WC.GrainLight or WC.Grain, {
-		Position = UDim2.new(x[1], x[2], y[1], y[2]),
-		Size = UDim2.new(w[1], w[2], h[1], h[2]),
-		ZIndex = z,
-	}, parent)
+-- a ring of four iron bars (w x h, bar thick): the eye-bolt, and the carabiner with its open gate on the right
+local function ironRing(kind, w, h, bar, colour, dark, gate, z, parent, trim)
+	local ring = frame("Rig" .. kind, { Size = UDim2.fromOffset(w, h), ZIndex = z }, parent)
+	ring:SetAttribute("SignKit", "Rig")
+	ring:SetAttribute("Rig", kind)
+	ring:SetAttribute("Trim", trim)
+	fill("Top", colour, { Size = UDim2.fromOffset(w, bar), ZIndex = z }, ring)
+	fill("Bottom", colour, { Position = UDim2.fromOffset(0, h - bar), Size = UDim2.fromOffset(w, bar), ZIndex = z }, ring)
+	fill("Left", colour, { Size = UDim2.fromOffset(bar, h), ZIndex = z }, ring)
+	if gate and gate > 0 then
+		local top = math.floor((h - gate) / 2)
+		fill("Right", dark, { Position = UDim2.fromOffset(w - bar, 0), Size = UDim2.fromOffset(bar, top), ZIndex = z }, ring)
+		fill("Right", dark, { Position = UDim2.fromOffset(w - bar, top + gate), Size = UDim2.fromOffset(bar, h - top - gate), ZIndex = z }, ring)
+	else
+		fill("Right", dark, { Position = UDim2.fromOffset(w - bar, 0), Size = UDim2.fromOffset(bar, h), ZIndex = z }, ring)
+	end
+	return ring
 end
 
--- an iron nail head (s px): a square whose darker bottom-right (sh px) shows round a lighter cap (the pitch's inset shadow)
-local function nail(parent, pos, s, sh, z)
-	local n = bit("Nail", WC.IronDark, { Position = pos, Size = UDim2.fromOffset(s, s), ZIndex = z }, parent)
-	fill("TrimCap", WC.Iron, { Size = UDim2.fromOffset(s - sh, s - sh), ZIndex = z }, n)
-	return n
-end
-
--- the lowest ZIndex among obj's own (non-trim) children, or 1
-local function lowestChild(obj)
-	local low = nil
-	for _, c in ipairs(obj:GetChildren()) do
-		if c:IsA("GuiObject") and c:GetAttribute("SignKit") ~= "Workshop" then
-			low = math.min(low or c.ZIndex, c.ZIndex)
-		end
-	end
-	return low or 1
-end
-
--- cut a stepped bite out of a filled Frame's bottom-right corner, so what is behind the board shows through: the Frame
--- turns see-through and "Cut" patches (z, under its own children) fill it again less the bite. steps: { dx, dy } from
--- the corner, dx falling and dy rising; the bite is every x >= W - dx, y >= H - dy. maxH: the Frame's height when known
-local function cut(obj, colour, steps, z, maxH)
-	obj.BackgroundTransparency = 1
-	local d = {}
-	for _, s in ipairs(steps) do
-		if s[1] > 0 and s[2] > 0 then
-			d[#d + 1] = { s[1], maxH and math.min(s[2], maxH) or s[2] }
-		end
-	end
-	local top = d[#d] and d[#d][2] or 0
-	bit("Cut", colour, { Size = UDim2.new(1, 0, 1, -top), ZIndex = z }, obj)
-	local above = 0
-	for _, s in ipairs(d) do
-		-- the band of rows between this step and the one before, as wide as the frame less this step's bite
-		if s[2] > above then
-			bit("Cut", colour, { Position = UDim2.new(0, 0, 1, -s[2]), Size = UDim2.new(1, -s[1], 0, s[2] - above), ZIndex = z }, obj)
-		end
-		above = s[2]
-	end
-end
-
--- parts: Roof (a flat SignKit.Roof: offset-sized, with its Face and Lip), Head (the header: rim + plate), Frame (the wood
--- frame round the body), Ropes (the board's ropes; their lower end runs RingAt px into the board). opts: Rail (the rim /
--- frame width, default Sizes.Frame), RingAt (8), Width (the board's design width; default the frame's or its board's),
--- Factor (the screen's UIScale, default Theme.ScreenFactor()). (review) The pitch drew the trim on a 250 px board, so
--- nails, rings and the chip grow with the board (Width / 250, 1 .. 2); a grain strip stays 2 screen px or wider (3 design
--- px under a 0.8 factor) so it never shimmers on the swinging board. Calling it again redraws the trim (a re-layout).
--- Returns the trim count
-function SignKit.Workshop(parts, opts)
-	opts = opts or {}
-	local rail = tonumber(opts.Rail) or Z.Frame
-	local n = 0
-	local roof, head, wood = parts.Roof, parts.Head, parts.Frame
-	local width = tonumber(opts.Width)
-	if not width and wood then
-		width = wood.Size.X.Offset > 0 and wood.Size.X.Offset or (wood.Parent and wood.Parent:IsA("GuiObject") and wood.Parent.Size.X.Offset)
-	end
-	local k = math.min(math.max((tonumber(width) or 440) / 250, 1), 2)
-	local f = tonumber(opts.Factor) or Theme.ScreenFactor()
-	local g = math.min(math.max(2, math.ceil(2 / f - 0.001)), rail - 2) -- a grain strip's width
-	local gIn, gOut = 1, rail - g - 1 -- a strip's two places across a rail
-	local nailS, nailSh, nailIn = math.floor(6 * k + 0.5), math.floor(2 * k + 0.5), math.floor(3 * k + 0.5)
-	if roof then
-		clearTrim(roof)
-		local face = roof:FindFirstChild("Face")
-		local w = roof.Size.X.Offset
-		local z = roof.ZIndex
-		if face then
-			clearTrim(face)
-			local lipObj = face:FindFirstChild("Lip")
-			local lip = lipObj and lipObj.Size.Y.Offset or Z.RoofLip
-			-- stripes: a 2 px darker line every 16 px across the face, above its lip
-			local faceW = w - 2 * Z.RoofEdge
-			for x = 14, faceW - 4, 16 do
-				bit("Stripe", WC.Stripe, { Position = UDim2.fromOffset(x, 0), Size = UDim2.new(0, 2, 1, -lip), ZIndex = face.ZIndex }, face)
-				n = n + 1
+-- the blades of every propeller under root: frame 1 level (wider than tall), 2 upright. A flip swaps the blade's size,
+-- never a Rotation (a turned Frame goes soft)
+function SignKit.PropFrame(root, n)
+	for _, d in ipairs(root:GetDescendants()) do
+		if d:GetAttribute("Rig") == "Blade" then
+			local long, short = d:GetAttribute("Long"), d:GetAttribute("Short")
+			if long and short then
+				d.Size = n == 2 and UDim2.fromOffset(short, long) or UDim2.fromOffset(long, short)
 			end
 		end
-		-- the notched lip under the awning: stepped pixel teeth (10 px, then 6 px), one every 14 px
-		local notch = frame("TrimNotch", { Position = UDim2.new(0, 0, 1, 0), Size = UDim2.new(1, 0, 0, NOTCH_H), ZIndex = z }, roof)
-		notch:SetAttribute("SignKit", "Workshop")
-		notch:SetAttribute("Workshop", "Notch")
-		for x = 2, w - 12, 14 do
-			local tooth = bit("Tooth", WC.Notch, { Position = UDim2.fromOffset(x, 0), Size = UDim2.fromOffset(10, 4), ZIndex = z }, notch)
-			fill("TrimPoint", WC.Notch, { Position = UDim2.fromOffset(2, 4), Size = UDim2.fromOffset(6, 3), ZIndex = z }, tooth)
+	end
+	root:SetAttribute("PropFrame", n == 2 and 2 or 1)
+end
+
+-- the propellers under root turn (flip every RigSizes.Flip s) while `on`, else rest level. Called again it restarts;
+-- the loop ends when root leaves the game
+function SignKit.Spin(root, on)
+	local gen = (root:GetAttribute("RigSpin") or 0) + 1
+	root:SetAttribute("RigSpin", gen)
+	SignKit.PropFrame(root, 1)
+	if not on then
+		return
+	end
+	task.spawn(function()
+		local n = 1
+		while true do
+			task.wait(RZ.Flip)
+			if not root.Parent or root:GetAttribute("RigSpin") ~= gen then
+				return
+			end
+			n = 3 - n
+			SignKit.PropFrame(root, n)
+		end
+	end)
+end
+
+-- parts: Board (the board Frame: the ropes, roof, header and frame are laid out in it), Roof (a flat SignKit.Roof),
+-- Head (the header), Frame (the wood frame round the body), Ropes (the board's ropes, siblings of the board in its
+-- Swing). opts: Width (the board's design width; default the board's), Version ("V6": the brass plate's text; none = no
+-- plate). B2 on those parts: the canopy (the roof's face weathered canvas under navy stripes, a navy edge, a scalloped
+-- valance with brass piping), a stitched patch on it, the frame's bevel (a lit top / left edge, a shaded bottom / right),
+-- rope lashings on its four corners, the canvas body's hem (no seams), the twisted ropes ending in carabiners clipped to
+-- eye-bolts on the canopy's top edge, two propellers at the canopy's top corners, the brass version plate on the bottom
+-- rail. The five trims (lashings, hang rig, propellers, plate, patch) are B2's limit. Flat Frames in Theme.Sign colours,
+-- offset sizes (nothing on the top is stretched or sliced), no glow. Calling it again redraws the rig (a re-layout).
+-- Returns the number of pieces
+function SignKit.Rig(parts, opts)
+	opts = opts or {}
+	local board, roof, head, wood = parts.Board, parts.Roof, parts.Head, parts.Frame
+	local bw = tonumber(opts.Width) or (board and board.Size.X.Offset) or 440
+	local bh = board and board.Size.Y.Offset or 0
+	local k = math.min(math.max(bw / 250, 1), 2)
+	local at = bw / 250 -- a position on the pitch's 250 px board
+	local function px(v, least)
+		return math.max(least or 1, math.floor(v * k + 0.5))
+	end
+	local n = 0
+	if board then
+		clearRig(board)
+	end
+	-- the canopy: the roof's face canvas, navy stripes across it, its edge and lip navy; the scalloped valance under it
+	local roofW, roofH, roofX = 0, 0, 0
+	if roof then
+		clearRig(roof)
+		roofW, roofH = roof.Size.X.Offset, roof.Size.Y.Offset
+		roofX = roof.Position.X.Scale * bw + roof.Position.X.Offset - roof.AnchorPoint.X * roofW
+		roof.BackgroundColor3 = Sign.NavyLip
+		local face = roof:FindFirstChild("Face")
+		if face then
+			clearRig(face)
+			face.BackgroundColor3 = Sign.Canvas
+			local lip = face:FindFirstChild("Lip")
+			if lip then
+				lip.BackgroundColor3 = Sign.NavyLip
+			end
+			local faceW = roofW - 2 * Z.RoofEdge
+			local x = 0
+			while x < faceW do
+				piece("Stripe", Sign.NavyLight, {
+					Position = UDim2.fromOffset(x, 0),
+					Size = UDim2.new(0, math.min(px(RZ.Stripe), faceW - x), 1, 0),
+					ZIndex = face.ZIndex,
+				}, face)
+				n = n + 1
+				x = x + px(RZ.Stripe) + px(RZ.Gap)
+			end
+		end
+		-- the valance: scallops in the stripe colour above them, each three steps narrower to its foot, brass under each
+		-- step's open edge
+		local sw, rows, pipe = px(RZ.Scallop, 6), math.max(1, math.floor(px(RZ.Drop) / 3)), px(RZ.Pipe)
+		local inset = math.max(1, math.floor(sw / 6))
+		local period = px(RZ.Stripe) + px(RZ.Gap)
+		local count = math.floor(roofW / sw)
+		local x0 = math.floor((roofW - count * sw) / 2)
+		for i = 0, count - 1 do
+			local x = x0 + i * sw
+			local mid = (x + sw / 2 - Z.RoofEdge) % period
+			local colour = mid < px(RZ.Stripe) and Sign.NavyLight or Sign.Canvas
+			local sc = frame("RigScallop", { Position = UDim2.new(0, x, 1, 0), Size = UDim2.fromOffset(sw, 3 * rows + pipe), ZIndex = roof.ZIndex }, roof)
+			sc:SetAttribute("SignKit", "Rig")
+			sc:SetAttribute("Rig", "Scallop")
+			for r = 0, 2 do
+				local cut = r * inset
+				fill("Step", colour, { Position = UDim2.fromOffset(cut, r * rows), Size = UDim2.fromOffset(sw - 2 * cut, rows), ZIndex = roof.ZIndex }, sc)
+				-- the brass piping under this step's open edge (the whole foot on the last step)
+				if r == 2 then
+					piece("Piping", Sign.Brass, { Position = UDim2.fromOffset(cut, 3 * rows), Size = UDim2.fromOffset(sw - 2 * cut, pipe), ZIndex = roof.ZIndex }, sc)
+				else
+					piece("Piping", Sign.Brass, { Position = UDim2.fromOffset(cut, (r + 1) * rows), Size = UDim2.fromOffset(inset, pipe), ZIndex = roof.ZIndex }, sc)
+					piece("Piping", Sign.Brass, { Position = UDim2.fromOffset(sw - cut - inset, (r + 1) * rows), Size = UDim2.fromOffset(inset, pipe), ZIndex = roof.ZIndex }, sc)
+				end
+			end
 			n = n + 1
 		end
-	end
-	if head then
-		clearTrim(head)
-		local z = head.ZIndex
-		-- grain along the side rails of the rim (its top hides under the awning)
-		grain(head, false, { 0, gIn }, { 0.32, 0 }, { 0, g }, { 0.5, 0 }, z)
-		grain(head, true, { 1, -rail + gOut }, { 0.22, 0 }, { 0, g }, { 0.55, 0 }, z)
-		-- a nail in each top corner of the navy plate, as in the pitch, below the awning's notched teeth
-		local plate = head:FindFirstChild("Plate")
-		local nz = (plate and plate.ZIndex or z) + 1
-		local y = rail + nailIn
-		if roof and roof.Parent == head.Parent then
-			y = math.max(y, roof.Position.Y.Offset + roof.Size.Y.Offset + NOTCH_H - head.Position.Y.Offset + 2)
+		-- the patch: canvas, four stitches along each long side, at x 176 of 250
+		local pw, ph, st = px(RZ.PatchW), px(RZ.PatchH), px(RZ.Stitch, 2)
+		local patch = piece("Patch", Sign.Stone, {
+			Position = UDim2.fromOffset(math.floor(-roofX + RZ.PatchAt * at - pw / 2), math.floor((roofH - ph) / 2)),
+			Size = UDim2.fromOffset(pw, ph),
+			ZIndex = roof.ZIndex,
+		}, roof, "Patch")
+		for i = 0, 3 do
+			local sx = math.floor((i + 0.5) * pw / 4 - st / 2)
+			fill("Stitch", Sign.Wood, { Position = UDim2.fromOffset(sx, 0), Size = UDim2.fromOffset(st, math.max(1, math.floor(st / 2))), ZIndex = roof.ZIndex }, patch)
+			fill("Stitch", Sign.Wood, { Position = UDim2.fromOffset(sx, ph - math.max(1, math.floor(st / 2))), Size = UDim2.fromOffset(st, math.max(1, math.floor(st / 2))), ZIndex = roof.ZIndex }, patch)
 		end
-		nail(head, UDim2.fromOffset(rail + nailIn, y), nailS, nailSh, nz)
-		nail(head, UDim2.new(1, -(rail + nailIn + nailS), 0, y), nailS, nailSh, nz)
-		n = n + 4
+		n = n + 1
 	end
-	if wood then
-		clearTrim(wood)
-		local z = wood.ZIndex
-		-- grain on the left, right and bottom rails (a dark and a light run each, never the same length twice)
-		grain(wood, false, { 0, gIn }, { 0.12, 0 }, { 0, g }, { 0.38, 0 }, z)
-		grain(wood, true, { 0, gOut }, { 0.6, 0 }, { 0, g }, { 0.22, 0 }, z)
-		grain(wood, true, { 1, -rail + gOut }, { 0.08, 0 }, { 0, g }, { 0.3, 0 }, z)
-		grain(wood, false, { 1, -rail + gIn }, { 0.52, 0 }, { 0, g }, { 0.26, 0 }, z)
-		grain(wood, false, { 0.1, 0 }, { 1, -rail + gOut }, { 0.32, 0 }, { 0, g }, z)
-		grain(wood, true, { 0.55, 0 }, { 1, -rail + gIn }, { 0.28, 0 }, { 0, g }, z)
-		local body = wood:FindFirstChild("Body")
-		local bz = body and body.ZIndex or z
-		local inset = body and body.Position.X.Offset or rail
-		local lip = body and body:FindFirstChild("Lip")
-		local lipH = lip and lip.Size.Y.Offset or Z.Lip
-		-- a nail in each bottom corner of the body, as in the pitch, just above its lip (over the body: a higher ZIndex)
-		local ny = -(inset + lipH + nailIn + nailS)
-		nail(wood, UDim2.new(0, inset + nailIn, 1, ny), nailS, nailSh, bz + 1)
-		nail(wood, UDim2.new(1, -(inset + nailIn + nailS), 1, ny), nailS, nailSh, bz + 1)
-		-- one chipped corner (bottom-right): a stepped bite out of the frame and the body that shows what is behind the
-		-- board (the pitch's 8 px bite in the sky colour), a dark crack running left along the lip from its inner step (clear of the nail)
-		local c = math.floor(8 * k + 0.5)
-		local s = math.floor(c / 4.5)
-		local steps = { { c, c - 2 * s }, { c - s, c - s }, { c - 2 * s, c } }
-		cut(wood, wood.BackgroundColor3, steps, bz - 1)
-		if body then
-			clearTrim(body)
-			local inner = {}
-			for i, st in ipairs(steps) do
-				inner[i] = { st[1] - inset, st[2] - inset }
+	-- the frame's bevel: a lit top / left edge, a shaded bottom / right (B1's skeleton under B2)
+	for _, part in ipairs({ head, wood }) do
+		if part then
+			clearRig(part)
+			local z = part.ZIndex
+			piece("Bevel", Sign.WoodLight, { Size = UDim2.new(0, RZ.Bevel, 1, 0), ZIndex = z }, part)
+			piece("Bevel", Sign.WoodDark, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.new(0, RZ.Shade, 1, 0), ZIndex = z }, part)
+			if part == head then
+				piece("Bevel", Sign.WoodLight, { Size = UDim2.new(1, 0, 0, RZ.Bevel), ZIndex = z }, part)
+			else
+				piece("Bevel", Sign.WoodDark, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, RZ.Shade), ZIndex = z }, part)
 			end
-			cut(body, body.BackgroundColor3, inner, lowestChild(body) - 1)
-			if lip then
-				clearTrim(lip)
-				cut(lip, lip.BackgroundColor3, inner, lip.ZIndex, lipH)
+			n = n + 4
+		end
+	end
+	-- the canvas body: one sheet, a hem on its top, left and right (its lip is the foot), lit inside the hem; no seams
+	local body = wood and wood:FindFirstChild("Body")
+	if body then
+		clearRig(body)
+		local hem, lit = px(RZ.Hem), px(RZ.HemLit)
+		piece("Hem", Sign.StoneLip, { Size = UDim2.new(1, 0, 0, hem), ZIndex = 1 }, body)
+		piece("Hem", Sign.StoneLip, { Size = UDim2.new(0, hem, 1, 0), ZIndex = 1 }, body)
+		piece("Hem", Sign.StoneLip, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.new(0, hem, 1, 0), ZIndex = 1 }, body)
+		piece("HemLit", Sign.Tile, { Position = UDim2.fromOffset(hem, hem), Size = UDim2.new(1, -2 * hem, 0, lit), ZIndex = 1 }, body)
+		piece("HemLit", Sign.Tile, { Position = UDim2.fromOffset(hem, hem), Size = UDim2.new(0, lit, 1, -hem), ZIndex = 1 }, body)
+		n = n + 5
+	end
+	if not board then
+		return n
+	end
+	local z = 5 -- over the roof (3), the header (2) and the logo (4)
+	-- the corner lashings: rope wound round each corner of the frame (below the valance at the top), diagonal strands of
+	-- rope and its shade over the dark wood
+	local ls = px(RZ.Lash, 6)
+	local cell = math.max(2, math.floor(ls / 5))
+	ls = cell * 5
+	local topY = roof and (roof.Position.Y.Offset + roofH + px(RZ.Drop) + px(RZ.Pipe)) or (head and head.Position.Y.Offset or 0)
+	for _, c in ipairs({ { 0, topY }, { bw - ls, topY }, { 0, bh - ls }, { bw - ls, bh - ls } }) do
+		local lash = piece("Lashing", Sign.WoodDark, { Position = UDim2.fromOffset(c[1], c[2]), Size = UDim2.fromOffset(ls, ls), ZIndex = z }, board, "Lashing")
+		for r = 0, 4 do
+			for col = 0, 4 do
+				local d = (col - r) % 3
+				if d < 2 then
+					fill("Strand", d == 0 and Sign.Post or Sign.Wood, { Position = UDim2.fromOffset(col * cell, r * cell), Size = UDim2.fromOffset(cell, cell), ZIndex = z }, lash)
+				end
 			end
 		end
-		local chip = bit("Chip", WC.Grain, {
-			AnchorPoint = Vector2.new(1, 1),
-			Position = UDim2.fromScale(1, 1),
-			Size = UDim2.fromOffset(c, c),
-			ZIndex = bz + 1,
-		}, wood)
-		chip.BackgroundTransparency = 1 -- a marker over the bite: only its crack shows
-		local p = math.floor(2 * k + 0.5)
-		fill("TrimCrack", WC.Grain, { Position = UDim2.fromOffset(s - p, s - g), Size = UDim2.fromOffset(p, g), ZIndex = bz + 1 }, chip)
-		fill("TrimCrack", WC.Grain, { Position = UDim2.fromOffset(s - 2 * p + 1, s), Size = UDim2.fromOffset(p - 1, g), ZIndex = bz + 1 }, chip)
-		n = n + 9
+		n = n + 1
 	end
-	-- a metal ring where each rope ties on: an arch round the rope, sitting on the awning (the pitch's 18 x 13 knot with
-	-- its 3 px bars, grown with the board)
-	local ringW, ringH, bar = math.floor(18 * k + 0.5), math.floor(13 * k + 0.5), math.floor(3 * k + 0.5)
+	-- the hang rig: each rope twisted (wood blocks down its length, its flat shade off), ending in a carabiner clipped to
+	-- an eye-bolt on the canopy's top edge
+	local bar = px(RZ.Bar, 2)
+	local roofTop = roof and roof.Position.Y.Offset or 0
 	for _, rope in ipairs(parts.Ropes or {}) do
-		clearTrim(rope)
-		local z = rope.ZIndex
-		local ring = frame("TrimRing", {
-			AnchorPoint = Vector2.new(0.5, 1),
-			Position = UDim2.new(0.5, 0, 1, -(tonumber(opts.RingAt) or 8)),
-			Size = UDim2.fromOffset(ringW, ringH),
+		clearRig(rope)
+		local shade = rope:FindFirstChild("Shade")
+		if shade then
+			shade.Visible = false
+		end
+		local tb = px(RZ.Twist, 3)
+		local len = rope.Size.Y.Offset
+		local y = 0
+		while y < len do
+			piece("Twist", Sign.Wood, { Position = UDim2.fromOffset(0, y), Size = UDim2.new(1, 0, 0, math.min(tb, len - y)), ZIndex = rope.ZIndex }, rope, "HangRig")
+			y = y + 2 * tb
+			n = n + 1
+		end
+		local cx = rope.Position.X.Offset + rope.Size.X.Offset / 2 - board.Position.X.Offset
+		local ew, cw, ch = px(RZ.Eye), px(RZ.CaraW), px(RZ.CaraH)
+		local eyeY = roofTop - math.floor(ew / 2)
+		ironRing("EyeBolt", ew, ew, bar, Sign.IronDark, Sign.IronDark, 0, z, board, "HangRig").Position = UDim2.fromOffset(math.floor(cx - ew / 2), eyeY)
+		ironRing("Carabiner", cw, ch, bar, Sign.Iron, Sign.IronDark, px(RZ.Gate), z, board, "HangRig").Position = UDim2.fromOffset(math.floor(cx - cw / 2), eyeY - ch + bar)
+		n = n + 2
+	end
+	-- the propellers: at the canopy's top corners, wooden blades (a darker lower edge) on a brass hub on a bracket
+	local long, short, hub = px(RZ.Prop), px(RZ.PropW, 3), px(RZ.Hub, 3)
+	local brW, brH = px(RZ.BracketW), px(RZ.BracketH)
+	for _, x in ipairs({ RZ.PropIn * at, bw - RZ.PropIn * at }) do
+		local cy = roofTop - RZ.PropUp * at
+		local prop = frame("RigPropeller", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromOffset(math.floor(x + 0.5), math.floor(cy + 0.5)),
+			Size = UDim2.fromOffset(long, long),
 			ZIndex = z,
-		}, rope)
-		ring:SetAttribute("SignKit", "Workshop")
-		ring:SetAttribute("Workshop", "Ring")
-		fill("TrimTop", WC.Iron, { Size = UDim2.fromOffset(ringW, bar), ZIndex = z }, ring)
-		fill("TrimLeft", WC.Iron, { Size = UDim2.fromOffset(bar, ringH), ZIndex = z }, ring)
-		fill("TrimRight", WC.IronDark, { Position = UDim2.fromOffset(ringW - bar, 0), Size = UDim2.fromOffset(bar, ringH), ZIndex = z }, ring)
+		}, board)
+		prop:SetAttribute("SignKit", "Rig")
+		prop:SetAttribute("Rig", "Propeller")
+		prop:SetAttribute("Trim", "Propeller")
+		piece("Bracket", Sign.GoldLip, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.5, 0), Size = UDim2.fromOffset(brW, brH), ZIndex = z }, prop)
+		local blade = piece("Blade", Sign.Post, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(long, short), ZIndex = z }, prop)
+		blade:SetAttribute("Long", long)
+		blade:SetAttribute("Short", short)
+		fill("Edge", Sign.Wood, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, math.max(1, math.floor(short / 3))), ZIndex = z }, blade)
+		piece("Hub", Sign.Brass, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(hub, hub), ZIndex = z }, prop)
+		n = n + 1
+	end
+	-- the version plate: brass on the bottom rail, centred, its rivets at the ends, "V6" in brown
+	if opts.Version then
+		local w, h = px(RZ.PlateW), px(RZ.PlateH)
+		local plate = piece("Plate", Sign.GoldLip, {
+			Position = UDim2.fromOffset(math.floor((bw - w) / 2), bh - px(RZ.PlateUp)),
+			Size = UDim2.fromOffset(w, h),
+			ZIndex = z,
+		}, board, "Plate")
+		local e = math.max(1, math.floor(k + 0.5))
+		local face = fill("Face", Sign.Gold, { Position = UDim2.fromOffset(e, 0), Size = UDim2.new(1, -2 * e, 1, -e), ZIndex = z }, plate)
+		fill("Shine", Sign.GoldLight, { Size = UDim2.new(1, 0, 0, math.max(1, math.floor(2 * k / 1.5))), ZIndex = z }, face)
+		local rv = px(RZ.Bar, 2)
+		for _, rx in ipairs({ e + 1, w - 2 * e - rv - 1 }) do
+			fill("Rivet", Sign.GoldLip, { Position = UDim2.fromOffset(rx, math.floor((h - rv) / 2)), Size = UDim2.fromOffset(rv, rv), ZIndex = z }, face)
+		end
+		local l = text("PlateText", opts.Version, "Tag", math.max(18, px(RZ.PlateText)), Sign.Text, {
+			Size = UDim2.fromScale(1, 1),
+			ZIndex = z,
+		}, face)
+		l.TextYAlignment = Enum.TextYAlignment.Center
 		n = n + 1
 	end
 	return n
