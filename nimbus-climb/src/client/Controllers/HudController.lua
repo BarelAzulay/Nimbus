@@ -457,8 +457,8 @@ end
 -- at about glyphSize px (setCoinIcon redraws it at a new size)
 local function setCoinIcon(label, name, px)
 	local old = label:FindFirstChild("Icon")
-	if old then
-		old:Destroy()
+	if old and old:GetAttribute("PixelIcon") == name and old.Size.X.Offset == PixelIcon.Snap(px * 0.8) then
+		return -- the layout poll re-applies the geometry every 0.5 s: nothing to redraw
 	end
 	label:SetAttribute("PixelIcon", name)
 	PixelIcon.Host(label, name, px * 0.8)

@@ -3601,6 +3601,23 @@ local function clientScenarios()
 		local plain = NK.Icon(f, "R$", 20)
 		T.check(plain and plain.Text == "R$", "token icon: plain text that is no icon id shows as it is")
 		f:Destroy()
+		-- PixelIcon.Host on a host that already holds an icon replaces it (a mark that changes, the HUD coin resized by the
+		-- layout poll): one icon left, and the old one's colour hooks are gone with it
+		local host = Instance.new("TextLabel")
+		host.TextSize = 20
+		PixelIcon.Host(host, "check")
+		PixelIcon.Host(host, "x")
+		local icons = {}
+		for _, c in ipairs(host:GetChildren()) do
+			if c.Name == "Icon" then
+				icons[#icons + 1] = c
+			end
+		end
+		host.TextColor3 = Color3.fromRGB(200, 10, 10)
+		local r1 = icons[1] and icons[1]:FindFirstChild("R1")
+		T.check(#icons == 1 and icons[1]:GetAttribute("PixelIcon") == "x" and r1 and r1.BackgroundColor3 == Color3.fromRGB(200, 10, 10),
+			"token icon: hosting again replaces the icon (one left, the new one follows the host's colour)", tostring(#icons))
+		host:Destroy()
 		-- PixelIcon.Lead: the coin before an amount
 		local lab = Instance.new("TextLabel")
 		lab.Size = UDim2.fromOffset(200, 30)

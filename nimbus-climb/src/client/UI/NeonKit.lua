@@ -374,12 +374,12 @@ function NeonKit.Orb(parent, color, size)
 	return orb
 end
 
--- The image id for an icon (Config.Icons[id] = "rbxassetid://n"), or nil.
+-- The image id for an icon (Config.Icons[id] = an asset id), or nil. (U7a) a value naming a PixelIcon is no image
 local function iconImage(id)
 	local icons = Config.Icons
 	if type(icons) == "table" and type(id) == "string" then
 		local value = icons[id]
-		if type(value) == "string" and value:sub(1, 13) == "rbxassetid://" then
+		if type(value) == "string" and value ~= "" and not PixelIcon.Bitmaps[value] then
 			return value
 		end
 	end

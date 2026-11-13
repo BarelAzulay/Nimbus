@@ -78,7 +78,8 @@ PixelIcon.Bitmaps = {
 	box = "........./##.....##/###...###/#########/####.####/####.####/####.####/#########/.........", -- Packs
 	ticket = "........./#########/##.######/.#######./.#.#####./.#######./##.######/#########/.........", -- Passes (notches, a torn line)
 	potion = "...###.../....#..../....#..../..#####../.##...##./#########/#########/#########/.#######.", -- Boosts
-	gumball = "..#####../.#######./.##.#.##./.#######./..#####../...###.../.#######./.###.###./.#######.", -- the Roulettes
+	-- the Roulettes: the gumball globe (two off-centre balls so it never reads as a face), its neck and a solid base
+	gumball = "..#####../.##.####./.#######./.####.##./..#####../...###.../..#####../.#######./#########",
 	egg = "...###.../..#####../.#######./.#######./#########/#########/#########/.#######./..#####..",
 	wrench = ".##..##../.##..##../.######../..####.../...##..../...##..../...##..../...##..../...##....", -- Repair
 	chest = "........./.#######./#########/#########/........./###...###/####.####/#########/#########", -- the Sky Trove
@@ -189,10 +190,25 @@ end
 -- given), TextTransparency and ZIndex and follows later changes to them, so a caller that tints, fades or layers the text
 -- moves the icon with it. px nil: the icon is 0.9 x the host's TextSize and is redrawn when that changes (a glyph label
 -- a layout resizes). Returns the icon Frame (attribute PixelIcon = name; a redraw replaces it); nil for an unknown name.
+-- Hosting again on the same host drops the old icon and its connections first (a mark that changes, a coin resized).
+local hosted = setmetatable({}, { __mode = "k" }) -- [host] = { icon = Frame, conns = { connections } }
+
 function PixelIcon.Host(host, name, px, colour)
+	local old = hosted[host]
+	if old then
+		hosted[host] = nil
+		for _, c in ipairs(old.conns) do
+			c:Disconnect()
+		end
+		if old.icon then
+			old.icon:Destroy()
+		end
+	end
 	if not PixelIcon.Bitmaps[name] then
 		return nil
 	end
+	local entry = { icon = nil, conns = {} }
+	hosted[host] = entry
 	local icon = nil
 	local function sync()
 		if not icon then
@@ -214,14 +230,16 @@ function PixelIcon.Host(host, name, px, colour)
 		icon = PixelIcon.New(host, name, PixelIcon.Snap(px or (tonumber(host.TextSize) or 18) * 0.9), colour or host.TextColor3)
 		icon.AnchorPoint = Vector2.new(0.5, 0.5)
 		icon.Position = UDim2.fromScale(0.5, 0.5)
+		entry.icon = icon
 		sync()
 	end
 	draw()
-	host:GetPropertyChangedSignal("TextColor3"):Connect(sync)
-	host:GetPropertyChangedSignal("TextTransparency"):Connect(sync)
-	host:GetPropertyChangedSignal("ZIndex"):Connect(sync)
+	local conns = entry.conns
+	conns[#conns + 1] = host:GetPropertyChangedSignal("TextColor3"):Connect(sync)
+	conns[#conns + 1] = host:GetPropertyChangedSignal("TextTransparency"):Connect(sync)
+	conns[#conns + 1] = host:GetPropertyChangedSignal("ZIndex"):Connect(sync)
 	if px == nil then
-		host:GetPropertyChangedSignal("TextSize"):Connect(function()
+		conns[#conns + 1] = host:GetPropertyChangedSignal("TextSize"):Connect(function()
 			if icon and icon.Size.X.Offset ~= PixelIcon.Snap((tonumber(host.TextSize) or 18) * 0.9) then
 				draw()
 			end
