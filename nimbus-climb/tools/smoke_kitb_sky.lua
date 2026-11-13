@@ -26,6 +26,9 @@
 --   S2 (preload, painted boot sky, stars; sky audit F4, F5, F12):
 --   sky_painted_looks_have_no_engine_stars (server world, pure) every phase and raid look with a painted skybox has
 --                             StarCount 0 (the stars are painted; no engine field popping on at the mid-blend)
+--   sky_edit_mode_day_faces  (server world, pure; 2026-11-13 owner) default.project.json's Lighting.NimbusSky (Studio's
+--                             edit-mode sky) has the six faces of SkyFaces.For(Config.Sky.Themes.Day), the same as
+--                             SkyCycle.Preset's Day faces, and its StarCount / CelestialBodiesShown (0 / false)
 --   lightingservice_boot_uses_painted_day (server world, booted) empty (or half-pasted) Config.Sky.Faces boots the
 --                             painted skybox of the loop's first phase (S2 review; the Day's when that one is not
 --                             uploaded), StarCount 0, CelestialBodiesShown false, Glare 0, its own SunRays at 0 ("Painted"):
@@ -384,6 +387,55 @@ local function serverScenarios()
 		end
 		tally:report()
 		T.check(n == 8, fmt("4 phases + 4 raids checked (%d)", n))
+	end)
+
+	-- (2026-11-13 owner: "edit-mode sky = YES") Studio's edit mode shows the painted Day sky, not the stock one: the
+	-- Lighting.NimbusSky of default.project.json carries the Day theme's six faces in their Skybox slots (SkyFaces' Lf / Rt
+	-- swap included), no engine stars and no engine sun / moon, the same as SkyCycle.Preset writes for the Day. The two
+	-- places cannot drift: a re-uploaded Day theme in TextureIds without the project file fails here
+	S.sky_edit_mode_day_faces = guarded("sky_edit_mode_day_faces", function()
+		local Config = loadModule("Config")
+		local SkyFaces = loadModule("SkyFaces")
+		local SkyCycle = loadModule("SkyCycle")
+		local theme = Config and Config.Sky and Config.Sky.Themes and Config.Sky.Themes.Day
+		local want = SkyFaces and SkyFaces.For(theme)
+		if not T.check(want ~= nil and SkyCycle ~= nil, "the Day theme's six faces resolve (SkyFaces.For(Config.Sky.Themes.Day))", tostring(theme)) then
+			return
+		end
+		-- this file's folder ("tools/") from the chunk name smoke.py gives it, as smoke_p2_final.lua does
+		local here = (debug.getinfo(1, "S").source or ""):match("^=(.*)smoke_kitb_sky%.lua$") or ""
+		local text
+		for _, path in ipairs({ "default.project.json", here .. "../default.project.json", "../default.project.json" }) do
+			local fh = io.open(path, "r")
+			if fh then
+				text = fh:read("*a")
+				fh:close()
+				break
+			end
+		end
+		if not T.check(text ~= nil, "default.project.json is readable (run tools/smoke.py from the repo root)") then
+			return
+		end
+		local lighting = text:match('"Lighting"%s*:%s*(%b{})')
+		local node = lighting and lighting:match('"NimbusSky"%s*:%s*(%b{})')
+		if not T.check(node ~= nil and node:match('"%$className"%s*:%s*"Sky"') ~= nil, "default.project.json has Lighting.NimbusSky ($className Sky)") then
+			return
+		end
+		local props = node:match('"%$properties"%s*:%s*(%b{})') or ""
+		local p = SkyCycle.Preset({ Phase = "Day", Next = "Day", T = 0, Blend = 0 }, nil, 0, SkyFaces.For).Sky
+		local faces = T.tally("Lighting.NimbusSky's six faces = SkyFaces.For(" .. tostring(theme) .. ") = SkyCycle.Preset's Day faces")
+		local n = 0
+		for slot, id in pairs(want) do
+			local got = props:match('"' .. slot .. '"%s*:%s*"([^"]*)"')
+			faces:case(got == id and p[slot] == id, fmt("%s: project %s, SkyFaces %s, Preset %s", slot, tostring(got), id, tostring(p[slot])))
+			n = n + 1
+		end
+		faces:report()
+		T.check(n == 6, fmt("six faces compared (%d)", n))
+		local stars = tonumber(props:match('"StarCount"%s*:%s*(%-?%d+)'))
+		local bodies = props:match('"CelestialBodiesShown"%s*:%s*(%a+)')
+		T.check(stars == p.StarCount and bodies == tostring(p.CelestialBodiesShown), "Lighting.NimbusSky: StarCount / CelestialBodiesShown = SkyCycle.Preset's Day (no engine stars or sun on the painted sky)",
+			fmt("project %s / %s, Preset %s / %s", tostring(stars), tostring(bodies), tostring(p.StarCount), tostring(p.CelestialBodiesShown)))
 	end)
 
 	-- S4 (sky audit F6, world clouds 6; PICK): the air coloured from the painted skies (Config.Sky.AirV2) and the thin

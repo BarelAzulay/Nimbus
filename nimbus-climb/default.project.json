@@ -25,6 +25,19 @@
       "$className": "Lighting",
       "$properties": {
         "Technology": "ShadowMap"
+      },
+      "NimbusSky": {
+        "$className": "Sky",
+        "$properties": {
+          "SkyboxBk": "rbxassetid://105357670769779",
+          "SkyboxDn": "rbxassetid://106213730878998",
+          "SkyboxFt": "rbxassetid://102097491863533",
+          "SkyboxLf": "rbxassetid://84030460619557",
+          "SkyboxRt": "rbxassetid://122481920861636",
+          "SkyboxUp": "rbxassetid://136659818208345",
+          "StarCount": 0,
+          "CelestialBodiesShown": false
+        }
       }
     },
     "TextChatService": {
