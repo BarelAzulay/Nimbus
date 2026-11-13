@@ -1916,7 +1916,8 @@ local function clientScenarios()
 	-- phone and tablet no button or text sits in a thumb zone or under Roblox's top-bar buttons, and nothing overlaps
 	S.menu_portrait_docks_bottom = guarded("menu_portrait_docks_bottom", function()
 		local ok, err = pcall(function()
-			for _, s in ipairs({ { 390, 844, "Touch" }, { 768, 1024, "Touch" }, { 844, 390, "Touch" }, { 667, 375, "Touch" }, { 1280, 720, "Keyboard" } }) do
+			for _, s in ipairs({ { 390, 844, "Touch" }, { 360, 640, "Touch" }, { 412, 915, "Touch" }, { 768, 1024, "Touch" }, { 844, 390, "Touch" }, { 667, 375, "Touch" },
+				{ 1280, 720, "Keyboard" }, { 1920, 1080, "Keyboard" } }) do
 				local tag = s[1] .. "x" .. s[2]
 				local W, Hh = s[1], s[2]
 				local menu = MenuH.open({ Size = { W, Hh }, Input = s[3] })
@@ -1975,6 +1976,38 @@ local function clientScenarios()
 					T.check(swing ~= nil and not MenuH.overlap(MenuH.rect(credits), swung), "menu dock: the CREDITS tag is clear of the (swinging) board at " .. tag,
 						MenuH.show(MenuH.rect(credits)) .. " vs " .. MenuH.show(swung))
 				end
+				-- (U4 review) the board's two ropes run from above the screen to the board: clear of Roblox's top-left buttons
+				-- and of the CREDITS tag (its plank and its "vN"), so no rope crosses anything at the top of the screen
+				local tagParts = {}
+				for _, name in ipairs({ "CreditsButton", "Version" }) do
+					local part = MenuH.find(menu, name)
+					if part then
+						tagParts[#tagParts + 1] = part
+					end
+				end
+				local buttons = nil
+				for _, z in ipairs(zones) do
+					if z.Name == "top-left buttons" then
+						buttons = z
+					end
+				end
+				local ropes, crossed = 0, {}
+				for _, d in ipairs(menu:GetDescendants()) do
+					if d:GetAttribute("SignKit") == "Rope" and d.Parent and d.Parent.Name == "Swing" then
+						ropes = ropes + 1
+						local r = MenuH.rect(d)
+						if MenuH.overlap(r, buttons) then
+							crossed[#crossed + 1] = "rope " .. MenuH.show(r) .. " under the top-left buttons"
+						end
+						for _, part in ipairs(tagParts) do
+							if MenuH.overlap(r, MenuH.rect(part)) then
+								crossed[#crossed + 1] = "rope " .. MenuH.show(r) .. " behind " .. part.Name .. " " .. MenuH.show(MenuH.rect(part))
+							end
+						end
+					end
+				end
+				T.eq(ropes, 2, "menu dock: (setup) the board's two ropes at " .. tag)
+				T.check(#crossed == 0, "menu dock: the ropes clear the top-left buttons and the CREDITS tag at " .. tag, table.concat(crossed, ", "))
 				MenuH.close()
 			end
 		end)
@@ -2049,6 +2082,72 @@ local function clientScenarios()
 		MenuH.close()
 		T.check(ok, "menu motion: the scenario ran", tostring(err))
 		LKC.flushErrors("menu_entrance_and_play_tweens")
+	end)
+
+	-- (U4 review) a real join: the menu opens at client boot under the loading screen (NimbusLoading, no Done yet). The
+	-- board waits lifted with its buttons at pop scale 0 and no tween runs; the entrance starts when Done arrives
+	S.menu_entrance_waits_for_loading = guarded("menu_entrance_waits_for_loading", function()
+		local lg = nil
+		local ok, err = pcall(function()
+			local function tweensOf(inst, prop)
+				local out = {}
+				for tw in pairs(Mock.ActiveTweens) do
+					if tw.Instance == inst and Mock.TweenGoals(tw)[prop] ~= nil then
+						out[#out + 1] = tw
+					end
+				end
+				return out
+			end
+			lg = LoadingH.run()
+			if not T.check(lg ~= nil and lg:GetAttribute("Done") ~= true, "menu wait: (setup) the loading screen is up, no Done") then
+				return
+			end
+			local menu, MMC = MenuH.open({ Wait = 0.05 })
+			local swing = MenuH.find(menu, "Swing")
+			local rest = MMC._M.Ui and MMC._M.Ui.Rest
+			if not T.check(swing ~= nil and rest ~= nil, "menu wait: (setup) the Swing exists") then
+				return
+			end
+			local planks = {}
+			for _, name in ipairs({ "PlayButton", "SettingsButton", "UpdatesButton" }) do
+				planks[#planks + 1] = MenuH.find(menu, name)
+			end
+			-- longer than the whole entrance (0.45 s drop + 1.2 s settle) behind the loading screen
+			LKC.advance(2)
+			T.eq(#tweensOf(swing, "Position") + #tweensOf(swing, "Rotation"), 0, "menu wait: no drop or settle tween while the loading screen is up")
+			T.check(swing.Position.Y.Offset < rest.Y.Offset - 100 and swing.Rotation == 0, "menu wait: the board waits lifted above its rest place",
+				fmt("%d vs rest %d", swing.Position.Y.Offset, rest.Y.Offset))
+			for _, b in ipairs(planks) do
+				local pop = b:FindFirstChild("Pop")
+				T.check(pop ~= nil and pop.Scale == 0 and #tweensOf(pop, "Scale") == 0, "menu wait: " .. b.Name .. " waits at pop scale 0, no tween",
+					pop and tostring(pop.Scale) or "no Pop")
+			end
+			-- the loading screen finishes: the entrance starts with its fade
+			lg:SetAttribute("Done", true)
+			LKC.advance(0.05)
+			local drop = tweensOf(swing, "Position")[1]
+			local goal = drop and Mock.TweenGoals(drop).Position
+			T.check(goal ~= nil and goal.Y.Offset == rest.Y.Offset and goal.X.Offset == rest.X.Offset, "menu wait: at Done the board drops in to its rest place")
+			for _, b in ipairs(planks) do
+				local pop = b:FindFirstChild("Pop")
+				T.check(pop ~= nil and #tweensOf(pop, "Scale") == 1, "menu wait: at Done " .. b.Name .. " pops in")
+			end
+			LKC.advance(2)
+			T.check(swing.Rotation == 0 and swing.Position.Y.Offset == rest.Y.Offset, "menu wait: at rest after the entrance")
+			for _, b in ipairs(planks) do
+				local pop = b:FindFirstChild("Pop")
+				T.check(pop ~= nil and pop.Scale == 1, "menu wait: " .. b.Name .. " at full size after the entrance")
+			end
+			T.check(lg.Parent == nil, "menu wait: the loading screen has faded away")
+		end)
+		if lg and lg.Parent then
+			lg:SetAttribute("Done", true)
+			LKC.advance(0.6)
+		end
+		MenuH.close()
+		LoadingH.cleanup()
+		T.check(ok, "menu wait: the scenario ran", tostring(err))
+		LKC.flushErrors("menu_entrance_waits_for_loading")
 	end)
 
 	-- Config.Preview.TitleShots: off (the default) keeps today's orbit and field of view; on, the camera holds Key A

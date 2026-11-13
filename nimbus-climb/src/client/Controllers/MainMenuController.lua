@@ -121,7 +121,8 @@ local K = {
 		W_MAX = 560, -- portrait: the screen less the gutter, at most this
 		GUTTER = 16, -- portrait: screen px each side
 		DOCK = 16, -- portrait: screen px between the board and the thumb zones (or the bottom edge)
-		ROPE_AT = { 0.25, 0.75 }, -- the two ropes, as parts of the board's width
+		ROPE_AT = 0.25, -- the left rope, as a part of the board's width (the right one mirrors it) ...
+		ROPE_CLEAR = 128, -- ... moved in (both) until the left rope is this many screen px from the left: Roblox's top-left buttons
 		PLAY_H = 72,
 		PLAY_LIP = 6,
 		BTN_H = 52,
@@ -687,6 +688,37 @@ function Loading.busy()
 	return gui ~= nil and gui:GetAttribute("Done") ~= true
 end
 
+-- (U4 review) runs fn once the loading screen is done (its Done, or it is gone), at once when none is up
+function Loading.onDone(fn)
+	local pg = H.playerGui()
+	local gui = pg and pg:FindFirstChild("NimbusLoading")
+	if not gui or gui:GetAttribute("Done") == true then
+		fn()
+		return
+	end
+	local conns = {}
+	local function finish()
+		if not conns[1] then
+			return
+		end
+		for _, c in ipairs(conns) do
+			c:Disconnect()
+		end
+		conns = {}
+		fn()
+	end
+	conns[1] = gui:GetAttributeChangedSignal("Done"):Connect(function()
+		if gui:GetAttribute("Done") == true then
+			finish()
+		end
+	end)
+	conns[2] = gui.AncestryChanged:Connect(function()
+		if not gui.Parent then
+			finish()
+		end
+	end)
+end
+
 ----------------------------------------------------------------------
 -- the menu screen
 ----------------------------------------------------------------------
@@ -780,7 +812,9 @@ end
 -- less a 16 px gutter wide (560 at most). In the board: the awning, the navy header (Config.MainMenu.Header, Title role),
 -- the stone body with the tag line, PLAY (the one green plank), SETTINGS + UPDATES (half-width stone planks; the pixel
 -- star on UPDATES is the one NEW marker), the version line (opens UPDATES) and the hint line. The CREDITS tag hangs on
--- its own rope: bottom-right on a desktop, top-right under Roblox's buttons on a touch / portrait screen, "vN" beside it.
+-- its own rope, "vN" beside it: bottom-right on a desktop, top-right under Roblox's buttons on a landscape touch screen,
+-- and under the board (swinging with it, between the thumb zones) on a portrait one, where the top strip has room only
+-- for the board's two ropes (U4 review). The ropes keep right of Roblox's top-left buttons (ROPE_CLEAR).
 -- `enter`: the board drops in on its ropes, settles with a swing, the buttons pop (Menu.enter)
 function Menu.build(enter)
 	local gui = Menu.gui()
@@ -842,12 +876,24 @@ function Menu.build(enter)
 	local woodH = bodyH + 2 * Z.Frame
 	local boardH = headY + headH + woodH
 
-	-- where it hangs: below Roblox's top bar; a portrait board docks above the thumb zones
+	-- the CREDITS tag: its rope, then the plank; "vN" (its measured width) on its left
+	local notes = H.notes()
+	local latest = tostring(notes and notes.Latest or 6)
+	local tagW, ropeH, vW = B.TAG_W, 22, 48
+	local okV, vSize = pcall(Theme.Measure, "v" .. latest, "Label", 18)
+	if okV and vSize then
+		vW = math.ceil(vSize.X) + 6
+	end
+	local lead = vW + 8
+
+	-- where it hangs: below Roblox's top bar; a portrait board docks above the thumb zones (and above the CREDITS tag
+	-- hanging under it where there are no thumb zones)
 	local minTop = math.ceil(58 / f) + 12
 	local boardX, topY
 	if portrait then
 		boardX = math.floor((dw - boardW) / 2)
-		topY = math.max(minTop, math.floor(dh - (zoneH + B.DOCK) / f - boardH))
+		local below = math.max(zoneH, math.ceil((ropeH + B.TAG_H) * f) + 8)
+		topY = math.max(minTop, math.floor(dh - (below + B.DOCK) / f - boardH))
 	else
 		boardX = math.max(B.X, touch and math.ceil((zoneW + 8) / f) or 0)
 		topY = math.max(minTop, math.floor((dh - boardH) * 0.42))
@@ -860,7 +906,9 @@ function Menu.build(enter)
 		Size = UDim2.fromOffset(boardW + 2 * side, 2 * half),
 		ZIndex = 2,
 	}, content)
-	for i, at in ipairs(B.ROPE_AT) do
+	-- the ropes: at ROPE_AT and its mirror, moved in together until the left one clears Roblox's top-left buttons
+	local ropeAt = math.min(math.max(B.ROPE_AT, (B.ROPE_CLEAR / f + Z.RopeW / 2 - boardX) / boardW), 0.4)
+	for i, at in ipairs({ ropeAt, 1 - ropeAt }) do
 		SignKit.Rope(swing, {
 			Name = "Rope",
 			Length = topY + 20,
@@ -954,8 +1002,6 @@ function Menu.build(enter)
 	Menu.refreshBadge()
 
 	-- the version line (opens UPDATES) and the hint line, Nunito on the stone
-	local notes = H.notes()
-	local latest = tostring(notes and notes.Latest or 6)
 	local first = notes and type(notes.Notes) == "table" and notes.Notes[1] or nil
 	local versionText = "v" .. latest
 	if first and type(first.Title) == "string" then
@@ -983,18 +1029,20 @@ function Menu.build(enter)
 	hint.Parent = body
 
 	-- the CREDITS tag on its rope with "vN" beside it: bottom-right on a desktop; top-right under Roblox's buttons on a
-	-- touch or portrait screen (clear of the thumb zones and of a docked board)
-	local tagW, ropeH = B.TAG_W, 22
-	local tag = H.frame("CreditsTag", { Size = UDim2.fromOffset(tagW + 56, ropeH + B.TAG_H), ZIndex = 3 }, content)
-	if touch or portrait then
+	-- landscape touch screen (clear of the thumb zones); on a portrait screen it hangs from the board's bottom edge,
+	-- centred between the thumb zones, and drops, swings and leaves with the board (it is in the Swing)
+	local tag = H.frame("CreditsTag", { Size = UDim2.fromOffset(lead + tagW, ropeH + B.TAG_H), ZIndex = 3 }, portrait and swing or content)
+	if portrait then
+		tag.Position = UDim2.fromOffset(side + math.floor((boardW - lead - tagW) / 2), half + topY + boardH)
+	elseif touch then
 		tag.AnchorPoint = Vector2.new(1, 0)
 		tag.Position = UDim2.fromOffset(math.floor(dw - 16 / f), math.ceil(58 / f) + 4)
 	else
 		tag.AnchorPoint = Vector2.new(1, 1)
 		tag.Position = UDim2.fromOffset(math.floor(dw - 20), math.floor(dh - 18))
 	end
-	H.frame("Peg", { BackgroundTransparency = 0, BackgroundColor3 = Sign.Text, Position = UDim2.fromOffset(56 + math.floor(tagW / 2) - 6, 0), Size = UDim2.fromOffset(12, 6), ZIndex = 4 }, tag)
-	SignKit.Rope(tag, { Name = "Rope", Length = ropeH + 6, Position = UDim2.fromOffset(56 + math.floor((tagW - Z.RopeW) / 2), 2), ZIndex = 3 })
+	H.frame("Peg", { BackgroundTransparency = 0, BackgroundColor3 = Sign.Text, Position = UDim2.fromOffset(lead + math.floor(tagW / 2) - 6, 0), Size = UDim2.fromOffset(12, 6), ZIndex = 4 }, tag)
+	SignKit.Rope(tag, { Name = "Rope", Length = ropeH + 6, Position = UDim2.fromOffset(lead + math.floor((tagW - Z.RopeW) / 2), 2), ZIndex = 3 })
 	M.Ui.Credits = SignKit.Plank(tag, {
 		Name = "CreditsButton",
 		Text = "CREDITS",
@@ -1005,7 +1053,7 @@ function Menu.build(enter)
 		Lip = K.SIGN.WoodDark,
 		Edge = Sign.Text,
 		TextColor = Sign.Stone,
-		Position = UDim2.fromOffset(56, ropeH),
+		Position = UDim2.fromOffset(lead, ropeH),
 		ZIndex = 4,
 		Callback = function()
 			MainMenuController.OpenCredits()
@@ -1014,7 +1062,7 @@ function Menu.build(enter)
 	local v = Theme.Label("v" .. latest, "Label", { Size = 18, Color = K.WHITE, Outline = "World", OutlineColor = K.INK })
 	v.Name = "Version"
 	v.Position = UDim2.fromOffset(0, ropeH)
-	v.Size = UDim2.fromOffset(48, B.TAG_H - Z.Lip)
+	v.Size = UDim2.fromOffset(vW, B.TAG_H - Z.Lip)
 	v.TextXAlignment = Enum.TextXAlignment.Right
 	v.ZIndex = 4
 	v.Parent = tag
@@ -1028,14 +1076,30 @@ function Menu.build(enter)
 end
 
 -- (kit B U4) the entrance: the board drops in on its ropes (0.45 s, Back Out) and settles from a 2 degree swing (1.2 s,
--- Elastic Out); PLAY, SETTINGS and UPDATES pop in (a UIScale "Pop" 0 -> 1) 60 ms apart while it falls
+-- Elastic Out); PLAY, SETTINGS and UPDATES pop in (a UIScale "Pop" 0 -> 1) 60 ms apart while it falls. (U4 review) On a
+-- real join the menu opens at boot under the loading screen: the board waits lifted, the buttons at pop scale 0, and the
+-- entrance starts at the loading screen's Done (with its fade); with no loading screen up (/menu) it starts at once
 function Menu.enter()
-	local B, ui = K.BOARD, M.Ui
+	local ui = M.Ui
 	local swing, rest = ui.Swing, ui.Rest
 	if not swing then
 		return
 	end
 	swing.Position = UDim2.new(rest.X.Scale, rest.X.Offset, rest.Y.Scale, rest.Y.Offset - ui.Lift)
+	ui.Pops = {}
+	for i, plank in ipairs({ ui.Play, ui.Settings, ui.Updates }) do
+		ui.Pops[i] = Util.Create("UIScale", { Name = "Pop", Scale = 0, Parent = plank })
+	end
+	Loading.onDone(function()
+		if M.Ui == ui and swing.Parent and not M.Playing then
+			Menu.run(ui)
+		end
+	end)
+end
+
+function Menu.run(ui)
+	local B = K.BOARD
+	local swing, rest = ui.Swing, ui.Rest
 	local drop = TweenService:Create(swing, TweenInfo.new(B.DROP, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Position = rest })
 	ui.Drop = drop
 	drop.Completed:Connect(function()
@@ -1048,8 +1112,7 @@ function Menu.enter()
 		M.Ui.Settle:Play()
 	end)
 	drop:Play()
-	for i, plank in ipairs({ ui.Play, ui.Settings, ui.Updates }) do
-		local pop = Util.Create("UIScale", { Name = "Pop", Scale = 0, Parent = plank })
+	for i, pop in ipairs(ui.Pops) do
 		TweenService:Create(pop, TweenInfo.new(B.POP_TIME, Enum.EasingStyle.Back, Enum.EasingDirection.Out, 0, false, B.POP_START + (i - 1) * B.POP), { Scale = 1 }):Play()
 	end
 end
