@@ -678,7 +678,7 @@ S.p3arena_boards = guarded("p3arena_boards", function()
 	local text = visibleText(board)
 	T.check(text:find("2:00", 1, true) ~= nil, "boards: the countdown shows 2:00", text)
 	if bossName then
-		T.check(text:find(bossName, 1, true) ~= nil, "boards: the next boss is named (" .. bossName .. ")", text)
+		T.check(text:upper():find(bossName:upper(), 1, true) ~= nil, "boards: the next boss is named (" .. bossName .. ")", text)
 	end
 	local okWait, waitErr = pcall(advance, 5.2)
 	if realBroadcast then

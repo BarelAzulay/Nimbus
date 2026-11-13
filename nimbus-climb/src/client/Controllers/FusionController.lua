@@ -291,7 +291,7 @@ local function place(inst, x, y, w, h)
 end
 
 local function label(parent, name, role, size, props)
-	local l = Theme.Label("", role, { Size = size, Stroke = 0.25, StrokeColor = C.Ink, Outline = 1.5, OutlineColor = C.Ink })
+	local l = Theme.Label("", role, { Size = size })
 	l.Name = name
 	l.BackgroundTransparency = 1
 	l.BorderSizePixel = 0
@@ -776,7 +776,7 @@ end
 ----------------------------------------------------------------------
 function H.width(text, size, font)
 	local ok, v = pcall(function()
-		return TextService:GetTextSize(text, size, font, Vector2.new(4096, 1024))
+		return Theme.Measure(text, font, size, 4096)
 	end)
 	if ok and typeof(v) == "Vector2" then
 		return v.X
@@ -875,7 +875,7 @@ function H.tabButton(name, text)
 	Util.Create("UIStroke", { Name = "TabStroke", ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Thickness = 2, Color = C.White, Parent = fill })
 	Util.Create("UIGradient", { Name = "TabFill", Rotation = 90, Parent = fill })
 	local b = Util.Create("TextButton", { Name = name, AutoButtonColor = false, BorderSizePixel = 0, BackgroundTransparency = 1, Text = text, ZIndex = 6, Parent = U.Header })
-	Theme.Style(b, "Button", { Size = 26, Stroke = 0.6, Outline = 1.5 })
+	Theme.Style(b, "Button", { Size = 26 })
 	return b
 end
 
@@ -916,7 +916,7 @@ function H.moveChip(parent, side, which)
 	local b = Util.Create("TextButton", {
 		Name = which, AutoButtonColor = false, BorderSizePixel = 0, BackgroundColor3 = C.Well, Text = "", ZIndex = 6, Parent = parent,
 	})
-	Theme.Style(b, "Body", { Size = 18, Stroke = 0.5, StrokeColor = C.Ink, Outline = 1.5, OutlineColor = C.Ink })
+	Theme.Style(b, "Body", { Size = 18 })
 	b.TextXAlignment = Enum.TextXAlignment.Left
 	b.TextTruncate = Enum.TextTruncate.AtEnd
 	Theme.Corner(b, UDim.new(0, 12))
@@ -1665,7 +1665,9 @@ function H.paintHeader()
 	GemIcon.SetAmount(U.GemAmount, H.short(H.balance("Gems")))
 	for _, spec in ipairs({ { U.TabUp, "Upgrade" }, { U.TabMix, "Mix" } }) do
 		local b, on = spec[1], S.Tab == spec[2]
-		b.TextColor3 = on and C.White or C.Muted
+		local selected = ColorSequence.new(Theme.Lighten(C.Violet, 0.55), Theme.Darken(C.Violet, 0.05))
+		-- kit B (no outline): the selected tab's ink is the one that reads on its pale violet face (brown)
+		b.TextColor3 = on and Theme.TextOn(selected) or Theme.Lighten(C.Muted, 0.4) -- (unselected: a pale muted ink, 4.5:1 on the header)
 		b:SetAttribute("Selected", on)
 		local fill = U.Header:FindFirstChild(b.Name .. "Fill")
 		if fill then
@@ -1673,7 +1675,7 @@ function H.paintHeader()
 			fill.BackgroundTransparency = on and 0 or 0.55
 			local grad = fill:FindFirstChild("TabFill")
 			if grad then
-				grad.Color = on and ColorSequence.new(Theme.Lighten(C.Violet, 0.55), Theme.Darken(C.Violet, 0.05)) or ColorSequence.new(C.White, C.White)
+				grad.Color = on and selected or ColorSequence.new(C.White, C.White)
 			end
 			local st = fill:FindFirstChild("TabStroke")
 			if st then

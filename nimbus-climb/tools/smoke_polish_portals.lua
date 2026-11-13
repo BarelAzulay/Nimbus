@@ -257,6 +257,10 @@ local function serverScenarios()
 		for _, f in pairs(Theme.Fonts) do
 			fonts[f] = true
 		end
+		-- (kit-b U6) a Nunito face reads .Font = Unknown: the Enum font it stands for is Theme.FontOf(d)
+		local function fontOf(d)
+			return Theme.FontOf and Theme.FontOf(d) or d.Font
+		end
 
 		------------------------------------------------------------------------------------------
 		-- 1. billboards (World text rule) + lock walls, on every portal
@@ -294,7 +298,7 @@ local function serverScenarios()
 					if d:IsA("TextLabel") then
 						local floor = (d == info.TitleLabel) and 22 or 18
 						local outlined = d:FindFirstChild("TextOutline") ~= nil or d.TextStrokeTransparency < 0.5
-						textRule:case(not d.TextScaled and d.TextSize >= floor and outlined and fonts[d.Font] == true, id .. ": " .. d.Name .. " (" .. tostring(d.TextSize) .. " px, scaled " .. tostring(d.TextScaled) .. ")")
+						textRule:case(not d.TextScaled and d.TextSize >= floor and outlined and fonts[fontOf(d)] == true, id .. ": " .. d.Name .. " (" .. tostring(d.TextSize) .. " px, scaled " .. tostring(d.TextScaled) .. ")")
 					end
 				end
 				local plate = gui:FindFirstChild("Plate")
@@ -354,7 +358,7 @@ local function serverScenarios()
 				local okText = true
 				for _, d in ipairs(gui:GetDescendants()) do
 					if d:IsA("TextLabel") then
-						okText = okText and not d.TextScaled and fonts[d.Font] == true and (d:FindFirstChild("TextOutline") ~= nil or d.TextStrokeTransparency < 0.5)
+						okText = okText and not d.TextScaled and fonts[fontOf(d)] == true and (d:FindFirstChild("TextOutline") ~= nil or d.TextStrokeTransparency < 0.5)
 					end
 				end
 				local num, top, cnt = letterStuds(face.Num, gui), letterStuds(face.Top, gui), letterStuds(face.Count, gui)
@@ -483,7 +487,7 @@ local function serverScenarios()
 					if d:IsA("TextLabel") then
 						local min = (d.Name == "TitleLabel" or d.Name == "Title") and 22 or 18
 						local outlined = d:FindFirstChild("TextOutline") ~= nil or d:FindFirstChildOfClass("UIStroke") ~= nil or d.TextStrokeTransparency < 0.5
-						if d.TextScaled or d.TextSize < min or not outlined or fonts[d.Font] ~= true then
+						if d.TextScaled or d.TextSize < min or not outlined or fonts[fontOf(d)] ~= true then
 							okText = false
 							bad[#bad + 1] = d.Name .. " " .. tostring(d.TextSize)
 						end
@@ -589,7 +593,7 @@ local function serverScenarios()
 		T.check(math.abs((hard.Model:GetAttribute("Countdown") or -99) - (cd or 0)) <= 1, "Portal_Hard attribute Countdown follows the timer", tostring(hard.Model:GetAttribute("Countdown")))
 		-- the eye-level face next to the pad shows the same countdown
 		local faceNum = tonumber(faceText("Obby", "Num"))
-		T.check(faceShown("Obby") and faceText("Obby", "Top") == "Starting in" and faceNum ~= nil and shown ~= nil and math.abs(faceNum - shown) <= 1
+		T.check(faceShown("Obby") and faceText("Obby", "Top") == "STARTING IN" and faceNum ~= nil and shown ~= nil and math.abs(faceNum - shown) <= 1
 			and faceText("Obby", "Count") == "1/" .. Config.Match.MaxPlayers .. " players",
 			"the eye-level face appears with 'Starting in', the billboard's seconds and '1/" .. Config.Match.MaxPlayers .. " players'",
 			faceText("Obby", "Top") .. " / " .. faceText("Obby", "Num") .. " / " .. faceText("Obby", "Count"))
@@ -702,7 +706,7 @@ local function serverScenarios()
 			K.enterPortal(d, "Obby")
 			advance(0.6)
 			T.check(isLocked(d) and statusText("Obby"):lower():find("waiting") ~= nil, "a party below MinPlayers waits (locked, 'Waiting for players...')", statusText("Obby"))
-			T.check(faceShown("Obby") and faceText("Obby", "Top") == "Waiting..." and tonumber(faceText("Obby", "Num")) ~= nil, "...and the face says 'Waiting...' over the seconds left", faceText("Obby", "Top"))
+			T.check(faceShown("Obby") and faceText("Obby", "Top") == "WAITING..." and tonumber(faceText("Obby", "Num")) ~= nil, "...and the face says 'Waiting...' over the seconds left", faceText("Obby", "Top"))
 			mark = K.logSize()
 			local released = K.waitFor(function()
 				return not isLocked(d)
@@ -731,7 +735,7 @@ local function serverScenarios()
 		T.check(allIn, "four players fill the Saint party, all locked")
 		T.check(statusText("Obby"):find("Full! Starting in %d") ~= nil, "a full party's billboard reads 'Full! Starting in N'", statusText("Obby"))
 		T.eq(countText("Obby"), Config.Match.MaxPlayers .. "/" .. Config.Match.MaxPlayers .. " players", "...and '" .. Config.Match.MaxPlayers .. "/" .. Config.Match.MaxPlayers .. " players'")
-		T.check(faceShown("Obby") and faceText("Obby", "Top") == "Starting in" and faceText("Obby", "Count") == "Full! " .. Config.Match.MaxPlayers .. "/" .. Config.Match.MaxPlayers
+		T.check(faceShown("Obby") and faceText("Obby", "Top") == "STARTING IN" and faceText("Obby", "Count") == "Full! " .. Config.Match.MaxPlayers .. "/" .. Config.Match.MaxPlayers
 			and tonumber(faceText("Obby", "Num")) ~= nil and tonumber(faceText("Obby", "Num")) <= Config.Match.FullPartyCountdown,
 			"the face of a full party: 'Starting in', the short countdown and 'Full! " .. Config.Match.MaxPlayers .. "/" .. Config.Match.MaxPlayers .. "'",
 			faceText("Obby", "Top") .. " / " .. faceText("Obby", "Num") .. " / " .. faceText("Obby", "Count"))

@@ -29,7 +29,6 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local GuiService = game:GetService("GuiService")
-local TextService = game:GetService("TextService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
@@ -158,7 +157,7 @@ end
 
 local function labelWidth(text)
 	local ok, bounds = pcall(function()
-		return TextService:GetTextSize(text, K.LABEL_TEXT, Theme.Fonts.Button, Vector2.new(1000, 100))
+		return Theme.Measure(text, Theme.Fonts.Button, K.LABEL_TEXT, 1000)
 	end)
 	if ok and typeof(bounds) == "Vector2" and bounds.X > 0 then
 		return math.ceil(bounds.X) + 10
@@ -362,7 +361,6 @@ local function buildButton(parent, spec, order, callback)
 	icon.ZIndex = 4
 	local label = Theme.Label(spec.Label, "Button", {
 		Size = K.LABEL_TEXT,
-		Stroke = 0.5,
 		Props = {
 			Name = "Label",
 			TextXAlignment = Enum.TextXAlignment.Left,

@@ -128,10 +128,11 @@ local function clientScenarios()
 			local gui = info and info.Gui
 			local label = gui and gui:FindFirstChild("Name", true)
 			local want = (LocalPlayer.DisplayName ~= nil and LocalPlayer.DisplayName ~= "" and LocalPlayer.DisplayName or LocalPlayer.Name) .. "'s portal"
+			want = want:upper() -- (kit-b U6) a Title-role tag reads in capitals
 			T.check(label and label.Text == want, "p4 portal client: ...with a name tag \"" .. want .. "\"", label and label.Text or "no tag")
 			T.check(gui and gui:IsA("BillboardGui") and gui.Size.X.Scale == 0 and gui.LightInfluence == 0 and label.TextSize >= 22
-				and (label.TextStrokeTransparency <= 0.5 or label:FindFirstChild("TextOutline") ~= nil) and gui.MaxDistance >= 60,
-				"p4 portal client: ...a pixel-sized 22 px tag with a stroke (World text rule)", label and tostring(label.TextSize) or "")
+				and label.TextStrokeTransparency == 1 and label:FindFirstChild("TextOutline") == nil and label.Parent:IsA("Frame") and label.Parent.BackgroundTransparency <= 0.25 and gui.MaxDistance >= 60,
+				"p4 portal client: ...a pixel-sized 22 px tag on its solid plate, no stroke (kit-b U6; was the World text rule's stroke)", label and tostring(label.TextSize) or "")
 			-- the vortex (fix round): the Gate Court gates' own PortalVortex, centred in the opening, grown to full size, not
 			-- dimmed. Its mode follows shared/TextureIds: "Texture" (the uploaded vortex layers on a SurfaceGui) or
 			-- "Fallback" (no ids: Beam spiral arms on two turning spinner parts)

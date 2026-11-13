@@ -1004,7 +1004,7 @@ S.lobby_trove_plaza = guarded("lobby_trove_plaza", function()
 			got[#got + 1] = l.Text
 		end
 		table.sort(got)
-		T.eq(table.concat(got, " / "), "2,000 Cash + 200 Tokens / Join the group!", "trove plaza: with GroupId 123 the Join sign reads 'Join the group!' over '2,000 Cash + 200 Tokens'")
+		T.eq(table.concat(got, " / "), "2,000 Cash + 200 Tokens / JOIN THE GROUP!", "trove plaza: with GroupId 123 the Join sign reads 'Join the group!' over '2,000 Cash + 200 Tokens'")
 		T.eq(#troveOf(built.Folder), 1, "trove plaza rebuild: exactly one SkyTrove in the lobby")
 		local shop2 = built.Folder:FindFirstChild("Shop")
 		checkEggRequests("egg row", LB, shop2 and shop2:FindFirstChild("EggRow"), Config, ML)
@@ -1677,7 +1677,7 @@ local function checkSurfaceSign(label, portal, origin)
 			small[#small + 1] = l.Text .. " " .. fmt("%.2f stud", l.TextSize / 50)
 		end
 	end
-	T.eq(joinedText(gui), GLOW.BoardText, label .. ": ...it reads 'Plaza' (the destination, title-sized on the 4 x 1 board)")
+	T.eq(joinedText(gui), GLOW.BoardText:upper(), label .. ": ...it reads 'Plaza' (the destination, title-sized on the 4 x 1 board)")
 	T.check(gui.Face == Enum.NormalId.Front and gui.SizingMode == Enum.SurfaceGuiSizingMode.PixelsPerStud and gui.PixelsPerStud == 50 and gui.LightInfluence == 0 and #small == 0,
 		label .. ": ...Face Front, 50 px per stud, the title >= 0.95 stud (World text rule ~1 stud; no TextScaled), LightInfluence 0", tostring(gui.PixelsPerStud) .. " px/stud; small: " .. table.concat(small, ", "))
 end

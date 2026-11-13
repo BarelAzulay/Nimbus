@@ -26,6 +26,12 @@
 -- palette) and `Theme.Radius` (the corner tokens).
 -- U1 review: a Nunito label reads .Font = Enum.Font.Unknown in Roblox (no Enum twin) and TextService:GetTextSize throws on
 -- it, so never measure with lbl.Font: `Theme.FontOf(lbl)` (the Enum font to measure with) and `Theme.MeasureLabel(lbl)`.
+-- U6 (the outline and font sweep): one outline at most. Theme.Style never sets a classic text stroke (an old caller's Stroke
+-- is ignored), so a label is either plain (on a panel, plank, chip or button) or carries ONE outline: Outline = "World"
+-- for text over the 3D world with no plate. Theme.Measure also takes an Enum font (the old GetTextSize helpers), and
+-- Theme.Corner takes "Round" (a pill or a disc) beside the Theme.Radius tokens. World signs (BillboardGui / SurfaceGui) keep
+-- their one outline on their plate (the World text rule of ARCHITECTURE_V3). Casing: the Title, Sign, Accent and Tag roles
+-- read in capitals (`Theme.CapsRoles`, kept by Theme.SetRole; LuckiestGuy's lower case reads oddly: "PeTS").
 -- Plain Lua 5.1-compatible syntax only. Safe to require on the server and on the client.
 
 local Theme = {}
@@ -370,7 +376,8 @@ Theme.Sign = {
 }
 
 -- kit B corner radius tokens in px (Theme.Corner(obj, "M")); the windows of the pitch are square-cornered blocks, so the
--- largest token is small. Literal radii move to these in U6.
+-- largest token is small. U6 moved the literal radii of the files it swept to these (tools/check.mjs RADIUS_SWEPT,
+-- rule radius-literal); Theme.Corner(obj, "Round") is the pill / disc (half the short side).
 Theme.Radius = {
 	None = 0,
 	S = 4,
@@ -461,8 +468,9 @@ function Theme.HealthColor(fraction)
 end
 
 -- kit B: the text colour for a surface. A name of Theme.Sign ("Stone", "Navy", "Wood", ...), one of today's dark fills
--- ("Panel", "Dark", "Well") or any Color3; the brown #3B2412 or white, whichever has the higher contrast on it (brown on
--- stone and gold, white on navy, wood and the dark panels). Nil / unknown = white, the dark panels' colour today.
+-- ("Panel", "Dark", "Well"), any Color3 or a ColorSequence (a gradient fill: judged at its worst stop); the brown #3B2412
+-- or white, whichever has the higher contrast on it (brown on stone and gold, white on navy, wood and the dark panels).
+-- Nil / unknown = white, the dark panels' colour today.
 local function channel(v)
 	if v <= 0.04045 then
 		return v / 12.92
@@ -486,6 +494,15 @@ local DARK_SURFACES = { Panel = "Panel", Dark = "PanelTop", Well = "WellTop" }
 
 function Theme.TextOn(surface)
 	local fill = nil
+	if typeof(surface) == "ColorSequence" then
+		-- (U6 review) a gradient fill: the ink whose worst contrast over the colour stops is higher
+		local brown, white = math.huge, math.huge
+		for _, kp in ipairs(surface.Keypoints) do
+			brown = math.min(brown, contrast(Theme.Sign.Text, kp.Value))
+			white = math.min(white, contrast(Theme.Colors.White, kp.Value))
+		end
+		return (brown > white) and Theme.Sign.Text or Theme.Colors.White
+	end
 	if typeof(surface) == "Color3" then
 		fill = surface
 	elseif type(surface) == "string" then
@@ -498,6 +515,39 @@ function Theme.TextOn(surface)
 		return Theme.Sign.Text
 	end
 	return Theme.Colors.White
+end
+
+-- (U6 review) the WCAG contrast ratio of two colours (1 .. 21)
+function Theme.Contrast(a, b)
+	return contrast(a, b)
+end
+
+-- (U6 review) a small face (a pill, a badge, a tab, a bar) and its ink for text that must reach `need`:1 (default 4.5,
+-- small text): the colour itself with Theme.TextOn's ink when that reads; a mid tone where neither ink reads is moved the
+-- least it takes, in steps of 0.04: lightened towards the pale cloud for the brown ink or darkened towards the navy shade
+-- for white. whiteOnly: the ink must be white (a bar whose text also crosses its dark track), so it is only darkened.
+-- -> face, ink
+function Theme.ReadableFace(color, need, whiteOnly)
+	need = tonumber(need) or 4.5
+	local white, brown = Theme.Colors.White, Theme.Sign.Text
+	local ink = whiteOnly and white or Theme.TextOn(color)
+	if contrast(ink, color) >= need then
+		return color, ink
+	end
+	for step = 1, 25 do
+		local k = step * 0.04
+		local dark = Theme.Darken(color, k)
+		if contrast(white, dark) >= need then
+			return dark, white
+		end
+		if not whiteOnly then
+			local light = Theme.Lighten(color, k)
+			if contrast(brown, light) >= need then
+				return light, brown
+			end
+		end
+	end
+	return Theme.Darken(color, 1), white
 end
 
 ----------------------------------------------------------------------
@@ -607,10 +657,70 @@ end
 -- The outline thickness of Outline = "World" per role (damage numbers read from further away than a nameplate).
 local WORLD_OUTLINE = { Accent = 3, Title = 3, Sign = 3, Display = 2.5 }
 
+-- kit B casing (U6; the owner saw LuckiestGuy's odd lower-case "e" in "PeTS"): titles, signs, accents and tags read in
+-- capitals. Theme.SetRole keeps a label of these roles in capitals whatever text is set on it later; a label moved to
+-- another role keeps the case of the texts set after. Buttons read in sentence case (written so by the callers).
+Theme.CapsRoles = { Title = true, Sign = true, Accent = true, Tag = true }
+
+-- `text` in capitals outside rich text tags ("<font ...>") and entities ("&amp;"); ASCII letters only, every other byte
+-- (UTF-8 symbols) stays.
+function Theme.Caps(text)
+	text = tostring(text or "")
+	local out, pos = {}, 1
+	while true do
+		local s = text:find("[<&]", pos)
+		if not s then
+			break
+		end
+		local e
+		if text:sub(s, s) == "<" then
+			e = text:find(">", s, true)
+		else
+			local _, last = text:find("^&#?%w+;", s)
+			e = last
+		end
+		if e then
+			out[#out + 1] = text:sub(pos, s - 1):upper()
+			out[#out + 1] = text:sub(s, e)
+			pos = e + 1
+		else
+			out[#out + 1] = text:sub(pos, s):upper() -- a lone "<" or "&"
+			pos = s + 1
+		end
+	end
+	out[#out + 1] = text:sub(pos):upper()
+	return table.concat(out)
+end
+
+-- labels already listening for their text (weak keys: the label owns its connection)
+local capsHooked = setmetatable({}, { __mode = "k" })
+
+local function keepCaps(obj)
+	if obj:IsA("TextBox") then
+		return -- what a player types stays as typed
+	end
+	local now = Theme.Caps(obj.Text)
+	if obj.Text ~= now then
+		obj.Text = now
+	end
+	if capsHooked[obj] then
+		return
+	end
+	capsHooked[obj] = true
+	obj:GetPropertyChangedSignal("Text"):Connect(function()
+		if Theme.CapsRoles[obj:GetAttribute("FontRole")] then
+			local caps = Theme.Caps(obj.Text)
+			if obj.Text ~= caps then
+				obj.Text = caps
+			end
+		end
+	end)
+end
+
 -- Puts a role's font on a text object and nothing else (colour, size and stroke stay): the Enum font (which also resets
 -- FontFace, so a label leaving a face role loses its Nunito face), then the role's FontFace when it has one, and stamps
 -- the role on it (attribute FontRole, read by Theme.FontOf). Use it instead of `obj.Font = Theme.Fonts.X`, which would
--- drop a FontFace. An unknown role is Body. Returns obj.
+-- drop a FontFace. A Theme.CapsRoles role keeps the text in capitals. An unknown role is Body. Returns obj.
 function Theme.SetRole(obj, role)
 	if not obj then
 		return nil
@@ -621,6 +731,9 @@ function Theme.SetRole(obj, role)
 	obj.Font = Theme.Fonts[role]
 	Theme.Face(obj, role)
 	obj:SetAttribute("FontRole", role)
+	if Theme.CapsRoles[role] then
+		keepCaps(obj)
+	end
 	return obj
 end
 
@@ -654,6 +767,9 @@ function Theme.MeasureLabel(obj, text, size, width)
 	if text == nil then
 		text = obj and obj.Text or ""
 	end
+	if obj and Theme.CapsRoles[stampedRole(obj)] then
+		text = Theme.Caps(text) -- (U6) what the label will show
+	end
 	size = tonumber(size) or (obj and obj.TextSize) or nil
 	local f = obj and obj.Font
 	if f and f ~= Enum.Font.Unknown then
@@ -665,22 +781,18 @@ end
 
 -- Apply a font role (and an outline when asked) to any TextLabel/TextButton/TextBox.
 -- kit B rule: text reads by the contrast of its surface (Theme.TextOn), so there is no stroke unless the caller asks.
--- opts: Size (design px; default Theme.Sizes[role]), Color, Stroke (0..1 transparency of the classic text
---       stroke, default 1 = none), StrokeColor, Scaled (bool), Outline (a thickness: adds Theme.TextOutline and no
---       classic stroke; "World": text over the 3D world with no plate, one outline of the role's world thickness and no
---       classic stroke even when Stroke is passed), OutlineThickness (with "World"), OutlineColor,
---       OnLight (kept for old callers; no stroke any more)
+-- opts: Size (design px; default Theme.Sizes[role]), Color, Scaled (bool), Outline (a thickness: adds Theme.TextOutline;
+--       "World": text over the 3D world with no plate, one outline of the role's world thickness), OutlineThickness (with
+--       "World"), OutlineColor (StrokeColor is read as the outline colour when OutlineColor is not given).
+--       Stroke and OnLight are kept for old callers and do nothing (U6: kit B has no classic text stroke; the label's own
+--       stroke is cleared, so a restyled label never ends with a stroke under its outline).
 function Theme.Style(obj, role, opts)
 	opts = opts or {}
 	Theme.SetRole(obj, role)
 	obj.TextColor3 = opts.Color or Theme.Colors.White
 	obj.TextStrokeColor3 = opts.StrokeColor or Theme.Colors.Ink
 	local world = opts.Outline == "World"
-	local stroke = opts.Stroke
-	if stroke == nil or world then
-		stroke = 1
-	end
-	obj.TextStrokeTransparency = stroke
+	obj.TextStrokeTransparency = 1
 	if opts.Scaled then
 		obj.TextScaled = true
 	elseif opts.Size then
@@ -703,12 +815,20 @@ end
 -- The size of `text` in a role's font at `size` px (wrapped at `width` when given): TextService:GetTextSize with the role's
 -- Enum font, X widened by Theme.MeasureSpare for a FontFace role and rounded up (TextService does not know FontFace;
 -- GetTextBoundsAsync does, but it yields). A wrap width is narrowed by the same factor, so the rows counted are the wider
--- face's. An unknown role measures as Body. Returns a Vector2.
+-- face's. An unknown role measures as Body; a Theme.CapsRoles role measures the text in capitals. `role` may also be an Enum.Font (U6: the old GetTextSize helpers pass the
+-- font they read): measured 1:1 with that font, and Enum.Font.Unknown (a Nunito face read back) as Body. Returns a Vector2.
 function Theme.Measure(text, role, size, width)
+	if typeof(role) == "EnumItem" and role ~= Enum.Font.Unknown then
+		local frame = Vector2.new(tonumber(width) or 100000, 100000)
+		return game:GetService("TextService"):GetTextSize(tostring(text or ""), tonumber(size) or 14, role, frame)
+	end
 	if not Theme.Fonts[role] then
 		role = "Body"
 	end
 	text = tostring(text or "")
+	if Theme.CapsRoles[role] then
+		text = Theme.Caps(text) -- (U6) a caps role shows its text in capitals
+	end
 	size = tonumber(size) or Theme.RoleSize(role)
 	local spare = Theme.MeasureSpare[role] or 1
 	local frame = Vector2.new(tonumber(width) and (tonumber(width) / spare) or 100000, 100000)
@@ -743,9 +863,12 @@ function Theme.Face(obj, role)
 	end))
 end
 
--- radius: a UDim, a number of px or a Theme.Radius token name ("None", "S", "M"); default 12 px.
+-- radius: a UDim, a number of px, a Theme.Radius token name ("None", "S", "M") or "Round" (a pill / disc); default 12 px
+-- (the swept files always name a token).
 function Theme.Corner(parent, radius)
-	if type(radius) == "string" then
+	if radius == "Round" then
+		radius = UDim.new(0.5, 0)
+	elseif type(radius) == "string" then
 		radius = Theme.Radius[radius] or 0
 	end
 	if type(radius) == "number" then

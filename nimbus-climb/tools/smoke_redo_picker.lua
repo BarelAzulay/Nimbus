@@ -524,7 +524,7 @@ local function clientScenarios()
 				T.check(gui.DisplayOrder == 24 and gui.IgnoreGuiInset == true, "picker ui: DisplayOrder 24, IgnoreGuiInset", fmt("%s %s", tostring(gui.DisplayOrder), tostring(gui.IgnoreGuiInset)))
 				T.check(math.abs(win.AbsoluteSize.X - 1440) <= 2 and math.abs(win.AbsoluteSize.Y - 920) <= 2 and PP.Layout() == "PC", "picker ui: 1440x920 at 1080p, the PC layout",
 					fmt("%.0fx%.0f %s", win.AbsoluteSize.X, win.AbsoluteSize.Y, tostring(PP.Layout())))
-				T.eq(H.find("Title") and H.find("Title").Text, "Pick a pet to train", "picker ui: the title")
+				T.eq(H.find("Title") and H.find("Title").Text, "PICK A PET TO TRAIN", "picker ui: the title") -- (kit-b U6: a Title-role text reads in capitals)
 				T.eq(#PP.Shown(), #PP.Entries("Train"), "picker ui: one card per Train entry")
 				T.check(H.card(k2) ~= nil and H.card(k2):GetAttribute("Selected") == true, "picker ui: the Selected pet's card is marked")
 				T.check(H.card(k1) ~= nil and H.card(k1):GetAttribute("Selected") ~= true, "picker ui: ...no other")

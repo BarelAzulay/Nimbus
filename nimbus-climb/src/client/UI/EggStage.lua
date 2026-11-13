@@ -477,7 +477,7 @@ function H.textW(text, size, role)
 		if type(K.MEASURE) == "function" then
 			return Vector2.new(K.MEASURE(text, size, font), size)
 		end
-		return TextService:GetTextSize(text, size, font, Vector2.new(100000, 1000))
+		return Theme.Measure(text, font, size, 100000)
 	end)
 	if ok and typeof(v) == "Vector2" and v.X > 0 then
 		return v.X
@@ -1431,7 +1431,9 @@ function B.cols(roll)
 			local ribbon = H.frame(col, "EvolvedRibbon", { BackgroundColor3 = K.GOLD, BackgroundTransparency = 0, Rotation = 8, ZIndex = 6 })
 			H.corner(ribbon, 10)
 			H.stroke(ribbon, K.INK, 2)
-			H.label(ribbon, "Text", stage >= 2 and "Evolved II" or "Evolved", "Button", 15, { Size = UDim2.fromScale(1, 1), ZIndex = 7 })
+			-- (kit-b U6) on its gold plate: dark text by contrast, no outline
+			local ribbonText = Theme.Label(stage >= 2 and "Evolved II" or "Evolved", "Button", { Size = 15, Color = Theme.TextOn(K.GOLD) })
+			ribbonText.Name, ribbonText.Size, ribbonText.ZIndex, ribbonText.Parent = "Text", UDim2.fromScale(1, 1), 7, ribbon
 		end
 		-- the chain's fades: { object, property, its shown value } (the name and note: their text, classic stroke, outline)
 		local fade = {}

@@ -123,7 +123,6 @@ local WHITE = Colors.White
 local NAVY = Colors.Navy or Colors.Ink
 local MUTED = Colors.Muted or Colors.CloudShade
 local GOLD = Colors.Gold or Colors.Token
-local INK = Colors.TextStroke or Colors.Ink
 local GOOD = Colors.Good
 local BAD = Colors.Bad
 local WELL_EDGE = Colors.WellEdge or NAVY
@@ -231,10 +230,6 @@ function H.text(parent, name, text, role, size, color, props)
 	local label = Theme.Label(tostring(text), role, {
 		Size = size,
 		Color = color or WHITE,
-		Stroke = 0.25,
-		StrokeColor = INK,
-		Outline = 1.5,
-		OutlineColor = INK,
 		Props = p,
 	})
 	label.Parent = parent
@@ -302,10 +297,6 @@ function H.pill(parent, name, text, color, size, order)
 	local pill = Theme.Label(text, "Heading", {
 		Size = px,
 		Color = WHITE,
-		Stroke = 0.1,
-		StrokeColor = dark,
-		Outline = 1.5,
-		OutlineColor = dark,
 		Props = {
 			Name = name,
 			BackgroundTransparency = 0,

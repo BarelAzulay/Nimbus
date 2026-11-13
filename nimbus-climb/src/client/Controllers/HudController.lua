@@ -59,7 +59,6 @@ local RunService = game:GetService("RunService")
 local StarterGui = game:GetService("StarterGui")
 local GuiService = game:GetService("GuiService")
 local UserInputService = game:GetService("UserInputService")
-local TextService = game:GetService("TextService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
@@ -164,14 +163,14 @@ local K = {
 -- leaves a gap at the bottom of its slot, with a bigger dash ring at the right end spanning both rows.
 local VG = {
 	Regular = {
-		H = K.VITALS_H, CARD_H = K.VITALS_H, CARD_X = 20, CARD_CORNER = 22,
+		H = K.VITALS_H, CARD_H = K.VITALS_H, CARD_X = 20, CARD_CORNER = Theme.Radius.M,
 		BADGE_X = 28, HEART = 52, HEART_Y = 26, HEART_TEXT = 34, BOLT = 36, BOLT_Y = 72,
 		HP_X = 46, HP_Y = 8, HP_H = 36, HP_TEXT = 26, PAD_R = 10,
 		ST_X = 40, ST_Y = 61, ST_H = 22,
 		RING = 40, RING_Y = 71, RING_GAP = 8, RING_FACE = 22, RING_TEXT = 20, RING_SPAN = false,
 	},
 	Compact = {
-		H = 80, CARD_H = 70, CARD_X = 18, CARD_CORNER = 20,
+		H = 80, CARD_H = 70, CARD_X = 18, CARD_CORNER = Theme.Radius.M,
 		BADGE_X = 24, HEART = 44, HEART_Y = 22, HEART_TEXT = 30, BOLT = 28, BOLT_Y = 54,
 		HP_X = 40, HP_Y = 7, HP_H = 30, HP_TEXT = 23, PAD_R = 9,
 		ST_X = 34, ST_Y = 45, ST_H = 18,
@@ -364,8 +363,9 @@ local function newFrame(parent, name, props)
 	return Util.Create("Frame", p)
 end
 
--- Themed TextLabel. props may include Stroke (classic text stroke transparency) and Outline (thickness of a
--- glyph outline, Theme.TextOutline) plus any label property.
+-- Themed TextLabel. props may include Outline = "World" (text floating over the 3D world with no plate: ONE outline,
+-- Theme's world rule) with OutlineColor / OutlineThickness, plus any label property. kit-b U6: every other HUD text sits
+-- on its card, chip or coin and reads by contrast, so it gets no outline and no classic stroke.
 local function newText(parent, name, text, role, size, color, props)
 	local extra = {
 		Name = name,
@@ -374,20 +374,15 @@ local function newText(parent, name, text, role, size, color, props)
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextYAlignment = Enum.TextYAlignment.Center,
 	}
-	local stroke = 0.3
-	local strokeColor = nil
-	local outline = nil
-	local outlineColor = nil
+	local outline, outlineColor, thickness = nil, nil, nil
 	if props then
 		for key, value in pairs(props) do
-			if key == "Stroke" then
-				stroke = value
-			elseif key == "StrokeColor" then
-				strokeColor = value
-			elseif key == "Outline" then
+			if key == "Outline" then
 				outline = value
 			elseif key == "OutlineColor" then
 				outlineColor = value
+			elseif key == "OutlineThickness" then
+				thickness = value
 			else
 				extra[key] = value
 			end
@@ -396,9 +391,8 @@ local function newText(parent, name, text, role, size, color, props)
 	local label = Theme.Label(text, role, {
 		Size = size,
 		Color = color,
-		Stroke = stroke,
-		StrokeColor = strokeColor,
 		Outline = outline,
+		OutlineThickness = thickness,
 		OutlineColor = outlineColor or INK,
 		Props = extra,
 	})
@@ -407,7 +401,7 @@ local function newText(parent, name, text, role, size, color, props)
 end
 
 local function round(inst)
-	return Theme.Corner(inst, UDim.new(0.5, 0))
+	return Theme.Corner(inst, "Round")
 end
 
 local function newScale(parent, value)
@@ -469,16 +463,12 @@ local function newBadge(parent, name, size, color, glow)
 	return badge, g, stroke
 end
 
--- Glossy coin badge: newBadge plus a glyph.
+-- Glossy coin badge: newBadge plus a glyph (kit B, no outline: in the ink that reads on the coin's gradient).
 local function newCoin(parent, name, size, color, glow, glyph, glyphSize)
 	local coin = newBadge(parent, name, size, color, glow)
-	newText(coin, "Glyph", glyph, "Display", glyphSize, WHITE, {
+	newText(coin, "Glyph", glyph, "Display", glyphSize, Theme.TextOn(badgeSequence(color, glow)), {
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Position = UDim2.new(0, 0, 0, -1),
-		Stroke = 0.2,
-		StrokeColor = Theme.Darken(color, 0.6),
-		Outline = 2,
-		OutlineColor = Theme.Darken(color, 0.6),
 		ZIndex = 2,
 	})
 	return coin
@@ -1152,19 +1142,59 @@ function Vitals.NewBar(parent, name, opts)
 		ZIndex = 4,
 	})
 	round(flash)
-	local label = nil
+	-- kit B (no outline on a surface): the number reads by the colour of what lies under it, and the fill moves under a
+	-- centred number. So it is drawn three times, each copy clipped to one stretch of the tube: dark ink over the fill
+	-- (Theme.TextOn of the fill's gradient), dark ink over the white damage trail, white over the dark track.
+	local label, windows = nil, {}
 	if opts.Text then
-		label = newText(root, "Text", opts.Text, "Display", 26, WHITE, {
-			TextXAlignment = Enum.TextXAlignment.Center,
-			Position = UDim2.fromOffset(0, -1),
-			Stroke = 0.1,
-			Outline = 2.5,
-			ZIndex = 6,
-		})
+		for _, spec in ipairs({ { "TextFill", Theme.TextOn(Vitals.BarSequence(opts.Color)) }, { "TextTrail", Theme.TextOn(WHITE) }, { "TextTrack", WHITE } }) do
+			local clip = newFrame(inner, spec[1], {
+				ClipsDescendants = true,
+				Size = UDim2.fromScale(1, 1),
+				ZIndex = 6,
+			})
+			local copy = newText(clip, "Text", opts.Text, "Display", 26, spec[2], {
+				TextXAlignment = Enum.TextXAlignment.Center,
+				Position = UDim2.fromOffset(0, -1),
+				ZIndex = 6,
+			})
+			windows[#windows + 1] = { Clip = clip, Label = copy }
+		end
+		label = windows[1].Label
 	end
 
-	local bar = { Root = root, Inner = inner, Fill = fill, Trail = trail, Flash = flash, Label = label }
+	local bar = { Root = root, Inner = inner, Fill = fill, Trail = trail, Flash = flash, Label = label, Labels = {} }
+	for i, w in ipairs(windows) do
+		bar.Labels[i] = w.Label
+	end
 	local shownFill, shownTrail = -1, -1
+	-- each copy shows only between a and b (fractions of the tube); its label keeps the whole tube's box
+	local function window(w, a, b)
+		local span = b - a
+		w.Clip.Visible = span > 0.001
+		if span > 0.001 then
+			w.Clip.Position = UDim2.fromScale(a, 0)
+			w.Clip.Size = UDim2.fromScale(span, 1)
+			w.Label.Position = UDim2.new(-a / span, 0, 0, -1)
+			w.Label.Size = UDim2.fromScale(1 / span, 1)
+		end
+	end
+	local function placeText()
+		if #windows == 0 then
+			return
+		end
+		local f = math.max(shownFill, 0)
+		local t = math.max(trail and shownTrail or f, f)
+		window(windows[1], 0, f)
+		window(windows[2], f, t)
+		window(windows[3], t, 1)
+	end
+	if #windows > 0 then
+		-- the fill starts full: only the fill's copy shows until the first SetFraction
+		window(windows[1], 0, 1)
+		window(windows[2], 1, 1)
+		window(windows[3], 1, 1)
+	end
 	function bar.SetFraction(value)
 		value = Util.Clamp(tonumber(value) or 0, 0, 1)
 		if value == shownFill then
@@ -1175,23 +1205,33 @@ function Vitals.NewBar(parent, name, opts)
 		-- the highlight strip is inset: it only fits once the fill is wider than tall
 		local size = inner.AbsoluteSize
 		shine.Visible = size.X * value >= size.Y
+		placeText()
 	end
 	function bar.SetTrail(value)
 		value = Util.Clamp(tonumber(value) or 0, 0, 1)
 		if trail and value ~= shownTrail then
 			shownTrail = value
 			trail.Size = UDim2.fromScale(value, 1)
+			placeText()
 		end
 	end
 	function bar.SetColor(color)
 		gradient.Color = Vitals.BarSequence(color)
+		if windows[1] then
+			windows[1].Label.TextColor3 = Theme.TextOn(Vitals.BarSequence(color))
+		end
 	end
 	function bar.Invalidate()
 		shownFill = -1 -- the size changed: re-check the highlight strip on the next SetFraction
 	end
 	function bar.SetText(text)
-		if label then
-			label.Text = tostring(text or "")
+		for _, w in ipairs(windows) do
+			w.Label.Text = tostring(text or "")
+		end
+	end
+	function bar.SetTextSize(size)
+		for _, w in ipairs(windows) do
+			w.Label.TextSize = size
 		end
 	end
 	return bar
@@ -1217,7 +1257,7 @@ function Vitals.HeartShape(parent, name, fraction, color, zIndex)
 		BackgroundColor3 = color,
 		ZIndex = zIndex,
 	})
-	Theme.Corner(tip, UDim.new(0, 2))
+	Theme.Corner(tip, "S")
 	for i, side in ipairs({ -1, 1 }) do
 		local lobe = newFrame(box, (i == 1) and "LobeL" or "LobeR", {
 			AnchorPoint = Vector2.new(0.5, 0.5),
@@ -1256,7 +1296,7 @@ function Vitals.BoltShape(parent, name, fraction, color, zIndex)
 			BackgroundColor3 = color,
 			ZIndex = zIndex,
 		})
-		Theme.Corner(part, UDim.new(0, 2))
+		Theme.Corner(part, "S")
 	end
 	return box
 end
@@ -1357,13 +1397,9 @@ function Vitals.NewDashRing(parent)
 	face.Position = UDim2.fromScale(0.5, 0.5)
 	face.ZIndex = 2
 	faceStroke.Thickness = 2
-	local glyph = newText(face, "Glyph", "\194\187", "Display", 20, WHITE, {
+	local glyph = newText(face, "Glyph", "\194\187", "Display", 20, Theme.TextOn(faceGradient.Color), {
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Position = UDim2.fromOffset(1, -2),
-		Stroke = 0.2,
-		StrokeColor = Theme.Darken(Colors.Stamina, 0.7),
-		Outline = 2,
-		OutlineColor = Theme.Darken(Colors.Stamina, 0.7),
 		ZIndex = 2,
 	})
 	return {
@@ -1388,7 +1424,7 @@ setVitalsGeometry = function(g)
 	local ringRoom = g.RING + g.RING_GAP
 	UI.HpBar.Root.Position = UDim2.fromOffset(g.HP_X, g.HP_Y)
 	UI.HpBar.Root.Size = UDim2.new(1, -(g.HP_X + g.PAD_R + (g.RING_SPAN and ringRoom or 0)), 0, g.HP_H)
-	UI.HpBar.Label.TextSize = g.HP_TEXT
+	UI.HpBar.SetTextSize(g.HP_TEXT)
 	UI.StBar.Root.Position = UDim2.fromOffset(g.ST_X, g.ST_Y)
 	UI.StBar.Root.Size = UDim2.new(1, -(g.ST_X + g.PAD_R + ringRoom), 0, g.ST_H)
 	UI.HpBar.Invalidate()
@@ -1430,20 +1466,20 @@ local function buildVitals(holder)
 		BackgroundColor3 = WHITE,
 	})
 	UI.Card = card
-	UI.CardCorner = Theme.Corner(card)
+	UI.CardCorner = Theme.Corner(card, "M")
 	UI.CardStroke = Theme.Stroke(card, NEON.Green, 3, 0)
 	Theme.Gradient(card, VS.PanelTop, VS.PanelBottom, 90)
 	local glow = newFrame(card, "Glow", {
 		Position = UDim2.fromOffset(-3, -3),
 		Size = UDim2.new(1, 6, 1, 6),
 	})
-	UI.GlowCorner = Theme.Corner(glow)
+	UI.GlowCorner = Theme.Corner(glow, "M")
 	UI.CardGlow = Theme.Stroke(glow, NEON.Green, 5, 0.62)
 	local rim = newFrame(card, "Rim", {
 		Position = UDim2.fromOffset(2, 2),
 		Size = UDim2.new(1, -4, 1, -4),
 	})
-	UI.RimCorner = Theme.Corner(rim)
+	UI.RimCorner = Theme.Corner(rim, "M")
 	Theme.Stroke(rim, WHITE, 1.5, 0.88)
 
 	-- health tube with the damage trail, then the thinner stamina tube (ends left of the dash ring)
@@ -1473,10 +1509,6 @@ local function buildVitals(holder)
 	UI.Heart = heart
 	UI.HeartGlyph = newText(heart, "Glyph", "!", "Display", 34, WHITE, {
 		TextXAlignment = Enum.TextXAlignment.Center,
-		Stroke = 0.2,
-		StrokeColor = Theme.Darken(HEART_RED, 0.6),
-		Outline = 2.5,
-		OutlineColor = Theme.Darken(HEART_RED, 0.6),
 		Visible = false,
 		ZIndex = 4,
 	})
@@ -1485,8 +1517,6 @@ local function buildVitals(holder)
 	UI.DownedNotice = newText(body, "DownedNotice", "Wait for a teammate!", "Display", 21, Colors.Bad, {
 		TextXAlignment = Enum.TextXAlignment.Center,
 		TextScaled = true,
-		Stroke = 0.1,
-		Outline = 2,
 		Visible = false,
 		ZIndex = 5,
 	})
@@ -1528,7 +1558,7 @@ local function buildCurrencyRow(parent, entry)
 		BackgroundTransparency = 0,
 		BackgroundColor3 = neon,
 	})
-	Theme.Corner(lip, UDim.new(0, 12))
+	Theme.Corner(lip, "M")
 	local fade = Instance.new("UIGradient")
 	fade.Rotation = 90
 	fade.Transparency = NumberSequence.new(1, 0.72)
@@ -1567,8 +1597,6 @@ local function buildCurrencyRow(parent, entry)
 
 	local amount = newText(row, "Amount", "0", "Display", 32, WHITE, {
 		AnchorPoint = Vector2.new(0, 0.5),
-		Stroke = 0.15,
-		Outline = 2.5,
 		ZIndex = 3,
 	})
 
@@ -1596,8 +1624,6 @@ local function buildCurrencyRow(parent, entry)
 		c.Chip = chip
 		c.RunLabel = newText(chip, "Run", "+0", "Accent", 21, glow, {
 			TextXAlignment = Enum.TextXAlignment.Center,
-			Stroke = 0.2,
-			Outline = 1.5,
 			ZIndex = 5,
 		})
 		c.RunScale = newScale(c.RunLabel, 1)
@@ -1673,14 +1699,13 @@ local function newChip(parent, index, withHealth)
 		LayoutOrder = index,
 		Visible = false,
 	})
-	Theme.Corner(frame, UDim.new(0, 9))
+	Theme.Corner(frame, "M")
 	local stroke = Theme.Stroke(frame, Theme.Darken(NEON.Grey, 0.3), 2, 0.1)
 	local name = newText(frame, "Name", "", "Body", M.NameText, WHITE, {
 		Position = UDim2.new(0, 8, 0, withHealth and -2 or 0),
 		-- party chips (no health) never show a state glyph: their names get that room too
 		Size = UDim2.new(1, withHealth and -34 or -16, 1, withHealth and -4 or 0),
 		TextTruncate = Enum.TextTruncate.AtEnd,
-		Stroke = 0.3,
 	})
 	local state = newText(frame, "State", "", "Heading", M.StateText, WHITE, {
 		AnchorPoint = Vector2.new(1, 0),
@@ -1758,8 +1783,6 @@ local function buildMatch(holder)
 		Size = UDim2.new(1, -(M.LeaveW + 8), 0, M.TitleH),
 		RichText = true,
 		TextTruncate = Enum.TextTruncate.AtEnd,
-		Stroke = 0.15,
-		Outline = 2,
 	})
 	UI.LeaveBtn = CloudUI.Button({
 		Name = "LeaveMatch",
@@ -1780,8 +1803,6 @@ local function buildMatch(holder)
 		AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.new(0, 0, 0, M.TimerY),
 		Size = UDim2.new(0.5, 0, 0, M.TimerH),
-		Stroke = 0.15,
-		Outline = 2.5,
 	})
 	UI.TimerScale = newScale(UI.Timer, 1)
 	UI.MatchTokens = newText(inner, "Tokens", "", "Toast", M.TokensText, Colors.TokenGlow, {
@@ -1789,8 +1810,6 @@ local function buildMatch(holder)
 		Position = UDim2.new(1, 0, 0, M.TokensY),
 		Size = UDim2.new(0.55, 0, 0, M.TokensH),
 		TextXAlignment = Enum.TextXAlignment.Right,
-		Stroke = 0.15,
-		Outline = 2,
 	})
 	UI.TokensScale = newScale(UI.MatchTokens, 1)
 
@@ -1841,8 +1860,6 @@ local function buildParty(holder)
 		Size = UDim2.new(1, -(M.PartyLeaveW + 8), 0, M.TitleH),
 		RichText = true,
 		TextTruncate = Enum.TextTruncate.AtEnd,
-		Stroke = 0.15,
-		Outline = 2,
 	})
 	UI.PartyLeave = CloudUI.Button({
 		Name = "LeaveParty",
@@ -1867,8 +1884,6 @@ local function buildParty(holder)
 		Position = UDim2.fromOffset(0, M.PartyLeaveH + 6),
 		Size = UDim2.new(1, 0, 0, M.PartyStatusH),
 		TextTruncate = Enum.TextTruncate.AtEnd,
-		Stroke = 0.15,
-		Outline = 2,
 	})
 	UI.PartyStatusScale = newScale(UI.PartyStatus, 1)
 	-- row C: the members
@@ -1882,16 +1897,12 @@ local function buildParty(holder)
 		Position = UDim2.new(0, 0, 1, 0),
 		Size = UDim2.new(1, -(M.PartyCountW + 6), 0, M.PartyHintH),
 		TextTruncate = Enum.TextTruncate.AtEnd,
-		Stroke = 0.2,
-		Outline = 1.5,
 	})
 	UI.PartyCount = newText(inner, "Count", "0/4", "Heading", 21, WHITE, {
 		AnchorPoint = Vector2.new(1, 1),
 		Position = UDim2.new(1, 0, 1, 0),
 		Size = UDim2.fromOffset(M.PartyCountW, M.PartyHintH),
 		TextXAlignment = Enum.TextXAlignment.Right,
-		Stroke = 0.2,
-		Outline = 1.5,
 	})
 	-- row D of an obby party (v5, 6.3): the level and its stars in place of the hint; the party leader gets a
 	-- CHANGE chip in place of the head count (it opens the level picker)
@@ -1901,13 +1912,11 @@ local function buildParty(holder)
 		Size = UDim2.new(1, -(M.PartyCountW + 6), 0, M.PartyHintH),
 		RichText = true,
 		TextTruncate = Enum.TextTruncate.AtEnd,
-		Stroke = 0.15,
-		Outline = 2,
 		Visible = false,
 	})
 	UI.PartyChange = CloudUI.Button({
 		Name = "ChangeLevel",
-		Text = "CHANGE",
+		Text = "Change",
 		Style = "Blue",
 		TextSize = M.ChangeText,
 		Size = UDim2.fromOffset(M.ChangeW, M.ChangeH),
@@ -1931,7 +1940,7 @@ local function buildTitleCard(holder)
 		BackgroundColor3 = WHITE, -- the gradient below supplies the colour
 		Visible = false,
 	})
-	Theme.Corner(card, UDim.new(0, 16))
+	Theme.Corner(card, "M")
 	Theme.Stroke(card, NEON.Gold, 3, 0)
 	Theme.Gradient(card, VS.PanelTop, VS.PanelBottom, 90)
 	addViewportScale(card)
@@ -1955,16 +1964,12 @@ local function buildTitleCard(holder)
 		Position = UDim2.new(0, 74, 0, 6),
 		Size = UDim2.new(1, -84, 0, 38),
 		TextTruncate = Enum.TextTruncate.AtEnd,
-		Stroke = 0.1,
-		Outline = 2.5,
 	})
 	Theme.Gradient(title, Colors.Cloud, Colors.TokenGlow, 90)
 	newText(card, "Tagline", tostring(Config.Tagline), "Script", 19, Colors.Muted or Colors.Cloud, {
 		Position = UDim2.new(0, 74, 0, 44),
 		Size = UDim2.new(1, -84, 0, 24),
 		TextTruncate = Enum.TextTruncate.AtEnd,
-		Stroke = 0.3,
-		Outline = 1.5,
 	})
 end
 
@@ -2240,6 +2245,7 @@ function Vitals.PaintRing(ready, afford)
 	else
 		ring.FaceGradient.Color = badgeSequence(Theme.Darken(Colors.Stamina, 0.55), Theme.Darken(Colors.Stamina, 0.35))
 	end
+	ring.Glyph.TextColor3 = Theme.TextOn(ring.FaceGradient.Color) -- kit B: brown on the bright face, white on the dark one
 	ring.Glyph.TextTransparency = ready and 0 or 0.35
 	if ring.GlyphOutline then
 		ring.GlyphOutline.Transparency = ready and 0 or 0.5 -- a glyph outline does not fade with its text
@@ -2799,10 +2805,10 @@ local function partyStatusText(now)
 	return "Waiting for players..."
 end
 
--- Does `text` fit `width` design px at `size` in `font`? (measured by the engine; +5 px for the glyph outline)
+-- Does `text` fit `width` design px at `size` in `font`? (Theme.Measure, which knows the Nunito faces; +5 px of spare)
 local function textFits(text, font, size, width)
 	local ok, bounds = pcall(function()
-		return TextService:GetTextSize(text, size, font, Vector2.new(4000, 400))
+		return Theme.Measure(text, font, size, 4000)
 	end)
 	return not ok or typeof(bounds) ~= "Vector2" or bounds.X + 5 <= width
 end

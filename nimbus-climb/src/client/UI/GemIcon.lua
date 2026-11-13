@@ -28,7 +28,6 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local TextService = game:GetService("TextService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Theme = require(Shared:WaitForChild("Theme"))
@@ -102,7 +101,7 @@ end
 
 local function textWidth(text, size, font)
 	local ok, v = pcall(function()
-		return TextService:GetTextSize(text, size, font, Vector2.new(100000, 100000))
+		return Theme.Measure(text, font, size, 100000)
 	end)
 	if ok and typeof(v) == "Vector2" and v.X > 0 then
 		return v.X
@@ -369,9 +368,6 @@ function GemIcon.Amount(parent, n, opts)
 	local value = Theme.Label(amountText(n), "Display", {
 		Size = ts,
 		Color = opts.Color or K.WHITE,
-		Stroke = 1,
-		Outline = 2,
-		OutlineColor = K.INK,
 		Props = {
 			Name = "Value",
 			ZIndex = z + 1,

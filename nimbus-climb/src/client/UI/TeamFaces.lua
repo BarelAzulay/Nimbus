@@ -188,7 +188,7 @@ local function buildFace(root, i)
 	corner(cell, 10)
 	local face = { Cell = cell, Rim = stroke(cell, Theme.Darken(Theme.Neon.Grey, 0.4), 2, 0.1), Key = nil, Stage = 0 }
 	face.Picture = frame(cell, "Picture", { ZIndex = 2 })
-	face.Tag = text(cell, "Tag", i == 1 and "FIGHTER" or "HELPER", "Button", 18, WHITE, {
+	face.Tag = text(cell, "Tag", i == 1 and "FIGHTER" or "HELPER", "Tag", 18, WHITE, {
 		BackgroundTransparency = 0,
 		BackgroundColor3 = Theme.Darken(i == 1 and Theme.Neon.Red or Theme.Neon.Blue, 0.2),
 		ZIndex = 4,

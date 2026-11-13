@@ -113,7 +113,6 @@ local BUTTONS = Theme.Buttons or {}
 local Colors = Theme.Colors
 local WHITE = Colors.White
 local NAVY = Colors.Navy or Colors.Ink
-local INK = Colors.TextStroke or Colors.Ink
 local DEV_COLOR = Theme.Mix(Colors.Storm, BUTTONS.Blue or Color3.fromRGB(90, 158, 234), 0.3) -- slate blue
 
 local LocalPlayer = nil
@@ -410,10 +409,6 @@ local function buildTile(gui)
 	end
 	local label = Theme.Label("DEV", "Title", {
 		Size = K.TILE_TEXT,
-		Stroke = 0.1,
-		StrokeColor = INK,
-		Outline = 2.5,
-		OutlineColor = INK,
 		Props = {
 			Name = "Label",
 			AnchorPoint = Vector2.new(0.5, 0.5),
@@ -512,8 +507,6 @@ local function buildPlayerRow(player)
 	})
 	local label = Theme.Label(mine and (player.DisplayName .. " (you)") or (player.DisplayName .. " (@" .. player.Name .. ")"), "Label", {
 		Size = K.ROW_TEXT,
-		Stroke = 0.3,
-		Outline = 1.5,
 		Props = {
 			Name = "PlayerName",
 			Size = UDim2.new(1, 0, 0, K.ROW_NAME_H),
@@ -614,8 +607,6 @@ local function buildPlayerSection(parent, order)
 	})
 	local title = Theme.Label("Players in this server", "Label", {
 		Size = K.ROW_TEXT,
-		Stroke = 0.3,
-		Outline = 1.5,
 		Props = {
 			Name = "PlayersTitle",
 			Size = UDim2.new(1, 0, 0, K.NOTE_H),
@@ -813,8 +804,6 @@ local function buildPanel(gui)
 	local note = Theme.Label("Only you can see this", "Label", {
 		Size = K.NOTE_TEXT,
 		Color = Colors.Muted or WHITE,
-		Stroke = 0.3,
-		Outline = 1.5,
 		Props = {
 			Name = "Note",
 			Size = UDim2.new(1, 0, 0, K.NOTE_H),

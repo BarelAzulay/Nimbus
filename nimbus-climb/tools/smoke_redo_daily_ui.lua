@@ -282,7 +282,7 @@ local function clientScenarios()
 					-- (owner 2026-11-13) the Gifts window hides its own button; it is still laid out where it was
 					T.check(btn ~= nil and btn.AbsolutePosition.X == bx and btn.AbsolutePosition.Y == by and not H.shown(btn), label .. ": the Gifts button stays where it is, hidden while its window is open")
 					-- the header and the chips
-					T.eq(H.text(H.find("Header")), "Day 3 of 7 " .. DOT .. " Week 2", label .. ": the header")
+					T.eq(H.text(H.find("Header")), "DAY 3 OF 7 " .. DOT .. " WEEK 2", label .. ": the header") -- (kit-b U6: a Title-role text reads in capitals)
 					T.eq(H.text(H.find("StreakChip")), sz[4] == "PC" and "Streak: 2 days" or "Streak: 2", label .. ": the streak chip")
 					T.check(not H.shown(H.find("VipChip")), label .. ": no VIP chip without the pass")
 					-- the tiles

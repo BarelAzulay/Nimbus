@@ -1345,7 +1345,8 @@ S.client_p3battle_ring = guarded("client_p3battle_ring", function()
 	b = BC.GetBattle()
 	local nextCard = find("Root.NextRoundCard")
 	T.check(not shown(find("Root.ResultCard")), "ring: a won round shows no result card")
-	T.check(shown(nextCard) and hasText(nextCard, "Round 1 won!") and hasText(nextCard, "%+%$22") and hasText(nextCard, "%+26 XP") and hasText(nextCard, "Round 2 in 3"),
+	-- (kit-b U6: the title is a Title-role label, kept in capitals by Theme)
+	T.check(shown(nextCard) and hasText(nextCard, "ROUND 1 WON!") and hasText(nextCard, "%+%$22") and hasText(nextCard, "%+26 XP") and hasText(nextCard, "Round 2 in 3"),
 		"ring: the side card reads Round 1 won! +$22 +26 XP - Round 2 in 3")
 	T.check(b and b.Next == 2 and b.Ended, "ring: GetBattle().Next = 2 between the rounds", b and tostring(b.Next) or "nil")
 	T.check(shown(find("Root.TopCard")) and shown(find("Root.Team")) and not shown(find("Root.Commands")), "ring: between rounds the top card and the team stay, the commands go")

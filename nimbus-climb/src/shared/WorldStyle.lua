@@ -383,7 +383,7 @@ local function tagLabel(parent, name, text, role, size, color, order)
 	label.Name = name
 	label.BackgroundTransparency = 1
 	label.Text = text or ""
-	label.Font = Theme.Fonts[role] or Theme.Fonts.Body
+	Theme.SetRole(label, role) -- (kit-b U6) an unknown role is Body
 	label.TextSize = size
 	label.TextColor3 = color
 	label.TextStrokeTransparency = 1

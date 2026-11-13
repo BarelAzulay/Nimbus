@@ -872,8 +872,8 @@ local function tagText(parent, name, text, role, size, color, order)
 	local label = Theme.Label(text, role, {
 		Size = size,
 		Color = color or C.Text,
-		Stroke = 1,
-		Outline = 2.5,
+		Outline = "World", -- a world sign: ONE outline, no classic stroke (kit-b U6)
+		OutlineThickness = 2.5,
 		OutlineColor = C.Ink,
 		Props = {
 			Name = name,
@@ -934,8 +934,8 @@ local function signText(parent, name, text, role, size, color, x, y, w, h, align
 	local label = Theme.Label(text, role, {
 		Size = size,
 		Color = color,
-		Stroke = 1,
-		Outline = max(2, floor(size / 16 + 0.5)),
+		Outline = "World", -- a world sign: ONE outline, no classic stroke (kit-b U6)
+		OutlineThickness = max(2, floor(size / 16 + 0.5)),
 		OutlineColor = C.Ink,
 		Props = {
 			Name = name,

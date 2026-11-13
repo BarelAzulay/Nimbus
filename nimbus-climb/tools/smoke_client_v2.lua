@@ -234,7 +234,7 @@ S.client_ui_kit = guarded("client_ui_kit", function()
 		end, Parent = g,
 	})
 	T.check(panel.Root ~= nil and panel.Root:IsA("Frame") and panel.Root.Parent == g and panel.Content:IsA("Frame") and panel.Content:IsDescendantOf(panel.Root), "Panel returns { Root, Content, TitleLabel, Close }")
-	T.check(panel.TitleLabel ~= nil and panel.TitleLabel.Text == "Hello Sky", "...with the title text")
+	T.check(panel.TitleLabel ~= nil and panel.TitleLabel.Text == "HELLO SKY", "...with the title text (kit-b U6: a title reads in capitals)")
 	T.check(type(panel.Close) == "function", "...and a Close function")
 	local body = panel.Root:FindFirstChild("Body")
 	local stroke = body and body:FindFirstChildOfClass("UIStroke")

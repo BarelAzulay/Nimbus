@@ -108,8 +108,8 @@ local function markerLabel(parent, name, text, role, size, outlineColor, order)
 	local label = Theme.Label(text, role, {
 		Size = size,
 		Color = Theme.Colors.White,
-		Stroke = 1, -- the glyph outline replaces the classic stroke
-		Outline = 2.5,
+		Outline = "World", -- a world sign: ONE outline, no classic stroke (kit-b U6)
+		OutlineThickness = 2.5,
 		OutlineColor = outlineColor,
 		Props = {
 			Name = name,

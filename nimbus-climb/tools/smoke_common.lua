@@ -199,6 +199,393 @@ function SmokeCommon.closeMarkIssues(button, opts)
 	return out
 end
 
+-- kit-b U6 review: the contrast rule (client world). kit B gives a text no outline on a surface; it reads by its colour
+-- against what is painted under it. For a text with no outline (no Contextual UIStroke, no classic stroke): the sample
+-- point is the centre of its glyphs (TextBounds placed by its alignment inside its padded box); its backdrop is the last
+-- opaque fill (0.7 or more: BackgroundTransparency times its UIGradient's transparency) painted before the text whose box,
+-- inside its clipping ancestors, holds that point (paint order as Roblox and tools/render_gui.py: ScreenGuis by
+-- DisplayOrder, Sibling = parent then children by ZIndex, Global = every object by ZIndex); see-through plates painted
+-- between them are blended in. A gradient fill is read where the glyphs are (the centre and four points across the
+-- text's bounds, the gradient laid out as Roblox / the renderer draw it) and the worst point counts. The contrast must be
+-- 3:1 for text of 18 px and up, 4.5:1 below (WCAG). An image, a viewport or a turned object over the point means "unknown" (not checked),
+-- so does no backdrop at all (text over the world keeps one outline instead: the stroke walk); colour emoji are not
+-- checked (Roblox draws them in their own colours). tools/render_gui.py's contrast_rule is the same rule over the dumps.
+local Contrast = {}
+SmokeCommon.Contrast = Contrast
+
+local function lin(v)
+	if v <= 0.04045 then
+		return v / 12.92
+	end
+	return ((v + 0.055) / 1.055) ^ 2.4
+end
+function Contrast.Ratio(a, b)
+	local la = 0.2126 * lin(a.R) + 0.7152 * lin(a.G) + 0.0722 * lin(a.B)
+	local lb = 0.2126 * lin(b.R) + 0.7152 * lin(b.G) + 0.0722 * lin(b.B)
+	if la < lb then
+		la, lb = lb, la
+	end
+	return (la + 0.05) / (lb + 0.05)
+end
+
+-- a NumberSequence's value at time t (linear between keypoints)
+local function seqAt(seq, t)
+	local kps = seq and seq.Keypoints
+	if not kps or #kps == 0 then
+		return 0
+	end
+	for i = 1, #kps - 1 do
+		local a, b = kps[i], kps[i + 1]
+		if t >= a.Time and t <= b.Time then
+			local f = (b.Time > a.Time) and (t - a.Time) / (b.Time - a.Time) or 0
+			return a.Value + (b.Value - a.Value) * f
+		end
+	end
+	return kps[#kps].Value
+end
+
+-- a ColorSequence's colour at time t (linear between keypoints)
+local function colorAt(seq, t)
+	local kps = seq and seq.Keypoints
+	if not kps or #kps == 0 then
+		return Color3.new(1, 1, 1)
+	end
+	for i = 1, #kps - 1 do
+		local a, b = kps[i], kps[i + 1]
+		if t >= a.Time and t <= b.Time then
+			local f = (b.Time > a.Time) and (t - a.Time) / (b.Time - a.Time) or 0
+			return a.Value:Lerp(b.Value, f)
+		end
+	end
+	return kps[#kps].Value
+end
+
+-- the colours an opaque fill (list item) shows at the sample points {{x, y}, ...}: its colour (times its UIGradient
+-- there) where it is 0.7 opaque or more; {} when it is opaque at none of them
+local function fillColors(item, points)
+	local obj = item.obj
+	local base = obj.BackgroundColor3
+	local alpha = 1 - (tonumber(obj.BackgroundTransparency) or 1)
+	local g = obj:FindFirstChildWhichIsA("UIGradient")
+	if not (g and g.Enabled ~= false) then
+		return alpha > 0.7 and { base } or {}
+	end
+	local b = item.box
+	local w, h = math.max(b[3] - b[1], 1e-6), math.max(b[4] - b[2], 1e-6)
+	local okOff, off = pcall(function()
+		return g.Offset
+	end)
+	if not (okOff and typeof(off) == "Vector2") then
+		off = Vector2.new(0, 0)
+	end
+	local th = math.rad(tonumber(g.Rotation) or 0)
+	local out = {}
+	for _, p in ipairs(points) do
+		local xs = (p[1] - b[1]) / w - off.X - 0.5
+		local ys = (p[2] - b[2]) / h - off.Y - 0.5
+		local t = math.min(1, math.max(0, 0.5 + xs * math.cos(th) + ys * math.sin(th)))
+		if alpha * (1 - seqAt(g.Transparency, t)) > 0.7 then
+			local c = colorAt(g.Color, t)
+			out[#out + 1] = Color3.new(base.R * c.R, base.G * c.G, base.B * c.B)
+		end
+	end
+	return out
+end
+
+-- true when every visible character is a colour emoji (a 4-byte UTF-8 code point, U+10000 and up, or a variation selector
+-- / joiner): Roblox draws those in their own colours, whatever TextColor3 says
+local function colourEmoji(text)
+	local rest = text:gsub("[\240-\244][\128-\191][\128-\191][\128-\191]", ""):gsub("\239\184\143", ""):gsub("\226\128\141", "")
+	return rest == "" and text ~= ""
+end
+
+local function isText(o)
+	return o:IsA("TextLabel") or o:IsA("TextButton") or o:IsA("TextBox")
+end
+
+local function outlined(o)
+	if (tonumber(o.TextStrokeTransparency) or 1) < 0.95 then
+		return true
+	end
+	for _, c in ipairs(o:GetChildren()) do
+		if c:IsA("UIStroke") and c.ApplyStrokeMode == Enum.ApplyStrokeMode.Contextual and c.Enabled ~= false and (tonumber(c.Thickness) or 0) > 0 and (tonumber(c.Transparency) or 0) < 0.95 then
+			return true
+		end
+	end
+	return false
+end
+
+-- every shown GuiObject of the ScreenGuis under `pg` in paint order: { obj, box = {x0, y0, x1, y1} (screen px), clip =
+-- {x0, y0, x1, y1} or nil, turned = bool, gui = ScreenGui }
+function Contrast.PaintList(pg)
+	local Mock = rawget(_G, "Mock")
+	local guis = {}
+	for i, g in ipairs(pg:GetChildren()) do
+		if g:IsA("ScreenGui") and g.Enabled ~= false then
+			guis[#guis + 1] = { g = g, i = i }
+		end
+	end
+	table.sort(guis, function(a, b)
+		local da, db = tonumber(a.g.DisplayOrder) or 0, tonumber(b.g.DisplayOrder) or 0
+		if da ~= db then
+			return da < db
+		end
+		return a.i < b.i
+	end)
+	local list = {}
+	for _, entry in ipairs(guis) do
+		local g = entry.g
+		local inset = (g.IgnoreGuiInset == false) and (Mock.TopInset or 0) or 0
+		local flat = {}
+		local function visit(o, clip, turned, global)
+			local b = Mock.GuiBox(o)
+			local item = { obj = o, box = { b.x, b.y + inset, b.x + b.w, b.y + b.h + inset }, clip = clip, gui = g,
+				turned = turned or math.abs(tonumber(o.Rotation) or 0) >= 1, n = #flat + 1 }
+			flat[#flat + 1] = item
+			local childClip = clip
+			if o.ClipsDescendants == true or o:IsA("ScrollingFrame") then
+				local bx = item.box
+				childClip = clip and { math.max(clip[1], bx[1]), math.max(clip[2], bx[2]), math.min(clip[3], bx[3]), math.min(clip[4], bx[4]) } or bx
+			end
+			local kids = {}
+			for i, c in ipairs(o:GetChildren()) do
+				if c:IsA("GuiObject") and c.Visible ~= false and not (c:IsA("CanvasGroup") and (tonumber(c.GroupTransparency) or 0) > 0.5) then
+					kids[#kids + 1] = { c = c, i = i }
+				end
+			end
+			if not global then
+				table.sort(kids, function(a, b)
+					if a.c.ZIndex ~= b.c.ZIndex then
+						return a.c.ZIndex < b.c.ZIndex
+					end
+					return a.i < b.i
+				end)
+			end
+			for _, k in ipairs(kids) do
+				visit(k.c, childClip, item.turned, global)
+			end
+		end
+		local global = g.ZIndexBehavior == Enum.ZIndexBehavior.Global
+		local tops = {}
+		for i, c in ipairs(g:GetChildren()) do
+			if c:IsA("GuiObject") and c.Visible ~= false then
+				tops[#tops + 1] = { c = c, i = i }
+			end
+		end
+		table.sort(tops, function(a, b)
+			if a.c.ZIndex ~= b.c.ZIndex then
+				return a.c.ZIndex < b.c.ZIndex
+			end
+			return a.i < b.i
+		end)
+		for _, t in ipairs(tops) do
+			visit(t.c, nil, false, global)
+		end
+		if global then
+			table.sort(flat, function(a, b)
+				if a.obj.ZIndex ~= b.obj.ZIndex then
+					return a.obj.ZIndex < b.obj.ZIndex
+				end
+				return a.n < b.n
+			end)
+		end
+		for _, item in ipairs(flat) do
+			list[#list + 1] = item
+		end
+	end
+	return list
+end
+
+local function holds(item, x, y)
+	local b, c = item.box, item.clip
+	if x < b[1] or x > b[3] or y < b[2] or y > b[4] then
+		return false
+	end
+	return not c or (x >= c[1] and x <= c[3] and y >= c[2] and y <= c[4])
+end
+
+-- the glyph sample points of a text item: its glyph centre first, then four points across its text bounds, those its
+-- clip shows (nil when it shows none)
+local function samplePoints(item)
+	local o, b = item.obj, item.box
+	local x0, y0, x1, y1 = b[1], b[2], b[3], b[4]
+	local s = (rawget(_G, "Mock").GuiBox(o).scale) or 1
+	local pad = o:FindFirstChildWhichIsA("UIPadding")
+	if pad then
+		local w, h = x1 - x0, y1 - y0
+		x0 = x0 + pad.PaddingLeft.Scale * w + pad.PaddingLeft.Offset * s
+		x1 = x1 - pad.PaddingRight.Scale * w - pad.PaddingRight.Offset * s
+		y0 = y0 + pad.PaddingTop.Scale * h + pad.PaddingTop.Offset * s
+		y1 = y1 - pad.PaddingBottom.Scale * h - pad.PaddingBottom.Offset * s
+	end
+	local ok, tb = pcall(function()
+		return o.TextBounds
+	end)
+	local tw = (ok and tb) and math.min(tb.X * s, x1 - x0) or (x1 - x0)
+	local th = (ok and tb) and math.min(tb.Y * s, y1 - y0) or (y1 - y0)
+	local x, y = (x0 + x1) / 2, (y0 + y1) / 2
+	if o.TextXAlignment == Enum.TextXAlignment.Left then
+		x = x0 + tw / 2
+	elseif o.TextXAlignment == Enum.TextXAlignment.Right then
+		x = x1 - tw / 2
+	end
+	if o.TextYAlignment == Enum.TextYAlignment.Top then
+		y = y0 + th / 2
+	elseif o.TextYAlignment == Enum.TextYAlignment.Bottom then
+		y = y1 - th / 2
+	end
+	-- a clip keeps the points strictly inside it; the first one shown is where the backdrop is looked up
+	local c = item.clip
+	local pts = {}
+	local function add(px, py)
+		if not c or (px > c[1] and px < c[3] and py > c[2] and py < c[4]) then
+			pts[#pts + 1] = { px, py }
+		end
+	end
+	add(x, y)
+	for _, dx in ipairs({ -1, 1 }) do
+		for _, dy in ipairs({ -1, 1 }) do
+			add(x + dx * tw * 0.35, y + dy * th * 0.3)
+		end
+	end
+	return (#pts > 0) and pts or nil
+end
+
+-- the contrast reading of the text at list[index]: nil when not checked (outlined, faded, empty, turned, no known
+-- backdrop), else { ratio, need, backdrop = obj, color = the worst stop, size = px }
+function Contrast.Read(list, index)
+	local item = list[index]
+	local o = item.obj
+	if not isText(o) or item.turned or outlined(o) or (tonumber(o.TextTransparency) or 0) > 0.5 then
+		return nil
+	end
+	local text = tostring(o.Text or ""):gsub("<[^>]->", ""):gsub("%s", "")
+	if text == "" or colourEmoji(text) then
+		return nil
+	end
+	local pts = samplePoints(item)
+	if not pts then
+		return nil
+	end
+	local x, y = pts[1][1], pts[1][2]
+	local top, fills, veils = nil, nil, {}
+	for i = index, 1, -1 do
+		local it = list[i]
+		local p = it.obj
+		if holds(it, x, y) then
+			local image = ((p:IsA("ImageLabel") or p:IsA("ImageButton")) and tostring(p.Image or "") ~= "" and (tonumber(p.ImageTransparency) or 0) < 0.3)
+				or p:IsA("ViewportFrame") or p:IsA("VideoFrame")
+			local inside = {}
+			for _, q in ipairs(pts) do
+				local b = it.box
+				if q[1] >= b[1] and q[1] <= b[3] and q[2] >= b[2] and q[2] <= b[4] then
+					inside[#inside + 1] = q
+				end
+			end
+			local colors = fillColors(it, inside)
+			if i < index and (image or (it.turned and #colors > 0)) then
+				return nil -- an image, a viewport or a turned plate: unknown
+			end
+			if #colors > 0 then
+				top, fills = p, colors
+				break
+			end
+			local a = 1 - (tonumber(p.BackgroundTransparency) or 1)
+			if a > 0.01 then
+				local vc = p.BackgroundColor3
+				local g = p:FindFirstChildWhichIsA("UIGradient")
+				if g and g.Enabled ~= false then
+					local b = it.box
+					local th = math.rad(tonumber(g.Rotation) or 0)
+					local xs = (x - b[1]) / math.max(b[3] - b[1], 1e-6) - 0.5
+					local ys = (y - b[2]) / math.max(b[4] - b[2], 1e-6) - 0.5
+					local t = math.min(1, math.max(0, 0.5 + xs * math.cos(th) + ys * math.sin(th)))
+					local gc = colorAt(g.Color, t)
+					vc, a = Color3.new(vc.R * gc.R, vc.G * gc.G, vc.B * gc.B), a * (1 - seqAt(g.Transparency, t))
+				end
+				veils[#veils + 1] = { vc, a } -- a see-through plate over the fill: blended in
+			end
+		end
+	end
+	if not top then
+		return nil
+	end
+	for v = #veils, 1, -1 do
+		local vc, va = veils[v][1], veils[v][2]
+		for k, f in ipairs(fills) do
+			fills[k] = f:Lerp(vc, va)
+		end
+	end
+	local s = (rawget(_G, "Mock").GuiBox(o).scale) or 1
+	local size = (tonumber(o.TextSize) or 14) * s
+	if o.TextScaled then
+		size = math.min(item.box[4] - item.box[2], 100 * s)
+	end
+	local need = size >= 18 and 3 or 4.5
+	local worst, worstColor = math.huge, nil
+	for _, c in ipairs(fills) do
+		local r = Contrast.Ratio(o.TextColor3, c)
+		if r < worst then
+			worst, worstColor = r, c
+		end
+	end
+	return { ratio = worst, need = need, backdrop = top, color = worstColor, size = size }
+end
+
+-- tools/fixtures/contrast_backlog.txt as Lua patterns: the texts U6 left below the rule outside the review's families (a GUI
+-- path per line, "*" = any run of characters but a dot, "#" a comment); a hit there is counted, not failed
+function Contrast.Backlog()
+	local out = {}
+	local fh = io and io.open and io.open("tools/fixtures/contrast_backlog.txt", "r")
+	if not fh then
+		return out
+	end
+	for line in fh:lines() do
+		line = line:gsub("#.*$", ""):gsub("^%s+", ""):gsub("%s+$", "")
+		if line ~= "" then
+			out[#out + 1] = "^" .. line:gsub("[%^%$%(%)%%%.%[%]%+%-%?]", "%%%0"):gsub("%*", "[^.]*") .. "$"
+		end
+	end
+	fh:close()
+	return out
+end
+
+-- every text under `pg` below its need and not in the backlog: { "path: #RRGGBB on #RRGGBB (backdrop) 2.1:1 < 3 at 26 px" },
+-- the count read, and the count of backlog hits
+function Contrast.Walk(pg)
+	local list = Contrast.PaintList(pg)
+	local backlog = Contrast.Backlog()
+	local bad, read, owed = {}, 0, 0
+	local function hx(c)
+		return string.format("#%02X%02X%02X", math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))
+	end
+	for i = 1, #list do
+		local r = Contrast.Read(list, i)
+		if r then
+			read = read + 1
+			if r.ratio < r.need then
+				local o = list[i].obj
+				local path = o:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
+				local known = false
+				for _, pattern in ipairs(backlog) do
+					if path:find(pattern) then
+						known = true
+						break
+					end
+				end
+				if known then
+					owed = owed + 1
+				else
+					bad[#bad + 1] = string.format("%s \"%s\": %s on %s (%s) %.1f:1 < %g at %.0f px", path, tostring(o.Text):sub(1, 24),
+						hx(o.TextColor3), hx(r.color), r.backdrop.Name, r.ratio, r.need, r.size)
+				end
+			end
+		end
+	end
+	table.sort(bad)
+	return bad, read, owed
+end
+
 -- (battle-feel T3, the real server cast) a special press's effects land BattleCatalog.Damage.SpecialCast[kind] s after the
 -- press (Cast event first, the Special + its hits at `at`). `evs` = the events of the step after the press: when they hold
 -- a Cast of unit `unitId` (any unit when nil) and no Special of it, the battle is stepped `dt` (0.05) at a time until its

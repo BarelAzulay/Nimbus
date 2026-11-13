@@ -559,14 +559,15 @@ S.client_p5neon = guarded("client_p5neon", function()
 	T.check(stroke.Color == Theme.Neon.Gold and glowStroke.Color == Theme.Neon.Gold and card.Floor.BackgroundColor3 == Theme.Neon.Gold and not card.Glow.Visible, "p5neon: Card.SetColor / SetGlow")
 	local tall = NeonKit.Card({ Size = UDim2.fromOffset(600, 700), Parent = g })
 	T.check(not tall.Floor.Visible, "p5neon: a window-sized card has no floor by default")
-	-- Tile: the Button-role label (kit-b U1: FredokaOne, was GothamBlack) 0.2 x size (>= 18) with a 2.5 px dark stroke, icon 0.46 x size on an orb
+	-- Tile: the Button-role label (kit-b U1: FredokaOne, was GothamBlack) 0.2 x size (>= 18), icon 0.46 x size on an orb;
+	-- kit-b U6: the label sits on its card, so no outline (was a 2.5 px dark stroke)
 	local clicks = 0
 	local tile = NeonKit.Tile({ Size = 84, Color = "Pets", Icon = "Pets", Label = "Pets", Callback = function()
 		clicks = clicks + 1
 	end, Parent = g })
 	local outline = tile.Label and tile.Label:FindFirstChild("TextOutline")
-	T.check(tile.Label and tile.Label.Font == Theme.Fonts.Button and tile.Label.TextSize == 18 and tile.Label.Text == "Pets" and outline and outline.Thickness == 2.5,
-		"p5neon: Tile: the Button-role label (0.2 x 84 -> 18) with a 2.5 px dark stroke")
+	T.check(tile.Label and tile.Label.Font == Theme.Fonts.Button and tile.Label.TextSize == 18 and tile.Label.Text == "Pets" and outline == nil and tile.Label.TextStrokeTransparency == 1,
+		"p5neon: Tile: the Button-role label (0.2 x 84 -> 18) with no outline (kit-b U6)")
 	T.check(tile.Icon and tile.Icon.TextSize and math.abs(tile.Icon.TextSize - 84 * 0.46) < 0.01 and tile.Orb and tile.Orb.Parent == tile.Card.Body, "p5neon: Tile: the icon (0.46 x size) on a glossy orb")
 	T.check(tile.Root:FindFirstChild("NeonStroke").Color == Theme.Neon.Orange, "p5neon: Tile: Color 'Pets' -> the Orange neon border")
 	Mock.Click(tile.Root)

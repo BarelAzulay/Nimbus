@@ -26,6 +26,10 @@
 --   kitb_text_stroke_or_panel (client) a walk over every text object in PlayerGui after the client run: labels with both a
 --                             classic stroke and an outline, and outlined labels on an opaque panel. U1 reports the counts
 --                             as a warning; U6 drives them to zero and makes this a failure
+--   kitb_text_contrast        (client; U6 review) every shown text with no outline reaches 3:1 (18 px and up) or 4.5:1
+--                             against the fill painted under its glyphs (SmokeCommon.Contrast; tools/fixtures/
+--                             contrast_backlog.txt is counted, not failed). theme_texton also pins Theme.TextOn of a
+--                             ColorSequence (its worst stop) and Theme.ReadableFace (a face moved the least until it reads)
 --   kitb_fit_measures_face_label (client; U1 review) the side hint (a Toast label, Nunito ExtraBold) sizes its pill from
 --                             Theme.MeasureLabel, not the 300 px it fell back to while .Font read Unknown
 --   U2 (SignKit, PixelIcon, Credits on the kit; findings 5, 7):
@@ -217,8 +221,9 @@ local function serverScenarios()
 		local onLight = Theme.Label("Dark on pale", "Body", { OnLight = true })
 		T.check(onLight.TextStrokeTransparency == 1, "kitb stroke: OnLight no longer adds a stroke (contrast comes from Theme.TextOn)", tostring(onLight.TextStrokeTransparency))
 		onLight:Destroy()
+		-- U6 (a deliberate spec change): the classic stroke is gone from kit B, an explicit Stroke is ignored
 		local asked = Theme.Label("Asked for", "Body", { Stroke = 0.3 })
-		T.check(math.abs(asked.TextStrokeTransparency - 0.3) < 1e-6, "kitb stroke: an explicit Stroke is still honoured (U6 removes the callers)", tostring(asked.TextStrokeTransparency))
+		T.check(asked.TextStrokeTransparency == 1, "kitb stroke: an explicit Stroke gives no classic stroke any more (U6)", tostring(asked.TextStrokeTransparency))
 		asked:Destroy()
 		local ringed = Theme.Label("Outlined", "Heading", { Outline = 2 })
 		local rings = textStrokes(ringed)
@@ -380,6 +385,22 @@ local function serverScenarios()
 		T.check(hex(Theme.TextOn("Panel")) == white and hex(Theme.TextOn("Dark")) == white, "kitb texton: white on today's dark panels")
 		T.check(hex(Theme.TextOn(Theme.Colors.PanelTop)) == white and hex(Theme.TextOn(Color3.fromRGB(250, 248, 240))) == brown, "kitb texton: a Color3 surface picks by contrast")
 		T.check(hex(Theme.TextOn(nil)) == white and hex(Theme.TextOn("nope")) == white, "kitb texton: nil / unknown = white (today's dark panels)")
+		-- (U6 review) a gradient fill is judged at its worst stop; a mid tone is moved the least until its ink reads
+		local pale = ColorSequence.new(Color3.fromRGB(250, 248, 240), Color3.fromRGB(150, 210, 160))
+		local mixed = ColorSequence.new(Color3.fromRGB(250, 248, 240), Color3.fromRGB(20, 24, 60))
+		T.check(hex(Theme.TextOn(pale)) == brown, "kitb texton: a pale gradient takes brown (its worst stop still reads)", hex(Theme.TextOn(pale)))
+		local mInk = Theme.TextOn(mixed)
+		T.check(math.min(Theme.Contrast(mInk, Color3.fromRGB(250, 248, 240)), Theme.Contrast(mInk, Color3.fromRGB(20, 24, 60)))
+			>= math.min(Theme.Contrast(hex(mInk) == white and Sg.Text or Theme.Colors.White, Color3.fromRGB(250, 248, 240)), Theme.Contrast(hex(mInk) == white and Sg.Text or Theme.Colors.White, Color3.fromRGB(20, 24, 60))),
+			"kitb texton: a light-to-dark gradient takes the ink with the better worst stop", hex(mInk))
+		for _, c in ipairs({ Color3.fromRGB(176, 104, 255), Color3.fromRGB(110, 128, 255), Color3.fromRGB(236, 60, 72), Color3.fromRGB(57, 147, 225), Color3.fromRGB(250, 248, 240), Color3.fromRGB(20, 24, 60) }) do
+			local face, ink = Theme.ReadableFace(c, 4.5)
+			T.check(Theme.Contrast(face, ink) >= 4.5, "kitb texton: Theme.ReadableFace reaches 4.5:1 on " .. hex(c), fmt("%s on %s %.2f:1", hex(ink), hex(face), Theme.Contrast(face, ink)))
+			local wFace, wInk = Theme.ReadableFace(c, 4.5, true)
+			T.check(hex(wInk) == white and Theme.Contrast(wFace, wInk) >= 4.5, "kitb texton: ...white only on " .. hex(c), fmt("%s on %s", hex(wInk), hex(wFace)))
+		end
+		local keep = Color3.fromRGB(20, 24, 60)
+		T.check(hex((Theme.ReadableFace(keep, 4.5))) == hex(keep), "kitb texton: Theme.ReadableFace keeps a face that already reads")
 		local R = Theme.Radius
 		T.check(type(R) == "table" and R.None == 0 and R.S == 4 and R.M == 8, "kitb texton: Theme.Radius = { None = 0, S = 4, M = 8 }")
 		local f = Instance.new("Frame")
@@ -1016,6 +1037,196 @@ local function serverScenarios()
 		K.flushErrors("credits_record_needs_flag")
 	end)
 
+	-- U6 (outline and font sweep) -------------------------------------------------------------------------------------
+	-- one outline at most: an explicit Stroke never adds a classic stroke, under an Outline or alone, and restyling a label
+	-- clears a classic stroke it carried
+	S.theme_outline_one_ring = guarded("theme_outline_one_ring", function()
+		local Theme = theme()
+		if not Theme then
+			return
+		end
+		local both = Theme.Label("12", "Heading", { Stroke = 0.15, Outline = 2 })
+		local rings = textStrokes(both)
+		T.check(#rings == 1 and both.TextStrokeTransparency == 1, "kitb ring: Stroke 0.15 + Outline 2 = one 2 px outline and no classic stroke",
+			#rings .. " outline(s), classic " .. tostring(both.TextStrokeTransparency))
+		both:Destroy()
+		for _, stroke in ipairs({ 0, 0.2, 0.5 }) do
+			local l = Theme.Label("x", "Body", { Stroke = stroke })
+			T.check(l.TextStrokeTransparency == 1 and #textStrokes(l) == 0, "kitb ring: Stroke " .. stroke .. " alone gives no stroke and no outline", tostring(l.TextStrokeTransparency))
+			l:Destroy()
+		end
+		local old = Instance.new("TextLabel")
+		old.TextStrokeTransparency = 0
+		Theme.Style(old, "Button")
+		T.check(old.TextStrokeTransparency == 1, "kitb ring: Theme.Style clears a classic stroke the label had", tostring(old.TextStrokeTransparency))
+		old:Destroy()
+		K.flushErrors("theme_outline_one_ring")
+	end)
+
+	-- Theme.Measure takes a role or an Enum font (the old GetTextSize helpers pass a font): an Enum font measures 1:1, an
+	-- Unknown one (a Nunito face read back) as Body
+	S.theme_measure_takes_font = guarded("theme_measure_takes_font", function()
+		local Theme = theme()
+		if not Theme then
+			return
+		end
+		local TS = game:GetService("TextService")
+		local raw = TS:GetTextSize("Nimbus Climb", 20, Enum.Font.FredokaOne, Vector2.new(100000, 100000))
+		local m = Theme.Measure("Nimbus Climb", Enum.Font.FredokaOne, 20)
+		T.check(typeof(m) == "Vector2" and m.X == raw.X and m.Y == raw.Y, "kitb measure font: Theme.Measure(text, Enum font, size) = GetTextSize with that font", tostring(m) .. " vs " .. tostring(raw))
+		local wrapRaw = TS:GetTextSize("Nimbus Climb is a game", 20, Enum.Font.FredokaOne, Vector2.new(60, 100000))
+		local wrap = Theme.Measure("Nimbus Climb is a game", Enum.Font.FredokaOne, 20, 60)
+		T.check(wrap.Y == wrapRaw.Y, "kitb measure font: an Enum font's wrap width is used as is", tostring(wrap) .. " vs " .. tostring(wrapRaw))
+		local u = Theme.Measure("Nimbus Climb", Enum.Font.Unknown, 20)
+		local b = Theme.Measure("Nimbus Climb", "Body", 20)
+		T.check(u.X == b.X and u.Y == b.Y, "kitb measure font: Enum.Font.Unknown (a Nunito face read back) measures as Body", tostring(u) .. " vs " .. tostring(b))
+		K.flushErrors("theme_measure_takes_font")
+	end)
+
+	-- the game's scripts as mounted in this world: { name = "client/Controllers/X.lua"-like path, src = text with comments out }
+	local function gameSources()
+		local out = {}
+		for _, d in ipairs(game:GetDescendants()) do
+			if d:IsA("LuaSourceContainer") then
+				local ok, src = pcall(function()
+					return d.Source
+				end)
+				if ok and type(src) == "string" and src ~= "" then
+					src = src:gsub("%-%-%[(=*)%[.-%]%1%]", ""):gsub("%-%-[^\n]*", "")
+					out[#out + 1] = { inst = d, name = d:GetFullName(), src = src }
+				end
+			end
+		end
+		table.sort(out, function(a, b)
+			return a.name < b.name
+		end)
+		return out
+	end
+
+	-- no script but shared/Theme sets .Font (Theme.SetRole keeps a role's FontFace) or measures with GetTextSize (Theme.Measure /
+	-- Theme.MeasureLabel know the faces)
+	S.kitb_no_direct_font = guarded("kitb_no_direct_font", function()
+		local fonts, measures, n = {}, {}, 0
+		for _, f in ipairs(gameSources()) do
+			if not (f.inst.Name == "Theme" and f.inst:IsA("ModuleScript")) then
+				n = n + 1
+				local _, a = f.src:gsub("%.Font%s*=[^=]", "")
+				local _, b = f.src:gsub("GetTextSize%s*%(", "")
+				if a > 0 then
+					fonts[#fonts + 1] = f.inst.Name .. " x" .. a
+				end
+				if b > 0 then
+					measures[#measures + 1] = f.inst.Name .. " x" .. b
+				end
+			end
+		end
+		T.check(n > 20, "kitb font: the game's scripts are mounted", tostring(n))
+		T.check(#fonts == 0, "kitb font: no script sets .Font directly (Theme.SetRole)", table.concat(fonts, ", "))
+		T.check(#measures == 0, "kitb font: no script measures with GetTextSize (Theme.Measure / Theme.MeasureLabel)", table.concat(measures, ", "))
+		K.flushErrors("kitb_no_direct_font")
+	end)
+
+	-- corner radii are Theme.Radius tokens ("None", "S", "M", and "Round" for a pill or a disc) in every file U6 swept; the
+	-- list is check.mjs's RADIUS_SWEPT (its radius-literal rule holds the same files), so U7 / U9 add families in one place
+	S.kitb_radius_tokens = guarded("kitb_radius_tokens", function()
+		local Theme = theme()
+		if not Theme then
+			return
+		end
+		local f = Instance.new("Frame")
+		local round = Theme.Corner(f, "Round")
+		T.check(round and round.CornerRadius.Scale == 0.5 and round.CornerRadius.Offset == 0, "kitb radius: Theme.Corner(obj, 'Round') = UDim(0.5, 0) (a pill or a disc)", round and tostring(round.CornerRadius) or "nil")
+		local s = Theme.Corner(f, "S")
+		T.check(s and s.CornerRadius.Offset == 4, "kitb radius: Theme.Corner(obj, 'S') = 4 px")
+		f:Destroy()
+		local fh = io.open("tools/check.mjs", "r")
+		local js = fh and fh:read("*a") or ""
+		if fh then
+			fh:close()
+		end
+		local list = js:match("const RADIUS_SWEPT = %[(.-)%]")
+		if not T.check(list ~= nil, "kitb radius: tools/check.mjs lists the swept files (RADIUS_SWEPT)") then
+			return
+		end
+		local want = {}
+		for p in list:gmatch("\"([^\"]+)\"") do
+			want[p:match("([^/]+)%.lua$") or p] = p
+		end
+		local seen, bad = 0, {}
+		for _, src in ipairs(gameSources()) do
+			local key = src.inst.Name
+			if want[key] then
+				seen = seen + 1
+				local text = src.src
+				local hits = 0
+				for _, pat in ipairs({
+					"Theme%.Corner%([^()]-,%s*%-?%d[%d%.]*%s*%)", -- Theme.Corner(x, 12)
+					"Theme%.Corner%([^()]-,%s*UDim%.new%(%s*0%s*,%s*%d[%d%.]*%s*%)%s*%)", -- Theme.Corner(x, UDim.new(0, 12))
+					"Theme%.Corner%([%w_%.%[%]\"]+%)", -- Theme.Corner(x): the old 12 px default
+					"CornerRadius%s*=%s*UDim%.new%(%s*0%s*,%s*%d", -- .CornerRadius = UDim.new(0, 12)
+					"[^%w_%.:]corner%([^()]-,%s*%d[%d%.]*%s*[,%)]", -- a file's own corner(x, 12) helper
+				}) do
+					local _, c = text:gsub(pat, "")
+					hits = hits + c
+				end
+				if hits > 0 then
+					bad[#bad + 1] = key .. " x" .. hits
+				end
+			end
+		end
+		local listed = 0
+		for _ in pairs(want) do
+			listed = listed + 1
+		end
+		T.check(listed > 0 and seen >= listed, "kitb radius: every swept file is mounted", seen .. " of " .. listed)
+		T.check(#bad == 0, "kitb radius: no literal corner radius in a swept file (Theme.Radius tokens)", table.concat(bad, ", "))
+		K.flushErrors("kitb_radius_tokens")
+	end)
+
+	-- U6 casing (the owner saw LuckiestGuy's odd lower-case "e" in "PeTS"): Title, Sign, Accent and Tag labels read in
+	-- capitals, the text they are made with and every text set later; rich text tags and entities stay as written; the
+	-- reading and button roles keep their case; a label moved to a reading role keeps the case of later texts; Theme.Measure
+	-- and Theme.MeasureLabel measure the capitals
+	S.theme_caps_roles = guarded("theme_caps_roles", function()
+		local Theme = theme()
+		if not Theme then
+			return
+		end
+		for _, role in ipairs({ "Title", "Sign", "Accent", "Tag" }) do
+			local l = Theme.Label("Pets", role)
+			T.check(l.Text == "PETS", "kitb caps: a " .. role .. " label reads in capitals", l.Text)
+			l.Text = "Daily gift"
+			T.check(l.Text == "DAILY GIFT", "kitb caps: ...and so does a text set later (" .. role .. ")", l.Text)
+			l:Destroy()
+		end
+		local rich = Theme.Label("<font color=\"#FFD24A\">Pets</font> &amp; eggs", "Title")
+		T.check(rich.Text == "<font color=\"#FFD24A\">PETS</font> &amp; EGGS", "kitb caps: rich text tags and entities stay as written", rich.Text)
+		rich:Destroy()
+		T.check(Theme.Caps("Lv 5 \194\183 a < b") == "LV 5 \194\183 A < B", "kitb caps: Theme.Caps keeps UTF-8 symbols and a lone '<'", Theme.Caps("Lv 5 \194\183 a < b"))
+		for _, role in ipairs({ "Heading", "Button", "Body", "Label", "Display", "Script", "Toast", "Nameplate" }) do
+			local l = Theme.Label("Feed", role)
+			T.check(l.Text == "Feed", "kitb caps: a " .. role .. " label keeps its case", l.Text)
+			l:Destroy()
+		end
+		local moved = Theme.Label("Pets", "Title")
+		Theme.SetRole(moved, "Body")
+		moved.Text = "Lucky pets"
+		T.check(moved.Text == "Lucky pets", "kitb caps: a label moved to a reading role keeps the case of later texts", moved.Text)
+		moved:Destroy()
+		local box = Instance.new("TextBox")
+		box.Text = "typed"
+		Theme.Style(box, "Title")
+		T.check(box.Text == "typed", "kitb caps: a TextBox keeps what the player typed", box.Text)
+		box:Destroy()
+		local a, b = Theme.Measure("Pets", "Title", 30), Theme.Measure("PETS", "Title", 30)
+		T.check(a.X == b.X, "kitb caps: Theme.Measure measures a Title in capitals", tostring(a) .. " vs " .. tostring(b))
+		local t = Theme.Label("PETS", "Title", { Size = 30 })
+		local m = Theme.MeasureLabel(t, "Pets")
+		T.check(m.X == b.X, "kitb caps: Theme.MeasureLabel measures a Title label's text in capitals", tostring(m) .. " vs " .. tostring(b))
+		t:Destroy()
+		K.flushErrors("theme_caps_roles")
+	end)
+
 	return S
 end
 
@@ -1055,7 +1266,10 @@ local function clientScenarios()
 				if classic and ring then
 					doubled[#doubled + 1] = path
 				end
-				if classic or ring then
+				-- a world sign (BillboardGui / SurfaceGui: a pet card, a damage number) keeps its ONE outline on its plate
+				-- (ARCHITECTURE_V3's World text rule, read over a bright sky at any distance); only a doubled one fails there
+				local world = d:FindFirstAncestorWhichIsA("BillboardGui") or d:FindFirstAncestorWhichIsA("SurfaceGui")
+				if (classic or ring) and not world then
 					local opaque, panel = onPanel(d)
 					if opaque then
 						panelled[#panelled + 1] = path .. (panel ~= d and (" on " .. panel.Name) or " (own fill)")
@@ -1067,12 +1281,73 @@ local function clientScenarios()
 		table.sort(panelled)
 		T.check(total > 0, "kitb stroke walk: the client run left text in PlayerGui", tostring(total))
 		T.info(fmt("*kitb stroke walk: %d texts, %d with stroke + outline, %d outlined on an opaque panel", total, #doubled, #panelled))
-		-- U1: a warning (the 18 helpers and the explicit Stroke callers are U6's sweep); U6 turns these into T.check
-		if #doubled > 0 then
-			T.warn(fmt("kitb stroke walk: %d text(s) with both a classic stroke and an outline (U6 drives to 0)", #doubled), table.concat(doubled, "; ", 1, math.min(#doubled, 8)))
+		-- U6: a failure from now on (U1 reported these as a warning); tools/stroke_walk.py runs the same rule over the dumps of
+		-- every render scenario
+		T.check(#doubled == 0, fmt("kitb stroke walk: no text with both a classic stroke and an outline (%d)", #doubled), table.concat(doubled, "; ", 1, math.min(#doubled, 8)))
+		T.check(#panelled == 0, fmt("kitb stroke walk: no outlined text on an opaque panel (%d)", #panelled), table.concat(panelled, "; ", 1, math.min(#panelled, 8)))
+	end)
+
+	-- U6 review: the contrast rule over every shown text with no outline in PlayerGui after the client run (SmokeCommon.Contrast:
+	-- its colour against the fill painted under its glyphs, the worst gradient stop; 3:1 from 18 px, 4.5:1 below).
+	-- tools/stroke_walk.py runs the same rule over the dumps of every render scenario
+	S.kitb_text_contrast = guarded("kitb_text_contrast", function()
+		local pg = game:GetService("Players").LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		if not T.check(pg ~= nil, "kitb contrast: PlayerGui exists") then
+			return
 		end
-		if #panelled > 0 then
-			T.warn(fmt("kitb stroke walk: %d outlined text(s) on an opaque panel (U6 drives to 0)", #panelled), table.concat(panelled, "; ", 1, math.min(#panelled, 8)))
+		local bad, read, owed = SmokeCommon.Contrast.Walk(pg)
+		T.info(fmt("*kitb contrast: %d texts read against their fill, %d below the rule, %d more in tools/fixtures/contrast_backlog.txt", read, #bad, owed))
+		T.check(read > 0, "kitb contrast: the client run left text on a fill in PlayerGui", tostring(read))
+		T.check(#bad == 0, fmt("kitb contrast: every text without an outline reads on its fill (3:1 from 18 px, 4.5:1 below) (%d not)", #bad),
+			table.concat(bad, "; ", 1, math.min(#bad, 10)))
+	end)
+
+	-- U6 (fonts audit F9): kit B's casing rule over every text Theme stamped with a role in PlayerGui after the client run:
+	-- a Button reads in sentence case (no all-capitals word of 4+ letters: "Leave", not "LEAVE"), a Tag / Title / Sign /
+	-- Accent in capitals (Theme keeps those, so they fail in every family). Rich text tags are not text. A button in
+	-- capitals fails in the ScreenGuis of the families U6 swept (CASING_SWEPT); elsewhere it is a warning with the count (U9 sweeps those windows; the SignKit planks of the main menu, Settings and the loading screen keep
+	-- the capitals of the owner's approved U2-U5 boards until the owner rules on it).
+	local CASING_SWEPT = { NimbusMenu = true, NimbusBattle = true, NimbusHud = true, NimbusIndex = true, NimbusNotify = true,
+		NimbusDungeon = true, NimbusDungeonRun = true }
+	S.kitb_casing_rule = guarded("kitb_casing_rule", function()
+		local pg = game:GetService("Players").LocalPlayer:FindFirstChildOfClass("PlayerGui")
+		if not T.check(pg ~= nil, "kitb casing: PlayerGui exists") then
+			return
+		end
+		local shouty, quiet, buttons, tags, later = {}, {}, 0, 0, {}
+		for _, d in ipairs(pg:GetDescendants()) do
+			if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
+				local role = d:GetAttribute("FontRole")
+				local text = tostring(d.Text or ""):gsub("<[^>]->", "")
+				local path = d:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
+				local swept = CASING_SWEPT[path:match("^([^.]+)") or ""] == true
+				if role == "Button" and text:find("%a") then
+					buttons = buttons + 1
+					for word in text:gmatch("%a+") do
+						if #word >= 4 and word == word:upper() then
+							local into = swept and shouty or later
+							into[#into + 1] = path .. " \"" .. text .. "\""
+							break
+						end
+					end
+				elseif (role == "Tag" or role == "Title" or role == "Sign" or role == "Accent") and text:find("%a") then
+					-- (Theme.SetRole keeps these in capitals, so a lower-case letter fails in every family)
+					tags = tags + 1
+					if text:find("%l") then
+						quiet[#quiet + 1] = path .. " \"" .. text .. "\" (" .. role .. ")"
+					end
+				end
+			end
+		end
+		table.sort(shouty)
+		table.sort(quiet)
+		T.info(fmt("*kitb casing: %d button texts, %d tag / title texts", buttons, tags))
+		T.check(buttons > 0, "kitb casing: the client run left Button-role text in PlayerGui", tostring(buttons))
+		T.check(#shouty == 0, fmt("kitb casing: buttons read in sentence case (%d in capitals)", #shouty), table.concat(shouty, "; ", 1, math.min(#shouty, 8)))
+		T.check(#quiet == 0, fmt("kitb casing: tags, titles, signs and accents read in capitals (%d not)", #quiet), table.concat(quiet, "; ", 1, math.min(#quiet, 8)))
+		if #later > 0 then
+			table.sort(later)
+			T.warn(fmt("kitb casing: %d text(s) outside the swept families break the casing rule (U9 sweeps them)", #later), table.concat(later, "; ", 1, math.min(#later, 8)))
 		end
 	end)
 

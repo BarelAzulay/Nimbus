@@ -341,7 +341,7 @@ local function serverScenarios()
 			local gui = find(m, "FarmSign", "BillboardGui")
 			local text = gui and plainText(gui) or ""
 			local pts = HB.Points and HB.Points("Press1", level)
-			farmSign:case(gui and gui.MaxDistance == 70 and gui.Size.X.Scale == 0 and gui.LightInfluence == 0 and text:find("Berry Farm Lv " .. level, 1, true) and text:find("Grows berries for your pets", 1, true)
+			farmSign:case(gui and gui.MaxDistance == 70 and gui.Size.X.Scale == 0 and gui.LightInfluence == 0 and text:find("BERRY FARM LV " .. level, 1, true) and text:find("Grows berries for your pets", 1, true)
 				and pts and typeof(pts.BerryPoint) == "Vector3", "level " .. level .. ": '" .. text .. "'")
 		end
 		farmSign:report()
@@ -361,7 +361,7 @@ local function serverScenarios()
 			local gui = find(m, "MachineSign", "BillboardGui")
 			local text = gui and plainText(gui) or ""
 			hopper:case(TC.Get("Kitchen").Kind == "FoodMachine" and #list == 1 and h.Material == Enum.Material.Glass and h.Transparency > 0.2 and h.Transparency < 0.9 and h.Position.Y > height * 0.5
-				and gui ~= nil and text:find("Food Machine", 1, true) and text:find("Berries -> XP: press E", 1, true) and find(gui, "BasketLine", "TextLabel") ~= nil,
+				and gui ~= nil and text:find("FOOD MACHINE", 1, true) and text:find("Berries -> XP: press E", 1, true) and find(gui, "BasketLine", "TextLabel") ~= nil,
 				"level " .. level .. ": " .. #list .. " Hopper parts, sign '" .. text .. "'")
 		end
 		hopper:report()
@@ -468,7 +468,7 @@ local function serverScenarios()
 		local bowlGui = bowl and find(bowl, "BowlSign", "BillboardGui")
 		local bowlText = bowlGui and plainText(bowlGui) or ""
 		T.check(bowl ~= nil and abs(bowl.Position.X - gs.Bowl.Center.X) < 0.05 and abs(bowl.Position.Z - gs.Bowl.Center.Z) < 0.05 and abs(math.max(bowl.Size.X, bowl.Size.Z) - 2 * gs.Bowl.Radius) < 0.6
-			and bowlGui ~= nil and bowlGui.MaxDistance == 40 and bowlText:find("Food Bowl", 1, true) and bowlText:find("Pets eat here, then poop Cloud Cash!", 1, true),
+			and bowlGui ~= nil and bowlGui.MaxDistance == 40 and bowlText:find("FOOD BOWL", 1, true) and bowlText:find("Pets eat here, then poop Cloud Cash!", 1, true),
 			"station art: the Food Bowl stands at Slot.Bowl (radius " .. gs.Bowl.Radius .. ") with its sign 'Food Bowl' / 'Pets eat here, then poop Cloud Cash!' (MaxDistance 40)", bowlText)
 		local g3a, g3b, g7 = HB.BuildStationModel("Garden", 3, nil, 5), HB.BuildStationModel("Garden", 3, nil, 5), HB.BuildStationModel("Garden", 3, nil, 7)
 		T.check(g3a and g3b and g7 and signature(g3a) == signature(g3b) and signature(g3a) ~= signature(g7),
@@ -876,7 +876,7 @@ local function serverScenarios()
 						end
 						local text = plainText(gui)
 						local wants = locked and tostring(pad.Locked) or tostring(pad.LevelText or "")
-						signOk:case(pixel and biggest >= 22 and smallest >= 18 and outlined and text:find(tostring(pad.Title or pad.Name), 1, true) ~= nil and text:find(wants, 1, true) ~= nil,
+						signOk:case(pixel and biggest >= 22 and smallest >= 18 and outlined and text:upper():find(tostring(pad.Title or pad.Name):upper(), 1, true) ~= nil and text:find(wants, 1, true) ~= nil,
 							pad.StationId .. ": '" .. text .. "' sizes " .. smallest .. "-" .. biggest)
 					end
 					if locked and (pad.Locked:find("Prestige", 1, true) or pad.Locked:find("Coming soon", 1, true)) and (tonumber(pad.Level) or 0) == 0 and pad.StationId ~= "Prestige" then
@@ -970,7 +970,7 @@ local function serverScenarios()
 		local farmSign = farm and find(farm, "FarmSign", "BillboardGui")
 		local farmSlot = plotCF * TC.Get("Press1").Slot.CFrame
 		T.check(farm ~= nil and farm:GetAttribute("Kind") == "Farm" and typeof(bp) == "Vector3" and math.abs(farmSlot:PointToObjectSpace(bp).Z) < 4 and farmSign ~= nil
-			and plainText(farmSign):find("Berry Farm Lv " .. tostring(state.Stations.Press1), 1, true) ~= nil,
+			and plainText(farmSign):find("BERRY FARM LV " .. tostring(state.Stations.Press1), 1, true) ~= nil,
 			"home plot: Station_Press1 is the Berry Farm (Kind Farm, a BerryPoint over its rows, the 'Berry Farm Lv N' sign)")
 		T.check(home:FindFirstChild("Station_Collector") == nil and home:FindFirstChild("Station_Press2") == nil and #findAll(home, function(d)
 			return d.Name == "MagnetHead" or (d:IsA("Model") and (d:GetAttribute("FruitPoint") ~= nil or d:GetAttribute("MagnetCenter") ~= nil))

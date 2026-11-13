@@ -184,7 +184,7 @@ local function place(inst, x, y, w, h)
 end
 
 local function label(parent, name, role, size, props)
-	local l = Theme.Label("", role, { Size = size, Stroke = 0.25, StrokeColor = C.Ink, Outline = 1.5, OutlineColor = C.Ink })
+	local l = Theme.Label("", role, { Size = size })
 	l.Name = name
 	l.BackgroundTransparency = 1
 	l.BorderSizePixel = 0
@@ -478,7 +478,7 @@ function H.build()
 		Name = "Search", Text = "", PlaceholderText = "Search pets", ClearTextOnFocus = false, BorderSizePixel = 0,
 		BackgroundColor3 = C.Well, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3, Parent = body,
 	})
-	Theme.Style(search, "Body", { Size = 22, Stroke = 0.4, StrokeColor = C.Ink })
+	Theme.Style(search, "Body", { Size = 22 })
 	search.PlaceholderColor3 = C.Muted
 	Theme.Corner(search, UDim.new(0, 12))
 	Theme.Stroke(search, Color3.fromRGB(70, 84, 150), 2, 0)
@@ -504,7 +504,7 @@ function H.build()
 			Name = "Filter_" .. id, Text = FILTER_LABELS[id], AutoButtonColor = false, BorderSizePixel = 0,
 			BackgroundColor3 = C.Well, Visible = false, ZIndex = 3, Parent = body,
 		})
-		Theme.Style(chip, "Button", { Size = 20, Stroke = 0.4, StrokeColor = C.Ink, Outline = 1.5, OutlineColor = C.Ink })
+		Theme.Style(chip, "Button", { Size = 20 })
 		Theme.Corner(chip, UDim.new(0.5, 0))
 		local outline = Theme.Stroke(chip, Color3.fromRGB(70, 84, 150), 2, 0)
 		chip.Activated:Connect(function()
@@ -596,7 +596,7 @@ end
 function H.width(text, size, font)
 	local plain = tostring(text):gsub("<[^>]*>", "")
 	local ok, v = pcall(function()
-		return TextService:GetTextSize(plain, size, font, Vector2.new(4096, 1024))
+		return Theme.Measure(plain, font, size, 4096)
 	end)
 	if ok and typeof(v) == "Vector2" then
 		return v.X
@@ -941,7 +941,6 @@ function H.paintChips()
 		chip.Button:SetAttribute("Selected", on)
 		chip.Button.BackgroundColor3 = on and Theme.Darken(C.Gold, 0.15) or C.Well
 		chip.Button.TextColor3 = on and C.Navy or C.White
-		chip.Button.TextStrokeTransparency = on and 1 or 0.4
 		if chip.Glyphs then
 			chip.Glyphs.Transparency = on and 1 or 0 -- dark text on gold reads without its outline
 		end

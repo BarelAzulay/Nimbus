@@ -65,7 +65,6 @@ local K = {
 local Colors = Theme.Colors
 local NEON = Theme.Neon or {}
 local WHITE = Colors.White
-local INK = Colors.PanelInk or Color3.fromRGB(8, 10, 28)
 local C = {
 	Accent = Theme.NeonColor and Theme.NeonColor("Obby") or Color3.fromRGB(64, 170, 255),
 	Gold = NEON.Gold or Color3.fromRGB(255, 196, 64),
@@ -146,8 +145,8 @@ function H.text(parent, name, text, role, size, color, props)
 	label.BackgroundTransparency = 1
 	label.BorderSizePixel = 0
 	label.Text = tostring(text or "")
-	Theme.Style(label, role or "Body", { Size = size, Color = color or WHITE, Stroke = 1 })
-	Theme.TextOutline(label, 1.5, INK, 0.1)
+	-- kit-b U6: the window is a plate, so the text reads by contrast (no outline)
+	Theme.Style(label, role or "Body", { Size = size, Color = color or WHITE })
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.TextYAlignment = Enum.TextYAlignment.Center
 	for k, v in pairs(props or {}) do

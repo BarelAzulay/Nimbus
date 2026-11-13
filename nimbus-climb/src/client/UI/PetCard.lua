@@ -224,8 +224,7 @@ function PetCard.New(adornee, mode, heightStuds, opts)
 		TextXAlignment = Enum.TextXAlignment.Center,
 		TextYAlignment = Enum.TextYAlignment.Center,
 	}, plate)
-	Theme.Style(level, "Display", { Color = C.Text, Stroke = 0.2, StrokeColor = C.Stroke })
-	Theme.TextOutline(level, 2, C.Stroke, 0)
+	Theme.Style(level, "Display", { Color = C.Text, Outline = "World", OutlineThickness = 2, OutlineColor = C.Stroke }) -- over the world: ONE outline (kit-b U6)
 	self.levelLabel = level
 	-- Phase 5: the lives pips (frames, no text) right of the level; hidden until SetLives
 	local pips = make("Frame", { Name = "Lives", BackgroundTransparency = 1, Visible = false }, plate)
@@ -252,8 +251,7 @@ function PetCard.New(adornee, mode, heightStuds, opts)
 		TextYAlignment = Enum.TextYAlignment.Center,
 		ZIndex = 4,
 	}, badge)
-	Theme.Style(stars, "Heading", { Color = C.Star, Stroke = 0.2, StrokeColor = C.Stroke })
-	Theme.TextOutline(stars, 1.5, C.Stroke, 0)
+	Theme.Style(stars, "Heading", { Color = C.Star, Outline = "World", OutlineThickness = 1.5, OutlineColor = C.Stroke }) -- over the world: ONE outline (kit-b U6)
 	self.starsLabel, self.badge = stars, badge
 
 	self.bars = {
@@ -270,8 +268,7 @@ function PetCard.New(adornee, mode, heightStuds, opts)
 		TextXAlignment = Enum.TextXAlignment.Right,
 		TextYAlignment = Enum.TextYAlignment.Center,
 	}, plate)
-	Theme.Style(timerText, "Heading", { Color = C.Text, Stroke = 0.2, StrokeColor = C.Stroke })
-	Theme.TextOutline(timerText, 2, C.Stroke, 0)
+	Theme.Style(timerText, "Heading", { Color = C.Text, Outline = "World", OutlineThickness = 2, OutlineColor = C.Stroke }) -- over the world: ONE outline (kit-b U6)
 	self.timerLabel = timerText
 
 	local pill = make("TextButton", {
@@ -285,8 +282,7 @@ function PetCard.New(adornee, mode, heightStuds, opts)
 		Visible = false,
 		Selectable = true,
 	}, gui)
-	Theme.Style(pill, "Button", { Color = C.Text, Stroke = 0.2, StrokeColor = C.Stroke })
-	Theme.TextOutline(pill, 2, C.Stroke, 0)
+	Theme.Style(pill, "Button", { Color = C.Text, Outline = "World", OutlineThickness = 2, OutlineColor = C.Stroke }) -- over the world: ONE outline (kit-b U6)
 	Theme.Corner(pill, UDim.new(0.5, 0))
 	local glow = Theme.Stroke(pill, C.PillGlow, 3, 0.05)
 	glow.Name = "Glow"

@@ -136,7 +136,6 @@ local WHITE = Colors.White
 local NAVY = Colors.Navy or Colors.Ink
 local MUTED = Colors.Muted or Colors.CloudShade
 local GOLD = Colors.Gold or Colors.Token
-local INK = Colors.TextStroke or Colors.Ink
 local GOOD = Colors.Good
 local BAD = Colors.Bad
 local BUTTONS = Theme.Buttons or {}
@@ -219,7 +218,8 @@ local function makeFrame(parent, name, props)
 	return Util.Create("Frame", p)
 end
 
--- Theme-styled TextLabel with a readable stroke + glyph outline.
+-- Theme-styled TextLabel. kit-b U6: every Index text sits on the window or a card, so it reads by contrast and has no
+-- outline (was a 0.25 classic stroke under a 1.5 px glyph outline).
 local function makeText(parent, name, text, role, size, color, props)
 	local p = { Name = name }
 	if props then
@@ -230,30 +230,19 @@ local function makeText(parent, name, text, role, size, color, props)
 	local label = Theme.Label(tostring(text), role, {
 		Size = size,
 		Color = color or WHITE,
-		Stroke = 0.25,
-		StrokeColor = INK,
-		Outline = 1.5,
-		OutlineColor = INK,
 		Props = p,
 	})
-	-- faint decorative text keeps a faint outline (an opaque outline around see-through text looks wrong)
-	local faded = tonumber(p.TextTransparency)
-	if faded and faded > 0 then
-		local outline = label:FindFirstChild("TextOutline")
-		if outline then
-			outline.Transparency = math.min(1, faded + 0.2)
-		end
-	end
 	label.Parent = parent
 	return label
 end
 
+-- radius: a Theme.Radius token ("S", "M"; kit-b U6), "M" by default
 local function corner(parent, radius)
-	return Theme.Corner(parent, UDim.new(0, radius or 12))
+	return Theme.Corner(parent, radius or "M")
 end
 
 local function round(parent)
-	return Theme.Corner(parent, UDim.new(0.5, 0))
+	return Theme.Corner(parent, "Round")
 end
 
 local function stroke(parent, color, thickness, transparency)
@@ -305,7 +294,7 @@ local function inset(parent, name, props)
 	p.BackgroundColor3 = INSET
 	p.BackgroundTransparency = 0.42
 	local frame = makeFrame(parent, name, p)
-	corner(frame, 12)
+	corner(frame, "M")
 	stroke(frame, Colors.WellEdge or NAVY, 3, 0.15)
 	return frame
 end
@@ -736,14 +725,9 @@ end
 -- Small coloured pill with the element name (no asset ids).
 local function elementPill(parent, element, textSize, layoutOrder)
 	local color = elementColor(element)
-	local dark = Theme.Darken(color, 0.62)
 	local pill = Theme.Label(element, "Heading", {
 		Size = textSize or 17,
 		Color = WHITE,
-		Stroke = 0.1,
-		StrokeColor = dark,
-		Outline = 1.5,
-		OutlineColor = dark,
 		Props = {
 			Name = "Element_" .. element,
 			BackgroundTransparency = 0,
@@ -782,7 +766,7 @@ local function burst(parent, color, amount, centre)
 			Rotation = rng:NextInteger(0, 90),
 			ZIndex = 12,
 		})
-		corner(piece, 2)
+		corner(piece, "S")
 		local angle = rng:NextNumber(0, math.pi * 2)
 		local distance = rng:NextNumber(60, 170)
 		local target = UDim2.new(
@@ -1050,7 +1034,7 @@ local function buildGroupTile(group, index)
 		LayoutOrder = index,
 		Parent = U.GroupList,
 	})
-	corner(button, 14)
+	corner(button, "M")
 	tile.Stroke = stroke(button, NAVY, 3, 0)
 	-- rarity art: a diagonal gradient, a pale gloss band and a big faint glyph on the right
 	local top, bottom = Theme.Lighten(color, 0.12), Theme.Darken(color, 0.42)
@@ -1078,8 +1062,12 @@ local function buildGroupTile(group, index)
 		TextStrokeTransparency = 1,
 		Rotation = 12,
 	})
-	-- name on top, then a slim progress bar with the "3/6" count at its right end
-	tile.Name = makeText(button, "GroupName", group.Rarity, "Title", 24, WHITE, {
+	-- name on top, then a slim progress bar with the "3/6" count at its right end (kit-b U6: a card name is a Heading, the
+	-- Title face's capitals would not fit "LEGENDARY" in the narrow phone tile)
+	-- kit B (no outline): the name takes the ink that reads on the light top-left end of the diagonal gradient (Theme.TextOn:
+	-- brown on a light colour, white on a dark one); the count sits on a small navy plate in white (it drops under 18 px on
+	-- a phone, where no ink reads 4.5:1 on the grey and blue tiles' mid tones)
+	tile.Name = makeText(button, "GroupName", group.Rarity, "Heading", 24, Theme.TextOn(top), {
 		Position = UDim2.fromOffset(12, 4),
 		Size = UDim2.new(1, -52, 0, 30),
 		TextXAlignment = Enum.TextXAlignment.Left,
@@ -1089,11 +1077,16 @@ local function buildGroupTile(group, index)
 	Util.Create("UITextSizeConstraint", { MaxTextSize = 24, MinTextSize = 18, Parent = tile.Name })
 	tile.Progress = makeText(button, "Progress", "0/0", "Heading", 19, WHITE, {
 		AnchorPoint = Vector2.new(1, 1),
-		Position = UDim2.new(1, -10, 1, -4),
-		Size = UDim2.fromOffset(58, 24),
+		Position = UDim2.new(1, -8, 1, -5),
+		Size = UDim2.fromOffset(0, 22),
+		AutomaticSize = Enum.AutomaticSize.X,
+		BackgroundTransparency = 0.15,
+		BackgroundColor3 = NAVY,
 		TextXAlignment = Enum.TextXAlignment.Right,
 		ZIndex = 2,
 	})
+	corner(tile.Progress, "M")
+	pad(tile.Progress, 7, 0, 7, 0)
 	local track = makeFrame(button, "Track", {
 		AnchorPoint = Vector2.new(0, 1),
 		Position = UDim2.new(0, 12, 1, -11),
@@ -1155,7 +1148,7 @@ local function buildFusionTile(index)
 		LayoutOrder = index,
 		Parent = U.GroupList,
 	})
-	corner(button, 14)
+	corner(button, "M")
 	tile.Stroke = stroke(button, NAVY, 3, 0)
 	Util.Create("UIGradient", {
 		Color = ColorSequence.new({
@@ -1181,7 +1174,9 @@ local function buildFusionTile(index)
 		TextStrokeTransparency = 1,
 		Rotation = 12,
 	})
-	tile.Name = makeText(button, "GroupName", "Fusions", "Title", 24, WHITE, {
+	-- kit B (no outline): the name is brown on the gold end of the gold -> pink -> violet tile; the count runs across the
+	-- pink-to-violet foot, where neither ink reads on the whole line, so it sits on a small navy plate in white
+	tile.Name = makeText(button, "GroupName", "Fusions", "Heading", 24, Theme.Sign.Text, { -- (a card name, like the rarity tiles)
 		Position = UDim2.fromOffset(12, 4),
 		Size = UDim2.new(1, -52, 0, 30),
 		TextXAlignment = Enum.TextXAlignment.Left,
@@ -1189,11 +1184,16 @@ local function buildFusionTile(index)
 	})
 	tile.Progress = makeText(button, "Progress", "", "Heading", 19, WHITE, {
 		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 12, 1, -4),
-		Size = UDim2.new(1, -24, 0, 24),
+		Position = UDim2.new(0, 10, 1, -5),
+		Size = UDim2.fromOffset(0, 22),
+		AutomaticSize = Enum.AutomaticSize.X,
+		BackgroundTransparency = 0.15,
+		BackgroundColor3 = NAVY,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		ZIndex = 2,
 	})
+	corner(tile.Progress, "M")
+	pad(tile.Progress, 7, 0, 7, 0)
 	tile.Pop = Util.Create("UIScale", { Name = "Pop", Scale = 1, Parent = button })
 	button.MouseEnter:Connect(function()
 		tween(tile.Pop, 0.12, { Scale = 1.03 })
@@ -1401,7 +1401,7 @@ local function buildTile(def, index)
 		LayoutOrder = index,
 		Parent = U.Grid,
 	})
-	corner(button, 14)
+	corner(button, "M")
 	tile.Stroke = stroke(button, NAVY, 3, 0)
 	tile.Gradient = Util.Create("UIGradient", { Rotation = 90, Parent = button })
 	local gloss = makeFrame(button, "Gloss", {
@@ -1410,7 +1410,7 @@ local function buildTile(def, index)
 		Position = UDim2.fromOffset(7, 5),
 		Size = UDim2.new(1, -14, 0.22, 0),
 	})
-	corner(gloss, 9)
+	corner(gloss, "M")
 	tile.Art = makeFrame(button, "Art", {
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0, 6),
@@ -1425,7 +1425,7 @@ local function buildTile(def, index)
 		BackgroundColor3 = Color3.fromRGB(16, 24, 60),
 		ZIndex = 3,
 	})
-	corner(band, 9)
+	corner(band, "M")
 	-- 18 design px on up to two lines: never under 14 px at the phone scale (readability rule)
 	tile.Caption = makeText(band, "Caption", "???", "Heading", 18, WHITE, {
 		Position = UDim2.fromOffset(3, 0),
@@ -1582,12 +1582,12 @@ local function renderRewards()
 		CloudUI.SetDisabled(button, true)
 	elseif claimable then
 		U.RewardSub.Text = "Every " .. group.Rarity .. " pet found. Claim it!"
-		button.Text = "CLAIM"
+		button.Text = "Claim"
 		CloudUI.SetStyle(button, "Green")
 		CloudUI.SetDisabled(button, false)
 	else
 		U.RewardSub.Text = string.format("Discover all %d %s pets (%d to go).", total, group.Rarity, total - found)
-		button.Text = "CLAIM"
+		button.Text = "Claim"
 		CloudUI.SetStyle(button, "Gray")
 		CloudUI.SetDisabled(button, true)
 	end
@@ -2033,7 +2033,7 @@ local function buildElementsCard()
 		Visible = false,
 		ZIndex = 20,
 	})
-	corner(card, 14)
+	corner(card, "M")
 	stroke(card, NAVY, 3, 0)
 	U.ElementsCard = card
 	local scroll = scroller(card, "Scroll", {
@@ -2250,10 +2250,10 @@ local function buildCentre(centre)
 		Visible = false,
 		ZIndex = 1,
 	})
-	corner(U.ClaimGlow, 18)
+	corner(U.ClaimGlow, "M")
 	U.ClaimButton = CloudUI.Button({
 		Name = "Claim",
-		Text = "CLAIM",
+		Text = "Claim",
 		Style = "Gray",
 		Size = UDim2.fromOffset(184, 60),
 		AnchorPoint = Vector2.new(1, 0.5),
@@ -2329,7 +2329,7 @@ local function buildDetail(detail)
 		LayoutOrder = 2,
 		Parent = body,
 	})
-	corner(U.Banner, 12)
+	corner(U.Banner, "M")
 	stroke(U.Banner, Color3.fromRGB(63, 200, 255), 3, 0)
 
 	U.Name = makeText(body, "Name", "", "Title", 30, WHITE, {

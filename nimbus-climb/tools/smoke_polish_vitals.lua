@@ -2,7 +2,8 @@
 -- key "vitals": "the HP and stamina UI looks kind of bad"). Client world only; tools/smoke.py runs:
 --   client_polish_vitals         (1920x1080, keyboard) one cohesive card: a glossy outlined plate holding the heart
 --                                badge + a thick HP tube (outline, gradient fill, highlight strip, white damage trail,
---                                hit flash + card shake, low-health pulse, big outlined "117 / 117" >= 24 px), the
+--                                hit flash + card shake, low-health pulse, big "117 / 117" >= 24 px that reads by its
+--                                colour: dark on the fill, white on the track, >= 3:1 where it stands; kit-b U6 review), the
 --                                lightning badge + a matching stamina tube (smooth drain / refill, dims when empty) and
 --                                the dash ring (the cooldown sweep follows MovementController, the face lights up when
 --                                a dash is ready); the DOWNED state; every part inside the card, readable, bottom-left,
@@ -123,6 +124,35 @@ local function gradientAt(g, t)
 	return kps[#kps].Value
 end
 
+-- the contrast reading of a text where it stands now (SmokeCommon.Contrast: its colour against the fill painted under its
+-- glyph centre, the worst gradient stop): { ratio, need, backdrop, ... }, or nil when not read (outlined, hidden, clipped
+-- away, nothing opaque under it)
+local function contrastOf(label)
+	local list = SmokeCommon.Contrast.PaintList(playerGui())
+	for i, item in ipairs(list) do
+		if item.obj == label then
+			return SmokeCommon.Contrast.Read(list, i)
+		end
+	end
+	return nil
+end
+
+-- the HP number's copies that show over their glyph centre: every one must read (3:1 at 26 px); -> ok, "Name 4.1:1 on X"
+local function hpNumberReads(c)
+	local seen, bad, notes = 0, 0, {}
+	for _, label in ipairs(c.HpCopies) do
+		local r = contrastOf(label)
+		if r then
+			seen = seen + 1
+			if r.ratio < r.need then
+				bad = bad + 1
+			end
+			notes[#notes + 1] = fmt("%s %.2f:1 on %s", label.Parent.Name, r.ratio, r.backdrop.Name)
+		end
+	end
+	return seen > 0 and bad == 0, table.concat(notes, ", ")
+end
+
 -- the card's parts by name (nil fields when missing)
 local function card()
 	local hud = playerGui() and playerGui():FindFirstChild("NimbusHud")
@@ -134,11 +164,15 @@ local function card()
 	local c = {
 		Hud = hud, Vitals = vitals, Body = body, Card = path(body, "Card"),
 		Hp = hp, HpFill = path(hp, "Inner.Fill"), Trail = path(hp, "Inner.DamageTrail"), Flash = path(hp, "Inner.Fill.Flash"),
-		HpText = path(hp, "Text"), St = st, StFill = path(st, "Inner.Fill"),
+		HpText = path(hp, "Inner.TextFill.Text"), St = st, StFill = path(st, "Inner.Fill"),
 		Ring = ring, Right = path(ring, "Sweep.HalfRight.Disc"), Left = path(ring, "Sweep.HalfLeft.Disc"),
 		Glyph = path(ring, "Face.Glyph"), Heart = path(body, "Heart"), Bolt = path(body, "StaminaBadge"),
 		Notice = path(body, "DownedNotice"),
 	}
+	c.HpCopies = {}
+	for _, name in ipairs({ "TextFill", "TextTrail", "TextTrack" }) do
+		c.HpCopies[#c.HpCopies + 1] = path(hp, "Inner." .. name .. ".Text")
+	end
 	c.HeartScale = c.Heart and c.Heart:FindFirstChildOfClass("UIScale")
 	c.CardStroke = c.Card and strokeOf(c.Card)
 	return c
@@ -336,12 +370,16 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	T.check(boltShape ~= nil and #boltShape:GetChildren() == 3, "vitals: the stamina badge draws a lightning bolt")
 	T.check(c.Heart.AbsoluteSize.X / k >= 44 and c.Bolt.AbsoluteSize.X / k >= 28 and c.Ring.AbsoluteSize.X / k >= 34, "vitals: badges and the dash ring are chunky")
 
-	-- 2. the number: big, outlined, the Display font
+	-- 2. the number: big, the Display font. Readability rule (kit-b U6 review): it sits on the HP tube with no outline, so
+	-- it must read by its colour: dark ink on the fill, at least 3:1 against every stop of the fill's gradient
+	-- (SmokeCommon.Contrast, the rule of the kitb_text_contrast walk)
 	T.check(c.HpText ~= nil and tostring(c.HpText.Text) == "117 / 117", "vitals: the HP tube reads '117 / 117'", c.HpText and tostring(c.HpText.Text))
-	local outline = c.HpText and c.HpText:FindFirstChild("TextOutline")
-	T.check(c.HpText.TextSize * scaleOf(c.HpText) >= 24 and c.HpText.Font == Theme.Fonts.Display and outline ~= nil and outline.Thickness >= 2,
-		"vitals: the HP number is big (>= 24 px at 1080p), Display font, with a thick outline (Readability rule)",
-		fmt("%.1f px", c.HpText.TextSize * scaleOf(c.HpText)))
+	T.check(c.HpText.TextSize * scaleOf(c.HpText) >= 24 and c.HpText.Font == Theme.Fonts.Display,
+		"vitals: the HP number is big (>= 24 px at 1080p), Display font", fmt("%.1f px", c.HpText.TextSize * scaleOf(c.HpText)))
+	local reading = contrastOf(c.HpText)
+	T.check(reading ~= nil and reading.backdrop == c.HpFill and reading.ratio >= reading.need,
+		"vitals: full health: the HP number reads on the green fill (>= 3:1 at its worst gradient stop, no outline)",
+		reading and fmt("%.2f:1 on %s (need %g)", reading.ratio, reading.backdrop.Name, reading.need) or "not read (outlined, hidden or no fill under it)")
 	local small = smallTexts(c.Vitals, 15)
 	T.check(#small == 0, "vitals: every text of the card is >= 15 px at 1920x1080", table.concat(small, ", "))
 	T.check(fillGradient and sameColor(gradientAt(fillGradient, 0.4), Theme.Colors.Health, 0.03), "vitals: full health is green")
@@ -386,6 +424,8 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	local trailNow, fillNow = fraction(c.Trail), fraction(c.HpFill)
 	T.check(trailNow > 100 / 117 - 0.03 and fillNow < 0.5, "vitals: the white damage trail waits where the bar was while the fill drops",
 		fmt("trail %.2f, fill %.2f", trailNow, fillNow))
+	local readsHit, notesHit = hpNumberReads(c)
+	T.check(readsHit, "vitals: ...and the number still reads where it crosses the fill, the white trail and the track (kit-b U6 review)", notesHit)
 	T.check(c.Trail and c.Trail.BackgroundColor3.R > 0.95 and c.Trail.BackgroundColor3.B > 0.95 and c.Trail.BackgroundTransparency < 0.2, "vitals: the trail is white")
 	advance(0.5)
 	T.check(c.Flash.BackgroundTransparency > 0.99 and c.Body.Position.X.Offset == 0 and c.Body.Position.Y.Offset == 0, "vitals: the flash and the shake are over after a moment")
@@ -412,6 +452,8 @@ S.client_polish_vitals = guarded("client_polish_vitals", function()
 	T.check(maxScale > 1.08 and minScale < 1.03, "vitals: below 30% the heart beats", fmt("scale %.2f..%.2f", minScale, maxScale))
 	T.check(maxRed > 0.25, "vitals: ...and the card's outline pulses red", fmt("+%.2f red", maxRed))
 	T.check(sameColor(gradientAt(fillGradient, 0.4), Theme.Colors.HealthLow, 0.03), "vitals: low health turns the fill red")
+	local readsLow, notesLow = hpNumberReads(c)
+	T.check(readsLow, "vitals: ...and the number reads on the dark track (white there; kit-b U6 review)", notesLow)
 	setHealth(117, 117)
 	advance(1.5)
 	T.check(c.HeartScale.Scale == 1 and c.Heart.Rotation == 0 and sameColor(c.CardStroke.Color, healthy, 0.01), "vitals: healed: the pulse stops, the neon border is green again")

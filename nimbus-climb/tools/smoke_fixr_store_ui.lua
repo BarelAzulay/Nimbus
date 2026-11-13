@@ -460,7 +460,8 @@ local function clientScenarios()
 				byTab[tab][#byTab[tab] + 1] = { Key = key, Hero = card:GetAttribute("Hero") == true, Paint = p }
 			end
 			for _, d in ipairs(card:GetDescendants()) do
-				if (d:IsA("TextLabel") or d:IsA("TextButton")) and tostring(d.Text) ~= "" and d.Visible and not H.textStroked(d) then
+				-- kit-b U6 (a deliberate change): the card's dark stop carries its white text, so no card text has a stroke
+				if (d:IsA("TextLabel") or d:IsA("TextButton")) and tostring(d.Text) ~= "" and d.Visible and H.textStroked(d) then
 					unstroked[#unstroked + 1] = key .. "." .. d.Name
 				end
 			end
@@ -469,7 +470,7 @@ local function clientScenarios()
 		T.check(#dull == 0, "store colors: every gradient stop and outline is saturated", table.concat(dull, "; "))
 		T.check(#clash == 0, "store colors: no two packs share a colour pair (on a tab, or in the whole Store)", table.concat(clash, "; "))
 		T.check(#pale == 0, "store colors: every card has a dark stop under its white text", table.concat(pale, "; "))
-		T.check(#unstroked == 0, "store colors: every card text has a stroke", table.concat(unstroked, ", ", 1, math.min(#unstroked, 8)))
+		T.check(#unstroked == 0, "store colors: no card text has a stroke (kit-b U6: it sits on the card's dark stop)", table.concat(unstroked, ", ", 1, math.min(#unstroked, 8)))
 		local heroes, dim = 0, {}
 		for tab, list in pairs(byTab) do
 			local hero = nil

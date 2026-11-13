@@ -559,7 +559,7 @@ local function serverScenarios()
 				if sg:IsA("SurfaceGui") then
 					faces = faces + 1
 					local label = sg:FindFirstChildWhichIsA("TextLabel", true)
-					if label and label.Text == "No. " .. i and label.TextSize / sg.PixelsPerStud >= 1 and not label.TextScaled then
+					if label and label.Text == "NO. " .. i and label.TextSize / sg.PixelsPerStud >= 1 and not label.TextScaled then
 						good = good + 1
 					end
 				end
@@ -636,7 +636,7 @@ local function serverScenarios()
 				local shown = nil
 				for id, n in pairs(prof.Pets) do
 					local d = PC.Get(id)
-					if d and n > 0 and nameLabel and d.Name == nameLabel.Text then
+					if d and n > 0 and nameLabel and d.Name:upper() == nameLabel.Text then
 						shown = d
 					end
 				end
@@ -851,7 +851,7 @@ local function serverScenarios()
 		if T.check(plaza ~= nil and census.seen[plaza] == true, "polish worldtext: the Storm Altar's 'To the Plaza' sign (ReturnPortal PlazaSign) is in the census") then
 			local prec = auditGui(plaza)
 			local probs = prec.problems
-			local wantText = plaza:IsA("SurfaceGui") and "Plaza" or "To the Plaza"
+			local wantText = plaza:IsA("SurfaceGui") and "PLAZA" or "TO THE PLAZA" -- (kit-b U6: a Title-role sign reads in capitals)
 			T.check(prec.texts == 1 and prec.strings[1] == wantText and #probs == 0 and (plaza:IsA("BillboardGui") or (prec.minStuds or 0) >= TITLE_STUDS - 0.001),
 				"polish worldtext: ...it reads '" .. wantText .. "' and keeps the World text rule, no exemption (" .. plaza.ClassName .. ")",
 				tostring(prec.strings[1]) .. "; " .. tostring(prec.minStuds) .. " stud; " .. table.concat(probs, "; "))

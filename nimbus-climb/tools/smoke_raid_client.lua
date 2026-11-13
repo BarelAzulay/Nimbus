@@ -270,11 +270,12 @@ S.client_raid_gate = guarded("client_raid_gate", function()
 				smallest = math.min(smallest, d.TextSize)
 				local stroke = d:FindFirstChildOfClass("UIStroke")
 				local outlined = d.TextStrokeTransparency <= 0.5 or (stroke ~= nil and stroke.ApplyStrokeMode == Enum.ApplyStrokeMode.Contextual and stroke.Thickness >= 1)
-				plated = plated and outlined and d.TextTruncate == Enum.TextTruncate.None and not d.TextScaled and d.Parent:IsA("Frame") and d.Parent.BackgroundTransparency <= 0.25
+				-- kit-b U6 (a deliberate change): on its solid plate a line reads by contrast, with no outline
+				plated = plated and not outlined and d.TextTruncate == Enum.TextTruncate.None and not d.TextScaled and d.Parent:IsA("Frame") and d.Parent.BackgroundTransparency <= 0.25
 			end
 		end
 		local biggest = find(tag, "Line1").TextSize
-		T.check(plated and smallest >= 18 and biggest >= 22, "raid gate client: its lines sit on a solid plate, outlined, >= 18 px, the name >= 22 px", tostring(smallest))
+		T.check(plated and smallest >= 18 and biggest >= 22, "raid gate client: its lines sit on a solid plate, no outline (kit-b U6), >= 18 px, the name >= 22 px", tostring(smallest))
 
 		syncProfile(TEAM_MID, { RaidRewardAt = os.time() - 300 })
 		KC.advance(1.1)
@@ -528,7 +529,7 @@ S.client_raid_panel = guarded("client_raid_panel", function()
 		local nextBoss = find(win, "NextBoss")
 		T.check(nextBoss and KC.isShown(nextBoss) and nextBoss.Text:find("5:00", 1, true) ~= nil or (nextBoss and nextBoss.Text:find("4:5", 1, true) ~= nil), "raid panel client: when the boss changes", nextBoss and nextBoss.Text)
 		local name = find(win, "BossBlurb") or find(win, "Name")
-		T.check(textOf(find(win, "Boss")):find("Frost Wyrm", 1, true) ~= nil, "raid panel client: the boss's name", name and name.Text)
+		T.check(textOf(find(win, "Boss")):upper():find("FROST WYRM", 1, true) ~= nil, "raid panel client: the boss's name", name and name.Text)
 		T.check(textOf(find(win, "Tips")):find("350", 1, true) ~= nil and find(win, "TiersTitle") ~= nil, "raid panel client: the medal rows show my tier's numbers (Gold 500 x0.7)", textOf(find(win, "Tips")))
 		T.check(not textOf(find(win, "Tips")):find("RETREAT", 1, true) and textOf(find(win, "Tips")):find("DASH", 1, true) ~= nil, "raid panel client: the tips say DASH")
 

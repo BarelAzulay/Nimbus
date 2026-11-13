@@ -373,8 +373,8 @@ function H.text(parent, name, text, role, size, color, props)
 	label.BackgroundTransparency = 1
 	label.BorderSizePixel = 0
 	label.Text = tostring(text or "")
-	Theme.Style(label, role or "Body", { Size = size, Color = color or WHITE, Stroke = 1 })
-	Theme.TextOutline(label, 1.5, INK, 0.1)
+	-- kit-b U6: the dungeon window, the run card and the chip are plates, so the text reads by contrast (no outline)
+	Theme.Style(label, role or "Body", { Size = size, Color = color or WHITE })
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.TextYAlignment = Enum.TextYAlignment.Center
 	for k, v in pairs(props or {}) do
@@ -384,8 +384,9 @@ function H.text(parent, name, text, role, size, color, props)
 	return label
 end
 
-function H.corner(parent, px)
-	return Util.Create("UICorner", { CornerRadius = UDim.new(0, px or 10), Parent = parent })
+-- radius: a Theme.Radius token ("S", "M", "Round"; kit-b U6), "M" by default
+function H.corner(parent, radius)
+	return Theme.Corner(parent, radius or "M")
 end
 
 function H.stroke(parent, color, thickness, transparency)
@@ -685,7 +686,7 @@ function W.build()
 	U.Floors.CanvasSize = UDim2.new(0, 0, 0, 0)
 	U.Floors.Position = UDim2.fromOffset(0, 36)
 	U.Floors.Parent = content
-	H.corner(U.Floors, 12)
+	H.corner(U.Floors, "M")
 	H.pad(U.Floors, 8, 8, 14, 8)
 	H.list(U.Floors, Enum.FillDirection.Vertical, 6)
 	U.FloorRows = {}
@@ -704,7 +705,7 @@ function W.build()
 	U.Party.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	U.Party.CanvasSize = UDim2.new(0, 0, 0, 0)
 	U.Party.Parent = content
-	H.corner(U.Party, 12)
+	H.corner(U.Party, "M")
 	H.pad(U.Party, 10, 8, 10, 8)
 	H.list(U.Party, Enum.FillDirection.Vertical, 6)
 	-- the footer hint
@@ -730,10 +731,10 @@ function W.floorRow(f)
 	row.Size = UDim2.new(1, 0, 0, K.ROW_H)
 	row.LayoutOrder = f
 	row.Parent = U.Floors
-	H.corner(row, 10)
+	H.corner(row, "M")
 	local rim = H.stroke(row, Theme.Darken(color, 0.35), 2, 0.2)
 	local stripe = H.frame(row, "Stripe", { BackgroundTransparency = 0, BackgroundColor3 = color, Size = UDim2.new(0, 6, 1, -12), Position = UDim2.fromOffset(4, 6) })
-	H.corner(stripe, 3)
+	H.corner(stripe, "S")
 	local orbHolder = H.frame(row, "OrbHolder", { Position = UDim2.fromOffset(14, 0), Size = UDim2.new(0, 48, 1, 0) })
 	local orb = NeonKit.Orb(orbHolder, color, 44)
 	local num = H.text(orb, "Num", tostring(f), "Title", 22, WHITE, { Size = UDim2.new(1, 0, 1, 0), TextXAlignment = Enum.TextXAlignment.Center })
@@ -754,9 +755,9 @@ function W.floorRow(f)
 		BackgroundTransparency = 0,
 		BackgroundColor3 = C.RowDark,
 	})
-	H.corner(chip, 17)
+	H.corner(chip, "Round")
 	local chipRim = H.stroke(chip, color, 2, 0)
-	local chipText = H.text(chip, "Text", "", "Button", 18, WHITE, { Size = UDim2.new(1, 0, 1, 0), TextXAlignment = Enum.TextXAlignment.Center })
+	local chipText = H.text(chip, "Text", "", "Tag", 18, WHITE, { Size = UDim2.new(1, 0, 1, 0), TextXAlignment = Enum.TextXAlignment.Center })
 	row.Activated:Connect(function()
 		H.safe("pick floor", W.pick, f)
 	end)
@@ -918,14 +919,14 @@ function W.partyNone(box, short, sel)
 	local row = H.frame(box, "Buttons", { Size = W.buttonRow(short), LayoutOrder = 3 })
 	H.list(row, Enum.FillDirection.Horizontal, 10)
 	local bw = UDim2.new(0.5, -5, 1, 0)
-	U.Solo = W.button(row, "SoloButton", "SOLO", C.Green, bw, 1, function()
+	U.Solo = W.button(row, "SoloButton", "Solo", C.Green, bw, 1, function()
 		H.withTeam(function()
 			if H.request("Solo", W.selected()) then
 				H.hint("Starting floor " .. W.selected() .. "...", 3)
 			end
 		end)
 	end)
-	U.Create = W.button(row, "PartyButton", "PARTY", C.Accent, bw, 2, function()
+	U.Create = W.button(row, "PartyButton", "Party", C.Accent, bw, 2, function()
 		H.withTeam(function()
 			if H.request("Create", W.selected()) then
 				H.hint("Party made! Friends can JOIN it here", 4)
@@ -953,7 +954,7 @@ end
 
 function W.partyRow(box, p, i, short)
 	local row = H.frame(box, "Open" .. i, { BackgroundTransparency = 0, BackgroundColor3 = C.Row, Size = UDim2.new(1, 0, 0, W.openRowH(short)), LayoutOrder = 4 + i })
-	H.corner(row, 10)
+	H.corner(row, "M")
 	local count = tostring(p.Count or 1) .. "/" .. tostring(p.Max or 4)
 	local where = p.InRun and ("in room " .. tostring(p.Room or 1)) or ("Floor " .. tostring(p.Floor or 1))
 	H.text(row, "Text", tostring(p.LeaderName or "Someone") .. "'s party " .. G.Dot .. " " .. where .. " " .. G.Dot .. " " .. count, "Body", 18, WHITE, {
@@ -961,7 +962,7 @@ function W.partyRow(box, p, i, short)
 		Size = UDim2.new(1, -120, 1, 0),
 		TextTruncate = Enum.TextTruncate.AtEnd,
 	})
-	local join = W.button(row, "JoinButton", p.Open and "JOIN" or (p.InRun and "BUSY" or "FULL"), C.Blue, UDim2.fromOffset(96, W.openRowH(short) - 6), 1, function()
+	local join = W.button(row, "JoinButton", p.Open and "Join" or (p.InRun and "Busy" or "Full"), C.Blue, UDim2.fromOffset(96, W.openRowH(short) - 6), 1, function()
 		if not p.Open then
 			return
 		end
@@ -1004,7 +1005,7 @@ function W.partyMine(box, short, mine)
 				ready = S.ReadyWant
 			end
 			local row = H.frame(box, "Member" .. i, { BackgroundTransparency = 0, BackgroundColor3 = isMe and Theme.Lighten(C.Row, 0.1) or C.Row, Size = UDim2.new(1, 0, 0, h), LayoutOrder = 10 + i })
-			H.corner(row, 10)
+			H.corner(row, "M")
 			row:SetAttribute("UserId", m.UserId)
 			row:SetAttribute("Ready", ready)
 			local tick = H.text(row, "Ready", ready and G.Check or G.Hourglass, "Heading", 20, ready and C.Green or C.Muted, {
@@ -1040,7 +1041,7 @@ function W.partyMine(box, short, mine)
 	local bw = UDim2.new(0.5, -5, 1, 0)
 	if leader then
 		-- (START needs only the leader's own team: the server checks every member's)
-		U.Start = W.button(row, "StartButton", "START", C.Green, bw, 1, function()
+		U.Start = W.button(row, "StartButton", "Start", C.Green, bw, 1, function()
 			H.withTeam(function()
 				if H.request("Start") then
 					H.hint(W.allReady(mine) and "Starting..." or "Waiting 30 s for READY...", 3)
@@ -1050,7 +1051,7 @@ function W.partyMine(box, short, mine)
 		W.setDisabled(U.Start, W.countdown(mine) ~= nil and W.allReady(mine))
 	else
 		local want = W.myReady(mine)
-		U.Ready = W.button(row, "ReadyButton", want and "NOT READY" or "READY", want and C.Grey or C.Green, bw, 1, function()
+		U.Ready = W.button(row, "ReadyButton", want and "Not ready" or "Ready", want and C.Grey or C.Green, bw, 1, function()
 			local now = not W.myReady(mine)
 			local function send()
 				if H.request("Ready", now) then
@@ -1065,7 +1066,7 @@ function W.partyMine(box, short, mine)
 			end
 		end)
 	end
-	U.LeaveParty = W.button(row, "LeaveButton", "LEAVE", C.Red, bw, 2, function()
+	U.LeaveParty = W.button(row, "LeaveButton", "Leave", C.Red, bw, 2, function()
 		if H.request("Leave") then
 			S.ReadyWant = nil
 			H.hint("You left the party", 3)
@@ -1403,7 +1404,7 @@ function R.build()
 	U.CardWave = H.text(body, "Wave", "", "Body", 18, WHITE, { Size = UDim2.new(1, 0, 0, 24), LayoutOrder = 3 })
 	U.CardStatus = H.text(body, "Status", "", "Body", 19, WHITE, { Size = UDim2.new(1, 0, 0, 26), TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 4 })
 	U.CardToast = H.frame(body, "LootToast", { BackgroundTransparency = 0, BackgroundColor3 = Theme.Darken(C.Gold, 0.55), Size = UDim2.new(1, 0, 0, 58), Visible = false, LayoutOrder = 5 })
-	H.corner(U.CardToast, 10)
+	H.corner(U.CardToast, "M")
 	H.stroke(U.CardToast, C.Gold, 2, 0)
 	H.pad(U.CardToast, 10, 6, 10, 6)
 	U.CardToastText = H.text(U.CardToast, "Text", "", "Heading", 19, WHITE, { Size = UDim2.new(1, 0, 1, 0), TextWrapped = true })
@@ -1414,15 +1415,15 @@ function R.build()
 	U.CardButtons = buttons
 	H.list(buttons, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Right)
 	-- (bug batch 2 #14: no CHEST button; a chest is picked only with its own E prompt in the alcove)
-	U.CardReady = W.button(buttons, "ReadyButton", "READY", C.Green, UDim2.new(0.5, -4, 1, 0), 2, R.ready)
-	U.CardLeave = W.button(buttons, "LeaveButton", "LEAVE", C.Red, UDim2.new(0.5, -4, 1, 0), 3, R.leave, "Outline")
+	U.CardReady = W.button(buttons, "ReadyButton", "Ready", C.Green, UDim2.new(0.5, -4, 1, 0), 2, R.ready)
+	U.CardLeave = W.button(buttons, "LeaveButton", "Leave", C.Red, UDim2.new(0.5, -4, 1, 0), 3, R.leave, "Outline")
 	-- the phone chip (one line in Roblox's top band)
 	local chip = NeonKit.Card({ Name = "RunChip", Size = UDim2.fromOffset(420, K.CHIP_H), Color = C.Accent, Glow = false, Floor = false, Parent = gui })
 	chip.Root.Visible = false
 	U.Chip = chip
 	U.ChipScale = Util.Create("UIScale", { Name = "ReadScale", Scale = 0.8, Parent = chip.Root })
 	U.ChipText = H.text(chip.Body, "Text", "", "Heading", 19, WHITE, { Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -112, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd })
-	U.ChipButton = W.button(chip.Body, "LeaveButton", "LEAVE", C.Red, UDim2.fromOffset(92, K.CHIP_H - 10), 1, function()
+	U.ChipButton = W.button(chip.Body, "LeaveButton", "Leave", C.Red, UDim2.fromOffset(92, K.CHIP_H - 10), 1, function()
 		if S.Run then
 			R.leave()
 		elseif S.Lobby and S.Lobby.Mine and LocalPlayer and S.Lobby.Mine.Leader ~= LocalPlayer.UserId and not W.myReady(S.Lobby.Mine) then
@@ -1813,7 +1814,7 @@ function R.refresh()
 		U.CardReady.Visible = needReady
 		U.CardLeave.Visible = false
 		U.ChipText.Text = cd
-		U.ChipButton.Text = "READY"
+		U.ChipButton.Text = "Ready"
 		U.ChipButton.Visible = needReady
 		R.cardHeight()
 		return
@@ -1854,7 +1855,7 @@ function R.refresh()
 			local glyph = m.Left and G.Gone or (m.Downed and G.Skull or G.Check)
 			local color = m.Left and C.Muted or (m.Downed and C.Red or C.Green)
 			local chipF = H.frame(U.CardMembers, "Member" .. i, { BackgroundTransparency = 0, BackgroundColor3 = C.RowDark, LayoutOrder = i })
-			H.corner(chipF, 8)
+			H.corner(chipF, "M")
 			chipF:SetAttribute("Downed", m.Downed == true)
 			chipF:SetAttribute("Left", m.Left == true)
 			H.text(chipF, "Text", glyph .. " " .. tostring(m.Name or "?"), "Body", 18, color, { Position = UDim2.fromOffset(6, 0), Size = UDim2.new(1, -8, 1, 0), TextTruncate = Enum.TextTruncate.AtEnd })
@@ -1866,13 +1867,13 @@ function R.refresh()
 	U.CardReady.Visible = false
 	U.CardLeave.Visible = run.State ~= "Ending"
 	local armed = now <= S.LeaveArmed
-	U.CardLeave.Text = armed and "Sure? Tap again" or "LEAVE"
+	U.CardLeave.Text = armed and "Sure? Tap again" or "Leave"
 	-- the phone chip: room / wave or the toast or the status
 	U.ChipText.Text = toast and (toast.Short or toast.Text) or R.chipText(room, count)
 	U.ChipButton.Visible = run.State ~= "Ending"
 	R.cardHeight()
 	-- (bug batch 2 #14: the chip's button is LEAVE in the alcove too; chests open only at the chest)
-	U.ChipButton.Text = armed and "SURE?" or "LEAVE"
+	U.ChipButton.Text = armed and "Sure?" or "Leave"
 	U.ChipButton:SetAttribute("Color", "Red")
 end
 

@@ -588,7 +588,7 @@ S.client_p4fix_leave = guarded("client_p4fix_leave", function()
 	end
 	d.start()
 	local b = at("Root.LeaveButton")
-	T.check(b and shown(b) and b.Text == "LEAVE", "p4fix leave: a ring fight shows LEAVE beside ATTACK / RETREAT", b and tostring(b.Text) or "missing")
+	T.check(b and shown(b) and b.Text == "Leave", "p4fix leave: a ring fight shows LEAVE beside ATTACK / RETREAT", b and tostring(b.Text) or "missing")
 	local mark = #Mock.RemoteLog
 	if b then
 		Mock.Click(b)
@@ -596,7 +596,7 @@ S.client_p4fix_leave = guarded("client_p4fix_leave", function()
 	advance(0.1)
 	T.check(b and b.Text == "Sure? Tap again" and forfeits(mark) == 0, "p4fix leave: the first tap only asks (Sure? Tap again), nothing is sent", b and b.Text or "")
 	advance(3.3)
-	T.check(b and b.Text == "LEAVE" and forfeits(mark) == 0, "p4fix leave: without a second tap it goes back to LEAVE after ~3 s", b and b.Text or "")
+	T.check(b and b.Text == "Leave" and forfeits(mark) == 0, "p4fix leave: without a second tap it goes back to LEAVE after ~3 s", b and b.Text or "")
 	if b then
 		Mock.Click(b)
 		advance(0.4)
@@ -614,14 +614,14 @@ S.client_p4fix_leave = guarded("client_p4fix_leave", function()
 	d = newBattle("Ring", 3)
 	d.start()
 	b = at("Root.LeaveButton")
-	T.check(b and b.Text == "LEAVE", "p4fix leave: the next run's round starts with a plain LEAVE", b and b.Text or "missing")
+	T.check(b and b.Text == "Leave", "p4fix leave: the next run's round starts with a plain LEAVE", b and b.Text or "missing")
 	if b then
 		Mock.Click(b) -- armed in the fight ...
 	end
 	d.finish(ringWon(3)) -- ... and the round is won: the card starts unarmed
 	advance(0.3)
 	local nb = at("Root.NextRoundCard.LeaveButton")
-	T.check(nb and shown(nb) and nb.Text == "LEAVE" and not shown(b), "p4fix leave: the next-round card shows LEAVE (the commands are gone)", nb and tostring(nb.Text) or "missing")
+	T.check(nb and shown(nb) and nb.Text == "Leave" and not shown(b), "p4fix leave: the next-round card shows LEAVE (the commands are gone)", nb and tostring(nb.Text) or "missing")
 	T.check(BC.Command("Attack", nil) == false, "p4fix leave: between rounds ATTACK is still refused locally")
 	mark = #Mock.RemoteLog
 	if nb then
@@ -774,7 +774,7 @@ S.client_bb6_raid_leave = guarded("client_bb6_raid_leave", function()
 	d.start()
 	advance(0.3)
 	local b = at("Root.LeaveButton")
-	T.check(b and shown(b) and b.Text == "LEAVE", "bb6 raid leave: a raid fighter has LEAVE", b and tostring(b.Text) or "missing")
+	T.check(b and shown(b) and b.Text == "Leave", "bb6 raid leave: a raid fighter has LEAVE", b and tostring(b.Text) or "missing")
 	local mark = #Mock.RemoteLog
 	if b then
 		Mock.Click(b)
@@ -928,15 +928,15 @@ S.client_bb6_area_banner = guarded("client_bb6_area_banner", function()
 	T.check(not bannerShown(), "bb6 area banner: no banner in a raid by itself")
 	areaMsg(d, { Out = true, Left = 5 })
 	local bn = at("Root.AreaWarn")
-	T.check(bn and shown(bn) and bn.Text == "Back to the fight! 5", "bb6 area banner: the server's warning shows 'Back to the fight! 5'", bn and bn.Text or "missing")
+	T.check(bn and shown(bn) and bn.Text == "BACK TO THE FIGHT! 5", "bb6 area banner: the server's warning shows 'Back to the fight! 5'", bn and bn.Text or "missing")
 	local sub = bn and bn:FindFirstChild("Sub")
 	T.check(sub and shown(sub) and tostring(sub.Text):find("leave the raid") ~= nil, "bb6 area banner: ...and says what staying out does ('Or you leave the raid.')", sub and sub.Text or "no Sub line")
 	advance(1.05)
-	T.check(bn and bn.Text == "Back to the fight! 4", "bb6 area banner: it counts down on the client (5, 4, 3, 2, 1)", bn and bn.Text or "")
+	T.check(bn and bn.Text == "BACK TO THE FIGHT! 4", "bb6 area banner: it counts down on the client (5, 4, 3, 2, 1)", bn and bn.Text or "")
 	advance(3.0)
-	T.check(bn and bn.Text == "Back to the fight! 1", "bb6 area banner: ...1", bn and bn.Text or "")
+	T.check(bn and bn.Text == "BACK TO THE FIGHT! 1", "bb6 area banner: ...1", bn and bn.Text or "")
 	advance(1.5)
-	T.check(bn and shown(bn) and bn.Text == "Back to the fight! 1", "bb6 area banner: it stays at 1 until the server decides (never 0)", bn and bn.Text or "")
+	T.check(bn and shown(bn) and bn.Text == "BACK TO THE FIGHT! 1", "bb6 area banner: it stays at 1 until the server decides (never 0)", bn and bn.Text or "")
 	areaMsg(d, { Out = false })
 	advance(0.1)
 	T.check(not bannerShown(), "bb6 area banner: back in the area (Out = false): the banner goes")
@@ -966,7 +966,7 @@ S.client_bb6_area_banner = guarded("client_bb6_area_banner", function()
 		T.check(okJ, "bb6 area banner: a junk payload does not break the HUD")
 	end
 	bn = at("Root.AreaWarn")
-	T.check(not bn or not shown(bn) or tostring(bn.Text):match("^Back to the fight! [1-9]$") ~= nil, "bb6 area banner: a junk count still reads one digit (1..9)", bn and bn.Text or "")
+	T.check(not bn or not shown(bn) or tostring(bn.Text):match("^BACK TO THE FIGHT! [1-9]$") ~= nil, "bb6 area banner: a junk count still reads one digit (1..9)", bn and bn.Text or "")
 	d.finish(raidEnd("Left"))
 	closeBattle()
 	-- its place at the four render sizes: readable (>= 14 px), in the top band, over nothing else of the HUD

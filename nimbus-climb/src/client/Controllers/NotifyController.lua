@@ -118,7 +118,6 @@ local WHITE = Colors.White
 local NAVY = Colors.Navy or Colors.Ink
 local MUTED = Colors.Muted or Colors.CloudShade
 local GOLD = Colors.Gold or Colors.Token
-local INK = Colors.TextStroke or Colors.Ink
 
 local FALLBACK_KINDS = {
 	info = Color3.fromRGB(90, 158, 234),
@@ -205,8 +204,8 @@ local function newFrame(parent, name, props)
 	return Util.Create("Frame", p)
 end
 
--- Themed TextLabel. props may include Stroke (classic text stroke transparency), StrokeColor and Outline
--- (thickness of a glyph outline, Theme.TextOutline) plus any label property.
+-- Themed TextLabel with any label property in props. kit-b U6: the toasts, the result card and the hints are all
+-- plates, so their texts read by contrast with no outline and no classic stroke.
 local function newText(parent, name, text, role, size, color, props)
 	local extra = {
 		Name = name,
@@ -215,29 +214,14 @@ local function newText(parent, name, text, role, size, color, props)
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextYAlignment = Enum.TextYAlignment.Center,
 	}
-	local stroke = 0.3
-	local strokeColor = nil
-	local outline = nil
 	if props then
 		for key, value in pairs(props) do
-			if key == "Stroke" then
-				stroke = value
-			elseif key == "StrokeColor" then
-				strokeColor = value
-			elseif key == "Outline" then
-				outline = value
-			else
-				extra[key] = value
-			end
+			extra[key] = value
 		end
 	end
 	local label = Theme.Label(text, role, {
 		Size = size,
 		Color = color,
-		Stroke = stroke,
-		StrokeColor = strokeColor,
-		Outline = outline,
-		OutlineColor = strokeColor or INK,
 		Props = extra,
 	})
 	label.Parent = parent
@@ -245,7 +229,7 @@ local function newText(parent, name, text, role, size, color, props)
 end
 
 local function round(inst)
-	return Theme.Corner(inst, UDim.new(0.5, 0))
+	return Theme.Corner(inst, "Round")
 end
 
 local function addViewportScale(root)
@@ -539,10 +523,10 @@ local function setToastAlpha(toast, a, seconds)
 		{ toast.Stroke, { Transparency = a } },
 		{ toast.GlowStroke, { Transparency = 0.7 + 0.3 * a } },
 		{ toast.Accent, { BackgroundTransparency = 0.78 + 0.22 * a } },
-		{ toast.Label, { TextTransparency = a, TextStrokeTransparency = 0.3 + 0.7 * a } },
+		{ toast.Label, { TextTransparency = a } },
 		{ toast.Icon, { BackgroundTransparency = a } },
 		{ toast.IconStroke, { Transparency = a } },
-		{ toast.IconGlyph, { TextTransparency = a, TextStrokeTransparency = 0.2 + 0.8 * a } },
+		{ toast.IconGlyph, { TextTransparency = a } },
 	}
 	for _, entry in ipairs(goals) do
 		if entry[1] then
@@ -633,7 +617,7 @@ local function buildToast(text, kind)
 		BackgroundTransparency = 1,
 		BackgroundColor3 = WHITE,
 	})
-	Theme.Corner(card, UDim.new(0, 18))
+	Theme.Corner(card, "M")
 	Theme.Gradient(card, Colors.PanelTop or Colors.Panel, Colors.PanelBottom or Colors.Panel, 90)
 	local stroke = Theme.Stroke(card, color, 2.5, 1)
 	Util.Create("UISizeConstraint", { MinSize = Vector2.new(0, 44), Parent = card })
@@ -649,7 +633,7 @@ local function buildToast(text, kind)
 		Position = UDim2.new(0, -17, 0, -11),
 		Size = UDim2.new(1, 30, 1, 22),
 	})
-	Theme.Corner(glow, UDim.new(0, 21))
+	Theme.Corner(glow, "M")
 	local glowStroke = Theme.Stroke(glow, color, 4, 1)
 	-- the kind colour glowing up from the floor of the pill (the neon "floor")
 	local accent = newFrame(card, "Accent", {
@@ -659,7 +643,7 @@ local function buildToast(text, kind)
 		BackgroundTransparency = 1,
 		BackgroundColor3 = color,
 	})
-	Theme.Corner(accent, UDim.new(0, 14))
+	Theme.Corner(accent, "M")
 	local fade = Instance.new("UIGradient")
 	fade.Rotation = 90
 	fade.Transparency = NumberSequence.new(1, 0)
@@ -677,8 +661,6 @@ local function buildToast(text, kind)
 	local glyph = newText(icon, "Glyph", KIND_GLYPH[kindName] or "i", "Heading", 18, WHITE, {
 		TextXAlignment = Enum.TextXAlignment.Center,
 		TextTransparency = 1,
-		StrokeColor = Theme.Darken(color, 0.6),
-		Stroke = 1,
 	})
 
 	local label = newText(card, "Text", text, "Toast", TOAST_TEXT_SIZE, toastTextColor(color), {
@@ -687,8 +669,6 @@ local function buildToast(text, kind)
 		AutomaticSize = Enum.AutomaticSize.Y,
 		TextWrapped = true,
 		TextTransparency = 1,
-		StrokeColor = INK,
-		Stroke = 1,
 	})
 
 	return {
@@ -1002,8 +982,6 @@ local function buildResults(data)
 		Position = UDim2.fromOffset(0, titleY),
 		Size = UDim2.new(1, 0, 0, TITLE_H),
 		TextXAlignment = Enum.TextXAlignment.Center,
-		Stroke = 0.1,
-		Outline = 3,
 	})
 	if won then
 		Theme.Gradient(headline, Colors.TokenGlow, Colors.Token, 90)
@@ -1021,8 +999,6 @@ local function buildResults(data)
 		Size = UDim2.new(1, 0, 0, DIFF_H),
 		TextXAlignment = Enum.TextXAlignment.Center,
 		RichText = true,
-		Stroke = 0.2,
-		Outline = 1.5,
 	})
 	if reason then
 		newText(inner, "Reason", reason, "Body", 18, MUTED, {
@@ -1030,7 +1006,6 @@ local function buildResults(data)
 			Size = UDim2.new(1, 0, 0, REASON_H),
 			TextXAlignment = Enum.TextXAlignment.Center,
 			TextTruncate = Enum.TextTruncate.AtEnd,
-			Stroke = 0.35,
 		})
 	end
 
@@ -1044,19 +1019,16 @@ local function buildResults(data)
 			BackgroundTransparency = 0.45,
 			BackgroundColor3 = Colors.Ink,
 		})
-		Theme.Corner(bar, UDim.new(0, 9))
+		Theme.Corner(bar, "M")
 		newText(bar, "Caption", caption, "Body", 18, MUTED, {
 			Position = UDim2.new(0, 10, 0, 0),
 			Size = UDim2.new(0.45, 0, 1, 0),
-			Stroke = 0.35,
 		})
 		return newText(bar, "Value", valueText, "Heading", 20, valueColor, {
 			AnchorPoint = Vector2.new(1, 0),
 			Position = UDim2.new(1, -10, 0, 0),
 			Size = UDim2.new(0.55, 0, 1, 0),
 			TextXAlignment = Enum.TextXAlignment.Right,
-			Stroke = 0.2,
-			Outline = 1.5,
 		})
 	end
 
@@ -1091,14 +1063,12 @@ local function buildResults(data)
 				Position = UDim2.new(0, 6, 0, 0),
 				Size = UDim2.new(1, -104, 1, 0),
 				TextTruncate = Enum.TextTruncate.AtEnd,
-				Stroke = 0.35,
 			})
 			newText(row, "Tokens", "\226\152\129 " .. tostring(m.Tokens), "Heading", 18, Colors.TokenGlow, {
 				AnchorPoint = Vector2.new(1, 0),
 				Position = UDim2.new(1, -28, 0, 0),
 				Size = UDim2.fromOffset(70, MEMBER_H),
 				TextXAlignment = Enum.TextXAlignment.Right,
-				Stroke = 0.3,
 			})
 			local stateText = ""
 			local stateColor = WHITE
@@ -1114,7 +1084,6 @@ local function buildResults(data)
 				Position = UDim2.new(1, -4, 0, 0),
 				Size = UDim2.fromOffset(20, MEMBER_H),
 				TextXAlignment = Enum.TextXAlignment.Center,
-				Stroke = 0.3,
 			})
 		end
 	end
@@ -1124,8 +1093,6 @@ local function buildResults(data)
 		Position = UDim2.fromOffset(0, footY),
 		Size = UDim2.new(1, 0, 0, FOOT_H),
 		TextXAlignment = Enum.TextXAlignment.Center,
-		Stroke = 0.2,
-		Outline = 1.5,
 	})
 
 	return panel, footer, serial

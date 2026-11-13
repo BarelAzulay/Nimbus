@@ -4,6 +4,8 @@
 -- with a GothamBlack 34 title, a neon underline and a red X (drawn by NeonKit.CloseMark since the slop audit, 2026-11-12);
 -- the cloud bumps, the sky-blue frame and the pixel glint of v3 are gone ("less cute"). The API, the names and the
 -- attributes below are UNCHANGED.
+-- kit-b U6: no widget text carries an outline or a classic stroke any more (every one sits on its own face, card or
+-- bar: kit B "stroke or panel, never both").
 -- (v3 text kept for the API:) the chunky "cloud" UI kit. Front-page-simulator style panels made cloudier: a thick dark
 -- navy outline, glossy sky-blue frames with a bevelled rim, puffy cloud bumps along the top edge, a bold
 -- title bar with big outlined title text and a red X, glossy buttons with a darker bottom lip, and a tiny
@@ -480,11 +482,12 @@ function CloudUI.Button(props)
 		Text = props.Text or "",
 		TextTruncate = Enum.TextTruncate.AtEnd,
 	})
-	Theme.Style(button, "Button", { Size = props.TextSize or CloudUI.Metrics.ButtonText, Stroke = 1 })
+	Theme.Style(button, "Button", { Size = props.TextSize or CloudUI.Metrics.ButtonText })
 	corner(button, 12)
-	-- v5: the neon border in the style's own colour (Border mode) + a soft outer glow ring; dark text outline
+	-- v5: the neon border in the style's own colour (Border mode) + a soft outer glow ring; kit-b U6: the text sits on the
+	-- button's face, so it has no outline any more (was a 2 px dark Contextual stroke)
 	local outline = stroke(button, NAVY, 3, 0)
-	local textOutline = Theme.TextOutline(button, 2, INK, 0) -- Contextual: the text
+	local textOutline = nil
 	gradient(button, FACE_SEQUENCE, 90)
 	-- (no UIPadding: it would shift the glow ring; the text is centred and truncates at the edges)
 	local glow = frame("Glow", {
@@ -643,9 +646,6 @@ function CloudUI.Panel(props)
 		local rightRoom = props.Closable and (CLOSE_SIZE + 18) or 16
 		titleLabel = Theme.Label(props.Title, "Title", {
 			Size = props.TitleSize or TITLE_TEXT,
-			Stroke = 1,
-			Outline = 3,
-			OutlineColor = INK,
 			Props = {
 				Name = "Title",
 				Position = UDim2.new(0, 10, 0, 0),
@@ -792,19 +792,53 @@ function CloudUI.Bar(props)
 	local fillGradient = gradient(fill, fillSequence(color), 90)
 	addShine(fill, 0.34, 6, 0.7)
 
+	-- kit B (no outline on a surface): the label reads by the colour of what lies under it, and the fill moves under a
+	-- centred label. So it is drawn twice, each copy clipped to one stretch of the bar: dark ink over the bright fill
+	-- (Theme.TextOn of its gradient), white over the dark track. Both copies are named "Text"; bar.Label is the fill's.
 	local textSize = props.TextSize or Util.Clamp(math.floor(height * 0.66 + 0.5), 15, 26)
-	local label = Theme.Label(props.Label or "", "Heading", {
-		Size = textSize,
-		Stroke = 0.1,
-		Outline = height >= 20 and 2 or 1.5,
-		Props = {
-			Name = "Text",
+	local copies = {}
+	for _, spec in ipairs({ { "TextFill", Theme.TextOn(fillSequence(color)) }, { "TextTrack", WHITE } }) do
+		local clip = frame(spec[1], {
+			ClipsDescendants = true,
 			Size = UDim2.new(1, 0, 1, 0),
 			ZIndex = 3,
-			TextXAlignment = Enum.TextXAlignment.Center,
-		},
-	})
-	label.Parent = root
+		}, inner)
+		local copy = Theme.Label(props.Label or "", "Heading", {
+			Size = textSize,
+			Color = spec[2],
+			Props = {
+				Name = "Text",
+				Size = UDim2.new(1, 0, 1, 0),
+				ZIndex = 3,
+				TextXAlignment = Enum.TextXAlignment.Center,
+			},
+		})
+		copy.Parent = clip
+		copies[#copies + 1] = { Clip = clip, Label = copy }
+	end
+	local label = copies[1].Label
+
+	-- the copies' stretches follow the fill's width (its tween too): the fill's copy over [0, f], the track's over [f, 1];
+	-- each label keeps the whole bar's box, so a glyph's two halves meet at the fill's edge
+	local function placeText()
+		local f = Util.Clamp(fill.Size.X.Scale, 0, 1)
+		for i, c in ipairs(copies) do
+			local a, b = 0, f
+			if i == 2 then
+				a, b = f, 1
+			end
+			local span = b - a
+			c.Clip.Visible = span > 0.001
+			if span > 0.001 then
+				c.Clip.Position = UDim2.fromScale(a, 0)
+				c.Clip.Size = UDim2.fromScale(span, 1)
+				c.Label.Position = UDim2.fromScale(-a / span, 0)
+				c.Label.Size = UDim2.fromScale(1 / span, 1)
+			end
+		end
+	end
+	fill:GetPropertyChangedSignal("Size"):Connect(placeText)
+	placeText()
 
 	local bar = { Root = root, Fill = fill, Label = label }
 	local running = nil
@@ -828,7 +862,9 @@ function CloudUI.Bar(props)
 	end
 
 	function bar.SetText(text)
-		label.Text = tostring(text or "")
+		for _, c in ipairs(copies) do
+			c.Label.Text = tostring(text or "")
+		end
 	end
 
 	function bar.SetColor(newColor)
@@ -837,6 +873,7 @@ function CloudUI.Bar(props)
 		end
 		color = newColor
 		fillGradient.Color = fillSequence(color)
+		label.TextColor3 = Theme.TextOn(fillGradient.Color)
 	end
 	bar.TrackStroke = trackStroke
 
@@ -867,9 +904,6 @@ function CloudUI.Pill(text, kind, parent)
 	-- v5: a dark face tinted by the kind colour, a neon border in that colour, white text with a dark stroke
 	local pill = Theme.Label(tostring(text or ""), "Heading", {
 		Size = 17,
-		Stroke = 1,
-		Outline = 2,
-		OutlineColor = INK,
 		Props = {
 			Name = "Pill",
 			BackgroundTransparency = 0,
@@ -970,9 +1004,6 @@ function CloudUI.IconButton(props)
 
 	local glyph = Theme.Label(tostring(props.Glyph or ""), "Title", {
 		Scaled = true,
-		Stroke = 1,
-		Outline = 2,
-		OutlineColor = INK,
 		Props = {
 			Name = "Glyph",
 			Position = UDim2.new(0.5, 0, 0.44, 0),
@@ -988,8 +1019,6 @@ function CloudUI.IconButton(props)
 	if hasLabel then
 		caption = Theme.Label(props.Label, "Heading", {
 			Size = 16,
-			Stroke = 0.2,
-			Outline = 2,
 			Props = {
 				Name = "Caption",
 				AnchorPoint = Vector2.new(0.5, 1),
@@ -1015,7 +1044,6 @@ function CloudUI.IconButton(props)
 	stroke(badge, INK, 2.5, 0)
 	local badgeText = Theme.Label("!", "Button", {
 		Size = 17,
-		Stroke = 0.1,
 		Props = { Name = "Mark", Size = UDim2.new(1, 0, 1, 0), ZIndex = 5 },
 	})
 	badgeText.Parent = badge
@@ -1084,7 +1112,6 @@ local function ensureTip()
 	gui.IgnoreGuiInset = true
 	local label = Theme.Label("", "Body", {
 		Size = Theme.ScaledSize(TIP_TEXT),
-		Stroke = 0.35,
 		Props = {
 			Name = "Tip",
 			Visible = false,
@@ -1458,8 +1485,6 @@ function CloudUI.PetViewport(parent, petDef, size, opts)
 		local name = type(petDef) == "table" and petDef.Name or "?"
 		local fallback = Theme.Label(tostring(name):sub(1, 1), "Title", {
 			Scaled = true,
-			Stroke = 0.2,
-			Outline = 2,
 			Props = { Name = "Fallback", Size = UDim2.new(1, 0, 1, 0) },
 		})
 		fallback.Parent = viewport
@@ -1660,8 +1685,6 @@ function CloudUI.Slot(props)
 
 	local countLabel = Theme.Label("", "Heading", {
 		Size = 17,
-		Stroke = 0.1,
-		Outline = 2,
 		Props = {
 			Name = "Count",
 			AnchorPoint = Vector2.new(1, 1),
@@ -1686,7 +1709,6 @@ function CloudUI.Slot(props)
 	stroke(hotkeyChip, NEON.Grey, 1.5, 0.3)
 	local hotkeyLabel = Theme.Label("", "Heading", {
 		Size = 18,
-		Stroke = 0.2,
 		Props = { Name = "Key", Size = UDim2.new(1, 0, 1, 0), ZIndex = 6 },
 	})
 	hotkeyLabel.Parent = hotkeyChip
@@ -1704,7 +1726,6 @@ function CloudUI.Slot(props)
 	stroke(markerChip, INK, 2, 0)
 	local markerLabel = Theme.Label("", "Heading", {
 		Size = 18,
-		Stroke = 0.2,
 		Props = { Name = "Mark", Size = UDim2.new(1, 0, 1, 0), ZIndex = 6 },
 	})
 	markerLabel.Parent = markerChip
@@ -1807,10 +1828,7 @@ function CloudUI.Slot(props)
 				local glyphColor = info.Color and Theme.Lighten(info.Color, 0.2) or WHITE
 				local glyph = Theme.Label(tostring(info.Glyph), "Title", {
 					Scaled = true,
-					Stroke = 1,
 					Color = glyphColor,
-					Outline = 2,
-					OutlineColor = INK,
 					Props = {
 						Name = "Glyph",
 						AnchorPoint = Vector2.new(0.5, 0.5),
@@ -2005,10 +2023,9 @@ function CloudUI.Tabs(props)
 			Size = UDim2.new(0, 0, 0, barHeight - 4),
 			LayoutOrder = count,
 		})
-		Theme.Style(button, "Button", { Size = textSize, Color = MUTED, Stroke = 1 })
+		Theme.Style(button, "Button", { Size = textSize, Color = MUTED })
 		corner(button, math.floor((barHeight - 4) / 2))
 		strokes[name] = stroke(button, accent, 2, 0)
-		outlines[name] = Theme.TextOutline(button, 2, INK, 0.25)
 		gradient(button, FACE_SEQUENCE, 90)
 		padding(button, 20, 0, 20, 0)
 		Util.Create("UISizeConstraint", { MinSize = Vector2.new(84, 0), Parent = button })

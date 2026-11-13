@@ -1796,7 +1796,7 @@ function Credits.textW(text, size, font, face)
 		if type(C.MEASURE) == "function" then
 			return C.MEASURE(text, size, font, face)
 		end
-		local w = TextService:GetTextSize(text, size, font, Vector2.new(100000, 1000)).X
+		local w = Theme.Measure(text, font, size, 100000).X
 		return face and w * C.FACE_SPARE or w
 	end)
 	if not (ok and type(v) == "number") then

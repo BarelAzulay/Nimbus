@@ -270,7 +270,7 @@ local function frame(name, parent, props)
 end
 
 local function label(name, parent, text, role, size, props)
-	local l = Theme.Label(text or "", role, { Size = size, Stroke = 1, Outline = 2 })
+	local l = Theme.Label(text or "", role, { Size = size })
 	l.Name = name
 	l.BackgroundTransparency = 1
 	l.TextWrapped = false
@@ -370,7 +370,7 @@ local function robuxGlyph()
 		return S.Glyph
 	end
 	local ok, size = pcall(function()
-		return TextService:GetTextSize(K.ROBUX_GLYPH, 20, Theme.Fonts.Display, Vector2.new(1000, 100))
+		return Theme.Measure(K.ROBUX_GLYPH, Theme.Fonts.Display, 20, 1000)
 	end)
 	if ok and typeof(size) == "Vector2" and size.X > 2 then
 		S.Glyph = K.ROBUX_GLYPH
@@ -1357,7 +1357,11 @@ function H.selectTab(tab)
 	for name, t in pairs(U.Tabs) do
 		local on = name == tab
 		t.Button:SetAttribute("Selected", on)
-		t.Button.BackgroundColor3 = Theme.Darken(Theme.NeonColor(TAB_COLORS[name]), on and 0.15 or 0.55)
+		-- kit B (no outline): the ink that reads on the face, brown on a selected bright tab, white on a dark one; the label
+		-- drops under 18 px on a phone, so the face is nudged (Theme.ReadableFace) until its ink reaches 4.5:1
+		local face, ink = Theme.ReadableFace(Theme.Darken(Theme.NeonColor(TAB_COLORS[name]), on and 0.15 or 0.55), 4.5)
+		t.Button.BackgroundColor3 = face
+		t.Label.TextColor3 = ink
 		t.Stroke.Color = on and GOLD or Theme.NeonColor(TAB_COLORS[name])
 		t.Stroke.Thickness = on and 3 or 2
 	end
