@@ -341,6 +341,23 @@ Config.Course = {
 		Storm = { "obby_storm_cloud" },
 		StormBase = 4.5,
 	},
+	-- kit-b O4 (finding 12): help text that names keys, one per device. CourseBuilder writes the Keyboard text and tags
+	-- the label (Tag, attribute HelpKey); MovementController puts the text of the player's device on it and follows a
+	-- change of device. Keys: Shift / Space / Q on a keyboard, L3 / A / B on a gamepad, the RUN / jump / DASH buttons on
+	-- touch (MovementController's bindings).
+	Help = {
+		Tag = "NC_HelpText",
+		Climb = {
+			Keyboard = "Run:  SHIFT\nJump:  SPACE\nDash:  Q\nGrab the floating clouds!",
+			Touch = "Run:  the RUN button\nJump:  the jump button\nDash:  the DASH button\nGrab the floating clouds!",
+			Gamepad = "Run:  click L3\nJump:  A\nDash:  B\nGrab the floating clouds!",
+		},
+		Dash = {
+			Keyboard = "press Q to dash",
+			Touch = "tap DASH",
+			Gamepad = "press B to dash",
+		},
+	},
 }
 
 -- Order here == order of portals around the lobby (easy -> hardest).

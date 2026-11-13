@@ -2,6 +2,8 @@
 --
 --   MovementController.Init()
 --   MovementController.GetDashCooldownFraction() -> number   -- 0 = ready .. 1 = just used
+--   MovementController.HelpDevice(inputType) -> "Keyboard" | "Touch" | "Gamepad" | nil   -- kit-b O4: the course help
+--                                              labels (Config.Course.Help) read the text of this device
 --
 -- How it works
 --   * Input is bound once with ContextActionService (high priority, so Shift never toggles
@@ -1661,6 +1663,65 @@ function MovementController.SetCinematic(walkSpeed)
 	lastWritten = cinematic
 end
 
+-- kit-b O4 (finding 12): course help text that names keys (Config.Course.Help, one text per device). A label with the
+-- help tag and a HelpKey (CourseBuilder: the HOW TO CLIMB board, the DASH! hints) reads the text of the device in use,
+-- and every one is swapped when the player changes device.
+local HELP = Config.Course and Config.Course.Help
+local helpDevice = "Keyboard"
+
+-- "Keyboard" (keys and the mouse), "Touch" or "Gamepad" for an input type; nil for one that says nothing about the
+-- device (text input, focus, sensors). None (nothing pressed yet): what the client has (a touch-only screen is Touch).
+function MovementController.HelpDevice(inputType)
+	if inputType == Enum.UserInputType.Touch then
+		return "Touch"
+	end
+	local name = inputType and inputType.Name or "None"
+	if string.sub(name, 1, 7) == "Gamepad" then
+		return "Gamepad"
+	elseif name == "Keyboard" or string.sub(name, 1, 5) == "Mouse" then
+		return "Keyboard"
+	elseif name == "None" then
+		if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then
+			return "Touch"
+		elseif UserInputService.GamepadEnabled and not UserInputService.KeyboardEnabled then
+			return "Gamepad"
+		end
+		return "Keyboard"
+	end
+	return nil
+end
+
+local function applyHelp(label)
+	local set = HELP[label:GetAttribute("HelpKey")]
+	if type(set) == "table" and label:IsA("TextLabel") then
+		local text = set[helpDevice] or set.Keyboard
+		if type(text) == "string" then
+			label.Text = text
+		end
+	end
+end
+
+local function startHelpText()
+	if type(HELP) ~= "table" or type(HELP.Tag) ~= "string" then
+		return
+	end
+	local CollectionService = game:GetService("CollectionService")
+	helpDevice = MovementController.HelpDevice(UserInputService:GetLastInputType()) or "Keyboard"
+	CollectionService:GetInstanceAddedSignal(HELP.Tag):Connect(applyHelp)
+	for _, label in ipairs(CollectionService:GetTagged(HELP.Tag)) do
+		applyHelp(label)
+	end
+	UserInputService.LastInputTypeChanged:Connect(function(inputType)
+		local device = MovementController.HelpDevice(inputType)
+		if device and device ~= helpDevice then
+			helpDevice = device
+			for _, label in ipairs(CollectionService:GetTagged(HELP.Tag)) do
+				applyHelp(label)
+			end
+		end
+	end)
+end
+
 function MovementController.Init()
 	if initialized then
 		return
@@ -1674,6 +1735,10 @@ function MovementController.Init()
 	mirrorStamina(true)
 	applyCameraSettings()
 	bindInput()
+	local okHelp, errHelp = pcall(startHelpText)
+	if not okHelp then
+		warn("[MovementController] course help text: " .. tostring(errHelp))
+	end
 
 	refreshRegenPerk()
 	LocalPlayer:GetAttributeChangedSignal(ATTR.PerkStaminaRegen):Connect(refreshRegenPerk)
