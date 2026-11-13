@@ -996,8 +996,8 @@ local function clientScenarios()
 				local row = H.widget("PetRow" .. i)
 				T.check(row and row.AbsolutePosition.Y + row.AbsoluteSize.Y <= y + ch + 0.5 and row.AbsolutePosition.X + row.AbsoluteSize.X <= x + cw + 0.5, tag .. ": PetRow" .. i .. " is inside the card")
 				local levels = row and row:FindFirstChild("Levels")
-				local scale = card.AbsoluteSize.X / math.max(1, card.Size.X.Offset)
-				T.check(levels and levels.Text == "L99 -> L100" and levels.TextBounds.X * scale <= levels.AbsoluteSize.X + 0.5, tag .. ": PetRow" .. i .. "'s level text fits", levels and fmt("%.0f in %.0f", levels.TextBounds.X * scale, levels.AbsoluteSize.X) or "missing")
+				-- (the mock's TextBounds is screen px, like AbsoluteSize)
+				T.check(levels and levels.Text == "L99 -> L100" and levels.TextBounds.X <= levels.AbsoluteSize.X + 0.5, tag .. ": PetRow" .. i .. "'s level text fits", levels and fmt("%.0f in %.0f", levels.TextBounds.X, levels.AbsoluteSize.X) or "missing")
 			end
 			local small = {}
 			for _, d in ipairs(card:GetDescendants()) do

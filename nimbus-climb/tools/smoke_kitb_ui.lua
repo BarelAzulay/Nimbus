@@ -1028,6 +1028,64 @@ local function serverScenarios()
 		K.flushErrors("pixelicon_clamp_and_warn")
 	end)
 
+	-- (g) (U7a review) PixelIcon.Lead under a UIScale: Roblox's TextBounds is screen px (after every UIScale on and above
+	-- the label) while Position offsets are the label's own px. At 0.8 (a phone), 1.25 (a big screen) and 1.7 (a token
+	-- pop) every icon sits just outside its text, its own gap away: never over the text, never a wider gap
+	S.pixelicon_lead_uiscale = guarded("pixelicon_lead_uiscale", function()
+		local PI = shared("PixelIcon")
+		local Mock = rawget(_G, "Mock")
+		if not (PI and Mock) then
+			return
+		end
+		local gui = Instance.new("ScreenGui")
+		gui.IgnoreGuiInset = true
+		local L, R, C = Enum.TextXAlignment.Left, Enum.TextXAlignment.Right, Enum.TextXAlignment.Center
+		local cases = { { L, false }, { L, true }, { R, false }, { R, true }, { C, false }, { C, true } }
+		for _, sc in ipairs({ 0.8, 1, 1.25, 1.7 }) do
+			local root = Instance.new("Frame")
+			root.Size = UDim2.fromOffset(400, 400)
+			local ui = Instance.new("UIScale")
+			ui.Scale = sc
+			ui.Parent = root
+			root.Parent = gui
+			-- the mock's TextBounds scales like Roblox's
+			local probe = Instance.new("TextLabel")
+			probe.Size = UDim2.fromOffset(200, 30)
+			probe.TextSize = 20
+			probe.Text = "1,250"
+			probe.Parent = root
+			local own = Mock.TextExtent(probe)
+			T.check(math.abs(probe.TextBounds.X - own * sc) < 0.01, fmt("mock: TextBounds is screen px under a UIScale of %.2f", sc),
+				fmt("%.1f, own %.1f", probe.TextBounds.X, own))
+			for i, case in ipairs(cases) do
+				local align, after = case[1], case[2]
+				local label = Instance.new("TextLabel")
+				label.Size = UDim2.fromOffset(300, 30)
+				label.Position = UDim2.fromOffset(50, 40 + i * 50)
+				label.TextSize = 20
+				label.Text = "1,250"
+				label.TextXAlignment = align
+				label.Parent = root
+				local box = PI.Lead(label, "token", { After = after })
+				local px = PI.Snap(18)
+				local gap = math.max(3, math.floor(px / 4)) * sc
+				local pad = label:FindFirstChildOfClass("UIPadding")
+				local ap, as = label.AbsolutePosition, label.AbsoluteSize
+				local x0 = ap.X + (pad and pad.PaddingLeft.Offset or 0) * sc
+				local x1 = ap.X + as.X - (pad and pad.PaddingRight.Offset or 0) * sc
+				local tw = label.TextBounds.X
+				local t0 = (align == L and x0) or (align == R and x1 - tw) or ((x0 + x1 - tw) / 2)
+				local ip, is = box.AbsolutePosition, box.AbsoluteSize
+				local space = after and (ip.X - (t0 + tw)) or (t0 - (ip.X + is.X))
+				T.check(space >= gap - 0.5 and space <= gap + sc + 0.5,
+					fmt("pixelicon lead: UIScale %.2f, %s, %s: the icon sits its gap outside the text", sc, align.Name, after and "after" or "before"),
+					fmt("space %.1f, gap %.1f (text %.1f..%.1f, icon %.1f..%.1f)", space, gap, t0, t0 + tw, ip.X, ip.X + is.X))
+			end
+		end
+		gui:Destroy()
+		K.flushErrors("pixelicon_lead_uiscale")
+	end)
+
 	-- (h) the Credits baseline (tools/fixtures/credits_tree_u1.txt) is rewritten only with smoke.py's explicit
 	-- --record-credits-tree flag, never because NC_RECORD_CREDITS_TREE happens to be set during a normal run
 	S.credits_record_needs_flag = guarded("credits_record_needs_flag", function()

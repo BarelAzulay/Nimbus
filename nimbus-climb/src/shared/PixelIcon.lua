@@ -250,6 +250,24 @@ end
 
 local leadConns = setmetatable({}, { __mode = "k" }) -- [label] = { [childName] = { connections } } (a re-call drops the old)
 
+-- (U7a review) the product of the UIScales on `obj` and every GuiObject above it, up to its ScreenGui: Roblox's
+-- TextBounds is screen px (after all of them), a Position offset is the object's own px. A HUD panel's ScreenFactor
+-- (0.8 on a phone, up to 1.25) and a token pop (about 1.7) are among them
+local function scaleOf(obj)
+	local s = 1
+	local cur = obj
+	while cur and not cur:IsA("LayerCollector") do
+		if cur:IsA("GuiObject") then
+			local ui = cur:FindFirstChildOfClass("UIScale")
+			if ui and ui.Scale > 0 then
+				s = s * ui.Scale
+			end
+		end
+		cur = cur.Parent
+	end
+	return s
+end
+
 function PixelIcon.Lead(label, name, opts)
 	opts = opts or {}
 	if not PixelIcon.Bitmaps[name] then
@@ -316,9 +334,10 @@ function PixelIcon.Lead(label, name, opts)
 	end
 	local align = label.TextXAlignment
 	-- a UIPadding insets the label's children as it insets the text, so the icon is placed in the same padded box as the
-	-- letters: scale 0 / 0.5 / 1 are the text area's left edge, centre and right edge
+	-- letters: scale 0 / 0.5 / 1 are the text area's left edge, centre and right edge. TextBounds is screen px: back to
+	-- the label's own px (a UIScale tween changes TextBounds, so a pop re-places it at the new scale)
 	local function place()
-		local textW = label.TextBounds.X
+		local textW = label.TextBounds.X / scaleOf(label)
 		box.AnchorPoint = Vector2.new(after and 0 or 1, 0.5)
 		if align == Enum.TextXAlignment.Right then
 			box.Position = after and UDim2.new(1, gap, 0.5, 0) or UDim2.new(1, -(textW + gap), 0.5, 0)

@@ -4789,13 +4789,18 @@ defclass("ScrollingFrame", "GuiObject", {
 defclass("ViewportFrame", "GuiObject", { creatable = true, props = { CurrentCamera = T.inst(), ImageColor3 = T.rgb(255, 255, 255), ImageTransparency = T.num(0), Ambient = T.rgb(200, 200, 200), LightColor = T.rgb(140, 140, 140), LightDirection = T.v3(-1, -1, -1) } })
 defclass("VideoFrame", "GuiObject", { creatable = true })
 
+-- (kit-b U7a review) screen px, as in Roblox: the text measured in the object's own px, times every UIScale on and above
+-- it (the box's scale). A Position / Size offset is own px: divide by that scale to use it. A wrapped text still wraps at
+-- the box's screen width, as before (Roblox wraps at its own width; the suites' fit checks are tuned to the old wrap)
 local function textBounds(self, st)
+	local box = Mock.GuiBox(self)
+	local s = box.scale or 1
 	local limit = nil
 	if st.props.TextWrapped then
-		limit = Mock.GuiBox(self).w
+		limit = box.w
 	end
 	local w, h = Mock.TextExtent(self, limit)
-	return v2(w, h)
+	return v2(w * s, h * s)
 end
 local textProps = {
 	Text = T.str(""), TextColor3 = T.rgb(27, 42, 53), TextSize = T.num(14, 1, 100), TextScaled = T.bool(false), TextWrapped = T.bool(false),

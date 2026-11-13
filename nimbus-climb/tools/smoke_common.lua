@@ -456,8 +456,9 @@ local function samplePoints(item)
 	local ok, tb = pcall(function()
 		return o.TextBounds
 	end)
-	local tw = (ok and tb) and math.min(tb.X * s, x1 - x0) or (x1 - x0)
-	local th = (ok and tb) and math.min(tb.Y * s, y1 - y0) or (y1 - y0)
+	-- (TextBounds is screen px: the mock's, like Roblox's, is already under every UIScale)
+	local tw = (ok and tb) and math.min(tb.X, x1 - x0) or (x1 - x0)
+	local th = (ok and tb) and math.min(tb.Y, y1 - y0) or (y1 - y0)
 	local x, y = (x0 + x1) / 2, (y0 + y1) / 2
 	if o.TextXAlignment == Enum.TextXAlignment.Left then
 		x = x0 + tw / 2

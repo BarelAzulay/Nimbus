@@ -615,9 +615,8 @@ end)
 -- (the mock measures a flat 0.5 em per character; FredokaOne digits run ~0.6 em)
 local function textRect(label, slack)
 	local r = rect(label)
-	local k = scaleOf(label)
-	local b = label.TextBounds
-	local w, h = b.X * k * (slack or 1), b.Y * k
+	local b = label.TextBounds -- screen px (the mock's, like Roblox's, already under every UIScale)
+	local w, h = b.X * (slack or 1), b.Y
 	local ax = label.TextXAlignment
 	local x0
 	if ax == Enum.TextXAlignment.Right then
