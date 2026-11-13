@@ -761,8 +761,9 @@ local function checkEggRow(label, lobby, Config, info)
 				if not (stroke and stroke.Thickness >= EGGROW.Outline and stroke.ApplyStrokeMode == Enum.ApplyStrokeMode.Contextual) then
 					badL[#badL + 1] = id .. " no INK outline"
 				end
-				if Theme and l.Font ~= Theme.Fonts.Body then
-					badL[#badL + 1] = id .. " font " .. tostring(l.Font) .. " (want Theme.Fonts.Body: the measured BuilderSans-Bold)"
+				-- (kit-b U1 review) a Body label draws Nunito ExtraBold and reads .Font = Unknown; Theme.FontOf gives its measured font
+				if Theme and (l:GetAttribute("FontRole") ~= "Body" or Theme.FontOf(l) ~= Theme.Fonts.Body) then
+					badL[#badL + 1] = id .. " font " .. tostring(Theme.FontOf(l)) .. " role " .. tostring(l:GetAttribute("FontRole")) .. " (want the Body role, measured with Theme.Fonts.Body)"
 				end
 			end
 		end

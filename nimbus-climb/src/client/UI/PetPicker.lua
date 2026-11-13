@@ -609,7 +609,7 @@ function H.fit(lbl, texts, width, maxSize, minSize)
 	for _, t in ipairs(texts) do
 		local size = maxSize
 		while size >= minSize do
-			if H.width(t, size, lbl.Font) <= width then
+			if H.width(t, size, Theme.FontOf(lbl)) <= width then
 				lbl.Text, lbl.TextSize = t, size
 				return
 			end
@@ -767,11 +767,11 @@ function H.layoutCard(item, w, h, M)
 	local pad = phone and 4 or 8
 	local text = M.Text
 	item.Level.TextSize = text
-	local lw = math.min(w - 2 * pad, H.width(item.Level.Text, text, item.Level.Font) + (phone and 12 or 16))
+	local lw = math.min(w - 2 * pad, H.width(item.Level.Text, text, Theme.FontOf(item.Level)) + (phone and 12 or 16))
 	place(item.Level, pad, pad, lw, M.ChipRowH)
 	local bw = M.ChipRowH
 	if item.Badge.Text ~= G.Star then
-		bw = H.width(item.Badge.Text, text, item.Badge.Font) + (phone and 12 or 16)
+		bw = H.width(item.Badge.Text, text, Theme.FontOf(item.Badge)) + (phone and 12 or 16)
 	end
 	place(item.Badge, w - pad - bw, pad, bw, M.ChipRowH)
 	item.Badge.TextSize = item.Badge.Text == G.Star and (phone and 18 or 24) or text

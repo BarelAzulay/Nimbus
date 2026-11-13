@@ -24,6 +24,8 @@
 -- over the 3D world one outline and no stroke, `Theme.TextOn(surface)` picks the text colour for a fill. Also
 -- `Theme.SetRole` (a role's face without restyling), `Theme.Measure` (text size for a role), `Theme.Sign` (the kit B
 -- palette) and `Theme.Radius` (the corner tokens).
+-- U1 review: a Nunito label reads .Font = Enum.Font.Unknown in Roblox (no Enum twin) and TextService:GetTextSize throws on
+-- it, so never measure with lbl.Font: `Theme.FontOf(lbl)` (the Enum font to measure with) and `Theme.MeasureLabel(lbl)`.
 -- Plain Lua 5.1-compatible syntax only. Safe to require on the server and on the client.
 
 local Theme = {}
@@ -593,9 +595,10 @@ end
 -- The outline thickness of Outline = "World" per role (damage numbers read from further away than a nameplate).
 local WORLD_OUTLINE = { Accent = 3, Title = 3, Sign = 3, Display = 2.5 }
 
--- Puts a role's font on a text object and nothing else (colour, size and stroke stay): the Enum font, then the role's
--- FontFace when it has one. Use it instead of `obj.Font = Theme.Fonts.X`, which would drop a FontFace. An unknown role
--- is Body. Returns obj.
+-- Puts a role's font on a text object and nothing else (colour, size and stroke stay): the Enum font (which also resets
+-- FontFace, so a label leaving a face role loses its Nunito face), then the role's FontFace when it has one, and stamps
+-- the role on it (attribute FontRole, read by Theme.FontOf). Use it instead of `obj.Font = Theme.Fonts.X`, which would
+-- drop a FontFace. An unknown role is Body. Returns obj.
 function Theme.SetRole(obj, role)
 	if not obj then
 		return nil
@@ -605,7 +608,47 @@ function Theme.SetRole(obj, role)
 	end
 	obj.Font = Theme.Fonts[role]
 	Theme.Face(obj, role)
+	obj:SetAttribute("FontRole", role)
 	return obj
+end
+
+-- the role Theme.SetRole stamped on obj; Body when there is none
+local function stampedRole(obj)
+	local ok, role = pcall(function()
+		return obj:GetAttribute("FontRole")
+	end)
+	if ok and Theme.Fonts[role] then
+		return role
+	end
+	return "Body"
+end
+
+-- The Enum font to measure a text object with (TextService:GetTextSize takes only an Enum.Font). A label whose FontFace
+-- has no Enum twin (Nunito ExtraBold, Nunito Bold Italic) reads .Font = Enum.Font.Unknown in Roblox, and GetTextSize
+-- throws on Unknown; then its stamped role's Enum fallback (Body's when it has none). Any other label answers its own
+-- .Font. Use it wherever a fit helper would read lbl.Font.
+function Theme.FontOf(obj)
+	local f = obj and obj.Font
+	if f and f ~= Enum.Font.Unknown then
+		return f
+	end
+	return Theme.Fonts[stampedRole(obj)]
+end
+
+-- The size of a text object's text (or `text`) at its TextSize (or `size`), wrapped at `width` when given: Theme.Measure
+-- with its role when it draws a face (.Font reads Unknown; the role's spare widening), else GetTextSize with its own
+-- Enum font. Returns a Vector2.
+function Theme.MeasureLabel(obj, text, size, width)
+	if text == nil then
+		text = obj and obj.Text or ""
+	end
+	size = tonumber(size) or (obj and obj.TextSize) or nil
+	local f = obj and obj.Font
+	if f and f ~= Enum.Font.Unknown then
+		local frame = Vector2.new(tonumber(width) or 100000, 100000)
+		return game:GetService("TextService"):GetTextSize(tostring(text), size or 14, f, frame)
+	end
+	return Theme.Measure(text, stampedRole(obj), size, width)
 end
 
 -- Apply a font role (and an outline when asked) to any TextLabel/TextButton/TextBox.
@@ -647,16 +690,17 @@ end
 
 -- The size of `text` in a role's font at `size` px (wrapped at `width` when given): TextService:GetTextSize with the role's
 -- Enum font, X widened by Theme.MeasureSpare for a FontFace role and rounded up (TextService does not know FontFace;
--- GetTextBoundsAsync does, but it yields). An unknown role measures as Body. Returns a Vector2.
+-- GetTextBoundsAsync does, but it yields). A wrap width is narrowed by the same factor, so the rows counted are the wider
+-- face's. An unknown role measures as Body. Returns a Vector2.
 function Theme.Measure(text, role, size, width)
 	if not Theme.Fonts[role] then
 		role = "Body"
 	end
 	text = tostring(text or "")
 	size = tonumber(size) or Theme.RoleSize(role)
-	local frame = Vector2.new(tonumber(width) or 100000, 100000)
-	local raw = game:GetService("TextService"):GetTextSize(text, size, Theme.Fonts[role], frame)
 	local spare = Theme.MeasureSpare[role] or 1
+	local frame = Vector2.new(tonumber(width) and (tonumber(width) / spare) or 100000, 100000)
+	local raw = game:GetService("TextService"):GetTextSize(text, size, Theme.Fonts[role], frame)
 	return Vector2.new(math.ceil(raw.X * spare), raw.Y)
 end
 

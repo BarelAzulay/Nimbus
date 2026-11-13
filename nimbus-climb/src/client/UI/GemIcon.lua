@@ -349,7 +349,7 @@ local function measure(frame)
 	local g = icon.Size.X.Offset
 	local ts = value.TextSize
 	local gap = math.floor(g * K.AMOUNT_GAP + 0.5)
-	local w = math.ceil(textWidth(value.Text, ts, value.Font)) + 2
+	local w = math.ceil(textWidth(value.Text, ts, Theme.FontOf(value))) + 2
 	local h = math.max(g, ts + 4)
 	icon.AnchorPoint = Vector2.new(0, 0.5)
 	icon.Position = UDim2.new(0, 0, 0.5, 0)

@@ -394,15 +394,21 @@ local function clientScenarios()
 			boxH = boxH - pad.PaddingTop.Offset - pad.PaddingBottom.Offset
 		end
 		local size = o.TextSize
-		local w = H.realWidth(text, size, o.Font)
-		local detail = fmt("%s '%s' %.1f px at %d (%s) in %.0fx%.0f", o.Name, (text:gsub("[\128-\255]+", "?")), w, size, o.Font.Name, boxW, boxH)
+		-- (kit-b U1 review) a Nunito label reads .Font = Enum.Font.Unknown, as in Roblox: measure it with its role's Enum fallback
+		local font = o.Font
+		if font == Enum.Font.Unknown then
+			local okT, Theme = pcall(require, Mock.GetPath(ROOTS.shared .. "/Theme"))
+			font = okT and Theme.FontOf(o) or font
+		end
+		local w = H.realWidth(text, size, font)
+		local detail = fmt("%s '%s' %.1f px at %d (%s) in %.0fx%.0f", o.Name, (text:gsub("[\128-\255]+", "?")), w, size, font.Name, boxW, boxH)
 		if w <= boxW + 0.5 then
 			return true, detail
 		end
 		if not o.TextWrapped then
 			return false, detail
 		end
-		local rows = H.realRows(text, size, o.Font, boxW)
+		local rows = H.realRows(text, size, font, boxW)
 		return rows * size * (o.LineHeight or 1) <= boxH + 1, detail .. " rows " .. tostring(rows)
 	end
 	-- every shown text under `root` that does not fit (a list of details)

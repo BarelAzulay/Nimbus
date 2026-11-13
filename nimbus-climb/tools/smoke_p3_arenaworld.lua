@@ -174,6 +174,10 @@ local function themeFonts()
 		for _, f in pairs(Theme.Fonts) do
 			set[f] = true
 		end
+		-- (kit-b U1 review) the FontFace roles: a Nunito label reads .Font = Unknown, so the check asks Mock.FontOf
+		for _, f in pairs(Theme.Faces or {}) do
+			set[f] = true
+		end
 	end
 	return set
 end
@@ -538,7 +542,8 @@ S.p3arena_world = guarded("p3arena_world", function()
 		end
 		for _, l in ipairs(labels) do
 			if next(fonts) ~= nil then
-				fontOk:case(fonts[l.Font] == true, l:GetFullName() .. " " .. tostring(l.Font))
+				local drawn = (Mock.FontOf and Mock.FontOf(l)) or l.Font
+				fontOk:case(fonts[drawn] == true, l:GetFullName() .. " " .. tostring(drawn))
 			end
 			local stroke = l.TextStrokeTransparency < 1 or l:FindFirstChildOfClass("UIStroke") ~= nil
 			local panel = false

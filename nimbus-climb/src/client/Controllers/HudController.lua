@@ -2836,18 +2836,18 @@ local function fitPartyTexts()
 	end
 	-- v5: the one obby portal is "Sky Obby", or just "Obby" where that does not fit beside Leave
 	if (title == "Sky Obby" or title == "Obby") and Pt.LevelPlain then
-		local wide = inner >= 260 and textFits("Sky Obby", UI.PartyTitle.Font, 24, inner - leaveW - 16)
+		local wide = inner >= 260 and textFits("Sky Obby", Theme.FontOf(UI.PartyTitle), 24, inner - leaveW - 16)
 		title = wide and "Sky Obby" or "Obby"
 		UI.PartyTitle.Text = title
 		Pt.FitTitle = title
 	end
-	UI.PartyTitle.TextSize = fittingSize(title, UI.PartyTitle.Font, { M.TitleText, 26, 24, 22 }, inner - leaveW - 8)
+	UI.PartyTitle.TextSize = fittingSize(title, Theme.FontOf(UI.PartyTitle), { M.TitleText, 26, 24, 22 }, inner - leaveW - 8)
 	if Pt.LevelPlain then
 		local room = inner - ((Pt.Leader and M.ChangeW or M.PartyCountW) + 6)
-		UI.PartyLevel.TextSize = fittingSize(Pt.LevelPlain, UI.PartyLevel.Font, { 20, 19, 18 }, room)
+		UI.PartyLevel.TextSize = fittingSize(Pt.LevelPlain, Theme.FontOf(UI.PartyLevel), { 20, 19, 18 }, room)
 	end
-	UI.PartyStatus.TextSize = fittingSize(status, UI.PartyStatus.Font, { M.PartyStatusText, 20, 19 }, inner)
-	if textFits(Pt.HintLong, UI.PartyHint.Font, M.PartyHintText, inner - M.PartyCountW - 6) then
+	UI.PartyStatus.TextSize = fittingSize(status, Theme.FontOf(UI.PartyStatus), { M.PartyStatusText, 20, 19 }, inner)
+	if textFits(Pt.HintLong, Theme.FontOf(UI.PartyHint), M.PartyHintText, inner - M.PartyCountW - 6) then
 		UI.PartyHint.Text = Pt.HintLong
 	else
 		UI.PartyHint.Text = Pt.HintShort

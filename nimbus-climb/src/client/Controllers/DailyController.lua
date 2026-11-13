@@ -537,7 +537,7 @@ function H.fitText(lbl, texts)
 	local width = lbl.Size.X.Offset - K.FIT_SLACK
 	for i = 1, #texts - 1 do
 		local ok, size = pcall(function()
-			return TextService:GetTextSize(texts[i], lbl.TextSize, lbl.Font, Vector2.new(4096, 1024))
+			return TextService:GetTextSize(texts[i], lbl.TextSize, Theme.FontOf(lbl), Vector2.new(4096, 1024))
 		end)
 		if not ok or typeof(size) ~= "Vector2" or size.X <= width then
 			return texts[i]
@@ -583,7 +583,7 @@ function H.fitLines(lbl, texts, lines)
 	end
 	local width = lbl.Size.X.Offset - K.FIT_SLACK
 	for i = 1, #texts - 1 do
-		if H.rows(texts[i], lbl.TextSize, lbl.Font, width) <= lines then
+		if H.rows(texts[i], lbl.TextSize, Theme.FontOf(lbl), width) <= lines then
 			return texts[i]
 		end
 	end
@@ -1209,8 +1209,8 @@ function H.placeChips(M, showStreak, showVip)
 		return
 	end
 	S.ChipKey = key
-	local streakW = math.max(M.StreakW, math.ceil(H.width(U.StreakChip.Text, M.ChipText, U.StreakChip.Font)) + 2 * M.ChipPad)
-	local vipW = math.max(M.VipW, math.ceil(H.width(U.VipChip.Text, M.ChipText, U.VipChip.Font)) + 2 * M.ChipPad)
+	local streakW = math.max(M.StreakW, math.ceil(H.width(U.StreakChip.Text, M.ChipText, Theme.FontOf(U.StreakChip))) + 2 * M.ChipPad)
+	local vipW = math.max(M.VipW, math.ceil(H.width(U.VipChip.Text, M.ChipText, Theme.FontOf(U.VipChip))) + 2 * M.ChipPad)
 	if S.Mode == "Portrait" then
 		place(U.DailyHeader, M.Side, M.HeaderY, G.W - 2 * M.Side, M.HeaderH)
 		local x = M.Side
@@ -1489,7 +1489,7 @@ function H.placeClock(cell, text)
 	cell.ClockKey = key
 	local inner, slotY, slotH = cell.Inner or 0, cell.SlotY or 0, cell.SlotH or 44
 	local size = cell.Clock.TextSize
-	local textW = H.width(text, size, cell.Clock.Font)
+	local textW = H.width(text, size, Theme.FontOf(cell.Clock))
 	local room = size + 8 -- the glyph's box (size + 4) and a 4 px gap
 	local withGlyph = text ~= "" and textW + room <= inner - K.FIT_SLACK
 	cell.Glyph.Visible = withGlyph

@@ -297,6 +297,30 @@ local function realRows(text, size, font, width)
 	return math.max(rows, 1)
 end
 
+-- (kit-b U1 review) the font o is measured with: a Nunito label (Body / Label / Toast / Script face) reads .Font =
+-- Enum.Font.Unknown, as in Roblox, so it is measured with its role's Enum fallback (Builder Sans), 1:1 as before the mock
+-- kept the two in step (Nunito ExtraBold runs about 1.0-1.07 x Builder Sans Bold: PIL puts the Altar hint at 342 px in
+-- Nunito Regular at 18, Builder Sans Bold 365 px; Theme.MeasureSpare's 1.06 is the layout code's safety margin, not a width)
+local themeMod = nil
+local function measuredFont(o)
+	local font = o.Font
+	if font ~= Enum.Font.Unknown then
+		return font
+	end
+	if themeMod == nil then
+		local inst = Mock.GetPath(ROOTS.shared .. "/Theme")
+		local ok, mod = false, nil
+		if inst then
+			ok, mod = pcall(require, inst)
+		end
+		themeMod = (ok and type(mod) == "table") and mod or false
+	end
+	if not themeMod then
+		return font
+	end
+	return themeMod.FontOf(o)
+end
+
 function G.fits(o)
 	if not o then
 		return false, "nil"
@@ -312,15 +336,16 @@ function G.fits(o)
 		boxW = boxW - pad.PaddingLeft.Offset - pad.PaddingRight.Offset
 		boxH = boxH - pad.PaddingTop.Offset - pad.PaddingBottom.Offset
 	end
-	local w = G.realWidth(text, o.TextSize, o.Font)
-	local detail = fmt("%s '%s' %.1f px at %d (%s) in %.0fx%.0f", o.Name, (text:gsub("[\128-\255]+", "?")), w, o.TextSize, o.Font.Name, boxW, boxH)
+	local font = measuredFont(o)
+	local w = G.realWidth(text, o.TextSize, font)
+	local detail = fmt("%s '%s' %.1f px at %d (%s) in %.0fx%.0f", o.Name, (text:gsub("[\128-\255]+", "?")), w, o.TextSize, font.Name, boxW, boxH)
 	if w <= boxW + 0.5 then
 		return true, detail
 	end
 	if not o.TextWrapped then
 		return false, detail
 	end
-	local rows = realRows(text, o.TextSize, o.Font, boxW)
+	local rows = realRows(text, o.TextSize, font, boxW)
 	return rows * o.TextSize * (o.LineHeight or 1) <= boxH + 1, detail .. " rows " .. tostring(rows)
 end
 

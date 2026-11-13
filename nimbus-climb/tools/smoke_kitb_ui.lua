@@ -15,12 +15,19 @@
 --   theme_setrole_and_measure (server world, pure) Theme.SetRole(obj, role) swaps only the face (the last face written wins,
 --                             as in Roblox); Theme.Measure(text, role, size[, width]) = TextService:GetTextSize with the
 --                             role's Enum font, widened by the role's spare factor (TextService does not know FontFace)
+--   theme_fontof_measure_label (server world, pure; U1 review) the engine's rule, mirrored by the mock: a face with no Enum
+--                             twin (Nunito ExtraBold / Bold Italic) reads .Font = Enum.Font.Unknown, which GetTextSize
+--                             refuses; Theme.FontOf(obj) = the Enum font to measure with (its .Font, else its stamped role's
+--                             fallback, else Body's); Theme.MeasureLabel(obj[, text, size, width]) = Theme.Measure for a face
+--                             role, GetTextSize with its font otherwise
 --   theme_texton              (server world, pure) Theme.TextOn(surface): brown #3B2412 on stone (and any light fill),
 --                             white on navy and on today's dark panels; Theme.Sign = the pitch palette (decision 5);
 --                             Theme.Radius = { None = 0, S = 4, M = 8 } and Theme.Corner takes a token name
 --   kitb_text_stroke_or_panel (client) a walk over every text object in PlayerGui after the client run: labels with both a
 --                             classic stroke and an outline, and outlined labels on an opaque panel. U1 reports the counts
 --                             as a warning; U6 drives them to zero and makes this a failure
+--   kitb_fit_measures_face_label (client; U1 review) the side hint (a Toast label, Nunito ExtraBold) sizes its pill from
+--                             Theme.MeasureLabel, not the 300 px it fell back to while .Font read Unknown
 -- Plain Lua 5.1 syntax only.
 
 local T = SmokeCommon.T
@@ -143,7 +150,9 @@ local function serverScenarios()
 		T.check(#outlined == 0, "kitb stroke: Theme.Label gives no outline by default (every role)", table.concat(outlined, ", "))
 		T.check(#faceless == 0, "kitb stroke: a FontFace role ends on its face (written after .Font)", table.concat(faceless, ", "))
 		local body = Theme.Label("Body copy", "Body")
-		T.check(body.FontFace == Theme.Faces.Body and body.Font == Theme.Fonts.Body, "kitb stroke: a Body label carries the Enum fallback and then the Nunito ExtraBold face")
+		-- (review) in Roblox a Nunito ExtraBold label reads .Font = Enum.Font.Unknown; its stamped role gives the Enum fallback
+		T.check(body.FontFace == Theme.Faces.Body and body:GetAttribute("FontRole") == "Body" and Theme.FontOf(body) == Theme.Fonts.Body,
+			"kitb stroke: a Body label carries the Nunito ExtraBold face, its role stamp and (Theme.FontOf) the Enum fallback", tostring(body.Font))
 		body:Destroy()
 		local onLight = Theme.Label("Dark on pale", "Body", { OnLight = true })
 		T.check(onLight.TextStrokeTransparency == 1, "kitb stroke: OnLight no longer adds a stroke (contrast comes from Theme.TextOn)", tostring(onLight.TextStrokeTransparency))
@@ -201,12 +210,14 @@ local function serverScenarios()
 		label.TextSize = 31
 		label.TextStrokeTransparency = 0.7
 		T.check(Theme.SetRole(label, "Body") == label, "kitb setrole: SetRole returns the object")
-		T.check(label.Font == Theme.Fonts.Body and label.FontFace == Theme.Faces.Body, "kitb setrole: SetRole(Body) = the Enum fallback, then the Nunito face")
+		T.check(label.FontFace == Theme.Faces.Body and label:GetAttribute("FontRole") == "Body" and Theme.FontOf(label) == Theme.Fonts.Body,
+			"kitb setrole: SetRole(Body) = the Nunito face, the role stamp and (Theme.FontOf) the Enum fallback", tostring(label.Font))
 		T.check(sameColor(label.TextColor3, Color3.fromRGB(200, 10, 10)) and label.TextSize == 31 and math.abs(label.TextStrokeTransparency - 0.7) < 1e-6, "kitb setrole: SetRole leaves colour, size and stroke alone")
 		Theme.SetRole(label, "Title")
-		T.check(label.Font == Theme.Fonts.Title and (not Mock.FontOf or Mock.FontOf(label) == Theme.Fonts.Title), "kitb setrole: SetRole(Title) after Body: the Title font is the last face written", tostring(Mock.FontOf and Mock.FontOf(label)))
+		T.check(label.Font == Theme.Fonts.Title and label.FontFace ~= Theme.Faces.Body and tostring(label.FontFace.Family):find("LuckiestGuy") ~= nil and label:GetAttribute("FontRole") == "Title",
+			"kitb setrole: SetRole(Title) after Body clears the Nunito face (the Title font is the face)", tostring(label.Font) .. " " .. faceText(label.FontFace))
 		Theme.SetRole(label, "NoSuchRole")
-		T.check(label.Font == Theme.Fonts.Body, "kitb setrole: an unknown role is Body")
+		T.check(label.FontFace == Theme.Faces.Body and Theme.FontOf(label) == Theme.Fonts.Body and label:GetAttribute("FontRole") == "Body", "kitb setrole: an unknown role is Body")
 		T.check(Theme.SetRole(nil, "Body") == nil, "kitb setrole: SetRole(nil) is a no-op")
 		label:Destroy()
 
@@ -229,6 +240,57 @@ local function serverScenarios()
 		local wrapped = Theme.Measure("Nimbus Climb", "Body", 20, 50)
 		T.check(typeof(wrapped) == "Vector2", "kitb measure: a wrap width is passed through")
 		K.flushErrors("theme_setrole_and_measure")
+	end)
+
+	S.theme_fontof_measure_label = guarded("theme_fontof_measure_label", function()
+		local Theme = theme()
+		if not Theme then
+			return
+		end
+		if not T.check(type(Theme.FontOf) == "function" and type(Theme.MeasureLabel) == "function", "kitb fontof: Theme.FontOf and Theme.MeasureLabel exist") then
+			return
+		end
+		local TS = game:GetService("TextService")
+		-- the engine (probed in Studio): a face with no Enum twin reads .Font = Unknown, GetTextSize refuses Unknown, and
+		-- writing Unknown to .Font is ignored
+		local body = Theme.Label("Nimbus Climb", "Body", { Size = 20 })
+		T.check(body.Font == Enum.Font.Unknown, "kitb fontof: a Nunito ExtraBold label reads .Font = Enum.Font.Unknown (as in Roblox)", tostring(body.Font))
+		T.check(not pcall(function()
+			return TS:GetTextSize("x", 20, body.Font, Vector2.new(1000, 1000))
+		end), "kitb fontof: GetTextSize refuses Enum.Font.Unknown (as in Roblox)")
+		local plain = Instance.new("TextLabel")
+		plain.Font = Enum.Font.FredokaOne
+		plain.Font = Enum.Font.Unknown
+		T.check(plain.Font == Enum.Font.FredokaOne, "kitb fontof: writing Enum.Font.Unknown to .Font is ignored (as in Roblox)", tostring(plain.Font))
+		-- Theme.FontOf: the Enum font to measure with
+		T.check(Theme.FontOf(body) == Theme.Fonts.Body, "kitb fontof: a Body label measures with the Body Enum fallback", tostring(Theme.FontOf(body)))
+		for _, role in ipairs({ "Label", "Toast", "Script" }) do
+			local l = Theme.Label("x", role)
+			T.check(Theme.FontOf(l) == Theme.Fonts[role], "kitb fontof: a " .. role .. " label measures with its Enum fallback", tostring(Theme.FontOf(l)))
+			l:Destroy()
+		end
+		local heading = Theme.Label("Nimbus Climb", "Heading", { Size = 20 })
+		T.check(Theme.FontOf(heading) == Theme.Fonts.Heading and heading.Font == Theme.Fonts.Heading, "kitb fontof: a Heading label is its own .Font")
+		T.check(Theme.FontOf(plain) == Enum.Font.FredokaOne, "kitb fontof: a label never styled by Theme answers its own .Font")
+		heading.Font = Theme.Fonts.Display
+		T.check(Theme.FontOf(heading) == Theme.Fonts.Display, "kitb fontof: a later .Font write wins over the stamped role")
+		local loose = Instance.new("TextLabel")
+		loose.FontFace = Font.new("rbxasset://fonts/families/Nunito.json", Enum.FontWeight.ExtraBold, Enum.FontStyle.Normal)
+		T.check(Theme.FontOf(loose) == Theme.Fonts.Body, "kitb fontof: an unstamped face with no Enum twin measures as Body", tostring(Theme.FontOf(loose)))
+		T.check(Theme.FontOf(nil) == Theme.Fonts.Body, "kitb fontof: nil measures as Body")
+		-- Theme.MeasureLabel: a face role goes through Theme.Measure (its spare), an Enum font 1:1
+		local mb = Theme.MeasureLabel(body)
+		local want = Theme.Measure("Nimbus Climb", "Body", 20)
+		T.check(typeof(mb) == "Vector2" and mb.X == want.X and mb.Y == want.Y, "kitb fontof: MeasureLabel(Body label) = Theme.Measure(its text, Body, its size)", tostring(mb) .. " vs " .. tostring(want))
+		local mh = Theme.MeasureLabel(heading, "Nimbus Climb", 20)
+		local raw = TS:GetTextSize("Nimbus Climb", 20, Theme.Fonts.Display, Vector2.new(100000, 100000))
+		T.check(mh.X == raw.X and mh.Y == raw.Y, "kitb fontof: MeasureLabel(an Enum-font label) = GetTextSize with its font", tostring(mh) .. " vs " .. tostring(raw))
+		local m30 = Theme.MeasureLabel(body, "Hi", 30)
+		T.check(m30.X == Theme.Measure("Hi", "Body", 30).X, "kitb fontof: MeasureLabel's text and size arguments override the label's")
+		for _, l in ipairs({ body, plain, heading, loose }) do
+			l:Destroy()
+		end
+		K.flushErrors("theme_fontof_measure_label")
 	end)
 
 	S.theme_texton = guarded("theme_texton", function()
@@ -329,6 +391,38 @@ local function clientScenarios()
 		if #panelled > 0 then
 			T.warn(fmt("kitb stroke walk: %d outlined text(s) on an opaque panel (U6 drives to 0)", #panelled), table.concat(panelled, "; ", 1, math.min(#panelled, 8)))
 		end
+	end)
+
+	-- (review) a fit helper on a Nunito label really measures it: the side hint (a Toast label) sizes its pill from the text,
+	-- where a read of .Font (Unknown) made GetTextSize throw inside its pcall and left the pill at its 300 px maximum
+	S.kitb_fit_measures_face_label = guarded("kitb_fit_measures_face_label", function()
+		local KC = _G.KC
+		local MC = KC and KC.M and KC.M.MenuController
+		local inst = Mock.GetPath(ROOTS.shared .. "/Theme")
+		local okT, Theme = false, nil
+		if inst then
+			okT, Theme = pcall(require, inst)
+		end
+		if not T.check(MC ~= nil and type(MC.Hint) == "function" and okT and type(Theme) == "table", "kitb fit: MenuController and Theme load") then
+			return
+		end
+		local text = "kit B fit"
+		MC.Hint(text, "info")
+		KC.advance(0.1)
+		local pg = game:GetService("Players").LocalPlayer.PlayerGui
+		local label = nil
+		for _, d in ipairs(pg:GetDescendants()) do
+			if d:IsA("TextLabel") and d.Text == text then
+				label = d
+			end
+		end
+		if not T.check(label ~= nil, "kitb fit: the side hint shows the text") then
+			return
+		end
+		local want = math.ceil(Theme.MeasureLabel(label).X) + 6
+		T.check(label:GetAttribute("FontRole") == "Toast" and label.Font == Enum.Font.Unknown, "kitb fit: the hint is a Toast (Nunito ExtraBold) label", tostring(label.Font))
+		T.check(label.Size.X.Offset == want and want < 300, "kitb fit: the hint pill is measured to its text (not the 300 px fallback)", fmt("%d px (want %d)", label.Size.X.Offset, want))
+		KC.flushErrors("kitb_fit_measures_face_label")
 	end)
 
 	return S

@@ -4813,15 +4813,58 @@ local textGetters = {
 		return st.props.Text or ""
 	end,
 }
+-- (kit-b U1 review) Roblox keeps .Font and .FontFace in step: writing .Font sets FontFace = Font.fromEnum(it); writing a
+-- FontFace makes .Font read its Enum twin, or Enum.Font.Unknown when that family / weight / style has none (Nunito
+-- ExtraBold, Nunito Bold Italic); assigning Enum.Font.Unknown to .Font is ignored. Probed in Studio 2026-11-13.
+-- The Enum twins of non-Regular weights (a Regular Normal face is Enum.Font[<family file name>]):
+local FACE_TWINS = {
+	BuilderSans = { Medium = "BuilderSansMedium", Bold = "BuilderSansBold", ExtraBold = "BuilderSansExtraBold" },
+	GothamSSm = { Regular = "Gotham", Medium = "GothamMedium", Bold = "GothamBold", Black = "GothamBlack" },
+	SourceSansPro = { Regular = "SourceSans", Light = "SourceSansLight", SemiBold = "SourceSansSemibold", Bold = "SourceSansBold" },
+}
+local function enumOfFace(face)
+	if rawtype(face) ~= "table" then
+		return enumItem("Font", "Unknown")
+	end
+	if rawget(face, "_enum") then
+		return rawget(face, "_enum")
+	end
+	local family = tostring(rawget(face, "Family") or ""):match("families/([%w_]+)%.json$")
+	local weight, style = rawget(face, "Weight"), rawget(face, "Style")
+	if not family or (style and style.Name ~= "Normal") then
+		return enumItem("Font", "Unknown")
+	end
+	local wname = weight and weight.Name or "Regular"
+	local twins = FACE_TWINS[family]
+	if twins and twins[wname] then
+		return enumItem("Font", twins[wname])
+	end
+	if wname == "Regular" then
+		return enumItem("Font", family)
+	end
+	return enumItem("Font", "Unknown")
+end
 local function textInit(inst, st)
 	st.isText = true
 	st.onProp = function(self, s, key, value)
 		if key == "Font" then
+			if value == enumItem("Font", "Unknown") then
+				-- ignored, as in Roblox: .Font keeps reading what it read before
+				s.props.Font = s.fontEnum
+				return
+			end
 			s.fontAssigned = true
 			s.fontValue = value
+			s.fontEnum = value
+			s.props.FontFace = Font.fromEnum(value)
 		elseif key == "FontFace" then
 			s.fontAssigned = true
 			s.fontValue = value
+			local twin = enumOfFace(value)
+			s.props.Font = twin
+			if twin ~= enumItem("Font", "Unknown") then
+				s.fontEnum = twin
+			end
 		end
 	end
 end
@@ -6746,7 +6789,11 @@ service("HttpService", {
 })
 service("TextService", {
 	methods = {
-		GetTextSize = function(self, text, size)
+		GetTextSize = function(self, text, size, font)
+			-- (kit-b U1 review) as in Roblox: a label whose FontFace has no Enum twin reads .Font = Unknown, refused here
+			if font == enumItem("Font", "Unknown") then
+				error("Enum.Font.Unknown can't be passed to TextService:GetTextSize()", 2)
+			end
 			return v2(#tostring(text) * (size or 14) * 0.5, size or 14)
 		end,
 		-- the filter passes the text through and remembers who it was for (Mock.FilterError makes it fail)
@@ -7323,8 +7370,9 @@ function Mock.IsDestroyed(inst)
 	return inst[STATE].destroyed
 end
 
--- The font a text object draws with: the last of .Font / .FontFace written (Roblox keeps the two in step, the mock keeps
--- each property as written), nil when neither was set. (kit-b U1: Theme.Style writes .Font, then a FontFace role's face)
+-- The font a text object draws with: the last of .Font / .FontFace written (the Enum font or the Font itself; reading
+-- .Font gives Enum.Font.Unknown for a face with no Enum twin, so the dump / render tools ask here), nil when neither was
+-- set. (kit-b U1: Theme.Style writes .Font, then a FontFace role's face)
 function Mock.FontOf(inst)
 	local st = inst and inst[STATE]
 	return st and st.fontValue or nil
