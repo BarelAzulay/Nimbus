@@ -5,7 +5,8 @@
 --   IndexController.Close()
 --   Extras: IndexController.IsOpen() -> bool, IndexController.ClaimableCount() -> n,
 --           IndexController.Opened (Util.Signal, Fire(groupId) when the window opens),
---           IndexController.Closed (Util.Signal, Fire() when it closes)
+--           IndexController.Closed (Util.Signal, Fire() when it closes),
+--           IndexController.Metrics (the K table; MEASURE: a tab-name width hook for the offline renderer and tests)
 --
 -- MenuController opens it from the menu "Index" tile and from OpenPanel("Index"), and relays Opened as
 -- MenuController.WindowOpened("Index") (the tutorial listens there). This module never requires
@@ -15,7 +16,7 @@
 -- kit-b U8: the window is a kit B sign (CloudUI.Panel Skin "Signboard", the book on its header): stone wells with brown
 -- ink, no glow, gloss or neon border. The rarity groups are signboard tabs (a stone tab with the rarity on its lip, the
 -- selected one gold-faced; in the tall layout's strip a whole number of tabs fills the strip, so none shows cut, and the
--- names sit at a fixed size that fits). A pet tile is the Pets window's card: a stone tile, the pet in its light well, the
+-- names sit at a fixed size that fits left of the badge corner, the count on the bar row under them). A pet tile is the Pets window's card: a stone tile, the pet in its light well, the
 -- rarity on its lip (attribute Rarity), the element as a chip with its drawn icon. On a touch phone Roblox's thumbstick
 -- and jump button go while the window is open (MenuController.SetTouchHidden("Index"), as Pets, Shop and Gifts do): the
 -- jump button sat on CLAIM at 844x390.
@@ -120,8 +121,17 @@ local K = {
 	TALL = 760,
 	STRIP_H = 64, -- the group strip of the tall layout (tiles + room for its scroll bar)
 	STRIP_TILE_W = 150,
-	STRIP_NAME_PAD = 28, -- a strip tile's name keeps clear of the badge corner
-	STRIP_TILE_MIN_W = 120, -- (kit-b U8) the narrowest strip tab: "Legendary" at 20 px and its badge
+	-- (kit-b U8 review) a tab's name row: the name from TAB_NAME_X to the badge corner (the badge is 28 px centred 8 px in
+	-- from the right edge, so the name stops TAB_BADGE_W short of it), sized down from 24 (column) / 20 (strip) to NAME_MIN
+	-- until it fits with NAME_SPARE px to spare; the count sits on the bar row under it
+	TAB_NAME_X = 12,
+	TAB_BADGE_W = 22,
+	NAME_MIN = 18,
+	NAME_SPARE = 2,
+	STRIP_TILE_MIN_W = 134, -- (kit-b U8) the narrowest strip tab: "Uncommon" (96.4 px of FredokaOne at 18) and its badge corner
+	-- (U8 review) a tab name's width in px: nil = Theme.MeasureLabel (TextService knows FredokaOne in Roblox); the offline
+	-- renderer and the tests put real font metrics here (the mock's TextService is a flat 0.5 em). (text, size, font) -> px
+	MEASURE = nil,
 	STRIP_PAD_L = 4, -- the strip's left padding and the gap between two tabs
 	STRIP_GAP = 6,
 	PANEL_INSET_W = 24, -- the Neon panel's content inset (left + right, design px)
@@ -143,6 +153,7 @@ local K = {
 	BACK_ACTION = "NimbusIndexBack",
 	DISPLAY_ORDER = 21, -- above NimbusMenu (20): on small screens the window may cover the menu column
 }
+IndexController.Metrics = K
 
 local Colors = Theme.Colors
 -- (kit-b U8) the Signboard palette: brown ink on stone and in the wells, wood edges
@@ -984,19 +995,35 @@ local function relayout()
 		stripTabW = math.floor((room - (n - 1) * K.STRIP_GAP) / n)
 	end
 	local tileSize = tall and UDim2.new(0, stripTabW, 1, 0) or UDim2.new(1, -10, 0, tileH)
-	-- the names sit at a fixed size that fits (never TextScaled: it shrank "Uncommon" in the strip): 20 px in the strip,
-	-- 24 px in the column
-	local nameSize = UDim2.new(1, -(tall and K.STRIP_NAME_PAD or 52), 0, 30)
-	local nameText = tall and 20 or 24
+	-- the names sit at a fixed size (never TextScaled: it shrank "Uncommon" in the strip): 20 px in the strip, 24 px in
+	-- the column, stepped down to NAME_MIN for a name that does not fit its row (U8 review: "Uncommon" and "Legendary" ran
+	-- past the narrow column's box, and into the count in the strip). The row is one name tall from the top, so the
+	-- count on the bar row below never meets it
+	local tabW = tall and stripTabW or (groupW - U.GroupPad.PaddingLeft.Offset - U.GroupPad.PaddingRight.Offset - 10)
+	local nameMax = tall and 20 or 24
+	local nameRoom = tabW - K.TAB_NAME_X - K.TAB_BADGE_W
+	local nameSize = UDim2.new(0, nameRoom, 0, nameMax + 4)
+	local function placeName(label)
+		local pad = label:FindFirstChildOfClass("UIPadding") -- (the Fusions sparkle's inset)
+		local inset = pad and (pad.PaddingLeft.Offset + pad.PaddingRight.Offset) or 0
+		local size = nameMax
+		while size > K.NAME_MIN do
+			local w = K.MEASURE and K.MEASURE(label.Text, size, label.Font) or Theme.MeasureLabel(label, label.Text, size).X
+			if inset + w + K.NAME_SPARE <= nameRoom then
+				break
+			end
+			size = size - 1
+		end
+		label.Size = nameSize
+		label.TextSize = size
+	end
 	for _, tile in pairs(S.GroupTiles) do
 		tile.Button.Size = tileSize
-		tile.Name.Size = nameSize
-		tile.Name.TextSize = nameText
+		placeName(tile.Name)
 	end
 	if S.FusionTile then
 		S.FusionTile.Button.Size = tileSize
-		S.FusionTile.Name.Size = nameSize
-		S.FusionTile.Name.TextSize = nameText
+		placeName(S.FusionTile.Name)
 	end
 	if U.ElementsButton then
 		if tall then
@@ -1077,10 +1104,10 @@ local function buildGroupTile(group, index)
 	button:SetAttribute("Rarity", group.Rarity)
 	-- name on top, then a slim progress bar with the "3/6" count at its right end (kit-b U6: a card name is a Heading, the
 	-- Title face's capitals would not fit "LEGENDARY" in the narrow phone tile); U8: brown on the stone at a fixed size
-	-- (relayout: 24 px in the column, 20 in the strip)
+	-- (relayout: 24 px in the column, 20 in the strip, smaller when a name needs it; its row stops at the badge corner)
 	tile.Name = makeText(button, "GroupName", group.Rarity, "Heading", 24, INK, {
-		Position = UDim2.fromOffset(12, 4),
-		Size = UDim2.new(1, -52, 0, 30),
+		Position = UDim2.fromOffset(K.TAB_NAME_X, 2),
+		Size = UDim2.new(1, -(K.TAB_NAME_X + K.TAB_BADGE_W), 0, 28),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		ZIndex = 2,
 	})
@@ -1152,8 +1179,8 @@ local function buildFusionTile(index)
 	-- (kit-b U8) the same signboard tab, the fusion violet on its lip and the sparkle before the name
 	CloudUI.SignBlock(button, "Stone", { Face = SIGN.Tile, LipColor = FUSION_COLOR, Pad = false })
 	tile.Name = makeText(button, "GroupName", "Fusions", "Heading", 24, INK, { -- (a card name, like the rarity tiles)
-		Position = UDim2.fromOffset(12, 4),
-		Size = UDim2.new(1, -52, 0, 30),
+		Position = UDim2.fromOffset(K.TAB_NAME_X, 2),
+		Size = UDim2.new(1, -(K.TAB_NAME_X + K.TAB_BADGE_W), 0, 28),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		ZIndex = 2,
 	})

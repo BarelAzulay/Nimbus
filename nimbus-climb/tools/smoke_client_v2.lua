@@ -889,8 +889,11 @@ local function indexWindowChecks(PetCatalog)
 				end
 				for _, d in ipairs(window:GetDescendants()) do
 					if d.Name == "GroupName" and d:IsA("TextLabel") and d.Text ~= "" then
+						-- (kit-b U8 review) restated with the real FredokaOne widths (SmokeCommon.RealWidth; nameW's 0.62 / 1.0
+						-- em guesses read "Uncommon" at 105 design px, the font draws it at 96): the tab's name box stops at
+						-- the badge corner now, so the guess failed a name that fits. index_tabs_fit_phone checks it in full
 						local w = d.AbsoluteSize.X
-						local wantW = nameW(d.Text, 18 * k)
+						local wantW = SmokeCommon.RealWidth(d.Text, 18 * k, d.Font, true) or nameW(d.Text, 18 * k)
 						if w < wantW then
 							bad[#bad + 1] = string.format("%s: group tile '%s' %.0f px wide, needs ~%.0f at 18 px (wraps mid-word)", label, d.Text, w, wantW)
 						end

@@ -4465,9 +4465,11 @@ local function clientScenarios()
 				end
 				PC.Close(true)
 				LKC.advance(0.4)
-				-- the Index's tiles: the same card
+				-- the Index's tiles: the same card (U8 review: on the first key's rarity tab, so a tab left open by an earlier
+				-- scenario, say an empty Fusions tab after client_p2ui, never hides the tiles)
 				local Menu = U7.client("Controllers/MenuController")
-				Menu.Open("Index")
+				local first = LoadingH.shared("PetCatalog").Get(U8.KEYS[1])
+				Menu.Open("Index", { GroupId = first and first.Rarity or "Common" })
 				LKC.advance(1)
 				local index = U8.pg():FindFirstChild("NimbusIndex")
 				local n = 0
@@ -4522,10 +4524,53 @@ local function clientScenarios()
 
 	-- (U8; the owner's Index renders: "UNCOMMON" cut on the phone tab) the rarity tabs are signboard tabs: at every grid size each
 	-- tab that shows in the tab strip shows whole (never half under the strip's edge or the Elements button), and its name fits
-	-- the tab at its own size, never cut or squeezed under 18 design px
+	-- the tab at its own size, never cut or squeezed under 18 design px.
+	-- U8 review (the after render listed "Uncommon", "Legendary" and "Fusions" overflowing at 1920x1080 while this passed):
+	-- widths are FredokaOne's real ones (SmokeCommon.RealWidth; the mock's TextService is a flat 0.5 em), given to the
+	-- window through IndexController.Metrics.MEASURE as the renderer does; a name's padding (the Fusions sparkle's inset)
+	-- counts, with 2 px to spare; and the name's drawn text (with its lead icon) never meets the tab's count or its badge
+	-- corner (the badge shows whenever a reward waits, so its place is kept free while it is hidden too)
 	S.index_tabs_fit_phone = guarded("index_tabs_fit_phone", function()
-		local Theme = LoadingH.shared("Theme")
 		local Menu = U7.client("Controllers/MenuController")
+		local IC = U7.client("Controllers/IndexController")
+		local RealWidth = SmokeCommon.RealWidth
+		local SPARE = 2
+		local metrics = IC and type(IC.Metrics) == "table" and IC.Metrics or nil
+		local savedMeasure = metrics and metrics.MEASURE
+		if metrics then
+			metrics.MEASURE = function(text, size, font)
+				return RealWidth(text, size, font)
+			end
+		end
+		-- a label's drawn text in its tab's own design px: the padded box, the text's real width placed by its alignment,
+		-- one TextSize tall in the middle of the box
+		local function local_(o, tab, sc)
+			local p = (o.AbsolutePosition - tab.AbsolutePosition) / sc
+			local z = o.AbsoluteSize / sc
+			return { X = p.X, Y = p.Y, R = p.X + z.X, B = p.Y + z.Y }
+		end
+		local function textRect(label, tab, sc)
+			local r = local_(label, tab, sc)
+			local pad = label:FindFirstChildOfClass("UIPadding")
+			local pl, pr = pad and pad.PaddingLeft.Offset or 0, pad and pad.PaddingRight.Offset or 0
+			local pt, pb = pad and pad.PaddingTop.Offset or 0, pad and pad.PaddingBottom.Offset or 0
+			local w = RealWidth(label.Text, label.TextSize, label.Font)
+			local left, right = r.X + pl, r.R - pr
+			local x = left
+			if label.TextXAlignment == Enum.TextXAlignment.Right then
+				x = right - w
+			elseif label.TextXAlignment == Enum.TextXAlignment.Center then
+				x = (left + right - w) / 2
+			end
+			local cy = r.Y + pt + (r.B - r.Y - pt - pb) / 2
+			local out = { X = x, R = x + w, Y = cy - label.TextSize / 2, B = cy + label.TextSize / 2 }
+			local lead = label:FindFirstChild("LeadIcon")
+			if lead then
+				local l = local_(lead, tab, sc)
+				out.X, out.Y, out.B = math.min(out.X, l.X), math.min(out.Y, l.Y), math.max(out.B, l.B)
+			end
+			return out, w, pl + pr
+		end
 		for _, s in ipairs(U8.SIZES) do
 			U8.at(s[1], s[2], s[3], "index tabs", function(tag)
 				Menu.Open("Index")
@@ -4537,7 +4582,7 @@ local function clientScenarios()
 				end
 				local view = U8.rect(list)
 				local elements = index:FindFirstChild("ElementsButton", true)
-				local cut, tight, seen = {}, {}, 0
+				local cut, tight, seen, meets = {}, {}, 0, {}
 				for _, tab in ipairs(list:GetDescendants()) do
 					if tab.Name:match("^Group_") and tab:IsA("GuiButton") and U8.shown(tab) then
 						local r = U8.rect(tab)
@@ -4550,11 +4595,21 @@ local function clientScenarios()
 							end
 							local name = tab:FindFirstChild("GroupName", true)
 							if name then
-								local size = name.TextScaled and 18 or name.TextSize
-								local w = Theme.MeasureLabel(name, name.Text, size).X
-								local room = name.AbsoluteSize.X / U8.scaleOf(name)
-								if name.TextScaled or w > room + 0.5 or name.TextSize < 18 then
-									tight[#tight + 1] = fmt("%s %q %d px in %d at %s%s", tab.Name, name.Text, w, room, tostring(name.TextSize), name.TextScaled and " (scaled)" or "")
+								local sc = U8.scaleOf(name)
+								local rect, w, inset = textRect(name, tab, sc)
+								local room = name.AbsoluteSize.X / sc
+								if name.TextScaled or inset + w + SPARE > room + 0.01 or name.TextSize < 18 then
+									tight[#tight + 1] = fmt("%s %q %.1f px + %d inset in %.1f at %s%s", tab.Name, name.Text, w, inset, room, tostring(name.TextSize),
+										name.TextScaled and " (scaled)" or "")
+								end
+								for _, other in ipairs({ "Progress", "Badge" }) do
+									local o = tab:FindFirstChild(other)
+									if o then
+										local r = other == "Progress" and (textRect(o, tab, sc)) or local_(o, tab, sc)
+										if U8.overlap(rect, r) then
+											meets[#meets + 1] = fmt("%s %q %s meets its %s %s", tab.Name, name.Text, U8.show(rect), other, U8.show(r))
+										end
+									end
 								end
 							end
 						end
@@ -4562,8 +4617,13 @@ local function clientScenarios()
 				end
 				T.check(seen >= 2, tag .. ": the strip shows at least two tabs", tostring(seen))
 				T.check(#cut == 0, tag .. ": every tab in view shows whole (none half under the strip's edge or the Elements button)", table.concat(cut, "; ") .. " | view " .. U8.show(view))
-				T.check(#tight == 0, tag .. ": every tab's name fits it at a fixed size of 18 px or more", table.concat(tight, "; "))
+				T.check(#tight == 0, tag .. ": every tab's name (with its lead icon's inset and 2 px to spare) fits it at a fixed size of 18 px or more, real FredokaOne widths",
+					table.concat(tight, "; "))
+				T.check(#meets == 0, tag .. ": no tab's name meets the tab's count or its badge corner", table.concat(meets, "; "))
 			end)
+		end
+		if metrics then
+			metrics.MEASURE = savedMeasure
 		end
 		LKC.flushErrors("index_tabs_fit_phone")
 	end)
@@ -4603,7 +4663,8 @@ local function clientScenarios()
 		LKC.flushErrors("index_claim_clear_of_jump")
 	end)
 
-	-- (U8; finding 15) no neon glow in the U8 families: the lobby HUD (NimbusHud, the top-bar pill, the menu tiles, the gift), the
+	-- (U8; finding 15) no neon glow in the U8 families: the lobby HUD (NimbusHud, the top-bar pill, the menu tiles, the gift, the
+	-- boost chips under it), the
 	-- Pets window and the Index. No glow ring (a NeonKit Glow frame or GlowStroke shown), no gloss gradient (a UIGradient on
 	-- a shown object; kit B's functional ones are named Lip, Step, Sweep or Fill and keep a flat face), no neon border (a
 	-- Border UIStroke in a Theme.Neon colour) and no Theme.Neon fill. NeonKit.Card's glow is off unless asked for
@@ -4629,6 +4690,19 @@ local function clientScenarios()
 			end
 			return nil
 		end
+		-- (U8 review) the drawn cut gem (client/UI/GemIcon, spec 5.7) is an icon whose tones are its art (U8 kept it on its navy
+		-- square): its gradients are not a panel's gloss. The Gems strip shows only in some lobby states, so the walk met it
+		-- only after another scenario had turned it on
+		local function inGemIcon(d)
+			local cur = d.Parent
+			while cur and not cur:IsA("LayerCollector") do
+				if cur.Name == "GemIcon" then
+					return true
+				end
+				cur = cur.Parent
+			end
+			return false
+		end
 		local function walk(root, family, bad)
 			for _, d in ipairs(root and root:GetDescendants() or {}) do
 				local p = d.Parent
@@ -4638,7 +4712,7 @@ local function clientScenarios()
 					elseif d.ApplyStrokeMode == Enum.ApplyStrokeMode.Border and neonName(d.Color) then
 						bad[#bad + 1] = family .. ": a neon " .. neonName(d.Color) .. " border on " .. p.Name
 					end
-				elseif d:IsA("UIGradient") and p and p:IsA("GuiObject") and U8.shown(p) and d.Enabled ~= false and not ALLOWED[d.Name] then
+				elseif d:IsA("UIGradient") and p and p:IsA("GuiObject") and U8.shown(p) and d.Enabled ~= false and not ALLOWED[d.Name] and not inGemIcon(d) then
 					bad[#bad + 1] = family .. ": a gloss gradient on " .. p:GetFullName():gsub("^Players%.[^.]+%.PlayerGui%.", "")
 				elseif d:IsA("GuiObject") and d.BackgroundTransparency < 0.5 and U8.shown(d) and neonName(d.BackgroundColor3) then
 					bad[#bad + 1] = family .. ": a neon " .. neonName(d.BackgroundColor3) .. " fill on " .. d.Name
@@ -4658,6 +4732,26 @@ local function clientScenarios()
 				if gift then
 					walk(gift, "HUD gift", bad)
 				end
+				-- (U8 review) the boost chips hang right under the gift: both shown (the two passes), each a kit B tag (a flat
+				-- block in its wood edge, square: no UICorner, no gradient)
+				local lp = game:GetService("Players").LocalPlayer
+				local oldPasses = lp:GetAttribute("OwnedPasses")
+				lp:SetAttribute("OwnedPasses", "Cash2x,PetXp2x")
+				LKC.advance(0.3)
+				local boosts = pg:FindFirstChild("NimbusBoosts")
+				local chips = 0
+				for _, name in ipairs({ "Chip_Cash", "Chip_Xp" }) do
+					local chip = boosts and boosts:FindFirstChild(name, true)
+					if chip and U8.shown(chip) then
+						chips = chips + 1
+						T.check(chip:FindFirstChildOfClass("UICorner") == nil and chip:FindFirstChildOfClass("UIGradient") == nil and chip:FindFirstChild("SignEdge") ~= nil
+							and chip.BackgroundTransparency == 0, tag .. ": the boost chip " .. name .. " is a kit B tag (a flat face in a wood edge, square)")
+					end
+				end
+				T.check(chips == 2, tag .. ": both boost chips show under the gift (the two passes)", tostring(chips))
+				walk(boosts, "HUD boosts", bad)
+				lp:SetAttribute("OwnedPasses", oldPasses)
+				LKC.advance(0.3)
 				PC.Open({ Key = U8.KEYS[4] })
 				LKC.advance(1)
 				walk(pg:FindFirstChild("NimbusPets"), "Pets", bad)

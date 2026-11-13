@@ -6,7 +6,7 @@
                                 [--mark-small [PX]] [--no-chrome] [--no-labels] [--echo] [-v]
     python3 tools/render_gui.py --list
 
-Scenarios (see tools/dump_gui.lua): gallery, signkit (kit B: every SignKit part and PixelIcon), lobby, title, match[:hit], countdown, party, results,
+Scenarios (see tools/dump_gui.lua): gallery, signkit (kit B: every SignKit part and PixelIcon), lobby[:boosts], title, match[:hit], countdown, party, results,
 pets[:phone|:pick|:sheet|:<key>], loss[:ring|:dungeon|:phone], menu:<Index|Shop|Stats>[:<Tab>], tutorial[:<step>], npc[:<n>], dev, toasts,
 portal[:<Id>[:<players>[:<studs>]]] (a portal's world GUIs mirrored flat: the pixel billboard and the eye-level
 countdown face as big as it looks from <studs> away; Phase 5: portal:Obby), battle[:<mode>[:<phase>]]

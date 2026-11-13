@@ -957,7 +957,11 @@ local function scenario(name, fn)
 	ORDER[#ORDER + 1] = name
 end
 
-scenario("lobby", function()
+-- lobby[:boosts]: boosts (kit-b U8 review) owns the Cash2x and PetXp2x passes, so both boost chips hang under the gift
+scenario("lobby", function(arg)
+	if arg == "boosts" then
+		LocalPlayer:SetAttribute("OwnedPasses", "Cash2x,PetXp2x")
+	end
 	advance(0.5)
 end)
 
@@ -1042,6 +1046,16 @@ scenario("menu", function(window, tab, action, key)
 	end
 	if (action and action ~= "") or (key and key ~= "") then
 		careProfile()
+	end
+	-- (kit-b U8 review) the Index sizes its tab names with TextService:GetTextSize (the mock's is a flat 0.5 em per
+	-- character): its Metrics.MEASURE hook gets the renderer's font metrics instead (Mock.TextExtent)
+	local IC = lower == "index" and req("client/Controllers/IndexController") or nil
+	if IC and type(IC.Metrics) == "table" then
+		local probe = Instance.new("TextLabel")
+		IC.Metrics.MEASURE = function(text, size, font)
+			probe.Text, probe.TextSize, probe.Font = text, size, font
+			return (Mock.TextExtent(probe))
+		end
 	end
 	toClient("OpenPanel", window, args)
 	advance(2.5)
