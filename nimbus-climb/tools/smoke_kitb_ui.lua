@@ -815,6 +815,8 @@ local function serverScenarios()
 		T.check(snapped, "pixelicon: ... and draws whole 2 px cells, centred")
 		T.check(PI.New(parent, "no_such_icon", 18, red) == nil, "pixelicon: an unknown icon name is nil (no error)")
 		parent:Destroy()
+		-- the 20 px icon above warns on purpose: take that warn here, so a later scenario's flush does not report it
+		K.flushWarnings("pixelicon_run_merge_count", { "[PixelIcon] 20 px is not a multiple of 9" })
 		K.flushErrors("pixelicon_run_merge_count")
 	end)
 
@@ -980,6 +982,8 @@ local function serverScenarios()
 		T.check(warned[20] == 1 and warned[22] == 1 and n == 2, "pixelicon warn: 20 and 22 px warn once each (20 asked twice)",
 			fmt("20: %s, 22: %s, %d sizes", tostring(warned[20]), tostring(warned[22]), n))
 		parent:Destroy()
+		-- the 20 and 22 px warns are the ones asked for above: take them here (see pixelicon_run_merge_count)
+		K.flushWarnings("pixelicon_clamp_and_warn", { "[PixelIcon] 20 px is not a multiple of 9", "[PixelIcon] 22 px is not a multiple of 9" })
 		K.flushErrors("pixelicon_clamp_and_warn")
 	end)
 

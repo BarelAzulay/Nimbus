@@ -264,6 +264,10 @@ local function serverScenarios()
 		end
 		ML._Reset()
 		ML._Configure({ Ids = ids, DressTag = "KitbObbyDress" }) -- a private tag: no game listener dresses these
+		-- smoke.py --mesh leaves the pet fixtures' asset store on (it answers "does not exist" for these ids, so the
+		-- keys would fail at once): take it away while these builds run, restored below
+		local savedLoader = Mock.AssetLoader
+		Mock.AssetLoader = nil
 		pcall(ML.Start) -- the mock has no LoadAsset: a configured key stays "loading" (never "missing")
 		-- O3: "storm" = a storm cloud key with an id on the list (the shipped list waits for obby_storm_cloud)
 		local clouds = Config.Course and Config.Course.Clouds
@@ -478,6 +482,7 @@ local function serverScenarios()
 			FX._Deps(false)
 		end
 		ML._Reset()
+		Mock.AssetLoader = savedLoader
 		local f = RS:FindFirstChild("MeshLibrary")
 		if f and not hadFolder then
 			f:Destroy()
